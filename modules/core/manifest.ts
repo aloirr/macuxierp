@@ -7,6 +7,6 @@ export const manifest = defineModule({
   depende: [],
   perfis: ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'],
   web: { menus: ['Empresa', 'Usuários e perfis'] },
-  publica: ['core.empresa.alterada@1', 'core.usuario.alterado@1'],
+  publica: ['core.empresa.alterada@1', 'core.usuario.alterado@1', 'core.certificado.alterado@1', 'core.ambiente_fiscal.alterado@1'],
   consome: [],
 });
