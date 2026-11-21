@@ -1,8 +1,6 @@
 /**
- * Carga versionada das tabelas oficiais (D9, RF-CAD-10): db/tabelas-fiscais/fontes.json lista cada carga com a fonte,
- * a URL, a data de referência, o sha256 e o nº de registros do CSV. Cada carga roda numa transação, uma vez por
- * (carga, versão), e fica em cadastros.tabela_oficial_versao. A versão nova atualiza o código que continua, insere o
- * novo e fecha (vigencia_fim) o que sumiu da fonte; nada é apagado.
+ * Carga versionada das tabelas oficiais (D9, RF-CAD-10) a partir de db/tabelas-fiscais/fontes.json. As regras (fonte,
+ * conferência, uma vez por versão, vigência e nada apagado) estão em docs/banco/tabelas-oficiais.md.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

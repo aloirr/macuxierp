@@ -9,16 +9,18 @@
 - O `pnpm --filter @macuxierp/db migrar` roda a carga depois das migrações. CSV publicado é imutável: versão nova = arquivo novo + carga nova.
 
 ## Primeira carga
-| Carga | Tabela | Registros | Fonte oficial | Data | Como chegou ao repositório |
-|---|---|---|---|---|---|
-| `uf` | `uf` | 27 | IBGE, API de localidades (`/estados`) | 20/09/2026 | cópia do pacote npm `@br-validators/core` 1.10.0-data.46 (MIT) |
-| `municipio` | `municipio` | 5.571 | IBGE, códigos de municípios | 21/11/2026 (cópia) | `github.com/kelvins/municipios-brasileiros` (`csv/municipios.csv`); dígito verificador conferido no teste |
-| `ncm` | `ncm` | 10.515 | Portal Único Siscomex (JSON público) | 20/09/2026 | `@br-validators/core` |
-| `cest` e `cest-ncm` | `cest`, `cest_ncm` | 1.018 e 1.051 | CONFAZ, Convênio ICMS 142/2018 | 20/09/2026 | `@br-validators/core` |
-| `cfop` | `cfop` | 689 | CONFAZ, Convênio s/nº de 1970 (SINIEF), Anexo II | 20/09/2026 | `@br-validators/core` |
-| `cst-tradicionais` | `cst` | 105 | ICMS (Tabela B, com 02, 15, 53 e 61 da NT 2023.001), CSOSN (Ajuste SINIEF 03/2010), IPI, PIS e COFINS (RFB) | 21/11/2026 | ICMS transcrito; o resto de `@br-validators/core` |
-| `cst-ibs-cbs` | `cst` | 25 | Portal da NF-e, IT 2025.002 v1.60 | 22/06/2026 | pacote npm `@sinete/ibs-cbs-dados` 2026.9.3 |
-| `classificacao-tributaria` | `classificacao_tributaria` | 193 | Portal da NF-e, IT 2025.002 v1.60 (cClassTrib do IBS/CBS e do IS) | 22/06/2026 | `@sinete/ibs-cbs-dados` |
+Fonte oficial, URL, data de referência, sha256 e nº de registros de cada carga ficam no `db/tabelas-fiscais/fontes.json`, que é a fonte da verdade (a carga confere o arquivo contra ele, e o teste também). Aqui fica só o que o `fontes.json` não diz:
+
+| Carga | Como chegou ao repositório |
+|---|---|
+| `uf` | cópia do pacote npm `@br-validators/core` 1.10.0-data.46 (MIT) |
+| `municipio` | `github.com/kelvins/municipios-brasileiros` (`csv/municipios.csv`); dígito verificador conferido no teste |
+| `ncm` | `@br-validators/core` |
+| `cest` e `cest-ncm` | `@br-validators/core` |
+| `cfop` | `@br-validators/core` |
+| `cst-tradicionais` | ICMS transcrito; o resto de `@br-validators/core` |
+| `cst-ibs-cbs` | pacote npm `@sinete/ibs-cbs-dados` 2026.9.3 |
+| `classificacao-tributaria` | `@sinete/ibs-cbs-dados` |
 
 **Por que por cópia:** a sessão da nuvem não alcança os sites oficiais (o proxy recusa IBGE, Siscomex e Portal da NF-e; ADR 0002). Os arquivos foram lidos como **dados** (JSON e CSV, sem executar código dos pacotes), convertidos para CSV e conferidos (formato dos códigos, contagens, sem código repetido e o dígito verificador do IBGE, com só as 9 exceções conhecidas do próprio IBGE).
 

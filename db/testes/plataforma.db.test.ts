@@ -196,6 +196,63 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
     ).toMatch(/permission denied/);
   });
 
+  it('com o tenant na sessão, o app lê a própria linha de plataforma.tenant (adaptador do login, T-0004)', () => {
+    expect(
+      consultar(banco.conexao, 'SELECT id, slug, nome, fuso, situacao FROM plataforma.tenant', {
+        papel: 'macuxierp_app',
+        tenant: A.id,
+      }),
+    ).toEqual([
+      { id: A.id, slug: 'empresa-a', nome: 'Empresa empresa-a', fuso: 'America/Manaus', situacao: 'ativo' },
+    ]);
+  });
+
+  it('plataforma.tenant não tem a chave (tenant_id, id), que repetiria a PK', () => {
+    const indices = consultar<{ i: string }>(
+      banco.conexao,
+      `SELECT indexname AS i FROM pg_indexes WHERE schemaname = 'plataforma' AND tablename = 'tenant' ORDER BY 1`,
+    ).map((r) => r.i);
+    expect(indices).not.toContain('tenant_tenant_id_uq');
+    expect(indices).toContain('tenant_pkey');
+  });
+
+  it('CNPJ e SHA-256 usam os tipos comuns plataforma.cnpj e plataforma.sha256_hex', () => {
+    const colunas = consultar<{ c: string; d: string }>(
+      banco.conexao,
+      `SELECT c.table_schema || '.' || c.table_name || '.' || c.column_name AS c, c.domain_name AS d
+       FROM information_schema.columns c JOIN information_schema.tables t USING (table_schema, table_name)
+       WHERE c.domain_schema = 'plataforma' AND t.table_type = 'BASE TABLE' ORDER BY 2, 1`,
+    );
+    expect(colunas).toEqual([
+      { c: 'cadastros.filial.cnpj', d: 'cnpj' },
+      { c: 'core.certificado.cnpj', d: 'cnpj' },
+      { c: 'core.empresa.cnpj', d: 'cnpj' },
+      { c: 'cadastros.tabela_oficial_versao.sha256', d: 'sha256_hex' },
+      { c: 'core.certificado.impressao_digital', d: 'sha256_hex' },
+      { c: 'plataforma.arquivo.sha256', d: 'sha256_hex' },
+      { c: 'plataforma.idempotencia.hash_corpo', d: 'sha256_hex' },
+      { c: 'plataforma.sessao.refresh_hash', d: 'sha256_hex' },
+    ]);
+    expect(
+      falha(() =>
+        executar(banco.conexao, `UPDATE plataforma.idempotencia SET hash_corpo = repeat('A', 64);`, {
+          papel: 'macuxierp_app',
+          tenant: A.id,
+        }),
+      ),
+    ).toMatch(/sha256_hex/);
+  });
+
+  it('a leitura não vê a resposta guardada da idempotência (pode trazer dado pessoal)', () => {
+    const ctx = { papel: 'macuxierp_leitura', tenant: A.id };
+    expect(consultar(banco.conexao, 'SELECT chave FROM plataforma.idempotencia', ctx)).toEqual([
+      { chave: 'chave-0001' },
+    ]);
+    expect(
+      falha(() => consultar(banco.conexao, 'SELECT resposta FROM plataforma.idempotencia', ctx)),
+    ).toMatch(/permission denied/);
+  });
+
   it('auditoria é só de inserção, até para o dono', () => {
     expect(falha(() => executar(banco.conexao, 'UPDATE plataforma.auditoria SET acao = acao;'))).toMatch(
       /só de inserção/,

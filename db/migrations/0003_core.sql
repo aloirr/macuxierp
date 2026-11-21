@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS core.empresa (
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
   razao_social text NOT NULL CHECK (length(razao_social) BETWEEN 2 AND 60),
   nome_fantasia text CHECK (length(nome_fantasia) <= 60),
-  cnpj text NOT NULL CHECK (cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$'),
+  cnpj plataforma.cnpj NOT NULL,
   ie text CHECK (length(ie) <= 14),
   fuso text NOT NULL DEFAULT 'America/Manaus',
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -25,10 +25,10 @@ CREATE TABLE IF NOT EXISTS core.certificado (
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
   filial_id uuid NOT NULL,
   titular text NOT NULL,
-  cnpj text NOT NULL CHECK (cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$'),
+  cnpj plataforma.cnpj NOT NULL,
   valido_de timestamptz NOT NULL,
   valido_ate timestamptz NOT NULL,
-  impressao_digital text NOT NULL CHECK (impressao_digital ~ '^[0-9a-f]{64}$'),
+  impressao_digital plataforma.sha256_hex NOT NULL,
   pfx_cifrado bytea NOT NULL,
   pfx_nonce bytea NOT NULL CHECK (length(pfx_nonce) = 12),
   senha_cifrada bytea NOT NULL,
@@ -106,6 +106,10 @@ GRANT SELECT (id, tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, im
   substituido_em, created_at, updated_at, deleted_at, external_id) ON core.certificado TO macuxierp_app;
 GRANT UPDATE (ativo, substituido_em, deleted_at) ON core.certificado TO macuxierp_app;
 
-GRANT SELECT, UPDATE ON core.certificado, core.exportacao TO macuxierp_worker;
+-- Worker: lê o cifrado (assina a NF-e), mas só atualiza as colunas de controle; o .pfx e a senha nunca mudam (troca de
+-- certificado = linha nova).
+GRANT SELECT ON core.certificado TO macuxierp_worker;
+GRANT UPDATE (ativo, substituido_em) ON core.certificado TO macuxierp_worker;
+GRANT UPDATE ON core.exportacao TO macuxierp_worker;
 GRANT SELECT ON core.empresa, core.ambiente_fiscal, core.parametro, core.exportacao TO macuxierp_worker,
   macuxierp_leitura;

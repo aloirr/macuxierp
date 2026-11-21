@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS plataforma.tenant (
   external_id text CHECK (length(external_id) <= 64),
   CONSTRAINT tenant_tenant_id_igual_id CHECK (tenant_id = id)
 );
-SELECT controle.preparar_tabela('plataforma.tenant');
+-- Sem a chave (tenant_id, id): aqui tenant_id = id, e a PK já cobre.
+SELECT controle.preparar_tabela('plataforma.tenant', chave_composta => false);
 
 -- Tenant de referência das tabelas oficiais (D9).
 INSERT INTO plataforma.tenant (id, tenant_id, slug, nome, situacao)
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS plataforma.sessao (
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
   usuario_id uuid NOT NULL,
   familia uuid NOT NULL,
-  refresh_hash text NOT NULL UNIQUE CHECK (refresh_hash ~ '^[0-9a-f]{64}$'),
+  refresh_hash plataforma.sha256_hex NOT NULL UNIQUE,
   expira_em timestamptz NOT NULL,
   revogada_em timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -144,7 +145,7 @@ CREATE TABLE IF NOT EXISTS plataforma.idempotencia (
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
   chave text NOT NULL CHECK (length(chave) BETWEEN 8 AND 128),
   rota text NOT NULL,
-  hash_corpo text NOT NULL CHECK (hash_corpo ~ '^[0-9a-f]{64}$'),
+  hash_corpo plataforma.sha256_hex NOT NULL,
   status integer,
   resposta jsonb,
   expira_em timestamptz NOT NULL DEFAULT now() + interval '24 hours',
@@ -186,7 +187,7 @@ CREATE TABLE IF NOT EXISTS plataforma.arquivo (
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
   chave_s3 text NOT NULL CHECK (chave_s3 LIKE 'macuxierp/%'),
   tipo text NOT NULL,
-  sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  sha256 plataforma.sha256_hex NOT NULL,
   tamanho bigint NOT NULL CHECK (tamanho >= 0),
   imutavel boolean NOT NULL DEFAULT false,
   guarda_ate date,
@@ -245,7 +246,10 @@ GRANT SELECT, INSERT, UPDATE ON plataforma.trabalho, plataforma.arquivo TO macux
 GRANT SELECT, DELETE ON plataforma.idempotencia TO macuxierp_worker;
 
 -- Leitura (diagnóstico) e worker (exportação LGPD): sem sessão e sem o hash da senha.
-GRANT SELECT ON plataforma.evento, plataforma.evento_consumido, plataforma.trabalho, plataforma.idempotencia,
-  plataforma.auditoria, plataforma.arquivo TO macuxierp_leitura;
+GRANT SELECT ON plataforma.evento, plataforma.evento_consumido, plataforma.trabalho, plataforma.auditoria,
+  plataforma.arquivo TO macuxierp_leitura;
+-- Idempotência: a leitura não vê a resposta guardada, que pode trazer dado pessoal (LGPD, regra 8).
+GRANT SELECT (id, tenant_id, chave, rota, hash_corpo, status, expira_em, created_at, updated_at, deleted_at,
+  external_id) ON plataforma.idempotencia TO macuxierp_leitura;
 GRANT SELECT (id, tenant_id, email, nome, perfil, filial_ids, ativo, falhas_login, bloqueado_ate, ultimo_acesso_em,
   created_at, updated_at, deleted_at, external_id) ON plataforma.usuario TO macuxierp_worker, macuxierp_leitura;

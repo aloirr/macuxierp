@@ -77,6 +77,46 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — core e cadastros (T-0003, l
     ).toMatch(/permission denied/);
   });
 
+  it('certificado A1: o worker atualiza só as colunas de controle, nunca o cifrado', () => {
+    const worker = { papel: 'macuxierp_worker', tenant: B.id };
+    expect(
+      falha(() => executar(banco.conexao, `UPDATE core.certificado SET pfx_cifrado = '\\x01';`, worker)),
+    ).toMatch(/permission denied/);
+    expect(
+      falha(() => executar(banco.conexao, `UPDATE core.certificado SET senha_cifrada = '\\x01';`, worker)),
+    ).toMatch(/permission denied/);
+    executar(
+      banco.conexao,
+      'UPDATE core.certificado SET ativo = ativo, substituido_em = substituido_em;',
+      worker,
+    );
+  });
+
+  it('filial_resumo (filiaisPorIds, T-0004): id, nome e CNPJ só do próprio tenant, sem a excluída', () => {
+    const sql = `SELECT id, tenant_id, nome, cnpj FROM cadastros.filial_resumo WHERE id IN ('${A.filial}', '${B.filial}')`;
+    expect(consultar(banco.conexao, sql, APP_A)).toEqual([
+      { id: A.filial, tenant_id: A.id, nome: 'Filial modulos-a', cnpj: '12345678000195' },
+    ]);
+    expect(consultar(banco.conexao, sql, { papel: 'macuxierp_app' })).toEqual([]);
+    expect(falha(() => consultar(banco.conexao, sql, { papel: 'macuxierp_leitura', tenant: A.id }))).toMatch(
+      /permission denied/,
+    );
+  });
+
+  it('documento PJ do cliente segue o plataforma.cnpj; PF, 11 dígitos', () => {
+    const inserir = (tipo: string, doc: string) =>
+      `INSERT INTO cadastros.cliente (tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, filial_id)
+       VALUES ('${A.id}', '${tipo}', '${doc}', '9', 'Outro cliente', '${A.filial}');`;
+    expect(falha(() => executar(banco.conexao, inserir('PJ', '12345678901'), APP_A))).toMatch(
+      /cliente_documento_formato/,
+    );
+    expect(falha(() => executar(banco.conexao, inserir('PF', '12345678000195'), APP_A))).toMatch(
+      /cliente_documento_formato/,
+    );
+    executar(banco.conexao, inserir('PF', '12345678909'), APP_A);
+    executar(banco.conexao, inserir('PJ', '12ABC34501DE35'), APP_A);
+  });
+
   it('um certificado ativo por filial', () => {
     const novo = `INSERT INTO core.certificado (tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, impressao_digital,
       pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce) VALUES ('${A.id}', '${A.filial}', 'NOVO', '12345678000195', now(),

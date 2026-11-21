@@ -108,22 +108,14 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — tabelas oficiais (T-0003, l
   });
 
   it('as contagens batem com as fontes', () => {
+    const esperado: Record<string, number> = {};
+    for (const c of lerFontes()) esperado[c.tabela] = (esperado[c.tabela] ?? 0) + c.registros;
+    const tabelas = Object.keys(esperado).sort();
     const [n] = consultar<Record<string, number>>(
       banco.conexao,
-      `SELECT (SELECT count(*) FROM cadastros.uf)::int AS uf, (SELECT count(*) FROM cadastros.municipio)::int AS municipio,
-        (SELECT count(*) FROM cadastros.ncm)::int AS ncm, (SELECT count(*) FROM cadastros.cest)::int AS cest,
-        (SELECT count(*) FROM cadastros.cfop)::int AS cfop, (SELECT count(*) FROM cadastros.cst)::int AS cst,
-        (SELECT count(*) FROM cadastros.classificacao_tributaria)::int AS cclasstrib`,
+      `SELECT ${tabelas.map((t) => `(SELECT count(*) FROM cadastros.${t})::int AS ${t}`).join(', ')}`,
     );
-    expect(n).toEqual({
-      uf: 27,
-      municipio: 5571,
-      ncm: 10515,
-      cest: 1018,
-      cfop: 689,
-      cst: 130,
-      cclasstrib: 193,
-    });
+    expect(n).toEqual(esperado);
   });
 
   it('todo tenant lê (Manaus, CFOP 5102, CST 00 e cClassTrib 000001); nenhum papel grava', () => {
@@ -146,7 +138,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — tabelas oficiais (T-0003, l
     ).toEqual([{ cst: '000' }]);
     for (const papel of ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura']) {
       expect(consultar(banco.conexao, 'SELECT count(*)::int AS n FROM cadastros.ncm', { papel })[0]).toEqual({
-        n: 10515,
+        n: lerFontes().find((c) => c.carga === 'ncm')?.registros,
       });
       const erro = falha(() =>
         executar(banco.conexao, `UPDATE cadastros.ncm SET descricao = 'x' WHERE codigo = '22021000';`, {

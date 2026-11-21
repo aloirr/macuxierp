@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS cadastros.filial (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
-  cnpj text NOT NULL CHECK (cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$'),
+  cnpj plataforma.cnpj NOT NULL,
   ie text CHECK (length(ie) <= 14),
   razao_social text NOT NULL CHECK (length(razao_social) BETWEEN 2 AND 60),
   nome_fantasia text CHECK (length(nome_fantasia) <= 60),
@@ -85,7 +85,8 @@ SELECT controle.preparar_tabela('cadastros.vendedor');
 CREATE UNIQUE INDEX IF NOT EXISTS vendedor_usuario_uq ON cadastros.vendedor (tenant_id, usuario_id)
   WHERE usuario_id IS NOT NULL AND deleted_at IS NULL;
 
--- Cliente (RF-CAD-01). Carteira = vendedor_id (D7).
+-- Cliente (RF-CAD-01). Carteira = vendedor_id (D7). O documento PJ segue o plataforma.cnpj (pg_input_is_valid, do
+-- PostgreSQL 16, sem erro no cast); PF, 11 dígitos.
 CREATE TABLE IF NOT EXISTS cadastros.cliente (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
@@ -106,7 +107,8 @@ CREATE TABLE IF NOT EXISTS cadastros.cliente (
   deleted_at timestamptz,
   external_id text CHECK (length(external_id) <= 64),
   CONSTRAINT cliente_documento_formato CHECK (
-    (tipo_pessoa = 'PJ' AND documento ~ '^[0-9A-Z]{12}[0-9]{2}$') OR (tipo_pessoa = 'PF' AND documento ~ '^[0-9]{11}$')),
+    (tipo_pessoa = 'PJ' AND pg_input_is_valid(documento, 'plataforma.cnpj'))
+    OR (tipo_pessoa = 'PF' AND documento ~ '^[0-9]{11}$')),
   FOREIGN KEY (tenant_id, condicao_pagamento_id) REFERENCES cadastros.condicao_pagamento (tenant_id, id),
   FOREIGN KEY (tenant_id, tabela_preco_id) REFERENCES cadastros.tabela_preco (tenant_id, id),
   FOREIGN KEY (tenant_id, filial_id) REFERENCES cadastros.filial (tenant_id, id),
@@ -256,8 +258,8 @@ SELECT controle.somente_insercao('cadastros.estoque_movimento');
 CREATE INDEX IF NOT EXISTS estoque_movimento_produto_idx ON cadastros.estoque_movimento
   (tenant_id, filial_id, produto_id, created_at);
 
--- Cache de consultas externas (RF-CAD-02/03, 24 h). Nunca CPF: a chave de cnpj tem 14 posições; o CNPJ vai sem o
--- quadro de sócios (dado pessoal), o que a API garante antes de gravar.
+-- Cache de consultas externas (RF-CAD-02/03, 24 h). Nunca CPF: a chave de cnpj segue o plataforma.cnpj (14 posições);
+-- o CNPJ vai sem o quadro de sócios (dado pessoal), o que a API garante antes de gravar.
 CREATE TABLE IF NOT EXISTS cadastros.consulta_externa (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES plataforma.tenant (id),
@@ -273,7 +275,7 @@ CREATE TABLE IF NOT EXISTS cadastros.consulta_externa (
   external_id text CHECK (length(external_id) <= 64),
   UNIQUE (tenant_id, tipo, chave),
   CONSTRAINT consulta_externa_chave CHECK (
-    (tipo = 'cnpj' AND chave ~ '^[0-9A-Z]{12}[0-9]{2}$') OR (tipo = 'cep' AND chave ~ '^[0-9]{8}$')
+    (tipo = 'cnpj' AND pg_input_is_valid(chave, 'plataforma.cnpj')) OR (tipo = 'cep' AND chave ~ '^[0-9]{8}$')
     OR (tipo = 'ie' AND chave ~ '^[A-Z]{2}:[0-9A-Z]{2,14}$'))
 );
 SELECT controle.preparar_tabela('cadastros.consulta_externa');
@@ -284,6 +286,15 @@ GRANT SELECT, INSERT, UPDATE ON cadastros.filial, cadastros.condicao_pagamento, 
   cadastros.produto_unidade, cadastros.tabela_preco_item, cadastros.estoque_saldo TO macuxierp_app;
 GRANT SELECT, INSERT ON cadastros.estoque_movimento TO macuxierp_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cadastros.consulta_externa TO macuxierp_app;
+
+-- Resumo da filial para o login (porta filiaisPorIds da T-0004, GET /v1/auth/eu): id, nome e CNPJ, sem a excluída.
+-- security_invoker: a visão roda com o papel de quem consulta, então a RLS da filial vale (sem ele, rodaria como o dono
+-- e veria todos os tenants).
+CREATE OR REPLACE VIEW cadastros.filial_resumo WITH (security_invoker = true) AS
+  SELECT id, tenant_id, coalesce(nullif(btrim(nome_fantasia), ''), razao_social) AS nome, cnpj
+  FROM cadastros.filial
+  WHERE deleted_at IS NULL;
+GRANT SELECT ON cadastros.filial_resumo TO macuxierp_app;
 
 -- Worker e leitura leem tudo do próprio tenant (o worker gera a exportação LGPD, RF-CORE-06).
 GRANT INSERT, UPDATE ON cadastros.consulta_externa TO macuxierp_worker;

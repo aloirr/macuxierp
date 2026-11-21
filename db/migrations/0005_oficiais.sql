@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS cadastros.tabela_oficial_versao (
   url text NOT NULL,
   data_referencia date NOT NULL,
   arquivo text NOT NULL,
-  sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  sha256 plataforma.sha256_hex NOT NULL,
   registros integer NOT NULL CHECK (registros >= 0),
   carregada_em timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),

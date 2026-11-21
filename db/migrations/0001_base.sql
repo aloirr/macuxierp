@@ -42,6 +42,21 @@ REVOKE ALL ON SCHEMA controle FROM PUBLIC;
 GRANT USAGE ON SCHEMA plataforma, core, cadastros, pedido, faturamento, fiscal, integracao_fdv
   TO macuxierp_app, macuxierp_worker, macuxierp_leitura;
 
+-- Tipos de coluna repetidos (um lugar só para o formato). CNPJ com 14 posições, já no formato alfanumérico da NT
+-- 2025.001 (12 letras ou dígitos e 2 dígitos verificadores; o DV quem confere é a API). SHA-256 em hexadecimal minúsculo.
+DO $$
+BEGIN
+  CREATE DOMAIN plataforma.cnpj AS text CHECK (VALUE ~ '^[0-9A-Z]{12}[0-9]{2}$');
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
+DO $$
+BEGIN
+  CREATE DOMAIN plataforma.sha256_hex AS text CHECK (VALUE ~ '^[0-9a-f]{64}$');
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
+
 -- Tenant da sessão: a API faz SET LOCAL app.tenant_id em toda transação (T-0002, seção 2). Sem ele, NULL: a RLS não
 -- devolve nada de tenant nenhum (falha fechada). Valor que não é UUID dá erro, nunca "todos".
 CREATE OR REPLACE FUNCTION plataforma.tenant_atual() RETURNS uuid
@@ -73,7 +88,9 @@ END $$;
 -- Preparo padrão de toda tabela com tenant (regra 5): RLS ligada, política de isolamento, updated_at automático,
 -- external_id único por tenant e a chave (tenant_id, id) para as FKs compostas (uma linha nunca aponta para outro tenant).
 -- oficial = true: tabela do tenant de referência (D9), que todo tenant lê e nenhum papel da aplicação grava.
-CREATE OR REPLACE FUNCTION controle.preparar_tabela(tabela regclass, oficial boolean DEFAULT false) RETURNS void
+-- chave_composta = false: sem o índice (tenant_id, id), para a tabela em que ele repete a PK (plataforma.tenant).
+CREATE OR REPLACE FUNCTION controle.preparar_tabela(tabela regclass, oficial boolean DEFAULT false,
+  chave_composta boolean DEFAULT true) RETURNS void
   LANGUAGE plpgsql
   AS $$
 DECLARE
@@ -93,7 +110,9 @@ BEGIN
     'EXECUTE FUNCTION plataforma.tocar_updated_at()', tabela);
   EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS %I ON %s (tenant_id, external_id) WHERE external_id IS NOT NULL',
     nome || '_external_id_uq', tabela);
-  EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS %I ON %s (tenant_id, id)', nome || '_tenant_id_uq', tabela);
+  IF chave_composta THEN
+    EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS %I ON %s (tenant_id, id)', nome || '_tenant_id_uq', tabela);
+  END IF;
 END $$;
 
 -- Liga a trava de "só inserção" numa tabela.
