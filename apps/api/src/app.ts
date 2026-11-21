@@ -107,7 +107,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     if (erro instanceof ErroApi) {
       return reply.status(erro.status).send({ codigo: erro.codigo, mensagem: erro.message, ...(erro.campos ? { campos: erro.campos } : {}) });
     }
-        const status = (erro as { statusCode?: number }).statusCode;
+    const status = (erro as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {
       return reply.status(status).send({ codigo: status === 413 ? 'CORPO_GRANDE' : 'VALIDACAO', mensagem: 'Requisição inválida' });
     }
