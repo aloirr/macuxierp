@@ -1,15 +1,10 @@
 {
   "extends": "@macuxierp/config/tsconfig.base.json",
   "compilerOptions": {
-    "types": [
-      "node"
-    ]
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src", "testes"],
+  "exclude": ["node_modules", "dist"]
 }

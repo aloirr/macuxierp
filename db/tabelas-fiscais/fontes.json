@@ -1,0 +1,114 @@
+{
+  "descricao": "Cargas versionadas das tabelas oficiais (T-0003, D9). Cada CSV é imutável: versão nova = arquivo novo + carga nova aqui. A origem de cada arquivo e o caminho até a fonte oficial estão em docs/banco/tabelas-oficiais.md. Datas AAAA-MM-DD (UTC).",
+  "cargas": [
+    {
+      "carga": "uf",
+      "tabela": "uf",
+      "versao": "2026-09-20",
+      "arquivo": "uf/2026-09-20.csv",
+      "chave": ["codigo"],
+      "fonte": "IBGE, API de localidades v1 (/estados), capturada em 2026-09-20 pela cópia do pacote npm @br-validators/core 1.10.0-data.46 (MIT)",
+      "url": "https://servicodados.ibge.gov.br/api/v1/localidades/estados",
+      "data_referencia": "2026-09-20",
+      "sha256": "1fc4d082a8c53b0514cb8192b128cf61c7f325d839a939e52abe51f9ae95014c",
+      "registros": 27
+    },
+    {
+      "carga": "municipio",
+      "tabela": "municipio",
+      "versao": "2026-11-21",
+      "arquivo": "municipio/2026-11-21.csv",
+      "chave": ["codigo"],
+      "fonte": "IBGE, códigos de municípios (DTB), pela cópia github.com/kelvins/municipios-brasileiros (csv/municipios.csv, ramo main, baixada em 2026-11-21); 5.571 municípios, com Boa Esperança do Norte (MT); dígito verificador conferido (só as 9 exceções conhecidas do IBGE)",
+      "url": "https://servicodados.ibge.gov.br/api/v1/localidades/municipios",
+      "data_referencia": "2026-11-21",
+      "sha256": "e0a4fa98a87e684cda571e7db907ebc4f403ffae0fa3d6f8a46f25b1e8a53ba8",
+      "registros": 5571,
+      "observacao": "Conferir com a API do IBGE quando a VM ou uma sessão com acesso puder baixar (pendência em docs/banco/tabelas-oficiais.md)."
+    },
+    {
+      "carga": "ncm",
+      "tabela": "ncm",
+      "versao": "2026-09-20",
+      "arquivo": "ncm/2026-09-20.csv",
+      "chave": ["codigo"],
+      "fonte": "Portal Único Siscomex, nomenclatura NCM em JSON (perfil público), capturada em 2026-09-20 pela cópia do pacote npm @br-validators/core 1.10.0-data.46 (MIT); só os códigos de 8 dígitos",
+      "url": "https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json?perfil=PUBLICO",
+      "data_referencia": "2026-09-20",
+      "sha256": "dd50b391e278cdc7cb2f9603c9c1ac8d873dc4ad67cc10c300f23a101d27e1d6",
+      "registros": 10515
+    },
+    {
+      "carga": "cest",
+      "tabela": "cest",
+      "versao": "2026-09-20",
+      "arquivo": "cest/2026-09-20.csv",
+      "chave": ["codigo"],
+      "fonte": "CONFAZ, Convênio ICMS 142/2018, Anexos II a XXVI, capturado em 2026-09-20 pela cópia do pacote npm @br-validators/core 1.10.0-data.46 (MIT)",
+      "url": "https://www.confaz.fazenda.gov.br/legislacao/convenios/2018/CV142_18",
+      "data_referencia": "2026-09-20",
+      "sha256": "443f5c17831e820d07ad9ca8eeddb0773778099d1397403cf24027c0e08805d3",
+      "registros": 1018
+    },
+    {
+      "carga": "cest-ncm",
+      "tabela": "cest_ncm",
+      "versao": "2026-09-20",
+      "arquivo": "cest_ncm/2026-09-20.csv",
+      "chave": ["cest_codigo", "ncm_prefixo"],
+      "fonte": "CONFAZ, Convênio ICMS 142/2018 (coluna NCM/SH de cada CEST), mesma cópia da carga cest",
+      "url": "https://www.confaz.fazenda.gov.br/legislacao/convenios/2018/CV142_18",
+      "data_referencia": "2026-09-20",
+      "sha256": "736963840b0735577e3eb65527cd649adbd8be2b01653f39389463c18197ce65",
+      "registros": 1051
+    },
+    {
+      "carga": "cfop",
+      "tabela": "cfop",
+      "versao": "2026-09-20",
+      "arquivo": "cfop/2026-09-20.csv",
+      "chave": ["codigo"],
+      "fonte": "CONFAZ, Convênio s/nº de 15/12/1970 (SINIEF), Anexo II (CFOP), capturado em 2026-09-20 pela cópia do pacote npm @br-validators/core 1.10.0-data.46 (MIT)",
+      "url": "https://www.confaz.fazenda.gov.br/legislacao/convenios/1970/CV_SN_70",
+      "data_referencia": "2026-09-20",
+      "sha256": "a6696991d0a5e1a71a6e1e4e7bfb562c4d38552c373657a09323e42062cc918a",
+      "registros": 689
+    },
+    {
+      "carga": "cst-tradicionais",
+      "tabela": "cst",
+      "versao": "2026-11-21",
+      "arquivo": "cst/tradicionais-2026-11-21.csv",
+      "chave": ["tipo", "codigo"],
+      "fonte": "ICMS: Tabela B do CST (Convênio s/nº de 1970, Anexo do SINIEF), com 02, 15, 53 e 61 da NT 2023.001 (combustíveis), transcrita em 2026-11-21; CSOSN: Ajuste SINIEF 03/2010; IPI, PIS e COFINS: tabelas de CST da RFB (IN RFB 932/2009 e Guia do SPED); CSOSN, IPI, PIS e COFINS pela cópia do pacote npm @br-validators/core 1.10.0-data.46 (MIT, capturadas em 2026-06)",
+      "url": "https://www.nfe.fazenda.gov.br/portal/principal.aspx",
+      "data_referencia": "2026-11-21",
+      "sha256": "0651a3de5f35b835bbead11341628d8eb5b2b22b5d8943c76afb09401cce4412",
+      "registros": 105
+    },
+    {
+      "carga": "cst-ibs-cbs",
+      "tabela": "cst",
+      "versao": "v1.60",
+      "arquivo": "cst/ibs-cbs-v1.60.csv",
+      "chave": ["tipo", "codigo", "vigencia_inicio"],
+      "fonte": "Portal da NF-e, Informe Técnico 2025.002 v1.60 (tabela de CST e cClassTrib do IBS/CBS e do IS, 2026-06-22), pela cópia do pacote npm @sinete/ibs-cbs-dados 2026.9.3",
+      "url": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=CMlTOCo8JuE=",
+      "data_referencia": "2026-06-22",
+      "sha256": "2ca8216f50b4a0b4c205b41dd1138bce861aca6c7836b9c70fcc9b5dbb572a5e",
+      "registros": 25
+    },
+    {
+      "carga": "classificacao-tributaria",
+      "tabela": "classificacao_tributaria",
+      "versao": "v1.60",
+      "arquivo": "classificacao_tributaria/v1.60.csv",
+      "chave": ["tipo", "codigo", "vigencia_inicio"],
+      "fonte": "Portal da NF-e, Informe Técnico 2025.002 v1.60 (cClassTrib do IBS/CBS e do IS, 2026-06-22), pela cópia do pacote npm @sinete/ibs-cbs-dados 2026.9.3",
+      "url": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=CMlTOCo8JuE=",
+      "data_referencia": "2026-06-22",
+      "sha256": "adffa5c93d5b060db91e8995118c847e524e86c381c15efa298145281f059a17",
+      "registros": 193
+    }
+  ]
+}
