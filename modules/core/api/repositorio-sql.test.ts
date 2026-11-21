@@ -51,9 +51,10 @@ describe('repositório SQL do core', () => {
       },
     };
     const token = new Date('2026-11-21T15:00:00.123Z');
+    const agora = new Date('2026-11-21T15:00:00Z');
     const r = new RepositorioCoreSql();
-    await expect(r.atualizarUsuario(tx, 'u', { nome: 'N' }, new Date(), token)).resolves.toBeNull();
-    await expect(r.atualizarEmpresa(tx, { razao_social: 'R', nome_fantasia: null, ie: null, fuso: 'America/Manaus' }, new Date(), token)).resolves.toBeNull();
+    await expect(r.atualizarUsuario(tx, 'u', { nome: 'N' }, agora, token)).resolves.toBeNull();
+    await expect(r.atualizarEmpresa(tx, { razao_social: 'R', nome_fantasia: null, ie: null, fuso: 'America/Manaus' }, agora, token)).resolves.toBeNull();
     for (const c of chamadas) {
       expect(c.sql).toMatch(/UPDATE[\s\S]*WHERE[\s\S]*date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$\d::timestamptz\)/);
       expect(c.params.at(-1)).toBe(token);

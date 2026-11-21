@@ -8,6 +8,7 @@ import type {
   LinhaExportacao,
   LinhaLicenca,
   LinhaUsuario,
+  PatchUsuario,
   NovoCertificado,
   NovoUsuario,
   RepositorioCore,
@@ -57,7 +58,7 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     this.usuarios.push(linha);
     return linha;
   }
-  async atualizarUsuario(_tx: Transacao, id: string, patch: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, agora: Date, token?: Date): Promise<LinhaUsuario | null> {
+  async atualizarUsuario(_tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null> {
     const u = this.usuarios.find((x) => x.id === id);
     if (!u) throw new Error('sem usuário');
     if (token && token.getTime() !== u.updated_at.getTime()) return null;
