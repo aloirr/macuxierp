@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "agent": "gerente-projetos",
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/coord.mjs*)",
+      "Bash(pnpm install)",
+      "Bash(pnpm lint*)",
+      "Bash(pnpm typecheck*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm --filter *)",
+      "Bash(pnpm dev*)",
+      "Bash(pnpm seed*)",
+      "Bash(pnpm exec drizzle-kit generate*)",
+      "Bash(pnpm exec playwright test*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(git push origin main)",
+      "Bash(git push -u origin main)",
+      "Bash(git push origin nuvem/*)",
+      "Bash(git push -u origin nuvem/*)",
+      "Bash(git push origin alexandre/*)",
+      "Bash(git push -u origin alexandre/*)",
+      "Bash(git push origin agente/*)",
+      "Bash(git push -u origin agente/*)",
+      "mcp__claude-code-remote__send_message",
+      "Bash(bash db/scripts/pg-local.sh*)",
+      "Bash(bash tests/scripts/rodar-antes-do-push.sh*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Bash(git push*--force*)",
+      "Bash(git push* -f*)",
+      "Bash(git push*--delete*)",
+      "Bash(git push* -d*)",
+      "Bash(git push* :*)",
+      "Bash(git push* +*)",
+      "Bash(pnpm exec drizzle-kit push*)",
+      "Bash(gh pr merge*--admin*)",
+      "Bash(gh pr merge*--auto*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-donos.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-bash.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*([Mm]erge|MERGE).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-merge-mcp.mjs",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-mcp.mjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-bash.mjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-bash.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

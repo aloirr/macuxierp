@@ -1,0 +1,28 @@
+{
+  "name": "@macuxierp/fiscal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./manifest": "./manifest.ts",
+    "./contracts": "./contracts/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@macuxierp/cadastros": "workspace:*",
+    "@macuxierp/core": "workspace:*",
+    "@macuxierp/platform-sdk": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@macuxierp/config": "workspace:*",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.39.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

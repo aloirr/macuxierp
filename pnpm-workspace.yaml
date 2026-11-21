@@ -1,0 +1,21 @@
+# Workspace do Macuxi ERP (mesmo desenho do Macuxi FDV, sem o app mobile).
+
+# Agentes em paralelo: `pnpm run`/`--filter` só AVISA se o node_modules estiver fora do lockfile, não instala sozinho.
+verifyDepsBeforeRun: warn
+
+# Segurança da cadeia de suprimentos: não instala versões publicadas há menos de 24 h (em minutos).
+minimumReleaseAge: 1440
+
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "modules/*"
+  - "db"
+
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver

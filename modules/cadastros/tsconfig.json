@@ -1,0 +1,20 @@
+{
+  "extends": "@macuxierp/config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "*.ts",
+    "contracts",
+    "domain",
+    "api",
+    "web",
+    "db"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

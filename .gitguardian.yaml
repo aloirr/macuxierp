@@ -1,0 +1,10 @@
+# GitGuardian (ggshield e GitHub App) — configuração do repositório Macuxi ERP (copiada do Macuxi FDV).
+# Dono: engenheiro-software (arquivo da raiz).
+#
+# A verificação de segredos fica LIGADA em todo o repositório. Regra para crescer esta lista: só arquivo de teste
+# (*.test.ts / test/**), com valor sabidamente falso (ex.: certificado A1 de teste gerado na hora), e com recado ao
+# engenheiro-software explicando o porquê. Segredo real só no .env do servidor (CLAUDE.md, regra 8).
+version: 2
+
+secret:
+  ignored_paths: []

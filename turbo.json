@@ -1,0 +1,78 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "tasks": {
+    "transit": {
+      "dependsOn": [
+        "^transit"
+      ]
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": [
+        "transit"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "transit"
+      ]
+    },
+    "test": {
+      "dependsOn": [
+        "transit"
+      ],
+      "outputs": [],
+      "env": [
+        "MACUXI_PG_*"
+      ]
+    },
+    "//#lint:tests": {
+      "inputs": [
+        "tests/**",
+        "eslint.config.mjs",
+        "$TURBO_ROOT$/apps/**",
+        "$TURBO_ROOT$/modules/**",
+        "$TURBO_ROOT$/packages/**",
+        "$TURBO_ROOT$/db/**",
+        "!$TURBO_ROOT$/**/node_modules/**",
+        "!$TURBO_ROOT$/**/.turbo/**",
+        "!$TURBO_ROOT$/**/.next/**",
+        "!$TURBO_ROOT$/**/.expo/**",
+        "!$TURBO_ROOT$/**/dist/**",
+        "!$TURBO_ROOT$/**/*.tsbuildinfo"
+      ]
+    },
+    "//#typecheck:tests": {
+      "inputs": [
+        "tests/**",
+        "$TURBO_ROOT$/apps/**",
+        "$TURBO_ROOT$/modules/**",
+        "$TURBO_ROOT$/packages/**",
+        "$TURBO_ROOT$/db/**",
+        "!$TURBO_ROOT$/**/node_modules/**",
+        "!$TURBO_ROOT$/**/.turbo/**",
+        "!$TURBO_ROOT$/**/.next/**",
+        "!$TURBO_ROOT$/**/.expo/**",
+        "!$TURBO_ROOT$/**/dist/**",
+        "!$TURBO_ROOT$/**/*.tsbuildinfo"
+      ]
+    },
+    "//#test:tests": {
+      "cache": false
+    }
+  }
+}
