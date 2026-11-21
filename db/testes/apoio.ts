@@ -1,0 +1,119 @@
+/**
+ * Apoio dos testes de banco (*.db.test.ts): cada arquivo cria um banco efêmero macuxi_teste_*, aplica as migrações
+ * (como o admin do ambiente: o superusuário do CI na 5432 ou o admin sem superusuário na 5433) e o apaga no fim.
+ * Sem Postgres: pula, salvo com MACUXI_PG_EXIGIR=1 (CI e rodar-antes-do-push.sh), quando falha.
+ */
+import { randomUUID } from 'node:crypto';
+import { type Conexao, consultar, conexaoDoAmbiente, ErroPsql, executar, rodarScript } from '../src/psql.ts';
+
+const ADMIN = conexaoDoAmbiente(process.env, 'postgres');
+
+function postgresDisponivel(): boolean {
+  try {
+    rodarScript(ADMIN, 'SELECT 1;');
+    return true;
+  } catch (e) {
+    if (process.env.MACUXI_PG_EXIGIR === '1') {
+      throw new Error(`MACUXI_PG_EXIGIR=1 e o Postgres não respondeu: ${(e as Error).message}`);
+    }
+    return false;
+  }
+}
+
+export const PG_DISPONIVEL = postgresDisponivel();
+export const SEM_SUPERUSUARIO = process.env.MACUXI_PG_ADMIN_SEM_SUPER === '1';
+
+export interface BancoDeTeste {
+  conexao: Conexao;
+  remover(): void;
+}
+
+export function criarBancoDeTeste(): BancoDeTeste {
+  const nome = `macuxi_teste_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  rodarScript(ADMIN, `CREATE DATABASE ${nome};`);
+  return {
+    conexao: { ...ADMIN, banco: nome },
+    remover: () => rodarScript(ADMIN, `DROP DATABASE IF EXISTS ${nome};`),
+  };
+}
+
+/**
+ * O admin precisa ser membro dos papéis para o SET ROLE dos testes. O superusuário já pode; o admin sem superusuário
+ * criou os papéis (tem ADMIN OPTION) e se concede. Concessão concorrente de outro arquivo de teste não é erro.
+ */
+export function permitirSetRole(c: Conexao): void {
+  rodarScript(
+    c,
+    `DO $$
+BEGIN
+  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+    BEGIN
+      GRANT macuxierp_app, macuxierp_worker, macuxierp_leitura TO CURRENT_USER;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
+END $$;`,
+  );
+}
+
+export const PAPEIS_APP = ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura'] as const;
+export type PapelApp = (typeof PAPEIS_APP)[number];
+
+export interface Tabela {
+  esquema: string;
+  tabela: string;
+}
+
+export function tabelasDos(c: Conexao, esquemas: readonly string[]): Tabela[] {
+  return consultar<Tabela>(
+    c,
+    `SELECT n.nspname AS esquema, k.relname AS tabela FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace
+     WHERE k.relkind IN ('r', 'p') AND n.nspname IN (${esquemas.map((e) => `'${e}'`).join(', ')})
+     ORDER BY 1, 2`,
+  );
+}
+
+/** O papel lê a tabela (privilégio na tabela ou em alguma coluna)? */
+export function papelLe(c: Conexao, papel: PapelApp, t: Tabela): boolean {
+  const [r] = consultar<{ le: boolean }>(
+    c,
+    `SELECT has_any_column_privilege('${papel}', '${t.esquema}.${t.tabela}', 'SELECT') AS le`,
+  );
+  return r?.le === true;
+}
+
+export function contarComo(
+  c: Conexao,
+  papel: PapelApp,
+  tenant: string | null,
+  t: Tabela,
+  tenantAlvo: string,
+): { total: number; alheias: number } {
+  const [r] = consultar<{ total: number; alheias: number }>(
+    c,
+    `SELECT count(tenant_id)::int AS total, count(tenant_id) FILTER (WHERE tenant_id <> '${tenantAlvo}')::int AS alheias
+     FROM ${t.esquema}.${t.tabela}`,
+    { papel, tenant },
+  );
+  return r ?? { total: 0, alheias: 0 };
+}
+
+/** Mensagem do erro do psql, ou null se o comando passou. */
+export function erroDe(fn: () => unknown): string | null {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e instanceof ErroPsql ? e.message : String(e);
+  }
+}
+
+/** Mensagem do erro esperado; falha o teste se o comando passou. */
+export function falha(fn: () => unknown): string {
+  const erro = erroDe(fn);
+  if (erro === null) throw new Error('era para falhar e passou');
+  return erro;
+}
+
+export { consultar, executar, rodarScript };

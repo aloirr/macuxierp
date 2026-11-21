@@ -13,7 +13,7 @@ export const PERFIS = ['administrador', 'gerente', 'faturista', 'fiscal', 'vende
 export type Perfil = (typeof PERFIS)[number];
 
 /** Nome de evento: `<modulo>.<entidade>.<fato>@vN` (regra inegociável 3). */
-export const PADRAO_EVENTO = /^(core|cadastros|pedido|faturamento|fiscal|integracao-fdv)\.[a-z_]+\.[a-z_]+@[1-9][0-9]*$/;
+export const PADRAO_EVENTO = new RegExp(`^(${MODULOS.join('|')})\\.[a-z_]+\\.[a-z_]+@[1-9][0-9]*$`);
 
 export interface ManifestoModulo {
   id: ModuloId;

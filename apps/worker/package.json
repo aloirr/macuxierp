@@ -9,7 +9,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@macuxierp/platform-sdk": "workspace:*"
+    "@macuxierp/platform-sdk": "workspace:*",
+    "pino": "^10.4.0"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",

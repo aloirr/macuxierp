@@ -1,5 +1,6 @@
-/** API do Macuxi ERP (Fastify, monólito modular). Fastify entra na F1 (T-0005). */
-import { MODULOS } from '@macuxierp/platform-sdk';
-
-export const SERVICO = 'api' as const;
-export const modulosConhecidos = MODULOS;
+/** API do Macuxi ERP (Fastify, monólito modular). Entrada do servidor (main) entra com os adaptadores PostgreSQL. */
+export { COOKIE_REFRESH, criarApp, type DependenciasApp } from './app';
+export { CONFIG_AUTH_PADRAO, ServicoAuth, type ConfigAuth } from './auth/servico';
+export type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './auth/portas';
+export { gerarHashSenha } from './auth/senha';
+export { MODULOS_MONTADOS } from './modulos';

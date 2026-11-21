@@ -9,7 +9,16 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@macuxierp/platform-sdk": "workspace:*"
+    "@fastify/cookie": "^11.1.5",
+    "@macuxierp/cadastros": "workspace:*",
+    "@macuxierp/core": "workspace:*",
+    "@macuxierp/faturamento": "workspace:*",
+    "@macuxierp/fiscal": "workspace:*",
+    "@macuxierp/integracao-fdv": "workspace:*",
+    "@macuxierp/pedido": "workspace:*",
+    "@macuxierp/platform-sdk": "workspace:*",
+    "fastify": "^5.12.8",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
@@ -18,5 +27,5 @@
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   },
-  "description": "API do Macuxi ERP (Fastify, monólito modular). Fastify entra na F1 (T-0005)."
+  "description": "API do Macuxi ERP (Fastify, monólito modular)."
 }
