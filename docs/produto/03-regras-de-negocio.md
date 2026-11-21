@@ -3,7 +3,7 @@
 > Toda RN vira função pura no `domain` do módulo, com teste escrito antes, nomeado com a regra (`it('RN-...: ...')`). A API sempre revalida. Regra nova ou alterada passa pelo gerente-projetos e, se for do Alexandre, cita o recado.
 
 ## Plataforma e Core (RN-CORE)
-- **RN-CORE-01** Perfis da v1: administrador, gerente, faturista, fiscal, vendedor, leitura. Um perfil por usuário por empresa.
+- **RN-CORE-01** Perfis da v1: administrador, gerente, faturista, fiscal, vendedor, leitura. Um perfil por usuário por empresa. A empresa nunca fica sem um administrador ativo: o último não pode ser desativado, excluído nem trocar de perfil.
 - **RN-CORE-02** Toda rota checa perfil, tenant e licença do módulo, nesta ordem. Sem licença: 403 `MODULO_INATIVO`. O tenant só lê as licenças; elas mudam pelo script do operador, com auditoria (D12 da T-0002).
 - **RN-CORE-03** Dinheiro em centavos (inteiro). Arredondamento meio para cima na 2ª casa, nas regras do Manual da NF-e; rateio sem perder centavo (a diferença vai para a primeira parcela).
 - **RN-CORE-04** Datas gravadas em UTC; exibidas no fuso do tenant (padrão Manaus, UTC−4).
