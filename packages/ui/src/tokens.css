@@ -3,9 +3,7 @@
   --mx-cor-azul-noite: #1E3350;
   --mx-cor-perola: #F8F6F1;
   --mx-cor-branco: #FFFFFF;
-  --mx-cor-azul-suave: #E3EAF4;
-  --mx-cor-azul-serra: #24456B;
-  --mx-cor-azul-claro: #9DB8E0;
+  --mx-cor-azul-claro: #9AA3B0;
   --mx-cor-azul-medio: #5B7FA6;
   --mx-cor-sol-laranja: #C2540A;
   --mx-cor-sol-claro: #F59A52;
@@ -21,6 +19,8 @@
   --mx-cor-ativo-fundo: #E2F1EA;
   --mx-cor-erro-texto: #A8261B;
   --mx-cor-erro-fundo: #FDE8E6;
+  --mx-cor-aviso-texto: #7A4F00;
+  --mx-cor-aviso-fundo: #FFF1D6;
   --mx-cor-ativo-texto: var(--mx-cor-verde-sucesso);
   --mx-cor-inativo-fundo: var(--mx-cor-nevoa);
   --mx-cor-linha-suave: var(--mx-cor-nevoa);
@@ -34,11 +34,16 @@
   --mx-tamanho-medio: 17px;
   --mx-tamanho-grande: 20px;
   --mx-tamanho-titulo: 24px;
-  --mx-tamanho-titulo-cartao: var(--mx-tamanho-titulo);
+  --mx-tamanho-titulo-cartao: var(--mx-tamanho-grande);
+  --mx-tamanho-titulo-dialogo: var(--mx-tamanho-grande);
   --mx-tamanho-h1: var(--mx-tamanho-titulo);
   --mx-tamanho-titulo-grupo: var(--mx-tamanho-micro);
   --mx-tamanho-selo: var(--mx-tamanho-micro);
   --mx-peso-normal: 400;
+  --mx-peso-medio: 500;
   --mx-peso-cabecalho-tabela: 600;
+  --mx-peso-rotulo-campo: 600;
+  --mx-peso-botao-principal: 600;
+  --mx-peso-numero-card: 600;
   --mx-peso-titulo: 700;
 }
