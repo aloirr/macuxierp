@@ -39,7 +39,8 @@ import {
   type Exportacao,
   type Usuario,
 } from '../contracts';
-import { alertaVencimento, avaliarAlteracaoUsuario, avaliarCertificado, avaliarTrocaAmbiente, diasParaVencer, gerarSenhaProvisoria } from '../domain';
+import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbiente, diasParaVencer, gerarSenhaProvisoria } from '../domain';
+import { alterarUsuarioComTrava, type PatchUsuario } from './alterar-usuario';
 import { cifrarA1 } from './cifra';
 import {
   PfxInvalido,
@@ -132,18 +133,15 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
     return u;
   }
 
-  /** RN-CORE-01 revalidada na API antes de inativar, rebaixar ou excluir. */
-  async function conferirUltimoAdministrador(c: ContextoRota, atual: LinhaUsuario, alteracao: { perfil?: LinhaUsuario['perfil']; ativo?: boolean }): Promise<void> {
-    await repo.travarAdministradoresAtivos(c.tx);
-    const outros = await repo.contarAdministradoresAtivos(c.tx, atual.id);
-    const r = avaliarAlteracaoUsuario({ atual, alteracao, outrosAdministradoresAtivos: outros });
-    if (!r.ok) throw erros.regra('RN-CORE-01', r.mensagem);
-  }
-
-  async function mudarUsuario(c: ContextoRota, atual: LinhaUsuario, patch: { nome?: string; perfil?: LinhaUsuario['perfil']; filial_ids?: string[]; ativo?: boolean }, acao: string, token?: Date): Promise<LinhaUsuario> {
-    await conferirUltimoAdministrador(c, atual, patch);
-    const novo = ou409(await repo.atualizarUsuario(c.tx, atual.id, patch, c.agora, token));
-    await c.auditar({ acao, entidade: 'usuario', entidade_id: novo.id, antes: usuarioSemPii(atual), depois: usuarioSemPii(novo) });
+  /** RN-CORE-01: a sequência (trava, leitura, contagem, domain, gravação) é a de `alterarUsuarioComTrava`. */
+  async function mudarUsuario(c: ContextoRota, params: Record<string, string>, patch: PatchUsuario, acao: string, opcoes: { token?: Date; somenteSeAtivo?: boolean } = {}): Promise<LinhaUsuario | null> {
+    const r = await alterarUsuarioComTrava(repo, c.tx, idDoParam(params, 'id'), patch, c.agora, opcoes);
+    if (r.tipo === 'nao_encontrado') throw naoEncontrado('Usuário');
+    if (r.tipo === 'sem_mudanca') return null;
+    if (r.tipo === 'recusado') throw erros.regra('RN-CORE-01', r.mensagem);
+    if (r.tipo === 'conflito') return ou409<LinhaUsuario>(null);
+    const { antes, depois: novo } = r;
+    await c.auditar({ acao, entidade: 'usuario', entidade_id: novo.id, antes: usuarioSemPii(antes), depois: usuarioSemPii(novo) });
     await publicar(c, EVENTO_USUARIO, novo.id, usuarioSemPii(novo));
     return novo;
   }
@@ -230,9 +228,8 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       corpo: UsuarioEditar,
       async executar(c, { corpo, params }) {
-        const atual = await usuarioOuErro(c, params);
         const { updated_at: token, ...patch } = corpo;
-        const novo = await mudarUsuario(c, atual, patch, 'core.usuario.alterado', converterToken(token));
+        const novo = (await mudarUsuario(c, params, patch, 'core.usuario.alterado', { token: converterToken(token) })) as LinhaUsuario;
         return { corpo: usuarioDto(novo), cabecalhos: { ETag: novo.updated_at.toISOString() } };
       },
     }),
@@ -241,8 +238,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/usuarios/:id',
       acao: 'core.usuario.gerir',
       async executar(c, { params }) {
-        const atual = await usuarioOuErro(c, params);
-        if (atual.ativo) await mudarUsuario(c, atual, { ativo: false }, 'core.usuario.inativado');
+        await mudarUsuario(c, params, { ativo: false }, 'core.usuario.inativado', { somenteSeAtivo: true });
         return { status: 204 };
       },
     }),

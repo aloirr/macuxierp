@@ -1,166 +1,147 @@
 /**
- * Concorrência do adaptador SQL do core contra o PostgreSQL real: duas transações simultâneas, cada uma numa sessão
- * psql própria (BEGIN ... COMMIT em várias chamadas), com SET ROLE macuxierp_app e app.tenant_id como a API faz.
- * Liga com `MACUXI_DB_MIGRACOES=<pasta das migrações>` e o Postgres local: `bash db/scripts/pg-local.sh`. Sem a
- * variável ou sem o psql, pula.
+ * Concorrência do adaptador SQL do core contra o PostgreSQL real: transações simultâneas, cada uma numa conexão própria
+ * do admin com BEGIN, SET LOCAL ROLE macuxierp_app e app.tenant_id, como a API faz (RLS valendo).
+ * Banco efêmero de `@macuxierp/platform-sdk/pg-testes`; sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`).
+ * Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { join } from 'node:path';
 import type { Transacao } from '@macuxierp/platform-sdk';
+import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { avaliarAlteracaoUsuario } from '../domain';
-import type { LinhaUsuario } from './portas';
+import { alterarUsuarioComTrava } from './alterar-usuario';
 import { RepositorioCoreSql } from './repositorio-sql';
 
-const PASTA = process.env.MACUXI_DB_MIGRACOES;
-const env = process.env;
-const conexao = (banco: string): NodeJS.ProcessEnv => ({
-  ...env, PGHOST: env.MACUXI_PG_HOST ?? '127.0.0.1', PGPORT: env.MACUXI_PG_PORTA ?? '5432', PGUSER: env.MACUXI_PG_ADMIN_USUARIO ?? 'postgres',
-  PGPASSWORD: env.MACUXI_PG_ADMIN_SENHA ?? '', PGDATABASE: banco, PGTZ: 'UTC',
-});
-
-function psql(banco: string, script: string, emTransacao = true): string {
-  const r = spawnSync('psql', ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', ...(emTransacao ? ['-1'] : []), '-f', '-'], { input: script, env: conexao(banco), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) throw new Error(`${r.stderr}${r.stdout}`.split('\n').find((l) => l.includes('ERROR')) ?? 'psql falhou');
-  return r.stdout;
+/** O que a sessão usa da conexão do pool do admin (`pg.PoolClient`). */
+interface Conexao {
+  query(sql: string, parametros?: unknown[]): Promise<{ rows: unknown[] }>;
+  release(): void;
 }
 
-const lit = (v: unknown): string => {
-  if (v === null || v === undefined) return 'NULL';
-  if (v instanceof Date) return `'${v.toISOString()}'::timestamptz`;
-  if (Array.isArray(v)) return v.length ? `ARRAY[${v.map(lit).join(',')}]` : "'{}'";
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-  return `'${String(v).replaceAll("'", "''")}'`;
-};
-
-const FIM = '@@FIM@@';
-
-/** Uma transação aberta (sessão psql viva): cada `consultar` é uma etapa da mesma transação. */
+/** Uma transação longa aberta: cada `consultar` é uma etapa da mesma transação, no papel da aplicação e no tenant. */
 class Sessao implements Transacao {
-  readonly proc: ChildProcessWithoutNullStreams;
-  private buffer = '';
-  private espera: (() => void) | null = null;
+  private aberta = true;
+  private constructor(private readonly c: Conexao) {}
 
-  constructor(banco: string, tenant: string) {
-    this.proc = spawn('sh', ['-c', 'psql -X -q -A -t 2>&1'], { env: conexao(banco) });
-    this.proc.stdout.setEncoding('utf8');
-    this.proc.stdout.on('data', (d: string) => {
-      this.buffer += d;
-      if (this.buffer.includes(FIM)) this.espera?.();
-    });
-    this.proc.stdin.write(`BEGIN;\nSET ROLE macuxierp_app;\nSET app.tenant_id = '${tenant}';\n`);
-  }
-
-  private async rodar(script: string): Promise<string> {
-    const pronto = new Promise<void>((resolve) => {
-      this.espera = resolve;
-    });
-    this.proc.stdin.write(`${script}\n\\echo ${FIM}\n`);
-    await pronto;
-    const saida = this.buffer.slice(0, this.buffer.indexOf(FIM));
-    this.buffer = '';
-    if (/ERROR:/.test(saida)) throw new Error(saida.split('\n').find((l) => l.includes('ERROR')));
-    return saida;
+  static async abrir(b: BancoEfemero, tenant: string): Promise<Sessao> {
+    const c: Conexao = await b.admin.connect();
+    await c.query('BEGIN');
+    await c.query('SET LOCAL ROLE macuxierp_app');
+    await c.query("SELECT set_config('app.tenant_id', $1, true)", [tenant]);
+    return new Sessao(c);
   }
 
   async consultar<L>(sql: string, p: readonly unknown[] = []): Promise<L[]> {
-    const preenchido = sql.replace(/\$(\d+)/g, (_m, n: string) => lit(p[Number(n) - 1]));
-    const devolve = /^\s*(select|with)\b/i.test(preenchido) || /\breturning\b/i.test(preenchido);
-    const corpo = devolve ? `WITH q AS (${preenchido}) SELECT coalesce(json_agg(q), '[]'::json) FROM q;` : `${preenchido};`;
-    const saida = await this.rodar(corpo);
-    return (devolve ? JSON.parse(saida.trim() || '[]') : []) as L[];
+    return (await this.c.query(sql, p as unknown[])).rows as L[];
   }
 
   async confirmar(): Promise<void> {
-    await this.rodar('COMMIT;');
-    this.proc.stdin.end();
+    await this.c.query('COMMIT').finally(() => this.fechar());
+  }
+
+  async descartar(): Promise<void> {
+    if (!this.aberta) return;
+    await this.c.query('ROLLBACK').catch(() => undefined);
+    this.fechar();
+  }
+
+  private fechar(): void {
+    if (!this.aberta) return;
+    this.aberta = false;
+    this.c.release();
   }
 }
-
-const pronto = (() => {
-  if (!PASTA) return false;
-  try {
-    return spawnSync('psql', ['--version']).status === 0 && psql('postgres', 'SELECT 1;') !== undefined;
-  } catch {
-    return false;
-  }
-})();
 
 const pausa = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 'travada' se a promessa não terminar em `ms` (a transação espera a trava do banco). */
 const travada = (p: Promise<unknown>, ms = 400) => Promise.race([p.then(() => 'livre' as const), pausa(ms).then(() => 'travada' as const)]);
 
-describe.skipIf(!pronto)('concorrência do adaptador SQL do core (PostgreSQL real)', () => {
-  const banco = `macuxi_teste_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
-  const T = randomUUID();
+describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (PostgreSQL real)', () => {
+  let b: BancoEfemero;
+  let T: string;
+  let T2: string;
   const U1 = randomUUID();
   const U2 = randomUUID();
+  const V1 = randomUUID();
+  const V2 = randomUUID();
   const repo = new RepositorioCoreSql();
-  const sessoes: Sessao[] = [];
-  const abrir = () => {
-    const s = new Sessao(banco, T);
-    sessoes.push(s);
+  const abertas: Sessao[] = [];
+  const abrir = async (tenant = T) => {
+    const s = await Sessao.abrir(b, tenant);
+    abertas.push(s);
     return s;
   };
 
-  beforeAll(() => {
-    psql('postgres', `CREATE DATABASE ${banco};`, false);
-    for (const f of readdirSync(PASTA as string).filter((n) => /^\d{4}_.*\.sql$/.test(n)).sort()) psql(banco, readFileSync(join(PASTA as string, f), 'utf8'));
-    psql(banco, `INSERT INTO plataforma.tenant (id, tenant_id, slug, nome) VALUES ('${T}', '${T}', 'empresa-core', 'Empresa Core');
-      INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ('${T}', 'Empresa Piloto LTDA', '11222333000181');
-      INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil) VALUES
-        ('${U1}', '${T}', 'um@piloto.test', 'Admin Um', '$argon2id$x', 'administrador'),
-        ('${U2}', '${T}', 'dois@piloto.test', 'Admin Dois', '$argon2id$x', 'administrador');`);
+  beforeAll(async () => {
+    b = await criarBancoEfemero();
+    T = await criarTenant(b.admin, 'empresa-core');
+    T2 = await criarTenant(b.admin, 'outra-empresa');
+    await b.admin.query("INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Piloto LTDA', '11222333000181')", [T]);
+    const adm = (id: string, tenant: string, email: string, nome: string) =>
+      b.admin.query("INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil) VALUES ($1, $2, $3, $4, '$argon2id$x', 'administrador')", [id, tenant, email, nome]);
+    await adm(U1, T, 'um@piloto.test', 'Admin Um');
+    await adm(U2, T, 'dois@piloto.test', 'Admin Dois');
+    await adm(V1, T2, 'um@outra.test', 'Outro Um');
+    await adm(V2, T2, 'dois@outra.test', 'Outro Dois');
   }, 120_000);
-  afterAll(() => {
-    for (const s of sessoes) s.proc.kill();
-    spawnSync('psql', ['-X', '-q', '-c', `DROP DATABASE IF EXISTS ${banco} WITH (FORCE)`], { env: conexao('postgres') });
+  afterAll(async () => {
+    await Promise.all(abertas.map((s) => s.descartar().catch(() => undefined)));
+    await b?.remover();
   });
 
   it('RF-CORE-01: duas gravações da empresa com o mesmo token de updated_at: a primeira vence e a segunda recebe null (409)', async () => {
-    const leitura = abrir();
+    const leitura = await abrir();
     const lida = await repo.empresa(leitura);
     await leitura.confirmar();
     const token = new Date(lida?.updated_at as unknown as string);
     const dados = { razao_social: 'Primeira LTDA', nome_fantasia: null, ie: null, fuso: 'America/Manaus' };
 
-    const t1 = abrir();
-    const t2 = abrir();
+    const t1 = await abrir();
+    const t2 = await abrir();
     await expect(repo.atualizarEmpresa(t1, dados, token, token)).resolves.toMatchObject({ razao_social: 'Primeira LTDA' });
     const segunda = repo.atualizarEmpresa(t2, { ...dados, razao_social: 'Segunda LTDA' }, token, token);
     expect(await travada(segunda)).toBe('travada'); // espera a trava da linha da primeira
     await t1.confirmar();
     await expect(segunda).resolves.toBeNull();
     await t2.confirmar();
-    expect((await repo.empresa(abrir()))?.razao_social).toBe('Primeira LTDA');
+    const fim = await abrir();
+    expect((await repo.empresa(fim))?.razao_social).toBe('Primeira LTDA');
+    await fim.confirmar();
   });
 
   it('RN-CORE-01: dois administradores inativando um ao outro ao mesmo tempo: o segundo é recusado e sobra um ativo', async () => {
-    const t1 = abrir();
-    const t2 = abrir();
+    const t1 = await abrir();
+    const t2 = await abrir();
     const agora = new Date('2026-11-21T15:00:00Z');
-    const alterar = async (tx: Transacao, alvoId: string) => {
-      // mesma sequência da rota: trava, conta os outros, avalia o domain e só então grava
-      await repo.travarAdministradoresAtivos(tx);
-      const atual = (await repo.usuarioPorId(tx, alvoId)) as LinhaUsuario;
-      const outros = await repo.contarAdministradoresAtivos(tx, alvoId);
-      const r = avaliarAlteracaoUsuario({ atual, alteracao: { ativo: false }, outrosAdministradoresAtivos: outros });
-      if (r.ok) await repo.atualizarUsuario(tx, alvoId, { ativo: false }, agora);
-      return r;
-    };
 
     await repo.travarAdministradoresAtivos(t1); // t1 segura a trava
-    const segundo = alterar(t2, U1); // t2 (inativando U1) espera a trava
+    const segundo = alterarUsuarioComTrava(repo, t2, U1, { ativo: false }, agora); // t2 (inativando U1) espera a trava
     expect(await travada(segundo)).toBe('travada');
-    expect(await alterar(t1, U2)).toEqual({ ok: true });
+    expect(await alterarUsuarioComTrava(repo, t1, U2, { ativo: false }, agora)).toMatchObject({ tipo: 'ok' });
     await t1.confirmar();
 
-    expect(await segundo).toEqual({ ok: false, mensagem: 'A empresa precisa de ao menos um administrador ativo' });
+    expect(await segundo).toEqual({ tipo: 'recusado', mensagem: 'A empresa precisa de ao menos um administrador ativo' });
     await t2.confirmar();
-    const leitura = abrir();
+    const leitura = await abrir();
     expect(await repo.contarAdministradoresAtivos(leitura, randomUUID())).toBe(1);
     expect((await repo.usuarioPorId(leitura, U1))?.ativo).toBe(true);
+    await leitura.confirmar();
+  });
+
+  it('RN-CORE-01: a trava e a contagem ficam no próprio tenant (o outro tenant não espera nem entra na conta)', async () => {
+    const agora = new Date('2026-11-21T15:00:00Z');
+    const doOutro = await abrir(T2);
+    await repo.travarAdministradoresAtivos(doOutro); // o outro tenant segura a trava dos administradores dele
+
+    const meu = await abrir(T);
+    expect(await travada(repo.travarAdministradoresAtivos(meu))).toBe('livre'); // a trava de T2 não bloqueia T
+    // T tem 1 administrador ativo (U1); os 2 de T2 não contam: inativar U1 é recusado
+    expect(await repo.contarAdministradoresAtivos(meu, U1)).toBe(0);
+    expect(await alterarUsuarioComTrava(repo, meu, U1, { ativo: false }, agora)).toMatchObject({ tipo: 'recusado' });
+    // e o contrário: T2 tem 2 administradores, então inativar V1 passa, sem olhar os de T
+    expect(await alterarUsuarioComTrava(repo, doOutro, V1, { ativo: false }, agora)).toMatchObject({ tipo: 'ok' });
+    // o administrador de outro tenant não é visível (RLS)
+    expect(await repo.usuarioPorId(meu, V2)).toBeNull();
+    await meu.confirmar();
+    await doOutro.confirmar();
   });
 });

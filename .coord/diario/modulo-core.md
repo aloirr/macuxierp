@@ -2,3 +2,4 @@
 2026-11-21 — T-0006 — correções do PR #14: AuditoriaConsulta via ListaConsulta.pick, idDoParam, no-store em POST /usuarios, porta PortaA1 (a1ValidoDaFilial)
 2026-11-21 — T-0006 — 2ª rodada PR #14: avaliarValidadeA1 única (RD-0006), idDoParam direto (RD-0007), token updated_at atômico no UPDATE (409) e trava FOR UPDATE dos administradores (RN-CORE-01)
 2026-11-21 — T-0031 — resíduos do core: RD-0008 (teste redundante de avaliarValidadeA1), RD-0009 (comentários de concorrência só no repositorio-sql), 3 avisos hora-fixa, teste de banco de concorrência (409 do token e RN-CORE-01); previsão (dono + 15%): ~1h
+2026-11-21 — T-0031 — rodada PR #18: RD-0012 (teste de banco no pg-testes), sequência única alterarUsuarioComTrava na rota e no teste, teste com segundo tenant
