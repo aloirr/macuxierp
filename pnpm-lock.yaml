@@ -324,6 +324,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@macuxierp/core':
+        specifier: workspace:*
+        version: link:../../modules/core
       '@macuxierp/platform-sdk':
         specifier: workspace:*
         version: link:../../packages/platform-sdk

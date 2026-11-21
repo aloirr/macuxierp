@@ -7,12 +7,10 @@
  * - Cada módulo exporta o próprio schema pela porta `ExportadorModulo` (fronteira: o worker não lê tabela de módulo).
  * - O conteúdo é dado pessoal: vai só para o arquivo. Resultado do trabalho e log levam só ids, contagens e tamanhos.
  */
+import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
 import { guardarArquivo, type Armazenamento, type CatalogoArquivos, type ExecutorTrabalho, type ModuloId, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { criarZip, type EntradaZip } from './zip';
-
-/** Mesmo valor de `TRABALHO_EXPORTAR` do contrato do core (PR #14); troca pelo import quando o core entrar no main. */
-export const TRABALHO_EXPORTAR_DADOS = 'core.exportar_dados';
 
 /** Porta de cada módulo: as tabelas dele do tenant da transação (RLS), como linhas JSON. */
 export interface ExportadorModulo {
@@ -43,7 +41,7 @@ export function criarExecutorExportacao(d: DependenciasExportacao): ExecutorTrab
   const modulos = d.exportadores.map((e) => e.modulo);
   if (new Set(modulos).size !== modulos.length) throw new RangeError('exportação LGPD: exportador repetido por módulo');
   return {
-    tipo: TRABALHO_EXPORTAR_DADOS,
+    tipo: TRABALHO_EXPORTAR,
     maxTentativas: 3,
     async executar(trabalho, tx) {
       const { exportacao_id: id } = Payload.parse(trabalho.payload);

@@ -3,13 +3,12 @@
  * RN-CORE-06) gera um aviso no BKO da filial, uma vez por certificado e por dia (UTC). Idempotente: rodar de novo no
  * mesmo dia não duplica. O log leva só contagens, `tenant_id` e o nome do erro; nunca titular, CNPJ nem o certificado.
  */
+import { DIAS_ALERTA_A1 } from '@macuxierp/core/contracts';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
 import { nomeDoErro } from './backoff';
 import type { RotinaDiaria } from './rotinas';
 
-/** Igual a `DIAS_ALERTA_A1` do contrato do core (PR #14); troca pelo import quando o core entrar no main. */
-export const DIAS_ALERTA_A1 = 30;
 const DIA_MS = 86_400_000;
 
 /** Dias inteiros até o vencimento, arredondados para cima (vence hoje à noite = 1; venceu = 0 ou negativo). */

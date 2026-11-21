@@ -38,6 +38,9 @@ export interface EntradaRota<TC, TQ> {
   arquivos: Readonly<Record<string, ArquivoRecebido>>;
 }
 
+/** O que quem chama a rota passa: a API passa tudo; o teste de rota do módulo pode omitir cabeçalhos e arquivos (vazios). */
+export type EntradaChamada<TC, TQ> = Omit<EntradaRota<TC, TQ>, 'cabecalhos' | 'arquivos'> & Partial<Pick<EntradaRota<TC, TQ>, 'cabecalhos' | 'arquivos'>>;
+
 /**
  * Arquivo recebido em multipart (ex.: o `.pfx` do A1, RF-CORE-04). O conteúdo fica num campo privado: `JSON.stringify`,
  * o pino e o `console.log` só veem campo, tipo e tamanho, nunca os bytes nem o nome original (pode ter dado pessoal).
@@ -105,15 +108,22 @@ export interface RotaModulo<TC = unknown, TQ = unknown> {
   consulta?: z.ZodType<TQ, z.ZodTypeDef, unknown>;
   /** Rota `multipart/form-data` (POST, PUT ou PATCH): os campos de texto passam pelo `corpo`; os arquivos, por aqui. */
   multipart?: { arquivos: readonly ArquivoEsperado[] };
+  executar(c: ContextoRota, e: EntradaChamada<TC, TQ>): Promise<RespostaRota>;
+}
+
+/** A rota como o módulo a declara: o `executar` recebe a entrada completa (cabeçalhos e arquivos sempre presentes). */
+export interface DefinicaoRota<TC, TQ> extends Omit<RotaModulo<TC, TQ>, 'executar'> {
   executar(c: ContextoRota, e: EntradaRota<TC, TQ>): Promise<RespostaRota>;
 }
 
 /**
  * Ajuda de tipo: infere corpo e consulta dos schemas Zod e devolve a rota "apagada" para o plugin. É seguro: a API
- * passa ao `executar` exatamente a saída do `corpo`/`consulta` da própria rota.
+ * passa ao `executar` exatamente a saída do `corpo`/`consulta` da própria rota. Cabeçalhos e arquivos omitidos pelo
+ * chamador chegam vazios.
  */
-export function definirRota<TC = undefined, TQ = undefined>(r: RotaModulo<TC, TQ>): RotaModulo {
-  return r as unknown as RotaModulo;
+export function definirRota<TC = undefined, TQ = undefined>(r: DefinicaoRota<TC, TQ>): RotaModulo {
+  const rota: RotaModulo<TC, TQ> = { ...r, executar: (c, e) => r.executar(c, { ...e, cabecalhos: e.cabecalhos ?? {}, arquivos: e.arquivos ?? {} }) };
+  return rota as unknown as RotaModulo;
 }
 
 export interface PluginModulo {

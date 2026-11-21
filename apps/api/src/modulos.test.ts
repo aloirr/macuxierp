@@ -1,9 +1,10 @@
 /**
- * Registro dos módulos (T-0029) com um módulo dublê no lugar do core: licença e perfil checados (RN-CORE-02), rota
- * multipart do A1 com limite de 50 KB (RF-CORE-04) e cabeçalhos na rota. O conteúdo do `.pfx` nunca vai para o log.
+ * Registro dos módulos (T-0029): core e cadastros montados de verdade (`montarModulos`, repositórios dublês) com
+ * licença e perfil checados (RN-CORE-02) e o A1 do cadastros pela porta do core; e um módulo dublê no lugar do core
+ * para a rota multipart do A1 com limite de 50 KB (RF-CORE-04) e cabeçalhos na rota. O `.pfx` nunca vai para o log.
  */
 import { Writable } from 'node:stream';
-import { defineModule, definirPlugin, definirRota, type Licenca, type Perfil } from '@macuxierp/platform-sdk';
+import { defineModule, definirPlugin, definirRota, ErroApi, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -11,7 +12,8 @@ import { criarApp } from './app';
 import { emitirTokenAcesso } from './auth/jwt';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
-import { MODULOS_MONTADOS, RegistroModulosInvalido, registrarModulos } from './modulos';
+import { modulosDeTeste, repoCoreDuble } from './apoio-teste';
+import { armazenamentoIndisponivel, certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const USUARIO = '1f2e3d4c-5b6a-4789-8a9b-0c1d2e3f4a5b';
@@ -39,9 +41,7 @@ const coreDuble = definirPlugin(manifesto('core'), [
   }),
   definirRota({ metodo: 'GET', caminho: '/eco', acao: 'core.empresa.ver', executar: async (_c, e) => ({ corpo: e.cabecalhos }) }),
 ]);
-const cadastrosDuble = definirPlugin(manifesto('cadastros'), [
-  definirRota({ metodo: 'GET', caminho: '/clientes', acao: 'cadastros.ver', executar: async () => ({ corpo: { itens: [], proximo_cursor: null } }) }),
-]);
+const cadastrosDuble = definirPlugin(manifesto('cadastros'), []);
 
 const apps: { close(): Promise<unknown> }[] = [];
 afterEach(async () => {
@@ -49,7 +49,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
-async function montar(licencas: Licenca[] = [], logs?: string[]) {
+async function montar(licencas: Licenca[] = [], logs?: string[], modulos: readonly PluginModulo[] = registrarModulos([coreDuble, cadastrosDuble])) {
   const app = await criarApp({
     versao: '0.1.0',
     auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: SEGREDO },
@@ -61,7 +61,7 @@ async function montar(licencas: Licenca[] = [], logs?: string[]) {
     auditoria: new AuditoriaMemoria(),
     trabalhos: new FilaDeTrabalhosMemoria(),
     relogio: new RelogioFixo(AGORA),
-    modulos: registrarModulos([coreDuble, cadastrosDuble]),
+    modulos,
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,
   });
   apps.push(app);
@@ -93,21 +93,61 @@ describe('registrarModulos', () => {
     expect(() => registrarModulos([coreDuble, manifesto('pedido', ['core', 'cadastros'])])).toThrow(/depende de cadastros/);
   });
 
-  it('os módulos da v1 estão todos montados', () => {
-    expect(MODULOS_MONTADOS.map((m) => m.manifesto.id)).toEqual(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']);
+  it('montarModulos: os seis da v1, core e cadastros com rotas, os outros só com o manifesto', () => {
+    const m = modulosDeTeste();
+    expect(m.map((p) => p.manifesto.id)).toEqual(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']);
+    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, false, false, false, false]);
   });
 });
 
-describe('rotas dos módulos registrados (RN-CORE-02)', () => {
-  it('licença: cadastros sem licença é 403 MODULO_INATIVO; o core é sempre licenciado', async () => {
-    const app = await montar();
-    const sem = await app.inject({ url: '/v1/cadastros/clientes', headers: { authorization: token('administrador') } });
-    expect(sem.statusCode).toBe(403);
-    expect(sem.json()).toMatchObject({ codigo: 'MODULO_INATIVO' });
-    const app2 = await montar([{ modulo: 'cadastros', ativo: true, valido_ate: null }]);
-    expect((await app2.inject({ url: '/v1/cadastros/clientes', headers: { authorization: token('vendedor') } })).statusCode).toBe(200);
+describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
+  const EMPRESA = { id: TENANT, razao_social: 'Empresa Piloto LTDA', nome_fantasia: null, cnpj: '11222333000181', ie: null, fuso: 'America/Manaus', updated_at: AGORA };
+  const reais = () =>
+    modulosDeTeste({
+      core: repoCoreDuble({ empresa: async () => EMPRESA }),
+      cadastros: { condicoesPagamento: { listar: async () => ({ itens: [], total: 0 }) } as never },
+    });
+  const get = (app: Awaited<ReturnType<typeof montar>>, url: string, perfil: Perfil) => app.inject({ url, headers: { authorization: token(perfil) } });
+
+  it('core responde sem licença no tenant (sempre licenciado); perfil sem permissão é 403 PERFIL_SEM_PERMISSAO', async () => {
+    const app = await montar([], undefined, reais());
+    const r = await get(app, '/v1/core/empresa', 'leitura');
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ id: TENANT, razao_social: 'Empresa Piloto LTDA' });
+    const barrado = await get(app, '/v1/core/usuarios', 'vendedor');
+    expect([barrado.statusCode, barrado.json().codigo]).toEqual([403, 'PERFIL_SEM_PERMISSAO']);
+    expect((await app.inject({ url: '/v1/core/empresa' })).statusCode).toBe(401);
   });
 
+  it('cadastros sem licença é 403 MODULO_INATIVO; com licença responde; leitura não edita', async () => {
+    const sem = await get(await montar([], undefined, reais()), '/v1/cadastros/condicoes-pagamento', 'administrador');
+    expect([sem.statusCode, sem.json().codigo]).toEqual([403, 'MODULO_INATIVO']);
+    const vencida = await get(await montar([{ modulo: 'cadastros', ativo: true, valido_ate: new Date('2026-11-20T00:00:00Z') }], undefined, reais()), '/v1/cadastros/condicoes-pagamento', 'administrador');
+    expect(vencida.json().codigo).toBe('MODULO_INATIVO');
+    const app = await montar([{ modulo: 'cadastros', ativo: true, valido_ate: null }], undefined, reais());
+    const ok = await get(app, '/v1/cadastros/condicoes-pagamento', 'leitura');
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ itens: [], total: 0 });
+    const escrita = await app.inject({ method: 'POST', url: '/v1/cadastros/condicoes-pagamento', payload: {}, headers: { authorization: token('leitura') } });
+    expect([escrita.statusCode, escrita.json().codigo]).toEqual([403, 'PERFIL_SEM_PERMISSAO']);
+  });
+
+  it('o cadastros vê o A1 da filial pela porta do core (RN-CORE-06), na transação da rota', async () => {
+    const cert = (validoAte: Date) => ({ id: USUARIO, filial_id: FILIAL, titular: 't', cnpj: '11222333000181', valido_de: new Date('2026-01-01T00:00:00Z'), valido_ate: validoAte, impressao_digital: 'x', ativo: true });
+    const tx = {} as never;
+    const porta = (certs: ReturnType<typeof cert>[]) => certificadosDoCore(repoCoreDuble({ empresa: async () => EMPRESA, certificados: async (t) => (expect(t).toBe(tx), certs) }));
+    expect(await porta([cert(new Date('2027-01-01T00:00:00Z'))]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(true);
+    expect(await porta([cert(new Date('2026-11-01T00:00:00Z'))]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(false);
+    expect(await porta([]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(false);
+  });
+
+  it('sem o adaptador S3 (T-0024) o armazenamento responde 503 INDISPONIVEL', async () => {
+    await expect(armazenamentoIndisponivel.urlAssinada('k', 60)).rejects.toMatchObject({ status: 503, codigo: 'INDISPONIVEL' });
+    await expect(armazenamentoIndisponivel.gravar('k', new Uint8Array(), { tipo: 'x', imutavel: true })).rejects.toBeInstanceOf(ErroApi);
+  });
+});
+
+describe('rota multipart do dublê: perfil antes do arquivo e cabeçalhos (RN-CORE-02)', () => {
   it('perfil: vendedor não envia certificado (403 antes de ler o arquivo); sem sessão é 401', async () => {
     const app = await montar();
     const f = formulario({ filial_id: FILIAL, senha: 'x' }, { arquivo: pfx(10) });

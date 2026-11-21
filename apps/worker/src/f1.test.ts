@@ -4,12 +4,13 @@
  */
 import { Writable } from 'node:stream';
 import { inflateRawSync, crc32 } from 'node:zlib';
+import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
 import { ArmazenamentoMemoria, erros, type CatalogoArquivos, type ExecutorTrabalho, type RegistroArquivo, type Transacao } from '@macuxierp/platform-sdk';
 import { BancoMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { criarRotinaAlertaA1, diasParaVencer, precisaAlertaA1, type AvisoA1, type CertificadoVencendo } from './alerta-a1';
-import { criarExecutorExportacao, TRABALHO_EXPORTAR_DADOS, type RegistroExportacoes } from './exportacao-lgpd';
+import { criarExecutorExportacao, type RegistroExportacoes } from './exportacao-lgpd';
 import { ReservaTrabalhosMemoria } from './memoria';
 import { RegistroExecutoresInvalido, registrarExecutores } from './modulos';
 import { rodarRotinas, type EstadoRotinas, type RotinaDiaria } from './rotinas';
@@ -86,7 +87,7 @@ function cenarioExportacao(exportar: (tx: Transacao) => Promise<Record<string, r
   const fila = new ReservaTrabalhosMemoria();
   const relogio = new RelogioFixo(AGORA);
   const executor = criarExecutorExportacao({ registro, exportadores: [{ modulo: 'cadastros', exportar }], armazenamento, catalogo, agora: () => relogio.agora() });
-  fila.adicionar('10000000-0000-4000-8000-000000000001', { tipo: TRABALHO_EXPORTAR_DADOS, tenant_id: T1, payload: { exportacao_id: EXP } }, AGORA);
+  fila.adicionar('10000000-0000-4000-8000-000000000001', { tipo: TRABALHO_EXPORTAR, tenant_id: T1, payload: { exportacao_id: EXP } }, AGORA);
   const logs: string[] = [];
   const d = { banco, fila, executores: registrarExecutores([executor]), relogio, log: logEm(logs) };
   return { registro, armazenamento, catalogo, fila, relogio, d, logs, executor };
@@ -112,7 +113,7 @@ describe('exportação LGPD (RF-CORE-06, RN-CORE-07)', () => {
   it('idempotente: exportação já pronta não gera de novo; exportação de outro tenant (RLS) não é tocada', async () => {
     const c = cenarioExportacao(async () => ({}));
     c.registro.linhas.get(EXP)!.estado = 'pronta';
-    c.fila.adicionar('10000000-0000-4000-8000-000000000002', { tipo: TRABALHO_EXPORTAR_DADOS, tenant_id: T2, payload: { exportacao_id: EXP } }, AGORA);
+    c.fila.adicionar('10000000-0000-4000-8000-000000000002', { tipo: TRABALHO_EXPORTAR, tenant_id: T2, payload: { exportacao_id: EXP } }, AGORA);
     expect(await processarTrabalhos(c.d)).toMatchObject({ concluidos: 2 });
     expect(c.fila.linhas.map((l) => l.resultado?.estado)).toEqual(['pronta', 'ausente']);
     expect(c.armazenamento.objetos.size).toBe(0);
@@ -256,6 +257,6 @@ describe('fila de trabalhos com o executor da consulta de IE (dublê do cadastro
     const ex = (tipo: string): ExecutorTrabalho => ({ tipo, executar: async () => null });
     expect(() => registrarExecutores([ex('consultar_ie')])).toThrow(RegistroExecutoresInvalido);
     expect(() => registrarExecutores([ex('cadastros.consultar_ie'), ex('cadastros.consultar_ie')])).toThrow(RegistroExecutoresInvalido);
-    expect(registrarExecutores([ex('cadastros.consultar_ie'), ex(TRABALHO_EXPORTAR_DADOS)])).toHaveLength(2);
+    expect(registrarExecutores([ex('cadastros.consultar_ie'), ex(TRABALHO_EXPORTAR)])).toHaveLength(2);
   });
 });

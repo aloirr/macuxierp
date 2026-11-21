@@ -6,17 +6,17 @@
  * `registrarModulos` confere no arranque: só módulos da v1 (`MODULOS`), sem repetição e com as dependências do
  * manifesto montadas; devolve na ordem de `MODULOS` (a mesma do menu).
  *
- * Ligação pendente (PRs #14 e #15 ainda fora do main): a linha do core passa a `criarPluginCore({ repo, hashSenha,
- * leitorPfx, chaveA1, armazenamento })` de `@macuxierp/core/api`, com as dependências criadas no `main.ts`, e a do
- * cadastros a `plugin` de `@macuxierp/cadastros/api`.
+ * `montarModulos` liga o core (`criarPluginCore`) e o cadastros (`criarPluginCadastros`) com as dependências criadas
+ * no `main.ts`. O cadastros consulta o A1 da filial pela porta pública do core (`criarPortaA1`), na mesma transação
+ * do tenant: nunca lê `core.certificado`.
  */
-import { manifest as cadastros } from '@macuxierp/cadastros/manifest';
-import { manifest as core } from '@macuxierp/core/manifest';
+import { criarPluginCadastros, fontesHttp, repositoriosSql, type Dependencias as DependenciasCadastros, type PortaCertificados } from '@macuxierp/cadastros/api';
+import { criarPluginCore, criarPortaA1, type DependenciasCore, type RepositorioCore } from '@macuxierp/core/api';
 import { manifest as faturamento } from '@macuxierp/faturamento/manifest';
 import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
 import { manifest as integracaoFdv } from '@macuxierp/integracao-fdv/manifest';
 import { manifest as pedido } from '@macuxierp/pedido/manifest';
-import { definirPlugin, MODULOS, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
+import { definirPlugin, erros, MODULOS, type Armazenamento, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
 
 export type EntradaModulo = PluginModulo | ManifestoModulo;
 
@@ -42,4 +42,46 @@ export function registrarModulos(entradas: readonly EntradaModulo[]): readonly P
   return Object.freeze(MODULOS.flatMap((id) => porId.get(id) ?? []));
 }
 
-export const MODULOS_MONTADOS: readonly PluginModulo[] = registrarModulos([core, cadastros, pedido, fiscal, faturamento, integracaoFdv]);
+/** Módulos da F1 ainda sem rotas: só o manifesto (menus do `/eu`). */
+const SEM_ROTAS: readonly ManifestoModulo[] = [pedido, fiscal, faturamento, integracaoFdv];
+
+/** A1 válido da filial para o cadastros (consulta de IE, RN-CORE-06), pela porta pública do core, na transação da rota. */
+export function certificadosDoCore(repo: RepositorioCore): PortaCertificados {
+  return {
+    async filialTemA1Valido(tx, filialId, agora) {
+      const porta = criarPortaA1({ repo, noTenant: (fn) => fn(tx), agora: () => agora });
+      return (await porta.a1ValidoDaFilial(filialId)).valido;
+    },
+  };
+}
+
+/**
+ * Armazenamento enquanto o adaptador S3 não chega (T-0024, com ADR): gravar e ler falham e o link de download responde
+ * 503 `INDISPONIVEL`. Nenhum arquivo é aceito sem ter onde guardar.
+ */
+export const armazenamentoIndisponivel: Armazenamento = {
+  gravar: async () => {
+    throw erros.indisponivel('Armazenamento de arquivos');
+  },
+  ler: async () => {
+    throw erros.indisponivel('Armazenamento de arquivos');
+  },
+  urlAssinada: async () => {
+    throw erros.indisponivel('Armazenamento de arquivos');
+  },
+};
+
+export interface DependenciasModulos {
+  core: DependenciasCore;
+  /** Padrão: adaptador SQL, fontes HTTP reais e o A1 pela porta do core. Os testes trocam o que precisarem. */
+  cadastros?: Partial<DependenciasCadastros>;
+}
+
+export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
+  const cadastros = criarPluginCadastros({
+    repositorios: d.cadastros?.repositorios ?? repositoriosSql,
+    fontes: d.cadastros?.fontes ?? fontesHttp(),
+    certificados: d.cadastros?.certificados ?? certificadosDoCore(d.core.repo),
+  });
+  return registrarModulos([criarPluginCore(d.core), cadastros, ...SEM_ROTAS]);
+}

@@ -3,7 +3,7 @@
  * de módulo da v1 e um executor por tipo.
  *
  * Ligação pendente (com os adaptadores que faltam; lista no desenho T-0002, seção "Worker da F1"):
- * - `cadastros.consultar_ie` (D5): `criarExecutorConsultaIe` de `@macuxierp/cadastros/api` (PR #15), com a porta da
+ * - `cadastros.consultar_ie` (D5): `criarExecutorConsultaIe` de `@macuxierp/cadastros/api`, com a porta da
  *   Consulta Cadastro da SEFAZ (A1 da filial; spike T-0018);
  * - `core.exportar_dados` (RF-CORE-06): `criarExecutorExportacao` com a porta da `core.exportacao` e os exportadores
  *   de cada módulo, mais o armazenamento S3 (T-0024);

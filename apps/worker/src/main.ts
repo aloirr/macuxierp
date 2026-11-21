@@ -3,7 +3,7 @@
  * BYPASSRLS), laço da outbox e dos trabalhos e encerramento limpo no SIGTERM do deploy (ADR 0003).
  * Ambiente: conexão pelas variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_worker`, `PGPASSWORD`,
  * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000) e `MACUXIERP_PG_POOL` (padrão 5). Nada de segredo em código.
- * Executores e rotinas: `modulos.ts` (a ligação do core e do cadastros entra com os PRs #14 e #15 e os adaptadores).
+ * Executores e rotinas: `modulos.ts` (a ligação do core e do cadastros entra com os adaptadores que faltam).
  */
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, criarPool } from '@macuxierp/platform-sdk/pg';

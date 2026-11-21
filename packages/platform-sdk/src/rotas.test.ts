@@ -27,6 +27,14 @@ describe('cabeçalhos da rota', () => {
   });
 });
 
+describe('definirRota', () => {
+  it('quem chama pode omitir cabeçalhos e arquivos: a rota recebe os dois vazios', async () => {
+    const r = definirRota({ metodo: 'GET', caminho: '/eco', acao: 'core.empresa.ver', executar: async (_c, e) => ({ corpo: { cabecalhos: e.cabecalhos, arquivos: e.arquivos } }) });
+    expect(await r.executar({} as never, { corpo: undefined, consulta: undefined, params: {} })).toEqual({ corpo: { cabecalhos: {}, arquivos: {} } });
+    expect(await r.executar({} as never, { corpo: undefined, consulta: undefined, params: {}, cabecalhos: { 'if-match': 'v' } })).toMatchObject({ corpo: { cabecalhos: { 'if-match': 'v' } } });
+  });
+});
+
 describe('multipart (upload do A1)', () => {
   it('o conteúdo do arquivo nunca aparece em JSON nem no inspect', () => {
     const a = new ArquivoRecebido('arquivo', 'certificado-de-fulano.pfx', 'application/x-pkcs12', Buffer.from('SEGREDO-DO-PFX'));
