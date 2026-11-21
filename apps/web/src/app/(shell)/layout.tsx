@@ -10,7 +10,7 @@ import { sairAction } from './sair';
 export default async function Casca({ children }: { children: ReactNode }) {
   const { eu, filial } = await contexto();
   if (!filial) redirect('/filial');
-  const menu = montarMenu(MANIFESTOS, eu.modulos.map((m) => m.id), eu.usuario.perfil);
+  const menu = montarMenu(eu.modulos, MANIFESTOS, eu.usuario.perfil);
 
   return (
     <div className="casca">

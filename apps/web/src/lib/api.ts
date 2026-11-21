@@ -44,6 +44,16 @@ function lerSessao(r: Response, corpo: { token_acesso?: unknown }): Sessao {
   return { acesso: corpo.token_acesso, refresh: cookie };
 }
 
+/** `mensagem` do corpo de erro da API (ou vazio, se o corpo não for o esperado). */
+async function mensagemDaApi(r: Response): Promise<string> {
+  try {
+    const m = ((await r.json()) as { mensagem?: unknown }).mensagem;
+    return typeof m === 'string' ? m.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 /** POST /v1/auth/login. Null para credencial inválida (mensagem genérica). Lança MuitasTentativas (429) e DadosInvalidos (400). */
 export async function entrar(empresa: string, email: string, senha: string): Promise<Sessao | null> {
   if (usaApiFalsa) {
@@ -55,7 +65,7 @@ export async function entrar(empresa: string, email: string, senha: string): Pro
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ empresa, email, senha }),
   });
-  if (r.status === 429) throw new MuitasTentativas('login: limite de tentativas');
+  if (r.status === 429) throw new MuitasTentativas(await mensagemDaApi(r));
   if (r.status === 400) throw new DadosInvalidos('login: VALIDACAO');
   if (r.status === 401 || r.status === 403) return null;
   if (!r.ok) throw new ApiIndisponivel(`login: HTTP ${r.status}`);

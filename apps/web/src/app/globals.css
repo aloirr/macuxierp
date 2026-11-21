@@ -18,7 +18,7 @@ a { color: var(--mx-cor-azul-noite); }
 .campo span { display: block; font-weight: var(--mx-peso-rotulo-campo); margin-bottom: 4px; }
 .campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
-.apoio { color: var(--mx-cor-texto-secundario); }
+.apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
 
 .cartao-central { max-width: 420px; margin: 8vh auto; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 32px; }
 .cartao-central header { background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); margin: -32px -32px 24px; padding: 20px 32px; border-radius: 10px 10px 0 0; }
@@ -40,8 +40,8 @@ a { color: var(--mx-cor-azul-noite); }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); margin-top: 0; }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
-thead th { font-weight: var(--mx-peso-cabecalho-tabela); }
-.selo { padding: 2px 8px; border-radius: 10px; font-size: var(--mx-tamanho-selo); font-weight: var(--mx-peso-rotulo-pequeno); }
+thead th { font-weight: var(--mx-peso-cabecalho-tabela); font-size: var(--mx-tamanho-micro); }
+.selo { white-space: nowrap; padding: 2px 8px; border-radius: 10px; font-size: var(--mx-tamanho-selo); font-weight: var(--mx-peso-rotulo-pequeno); }
 .selo-ativo { background: var(--mx-cor-ativo-fundo); color: var(--mx-cor-ativo-texto); }
 .selo-inativo { background: var(--mx-cor-inativo-fundo); color: var(--mx-cor-texto-secundario); }
 @media (max-width: 800px) { .casca { grid-template-columns: 1fr; } .conteudo { padding: 16px; } }

@@ -7,7 +7,7 @@ import { contexto } from '@/lib/sessao';
 export default async function PaginaDoModulo({ params }: { params: Promise<{ modulo: string; pagina: string }> }) {
   const { modulo, pagina } = await params;
   const { eu } = await contexto();
-  const menu = montarMenu(MANIFESTOS, eu.modulos.map((m) => m.id), eu.usuario.perfil);
+  const menu = montarMenu(eu.modulos, MANIFESTOS, eu.usuario.perfil);
   const rotulo = rotuloDaPagina(menu, modulo, pagina);
   if (!rotulo) notFound();
   return (

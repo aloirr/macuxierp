@@ -1,4 +1,4 @@
-import type { ManifestoModulo, ModuloId, Perfil } from '@macuxierp/platform-sdk';
+import type { EuResposta, ManifestoModulo, ModuloId, Perfil } from '@macuxierp/platform-sdk';
 
 export interface ItemMenu {
   rotulo: string;
@@ -20,15 +20,15 @@ export function slug(rotulo: string): string {
 }
 
 /**
- * Monta o menu pelos manifestos (RN-CORE-02): só módulo licenciado para o tenant e que aceita o perfil do usuário.
- * A licença vem de GET /v1/auth/eu; o servidor revalida em toda rota (o menu é só conveniência).
+ * Monta o menu (RN-CORE-02, RD-11). Fonte dos rótulos e da ordem: `eu.modulos[].menus` da API, que já traz só os
+ * módulos licenciados. O manifesto entra apenas no filtro de `perfis` (o servidor revalida em toda rota).
  */
-export function montarMenu(manifestos: readonly ManifestoModulo[], licenciados: readonly ModuloId[], perfil: Perfil): GrupoMenu[] {
-  return manifestos
-    .filter((m) => licenciados.includes(m.id) && m.perfis.includes(perfil) && (m.web?.menus.length ?? 0) > 0)
+export function montarMenu(modulos: EuResposta['modulos'], manifestos: readonly ManifestoModulo[], perfil: Perfil): GrupoMenu[] {
+  return modulos
+    .filter((m) => m.menus.length > 0 && manifestos.some((f) => f.id === m.id && f.perfis.includes(perfil)))
     .map((m) => ({
       modulo: m.id,
-      itens: (m.web?.menus ?? []).map((rotulo) => ({ rotulo, href: `/${m.id}/${slug(rotulo)}` })),
+      itens: m.menus.map((rotulo) => ({ rotulo, href: `/${m.id}/${slug(rotulo)}` })),
     }));
 }
 

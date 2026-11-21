@@ -1,4 +1,5 @@
-import type { EuResposta } from '@macuxierp/platform-sdk';
+import type { EuResposta, ModuloId } from '@macuxierp/platform-sdk';
+import { MANIFESTOS } from './manifestos';
 
 /**
  * /v1/auth/eu e login falsos, até a T-0004 entrar (docs/desenho/T-0002.md, seção 7). Só funciona sem
@@ -9,6 +10,9 @@ export const TOKEN_FALSO = 'token-falso';
 /** Cookie de refresh da API falsa. */
 export const REFRESH_FALSO = 'mx=falso';
 
+const LICENCIADOS_FALSOS: readonly ModuloId[] = ['core', 'cadastros', 'pedido', 'faturamento'];
+const MODULOS_FALSOS = MANIFESTOS.filter((m) => LICENCIADOS_FALSOS.includes(m.id)).map((m) => ({ id: m.id, menus: [...(m.web?.menus ?? [])] }));
+
 export const EU_FALSO: EuResposta = {
   usuario: { id: '00000000-0000-4000-8000-000000000001', nome: 'Usuária de demonstração', perfil: 'administrador' },
   empresa: { id: '00000000-0000-4000-8000-0000000000e1', slug: 'demo', razao_social: 'Empresa de Demonstração Ltda', fuso: 'America/Manaus' },
@@ -17,5 +21,5 @@ export const EU_FALSO: EuResposta = {
     { id: '00000000-0000-4000-8000-0000000000f2', nome: 'Filial Parintins', cnpj: '11444777000161' },
   ],
   // Fiscal e integração FDV ficam sem licença de propósito: o menu precisa esconder o que não foi contratado.
-  modulos: [{ id: 'core', menus: [] }, { id: 'cadastros', menus: [] }, { id: 'pedido', menus: [] }, { id: 'faturamento', menus: [] }],
+  modulos: MODULOS_FALSOS,
 };
