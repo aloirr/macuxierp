@@ -1,0 +1,39 @@
+import { NOME_PRODUTO } from '@/lib/marca';
+import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { contexto, COOKIE_FILIAL, opcoesLongas } from '@/lib/sessao';
+
+export const metadata: Metadata = { title: 'Selecionar filial' };
+
+async function escolher(dados: FormData) {
+  'use server';
+  const { eu } = await contexto();
+  const id = String(dados.get('filial') ?? '');
+  if (!eu.filiais.some((f) => f.id === id)) redirect('/filial');
+  (await cookies()).set(COOKIE_FILIAL, id, opcoesLongas);
+  redirect('/');
+}
+
+export default async function SelecionarFilial() {
+  const { eu, filialId } = await contexto();
+  return (
+    <main className="cartao-central">
+      <header><span className="marca">{NOME_PRODUTO}</span></header>
+      <h1>Selecionar filial</h1>
+      <p className="apoio">Empresa: {eu.empresa.razao_social}</p>
+      <form action={escolher}>
+        <ul className="lista-escolha">
+          {eu.filiais.map((f) => (
+            <li key={f.id}>
+              <label>
+                <input type="radio" name="filial" value={f.id} defaultChecked={f.id === filialId} required /> {f.nome} ({f.cnpj})
+              </label>
+            </li>
+          ))}
+        </ul>
+        <button className="btn" type="submit">Continuar</button>
+      </form>
+    </main>
+  );
+}
