@@ -55,4 +55,4 @@ A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, 
 `db/testes/vazamento.ts` varre **todas** as tabelas dos schemas pedidos (as novas entram sozinhas): para cada papel com leitura, no tenant A, lê só linhas de A (e alguma, para provar que a massa cobre a tabela), sem tenant não lê nada, e o app não altera, não apaga e não move linha para o tenant B. Um teste prova que ele acusa uma tabela sem RLS. Tabela nova precisa de linha na massa (`db/testes/fixture.ts`), senão o teste falha.
 
 ## Passo sem superusuário no CI
-`pnpm --filter @macuxierp/db admin-sem-superusuario` cria o `macuxi_admin_sem_super` (sem superusuário, com `CREATEDB` e `CREATEROLE`) num Postgres limpo e a suíte do `@macuxierp/db` roda de novo com ele (`MACUXI_PG_ADMIN_SEM_SUPER=1`). O `rodar-antes-do-push.sh` já roda o passo; no `ci.yml` (governança) o passo volta pelo pedido registrado na T-0003.
+Os comandos do passo sem superusuário (em "Comandos") imitam o DBaaS num Postgres limpo. O `rodar-antes-do-push.sh` já roda o passo; no `ci.yml` (governança) ele volta pelo pedido registrado na T-0003.

@@ -81,7 +81,7 @@ export function rodarScript(
 }
 
 /** Preâmbulo que põe a sessão no papel e no tenant pedidos (valores conferidos: nada de SQL vindo de fora). */
-export function preambulo(ctx: Contexto = {}): string {
+function preambulo(ctx: Contexto = {}): string {
   const linhas: string[] = [];
   if (ctx.papel !== undefined) {
     if (!IDENTIFICADOR.test(ctx.papel)) throw new Error(`papel inválido: ${ctx.papel}`);

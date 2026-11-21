@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Conexao, consultar, conexaoDoAmbiente, ErroPsql, executar, rodarScript } from '../src/psql.ts';
 
-export const ADMIN = conexaoDoAmbiente(process.env, 'postgres');
+const ADMIN = conexaoDoAmbiente(process.env, 'postgres');
 
 function postgresDisponivel(): boolean {
   try {

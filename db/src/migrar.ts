@@ -11,7 +11,7 @@ import { TRAVA_MIGRACAO, sha256Arquivo } from './comum.ts';
 import { carregarOficiais } from './oficiais.ts';
 import { type Conexao, consultar, literal, rodarScript } from './psql.ts';
 
-export const PASTA_MIGRACOES = fileURLToPath(new URL('../migrations/', import.meta.url));
+const PASTA_MIGRACOES = fileURLToPath(new URL('../migrations/', import.meta.url));
 
 export interface Migracao {
   nome: string;

@@ -1,8 +1,6 @@
 -- 0005 — Tabelas oficiais no schema cadastros (T-0003, lote 2; docs/desenho/T-0002.md, D9; RF-CAD-10): UF, município
--- (IBGE), NCM, CEST (+ CEST × NCM), CFOP, CST/CSOSN (ICMS, IPI, PIS, COFINS, IBS/CBS e IS) e classificação tributária
--- do IBS/CBS (cClassTrib). Todas no tenant de referência: todo tenant lê, só a carga versionada grava
--- (db/tabelas-fiscais/fontes.json, carregada por db/src/oficiais.ts depois das migrações). Cada linha aponta para a
--- versão que a trouxe (fonte, versão, data de referência e sha256 do arquivo).
+-- (IBGE), NCM, CEST (+ CEST × NCM), CFOP, CST/CSOSN (ICMS, IPI, PIS, COFINS, IBS/CBS e IS) e cClassTrib, no tenant de
+-- referência. A carga versionada e as fontes: docs/banco/tabelas-oficiais.md.
 
 CREATE TABLE IF NOT EXISTS cadastros.tabela_oficial_versao (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -25,8 +23,7 @@ CREATE TABLE IF NOT EXISTS cadastros.tabela_oficial_versao (
 );
 SELECT controle.preparar_tabela('cadastros.tabela_oficial_versao', true);
 
--- Colunas comuns das tabelas oficiais: as da regra 5, vigência e a versão de origem. Uma linha por código vigente; a
--- versão nova fecha (vigencia_fim) o código que sumiu da fonte.
+-- Colunas comuns: as da regra 5, a vigência e a versão de origem (versao_id).
 CREATE TABLE IF NOT EXISTS cadastros.uf (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL DEFAULT plataforma.tenant_referencia() REFERENCES plataforma.tenant (id),

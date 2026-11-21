@@ -13,7 +13,7 @@ import { type Conexao, literal, rodarScript } from './psql.ts';
 export const PASTA_OFICIAIS = fileURLToPath(new URL('../tabelas-fiscais/', import.meta.url));
 
 /** Tabelas que a carga pode gravar (todas no tenant de referência, migração 0005). */
-export const TABELAS_OFICIAIS = [
+const TABELAS_OFICIAIS = [
   'uf',
   'municipio',
   'ncm',
@@ -51,7 +51,7 @@ export function lerFontes(pasta = PASTA_OFICIAIS): CargaOficial[] {
 }
 
 /** Cabeçalho do CSV (as colunas da carga). */
-export function colunasDoCsv(caminho: string): string[] {
+function colunasDoCsv(caminho: string): string[] {
   const primeira = readFileSync(caminho, 'utf8').split('\n', 1)[0] ?? '';
   return primeira.trim().split(',');
 }
@@ -79,7 +79,7 @@ export function conferirCarga(
 }
 
 /** SQL da carga (psql, numa transação): staging tipada como a tabela, conferência, versão e mescla. */
-export function scriptDaCarga(c: CargaOficial, caminho: string, colunas: string[]): string {
+function scriptDaCarga(c: CargaOficial, caminho: string, colunas: string[]): string {
   const t = `cadastros.${c.tabela}`;
   const daCarga = `a.versao_id IN (SELECT id FROM cadastros.tabela_oficial_versao WHERE carga = ${literal(c.carga)})`;
   const casa = c.chave.map((k) => `a.${k} IS NOT DISTINCT FROM s.${k}`).join(' AND ');
