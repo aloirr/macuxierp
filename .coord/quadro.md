@@ -30,7 +30,7 @@
 | [T-0022](tarefas/T-0022.md) | 20 notas em homologação na SEFAZ-AM com o XML guardado | F4 | testes | aberta | — |
 | [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | em_andamento | nuvem/T-0023-assinatura-erp |
 | [T-0024](tarefas/T-0024.md) | Deploy do ERP na VM do FDV com trava compartilhada (ADR 0003) | F1 | engenheiro-software | aberta | — |
-| [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | em_andamento | alexandre/T-0025-recados-por-git |
+| [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | bloqueada | — |
 | [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | aberta | — |
 | [T-0027](tarefas/T-0027.md) | Virada do conector da thathyany: kit do FDV sai, conector nativo do ERP entra | F3 | modulo-integracao-fdv | aberta | — |
 
@@ -39,7 +39,6 @@
 |---|---|
 | nuvem/T-0002-desenho-f1 (session_0157qAhmw4a8F3zZd3bYTqF6) | contratos de `core` e `cadastros`, `.coord/contratos/`, `docs/decisoes/0002` |
 | nuvem/T-0023-assinatura-erp (session_0157qAhmJjXzejvF3bPHZ34k) | `docs/marca/` |
-| alexandre/T-0025-recados-por-git (session_0157qAhjZaCawDjwQTjqwnED) | `scripts/coord*.mjs` (governança) |
 | nuvem/T-0026-piloto-thathyany (gerente) | `.coord/quadro.md`, `.coord/tarefas/T-0026.md` e `T-0027.md`, `docs/produto/05-roadmap.md`, `docs/status/` |
 
 ## Reservas
@@ -49,7 +48,7 @@
 ## Depende do Alexandre
 - Secrets do GitHub e `.env` de produção (banco `macuxierp`, chave do A1, S3, SMTP); DNS e rota `erp.` no túnel.
 - A1 de homologação da thathyany pela tela do BKO (ADR 0005); credenciamento da thathyany na SEFAZ-AM.
-- Autorizar o merge do PR da T-0025 (governança), que destrava a gravação de recados na nuvem.
+- T-0025 (governança): abrir uma sessão com `MACUXI_AGENTE=alexandre` (só o Alexandre define), porque a sessão aberta rodou como gerente-projetos e o guardião bloqueou `scripts/coord*.mjs`; depois, autorizar o merge do PR dela. É ela que destrava a gravação de recados na nuvem.
 - Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
 
 ## Próximos lotes (ordem do doc 05)
