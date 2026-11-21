@@ -1,12 +1,13 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **F0 Fundação** (PR de governança aberto). Próxima: **F1 Cadastros**. Previsão: doc 05.
+> Fase atual: **F1 Cadastros** (F0 no `main` em 7e6c055, PR #1, 20/11 23h20). Previsão: doc 05.
+> Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
 |---|---|---|---|---|---|
-| [T-0001](tarefas/T-0001.md) | F0 Fundação: estrutura, governança, guardião, recados, CI, docs 01–07, ADRs 0001–0005 | F0 | alexandre | em_revisao | alexandre/T-0001-fundacao |
-| [T-0002](tarefas/T-0002.md) | Desenho da F1 e contratos de core e cadastros | F1 | engenheiro-software | aberta | — |
+| [T-0001](tarefas/T-0001.md) | F0 Fundação: estrutura, governança, guardião, recados, CI, docs 01–07, ADRs 0001–0005 | F0 | alexandre | concluida | PR #1 → 7e6c055 |
+| [T-0002](tarefas/T-0002.md) | Desenho da F1 e contratos de core e cadastros (e ADR 0002 → aceita) | F1 | engenheiro-software | em_andamento | nuvem/T-0002-desenho-f1 |
 | [T-0003](tarefas/T-0003.md) | Banco: papéis, schemas, RLS e tabelas oficiais (NCM, CEST, CFOP, CST, IBGE, cClassTrib) | F1 | banco-dados | aberta | — |
 | [T-0004](tarefas/T-0004.md) | API (Fastify), autenticação, licenças e worker base | F1 | engenheiro-software | aberta | — |
 | [T-0005](tarefas/T-0005.md) | Shell do BKO (Next.js) com menu pelos manifestos | F1 | engenheiro-apps | aberta | — |
@@ -27,21 +28,34 @@
 | [T-0020](tarefas/T-0020.md) | Fiscal: motor ICMS, ST, IPI, PIS, COFINS, IBS, CBS e IS | F4 | modulo-fiscal | aberta | — |
 | [T-0021](tarefas/T-0021.md) | Faturamento: NF-e 55, eventos, DANFE, contingência, títulos | F4 | modulo-faturamento | aberta | — |
 | [T-0022](tarefas/T-0022.md) | 20 notas em homologação na SEFAZ-AM com o XML guardado | F4 | testes | aberta | — |
-| [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | aberta | — |
+| [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | em_andamento | nuvem/T-0023-assinatura-erp |
 | [T-0024](tarefas/T-0024.md) | Deploy do ERP na VM do FDV com trava compartilhada (ADR 0003) | F1 | engenheiro-software | aberta | — |
-| [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | aberta | — |
+| [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | em_andamento | alexandre/T-0025-recados-por-git |
+| [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | aberta | — |
+| [T-0027](tarefas/T-0027.md) | Virada do conector da thathyany: kit do FDV sai, conector nativo do ERP entra | F3 | modulo-integracao-fdv | aberta | — |
 
 ## Travado pela nuvem
 | Sessão | Caminhos |
 |---|---|
-| alexandre/T-0001-fundacao | repositório inteiro (abertura) |
+| nuvem/T-0002-desenho-f1 (session_0157qAhmw4a8F3zZd3bYTqF6) | contratos de `core` e `cadastros`, `.coord/contratos/`, `docs/decisoes/0002` |
+| nuvem/T-0023-assinatura-erp (session_0157qAhmJjXzejvF3bPHZ34k) | `docs/marca/` |
+| alexandre/T-0025-recados-por-git (session_0157qAhjZaCawDjwQTjqwnED) | `scripts/coord*.mjs` (governança) |
+| nuvem/T-0026-piloto-thathyany (gerente) | `.coord/quadro.md`, `.coord/tarefas/T-0026.md` e `T-0027.md`, `docs/produto/05-roadmap.md`, `docs/status/` |
 
 ## Reservas
 - ADR: 0001–0005 usadas; próxima livre: 0006.
-- Tarefas: T-0001–T-0025 usadas; próxima livre: T-0026.
+- Tarefas: T-0001–T-0027 usadas; próxima livre: T-0028.
 
 ## Depende do Alexandre
-- Decidir a biblioteca NF-e (ADR 0002) e a empresa piloto.
 - Secrets do GitHub e `.env` de produção (banco `macuxierp`, chave do A1, S3, SMTP); DNS e rota `erp.` no túnel.
-- A1 da empresa piloto pela tela do BKO (ADR 0005); credenciamento na SEFAZ-AM.
-- Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003).
+- A1 de homologação da thathyany pela tela do BKO (ADR 0005); credenciamento da thathyany na SEFAZ-AM.
+- Autorizar o merge do PR da T-0025 (governança), que destrava a gravação de recados na nuvem.
+- Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
+
+## Próximos lotes (ordem do doc 05)
+1. Quando a T-0002 entrar: T-0003 (banco-dados), T-0004 (engenheiro-software) e T-0005 (engenheiro-apps), em paralelo.
+2. Depois: T-0006 (modulo-core), T-0007 (modulo-cadastros) e T-0024 (engenheiro-software, deploy).
+3. Depois da T-0007: T-0026. Depois da F3 e da T-0024: T-0027.
+
+## Regra provisória de recados (até a T-0025)
+A sessão da nuvem que não consegue gravar recado (a API dá 403 e o guardião bloqueia o link de `.coord/recados`) registra o que enviaria no corpo do PR e no próprio diário. O guardião não se contorna.

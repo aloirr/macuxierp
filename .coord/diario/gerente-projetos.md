@@ -1,1 +1,2 @@
 2026-11-21 — T-0001 — abertura do projeto: F0 montada (estrutura, governança, recados, CI, docs, ADRs).
+2026-11-20 — T-0026 — Ronda de abertura da F1. Conferi o merge do PR #1 (7e6c055). Registrei a piloto thathyany e a ADR 0002 opção A no quadro e no doc 05. Criei a T-0026 (carga pelos CSVs do kit) e a T-0027 (virada do conector) e anotei as travas das sessões T-0002, T-0023 e T-0025. Recados que não pude gravar (API 403, regra provisória): nenhum pendente, porque as decisões já estão nos recados R-20261120-231848, -231934 e -232012.

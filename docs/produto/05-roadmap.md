@@ -65,7 +65,16 @@ Esforço total: **36h48**. Caminho crítico, com T-0015 e T-0016 em paralelo: **
 | T-0022 | 20 notas em homologação, XML guardado | testes | 10h00 | 11h30 |
 | — | Corretor, marca e revisão final | corretor, design-de-marca, engenheiro | 4h00 | 4h36 |
 
-Esforço total: **82h48**. Caminho crítico, com T-0019 e T-0020 em paralelo: **75h54**. A fase depende de três coisas: a **decisão da ADR 0002**, o **A1 da empresa piloto** e o **credenciamento da empresa como emissora na SEFAZ-AM em homologação**.
+Esforço total: **82h48**. Caminho crítico, com T-0019 e T-0020 em paralelo: **75h54**. A fase depende de três coisas: a **decisão da ADR 0002** (tomada em 20/11: opção A, R-20261120-231934-gerente-projetos), o **A1 de homologação da empresa piloto, a thathyany** (R-20261120-231848-gerente-projetos), e o **credenciamento da thathyany como emissora na SEFAZ-AM em homologação**.
+
+### Empresa piloto e tarefas da thathyany (20/11/2026)
+A empresa piloto é a **thathyany**, que já usa o Macuxi FDV pelo kit do Conector. Entram duas tarefas fora do caminho crítico, sem mudar os números acima:
+- **T-0026**, carga inicial dos cadastros da thathyany com os CSVs do kit, depois da T-0007.
+- **T-0027**, virada do conector com o time do FDV: o kit sai das entidades que o ERP publicar, depois da F3 e da T-0024.
+
+A base das duas entra na versão 2 da previsão, medida no fim da F1.
+
+Os testes da F2 e da F3 continuam num **tenant de teste do FDV**, nunca no tenant da thathyany.
 
 ### Resumo
 | Fase | Esforço (+15%) | Caminho crítico (+15%) |
@@ -80,3 +89,4 @@ F2 pode começar assim que a F1 fechar `cadastros`; F3 depende de F2 (o canal co
 
 ## Histórico da previsão
 - 21/11/2026 — versão 1 (F0, gerente-projetos).
+- 20/11/2026, 23h30 — versão 1 mantida. Motivo: piloto thathyany e ADR 0002 opção A (seção "Empresa piloto").
