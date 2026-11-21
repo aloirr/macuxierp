@@ -3,15 +3,17 @@
  * O adaptador PostgreSQL entra depois do schema `plataforma` da T-0003; os testes usam `RepositorioAuthMemoria`.
  *
  * `tenantPorSlug` roda em `banco.semTenant` (o login ainda não conhece o tenant): no banco, uma função
- * `SECURITY DEFINER` que devolve só id, nome, fuso e situação do slug (pedido ao banco-dados, T-0003).
+ * `SECURITY DEFINER` que devolve só id, razão social, fuso e situação do slug (pedido ao banco-dados, T-0003).
  * O resto roda em `banco.comTenant` (RLS).
+ * `filiaisPorIds` alimenta o `GET /v1/auth/eu` (nome e CNPJ das filiais do usuário): no banco, uma visão só de
+ * leitura de `cadastros.filial` com id, nome e CNPJ (pedido ao banco-dados, T-0003).
  */
 import type { Perfil, Transacao } from '@macuxierp/platform-sdk';
 
 export interface TenantAuth {
   id: string;
   slug: string;
-  nome: string;
+  razao_social: string;
   fuso: string;
   situacao: 'ativo' | 'suspenso' | 'encerrado';
 }
@@ -27,6 +29,14 @@ export interface UsuarioAuth {
   ativo: boolean;
   falhas_login: number;
   bloqueado_ate: Date | null;
+}
+
+export interface FilialAuth {
+  id: string;
+  tenant_id: string;
+  /** Nome fantasia ou, sem ele, a razão social da filial. */
+  nome: string;
+  cnpj: string;
 }
 
 export interface SessaoRefresh {
@@ -46,6 +56,8 @@ export interface RepositorioAuth {
   tenantPorId(tx: Transacao, id: string): Promise<TenantAuth | null>;
   usuarioPorEmail(tx: Transacao, email: string): Promise<UsuarioAuth | null>;
   usuarioPorId(tx: Transacao, id: string): Promise<UsuarioAuth | null>;
+  /** Filiais do tenant com esses ids (as do usuário), na ordem dos ids; id sem filial fica de fora. */
+  filiaisPorIds(tx: Transacao, ids: readonly string[]): Promise<FilialAuth[]>;
   registrarFalha(tx: Transacao, usuarioId: string, falhas: number, bloqueadoAte: Date | null): Promise<void>;
   /** Zera as falhas, solta a trava e grava `ultimo_acesso_em`. */
   registrarAcesso(tx: Transacao, usuarioId: string, agora: Date): Promise<void>;

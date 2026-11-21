@@ -11,15 +11,12 @@ import {
   auditar,
   criarEvento,
   ErroApi,
+  EuResposta,
   erros,
   eventoDoModulo,
   executarAutorizado,
-  moduloDaAcao,
   modulosLicenciados,
-  PERMISSOES,
-  pode,
   trabalhoDoModulo,
-  type Acao,
   type Banco,
   type ContextoRota,
   type DestinoAuditoria,
@@ -151,13 +148,17 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
         const [usuario, tenant, licencas] = await Promise.all([d.repoAuth.usuarioPorId(tx, s.usuario_id), d.repoAuth.tenantPorId(tx, s.tenant_id), d.licencas.ler(tx, s.tenant_id)]);
         if (!usuario || !usuario.ativo || !tenant) throw erros.naoAutenticado();
         const ativos = new Set(modulosLicenciados(licencas, agora));
-        return {
-          usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email, perfil: usuario.perfil },
-          empresa: { id: tenant.id, slug: tenant.slug, nome: tenant.nome, fuso: tenant.fuso },
-          filial_ids: usuario.filial_ids,
-          modulos: d.modulos.filter((m) => ativos.has(m.manifesto.id)).map((m) => ({ id: m.manifesto.id, menus: m.manifesto.web?.menus ?? [] })),
-          acoes: (Object.keys(PERMISSOES) as Acao[]).filter((a) => ativos.has(moduloDaAcao(a)) && pode(usuario.perfil, a)),
-        };
+        const filiais = await d.repoAuth.filiaisPorIds(tx, usuario.filial_ids);
+        // A saída passa pelo contrato: campo a mais (e-mail, tenant_id) não vaza, e dado fora dele é 500 (erro nosso),
+        // nunca o 400 VALIDACAO do ZodError, que é do corpo do pedido.
+        const eu = EuResposta.safeParse({
+          usuario: { id: usuario.id, nome: usuario.nome, perfil: usuario.perfil },
+          empresa: { id: tenant.id, slug: tenant.slug, razao_social: tenant.razao_social, fuso: tenant.fuso },
+          filiais,
+          modulos: d.modulos.filter((m) => ativos.has(m.manifesto.id)).map((m) => ({ id: m.manifesto.id, menus: [...(m.manifesto.web?.menus ?? [])] })),
+        } satisfies EuResposta);
+        if (!eu.success) throw new Error(`GET /v1/auth/eu fora do contrato EuResposta: ${eu.error.issues.map((i) => i.path.join('.')).join(', ')}`);
+        return eu.data;
       },
     });
   });

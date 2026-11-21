@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream';
-import { definirPlugin, definirRota, erros, type Licenca } from '@macuxierp/platform-sdk';
+import { definirPlugin, definirRota, erros, EuResposta, type Licenca } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -13,6 +13,9 @@ const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const OUTRO_TENANT = '7a1e2d3c-4b5a-4f6e-8d7c-9b0a1f2e3d4c';
 const ADM = '1f2e3d4c-5b6a-4789-8a9b-0c1d2e3f4a5b';
 const LEITOR = '2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d';
+const MATRIZ = '3b4c5d6e-7f8a-4b9c-8d0e-2f3a4b5c6d7e';
+const FILIAL_2 = '4c5d6e7f-8a9b-4c0d-9e1f-3a4b5c6d7e8f';
+const FILIAL_OUTRO_TENANT = '5d6e7f8a-9b0c-4d1e-8f2a-4b5c6d7e8f9a';
 const SENHA = 'senha-de-teste-123';
 const ARGON2_RAPIDO = { memoria: 64, passes: 1, paralelismo: 1 };
 const INICIO = new Date('2026-11-21T15:00:00Z');
@@ -50,11 +53,19 @@ async function montar(opcoes: { licencas?: Licenca[]; logs?: string[] } = {}) {
   const auditoria = new AuditoriaMemoria();
   const trabalhos = new FilaDeTrabalhosMemoria();
   repo.tenants.push(
-    { id: TENANT, slug: 'thathyany', nome: 'Thathyany', fuso: 'America/Manaus', situacao: 'ativo' },
-    { id: OUTRO_TENANT, slug: 'outra', nome: 'Outra', fuso: 'America/Manaus', situacao: 'ativo' },
+    { id: TENANT, slug: 'thathyany', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus', situacao: 'ativo' },
+    { id: OUTRO_TENANT, slug: 'outra', razao_social: 'Outra Ltda', fuso: 'America/Manaus', situacao: 'ativo' },
   );
-  const usuario = { tenant_id: TENANT, nome: 'Pessoa', senha_hash: hash, filial_ids: [], ativo: true, falhas_login: 0, bloqueado_ate: null };
-  repo.usuarios.push({ ...usuario, id: ADM, email: 'adm@exemplo.com', perfil: 'administrador' }, { ...usuario, id: LEITOR, email: 'leitor@exemplo.com', perfil: 'leitura' });
+  repo.filiais.push(
+    { id: MATRIZ, tenant_id: TENANT, nome: 'Matriz Manaus', cnpj: '11222333000181' },
+    { id: FILIAL_2, tenant_id: TENANT, nome: 'Filial Parintins', cnpj: '11222333000262' },
+    { id: FILIAL_OUTRO_TENANT, tenant_id: OUTRO_TENANT, nome: 'De outro tenant', cnpj: '11444777000161' },
+  );
+  const usuario = { tenant_id: TENANT, nome: 'Pessoa', senha_hash: hash, ativo: true, falhas_login: 0, bloqueado_ate: null };
+  repo.usuarios.push(
+    { ...usuario, id: ADM, email: 'adm@exemplo.com', perfil: 'administrador', filial_ids: [MATRIZ] },
+    { ...usuario, id: LEITOR, email: 'leitor@exemplo.com', perfil: 'leitura', filial_ids: [FILIAL_2, MATRIZ, FILIAL_OUTRO_TENANT] },
+  );
   const licencas = opcoes.licencas ?? [{ modulo: 'cadastros', ativo: true, valido_ate: null }];
   const lidasEm: (string | null)[] = [];
   const logs = opcoes.logs;
@@ -103,7 +114,7 @@ describe('POST /v1/auth/login', () => {
     const { app } = await montar();
     const r = await entrar(app);
     expect(r.statusCode).toBe(200);
-    expect(r.json().expira_em).toBe('2026-11-21T15:15:00.000Z');
+    expect(r.json()).toEqual({ token_acesso: expect.any(String), expira_em: '2026-11-21T15:15:00.000Z' });
     const c = r.cookies.find((x) => x.name === COOKIE_REFRESH)!;
     expect(c).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Strict', path: '/v1/auth' });
     expect(c.value.startsWith(`${TENANT}.`)).toBe(true);
@@ -129,17 +140,21 @@ describe('POST /v1/auth/login', () => {
     for (let i = 0; i < 5; i++) expect((await entrar(app, 'adm@exemplo.com', 'errada')).statusCode).toBe(401);
     const travado = await entrar(app);
     expect(travado.statusCode).toBe(429);
-    expect(travado.json().codigo).toBe('MUITAS_TENTATIVAS');
+    expect(travado.json()).toEqual({ codigo: 'MUITAS_TENTATIVAS', mensagem: 'Acesso travado por 15 minutos após 5 tentativas' });
     relogio.avancar(15 * 60_000);
     expect((await entrar(app)).statusCode).toBe(200);
     expect(repo.usuarios.find((u) => u.id === ADM)).toMatchObject({ falhas_login: 0, bloqueado_ate: null });
   });
 
-  it('corpo inválido é 400 VALIDACAO com os campos', async () => {
+  it('corpo inválido é 400 VALIDACAO com os campos (também sem corpo ou JSON malformado)', async () => {
     const { app } = await montar();
     const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'thathyany', email: 'x' } });
     expect(r.statusCode).toBe(400);
     expect(r.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { email: expect.any(String), senha: expect.any(String) } });
+    expect((await app.inject({ method: 'POST', url: '/v1/auth/login' })).json()).toMatchObject({ codigo: 'VALIDACAO' });
+    const malformado = await app.inject({ method: 'POST', url: '/v1/auth/login', headers: { 'content-type': 'application/json' }, payload: '{"empresa":' });
+    expect(malformado.statusCode).toBe(400);
+    expect(malformado.json().codigo).toBe('VALIDACAO');
   });
 });
 
@@ -149,6 +164,7 @@ describe('refresh rotativo e saída', () => {
     const r1 = refreshDe(await entrar(app));
     const renovado = await app.inject({ method: 'POST', url: '/v1/auth/refresh', cookies: { [COOKIE_REFRESH]: r1 } });
     expect(renovado.statusCode).toBe(200);
+    expect(renovado.json()).toEqual({ token_acesso: expect.any(String), expira_em: expect.any(String) });
     const r2 = refreshDe(renovado);
     expect(r2).not.toBe(r1);
     // reuso do r1 (roubado): 401 e o r2 também morre
@@ -186,19 +202,35 @@ describe('GET /v1/auth/eu', () => {
     expect((await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(401);
   });
 
-  it('devolve usuário, empresa, módulos licenciados com menus e as ações do perfil', async () => {
+  it('responde no contrato EuResposta do SDK: usuário com perfil, razão social, filiais com nome e CNPJ e módulos licenciados', async () => {
     const { app } = await montar();
     const token: string = (await entrar(app, 'leitor@exemplo.com')).json().token_acesso;
     const r = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
     expect(r.statusCode).toBe(200);
     const eu = r.json();
-    expect(eu.usuario).toMatchObject({ id: LEITOR, perfil: 'leitura' });
-    expect(eu.empresa).toEqual({ id: TENANT, slug: 'thathyany', nome: 'Thathyany', fuso: 'America/Manaus' });
-    expect(eu.modulos.map((m: { id: string }) => m.id)).toEqual(['core', 'cadastros']);
-    expect(eu.modulos[1].menus).toContain('Clientes');
-    expect(eu.acoes).toContain('cadastros.ver');
-    expect(eu.acoes).not.toContain('cadastros.cliente.editar');
-    expect(eu.acoes).not.toContain('pedido.ver');
+    expect(EuResposta.parse(eu)).toEqual(eu);
+    expect(eu).toEqual({
+      usuario: { id: LEITOR, nome: 'Pessoa', perfil: 'leitura' },
+      empresa: { id: TENANT, slug: 'thathyany', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus' },
+      // na ordem do cadastro do usuário; a filial de outro tenant não aparece (RLS)
+      filiais: [
+        { id: FILIAL_2, nome: 'Filial Parintins', cnpj: '11222333000262' },
+        { id: MATRIZ, nome: 'Matriz Manaus', cnpj: '11222333000181' },
+      ],
+      modulos: [
+        { id: 'core', menus: expect.any(Array) },
+        { id: 'cadastros', menus: expect.arrayContaining(['Clientes']) },
+      ],
+    });
+  });
+
+  it('dado fora do contrato é 500 ERRO_INTERNO (erro da plataforma), não 400 VALIDACAO', async () => {
+    const { app, repo } = await montar();
+    repo.filiais[0]!.cnpj = '11222333000180';
+    const token: string = (await entrar(app)).json().token_acesso;
+    const r = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
+    expect(r.statusCode).toBe(500);
+    expect(r.json().codigo).toBe('ERRO_INTERNO');
   });
 });
 

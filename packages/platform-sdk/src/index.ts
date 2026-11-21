@@ -10,3 +10,4 @@ export * from './auditoria';
 export * from './arquivos';
 export * from './rotas';
 export * from './trabalhos';
+export * from './eu';

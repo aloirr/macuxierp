@@ -1,11 +1,12 @@
 /** `RepositorioAuth` em memória, para os testes de unidade até o adaptador PostgreSQL (depois da T-0003). */
 import { tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
+import type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
 
 export class RepositorioAuthMemoria implements RepositorioAuth {
   readonly tenants: TenantAuth[] = [];
   readonly usuarios: UsuarioAuth[] = [];
+  readonly filiais: FilialAuth[] = [];
   readonly sessoes: SessaoRefresh[] = [];
 
   /** Simula a RLS: com tenant na transação, só enxerga as linhas dele. */
@@ -32,6 +33,10 @@ export class RepositorioAuthMemoria implements RepositorioAuth {
   }
   async usuarioPorId(tx: Transacao, id: string) {
     return this.visivel(tx, this.usuarios).find((u) => u.id === id) ?? null;
+  }
+  async filiaisPorIds(tx: Transacao, ids: readonly string[]) {
+    const visiveis = this.visivel(tx, this.filiais);
+    return ids.flatMap((id) => visiveis.filter((f) => f.id === id));
   }
   async registrarFalha(tx: Transacao, usuarioId: string, falhas: number, bloqueadoAte: Date | null) {
     Object.assign(this.usuario(tx, usuarioId), { falhas_login: falhas, bloqueado_ate: bloqueadoAte });
