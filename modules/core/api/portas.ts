@@ -27,6 +27,8 @@ export interface LinhaUsuario {
   updated_at: Date;
 }
 
+export type PatchUsuario = Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>;
+
 export interface NovoUsuario extends Omit<LinhaUsuario, 'ultimo_acesso_em' | 'updated_at'> {
   senha_hash: string;
 }
@@ -89,7 +91,7 @@ export interface RepositorioCore {
   usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null>;
   criarUsuario(tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario>;
   /** token: 0 linhas = null */
-  atualizarUsuario(tx: Transacao, id: string, patch: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
+  atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
   /** RN-CORE-01: chamar antes de contar. */
   travarAdministradoresAtivos(tx: Transacao): Promise<void>;

@@ -13,6 +13,7 @@ import type {
   LinhaExportacao,
   LinhaLicenca,
   LinhaUsuario,
+  PatchUsuario,
   NovoCertificado,
   NovoUsuario,
   RepositorioCore,
@@ -82,7 +83,7 @@ export class RepositorioCoreSql implements RepositorioCore {
     return linha;
   }
 
-  async atualizarUsuario(tx: Transacao, id: string, p: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, _agora?: Date, token?: Date): Promise<LinhaUsuario | null> {
+  async atualizarUsuario(tx: Transacao, id: string, p: PatchUsuario, _agora?: Date, token?: Date): Promise<LinhaUsuario | null> {
     const [linha] = await tx.consultar<LinhaUsuario>(
       `UPDATE plataforma.usuario SET
          nome = COALESCE($2, nome), perfil = COALESCE($3, perfil), filial_ids = COALESCE($4::uuid[], filial_ids),

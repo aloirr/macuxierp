@@ -40,7 +40,7 @@ import {
   type Usuario,
 } from '../contracts';
 import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbiente, diasParaVencer, gerarSenhaProvisoria } from '../domain';
-import { alterarUsuarioComTrava, type PatchUsuario } from './alterar-usuario';
+import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarA1 } from './cifra';
 import {
   PfxInvalido,
@@ -50,6 +50,7 @@ import {
   type LinhaEmpresa,
   type LinhaExportacao,
   type LinhaUsuario,
+  type PatchUsuario,
 } from './portas';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -134,7 +135,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
   }
 
   /** RN-CORE-01: a sequência (trava, leitura, contagem, domain, gravação) é a de `alterarUsuarioComTrava`. */
-  async function mudarUsuario(c: ContextoRota, params: Record<string, string>, patch: PatchUsuario, acao: string, opcoes: { token?: Date; somenteSeAtivo?: boolean } = {}): Promise<LinhaUsuario | null> {
+  async function mudarUsuario(c: ContextoRota, params: Record<string, string>, patch: PatchUsuario, acao: string, opcoes: OpcoesAlterarUsuario = {}): Promise<LinhaUsuario | null> {
     const r = await alterarUsuarioComTrava(repo, c.tx, idDoParam(params, 'id'), patch, c.agora, opcoes);
     if (r.tipo === 'nao_encontrado') throw naoEncontrado('Usuário');
     if (r.tipo === 'sem_mudanca') return null;

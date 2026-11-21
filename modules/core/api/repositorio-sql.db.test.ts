@@ -108,6 +108,25 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     await fim.confirmar();
   });
 
+  it('RF-CORE-01: duas gravações do usuário com o mesmo token de updated_at: a primeira vence e a segunda recebe null (409)', async () => {
+    const leitura = await abrir(T2);
+    const lida = await repo.usuarioPorId(leitura, V1);
+    await leitura.confirmar();
+    const token = new Date(lida?.updated_at as unknown as string);
+
+    const t1 = await abrir(T2);
+    const t2 = await abrir(T2);
+    await expect(repo.atualizarUsuario(t1, V1, { nome: 'Primeiro Nome' }, undefined, token)).resolves.toMatchObject({ nome: 'Primeiro Nome' });
+    const segunda = repo.atualizarUsuario(t2, V1, { nome: 'Segundo Nome' }, undefined, token);
+    expect(await travada(segunda)).toBe('travada'); // espera a trava da linha da primeira
+    await t1.confirmar();
+    await expect(segunda).resolves.toBeNull();
+    await t2.confirmar();
+    const fim = await abrir(T2);
+    expect((await repo.usuarioPorId(fim, V1))?.nome).toBe('Primeiro Nome');
+    await fim.confirmar();
+  });
+
   it('RN-CORE-01: dois administradores inativando um ao outro ao mesmo tempo: o segundo é recusado e sobra um ativo', async () => {
     const t1 = await abrir();
     const t2 = await abrir();

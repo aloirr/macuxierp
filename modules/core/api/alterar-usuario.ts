@@ -4,9 +4,12 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { avaliarAlteracaoUsuario } from '../domain';
-import type { LinhaUsuario, RepositorioCore } from './portas';
+import type { LinhaUsuario, PatchUsuario, RepositorioCore } from './portas';
 
-export type PatchUsuario = Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>;
+export interface OpcoesAlterarUsuario {
+  token?: Date;
+  somenteSeAtivo?: boolean;
+}
 
 export type ResultadoAlterarUsuario =
   | { tipo: 'nao_encontrado' }
@@ -21,7 +24,7 @@ export async function alterarUsuarioComTrava(
   id: string,
   patch: PatchUsuario,
   agora: Date,
-  opcoes: { token?: Date; somenteSeAtivo?: boolean } = {},
+  opcoes: OpcoesAlterarUsuario = {},
 ): Promise<ResultadoAlterarUsuario> {
   await repo.travarAdministradoresAtivos(tx);
   const atual = await repo.usuarioPorId(tx, id);
