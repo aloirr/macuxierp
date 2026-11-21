@@ -1,12 +1,27 @@
 {
-  "extends": "@macuxierp/config/tsconfig.base.json",
+  "extends": "@macuxierp/config/tsconfig.web.json",
   "compilerOptions": {
     "types": [
       "node"
-    ]
+    ],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "incremental": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
   },
   "include": [
-    "src"
+    "next-env.d.ts",
+    "src",
+    ".next/types/**/*.ts",
+    "next.config.ts",
+    "vitest.config.ts"
   ],
   "exclude": [
     "node_modules",
