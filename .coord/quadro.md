@@ -8,11 +8,11 @@
 |---|---|---|---|---|---|
 | [T-0001](tarefas/T-0001.md) | F0 Fundação: estrutura, governança, guardião, recados, CI, docs 01–07, ADRs 0001–0005 | F0 | alexandre | concluida | PR #1 → 7e6c055 |
 | [T-0002](tarefas/T-0002.md) | Desenho da F1 e contratos de core e cadastros (e ADR 0002 → aceita) | F1 | engenheiro-software | concluida | PR #4 → 165c5db |
-| [T-0003](tarefas/T-0003.md) | Banco: papéis, schemas, RLS e tabelas oficiais (NCM, CEST, CFOP, CST, IBGE, cClassTrib) | F1 | banco-dados | em_andamento | nuvem/T-0003-banco-f1 |
-| [T-0004](tarefas/T-0004.md) | API (Fastify), autenticação, licenças e worker base | F1 | engenheiro-software | em_andamento | nuvem/T-0004-api-worker |
+| [T-0003](tarefas/T-0003.md) | Banco: papéis, schemas, RLS e tabelas oficiais (NCM, CEST, CFOP, CST, IBGE, cClassTrib) | F1 | banco-dados | concluida | PR #10 → 820cd28 |
+| [T-0004](tarefas/T-0004.md) | API (Fastify), autenticação, licenças e worker base | F1 | engenheiro-software | em_andamento | PR #7 → 6e9ba49; falta nuvem/T-0004b-adaptadores-pg |
 | [T-0005](tarefas/T-0005.md) | Shell do BKO (Next.js) com menu pelos manifestos | F1 | engenheiro-apps | em_andamento | nuvem/T-0005-shell-bko |
-| [T-0006](tarefas/T-0006.md) | Core: empresa, usuários, perfis e certificado A1 (ADR 0005) | F1 | modulo-core | aberta | — |
-| [T-0007](tarefas/T-0007.md) | Cadastros: clientes, produtos, preços, estoque, filiais, equipe e carteira, consultas CNPJ/CEP/IE | F1 | modulo-cadastros | aberta | — |
+| [T-0006](tarefas/T-0006.md) | Core: empresa, usuários, perfis e certificado A1 (ADR 0005) | F1 | modulo-core | em_andamento | nuvem/T-0006-core |
+| [T-0007](tarefas/T-0007.md) | Cadastros: clientes, produtos, preços, estoque, filiais, equipe e carteira, consultas CNPJ/CEP/IE | F1 | modulo-cadastros | em_andamento | nuvem/T-0007-cadastros |
 | [T-0008](tarefas/T-0008.md) | Testes da F1: RN, RLS e prints do BKO de cadastro | F1 | testes | aberta | — |
 | [T-0009](tarefas/T-0009.md) | Desenho do mapeamento ERP → Hub do FDV | F2 | engenheiro-software | aberta | — |
 | [T-0010](tarefas/T-0010.md) | Banco: schema integracao_fdv | F2 | banco-dados | aberta | — |
@@ -38,12 +38,13 @@
 ## Travado pela nuvem
 | Sessão | Caminhos |
 |---|---|
-| nuvem/T-0003-banco-f1 (session_0157qAhkA8LT5291zd6Ewkqy) | `db/` |
-| nuvem/T-0004-api-worker (session_0157qAhkgLGRkSx2rwXEmSkd) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
+| nuvem/T-0006-core (session_0157qAhmWwkaVNSg41AjkyW1) | `modules/core/` |
+| nuvem/T-0007-cadastros (session_0157qAhnRcYrbCerCKphE24r) | `modules/cadastros/` |
+| nuvem/T-0004b-adaptadores-pg (session_0157qAhkgLGRkSx2rwXEmSkd) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
 | nuvem/T-0005-shell-bko (session_0157qAhn9q2n4Me1UWDeCknD) | `apps/web` |
 | nuvem/T-0028-tokens-ui (session_0157qAhmhBPnt9CYRYb1A47Y) | `packages/ui` |
 | nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
-| nuvem/T-0028-registro (gerente) | `.coord/quadro.md`, `.coord/tarefas/T-0028.md`, `docs/produto/05-roadmap.md`, `docs/status/` |
+| nuvem/quadro-lote3 (gerente) | `.coord/quadro.md`, `.coord/tarefas/T-0028.md`, `docs/produto/05-roadmap.md`, `docs/status/` |
 
 ## Reservas
 - ADR: 0001–0005 usadas; próxima livre: 0006.
@@ -56,8 +57,8 @@
 - Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
 
 ## Próximos lotes (ordem do doc 05)
-1. Em andamento (21/11, 16h25): T-0003, T-0004 e T-0005.
-2. Depois: T-0006 (modulo-core), T-0007 (modulo-cadastros) e T-0024 (engenheiro-software, deploy).
+1. Em andamento (21/11, 17h25): T-0004b (adaptadores PostgreSQL), T-0005 (espera a T-0028), T-0006, T-0007 e T-0028.
+2. Depois: T-0024 (engenheiro-software, deploy, quando a API e o web buildarem) e T-0008 (testes da F1).
 3. Depois da T-0007: T-0026. Depois da F3 e da T-0024: T-0027.
 
 ## Regra provisória de recados (até a T-0025)
