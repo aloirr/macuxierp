@@ -1,0 +1,439 @@
+/**
+ * Plugin `/v1/core` (desenho T-0002, seção 3). A ordem sessão → perfil → tenant → licença é da API (`executarAutorizado`);
+ * aqui cada rota declara a `acao` e REVALIDA a regra no `domain` (a API sempre revalida). Auditoria nas ações (A);
+ * logs nunca recebem corpo, e-mail, senha nem `.pfx` (nenhuma rota loga).
+ */
+import { randomBytes, randomUUID } from 'node:crypto';
+import {
+  definirPlugin,
+  definirRota,
+  ErroApi,
+  erros,
+  PERFIS,
+  PERMISSOES,
+  type ContextoRota,
+  type PluginModulo,
+} from '@macuxierp/platform-sdk';
+import { z } from 'zod';
+import { manifest } from '../manifest';
+import {
+  AmbienteConsulta,
+  AmbienteTrocar,
+  AuditoriaConsulta,
+  CertificadoEnviar,
+  CertificadosConsulta,
+  EmpresaEditar,
+  EVENTO_AMBIENTE,
+  EVENTO_CERTIFICADO,
+  EVENTO_EMPRESA,
+  EVENTO_USUARIO,
+  ListaConsulta,
+  ParametroChave,
+  ParametroGravar,
+  PFX_TAMANHO_MAXIMO,
+  TRABALHO_EXPORTAR,
+  UsuarioCriar,
+  UsuarioEditar,
+  type CertificadoResumo,
+  type Empresa,
+  type Exportacao,
+  type Usuario,
+} from '../contracts';
+import { alertaVencimento, avaliarAlteracaoUsuario, avaliarCertificado, avaliarTrocaAmbiente, diasParaVencer, gerarSenhaProvisoria } from '../domain';
+import { cifrarA1 } from './cifra';
+import {
+  PfxInvalido,
+  type DependenciasCore,
+  type LinhaAmbiente,
+  type LinhaCertificado,
+  type LinhaEmpresa,
+  type LinhaExportacao,
+  type LinhaUsuario,
+} from './portas';
+
+const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+const naoEncontrado = (o: string) => new ErroApi(404, 'NAO_ENCONTRADO', `${o} não encontrado`);
+const ParamId = z.string().uuid();
+const AMBIENTE_PADRAO = 'homologacao' as const;
+
+function empresaDto(e: LinhaEmpresa): Empresa {
+  return { id: e.id, razao_social: e.razao_social, nome_fantasia: e.nome_fantasia, cnpj: e.cnpj, ie: e.ie, fuso: e.fuso, updated_at: e.updated_at.toISOString() };
+}
+
+function usuarioDto(u: LinhaUsuario): Usuario {
+  return {
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    perfil: u.perfil,
+    filial_ids: u.filial_ids,
+    ativo: u.ativo,
+    external_id: u.external_id,
+    ultimo_acesso_em: iso(u.ultimo_acesso_em),
+    updated_at: u.updated_at.toISOString(),
+  };
+}
+
+/** Auditoria e evento do usuário: sem nome nem e-mail (dado pessoal; `.coord/contratos/eventos.md`). */
+const usuarioSemPii = (u: LinhaUsuario) => ({ id: u.id, perfil: u.perfil, filial_ids: u.filial_ids, ativo: u.ativo });
+
+function certificadoDto(c: LinhaCertificado, agora: Date): CertificadoResumo {
+  return {
+    id: c.id,
+    filial_id: c.filial_id,
+    titular: c.titular,
+    cnpj: c.cnpj,
+    valido_de: c.valido_de.toISOString(),
+    valido_ate: c.valido_ate.toISOString(),
+    impressao_digital: c.impressao_digital,
+    dias_para_vencer: diasParaVencer(c.valido_ate, agora),
+    alerta_vencimento: alertaVencimento(c.valido_ate, agora),
+    ativo: c.ativo,
+  };
+}
+
+const ambienteDto = (a: LinhaAmbiente) => ({ filial_id: a.filial_id, ambiente: a.ambiente, recado_aprovacao: a.recado_aprovacao });
+
+/** Concorrência otimista: o token é o `updated_at` lido (ETag do GET); sem token, a escrita segue. */
+function conferirToken(atual: Date, token: string | undefined): void {
+  if (token !== undefined && token !== atual.toISOString()) throw erros.conflito('O registro mudou desde a leitura: recarregue e tente de novo');
+}
+
+async function publicar(c: ContextoRota, nome: string, agregado_id: string, payload: Record<string, unknown>): Promise<void> {
+  // `versao` do envelope = versão do agregado (o consumidor descarta a menor já aplicada): ms UTC da alteração.
+  await c.publicar({ nome, agregado_id, versao: c.agora.getTime(), payload });
+}
+
+function paginar<T extends { id: string }>(linhas: T[], limite: number): { itens: T[]; proximo_cursor: string | null } {
+  const itens = linhas.slice(0, limite);
+  return { itens, proximo_cursor: linhas.length > limite ? (itens[itens.length - 1]?.id ?? null) : null };
+}
+
+export function criarPluginCore(deps: DependenciasCore): PluginModulo {
+  const { repo } = deps;
+  const aleatorios = deps.aleatorios ?? ((n: number) => randomBytes(n));
+  const novoId = deps.novoId ?? randomUUID;
+
+  async function empresaOuErro(c: ContextoRota): Promise<LinhaEmpresa> {
+    const e = await repo.empresa(c.tx);
+    if (!e) throw naoEncontrado('Empresa');
+    return e;
+  }
+
+  async function usuarioOuErro(c: ContextoRota, id: string): Promise<LinhaUsuario> {
+    if (!ParamId.safeParse(id).success) throw erros.validacao({ id: 'UUID inválido' });
+    const u = await repo.usuarioPorId(c.tx, id);
+    if (!u) throw naoEncontrado('Usuário');
+    return u;
+  }
+
+  /** RN-CORE-01 revalidada na API antes de inativar, rebaixar ou excluir. */
+  async function conferirUltimoAdministrador(c: ContextoRota, atual: LinhaUsuario, alteracao: { perfil?: LinhaUsuario['perfil']; ativo?: boolean }): Promise<void> {
+    const outros = await repo.contarAdministradoresAtivos(c.tx, atual.id);
+    const r = avaliarAlteracaoUsuario({ atual, alteracao, outrosAdministradoresAtivos: outros });
+    if (!r.ok) throw erros.regra('RN-CORE-01', r.mensagem);
+  }
+
+  async function mudarUsuario(c: ContextoRota, atual: LinhaUsuario, patch: { nome?: string; perfil?: LinhaUsuario['perfil']; filial_ids?: string[]; ativo?: boolean }, acao: string): Promise<LinhaUsuario> {
+    await conferirUltimoAdministrador(c, atual, patch);
+    const novo = await repo.atualizarUsuario(c.tx, atual.id, patch, c.agora);
+    await c.auditar({ acao, entidade: 'usuario', entidade_id: novo.id, antes: usuarioSemPii(atual), depois: usuarioSemPii(novo) });
+    await publicar(c, EVENTO_USUARIO, novo.id, usuarioSemPii(novo));
+    return novo;
+  }
+
+  const rotas = [
+    // Empresa (RF-CORE-01)
+    definirRota({
+      metodo: 'GET',
+      caminho: '/empresa',
+      acao: 'core.empresa.ver',
+      async executar(c) {
+        const e = await empresaOuErro(c);
+        return { corpo: empresaDto(e), cabecalhos: { ETag: e.updated_at.toISOString() } };
+      },
+    }),
+    definirRota({
+      metodo: 'PATCH',
+      caminho: '/empresa',
+      acao: 'core.empresa.editar',
+      corpo: EmpresaEditar,
+      async executar(c, { corpo }) {
+        const atual = await empresaOuErro(c);
+        conferirToken(atual.updated_at, corpo.updated_at);
+        try {
+          new Intl.DateTimeFormat('pt-BR', { timeZone: corpo.fuso });
+        } catch {
+          throw erros.validacao({ fuso: 'Fuso horário inválido' });
+        }
+        const nova = await repo.atualizarEmpresa(c.tx, { razao_social: corpo.razao_social, nome_fantasia: corpo.nome_fantasia, ie: corpo.ie, fuso: corpo.fuso }, c.agora);
+        await c.auditar({ acao: 'core.empresa.alterada', entidade: 'empresa', entidade_id: nova.id, antes: empresaDto(atual), depois: empresaDto(nova) });
+        await publicar(c, EVENTO_EMPRESA, c.sessao.tenant_id, empresaDto(nova));
+        return { corpo: empresaDto(nova), cabecalhos: { ETag: nova.updated_at.toISOString() } };
+      },
+    }),
+
+    // Usuários (RF-CORE-02, RN-CORE-01)
+    definirRota({
+      metodo: 'GET',
+      caminho: '/usuarios',
+      acao: 'core.usuario.gerir',
+      consulta: ListaConsulta,
+      async executar(c, { consulta }) {
+        const linhas = await repo.listarUsuarios(c.tx, { ...consulta, limite: consulta.limite + 1 });
+        const p = paginar(linhas, consulta.limite);
+        return { corpo: { itens: p.itens.map(usuarioDto), proximo_cursor: p.proximo_cursor } };
+      },
+    }),
+    definirRota({
+      metodo: 'POST',
+      caminho: '/usuarios',
+      acao: 'core.usuario.gerir',
+      corpo: UsuarioCriar,
+      async executar(c, { corpo }) {
+        const email = corpo.email.trim().toLowerCase();
+        // RN-CORE-05: o reenvio com o mesmo external_id devolve o usuário já criado, sem senha nova.
+        if (corpo.external_id) {
+          const repetido = await repo.usuarioPorExternalId(c.tx, corpo.external_id);
+          if (repetido) return { status: 200, corpo: usuarioDto(repetido) };
+        }
+        if (await repo.usuarioPorEmail(c.tx, email)) throw erros.conflito('Já existe usuário com este e-mail');
+        const senha = gerarSenhaProvisoria(aleatorios(256));
+        const criado = await repo.criarUsuario(
+          c.tx,
+          { id: novoId(), nome: corpo.nome, email, perfil: corpo.perfil, filial_ids: corpo.filial_ids, ativo: true, external_id: corpo.external_id ?? null, senha_hash: await deps.hashSenha(senha) },
+          c.agora,
+        );
+        await c.auditar({ acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: criado.id, depois: usuarioSemPii(criado) });
+        await publicar(c, EVENTO_USUARIO, criado.id, usuarioSemPii(criado));
+        return { status: 201, corpo: { ...usuarioDto(criado), senha_provisoria: senha } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET',
+      caminho: '/usuarios/:id',
+      acao: 'core.usuario.gerir',
+      async executar(c, { params }) {
+        const u = await usuarioOuErro(c, params.id ?? '');
+        return { corpo: usuarioDto(u), cabecalhos: { ETag: u.updated_at.toISOString() } };
+      },
+    }),
+    definirRota({
+      metodo: 'PATCH',
+      caminho: '/usuarios/:id',
+      acao: 'core.usuario.gerir',
+      corpo: UsuarioEditar,
+      async executar(c, { corpo, params }) {
+        const atual = await usuarioOuErro(c, params.id ?? '');
+        conferirToken(atual.updated_at, corpo.updated_at);
+        const { updated_at: _token, ...patch } = corpo;
+        const novo = await mudarUsuario(c, atual, patch, 'core.usuario.alterado');
+        return { corpo: usuarioDto(novo), cabecalhos: { ETag: novo.updated_at.toISOString() } };
+      },
+    }),
+    definirRota({
+      metodo: 'DELETE',
+      caminho: '/usuarios/:id',
+      acao: 'core.usuario.gerir',
+      async executar(c, { params }) {
+        const atual = await usuarioOuErro(c, params.id ?? '');
+        if (atual.ativo) await mudarUsuario(c, atual, { ativo: false }, 'core.usuario.inativado');
+        return { status: 204 };
+      },
+    }),
+    definirRota({
+      metodo: 'POST',
+      caminho: '/usuarios/:id/redefinir-senha',
+      acao: 'core.usuario.gerir',
+      async executar(c, { params }) {
+        const u = await usuarioOuErro(c, params.id ?? '');
+        const senha = gerarSenhaProvisoria(aleatorios(256));
+        await repo.definirSenha(c.tx, u.id, await deps.hashSenha(senha), c.agora);
+        await c.auditar({ acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: u.id });
+        return { corpo: { senha_provisoria: senha }, cabecalhos: { 'Cache-Control': 'no-store' } };
+      },
+    }),
+
+    // Perfis e licenças, só leitura (RF-CORE-03, D12)
+    definirRota({
+      metodo: 'GET',
+      caminho: '/perfis',
+      acao: 'core.perfil.ver',
+      async executar() {
+        const itens = PERFIS.map((perfil) => ({
+          perfil,
+          acoes: Object.entries(PERMISSOES)
+            .filter(([, perfis]) => (perfis as readonly string[]).includes(perfil))
+            .map(([acao]) => acao),
+        }));
+        return { corpo: { itens } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET',
+      caminho: '/licencas',
+      acao: 'core.licenca.ver',
+      async executar(c) {
+        const itens = (await repo.licencas(c.tx)).map((l) => ({ modulo: l.modulo, ativo: l.ativo, valido_ate: iso(l.valido_ate) }));
+        return { corpo: { itens } };
+      },
+    }),
+
+    // Certificado A1 (RF-CORE-04, ADR 0005, RN-CORE-06)
+    definirRota({
+      metodo: 'GET',
+      caminho: '/certificados',
+      acao: 'core.certificado.gerir',
+      consulta: CertificadosConsulta,
+      async executar(c, { consulta }) {
+        const itens = (await repo.certificados(c.tx, consulta.filial_id)).map((x) => certificadoDto(x, c.agora));
+        return { corpo: { itens } };
+      },
+    }),
+    definirRota({
+      metodo: 'POST',
+      caminho: '/certificados',
+      acao: 'core.certificado.gerir',
+      corpo: CertificadoEnviar,
+      async executar(c, { corpo }) {
+        const pfx = Buffer.from(corpo.arquivo_base64, 'base64');
+        if (pfx.length === 0 || pfx.length > PFX_TAMANHO_MAXIMO) throw erros.validacao({ arquivo_base64: 'O .pfx precisa ter até 50 KB' });
+        const empresa = await empresaOuErro(c);
+        let dados;
+        try {
+          dados = await deps.leitorPfx.abrir(pfx, corpo.senha);
+        } catch (e) {
+          if (e instanceof PfxInvalido) throw erros.regra('RN-CORE-06', 'Não foi possível abrir o certificado: confira o arquivo e a senha');
+          throw e;
+        }
+        const av = avaliarCertificado({ cnpjEmpresa: empresa.cnpj, cnpjCertificado: dados.cnpj, validoDe: dados.valido_de, validoAte: dados.valido_ate, agora: c.agora, fuso: empresa.fuso });
+        if (!av.ok) throw erros.regra('RN-CORE-06', av.mensagem);
+        const id = novoId();
+        const cifrado = cifrarA1({ chave: deps.chaveA1, tenantId: c.sessao.tenant_id, pfx, senha: corpo.senha });
+        await repo.substituirCertificado(c.tx, { id, filial_id: corpo.filial_id, ...dados, ...cifrado, chave_versao: deps.chaveVersao ?? 1 }, c.agora);
+        const resumo = certificadoDto({ id, filial_id: corpo.filial_id, ...dados, ativo: true }, c.agora);
+        await c.auditar({ acao: 'core.certificado.enviado', entidade: 'certificado', entidade_id: id, depois: { filial_id: resumo.filial_id, cnpj: resumo.cnpj, valido_ate: resumo.valido_ate, impressao_digital: resumo.impressao_digital } });
+        await publicar(c, EVENTO_CERTIFICADO, id, { id, filial_id: resumo.filial_id, cnpj: resumo.cnpj, valido_ate: resumo.valido_ate, impressao_digital: resumo.impressao_digital, ativo: true });
+        return { status: 201, corpo: resumo };
+      },
+    }),
+
+    // Ambiente fiscal por filial (RN-CORE-08)
+    definirRota({
+      metodo: 'GET',
+      caminho: '/ambientes-fiscais',
+      acao: 'core.ambiente.ver',
+      consulta: AmbienteConsulta,
+      async executar(c, { consulta }) {
+        const linhas = (await repo.ambientes(c.tx, consulta.filial_id)).map(ambienteDto);
+        // Sem linha, vale homologação.
+        if (consulta.filial_id && linhas.length === 0) linhas.push({ filial_id: consulta.filial_id, ambiente: AMBIENTE_PADRAO, recado_aprovacao: null });
+        return { corpo: { itens: linhas } };
+      },
+    }),
+    definirRota({
+      metodo: 'PUT',
+      caminho: '/ambientes-fiscais/:filial_id',
+      acao: 'core.ambiente.trocar',
+      corpo: AmbienteTrocar,
+      async executar(c, { corpo, params }) {
+        const filialId = ParamId.safeParse(params.filial_id);
+        if (!filialId.success) throw erros.validacao({ filial_id: 'UUID inválido' });
+        const [atualLinha] = await repo.ambientes(c.tx, filialId.data);
+        const atual = atualLinha?.ambiente ?? null;
+        const r = avaliarTrocaAmbiente({ atual, novo: corpo.ambiente, recado: corpo.recado_aprovacao });
+        if (!r.ok) throw erros.regra('RN-CORE-08', r.mensagem);
+        const nova: LinhaAmbiente = { filial_id: filialId.data, ambiente: r.ambiente, recado_aprovacao: r.recado };
+        await repo.gravarAmbiente(c.tx, { ...nova, alterado_por: c.sessao.usuario_id }, c.agora);
+        await c.auditar({
+          acao: 'core.ambiente.trocado',
+          entidade: 'ambiente_fiscal',
+          entidade_id: nova.filial_id,
+          antes: { ambiente: atual ?? AMBIENTE_PADRAO },
+          depois: ambienteDto(nova),
+        });
+        await publicar(c, EVENTO_AMBIENTE, nova.filial_id, ambienteDto(nova));
+        return { corpo: ambienteDto(nova) };
+      },
+    }),
+
+    // Auditoria (RF-CORE-05)
+    definirRota({
+      metodo: 'GET',
+      caminho: '/auditoria',
+      acao: 'core.auditoria.ver',
+      consulta: AuditoriaConsulta,
+      async executar(c, { consulta }) {
+        const linhas = await repo.auditoria(c.tx, {
+          entidade: consulta.entidade,
+          de: consulta.de ? new Date(consulta.de) : undefined,
+          ate: consulta.ate ? new Date(consulta.ate) : undefined,
+          limite: consulta.limite + 1,
+          cursor: consulta.cursor,
+        });
+        const p = paginar(linhas, consulta.limite);
+        return { corpo: { itens: p.itens.map((a) => ({ ...a, ocorrido_em: a.ocorrido_em.toISOString() })), proximo_cursor: p.proximo_cursor } };
+      },
+    }),
+
+    // Exportação LGPD (RF-CORE-06): 202 e o worker gera o .zip
+    definirRota({
+      metodo: 'POST',
+      caminho: '/exportacoes',
+      acao: 'core.exportacao.pedir',
+      async executar(c) {
+        const e = await repo.criarExportacao(c.tx, novoId(), c.sessao.usuario_id, c.agora);
+        await c.enfileirar({ tipo: TRABALHO_EXPORTAR, payload: { exportacao_id: e.id }, external_id: e.id });
+        await c.auditar({ acao: 'core.exportacao.pedida', entidade: 'exportacao', entidade_id: e.id });
+        return { status: 202, corpo: exportacaoDto(e) };
+      },
+    }),
+    definirRota({
+      metodo: 'GET',
+      caminho: '/exportacoes/:id',
+      acao: 'core.exportacao.pedir',
+      async executar(c, { params }) {
+        const id = ParamId.safeParse(params.id);
+        if (!id.success) throw erros.validacao({ id: 'UUID inválido' });
+        const e = await repo.exportacao(c.tx, id.data);
+        if (!e) throw naoEncontrado('Exportação');
+        let url: string | null = null;
+        if (e.estado === 'pronta' && e.arquivo_id) {
+          const chave = await repo.chaveDoArquivo(c.tx, e.arquivo_id);
+          if (chave) url = await deps.armazenamento.urlAssinada(chave, 24 * 3600);
+        }
+        return { corpo: exportacaoDto(e, url) };
+      },
+    }),
+
+    // Parâmetros do tenant
+    definirRota({
+      metodo: 'GET',
+      caminho: '/parametros',
+      acao: 'core.parametro.gerir',
+      async executar(c) {
+        return { corpo: { itens: await repo.parametros(c.tx) } };
+      },
+    }),
+    definirRota({
+      metodo: 'PUT',
+      caminho: '/parametros/:chave',
+      acao: 'core.parametro.gerir',
+      corpo: ParametroGravar,
+      async executar(c, { corpo, params }) {
+        const chave = ParametroChave.safeParse(params.chave);
+        if (!chave.success) throw erros.validacao({ chave: 'Chave inválida' });
+        const antes = (await repo.parametros(c.tx)).find((p) => p.chave === chave.data)?.valor ?? null;
+        const parametroId = await repo.gravarParametro(c.tx, chave.data, corpo.valor, c.agora);
+        await c.auditar({ acao: 'core.parametro.gravado', entidade: 'parametro', entidade_id: parametroId, antes, depois: corpo.valor });
+        return { corpo: { chave: chave.data, valor: corpo.valor } };
+      },
+    }),
+  ];
+
+  function exportacaoDto(e: LinhaExportacao, url: string | null = null): Exportacao {
+    return { id: e.id, estado: e.estado, url, concluida_em: iso(e.concluida_em), expira_em: iso(e.expira_em) };
+  }
+
+  return definirPlugin(manifest, rotas);
+}
