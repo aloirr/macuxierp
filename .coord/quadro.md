@@ -34,30 +34,32 @@
 | [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | aberta | — |
 | [T-0027](tarefas/T-0027.md) | Virada do conector da thathyany: kit do FDV sai, conector nativo do ERP entra | F3 | modulo-integracao-fdv | aberta | — |
 | [T-0028](tarefas/T-0028.md) | Tokens da marca em packages/ui (cores, situação, escala tipográfica) | F1 | designer-ux | concluida | PR #12 → 4c4d46f |
-| [T-0029](tarefas/T-0029.md) | Integração de plataforma da F1 (módulos na API, multipart, worker, helpers comuns) | F1 | engenheiro-software | em_andamento | nuvem/T-0029-integracao-f1 |
+| [T-0029](tarefas/T-0029.md) | Integração de plataforma da F1 (módulos na API, multipart, worker, helpers comuns) | F1 | engenheiro-software | em_revisao | PR #19 |
 | [T-0030](tarefas/T-0030.md) | Troca da filial para produção fiscal só com a aprovação do Alexandre conferida (regra 7) | F1 | engenheiro-software | aberta | — |
-| [T-0031](tarefas/T-0031.md) | Core: resíduos da revisão do PR #14 (RD-0008, RD-0009, lint e teste de banco da concorrência) | F1 | modulo-core | em_andamento | nuvem/T-0031-core-residuos |
+| [T-0031](tarefas/T-0031.md) | Core: resíduos da revisão do PR #14 (RD-0008, RD-0009, lint e teste de banco da concorrência) | F1 | modulo-core | concluida | PR #18 → 65a25f3 |
+| [T-0032](tarefas/T-0032.md) | Banco: updated_at estritamente crescente por linha (token de concorrência) | F1 | banco-dados | concluida | PR #20 → ee17b80 |
+| [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | em_andamento | nuvem/T-0033-core-exports |
 
 ## Travado pela nuvem
 | Sessão | Caminhos |
 |---|---|
-| nuvem/T-0031-core-residuos (session_0157qAhmWwkaVNSg41AjkyW1) | `modules/core/` |
+| nuvem/T-0033-core-exports (session_0157qAhmWwkaVNSg41AjkyW1) | `modules/core/` |
 | nuvem/T-0029-integracao-f1 (session_0157qAhkgLGRkSx2rwXEmSkd) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
 | nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
 
 ## Reservas
 - ADR: 0001–0005 usadas; próxima livre: 0006.
-- Tarefas: T-0001–T-0031 usadas; próxima livre: T-0032.
+- Tarefas: T-0001–T-0033 usadas; próxima livre: T-0034.
 
 ## Depende do Alexandre
-- Secrets do GitHub e `.env` de produção (banco `macuxierp`, chave do A1, S3, SMTP); DNS e rota `erp.` no túnel.
+- Secrets do GitHub e `.env` de produção (banco `macuxierp`, `MACUXIERP_CHAVE_A1` de 32 bytes, sem a qual a API não sobe desde a T-0029, S3, SMTP); DNS e rota `erp.` no túnel.
 - A1 de homologação da thathyany pela tela do BKO (ADR 0005); credenciamento da thathyany na SEFAZ-AM.
 - T-0025 (governança): abrir uma sessão com `MACUXI_AGENTE=alexandre` (só o Alexandre define), porque a sessão aberta rodou como gerente-projetos e o guardião bloqueou `scripts/coord*.mjs`; depois, autorizar o merge do PR dela. É ela que destrava a gravação de recados na nuvem.
 - Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
 
 ## Próximos lotes (ordem do doc 05)
-1. Em andamento (21/11, 18h15): T-0029 e T-0031.
-2. Depois: T-0030, T-0024 (engenheiro-software) e T-0008 (testes da F1).
+1. Em andamento (21/11, 18h55): T-0029 (PR #19) e T-0033.
+2. Depois do #19: tarefas de ligação do core, do cadastros (cursor, CSV, LGPD), do banco-dados (tenants ativos, avisos) e do engenheiro-apps (listas no shell); T-0030, T-0024 e T-0008.
 3. T-0026. Depois da F3 e da T-0024: T-0027.
 
 ## Regra provisória de recados (até a T-0025)
