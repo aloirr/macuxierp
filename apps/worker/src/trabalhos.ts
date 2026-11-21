@@ -5,13 +5,13 @@
 import type { Banco, ExecutorTrabalho, Relogio } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
 import { nomeDoErro, proximaTentativa, textoDoErro } from './backoff';
-import type { FilaTrabalho } from './portas';
+import type { ReservaTrabalhos } from './portas';
 
-export const MAX_TENTATIVAS_PADRAO = 5;
+const MAX_TENTATIVAS_PADRAO = 5;
 
 export interface DependenciasTrabalhos {
   banco: Banco;
-  fila: FilaTrabalho;
+  fila: ReservaTrabalhos;
   executores: readonly ExecutorTrabalho[];
   relogio: Relogio;
   log: Logger;

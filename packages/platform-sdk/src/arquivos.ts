@@ -5,16 +5,15 @@
  * idempotente, conteúdo diferente é conflito.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import type { Transacao } from './banco';
+import { PADRAO_UUID, type Transacao } from './banco';
 import { erros } from './erros';
 
 export const PREFIXO_ARQUIVOS = 'macuxierp';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PARTE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** Chave do objeto: `macuxierp/<tenant>/<partes...>`. Recusa tenant fora de UUID e parte com `..`, `/` ou vazia. */
 export function chaveArquivo(tenantId: string, ...partes: string[]): string {
-  if (!UUID.test(tenantId)) throw new RangeError('chaveArquivo: tenant não é UUID');
+  if (!PADRAO_UUID.test(tenantId)) throw new RangeError('chaveArquivo: tenant não é UUID');
   if (partes.length === 0) throw new RangeError('chaveArquivo: informe ao menos uma parte');
   for (const p of partes) {
     if (!PARTE.test(p) || p.includes('..')) throw new RangeError(`chaveArquivo: parte inválida "${p}"`);

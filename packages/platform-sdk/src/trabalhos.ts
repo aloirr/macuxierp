@@ -4,8 +4,9 @@
  * O executor é idempotente: o mesmo trabalho pode rodar de novo se o worker cair entre executar e registrar.
  */
 import type { Transacao } from './banco';
+import { MODULOS } from './modulo';
 
-export const PADRAO_TIPO_TRABALHO = /^(core|cadastros|pedido|faturamento|fiscal|integracao-fdv)\.[a-z_]+$/;
+export const PADRAO_TIPO_TRABALHO = new RegExp(`^(${MODULOS.join('|')})\\.[a-z_]+$`);
 
 export interface PedidoTrabalho {
   /** `<modulo>.<tarefa>` (ex.: `cadastros.consultar_ie`). */

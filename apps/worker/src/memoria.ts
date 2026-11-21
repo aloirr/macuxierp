@@ -1,6 +1,6 @@
 /** Filas em memória com o mesmo contrato das portas (testes de unidade até o adaptador PostgreSQL, T-0003). */
 import type { PedidoTrabalho, Trabalho, Transacao } from '@macuxierp/platform-sdk';
-import type { EventoPendente, FilaOutbox, FilaTrabalho, RegistroConsumo } from './portas';
+import type { EventoPendente, FilaOutbox, ReservaTrabalhos, RegistroConsumo } from './portas';
 
 interface LinhaEvento extends EventoPendente {
   publicado_em: Date | null;
@@ -65,7 +65,7 @@ interface LinhaTrabalho extends Trabalho {
   erro: string | null;
 }
 
-export class FilaTrabalhoMemoria implements FilaTrabalho {
+export class ReservaTrabalhosMemoria implements ReservaTrabalhos {
   readonly linhas: LinhaTrabalho[] = [];
 
   adicionar(id: string, p: PedidoTrabalho, quando: Date): void {

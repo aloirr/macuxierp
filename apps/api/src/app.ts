@@ -17,8 +17,8 @@ import {
   moduloDaAcao,
   modulosLicenciados,
   PERMISSOES,
-  PADRAO_TIPO_TRABALHO,
   pode,
+  trabalhoDoModulo,
   type Acao,
   type Banco,
   type ContextoRota,
@@ -105,12 +105,12 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     if (req.sessao) req.log = reply.log = req.log.child({ tenant_id: req.sessao.tenant_id, usuario_id: req.sessao.usuario_id });
   });
 
-  app.setErrorHandler((erro, req, reply) => {
+  app.setErrorHandler((recebido, req, reply) => {
+    const erro = recebido instanceof ZodError ? erros.validacao(camposZod(recebido)) : recebido;
     if (erro instanceof ErroApi) {
       return reply.status(erro.status).send({ codigo: erro.codigo, mensagem: erro.message, ...(erro.campos ? { campos: erro.campos } : {}) });
     }
-    if (erro instanceof ZodError) return reply.status(400).send({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: camposZod(erro) });
-    const status = (erro as { statusCode?: number }).statusCode;
+        const status = (erro as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {
       return reply.status(status).send({ codigo: status === 413 ? 'CORPO_GRANDE' : 'VALIDACAO', mensagem: 'Requisição inválida' });
     }
@@ -202,7 +202,7 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
           await auditar(d.auditoria, tx, { tenant_id: sessao.tenant_id, usuario_id: sessao.usuario_id, request_id: req.id }, dados, agora);
         },
         enfileirar: async (pedido) => {
-          if (!pedido.tipo.startsWith(`${modulo}.`) || !PADRAO_TIPO_TRABALHO.test(pedido.tipo)) {
+          if (!trabalhoDoModulo(modulo, pedido.tipo)) {
             throw new Error(`${modulo} enfileirando trabalho fora do próprio módulo: ${pedido.tipo}`);
           }
           return d.trabalhos.enfileirar(tx, { ...pedido, tenant_id: sessao.tenant_id });

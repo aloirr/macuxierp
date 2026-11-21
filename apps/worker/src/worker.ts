@@ -7,12 +7,12 @@ import { setTimeout as esperar } from 'node:timers/promises';
 import { despacharOutbox, type DependenciasDespachante } from './despachante';
 import { processarTrabalhos, type DependenciasTrabalhos } from './trabalhos';
 import { nomeDoErro } from './backoff';
-import type { FilaOutbox, FilaTrabalho } from './portas';
+import type { FilaOutbox, ReservaTrabalhos } from './portas';
 
 export type DependenciasWorker = Omit<DependenciasDespachante, 'fila' | 'lote'> &
   Omit<DependenciasTrabalhos, 'fila' | 'lote'> & {
     outbox: FilaOutbox;
-    trabalhos: FilaTrabalho;
+    trabalhos: ReservaTrabalhos;
     intervaloMs?: number;
   };
 

@@ -23,4 +23,5 @@ export interface Relogio {
   agora(): Date;
 }
 
-export const relogioDoSistema: Relogio = { agora: () => new Date() };
+/** UUID (RN-CORE-04): ids, `tenant_id` e o prefixo do refresh. */
+export const PADRAO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

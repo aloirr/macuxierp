@@ -6,7 +6,7 @@
  * Mensagem de falha única ("empresa, e-mail ou senha inválidos"), sem dizer qual campo errou.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { erros, type Banco, type Relogio, type Sessao } from '@macuxierp/platform-sdk';
+import { erros, PADRAO_UUID, type Banco, type Relogio, type Sessao, type Transacao } from '@macuxierp/platform-sdk';
 import { emitirTokenAcesso } from './jwt';
 import type { RepositorioAuth, SessaoRefresh, UsuarioAuth } from './portas';
 import { ARGON2_PADRAO, conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
@@ -33,18 +33,16 @@ export interface ResultadoLogin {
   expira_em: Date;
   refresh: string;
   refresh_expira_em: Date;
-  sessao: Sessao;
 }
 
 const FALHA_LOGIN = 'Empresa, e-mail ou senha inválidos';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const hashRefresh = (refresh: string) => createHash('sha256').update(refresh).digest('hex');
 
 /** O refresh carrega o tenant (`<tenant_id>.<aleatório>`) para a busca rodar dentro da RLS dele. */
 function tenantDoRefresh(refresh: string): string | null {
   const [tenant, aleatorio] = refresh.split('.');
-  return tenant && aleatorio && UUID.test(tenant) && aleatorio.length >= 40 ? tenant : null;
+  return tenant && aleatorio && PADRAO_UUID.test(tenant) && aleatorio.length >= 40 ? tenant : null;
 }
 
 export class ServicoAuth {
@@ -117,7 +115,7 @@ export class ServicoAuth {
     });
   }
 
-  private async abrirSessao(tx: Parameters<RepositorioAuth['criarSessao']>[0], u: UsuarioAuth, familia: string, agora: Date): Promise<ResultadoLogin> {
+  private async abrirSessao(tx: Transacao, u: UsuarioAuth, familia: string, agora: Date): Promise<ResultadoLogin> {
     const sessao: Sessao = { usuario_id: u.id, tenant_id: u.tenant_id, perfil: u.perfil, filial_ids: u.filial_ids };
     const refresh = `${u.tenant_id}.${randomBytes(32).toString('base64url')}`;
     const linha: SessaoRefresh = {
@@ -131,10 +129,10 @@ export class ServicoAuth {
     };
     await this.repo.criarSessao(tx, linha);
     const acesso = emitirTokenAcesso(sessao, this.cfg.jwtSegredo, agora, this.cfg.acessoSegundos);
-    return { token_acesso: acesso.token, expira_em: acesso.expira_em, refresh, refresh_expira_em: linha.expira_em, sessao };
+    return { token_acesso: acesso.token, expira_em: acesso.expira_em, refresh, refresh_expira_em: linha.expira_em };
   }
 
-  private async registrarFalha(tx: Parameters<RepositorioAuth['registrarFalha']>[0], u: UsuarioAuth, agora: Date): Promise<void> {
+  private async registrarFalha(tx: Transacao, u: UsuarioAuth, agora: Date): Promise<void> {
     const travaVencida = u.bloqueado_ate !== null && u.bloqueado_ate.getTime() <= agora.getTime();
     const falhas = (travaVencida ? 0 : u.falhas_login) + 1;
     const trava = falhas >= this.cfg.maxFalhas ? new Date(agora.getTime() + this.cfg.travaMinutos * 60_000) : null;

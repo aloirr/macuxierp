@@ -8,7 +8,7 @@ import type { Sessao } from './acesso';
 import type { DadosAuditoria } from './auditoria';
 import type { Transacao } from './banco';
 import type { EnvelopeEvento } from './eventos';
-import type { PedidoTrabalho } from './trabalhos';
+import { PADRAO_TIPO_TRABALHO, type PedidoTrabalho } from './trabalhos';
 import { PADRAO_EVENTO, type ManifestoModulo } from './modulo';
 import { moduloDaAcao, type Acao } from './permissoes';
 
@@ -81,4 +81,9 @@ export function definirPlugin(manifesto: ManifestoModulo, rotas: readonly RotaMo
 /** Evento publicado pela rota é do próprio módulo (o worker não confere de novo). */
 export function eventoDoModulo(modulo: string, nome: string): boolean {
   return PADRAO_EVENTO.test(nome) && nome.startsWith(`${modulo}.`);
+}
+
+/** Trabalho enfileirado pela rota é do próprio módulo (`<modulo>.<tarefa>`). */
+export function trabalhoDoModulo(modulo: string, tipo: string): boolean {
+  return PADRAO_TIPO_TRABALHO.test(tipo) && tipo.startsWith(`${modulo}.`);
 }

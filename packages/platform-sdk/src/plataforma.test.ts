@@ -4,8 +4,8 @@ import { auditar, OMITIDO } from './auditoria';
 import { ErroApi, erros } from './erros';
 import { criarEvento } from './eventos';
 import { defineModule } from './modulo';
-import { definirPlugin, definirRota, eventoDoModulo, PluginInvalido } from './rotas';
-import { AuditoriaMemoria, BancoMemoria } from './testes';
+import { definirPlugin, definirRota, eventoDoModulo, PluginInvalido, trabalhoDoModulo } from './rotas';
+import { AuditoriaMemoria } from './testes';
 
 const INSTANTE = new Date('2026-11-21T15:00:00Z');
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -26,6 +26,14 @@ describe('eventos (envelope do contrato)', () => {
     expect(() => criarEvento({ ...dados, versao: 0 }, INSTANTE)).toThrow();
     expect(eventoDoModulo('cadastros', 'cadastros.cliente.alterado@1')).toBe(true);
     expect(eventoDoModulo('pedido', 'cadastros.cliente.alterado@1')).toBe(false);
+  });
+
+  it('trabalho enfileirado é do próprio módulo e segue <modulo>.<tarefa>', () => {
+    expect(trabalhoDoModulo('cadastros', 'cadastros.consultar_ie')).toBe(true);
+    expect(trabalhoDoModulo('integracao-fdv', 'integracao-fdv.enviar_pedido')).toBe(true);
+    expect(trabalhoDoModulo('pedido', 'cadastros.consultar_ie')).toBe(false);
+    expect(trabalhoDoModulo('cadastros', 'cadastros.Consultar-IE')).toBe(false);
+    expect(trabalhoDoModulo('compras', 'compras.cotar')).toBe(false);
   });
 });
 
@@ -88,13 +96,5 @@ describe('erros e plugins de módulo', () => {
     expect(() => definirPlugin(manifesto, [{ ...rota, acao: 'core.empresa.ver' }])).toThrow(PluginInvalido);
     expect(() => definirPlugin(manifesto, [{ ...rota, caminho: 'clientes' }])).toThrow(/sem "\/"/);
     expect(() => definirPlugin(manifesto, [rota, rota])).toThrow(/repetida/);
-  });
-
-  it('BancoMemoria registra a ordem de aberturas e o ping', async () => {
-    const b = new BancoMemoria();
-    await b.semTenant(async () => null);
-    b.disponivel = false;
-    expect(b.aberturas).toEqual([null]);
-    expect(await b.ping()).toBe(false);
   });
 });

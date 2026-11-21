@@ -1,7 +1,8 @@
 // Testes do script do operador da licença (D12). Rodar: node --test scripts/plataforma/licenca.test.mjs
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { ErroUso, executar, fimDoDiaManaus, lerArgumentos, planejar } from './licenca.mjs';
+import { ErroUso, executar, fimDoDiaManaus, lerArgumentos, MODULOS, MODULOS_BASE, planejar } from './licenca.mjs';
 
 const TENANT = { id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', nome: 'Thathyany' };
 const INSTANTE = new Date('2026-11-21T15:00:00Z');
@@ -88,5 +89,20 @@ describe('licenca.mjs: plano e execução', () => {
     const r = await executar(c, lerArgumentos(['listar', '--empresa', 'thathyany']), INSTANTE);
     assert.deepEqual(r.licencas, [{ modulo: 'cadastros', ativo: true, valido_ate: null }]);
     assert.equal(c.sqls.at(-1).sql, 'rollback');
+  });
+});
+
+describe('licenca.mjs: listas do platform-sdk (RD-1)', () => {
+  /** Lê a lista literal `export const <nome> ... = [...]` do fonte TS do SDK. */
+  const listaDoSdk = (arquivo, nome) => {
+    const fonte = readFileSync(new URL(`../../packages/platform-sdk/src/${arquivo}`, import.meta.url), 'utf8');
+    const m = new RegExp(`export const ${nome}\\b[^=]*=\\s*\\[([^\\]]*)\\]`).exec(fonte);
+    assert.ok(m, `${nome} não encontrado em ${arquivo}`);
+    return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  };
+
+  it('MODULOS e MODULOS_BASE são iguais aos do SDK', () => {
+    assert.deepEqual(MODULOS, listaDoSdk('modulo.ts', 'MODULOS'));
+    assert.deepEqual(MODULOS_BASE, listaDoSdk('acesso.ts', 'MODULOS_BASE'));
   });
 });

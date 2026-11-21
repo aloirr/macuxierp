@@ -17,7 +17,10 @@
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
+// Cópia de `MODULOS` (packages/platform-sdk/src/modulo.ts) e `MODULOS_BASE` (acesso.ts): o Node do servidor não
+// importa o TS do SDK. O licenca.test.mjs falha se as listas divergirem.
 export const MODULOS = ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv'];
+export const MODULOS_BASE = ['core'];
 const COMANDOS = ['listar', 'ativar', 'desativar'];
 
 export class ErroUso extends Error {
@@ -44,7 +47,7 @@ export function lerArgumentos(argv) {
   if (!op.empresa || !/^[a-z0-9][a-z0-9-]{1,59}$/.test(op.empresa)) throw new ErroUso('--empresa exige o slug da empresa');
   if (comando === 'listar') return op;
   if (!MODULOS.includes(op.modulo)) throw new ErroUso(`--modulo deve ser ${MODULOS.join(', ')}`);
-  if (op.modulo === 'core') throw new ErroUso('o core é a base do tenant e é sempre licenciado');
+  if (MODULOS_BASE.includes(op.modulo)) throw new ErroUso(`o ${op.modulo} é a base do tenant e é sempre licenciado`);
   if (!op.operador || !/^[a-z][a-z0-9._-]{1,39}$/.test(op.operador)) throw new ErroUso('--operador exige o nome de quem executa (ex.: alexandre)');
   if (!op.motivo || op.motivo.trim().length < 5) throw new ErroUso('--motivo exige o motivo (mínimo 5 caracteres), que vai para a auditoria');
   if (op.ate !== undefined) {

@@ -30,7 +30,7 @@ export interface RegistroConsumo {
   registrar(tx: Transacao, consumidor: string, eventoId: string, agora: Date): Promise<void>;
 }
 
-export interface FilaTrabalho {
+export interface ReservaTrabalhos {
   /** Até `limite` trabalhos `pendente` dos `tipos`, com `proximo_em <= agora`, travados (`FOR UPDATE SKIP LOCKED`). */
   reservar(tx: Transacao, tipos: readonly string[], limite: number, agora: Date): Promise<Trabalho[]>;
   concluir(tx: Transacao, id: string, resultado: Record<string, unknown> | null, agora: Date): Promise<void>;

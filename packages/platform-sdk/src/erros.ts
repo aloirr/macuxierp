@@ -24,7 +24,6 @@ export const erros = {
   perfilSemPermissao: () => new ErroApi(403, 'PERFIL_SEM_PERMISSAO', 'Seu perfil não permite esta ação'),
   moduloInativo: (modulo: string) => new ErroApi(403, 'MODULO_INATIVO', `O módulo ${modulo} não está licenciado para a empresa`),
   validacao: (campos: CamposErro) => new ErroApi(400, 'VALIDACAO', 'Dados inválidos', campos),
-  naoEncontrado: () => new ErroApi(404, 'NAO_ENCONTRADO', 'Registro não encontrado'),
   conflito: (mensagem: string) => new ErroApi(409, 'CONFLITO', mensagem),
   muitasTentativas: (mensagem: string) => new ErroApi(429, 'MUITAS_TENTATIVAS', mensagem),
   /** Regra de negócio violada: 422 com o código da RN (ex.: `RN-CAD-01`). */

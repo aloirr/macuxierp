@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PERFIS, type Perfil } from './modulo';
+import { MODULOS, PERFIS, type Perfil } from './modulo';
 import { moduloDaAcao, pode, PERMISSOES, type Acao } from './permissoes';
 
 const quem = (acao: Acao) => PERFIS.filter((p) => pode(p, acao));
@@ -40,7 +40,7 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
 
   it('toda ação começa com um módulo conhecido e só lista perfis da RN-CORE-01', () => {
     for (const [acao, perfis] of Object.entries(PERMISSOES)) {
-      expect(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']).toContain(moduloDaAcao(acao as Acao));
+      expect(MODULOS).toContain(moduloDaAcao(acao as Acao));
       for (const p of perfis) expect(PERFIS).toContain(p as Perfil);
     }
   });

@@ -37,7 +37,7 @@ export const PERMISSOES = {
   'cadastros.condicao_pagamento.editar': ADM_GERENTE,
   'cadastros.vendedor.editar': ADM_GERENTE,
   'cadastros.carteira.transferir': ADM_GERENTE,
-  'cadastros.consulta.externa': ['administrador', 'gerente', 'faturista'],
+  'cadastros.consulta.externa': CADASTRO,
   // pedido, fiscal, faturamento e integração (F2 a F4; a matriz do doc 03 já fixa)
   'pedido.ver': VER,
   'pedido.pedido.aprovar': ADM_GERENTE,

@@ -4,7 +4,7 @@ import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { proximaTentativa } from './backoff';
 import { despacharOutbox } from './despachante';
-import { FilaOutboxMemoria, FilaTrabalhoMemoria, RegistroConsumoMemoria } from './memoria';
+import { FilaOutboxMemoria, ReservaTrabalhosMemoria, RegistroConsumoMemoria } from './memoria';
 import { processarTrabalhos } from './trabalhos';
 import { ciclo, iniciarWorker } from './worker';
 
@@ -112,7 +112,7 @@ describe('despachante da outbox', () => {
 describe('fila de trabalho', () => {
   function filaCom(executor: ExecutorTrabalho) {
     const banco = new BancoMemoria();
-    const fila = new FilaTrabalhoMemoria();
+    const fila = new ReservaTrabalhosMemoria();
     const relogio = new RelogioFixo(INICIO);
     fila.adicionar('t1', { tipo: executor.tipo, tenant_id: T2, payload: { uf: 'AM' } }, INICIO);
     fila.adicionar('t2', { tipo: 'outro.tipo', tenant_id: T2, payload: {} }, INICIO);
@@ -138,7 +138,7 @@ describe('fila de trabalho', () => {
 
   it('sem executor registrado não abre transação', async () => {
     const banco = new BancoMemoria();
-    expect(await processarTrabalhos({ banco, fila: new FilaTrabalhoMemoria(), relogio: new RelogioFixo(INICIO), executores: [], log })).toEqual({ concluidos: 0, falhas: 0, desistidos: 0 });
+    expect(await processarTrabalhos({ banco, fila: new ReservaTrabalhosMemoria(), relogio: new RelogioFixo(INICIO), executores: [], log })).toEqual({ concluidos: 0, falhas: 0, desistidos: 0 });
     expect(banco.aberturas).toEqual([]);
   });
 });
@@ -147,7 +147,7 @@ describe('laço do worker', () => {
   it('um ciclo despacha a outbox e os trabalhos; parar() encerra o laço', async () => {
     const banco = new BancoMemoria();
     const outbox = new FilaOutboxMemoria();
-    const trabalhos = new FilaTrabalhoMemoria();
+    const trabalhos = new ReservaTrabalhosMemoria();
     const relogio = new RelogioFixo(INICIO);
     outbox.adicionar(evento(AG_A, 1));
     trabalhos.adicionar('t1', { tipo: 'core.exportar', tenant_id: T1, payload: {} }, INICIO);
@@ -169,7 +169,7 @@ describe('laço do worker', () => {
       chamadas++;
       throw new Error('conexão recusada');
     };
-    const d = { banco, outbox: new FilaOutboxMemoria(), trabalhos: new FilaTrabalhoMemoria(), consumo: new RegistroConsumoMemoria(), consumidores: [], executores: [], relogio: new RelogioFixo(INICIO), log, intervaloMs: 1 };
+    const d = { banco, outbox: new FilaOutboxMemoria(), trabalhos: new ReservaTrabalhosMemoria(), consumo: new RegistroConsumoMemoria(), consumidores: [], executores: [], relogio: new RelogioFixo(INICIO), log, intervaloMs: 1 };
     const w = iniciarWorker(d);
     for (let i = 0; i < 200 && chamadas < 2; i++) await new Promise((r) => setTimeout(r, 1));
     await w.parar();
