@@ -80,7 +80,7 @@ export interface LinhaExportacao {
 
 export interface RepositorioCore {
   empresa(tx: Transacao): Promise<LinhaEmpresa | null>;
-  /** Com `token`, a condição `updated_at = token` vai no próprio UPDATE; 0 linhas afetadas = `null` (a rota responde 409). */
+  /** token: 0 linhas = null */
   atualizarEmpresa(tx: Transacao, dados: Omit<LinhaEmpresa, 'id' | 'cnpj' | 'updated_at'>, agora: Date, token?: Date): Promise<LinhaEmpresa | null>;
 
   listarUsuarios(tx: Transacao, f: { limite: number; cursor?: string; busca?: string; inativos: boolean }): Promise<LinhaUsuario[]>;
@@ -88,10 +88,10 @@ export interface RepositorioCore {
   usuarioPorEmail(tx: Transacao, email: string): Promise<LinhaUsuario | null>;
   usuarioPorExternalId(tx: Transacao, externalId: string): Promise<LinhaUsuario | null>;
   criarUsuario(tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario>;
-  /** Idem `atualizarEmpresa`: com `token`, 0 linhas afetadas devolve `null` (409). */
+  /** token: 0 linhas = null */
   atualizarUsuario(tx: Transacao, id: string, patch: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
-  /** RN-CORE-01: trava (FOR UPDATE, na transação) os administradores ativos do tenant; chamar antes de contar. */
+  /** RN-CORE-01: chamar antes de contar. */
   travarAdministradoresAtivos(tx: Transacao): Promise<void>;
   contarAdministradoresAtivos(tx: Transacao, exceto: string): Promise<number>;
 

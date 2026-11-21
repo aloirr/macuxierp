@@ -99,10 +99,6 @@ function certificadoDto(c: LinhaCertificado, agora: Date): CertificadoResumo {
 
 const ambienteDto = (a: LinhaAmbiente) => ({ filial_id: a.filial_id, ambiente: a.ambiente, recado_aprovacao: a.recado_aprovacao });
 
-/**
- * Concorrência otimista atômica: o token é o `updated_at` lido (ETag do GET) e vai na condição do próprio UPDATE
- * (`WHERE ... AND updated_at = token`); sem token, a escrita segue. UPDATE sem linha afetada = 409.
- */
 const converterToken = (token: string | undefined): Date | undefined => (token === undefined ? undefined : new Date(token));
 function ou409<T>(linha: T | null): T {
   if (linha === null) throw erros.conflito('O registro mudou desde a leitura: recarregue e tente de novo');
@@ -138,7 +134,6 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
 
   /** RN-CORE-01 revalidada na API antes de inativar, rebaixar ou excluir. */
   async function conferirUltimoAdministrador(c: ContextoRota, atual: LinhaUsuario, alteracao: { perfil?: LinhaUsuario['perfil']; ativo?: boolean }): Promise<void> {
-    // Trava os administradores ativos antes de contar: duas alterações simultâneas em administradores diferentes se serializam.
     await repo.travarAdministradoresAtivos(c.tx);
     const outros = await repo.contarAdministradoresAtivos(c.tx, atual.id);
     const r = avaliarAlteracaoUsuario({ atual, alteracao, outrosAdministradoresAtivos: outros });

@@ -24,7 +24,8 @@ const COLUNAS_EMPRESA = 'id, razao_social, nome_fantasia, cnpj::text AS cnpj, ie
 
 /**
  * Concorrência otimista atômica: o token é o `updated_at` lido, com precisão de ms (o ISO do JS); o `updated_at` do banco
- * tem µs, então a comparação trunca para ms. Condição no próprio UPDATE: 0 linhas = alguém gravou no meio.
+ * tem µs, então a comparação trunca para ms. O token vai na condição do próprio UPDATE (sem token, a escrita segue);
+ * 0 linhas = alguém gravou no meio, e a rota responde 409.
  */
 const igualToken = (n: number) => `date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $${n}::timestamptz)`;
 
@@ -99,7 +100,8 @@ export class RepositorioCoreSql implements RepositorioCore {
   }
 
   async travarAdministradoresAtivos(tx: Transacao): Promise<void> {
-    // Ordem por id: duas transações travam na mesma ordem (sem deadlock) e a segunda espera a primeira confirmar.
+    // RN-CORE-01: trava os administradores ativos antes de contar. Ordem por id: duas transações travam na mesma ordem
+    // (sem deadlock) e a segunda espera a primeira confirmar, então duas inativações simultâneas se serializam.
     await tx.consultar(`SELECT id FROM plataforma.usuario WHERE perfil = 'administrador' AND ativo ORDER BY id FOR UPDATE`);
   }
 
