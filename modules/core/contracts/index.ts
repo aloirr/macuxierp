@@ -11,7 +11,7 @@ export const MODULO = 'core' as const;
 /** Identificador do tenant (UUID). Repetido por módulo de propósito: o tipo vem sempre de contracts. */
 export const TenantId = z.string().uuid();
 
-const Id = z.string().uuid();
+export const Id = z.string().uuid();
 const Instante = z.string().datetime();
 
 /** RN-CORE-01: perfis da v1, um por usuário por empresa. */
@@ -155,12 +155,10 @@ export type AmbienteTrocar = z.infer<typeof AmbienteTrocar>;
 export const ListaAmbientes = z.object({ itens: z.array(AmbienteFiscal) });
 
 // Auditoria (RF-CORE-05)
-export const AuditoriaConsulta = z.object({
+export const AuditoriaConsulta = ListaConsulta.pick({ limite: true, cursor: true }).extend({
   entidade: z.string().max(60).optional(),
   de: Instante.optional(),
   ate: Instante.optional(),
-  limite: z.coerce.number().int().min(1).max(200).default(50),
-  cursor: Id.optional(),
 });
 export type AuditoriaConsulta = z.infer<typeof AuditoriaConsulta>;
 
@@ -214,3 +212,15 @@ export const EventoCertificadoAlterado = z.object({
   ativo: z.boolean(),
 });
 export const EventoAmbienteAlterado = AmbienteFiscal;
+
+// Porta "filial tem A1 válido" (RN-CORE-06): o cadastros (consulta de IE) e o fiscal consultam sem ler a tabela do core.
+export const A1ValidoDaFilial = z.discriminatedUnion('valido', [
+  z.object({ valido: z.literal(true), valido_ate: Instante, dias_para_vencer: z.number().int() }),
+  z.object({ valido: z.literal(false), motivo: z.enum(['sem_certificado', 'vencido', 'ainda_nao_vale']), mensagem: z.string() }),
+]);
+export type A1ValidoDaFilial = z.infer<typeof A1ValidoDaFilial>;
+
+/** Porta pública implementada pela API do core. Nunca devolve certificado, senha nem CNPJ: só o veredito. */
+export interface PortaA1 {
+  a1ValidoDaFilial(filial_id: string): Promise<A1ValidoDaFilial>;
+}

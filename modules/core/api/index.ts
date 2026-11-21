@@ -4,3 +4,4 @@ export { PfxInvalido } from './portas';
 export type { DependenciasCore, DadosPfx, LeitorPfx, RepositorioCore } from './portas';
 export { RepositorioCoreSql } from './repositorio-sql';
 export { criarPluginCore } from './rotas';
+export { criarPortaA1 } from './porta-a1';

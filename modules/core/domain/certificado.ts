@@ -3,7 +3,7 @@
  * titular) fica na API; aqui só se decide o que fazer com esses dados.
  */
 import { cnpjRaiz } from '@macuxierp/platform-sdk';
-import { DIAS_ALERTA_A1 } from '../contracts';
+import { DIAS_ALERTA_A1, type A1ValidoDaFilial } from '../contracts';
 
 const MS_DIA = 86_400_000;
 
@@ -50,4 +50,16 @@ export function diasParaVencer(validoAte: Date, agora: Date): number {
 /** RF-CORE-04: aviso a 30 dias ou menos de vencer, inclusive vencido. */
 export function alertaVencimento(validoAte: Date, agora: Date): boolean {
   return diasParaVencer(validoAte, agora) <= DIAS_ALERTA_A1;
+}
+
+/** RN-CORE-06: veredito "a filial tem A1 válido" a partir do certificado ativo (ou `null`). Não expõe dado do certificado. */
+export function avaliarA1Valido(cert: { validoDe: Date; validoAte: Date } | null, agora: Date, fuso: string): A1ValidoDaFilial {
+  if (!cert) return { valido: false, motivo: 'sem_certificado', mensagem: 'A filial não tem certificado A1 ativo: envie o certificado' };
+  if (cert.validoAte.getTime() <= agora.getTime()) {
+    return { valido: false, motivo: 'vencido', mensagem: `Certificado vencido em ${dataNoFuso(cert.validoAte, fuso)}: envie o novo` };
+  }
+  if (cert.validoDe.getTime() > agora.getTime()) {
+    return { valido: false, motivo: 'ainda_nao_vale', mensagem: `Certificado só vale a partir de ${dataNoFuso(cert.validoDe, fuso)}` };
+  }
+  return { valido: true, valido_ate: cert.validoAte.toISOString(), dias_para_vencer: diasParaVencer(cert.validoAte, agora) };
 }

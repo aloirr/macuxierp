@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { avaliarTrocaAmbiente } from './ambiente';
-import { alertaVencimento, avaliarCertificado, diasParaVencer } from './certificado';
+import { alertaVencimento, avaliarA1Valido, avaliarCertificado, diasParaVencer } from './certificado';
 import { avaliarAlteracaoUsuario, gerarSenhaProvisoria } from './usuarios';
 
 const AGORA = new Date('2026-11-21T15:00:00Z');
@@ -103,5 +103,24 @@ describe('RN-CORE-01: usuário, perfil e último administrador', () => {
 
   it('RF-CORE-02: senha provisória recusa bytes insuficientes', () => {
     expect(() => gerarSenhaProvisoria(bytes(3, 1))).toThrow();
+  });
+});
+
+describe('RN-CORE-06: filial tem A1 válido (porta para o cadastros)', () => {
+  const agora = new Date('2026-11-21T15:00:00Z');
+  const fuso = 'America/Manaus';
+  it('RN-CORE-06: sem certificado ativo, não é válido', () => {
+    expect(avaliarA1Valido(null, agora, fuso)).toMatchObject({ valido: false, motivo: 'sem_certificado' });
+  });
+  it('RN-CORE-06: vencido bloqueia, com a mensagem "Certificado vencido em DD/MM/AAAA: envie o novo"', () => {
+    const r = avaliarA1Valido({ validoDe: new Date('2025-01-01T00:00:00Z'), validoAte: new Date('2026-11-20T12:00:00Z') }, agora, fuso);
+    expect(r).toEqual({ valido: false, motivo: 'vencido', mensagem: 'Certificado vencido em 20/11/2026: envie o novo' });
+  });
+  it('RN-CORE-06: ainda não vale não é válido', () => {
+    expect(avaliarA1Valido({ validoDe: new Date('2026-12-01T00:00:00Z'), validoAte: new Date('2027-12-01T00:00:00Z') }, agora, fuso)).toMatchObject({ valido: false, motivo: 'ainda_nao_vale' });
+  });
+  it('RN-CORE-06: na validade é válido, com validade e dias para vencer', () => {
+    const r = avaliarA1Valido({ validoDe: new Date('2026-01-01T00:00:00Z'), validoAte: new Date('2026-12-01T15:00:00Z') }, agora, fuso);
+    expect(r).toEqual({ valido: true, valido_ate: '2026-12-01T15:00:00.000Z', dias_para_vencer: 10 });
   });
 });

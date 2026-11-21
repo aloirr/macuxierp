@@ -14,7 +14,6 @@ import {
   type ContextoRota,
   type PluginModulo,
 } from '@macuxierp/platform-sdk';
-import { z } from 'zod';
 import { manifest } from '../manifest';
 import {
   AmbienteConsulta,
@@ -27,6 +26,7 @@ import {
   EVENTO_CERTIFICADO,
   EVENTO_EMPRESA,
   EVENTO_USUARIO,
+  Id,
   ListaConsulta,
   ParametroChave,
   ParametroGravar,
@@ -53,7 +53,12 @@ import {
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const naoEncontrado = (o: string) => new ErroApi(404, 'NAO_ENCONTRADO', `${o} não encontrado`);
-const ParamId = z.string().uuid();
+/** Valida o parâmetro de rota com o `Id` dos contracts; 400 VALIDACAO se não for UUID. */
+function idDoParam(params: Record<string, string>, nome: string): string {
+  const r = Id.safeParse(params[nome]);
+  if (!r.success) throw erros.validacao({ [nome]: 'UUID inválido' });
+  return r.data;
+}
 const AMBIENTE_PADRAO = 'homologacao' as const;
 
 function empresaDto(e: LinhaEmpresa): Empresa {
@@ -121,8 +126,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
   }
 
   async function usuarioOuErro(c: ContextoRota, id: string): Promise<LinhaUsuario> {
-    if (!ParamId.safeParse(id).success) throw erros.validacao({ id: 'UUID inválido' });
-    const u = await repo.usuarioPorId(c.tx, id);
+    const u = await repo.usuarioPorId(c.tx, idDoParam({ id }, 'id'));
     if (!u) throw naoEncontrado('Usuário');
     return u;
   }
@@ -206,7 +210,8 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         );
         await c.auditar({ acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: criado.id, depois: usuarioSemPii(criado) });
         await publicar(c, EVENTO_USUARIO, criado.id, usuarioSemPii(criado));
-        return { status: 201, corpo: { ...usuarioDto(criado), senha_provisoria: senha } };
+        // A resposta carrega a senha provisória (exibida uma única vez): nunca pode ir a cache de proxy ou navegador.
+        return { status: 201, corpo: { ...usuarioDto(criado), senha_provisoria: senha }, cabecalhos: { 'Cache-Control': 'no-store' } };
       },
     }),
     definirRota({
@@ -337,8 +342,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.ambiente.trocar',
       corpo: AmbienteTrocar,
       async executar(c, { corpo, params }) {
-        const filialId = ParamId.safeParse(params.filial_id);
-        if (!filialId.success) throw erros.validacao({ filial_id: 'UUID inválido' });
+        const filialId = { data: idDoParam(params, 'filial_id') };
         const [atualLinha] = await repo.ambientes(c.tx, filialId.data);
         const atual = atualLinha?.ambiente ?? null;
         const r = avaliarTrocaAmbiente({ atual, novo: corpo.ambiente, recado: corpo.recado_aprovacao });
@@ -393,9 +397,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/exportacoes/:id',
       acao: 'core.exportacao.pedir',
       async executar(c, { params }) {
-        const id = ParamId.safeParse(params.id);
-        if (!id.success) throw erros.validacao({ id: 'UUID inválido' });
-        const e = await repo.exportacao(c.tx, id.data);
+        const e = await repo.exportacao(c.tx, idDoParam(params, 'id'));
         if (!e) throw naoEncontrado('Exportação');
         let url: string | null = null;
         if (e.estado === 'pronta' && e.arquivo_id) {

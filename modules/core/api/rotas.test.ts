@@ -154,6 +154,7 @@ describe('RF-CORE-02: usuários', () => {
     const r = await t.chamar('POST', '/usuarios', { corpo: novo });
     const c = r.corpo as { senha_provisoria: string; email: string; id: string };
     expect(r.status).toBe(201);
+    expect(r.cabecalhos).toMatchObject({ 'Cache-Control': 'no-store' }); // devolve senha_provisoria
     expect(c.email).toBe('maria@piloto.test');
     expect(c.senha_provisoria).toHaveLength(16);
     const guardado = t.repo.usuarios.find((u) => u.id === c.id);
@@ -426,5 +427,14 @@ describe('RF-CORE-05 e RF-CORE-06: auditoria, exportação e parâmetros', () =>
     expect(t.auditoria.registros[1]).toMatchObject({ antes: 'America/Manaus', depois: 'America/Sao_Paulo' });
     expect((await t.chamar('GET', '/parametros')).corpo).toEqual({ itens: [{ chave: 'fuso.padrao', valor: 'America/Sao_Paulo' }] });
     await expect(t.chamar('PUT', '/parametros/:chave', { params: { chave: 'Chave Ruim' }, corpo: { valor: 1 } })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('RD-0005: parâmetros de rota', () => {
+  it('RD-0005: id que não é UUID responde 400 em usuário, ambiente e exportação', async () => {
+    const t = montar();
+    await expect(t.chamar('GET', '/usuarios/:id', { params: { id: 'x' } })).rejects.toMatchObject({ status: 400 });
+    await expect(t.chamar('PUT', '/ambientes-fiscais/:filial_id', { params: { filial_id: 'x' }, corpo: { ambiente: 'homologacao' } })).rejects.toMatchObject({ status: 400 });
+    await expect(t.chamar('GET', '/exportacoes/:id', { params: { id: 'x' } })).rejects.toMatchObject({ status: 400 });
   });
 });
