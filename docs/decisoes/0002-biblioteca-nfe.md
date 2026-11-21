@@ -49,7 +49,7 @@ Também vistas: `@brasil-fiscal/nfe` (MIT, IBS/CBS no README, ~36 estrelas), `nf
 **Recomendação:** A. Motivos: licença limpa (MIT/Apache), controle do ritmo das NTs, nenhuma dependência nativa, e o sped-nfe como referência madura e oráculo de teste. Risco: custo de acompanhar as NTs (15+ versões da 2025.002 em um ano), mitigado pela porta `EmissorNFe` e pelo teste de XSD no CI.
 
 ## Decisão
-**Opção A** (recado R-20261120-231934-gerente-projetos): módulo próprio em TypeScript atrás da porta `EmissorNFe`, com a lógica portada do sped-nfe sob a licença MIT (com a atribuição); XML validado contra o XSD oficial; assinatura e mTLS com o A1 em Node puro. O sinete (Apache-2.0) entra no spike T-0018 só como atalho de implementação inicial atrás da porta. NFeWizard e Treeunfe (GPL-3.0) e o serviço PHP ficam fora.
+**Opção A** da tabela acima (recado R-20261120-231934-gerente-projetos), com a atribuição exigida pela licença MIT do sped-nfe. B, C e D ficam fora, assim como o Treeunfe (GPL-3.0).
 
 ## Consequências
 - T-0018 (spike): sinete × porte do sped-nfe em homologação AM, com o A1 de teste; confere endereços, SVC-RS e a NT vigente no portal oficial; registra o resultado aqui.

@@ -12,7 +12,7 @@
 | `pedido` | `pedido.pedido.recebido@1`, `pedido.pedido.aprovado@1`, `pedido.pedido.recusado@1`, `pedido.pedido.cancelado@1` | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1` |
 
 ## Envelope (platform-sdk)
-`{ id, nome, tenant_id, agregado_id, versao, ocorrido_em (UTC), ator, request_id, payload }`. Gravado na outbox (`plataforma.evento`) na mesma transação da escrita. O consumidor é idempotente por `(consumidor, evento_id)` e descarta `versao` menor que a última já aplicada ao agregado.
+`{ id: uuid, nome: "<m>.<ent>.<fato>@vN", tenant_id, agregado_id, versao, ocorrido_em (UTC), ator: usuario_id | "sistema", request_id, payload }`. Gravado na outbox (`plataforma.evento`) na mesma transação da escrita. O consumidor é idempotente por `(consumidor, evento_id)` em `plataforma.evento_consumido` e descarta `versao` menor que a última já aplicada ao agregado.
 
 ## Payloads de core e cadastros (v1)
 Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: boolean` (RN-CAD-08). Os campos seguem os esboços Zod de `docs/desenho/T-0002.md`.
@@ -30,7 +30,7 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 | `cadastros.estoque.alterado@1` | `filial_id` + `produto_id` (UUID v5) | `filial_id`, `produto_id`, `quantidade` (escala 4) |
 | `cadastros.condicao_pagamento.alterada@1` | condição | `CondicaoPagamento` + `inativo` |
 | `cadastros.vendedor.alterado@1` | vendedor | `Vendedor` + `inativo` |
-| `cadastros.carteira.alterada@1` | vendedor de destino | `de`, `para`, `cliente_ids[]`. Resumo da transferência, para auditoria. O Hub recebe a carteira pelo `cliente.alterado@1` de cada cliente |
+| `cadastros.carteira.alterada@1` | vendedor de destino | `de`, `para`, `cliente_ids[]`. Resumo da transferência, para auditoria (D7) |
 
 ## Dependências
 core ← cadastros ← (pedido, fiscal) ← faturamento; integracao-fdv ← (cadastros, pedido) e consome eventos de faturamento. Quando importar o contrato do publicador criaria ciclo de pacotes (ex.: `cadastros` lendo `faturamento.nota.autorizada@1` para baixar estoque, na F4), o consumidor valida o evento com um leitor tolerante próprio (subconjunto do payload). O publicador continua dono do schema.
