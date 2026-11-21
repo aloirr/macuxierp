@@ -1,5 +1,5 @@
 import { EuSchema, type Eu } from './eu';
-import { CREDENCIAL_FALSA, EU_FALSO, TOKEN_FALSO } from './falso';
+import { CREDENCIAL_FALSA, EU_FALSO, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
 
@@ -41,7 +41,7 @@ function lerSessao(r: Response, corpo: { token_acesso?: unknown }): Sessao {
 export async function entrar(empresa: string, email: string, senha: string): Promise<Sessao | null> {
   if (usaApiFalsa) {
     const c = CREDENCIAL_FALSA;
-    return empresa === c.empresa && email === c.email && senha === c.senha ? { acesso: TOKEN_FALSO, refresh: 'mx=falso' } : null;
+    return empresa === c.empresa && email === c.email && senha === c.senha ? { acesso: TOKEN_FALSO, refresh: REFRESH_FALSO } : null;
   }
   const r = await chamar('/v1/auth/login', {
     method: 'POST',
@@ -55,7 +55,7 @@ export async function entrar(empresa: string, email: string, senha: string): Pro
 
 /** POST /v1/auth/refresh. Null quando o refresh venceu ou foi revogado. */
 export async function renovar(refresh: string): Promise<Sessao | null> {
-  if (usaApiFalsa) return refresh === 'mx=falso' ? { acesso: TOKEN_FALSO, refresh } : null;
+  if (usaApiFalsa) return refresh === REFRESH_FALSO ? { acesso: TOKEN_FALSO, refresh } : null;
   const r = await chamar('/v1/auth/refresh', { method: 'POST', headers: { cookie: refresh } });
   if (r.status === 401 || r.status === 403) return null;
   if (!r.ok) throw new ApiIndisponivel(`refresh: HTTP ${r.status}`);

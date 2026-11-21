@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { MANIFESTOS } from '@/lib/manifestos';
+import { NOMES_MODULOS } from '@/lib/nomes-modulos';
 import { contexto } from '@/lib/sessao';
 
 export const metadata: Metadata = { title: 'Licenças' };
@@ -20,7 +21,7 @@ export default async function Licencas() {
             const ativo = ativos.has(m.id);
             return (
               <tr key={m.id}>
-                <th scope="row">{m.id}</th>
+                <th scope="row">{NOMES_MODULOS[m.id]}</th>
                 <td>{m.descricao}</td>
                 <td><span className={`selo ${ativo ? 'selo-ativo' : 'selo-inativo'}`}>{ativo ? 'Licenciado' : 'Não contratado'}</span></td>
               </tr>

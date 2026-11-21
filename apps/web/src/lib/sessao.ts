@@ -22,6 +22,8 @@ export function destinoSeguro(destino: string | null | undefined): string {
 export interface Contexto {
   eu: Eu;
   filialId: string | null;
+  /** Filial escolhida (ou única), já resolvida contra /eu. */
+  filial: Eu['filiais'][number] | null;
 }
 
 /** Lê a sessão do usuário; sem sessão válida, manda para o login. A filial vem do cookie, validada contra /eu. */
@@ -33,7 +35,8 @@ export async function contexto(): Promise<Contexto> {
     const eu = await buscarEu(acesso);
     const f = jar.get(COOKIE_FILIAL)?.value;
     const filialId = eu.filiais.find((x) => x.id === f)?.id ?? (eu.filiais.length === 1 ? (eu.filiais[0]?.id ?? null) : null);
-    return { eu, filialId };
+    const filial = eu.filiais.find((x) => x.id === filialId) ?? null;
+    return { eu, filialId: filial?.id ?? null, filial };
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     throw e;

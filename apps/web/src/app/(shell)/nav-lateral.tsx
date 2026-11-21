@@ -2,15 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { GrupoMenu } from '@/lib/menu';
-
-const NOMES: Record<string, string> = {
-  core: 'Plataforma',
-  cadastros: 'Cadastros',
-  pedido: 'Pedidos',
-  faturamento: 'Faturamento',
-  fiscal: 'Fiscal',
-  'integracao-fdv': 'Integração FDV',
-};
+import { NOMES_MODULOS } from '@/lib/nomes-modulos';
 
 export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
   const atual = usePathname();
@@ -22,12 +14,18 @@ export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
   return (
     <nav className="lateral" aria-label="Menu principal">
       <ul>{item('/', 'Início')}</ul>
-      {menu.map((g) => (
-        <section key={g.modulo} aria-label={NOMES[g.modulo] ?? g.modulo}>
-          <h2>{NOMES[g.modulo] ?? g.modulo}</h2>
-          <ul>{g.itens.map((i) => item(i.href, i.rotulo))}</ul>
-        </section>
-      ))}
+      {menu.map((g) => {
+        const nome = NOMES_MODULOS[g.modulo];
+        const unico = g.itens.length === 1 && g.itens[0]?.rotulo === nome;
+        if (unico) return <ul key={g.modulo}>{g.itens.map((i) => item(i.href, i.rotulo))}</ul>;
+        const idTitulo = `menu-${g.modulo}`;
+        return (
+          <section key={g.modulo} aria-labelledby={idTitulo}>
+            <h2 id={idTitulo}>{nome}</h2>
+            <ul>{g.itens.map((i) => item(i.href, i.rotulo))}</ul>
+          </section>
+        );
+      })}
       <h2>Conta</h2>
       <ul>{item('/licencas', 'Licenças')}</ul>
     </nav>

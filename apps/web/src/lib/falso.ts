@@ -6,6 +6,8 @@ import type { Eu } from './eu';
  */
 export const CREDENCIAL_FALSA = { empresa: 'demo', email: 'demo@exemplo.invalid', senha: 'demo' } as const;
 export const TOKEN_FALSO = 'token-falso';
+/** Cookie de refresh da API falsa. */
+export const REFRESH_FALSO = 'mx=falso';
 
 export const EU_FALSO: Eu = {
   usuario: { id: '00000000-0000-4000-8000-000000000001', nome: 'Usuária de demonstração' },

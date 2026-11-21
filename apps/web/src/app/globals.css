@@ -26,7 +26,6 @@ a { color: var(--mx-azulNoite); }
 .topo { grid-column: 1 / -1; background: var(--mx-azulNoite); color: var(--mx-branco); display: flex; gap: 16px; align-items: center; padding: 10px 20px; flex-wrap: wrap; }
 .topo .espaco { flex: 1; }
 .topo a { color: var(--mx-solClaro); }
-.topo .btn-sec { color: var(--mx-branco); }
 .lateral { background: var(--mx-grafiteMenu); color: var(--mx-branco); padding: 16px 0; }
 .lateral h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--mx-azulClaro); margin: 16px 20px 4px; }
 .lateral ul { list-style: none; margin: 0; padding: 0; }

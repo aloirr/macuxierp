@@ -8,8 +8,7 @@ import { NavLateral } from './nav-lateral';
 import { sairAction } from './sair';
 
 export default async function Casca({ children }: { children: ReactNode }) {
-  const { eu, filialId } = await contexto();
-  const filial = eu.filiais.find((f) => f.id === filialId);
+  const { eu, filial } = await contexto();
   if (!filial) redirect('/filial');
   const menu = montarMenu(MANIFESTOS, eu.modulos.map((m) => m.id), eu.perfil);
 

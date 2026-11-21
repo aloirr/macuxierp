@@ -1,4 +1,4 @@
-import { NOME_PRODUTO } from '@/lib/marca';
+import { CabecalhoCartao } from '../cabecalho-cartao';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -19,8 +19,7 @@ export default async function SelecionarFilial() {
   const { eu, filialId } = await contexto();
   return (
     <main className="cartao-central">
-      <header><span className="marca">{NOME_PRODUTO}</span></header>
-      <h1>Selecionar filial</h1>
+      <CabecalhoCartao titulo="Selecionar filial" />
       <p className="apoio">Empresa: {eu.empresa.razao_social}</p>
       <form action={escolher}>
         <ul className="lista-escolha">

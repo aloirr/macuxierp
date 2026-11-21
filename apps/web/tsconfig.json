@@ -9,7 +9,6 @@
         "name": "next"
       }
     ],
-    "allowJs": false,
     "incremental": true,
     "paths": {
       "@/*": [
