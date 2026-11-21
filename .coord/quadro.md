@@ -11,7 +11,7 @@
 | [T-0003](tarefas/T-0003.md) | Banco: papéis, schemas, RLS e tabelas oficiais (NCM, CEST, CFOP, CST, IBGE, cClassTrib) | F1 | banco-dados | concluida | PR #10 → 820cd28 |
 | [T-0004](tarefas/T-0004.md) | API (Fastify), autenticação, licenças e worker base | F1 | engenheiro-software | concluida | PR #7 → 6e9ba49; PR #13 → 8a1d221 |
 | [T-0005](tarefas/T-0005.md) | Shell do BKO (Next.js) com menu pelos manifestos | F1 | engenheiro-apps | concluida | PR #8 → 880b5f8 |
-| [T-0006](tarefas/T-0006.md) | Core: empresa, usuários, perfis e certificado A1 (ADR 0005) | F1 | modulo-core | em_andamento | nuvem/T-0006-core |
+| [T-0006](tarefas/T-0006.md) | Core: empresa, usuários, perfis e certificado A1 (ADR 0005) | F1 | modulo-core | concluida | PR #14 → abcf95f |
 | [T-0007](tarefas/T-0007.md) | Cadastros: clientes, produtos, preços, estoque, filiais, equipe e carteira, consultas CNPJ/CEP/IE | F1 | modulo-cadastros | concluida | PR #15 → 52c7b7e |
 | [T-0008](tarefas/T-0008.md) | Testes da F1: RN, RLS e prints do BKO de cadastro | F1 | testes | aberta | — |
 | [T-0009](tarefas/T-0009.md) | Desenho do mapeamento ERP → Hub do FDV | F2 | engenheiro-software | aberta | — |
@@ -36,17 +36,18 @@
 | [T-0028](tarefas/T-0028.md) | Tokens da marca em packages/ui (cores, situação, escala tipográfica) | F1 | designer-ux | concluida | PR #12 → 4c4d46f |
 | [T-0029](tarefas/T-0029.md) | Integração de plataforma da F1 (módulos na API, multipart, worker, helpers comuns) | F1 | engenheiro-software | em_andamento | nuvem/T-0029-integracao-f1 |
 | [T-0030](tarefas/T-0030.md) | Troca da filial para produção fiscal só com a aprovação do Alexandre conferida (regra 7) | F1 | engenheiro-software | aberta | — |
+| [T-0031](tarefas/T-0031.md) | Core: resíduos da revisão do PR #14 (RD-0008, RD-0009, lint e teste de banco da concorrência) | F1 | modulo-core | em_andamento | nuvem/T-0031-core-residuos |
 
 ## Travado pela nuvem
 | Sessão | Caminhos |
 |---|---|
-| nuvem/T-0006-core (session_0157qAhmWwkaVNSg41AjkyW1) | `modules/core/` |
+| nuvem/T-0031-core-residuos (session_0157qAhmWwkaVNSg41AjkyW1) | `modules/core/` |
 | nuvem/T-0029-integracao-f1 (session_0157qAhkgLGRkSx2rwXEmSkd) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
 | nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
 
 ## Reservas
 - ADR: 0001–0005 usadas; próxima livre: 0006.
-- Tarefas: T-0001–T-0030 usadas; próxima livre: T-0031.
+- Tarefas: T-0001–T-0031 usadas; próxima livre: T-0032.
 
 ## Depende do Alexandre
 - Secrets do GitHub e `.env` de produção (banco `macuxierp`, chave do A1, S3, SMTP); DNS e rota `erp.` no túnel.
@@ -55,8 +56,8 @@
 - Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
 
 ## Próximos lotes (ordem do doc 05)
-1. Em andamento (21/11, 18h10): T-0006 (correção do PR #14) e T-0029.
-2. Depois: T-0030, T-0024 (engenheiro-software) e T-0008 (testes da F1, quando o #14 entrar).
+1. Em andamento (21/11, 18h15): T-0029 e T-0031.
+2. Depois: T-0030, T-0024 (engenheiro-software) e T-0008 (testes da F1).
 3. T-0026. Depois da F3 e da T-0024: T-0027.
 
 ## Regra provisória de recados (até a T-0025)
