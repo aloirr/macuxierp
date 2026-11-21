@@ -27,8 +27,9 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   async empresa(): Promise<LinhaEmpresa | null> {
     return this.empresaLinha;
   }
-  async atualizarEmpresa(_tx: Transacao, dados: Omit<LinhaEmpresa, 'id' | 'cnpj' | 'updated_at'>, agora: Date): Promise<LinhaEmpresa> {
+  async atualizarEmpresa(_tx: Transacao, dados: Omit<LinhaEmpresa, 'id' | 'cnpj' | 'updated_at'>, agora: Date, token?: Date): Promise<LinhaEmpresa | null> {
     if (!this.empresaLinha) throw new Error('sem empresa');
+    if (token && token.getTime() !== this.empresaLinha.updated_at.getTime()) return null;
     this.empresaLinha = { ...this.empresaLinha, ...dados, updated_at: agora };
     return this.empresaLinha;
   }
@@ -56,9 +57,10 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     this.usuarios.push(linha);
     return linha;
   }
-  async atualizarUsuario(_tx: Transacao, id: string, patch: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, agora: Date): Promise<LinhaUsuario> {
+  async atualizarUsuario(_tx: Transacao, id: string, patch: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, agora: Date, token?: Date): Promise<LinhaUsuario | null> {
     const u = this.usuarios.find((x) => x.id === id);
     if (!u) throw new Error('sem usuário');
+    if (token && token.getTime() !== u.updated_at.getTime()) return null;
     Object.assign(u, patch, { updated_at: agora });
     return u;
   }
@@ -66,7 +68,13 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     const u = this.usuarios.find((x) => x.id === id);
     if (u) Object.assign(u, { senha_hash: senhaHash, updated_at: agora });
   }
+  /** Registra a ordem das chamadas para o teste de RN-CORE-01 (trava antes da contagem). */
+  chamadasAdministradores: string[] = [];
+  async travarAdministradoresAtivos(): Promise<void> {
+    this.chamadasAdministradores.push('travar');
+  }
   async contarAdministradoresAtivos(_tx: Transacao, exceto: string): Promise<number> {
+    this.chamadasAdministradores.push('contar');
     return this.usuarios.filter((u) => u.id !== exceto && u.perfil === 'administrador' && u.ativo).length;
   }
 

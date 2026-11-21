@@ -99,9 +99,14 @@ function certificadoDto(c: LinhaCertificado, agora: Date): CertificadoResumo {
 
 const ambienteDto = (a: LinhaAmbiente) => ({ filial_id: a.filial_id, ambiente: a.ambiente, recado_aprovacao: a.recado_aprovacao });
 
-/** Concorrência otimista: o token é o `updated_at` lido (ETag do GET); sem token, a escrita segue. */
-function conferirToken(atual: Date, token: string | undefined): void {
-  if (token !== undefined && token !== atual.toISOString()) throw erros.conflito('O registro mudou desde a leitura: recarregue e tente de novo');
+/**
+ * Concorrência otimista atômica: o token é o `updated_at` lido (ETag do GET) e vai na condição do próprio UPDATE
+ * (`WHERE ... AND updated_at = token`); sem token, a escrita segue. UPDATE sem linha afetada = 409.
+ */
+const converterToken = (token: string | undefined): Date | undefined => (token === undefined ? undefined : new Date(token));
+function ou409<T>(linha: T | null): T {
+  if (linha === null) throw erros.conflito('O registro mudou desde a leitura: recarregue e tente de novo');
+  return linha;
 }
 
 async function publicar(c: ContextoRota, nome: string, agregado_id: string, payload: Record<string, unknown>): Promise<void> {
@@ -125,22 +130,24 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
     return e;
   }
 
-  async function usuarioOuErro(c: ContextoRota, id: string): Promise<LinhaUsuario> {
-    const u = await repo.usuarioPorId(c.tx, idDoParam({ id }, 'id'));
+  async function usuarioOuErro(c: ContextoRota, params: Record<string, string>): Promise<LinhaUsuario> {
+    const u = await repo.usuarioPorId(c.tx, idDoParam(params, 'id'));
     if (!u) throw naoEncontrado('Usuário');
     return u;
   }
 
   /** RN-CORE-01 revalidada na API antes de inativar, rebaixar ou excluir. */
   async function conferirUltimoAdministrador(c: ContextoRota, atual: LinhaUsuario, alteracao: { perfil?: LinhaUsuario['perfil']; ativo?: boolean }): Promise<void> {
+    // Trava os administradores ativos antes de contar: duas alterações simultâneas em administradores diferentes se serializam.
+    await repo.travarAdministradoresAtivos(c.tx);
     const outros = await repo.contarAdministradoresAtivos(c.tx, atual.id);
     const r = avaliarAlteracaoUsuario({ atual, alteracao, outrosAdministradoresAtivos: outros });
     if (!r.ok) throw erros.regra('RN-CORE-01', r.mensagem);
   }
 
-  async function mudarUsuario(c: ContextoRota, atual: LinhaUsuario, patch: { nome?: string; perfil?: LinhaUsuario['perfil']; filial_ids?: string[]; ativo?: boolean }, acao: string): Promise<LinhaUsuario> {
+  async function mudarUsuario(c: ContextoRota, atual: LinhaUsuario, patch: { nome?: string; perfil?: LinhaUsuario['perfil']; filial_ids?: string[]; ativo?: boolean }, acao: string, token?: Date): Promise<LinhaUsuario> {
     await conferirUltimoAdministrador(c, atual, patch);
-    const novo = await repo.atualizarUsuario(c.tx, atual.id, patch, c.agora);
+    const novo = ou409(await repo.atualizarUsuario(c.tx, atual.id, patch, c.agora, token));
     await c.auditar({ acao, entidade: 'usuario', entidade_id: novo.id, antes: usuarioSemPii(atual), depois: usuarioSemPii(novo) });
     await publicar(c, EVENTO_USUARIO, novo.id, usuarioSemPii(novo));
     return novo;
@@ -164,13 +171,12 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       corpo: EmpresaEditar,
       async executar(c, { corpo }) {
         const atual = await empresaOuErro(c);
-        conferirToken(atual.updated_at, corpo.updated_at);
         try {
           new Intl.DateTimeFormat('pt-BR', { timeZone: corpo.fuso });
         } catch {
           throw erros.validacao({ fuso: 'Fuso horário inválido' });
         }
-        const nova = await repo.atualizarEmpresa(c.tx, { razao_social: corpo.razao_social, nome_fantasia: corpo.nome_fantasia, ie: corpo.ie, fuso: corpo.fuso }, c.agora);
+        const nova = ou409(await repo.atualizarEmpresa(c.tx, { razao_social: corpo.razao_social, nome_fantasia: corpo.nome_fantasia, ie: corpo.ie, fuso: corpo.fuso }, c.agora, converterToken(corpo.updated_at)));
         await c.auditar({ acao: 'core.empresa.alterada', entidade: 'empresa', entidade_id: nova.id, antes: empresaDto(atual), depois: empresaDto(nova) });
         await publicar(c, EVENTO_EMPRESA, c.sessao.tenant_id, empresaDto(nova));
         return { corpo: empresaDto(nova), cabecalhos: { ETag: nova.updated_at.toISOString() } };
@@ -219,7 +225,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/usuarios/:id',
       acao: 'core.usuario.gerir',
       async executar(c, { params }) {
-        const u = await usuarioOuErro(c, params.id ?? '');
+        const u = await usuarioOuErro(c, params);
         return { corpo: usuarioDto(u), cabecalhos: { ETag: u.updated_at.toISOString() } };
       },
     }),
@@ -229,10 +235,9 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       corpo: UsuarioEditar,
       async executar(c, { corpo, params }) {
-        const atual = await usuarioOuErro(c, params.id ?? '');
-        conferirToken(atual.updated_at, corpo.updated_at);
-        const { updated_at: _token, ...patch } = corpo;
-        const novo = await mudarUsuario(c, atual, patch, 'core.usuario.alterado');
+        const atual = await usuarioOuErro(c, params);
+        const { updated_at: token, ...patch } = corpo;
+        const novo = await mudarUsuario(c, atual, patch, 'core.usuario.alterado', converterToken(token));
         return { corpo: usuarioDto(novo), cabecalhos: { ETag: novo.updated_at.toISOString() } };
       },
     }),
@@ -241,7 +246,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/usuarios/:id',
       acao: 'core.usuario.gerir',
       async executar(c, { params }) {
-        const atual = await usuarioOuErro(c, params.id ?? '');
+        const atual = await usuarioOuErro(c, params);
         if (atual.ativo) await mudarUsuario(c, atual, { ativo: false }, 'core.usuario.inativado');
         return { status: 204 };
       },
@@ -251,7 +256,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/usuarios/:id/redefinir-senha',
       acao: 'core.usuario.gerir',
       async executar(c, { params }) {
-        const u = await usuarioOuErro(c, params.id ?? '');
+        const u = await usuarioOuErro(c, params);
         const senha = gerarSenhaProvisoria(aleatorios(256));
         await repo.definirSenha(c.tx, u.id, await deps.hashSenha(senha), c.agora);
         await c.auditar({ acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: u.id });
@@ -342,12 +347,12 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.ambiente.trocar',
       corpo: AmbienteTrocar,
       async executar(c, { corpo, params }) {
-        const filialId = { data: idDoParam(params, 'filial_id') };
-        const [atualLinha] = await repo.ambientes(c.tx, filialId.data);
+        const filialId = idDoParam(params, 'filial_id');
+        const [atualLinha] = await repo.ambientes(c.tx, filialId);
         const atual = atualLinha?.ambiente ?? null;
         const r = avaliarTrocaAmbiente({ atual, novo: corpo.ambiente, recado: corpo.recado_aprovacao });
         if (!r.ok) throw erros.regra('RN-CORE-08', r.mensagem);
-        const nova: LinhaAmbiente = { filial_id: filialId.data, ambiente: r.ambiente, recado_aprovacao: r.recado };
+        const nova: LinhaAmbiente = { filial_id: filialId, ambiente: r.ambiente, recado_aprovacao: r.recado };
         await repo.gravarAmbiente(c.tx, { ...nova, alterado_por: c.sessao.usuario_id }, c.agora);
         await c.auditar({
           acao: 'core.ambiente.trocado',

@@ -42,6 +42,30 @@ describe('repositório SQL do core', () => {
     for (const i of inserts) expect(i.sql).toContain('plataforma.tenant_atual()');
   });
 
+  it('RF-CORE-01/02: com token, a condição updated_at vai no próprio UPDATE e sem linha afetada devolve null (409)', async () => {
+    const chamadas: { sql: string; params: readonly unknown[] }[] = [];
+    const tx: Transacao = {
+      consultar: async <L,>(sql: string, params: readonly unknown[] = []) => {
+        chamadas.push({ sql, params });
+        return [] as L[];
+      },
+    };
+    const token = new Date('2026-11-21T15:00:00.123Z');
+    const r = new RepositorioCoreSql();
+    await expect(r.atualizarUsuario(tx, 'u', { nome: 'N' }, new Date(), token)).resolves.toBeNull();
+    await expect(r.atualizarEmpresa(tx, { razao_social: 'R', nome_fantasia: null, ie: null, fuso: 'America/Manaus' }, new Date(), token)).resolves.toBeNull();
+    for (const c of chamadas) {
+      expect(c.sql).toMatch(/UPDATE[\s\S]*WHERE[\s\S]*date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$\d::timestamptz\)/);
+      expect(c.params.at(-1)).toBe(token);
+    }
+  });
+
+  it('RN-CORE-01: trava os administradores ativos com SELECT ... FOR UPDATE ordenado por id', async () => {
+    const { tx, chamadas } = gravador();
+    await new RepositorioCoreSql().travarAdministradoresAtivos(tx);
+    expect(chamadas[0]?.sql).toMatch(/perfil = 'administrador' AND ativo ORDER BY id FOR UPDATE/);
+  });
+
   it('RN-CORE-01: contar administradores exclui o próprio usuário e só conta os ativos', async () => {
     const { tx, chamadas } = gravador();
     await expect(new RepositorioCoreSql().contarAdministradoresAtivos(tx, 'u')).resolves.toBe(0);

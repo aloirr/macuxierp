@@ -196,6 +196,28 @@ describe('RF-CORE-02: usuários', () => {
     await regra(t.chamar('DELETE', '/usuarios/:id', { params: { id: c.id } }), 'RN-CORE-01');
   });
 
+  it('RN-CORE-01: a alteração trava os administradores ativos antes de contar (serializa PATCH e DELETE simultâneos)', async () => {
+    const t = montar();
+    const c = (await t.chamar('POST', '/usuarios', { corpo: { ...novo, perfil: 'administrador' } })).corpo as { id: string };
+    t.repo.chamadasAdministradores.length = 0;
+    await t.chamar('PATCH', '/usuarios/:id', { params: { id: c.id }, corpo: { ativo: false } });
+    expect(t.repo.chamadasAdministradores).toEqual(['travar', 'contar']);
+    t.repo.chamadasAdministradores.length = 0;
+    await regra(t.chamar('DELETE', '/usuarios/:id', { params: { id: ADM_ID } }), 'RN-CORE-01');
+    expect(t.repo.chamadasAdministradores).toEqual(['travar', 'contar']);
+  });
+
+  it('RF-CORE-02: PATCH de usuário com token vencido é 409 atômico (o UPDATE não afeta linha) e sem token segue', async () => {
+    const t = montar();
+    const c = (await t.chamar('POST', '/usuarios', { corpo: novo })).corpo as { id: string };
+    const lido = ((await t.chamar('GET', '/usuarios/:id', { params: { id: c.id } })).cabecalhos as { ETag: string }).ETag;
+    await t.chamar('PATCH', '/usuarios/:id', { params: { id: c.id }, agora: new Date('2026-11-21T16:00:00Z'), corpo: { nome: 'Novo Nome', updated_at: lido } });
+    const aud = t.auditoria.registros.length;
+    await expect(t.chamar('PATCH', '/usuarios/:id', { params: { id: c.id }, corpo: { nome: 'Outro', updated_at: lido } })).rejects.toMatchObject({ status: 409 });
+    expect(t.auditoria.registros).toHaveLength(aud);
+    expect((await t.chamar('PATCH', '/usuarios/:id', { params: { id: c.id }, corpo: { nome: 'Sem Token' } })).corpo).toMatchObject({ nome: 'Sem Token' });
+  });
+
   it('RF-CORE-02: DELETE inativa, publica ativo=false e a lista esconde inativos por padrão; PATCH exige algo para alterar', async () => {
     const t = montar();
     const c = (await t.chamar('POST', '/usuarios', { corpo: novo })).corpo as { id: string };

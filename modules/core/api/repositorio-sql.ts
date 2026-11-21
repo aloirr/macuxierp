@@ -22,6 +22,12 @@ const COLUNAS_USUARIO = 'id, nome, email::text AS email, perfil, filial_ids, ati
 const COLUNAS_CERTIFICADO = 'id, filial_id, titular, cnpj::text AS cnpj, valido_de, valido_ate, impressao_digital::text AS impressao_digital, ativo';
 const COLUNAS_EMPRESA = 'id, razao_social, nome_fantasia, cnpj::text AS cnpj, ie, fuso, updated_at';
 
+/**
+ * Concorrência otimista atômica: o token é o `updated_at` lido, com precisão de ms (o ISO do JS); o `updated_at` do banco
+ * tem µs, então a comparação trunca para ms. Condição no próprio UPDATE: 0 linhas = alguém gravou no meio.
+ */
+const igualToken = (n: number) => `date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $${n}::timestamptz)`;
+
 /** Escapa `%`, `_` e `\` para o ILIKE da busca. */
 const likeSeguro = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
 
@@ -31,13 +37,12 @@ export class RepositorioCoreSql implements RepositorioCore {
     return e ?? null;
   }
 
-  async atualizarEmpresa(tx: Transacao, d: Omit<LinhaEmpresa, 'id' | 'cnpj' | 'updated_at'>): Promise<LinhaEmpresa> {
+  async atualizarEmpresa(tx: Transacao, d: Omit<LinhaEmpresa, 'id' | 'cnpj' | 'updated_at'>, _agora?: Date, token?: Date): Promise<LinhaEmpresa | null> {
     const [e] = await tx.consultar<LinhaEmpresa>(
-      `UPDATE core.empresa SET razao_social = $1, nome_fantasia = $2, ie = $3, fuso = $4 WHERE deleted_at IS NULL RETURNING ${COLUNAS_EMPRESA}`,
-      [d.razao_social, d.nome_fantasia, d.ie, d.fuso],
+      `UPDATE core.empresa SET razao_social = $1, nome_fantasia = $2, ie = $3, fuso = $4 WHERE deleted_at IS NULL AND ($5::timestamptz IS NULL OR ${igualToken(5)}) RETURNING ${COLUNAS_EMPRESA}`,
+      [d.razao_social, d.nome_fantasia, d.ie, d.fuso, token ?? null],
     );
-    if (!e) throw new Error('core.empresa: sem linha para atualizar');
-    return e;
+    return e ?? null;
   }
 
   async listarUsuarios(tx: Transacao, f: { limite: number; cursor?: string; busca?: string; inativos: boolean }): Promise<LinhaUsuario[]> {
@@ -76,22 +81,26 @@ export class RepositorioCoreSql implements RepositorioCore {
     return linha;
   }
 
-  async atualizarUsuario(tx: Transacao, id: string, p: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>): Promise<LinhaUsuario> {
+  async atualizarUsuario(tx: Transacao, id: string, p: Partial<Pick<LinhaUsuario, 'nome' | 'perfil' | 'filial_ids' | 'ativo'>>, _agora?: Date, token?: Date): Promise<LinhaUsuario | null> {
     const [linha] = await tx.consultar<LinhaUsuario>(
       `UPDATE plataforma.usuario SET
          nome = COALESCE($2, nome), perfil = COALESCE($3, perfil), filial_ids = COALESCE($4::uuid[], filial_ids),
          ativo = COALESCE($5, ativo),
          deleted_at = CASE WHEN COALESCE($5, ativo) THEN NULL ELSE COALESCE(deleted_at, now()) END
-       WHERE id = $1 RETURNING ${COLUNAS_USUARIO}`,
-      [id, p.nome ?? null, p.perfil ?? null, p.filial_ids ?? null, p.ativo ?? null],
+       WHERE id = $1 AND ($6::timestamptz IS NULL OR ${igualToken(6)}) RETURNING ${COLUNAS_USUARIO}`,
+      [id, p.nome ?? null, p.perfil ?? null, p.filial_ids ?? null, p.ativo ?? null, token ?? null],
     );
-    if (!linha) throw new Error('plataforma.usuario: sem linha para atualizar');
-    return linha;
+    return linha ?? null;
   }
 
   async definirSenha(tx: Transacao, id: string, senhaHash: string): Promise<void> {
     // Nova senha provisória também zera a trava do login.
     await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, falhas_login = 0, bloqueado_ate = NULL WHERE id = $1', [id, senhaHash]);
+  }
+
+  async travarAdministradoresAtivos(tx: Transacao): Promise<void> {
+    // Ordem por id: duas transações travam na mesma ordem (sem deadlock) e a segunda espera a primeira confirmar.
+    await tx.consultar(`SELECT id FROM plataforma.usuario WHERE perfil = 'administrador' AND ativo ORDER BY id FOR UPDATE`);
   }
 
   async contarAdministradoresAtivos(tx: Transacao, exceto: string): Promise<number> {
