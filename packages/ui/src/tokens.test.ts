@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { cores, variaveisCss } from './tokens.js';
+import { aliasCores, cores, escala, fontes, gerarCss, pesos, variaveisCss } from './tokens.js';
 
 const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
 
@@ -9,15 +9,48 @@ describe('tokens da marca', () => {
     for (const v of Object.values(cores)) expect(v).toMatch(/^#[0-9A-F]{6}$/);
   });
   it('valores do manual', () => {
-    expect(cores.grafite).toBe('#16202A');
-    expect(cores.grafiteMenu).toBe('#2B3743');
-    expect(cores.bordaCinza).toBe('#C9CED5');
-    expect(cores.bordaTabela).toBe('#DFE2E6');
-    expect(cores.erroTexto).toBe('#A8261B');
+    expect(cores).toMatchObject({
+      azulSuave: '#E3EAF4',
+      nevoa: '#ECEEF1',
+      bordaTabela: '#DFE2E6',
+      bordaCinza: '#C9CED5',
+      azulSerra: '#24456B',
+      azulClaro: '#9DB8E0',
+      azulNoite: '#1E3350',
+      solLaranja: '#C2540A',
+      grafite: '#16202A',
+      grafiteMenu: '#2B3743',
+      verdeSucesso: '#1D6B4F',
+      azulMedio: '#5B7FA6',
+      graficoOutros: '#8B96A3',
+      ativoFundo: '#E2F1EA',
+      erroTexto: '#A8261B',
+      erroFundo: '#FDE8E6',
+    });
   });
-  it('tokens.css tem todas as variáveis --mx-* do TS, com o mesmo valor', () => {
-    for (const [nome, valor] of Object.entries(variaveisCss())) {
-      expect(css).toContain(`${nome}: ${valor};`);
-    }
+  it('sem cor duplicada: valor repetido só por alias', () => {
+    const valores = Object.values(cores);
+    expect(new Set(valores).size).toBe(valores.length);
+    expect(cores[aliasCores.inativoFundo]).toBe('#ECEEF1');
+    expect(cores[aliasCores.linhaSuave]).toBe('#ECEEF1');
+    expect(cores[aliasCores.ativoTexto]).toBe('#1D6B4F');
+    expect(cores[aliasCores.graficoSerieCinza]).toBe('#4A5562');
+  });
+  it('fontes sem @font-face e números tabulares', () => {
+    expect(fontes.texto).toBe('system-ui, "Segoe UI", Roboto, -apple-system, sans-serif');
+    expect(fontes.codigo).toBe('ui-monospace, "Cascadia Mono", "Roboto Mono", monospace');
+    expect(fontes.numeros).toBe('tabular-nums');
+    expect(css).not.toContain('@font-face');
+  });
+  it('escala 12, 13, 15, 17, 20, 24 e pesos 400, 600, 700', () => {
+    expect(Object.values(escala)).toEqual([12, 13, 15, 17, 20, 24]);
+    expect(Object.values(pesos)).toEqual([400, 600, 700]);
+    const v = variaveisCss();
+    expect(v['--mx-tamanho-h1']).toBe('var(--mx-tamanho-titulo)');
+    expect(v['--mx-tamanho-selo']).toBe('var(--mx-tamanho-micro)');
+  });
+  it('tokens.css é exatamente o gerado do TS (todas as variáveis --mx-*)', () => {
+    expect(css).toBe(gerarCss());
+    for (const [nome, valor] of Object.entries(variaveisCss())) expect(css).toContain(`${nome}: ${valor};`);
   });
 });
