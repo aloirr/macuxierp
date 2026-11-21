@@ -1,10 +1,10 @@
 /**
- * Portas de banco da plataforma. O adaptador PostgreSQL (pg) vive nos apps; o SDK só conhece a interface, para que
- * domain e testes rodem sem banco.
+ * Portas de banco da plataforma. O adaptador PostgreSQL é o `BancoPg` (`@macuxierp/platform-sdk/pg`), usado só pelos
+ * apps; domain e testes de unidade rodam sem banco.
  *
- * `comTenant` abre uma transação e faz `SET LOCAL app.tenant_id` (RLS, desenho T-0002 seção 2): toda leitura e escrita
+ * `comTenant` abre uma transação e põe o `app.tenant_id` só nela (RLS, desenho T-0002 seção 2): toda leitura e escrita
  * de módulo passa por aqui. `semTenant` é só para a plataforma antes de saber o tenant (login, worker) e usa as
- * funções/papéis que o banco-dados expõe para isso (T-0003).
+ * funções e papéis do banco para isso (`plataforma.tenant_por_slug()`, política `worker_global`).
  */
 
 export interface Transacao {
@@ -25,3 +25,6 @@ export interface Relogio {
 
 /** UUID (RN-CORE-04): ids, `tenant_id` e o prefixo do refresh. */
 export const PADRAO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Relógio real (processos da API e do worker). */
+export const relogioDoSistema: Relogio = { agora: () => new Date() };

@@ -1,4 +1,4 @@
-/** `RepositorioAuth` em memória, para os testes de unidade até o adaptador PostgreSQL (depois da T-0003). */
+/** `RepositorioAuth` em memória, para os testes de unidade (no banco: `RepositorioAuthPg`). */
 import { tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
@@ -22,8 +22,8 @@ export class RepositorioAuthMemoria implements RepositorioAuth {
     return u;
   }
 
-  async tenantPorSlug(_tx: Transacao, slug: string) {
-    return this.tenants.find((t) => t.slug === slug) ?? null;
+  async tenantIdPorSlug(_tx: Transacao, slug: string) {
+    return this.tenants.find((t) => t.slug === slug && t.situacao === 'ativo')?.id ?? null;
   }
   async tenantPorId(tx: Transacao, id: string) {
     return tenantDaTx(tx) === id ? (this.tenants.find((t) => t.id === id) ?? null) : null;

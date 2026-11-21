@@ -35,6 +35,15 @@ module.exports = {
       to: { path: '^apps/' },
     },
     {
+      name: 'modulo-abre-conexao',
+      severity: 'error',
+      comment:
+        'Módulo não abre conexão nem pool: usa a Transacao do ContextoRota (RLS do tenant). O adaptador ' +
+        '@macuxierp/platform-sdk/pg é dos apps; teste de banco (*.test.ts) do módulo pode usá-lo.',
+      from: { path: '^modules/', pathNot: '\\.test\\.ts$' },
+      to: { path: '^packages/platform-sdk/src/pg(-testes)?\\.ts$' },
+    },
+    {
       name: 'app-importa-interno-de-modulo',
       severity: 'error',
       comment:
