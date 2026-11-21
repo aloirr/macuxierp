@@ -3,7 +3,7 @@
  * (RN-CORE-02); aqui entram as regras do domain (a API sempre revalida), a auditoria das ações (A) e os eventos da outbox.
  */
 import {
-  ErroApi, cnpjValido, cpfValido, definirRota, erros, normalizarDocumento, pode,
+  ErroApi, cpfValido, definirRota, erros, pode,
   type Acao, type ContextoRota, type RotaModulo, type Sessao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
@@ -16,7 +16,7 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia, precoVigente,
-  validarDocumentoCliente, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio,
+  validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
 import { agregadoEstoque, agregadoPreco } from './uuid';
@@ -54,6 +54,8 @@ interface ConfigCrud<E extends Entidade, D extends Dict> {
   entidade: string;
   /** Ação marcada (A) no desenho: grava em `plataforma.auditoria`. */
   auditado: boolean;
+  /** Campos marcados (A) numa entidade não auditada por inteiro: só a troca deles grava em `plataforma.auditoria` (sem dado pessoal). */
+  camposAuditados?: readonly string[];
   repo(r: Repositorios): RepoSimples<E, D>;
   /** Publica o evento do cadastro na outbox (`antes` = estado anterior; `null` na criação). */
   emitir(c: ContextoRota, r: Repositorios, e: E, antes: E | null): Promise<void>;
@@ -73,6 +75,12 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
   const ocultar = (c: ContextoRota, e: E) => (cfg.ocultar ? cfg.ocultar(c.sessao, e) : e);
   const aud = async (c: ContextoRota, acao: string, id: string, antes: unknown, depois: unknown) => {
     if (cfg.auditado) await c.auditar({ acao: `${cfg.entidade}.${acao}`, entidade: cfg.entidade, entidade_id: id, antes, depois });
+    for (const campo of cfg.camposAuditados ?? []) {
+      const a = antes === null ? null : ((antes as Dict)[campo] ?? null);
+      const d = (depois as Dict)[campo] ?? null;
+      if (!cfg.auditado && JSON.stringify(a ?? 0) !== JSON.stringify(d ?? 0))
+        await c.auditar({ acao: `${cfg.entidade}.${campo}.alterar`, entidade: cfg.entidade, entidade_id: id, antes: { [campo]: a }, depois: { [campo]: d } });
+    }
   };
   const carregar = async (c: ContextoRota, r: Repositorios, id: string): Promise<E> => {
     const e = await cfg.repo(r).obter(id);
@@ -252,7 +260,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   const eventoCliente = async (c: ContextoRota, _r: Repositorios, cli: Cliente) => publicar(c, 'cadastros.cliente.alterado@1', cli.id, { ...cli, inativo: cli.inativo });
   rotas.push(...rotasCrud(deps, {
     caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
-    entidade: 'cliente', auditado: false, repo: (r) => r.clientes, emitir: eventoCliente, inativavel: 'cliente',
+    entidade: 'cliente', auditado: false, camposAuditados: ['limite_credito_centavos'], repo: (r) => r.clientes, emitir: eventoCliente, inativavel: 'cliente',
     campoRestrito(s, corpo, criacao) {
       const mexe = criacao ? (corpo.limite_credito_centavos ?? 0) !== 0 : 'limite_credito_centavos' in corpo;
       if (mexe && !pode(s.perfil, 'cadastros.cliente.credito')) throw erros.perfilSemPermissao(); // limite de crédito: adm e gerente
@@ -268,7 +276,8 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       if (!doc.ok) v.push(doc.violacao);
       const novos = (cli.enderecos as EnderecoCliente[] | undefined) ?? [];
       if (parcial === null) {
-        if (novos.filter((x) => x.tipo === 'principal').length !== 1) v.push(violacao('RN-CAD-03', 'enderecos', 'Informe exatamente um endereço principal'));
+        const principal1 = validarEnderecoPrincipal(novos);
+        if (!principal1.ok) v.push(principal1.violacao);
         novos.forEach((x, i) => v.push(...verificarMunicipioEndereco(x, `enderecos.${i}`)));
       }
       const gravados = typeof cli.id === 'string' ? await r.clientes.enderecos.listar(cli.id) : [];
@@ -332,8 +341,8 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       }
     },
     async validar(_r, t) {
-      const fim = t.vigencia_fim as string | null;
-      return fim !== null && fim < (t.vigencia_inicio as string) ? [violacao('RN-CAD-06', 'vigencia_fim', 'O fim da vigência não pode ser anterior ao início')] : [];
+      const vig = validarVigenciaTabela(t.vigencia_inicio as string, t.vigencia_fim as string | null);
+      return vig.ok ? [] : [vig.violacao];
     },
   }));
   rotas.push(
@@ -457,8 +466,9 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/consultas/cnpj/:cnpj', acao: 'cadastros.consulta.externa',
       async executar(c, e) {
-        const cnpj = normalizarDocumento(e.params.cnpj ?? '');
-        if (!cnpjValido(cnpj)) throw erros.regra('RN-CAD-01', 'CNPJ inválido', { cnpj: 'CNPJ inválido' });
+        const d = validarDocumentoCliente('PJ', e.params.cnpj ?? '');
+        if (!d.ok) throw erroDeViolacoes([d.violacao]);
+        const cnpj = d.documento;
         return {
           corpo: await sugestaoComCache({
             tipo: 'cnpj', chave: cnpj, agora: c.agora, repo: R(c).consultaExterna, fontes: deps.fontes.cnpj,

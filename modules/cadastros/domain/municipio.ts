@@ -26,3 +26,10 @@ export function validarMunicipio(ibge: string, uf: string): { ok: true } | { ok:
   if (dvIbge(ibge.slice(0, 6)) !== Number(ibge[6])) return erro('Código IBGE com dígito verificador inválido');
   return { ok: true };
 }
+
+/** RN-CAD-03: o cliente tem exatamente um endereço principal. */
+export function validarEnderecoPrincipal(enderecos: readonly { tipo: string }[]): { ok: true } | { ok: false; violacao: Violacao } {
+  return enderecos.filter((x) => x.tipo === 'principal').length === 1
+    ? { ok: true }
+    : { ok: false, violacao: violacao('RN-CAD-03', 'enderecos', 'Informe exatamente um endereço principal') };
+}

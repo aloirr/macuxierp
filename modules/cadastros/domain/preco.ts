@@ -51,3 +51,10 @@ export function validarLotePreco(itens: readonly Pick<ItemPreco, 'filial_id' | '
   });
   return v;
 }
+
+/** RN-CAD-06: o fim da vigência da tabela não pode ser anterior ao início (datas AAAA-MM-DD). */
+export function validarVigenciaTabela(inicio: string, fim: string | null): { ok: true } | { ok: false; violacao: Violacao } {
+  return fim !== null && fim < inicio
+    ? { ok: false, violacao: violacao('RN-CAD-06', 'vigencia_fim', 'O fim da vigência não pode ser anterior ao início') }
+    : { ok: true };
+}

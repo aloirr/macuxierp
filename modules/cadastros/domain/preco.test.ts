@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { precoVigente, validarLotePreco } from './preco';
+import { precoVigente, validarLotePreco, validarVigenciaTabela } from './preco';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -48,5 +48,17 @@ describe('lote de preços', () => {
     const muitos = Array.from({ length: 5001 }, (_, i) => item(`00000000-0000-4000-8000-${String(i).padStart(12, '0')}`));
     expect(validarLotePreco(muitos)[0]?.campo).toBe('itens');
     expect(validarLotePreco(muitos.slice(0, 5000))).toEqual([]);
+  });
+});
+
+describe('vigência da tabela de preço', () => {
+  it('RN-CAD-06: fim da vigência no mesmo dia do início ou depois passa; sem fim passa', () => {
+    expect(validarVigenciaTabela('2026-01-10', '2026-01-10')).toEqual({ ok: true });
+    expect(validarVigenciaTabela('2026-01-10', null)).toEqual({ ok: true });
+  });
+  it('RN-CAD-06: fim da vigência anterior ao início é recusado', () => {
+    const r = validarVigenciaTabela('2026-01-10', '2026-01-09');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.violacao).toMatchObject({ rn: 'RN-CAD-06', campo: 'vigencia_fim' });
   });
 });

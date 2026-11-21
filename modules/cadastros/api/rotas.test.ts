@@ -142,6 +142,21 @@ describe('clientes (RF-CAD-01)', () => {
     expect((await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: faturista, corpo: { nome_fantasia: 'Novo' } })).status).toBe(200);
     expect((await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: gerente, corpo: { limite_credito_centavos: 5 } })).corpo.limite_credito_centavos).toBe(5);
   });
+  it('limite de crédito (A): a troca do limite é auditada, com só o campo; outra alteração do cliente não', async () => {
+    const t = montar();
+    const f = await comFilial(t);
+    const ok = await t.chamar('POST', '/clientes', { sessao: gerente, corpo: clienteValido(f, { limite_credito_centavos: 100_000 }) });
+    expect(t.auditoria.map((a) => a.acao)).toContain('cliente.limite_credito_centavos.alterar');
+    t.auditoria.length = 0;
+    await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: faturista, corpo: { nome_fantasia: 'Novo' } });
+    expect(t.auditoria).toHaveLength(0);
+    await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: gerente, corpo: { limite_credito_centavos: 5 } });
+    expect(t.auditoria).toHaveLength(1);
+    expect(t.auditoria[0]).toMatchObject({
+      acao: 'cliente.limite_credito_centavos.alterar', entidade: 'cliente', entidade_id: ok.corpo.id,
+      antes: { limite_credito_centavos: 100_000 }, depois: { limite_credito_centavos: 5 },
+    });
+  });
   it('escrita idempotente: o mesmo external_id devolve o cadastro existente sem duplicar nem republicar', async () => {
     const t = montar();
     const f = await comFilial(t);
