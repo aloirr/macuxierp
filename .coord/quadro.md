@@ -52,13 +52,13 @@
 - Tarefas: T-0001–T-0033 usadas; próxima livre: T-0034.
 
 ## Depende do Alexandre
-- Secrets do GitHub e `.env` de produção (banco `macuxierp`, `MACUXIERP_CHAVE_A1` de 32 bytes, sem a qual a API não sobe desde a T-0029, S3, SMTP); DNS e rota `erp.` no túnel.
+- Secrets do GitHub e `.env` de produção (banco `macuxierp`, `MACUXIERP_CHAVE_A1` (32 bytes, obrigatória), S3, SMTP); DNS e rota `erp.` no túnel.
 - A1 de homologação da thathyany pela tela do BKO (ADR 0005); credenciamento da thathyany na SEFAZ-AM.
 - T-0025 (governança): abrir uma sessão com `MACUXI_AGENTE=alexandre` (só o Alexandre define), porque a sessão aberta rodou como gerente-projetos e o guardião bloqueou `scripts/coord*.mjs`; depois, autorizar o merge do PR dela. É ela que destrava a gravação de recados na nuvem.
 - Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
 
 ## Próximos lotes (ordem do doc 05)
-1. Em andamento (21/11, 18h55): T-0029 (PR #19) e T-0033.
+1. Em andamento (21/11, 18h55): T-0029 e T-0033.
 2. Depois do #19: tarefas de ligação do core, do cadastros (cursor, CSV, LGPD), do banco-dados (tenants ativos, avisos) e do engenheiro-apps (listas no shell); T-0030, T-0024 e T-0008.
 3. T-0026. Depois da F3 e da T-0024: T-0027.
 
