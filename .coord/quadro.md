@@ -42,7 +42,6 @@
 |---|---|
 | nuvem/T-0006-core (session_0157qAhmWwkaVNSg41AjkyW1) | `modules/core/` |
 | nuvem/T-0029-integracao-f1 (session_0157qAhkgLGRkSx2rwXEmSkd) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
-
 | nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
 
 ## Reservas
@@ -57,8 +56,8 @@
 
 ## Próximos lotes (ordem do doc 05)
 1. Em andamento (21/11, 18h10): T-0006 (correção do PR #14) e T-0029.
-2. Depois: T-0030 e T-0024 (engenheiro-software; a T-0030 entra antes do deploy) e T-0008 (testes da F1, quando o #14 entrar).
-3. T-0026 (a T-0007 já entrou). Depois da F3 e da T-0024: T-0027.
+2. Depois: T-0030, T-0024 (engenheiro-software) e T-0008 (testes da F1, quando o #14 entrar).
+3. T-0026. Depois da F3 e da T-0024: T-0027.
 
 ## Regra provisória de recados (até a T-0025)
 A sessão da nuvem que não consegue gravar recado (a API dá 403 e o guardião bloqueia o link de `.coord/recados`) registra o que enviaria no corpo do PR e no próprio diário. O guardião não se contorna.
