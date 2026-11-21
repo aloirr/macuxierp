@@ -3,11 +3,12 @@
  * BYPASSRLS), laço da outbox e dos trabalhos e encerramento limpo no SIGTERM do deploy (ADR 0003).
  * Ambiente: conexão pelas variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_worker`, `PGPASSWORD`,
  * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000) e `MACUXIERP_PG_POOL` (padrão 5). Nada de segredo em código.
- * Consumidores e executores entram com os módulos (T-0006, T-0007 e F2 em diante).
+ * Executores e rotinas: `modulos.ts` (a ligação do core e do cadastros entra com os PRs #14 e #15 e os adaptadores).
  */
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, criarPool } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
+import { registrarExecutores } from './modulos';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
@@ -29,7 +30,8 @@ const worker = iniciarWorker({
   trabalhos: new ReservaTrabalhosPg(),
   consumo: new RegistroConsumoPg(),
   consumidores: [],
-  executores: [],
+  executores: registrarExecutores([]),
+  rotinas: [],
   relogio: relogioDoSistema,
   log,
   intervaloMs: inteiro('MACUXIERP_WORKER_INTERVALO_MS', 1_000, 100, 60_000),

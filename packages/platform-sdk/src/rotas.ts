@@ -3,6 +3,7 @@
  * (apps/api) monta em `/v1/<modulo>` com a ordem de checagem (RN-CORE-02), a validação (400 VALIDACAO) e a transação
  * do tenant. Assim nenhuma rota escapa da checagem de perfil, tenant e licença.
  */
+import { inspect } from 'node:util';
 import type { z } from 'zod';
 import type { Sessao } from './acesso';
 import type { DadosAuditoria } from './auditoria';
@@ -27,9 +28,66 @@ export interface ContextoRota {
 }
 
 export interface EntradaRota<TC, TQ> {
+  /** JSON validado pelo `corpo`; na rota multipart, os campos de texto validados pelo mesmo `corpo`. */
   corpo: TC;
   consulta: TQ;
   params: Record<string, string>;
+  /** Cabeçalhos do pedido em minúsculas, sem `authorization`, `cookie` e `proxy-authorization` (`if-match`, `idempotency-key`). */
+  cabecalhos: Readonly<Record<string, string>>;
+  /** Arquivos da rota multipart, por campo (vazio nas rotas JSON). */
+  arquivos: Readonly<Record<string, ArquivoRecebido>>;
+}
+
+/**
+ * Arquivo recebido em multipart (ex.: o `.pfx` do A1, RF-CORE-04). O conteúdo fica num campo privado: `JSON.stringify`,
+ * o pino e o `console.log` só veem campo, tipo e tamanho, nunca os bytes nem o nome original (pode ter dado pessoal).
+ */
+export class ArquivoRecebido {
+  readonly #conteudo: Buffer;
+  constructor(
+    readonly campo: string,
+    readonly nome: string,
+    readonly tipo: string,
+    conteudo: Buffer,
+  ) {
+    this.#conteudo = conteudo;
+  }
+  get tamanho(): number {
+    return this.#conteudo.byteLength;
+  }
+  conteudo(): Buffer {
+    return this.#conteudo;
+  }
+  toJSON(): { campo: string; tipo: string; tamanho: number } {
+    return { campo: this.campo, tipo: this.tipo, tamanho: this.tamanho };
+  }
+  [inspect.custom](): string {
+    return `ArquivoRecebido(${this.campo}, ${this.tipo}, ${this.tamanho} bytes)`;
+  }
+}
+
+/** Arquivo que a rota multipart aceita. Acima de `tamanhoMaximo`, 413 `ARQUIVO_GRANDE`; faltando, 400 `VALIDACAO`. */
+export interface ArquivoEsperado {
+  campo: string;
+  tamanhoMaximo: number;
+  /** Padrão `true`. */
+  obrigatorio?: boolean;
+}
+
+/** Teto de qualquer arquivo de rota (igual ao `bodyLimit` da API). */
+export const TAMANHO_MAXIMO_ARQUIVO = 1_048_576;
+
+const SEM_REPASSE = new Set(['authorization', 'cookie', 'proxy-authorization']);
+
+/** Cabeçalhos que a rota recebe: minúsculas, lista unida por `, ` e sem credencial (o token e o cookie são da API). */
+export function cabecalhosDaRota(brutos: Readonly<Record<string, string | readonly string[] | undefined>>): Record<string, string> {
+  const saida: Record<string, string> = {};
+  for (const [k, v] of Object.entries(brutos)) {
+    const nome = k.toLowerCase();
+    if (v === undefined || SEM_REPASSE.has(nome)) continue;
+    saida[nome] = typeof v === 'string' ? v : v.join(', ');
+  }
+  return saida;
 }
 
 export interface RespostaRota {
@@ -45,6 +103,8 @@ export interface RotaModulo<TC = unknown, TQ = unknown> {
   acao: Acao;
   corpo?: z.ZodType<TC, z.ZodTypeDef, unknown>;
   consulta?: z.ZodType<TQ, z.ZodTypeDef, unknown>;
+  /** Rota `multipart/form-data` (POST, PUT ou PATCH): os campos de texto passam pelo `corpo`; os arquivos, por aqui. */
+  multipart?: { arquivos: readonly ArquivoEsperado[] };
   executar(c: ContextoRota, e: EntradaRota<TC, TQ>): Promise<RespostaRota>;
 }
 
@@ -65,13 +125,30 @@ export class PluginInvalido extends Error {
   override readonly name = 'PluginInvalido';
 }
 
-/** Valida o plugin no carregamento: caminho com `/`, ação do próprio módulo e sem rota repetida. */
+const CAMPO_ARQUIVO = /^[a-z][a-z0-9_]{0,39}$/;
+
+function validarMultipart(modulo: string, id: string, r: RotaModulo): void {
+  if (!r.multipart) return;
+  if (r.metodo === 'GET' || r.metodo === 'DELETE') throw new PluginInvalido(`${modulo}: multipart só em POST, PUT ou PATCH (${id})`);
+  const campos = new Set<string>();
+  for (const a of r.multipart.arquivos) {
+    if (!CAMPO_ARQUIVO.test(a.campo) || campos.has(a.campo)) throw new PluginInvalido(`${modulo}: campo de arquivo "${a.campo}" inválido ou repetido em ${id}`);
+    if (!Number.isInteger(a.tamanhoMaximo) || a.tamanhoMaximo < 1 || a.tamanhoMaximo > TAMANHO_MAXIMO_ARQUIVO) {
+      throw new PluginInvalido(`${modulo}: tamanhoMaximo de "${a.campo}" fora de 1 a ${TAMANHO_MAXIMO_ARQUIVO} bytes em ${id}`);
+    }
+    campos.add(a.campo);
+  }
+  if (campos.size === 0) throw new PluginInvalido(`${modulo}: multipart sem arquivo em ${id}`);
+}
+
+/** Valida o plugin no carregamento: caminho com `/`, ação do próprio módulo, multipart coerente e sem rota repetida. */
 export function definirPlugin(manifesto: ManifestoModulo, rotas: readonly RotaModulo[]): PluginModulo {
   const vistas = new Set<string>();
   for (const r of rotas) {
     const id = `${r.metodo} ${r.caminho}`;
     if (!r.caminho.startsWith('/')) throw new PluginInvalido(`${manifesto.id}: caminho "${r.caminho}" sem "/" inicial`);
     if (moduloDaAcao(r.acao) !== manifesto.id) throw new PluginInvalido(`${manifesto.id}: ação "${r.acao}" de outro módulo em ${id}`);
+    validarMultipart(manifesto.id, id, r);
     if (vistas.has(id)) throw new PluginInvalido(`${manifesto.id}: rota repetida ${id}`);
     vistas.add(id);
   }

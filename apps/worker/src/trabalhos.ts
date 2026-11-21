@@ -1,8 +1,10 @@
 /**
  * Fila de `trabalho` (D10): reserva um lote dos tipos que este worker sabe executar, roda cada um na transação do
- * tenant dele e registra o desfecho. Falha = backoff até `maxTentativas` (padrão 5); depois, `falhou`.
+ * tenant dele e registra o desfecho. Falha = backoff até `maxTentativas` (padrão 5); depois, `falhou` e o `aoDesistir`
+ * do executor numa transação própria. Erro de negócio (`ErroApi` 4xx, ex.: 422 RN) não melhora com o tempo: desiste
+ * na hora. Indisponibilidade (503 da SEFAZ ou do Hub) e erro de infraestrutura seguem o backoff.
  */
-import type { Banco, ExecutorTrabalho, Relogio } from '@macuxierp/platform-sdk';
+import { ErroApi, type Banco, type ExecutorTrabalho, type Relogio } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
 import { nomeDoErro, proximaTentativa, textoDoErro } from './backoff';
 import type { ReservaTrabalhos } from './portas';
@@ -38,8 +40,15 @@ export async function processarTrabalhos(d: DependenciasTrabalhos): Promise<Resu
         resumo.concluidos++;
       } catch (e) {
         const tentativas = t.tentativas + 1;
-        const desiste = tentativas >= (executor.maxTentativas ?? MAX_TENTATIVAS_PADRAO);
+        const negocio = e instanceof ErroApi && e.status < 500;
+        const desiste = negocio || tentativas >= (executor.maxTentativas ?? MAX_TENTATIVAS_PADRAO);
         await d.fila.falhar(tx, t.id, tentativas, desiste ? null : proximaTentativa(d.relogio.agora(), tentativas), textoDoErro(e));
+        if (desiste && executor.aoDesistir) {
+          const aoDesistir = executor.aoDesistir.bind(executor);
+          await d.banco.comTenant(t.tenant_id, (ttx) => aoDesistir(t, ttx)).catch((erro: unknown) => {
+            d.log.error({ trabalho_id: t.id, tipo: t.tipo, tenant_id: t.tenant_id, erro: nomeDoErro(erro) }, 'aoDesistir do trabalho falhou');
+          });
+        }
         d.log.warn({ trabalho_id: t.id, tipo: t.tipo, tenant_id: t.tenant_id, tentativa: tentativas, desistiu: desiste, erro: nomeDoErro(e) }, 'trabalho falhou');
         if (desiste) resumo.desistidos++;
         else resumo.falhas++;
