@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { buscarEu, NaoAutenticado } from './api';
-import type { Eu } from './eu';
+import type { EuResposta } from '@macuxierp/platform-sdk';
 
 export const COOKIE_ACESSO = 'mx_acesso';
 export const COOKIE_REFRESH = 'mx_refresh';
@@ -20,10 +20,9 @@ export function destinoSeguro(destino: string | null | undefined): string {
 }
 
 export interface Contexto {
-  eu: Eu;
-  filialId: string | null;
+  eu: EuResposta;
   /** Filial escolhida (ou única), já resolvida contra /eu. */
-  filial: Eu['filiais'][number] | null;
+  filial: EuResposta['filiais'][number] | null;
 }
 
 /** Lê a sessão do usuário; sem sessão válida, manda para o login. A filial vem do cookie, validada contra /eu. */
@@ -34,9 +33,8 @@ export async function contexto(): Promise<Contexto> {
   try {
     const eu = await buscarEu(acesso);
     const f = jar.get(COOKIE_FILIAL)?.value;
-    const filialId = eu.filiais.find((x) => x.id === f)?.id ?? (eu.filiais.length === 1 ? (eu.filiais[0]?.id ?? null) : null);
-    const filial = eu.filiais.find((x) => x.id === filialId) ?? null;
-    return { eu, filialId: filial?.id ?? null, filial };
+    const filial = eu.filiais.find((x) => x.id === f) ?? (eu.filiais.length === 1 ? eu.filiais[0] : undefined) ?? null;
+    return { eu, filial };
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     throw e;

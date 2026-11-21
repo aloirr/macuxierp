@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'Licenças' };
 /** Somente leitura (D12): a licença muda pelo operador da Macuxi, com auditoria. */
 export default async function Licencas() {
   const { eu } = await contexto();
-  const ativos = new Map(eu.modulos.map((m) => [m.id, m.versao]));
+  const ativos = new Set(eu.modulos.map((m) => m.id));
   return (
     <>
       <h1>Licenças</h1>

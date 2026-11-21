@@ -1,12 +1,19 @@
-import { EuSchema, type Eu } from './eu';
+import { EuResposta } from '@macuxierp/platform-sdk';
 import { CREDENCIAL_FALSA, EU_FALSO, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
 
-const usaApiFalsa = !URL_API && (process.env.NODE_ENV !== 'production' || process.env.MACUXIERP_API_FALSA === '1');
+/** Modo falso só fora de produção e sem MACUXIERP_API_URL (nenhuma variável liga o falso em produção). */
+const usaApiFalsa = !URL_API && process.env.NODE_ENV !== 'production';
 
 export class ApiIndisponivel extends Error {
   override readonly name = 'ApiIndisponivel' as const;
+}
+export class MuitasTentativas extends Error {
+  override readonly name = 'MuitasTentativas' as const;
+}
+export class DadosInvalidos extends Error {
+  override readonly name = 'DadosInvalidos' as const;
 }
 export class NaoAutenticado extends Error {
   override readonly name = 'NaoAutenticado' as const;
@@ -37,7 +44,7 @@ function lerSessao(r: Response, corpo: { token_acesso?: unknown }): Sessao {
   return { acesso: corpo.token_acesso, refresh: cookie };
 }
 
-/** POST /v1/auth/login. Devolve null para credencial inválida (a mensagem na tela é genérica, sem dizer o que errou). */
+/** POST /v1/auth/login. Null para credencial inválida (mensagem genérica). Lança MuitasTentativas (429) e DadosInvalidos (400). */
 export async function entrar(empresa: string, email: string, senha: string): Promise<Sessao | null> {
   if (usaApiFalsa) {
     const c = CREDENCIAL_FALSA;
@@ -48,7 +55,9 @@ export async function entrar(empresa: string, email: string, senha: string): Pro
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ empresa, email, senha }),
   });
-  if (r.status === 401 || r.status === 403 || r.status === 429) return null;
+  if (r.status === 429) throw new MuitasTentativas('login: limite de tentativas');
+  if (r.status === 400) throw new DadosInvalidos('login: VALIDACAO');
+  if (r.status === 401 || r.status === 403) return null;
   if (!r.ok) throw new ApiIndisponivel(`login: HTTP ${r.status}`);
   return lerSessao(r, (await r.json()) as { token_acesso?: unknown });
 }
@@ -68,7 +77,7 @@ export async function sair(acesso: string, refresh: string): Promise<void> {
 }
 
 /** GET /v1/auth/eu. Lança NaoAutenticado em 401. */
-export async function buscarEu(acesso: string): Promise<Eu> {
+export async function buscarEu(acesso: string): Promise<EuResposta> {
   if (usaApiFalsa) {
     if (acesso !== TOKEN_FALSO) throw new NaoAutenticado();
     return EU_FALSO;
@@ -76,7 +85,7 @@ export async function buscarEu(acesso: string): Promise<Eu> {
   const r = await chamar('/v1/auth/eu', { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
   if (!r.ok) throw new ApiIndisponivel(`eu: HTTP ${r.status}`);
-  const dados = EuSchema.safeParse(await r.json());
+  const dados = EuResposta.safeParse(await r.json());
   if (!dados.success) throw new ApiIndisponivel('resposta de /v1/auth/eu fora do contrato');
   return dados.data;
 }

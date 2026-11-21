@@ -10,7 +10,7 @@ import { sairAction } from './sair';
 export default async function Casca({ children }: { children: ReactNode }) {
   const { eu, filial } = await contexto();
   if (!filial) redirect('/filial');
-  const menu = montarMenu(MANIFESTOS, eu.modulos.map((m) => m.id), eu.perfil);
+  const menu = montarMenu(MANIFESTOS, eu.modulos.map((m) => m.id), eu.usuario.perfil);
 
   return (
     <div className="casca">
@@ -20,7 +20,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
         <span>{eu.empresa.razao_social} · {filial.nome}</span>
         {eu.filiais.length > 1 && <a href="/filial">Trocar filial</a>}
         <span className="espaco" />
-        <span>{eu.usuario.nome} ({eu.perfil})</span>
+        <span>{eu.usuario.nome} ({eu.usuario.perfil})</span>
         <form action={sairAction}><button className="btn btn-sec" type="submit">Sair</button></form>
       </header>
       <NavLateral menu={menu} />

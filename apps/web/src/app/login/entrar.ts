@@ -1,7 +1,7 @@
 'use server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ApiIndisponivel, entrar } from '@/lib/api';
+import { ApiIndisponivel, DadosInvalidos, entrar, MuitasTentativas } from '@/lib/api';
 import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
 
 export interface EstadoLogin {
@@ -21,6 +21,8 @@ export async function entrarAction(_: EstadoLogin, dados: FormData): Promise<Est
   try {
     sessao = await entrar(empresa, email, senha);
   } catch (e) {
+    if (e instanceof MuitasTentativas) return { erro: 'Muitas tentativas. Aguarde 15 minutos.', empresa, email };
+    if (e instanceof DadosInvalidos) return { erro: 'Dados inválidos. Confira empresa, e-mail e senha.', empresa, email };
     if (e instanceof ApiIndisponivel) return { erro: 'Serviço indisponível no momento. Tente novamente em instantes.', empresa, email };
     throw e;
   }
