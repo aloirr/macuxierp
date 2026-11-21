@@ -2,7 +2,7 @@
  * Acesso ao PostgreSQL pelo psql (o cliente oficial, presente no runner do CI e no db/scripts/pg-local.sh), sem
  * driver novo no lockfile. A senha vai por PGPASSWORD (nunca na linha de comando nem em log).
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 export interface Conexao {
   host?: string;
@@ -78,6 +78,32 @@ export function rodarScript(
     throw new ErroPsql(erro.split('\n').find((l) => l.includes('ERROR') || l.includes('ERRO')) ?? erro, erro);
   }
   return r.stdout;
+}
+
+/**
+ * O mesmo script do rodarScript, mas sem bloquear: para os testes que precisam de duas sessões ao mesmo tempo
+ * (concorrência entre transações). Resolve com o stdout; rejeita com ErroPsql.
+ */
+export function rodarScriptAssincrono(c: Conexao, script: string): Promise<string> {
+  return new Promise((resolver, rejeitar) => {
+    const p = spawn(
+      process.env.MACUXI_PSQL ?? 'psql',
+      ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+      {
+        env: ambiente(c),
+      },
+    );
+    let saida = '';
+    let erro = '';
+    p.stdout.setEncoding('utf8').on('data', (d: string) => (saida += d));
+    p.stderr.setEncoding('utf8').on('data', (d: string) => (erro += d));
+    p.on('error', (e) => rejeitar(new ErroPsql(`psql não executou: ${e.message}`, '')));
+    p.on('close', (status) => {
+      if (status === 0) resolver(saida);
+      else rejeitar(new ErroPsql((erro || saida).trim(), (erro || saida).trim()));
+    });
+    p.stdin.end(script);
+  });
 }
 
 /** Preâmbulo que põe a sessão no papel e no tenant pedidos (valores conferidos: nada de SQL vindo de fora). */
