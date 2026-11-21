@@ -48,9 +48,13 @@ describe('regras de fronteira (dependency-cruiser)', () => {
   const ok = cruzar('ok');
   const pares = violacao.violacoes.map((v) => `${v.rule.name}: ${v.from} → ${v.to}`);
 
-  it('fixture de violação faz o depcruise FALHAR (exit = nº de erros, 8)', () => {
-    expect(violacao.status).toBe(8);
-    expect(violacao.violacoes).toHaveLength(8);
+  it('fixture de violação faz o depcruise FALHAR (exit = nº de erros, 9)', () => {
+    expect(violacao.status).toBe(9);
+    expect(violacao.violacoes).toHaveLength(9);
+  });
+
+  it('módulo não abre conexão pelo adaptador PostgreSQL (usa a Transacao do ContextoRota)', () => {
+    expect(pares).toContain('modulo-abre-conexao: modules/pedido/api/conexao.ts → packages/platform-sdk/src/pg.ts');
   });
 
   it('módulo importando domain de outro módulo é bloqueado', () => {
