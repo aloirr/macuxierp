@@ -1,8 +1,4 @@
-/**
- * T-0032: updated_at estritamente crescente por linha (migração 0006). O core usa date_trunc('milliseconds',
- * updated_at) como token de concorrência otimista: cada gravação precisa mudar o token, mesmo na mesma transação ou
- * em transações que começaram no mesmo instante, e o valor nunca volta no tempo.
- */
+/** T-0032: updated_at estritamente crescente por linha (migração 0006). */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrar } from '../src/migrar.ts';
 import { rodarScriptAssincrono } from '../src/psql.ts';
@@ -60,22 +56,44 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — updated_at crescente (T-003
     expect(numeros(casou)).toEqual([]);
   });
 
-  it('duas transações que começam juntas e gravam a mesma linha uma depois da outra: distintos e crescentes', async () => {
-    // T1 grava logo e segura a trava; T2 começou no mesmo instante, espera a trava e grava depois. Com now(), T2
-    // gravaria o próprio início (igual ou anterior ao de T1); agora grava pelo menos 1 ms depois de T1.
+  it('T2 começa antes de T1, T1 grava primeiro e T2 grava depois: distintos e crescentes', async () => {
+    // Ordem garantida pelo próprio banco, sem tempo de folga: T1 pega a trava consultiva; T2 espera alguém segurá-la,
+    // começa a transação (now()) e pede a trava; T1 só começa quando T2 está esperando, grava a linha, solta a trava e
+    // só faz COMMIT quando T2 está bloqueada esperando a linha. Com now(), T2 gravaria o próprio início, anterior ao
+    // de T1 (o valor voltaria no tempo); com a 0006, grava pelo menos 1 ms depois de T1.
+    const CHAVE = 320032;
+    const esperar = (condicao: string, oQue: string): string => `DO $$
+BEGIN
+  FOR i IN 1..2000 LOOP
+    IF ${condicao} THEN RETURN; END IF;
+    PERFORM pg_sleep(0.005);
+  END LOOP;
+  RAISE EXCEPTION 'tempo esgotado esperando ${oQue}';
+END $$;`;
+    const bloqueadaPorMim = (tipos: string): string =>
+      `EXISTS (SELECT 1 FROM pg_locks l WHERE NOT l.granted AND l.locktype IN (${tipos})
+         AND pg_backend_pid() = ANY (pg_blocking_pids(l.pid)))`;
     const t1 = rodarScriptAssincrono(
       banco.conexao,
-      `BEGIN;
+      `SELECT pg_advisory_lock(${CHAVE});
+       ${esperar(bloqueadaPorMim("'advisory'"), 'T2 pedir a trava')}
+       BEGIN;
        SELECT (extract(epoch FROM now()) * 1000000)::bigint;
        ${SOMAR} RETURNING ${US};
-       SELECT pg_sleep(0.4);
+       SELECT pg_advisory_unlock(${CHAVE});
+       ${esperar(bloqueadaPorMim("'transactionid', 'tuple'"), 'T2 esperar a linha')}
        COMMIT;`,
     );
     const t2 = rodarScriptAssincrono(
       banco.conexao,
-      `BEGIN;
+      `${esperar(
+        `EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND objid = ${CHAVE} AND granted
+         AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))`,
+        'T1 pegar a trava',
+      )}
+       BEGIN;
        SELECT (extract(epoch FROM now()) * 1000000)::bigint;
-       SELECT pg_sleep(0.15);
+       SELECT pg_advisory_xact_lock(${CHAVE});
        ${SOMAR} RETURNING ${US};
        COMMIT;`,
     );
@@ -84,11 +102,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — updated_at crescente (T-003
       number[],
     ];
 
-    // As duas começaram antes de qualquer gravação: T2 começou antes de T1 terminar (sobreposição real).
-    expect(inicio2!).toBeLessThan(grava1! + 400_000);
+    // Sobreposição real: T2 começou antes de T1 começar e, portanto, antes de T1 gravar e fazer COMMIT.
+    expect(inicio2!).toBeLessThan(inicio1!);
+    expect(inicio1!).toBeLessThanOrEqual(grava1!);
     expect(ms(grava2!)).toBeGreaterThan(ms(grava1!));
-    expect(grava2!).toBeGreaterThan(inicio2!);
-    expect(grava1!).toBeGreaterThanOrEqual(inicio1!);
 
     // O token que T1 deixou (ms) não casa depois da gravação de T2.
     const casou = gravarComToken(banco, ms(grava1!));
@@ -99,12 +116,19 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — updated_at crescente (T-003
     expect(numeros(atual)).toEqual([1]);
   });
 
-  it('a trigger continua só no UPDATE: o INSERT mantém o DEFAULT da coluna (decisão da 0006)', () => {
+  it('toda trigger que chama tocar_updated_at é BEFORE UPDATE FOR EACH ROW e nenhuma dispara no INSERT', () => {
+    // tgtype: 1 = ROW, 2 = BEFORE, 4 = INSERT, 16 = UPDATE.
     const saida = rodarScript(
       banco.conexao,
-      `SELECT count(*) FROM pg_trigger WHERE tgname = 'tocar_updated_at' AND NOT tgisinternal
-         AND (tgtype::int & 4) <> 0;`,
+      `SELECT count(*) FROM pg_trigger WHERE tgfoid = 'plataforma.tocar_updated_at'::regproc AND NOT tgisinternal;
+       SELECT count(*) FROM pg_trigger WHERE tgfoid = 'plataforma.tocar_updated_at'::regproc AND NOT tgisinternal
+         AND ((tgtype::int & 19) <> 19 OR (tgtype::int & 4) <> 0 OR tgenabled = 'D');
+       SELECT count(*) FROM pg_trigger t JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attname = 'updated_at'
+         WHERE t.tgfoid = 'plataforma.tocar_updated_at'::regproc AND NOT t.tgisinternal;`,
     );
-    expect(numeros(saida)).toEqual([0]);
+    const [comTrigger, foraDoContrato, comColuna] = numeros(saida);
+    expect(comTrigger).toBeGreaterThan(0);
+    expect(foraDoContrato).toBe(0);
+    expect(comColuna).toBe(comTrigger);
   });
 });

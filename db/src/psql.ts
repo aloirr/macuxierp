@@ -56,27 +56,41 @@ function ambiente(c: Conexao): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Roda um script no psql (stdin), parando no primeiro erro. `transacao` = tudo ou nada (-1). Devolve o stdout. */
-export function rodarScript(
-  c: Conexao,
-  script: string,
-  opcoes: { transacao?: boolean; variaveis?: Record<string, string> } = {},
-): string {
+interface OpcoesScript {
+  transacao?: boolean;
+  variaveis?: Record<string, string>;
+}
+
+/** Binário do psql (MACUXI_PSQL permite apontar outro). */
+function PSQL(): string {
+  return process.env.MACUXI_PSQL ?? 'psql';
+}
+
+/** Argumentos do psql para rodar um script do stdin, parando no primeiro erro. */
+function argumentos(opcoes: OpcoesScript = {}): string[] {
   const args = ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1'];
   if (opcoes.transacao) args.push('-1');
   for (const [nome, valor] of Object.entries(opcoes.variaveis ?? {})) args.push('-v', `${nome}=${valor}`);
   args.push('-f', '-');
-  const r = spawnSync(process.env.MACUXI_PSQL ?? 'psql', args, {
+  return args;
+}
+
+/** Erro do psql que saiu com status diferente de 0: a mensagem é a linha ERROR/ERRO (ou a saída toda). */
+function erroPsql(saida: string): ErroPsql {
+  const erro = saida.trim();
+  return new ErroPsql(erro.split('\n').find((l) => l.includes('ERROR') || l.includes('ERRO')) ?? erro, erro);
+}
+
+/** Roda um script no psql (stdin), parando no primeiro erro. `transacao` = tudo ou nada (-1). Devolve o stdout. */
+export function rodarScript(c: Conexao, script: string, opcoes: OpcoesScript = {}): string {
+  const r = spawnSync(PSQL(), argumentos(opcoes), {
     input: script,
     env: ambiente(c),
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
   if (r.error) throw new ErroPsql(`psql não executou: ${r.error.message}`, '');
-  if (r.status !== 0) {
-    const erro = (r.stderr || r.stdout).trim();
-    throw new ErroPsql(erro.split('\n').find((l) => l.includes('ERROR') || l.includes('ERRO')) ?? erro, erro);
-  }
+  if (r.status !== 0) throw erroPsql(r.stderr || r.stdout);
   return r.stdout;
 }
 
@@ -84,15 +98,13 @@ export function rodarScript(
  * O mesmo script do rodarScript, mas sem bloquear: para os testes que precisam de duas sessões ao mesmo tempo
  * (concorrência entre transações). Resolve com o stdout; rejeita com ErroPsql.
  */
-export function rodarScriptAssincrono(c: Conexao, script: string): Promise<string> {
+export function rodarScriptAssincrono(
+  c: Conexao,
+  script: string,
+  opcoes: OpcoesScript = {},
+): Promise<string> {
   return new Promise((resolver, rejeitar) => {
-    const p = spawn(
-      process.env.MACUXI_PSQL ?? 'psql',
-      ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-f', '-'],
-      {
-        env: ambiente(c),
-      },
-    );
+    const p = spawn(PSQL(), argumentos(opcoes), { env: ambiente(c) });
     let saida = '';
     let erro = '';
     p.stdout.setEncoding('utf8').on('data', (d: string) => (saida += d));
@@ -100,7 +112,7 @@ export function rodarScriptAssincrono(c: Conexao, script: string): Promise<strin
     p.on('error', (e) => rejeitar(new ErroPsql(`psql não executou: ${e.message}`, '')));
     p.on('close', (status) => {
       if (status === 0) resolver(saida);
-      else rejeitar(new ErroPsql((erro || saida).trim(), (erro || saida).trim()));
+      else rejeitar(erroPsql(erro || saida));
     });
     p.stdin.end(script);
   });
