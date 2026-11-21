@@ -1,4 +1,4 @@
-/** Filas em memória com o mesmo contrato das portas (testes de unidade até o adaptador PostgreSQL, T-0003). */
+/** Filas em memória com o mesmo contrato das portas (testes de unidade; no banco: `pg.ts`). */
 import type { PedidoTrabalho, Trabalho, Transacao } from '@macuxierp/platform-sdk';
 import type { EventoPendente, FilaOutbox, ReservaTrabalhos, RegistroConsumo } from './portas';
 

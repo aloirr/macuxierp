@@ -57,10 +57,10 @@ export class ServicoAuth {
 
   async entrar(entrada: { empresa: string; email: string; senha: string }): Promise<ResultadoLogin> {
     const agora = this.relogio.agora();
-    const tenant = await this.banco.semTenant((tx) => this.repo.tenantPorSlug(tx, entrada.empresa.trim().toLowerCase()));
-    if (!tenant || tenant.situacao !== 'ativo') return this.falharSemUsuario(entrada.senha);
+    const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
+    if (!tenantId) return this.falharSemUsuario(entrada.senha);
     // A falha é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
-    const r = await this.banco.comTenant(tenant.id, async (tx) => {
+    const r = await this.banco.comTenant(tenantId, async (tx) => {
       const usuario = await this.repo.usuarioPorEmail(tx, entrada.email.trim().toLowerCase());
       if (!usuario || !usuario.ativo) return 'sem_usuario' as const;
       if (usuario.bloqueado_ate && usuario.bloqueado_ate.getTime() > agora.getTime()) return 'travado' as const;

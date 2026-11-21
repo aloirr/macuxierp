@@ -1,7 +1,6 @@
 /**
  * Portas do worker sobre `plataforma.evento`, `plataforma.evento_consumido` e `plataforma.trabalho` (D10: fila no
- * próprio PostgreSQL, `FOR UPDATE SKIP LOCKED`). O adaptador PostgreSQL entra depois do schema `plataforma` (T-0003);
- * os testes usam as versões em memória (`memoria.ts`).
+ * próprio PostgreSQL, `SKIP LOCKED`). Adaptador PostgreSQL: `pg.ts`; testes de unidade: `memoria.ts`.
  *
  * A reserva roda em `banco.semTenant` com o papel `macuxierp_worker` (enxerga todos os tenants nessas três tabelas)
  * e mantém as linhas travadas até o fim da transação do lote; o efeito de cada consumidor ou executor roda em
@@ -16,7 +15,7 @@ export interface EventoPendente extends EnvelopeEvento {
 export interface FilaOutbox {
   /**
    * Até `limite` eventos não publicados com `proximo_em <= agora`, em ordem de `ocorrido_em`, travados
-   * (`FOR UPDATE SKIP LOCKED`). Contrato da ordem por agregado: não devolve evento cujo agregado tenha outro evento
+   * (`SKIP LOCKED`). Contrato da ordem por agregado: não devolve evento cujo agregado tenha outro evento
    * anterior ainda não publicado.
    */
   reservar(tx: Transacao, limite: number, agora: Date): Promise<EventoPendente[]>;
@@ -31,7 +30,7 @@ export interface RegistroConsumo {
 }
 
 export interface ReservaTrabalhos {
-  /** Até `limite` trabalhos `pendente` dos `tipos`, com `proximo_em <= agora`, travados (`FOR UPDATE SKIP LOCKED`). */
+  /** Até `limite` trabalhos `pendente` dos `tipos`, com `proximo_em <= agora`, travados (`SKIP LOCKED`). */
   reservar(tx: Transacao, tipos: readonly string[], limite: number, agora: Date): Promise<Trabalho[]>;
   concluir(tx: Transacao, id: string, resultado: Record<string, unknown> | null, agora: Date): Promise<void>;
   /** `proximoEm` nulo = desistiu (estado `falhou`). */
