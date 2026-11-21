@@ -1,0 +1,525 @@
+/**
+ * Rotas `/v1/cadastros` (desenho T-0002, seção 4). Perfil, tenant e licença são checados pela API antes do `executar`
+ * (RN-CORE-02); aqui entram as regras do domain (a API sempre revalida), a auditoria das ações (A) e os eventos da outbox.
+ */
+import {
+  ErroApi, cnpjValido, cpfValido, definirRota, erros, normalizarDocumento, pode,
+  type Acao, type ContextoRota, type RotaModulo, type Sessao,
+} from '@macuxierp/platform-sdk';
+import { z } from 'zod';
+import {
+  ClienteAtualizacao, ClienteDados, type Cliente, type PrecoItem, type Produto, type TabelaPreco, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
+  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque,
+  OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
+  TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
+  type NomeEventoCadastros,
+} from '../contracts';
+import {
+  aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia, precoVigente,
+  validarDocumentoCliente, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio,
+  violacao, type Violacao,
+} from '../domain';
+import { agregadoEstoque, agregadoPreco } from './uuid';
+import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
+import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
+import { dataIso, erroDeViolacoes, exigir, idDe, naoEncontrado } from './util';
+
+type Dict = Record<string, unknown>;
+type Entidade = { id: string; inativo: boolean };
+
+async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: string, payload: unknown): Promise<void> {
+  const dados = EVENTOS[nome].parse(payload) as Dict;
+  await c.publicar({ nome, agregado_id: agregadoId, versao: 1, payload: dados });
+}
+
+const publicarPreco = (c: ContextoRota, i: PrecoItem, t: TabelaPreco) =>
+  publicar(c, 'cadastros.preco.alterado@1', agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id), {
+    ...i, vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim, inativo: t.inativo,
+  });
+
+const requisitoFilial = async (r: Repositorios, id: string | null, campo: string): Promise<Violacao[]> =>
+  id === null || (await r.filiais.obter(id)) ? [] : [violacao('REF', campo, 'Filial inexistente')];
+
+/** Evento "simples": o próprio cadastro (mais `inativo`) como payload. */
+const eventoDe =
+  <E extends Entidade>(nome: NomeEventoCadastros, extra?: (e: E, r: Repositorios) => Promise<Dict>) =>
+  async (c: ContextoRota, r: Repositorios, e: E): Promise<void> =>
+    publicar(c, nome, e.id, { ...e, ...(extra ? await extra(e, r) : {}), inativo: e.inativo });
+
+interface ConfigCrud<E extends Entidade, D extends Dict> {
+  caminho: string;
+  editar: Acao;
+  dados: z.ZodType<D, z.ZodTypeDef, unknown>;
+  atualizacao: z.ZodType<Partial<D>, z.ZodTypeDef, unknown>;
+  entidade: string;
+  /** Ação marcada (A) no desenho: grava em `plataforma.auditoria`. */
+  auditado: boolean;
+  repo(r: Repositorios): RepoSimples<E, D>;
+  /** Publica o evento do cadastro na outbox (`antes` = estado anterior; `null` na criação). */
+  emitir(c: ContextoRota, r: Repositorios, e: E, antes: E | null): Promise<void>;
+  /** Regras do domain sobre o cadastro já completo (criação ou criação + alteração). */
+  validar?(r: Repositorios, completo: Dict, parcial: Dict | null, agora: Date): Promise<Violacao[]>;
+  /** Campos que exigem permissão a mais (limite de crédito). */
+  campoRestrito?(sessao: Sessao, corpo: Dict, criacao: boolean): void;
+  escopo?(r: Repositorios, sessao: Sessao): Promise<Partial<FiltroLista>>;
+  visivel?(r: Repositorios, sessao: Sessao, e: E): Promise<boolean>;
+  ocultar?(sessao: Sessao, e: E): E;
+  padrao?(r: Repositorios): { desmarcarPadrao(exceto: string | null): Promise<void> };
+  inativavel?: Parameters<typeof bloqueiosDeInativacao>[0];
+}
+
+function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: ConfigCrud<E, D>): RotaModulo[] {
+  const R = (c: ContextoRota) => deps.repositorios(c.tx);
+  const ocultar = (c: ContextoRota, e: E) => (cfg.ocultar ? cfg.ocultar(c.sessao, e) : e);
+  const aud = async (c: ContextoRota, acao: string, id: string, antes: unknown, depois: unknown) => {
+    if (cfg.auditado) await c.auditar({ acao: `${cfg.entidade}.${acao}`, entidade: cfg.entidade, entidade_id: id, antes, depois });
+  };
+  const carregar = async (c: ContextoRota, r: Repositorios, id: string): Promise<E> => {
+    const e = await cfg.repo(r).obter(id);
+    if (!e || (cfg.visivel && !(await cfg.visivel(r, c.sessao, e)))) throw naoEncontrado();
+    return e;
+  };
+
+  return [
+    definirRota({
+      metodo: 'GET', caminho: cfg.caminho, acao: 'cadastros.ver', consulta: ListaConsulta,
+      async executar(c, e) {
+        const r = R(c);
+        const escopo = cfg.escopo ? await cfg.escopo(r, c.sessao) : {};
+        const p = await cfg.repo(r).listar({ ...e.consulta, ...escopo });
+        return { corpo: { itens: p.itens.map((i) => ocultar(c, i)), total: p.total, pagina: e.consulta.pagina, por_pagina: e.consulta.por_pagina } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: `${cfg.caminho}/:id`, acao: 'cadastros.ver',
+      async executar(c, e) {
+        return { corpo: ocultar(c, await carregar(c, R(c), idDe(e))) };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, corpo: cfg.dados,
+      async executar(c, e) {
+        const r = R(c);
+        const corpo = e.corpo as Dict;
+        const externo = typeof corpo.external_id === 'string' ? await cfg.repo(r).porExternalId(corpo.external_id) : null;
+        if (externo) return { status: 200, corpo: ocultar(c, externo) }; // escrita idempotente (regra 4)
+        cfg.campoRestrito?.(c.sessao, corpo, true);
+        if (cfg.validar) exigir(await cfg.validar(r, corpo, null, c.agora));
+        const padrao = cfg.padrao?.(r);
+        if (padrao && corpo.padrao === true) await padrao.desmarcarPadrao(null);
+        const criado = await cfg.repo(r).inserir(e.corpo);
+        await cfg.emitir(c, r, criado, null);
+        await aud(c, 'criar', criado.id, null, criado);
+        return { status: 201, corpo: ocultar(c, criado) };
+      },
+    }),
+    definirRota({
+      metodo: 'PATCH', caminho: `${cfg.caminho}/:id`, acao: cfg.editar, corpo: cfg.atualizacao,
+      async executar(c, e) {
+        const r = R(c);
+        const antes = await carregar(c, r, idDe(e));
+        const parcial = e.corpo as Dict;
+        cfg.campoRestrito?.(c.sessao, parcial, false);
+        if (cfg.validar) exigir(await cfg.validar(r, { ...(antes as unknown as Dict), ...parcial }, parcial, c.agora));
+        const padrao = cfg.padrao?.(r);
+        if (padrao && parcial.padrao === true) await padrao.desmarcarPadrao(antes.id);
+        const depois = await cfg.repo(r).atualizar(antes.id, e.corpo);
+        if (!depois) throw naoEncontrado();
+        await cfg.emitir(c, r, depois, antes);
+        await aud(c, 'alterar', depois.id, antes, depois);
+        return { corpo: ocultar(c, depois) };
+      },
+    }),
+    definirRota({
+      metodo: 'DELETE', caminho: `${cfg.caminho}/:id`, acao: cfg.editar,
+      async executar(c, e) {
+        const r = R(c);
+        const antes = await carregar(c, r, idDe(e));
+        if (cfg.inativavel) exigir(bloqueiosDeInativacao(cfg.inativavel, { padrao: (antes as unknown as Dict).padrao === true }));
+        const depois = await cfg.repo(r).inativar(antes.id); // RN-CAD-08: inativa, nunca apaga
+        if (!depois) throw naoEncontrado();
+        await cfg.emitir(c, r, depois, antes);
+        await aud(c, 'inativar', depois.id, antes, depois);
+        return { corpo: ocultar(c, depois) };
+      },
+    }),
+  ];
+}
+
+/** Sub-recurso de um cadastro (endereços, contatos, unidades): lê com o escopo do pai e grava com a permissão dele. */
+function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict>(
+  deps: Dependencias,
+  cfg: {
+    caminho: string; // '/clientes/:id/enderecos'
+    editar: Acao;
+    dados: z.ZodType<D, z.ZodTypeDef, unknown>;
+    atualizacao: z.ZodType<Partial<D>, z.ZodTypeDef, unknown>;
+    pai(r: Repositorios): { obter(id: string): Promise<P | null> };
+    filho(r: Repositorios): RepoFilho<F, D>;
+    visivel?(r: Repositorios, sessao: Sessao, p: P): Promise<boolean>;
+    /** Evento do pai refeito depois da escrita (o filho vai dentro do payload do pai). */
+    aoGravar?(c: ContextoRota, r: Repositorios, pai: P, antes?: null): Promise<void>;
+    validar?(r: Repositorios, dados: Dict, c: ContextoRota): Promise<Violacao[]>;
+  },
+): RotaModulo[] {
+  const R = (c: ContextoRota) => deps.repositorios(c.tx);
+  const pai = async (c: ContextoRota, r: Repositorios, id: string) => {
+    const p = await cfg.pai(r).obter(id);
+    if (!p || (cfg.visivel && !(await cfg.visivel(r, c.sessao, p)))) throw naoEncontrado();
+    return p;
+  };
+  const depois = async (c: ContextoRota, r: Repositorios, p: P) => {
+    const atual = (await cfg.pai(r).obter(p.id)) ?? p;
+    await cfg.aoGravar?.(c, r, atual);
+  };
+  return [
+    definirRota({
+      metodo: 'GET', caminho: cfg.caminho, acao: 'cadastros.ver',
+      async executar(c, e) {
+        const r = R(c);
+        const p = await pai(c, r, idDe(e));
+        return { corpo: { itens: await cfg.filho(r).listar(p.id) } };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, corpo: cfg.dados,
+      async executar(c, e) {
+        const r = R(c);
+        const p = await pai(c, r, idDe(e));
+        if (cfg.validar) exigir(await cfg.validar(r, e.corpo, c));
+        const criado = await cfg.filho(r).inserir(p.id, e.corpo);
+        await depois(c, r, p);
+        return { status: 201, corpo: criado };
+      },
+    }),
+    definirRota({
+      metodo: 'PATCH', caminho: `${cfg.caminho}/:filho_id`, acao: cfg.editar, corpo: cfg.atualizacao,
+      async executar(c, e) {
+        const r = R(c);
+        const p = await pai(c, r, idDe(e));
+        const atual = await cfg.filho(r).obter(p.id, idDe(e, 'filho_id'));
+        if (!atual) throw naoEncontrado();
+        if (cfg.validar) exigir(await cfg.validar(r, { ...(atual as unknown as Dict), ...(e.corpo as Dict) }, c));
+        const novo = await cfg.filho(r).atualizar(p.id, atual.id, e.corpo);
+        if (!novo) throw naoEncontrado();
+        await depois(c, r, p);
+        return { corpo: novo };
+      },
+    }),
+    definirRota({
+      metodo: 'DELETE', caminho: `${cfg.caminho}/:filho_id`, acao: cfg.editar,
+      async executar(c, e) {
+        const r = R(c);
+        const p = await pai(c, r, idDe(e));
+        const inativado = await cfg.filho(r).inativar(p.id, idDe(e, 'filho_id'));
+        if (!inativado) throw naoEncontrado();
+        await depois(c, r, p);
+        return { corpo: inativado };
+      },
+    }),
+  ];
+}
+
+const verificarMunicipioEndereco = (e: { municipio_ibge: string; uf: string }, campo: string): Violacao[] => {
+  const m = validarMunicipio(e.municipio_ibge, e.uf);
+  return m.ok ? [] : [{ ...m.violacao, campo }];
+};
+
+export function criarRotas(deps: Dependencias): RotaModulo[] {
+  const R = (c: ContextoRota) => deps.repositorios(c.tx);
+  const rotas: RotaModulo[] = [];
+
+  // ---- Filiais (RF-CAD-08) ----
+  rotas.push(...rotasCrud(deps, {
+    caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
+    entidade: 'filial', auditado: true, repo: (r) => r.filiais, emitir: eventoDe('cadastros.filial.alterada@1'),
+    inativavel: 'filial', padrao: (r) => r.filiais,
+    async validar(_r, f) {
+      const end = f.endereco as FilialDados['endereco'];
+      return validarFilial({
+        uf: end.uf, municipio_ibge: end.municipio_ibge, ie: (f.ie as string | null) ?? null, emissora: f.emissora === true,
+        nfe_serie: (f.nfe_serie as number | null) ?? null, nfe_numero_inicial: (f.nfe_numero_inicial as number | null) ?? null,
+      });
+    },
+  }));
+
+  // ---- Clientes (RF-CAD-01) e a carteira do vendedor (D7) ----
+  const clienteVisivel = async (r: Repositorios, s: Sessao, cli: Cliente): Promise<boolean> => {
+    if (s.perfil !== 'vendedor') return true;
+    const meus = await r.vendedores.idsDoUsuario(s.usuario_id);
+    return cli.vendedor_id !== null && meus.includes(cli.vendedor_id);
+  };
+  const eventoCliente = async (c: ContextoRota, _r: Repositorios, cli: Cliente) => publicar(c, 'cadastros.cliente.alterado@1', cli.id, { ...cli, inativo: cli.inativo });
+  rotas.push(...rotasCrud(deps, {
+    caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
+    entidade: 'cliente', auditado: false, repo: (r) => r.clientes, emitir: eventoCliente, inativavel: 'cliente',
+    campoRestrito(s, corpo, criacao) {
+      const mexe = criacao ? (corpo.limite_credito_centavos ?? 0) !== 0 : 'limite_credito_centavos' in corpo;
+      if (mexe && !pode(s.perfil, 'cadastros.cliente.credito')) throw erros.perfilSemPermissao(); // limite de crédito: adm e gerente
+    },
+    async escopo(r, s) {
+      const esc = escopoDaCarteira(s.perfil, s.perfil === 'vendedor' ? await r.vendedores.idsDoUsuario(s.usuario_id) : []);
+      return esc.todos ? {} : { vendedor_ids: esc.vendedor_ids };
+    },
+    visivel: clienteVisivel,
+    async validar(r, cli, parcial) {
+      const v: Violacao[] = [];
+      const doc = validarDocumentoCliente(cli.tipo_pessoa as 'PJ' | 'PF', cli.documento as string);
+      if (!doc.ok) v.push(doc.violacao);
+      const novos = (cli.enderecos as EnderecoCliente[] | undefined) ?? [];
+      if (parcial === null) {
+        if (novos.filter((x) => x.tipo === 'principal').length !== 1) v.push(violacao('RN-CAD-03', 'enderecos', 'Informe exatamente um endereço principal'));
+        novos.forEach((x, i) => v.push(...verificarMunicipioEndereco(x, `enderecos.${i}`)));
+      }
+      const gravados = typeof cli.id === 'string' ? await r.clientes.enderecos.listar(cli.id) : [];
+      const principal = [...novos, ...gravados].find((x) => x.tipo === 'principal');
+      const ie = validarIndIeDest({ ind_ie_dest: cli.ind_ie_dest as '1' | '2' | '9', ie: (cli.ie as string | null) ?? null, uf: principal?.uf ?? '' });
+      if (!ie.ok) v.push(ie.violacao);
+      const refs: [string, string | null, { obter(id: string): Promise<unknown> }][] = [
+        ['filial_id', cli.filial_id as string, r.filiais], ['vendedor_id', (cli.vendedor_id as string | null) ?? null, r.vendedores],
+        ['condicao_pagamento_id', (cli.condicao_pagamento_id as string | null) ?? null, r.condicoesPagamento],
+        ['tabela_preco_id', (cli.tabela_preco_id as string | null) ?? null, r.tabelasPreco],
+      ];
+      for (const [campo, id, repo] of refs) if (id !== null && !(await repo.obter(id))) v.push(violacao('REF', campo, 'Cadastro inexistente'));
+      return v;
+    },
+  }));
+  rotas.push(...rotasFilho(deps, {
+    caminho: '/clientes/:id/enderecos', editar: 'cadastros.cliente.editar', dados: EnderecoCliente, atualizacao: EnderecoCliente.partial(),
+    pai: (r) => r.clientes, filho: (r) => r.clientes.enderecos, visivel: clienteVisivel, aoGravar: eventoCliente,
+    validar: async (_r, d) => verificarMunicipioEndereco(d as { municipio_ibge: string; uf: string }, 'municipio_ibge'),
+  }));
+  rotas.push(...rotasFilho(deps, {
+    caminho: '/clientes/:id/contatos', editar: 'cadastros.cliente.editar', dados: Contato, atualizacao: Contato.partial(),
+    pai: (r) => r.clientes, filho: (r) => r.clientes.contatos, visivel: clienteVisivel,
+  }));
+
+  // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
+  const eventoProduto = async (c: ContextoRota, r: Repositorios, p: Produto) =>
+    publicar(c, 'cadastros.produto.alterado@1', p.id, { ...p, unidades: await r.produtos.unidades.listar(p.id), inativo: p.inativo });
+  rotas.push(...rotasCrud(deps, {
+    caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
+    entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: eventoProduto,
+    ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
+    async validar(r, p, parcial, agora) {
+      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return [];
+      const ncm = p.ncm as string;
+      const cest = (p.cest as string | null) ?? null;
+      const data = dataIso(agora);
+      return validarFiscalProduto({
+        ncm, cest, ncmVigente: await r.oficiais.ncmVigente(ncm, data), ncmExigeCest: await r.oficiais.ncmExigeCest(ncm, data),
+        cestVigente: cest === null ? true : await r.oficiais.cestVigente(cest, data),
+        cestCombinaComNcm: cest === null ? true : await r.oficiais.cestCombinaComNcm(cest, ncm, data),
+      });
+    },
+  }));
+  rotas.push(...rotasFilho(deps, {
+    caminho: '/produtos/:id/unidades', editar: 'cadastros.produto.editar', dados: UnidadeDados, atualizacao: UnidadeDados.partial(),
+    pai: (r) => r.produtos, filho: (r) => r.produtos.unidades, aoGravar: eventoProduto,
+  }));
+
+  // ---- Tabelas de preço (RF-CAD-05, RN-CAD-06) ----
+  rotas.push(...rotasCrud(deps, {
+    caminho: '/tabelas-preco', editar: 'cadastros.preco.editar', dados: TabelaPrecoDados, atualizacao: TabelaPrecoAtualizacao,
+    entidade: 'tabela_preco', auditado: true, repo: (r) => r.tabelasPreco, inativavel: 'tabela_preco', padrao: (r) => r.tabelasPreco,
+    /** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
+    async emitir(c, r, t, antes) {
+      if (!antes || (antes.vigencia_inicio === t.vigencia_inicio && antes.vigencia_fim === t.vigencia_fim && antes.inativo === t.inativo)) return;
+      for (let pagina = 1; ; pagina++) {
+        const { itens } = await r.tabelasPreco.itens(t.id, { pagina, por_pagina: 1000 });
+        for (const i of itens) await publicarPreco(c, i, t);
+        if (itens.length < 1000) break;
+      }
+    },
+    async validar(_r, t) {
+      const fim = t.vigencia_fim as string | null;
+      return fim !== null && fim < (t.vigencia_inicio as string) ? [violacao('RN-CAD-06', 'vigencia_fim', 'O fim da vigência não pode ser anterior ao início')] : [];
+    },
+  }));
+  rotas.push(
+    definirRota({
+      metodo: 'GET', caminho: '/tabelas-preco/:id/itens', acao: 'cadastros.ver', consulta: ListaConsulta.pick({ pagina: true, por_pagina: true, filial_id: true }).extend({ produto_id: z.string().uuid().optional() }),
+      async executar(c, e) {
+        const r = R(c);
+        const t = await r.tabelasPreco.obter(idDe(e));
+        if (!t) throw naoEncontrado('Tabela de preço');
+        const p = await r.tabelasPreco.itens(t.id, e.consulta);
+        return { corpo: { ...p, pagina: e.consulta.pagina, por_pagina: e.consulta.por_pagina } };
+      },
+    }),
+    definirRota({
+      metodo: 'PUT', caminho: '/tabelas-preco/:id/itens', acao: 'cadastros.preco.editar', corpo: PrecoLote,
+      async executar(c, e) {
+        const r = R(c);
+        const t = await r.tabelasPreco.obter(idDe(e));
+        if (!t || t.inativo) throw naoEncontrado('Tabela de preço');
+        exigir(validarLotePreco(e.corpo.itens));
+        const filiais = new Set<string>();
+        const produtos = new Set<string>();
+        for (const i of e.corpo.itens) { filiais.add(i.filial_id); produtos.add(i.produto_id); }
+        const filiaisOk = await r.filiais.idsAtivos([...filiais]);
+        if ([...filiais].some((f) => !filiaisOk.has(f))) throw erros.validacao({ filial_id: 'Filial inexistente' });
+        const produtosOk = await r.produtos.idsAtivos([...produtos]);
+        if ([...produtos].some((p) => !produtosOk.has(p))) throw erros.validacao({ produto_id: 'Produto inexistente' });
+        const alterados = await r.tabelasPreco.gravarLote(t.id, e.corpo.itens);
+        for (const i of alterados) await publicarPreco(c, i, t);
+        await c.auditar({ acao: 'tabela_preco.itens_lote', entidade: 'tabela_preco', entidade_id: t.id, depois: { recebidos: e.corpo.itens.length, alterados: alterados.length } });
+        return { corpo: { recebidos: e.corpo.itens.length, alterados: alterados.length } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/precos/vigente', acao: 'cadastros.ver', consulta: PrecoVigenteConsulta,
+      async executar(c, e) {
+        const r = R(c);
+        const q = e.consulta;
+        const t = await r.tabelasPreco.obter(q.tabela_preco_id);
+        if (!t) throw naoEncontrado('Tabela de preço');
+        const padrao = (await r.filiais.padrao())?.id ?? q.filial_id;
+        const itens = await r.tabelasPreco.itensDoProduto(t.id, q.produto_id, [...new Set([q.filial_id, padrao])]);
+        const res = precoVigente({
+          tabela: { vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim, inativa: t.inativo }, itens, produto_id: q.produto_id,
+          filial_id: q.filial_id, filial_padrao_id: padrao, data: q.data ?? dataIso(c.agora),
+        });
+        if (!res.ok) throw new ErroApi(404, res.motivo === 'sem_preco' ? 'SEM_PRECO' : 'FORA_DA_VIGENCIA', res.motivo === 'sem_preco' ? 'Sem preço para o produto na tabela' : 'Tabela fora da vigência');
+        return { corpo: { ...res.item, tabela_preco_id: t.id, origem_filial_id: res.origem_filial_id, vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim } };
+      },
+    }),
+  );
+
+  // ---- Estoque (RF-CAD-06, RN-CAD-07) ----
+  rotas.push(
+    definirRota({
+      metodo: 'GET', caminho: '/estoque', acao: 'cadastros.ver', consulta: EstoqueConsulta,
+      async executar(c, e) {
+        return { corpo: { itens: await R(c).estoque.saldos(e.consulta) } };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: '/estoque/movimentos', acao: 'cadastros.estoque.movimentar', corpo: MovimentoEstoque,
+      async executar(c, e) {
+        const r = R(c);
+        const m = e.corpo;
+        if (!(await r.filiais.obter(m.filial_id))) throw erros.validacao({ filial_id: 'Filial inexistente' });
+        if (!(await r.produtos.obter(m.produto_id))) throw erros.validacao({ produto_id: 'Produto inexistente' });
+        if (m.external_id) {
+          const ja = await r.estoque.movimentoPorExternalId(m.external_id);
+          if (ja) {
+            const [s] = await r.estoque.saldos({ filial_id: m.filial_id, produto_id: m.produto_id });
+            return { status: 200, corpo: { movimento_id: ja.id, filial_id: m.filial_id, produto_id: m.produto_id, quantidade: s?.quantidade ?? 0 } };
+          }
+        }
+        const saldo = await r.estoque.saldoParaAtualizar(m.filial_id, m.produto_id);
+        const res = aplicarMovimento({ saldo, tipo: m.tipo, quantidade: m.quantidade, podeNegativo: pode(c.sessao.perfil, 'cadastros.estoque.negativo') });
+        if (!res.ok) throw erroDeViolacoes([res.violacao]);
+        const mov = await r.estoque.gravarMovimento({ ...m, usuario_id: c.sessao.usuario_id }, res.saldo);
+        await publicar(c, 'cadastros.estoque.alterado@1', agregadoEstoque(m.filial_id, m.produto_id), { filial_id: m.filial_id, produto_id: m.produto_id, quantidade: res.saldo });
+        return { status: 201, corpo: { movimento_id: mov.id, filial_id: m.filial_id, produto_id: m.produto_id, quantidade: res.saldo } };
+      },
+    }),
+  );
+
+  // ---- Condições de pagamento (RF-CAD-09) ----
+  rotas.push(...rotasCrud(deps, {
+    caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
+    entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: eventoDe('cadastros.condicao_pagamento.alterada@1'),
+  }));
+
+  // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----
+  rotas.push(...rotasCrud(deps, {
+    caminho: '/vendedores', editar: 'cadastros.vendedor.editar', dados: VendedorDados, atualizacao: VendedorAtualizacao,
+    entidade: 'vendedor', auditado: false, repo: (r) => r.vendedores, emitir: eventoDe('cadastros.vendedor.alterado@1'),
+    validar: async (r, v) => requisitoFilial(r, v.filial_id as string, 'filial_id'),
+  }));
+  rotas.push(definirRota({
+    metodo: 'POST', caminho: '/carteira/transferir', acao: 'cadastros.carteira.transferir', corpo: TransferenciaCarteira,
+    async executar(c, e) {
+      const r = R(c);
+      const { de, para } = e.corpo;
+      for (const [campo, id] of [['de', de], ['para', para]] as const) {
+        const v = await r.vendedores.obter(id);
+        if (!v || v.inativo) throw erros.validacao({ [campo]: 'Vendedor inexistente ou inativo' });
+      }
+      const plano = planejarTransferencia({ de, para, cliente_ids: e.corpo.cliente_ids, carteira_de: await r.clientes.idsDaCarteira(de) });
+      if (!plano.ok) throw erroDeViolacoes([plano.violacao]);
+      await r.clientes.transferir(para, plano.cliente_ids);
+      for (const id of plano.cliente_ids) {
+        const cli = await r.clientes.obter(id);
+        if (cli) await publicar(c, 'cadastros.cliente.alterado@1', cli.id, { ...cli, inativo: cli.inativo });
+      }
+      await publicar(c, 'cadastros.carteira.alterada@1', para, { de, para, cliente_ids: plano.cliente_ids });
+      await c.auditar({ acao: 'carteira.transferir', entidade: 'vendedor', entidade_id: para, depois: { de, para, total: plano.cliente_ids.length } });
+      return { corpo: { de, para, total: plano.cliente_ids.length, cliente_ids: plano.cliente_ids } };
+    },
+  }));
+
+  // ---- Consultas externas (RF-CAD-02/03, RN-CAD-05): só sugestão, nunca gravam cadastro ----
+  rotas.push(
+    definirRota({
+      metodo: 'GET', caminho: '/consultas/cnpj/:cnpj', acao: 'cadastros.consulta.externa',
+      async executar(c, e) {
+        const cnpj = normalizarDocumento(e.params.cnpj ?? '');
+        if (!cnpjValido(cnpj)) throw erros.regra('RN-CAD-01', 'CNPJ inválido', { cnpj: 'CNPJ inválido' });
+        return {
+          corpo: await sugestaoComCache({
+            tipo: 'cnpj', chave: cnpj, agora: c.agora, repo: R(c).consultaExterna, fontes: deps.fontes.cnpj,
+            montar: (fonte, bruto) => sugestaoCnpj(fonte, bruto, cnpj),
+          }),
+        };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/consultas/cep/:cep', acao: 'cadastros.consulta.externa',
+      async executar(c, e) {
+        const cep = (e.params.cep ?? '').replace(/\D/g, '');
+        if (!/^\d{8}$/.test(cep)) throw erros.validacao({ cep: 'CEP deve ter 8 dígitos' });
+        return {
+          corpo: await sugestaoComCache({
+            tipo: 'cep', chave: cep, agora: c.agora, repo: R(c).consultaExterna, fontes: deps.fontes.cep,
+            montar: (fonte, bruto) => sugestaoCep(fonte, bruto, cep),
+          }),
+        };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: '/consultas/ie', acao: 'cadastros.consulta.externa', corpo: ConsultaIeEntrada,
+      async executar(c, e) {
+        const r = R(c);
+        const { filial_id, uf, documento } = e.corpo;
+        if (cpfValido(documento)) throw erros.validacao({ documento: 'A consulta de IE não aceita CPF' });
+        if (!/^[0-9A-Z]{2,14}$/.test(documento)) throw erros.validacao({ documento: 'Informe a IE ou o CNPJ' });
+        if (!(await r.filiais.obter(filial_id))) throw erros.validacao({ filial_id: 'Filial inexistente' });
+        if (!(await deps.certificados.filialTemA1Valido(c.tx, filial_id, c.agora))) {
+          throw erros.regra('RN-CORE-06', 'A filial não tem certificado A1 válido para consultar a SEFAZ', { filial_id: 'Sem A1 válido' });
+        }
+        const trabalho = await c.enfileirar({ tipo: TRABALHO_CONSULTAR_IE, payload: { filial_id, uf, documento } });
+        await r.consultaExterna.gravar({
+          tipo: 'ie', chave: `${uf}:${documento}`, resposta: { estado: 'pendente' }, fonte: 'sefaz', consultado_em: c.agora, expira_em: c.agora, external_id: trabalho.id,
+        });
+        return { status: 202, corpo: { id: trabalho.id, estado: 'pendente', resultado: null } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/consultas/ie/:id', acao: 'cadastros.consulta.externa',
+      async executar(c, e) {
+        const id = idDe(e);
+        const g = await R(c).consultaExterna.porExternalId('ie', id);
+        if (!g) throw naoEncontrado('Consulta');
+        const estado = (g.resposta.estado as string | undefined) ?? 'concluida';
+        return { corpo: { id, estado, resultado: estado === 'concluida' ? { ...(g.resposta.resultado as Dict | undefined), consultado_em: g.consultado_em.toISOString() } : null } };
+      },
+    }),
+  );
+
+  // ---- Tabelas oficiais (RF-CAD-10): só leitura ----
+  rotas.push(definirRota({
+    metodo: 'GET', caminho: '/oficiais/:tabela', acao: 'cadastros.ver', consulta: OficialConsulta,
+    async executar(c, e) {
+      const tabela = TABELAS_OFICIAIS.find((t) => t === e.params.tabela);
+      if (!tabela) throw naoEncontrado('Tabela oficial');
+      const p = await R(c).oficiais.listar(tabela, e.consulta);
+      return { corpo: { ...p, pagina: e.consulta.pagina, por_pagina: e.consulta.por_pagina } };
+    },
+  }));
+
+  return rotas;
+}
