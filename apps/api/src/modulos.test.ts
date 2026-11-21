@@ -4,7 +4,7 @@
  * para a rota multipart do A1 com limite de 50 KB (RF-CORE-04) e cabeçalhos na rota. O `.pfx` nunca vai para o log.
  */
 import { Writable } from 'node:stream';
-import { defineModule, definirPlugin, definirRota, ErroApi, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
+import { defineModule, definirPlugin, definirRota, ErroApi, TAMANHO_MAXIMO_ARQUIVO, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -38,6 +38,13 @@ const coreDuble = definirPlugin(manifesto('core'), [
       vistos.push({ tamanho: e.arquivos.arquivo!.tamanho, senha: e.corpo.senha, cabecalhos: e.cabecalhos });
       return { status: 201, corpo: { tamanho: e.arquivos.arquivo!.tamanho } };
     },
+  }),
+  definirRota({
+    metodo: 'POST',
+    caminho: '/anexos',
+    acao: 'core.certificado.gerir',
+    multipart: { arquivos: [{ campo: 'anexo', tamanhoMaximo: TAMANHO_MAXIMO_ARQUIVO }] },
+    executar: async (_c, e) => ({ status: 201, corpo: { tamanho: e.arquivos.anexo!.tamanho } }),
   }),
   definirRota({ metodo: 'GET', caminho: '/eco', acao: 'core.empresa.ver', executar: async (_c, e) => ({ corpo: e.cabecalhos }) }),
 ]);
@@ -187,6 +194,18 @@ describe('multipart do A1 (até 50 KB)', () => {
     const r = await enviar(await montar(), { filial_id: FILIAL, senha: 's' }, { arquivo: pfx(LIMITE_PFX + 1) });
     expect(r.statusCode).toBe(413);
     expect(r.json()).toMatchObject({ codigo: 'ARQUIVO_GRANDE', campos: { arquivo: 'até 50 KB' } });
+  });
+
+  it('limite da rota igual ao teto global (1 MiB): aceita no limite e acima dele é 413 ARQUIVO_GRANDE, não CORPO_GRANDE', async () => {
+    const app = await montar();
+    const anexo = async (n: number) => {
+      const f = formulario({}, { anexo: pfx(n) });
+      return app.inject({ method: 'POST', url: '/v1/core/anexos', payload: f.payload, headers: { ...f.headers, authorization: token('administrador') } });
+    };
+    expect((await anexo(TAMANHO_MAXIMO_ARQUIVO)).statusCode).toBe(201);
+    const r = await anexo(TAMANHO_MAXIMO_ARQUIVO + 1);
+    expect(r.statusCode).toBe(413);
+    expect(r.json()).toMatchObject({ codigo: 'ARQUIVO_GRANDE', campos: { anexo: 'até 1024 KB' } });
   });
 
   it('sem arquivo, arquivo vazio, arquivo não declarado, campo inválido ou JSON no lugar do multipart é 400', async () => {

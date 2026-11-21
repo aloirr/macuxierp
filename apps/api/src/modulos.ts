@@ -1,14 +1,5 @@
 /**
- * Registro dos módulos montados na API (T-0029). Cada entrada é o plugin do módulo (`definirPlugin(manifesto, rotas)`,
- * exportado pelo `api/` dele) ou, enquanto ele não expõe rotas, só o manifesto (entram os menus do `GET /v1/auth/eu`).
- * Toda rota montada passa pela ordem da RN-CORE-02 (sessão → perfil → tenant → licença) em `criarApp`.
- *
- * `registrarModulos` confere no arranque: só módulos da v1 (`MODULOS`), sem repetição e com as dependências do
- * manifesto montadas; devolve na ordem de `MODULOS` (a mesma do menu).
- *
- * `montarModulos` liga o core (`criarPluginCore`) e o cadastros (`criarPluginCadastros`) com as dependências criadas
- * no `main.ts`. O cadastros consulta o A1 da filial pela porta pública do core (`criarPortaA1`), na mesma transação
- * do tenant: nunca lê `core.certificado`.
+ * Registro dos módulos montados na API (T-0029). Desenho e regras: `docs/desenho/T-0002.md` (§2, "Integração de plataforma da F1", item "Registro dos módulos").
  */
 import { criarPluginCadastros, fontesHttp, repositoriosSql, type Dependencias as DependenciasCadastros, type PortaCertificados } from '@macuxierp/cadastros/api';
 import { criarPluginCore, criarPortaA1, type DependenciasCore, type RepositorioCore } from '@macuxierp/core/api';
@@ -59,17 +50,10 @@ export function certificadosDoCore(repo: RepositorioCore): PortaCertificados {
  * Armazenamento enquanto o adaptador S3 não chega (T-0024, com ADR): gravar e ler falham e o link de download responde
  * 503 `INDISPONIVEL`. Nenhum arquivo é aceito sem ter onde guardar.
  */
-export const armazenamentoIndisponivel: Armazenamento = {
-  gravar: async () => {
-    throw erros.indisponivel('Armazenamento de arquivos');
-  },
-  ler: async () => {
-    throw erros.indisponivel('Armazenamento de arquivos');
-  },
-  urlAssinada: async () => {
-    throw erros.indisponivel('Armazenamento de arquivos');
-  },
+const fora = async (): Promise<never> => {
+  throw erros.indisponivel('Armazenamento de arquivos');
 };
+export const armazenamentoIndisponivel: Armazenamento = { gravar: fora, ler: fora, urlAssinada: fora };
 
 export interface DependenciasModulos {
   core: DependenciasCore;

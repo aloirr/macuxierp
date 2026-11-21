@@ -1,8 +1,9 @@
 /**
  * Fila de `trabalho` (D10): reserva um lote dos tipos que este worker sabe executar, roda cada um na transação do
  * tenant dele e registra o desfecho. Falha = backoff até `maxTentativas` (padrão 5); depois, `falhou` e o `aoDesistir`
- * do executor numa transação própria. Erro de negócio (`ErroApi` 4xx, ex.: 422 RN) não melhora com o tempo: desiste
- * na hora. Indisponibilidade (503 da SEFAZ ou do Hub) e erro de infraestrutura seguem o backoff.
+ * do executor numa transação própria. Erro que não melhora com o tempo (`ErroApi` 400, 403, 404 e 422 RN) desiste na
+ * hora. Conflito (409), limite de taxa (429), indisponibilidade (503 da SEFAZ ou do Hub) e erro de infraestrutura
+ * seguem o backoff.
  */
 import { ErroApi, type Banco, type ExecutorTrabalho, type Relogio } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
@@ -10,6 +11,8 @@ import { nomeDoErro, proximaTentativa, textoDoErro } from './backoff';
 import type { ReservaTrabalhos } from './portas';
 
 const MAX_TENTATIVAS_PADRAO = 5;
+/** Status do `ErroApi` que desistem na hora: repetir não muda a resposta. */
+const DESISTE_NA_HORA: ReadonlySet<number> = new Set([400, 403, 404, 422]);
 
 export interface DependenciasTrabalhos {
   banco: Banco;
@@ -40,7 +43,7 @@ export async function processarTrabalhos(d: DependenciasTrabalhos): Promise<Resu
         resumo.concluidos++;
       } catch (e) {
         const tentativas = t.tentativas + 1;
-        const negocio = e instanceof ErroApi && e.status < 500;
+        const negocio = e instanceof ErroApi && DESISTE_NA_HORA.has(e.status);
         const desiste = negocio || tentativas >= (executor.maxTentativas ?? MAX_TENTATIVAS_PADRAO);
         await d.fila.falhar(tx, t.id, tentativas, desiste ? null : proximaTentativa(d.relogio.agora(), tentativas), textoDoErro(e));
         if (desiste && executor.aoDesistir) {

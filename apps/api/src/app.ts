@@ -94,7 +94,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
       return typeof h === 'string' && REQUEST_ID.test(h) ? h : randomUUID();
     },
     requestIdLogLabel: 'request_id',
-    bodyLimit: 1_048_576,
+    bodyLimit: TAMANHO_MAXIMO_ARQUIVO,
   });
   const servico = new ServicoAuth(d.banco, d.repoAuth, d.auth, d.relogio);
 
@@ -239,12 +239,32 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
 /**
  * Lê o `multipart/form-data` da rota: campos de texto (validados depois pelo `corpo` da rota) e os arquivos declarados,
  * cada um com o próprio limite (413 `ARQUIVO_GRANDE`). Campo repetido ou arquivo não declarado é 400 `VALIDACAO`.
+ * Limite da rota igual ao teto global: o `@fastify/multipart` corta antes e o 413 dele vira `ARQUIVO_GRANDE` do campo.
  */
 async function lerMultipart(req: FastifyRequest, esperados: readonly ArquivoEsperado[]) {
   if (!req.isMultipart()) throw erros.validacao({ _: 'envie multipart/form-data' });
   const porCampo = new Map(esperados.map((a) => [a.campo, a]));
   const corpo: Record<string, unknown> = {};
   const arquivos: Record<string, ArquivoRecebido> = {};
+  let lendo: ArquivoEsperado | undefined;
+  try {
+    await lerPartes(req, porCampo, corpo, arquivos, (a) => (lendo = a));
+  } catch (e) {
+    if (lendo && (e as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE') throw erros.arquivoGrande(lendo.campo, lendo.tamanhoMaximo);
+    throw e;
+  }
+  const faltando = esperados.filter((a) => a.obrigatorio !== false && !arquivos[a.campo]);
+  if (faltando.length) throw erros.validacao(Object.fromEntries(faltando.map((a) => [a.campo, 'arquivo obrigatório'])));
+  return { corpo, arquivos };
+}
+
+async function lerPartes(
+  req: FastifyRequest,
+  porCampo: ReadonlyMap<string, ArquivoEsperado>,
+  corpo: Record<string, unknown>,
+  arquivos: Record<string, ArquivoRecebido>,
+  lendo: (a: ArquivoEsperado) => void,
+) {
   const repetido = (campo: string) => campo in corpo || campo in arquivos;
   for await (const parte of req.parts()) {
     if (parte.type === 'field') {
@@ -254,6 +274,7 @@ async function lerMultipart(req: FastifyRequest, esperados: readonly ArquivoEspe
     }
     const esperado = porCampo.get(parte.fieldname);
     if (!esperado || repetido(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'arquivo não esperado' });
+    lendo(esperado);
     const pedacos: Buffer[] = [];
     let total = 0;
     for await (const p of parte.file as AsyncIterable<Buffer>) {
@@ -264,7 +285,4 @@ async function lerMultipart(req: FastifyRequest, esperados: readonly ArquivoEspe
     if (total === 0) throw erros.validacao({ [esperado.campo]: 'arquivo vazio' });
     arquivos[esperado.campo] = new ArquivoRecebido(esperado.campo, parte.filename, parte.mimetype, Buffer.concat(pedacos));
   }
-  const faltando = esperados.filter((a) => a.obrigatorio !== false && !arquivos[a.campo]);
-  if (faltando.length) throw erros.validacao(Object.fromEntries(faltando.map((a) => [a.campo, 'arquivo obrigatório'])));
-  return { corpo, arquivos };
 }

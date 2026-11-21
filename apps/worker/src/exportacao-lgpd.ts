@@ -12,7 +12,11 @@ import { guardarArquivo, type Armazenamento, type CatalogoArquivos, type Executo
 import { z } from 'zod';
 import { criarZip, type EntradaZip } from './zip';
 
-/** Porta de cada módulo: as tabelas dele do tenant da transação (RLS), como linhas JSON. */
+/**
+ * Porta de cada módulo: as tabelas dele do tenant da transação (RLS), como linhas JSON.
+ * Nunca entram no zip (regras 8 e 9 do CLAUDE.md): hash de senha, refresh token, A1 cifrado e senha do A1. O exportador
+ * tira essas colunas na consulta, não depois.
+ */
 export interface ExportadorModulo {
   modulo: ModuloId;
   exportar(tx: Transacao): Promise<Record<string, readonly unknown[]>>;

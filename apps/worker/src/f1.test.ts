@@ -5,7 +5,7 @@
 import { Writable } from 'node:stream';
 import { inflateRawSync, crc32 } from 'node:zlib';
 import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
-import { ArmazenamentoMemoria, erros, type CatalogoArquivos, type ExecutorTrabalho, type RegistroArquivo, type Transacao } from '@macuxierp/platform-sdk';
+import { ArmazenamentoMemoria, ErroApi, erros, type StatusErroApi, type CatalogoArquivos, type ExecutorTrabalho, type RegistroArquivo, type Transacao } from '@macuxierp/platform-sdk';
 import { BancoMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -251,6 +251,26 @@ describe('fila de trabalhos com o executor da consulta de IE (dublê do cadastro
     });
     expect(await processarTrabalhos(c.d)).toMatchObject({ desistidos: 1 });
     expect(c.fila.linhas[0]).toMatchObject({ estado: 'falhou', tentativas: 1 });
+  });
+
+  it('desiste na hora só em 400, 403, 404 e 422; 409 e 429 seguem o backoff', async () => {
+    const desfecho = async (status: StatusErroApi) => {
+      const c = cenarioIe(async () => {
+        throw new ErroApi(status, 'TESTE', 'erro de teste');
+      });
+      const resumo = await processarTrabalhos(c.d);
+      return [status, resumo.desistidos === 1 ? 'desiste' : 'backoff', c.fila.linhas[0]?.estado];
+    };
+    const casos = [];
+    for (const s of [400, 403, 404, 422, 409, 429] as const) casos.push(await desfecho(s));
+    expect(casos).toEqual([
+      [400, 'desiste', 'falhou'],
+      [403, 'desiste', 'falhou'],
+      [404, 'desiste', 'falhou'],
+      [422, 'desiste', 'falhou'],
+      [409, 'backoff', 'pendente'],
+      [429, 'backoff', 'pendente'],
+    ]);
   });
 
   it('registro recusa tipo fora do padrão e executor repetido', () => {
