@@ -1,0 +1,29 @@
+/* Gerado dos tokens de tokens.ts (teste garante a paridade). Não edite sem editar o TS. */
+:root {
+  --mx-cor-azul-noite: #1E3350;
+  --mx-cor-perola: #F8F6F1;
+  --mx-cor-branco: #FFFFFF;
+  --mx-cor-sol-laranja: #C2540A;
+  --mx-cor-sol-claro: #F59A52;
+  --mx-cor-grafite: #16202A;
+  --mx-cor-grafite-menu: #2B3743;
+  --mx-cor-texto-secundario: #4A5562;
+  --mx-cor-texto-apoio: #5B6673;
+  --mx-cor-azul-claro: #9AA3B0;
+  --mx-cor-borda-cinza: #C9CED5;
+  --mx-cor-borda-tabela: #DFE2E6;
+  --mx-cor-ativo-fundo: #E2F1EA;
+  --mx-cor-ativo-texto: #1D6B4F;
+  --mx-cor-inativo-fundo: #ECEEF1;
+  --mx-cor-erro-texto: #A8261B;
+  --mx-cor-erro-fundo: #FDE8E6;
+  --mx-fonte-base: 'Inter', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mx-tamanho-base: 15px;
+  --mx-tamanho-titulo-cartao: 24px;
+  --mx-tamanho-h1: 24px;
+  --mx-tamanho-titulo-grupo: 12px;
+  --mx-tamanho-selo: 12px;
+  --mx-peso-normal: 400;
+  --mx-peso-cabecalho-tabela: 600;
+  --mx-peso-titulo: 700;
+}
