@@ -4,7 +4,7 @@
  * Valor repetido não ganha segundo literal: vira alias em `aliasCores` (a variável CSS aponta com `var()`).
  */
 export const cores = {
-  /** Fundo escuro (menu, topo), texto de título, botão principal, link e aba ativa. */
+  /** Texto de título, faixa do cabeçalho e barra superior; botão principal, link e aba ativa. O menu lateral do BKO é grafite (§4). */
   azulNoite: '#1E3350',
   /** Fundo geral das telas. */
   perola: '#F8F6F1',
@@ -15,18 +15,18 @@ export const cores = {
   azulMedio: '#5B7FA6',
   /** Sol do logo e gráficos. NÃO é cor de botão principal. */
   solLaranja: '#C2540A',
-  /** Só sobre fundo escuro. Como texto vale apenas no título de grupo do menu do BKO e na frase do Início. */
+  /** Só sobre fundo escuro. Como texto vale apenas no título de grupo do menu do BKO e do painel, e na frase do Início. */
   solClaro: '#F59A52',
   grafite: '#16202A',
-  /** Menu lateral. */
+  /** Só a tela atual, o hover e a divisória do menu lateral do BKO. NÃO é o fundo do menu. */
   grafiteMenu: '#2B3743',
   textoSecundario: '#4A5562',
   textoApoio: '#5B6673',
   /** Linha suave, chip neutro e fundo de mapa. */
   nevoa: '#ECEEF1',
-  /** Borda forte (campo, cartão). */
+  /** Campo, linha forte, borda do mapa, caixas do PDF e texto claro na faixa. A borda do cartão é `bordaTabela`. */
   bordaCinza: '#C9CED5',
-  /** Chip, cartão em destaque e linha (inclui borda de tabela). */
+  /** Borda do cartão, chip, cartão em destaque e linha (inclui borda de tabela). */
   bordaTabela: '#DFE2E6',
   /** SÓ situação (ativo, autorizada). */
   verdeSucesso: '#1D6B4F',
@@ -87,6 +87,8 @@ export const pesos = {
   rotuloCampo: 600,
   botaoPrincipal: 600,
   numeroCard: 600,
+  abaAtiva: 600,
+  rotuloPequeno: 600,
   titulo: 700,
 } as const;
 

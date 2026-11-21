@@ -46,7 +46,7 @@ describe('tokens da marca', () => {
   });
   it('escala 12, 13, 15, 17, 20, 24 e pesos 400, 500, 600, 700', () => {
     expect(Object.values(escala)).toEqual([12, 13, 15, 17, 20, 24]);
-    expect(Object.values(pesos)).toEqual([400, 500, 600, 600, 600, 600, 700]);
+    expect(Object.values(pesos)).toEqual([400, 500, 600, 600, 600, 600, 600, 600, 700]);
     const v = variaveisCss();
     expect(v['--mx-tamanho-titulo-cartao']).toBe('var(--mx-tamanho-grande)');
     expect(v['--mx-tamanho-titulo-dialogo']).toBe('var(--mx-tamanho-grande)');
