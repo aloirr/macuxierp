@@ -1,0 +1,1 @@
+2026-11-20 — T-0002 — desenho da F1 (docs/desenho/T-0002.md: rotas de core e cadastros, 12 decisões, tabelas para a T-0003, ordem T-0003 a T-0007 e T-0024), catálogo de eventos com payloads e ADR 0002 aceita na opção A.

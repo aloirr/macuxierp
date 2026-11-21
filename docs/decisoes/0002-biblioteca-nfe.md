@@ -1,6 +1,6 @@
 # ADR 0002 — Biblioteca de NF-e (modelo 55, layout 4.00, IBS/CBS/IS)
 
-- **Status:** **proposta — a decisão é do Alexandre** (seção "Decisão pedida")
+- **Status:** **aceita — opção A** (decisão do Alexandre em 20/11/2026, 23h19 de Manaus, registrada pelo gerente-projetos no recado R-20261120-231934-gerente-projetos)
 - **Data da pesquisa:** 21/11/2026 (Manaus)
 - **Dono:** engenheiro-software
 - **Relacionadas:** ADR 0001 (stack do FDV), doc 04 (fontes gratuitas), T-0018 (spike em homologação AM)
@@ -38,7 +38,7 @@ Também vistas: `@brasil-fiscal/nfe` (MIT, IBS/CBS no README, ~36 estrelas), `nf
 - **AM**: nenhuma biblioteca Node tem autorização no AM comprovada; o sped-nfe tem o autorizador mapeado e uma base enorme de uso.
 - **sped-nfe sob MIT** permite **portar a lógica** para TypeScript (com a atribuição), sem contaminar o código, e serve de oráculo nos testes (mesmo pedido → mesmo XML).
 
-## Decisão pedida ao Alexandre
+## Opções levadas ao Alexandre
 | Opção | O que é | Impacto na F4 (previsão do doc 05) |
 |---|---|---|
 | **A (recomendada)** | **Módulo próprio em TypeScript** atrás da porta `EmissorNFe`, portando a lógica do **sped-nfe (opção MIT)**; XML validado contra o XSD oficial (PL_010g); assinatura e mTLS com o A1 em Node puro. O **sinete (Apache-2.0)** entra no spike T-0018 como atalho: se passar no AM, vira a implementação inicial atrás da porta | a previsão atual (T-0021 30h base) já assume A |
@@ -48,7 +48,10 @@ Também vistas: `@brasil-fiscal/nfe` (MIT, IBS/CBS no README, ~36 estrelas), `nf
 
 **Recomendação:** A. Motivos: licença limpa (MIT/Apache), controle do ritmo das NTs, nenhuma dependência nativa, e o sped-nfe como referência madura e oráculo de teste. Risco: custo de acompanhar as NTs (15+ versões da 2025.002 em um ano), mitigado pela porta `EmissorNFe` e pelo teste de XSD no CI.
 
-## Consequências (se A for aprovada)
+## Decisão
+**Opção A** (recado R-20261120-231934-gerente-projetos): módulo próprio em TypeScript atrás da porta `EmissorNFe`, com a lógica portada do sped-nfe sob a licença MIT (com a atribuição); XML validado contra o XSD oficial; assinatura e mTLS com o A1 em Node puro. O sinete (Apache-2.0) entra no spike T-0018 só como atalho de implementação inicial atrás da porta. NFeWizard e Treeunfe (GPL-3.0) e o serviço PHP ficam fora.
+
+## Consequências
 - T-0018 (spike): sinete × porte do sped-nfe em homologação AM, com o A1 de teste; confere endereços, SVC-RS e a NT vigente no portal oficial; registra o resultado aqui.
 - A versão da NT usada fica nesta ADR (adendo a cada NT nova).
 - `fiscal` expõe o cálculo em `contracts`; `faturamento` monta o XML a partir dele.
