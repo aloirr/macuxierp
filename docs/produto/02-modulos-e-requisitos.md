@@ -28,7 +28,7 @@
 - **RF-CAD-05** Tabelas de preço (por filial, com vigência) e preço por tabela.
 - **RF-CAD-06** Estoque simples por filial (saldo; entrada e saída manual e baixa pelo faturamento).
 - **RF-CAD-07** Equipe: usuários do ERP e vendedores do FDV, com filial e carteira de clientes.
-- **RF-CAD-08** Filiais: CNPJ, IE, regime tributário (CRT), endereço, série e próximo número da NF-e por série.
+- **RF-CAD-08** Filiais: CNPJ, IE, regime tributário (CRT), endereço, série e número inicial da NF-e por série (o próximo número vem do faturamento, RN-FAT-01; D8 da T-0002).
 - **RF-CAD-09** Condições de pagamento (parcelas em dias).
 - **RF-CAD-10** Tabelas oficiais carregadas: NCM (Siscomex), CEST, CFOP, CST/CSOSN, municípios (IBGE), classificação tributária do IBS/CBS.
 

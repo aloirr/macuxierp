@@ -4,7 +4,7 @@
 
 ## Plataforma e Core (RN-CORE)
 - **RN-CORE-01** Perfis da v1: administrador, gerente, faturista, fiscal, vendedor, leitura. Um perfil por usuário por empresa.
-- **RN-CORE-02** Toda rota checa perfil, tenant e licença do módulo, nesta ordem. Sem licença: 403 `MODULO_INATIVO`.
+- **RN-CORE-02** Toda rota checa perfil, tenant e licença do módulo, nesta ordem. Sem licença: 403 `MODULO_INATIVO`. O tenant só lê as licenças; elas mudam pelo script do operador, com auditoria (D12 da T-0002).
 - **RN-CORE-03** Dinheiro em centavos (inteiro). Arredondamento meio para cima na 2ª casa, nas regras do Manual da NF-e; rateio sem perder centavo (a diferença vai para a primeira parcela).
 - **RN-CORE-04** Datas gravadas em UTC; exibidas no fuso do tenant (padrão Manaus, UTC−4).
 - **RN-CORE-05** Escrita idempotente: toda criação vinda de fora aceita `external_id` e não duplica no reenvio.
@@ -54,7 +54,7 @@
 ## Permissões (matriz da v1)
 | Ação | administrador | gerente | faturista | fiscal | vendedor | leitura |
 |---|---|---|---|---|---|---|
-| Empresa, filiais, usuários, licenças, A1 | ✔ | | | | | |
+| Empresa, filiais, usuários, ver licenças, A1 | ✔ | | | | | |
 | Clientes e produtos (editar) | ✔ | ✔ | ✔ | | | |
 | Preços e crédito | ✔ | ✔ | | | | |
 | Regras fiscais | ✔ | | | ✔ | | |
