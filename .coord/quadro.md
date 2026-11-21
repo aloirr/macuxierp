@@ -33,6 +33,7 @@
 | [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | bloqueada | — |
 | [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | aberta | — |
 | [T-0027](tarefas/T-0027.md) | Virada do conector da thathyany: kit do FDV sai, conector nativo do ERP entra | F3 | modulo-integracao-fdv | aberta | — |
+| [T-0028](tarefas/T-0028.md) | Tokens da marca Macuxi em packages/ui (destrava a marca do PR #8) | F1 | designer-ux | em_andamento | nuvem/T-0028-tokens-ui |
 
 ## Travado pela nuvem
 | Sessão | Caminhos |
@@ -41,11 +42,12 @@
 | nuvem/T-0004-api-worker (session_0157qAhkgLGRkSx2rwXEmSkd) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
 | nuvem/T-0005-shell-bko (session_0157qAhn9q2n4Me1UWDeCknD) | `apps/web` |
 | nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
+| nuvem/T-0028-tokens-ui | `packages/ui` |
 | nuvem/T-0002-quadro-lote2 (gerente) | `.coord/quadro.md`, `.coord/tarefas/T-0026.md` e `T-0027.md`, `docs/produto/05-roadmap.md`, `docs/status/` |
 
 ## Reservas
 - ADR: 0001–0005 usadas; próxima livre: 0006.
-- Tarefas: T-0001–T-0027 usadas; próxima livre: T-0028.
+- Tarefas: T-0001–T-0028 usadas; próxima livre: T-0029.
 
 ## Depende do Alexandre
 - Secrets do GitHub e `.env` de produção (banco `macuxierp`, chave do A1, S3, SMTP); DNS e rota `erp.` no túnel.
