@@ -1,0 +1,187 @@
+{
+  "versao": 1,
+  "descricao": "Mapa de donos do repositório Macuxi ERP (mesmo formato do Macuxi FDV). A PRIMEIRA regra que casa com o caminho define o dono. Só o Alexandre altera este arquivo. Exceções universais (no código do guardião): qualquer agente cria recado novo em .coord/recados/<destino>/ e escreve no próprio .coord/diario/<agente>.md e .coord/lidos/<agente>.txt. Anexos de recado (.coord/recados/anexos/**) não são recados: valem as regras abaixo (dono alexandre). 'congelado' = ninguém altera; 'sem-dono' = caminho não mapeado (bloqueado). 'somente_leitura' = pastas fora do repositório que nenhum agente pode alterar.",
+  "regras": [
+    {
+      "padrao": ".claude/**",
+      "dono": "alexandre"
+    },
+    {
+      "padrao": ".coord/donos.json",
+      "dono": "alexandre"
+    },
+    {
+      "padrao": "scripts/coord*.mjs",
+      "dono": "alexandre"
+    },
+    {
+      "padrao": ".coord/recados/anexos/**",
+      "dono": "alexandre"
+    },
+    {
+      "padrao": ".coord/contratos/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": ".coord/diario/corretor-redundancias.md",
+      "dono": "corretor-redundancias"
+    },
+    {
+      "padrao": ".coord/diario/design-de-marca.md",
+      "dono": "design-de-marca"
+    },
+    {
+      "padrao": ".coord/**",
+      "dono": "gerente-projetos"
+    },
+    {
+      "padrao": "CLAUDE.md",
+      "dono": "gerente-projetos"
+    },
+    {
+      "padrao": "docs/produto/**",
+      "dono": "gerente-projetos"
+    },
+    {
+      "padrao": "docs/status/**",
+      "dono": "gerente-projetos"
+    },
+    {
+      "padrao": "docs/backlog.md",
+      "dono": "gerente-projetos"
+    },
+    {
+      "padrao": "docs/decisoes/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": "docs/desenho/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": "docs/banco/**",
+      "dono": "banco-dados"
+    },
+    {
+      "padrao": "docs/testes/**",
+      "dono": "testes"
+    },
+    {
+      "padrao": "docs/modulos/core/**",
+      "dono": "modulo-core"
+    },
+    {
+      "padrao": "docs/modulos/cadastros/**",
+      "dono": "modulo-cadastros"
+    },
+    {
+      "padrao": "docs/modulos/pedido/**",
+      "dono": "modulo-pedido"
+    },
+    {
+      "padrao": "docs/modulos/faturamento/**",
+      "dono": "modulo-faturamento"
+    },
+    {
+      "padrao": "docs/modulos/fiscal/**",
+      "dono": "modulo-fiscal"
+    },
+    {
+      "padrao": "docs/modulos/integracao-fdv/**",
+      "dono": "modulo-integracao-fdv"
+    },
+    {
+      "padrao": "docs/design/**",
+      "dono": "designer-ux"
+    },
+    {
+      "padrao": "docs/qualidade/redundancias/**",
+      "dono": "corretor-redundancias"
+    },
+    {
+      "padrao": "docs/marca/**",
+      "dono": "design-de-marca"
+    },
+    {
+      "padrao": "docs/**",
+      "dono": "gerente-projetos"
+    },
+    {
+      "padrao": "modules/*/db/**",
+      "dono": "banco-dados"
+    },
+    {
+      "padrao": "db/**",
+      "dono": "banco-dados"
+    },
+    {
+      "padrao": "drizzle.config.*",
+      "dono": "banco-dados"
+    },
+    {
+      "padrao": "modules/core/**",
+      "dono": "modulo-core"
+    },
+    {
+      "padrao": "modules/cadastros/**",
+      "dono": "modulo-cadastros"
+    },
+    {
+      "padrao": "modules/pedido/**",
+      "dono": "modulo-pedido"
+    },
+    {
+      "padrao": "modules/faturamento/**",
+      "dono": "modulo-faturamento"
+    },
+    {
+      "padrao": "modules/fiscal/**",
+      "dono": "modulo-fiscal"
+    },
+    {
+      "padrao": "modules/integracao-fdv/**",
+      "dono": "modulo-integracao-fdv"
+    },
+    {
+      "padrao": "apps/web/**",
+      "dono": "engenheiro-apps"
+    },
+    {
+      "padrao": "apps/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": "packages/ui/**",
+      "dono": "designer-ux"
+    },
+    {
+      "padrao": "packages/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": "tests/**",
+      "dono": "testes"
+    },
+    {
+      "padrao": "playwright.config.*",
+      "dono": "testes"
+    },
+    {
+      "padrao": "vitest.workspace.*",
+      "dono": "testes"
+    },
+    {
+      "padrao": ".github/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": "scripts/**",
+      "dono": "engenheiro-software"
+    },
+    {
+      "padrao": "*",
+      "dono": "engenheiro-software"
+    }
+  ],
+  "somente_leitura": []
+}

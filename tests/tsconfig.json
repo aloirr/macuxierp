@@ -1,0 +1,14 @@
+{
+  "extends": "@macuxierp/config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "fixtures"
+  ]
+}

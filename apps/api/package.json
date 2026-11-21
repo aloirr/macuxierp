@@ -1,0 +1,22 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@macuxierp/platform-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@macuxierp/config": "workspace:*",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.39.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "description": "API do Macuxi ERP (Fastify, monólito modular). Fastify entra na F1 (T-0005)."
+}

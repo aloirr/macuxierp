@@ -1,0 +1,19 @@
+{
+  "name": "@macuxierp/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@macuxierp/config": "workspace:*",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.39.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "description": "Banco macuxierp: migrações, RLS, papéis, seeds e tabelas fiscais (dono: banco-dados)."
+}

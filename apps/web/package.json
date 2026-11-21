@@ -1,0 +1,23 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@macuxierp/platform-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@macuxierp/config": "workspace:*",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.39.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "description": "Shell do BKO do Macuxi ERP (Next.js). Next.js entra na F1 (T-0006)."
+}
