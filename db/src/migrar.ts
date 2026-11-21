@@ -8,6 +8,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TRAVA_MIGRACAO, sha256Arquivo } from './comum.ts';
+import { carregarOficiais } from './oficiais.ts';
 import { type Conexao, consultar, literal, rodarScript } from './psql.ts';
 
 export const PASTA_MIGRACOES = fileURLToPath(new URL('../migrations/', import.meta.url));
@@ -70,5 +71,6 @@ SELECT 'aplicada';
     );
     if (saida.includes('aplicada')) feitas.push(m.nome);
   }
+  if (opcoes.oficiais !== false) feitas.push(...carregarOficiais(c));
   return feitas;
 }
