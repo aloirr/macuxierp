@@ -7,19 +7,13 @@
 import { X509Certificate } from 'node:crypto';
 import { createServer, connect } from 'node:tls';
 import type { AddressInfo } from 'node:net';
-import { cnpjValido, normalizarDocumento } from '@macuxierp/platform-sdk';
+import { cnpjDoTitularIcp, impressaoDigitalSha256 } from '@macuxierp/platform-sdk';
 import { PfxInvalido, type DadosPfx, type LeitorPfx } from './portas';
 
-/** CNPJ do titular: o ICP-Brasil grava `NOME:<14 caracteres>` no CN do certificado de pessoa jurídica. */
-export function cnpjDoSujeito(sujeito: string): string | null {
-  const cn = /(?:^|\n)CN=([^\n]+)/.exec(sujeito)?.[1] ?? '';
-  const candidatos = [...cn.matchAll(/(?:^|[:\s])([0-9A-Z]{12}[0-9]{2})(?=$|[\s,])/g)].map((m) => normalizarDocumento(m[1] ?? ''));
-  return candidatos.find(cnpjValido) ?? null;
-}
-
+// Só o nome do titular, sem regra de CNPJ (a regra é do SDK): corta o sufixo `:CNPJ` na mesma forma do `valorNoCn`.
 function titularDe(sujeito: string): string {
   const cn = /(?:^|\n)CN=([^\n]+)/.exec(sujeito)?.[1] ?? '';
-  return cn.replace(/:[0-9A-Z]{14}$/, '').trim();
+  return cn.replace(/:[0-9A-Za-z]{12}\d{2}\s*$/, '').trim();
 }
 
 export class LeitorPfxTls implements LeitorPfx {
@@ -31,14 +25,14 @@ export class LeitorPfxTls implements LeitorPfx {
       throw new PfxInvalido('Não foi possível abrir o .pfx');
     }
     const x = new X509Certificate(raw);
-    const cnpj = cnpjDoSujeito(x.subject);
-    if (!cnpj) throw new PfxInvalido('Certificado sem CNPJ no titular');
+    // CNPJ pela regra do SDK; `ErroCertificado` sobe sem conversão (ver portas.ts).
+    const { cnpj } = cnpjDoTitularIcp(x);
     return {
       titular: titularDe(x.subject),
       cnpj,
       valido_de: new Date(x.validFrom),
       valido_ate: new Date(x.validTo),
-      impressao_digital: x.fingerprint256.replace(/:/g, '').toLowerCase(),
+      impressao_digital: impressaoDigitalSha256(x),
     };
   }
 
