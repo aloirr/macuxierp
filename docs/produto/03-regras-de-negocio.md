@@ -11,6 +11,7 @@
 - **RN-CORE-06** Certificado A1: guardado criptografado; a senha nunca volta para a tela nem para log; certificado vencido bloqueia a emissão daquela filial com a mensagem "Certificado vencido em DD/MM/AAAA: envie o novo".
 - **RN-CORE-07** LGPD: sem dado pessoal em log; exportação a qualquer hora; exclusão do tenant respeita a guarda fiscal (XML e dados da nota por 5 anos, no mínimo).
 - **RN-CORE-08** Ambiente fiscal por filial emissora: começa em homologação. A troca para produção é feita só pela Macuxi, pelo script do operador, com o recado "aprovo produção fiscal <empresa>" do Alexandre conferido (autor, texto e empresa). O id do recado fica na filial e na auditoria (ADR 0006). O administrador do cliente só volta a filial para homologação, sem aprovação, e a volta também fica na auditoria.
+- **RN-CORE-40** Perfil "analista de implantação" (pedido do Alexandre, 22/11 ~08h55, Manaus; v0.3.0): acessa só a Carga de cadastros (RF-CAD-11) e a consulta dos cadastros. Não vê pedido, faturamento, usuários nem integração. Entra na lista de perfis da RN-CORE-01 e na matriz de permissões.
 
 ## Cadastros (RN-CAD)
 - **RN-CAD-01** CNPJ e CPF validados pelo dígito verificador; CNPJ alfanumérico (a partir de 2026) aceito conforme a regra da Receita.
