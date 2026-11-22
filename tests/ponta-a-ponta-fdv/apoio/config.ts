@@ -11,6 +11,7 @@
  *   MACUXI_HUB_ENTIDADES     entidades enviadas, separadas por vírgula (padrão no tenant-teste: as 11 do ERP;
  *                            obrigatória no thathyany-seguro: só as já viradas para o Conector do ERP)
  *   MACUXIERP_VERSAO         versão do ERP no `User-Agent: macuxierp/<versão>` (padrão `dev`)
+ *   MACUXI_HUB_LIBERA_ESCRITA  só `1` libera a escrita no Hub real, e nunca na chave do Conector macuxierp (trava abaixo)
  * Credencial: uma chave e um Conector POR PERFIL, em variáveis separadas (quem decide o tenant no Hub é a chave). A chave
  * `mxc_…` é segredo de rede do ambiente, lida só daqui e nunca impressa. `MACUXI_HUB_CHAVE` e `MACUXI_HUB_CONECTOR_ID`
  * genéricas não valem no real (recusadas).
@@ -29,6 +30,8 @@
  * thathyany e com qualquer sinal da thathyany no texto (tenant, Conector, URL). No perfil thathyany-seguro, só aceita a
  * thathyany, com o lado conector, o Conector sem pedidos, a massa do kit, o delta, lotes pequenos e só os cenários
  * "carga idêntica" e "reenvio idempotente". A mensagem de recusa nunca cita o valor da chave.
+ *
+ * Trava de escrita no real: `travaEscrita` e `exigirCenario` (regras em `trava-escrita.ts`).
  */
 import { inspect } from 'node:util';
 import {
@@ -40,6 +43,7 @@ import {
 } from './contrato-hub';
 import { LADOS_ERP, type NomeLadoErp } from './lado-erp';
 import { ErroMassaKit, lerMassaKit, type MassaKit } from './massa-kit';
+import { motivoTravaEscrita, PREFIXO_TRAVA, type MotivoTravaEscrita } from './trava-escrita';
 
 export const URL_HUB_PADRAO = 'https://api.macuxifdv.com.br/integracao/v1';
 
@@ -96,20 +100,46 @@ export type NomeCenario =
   | (typeof CENARIOS_SEGUROS)[number]
   | (typeof CENARIOS_PEDIDOS)[number];
 const ehCenarioDePedido = (nome: NomeCenario) => (CENARIOS_PEDIDOS as readonly string[]).includes(nome);
+/**
+ * Cenários que só LEEM o Hub (cursor) e por isso rodam no real com a escrita travada. Nenhum hoje: todos os da ida
+ * fazem `POST /lotes` (os seguros também) e todos os de pedidos fazem `GET /pedidos/pendentes` (que marca o pedido como
+ * enviado) ou retorno. Com a trava, todo cenário é recusado no alvo real.
+ */
+export const CENARIOS_SO_LEITURA: readonly NomeCenario[] = [];
+const escreveNoHub = (nome: NomeCenario) => !CENARIOS_SO_LEITURA.includes(nome);
 
 export class ErroConfigHub extends Error {
   override readonly name = 'ErroConfigHub';
 }
 
-/** Credencial do Conector: a chave fica num campo privado e só sai no cabeçalho `Authorization`. */
+/** Liberação da escrita: só o `lerConfigHub` chama (não exportada); preenchida no bloco estático da `CredencialHub`. */
+let liberarEscrita: (credencial: CredencialHub) => CredencialHub;
+
+/**
+ * Credencial do Conector: a chave fica num campo privado e só sai no cabeçalho `Authorization`. `escritaLiberada` nasce
+ * `false` e só vira `true` dentro do `lerConfigHub`, quando ele libera a escrita no real (não há parâmetro público para
+ * isso); fora do dublê local, o transporte usa a guarda de leitura (`travaAtiva` em `trava-escrita.ts`).
+ */
 export class CredencialHub {
   readonly #chave: string;
+  #escritaLiberada = false;
+
+  static {
+    liberarEscrita = (c) => {
+      c.#escritaLiberada = true;
+      return c;
+    };
+  }
 
   constructor(
     readonly conectorId: string,
     chave: string,
   ) {
     this.#chave = chave;
+  }
+
+  get escritaLiberada(): boolean {
+    return this.#escritaLiberada;
   }
 
   autorizacao(): string {
@@ -126,8 +156,8 @@ export class CredencialHub {
     return cabecalho === this.autorizacao();
   }
 
-  toJSON(): Record<string, string> {
-    return { conectorId: this.conectorId, chave: '[oculta]' };
+  toJSON(): Record<string, string | boolean> {
+    return { conectorId: this.conectorId, chave: '[oculta]', escritaLiberada: this.escritaLiberada };
   }
 
   toString(): string {
@@ -155,6 +185,8 @@ interface BaseReal {
   versaoErp: string;
   ladoErp: NomeLadoErp;
   entidades: readonly EntidadeHub[];
+  /** Trava de escrita (R-20261122-020834): `null` = escrita liberada; senão, o motivo da trava. */
+  travaEscrita: MotivoTravaEscrita | null;
 }
 
 export interface ConfigTenantTeste extends BaseReal {
@@ -180,18 +212,34 @@ const THATHYANY = 'thathyany';
 const citaThathyany = (s: string) => normal(s).includes(THATHYANY);
 
 /**
- * O cenário pode rodar com esta configuração? Dublê: todos; tenant de teste: os sintéticos e os de pedidos; thathyany:
- * só os seguros (nunca os de pedidos: `recebePedidos: false`).
+ * O cenário cabe no perfil, sem olhar a trava de escrita? Dublê: todos; tenant de teste: os sintéticos e os de pedidos;
+ * thathyany: só os seguros (nunca os de pedidos: `recebePedidos: false`).
  */
-export function cenarioPermitido(config: ConfigHub, nome: NomeCenario): boolean {
+export function cenarioDoPerfil(config: ConfigHub, nome: NomeCenario): boolean {
   if (config.alvo === 'duble') return true;
   if (config.perfil === 'tenant-teste')
     return (CENARIOS_SINTETICOS as readonly string[]).includes(nome) || ehCenarioDePedido(nome);
   return (CENARIOS_SEGUROS as readonly string[]).includes(nome);
 }
 
-/** Recusa o cenário fora do perfil (segunda barreira, dentro do próprio cenário). */
+/** O cenário pode rodar com esta configuração? O do perfil e, no real com a escrita travada, só os de leitura. */
+export function cenarioPermitido(config: ConfigHub, nome: NomeCenario): boolean {
+  if (!cenarioDoPerfil(config, nome)) return false;
+  return config.alvo === 'duble' || config.travaEscrita === null || !escreveNoHub(nome);
+}
+
+const MOTIVO_TRAVA: Readonly<Record<MotivoTravaEscrita, string>> = {
+  'chave-macuxierp':
+    'a chave do Conector macuxierp (perfil thathyany-seguro ou Conector "macuxierp") nunca escreve no Hub real até o ERP estar em produção, a carga conferida e o ok do PO',
+  'sem-libera-escrita': 'falta MACUXI_HUB_LIBERA_ESCRITA=1 (com um Conector de teste que não seja o macuxierp)',
+};
+
+/** Recusa o cenário fora do perfil ou que escreve no Hub real travado (segunda barreira, dentro do próprio cenário). */
 export function exigirCenario(config: ConfigHub, nome: NomeCenario): void {
+  if (config.alvo === 'real' && cenarioDoPerfil(config, nome) && config.travaEscrita !== null && escreveNoHub(nome))
+    throw new ErroConfigHub(
+      `${PREFIXO_TRAVA}: o cenário "${nome}" escreve no Hub (POST /lotes, GET /pedidos/pendentes ou retorno) e ${MOTIVO_TRAVA[config.travaEscrita]}.`,
+    );
   if (!cenarioPermitido(config, nome)) {
     if (config.alvo === 'real' && config.perfil === 'thathyany-seguro' && ehCenarioDePedido(nome))
       throw new ErroConfigHub(
@@ -239,8 +287,11 @@ const VARIAVEIS_GENERICAS = ['MACUXI_HUB_CHAVE', 'MACUXI_HUB_CONECTOR_ID'] as co
 /** Qualquer variável do arnês com THATHYANY no nome é "da thathyany". */
 const ehVariavelDaThathyany = (nome: string) => /^MACUXI_HUB_.*THATHYANY/i.test(nome);
 
-/** Lê a chave e o Conector do perfil, sem nunca citar o valor da chave. */
-function lerCredencial(env: Ambiente, perfil: PerfilReal): CredencialHub {
+/** Lê a chave e o Conector do perfil (sem nunca citar o valor da chave) e o motivo da trava de escrita. */
+function lerCredencial(
+  env: Ambiente,
+  perfil: PerfilReal,
+): { credencial: CredencialHub; travaEscrita: MotivoTravaEscrita | null } {
   const nomes = VARIAVEIS_CREDENCIAL[perfil];
   const genericas = VARIAVEIS_GENERICAS.filter((v) => env[v] !== undefined);
   if (genericas.length)
@@ -257,7 +308,10 @@ function lerCredencial(env: Ambiente, perfil: PerfilReal): CredencialHub {
   const conectorId = env[nomes.conector]?.trim() ?? '';
   if (!FORMATO_CONECTOR_ID.test(conectorId))
     throw new ErroConfigHub(`${nomes.conector} ausente ou fora do formato.`);
-  return new CredencialHub(conectorId, chave);
+  // a credencial só sai com a escrita liberada sem trava (MACUXI_HUB_LIBERA_ESCRITA=1 e fora da chave macuxierp)
+  const travaEscrita = motivoTravaEscrita(env.MACUXI_HUB_LIBERA_ESCRITA?.trim(), perfil, conectorId);
+  const credencial = new CredencialHub(conectorId, chave);
+  return { credencial: travaEscrita === null ? liberarEscrita(credencial) : credencial, travaEscrita };
 }
 
 /**
@@ -337,11 +391,11 @@ export function lerConfigHub(env: Ambiente = process.env): ConfigHub {
 
   const perfil = lerPerfil(env.MACUXI_HUB_PERFIL?.trim());
   const url = validarUrl(env.MACUXI_HUB_URL?.trim() || URL_HUB_PADRAO);
-  const credencial = lerCredencial(env, perfil);
+  const { credencial, travaEscrita } = lerCredencial(env, perfil);
   const tenant = env.MACUXI_HUB_TENANT?.trim() ?? '';
   if (!tenant) throw new ErroConfigHub('MACUXI_HUB_TENANT ausente: declare o nome do tenant do FDV.');
   const entidades = lerEntidades(env.MACUXI_HUB_ENTIDADES);
-  const base = { alvo: 'real' as const, url, credencial, tenant, versaoErp, ladoErp };
+  const base = { alvo: 'real' as const, url, credencial, tenant, versaoErp, ladoErp, travaEscrita };
 
   if (perfil === 'tenant-teste') {
     if (env.MACUXI_HUB_TENANT_TESTE !== '1') {
