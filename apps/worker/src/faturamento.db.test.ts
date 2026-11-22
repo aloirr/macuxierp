@@ -210,13 +210,11 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
   });
 
   /**
-   * PENDÊNCIA (banco-dados): o `macuxierp_worker` só tem SELECT em `cadastros.estoque_saldo` e `estoque_movimento` (0004), e o consumidor
-   * do estoque (que roda no worker) falha com "permission denied for table estoque_saldo". Quando o GRANT sair, este caso fica vermelho:
-   * troque `it.fails` por `it`.
+   * O GRANT do `macuxierp_worker` em `cadastros.estoque_saldo` e `estoque_movimento` saiu na 0029 (#217): o consumidor do estoque grava.
    * PENDÊNCIA (modulo-faturamento): o evento real ainda não leva `produto_id`/`filial_id` por item nem `conta_como_real`
    * (`modules/faturamento/api/eventos.ts`); o republicado os acrescenta, como o contrato `ItemNotaEvento` já prevê.
    */
-  it.fails('#192: a mesma nota republicada com conta_como_real baixa o estoque no worker; o pedido não soma de novo', async () => {
+  it('#192: a mesma nota republicada com conta_como_real baixa o estoque no worker; o pedido não soma de novo', async () => {
     const [orig] = await admin<{ payload: { itens: Record<string, unknown>[] } & Record<string, unknown> }>(
       "SELECT payload->'payload' AS payload FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'faturamento.nota.autorizada@1' AND agregado_id = $2",
       [tenant, autorizada],

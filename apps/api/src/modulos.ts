@@ -37,6 +37,7 @@ import {
   criarConsultaParaFaturar,
   criarPluginPedido,
   dependenciasDeProducao as dependenciasPedido,
+  semNotaEmAberto,
   type Dependencias as DependenciasPedido,
   type LogPedido,
 } from '@macuxierp/pedido/api';
@@ -172,11 +173,13 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
   });
   const reposFaturamento = repositoriosFaturamento({ outbox: new OutboxPg() });
   const faturamento = { ...dependenciasFaturamento({ repos: reposFaturamento, repoCore: d.core.repo, repositoriosCadastros, ...(d.log ? { log: d.log } : {}) }), ...d.faturamento };
-  // P-2: nota em autorização bloqueia o cancelamento do pedido (a porta inversa vem do faturamento). RN-PED-04: o saldo aberto do
-  // cliente vem dos títulos do faturamento (produção ou `conta_como_real`, titulos.md).
+  // P-2: nota em aberto bloqueia o cancelamento do pedido (a porta inversa vem do faturamento, `notaEmAbertoSql`). RN-PED-04: o saldo
+  // aberto do cliente vem dos títulos do faturamento (produção ou `conta_como_real`, titulos.md).
+  // RN-PED-02 (#210): a porta do pedido pede também `notasAutorizadas`, que o faturamento ainda não implementa. Até lá, lista vazia: o
+  // `temNotaEmAutorizacao` do faturamento já conta a `autorizada` como em aberto, então o cancelamento com nota autorizada segue recusado.
   const pedido = criarPluginPedido({
     ...dependenciasPedido(criarConsultaParaPedido(repositoriosCadastros), {
-      notas: reposFaturamento.notaEmAberto,
+      notas: { ...reposFaturamento.notaEmAberto, notasAutorizadas: semNotaEmAberto.notasAutorizadas },
       titulos: consultaTitulosPedido(reposFaturamento.titulos),
       ...(d.log ? { log: d.log } : {}),
     }),
