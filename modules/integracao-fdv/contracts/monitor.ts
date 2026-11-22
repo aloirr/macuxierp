@@ -1,5 +1,6 @@
 /** C-6: leituras do monitor do BKO (RF-INF-04). Sem mensagem livre nem valor de campo: a mensagem sai do catálogo pelo código. */
 import { z } from 'zod';
+import { ConfiguracaoResumo, CredencialResumo } from './credencial';
 import { CampoErro, CodigoErro, EntidadeHub, ModoLote, SituacaoEntidade, VERSAO_CONTRATO_HUB } from './hub';
 
 export const MotivoPausa = z.enum(['credencial', 'licenca_fdv', 'licenca_erp', 'versao', 'envelope', 'idempotencia', 'topologia']);
@@ -14,6 +15,10 @@ export const MonitorEntidade = z.object({
   pendentes: z.number().int().min(0),
   situacao: SituacaoEntidade,
   pausada_motivo: MotivoPausa.nullable(),
+  /** Texto do catálogo para o motivo da pausa (nunca a mensagem crua do Hub). */
+  pausada_mensagem: z.string().nullable(),
+  /** A entidade está em `entidades_habilitadas` da credencial ativa. */
+  habilitada: z.boolean(),
   erros_abertos: z.number().int().min(0),
 });
 export type MonitorEntidade = z.infer<typeof MonitorEntidade>;
@@ -33,6 +38,8 @@ export const LoteEnvioResumo = z.object({
   com_erro: z.number().int().min(0).nullable(),
   tentativas: z.number().int().min(0),
   ultimo_erro_codigo: CodigoErro.nullable(),
+  /** Mensagem do catálogo para `ultimo_erro_codigo`. */
+  ultimo_erro_mensagem: z.string().nullable(),
   enviado_em: Instante,
   concluido_em: Instante,
 });
@@ -50,6 +57,28 @@ export const LoteErroItem = z.object({
   resolvido_em: Instante,
 });
 export type LoteErroItem = z.infer<typeof LoteErroItem>;
+
+/** Erro por linha com a mensagem do catálogo (RN-INF-04). */
+export const LoteErroLinha = LoteErroItem.extend({
+  id: z.string().uuid(),
+  lote_envio_id: z.string().uuid(),
+  mensagem: z.string(),
+});
+export type LoteErroLinha = z.infer<typeof LoteErroLinha>;
+
+export const CodigoConflitoChave = z.enum(['chave_alterada', 'chave_duplicada']);
+export type CodigoConflitoChave = z.infer<typeof CodigoConflitoChave>;
+/** Conflito de chave aberto (ADR 0010, item 3): o registro não foi ao FDV até alguém resolver. */
+export const ConflitoChaveItem = z.object({
+  id: z.string().uuid(),
+  entidade: EntidadeHub,
+  erp_id: z.string().uuid(),
+  chave: z.string().max(200),
+  codigo: CodigoConflitoChave,
+  mensagem: z.string(),
+  detectado_em: z.string().datetime(),
+});
+export type ConflitoChaveItem = z.infer<typeof ConflitoChaveItem>;
 
 export const SinalResumo = z.object({
   ultimo_envio_em: Instante,
@@ -92,3 +121,14 @@ export const CorpoReconciliacao = z.object({
   soma: z.number().nullable(),
 });
 export type CorpoReconciliacao = z.infer<typeof CorpoReconciliacao>;
+
+/** `GET /monitor` (RF-INF-04). `erros` são os abertos mais recentes (até 20 por entidade); a lista completa por lote sai em `GET /lotes/:id/erros`. */
+export const MonitorResposta = z.object({
+  credencial: CredencialResumo.nullable(),
+  configuracao: ConfiguracaoResumo.nullable(),
+  sinal: SinalResumo.nullable(),
+  entidades: z.array(MonitorEntidade),
+  erros: z.array(LoteErroLinha),
+  conflitos: z.array(ConflitoChaveItem),
+});
+export type MonitorResposta = z.infer<typeof MonitorResposta>;

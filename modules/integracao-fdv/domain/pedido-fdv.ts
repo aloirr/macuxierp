@@ -50,10 +50,14 @@ function opcionalQtd4(valor: number | string | null | undefined): number | null 
   return valor === null || valor === undefined ? null : paraQtd4(valor);
 }
 
-/** Endereço de entrega escolhido no cadastro do ERP (`origem = 'erp'`) com a chave do Hub; o digitado não tem chave. */
+/**
+ * Endereço de entrega escolhido no cadastro do ERP, com a chave do Hub. Origem ausente vale `erp` (guia do Hub, A-01 da
+ * T-0017); o `digitado` não tem chave; `external_id` nulo ou vazio = só os textos.
+ */
 function chaveDoEnderecoErp(p: PedidoParaErpLido): string | null {
   const e = p.endereco_entrega;
-  return e && e.origem === 'erp' && typeof e.external_id === 'string' && e.external_id.length > 0 ? e.external_id : null;
+  const origem = e?.origem ?? 'erp';
+  return e && origem === 'erp' && typeof e.external_id === 'string' && e.external_id.length > 0 ? e.external_id : null;
 }
 
 /** Chaves do pedido que a porta resolve, por entidade, sem repetição (uma consulta por entidade, RN-INF-05). */

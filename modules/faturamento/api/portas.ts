@@ -6,6 +6,7 @@
 import type { CalculoSaida, ErroFiscal } from '@macuxierp/fiscal/contracts';
 import type { CertificadoA1EmMemoria } from '@macuxierp/nfe-emissor';
 import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
+import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type { Ambiente, FiltroNotas, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
@@ -106,6 +107,16 @@ export interface A1DaFilial {
   credencial: CredencialA1EmMemoria;
 }
 
+/**
+ * "A filial tem A1 ATIVO e dentro da validade?" (RN-CORE-06), para a API, SEM decifrar nada: o `macuxierp_app` só lê os metadados do certificado
+ * (`valido_de`, `valido_ate`, `ativo`; 0003). O adaptador no apps/api liga a `criarPortaA1` (`@macuxierp/core/api`, veredito `a1ValidoDaFilial`) à
+ * transação da requisição. O A1 decifrado só existe no worker (`lerA1`, `DepsTransmissor`).
+ */
+export type ResultadoA1Ativo = A1ValidoDaFilial;
+export interface ConsultaA1Ativo {
+  temA1Ativo(tx: Transacao, filial_id: string): Promise<ResultadoA1Ativo>;
+}
+
 /** Normalização do retorno da SEFAZ (autorização, recibo ou consulta) para o que o domínio interpreta. */
 export interface RetornoSefaz {
   cStat: string;
@@ -159,6 +170,8 @@ export interface DadosMudancaStatus {
   recibo?: string;
   /** UTC ISO do `dhRecbto` do protocolo (a nota autorizada exige protocolo e data, `nota_protocolada`). */
   autorizadaEm?: string;
+  /** Revisão do conteúdo que o chamador leu: o UPDATE só vale se a nota ainda estiver nela (RN-FAT-07; o reenvio da API sobe a revisão). */
+  revisao?: number;
 }
 
 export interface TransmissaoRegistrada {
@@ -188,6 +201,11 @@ export interface RepositorioNotas {
   reservarNumero(tx: Transacao, tenant_id: string, filial_id: string, ambiente: Ambiente, serie: number, numeroInicial: number): Promise<number>;
   /** Grava a nota em `rascunho` com o conteúdo e os itens. O banco confere o número reservado e o ambiente da filial. */
   gravarNota(tx: Transacao, nota: NovaNota, conteudo: ConteudoNota): Promise<NotaRegistro>;
+  /**
+   * Worker: a nota `rascunho`/`rejeitada` não pôde ser assinada (A1 vencido ou revogado entre as fases, remontagem que não bate): grava o
+   * motivo em `transporte.envio_pendente` (`{ motivo, registrado_em }`), SEM mudar status nem número. `atualizarConteudo` (o reenvio) o limpa.
+   */
+  registrarMotivoEnvio(tx: Transacao, nota_id: string, motivo: string): Promise<void>;
   /**
    * Reenvio (RN-FAT-07): regrava retratos, itens e totais da nota `rejeitada` (ou `rascunho`) e zera o recibo. Número, série,
    * cNF e chave NUNCA mudam; em outro status lança. O banco recusa também (gatilho).
@@ -232,7 +250,24 @@ export interface RepositorioNotas {
   listarRejeicoes(tx: Transacao, filtro: FiltroRejeicoes): Promise<Pagina<RejeicaoNota>>;
   /**
    * Notas `em_autorizacao` e `autorizada_guarda_pendente` mais antigas primeiro (varredura do worker), só as com `updated_at` mais
-   * antigo que `paradasHaMinutos`: a nota que outra transmissão acabou de tocar fica de fora.
+   * antigo que `paradasHaMinutos`: a nota que outra transmissão acabou de tocar fica de fora. Entram também as em `rascunho` sem
+   * `nfe_assinada` (trabalho perdido), paradas há `paradasHaMinutos`, ou há `esperaEnvioPendenteMin` se houver `envio_pendente` (A1 ruim: não insistir).
+   * É seguro: o worker confere a revisão ao levar a nota a `em_autorizacao`.
    */
-  pendentesDeTransmissao(tx: Transacao, limite: number, paradasHaMinutos: number): Promise<{ id: string; status: StatusNota }[]>;
+  pendentesDeTransmissao(tx: Transacao, limite: number, paradasHaMinutos: number, esperaEnvioPendenteMin: number): Promise<{ id: string; status: StatusNota }[]>;
+  /**
+   * Alerta do prazo de inutilização (RN-FAT-01): notas numeradas ainda em `rascunho` ou `rejeitada` com `emitida_em` anterior a `antesDe`.
+   * Número que não vai ser enviado só se fecha por inutilização, dentro do prazo (dia 10 do mês seguinte).
+   */
+  numeradasNaoEnviadas(tx: Transacao, antesDe: Date): Promise<NotaNumeradaNaoEnviada[]>;
+}
+
+export interface NotaNumeradaNaoEnviada {
+  id: string;
+  filial_id: string;
+  ambiente: Ambiente;
+  serie: number;
+  numero: number;
+  status: 'rascunho' | 'rejeitada';
+  emitida_em: string;
 }

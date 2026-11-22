@@ -69,7 +69,7 @@ async function resolverChaves(tx: Transacao, d: DepsRecebimento, tenantId: strin
 async function rejeitar(tx: Transacao, d: DepsRecebimento, tenantId: string, uuid: string, codigo: CodigoRejeicao, detalhe?: string): Promise<void> {
   const agora = d.relogio.agora();
   await tx.consultar(
-    `UPDATE integracao_fdv.pedido_recebido SET estado = 'rejeitado', erro_codigo = $3, updated_at = now()
+    `UPDATE integracao_fdv.pedido_recebido SET estado = 'rejeitado', erro_codigo = $3
       WHERE tenant_id = $1 AND pedido_uuid = $2`,
     [tenantId, uuid, codigo],
   );
@@ -100,7 +100,7 @@ async function processar(tx: Transacao, d: DepsRecebimento, tenantId: string, br
       `INSERT INTO integracao_fdv.pedido_recebido (tenant_id, pedido_uuid, payload, hash, tentativas)
        VALUES ($1, $2, $3::jsonb, $4, 1)
        ON CONFLICT (tenant_id, pedido_uuid) DO UPDATE
-         SET recebido_em = now(), tentativas = integracao_fdv.pedido_recebido.tentativas + 1, updated_at = now()
+         SET recebido_em = now(), tentativas = integracao_fdv.pedido_recebido.tentativas + 1
        RETURNING estado, tentativas, hash, payload`,
       [tenantId, pedidoUuid, JSON.stringify(lido.success ? semTentativa : { pedido_uuid: pedidoUuid }), hash],
     )
@@ -148,7 +148,7 @@ async function processar(tx: Transacao, d: DepsRecebimento, tenantId: string, br
       return 'rejeitado';
     }
     await tx.consultar(
-      `UPDATE integracao_fdv.pedido_recebido SET estado = 'entregue', pedido_id = $3, erro_codigo = NULL, updated_at = now()
+      `UPDATE integracao_fdv.pedido_recebido SET estado = 'entregue', pedido_id = $3, erro_codigo = NULL
         WHERE tenant_id = $1 AND pedido_uuid = $2`,
       [tenantId, pedidoUuid, r.pedido_id],
     );

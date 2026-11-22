@@ -12,7 +12,7 @@ import { criarEvento, erros, paginar, type Outbox, type Pagina, type Transacao }
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { FiltroNotas, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
 import { calcularTotais, interpretarRetorno, type ConteudoNota, type NotaItemMontado } from '../domain';
-import type { AmbienteFiscalDaFilial, NotaEmAberto, NotaRegistro, PedidosAprovados, RepositorioNotas } from './portas';
+import type { AmbienteFiscalDaFilial, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioNotas } from './portas';
 
 type Dict = Record<string, unknown>;
 
@@ -204,14 +204,23 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
       await gravarItens(tx, nota_id, conteudo.itens);
     },
 
+    async registrarMotivoEnvio(tx, nota_id, motivo) {
+      await tx.consultar(
+        `UPDATE faturamento.nota
+            SET transporte = COALESCE(transporte, '{}'::jsonb) || jsonb_build_object('envio_pendente', jsonb_build_object('motivo', left($2::text, 255), 'registrado_em', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')))
+          WHERE id = $1 AND status IN ('rascunho', 'rejeitada') AND deleted_at IS NULL`,
+        [nota_id, motivo],
+      );
+    },
+
     async mudarStatus(tx, nota_id, de, para, dados) {
       const r = await tx.consultar(
         `UPDATE faturamento.nota SET status = $3, c_stat = COALESCE($4::smallint, c_stat), x_motivo = COALESCE(left($5::text, 255), x_motivo),
                 recibo = COALESCE($6::text, recibo), protocolo = COALESCE($7::text, protocolo), autorizada_em = COALESCE($8::timestamptz, autorizada_em)
-          WHERE id = $1 AND status = $2 AND deleted_at IS NULL RETURNING id`,
-        [nota_id, de, para, dados?.cStat ?? null, dados?.xMotivo ?? null, dados?.recibo ?? null, dados?.protocolo ?? null, dados?.autorizadaEm ?? null],
+          WHERE id = $1 AND status = $2 AND deleted_at IS NULL AND ($9::int IS NULL OR COALESCE((transporte->>'revisao')::int, 1) = $9::int) RETURNING id`,
+        [nota_id, de, para, dados?.cStat ?? null, dados?.xMotivo ?? null, dados?.recibo ?? null, dados?.protocolo ?? null, dados?.autorizadaEm ?? null, dados?.revisao ?? null],
       );
-      if (r.length === 0) throw new Error(`RN-FAT-02: a nota não está em ${de}`);
+      if (r.length === 0) throw new Error(`RN-FAT-02: a nota não está em ${de}${dados?.revisao === undefined ? '' : ` na revisão ${dados.revisao}`}`);
     },
 
     async registrarRecibo(tx, nota_id, recibo) {
@@ -326,12 +335,26 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
       return { ...pagina, itens: pagina.itens.map((l) => ({ ...l, acao_sugerida: interpretarRetorno(l.codigo ?? '', l.mensagem ?? '').acao })) };
     },
 
-    async pendentesDeTransmissao(tx, limite, paradasHaMinutos) {
+    async pendentesDeTransmissao(tx, limite, paradasHaMinutos, esperaEnvioPendenteMin) {
       return tx.consultar<{ id: string; status: StatusNota }>(
-        `SELECT id, status FROM faturamento.nota
-          WHERE status IN ('em_autorizacao', 'autorizada_guarda_pendente') AND deleted_at IS NULL AND updated_at < now() - make_interval(mins => $2::int)
-          ORDER BY updated_at, id LIMIT $1`,
-        [limite, paradasHaMinutos],
+        `SELECT n.id, n.status FROM faturamento.nota n
+          WHERE n.deleted_at IS NULL
+            AND ((n.status IN ('em_autorizacao', 'autorizada_guarda_pendente') AND n.updated_at < now() - make_interval(mins => $2::int))
+              OR (n.status = 'rascunho'
+                  AND NOT EXISTS (SELECT 1 FROM faturamento.nota_xml x WHERE x.nota_id = n.id AND x.tipo = 'nfe_assinada' AND x.deleted_at IS NULL)
+                  AND n.updated_at < now() - make_interval(mins => CASE WHEN n.transporte->'envio_pendente' IS NOT NULL THEN $3::int ELSE $2::int END)))
+          ORDER BY n.updated_at, n.id LIMIT $1`,
+        [limite, paradasHaMinutos, esperaEnvioPendenteMin],
+      );
+    },
+
+    async numeradasNaoEnviadas(tx, antesDe) {
+      return tx.consultar<NotaNumeradaNaoEnviada>(
+        `SELECT n.id, n.filial_id, n.ambiente, n.serie::int AS serie, n.numero, n.status, ${ISO('n.emitida_em')} AS emitida_em
+           FROM faturamento.nota n
+          WHERE n.deleted_at IS NULL AND n.status IN ('rascunho', 'rejeitada') AND n.emitida_em < $1::timestamptz
+          ORDER BY n.emitida_em, n.id`,
+        [antesDe.toISOString()],
       );
     },
   };
