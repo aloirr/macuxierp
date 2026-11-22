@@ -5,8 +5,8 @@ import { moduloDaAcao, pode, PERMISSOES, type Acao } from './permissoes';
 const quem = (acao: Acao) => PERFIS.filter((p) => pode(p, acao));
 
 describe('PERMISSOES (matriz do doc 03, D3)', () => {
-  it('RN-CORE-01: empresa, usuários, ver licenças e A1 só o administrador', () => {
-    for (const a of ['core.empresa.editar', 'core.usuario.gerir', 'core.licenca.ver', 'core.certificado.gerir', 'cadastros.filial.editar'] as const) {
+  it('RN-CORE-01 e RN-CORE-05: empresa, usuários, licenças, A1, filial e troca do external_id só o administrador', () => {
+    for (const a of ['core.empresa.editar', 'core.usuario.gerir', 'core.licenca.ver', 'core.certificado.gerir', 'cadastros.filial.editar', 'cadastros.external_id.trocar'] as const) {
       expect(quem(a)).toEqual(['administrador']);
     }
   });

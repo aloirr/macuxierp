@@ -1,0 +1,27 @@
+{
+  "name": "@macuxierp/sefaz-simulador",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Simulador da SEFAZ-AM (só homologação): implementa a porta SefazTransporte de @macuxierp/nfe-sefaz para o faturamento e os testes (T-0045).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@macuxierp/nfe-sefaz": "workspace:*",
+    "@macuxierp/platform-sdk": "workspace:*",
+    "@xmldom/xmldom": "0.8.15"
+  },
+  "devDependencies": {
+    "@macuxierp/config": "workspace:*",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.39.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

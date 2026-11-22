@@ -5,15 +5,19 @@
  * também o inativo (a decisão é do pedido). O produto sai sem custo (nunca vai ao pedido nem ao FDV).
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { Cliente, CondicaoPagamento, Filial, PrecoVigente, Produto, SaldoEstoque } from '../contracts';
+import { EnderecoClienteItem, type Cliente, type CondicaoPagamento, Filial, PrecoVigente, Produto, SaldoEstoque } from '../contracts';
+import { comNomeMunicipio } from './enderecos';
 import { precosVigentesDe, unicos } from './precos-vigentes';
 import type { Repositorios } from './portas';
 
 const CAMPOS_CLIENTE = ['id', 'tipo_pessoa', 'documento', 'razao_social', 'nome_fantasia', 'ind_ie_dest', 'ie', 'limite_credito_centavos', 'condicao_pagamento_id', 'tabela_preco_id', 'filial_id', 'vendedor_id', 'enderecos', 'inativo'] as const;
 const CAMPOS_FILIAL = ['id', 'emissora', 'padrao', 'inativo'] as const;
-const CAMPOS_PRODUTO = ['id', 'codigo', 'descricao', 'unidade_comercial', 'ean', 'ncm', 'inativo'] as const;
+const CAMPOS_ENDERECO = Object.keys(EnderecoClienteItem.shape) as (keyof EnderecoClienteItem)[];
+const CAMPOS_PRODUTO = ['id', 'codigo', 'descricao', 'unidade_comercial', 'ean', 'ncm', 'origem', 'inativo'] as const;
 
-export type ClienteParaPedido = Pick<Cliente, (typeof CAMPOS_CLIENTE)[number]>;
+/** Endereço com o `id` e o nome do IBGE (`null` se o código não está na tabela oficial), como no evento C-1/C-3. */
+export type EnderecoParaPedido = EnderecoClienteItem & { municipio_nome: string | null };
+export type ClienteParaPedido = Omit<Pick<Cliente, (typeof CAMPOS_CLIENTE)[number]>, 'enderecos'> & { enderecos: EnderecoParaPedido[] };
 export type FilialParaPedido = Pick<Filial, (typeof CAMPOS_FILIAL)[number]>;
 export type ProdutoParaPedido = Pick<Produto, (typeof CAMPOS_PRODUTO)[number]> & { unidades: { unidade: string; fator: number }[] };
 
@@ -39,8 +43,12 @@ export interface ConsultaCadastrosParaPedido {
 export function criarConsultaParaPedido(repositorios: (tx: Transacao) => Repositorios): ConsultaCadastrosParaPedido {
   return {
     async cliente(tx, id) {
-      const c = await repositorios(tx).clientes.obter(id);
-      return c ? escolher(c, CAMPOS_CLIENTE) : null;
+      const r = repositorios(tx);
+      const c = await r.clientes.obter(id);
+      if (!c) return null;
+      // Cópia tipada só das chaves do item, sem validar de novo: dado antigo não derruba a consulta com 500.
+      const itens = ((c.enderecos ?? []) as EnderecoClienteItem[]).map((e) => escolher(e, CAMPOS_ENDERECO));
+      return { ...escolher(c, CAMPOS_CLIENTE), enderecos: await comNomeMunicipio(r, itens) };
     },
     async filial(tx, id) {
       const f = await repositorios(tx).filiais.obter(id);

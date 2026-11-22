@@ -1,4 +1,4 @@
-import type { CondicaoPagamento } from '@macuxierp/cadastros/contracts';
+import { ehAVista, type CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import { CodigoPendencia, type CodigoRecusaRecebimento, type Pendencia, type PendenciaDetalhada } from '../contracts';
 import { totalItem, valorItem, verificarItens, type ItemValor } from './valores';
 
@@ -29,13 +29,27 @@ export interface EntradaAvaliacao {
   compromisso_credito_centavos: number;
 }
 
-/** Decisões de 21/11/2026 23h55 e 22/11 00h30: à vista = tPag 01, 17 ou 04 E todos os prazos_dias iguais a 0 ("PIX em 30 dias" não é à vista). */
-export const FORMAS_A_VISTA = Object.freeze(['01', '17', '04'] as const);
+/** Status cujos pedidos comprometem estoque e crédito (RN-PED-04, P5): aprovado e ainda não faturado por inteiro. */
+export const STATUS_COMPROMETEM = ['aprovado', 'faturado_parcial'] as const;
 
-export const ehAVista = (condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'>): boolean =>
-  (FORMAS_A_VISTA as readonly string[]).includes(condicao.forma_tpag) && condicao.prazos_dias.every((d) => d === 0);
+/**
+ * RN-PED-04, premissa (f): soma o compromisso de crédito (total não faturado por condição) sem os pedidos à vista.
+ * Condição nula ou não encontrada conta (sem a condição não se prova que é à vista).
+ */
+export function compromissoDeCredito(
+  linhas: readonly { condicao_pagamento_id: string | null; centavos: number }[],
+  condicoes: ReadonlyMap<string, Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'> | null>,
+): number {
+  let total = 0;
+  for (const l of linhas) {
+    const c = l.condicao_pagamento_id === null ? null : (condicoes.get(l.condicao_pagamento_id) ?? null);
+    if (c !== null && ehAVista(c)) continue;
+    total += l.centavos;
+  }
+  return total;
+}
 
-/** RN-PED-04; decisões de 21/11 23h10, 23h55 e 22/11 00h30: à vista fica fora da análise e do limite de crédito. */
+/** RN-PED-04; decisões de 21/11 23h10, 23h55 e 22/11 00h30: à vista (ehAVista, contrato do cadastros) fica fora da análise e do limite de crédito. */
 export function avaliarCredito(a: {
   condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'> | null;
   limite_credito_centavos: number;
@@ -162,5 +176,7 @@ export function decidirRecebimentoFdv(r: RetratoRecebimentoFdv): DecisaoRecebime
   if (r.itens.some((i) => !produtos.has(i.produto_id))) return recusa('produto_inexistente');
   if (r.itens.some((i) => produtos.get(i.produto_id)?.inativo)) return recusa('produto_inativo');
   if (verificarItens(r.itens).length > 0) return recusa('item_incoerente');
+  // A sequência repetida quebraria a ida e volta do retorno (T-0013 §5.2): é item incoerente.
+  if (new Set(r.itens.map((i) => i.sequencia)).size !== r.itens.length) return recusa('item_incoerente');
   return { resultado: 'aprovado' };
 }
