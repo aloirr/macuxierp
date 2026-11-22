@@ -187,6 +187,6 @@ describe('tabelas oficiais (RF-CAD-10)', () => {
       expect((await t.chamar('GET', `/oficiais/${tab}`, { sessao: sessaoDe('vendedor') })).status).toBe(200);
     }
     expect((await t.chamar('GET', '/oficiais/usuarios')).status).toBe(404);
-    expect((await t.chamar('GET', '/oficiais/municipios', { consulta: { uf: 'AM', busca: 'manaus' } })).corpo).toMatchObject({ pagina: 1, por_pagina: 50 });
+    expect((await t.chamar('GET', '/oficiais/municipios', { consulta: { uf: 'AM', busca: 'manaus' } })).corpo).toEqual({ itens: [], proximo_cursor: null });
   });
 });

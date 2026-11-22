@@ -1,94 +1,49 @@
 /**
- * Teste do adaptador SQL contra o PostgreSQL real (migrações 0001 a 0005, papel macuxierp_app, RLS por tenant).
- * Liga com `MACUXI_DB_MIGRACOES=<pasta das migrações>` (o teste não lê fora do pacote por caminho fixo, regra R2 do
- * grafo-turbo) e com o Postgres local: `bash db/scripts/pg-local.sh`. Sem a variável ou sem o psql, pula.
- * Cada chamada de `consultar` roda numa transação própria do psql, com SET ROLE e app.tenant_id como a API faz.
+ * Teste do adaptador SQL do cadastros contra o PostgreSQL real (migrações do `@macuxierp/db`, papel macuxierp_app, RLS por
+ * tenant). Banco efêmero de `@macuxierp/platform-sdk/pg-testes`, migrado pela CLI do `@macuxierp/db` (o turbo repassa
+ * `MACUXI_DB_MIGRACOES` e `MACUXI_PG_*`); sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`).
+ * Local: `bash db/scripts/pg-local.sh`. Cada chamada de `consultar` roda numa transação própria no papel da aplicação
+ * e com `app.tenant_id` (`BancoPg.comTenant`), como a API faz.
  */
 import { randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
 import type { Transacao } from '@macuxierp/platform-sdk';
+import type { BancoPg } from '@macuxierp/platform-sdk/pg';
+import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { criarPluginCadastros } from './index';
+import { criarPluginCadastros, exportadorCadastros } from './index';
+import { TABELAS_EXPORTADAS } from './exportador';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { CNPJ_A, CNPJ_B, clienteValido, filialValida, produtoValido } from './fixtures-teste';
 import { fontesHttp } from './fontes-http';
 import { repositoriosSql } from './sql';
 
-const PASTA = process.env.MACUXI_DB_MIGRACOES;
-const env = process.env;
-const conexao = (banco: string): NodeJS.ProcessEnv => ({
-  ...env, PGHOST: env.MACUXI_PG_HOST ?? '127.0.0.1', PGPORT: env.MACUXI_PG_PORTA ?? '5432', PGUSER: env.MACUXI_PG_ADMIN_USUARIO ?? 'postgres',
-  PGPASSWORD: env.MACUXI_PG_ADMIN_SENHA ?? '', PGDATABASE: banco, PGTZ: 'UTC',
-});
-
-function psql(banco: string, script: string, emTransacao = true): string {
-  const r = spawnSync('psql', ['-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', ...(emTransacao ? ['-1'] : []), '-f', '-'], { input: script, env: conexao(banco), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) {
-    const saida = `${r.stderr}${r.stdout}`;
-    throw Object.assign(new Error(saida.split('\n').find((l) => l.includes('ERROR')) ?? saida), { code: /ERROR:\s+(\w{5}):/.exec(saida)?.[1] });
-  }
-  return r.stdout;
+function transacaoDe(banco: BancoPg, tenant: string): Transacao {
+  return { consultar: <L>(sql: string, p: readonly unknown[] = []) => banco.comTenant(tenant, (tx) => tx.consultar<L>(sql, p)) };
 }
 
-const lit = (v: unknown): string => {
-  if (v === null || v === undefined) return 'NULL';
-  if (v instanceof Date) return `'${v.toISOString()}'::timestamptz`;
-  if (Array.isArray(v)) return v.length ? `ARRAY[${v.map(lit).join(',')}]` : "'{}'";
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-  return `'${String(v).replaceAll("'", "''")}'`;
-};
-
-function transacaoDe(banco: string, tenant: string): Transacao {
-  return {
-    async consultar<L>(sql: string, p: readonly unknown[] = []): Promise<L[]> {
-      const preenchido = sql.replace(/\$(\d+)/g, (_m, n: string) => lit(p[Number(n) - 1]));
-      const devolve = /^\s*(select|with)\b/i.test(preenchido) || /\breturning\b/i.test(preenchido);
-      const corpo = devolve ? `WITH q AS (${preenchido}) SELECT coalesce(json_agg(q), '[]'::json) FROM q;` : `${preenchido};`;
-      const saida = psql(banco, `SET ROLE macuxierp_app;\nSET app.tenant_id = '${tenant}';\n${corpo}`);
-      return (devolve ? JSON.parse(saida.trim() || '[]') : []) as L[];
-    },
-  };
-}
-
-const pronto = (() => {
-  if (!PASTA) return false;
-  try {
-    return spawnSync('psql', ['--version']).status === 0 && psql('postgres', 'SELECT 1;') !== undefined;
-  } catch {
-    return false;
-  }
-})();
-
-describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
-  const banco = `macuxi_teste_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
-  const A = randomUUID();
-  const B = randomUUID();
-  const txA = () => transacaoDe(banco, A);
-  const txB = () => transacaoDe(banco, B);
+describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', () => {
+  let efemero: BancoEfemero;
+  let app: BancoPg;
+  let A: string;
+  let B: string;
+  const txA = () => transacaoDe(app, A);
+  const txB = () => transacaoDe(app, B);
   const adm = sessaoDe('administrador');
   const gerente = sessaoDe('gerente');
   const certificados = { filialTemA1Valido: async () => true };
   const montar = (tx: Transacao) => criarAmbiente(criarPluginCadastros({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados }), new Date('2026-11-21T15:00:00Z'), tx);
-  const admin = (sql: string) => psql(banco, sql);
+  /** Comando ou consulta do admin (fora da RLS): massa de teste e conferências. Devolve as linhas. */
+  const admin = async (sql: string, p: unknown[] = []): Promise<Record<string, any>[]> => (await efemero.admin.query(sql, p)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  beforeAll(() => {
-    psql('postgres', `CREATE DATABASE ${banco};`, false);
-    for (const f of readdirSync(PASTA as string).filter((n) => /^\d{4}_.*\.sql$/.test(n)).sort()) admin(readFileSync(join(PASTA as string, f), 'utf8'));
-    admin(`INSERT INTO plataforma.tenant (id, tenant_id, slug, nome) VALUES ('${A}', '${A}', 'empresa-a', 'Empresa A'), ('${B}', '${B}', 'empresa-b', 'Empresa B');
-      INSERT INTO plataforma.tenant_modulo (tenant_id, modulo) VALUES ('${A}', 'cadastros'), ('${B}', 'cadastros');
-      INSERT INTO cadastros.tabela_oficial_versao (id, tabela, carga, versao, fonte, url, data_referencia, arquivo, sha256, registros)
-        VALUES ('00000000-0000-4000-8000-0000000000f1', 'ncm', 'teste', '1', 'teste', 'http://x', '2026-01-01', 'x.csv', repeat('a', 64), 2);
-      INSERT INTO cadastros.ncm (codigo, descricao, vigencia_inicio, vigencia_fim, versao_id) VALUES
-        ('22021000', 'Bebidas', '2020-01-01', NULL, '00000000-0000-4000-8000-0000000000f1'),
-        ('99999999', 'Vencido', '2010-01-01', '2020-12-31', '00000000-0000-4000-8000-0000000000f1');
-      INSERT INTO cadastros.cest (codigo, descricao, segmento, vigencia_inicio, versao_id) VALUES ('0300100', 'Refrigerantes', 'Bebidas', '2020-01-01', '00000000-0000-4000-8000-0000000000f1');
-      INSERT INTO cadastros.cest_ncm (cest_codigo, ncm_prefixo, vigencia_inicio, versao_id) VALUES ('0300100', '2202', '2020-01-01', '00000000-0000-4000-8000-0000000000f1');
-      INSERT INTO cadastros.municipio (codigo, nome, uf, vigencia_inicio, versao_id) VALUES ('1302603', 'Manaus', 'AM', '2020-01-01', '00000000-0000-4000-8000-0000000000f1');`);
+  beforeAll(async () => {
+    efemero = await criarBancoEfemero();
+    app = efemero.banco('macuxierp_app');
+    A = await criarTenant(efemero.admin, 'empresa-a', ['cadastros']);
+    B = await criarTenant(efemero.admin, 'empresa-b', ['cadastros']);
+    // As tabelas oficiais (NCM, CEST, municípios) já vêm das migrações/seeds do @macuxierp/db no banco efêmero.
   }, 120_000);
-  afterAll(() => {
-    spawnSync('psql', ['-X', '-q', '-c', `DROP DATABASE IF EXISTS ${banco}`], { env: conexao('postgres') });
+  afterAll(async () => {
+    await efemero?.remover();
   });
 
   it('fluxo real: filial, produto com NCM oficial, cliente, carteira, preço em lote e estoque, pelas rotas e pelo SQL', async () => {
@@ -105,13 +60,13 @@ describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
     expect(cli.corpo.enderecos).toHaveLength(1);
     const meus = await a.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', adm.usuario_id), consulta: { busca: 'exemplo' } });
     expect(meus.corpo.itens.map((c: { id: string }) => c.id)).toEqual([cli.corpo.id]);
-    expect((await a.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', randomUUID()) })).corpo.total).toBe(0);
+    expect((await a.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', randomUUID()) })).corpo).toEqual({ itens: [], proximo_cursor: null });
 
     expect((await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ ncm: '99999999', codigo: 'X' }) })).status).toBe(422); // NCM vencido
     expect(await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido() })).toMatchObject({ status: 422, corpo: { campos: { cest: expect.any(String) } } }); // 2202 tem ST
-    const prod = await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300100', fator_tributavel: 10_000 }) });
+    const prod = await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700', fator_tributavel: 10_000 }) });
     expect(prod).toMatchObject({ status: 201, corpo: { codigo: 'P001', custo_centavos: 450, fator_tributavel: 10_000 } });
-    expect((await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300100' }) })).status).toBe(409);
+    expect((await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700' }) })).status).toBe(409);
     const un = await a.chamar('POST', `/produtos/${prod.corpo.id}/unidades`, { sessao: adm, corpo: { unidade: 'CX', fator: 120_000 } });
     expect(un).toMatchObject({ status: 201, corpo: { unidade: 'CX', fator: 120_000 } });
     expect(a.eventos.at(-1)).toMatchObject({ nome: 'cadastros.produto.alterado@1', payload: { unidades: [{ unidade: 'CX' }] } });
@@ -131,32 +86,47 @@ describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
     expect((await a.chamar('GET', '/estoque', { sessao: adm })).corpo.itens).toEqual([{ filial_id: f.corpo.id, produto_id: prod.corpo.id, quantidade: 12_5000 }]);
 
     const oficiais = await a.chamar('GET', '/oficiais/municipios', { sessao: sessaoDe('vendedor'), consulta: { uf: 'AM', busca: 'manaus' } });
-    expect(oficiais.corpo).toMatchObject({ total: 1, itens: [{ codigo: '1302603', nome: 'Manaus', uf: 'AM' }] });
-    expect((await a.chamar('GET', '/oficiais/ncm', { sessao: adm })).corpo.total).toBe(1); // o NCM vencido não aparece
+    expect(oficiais.corpo).toMatchObject({ proximo_cursor: null, itens: [{ codigo: '1302603', nome: 'Manaus', uf: 'AM' }] });
+    expect((await a.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { busca: '22021000' } })).corpo.itens).toHaveLength(1);
+    expect((await a.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { busca: '99999999' } })).corpo.itens).toEqual([]); // o NCM vencido não aparece
 
     // carteira e inativação
     const v2 = await a.chamar('POST', '/vendedores', { sessao: gerente, corpo: { codigo: 'V2', nome: 'Beto', filial_id: f.corpo.id } });
     expect((await a.chamar('POST', '/carteira/transferir', { sessao: gerente, corpo: { de: vend.corpo.id, para: v2.corpo.id } })).corpo.total).toBe(1);
-    expect((await a.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', adm.usuario_id) })).corpo.total).toBe(0);
+    expect((await a.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', adm.usuario_id) })).corpo.itens).toHaveLength(0);
     const del = await a.chamar('DELETE', `/clientes/${cli.corpo.id}`, { sessao: adm });
     expect(del.corpo.inativo).toBe(true);
-    expect((await a.chamar('GET', '/clientes', { sessao: adm })).corpo.total).toBe(0);
-    expect((await a.chamar('GET', '/clientes', { sessao: adm, consulta: { inativos: 'true' } })).corpo.total).toBe(1);
-    expect(admin(`SELECT count(*) FROM cadastros.cliente WHERE id = '${cli.corpo.id}' AND deleted_at IS NOT NULL;`).trim()).toBe('1'); // nunca apaga (RN-CAD-08)
+    expect((await a.chamar('GET', '/clientes', { sessao: adm })).corpo.itens).toHaveLength(0);
+    expect((await a.chamar('GET', '/clientes', { sessao: adm, consulta: { inativos: 'true' } })).corpo.itens).toHaveLength(1);
+    expect((await admin('SELECT count(*)::int AS n FROM cadastros.cliente WHERE id = $1 AND deleted_at IS NOT NULL', [cli.corpo.id]))[0]?.n).toBe(1); // nunca apaga (RN-CAD-08)
   }, 180_000);
 
   it('PUT em lote com 5.000 itens grava em um comando e o segundo envio não altera nada', async () => {
     const a = montar(txA());
     const f = (await a.chamar('GET', '/filiais', { sessao: adm })).corpo.itens[0].id as string;
-    admin(`INSERT INTO cadastros.produto (tenant_id, codigo, descricao, ncm, unidade_comercial, unidade_tributavel, grupo_tributacao)
+    await admin(`INSERT INTO cadastros.produto (tenant_id, codigo, descricao, ncm, unidade_comercial, unidade_tributavel, grupo_tributacao)
       SELECT '${A}', 'L' || g, 'Item ' || g, '22021000', 'UN', 'UN', 'G' FROM generate_series(1, 5000) g;`);
     const tab = (await a.chamar('GET', '/tabelas-preco', { sessao: adm })).corpo.itens[0].id as string;
-    const ids = JSON.parse(admin(`SELECT json_agg(id) FROM cadastros.produto WHERE codigo LIKE 'L%';`).trim()) as string[];
+    const ids = (await admin("SELECT id FROM cadastros.produto WHERE codigo LIKE 'L%'")).map((l) => l.id as string);
     const itens = ids.map((produto_id, i) => ({ filial_id: f, produto_id, preco_centavos: 100 + i, desconto_maximo_bp: 0 }));
     const r1 = await a.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens } });
     expect(r1).toMatchObject({ status: 200, corpo: { recebidos: 5000, alterados: 5000 } });
     expect((await a.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens } })).corpo.alterados).toBe(0);
-    expect((await a.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: adm, consulta: { por_pagina: 1 } })).corpo.total).toBe(5001);
+    // cursor: 5.001 itens (5.000 + o do primeiro teste) em páginas de 200, sem repetir nem pular nenhum
+    const vistos = new Set<string>();
+    let cursor: string | undefined;
+    let paginas = 0;
+    do {
+      const p = await a.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: adm, consulta: { limite: '200', ...(cursor ? { cursor } : {}) } });
+      for (const i of p.corpo.itens as { id: string }[]) {
+        expect(vistos.has(i.id)).toBe(false);
+        vistos.add(i.id);
+      }
+      cursor = p.corpo.proximo_cursor ?? undefined;
+      paginas++;
+    } while (cursor);
+    expect(vistos.size).toBe(5001);
+    expect(paginas).toBe(26);
   }, 180_000);
 
   it('consulta externa: cache em cadastros.consulta_externa sem CPF ou sócios, e a IE pendente vira concluída', async () => {
@@ -166,9 +136,20 @@ describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
     expect(r.status).toBe(202);
     expect(a.trabalhos[0]?.tipo).toBe('cadastros.consultar_ie');
     expect((await a.chamar('GET', `/consultas/ie/${r.corpo.id}`, { sessao: adm })).corpo.estado).toBe('pendente');
-    const linhas = admin(`SELECT tipo, chave, fonte FROM cadastros.consulta_externa WHERE tenant_id = '${A}';`).trim();
-    expect(linhas).toBe('ie|AM:012345679|sefaz');
-    expect(() => admin(`INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte) VALUES ('${A}', 'cnpj', '52998224725', '{}', 'x');`)).toThrow(); // o banco recusa CPF como chave
+    const linhas = await admin('SELECT tipo, chave, fonte FROM cadastros.consulta_externa WHERE tenant_id = $1', [A]);
+    expect(linhas).toEqual([{ tipo: 'ie', chave: 'AM:012345679', fonte: 'sefaz' }]);
+    await expect(admin(`INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte) VALUES ('${A}', 'cnpj', '52998224725', '{}', 'x')`)).rejects.toThrow(); // o banco recusa CPF como chave
+  }, 120_000);
+
+  it('RN-CORE-07: a exportação LGPD traz só as linhas do tenant (RLS), inclusive o cliente inativo, e nenhum dado do outro tenant', async () => {
+    const dados = await app.comTenant(A, (tx) => exportadorCadastros.exportar(tx));
+    expect(Object.keys(dados)).toEqual([...TABELAS_EXPORTADAS]);
+    expect(dados.filial).toHaveLength(1);
+    expect(dados.cliente).toHaveLength(1); // inativado no primeiro teste: a exportação traz também o inativo
+    expect(dados.cliente_endereco?.length).toBeGreaterThan(0);
+    expect(dados.produto?.length).toBeGreaterThan(5000);
+    const deB = await app.comTenant(B, (tx) => exportadorCadastros.exportar(tx));
+    expect(Object.values(deB).every((l) => l.length === 0)).toBe(true);
   }, 120_000);
 
   it('RLS: o tenant B não enxerga nada do tenant A pelo adaptador', async () => {
@@ -177,7 +158,7 @@ describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
       const r = await b.chamar('GET', rota, { sessao: adm });
       expect(r.corpo.itens, rota).toEqual([]);
     }
-    const ncm = await b.chamar('GET', '/oficiais/ncm', { sessao: adm });
-    expect(ncm.corpo.total).toBe(1); // as tabelas oficiais são do tenant de referência e todo tenant lê
+    const ncm = await b.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { busca: '22021000' } });
+    expect(ncm.corpo.itens).toHaveLength(1); // as tabelas oficiais são do tenant de referência e todo tenant lê
   }, 120_000);
 });
