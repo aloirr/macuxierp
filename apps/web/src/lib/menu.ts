@@ -69,3 +69,16 @@ export function resolverPagina(menu: readonly GrupoMenu[], rota: string, perfil:
   const item = grupo.itens.find((i) => i.href === rota);
   return item ? { rotulo: item.rotulo } : undefined;
 }
+
+/**
+ * Href do item de menu que fica marcado na rota atual: o da própria lista ou, no detalhe (`/notas/<id>`, `/pedidos/<id>/editar`), o da lista de origem.
+ * Vence o href mais longo que é prefixo da rota por segmento inteiro; o início (`/`) só marca a si mesmo.
+ */
+export function hrefAtivo(atual: string, hrefs: readonly string[]): string | undefined {
+  const caminho = atual.split('?')[0] ?? atual;
+  let melhor: string | undefined;
+  for (const h of hrefs) {
+    if (h === '/' ? caminho === '/' : caminho === h || caminho.startsWith(`${h}/`)) if (!melhor || h.length > melhor.length) melhor = h;
+  }
+  return melhor;
+}

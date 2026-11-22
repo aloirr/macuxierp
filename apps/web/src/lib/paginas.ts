@@ -1,5 +1,6 @@
 import { PAGINAS, PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { PAGINAS_CORE } from '@macuxierp/core/web';
+import { PAGINAS_FATURAMENTO } from '@macuxierp/faturamento/web';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { PAGINAS_PEDIDO } from '@macuxierp/pedido/web';
 import { paginaVisivel, type ModuloId, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
@@ -27,6 +28,8 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   ...PAGINAS_PEDIDO.map((p) => registrar('pedido', p, { ocultaNoMenu: p.ocultaNoMenu ?? p.tipo !== 'lista' })),
   // Integração FDV (T-0011): o monitor é o item de menu; os envios (lotes) abrem a partir dele (`ocultaNoMenu` vem do módulo).
   ...PAGINAS_INTEGRACAO_FDV.map((p) => registrar('integracao-fdv', p)),
+  // Faturamento (T-0021): tudo vem do módulo; os detalhes da nota e do título (`/:id`) ficam fora do menu (`ocultaNoMenu` do módulo).
+  ...PAGINAS_FATURAMENTO.map((p) => registrar('faturamento', p)),
 ];
 
 export { paginaVisivel };

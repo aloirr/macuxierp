@@ -42,7 +42,7 @@ describe('adaptador do pedido', () => {
     expect(v.acoes[0]).toMatchObject({ entrada: 'justificativa', justificativaObrigatoria: true, caminho: `/v1/pedido/pedidos/${ID}/aprovar` });
     expect(v.cabecalho.map((c) => c.rotulo)).not.toContain('Documento');
     expect(v.pendencias[0]).toMatchObject({ bloqueante: false });
-    expect(v.historico[0]?.quando).toBe('21/11/2026 22:30');
+    expect(v.historico?.[0]?.quando).toBe('21/11/2026 22:30');
     expect(v.tabelas[0]?.linhas).toHaveLength(1);
   });
 
