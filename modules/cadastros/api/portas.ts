@@ -58,13 +58,19 @@ export interface RepoClientes extends RepoSimples<Cliente, ClienteDados> {
 
 export interface RepoProdutos extends RepoSimples<Produto, ProdutoDados> {
   unidades: RepoFilho<UnidadeItem, UnidadeDados>;
+  /** Em lote, inclusive inativos (consulta do pedido). */
+  porIds(ids: readonly string[]): Promise<Produto[]>;
+  /** Unidades alternativas ativas dos produtos, em lote. */
+  unidadesDe(ids: readonly string[]): Promise<{ produto_id: string; unidade: string; fator: number }[]>;
 }
 
 export interface RepoTabelasPreco extends RepoSimples<TabelaPreco, TabelaPrecoDados> {
   desmarcarPadrao(exceto: string | null): Promise<void>;
   itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItemLista>>;
-  /** Itens da tabela de um produto nas filiais pedidas (preço vigente, RN-CAD-06). */
-  itensDoProduto(tabelaId: string, produtoId: string, filialIds: readonly string[]): Promise<PrecoItem[]>;
+  /** Itens da tabela dos produtos nas filiais pedidas (preço vigente, RN-CAD-06). */
+  itensDosProdutos(tabelaId: string, produtoIds: readonly string[], filialIds: readonly string[]): Promise<PrecoItem[]>;
+  /** Tabela padrão ativa e vigente na data (AAAA-MM-DD). */
+  padraoEm(data: string): Promise<TabelaPreco | null>;
   /** Insere ou atualiza o lote (único por tabela, filial e produto). Devolve só o que mudou. */
   gravarLote(tabelaId: string, itens: readonly Omit<PrecoItem, 'tabela_preco_id'>[]): Promise<PrecoItem[]>;
 }
@@ -77,6 +83,8 @@ export interface RepoEstoque {
   /** Lista do contrato de listas (D-05): `id > cursor ORDER BY id`; `busca` no produto (código, descrição) ou na filial (razão social, fantasia). */
   listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>>;
   saldos(q: { filial_id?: string; produto_id?: string }): Promise<SaldoEstoque[]>;
+  /** Saldos de uma filial para vários produtos, em lote (produto sem linha fica fora). */
+  saldosDe(filialId: string, produtoIds: readonly string[]): Promise<SaldoEstoque[]>;
   /** Lê o saldo travando a linha (`FOR UPDATE`): dois movimentos simultâneos não furam a RN-CAD-07. */
   saldoParaAtualizar(filialId: string, produtoId: string): Promise<number>;
   /** Saldos por cursor `(produto_id, filial_id)` crescente: a carga inicial (C-4). */
