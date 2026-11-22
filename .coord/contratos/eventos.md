@@ -14,6 +14,8 @@
 ## Envelope (platform-sdk)
 `{ id: uuid, nome: "<m>.<ent>.<fato>@vN", tenant_id, agregado_id, versao, ocorrido_em (UTC), ator: usuario_id | "sistema", request_id, payload }`. Gravado na outbox (`plataforma.evento`) na mesma transação da escrita. O consumidor é idempotente por `(consumidor, evento_id)` em `plataforma.evento_consumido` e descarta `versao` menor que a última já aplicada ao agregado.
 
+`versao` (inteiro ≥ 1) é definida pela outbox (`Outbox.gravar`), não pelo módulo: contador por `(tenant_id, agregado_id)`, para qualquer nome de evento, sem buraco e sem repetição; rollback não consome versão. O `versao` passado a `ContextoRota.publicar` está obsoleto e é ignorado; o envelope devolvido traz a versão gravada (T-0034). A forma do envelope não muda (inteiro ≥ 1), por isso sem ADR nem nova versão de contrato.
+
 ## Payloads de core e cadastros (v1)
 Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: boolean` (RN-CAD-08). Os campos seguem os esboços Zod de `docs/desenho/T-0002.md`.
 
