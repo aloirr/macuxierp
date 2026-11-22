@@ -1,7 +1,7 @@
 /** Cifra de campo genérica (ADR 0005): AES-256-GCM com o tenant como dado associado. */
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { cifrarCampo, decifrarCampo, ErroCifra, lerChaveMestra } from './cifra';
+import { chaveIntegracaoDoAmbiente, cifrarCampo, decifrarCampo, ErroCifra, lerChaveMestra } from './cifra';
 
 const T1 = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const T2 = '7a1e2d3c-4b5a-4f6e-8d7c-9b0a1f2e3d4c';
@@ -27,6 +27,32 @@ describe('lerChaveMestra', () => {
       expect((erro as Error).message).toContain('MACUXIERP_CHAVE_X');
       if (v) expect(`${(erro as Error).message} ${(erro as Error).stack}`).not.toContain(v);
     }
+  });
+});
+
+describe('chaveIntegracaoDoAmbiente (T-0011: a mesma regra na API e no worker)', () => {
+  it('ausente ou em branco: null', () => {
+    expect(chaveIntegracaoDoAmbiente({})).toBeNull();
+    expect(chaveIntegracaoDoAmbiente({ MACUXIERP_CHAVE_INTEGRACAO: '' })).toBeNull();
+    expect(chaveIntegracaoDoAmbiente({ MACUXIERP_CHAVE_INTEGRACAO: ' \n' })).toBeNull();
+  });
+
+  it('32 bytes em hex ou base64: a chave', () => {
+    expect(chaveIntegracaoDoAmbiente({ MACUXIERP_CHAVE_INTEGRACAO: CHAVE.toString('hex') })?.equals(CHAVE)).toBe(true);
+    expect(chaveIntegracaoDoAmbiente({ MACUXIERP_CHAVE_INTEGRACAO: CHAVE.toString('base64') })?.equals(CHAVE)).toBe(true);
+  });
+
+  it('presente e inválida: ErroCifra que cita só o nome da variável', () => {
+    const valor = 'segredo-que-nao-pode-vazar-0123456789-xyz!';
+    let erro: unknown;
+    try {
+      chaveIntegracaoDoAmbiente({ MACUXIERP_CHAVE_INTEGRACAO: valor });
+    } catch (e) {
+      erro = e;
+    }
+    expect(erro).toBeInstanceOf(ErroCifra);
+    expect((erro as Error).message).toContain('MACUXIERP_CHAVE_INTEGRACAO');
+    expect(`${(erro as Error).message} ${(erro as Error).stack}`).not.toContain(valor);
   });
 });
 

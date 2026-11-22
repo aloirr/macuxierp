@@ -92,10 +92,17 @@ describe('registrarModulos', () => {
     expect(() => registrarModulos([coreDuble, manifesto('pedido', ['core', 'cadastros'])])).toThrow(/depende de cadastros/);
   });
 
-  it('montarModulos: os seis da v1; core, cadastros e pedido com rotas (T-0016), os outros só com o manifesto', () => {
+  it('montarModulos: os seis da v1; core, cadastros, pedido (T-0016) e integração FDV (T-0011) com rotas, os outros só com o manifesto', () => {
     const m = modulosDeTeste();
     expect(m.map((p) => p.manifesto.id)).toEqual(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']);
-    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, false, false, false]);
+    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, false, false, true]);
+    const integracao = m.find((p) => p.manifesto.id === 'integracao-fdv')!;
+    expect(integracao.rotas.map((r) => `${r.metodo} ${r.caminho}`).sort()).toEqual(
+      [
+        'GET /monitor', 'GET /lotes', 'GET /lotes/exportar', 'GET /lotes/:id/erros', 'PUT /credencial', 'POST /credencial/testar', 'PUT /configuracao',
+        'POST /entidades/:entidade/carga-completa', 'POST /entidades/:entidade/retomar',
+      ].sort(),
+    );
     const pedido = m.find((p) => p.manifesto.id === 'pedido')!;
     expect(pedido.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toContain('POST /pedidos');
   });
@@ -289,5 +296,34 @@ describe('rota de lote: vários arquivos, total, Idempotency-Key e tempo por rot
 
   it('rota com idempotencia sem o repositório na API não sobe', async () => {
     await expect(montar([], undefined, registrarModulos([lotes, cadastrosDuble]))).rejects.toThrow(/idempotencia sem o repositório/);
+  });
+});
+
+describe('integração FDV montada na API (T-0011, RN-CORE-02)', () => {
+  const LICENCAS: Licenca[] = ['cadastros', 'pedido', 'integracao-fdv'].map((modulo) => ({ modulo: modulo as Licenca['modulo'], ativo: true, valido_ate: null }));
+  const montarIntegracao = (licencas: Licenca[], logs?: string[]) => montar(licencas, logs, modulosDeTeste(), { idempotencia: new IdempotenciaMemoria() });
+  const CORPO = { conector_id: 'conector-teste', chave: 'k'.repeat(40), ambiente: 'teste' };
+  const chamar = (app: Awaited<ReturnType<typeof montar>>, metodo: 'GET' | 'PUT', url: string, perfil: Perfil, payload?: object) =>
+    app.inject({ method: metodo, url, headers: { authorization: token(perfil) }, ...(payload ? { payload } : {}) });
+
+  it('sem licença do módulo: 403 MODULO_INATIVO; vendedor e faturista não veem o monitor (PERFIL_SEM_PERMISSAO)', async () => {
+    const sem = await chamar(await montarIntegracao([]), 'GET', '/v1/integracao-fdv/monitor', 'administrador');
+    expect([sem.statusCode, sem.json().codigo]).toEqual([403, 'MODULO_INATIVO']);
+    const app = await montarIntegracao(LICENCAS);
+    for (const perfil of ['vendedor', 'faturista', 'fiscal'] as const) {
+      const r = await chamar(app, 'GET', '/v1/integracao-fdv/monitor', perfil);
+      expect([perfil, r.statusCode, r.json().codigo]).toEqual([perfil, 403, 'PERFIL_SEM_PERMISSAO']);
+    }
+    const gerente = await chamar(app, 'PUT', '/v1/integracao-fdv/credencial', 'gerente', CORPO);
+    expect([gerente.statusCode, gerente.json().codigo]).toEqual([403, 'PERFIL_SEM_PERMISSAO']);
+  });
+
+  it('sem MACUXIERP_CHAVE_INTEGRACAO a API sobe e o PUT /credencial responde 503 CHAVE_INTEGRACAO_AUSENTE, sem ecoar a chave no log', async () => {
+    const logs: string[] = [];
+    const app = await montarIntegracao(LICENCAS, logs);
+    const r = await chamar(app, 'PUT', '/v1/integracao-fdv/credencial', 'administrador', CORPO);
+    expect([r.statusCode, r.json().codigo]).toEqual([503, 'CHAVE_INTEGRACAO_AUSENTE']);
+    expect(r.body).not.toContain(CORPO.chave);
+    expect(logs.join('\n')).not.toContain(CORPO.chave);
   });
 });

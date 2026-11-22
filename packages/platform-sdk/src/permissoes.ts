@@ -52,7 +52,7 @@ export const PERMISSOES = {
   'fiscal.regra.editar': ['administrador', 'fiscal'],
   'faturamento.ver': VER,
   'faturamento.nota.emitir': ['administrador', 'faturista', 'fiscal'], // emitir, cancelar, CC-e, inutilizar
-  'integracao-fdv.ver': VER,
+  'integracao-fdv.ver': ['administrador', 'gerente', 'leitura'], // T-0011: os perfis do manifesto do módulo; o monitor não é "ver tudo"
   'integracao-fdv.configurar': ADM,
 } as const satisfies Record<string, readonly Perfil[]>;
 
