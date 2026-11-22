@@ -9,6 +9,9 @@
  * pedido de teste só nasce no FDV por um vendedor: a rodada real está PENDENTE (doc). No alvo real:
  *  - perfil tenant-teste: só `pedido-fila-real` (a fila do Hub responde e cada pedido passa no contrato lido pelo ERP);
  *  - perfil thathyany-seguro: recusado pelo `exigirCenario` (`config.test.ts`).
+ * Trava de escrita (recado R-20261122-020834-gerente-projetos, 22/11/2026 02h08 de Manaus): o `GET /pedidos/pendentes`
+ * marca o pedido como enviado, então até o `pedido-fila-real` é recusado no real sem `MACUXI_HUB_LIBERA_ESCRITA=1`
+ * ou com a chave do Conector macuxierp (`apoio/trava-escrita.ts`, `trava-escrita.test.ts`).
  * Sem Postgres, a parte de banco pula (`bash db/scripts/pg-local.sh`).
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
