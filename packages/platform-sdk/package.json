@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./listas": "./src/listas.ts",
     "./pg": "./src/pg.ts",
     "./pg-testes": "./src/pg-testes.ts",
     "./testes": "./src/testes.ts"
