@@ -8,3 +8,8 @@ export const MODULO = 'integracao-fdv' as const;
 
 /** Identificador do tenant (UUID). Repetido por módulo de propósito: o tipo vem sempre de contracts. */
 export const TenantId = z.string().uuid();
+
+export * from './credencial';
+export * from './eventos';
+export * from './hub';
+export * from './monitor';

@@ -23,3 +23,11 @@ Pedido do Alexandre em R-20261121-212900-alexandre (T-0025). A decisão acima co
 - **Concorrência:** push recusado por avanço do remoto relê e tenta de novo no laço que já existe, até 6 tentativas com espera crescente; antes de dizer "não enviado", confere no GitHub, por leitura, se o arquivo já está lá com o mesmo hash.
 - **Credencial:** a do git do ambiente; nenhum token passa por esse caminho.
 - **Escopo:** só o status 403 cai no git, sem ler a mensagem. Um limite de uso (rate limit) devolvido como 403 também vai pelo git, sem dano, porque o caminho é idempotente e conferido. Os outros erros, inclusive o 429, seguem como antes.
+
+## Limites conhecidos
+Decisão do gerente-projetos em 21/11/2026 (horário de Manaus): opção A da revisão do PR #48, seguida pelo PO no PR #48 (commit bb886c3).
+- **Identidade não é autorização:** o campo `de: alexandre` (ou de qualquer agente) num recado é defesa em profundidade, não autorização. Um agente com shell consegue forjar a identidade do processo, por exemplo com um processo órfão via `setsid` ou com `eval`, e assim passar pela conferência de identidade do `coord.mjs` ou do guardião.
+- **Nenhuma ação sensível se autoriza só por recado:**
+  - o merge de governança e o deploy não saem por agente na nuvem: saem só pela execução direta na sessão do PO (R-20261121-223923-alexandre), com as frases literais do Alexandre (CLAUDE.md, "Nuvem, PR e git");
+  - a produção fiscal só sai pelo script do operador, com o "aprovo produção fiscal <empresa>" conferido pela sessão do PO (ADR 0006).
+- **Consequência:** o recado continua sendo o canal de coordenação e o registro do time. As consequências acima ("lida do GitHub pelo guardião" e "o guardião barra") ficam no mesmo limite da identidade.

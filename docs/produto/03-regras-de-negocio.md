@@ -25,7 +25,7 @@
 
 ## Pedido (RN-PED)
 - **RN-PED-01** Pedido do FDV é idempotente pelo UUID do FDV: reenvio não duplica.
-- **RN-PED-02** Status: recebido → em_analise → aprovado | recusado; aprovado → faturado_parcial | faturado | cancelado. Transição fora da lista é recusada com a lista do que é possível.
+- **RN-PED-02** Status: recebido → aprovado | em_analise; em_analise → aprovado | recusado; aprovado → faturado_parcial | faturado | cancelado; faturado_parcial → faturado | cancelado. recusado, faturado e cancelado são finais. Transição fora da lista é recusada com a lista do que é possível.
 - **RN-PED-03** Aprovação automática quando preço, desconto, crédito e estoque passam; senão vai para análise com as pendências listadas.
 - **RN-PED-04** Crédito: saldo de títulos abertos + pedidos aprovados não faturados + este pedido ≤ limite do cliente.
 - **RN-PED-05** Todo status novo volta ao FDV (`retorno`) com o número do pedido no ERP.
@@ -59,6 +59,7 @@
 | Clientes e produtos (editar) | ✔ | ✔ | ✔ | | | |
 | Preços e crédito | ✔ | ✔ | | | | |
 | Regras fiscais | ✔ | | | ✔ | | |
+| Lançar pedido manual (criar, editar, revalidar) | ✔ | ✔ | ✔ | | | |
 | Aprovar pedido | ✔ | ✔ | | | | |
 | Emitir, cancelar, CC-e, inutilizar | ✔ | | ✔ | ✔ | | |
 | Trocar ambiente fiscal | só com o "aprovo produção fiscal" do Alexandre | | | | | |

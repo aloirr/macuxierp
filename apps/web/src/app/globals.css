@@ -30,18 +30,21 @@ a { color: var(--mx-cor-azul-noite); }
 .topo .espaco { flex: 1; }
 .topo a { color: var(--mx-cor-borda-cinza); text-decoration: underline; }
 .lateral { background: var(--mx-cor-grafite); color: var(--mx-cor-branco); padding: 16px 0; }
-.lateral h2 { font-size: var(--mx-tamanho-titulo-grupo); font-weight: var(--mx-peso-rotulo-pequeno); text-transform: uppercase; letter-spacing: .06em; color: var(--mx-cor-sol-claro); margin: 16px 20px 4px; }
+.lateral h2 { font-size: var(--mx-tamanho-titulo-grupo); font-weight: var(--mx-peso-rotulo-pequeno); text-transform: uppercase; letter-spacing: .06em; color: var(--mx-cor-sol-claro); margin: 0 20px 4px; }
 .lateral ul { list-style: none; margin: 0; padding: 0; }
 .lateral a { display: block; padding: 8px 20px; color: var(--mx-cor-branco); font-weight: var(--mx-peso-medio); text-decoration: none; }
 .lateral a:hover { background: var(--mx-cor-grafite-menu); }
 .lateral a[aria-current='page'] { background: var(--mx-cor-grafite-menu); border-left: 4px solid var(--mx-cor-sol-claro); padding-left: 16px; }
-.lateral section + section, .lateral ul + h2 { border-top: 1px solid var(--mx-cor-grafite-menu); padding-top: 8px; }
+/* Divisória única: toda seção após o Início tem 1px, 8px de margem acima e 8px de respiro abaixo da linha. */
+.lateral > * + * { border-top: 1px solid var(--mx-cor-grafite-menu); margin-top: 8px; padding-top: 8px; }
 .conteudo { padding: 24px 32px; max-width: 1100px; }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); margin-top: 0; }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
 thead th { font-weight: var(--mx-peso-cabecalho-tabela); font-size: var(--mx-tamanho-micro); }
+tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .selo { white-space: nowrap; padding: 2px 8px; border-radius: 10px; font-size: var(--mx-tamanho-selo); font-weight: var(--mx-peso-rotulo-pequeno); }
 .selo-ativo { background: var(--mx-cor-ativo-fundo); color: var(--mx-cor-ativo-texto); }
 .selo-inativo { background: var(--mx-cor-inativo-fundo); color: var(--mx-cor-texto-secundario); }
 @media (max-width: 800px) { .casca { grid-template-columns: 1fr; } .conteudo { padding: 16px; } }
+.faixa-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); border: 1px solid var(--mx-cor-aviso-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }

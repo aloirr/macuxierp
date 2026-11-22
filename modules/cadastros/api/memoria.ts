@@ -1,7 +1,7 @@
 /** Repositórios em memória: dublê das portas para os testes de rota (sem PostgreSQL). Não entra em produção. */
 import { randomUUID } from 'node:crypto';
 import { ErroApi, paginar, type Pagina } from '@macuxierp/platform-sdk';
-import type { PrecoItem, PrecoItemConsulta } from '../contracts';
+import type { EstoqueConsulta, PrecoItem, PrecoItemConsulta, SaldoEstoqueItem } from '../contracts';
 import { agregadoPreco } from './uuid';
 import type {
   ConsultaGravada, Dependencias, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
@@ -182,6 +182,7 @@ export function repositoriosEmMemoria() {
     },
   });
   const saldos = new Map<string, number>();
+  const idsSaldo = new Map<string, string>();
   const movimentos: MovimentoGravado[] = [];
   const repoEstoque = {
     movimentos,
@@ -189,6 +190,18 @@ export function repositoriosEmMemoria() {
       return [...saldos]
         .map(([k, quantidade]) => ({ filial_id: k.split('|')[0] as string, produto_id: k.split('|')[1] as string, quantidade }))
         .filter((s) => (!q.filial_id || s.filial_id === q.filial_id) && (!q.produto_id || s.produto_id === q.produto_id));
+    },
+    async listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>> {
+      const busca = q.busca?.toLowerCase();
+      const casa = (linhas: readonly Reg[], campos: string[], id: string) =>
+        linhas.some((x) => x.id === id && campos.some((c) => String(x[c] ?? '').toLowerCase().includes(busca as string)));
+      let l = (await repoEstoque.saldos(q)).map((s) => {
+        const k = `${s.filial_id}|${s.produto_id}`;
+        if (!idsSaldo.has(k)) idsSaldo.set(k, randomUUID());
+        return { ...s, id: idsSaldo.get(k) as string };
+      });
+      if (busca) l = l.filter((s) => casa(produtos.linhas, ['codigo', 'descricao'], s.produto_id) || casa(filiais.linhas, ['razao_social', 'nome_fantasia'], s.filial_id));
+      return paginar(depoisDoCursor(l, q.cursor), q.limite);
     },
     async paginaPorCursor(apos: { filial_id: string; produto_id: string } | null, limite: number) {
       const todos = (await repoEstoque.saldos({})).sort((a, b) => (`${a.produto_id}|${a.filial_id}` < `${b.produto_id}|${b.filial_id}` ? -1 : 1));

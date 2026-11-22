@@ -6,7 +6,7 @@ import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type {
   Cliente, ClienteDados, Contato, ContatoItem, CondicaoPagamento, CondicaoPagamentoDados, EnderecoCliente,
   EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
-  ProdutoDados, SaldoEstoque, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
+  ProdutoDados, SaldoEstoque, SaldoEstoqueItem, EstoqueConsulta, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
 } from '../contracts';
 
 export type FiltroLista = ListaConsulta & {
@@ -74,6 +74,8 @@ export interface MovimentoGravado extends MovimentoEstoque {
 }
 
 export interface RepoEstoque {
+  /** Lista do contrato de listas (D-05): `id > cursor ORDER BY id`; `busca` no produto (código, descrição) ou na filial (razão social, fantasia). */
+  listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>>;
   saldos(q: { filial_id?: string; produto_id?: string }): Promise<SaldoEstoque[]>;
   /** Lê o saldo travando a linha (`FOR UPDATE`): dois movimentos simultâneos não furam a RN-CAD-07. */
   saldoParaAtualizar(filialId: string, produtoId: string): Promise<number>;
