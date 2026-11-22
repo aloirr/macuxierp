@@ -1,6 +1,5 @@
 /**
- * TRAVA do Alexandre (22/11/2026): nenhuma escrita no Hub real do FDV até a produção conferida e o ok do PO. Fonte: desenho
- * T-0002 §2, "Ligações da F3".
+ * Interruptor do envio ao Hub; o compose.yml o liga desde a virada. Fonte: desenho T-0002 §2, "Virada".
  *
  * `MACUXIERP_FDV_ENVIO` = `ligado` | `desligado` (ausente ou vazio = `desligado`; outro valor derruba a partida, citando só o
  * nome). Desligado, o `montarAgendas` não registra a agenda `integracao-fdv.conector` inteira: nenhum `POST /lotes`,
