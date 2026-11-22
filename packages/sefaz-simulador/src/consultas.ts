@@ -4,20 +4,31 @@
  *   236 chave com DV inválido, 226 chave de outra UF. Os eventos registrados voltam como `procEventoNFe`.
  * - Status: 107 em operação; 108/109 quando o teste paralisa o serviço (aciona a contingência, desenho §3.4).
  */
-import { NS_NFE, chaveNFeComDvValido, dataHoraSefaz, type RespostaConsultaProtocolo, type RespostaStatusServico } from '@macuxierp/nfe-sefaz';
+import {
+  NS_NFE,
+  chaveNFeComDvValido,
+  dataHoraSefaz,
+  type RespostaConsultaProtocolo,
+  type RespostaStatusServico,
+} from '@macuxierp/nfe-sefaz';
 import { retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
 import { tag } from './xml';
 
-export function consultarProtocolo(ctx: Contexto, chNFe: string): RespostaConsultaProtocolo {
+export async function consultarProtocolo(ctx: Contexto, chNFe: string): Promise<RespostaConsultaProtocolo> {
   const dhRecbto = dataHoraSefaz(ctx.agora());
-  const nota = chaveNFeComDvValido(chNFe) && chNFe.slice(0, 2) === String(ctx.d.cUF) ? ctx.estado.notas.get(chNFe) : undefined;
+  const daUf = chaveNFeComDvValido(chNFe) && chNFe.slice(0, 2) === String(ctx.d.cUF);
+  const { nota, eventos } = daUf
+    ? await ctx.fonte(async (repo) => {
+        const n = await repo.notaPorChave(ctx.d, chNFe);
+        return { nota: n, eventos: n ? await repo.eventosDaNota(ctx.d, chNFe) : [] };
+      })
+    : { nota: null, eventos: [] };
   let cStat: CStatSimulador;
   if (!chaveNFeComDvValido(chNFe)) cStat = '236';
   else if (chNFe.slice(0, 2) !== String(ctx.d.cUF)) cStat = '226';
   else if (!nota) cStat = '217';
   else cStat = nota.situacao === 'cancelada' ? '101' : nota.situacao === 'denegada' ? '110' : '100';
 
-  const eventos = nota?.eventos ?? [];
   const r = {
     ...retornoBase(ctx, cStat),
     cUF: ctx.d.cUF,
@@ -26,7 +37,9 @@ export function consultarProtocolo(ctx: Contexto, chNFe: string): RespostaConsul
     protocolo: nota?.protocolo ?? null,
     eventos: eventos.map((e) => e.protocolo),
   };
-  const procEventos = eventos.map((e) => `<procEventoNFe versao="1.00">${e.eventoXml}${e.protocolo.xml}</procEventoNFe>`).join('');
+  const procEventos = eventos
+    .map((e) => `<procEventoNFe versao="1.00">${e.eventoXml}${e.protocolo.xml}</procEventoNFe>`)
+    .join('');
   const xml =
     `<retConsSitNFe xmlns="${NS_NFE}" versao="4.00">${tagsRetorno(r)}${tag('cUF', r.cUF)}` +
     `${tag('dhRecbto', dhRecbto)}${tag('chNFe', chNFe)}${r.protocolo?.xml ?? ''}${procEventos}</retConsSitNFe>`;
