@@ -459,6 +459,11 @@ export const CalculoSaida = z.object({
 });
 export type CalculoSaida = z.infer<typeof CalculoSaida>;
 
+/** Resultado do cálculo para quem o consome por sequência de item (adaptador do fiscal/api, porta do faturamento): aditivo no @1; `cfops` por sequência. */
+export type ResultadoCalculoFiscal =
+  | { ok: true; saida: CalculoSaida; cfops: Record<number, string> }
+  | { ok: false; erros: ErroFiscal[] };
+
 /** Erro de negócio é resultado tipado, nunca exceção. */
 export const CalculoResultado = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(true), valor: CalculoSaida }),
