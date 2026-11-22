@@ -121,9 +121,11 @@ describe('fontes de opções (cadastros) e formulário', () => {
     expect(() => caminhoDaFonte('/v1/cadastros/clientes?x=1')).toThrow();
   });
   it('rótulo da opção por recurso', () => {
-    expect(rotuloDaOpcao('/v1/cadastros/produtos', { codigo: 'P1', descricao: 'Água 500 ml' })).toBe('P1 · Água 500 ml');
-    expect(rotuloDaOpcao('/v1/cadastros/filiais', { nome: 'Matriz Manaus' })).toBe('Matriz Manaus');
-    expect(rotuloDaOpcao('/v1/cadastros/clientes', { razao_social: 'Bar Ltda', documento: '11222333000181' })).toBe('Bar Ltda · 11222333000181');
+    expect(rotuloDaOpcao('/v1/cadastros/produtos', { codigo: 'P1', descricao: 'Água 500 ml' }, 'gerente')).toBe('P1 · Água 500 ml');
+    expect(rotuloDaOpcao('/v1/cadastros/filiais', { nome: 'Matriz Manaus' }, 'gerente')).toBe('Matriz Manaus');
+    const bar = { razao_social: 'Bar do Zé', documento: '11444777000161' };
+    expect(rotuloDaOpcao('/v1/cadastros/clientes', bar, 'gerente')).toBe('Bar do Zé · 11.444.777/0001-61');
+    expect(rotuloDaOpcao('/v1/cadastros/clientes', bar, 'vendedor')).toBe('Bar do Zé');
   });
 });
 

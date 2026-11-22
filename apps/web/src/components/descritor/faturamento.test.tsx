@@ -8,6 +8,7 @@ import { vistaDaNota } from '@/lib/telas/faturamento';
 import { DetalheGenerico } from './detalhe-generico';
 import { DialogoEscrita } from './dialogo-escrita';
 import { TabelaVista } from './ui-cliente';
+import Carregando from '@/app/(shell)/[modulo]/[...pagina]/loading';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock('@/app/(shell)/[modulo]/[...pagina]/acoes', () => ({ escrever: vi.fn() }));
@@ -37,8 +38,8 @@ describe('render do detalhe da nota (T-0021)', () => {
   });
   it('a ação principal vem do módulo: o DANFE da autorizada é botão cheio; Cancelar vem depois dos demais', () => {
     const h = html('administrador');
-    expect(h).toMatch(/<a class="btn"[^>]*>Baixar DANFE<\/a>/);
-    expect(h).not.toMatch(/<a class="btn"[^>]*>Baixar XML<\/a>/);
+    expect(h).toMatch(/<a class="mx-botao"[^>]*>Baixar DANFE<\/a>/);
+    expect(h).not.toMatch(/<a class="mx-botao"[^>]*>Baixar XML<\/a>/);
     expect(h.indexOf('Carta de correção (CC-e)')).toBeLessThan(h.indexOf('>Cancelar nota<'));
   });
   it('a chave de acesso ocupa a linha inteira, com números tabulares e grupos de 4', () => {
@@ -78,11 +79,9 @@ describe('render da lista e dos diálogos', () => {
     expect(h).toContain('title="Sem valor fiscal"');
     expect(h).toContain('Produção');
   });
-  it('não há vermelho em botão: o confirmar usa o estilo principal e o CSS não define .btn-perigo', () => {
-    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
-    expect(css).not.toMatch(/btn-perigo/);
+  it('não há vermelho em botão: o confirmar usa o estilo principal', () => {
     const h = renderToStaticMarkup(<DialogoEscrita titulo="Cancelar a nota 12/1?" rotuloConfirmar="Cancelar a nota 12/1" rotuloFechar="Manter a nota" texto={{ rotulo: 'Justificativa', obrigatorio: true }} ocupado={false} validar={() => null} aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
-    expect(h).toContain('<button type="button" class="btn">Cancelar a nota 12/1</button>');
+    expect(h).toContain('<button type="button" class="mx-botao">Cancelar a nota 12/1</button>');
     expect(h).toContain('>Cancelar a nota 12/1<');
     expect(h).toContain('>Manter a nota<');
     expect(h).toContain('Justificativa');
@@ -94,6 +93,20 @@ describe('render da lista e dos diálogos', () => {
     expect(h).toContain('Número inicial');
     expect(h).toContain('Número final');
     expect(h).toContain('Matriz');
+  });
+
+  it('T-0021: o detalhe tem um h1 só, com o título do registro, e a tabela larga rola no próprio contêiner', () => {
+    const h = html('administrador');
+    expect(h.match(/<h1[ >]/g)).toHaveLength(1);
+    expect(h).toMatch(/<h1>Nota 12\/1/);
+    expect(h).not.toContain('<h2>Nota 12/1');
+    expect(h).toContain('class="tabela-rolavel"');
+  });
+
+  it('T-0021: o carregamento da rota é um texto curto com aria-busy', () => {
+    const h = renderToStaticMarkup(<Carregando />);
+    expect(h).toContain('aria-busy="true"');
+    expect(h).toContain('Carregando…');
   });
 });
 

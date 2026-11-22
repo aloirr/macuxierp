@@ -32,20 +32,22 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   const secoes = declarada ? paginasDoMenu(declarada.modulo, declarada.menu, perfil) : [];
   const monitor = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor');
   const lotes = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'lotes');
+  const titulo = declarada?.titulo ?? resolvida.rotulo;
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value ?? '';
   return (
     <>
-      <h1>{declarada?.titulo ?? resolvida.rotulo}</h1>
+      {/* No detalhe, o h1 é o título do registro (ex.: "Nota 12/1"), desenhado pelo DetalheGenerico: um h1 só por página. */}
+      {tela?.tipo !== 'detalhe' && <h1>{titulo}</h1>}
       {secoes.length > 1 && (
         <nav className="secoes" aria-label="Seções">
-          {secoes.map((p) => <Link key={p.rota} className="btn btn-sec" href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
+          {secoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
         </nav>
       )}
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {rota === PAGINA_CARGA.rota && <TelaCarga api="/envio-carga" />}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} rotaLotes={`${lotes?.rota ?? monitor.rota}?estado=concluido_com_erros`} />}
       {tela && declarada && (
-        <TelaGenerica tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
+        <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
       {!tela && !declarada?.aviso && rota !== PAGINA_CARGA.rota && declarada?.rota !== monitor?.rota && <p className="apoio">Esta tela ainda não foi construída.</p>}
     </>

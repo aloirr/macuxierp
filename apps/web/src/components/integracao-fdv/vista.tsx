@@ -40,8 +40,8 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
       titulo: 'Ações',
       celula: (l) => (
         <span className="barra-acoes" style={{ margin: 0 }}>
-          {l.podeRetomar && <button type="button" className="btn btn-sec" disabled={estado.ocupado} onClick={() => acoes.tentarDeNovo([l.entidade])} aria-label={`Tentar de novo: ${l.rotulo}`}>Tentar de novo</button>}
-          {l.podeCargaCompleta && <button type="button" className="btn btn-sec" disabled={estado.ocupado} onClick={() => acoes.cargaCompleta(l.entidade)} aria-label={`Carga completa: ${l.rotulo}`}>Carga completa</button>}
+          {l.podeRetomar && <button type="button" className="mx-botao-secundario" disabled={estado.ocupado} onClick={() => acoes.tentarDeNovo([l.entidade])} aria-label={`Tentar de novo: ${l.rotulo}`}>Tentar de novo</button>}
+          {l.podeCargaCompleta && <button type="button" className="mx-botao-secundario" disabled={estado.ocupado} onClick={() => acoes.cargaCompleta(l.entidade)} aria-label={`Carga completa: ${l.rotulo}`}>Carga completa</button>}
         </span>
       ),
     });
@@ -101,8 +101,8 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
             </label>
             {e.ambiente && <p className="erro-campo" role="alert">{e.ambiente}</p>}
             <div className="barra-acoes">
-              <button className="btn" type="submit" disabled={estado.ocupado}>Salvar credencial</button>
-              <button className="btn btn-sec" type="button" disabled={estado.ocupado || !vista.credencial.tem} onClick={acoes.testar}>Testar conexão</button>
+              <button className="mx-botao" type="submit" disabled={estado.ocupado}>Salvar credencial</button>
+              <button className="mx-botao-secundario" type="button" disabled={estado.ocupado || !vista.credencial.tem} onClick={acoes.testar}>Testar conexão</button>
             </div>
           </form>
         )}
@@ -111,7 +111,7 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
       <section style={secao} aria-labelledby="h-ent">
         <h2 id="h-ent">Cadastros enviados ao FDV</h2>
         {configurar && vista.pausadas.length > 0 && (
-          <div className="barra-acoes"><button type="button" className="btn" disabled={estado.ocupado} onClick={() => acoes.tentarDeNovo(vista.pausadas)}>Tentar de novo (todas as pausadas)</button></div>
+          <div className="barra-acoes"><button type="button" className="mx-botao" disabled={estado.ocupado} onClick={() => acoes.tentarDeNovo(vista.pausadas)}>Tentar de novo (todas as pausadas)</button></div>
         )}
         <div className="tabela-rolavel">
           <TabelaDensa colunas={colunasMonitor} linhas={vista.linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro configurado ainda." legenda="Situação do envio por cadastro" />
@@ -121,8 +121,8 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
       <section style={secao} aria-labelledby="h-err">
         <h2 id="h-err">Erros por registro</h2>
         <div className="barra-acoes">
-          <button type="button" className="btn btn-sec" disabled={vista.erros.length === 0} onClick={acoes.exportarErros}>Exportar CSV</button>
-          <a className="btn btn-sec" href={vista.rotaLotes}>Ver os envios (lotes)</a>
+          <button type="button" className="mx-botao-secundario" disabled={vista.erros.length === 0} onClick={acoes.exportarErros}>Exportar CSV</button>
+          <a className="mx-botao-secundario" href={vista.rotaLotes}>Ver os envios (lotes)</a>
         </div>
         <div className="tabela-rolavel">
           <TabelaDensa colunas={colunasErros} linhas={vista.erros} chaveLinha={(x) => `${x.cadastro}-${x.registro}-${x.campo}-${x.codigo}`} textoVazio="Nenhum erro aberto." legenda="Erros abertos por registro" />
@@ -155,7 +155,7 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
               <input name="limite" type="number" inputMode="numeric" min={1} max={vista.limiteMaximo} defaultValue={vista.configuracao.limite} />
             </label>
             {e.limite_registros_lote && <p className="erro-campo" role="alert">{e.limite_registros_lote}</p>}
-            <button className="btn" type="submit" disabled={estado.ocupado}>Salvar configuração</button>
+            <button className="mx-botao" type="submit" disabled={estado.ocupado}>Salvar configuração</button>
           </form>
         ) : (
           <p className="apoio">

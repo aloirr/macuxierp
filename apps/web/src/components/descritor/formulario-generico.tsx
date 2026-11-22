@@ -80,9 +80,10 @@ function Formulario({ tela, opcoes, produtos }: { tela: TelaFormulario; opcoes: 
         );
       })}
       {tela.itens && <Itens tela={tela.itens} itens={itens} produtos={produtos} onChange={setItens} erros={erros} />}
+      {tela.itens?.totalTexto && <p className="total-pedido" aria-live="polite">Total do pedido: <span data-testid="total-pedido">{tela.itens.totalTexto(itens.map((i) => tela.itens?.paraTexto(i) ?? { produto_id: '', quantidade: '', preco: '' }))}</span></p>}
       <div className="barra-acoes">
-        <button className="btn" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>
-        <Link className="btn btn-sec" href={tela.voltar}>Cancelar</Link>
+        <button className="mx-botao" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>
+        <Link className="mx-botao-secundario" href={tela.voltar}>Cancelar</Link>
       </div>
     </form>
   );
@@ -101,8 +102,7 @@ function Itens({ tela, itens, produtos, onChange, erros }: { tela: NonNullable<T
     if (e) porLinha[l.chave] = porLinha[l.chave] ? `${porLinha[l.chave]}; ${e}` : e;
   }
   return (
-    <fieldset style={{ border: 0, padding: 0, margin: "0 0 16px" }}>
-      <legend>Itens do pedido</legend>
+    <div style={{ margin: "0 0 16px" }}>
       {erros.itens && <p className="erro" role="alert">{erros.itens}</p>}
       <FormularioItens
         itens={itens}
@@ -111,6 +111,7 @@ function Itens({ tela, itens, produtos, onChange, erros }: { tela: NonNullable<T
         calcularTotal={tela.calcularTotal}
         formatarCentavos={tela.formatarCentavos}
         erros={porLinha}
+        legenda="Itens do pedido"
         renderSeletorProduto={({ valor, aoEscolher, rotulo, desabilitado }) => (
           <select className="entrada" aria-label={rotulo} disabled={desabilitado} value={valor ?? ''} onChange={(e) => aoEscolher(e.target.value || null)}>
             <option value="">Selecione</option>
@@ -118,6 +119,6 @@ function Itens({ tela, itens, produtos, onChange, erros }: { tela: NonNullable<T
           </select>
         )}
       />
-    </fieldset>
+    </div>
   );
 }
