@@ -3,7 +3,7 @@
  * Mudança incompatível = nova versão do contrato (@2) + ADR + recado aos consumidores.
  * JSON em snake_case, igual às colunas (desenho T-0002, seção 3).
  */
-import { Cnpj, MODULOS, PERFIS } from '@macuxierp/platform-sdk';
+import { Cnpj, ConsultaLista, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 export const MODULO = 'core' as const;
@@ -18,24 +18,14 @@ const Instante = z.string().datetime();
 export const Perfil = z.enum(PERFIS);
 export type Perfil = z.infer<typeof Perfil>;
 
-/** RN-CORE-08: id do recado em que o Alexandre aprovou a produção fiscal (`R-AAAAMMDD-HHMMSS[-n]-alexandre`). */
-export const PADRAO_RECADO_APROVACAO = /^R-\d{8}-\d{6}(-\d+)?-alexandre$/;
 /** ADR 0005: tamanho máximo do `.pfx` enviado. */
 export const PFX_TAMANHO_MAXIMO = 50 * 1024;
 /** RF-CORE-04: o aviso de vencimento do A1 começa a 30 dias ou menos. */
 export const DIAS_ALERTA_A1 = 30;
 
-/** Paginação comum das listas (desenho T-0002, seção 2): ordem estável por `id`, cursor = último `id`. */
-export const ListaConsulta = z.object({
-  limite: z.coerce.number().int().min(1).max(200).default(50),
-  cursor: Id.optional(),
-  busca: z.string().trim().max(80).optional(),
-  inativos: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
-});
-export type ListaConsulta = z.infer<typeof ListaConsulta>;
+/** Consulta das listas (contrato `.coord/contratos/listas.md`): `limite`, `cursor`, `busca` e `inativos`, do SDK. */
+export const ListaConsulta = ConsultaLista;
+export type ListaConsulta = ConsultaLista;
 
 // Empresa (RF-CORE-01)
 export const Empresa = z.object({
@@ -100,7 +90,7 @@ export type UsuarioComSenhaProvisoria = z.infer<typeof UsuarioComSenhaProvisoria
 export const SenhaProvisoria = z.object({ senha_provisoria: z.string() });
 export type SenhaProvisoria = z.infer<typeof SenhaProvisoria>;
 
-export const ListaUsuarios = z.object({ itens: z.array(Usuario), proximo_cursor: Id.nullable() });
+export const ListaUsuarios = paginaDe(Usuario);
 export type ListaUsuarios = z.infer<typeof ListaUsuarios>;
 
 // Perfis e licenças, só leitura (RF-CORE-03, D12)
@@ -111,10 +101,9 @@ export const Licenca = z.object({ modulo: z.enum(MODULOS), ativo: z.boolean(), v
 export type Licenca = z.infer<typeof Licenca>;
 
 // Certificado A1 (RF-CORE-04, ADR 0005). Nunca existe campo de `.pfx` nem de senha na resposta.
+// POST /certificados é multipart: o `.pfx` vai no campo de arquivo `arquivo` (até 50 KB); estes são os campos de texto.
 export const CertificadoEnviar = z.object({
   filial_id: Id,
-  /** `.pfx` em base64 (até 50 KB depois de decodificado). */
-  arquivo_base64: z.string().min(1).max(Math.ceil((PFX_TAMANHO_MAXIMO * 4) / 3) + 8),
   senha: z.string().min(1).max(200),
 });
 export type CertificadoEnviar = z.infer<typeof CertificadoEnviar>;
@@ -147,9 +136,9 @@ export const AmbienteFiscal = z.object({
 export type AmbienteFiscal = z.infer<typeof AmbienteFiscal>;
 
 export const AmbienteConsulta = z.object({ filial_id: Id.optional() });
+/** RN-CORE-08 (ADR 0006): o enum mantém `producao` para o pedido receber 422 com a regra citada, não um 400 mudo. */
 export const AmbienteTrocar = z.object({
   ambiente: z.enum(['homologacao', 'producao']),
-  recado_aprovacao: z.string().trim().max(80).nullable().default(null),
 });
 export type AmbienteTrocar = z.infer<typeof AmbienteTrocar>;
 export const ListaAmbientes = z.object({ itens: z.array(AmbienteFiscal) });
@@ -173,10 +162,11 @@ export const AuditoriaItem = z.object({
   ocorrido_em: Instante,
 });
 export type AuditoriaItem = z.infer<typeof AuditoriaItem>;
-export const ListaAuditoria = z.object({ itens: z.array(AuditoriaItem), proximo_cursor: Id.nullable() });
+export const ListaAuditoria = paginaDe(AuditoriaItem);
 
 // Exportação LGPD (RF-CORE-06): a API responde 202 e o worker gera o .zip
 export const ExportacaoEstado = z.enum(['pendente', 'gerando', 'pronta', 'falhou', 'expirada']);
+export type ExportacaoEstado = z.infer<typeof ExportacaoEstado>;
 export const Exportacao = z.object({
   id: Id,
   estado: ExportacaoEstado,

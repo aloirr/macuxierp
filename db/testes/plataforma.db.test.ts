@@ -79,7 +79,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
     expect(donos[0]?.n).toBe(0);
   });
 
-  it('toda tabela tem id, tenant_id, created_at, updated_at, deleted_at e external_id, com RLS ligada e política', () => {
+  it('toda tabela tem id, tenant_id, created_at, updated_at, deleted_at e external_id, com RLS ligada e política e external_id único por tenant', () => {
     const tabelas = tabelasDos(banco.conexao, ESQUEMAS);
     expect(tabelas.length).toBeGreaterThan(0);
     const problemas = consultar<{ t: string; problema: string }>(
@@ -99,7 +99,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
        UNION ALL SELECT t.t, 'sem trigger de updated_at' FROM t
          WHERE NOT EXISTS (SELECT 1 FROM pg_trigger g WHERE g.tgrelid = t.oid AND g.tgname = 'tocar_updated_at')
        UNION ALL SELECT t.t, 'tenant_id ou id sem NOT NULL' FROM t
-         WHERE EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = t.oid AND a.attname IN ('id', 'tenant_id') AND NOT a.attnotnull)`,
+         WHERE EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = t.oid AND a.attname IN ('id', 'tenant_id') AND NOT a.attnotnull)
+       UNION ALL SELECT t.t, 'sem índice único (tenant_id, external_id)' FROM t WHERE NOT EXISTS (SELECT 1 FROM pg_index i
+         WHERE i.indrelid = t.oid AND i.indisunique
+           AND pg_get_indexdef(i.indexrelid) ~ '\\(tenant_id, external_id\\) WHERE \\(external_id IS NOT NULL\\)')`,
     );
     expect(problemas).toEqual([]);
   });
@@ -229,6 +232,12 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
       { c: 'core.empresa.cnpj', d: 'cnpj' },
       { c: 'cadastros.tabela_oficial_versao.sha256', d: 'sha256_hex' },
       { c: 'core.certificado.impressao_digital', d: 'sha256_hex' },
+      { c: 'faturamento.nota_xml.sha256', d: 'sha256_hex' },
+      { c: 'integracao_fdv.lote_envio.chave_idempotencia', d: 'sha256_hex' },
+      { c: 'integracao_fdv.pedido_recebido.hash', d: 'sha256_hex' },
+      { c: 'integracao_fdv.registro_publicado.hash', d: 'sha256_hex' },
+      { c: 'integracao_fdv.registro_publicado.hash_confirmado', d: 'sha256_hex' },
+      { c: 'integracao_fdv.retorno_enviado.hash', d: 'sha256_hex' },
       { c: 'plataforma.arquivo.sha256', d: 'sha256_hex' },
       { c: 'plataforma.idempotencia.hash_corpo', d: 'sha256_hex' },
       { c: 'plataforma.sessao.refresh_hash', d: 'sha256_hex' },

@@ -4,6 +4,9 @@ set -uo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${RAIZ}" || exit 2
+# Testes de banco dos módulos (ex.: modules/cadastros/api/sql.db.test.ts) só rodam com a pasta das migrações; o
+# turbo.json repassa a variável (T-0029). Sem ela, pulavam sempre (achado A-01 da T-0008).
+export MACUXI_DB_MIGRACOES="${MACUXI_DB_MIGRACOES:-${RAIZ}/db/migrations}"
 
 PG_LOCAL="db/scripts/pg-local.sh"
 MODO=afetados

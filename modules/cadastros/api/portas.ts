@@ -2,17 +2,12 @@
  * Portas do plugin cadastros: o que as rotas precisam do banco, das fontes externas e do core. O adaptador SQL
  * (`sql.ts`) roda na transação do tenant (RLS); o adaptador em memória (`memoria.ts`) serve aos testes de rota.
  */
-import type { Transacao } from '@macuxierp/platform-sdk';
+import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type {
   Cliente, ClienteDados, Contato, ContatoItem, CondicaoPagamento, CondicaoPagamentoDados, EnderecoCliente,
-  EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, Produto,
-  ProdutoDados, SaldoEstoque, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
+  EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
+  ProdutoDados, SaldoEstoque, SaldoEstoqueItem, EstoqueConsulta, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
 } from '../contracts';
-
-export interface Pagina<T> {
-  itens: T[];
-  total: number;
-}
 
 export type FiltroLista = ListaConsulta & {
   /** Escopo da carteira do vendedor (D7): só clientes destes vendedores. */
@@ -24,11 +19,17 @@ export interface RepoSimples<E extends { id: string }, D> {
   /** Traz também o inativo (RN-CAD-08). */
   obter(id: string): Promise<E | null>;
   porExternalId(externalId: string): Promise<E | null>;
+  /** Chave natural da carga (D4): `cnpj`, `documento` ou `codigo`; traz também o inativo. */
+  porCampo(campo: 'cnpj' | 'documento' | 'codigo', valor: string): Promise<E | null>;
+  /** Reativa o cadastro inativado (`deleted_at = NULL`; carga, D6). */
+  reativar(id: string): Promise<E | null>;
   /** Lança `ErroApi` 409 se violar unicidade (CNPJ, documento, código). */
   inserir(dados: D): Promise<E>;
   atualizar(id: string, parcial: Partial<D>): Promise<E | null>;
   /** Inativa (`deleted_at`), nunca apaga (RN-CAD-08). */
   inativar(id: string): Promise<E | null>;
+  /** Página por cursor (id crescente), inativos incluídos: a carga inicial (C-4). */
+  paginaPorCursor(apos: string | null, limite: number): Promise<E[]>;
   /** Dos ids pedidos, os que existem e estão ativos (uma consulta só; o lote de preços confere 5.000 produtos). */
   idsAtivos(ids: readonly string[]): Promise<Set<string>>;
 }
@@ -57,13 +58,19 @@ export interface RepoClientes extends RepoSimples<Cliente, ClienteDados> {
 
 export interface RepoProdutos extends RepoSimples<Produto, ProdutoDados> {
   unidades: RepoFilho<UnidadeItem, UnidadeDados>;
+  /** Em lote, inclusive inativos (consulta do pedido). */
+  porIds(ids: readonly string[]): Promise<Produto[]>;
+  /** Unidades alternativas ativas dos produtos, em lote. */
+  unidadesDe(ids: readonly string[]): Promise<{ produto_id: string; unidade: string; fator: number }[]>;
 }
 
 export interface RepoTabelasPreco extends RepoSimples<TabelaPreco, TabelaPrecoDados> {
   desmarcarPadrao(exceto: string | null): Promise<void>;
-  itens(tabelaId: string, q: { filial_id?: string; produto_id?: string; pagina: number; por_pagina: number }): Promise<Pagina<PrecoItem>>;
-  /** Itens da tabela de um produto nas filiais pedidas (preço vigente, RN-CAD-06). */
-  itensDoProduto(tabelaId: string, produtoId: string, filialIds: readonly string[]): Promise<PrecoItem[]>;
+  itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItemLista>>;
+  /** Itens da tabela dos produtos nas filiais pedidas (preço vigente, RN-CAD-06). */
+  itensDosProdutos(tabelaId: string, produtoIds: readonly string[], filialIds: readonly string[]): Promise<PrecoItem[]>;
+  /** Tabela padrão ativa e vigente na data (AAAA-MM-DD). */
+  padraoEm(data: string): Promise<TabelaPreco | null>;
   /** Insere ou atualiza o lote (único por tabela, filial e produto). Devolve só o que mudou. */
   gravarLote(tabelaId: string, itens: readonly Omit<PrecoItem, 'tabela_preco_id'>[]): Promise<PrecoItem[]>;
 }
@@ -73,9 +80,15 @@ export interface MovimentoGravado extends MovimentoEstoque {
 }
 
 export interface RepoEstoque {
+  /** Lista do contrato de listas (D-05): `id > cursor ORDER BY id`; `busca` no produto (código, descrição) ou na filial (razão social, fantasia). */
+  listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>>;
   saldos(q: { filial_id?: string; produto_id?: string }): Promise<SaldoEstoque[]>;
+  /** Saldos de uma filial para vários produtos, em lote (produto sem linha fica fora). */
+  saldosDe(filialId: string, produtoIds: readonly string[]): Promise<SaldoEstoque[]>;
   /** Lê o saldo travando a linha (`FOR UPDATE`): dois movimentos simultâneos não furam a RN-CAD-07. */
   saldoParaAtualizar(filialId: string, produtoId: string): Promise<number>;
+  /** Saldos por cursor `(produto_id, filial_id)` crescente: a carga inicial (C-4). */
+  paginaPorCursor(apos: { filial_id: string; produto_id: string } | null, limite: number): Promise<SaldoEstoque[]>;
   gravarMovimento(mov: MovimentoGravado, saldoNovo: number): Promise<{ id: string }>;
   movimentoPorExternalId(externalId: string): Promise<{ id: string } | null>;
 }
@@ -103,14 +116,70 @@ export interface RepoConsultaExterna {
 
 export interface RepoOficiais {
   listar(tabela: (typeof import('../contracts').TABELAS_OFICIAIS)[number], q: OficialConsulta): Promise<Pagina<Record<string, unknown>>>;
+  /** C-1: nome do IBGE por código de município (o que não existir fica fora do mapa). */
+  nomesMunicipios(codigos: readonly string[]): Promise<Map<string, string>>;
   ncmVigente(ncm: string, data: string): Promise<boolean>;
   /** O NCM tem CEST vigente em `cest_ncm` (segmento com substituição tributária). */
   ncmExigeCest(ncm: string, data: string): Promise<boolean>;
   cestVigente(cest: string, data: string): Promise<boolean>;
   cestCombinaComNcm(cest: string, ncm: string, data: string): Promise<boolean>;
+  /** Municípios vigentes da UF (a carga lê uma vez por UF, RN-CAD-03). */
+  municipiosDaUf(uf: string, data: string): Promise<{ ibge: string; nome: string }[]>;
+}
+
+/** Cadastros que as linhas da carga referenciam por `external_id` (D13). */
+/** Cadastros que as linhas da carga referenciam por `external_id` (D13); a forma de pagamento não é tabela própria. */
+export type AlvoExterno = 'filial' | 'vendedor' | 'condicao_pagamento' | 'produto' | 'tabela_preco' | 'cliente';
+export type TabelaFilha = 'produto_unidade' | 'cliente_endereco';
+
+export interface FilhoGravado {
+  id: string;
+  pai_id: string;
+  external_id: string | null;
+  inativo: boolean;
+  atual: Record<string, unknown>;
+}
+
+export interface ItemPrecoGravado {
+  id: string;
+  external_id: string | null;
+  preco_centavos: number;
+  desconto_maximo_bp: number;
+  inativo: boolean;
+}
+
+/** O que só a carga de CSV (T-0026) precisa do banco; o resto usa os repositórios das rotas. */
+export interface RepoCarga {
+  /** Condições de uma forma de pagamento (D12), também as inativas. */
+  condicoesDaForma(formaExternalId: string): Promise<CondicaoPagamento[]>;
+  filhoPorExternalId(tabela: TabelaFilha, externalId: string): Promise<FilhoGravado | null>;
+  unidadePorChave(produtoId: string, unidade: string): Promise<FilhoGravado | null>;
+  reativarFilho(tabela: TabelaFilha, id: string): Promise<void>;
+  itemPrecoPorExternalId(externalId: string): Promise<ItemPrecoGravado | null>;
+  itemPrecoPorChave(tabelaId: string, filialId: string, produtoId: string): Promise<ItemPrecoGravado | null>;
+  /** Upsert por (tabela, filial, produto): o `external_id` é adotado e `inativo` marca `deleted_at`. */
+  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }): Promise<PrecoItem>;
+  /** SAVEPOINT por linha (D7): erro de banco na linha desfaz só ela. */
+  comSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+}
+
+/** Tabelas com `external_id` que a resolução de chaves (ADR 0010) e a guarda da RD-0317 consultam. */
+export type TabelaChave =
+  | 'cliente' | 'vendedor' | 'filial' | 'produto' | 'condicao_pagamento' | 'cliente_endereco'
+  | 'tabela_preco' | 'produto_unidade' | 'tabela_preco_item';
+
+/** Consultas de chave em lote (ADR 0010). Nunca filtram `deleted_at`, salvo `soAtivos` (a carga): o inativo também resolve (o pedido devolve `*_inativo`). */
+export interface RepoChaves {
+  /** `external_id` → `id`, em uma consulta; `soAtivos` (a carga confere referências) ignora os inativos. */
+  idsPorExternalId(tabela: TabelaChave, externalIds: readonly string[], soAtivos?: boolean): Promise<Map<string, string>>;
+  /** Dos `ids`, os que existem com `external_id` nulo (RD-0317: o UUID só vale para o que nasceu no ERP), em uma consulta. */
+  idsSemExternalId(tabela: TabelaChave, ids: readonly string[]): Promise<Set<string>>;
+  /** Existe registro com este `id` (ativo ou inativo)? Guarda da RD-0317. */
+  existeId(tabela: TabelaChave, id: string): Promise<boolean>;
 }
 
 export interface Repositorios {
+  chaves: RepoChaves;
   filiais: RepoFiliais;
   clientes: RepoClientes;
   produtos: RepoProdutos;
@@ -120,6 +189,7 @@ export interface Repositorios {
   vendedores: RepoVendedores;
   consultaExterna: RepoConsultaExterna;
   oficiais: RepoOficiais;
+  carga: RepoCarga;
 }
 
 /** Fonte externa de consulta (BrasilAPI, ViaCEP, ...). `null` = não achou; lançar = falhou (tempo, rede, 5xx). */

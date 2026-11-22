@@ -21,7 +21,7 @@ export const PERMISSOES = {
   'core.licenca.ver': ADM, // D12: o tenant só lê; muda pelo scripts/plataforma/licenca.mjs
   'core.certificado.gerir': ADM,
   'core.ambiente.ver': ['administrador', 'fiscal', 'faturista'],
-  'core.ambiente.trocar': ADM, // + o recado "aprovo produção fiscal" do Alexandre (RN-CORE-08, no domain do core)
+  'core.ambiente.trocar': ADM, // só volta para homologação; produção é do operador, ADR 0006 (RN-CORE-08)
   'core.auditoria.ver': ADM,
   'core.exportacao.pedir': ADM,
   'core.parametro.gerir': ADM,
@@ -35,12 +35,19 @@ export const PERMISSOES = {
   'cadastros.estoque.movimentar': CADASTRO,
   'cadastros.estoque.negativo': ADM_GERENTE, // RN-CAD-07
   'cadastros.condicao_pagamento.editar': ADM_GERENTE,
+  'cadastros.condicao_pagamento.desativar_recusadas': ADM, // RN-CAD-09
   'cadastros.vendedor.editar': ADM_GERENTE,
   'cadastros.carteira.transferir': ADM_GERENTE,
   'cadastros.consulta.externa': CADASTRO,
+  // ADR 0010, item 3 (RN-CORE-05): troca controlada do external_id
+  'cadastros.external_id.trocar': ADM,
+  // T-0026 (D8): carga de CSV; cada arquivo ainda confere a ação de edição da entidade (filial só o administrador)
+  'cadastros.carga.executar': ADM_GERENTE,
   // pedido, fiscal, faturamento e integração (F2 a F4; a matriz do doc 03 já fixa)
   'pedido.ver': VER,
   'pedido.pedido.aprovar': ADM_GERENTE,
+  'pedido.pedido.lancar': CADASTRO, // T-0013 §4.1: criar, editar e revalidar o pedido manual
+  'pedido.pedido.cancelar': ADM_GERENTE, // T-0013 §4.1
   'fiscal.ver': VER,
   'fiscal.regra.editar': ['administrador', 'fiscal'],
   'faturamento.ver': VER,

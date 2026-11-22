@@ -5,6 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./dinheiro": "./src/dinheiro.ts",
+    "./erros": "./src/erros.ts",
+    "./formatar": "./src/formatar.ts",
+    "./listas": "./src/listas.ts",
+    "./paginas": "./src/paginas.ts",
     "./pg": "./src/pg.ts",
     "./pg-testes": "./src/pg-testes.ts",
     "./testes": "./src/testes.ts"

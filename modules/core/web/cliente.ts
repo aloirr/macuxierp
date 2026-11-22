@@ -20,7 +20,7 @@ import {
   type CertificadoEnviar,
   type UsuarioCriar,
 } from '../contracts';
-import { paraQuery } from './filtros';
+import { paraQuery } from '@macuxierp/platform-sdk/listas';
 
 export class ErroCliente extends Error {
   override readonly name = 'ErroCliente';
@@ -33,16 +33,18 @@ export class ErroCliente extends Error {
   }
 }
 
-export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; json(): Promise<unknown> }>;
+export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string | FormData }) => Promise<{ status: number; json(): Promise<unknown> }>;
 
 const Itens = <T extends z.ZodTypeAny>(t: T) => z.object({ itens: z.array(t) });
 
 export function criarClienteCore(cfg: { baseUrl: string; token: () => string; fetch: Fetch }) {
   async function chamar<T>(metodo: string, caminho: string, schema: z.ZodType<T, z.ZodTypeDef, unknown> | null, corpo?: unknown): Promise<T> {
+    // FormData (multipart): o `Content-Type` com a fronteira é do fetch; não se define aqui.
+    const formulario = typeof FormData !== 'undefined' && corpo instanceof FormData;
     const r = await cfg.fetch(`${cfg.baseUrl}/v1/core${caminho}`, {
       method: metodo,
-      headers: { Authorization: `Bearer ${cfg.token()}`, ...(corpo === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+      headers: { Authorization: `Bearer ${cfg.token()}`, ...(corpo === undefined || formulario ? {} : { 'Content-Type': 'application/json' }) },
+      body: corpo === undefined ? undefined : formulario ? (corpo as FormData) : JSON.stringify(corpo),
     });
     if (r.status === 204 || schema === null) return undefined as T;
     const json = await r.json();
@@ -63,10 +65,18 @@ export function criarClienteCore(cfg: { baseUrl: string; token: () => string; fe
     perfis: () => chamar('GET', '/perfis', Itens(PerfilComAcoes)),
     licencas: () => chamar('GET', '/licencas', Itens(Licenca)),
     certificados: (filialId?: string) => chamar('GET', `/certificados${q({ filial_id: filialId })}`, ListaCertificados),
-    enviarCertificado: (c: CertificadoEnviar) => chamar('POST', '/certificados', CertificadoResumo, c),
+    /** Multipart: `arquivo` é o `.pfx` (até 50 KB); a senha vai como campo de texto e nunca é guardada aqui. */
+    enviarCertificado: (c: CertificadoEnviar, arquivo: Blob) => {
+      const f = new FormData();
+      f.set('filial_id', c.filial_id);
+      f.set('senha', c.senha);
+      f.set('arquivo', arquivo, 'certificado.pfx');
+      return chamar('POST', '/certificados', CertificadoResumo, f);
+    },
     ambientes: (filialId?: string) => chamar('GET', `/ambientes-fiscais${q({ filial_id: filialId })}`, ListaAmbientes),
-    trocarAmbiente: (filialId: string, ambiente: 'homologacao' | 'producao', recado: string | null) =>
-      chamar('PUT', `/ambientes-fiscais/${filialId}`, AmbienteFiscal, { ambiente, recado_aprovacao: recado }),
+    /** RN-CORE-08 (ADR 0006): o tenant só volta para homologação; produção é pedida à Macuxi. */
+    voltarParaHomologacao: (filialId: string) =>
+      chamar('PUT', `/ambientes-fiscais/${filialId}`, AmbienteFiscal, { ambiente: 'homologacao' }),
     auditoria: (f?: Record<string, string>) => chamar('GET', `/auditoria${q(f)}`, ListaAuditoria),
     pedirExportacao: () => chamar('POST', '/exportacoes', Exportacao, {}),
     exportacao: (id: string) => chamar('GET', `/exportacoes/${id}`, Exportacao),

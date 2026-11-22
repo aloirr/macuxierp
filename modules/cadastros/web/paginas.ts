@@ -3,24 +3,24 @@
  * (apps/web, Next.js) desenha tabela densa, filtros na URL e botão "Exportar CSV" a partir daqui. A permissão na tela
  * só esconde o botão: a proteção real é a da API (RN-CORE-02).
  */
-import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
+import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDocumento, formatarQuantidade } from './formatar';
-import type { ColunaCsv } from './csv';
 
-export interface ColunaPagina extends ColunaCsv {
+export interface ColunaPagina {
+  chave: string;
+  rotulo: string;
+  formatar?: (valor: unknown) => string;
   /** Só quem pode ver o dado (ex.: o custo do produto). */
   exige?: Acao;
 }
 
-export interface PaginaCadastros {
-  id: string;
-  menu: string;
-  titulo: string;
-  rota: string;
+export interface PaginaCadastros extends PaginaBase {
+  /** Toda página do cadastros é lista e tem `id` (no tipo base ele é opcional). */
+  readonly id: string;
   /** Caminho da lista em `/v1/cadastros`. */
   api: string;
   colunas: readonly ColunaPagina[];
-  /** Filtros aceitos na URL, além de `busca`, `pagina` e `inativos`. */
+  /** Filtros aceitos na URL, além de `busca`, `cursor`, `limite` e `inativos`. */
   filtros: readonly string[];
   editar?: Acao;
   /** Campos que pedem permissão a mais além de `editar`. */
@@ -95,33 +95,35 @@ export function acoesDaPagina(perfil: Perfil, p: PaginaCadastros): AcoesDaPagina
 
 export interface ConsultaUrl {
   busca?: string;
-  pagina: number;
-  por_pagina: number;
+  /** `id` do último item da página anterior (paginação por cursor, `.coord/contratos/listas.md`). */
+  cursor?: string;
+  limite?: number;
   inativos?: boolean;
   [filtro: string]: string | number | boolean | undefined;
 }
 
 /** Lê a consulta da URL (a URL é a fonte da verdade dos filtros). Só entram os filtros que a página declara. */
 export function consultaDaUrl(p: PaginaCadastros, url: URLSearchParams): ConsultaUrl {
-  const pagina = Number(url.get('pagina'));
-  const q: ConsultaUrl = { pagina: Number.isInteger(pagina) && pagina >= 1 ? pagina : 1, por_pagina: 50 };
-  const busca = url.get('busca')?.trim();
-  if (busca) q.busca = busca.slice(0, 60);
-  for (const f of p.filtros) {
-    const v = url.get(f);
-    if (v) q[f] = v;
-  }
-  if (url.get('inativos') === 'true') q.inativos = true;
+  const f = lerFiltros(url, ['busca', 'cursor', 'limite', 'inativos', ...p.filtros]);
+  const { busca, cursor, limite, inativos, ...filtros } = f;
+  const q: ConsultaUrl = { ...filtros };
+  const b = ConsultaLista.shape.busca.safeParse(busca);
+  if (b.success && b.data) q.busca = b.data;
+  if (cursor) q.cursor = cursor;
+  const n = ConsultaPaginada.shape.limite.safeParse(limite);
+  if (n.success && n.data !== LIMITE_PADRAO) q.limite = n.data;
+  if (inativos === 'true') q.inativos = true;
   return q;
 }
 
-export function urlDaConsulta(q: ConsultaUrl): string {
-  const u = new URLSearchParams();
-  const { busca, pagina, por_pagina, inativos, ...filtros } = q;
-  if (busca) u.set('busca', busca);
-  if (pagina !== 1) u.set('pagina', String(pagina));
-  if (por_pagina !== 50) u.set('por_pagina', String(por_pagina));
-  for (const [k, v] of Object.entries(filtros)) if (v !== undefined && v !== '') u.set(k, String(v));
-  if (inativos) u.set('inativos', 'true');
-  return u.toString();
+/** Colunas do CSV da página: rótulo e valor formatado, só as colunas que o perfil enxerga. */
+function colunasCsv(p: PaginaCadastros, visiveis: readonly string[]): ColunaCsv<Record<string, unknown>>[] {
+  return p.colunas
+    .filter((c) => visiveis.includes(c.chave))
+    .map((c) => ({ titulo: c.rotulo, valor: (l) => (c.formatar ? c.formatar(l[c.chave]) : (l[c.chave] as string | number | boolean | null | undefined)) }));
+}
+
+/** CSV da lista que o usuário está vendo, com as colunas permitidas ao perfil (a API já filtrou as linhas). */
+export function csvDaPagina(p: PaginaCadastros, perfil: Perfil, linhas: readonly Record<string, unknown>[]): string {
+  return paraCsv(colunasCsv(p, acoesDaPagina(perfil, p).colunasVisiveis), linhas);
 }

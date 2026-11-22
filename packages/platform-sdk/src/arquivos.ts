@@ -51,6 +51,17 @@ export class ArmazenamentoMemoria implements Armazenamento {
   }
 }
 
+/**
+ * Armazenamento enquanto o adaptador S3 não chega (T-0024, com ADR): gravar, ler e assinar falham com 503
+ * `INDISPONIVEL` (a API responde 503; no worker o trabalho segue o backoff). Nenhum arquivo é aceito sem ter onde guardar.
+ * Consequência aceita (decisão do gerente): até o S3 da T-0024, toda exportação LGPD (RF-CORE-06) esgota as tentativas
+ * e termina em `falhou` (`aoDesistir` do executor); o texto do BKO para esse estado é do modulo-core.
+ */
+const fora = async (): Promise<never> => {
+  throw erros.indisponivel('Armazenamento de arquivos');
+};
+export const armazenamentoIndisponivel: Armazenamento = { gravar: fora, ler: fora, urlAssinada: fora };
+
 /** Linha de `plataforma.arquivo`. */
 export interface RegistroArquivo {
   id: string;
@@ -67,7 +78,8 @@ export interface CatalogoArquivos {
   inserir(tx: Transacao, registro: RegistroArquivo): Promise<void>;
 }
 
-const sha256 = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
+/** SHA-256 em hex minúsculo (o domínio `plataforma.sha256_hex`). */
+export const sha256Hex = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
 
 export interface PedidoGuarda {
   armazenamento: Armazenamento;
@@ -85,13 +97,13 @@ export interface PedidoGuarda {
 
 export async function guardarArquivo(p: PedidoGuarda): Promise<RegistroArquivo> {
   const chave = chaveArquivo(p.tenantId, ...p.partes);
-  const hash = sha256(p.corpo);
+  const hash = sha256Hex(p.corpo);
   try {
     await p.armazenamento.gravar(chave, p.corpo, { tipo: p.tipo, imutavel: p.imutavel });
   } catch (e) {
     if (!(e instanceof ArquivoJaExiste)) throw e;
     const existente = await p.armazenamento.ler(chave);
-    if (!existente || sha256(existente) !== hash) throw erros.conflito('Arquivo imutável já gravado com outro conteúdo');
+    if (!existente || sha256Hex(existente) !== hash) throw erros.conflito('Arquivo imutável já gravado com outro conteúdo');
   }
   let guardaAte: Date | null = null;
   if (p.guardaAnos !== null) {

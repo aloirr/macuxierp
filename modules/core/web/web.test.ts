@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PERFIS } from '@macuxierp/platform-sdk';
 import { criarClienteCore, ErroCliente, SenhaUmaVez, type Fetch } from './cliente';
-import { paraCsv } from './csv';
-import { lerFiltros, paraQuery } from './filtros';
-import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis } from './paginas';
+import { paraCsv } from '@macuxierp/platform-sdk/listas';
+import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
 
 describe('BKO do core: permissões refletidas na UI (a proteção real é da API)', () => {
   it('RN-CORE-02: administrador vê tudo; leitura só a empresa e os perfis; fiscal e faturista veem o ambiente', () => {
@@ -13,11 +12,23 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
     expect(paginasVisiveis('faturista').map((p) => p.id)).not.toContain('usuarios');
   });
 
-  it('RN-CORE-08: só o administrador vê o botão de trocar o ambiente fiscal, com confirmação', () => {
+  it('RN-CORE-08: só o administrador vê o botão de voltar para homologação, com confirmação e só com a filial em produção; não há botão de produção', () => {
     const amb = PAGINAS_CORE.find((p) => p.id === 'ambiente');
     if (!amb) throw new Error('sem página');
-    expect(botoesVisiveis('fiscal', amb)).toEqual([]);
-    expect(botoesVisiveis('administrador', amb)[0]).toMatchObject({ id: 'trocar', confirma: true });
+    expect(botoesVisiveis('fiscal', amb, 'producao')).toEqual([]);
+    expect(botoesVisiveis('administrador', amb, 'homologacao')).toEqual([]);
+    expect(botoesVisiveis('administrador', amb)).toEqual([]);
+    const botoes = botoesVisiveis('administrador', amb, 'producao');
+    expect(botoes).toHaveLength(1);
+    expect(botoes[0]).toMatchObject({ id: 'voltar-homologacao', rotulo: 'Voltar para homologação', confirma: true });
+    expect(botoes.map((b) => b.rotulo.toLowerCase()).join()).not.toContain('produ');
+    expect(TEXTO_AMBIENTE_HOMOLOGACAO).toContain('peça à Macuxi');
+  });
+
+  it('T-0040: a página de exportação avisa que o armazenamento ainda não existe', () => {
+    const exp = PAGINAS_CORE.find((p) => p.id === 'exportacao');
+    expect(exp?.aviso).toBe(TEXTO_EXPORTACAO_INDISPONIVEL);
+    expect(PAGINAS_CORE.filter((p) => p.aviso).map((p) => p.id)).toEqual(['exportacao']);
   });
 
   it('todo perfil conhecido tem ao menos a página da empresa', () => {
@@ -25,21 +36,15 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
   });
 });
 
-describe('BKO do core: filtros na URL e CSV', () => {
-  it('lê só as chaves permitidas, sem vazio, e escreve query estável', () => {
-    expect(lerFiltros('?busca=ana&inativos=true&x=1&limite=%20', ['busca', 'inativos', 'limite'])).toEqual({ busca: 'ana', inativos: 'true' });
-    expect(paraQuery({ b: '2', a: '1', c: undefined })).toBe('?a=1&b=2');
-    expect(paraQuery({})).toBe('');
-  });
-
-  it('CSV com ; , BOM, aspas escapadas e proteção contra fórmula de planilha', () => {
+describe('BKO do core: CSV das colunas do core', () => {
+  it('CSV de usuários: cabeçalho das colunas e sim/não', () => {
     const csv = paraCsv(COLUNAS_USUARIOS, [
       { id: 'a', nome: '=SOMA(A1)', email: 'a;b@x.test', perfil: 'leitura', filial_ids: [], ativo: true, external_id: null, ultimo_acesso_em: null, updated_at: '2026-11-21T15:00:00.000Z' },
       { id: 'b', nome: 'Maria "M"', email: 'm@x.test', perfil: 'gerente', filial_ids: [], ativo: false, external_id: null, ultimo_acesso_em: '2026-11-20T10:00:00.000Z', updated_at: '2026-11-21T15:00:00.000Z' },
     ]);
     expect(csv.startsWith('﻿Nome;E-mail;Perfil;Ativo;Último acesso\r\n')).toBe(true);
-    expect(csv).toContain("'=SOMA(A1);\"a;b@x.test\";leitura;sim;\r\n");
-    expect(csv).toContain('"Maria ""M""";m@x.test;gerente;não;2026-11-20T10:00:00.000Z\r\n');
+    expect(csv).toContain(';leitura;sim;');
+    expect(csv).toContain(';gerente;não;');
   });
 
   it('RF-CORE-04: o aviso do A1 aparece a 30 dias ou menos e muda quando vence', () => {
@@ -56,7 +61,7 @@ describe('BKO do core: cliente da API', () => {
   it('RF-CORE-02: envia o token, valida a resposta pelo contrato e a senha provisória é lida uma vez', async () => {
     const vistos: { url: string; headers: Record<string, string>; body?: string }[] = [];
     const fetch: Fetch = async (url, init) => {
-      vistos.push({ url, headers: init.headers, body: init.body });
+      vistos.push({ url, headers: init.headers, body: typeof init.body === 'string' ? init.body : undefined });
       return { status: 201, json: async () => ({ ...USUARIO, senha_provisoria: 'Abcdefgh23456789' }) };
     };
     const api = criarClienteCore({ baseUrl: 'https://erp.exemplo.test', token: () => 'tok', fetch });
@@ -72,10 +77,24 @@ describe('BKO do core: cliente da API', () => {
   it('erro da API vira ErroCliente com o código da RN, sem repetir o corpo enviado', async () => {
     const fetch: Fetch = async () => ({ status: 422, json: async () => ({ codigo: 'RN-CORE-06', mensagem: 'Certificado vencido em 01/11/2026: envie o novo' }) });
     const api = criarClienteCore({ baseUrl: 'https://x.test', token: () => 't', fetch });
-    const e = await api.enviarCertificado({ filial_id: USUARIO.id, arquivo_base64: 'AAAA', senha: 'segredo' }).then(() => null, (x: unknown) => x);
+    const e = await api.enviarCertificado({ filial_id: USUARIO.id, senha: 'segredo' }, new Blob([new Uint8Array([1, 2, 3])])).then(() => null, (x: unknown) => x);
     expect(e).toBeInstanceOf(ErroCliente);
     expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-06' });
     expect(String((e as Error).message)).not.toContain('segredo');
+  });
+
+  it('RF-CORE-04: o certificado vai em multipart, sem Content-Type fixo e sem base64', async () => {
+    let visto: { headers: Record<string, string>; body?: string | FormData } | undefined;
+    const fetch: Fetch = async (_url, init) => {
+      visto = init;
+      return { status: 422, json: async () => ({ codigo: 'RN-CORE-06', mensagem: 'x' }) };
+    };
+    const api = criarClienteCore({ baseUrl: 'https://x.test', token: () => 't', fetch });
+    await api.enviarCertificado({ filial_id: USUARIO.id, senha: 'segredo' }, new Blob([new Uint8Array([1, 2, 3])])).catch(() => undefined);
+    expect(visto?.body).toBeInstanceOf(FormData);
+    expect(visto?.headers['Content-Type']).toBeUndefined();
+    const f = visto?.body as FormData;
+    expect([...f.keys()].sort()).toEqual(['arquivo', 'filial_id', 'senha']);
   });
 
   it('DELETE responde 204 sem corpo', async () => {

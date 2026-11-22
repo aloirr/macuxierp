@@ -1,4 +1,5 @@
 import type { EuResposta, ManifestoModulo, ModuloId, Perfil } from '@macuxierp/platform-sdk';
+import { paginaDaRota, paginasDoMenu, paginaVisivel, type PaginaRegistrada, PAGINAS_REGISTRADAS } from './paginas';
 
 export interface ItemMenu {
   rotulo: string;
@@ -9,7 +10,7 @@ export interface GrupoMenu {
   itens: ItemMenu[];
 }
 
-/** "Tabelas de preço" -> "tabelas-de-preco" (segmento de URL estável a partir do rótulo do manifesto). */
+/** "Tabelas de preço" -> "tabelas-de-preco". Só para módulo que ainda não declara páginas (pedido, faturamento, fiscal): com páginas, a rota vem delas (D-02). */
 export function slug(rotulo: string): string {
   return rotulo
     .normalize('NFD')
@@ -23,16 +24,43 @@ export function slug(rotulo: string): string {
  * Monta o menu (RN-CORE-02, RD-11). Fonte dos rótulos e da ordem: `eu.modulos[].menus` da API, que já traz só os
  * módulos licenciados. O manifesto entra apenas no filtro de `perfis` (o servidor revalida em toda rota).
  */
-export function montarMenu(modulos: EuResposta['modulos'], manifestos: readonly ManifestoModulo[], perfil: Perfil): GrupoMenu[] {
+export function montarMenu(
+  modulos: EuResposta['modulos'],
+  manifestos: readonly ManifestoModulo[],
+  perfil: Perfil,
+  paginas: readonly PaginaRegistrada[] = PAGINAS_REGISTRADAS,
+): GrupoMenu[] {
   return modulos
     .filter((m) => m.menus.length > 0 && manifestos.some((f) => f.id === m.id && f.perfis.includes(perfil)))
     .map((m) => ({
       modulo: m.id,
-      itens: m.menus.map((rotulo) => ({ rotulo, href: `/${m.id}/${slug(rotulo)}` })),
-    }));
+      itens: m.menus.flatMap((rotulo): ItemMenu[] => {
+        const declaradas = paginas.some((p) => p.modulo === m.id && p.menu === rotulo);
+        if (!declaradas) return [{ rotulo, href: `/${m.id}/${slug(rotulo)}` }];
+        // O link aponta para a primeira página que o perfil vê; sem nenhuma visível, o item some.
+        const primeira = paginasDoMenu(m.id, rotulo, perfil, paginas)[0];
+        return primeira ? [{ rotulo, href: primeira.rota }] : [];
+      }),
+    }))
+    .filter((g) => g.itens.length > 0);
 }
 
-/** Resolve a rota /<modulo>/<pagina> para o rótulo do menu, ou undefined se o módulo/perfil/página não valer. */
-export function rotuloDaPagina(menu: readonly GrupoMenu[], modulo: string, pagina: string): string | undefined {
-  return menu.find((g) => g.modulo === modulo)?.itens.find((i) => i.href === `/${modulo}/${pagina}`)?.rotulo;
+export interface PaginaResolvida {
+  rotulo: string;
+  /** Página declarada pelo módulo; ausente quando a rota vem só do rótulo do manifesto (módulo sem páginas). */
+  pagina?: PaginaRegistrada;
+}
+
+/**
+ * Resolve a rota (`/<modulo>/<...pagina>`) para o item de menu e a página, numa busca só. Undefined se módulo, perfil,
+ * `ver` da página ou rota não valerem.
+ */
+export function resolverPagina(menu: readonly GrupoMenu[], rota: string, perfil: Perfil, paginas: readonly PaginaRegistrada[] = PAGINAS_REGISTRADAS): PaginaResolvida | undefined {
+  const modulo = rota.split('/')[1];
+  const grupo = menu.find((g) => g.modulo === modulo);
+  if (!grupo) return undefined;
+  const pagina = paginaDaRota(rota, paginas);
+  if (pagina) return paginaVisivel(pagina, perfil) && grupo.itens.some((i) => i.rotulo === pagina.menu) ? { rotulo: pagina.menu, pagina } : undefined;
+  const item = grupo.itens.find((i) => i.href === rota);
+  return item ? { rotulo: item.rotulo } : undefined;
 }

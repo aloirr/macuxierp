@@ -1,0 +1,3 @@
+external_id;tabela_external_id;tabela_nome;vigencia_inicio;produto_external_id;preco_cents;alterado_em;ativo;vigencia_fim;unidade;filial_external_id
+PR-EX-01;T-EX-01;Tabela Exemplo;2026-01-01;P-EX-01;1000;;sim;;UN;F-EX-01
+PR-EX-02;T-EX-01;Tabela Exemplo;2026-01-01;P-EX-02;1800;;sim;;CX;F-EX-01

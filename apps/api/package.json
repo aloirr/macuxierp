@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
+    "@fastify/multipart": "^10.1.9",
     "@macuxierp/cadastros": "workspace:*",
     "@macuxierp/core": "workspace:*",
     "@macuxierp/faturamento": "workspace:*",
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
+    "@macuxierp/nfe-sefaz": "workspace:*",
+    "@macuxierp/sefaz-simulador": "workspace:*",
     "@types/node": "^22.18.0",
     "eslint": "^9.39.0",
     "typescript": "~5.9.3",

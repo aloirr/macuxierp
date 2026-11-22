@@ -43,6 +43,12 @@ describe('filiais (RF-CAD-08)', () => {
     expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.filial.alterada@1', agregado_id: r.corpo.id, versao: 1, payload: { inativo: false, nfe_serie: 1 } });
     expect(t.auditoria[0]).toMatchObject({ acao: 'filial.criar', entidade: 'filial', entidade_id: r.corpo.id });
   });
+  it('C-1: o evento da filial traz endereco.municipio_nome do IBGE', async () => {
+    const t = montar();
+    t.repos.oficiais.municipios.set('1302603', 'Manaus');
+    await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida() });
+    expect(t.eventos[0]?.payload.endereco).toMatchObject({ municipio_ibge: '1302603', municipio_nome: 'Manaus' });
+  });
   it('só o administrador edita filial', async () => {
     const t = montar();
     expect((await t.chamar('POST', '/filiais', { sessao: gerente, corpo: filialValida() })).status).toBe(403);
@@ -107,6 +113,18 @@ describe('clientes (RF-CAD-01)', () => {
     expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.cliente.alterado@1', payload: { documento: CNPJ_B, vendedor_id: null, inativo: false } });
     expect((t.eventos[0]?.payload.enderecos as unknown[]).length).toBe(1);
   });
+  it('C-1 e C-3: o evento do cliente traz enderecos[].id e municipio_nome (null se o IBGE não está na tabela oficial)', async () => {
+    const t = montar();
+    t.repos.oficiais.municipios.set('1302603', 'Manaus');
+    const f = await comFilial(t);
+    const r = await t.chamar('POST', '/clientes', { sessao: faturista, corpo: clienteValido(f) });
+    const [end] = t.eventos[0]?.payload.enderecos as Record<string, unknown>[];
+    expect(end).toMatchObject({ id: r.corpo.enderecos[0].id, municipio_ibge: '1302603', municipio_nome: 'Manaus', tipo: 'principal' });
+    t.repos.oficiais.municipios.clear();
+    t.eventos.length = 0;
+    await t.chamar('POST', `/clientes/${r.corpo.id}/enderecos`, { sessao: adm, corpo: { ...ENDERECO_AM, tipo: 'entrega' } });
+    expect((t.eventos[0]?.payload.enderecos as Record<string, unknown>[]).map((e) => e.municipio_nome)).toEqual([null, null]);
+  });
   it('RN-CAD-01: CNPJ inválido (dígito) em cliente PJ é 422 RN-CAD-01; CPF válido em PF passa', async () => {
     const t = montar();
     const f = await comFilial(t);
@@ -166,6 +184,74 @@ describe('clientes (RF-CAD-01)', () => {
     expect(b.corpo.id).toBe(a.corpo.id);
     expect(t.eventos).toHaveLength(1);
   });
+  describe('RN-CORE-05: external_id imutável (ADR 0010, item 3)', () => {
+    async function com(ext: string | null = 'K1') {
+      const t = montar();
+      const f = await comFilial(t);
+      const c = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, ext ? { external_id: ext } : {}) })).corpo.id as string;
+      t.eventos.length = 0;
+      t.auditoria.length = 0;
+      return { t, f, c };
+    }
+    it('RN-CORE-05: preencher um external_id nulo pelo PATCH é livre e o evento traz external_id_anterior nulo', async () => {
+      const { t, c } = await com(null);
+      const r = await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: 'K9' } });
+      expect(r.status).toBe(200);
+      expect(t.eventos[0]?.payload).toMatchObject({ external_id: 'K9', external_id_anterior: null });
+    });
+    it('RN-CORE-05: adotar pelo PATCH um external_id que outro registro já usa é 409', async () => {
+      const { t, f, c } = await com(null);
+      await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { external_id: 'K7', documento: CNPJ_A, tipo_pessoa: 'PJ', ie: null, ind_ie_dest: '9' }) });
+      t.eventos.length = 0;
+      expect((await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: 'K7' } })).status).toBe(409);
+      expect(t.eventos).toHaveLength(0);
+    });
+    it('RN-CORE-05: repetir o mesmo valor passa e não marca external_id_anterior', async () => {
+      const { t, c } = await com();
+      expect((await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: 'K1' } })).status).toBe(200);
+      expect(t.eventos[0]?.payload.external_id_anterior).toBeUndefined();
+    });
+    it('RN-CORE-05: trocar por outro valor ou por nulo pelo PATCH comum é 422 sem ecoar valores', async () => {
+      const { t, c } = await com();
+      for (const novo of ['K2', null]) {
+        const r = await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: novo } });
+        expect(r.status).toBe(422);
+        expect(r.corpo.codigo).toBe('RN-CORE-05');
+        expect(JSON.stringify(r.corpo)).not.toContain('K1');
+      }
+      expect(t.eventos).toHaveLength(0);
+    });
+    it('RN-CORE-05: a troca controlada pelo administrador é 200, audita com o motivo e publica external_id_anterior', async () => {
+      const { t, c } = await com();
+      const r = await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: 'K2', motivo: 'Correção da chave de origem' } });
+      expect(r.status).toBe(200);
+      expect(r.corpo.external_id).toBe('K2');
+      expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.cliente.alterado@1', payload: { external_id: 'K2', external_id_anterior: 'K1' } });
+      expect(t.auditoria[0]).toMatchObject({ acao: 'cliente.external_id.trocar', antes: { external_id: 'K1' }, depois: { external_id: 'K2', motivo: 'Correção da chave de origem' } });
+    });
+    it('RN-CORE-05: só o administrador troca (gerente 403) e o motivo é obrigatório', async () => {
+      const { t, c } = await com();
+      expect((await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: gerente, corpo: { external_id: 'K2', motivo: 'x' } })).status).toBe(403);
+      expect((await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: 'K2' } })).status).toBe(400);
+    });
+    it('RN-CORE-05: a troca para o id de outro registro é 422 (RD-0317) e para external_id já usado é 409', async () => {
+      const { t, f, c } = await com();
+      const outro = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { external_id: 'K3', documento: CNPJ_A, tipo_pessoa: 'PJ', ie: null, ind_ie_dest: '9' }) })).corpo.id as string;
+      const r = await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: outro, motivo: 'x' } });
+      expect(r.status).toBe(422);
+      expect(r.corpo.codigo).toBe('RN-CORE-05');
+      expect((await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: 'K3', motivo: 'x' } })).status).toBe(409);
+    });
+    it('RN-CORE-05: a mesma regra vale nas outras entidades (produto)', async () => {
+      const t = montar();
+      t.repos.oficiais.ncms.add('22021000');
+      const p = await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ external_id: 'P1' }) });
+      expect(p.status).toBe(201);
+      expect((await t.chamar('PATCH', `/produtos/${p.corpo.id}`, { sessao: adm, corpo: { external_id: 'P2' } })).status).toBe(422);
+      const r = await t.chamar('POST', `/produtos/${p.corpo.id}/external-id`, { sessao: adm, corpo: { external_id: 'P2', motivo: 'Ajuste' } });
+      expect(r.status).toBe(200);
+    });
+  });
   it('RN-CAD-01: documento repetido é 409', async () => {
     const t = montar();
     const f = await comFilial(t);
@@ -212,7 +298,7 @@ describe('carteira do vendedor (D7)', () => {
     const { t, uA, cA } = await cenario();
     const r = await t.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', uA) });
     expect(r.corpo.itens.map((c: { id: string }) => c.id)).toEqual([cA]);
-    expect(r.corpo.total).toBe(1);
+    expect(r.corpo.proximo_cursor).toBeNull();
   });
   it('RF-CAD-07: o vendedor não abre cliente de outra carteira nem os endereços e contatos dele (404)', async () => {
     const { t, uA, cA, cB, semDono } = await cenario();
@@ -235,8 +321,20 @@ describe('carteira do vendedor (D7)', () => {
   });
   it('RF-CAD-07: gerente e administrador veem a carteira inteira', async () => {
     const { t } = await cenario();
-    expect((await t.chamar('GET', '/clientes', { sessao: gerente })).corpo.total).toBe(3);
-    expect((await t.chamar('GET', '/clientes', { sessao: adm })).corpo.total).toBe(3);
+    expect((await t.chamar('GET', '/clientes', { sessao: gerente })).corpo.itens).toHaveLength(3);
+    expect((await t.chamar('GET', '/clientes', { sessao: adm })).corpo.itens).toHaveLength(3);
+  });
+  it('listas: paginação por cursor (limite, proximo_cursor e id > cursor), sem pagina, por_pagina nem total', async () => {
+    const { t, cA, cB, semDono } = await cenario();
+    const todos = [cA, cB, semDono].sort();
+    const p1 = await t.chamar('GET', '/clientes', { sessao: adm, consulta: { limite: '2' } });
+    expect(p1.corpo.itens.map((c: { id: string }) => c.id)).toEqual(todos.slice(0, 2));
+    expect(p1.corpo.proximo_cursor).toBe(todos[1]);
+    expect(p1.corpo).not.toHaveProperty('total');
+    const p2 = await t.chamar('GET', '/clientes', { sessao: adm, consulta: { limite: '2', cursor: p1.corpo.proximo_cursor } });
+    expect(p2.corpo).toMatchObject({ itens: [{ id: todos[2] }], proximo_cursor: null });
+    expect((await t.chamar('GET', '/clientes', { sessao: adm, consulta: { limite: '201' } })).status).toBe(400);
+    expect((await t.chamar('GET', '/clientes', { sessao: adm, consulta: { cursor: 'abc' } })).status).toBe(400);
   });
   it('D7: transferir carteira move os clientes, publica carteira e cliente, e audita', async () => {
     const { t, vA, vB, cA } = await cenario();
@@ -338,7 +436,13 @@ describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
     expect((await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens } })).corpo.alterados).toBe(0);
     expect(t.eventos).toHaveLength(0);
     const lista = await t.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: sessaoDe('leitura') });
-    expect(lista.corpo.total).toBe(2);
+    expect(lista.corpo).toMatchObject({ itens: [{ preco_centavos: expect.any(Number), id: expect.any(String) }, {}], proximo_cursor: null });
+    const p1 = await t.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: sessaoDe('leitura'), consulta: { limite: '1' } });
+    expect(p1.corpo.itens).toHaveLength(1);
+    const p2 = await t.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: sessaoDe('leitura'), consulta: { limite: '1', cursor: p1.corpo.proximo_cursor } });
+    expect(p2.corpo.itens).toHaveLength(1);
+    expect(p2.corpo.itens[0].id).not.toBe(p1.corpo.itens[0].id);
+    expect(p2.corpo.proximo_cursor).toBeNull();
   });
   it('PUT em lote aceita 5.000 itens e recusa 5.001 (400)', async () => {
     const { t, f1, tab } = await cenario();
@@ -368,8 +472,19 @@ describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
     await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens: [{ filial_id: f1, produto_id: p, preco_centavos: 1000 }] } });
     t.eventos.length = 0;
     await t.chamar('PATCH', `/tabelas-preco/${tab}`, { sessao: gerente, corpo: { vigencia_fim: '2027-06-30' } });
+    const precos = t.eventos.filter((e) => e.nome === 'cadastros.preco.alterado@1');
+    expect(precos).toHaveLength(1);
+    expect(precos[0]?.payload.vigencia_fim).toBe('2027-06-30');
+  });
+  it('C-2: a criação e a alteração da tabela publicam cadastros.tabela_preco.alterada@1 (agregado = tabela)', async () => {
+    const t = montar();
+    const criada = await t.chamar('POST', '/tabelas-preco', { sessao: gerente, corpo: { nome: 'Atacado', vigencia_inicio: '2026-01-01' } });
     expect(t.eventos).toHaveLength(1);
-    expect(t.eventos[0]?.payload.vigencia_fim).toBe('2027-06-30');
+    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.tabela_preco.alterada@1', agregado_id: criada.corpo.id, versao: 1, payload: { id: criada.corpo.id, nome: 'Atacado', inativo: false } });
+    t.eventos.length = 0;
+    await t.chamar('PATCH', `/tabelas-preco/${criada.corpo.id}`, { sessao: gerente, corpo: { nome: 'Atacado 2' } });
+    expect(t.eventos).toHaveLength(1);
+    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.tabela_preco.alterada@1', agregado_id: criada.corpo.id, payload: { nome: 'Atacado 2' } });
   });
 });
 
@@ -382,6 +497,21 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
     t.eventos.length = 0;
     return { t, f, p };
   }
+  it('D-05: GET /estoque segue o contrato de listas: { itens, proximo_cursor }, limite, cursor e busca', async () => {
+    const { t, f, p } = await cenario();
+    const p2 = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P2', descricao: 'Guaraná lata' }) })).corpo.id as string;
+    for (const prod of [p, p2]) await t.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f, produto_id: prod, tipo: 'entrada', quantidade: 5_0000, motivo: 'Compra' } });
+    const um = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { limite: 1 } });
+    expect(Object.keys(um.corpo).sort()).toEqual(['itens', 'proximo_cursor']);
+    expect(um.corpo.itens).toHaveLength(1);
+    expect(um.corpo.proximo_cursor).toBe(um.corpo.itens[0].id);
+    const dois = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { limite: 1, cursor: um.corpo.proximo_cursor } });
+    expect(dois.corpo.itens).toHaveLength(1);
+    expect(dois.corpo.itens[0].id).not.toBe(um.corpo.itens[0].id);
+    expect(dois.corpo.proximo_cursor).toBeNull();
+    const achado = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { busca: 'guaraná' } });
+    expect(achado.corpo.itens.map((i: { produto_id: string }) => i.produto_id)).toEqual([p2]);
+  });
   it('entrada e saída atualizam o saldo (× 10^4) e publicam cadastros.estoque.alterado@1', async () => {
     const { t, f, p } = await cenario();
     const e = await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: p, tipo: 'entrada', quantidade: 100_0000, motivo: 'Compra' } });
@@ -424,6 +554,19 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     expect(r.status).toBe(201);
     expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { prazos_dias: [30, 60], inativo: false } });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'X', prazos_dias: [] } })).status).toBe(400);
-    expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.total).toBe(1);
+    expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.itens).toHaveLength(1);
+  });
+
+  it('RN-CAD-09: forma à vista com prazo maior que 0 é 422 na criação e na alteração (resultado mesclado)', async () => {
+    const t = montar();
+    const base = { codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0] };
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'AV2', prazos_dias: [0, 30] } }))).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'BO', forma_tpag: '15', prazos_dias: [0] } })).status).toBe(201);
+    const criada = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: base });
+    expect(criada.status).toBe(201);
+    const id = (criada.corpo as { id: string }).id;
+    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30] } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '15', prazos_dias: [30] } })).status).toBe(200);
+    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '17' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
   });
 });

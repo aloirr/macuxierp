@@ -1,10 +1,16 @@
 /** Repositórios em memória: dublê das portas para os testes de rota (sem PostgreSQL). Não entra em produção. */
 import { randomUUID } from 'node:crypto';
-import { ErroApi } from '@macuxierp/platform-sdk';
-import type { PrecoItem } from '../contracts';
+import { ErroApi, paginar, type Pagina } from '@macuxierp/platform-sdk';
+import type { EstoqueConsulta, PrecoItem, PrecoItemConsulta, SaldoEstoqueItem } from '../contracts';
+import { tabelaVigente } from '../domain';
+import { agregadoPreco } from './uuid';
 import type {
-  ConsultaGravada, Dependencias, FiltroLista, MovimentoGravado, Pagina, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
+  ConsultaGravada, Dependencias, RepoChaves, TabelaChave, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
+
+/** Ordem estável por `id` e `id > cursor`, como o adaptador SQL (`.coord/contratos/listas.md`); devolve `limite + 1` linhas no máximo para `paginar`. */
+const depoisDoCursor = <T extends { id: string }>(linhas: readonly T[], cursor?: string): T[] =>
+  [...linhas].sort((a, b) => (a.id < b.id ? -1 : 1)).filter((x) => !cursor || x.id > cursor);
 
 type Reg = { id: string; inativo: boolean; external_id?: string | null } & Record<string, unknown>;
 
@@ -25,8 +31,8 @@ export class ColecaoMemoria<E extends { id: string }, D extends Record<string, u
     if (q.filial_id) l = l.filter((x) => x.filial_id === q.filial_id);
     if (q.vendedor_id) l = l.filter((x) => x.vendedor_id === q.vendedor_id);
     if (q.vendedor_ids) l = l.filter((x) => typeof x.vendedor_id === 'string' && q.vendedor_ids?.includes(x.vendedor_id));
-    const ini = (q.pagina - 1) * q.por_pagina;
-    return { itens: l.slice(ini, ini + q.por_pagina).map((x) => this.ler(x)), total: l.length };
+    const pagina = paginar(depoisDoCursor(l, q.cursor), q.limite);
+    return { itens: pagina.itens.map((x) => this.ler(x)), proximo_cursor: pagina.proximo_cursor };
   }
   protected ler(x: Reg): E {
     return structuredClone(x) as unknown as E;
@@ -38,6 +44,16 @@ export class ColecaoMemoria<E extends { id: string }, D extends Record<string, u
   async porExternalId(ext: string) {
     const x = this.linhas.find((l) => l.external_id === ext);
     return x ? this.ler(x) : null;
+  }
+  async porCampo(campo: string, valor: string) {
+    const x = this.linhas.find((l) => l[campo] === valor);
+    return x ? this.ler(x) : null;
+  }
+  async reativar(id: string): Promise<E | null> {
+    const x = this.linhas.find((l) => l.id === id);
+    if (!x) return null;
+    x.inativo = false;
+    return this.ler(x);
   }
   protected conferirUnico(novo: Record<string, unknown>, ignorar?: string): void {
     for (const campo of this.opcoes.unicos ?? []) {
@@ -62,6 +78,9 @@ export class ColecaoMemoria<E extends { id: string }, D extends Record<string, u
     if (!x) return null;
     x.inativo = true;
     return this.ler(x);
+  }
+  async paginaPorCursor(apos: string | null, limite: number): Promise<E[]> {
+    return this.linhas.filter((l) => apos === null || l.id > apos).sort((a, b) => (a.id < b.id ? -1 : 1)).slice(0, limite).map((x) => this.ler(x));
   }
   async idsAtivos(ids: readonly string[]): Promise<Set<string>> {
     return new Set(this.linhas.filter((l) => !l.inativo && ids.includes(l.id)).map((l) => l.id));
@@ -128,7 +147,16 @@ export function repositoriosEmMemoria() {
       for (const l of baseCliente.linhas) if (ids.includes(l.id)) l.vendedor_id = para;
     },
   });
-  const produtos = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['codigo'], texto: ['descricao', 'codigo'] }), { unidades });
+  const produtosBase = new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['codigo'], texto: ['descricao', 'codigo'] });
+  const produtos = Object.assign(produtosBase, {
+    unidades,
+    async porIds(ids: readonly string[]) {
+      return produtosBase.linhas.filter((l) => ids.includes(l.id)).map((l) => structuredClone(l) as unknown as { id: string });
+    },
+    async unidadesDe(ids: readonly string[]) {
+      return unidades.linhas.filter((u) => ids.includes(u.pai as string) && !u.inativo).map((u) => ({ produto_id: u.pai as string, unidade: u.unidade as string, fator: u.fator as number }));
+    },
+  });
   const filiais = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['cnpj'], texto: ['razao_social'] }), {
     async padrao() {
       const f = filiais.linhas.find((l) => l.padrao === true && !l.inativo);
@@ -138,13 +166,18 @@ export function repositoriosEmMemoria() {
   const itensPreco: (PrecoItem & { alterado?: boolean })[] = [];
   const tabelasPreco = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ texto: ['nome'] }), {
     itensPreco,
-    async itens(tabelaId: string, q: { filial_id?: string; produto_id?: string; pagina: number; por_pagina: number }) {
-      const l = itensPreco.filter((i) => i.tabela_preco_id === tabelaId && (!q.filial_id || i.filial_id === q.filial_id) && (!q.produto_id || i.produto_id === q.produto_id));
-      const ini = (q.pagina - 1) * q.por_pagina;
-      return { itens: l.slice(ini, ini + q.por_pagina), total: l.length };
+    async itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItem & { id: string }>> {
+      const l = itensPreco
+        .filter((i) => i.tabela_preco_id === tabelaId && (!q.filial_id || i.filial_id === q.filial_id) && (!q.produto_id || i.produto_id === q.produto_id))
+        .map((i) => ({ ...i, id: agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id) }));
+      return paginar(depoisDoCursor(l, q.cursor), q.limite);
     },
-    async itensDoProduto(tabelaId: string, produtoId: string, filialIds: readonly string[]) {
-      return itensPreco.filter((i) => i.tabela_preco_id === tabelaId && i.produto_id === produtoId && filialIds.includes(i.filial_id));
+    async itensDosProdutos(tabelaId: string, produtoIds: readonly string[], filialIds: readonly string[]) {
+      return itensPreco.filter((i) => i.tabela_preco_id === tabelaId && produtoIds.includes(i.produto_id) && filialIds.includes(i.filial_id));
+    },
+    async padraoEm(data: string) {
+      const t = tabelasPreco.linhas.find((l) => l.padrao === true && tabelaVigente({ vigencia_inicio: String(l.vigencia_inicio), vigencia_fim: l.vigencia_fim == null ? null : String(l.vigencia_fim), inativa: l.inativo === true }, data));
+      return t ? (structuredClone(t) as unknown as { id: string }) : null;
     },
     async gravarLote(tabelaId: string, itens: readonly Omit<PrecoItem, 'tabela_preco_id'>[]) {
       const mudou: PrecoItem[] = [];
@@ -163,6 +196,7 @@ export function repositoriosEmMemoria() {
     },
   });
   const saldos = new Map<string, number>();
+  const idsSaldo = new Map<string, string>();
   const movimentos: MovimentoGravado[] = [];
   const repoEstoque = {
     movimentos,
@@ -170,6 +204,26 @@ export function repositoriosEmMemoria() {
       return [...saldos]
         .map(([k, quantidade]) => ({ filial_id: k.split('|')[0] as string, produto_id: k.split('|')[1] as string, quantidade }))
         .filter((s) => (!q.filial_id || s.filial_id === q.filial_id) && (!q.produto_id || s.produto_id === q.produto_id));
+    },
+    async saldosDe(filialId: string, produtoIds: readonly string[]) {
+      return (await repoEstoque.saldos({ filial_id: filialId })).filter((s) => produtoIds.includes(s.produto_id));
+    },
+    async listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>> {
+      const busca = q.busca?.toLowerCase();
+      const casa = (linhas: readonly Reg[], campos: string[], id: string) =>
+        linhas.some((x) => x.id === id && campos.some((c) => String(x[c] ?? '').toLowerCase().includes(busca as string)));
+      let l = (await repoEstoque.saldos(q)).map((s) => {
+        const k = `${s.filial_id}|${s.produto_id}`;
+        if (!idsSaldo.has(k)) idsSaldo.set(k, randomUUID());
+        return { ...s, id: idsSaldo.get(k) as string };
+      });
+      if (busca) l = l.filter((s) => casa(produtos.linhas, ['codigo', 'descricao'], s.produto_id) || casa(filiais.linhas, ['razao_social', 'nome_fantasia'], s.filial_id));
+      return paginar(depoisDoCursor(l, q.cursor), q.limite);
+    },
+    async paginaPorCursor(apos: { filial_id: string; produto_id: string } | null, limite: number) {
+      const todos = (await repoEstoque.saldos({})).sort((a, b) => (`${a.produto_id}|${a.filial_id}` < `${b.produto_id}|${b.filial_id}` ? -1 : 1));
+      const chave = apos ? `${apos.produto_id}|${apos.filial_id}` : null;
+      return todos.filter((s) => chave === null || `${s.produto_id}|${s.filial_id}` > chave).slice(0, limite);
     },
     async saldoParaAtualizar(f: string, p: string) {
       return saldos.get(`${f}|${p}`) ?? 0;
@@ -210,8 +264,18 @@ export function repositoriosEmMemoria() {
     /** NCM → CESTs válidos para ele. */
     cests: new Map<string, string[]>(),
     todosCests: new Set<string>(),
+    /** Municípios vigentes por UF (a carga resolve cidade → IBGE, RN-CAD-03). */
+    municipiosPorUf: new Map<string, { ibge: string; nome: string }[]>(),
+    async municipiosDaUf(uf: string) {
+      return oficiais.municipiosPorUf.get(uf) ?? [];
+    },
+    /** código IBGE → nome. */
+    municipios: new Map<string, string>(),
+    async nomesMunicipios(codigos: readonly string[]) {
+      return new Map(codigos.filter((c) => oficiais.municipios.has(c)).map((c) => [c, oficiais.municipios.get(c) as string]));
+    },
     async listar() {
-      return { itens: [], total: 0 };
+      return { itens: [], proximo_cursor: null };
     },
     async ncmVigente(ncm: string) {
       return oficiais.ncms.has(ncm);
@@ -226,7 +290,63 @@ export function repositoriosEmMemoria() {
       return (oficiais.cests.get(ncm) ?? []).includes(cest);
     },
   };
-  const repos = { filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
+  type Item = PrecoItem & { id: string; external_id: string | null; inativo: boolean };
+  const itemDe = (i: Item) => ({ id: i.id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp, inativo: i.inativo });
+  const filhasMem = { produto_unidade: { col: unidades, pai: 'produto_id' }, cliente_endereco: { col: enderecos, pai: 'cliente_id' } } as const;
+  const carga = {
+    falharProxima: null as null | (() => Error),
+    async condicoesDaForma(ext: string) {
+      return condicoesPagamento.linhas.filter((l) => l.forma_external_id === ext).map((l) => structuredClone(l) as never);
+    },
+    async filhoPorExternalId(t: keyof typeof filhasMem, ext: string) {
+      const l = filhasMem[t].col.linhas.find((x) => x.external_id === ext);
+      return l ? { id: l.id, pai_id: l.pai, external_id: l.external_id ?? null, inativo: l.inativo, atual: structuredClone(l) } : null;
+    },
+    async unidadePorChave(produtoId: string, unidade: string) {
+      const l = unidades.linhas.find((x) => x.pai === produtoId && x.unidade === unidade);
+      return l ? { id: l.id, pai_id: l.pai, external_id: l.external_id ?? null, inativo: l.inativo, atual: structuredClone(l) } : null;
+    },
+    async reativarFilho(t: keyof typeof filhasMem, id: string) {
+      const l = filhasMem[t].col.linhas.find((x) => x.id === id);
+      if (l) l.inativo = false;
+    },
+    async itemPrecoPorExternalId(ext: string) {
+      const i = (itensPreco as Item[]).find((x) => x.external_id === ext);
+      return i ? itemDe(i) : null;
+    },
+    async itemPrecoPorChave(t: string, f: string, p: string) {
+      const i = (itensPreco as Item[]).find((x) => x.tabela_preco_id === t && x.filial_id === f && x.produto_id === p);
+      return i ? itemDe(i) : null;
+    },
+    async gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }) {
+      let i = (itensPreco as Item[]).find((x) => x.tabela_preco_id === p.tabelaId && x.filial_id === p.filialId && x.produto_id === p.produtoId);
+      if (!i) {
+        i = { id: randomUUID(), tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: 0, desconto_maximo_bp: 0, external_id: null, inativo: false };
+        itensPreco.push(i);
+      }
+      Object.assign(i, { preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp, external_id: p.externalId, inativo: p.inativo });
+      return { tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp };
+    },
+    /** Sem transação: o dublê só repassa (o rollback de verdade é testado no PostgreSQL). */
+    async comSavepoint<T>(fn: () => Promise<T>) {
+      return fn();
+    },
+  };
+  const colecaoDe = (t: TabelaChave): readonly Reg[] =>
+    ({ cliente: baseCliente.linhas, vendedor: vendedores.linhas, filial: filiais.linhas, produto: produtos.linhas, condicao_pagamento: condicoesPagamento.linhas, cliente_endereco: enderecos.linhas, tabela_preco: tabelasPreco.linhas, produto_unidade: unidades.linhas, tabela_preco_item: itensPreco as unknown as Reg[] })[t];
+  /** Sem `tenant_id` (um tenant por dublê) e sem filtro de inativo, como o adaptador SQL. */
+  const chaves: RepoChaves = {
+    async idsPorExternalId(t, ext, soAtivos = false) {
+      return new Map(colecaoDe(t).filter((l) => l.external_id && ext.includes(l.external_id) && !(soAtivos && l.inativo)).map((l) => [l.external_id as string, l.id]));
+    },
+    async idsSemExternalId(t, ids) {
+      return new Set(colecaoDe(t).filter((l) => !l.external_id && ids.includes(l.id)).map((l) => l.id));
+    },
+    async existeId(t, id) {
+      return colecaoDe(t).some((l) => l.id === id);
+    },
+  };
+  const repos = { chaves, carga, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
   return repos as unknown as Repositorios & typeof repos;
 }
 

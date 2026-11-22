@@ -4,7 +4,8 @@
  */
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import type { AuditoriaItem, CertificadoResumo, Licenca, Usuario } from '../contracts';
-import type { ColunaCsv } from './csv';
+import type { ColunaCsv } from '@macuxierp/platform-sdk/listas';
+import { paginaVisivel, type PaginaBase } from '@macuxierp/platform-sdk/paginas';
 
 export interface Coluna<L> extends ColunaCsv<L> {
   id: string;
@@ -14,14 +15,20 @@ export interface Botao {
   id: string;
   rotulo: string;
   acao: Acao;
-  /** Pede confirmação antes (inativar, trocar ambiente, redefinir senha). */
+  /** Pede confirmação antes (inativar, voltar para homologação, redefinir senha). */
   confirma?: boolean;
+  /** Só aparece quando a filial está neste ambiente (RN-CORE-08: o botão de voltar só existe em produção). */
+  somenteAmbiente?: 'homologacao' | 'producao';
 }
 
-export interface PaginaCore {
+/** RN-CORE-08 (ADR 0006): texto da página "Ambiente fiscal" em homologação, que não tem botão de produção. */
+export const TEXTO_AMBIENTE_HOMOLOGACAO = 'Para emitir em produção, peça à Macuxi. A troca é feita com a aprovação do Alexandre.';
+
+/** T-0040: até o armazenamento S3 (T-0024) o `arquivos.ts` responde 503 e toda exportação LGPD termina como `falhou`. */
+export const TEXTO_EXPORTACAO_INDISPONIVEL = "A exportação ainda não está disponível: o armazenamento de arquivos entra em breve.";
+
+export interface PaginaCore extends PaginaBase {
   id: string;
-  rota: string;
-  titulo: string;
   menu: 'Empresa' | 'Usuários e perfis';
   rf: string;
   /** Ação que libera a página inteira; sem ela o perfil nem vê o item de menu. */
@@ -54,7 +61,7 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
     ver: 'core.ambiente.ver',
     filtros: ['filial_id'],
     exportaCsv: false,
-    botoes: [{ id: 'trocar', rotulo: 'Trocar ambiente', acao: 'core.ambiente.trocar', confirma: true }],
+    botoes: [{ id: 'voltar-homologacao', rotulo: 'Voltar para homologação', acao: 'core.ambiente.trocar', confirma: true, somenteAmbiente: 'producao' }],
   },
   {
     id: 'exportacao',
@@ -66,6 +73,7 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
     filtros: [],
     exportaCsv: false,
     botoes: [{ id: 'pedir', rotulo: 'Gerar exportação', acao: 'core.exportacao.pedir' }],
+    aviso: TEXTO_EXPORTACAO_INDISPONIVEL,
   },
   {
     id: 'usuarios',
@@ -89,12 +97,12 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
 
 /** Páginas que o perfil enxerga (esconde, não protege: a API checa de novo). */
 export function paginasVisiveis(perfil: Perfil): PaginaCore[] {
-  return PAGINAS_CORE.filter((p) => pode(perfil, p.ver));
+  return PAGINAS_CORE.filter((p) => paginaVisivel(p, perfil));
 }
 
 /** Botões que o perfil pode usar na página. */
-export function botoesVisiveis(perfil: Perfil, pagina: PaginaCore): Botao[] {
-  return pagina.botoes.filter((b) => pode(perfil, b.acao));
+export function botoesVisiveis(perfil: Perfil, pagina: PaginaCore, ambiente?: 'homologacao' | 'producao'): Botao[] {
+  return pagina.botoes.filter((b) => pode(perfil, b.acao) && (!b.somenteAmbiente || b.somenteAmbiente === ambiente));
 }
 
 export const COLUNAS_USUARIOS: readonly Coluna<Usuario>[] = [

@@ -3,16 +3,18 @@
  * por isso nenhum SQL repete `tenant_id` no WHERE, e o INSERT usa `plataforma.tenant_atual()`. Exclusão = `deleted_at`
  * (RN-CAD-08). bigint volta como `float8` (centavos e quantidade × 10^4 cabem em 2^53).
  */
-import { erros, type Transacao } from '@macuxierp/platform-sdk';
+import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type {
-  Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EnderecoClienteItem, Filial, FilialDados, PrecoItem, Produto,
+  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto, SaldoEstoque, TabelaPreco,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import type {
-  ConsultaGravada, FiltroLista, MovimentoGravado, Pagina, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
+  FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 type Dict = Record<string, unknown>;
+/** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
+const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
 
@@ -59,14 +61,15 @@ class RepoTabela<E extends { id: string }, D> implements RepoSimples<E, D> {
     if (q.filial_id && this.m.filtros?.filial) w.push(`filial_id = ${par(q.filial_id)}`);
     if (q.vendedor_id && this.m.filtros?.vendedor) w.push(`vendedor_id = ${par(q.vendedor_id)}`);
     if (q.vendedor_ids && this.m.filtros?.vendedor) w.push(`vendedor_id = ANY(${par([...q.vendedor_ids])}::uuid[])`);
+    if (q.cursor) w.push(`id > ${par(q.cursor)}`);
     const onde = w.length ? `WHERE ${w.join(' AND ')}` : '';
-    const total = await executar<{ n: number }>(this.tx, `SELECT count(*)::int AS n FROM ${this.m.tabela} ${onde}`, p);
     const linhas = await executar(
       this.tx,
-      `SELECT ${selecionar(this.m)} FROM ${this.m.tabela} ${onde} ORDER BY created_at, id LIMIT ${par(q.por_pagina)} OFFSET ${par((q.pagina - 1) * q.por_pagina)}`,
+      `SELECT ${selecionar(this.m)} FROM ${this.m.tabela} ${onde} ORDER BY id LIMIT ${par(q.limite + 1)}`,
       p,
     );
-    return { itens: await this.hidratar(linhas.map((l) => this.m.deLinha(l))), total: total[0]?.n ?? 0 };
+    const pagina = paginar(linhas.map((l) => this.m.deLinha(l)), q.limite);
+    return { itens: await this.hidratar(pagina.itens), proximo_cursor: pagina.proximo_cursor };
   }
 
   private async um(onde: string, valor: string): Promise<E | null> {
@@ -104,6 +107,21 @@ class RepoTabela<E extends { id: string }, D> implements RepoSimples<E, D> {
   async inativar(id: string): Promise<E | null> {
     await executar(this.tx, `UPDATE ${this.m.tabela} SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
     return this.obter(id);
+  }
+
+  async porCampo(campo: 'cnpj' | 'documento' | 'codigo', valor: string): Promise<E | null> {
+    if (!this.m.colunas.includes(campo)) throw new RangeError(`${this.m.tabela} sem a coluna ${campo}`);
+    return this.um(`${campo} = $1`, valor);
+  }
+
+  async reativar(id: string): Promise<E | null> {
+    await executar(this.tx, `UPDATE ${this.m.tabela} SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
+    return this.obter(id);
+  }
+
+  async paginaPorCursor(apos: string | null, limite: number): Promise<E[]> {
+    const l = await executar(this.tx, `SELECT ${selecionar(this.m)} FROM ${this.m.tabela} WHERE ($1::uuid IS NULL OR id > $1::uuid) ORDER BY id LIMIT $2`, [apos, limite]);
+    return this.hidratar(l.map((x) => this.m.deLinha(x)));
   }
 
   async idsAtivos(ids: readonly string[]): Promise<Set<string>> {
@@ -219,6 +237,7 @@ class RepoClientesSql extends RepoTabela<Cliente, ClienteDados> {
   }
 }
 
+const colunasTabelaPreco = { colunas: ['nome', 'padrao'], expressoes: [DATA('vigencia_inicio'), DATA('vigencia_fim')] };
 const mapaProduto: Mapa<Produto, ProdutoDados> = {
   tabela: 'cadastros.produto',
   colunas: ['codigo', 'descricao', 'ncm', 'cest', 'unidade_comercial', 'unidade_tributavel', 'ean', 'marca', 'origem', 'grupo_tributacao'],
@@ -230,32 +249,51 @@ const mapaProduto: Mapa<Produto, ProdutoDados> = {
 
 export function repositoriosSql(tx: Transacao): Repositorios {
   const tabela = <E extends { id: string }, D>(m: Mapa<E, D>) => new RepoTabela<E, D>(tx, m);
-  const simples = (t: string, colunas: string[], busca: string[], expressoes: string[] = []) =>
-    tabela({ tabela: t, colunas, expressoes, busca, paraLinha: (d: Dict) => ({ ...d }), deLinha: (l: Dict) => l as never });
+  const simples = (t: string, colunas: string[], busca: string[], expressoes: string[] = [], filtros?: Mapa<unknown, unknown>['filtros']) =>
+    tabela({ tabela: t, colunas, expressoes, busca, filtros, paraLinha: (d: Dict) => ({ ...d }), deLinha: (l: Dict) => l as never });
 
-  const produtos = Object.assign(tabela(mapaProduto), { unidades: new RepoFilhoSql(tx, mapaUnidade) });
+  const produtos = Object.assign(tabela(mapaProduto), {
+    unidades: new RepoFilhoSql(tx, mapaUnidade),
+    async porIds(ids: readonly string[]) {
+      if (ids.length === 0) return [];
+      return (await executar(tx, `SELECT ${selecionar(mapaProduto)} FROM cadastros.produto WHERE id = ANY($1::uuid[]) ORDER BY id`, [[...ids]])).map((l) => mapaProduto.deLinha(l));
+    },
+    async unidadesDe(ids: readonly string[]) {
+      if (ids.length === 0) return [];
+      return executar<{ produto_id: string; unidade: string; fator: number }>(tx, `SELECT produto_id, unidade, ${N('fator')} FROM cadastros.produto_unidade WHERE produto_id = ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY produto_id, unidade`, [[...ids]]);
+    },
+  });
   const tabelasPreco = Object.assign(
-    simples('cadastros.tabela_preco', ['nome', 'padrao'], ['nome'], [DATA('vigencia_inicio'), DATA('vigencia_fim')]),
+    simples('cadastros.tabela_preco', colunasTabelaPreco.colunas, ['nome'], colunasTabelaPreco.expressoes),
     {
-      async itens(tabelaId: string, q: { filial_id?: string; produto_id?: string; pagina: number; por_pagina: number }) {
+      async itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItemLista>> {
         const p: unknown[] = [tabelaId];
         const w = ['tabela_preco_id = $1', 'deleted_at IS NULL'];
         if (q.filial_id) w.push(`filial_id = $${p.push(q.filial_id)}`);
         if (q.produto_id) w.push(`produto_id = $${p.push(q.produto_id)}`);
-        const total = await executar<{ n: number }>(tx, `SELECT count(*)::int AS n FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')}`, p);
-        const itens = await executar<PrecoItem>(
+        if (q.cursor) w.push(`id > $${p.push(q.cursor)}`);
+        const linhas = await executar<PrecoItemLista>(
           tx,
-          `SELECT tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')} ORDER BY produto_id, filial_id LIMIT $${p.push(q.por_pagina)} OFFSET $${p.push((q.pagina - 1) * q.por_pagina)}`,
+          `SELECT id, tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')} ORDER BY id LIMIT $${p.push(q.limite + 1)}`,
           p,
         );
-        return { itens, total: total[0]?.n ?? 0 };
+        return paginar(linhas, q.limite);
       },
-      itensDoProduto: (tabelaId: string, produtoId: string, filialIds: readonly string[]) =>
+      itensDosProdutos: (tabelaId: string, produtoIds: readonly string[], filialIds: readonly string[]) =>
         executar<PrecoItem>(
           tx,
-          `SELECT tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE tabela_preco_id = $1 AND produto_id = $2 AND filial_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
-          [tabelaId, produtoId, [...filialIds]],
+          `SELECT tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE tabela_preco_id = $1 AND produto_id = ANY($2::uuid[]) AND filial_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
+          [tabelaId, [...produtoIds], [...filialIds]],
         ),
+      /** No máximo uma por tenant: índice `tabela_preco_uma_padrao`. */
+      async padraoEm(data: string) {
+        const r = await executar<TabelaPreco>(
+          tx,
+          `SELECT ${selecionar(colunasTabelaPreco)} FROM cadastros.tabela_preco WHERE padrao AND deleted_at IS NULL AND vigencia_inicio <= $1::date AND (vigencia_fim IS NULL OR vigencia_fim >= $1::date)`,
+          [data],
+        );
+        return r[0] ?? null;
+      },
       /** Um comando só para até 5.000 itens; devolve só o que mudou (evento por item alterado). */
       gravarLote: (tabelaId: string, itens: readonly Omit<PrecoItem, 'tabela_preco_id'>[]) =>
         executar<PrecoItem>(
@@ -273,14 +311,45 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     },
   );
 
+  const condicoesPagamentoRepo = simples('cadastros.condicao_pagamento', COLUNAS_CONDICAO, ['codigo', 'descricao']) as unknown as RepoSimples<CondicaoPagamento, CondicaoPagamentoDados>;
+
+  /** Filtros comuns de `estoque_saldo` (excluídos fora, filial e produto), usados por `listar` e `saldos`. */
+  const filtroSaldo = (q: { filial_id?: string; produto_id?: string }, par: (v: unknown) => string): string[] => {
+    const w = ['deleted_at IS NULL'];
+    if (q.filial_id) w.push(`filial_id = ${par(q.filial_id)}`);
+    if (q.produto_id) w.push(`produto_id = ${par(q.produto_id)}`);
+    return w;
+  };
+
   const estoque = {
+    async listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>> {
+      const p: unknown[] = [];
+      const par = (v: unknown) => `$${p.push(v)}`;
+      const w = filtroSaldo(q, par);
+      if (q.busca) {
+        const b = par(`%${q.busca}%`);
+        w.push(`(produto_id IN (SELECT id FROM cadastros.produto WHERE deleted_at IS NULL AND (codigo ILIKE ${b} OR descricao ILIKE ${b})) OR filial_id IN (SELECT id FROM cadastros.filial WHERE deleted_at IS NULL AND (razao_social ILIKE ${b} OR nome_fantasia ILIKE ${b})))`);
+      }
+      if (q.cursor) w.push(`id > ${par(q.cursor)}`);
+      const linhas = await executar<SaldoEstoqueItem>(tx, `SELECT id, filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY id LIMIT ${par(q.limite + 1)}`, p);
+      return paginar(linhas, q.limite);
+    },
+    saldosDe: (filialId: string, produtoIds: readonly string[]) =>
+      produtoIds.length === 0
+        ? Promise.resolve([])
+        : executar<SaldoEstoque>(tx, `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE filial_id = $1 AND produto_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY produto_id`, [filialId, [...produtoIds]]),
     saldos: (q: { filial_id?: string; produto_id?: string }) => {
       const p: unknown[] = [];
-      const w = ['deleted_at IS NULL'];
-      if (q.filial_id) w.push(`filial_id = $${p.push(q.filial_id)}`);
-      if (q.produto_id) w.push(`produto_id = $${p.push(q.produto_id)}`);
+      const w = filtroSaldo(q, (v) => `$${p.push(v)}`);
       return executar<{ filial_id: string; produto_id: string; quantidade: number }>(tx, `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY produto_id, filial_id`, p);
     },
+    // Sem `inativo` no saldo: o evento não expressa saldo apagado, por isso o cursor (diferente das demais entidades) pula `deleted_at`.
+    paginaPorCursor: (apos: { filial_id: string; produto_id: string } | null, limite: number) =>
+      executar<{ filial_id: string; produto_id: string; quantidade: number }>(
+        tx,
+        `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE deleted_at IS NULL AND ($1::uuid IS NULL OR (produto_id, filial_id) > ($1::uuid, $2::uuid)) ORDER BY produto_id, filial_id LIMIT $3`,
+        [apos?.produto_id ?? null, apos?.filial_id ?? null, limite],
+      ),
     async saldoParaAtualizar(filialId: string, produtoId: string) {
       await executar(tx, 'INSERT INTO cadastros.estoque_saldo (tenant_id, filial_id, produto_id, quantidade) VALUES (plataforma.tenant_atual(), $1, $2, 0) ON CONFLICT (tenant_id, filial_id, produto_id) DO NOTHING', [filialId, produtoId]);
       const r = await executar<{ quantidade: number }>(tx, `SELECT ${N('quantidade')} FROM cadastros.estoque_saldo WHERE filial_id = $1 AND produto_id = $2 FOR UPDATE`, [filialId, produtoId]);
@@ -302,7 +371,7 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     },
   };
 
-  const vendedores = Object.assign(simples('cadastros.vendedor', ['codigo', 'nome', 'filial_id', 'usuario_id'], ['codigo', 'nome']), {
+  const vendedores = Object.assign(simples('cadastros.vendedor', ['codigo', 'nome', 'filial_id', 'usuario_id'], ['codigo', 'nome'], [], { filial: true }), {
     async idsDoUsuario(usuarioId: string) {
       return (await executar<{ id: string }>(tx, 'SELECT id FROM cadastros.vendedor WHERE usuario_id = $1 AND deleted_at IS NULL', [usuarioId])).map((r) => r.id);
     },
@@ -342,10 +411,104 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     produtos,
     tabelasPreco: tabelasPreco as unknown as Repositorios['tabelasPreco'],
     estoque,
-    condicoesPagamento: simples('cadastros.condicao_pagamento', ['codigo', 'descricao', 'forma_tpag', 'prazos_dias'], ['codigo', 'descricao']) as never,
+    condicoesPagamento: condicoesPagamentoRepo,
     vendedores: vendedores as unknown as Repositorios['vendedores'],
     consultaExterna,
     oficiais: oficiaisSql(tx),
+    carga: cargaSql(tx),
+    chaves: chavesSql(tx),
+  };
+}
+
+const TABELAS_CHAVE: Record<TabelaChave, string> = {
+  cliente: 'cadastros.cliente', vendedor: 'cadastros.vendedor', filial: 'cadastros.filial', produto: 'cadastros.produto',
+  condicao_pagamento: 'cadastros.condicao_pagamento', cliente_endereco: 'cadastros.cliente_endereco',
+  tabela_preco: 'cadastros.tabela_preco', produto_unidade: 'cadastros.produto_unidade', tabela_preco_item: 'cadastros.tabela_preco_item',
+};
+
+/** Chaves em lote (ADR 0010): `tenant_id` explícito além da RLS; sem filtro de `deleted_at` (o inativo também resolve). */
+function chavesSql(tx: Transacao): RepoChaves {
+  return {
+    async idsPorExternalId(t, externalIds, soAtivos = false) {
+      if (externalIds.length === 0) return new Map();
+      const l = await executar<{ id: string; external_id: string }>(
+        tx, `SELECT id, external_id FROM ${TABELAS_CHAVE[t]} WHERE tenant_id = plataforma.tenant_atual() AND external_id = ANY($1::text[])${soAtivos ? ' AND deleted_at IS NULL' : ''}`, [[...externalIds]],
+      );
+      return new Map(l.map((x) => [x.external_id, x.id]));
+    },
+    async idsSemExternalId(t, ids) {
+      if (ids.length === 0) return new Set();
+      const l = await executar<{ id: string }>(
+        tx, `SELECT id FROM ${TABELAS_CHAVE[t]} WHERE tenant_id = plataforma.tenant_atual() AND id = ANY($1::uuid[]) AND external_id IS NULL`, [[...ids]],
+      );
+      return new Set(l.map((x) => x.id));
+    },
+    async existeId(t, id) {
+      const l = await executar(tx, `SELECT 1 FROM ${TABELAS_CHAVE[t]} WHERE tenant_id = plataforma.tenant_atual() AND id = $1::uuid LIMIT 1`, [id]);
+      return l.length > 0;
+    },
+  };
+}
+
+const FILHAS: Record<TabelaFilha, { tabela: string; pai: string; colunas: readonly string[]; numericas: readonly string[] }> = {
+  produto_unidade: { tabela: 'cadastros.produto_unidade', pai: 'produto_id', colunas: ['unidade', 'ean'], numericas: ['fator'] },
+  cliente_endereco: { tabela: 'cadastros.cliente_endereco', pai: 'cliente_id', colunas: ['tipo', ...ENDERECO], numericas: [] },
+};
+
+/** SQL da carga de CSV (T-0026): consultas por `external_id` e chave natural e o SAVEPOINT por linha (D7). */
+function cargaSql(tx: Transacao): RepoCarga {
+  const colunasFilho = (f: (typeof FILHAS)[TabelaFilha]) =>
+    ['id', 'external_id', f.pai, '(deleted_at IS NOT NULL) AS inativo', ...f.colunas, ...f.numericas.map(N)].join(', ');
+  const paraFilho = (f: (typeof FILHAS)[TabelaFilha], l: Dict): FilhoGravado => ({
+    id: l.id as string, pai_id: l[f.pai] as string, external_id: (l.external_id as string | null) ?? null, inativo: l.inativo === true,
+    atual: pegar(l, [...f.colunas, ...f.numericas]),
+  });
+  const colunasItem = `id, external_id, ${N('preco_centavos')}, desconto_maximo_bp, (deleted_at IS NOT NULL) AS inativo`;
+  const item = async (onde: string, p: unknown[]) => (await executar<ItemPrecoGravado>(tx, `SELECT ${colunasItem} FROM cadastros.tabela_preco_item WHERE ${onde} LIMIT 1`, p))[0] ?? null;
+  return {
+    async condicoesDaForma(ext) {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE forma_external_id = $1 ORDER BY id`, [ext]);
+      return l as unknown as CondicaoPagamento[];
+    },
+    async filhoPorExternalId(t, ext) {
+      const f = FILHAS[t];
+      const l = await executar(tx, `SELECT ${colunasFilho(f)} FROM ${f.tabela} WHERE external_id = $1 LIMIT 1`, [ext]);
+      return l[0] ? paraFilho(f, l[0]) : null;
+    },
+    async unidadePorChave(produtoId, unidade) {
+      const f = FILHAS.produto_unidade;
+      const l = await executar(tx, `SELECT ${colunasFilho(f)} FROM ${f.tabela} WHERE produto_id = $1 AND unidade = $2 LIMIT 1`, [produtoId, unidade]);
+      return l[0] ? paraFilho(f, l[0]) : null;
+    },
+    async reativarFilho(t, id) {
+      await executar(tx, `UPDATE ${FILHAS[t].tabela} SET deleted_at = NULL WHERE id = $1`, [id]);
+    },
+    itemPrecoPorExternalId: (ext) => item('external_id = $1', [ext]),
+    itemPrecoPorChave: (t, f, p) => item('tabela_preco_id = $1 AND filial_id = $2 AND produto_id = $3', [t, f, p]),
+    async gravarItemPreco(p) {
+      const r = await executar<PrecoItem>(
+        tx,
+        `INSERT INTO cadastros.tabela_preco_item (tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos, desconto_maximo_bp, external_id, deleted_at)
+         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, CASE WHEN $7::boolean THEN now() END)
+         ON CONFLICT (tenant_id, tabela_preco_id, filial_id, produto_id) DO UPDATE
+           SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, external_id = EXCLUDED.external_id,
+               deleted_at = CASE WHEN $7::boolean THEN COALESCE(cadastros.tabela_preco_item.deleted_at, now()) END
+         RETURNING tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp`,
+        [p.tabelaId, p.filialId, p.produtoId, p.preco_centavos, p.desconto_maximo_bp, p.externalId, p.inativo],
+      );
+      return r[0] as PrecoItem;
+    },
+    async comSavepoint(fn) {
+      await tx.consultar('SAVEPOINT carga_linha');
+      try {
+        const r = await fn();
+        await tx.consultar('RELEASE SAVEPOINT carga_linha');
+        return r;
+      } catch (e) {
+        await tx.consultar('ROLLBACK TO SAVEPOINT carga_linha');
+        throw e;
+      }
+    },
   };
 }
 
@@ -366,20 +529,28 @@ function oficiaisSql(tx: Transacao): RepoOficiais {
   return {
     async listar(tabela, q) {
       const cfg = OFICIAIS[tabela];
-      if (!cfg) return { itens: [], total: 0 };
+      if (!cfg) return { itens: [], proximo_cursor: null };
       const data = q.data ?? new Date().toISOString().slice(0, 10);
       const p: unknown[] = [data];
       const w = [VIGENTE('o').replaceAll('$D', '$1')];
       if (q.busca) w.push(`(${cfg.busca.map((c) => `o.${c} ILIKE $${p.push(`%${q.busca}%`)}`).join(' OR ')})`);
       if (q.uf && cfg.uf) w.push(`o.${cfg.uf} = $${p.push(q.uf)}`);
       if (q.tipo && cfg.tipo) w.push(`o.tipo = $${p.push(q.tipo)}`);
-      const total = await executar<{ n: number }>(tx, `SELECT count(*)::int AS n FROM ${cfg.tabela} o WHERE ${w.join(' AND ')}`, p);
-      const itens = await executar(
+      if (q.cursor) w.push(`o.id > $${p.push(q.cursor)}`);
+      const linhas = await executar<{ id: string } & Dict>(
         tx,
-        `SELECT ${cfg.colunas.split(', ').map((c) => `o.${c}`).join(', ')}, to_char(o.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio, to_char(o.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim FROM ${cfg.tabela} o WHERE ${w.join(' AND ')} ORDER BY o.codigo LIMIT $${p.push(q.por_pagina)} OFFSET $${p.push((q.pagina - 1) * q.por_pagina)}`,
+        `SELECT o.id, ${cfg.colunas.split(', ').map((c) => `o.${c}`).join(', ')}, to_char(o.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio, to_char(o.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim FROM ${cfg.tabela} o WHERE ${w.join(' AND ')} ORDER BY o.id LIMIT $${p.push(q.limite + 1)}`,
         p,
       );
-      return { itens, total: total[0]?.n ?? 0 };
+      return paginar(linhas, q.limite);
+    },
+    async municipiosDaUf(uf, data) {
+      return executar<{ ibge: string; nome: string }>(tx, `SELECT o.codigo AS ibge, o.nome FROM cadastros.municipio o WHERE o.uf = $1 AND ${VIGENTE('o').replaceAll('$D', '$2')}`, [uf, data]);
+    },
+    async nomesMunicipios(codigos) {
+      if (codigos.length === 0) return new Map();
+      const l = await executar<{ codigo: string; nome: string }>(tx, 'SELECT DISTINCT ON (codigo) codigo, nome FROM cadastros.municipio WHERE codigo = ANY($1::text[]) ORDER BY codigo, vigencia_inicio DESC NULLS LAST', [[...codigos]]);
+      return new Map(l.map((m) => [m.codigo, m.nome]));
     },
     ncmVigente: (ncm, data) => existe(`SELECT 1 FROM cadastros.ncm n WHERE n.codigo = $1 AND ${VIGENTE('n')}`, [ncm], data),
     ncmExigeCest: (ncm, data) =>
