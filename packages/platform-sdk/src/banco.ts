@@ -6,6 +6,7 @@
  * de módulo passa por aqui. `semTenant` é só para a plataforma antes de saber o tenant (login, worker) e usa as
  * funções e papéis do banco para isso (`plataforma.tenant_por_slug()`, política `worker_global`).
  */
+import { erros } from './erros';
 
 export interface Transacao {
   consultar<L = Record<string, unknown>>(sql: string, parametros?: readonly unknown[]): Promise<L[]>;
@@ -28,3 +29,18 @@ export const PADRAO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 
 /** Relógio real (processos da API e do worker). */
 export const relogioDoSistema: Relogio = { agora: () => new Date() };
+
+/**
+ * Transação com prazo (`tempoMaximoMs` da rota): depois de `restanteMs` (o que sobra do limite, pelo `cronometro`, em ms),
+ * toda consulta nova falha com 503 `TEMPO_ESGOTADO`, e o erro desfaz a transação inteira. Consulta já em andamento
+ * termina normalmente. A mensagem cita o limite da rota (`limiteRotaMs`), nunca o que sobrava.
+ */
+export function transacaoComPrazo(tx: Transacao, prazo: { restanteMs: number; limiteRotaMs: number }, cronometro: () => number): Transacao {
+  const limite = cronometro() + prazo.restanteMs;
+  return {
+    consultar: <L>(sql: string, parametros?: readonly unknown[]): Promise<L[]> => {
+      if (cronometro() > limite) return Promise.reject(erros.tempoEsgotado(Math.round(prazo.limiteRotaMs / 1000)));
+      return tx.consultar<L>(sql, parametros);
+    },
+  };
+}
