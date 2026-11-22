@@ -542,17 +542,16 @@ describe.each(LADOS_SINTETICOS)(
 );
 
 /**
- * Achado A-01 (docs/testes/T-0012.md): o Hub exige CNPJ e endereço da filial (RN-CORE-39 do FDV), mas o `mapearFilial`
- * do `integracao-fdv` não os manda ("O CNPJ/IE não vão (fiscais)") e o `FilialHub` do C-6 nem tem os campos. Com o
- * espelho real, toda filial seria recusada e vendedor, cliente, preço e estoque cairiam em `referencia_ausente`.
- * Corrigido, o `it.fails` fica vermelho e vira `it`; o "hoje" ao lado sai.
+ * Achado A-01 (docs/testes/T-0012.md), corrigido pelo #123 (T-0011 L2a): o `mapearFilial` do `integracao-fdv` e o
+ * `FilialHub` do C-6 passaram a mandar o CNPJ e o endereço da filial, que o Hub exige (RN-CORE-39 do FDV). Este teste
+ * guarda a correção: a filial mapeada pelo ERP é aceita sem erro de linha.
  */
 describe.runIf(cenarioPermitido(config, 'filial-mapeada-a01'))(
   `T-0012 — filial mapeada pelo ERP (mapearFilial) no Hub (alvo: ${config.alvo})`,
   () => {
     let alvo: Alvo;
-    /** Duas filiais mapeadas pelo código do ERP, montadas fora dos `it` (erro de montagem não vira "falha esperada"). */
-    let mapeadas: [RegistroHub, RegistroHub];
+    /** Filial mapeada pelo código do ERP, montada fora do `it` (erro de montagem não se confunde com recusa do Hub). */
+    let mapeada: RegistroHub;
     const filialMapeada = (ordem: string): RegistroHub => {
       const ev = EVENTOS['cadastros.filial.alterada@1'].parse({
         id: crypto.randomUUID(),
@@ -577,39 +576,24 @@ describe.runIf(cenarioPermitido(config, 'filial-mapeada-a01'))(
     beforeAll(async () => {
       exigir('filial-mapeada-a01', 'dado-novo');
       alvo = await prepararAlvo(config, { inicioDuble: INICIO_DUBLE });
-      const codigos = [RODADA.proximoCodigoFilial(), RODADA.proximoCodigoFilial()] as const;
-      mapeadas = [filialMapeada(codigos[0]), filialMapeada(codigos[1])];
-      expect(mapeadas.map((m) => [m.codigo, m.cnpj])).toEqual([
-        [codigos[0], undefined],
-        [codigos[1], undefined],
-      ]);
+      const codigo = RODADA.proximoCodigoFilial();
+      mapeada = filialMapeada(codigo);
+      expect(mapeada).toMatchObject({ codigo, logradouro: 'Avenida Ficticia', numero: '10', cep: '69301000' });
+      expect(mapeada.cnpj).toMatch(new RegExp(`^\\d{8}${codigo}\\d{2}$`));
     });
     afterAll(async () => {
       await alvo?.encerrar();
     });
 
-    it.fails(
+    it(
       '[A-01] a filial que o ERP mapeia do cadastros.filial.alterada@1 é aceita pelo Hub',
       { timeout: PRAZO },
       async () => {
         semErro(
           await alvo
             .criarLadoErp('conector')
-            .publicar({ entidade: 'filial', modo: 'delta', registros: [mapeadas[0]] }),
+            .publicar({ entidade: 'filial', modo: 'delta', registros: [mapeada] }),
         );
-      },
-    );
-
-    it(
-      '[A-01, hoje] o Hub recusa a linha da filial mapeada pelo ERP pelo CNPJ que falta',
-      { timeout: PRAZO },
-      async () => {
-        const [l] = await alvo
-          .criarLadoErp('conector')
-          .publicar({ entidade: 'filial', modo: 'delta', registros: [mapeadas[1]] });
-        expect(l?.resultado?.status).toBe('concluido_com_erros');
-        expect(l?.resultado?.erros.map((e) => e.campo)).toEqual(['cnpj']);
-        expect(['campo_obrigatorio', 'registro_invalido']).toContain(l?.resultado?.erros[0]?.codigo);
       },
     );
   },
