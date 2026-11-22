@@ -95,7 +95,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
     for (const item of fila) {
       const resp = await d.hub.enviarRetorno(item.pedido_uuid, item.corpo);
       const agora = d.relogio.agora();
-      if (credencialRecusada(resp.status)) return { ...r, pausa: true };
+      if (credencialRecusada(resp.status, resp.codigo)) return { ...r, pausa: true };
       if (resp.status >= 200 && resp.status < 300) {
         const descartados = resp.itens_descartados ?? [];
         await d.banco.comTenant(tenantId, (tx) =>
@@ -134,7 +134,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
             [tenantId, item.id, resp.status],
           ),
         );
-        d.alertar(tenantId, 'retorno_recusado_pelo_hub', { pedido_uuid: item.pedido_uuid, codigo: codigoSeguro(resp.codigo) });
+        d.alertar(tenantId, 'retorno_recusado_pelo_hub', { pedido_uuid: item.pedido_uuid, codigo: codigoSeguro(resp.codigo, resp.status) });
         r.falhou++;
         progresso = true;
       }

@@ -4,6 +4,8 @@
  * `integrado -> rejeitado_erp`); `rejeitado_erp` é só do recebimento recusado (`retornoRejeitadoErp`).
  */
 import { z } from 'zod';
+import { jsonCanonico } from './canonico';
+import type { CodigoRejeicao } from './pedido-fdv';
 import type { RetornoErp, StatusRetornoHub } from '../contracts';
 
 /** Catálogo de motivos do pedido (T-0013 §4.3): ao FDV vai o texto do catálogo; em `outro`, o texto livre. */
@@ -20,22 +22,23 @@ const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
   outro: 'Outro motivo',
 };
 
-/** Motivos do recebimento recusado (porta `RecebedorPedidoFdv` e tradução). */
-const TEXTO_DA_REJEICAO: Readonly<Record<string, string>> = {
+/**
+ * Motivos do recebimento recusado: um texto por código da porta (`CodigoRecusaRecebimento`, vindo do contrato do pedido)
+ * e por código da tradução local. `Record` exaustivo: código novo no contrato quebra o typecheck aqui.
+ */
+const TEXTO_DA_REJEICAO: Readonly<Record<CodigoRejeicao, string>> = {
   cliente_desconhecido: 'Cliente não cadastrado no ERP',
   vendedor_desconhecido: 'Vendedor não cadastrado no ERP',
   produto_desconhecido: 'Produto não cadastrado no ERP',
   filial_desconhecida: 'Filial não cadastrada no ERP',
-  cliente_inexistente: 'Cliente não cadastrado no ERP',
-  produto_inexistente: 'Produto não cadastrado no ERP',
-  filial_inexistente: 'Filial não cadastrada no ERP',
-  cliente_inativo: 'Cliente inativo no ERP',
-  produto_inativo: 'Produto inativo no ERP',
-  filial_nao_emissora: 'Filial não emissora no ERP',
-  item_incoerente: 'Item com desconto maior que o valor do item',
   sequencia_repetida: 'Itens com sequência repetida',
   quantidade_invalida: 'Quantidade inválida',
   pedido_fora_do_contrato: 'Pedido fora do contrato',
+  modulo_pedido_inativo: 'Módulo de pedidos inativo no ERP',
+  cliente_inexistente: 'Cliente não cadastrado no ERP',
+  produto_inexistente: 'Produto não cadastrado no ERP',
+  filial_inexistente: 'Filial não cadastrada no ERP',
+  item_incoerente: 'Item com desconto maior que o valor do item',
   falha_interna: 'Falha interna do ERP ao receber o pedido',
 };
 
@@ -129,24 +132,12 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
 
 /** `rejeitado_erp` do recebimento recusado (sem pedido criado, logo sem `numero_erp`). */
 export function retornoRejeitadoErp(pedidoUuid: string, codigo: string, agora: Date): RetornoErp {
-  return { versao_contrato: 'v1', pedido_uuid: pedidoUuid, status: 'rejeitado_erp', motivo: TEXTO_DA_REJEICAO[codigo] ?? 'Pedido não recebido pelo ERP', ocorrido_em: agora.toISOString() };
-}
-
-export function canonico(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(canonico).join(',')}]`;
-  if (v && typeof v === 'object') {
-    return `{${Object.entries(v as Record<string, unknown>)
-      .filter(([, x]) => x !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([k, x]) => `${JSON.stringify(k)}:${canonico(x)}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(v);
+  return { versao_contrato: 'v1', pedido_uuid: pedidoUuid, status: 'rejeitado_erp', motivo: (TEXTO_DA_REJEICAO as Readonly<Record<string, string>>)[codigo] ?? 'Pedido não recebido pelo ERP', ocorrido_em: agora.toISOString() };
 }
 
 /** Corpo sem `ocorrido_em`, no JSON canônico: a base do hash de idempotência (o SHA-256 é calculado em `api/`, T-0013 §6.3). */
 export function corpoCanonicoDoRetorno(corpo: RetornoErp): string {
   const { ocorrido_em: _ignorado, ...resto } = corpo;
   void _ignorado;
-  return canonico(resto);
+  return jsonCanonico(resto);
 }

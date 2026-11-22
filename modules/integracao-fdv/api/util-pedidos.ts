@@ -1,3 +1,4 @@
+import { classificarResposta, codigoSeguro } from '../domain/resposta';
 import { sha256Hex, type Transacao } from '@macuxierp/platform-sdk';
 import { RetornoErp as RetornoErpSchema, type RetornoErp } from '../contracts';
 import { corpoCanonicoDoRetorno } from '../domain/retorno-pedido';
@@ -27,8 +28,11 @@ export async function gravarRetorno(tx: Transacao, tenantId: string, bruto: Reto
   return linhas.length > 0;
 }
 
-/** Código do Hub só se for identificador (o campo vai ao monitor); senão, `desconhecido`. */
-export const codigoSeguro = (c: string | undefined): string => (c && /^[a-z][a-z0-9_]{0,59}$/.test(c) ? c : 'desconhecido');
+/** 401/403/426 do Hub: a credencial do conector foi recusada e o conector pausa (mesma classificação do lote, T-0011). */
+export const credencialRecusada = (status: number, codigo?: string | null): boolean => {
+  if (status !== 401 && status !== 403 && status !== 426) return false;
+  const a = classificarResposta({ tipo: 'recusa', status, codigo: codigo ?? null });
+  return a.acao === 'pausar' && (a.motivo === 'credencial' || a.motivo === 'licenca_fdv' || a.motivo === 'versao');
+};
 
-/** 401/403/426 do Hub: a credencial do conector foi recusada e o conector pausa. */
-export const credencialRecusada = (status: number): boolean => status === 401 || status === 403 || status === 426;
+export { codigoSeguro };

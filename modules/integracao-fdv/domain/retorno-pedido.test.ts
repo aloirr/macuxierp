@@ -56,9 +56,10 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(c.numero_erp).toBeUndefined();
   });
   it.each([
-    ['cliente_inativo', 'Cliente inativo no ERP'],
-    ['produto_inativo', 'Produto inativo no ERP'],
-    ['filial_nao_emissora', 'Filial não emissora no ERP'],
+    ['modulo_pedido_inativo', 'Módulo de pedidos inativo no ERP'],
+    ['cliente_inexistente', 'Cliente não cadastrado no ERP'],
+    ['produto_inexistente', 'Produto não cadastrado no ERP'],
+    ['filial_inexistente', 'Filial não cadastrada no ERP'],
     ['item_incoerente', 'Item com desconto maior que o valor do item'],
   ])('RN-PED-05: recusa %s vira rejeitado_erp com o motivo certo, sem numero_erp', (codigo, motivo) => {
     const c = retornoRejeitadoErp(U(2), codigo, new Date('2026-11-21T18:00:00Z'));

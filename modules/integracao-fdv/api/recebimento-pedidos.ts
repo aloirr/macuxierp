@@ -7,8 +7,9 @@
 import { sha256Hex, type Banco, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { PedidoParaErpLido } from '../contracts';
-import { chavesDaCondicao, traduzirPedido, type CodigoRejeicaoPedido, type Espelho } from '../domain/pedido-fdv';
-import { canonico, retornoRejeitadoErp } from '../domain/retorno-pedido';
+import { chavesDaCondicao, traduzirPedido, type CodigoRejeicao, type CodigoRejeicaoPedido, type Espelho } from '../domain/pedido-fdv';
+import { jsonCanonico } from '../domain/canonico';
+import { retornoRejeitadoErp } from '../domain/retorno-pedido';
 import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv } from './portas';
 import { agendarRetorno, credencialRecusada, gravarRetorno } from './util-pedidos';
 
@@ -35,7 +36,7 @@ export interface ResumoBusca {
 }
 
 const UuidSo = z.object({ pedido_uuid: z.string().uuid() }).passthrough();
-const sha256 = (v: unknown): string => sha256Hex(canonico(v));
+const sha256 = (v: unknown): string => sha256Hex(jsonCanonico(v));
 
 async function carregarEspelho(tx: Transacao, tenantId: string, p: PedidoParaErpLido): Promise<Espelho> {
   const { prazoId: condicaoId, codigoErp } = chavesDaCondicao(p);
@@ -66,7 +67,7 @@ async function carregarEspelho(tx: Transacao, tenantId: string, p: PedidoParaErp
   };
 }
 
-async function rejeitar(tx: Transacao, d: DepsRecebimento, tenantId: string, uuid: string, codigo: string, detalhe?: string): Promise<void> {
+async function rejeitar(tx: Transacao, d: DepsRecebimento, tenantId: string, uuid: string, codigo: CodigoRejeicao, detalhe?: string): Promise<void> {
   const agora = d.relogio.agora();
   await tx.consultar(
     `UPDATE integracao_fdv.pedido_recebido SET estado = 'rejeitado', erro_codigo = $3, updated_at = now()

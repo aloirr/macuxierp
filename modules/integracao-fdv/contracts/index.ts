@@ -9,6 +9,11 @@ export const MODULO = 'integracao-fdv' as const;
 /** Identificador do tenant (UUID). Repetido por módulo de propósito: o tipo vem sempre de contracts. */
 export const TenantId = z.string().uuid();
 
+export * from './credencial';
+export * from './eventos';
+export * from './hub';
+export * from './monitor';
+
 /**
  * Cópia local, tolerante, do `PedidoParaErp` do Hub do FDV (T-0013 §5.2; nomes a conferir na T-0011/T-0017, P-1).
  * `passthrough`: campo novo do Hub não derruba o pedido. Item fora do contrato = `rejeitado` com `pedido_fora_do_contrato`.

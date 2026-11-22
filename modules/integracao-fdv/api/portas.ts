@@ -3,26 +3,10 @@
  * do `pedido/api` (`criarRecebedorFdv`) e o cliente HTTP do Hub (que o conector da T-0011 implementa). Sem rede aqui.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { PedidoFdvEntrada } from '../domain/pedido-fdv';
+import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
 import type { RetornoErp } from '../contracts';
 
-/**
- * Tipos mínimos locais do resultado da porta.
- * Trocar pelo contrato do pedido no merge da T-0015 (RD-0241): `ResultadoRecebimentoFdv` de `@macuxierp/pedido/contracts`.
- */
-export type CodigoRecusaFdv =
-  | 'modulo_pedido_inativo'
-  | 'cliente_inexistente'
-  | 'cliente_inativo'
-  | 'produto_inexistente'
-  | 'produto_inativo'
-  | 'filial_inexistente'
-  | 'filial_nao_emissora'
-  | 'item_incoerente';
-
-export type ResultadoRecebimentoFdv =
-  | { resultado: 'criado' | 'repetido'; pedido_id: string; numero: number; status: string }
-  | { resultado: 'recusado'; codigo: CodigoRecusaFdv };
+export type { ResultadoRecebimentoFdv };
 
 /** Implementação no `pedido/api` (T-0015): roda na transação do chamador, com o ator `sistema`. */
 export interface RecebedorPedidoFdv {

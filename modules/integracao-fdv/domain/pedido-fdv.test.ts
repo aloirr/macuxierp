@@ -54,6 +54,16 @@ describe('traduzirPedido (T-0013 §5.2)', () => {
     expect(traduzirPedido(lido(), { ...espelho, vendedores: new Set() })).toEqual({ ok: false, codigo: 'vendedor_desconhecido' });
     expect(traduzirPedido(lido(), { ...espelho, produtos: new Set() })).toEqual({ ok: false, codigo: 'produto_desconhecido' });
   });
+  it('RN-PED-01: frete e endereço do Hub entram no formato do contrato do pedido (CIF/FOB; retrato digitado)', () => {
+    const r = traduzirPedido(lido({ frete: { modalidade: 'FOB', transportadora: { nome: 'T' } }, endereco_entrega: { logradouro: 'Rua A' } }), espelho);
+    if (!r.ok) throw new Error('esperava ok');
+    expect(r.entrada.frete).toEqual({ modalidade: 'FOB', transportadora: { nome: 'T' } });
+    expect(r.entrada.endereco_entrega).toEqual({ endereco_id: null, retrato: { logradouro: 'Rua A' } });
+  });
+  it('RN-PED-01: frete com modalidade fora de CIF/FOB não entra', () => {
+    const r = traduzirPedido(lido({ frete: { modalidade: 'XYZ' } }), espelho);
+    expect(r.ok && r.entrada.frete).toBeNull();
+  });
   it('RN-PED-01: sequência repetida rejeita', () => {
     const item = base.itens[0];
     expect(traduzirPedido(lido({ itens: [item, item] }), espelho)).toEqual({ ok: false, codigo: 'sequencia_repetida' });

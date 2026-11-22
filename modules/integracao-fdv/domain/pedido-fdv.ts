@@ -3,38 +3,12 @@
  * pedido (T-0013 §5.2). Função pura: o que depende do espelho (cliente, vendedor, produto, filial padrão, condição) chega
  * pronto em `Espelho`. RN-PED-01: `pedido_uuid` vira o `external_id` do pedido. Valores em centavos e Qtd4 (inteiros).
  */
+import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
 import type { PedidoParaErpLido } from '../contracts';
 
-/**
- * Tipo mínimo local da entrada do pedido (T-0013 §8, `PedidoFdvEntrada`).
- * Trocar pelo contrato do pedido no merge da T-0015 (RD-0241).
- */
-export interface PedidoFdvEntrada {
-  pedido_uuid: string;
-  cliente_id: string;
-  vendedor_id: string;
-  filial_id: string;
-  condicao_pagamento_id: string | null;
-  emitido_em: string;
-  aprovado_origem_em: string | null;
-  observacao: string | null;
-  frete: Record<string, unknown> | null;
-  endereco_entrega: Record<string, unknown> | null;
-  total_informado_centavos: number;
-  itens: Array<{
-    sequencia: number;
-    produto_id: string;
-    /** Qtd4: unidade base do FDV x 10^4. */
-    quantidade: number;
-    unidade_venda: string | null;
-    fator_venda: number | null;
-    quantidade_venda: number | null;
-    preco_unitario_centavos: number;
-    desconto_centavos: number;
-    total_informado_centavos: number;
-    aplicacao: string | null;
-  }>;
-}
+export type { PedidoFdvEntrada };
+/** Código de recusa da porta de recebimento (contrato do pedido, RD-0241). */
+export type CodigoRecusaRecebimento = Extract<ResultadoRecebimentoFdv, { resultado: 'recusado' }>['codigo'];
 
 /** Ids que o espelho confirmou (RN-INF-05: só o que o ERP publicou entra) e as referências para filial e condição. */
 export interface Espelho {
@@ -57,6 +31,9 @@ export type CodigoRejeicaoPedido =
   | 'quantidade_invalida'
   | 'pedido_fora_do_contrato';
 
+/** Todo código que vira `rejeitado_erp`: recusa da porta, tradução local ou falha interna. */
+export type CodigoRejeicao = CodigoRejeicaoPedido | CodigoRecusaRecebimento | 'falha_interna';
+
 type ResultadoTraducao = { ok: true; entrada: PedidoFdvEntrada } | { ok: false; codigo: CodigoRejeicaoPedido };
 
 /** Decimal (número ou texto) para Qtd4, sem float no texto; `null` se não for positivo. */
@@ -77,6 +54,14 @@ export function chavesDaCondicao(p: PedidoParaErpLido): { prazoId: string | null
     prazoId: p.pagamento?.prazo_external_id ?? null,
     codigoErp: p.pagamento?.condicao_pagamento_erp ?? p.condicao_pagamento_erp ?? null,
   };
+}
+
+/** Frete do Hub (`modalidade` CIF/FOB e retrato da transportadora) no formato do contrato do pedido; modalidade inválida = sem frete. */
+function traduzirFrete(frete: Record<string, unknown> | null | undefined): PedidoFdvEntrada['frete'] {
+  const modalidade = frete?.modalidade;
+  if (modalidade !== 'CIF' && modalidade !== 'FOB') return null;
+  const t = frete?.transportadora;
+  return { modalidade, transportadora: t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, unknown>) : null };
 }
 
 export function traduzirPedido(p: PedidoParaErpLido, espelho: Espelho): ResultadoTraducao {
@@ -122,8 +107,8 @@ export function traduzirPedido(p: PedidoParaErpLido, espelho: Espelho): Resultad
       emitido_em: new Date(p.criado_em).toISOString(),
       aprovado_origem_em: p.aprovado_em ? new Date(p.aprovado_em).toISOString() : null,
       observacao: p.observacao ?? null,
-      frete: p.frete ?? null,
-      endereco_entrega: p.endereco_entrega ?? null,
+      frete: traduzirFrete(p.frete),
+      endereco_entrega: p.endereco_entrega ? { endereco_id: null, retrato: p.endereco_entrega } : null,
       total_informado_centavos: p.total_cents,
       itens,
     },

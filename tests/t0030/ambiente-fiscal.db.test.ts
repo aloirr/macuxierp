@@ -5,20 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { criarApp } from '../../apps/api/src/app';
-import { dependenciasCoreDeTeste } from '../../apps/api/src/apoio-teste';
-import { RepositorioAuthPg } from '../../apps/api/src/auth/repositorio-pg';
-import { CONFIG_AUTH_PADRAO } from '../../apps/api/src/auth/servico';
-import { gerarHashSenha } from '../../apps/api/src/auth/senha';
-import { montarModulos } from '../../apps/api/src/modulos';
-import { RepositorioCoreSql } from '../../modules/core/api';
-import { relogioDoSistema } from '../../packages/platform-sdk/src/banco';
-import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '../../packages/platform-sdk/src/pg';
+import { appPgDeTeste, inserirAdministradorDeTeste, inserirFilialDeTeste, SENHA_DE_TESTE } from '../../apps/api/src/apoio-teste';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
 
 const raiz = join(import.meta.dirname, '..', '..');
-const SENHA = 'senha-de-teste-123';
-const ARGON2_RAPIDO = { memoria: 64, passes: 1, paralelismo: 1 };
 const SLUG = 'e2e-t0030';
 const RECADO = 'R-20261121-213000-alexandre';
 const EVENTO = 'core.ambiente_fiscal.alterado@1';
@@ -51,7 +41,7 @@ interface ItemAuditoria {
 
 describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL (RN-CORE-08, ADR 0006)', () => {
   let b: BancoEfemero;
-  let app: Awaited<ReturnType<typeof criarApp>>;
+  let app: Awaited<ReturnType<typeof appPgDeTeste>>['app'];
   let tenant: string;
   let token: string;
   let executarOperador: Executar;
@@ -61,33 +51,10 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
   beforeAll(async () => {
     b = await criarBancoEfemero();
     tenant = await criarTenant(b.admin, SLUG, ['cadastros']);
-    await b.admin.query(
-      `INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, nome_fantasia, crt, logradouro, numero, bairro,
-         municipio_ibge, uf, cep) VALUES ($1, $2, '11222333000181', 'Matriz E2E', 'Matriz E2E', '3', 'Rua A', '1', 'Centro',
-         '1302603', 'AM', '69000000')`,
-      [filial, tenant],
-    );
-    await b.admin.query(
-      `INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, filial_ids)
-       VALUES ($1, $2, 'adm@e2e-t0030.teste', 'Administradora E2E', $3, 'administrador', $4::uuid[])`,
-      [usuario, tenant, await gerarHashSenha(SENHA, ARGON2_RAPIDO), [filial]],
-    );
-    app = await criarApp({
-      versao: 'teste',
-      auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: 'segredo-de-teste-com-mais-de-32-caracteres', argon2: ARGON2_RAPIDO },
-      cookieSeguro: true,
-      banco: b.banco('macuxierp_app'),
-      repoAuth: new RepositorioAuthPg(),
-      licencas: new LicencasPg(),
-      outbox: new OutboxPg(),
-      auditoria: new AuditoriaPg(),
-      trabalhos: new FilaDeTrabalhosPg(),
-      idempotencia: new IdempotenciaPg(),
-      relogio: relogioDoSistema,
-      modulos: montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) }),
-      logger: false,
-    });
-    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: SLUG, email: 'adm@e2e-t0030.teste', senha: SENHA } });
+    await inserirFilialDeTeste(b.admin, tenant, { id: filial, cnpj: '11222333000181', nome: 'Matriz E2E' });
+    await inserirAdministradorDeTeste(b.admin, tenant, { id: usuario, email: 'adm@e2e-t0030.teste', nome: 'Administradora E2E', filialIds: [filial] });
+    ({ app } = await appPgDeTeste({ b }));
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: SLUG, email: 'adm@e2e-t0030.teste', senha: SENHA_DE_TESTE } });
     expect(login.statusCode).toBe(200);
     token = login.json<{ token_acesso: string }>().token_acesso;
     // Script do operador (.mjs, sem tipos): import dinâmico pelo caminho.
