@@ -1059,9 +1059,10 @@ export function mensagemRecadoFalso(agente, motivos) {
 //  c) o hook consulta o GitHub pela API REST (gh api; o GraphQL não responde nas sessões da nuvem):
 //     PR aberto, head = SHA esperado, CI do head do PR verde e CI do main verde (todos os check-runs
 //     concluídos com success/neutral/skipped; "main vermelho = nuvem não faz merge");
-//  d) PR com caminho de governança (CAMINHOS_DE_GOVERNANCA): nunca na nuvem (CLAUDE_CODE_REMOTE=true); localmente
-//     só o gerente-projetos com identidade confiável (como no v5), com o recado do Alexandre "autorizo o merge do
-//     PR #N no commit <sha>" (mesmo N e SHA) e "Agente: alexandre" na commit_message (CI da T-0049).
+//  d) PR com caminho de governança (CAMINHOS_DE_GOVERNANCA): na nuvem ou local, só o gerente-projetos com identidade
+//     confiável (MACUXI_AGENTE ou agent_type), com o recado do Alexandre "autorizo o merge do PR #N no commit <sha>"
+//     (mesmo N e SHA; a sessão do PO grava por delegação, R-20261121-215904) e "Agente: alexandre" na commit_message
+//     (CI da T-0049); decisão do Alexandre R-20261121-220014.
 //  gh ausente, sem rede, sem login, resposta inválida, lista de arquivos ou de checks incompleta, prazo estourado
 //  → BLOQUEADO (falha fechada).
 
@@ -1292,8 +1293,8 @@ export function conferirMergeMcp({ ferramenta, entrada, agente, origem = '', sub
       }
       if (governanca.length) {
         const lista = `${governanca.slice(0, 5).join(', ')}${governanca.length > 5 ? ', ...' : ''}`;
-        if (nuvem) erros.push(`o PR #${v.pr} altera caminho de governança (${lista}): sessão da nuvem não faz esse merge. Termine com "[PRONTO PARA MERGE]" e o recado ao gerente (PR, head SHA, arquivos); o merge é local, com a autorização do Alexandre`);
-        else if (agente !== AGENTE_DO_MERGE || !ORIGENS_CONFIAVEIS.includes(origem)) erros.push(`PR de governança (${lista}): só o gerente-projetos na sessão local (MACUXI_AGENTE ou agent_type) faz o merge, com a autorização do Alexandre; esta sessão é de ${agente} (${origem})`);
+        // regra d) do cabeçalho v6
+        if (agente !== AGENTE_DO_MERGE || !ORIGENS_CONFIAVEIS.includes(origem)) erros.push(`PR de governança (${lista}): só o gerente-projetos (MACUXI_AGENTE ou agent_type) faz o merge, com a autorização do Alexandre por recado; esta sessão é de ${agente} (${origem})${nuvem ? ' na nuvem' : ''}`);
         if (v.agenteDoCommit !== 'alexandre') erros.push('PR de governança: a commit_message do squash termina com "Agente: alexandre" (trailer de governança, CI da T-0049)');
       }
       erros.push(...d.erros.map((e) => e.replace(/--match-head-commit/g, 'SHA esperado')));
@@ -1308,7 +1309,7 @@ export function mensagemMergeMcp(erros) {
     `${CABECALHO_MCP}\n${erros.map((e) => ` - ${e}`).join('\n')}\n` +
     'Chamada aceita: merge_pull_request com owner "aloirr", repo "macuxierp", pullNumber N, merge_method "squash" e commit_message ' +
     'com "Head-SHA: <sha de 40 caracteres>" e "Agente: <dono da tarefa>" no último bloco; CI do PR e do main verdes.\n' +
-    `PR de governança: só local, pelo gerente-projetos, com o recado do Alexandre em ${PASTA_AUTORIZACOES} "autorizo o merge do PR #N no commit <sha>".\n` +
+    `PR de governança: só o gerente-projetos (sessão principal, MACUXI_AGENTE ou agent_type), na nuvem ou local, com "Agente: alexandre" e o recado do Alexandre em ${PASTA_AUTORIZACOES} "autorizo o merge do PR #N no commit <sha>".\n` +
     'Não contorne o bloqueio (gh api, outra ferramenta, script): se a regra impede o merge, avise o gerente ou o Alexandre por recado.'
   );
 }
