@@ -43,14 +43,14 @@
 ## Travado pela nuvem (retomada de 21/11, 21h15)
 | Sessão | Caminhos |
 |---|---|
-| nuvem/T-0033-core-exports (modulo-core) | `modules/core/` |
-| nuvem/T-0029-integracao-f1 (engenheiro-software) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
-| nuvem/T-0024-deploy (engenheiro-software) | `compose.yml`, `apps/api/Dockerfile`, `apps/worker/Dockerfile`, `scripts/implantacao/` (sem `.github/**`; Dockerfile do web por pedido ao engenheiro-apps) |
-| nuvem/T-0030-producao-fiscal (engenheiro-software, desenho) | `docs/decisoes/0006-*`, `docs/desenho/T-0030.md` |
-| nuvem/T-0009-mapa-hub (engenheiro-software, desenho) | `docs/desenho/T-0009.md` |
-| nuvem/T-0010-schema-integracao (banco-dados) | `db/migrations/0007_integracao_fdv.sql`, `db/` testes, `modules/integracao-fdv/db/` |
-| nuvem/T-0026-carga-csv (engenheiro-software, desenho) | `docs/desenho/T-0026.md` (implementação do modulo-cadastros depois do #19) |
-| nuvem/T-0008-testes-f1 (testes) | `tests/`, `docs/testes/` |
+| nuvem/T-0033-core-exports (modulo-core, session_019xHEXsuENL8Z36PRPVv8mV) | `modules/core/` |
+| nuvem/T-0029-integracao-f1 (engenheiro-software, session_019xHEXpYmU4MzrgksrNchfF) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
+| nuvem/T-0024-deploy (engenheiro-software, session_019xHEXoK7AspqQTPJNMcz1h) | `compose.yml`, `apps/api/Dockerfile`, `apps/worker/Dockerfile`, `scripts/implantacao/` (sem `.github/**`; Dockerfile do web por pedido ao engenheiro-apps) |
+| nuvem/T-0030-producao-fiscal (engenheiro-software, desenho, session_019xHEXqu48yEhqy1UTdHw8c) | `docs/decisoes/0006-*`, `docs/desenho/T-0030.md` |
+| nuvem/T-0009-mapa-hub (engenheiro-software, desenho, session_019xHEXphmDDE9abQJxH7PT3) | `docs/desenho/T-0009.md` |
+| nuvem/T-0010-schema-integracao (banco-dados, session_019xHEXsJDwtbfrqPb59WRhi) | `db/migrations/0007_integracao_fdv.sql`, `db/` testes, `modules/integracao-fdv/db/` |
+| nuvem/T-0026-carga-csv (engenheiro-software, desenho, session_019xHEXs2e5KztsidbXc31AK) | `docs/desenho/T-0026.md` (implementação do modulo-cadastros depois do #19) |
+| nuvem/T-0008-testes-f1 (testes, session_019xHEXqAcErk9EQAtPnDHCk) | `tests/`, `docs/testes/` |
 | nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
 
 ## Reservas
