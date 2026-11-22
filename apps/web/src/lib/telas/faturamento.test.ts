@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NotaDetalhe, TituloDetalhe } from '@macuxierp/faturamento/contracts';
-import { urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
+import { MOTIVO_SEM_ITEM, formularioParcial, urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
 import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { arquivoPermitido } from '../arquivos';
 import { EU_FALSO } from '../falso';
@@ -405,12 +405,22 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
   it('acima do saldo, vazio, inválido ou tudo zerado recusam com texto claro', () => {
     const a = mais('administrador')[0]!;
     const e = (i: ReturnType<typeof itens>) => exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: i });
-    expect(e(itens([1, '2,5001', 25000]))).toEqual({ ok: false, erro: '"Produto 1": Máximo 2,5.' }); // texto do módulo (formularioParcial)
+    // o texto vem do próprio módulo (formularioParcial), para a mesma entrada: o shell não o copia
+    const doModulo = (i: ReturnType<typeof itens>) => {
+      const r = formularioParcial({ itens: i }).validar(Object.fromEntries(i.map((x) => [x.sequencia, x.quantidade])));
+      return r.ok ? undefined : (r.geral ?? Object.values(r.erros)[0]);
+    };
+    const acima = itens([1, '2,5001', 25000]);
+    expect(doModulo(acima)).toBeTruthy();
+    expect(e(acima)).toEqual({ ok: false, erro: doModulo(acima) });
     expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('até 4 casas decimais') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
-    expect(e(itens([1, '0', 25000]))).toEqual({ ok: false, erro: '"Produto 1": Informe uma quantidade maior que zero ou deixe em branco.' }); // o módulo recusa 0 no campo; o aviso do shell só fala de campo vazio
-    expect(e(itens([1, '', 25000], [2, ' ', 10000]))).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
+    const zero = itens([1, '0', 25000]);
+    expect(e(zero)).toEqual({ ok: false, erro: doModulo(zero) });
+    const vazios = itens([1, '', 25000], [2, ' ', 10000]);
+    expect(doModulo(vazios)).toBe(MOTIVO_SEM_ITEM);
+    expect(e(vazios)).toEqual({ ok: false, erro: MOTIVO_SEM_ITEM });
     expect(e([])).toMatchObject({ ok: false });
   });
   it('o milhar digitado ("1.500") vale: o módulo e o SDK o aceitam, sem contorno no shell', () => {

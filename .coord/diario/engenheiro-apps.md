@@ -15,3 +15,4 @@
 2026-11-22 — T-0021 — nota parcial com a regra do PO (vazio = fora; botão desligado sem itens), ponto de troca no validarParcial (R-20261122-055826)
 2026-11-22 — T-0021 — shell: formularioParcial do módulo, urlDaConfiguracaoDaFilial, vazio com e sem filtro, assinatura C 100 px, rádio azul-noite e textos da parcial
 2026-11-22 — T-0021 — PR D, 2º commit: aviso da parcial sem "(ou 0)", lista só conta filtro real (limite preservado no Limpar filtros), RD do corretor (testes repetidos, FUSO, erro do item)
+2026-11-22 — T-0021 — 3º push do PR #265: junta o main (#264) e mostra o erro do item como vem do formularioParcial; testes comparam com a saída do módulo
