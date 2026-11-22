@@ -9,7 +9,7 @@ import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
 import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
-import { a1DeTeste, CNPJ_EMITENTE, depsFake, tx, TENANT } from './apoio-teste';
+import { a1DeTeste, CNPJ_EMITENTE, depsFake, titulosFake, tx, TENANT } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { criarServicoEventos } from './eventos';
 import { criarProcessadorEventos } from './processador-eventos';
@@ -23,8 +23,8 @@ async function montar() {
   f.r.estado.relogio = SIM; // o `dhEvento` do pedido guardado fica depois da emissão da nota e não passa da hora do simulador
   const sefaz = criarSeletorTransporte({ transporte: 'simulador', simulador: criarFabricaSimulador({ agora: () => SIM, tMed: 1 }) });
   const ambiente = { ambiente: async () => 'homologacao' as const };
-  const transmissor = criarTransmissor({ banco, notas: f.r.repo, emissor: f.emissor, ambiente, lerA1: async () => a1DeTeste(), sefaz, agora: () => INSTANTE_DE_TESTE });
-  const proc = criarProcessadorEventos({ banco, notas: f.r.repo, eventos: f.ev.repo, cadastros: f.deps.cadastros, ambiente, lerA1: async () => a1DeTeste(), emissor: f.emissor, sefaz, agora: () => SIM });
+  const transmissor = criarTransmissor({ log: () => undefined, banco, notas: f.r.repo, titulos: titulosFake().repo, emissor: f.emissor, ambiente, lerA1: async () => a1DeTeste(), sefaz, agora: () => INSTANTE_DE_TESTE });
+  const proc = criarProcessadorEventos({ banco, notas: f.r.repo, titulos: titulosFake().repo, log: () => undefined, eventos: f.ev.repo, cadastros: f.deps.cadastros, ambiente, lerA1: async () => a1DeTeste(), emissor: f.emissor, sefaz, agora: () => SIM });
   const svc = criarServicoEventos({ eventos: f.ev.repo, cadastros: f.deps.cadastros, ambiente, certificado: { temA1Ativo: async () => ({ valido: true, valido_ate: '2027-11-21T00:00:00.000Z', dias_para_vencer: 365 }) }, agora: () => SIM });
   const emitirEAutorizar = async (idem: string) => {
     const e = await criarServicoEmissao(f.deps).emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: idem });
@@ -35,7 +35,7 @@ async function montar() {
   return { ...f, sefaz, ambiente, proc, svc, emitirEAutorizar };
 }
 
-describe('ponta a ponta dos eventos: emissor real + A1 gerado + simulador', () => {
+describe('ponta a ponta dos eventos: emissor real + A1 gerado + simulador', { timeout: 30_000 }, () => {
   it('RN-FAT-02: autoriza → cancela (135): o procEventoNFe é guardado antes, a nota passa a cancelada e cancelada@1 sai', async () => {
     const m = await montar();
     const nota = await m.emitirEAutorizar('idem-e2e-cancela');

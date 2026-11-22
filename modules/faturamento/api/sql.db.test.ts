@@ -8,8 +8,8 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
-import { a1DeTeste, depsFake, protocolo, transporteFake, uuid, type Roteiro } from './apoio-teste';
-import { repositoriosSql, pedidosAprovadosSql } from './sql';
+import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro } from './apoio-teste';
+import { repositoriosSql, pedidosAprovadosSql, notaEmAbertoSql } from './sql';
 import { criarTransmissor } from './transmissor';
 
 describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, migração 0013)', () => {
@@ -30,15 +30,22 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     f.deps.ambiente = repos.ambiente;
     return { ...f, svc: criarServicoEmissao(f.deps) };
   }
-  const emitir = (tenant: string, idem: string, s = servico()) => app.comTenant(tenant, (tx) => s.svc.emitirNota(tx, tenant, { pedido_id: IDS.pedido, idempotencia: idem }));
+  /** Um pedido novo por chave de idempotência (a repetição da chave reaproveita o mesmo pedido); várias notas totais não passam do saldo de um pedido só. */
+  const pedidoDaChave = new Map<string, string>();
+  const emitir = (tenant: string, idem: string, s = servico()) =>
+    app.comTenant(tenant, async (tx) => {
+      if (!pedidoDaChave.has(idem)) pedidoDaChave.set(idem, await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar));
+      return s.svc.emitirNota(tx, tenant, { pedido_id: pedidoDaChave.get(idem)!, idempotencia: idem });
+    });
 
   function transmissor(s: ReturnType<typeof servico>, roteiro: Roteiro = {}) {
     const t = transporteFake(roteiro);
     return {
       t,
       tr: criarTransmissor({
+        log: () => undefined,
         banco: worker,
-        notas: repos.notas,
+        notas: repos.notas, titulos: repos.titulos,
         emissor: s.emissor,
         ambiente: repos.ambiente,
         lerA1: async () => a1DeTeste(),
@@ -65,6 +72,20 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido_id).toBe(IDS.pedido);
     expect(await app.comTenant(B, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido))).toBeNull();
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
+  });
+
+  it('RF-FAT-01: reentrega de aprovado antigo: grava com o status da situação atual, só atualiza quando o status muda e marcarCancelado não cria linha', async () => {
+    const id = await app.comTenant(A, (tx) => pedidoNovoNaFila(tx, (t, p) => pedidosAprovadosSql.gravar(t, p, 'faturado')));
+    const status = async (): Promise<unknown> => (await admin('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [id]))[0]?.status;
+    expect(await status()).toBe('faturado');
+    const p = await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id));
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado'))).toBe('repetido');
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado_parcial'))).toBe('repetido');
+    expect(await status()).toBe('faturado_parcial');
+    await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, id));
+    expect(await status()).toBe('cancelado');
+    await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, uuid(999)));
+    expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [uuid(999)])).toEqual([{ n: 0 }]);
   });
 
   it('RN-FAT-01: emite sem buraco (100, 101), é idempotente pela chave, grava o conteúdo e o ambiente vem do banco', async () => {
@@ -140,5 +161,54 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(a.ok && b.ok && a.nota.id === b.nota.id).toBe(true);
     expect(await admin("SELECT count(*)::int AS n FROM faturamento.nota WHERE idempotencia_chave = 'idem-db-corrida'")).toEqual([{ n: 1 }]);
     expect(await app.comTenant(A, (tx) => tx.consultar('SELECT * FROM faturamento.buracos_numeracao()'))).toEqual([]);
+  });
+
+  describe('corridas com o pedido (T-0021 lote 5)', () => {
+    const pedidoCorrida = (n: number) => {
+      const p = pedidoAprovado([itemPedido(1, 20_000, 1000), itemPedido(2, 10_000, 2500)]);
+      p.pedido_id = uuid(900 + n);
+      p.pedido.condicao_pagamento_id = uuid(77);
+      return p;
+    };
+    function emitirDe(pid: string, idem: string, itens?: { sequencia: number; quantidade?: number }[]) {
+      const s = servico();
+      s.deps.pedidos = { ...repos.pedidos, obter: (tx, id) => repos.pedidos.obter(tx, id) }; // fila real
+      return app.comTenant(A, (tx) => s.svc.emitirNota(tx, A, { pedido_id: pid, idempotencia: idem, itens }));
+    }
+
+    it('RN-FAT-01/RF-FAT-01: duas emissões simultâneas do pedido inteiro, com o pedido sem consumir evento, geram uma nota só; a outra é recusada pelo saldo', async () => {
+      const p = pedidoCorrida(1);
+      await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p));
+      const [a, b] = await Promise.all([emitirDe(p.pedido_id, 'idem-db-saldo-1'), emitirDe(p.pedido_id, 'idem-db-saldo-2')]);
+      expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+      const recusada = a.ok ? b : a;
+      expect(!recusada.ok && recusada.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01' });
+      expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 20_000], [2, 10_000]]));
+      expect(await app.comTenant(A, (tx) => tx.consultar('SELECT * FROM faturamento.buracos_numeracao()'))).toEqual([]);
+    });
+
+    it('RN-PED-02 (P-2): nota rascunho, autorizada ou rejeitada bloqueia o cancelamento do pedido; cancelada e denegada não; quantidadesJaFaturadas ignora cancelada e a própria nota', async () => {
+      const p = pedidoCorrida(2);
+      await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p));
+      expect(await app.comTenant(A, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, p.pedido_id))).toBe(false);
+      const r = await emitirDe(p.pedido_id, 'idem-db-aberta-1', [{ sequencia: 1, quantidade: 5_000 }]);
+      if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+      const id = r.nota.id;
+      const aberta = (): Promise<boolean> => app.comTenant(A, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, p.pedido_id));
+      expect(await aberta()).toBe(true); // rascunho numerada
+      expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id, id))).toEqual(new Map());
+      const s = servico();
+      s.deps.pedidos = repos.pedidos;
+      const { tr } = transmissor(s, { recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
+      expect((await tr.transmitirNota(A, id)).resultado).toBe('rejeitada');
+      expect(await aberta()).toBe(true); // rejeitada pode ser reenviada
+      const re = await app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, id, { travar: true }))!));
+      expect(re.ok).toBe(true);
+      expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]])); // o reenvio não conta a si mesmo em dobro
+      const { tr: tr2 } = transmissor(s);
+      expect((await tr2.transmitirNota(A, id)).resultado).toBe('autorizada');
+      expect(await aberta()).toBe(true); // autorizada: o pedido só cancela depois de cancelar a nota
+      expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]]));
+    });
   });
 });

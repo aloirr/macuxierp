@@ -7,3 +7,6 @@ export const FUSO_MANAUS_MINUTOS = -240;
 
 /** Instante deslocado para UTC−4 (Manaus): ler com os getters UTC. */
 export const instanteManaus = (instante: Date): Date => new Date(instante.getTime() + FUSO_MANAUS_MINUTOS * 60_000);
+
+/** Data civil (`AAAA-MM-DD`) do instante no fuso de Manaus (RD-0617): único lugar que faz esta conta. */
+export const dataCivilManaus = (instante: Date): string => instanteManaus(instante).toISOString().slice(0, 10);
