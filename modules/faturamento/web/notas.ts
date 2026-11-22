@@ -312,6 +312,9 @@ export const postSemCorpo = (caminho: string, chave: string): Montagem => exigir
 export const requisicaoReenviar = (nota_id: string, chave: string): Montagem => postSemCorpo(`${BASE_API}/notas/${nota_id}/reenviar`, chave);
 export const requisicaoConsultar = (nota_id: string, chave: string): Montagem => postSemCorpo(`${BASE_API}/notas/${nota_id}/consultar`, chave);
 
+/** Detalhe do pedido a faturar (itens e saldo, para a nota parcial): `id` é `PedidoAFaturarResumo.id`. Resposta: `PedidoAFaturarDetalhe`. */
+export const urlDoPedidoAFaturar = (id: string): string => `${BASE_API}/pedidos-a-faturar/${id}`;
+
 export const urlDoXml = (nota_id: string): string => `${BASE_API}/notas/${nota_id}/xml`;
 /** O link fica pronto; a rota do DANFE em PDF chega no lote 3 da T-0021 (até lá a API responde 404). */
 export const urlDoDanfe = (nota_id: string): string => `${BASE_API}/notas/${nota_id}/danfe`;
