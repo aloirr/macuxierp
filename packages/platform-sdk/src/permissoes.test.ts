@@ -18,6 +18,12 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(quem('cadastros.cliente.credito')).toEqual(['administrador', 'gerente']);
   });
 
+  it('carga de CSV (T-0026, D8): administrador e gerente; o arquivo de filial ainda pede cadastros.filial.editar', () => {
+    expect(quem('cadastros.carga.executar')).toEqual(['administrador', 'gerente']);
+    expect(pode('gerente', 'cadastros.carga.executar') && !pode('gerente', 'cadastros.filial.editar')).toBe(true);
+    for (const p of ['faturista', 'fiscal', 'vendedor', 'leitura'] as const) expect(pode(p, 'cadastros.carga.executar')).toBe(false);
+  });
+
   it('RN-CAD-07: saldo negativo só administrador e gerente', () => {
     expect(quem('cadastros.estoque.negativo')).toEqual(['administrador', 'gerente']);
   });

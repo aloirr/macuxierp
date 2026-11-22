@@ -15,7 +15,8 @@ bash tests/scripts/rodar-antes-do-push.sh
 O comando:
 
 1. sobe o Postgres local (`bash db/scripts/pg-local.sh`: 5432 com superusuário e 5433 limpo, postgres/postgres,
-   pgvector) e carrega o env do CI (`MACUXI_PG_*` e o Node 24 de `/opt/node24` no PATH: os testes exigem Node >= 24.7);
+   pgvector) e carrega o env do CI (`MACUXI_PG_*` e o Node 24 de `/opt/node24` no PATH: os testes exigem Node >= 24.7),
+   mais `MACUXI_DB_MIGRACOES=<raiz>/db/migrations` (se não vier de fora), para os testes de banco dos módulos não pularem;
 2. descobre os pacotes afetados contra o merge-base com `origin/main` pelo próprio `scripts/ci/escopo.mjs` (modo
    `workflow_dispatch`). Só conta o que está commitado: rode depois do amend;
 3. `pnpm exec turbo run test --continue <filtro>` nos pacotes afetados (todos, se mudou arquivo fora de pacote, como

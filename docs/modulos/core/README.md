@@ -13,7 +13,7 @@ Fontes: `docs/desenho/T-0002.md` (seção 3), ADR 0002, ADR 0005, RN-CORE-01..08
 `apps/api` troca a linha do core em `modulos.ts` por `criarPluginCore({ repo: new RepositorioCoreSql(), hashSenha, leitorPfx: new LeitorPfxTls(), chaveA1: lerChaveA1(process.env.MACUXIERP_CHAVE_A1), armazenamento })`. O `hashSenha` é o argon2id da plataforma.
 
 ## Decisões e premissas
-- `POST /certificados` recebe JSON com `arquivo_base64` (o mecanismo de rotas do SDK só tem corpo Zod); o limite de 50 KB vale depois de decodificar.
+- `POST /certificados` recebe multipart (`filial_id` e `senha` como texto, o `.pfx` em `arquivo`); a API barra acima de 50 KB com 413.
 - Concorrência: o `PATCH` usa `updated_at` no corpo como token (o SDK não entrega cabeçalhos à rota); o `GET` já devolve o `ETag`.
 - O CNPJ da empresa não muda por `PATCH /empresa` (ele amarra a raiz do A1, D4).
 - RN-CORE-01 também cobre "o tenant não fica sem administrador ativo".

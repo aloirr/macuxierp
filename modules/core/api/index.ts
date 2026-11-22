@@ -8,3 +8,14 @@ export { criarPortaA1 } from './porta-a1';
 export { lerChaveA1 } from './cifra';
 // RN-CORE-06: usado pelo worker
 export { alertaVencimento, diasParaVencer } from '../domain/certificado';
+// Adaptadores SQL das portas do worker (T-0035, T-0040): alerta do A1 e exportação LGPD; leitura do selo do /eu
+export {
+  avisosA1MaisRecentes,
+  destinoAvisosSql,
+  exportadorCore,
+  fonteCertificadosSql,
+  fonteTenantsSql,
+  registroExportacoesSql,
+  type AvisoA1,
+  type CertificadoVencendoLinha,
+} from './adaptadores-worker';
