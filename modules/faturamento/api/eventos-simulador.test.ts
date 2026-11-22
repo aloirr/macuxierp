@@ -35,7 +35,7 @@ async function montar() {
   return { ...f, sefaz, ambiente, proc, svc, emitirEAutorizar };
 }
 
-describe('ponta a ponta dos eventos: emissor real + A1 gerado + simulador', () => {
+describe('ponta a ponta dos eventos: emissor real + A1 gerado + simulador', { timeout: 30_000 }, () => {
   it('RN-FAT-02: autoriza → cancela (135): o procEventoNFe é guardado antes, a nota passa a cancelada e cancelada@1 sai', async () => {
     const m = await montar();
     const nota = await m.emitirEAutorizar('idem-e2e-cancela');

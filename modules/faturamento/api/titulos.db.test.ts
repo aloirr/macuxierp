@@ -10,7 +10,8 @@ import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { a1DeTeste, depsFake, transporteFake, uuid } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
-import { consultaTitulosPedido, criarServicoTitulos } from './titulos';
+import { configuracaoFake } from './apoio-teste';
+import { consultaTitulosPedido, criarServicoTitulos, criarVarreduraTitulos } from './titulos';
 import { criarTransmissor } from './transmissor';
 
 describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração 0013)', () => {
@@ -136,5 +137,33 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     expect(await app.comTenant(C, (tx) => porta.saldoAbertoCliente(tx, IDS.cliente))).toBe(nota.total_centavos - 1000);
     expect(await app.comTenant(C, (tx) => porta.saldoAbertoCliente(tx, uuid(404)))).toBe(0);
     expect(await app.comTenant(B, (tx) => porta.saldoAbertoCliente(tx, IDS.cliente))).toBe(0);
+  });
+  it('RN-FAT-03: a geração falha na autorização (savepoint real): a nota fica autorizada com o nfeProc guardado, sem título; a varredura gera depois, uma vez só', async () => {
+    const r = await app.comTenant(A, (tx) => emissao.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: `idem-titdb-${++idem}` }));
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    const quebrado = { ...repos.titulos, inserirParcelas: async () => { throw new Error('falha de teste'); } };
+    const logs: object[] = [];
+    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: quebrado, log: (e) => logs.push(e), emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    expect(await tr.transmitirNota(A, r.nota.id)).toMatchObject({ resultado: 'autorizada', titulos_pendentes: expect.any(String) });
+    expect(logs).toEqual([expect.objectContaining({ evento: 'faturamento.titulo.geracao_pendente', nota_id: r.nota.id })]);
+    expect((await admin("SELECT status FROM faturamento.nota WHERE id = $1", [r.nota.id]))[0]?.status).toBe('autorizada');
+    expect((await admin("SELECT count(*)::int AS n FROM faturamento.nota_xml WHERE nota_id = $1 AND tipo = 'nfe_autorizada'", [r.nota.id]))[0]?.n).toBe(1);
+    expect(await titulosDe(A, r.nota.id)).toEqual([]);
+    const varrer = criarVarreduraTitulos({ titulos: repos.titulos, notas: repos.notas, log: () => undefined });
+    const agoraBanco = { ha_minutos: 0, limite: 50 };
+    const v = await app.comTenant(A, (tx) => varrer(tx, agoraBanco));
+    expect(v.geradas).toBe(2);
+    expect(await titulosDe(A, r.nota.id)).toHaveLength(2);
+    expect((await app.comTenant(A, (tx) => varrer(tx, agoraBanco))).geradas).toBe(0);
+  });
+
+  it('RN-PED-04: título de nota conta_como_real (homologação com a bandeira ligada na emissão) entra no saldo aberto do cliente', async () => {
+    await app.comTenant(B, (tx) => pedidosAprovadosSql.gravar(tx, boleto));
+    const emissaoReal = criarServicoEmissao({ ...f.deps, sorteio: () => 777001, configuracao: configuracaoFake({ [IDS.filial]: true }).repo });
+    const r = await app.comTenant(B, (tx) => emissaoReal.emitirNota(tx, B, { pedido_id: IDS.pedido, idempotencia: `idem-titdb-${++idem}` }));
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    expect((await tr.transmitirNota(B, r.nota.id)).resultado).toBe('autorizada');
+    expect(await app.comTenant(B, (tx) => consultaTitulosPedido(repos.titulos).saldoAbertoCliente(tx, IDS.cliente))).toBe(r.nota.total_centavos);
   });
 });
