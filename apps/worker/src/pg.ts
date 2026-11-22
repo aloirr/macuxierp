@@ -1,13 +1,13 @@
 /**
- * Portas do worker no PostgreSQL (`plataforma.evento`, `evento_consumido` e `trabalho`; D10). A reserva roda em
+ * Portas do worker no PostgreSQL (`plataforma.evento`, `evento_consumido` e `trabalho`; D10; reentrega da partida, T-0045). A reserva roda em
  * `banco.semTenant` no papel `macuxierp_worker` (política `worker_global`: enxerga a fila de todos os tenants) e trava as
  * linhas até o fim da transação do lote. A trava é `FOR NO KEY UPDATE`, não `FOR UPDATE`: o consumidor grava
  * `evento_consumido` (FK para o evento, que pede `KEY SHARE`) noutra transação enquanto a do lote segue aberta, e o
  * `FOR UPDATE` faria uma esperar pela outra para sempre.
  */
-import type { Trabalho, Transacao } from '@macuxierp/platform-sdk';
+import type { EnvelopeEvento, Trabalho, Transacao } from '@macuxierp/platform-sdk';
 import { envelopeDaLinha, SELECT_EVENTO, type LinhaEvento } from '@macuxierp/platform-sdk/pg';
-import type { EventoPendente, FilaOutbox, RegistroConsumo, ReservaTrabalhos } from './portas';
+import type { EventoPendente, FilaOutbox, FonteReentrega, RegistroConsumo, ReservaTrabalhos } from './portas';
 
 /** Trava consultiva da outbox: um despachante por vez mantém a ordem por agregado (outro worker sai com lote vazio). */
 const TRAVA_OUTBOX = 7_302_101;
@@ -39,6 +39,25 @@ export class FilaOutboxPg implements FilaOutbox {
 
   async marcarFalha(tx: Transacao, id: string, tentativas: number, proximoEm: Date, erro: string): Promise<void> {
     await tx.consultar('UPDATE plataforma.evento SET tentativas = $2, proximo_em = $3, erro = $4 WHERE id = $1', [id, tentativas, proximoEm, erro]);
+  }
+
+  async marcarFalhou(tx: Transacao, id: string, tentativas: number, agora: Date, erro: string): Promise<void> {
+    await tx.consultar('UPDATE plataforma.evento SET publicado_em = $3, tentativas = $2, erro = $4 WHERE id = $1', [id, tentativas, agora, erro]);
+  }
+}
+
+/** Reentrega da partida (T-0045): só `plataforma.evento` e `plataforma.evento_consumido`. */
+export class FonteReentregaPg implements FonteReentrega {
+  async pendentes(tx: Transacao, consumidor: string, nome: string, ignorar: readonly string[], limite: number): Promise<EnvelopeEvento[]> {
+    const linhas = await tx.consultar<LinhaEvento>(
+      `SELECT ${SELECT_EVENTO} FROM plataforma.evento e
+       WHERE e.nome = $2 AND e.publicado_em IS NOT NULL AND e.erro IS NULL AND NOT (e.id = ANY($3::uuid[]))
+         AND NOT EXISTS (SELECT 1 FROM plataforma.evento_consumido c WHERE c.consumidor = $1 AND c.evento_id = e.id)
+       ORDER BY e.ocorrido_em, e.versao, e.id
+       LIMIT $4`,
+      [consumidor, nome, ignorar, limite],
+    );
+    return linhas.map(envelopeDaLinha);
   }
 }
 

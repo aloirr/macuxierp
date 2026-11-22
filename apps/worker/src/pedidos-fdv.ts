@@ -17,17 +17,18 @@
  * ver envio-fdv.ts. `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
  */
 import { criarConsultaParaPedido, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
-import type { DepsAgendasPedidosFdv } from '@macuxierp/integracao-fdv/api';
-import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido, type RecebedorPedidoFdv } from '@macuxierp/pedido/api';
+import type { Alertar, DepsAgendasPedidosFdv, RecebedorPedidoFdv, ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
+import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido } from '@macuxierp/pedido/api';
 import type { DestinoAuditoria, FonteLicencas, Outbox, Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import { chaveLigadoDesligado, type EstadoChaveFdv } from './chaves-fdv';
 
 /**
- * Tipado pela porta do `integracao-fdv` (`DepsAgendasPedidosFdv`, ADR 0010, item 2), sem declaração própria no worker:
- * o `tsc` confere que a implementação do cadastros cabe nela.
+ * As portas são as do `integracao-fdv` (`ResolvedorChaveErp`, `RecebedorPedidoFdv`, `Alertar`; ADR 0010, item 2),
+ * sem declaração própria no worker (R-20261122-042502): o `tsc` confere que as implementações do cadastros e do pedido
+ * cabem nelas.
  */
-export type ResolvedorChaveErp = DepsAgendasPedidosFdv['resolvedor'];
+export type { ResolvedorChaveErp };
 
 /** O resolvedor do `cadastros/api` sobre os repositórios SQL. */
 export function resolvedorChaveErpDeProducao(): ResolvedorChaveErp {
@@ -52,7 +53,7 @@ export interface DependenciasRecebedorWorker {
   auditoria?: DestinoAuditoria;
 }
 
-/** Porta `RecebedorPedidoFdv` com os adaptadores de produção (R-20261121-234202). */
+/** Porta `RecebedorPedidoFdv` do `integracao-fdv` com os adaptadores de produção do pedido (R-20261121-234202). */
 export function montarRecebedorPedidoFdv(d: DependenciasRecebedorWorker): RecebedorPedidoFdv {
   return criarRecebedorFdv({
     ...dependenciasDeProducao(criarConsultaParaPedido(repositoriosSql), { log: d.log }),
@@ -76,13 +77,14 @@ const CHAVES_RESERVADAS = new Set(['alerta', 'tenant_id', 'modulo', 'msg', 'leve
 /**
  * `Alertar` do `integracao-fdv` ligado ao monitor (log do worker). `codigo` e o contexto já vêm do módulo só com código e
  * ids; aqui é a defesa: chave fora de `[a-z0-9_]`, chave reservada ou valor com cara de texto livre é descartado.
+ * `modulo` (padrão `integracao-fdv`): o mesmo alerta serve ao pedido e ao despachante da outbox (`plataforma`, T-0045).
  */
-export function criarAlertaMonitor(log: LogAlerta): (tenantId: string, codigo: string, contexto?: Record<string, string>) => void {
+export function criarAlertaMonitor(log: LogAlerta, modulo = 'integracao-fdv'): Alertar {
   return (tenantId, codigo, contexto = {}) => {
     const seguro = Object.fromEntries(
       Object.entries(contexto).filter(([k, v]) => CHAVE_SEGURA.test(k) && !CHAVES_RESERVADAS.has(k) && typeof v === 'string' && VALOR_SEGURO.test(v)),
     );
-    log.warn({ ...seguro, alerta: VALOR_SEGURO.test(codigo) ? codigo : 'codigo_invalido', tenant_id: tenantId, modulo: 'integracao-fdv' }, 'alerta do monitor');
+    log.warn({ ...seguro, alerta: VALOR_SEGURO.test(codigo) ? codigo : 'codigo_invalido', tenant_id: tenantId, modulo }, 'alerta do monitor');
   };
 }
 

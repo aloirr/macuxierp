@@ -231,9 +231,9 @@ describe.skipIf(!PG_DISPONIVEL)('agendas de pedidos do FDV no PostgreSQL real', 
     it('RN-PED-05: 422 do Hub é definitivo (falhou) e 403 modulo_inativo pausa a credencial (licenca_fdv) sem gastar tentativa', async () => {
       const a = await cenario('rp-422', { retorno: depois(-10) });
       const ua = await pedidoComRetorno(a.t);
-      await ciclo(banco, retorno(), hubDuble({ [`POST /pedidos/${ua}/retorno`]: [recusa(422, 'transicao_invalida')] }), AGORA, [a.t]);
+      await ciclo(banco, retorno(), hubDuble({ [`POST /pedidos/${ua}/retorno`]: [recusa(422, 'validacao_falhou')] }), AGORA, [a.t]);
       expect((await retornos(a.t))[0]).toMatchObject({ estado: 'falhou', resposta_http: 422 });
-      expect(alertas).toContain(`${a.t}:retorno_recusado_pelo_hub:${JSON.stringify({ pedido_uuid: ua, codigo: 'transicao_invalida' })}`);
+      expect(alertas).toContain(`${a.t}:retorno_recusado_pelo_hub:${JSON.stringify({ pedido_uuid: ua, codigo: 'validacao_falhou' })}`);
       const b = await cenario('rp-401', { retorno: depois(-10) });
       await cursorEntidade(efemero.admin, b.t, 'produto', { proximoEm: depois(+9999) });
       const ub = await pedidoComRetorno(b.t);
@@ -241,6 +241,35 @@ describe.skipIf(!PG_DISPONIVEL)('agendas de pedidos do FDV no PostgreSQL real', 
       expect((await retornos(b.t))[0]).toMatchObject({ estado: 'pendente', tentativas: 0 });
       expect((await adm('SELECT pausada_motivo FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1', [b.t]))[0]!.pausada_motivo).toBe('licenca_fdv');
       expect((await sinal(b.t)).proximo_retorno_em.getTime()).toBe(depois(3600).getTime());
+    });
+
+    /** Retorno já ACEITO pelo Hub (prova local de que ele está adiante), plantado direto. */
+    const plantarAceito = (t: string, uuid: string, status: string) =>
+      adm(
+        `INSERT INTO integracao_fdv.retorno_enviado (tenant_id, pedido_uuid, status, corpo, hash, estado, enviado_em, resposta_http, tentativas)
+         VALUES ($1, $2, $3, '{}', repeat('9', 64), 'enviado', now(), 202, 1)`,
+        [t, uuid, status],
+      );
+
+    it('RN-PED-05: 422 transicao_invalida com retorno mais avançado já aceito (prova local de regressão) termina sem alerta e sem nova tentativa, e o próximo pedido segue', async () => {
+      const a = await cenario('rp-regressao', { retorno: depois(-10) });
+      const ua = await pedidoComRetorno(a.t);
+      const ub = await pedidoComRetorno(a.t);
+      await plantarAceito(a.t, ua, 'faturado_total');
+      const hub = hubDuble({ [`POST /pedidos/${ua}/retorno`]: [recusa(422, 'transicao_invalida')], [`POST /pedidos/${ub}/retorno`]: [ok({ repetido: false })] });
+      await ciclo(banco, retorno(), hub, AGORA, [a.t]);
+      expect((await retornos(a.t)).filter((x) => x.status === 'integrado').map((x) => [x.pedido_uuid, x.estado, x.tentativas])).toEqual([[ua, 'falhou', 1], [ub, 'enviado', 1]]);
+      expect(alertas.filter((x) => x.startsWith(`${a.t}:`))).toEqual([]);
+      expect((await sinal(a.t)).proximo_retorno_em).toBeNull();
+    });
+
+    it('RN-PED-05: 422 transicao_invalida sem prova local de regressão (integrado, nada mais avançado aceito) alerta retorno_recusado_pelo_hub', async () => {
+      const a = await cenario('rp-422-sem-prova', { retorno: depois(-10) });
+      const ua = await pedidoComRetorno(a.t);
+      const hub = hubDuble({ [`POST /pedidos/${ua}/retorno`]: [recusa(422, 'transicao_invalida')] });
+      await ciclo(banco, retorno(), hub, AGORA, [a.t]);
+      expect((await retornos(a.t))[0]).toMatchObject({ estado: 'falhou', resposta_http: 422 });
+      expect(alertas).toContain(`${a.t}:retorno_recusado_pelo_hub:${JSON.stringify({ pedido_uuid: ua, codigo: 'transicao_invalida' })}`);
     });
 
     it('RN-INF-04: posse perdida (outra reserva já regravou) não é desfeita pela regravação final nem pelo desligar', async () => {

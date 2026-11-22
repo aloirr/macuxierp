@@ -30,3 +30,11 @@ export const dataNoFuso = (iso: string | Date, fuso: string = FUSO_TENANT): stri
 export function erroTransicao(possiveis: readonly StatusPedido[], mensagem = 'Transição de status não permitida'): ErroApi {
   return erros.regra('RN-PED-02', mensagem, undefined, { possiveis: [...possiveis] });
 }
+
+/** O gatilho `pedido.validar_status` (MXP02) recusou o recuo por nota cancelada: recusa definitiva, repetir não adianta. */
+export class RecuoRecusadoPeloBanco extends Error {
+  constructor() {
+    super('Recuo por nota cancelada recusado pelo banco (RN-PED-02)');
+    this.name = 'RecuoRecusadoPeloBanco';
+  }
+}

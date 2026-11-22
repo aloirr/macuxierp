@@ -9,8 +9,11 @@ import {
   formatarDocumento,
   formatarPontosBase,
   formatarQuantidade,
+  formatarReaisDecimal,
+  formatarValorCentavos,
   interpretarCentavos,
   interpretarQuantidade,
+  PREFIXO_REAL,
 } from './formatar';
 
 // Casos trazidos de modules/cadastros/web/formatar.test.ts, modules/pedido/web/web.test.ts (RD-0362) e apps/web/src/lib/cnpj.test.ts.
@@ -22,12 +25,14 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
     expect(formatarDocumento('123')).toBe('123');
   });
 
-  it('dinheiro: centavos inteiros viram R$ e voltam sem float', () => {
-    expect(formatarCentavos(123456)).toBe('R$ 1.234,56');
-    expect(formatarCentavos(5)).toBe('R$ 0,05');
-    expect(formatarCentavos(-250)).toBe('-R$ 2,50');
-    expect(formatarCentavos(centavos(100_000_000_00))).toBe('R$ 100.000.000,00');
-    expect(formatarCentavos(0)).toBe('R$ 0,00');
+  it('dinheiro: centavos inteiros viram R$ e voltam sem float; R-20261122-035009: R$ e valor juntos por U+00A0 (PREFIXO_REAL)', () => {
+    expect(PREFIXO_REAL).toBe('R$\u00a0');
+    expect(formatarCentavos(123456)).toBe('R$\u00a01.234,56');
+    expect(formatarCentavos(123456)).not.toContain('R$ ');
+    expect(formatarCentavos(5)).toBe('R$\u00a00,05');
+    expect(formatarCentavos(-250)).toBe('-R$\u00a02,50');
+    expect(formatarCentavos(centavos(100_000_000_00))).toBe('R$\u00a0100.000.000,00');
+    expect(formatarCentavos(0)).toBe('R$\u00a00,00');
     expect(interpretarCentavos('1.234,56')).toBe(123456);
     expect(interpretarCentavos('0,05')).toBe(5);
     expect(interpretarCentavos(' 12,5 ')).toBe(1250);
@@ -39,6 +44,18 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
     expect(() => formatarCentavos(1.5)).toThrow(RangeError);
   });
 
+  it('RD-0706: o valor em centavos sem o prefixo R$, com a mesma conta e o mesmo RangeError do formatarCentavos', () => {
+    expect(formatarValorCentavos(123456)).toBe('1.234,56');
+    expect(formatarValorCentavos(-250)).toBe('-2,50');
+    expect(formatarValorCentavos(5)).toBe('0,05');
+    expect(formatarValorCentavos(0)).toBe('0,00');
+    expect(formatarValorCentavos(centavos(100_000_000_00))).toBe('100.000.000,00');
+    expect(() => formatarValorCentavos(1.5)).toThrow(RangeError);
+    for (const c of [0, 5, 123456, -250, -1, 100_000_000_00]) {
+      expect(formatarCentavos(c)).toBe(`${c < 0 ? '-' : ''}R$\u00a0${formatarValorCentavos(Math.abs(c))}`);
+    }
+  });
+
   it('D11: quantidade × 10^4 vira decimal e volta sem float', () => {
     expect(formatarQuantidade(125_000)).toBe('12,5');
     expect(formatarQuantidade(-10_000)).toBe('-1');
@@ -48,6 +65,46 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
     expect(interpretarQuantidade('0,0001')).toBe(1);
     expect(interpretarQuantidade('-1')).toBe(-10_000);
     expect(interpretarQuantidade('1,00001')).toBeNull();
+  });
+
+  it('R-20261122-055654: interpretarQuantidade aceita o ponto de milhar pt-BR só em grupos de 3 dígitos', () => {
+    expect(interpretarQuantidade('1.500')).toBe(15_000_000);
+    expect(interpretarQuantidade('1.500,25')).toBe(15_002_500);
+    expect(interpretarQuantidade('1.234.567,0001')).toBe(12_345_670_001);
+    expect(interpretarQuantidade('-1.500')).toBe(-15_000_000);
+    expect(interpretarQuantidade(' 1.500 ')).toBe(15_000_000);
+    expect(interpretarQuantidade('1500')).toBe(15_000_000);
+    for (const ruim of ['1.5', '1.50', '1.5000', '.500', '1.', '1..500', '1.500.', '1234.567', '+1.500', '--1', '1,500.25']) {
+      expect(interpretarQuantidade(ruim), ruim).toBeNull();
+    }
+  });
+
+  it('RD-0735: decimal em texto do XML da NF-e vira R$ sem float (DANFE do faturamento)', () => {
+    expect(formatarReaisDecimal('1234.5', 2)).toBe('R$\u00a01.234,50');
+    expect(formatarReaisDecimal('10', 2)).toBe('R$\u00a010,00');
+    expect(formatarReaisDecimal('-2.5', 2)).toBe('-R$\u00a02,50');
+    expect(formatarReaisDecimal('-0.00', 2)).toBe('R$\u00a00,00');
+    expect(formatarReaisDecimal('12.3456', 4)).toBe('R$\u00a012,3456');
+    expect(formatarReaisDecimal('12.3', 4)).toBe('R$\u00a012,3000');
+    expect(formatarReaisDecimal('7', 0)).toBe('R$\u00a07');
+    // zero à direita além das casas não muda o valor e é aceito (o XML traz vUnCom com até 10 casas)
+    expect(formatarReaisDecimal('1.2300000000', 2)).toBe('R$\u00a01,23');
+    // acima de 2^53: a conta é em BigInt, sem perder dígito
+    expect(formatarReaisDecimal('123456789012345678.91', 2)).toBe('R$\u00a0123.456.789.012.345.678,91');
+    // mesmo texto que o formatarCentavos para o mesmo valor
+    for (const c of [0, 5, 123456, -250, 100_000_000_00]) {
+      const t = `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, '0')}`;
+      expect(formatarReaisDecimal(t, 2)).toBe(formatarCentavos(c));
+    }
+  });
+
+  it('RD-0735: decimal fora do formato ou com mais casas que as pedidas é RangeError (o DANFE não arredonda por conta própria)', () => {
+    for (const ruim of ['', 'abc', '1,5', '1.', '.5', '1e3', ' 1.5', '+1.5', '1.234.5', 'NaN']) {
+      expect(() => formatarReaisDecimal(ruim, 2), ruim).toThrow(RangeError);
+    }
+    expect(() => formatarReaisDecimal('1.234', 2)).toThrow(RangeError);
+    expect(() => formatarReaisDecimal('1.5', -1)).toThrow(RangeError);
+    expect(() => formatarReaisDecimal('1.5', 1.5)).toThrow(RangeError);
   });
 
   it('pontos-base viram percentual sem zeros à direita', () => {
@@ -73,8 +130,11 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
     expect(indice.formatarDocumento).toBe(formatarDocumento);
     expect(indice.formatarPontosBase).toBe(formatarPontosBase);
     expect(indice.formatarQuantidade).toBe(formatarQuantidade);
+    expect(indice.formatarValorCentavos).toBe(formatarValorCentavos);
     expect(indice.interpretarCentavos).toBe(interpretarCentavos);
     expect(indice.interpretarQuantidade).toBe(interpretarQuantidade);
+    expect(indice.formatarReaisDecimal).toBe(formatarReaisDecimal);
+    expect(indice.PREFIXO_REAL).toBe(PREFIXO_REAL);
   });
 
   it('subcaminho @macuxierp/platform-sdk/formatar, sem dependência de Node (o shell importa no navegador)', () => {

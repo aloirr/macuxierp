@@ -15,18 +15,59 @@ export function formatarDocumento(doc: string): string {
 
 const milhar = (n: bigint) => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-/** 123456 → "R$ 1.234,56"; -250 → "-R$ 2,50". RangeError se não for inteiro (centavo nunca é float). */
-export function formatarCentavos(c: number): string {
-  const neg = c < 0;
+/**
+ * O valor sem o prefixo (RD-0706), para campo de entrada e coluna que já diz "R$": 123456 → "1.234,56";
+ * -250 → "-2,50". RangeError se não for inteiro (centavo nunca é float).
+ */
+export function formatarValorCentavos(c: number): string {
   const abs = BigInt(Math.abs(c));
-  return `${neg ? '-' : ''}R$ ${milhar(abs / 100n)},${String(abs % 100n).padStart(2, '0')}`;
+  return `${c < 0 ? '-' : ''}${milhar(abs / 100n)},${String(abs % 100n).padStart(2, '0')}`;
 }
+
+/** Prefixo do real: "R$" e um espaço não separável (U+00A0), para o R$ não quebrar de linha (R-20261122-035009). */
+export const PREFIXO_REAL = 'R$\u00a0';
+
+/**
+ * 123456 → "R$ 1.234,56"; -250 → "-R$ 2,50" (o sinal antes do "R$", que é o `PREFIXO_REAL`). Monta sobre
+ * `formatarValorCentavos` (mesma conta e RangeError).
+ */
+export function formatarCentavos(c: number): string {
+  const valor = formatarValorCentavos(c);
+  return c < 0 ? `-${PREFIXO_REAL}${valor.slice(1)}` : `${PREFIXO_REAL}${valor}`;
+}
+
+/**
+ * Decimal em texto, como vem no XML da NF-e (`vProd`, `vNF`, `vUnCom`: ponto decimal, sem milhar), em reais com `casas`
+ * casas para o DANFE (RD-0735): ("1234.5", 2) → "R$ 1.234,50"; ("-2.5", 2) → "-R$ 2,50". Conta em texto e BigInt, sem
+ * float. Não arredonda: dígito diferente de zero além de `casas` é RangeError (quem escolhe as casas é o DANFE); zero à
+ * direita é aceito. RangeError também para texto fora de `-?\d+(\.\d+)?` e `casas` que não seja inteiro de 0 a 10.
+ */
+export function formatarReaisDecimal(decimalTexto: string, casas: number): string {
+  if (!Number.isInteger(casas) || casas < 0 || casas > 10) throw new RangeError(`casas inválidas: ${casas}`);
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(decimalTexto);
+  if (!m) throw new RangeError('decimal fora do formato do XML da NF-e');
+  const fracao = m[3] ?? '';
+  if (/[1-9]/.test(fracao.slice(casas))) throw new RangeError(`decimal com mais de ${casas} casas`);
+  const inteiro = BigInt(m[2] as string);
+  const casasTexto = fracao.slice(0, casas).padEnd(casas, '0');
+  const negativo = m[1] === '-' && (inteiro !== 0n || /[1-9]/.test(casasTexto));
+  return `${negativo ? '-' : ''}${PREFIXO_REAL}${milhar(inteiro)}${casas > 0 ? `,${casasTexto}` : ''}`;
+}
+
+/** Parte inteira pt-BR: com o ponto de milhar só em grupos de 3 dígitos ("1.500") ou sem ponto ("1500"). */
+const INTEIRO_MILHAR = String.raw`\d{1,3}(?:\.\d{3})+|\d+`;
+
+/** Parte inteira casada por `INTEIRO_MILHAR`, sem o ponto de milhar, em número. */
+const inteiroSemMilhar = (t: string) => Number(t.replaceAll('.', ''));
+
+const RE_CENTAVOS = new RegExp(String.raw`^(${INTEIRO_MILHAR})(?:,(\d{1,2}))?$`);
+const RE_QUANTIDADE = new RegExp(String.raw`^(-?)(${INTEIRO_MILHAR})(?:,(\d{1,4}))?$`);
 
 /** "1.234,56" → 123456. Duas casas no máximo; `null` se não for número. */
 export function interpretarCentavos(texto: string): number | null {
-  const m = /^(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{1,2}))?$/.exec(texto.trim());
+  const m = RE_CENTAVOS.exec(texto.trim());
   if (!m) return null;
-  return Number((m[1] as string).replaceAll('.', '')) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
+  return inteiroSemMilhar(m[1] as string) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
 }
 
 /** Quantidade × 10^4 → decimal sem zeros à direita: 125000 → "12,5". */
@@ -37,11 +78,14 @@ export function formatarQuantidade(q: number): string {
   return `${neg ? '-' : ''}${milhar(abs / 10_000n)}${frac ? `,${frac}` : ''}`;
 }
 
-/** "12,5" → 125000 (até 4 casas); `null` se não for número. */
+/**
+ * "12,5" → 125000 (até 4 casas); "1.500,25" → 15002500: o ponto é o milhar pt-BR, só em grupos de 3 dígitos
+ * (R-20261122-055654; "1.5" e "1.50" são recusados). `null` se não for número.
+ */
 export function interpretarQuantidade(texto: string): number | null {
-  const m = /^(-?)(\d+)(?:,(\d{1,4}))?$/.exec(texto.trim());
+  const m = RE_QUANTIDADE.exec(texto.trim());
   if (!m) return null;
-  const v = Number(m[2]) * 10_000 + Number((m[3] ?? '').padEnd(4, '0'));
+  const v = inteiroSemMilhar(m[2] as string) * 10_000 + Number((m[3] ?? '').padEnd(4, '0'));
   return m[1] ? -v : v;
 }
 

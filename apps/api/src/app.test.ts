@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream';
-import { definirPlugin, definirRota, erros, EuResposta, type Licenca } from '@macuxierp/platform-sdk';
+import { definirPlugin, definirRota, erros, EuResposta, type FonteLicencas, type Licenca } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -45,9 +45,11 @@ const pluginTeste = definirPlugin(manifestoCadastros, [
       return { status: 201, corpo: { tenant: tenantDaTx(c.tx), versoes: [v1.versao, v2.versao, v3.versao] } };
     },
   }),
+  // T-0042: devolve o fuso do tenant que a API pôs no contexto
+  definirRota({ metodo: 'GET', caminho: '/fuso', acao: 'cadastros.ver', executar: async (c) => ({ corpo: { fuso: c.fuso ?? null } }) }),
 ]);
 
-async function montar(opcoes: { licencas?: Licenca[]; logs?: string[]; avisosA1?: LeitorAvisosA1 } = {}) {
+async function montar(opcoes: { licencas?: Licenca[]; fonteLicencas?: FonteLicencas; logs?: string[]; avisosA1?: LeitorAvisosA1 } = {}) {
   hash ??= await gerarHashSenha(SENHA_DE_TESTE, ARGON2_RAPIDO);
   const banco = new BancoMemoria();
   const repo = new RepositorioAuthMemoria();
@@ -78,7 +80,7 @@ async function montar(opcoes: { licencas?: Licenca[]; logs?: string[]; avisosA1?
     cookieSeguro: true,
     banco,
     repoAuth: repo,
-    licencas: { ler: async (tx) => (lidasEm.push(tenantDaTx(tx)), licencas) },
+    licencas: opcoes.fonteLicencas ?? { ler: async (tx) => (lidasEm.push(tenantDaTx(tx)), licencas) },
     outbox,
     auditoria,
     trabalhos,
@@ -301,6 +303,37 @@ describe('rotas de módulo: ordem de checagem (RN-CORE-02)', () => {
   it('rota desconhecida é 404 NAO_ENCONTRADO', async () => {
     const { app } = await montar();
     expect((await app.inject('/v1/nada')).json()).toMatchObject({ codigo: 'NAO_ENCONTRADO' });
+  });
+});
+
+describe('ContextoRota.fuso (T-0042, regra 4)', () => {
+  const fuso = async (app: App) => {
+    const token = (await entrar(app)).json<{ token_acesso: string }>().token_acesso;
+    const r = await app.inject({ url: '/v1/cadastros/fuso', headers: { authorization: `Bearer ${token}` } });
+    expect(r.statusCode).toBe(200);
+    return r.json<{ fuso: string | null }>().fuso;
+  };
+
+  it('a rota recebe o fuso do tenant da sessão (fonte de licenças sem fuso: lê o tenant)', async () => {
+    const { app, repo } = await montar();
+    expect(await fuso(app)).toBe('America/Manaus');
+    repo.tenants[0]!.fuso = 'America/Sao_Paulo';
+    expect(await fuso(app)).toBe('America/Sao_Paulo');
+  });
+
+  it('fonte com lerComFuso: o fuso vem da mesma leitura das licenças, sem ler o tenant', async () => {
+    const lidas: string[] = [];
+    const fonteLicencas = {
+      ler: async () => Promise.reject(new Error('a API usa o lerComFuso')),
+      lerComFuso: async (_tx: unknown, t: string) => (lidas.push(t), { licencas: [{ modulo: 'cadastros' as const, ativo: true, valido_ate: null }], fuso: 'America/Rio_Branco' }),
+    };
+    const { app, repo } = await montar({ fonteLicencas });
+    const tenantPorId = repo.tenantPorId.bind(repo);
+    let leuTenant = 0;
+    repo.tenantPorId = async (tx, id) => (leuTenant++, tenantPorId(tx, id));
+    expect(await fuso(app)).toBe('America/Rio_Branco');
+    expect(lidas).toEqual([TENANT]);
+    expect(leuTenant).toBe(0);
   });
 });
 

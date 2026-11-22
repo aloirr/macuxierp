@@ -199,3 +199,15 @@ export async function baixarCsv(caminho: string, acesso: string): Promise<{ corp
   return { corpo: await r.arrayBuffer(), tipo: r.headers.get('content-type') ?? 'text/csv; charset=utf-8' };
 }
 const CAMINHO_CSV = /^\/v1\/[a-z][a-z0-9-]*\/[a-z0-9/_-]+$/;
+
+export type ArquivoBaixado = { ok: true; corpo: ArrayBuffer; tipo: string; nome: string } | { ok: false; status: number };
+
+/** GET de um arquivo (XML, DANFE) com o token: o corpo passa pela memória e volta ao navegador. 404 e demais falhas viram `{ ok: false }` (a tela mostra mensagem fixa). Modo falso: 404. */
+export async function baixarArquivo(caminho: string, acesso: string): Promise<ArquivoBaixado> {
+  if (usaApiFalsa) return { ok: false, status: 404 };
+  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  if (r.status === 401) throw new NaoAutenticado();
+  if (!r.ok) return { ok: false, status: r.status };
+  const nome = /filename="([A-Za-z0-9._-]{1,80})"/.exec(r.headers.get('content-disposition') ?? '')?.[1] ?? 'arquivo';
+  return { ok: true, corpo: await r.arrayBuffer(), tipo: r.headers.get('content-type') ?? 'application/octet-stream', nome };
+}

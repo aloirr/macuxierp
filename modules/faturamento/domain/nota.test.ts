@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { IcmsItem, ItemResultado } from '@macuxierp/fiscal/contracts';
 import { valorItem } from '@macuxierp/platform-sdk';
 import { calc, itemPedido, pedidoAprovado } from './fixtures';
-import { cfopDoItem, resumoDoItem, montarNota, ratearProporcional, valoresFiscais, type SituacaoPedido } from './nota';
+import { cfopDoItem, pedidoAceitaNota, quantidadeFaturadaDoItem, resumoDoItem, montarNota, ratearProporcional, valoresFiscais, type SituacaoPedido } from './nota';
 
 const item = itemPedido;
 const pedido = pedidoAprovado([item(1, 30_000, 1000, 300), item(2, 10_000, 2500)]);
@@ -70,6 +70,31 @@ describe('montar nota a partir do pedido aprovado', () => {
     expect(rep.ok).toBe(false);
     const zerado = montarNota({ ...base, situacao: situacao('aprovado', 30_000, 10_000) });
     expect(!zerado.ok && zerado.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens' });
+  });
+  it('RN-FAT-01/RF-FAT-01: a 2ª nota acima do saldo é recusada pelas notas do próprio faturamento, mesmo com o pedido sem consumir a 1ª', () => {
+    const ja = new Map([[1, 30_000], [2, 4_000]]);
+    // o pedido ainda diz 0 faturado; a soma das notas manda
+    const total = montarNota({ ...base, situacao: situacao('aprovado', 0, 0), ja_faturadas: ja });
+    if (!total.ok) throw new Error('esperava ok');
+    expect(total.nota.itens.map((i) => [i.sequencia, i.quantidade])).toEqual([[2, 6_000]]);
+    const acima = montarNota({ ...base, situacao: situacao('aprovado', 0, 0), ja_faturadas: ja, itens: [{ sequencia: 1, quantidade: 1 }], calculo: [calc(1)] });
+    expect(!acima.ok && acima.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens.1.quantidade' });
+    // vale o maior: o pedido já consumiu mais que as notas
+    const maior = montarNota({ ...base, situacao: situacao('faturado_parcial', 30_000, 0), ja_faturadas: new Map([[1, 10_000]]), itens: [{ sequencia: 1, quantidade: 1 }], calculo: [calc(1)] });
+    expect(maior.ok).toBe(false);
+  });
+  it('RN-FAT-01: quantidadeFaturadaDoItem vale o maior entre a situação do pedido e as notas do faturamento (mesma conta da emissão e do detalhe)', () => {
+    const ja = new Map([[1, 10_000]]);
+    expect(quantidadeFaturadaDoItem(1, situacao('aprovado', 0, 0), ja)).toBe(10_000);
+    expect(quantidadeFaturadaDoItem(1, situacao('faturado_parcial', 30_000, 0), ja)).toBe(30_000);
+    expect(quantidadeFaturadaDoItem(2, situacao('aprovado', 0, 4_000), ja)).toBe(4_000);
+    expect(quantidadeFaturadaDoItem(2, null, ja)).toBe(0);
+    expect(quantidadeFaturadaDoItem(1, null, ja)).toBe(10_000);
+  });
+  it('RN-PED-02: pedidoAceitaNota só aceita aprovado e faturado_parcial (cancelado, nulo e demais não)', () => {
+    expect(pedidoAceitaNota('aprovado')).toBe(true);
+    expect(pedidoAceitaNota('faturado_parcial')).toBe(true);
+    for (const s of ['cancelado', 'recebido', 'em_analise', 'recusado', 'faturado', null, undefined, 'qualquer']) expect(pedidoAceitaNota(s as never)).toBe(false);
   });
   it('RN-PED-02: só pedido aprovado ou faturado_parcial é faturado', () => {
     for (const s of ['cancelado', 'recebido', 'em_analise', 'recusado', 'faturado'] as const) {

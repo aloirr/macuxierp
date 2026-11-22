@@ -3,11 +3,12 @@
  * Sem dado pessoal, exceto o retrato do cliente no `aprovado@1` (P9, o faturamento usa na nota). O texto livre do
  * motivo só vai quando o código é `outro`.
  */
+import { createHash } from 'node:crypto';
 import {
   EVENTOS, PedidoAprovado, type MotivoCancelamento, type MotivoRecusa, type NomeEventoPedido, type PedidoEventoBase, type PedidoFaturadoV1, type StatusPedido,
 } from '../contracts';
 import type { CondicaoPagamento } from '@macuxierp/cadastros/contracts';
-import type { PedidoGravado } from './portas';
+import type { PedidoGravado, RepoPedidos } from './portas';
 import type { NotaAutorizadaLida } from './leitores';
 
 /** Condição lida na aprovação; só os campos que o evento leva. */
@@ -95,4 +96,26 @@ export function faturadoDaNota(nota: NotaAutorizadaLida, p: PedidoGravado, statu
     },
     itens_faturados: nota.itens.map((i) => ({ sequencia: i.sequencia, produto_id: produtoDa(i.sequencia), quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
   };
+}
+
+/** UUID determinístico (forma v5) a partir de uma chave: a mesma nota gera sempre o mesmo id. */
+function uuidDeterministico(chave: string): string {
+  const h = createHash('sha1').update(chave).digest();
+  h[6] = ((h[6] as number) & 0x0f) | 0x50;
+  h[8] = ((h[8] as number) & 0x3f) | 0x80;
+  const x = h.subarray(0, 16).toString('hex');
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+
+/** `evento_id` do `faturado@1` (e da linha de histórico) de uma nota autorizada. */
+export const idFaturadoDaNota = (notaId: string): string => uuidDeterministico(`pedido.pedido.faturado@1:${notaId}`);
+
+/** `evento_id` da linha de histórico do recuo por uma nota cancelada (não há evento publicado; serve só à idempotência). */
+export const idRecuoDaNota = (notaId: string): string => uuidDeterministico(`pedido.pedido.recuo-nota-cancelada:${notaId}`);
+
+/** Ids das notas já aplicadas ao pedido (têm o `pedido_evento` de id derivado), numa consulta só. */
+export async function notasAplicadas(repo: Pick<RepoPedidos, 'eventosRegistrados'>, pedidoId: string, notaIds: string[]): Promise<Set<string>> {
+  const porEvento = new Map(notaIds.map((n) => [idFaturadoDaNota(n), n]));
+  const achados = await repo.eventosRegistrados(pedidoId, [...porEvento.keys()]);
+  return new Set([...achados].map((e) => porEvento.get(e) as string));
 }

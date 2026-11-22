@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import type { CamposErro } from './erros';
+import { formatarDataHora } from './formatar';
 import type { Perfil } from './modulo';
 import { pode, type Acao } from './permissoes';
 import type { RespostaRota } from './rotas';
@@ -148,6 +149,14 @@ export interface DefinicaoPaginaLista<I extends z.ZodTypeAny, F extends FiltrosL
   colunas: readonly ColunaLista<z.infer<I>>[];
   /** Exportação CSV: a rota de CSV do módulo usa `csvDaLista` com este nome de arquivo; `false` = a página não exporta. */
   csv: { arquivo: string } | false;
+  /** Texto do estado vazio (MC-0016): sem filtro (nada cadastrado) e com filtro (nada com estes filtros). Opcional. */
+  vazio?: TextoVazioLista;
+}
+
+/** Texto do estado vazio da lista, sem e com filtro (R-20261122-040324, MC-0016). */
+export interface TextoVazioLista {
+  semFiltro: string;
+  comFiltro: string;
 }
 
 /** Consulta validada da lista (saída do Zod): paginação, busca/inativos quando declarados e os filtros do módulo. */
@@ -163,6 +172,8 @@ export interface PaginaLista<I extends z.ZodTypeAny = z.ZodTypeAny, F extends Fi
   readonly filtros: F;
   readonly colunas: readonly ColunaLista<z.infer<I>>[];
   readonly csv: { readonly arquivo: string } | false;
+  /** Texto do estado vazio, quando a definição declarou; ausente, a tela usa o texto padrão dela. */
+  readonly vazio?: Readonly<TextoVazioLista>;
   /** Chaves aceitas na URL da tela e na consulta da API, em ordem alfabética (filtros, busca, inativos e paginação). */
   readonly chaves: readonly string[];
   /** Zod da consulta da rota GET da lista (`definirRota({ consulta: pagina.consulta })`): inválido = 400 VALIDACAO. */
@@ -204,6 +215,8 @@ export function definirPaginaLista<I extends z.ZodTypeAny, F extends FiltrosList
     ids.add(c.id);
   }
   if (d.csv && !ARQUIVO_CSV.test(d.csv.arquivo)) falha('csv.arquivo deve ser <nome>.csv em minúsculas');
+  const textoOk = (t: unknown) => typeof t === 'string' && t.trim() !== '';
+  if (d.vazio !== undefined && !(textoOk(d.vazio.semFiltro) && textoOk(d.vazio.comFiltro))) falha('vazio.semFiltro e vazio.comFiltro devem ser texto não vazio');
 
   const busca = d.busca ?? false;
   const inativos = d.inativos ?? false;
@@ -223,6 +236,7 @@ export function definirPaginaLista<I extends z.ZodTypeAny, F extends FiltrosList
     filtros: Object.freeze({ ...filtros }),
     colunas: Object.freeze([...d.colunas]),
     csv: d.csv ? Object.freeze({ arquivo: d.csv.arquivo }) : false,
+    ...(d.vazio ? { vazio: Object.freeze({ semFiltro: d.vazio.semFiltro, comFiltro: d.vazio.comFiltro }) } : {}),
     chaves: Object.freeze(chaves),
     consulta,
     resposta: paginaDe(d.item),
@@ -291,10 +305,29 @@ export function colunasDoPerfil<L>(pagina: { colunas: readonly ColunaLista<L>[] 
   return pagina.colunas.filter((c) => !c.exige || pode(perfil, c.exige));
 }
 
-/** CSV da lista para a rota da API: colunas do perfil, `paraCsv` e `respostaCsv` com o nome do descritor. */
-export function csvDaLista<L>(pagina: { id: string; colunas: readonly ColunaLista<L>[]; csv: { readonly arquivo: string } | false }, perfil: Perfil, linhas: readonly L[]): RespostaRota {
+/** Instante ISO 8601 completo, com `Z` ou deslocamento (como sai do banco e do `toISOString`); data civil não entra. */
+const INSTANTE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * CSV da lista para a rota da API: colunas do perfil, `paraCsv` e `respostaCsv` com o nome do descritor.
+ * `fuso` (IANA, `fusoDaRota(c)`; T-0042, regra 4): a célula que é um instante ISO completo (coluna de data e hora com
+ * o valor cru da API) sai como `formatarDataHora(iso, fuso)` ("21/11/2026 22:00"); data civil, texto e valor já
+ * formatado ficam como estão. Sem `fuso`, o CSV é o de antes (o ISO como veio).
+ */
+export function csvDaLista<L>(
+  pagina: { id: string; colunas: readonly ColunaLista<L>[]; csv: { readonly arquivo: string } | false },
+  perfil: Perfil,
+  linhas: readonly L[],
+  fuso?: string,
+): RespostaRota {
   if (!pagina.csv) throw new PaginaListaInvalida(`página de lista "${pagina.id}": sem CSV declarado`);
-  return respostaCsv(pagina.csv.arquivo, paraCsv(colunasDoPerfil(pagina, perfil), linhas));
+  const colunas = colunasDoPerfil(pagina, perfil);
+  const noFuso = fuso === undefined ? colunas : colunas.map((c) => ({ ...c, valor: (l: L) => instanteNoFuso(c.valor(l), fuso) }));
+  return respostaCsv(pagina.csv.arquivo, paraCsv(noFuso, linhas));
+}
+
+function instanteNoFuso(v: ValorCsv, fuso: string): ValorCsv {
+  return typeof v === 'string' && INSTANTE_ISO.test(v) ? formatarDataHora(v, fuso) : v;
 }
 
 // ---- Leitura de CSV (D11 da T-0026): só o genérico; layout, mapeamento e RN ficam no domain do módulo ----

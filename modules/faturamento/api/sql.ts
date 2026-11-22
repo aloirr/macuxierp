@@ -8,18 +8,18 @@
  * `{ pagamentos, cobranca }` (ver "Pendências" do README); `transporte.revisao` conta as gravações do conteúdo (1 na emissão, +1 no reenvio)
  * e é a `versao` do XML assinado que o cobre. O XML assinado vai em `nota_xml` (tipo `nfe_assinada`, só INSERT, `UNIQUE (nota_id, versao)`).
  */
-import { criarEvento, erros, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
+import { criarEvento, erros, FUSO_PADRAO, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
-import type { FiltroNotas, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
-import { calcularTotais, interpretarRetorno, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
+import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
+import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
 import type {
-  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas,
+  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento,
 } from './portas';
+import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { repositorioTitulosSql } from './sql-titulos';
 
 type Dict = Record<string, unknown>;
 
-/** PENDÊNCIA (README): fuso fixo porque a v1 só tem tenant no AM; passa a vir do tenant (RN-CORE). */
-const FUSO_TENANT = 'America/Manaus';
 const ISO = (c: string): string => `to_char(${c} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
 const json = (v: unknown): string | null => (v === null || v === undefined ? null : JSON.stringify(v));
 
@@ -40,12 +40,16 @@ const COLUNAS_NOTA = `n.id, n.tenant_id, n.pedido_id, p.payload->>'pedido_uuid' 
   COALESCE((n.transporte->>'revisao')::int, 1) AS revisao`;
 const DE_NOTA = `faturamento.nota n LEFT JOIN faturamento.pedido_a_faturar p ON p.tenant_id = n.tenant_id AND p.pedido_id = n.pedido_id AND p.deleted_at IS NULL`;
 
+/** Filial (fantasia, ou o nome do emitente retratado na nota) e número do pedido (retrato da fila): lista e detalhe da nota. Exige `DE_NOTA`. */
+const COLUNAS_FILIAL_PEDIDO = `COALESCE(NULLIF(n.emitente_retrato->>'fantasia', ''), NULLIF(n.emitente_retrato->>'nome', '')) AS filial_nome,
+  (p.payload->>'numero')::int AS pedido_numero`;
+
 const COLUNAS_RESUMO = `n.id, n.filial_id, n.cliente_id, n.pedido_id, n.ambiente, n.serie::int AS serie, n.numero, n.chave_acesso, n.status,
   ${ISO('n.emitida_em')} AS emitida_em, n.total_nota_centavos::float8 AS total_centavos, n.protocolo, n.c_stat::int AS c_stat, n.x_motivo`;
 
 async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro['itens']> {
   return tx.consultar<NotaRegistro['itens'][number]>(
-    `SELECT n_item::int AS sequencia, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
+    `SELECT n_item::int AS sequencia, produto_id, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
        FROM faturamento.nota_item WHERE nota_id = $1 AND deleted_at IS NULL ORDER BY n_item`,
     [notaId],
   );
@@ -53,7 +57,7 @@ async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro[
 
 async function montarRegistro(tx: Transacao, l: Dict): Promise<NotaRegistro> {
   const r = l as unknown as Omit<NotaRegistro, 'vai_ao_fdv' | 'itens'>;
-  return { ...r, vai_ao_fdv: r.ambiente === 'producao', itens: await itensDaNota(tx, r.id) };
+  return { ...r, vai_ao_fdv: nfeVaiAoFdv(r.ambiente), itens: await itensDaNota(tx, r.id) };
 }
 
 /** Linhas de `nota_item` a partir do conteúdo (a mesma carga serve ao INSERT e ao reenvio, por `ON CONFLICT`). */
@@ -85,7 +89,7 @@ function paramsTotais(itens: readonly NotaItemMontado[]): number[] {
 }
 
 const transporteDe = (c: ConteudoNota, revisao = 1): Dict => ({ mod_frete: c.modFrete, inf_cpl: c.infCpl, itens_solicitados: c.itensSolicitados, revisao });
-const pagamentoDe = (c: ConteudoNota): Dict => ({ pagamentos: c.pagamentos, cobranca: c.cobranca });
+const pagamentoDe = (c: ConteudoNota): Dict => ({ pagamentos: c.pagamentos, cobranca: c.cobranca, prazos_dias: c.prazos_dias ?? null, conta_como_real: c.conta_como_real === true });
 
 async function gravarItens(tx: Transacao, notaId: string, itens: readonly NotaItemMontado[]): Promise<void> {
   await tx.consultar(
@@ -105,6 +109,19 @@ async function gravarItens(tx: Transacao, notaId: string, itens: readonly NotaIt
   );
 }
 
+/** Soma, por sequência do item, a quantidade (qtd4) das notas do pedido em qualquer status menos cancelada, inutilizada e denegada (RN-FAT-01). */
+async function quantidadesFaturadasSql(tx: Transacao, pedido_id: string, exceto_nota_id?: string): Promise<Map<number, number>> {
+  const r = await tx.consultar<{ sequencia: number; quantidade: number }>(
+    `SELECT i.pedido_item_sequencia::int AS sequencia, sum(i.quantidade)::float8 AS quantidade
+       FROM faturamento.nota_item i JOIN faturamento.nota n ON n.tenant_id = i.tenant_id AND n.id = i.nota_id
+      WHERE n.pedido_id = $1 AND n.deleted_at IS NULL AND i.deleted_at IS NULL AND i.pedido_item_sequencia IS NOT NULL
+        AND n.status NOT IN ('cancelada', 'inutilizada', 'denegada') AND ($2::uuid IS NULL OR n.id <> $2::uuid)
+      GROUP BY i.pedido_item_sequencia`,
+    [pedido_id, exceto_nota_id ?? null],
+  );
+  return new Map(r.map((l) => [l.sequencia, l.quantidade]));
+}
+
 export interface DependenciasSql {
   outbox: Outbox;
   agora?: () => Date;
@@ -116,6 +133,12 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     async travarIdempotencia(tx, tenant_id, idempotencia) {
       await tx.consultar('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`faturamento.nota:${tenant_id}:${idempotencia}`]);
     },
+
+    async travarPedido(tx, pedido_id) {
+      await tx.consultar('SELECT id FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL FOR UPDATE', [pedido_id]);
+    },
+
+    quantidadesJaFaturadas: quantidadesFaturadasSql,
 
     async buscarPorIdempotencia(tx, _tenant_id, idempotencia) {
       const [l] = await tx.consultar(`SELECT ${COLUNAS_NOTA} FROM ${DE_NOTA} WHERE n.idempotencia_chave = $1 AND n.deleted_at IS NULL`, [idempotencia]);
@@ -169,6 +192,8 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
         itensSolicitados: (n.transporte.itens_solicitados as ConteudoNota['itensSolicitados']) ?? null,
         pagamentos: (n.pagamento.pagamentos as ConteudoNota['pagamentos']) ?? [],
         cobranca: (n.pagamento.cobranca as ConteudoNota['cobranca']) ?? null,
+        prazos_dias: (n.pagamento.prazos_dias as number[] | null | undefined) ?? null,
+        conta_como_real: n.pagamento.conta_como_real === true,
         itens,
       };
     },
@@ -293,28 +318,33 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
       await deps.outbox.gravar(tx, envelope);
     },
 
-    async listar(tx, f: FiltroNotas): Promise<Pagina<NotaResumo>> {
+    async listar(tx, f: FiltroNotas, fuso = FUSO_PADRAO): Promise<Pagina<NotaResumo>> {
       const linhas = await tx.consultar<NotaResumo>(
-        `SELECT ${COLUNAS_RESUMO} FROM faturamento.nota n
+        `SELECT ${COLUNAS_RESUMO}, n.destinatario_retrato->>'razao_social' AS cliente_razao_social, ${COLUNAS_FILIAL_PEDIDO}
+           FROM ${DE_NOTA}
           WHERE n.deleted_at IS NULL
             AND ($1::uuid IS NULL OR n.filial_id = $1) AND ($2::uuid IS NULL OR n.cliente_id = $2) AND ($3::uuid IS NULL OR n.pedido_id = $3)
             AND ($4::text IS NULL OR n.status = $4) AND ($5::text IS NULL OR n.ambiente = $5) AND ($6::int IS NULL OR n.serie = $6)
             AND ($7::int IS NULL OR n.numero = $7)
-            AND ($8::date IS NULL OR n.emitida_em >= ($8::date)::timestamp AT TIME ZONE '${FUSO_TENANT}')
-            AND ($9::date IS NULL OR n.emitida_em < (($9::date + 1))::timestamp AT TIME ZONE '${FUSO_TENANT}')
+            AND ($8::date IS NULL OR n.emitida_em >= ($8::date)::timestamp AT TIME ZONE $12::text)
+            AND ($9::date IS NULL OR n.emitida_em < (($9::date + 1))::timestamp AT TIME ZONE $12::text)
             AND ($10::uuid IS NULL OR n.id > $10)
           ORDER BY n.id LIMIT $11`,
-        [f.filial_id ?? null, f.cliente_id ?? null, f.pedido_id ?? null, f.status ?? null, f.ambiente ?? null, f.serie ?? null, f.numero ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1],
+        [f.filial_id ?? null, f.cliente_id ?? null, f.pedido_id ?? null, f.status ?? null, f.ambiente ?? null, f.serie ?? null, f.numero ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1, fuso],
       );
       return paginar(linhas, f.limite);
     },
 
     async detalhar(tx, nota_id): Promise<NotaDetalhe | null> {
       const [l] = await tx.consultar<Omit<NotaDetalhe, 'itens'>>(
-        `SELECT ${COLUNAS_RESUMO}, n.natureza_operacao, n.tipo_emissao::int AS tipo_emissao, n.recibo FROM faturamento.nota n WHERE n.id = $1 AND n.deleted_at IS NULL`,
+        `SELECT ${COLUNAS_RESUMO}, n.natureza_operacao, n.tipo_emissao::int AS tipo_emissao, n.recibo, ${ISO('n.autorizada_em')} AS autorizada_em, ${COLUNAS_FILIAL_PEDIDO},
+                EXISTS (SELECT 1 FROM faturamento.nota_evento e WHERE e.nota_id = n.id AND e.tipo = 'cancelamento' AND e.status = 'pendente') AS cancelamento_pendente
+           FROM ${DE_NOTA} WHERE n.id = $1 AND n.deleted_at IS NULL`,
         [nota_id],
       );
-      return l ? { ...l, itens: await itensDaNota(tx, nota_id) } : null;
+      if (!l) return null;
+      const acao_sugerida = l.status === 'rejeitada' ? interpretarRetorno(String(l.c_stat ?? ''), l.x_motivo ?? '').acao : null;
+      return { ...l, itens: await itensDaNota(tx, nota_id), acao_sugerida };
     },
 
     async lerXmlAutorizado(tx, nota_id) {
@@ -327,7 +357,7 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
 
     async listarRejeicoes(tx, f: FiltroRejeicoes): Promise<Pagina<RejeicaoNota>> {
       const linhas = await tx.consultar<Omit<RejeicaoNota, 'acao_sugerida'>>(
-        `SELECT n.id, n.filial_id, n.pedido_id, n.serie::int AS serie, n.numero, n.c_stat::text AS codigo, n.x_motivo AS mensagem, ${ISO('n.updated_at')} AS rejeitada_em
+        `SELECT n.id, n.filial_id, n.pedido_id, n.ambiente, n.serie::int AS serie, n.numero, n.c_stat::text AS codigo, n.x_motivo AS mensagem, ${ISO('n.updated_at')} AS rejeitada_em
            FROM faturamento.nota n
           WHERE n.deleted_at IS NULL AND n.status = 'rejeitada' AND ($1::uuid IS NULL OR n.filial_id = $1) AND ($2::uuid IS NULL OR n.id > $2)
           ORDER BY n.id LIMIT $3`,
@@ -528,18 +558,77 @@ export function repositorioEventosSql(): RepositorioEventos {
   };
 }
 
+/** RN regra 4: centavos lidos como `bigint::text` e convertidos sem perda; acima de 2^53 falha em vez de arredondar em silêncio. */
+function centavosInteiros(texto: string): number {
+  const n = Number(texto);
+  if (!Number.isSafeInteger(n)) throw new Error('valor em centavos fora da faixa segura');
+  return n;
+}
+
+/** Resumo da fila (lista e detalhe); o detalhe soma `p.payload` só para os itens. */
+const COLUNAS_PEDIDO_RESUMO = `p.id, p.pedido_id, (p.payload->>'numero')::int AS numero, p.filial_id, p.cliente_id,
+  p.payload->'pedido'->'cliente_retrato'->>'razao_social' AS cliente_razao_social, p.status,
+  faturamento.ambiente_da_filial(p.tenant_id, p.filial_id) AS ambiente,
+  (p.payload->>'total_centavos')::numeric::bigint::text AS total_centavos, ${ISO('p.recebido_em')} AS recebido_em`;
+type LinhaPedidoResumo = Omit<PedidoAFaturarResumo, 'total_centavos'> & { total_centavos: string };
+
 export const pedidosAprovadosSql: PedidosAprovados = {
   async obter(tx, pedido_id) {
     const [l] = await tx.consultar<{ payload: unknown }>('SELECT payload FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
     return l ? PedidoAprovadoV1.parse(l.payload) : null;
   },
-  async gravar(tx, pedido) {
-    const r = await tx.consultar(
-      `INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload)
-       VALUES (plataforma.tenant_atual(), $1, $2, $3, $4::jsonb) ON CONFLICT (tenant_id, pedido_id) DO NOTHING RETURNING id`,
-      [pedido.pedido_id, pedido.filial_id, pedido.cliente_id, JSON.stringify(pedido)],
+  // Idempotente: repetir não muda nada; só um status DIFERENTE (situação atual do pedido, RF-FAT-01) atualiza a linha existente.
+  async gravar(tx, pedido, status = 'a_faturar') {
+    const r = await tx.consultar<{ inserido: boolean }>(
+      `INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload, status)
+       VALUES (plataforma.tenant_atual(), $1, $2, $3, $4::jsonb, $5)
+       ON CONFLICT (tenant_id, pedido_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now()
+         WHERE faturamento.pedido_a_faturar.status IS DISTINCT FROM EXCLUDED.status AND faturamento.pedido_a_faturar.deleted_at IS NULL
+       RETURNING (xmax = 0) AS inserido`,
+      [pedido.pedido_id, pedido.filial_id, pedido.cliente_id, JSON.stringify(pedido), status],
     );
-    return r.length > 0 ? 'novo' : 'repetido';
+    return r[0]?.inserido ? 'novo' : 'repetido';
+  },
+  async marcarCancelado(tx, pedido_id) {
+    await tx.consultar(`UPDATE faturamento.pedido_a_faturar SET status = 'cancelado', updated_at = now() WHERE pedido_id = $1 AND status <> 'cancelado' AND deleted_at IS NULL`, [pedido_id]);
+  },
+  async listar(tx, f: FiltroPedidosAFaturar, fuso = FUSO_PADRAO): Promise<Pagina<PedidoAFaturarResumo>> {
+    const linhas = await tx.consultar<LinhaPedidoResumo>(
+      `SELECT ${COLUNAS_PEDIDO_RESUMO}
+         FROM faturamento.pedido_a_faturar p
+        WHERE p.deleted_at IS NULL
+          AND (($3::text IS NULL AND p.status IN ('a_faturar', 'faturado_parcial')) OR p.status = $3)
+          AND ($1::uuid IS NULL OR p.filial_id = $1) AND ($2::uuid IS NULL OR p.cliente_id = $2)
+          AND ($4::date IS NULL OR p.recebido_em >= ($4::date)::timestamp AT TIME ZONE $8::text)
+          AND ($5::date IS NULL OR p.recebido_em < (($5::date + 1))::timestamp AT TIME ZONE $8::text)
+          AND ($6::uuid IS NULL OR p.id > $6)
+        ORDER BY p.id LIMIT $7`,
+      [f.filial_id ?? null, f.cliente_id ?? null, f.status ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1, fuso],
+    );
+    return paginar(linhas.map((l) => ({ ...l, total_centavos: centavosInteiros(l.total_centavos) })), f.limite);
+  },
+  async detalhar(tx, id, situacaoDe): Promise<PedidoAFaturarDetalhe | null> {
+    const [l] = await tx.consultar<LinhaPedidoResumo & { payload: unknown }>(
+      `SELECT ${COLUNAS_PEDIDO_RESUMO}, p.payload FROM faturamento.pedido_a_faturar p WHERE p.id = $1 AND p.deleted_at IS NULL`,
+      [id],
+    );
+    if (!l) return null;
+    const { payload, ...resumo } = l;
+    const pedido = PedidoAprovadoV1.parse(payload);
+    // Mesma conta da emissão (RN-FAT-01): vale o maior entre as notas do faturamento e a situação do pedido.
+    const jaFaturadas = await quantidadesFaturadasSql(tx, pedido.pedido_id);
+    const situacao = await situacaoDe(pedido.pedido_id);
+    return {
+      ...resumo,
+      total_centavos: centavosInteiros(resumo.total_centavos),
+      itens: pedido.pedido.itens.map((i) => {
+        const faturada = Math.round(quantidadeFaturadaDoItem(i.sequencia, situacao, jaFaturadas));
+        return {
+          sequencia: i.sequencia, produto_id: i.produto_id, descricao: i.produto_retrato.descricao || null, quantidade_pedida: i.quantidade,
+          quantidade_faturada: faturada, saldo: Math.max(0, i.quantidade - faturada), valor_unitario_centavos: i.preco_unitario_centavos,
+        };
+      }),
+    };
   },
 };
 
@@ -550,15 +639,23 @@ export const ambienteFiscalSql: AmbienteFiscalDaFilial = {
   },
 };
 
-/** Porta inversa do pedido (P-2): nota em autorização ou em contingência bloqueia o cancelamento; `FOR SHARE` na linha da nota. */
+/**
+ * Implementa NotaEmAberto (ver portas.ts).
+ * SEM `FOR SHARE` na nota (deadlock com o reenvio, que trava a nota e depois pede `FOR SHARE` no pedido): o `FOR UPDATE` do pedido no
+ * cancelamento já basta, porque todo caminho que cria ou reabre nota pede o `FOR SHARE` do pedido antes e espera o cancelamento.
+ */
 export const notaEmAbertoSql: NotaEmAberto = {
   async temNotaEmAutorizacao(tx, pedido_id) {
-    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1 FOR SHARE`, [pedido_id]);
+    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('rascunho', 'em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1`, [pedido_id]);
     return r.length > 0;
+  },
+  async notasAutorizadas(tx, pedido_id) {
+    const r = await tx.consultar<{ id: string }>(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('autorizada', 'autorizada_guarda_pendente') AND deleted_at IS NULL ORDER BY id`, [pedido_id]);
+    return r.map((l) => l.id);
   },
 };
 
 /** Repositórios de produção, ligados pelo apps/api e pelo apps/worker (a `Outbox` vem do SDK: `new OutboxPg()`). */
-export function repositoriosSql(deps: DependenciasSql): { notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
-  return { notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
+export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
+  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
 }

@@ -4,11 +4,13 @@
  * Integração com o FDV montada como no `main.ts` (T-0016): `montarAgendas` e `montarConsumidores` com os adaptadores PG,
  * o laço real (`rodarAgendas`, `despacharOutbox`) e um DUBLÊ do `ClienteHub` (nunca a rede); recebedor e resolvedor
  * dublês (o recebimento de verdade é testado no `pedidos-fdv.db.test.ts` e no `integracao-fdv`). Só tenants de teste.
- * Espelha o apoio-conector-teste do integracao-fdv até ele exportar um subcaminho de teste (RD-0512).
+ * O dublê do Hub, a resposta `ok`, a credencial e a chave mestra vêm do apoio de teste do módulo
+ * (`@macuxierp/integracao-fdv/api/testes`, RD-0512; R-20261122-042502).
  */
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID } from '@macuxierp/integracao-fdv/api';
-import { armazenamentoIndisponivel, cifrarCampo, criarEvento, type ClienteHub, type ConsumidorEvento, type CredencialHub, type PedidoHub, type RespostaHub } from '@macuxierp/platform-sdk';
+import { CHAVE_MESTRA, criarCredencial, hubDuble, ok } from '@macuxierp/integracao-fdv/api/testes';
+import { armazenamentoIndisponivel, criarEvento, type ClienteHub, type ConsumidorEvento } from '@macuxierp/platform-sdk';
 import { CatalogoArquivosPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { RelogioFixo } from '@macuxierp/platform-sdk/testes';
@@ -78,14 +80,14 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
       },
     };
     relogio.avancar(1_000);
-    expect(await despachar([consumidor])).toEqual({ publicados: 3, falhas: 0, adiados: 0 });
+    expect(await despachar([consumidor])).toEqual({ publicados: 3, falhas: 0, adiados: 0, desistidos: 0 });
     expect(vistos).toEqual([`${e1.id}:true`, `${e2.id}:true`, `${e3.id}:true`]);
     const { rows } = await b.admin.query('SELECT count(*)::int AS n FROM plataforma.evento WHERE publicado_em IS NULL');
     expect(rows).toEqual([{ n: 0 }]);
     const consumidos = await b.admin.query<{ tenant_id: string; evento_id: string }>('SELECT tenant_id, evento_id FROM plataforma.evento_consumido ORDER BY created_at');
     expect(consumidos.rows.map((c) => `${c.evento_id}:${c.tenant_id}`).sort()).toEqual([e1, e2, e3].map((e) => `${e.id}:${e.tenant_id}`).sort());
     // nada mais a fazer
-    expect(await despachar([consumidor])).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despachar([consumidor])).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
   });
 
   it('falha aplica backoff e segura o agregado; na volta, quem já consumiu não reaplica', async () => {
@@ -106,18 +108,18 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
       },
     ];
     relogio.avancar(1_000);
-    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 1, adiados: 1 });
+    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 1, adiados: 1, desistidos: 0 });
     const { rows } = await b.admin.query<{ tentativas: number; erro: string; espera: boolean }>(
       'SELECT tentativas, erro, proximo_em > $2 AS espera FROM plataforma.evento WHERE id = $1',
       [e1.id, relogio.agora()],
     );
     expect(rows).toEqual([{ tentativas: 1, erro: 'Error: Hub fora', espera: true }]);
     // antes do backoff vencer, nada do agregado sai (nem a versão 2, que está atrás)
-    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
 
     falhar = false;
     relogio.avancar(10_000);
-    expect(await despachar(consumidores)).toEqual({ publicados: 2, falhas: 0, adiados: 0 });
+    expect(await despachar(consumidores)).toEqual({ publicados: 2, falhas: 0, adiados: 0, desistidos: 0 });
     expect(aplicados).toEqual(['ok:1', 'instavel:1', 'ok:2', 'instavel:2']);
   });
 
@@ -138,9 +140,9 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
     };
     const primeiro = despachar([lento]);
     await dentro;
-    expect(await despachar([lento])).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despachar([lento])).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
     liberar();
-    expect(await primeiro).toEqual({ publicados: 1, falhas: 0, adiados: 0 });
+    expect(await primeiro).toEqual({ publicados: 1, falhas: 0, adiados: 0, desistidos: 0 });
   });
 
   it('fila de trabalho: enfileira pela API e o worker executa no tenant do trabalho', async () => {
@@ -180,26 +182,10 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
   });
 });
 
-/** Dublê do `ClienteHub`: resposta por `METODO caminho` (uuid no fim vira `{id}`) e o registro de cada chamada. */
-function hubDuble(rotas: Record<string, (p: PedidoHub) => RespostaHub>): ClienteHub & { chamadas: Array<{ cred: CredencialHub; pedido: PedidoHub }> } {
-  const chamadas: Array<{ cred: CredencialHub; pedido: PedidoHub }> = [];
-  return {
-    chamadas,
-    async chamar(cred, pedido) {
-      chamadas.push({ cred, pedido });
-      const rota = rotas[`${pedido.metodo} ${pedido.caminho.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/, '{id}')}`];
-      if (!rota) throw new Error(`dublê do Hub: sem rota para ${pedido.metodo} ${pedido.caminho}`);
-      return rota(pedido);
-    },
-  };
-}
-const ok = (corpo: unknown, status = 200): RespostaHub => ({ tipo: 'ok', status, corpo, replay: false });
-
 describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL, papel macuxierp_worker, Hub dublê)', () => {
   // Uma linha do tempo só: o instante real da coleta, que o RelogioFixo de cada teste faz andar.
   const AGORA = new Date();
   const LONGE = new Date(AGORA.getTime() + 100 * 365 * 86_400_000);
-  const CHAVE_MESTRA = randomBytes(32);
   const decifrarCredencial = criarDecifradorCredencial(new Map([[1, CHAVE_MESTRA]]));
   const ids = { cliente: randomUUID(), vendedor: randomUUID(), produto: randomUUID(), filial: randomUUID() };
   let b: BancoEfemero;
@@ -231,13 +217,12 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
   const despacharConsumidores = () =>
     despacharOutbox({ banco: worker, fila: new FilaOutboxPg(), consumo: new RegistroConsumoPg(), consumidores: montarConsumidores({ log, relogio }), relogio, log });
 
+  /** Tenant com os módulos e a credencial do conector (`criarCredencial` do apoio do módulo, cifrada com a `CHAVE_MESTRA` dele). */
   async function tenantComCredencial(slug: string, modulos: string[], ambiente: 'teste' | 'producao' = 'teste'): Promise<{ t: string; conector: string; chave: string }> {
     const t = await criarTenant(b.admin, slug, modulos);
     const conector = `conector-${slug}`;
     const chave = `chave-de-teste-${slug}-${randomUUID()}`;
-    await adm('INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo) VALUES ($1, $2, $3, $4, $5)', [
-      t, conector, ambiente, cifrarCampo({ chave: CHAVE_MESTRA, tenantId: t, claro: chave }), 'chave-de',
-    ]);
+    await criarCredencial(b.admin, t, { conector, ambiente, chave });
     return { t, conector, chave };
   }
 
@@ -290,8 +275,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     ]);
     const lote = randomUUID();
     const hub = hubDuble({
-      'POST /lotes': () => ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` }, 202),
-      'GET /lotes/{id}': () => ok({ lote_id: lote, entidade: 'produto', modo: 'delta', status: 'concluido', contagens: { recebidas: 1, com_erro: 0, novas: 1 }, erros: [] }),
+      'POST /lotes': [ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` })],
+      'GET /lotes/{id}': [ok({ lote_id: lote, entidade: 'produto', modo: 'delta', status: 'concluido', contagens: { recebidas: 1, com_erro: 0, novas: 1 }, erros: [] }, false, 200)],
     });
 
     const r1 = rodada('desligado', hub);
@@ -316,8 +301,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     await sinal(t, { busca: new Date(AGORA.getTime() - 5_000) });
     const uuid = randomUUID();
     const hub = hubDuble({
-      'GET /pedidos/pendentes?limite=50': () => ok({ pedidos: [pedidoDoHub(uuid)] }),
-      'POST /pedidos/{id}/retorno': () => ok({ repetido: false }),
+      'GET /pedidos/pendentes?limite=50': [ok({ pedidos: [pedidoDoHub(uuid)] }, false, 200)],
+      [`POST /pedidos/${uuid}/retorno`]: [ok({ repetido: false }, false, 200)],
     });
 
     const busca = rodada('ligado', hub);
@@ -357,8 +342,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     const retornoAgendado = (await lerSinal(t)).proximo_retorno_em as Date;
     expect(retornoAgendado.getTime()).toBeLessThanOrEqual(relogio.agora().getTime());
     const hub = hubDuble({
-      'GET /pedidos/pendentes?limite=50': () => ok({ pedidos: [] }),
-      'POST /pedidos/{id}/retorno': () => ok({ repetido: false }),
+      'GET /pedidos/pendentes?limite=50': [ok({ pedidos: [] }, false, 200)],
+      [`POST /pedidos/${uuid}/retorno`]: [ok({ repetido: false }, false, 200)],
     });
 
     relogio.avancar(1_000);
@@ -385,9 +370,9 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     await adm('INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em) VALUES ($1, $2, $2)', [t, vencida]);
     const lote = randomUUID();
     const hub = hubDuble({
-      'POST /lotes': () => ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` }, 202),
-      'POST /sinal': () => ok({}),
-      'POST /reconciliacoes': () => ok({}),
+      'POST /lotes': [ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` })],
+      'POST /sinal': [ok({}, false, 200)],
+      'POST /reconciliacoes': [ok({}, false, 200)],
     });
 
     const desligado = rodada('desligado', hub, 'desligado');

@@ -7,4 +7,7 @@ export type { FaixaPendenciasProps, NivelPendencia, Pendencia } from './FaixaPen
 export { DialogoMotivo } from './DialogoMotivo.js';
 export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
 export { FormularioItens } from './FormularioItens.js';
-export type { FormularioItensProps, ItemLinha, SeletorProdutoProps } from './FormularioItens.js';
+export type { ErrosItem, FormularioItensProps, ItemLinha, SeletorProdutoProps } from './FormularioItens.js';
+// compat: usar @macuxierp/ui/marca; sai depois que o shell trocar o import (#249)
+export { AssinaturaErp, faviconDataUri, appleTouchIconDataUri } from './marca.js';
+export type { AssinaturaErpProps, VarianteAssinatura } from './marca.js';

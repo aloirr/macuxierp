@@ -9,11 +9,12 @@ import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { a1DeTeste, depsFake, protocolo, transporteFake, uuid } from './apoio-teste';
+import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, situacaoAprovadaDeTeste } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { criarServicoEventos } from './eventos';
 import { criarProcessadorEventos } from './processador-eventos';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
+import { criarServicoTitulos } from './titulos';
 import { criarTransmissor } from './transmissor';
 
 const PROT = '113260000000888';
@@ -50,16 +51,16 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
   const ev = (chNFe: string, tpEvento: '110111' | '110110', nSeqEvento: number, cStat: string): ProtocoloEvento => ({
     tpAmb: 2, verAplic: 'S', cStat, xMotivo: 'Evento registrado', chNFe, tpEvento, nSeqEvento, dhRegEvento: '2026-11-21T22:40:00-04:00', nProt: cStat === '135' ? PROT : null, xml: '<retEvento versao="1.00"/>',
   });
-  const proc = (cStat = '135') =>
-    criarProcessadorEventos({ banco: worker, notas: repos.notas, eventos: repos.eventos, cadastros: f.deps.cadastros, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), emissor: emissor(cStat), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T22:40:00Z') });
+  const proc = (cStat = '135', log: (e: object) => void = () => undefined) =>
+    criarProcessadorEventos({ banco: worker, notas: repos.notas, titulos: repos.titulos, log, eventos: repos.eventos, cadastros: f.deps.cadastros, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), emissor: emissor(cStat), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T22:40:00Z') });
 
   let idem = 0;
   /** Emite e autoriza (transporte de teste): devolve a nota autorizada. */
   async function autorizada() {
-    const r = await app.comTenant(A, (tx) => emissao.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: `idem-evdb-${++idem}` }));
+    const r = await app.comTenant(A, async (tx) => emissao.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: `idem-evdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const t = transporteFake();
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('autorizada');
     return (await app.comTenant(A, (tx) => repos.notas.obter(tx, r.nota.id)))!;
   }
@@ -101,12 +102,45 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
     expect(await proc().processarEvento(A, r.evento.id)).toEqual({ resultado: 'ignorada', motivo: 'nao_pendente' });
   });
 
+  it('RN-FAT-06: o cancelamento da nota cancela os títulos abertos sem baixa, na mesma tx do evento', async () => {
+    const nota = await autorizada();
+    expect(await app.comTenant(A, (tx) => repos.titulos.listarDaNota(tx, nota.id))).toHaveLength(2);
+    const r = await pedirCancelamento(nota);
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    expect(await proc().processarEvento(A, r.evento.id)).toMatchObject({ resultado: 'registrado', titulos: { cancelados: 2, divergentes: [] } });
+    expect((await app.comTenant(A, (tx) => repos.titulos.listarDaNota(tx, nota.id))).map((t) => t.status)).toEqual(['cancelado', 'cancelado']);
+  });
+
+  it('RN-FAT-06: com baixa o cancelamento da nota NÃO é bloqueado: a parcela baixada fica como está, é registrada como divergência (log sem dado pessoal) e as outras são canceladas', async () => {
+    const nota = await autorizada();
+    const [t1, t2] = await app.comTenant(A, (tx) => repos.titulos.listarDaNota(tx, nota.id));
+    await app.comTenant(A, (tx) => criarServicoTitulos({ titulos: repos.titulos, notas: repos.notas }).baixar(tx, t1!.id, { valor_centavos: 500, forma: 'pix' }, null));
+    const logs: object[] = [];
+    const r = await pedirCancelamento(nota);
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    expect(await proc('135', (e) => logs.push(e)).processarEvento(A, r.evento.id)).toMatchObject({ resultado: 'registrado', titulos: { cancelados: 1, divergentes: [{ id: t1!.id, parcela: 1 }] } });
+    expect((await admin('SELECT status FROM faturamento.nota WHERE id = $1', [nota.id]))[0]).toMatchObject({ status: 'cancelada' });
+    expect((await admin('SELECT id, status, saldo_centavos::float8 AS saldo FROM faturamento.titulo WHERE nota_id = $1 ORDER BY parcela', [nota.id])).map((t) => [t.status, t.id === t1!.id ? t.saldo : null])).toEqual([['aberto', t1!.valor_centavos - 500], ['cancelado', null]]);
+    expect(logs).toEqual([{ evento: 'faturamento.titulo.divergencia_cancelamento', tenant_id: A, nota_id: nota.id, titulos_divergentes: 1 }]);
+    expect(t2!.status).toBe('aberto');
+    expect(JSON.stringify(logs)).not.toMatch(/cpf|cnpj|nome/i);
+  });
+
   it('RN-FAT-02: cancelamento fora do prazo de 24 h da autorização é recusado (a data vem do banco) e nada é gravado', async () => {
     const nota = await autorizada();
     expect(nota.autorizada_em).toBe(AUTORIZADA_EM.toISOString());
     const r = await pedirCancelamento(nota, new Date(AUTORIZADA_EM.getTime() + 25 * 3_600_000));
     expect(r).toMatchObject({ ok: false, violacoes: [{ campo: 'prazo' }] });
     expect(await admin('SELECT 1 FROM faturamento.nota_evento WHERE nota_id = $1', [nota.id])).toHaveLength(0);
+  });
+
+  it('RN-FAT-02: com o cancelamento pendente, a CC-e é recusada e nada é gravado', async () => {
+    const nota = await autorizada();
+    const c = await pedirCancelamento(nota);
+    expect(c.ok).toBe(true);
+    const r = await app.comTenant(A, (tx) => svc(new Date(AUTORIZADA_EM.getTime() + 3_600_000)).pedirCartaCorrecao(tx, nota, { texto: 'Endereço de entrega: Rua de Teste, 100' }));
+    expect(r).toMatchObject({ ok: false, violacoes: [{ rn: 'RN-FAT-02', campo: 'status' }] });
+    expect(await admin("SELECT 1 FROM faturamento.nota_evento WHERE nota_id = $1 AND tipo = 'cce'", [nota.id])).toHaveLength(0);
   });
 
   it('RN-FAT-02: rejeitado volta a pendente com a mesma sequência; a nota segue autorizada', async () => {
@@ -139,16 +173,16 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
   });
 
   it('RN-FAT-03: evento só em nota autorizada (rascunho, rejeitada ou cancelada o banco recusa)', async () => {
-    const r = await app.comTenant(A, (tx) => emissao.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: `idem-evdb-nao-aut-${++idem}` }));
+    const r = await app.comTenant(A, async (tx) => emissao.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: `idem-evdb-nao-aut-${++idem}` }));
     if (!r.ok) throw new Error('esperava ok');
     await expect(app.comTenant(A, (tx) => repos.eventos.criarEvento(tx, { nota_id: r.nota.id, tipo: 'cancelamento', n_seq_evento: 1, texto: JUST }))).rejects.toThrow(/RN-FAT-03.*só em nota autorizada/);
   });
 
   it('RN-FAT-01: inutilização da faixa: pedido pendente avança a numeração, o worker guarda o procInutNFe, registra, e a nota rejeitada da faixa vira inutilizada', async () => {
     const t = transporteFake({ recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
-    const rej = await app.comTenant(A, (tx) => emissao.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: `idem-evdb-rej-${++idem}` }));
+    const rej = await app.comTenant(A, async (tx) => emissao.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: `idem-evdb-rej-${++idem}` }));
     if (!rej.ok) throw new Error('esperava ok');
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
     expect((await tr.transmitirNota(A, rej.nota.id)).resultado).toBe('rejeitada');
     const n = rej.nota.numero;
     const proximo = ((await admin('SELECT proximo FROM faturamento.serie_numeracao WHERE serie = 1'))[0] as { proximo: number }).proximo;

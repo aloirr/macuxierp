@@ -8,6 +8,7 @@ import { criarClientePedido, ErroPedido } from './cliente';
 import { cabecalhoDoPedido, linhasDeHistorico, linhasDeItens, linhasDePendencias, resumoDaDecisao } from './detalhe';
 import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { calcularTotal } from './total';
+import { semEspacoDuro } from './apoio-teste';
 import { formularioVazio, novaChaveDoFormulario, retornoDoLancamento, formularioDoPedido, validarFormulario, type Formulario } from './formulario';
 import { colunasDaTela, colunasDoCsv, FILTROS_TELA, linhaDaTela } from './lista';
 import { caminhoDaConsulta, caminhoDosEnderecos, FONTE_CLIENTE, FONTE_PRODUTO, opcoesDeEndereco } from './fontes';
@@ -53,28 +54,28 @@ describe('páginas do BKO do pedido', () => {
     for (const perfil of PERFIS) expect(colunasDaTela(perfil).map((c) => c.id), perfil).not.toContain('cliente_documento');
     const csv = paraCsv(colunasDoCsv('vendedor'), [item]);
     expect(csv).not.toContain('12345678000190');
-    expect(paraCsv(colunasDoCsv('gerente'), [item])).toContain('12345678000190');
+    expect(semEspacoDuro(paraCsv(colunasDoCsv('gerente'), [item]))).toContain('12345678000190');
   });
 
   it('CSV: total em reais com milhar e sinal, também negativo', () => {
-    expect(paraCsv(colunasDoCsv('gerente'), [item])).toContain('R$ 1.234,56');
-    expect(paraCsv(colunasDoCsv('gerente'), [{ ...item, total_centavos: -100050 }])).toContain('-R$ 1.000,50');
+    expect(semEspacoDuro(paraCsv(colunasDoCsv('gerente'), [item]))).toContain('R$ 1.234,56');
+    expect(semEspacoDuro(paraCsv(colunasDoCsv('gerente'), [{ ...item, total_centavos: -100050 }]))).toContain('-R$ 1.000,50');
   });
 
   it('linha da tela: R$, data no fuso do tenant (Manaus) e rótulos em português', () => {
     const l = linhaDaTela(item, 'America/Manaus');
-    expect(l.total_centavos).toBe('R$ 1.234,56');
+    expect(semEspacoDuro(l.total_centavos)).toBe('R$ 1.234,56');
     expect(l.emitido_em).toBe('21/11/2026 22:30');
     expect(l.status).toBe('Em análise');
-    expect(l.origem).toBe('ERP');
+    expect(l.origem).toBe('Manual');
     expect(Object.keys(l)).toEqual(colunasDaTela('gerente').map((c) => c.id));
   });
 });
 
 describe('formatação', () => {
   it('centavos em R$, Qtd4 em quantidade, bp em %', () => {
-    expect(formatarCentavos(5)).toBe('R$ 0,05');
-    expect(formatarCentavos(-100050)).toBe('-R$ 1.000,50');
+    expect(semEspacoDuro(formatarCentavos(5))).toBe('R$ 0,05');
+    expect(semEspacoDuro(formatarCentavos(-100050))).toBe('-R$ 1.000,50');
     expect(formatarQuantidade(125000)).toBe('12,5');
     expect(formatarQuantidade(10000)).toBe('1');
     expect(formatarPontosBase(1250)).toBe('12,5%');
@@ -110,7 +111,7 @@ describe('ações do detalhe por status e perfil (RN-PED-02)', () => {
 
 describe('motivos e justificativa (§4.3)', () => {
   it('"outro" exige o texto; os demais não mandam texto; código fora do catálogo é recusado', () => {
-    expect(validarMotivo('recusar', { motivo_codigo: 'outro', motivo_texto: '  ' })).toEqual({ ok: false, erros: { motivo_texto: 'Descreva o motivo' } });
+    expect(validarMotivo('recusar', { motivo_codigo: 'outro', motivo_texto: '  ' })).toEqual({ ok: false, erros: { motivo_texto: 'Motivo obrigatório. Descreva o motivo.' } });
     expect(validarMotivo('recusar', { motivo_codigo: 'outro', motivo_texto: ' sem acordo ' })).toEqual({ ok: true, corpo: { motivo_codigo: 'outro', motivo_texto: 'sem acordo' } });
     expect(validarMotivo('cancelar', { motivo_codigo: 'sem_estoque', motivo_texto: 'ignorado' })).toEqual({ ok: true, corpo: { motivo_codigo: 'sem_estoque', motivo_texto: null } });
     expect(validarMotivo('cancelar', { motivo_codigo: 'credito_insuficiente', motivo_texto: '' }).ok).toBe(false);
@@ -124,8 +125,8 @@ describe('motivos e justificativa (§4.3)', () => {
     expect(avisoDoMotivo('fdv', 'sem_estoque')).toBeNull();
   });
   it('o limite do texto vem do contrato, em português', () => {
-    expect(validarMotivo('cancelar', { motivo_codigo: 'outro', motivo_texto: 'x'.repeat(301) })).toEqual({ ok: false, erros: { motivo_texto: 'No máximo 300 caracteres' } });
-    expect(validarAprovacao(false, 'x'.repeat(501))).toEqual({ ok: false, erros: { justificativa: 'No máximo 500 caracteres' } });
+    expect(validarMotivo('cancelar', { motivo_codigo: 'outro', motivo_texto: 'x'.repeat(301) })).toEqual({ ok: false, erros: { motivo_texto: 'Texto longo demais. Use no máximo 300 caracteres.' } });
+    expect(validarAprovacao(false, 'x'.repeat(501))).toEqual({ ok: false, erros: { justificativa: 'Texto longo demais. Use no máximo 500 caracteres.' } });
   });
   it('a justificativa é obrigatória só com pendência não bloqueante', () => {
     expect(validarAprovacao(true, ' ').ok).toBe(false);
@@ -147,7 +148,7 @@ describe('detalhe', () => {
       { codigo: 'estoque_insuficiente', bloqueante: true, sequencia: 2, produto_id: U2, esperado: 20000, informado: 50000 },
       { codigo: 'cliente_inativo', bloqueante: true, sequencia: null, produto_id: null, esperado: null, informado: null },
     ]);
-    expect(l.map((x) => [x.texto, x.gravidade, x.esperado, x.informado])).toEqual([
+    expect(l.map((x) => [x.texto, x.gravidade, semEspacoDuro(x.esperado), semEspacoDuro(x.informado)])).toEqual([
       ['Desconto acima do máximo', 'Atenção', '5%', '12,5%'],
       ['Limite de crédito excedido', 'Atenção', 'R$ 1.000,00', 'R$ 1.500,50'],
       ['Estoque insuficiente', 'Bloqueia', '2', '5'],
@@ -158,7 +159,7 @@ describe('detalhe', () => {
     const itens = linhasDeItens({
       itens: [{ sequencia: 1, produto_id: U1, produto_retrato: { codigo: 'P1', descricao: 'Água', unidade_comercial: 'UN', ean: null, ncm: '22021000', origem: '0' }, quantidade: 25000, preco_unitario_centavos: 450, desconto_centavos: 0, total_centavos: 1125, unidade_venda: null, preco_tabela_centavos: 450, desconto_maximo_bp: null, total_informado_centavos: null, quantidade_faturada: 0, aplicacao: null }],
     } as unknown as Pedido);
-    expect(itens[0]).toMatchObject({ quantidade: '2,5', preco: 'R$ 4,50', total: 'R$ 11,25', faturado: '0' });
+    expect({ ...itens[0], preco: semEspacoDuro(itens[0]?.preco), total: semEspacoDuro(itens[0]?.total) }).toMatchObject({ quantidade: '2,5', preco: 'R$ 4,50', total: 'R$ 11,25', faturado: '0' });
     const h = linhasDeHistorico(
       { historico: [{ de: 'em_analise', para: 'recusado', ator_tipo: 'usuario', ator_id: U1, motivo_codigo: 'cliente_bloqueado', motivo_texto: null, ocorrido_em: '2026-11-21T12:00:00.000Z' }] },
       'America/Manaus',
@@ -189,7 +190,7 @@ describe('formulário do pedido manual', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(Object.keys(r.erros).sort()).toEqual(['cliente_id', 'filial_id', 'itens.0.preco', 'itens.0.produto_id', 'itens.0.quantidade']);
     const semItens = validarFormulario({ ...valido(), itens: [] });
-    expect(!semItens.ok && semItens.erros.itens).toBe('Inclua ao menos um item');
+    expect(!semItens.ok && semItens.erros.itens).toBe('Nenhum item. Inclua ao menos um item.');
   });
   it('quantidade zero, preço malformado e desconto acima do valor do item são recusados', () => {
     const com = (i: Partial<Formulario['itens'][0]>) => validarFormulario({ ...valido(), itens: [{ ...(valido().itens[0] as Formulario['itens'][0]), ...i }] });
@@ -240,7 +241,7 @@ describe('formulário do pedido manual', () => {
   });
   it('limite do contrato vira mensagem em português por campo', () => {
     const r = validarFormulario({ ...valido(), observacao: 'x'.repeat(501) });
-    expect(!r.ok && r.erros.observacao).toBe('No máximo 500 caracteres');
+    expect(!r.ok && r.erros.observacao).toBe('Texto longo demais. Use no máximo 500 caracteres.');
   });
   it('resposta 5xx que não é JSON vira ErroPedido; o id vai codificado na URL', async () => {
     const urls: string[] = [];
@@ -258,7 +259,7 @@ describe('formulário do pedido manual', () => {
     expect(retornoDoLancamento({ numero: 9, status: 'aprovado', pendencias: [] })).toEqual({ status: 'aprovado', titulo: 'Pedido 9 aprovado', pendencias: [] });
     const r = retornoDoLancamento({ numero: 10, status: 'em_analise', pendencias: [{ codigo: 'credito_sem_limite', bloqueante: false, sequencia: null, produto_id: null, esperado: 0, informado: 5000 }] });
     expect(r.status).toBe('em_analise');
-    expect(r.pendencias[0]).toMatchObject({ texto: 'Cliente sem limite de crédito', esperado: 'R$ 0,00', informado: 'R$ 50,00' });
+    expect({ ...r.pendencias[0], esperado: semEspacoDuro(r.pendencias[0]?.esperado), informado: semEspacoDuro(r.pendencias[0]?.informado) }).toMatchObject({ texto: 'Cliente sem limite de crédito', esperado: 'R$ 0,00', informado: 'R$ 50,00' });
   });
 });
 
@@ -288,7 +289,7 @@ describe('edição, endereço de entrega e fontes dos seletores (T-0015, lote 3b
     const com = validarFormulario({ ...valido(), endereco_entrega_id: U3 });
     expect(com.ok && com.entrada.endereco_entrega_id).toBe(U3);
     const ruim = validarFormulario({ ...valido(), endereco_entrega_id: 'x' });
-    expect(!ruim.ok && ruim.erros.endereco_entrega_id).toBe('Endereço inválido');
+    expect(!ruim.ok && ruim.erros.endereco_entrega_id).toBe('Endereço inválido. Escolha outro.');
     const f = formularioDoPedido({ filial_id: U1, cliente_id: U2, condicao_pagamento_id: null, endereco_entrega: { endereco_id: U3 }, observacao: null, itens: [] } as unknown as Pedido);
     expect(f.endereco_entrega_id).toBe(U3);
   });

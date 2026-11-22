@@ -157,6 +157,20 @@ describe('definirPaginaLista: rota da API, item Zod, filtros, colunas e CSV', ()
     expect(erro({ ...base, csv: { arquivo: 'x.txt' } })).toThrow(PaginaListaInvalida);
   });
 
+  it('R-20261122-040324 (MC-0016): texto do estado vazio com e sem filtro, opcional; sem ele, nada muda', () => {
+    const base = { id: 'x', api: '/v1/cadastros/x', item: Cliente, colunas: [], csv: false as const };
+    const vazio = { semFiltro: 'Nenhum cliente cadastrado ainda.', comFiltro: 'Nenhum cliente com estes filtros.' };
+    const p = definirPaginaLista({ ...base, vazio });
+    expect(p.vazio).toEqual(vazio);
+    expect(Object.isFrozen(p.vazio)).toBe(true);
+    const sem = definirPaginaLista(base);
+    expect(sem.vazio).toBeUndefined();
+    expect('vazio' in sem).toBe(false);
+    for (const ruim of [{ semFiltro: '', comFiltro: 'x' }, { semFiltro: 'x', comFiltro: '   ' }, { semFiltro: 'x' } as never]) {
+      expect(() => definirPaginaLista({ ...base, vazio: ruim }), JSON.stringify(ruim)).toThrow(PaginaListaInvalida);
+    }
+  });
+
   it('o descritor é congelado (dado, não estado)', () => {
     expect(Object.isFrozen(clientes)).toBe(true);
     expect(Object.isFrozen(clientes.chaves)).toBe(true);
@@ -210,6 +224,38 @@ describe('colunas e CSV do descritor', () => {
     expect(r.cabecalhos).toMatchObject({ 'content-type': TIPO_CSV, 'content-disposition': 'attachment; filename="clientes.csv"' });
     expect(r.corpo).toBe(paraCsv(colunasDoPerfil(clientes, 'vendedor'), linhas));
     expect(String(r.corpo).slice(1)).toBe(`Nome\r\n'=HIPERLINK()\r\n`);
+  });
+
+  describe('csvDaLista com o fuso do tenant (T-0042, regra 4)', () => {
+    const notas = definirPaginaLista({
+      id: 'notas',
+      api: '/v1/faturamento/notas',
+      item: z.object({ id: z.string(), emitida_em: z.string(), vencimento: z.string(), obs: z.string() }),
+      colunas: [
+        { id: 'emitida_em', titulo: 'Emitida em', valor: (n) => n.emitida_em },
+        { id: 'vencimento', titulo: 'Vencimento', valor: (n) => n.vencimento },
+        { id: 'obs', titulo: 'Obs', valor: (n) => n.obs },
+      ],
+      csv: { arquivo: 'notas.csv' },
+    });
+    const nota = { id: id(1), emitida_em: '2026-11-22T02:00:00Z', vencimento: '2026-11-30', obs: '21/11/2026 22:00' };
+
+    it('instante UTC sai no fuso: 2026-11-22T02:00:00Z em America/Manaus é 21/11/2026 22:00 (dia anterior)', () => {
+      expect(String(csvDaLista(notas, 'administrador', [nota], 'America/Manaus').corpo).slice(1)).toBe(
+        'Emitida em;Vencimento;Obs\r\n21/11/2026 22:00;2026-11-30;21/11/2026 22:00\r\n',
+      );
+      expect(String(csvDaLista(notas, 'administrador', [{ ...nota, emitida_em: '2026-11-22T02:00:00.000Z' }], 'America/Sao_Paulo').corpo)).toContain('21/11/2026 23:00;');
+    });
+
+    it('sem fuso, o comportamento é o de antes (ISO como veio)', () => {
+      const r = csvDaLista(notas, 'administrador', [nota]);
+      expect(r.corpo).toBe(paraCsv(colunasDoPerfil(notas, 'administrador'), [nota]));
+    });
+
+    it('só o instante ISO completo muda: data civil, texto e valor já formatado ficam como estão', () => {
+      const r = String(csvDaLista(notas, 'administrador', [{ ...nota, emitida_em: '2026-11-22T02:00' }], 'America/Manaus').corpo);
+      expect(r).toContain('2026-11-22T02:00;2026-11-30;21/11/2026 22:00');
+    });
   });
 
   it('página sem CSV não exporta', () => {

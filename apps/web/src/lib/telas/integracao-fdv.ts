@@ -15,11 +15,13 @@ const FILTROS: readonly FiltroTela[] = [
   { chave: 'estado', rotulo: 'Situação', tipo: 'selecao', opcoes: EstadoLote.options.map((e) => ({ valor: e, rotulo: ROTULO_ESTADO_LOTE[e] })) },
 ];
 
+const COLUNAS_NUMERICAS = new Set(['registros', 'aceitos', 'com_erro', 'tentativas']);
+
 export const LISTA_LOTES: TelaLista = {
   tipo: 'lista',
   pagina: paginaLotes as unknown as TelaLista['pagina'],
   filtrosTela: FILTROS,
-  colunas: () => paginaLotes.colunas.map((c) => ({ id: c.id, rotulo: INSTANTES.has(c.id) ? c.titulo.replace(' (UTC)', '') : c.titulo })),
+  colunas: () => paginaLotes.colunas.map((c) => ({ id: c.id, rotulo: INSTANTES.has(c.id) ? c.titulo.replace(' (UTC)', '') : c.titulo, ...(COLUNAS_NUMERICAS.has(c.id) ? { tipo: 'numero' as const } : {}) })),
   linha: (item, fuso) =>
     Object.fromEntries(
       paginaLotes.colunas.map((c) => {

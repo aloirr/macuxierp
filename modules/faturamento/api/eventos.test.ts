@@ -9,7 +9,7 @@ import { INSTANTE_DE_TESTE } from '@macuxierp/nfe-sefaz/teste';
 import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
-import { a1DeTeste, depsFake, NPROT, transporteFake, tx, TENANT } from './apoio-teste';
+import { a1DeTeste, depsFake, titulosFake, NPROT, transporteFake, tx, TENANT } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { criarServicoEventos } from './eventos';
 import { criarProcessadorEventos } from './processador-eventos';
@@ -85,7 +85,7 @@ async function montar(opc: { agora?: Date; agoraWorker?: Date; semA1Api?: boolea
   };
   const proc = criarProcessadorEventos({
     banco,
-    notas: f.r.repo,
+    notas: f.r.repo, titulos: titulosFake().repo, log: () => undefined,
     eventos: f.ev.repo,
     cadastros: f.deps.cadastros,
     ambiente: { ambiente: async () => 'homologacao' },
@@ -191,6 +191,15 @@ describe('cancelamento (RN-FAT-02)', () => {
     if (!outra.ok) throw new Error('esperava ok');
     expect(outra.evento).toMatchObject({ id: r.evento.id, status: 'pendente', n_seq_evento: 1 });
     expect((await m.proc.processarEvento(TENANT, r.evento.id)).resultado).toBe('registrado');
+  });
+
+  it('RN-FAT-02: a API chama a validação do domain: CC-e com cancelamento pendente é recusada e nada é gravado', async () => {
+    const m = await montar();
+    const c = await m.svc.pedirCancelamento(tx, m.notaAtual(), { justificativa: JUST });
+    if (!c.ok) throw new Error('esperava ok');
+    const r = await m.svc.pedirCartaCorrecao(tx, m.notaAtual(), { texto: 'Corrigir o endereço de entrega da nota' });
+    expect(r).toMatchObject({ ok: false, violacoes: [{ rn: 'RN-FAT-02', campo: 'status' }] });
+    expect([...m.ev.eventos.values()].filter((e) => e.tipo === 'cce')).toHaveLength(0);
   });
 
   it('RN-FAT-03: a retentativa depois de falha de transporte reenvia o MESMO pedido (dhEvento e idLote guardados)', async () => {

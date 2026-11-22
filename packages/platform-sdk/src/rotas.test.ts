@@ -8,6 +8,8 @@ import {
   definirPlugin,
   definirRota,
   type ContextoRota,
+  FUSO_PADRAO,
+  fusoDaRota,
   PluginInvalido,
   QUANTIDADE_MAXIMA_ARQUIVOS,
   TAMANHO_MAXIMO_MULTIPART,
@@ -105,5 +107,17 @@ describe('ContextoRota.publicar (T-0042)', () => {
     type Evento = Parameters<ContextoRota['publicar']>[0];
     expectTypeOf<{ nome: string; agregado_id: string; payload: Record<string, unknown> }>().toMatchTypeOf<Evento>();
     expectTypeOf<Evento['versao']>().toEqualTypeOf<number | undefined>();
+  });
+});
+
+describe('ContextoRota.fuso (T-0042, regra 4)', () => {
+  it('fuso IANA do tenant, opcional no tipo para os dublês dos módulos', () => {
+    expectTypeOf<ContextoRota['fuso']>().toEqualTypeOf<string | undefined>();
+  });
+
+  it('fusoDaRota: o fuso do tenant; sem ele (dublê de teste), o padrão America/Manaus', () => {
+    expect(FUSO_PADRAO).toBe('America/Manaus');
+    expect(fusoDaRota({ fuso: 'America/Sao_Paulo' })).toBe('America/Sao_Paulo');
+    expect(fusoDaRota({})).toBe('America/Manaus');
   });
 });

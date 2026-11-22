@@ -11,8 +11,8 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { pino } from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { montarExecutores, montarRotinas } from './modulos';
+import { DIA_MS } from './rotinas';
 
-const DIA_MS = 86_400_000;
 const log = pino({ level: 'silent' });
 
 describe.skipIf(!PG_DISPONIVEL)('worker montado com os adaptadores do core (PostgreSQL, papel macuxierp_worker)', () => {

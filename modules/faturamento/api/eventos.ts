@@ -8,16 +8,17 @@ import type { AmbienteFiscalDaFilial, ConsultaA1Ativo, ConsultaCadastrosFaturame
 export const EVENTO_NOTA_CANCELADA = 'faturamento.nota.cancelada@1' as const;
 
 /** Base dos payloads de `nota.*@1` (agregado = nota.id): pedido, ambiente, nota, itens e vendedor. */
-export const baseEventoDaNota = (n: NotaRegistro, protocolo: string | null): Record<string, unknown> => ({
+export const baseEventoDaNota = (n: NotaRegistro, protocolo: string | null, comoReal = false): Record<string, unknown> => ({
   pedido_id: n.pedido_id,
   ambiente: n.ambiente,
   nota: {
     id: n.id, filial_id: n.filial_id, cliente_id: n.cliente_id, serie: n.serie, numero: n.numero, chave_acesso: n.chave_acesso,
     emitida_em: n.emitida_em, total_centavos: n.total_centavos, protocolo,
   },
-  itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
+  itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos, ...(i.produto_id ? { produto_id: i.produto_id, filial_id: n.filial_id } : {}) })),
   vendedor_id: n.vendedor_id,
   quantidade_itens: n.itens.length,
+  ...(comoReal ? { conta_como_real: true } : {}),
 });
 
 /** Texto livre da SEFAZ: sem espaço nas pontas nem repetido (o emissor recusa), quebra de linha vira espaço. */
@@ -62,8 +63,10 @@ export function criarServicoEventos(deps: DepsEventos) {
   /** RN-FAT-02: CC-e na nota autorizada, sequência 1 a 20. A rejeitada mais recente volta a pendente com a mesma sequência (0013). */
   async function pedirCartaCorrecao(tx: Transacao, nota: NotaRegistro, entrada: CartaCorrecaoEntrada): Promise<ResultadoPedidoEvento> {
     const texto = normalizarTexto(entrada.texto);
-    const ces = (await deps.eventos.listarEventos(tx, nota.id)).filter((e) => e.tipo === 'cce');
-    const pendente = ces.find((e) => e.status === 'pendente');
+    const todos = await deps.eventos.listarEventos(tx, nota.id);
+    const cancelamento_pendente = todos.some((e) => e.tipo === 'cancelamento' && e.status === 'pendente'); // a tela já bloqueia; a API revalida (domain)
+    const ces = todos.filter((e) => e.tipo === 'cce');
+    const pendente = cancelamento_pendente ? undefined : ces.find((e) => e.status === 'pendente'); // com cancelamento pendente a regra do domain recusa antes de repetir
     if (pendente) {
       if (pendente.texto === texto) return { ok: true, evento: pendente, repetido: true, avisos: avisosCartaCorrecao(texto) };
       return { ok: false, violacoes: [violacao('RN-FAT-02', 'texto', 'Há uma carta de correção em processamento nesta nota: aguarde o retorno da SEFAZ.')] };
@@ -71,7 +74,7 @@ export function criarServicoEventos(deps: DepsEventos) {
     const ultima = ces.reduce<EventoRegistro | undefined>((a, e) => (!a || e.n_seq_evento > a.n_seq_evento ? e : a), undefined);
     const reabrir = ultima?.status === 'rejeitado' ? ultima : undefined;
     const sequencias = ces.filter((e) => e !== reabrir).map((e) => e.n_seq_evento);
-    const v = validarCartaCorrecao({ status: nota.status, texto, sequenciasRegistradas: sequencias });
+    const v = validarCartaCorrecao({ status: nota.status, texto, sequenciasRegistradas: sequencias, cancelamento_pendente });
     if (v.length > 0) return { ok: false, violacoes: v };
     {
       const a1 = await deps.certificado.temA1Ativo(tx, nota.filial_id);

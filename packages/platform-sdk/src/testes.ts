@@ -8,6 +8,14 @@ import type { EnvelopeEvento, Outbox } from './eventos';
 import type { ChaveIdempotencia, ConclusaoIdempotencia, RegistroIdempotencia, RepositorioIdempotencia, ReservaIdempotencia } from './idempotencia';
 import type { FilaDeTrabalhos, PedidoTrabalho } from './trabalhos';
 
+/**
+ * Troca NBSP (U+00A0) e espaço estreito (U+202F), que o `formatarCentavos` e o Intl pt-BR geram, por espaço comum,
+ * para comparar texto de tela em teste (RD-0705). `null` e `undefined` voltam como estão.
+ */
+export function semEspacoDuro<T extends string | null | undefined>(s: T): T {
+  return (typeof s === 'string' ? s.replace(/[\u00a0\u202f]/g, ' ') : s) as T;
+}
+
 /** Transação de mentira: guarda o tenant e recusa SQL (o teste usa os repositórios em memória). */
 export interface TransacaoMemoria extends Transacao {
   readonly tenantId: string | null;

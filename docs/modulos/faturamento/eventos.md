@@ -13,7 +13,7 @@ Fonte do fluxo dos eventos. Regras puras em `modules/faturamento/domain`; servi�
 ## Regras
 - Cancelamento: só `autorizada`; prazo de 24 h da autorização (parâmetro `prazoHoras`; cancelamento extemporâneo
   depende da UF, cStat 155); justificativa de 15 a 255 caracteres, aparada.
-- CC-e: só `autorizada`, nunca `cancelada`; texto de 15 a 1000; no máximo 20 por nota. Aviso por palavra-chave
+- CC-e: só `autorizada`, nunca `cancelada`; recusada enquanto a nota tem cancelamento pendente (RN-FAT-02, `validarCartaCorrecao`); o inverso, cancelar com CC-e pendente, é permitido e a SEFAZ rejeita a CC-e; texto de 15 a 1000; no máximo 20 por nota. Aviso por palavra-chave
   (valor, dados de remetente/destinatário, datas) orienta e não bloqueia, pois o texto é livre.
 - Inutilização: 1 ≤ inicial ≤ final ≤ 999999999; final até próximo + 99 (0013); não cobre nota `autorizada`,
   `cancelada` ou `em_autorizacao`; `rascunho` e `rejeitada` da faixa viram `inutilizada`.

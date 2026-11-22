@@ -98,6 +98,13 @@ type DecisaoRetorno =
   | { acao: 'descartar_sem_chave'; produtos: string[]; corpo: RetornoErp }
   | { acao: 'ignorar'; motivo: 'origem_nao_fdv' | 'homologacao' | 'status_sem_retorno' | 'evento_sem_retorno' | 'hub_ja_terminal' | 'hub_ja_adiante' };
 
+/**
+ * Ordem do avanço no Hub (RN-PED-05): integrado < faturado_parcial < faturado_total; os terminais ficam no degrau do total.
+ * Única fonte: o SQL do "último status aceito" (api/retorno-pedidos.ts) é montado a partir dela.
+ */
+export const ORDEM_HUB = { integrado: 1, faturado_parcial: 2, faturado_total: 3, rejeitado_erp: 3, cancelado: 3 } as const satisfies Readonly<Record<StatusRetornoHub, number>>;
+
+/** Terminais no Hub (degrau 3 de `ORDEM_HUB`): nada mais é enviado depois deles, salvo `cancelado@1` depois de `faturado_total` (o Hub aceita). */
 const TERMINAIS: ReadonlySet<StatusRetornoHub> = new Set(['rejeitado_erp', 'cancelado', 'faturado_total']);
 
 function motivoDe(p: PayloadPedidoLido): string | undefined {
@@ -108,12 +115,14 @@ function motivoDe(p: PayloadPedidoLido): string | undefined {
 
 /**
  * `chavesProduto`: UUID do produto no ERP -> chave do Hub (`registro_external_id` do espelho, achada pelo `erp_id`; ADR 0010,
- * item 1). Só o faturado usa. `agora` (relógio do consumidor) decide o prazo `PRAZO_AGUARDAR_CHAVE_MS`; sem ele o retorno sempre aguarda.
+ * item 1). Só o faturado usa. `ultimoStatusHub` é o maior status ACEITO pelo Hub (estado `enviado`), não o último tentado; `chaveNotaUltimoAceito` é a chave da nota desse retorno
+ * (parcial depois de parcial vai se a nota for diferente ou desconhecida; com a mesma nota é ignorado). `agora` (relógio do consumidor) decide o prazo `PRAZO_AGUARDAR_CHAVE_MS`; sem ele o retorno sempre aguarda.
  */
-export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRetornoHub | null, chavesProduto: ReadonlyMap<string, string> = new Map(), agora?: Date): DecisaoRetorno {
+export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRetornoHub | null, chavesProduto: ReadonlyMap<string, string> = new Map(), agora?: Date, chaveNotaUltimoAceito?: string | null): DecisaoRetorno {
   const p = evento.payload;
   if (p.origem !== 'fdv' || !p.pedido_uuid) return { acao: 'ignorar', motivo: 'origem_nao_fdv' };
-  if (ultimoStatusHub && TERMINAIS.has(ultimoStatusHub)) return { acao: 'ignorar', motivo: 'hub_ja_terminal' };
+  const cancelaFaturado = evento.nome === 'pedido.pedido.cancelado@1' && ultimoStatusHub === 'faturado_total';
+  if (ultimoStatusHub && TERMINAIS.has(ultimoStatusHub) && !cancelaFaturado) return { acao: 'ignorar', motivo: 'hub_ja_terminal' };
   const comum = { versao_contrato: 'v1' as const, pedido_uuid: p.pedido_uuid, numero_erp: String(p.numero), ocorrido_em: evento.ocorrido_em };
 
   switch (evento.nome) {
@@ -128,18 +137,22 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
     case 'pedido.pedido.faturado@1': {
       if (p.ambiente !== 'producao' && !p.conta_como_real) return { acao: 'ignorar', motivo: 'homologacao' };
       if (!p.nota || !p.itens_faturados) return { acao: 'ignorar', motivo: 'status_sem_retorno' };
+      const novo: StatusRetornoHub = p.status === 'faturado' ? 'faturado_total' : 'faturado_parcial';
+      if (ultimoStatusHub && ORDEM_HUB[novo] <= ORDEM_HUB[ultimoStatusHub]) {
+        const novoParcial = novo === 'faturado_parcial' && ultimoStatusHub === 'faturado_parcial' && chaveNotaUltimoAceito !== p.nota.chave;
+        if (!novoParcial) return { acao: 'ignorar', motivo: 'hub_ja_adiante' };
+      }
       const faltam = [...new Set(p.itens_faturados.filter((i) => !chavesProduto.has(i.produto_id)).map((i) => i.produto_id))];
-      const status: StatusRetornoHub = p.status === 'faturado' ? 'faturado_total' : 'faturado_parcial';
       const notaHub = { numero: p.nota.numero, serie: p.nota.serie, chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
       if (faltam.length > 0) {
         const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
-        return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status, nota: notaHub, itens_faturados: [] } } : { acao: 'aguardar_chave', produtos: faltam };
+        return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub, itens_faturados: [] } } : { acao: 'aguardar_chave', produtos: faltam };
       }
       return {
         acao: 'enviar',
         corpo: {
           ...comum,
-          status,
+          status: novo,
           nota: notaHub,
           itens_faturados: p.itens_faturados.map((i) => ({
             sequencia: i.sequencia,

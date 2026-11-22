@@ -7,6 +7,7 @@
     "./manifest": "./manifest.ts",
     "./contracts": "./contracts/index.ts",
     "./api": "./api/index.ts",
+    "./api/testes": "./api/testes.ts",
     "./web": "./web/index.ts"
   },
   "scripts": {

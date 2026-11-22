@@ -3,7 +3,7 @@ import { EU_FALSO } from '../falso';
 import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
 import { PAGINAS_REGISTRADAS, casarRota, paginaVisivel, paginasDoMenu } from '../paginas';
-import { escritaPermitida, resultadoDaResposta } from './escrita';
+import { escritaPermitida, leituraPermitida, resultadoDaResposta } from './escrita';
 import { caminhoDaFonte, rotuloDaOpcao } from './fontes';
 import { aposResposta, chaveParaEnvio, ehRespostaDefinitiva, novoEstado } from './idempotencia';
 import { rotuloDaCelula } from './lista';
@@ -121,9 +121,11 @@ describe('fontes de opções (cadastros) e formulário', () => {
     expect(() => caminhoDaFonte('/v1/cadastros/clientes?x=1')).toThrow();
   });
   it('rótulo da opção por recurso', () => {
-    expect(rotuloDaOpcao('/v1/cadastros/produtos', { codigo: 'P1', descricao: 'Água 500 ml' })).toBe('P1 · Água 500 ml');
-    expect(rotuloDaOpcao('/v1/cadastros/filiais', { nome: 'Matriz Manaus' })).toBe('Matriz Manaus');
-    expect(rotuloDaOpcao('/v1/cadastros/clientes', { razao_social: 'Bar Ltda', documento: '11222333000181' })).toBe('Bar Ltda · 11222333000181');
+    expect(rotuloDaOpcao('/v1/cadastros/produtos', { codigo: 'P1', descricao: 'Água 500 ml' }, 'gerente')).toBe('P1 · Água 500 ml');
+    expect(rotuloDaOpcao('/v1/cadastros/filiais', { nome: 'Matriz Manaus' }, 'gerente')).toBe('Matriz Manaus');
+    const bar = { razao_social: 'Bar do Zé', documento: '11444777000161' };
+    expect(rotuloDaOpcao('/v1/cadastros/clientes', bar, 'gerente')).toBe('Bar do Zé · 11.444.777/0001-61');
+    expect(rotuloDaOpcao('/v1/cadastros/clientes', bar, 'vendedor')).toBe('Bar do Zé');
   });
 });
 
@@ -135,5 +137,17 @@ describe('lista genérica', () => {
   it('UUID de filial vira o rótulo do cadastro quando há opção', () => {
     expect(rotuloDaCelula(ID, new Map([[ID, 'Matriz']]))).toBe('Matriz');
     expect(rotuloDaCelula(ID, undefined)).toBe(ID);
+  });
+});
+
+describe('leitura do diálogo: mesma barreira da escrita (T-0021)', () => {
+  it('exige caminho /v1/<modulo>/..., módulo licenciado e perfil no manifesto; vendedor e módulo não licenciado ficam de fora', () => {
+    const e = (perfil: string, modulos: string[]) => ({ ...EU_FALSO, usuario: { ...EU_FALSO.usuario, perfil }, modulos: modulos.map((id) => ({ id })) }) as unknown as typeof EU_FALSO;
+    const c = `/v1/faturamento/pedidos-a-faturar/${ID}`;
+    expect(leituraPermitida(c, e('faturista', ['faturamento']), MANIFESTOS)).toBe('faturamento');
+    expect(leituraPermitida(c, e('vendedor', ['faturamento']), MANIFESTOS)).toBeNull();
+    expect(leituraPermitida(c, e('faturista', ['core']), MANIFESTOS)).toBeNull();
+    expect(leituraPermitida('/v1/faturamento/../core', e('faturista', ['faturamento']), MANIFESTOS)).toBeNull();
+    expect(leituraPermitida('/x', e('faturista', ['faturamento']), MANIFESTOS)).toBeNull();
   });
 });

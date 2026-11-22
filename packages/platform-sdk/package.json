@@ -12,7 +12,8 @@
     "./paginas": "./src/paginas.ts",
     "./pg": "./src/pg.ts",
     "./pg-testes": "./src/pg-testes.ts",
-    "./testes": "./src/testes.ts"
+    "./testes": "./src/testes.ts",
+    "./texto": "./src/texto.ts"
   },
   "scripts": {
     "lint": "eslint .",

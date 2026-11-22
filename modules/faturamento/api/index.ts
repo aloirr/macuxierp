@@ -6,10 +6,12 @@ import { criarRotas, type DepsRotas } from './rotas';
 export { criarConsumidorPedidoAprovado } from './consumidor';
 export type {
   A1DaFilial, AmbienteFiscalDaFilial, CalculoFiscal, ClienteDestinatario, CondicaoDoPedido, ConsultaA1Ativo, ConsultaCadastrosFaturamento,
-  EntradaCalculoFiscal, EventoRegistro, FilialEmissora, InutilizacaoRegistro, NotaEmAberto, PedidosAprovados, RepositorioEventos, RepositorioNotas, ResultadoA1Ativo,
-  ResultadoCalculoFiscal, SituacaoPedidoDoPedido,
+  EntradaCalculoFiscal, EventoRegistro, FilialEmissora, PortaDanfe, InutilizacaoRegistro, NotaEmAberto, PedidosAprovados, RepositorioEventos, RepositorioNotas, ResultadoA1Ativo,
+  ConfiguracaoFaturamento, RepositorioTitulos, ResultadoCalculoFiscal, SituacaoPedidoDoPedido,
 } from './portas';
+export { verificarAtivosDanfe, type ResultadoAtivosDanfe } from './ativos-marca';
 export { repositoriosSql } from './sql';
+export { consultaTitulosPedido, criarServicoTitulos, criarVarreduraTitulos, gerarTitulosDaNota, gerarTitulosSeguro, cancelarTitulosDaNotaCancelada, type LogFaturamento } from './titulos';
 export { criarProcessadorEventos, type DepsProcessadorEventos, type ResultadoConsultaNota, type ResultadoEventoProcessado, type ResultadoInutilizacaoProcessada } from './processador-eventos';
 export { criarTransmissor, type DepsTransmissor, type ResultadoTransmissao } from './transmissor';
 

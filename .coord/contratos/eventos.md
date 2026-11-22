@@ -16,6 +16,11 @@
 
 `versao` (inteiro ≥ 1) é definida pela outbox (`Outbox.gravar`), não pelo módulo: contador por `(tenant_id, agregado_id)`, para qualquer nome de evento, sem buraco e sem repetição; rollback não consome versão. O `versao` passado a `ContextoRota.publicar` está obsoleto e é ignorado; o envelope devolvido traz a versão gravada (T-0034). A forma do envelope não muda (inteiro ≥ 1), por isso sem ADR nem nova versão de contrato.
 
+### Entrega, limite de tentativas e reentrega (T-0045, sem mudança de envelope)
+- **Limite:** o despachante tenta cada evento até `MACUXIERP_OUTBOX_MAX_TENTATIVAS` (padrão 10) com backoff (10 s, 20 s... teto 1 h). Na última falha o evento vai ao estado terminal **`falhou`** sem coluna nova: `publicado_em` preenchido, `erro` começando por `falhou: ` e sem linha em `evento_consumido` para o consumidor que falhou. Sai o alerta do monitor `evento_falhou` (`evento_id`, `consumidor`) e os eventos seguintes do agregado seguem. O contador `tentativas` é do evento (dois consumidores falhando somam no mesmo).
+- **Recusa definitiva não lança:** o consumidor que sabe que a repetição não muda nada (payload fora do contrato, status inválido) loga, alerta e retorna; só o erro transitório (banco, rede) lança.
+- **Reentrega na partida:** consumidor ligado depois do evento publicado o recebe na partida do worker (`apps/worker/src/reentrega.ts`), desde o início, para os nomes de `EVENTOS_REENTREGA_PADRAO` (hoje `pedido.pedido.aprovado@1`). Lê só `plataforma.evento` e `plataforma.evento_consumido`; pula evento em `falhou`; idempotente por `(consumidor, evento_id)`. Quem consome um nome da lista precisa aceitar eventos antigos (conferir o estado atual do agregado antes de agir).
+
 ## Payloads de core e cadastros (v1)
 Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: boolean` (RN-CAD-08). Os campos seguem os esboços Zod de `docs/desenho/T-0002.md`.
 

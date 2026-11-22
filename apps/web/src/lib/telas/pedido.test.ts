@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogoMotivos, Pedido } from '@macuxierp/pedido/contracts';
 import { telaDaRota, telaFormulario } from '../telas';
+import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { LISTA_PEDIDOS, NOVO_PEDIDO, vistaDoPedido } from './pedido';
+
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const F = '8a2b6c10-1d3e-4f5a-8b7c-9d0e1f2a3b4c';
@@ -32,7 +34,7 @@ describe('adaptador do pedido', () => {
     expect(LISTA_PEDIDOS.filtrosTela.filter((f) => f.tipo === 'cadastro').map((f) => f.fonte)).toEqual(['/v1/cadastros/clientes', '/v1/cadastros/vendedores', '/v1/cadastros/filiais']);
     expect(LISTA_PEDIDOS.colunas('vendedor').map((c) => c.id)).not.toContain('cliente_documento');
     const l = LISTA_PEDIDOS.linha({ id: ID, numero: 7, origem: 'bko', status: 'em_analise', filial_id: F, cliente_id: C, cliente_razao_social: 'Bar', vendedor_id: null, emitido_em: '2026-11-22T02:30:00.000Z', total_centavos: 123456, pendencias: 1 }, 'America/Manaus');
-    expect(l.emitido_em).toBe('21/11/2026 22:30');
+    expect(semEspacoDuro(l.emitido_em)).toBe('21/11/2026 22:30');
     expect(LISTA_PEDIDOS.rotaDaLinha?.({ id: ID })).toBe(`/pedido/pedidos/${ID}`);
   });
 
@@ -42,7 +44,7 @@ describe('adaptador do pedido', () => {
     expect(v.acoes[0]).toMatchObject({ entrada: 'justificativa', justificativaObrigatoria: true, caminho: `/v1/pedido/pedidos/${ID}/aprovar` });
     expect(v.cabecalho.map((c) => c.rotulo)).not.toContain('Documento');
     expect(v.pendencias[0]).toMatchObject({ bloqueante: false });
-    expect(v.historico[0]?.quando).toBe('21/11/2026 22:30');
+    expect(semEspacoDuro(v.historico?.[0]?.quando)).toBe('21/11/2026 22:30');
     expect(v.tabelas[0]?.linhas).toHaveLength(1);
   });
 
@@ -75,7 +77,8 @@ describe('adaptador do pedido', () => {
     expect(it.paraTexto(vazio)).toMatchObject({ quantidade: '', preco: '' });
     const linha = { ...vazio, produtoId: P, quantidade: 1.5, precoUnitarioCentavos: 1000, descontoCentavos: 100 };
     expect(it.calcularTotal(linha)).toBe(1400);
-    expect(it.paraTexto(linha)).toEqual({ produto_id: P, quantidade: '1,5', preco: '10,00', desconto: '1,00' });
+    const t = it.paraTexto(linha);
+    expect({ ...t, quantidade: semEspacoDuro(t.quantidade), preco: semEspacoDuro(t.preco), desconto: semEspacoDuro(t.desconto) }).toEqual({ produto_id: P, quantidade: '1,5', preco: '10,00', desconto: '1,00' });
   });
 
   it('formulário: valida local (obrigatórios, item, desconto) e monta o corpo do contrato', () => {

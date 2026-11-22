@@ -15,12 +15,12 @@ import {
 import { CNPJ_EMITENTE_DE_TESTE, INSTANTE_DE_TESTE, VALIDADE_DE_TESTE, gerarA1DeTeste } from '@macuxierp/nfe-sefaz/teste';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { paginar } from '@macuxierp/platform-sdk';
-import type { Ambiente, StatusNota } from '../contracts';
-import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, resumoDoItem, type ConteudoNota } from '../domain';
+import type { Ambiente, BaixaTituloResumo, StatusNota, TituloResumo } from '../contracts';
+import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, nfeVaiAoFdv, resumoDoItem, type ConteudoNota } from '../domain';
 import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import type { DepsEmissao } from './emissao';
 import type { DepsEventos } from './eventos';
-import type { A1DaFilial, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos, RepositorioNotas, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
+import type { A1DaFilial, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
 
 export const tx = {} as Transacao;
 export const TENANT = IDS.tenant;
@@ -33,7 +33,7 @@ export function repoFake() {
   const notas = new Map<string, NotaRegistro>();
   const conteudos = new Map<string, ConteudoNota>();
   const xmls: { id: string; conteudo: string; protocolo: string }[] = [];
-  const eventos: { nome: string; payload: Record<string, unknown> }[] = [];
+  const eventos: { nome: string; payload: Record<string, unknown>; agregado_id?: string }[] = [];
   const transmissoes: TransmissaoRegistrada[] = [];
   const assinados: { id: string; versao: number; xml: string; sha256: string }[] = [];
   const atualizadaEm = new Map<string, Date>();
@@ -44,6 +44,17 @@ export function repoFake() {
   const repo: RepositorioNotas = {
     async travarIdempotencia() {
       log.push('trava');
+    },
+    async travarPedido() {
+      /* sem efeito em memória: a trava real é do SQL */
+    },
+    async quantidadesJaFaturadas(_t, pedido_id, exceto) {
+      const m = new Map<number, number>();
+      for (const n of notas.values()) {
+        if (n.pedido_id !== pedido_id || n.id === exceto || ['cancelada', 'inutilizada', 'denegada'].includes(n.status)) continue;
+        for (const i of n.itens) m.set(i.sequencia, (m.get(i.sequencia) ?? 0) + i.quantidade);
+      }
+      return m;
     },
     async buscarPorIdempotencia(_t, _tenant, idem) {
       return [...notas.values()].find((n) => n.idempotencia === idem) ?? null;
@@ -70,9 +81,9 @@ export function repoFake() {
         protocolo: null,
         autorizada_em: null,
         recibo: null,
-        vai_ao_fdv: n.ambiente === 'producao',
+        vai_ao_fdv: nfeVaiAoFdv(n.ambiente),
         revisao: 1,
-        itens: conteudo.itens.map(resumoDoItem),
+        itens: conteudo.itens.map((i) => ({ ...resumoDoItem(i), produto_id: i.produto_id })),
       };
       notas.set(nota.id, nota);
       atualizadaEm.set(nota.id, estado.relogio);
@@ -88,7 +99,7 @@ export function repoFake() {
         total_centavos: calcularTotais(conteudo.itens).vNF,
         recibo: null,
         revisao: n.revisao + 1,
-        itens: conteudo.itens.map(resumoDoItem),
+        itens: conteudo.itens.map((i) => ({ ...resumoDoItem(i), produto_id: i.produto_id })),
       });
       atualizadaEm.set(id, estado.relogio);
       conteudos.set(id, conteudo);
@@ -146,7 +157,7 @@ export function repoFake() {
       transmissoes.push(t);
     },
     async publicarEvento(_t, e) {
-      eventos.push({ nome: e.nome, payload: e.payload });
+      eventos.push({ nome: e.nome, payload: e.payload, agregado_id: e.agregado_id });
       log.push(`evento:${e.nome}`);
     },
     async listar(_t, f) {
@@ -169,7 +180,7 @@ export function repoFake() {
     async listarRejeicoes(_t, f) {
       const linhas = [...notas.values()]
         .filter((n) => n.status === 'rejeitada')
-        .map((n) => ({ id: n.id, filial_id: n.filial_id, pedido_id: n.pedido_id, serie: n.serie, numero: n.numero, codigo: '778', mensagem: 'Rejeicao: NCM inexistente', rejeitada_em: n.emitida_em, acao_sugerida: interpretarRetorno('778', '').acao }));
+        .map((n) => ({ id: n.id, filial_id: n.filial_id, pedido_id: n.pedido_id, ambiente: n.ambiente, serie: n.serie, numero: n.numero, codigo: '778', mensagem: 'Rejeicao: NCM inexistente', rejeitada_em: n.emitida_em, acao_sugerida: interpretarRetorno('778', '').acao }));
       return paginar(linhas, f.limite);
     },
     async pendentesDeTransmissao(_t, limite, paradasHaMinutos, esperaEnvioPendenteMin) {
@@ -398,8 +409,9 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
   const espiao = emissorEspiao();
   const ev = eventosFake(r);
   const deps: DepsEmissao & Pick<DepsEventos, 'eventos'> = {
+    log: () => undefined,
     emissor: espiao.emissor,
-    pedidos: { obter: async () => pedido, gravar: async () => 'novo' },
+    pedidos: { obter: async () => pedido, gravar: async () => 'novo', marcarCancelado: async () => undefined, listar: async () => ({ itens: [], proximo_cursor: null }), detalhar: async () => null },
     situacao: { situacao: async () => situacao },
     cadastros: {
       filial: async () => ({
@@ -442,6 +454,7 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
     agora: () => INSTANTE_DE_TESTE,
     sorteio: () => 48_213_705,
     eventos: ev.repo,
+    emissaoProducaoHabilitada: true, // os cenários de produção do arnês exercem a emissão; o teste da recusa desliga
   };
   return { deps, r, ev, pedido, emissor: espiao.emissor, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
 }
@@ -517,3 +530,109 @@ export function transporteFake(roteiro: Roteiro = {}, filial = IDS.filial) {
   };
   return { transporte: t, chamadas };
 }
+
+/** Contador de tentativas da varredura em memória (imita `faturamento.titulo_geracao`, 0028): sem tentativa vem antes; depois, a de falha mais antiga. */
+export function geracaoFake() {
+  const geracao = new Map<string, { tentativas: number; ordem: number }>();
+  let relogio = 0;
+  return {
+    filtrarEOrdenar(ids: string[], max: number): string[] {
+      return ids.filter((i) => (geracao.get(i)?.tentativas ?? 0) < max).sort((a, b) => (geracao.get(a)?.ordem ?? 0) - (geracao.get(b)?.ordem ?? 0));
+    },
+    async registrarFalhaGeracao(_t: unknown, nota_id: string): Promise<number> {
+      const tentativas = (geracao.get(nota_id)?.tentativas ?? 0) + 1;
+      geracao.set(nota_id, { tentativas, ordem: ++relogio });
+      return tentativas;
+    },
+  };
+}
+
+/**
+ * Títulos em memória (imita os gatilhos da 0013): parcela única por (nota, parcela), saldo = valor − baixas não estornadas, status pelo saldo,
+ * baixa só em título aberto, cancelamento só do aberto.
+ */
+/** `notasBoleto`: ids das notas autorizadas de boleto (o banco real consulta `nota`); a varredura devolve as que não têm título. */
+export function titulosFake(notasBoleto: () => Iterable<string> = () => [], notaComoReal: (nota_id: string) => boolean = () => false) {
+  const titulos = new Map<string, TituloResumo>();
+  const baixas = new Map<string, BaixaTituloResumo>();
+  const geracao = geracaoFake();
+  let n = 0;
+  const recalcular = (t: TituloResumo): TituloResumo => {
+    const saldo = t.valor_centavos - [...baixas.values()].filter((b) => b.titulo_id === t.id && b.estornada_em === null).reduce((a, b) => a + b.valor_centavos, 0);
+    const novo: TituloResumo = { ...t, saldo_centavos: saldo, status: t.status === 'cancelado' ? 'cancelado' : saldo === 0 ? 'baixado' : 'aberto' };
+    titulos.set(t.id, novo);
+    return novo;
+  };
+  const repo: RepositorioTitulos = {
+    async inserirParcelas(_t, nota, parcelas) {
+      const novos: TituloResumo[] = [];
+      for (const p of parcelas) {
+        if ([...titulos.values()].some((t) => t.nota_id === nota.id && t.parcela === p.parcela)) continue;
+        const t: TituloResumo = { id: uuid(9000 + ++n), nota_id: nota.id, numero: 100, filial_id: nota.filial_id, cliente_id: nota.cliente_id, cliente_razao_social: 'CLIENTE TESTE', ambiente: p.ambiente, parcela: p.parcela, total_parcelas: p.total_parcelas, vencimento: p.vencimento, valor_centavos: p.valor_centavos, saldo_centavos: p.valor_centavos, status: 'aberto' };
+        titulos.set(t.id, t);
+        novos.push(t);
+      }
+      return novos;
+    },
+    async listarDaNota(_t, nota_id) { return [...titulos.values()].filter((t) => t.nota_id === nota_id).sort((a, b) => a.parcela - b.parcela); },
+    async obter(_t, id) { return titulos.get(id) ?? null; },
+    async baixasDoTitulo(_t, id) { return [...baixas.values()].filter((b) => b.titulo_id === id); },
+    async registrarBaixa(_t, titulo_id, b) {
+      const t = titulos.get(titulo_id);
+      if (!t || t.status !== 'aberto') throw new Error('RN-FAT-06: baixa só em título aberto');
+      const baixa: BaixaTituloResumo = { id: uuid(9500 + ++n), titulo_id, valor_centavos: b.valor_centavos, forma: b.forma, baixado_em: b.baixado_em.toISOString(), estornada_em: null };
+      baixas.set(baixa.id, baixa);
+      recalcular(t);
+      return baixa;
+    },
+    async estornarBaixa(_t, baixa_id, em) {
+      const b = baixas.get(baixa_id);
+      if (!b || b.estornada_em) throw new Error('RN-FAT-06: baixa inexistente ou já estornada');
+      baixas.set(baixa_id, { ...b, estornada_em: em.toISOString() });
+      recalcular(titulos.get(b.titulo_id) as TituloResumo);
+    },
+    async emSavepoint(_t, fn) {
+      try { return { ok: true, valor: await fn() }; } catch (erro) { return { ok: false, erro }; }
+    },
+    async notasBoletoSemTitulo(_t, { limite, max_tentativas }) {
+      const com = new Set([...titulos.values()].map((t) => t.nota_id));
+      return geracao.filtrarEOrdenar([...notasBoleto()].filter((id) => !com.has(id)), max_tentativas).slice(0, limite);
+    },
+    registrarFalhaGeracao: geracao.registrarFalhaGeracao,
+    async cancelar(_t, ids) { for (const id of ids) { const t = titulos.get(id); if (t?.status === 'aberto') titulos.set(id, { ...t, status: 'cancelado' }); } },
+    async listar(_t, f) {
+      const l = [...titulos.values()].filter((t) => (!f.cliente_id || t.cliente_id === f.cliente_id) && (!f.status || t.status === f.status) && (!f.vencimento_de || t.vencimento >= f.vencimento_de) && (!f.vencimento_ate || t.vencimento <= f.vencimento_ate)).sort((a, b) => a.id.localeCompare(b.id));
+      return paginar(l, f.limite);
+    },
+    async detalhar(_t, id) { const t = titulos.get(id); return t ? { ...t, baixas: [...baixas.values()].filter((b) => b.titulo_id === id) } : null; },
+    async saldoAbertoCliente(_t, cliente_id) { return [...titulos.values()].filter((t) => t.cliente_id === cliente_id && t.status === 'aberto' && (t.ambiente === 'producao' || notaComoReal(t.nota_id))).reduce((a, t) => a + t.saldo_centavos, 0); },
+  };
+  return { repo, titulos, baixas };
+}
+
+/** Bandeira "faturamento real com NF-e simulada" em memória: sem linha = desligada. */
+export function configuracaoFake(inicial: Record<string, boolean> = {}) {
+  const linhas = new Map<string, { ligada: boolean; alterado_por: string }>(Object.entries(inicial).map(([k, v]) => [k, { ligada: v, alterado_por: 'teste' }]));
+  const repo: ConfiguracaoFaturamento = {
+    async faturamentoRealComNfeSimulada(_t, filial_id) { return linhas.get(filial_id)?.ligada ?? false; },
+    async definir(_t, filial_id, ligada, usuario_id) { linhas.set(filial_id, { ligada, alterado_por: usuario_id }); },
+    async lerBandeiraSegura(_t, filial_id, avisar) {
+      try { return await repo.faturamentoRealComNfeSimulada(_t, filial_id); } catch { avisar('falha ao ler a bandeira (fake)'); return false; }
+    },
+  };
+  return { repo, linhas };
+}
+
+let pedidoNovoSeq = 0;
+/** Grava na fila a faturar uma CÓPIA do pedido (id novo): várias notas totais no mesmo teste não passam do saldo de um pedido só (RN-FAT-01). */
+export async function pedidoNovoNaFila(tx: Transacao, gravar: (tx: Transacao, p: ReturnType<typeof pedidoAprovado>) => Promise<unknown>, modelo?: ReturnType<typeof pedidoAprovado>): Promise<string> {
+  const base = modelo ?? pedidoAprovado([itemPedido(1, 20_000, 1000), itemPedido(2, 10_000, 2500)]);
+  if (!modelo) base.pedido.condicao_pagamento_id = uuid(77);
+  const copia = structuredClone(base);
+  copia.pedido_id = uuid(50_000 + ++pedidoNovoSeq);
+  await gravar(tx, copia);
+  return copia.pedido_id;
+}
+
+/** Porta `situacao` do pedido para o transmissor nos testes: pedido sempre `aprovado` (a guarda RN-PED-02 é obrigatória no tipo). */
+export const situacaoAprovadaDeTeste = { situacao: async () => ({ status: 'aprovado' as const, itens: [] }) };

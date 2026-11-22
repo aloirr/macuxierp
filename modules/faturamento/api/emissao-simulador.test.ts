@@ -8,8 +8,11 @@ import { INSTANTE_DE_TESTE } from '@macuxierp/nfe-sefaz/teste';
 import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
 import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
+import { montarDanfe } from '../domain/danfe';
 import { IDS } from '../domain/fixtures';
-import { a1DeTeste, depsFake, tx, TENANT } from './apoio-teste';
+import { exigirAssinaturaDaMarca } from './ativos-marca';
+import { renderizarDanfe } from './danfe-pdf';
+import { a1DeTeste, depsFake, titulosFake, tx, TENANT, situacaoAprovadaDeTeste } from './apoio-teste';
 import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA } from './emissao';
 import { criarTransmissor } from './transmissor';
 
@@ -39,16 +42,18 @@ function montar(mei = false) {
     };
   }
   const seletor = criarSeletorTransporte({ transporte: 'simulador', simulador: criarFabricaSimulador({ agora: () => new Date(INSTANTE_DE_TESTE.getTime() + 1_000), tMed: 1 }) });
+  const tit = titulosFake();
   const transmissor = criarTransmissor({
+    log: () => undefined,
     banco,
-    notas: f.r.repo,
+    notas: f.r.repo, titulos: tit.repo,
     emissor: f.emissor,
     ambiente: { ambiente: async () => 'homologacao' },
-    lerA1: async () => a1DeTeste(),
+    situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(),
     sefaz: seletor,
     agora: () => INSTANTE_DE_TESTE,
   });
-  return { ...f, ...f.r, transmissor, svc: criarServicoEmissao(f.deps) };
+  return { ...f, ...f.r, tit, transmissor, svc: criarServicoEmissao(f.deps) };
 }
 
 // XSD e assinatura reais, lentos quando a suíte roda em paralelo (o padrão de 5 s estourou): 30 s. A ordem das escritas fica no transmissor.test.
@@ -77,15 +82,36 @@ describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → 
       expect(proc).toContain(assinado); // bytes assinados intactos
       expect(proc).toContain(m.notas.get(nota.id)!.protocolo!);
       expect(m.notas.get(nota.id)?.status).toBe('autorizada');
-      expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+      // RF-FAT-03: o DANFE sai do nfeProc REAL do emissor + simulador (homologação: marca d'água), com o protocolo e o número da nota
+      const danfe = montarDanfe({ nfeProc: proc });
+      expect(danfe.cabecalho.chave).toBe(nota.chave_acesso);
+      expect(danfe.operacao.protocolo).toContain(m.notas.get(nota.id)!.protocolo!);
+      expect(danfe.marcaDagua).toBe('SEM VALOR FISCAL');
+      expect(danfe.itens).toHaveLength(2);
+      expect(danfe.imposto.find((c) => c.rotulo === 'Valor total da nota')?.valor).toBe('45,00');
+      expect((await renderizarDanfe(danfe, { assinaturaMarca: await exigirAssinaturaDaMarca() })).length).toBeGreaterThan(1000);
+      expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
       expect(m.transmissoes.every((t) => t.destino === 'simulador')).toBe(true);
     });
   }
 
+  it('RF-FAT-07: boleto em 3 prazos (30/60/90): emitir → simulador autoriza → 3 títulos abertos que somam o total da nota, e a nota segue homologação', async () => {
+    const m = montar();
+    m.deps.cadastros.condicao = async () => ({ forma_tpag: '15', prazos_dias: [30, 60, 90] });
+    const emissao = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-titulos' });
+    if (!emissao.ok) throw new Error(JSON.stringify(emissao.violacoes));
+    expect((await m.transmissor.transmitirNota(TENANT, emissao.nota.id)).resultado).toBe('autorizada');
+    const ts = [...m.tit.titulos.values()];
+    expect(ts.map((t) => [t.parcela, t.total_parcelas, t.status, t.ambiente])).toEqual([[1, 3, 'aberto', 'homologacao'], [2, 3, 'aberto', 'homologacao'], [3, 3, 'aberto', 'homologacao']]);
+    expect(ts.reduce((a, t) => a + t.valor_centavos, 0)).toBe(m.notas.get(emissao.nota.id)!.total_centavos);
+    expect(ts.map((t) => t.vencimento)).toEqual(['2026-12-21', '2027-01-20', '2027-02-19']);
+    expect(m.eventos.filter((e) => e.nome === 'faturamento.titulo.gerado@1')).toHaveLength(3);
+  });
+
   it('RN-FAT-01: duas notas em sequência saem com nNF 100 e 101, sem buraco, e o simulador autoriza as duas', async () => {
     const m = montar();
-    const a = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-1' });
-    const b = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-2' });
+    const a = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-1', itens: [{ sequencia: 1, quantidade: 10_000 }] });
+    const b = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-2', itens: [{ sequencia: 1, quantidade: 10_000 }] });
     if (!a.ok || !b.ok) throw new Error('esperava ok');
     expect([a.nota.numero, b.nota.numero]).toEqual([100, 101]);
     expect((await m.transmissor.transmitirNota(TENANT, a.nota.id)).resultado).toBe('autorizada');

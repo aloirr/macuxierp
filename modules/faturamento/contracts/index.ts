@@ -81,6 +81,8 @@ const BaseEventoNota = z.object({
   itens: z.array(ItemNotaEvento).min(1),
   vendedor_id: Uuid.nullable(),
   quantidade_itens: z.number().int().min(1),
+  /** Acréscimo opcional: `true` só quando a filial liga "faturamento real com NF-e simulada" e a nota é de homologação (o FDV a conta como faturamento real). Ausente = como sempre. */
+  conta_como_real: z.boolean().optional(),
 });
 
 /** Identificação da nota já autorizada: chave e protocolo sempre presentes. */
@@ -184,6 +186,11 @@ export const NotaResumo = z.object({
   protocolo: z.string().nullable(),
   c_stat: z.number().int().nullable(),
   x_motivo: z.string().nullable(),
+  /** Só na lista do BKO (RF-FAT-08 / T-0021 item C): nome do destinatário no retrato da nota; ausente nos eventos e no painel de rejeições. */
+  cliente_razao_social: z.string().nullable().optional(),
+  /** Colunas "Filial" e "Pedido" do BKO, só na lista: nome fantasia (ou razão social) do emitente no retrato da nota, e número do pedido no retrato de `pedido_a_faturar`. */
+  filial_nome: z.string().nullable().optional(),
+  pedido_numero: z.number().int().nullable().optional(),
 });
 export type NotaResumo = z.infer<typeof NotaResumo>;
 
@@ -192,11 +199,17 @@ export const NotaDetalhe = NotaResumo.extend({
   tipo_emissao: TipoEmissao,
   recibo: z.string().nullable(),
   itens: z.array(ItemNotaEvento),
+  /** RF-FAT-08: só na nota `rejeitada`, a ação sugerida para o cStat/xMotivo (mesma do painel `GET /rejeicoes`). */
+  acao_sugerida: z.string().nullable().optional(),
+  /** Base do prazo de cancelamento (RN-FAT-02): a tela só oferece o botão dentro de 24 h; a API revalida. */
+  autorizada_em: z.string().datetime().nullable().optional(),
+  /** Há cancelamento `pendente` (aguardando a SEFAZ): a tela bloqueia novo cancelamento e a CC-e até o retorno. */
+  cancelamento_pendente: z.boolean().optional(),
 });
 export type NotaDetalhe = z.infer<typeof NotaDetalhe>;
 
 /** Local até o sdk exportar a data civil (RD-0369). */
-const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** `GET /v1/faturamento/notas`: filtros na URL (o BKO mantém o link). `de` e `ate` são datas civis do fuso do tenant. */
 export const FiltroNotas = ConsultaPaginada.extend({
@@ -212,6 +225,119 @@ export const FiltroNotas = ConsultaPaginada.extend({
 });
 export type FiltroNotas = z.infer<typeof FiltroNotas>;
 
+/** Status do pedido na fila de faturamento (`faturamento.pedido_a_faturar.status`). */
+export const StatusPedidoAFaturar = z.enum(['a_faturar', 'faturado_parcial', 'faturado', 'cancelado']);
+export type StatusPedidoAFaturar = z.infer<typeof StatusPedidoAFaturar>;
+
+/** `GET /v1/faturamento/pedidos-a-faturar` (RF-FAT-01): por padrão só `a_faturar` e `faturado_parcial`. `de`/`ate` = data do recebimento (fuso do tenant). */
+export const FiltroPedidosAFaturar = ConsultaPaginada.extend({
+  filial_id: Uuid.optional(),
+  cliente_id: Uuid.optional(),
+  status: StatusPedidoAFaturar.optional(),
+  de: DataCivil.optional(),
+  ate: DataCivil.optional(),
+});
+export type FiltroPedidosAFaturar = z.infer<typeof FiltroPedidosAFaturar>;
+
+export const PedidoAFaturarResumo = z.object({
+  id: Uuid,
+  pedido_id: Uuid,
+  numero: z.number().int().nullable(),
+  filial_id: Uuid,
+  cliente_id: Uuid,
+  cliente_razao_social: z.string().nullable(),
+  status: StatusPedidoAFaturar,
+  /** RN-FAT-04: ambiente da filial emissora (`faturamento.ambiente_da_filial`; sem configuração = homologação, a falha segura). */
+  ambiente: Ambiente,
+  total_centavos: Centavos,
+  recebido_em: z.string().datetime(),
+});
+export type PedidoAFaturarResumo = z.infer<typeof PedidoAFaturarResumo>;
+
+/**
+ * Item do pedido a faturar (RF-FAT-01, nota parcial). Quantidades em qtd4 (inteiro, 4 casas: 10000 = 1 unidade), como no pedido e na nota.
+ * `quantidade_faturada` = o maior entre a soma das notas do próprio faturamento (as que contam como faturadas: qualquer status menos
+ * cancelada, inutilizada e denegada, RN-FAT-01) e a quantidade faturada da situação do pedido (a mesma conta da emissão);
+ * `saldo` = pedida menos faturada, nunca negativo. Sem dado pessoal.
+ */
+export const PedidoAFaturarItem = z.object({
+  sequencia: z.number().int().min(1),
+  produto_id: Uuid,
+  descricao: z.string().nullable(),
+  quantidade_pedida: Qtd4,
+  quantidade_faturada: Qtd4,
+  saldo: Qtd4,
+  valor_unitario_centavos: Centavos,
+});
+export type PedidoAFaturarItem = z.infer<typeof PedidoAFaturarItem>;
+
+/** `GET /v1/faturamento/pedidos-a-faturar/:id` (`:id` = `PedidoAFaturarResumo.id`, a linha da fila): o resumo mais os itens, para a emissão parcial. */
+export const PedidoAFaturarDetalhe = PedidoAFaturarResumo.extend({ itens: z.array(PedidoAFaturarItem) });
+export type PedidoAFaturarDetalhe = z.infer<typeof PedidoAFaturarDetalhe>;
+
+/** `PUT /v1/faturamento/filiais/:id/configuracao` (só administrador; `Idempotency-Key` obrigatória). Desligada por padrão. A nota segue de homologação no XML (tpAmb 2, "SEM VALOR FISCAL"). */
+export const ConfigurarFilialEntrada = z.object({ faturamento_real_nfe_simulada: z.boolean() });
+export type ConfigurarFilialEntrada = z.infer<typeof ConfigurarFilialEntrada>;
+/** Resposta do `GET /v1/faturamento/filiais/:id/configuracao`: a bandeira mais o ambiente fiscal vigente da filial (`faturamento.ambiente_da_filial`; sem configuração = homologação), para o diálogo de inutilizar. */
+export const ConfiguracaoFilialResposta = z.object({ filial_id: Uuid, faturamento_real_nfe_simulada: z.boolean(), ambiente: Ambiente });
+export type ConfiguracaoFilialResposta = z.infer<typeof ConfiguracaoFilialResposta>;
+
+// ---- Títulos a receber (RF-FAT-07, RN-FAT-06) ----
+export const StatusTitulo = z.enum(['aberto', 'baixado', 'cancelado']);
+export type StatusTitulo = z.infer<typeof StatusTitulo>;
+
+/** `GET /v1/faturamento/titulos`: filtros na URL. `vencimento_de` e `vencimento_ate` são datas civis (inclusivas). */
+export const FiltroTitulos = ConsultaPaginada.extend({
+  cliente_id: Uuid.optional(),
+  nota_id: Uuid.optional(),
+  status: StatusTitulo.optional(),
+  ambiente: Ambiente.optional(),
+  vencimento_de: DataCivil.optional(),
+  vencimento_ate: DataCivil.optional(),
+});
+export type FiltroTitulos = z.infer<typeof FiltroTitulos>;
+
+export const TituloResumo = z.object({
+  id: Uuid,
+  nota_id: Uuid,
+  filial_id: Uuid,
+  /** Número da nota (série na `nota`); razão social do retrato do destinatário gravado na nota. */
+  numero: z.number().int().min(1),
+  cliente_id: Uuid,
+  cliente_razao_social: z.string().nullable(),
+  ambiente: Ambiente,
+  parcela: z.number().int().min(1),
+  total_parcelas: z.number().int().min(1),
+  vencimento: DataCivil,
+  valor_centavos: Centavos,
+  saldo_centavos: Centavos,
+  status: StatusTitulo,
+});
+export type TituloResumo = z.infer<typeof TituloResumo>;
+
+export const BaixaTituloResumo = z.object({
+  id: Uuid,
+  titulo_id: Uuid,
+  valor_centavos: Centavos,
+  forma: z.string(),
+  baixado_em: z.string().datetime(),
+  estornada_em: z.string().datetime().nullable(),
+});
+export type BaixaTituloResumo = z.infer<typeof BaixaTituloResumo>;
+
+export const TituloDetalhe = TituloResumo.extend({ baixas: z.array(BaixaTituloResumo) });
+export type TituloDetalhe = z.infer<typeof TituloDetalhe>;
+
+/** `POST /v1/faturamento/titulos/:id/baixas` (`data_baixa` opcional: sem ela, hoje no fuso do tenant; `Idempotency-Key` obrigatória). */
+export const BaixarTituloEntrada = z.object({
+  valor_centavos: z.number().int().min(1),
+  /** Data civil da baixa (fuso do tenant), não futura; sem ela, hoje. */
+  data_baixa: DataCivil.optional(),
+  /** Forma do recebimento (até 30 caracteres); sem ela, `manual`. */
+  forma: z.string().trim().min(1).max(30).default('manual'),
+});
+export type BaixarTituloEntrada = z.infer<typeof BaixarTituloEntrada>;
+
 /** `GET /v1/faturamento/rejeicoes` (RF-FAT-08): notas rejeitadas com o código, a mensagem e a ação sugerida da SEFAZ. */
 export const FiltroRejeicoes = ConsultaPaginada.extend({ filial_id: Uuid.optional() });
 export type FiltroRejeicoes = z.infer<typeof FiltroRejeicoes>;
@@ -220,12 +346,17 @@ export const RejeicaoNota = z.object({
   id: Uuid,
   filial_id: Uuid,
   pedido_id: Uuid.nullable(),
+  /** A lista de rejeições mostra o selo de homologação (RN-FAT-04). */
+  ambiente: Ambiente,
   serie: z.number().int(),
   numero: z.number().int().nullable(),
   codigo: z.string().nullable(),
   mensagem: z.string().nullable(),
   acao_sugerida: z.string(),
   rejeitada_em: z.string().datetime(),
+  /** Mesmos campos da `NotaResumo`, preenchidos na lista e no detalhe da nota; nas rejeições continuam pendentes. */
+  filial_nome: z.string().nullable().optional(),
+  pedido_numero: z.number().int().nullable().optional(),
 });
 export type RejeicaoNota = z.infer<typeof RejeicaoNota>;
 
@@ -236,12 +367,15 @@ export type TransmitirNotaPayload = z.infer<typeof TransmitirNotaPayload>;
 
 // ---- Eventos fiscais (T-0021, lote 2): cancelamento, CC-e, inutilização e consulta (RN-FAT-01, RN-FAT-02, RN-FAT-03) ----
 
+/** Limites de caracteres (após o trim) dos textos dos eventos fiscais: a tela e a API leem daqui (RN-FAT-02, RN-FAT-01). */
+export const LIMITES_TEXTO = { justificativa: { min: 15, max: 255 }, cartaCorrecao: { min: 15, max: 1000 } } as const;
+
 /** `POST /v1/faturamento/notas/:id/cancelar`: só nota autorizada, até 24 h da autorização (RN-FAT-02). */
-export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(15).max(255) });
+export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(LIMITES_TEXTO.justificativa.min).max(LIMITES_TEXTO.justificativa.max) });
 export type CancelarNotaEntrada = z.infer<typeof CancelarNotaEntrada>;
 
 /** `POST /v1/faturamento/notas/:id/carta-correcao`: só nota autorizada, até 20 por nota (RN-FAT-02). */
-export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(15).max(1000) });
+export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(LIMITES_TEXTO.cartaCorrecao.min).max(LIMITES_TEXTO.cartaCorrecao.max) });
 export type CartaCorrecaoEntrada = z.infer<typeof CartaCorrecaoEntrada>;
 
 /** `POST /v1/faturamento/inutilizacoes`: faixa da série da filial emissora (RN-FAT-01). Sem `serie` = a da filial; sem `ano` = o do ano corrente (Manaus). */
@@ -252,7 +386,7 @@ export const InutilizarEntrada = z
     numero_inicial: z.number().int().min(1).max(999_999_999),
     numero_final: z.number().int().min(1).max(999_999_999),
     ano: z.number().int().min(2000).max(2099).optional(),
-    justificativa: z.string().trim().min(15).max(255),
+    justificativa: z.string().trim().min(LIMITES_TEXTO.justificativa.min).max(LIMITES_TEXTO.justificativa.max),
   })
   .refine((e) => e.numero_inicial <= e.numero_final, { message: 'o número inicial não pode ser maior que o final', path: ['numero_final'] });
 export type InutilizarEntrada = z.infer<typeof InutilizarEntrada>;

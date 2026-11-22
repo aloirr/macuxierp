@@ -25,10 +25,12 @@ import {
   eventoDoModulo,
   executarAutorizado,
   executarIdempotente,
+  fusoDaRota,
   hashDoPedido,
   modulosLicenciados,
   QUANTIDADE_MAXIMA_ARQUIVOS,
   pode,
+  temFuso,
   trabalhoDoModulo,
   type Banco,
   type ContextoRota,
@@ -237,19 +239,22 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
   const entrada = rota.multipart ? await lerMultipart(req, rota.multipart) : { corpo: req.body, todosArquivos: {} };
   if (estourou()) throw erros.tempoEsgotado(Math.round(rota.tempoMaximoMs! / 1000));
   const agora = d.relogio.agora();
+  const fonte = licencasComFuso(d);
   const resultado = await executarAutorizado({
     sessao: req.sessao,
     acao: rota.acao,
     agora,
     banco: d.banco,
-    licencas: d.licencas,
+    licencas: fonte,
     executar: async (txTenant, sessao) => {
       const tx = rota.tempoMaximoMs === undefined ? txTenant : transacaoComPrazo(txTenant, { restanteMs: rota.tempoMaximoMs - (cronometro() - inicio), limiteRotaMs: rota.tempoMaximoMs }, cronometro);
+      const fuso = fusoDaRota({ fuso: (await fonte.fuso(txTenant, sessao.tenant_id)) ?? undefined });
       const ctx: ContextoRota = {
         sessao,
         tx,
         request_id: req.id,
         agora,
+        fuso,
         publicar: async (e) => {
           if (!eventoDoModulo(modulo, e.nome)) throw new Error(`${modulo} publicando evento de outro módulo: ${e.nome}`);
           const { versao: _ignorada, ...dados } = e;
@@ -282,6 +287,28 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
     },
   });
   return responder(reply, resultado.resposta, resultado.repetida);
+}
+
+/**
+ * Licenças da rota com o fuso do tenant (T-0042, regra 4): com o `LicencasPg` (produção), o fuso vem na mesma consulta
+ * das licenças, sem ida extra ao banco. Fonte sem `lerComFuso` (dublê): lê o tenant pelo `repoAuth`, como o `/eu`.
+ * Uma por pedido (guarda o fuso lido entre a checagem da licença e o `executar`).
+ */
+function licencasComFuso(d: DependenciasApp): FonteLicencas & { fuso(tx: Transacao, tenantId: string): Promise<string | null> } {
+  const base = d.licencas;
+  if (!temFuso(base)) {
+    return { ler: (tx, t) => base.ler(tx, t), fuso: async (tx, t) => (await d.repoAuth.tenantPorId(tx, t))?.fuso ?? null };
+  }
+  let lido: { tenantId: string; fuso: string | null } | null = null;
+  return {
+    ler: async (tx, t) => {
+      const r = await base.lerComFuso(tx, t);
+      lido = { tenantId: t, fuso: r.fuso };
+      return r.licencas;
+    },
+    // A rota de módulo sempre checa a licença antes; o fallback só cobre ação sem módulo.
+    fuso: async (tx, t) => (lido?.tenantId === t ? lido.fuso : (await base.lerComFuso(tx, t)).fuso),
+  };
 }
 
 function responder(reply: FastifyReply, resposta: RespostaRota, repetida: boolean) {

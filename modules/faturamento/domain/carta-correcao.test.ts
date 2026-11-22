@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { avisosCartaCorrecao, proximaSequenciaCce, validarCartaCorrecao } from './carta-correcao';
 
-const base = { status: 'autorizada' as const, texto: 'Corrigir o endereço de entrega no campo de informações', sequenciasRegistradas: [] as number[] };
+const base = { status: 'autorizada' as const, texto: 'Corrigir o endereço de entrega no campo de informações', sequenciasRegistradas: [] as number[], cancelamento_pendente: false };
 
 describe('carta de correção', () => {
   it('RN-FAT-02: nota autorizada, texto válido e nenhuma CC-e antes: sem violação e a sequência é 1', () => {
@@ -11,6 +11,10 @@ describe('carta de correção', () => {
   it('RN-FAT-02: só autorizada; cancelada tem mensagem própria', () => {
     expect(validarCartaCorrecao({ ...base, status: 'rejeitada' }).map((v) => v.campo)).toContain('status');
     expect(validarCartaCorrecao({ ...base, status: 'cancelada' })[0]?.mensagem).toContain('cancelada');
+  });
+  it('RN-FAT-02: cancelamento pendente bloqueia a CC-e (aguardar o retorno da SEFAZ)', () => {
+    const v = validarCartaCorrecao({ ...base, cancelamento_pendente: true });
+    expect(v).toEqual([expect.objectContaining({ rn: 'RN-FAT-02', campo: 'status', mensagem: 'Há um cancelamento em processamento nesta nota: aguarde o retorno da SEFAZ antes de enviar carta de correção.' })]);
   });
   it('RN-FAT-02: texto de 15 a 1000 caracteres', () => {
     expect(validarCartaCorrecao({ ...base, texto: 'x'.repeat(14) }).map((v) => v.campo)).toEqual(['texto']);
