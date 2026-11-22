@@ -97,10 +97,19 @@ describe('lista de notas: selo do ambiente e inutilizar números', () => {
     const rej = { ...nota('rejeitada'), acao_sugerida: 'Reenvie', codigo: 539, mensagem: 'x', rejeitada_em: '2026-11-22T14:00:00.000Z', ambiente: 'homologacao' as const };
     expect(LISTA_REJEICOES.selos?.(rej, FUSO).ambiente?.[0]?.tom).toBe('aviso');
   });
-  it('as colunas Filial e Pedido saíram da lista de notas; "Aprovado em" virou "Recebido em"', () => {
-    expect(LISTA_NOTAS.colunas('administrador').map((c) => c.rotulo)).not.toEqual(expect.arrayContaining(['Filial']));
-    expect(LISTA_NOTAS.colunas('administrador').map((c) => c.id)).not.toContain('pedido');
+  it('a lista de notas tem Número/Série, Pedido e Filial no começo e mostra "—" quando vazio; "Aprovado em" virou "Recebido em"', () => {
+    expect(LISTA_NOTAS.colunas('administrador').slice(0, 3).map((c) => c.rotulo)).toEqual(['Número/Série', 'Pedido', 'Filial']);
+    const vazia = LISTA_NOTAS.linha({ ...nota('autorizada'), pedido_numero: null, filial_nome: null }, FUSO);
+    expect(vazia.pedido).toBe('—');
+    expect(vazia.filial).toBe('—');
+    const cheia = LISTA_NOTAS.linha({ ...nota('autorizada'), pedido_numero: 42, filial_nome: 'Matriz' }, FUSO);
+    expect(cheia.pedido).toBe('42');
+    expect(cheia.filial).toBe('Matriz');
     expect(LISTA_PEDIDOS_A_FATURAR.colunas('administrador').map((c) => c.rotulo)).toContain('Recebido em');
+  });
+  it('o cabeçalho do detalhe da nota mostra Filial e Pedido', () => {
+    const v = vistaDaNota({ ...(nota('autorizada') as NotaDetalhe), filial_nome: 'Matriz', pedido_numero: 42 }, 'administrador', FUSO);
+    expect(v.cabecalho.slice(0, 2)).toEqual([{ rotulo: 'Filial', valor: 'Matriz' }, { rotulo: 'Pedido', valor: '42' }]);
   });
   const barra = (p: Parameters<NonNullable<typeof LISTA_NOTAS.acaoDaBarra>['acao']>[0]) => LISTA_NOTAS.acaoDaBarra?.acao(p);
   it('administrador, faturista e fiscal veem "Inutilizar números"; gerente, leitura e vendedor não', () => {
