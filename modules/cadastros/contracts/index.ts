@@ -241,7 +241,12 @@ export const ListaConsulta = ConsultaLista.extend({
   vendedor_id: Uuid.optional(),
 });
 export type ListaConsulta = z.infer<typeof ListaConsulta>;
-export const EstoqueConsulta = z.object({ filial_id: Uuid.optional(), produto_id: Uuid.optional() });
+/** Lista do estoque no contrato de listas do SDK (D-05): `busca` (código ou descrição do produto, razão social ou fantasia da filial), `cursor` e `limite`. */
+export const EstoqueConsulta = ConsultaPaginada.extend({ busca: ConsultaLista.shape.busca, filial_id: Uuid.optional(), produto_id: Uuid.optional() });
+export type EstoqueConsulta = z.infer<typeof EstoqueConsulta>;
+/** Linha da lista do estoque: o `id` da linha do saldo é o cursor (ordem estável por `id`). O evento segue com `SaldoEstoque`, sem `id`. */
+export const SaldoEstoqueItem = SaldoEstoque.extend({ id: Uuid });
+export type SaldoEstoqueItem = z.infer<typeof SaldoEstoqueItem>;
 
 // ---- Consultas externas (RF-CAD-02/03, RN-CAD-05): só sugestão ----
 export const FonteConsulta = z.enum(['brasilapi', 'viacep', 'receita-aberta', 'cache', 'sefaz']);
