@@ -3,3 +3,6 @@
 2026-11-21 — T-0005 — merge do main, EuResposta, marca e RD-10. (coord caixa/enviar: 403 no repositório de recados, ignorado.)
 2026-11-21 — T-0005 — RD-11 (menu pela API), mensagem do 429 e ajustes da marca. (coord caixa/enviar: 403 no repositório de recados, ignorado.)
 2026-11-22 — T-0011 — tela Integração FDV no shell (monitor, credencial, lotes), testes e prints
+2026-11-22 — T-0021 — telas do faturamento ligadas no shell do BKO
+2026-11-22 — T-0021 — shell do faturamento adaptado ao head f1e1628 do #213: páginas e rótulos do módulo, selos com dica, DANFE desabilitado, inutilizar na barra de notas, diálogo destrutivo, testes de render
+2026-11-22 — T-0021 — shell no head d597599 do #213: CSV pelo /exportar da API, detalhe do título e Rejeições do módulo, histórico da nota (/eventos), sem vermelho (confirmar com texto da ação), chave em linha inteira, menu marca a lista de origem, diálogos num padrão só
