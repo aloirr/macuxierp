@@ -41,7 +41,7 @@ import {
 } from '../contracts';
 import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria } from '../domain';
 import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
-import { cifrarA1 } from './cifra';
+import { cifrarColunasA1 } from './colunas-a1';
 import {
   PfxInvalido,
   type DependenciasCore,
@@ -309,7 +309,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         const av = avaliarCertificado({ cnpjEmpresa: empresa.cnpj, cnpjCertificado: dados.cnpj, validoDe: dados.valido_de, validoAte: dados.valido_ate, agora: c.agora, fuso: empresa.fuso });
         if (!av.ok) throw erros.regra('RN-CORE-06', av.mensagem);
         const id = novoId();
-        const cifrado = cifrarA1({ chave: deps.chaveA1, tenantId: c.sessao.tenant_id, pfx, senha: corpo.senha });
+        const cifrado = cifrarColunasA1({ chave: deps.chaveA1, tenantId: c.sessao.tenant_id, pfx, senha: corpo.senha });
         await repo.substituirCertificado(c.tx, { id, filial_id: corpo.filial_id, ...dados, ...cifrado, chave_versao: deps.chaveVersao ?? 1 }, c.agora);
         const resumo = certificadoDto({ id, filial_id: corpo.filial_id, ...dados, ativo: true }, c.agora);
         await c.auditar({ acao: 'core.certificado.enviado', entidade: 'certificado', entidade_id: id, depois: { filial_id: resumo.filial_id, cnpj: resumo.cnpj, valido_ate: resumo.valido_ate, impressao_digital: resumo.impressao_digital } });

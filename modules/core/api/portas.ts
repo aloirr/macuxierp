@@ -3,7 +3,14 @@
  * `criarPluginCore`; os testes usam `RepositorioCoreMemoria`. Linhas com `Date`: a serialização para o contrato é das rotas.
  */
 import type { Armazenamento, Perfil, Transacao } from '@macuxierp/platform-sdk';
-import type { A1Cifrado } from './cifra';
+
+/** Colunas cifradas do A1 em `core.certificado`; o formato (cifrado, tag, nonce) está em `colunas-a1.ts`. */
+export interface A1Cifrado {
+  pfx_cifrado: Buffer;
+  pfx_nonce: Buffer;
+  senha_cifrada: Buffer;
+  senha_nonce: Buffer;
+}
 
 export interface LinhaEmpresa {
   id: string;

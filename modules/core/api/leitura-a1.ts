@@ -9,7 +9,7 @@
 import { inspect } from 'node:util';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { Id } from '../contracts';
-import { decifrarA1 } from './cifra';
+import { abrirColunasA1 } from './colunas-a1';
 
 /** A1 decifrado de uma filial. `pfx` e `senha` são não enumeráveis e ocultos em serialização e inspeção. */
 export interface A1DecifradoDaFilial {
@@ -45,7 +45,7 @@ export async function lerA1DecifradoDaFilial(tx: Transacao, chave: Buffer, filia
   if (linha.chave_versao !== 1) throw new Error('Versão da chave do A1 não suportada');
   let aberto: { pfx: Buffer; senha: string };
   try {
-    aberto = decifrarA1({ chave, tenantId: linha.tenant_id, pfx_cifrado: linha.pfx_cifrado, pfx_nonce: linha.pfx_nonce, senha_cifrada: linha.senha_cifrada, senha_nonce: linha.senha_nonce });
+    aberto = abrirColunasA1({ chave, tenantId: linha.tenant_id, pfx_cifrado: linha.pfx_cifrado, pfx_nonce: linha.pfx_nonce, senha_cifrada: linha.senha_cifrada, senha_nonce: linha.senha_nonce });
   } catch {
     throw new Error('Não foi possível decifrar o A1 da filial (chave ou tenant não conferem)');
   }
