@@ -1,6 +1,6 @@
 /**
  * Apoio dos testes de banco do conector (só teste): massa de tenant, eventos do `cadastros`, licenças e um dublê do
- * `ClienteHub` (sem rede). Não faz parte da API do módulo.
+ * `ClienteHub` (sem rede). Não faz parte da API de produção: exposto só como `@macuxierp/integracao-fdv/api/testes`, para testes.
  */
 import { randomUUID } from 'node:crypto';
 import { cifrarCampo, decifrarCampo, ErroClienteHub, type AgendaModulo, type Banco, type ContextoAgenda, type ItemAgenda, type CredencialHub, type ClienteHub, type EnvelopeEvento, type FonteLicencas, type PedidoHub, type RespostaHub } from '@macuxierp/platform-sdk';
@@ -96,7 +96,7 @@ export function hubDuble(roteiro: Record<string, RespostaRoteirizada[]> = {}): C
   };
 }
 
-export const ok = (corpo: unknown, replay = false): RespostaHub => ({ tipo: 'ok', status: 202, corpo, replay });
+export const ok = (corpo: unknown, replay = false, status = 202): RespostaHub => ({ tipo: 'ok', status, corpo, replay });
 export const recusa = (status: number, codigo: string | null = null): RespostaHub => ({ tipo: 'recusa', status, codigo });
 export const retentavel = (status: number | null, retryAfterMs: number | null = null, codigo: string | null = null): RespostaHub => ({ tipo: 'retentavel', status, codigo, retryAfterMs });
 
