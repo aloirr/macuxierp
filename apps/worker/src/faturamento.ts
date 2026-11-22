@@ -10,6 +10,9 @@
  * - Lote 5 (#205): `titulos` e `log` no transmissor e no processador; varredura dos títulos de boleto (`criarVarreduraTitulos`) na mesma rotina de 60 s,
  *   só em tenant licenciado; consumidor do pedido aprovado com a situação ATUAL do pedido (`criarConsultaParaFaturar`, a mesma porta da API).
  * - #222: o transmissor recebe a situação do pedido (`criarConsultaParaFaturar`, RN-PED-02): pedido cancelado não lê o A1 nem assina.
+ * - Estado do simulador no Postgres (T-0045 §9, lote B #220): `estadoSimuladorPorTenant(banco)`; o executor e cada tenant da varredura rodam em
+ *   `noTenant(tenant_id, ...)` e cada operação do simulador abre a PRÓPRIA transação do tenant (o faturamento chama a SEFAZ fora das dele).
+ *   `SEFAZ_SIMULADOR_ESGOTADO` é configuração (422, sem retentativa); `ErroEstadoSimuladorPg` (falha do banco) segue o backoff.
  * Logs: só ids, contagens, códigos e nomes de erro; nunca XML, CNPJ/CPF, certificado ou senha.
  */
 import { criarConsultaParaFaturamento, repositoriosSql as repositoriosCadastros } from '@macuxierp/cadastros/api';
@@ -39,7 +42,7 @@ import {
 import { criarConsultaParaFaturar } from '@macuxierp/pedido/api';
 import { abrirA1, criarEmissorNFe, type EmissorNFe } from '@macuxierp/nfe-emissor';
 import { criarSeletorTransporte, DESLOCAMENTO_MANAUS_MIN, ErroSefaz, type FabricaTransporteSimulador, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
-import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
+import { criarFabricaSimulador, estadoSimuladorPorTenant, type EstadoSimuladorPorTenant } from '@macuxierp/sefaz-simulador';
 import { ErroApi, moduloLicenciado, type Banco, type ConsumidorEvento, type ExecutorTrabalho, type FonteLicencas, type Transacao } from '@macuxierp/platform-sdk';
 import { OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
@@ -81,7 +84,11 @@ export function criarLerA1DoWorker(chaveA1: Buffer, agora: () => Date = () => ne
   };
 }
 
-/** Códigos da SEFAZ que são configuração do worker, não falha passageira: o trabalho desiste na hora. */
+/**
+ * Códigos da SEFAZ que são configuração do worker, não falha passageira: o trabalho desiste na hora. `SEFAZ_SIMULADOR_ESGOTADO`: a sequência do
+ * nProt/nRec do simulador acabou (`SequenciaSimuladorEsgotadaErro`), repetir não muda nada. O `ErroEstadoSimuladorPg` (falha do banco na memória
+ * do simulador) NÃO é `ErroSefaz`: a transação do simulador voltou inteira e o trabalho segue o backoff (desenho T-0045 §9).
+ */
 const ERRO_DE_CONFIGURACAO: ReadonlySet<string> = new Set([
   'SEFAZ_SIMULADOR_EM_PRODUCAO',
   'SEFAZ_TRANSPORTE_NAO_CONFIGURADO',
@@ -89,6 +96,7 @@ const ERRO_DE_CONFIGURACAO: ReadonlySet<string> = new Set([
   'SEFAZ_FILIAL_INVALIDA',
   'SEFAZ_UF_SEM_AUTORIZADOR',
   'SEFAZ_CONTINGENCIA_INVALIDA',
+  'SEFAZ_SIMULADOR_ESGOTADO',
 ]);
 
 async function semRetentarConfiguracao<T>(fazer: () => Promise<T>): Promise<T> {
@@ -105,12 +113,21 @@ function resumo(r: { resultado: string; motivo?: string; codigo?: string; status
   return { resultado: r.resultado, ...(r.motivo ? { motivo: r.motivo } : {}), ...(r.codigo ? { codigo: r.codigo } : {}), ...(r.status ? { status: r.status } : {}) };
 }
 
-function executor<S extends z.ZodTypeAny>(tipo: string, payload: S, fazer: (tenant_id: string, p: z.infer<S>) => Promise<{ resultado: string }>): ExecutorTrabalho {
+/**
+ * O trabalho roda em `noTenant(t.tenant_id, ...)`: o simulador acha o tenant dele e abre a própria transação por operação. A `tx` que o laço de
+ * trabalhos passa fica sem uso (a SEFAZ nunca é chamada dentro dela nem de outra transação do faturamento).
+ */
+function executor<S extends z.ZodTypeAny>(
+  tipo: string,
+  payload: S,
+  estado: Pick<EstadoSimuladorPorTenant, 'noTenant'>,
+  fazer: (tenant_id: string, p: z.infer<S>) => Promise<{ resultado: string }>,
+): ExecutorTrabalho {
   return {
     tipo,
     async executar(t) {
       const p = payload.parse(t.payload) as z.infer<S>;
-      return resumo(await semRetentarConfiguracao(() => fazer(t.tenant_id, p)));
+      return resumo(await semRetentarConfiguracao(() => estado.noTenant(t.tenant_id, () => fazer(t.tenant_id, p))));
     },
   };
 }
@@ -124,7 +141,10 @@ export interface DependenciasFaturamentoWorker {
   tenants: FonteTenants;
   licencas: FonteLicencas;
   agora?: () => Date;
-  /** Padrão: `criarSefazDoWorker()` (só o simulador). */
+  /**
+   * Padrão: `criarSefazDoWorker` com o simulador sobre o Postgres (`estadoSimuladorPorTenant(banco)`, T-0045 §9). Os testes passam um seletor próprio;
+   * o `noTenant` vale do mesmo jeito.
+   */
   sefaz?: SeletorTransporte;
   /** Padrão: `criarEmissorNFe()` completo (montar, assinar, transmitir). */
   emissor?: EmissorNFe;
@@ -174,7 +194,9 @@ export function montarFaturamentoWorker(d: DependenciasFaturamentoWorker): Monta
   const repos = repositoriosFaturamento({ outbox: new OutboxPg(), agora });
   const lerA1 = criarLerA1DoWorker(d.chaveA1, agora);
   const emissor = d.emissor ?? criarEmissorNFe();
-  const sefaz = d.sefaz ?? criarSefazDoWorker();
+  // Memória do simulador no Postgres (lote B, #220): reinício do worker não repete nProt nem perde a nota autorizada (cancelamento e CC-e seguem).
+  const estadoSim = estadoSimuladorPorTenant(d.banco);
+  const sefaz = d.sefaz ?? criarSefazDoWorker({ simulador: criarFabricaSimulador({ estado: estadoSim.fonte }) });
   const log = logFaturamentoDoWorker(d.log);
   const comuns = { banco: d.banco, notas: repos.notas, titulos: repos.titulos, log, ambiente: repos.ambiente, lerA1, emissor, sefaz, agora };
   const situacao = d.situacao ?? criarConsultaParaFaturar();
@@ -184,10 +206,10 @@ export function montarFaturamentoWorker(d: DependenciasFaturamentoWorker): Monta
   const varrerTitulos = criarVarreduraTitulos({ titulos: repos.titulos, notas: repos.notas, log });
 
   const executores = [
-    executor(TRABALHO_TRANSMITIR_NOTA, TransmitirNotaPayload, (t, p) => transmissor.transmitirNota(t, p.nota_id)),
-    executor(TRABALHO_PROCESSAR_EVENTO, ProcessarEventoPayload, (t, p) => processador.processarEvento(t, p.evento_id)),
-    executor(TRABALHO_PROCESSAR_INUTILIZACAO, ProcessarInutilizacaoPayload, (t, p) => processador.processarInutilizacao(t, p.inutilizacao_id)),
-    executor(TRABALHO_CONSULTAR_NOTA, ConsultarNotaPayload, (t, p) => processador.consultarNota(t, p.nota_id)),
+    executor(TRABALHO_TRANSMITIR_NOTA, TransmitirNotaPayload, estadoSim, (t, p) => transmissor.transmitirNota(t, p.nota_id)),
+    executor(TRABALHO_PROCESSAR_EVENTO, ProcessarEventoPayload, estadoSim, (t, p) => processador.processarEvento(t, p.evento_id)),
+    executor(TRABALHO_PROCESSAR_INUTILIZACAO, ProcessarInutilizacaoPayload, estadoSim, (t, p) => processador.processarInutilizacao(t, p.inutilizacao_id)),
+    executor(TRABALHO_CONSULTAR_NOTA, ConsultarNotaPayload, estadoSim, (t, p) => processador.consultarNota(t, p.nota_id)),
   ];
 
   const tenantsLicenciados = async (quando: Date): Promise<string[]> => {
@@ -216,8 +238,11 @@ export function montarFaturamentoWorker(d: DependenciasFaturamentoWorker): Monta
           d.log.warn({ rotina: 'faturamento.varredura', modulo: 'faturamento', tenant_id, erro: nomeDoErro(e) }, 'varredura de títulos falhou no tenant');
         }
         try {
-          const notas = await transmissor.transmitirPendentes(tenant_id);
-          const eventos = await processador.processarPendentes(tenant_id);
+          // Fora de qualquer transação: o transmissor e o processador abrem as deles e o simulador, uma por operação, no tenant do `noTenant`.
+          const { notas, eventos } = await estadoSim.noTenant(tenant_id, async () => ({
+            notas: await transmissor.transmitirPendentes(tenant_id),
+            eventos: await processador.processarPendentes(tenant_id),
+          }));
           r.notas += notas.length;
           r.eventos += eventos.length;
           const falhas = [

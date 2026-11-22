@@ -15,7 +15,7 @@ import {
 } from '@macuxierp/faturamento/contracts';
 import { ErroCertificadoA1 } from '@macuxierp/nfe-emissor';
 import { ErroSefaz, SimuladorEmProducaoErro, type DestinoSimulador, type FilialEmissoraSefaz } from '@macuxierp/nfe-sefaz';
-import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
+import { criarFabricaSimulador, ErroEstadoSimuladorPg, SequenciaSimuladorEsgotadaErro } from '@macuxierp/sefaz-simulador';
 import { ArmazenamentoMemoria, ErroApi, type Banco, type Licenca, type Transacao } from '@macuxierp/platform-sdk';
 import { pino } from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,7 +92,7 @@ describe('faturamento montado no worker', () => {
     const executores = montarExecutores({ banco, log, armazenamento: new ArmazenamentoMemoria(), catalogo: { registrar: async () => ({ id: 'x' }) } as never, agora: () => AGORA, faturamento: fat });
     expect(executores.map((e) => e.tipo)).toEqual(expect.arrayContaining([TRABALHO_TRANSMITIR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_CONSULTAR_NOTA]));
     expect(fat.executores.map((e) => e.tipo)).toEqual([TRABALHO_TRANSMITIR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_CONSULTAR_NOTA]);
-    expect(montarRotinas({ banco, log, faturamento: fat }).map((r) => r.id)).toEqual(['core.alerta_a1', 'faturamento.alerta_inutilizacao']);
+    expect(montarRotinas({ banco, log, faturamento: fat }).map((r) => r.id)).toEqual(expect.arrayContaining(['faturamento.alerta_inutilizacao']));
     expect(montarPeriodicas({ faturamento: fat }).map((r) => r.id)).toEqual(['faturamento.varredura']);
   });
 
@@ -101,7 +101,7 @@ describe('faturamento montado no worker', () => {
     const executores = montarExecutores({ banco, log, armazenamento: new ArmazenamentoMemoria(), catalogo: {} as never, agora: () => AGORA });
     expect(executores.map((e) => e.tipo).filter((t) => t.startsWith('faturamento.'))).toEqual([]);
     expect(montarPeriodicas({})).toEqual([]);
-    expect(montarRotinas({ banco, log }).map((r) => r.id)).toEqual(['core.alerta_a1']);
+    expect(montarRotinas({ banco, log }).map((r) => r.id).filter((id) => id.startsWith('faturamento.'))).toEqual([]);
   });
 
   it('o executor valida o payload pelo contrato: sem nota_id desiste (ZodError), sem tocar a SEFAZ', async () => {
@@ -169,6 +169,20 @@ describe('barreira (a): filial em produção fiscal nunca chega ao simulador (re
     const rede = await erroDoTransmissor(new ErroSefaz('SEFAZ_FALHA_TRANSPORTE', 'autorizar: tempo esgotado'));
     expect(rede).not.toBeInstanceOf(ErroApi);
     expect(rede).toMatchObject({ codigo: 'SEFAZ_FALHA_TRANSPORTE' });
+  });
+});
+
+describe('erros do estado do simulador no Postgres (T-0045 §9)', () => {
+  it('SEFAZ_SIMULADOR_ESGOTADO é configuração: ErroApi 422, o trabalho desiste na hora', async () => {
+    const e = await erroDoTransmissor(new SequenciaSimuladorEsgotadaErro('nProt'));
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({ status: 422, codigo: 'SEFAZ_SIMULADOR_ESGOTADO' });
+  });
+
+  it('ErroEstadoSimuladorPg (falha do banco do simulador) sobe como está: retentável, segue o backoff', async () => {
+    const e = await erroDoTransmissor(new ErroEstadoSimuladorPg('gravarNota', '40001'));
+    expect(e).not.toBeInstanceOf(ErroApi);
+    expect(e).toBeInstanceOf(ErroEstadoSimuladorPg);
   });
 });
 

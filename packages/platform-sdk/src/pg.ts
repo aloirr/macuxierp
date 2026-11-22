@@ -11,7 +11,7 @@
  * código.
  */
 import pg from 'pg';
-import type { Licenca, FonteLicencas } from './acesso';
+import type { Licenca, FonteLicencas, FonteTodosTenants } from './acesso';
 import type { CatalogoArquivos, RegistroArquivo } from './arquivos';
 import type { DestinoAuditoria, RegistroAuditoria } from './auditoria';
 import { PADRAO_UUID, type Banco, type Transacao } from './banco';
@@ -201,6 +201,18 @@ export class LicencasPg implements FonteLicencas {
       'SELECT modulo, ativo, valido_ate FROM plataforma.tenant_modulo WHERE tenant_id = $1 AND deleted_at IS NULL',
       [tenantId],
     );
+  }
+}
+
+/**
+ * TODOS os tenants de `plataforma.tenant`, inclusive suspensos, encerrados e apagados (soft delete), para as rotinas de retenção (LGPD: o prazo
+ * vale para quem saiu). Roda em `semTenant`: a RLS do `plataforma.tenant` não mostra linha sem tenant, então a lista vem da função
+ * `plataforma.tenants_todos()` (SECURITY DEFINER, EXECUTE só para o `macuxierp_worker`, como a `tenants_ativos()` da 0009), pedida ao banco-dados.
+ */
+export class TodosTenantsPg implements FonteTodosTenants {
+  async todos(tx: Transacao): Promise<string[]> {
+    const linhas = await tx.consultar<{ id: string }>('SELECT t AS id FROM plataforma.tenants_todos() t');
+    return linhas.map((l) => l.id);
   }
 }
 

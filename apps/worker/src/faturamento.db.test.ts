@@ -6,6 +6,8 @@
  * cifrado com a chave de teste); só o worker o decifra (ADR 0005 item 4). Nenhum `.pfx` em disco, nenhuma escrita no Hub do FDV.
  * Casos: emissão autorizada (nfeProc guardado antes do status), a nota no pedido (#194) e no estoque (#192), cancelamento 135, nota MEI (CRT 4) e a filial em produção
  * fiscal: a API recusa com 422 RN-FAT-04 antes de reservar o número (lote 5, #205) e o simulador nunca é chamado para ela.
+ * Estado do simulador no Postgres (T-0045 §9, lote B #220): o worker montado SEM `sefaz` (o padrão do `main.ts`) emite, "reinicia" (montagem nova,
+ * mesmo banco) e cancela: 135, com o nProt da autorização guardado no simulador, e o nProt seguinte não repete.
  * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -288,6 +290,56 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
     expect(destinos.length).toBe(antes);
     expect(destinos.some((d) => d.filial_id === filiais.producao)).toBe(false);
   });
+
+  /** Um "processo" novo do worker, montado como no `main.ts`: sem `sefaz`, o simulador guarda a memória no Postgres (`estadoSimuladorPorTenant`). */
+  function workerComEstadoPg(): DependenciasWorker {
+    const faturamento = montarFaturamentoWorker({ banco: worker, chaveA1, log: deps.log, tenants: fonteTenantsSql, licencas: new LicencasPg() });
+    return { ...deps, executores: montarExecutores({ banco: worker, log: deps.log, armazenamento: new ArmazenamentoMemoria(), catalogo: new CatalogoArquivosPg(), agora: () => relogioDoSistema.agora(), faturamento }) };
+  }
+  const rodarCom = async (dw: DependenciasWorker) => {
+    for (let i = 0; i < 10 && (await ciclo(dw)); i++);
+  };
+  /** Últimos 9 dígitos do nProt do simulador: o sequencial (`seq_nprot`). */
+  const seq = (nProt: string) => Number(nProt.slice(-9));
+  const notaNoSimulador = async (nota_id: string) =>
+    (await admin<{ tenant_id: string; n_prot: string; situacao: string }>(
+      'SELECT s.tenant_id, s.n_prot, s.situacao FROM sefaz_simulador.nota s JOIN faturamento.nota n ON n.chave_acesso = s.ch_nfe AND n.tenant_id = s.tenant_id WHERE n.id = $1',
+      [nota_id],
+    ))[0];
+
+  it('T-0045 §9: reinício do worker com o estado no Postgres — cancelamento 135 com o nProt da autorização; o nProt seguinte não repete', async () => {
+    // Processo 1: emite e autoriza; o simulador grava a nota (com o nProt) em sefaz_simulador.nota, no tenant (RLS).
+    const antes = workerComEstadoPg();
+    const nota = await emitirNota('matriz');
+    await rodarCom(antes);
+    const autorizada1 = await notaNoBanco(nota.id);
+    expect(autorizada1.status).toBe('autorizada');
+    const pA = autorizada1.protocolo!;
+    expect(await notaNoSimulador(nota.id)).toEqual({ tenant_id: tenant, n_prot: pA, situacao: 'autorizada' });
+
+    // Processo 2 (worker novo, mesmo banco): a memória de antes continua; o cancelamento acha a nota e o nProt dela.
+    const depois = workerComEstadoPg();
+    const r = await post(`/v1/faturamento/notas/${nota.id}/cancelar`, { justificativa: 'Cancelamento depois do reinicio do worker no simulador' }, { 'idempotency-key': randomUUID() });
+    expect(r.statusCode, r.body).toBe(202);
+    await rodarCom(depois);
+    expect((await trabalhos('faturamento.processar_evento')).at(-1)).toMatchObject({ estado: 'concluido', resultado: { resultado: 'registrado' } });
+    expect((await notaNoBanco(nota.id)).status).toBe('cancelada');
+    const proc = (await xmlsDaNota(nota.id)).find((x) => x.tipo === 'evento_cancelamento')!;
+    expect(proc.xml).toMatch(/<retEvento[\s\S]*<cStat>135<\/cStat>/);
+    expect(proc.xml).toContain(`<nProt>${pA}</nProt>`); // o pedido de cancelamento leva o nProt da autorização, e o simulador o aceitou
+    expect(await notaNoSimulador(nota.id)).toEqual({ tenant_id: tenant, n_prot: pA, situacao: 'cancelada' });
+    const [ev] = await admin<{ n_prot: string }>("SELECT n_prot FROM sefaz_simulador.evento WHERE tenant_id = $1 AND tp_evento = '110111'", [tenant]);
+    expect(ev!.n_prot).toBe(proc.protocolo);
+    expect(seq(ev!.n_prot)).toBeGreaterThan(seq(pA));
+
+    // O nProt seguinte, no processo 2, continua a sequência (em memória, voltaria ao início e repetiria o pA).
+    const outra = await emitirNota('matriz');
+    await rodarCom(depois);
+    const pB = (await notaNoBanco(outra.id)).protocolo!;
+    expect((await notaNoBanco(outra.id)).status).toBe('autorizada');
+    expect([pA, ev!.n_prot]).not.toContain(pB);
+    expect(seq(pB)).toBeGreaterThan(seq(ev!.n_prot));
+  }, 60_000);
 
   it('regras 8 e 9: o log do worker não traz o A1, a senha, o XML nem o documento do cliente', () => {
     const texto = linhasLog.join('');

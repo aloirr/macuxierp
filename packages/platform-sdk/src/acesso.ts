@@ -43,6 +43,14 @@ export interface FonteLicencas {
   ler(tx: Transacao, tenantId: string): Promise<Licenca[]>;
 }
 
+/**
+ * TODOS os tenants de `plataforma.tenant`, inclusive os desativados (roda em `semTenant`), para as rotinas de retenção (LGPD). Mesmo formato da
+ * `FonteTenants` do worker (um método `(tx) => ids`). Adaptador: `TodosTenantsPg` (`platform-sdk/pg`).
+ */
+export interface FonteTodosTenants {
+  todos(tx: Transacao): Promise<string[]>;
+}
+
 export interface PedidoAutorizacao<R> {
   sessao: Sessao | null;
   /** Ação da rota; `'sessao'` = só exige sessão (ex.: `GET /v1/auth/eu`). */
