@@ -192,14 +192,16 @@ describe('registrarAgendas', () => {
   const agenda = (id: string, modulo: AgendaModulo['modulo'] = 'integracao-fdv'): AgendaModulo => ({ ...agendaMemoria([]).agenda, id, modulo });
 
   it('aceita <modulo>.<agenda> do próprio módulo e congela', () => {
-    const r = registrarAgendas([agenda('integracao-fdv.envio'), agenda('integracao-fdv.sinal')]);
-    expect(r.map((a) => a.id)).toEqual(['integracao-fdv.envio', 'integracao-fdv.sinal']);
+    const r = registrarAgendas([agenda('integracao-fdv.envio'), agenda('integracao-fdv.sinal'), agenda('integracao-fdv.busca-pedidos')]);
+    expect(r.map((a) => a.id)).toEqual(['integracao-fdv.envio', 'integracao-fdv.sinal', 'integracao-fdv.busca-pedidos']);
     expect(Object.isFrozen(r)).toBe(true);
   });
 
   it('recusa id fora do padrão, de outro módulo ou duplicado', () => {
     expect(() => registrarAgendas([agenda('envio')])).toThrow(/fora de/);
     expect(() => registrarAgendas([agenda('integracao-fdv.Envio')])).toThrow(/fora de/);
+    expect(() => registrarAgendas([agenda('integracao-fdv.-envio')])).toThrow(/fora de/);
+    expect(() => registrarAgendas([agenda('integracao-fdv.envio pedidos')])).toThrow(/fora de/);
     expect(() => registrarAgendas([agenda('cadastros.envio')])).toThrow(/fora de/);
     expect(() => registrarAgendas([agenda('integracao-fdv.envio'), agenda('integracao-fdv.envio')])).toThrow(/duas agendas/);
   });

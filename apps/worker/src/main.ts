@@ -11,16 +11,15 @@
  * `MACUXIERP_CHAVE_INTEGRACAO` (`credencial.ts`). Sem essa configuração o laço de agenda fica desligado (nada sai para o
  * Hub e as agendas ficam paradas no banco), com um aviso só no log listando as variáveis que faltam. A versão do ERP
  * (User-Agent) vem de `MACUXIERP_VERSAO` (o compose entrega; padrão 'dev').
- * Pedidos do FDV (T-0016): MACUXIERP_FDV_RECEBIMENTO, ver pedidos-fdv.ts.
+ * Pedidos do FDV (T-0016): `MACUXIERP_FDV_RECEBIMENTO`, ver pedidos-fdv.ts.
  */
-import { criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
 import { armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
 import { configurarCredenciais } from './credencial';
 import { configurarHub, versaoDoErp } from './hub';
 import { montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
-import { configurarRecebimentoFdv, montarPedidosFdv } from './pedidos-fdv';
+import { conferirRecebimentoFdv, configurarRecebimentoFdv, montarPedidosFdv, resolvedorChaveErpDeProducao } from './pedidos-fdv';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
@@ -39,25 +38,22 @@ await banco.conferirPapel('macuxierp_worker');
 const hub = configurarHub(process.env, versaoDoErp(process.env));
 const decifrarCredencial = configurarCredenciais(process.env);
 const faltando = [...(hub ? [] : ['MACUXIERP_HUB_URL_TESTE', 'MACUXIERP_HUB_URL_PRODUCAO']), ...(decifrarCredencial ? [] : ['MACUXIERP_CHAVE_INTEGRACAO'])];
+const recebimento = configurarRecebimentoFdv(process.env);
+conferirRecebimentoFdv(recebimento, faltando);
 if (faltando.length) log.warn({ faltando }, 'laço de agenda desligado');
-const pedidosFdv = montarPedidosFdv({
-  log,
-  relogio: relogioDoSistema,
-  recebimento: configurarRecebimentoFdv(process.env),
-  resolvedor: criarResolvedorChaveErp(repositoriosSql),
-  agendaDoModulo: false,
-});
-log.info({ recebimento_pedidos_fdv: pedidosFdv.recebimento }, 'pedidos do FDV');
+const pedidosFdv = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor: resolvedorChaveErpDeProducao() });
+const agendas = hub && decifrarCredencial ? montarAgendas({ log, relogio: relogioDoSistema, pedidosFdv }) : [];
+log.info({ recebimento_pedidos_fdv: recebimento, agendas: agendas.map((a) => a.id) }, 'pedidos do FDV');
 
 const worker = iniciarWorker({
   banco,
   outbox: new FilaOutboxPg(),
   trabalhos: new ReservaTrabalhosPg(),
   consumo: new RegistroConsumoPg(),
-  consumidores: montarConsumidores(),
+  consumidores: montarConsumidores({ log, relogio: relogioDoSistema }),
   executores: montarExecutores({ banco, log, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogioDoSistema.agora() }),
   rotinas: montarRotinas({ banco, log }),
-  ...(hub && decifrarCredencial ? { agenda: { agendas: montarAgendas({ banco, log }), licencas: new LicencasPg(), hub, decifrarCredencial } } : {}),
+  ...(hub && decifrarCredencial ? { agenda: { agendas, licencas: new LicencasPg(), hub, decifrarCredencial } } : {}),
   relogio: relogioDoSistema,
   log,
   intervaloMs: inteiro('MACUXIERP_WORKER_INTERVALO_MS', 1_000, 100, 60_000),

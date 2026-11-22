@@ -1,16 +1,21 @@
 /**
- * Ligação do worker (T-0035, T-0040): `montarRotinas` e `montarExecutores` usam os adaptadores SQL do core. Um banco
- * que só grava o SQL prova o caminho sem PostgreSQL; a rodada real fica em `modulos.db.test.ts`.
+ * Ligação do worker (T-0035, T-0040, T-0016): `montarRotinas` e `montarExecutores` usam os adaptadores SQL do core;
+ * `montarConsumidores` e `montarAgendas` ligam os do `integracao-fdv` (a busca de pedidos só com o recebimento ligado).
+ * Um banco que só grava o SQL prova o caminho sem PostgreSQL; as rodadas reais ficam em `modulos.db.test.ts` e
+ * `worker.db.test.ts`.
  */
 import { exportadorCadastros } from '@macuxierp/cadastros/api';
 import { EVENTO_CARGA_INICIAL, TRABALHO_CARGA_INICIAL } from '@macuxierp/cadastros/contracts';
 import { exportadorCore } from '@macuxierp/core/api';
+import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID, CONSUMIDOR_PUBLICAR_CADASTROS, EVENTOS_CADASTROS_PUBLICADOS } from '@macuxierp/integracao-fdv/api';
 import { exportadorPedido } from '@macuxierp/pedido/api';
 import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
-import { ArmazenamentoMemoria, type Banco, type Transacao } from '@macuxierp/platform-sdk';
+import { ArmazenamentoMemoria, relogioDoSistema, type Banco, type Transacao } from '@macuxierp/platform-sdk';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { EXPORTADORES, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
+import { pinoEmMemoria } from './apoio-teste';
+import { EXPORTADORES, montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
+import { montarPedidosFdv, type EstadoRecebimentoFdv } from './pedidos-fdv';
 
 const T1 = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const CERT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -65,10 +70,53 @@ describe('worker: rotinas e executores com os adaptadores reais', () => {
 
   it('C-4 (T-0042): o consumidor da carga inicial enfileira um trabalho por entidade, pela fila PG na transação', async () => {
     const { banco, sql } = bancoGravador([[/INSERT INTO plataforma\.trabalho/, [{ id: 'novo' }]]]);
-    const consumidores = montarConsumidores();
-    expect(consumidores.map((c) => [c.id, c.eventos])).toEqual([['cadastros.carga-inicial', [EVENTO_CARGA_INICIAL]]]);
+    const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
+    expect(consumidores[0]!.eventos).toEqual([EVENTO_CARGA_INICIAL]);
     const evento = { id: '20000000-0000-4000-8000-000000000002', nome: EVENTO_CARGA_INICIAL, tenant_id: T1, agregado_id: T1, versao: 1, ocorrido_em: AGORA.toISOString(), ator: 'sistema' as const, request_id: 'r', payload: { entidades: ['filial', 'cliente'] } };
     await banco.comTenant(T1, (tx) => consumidores[0]!.tratar(evento, tx));
     expect(sql).toEqual([expect.stringContaining('plataforma.trabalho'), expect.stringContaining('plataforma.trabalho')]);
+  });
+});
+
+describe('worker: integracao-fdv ligado (T-0016)', () => {
+  const resolvedor = { resolver: async () => new Map<string, string>() };
+  const agendas = (recebimento: EstadoRecebimentoFdv) => {
+    const { log: pinoLog } = pinoEmMemoria();
+    const pedidosFdv = montarPedidosFdv({ log: pinoLog, relogio: relogioDoSistema, recebimento, resolvedor });
+    return montarAgendas({ log: pinoLog, relogio: relogioDoSistema, pedidosFdv, outbox: { gravar: async () => 1 } }).map((a) => [a.id, a.modulo]);
+  };
+
+  it('consumidores: carga inicial, espelho dos cadastros e retorno do pedido, cada um uma vez', () => {
+    const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
+    expect(consumidores.map((c) => c.id)).toEqual(['cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido']);
+    expect(consumidores[1]!.eventos).toEqual(EVENTOS_CADASTROS_PUBLICADOS);
+    expect(consumidores[2]!.eventos).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1']);
+  });
+
+  it('MACUXIERP_FDV_RECEBIMENTO=desligado: conector e retorno entram; a busca de pedidos não', () => {
+    expect(agendas('desligado')).toEqual([
+      [AGENDA_CONECTOR_ID, 'integracao-fdv'],
+      [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
+    ]);
+  });
+
+  it('MACUXIERP_FDV_RECEBIMENTO=ligado: conector, busca e retorno', () => {
+    expect(agendas('ligado')).toEqual([
+      [AGENDA_CONECTOR_ID, 'integracao-fdv'],
+      [AGENDA_BUSCA_PEDIDOS_ID, 'integracao-fdv'],
+      [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
+    ]);
+  });
+
+  it('o retorno de pedido sem pedido_recebido do conector (recebimento desligado) só loga o código e não grava nada', async () => {
+    const { log: pinoLog, linhas } = pinoEmMemoria();
+    const { banco, sql } = bancoGravador([]);
+    const retorno = montarConsumidores({ log: pinoLog, relogio: relogioDoSistema })[2]!;
+    const pedido = '30000000-0000-4000-8000-000000000003';
+    const uuid = '40000000-0000-4000-8000-000000000004';
+    const evento = { id: '20000000-0000-4000-8000-000000000005', nome: 'pedido.pedido.recebido@1', tenant_id: T1, agregado_id: pedido, versao: 1, ocorrido_em: AGORA.toISOString(), ator: 'sistema' as const, request_id: 'r', payload: { pedido_id: pedido, numero: 7, origem: 'fdv', pedido_uuid: uuid, status: 'aprovado' } };
+    await banco.comTenant(T1, (tx) => retorno.tratar(evento, tx));
+    expect(sql).toEqual([expect.stringContaining('FROM integracao_fdv.pedido_recebido')]);
+    expect(JSON.parse(linhas[0]!)).toMatchObject({ level: 40, tenant_id: T1, modulo: 'integracao-fdv', pedido_uuid: uuid, codigo: 'pedido_nao_recebido_pelo_conector' });
   });
 });
