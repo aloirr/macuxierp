@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SIMULAÇÃO da posição (T-0023), não é ativo final; ver assinatura-erp.md -->
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="176" viewBox="0 0 220 176" role="img" aria-labelledby="t" font-family="system-ui, 'Segoe UI', Roboto, Arial, sans-serif">
+  <title id="t">Macuxi ERP, SIMULAÇÃO C (negativo azul-noite)</title>
+  <rect width="220" height="176" fill="#1E3350"/>
+  <!-- Lugar do símbolo oficial do FDV (Monte Roraima); entra o SVG oficial na versão final, não redesenhar aqui -->
+  <g id="simbolo-fdv-a-conferir">
+    <rect x="79" y="13" width="62" height="62" rx="8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="110" y="42" font-size="9.1" font-weight="700" fill="#FFFFFF" text-anchor="middle">SÍMBOLO</text>
+    <text x="110" y="54.7" font-size="9.1" font-weight="700" fill="#FFFFFF" text-anchor="middle">FDV</text>
+  </g>
+  <text x="110" y="128" font-size="38" font-weight="800" letter-spacing="0" fill="#FFFFFF" text-anchor="middle">Macuxi</text>
+  <text x="114" y="156" font-size="15" font-weight="700" letter-spacing="9" fill="#C9CED5" text-anchor="middle">ERP</text>
+</svg>
