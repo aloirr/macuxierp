@@ -453,6 +453,12 @@ importers:
       '@macuxierp/fiscal':
         specifier: workspace:*
         version: link:../fiscal
+      '@macuxierp/nfe-emissor':
+        specifier: workspace:*
+        version: link:../../packages/nfe-emissor
+      '@macuxierp/nfe-sefaz':
+        specifier: workspace:*
+        version: link:../../packages/nfe-sefaz
       '@macuxierp/pedido':
         specifier: workspace:*
         version: link:../pedido
@@ -466,6 +472,9 @@ importers:
       '@macuxierp/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@macuxierp/sefaz-simulador':
+        specifier: workspace:*
+        version: link:../../packages/sefaz-simulador
       '@types/node':
         specifier: ^22.18.0
         version: 22.20.5
