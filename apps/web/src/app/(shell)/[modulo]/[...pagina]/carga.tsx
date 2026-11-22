@@ -50,8 +50,8 @@ export function TelaCarga({ api }: { api: string }) {
       {problemas.length > 0 && <ul className="erro" role="alert">{problemas.map((p) => <li key={p}>{p}</li>)}</ul>}
       {erro && <p className="erro" role="alert">{erro}</p>}
       <p>
-        <button className="btn" type="button" disabled={enviando} onClick={() => void enviar('validar')}>{enviando ? 'Enviando…' : 'Validar'}</button>{' '}
-        <button className="btn" type="button" disabled={enviando} onClick={() => void enviar('gravar')}>Gravar</button>
+        <button className="mx-botao" type="button" disabled={enviando} onClick={() => void enviar('validar')}>{enviando ? 'Enviando…' : 'Validar'}</button>{' '}
+        <button className="mx-botao" type="button" disabled={enviando} onClick={() => void enviar('gravar')}>Gravar</button>
       </p>
       {relatorio && totais && (
         <div role="status">
@@ -77,8 +77,8 @@ export function TelaCarga({ api }: { api: string }) {
           ))}
           {relatorio.erros_omitidos > 0 && <p className="apoio">Mais {relatorio.erros_omitidos} erros não aparecem aqui. Corrija estes e valide de novo.</p>}
           <p>
-            <button className="btn" type="button" onClick={() => baixarCsv('carga-resumo.csv', csvDoResumo(relatorio))}>Exportar resumo CSV</button>{' '}
-            <button className="btn" type="button" disabled={relatorio.erros.length === 0} onClick={() => baixarCsv('carga-erros.csv', csvDosErros(relatorio))}>Exportar erros CSV</button>
+            <button className="mx-botao" type="button" onClick={() => baixarCsv('carga-resumo.csv', csvDoResumo(relatorio))}>Exportar resumo CSV</button>{' '}
+            <button className="mx-botao" type="button" disabled={relatorio.erros.length === 0} onClick={() => baixarCsv('carga-erros.csv', csvDosErros(relatorio))}>Exportar erros CSV</button>
           </p>
         </div>
       )}

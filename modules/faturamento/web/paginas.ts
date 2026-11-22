@@ -35,7 +35,7 @@ const seloDe = (a: Parameters<typeof seloDoAmbiente>[0]): readonly Selo[] => {
   return s ? [s] : SEM_SELO;
 };
 
-/** Número/Série: primeira coluna das listas de nota e de rejeição. Filial e pedido entram quando a API preencher `filial_nome` e `pedido_numero`. */
+/** Número/Série: primeira coluna das listas de nota e de rejeição. */
 const colunaNumeracao = <L extends { numero: number | null; serie: number }>(): ColunaFaturamento<L> => ({ id: 'numero', titulo: 'Número/Série', valor: (l) => numeroSerie(l) });
 const colunaAmbiente = <L extends { ambiente: Parameters<typeof textoDoAmbiente>[0] }>(): ColunaFaturamento<L> => ({
   id: 'ambiente', titulo: 'Ambiente', valor: (l) => textoDoAmbiente(l.ambiente), selos: (l) => seloDe(l.ambiente),
@@ -53,6 +53,8 @@ const colunasPedidos: Fabrica<PedidoAFaturarResumo> = (fuso) => [
 
 const colunasNotas: Fabrica<NotaResumo> = (fuso) => [
   colunaNumeracao(),
+  { id: 'pedido', titulo: 'Pedido', valor: (n) => ou(n.pedido_numero == null ? null : String(n.pedido_numero)) },
+  { id: 'filial', titulo: 'Filial', valor: (n) => ou(n.filial_nome) },
   { id: 'cliente', titulo: 'Cliente', valor: (n) => ou(n.cliente_razao_social) },
   { id: 'status', titulo: 'Status', tipo: 'status', valor: (n) => ROTULO_STATUS_NOTA[n.status].texto, selos: (n) => [ROTULO_STATUS_NOTA[n.status]] },
   colunaAmbiente(),

@@ -176,6 +176,15 @@ export function pedidoAceitaNota(status: string | null | undefined): boolean {
   return status === 'aprovado' || status === 'faturado_parcial';
 }
 
+/**
+ * RN-FAT-01: quantidade (qtd4) já faturada de um item = o MAIOR entre a `quantidade_faturada` da situação do pedido (que fica atrasada até o
+ * consumo do evento) e a soma das notas do próprio faturamento. Emissão e detalhe do pedido a faturar usam esta mesma conta.
+ */
+export function quantidadeFaturadaDoItem(sequencia: number, situacao: SituacaoPedido | null, ja_faturadas?: ReadonlyMap<number, number>): number {
+  const doPedido = situacao?.itens.find((i) => i.sequencia === sequencia)?.quantidade_faturada ?? 0;
+  return Math.max(doPedido, ja_faturadas?.get(sequencia) ?? 0);
+}
+
 /** Passo 1 da nota: confere situação e saldo, e calcula valor, desconto, frete e outras por item (sem o cálculo fiscal). */
 export function ratearItens(e: EntradaItens): ResultadoItens {
   const v: Violacao[] = [];
@@ -183,7 +192,7 @@ export function ratearItens(e: EntradaItens): ResultadoItens {
     return { ok: false, violacoes: [violacao('RN-PED-02', 'status', `Pedido em "${e.situacao.status}" não pode ser faturado.`)] };
   }
   const itensPedido = e.pedido.pedido.itens;
-  const faturadaDe = new Map(e.situacao.itens.map((i) => [i.sequencia, Math.max(i.quantidade_faturada, e.ja_faturadas?.get(i.sequencia) ?? 0)]));
+  const faturadaDe = new Map(e.situacao.itens.map((i) => [i.sequencia, quantidadeFaturadaDoItem(i.sequencia, e.situacao, e.ja_faturadas)]));
   const saldoDe = new Map(e.situacao.itens.map((i) => [i.sequencia, i.quantidade - (faturadaDe.get(i.sequencia) ?? 0)]));
   const pedidoDe = new Map(itensPedido.map((i) => [i.sequencia, i]));
   const solicitados: SolicitacaoItem[] =

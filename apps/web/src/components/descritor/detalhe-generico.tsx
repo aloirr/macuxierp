@@ -9,15 +9,15 @@ export function DetalheGenerico({ vista, rota, rotaDaPagina, voltar }: { vista: 
     <article>
       <p><Link href={voltar}>Voltar para a lista</Link></p>
       {vista.faixa && <p className="faixa-aviso faixa-homologacao" role="status">{vista.faixa}</p>}
-      <h2>{vista.titulo} {vista.selo && <Selo selo={vista.selo} />}</h2>
+      <h1>{vista.titulo} {vista.selo && <Selo selo={vista.selo} />}</h1>
       <dl className="dados">{vista.cabecalho.map((c) => <div key={c.rotulo} className={c.linhaInteira ? 'dado-linha-inteira' : undefined}><dt>{c.rotulo}</dt><dd className={c.numerico ? 'num' : undefined}>{c.valor || '—'}</dd></div>)}</dl>
       <FaixaPendencias itens={vista.pendencias.map((p) => ({ nivel: p.bloqueante ? 'bloqueante' : 'aceitavel', codigoRn: p.codigoRn, texto: p.texto }))} />
       {vista.downloads && vista.downloads.length > 0 && (
         <>
         <div className="downloads" role="group" aria-label="Arquivos da nota">
           {vista.downloads.map((d, i) => d.desabilitado
-            ? <button key={d.rotulo} type="button" className="btn btn-sec" disabled aria-describedby={`download-${i}-motivo`} title={d.desabilitado}>{d.rotulo}</button>
-            : <a key={d.rotulo} className={d.principal ? 'btn' : 'btn btn-sec'} href={`/baixar-arquivo?${new URLSearchParams({ caminho: d.href }).toString()}`}>{d.rotulo}</a>)}
+            ? <button key={d.rotulo} type="button" className="mx-botao-secundario" disabled aria-describedby={`download-${i}-motivo`} title={d.desabilitado}>{d.rotulo}</button>
+            : <a key={d.rotulo} className={d.principal ? 'mx-botao' : 'mx-botao-secundario'} href={`/baixar-arquivo?${new URLSearchParams({ caminho: d.href }).toString()}`}>{d.rotulo}</a>)}
         </div>
         {vista.downloads.map((d, i) => d.desabilitado && <p key={d.rotulo} id={`download-${i}-motivo`} className="apoio">{d.rotulo}: {d.desabilitado}</p>)}
         </>

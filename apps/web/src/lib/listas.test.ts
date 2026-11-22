@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
+// Estoura 5 s sob a carga do turbo (T-0021).
+vi.setConfig({ testTimeout: 15000 });
+
 const ID1 = '11111111-1111-4111-8111-111111111111';
 const ID2 = '22222222-2222-4222-8222-222222222222';
 const Item = z.object({ id: z.string().uuid(), nome: z.string() });

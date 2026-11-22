@@ -113,6 +113,57 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(cont?.cobranca?.parcelas).toHaveLength(2);
   });
 
+  it('RF-FAT-01: GET detalhe do pedido a faturar traz os itens com quantidade faturada pelo faturamento e saldo; outro tenant e id inexistente dão null (RLS)', async () => {
+    const r = await emitir(A, 'idem-db-0001');
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    const [fila] = await admin('SELECT id FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [r.nota.pedido_id]);
+    const semSituacao = async () => null;
+    const d = await app.comTenant(A, (tx) => pedidosAprovadosSql.detalhar(tx, fila!.id, semSituacao));
+    expect(d).toMatchObject({ id: fila!.id, pedido_id: r.nota.pedido_id, ambiente: 'homologacao', status: 'a_faturar', numero: pedido.numero });
+    expect(d?.itens).toEqual([
+      { sequencia: 1, produto_id: expect.any(String), descricao: expect.any(String), quantidade_pedida: 20_000, quantidade_faturada: 20_000, saldo: 0, valor_unitario_centavos: 1000 },
+      { sequencia: 2, produto_id: expect.any(String), descricao: expect.any(String), quantidade_pedida: 10_000, quantidade_faturada: 10_000, saldo: 0, valor_unitario_centavos: 2500 },
+    ]);
+    // nota cancelada devolve o saldo (RN-FAT-01): não conta como faturada
+    let livre;
+    await admin("ALTER TABLE faturamento.nota DISABLE TRIGGER USER");
+    try {
+      await admin("UPDATE faturamento.nota SET status = 'cancelada', cancelada_em = $2::timestamptz, protocolo = '113260000000099', autorizada_em = $2::timestamptz WHERE id = $1", [r.nota.id, '2026-11-21T14:30:00Z']);
+      livre = await app.comTenant(A, (tx) => pedidosAprovadosSql.detalhar(tx, fila!.id, semSituacao));
+      // vale o maior: o pedido já consumiu a 1ª unidade do item 1 (evento consumido), mesmo sem nota ativa
+      const consumido = await app.comTenant(A, (tx) => pedidosAprovadosSql.detalhar(tx, fila!.id, async () => ({ status: 'faturado_parcial', itens: [{ sequencia: 1, quantidade: 20_000, quantidade_faturada: 10_000 }, { sequencia: 2, quantidade: 10_000, quantidade_faturada: 0 }] })));
+      expect(consumido?.itens.map((i) => [i.quantidade_faturada, i.saldo])).toEqual([[10_000, 10_000], [0, 10_000]]);
+    } finally {
+      await admin("UPDATE faturamento.nota SET status = 'rascunho', cancelada_em = NULL, protocolo = NULL, autorizada_em = NULL WHERE id = $1", [r.nota.id]);
+      await admin("ALTER TABLE faturamento.nota ENABLE TRIGGER USER");
+    }
+    expect(livre?.itens.map((i) => [i.quantidade_faturada, i.saldo])).toEqual([[0, 20_000], [0, 10_000]]);
+    expect(await app.comTenant(B, (tx) => pedidosAprovadosSql.detalhar(tx, fila!.id, semSituacao))).toBeNull();
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.detalhar(tx, uuid(998), semSituacao))).toBeNull();
+  });
+
+  it('RF-FAT-08: a lista de notas traz pedido_numero (retrato da fila) e filial_nome (emitente_retrato da própria nota, sem ler o cadastros)', async () => {
+    const r = await emitir(A, 'idem-db-0001');
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    const lista = await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50, pedido_id: r.nota.pedido_id! }));
+    expect(lista.itens).toHaveLength(1);
+    expect(lista.itens[0]).toMatchObject({ pedido_numero: pedido.numero, filial_nome: 'EMITENTE LTDA' }); // sem fantasia, vale a razão social
+    // o detalhe da nota traz os mesmos dois campos, pela mesma projeção
+    expect(await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id))).toMatchObject({ pedido_numero: pedido.numero, filial_nome: 'EMITENTE LTDA' });
+    let com;
+    let detCom;
+    await admin("ALTER TABLE faturamento.nota DISABLE TRIGGER USER");
+    try {
+      await admin("UPDATE faturamento.nota SET emitente_retrato = emitente_retrato || jsonb_build_object('fantasia', 'Matriz Manaus') WHERE id = $1", [r.nota.id]);
+      com = await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50, pedido_id: r.nota.pedido_id! }));
+      detCom = await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id));
+    } finally {
+      await admin("ALTER TABLE faturamento.nota ENABLE TRIGGER USER");
+    }
+    expect(com.itens[0]?.filial_nome).toBe('Matriz Manaus');
+    expect(detCom?.filial_nome).toBe('Matriz Manaus');
+  });
+
   it('RN-FAT-03: o worker transmite, guarda o nfeProc (gatilho leva a autorizada), publica nota.autorizada@1 e a nota autorizada nunca é editada', async () => {
     const s = servico();
     const r = await emitir(A, 'idem-db-0003', s);

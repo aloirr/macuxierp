@@ -23,6 +23,13 @@
   background: var(--mx-cor-branco);
   border: 1px solid var(--mx-cor-borda-campo);
 }
+.mx-botao:hover:not(:disabled) {
+  background: var(--mx-cor-grafite);
+  border: 1px solid var(--mx-cor-grafite);
+}
+.mx-botao-secundario:hover:not(:disabled) {
+  background: var(--mx-cor-nevoa);
+}
 .mx-botao:focus-visible, .mx-botao-secundario:focus-visible {
   outline: 2px solid var(--mx-cor-azul-noite);
   outline-offset: 2px;

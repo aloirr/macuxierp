@@ -3,7 +3,7 @@ import { EVENTO_PEDIDO_APROVADO } from '@macuxierp/pedido/contracts';
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { nfeProcDeTeste } from '../domain/fixtures-danfe';
-import { ConfiguracaoFilialResposta, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
+import { ConfiguracaoFilialResposta, PedidoAFaturarDetalhe, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
 import { configuracaoFake, depsFake, titulosFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import { criarConsumidorPedidoAprovado } from './consumidor';
 import { criarPluginFaturamento } from './index';
@@ -54,6 +54,7 @@ describe('rotas /v1/faturamento', () => {
       'GET /notas/:id/xml faturamento.nota.emitir',
       'GET /notas/exportar faturamento.ver',
       'GET /pedidos-a-faturar faturamento.ver',
+      'GET /pedidos-a-faturar/:id faturamento.ver',
       'GET /pedidos-a-faturar/exportar faturamento.ver',
       'GET /rejeicoes faturamento.ver',
       'GET /rejeicoes/exportar faturamento.ver',
@@ -186,6 +187,7 @@ describe('rotas /v1/faturamento', () => {
     await expect(a.chamar('GET', '/notas')).rejects.toMatchObject({ status: 403 });
     await expect(a.chamar('GET', '/rejeicoes')).rejects.toMatchObject({ status: 403 });
     await expect(a.chamar('GET', '/pedidos-a-faturar')).rejects.toMatchObject({ status: 403 });
+    await expect(a.chamar('GET', '/pedidos-a-faturar/:id', { params: { id: uuid(1) } })).rejects.toMatchObject({ status: 403 });
   });
 
   it('RF-FAT-01: GET /pedidos-a-faturar lista a fila do repositório com o cursor da consulta; o perfil de leitura enxerga, o filtro inválido é recusado', async () => {
@@ -197,7 +199,25 @@ describe('rotas /v1/faturamento', () => {
     expect(chamadas[0]).toMatchObject({ status: 'faturado_parcial', de: '2026-11-01', limite: 50 });
     await expect(a.chamar('GET', '/pedidos-a-faturar', { consulta: { status: 'inventado' } })).rejects.toBeDefined();
   });
-});
+
+  it('RF-FAT-01: GET /pedidos-a-faturar/:id devolve o resumo com os itens e o saldo conforme o contrato; inexistente ou id inválido é 404', async () => {
+    const a = ambiente('leitura');
+    const detalhe = {
+      id: uuid(1), pedido_id: IDS.pedido, numero: 7, filial_id: IDS.filial, cliente_id: IDS.cliente, cliente_razao_social: 'Mercado', status: 'faturado_parcial' as const, ambiente: 'homologacao' as const, total_centavos: 30_000, recebido_em: '2026-11-21T14:00:00.000Z',
+      itens: [{ sequencia: 1, produto_id: uuid(2), descricao: 'Refrigerante 2L', quantidade_pedida: 20_000, quantidade_faturada: 5_000, saldo: 15_000, valor_unitario_centavos: 1000 }],
+    };
+    const pedidos: string[] = [];
+    const situacoes: unknown[] = [];
+    a.deps.situacao.situacao = async () => ({ status: 'faturado_parcial', itens: [{ sequencia: 1, quantidade: 20_000, quantidade_faturada: 5_000 }] });
+    a.deps.pedidos.detalhar = async (_tx, id, situacaoDe) => (pedidos.push(id), situacoes.push(await situacaoDe(IDS.pedido)), id === uuid(1) ? detalhe : null);
+    const r = await a.chamar('GET', '/pedidos-a-faturar/:id', { params: { id: uuid(1) } });
+    expect(PedidoAFaturarDetalhe.parse(r.corpo)).toEqual(detalhe);
+    await expect(a.chamar('GET', '/pedidos-a-faturar/:id', { params: { id: uuid(2) } })).rejects.toMatchObject({ status: 404, message: 'Pedido não encontrado' });
+    await expect(a.chamar('GET', '/pedidos-a-faturar/:id', { params: { id: 'nao-e-uuid' } })).rejects.toMatchObject({ status: 404 });
+    expect(pedidos).toEqual([uuid(1), uuid(2)]);
+    // o detalhe lê a situação do pedido pela porta `situacao` (mesma conta da emissão)
+    expect(situacoes[0]).toMatchObject({ status: 'faturado_parcial' });
+  });
 
 describe('rotas de eventos /v1/faturamento (lote 2)', () => {
   const JUST = { justificativa: 'Cliente desistiu da compra do pedido' };
@@ -414,8 +434,7 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     const c = criarConsumidorPedidoAprovado({
       situacao: { situacao: async () => situacao },
       pedidos: {
-        obter: async () => null,
-        listar: async () => ({ itens: [], proximo_cursor: null }),
+        ...depsFake().deps.pedidos,
         gravar: async (_t, p, status = 'a_faturar') => {
           const novo = !fila.has(p.pedido_id);
           const igual = fila.get(p.pedido_id) === status;
@@ -458,4 +477,5 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     await parcial.c.tratar(evento(), tx);
     expect(parcial.fila.get(IDS.pedido)).toBe('faturado_parcial');
   });
+});
 });

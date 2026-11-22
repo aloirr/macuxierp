@@ -8,8 +8,8 @@ export function erroDeViolacoes(v: readonly Violacao[]): ErroApi {
   return PADRAO_RN.test(primeira.rn) ? erros.regra(primeira.rn, primeira.mensagem, campos) : erros.validacao(campos);
 }
 
-export function idDe(params: Readonly<Record<string, string>>, nome = 'id'): string {
+export function idDe(params: Readonly<Record<string, string>>, nome = 'id', recurso = 'Nota'): string {
   const id = params[nome];
-  if (!id || !PADRAO_UUID.test(id)) throw erros.naoEncontrado('Nota');
+  if (!id || !PADRAO_UUID.test(id)) throw erros.naoEncontrado(recurso);
   return id;
 }

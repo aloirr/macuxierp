@@ -77,7 +77,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         return { corpo: await deps.pedidos.listar(c.tx, e.consulta) };
       },
     }),
-    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
+    // Exportações CSV das listas (RF-FAT-08): mesmos filtros da tela e mesma permissão, sem dado pessoal em log. Ficam antes dos caminhos com `:id`.
     definirRota({
       metodo: 'GET', caminho: '/pedidos-a-faturar/exportar', acao: 'faturamento.ver', consulta: FiltroPedidosAFaturar,
       async executar(c, e) {
@@ -85,7 +85,16 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         return csvDaLista(paginaPedidosAFaturar, c.sessao.perfil, await todasAsLinhas((f) => deps.pedidos.listar(c.tx, f), e.consulta));
       },
     }),
-    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
+    // RF-FAT-01: detalhe com os itens e o saldo (base da nota parcial). `:id` = linha da fila (`PedidoAFaturarResumo.id`).
+    definirRota({
+      metodo: 'GET', caminho: '/pedidos-a-faturar/:id', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const p = await deps.pedidos.detalhar(c.tx, idDe(e.params, 'id', 'Pedido'), (pedido_id) => deps.situacao.situacao(c.tx, pedido_id));
+        if (!p) throw erros.naoEncontrado('Pedido');
+        return { corpo: p };
+      },
+    }),
     definirRota({
       metodo: 'GET', caminho: '/notas/exportar', acao: 'faturamento.ver', consulta: FiltroNotas,
       async executar(c, e) {
@@ -93,7 +102,6 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         return csvDaLista(paginaNotas, c.sessao.perfil, await todasAsLinhas((f) => notas.listar(c.tx, f), e.consulta));
       },
     }),
-    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
     definirRota({
       metodo: 'GET', caminho: '/rejeicoes/exportar', acao: 'faturamento.ver', consulta: FiltroRejeicoes,
       async executar(c, e) {
@@ -101,7 +109,6 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         return csvDaLista(paginaRejeicoes, c.sessao.perfil, await todasAsLinhas((f) => notas.listarRejeicoes(c.tx, f), e.consulta));
       },
     }),
-    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
     definirRota({
       metodo: 'GET', caminho: '/titulos/exportar', acao: 'faturamento.ver', consulta: FiltroTitulos,
       async executar(c, e) {

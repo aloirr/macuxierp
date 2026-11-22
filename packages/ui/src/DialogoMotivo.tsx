@@ -1,3 +1,6 @@
+'use client';
+
+import type { CSSProperties } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, texto } from './estilos.js';
 
@@ -56,6 +59,18 @@ export function avaliarConfirmacao(
   const msg = cfg.validar?.(r) ?? null;
   return msg ? { campo: 'texto', mensagem: msg } : null;
 }
+
+/** Rádio sem o visual do navegador: borda de campo; marcado em azul-noite com ponto branco interno. */
+const radioEstilo = (marcado: boolean): CSSProperties => ({
+  appearance: 'none',
+  width: 16,
+  height: 16,
+  margin: 0,
+  borderRadius: '50%',
+  border: `1px solid ${marcado ? cor('azulNoite') : cor('bordaCampo')}`,
+  background: marcado ? cor('azulNoite') : cor('branco'),
+  boxShadow: marcado ? `inset 0 0 0 4px ${cor('branco')}` : undefined,
+});
 
 const FOCAVEIS = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
 
@@ -126,7 +141,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
             <legend style={texto('pequeno', 'rotulo-campo')}>Motivo</legend>
             {motivos.map((m) => (
               <label key={m.codigo} style={{ display: 'flex', gap: espaco.sm, alignItems: 'center' }}>
-                <input type="radio" style={{ accentColor: cor('azulNoite'), boxShadow: `0 0 0 1px ${cor('bordaCampo')}`, borderRadius: '50%' }} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
+                <input type="radio" style={radioEstilo(motivo === m.codigo)} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
                 {m.rotulo}
               </label>
             ))}
