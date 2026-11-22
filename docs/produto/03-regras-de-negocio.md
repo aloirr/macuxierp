@@ -24,10 +24,10 @@
 - **RN-CAD-09** Condição de pagamento: de 1 a 36 parcelas, cada prazo de 0 a 999 dias, em qualquer ordem. A mesma regra vale no cadastro manual e na carga por CSV (T-0026); o limite de 24 parcelas do kit do Conector do FDV não vale para o ERP (decisão do Alexandre, 21/11/2026).
 
 ## Pedido (RN-PED)
-- **RN-PED-01** Pedido do FDV é idempotente pelo UUID do FDV: reenvio não duplica.
+- **RN-PED-01** Pedido do FDV é idempotente pelo UUID do FDV: reenvio não duplica. O pedido do FDV chega aprovado pelo vendedor e entra no ERP **já aprovado**, sem nova aprovação nem análise de crédito. Problema de cadastro (cliente, produto, filial ou condição inexistente ou inativa, item incoerente) ou **pedido sem condição de pagamento** recusa o recebimento e volta ao FDV como `rejeitado_erp` com motivo (decisões do Alexandre, 21/11, 23h10 e 23h55).
 - **RN-PED-02** Status: recebido → aprovado | em_analise; em_analise → aprovado | recusado; aprovado → faturado_parcial | faturado | cancelado; faturado_parcial → faturado | cancelado. recusado, faturado e cancelado são finais. Transição fora da lista é recusada com a lista do que é possível.
-- **RN-PED-03** Aprovação automática quando preço, desconto, crédito e estoque passam; senão vai para análise com as pendências listadas.
-- **RN-PED-04** Crédito: saldo de títulos abertos + pedidos aprovados não faturados + este pedido ≤ limite do cliente.
+- **RN-PED-03** Pedido manual: aprovação automática quando preço, desconto, crédito e estoque passam; senão vai para análise com as pendências listadas.
+- **RN-PED-04** Crédito (pedido manual): saldo de títulos abertos + pedidos aprovados não faturados + este pedido ≤ limite do cliente. Limite 0 = sem crédito: o pedido vai para análise, **exceto à vista**, que não passa pela análise de crédito; preço e estoque continuam validados. **À vista = forma de pagamento dinheiro, PIX ou cartão de débito** (tPag 01, 17, 04); boleto e cartão de crédito com prazo 0 não são à vista. **O pedido à vista não conta no limite de crédito** dos outros pedidos do cliente (decisões do Alexandre, 21/11, 23h10 e 23h55).
 - **RN-PED-05** Todo status novo volta ao FDV (`retorno`) com o número do pedido no ERP.
 
 ## Fiscal (RN-FIS)

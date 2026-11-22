@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AprovarEntrada, CancelarEntrada, PedidoCanceladoV1, PedidoManualEntrada, PedidoRecusadoV1, RecusarEntrada } from './index';
+import { AprovarEntrada, CancelarEntrada, PedidoCanceladoV1, PedidoManualEntrada, PedidoRecusadoV1, RecusarEntrada, ResultadoRecebimentoFdv, CodigoRecusaRecebimento, StatusPedido } from './index';
 
 const U = '00000000-0000-4000-8000-000000000001';
 
@@ -32,5 +32,20 @@ describe('contratos do pedido', () => {
     expect(PedidoRecusadoV1.safeParse({ ...base, motivo_codigo: 'preco_divergente', motivo_texto: 'dado pessoal' }).success).toBe(false);
     expect(PedidoCanceladoV1.safeParse({ ...base, status: 'cancelado', motivo_codigo: 'sem_estoque', motivo_texto: 'x' }).success).toBe(false);
     expect(PedidoCanceladoV1.safeParse({ ...base, status: 'cancelado', motivo_codigo: 'outro', motivo_texto: 'x' }).success).toBe(true);
+  });
+});
+
+describe('ResultadoRecebimentoFdv', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  it('rejeita criado com status em_analise', () => {
+    expect(ResultadoRecebimentoFdv.safeParse({ resultado: 'criado', pedido_id: id, numero: 1, status: 'em_analise' }).success).toBe(false);
+  });
+  it('aceita repetido com qualquer StatusPedido', () => {
+    for (const status of StatusPedido.options) expect(ResultadoRecebimentoFdv.safeParse({ resultado: 'repetido', pedido_id: id, numero: 1, status }).success).toBe(true);
+  });
+  it('os códigos de recusa são exatamente os 10 esperados', () => {
+    expect([...CodigoRecusaRecebimento.options].sort()).toEqual(
+      ['cliente_inativo', 'cliente_inexistente', 'condicao_inativa', 'condicao_inexistente', 'filial_inexistente', 'filial_nao_emissora', 'item_incoerente', 'modulo_pedido_inativo', 'produto_inativo', 'produto_inexistente'],
+    );
   });
 });
