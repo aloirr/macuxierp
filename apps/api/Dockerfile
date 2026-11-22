@@ -43,9 +43,17 @@ RUN set -eu; \
     for x in api worker; do \
       "$ESBUILD" "apps/$x/src/main.ts" --bundle --platform=node --target=node24 --format=esm \
         --external:pg-native --log-level=warning \
-        --banner:js="import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);" \
+        --banner:js="import{createRequire as __cr}from'node:module';import{fileURLToPath as __fu}from'node:url';import{dirname as __dn}from'node:path';const require=__cr(import.meta.url);const __filename=__fu(import.meta.url);const __dirname=__dn(__filename);" \
         --outfile="dist/$x.mjs"; \
-    done
+    done; \
+    # T-0045 lote A: o que o código empacotado lê do disco em tempo de execução. O xmllint-wasm (XSD do simulador e do
+    # nfe-sefaz) abre `xmllint-node.js` e `xmllint.wasm` ao lado do bundle (__dirname = dist/, pelo banner acima); o
+    # `validarXsd` lê os XSD em `../schemas/PL_010g/` a partir do bundle (import.meta.url). Faltou um = build vermelho.
+    XMLLINT="$(ls -d node_modules/.pnpm/xmllint-wasm@*/node_modules/xmllint-wasm | head -n 1)"; \
+    test -f "$XMLLINT/xmllint-node.js" && test -f "$XMLLINT/xmllint.wasm" || { echo "xmllint-wasm não está no node_modules" >&2; exit 1; }; \
+    cp "$XMLLINT/xmllint-node.js" "$XMLLINT/xmllint.wasm" dist/; \
+    mkdir -p schemas && cp -r packages/nfe-sefaz/schemas/PL_010g schemas/; \
+    ls schemas/PL_010g/*.xsd >/dev/null
 
 # Chave do repositório PGDG (apt.postgresql.org) conferida pela impressão digital publicada (ACCC4CF8) antes do uso.
 FROM debian:bookworm-slim AS pgdg
@@ -63,7 +71,8 @@ FROM node:24-bookworm-slim AS final
 LABEL org.opencontainers.image.source=https://github.com/aloirr/macuxierp
 # Só o que a imagem precisa para rodar sozinha; porta, papel, pool e healthcheck ficam no compose.yml da raiz.
 ENV NODE_ENV=production \
-    TZ=UTC
+    TZ=UTC \
+    MACUXI_ATIVOS_MARCA=/app/ativos-marca
 COPY --from=pgdg /pgdg.gpg /usr/share/keyrings/pgdg.gpg
 # psql 16 (o servidor é PostgreSQL 16): só o cliente. O apt confere a assinatura do repositório com a chave acima.
 RUN echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
@@ -73,7 +82,12 @@ RUN echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org
     rm -rf /var/lib/apt/lists/* && \
     psql --version
 WORKDIR /app
-COPY --from=build /app/dist/api.mjs /app/dist/worker.mjs ./dist/
+COPY --from=build /app/dist/api.mjs /app/dist/worker.mjs /app/dist/xmllint-node.js /app/dist/xmllint.wasm ./dist/
+# XSD do layout 4.00 (PL_010g) para o validarXsd do bundle (dist/../schemas/PL_010g/), T-0045 lote A
+COPY --from=build /app/schemas ./schemas
+# Ativos da marca para o DANFE (T-0049, regra de marca do DANFE, #180): a pasta versionada inteira, lida pelo caminho de
+# MACUXI_ATIVOS_MARCA (ENV acima, no próprio Dockerfile: o compose.yml não muda neste lote). O .dockerignore reabre só esta pasta de docs/.
+COPY docs/marca/ativos/2026-11-22-v1 /app/ativos-marca
 # Migrações (dono banco-dados): o migrar.ts lê db/migrations e db/tabelas-fiscais ao lado do db/src
 COPY db/package.json ./db/package.json
 COPY db/src ./db/src
