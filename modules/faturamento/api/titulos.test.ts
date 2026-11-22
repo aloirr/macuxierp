@@ -62,7 +62,7 @@ describe('títulos a receber: geração na autorização (RF-FAT-07, RN-FAT-06)'
 
   it('RN-FAT-03: nota rejeitada ou com guarda pendente não gera título', async () => {
     const s = await cenario();
-    await criarProcessadorRetorno(s.f.r.repo, s.t.repo)(tx, s.nota, { ...autorizada, cStat: '539', xMotivo: 'Duplicidade' }, opcoes);
+    await criarProcessadorRetorno(s.f.r.repo, s.t.repo, (e) => s.logs.push(e))(tx, s.nota, { ...autorizada, cStat: '539', xMotivo: 'Duplicidade' }, opcoes);
     expect(s.t.titulos.size).toBe(0);
   });
 });
@@ -215,9 +215,9 @@ describe('geração de título que falha não derruba a nota (RN-FAT-03)', () =>
     expect(s.logs).toEqual([expect.objectContaining({ evento: 'faturamento.titulo.geracao_pendente', nota_id: s.nota.id })]);
     falhar = false;
     const varrer = criarVarreduraTitulos({ titulos: s.t.repo, notas: s.f.r.repo, log: (e) => s.logs.push(e) });
-    expect(await varrer(tx, { ha_minutos: 5 })).toEqual({ verificadas: 1, geradas: 2, pendentes: 0 });
+    expect(await varrer(tx, { ha_minutos: 5 })).toEqual({ verificadas: 1, geradas: 2, pendentes: 0, desistidas: 0 });
     expect(s.t.titulos.size).toBe(2);
-    expect(await varrer(tx, { ha_minutos: 5 })).toEqual({ verificadas: 0, geradas: 0, pendentes: 0 }); // já tem título: nada a fazer
+    expect(await varrer(tx, { ha_minutos: 5 })).toEqual({ verificadas: 0, geradas: 0, pendentes: 0, desistidas: 0 }); // já tem título: nada a fazer
   });
 
   it('RN-FAT-03: prazos vazios na nota gravada viram pendência (sem lançar), não rollback da guarda', async () => {
@@ -235,5 +235,41 @@ describe('geração de título que falha não derruba a nota (RN-FAT-03)', () =>
     const r = await criarServicoEmissao({ ...f.deps, cadastros }).emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-sem-prazo-1' });
     expect(r).toMatchObject({ ok: false, violacoes: [{ rn: 'RN-FAT-06', mensagem: 'A condição de pagamento do boleto não tem prazos.' }] });
     expect(f.r.estado.reservas).toBe(0);
+  });
+});
+
+describe('varredura de títulos: teto de tentativas (RN-FAT-03)', () => {
+  /** Notas e títulos de mentira: 'ruim' sempre falha a geração; 'boa' gera. Só a varredura é exercitada. */
+  function varredura(ids: string[], max?: number) {
+    const logs: { evento: string; nota_id?: string; motivo?: string }[] = [];
+    const geradas: string[] = [];
+    let atual = '';
+    const notas = { obter: async (_t: unknown, id: string) => { atual = id; return { id, tenant_id: TENANT, status: 'autorizada' }; } };
+    const titulos = {
+      notasBoletoSemTitulo: async (_t: unknown, o: { limite: number; excluir?: readonly string[] }) => ids.filter((i) => !geradas.includes(i) && !o.excluir?.includes(i)).slice(0, o.limite),
+      emSavepoint: async () => (atual === 'ruim' ? { ok: false as const, erro: new Error('falha') } : (geradas.push(atual), { ok: true as const, valor: [] as unknown[] })),
+    };
+    const varrer = criarVarreduraTitulos({ titulos, notas, log: (e: { evento: string; nota_id?: string; motivo?: string }) => logs.push(e) } as unknown as Parameters<typeof criarVarreduraTitulos>[0], max === undefined ? {} : { max_tentativas: max });
+    return { varrer, logs, geradas };
+  }
+
+  it('RN-FAT-03: a nota que sempre falha sai da varredura no teto (5), vai ao log como titulo.geracao_desistida e não trava as outras', async () => {
+    const v = varredura(['ruim', 'boa']);
+    for (let i = 1; i <= 4; i++) expect(await v.varrer(tx, { ha_minutos: 5, limite: 1 })).toMatchObject({ pendentes: 1, desistidas: 0 });
+    expect(v.logs.filter((l) => l.evento === 'faturamento.titulo.geracao_desistida')).toHaveLength(0);
+    expect(await v.varrer(tx, { ha_minutos: 5, limite: 1 })).toMatchObject({ pendentes: 1, desistidas: 1 }); // 5ª tentativa
+    expect(v.logs.filter((l) => l.evento === 'faturamento.titulo.geracao_desistida')).toEqual([expect.objectContaining({ nota_id: 'ruim' })]);
+    expect(await v.varrer(tx, { ha_minutos: 5, limite: 1 })).toMatchObject({ geradas: 0, verificadas: 1, pendentes: 0 }); // 'ruim' não volta; 'boa' é gerada
+    expect(v.geradas).toEqual(['boa']);
+  });
+
+  it('RN-FAT-03: as notas com a tentativa mais antiga vêm primeiro (a recém-falhada espera a vez) e o teto é configurável', async () => {
+    const v = varredura(['ruim', 'boa'], 1);
+    expect(await v.varrer(tx, { ha_minutos: 5 })).toEqual({ verificadas: 2, geradas: 0, pendentes: 1, desistidas: 1 }); // teto 1: a 1ª falha já desiste; 'boa' foi gerada (valor vazio no stub)
+    expect(await v.varrer(tx, { ha_minutos: 5 })).toEqual({ verificadas: 0, geradas: 0, pendentes: 0, desistidas: 0 });
+    const w = varredura(['ruim', 'boa2', 'boa3']);
+    await w.varrer(tx, { ha_minutos: 5, limite: 1 }); // 'ruim' falha e passa a ter tentativa
+    await w.varrer(tx, { ha_minutos: 5, limite: 3 });
+    expect(w.geradas).toEqual(['boa2', 'boa3']); // nunca tentadas vêm antes da que já falhou
   });
 });

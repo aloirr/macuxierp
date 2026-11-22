@@ -35,6 +35,7 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
   const filiaisPedidas: unknown[] = [];
   const leituras = { n: 0 };
   const transmissor = criarTransmissor({
+    log: () => undefined,
     banco,
     notas: f.r.repo, titulos: titulosFake().repo,
     emissor: f.emissor,
@@ -323,7 +324,7 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(reenvio.ok).toBe(true);
     expect(m.motivos.has(nota.id)).toBe(false);
     const ok = montar({});
-    const worker = criarTransmissor({ banco: { comTenant: async (_i, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true }, notas: m.repo, titulos: titulosFake().repo, emissor: m.emissor, ambiente: { ambiente: async () => 'homologacao' }, lerA1: async () => a1DeTeste(), sefaz: () => ok.t.transporte });
+    const worker = criarTransmissor({ log: () => undefined, banco: { comTenant: async (_i, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true }, notas: m.repo, titulos: titulosFake().repo, emissor: m.emissor, ambiente: { ambiente: async () => 'homologacao' }, lerA1: async () => a1DeTeste(), sefaz: () => ok.t.transporte });
     expect((await worker.transmitirNota(TENANT, nota.id)).resultado).toBe('autorizada');
     expect(m.notas.get(nota.id)).toMatchObject({ numero: 100, chave_acesso: nota.chave_acesso });
     expect(m.estado.reservas).toBe(1); // nenhum número novo

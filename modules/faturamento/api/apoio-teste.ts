@@ -398,6 +398,7 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
   const espiao = emissorEspiao();
   const ev = eventosFake(r);
   const deps: DepsEmissao & Pick<DepsEventos, 'eventos'> = {
+    log: () => undefined,
     emissor: espiao.emissor,
     pedidos: { obter: async () => pedido, gravar: async () => 'novo' },
     situacao: { situacao: async () => situacao },
@@ -564,9 +565,9 @@ export function titulosFake(notasBoleto: () => Iterable<string> = () => [], nota
     async emSavepoint(_t, fn) {
       try { return { ok: true, valor: await fn() }; } catch (erro) { return { ok: false, erro }; }
     },
-    async notasBoletoSemTitulo(_t, { limite }) {
+    async notasBoletoSemTitulo(_t, { limite, excluir = [] }) {
       const com = new Set([...titulos.values()].map((t) => t.nota_id));
-      return [...notasBoleto()].filter((id) => !com.has(id)).slice(0, limite);
+      return [...notasBoleto()].filter((id) => !com.has(id) && !excluir.includes(id)).slice(0, limite);
     },
     async cancelar(_t, ids) { for (const id of ids) { const t = titulos.get(id); if (t?.status === 'aberto') titulos.set(id, { ...t, status: 'cancelado' }); } },
     async listar(_t, f) {

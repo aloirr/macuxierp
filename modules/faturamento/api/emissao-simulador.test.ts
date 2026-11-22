@@ -41,6 +41,7 @@ function montar(mei = false) {
   const seletor = criarSeletorTransporte({ transporte: 'simulador', simulador: criarFabricaSimulador({ agora: () => new Date(INSTANTE_DE_TESTE.getTime() + 1_000), tMed: 1 }) });
   const tit = titulosFake();
   const transmissor = criarTransmissor({
+    log: () => undefined,
     banco,
     notas: f.r.repo, titulos: tit.repo,
     emissor: f.emissor,

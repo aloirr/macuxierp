@@ -60,7 +60,7 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
     const r = await app.comTenant(A, (tx) => emissao.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: `idem-evdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const t = transporteFake();
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('autorizada');
     return (await app.comTenant(A, (tx) => repos.notas.obter(tx, r.nota.id)))!;
   }
@@ -173,7 +173,7 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
     const t = transporteFake({ recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
     const rej = await app.comTenant(A, (tx) => emissao.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: `idem-evdb-rej-${++idem}` }));
     if (!rej.ok) throw new Error('esperava ok');
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
     expect((await tr.transmitirNota(A, rej.nota.id)).resultado).toBe('rejeitada');
     const n = rej.nota.numero;
     const proximo = ((await admin('SELECT proximo FROM faturamento.serie_numeracao WHERE serie = 1'))[0] as { proximo: number }).proximo;

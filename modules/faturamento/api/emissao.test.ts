@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota, type DepsEmissao } from './emissao';
-import { CNPJ_EMITENTE, depsFake, DIGVAL, NPROT, tx, TENANT, uuid } from './apoio-teste';
+import { criarProcessadorRetorno, criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota, type DepsEmissao } from './emissao';
+import { CNPJ_EMITENTE, depsFake, DIGVAL, NPROT, titulosFake, tx, TENANT, uuid } from './apoio-teste';
 import type { NotaRegistro, RetornoSefaz } from './portas';
 
 const entrada = (idempotencia = 'idem-0000001') => ({ pedido_id: IDS.pedido, idempotencia });
@@ -11,7 +11,10 @@ const opcoes = { xmlAssinado: '<NFe xmlns="http://www.portalfiscal.inf.br/nfe"><
 
 function montar(o: Parameters<typeof depsFake>[0] = {}) {
   const f = depsFake(o);
-  return { ...f, ...f.r, svc: criarServicoEmissao(f.deps) };
+  // O retorno da SEFAZ é do worker: o teste o monta com as portas de título e de log. A geração de títulos é testada em titulos.test.ts: aqui ela é neutra (sem eventos de título).
+  const titulos = { ...titulosFake().repo, emSavepoint: async <T>(_t: unknown, fn: () => Promise<T>) => { void fn; return { ok: true as const, valor: [] as unknown as T }; } };
+  const processarRetorno = criarProcessadorRetorno(f.r.repo, titulos, () => undefined);
+  return { ...f, ...f.r, svc: { ...criarServicoEmissao(f.deps), processarRetorno } };
 }
 /** Fase da API: a nota nasce em rascunho (a API não assina). */
 async function emitirRascunho(m: ReturnType<typeof montar>, idem?: string): Promise<NotaRegistro> {
@@ -337,7 +340,7 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(re.nota).toMatchObject({ total_centavos: 4700, numero: 100 });
     expect(xmlDaNota(m.deps.emissor, re.nota, m.conteudos.get(nota.id)!)).toContain('<vNF>47.00</vNF>');
     await m.repo.mudarStatus(tx, nota.id, 'rejeitada', 'em_autorizacao'); // o worker assina e transmite
-    const aut = await criarServicoEmissao(m.deps).processarRetorno(tx, m.notas.get(nota.id)!, autorizada, opcoes);
+    const aut = await m.svc.processarRetorno(tx, m.notas.get(nota.id)!, autorizada, opcoes);
     expect(aut.resultado).toBe('autorizada');
     expect(m.eventos.at(-1)?.payload).toMatchObject({ nota: { total_centavos: 4700 } });
   });

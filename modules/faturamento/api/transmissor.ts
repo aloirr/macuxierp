@@ -28,8 +28,8 @@ export interface DepsTransmissor {
   notas: RepositorioNotas;
   /** Títulos a receber: gerados na MESMA tx da autorização (RF-FAT-07). Ligar sempre (`repositoriosSql().titulos`). */
   titulos: RepositorioTitulos;
-  /** Log sem dado pessoal: geração de título pendente (a varredura gera depois). */
-  log?: LogFaturamento;
+  /** Log sem dado pessoal, OBRIGATÓRIO: a geração de título pendente (a varredura gera depois) não pode sumir. */
+  log: LogFaturamento;
   ambiente: AmbienteFiscalDaFilial;
   /**
    * Liga o `lerA1DecifradoDaFilial(tx, chave, filial)` do core à chave do secret do servidor e abre o certificado (`abrirA1`): o `certificado` assina e

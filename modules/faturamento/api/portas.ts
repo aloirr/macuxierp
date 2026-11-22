@@ -407,6 +407,6 @@ export interface RepositorioTitulos {
    * derruba a guarda do nfeProc feita antes na mesma tx.
    */
   emSavepoint<T>(tx: Transacao, fn: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; erro: unknown }>;
-  /** Ids das notas autorizadas de boleto, autorizadas há ao menos `ha_minutos`, sem nenhuma parcela (varredura de reconciliação). */
-  notasBoletoSemTitulo(tx: Transacao, opcoes: { ha_minutos: number; limite: number }): Promise<string[]>;
+  /** Ids das notas autorizadas de boleto, autorizadas há ao menos `ha_minutos`, sem nenhuma parcela (varredura de reconciliação). `excluir`: notas que a varredura desistiu de gerar (teto de tentativas). */
+  notasBoletoSemTitulo(tx: Transacao, opcoes: { ha_minutos: number; limite: number; excluir?: readonly string[] }): Promise<string[]>;
 }

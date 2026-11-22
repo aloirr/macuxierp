@@ -66,15 +66,16 @@ export const repositorioTitulosSql: RepositorioTitulos = {
     }
   },
 
-  async notasBoletoSemTitulo(tx, { ha_minutos, limite }) {
+  async notasBoletoSemTitulo(tx, { ha_minutos, limite, excluir = [] }) {
     // Só o boleto gera título (tPag 15). A nota autorizada há `ha_minutos` e sem nenhuma parcela é pendência de geração (a reconciliação do lote já passou).
     return tx.consultar<{ id: string }>(
       `SELECT n.id FROM faturamento.nota n
         WHERE n.status = 'autorizada' AND n.deleted_at IS NULL AND n.pagamento->'pagamentos'->0->>'tPag' = '15'
           AND n.autorizada_em <= now() - make_interval(mins => $1::int)
           AND NOT EXISTS (SELECT 1 FROM faturamento.titulo t WHERE t.tenant_id = n.tenant_id AND t.nota_id = n.id)
+          AND n.id <> ALL($3::uuid[])
         ORDER BY n.autorizada_em LIMIT $2`,
-      [ha_minutos, limite],
+      [ha_minutos, limite, excluir],
     ).then((l) => l.map((x) => x.id));
   },
 

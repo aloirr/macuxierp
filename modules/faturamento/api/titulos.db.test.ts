@@ -44,7 +44,7 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     const r = await app.comTenant(tenant, (tx) => (tenant === C ? emissaoC : emissao).emitirNota(tx, tenant, { pedido_id, idempotencia: `idem-titdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const t = transporteFake();
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
     expect((await tr.transmitirNota(tenant, r.nota.id)).resultado).toBe('autorizada');
     return (await app.comTenant(tenant, (tx) => repos.notas.obter(tx, r.nota.id)))!;
   }
@@ -162,7 +162,7 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     const emissaoReal = criarServicoEmissao({ ...f.deps, sorteio: () => 777001, configuracao: configuracaoFake({ [IDS.filial]: true }).repo });
     const r = await app.comTenant(B, (tx) => emissaoReal.emitirNota(tx, B, { pedido_id: IDS.pedido, idempotencia: `idem-titdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
     expect((await tr.transmitirNota(B, r.nota.id)).resultado).toBe('autorizada');
     expect(await app.comTenant(B, (tx) => consultaTitulosPedido(repos.titulos).saldoAbertoCliente(tx, IDS.cliente))).toBe(r.nota.total_centavos);
   });

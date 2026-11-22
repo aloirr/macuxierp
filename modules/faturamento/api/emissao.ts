@@ -83,8 +83,8 @@ export interface DepsEmissao {
   tpEmis?: TipoEmissao;
   /** Bandeira "faturamento real com NF-e simulada": lida na EMISSÃO e guardada no conteúdo da nota (`conta_como_real`); ausente = desligada. */
   configuracao?: ConfiguracaoFaturamento;
-  /** Log sem dado pessoal (falha ao ler a bandeira). */
-  log?: LogFaturamento;
+  /** Log sem dado pessoal, OBRIGATÓRIO (falha ao ler a bandeira; pendência de título). */
+  log: LogFaturamento;
 }
 
 interface Preparado {
@@ -250,7 +250,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     if (semTitulos.length > 0) return { ok: false, violacoes: semTitulos };
     // Bandeira com leitura segura (erro, como tabela inexistente, vale false com log): nunca derruba a emissão.
     const bandeira = deps.configuracao
-      ? await deps.configuracao.lerBandeiraSegura(tx, pedido.filial_id, (motivo) => deps.log?.({ evento: 'faturamento.bandeira.leitura_falhou', motivo }))
+      ? await deps.configuracao.lerBandeiraSegura(tx, pedido.filial_id, (motivo) => deps.log({ evento: 'faturamento.bandeira.leitura_falhou', motivo }))
       : false;
     return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos, conta_como_real: contaComoReal(ambiente, bandeira) };
   }
@@ -400,14 +400,15 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     return { ok: true, nota: { ...nota, total_centavos: p.nota.totais.vNF, itens, recibo: null, revisao: nota.revisao + 1 }, repetida: false };
   }
 
-  return { emitirNota, reenviarNota, processarRetorno: criarProcessadorRetorno(deps.notas) };
+  // O retorno da SEFAZ é do worker (`criarProcessadorRetorno` com `titulos` e `log`): a API não o expõe, para a geração de títulos não ficar sem a porta.
+  return { emitirNota, reenviarNota };
 }
 
 /**
  * Aplica o retorno da SEFAZ (autorização, recibo ou consulta) à nota: único caminho que leva a nota a autorizada, denegada ou rejeitada.
  * Só precisa do repositório: o worker o usa direto, sem as portas da emissão.
  */
-export function criarProcessadorRetorno(notas: RepositorioNotas, titulos?: RepositorioTitulos, log?: LogFaturamento) {
+export function criarProcessadorRetorno(notas: RepositorioNotas, titulos: RepositorioTitulos, log: LogFaturamento) {
   const mudar = (tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> =>
     mudarNota(notas, tx, nota, para, dados, extra);
   const base = baseEventoDaNota;
@@ -459,9 +460,9 @@ export function criarProcessadorRetorno(notas: RepositorioNotas, titulos?: Repos
       const payload = NotaAutorizadaPayload.parse({ ...base(autorizada, protocolo, contaComoRealDaNota(conteudo, autorizada)), pedido_uuid: autorizada.pedido_uuid });
       await notas.publicarEvento(tx, { nome: EVENTO_NOTA_AUTORIZADA, agregado_id: autorizada.id, payload });
       // RF-FAT-07: títulos na MESMA tx, depois da guarda do nfeProc e do evento, num SAVEPOINT (RN-FAT-03): se a geração falhar, a nota segue autorizada com o
-      // nfeProc guardado, a pendência vai ao log e ao resultado, e a varredura gera depois. `titulos` só falta no serviço de emissão dos testes.
-      const g = titulos ? await gerarTitulosSeguro(tx, { titulos, notas }, autorizada, log) : null;
-      return { resultado: 'autorizada', nota: autorizada, ...(g && !g.ok ? { titulos_pendentes: g.motivo } : {}) };
+      // nfeProc guardado, a pendência vai ao log e ao resultado, e a varredura gera depois.
+      const g = await gerarTitulosSeguro(tx, { titulos, notas }, autorizada, log);
+      return { resultado: 'autorizada', nota: autorizada, ...(!g.ok ? { titulos_pendentes: g.motivo } : {}) };
     }
 
     if (r.situacao === 'denegada') {

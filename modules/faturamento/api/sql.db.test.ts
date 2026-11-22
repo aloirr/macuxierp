@@ -37,6 +37,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     return {
       t,
       tr: criarTransmissor({
+        log: () => undefined,
         banco: worker,
         notas: repos.notas, titulos: repos.titulos,
         emissor: s.emissor,
