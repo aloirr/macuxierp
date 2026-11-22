@@ -1,10 +1,10 @@
 /**
- * T-0008 (c), RN-CORE-02: TODA rota de core, cadastros e pedido (T-0016), montada na API real (`criarApp`), checa sessão (401), perfil
- * (403 PERFIL_SEM_PERMISSAO), tenant (transação aberta no tenant do token) e licença do módulo (403 MODULO_INATIVO),
- * nesta ordem. As rotas são enumeradas do próprio plugin: rota nova entra no teste sem ninguém lembrar.
+ * T-0008 (c), RN-CORE-02: TODA rota de core, cadastros, pedido (T-0016), integracao-fdv e faturamento (T-0045), montada
+ * na API real (`criarApp`), checa sessão (401), perfil (403 PERFIL_SEM_PERMISSAO), tenant (transação aberta no tenant
+ * do token) e licença do módulo (403 MODULO_INATIVO), nesta ordem. As rotas são enumeradas do próprio plugin: rota nova entra no teste sem ninguém lembrar.
  * Os plugins vêm do `montarModulos` de produção (tests/apoio/api-memoria.ts), o mesmo que o main.ts monta.
- * O core é a base do tenant (MODULOS_BASE do SDK): sempre licenciado, por isso a licença só derruba rotas de cadastros e
- * de pedido; cada módulo licenciado responde só à própria licença.
+ * O core é a base do tenant (MODULOS_BASE do SDK): sempre licenciado, por isso a licença só derruba rotas de cadastros,
+ * pedido, integracao-fdv e faturamento; cada módulo licenciado responde só à própria licença.
  */
 import { MODULOS_BASE, PERFIS, PERMISSOES, type Licenca, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { describe, expect, it } from 'vitest';
@@ -15,7 +15,7 @@ import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 const montar = usarApiMemoria();
 const api = (licencas?: Licenca[]) => montar({ licencas });
 /** Módulos com licença (o core é base). O padrão do apoio licencia só o cadastros; o pedido pede a própria linha. */
-const LICENCIADOS = ['cadastros', 'pedido', 'integracao-fdv'] as const;
+const LICENCIADOS = ['cadastros', 'pedido', 'integracao-fdv', 'faturamento'] as const;
 type Licenciado = (typeof LICENCIADOS)[number];
 const ehLicenciado = (m: string): m is Licenciado => (LICENCIADOS as readonly string[]).includes(m);
 const ativa = (modulo: Licenca['modulo']): Licenca => ({ modulo, ativo: true, valido_ate: null });
@@ -154,10 +154,10 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
     expect(declaradas.length).toBe(ROTAS.length);
   });
 
-  it('módulos montados só com o manifesto (faturamento, fiscal): nenhuma rota, 404 mesmo com sessão', async () => {
-    const a = await api([...TODAS, ativa('faturamento'), ativa('fiscal')]);
+  it('módulo montado só com o manifesto (fiscal): nenhuma rota, 404 mesmo com sessão', async () => {
+    const a = await api([...TODAS, ativa('fiscal')]);
     const semRotas = a.modulos.filter((p) => p.rotas.length === 0).map((p) => p.manifesto.id);
-    expect(semRotas).toEqual(['faturamento', 'fiscal']);
+    expect(semRotas).toEqual(['fiscal']);
     for (const m of semRotas) {
       const r = await a.app.inject({ url: `/v1/${m}/qualquer`, headers: a.auth() });
       expect(r.statusCode, m).toBe(404);
@@ -203,6 +203,6 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
 describe('perfis da matriz (RN-CORE-01 e RN-CORE-02)', () => {
   it('só ações de leitura são liberadas a todos os perfis (as demais têm perfil que leva 403)', () => {
     const livres = [...new Set(ROTAS.filter((x) => semPermissao(x.r) === undefined).map((x) => x.r.acao))].sort();
-    expect(livres).toEqual(['cadastros.ver', 'core.empresa.ver', 'core.perfil.ver', 'pedido.ver']);
+    expect(livres).toEqual(['cadastros.ver', 'core.empresa.ver', 'core.perfil.ver', 'faturamento.ver', 'pedido.ver']);
   });
 });

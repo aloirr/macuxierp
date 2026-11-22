@@ -7,7 +7,7 @@ import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { a1DeTeste, depsFake, transporteFake, pedidoNovoNaFila, uuid } from './apoio-teste';
+import { a1DeTeste, depsFake, transporteFake, pedidoNovoNaFila, uuid, situacaoAprovadaDeTeste } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
 import { configuracaoFake } from './apoio-teste';
@@ -45,7 +45,7 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     const r = await app.comTenant(tenant, async (tx) => (tenant === C ? emissaoC : emissao).emitirNota(tx, tenant, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar, modelo), idempotencia: `idem-titdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const t = transporteFake();
-    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
     expect((await tr.transmitirNota(tenant, r.nota.id)).resultado).toBe('autorizada');
     return (await app.comTenant(tenant, (tx) => repos.notas.obter(tx, r.nota.id)))!;
   }
@@ -144,7 +144,7 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const quebrado = { ...repos.titulos, inserirParcelas: async () => { throw new Error('falha de teste'); } };
     const logs: object[] = [];
-    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: quebrado, log: (e) => logs.push(e), emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: quebrado, log: (e) => logs.push(e), emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
     expect(await tr.transmitirNota(A, r.nota.id)).toMatchObject({ resultado: 'autorizada', titulos_pendentes: expect.any(String) });
     expect(logs).toEqual([expect.objectContaining({ evento: 'faturamento.titulo.geracao_pendente', nota_id: r.nota.id })]);
     expect((await admin("SELECT status FROM faturamento.nota WHERE id = $1", [r.nota.id]))[0]?.status).toBe('autorizada');
@@ -163,7 +163,7 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     const emissaoReal = criarServicoEmissao({ ...f.deps, sorteio: () => 777001, configuracao: configuracaoFake({ [IDS.filial]: true }).repo });
     const r = await app.comTenant(B, (tx) => emissaoReal.emitirNota(tx, B, { pedido_id: IDS.pedido, idempotencia: `idem-titdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
-    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
     expect((await tr.transmitirNota(B, r.nota.id)).resultado).toBe('autorizada');
     expect(await app.comTenant(B, (tx) => consultaTitulosPedido(repos.titulos).saldoAbertoCliente(tx, IDS.cliente))).toBe(r.nota.total_centavos);
     // O saldo lê a coluna titulo.conta_como_real (0026), gravada na geração com o valor da nota.

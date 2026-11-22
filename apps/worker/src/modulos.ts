@@ -12,8 +12,10 @@
  * - Consumidores do `integracao-fdv` (T-0016): `integracao-fdv.publicar-cadastros` (espelho do que vai ao Hub, com a
  *   licença PG) e `integracao-fdv.retorno-pedido` (grava o retorno do status do pedido para a agenda de retorno).
  * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
+ * - Faturamento (T-0045 lote A, T-0021): consumidor de `pedido.pedido.aprovado@1` sempre; trabalhos da SEFAZ (só o simulador) e rotinas
+ *   só com a `MACUXIERP_CHAVE_A1` (faturamento.ts). As notas autorizadas e canceladas chegam ao pedido (#194) e ao estoque (#192).
  */
-import { criarConsumidorCargaInicial, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
+import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
   destinoAvisosSql,
   exportadorCore,
@@ -41,14 +43,15 @@ import {
   type Outbox,
   type Relogio,
 } from '@macuxierp/platform-sdk';
-import { exportadorPedido } from '@macuxierp/pedido/api';
+import { consumidoresDoPedido, exportadorPedido } from '@macuxierp/pedido/api';
 import { FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import type { EstadoEnvioFdv } from './envio-fdv';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
+import { consumidoresFaturamento, type MontagemFaturamentoWorker } from './faturamento';
 import { criarAlertaMonitor, type MontagemPedidosFdv } from './pedidos-fdv';
-import type { RotinaDiaria } from './rotinas';
+import type { RotinaDiaria, RotinaPeriodica } from './rotinas';
 
 export class RegistroExecutoresInvalido extends Error {
   override readonly name = 'RegistroExecutoresInvalido';
@@ -90,6 +93,8 @@ export interface DependenciasModulosWorker {
   fila?: FilaDeTrabalhos;
   /** Padrão: `plataforma.evento` (PG), na transação do tenant. */
   outbox?: Outbox;
+  /** `montarFaturamentoWorker` (faturamento.ts); ausente = worker sem a chave do A1, sem os trabalhos da SEFAZ. */
+  faturamento?: MontagemFaturamentoWorker;
 }
 
 /** Executores da fila de trabalhos, com os adaptadores reais. */
@@ -97,6 +102,7 @@ export function montarExecutores(d: DependenciasModulosWorker): readonly Executo
   return registrarExecutores([
     criarExecutorExportacao({ registro: registroExportacoesSql, exportadores: EXPORTADORES, armazenamento: d.armazenamento, catalogo: d.catalogo, agora: d.agora }),
     criarExecutorCargaInicial({ repositorios: repositoriosSql, fila: d.fila ?? new FilaDeTrabalhosPg(), outbox: d.outbox ?? new OutboxPg(), agora: d.agora }),
+    ...(d.faturamento?.executores ?? []),
   ]);
 }
 
@@ -107,6 +113,8 @@ export interface DependenciasConsumidoresWorker {
   fila?: FilaDeTrabalhos;
   /** Padrão: `plataforma.tenant_modulo` (PG). */
   licencas?: FonteLicencas;
+  /** Padrão: `plataforma.evento` (PG), na transação do evento consumido. */
+  outbox?: Outbox;
 }
 
 /**
@@ -115,18 +123,38 @@ export interface DependenciasConsumidoresWorker {
  * retorno entra mesmo com o recebimento desligado: só grava a fila local (`retorno_enviado`) e nunca chama o Hub; sem
  * `pedido_recebido` do conector, ele só loga e ignora. O alerta do monitor (`criarAlertaMonitor`, T-0011) vai junto: o
  * retorno descartado sem chave do produto aparece no monitor.
+ * Notas do faturamento (`nota.autorizada@1`, `nota.cancelada@1`): o pedido soma a nota e publica o `faturado@1` (#194, com o
+ * mesmo alerta do monitor nas recusas) e o cadastros baixa ou devolve o estoque (#192, só produção ou `conta_como_real`).
  */
 export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly ConsumidorEvento[] {
+  const outbox = d.outbox ?? new OutboxPg();
+  const alertar = criarAlertaMonitor(d.log);
   return Object.freeze([
     criarConsumidorCargaInicial({ fila: d.fila ?? new FilaDeTrabalhosPg() }),
     criarConsumidorPublicarCadastros({ licencas: d.licencas ?? new LicencasPg(), agora: () => d.relogio.agora() }),
-    criarConsumidorRetornoPedido({ log: d.log, relogio: d.relogio, alertar: criarAlertaMonitor(d.log) }),
+    criarConsumidorRetornoPedido({ log: d.log, relogio: d.relogio, alertar }),
+    ...consumidoresFaturamento(),
+    ...consumidoresDoPedido({ outbox, relogio: d.relogio, log: d.log, alertar }),
+    criarConsumidorEstoqueNota({
+      repositorios: repositoriosSql,
+      outbox,
+      agora: () => d.relogio.agora(),
+      registrar: (msg) => d.log.warn({ modulo: 'cadastros', consumidor: 'cadastros.estoque-nota' }, msg),
+    }),
   ]);
 }
 
 /** Rotinas diárias, com os adaptadores reais. */
-export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log'>): readonly RotinaDiaria[] {
-  return Object.freeze([criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log })]);
+export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log' | 'faturamento'>): readonly RotinaDiaria[] {
+  return Object.freeze([
+    criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log }),
+    ...(d.faturamento?.rotinas ?? []),
+  ]);
+}
+
+/** Rotinas periódicas (a varredura do faturamento). */
+export function montarPeriodicas(d: Pick<DependenciasModulosWorker, 'faturamento'>): readonly RotinaPeriodica[] {
+  return Object.freeze([...(d.faturamento?.periodicas ?? [])]);
 }
 
 export interface DependenciasAgendasWorker {

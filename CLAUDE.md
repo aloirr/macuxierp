@@ -20,8 +20,9 @@ docs/produto/01..07 · docs/decisoes/ (ADR)
 `pnpm install` · `pnpm dev` · `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm --filter <pacote> test`
 Postgres local na sessão, sem Docker: `bash db/scripts/pg-local.sh`. Antes do push: `bash tests/scripts/rodar-antes-do-push.sh`.
 Coordenação: `node scripts/coord.mjs` (caixa, enviar, pendencias, ler, fio, lido, dono, verificar).
+**Graphify antes de ler código** (pedido do Alexandre, R-20261122-035710; vale para subagentes também): primeiro `graphify-out/GRAPH_REPORT.md`; depois `graphify explain "<símbolo>"`, `graphify path "A" "B"` e `graphify section "docs/x.md#Seção"` para achar o arquivo e o trecho; `Read` só do trecho necessário (offset/limit). Se o "Built from commit" do relatório não for o HEAD (por exemplo, depois de juntar o main), rode `graphify update .`, que não usa LLM nem tem custo.
 Repositório: `aloirr/macuxierp`. Recados: `aloirr/macuxierp-recados`. **Time 100% na nuvem** (sessões do claude.ai/code, Linux, bash), com PR e CI no GitHub. **Sem Docker** nos agentes.
-**Horário de Manaus** (UTC−4) em texto para pessoas (recados, docs, relatórios); banco e carimbos técnicos em UTC.
+**Horário de Manaus** (UTC−4) em texto para pessoas (recados, docs, relatórios); banco e carimbos técnicos em UTC. Confira com `TZ=America/Manaus date` antes de escrever a hora; o relógio do container é UTC.
 
 ## Regras inegociáveis
 1. **Fronteiras**: módulo importa só `packages/*` e `modules/*/contracts`; nunca lê tabela de outro schema. O ERP **nunca lê tabela do FDV**: fala com o FDV só pela API do Hub (`/integracao/v1`).

@@ -371,6 +371,57 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect(JSON.stringify(dd.logs)).not.toContain(produtoErp);
     });
 
+    /** Tenant com o pedido entregue e um produto com chave do Hub no espelho (base dos testes de retorno faturado). */
+    async function cenarioFaturamento(nome: string, codigoProduto: string) {
+      const T = await criarTenant(efemero.admin, nome, ['integracao-fdv', 'pedido']);
+      await adm('INSERT INTO integracao_fdv.sinal (tenant_id) VALUES ($1)', [T]);
+      const uuid = await pedidoEntregue(T);
+      const produtoErp = U();
+      await adm(
+        `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo, pendente, erp_id)
+         VALUES ($1, 'produto', $3, '{}', repeat('e', 64), $4, $4, true, false, $2)`,
+        [T, produtoErp, codigoProduto, relogio.agora()],
+      );
+      return { T, uuid, produtoErp };
+    }
+
+    it('RN-PED-05: total aceito, nota cancelada e refaturamento parcial: o retorno é pulado, sem chamar o Hub e sem gravar falhou (nem com um parcial falhou no meio)', async () => {
+      const { T, uuid, produtoErp } = await cenarioFaturamento('ped-regressao', 'P-REG');
+      const dd = dublê();
+      const fat = (extra: Record<string, unknown>, chave: string) => ({
+        ...evento(T, 'pedido.pedido.faturado@1', uuid, { ambiente: 'producao', ...extra, nota: { ...NOTA, chave }, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] }),
+      });
+      const aplicarT = (ev: ReturnType<typeof evento>) => banco.comTenant(T, (tx) => criarConsumidorRetornoPedido({ log: dd.log, relogio, alertar: dd.alertar }).tratar(ev, tx));
+      await aplicarT(evento(T, 'pedido.pedido.recebido@1', uuid));
+      await aplicarT(fat({ status: 'faturado' }, '1'.repeat(44)));
+      const hub = hubCom([], [{ status: 200 }]);
+      await enviarRetornosPendentes({ banco, hub, relogio, log: dd.log, alertar: dd.alertar }, T);
+      expect(hub.enviados.map((e) => e.corpo.status)).toEqual(['integrado', 'faturado_total']);
+      // um parcial que falhou (linha mais recente, não aceita) não esconde o total aceito
+      await adm(`INSERT INTO integracao_fdv.retorno_enviado (tenant_id, pedido_uuid, status, corpo, hash, estado, created_at) VALUES ($1, $2, 'faturado_parcial', '{"nota":{"chave":"${'3'.repeat(44)}"}}', repeat('f', 64), 'falhou', now() + interval '1 second')`, [T, uuid]);
+      // nota cancelada e refaturada: o pedido recua e volta como parcial
+      await aplicarT(fat({ status: 'faturado_parcial' }, '2'.repeat(44)));
+      const r = await enviarRetornosPendentes({ banco, hub, relogio, log: dd.log, alertar: dd.alertar }, T);
+      expect(r).toMatchObject({ enviados: 0, falhou: 0 });
+      expect(hub.enviados).toHaveLength(2); // o Hub não foi chamado de novo
+      expect((await retornos(T, uuid)).map((x) => [x.status, x.estado])).toEqual([['integrado', 'enviado'], ['faturado_total', 'enviado'], ['faturado_parcial', 'falhou']]); // só a linha plantada
+      expect(dd.alertas).toEqual([]);
+    });
+
+    it('RN-PED-05: parcial aceito e novo parcial com nota diferente continua indo ao Hub', async () => {
+      const { T, uuid, produtoErp } = await cenarioFaturamento('ped-parcial-novo', 'P-PAR');
+      const dd = dublê();
+      const fat = (chave: string) =>
+        evento(T, 'pedido.pedido.faturado@1', uuid, { ambiente: 'producao', status: 'faturado_parcial', nota: { ...NOTA, chave }, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] });
+      const aplicarT = (ev: ReturnType<typeof evento>) => banco.comTenant(T, (tx) => criarConsumidorRetornoPedido({ log: dd.log, relogio }).tratar(ev, tx));
+      await aplicarT(fat('1'.repeat(44)));
+      await enviarRetornosPendentes({ banco, hub: hubCom([], [{ status: 200 }]), relogio, log: dd.log, alertar: dd.alertar }, T);
+      await aplicarT(fat('1'.repeat(44))); // mesma nota: regressão
+      expect((await retornos(T, uuid)).map((x) => x.estado)).toEqual(['enviado']);
+      await aplicarT(fat('2'.repeat(44))); // nota nova: novo faturamento parcial
+      expect((await retornos(T, uuid)).map((x) => [x.status, x.estado])).toEqual([['faturado_parcial', 'enviado'], ['faturado_parcial', 'pendente']]);
+    });
+
     it('RN-PED-05: tenant B não enxerga retorno do tenant A (RLS)', async () => {
       const uuid = await pedidoEntregue(A);
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
@@ -404,10 +455,10 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       const pausa = await enviarRetornosPendentes({ banco, hub: hubCom([], [{ status: 401 }]), relogio, log: dd.log, alertar: dd.alertar }, A);
       expect(pausa.motivoPausa).toBe('credencial');
       expect((await retornos(A, uuid))[0]).toMatchObject({ estado: 'pendente', tentativas: 0 });
-      const r = await enviarRetornosPendentes({ banco, hub: hubCom([], [{ status: 422, codigo: 'transicao_invalida' }]), relogio, log: dd.log, alertar: dd.alertar }, A);
+      const r = await enviarRetornosPendentes({ banco, hub: hubCom([], [{ status: 422, codigo: 'validacao_falhou' }]), relogio, log: dd.log, alertar: dd.alertar }, A);
       expect(r.falhou).toBeGreaterThanOrEqual(1);
       expect((await retornos(A, uuid))[0]!.estado).toBe('falhou');
-      expect(dd.alertas).toContain(`${A}:retorno_recusado_pelo_hub:${JSON.stringify({ pedido_uuid: uuid, codigo: 'transicao_invalida' })}`);
+      expect(dd.alertas).toContain(`${A}:retorno_recusado_pelo_hub:${JSON.stringify({ pedido_uuid: uuid, codigo: 'validacao_falhou' })}`);
     });
   });
 });

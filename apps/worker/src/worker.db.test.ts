@@ -76,14 +76,14 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
       },
     };
     relogio.avancar(1_000);
-    expect(await despachar([consumidor])).toEqual({ publicados: 3, falhas: 0, adiados: 0 });
+    expect(await despachar([consumidor])).toEqual({ publicados: 3, falhas: 0, adiados: 0, desistidos: 0 });
     expect(vistos).toEqual([`${e1.id}:true`, `${e2.id}:true`, `${e3.id}:true`]);
     const { rows } = await b.admin.query('SELECT count(*)::int AS n FROM plataforma.evento WHERE publicado_em IS NULL');
     expect(rows).toEqual([{ n: 0 }]);
     const consumidos = await b.admin.query<{ tenant_id: string; evento_id: string }>('SELECT tenant_id, evento_id FROM plataforma.evento_consumido ORDER BY created_at');
     expect(consumidos.rows.map((c) => `${c.evento_id}:${c.tenant_id}`).sort()).toEqual([e1, e2, e3].map((e) => `${e.id}:${e.tenant_id}`).sort());
     // nada mais a fazer
-    expect(await despachar([consumidor])).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despachar([consumidor])).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
   });
 
   it('falha aplica backoff e segura o agregado; na volta, quem já consumiu não reaplica', async () => {
@@ -104,18 +104,18 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
       },
     ];
     relogio.avancar(1_000);
-    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 1, adiados: 1 });
+    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 1, adiados: 1, desistidos: 0 });
     const { rows } = await b.admin.query<{ tentativas: number; erro: string; espera: boolean }>(
       'SELECT tentativas, erro, proximo_em > $2 AS espera FROM plataforma.evento WHERE id = $1',
       [e1.id, relogio.agora()],
     );
     expect(rows).toEqual([{ tentativas: 1, erro: 'Error: Hub fora', espera: true }]);
     // antes do backoff vencer, nada do agregado sai (nem a versão 2, que está atrás)
-    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despachar(consumidores)).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
 
     falhar = false;
     relogio.avancar(10_000);
-    expect(await despachar(consumidores)).toEqual({ publicados: 2, falhas: 0, adiados: 0 });
+    expect(await despachar(consumidores)).toEqual({ publicados: 2, falhas: 0, adiados: 0, desistidos: 0 });
     expect(aplicados).toEqual(['ok:1', 'instavel:1', 'ok:2', 'instavel:2']);
   });
 
@@ -136,9 +136,9 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
     };
     const primeiro = despachar([lento]);
     await dentro;
-    expect(await despachar([lento])).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despachar([lento])).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
     liberar();
-    expect(await primeiro).toEqual({ publicados: 1, falhas: 0, adiados: 0 });
+    expect(await primeiro).toEqual({ publicados: 1, falhas: 0, adiados: 0, desistidos: 0 });
   });
 
   it('fila de trabalho: enfileira pela API e o worker executa no tenant do trabalho', async () => {

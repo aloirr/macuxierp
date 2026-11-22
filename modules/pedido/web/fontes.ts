@@ -5,6 +5,9 @@
  * digitação (depois do atraso) em vez de carregar tudo. A API do cadastros valida `busca` (até 80 caracteres).
  */
 import { CHAVE_BUSCA } from '@macuxierp/platform-sdk/listas';
+import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
+import type { Perfil } from '@macuxierp/platform-sdk';
+import { podeVerDocumentoCliente } from '../domain/privacidade';
 import type { EnderecoClienteItem } from '@macuxierp/cadastros/contracts';
 
 export interface FonteComBusca {
@@ -63,4 +66,9 @@ export function opcoesDeEndereco(enderecos: readonly EnderecoParaOpcao[]): Opcao
     valor: e.id,
     rotulo: `${e.logradouro}, ${e.numero}, ${e.bairro}, ${e.municipio_nome ? `${e.municipio_nome}/${e.uf}` : e.uf}${e.tipo === 'principal' ? ' (principal)' : ''}`,
   }));
+}
+
+/** Rótulo do cliente nos seletores e filtros: "Razão · 11.444.777/0001-61". O vendedor nunca vê documento (LGPD): só a razão. */
+export function rotuloDoCliente(c: { razao_social: string; documento?: string | null }, perfil: Perfil): string {
+  return c.documento && podeVerDocumentoCliente(perfil) ? `${c.razao_social} · ${formatarDocumento(c.documento)}` : c.razao_social;
 }

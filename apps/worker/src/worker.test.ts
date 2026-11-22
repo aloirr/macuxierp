@@ -47,7 +47,7 @@ describe('despachante da outbox', () => {
     const e1 = evento(AG_A, 1);
     c.fila.adicionar(e2);
     c.fila.adicionar(e1);
-    expect(await despacharOutbox(c.d)).toEqual({ publicados: 2, falhas: 0, adiados: 0 });
+    expect(await despacharOutbox(c.d)).toEqual({ publicados: 2, falhas: 0, adiados: 0, desistidos: 0 });
     expect(vistos).toEqual([`${e1.versao}:${T1}`, `${e2.versao}:${T2}`]);
     expect(c.banco.aberturas[0]).toBeNull(); // a reserva roda sem tenant (papel do worker)
     expect(c.fila.linhas.every((l) => l.publicado_em)).toBe(true);
@@ -78,7 +78,7 @@ describe('despachante da outbox', () => {
     const b1 = evento(AG_B, 3);
     [a1, a2, b1].forEach((e) => c.fila.adicionar(e));
 
-    expect(await despacharOutbox(c.d)).toEqual({ publicados: 0, falhas: 2, adiados: 1 });
+    expect(await despacharOutbox(c.d)).toEqual({ publicados: 0, falhas: 2, adiados: 1, desistidos: 0 });
     const linhaA1 = c.fila.linhas.find((l) => l.id === a1.id)!;
     expect(linhaA1).toMatchObject({ tentativas: 1, publicado_em: null });
     expect(linhaA1.proximo_em).toEqual(proximaTentativa(INICIO, 1));
@@ -86,11 +86,11 @@ describe('despachante da outbox', () => {
     expect(c.fila.linhas.find((l) => l.id === a2.id)).toMatchObject({ tentativas: 0, publicado_em: null });
 
     // antes do backoff vencer, nada do agregado A sai (nem o a2, que está atrás do a1)
-    expect(await despacharOutbox(c.d)).toEqual({ publicados: 0, falhas: 0, adiados: 0 });
+    expect(await despacharOutbox(c.d)).toEqual({ publicados: 0, falhas: 0, adiados: 0, desistidos: 0 });
 
     falhar = false;
     c.relogio.avancar(10_000);
-    expect(await despacharOutbox(c.d)).toEqual({ publicados: 3, falhas: 0, adiados: 0 });
+    expect(await despacharOutbox(c.d)).toEqual({ publicados: 3, falhas: 0, adiados: 0, desistidos: 0 });
     // o consumidor "ok" aplicou cada evento uma vez só, apesar das retentativas
     expect(aplicados.filter((x) => x === `ok:${a1.versao}`)).toHaveLength(1);
     expect(aplicados).toContain(`instavel:${a2.versao}`);
