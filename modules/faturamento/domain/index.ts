@@ -9,3 +9,4 @@ export * from './pagamento';
 export * from './conteudo';
 export * from './validacao-emissao';
 export * from './assinatura';
+export * from './titulos';
