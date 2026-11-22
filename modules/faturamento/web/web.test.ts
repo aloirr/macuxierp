@@ -169,12 +169,20 @@ describe('colunas e CSV', () => {
     expect(csv).not.toContain('Pedido');
   });
   it('a fila de pedidos e os títulos mostram cliente, total, saldo e vencimento em formato brasileiro', () => {
-    const p = csvDaPagina(paginaPedidosAFaturar, [{ id: ID, pedido_id: ID, numero: 7, cliente_razao_social: 'Mercado Boa Vista', total_centavos: 50_000, status: 'a_faturar', recebido_em: '2026-11-22T15:00:00.000Z', filial_id: ID, cliente_id: ID }], 'America/Manaus');
+    const p = csvDaPagina(paginaPedidosAFaturar, [{ id: ID, pedido_id: ID, numero: 7, cliente_razao_social: 'Mercado Boa Vista', total_centavos: 50_000, status: 'a_faturar', ambiente: 'homologacao' as const, recebido_em: '2026-11-22T15:00:00.000Z', filial_id: ID, cliente_id: ID }], 'America/Manaus');
     expect(p).toContain('Mercado Boa Vista');
     expect(p).toContain('500,00');
+    expect(p).toContain('Homologação');
     const t = csvDaPagina(paginaTitulos, [{ id: ID, nota_id: ID, cliente_id: ID, cliente_razao_social: 'Mercado Boa Vista', filial_id: ID, ambiente: 'producao' as const, numero: 12, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 10_000, saldo_centavos: 2_500, status: 'aberto' }], 'America/Manaus');
     expect(t).toContain('05/12/2026');
     expect(t).toContain('25,00');
+    expect(t).toContain('Produção');
+    const pedidos = colunasDaPagina('pedidos-a-faturar', 'America/Manaus');
+    const titulos = colunasDaPagina('titulos', 'America/Manaus');
+    expect(pedidos.map((c) => c.id)).toContain('ambiente');
+    expect(titulos.map((c) => c.id)).toContain('ambiente');
+    expect(titulos.find((c) => c.id === 'ambiente')?.selos?.({ ambiente: 'homologacao' })[0]?.tom).toBe('alerta');
+    expect(pedidos.find((c) => c.id === 'status')?.selos?.({ status: 'faturado' })[0]).toEqual({ texto: 'Faturado', tom: 'ok' });
   });
 });
 
@@ -197,12 +205,20 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
       aviso: 'A nota será enviada à SEFAZ agora. Confira os dados.', ambiente: 'Ambiente: Homologação, sem valor fiscal', tomAmbiente: 'neutro', textoCarregando: 'Emitindo…',
     });
   });
-  it('RF-FAT-08: DANFE sem rota (lote 3) fica desabilitado com o motivo, e o XML é a ação principal da autorizada; leitura nunca age', () => {
-    expect(DANFE_DISPONIVEL).toBe(false);
-    expect(motivosDasAcoes('faturista', nota(), AGORA).baixarDanfe).toBe('DANFE em breve; por enquanto, baixe o XML.');
+  it('RN-FAT-02: com cancelamento aguardando a SEFAZ, Cancelar e CC-e ficam bloqueados com o motivo; as outras ações seguem', () => {
+    const m = motivosDasAcoes('faturista', nota({ cancelamento_pendente: true }), AGORA);
+    expect(m.cancelar).toBe('cancelamento aguardando a SEFAZ.');
+    expect(m.cartaCorrecao).toBe('cancelamento aguardando a SEFAZ.');
+    expect(m.baixarDanfe).toBeUndefined();
+    expect(motivosDasAcoes('faturista', nota({ cancelamento_pendente: false }), AGORA).cancelar).toBeUndefined();
+  });
+  it('RF-FAT-08: o DANFE está ativo na autorizada e na cancelada (rota do #219) e é a ação principal da autorizada; leitura nunca age', () => {
+    expect(DANFE_DISPONIVEL).toBe(true);
+    expect(motivosDasAcoes('faturista', nota(), AGORA).baixarDanfe).toBeUndefined();
+    expect(motivosDasAcoes('faturista', nota({ status: 'cancelada' }), AGORA).baixarDanfe).toBeUndefined();
     expect(motivosDasAcoes('faturista', nota(), AGORA).baixarXml).toBeUndefined();
     expect(motivosDasAcoes('faturista', nota({ status: 'rejeitada' }), AGORA).baixarDanfe).toBe('disponível só para nota autorizada ou cancelada.');
-    expect(acaoPrincipalDaNota('autorizada')).toBe('baixarXml');
+    expect(acaoPrincipalDaNota('autorizada')).toBe('baixarDanfe');
     expect(acaoPrincipalDaNota('rejeitada')).toBe('reenviar');
     expect(acaoPrincipalDaNota('rascunho')).toBe('reenviar');
     expect(acaoPrincipalDaNota('em_autorizacao')).toBeNull();
@@ -293,12 +309,14 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
 });
 
 describe('API pública do web', () => {
-  it('o index exporta só o que o shell importa (valores), mais as duas funções de ação da tela (rótulos e ação principal)', () => {
+  it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
-      'ACOES_DA_NOTA', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'badgesDaNota', 'colunasDaPagina',
-      'confirmacaoReenviar', 'contadorDeCaracteres', 'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
-      'formularioBaixa', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar',
-      'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar', 'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'situacaoDoTitulo', 'urlDoDanfe', 'urlDoXml',
+      'ACOES_DA_NOTA', 'BASE_API', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
+      'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
+      'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
+      'formularioBaixa', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
+      'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
+      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDoDanfe', 'urlDoXml',
     ]);
   });
 });

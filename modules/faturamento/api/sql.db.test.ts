@@ -74,7 +74,8 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
     const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }));
     expect(fila.itens).toHaveLength(1);
-    expect(fila.itens[0]).toMatchObject({ status: 'a_faturar', total_centavos: expect.any(Number) });
+    // RN-FAT-04: cada linha traz o ambiente da filial emissora (sem configuração em core.ambiente_fiscal = homologação, a falha segura).
+    expect(fila.itens[0]).toMatchObject({ status: 'a_faturar', total_centavos: expect.any(Number), ambiente: 'homologacao' });
     expect((await app.comTenant(B, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens).toHaveLength(0);
   });
 
@@ -123,6 +124,13 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     // A tela decide o botão "Cancelar" por esta data: o detalhe tem de trazê-la (sem ela o cancelamento ficaria bloqueado para sempre).
     const det = await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id));
     expect(det?.autorizada_em).toBe((n?.autorizada_em as Date).toISOString());
+    // RN-FAT-02: cancelamento aguardando a SEFAZ (evento pendente) aparece no detalhe; rejeitado ou registrado não conta.
+    expect(det?.cancelamento_pendente).toBe(false);
+    await admin("INSERT INTO faturamento.nota_evento (tenant_id, nota_id, tipo, n_seq_evento, texto) VALUES ($1, $2, 'cancelamento', 1, 'Cancelamento por erro de digitacao no pedido')", [A, r.nota.id]);
+    expect((await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id)))?.cancelamento_pendente).toBe(true);
+    await admin("UPDATE faturamento.nota_evento SET status = 'rejeitado', c_stat = 573, x_motivo = 'Rejeicao' WHERE nota_id = $1", [r.nota.id]);
+    expect((await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id)))?.cancelamento_pendente).toBe(false);
+    await admin('DELETE FROM faturamento.nota_evento WHERE nota_id = $1', [r.nota.id]);
     const [x] = await admin("SELECT tipo, protocolo, xml, sha256 FROM faturamento.nota_xml WHERE nota_id = $1 AND tipo = 'nfe_autorizada'", [r.nota.id]);
     expect(x).toMatchObject({ tipo: 'nfe_autorizada', protocolo: '113260000000001' });
     expect(x?.xml).toMatch(/^<nfeProc /);
@@ -157,6 +165,8 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const r = await emitir(A, 'idem-db-0005', s);
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     await admin("INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao) VALUES ($1, $2, 'producao', 'R-20261122-000000-alexandre')", [A, IDS.filial]);
+    // A fila a faturar mostra o mesmo ambiente que a emissão usa (a lista nunca promete homologação para filial em produção).
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens.map((i) => i.ambiente)).toEqual(['producao']);
     const { tr, t } = transmissor(s);
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('ambiente_mudou');
     expect(t.chamadas).toEqual([]);

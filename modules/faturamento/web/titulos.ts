@@ -5,13 +5,14 @@
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDataHora, interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
 import { BaixarTituloEntrada, DataCivil, StatusTitulo, type TituloResumo } from '../contracts';
+import { podeBaixarTitulo } from '../domain';
 import { dataCivilManaus } from '../domain/fuso';
 import { BASE_API, FAIXA_TITULO_HOMOLOGACAO, comChave, exigirChave, falha, type Montagem, type Selo } from './notas';
 
 const CAMINHO_BAIXAR = `${BASE_API}/titulos/:id/baixas`;
 const CAMINHO_ESTORNAR = `${BASE_API}/titulos/:id/baixas/:baixa_id/estornar`;
 
-const ROTULO_STATUS_TITULO: Readonly<Record<StatusTitulo, string>> = { aberto: 'Em aberto', baixado: 'Baixado', cancelado: 'Cancelado' };
+export const ROTULO_STATUS_TITULO: Readonly<Record<StatusTitulo, string>> = { aberto: 'Em aberto', baixado: 'Baixado', cancelado: 'Cancelado' };
 
 const MS_DIA = 86_400_000;
 /** Dias de atraso entre duas datas civis (`hoje` no fuso do tenant); 0 ou negativo = não venceu. */
@@ -34,12 +35,9 @@ interface AcoesDoTitulo {
   estornar: boolean;
 }
 
-/** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06); a API confere o mesmo (403). Fiscal, leitura e vendedor não agem. */
-const PERFIS_BAIXA: readonly Perfil[] = ['administrador', 'gerente', 'faturista'];
-
 /** `baixas` vem do detalhe (`GET /titulos/:id`); na lista (sem baixas) o estorno fica oculto. */
 export function acoesDoTitulo(perfil: Perfil, t: { status: StatusTitulo; saldo_centavos: number; baixas?: readonly { id: string; estornada_em: string | null }[] }): AcoesDoTitulo {
-  const age = PERFIS_BAIXA.includes(perfil);
+  const age = podeBaixarTitulo(perfil);
   return {
     baixar: age && t.status === 'aberto' && t.saldo_centavos > 0,
     estornar: age && t.status !== 'cancelado' && (t.baixas ?? []).some((b) => b.estornada_em === null),

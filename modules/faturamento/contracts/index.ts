@@ -203,6 +203,8 @@ export const NotaDetalhe = NotaResumo.extend({
   acao_sugerida: z.string().nullable().optional(),
   /** Base do prazo de cancelamento (RN-FAT-02): a tela só oferece o botão dentro de 24 h; a API revalida. */
   autorizada_em: z.string().datetime().nullable().optional(),
+  /** Há cancelamento `pendente` (aguardando a SEFAZ): a tela bloqueia novo cancelamento e a CC-e até o retorno. */
+  cancelamento_pendente: z.boolean().optional(),
 });
 export type NotaDetalhe = z.infer<typeof NotaDetalhe>;
 
@@ -245,6 +247,8 @@ export const PedidoAFaturarResumo = z.object({
   cliente_id: Uuid,
   cliente_razao_social: z.string().nullable(),
   status: StatusPedidoAFaturar,
+  /** RN-FAT-04: ambiente da filial emissora (`faturamento.ambiente_da_filial`; sem configuração = homologação, a falha segura). */
+  ambiente: Ambiente,
   total_centavos: Centavos,
   recebido_em: z.string().datetime(),
 });
