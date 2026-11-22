@@ -171,10 +171,87 @@ describe('calcularIcmsItem por código', () => {
   it('RN-FIS-02: desconto maior que o item dá erro de base negativa', () => {
     expect(calcularIcmsItem(ctx({ codigo: '00' }, { desconto_centavos: 200000 }))).toMatchObject({ ok: false, codigo: 'BASE_NEGATIVA' });
   });
-  it('RN-FIS-02: CST 51 ainda não suportado volta como erro tipado', () => {
-    expect(calcularIcmsItem(ctx({ codigo: '51' }))).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+  it('RN-FIS-02: CST 51 sem pDif é regra incompleta (não é mais código não suportado)', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '51' }))).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
   });
   it('RN-FIS-02: CST 10 sem alíquota interna do destino é regra incompleta', () => {
     expect(calcularIcmsItem(ctx({ codigo: '10', mva_original: 400000 }))).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+  });
+});
+
+describe('CST 51 (diferimento)', () => {
+  const ctx = (r: Parameters<typeof regra>[0], i: Partial<ItemCalculo> = {}) => ({ item: item(i), regra: regra({ codigo: '51', ...r }), interestadual: false, ipi_na_bc: false });
+  it('RN-FIS-02: 100% diferido: vICMSOp 180,00, vICMSDif 180,00, vICMS 0', () => {
+    expect(calcularIcmsItem(ctx({ p_dif: 1000000 }))).toEqual({
+      ok: true,
+      icms: { orig: '0', cst: '51', mod_bc: 3, v_bc: 100000, p_icms: 180000, v_icms_op: 18000, p_dif: 1000000, v_icms_dif: 18000, v_icms: 0 },
+    });
+  });
+  it('RN-FIS-02: 33,33% diferido: 180,00 × 0,3333 = 59,994 -> 59,99; vICMS = 120,01', () => {
+    expect(calcularIcmsItem(ctx({ p_dif: 333300 }))).toMatchObject({ ok: true, icms: { v_icms_op: 18000, p_dif: 333300, v_icms_dif: 5999, v_icms: 12001 } });
+  });
+  it('RN-FIS-02: diferimento parcial de 50% e redução de BC de 33,33%: vBC 666,70, vICMSOp 120,01, dif 60,01 (meio para cima), vICMS 60,00', () => {
+    expect(calcularIcmsItem(ctx({ p_dif: 500000, reducao_bc: 333300 }))).toMatchObject({ ok: true, icms: { p_red_bc: 333300, v_bc: 66670, v_icms_op: 12001, v_icms_dif: 6001, v_icms: 6000 } });
+  });
+  it('RN-FIS-02: CST 51 com FCP (FCP diferido) é CODIGO_NAO_SUPORTADO até conferir a NT 2016.002 / homologação T-0046', () => {
+    expect(calcularIcmsItem(ctx({ p_dif: 500000, p_fcp: 20000 }))).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: expect.stringContaining('T-0046') });
+  });
+  it('RN-FIS-02: CST 51 sem alíquota de ICMS é regra incompleta', () => {
+    expect(calcularIcmsItem(ctx({ p_dif: 500000, aliquota_icms: null }))).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+  });
+});
+
+describe('ICMS-ST retido anteriormente (CST 60 e CSOSN 500)', () => {
+  const st = { v_bc_st_ret: 140000, p_st: 180000, v_icms_substituto: 18000, v_icms_st_ret: 7200 };
+  const ctx = (codigo: string, i: Partial<ItemCalculo> = {}, extra: Record<string, unknown> = {}) => ({ item: item(i), regra: regra({ codigo, ...(extra as object) }), interestadual: false, ipi_na_bc: false });
+  it('RN-FIS-02: CST 60 com st_retido devolve vBCSTRet, pST, vICMSSubstituto e vICMSSTRet', () => {
+    expect(calcularIcmsItem(ctx('60', { st_retido: st }))).toEqual({ ok: true, icms: { orig: '0', cst: '60', v_bc_st_ret: 140000, p_st: 180000, v_icms_substituto: 18000, v_icms_st_ret: 7200 } });
+  });
+  it('RN-FIS-02: CSOSN 500 com st_retido e FCP-ST retido', () => {
+    const r = calcularIcmsItem(ctx('500', { st_retido: { ...st, v_bc_fcp_st_ret: 140000, p_fcp_st_ret: 20000, v_fcp_st_ret: 2800 } }));
+    expect(r).toEqual({
+      ok: true,
+      icms: { orig: '0', csosn: '500', v_bc_st_ret: 140000, p_st: 180000, v_icms_substituto: 18000, v_icms_st_ret: 7200, v_bc_fcp_st_ret: 140000, p_fcp_st_ret: 20000, v_fcp_st_ret: 2800 },
+    });
+  });
+  it('RN-FIS-02: sem st_retido o 60 e o 500 saem sem os campos de ST retido (opcionais no leiaute)', () => {
+    expect(calcularIcmsItem(ctx('60'))).toEqual({ ok: true, icms: { orig: '0', cst: '60' } });
+    expect(calcularIcmsItem(ctx('500'))).toEqual({ ok: true, icms: { orig: '0', csosn: '500' } });
+  });
+  it('RN-FIS-02: FCP-ST retido pela metade (só um dos três campos) é entrada inválida', () => {
+    expect(calcularIcmsItem(ctx('60', { st_retido: { ...st, v_fcp_st_ret: 2800 } }))).toMatchObject({ ok: false, codigo: 'ENTRADA_INVALIDA' });
+  });
+  it('RN-FIS-02: vICMSSTRet maior que vBCSTRet é incoerente (entrada inválida)', () => {
+    expect(calcularIcmsItem(ctx('60', { st_retido: { ...st, v_icms_st_ret: 140001 } }))).toMatchObject({ ok: false, codigo: 'ENTRADA_INVALIDA', mensagem: expect.stringContaining('ST retido incoerente') });
+  });
+  it('RN-FIS-02: ICMS efetivo (consumidor final, p_icms_efet na regra): 1.000,00 × (1 − 10%) = 900,00 × 18% = 162,00', () => {
+    const r = calcularIcmsItem({ ...ctx('60', { st_retido: { ...st, p_red_bc_efet: 100000 } }, { p_icms_efet: 180000 }), consumidor_final: true });
+    expect(r).toMatchObject({ ok: true, icms: { p_red_bc_efet: 100000, v_bc_efet: 90000, p_icms_efet: 180000, v_icms_efet: 16200 } });
+  });
+  it('RN-FIS-02: ICMS efetivo sem redução usa pRedBCEfet 0 e o valor da operação (com frete e desconto)', () => {
+    const r = calcularIcmsItem({ ...ctx('500', { st_retido: st, frete_centavos: 5000, desconto_centavos: 2000 }, { p_icms_efet: 180000 }), consumidor_final: true });
+    expect(r).toMatchObject({ ok: true, icms: { p_red_bc_efet: 0, v_bc_efet: 103000, v_icms_efet: 18540 } });
+  });
+  it('RN-FIS-02: sem consumidor final ou sem p_icms_efet na regra, não há ICMS efetivo', () => {
+    for (const c of [ctx('60', { st_retido: st }, { p_icms_efet: 180000 }), { ...ctx('60', { st_retido: st }), consumidor_final: true }]) {
+      const r = calcularIcmsItem(c);
+      expect(r).toMatchObject({ ok: true });
+      expect((r as { icms: object }).icms).not.toHaveProperty('v_bc_efet');
+    }
+  });
+  it('RN-FIS-02: st_retido é ignorado fora do CST 60 e do CSOSN 500', () => {
+    expect((calcularIcmsItem(ctx('00', { st_retido: st })) as { icms: object }).icms).not.toHaveProperty('v_bc_st_ret');
+  });
+});
+
+describe('CSOSN 900 sem pCredSN (caso do MEI)', () => {
+  const ctx = (r: Parameters<typeof regra>[0]) => ({ item: item(), regra: regra({ codigo: '900', p_cred_sn: null, ...r }), interestadual: false, ipi_na_bc: false });
+  it('RN-FIS-02: 900 sem pCredSN e sem alíquota sai só com orig e CSOSN', () => {
+    expect(calcularIcmsItem(ctx({ aliquota_icms: null }))).toEqual({ ok: true, icms: { orig: '0', csosn: '900' } });
+  });
+  it('RN-FIS-02: 900 sem pCredSN e com alíquota não gera crédito do Simples', () => {
+    const r = calcularIcmsItem(ctx({}));
+    expect(r).toMatchObject({ ok: true });
+    expect((r as { icms: object }).icms).not.toHaveProperty('v_cred_icms_sn');
   });
 });

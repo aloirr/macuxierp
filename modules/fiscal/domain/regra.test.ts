@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RegraTributaria } from '../contracts';
 import { regra } from './fixtures';
-import { selecionarRegra, type AlvoRegra } from './regra';
+import { meiComCredito, selecionarRegra, type AlvoRegra } from './regra';
 
 const alvo: AlvoRegra = { ncm: '22021000', cfop: '5102', uf_origem: 'AM', uf_destino: 'AM', tipo_cliente: 'contribuinte', crt: 3, data_emissao: '2026-06-10' };
 
@@ -99,5 +99,22 @@ describe('contrato da regra (codigo de ICMS)', () => {
     expect(RegraTributaria.safeParse({ ...base, tributo: 'pis', codigo: null, cst_pis: '01' }).success).toBe(true);
     expect(RegraTributaria.safeParse({ ...base, tributo: 'icms' }).success).toBe(false);
     expect(RegraTributaria.safeParse({ ...base, codigo: '00' }).success).toBe(true);
+  });
+});
+
+describe('emitente MEI (CRT 4, NT 2024.001)', () => {
+  const mei = { ...alvo, crt: 4 as const };
+  it('RN-FIS-02: MEI não transfere crédito de ICMS: CSOSN 101, 201 e 900 com pCredSN voltam CODIGO_INCOMPATIVEL_CRT', () => {
+    for (const r of [regra({ codigo: '101', p_cred_sn: 28200 }), regra({ codigo: '201', p_cred_sn: 28200 }), regra({ codigo: '900', p_cred_sn: 28200 })])
+      expect(selecionarRegra([r], mei)).toMatchObject({ ok: false, erros: [{ rn: 'RN-FIS-02', codigo: 'CODIGO_INCOMPATIVEL_CRT', mensagem: expect.stringContaining('MEI não transfere crédito de ICMS') }] });
+  });
+  it('RN-FIS-02: MEI aceita 102, 103, 300, 400, 500, 202, 203 e o 900 sem pCredSN (com ou sem alíquota)', () => {
+    for (const codigo of ['102', '103', '300', '400', '500', '202', '203']) expect(selecionarRegra([regra({ codigo })], mei)).toMatchObject({ ok: true });
+    expect(selecionarRegra([regra({ codigo: '900', p_cred_sn: null })], mei)).toMatchObject({ ok: true });
+    expect(selecionarRegra([regra({ codigo: '900', p_cred_sn: null, aliquota_icms: null })], mei)).toMatchObject({ ok: true });
+  });
+  it('RN-FIS-02: o mesmo 101 no CRT 1 continua com crédito', () => {
+    expect(selecionarRegra([regra({ codigo: '101', p_cred_sn: 28200 })], { ...alvo, crt: 1 })).toMatchObject({ ok: true });
+    expect(meiComCredito(1, regra({ codigo: '101' }))).toBe(false);
   });
 });

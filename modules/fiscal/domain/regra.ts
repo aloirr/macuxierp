@@ -31,6 +31,11 @@ export function usaCsosn(crt: Crt): boolean {
   return crt === 1 || crt === 4;
 }
 
+/** MEI (CRT 4, NT 2024.001) não transfere crédito de ICMS: barra o CSOSN 101/201 e o 900 com pCredSN. Valem 102, 103, 300, 400, 500, 202, 203 e 900 sem crédito. */
+export function meiComCredito(crt: Crt, r: RegraTributaria): boolean {
+  return crt === 4 && (r.codigo === '101' || r.codigo === '201' || (r.codigo === '900' && r.p_cred_sn !== null));
+}
+
 /** RN-FIS-02: o código da regra precisa ser do tipo certo para o CRT da filial. */
 export function codigoCompativel(crt: Crt, codigo: string | null): boolean {
   if (codigo === null) return false;
@@ -142,14 +147,17 @@ export function selecionarRegra(regras: RegraTributaria[], alvo: AlvoRegra): Res
       erros: [{ rn: 'RN-FIS-04', codigo: 'REGRA_SEM_FONTE', mensagem: `A regra de ${rotulo} mais específica não tem fonte (NT, convênio ou anexo) e não pode ser aplicada.`, regra_ids: [melhor.id], ...base }],
     };
   }
-  if (tributo === 'icms' && !codigoCompativel(alvo.crt, melhor.codigo)) {
+  const mei = tributo === 'icms' && meiComCredito(alvo.crt, melhor);
+  if (mei || (tributo === 'icms' && !codigoCompativel(alvo.crt, melhor.codigo))) {
     return {
       ok: false,
       erros: [
         {
           rn: 'RN-FIS-02',
           codigo: 'CODIGO_INCOMPATIVEL_CRT',
-          mensagem: `O código ${melhor.codigo} da regra não serve para o CRT ${alvo.crt} da filial (${usaCsosn(alvo.crt) ? 'Simples usa CSOSN' : 'regime normal usa CST'}).`,
+          mensagem: mei
+            ? `MEI não transfere crédito de ICMS: o CSOSN ${melhor.codigo} (com crédito) não serve para o CRT 4; use 102, 103, 300, 400, 500, 202 ou 203.`
+            : `O código ${melhor.codigo} da regra não serve para o CRT ${alvo.crt} da filial (${usaCsosn(alvo.crt) ? 'Simples usa CSOSN' : 'regime normal usa CST'}).`,
           regra_ids: [melhor.id],
           ...base,
         },

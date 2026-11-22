@@ -92,7 +92,7 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
       }
     }
 
-    const ri = calcularIcmsItem({ item, regra, interestadual, ipi_na_bc, destinatario_nao_contribuinte_final: entrada.destinatario.consumidor_final && entrada.destinatario.tipo_contribuinte !== 'contribuinte' });
+    const ri = calcularIcmsItem({ item, regra, interestadual, ipi_na_bc, destinatario_nao_contribuinte_final: entrada.destinatario.consumidor_final && entrada.destinatario.tipo_contribuinte !== 'contribuinte', consumidor_final: entrada.destinatario.consumidor_final });
     if (!ri.ok) erroCalculo(ri, [regra.id]);
 
     // PIS e COFINS: a regra só é obrigatória no CRT 3; no DAS (CRT 1/2/4), sem regra sai CST 99 sem valor.
@@ -156,6 +156,7 @@ export function calcularDocumento(entrada: CalculoEntrada, opcoes: OpcoesDocumen
     t.v_st += i.v_icms_st ?? 0;
     t.v_fcp += i.v_fcp ?? 0;
     t.v_fcp_st += i.v_fcp_st ?? 0;
+    if (i.v_fcp_st_ret !== undefined) t.v_fcp_st_ret = (t.v_fcp_st_ret ?? 0) + i.v_fcp_st_ret;
     t.v_cred_icms_sn += i.v_cred_icms_sn ?? 0;
     t.v_prod += item.valor_bruto_centavos;
     t.v_desc += item.desconto_centavos;
