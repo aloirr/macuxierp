@@ -235,8 +235,34 @@ jobs:
           DO_CACHE: ${{ steps.conhecidos.outputs.cache-hit }}
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$CHAVE" | tr -d '\r' > ~/.ssh/prod
+          # a chave colada pelo celular pode chegar numa linha só (quebras viram espaço ou somem): remonta o bloco
+          # entre o BEGIN e o END, em linhas de 70, antes de gravar; chave com quebras certas sai igual
+          bruto="$(printf '%s' "$CHAVE" | tr -d '\r')"
+          cab="$(printf '%s' "$bruto" | grep -o -- '-----BEGIN [A-Z0-9 ]*-----' | head -n1 || true)"
+          if [ -n "$cab" ]; then
+            tipo="${cab#-----BEGIN }"; tipo="${tipo%-----}"
+            rod="-----END $tipo-----"
+            corpo="${bruto#*"$cab"}"; corpo="${corpo%%"$rod"*}"
+            corpo="$(printf '%s' "$corpo" | tr -d ' \t\n')"
+            { printf '%s\n' "$cab"; printf '%s' "$corpo" | fold -w 70; printf '\n%s\n' "$rod"; } > ~/.ssh/prod
+          else
+            printf '%s\n' "$bruto" > ~/.ssh/prod
+          fi
           chmod 600 ~/.ssh/prod
+          # confere a chave antes do SSH e diz o motivo sem mostrar o conteúdo
+          if ! erro="$(ssh-keygen -y -P '' -f ~/.ssh/prod 2>&1 >/dev/null)"; then
+            case "$erro" in
+              *passphrase*) motivo="a chave tem senha (passphrase); o deploy precisa de uma chave sem senha";;
+              *) case "$bruto" in
+                   *PuTTY-User-Key-File*) motivo="a chave está no formato PuTTY; exporte no formato OpenSSH";;
+                   ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*) motivo="foi colada a chave PÚBLICA; o PROD_SSH_KEY é a chave PRIVADA";;
+                   *) motivo="o conteúdo não é uma chave privada OpenSSH completa (cópia cortada?)";;
+                 esac;;
+            esac
+            echo "::error::PROD_SSH_KEY: $motivo"
+            exit 1
+          fi
+          echo "chave privada lida; impressão digital da pública: $(ssh-keygen -lf ~/.ssh/prod | awk '{print $2}')"
           CACHE=.producao-ssh/known_hosts
           if [ -n "$CONHECIDOS" ]; then
             printf '%s\n' "$CONHECIDOS" | tr -d '\r' > ~/.ssh/known_hosts
