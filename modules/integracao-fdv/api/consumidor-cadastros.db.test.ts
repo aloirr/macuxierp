@@ -173,12 +173,151 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     expect((await reg(A, 'forma_pagamento', 'FP-BOL'))!.ativo).toBe(false);
   });
 
-  it('RN-CAD-08: external_id novo do cadastro inativa o registro da chave antiga no Hub', async () => {
+  const conflitos = (t: string, entidade: string) =>
+    adm('SELECT erp_id, chave, codigo, resolvido_em FROM integracao_fdv.conflito_chave WHERE tenant_id = $1 AND entidade = $2 ORDER BY detectado_em, created_at', [t, entidade]);
+  const filialEv = (t: string, f: string, ext: string, em: string, extra: Record<string, unknown> = {}) =>
+    evento(t, 'cadastros.filial.alterada@1', f, { ...cadFilial(f, { external_id: ext, padrao: false, cnpj: CNPJ_FILIAL_2 }), ...extra }, em);
+
+  it('RN-CORE-05 e RN-CAD-08: troca controlada (external_id_anterior = chave do espelho) deixa a linha antiga viva, inativa e pendente, e a nova ativa', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-troca', ['integracao-fdv']);
     const f = U();
-    await tratar(A, evento(A, 'cadastros.filial.alterada@1', f, cadFilial(f, { external_id: 'FIL-OLD', padrao: false, cnpj: CNPJ_FILIAL_2 }), '2026-11-22T09:00:00.000Z'));
-    await tratar(A, evento(A, 'cadastros.filial.alterada@1', f, cadFilial(f, { external_id: 'FIL-NEW', padrao: false, cnpj: CNPJ_FILIAL_2 }), '2026-11-22T09:01:00.000Z'));
-    expect((await reg(A, 'filial', 'FIL-OLD'))!.ativo).toBe(false);
-    expect((await reg(A, 'filial', 'FIL-NEW'))!.ativo).toBe(true);
+    await tratar(t, filialEv(t, f, 'FIL-OLD', '2026-11-22T09:00:00.000Z'));
+    await adm('UPDATE integracao_fdv.registro_publicado SET hash_confirmado = hash, confirmado_em = $2, pendente = false WHERE tenant_id = $1', [t, AGORA]);
+    await tratar(t, filialEv(t, f, 'FIL-NEW', '2026-11-22T09:01:00.000Z', { external_id_anterior: 'FIL-OLD' }));
+    const velha = await reg(t, 'filial', 'FIL-OLD');
+    expect(velha).toMatchObject({ ativo: false, pendente: true, erp_id: f });
+    expect(await reg(t, 'filial', 'FIL-NEW')).toMatchObject({ ativo: true, pendente: true, erp_id: f });
+    expect((await adm('SELECT deleted_at FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND registro_external_id = $2', [t, 'FIL-OLD']))[0]!.deleted_at).toBeNull();
+    expect(await conflitos(t, 'filial')).toHaveLength(0);
+  });
+
+  it('RN-CORE-05: adoção (external_id_anterior null) vale quando a chave do espelho era o UUID; troca recompõe os dependentes (M10)', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-adocao', ['integracao-fdv']);
+    const f = U();
+    const v = U();
+    await tratar(t, filialEv(t, f, null as never, '2026-11-22T09:00:00.000Z'));
+    await tratar(t, evento(t, 'cadastros.vendedor.alterado@1', v, cadVendedor(v, f, { external_id: 'VEN-A' }), '2026-11-22T09:00:30.000Z'));
+    expect((await reg(t, 'vendedor', 'VEN-A'))!.payload.filial_external_id).toBe(f);
+    await tratar(t, filialEv(t, f, 'FIL-ADOTADA', '2026-11-22T09:01:00.000Z', { external_id_anterior: null }));
+    expect((await reg(t, 'filial', f))).toMatchObject({ ativo: false, pendente: true });
+    expect((await reg(t, 'filial', 'FIL-ADOTADA'))!.ativo).toBe(true);
+    const ven = await reg(t, 'vendedor', 'VEN-A');
+    expect(ven!.payload.filial_external_id).toBe('FIL-ADOTADA');
+    expect(ven!.pendente).toBe(true);
+  });
+
+  it('RN-CORE-05 e RN-INF-04: chave mudou sem marcador (evento antigo) = chave_alterada: nada é gravado nem sobrescrito e o conflito fica aberto, sem valor de campo', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-alterada', ['integracao-fdv']);
+    const f = U();
+    await tratar(t, filialEv(t, f, 'FIL-X', '2026-11-22T09:00:00.000Z'));
+    await tratar(t, filialEv(t, f, 'FIL-Y', '2026-11-22T09:01:00.000Z', { razao_social: 'Mudou' }));
+    expect(await reg(t, 'filial', 'FIL-Y')).toBeUndefined();
+    expect((await reg(t, 'filial', 'FIL-X'))).toMatchObject({ ativo: true });
+    expect((await reg(t, 'filial', 'FIL-X'))!.payload.nome).not.toBe('Mudou');
+    const c = await conflitos(t, 'filial');
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatchObject({ erp_id: f, chave: 'FIL-Y', codigo: 'chave_alterada', resolvido_em: null });
+    // repetir o mesmo evento não abre outro conflito
+    await tratar(t, filialEv(t, f, 'FIL-Y', '2026-11-22T09:02:00.000Z'));
+    expect(await conflitos(t, 'filial')).toHaveLength(1);
+    // o próximo evento coerente (chave de volta ao espelho) encerra o conflito
+    await tratar(t, filialEv(t, f, 'FIL-X', '2026-11-22T09:03:00.000Z'));
+    const depois = await conflitos(t, 'filial');
+    expect(depois).toHaveLength(1);
+    expect(depois[0]!.resolvido_em).not.toBeNull();
+  });
+
+  it('RN-CORE-05: chave nova já usada por outro erp_id é chave_duplicada, mesmo com marcador coerente', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-duplicada', ['integracao-fdv']);
+    const f1 = U();
+    const f2 = U();
+    await tratar(t, filialEv(t, f1, 'FIL-1', '2026-11-22T09:00:00.000Z'));
+    await tratar(t, filialEv(t, f2, 'FIL-2', '2026-11-22T09:00:10.000Z', { cnpj: CNPJ_FILIAL_3 }));
+    await tratar(t, filialEv(t, f2, 'FIL-1', '2026-11-22T09:01:00.000Z', { cnpj: CNPJ_FILIAL_3, external_id_anterior: 'FIL-2' }));
+    expect((await reg(t, 'filial', 'FIL-1'))!.erp_id).toBe(f1);
+    expect((await reg(t, 'filial', 'FIL-2'))).toMatchObject({ ativo: true, erp_id: f2 });
+    expect(await conflitos(t, 'filial')).toMatchObject([{ erp_id: f2, chave: 'FIL-1', codigo: 'chave_duplicada', resolvido_em: null }]);
+  });
+
+  it('RN-CORE-05: produto com a chave de outro erp_id (consulta prévia de conferirChave) grava chave_duplicada', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-guarda', ['integracao-fdv']);
+    const p = U();
+    const u1 = U();
+    await tratar(t, evento(t, 'cadastros.produto.alterado@1', p, cadProduto(p, [{ id: u1, unidade: 'CX', fator: 10_000, ean: null }], { external_id: 'PRD-G' }), '2026-11-22T09:00:00.000Z'));
+    const p2 = U();
+    await tratar(t, evento(t, 'cadastros.produto.alterado@1', p2, cadProduto(p2, [], { external_id: 'PRD-G' }), '2026-11-22T09:01:00.000Z'));
+    expect((await reg(t, 'produto', 'PRD-G'))!.erp_id).toBe(p);
+    expect(await conflitos(t, 'produto')).toMatchObject([{ erp_id: p2, chave: 'PRD-G', codigo: 'chave_duplicada' }]);
+  });
+
+  it('RN-CORE-05: a guarda de gravarRegistro, via aplicarRegistros, grava chave_duplicada para um filho (unidade) cuja chave já é de outro erp_id', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-guarda-filho', ['integracao-fdv']);
+    const p = U();
+    const u1 = U();
+    const dono = U();
+    const ev = (em: string, ean: string | null) => evento(t, 'cadastros.produto.alterado@1', p, cadProduto(p, [{ id: u1, unidade: 'CX', fator: 10_000, ean }], { external_id: 'PRD-F' }), em);
+    await tratar(t, ev('2026-11-22T09:00:00.000Z', null));
+    // a chave da unidade passa a pertencer a outro cadastro
+    await adm("UPDATE integracao_fdv.registro_publicado SET erp_id = $2 WHERE tenant_id = $1 AND entidade = 'produto_unidade' AND registro_external_id = $3", [t, dono, u1]);
+    await tratar(t, ev('2026-11-22T09:01:00.000Z', '7891000100103'));
+    expect((await reg(t, 'produto_unidade', u1))!.erp_id).toBe(dono);
+    expect(await conflitos(t, 'produto_unidade')).toMatchObject([{ erp_id: u1, chave: u1, codigo: 'chave_duplicada', resolvido_em: null }]);
+    // o principal não é afetado
+    expect(await conflitos(t, 'produto')).toHaveLength(0);
+  });
+
+  it('RN-CORE-05: cadastro inativo também confere a chave: mudança sem marcador é chave_alterada e com marcador é troca', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-inativo', ['integracao-fdv']);
+    const f = U();
+    await tratar(t, filialEv(t, f, 'FIL-I1', '2026-11-22T09:00:00.000Z'));
+    await tratar(t, filialEv(t, f, 'FIL-I1', '2026-11-22T09:01:00.000Z', { inativo: true }));
+    expect((await reg(t, 'filial', 'FIL-I1'))!.ativo).toBe(false);
+    await tratar(t, filialEv(t, f, 'FIL-I2', '2026-11-22T09:02:00.000Z', { inativo: true }));
+    expect(await reg(t, 'filial', 'FIL-I2')).toBeUndefined();
+    expect(await conflitos(t, 'filial')).toMatchObject([{ erp_id: f, chave: 'FIL-I2', codigo: 'chave_alterada', resolvido_em: null }]);
+    await tratar(t, filialEv(t, f, 'FIL-I2', '2026-11-22T09:03:00.000Z', { inativo: true, external_id_anterior: 'FIL-I1' }));
+    expect(await reg(t, 'filial', 'FIL-I2')).toMatchObject({ ativo: false, erp_id: f });
+    expect((await conflitos(t, 'filial')).every((c) => c.resolvido_em !== null)).toBe(true);
+  });
+
+  it('M3 e RN-CORE-05: evento atrasado com a chave mudada é descartado sem abrir conflito falso', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-atrasado', ['integracao-fdv']);
+    const f = U();
+    await tratar(t, filialEv(t, f, 'FIL-L1', '2026-11-22T09:10:00.000Z'));
+    await tratar(t, filialEv(t, f, 'FIL-L2', '2026-11-22T09:00:00.000Z'));
+    expect(await conflitos(t, 'filial')).toHaveLength(0);
+    expect(await reg(t, 'filial', 'FIL-L2')).toBeUndefined();
+    expect(await reg(t, 'filial', 'FIL-L1')).toMatchObject({ ativo: true, erp_id: f });
+  });
+
+  it('RD-0318: a chave do Hub da tabela vai em referencia.dados.chave (external_id ?? id) e referencia.external_id fica nulo', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-rd0318', ['integracao-fdv']);
+    const tab = U();
+    const tab2 = U();
+    await tratar(t, evento(t, 'cadastros.tabela_preco.alterada@1', tab, cadTabela(tab, { external_id: 'TAB-KIT' }), '2026-11-22T09:00:00.000Z'));
+    await tratar(t, evento(t, 'cadastros.tabela_preco.alterada@1', tab2, cadTabela(tab2, { padrao: false }), '2026-11-22T09:00:01.000Z'));
+    const refs = await adm("SELECT erp_id, dados, external_id FROM integracao_fdv.referencia WHERE tenant_id = $1 AND tipo = 'tabela_preco'", [t]);
+    expect(refs.find((r) => r.erp_id === tab)).toMatchObject({ dados: { chave: 'TAB-KIT' }, external_id: null });
+    expect(refs.find((r) => r.erp_id === tab2)).toMatchObject({ dados: { chave: tab2 }, external_id: null });
+  });
+
+  it('RD-0318: o preço sai com a chave da tabela, nunca o UUID cru; trocar a chave da tabela recompõe os preços e os marca pendentes', async () => {
+    const t = await criarTenant(efemero.admin, 'cons-rd0318b', ['integracao-fdv']);
+    const tab = U();
+    const f = U();
+    const p = U();
+    const preco = U();
+    await tratar(t, evento(t, 'cadastros.preco.alterado@1', preco, cadPreco(tab, f, p), '2026-11-22T09:00:00.000Z'));
+    expect((await reg(t, 'preco', preco))!.payload.tabela_external_id).toBeUndefined();
+    await tratar(t, evento(t, 'cadastros.tabela_preco.alterada@1', tab, cadTabela(tab, { external_id: 'TAB-1' }), '2026-11-22T09:01:00.000Z'));
+    let r = await reg(t, 'preco', preco);
+    expect(r!.payload.tabela_external_id).toBe('TAB-1');
+    expect(JSON.stringify(r!.payload)).not.toContain(tab);
+    await adm('UPDATE integracao_fdv.registro_publicado SET hash_confirmado = hash, confirmado_em = $2, pendente = false WHERE tenant_id = $1', [t, AGORA]);
+    await tratar(t, evento(t, 'cadastros.tabela_preco.alterada@1', tab, cadTabela(tab, { external_id: 'TAB-2', external_id_anterior: 'TAB-1' }), '2026-11-22T09:02:00.000Z'));
+    r = await reg(t, 'preco', preco);
+    expect(r!.payload.tabela_external_id).toBe('TAB-2');
+    expect(r!.pendente).toBe(true);
   });
 
   it('multi-tenant: o evento de um tenant não aparece no outro', async () => {

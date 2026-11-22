@@ -126,6 +126,12 @@ export function assinaturaDeDerivados(r: Pick<RegistroEspelho, 'entidade' | 'pay
   }
 }
 
+/** Assinatura da referência da tabela de preço a partir de `referencia.dados`; `null` = ainda sem chave (anterior à 0018). */
+export function assinaturaDaReferenciaTabela(dados: Readonly<Record<string, unknown>>): string | null {
+  const t = tabelaDaReferencia(dados);
+  return t ? assinaturaDaTabela(t) : null;
+}
+
 /** Mesma ideia para a referência da tabela de preço (nome, vigência, inativa, chave). */
 export function assinaturaDaTabela(t: TabelaReferencia): string {
   return JSON.stringify([t.external_id, t.nome, t.vigencia_inicio, t.vigencia_fim, t.inativo]);
@@ -146,10 +152,15 @@ export const ALVO_DA_CHAVE_REFS: Readonly<Record<string, EntidadeHub | 'tabela'>
   tabela_preco_id: 'tabela',
 };
 
-/** Tabela de preço a partir de `referencia.dados` (jsonb) e da chave dela no Hub. Tolera dado faltando (vira vazio). */
-export function tabelaDaReferencia(dados: Readonly<Record<string, unknown>>, externalId: string): TabelaReferencia {
+/**
+ * Tabela de preço a partir de `referencia.dados` (jsonb). RD-0318: a chave do Hub é `dados.chave`; sem ela (referência
+ * gravada antes da 0018) devolve `null` e o preço fica `referencia_ausente` até o próximo evento da tabela. Tolera dado faltando.
+ */
+export function tabelaDaReferencia(dados: Readonly<Record<string, unknown>>): TabelaReferencia | null {
+  const chave = typeof dados.chave === 'string' ? dados.chave.trim() : '';
+  if (!chave) return null;
   return {
-    external_id: externalId,
+    external_id: chave,
     nome: String(dados.nome ?? ''),
     vigencia_inicio: String(dados.vigencia_inicio ?? ''),
     vigencia_fim: typeof dados.vigencia_fim === 'string' ? dados.vigencia_fim : null,

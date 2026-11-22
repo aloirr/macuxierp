@@ -99,8 +99,13 @@ export function cabecalhoDoPedido(p: Pedido, fuso: string) {
   };
 }
 
-export function resumoDaDecisao(p: Pick<Pedido, 'decisao'>, fuso: string) {
+export function resumoDaDecisao(p: Pick<Pedido, 'decisao'> & Partial<Pick<Pedido, 'origem' | 'aprovado_origem_em'>>, fuso: string) {
   const d = p.decisao;
+  if (!d && p.origem === 'fdv') {
+    // Pedido do FDV: aprovado na origem, sem linha em `aprovacao` (ADR 0007).
+    const quando = p.aprovado_origem_em ? formatarDataHora(p.aprovado_origem_em, fuso) : '';
+    return { decisao: quando ? `Aprovado no Macuxi FDV em ${quando}` : 'Aprovado no Macuxi FDV', quem: 'Macuxi FDV', quando, justificativa: '', motivo: '', pendencias_aceitas: [] as string[] };
+  }
   if (!d) return null;
   return {
     decisao: d.decisao === 'aprovado' ? 'Aprovado' : 'Recusado',

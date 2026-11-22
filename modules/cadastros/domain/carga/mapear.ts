@@ -25,10 +25,15 @@ export type ResultadoMapeamento<E extends EntidadeCarga> =
   | { ok: true; linha: LinhasCarga[E] }
   | { ok: false; erros: ErroLinha[] };
 
-/** Dicionário da forma de pagamento (D12): `codigo` sem diferença de maiúsculas → tPag da NF-e. */
+/**
+ * Dicionário da forma de pagamento (D12, RN-CAD-09): `codigo` sem diferença de maiúsculas → tPag da NF-e.
+ * Só Dinheiro, PIX, Cartão e Boleto são aceitos; o resto (cheque, depósito, transferência, desconhecido) vira o tPag
+ * `TPAG_RECUSADO`, que a gravação recusa com RN-CAD-09 (e inativa as condições antigas ligadas à forma).
+ */
 export const DICIONARIO_TPAG: Readonly<Record<string, string>> = {
-  DINHEIRO: '01', CHEQUE: '02', CARTAO_CREDITO: '03', CARTAO_DEBITO: '04', BOLETO: '15', DEPOSITO: '16', PIX: '17', TRANSFERENCIA: '18',
+  DINHEIRO: '01', PIX: '17', CARTAO: '03', CARTAO_CREDITO: '03', CARTAO_DEBITO: '04', BOLETO: '15',
 };
+export const TPAG_RECUSADO = '99';
 
 class Leitor {
   readonly erros: ErroLinha[] = [];
@@ -188,11 +193,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     const codigo = l.texto('codigo', LIMITES.codigo20, 'forma_codigo');
     let tpag = l.cel('tpag');
     if (tpag === undefined && codigo !== undefined) {
-      tpag = DICIONARIO_TPAG[codigo.toUpperCase()];
-      if (tpag === undefined) {
-        tpag = '99';
-        l.avisos.push('tPag 99 (outros): revise o tPag antes de faturar');
-      }
+      tpag = DICIONARIO_TPAG[codigo.toUpperCase()] ?? TPAG_RECUSADO;
     }
     return fechar<'forma_pagamento'>(l, LinhaFormaPagamento, {
       external_id: l.id('external_id'),
@@ -203,7 +204,12 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
   prazo_pagamento(l) {
     const bruto = l.cel('parcelas_dias');
     let prazos: number[] | undefined;
-    if (bruto !== undefined) {
+    let parcelas: number | undefined;
+    const cartao = bruto === undefined ? null : /^(\d{1,3})\s*x$/i.exec(bruto);
+    if (cartao) {
+      // "3x" é cartão: a regra (1 a 12) é do domain/RN-CAD-09; aqui só a leitura. "3" puro chega em `prazos` e a gravação decide pela forma.
+      parcelas = Number(cartao[1]);
+    } else if (bruto !== undefined) {
       // Só a leitura da célula; 1 a 36 parcelas de 0 a 999 dias, em qualquer ordem, é a regra do contrato (a mesma da rota manual).
       const lista = celulaLista(bruto);
       const itens = lista.ok ? (lista.valor ?? []).map((x) => celulaInteiro(x)) : [];
@@ -213,7 +219,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     return fechar<'prazo_pagamento'>(l, LinhaPrazoPagamento, {
       external_id: l.id('external_id'),
       ativo: l.ativo(),
-      dados: limparDados({ codigo: l.texto('codigo', LIMITES.codigo20), descricao: l.texto('descricao', LIMITES.texto60), prazos_dias: prazos }),
+      dados: limparDados({ codigo: l.texto('codigo', LIMITES.codigo20), descricao: l.texto('descricao', LIMITES.texto60), prazos_dias: prazos, parcelas_cartao: parcelas }),
       refs: limparDados({ forma: l.id('forma_external_id') }),
     });
   },

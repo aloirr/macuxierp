@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
+import { prazosDoCartao } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginCadastros } from './index';
 import { dependenciasEmMemoria } from './memoria';
@@ -287,3 +288,92 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     });
   });
 });
+
+describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma recusada)', () => {
+  const FORMA = 'external_id;codigo;nome;alterado_em;ativo;ordem\n';
+  const PRAZO = 'external_id;forma_external_id;codigo;parcelas_dias;alterado_em;ativo;descricao;prazo_medio_dias;percentual_ajuste;ordem\n';
+  const lote = (forma: string, prazo: string) => [
+    ...arquivos(['forma_pagamento.csv', 'prazo_pagamento.csv']),
+    { nome: 'forma_pagamento.csv', conteudo: FORMA + forma }, { nome: 'prazo_pagamento.csv', conteudo: PRAZO + prazo },
+  ];
+  const conds = (t: ReturnType<typeof montar>) => t.repos.condicoesPagamento.linhas.filter((c) => String(c.external_id).startsWith('Z-'));
+
+  it('RN-CAD-09: cartão aceita "3x" e "3" (1 a 12): grava parcelas_cartao e os prazos 30×N; 1x e 12x passam, 13x recusa', async () => {
+    const t = montar();
+    const prazo = ['Z-1;FP-C;C1;1x;;sim;;;;1', 'Z-3;FP-C;C3;3x;;sim;;;;2', 'Z-4;FP-C;C4;4;;sim;;;;3', 'Z-12;FP-C;C12;12x;;sim;;;;4', 'Z-13;FP-C;C13;13x;;sim;;;;5'].join('\n');
+    const rel = (await t.carregar('gravar', { arquivos: lote('FP-C;CARTAO_CREDITO;Cartão;;sim;1', prazo) })).corpo as RelatorioCarga;
+    const porExt = Object.fromEntries(conds(t).map((c) => [c.external_id, c]));
+    expect(porExt['Z-1']).toMatchObject({ forma_tpag: '03', parcelas_cartao: 1, prazos_dias: [30] });
+    expect(porExt['Z-3']).toMatchObject({ parcelas_cartao: 3, prazos_dias: [30, 60, 90] });
+    expect(porExt['Z-4']).toMatchObject({ parcelas_cartao: 4, prazos_dias: [30, 60, 90, 120] });
+    expect(porExt['Z-12']).toMatchObject({ parcelas_cartao: 12, prazos_dias: prazosDoCartao(12) });
+    expect(porExt['Z-13']).toBeUndefined();
+    const erros = rel.erros.filter((e) => e.arquivo === 'prazo_pagamento.csv');
+    expect(erros).toHaveLength(1);
+    expect(erros[0]).toMatchObject({ codigo: 'RN-CAD-09', motivo: expect.stringContaining('cartão: informe de 1 a 12 parcelas') });
+    expect(JSON.stringify(rel.erros)).not.toContain('13x');
+  });
+
+  it('RN-CAD-09: cartão com prazos soltos ("30/60") vira erro de linha RN-CAD-09', async () => {
+    const t = montar();
+    const rel = (await t.carregar('gravar', { arquivos: lote('FP-C;CARTAO;Cartão;;sim;1', 'Z-CS;FP-C;CS;30/60;;sim;Cartão;;;1') })).corpo as RelatorioCarga;
+    expect(conds(t)).toHaveLength(0);
+    const erros = rel.erros.filter((e) => e.arquivo === 'prazo_pagamento.csv');
+    expect(erros).toHaveLength(1);
+    expect(erros[0]?.codigo).toBe('RN-CAD-09');
+  });
+
+  it('RN-CAD-09: cheque, depósito, transferência e código desconhecido sem condição gravada viram erro RN-CAD-09 "forma não aceita…"; as condições do lote para eles também', async () => {
+    const t = montar();
+    const rel = (await t.carregar('gravar', {
+      arquivos: lote('FP-X1;CHEQUE;Cheque;;sim;1\nFP-X2;DEPOSITO;Dep;;sim;2\nFP-X3;TRANSFERENCIA;Tr;;sim;3\nFP-X4;QUALQUER;Q;;sim;4', 'Z-X;FP-X1;CHQ;30;;sim;Cheque 30;;;1'),
+    })).corpo as RelatorioCarga;
+    const doDominio = rel.erros.filter((e) => e.codigo === 'RN-CAD-09');
+    expect(doDominio).toHaveLength(4);
+    expect(doDominio.every((e) => e.motivo.startsWith('forma não aceita: use Dinheiro, PIX, Cartão ou Boleto'))).toBe(true);
+    expect(JSON.stringify(rel.erros)).not.toContain('CHEQUE');
+    expect(conds(t)).toHaveLength(0);
+  });
+
+  it('RN-CAD-09/RN-CAD-08: forma recusada com condições antigas desativa as condições (aviso, auditoria e evento por condição), sem apagar; regravar é idempotente', async () => {
+    const t = montar();
+    await t.carregar('gravar');
+    const antes = t.repos.condicoesPagamento.linhas.filter((c) => c.forma_external_id === 'FP-EX-01');
+    expect(antes).toHaveLength(2);
+    t.eventos.length = 0;
+    t.auditoria.length = 0;
+    const forma = readFileSync(join(pasta, 'forma_pagamento.csv'), 'utf8').replace('FP-EX-01;BOLETO;', 'FP-EX-01;CHEQUE;');
+    const soForma = [{ nome: 'forma_pagamento.csv', conteudo: forma }];
+    const rel = (await t.carregar('gravar', { arquivos: soForma })).corpo as RelatorioCarga;
+    expect(rel.erros).toEqual([]);
+    expect(porEntidade(rel).forma_pagamento!.avisos.join(' ')).toContain('2 condição(ões) desativada(s)');
+    const depois = t.repos.condicoesPagamento.linhas.filter((c) => c.forma_external_id === 'FP-EX-01');
+    expect(depois).toHaveLength(2);
+    expect(depois.every((c) => c.inativo === true)).toBe(true);
+    expect(t.repos.condicoesPagamento.linhas.find((c) => c.forma_external_id === 'FP-EX-02')?.inativo).toBe(false);
+    expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.inativo === true)).toHaveLength(2);
+    expect(t.auditoria.filter((a) => a.acao === 'condicao_pagamento.inativar')).toHaveLength(2);
+    t.eventos.length = 0;
+    const rel2 = (await t.carregar('gravar', { arquivos: soForma })).corpo as RelatorioCarga;
+    expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1')).toHaveLength(0);
+    expect(porEntidade(rel2).forma_pagamento).toMatchObject({ atualizadas: 0, sem_mudanca: 2 });
+    expect(porEntidade(rel2).forma_pagamento!.avisos.join(' ')).toContain('nenhuma condição ativa');
+  });
+
+  it('RN-CAD-09: a carga limpa cartão sem parcelas: prazos 30×N preenchem parcelas_cartao; o resto é desativado (auditoria e evento)', async () => {
+    const t = montar();
+    const ok = (await t.repos.condicoesPagamento.inserir({ codigo: 'K3', descricao: 'K', forma_tpag: '03', prazos_dias: prazosDoCartao(3), parcelas_cartao: null } as never)) as { id: string };
+    const ruim = (await t.repos.condicoesPagamento.inserir({ codigo: 'K7', descricao: 'K', forma_tpag: '03', prazos_dias: [7, 14], parcelas_cartao: null } as never)) as { id: string };
+    t.eventos.length = 0;
+    t.auditoria.length = 0;
+    await t.carregar('gravar', { arquivos: lote('FP-C;CARTAO;Cartão;;sim;1', 'Z-1;FP-C;C1;1x;;sim;;;;1') });
+    const por = (id: string) => t.repos.condicoesPagamento.linhas.find((c) => c.id === id);
+    expect(por(ok.id)).toMatchObject({ parcelas_cartao: 3, inativo: false });
+    expect(por(ruim.id)?.inativo).toBe(true);
+    expect(t.auditoria.filter((a) => a.acao === 'condicao_pagamento.preencher_parcelas')).toHaveLength(1);
+    expect(t.auditoria.filter((a) => a.acao === 'condicao_pagamento.inativar')).toHaveLength(1);
+    expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.id === ok.id)).toHaveLength(1);
+    expect(t.repos.condicoesPagamento.linhas.filter((c) => !c.inativo && c.forma_tpag === '03' && c.parcelas_cartao == null)).toHaveLength(0);
+  });
+});
+

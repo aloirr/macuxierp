@@ -28,11 +28,15 @@ interface CredencialAtiva {
   ambiente: AmbienteHub;
   chave_cifrada: Uint8Array;
   chave_mestra_versao: number;
+  /** Entidades que o conector envia (0015); vazia = publicação desligada. */
+  entidades_habilitadas: string[];
+  /** Teto de registros por lote da credencial (1 a 5.000, 0015); `limiteRegistrosDoLote` aplica o teto do contrato. */
+  limite_registros_lote: number;
 }
 
 async function lerCredencialAtiva(tx: Transacao, tenantId: string): Promise<CredencialAtiva | null> {
   const [c] = await tx.consultar<CredencialAtiva>(
-    `SELECT id, conector_id, ambiente, chave_cifrada, chave_mestra_versao
+    `SELECT id, conector_id, ambiente, chave_cifrada, chave_mestra_versao, entidades_habilitadas::text[] AS entidades_habilitadas, limite_registros_lote
        FROM integracao_fdv.credencial
       WHERE tenant_id = $1 AND substituida_em IS NULL AND deleted_at IS NULL AND chave_cifrada IS NOT NULL`,
     [tenantId],

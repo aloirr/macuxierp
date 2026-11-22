@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RegistroLote } from '../contracts';
-import { chaveIdempotencia, conteudoCanonicoLote, dividirAoMeio, geracaoDoReenvio, montarLotes, ordenarRegistros } from './lote';
+import { chaveIdempotencia, conteudoCanonicoLote, dividirAoMeio, geracaoDoReenvio, limiteRegistrosDoLote, montarLotes, ordenarRegistros } from './lote';
 
 const reg = (id: string, em: string, extra: Record<string, unknown> = {}): RegistroLote => ({ external_id: id, alterado_em: em, ativo: true, ...extra });
 const SESSAO = '11111111-1111-4111-8111-111111111111';
@@ -50,6 +50,14 @@ describe('montagem de lote', () => {
     const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, registros: [] });
     expect(l!.corpo.sessao).toEqual({ id: SESSAO, parte: 1, ultimo: true });
     expect(l!.cursor_declarado).toBeNull();
+  });
+});
+
+describe('limite de registros por lote', () => {
+  it('RN-INF-03: vale o menor entre o da credencial e o do contrato (5.000); sem credencial, o do contrato', () => {
+    expect(limiteRegistrosDoLote(100)).toBe(100);
+    expect(limiteRegistrosDoLote(9000)).toBe(5000);
+    expect(limiteRegistrosDoLote()).toBe(5000);
   });
 });
 

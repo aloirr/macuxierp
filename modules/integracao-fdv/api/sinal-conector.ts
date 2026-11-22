@@ -65,6 +65,7 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
     emVoo: Object.fromEntries(base.emVoo.map((v) => [v.entidade, { lotes: v.lotes, registros: v.registros }])),
     entidades: base.entidades.map((x) => ({ entidade: x.entidade, ultimo_sucesso_em: x.ultimo_sucesso_em?.toISOString() ?? null, completa: x.completa, pausada_motivo: x.pausada_motivo })),
     paradoPorVersao,
+    limiteRegistrosLote: base.credencial.limite_registros_lote,
   });
   let resp;
   try {

@@ -6,14 +6,36 @@ import type { ItemCalculo } from '../contracts';
  */
 export const BASE_PERCENTUAL = 1000000n;
 
-/** round-half-up de n/d, com n >= 0 e d > 0. */
-export function divArredonda(n: bigint, d: bigint): bigint {
-  return (2n * n + d) / (2n * d);
+/**
+ * Modo de arredondamento ao centavo. Padrão desta função: 'meio_para_cima' (RN-CORE-03, Manual da NF-e: ICMS, IPI, PIS e COFINS).
+ * 'meio_para_par' (desempate para o par, ABNT NBR 5891) é o modo do IBS, CBS e IS, por decisão do Alexandre em 22/11/2026, igual à Calculadora RTC
+ * da RFB (HALF_EVEN; github.com/ReceitaFederal/calculadora-rtc-regime-regular). Só os cálculos de IBS/CBS/IS o usam (RN-FIS-03).
+ */
+export type ModoArredondamento = 'meio_para_cima' | 'meio_para_par';
+
+/** Divisão inteira de n/d (n >= 0, d > 0) arredondada ao inteiro mais próximo; no empate exato, para cima ou para o par, conforme o modo. */
+export function divArredonda(n: bigint, d: bigint, modo: ModoArredondamento = 'meio_para_cima'): bigint {
+  if (modo === 'meio_para_cima') return (2n * n + d) / (2n * d);
+  const q = n / d;
+  const dobro = 2n * (n % d);
+  if (dobro > d) return q + 1n;
+  if (dobro === d) return q % 2n === 0n ? q : q + 1n;
+  return q;
 }
 
 /** valor (centavos) × percentual (décimos de milésimo de %), arredondado ao centavo. Nome próprio: o platform-sdk tem outro `aplicarAliquota`. */
-export function aplicarPercentual(valor: number, percentual: number): number {
-  return Number(divArredonda(BigInt(valor) * BigInt(percentual), BASE_PERCENTUAL));
+export function aplicarPercentual(valor: number, percentual: number, modo: ModoArredondamento = 'meio_para_cima'): number {
+  return Number(divArredonda(numeradorPercentual(valor, percentual), BASE_PERCENTUAL, modo));
+}
+
+/** Valor × percentual na escala exata (÷ 10^6 dá centavos), sem arredondar: permite somar partes e arredondar uma vez (IS combinado). */
+export function numeradorPercentual(valor: number, percentual: number): bigint {
+  return BigInt(valor) * BigInt(percentual);
+}
+
+/** Quantidade × valor por unidade na mesma escala exata de `numeradorPercentual` (÷ 10^6 dá centavos). */
+export function numeradorPorUnidade(quantidade: number, valorUnidade4: number): bigint {
+  return BigInt(Math.round(quantidade * 10000)) * BigInt(valorUnidade4);
 }
 
 /**
@@ -29,7 +51,6 @@ export function valorOperacao(item: ItemCalculo): number {
  * Valor por unidade (pauta): quantidade (até 4 casas, qTrib) × valor por unidade em décimos de milésimo de real (×10^4, vUnid 11v4),
  * devolvido em centavos, meio para cima. Escalas: q × 10^4 e vu × 10^4 dão 10^8 por real, logo 10^6 por centavo.
  */
-export function valorPorUnidade(quantidade: number, valorUnidade4: number): number {
-  const q4 = BigInt(Math.round(quantidade * 10000));
-  return Number(divArredonda(q4 * BigInt(valorUnidade4), 1000000n));
+export function valorPorUnidade(quantidade: number, valorUnidade4: number, modo: ModoArredondamento = 'meio_para_cima'): number {
+  return Number(divArredonda(numeradorPorUnidade(quantidade, valorUnidade4), BASE_PERCENTUAL, modo));
 }

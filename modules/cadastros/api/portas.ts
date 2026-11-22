@@ -152,6 +152,10 @@ export interface ItemPrecoGravado {
 export interface RepoCarga {
   /** Condições de uma forma de pagamento (D12), também as inativas. */
   condicoesDaForma(formaExternalId: string): Promise<CondicaoPagamento[]>;
+  /** Condições ativas do tenant cuja forma (tPag) o ERP não aceita (RN-CAD-09): o comando do administrador as desativa. */
+  condicoesAtivasDeFormaRecusada(): Promise<CondicaoPagamento[]>;
+  /** Condições ativas de cartão (tPag 03) com `parcelas_cartao` nulo (RN-CAD-09): a limpeza preenche ou desativa. */
+  condicoesAtivasCartaoSemParcelas(): Promise<CondicaoPagamento[]>;
   filhoPorExternalId(tabela: TabelaFilha, externalId: string): Promise<FilhoGravado | null>;
   unidadePorChave(produtoId: string, unidade: string): Promise<FilhoGravado | null>;
   reativarFilho(tabela: TabelaFilha, id: string): Promise<void>;

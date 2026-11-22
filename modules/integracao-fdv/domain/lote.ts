@@ -10,6 +10,11 @@ import { compararBinario, jsonCanonico, sha256HexTexto } from './canonico';
 const tamanhoUtf8 = (t: string): number => utf8(t).length;
 
 export const LIMITE_REGISTROS_LOTE = 5000;
+
+/** Registros por lote: o teto da credencial (1 a 5.000, 0015) limitado ao do contrato; sem credencial vale o do contrato. */
+export function limiteRegistrosDoLote(daCredencial?: number): number {
+  return Math.min(daCredencial ?? LIMITE_REGISTROS_LOTE, LIMITE_REGISTROS_LOTE);
+}
 /** O Hub recusa acima de 8 MiB (413); o ERP monta até 4 MiB. */
 export const LIMITE_BYTES_LOTE = 4 * 1024 * 1024;
 export const LIMITE_LINHAS_INVALIDAS_DETALHADAS = 500;
@@ -88,7 +93,7 @@ export interface EntradaMontagem {
 export function montarLotes(e: EntradaMontagem): LoteMontado[] {
   if (e.modo === 'completo' && !e.sessaoId) throw new Error('carga completa exige o id da sessão');
   const geracao = e.geracao ?? 1;
-  const maxReg = Math.min(e.limiteRegistros ?? LIMITE_REGISTROS_LOTE, LIMITE_REGISTROS_LOTE);
+  const maxReg = limiteRegistrosDoLote(e.limiteRegistros);
   const maxBytes = e.limiteBytes ?? LIMITE_BYTES_LOTE;
   const ordenados = ordenarRegistros(e.registros);
   const invalidas = e.linhas_invalidas ?? [];
