@@ -4,7 +4,7 @@
  * a API revalida tudo (RN-CORE-02). Sem dado pessoal em log; horários no fuso do tenant.
  */
 import {
-  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
+  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, type IdLista, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
   dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
   requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
@@ -51,9 +51,6 @@ const FILIAL: FiltroTela = { chave: 'filial_id', rotulo: 'Filial', tipo: 'cadast
 const DE: FiltroTela = { chave: 'de', rotulo: 'De', tipo: 'data' };
 const ATE: FiltroTela = { chave: 'ate', rotulo: 'Até', tipo: 'data' };
 const AMBIENTE: FiltroTela = { chave: 'ambiente', rotulo: 'Ambiente', tipo: 'selecao', opcoes: Ambiente.options.map((a) => ({ valor: a, rotulo: textoDoAmbiente(a) })) };
-
-/** Id da lista = id da página do módulo; `definirPaginaLista` tipa `id` como string, então a união literal vem das chaves de `ROTULO_LINHA` (as mesmas dos ids). */
-type IdLista = keyof typeof ROTULO_LINHA;
 
 function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly FiltroTela[], extra: Partial<TelaLista> = {}): TelaLista {
   return {
@@ -125,7 +122,7 @@ function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   const r = formularioParcial({ itens }).validar(Object.fromEntries(itens.map((i) => [i.sequencia, i.quantidade])));
   if (!r.ok) {
     const [, erro] = Object.entries(r.erros)[0] ?? [];
-    return { ok: false, erro: r.geral ?? erro ?? '', ...(Object.keys(r.erros).length > 0 ? { erros: r.erros } : {}) };
+    return { ok: false, erro: r.geral ?? erro ?? '', ...(Object.keys(r.erros).length > 0 ? { erros: r.erros, errosPartes: r.errosPartes } : {}) };
   }
   return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, ...(r.itens ? { itens: r.itens } : {}) }));
 }
@@ -366,6 +363,7 @@ export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, ag
     ],
     pendencias: [],
     acoes,
+    ...(t.baixas.length > 0 ? { temHorario: true } : {}),
     tabelas: [{
       titulo: 'Baixas',
       colunas: [{ id: 'quando', rotulo: 'Baixada em' }, { id: 'valor', rotulo: 'Valor', numerica: true }, { id: 'forma', rotulo: 'Forma' }, { id: 'situacao', rotulo: 'Situação' }],

@@ -170,8 +170,10 @@ export interface EntradaAcao {
   /** Idempotency-Key da tentativa, para o módulo montar corpos que a levam (ex.: emitir). Na validação do diálogo pode faltar. */
   chave?: string;
 }
+/** Erro de um campo em partes: `mensagem` pronta para aparecer sozinha na tela (o texto inteiro, para o leitor de tela, vem em `erros`). */
+export type ErroEmPartes = { rotulo: string; mensagem: string };
 /** Resultado da validação do módulo: corpo pronto para a API ou a mensagem de erro (regra e texto do módulo). */
-export type ResultadoAcao = { ok: true; corpo?: unknown } | { ok: false; erro: string; /** Erro por campo (chave = sequência do item), para mostrar junto do campo; sem ele, `erro` é geral. */ erros?: Readonly<Record<number, string>> };
+export type ResultadoAcao = { ok: true; corpo?: unknown } | { ok: false; erro: string; /** Erro por campo (chave = sequência do item), para mostrar junto do campo; sem ele, `erro` é geral. */ erros?: Readonly<Record<number, string>>; /** Mesmo erro em partes (do módulo): `mensagem` pronta para aparecer sozinha; a tela mostra só a `mensagem`. */ errosPartes?: Readonly<Record<number, ErroEmPartes>> };
 
 export interface DetalheVista {
   titulo: string;
@@ -181,6 +183,8 @@ export interface DetalheVista {
   pendencias: readonly PendenciaVista[];
   /** Ausente = a tela não mostra a seção (o módulo ainda não traz eventos). */
   historico?: readonly EventoVista[];
+  /** Declarado pelo montador: o detalhe mostra data e hora (ex.: baixas do título). Com eventos no histórico a nota de fuso aparece sempre. */
+  temHorario?: boolean;
   /** Faixa fixa no topo do detalhe (ex.: nota de homologação, sem valor fiscal). */
   faixa?: string;
   /** Arquivos do registro (XML e DANFE), pelo proxy do shell. */

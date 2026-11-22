@@ -4,7 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { NotaDetalhe } from '@macuxierp/faturamento/contracts';
 import type { Perfil } from '@macuxierp/platform-sdk';
-import { vistaDaNota } from '@/lib/telas/faturamento';
+import { formularioParcial } from '@macuxierp/faturamento/web';
+import { vistaDaNota, vistaDoTitulo } from '@/lib/telas/faturamento';
 import { DetalheGenerico } from './detalhe-generico';
 import { DialogoEscrita, ItensDoDialogo } from './dialogo-escrita';
 import { TabelaVista } from './ui-cliente';
@@ -163,6 +164,28 @@ describe('nota parcial e tabelas com ações (T-0021)', () => {
     expect(h).toMatch(/<p class="so-leitor" role="status" aria-live="polite">Há campos com erro/);
     expect(h.match(/role="alert"/g)).toBeNull();
     expect(renderToStaticMarkup(<ItensDoDialogo id="d-item" linhas={linhas} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toMatch(/aria-live="polite"><\/p>/);
+  });
+  it('erro da parcial em partes: embaixo do campo só a mensagem; o leitor ouve o texto inteiro do módulo, sem nada concatenado', () => {
+    const linhas = [{ sequencia: 1, descricao: 'Água', rotulo: '1 - Água', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }];
+    const r = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Água', saldo: 25000 }] }).validar({ 1: '9' });
+    if (r.ok) throw new Error('esperava erro por campo');
+    const partes = r.errosPartes[1];
+    const h = renderToStaticMarkup(<ItensDoDialogo id="d-item" linhas={linhas} falha={null} quantidades={{ 1: '9' }} erros={r.erros} errosPartes={r.errosPartes} aoMudar={vi.fn()} />);
+    const m = /<span id="d-item-erro-1" class="erro-campo"><span aria-hidden="true">([^<]*)<\/span><span class="so-leitor">([^<]*)<\/span><\/span>/.exec(h);
+    expect(m).not.toBeNull();
+    expect(m?.[1]).toBe(partes?.mensagem);
+    expect(m?.[2]).toBe(r.erros[1]);
+  });
+  it('a nota de fuso aparece só onde há horário: título com baixas sim, sem baixas não', () => {
+    const render = (v: ReturnType<typeof vistaDoTitulo>) => renderToStaticMarkup(<DetalheGenerico vista={v} rota="/x" rotaDaPagina="/x/:id" voltar="/x" />);
+    const base = { id: ID, nota_id: ID, numero: 12, parcela: 1, total_parcelas: 2, vencimento: '2026-12-10', valor_centavos: 1000, saldo_centavos: 1000, ambiente: 'producao', cliente_razao_social: 'X' };
+    const baixa = { id: ID, valor_centavos: 400, forma: 'pix', baixado_em: '2026-11-22T15:00:00.000Z', estornada_em: null };
+    const nota = 'Horários no fuso da empresa.';
+    const sem = vistaDoTitulo({ ...base, baixas: [] } as never, 'administrador', 'America/Manaus', AGORA);
+    expect(render(sem)).not.toContain(nota);
+    const com = vistaDoTitulo({ ...base, saldo_centavos: 600, baixas: [baixa] } as never, 'administrador', 'America/Manaus', AGORA);
+    expect(com.temHorario).toBe(true);
+    expect(render(com)).toContain(nota);
   });
   it('a célula de ações que contém o diálogo sobe acima das demais fixas (a cortina cobre toda a coluna)', () => {
     const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
