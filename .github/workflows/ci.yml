@@ -184,11 +184,11 @@ jobs:
 
       # Cache do turbo só é seguro se toda dependência fora do grafo declarado estiver nos inputs; e pular os testes em
       # commit só de documentação só é seguro se nenhum código a ler (R4). Testes do escopo e dos shards também (ADR 0014,
-      # ADR 0044).
+      # ADR 0044). Junto, os testes da CLI de carga (scripts/cadastros, T-0026): node puro, fetch falso, sem banco.
       - name: guardas do CI (scripts/ci)
         if: ${{ !cancelled() }}
         run: |
-          node --test scripts/ci/*.test.mjs
+          node --test scripts/ci/*.test.mjs scripts/cadastros/*.test.mjs
           node scripts/ci/grafo-turbo.mjs
 
       # Só no PR: arquivo fora dos caminhos do agente = violação (saída 1); erro de uso/git = 2.
