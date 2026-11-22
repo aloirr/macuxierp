@@ -1,4 +1,4 @@
-# Módulo faturamento (T-0021, lotes 1 e 1c)
+# Módulo faturamento (T-0021, lotes 1, 1c e 2)
 
 Fatia vertical: `contracts` (Zod, eventos), `domain` (regras puras), `api` (plugin `/v1/faturamento`, só as portas neste lote) e `web`. Lote 1 = emissão e autorização da NF-e 55 no domain, nos contratos e nas portas. Lote 1c = repositório SQL sobre a 0013, consumidor de `pedido.pedido.aprovado@1`, rotas e o trabalho do worker (BKO e demais eventos ficam para os próximos). Premissa da v1: só filial emissora no AM (cUF 13). Nada fala com a SEFAZ real: certificado A1 de teste gerado em execução e SEFAZ-AM simulada (T-0045).
 
@@ -54,6 +54,11 @@ Cabeçalhos com o passo a passo, em `api/emissao.ts` (API: confere, reserva o n�
 | `GET /notas/:id/xml` | `faturamento.nota.emitir` | download do `nfeProc` guardado (404 enquanto não guardado) |
 | `GET /rejeicoes` | `faturamento.ver` | painel RF-FAT-08: código, mensagem e ação sugerida |
 | `POST /notas/:id/reenviar` | `faturamento.nota.emitir` | só rejeitada, mesmo número (RN-FAT-07); enfileira a transmissão |
+| `POST /notas/:id/cancelar` | `faturamento.nota.emitir` | lote 2: grava o pedido `pendente` (`nota_evento`) e enfileira `faturamento.processar_evento`; 202; `Idempotency-Key` obrigatória; sem A1 ativo (metadados) 422 |
+| `POST /notas/:id/carta-correcao` | `faturamento.nota.emitir` | idem, CC-e (sequência 1 a 20); 202 com `{ evento, avisos }` |
+| `POST /inutilizacoes` | `faturamento.nota.emitir` | grava `inutilizacao` `pendente` (avança a numeração) e enfileira `faturamento.processar_inutilizacao`; 202 |
+| `POST /notas/:id/consultar` | `faturamento.nota.emitir` | enfileira `faturamento.consultar_nota` (reconcilia sem editar nota autorizada); 202 |
+| `GET /notas/:id/eventos` | `faturamento.ver` | cancelamento e CC-e da nota (`vendedor` recebe 403) |
 
 ## Portas (`api/portas.ts`)
 | Porta | Quem implementa | Uso |
@@ -79,7 +84,11 @@ Campos e regras: somente em `contracts/index.ts` (Zod), fonte da verdade. Public
 2. Nota `cancelada` devolve as quantidades: o `pedido` consome `nota.cancelada@1` (campos `pedido_id`, `itens[].sequencia`, `quantidade`, `valor_centavos`) e recua o status. O recuo não volta ao FDV (T-0013 2); o FDV vê a nota cancelada pela entidade `nota` (T-0009 2.10).
 3. Rejeitada e denegada não consomem saldo: só `autorizada` conta como faturada.
 
+## Eventos fiscais (lote 2)
+Cancelamento, CC-e, inutilização e consulta: fluxo, travas e pendências em `eventos.md`.
+
 ## Pendências e dublês que restam
+- **Pedido guardado dos eventos (banco-dados)**: a 0013 não tem `dh_evento`, `id_lote` nem `fuso_minutos` em `nota_evento`. Hoje o `dhEvento` é o `updated_at` da linha `pendente` (renovado a cada UPDATE, estável até o fim do ciclo), o `idLote` sai dele e o fuso é o de Manaus. Pedir as colunas por recado quando convier.
 - **Troca pelo montador único (T-0021 1c, T-0018 §8)**: saíram `domain/xml.ts`, `domain/chave.ts`, `xNomeDestinatario`/`XNOME_HOMOLOGACAO` e os dublês `AssinadorA1`/`EmissorNFe` das portas. A `NotaParaEmissao` agora é a do emissor (centavos, sem totais). **Fora do XML por limite do emissor**: `card` (tpIntegra) nos cartões e `cobr/dup` do boleto (a cobrança segue no conteúdo gravado, para os títulos); pedir ao `engenheiro-software`/T-0018 se a SEFAZ exigir.
 - **A1 só no worker (ADR 0005 item 4)**: a API não lê o A1 decifrado; `lerA1` e `abrirA1` são ligados só no apps/worker. A API usa `temA1Ativo` sobre os metadados que o `macuxierp_app` já lê (0003). Pendência: a `criarPortaA1` do core recebe `noTenant`, então o adaptador do apps/api liga `noTenant: (fn) => fn(tx)` por requisição (ou o core expõe uma variante que recebe a `tx`).
 - **Adaptador do worker**: zera o `pfx` quando o `abrirA1` lança `ErroCertificadoA1` (o transmissor só zera o que recebe).
@@ -89,12 +98,13 @@ Campos e regras: somente em `contracts/index.ts` (Zod), fonte da verdade. Public
 - **card e cobr/dup fora do XML**: são opcionais no modelo 55; o `card` de `pagamento.ts` fica só no conteúdo gravado (com comentário).
 - **Adaptadores que faltam**: `ConsultaCadastrosFaturamento` (cadastros/api: o `criarConsultaParaPedido` não traz CNPJ, IE, CRT nem endereço da filial) e `CalculoFiscal` sobre `fiscal.calculo@1` (o fiscal ainda não tem `api`; ele recebe `origem` por item e devolve o CFOP à parte).
 - `faturamento.nota` não tem colunas para `infCpl` nem `itens_solicitados`: vão no jsonb `transporte` (`{ mod_frete, inf_cpl, itens_solicitados }`; `pagamento` = `{ pagamentos, cobranca }`). Pedir ao banco-dados colunas próprias quando convier.
-- Fora do lote 1c: DANFE, CC-e, cancelamento (`nota.cancelada@1`), inutilização, SVC, títulos (`titulo.gerado@1`, as parcelas já saem de `montarPagamento`), BKO, CSV, carteira do vendedor e atualização do status de `pedido_a_faturar` (faturado_parcial, faturado).
+- Fora do lote 2: DANFE, SVC, títulos (`titulo.gerado@1`, as parcelas já saem de `montarPagamento`), BKO, CSV, carteira do vendedor e atualização do status de `pedido_a_faturar` (faturado_parcial, faturado).
 - `divArred` é local até o sdk exportar (RD-0367/0368); `DataCivil` do contrato também (RD-0369); o `FUSO_TENANT` de `api/sql.ts` é fixo em `America/Manaus` (a v1 só tem tenant no AM): **pendência: o fuso vem do tenant (RN-CORE)**; IBS/CBS/IS fora do `vNF` em 2026; frete pelo acumulado do valor bruto e desconto pelo acumulado da quantidade (P-4).
 
 ## O que o apps/api e o apps/worker ligam (`@macuxierp/faturamento/api`, só isto é exportado)
-- **apps/api** (`criarPluginFaturamento(deps: DependenciasFaturamento)`, `DependenciasFaturamento` = `DepsEmissao`; **sem `lerA1` e sem assinatura**, o tipo recusa): `repositoriosSql({ outbox: new OutboxPg() })` (`.notas`, `.pedidos`, `.ambiente`, `.notaEmAberto`); `pedidos`, `notas` e `ambiente` dali; `situacao` = `criarConsultaParaFaturar()` de `@macuxierp/pedido/api`; `cadastros` = `ConsultaCadastrosFaturamento`; `calculo` = `CalculoFiscal`; `emissor` = `criarEmissorNFe()` (só o `montar` é usado); `certificado` = `{ temA1Ativo(tx, filial_id) }` sobre `criarPortaA1` do core (veredito sobre metadados). Tirar o faturamento de `SEM_ROTAS`. Passar `.notaEmAberto` ao `dependenciasDeProducao` do pedido (`extras.notas`).
+- **apps/api** (`criarPluginFaturamento(deps: DependenciasFaturamento)`, `DependenciasFaturamento` = `DepsRotas` (`DepsEmissao` + `eventos`); **sem `lerA1` e sem assinatura**, o tipo recusa): `repositoriosSql({ outbox: new OutboxPg() })` (`.notas`, `.eventos`, `.pedidos`, `.ambiente`, `.notaEmAberto`); `pedidos`, `notas` e `ambiente` dali; `situacao` = `criarConsultaParaFaturar()` de `@macuxierp/pedido/api`; `cadastros` = `ConsultaCadastrosFaturamento`; `calculo` = `CalculoFiscal`; `emissor` = `criarEmissorNFe()` (só o `montar` é usado); `certificado` = `{ temA1Ativo(tx, filial_id) }` sobre `criarPortaA1` do core (veredito sobre metadados, usado na emissão e nos eventos). Tirar o faturamento de `SEM_ROTAS`. Passar `.notaEmAberto` ao `dependenciasDeProducao` do pedido (`extras.notas`).
 - **apps/worker** (`criarTransmissor(deps: DepsTransmissor)`, papel `macuxierp_worker`): `banco`; `notas` e `ambiente` de `repositoriosSql`; `emissor` = `criarEmissorNFe()` completo (`montar`, `assinar`, `transmitir`); `lerA1(tx, filial_id)` = `lerA1DecifradoDaFilial(tx, chave, filial)` do core + `abrirA1(pfx, senha)` do emissor, devolvendo `{ certificado, credencial }` (`null` sem A1; deixar subir o `ErroCertificadoA1` do `abrirA1`); `sefaz` = `criarSeletorTransporte(...)`. Registrar também `criarConsumidorPedidoAprovado()`. No trabalho `TRABALHO_TRANSMITIR_NOTA` chamar `transmitirNota(tenant_id, nota_id)` (assina, guarda a `nfe_assinada` e transmite) e `transmitirPendentes(tenant_id, limite, paradasHaMinutos)` na varredura. O trabalho abre transações próprias (a SEFAZ vai fora de transação): não segurar a `tx` do executor na chamada.
+- **Eventos no worker**: `criarProcessadorEventos(deps)` (`DepsProcessadorEventos`: `banco`, `notas`, `eventos`, `cadastros.filial`, `ambiente`, `lerA1`, `emissor`, `sefaz`; `lerA1` e `emissor` iguais aos do `criarTransmissor`): trabalhos `TRABALHO_PROCESSAR_EVENTO` → `processarEvento(tenant_id, evento_id)`, `TRABALHO_PROCESSAR_INUTILIZACAO` → `processarInutilizacao`, `TRABALHO_CONSULTAR_NOTA` → `consultarNota`; varredura `processarPendentes(tenant_id, limite, paradasHaMinutos)` (nota_evento e inutilizacao `pendente` há N min). Mesma regra: SEFAZ fora de transação, nota (e notas da faixa) travada com `FOR UPDATE` onde o evento muda o status, um só `try/finally` zera o `pfx`.
 - **lockfile**: `@macuxierp/nfe-sefaz` está nas dependências do `modules/faturamento/package.json`; o `pnpm-lock.yaml` acompanha a dependência no mesmo commit (importer `modules/faturamento`).
 
 ## Diferenças da 0013 que o repositório SQL (lote 1c) segue
