@@ -27,3 +27,6 @@ Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #1
 | RD-0126 | 21/11/2026 | T-0041 | listas.ts: exports sem consumidor (ChavePaginacao, BUSCA_MAXIMO) | código | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
 | RD-0127 | 21/11/2026 | T-0041 | contrato listas.md: chaves reservadas e 'a mesma query' ditas 2 vezes | doc | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
 | RD-0128 | 21/11/2026 | T-0041 | listas.test.ts: asserções tautológicas e repetidas | teste | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
+| RD-0188 | 21/11/2026 | T-0008 | Licenças (print 05): descrição do manifesto repete o nome do módulo ("Plataforma do tenant", "Pedidos vindos") e "nativo em nuvem" | texto | baixa | modulo-core · modulo-pedido · modulo-integracao-fdv | aberto | 2026-11-21-T-0008-prints-F1.md |
+| RD-0189 | 21/11/2026 | T-0008 | Licenças (print 05), licencas/page.tsx:26: selo "Licenciado" × "Não contratado" para a mesma situação | texto · indicador | baixa | engenheiro-apps | aberto | 2026-11-21-T-0008-prints-F1.md |
+| RD-0190 | 21/11/2026 | T-0008 | Login (prints 01 e 02): "Entrar" no título e no botão do mesmo cartão | texto | baixa | engenheiro-apps | aberto | 2026-11-21-T-0008-prints-F1.md |
