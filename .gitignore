@@ -24,3 +24,7 @@ playwright-report/
 
 # Índice do graphify (só código, sem LLM; gerado pelo setup script do ambiente da nuvem)
 graphify-out/
+
+# Certificado A1 nunca entra no repositório (ADR 0005; o de teste é gerado na hora, em memória)
+*.pfx
+*.p12
