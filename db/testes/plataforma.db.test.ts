@@ -3,6 +3,7 @@
  * auditoria (só inserção), arquivo imutável, licença só leitura (D12) e login pelo slug (T-0004).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { SCHEMAS } from '../src/index.ts';
 import { listarMigracoes, migrar } from '../src/migrar.ts';
 import {
   type BancoDeTeste,
@@ -21,7 +22,6 @@ import { verificarVazamento } from './vazamento.ts';
 
 const A = novoTenant('empresa-a');
 const B = novoTenant('empresa-b');
-const ESQUEMAS = ['plataforma', 'core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao_fdv'];
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)', () => {
   let banco: BancoDeTeste;
@@ -68,9 +68,9 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
   it('tem um schema por módulo, mais plataforma, e nenhum papel da aplicação é dono de nada', () => {
     const esquemas = consultar<{ nspname: string }>(
       banco.conexao,
-      `SELECT nspname FROM pg_namespace WHERE nspname = ANY ('{${ESQUEMAS.join(',')}}') ORDER BY 1`,
+      `SELECT nspname FROM pg_namespace WHERE nspname = ANY ('{${SCHEMAS.join(',')}}') ORDER BY 1`,
     ).map((e) => e.nspname);
-    expect(esquemas).toEqual([...ESQUEMAS].sort());
+    expect(esquemas).toEqual([...SCHEMAS].sort());
     const donos = consultar<{ n: number }>(
       banco.conexao,
       `SELECT count(*)::int AS n FROM pg_class k JOIN pg_roles r ON r.oid = k.relowner
@@ -80,14 +80,14 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
   });
 
   it('toda tabela tem id, tenant_id, created_at, updated_at, deleted_at e external_id, com RLS ligada e política e external_id único por tenant', () => {
-    const tabelas = tabelasDos(banco.conexao, ESQUEMAS);
+    const tabelas = tabelasDos(banco.conexao, SCHEMAS);
     expect(tabelas.length).toBeGreaterThan(0);
     const problemas = consultar<{ t: string; problema: string }>(
       banco.conexao,
       `WITH t AS (
          SELECT k.oid, n.nspname || '.' || k.relname AS t, k.relrowsecurity FROM pg_class k
          JOIN pg_namespace n ON n.oid = k.relnamespace
-         WHERE k.relkind IN ('r', 'p') AND n.nspname = ANY ('{${ESQUEMAS.join(',')}}')
+         WHERE k.relkind IN ('r', 'p') AND n.nspname = ANY ('{${SCHEMAS.join(',')}}')
        ), esperado(coluna, tipo) AS (VALUES ('id', 'uuid'), ('tenant_id', 'uuid'), ('created_at', 'timestamp with time zone'),
          ('updated_at', 'timestamp with time zone'), ('deleted_at', 'timestamp with time zone'), ('external_id', 'text'))
        SELECT t.t, 'sem coluna ' || e.coluna || ' ' || e.tipo AS problema FROM t CROSS JOIN esperado e
@@ -111,7 +111,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
     const colunas = consultar<{ coluna: string; tipo: string }>(
       banco.conexao,
       `SELECT table_schema || '.' || table_name || '.' || column_name AS coluna, data_type AS tipo
-       FROM information_schema.columns WHERE table_schema = ANY ('{${ESQUEMAS.join(',')}}')
+       FROM information_schema.columns WHERE table_schema = ANY ('{${SCHEMAS.join(',')}}')
          AND (data_type IN ('real', 'double precision', 'numeric', 'money')
            OR (column_name LIKE '%centavos' AND data_type <> 'bigint'))`,
     );
@@ -230,6 +230,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
       { c: 'cadastros.filial.cnpj', d: 'cnpj' },
       { c: 'core.certificado.cnpj', d: 'cnpj' },
       { c: 'core.empresa.cnpj', d: 'cnpj' },
+      { c: 'sefaz_simulador.inutilizacao.cnpj', d: 'cnpj' },
+      { c: 'sefaz_simulador.nota.cnpj', d: 'cnpj' },
       { c: 'cadastros.tabela_oficial_versao.sha256', d: 'sha256_hex' },
       { c: 'core.certificado.impressao_digital', d: 'sha256_hex' },
       { c: 'faturamento.nota_xml.sha256', d: 'sha256_hex' },
