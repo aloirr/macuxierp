@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Cnpj, cnpjRaiz, cnpjValido, Cpf, cpfValido, normalizarDocumento } from './documentos';
+import { Cnpj, cnpjRaiz, cnpjValido, Cpf, cpfValido, ieComDvValido, normalizarDocumento } from './documentos';
 
 describe('CNPJ e CPF (RN-CAD-01)', () => {
   it('RN-CAD-01: aceita CNPJ numérico válido, com ou sem máscara', () => {
@@ -39,5 +39,35 @@ describe('CNPJ e CPF (RN-CAD-01)', () => {
   it('raiz do CNPJ são as 8 primeiras posições (D4)', () => {
     expect(cnpjRaiz('12.ABC.345/01DE-35')).toBe('12ABC345');
     expect(normalizarDocumento(' 11.222.333/0001-81 ')).toBe('11222333000181');
+  });
+});
+
+describe('IE com DV pela regra da UF (RN-CAD-02), AM, PA e SP', () => {
+  it('RN-CAD-02: AM aceita o DV certo e recusa o errado ou o tamanho errado', () => {
+    expect(ieComDvValido('AM', '041234561')).toBe(true);
+    expect(ieComDvValido('AM', '04.987.654-6')).toBe(true);
+    expect(ieComDvValido('AM', '041234562')).toBe(false);
+    expect(ieComDvValido('AM', '04123456')).toBe(false);
+  });
+  it('RN-CAD-02: AM com soma menor que 11 usa 11 − soma', () => {
+    // 0000000 1 × 2 = 2 → DV 9
+    expect(ieComDvValido('AM', '000000019')).toBe(true);
+    expect(ieComDvValido('am', '000000010')).toBe(false);
+  });
+  it('RN-CAD-02: PA exige o prefixo 15 e o DV', () => {
+    expect(ieComDvValido('PA', '151234566')).toBe(true);
+    expect(ieComDvValido('PA', '151234565')).toBe(false);
+    expect(ieComDvValido('PA', '161234566')).toBe(false);
+  });
+  it('RN-CAD-02: SP confere os dois DV (9ª e 12ª posições), com ou sem máscara (RD-0253)', () => {
+    expect(ieComDvValido('SP', '110042490114')).toBe(true);
+    expect(ieComDvValido('SP', '110.042.490.114')).toBe(true);
+    expect(ieComDvValido('SP', '110042490115')).toBe(false);
+    expect(ieComDvValido('SP', '110042491114')).toBe(false);
+    expect(ieComDvValido('SP', '11004249011')).toBe(false);
+  });
+  it('RN-CAD-02: ISENTO passa; UF sem regra no ERP dá null', () => {
+    expect(ieComDvValido('AM', 'isento')).toBe(true);
+    expect(ieComDvValido('RJ', '12345678')).toBeNull();
   });
 });

@@ -1,11 +1,14 @@
 /**
  * A1 DE TESTE (ADR 0005 e ADR 0008): par RSA e X.509 autoassinado de uma empresa FICTÍCIA, empacotado em PKCS#12 com
  * senha aleatória, tudo na memória. Nenhum `.pfx`/`.p12` entra no repositório (`.gitignore`) nem vai ao disco.
- * O titular segue o ICP-Brasil (`CN=<NOME>:<CNPJ>`), para o leitor do core e o verificador XMLDSig acharem o CNPJ.
+ * O titular segue o ICP-Brasil: o CNPJ vai no CN (`CN=<NOME>:<CNPJ>`, padrão), no SAN (`otherName` 2.16.76.1.3.3) ou
+ * nos dois (`cnpjNoTitular`), para provar a leitura de `cnpjDoTitularIcp` (platform-sdk) nos dois lugares; com `cnpjNoCn`,
+ * o CN leva outro CNPJ que o SAN (o caso recusado como `cnpj_divergente`).
  * Só para testes: o certificado não tem cadeia ICP-Brasil e a SEFAZ real o recusaria (283/293).
  */
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import forge from 'node-forge';
+import { OID_CNPJ_ICP_BRASIL } from '@macuxierp/platform-sdk';
 
 /** CNPJs fictícios com DV válido, de uso corrente em exemplos (não pertencem a empresa do piloto). */
 export const CNPJ_EMITENTE_DE_TESTE = '11222333000181';
@@ -26,8 +29,25 @@ export interface OpcoesA1DeTeste {
   nome?: string;
   validoDe?: Date;
   validoAte?: Date;
-  /** Titular sem o `:CNPJ` (para o teste do 292). */
+  /** Titular sem CNPJ no CN nem no SAN (para o teste do 292). */
   semCnpj?: boolean;
+  /** Onde vai o CNPJ: só no CN (padrão), só no SAN ICP-Brasil ou nos dois. */
+  cnpjNoTitular?: 'cn' | 'san' | 'cn-e-san';
+  /**
+   * CNPJ explícito do CN (`CN=<NOME>:<cnpjNoCn>`), para o teste de SAN ≠ CN: com ele o CN sempre leva um CNPJ e o
+   * `cnpj` vai só no SAN (`cnpjNoTitular` é ignorado). Não combina com `semCnpj`.
+   */
+  cnpjNoCn?: string;
+}
+
+/** Extensão SAN com o `otherName` 2.16.76.1.3.3 (o forge não escreve `otherName`: montado em ASN.1). */
+function sanComCnpj(cnpj: string): { id: string; value: string } {
+  const a = forge.asn1;
+  const otherName = a.create(a.Class.CONTEXT_SPECIFIC, 0, true, [
+    a.create(a.Class.UNIVERSAL, a.Type.OID, false, a.oidToDer(OID_CNPJ_ICP_BRASIL).getBytes()),
+    a.create(a.Class.CONTEXT_SPECIFIC, 0, true, [a.create(a.Class.UNIVERSAL, a.Type.OCTETSTRING, false, cnpj)]),
+  ]);
+  return { id: '2.5.29.17', value: a.toDer(a.create(a.Class.UNIVERSAL, a.Type.SEQUENCE, true, [otherName])).getBytes() };
 }
 
 export interface A1DeTeste {
@@ -61,8 +81,11 @@ export function gerarA1DeTeste(o: OpcoesA1DeTeste = {}): A1DeTeste {
   cert.serialNumber = `01${randomBytes(8).toString('hex')}`;
   cert.validity.notBefore = validoDe;
   cert.validity.notAfter = validoAte;
+  if (o.semCnpj && o.cnpjNoCn !== undefined) throw new RangeError('gerarA1DeTeste: semCnpj e cnpjNoCn não combinam');
+  const onde = o.semCnpj ? null : o.cnpjNoCn !== undefined ? 'san' : (o.cnpjNoTitular ?? 'cn');
+  const cn = o.cnpjNoCn !== undefined ? `${nome}:${o.cnpjNoCn}` : onde === 'cn' || onde === 'cn-e-san' ? `${nome}:${cnpj}` : nome;
   const sujeito = [
-    { name: 'commonName', value: o.semCnpj ? nome : `${nome}:${cnpj}` },
+    { name: 'commonName', value: cn },
     { name: 'organizationName', value: 'ICP-Brasil (ficticio, so teste)' },
     { name: 'countryName', value: 'BR' },
   ];
@@ -71,6 +94,7 @@ export function gerarA1DeTeste(o: OpcoesA1DeTeste = {}): A1DeTeste {
   cert.setExtensions([
     { name: 'basicConstraints', cA: false },
     { name: 'keyUsage', digitalSignature: true, nonRepudiation: true, keyEncipherment: true },
+    ...(onde === 'san' || onde === 'cn-e-san' ? [sanComCnpj(cnpj)] : []),
   ]);
   cert.sign(chave, forge.md.sha256.create());
 

@@ -1,6 +1,7 @@
 /**
  * T-0015 (migração 0017): condicao_pagamento.parcelas_cartao e o CHECK permissivo e validado
- * condicao_parcelas_cartao_ck. A invariante estrita fica para a 0019 (docs/banco/README.md).
+ * condicao_parcelas_cartao_ck. A invariante estrita fica para a 0019 (docs/banco/README.md): aqui o banco para antes
+ * dela (pastaComMigracoesAntesDe('0019')); o comportamento com a 0019 está em condicao-parcelas-0019.db.test.ts.
  */
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -19,7 +20,7 @@ import {
   rodarScript,
   verboso,
 } from './apoio.ts';
-import { fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
+import { fixtureModulos, fixturePlataforma, inserirCondicao, novoTenant } from './fixture.ts';
 
 const MIGRACAO = '0017_condicao_parcelas_cartao.sql';
 const CK = 'condicao_parcelas_cartao_ck';
@@ -27,22 +28,23 @@ const A = novoTenant('parcelas-a');
 const APP_A = { papel: 'macuxierp_app', tenant: A.id };
 const LEITURA_A = { papel: 'macuxierp_leitura', tenant: A.id };
 
-const inserir = (tenant: string, codigo: string, forma: string, parcelas: string): string =>
-  `INSERT INTO cadastros.condicao_pagamento (tenant_id, codigo, descricao, forma_tpag, prazos_dias, parcelas_cartao)
-   VALUES ('${tenant}', '${codigo}', 'Condição ${codigo}', '${forma}', '{0}', ${parcelas});`;
-
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — parcelas do cartão na condição (T-0015, 0017)', () => {
   let banco: BancoDeTeste;
+  let ate0018: PastaDeMigracoes;
 
   beforeAll(() => {
     banco = criarBancoDeTeste();
-    migrar(banco.conexao, { oficiais: false });
+    ate0018 = pastaComMigracoesAntesDe('0019');
+    migrar(banco.conexao, { pasta: ate0018.pasta, oficiais: false });
     permitirSetRole(banco.conexao);
     // A massa comum (condição AV, forma '01', sem parcelas) passa pelo CHECK.
     executar(banco.conexao, fixturePlataforma(A) + fixtureModulos(A));
   });
 
-  afterAll(() => banco?.remover());
+  afterAll(() => {
+    banco?.remover();
+    ate0018?.remover();
+  });
 
   it('parcelas_cartao é smallint anulável, sem padrão', () => {
     const colunas = consultar<{ tipo: string; nula: string; padrao: string | null }>(
@@ -76,12 +78,14 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — parcelas do cartão na cond
   it('forma 03: nulo, 1 e 12 passam; 0 e 13 falham com 23514 e o nome do CHECK', () => {
     executar(
       banco.conexao,
-      inserir(A.id, 'CN', '03', 'NULL') + inserir(A.id, 'C1', '03', '1') + inserir(A.id, 'C12', '03', '12'),
+      inserirCondicao(A.id, 'CN', '03', 'NULL') +
+        inserirCondicao(A.id, 'C1', '03', '1') +
+        inserirCondicao(A.id, 'C12', '03', '12'),
       APP_A,
     );
     for (const valor of ['0', '13']) {
       const e = falhaDetalhada(() =>
-        executar(banco.conexao, verboso(inserir(A.id, `C${valor}`, '03', valor)), APP_A),
+        executar(banco.conexao, verboso(inserirCondicao(A.id, `C${valor}`, '03', valor)), APP_A),
       );
       expect({ valor, saida: e.saida }).toMatchObject({ valor, saida: expect.stringMatching(/23514/) });
       expect(e.mensagem).toMatch(new RegExp(CK));
@@ -89,10 +93,12 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — parcelas do cartão na cond
   });
 
   it('outra forma: com parcelas falha; com nulo passa', () => {
-    const e = falhaDetalhada(() => executar(banco.conexao, verboso(inserir(A.id, 'D3', '01', '3')), APP_A));
+    const e = falhaDetalhada(() =>
+      executar(banco.conexao, verboso(inserirCondicao(A.id, 'D3', '01', '3')), APP_A),
+    );
     expect(e.saida).toMatch(/23514/);
     expect(e.mensagem).toMatch(new RegExp(CK));
-    executar(banco.conexao, inserir(A.id, 'D0', '01', 'NULL'), APP_A);
+    executar(banco.conexao, inserirCondicao(A.id, 'D0', '01', 'NULL'), APP_A);
   });
 
   it('o app atualiza parcelas_cartao (com o CHECK valendo no UPDATE); a leitura só lê', () => {
@@ -127,16 +133,19 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — parcelas do cartão na cond
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — 0017 sobre condição de cartão antiga sem parcelas (T-0015)', () => {
   let banco: BancoDeTeste;
   let anteriores: PastaDeMigracoes;
+  let ate0018: PastaDeMigracoes;
   const B = novoTenant('parcelas-b');
 
   beforeAll(() => {
     banco = criarBancoDeTeste();
     anteriores = pastaComMigracoesAntesDe('0017');
+    ate0018 = pastaComMigracoesAntesDe('0019');
   });
 
   afterAll(() => {
     banco?.remover();
     anteriores?.remover();
+    ate0018?.remover();
   });
 
   it('o cartão sem parcelas gravado antes não impede a 0017 e segue aceitando UPDATE; a reexecução não aplica de novo', () => {
@@ -148,8 +157,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — 0017 sobre condição de ca
          VALUES ('${B.id}', 'CARTAO', 'Cartão antigo', '03', '{30}');`,
     );
 
-    expect(migrar(banco.conexao, { oficiais: false })).toContain(MIGRACAO);
-    expect(migrar(banco.conexao, { oficiais: false })).not.toContain(MIGRACAO);
+    expect(migrar(banco.conexao, { pasta: ate0018.pasta, oficiais: false })).toContain(MIGRACAO);
+    expect(migrar(banco.conexao, { pasta: ate0018.pasta, oficiais: false })).not.toContain(MIGRACAO);
 
     permitirSetRole(banco.conexao);
     executar(

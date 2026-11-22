@@ -218,6 +218,17 @@ describe('formulário do pedido manual', () => {
     expect(chamadas.map((c) => c.url)).toEqual(['http://api/v1/pedido/pedidos', 'http://api/v1/pedido/pedidos']);
     expect(chamadas.map((c) => c.headers['Idempotency-Key'])).toEqual([chave, chave]);
   });
+  it('o ErroPedido expõe os detalhes do corpo do erro (RN-PED-02 possiveis, RN-PED-03 bloqueantes)', async () => {
+    const corpo = { codigo: 'RN-PED-02', mensagem: 'Transição não permitida', detalhes: { possiveis: ['aprovado', 'recusado'] } };
+    const cliente = criarClientePedido({ baseUrl: 'http://api', token: () => 't', fetch: async () => ({ status: 422, ok: false, headers: { get: () => 'application/json' }, json: async () => corpo }) });
+    await expect(cliente.pedido('x')).rejects.toMatchObject({ name: 'ErroPedido', status: 422, codigo: 'RN-PED-02', detalhes: { possiveis: ['aprovado', 'recusado'] } });
+    const sem = criarClientePedido({ baseUrl: 'http://api', token: () => 't', fetch: async () => ({ status: 422, ok: false, headers: { get: () => 'application/json' }, json: async () => ({ codigo: 'RN-PED-03', mensagem: 'm' }) }) });
+    await expect(sem.pedido('x')).rejects.toMatchObject({ codigo: 'RN-PED-03', detalhes: undefined });
+  });
+  it('detalhes malformado não derruba o codigo da RN', async () => {
+    const mal = criarClientePedido({ baseUrl: 'http://api', token: () => 't', fetch: async () => ({ status: 422, ok: false, headers: { get: () => 'application/json' }, json: async () => ({ codigo: 'RN-PED-03', mensagem: 'm', detalhes: { bloqueantes: [{ x: 1 }] } }) }) });
+    await expect(mal.pedido('x')).rejects.toMatchObject({ name: 'ErroPedido', codigo: 'RN-PED-03', message: 'm', detalhes: undefined });
+  });
   it('a edição preenche o formulário e o resultado volta ao mesmo contrato', () => {
     const f = formularioDoPedido({
       filial_id: U1, cliente_id: U2, condicao_pagamento_id: null, endereco_entrega: null, observacao: null,

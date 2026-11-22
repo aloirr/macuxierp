@@ -173,7 +173,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
       .comTenant(A, (tx) => repositorioSql(tx).atualizarStatus(p.id, 'faturado', [], null))
       .catch((e: unknown) => e);
     expect(erro).toBeInstanceOf(ErroApi);
-    expect(erro).toMatchObject({ status: 422, codigo: 'RN-PED-02', campos: { possiveis: 'aprovado,recusado' } });
+    expect(erro).toMatchObject({ status: 422, codigo: 'RN-PED-02', detalhes: { possiveis: ['aprovado', 'recusado'] } });
     expect(JSON.stringify(erro)).not.toContain('detail');
     const criacao = await app.comTenant(A, (tx) => tx.consultar("INSERT INTO pedido.pedido (tenant_id, numero, origem, status, filial_id, cliente_id, cliente_retrato, emitido_em, total_centavos) VALUES (plataforma.tenant_atual(), 999, 'bko', 'aprovado', $1, $1, '{}', $2, 0)", [IDS.filial, AGORA])).catch((e: unknown) => e);
     expect(criacao).toMatchObject({ code: 'MXP02', detail: 'possiveis=recebido' });
@@ -185,7 +185,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     const recusado = await app.comTenant(A, (tx) => servico.recusar(tx, efeitos(tx, A), p.id, { motivo_codigo: 'cliente_bloqueado', motivo_texto: null }));
     expect(recusado).toMatchObject({ status: 'recusado', decisao: { decisao: 'recusado', motivo_codigo: 'cliente_bloqueado' } });
     const de = await app.comTenant(A, (tx) => servico.cancelar(tx, efeitos(tx, A), p.id, { motivo_codigo: 'erro_lancamento', motivo_texto: null })).catch((e: unknown) => e);
-    expect(de).toMatchObject({ status: 422, codigo: 'RN-PED-02', campos: { possiveis: '' } });
+    expect(de).toMatchObject({ status: 422, codigo: 'RN-PED-02', detalhes: { possiveis: [] } });
     expect((await admin('SELECT de, para FROM pedido.pedido_evento WHERE pedido_id = $1 ORDER BY ocorrido_em, created_at, de NULLS FIRST', [p.id])).map((e) => [e.de, e.para])).toEqual([[null, 'recebido'], ['recebido', 'em_analise'], ['em_analise', 'recusado']]);
   });
 

@@ -17,4 +17,5 @@ export * from './listas';
 export * from './hub';
 export * from './agenda';
 export * from './cifra';
+export * from './certificado-icp';
 export * from './paginas';
