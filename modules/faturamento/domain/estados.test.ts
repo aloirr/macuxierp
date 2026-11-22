@@ -30,7 +30,16 @@ describe('máquina de estados da nota', () => {
     expect(validarTransicao('emitida_contingencia', 'em_autorizacao')).toEqual([]);
     expect(validarTransicao('rascunho', 'autorizada')[0]).toMatchObject({ rn: 'RN-FAT-07' });
   });
-  it('RN-FAT-01: rejeitada que não será reenviada fecha o número só por inutilização; a nota continua rejeitada', () => {
+  it('RN-FAT-01 e RN-FAT-07: rejeitada abandonada passa a inutilizada (terminal) quando a inutilização é registrada', () => {
+    expect(StatusNota.options).toContain('inutilizada');
+    expect(validarTransicao('rejeitada', 'inutilizada')).toEqual([]);
+    expect(TRANSICOES.inutilizada).toEqual([]);
+    expect(validarTransicao('inutilizada', 'em_autorizacao')[0]).toMatchObject({ rn: 'RN-FAT-07' });
+    for (const de of StatusNota.options.filter((s) => s !== 'rejeitada')) {
+      expect(validarTransicao(de, 'inutilizada')[0]).toBeDefined();
+    }
+  });
+  it('RN-FAT-01: só a rejeitada tem o número inutilizável (condição da transição para inutilizada)', () => {
     expect(StatusNota.options.filter(numeroInutilizavel)).toEqual(['rejeitada']);
     expect(validarTransicao('rejeitada', 'cancelada', { porEvento: true })[0]).toMatchObject({ rn: 'RN-FAT-07' });
     expect(validarTransicao('rejeitada', 'autorizada')[0]).toMatchObject({ rn: 'RN-FAT-07' });

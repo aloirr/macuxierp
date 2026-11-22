@@ -26,6 +26,7 @@ export const StatusNota = z.enum([
   'denegada',
   'cancelada',
   'emitida_contingencia',
+  'inutilizada',
 ]);
 export type StatusNota = z.infer<typeof StatusNota>;
 

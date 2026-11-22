@@ -4,7 +4,7 @@ import { violacao, type Violacao } from './violacao';
 /**
  * Transições permitidas da nota (RN-FAT-02, RN-FAT-03, RN-FAT-07).
  * - `rejeitada` reenvia com o mesmo número (volta a `em_autorizacao`); se não será mais reenviada, o número só se fecha
- *   por inutilização (registro em `inutilizacao` que cobre o número, `numeroInutilizavel`); a nota segue `rejeitada`, sem novo status;
+ *   por inutilização (registro em `inutilizacao` que cobre o número, `numeroInutilizavel`); a nota passa a `inutilizada` (terminal) quando a inutilização é registrada;
  * - `autorizada` só vai a `cancelada`, e só por evento;
  * - `autorizada_guarda_pendente` só avança para `autorizada` (depois de guardar o XML).
  */
@@ -13,7 +13,8 @@ export const TRANSICOES: Readonly<Record<StatusNota, readonly StatusNota[]>> = {
   em_autorizacao: ['autorizada', 'autorizada_guarda_pendente', 'rejeitada', 'denegada', 'emitida_contingencia'],
   autorizada_guarda_pendente: ['autorizada'],
   autorizada: ['cancelada'],
-  rejeitada: ['em_autorizacao'],
+  rejeitada: ['em_autorizacao', 'inutilizada'],
+  inutilizada: [],
   denegada: [],
   cancelada: [],
   emitida_contingencia: ['em_autorizacao', 'autorizada', 'autorizada_guarda_pendente', 'rejeitada', 'denegada'],
