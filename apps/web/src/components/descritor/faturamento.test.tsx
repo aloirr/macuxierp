@@ -24,20 +24,21 @@ const html = (perfil: Perfil, n: NotaDetalhe = nota('autorizada')) =>
   renderToStaticMarkup(<DetalheGenerico vista={vistaDaNota(n, perfil, 'America/Manaus', AGORA)} rota={`/faturamento/notas/${ID}`} rotaDaPagina="/faturamento/notas/:id" voltar="/faturamento/notas" />);
 
 describe('render do detalhe da nota (T-0021)', () => {
-  it('administrador, faturista e fiscal veem as ações e os downloads; o DANFE sai desabilitado com o motivo', () => {
+  it('administrador, faturista e fiscal veem as ações e os downloads; o DANFE vem habilitado', () => {
     for (const p of ['administrador', 'faturista', 'fiscal'] as const) {
       const h = html(p);
       expect(h, p).toContain('Cancelar nota');
       expect(h, p).toContain('Carta de correção (CC-e)');
       expect(h, p).toContain('Baixar XML');
-      expect(h, p).toMatch(/<button[^>]*disabled=""[^>]*>Baixar DANFE<\/button>/);
-      expect(h, p).toContain('DANFE em breve; por enquanto, baixe o XML.');
+      expect(h, p).toMatch(/<a [^>]*>Baixar DANFE<\/a>/);
+      expect(h, p).not.toContain('DANFE em breve');
       expect(h, p).not.toContain('perigo');
     }
   });
-  it('a ação principal vem do módulo: o XML da autorizada é botão cheio; Cancelar vem depois dos demais', () => {
+  it('a ação principal vem do módulo: o DANFE da autorizada é botão cheio; Cancelar vem depois dos demais', () => {
     const h = html('administrador');
-    expect(h).toMatch(/<a class="btn"[^>]*>Baixar XML<\/a>/);
+    expect(h).toMatch(/<a class="btn"[^>]*>Baixar DANFE<\/a>/);
+    expect(h).not.toMatch(/<a class="btn"[^>]*>Baixar XML<\/a>/);
     expect(h.indexOf('Carta de correção (CC-e)')).toBeLessThan(h.indexOf('>Cancelar nota<'));
   });
   it('a chave de acesso ocupa a linha inteira, com números tabulares e grupos de 4', () => {

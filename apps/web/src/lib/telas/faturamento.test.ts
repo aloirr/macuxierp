@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NotaDetalhe, TituloDetalhe } from '@macuxierp/faturamento/contracts';
+import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { arquivoPermitido } from '../arquivos';
 import { EU_FALSO } from '../falso';
 import { MANIFESTOS } from '../manifestos';
@@ -179,14 +180,18 @@ describe('detalhe da nota: ações por perfil e status', () => {
       const v = ver(p, nota('autorizada'));
       expect(ids(v), p).toEqual(['consultar', 'cartaCorrecao', 'cancelar']);
       expect(v.downloads?.map((d) => d.rotulo), p).toEqual(['Baixar DANFE', 'Baixar XML']);
-      expect(v.downloads?.find((d) => d.rotulo === 'Baixar XML')).toMatchObject({ href: `/v1/faturamento/notas/${ID}/xml`, principal: true });
+      expect(v.downloads?.find((d) => d.rotulo === 'Baixar DANFE')).toMatchObject({ href: `/v1/faturamento/notas/${ID}/danfe`, principal: true });
+      expect(v.downloads?.find((d) => d.rotulo === 'Baixar DANFE')?.desabilitado).toBeUndefined();
+      expect(v.downloads?.find((d) => d.rotulo === 'Baixar XML')?.href).toBe(`/v1/faturamento/notas/${ID}/xml`);
+      expect(v.downloads?.find((d) => d.rotulo === 'Baixar XML')?.principal).toBeUndefined();
       expect(v.downloads?.find((d) => d.rotulo === 'Baixar XML')?.desabilitado).toBeUndefined();
     }
   });
-  it('o DANFE fica desabilitado, com o motivo do módulo, enquanto não existir (DANFE_DISPONIVEL = false)', () => {
-    const d = ver('administrador', nota('autorizada')).downloads?.find((x) => x.rotulo === 'Baixar DANFE');
-    expect(d?.desabilitado).toBe('DANFE em breve; por enquanto, baixe o XML.');
-    expect(d?.principal).toBeUndefined();
+  it('com cancelamento aguardando a SEFAZ, Cancelar e CC-e saem desabilitados/ausentes com o motivo do módulo', () => {
+    const v = ver('administrador', nota('autorizada', { cancelamento_pendente: true }));
+    expect(v.acoes.find((a) => a.id === 'cancelar')?.desabilitada).toBe('cancelamento aguardando a SEFAZ.');
+    expect(v.acoes.find((a) => a.id === 'cartaCorrecao')).toBeUndefined();
+    expect(ver('administrador', nota('autorizada', { cancelamento_pendente: false })).acoes.find((a) => a.id === 'cancelar')?.desabilitada).toBeUndefined();
   });
   it('o cancelamento confirma com o texto explícito da ação e traz "Manter a nota" (rotuloFechar do módulo); a CC-e não é destrutiva', () => {
     const v = ver('administrador', nota('autorizada'));
@@ -230,7 +235,8 @@ describe('detalhe da nota: ações por perfil e status', () => {
   it('cabeçalho no fuso do tenant e itens com quantidade e valor formatados', () => {
     const v = ver('administrador', nota('autorizada'));
     expect(v.cabecalho.find((c) => c.rotulo === 'Emitida em')?.valor).toBe('22/11/2026 10:00');
-    expect(v.tabelas[0]?.linhas[0]).toEqual({ sequencia: '1', quantidade: '2', valor: 'R$ 1.234,56' });
+    const l0 = v.tabelas[0]?.linhas[0];
+    expect({ ...l0, valor: semEspacoDuro(l0?.valor as string) }).toEqual({ sequencia: '1', quantidade: '2', valor: 'R$ 1.234,56' });
     expect(v.historico).toBeUndefined();
   });
   it('chave de acesso: linha inteira, números tabulares e grupos de 4', () => {
@@ -285,7 +291,7 @@ describe('título: baixa e estorno', () => {
   });
   it('baixa: valor em reais, até o saldo, sem data futura; corpo em centavos', () => {
     const a = vistaDoTitulo(titulo(), 'faturista', FUSO, AGORA).acoes[0]!;
-    expect(a.baixa).toEqual({ saldo: 'R$ 500,00', valorInicial: '500,00', hoje: '2026-11-22' });
+    expect({ ...a.baixa, saldo: semEspacoDuro(a.baixa?.saldo) }).toEqual({ saldo: 'R$ 500,00', valorInicial: '500,00', hoje: '2026-11-22' });
     expect(validarAcaoDoTitulo(a, { texto: '', valor: '0', data: '2026-11-22' }).ok).toBe(false);
     expect(validarAcaoDoTitulo(a, { texto: '', valor: '500,01', data: '2026-11-22' })).toMatchObject({ ok: false, erro: expect.stringMatching(/saldo/) });
     expect(validarAcaoDoTitulo(a, { texto: '', valor: '100,00', data: '2026-11-23' })).toEqual({ ok: false, erro: 'A data da baixa não pode ser futura.' });
@@ -294,7 +300,7 @@ describe('título: baixa e estorno', () => {
   it('estorno: confirmação com valor, sem corpo; escritas declaradas com :baixa_id', () => {
     const a = vistaDoTitulo(titulo(), 'faturista', FUSO, AGORA).acoes[1]!;
     expect(a).toMatchObject({ entrada: 'confirmar', caminho: `/v1/faturamento/titulos/${ID}/baixas/${B}/estornar` });
-    expect(a.tituloDialogo).toMatch(/Estornar a baixa de R\$ 100,00/);
+    expect(semEspacoDuro(a.tituloDialogo)).toMatch(/Estornar a baixa de R\$ 100,00/);
     expect(validarAcaoDoTitulo(a, { texto: '' })).toEqual({ ok: true });
     expect(escritaDeclarada('POST', a.caminho)).toBe(true);
     expect(escritaDeclarada('POST', `/v1/faturamento/titulos/${ID}/baixas`)).toBe(true);
@@ -324,16 +330,13 @@ describe('download pelo proxy', () => {
 
 describe('linha "Ambiente:" das confirmações fiscais (RN-FAT-04)', () => {
   const emitir = (l: Record<string, unknown>) => LISTA_PEDIDOS_A_FATURAR.acaoDaLinha?.acao({ id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ...l }, 'administrador');
-  it('Emitir sem o campo: manda conferir a filial emissora, em alerta', () => {
-    expect(emitir({})?.ambiente).toEqual({ texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' });
-  });
   it('Emitir com o campo usa os dizeres do módulo (homologação neutro, produção alerta)', () => {
     expect(emitir({ ambiente: 'homologacao' })?.ambiente).toEqual({ texto: 'Ambiente: Homologação, sem valor fiscal', tom: 'neutro' });
     expect(emitir({ ambiente: 'producao' })?.ambiente).toEqual({ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' });
   });
   it('Inutilizar leva a linha de ambiente (o shell não tem o ambiente da filial) e os limites do contador', () => {
     const a = LISTA_NOTAS.acaoDaBarra!.acao('administrador')!;
-    expect(a.ambiente?.tom).toBe('alerta');
+    expect(a.ambiente).toEqual({ texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' });
     expect(a.limitesTexto).toMatchObject({ min: expect.any(Number), max: expect.any(Number) });
   });
 });

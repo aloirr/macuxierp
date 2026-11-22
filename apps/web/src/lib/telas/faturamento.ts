@@ -4,20 +4,18 @@
  * a API revalida tudo (RN-CORE-02). Sem dado pessoal em log; horários no fuso do tenant.
  */
 import {
-  ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
-  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, hojeCivil, motivosDasAcoes, numeroSerie, requisicaoBaixa, requisicaoCancelar,
-  requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, urlDoDanfe, urlDoXml,
+  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
+  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
+  requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDoDanfe, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
 } from '@macuxierp/faturamento/web';
 import {
-  Ambiente, EventoNotaResumo, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, NotaDetalhe, NotaResumo, PedidoAFaturarResumo, RejeicaoNota, StatusNota, TituloDetalhe, TituloResumo,
+  Ambiente, EventoNotaResumo, NotaDetalhe, PedidoAFaturarResumo, StatusNota, TituloDetalhe,
   type StatusPedidoAFaturar, type StatusTitulo,
 } from '@macuxierp/faturamento/contracts';
 import { z } from 'zod';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDataHora, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
-import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
-import { BASE_API } from '../arquivos';
 import type { AcaoVista, DetalheVista, DownloadVista, Escrita, EntradaAcao, EventoVista, FiltroTela, Linha, ResultadoAcao, SeloVista, TelaDescrita, TelaDetalhe, TelaLista } from '../descritor/tipos';
 
 const rotaDe = (id: string): string => PAGINAS_FATURAMENTO.find((p) => p.id === id)?.rota ?? `/faturamento/${id}`;
@@ -35,10 +33,9 @@ const FUSO_COLUNAS = 'America/Manaus';
 const selo = (x: SeloModulo): SeloVista => ({ texto: x.texto, tom: TOM[x.tom], ...(x.dica ? { dica: x.dica } : {}) });
 
 // Rótulos vêm das colunas e dos selos do módulo (uma só fonte): nada de tabela de texto copiada aqui.
-const rotuloDeStatusNota = (s: StatusNota): string => badgesDaNota({ status: s, ambiente: 'producao' })[0]?.texto ?? s;
-const rotuloDeStatusTitulo = (s: StatusTitulo): string => situacaoDoTitulo({ status: s, vencimento: '9999-12-31' }, '2000-01-01').texto;
-const rotuloDeStatusPedido = (s: StatusPedidoAFaturar): string => String(colunasDaPagina('pedidos-a-faturar', FUSO_COLUNAS).find((c) => c.id === 'status')?.valor({ status: s }) ?? s);
-const textoDoAmbiente = (a: Ambiente): string => String(colunasDaPagina('notas', FUSO_COLUNAS).find((c) => c.id === 'ambiente')?.valor({ ambiente: a }) ?? a);
+const rotuloDeStatusNota = (s: StatusNota): string => ROTULO_STATUS_NOTA[s].texto;
+const rotuloDeStatusTitulo = (s: StatusTitulo): string => ROTULO_STATUS_TITULO[s];
+const rotuloDeStatusPedido = (s: StatusPedidoAFaturar): string => ROTULO_STATUS_PEDIDO[s];
 
 // Um caminho, uma constante: a ação e a lista de escritas permitidas usam a mesma (`:id` é o UUID do registro).
 const NOTAS = `${BASE_API}/notas`;
@@ -56,14 +53,7 @@ const DE: FiltroTela = { chave: 'de', rotulo: 'De', tipo: 'data' };
 const ATE: FiltroTela = { chave: 'ate', rotulo: 'Até', tipo: 'data' };
 const AMBIENTE: FiltroTela = { chave: 'ambiente', rotulo: 'Ambiente', tipo: 'selecao', opcoes: Ambiente.options.map((a) => ({ valor: a, rotulo: textoDoAmbiente(a) })) };
 
-const SEM_CURSOR = { cursor: true, limite: true } as const;
 type IdLista = keyof typeof TEXTO_VAZIO;
-
-/** Página de lista do shell: a rota e a API vêm de `PAGINAS_FATURAMENTO`; colunas, filtros e contratos, do módulo. */
-function paginaDe(id: IdLista, item: TelaLista['pagina']['item'], filtros: Parameters<typeof definirPaginaLista>[0]['filtros'], arquivo: string): TelaLista['pagina'] {
-  const api = PAGINAS_FATURAMENTO.find((p) => p.id === id)?.api ?? `${BASE_API}/${id}`;
-  return definirPaginaLista({ id, api, item, filtros, colunas: colunasDaPagina(id, FUSO_COLUNAS) as never, csv: { arquivo } }) as unknown as TelaLista['pagina'];
-}
 
 function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly FiltroTela[], extra: Partial<TelaLista> = {}): TelaLista {
   return {
@@ -78,15 +68,8 @@ function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly F
   };
 }
 
-/** Sem o ambiente conhecido, a confirmação não afirma nada: manda conferir a filial emissora (RN-FAT-04). */
+/** Inutilizar: ainda não há GET com o ambiente da filial; a confirmação não afirma nada e manda conferir a filial emissora (RN-FAT-04). */
 const AMBIENTE_DESCONHECIDO = { texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' } as const;
-/** Linha "Ambiente:" do módulo (os mesmos dizeres do Reenviar), a partir do ambiente da filial emissora; ausente ou inválido, o aviso de conferir. */
-function ambienteDaFilial(a: unknown): { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' } {
-  const v = Ambiente.safeParse(a);
-  if (!v.success) return AMBIENTE_DESCONHECIDO;
-  const c = confirmacaoReenviar({ numero: null, serie: 1, status: 'rascunho', ambiente: v.data });
-  return { texto: c.ambiente, tom: c.tomAmbiente };
-}
 
 /** Baixa só a primeira letra ("Consulte…" vira "consulte…"); o resto, siglas e xMotivo, não muda. */
 const minuscula = (t: string): string => (t === '' ? t : t.charAt(0).toLowerCase() + t.slice(1));
@@ -96,13 +79,13 @@ const rotuloDaLinha = (id: IdLista) => (l: Linha): string => (ROTULO_LINHA[id] a
 // ---- Pedidos a faturar: ação "Emitir nota" por linha (nota total; a parcial pede os itens do pedido e fica para o detalhe) ----
 
 function acaoEmitir(l: Linha, perfil: Perfil): AcaoVista | null {
-  const p = l as unknown as PedidoAFaturarResumo & { ambiente?: unknown }; // `ambiente` entra no resumo pelo modulo-faturamento; opcional até lá
+  const p = l as unknown as PedidoAFaturarResumo;
   if (!acoesDoPedidoAFaturar(perfil, p.status).emitir) return null;
   const numero = p.numero === null || p.numero === undefined ? '' : ` ${p.numero}`;
   return {
     id: 'emitir', rotulo: 'Emitir nota', metodo: 'POST', caminho: NOTAS, entrada: 'confirmar', principal: true,
     tituloDialogo: `Emitir a nota do pedido${numero}?`, aviso: 'A nota leva todo o saldo do pedido e segue para a SEFAZ. Confira o cliente e o total antes de emitir.',
-    rotuloConfirmar: 'Emitir nota', textoCarregando: 'Emitindo…', ambiente: ambienteDaFilial(p.ambiente), dados: { pedido_id: p.pedido_id },
+    rotuloConfirmar: 'Emitir nota', textoCarregando: 'Emitindo…', ambiente: ambienteDaConfirmacao(p.ambiente), dados: { pedido_id: p.pedido_id },
   };
 }
 
@@ -126,7 +109,7 @@ function acaoInutilizar(perfil: Perfil): AcaoVista | null {
   return {
     id: 'inutilizar', rotulo: 'Inutilizar números', metodo: 'POST', caminho: INUTILIZACOES, entrada: 'faixa', tituloDialogo: 'Inutilizar números',
     rotuloTexto: d.rotuloTexto, rotuloConfirmar: d.rotuloConfirmar, rotuloFechar: d.rotuloFechar, destrutivo: d.destrutivo, ...(d.aviso ? { aviso: d.aviso } : {}),
-    ambiente: ambienteDaFilial(undefined), limitesTexto: { min: d.minimo, max: d.maximo }, // o shell não recebe o ambiente da filial (cadastro só traz nome)
+    ambiente: AMBIENTE_DESCONHECIDO, limitesTexto: { min: d.minimo, max: d.maximo }, // o shell não recebe o ambiente da filial (cadastro só traz nome)
   };
 }
 
@@ -143,7 +126,7 @@ const ACAO_INUTILIZAR = { acao: acaoInutilizar, validarAcao: validarInutilizar, 
 
 export const LISTA_PEDIDOS_A_FATURAR: TelaLista = lista(
   'pedidos-a-faturar',
-  paginaDe('pedidos-a-faturar', PedidoAFaturarResumo, FiltroPedidosAFaturar.omit(SEM_CURSOR).shape, 'pedidos-a-faturar.csv'),
+  paginaPedidosAFaturar as unknown as TelaLista['pagina'],
   [
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: (['a_faturar', 'faturado_parcial', 'faturado', 'cancelado'] as const).map((s) => ({ valor: s, rotulo: rotuloDeStatusPedido(s) })) },
     FILIAL, DE, ATE,
@@ -153,7 +136,7 @@ export const LISTA_PEDIDOS_A_FATURAR: TelaLista = lista(
 
 export const LISTA_NOTAS: TelaLista = lista(
   'notas',
-  paginaDe('notas', NotaResumo, FiltroNotas.omit(SEM_CURSOR).shape, 'notas-fiscais.csv'),
+  paginaNotas as unknown as TelaLista['pagina'],
   [
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: StatusNota.options.map((s) => ({ valor: s, rotulo: rotuloDeStatusNota(s) })) },
     AMBIENTE, FILIAL, { chave: 'serie', rotulo: 'Série', tipo: 'texto' }, { chave: 'numero', rotulo: 'Número', tipo: 'texto' }, DE, ATE,
@@ -161,11 +144,11 @@ export const LISTA_NOTAS: TelaLista = lista(
   { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR },
 );
 
-export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaDe('rejeicoes', RejeicaoNota, FiltroRejeicoes.omit(SEM_CURSOR).shape, 'rejeicoes.csv'), [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes') });
+export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes') });
 
 export const LISTA_TITULOS: TelaLista = lista(
   'titulos',
-  paginaDe('titulos', TituloResumo, FiltroTitulos.omit(SEM_CURSOR).shape, 'titulos-a-receber.csv'),
+  paginaTitulos as unknown as TelaLista['pagina'],
   [
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: (['aberto', 'baixado', 'cancelado'] as const).map((s) => ({ valor: s, rotulo: rotuloDeStatusTitulo(s) })) },
     AMBIENTE, { chave: 'vencimento_de', rotulo: 'Vencimento de', tipo: 'data' }, { chave: 'vencimento_ate', rotulo: 'Vencimento até', tipo: 'data' },
@@ -207,8 +190,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
   const sigla = numeroSerie(n) || 'sem número';
   const [seloStatus] = badgesDaNota(n).slice(-1);
   const emite = pode(perfil, 'faturamento.nota.emitir');
-  const para = { status: n.status, ambiente: n.ambiente, autorizada_em: n.autorizada_em ?? null };
-  const motivos = motivosDasAcoes(perfil, para, agora);
+  const motivos = motivosDasAcoes(perfil, n, agora); // a nota inteira (inclui `cancelamento_pendente`)
   const livre = (a: AcaoDaNota): boolean => !motivos[a];
   const principal = acaoPrincipalDaNota(n.status);
   const caminho = (verbo: string) => preencher(NOTA_VERBO(verbo), { id: n.id });
@@ -231,7 +213,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     }
     if (id === 'reenviar') {
       const c = confirmacaoReenviar(n);
-      acoes.push({ id, rotulo: c.rotuloConfirmar, metodo: 'POST', caminho: caminhoDe(requisicaoReenviar(n.id, CHAVE_DE_VALIDACAO)), entrada: 'confirmar', ...(ehPrincipal ? { principal: true } : {}), tituloDialogo: c.titulo, aviso: c.aviso, ambiente: { texto: c.ambiente, tom: c.tomAmbiente }, rotuloConfirmar: c.rotuloConfirmar, textoCarregando: c.textoCarregando, dados });
+      acoes.push({ id, rotulo: c.rotuloConfirmar, metodo: 'POST', caminho: caminhoDe(requisicaoReenviar(n.id, CHAVE_DE_VALIDACAO)), entrada: 'confirmar', ...(ehPrincipal ? { principal: true } : {}), tituloDialogo: c.titulo, aviso: c.aviso, ambiente: ambienteDaConfirmacao(n.ambiente), rotuloConfirmar: c.rotuloConfirmar, textoCarregando: c.textoCarregando, dados });
     } else if (id === 'consultar') {
       acoes.push({ id, rotulo: r.rotulo, metodo: 'POST', caminho: caminhoDe(requisicaoConsultar(n.id, CHAVE_DE_VALIDACAO)), entrada: 'nenhum', dados });
     } else {
@@ -308,7 +290,7 @@ export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, ag
     acoes.push({
       id: 'baixar', rotulo: 'Baixar título', metodo: 'POST', caminho: preencher(BAIXAS, { id: t.id }), entrada: 'baixa', principal: true,
       tituloDialogo: `Baixar o título da nota ${t.numero}, parcela ${t.parcela}/${t.total_parcelas}`, rotuloConfirmar: 'Baixar título', textoCarregando: 'Baixando…',
-      baixa: { saldo: formatarCentavos(t.saldo_centavos), valorInicial: formatarCentavos(t.saldo_centavos).replace('R$ ', ''), hoje },
+      baixa: { saldo: formatarCentavos(t.saldo_centavos), valorInicial: formatarCentavos(t.saldo_centavos).replace(/^R\$\s/, ''), hoje },
       dados: { titulo_id: t.id, saldo_centavos: String(t.saldo_centavos), hoje },
     });
   }
