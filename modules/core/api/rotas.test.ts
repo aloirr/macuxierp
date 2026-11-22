@@ -417,10 +417,10 @@ describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próp
     }
   })();
 
-  function gerarPfx(cn: string, senha: string): Buffer {
+  function gerarPfx(cn: string, senha: string, cnpjNoSan?: string): Buffer {
     const dir = mkdtempSync(join(tmpdir(), 'pfx-'));
     try {
-      execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '365', '-subj', `/CN=${cn}`, '-keyout', join(dir, 'k.pem'), '-out', join(dir, 'c.pem')], { stdio: 'ignore' });
+      execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '365', '-subj', `/CN=${cn}`, ...(cnpjNoSan ? ['-addext', `subjectAltName=otherName:2.16.76.1.3.3;UTF8:${cnpjNoSan}`] : []), '-keyout', join(dir, 'k.pem'), '-out', join(dir, 'c.pem')], { stdio: 'ignore' });
       execFileSync('openssl', ['pkcs12', '-export', '-inkey', join(dir, 'k.pem'), '-in', join(dir, 'c.pem'), '-out', join(dir, 'a.pfx'), '-passout', `pass:${senha}`], { stdio: 'ignore' });
       return readFileSync(join(dir, 'a.pfx'));
     } finally {
@@ -428,13 +428,15 @@ describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próp
     }
   }
 
-  // A geração de chave RSA pelo openssl é a parte lenta: gera os dois A1 uma vez por arquivo, fora do tempo dos testes.
+  // A geração de chave RSA pelo openssl é a parte lenta: gera os três A1 uma vez por arquivo, fora do tempo dos testes.
   let pfx: Buffer;
   let pfxOutraRaiz: Buffer;
+  let pfxSanDivergente: Buffer;
   beforeAll(() => {
     if (!temOpenssl) return;
     pfx = gerarPfx('EMPRESA PILOTO LTDA:11222333000262', 'senha-gerada-no-teste');
     pfxOutraRaiz = gerarPfx('OUTRA EMPRESA SA:11444777000161', 'x-teste');
+    pfxSanDivergente = gerarPfx('EMPRESA PILOTO LTDA:11222333000262', 'x-teste', '11444777000161');
   }, 60_000);
 
   it.skipIf(!temOpenssl)('RN-CORE-06: lê titular, CNPJ, validade e impressão digital; senha errada falha sem vazar', async () => {
@@ -458,6 +460,14 @@ describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próp
     expect((await t.chamar('POST', '/certificados', { ...envio, agora: dentro })).status).toBe(201);
     const depois = new Date(dados.valido_ate.getTime() + 86_400_000);
     await regra(t.chamar('POST', '/certificados', { ...envio, agora: depois }), 'RN-CORE-06');
+  });
+
+  it.skipIf(!temOpenssl)('RN-CORE-06: upload com SAN divergente é 422 com a mensagem fixa e sem o CNPJ na resposta', async () => {
+    const t = montar(new LeitorPfxTls());
+    const e = await regra(t.chamar('POST', '/certificados', { corpo: { filial_id: FILIAL, senha: 'x-teste' }, arquivos: { arquivo: new ArquivoRecebido('arquivo', 'a1.pfx', 'application/x-pkcs12', pfxSanDivergente) } }), 'RN-CORE-06');
+    const texto = e.message + JSON.stringify(e);
+    expect(texto).toContain('o CNPJ do SAN difere do CNPJ do CN');
+    expect(texto).not.toMatch(/11222333000262|11444777000161|x-teste/);
   });
 
   it.skipIf(!temOpenssl)('RN-CORE-06: A1 de outra raiz de CNPJ é recusado com o arquivo real', async () => {

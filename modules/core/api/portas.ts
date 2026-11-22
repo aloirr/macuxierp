@@ -135,7 +135,7 @@ export class PfxInvalido extends Error {
   override readonly name = 'PfxInvalido';
 }
 
-/** Abre o `.pfx` com a senha. Lança `PfxInvalido` (senha errada, arquivo corrompido ou sem CNPJ). */
+/** Abre o `.pfx` com a senha. Lança `PfxInvalido` (senha errada ou arquivo corrompido); CNPJ ausente, divergente ou com DV inválido sai como `ErroCertificado` do SDK. */
 export interface LeitorPfx {
   abrir(pfx: Buffer, senha: string): Promise<DadosPfx>;
 }
