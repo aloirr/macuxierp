@@ -79,6 +79,13 @@ Estado do conector nativo do ERP no Hub `/integracao/v1` do FDV. Fonte dos nomes
 - quem roda a retenção acima (trabalho do worker) e a remoção das linhas de 12 meses;
 - gravação de `referencia` pelo BKO: nenhuma ação da C-7 a usa, por isso o app só lê (se surgir, GRANT por coluna em migração nova).
 
+**0015 (T-0011):** `erp_id` no espelho (par `registro_external_id` ↔ UUID do ERP; a T-0016 traduz os pedidos por ele) e a configuração do conector na `credencial` (entidades habilitadas e limite do lote, que o app configura). Colunas, CHECKs e privilégios: `db/migrations/0015_integracao_fdv_espelho.sql`; testes: `db/testes/espelho-0015.db.test.ts`.
+- **Unicidade do `erp_id`:** por tenant e entidade só entre as linhas ativas e não excluídas (`WHERE deleted_at IS NULL AND ativo`). Na troca de external_id (RN-CORE-05) a linha antiga, inativa e ainda pendente de confirmação no Hub, convive com a nova do mesmo `erp_id`; por isso a consulta `erp_id` → registro sempre filtra `ativo` e `deleted_at IS NULL`.
+- **`erp_id` nulo:** em `forma_pagamento`, `preco` e `estoque`, que não têm UUID único no ERP. Ele só é gravado nas entidades que a T-0016 traduz: cliente, vendedor, produto, prazo e filial (T-0013 §5).
+- **`entidades_habilitadas`:** array do domínio `entidade_hub`, que valida cada elemento (entidade nova no domínio já vale aqui); o CHECK só barra elemento nulo. A lista vazia desliga a publicação.
+- **Troca de chave:** cria credencial nova (0007), e as colunas voltariam ao padrão; o app copia `entidades_habilitadas` e `limite_registros_lote` da substituída no INSERT da nova (o INSERT de tabela da 0007 cobre as colunas).
+- **`conflito_chave`:** conflito de chave do Hub (`chave_alterada`, `chave_duplicada`), que não vai ao Hub; um aberto por entidade e `erp_id`; `deleted_at` só em conflito resolvido (CHECK `conflito_chave_exclui_resolvido`); o worker abre e resolve, o BKO resolve. Desenho: `docs/desenho/T-0009.md` §8 e ADR 0010, item 3. Retenção de 12 meses (sem job nesta migração; entra na pendência da retenção acima).
+
 ## Schema `pedido` (0012, T-0014)
 Colunas, chaves, índices, CHECKs e privilégios: `docs/desenho/T-0013.md` §7 e `db/migrations/0012_pedido.sql`; transições: §2. Aqui, só o que o desenho não traz.
 - **Domínios:** `pedido.status` (os 7 status, um lugar só) e `pedido.codigo` (código de motivo: identificador minúsculo, nunca texto livre).

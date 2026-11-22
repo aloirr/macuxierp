@@ -5,7 +5,7 @@
  */
 import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type {
-  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
+  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto, SaldoEstoque, TabelaPreco,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import type {
@@ -237,6 +237,7 @@ class RepoClientesSql extends RepoTabela<Cliente, ClienteDados> {
   }
 }
 
+const colunasTabelaPreco = { colunas: ['nome', 'padrao'], expressoes: [DATA('vigencia_inicio'), DATA('vigencia_fim')] };
 const mapaProduto: Mapa<Produto, ProdutoDados> = {
   tabela: 'cadastros.produto',
   colunas: ['codigo', 'descricao', 'ncm', 'cest', 'unidade_comercial', 'unidade_tributavel', 'ean', 'marca', 'origem', 'grupo_tributacao'],
@@ -251,9 +252,19 @@ export function repositoriosSql(tx: Transacao): Repositorios {
   const simples = (t: string, colunas: string[], busca: string[], expressoes: string[] = [], filtros?: Mapa<unknown, unknown>['filtros']) =>
     tabela({ tabela: t, colunas, expressoes, busca, filtros, paraLinha: (d: Dict) => ({ ...d }), deLinha: (l: Dict) => l as never });
 
-  const produtos = Object.assign(tabela(mapaProduto), { unidades: new RepoFilhoSql(tx, mapaUnidade) });
+  const produtos = Object.assign(tabela(mapaProduto), {
+    unidades: new RepoFilhoSql(tx, mapaUnidade),
+    async porIds(ids: readonly string[]) {
+      if (ids.length === 0) return [];
+      return (await executar(tx, `SELECT ${selecionar(mapaProduto)} FROM cadastros.produto WHERE id = ANY($1::uuid[]) ORDER BY id`, [[...ids]])).map((l) => mapaProduto.deLinha(l));
+    },
+    async unidadesDe(ids: readonly string[]) {
+      if (ids.length === 0) return [];
+      return executar<{ produto_id: string; unidade: string; fator: number }>(tx, `SELECT produto_id, unidade, ${N('fator')} FROM cadastros.produto_unidade WHERE produto_id = ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY produto_id, unidade`, [[...ids]]);
+    },
+  });
   const tabelasPreco = Object.assign(
-    simples('cadastros.tabela_preco', ['nome', 'padrao'], ['nome'], [DATA('vigencia_inicio'), DATA('vigencia_fim')]),
+    simples('cadastros.tabela_preco', colunasTabelaPreco.colunas, ['nome'], colunasTabelaPreco.expressoes),
     {
       async itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItemLista>> {
         const p: unknown[] = [tabelaId];
@@ -268,12 +279,21 @@ export function repositoriosSql(tx: Transacao): Repositorios {
         );
         return paginar(linhas, q.limite);
       },
-      itensDoProduto: (tabelaId: string, produtoId: string, filialIds: readonly string[]) =>
+      itensDosProdutos: (tabelaId: string, produtoIds: readonly string[], filialIds: readonly string[]) =>
         executar<PrecoItem>(
           tx,
-          `SELECT tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE tabela_preco_id = $1 AND produto_id = $2 AND filial_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
-          [tabelaId, produtoId, [...filialIds]],
+          `SELECT tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE tabela_preco_id = $1 AND produto_id = ANY($2::uuid[]) AND filial_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
+          [tabelaId, [...produtoIds], [...filialIds]],
         ),
+      /** No máximo uma por tenant: índice `tabela_preco_uma_padrao`. */
+      async padraoEm(data: string) {
+        const r = await executar<TabelaPreco>(
+          tx,
+          `SELECT ${selecionar(colunasTabelaPreco)} FROM cadastros.tabela_preco WHERE padrao AND deleted_at IS NULL AND vigencia_inicio <= $1::date AND (vigencia_fim IS NULL OR vigencia_fim >= $1::date)`,
+          [data],
+        );
+        return r[0] ?? null;
+      },
       /** Um comando só para até 5.000 itens; devolve só o que mudou (evento por item alterado). */
       gravarLote: (tabelaId: string, itens: readonly Omit<PrecoItem, 'tabela_preco_id'>[]) =>
         executar<PrecoItem>(
@@ -314,6 +334,10 @@ export function repositoriosSql(tx: Transacao): Repositorios {
       const linhas = await executar<SaldoEstoqueItem>(tx, `SELECT id, filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY id LIMIT ${par(q.limite + 1)}`, p);
       return paginar(linhas, q.limite);
     },
+    saldosDe: (filialId: string, produtoIds: readonly string[]) =>
+      produtoIds.length === 0
+        ? Promise.resolve([])
+        : executar<SaldoEstoque>(tx, `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE filial_id = $1 AND produto_id = ANY($2::uuid[]) AND deleted_at IS NULL ORDER BY produto_id`, [filialId, [...produtoIds]]),
     saldos: (q: { filial_id?: string; produto_id?: string }) => {
       const p: unknown[] = [];
       const w = filtroSaldo(q, (v) => `$${p.push(v)}`);

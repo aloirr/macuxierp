@@ -154,6 +154,7 @@ export const CodigoRecusaRecebimento = z.enum([
   'produto_inativo',
   'filial_inexistente',
   'filial_nao_emissora',
+  'condicao_ausente',
   'condicao_inexistente',
   'condicao_inativa',
   'item_incoerente',

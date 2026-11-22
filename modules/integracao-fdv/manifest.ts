@@ -4,7 +4,7 @@ import { EVENTOS_DE_RETORNO } from './domain/retorno-pedido';
 export const manifest = defineModule({
   id: 'integracao-fdv',
   versao: '0.1.0',
-  descricao: 'Conector nativo em nuvem com o Hub /integracao/v1 do Macuxi FDV: publica cadastros, títulos e status; recebe pedidos.',
+  descricao: 'Liga o ERP ao Macuxi FDV: envia cadastros, títulos e situação dos pedidos e recebe os pedidos dos vendedores.',
   depende: ['core', 'cadastros', 'pedido'],
   perfis: ['administrador', 'gerente', 'leitura'],
   web: { menus: ['Integração FDV'] },

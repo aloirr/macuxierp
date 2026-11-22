@@ -3,7 +3,7 @@
  * (apps/web, Next.js) desenha tabela densa, filtros na URL e botão "Exportar CSV" a partir daqui. A permissão na tela
  * só esconde o botão: a proteção real é a da API (RN-CORE-02).
  */
-import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type Perfil } from '@macuxierp/platform-sdk';
+import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDocumento, formatarQuantidade } from './formatar';
 
 export interface ColunaPagina {
@@ -14,11 +14,9 @@ export interface ColunaPagina {
   exige?: Acao;
 }
 
-export interface PaginaCadastros {
-  id: string;
-  menu: string;
-  titulo: string;
-  rota: string;
+export interface PaginaCadastros extends PaginaBase {
+  /** Toda página do cadastros é lista e tem `id` (no tipo base ele é opcional). */
+  readonly id: string;
   /** Caminho da lista em `/v1/cadastros`. */
   api: string;
   colunas: readonly ColunaPagina[];

@@ -15,8 +15,8 @@ import {
   type NomeEventoCadastros,
 } from '../contracts';
 import {
-  aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia, precoVigente,
-  validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
+  aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
+  validarCondicaoPagamento, validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga } from './carga';
@@ -24,6 +24,7 @@ import { publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, 
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
+import { precosVigentesDe } from './precos-vigentes';
 import { dataIso, erroDeViolacoes, exigir, idDe } from './util';
 
 type Dict = Record<string, unknown>;
@@ -372,16 +373,11 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       async executar(c, e) {
         const r = R(c);
         const q = e.consulta;
-        const t = await r.tabelasPreco.obter(q.tabela_preco_id);
-        if (!t) throw erros.naoEncontrado('Tabela de preço');
-        const padrao = (await r.filiais.padrao())?.id ?? q.filial_id;
-        const itens = await r.tabelasPreco.itensDoProduto(t.id, q.produto_id, [...new Set([q.filial_id, padrao])]);
-        const res = precoVigente({
-          tabela: { vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim, inativa: t.inativo }, itens, produto_id: q.produto_id,
-          filial_id: q.filial_id, filial_padrao_id: padrao, data: q.data ?? dataIso(c.agora),
-        });
-        if (!res.ok) throw new ErroApi(404, res.motivo === 'sem_preco' ? 'SEM_PRECO' : 'FORA_DA_VIGENCIA', res.motivo === 'sem_preco' ? 'Sem preço para o produto na tabela' : 'Tabela fora da vigência');
-        return { corpo: { ...res.item, tabela_preco_id: t.id, origem_filial_id: res.origem_filial_id, vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim } };
+        const res = await precosVigentesDe(r, { tabela_preco_id: q.tabela_preco_id, filial_id: q.filial_id, produto_ids: [q.produto_id], data: q.data ?? dataIso(c.agora) });
+        const unico = res?.[0];
+        if (!unico) throw erros.naoEncontrado('Tabela de preço');
+        if (!unico.ok) throw new ErroApi(404, unico.motivo === 'sem_preco' ? 'SEM_PRECO' : 'FORA_DA_VIGENCIA', unico.motivo === 'sem_preco' ? 'Sem preço para o produto na tabela' : 'Tabela fora da vigência');
+        return { corpo: unico.preco };
       },
     }),
   );
@@ -423,6 +419,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   rotas.push(...rotasCrud(deps, {
     caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
+    validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[] }),
   }));
 
   // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----

@@ -488,4 +488,17 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'X', prazos_dias: [] } })).status).toBe(400);
     expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.itens).toHaveLength(1);
   });
+
+  it('RN-CAD-09: forma à vista com prazo maior que 0 é 422 na criação e na alteração (resultado mesclado)', async () => {
+    const t = montar();
+    const base = { codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0] };
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'AV2', prazos_dias: [0, 30] } }))).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'BO', forma_tpag: '15', prazos_dias: [0] } })).status).toBe(201);
+    const criada = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: base });
+    expect(criada.status).toBe(201);
+    const id = (criada.corpo as { id: string }).id;
+    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30] } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '15', prazos_dias: [30] } })).status).toBe(200);
+    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '17' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+  });
 });
