@@ -303,10 +303,7 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(rotuloDaForma('')).toBe('');
   });
   it('textos de lista vazia, rótulo de linha, colunas à direita e "—" no lugar do UUID', () => {
-    expect(Object.keys(TEXTO_VAZIO).sort()).toEqual(['notas', 'pedidos-a-faturar', 'rejeicoes', 'titulos']);
-    expect(TEXTO_VAZIO.notas).toBe('Nenhuma nota neste filtro. Limpe os filtros.');
-    expect(TEXTO_VAZIO.rejeicoes).toBe('Nenhuma nota rejeitada. Está tudo certo.');
-    expect(TEXTO_VAZIO.titulos).toBe('Nenhum título neste filtro. Os títulos aparecem quando uma nota a prazo é autorizada.');
+    expect(TEXTO_VAZIO).toEqual({ notas: 'Nenhuma nota encontrada.', 'pedidos-a-faturar': 'Nenhum pedido encontrado.', rejeicoes: 'Nenhuma rejeição encontrada.', titulos: 'Nenhum título encontrado.' });
     const t = { id: ID, nota_id: ID, cliente_id: ID, numero: 123, filial_id: ID, ambiente: 'producao' as const, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 1, saldo_centavos: 1, status: 'aberto' as const };
     expect(ROTULO_LINHA.titulos({ ...t, cliente_razao_social: null })).toBe('Abrir o título 123 (parcela 1/2)');
     expect(ROTULO_LINHA.notas({ numero: 5, serie: 1 } as never)).toBe('Abrir nota 5/1');
@@ -343,13 +340,34 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
   });
 });
 
+describe('MC-0016: vazio das listas e hora exportada', () => {
+  it('as 4 páginas declaram vazio validado pelo SDK, com os textos exatos e sem "Limpe os filtros"', () => {
+    const esperado = {
+      notas: ['Nenhuma nota emitida ainda.', 'Nenhuma nota com estes filtros.'],
+      'pedidos-a-faturar': ['Nenhum pedido aprovado esperando nota.', 'Nenhum pedido com estes filtros.'],
+      rejeicoes: ['Nenhuma nota rejeitada. Está tudo certo.', 'Nenhuma rejeição com estes filtros.'],
+      titulos: ['Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', 'Nenhum título com estes filtros.'],
+    };
+    for (const p of [paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos]) {
+      const [sem, com] = esperado[p.id as keyof typeof esperado];
+      expect(p.vazio).toEqual({ semFiltro: sem, comFiltro: com });
+      expect(JSON.stringify([p.vazio, TEXTO_VAZIO[p.id as keyof typeof TEXTO_VAZIO]])).not.toMatch(/Limpe os filtros|neste filtro/);
+    }
+  });
+  it('hora(fuso) formata no fuso e devolve vazio para nulo', () => {
+    expect(publico.hora('America/Manaus')('2026-11-22T14:30:00.000Z')).toBe('22/11/2026 10:30');
+    expect(publico.hora('America/Manaus')(null)).toBe('');
+    expect(publico.hora('America/Manaus')(undefined)).toBe('');
+  });
+});
+
 describe('API pública do web', () => {
   it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
       'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
       'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
       'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
-      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
+      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
       'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDoDanfe', 'urlDoPedidoAFaturar', 'urlDoXml',
     ]);
