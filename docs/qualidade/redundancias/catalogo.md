@@ -43,3 +43,28 @@ Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #1
 | RD-0298 | 21/11/2026 | T-0045 | sefaz-simulador: cabeçalho de retorno 8×, refAut 2×, AAMM 2×, TP_AMB_SIMULADOR, leitura de XML igual à do xmldsig.ts | código | média | engenheiro-software | aberto | 2026-11-21-T-0045-simulador.md |
 | RD-0299 | 21/11/2026 | T-0045 | OperacaoNaoImplementadaNoSimulador obsoleta sem consumidor; exports mortos (knip); testes de assinatura repetidos no simulador | código · teste | baixa | engenheiro-software | aberto | 2026-11-21-T-0045-simulador.md |
 | RD-0300 | 21/11/2026 | T-0045 | ADR 0008 × desenho T-0045 × cabeçalhos: 55 cStat, ordem das conferências, trava 3 camadas, citação, pendência do core; README PL_010g × SHA256SUMS | doc | média | engenheiro-software | aberto | 2026-11-21-T-0045-simulador.md |
+| RD-0248 | 22/11/2026 | T-0017 | erp-pedidos.ts: resolvedorDoArnes (TABELA, UUID_CANONICO, SQL) reimplementa o criarResolvedorChaveErp do cadastros/api (#115); comentário e T-0017.md:60/154 dizem que o main não o tem | código · doc | alta | testes | corrigido no #136 | 2026-11-22-T-0017-ponta-a-ponta.md |
+| RD-0249 | 22/11/2026 | T-0017 | T-0017.md: contagem "11" 3×; "real só depois da virada (T-0027)" 2×; contrato e premissas do Hub no doc e no cabeçalho do hub-pedidos.ts, premissas 3× | doc | média | testes | corrigido no #136 | 2026-11-22-T-0017-ponta-a-ponta.md |
+| RD-0250 | 22/11/2026 | T-0017 | volta-fdv-erp.db.test.ts:97-101 (bloco thathyany-seguro) repete a asserção do it da T-0017 no config.test.ts | teste | baixa | testes | corrigido no #136 | 2026-11-22-T-0017-ponta-a-ponta.md |
+| RD-0251 | 22/11/2026 | T-0017 | hub-pedidos.ts:140: 'v1' literal × VERSAO_CONTRATO de contrato-hub.ts | código | baixa | testes | corrigido no #136 | 2026-11-22-T-0017-ponta-a-ponta.md |
+| RD-0440 | 22/11/2026 | T-0022 | docs/testes/T-0022.md, roteiro do transporte: repetia simulador.test.ts e destino.test.ts do sefaz-simulador | teste · doc | média | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0441 | 22/11/2026 | T-0022 | transporte-sefaz.test.ts: números escritos à mão em vez de lidos da matriz (regressão da fonte única) | teste | média | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0442 | 22/11/2026 | T-0022 | docs/testes/T-0022.md copiava a matriz e as dependências da matriz.ts | doc | média | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0443 | 22/11/2026 | T-0022 | matriz.ts: campos dependeDe e transporte deriváveis; testes de coerência entre eles em verificacoes.test.ts | código · teste | média | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0444 | 22/11/2026 | T-0022 | tests/t0022/apoio/certificado-san.ts: segundo gerador de A1 de teste × gerarA1DeTeste (nfe-sefaz); sai quando houver cnpjNoSan | código | média | engenheiro-software, depois testes | aberto | 2026-11-22-T-0022-lote2.md |
+| RD-0445 | 22/11/2026 | T-0022 | certificado-cnpj-san.test.ts: caso 292 sem CNPJ já existia no pacote | teste | baixa | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0446 | 22/11/2026 | T-0022 | arnês do transporte: trava "só homologação" obsoleta | código · teste | média | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0447 | 22/11/2026 | T-0022 | T-0022.md × cabeçalhos de tests/t0022/**: texto repetido | doc | baixa | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0448 | 22/11/2026 | T-0022 | tests/t0022/apoio: exports mortos | código | baixa | testes | corrigido no #125 | 2026-11-22-T-0022-lote2.md |
+| RD-0466 | 22/11/2026 | T-0022 | T-0022.md copiava as notas MEI e o ESPERADO_MEI da matriz.ts | doc | média | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0467 | 22/11/2026 | T-0022 | T-0022.md repetia as dependências das notas MEI | doc | média | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0468 | 22/11/2026 | T-0022 | verificacoes.test.ts: teste "série própria da M1" duplicado | teste | média | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0469 | 22/11/2026 | T-0022 | verificacoes.test.ts: cópias da fonte (matriz.ts) | teste | média | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0470 | 22/11/2026 | T-0022 | verificacoes.test.ts: título do teste de CRT não batia com o que o teste fazia | teste | baixa | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0471 | 22/11/2026 | T-0022 | T-0022.md: data da decisão 4× | doc | baixa | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0472 | 22/11/2026 | T-0022 | notas-simulador.db.test.ts: CRT repetido no título do it.todo | teste | baixa | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0473 | 22/11/2026 | T-0022 | notas-simulador.db.test.ts: comentário redundante | código | baixa | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0474 | 22/11/2026 | T-0022 | matriz.ts: JSDoc e vNF repetidos | código | baixa | testes | corrigido no #146 | 2026-11-22-T-0022-mei.md |
+| RD-0489 | 22/11/2026 | T-0016 | autorizacao-rotas.test.ts: literal de módulos em vez de [...MODULOS_BASE, ...LICENCIADOS] | código | baixa | testes | corrigido no #145 | 2026-11-22-T-0016-rotas.md |
+| RD-0490 | 22/11/2026 | T-0016 | autorizacao-rotas.test.ts: lista semRotas 2× | teste | baixa | testes | corrigido no #145 | 2026-11-22-T-0016-rotas.md |
+| RD-0491 | 22/11/2026 | T-0016 | autorizacao-rotas.test.ts: ativa() não usada para faturamento e fiscal | código | baixa | testes | corrigido no #145 | 2026-11-22-T-0016-rotas.md |

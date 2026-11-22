@@ -72,7 +72,30 @@ export const CENARIOS_SINTETICOS = [
   'lgpd',
 ] as const;
 export const CENARIOS_SEGUROS = ['carga-identica', 'reenvio-idempotente'] as const;
-export type NomeCenario = (typeof CENARIOS_SINTETICOS)[number] | (typeof CENARIOS_SEGUROS)[number];
+/**
+ * T-0017: a volta (pedido aprovado no FDV → ERP → retorno ao Hub). Rodam no dublê e, no alvo real, só no perfil
+ * tenant-teste: na thathyany o Conector do ERP nasceu sem "recebe pedidos" (`MACUXI_HUB_RECEBE_PEDIDOS=0`), e os pedidos
+ * reais dela ficam para depois da confirmação da virada (T-0027).
+ */
+export const CENARIOS_PEDIDOS = [
+  'pedido-caminho-feliz',
+  'pedido-cancelado',
+  'pedido-recebimento-recusado',
+  'pedido-reentrega',
+  'pedido-retorno-repetido',
+  'pedido-retencao',
+  'pedido-endereco',
+  'pedido-faturado',
+  'pedido-lgpd',
+  'pedido-multi-tenant',
+  'pedido-licenca',
+  'pedido-fila-real',
+] as const;
+export type NomeCenario =
+  | (typeof CENARIOS_SINTETICOS)[number]
+  | (typeof CENARIOS_SEGUROS)[number]
+  | (typeof CENARIOS_PEDIDOS)[number];
+const ehCenarioDePedido = (nome: NomeCenario) => (CENARIOS_PEDIDOS as readonly string[]).includes(nome);
 
 export class ErroConfigHub extends Error {
   override readonly name = 'ErroConfigHub';
@@ -156,16 +179,24 @@ const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLower
 const THATHYANY = 'thathyany';
 const citaThathyany = (s: string) => normal(s).includes(THATHYANY);
 
-/** O cenário pode rodar com esta configuração? Dublê: todos; tenant de teste: os sintéticos; thathyany: só os seguros. */
+/**
+ * O cenário pode rodar com esta configuração? Dublê: todos; tenant de teste: os sintéticos e os de pedidos; thathyany:
+ * só os seguros (nunca os de pedidos: `recebePedidos: false`).
+ */
 export function cenarioPermitido(config: ConfigHub, nome: NomeCenario): boolean {
   if (config.alvo === 'duble') return true;
-  if (config.perfil === 'tenant-teste') return (CENARIOS_SINTETICOS as readonly string[]).includes(nome);
+  if (config.perfil === 'tenant-teste')
+    return (CENARIOS_SINTETICOS as readonly string[]).includes(nome) || ehCenarioDePedido(nome);
   return (CENARIOS_SEGUROS as readonly string[]).includes(nome);
 }
 
 /** Recusa o cenário fora do perfil (segunda barreira, dentro do próprio cenário). */
 export function exigirCenario(config: ConfigHub, nome: NomeCenario): void {
   if (!cenarioPermitido(config, nome)) {
+    if (config.alvo === 'real' && config.perfil === 'thathyany-seguro' && ehCenarioDePedido(nome))
+      throw new ErroConfigHub(
+        `Recusado: o cenário "${nome}" é de pedidos e não roda no perfil thathyany-seguro (MACUXI_HUB_RECEBE_PEDIDOS=0, sem "recebe pedidos"): real só depois da confirmação da virada pelo Alexandre (T-0027).`,
+      );
     const perfil = config.alvo === 'real' ? config.perfil : 'duble';
     throw new ErroConfigHub(`Recusado: o cenário "${nome}" não roda no perfil ${perfil}.`);
   }

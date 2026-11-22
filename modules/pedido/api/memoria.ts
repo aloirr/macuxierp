@@ -5,7 +5,7 @@ import type { CondicaoPagamento, Filial, PrecoVigente, SaldoEstoque } from '@mac
 import type { ClienteParaPedido, DecisaoPedido, HistoricoPedido, Pendencia, ProdutoParaPedido } from '../contracts';
 import { STATUS_COMPROMETEM, possiveis, validarTransicao } from '../domain';
 import type {
-  CompromissoCredito, ConsultaCadastrosPedido, ConsultaTitulosPedido, DadosCabecalho, Dependencias, FiltroPedidos, ItemGravado, LinhaLista, LogPedido,
+  ConsultaCadastrosPedido, ConsultaTitulosPedido, DadosCabecalho, Dependencias, FiltroPedidos, ItemGravado, LinhaLista, LogPedido,
   NotaEmAberto, NovaAprovacao, NovoEvento, NovoItem, NovoPedido, PedidoGravado, RepoPedidos,
 } from './portas';
 
@@ -77,6 +77,9 @@ class RepoMemoria implements RepoPedidos {
     p.pendencias = structuredClone([...pendencias]);
     if (validadoEm) p.validado_em = validadoEm.toISOString();
     this.tocar(p);
+  }
+  async atualizarAVista(id: string, aVista: boolean) {
+    (this.achar(id) as PedidoGravado).a_vista = aVista;
   }
   async atualizarPendencias(id: string, pendencias: readonly Pendencia[], validadoEm: Date) {
     const p = this.achar(id) as PedidoGravado;
@@ -152,13 +155,13 @@ class RepoMemoria implements RepoPedidos {
   async listarTodos(f: Omit<FiltroPedidos, 'limite' | 'cursor'>, maximo: number) {
     return this.filtrar(f, f.comDocumento === true).slice(0, maximo);
   }
-  async compromissoCredito(clienteId: string, exceto: string | null): Promise<CompromissoCredito[]> {
-    const por = new Map<string | null, number>();
+  async compromissoCredito(clienteId: string, exceto: string | null): Promise<number> {
+    let total = 0;
     for (const p of this.a.pedidos) {
-      if (p.cliente_id !== clienteId || p.id === exceto || !(STATUS_COMPROMETEM as readonly string[]).includes(p.status)) continue;
-      por.set(p.condicao_pagamento_id, (por.get(p.condicao_pagamento_id) ?? 0) + p.total_centavos - p.valor_faturado_centavos);
+      if (p.cliente_id !== clienteId || p.a_vista || p.id === exceto || !(STATUS_COMPROMETEM as readonly string[]).includes(p.status)) continue;
+      total += p.total_centavos - p.valor_faturado_centavos;
     }
-    return [...por].map(([condicao_pagamento_id, centavos]) => ({ condicao_pagamento_id, centavos }));
+    return total;
   }
   async compromissoEstoque(filialId: string, produtoIds: readonly string[], exceto: string | null) {
     const por = new Map<string, number>();

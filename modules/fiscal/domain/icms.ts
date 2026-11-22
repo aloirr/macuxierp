@@ -84,17 +84,21 @@ export interface ContextoIcmsItem {
   ipi_na_bc: boolean;
   /** Destinatário consumidor final não contribuinte (gera DIFAL na interestadual; não suportado no lote 1). */
   destinatario_nao_contribuinte_final?: boolean;
+  /** Destinatário consumidor final: habilita o ICMS efetivo do ST retido (CST 60 / CSOSN 500 com `st_retido` e `p_icms_efet` na regra). */
+  consumidor_final?: boolean;
 }
 
 const SEM_CALCULO = ['40', '41', '50', '60', '102', '103', '300', '400', '500'];
-const COM_PROPRIO = ['00', '10', '20', '70'];
+/** CST 60 e CSOSN 500: ICMS-ST retido anteriormente. */
+const ST_RETIDO = ['60', '500'];
+const COM_PROPRIO = ['00', '10', '20', '51', '70'];
 const COM_ST = ['10', '30', '70', '201', '202', '203'];
 /** CST 90 e CSOSN 900: calculam ICMS próprio/ST só se a regra trouxer a alíquota. */
 const COM_ALIQ_OPCIONAL = ['90', '900'];
 
 export type ResultadoIcmsItem = { ok: true; icms: IcmsItem } | { ok: false; codigo: CodigoErroCalculo; mensagem: string };
 
-/** Monta o grupo ICMS do item conforme o CST/CSOSN da regra (RN-FIS-02). Os códigos 51 (diferimento) ficam para lote posterior. */
+/** Monta o grupo ICMS do item conforme o CST/CSOSN da regra (RN-FIS-02). CST 51 (diferimento) e ST retido (60/500) desde o lote 4. */
 export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
   const { item, regra } = c;
   const cod = regra.codigo ?? '';
@@ -103,7 +107,22 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
   if (item.desconto_centavos > item.valor_bruto_centavos) return { ok: false, codigo: 'BASE_NEGATIVA', mensagem: 'O desconto é maior que o valor bruto do item.' };
   // DIFAL (ICMSUFDest) fica para um lote seguinte: venda interestadual a consumidor final não contribuinte não é calculada.
   if (c.interestadual && c.destinatario_nao_contribuinte_final) return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: 'Venda interestadual a consumidor final não contribuinte (DIFAL/ICMSUFDest) ainda não é calculada pelo motor.' };
-  if (cod === '51') return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: 'CST 51 (diferimento) ainda não é calculado pelo motor.' };
+  if (ST_RETIDO.includes(cod) && item.st_retido) {
+    const { p_red_bc_efet, ...retido } = item.st_retido;
+    // Os valores vêm da nota de compra: o motor só valida a coerência e repassa (erro da entrada, não da regra). FCP-ST retido: os três campos juntos ou nenhum.
+    const fcp = [retido.v_bc_fcp_st_ret, retido.p_fcp_st_ret, retido.v_fcp_st_ret];
+    if (fcp.some((x) => x !== undefined) && fcp.some((x) => x === undefined)) return { ok: false, codigo: 'ENTRADA_INVALIDA', mensagem: 'ST retido incoerente: o FCP-ST retido exige vBCFCPSTRet, pFCPSTRet e vFCPSTRet juntos.' };
+    if (retido.v_icms_st_ret > retido.v_bc_st_ret || (retido.v_fcp_st_ret !== undefined && retido.v_bc_fcp_st_ret !== undefined && retido.v_fcp_st_ret > retido.v_bc_fcp_st_ret)) {
+      return { ok: false, codigo: 'ENTRADA_INVALIDA', mensagem: 'ST retido incoerente: o valor retido é maior que a base de cálculo retida.' };
+    }
+    Object.assign(icms, retido);
+    // ICMS efetivo (consumidor final): vBCEfet = valor da operação × (1 − pRedBCEfet); vICMSEfet = vBCEfet × pICMSEfet. Sem `p_icms_efet` na regra o grupo não sai.
+    if (c.consumidor_final && regra.p_icms_efet !== null) {
+      const e = calcularIcms({ base_centavos: valorOperacao(item), reducao_bc: p_red_bc_efet ?? null, aliquota: regra.p_icms_efet });
+      Object.assign(icms, { p_red_bc_efet: p_red_bc_efet ?? 0, v_bc_efet: e.v_bc, p_icms_efet: regra.p_icms_efet, v_icms_efet: e.v_icms });
+    }
+  }
+  // Sem st_retido o 60/500 sai só com orig e CST/CSOSN: os grupos de ST retido e de ICMS efetivo são opcionais no leiaute.
   if (SEM_CALCULO.includes(cod)) return { ok: true, icms };
 
   const base = baseIcms(item, c.ipi_na_bc);
@@ -117,6 +136,8 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
   const proprio = COM_PROPRIO.includes(cod) || (COM_ALIQ_OPCIONAL.includes(cod) && aliqRegra !== null);
   if (proprio) {
     if (aliqRegra === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (código ${cod}) exige alíquota de ICMS.` };
+    if (cod === '51' && regra.p_dif === null) return { ok: false, codigo: 'REGRA_INCOMPLETA', mensagem: `A regra ${regra.id} (CST 51) exige o percentual de diferimento (p_dif).` };
+    if (cod === '51' && regra.p_fcp !== null) return { ok: false, codigo: 'CODIGO_NAO_SUPORTADO', mensagem: 'CST 51 com FCP (FCP diferido) ainda não é calculado: conferir na NT 2016.002 / homologação T-0046.' };
     const r = calcularIcms({ base_centavos: base, reducao_bc: cod === '00' ? null : regra.reducao_bc, aliquota: aliqRegra });
     vIcmsProprio = r.v_icms;
     if (!simples) {
@@ -129,6 +150,14 @@ export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
         icms.v_bc_fcp = r.v_bc;
         icms.p_fcp = regra.p_fcp;
         icms.v_fcp = aplicarPercentual(r.v_bc, regra.p_fcp);
+      }
+      if (cod === '51') {
+        // Diferimento: vICMSOp = ICMS da operação (como se não houvesse diferimento); vICMS = vICMSOp − vICMSDif.
+        const dif = aplicarPercentual(r.v_icms, regra.p_dif as number);
+        icms.v_icms_op = r.v_icms;
+        icms.p_dif = regra.p_dif as number;
+        icms.v_icms_dif = dif;
+        icms.v_icms = r.v_icms - dif;
       }
     }
   }

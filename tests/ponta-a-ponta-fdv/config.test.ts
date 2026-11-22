@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  CENARIOS_PEDIDOS,
   CENARIOS_SEGUROS,
   CENARIOS_SINTETICOS,
   cenarioPermitido,
@@ -393,5 +394,21 @@ describe('T-0012 — perfis do alvo real: tenant-teste e thathyany-seguro (decis
     expect(CENARIOS_SEGUROS.some((n) => cenarioPermitido(teste, n))).toBe(false);
     expect(() => exigirCenario(teste, 'reenvio-idempotente')).toThrow(/perfil tenant-teste/);
     expect([...CENARIOS_SINTETICOS, ...CENARIOS_SEGUROS].every((n) => cenarioPermitido(duble, n))).toBe(true);
+  });
+
+  it('T-0017: os cenários de pedidos rodam no dublê e no tenant-teste; o thathyany-seguro (recebe_pedidos=0) recusa todos e cita a T-0027', () => {
+    const seguro = lerConfigHub(SEGURO());
+    expect(seguro).toMatchObject({ perfil: 'thathyany-seguro', recebePedidos: false });
+    expect(CENARIOS_PEDIDOS.filter((n) => cenarioPermitido(seguro, n))).toEqual([]);
+    for (const n of CENARIOS_PEDIDOS) {
+      expect(() => exigirCenario(seguro, n)).toThrow(ErroConfigHub);
+      expect(() => exigirCenario(seguro, n)).toThrow(/MACUXI_HUB_RECEBE_PEDIDOS=0.*T-0027/);
+    }
+    const teste = lerConfigHub(REAL);
+    expect(CENARIOS_PEDIDOS.every((n) => cenarioPermitido(teste, n))).toBe(true);
+    expect(() => exigirCenario(teste, 'pedido-caminho-feliz')).not.toThrow();
+    expect(CENARIOS_PEDIDOS.every((n) => cenarioPermitido(lerConfigHub({}), n))).toBe(true);
+    // e o "recebe pedidos" ligado nunca passa no perfil seguro (a trava da T-0012 continua)
+    expect(recusa({ ...SEGURO(), MACUXI_HUB_RECEBE_PEDIDOS: '1' })).toMatch(/MACUXI_HUB_RECEBE_PEDIDOS=0 é obrigatório/);
   });
 });

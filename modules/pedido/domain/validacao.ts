@@ -1,4 +1,4 @@
-import { ehAVista, type CondicaoPagamento } from '@macuxierp/cadastros/contracts';
+import { classeForma, type CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import { CodigoPendencia, type CodigoRecusaRecebimento, type Pendencia, type PendenciaDetalhada } from '../contracts';
 import { totalItem, valorItem, verificarItens, type ItemValor } from './valores';
 
@@ -14,8 +14,8 @@ export interface EntradaAvaliacao {
   cliente: { inativo: boolean; limite_credito_centavos: number };
   filial: { emissora: boolean; inativo: boolean };
   condicao_pagamento_id: string | null;
-  /** Nulo = não encontrada (ou não informada). `forma_tpag` define se é à vista (`ehAVista`). */
-  condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias' | 'inativo'> | null;
+  /** Nulo = não encontrada (ou não informada). `forma_tpag` define se está fora do crédito (`foraDoCredito`). */
+  condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'inativo'> | null;
   itens: readonly ItemAvaliacao[];
   produtos: readonly { id: string; inativo: boolean }[];
   /** Preço de tabela vigente por produto; produto ausente = sem preço na tabela. */
@@ -33,31 +33,25 @@ export interface EntradaAvaliacao {
 export const STATUS_COMPROMETEM = ['aprovado', 'faturado_parcial'] as const;
 
 /**
- * RN-PED-04, premissa (f): soma o compromisso de crédito (total não faturado por condição) sem os pedidos à vista.
- * Condição nula ou não encontrada conta (sem a condição não se prova que é à vista).
+ * RN-PED-04: pedido fora do crédito do cliente (não passa pela análise de crédito nem entra no compromisso).
+ * Decisões do Alexandre de 22/11, 01h10 e 01h12: o cartão de crédito (tPag 03) fica fora do crédito, igual ao à vista
+ * (01, 17 e débito 04). Só a forma de pagamento decide (`classeForma`, contrato do cadastros). Sem condição, false.
  */
-export function compromissoDeCredito(
-  linhas: readonly { condicao_pagamento_id: string | null; centavos: number }[],
-  condicoes: ReadonlyMap<string, Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'> | null>,
-): number {
-  let total = 0;
-  for (const l of linhas) {
-    const c = l.condicao_pagamento_id === null ? null : (condicoes.get(l.condicao_pagamento_id) ?? null);
-    if (c !== null && ehAVista(c)) continue;
-    total += l.centavos;
-  }
-  return total;
+export function foraDoCredito(condicao: Pick<CondicaoPagamento, 'forma_tpag'> | null): boolean {
+  if (condicao === null) return false;
+  const classe = classeForma(condicao.forma_tpag);
+  return classe === 'a_vista' || classe === 'cartao';
 }
 
-/** RN-PED-04; decisões de 21/11 23h10, 23h55 e 22/11 00h30: à vista (ehAVista, contrato do cadastros) fica fora da análise e do limite de crédito. */
+/** RN-PED-04; decisões de 22/11, 01h10 e 01h12: fora do crédito (`foraDoCredito`) não há pendência de crédito. */
 export function avaliarCredito(a: {
-  condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'> | null;
+  condicao: Pick<CondicaoPagamento, 'forma_tpag'> | null;
   limite_credito_centavos: number;
   titulos_abertos_centavos: number;
   compromisso_credito_centavos: number;
   total_centavos: number;
 }): { codigo: 'credito_sem_limite' | 'credito_excedido'; esperado: number; informado: number } | null {
-  if (a.condicao !== null && ehAVista(a.condicao)) return null;
+  if (foraDoCredito(a.condicao)) return null;
   if (a.limite_credito_centavos === 0 && a.total_centavos > 0) return { codigo: 'credito_sem_limite', esperado: 0, informado: a.total_centavos };
   const exposicao = a.titulos_abertos_centavos + a.compromisso_credito_centavos + a.total_centavos;
   return exposicao > a.limite_credito_centavos ? { codigo: 'credito_excedido', esperado: a.limite_credito_centavos, informado: exposicao } : null;

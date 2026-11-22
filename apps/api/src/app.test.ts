@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 import { definirPlugin, definirRota, erros, EuResposta, type Licenca } from '@macuxierp/platform-sdk';
-import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
+import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { COOKIE_REFRESH, criarApp, type LeitorAvisosA1 } from './app';
@@ -35,6 +35,7 @@ const pluginTeste = definirPlugin(manifestoCadastros, [
     corpo: z.object({ preco_centavos: z.number().int().min(0) }),
     executar: async (c, e) => {
       if (e.corpo.preco_centavos === 13) throw erros.regra('RN-CAD-06', 'preço fora da vigência');
+      if (e.corpo.preco_centavos === 14) throw erros.regra('RN-CAD-06', 'preço fora da vigência', { preco_centavos: 'fora' }, { possiveis: ['a', 'b'], limite: 3 });
       const v1 = await c.publicar({ nome: 'cadastros.preco.alterado@1', agregado_id: ADM, versao: 1, payload: { preco_centavos: e.corpo.preco_centavos } });
       const v2 = await c.publicar({ nome: 'cadastros.preco.alterado@1', agregado_id: ADM, versao: 7, payload: { preco_centavos: e.corpo.preco_centavos } });
       // versao omitida (T-0042): o padrão continua sendo a próxima versão do agregado na outbox
@@ -82,6 +83,8 @@ async function montar(opcoes: { licencas?: Licenca[]; logs?: string[]; avisosA1?
     auditoria,
     trabalhos,
     relogio,
+    // o pedido montado de verdade (T-0016) declara Idempotency-Key no POST /pedidos
+    idempotencia: new IdempotenciaMemoria(),
     avisosA1: opcoes.avisosA1 ?? (async () => []),
     modulos: [...MODULOS.filter((m) => m.manifesto.id !== 'cadastros'), pluginTeste],
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,
@@ -280,6 +283,10 @@ describe('rotas de módulo: ordem de checagem (RN-CORE-02)', () => {
     const regra = await postar(app, adm, { preco_centavos: 13 });
     expect(regra.statusCode).toBe(422);
     expect(regra.json()).toEqual({ codigo: 'RN-CAD-06', mensagem: 'preço fora da vigência' });
+    // T-0016: os detalhes estruturados do erro de regra saem no corpo, ao lado dos campos
+    const comDetalhes = await postar(app, adm, { preco_centavos: 14 });
+    expect(comDetalhes.statusCode).toBe(422);
+    expect(comDetalhes.json()).toEqual({ codigo: 'RN-CAD-06', mensagem: 'preço fora da vigência', campos: { preco_centavos: 'fora' }, detalhes: { possiveis: ['a', 'b'], limite: 3 } });
     const ok = await app.inject({ method: 'POST', url: '/v1/cadastros/precos', payload: { preco_centavos: 990 }, headers: { authorization: `Bearer ${adm}`, 'x-request-id': 'req-teste-0001' } });
     expect(ok.statusCode).toBe(201);
     expect(ok.json()).toEqual({ tenant: TENANT, versoes: [1, 2, 3] });

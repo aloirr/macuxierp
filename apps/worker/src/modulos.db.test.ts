@@ -59,5 +59,6 @@ describe.skipIf(!PG_DISPONIVEL)('worker montado com os adaptadores do core (Post
     expect(rows).toEqual([{ estado: 'pronta', chave_s3: `macuxierp/${T}/exportacoes/${id}.zip` }]);
     const zip = Buffer.from(armazenamento.objetos.get(rows[0]!.chave_s3)!.corpo).toString('latin1');
     expect(zip).toContain('core.json');
+    expect(zip).toContain('pedido.json'); // T-0016: o exportador do pedido roda com o papel do worker
   });
 });

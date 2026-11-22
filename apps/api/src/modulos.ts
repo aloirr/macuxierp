@@ -2,7 +2,7 @@
  * Registro dos módulos montados na API (T-0029) e dependências de produção numa função só (T-0042, achado A-06 da
  * T-0008). Desenho e regras: `docs/desenho/T-0002.md` (§2, "Integração de plataforma da F1", item "Registro dos módulos").
  */
-import { criarPluginCadastros, fontesHttp, repositoriosSql, type Dependencias as DependenciasCadastros, type PortaCertificados } from '@macuxierp/cadastros/api';
+import { criarConsultaParaPedido, criarPluginCadastros, fontesHttp, repositoriosSql, type Dependencias as DependenciasCadastros, type PortaCertificados } from '@macuxierp/cadastros/api';
 import {
   avisosA1MaisRecentes,
   criarPluginCore,
@@ -15,7 +15,7 @@ import {
 import { manifest as faturamento } from '@macuxierp/faturamento/manifest';
 import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
 import { manifest as integracaoFdv } from '@macuxierp/integracao-fdv/manifest';
-import { manifest as pedido } from '@macuxierp/pedido/manifest';
+import { criarPluginPedido, dependenciasDeProducao as dependenciasPedido, type Dependencias as DependenciasPedido, type LogPedido } from '@macuxierp/pedido/api';
 import { armazenamentoIndisponivel, definirPlugin, MODULOS, relogioDoSistema, type Banco, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { DependenciasApp } from './app';
@@ -51,8 +51,8 @@ export function registrarModulos(entradas: readonly EntradaModulo[]): readonly P
   return Object.freeze(MODULOS.flatMap((id) => porId.get(id) ?? []));
 }
 
-/** Módulos da F1 ainda sem rotas: só o manifesto (menus do `/eu`). */
-const SEM_ROTAS: readonly ManifestoModulo[] = [pedido, fiscal, faturamento, integracaoFdv];
+/** Módulos ainda sem rotas: só o manifesto (menus do `/eu`). */
+const SEM_ROTAS: readonly ManifestoModulo[] = [fiscal, faturamento, integracaoFdv];
 
 /** A1 válido da filial para o cadastros (consulta de IE, RN-CORE-06), pela porta pública do core, na transação da rota. */
 export function certificadosDoCore(repo: RepositorioCore): PortaCertificados {
@@ -68,6 +68,13 @@ export interface DependenciasModulos {
   core: DependenciasCore;
   /** Padrão: adaptador SQL, fontes HTTP reais e o A1 pela porta do core. Os testes trocam o que precisarem. */
   cadastros?: Partial<DependenciasCadastros>;
+  /**
+   * Padrão (T-0016, R-20261121-234202): `dependenciasDeProducao` do pedido (adaptador SQL, sem títulos e sem nota em
+   * autorização até a F4) sobre a `criarConsultaParaPedido` do cadastros com os mesmos repositórios do cadastros.
+   */
+  pedido?: Partial<DependenciasPedido>;
+  /** Log dos módulos que recebem um (pedido): o pino da API. Só ids e códigos (regra 8). Sem ele, o módulo não loga. */
+  log?: LogPedido;
 }
 
 export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
@@ -76,7 +83,11 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
     fontes: d.cadastros?.fontes ?? fontesHttp(),
     certificados: d.cadastros?.certificados ?? certificadosDoCore(d.core.repo),
   });
-  return registrarModulos([criarPluginCore(d.core), cadastros, ...SEM_ROTAS]);
+  const pedido = criarPluginPedido({
+    ...dependenciasPedido(criarConsultaParaPedido(d.cadastros?.repositorios ?? repositoriosSql), d.log ? { log: d.log } : {}),
+    ...d.pedido,
+  });
+  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, ...SEM_ROTAS]);
 }
 
 export interface EntradaProducao {
@@ -85,12 +96,14 @@ export interface EntradaProducao {
   /** Chave mestra do A1 (ADR 0005), lida do secret do servidor; nunca vai para log. */
   chaveA1: Buffer;
   config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro'>;
+  /** Pino da API para o log dos módulos (o `main.ts` cria; os testes passam um com destino em memória). */
+  log?: LogPedido;
 }
 
 /**
  * Dependências de produção da API (T-0042, achado A-06 da T-0008): adaptadores PostgreSQL da plataforma, auth em SQL,
  * argon2id, relógio do sistema, selo do A1 do core e os módulos com os adaptadores reais (`RepositorioCoreSql`,
- * `LeitorPfxTls`, armazenamento indisponível até a T-0024; cadastros com os padrões do `montarModulos`). O `main.ts` e
+ * `LeitorPfxTls`, armazenamento indisponível até a T-0024; cadastros e pedido com os padrões do `montarModulos`). O `main.ts` e
  * os testes de ponta a ponta usam esta mesma função: o que muda num muda no outro.
  */
 export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp {
@@ -109,6 +122,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     avisosA1: avisosA1MaisRecentes,
     modulos: montarModulos({
       core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
+      ...(e.log ? { log: e.log } : {}),
     }),
   };
 }

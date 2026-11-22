@@ -177,3 +177,66 @@ describe('calcularDocumento', () => {
     });
   });
 });
+
+describe('emitente MEI revendedor (CRT 4, NT 2024.001): CSOSN 102 e 500 com ST retido', () => {
+  const semPisCofins = { cst_pis: '99', aliquota_pis: null, cst_cofins: '99', aliquota_cofins: null };
+  const stRetido = { v_bc_st_ret: 60000, p_st: 180000, v_icms_substituto: 5400, v_icms_st_ret: 5400 };
+  const mei = (p: Record<string, unknown> = {}) =>
+    CalculoEntrada.parse({
+      emitente: { uf: 'AM', crt: 4 },
+      destinatario: { uf: 'AM', tipo_contribuinte: 'nao_contribuinte', consumidor_final: true, tipo_pessoa: 'PF' },
+      operacao: { finalidade: 'normal', data_emissao: '2026-11-22' },
+      itens: [
+        item({ id: 'a', ncm: '22021000', valor_unitario_centavos: 100000, valor_bruto_centavos: 100000 }),
+        item({ id: 'b', ncm: '33049990', valor_unitario_centavos: 50000, valor_bruto_centavos: 50000, frete_centavos: 1000, st_retido: stRetido }),
+      ],
+      regras: [
+        regra({ ncm_prefixo: '2202', codigo: '102', aliquota_icms: null, ...semPisCofins, fonte: { tipo: 'NT', referencia: 'NT 2024.001' } }),
+        regra({ ncm_prefixo: '3304', codigo: '500', aliquota_icms: null, p_icms_efet: 180000, ...semPisCofins, fonte: { tipo: 'convenio', referencia: 'Convênio ICMS 142/2018' } }),
+      ],
+      ...p,
+    });
+  it('RN-FIS-02: MEI revendedor: 102 e 500 com st_retido, PIS/COFINS 99 no DAS, sem IPI e sem IBS/CBS; vNF = vProd + vFrete', () => {
+    const r = calcularDocumento(mei());
+    expect(r).toMatchObject({
+      ok: true,
+      valor: {
+        operacao: 'interna',
+        itens: [
+          { item_id: 'a', icms: { orig: '0', csosn: '102' }, pis: { cst: '99' }, cofins: { cst: '99' } },
+          {
+            item_id: 'b',
+            // efetivo: (500,00 + 10,00) × 18% = 91,80
+            icms: { csosn: '500', v_bc_st_ret: 60000, p_st: 180000, v_icms_substituto: 5400, v_icms_st_ret: 5400, p_red_bc_efet: 0, v_bc_efet: 51000, p_icms_efet: 180000, v_icms_efet: 9180 },
+            pis: { cst: '99' },
+            cofins: { cst: '99' },
+          },
+        ],
+        totais: { v_prod: 150000, v_frete: 1000, v_desc: 0, v_ipi: 0, v_bc: 0, v_icms: 0, v_bc_st: 0, v_st: 0, v_fcp_st: 0, v_cred_icms_sn: 0, v_pis: 0, v_cofins: 0, v_nf: 151000 },
+      },
+    });
+    const v = (r as { valor: { itens: Array<Record<string, unknown>>; totais: Record<string, unknown> } }).valor;
+    for (const it of v.itens) for (const g of ['ipi', 'ibs_cbs', 'is', 'versao_nt_rtc']) expect(it).not.toHaveProperty(g);
+    for (const g of ['v_ibs', 'v_cbs', 'v_is', 'v_nf_tot']) expect(v.totais).not.toHaveProperty(g);
+  });
+  it('RN-FIS-02: MEI com regra de CSOSN 101 (crédito) é recusado no documento', () => {
+    const r = calcularDocumento(mei({ regras: [regra({ codigo: '101', p_cred_sn: 28200, ...semPisCofins })] }));
+    expect(r).toMatchObject({ ok: false, erros: expect.arrayContaining([expect.objectContaining({ rn: 'RN-FIS-02', codigo: 'CODIGO_INCOMPATIVEL_CRT' })]) });
+  });
+  it('RN-FIS-02: CST 51 no documento (regime normal): vICMS líquido do diferimento entra nos totais', () => {
+    const r = calcularDocumento(base({ regras: [regra({ codigo: '51', p_dif: 333300 })] }));
+    expect(r).toMatchObject({ ok: true, valor: { itens: [{ icms: { cst: '51', v_icms_op: 18000, v_icms_dif: 5999, v_icms: 12001 } }], totais: { v_bc: 100000, v_icms: 12001 } } });
+  });
+});
+
+describe('total do FCP-ST retido (vFCPSTRet)', () => {
+  const retido = (extra: Record<string, unknown>) => ({ v_bc_st_ret: 60000, p_st: 180000, v_icms_substituto: 5400, v_icms_st_ret: 5400, ...extra });
+  const doc = (itens: unknown[]) => CalculoEntrada.parse({ ...base().valueOf(), itens, regras: [regra({ codigo: '60', aliquota_icms: null })] });
+  it('RN-FIS-02: soma o vFCPSTRet dos itens e fica fora do vNF; sem item com o campo o total não sai', () => {
+    const fcp = { v_bc_fcp_st_ret: 60000, p_fcp_st_ret: 20000, v_fcp_st_ret: 1200 };
+    const r = calcularDocumento(doc([item({ id: 'a', st_retido: retido(fcp) }), item({ id: 'b', st_retido: retido({ ...fcp, v_fcp_st_ret: 800 }) }), item({ id: 'c', st_retido: retido({}) })]));
+    expect(r).toMatchObject({ ok: true, valor: { totais: { v_fcp_st_ret: 2000, v_fcp_st: 0, v_nf: 300000 } } });
+    const sem = calcularDocumento(doc([item({ id: 'a', st_retido: retido({}) })]));
+    expect((sem as { valor: { totais: object } }).valor.totais).not.toHaveProperty('v_fcp_st_ret');
+  });
+});

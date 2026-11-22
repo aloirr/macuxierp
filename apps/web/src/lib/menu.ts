@@ -1,5 +1,5 @@
 import type { EuResposta, ManifestoModulo, ModuloId, Perfil } from '@macuxierp/platform-sdk';
-import { paginaDaRota, paginasDoMenu, paginaVisivel, type PaginaRegistrada, PAGINAS_REGISTRADAS } from './paginas';
+import { casarRota, paginasDoMenu, paginaVisivel, type PaginaRegistrada, PAGINAS_REGISTRADAS } from './paginas';
 
 export interface ItemMenu {
   rotulo: string;
@@ -49,6 +49,8 @@ export interface PaginaResolvida {
   rotulo: string;
   /** Página declarada pelo módulo; ausente quando a rota vem só do rótulo do manifesto (módulo sem páginas). */
   pagina?: PaginaRegistrada;
+  /** Parâmetros da rota com `:nome` (ex.: `id` do detalhe). */
+  params?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -59,8 +61,11 @@ export function resolverPagina(menu: readonly GrupoMenu[], rota: string, perfil:
   const modulo = rota.split('/')[1];
   const grupo = menu.find((g) => g.modulo === modulo);
   if (!grupo) return undefined;
-  const pagina = paginaDaRota(rota, paginas);
-  if (pagina) return paginaVisivel(pagina, perfil) && grupo.itens.some((i) => i.rotulo === pagina.menu) ? { rotulo: pagina.menu, pagina } : undefined;
+  const casada = casarRota(rota, paginas);
+  if (casada) {
+    const { pagina, params } = casada;
+    return paginaVisivel(pagina, perfil) && grupo.itens.some((i) => i.rotulo === pagina.menu) ? { rotulo: pagina.menu, pagina, params } : undefined;
+  }
   const item = grupo.itens.find((i) => i.href === rota);
   return item ? { rotulo: item.rotulo } : undefined;
 }
