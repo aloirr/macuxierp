@@ -4,14 +4,14 @@
  */
 import { formatarCentavos } from '@macuxierp/platform-sdk/formatar';
 import {
-  FILTROS_TELA, ITEM_VAZIO, ROTULO_BUSCA, acoesDoPedido, avisoDoMotivo, cabecalhoDoPedido, calcularTotal as totalDoModulo, colunasDaTela, linhaDaTela, linhasDeHistorico, linhasDeItens,
-  linhasDePendencias, motivosDaDecisao, novaChaveDoFormulario, paginaPedidos, resumoDaDecisao, textoCentavos, tituloDaColuna, validarAprovacao, validarFormulario, validarMotivo,
+  FILTROS_TELA, ITEM_VAZIO, ROTULO_BUSCA, ROTULO_STATUS, acoesDoPedido, avisoDoMotivo, cabecalhoDoPedido, calcularTotal as totalDoModulo, colunasDaTela, linhaDaTela, linhasDeHistorico, linhasDeItens,
+  linhasDePendencias, motivosDaDecisao, totalDoFormulario, novaChaveDoFormulario, paginaPedidos, resumoDaDecisao, textoCentavos, tituloDaColuna, validarAprovacao, validarFormulario, validarMotivo,
   type DecisaoComMotivo, type ItemListaPedido,
 } from '@macuxierp/pedido/web';
 import { CatalogoMotivos, Pedido, type StatusPedido } from '@macuxierp/pedido/contracts';
 import type { ItemLinha } from '@macuxierp/ui';
 import { primeiroErro } from '../descritor/formulario';
-import type { AcaoVista, DetalheVista, EntradaAcao, ItemFormulario, ResultadoAcao, TelaDescrita, TelaDetalhe, TelaFormulario, TelaLista, ValoresFormulario } from '../descritor/tipos';
+import type { AcaoVista, DetalheVista, EntradaAcao, ItemFormulario, ResultadoAcao, TelaDescrita, TelaDetalhe, TelaFormulario, SeloVista, TelaLista, ValoresFormulario } from '../descritor/tipos';
 
 const BASE = '/v1/pedido/pedidos';
 const [LISTA, NOVO, DETALHE] = ['/pedido/pedidos', '/pedido/pedidos/novo', '/pedido/pedidos/:id'] as const;
@@ -20,13 +20,21 @@ const TOM: Readonly<Record<StatusPedido, 'ok' | 'aviso' | 'erro' | 'neutro'>> = 
   recebido: 'neutro', em_analise: 'aviso', aprovado: 'ok', recusado: 'erro', faturado_parcial: 'ok', faturado: 'ok', cancelado: 'neutro',
 };
 
+/** Colunas numéricas da lista: à direita, com algarismos tabulares (ColunaLista ainda não traz o tipo). */
+const TIPO_DA_COLUNA: Readonly<Record<string, 'numero' | 'dinheiro'>> = { numero: 'numero', total_centavos: 'dinheiro', pendencias: 'numero' };
+
 export const LISTA_PEDIDOS: TelaLista = {
   tipo: 'lista',
   pagina: paginaPedidos as unknown as TelaLista['pagina'],
   rotuloBusca: ROTULO_BUSCA,
   filtrosTela: FILTROS_TELA.map((f) => (f.tipo === 'cadastro' ? { chave: f.chave, rotulo: f.rotulo, tipo: 'cadastro', fonte: f.fonte } : f.tipo === 'selecao' ? { chave: f.chave, rotulo: f.rotulo, tipo: 'selecao', opcoes: f.opcoes } : { chave: f.chave, rotulo: f.rotulo, tipo: 'data' })),
-  colunas: (perfil) => colunasDaTela(perfil).map((c) => ({ id: c.id, rotulo: tituloDaColuna(c) })),
+  colunas: (perfil) => colunasDaTela(perfil).map((c) => ({ id: c.id, rotulo: tituloDaColuna(c), ...(TIPO_DA_COLUNA[c.id] ? { tipo: TIPO_DA_COLUNA[c.id] } : {}) })),
   linha: (item, fuso) => linhaDaTela(item as unknown as ItemListaPedido, fuso),
+  /** Status da lista em selo, com o mesmo tom e o mesmo texto do detalhe (o texto vem do módulo). */
+  selos: (item): Readonly<Record<string, readonly SeloVista[]>> => {
+    const status = item.status as StatusPedido;
+    return TOM[status] ? { status: [{ texto: ROTULO_STATUS[status], tom: TOM[status] }] } : {};
+  },
   novo: { rota: NOVO, rotulo: 'Novo pedido', criar: 'pedido.pedido.lancar' },
   rotaDaLinha: (l) => `/pedido/pedidos/${String(l.id)}`,
   rotuloDaLinha: (l) => `Abrir pedido ${String(l.numero)}`,
@@ -162,7 +170,7 @@ export const NOVO_PEDIDO: TelaFormulario = {
     { nome: 'condicao_pagamento_id', rotulo: 'Condição de pagamento', tipo: 'cadastro', fonte: '/v1/cadastros/condicoes-pagamento' },
     { nome: 'observacao', rotulo: 'Observação', tipo: 'area' },
   ],
-  itens: { fonte: '/v1/cadastros/produtos', rotuloProduto: 'Produto', novoItem, calcularTotal, erroItem, paraTexto, formatarCentavos },
+  itens: { fonte: '/v1/cadastros/produtos', rotuloProduto: 'Produto', novoItem, calcularTotal, erroItem, paraTexto, formatarCentavos, totalTexto: (linhas) => totalDoFormulario(linhas.map((l) => ({ ...l, desconto: l.desconto ?? '' }))).texto },
   validar: (v, linhas) => {
     const r = validarFormulario(formulario(v, linhas));
     return r.ok ? {} : r.erros;

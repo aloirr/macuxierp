@@ -63,7 +63,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
   return (
     <>
       <div className="barra-acoes" role="group" aria-label="Ações" style={compacta ? { margin: 0 } : undefined}>
-        {acoes.map((x) => <button key={x.id} type="button" className={x.principal ? 'btn' : 'btn btn-sec'} disabled={ocupado || Boolean(x.desabilitada)} title={x.desabilitada} aria-describedby={x.desabilitada ? `${x.id}-motivo` : undefined} onClick={() => abrir(x)}>{x.rotulo}</button>)}
+        {acoes.map((x) => <button key={x.id} type="button" className={x.principal ? 'mx-botao' : 'mx-botao-secundario'} disabled={ocupado || Boolean(x.desabilitada)} title={x.desabilitada} aria-describedby={x.desabilitada ? `${x.id}-motivo` : undefined} onClick={() => abrir(x)}>{x.rotulo}</button>)}
       </div>
       {!compacta && acoes.filter((x) => x.desabilitada).map((x) => <p key={x.id} id={`${x.id}-motivo`} className="apoio">{x.rotulo}: {x.desabilitada}</p>)}
       {!a && erro && <p className="erro" role="alert">{erro}</p>}
@@ -93,6 +93,8 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
           textoObrigatorio={a.entrada === 'justificativa' && Boolean(a.justificativaObrigatoria)}
           rotuloConfirmar={ocupado ? (a.textoCarregando ?? 'Enviando…') : (a.rotuloConfirmar ?? 'Confirmar')}
           aviso={a.aviso ?? null}
+          rotuloFechar={a.rotuloFechar ?? 'Cancelar'}
+          destrutivo={Boolean(a.destrutivo)}
           validar={(r: ResultadoMotivo) => { const v = executor?.validarAcao(a, r); return v && !v.ok ? v.erro : null; }}
           aoConfirmar={(r) => void enviar(a, r)}
           aoCancelar={aoCancelar}

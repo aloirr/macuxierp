@@ -10,13 +10,14 @@ a { color: var(--mx-cor-azul-noite); }
 .num { font-variant-numeric: var(--mx-fonte-numeros); }
 
 .marca { font-weight: var(--mx-peso-titulo); letter-spacing: .02em; }
-.btn { background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); border: 0; border-radius: 6px; padding: 10px 16px; font: inherit; font-weight: var(--mx-peso-botao-principal); cursor: pointer; }
-.btn:hover { filter: brightness(1.25); }
-.btn-sec { background: transparent; color: inherit; border: 1px solid currentColor; font-weight: var(--mx-peso-medio); }
-.btn[disabled] { opacity: .6; cursor: progress; }
+/* Botões: estilo único de @macuxierp/ui/botoes.css (MC-0008); aqui só o que é do shell. */
+/* provisório: sai quando o @macuxierp/ui gerar :hover/:focus-visible (pedido ao designer-ux) */
+.mx-botao:hover:not(:disabled) { background: var(--mx-cor-grafite); }
+.mx-botao-secundario:hover:not(:disabled) { background: var(--mx-cor-nevoa); border-color: var(--mx-cor-azul-noite); }
+.mx-botao:focus-visible, .mx-botao-secundario:focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
 .campo { display: block; margin-bottom: 16px; }
 .campo span { display: block; font-weight: var(--mx-peso-rotulo-campo); margin-bottom: 4px; }
-.campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 .apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
 
@@ -25,8 +26,8 @@ a { color: var(--mx-cor-azul-noite); }
 .cartao-central h1 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 16px; }
 .lista-escolha { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
 
-.casca { display: grid; grid-template-columns: 260px 1fr; grid-template-rows: auto 1fr; min-height: 100vh; }
-.topo { grid-column: 1 / -1; background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); display: flex; gap: 16px; align-items: center; padding: 10px 20px; flex-wrap: wrap; }
+.casca { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
+.topo { grid-column: 1 / -1; background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); display: flex; gap: 16px; align-items: center; padding: 15px 20px; /* área de proteção da assinatura: ~62% de 24 px */ flex-wrap: wrap; }
 .topo .espaco { flex: 1; }
 .topo a { color: var(--mx-cor-borda-cinza); text-decoration: underline; }
 .lateral { background: var(--mx-cor-grafite); color: var(--mx-cor-branco); padding: 16px 0; }
@@ -37,7 +38,7 @@ a { color: var(--mx-cor-azul-noite); }
 .lateral a[aria-current='page'] { background: var(--mx-cor-grafite-menu); border-left: 4px solid var(--mx-cor-sol-claro); padding-left: 16px; }
 /* Divisória única: toda seção após o Início tem 1px, 8px de margem acima e 8px de respiro abaixo da linha. */
 .lateral > * + * { border-top: 1px solid var(--mx-cor-grafite-menu); margin-top: 8px; padding-top: 8px; }
-.conteudo { padding: 24px 32px; max-width: 1100px; }
+.conteudo { padding: 24px 32px; max-width: 1100px; min-width: 0; }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); margin-top: 0; }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
@@ -51,10 +52,15 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 
 /* Telas genéricas de descritor (T-0015): os componentes visuais são do @macuxierp/ui; aqui só o que o shell desenha. */
 .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.tabela-rolavel { overflow-x: auto; }
-.filtros { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; margin-bottom: 16px; }
-.filtros .campo { margin: 0; min-width: 160px; }
-.filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.tabela-rolavel { overflow-x: auto; max-width: 100%; }
+/* Colunas de largura fixa: a grade não muda com o tamanho do rótulo; "Filtrar" e "Limpar" ficam juntos na última célula. */
+.filtros { display: grid; grid-template-columns: repeat(auto-fill, 220px); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
+.filtros .campo { margin: 0; min-width: 0; }
+.filtros-acoes { display: flex; gap: 8px; align-items: end; white-space: nowrap; }
+/* O U+00A0 do "R$ 1.234,56" não quebra, mas a célula estreita sim: dinheiro e número ficam numa linha só. */
+.sem-quebra { white-space: nowrap; }
+.total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
+.filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .barra-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .selo-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
 .selo-erro { background: var(--mx-cor-erro-fundo); color: var(--mx-cor-erro-texto); }
@@ -63,11 +69,9 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .dados dd { margin: 0; font-weight: var(--mx-peso-medio); }
 .erro-campo { color: var(--mx-cor-erro-texto); display: block; margin-top: 4px; }
 .paginacao { display: flex; gap: 12px; margin-top: 12px; }
-/* Botão secundário e link-botão iguais: sem sublinhado, mesma fonte e altura. */
-.btn, a.btn { text-decoration: none; display: inline-block; line-height: 1.5; }
-a.btn:hover, a.btn:focus-visible { text-decoration: none; }
-a.btn-sec { color: inherit; }
-.entrada, .campo select, .campo textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+/* Link-botão igual ao botão: sem sublinhado, mesma altura. */
+a.mx-botao, a.mx-botao-secundario { text-decoration: none; display: inline-block; }
+.entrada, .campo select, .campo textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 
 /* Integração FDV (T-0011) */
 .faixa-sinal { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--mx-cor-borda-cinza); margin: 0 0 16px; }
@@ -83,7 +87,7 @@ fieldset.grupo-campos { margin: 0 0 16px; border: 1px solid var(--mx-cor-borda-c
 /* Diálogo simples do shell (confirmação e baixa de título) e telas do faturamento (T-0021): só tokens. */
 .dialogo-fundo { position: fixed; inset: 0; display: grid; place-items: center; z-index: 10; }
 .dialogo-cortina { position: absolute; inset: 0; background: var(--mx-cor-grafite); opacity: .55; }
-.dialogo { position: relative; background: var(--mx-cor-branco); padding: 24px; width: min(480px, 92vw); display: grid; gap: 12px; border-radius: 6px; }
+.dialogo { position: relative; font-size: var(--mx-tamanho-base); background: var(--mx-cor-branco); padding: 24px; width: min(480px, 92vw); display: grid; gap: 12px; border-radius: 6px; }
 .dialogo h2 { margin: 0; font-size: var(--mx-tamanho-titulo-dialogo); }
 .dialogo p { margin: 0; }
 .dialogo-botoes { justify-content: flex-end; margin: 0; }

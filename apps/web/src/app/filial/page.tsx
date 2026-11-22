@@ -32,7 +32,7 @@ export default async function SelecionarFilial() {
             </li>
           ))}
         </ul>
-        <button className="btn" type="submit">Continuar</button>
+        <button className="mx-botao" type="submit">Continuar</button>
       </form>
     </main>
   );
