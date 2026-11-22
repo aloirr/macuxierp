@@ -2,11 +2,10 @@
 // 2026-11-21-T-0045-simulador.md): A1 com o CNPJ só no SAN (otherName 2.16.76.1.3.3, ICP-Brasil DOC-ICP-04) e sem o
 // `:CNPJ` no CN do titular. Leitores públicos do CNPJ do certificado:
 // - core: `LeitorPfxTls` (`@macuxierp/core/api`), usado no upload do A1 (POST /v1/core/certificados, ADR 0005);
-// - nfe-sefaz: `verificarAssinaturaNFe` (`cnpjDoCertificado`), usado pelo simulador (292/213) e pelo worker.
-// Os dois só leem o CN. O desenho T-0045 e a ADR 0008 não dizem o que fazer com o CNPJ só no SAN; a proposta do
-// corretor (RD-0294) é "procura no SAN e cai no CN". Por isso os dois casos ficam em `it.fails`, com o esperado no
-// comentário: quando a função única do RD-0294 entrar, eles passam a falhar aqui e viram `it`.
-// Tudo na memória: os A1 são gerados na hora e nada vai a disco nem a log.
+// - nfe-sefaz: `verificarAssinaturaNFe` (`cnpjDoTitularIcp` do platform-sdk), usado pelo simulador (292/213) e pelo worker.
+// A T-0018 (RD-0294) fez o nfe-sefaz ler o SAN e cair no CN (testado no pacote); o core ainda só lê o CN: `it.fails` abaixo.
+// Os A1 vêm do `gerarA1DeTeste` (`cnpjNoTitular`, RD-0444). Tudo na memória: nada vai a disco nem a log.
+import { X509Certificate } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { LeitorPfxTls, PfxInvalido } from '../../modules/core/api/index';
 import { verificarAssinaturaNFe } from '../../packages/nfe-sefaz/src/index';
@@ -18,11 +17,24 @@ import {
   gerarA1DeTeste,
   montarNFeDeTeste,
 } from '../../packages/nfe-sefaz/src/teste/index';
-import { gerarA1ComCnpjNoSan, sanTemCnpj } from './apoio/certificado-san';
 
 const BASE = { cnpj: CNPJ_EMITENTE_DE_TESTE, nome: 'EMPRESA SO SAN DE TESTE LTDA', ...VALIDADE_DE_TESTE };
-const comCnpjNoCnESan = gerarA1ComCnpjNoSan({ ...BASE, cnpjNoCn: true });
-const soNoSan = gerarA1ComCnpjNoSan({ ...BASE, cnpjNoCn: false });
+const comCnpjNoCnESan = gerarA1DeTeste({ ...BASE, cnpjNoTitular: 'cn-e-san' });
+const soNoSan = gerarA1DeTeste({ ...BASE, cnpjNoTitular: 'san' });
+
+/** DER do certificado, a partir do PEM. */
+const der = (a1: { certificadoPem: string }): Buffer => new X509Certificate(a1.certificadoPem).raw;
+
+/**
+ * Prova independente do leitor sob teste: o DER traz o `otherName` 2.16.76.1.3.3 (OID 06 05 60 4C 01 03 03) seguido
+ * de `[0] OCTET STRING <cnpj>`.
+ */
+function sanTemCnpj(certificadoDer: Buffer, cnpj: string): boolean {
+  const oidCnpjIcp = Buffer.from([0x06, 0x05, 0x60, 0x4c, 0x01, 0x03, 0x03]);
+  const valor = Buffer.concat([Buffer.from([0x04, cnpj.length]), Buffer.from(cnpj, 'ascii')]);
+  const otherName = Buffer.concat([oidCnpjIcp, Buffer.from([0xa0, valor.length]), valor]);
+  return certificadoDer.includes(otherName);
+}
 
 function nfeAssinadaCom(a1: { chavePrivadaPem: string; certificadoPem: string }): string {
   const n = montarNFeDeTeste({ nNF: 1, dhEmi: new Date(INSTANTE_DE_TESTE.getTime() - 60_000) });
@@ -32,7 +44,7 @@ const verificar = (xml: string) => verificarAssinaturaNFe(xml, { cnpjEsperado: C
 
 describe('T-0022: CNPJ do A1 no CN × só no SAN (RD-0294, caso do corretor)', () => {
   it('controle: o A1 montado no teste é válido; com o CNPJ no CN (e no SAN), o core e o verificador o aceitam', async () => {
-    expect(sanTemCnpj(comCnpjNoCnESan.certificadoDer, CNPJ_EMITENTE_DE_TESTE)).toBe(true);
+    expect(sanTemCnpj(der(comCnpjNoCnESan), CNPJ_EMITENTE_DE_TESTE)).toBe(true);
     await expect(new LeitorPfxTls().abrir(comCnpjNoCnESan.pfx, comCnpjNoCnESan.senha)).resolves.toMatchObject({
       cnpj: CNPJ_EMITENTE_DE_TESTE,
       titular: BASE.nome,
@@ -41,8 +53,9 @@ describe('T-0022: CNPJ do A1 no CN × só no SAN (RD-0294, caso do corretor)', (
   });
 
   it('controle: o A1 do caso tem o CNPJ no SAN e não tem no titular', () => {
-    expect(sanTemCnpj(soNoSan.certificadoDer, CNPJ_EMITENTE_DE_TESTE)).toBe(true);
-    expect(soNoSan.certificadoDer.includes(Buffer.from(`:${CNPJ_EMITENTE_DE_TESTE}`, 'ascii'))).toBe(false);
+    const derSoNoSan = der(soNoSan);
+    expect(sanTemCnpj(derSoNoSan, CNPJ_EMITENTE_DE_TESTE)).toBe(true);
+    expect(derSoNoSan.includes(Buffer.from(`:${CNPJ_EMITENTE_DE_TESTE}`, 'ascii'))).toBe(false);
   });
 
   it('core: A1 sem CNPJ em lugar nenhum é recusado no upload com PfxInvalido (o 292 do verificador fica no pacote)', async () => {
@@ -50,25 +63,14 @@ describe('T-0022: CNPJ do A1 no CN × só no SAN (RD-0294, caso do corretor)', (
     await expect(new LeitorPfxTls().abrir(semCnpj.pfx, semCnpj.senha)).rejects.toBeInstanceOf(PfxInvalido);
   });
 
-  // Comportamento de HOJE com o CNPJ só no SAN: prende o motivo dos `it.fails` abaixo (falham por isto, não por outra
-  // coisa). Cada `it` sai quando o `it.fails` correspondente virar `it`, pela correção do RD-0294: ler o CNPJ do SAN
-  // (2.16.76.1.3.3) e depois do CN, recusando se os dois existirem e forem diferentes.
+  // Prende o motivo do `it.fails` abaixo; sai quando ele virar `it`.
   it('hoje, core: o A1 com o CNPJ só no SAN é recusado com "Certificado sem CNPJ no titular"', async () => {
     await expect(new LeitorPfxTls().abrir(soNoSan.pfx, soNoSan.senha)).rejects.toThrow('Certificado sem CNPJ no titular');
   });
 
-  it('hoje, nfe-sefaz: a NF-e assinada com o A1 com o CNPJ só no SAN dá certificado_sem_cnpj (292)', () => {
-    expect(verificar(nfeAssinadaCom(soNoSan))).toEqual({ ok: false, falha: 'certificado_sem_cnpj', cStat: '292' });
-  });
-
-  // ESPERADO (ICP-Brasil, DOC-ICP-04; RD-0294): o upload do core lê o CNPJ do SAN e aceita o A1. Decisão pendente:
-  // engenheiro-software (função única do RD-0294) e modulo-core.
+  // ESPERADO (DOC-ICP-04; RD-0294): o core lê o CNPJ do SAN. Pendente: modulo-core adotar o `cnpjDoTitularIcp` no
+  // `LeitorPfxTls`.
   it.fails('core: LeitorPfxTls aceita o A1 com o CNPJ só no SAN e devolve o CNPJ', async () => {
     await expect(new LeitorPfxTls().abrir(soNoSan.pfx, soNoSan.senha)).resolves.toMatchObject({ cnpj: CNPJ_EMITENTE_DE_TESTE });
-  });
-
-  // ESPERADO: a NF-e assinada com esse A1 passa na verificação, com o CNPJ do SAN (no simulador: 100, não 292).
-  it.fails('nfe-sefaz: verificarAssinaturaNFe aceita a assinatura e lê o CNPJ do SAN', () => {
-    expect(verificar(nfeAssinadaCom(soNoSan))).toMatchObject({ ok: true, certificado: { cnpj: CNPJ_EMITENTE_DE_TESTE } });
   });
 });
