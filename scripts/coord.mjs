@@ -122,6 +122,8 @@ const MODO = modoDosRecados();
 let conexao = null;
 let indice = null;
 const github = () => (conexao ||= conexaoDeRecados());
+/** "GitHub repo@sha7" do envio ou da marcação, com o caminho (por git) e a conferência. */
+const sufixoDoCommit = (r) => `GitHub ${github().cliente.repo}@${String(r.commit.oid).slice(0, 7)}${r.commit.porGit ? ', por git: a API recusou a escrita' : ''}${r.conferido ? ', confirmado na conferência' : ''}`;
 function indiceDoGitHub() {
   if (indice) return indice;
   try {
@@ -603,7 +605,7 @@ switch (cmd) {
         if (!(e instanceof ErroRecados)) throw e;
         falhar(/^--responde-a|NÃO/.test(e.message) ? e.message : `recado NÃO enviado (nada foi gravado): ${e.message}`);
       }
-      console.log(`Recado ${r.id} enviado para ${enviadoPara} (GitHub ${github().cliente.repo}@${String(r.commit.oid).slice(0, 7)}${r.conferido ? ', confirmado na conferência' : ''})`);
+      console.log(`Recado ${r.id} enviado para ${enviadoPara} (${sufixoDoCommit(r)})`);
       break;
     }
     const existentes = new Set(todosRecados().map((r) => r.meta.id));
@@ -652,7 +654,7 @@ switch (cmd) {
       }
       const ja = ids.length - r.novos.length;
       console.log(r.commit
-        ? `${r.novos.length} recado(s) marcado(s) como lido(s) por ${agente}${ja ? ` (${ja} já estava(m))` : ''} (GitHub ${github().cliente.repo}@${String(r.commit.oid).slice(0, 7)}${r.conferido ? ', confirmado na conferência' : ''}).`
+        ? `${r.novos.length} recado(s) marcado(s) como lido(s) por ${agente}${ja ? ` (${ja} já estava(m))` : ''} (${sufixoDoCommit(r)}).`
         : `${ids.length} recado(s) já estava(m) marcado(s) como lido(s) por ${agente}.`);
       break;
     }

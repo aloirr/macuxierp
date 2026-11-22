@@ -3,6 +3,7 @@
  * refresh rotativo, `GET /v1/auth/eu` e as licenças da `plataforma.tenant_modulo`. Relógio real (o banco usa now()).
  */
 import { randomUUID } from 'node:crypto';
+import { RepositorioCoreSql } from '@macuxierp/core/api';
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
@@ -11,7 +12,8 @@ import { COOKIE_REFRESH, criarApp } from './app';
 import { RepositorioAuthPg } from './auth/repositorio-pg';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { gerarHashSenha } from './auth/senha';
-import { MODULOS_MONTADOS } from './modulos';
+import { dependenciasCoreDeTeste } from './apoio-teste';
+import { montarModulos } from './modulos';
 
 const SENHA = 'senha-de-teste-123';
 const ARGON2_RAPIDO = { memoria: 64, passes: 1, paralelismo: 1 };
@@ -55,7 +57,8 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
       auditoria: new AuditoriaPg(),
       trabalhos: new FilaDeTrabalhosPg(),
       relogio: relogioDoSistema,
-      modulos: MODULOS_MONTADOS,
+      // core e cadastros com os adaptadores SQL de produção (armazenamento em memória)
+      modulos: montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) }),
       logger: false,
     });
   });
@@ -105,6 +108,17 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     expect((await comRefresh('/v1/auth/refresh', outra)).statusCode).toBe(401);
     const acesso = await b.admin.query('SELECT ultimo_acesso_em IS NOT NULL AS ok FROM plataforma.usuario WHERE id = $1', [usuario]);
     expect(acesso.rows).toEqual([{ ok: true }]);
+  });
+
+  it('core e cadastros montados com SQL de verdade: licenças e filiais do próprio tenant (RLS)', async () => {
+    const token = (await entrar()).json<{ token_acesso: string }>().token_acesso;
+    const get = (url: string) => app.inject({ url, headers: { authorization: `Bearer ${token}` } });
+    const licencas = await get('/v1/core/licencas');
+    expect(licencas.statusCode).toBe(200);
+    expect(licencas.json()).toEqual({ itens: [{ modulo: 'cadastros', ativo: true, valido_ate: null }] });
+    const filiais = await get('/v1/cadastros/filiais');
+    expect(filiais.statusCode).toBe(200);
+    expect(filiais.json().itens.map((f: { id: string }) => f.id)).toEqual([matriz]);
   });
 
   it('senha errada conta a falha no banco; slug de outro tenant ou inexistente dá o mesmo 401', async () => {
