@@ -27,13 +27,14 @@ function registrar(
   certificado: string,
   dia: string,
   sessao = tenant,
+  filial = A.filial,
 ): string[] {
   const saida = rodarScript(
     banco.conexao,
     `SET ROLE macuxierp_worker;
      SET app.tenant_id = '${sessao}';
      INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia)
-     VALUES ('${tenant}', '${certificado}', '${A.filial}', '2026-12-03T00:00:00Z', 12, '${dia}')
+     VALUES ('${tenant}', '${certificado}', '${filial}', '2026-12-03T00:00:00Z', 12, '${dia}')
      ON CONFLICT (tenant_id, certificado_id, dia) DO NOTHING
      RETURNING id;`,
     { transacao: true },
@@ -92,8 +93,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — alerta do A1 (T-0035, migra
     expect(falha(() => registrar(banco, A.id, certA, '2026-11-23', B.id))).toMatch(/row-level security/);
     // Certificado de A com tenant_id = B: a FK composta recusa (o certificado não é do tenant B).
     expect(falha(() => registrar(banco, B.id, certA, '2026-11-23', B.id))).toMatch(/foreign key/);
-    // O próprio certificado de B grava normalmente.
-    expect(registrar(banco, B.id, certB, '2026-11-23')).toHaveLength(1);
+    // O próprio certificado de B, com a filial dele (FK da 0011), grava normalmente.
+    expect(registrar(banco, B.id, certB, '2026-11-23', B.id, B.filial)).toHaveLength(1);
   });
 
   it('nenhum papel da aplicação altera nem apaga aviso; o app e a leitura só leem', () => {
