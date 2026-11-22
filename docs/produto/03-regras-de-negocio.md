@@ -21,6 +21,7 @@
 - **RN-CAD-06** Preço vale por filial e por vigência; tabela sem item na filial usa a filial padrão (mesma regra do FDV, RN-CORE-39 do FDV).
 - **RN-CAD-07** Estoque simples: saldo por filial, nunca negativo sem permissão do gerente.
 - **RN-CAD-08** Cadastro excluído é inativado (`deleted_at`), nunca apagado, e o FDV recebe a inativação.
+- **RN-CAD-09** Condição de pagamento: de 1 a 36 parcelas, cada prazo de 0 a 999 dias, em qualquer ordem. A mesma regra vale no cadastro manual e na carga por CSV (T-0026); o limite de 24 parcelas do kit do Conector do FDV não vale para o ERP (decisão do Alexandre, 21/11/2026).
 
 ## Pedido (RN-PED)
 - **RN-PED-01** Pedido do FDV é idempotente pelo UUID do FDV: reenvio não duplica.
