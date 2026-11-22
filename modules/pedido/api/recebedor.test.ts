@@ -24,7 +24,7 @@ function montar(o: { licenciado?: boolean } = {}) {
 }
 
 describe('criarRecebedorFdv (T-0013 §5.3)', () => {
-  it('RN-PED-01: o pedido do FDV entra aprovado: recebido@1 com pendencias [] e aprovado@1 automática, mais a aprovação e a auditoria do sistema', async () => {
+  it('RN-PED-01: o pedido do FDV entra aprovado: recebido@1 com pendencias [] e aprovado@1 automática, sem linha de aprovação, mais a auditoria do sistema', async () => {
     const t = montar();
     const r = await t.recebedor.receber(tx, pedidoFdv());
     expect(r).toMatchObject({ resultado: 'criado', numero: 1, status: 'aprovado' });
@@ -34,7 +34,8 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
     ]);
     expect(t.outbox.eventos[0]?.payload).toMatchObject({ pendencias: [], status: 'aprovado', status_anterior: null, origem: 'fdv', pedido_uuid: IDS.pedidoFdv });
     expect(t.outbox.eventos[1]?.payload).toMatchObject({ automatica: true, status_anterior: 'recebido' });
-    expect(t.armazem.aprovacoes).toEqual([expect.objectContaining({ automatica: true, decidido_por: null, decisao: 'aprovado' })]);
+    // T-0013 §2 e §7, ADR 0007: o FDV decidiu na origem; o ERP não grava aprovação.
+    expect(t.armazem.aprovacoes).toEqual([]);
     expect(t.armazem.eventos.map((e) => [e.de, e.para, e.ator_tipo, e.ator_id])).toEqual([[null, 'recebido', 'sistema', null], ['recebido', 'aprovado', 'sistema', null]]);
     expect(t.auditoria.registros).toEqual([expect.objectContaining({ acao: 'pedido.receber', usuario_id: null, tenant_id: TENANT_MEMORIA })]);
     expect(t.armazem.pedidos[0]).toMatchObject({ origem: 'fdv', external_id: IDS.pedidoFdv, total_centavos: 2000, total_informado_centavos: 2000, criado_por: null, vendedor_id: IDS.vendedor });
@@ -52,7 +53,6 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
     expect(b).toMatchObject({ pedido_id: (a as { pedido_id: string }).pedido_id, numero: 1 });
     expect(t.armazem.pedidos).toHaveLength(1);
     expect(t.outbox.eventos).toHaveLength(2);
-    expect(t.armazem.aprovacoes).toHaveLength(1);
     expect(t.auditoria.registros).toHaveLength(1);
   });
   it('RN-PED-01: a repetição devolve o status atual do pedido (por exemplo, cancelado depois)', async () => {
