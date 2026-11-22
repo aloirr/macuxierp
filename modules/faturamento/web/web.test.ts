@@ -303,10 +303,7 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(rotuloDaForma('')).toBe('');
   });
   it('textos de lista vazia, rótulo de linha, colunas à direita e "—" no lugar do UUID', () => {
-    expect(Object.keys(TEXTO_VAZIO).sort()).toEqual(['notas', 'pedidos-a-faturar', 'rejeicoes', 'titulos']);
-    expect(TEXTO_VAZIO.notas).toBe('Nenhuma nota neste filtro. Limpe os filtros.');
-    expect(TEXTO_VAZIO.rejeicoes).toBe('Nenhuma nota rejeitada. Está tudo certo.');
-    expect(TEXTO_VAZIO.titulos).toBe('Nenhum título neste filtro. Os títulos aparecem quando uma nota a prazo é autorizada.');
+    expect(TEXTO_VAZIO).toEqual({ notas: 'Nenhuma nota encontrada.', 'pedidos-a-faturar': 'Nenhum pedido encontrado.', rejeicoes: 'Nenhuma rejeição encontrada.', titulos: 'Nenhum título encontrado.' });
     const t = { id: ID, nota_id: ID, cliente_id: ID, numero: 123, filial_id: ID, ambiente: 'producao' as const, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 1, saldo_centavos: 1, status: 'aberto' as const };
     expect(ROTULO_LINHA.titulos({ ...t, cliente_razao_social: null })).toBe('Abrir o título 123 (parcela 1/2)');
     expect(ROTULO_LINHA.notas({ numero: 5, serie: 1 } as never)).toBe('Abrir nota 5/1');
@@ -337,9 +334,31 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
   });
   it('RF-FAT-06: vencido mostra "Vencido há N dias" no tom de erro; hoje civil é o de Manaus; estorno pede confirmação com valor e dia', () => {
     expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-17' }, '2026-11-22')).toEqual({ texto: 'Vencido há 5 dias', tom: 'erro' });
+    expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-21' }, '2026-11-22')).toEqual({ texto: 'Vencido há 1 dia', tom: 'erro' });
     expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-22' }, '2026-11-22').tom).not.toBe('erro');
     expect(hojeCivil(new Date('2026-11-22T02:00:00Z'))).toBe('2026-11-21');
     expect(semEspacoDuro(dialogoEstornar({ valor_centavos: 12_345, baixado_em: '2026-11-20T15:00:00.000Z' }, 'America/Manaus').titulo)).toBe('Estornar a baixa de R$ 123,45 feita em 20/11?');
+  });
+});
+
+describe('MC-0016: vazio das listas e hora exportada', () => {
+  it('as 4 páginas declaram vazio validado pelo SDK, com os textos exatos e sem "Limpe os filtros"', () => {
+    const esperado = {
+      notas: ['Nenhuma nota emitida ainda.', 'Nenhuma nota com estes filtros.'],
+      'pedidos-a-faturar': ['Nenhum pedido aprovado esperando nota.', 'Nenhum pedido com estes filtros.'],
+      rejeicoes: ['Nenhuma nota rejeitada. Está tudo certo.', 'Nenhuma rejeição com estes filtros.'],
+      titulos: ['Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', 'Nenhum título com estes filtros.'],
+    };
+    for (const p of [paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos]) {
+      const [sem, com] = esperado[p.id as keyof typeof esperado];
+      expect(p.vazio).toEqual({ semFiltro: sem, comFiltro: com });
+      expect(JSON.stringify([p.vazio, TEXTO_VAZIO[p.id as keyof typeof TEXTO_VAZIO]])).not.toMatch(/Limpe os filtros|neste filtro/);
+    }
+  });
+  it('hora(fuso) formata no fuso e devolve vazio para nulo', () => {
+    expect(publico.hora('America/Manaus')('2026-11-22T14:30:00.000Z')).toBe('22/11/2026 10:30');
+    expect(publico.hora('America/Manaus')(null)).toBe('');
+    expect(publico.hora('America/Manaus')(undefined)).toBe('');
   });
 });
 
@@ -349,7 +368,7 @@ describe('API pública do web', () => {
       'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
       'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
       'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
-      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
+      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
       'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDoDanfe', 'urlDoPedidoAFaturar', 'urlDoXml',
     ]);
@@ -402,12 +421,14 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
     expect(g.validar({ 1: '1.200', 2: '1.000' })).toEqual({ ok: true }); // milhar digitado
     expect(g.validar({ 1: '1.200,5', 2: '' })).toMatchObject({ ok: false, erros: { 1: '1 - Caixa: a quantidade passa do saldo (1.200). Informe até 1.200 ou deixe o campo vazio.' } });
     const parcial = g.validar({ 1: '1.000,5', 2: '' });
-    expect(parcial).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000,5', qtd4: 10_005_000 }] }); // saída sem milhar
+    expect(parcial).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1.000,5', qtd4: 10_005_000 }] }); // saída com milhar; o requisicaoEmitir a aceita
     const m = requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-3', itens: parcial.ok && parcial.itens ? parcial.itens : [] });
     expect(m).toMatchObject({ ok: true, requisicao: { corpo: { itens: [{ sequencia: 1, quantidade: 10_005_000 }] } } });
     const mil = g.validar({ 1: '1000', 2: '' });
-    expect(mil).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000', qtd4: 10_000_000 }] });
+    expect(mil).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1.000', qtd4: 10_000_000 }] });
     expect(requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-4', itens: mil.ok && mil.itens ? mil.itens : [] }).ok).toBe(true);
+    const g2 = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Caixa', saldo: 20_000_000 }] });
+    expect(g2.validar({ 1: '1.500,25' })).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1.500,25', qtd4: 15_002_500 }] });
     expect(g.validar({ 1: '1.2000' })).toMatchObject({ ok: false, erros: { 1: expect.stringContaining('4 casas') } });
     expect(g.validar({ 1: '1.20' })).toMatchObject({ ok: false });
   });

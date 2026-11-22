@@ -4,6 +4,7 @@
  */
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { plural } from '@macuxierp/platform-sdk/texto';
 import { CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, InutilizarEntrada, LIMITES_TEXTO, type Ambiente, type StatusNota, type StatusPedidoAFaturar } from '../contracts';
 import { prazoDeCancelamentoEsgotado } from '../domain/cancelamento';
 
@@ -147,8 +148,8 @@ const PRAZO_CANCELAMENTO_AVISO = `${NAO_DESFAZ}. O cancelamento só é aceito at
 /** Contador do campo de justificativa: "falta 1 caractere"/"faltam N caracteres", "N/máx" ou "1 caractere a mais"/"N caracteres a mais". */
 export function contadorDeCaracteres(texto: string, min: number, max: number): string {
   const n = texto.trim().length;
-  if (n < min) return min - n === 1 ? 'falta 1 caractere' : `faltam ${min - n} caracteres`;
-  if (n > max) return n - max === 1 ? '1 caractere a mais' : `${n - max} caracteres a mais`;
+  if (n < min) return `${min - n === 1 ? 'falta' : 'faltam'} ${plural(min - n, 'caractere', 'caracteres')}`;
+  if (n > max) return `${plural(n - max, 'caractere', 'caracteres')} a mais`;
   return `${n}/${max}`;
 }
 
