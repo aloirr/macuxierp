@@ -30,6 +30,8 @@ export interface RespostaPendentes {
   /** Itens crus: quem valida é o `PedidoParaErpLido`. */
   pedidos?: readonly unknown[];
   retryAfterS?: number;
+  /** Código de erro do Hub (403 `modulo_inativo`...). */
+  codigo?: string;
 }
 export interface RespostaRetorno {
   status: number;

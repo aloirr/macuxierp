@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { cifrarCampo, decifrarCampo, ErroClienteHub, type AgendaModulo, type Banco, type ContextoAgenda, type ItemAgenda, type CredencialHub, type ClienteHub, type EnvelopeEvento, type FonteLicencas, type PedidoHub, type RespostaHub } from '@macuxierp/platform-sdk';
 import type { AmbienteHub } from '../contracts';
 import { hashRegistro } from '../domain';
+import type { Alertar, LogPedidos } from './portas';
 
 export { ErroClienteHub };
 
@@ -133,8 +134,16 @@ export async function cursorEntidade(admin: AdminSql, tenant: string, entidade: 
   );
 }
 
+/** Log e alerta que só acumulam texto: `logs` (JSON de objeto e mensagem) e `alertas` (`tenant:codigo:contexto`). */
+export function dubleLogAlertas(): { logs: string[]; alertas: string[]; log: LogPedidos; alertar: Alertar } {
+  const logs: string[] = [];
+  const alertas: string[] = [];
+  const registrar = (o: Record<string, unknown>, m: string): void => void logs.push(JSON.stringify([o, m]));
+  return { logs, alertas, log: { info: registrar, warn: registrar, error: registrar }, alertar: (t, c, x) => void alertas.push(`${t}:${c}:${JSON.stringify(x ?? {})}`) };
+}
+
 /** Contexto da agenda como o laço do worker monta: transações curtas no tenant do item e a chave só em memória. */
-function contextoDaAgenda(banco: Banco, item: ItemAgenda, hub: ClienteHub, agora: Date, posseAte: Date): ContextoAgenda {
+export function contextoDaAgenda(banco: Banco, item: ItemAgenda, hub: ClienteHub, agora: Date, posseAte: Date): ContextoAgenda {
   return {
     agora,
     posseAte,

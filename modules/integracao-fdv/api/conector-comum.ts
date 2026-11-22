@@ -5,7 +5,7 @@
  * todos os tenants). Sem `SELECT *`. A chave do conector só existe em memória, dentro de `abrirOuPausar`: nunca vai a log,
  * erro, banco nem evento.
  */
-import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
+import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type ItemAgenda, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { AmbienteHub, CursorHub, type EstadoLote, type MotivoPausa } from '../contracts';
 
@@ -98,11 +98,12 @@ export function defeitoDoCliente(e: unknown): { codigo: string; credencial: bool
 }
 
 /** Onde mora o `proximo*_em` da tarefa: a linha da entidade em `cursor_entidade` ou uma coluna da linha única de `sinal`. */
-type AlvoAgenda = { entidade: string } | { sinal: 'proximo_sinal_em' | 'proxima_reconciliacao_em' };
+export type ColunaSinalAgenda = 'proximo_sinal_em' | 'proxima_reconciliacao_em' | 'proxima_busca_pedidos_em' | 'proximo_retorno_em';
+type AlvoAgenda = { entidade: string } | { sinal: ColunaSinalAgenda };
 
 /**
  * Regrava o `proximo*_em` da tarefa presa à posse: só muda se ainda for o `posseAte` desta reserva (se outro processo já
- * mexeu, a regravação não desfaz o que ele fez). As colunas vêm de uma união fechada, nunca de texto externo.
+ * mexeu, a regravação não desfaz o que ele fez). Este é o único caminho de regravação presa à posse (sem `null`: desligar é do envio de retornos, que o faz com a fila vazia). As colunas vêm de uma união fechada, nunca de texto externo.
  */
 export async function adiarPresoAPosse(tx: Transacao, tenantId: string, alvo: AlvoAgenda, posseAte: Date, para: Date): Promise<void> {
   if ('entidade' in alvo) {
@@ -114,6 +115,26 @@ export async function adiarPresoAPosse(tx: Transacao, tenantId: string, alvo: Al
   }
   const c = alvo.sinal;
   await tx.consultar(`UPDATE integracao_fdv.sinal SET ${c} = $3, updated_at = now() WHERE tenant_id = $1 AND ${c} = $2`, [tenantId, posseAte, para]);
+}
+
+/**
+ * Reserva das agendas que vivem numa coluna de `sinal` (`FOR NO KEY UPDATE SKIP LOCKED`, adiando a coluna para `posseAte` na
+ * mesma transação). `coluna` vem de uma união fechada, nunca de texto externo. Em `semTenant` o papel do worker enxerga todos
+ * os tenants.
+ */
+export async function reservarSinal(tx: Transacao, coluna: ColunaSinalAgenda, tarefa: string, limite: number, agora: Date, posseAte: Date): Promise<ItemAgenda[]> {
+  const l = await tx.consultar<{ tenant_id: string }>(
+    `WITH v AS (
+       SELECT id FROM integracao_fdv.sinal WHERE ${coluna} <= $1 AND deleted_at IS NULL ORDER BY ${coluna} LIMIT $2 FOR NO KEY UPDATE SKIP LOCKED)
+     UPDATE integracao_fdv.sinal s SET ${coluna} = $3, updated_at = now() FROM v WHERE s.id = v.id RETURNING s.tenant_id`,
+    [agora, limite, posseAte],
+  );
+  return l.map((x) => ({ tenant_id: x.tenant_id, tarefa, chave: null }));
+}
+
+/** Módulo sem licença: a tarefa de `sinal` volta a olhar em `para`. Não liga o que está desligado (coluna nula) nem linha apagada. */
+export async function adiarSinalSemLicenca(tx: Transacao, tenantId: string, coluna: ColunaSinalAgenda, para: Date): Promise<void> {
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET ${coluna} = $2, updated_at = now() WHERE tenant_id = $1 AND ${coluna} IS NOT NULL AND deleted_at IS NULL`, [tenantId, para]);
 }
 
 /** Pausa a(s) entidade(s) do tenant. `entidade = null` = todas as linhas ainda não pausadas. Idempotente. */

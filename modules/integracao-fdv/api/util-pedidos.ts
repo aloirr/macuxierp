@@ -1,6 +1,6 @@
 import { classificarResposta, codigoSeguro } from '../domain/resposta';
 import { sha256Hex, type Transacao } from '@macuxierp/platform-sdk';
-import { RetornoErp as RetornoErpSchema, type RetornoErp } from '../contracts';
+import { RetornoErp as RetornoErpSchema, type MotivoPausa, type RetornoErp } from '../contracts';
 import { corpoCanonicoDoRetorno } from '../domain/retorno-pedido';
 
 /** SHA-256 do JSON canônico do corpo sem `ocorrido_em` (T-0013 §6.3): o mesmo efeito não vira dois retornos. */
@@ -28,11 +28,14 @@ export async function gravarRetorno(tx: Transacao, tenantId: string, bruto: Reto
   return linhas.length > 0;
 }
 
-/** 401/403/426 do Hub: a credencial do conector foi recusada e o conector pausa (mesma classificação do lote, T-0011). */
-export const credencialRecusada = (status: number, codigo?: string | null): boolean => {
-  if (status !== 401 && status !== 403 && status !== 426) return false;
+/**
+ * Motivo da pausa quando o Hub recusa a credencial do conector (401/403/426; mesma classificação do lote, T-0011): `credencial`,
+ * `licenca_fdv` ou `versao`. Qualquer outra resposta devolve `null`. A classificação é feita só aqui.
+ */
+export function motivoDaRecusa(status: number, codigo?: string | null): MotivoPausa | null {
+  if (status !== 401 && status !== 403 && status !== 426) return null;
   const a = classificarResposta({ tipo: 'recusa', status, codigo: codigo ?? null });
-  return a.acao === 'pausar' && (a.motivo === 'credencial' || a.motivo === 'licenca_fdv' || a.motivo === 'versao');
-};
+  return a.acao === 'pausar' && (a.motivo === 'credencial' || a.motivo === 'licenca_fdv' || a.motivo === 'versao') ? a.motivo : null;
+}
 
 export { codigoSeguro };

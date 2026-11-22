@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RespostaHub, atrasoRetentativaSegundos, classificarResposta, campoDoHub, codigoDoHub, codigoSeguro, esperaConsultaSegundos } from './resposta';
+import { type RespostaHub, atrasoRetentativaSegundos, classificarResposta, campoDoHub, codigoDoHub, codigoSeguro, esperaConsultaSegundos, retryAfterSegundos } from './resposta';
 
 describe('curva de retentativa do Hub', () => {
   it('RN-INF-04: 5 s, 10 s, 20 s… até 15 min', () => {
@@ -10,6 +10,15 @@ describe('curva de retentativa do Hub', () => {
     expect(atrasoRetentativaSegundos(1, 120)).toBe(120);
     expect(atrasoRetentativaSegundos(3, 2)).toBe(20);
     expect(atrasoRetentativaSegundos(1, 999_999)).toBe(3600);
+  });
+});
+
+describe('Retry-After do SDK (ms) para segundos', () => {
+  it('RN-INF-04: arredonda para cima, nulo e indefinido ficam nulos', () => {
+    expect(retryAfterSegundos(300_001)).toBe(301);
+    expect(retryAfterSegundos(1000)).toBe(1);
+    expect(retryAfterSegundos(null)).toBeNull();
+    expect(retryAfterSegundos(undefined)).toBeNull();
   });
 });
 
