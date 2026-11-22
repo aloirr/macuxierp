@@ -9,3 +9,8 @@ export * from './pagamento';
 export * from './conteudo';
 export * from './validacao-emissao';
 export * from './assinatura';
+export * from './cancelamento';
+export * from './carta-correcao';
+export * from './inutilizacao';
+export * from './consulta';
+export * from './retorno-evento';

@@ -211,3 +211,73 @@ export type RejeicaoNota = z.infer<typeof RejeicaoNota>;
 export const TRABALHO_TRANSMITIR_NOTA = 'faturamento.transmitir_nota' as const;
 export const TransmitirNotaPayload = z.object({ nota_id: Uuid });
 export type TransmitirNotaPayload = z.infer<typeof TransmitirNotaPayload>;
+
+// ---- Eventos fiscais (T-0021, lote 2): cancelamento, CC-e, inutilização e consulta (RN-FAT-01, RN-FAT-02, RN-FAT-03) ----
+
+/** `POST /v1/faturamento/notas/:id/cancelar`: só nota autorizada, até 24 h da autorização (RN-FAT-02). */
+export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(15).max(255) });
+export type CancelarNotaEntrada = z.infer<typeof CancelarNotaEntrada>;
+
+/** `POST /v1/faturamento/notas/:id/carta-correcao`: só nota autorizada, até 20 por nota (RN-FAT-02). */
+export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(15).max(1000) });
+export type CartaCorrecaoEntrada = z.infer<typeof CartaCorrecaoEntrada>;
+
+/** `POST /v1/faturamento/inutilizacoes`: faixa da série da filial emissora (RN-FAT-01). Sem `serie` = a da filial; sem `ano` = o do ano corrente (Manaus). */
+export const InutilizarEntrada = z
+  .object({
+    filial_id: Uuid,
+    serie: z.number().int().min(0).max(999).optional(),
+    numero_inicial: z.number().int().min(1).max(999_999_999),
+    numero_final: z.number().int().min(1).max(999_999_999),
+    ano: z.number().int().min(2000).max(2099).optional(),
+    justificativa: z.string().trim().min(15).max(255),
+  })
+  .refine((e) => e.numero_inicial <= e.numero_final, { message: 'o número inicial não pode ser maior que o final', path: ['numero_final'] });
+export type InutilizarEntrada = z.infer<typeof InutilizarEntrada>;
+
+export const StatusEvento = z.enum(['pendente', 'registrado', 'rejeitado']);
+export type StatusEvento = z.infer<typeof StatusEvento>;
+
+/** Evento da nota (`GET /notas/:id/eventos`). */
+export const EventoNotaResumo = z.object({
+  id: Uuid,
+  nota_id: Uuid,
+  tipo: z.enum(['cancelamento', 'cce']),
+  n_seq_evento: z.number().int().min(1).max(20),
+  texto: z.string(),
+  status: StatusEvento,
+  protocolo: z.string().nullable(),
+  c_stat: z.number().int().nullable(),
+  x_motivo: z.string().nullable(),
+  registrado_em: z.string().datetime().nullable(),
+  criado_em: z.string().datetime(),
+});
+export type EventoNotaResumo = z.infer<typeof EventoNotaResumo>;
+
+export const InutilizacaoResumo = z.object({
+  id: Uuid,
+  filial_id: Uuid,
+  ambiente: Ambiente,
+  serie: z.number().int(),
+  ano: z.number().int(),
+  numero_inicial: z.number().int(),
+  numero_final: z.number().int(),
+  justificativa: z.string(),
+  status: StatusEvento,
+  protocolo: z.string().nullable(),
+  c_stat: z.number().int().nullable(),
+  x_motivo: z.string().nullable(),
+  registrado_em: z.string().datetime().nullable(),
+});
+export type InutilizacaoResumo = z.infer<typeof InutilizacaoResumo>;
+
+/** Trabalhos do worker (`plataforma.trabalho`): a API só grava o pedido `pendente` e enfileira; a SEFAZ é chamada pelo worker. */
+export const TRABALHO_PROCESSAR_EVENTO = 'faturamento.processar_evento' as const;
+export const ProcessarEventoPayload = z.object({ evento_id: Uuid });
+export type ProcessarEventoPayload = z.infer<typeof ProcessarEventoPayload>;
+export const TRABALHO_PROCESSAR_INUTILIZACAO = 'faturamento.processar_inutilizacao' as const;
+export const ProcessarInutilizacaoPayload = z.object({ inutilizacao_id: Uuid });
+export type ProcessarInutilizacaoPayload = z.infer<typeof ProcessarInutilizacaoPayload>;
+export const TRABALHO_CONSULTAR_NOTA = 'faturamento.consultar_nota' as const;
+export const ConsultarNotaPayload = z.object({ nota_id: Uuid });
+export type ConsultarNotaPayload = z.infer<typeof ConsultarNotaPayload>;

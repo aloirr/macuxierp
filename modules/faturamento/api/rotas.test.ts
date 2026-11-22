@@ -2,7 +2,7 @@ import { ErroApi, pode, type ContextoRota, type Perfil, type RotaModulo, type Se
 import { EVENTO_PEDIDO_APROVADO } from '@macuxierp/pedido/contracts';
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { TRABALHO_TRANSMITIR_NOTA } from '../contracts';
+import { TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
 import { depsFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import { criarConsumidorPedidoAprovado } from './consumidor';
 import { criarPluginFaturamento } from './index';
@@ -42,9 +42,14 @@ describe('rotas /v1/faturamento', () => {
     expect(a.plugin.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao}`).sort()).toEqual([
       'GET /notas faturamento.ver',
       'GET /notas/:id faturamento.ver',
+      'GET /notas/:id/eventos faturamento.ver',
       'GET /notas/:id/xml faturamento.nota.emitir',
       'GET /rejeicoes faturamento.ver',
+      'POST /inutilizacoes faturamento.nota.emitir',
       'POST /notas faturamento.nota.emitir',
+      'POST /notas/:id/cancelar faturamento.nota.emitir',
+      'POST /notas/:id/carta-correcao faturamento.nota.emitir',
+      'POST /notas/:id/consultar faturamento.nota.emitir',
       'POST /notas/:id/reenviar faturamento.nota.emitir',
     ]);
     expect(pode('leitura', 'faturamento.nota.emitir')).toBe(false);
@@ -132,6 +137,81 @@ describe('rotas /v1/faturamento', () => {
     const a = ambiente('vendedor');
     await expect(a.chamar('GET', '/notas')).rejects.toMatchObject({ status: 403 });
     await expect(a.chamar('GET', '/rejeicoes')).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('rotas de eventos /v1/faturamento (lote 2)', () => {
+  const JUST = { justificativa: 'Cliente desistiu da compra do pedido' };
+  async function autorizada(perfil: Perfil = 'faturista') {
+    const a = ambiente(perfil);
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'autorizada', protocolo: NPROT, autorizada_em: '2026-11-21T14:00:00.000Z' });
+    a.trabalhos.length = 0;
+    a.auditoria.length = 0;
+    return { a, id };
+  }
+
+  it('RN-CORE-05: cancelar, CC-e e inutilizar exigem Idempotency-Key; consultar aceita', () => {
+    const a = ambiente();
+    const idem = Object.fromEntries(a.plugin.rotas.map((r) => [`${r.metodo} ${r.caminho}`, r.idempotencia]));
+    expect(idem['POST /notas/:id/cancelar']).toBe('obrigatoria');
+    expect(idem['POST /notas/:id/carta-correcao']).toBe('obrigatoria');
+    expect(idem['POST /inutilizacoes']).toBe('obrigatoria');
+    expect(idem['POST /notas/:id/consultar']).toBe('opcional');
+  });
+
+  it('RN-CORE-02: vendedor e leitura não emitem evento (a ação da rota não é deles) e vendedor não lê os eventos (403)', async () => {
+    expect(pode('vendedor', 'faturamento.nota.emitir')).toBe(false);
+    expect(pode('leitura', 'faturamento.nota.emitir')).toBe(false);
+    const { a, id } = await autorizada('vendedor');
+    await expect(a.chamar('GET', '/notas/:id/eventos', { params: { id } })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('RN-FAT-02: POST cancelar devolve 202 com o pedido pendente, audita e enfileira o trabalho do worker; repetir não enfileira de novo', async () => {
+    const { a, id } = await autorizada();
+    const r = await a.chamar('POST', '/notas/:id/cancelar', { corpo: JUST, params: { id } });
+    expect(r.status).toBe(202);
+    expect(r.corpo).toMatchObject({ tipo: 'cancelamento', status: 'pendente' });
+    expect(r.corpo).not.toHaveProperty('dh_evento');
+    expect(a.trabalhos).toMatchObject([{ tipo: TRABALHO_PROCESSAR_EVENTO, payload: { evento_id: (r.corpo as { id: string }).id } }]);
+    expect(a.auditoria).toEqual(['faturamento.nota.cancelar']);
+    await a.chamar('POST', '/notas/:id/cancelar', { corpo: JUST, params: { id } });
+    expect(a.trabalhos).toHaveLength(1);
+    const lista = await a.chamar('GET', '/notas/:id/eventos', { params: { id } });
+    expect((lista.corpo as { itens: unknown[] }).itens).toHaveLength(1);
+  });
+
+  it('RN-FAT-02: cancelar nota não autorizada ou fora do prazo é 422 com a RN; nota inexistente é 404; justificativa curta é 400 (Zod)', async () => {
+    const a = ambiente();
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    await expect(a.chamar('POST', '/notas/:id/cancelar', { corpo: JUST, params: { id } })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-02' });
+    await expect(a.chamar('POST', '/notas/:id/cancelar', { corpo: JUST, params: { id: uuid(404) } })).rejects.toMatchObject({ status: 404 });
+    await expect(a.chamar('POST', '/notas/:id/cancelar', { corpo: { justificativa: 'curta' }, params: { id } })).rejects.toThrow();
+  });
+
+  it('RN-FAT-02: POST carta-correcao devolve 202 com o evento e os avisos', async () => {
+    const { a, id } = await autorizada();
+    const r = await a.chamar('POST', '/notas/:id/carta-correcao', { corpo: { texto: 'Corrigir o valor total da nota' }, params: { id } });
+    expect(r.status).toBe(202);
+    expect(r.corpo).toMatchObject({ evento: { tipo: 'cce', n_seq_evento: 1 }, avisos: [{ grupo: 'valor' }] });
+    expect(a.trabalhos[0]?.tipo).toBe(TRABALHO_PROCESSAR_EVENTO);
+  });
+
+  it('RN-FAT-01: POST inutilizacoes grava o pedido, enfileira e recusa a faixa fora da regra (422)', async () => {
+    const { a } = await autorizada();
+    const ok = await a.chamar('POST', '/inutilizacoes', { corpo: { filial_id: IDS.filial, numero_inicial: 101, numero_final: 102, justificativa: 'Numeração pulada por falha do sistema' } });
+    expect(ok.status).toBe(202);
+    expect(a.trabalhos).toMatchObject([{ tipo: TRABALHO_PROCESSAR_INUTILIZACAO }]);
+    await expect(a.chamar('POST', '/inutilizacoes', { corpo: { filial_id: IDS.filial, numero_inicial: 103, numero_final: 300, justificativa: 'Numeração pulada por falha do sistema' } })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-01' });
+    await expect(a.chamar('POST', '/inutilizacoes', { corpo: { filial_id: IDS.filial, numero_inicial: 5, numero_final: 4, justificativa: 'Numeração pulada por falha do sistema' } })).rejects.toThrow();
+  });
+
+  it('RN-FAT-02: POST consultar enfileira a consulta (a SEFAZ é do worker) e devolve 202', async () => {
+    const { a, id } = await autorizada();
+    const r = await a.chamar('POST', '/notas/:id/consultar', { params: { id } });
+    expect(r.status).toBe(202);
+    expect(a.trabalhos).toMatchObject([{ tipo: TRABALHO_CONSULTAR_NOTA, payload: { nota_id: id } }]);
+    await expect(a.chamar('POST', '/notas/:id/consultar', { params: { id: uuid(404) } })).rejects.toMatchObject({ status: 404 });
   });
 });
 
