@@ -4,3 +4,4 @@
 2026-11-21 — T-0031 — resíduos do core: RD-0008 (teste redundante de avaliarValidadeA1), RD-0009 (comentários de concorrência só no repositorio-sql), 3 avisos hora-fixa, teste de banco de concorrência (409 do token e RN-CORE-01); previsão (dono + 15%): ~1h
 2026-11-21 — T-0031 — rodada PR #18: RD-0012 (teste de banco no pg-testes), sequência única alterarUsuarioComTrava na rota e no teste, teste com segundo tenant
 2026-11-21 — T-0031 — RD-0013 (PatchUsuario único em portas.ts), RD-0014 (OpcoesAlterarUsuario exportado) e teste de banco do 409 do token de usuário (mutação confirmada)
+2026-11-21 — T-0033 — api do core exporta lerChaveA1, diasParaVencer e alertaVencimento (RD-0018/RD-0019); testes de arredondamento (floor) e do caminho público; RD-0020..0022 aplicados (casos de floor em regras.test.ts, index.test.ts só de identidade e 29,9 dias, comentário do index); previsão (dono + 15%): ~20min
