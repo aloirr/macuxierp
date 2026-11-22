@@ -9,7 +9,7 @@
 import {
   concatTransformationMatrix, degrees, drawObject, PDFDocument, popGraphicsState, pushGraphicsState, rgb, StandardFonts, type PDFFont, type PDFPage,
 } from 'pdf-lib';
-import { caixaDoLogo, type LinhaProduto, type ModeloDanfe } from '../domain/danfe';
+import { caixaDoLogo, FONTE_CONTEUDO_PT, MARCA_DAGUA, RODAPE_DANFE, type LinhaProduto, type ModeloDanfe } from '../domain/danfe';
 import { codigoBarras128C } from '../domain/codigo-barras';
 import { ErroLogo, logoEmCinza } from './logo-cinza';
 
@@ -22,15 +22,15 @@ export interface OpcoesPdfDanfe {
   agora?: Date;
 }
 
-const A4 = { l: 595.28, a: 841.89 };
-const MARGEM = 28.35;
+export const A4 = { l: 595.28, a: 841.89 };
+export const MARGEM = 28.35; // ≈ 10 mm; valor aprovado pela marca (borda 566,93), não trocar por 10*MM
 const LARG = A4.l - 2 * MARGEM;
 const PRETO = rgb(0, 0, 0);
-const CINZA_MARCA = rgb(0.85, 0.85, 0.85);
+const CINZA_MARCA = rgb(MARCA_DAGUA.cinza, MARCA_DAGUA.cinza, MARCA_DAGUA.cinza);
 const ROTULO = 6;
-const CONTEUDO = 7;
+const CONTEUDO = FONTE_CONTEUDO_PT;
 const DESTAQUE = 8;
-const BASE_UTIL = 53.8; // 14,9 (borda) + 24 (logo) + 14,9 (proteção): nada de quadro abaixo disso
+export const BASE_UTIL = 2 * RODAPE_DANFE.protecaoPt + RODAPE_DANFE.alturaAssinaturaPt; // 14,9 + 24 (logo) + 14,9: nada de quadro abaixo disso
 const LIMITE = A4.a - BASE_UTIL; // topo (de cima para baixo) a partir do qual nada é desenhado
 const ENTRELINHA = 8.5; // linha de 7 pt da tabela e dos blocos de texto
 const H_CAMPO = 22;
@@ -147,7 +147,8 @@ function fileira(c: Ctx, topo: number, defs: DefCampo[]): number {
 const tituloQuadro = (c: Ctx, titulo: string, x: number, topo: number): void => texto(c, titulo.toUpperCase(), x, topo + BASE_TITULO, CONTEUDO, true);
 
 /** Marca d'água de texto: Helvetica negrito 60 pt, a ±45° no centro da folha, em #D9D9D9, desenhada por baixo (antes) do conteúdo. */
-function marcaDagua(c: Ctx, t: string, graus: number, fontePt: number): void {
+function marcaDagua(c: Ctx, t: string, sentido: 1 | -1): void {
+  const graus = sentido * MARCA_DAGUA.anguloGraus, fontePt = MARCA_DAGUA.fontePt;
   const s = seguro(c.neg, t);
   const w = larg(c.neg, s, fontePt);
   const h = c.neg.heightAtSize(fontePt, { descender: false });
@@ -182,8 +183,8 @@ function desenharImagem(c: Ctx, nome: ReturnType<PDFPage['node']['newXObject']>,
   c.pagina.pushOperators(pushGraphicsState(), concatTransformationMatrix(w, 0, 0, h, x, yBase), drawObject(nome), popGraphicsState());
 }
 
-function rodape(c: Ctx, m: ModeloDanfe, assinatura: PDFImageLike): void {
-  const r = m.rodape;
+function rodape(c: Ctx, assinatura: PDFImageLike): void {
+  const r = RODAPE_DANFE;
   const xDir = A4.l - MARGEM;
   const xImg = xDir - r.larguraAssinaturaPt;
   const yBase = r.protecaoPt;
@@ -223,8 +224,8 @@ function cabecalhoCompleto(c: Ctx, m: ModeloDanfe, logo: LogoEmbutido, primeira:
     ]);
     moldura(c, x0 + wCanhoto, t, LARG - wCanhoto, 54);
     texto(c, 'NF-e', x0 + wCanhoto, t + 14, DESTAQUE, true, 'c', LARG - wCanhoto);
-    texto(c, `Nº ${m.canhoto.numero}`, x0 + wCanhoto, t + 28, DESTAQUE, true, 'c', LARG - wCanhoto);
-    texto(c, `Série ${m.canhoto.serie}`, x0 + wCanhoto, t + 42, DESTAQUE, true, 'c', LARG - wCanhoto);
+    texto(c, `Nº ${m.cabecalho.numero}`, x0 + wCanhoto, t + 28, DESTAQUE, true, 'c', LARG - wCanhoto);
+    texto(c, `Série ${m.cabecalho.serie}`, x0 + wCanhoto, t + 42, DESTAQUE, true, 'c', LARG - wCanhoto);
     t += 54 + 4;
     c.pagina.drawLine({ start: { x: x0, y: c.y(t) }, end: { x: A4.l - MARGEM, y: c.y(t) }, thickness: 0.4, color: PRETO, dashArray: [3, 2] });
     t += 4;
@@ -253,9 +254,9 @@ function cabecalhoCompleto(c: Ctx, m: ModeloDanfe, logo: LogoEmbutido, primeira:
   const xd = x0 + wEm;
   moldura(c, xd, t, wDa, hCab);
   texto(c, 'DANFE', xd, t + 17, 14, true, 'c', wDa);
-  m.cabecalho.subtituloLinhas.forEach((l, i) => texto(c, l, xd, t + 28 + i * 8, m.cabecalho.subtituloPt, false, 'c', wDa)); // 7 pt, 2 linhas (marca §3)
-  texto(c, '0 - ENTRADA', xd + 6, t + 52, CONTEUDO);
-  texto(c, '1 - SAÍDA', xd + 6, t + 61, CONTEUDO);
+  m.cabecalho.subtituloLinhas.forEach((l, i) => texto(c, l, xd, t + 28 + i * 8, CONTEUDO, false, 'c', wDa)); // 7 pt, 2 linhas (marca §3)
+  texto(c, m.cabecalho.tipoOperacao.legendas[0], xd + 6, t + 52, CONTEUDO);
+  texto(c, m.cabecalho.tipoOperacao.legendas[1], xd + 6, t + 61, CONTEUDO);
   c.pagina.drawRectangle({ x: xd + wDa - 24, y: c.y(t + 68), width: 16, height: 16, borderColor: PRETO, borderWidth: 0.7 });
   texto(c, m.cabecalho.tipoOperacao.codigo, xd + wDa - 24, t + 64, DESTAQUE, true, 'c', 16);
   texto(c, `Nº ${m.cabecalho.numero}`, xd, t + 80.5, DESTAQUE, true, 'c', wDa);
@@ -366,9 +367,8 @@ export function largurasColunas(reg: PDFFont, itens: LinhaProduto[]): number[] {
   };
   const minimo = COLUNAS.map((col) => {
     const maiorPalavra = Math.max(...seguro(reg, col.rotulo).split(/\s+/).map((p) => larg(reg, p, ROTULO)));
-    if (col.dir) return Math.max(maiorPalavra + 3, ...itens.map((it) => larg(reg, seguro(reg, it[col.chave]), CONTEUDO) + 3));
     if (col.chave === 'descricao') return maiorPalavra + 3;
-    return Math.max(maiorPalavra + 3, ...itens.map((it) => larg(reg, seguro(reg, it[col.chave]), CONTEUDO) + 3)); // código, NCM, CST, CFOP, UN: o valor nunca é quebrado ao meio na devolução da folga
+    return Math.max(maiorPalavra + 3, ...itens.map((it) => larg(reg, seguro(reg, it[col.chave]), CONTEUDO) + 3)); // as demais: o valor nunca é quebrado ao meio, nem na devolução da folga
   });
   COLUNAS.forEach((_, i) => alargar(i, minimo[i]!));
   // Com vários valores de 13 inteiros a descrição já está no mínimo e a soma passa da folha: as demais colunas devolvem a folga que têm
@@ -458,8 +458,8 @@ export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe): P
   const novaFolha = (): { c: Ctx; topo: number } => {
     const primeira = folhas.length === 0;
     const c: Ctx = { pagina: doc.addPage([A4.l, A4.a]), reg, neg, y: (topo) => A4.a - topo };
-    if (m.marcaDagua) marcaDagua(c, m.marcaDagua, m.marcaDaguaEstilo.anguloGraus, m.marcaDaguaEstilo.fontePt);
-    if (m.tarjaCancelada) marcaDagua(c, m.tarjaCancelada, -m.marcaDaguaEstilo.anguloGraus, m.marcaDaguaEstilo.fontePt);
+    if (m.marcaDagua) marcaDagua(c, m.marcaDagua, 1);
+    if (m.tarjaCancelada) marcaDagua(c, m.tarjaCancelada, -1);
     if (m.avisoHomologacao) texto(c, m.avisoHomologacao, MARGEM, 18, DESTAQUE, true, 'c', LARG);
     const r = cabecalhoCompleto(c, m, logo, primeira);
     folhas.push({ c, folha: r.folha });
@@ -517,7 +517,7 @@ export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe): P
   // "Folha x/y" e rodapé, agora que o total é conhecido
   folhas.forEach(({ c, folha }, k) => {
     texto(c, `Folha ${k + 1}/${folhas.length}`, folha.x, folha.topo, CONTEUDO, false, 'c', folha.w);
-    rodape(c, m, assinatura);
+    rodape(c, assinatura);
   });
   return doc.save();
 }

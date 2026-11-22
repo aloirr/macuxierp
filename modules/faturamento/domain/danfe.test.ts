@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
-import { codigoBarras128C } from './codigo-barras';
 import {
   AVISO_HOMOLOGACAO, caixaDoLogo, formatarChave, formatarDataHoraXml, formatarDecimalXml, formatarFone, LOGO_RESPIRO_PT, montarDanfe,
-  ErroDanfe, RODAPE_DANFE,
+  ErroDanfe, FONTE_CONTEUDO_PT, MARCA_DAGUA, RODAPE_DANFE,
 } from './danfe';
 import { CHAVE_DANFE, nfeProcDeTeste } from './fixtures-danfe';
 
@@ -35,42 +34,39 @@ describe('DANFE: telefone e legenda (design-de-marca, 2ª rodada)', () => {
     expect(formatarFone('')).toBe('');
     expect(montarDanfe({ nfeProc: nfeProcDeTeste() }).cabecalho.emitente.fone).toBe('(92) 3333-4444');
   });
+  it('marca: constantes', () => {
+    expect(FONTE_CONTEUDO_PT).toBe(7);
+    expect(MARCA_DAGUA).toEqual({ fontePt: 60, anguloGraus: 45, cinza: 0.85 });
+  });
+
   it('marca §3: a legenda do quadro DANFE tem 2 linhas, a 7 pt, e juntas dão o texto do MOC', () => {
     const c = montarDanfe({ nfeProc: nfeProcDeTeste() }).cabecalho;
     expect(c.subtituloLinhas).toHaveLength(2);
-    expect(c.subtituloLinhas.join(' ')).toBe(c.subtitulo);
-    expect(c.subtituloPt).toBe(7);
+    expect(c.subtituloLinhas.join(' ')).toBe('Documento Auxiliar da Nota Fiscal Eletrônica');
   });
 });
 
 describe('DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II)', () => {
   it('RF-FAT-03: monta canhoto, cabeçalho, destinatário, imposto, produtos e dados adicionais do nfeProc (snapshot do modelo)', () => {
     const m = montarDanfe({ nfeProc: nfeProcDeTeste({ duplicatas: true, infCpl: 'Pedido 1 &lt;obs&gt;' }) });
-    const { barras, ...resto } = m.cabecalho;
-    expect(barras.valores).toEqual(codigoBarras128C(CHAVE_DANFE).valores);
-    expect({ ...m, cabecalho: resto }).toMatchSnapshot();
-  });
-
-  it('RF-FAT-03: o código de barras do cabeçalho é o CODE-128 C da chave de 44 dígitos', () => {
-    const m = montarDanfe({ nfeProc: nfeProcDeTeste() });
     expect(m.cabecalho.chave).toHaveLength(44);
-    expect(m.cabecalho.barras.larguras).toEqual(codigoBarras128C(m.cabecalho.chave).larguras);
+    expect(m).toMatchSnapshot();
   });
 
   it('RF-FAT-03: protocolo com data e hora no fuso do tenant; 0 entrada / 1 saída', () => {
-    expect(montarDanfe({ nfeProc: nfeProcDeTeste() }).cabecalho.protocolo).toBe('113260000000001 - 21/11/2026 10:31:02');
-    expect(montarDanfe({ nfeProc: nfeProcDeTeste(), fusoMinutos: -180 }).cabecalho.protocolo).toBe('113260000000001 - 21/11/2026 11:31:02');
-    expect(montarDanfe({ nfeProc: nfeProcDeTeste({ tpNF: '0' }) }).cabecalho.tipoOperacao.descricao).toBe('0 - ENTRADA');
-    expect(montarDanfe({ nfeProc: nfeProcDeTeste({ tpNF: '1' }) }).cabecalho.tipoOperacao.descricao).toBe('1 - SAÍDA');
+    expect(montarDanfe({ nfeProc: nfeProcDeTeste() }).operacao.protocolo).toBe('113260000000001 - 21/11/2026 10:31:02');
+    expect(montarDanfe({ nfeProc: nfeProcDeTeste(), fusoMinutos: -180 }).operacao.protocolo).toBe('113260000000001 - 21/11/2026 11:31:02');
+    const t = (tpNF: '0' | '1') => montarDanfe({ nfeProc: nfeProcDeTeste({ tpNF }) }).cabecalho.tipoOperacao;
+    expect(t('0').codigo).toBe('0');
+    expect(t('1').codigo).toBe('1');
+    expect(t('1').legendas).toEqual(['0 - ENTRADA', '1 - SAÍDA']);
   });
 
   it('RF-FAT-03: homologação (tpAmb 2) leva a marca d\'água e o aviso; produção, nunca', () => {
     const h = montarDanfe({ nfeProc: nfeProcDeTeste({ tpAmb: '2' }) });
     expect(h.marcaDagua).toBe('SEM VALOR FISCAL');
     expect(h.avisoHomologacao).toBe(AVISO_HOMOLOGACAO);
-    expect(h.marcaDaguaEstilo).toEqual({ fontePt: 60, anguloGraus: 45, cinza: 0.85 });
     const p = montarDanfe({ nfeProc: nfeProcDeTeste({ tpAmb: '1' }) });
-    expect(p.ambiente).toBe('producao');
     expect(p.marcaDagua).toBeNull();
     expect(p.avisoHomologacao).toBeNull();
   });
@@ -103,7 +99,7 @@ describe('DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II)', () => {
 
 describe('DANFE: regras de marca (docs/marca/danfe-e-pdfs-fiscais.md)', () => {
   it('marca §4: rodapé com 24 pt de altura, 111,4 de largura, 14,9 de proteção e sem o texto "Macuxi ERP"', () => {
-    expect(RODAPE_DANFE).toMatchObject({ texto: 'Emitido pelo', fontePt: 7, alturaAssinaturaPt: 24, larguraAssinaturaPt: 111.4, protecaoPt: 14.9, baseTextoPt: 8.3 });
+    expect(RODAPE_DANFE).toMatchObject({ texto: 'Emitido pelo', alturaAssinaturaPt: 24, larguraAssinaturaPt: 111.4, protecaoPt: 14.9, baseTextoPt: 8.3 });
     expect(JSON.stringify(montarDanfe({ nfeProc: nfeProcDeTeste() }))).not.toMatch(/Macuxi/);
   });
 

@@ -85,7 +85,7 @@ describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → 
       // RF-FAT-03: o DANFE sai do nfeProc REAL do emissor + simulador (homologação: marca d'água), com o protocolo e o número da nota
       const danfe = montarDanfe({ nfeProc: proc });
       expect(danfe.cabecalho.chave).toBe(nota.chave_acesso);
-      expect(danfe.cabecalho.protocolo).toContain(m.notas.get(nota.id)!.protocolo!);
+      expect(danfe.operacao.protocolo).toContain(m.notas.get(nota.id)!.protocolo!);
       expect(danfe.marcaDagua).toBe('SEM VALOR FISCAL');
       expect(danfe.itens).toHaveLength(2);
       expect(danfe.imposto.find((c) => c.rotulo === 'Valor total da nota')?.valor).toBe('45,00');
