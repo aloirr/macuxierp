@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { cor, espaco, numerico, texto } from './estilos.js';
+import { cor, espaco, numerico, tabela, texto } from './estilos.js';
 
 export type DirecaoOrdem = 'asc' | 'desc';
 export type TipoColuna = 'texto' | 'numero' | 'dinheiro' | 'data' | 'status';
@@ -8,7 +8,7 @@ export interface ColunaTabela<T> {
   /** Identificador estável da coluna (também a chave de ordenação). */
   id: string;
   titulo: string;
-  /** `numero` e `dinheiro` alinham à direita com algarismos tabulares. */
+  /** `numero` e `dinheiro` alinham à direita com algarismos tabulares; `data` fica à esquerda, também tabular. */
   tipo?: TipoColuna;
   /** O chamador formata (ex.: centavos em R$). Sem `celula`, usa `String(linha[id])`. */
   celula?: (linha: T) => ReactNode;
@@ -60,14 +60,14 @@ export function proximaOrdem(atual: OrdemTabela | null | undefined, colunaId: st
   return atual?.colunaId === colunaId && atual.direcao === 'asc' ? { colunaId, direcao: 'desc' } : { colunaId, direcao: 'asc' };
 }
 
-const celulaBase = { padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}` } as const;
 
 export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
-  const { colunas, linhas, chaveLinha, aoClicarLinha, rotuloLinha, aoOrdenar, textoVazio = 'Nada por aqui ainda.', legenda } = props;
+  const { colunas, linhas, chaveLinha, aoClicarLinha, rotuloLinha, aoOrdenar, textoVazio = 'Nenhum registro. Ajuste os filtros ou crie o primeiro.', legenda } = props;
   const [ordemInterna, setOrdemInterna] = useState<OrdemTabela | null>(null);
   const ordem = props.ordem !== undefined ? props.ordem : ordemInterna;
   const visiveis = ordenarLinhas(linhas, colunas.find((c) => c.id === ordem?.colunaId), ordem?.direcao ?? 'asc');
   const direita = (c: ColunaTabela<T>) => c.tipo === 'numero' || c.tipo === 'dinheiro';
+  const estiloCelula = (c: ColunaTabela<T>) => (direita(c) ? numerico : c.tipo === 'data' ? { fontVariantNumeric: 'tabular-nums' as const } : {});
 
   const ordenar = (c: ColunaTabela<T>) => {
     const nova = proximaOrdem(ordem, c.id);
@@ -76,7 +76,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
   };
 
   return (
-    <table style={{ ...texto('pequeno'), width: '100%', borderCollapse: 'collapse', background: cor('branco') }}>
+    <table style={tabela.raiz}>
       {legenda ? <caption style={{ ...texto('pequeno', 'medio'), textAlign: 'left', padding: espaco.sm }}>{legenda}</caption> : null}
       <thead>
         <tr style={{ background: cor('nevoa') }}>
@@ -88,13 +88,13 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
                 key={c.id}
                 scope="col"
                 aria-sort={ativa ? (ordem?.direcao === 'asc' ? 'ascending' : 'descending') : ordenavel ? 'none' : undefined}
-                style={{ ...celulaBase, ...texto('pequeno', 'cabecalho-tabela'), ...(direita(c) ? numerico : { textAlign: 'left' }), width: c.largura }}
+                style={{ ...tabela.cabecalho, ...(direita(c) ? numerico : {}), width: c.largura }}
               >
                 {ordenavel ? (
                   <button
                     type="button"
                     onClick={() => ordenar(c)}
-                    style={{ all: 'unset', cursor: 'pointer', ...texto('pequeno', 'cabecalho-tabela') }}
+                    style={{ ...texto('pequeno', 'cabecalho-tabela'), textAlign: 'inherit', background: 'none', border: 0, padding: 0, margin: 0, cursor: 'pointer' }}
                   >
                     {c.titulo}
                     {ativa ? (ordem?.direcao === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -110,7 +110,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
       <tbody>
         {visiveis.length === 0 ? (
           <tr>
-            <td colSpan={colunas.length} style={{ ...celulaBase, textAlign: 'center', color: cor('textoApoio'), padding: espaco.xl }}>
+            <td colSpan={colunas.length} style={tabela.vazio}>
               {textoVazio}
             </td>
           </tr>
@@ -134,7 +134,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
               style={{ cursor: aoClicarLinha ? 'pointer' : undefined }}
             >
               {colunas.map((c) => (
-                <td key={c.id} style={{ ...celulaBase, ...(direita(c) ? numerico : {}) }}>
+                <td key={c.id} style={{ ...tabela.celula, ...estiloCelula(c) }}>
                   {c.celula ? c.celula(l) : String((l as Record<string, unknown>)[c.id] ?? '')}
                 </td>
               ))}

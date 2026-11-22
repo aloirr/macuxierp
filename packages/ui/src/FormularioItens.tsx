@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { cor, espaco, numerico, texto } from './estilos.js';
+import { useId, useState, type ReactNode } from 'react';
+import { cor, desabilitadoEstilo, espaco, numerico, tabela, texto } from './estilos.js';
 import { centavosParaReais, reaisParaCentavos, textoParaQuantidade } from './entradas.js';
 
 /** Linha mínima do formulário. Valores monetários em centavos (inteiros). O módulo pode estender com campos próprios. */
@@ -17,6 +17,8 @@ export interface SeletorProdutoProps {
   aoEscolher: (produtoId: string | null) => void;
   /** Para aria-label do campo. */
   rotulo: string;
+  /** O formulário está desabilitado: o seletor não deve aceitar escolha. */
+  desabilitado?: boolean;
 }
 
 export interface FormularioItensProps<T extends ItemLinha = ItemLinha> {
@@ -35,7 +37,7 @@ export interface FormularioItensProps<T extends ItemLinha = ItemLinha> {
   erros?: Record<string, string>;
 }
 
-const campo = { ...texto('pequeno'), border: `1px solid ${cor('bordaCinza')}`, padding: espaco.xs, width: '100%', boxSizing: 'border-box' } as const;
+const campo = { ...texto('pequeno'), minWidth: 0, border: `1px solid ${cor('bordaCinza')}`, padding: espaco.xs, width: '100%', boxSizing: 'border-box' } as const;
 
 interface CampoProps {
   rotulo: string;
@@ -47,6 +49,8 @@ interface CampoProps {
   paraValor: (t: string) => number | null;
   aoValor: (v: number) => void;
   inputMode: 'decimal' | 'numeric';
+  /** Mensagem abaixo do campo quando o texto não é válido: o problema e a ação. */
+  mensagemInvalido: string;
 }
 
 /** Mantém o texto digitado localmente ("1,5", "1." ) e só publica quando é válido. */
@@ -56,10 +60,13 @@ function CampoNumerico(p: CampoProps) {
   // Valor mudou por fora (ex.: linha reaproveitada): ressincroniza.
   const atual = p.paraValor(t);
   if (!invalido && atual !== null && atual !== p.valor) setT(p.paraTexto(p.valor));
+  const idErro = useId();
   return (
+    <div>
     <input
       aria-label={p.rotulo}
       aria-invalid={invalido ? true : undefined}
+      aria-describedby={invalido ? idErro : undefined}
       inputMode={p.inputMode}
       disabled={p.desabilitado}
       value={t}
@@ -70,8 +77,10 @@ function CampoNumerico(p: CampoProps) {
         setInvalido(v === null);
         if (v !== null) p.aoValor(v);
       }}
-      style={{ ...campo, ...numerico, ...(invalido ? { borderColor: cor('erroTexto') } : {}) }}
+      style={{ ...campo, ...numerico, ...(p.desabilitado ? { ...desabilitadoEstilo(true), background: cor('nevoa') } : {}), ...(invalido ? { borderColor: cor('erroTexto') } : {}) }}
     />
+    {invalido ? <div id={idErro} role="alert" style={{ ...texto('pequeno'), color: cor('erroTexto') }}>{p.mensagemInvalido}</div> : null}
+    </div>
   );
 }
 
@@ -84,12 +93,12 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
     while (itens.some((i) => i.chave === `item-${n}`)) n++;
     aoMudar([...itens, novoItem(`item-${n}`)]);
   };
-  const th = { ...texto('pequeno', 'cabecalho-tabela'), textAlign: 'left', padding: espaco.xs, background: cor('nevoa') } as const;
-  const td = { padding: espaco.xs, borderBottom: `1px solid ${cor('bordaTabela')}`, verticalAlign: 'top' } as const;
+  const th = tabela.cabecalho;
+  const td = tabela.celula;
 
   return (
     <div style={{ display: 'grid', gap: espaco.sm }}>
-      <table style={{ ...texto('pequeno'), width: '100%', borderCollapse: 'collapse' }}>
+      <table style={tabela.raiz}>
         <thead>
           <tr>
             <th style={th}>Produto</th>
@@ -103,7 +112,7 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
         <tbody>
           {itens.length === 0 ? (
             <tr>
-              <td colSpan={6} style={{ ...td, textAlign: 'center', color: cor('textoApoio') }}>Nenhum item. Adicione o primeiro.</td>
+              <td colSpan={6} style={tabela.vazio}>Nenhum item. Adicione o primeiro.</td>
             </tr>
           ) : null}
           {itens.map((i, n) => {
@@ -112,21 +121,21 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
             return (
               <tr key={i.chave}>
                 <td style={td}>
-                  {renderSeletorProduto({ valor: i.produtoId, aoEscolher: (id) => mudar(i.chave, { produtoId: id }), rotulo: `Produto do ${rotulo.toLowerCase()}` })}
-                  {erro ? <div role="alert" style={{ color: cor('erroTexto') }}>{erro}</div> : null}
+                  {renderSeletorProduto({ valor: i.produtoId, aoEscolher: (id) => mudar(i.chave, { produtoId: id }), rotulo: `Produto do ${rotulo.toLowerCase()}`, desabilitado })}
+                  {erro ? <div role="alert" style={{ ...texto('pequeno'), color: cor('erroTexto') }}>{erro}</div> : null}
                 </td>
                 <td style={td}>
-                  <CampoNumerico rotulo={`Quantidade do ${rotulo.toLowerCase()}`} inputMode="decimal" desabilitado={desabilitado} valor={i.quantidade} paraTexto={String} paraValor={textoParaQuantidade} aoValor={(v) => mudar(i.chave, { quantidade: v })} />
+                  <CampoNumerico rotulo={`Quantidade do ${rotulo.toLowerCase()}`} inputMode="decimal" mensagemInvalido="Quantidade inválida. Use só números, até 4 casas, ex.: 1,5." desabilitado={desabilitado} valor={i.quantidade} paraTexto={String} paraValor={textoParaQuantidade} aoValor={(v) => mudar(i.chave, { quantidade: v })} />
                 </td>
                 <td style={td}>
-                  <CampoNumerico rotulo={`Preço unitário do ${rotulo.toLowerCase()}`} inputMode="decimal" desabilitado={desabilitado} valor={i.precoUnitarioCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { precoUnitarioCentavos: v })} />
+                  <CampoNumerico rotulo={`Preço unitário do ${rotulo.toLowerCase()}`} inputMode="decimal" mensagemInvalido="Preço inválido. Digite em reais, ex.: 12,50." desabilitado={desabilitado} valor={i.precoUnitarioCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { precoUnitarioCentavos: v })} />
                 </td>
                 <td style={td}>
-                  <CampoNumerico rotulo={`Desconto do ${rotulo.toLowerCase()}`} inputMode="decimal" desabilitado={desabilitado} valor={i.descontoCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { descontoCentavos: v })} />
+                  <CampoNumerico rotulo={`Desconto do ${rotulo.toLowerCase()}`} inputMode="decimal" mensagemInvalido="Desconto inválido. Digite em reais, ex.: 5,00." desabilitado={desabilitado} valor={i.descontoCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { descontoCentavos: v })} />
                 </td>
                 <td style={{ ...td, ...numerico }}>{formatarCentavos(calcularTotal(i))}</td>
                 <td style={td}>
-                  <button type="button" disabled={desabilitado} aria-label={`Remover ${rotulo.toLowerCase()}`} onClick={() => aoMudar(itens.filter((x) => x.chave !== i.chave))} style={{ ...texto('pequeno'), cursor: 'pointer', color: cor('erroTexto'), background: cor('branco'), border: `1px solid ${cor('bordaCinza')}` }}>
+                  <button type="button" disabled={desabilitado} aria-label={`Remover ${rotulo.toLowerCase()}`} onClick={() => aoMudar(itens.filter((x) => x.chave !== i.chave))} style={{ ...texto('pequeno', 'medio'), ...desabilitadoEstilo(desabilitado), background: cor('branco'), border: `1px solid ${cor('bordaCinza')}` }}>
                     Remover
                   </button>
                 </td>
@@ -136,7 +145,7 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
         </tbody>
       </table>
       <div>
-        <button type="button" disabled={desabilitado} onClick={adicionar} style={{ ...texto('pequeno', 'medio'), cursor: 'pointer', padding: `${espaco.xs}px ${espaco.md}px`, background: cor('branco'), border: `1px solid ${cor('bordaCinza')}` }}>
+        <button type="button" disabled={desabilitado} onClick={adicionar} style={{ ...texto('pequeno', 'medio'), ...desabilitadoEstilo(desabilitado), padding: `${espaco.xs}px ${espaco.md}px`, background: cor('branco'), border: `1px solid ${cor('bordaCinza')}` }}>
           Adicionar item
         </button>
       </div>

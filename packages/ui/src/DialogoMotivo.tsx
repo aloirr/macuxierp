@@ -81,9 +81,9 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
   };
 
   const botao = (principal: boolean) => ({
-    ...texto('pequeno', principal ? 'titulo' : 'medio'),
+    ...texto('pequeno', principal ? 'botao-principal' : 'medio'),
     padding: `${espaco.sm}px ${espaco.lg}px`,
-    cursor: 'pointer',
+    cursor: 'pointer' as const,
     border: `1px solid ${principal ? cor('azulNoite') : cor('bordaCinza')}`,
     background: principal ? cor('azulNoite') : cor('branco'),
     color: principal ? cor('branco') : cor('grafite'),
@@ -104,20 +104,20 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         onKeyDown={teclado}
         style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', display: 'grid', gap: espaco.md, position: 'relative' }}
       >
-        <h2 id={`${id}-t`} style={{ ...texto('grande', 'titulo'), margin: 0 }}>{titulo}</h2>
+        <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0 }}>{titulo}</h2>
         {motivos.length > 0 ? (
           <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: espaco.xs }}>
-            <legend style={texto('pequeno', 'cabecalho-tabela')}>Motivo</legend>
+            <legend style={texto('pequeno', 'rotulo-campo')}>Motivo</legend>
             {motivos.map((m) => (
               <label key={m.codigo} style={{ display: 'flex', gap: espaco.sm, alignItems: 'center' }}>
-                <input type="radio" name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
+                <input type="radio" style={{ accentColor: cor('azulNoite') }} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
                 {m.rotulo}
               </label>
             ))}
           </fieldset>
         ) : null}
         <label style={{ display: 'grid', gap: espaco.xs }}>
-          <span style={texto('pequeno', 'cabecalho-tabela')}>
+          <span style={texto('pequeno', 'rotulo-campo')}>
             {rotuloTexto}
             {textoObrigatorio ? '' : ' (opcional)'}
           </span>
@@ -133,7 +133,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
           />
         </label>
         {aviso ? (
-          <p id={`${id}-aviso`} style={{ ...texto('micro'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
+          <p id={`${id}-aviso`} style={{ ...texto('pequeno'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
             {aviso}
           </p>
         ) : null}

@@ -4,7 +4,7 @@ export type NivelPendencia = 'bloqueante' | 'aceitavel';
 
 export interface Pendencia {
   nivel: NivelPendencia;
-  /** Código da regra, ex.: "RN-PED-004". */
+  /** Código da regra, ex.: "RN-PED-004". Vai só para o atributo data-regra, não aparece na tela. */
   codigoRn: string;
   /** Texto curto: o problema e a ação. */
   texto: string;
@@ -30,6 +30,7 @@ export function FaixaPendencias({ itens }: FaixaPendenciasProps) {
           <div
             key={`${i.codigoRn}-${i.texto}`}
             data-nivel={i.nivel}
+            data-regra={i.codigoRn}
             style={{
               ...texto('pequeno'),
               display: 'flex',
@@ -40,8 +41,7 @@ export function FaixaPendencias({ itens }: FaixaPendenciasProps) {
               borderLeft: `4px solid ${cor(erro ? 'erroTexto' : 'avisoTexto')}`,
             }}
           >
-            <strong>{erro ? 'Bloqueia' : 'Atenção'}</strong>
-            <code style={{ fontFamily: 'var(--mx-fonte-codigo)' }}>{i.codigoRn}</code>
+            <strong style={{ fontWeight: 'var(--mx-peso-rotulo-pequeno)' }}>{erro ? 'Bloqueia' : 'Atenção'}</strong>
             <span>{i.texto}</span>
           </div>
         );
