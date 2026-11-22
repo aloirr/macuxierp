@@ -74,6 +74,8 @@ export interface PedidoGravado {
   cliente_id: string;
   vendedor_id: string | null;
   condicao_pagamento_id: string | null;
+  /** Pedido fora do crédito do cliente (`foraDoCredito`, RN-PED-04), gravado na criação e na aprovação. */
+  a_vista: boolean;
   tabela_preco_id: string | null;
   cliente_retrato: ClienteRetrato;
   endereco_entrega: EnderecoEntrega | null;
@@ -101,6 +103,7 @@ export interface DadosCabecalho {
   cliente_id: string;
   vendedor_id: string | null;
   condicao_pagamento_id: string | null;
+  a_vista: boolean;
   tabela_preco_id: string | null;
   cliente_retrato: ClienteRetrato;
   endereco_entrega: EnderecoEntrega | null;
@@ -140,12 +143,6 @@ export type FiltroPedidos = Partial<z.output<typeof paginaPedidos.consulta>> & {
 /** Linha da lista e do CSV: a do descritor (`cliente_documento` só vem para quem pode ver o documento). */
 export type LinhaLista = ItemListaPedido;
 
-/** Soma do total não faturado dos pedidos aprovados do cliente, por condição (o domain tira a à vista, premissa (f)). */
-export interface CompromissoCredito {
-  condicao_pagamento_id: string | null;
-  centavos: number;
-}
-
 /** O que a API precisa do schema `pedido`, na transação do tenant. O adaptador SQL toma os travamentos. */
 export interface RepoPedidos {
   tenantId(): Promise<string>;
@@ -161,6 +158,8 @@ export interface RepoPedidos {
   obterParaAtualizar(id: string): Promise<PedidoGravado | null>;
   /** Transição pelo gatilho `pedido.validar_status`: transição fora da tabela vira 422 `RN-PED-02` com `possiveis`. */
   atualizarStatus(id: string, status: StatusPedido, pendencias: readonly Pendencia[], validadoEm: Date | null): Promise<void>;
+  /** Grava `a_vista` (fora do crédito) na aprovação, com a condição lida naquele momento. */
+  atualizarAVista(id: string, aVista: boolean): Promise<void>;
   atualizarPendencias(id: string, pendencias: readonly Pendencia[], validadoEm: Date): Promise<void>;
   atualizarCabecalho(id: string, d: DadosCabecalho): Promise<void>;
   /** Edição do manual: reaproveita o item do mesmo produto, retira o que sobrou (`deleted_at`) e cria os novos. */
@@ -174,7 +173,7 @@ export interface RepoPedidos {
   listar(f: FiltroPedidos): Promise<Pagina<LinhaLista>>;
   /** Cada linha do CSV, sem cursor, até `maximo`. */
   listarTodos(f: Omit<FiltroPedidos, 'limite' | 'cursor'>, maximo: number): Promise<LinhaLista[]>;
-  compromissoCredito(clienteId: string, exceto: string | null): Promise<CompromissoCredito[]>;
+  compromissoCredito(clienteId: string, exceto: string | null): Promise<number>;
   compromissoEstoque(filialId: string, produtoIds: readonly string[], exceto: string | null): Promise<{ produto_id: string; quantidade: number }[]>;
 }
 

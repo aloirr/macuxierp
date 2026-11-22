@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { avaliarPedido, avaliarCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
-import { ehAVista, FORMAS_A_VISTA } from '@macuxierp/cadastros/contracts';
+import { avaliarPedido, avaliarCredito, foraDoCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
+import { FORMAS_A_VISTA } from '@macuxierp/cadastros/contracts';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -29,7 +29,7 @@ function base(o: Partial<EntradaAvaliacao> = {}): EntradaAvaliacao {
     ...o,
   };
 }
-const PRAZO = { forma_tpag: '15', prazos_dias: [30], inativo: false };
+const PRAZO = { forma_tpag: '15', inativo: false };
 const codigos = (e: EntradaAvaliacao) => avaliarPedido(e).map((p) => p.codigo);
 
 describe('avaliação do pedido', () => {
@@ -104,16 +104,16 @@ describe('avaliação do pedido', () => {
     expect(avaliarCredito({ ...c, limite_credito_centavos: 1, total_centavos: 1 })).toBeNull();
   });
 
-  it('RN-PED-04: à vista com limite 0 passa, sem pendência de crédito', () => {
-    for (const forma_tpag of FORMAS_A_VISTA) {
-      expect(codigos(base({ condicao: { forma_tpag, prazos_dias: [0], inativo: false }, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual([]);
+  it('RN-PED-04: à vista e cartão (03) com limite 0 passam, sem pendência de crédito (decisões de 22/11, 01h10 e 01h12)', () => {
+    for (const forma_tpag of [...FORMAS_A_VISTA, '03']) {
+      expect(codigos(base({ condicao: { forma_tpag, inativo: false }, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual([]);
     }
   });
 
-  it('RN-PED-04: à vista acima do limite passa, mas preço e estoque continuam validados', () => {
-    for (const forma_tpag of FORMAS_A_VISTA) {
-      const condicao = { forma_tpag, prazos_dias: [0], inativo: false };
-      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 1 }, titulos_abertos_centavos: 99_999 }))).toEqual([]);
+  it('RN-PED-04: à vista e cartão (03) acima do limite passam, mas preço e estoque continuam validados', () => {
+    for (const forma_tpag of [...FORMAS_A_VISTA, '03']) {
+      const condicao = { forma_tpag, inativo: false };
+      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 1 }, titulos_abertos_centavos: 99_999, compromisso_credito_centavos: 99_999 }))).toEqual([]);
       expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 }, precos: [], saldos: [] }))).toEqual(['preco_sem_tabela', 'estoque_insuficiente']);
     }
   });
@@ -122,21 +122,15 @@ describe('avaliação do pedido', () => {
     expect(codigos(base({ condicao_pagamento_id: null, condicao: null, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['condicao_ausente', 'credito_sem_limite']);
   });
 
-  it('RN-PED-04: ehAVista olha só a forma de pagamento: dinheiro (01), PIX (17) e débito (04)', () => {
-    for (const forma_tpag of ['01', '17', '04']) expect(ehAVista({ forma_tpag, prazos_dias: [0] })).toBe(true);
+  it('RN-PED-04: foraDoCredito é verdadeira para à vista (01, 17, 04) e cartão (03); boleto, forma desconhecida e sem condição, não', () => {
+    for (const forma_tpag of [...FORMAS_A_VISTA, '03']) expect(foraDoCredito({ forma_tpag }), forma_tpag).toBe(true);
+    for (const forma_tpag of ['15', '02', '99']) expect(foraDoCredito({ forma_tpag }), forma_tpag).toBe(false);
+    expect(foraDoCredito(null)).toBe(false);
   });
 
-  it('RN-PED-04: boleto (15) e cartão de crédito (03) com prazos [0] não são à vista', () => {
-    for (const forma_tpag of ['15', '03']) {
-      const condicao = { forma_tpag, prazos_dias: [0], inativo: false };
-      expect(ehAVista(condicao)).toBe(false);
-      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
-    }
-  });
-
-  it('RN-PED-04: boleto (15) com prazos [30] não é à vista e dá credito_sem_limite com limite 0', () => {
-    const condicao = { forma_tpag: '15', prazos_dias: [30], inativo: false };
-    expect(ehAVista(condicao)).toBe(false);
+  it('RN-PED-04: boleto (15) não é fora do crédito e dá credito_sem_limite com limite 0', () => {
+    const condicao = { forma_tpag: '15', inativo: false };
+    expect(foraDoCredito(condicao)).toBe(false);
     expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
   });
 
@@ -181,7 +175,7 @@ describe('avaliação do pedido', () => {
   it('RF-PED-03: sem condição ou condição inativa são pendências', () => {
     expect(codigos(base({ condicao_pagamento_id: null, condicao: null }))).toEqual(['condicao_ausente']);
     expect(codigos(base({ condicao: null }))).toEqual(['condicao_ausente']);
-    expect(codigos(base({ condicao: { forma_tpag: '15', prazos_dias: [30], inativo: true } }))).toEqual(['condicao_inativa']);
+    expect(codigos(base({ condicao: { forma_tpag: '15', inativo: true } }))).toEqual(['condicao_inativa']);
   });
 
   it('RN-PED-03: o total do pedido para o crédito é a soma dos itens com arredondamento por item', () => {

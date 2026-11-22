@@ -104,7 +104,15 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
     const r = await t.recebedor.receber(tx, pedidoFdv({ itens: [{ ...pedidoFdv().itens[0]!, quantidade: 5_000_000, total_informado_centavos: 500_000 }] }));
     expect(r).toMatchObject({ resultado: 'criado', status: 'aprovado' });
     expect(t.armazem.pedidos[0]).toMatchObject({ pendencias: [], status: 'aprovado', total_centavos: 500_000 });
-    expect(await t.deps.repositorios(tx).compromissoCredito(IDS.cliente, null)).toEqual([{ condicao_pagamento_id: IDS.condicao30, centavos: 500_000 }]);
+    expect(await t.deps.repositorios(tx).compromissoCredito(IDS.cliente, null)).toBe(500_000);
+    expect(t.armazem.pedidos[0]!.a_vista).toBe(false); // boleto: dentro do crédito
+  });
+  it('RN-PED-04: o pedido do FDV no cartão (03) grava a_vista = true e não entra no compromisso (decisões de 22/11, 01h10 e 01h12)', async () => {
+    const t = montar({});
+    const r = await t.recebedor.receber(tx, pedidoFdv({ condicao_pagamento_id: IDS.condicaoCartao }));
+    expect(r).toMatchObject({ resultado: 'criado', status: 'aprovado' });
+    expect(t.armazem.pedidos[0]!.a_vista).toBe(true);
+    expect(await t.deps.repositorios(tx).compromissoCredito(IDS.cliente, null)).toBe(0);
   });
   it('RN-PED-04: o pedido do FDV sem condição de pagamento é recusado por condicao_ausente (lote 1c)', async () => {
     const t = montar();
