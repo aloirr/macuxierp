@@ -237,9 +237,9 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
         agora,
         publicar: async (e) => {
           if (!eventoDoModulo(modulo, e.nome)) throw new Error(`${modulo} publicando evento de outro módulo: ${e.nome}`);
-          const evento = criarEvento({ ...e, tenant_id: sessao.tenant_id, ator: sessao.usuario_id, request_id: req.id }, agora);
-          await d.outbox.gravar(tx, evento);
-          return evento;
+          const { versao: _ignorada, ...dados } = e;
+          const evento = criarEvento({ ...dados, tenant_id: sessao.tenant_id, ator: sessao.usuario_id, request_id: req.id }, agora);
+          return { ...evento, versao: await d.outbox.gravar(tx, evento) };
         },
         auditar: async (dados) => {
           await auditar(d.auditoria, tx, { tenant_id: sessao.tenant_id, usuario_id: sessao.usuario_id, request_id: req.id }, dados, agora);

@@ -65,8 +65,9 @@ export function criarClienteCore(cfg: { baseUrl: string; token: () => string; fe
     certificados: (filialId?: string) => chamar('GET', `/certificados${q({ filial_id: filialId })}`, ListaCertificados),
     enviarCertificado: (c: CertificadoEnviar) => chamar('POST', '/certificados', CertificadoResumo, c),
     ambientes: (filialId?: string) => chamar('GET', `/ambientes-fiscais${q({ filial_id: filialId })}`, ListaAmbientes),
-    trocarAmbiente: (filialId: string, ambiente: 'homologacao' | 'producao', recado: string | null) =>
-      chamar('PUT', `/ambientes-fiscais/${filialId}`, AmbienteFiscal, { ambiente, recado_aprovacao: recado }),
+    /** RN-CORE-08 (ADR 0006): o tenant só volta para homologação; produção é pedida à Macuxi. */
+    voltarParaHomologacao: (filialId: string) =>
+      chamar('PUT', `/ambientes-fiscais/${filialId}`, AmbienteFiscal, { ambiente: 'homologacao' }),
     auditoria: (f?: Record<string, string>) => chamar('GET', `/auditoria${q(f)}`, ListaAuditoria),
     pedirExportacao: () => chamar('POST', '/exportacoes', Exportacao, {}),
     exportacao: (id: string) => chamar('GET', `/exportacoes/${id}`, Exportacao),

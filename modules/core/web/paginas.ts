@@ -14,9 +14,14 @@ export interface Botao {
   id: string;
   rotulo: string;
   acao: Acao;
-  /** Pede confirmação antes (inativar, trocar ambiente, redefinir senha). */
+  /** Pede confirmação antes (inativar, voltar para homologação, redefinir senha). */
   confirma?: boolean;
+  /** Só aparece quando a filial está neste ambiente (RN-CORE-08: o botão de voltar só existe em produção). */
+  somenteAmbiente?: 'homologacao' | 'producao';
 }
+
+/** RN-CORE-08 (ADR 0006): texto da página "Ambiente fiscal" em homologação, que não tem botão de produção. */
+export const TEXTO_AMBIENTE_HOMOLOGACAO = 'Para emitir em produção, peça à Macuxi. A troca é feita com a aprovação do Alexandre.';
 
 export interface PaginaCore {
   id: string;
@@ -54,7 +59,7 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
     ver: 'core.ambiente.ver',
     filtros: ['filial_id'],
     exportaCsv: false,
-    botoes: [{ id: 'trocar', rotulo: 'Trocar ambiente', acao: 'core.ambiente.trocar', confirma: true }],
+    botoes: [{ id: 'voltar-homologacao', rotulo: 'Voltar para homologação', acao: 'core.ambiente.trocar', confirma: true, somenteAmbiente: 'producao' }],
   },
   {
     id: 'exportacao',
@@ -93,8 +98,8 @@ export function paginasVisiveis(perfil: Perfil): PaginaCore[] {
 }
 
 /** Botões que o perfil pode usar na página. */
-export function botoesVisiveis(perfil: Perfil, pagina: PaginaCore): Botao[] {
-  return pagina.botoes.filter((b) => pode(perfil, b.acao));
+export function botoesVisiveis(perfil: Perfil, pagina: PaginaCore, ambiente?: 'homologacao' | 'producao'): Botao[] {
+  return pagina.botoes.filter((b) => pode(perfil, b.acao) && (!b.somenteAmbiente || b.somenteAmbiente === ambiente));
 }
 
 export const COLUNAS_USUARIOS: readonly Coluna<Usuario>[] = [

@@ -39,7 +39,7 @@ import {
   type Exportacao,
   type Usuario,
 } from '../contracts';
-import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbiente, diasParaVencer, gerarSenhaProvisoria } from '../domain';
+import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria } from '../domain';
 import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarA1 } from './cifra';
 import {
@@ -342,19 +342,21 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         const filialId = idDoParam(params, 'filial_id');
         const [atualLinha] = await repo.ambientes(c.tx, filialId);
         const atual = atualLinha?.ambiente ?? null;
-        const r = avaliarTrocaAmbiente({ atual, novo: corpo.ambiente, recado: corpo.recado_aprovacao });
+        const r = avaliarTrocaAmbienteTenant({ atual, novo: corpo.ambiente });
         if (!r.ok) throw erros.regra('RN-CORE-08', r.mensagem);
-        const nova: LinhaAmbiente = { filial_id: filialId, ambiente: r.ambiente, recado_aprovacao: r.recado };
+        if (!r.muda && atualLinha) return { corpo: ambienteDto(atualLinha) };
+        const nova: LinhaAmbiente & { ambiente: 'homologacao' } = { filial_id: filialId, ambiente: r.ambiente, recado_aprovacao: null };
         await repo.gravarAmbiente(c.tx, { ...nova, alterado_por: c.sessao.usuario_id }, c.agora);
+        const dto = ambienteDto(nova);
         await c.auditar({
           acao: 'core.ambiente.trocado',
           entidade: 'ambiente_fiscal',
           entidade_id: nova.filial_id,
-          antes: { ambiente: atual ?? AMBIENTE_PADRAO },
-          depois: ambienteDto(nova),
+          antes: { ambiente: atual ?? AMBIENTE_PADRAO, recado_aprovacao: atualLinha?.recado_aprovacao ?? null },
+          depois: { ...dto, origem: 'api' },
         });
-        await publicar(c, EVENTO_AMBIENTE, nova.filial_id, ambienteDto(nova));
-        return { corpo: ambienteDto(nova) };
+        await publicar(c, EVENTO_AMBIENTE, nova.filial_id, dto);
+        return { corpo: dto };
       },
     }),
 

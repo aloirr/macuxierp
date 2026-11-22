@@ -5,3 +5,4 @@
 2026-11-21 — T-0031 — rodada PR #18: RD-0012 (teste de banco no pg-testes), sequência única alterarUsuarioComTrava na rota e no teste, teste com segundo tenant
 2026-11-21 — T-0031 — RD-0013 (PatchUsuario único em portas.ts), RD-0014 (OpcoesAlterarUsuario exportado) e teste de banco do 409 do token de usuário (mutação confirmada)
 2026-11-21 — T-0033 — api do core exporta lerChaveA1, diasParaVencer e alertaVencimento (RD-0018/RD-0019); testes de arredondamento (floor) e do caminho público; RD-0020..0022 aplicados (casos de floor em regras.test.ts, index.test.ts só de identidade e 29,9 dias, comentário do index); previsão (dono + 15%): ~20min
+2026-11-21 — T-0030 — RN-CORE-08 (ADR 0006): avaliarTrocaAmbienteTenant, rota só volta para homologação (produção 422), porta tipada, PADRAO_RECADO_APROVACAO removido, web e testes (todas as combinações)

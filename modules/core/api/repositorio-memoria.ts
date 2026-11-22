@@ -94,7 +94,9 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   async ambientes(_tx: Transacao, filialId?: string): Promise<LinhaAmbiente[]> {
     return this.ambientesLinhas.filter((a) => !filialId || a.filial_id === filialId);
   }
-  async gravarAmbiente(_tx: Transacao, a: LinhaAmbiente & { alterado_por: string }): Promise<void> {
+  async gravarAmbiente(_tx: Transacao, a: LinhaAmbiente & { ambiente: 'homologacao'; alterado_por: string }): Promise<void> {
+    // Imita a RLS do banco (0008): o app só grava homologação (RN-CORE-08, ADR 0006).
+    if ((a.ambiente as string) !== 'homologacao') throw new Error('RLS: o app só grava ambiente fiscal em homologação');
     this.ambientesLinhas = this.ambientesLinhas.filter((x) => x.filial_id !== a.filial_id);
     this.ambientesLinhas.push(a);
   }

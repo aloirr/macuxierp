@@ -57,8 +57,10 @@ export class RelogioFixo implements Relogio {
 
 export class OutboxMemoria implements Outbox {
   readonly eventos: EnvelopeEvento[] = [];
-  async gravar(_tx: Transacao, evento: EnvelopeEvento): Promise<void> {
-    this.eventos.push(evento);
+  async gravar(_tx: Transacao, evento: EnvelopeEvento): Promise<number> {
+    const versao = this.eventos.filter((e) => e.tenant_id === evento.tenant_id && e.agregado_id === evento.agregado_id).length + 1;
+    this.eventos.push({ ...evento, versao });
+    return versao;
   }
 }
 

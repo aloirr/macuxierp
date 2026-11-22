@@ -113,7 +113,7 @@ describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
   const reais = () =>
     modulosDeTeste({
       core: repoCoreDuble({ empresa: async () => EMPRESA }),
-      cadastros: { condicoesPagamento: { listar: async () => ({ itens: [], total: 0 }) } as never },
+      cadastros: { condicoesPagamento: { listar: async () => ({ itens: [], proximo_cursor: null }) } as never },
     });
   const get = (app: Awaited<ReturnType<typeof montar>>, url: string, perfil: Perfil) => app.inject({ url, headers: { authorization: token(perfil) } });
 
@@ -135,7 +135,7 @@ describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
     const app = await montar([{ modulo: 'cadastros', ativo: true, valido_ate: null }], undefined, reais());
     const ok = await get(app, '/v1/cadastros/condicoes-pagamento', 'leitura');
     expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toMatchObject({ itens: [], total: 0 });
+    expect(ok.json()).toMatchObject({ itens: [] });
     const escrita = await app.inject({ method: 'POST', url: '/v1/cadastros/condicoes-pagamento', payload: {}, headers: { authorization: token('leitura') } });
     expect([escrita.statusCode, escrita.json().codigo]).toEqual([403, 'PERFIL_SEM_PERMISSAO']);
   });
