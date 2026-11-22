@@ -2,7 +2,7 @@
 
 > **REGRA derivada** do manual da marca do FDV (`aloirr/macuxifdv`, `docs/marca/manual.md`) e da [assinatura-erp.md](assinatura-erp.md). Não é decisão nova do Alexandre: aplica ao DANFE o que já está aprovado. Origem do pedido: T-0021 (lote 3 do faturamento), com a nota simulada de R-20261122-022626-alexandre. Autor: design-de-marca · 22/11/2026 (Manaus).
 > Vale para o DANFE da NF-e 55 e para todo PDF fiscal impresso em preto (por exemplo, a impressão da CC-e). Dono da aplicação: `modulo-faturamento`.
-> Revisões 22/11/2026 (Manaus), T-0021: ajustes de redação e lacunas após a validação das amostras (fd5c177) e a revalidação (9f006ea); sem mudança de marca.
+> Revisões 22/11/2026 (Manaus), T-0021: ajustes de redação e lacunas após a validação das amostras (fd5c177) e as revalidações (9f006ea e bcec8d3); sem mudança de marca.
 
 O leiaute é o do **Manual de Orientação do Contribuinte (MOC), Anexo II**. A marca não muda campo, ordem, tamanho de quadro nem texto legal do MOC. Quando o MOC pedir algo diferente do que está aqui (tamanho de fonte, aviso, posição), **vale o MOC**.
 
@@ -10,7 +10,7 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
 
 ## 1. Logo do emitente (o do cliente)
 - O quadro do emitente é **da marca do cliente** (empresa do tenant). O logo da Macuxi **nunca** entra nesse quadro: nem como logo do emitente, nem quando o cliente não tem logo, nem como enfeite.
-- **Caixa do logo:** lado esquerdo do quadro do emitente, com no máximo **1/3 da largura do quadro**, começando **1,5 mm para dentro** do eixo da linha esquerda do quadro, e a **altura do quadro menos 1,5 mm de respiro em cima e 1,5 mm embaixo**. O quadro continua com o tamanho do MOC: o logo se ajusta à caixa, nunca o contrário.
+- **Caixa do logo:** lado esquerdo do quadro do emitente, com no máximo **1/3 da largura do quadro**, contado a partir do eixo da linha esquerda (o recuo fica dentro desse terço); começa **1,5 mm para dentro** desse eixo e tem a **altura do quadro menos 1,5 mm de respiro em cima e 1,5 mm embaixo**. O quadro continua com o tamanho do MOC: o logo se ajusta à caixa, nunca o contrário.
 - **Proporção:** escala uniforme até o primeiro lado da caixa bater ("caber inteiro"). Nunca esticar, achatar, recortar, girar nem pôr borda ou sombra.
 - **Alinhamento:** logo centrado na vertical e encostado à esquerda da caixa. Os dados do emitente (razão social, endereço, telefone) ficam centralizados no espaço que sobra à direita.
 - **Sem logo:** o quadro fica só com os dados do emitente, centralizados na largura toda do quadro. Não se deixa espaço vazio reservado.
@@ -30,13 +30,14 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
   - rótulos de campo e texto do canhoto ("RECEBEMOS DE … INDICADA AO LADO"): **6 pt**, regular, caixa alta. São os únicos textos em 6 pt;
   - conteúdo de campo, legendas e os demais textos fixos (por exemplo, "Documento Auxiliar da Nota Fiscal Eletrônica", "Consulta de autenticidade…", "Folha x/y"): **7 pt**, regular;
   - títulos de quadro: **7 pt**, negrito, caixa alta;
-  - destaques (número, série, chave de acesso, valor total): **8 pt**, negrito;
+  - destaques (número, série, chave de acesso e valor total da nota, `vNF`): **8 pt**, negrito. Os demais valores do quadro de cálculo do imposto, inclusive o valor total dos produtos (`vProd`), seguem o conteúdo de campo;
   - texto do rodapé "Emitido pelo": conforme §4.
 - **Texto que não cabe:**
   - nunca reduzir a fonte abaixo do mínimo nem cortar com reticências;
   - quebrar em quantas linhas precisar (descrição do item e valor alinhado à direita);
   - o rótulo pode usar a abreviação do MOC ou quebrar em 2 linhas;
-  - respiro mínimo de **1,5 pt** entre o texto e a linha do quadro, medido da caixa do texto (incluindo descendentes e acentos, como Ç, g, p) até o eixo da linha; o texto nunca cruza a linha;
+  - respiro mínimo de **1,5 pt** entre o texto e a linha do quadro, medido da caixa da fonte (FontBBox da Helvetica: regular +0,931 e −0,225 do corpo; negrito +0,962 e −0,228), que cobre descendentes e acentos (Ç, g, É), até o eixo da linha; o texto nunca cruza a linha;
+  - o símbolo `R$` é uniforme em todos os campos de valor do mesmo quadro: ou todos têm, ou nenhum; nunca some só porque o número é grande;
   - o "item extremo" das amostras de teste é o máximo do leiaute: `qCom` com 11 inteiros e 4 decimais; `vProd` do item e os totais `vProd` e `vNF` com 13 inteiros e 2 decimais; descrição com exatamente 120 caracteres.
 - A Helvetica do `pdf-lib` só tem os caracteres do WinAnsi. Acentos do português funcionam; símbolos fora dele (por exemplo, o sinal de menos U+2212) saem trocados por equivalente simples ("-"), nunca por outra fonte.
 
