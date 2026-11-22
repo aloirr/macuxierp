@@ -59,13 +59,12 @@ O modelo oficial é o `env.modelo` da T-0024, com os nomes usados pelo código n
 - Pasta `/opt/macuxierp` e trava `/var/lock/macuxi-producao-vm.lock`.
 - No DBaaS: o banco `macuxierp` e os papéis `macuxierp_app`, `macuxierp_worker` e `macuxierp_leitura`, criados pelo admin.
 
-## 3. Texto do pedido ao time do FDV (para o Alexandre encaminhar)
-> Time do Macuxi FDV, o Macuxi ERP vai começar a integração com o Hub (`/integracao/v1`) e o deploy na mesma VM. Peço duas coisas:
->
-> 1. **Um tenant de teste no FDV, com credencial de conector**, só para testes do ERP. Ele não pode ser o da thathyany nem ter dado real. O tenant precisa aceitar a publicação de filiais, clientes, produtos, preços, estoque, vendedores, carteira e títulos, e o envio e o retorno de pedidos. Mandem a credencial por um canal seguro, fora de chat e de recado, para eu gravar como secret.
-> 2. **A trava `flock` no `scripts/deploy/producao/implantar.sh` do FDV**, no mesmo arquivo que o ERP vai usar: `flock -w 1800 /var/lock/macuxi-producao-vm.lock`, antes de qualquer `docker compose` e solta no fim. Assim o FDV e o ERP nunca publicam ao mesmo tempo na VM (ADR 0003 do ERP). Enquanto a trava não existir do lado do FDV, o ERP só publica com o FDV parado.
->
-> Mais tarde, depois da fase de pedidos do ERP, vamos combinar a virada da thathyany: o kit do Conector sai das entidades que o ERP passar a publicar (T-0027).
+## 3. Integração com o Macuxi FDV (atualizado às 23h50)
+O pedido de tenant de teste foi **substituído** por três decisões do Alexandre:
+- 23h12: os testes com o FDV são feitos na empresa da thathyany;
+- 23h22: "O TESTE É NA EMPRESA DA THATHYANY E PONTO FINAL";
+- virada entidade por entidade (opção B), com o external_id do kit (ADR 0010).
+O passo a passo único está em `docs/status/2026-11-21-roteiro-virada-thathyany.md`. A trava `flock` no `implantar.sh` do FDV continua pedida ao time do FDV pelo Alexandre (ADR 0003 do ERP).
 
 ## 4. Passo a passo do credenciamento da thathyany na SEFAZ-AM e do A1 de homologação
 > Os endereços, as NT vigentes e o procedimento exato são conferidos no portal oficial da SEFAZ-AM pela T-0018 antes do primeiro envio. Este roteiro é o caminho usual e não substitui o portal.
