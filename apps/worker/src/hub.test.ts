@@ -21,6 +21,22 @@ describe('configurarHub', () => {
     expect(urls).toEqual(['https://hub.exemplo.com.br/integracao/v1/sinal']);
   });
 
+  it('as duas URLs do compose.yml (v0.1.1): base com o /integracao/v1 final, sem duplicá-lo', async () => {
+    const urls: string[] = [];
+    const f = (async (u: URL | string) => {
+      urls.push(String(u));
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+    const hub = configurarHub(
+      { MACUXIERP_HUB_URL_TESTE: 'https://hub-teste.invalid/integracao/v1', MACUXIERP_HUB_URL_PRODUCAO: 'https://api.macuxifdv.com.br/integracao/v1' },
+      '0.1.1',
+      f,
+    );
+    await hub?.chamar({ conectorId: 'c1', chave: 'k', ambiente: 'teste' }, { metodo: 'GET', caminho: '/pedidos/pendentes?limite=10' });
+    await hub?.chamar({ conectorId: 'c1', chave: 'k', ambiente: 'producao' }, { metodo: 'POST', caminho: '/sinal', corpo: {} });
+    expect(urls).toEqual(['https://hub-teste.invalid/integracao/v1/pedidos/pendentes?limite=10', 'https://api.macuxifdv.com.br/integracao/v1/sinal']);
+  });
+
   it('só uma URL ou URL sem https derruba a partida', () => {
     expect(() => configurarHub({ MACUXIERP_HUB_URL_TESTE: OK.MACUXIERP_HUB_URL_TESTE }, '0.1.0')).toThrow(/vão juntas/);
     expect(() => configurarHub({ ...OK, MACUXIERP_HUB_URL_PRODUCAO: 'http://hub.exemplo.com.br' }, '0.1.0')).toThrow(/url_invalida/);
