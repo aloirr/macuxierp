@@ -9,7 +9,7 @@ import type {
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import type {
-  AlvoExterno, FilhoGravado, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
+  FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 type Dict = Record<string, unknown>;
@@ -416,13 +416,40 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     consultaExterna,
     oficiais: oficiaisSql(tx),
     carga: cargaSql(tx),
+    chaves: chavesSql(tx),
   };
 }
 
-const ALVOS: Record<AlvoExterno, string> = {
-  filial: 'cadastros.filial', vendedor: 'cadastros.vendedor', condicao_pagamento: 'cadastros.condicao_pagamento',
-  produto: 'cadastros.produto', tabela_preco: 'cadastros.tabela_preco', cliente: 'cadastros.cliente',
+const TABELAS_CHAVE: Record<TabelaChave, string> = {
+  cliente: 'cadastros.cliente', vendedor: 'cadastros.vendedor', filial: 'cadastros.filial', produto: 'cadastros.produto',
+  condicao_pagamento: 'cadastros.condicao_pagamento', cliente_endereco: 'cadastros.cliente_endereco',
+  tabela_preco: 'cadastros.tabela_preco', produto_unidade: 'cadastros.produto_unidade', tabela_preco_item: 'cadastros.tabela_preco_item',
 };
+
+/** Chaves em lote (ADR 0010): `tenant_id` explícito além da RLS; sem filtro de `deleted_at` (o inativo também resolve). */
+function chavesSql(tx: Transacao): RepoChaves {
+  return {
+    async idsPorExternalId(t, externalIds, soAtivos = false) {
+      if (externalIds.length === 0) return new Map();
+      const l = await executar<{ id: string; external_id: string }>(
+        tx, `SELECT id, external_id FROM ${TABELAS_CHAVE[t]} WHERE tenant_id = plataforma.tenant_atual() AND external_id = ANY($1::text[])${soAtivos ? ' AND deleted_at IS NULL' : ''}`, [[...externalIds]],
+      );
+      return new Map(l.map((x) => [x.external_id, x.id]));
+    },
+    async idsSemExternalId(t, ids) {
+      if (ids.length === 0) return new Set();
+      const l = await executar<{ id: string }>(
+        tx, `SELECT id FROM ${TABELAS_CHAVE[t]} WHERE tenant_id = plataforma.tenant_atual() AND id = ANY($1::uuid[]) AND external_id IS NULL`, [[...ids]],
+      );
+      return new Set(l.map((x) => x.id));
+    },
+    async existeId(t, id) {
+      const l = await executar(tx, `SELECT 1 FROM ${TABELAS_CHAVE[t]} WHERE tenant_id = plataforma.tenant_atual() AND id = $1::uuid LIMIT 1`, [id]);
+      return l.length > 0;
+    },
+  };
+}
+
 const FILHAS: Record<TabelaFilha, { tabela: string; pai: string; colunas: readonly string[]; numericas: readonly string[] }> = {
   produto_unidade: { tabela: 'cadastros.produto_unidade', pai: 'produto_id', colunas: ['unidade', 'ean'], numericas: ['fator'] },
   cliente_endereco: { tabela: 'cadastros.cliente_endereco', pai: 'cliente_id', colunas: ['tipo', ...ENDERECO], numericas: [] },
@@ -439,11 +466,6 @@ function cargaSql(tx: Transacao): RepoCarga {
   const colunasItem = `id, external_id, ${N('preco_centavos')}, desconto_maximo_bp, (deleted_at IS NOT NULL) AS inativo`;
   const item = async (onde: string, p: unknown[]) => (await executar<ItemPrecoGravado>(tx, `SELECT ${colunasItem} FROM cadastros.tabela_preco_item WHERE ${onde} LIMIT 1`, p))[0] ?? null;
   return {
-    async idsPorExternalId(alvo, ids) {
-      if (ids.length === 0) return new Map();
-      const l = await executar<{ id: string; external_id: string }>(tx, `SELECT id, external_id FROM ${ALVOS[alvo]} WHERE external_id = ANY($1::text[]) AND deleted_at IS NULL`, [[...ids]]);
-      return new Map(l.map((x) => [x.external_id, x.id]));
-    },
     async condicoesDaForma(ext) {
       const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE forma_external_id = $1 ORDER BY id`, [ext]);
       return l as unknown as CondicaoPagamento[];

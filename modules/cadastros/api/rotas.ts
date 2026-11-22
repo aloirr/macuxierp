@@ -23,9 +23,9 @@ import { rotaCarga } from './carga';
 import { publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
-import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
+import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
-import { dataIso, erroDeViolacoes, exigir, idDe } from './util';
+import { dataIso, erroDeViolacoes, exigir, idDe, violacaoExternalId } from './util';
 
 type Dict = Record<string, unknown>;
 type Entidade = { id: string; inativo: boolean };
@@ -45,12 +45,16 @@ const emitirCom =
 const requisitoFilial = async (r: Repositorios, id: string | null, campo: string): Promise<Violacao[]> =>
   id === null || (await r.filiais.obter(id)) ? [] : [violacao('REF', campo, 'Filial inexistente')];
 
+const violacoesDe = async (v: Promise<Violacao | null>): Promise<Violacao[]> => [(await v)].filter((x): x is Violacao => x !== null);
+
 interface ConfigCrud<E extends Entidade, D extends Dict> {
   caminho: string;
   editar: Acao;
   dados: z.ZodType<D, z.ZodTypeDef, unknown>;
   atualizacao: z.ZodType<Partial<D>, z.ZodTypeDef, unknown>;
   entidade: string;
+  /** Tabela do `external_id` (guarda da RD-0317). */
+  tabela: TabelaChave;
   /** Ação marcada (A) no desenho: grava em `plataforma.auditoria`. */
   auditado: boolean;
   /** Campos marcados (A) numa entidade não auditada por inteiro: só a troca deles grava em `plataforma.auditoria` (sem dado pessoal). */
@@ -110,6 +114,8 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const corpo = e.corpo as Dict;
         const externo = typeof corpo.external_id === 'string' ? await cfg.repo(r).porExternalId(corpo.external_id) : null;
         if (externo) return { status: 200, corpo: ocultar(c, externo) }; // escrita idempotente (regra 4)
+        // Guarda RD-0317 (ver domain/external-id.ts)
+        exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, corpo.external_id)));
         cfg.campoRestrito?.(c.sessao, corpo, true);
         if (cfg.validar) exigir(await cfg.validar(r, corpo, null, c.agora));
         const padrao = cfg.padrao?.(r);
@@ -126,6 +132,8 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
         const parcial = e.corpo as Dict;
+        // Guarda RD-0317 (ver domain/external-id.ts), só quando o valor muda
+        if (parcial.external_id !== (antes as unknown as Dict).external_id) exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, parcial.external_id)));
         cfg.campoRestrito?.(c.sessao, parcial, false);
         if (cfg.validar) exigir(await cfg.validar(r, { ...(antes as unknown as Dict), ...parcial }, parcial, c.agora));
         const padrao = cfg.padrao?.(r);
@@ -238,7 +246,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Filiais (RF-CAD-08) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
+    tabela: 'filial', caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
     entidade: 'filial', auditado: true, repo: (r) => r.filiais, emitir: emitirCom(eventoFilial),
     inativavel: 'filial', padrao: (r) => r.filiais,
     async validar(_r, f) {
@@ -257,7 +265,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     return cli.vendedor_id !== null && meus.includes(cli.vendedor_id);
   };
   rotas.push(...rotasCrud(deps, {
-    caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
+    tabela: 'cliente', caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
     entidade: 'cliente', auditado: false, camposAuditados: ['limite_credito_centavos'], repo: (r) => r.clientes, emitir: emitirCom(eventoCliente), inativavel: 'cliente',
     campoRestrito(s, corpo, criacao) {
       const mexe = criacao ? (corpo.limite_credito_centavos ?? 0) !== 0 : 'limite_credito_centavos' in corpo;
@@ -303,7 +311,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
+    tabela: 'produto', caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
     entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: emitirCom(eventoProduto),
     ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
     async validar(r, p, parcial, agora) {
@@ -325,7 +333,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Tabelas de preço (RF-CAD-05, RN-CAD-06) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/tabelas-preco', editar: 'cadastros.preco.editar', dados: TabelaPrecoDados, atualizacao: TabelaPrecoAtualizacao,
+    tabela: 'tabela_preco', caminho: '/tabelas-preco', editar: 'cadastros.preco.editar', dados: TabelaPrecoDados, atualizacao: TabelaPrecoAtualizacao,
     entidade: 'tabela_preco', auditado: true, repo: (r) => r.tabelasPreco, inativavel: 'tabela_preco', padrao: (r) => r.tabelasPreco,
     /** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
     async emitir(c, r, t, antes) {
@@ -417,14 +425,14 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Condições de pagamento (RF-CAD-09) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
+    tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
     validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[] }),
   }));
 
   // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/vendedores', editar: 'cadastros.vendedor.editar', dados: VendedorDados, atualizacao: VendedorAtualizacao,
+    tabela: 'vendedor', caminho: '/vendedores', editar: 'cadastros.vendedor.editar', dados: VendedorDados, atualizacao: VendedorAtualizacao,
     entidade: 'vendedor', auditado: false, repo: (r) => r.vendedores, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.vendedor.alterado@1', x)),
     validar: async (r, v) => requisitoFilial(r, v.filial_id as string, 'filial_id'),
   }));
