@@ -19,6 +19,7 @@
     "@macuxierp/pedido": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
     "fastify": "^5.12.8",
+    "pino": "^10.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

@@ -14,6 +14,7 @@ export const IDS = {
   condicao30: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
   condicaoAVista: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
   condicaoInativa: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3',
+  condicaoCartao: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4',
   tabela: 'ffffffff-ffff-4fff-8fff-fffffffffff1',
   vendedor: '99999999-9999-4999-8999-999999999991',
   outroVendedor: '99999999-9999-4999-8999-999999999992',
@@ -54,6 +55,7 @@ export function prepararCadastros(c: CadastrosMemoria, o: { limite?: number; sal
   condicao(IDS.condicao30, [30], BOLETO);
   condicao(IDS.condicaoAVista, [0], DINHEIRO);
   condicao(IDS.condicaoInativa, [30], BOLETO, true);
+  condicao(IDS.condicaoCartao, [30], { tpag: '03', codigo: 'CRT', nome: 'Cartão de crédito' }); // fora do crédito (RN-PED-04)
   c.vendedores.set(IDS.usuarioVendedor, IDS.vendedor);
   c.vendedores.set(IDS.usuarioOutroVendedor, IDS.outroVendedor);
 }

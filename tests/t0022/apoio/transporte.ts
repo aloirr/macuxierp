@@ -16,7 +16,7 @@ import {
   type TransporteHomologacao,
 } from '../../../packages/nfe-sefaz/src/index';
 import { criarFabricaSimulador, criarRegistroSimulador } from '../../../packages/sefaz-simulador/src/index';
-import { FILIAIS, FILIAL_LOTE_A1, FILIAL_LOTE_A2, FILIAL_LOTE_A3, FILIAL_LOTE_B1 } from './matriz';
+import { FILIAIS, FILIAL_LOTE_A1, FILIAL_LOTE_A2, FILIAL_LOTE_A3, FILIAL_LOTE_B1, FILIAL_LOTE_M1 } from './matriz';
 
 type OperacaoSefaz = Exclude<keyof SefazTransporte, 'destino'>;
 
@@ -26,6 +26,7 @@ export const UUID_FILIAL: Readonly<Record<string, string>> = Object.freeze({
   [FILIAL_LOTE_A2]: '0b5e7c1a-2f3d-4a6b-8c9d-0e1f2a3b4c02',
   [FILIAL_LOTE_A3]: '0b5e7c1a-2f3d-4a6b-8c9d-0e1f2a3b4c03',
   [FILIAL_LOTE_B1]: '0b5e7c1a-2f3d-4a6b-8c9d-0e1f2a3b4c04',
+  [FILIAL_LOTE_M1]: '0b5e7c1a-2f3d-4a6b-8c9d-0e1f2a3b4c05',
 });
 
 /** A filial da matriz no formato do contrato (`FilialEmissoraSefaz`): ambiente e UF vêm de `FILIAIS`. */

@@ -2,7 +2,7 @@ import { CabecalhoCartao } from '../cabecalho-cartao';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { formatarCnpj } from '@/lib/cnpj';
+import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
 import { contexto, COOKIE_FILIAL, opcoesLongas } from '@/lib/sessao';
 
 export const metadata: Metadata = { title: 'Selecionar filial' };
@@ -27,7 +27,7 @@ export default async function SelecionarFilial() {
           {eu.filiais.map((f) => (
             <li key={f.id}>
               <label>
-                <input type="radio" name="filial" value={f.id} defaultChecked={f.id === filial?.id} required /> {f.nome} (<span className="num">{formatarCnpj(f.cnpj)}</span>)
+                <input type="radio" name="filial" value={f.id} defaultChecked={f.id === filial?.id} required /> {f.nome} (<span className="num">{formatarDocumento(f.cnpj)}</span>)
               </label>
             </li>
           ))}

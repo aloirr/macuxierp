@@ -36,6 +36,7 @@ describe('páginas do BKO do pedido', () => {
     const oculta = (id: string) => PAGINAS_PEDIDO.find((p) => p.id === id)?.ocultaNoMenu;
     expect(oculta('detalhe')).toBe(true);
     expect(oculta('novo')).toBe(true);
+    expect(oculta('editar')).toBe(true);
     expect(oculta('pedidos')).toBeUndefined();
   });
 

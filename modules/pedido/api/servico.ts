@@ -14,7 +14,7 @@ import {
   type StatusPedido,
 } from '../contracts';
 import {
-  avaliarPedidoDetalhado, compromissoDeCredito as somarCompromissoCredito, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, possiveis, totalItem, totalPedido, travaCliente,
+  avaliarPedidoDetalhado, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, travaCliente,
   validarTransicao, verificarItens, violacao, type Violacao,
 } from '../domain';
 import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, type CondicaoDoEvento, type EventoPronto } from './eventos';
@@ -96,14 +96,6 @@ export function criarServico(deps: Dependencias) {
     return v;
   };
 
-  /** Lê as linhas e as condições; a soma sem os pedidos à vista (premissa f) é do domain. */
-  const compromissoDeCredito = async (tx: Transacao, repo: RepoPedidos, clienteId: string, exceto: string | null): Promise<number> => {
-    const linhas = await repo.compromissoCredito(clienteId, exceto);
-    const ids = [...new Set(linhas.flatMap((l) => (l.condicao_pagamento_id === null ? [] : [l.condicao_pagamento_id])))];
-    const condicoes = new Map(await Promise.all(ids.map(async (id) => [id, await cadastros.condicao(tx, id)] as const)));
-    return somarCompromissoCredito(linhas, condicoes);
-  };
-
   const avaliar = async (
     tx: Transacao,
     repo: RepoPedidos,
@@ -117,7 +109,7 @@ export function criarServico(deps: Dependencias) {
     const [saldos, estoque, credito, abertos] = await Promise.all([
       cadastros.saldos(tx, d.filial_id, produtoIds),
       repo.compromissoEstoque(d.filial_id, produtoIds, d.pedido_id),
-      compromissoDeCredito(tx, repo, d.cliente_id, d.pedido_id),
+      repo.compromissoCredito(d.cliente_id, d.pedido_id),
       titulos.saldoAbertoCliente(tx, d.cliente_id),
     ]);
     const detalhadas = avaliarPedidoDetalhado({
@@ -207,6 +199,7 @@ export function criarServico(deps: Dependencias) {
   /** em_analise → aprovado pelo sistema (revalidação ou edição sem pendência). */
   const aprovarSozinho = async (repo: RepoPedidos, fx: Efeitos, p: PedidoGravado, condicao: CondicaoDoEvento): Promise<void> => {
     const final: PedidoGravado = { ...p, status: 'aprovado', pendencias: [] };
+    await repo.atualizarAVista(p.id, foraDoCredito(condicao));
     await repo.atualizarStatus(p.id, 'aprovado', [], fx.agora);
     const idEvento = await fx.publicar(eventoAprovado(final, 'em_analise', true, condicao));
     await aprovacaoAutomatica(repo, fx, p.id);
@@ -323,6 +316,7 @@ export function criarServico(deps: Dependencias) {
       cliente_id: entrada.cliente_id,
       vendedor_id: entrada.vendedor_id ?? cliente.vendedor_id,
       condicao_pagamento_id: entrada.condicao_pagamento_id,
+      a_vista: foraDoCredito(cad.condicao),
       tabela_preco_id: av.tabela_preco_id,
       cliente_retrato: retratoDoCliente(cliente),
       endereco_entrega: entrega,
@@ -373,6 +367,7 @@ export function criarServico(deps: Dependencias) {
       cliente_id: entrada.cliente_id,
       vendedor_id: entrada.vendedor_id ?? cliente.vendedor_id,
       condicao_pagamento_id: entrada.condicao_pagamento_id,
+      a_vista: foraDoCredito(cad.condicao),
       tabela_preco_id: av.tabela_preco_id,
       cliente_retrato: retratoDoCliente(cliente),
       endereco_entrega: entrega,
@@ -426,6 +421,7 @@ export function criarServico(deps: Dependencias) {
       throw erros.validacao({ [d.campo]: d.mensagem });
     }
     await gravarPrecosDeTabela(repo, p, av.precos);
+    await repo.atualizarAVista(id, foraDoCredito(av.condicao));
     await repo.atualizarStatus(id, 'aprovado', pendencias, fx.agora);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoAprovado(final, p.status, false, av.condicao));
@@ -506,6 +502,7 @@ export function criarServico(deps: Dependencias) {
       cliente_id: entrada.cliente_id,
       vendedor_id: entrada.vendedor_id,
       condicao_pagamento_id: entrada.condicao_pagamento_id,
+      a_vista: foraDoCredito(cad.condicao),
       tabela_preco_id: null,
       cliente_retrato: retratoDoCliente(cliente),
       endereco_entrega: entrada.endereco_entrega,

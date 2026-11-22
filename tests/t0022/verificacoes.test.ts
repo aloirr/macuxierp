@@ -9,10 +9,12 @@ import {
   FILIAL_LOTE_A1,
   FILIAL_LOTE_A2,
   FILIAL_LOTE_B1,
+  FILIAL_LOTE_M1,
   INUTILIZACOES,
   MATRIZ,
   TENANT_LOTE_A,
   TENANT_LOTE_B,
+  TENANT_LOTE_M,
   dependeDe,
 } from './apoio/matriz';
 import { conferirNumeracaoPorSerie, conferirSequencia, NUMERO_MAXIMO_NFE, rotuloSerie } from './apoio/numeracao';
@@ -191,7 +193,28 @@ describe('T-0022: coerência da matriz das 20 notas', () => {
       rotuloSerie({ tenant: TENANT_LOTE_A, filial: FILIAL_LOTE_A1, serie: 2 }),
       rotuloSerie({ tenant: TENANT_LOTE_A, filial: FILIAL_LOTE_A2, serie: 1 }),
       rotuloSerie({ tenant: TENANT_LOTE_B, filial: FILIAL_LOTE_B1, serie: 1 }),
+      rotuloSerie({ tenant: TENANT_LOTE_M, filial: FILIAL_LOTE_M1, serie: 1 }),
     ]);
+  });
+
+  it('MEI: só notas de filial CRT 4 cobrem mei, citam RN-FIS-02 e dependem do nfe-emissor, da filial CRT 4 e do lote 4c; cobrem venda interna, interestadual, CC-e e cancelamento', () => {
+    const mei = MATRIZ.filter((n) => FILIAIS[n.filial]?.crt === 4);
+    expect(MATRIZ.filter((n) => n.cobertura.includes('mei'))).toEqual(mei);
+    for (const n of mei) {
+      expect(n.regras, n.id).toContain('RN-FIS-02');
+      expect(dependeDe(n), n.id).toEqual(
+        expect.arrayContaining(['T-0018-nfe-emissor', 'T-0019-filial-crt4', 'T-0020-lote-4c']),
+      );
+    }
+    // O que o piloto usa: venda interna e interestadual, CC-e e cancelamento.
+    const coberturasMei = new Set(mei.flatMap((n) => n.cobertura));
+    for (const c of ['cce', 'cancelamento', 'valor-regra'] as const) expect(coberturasMei.has(c), c).toBe(true);
+    expect(mei.some((n) => /CFOP 5\d{3}/.test(n.entrada))).toBe(true);
+    expect(mei.some((n) => /CFOP 6\d{3}/.test(n.entrada))).toBe(true);
+  });
+
+  it('o CRT 1 (Simples, CSOSN) segue coberto', () => {
+    expect(MATRIZ.some((n) => FILIAIS[n.filial]?.crt === 1)).toBe(true);
   });
 
   it('toda nota sai de filial homologada do próprio tenant', () => {

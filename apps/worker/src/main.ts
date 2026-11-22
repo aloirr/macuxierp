@@ -11,13 +11,16 @@
  * `MACUXIERP_CHAVE_INTEGRACAO` (`credencial.ts`). Sem essa configuração o laço de agenda fica desligado (nada sai para o
  * Hub e as agendas ficam paradas no banco), com um aviso só no log listando as variáveis que faltam. A versão do ERP
  * (User-Agent) vem de `MACUXIERP_VERSAO` (o compose entrega; padrão 'dev').
+ * Pedidos do FDV (T-0016): MACUXIERP_FDV_RECEBIMENTO, ver pedidos-fdv.ts.
  */
+import { criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
 import { armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
 import { configurarCredenciais } from './credencial';
 import { configurarHub, versaoDoErp } from './hub';
 import { montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
+import { configurarRecebimentoFdv, montarPedidosFdv } from './pedidos-fdv';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
@@ -37,6 +40,14 @@ const hub = configurarHub(process.env, versaoDoErp(process.env));
 const decifrarCredencial = configurarCredenciais(process.env);
 const faltando = [...(hub ? [] : ['MACUXIERP_HUB_URL_TESTE', 'MACUXIERP_HUB_URL_PRODUCAO']), ...(decifrarCredencial ? [] : ['MACUXIERP_CHAVE_INTEGRACAO'])];
 if (faltando.length) log.warn({ faltando }, 'laço de agenda desligado');
+const pedidosFdv = montarPedidosFdv({
+  log,
+  relogio: relogioDoSistema,
+  recebimento: configurarRecebimentoFdv(process.env),
+  resolvedor: criarResolvedorChaveErp(repositoriosSql),
+  agendaDoModulo: false,
+});
+log.info({ recebimento_pedidos_fdv: pedidosFdv.recebimento }, 'pedidos do FDV');
 
 const worker = iniciarWorker({
   banco,
