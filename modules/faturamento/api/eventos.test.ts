@@ -193,6 +193,15 @@ describe('cancelamento (RN-FAT-02)', () => {
     expect((await m.proc.processarEvento(TENANT, r.evento.id)).resultado).toBe('registrado');
   });
 
+  it('RN-FAT-02: a API chama a validação do domain: CC-e com cancelamento pendente é recusada e nada é gravado', async () => {
+    const m = await montar();
+    const c = await m.svc.pedirCancelamento(tx, m.notaAtual(), { justificativa: JUST });
+    if (!c.ok) throw new Error('esperava ok');
+    const r = await m.svc.pedirCartaCorrecao(tx, m.notaAtual(), { texto: 'Corrigir o endereço de entrega da nota' });
+    expect(r).toMatchObject({ ok: false, violacoes: [{ rn: 'RN-FAT-02', campo: 'status' }] });
+    expect([...m.ev.eventos.values()].filter((e) => e.tipo === 'cce')).toHaveLength(0);
+  });
+
   it('RN-FAT-03: a retentativa depois de falha de transporte reenvia o MESMO pedido (dhEvento e idLote guardados)', async () => {
     const m = await montar();
     const r = await m.svc.pedirCancelamento(tx, m.notaAtual(), { justificativa: JUST });

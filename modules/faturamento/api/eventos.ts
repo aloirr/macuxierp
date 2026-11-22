@@ -63,8 +63,10 @@ export function criarServicoEventos(deps: DepsEventos) {
   /** RN-FAT-02: CC-e na nota autorizada, sequência 1 a 20. A rejeitada mais recente volta a pendente com a mesma sequência (0013). */
   async function pedirCartaCorrecao(tx: Transacao, nota: NotaRegistro, entrada: CartaCorrecaoEntrada): Promise<ResultadoPedidoEvento> {
     const texto = normalizarTexto(entrada.texto);
-    const ces = (await deps.eventos.listarEventos(tx, nota.id)).filter((e) => e.tipo === 'cce');
-    const pendente = ces.find((e) => e.status === 'pendente');
+    const todos = await deps.eventos.listarEventos(tx, nota.id);
+    const cancelamento_pendente = todos.some((e) => e.tipo === 'cancelamento' && e.status === 'pendente'); // a tela já bloqueia; a API revalida (domain)
+    const ces = todos.filter((e) => e.tipo === 'cce');
+    const pendente = cancelamento_pendente ? undefined : ces.find((e) => e.status === 'pendente'); // com cancelamento pendente a regra do domain recusa antes de repetir
     if (pendente) {
       if (pendente.texto === texto) return { ok: true, evento: pendente, repetido: true, avisos: avisosCartaCorrecao(texto) };
       return { ok: false, violacoes: [violacao('RN-FAT-02', 'texto', 'Há uma carta de correção em processamento nesta nota: aguarde o retorno da SEFAZ.')] };
@@ -72,7 +74,7 @@ export function criarServicoEventos(deps: DepsEventos) {
     const ultima = ces.reduce<EventoRegistro | undefined>((a, e) => (!a || e.n_seq_evento > a.n_seq_evento ? e : a), undefined);
     const reabrir = ultima?.status === 'rejeitado' ? ultima : undefined;
     const sequencias = ces.filter((e) => e !== reabrir).map((e) => e.n_seq_evento);
-    const v = validarCartaCorrecao({ status: nota.status, texto, sequenciasRegistradas: sequencias });
+    const v = validarCartaCorrecao({ status: nota.status, texto, sequenciasRegistradas: sequencias, cancelamento_pendente });
     if (v.length > 0) return { ok: false, violacoes: v };
     {
       const a1 = await deps.certificado.temA1Ativo(tx, nota.filial_id);

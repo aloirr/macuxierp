@@ -9,6 +9,8 @@ export interface EntradaCartaCorrecao {
   texto: string;
   /** nSeqEvento das CC-e já registradas para a nota. */
   sequenciasRegistradas: readonly number[];
+  /** Há cancelamento da nota ainda em processamento (evento pendente). */
+  cancelamento_pendente: boolean;
 }
 
 export type GrupoAviso = 'valor' | 'dados_parte' | 'data';
@@ -39,6 +41,8 @@ export function validarCartaCorrecao(e: EntradaCartaCorrecao): Violacao[] {
   const v: Violacao[] = [];
   if (e.status === 'cancelada') v.push(violacao('RN-FAT-02', 'status', 'Nota cancelada não recebe carta de correção.'));
   else if (e.status !== 'autorizada') v.push(violacao('RN-FAT-02', 'status', `Só nota autorizada recebe carta de correção (status atual: ${e.status}).`));
+  if (e.cancelamento_pendente)
+    v.push(violacao('RN-FAT-02', 'status', 'Há um cancelamento em processamento nesta nota: aguarde o retorno da SEFAZ antes de enviar carta de correção.'));
   const t = e.texto.trim().length;
   if (t < TAMANHO_TEXTO_CCE.min || t > TAMANHO_TEXTO_CCE.max)
     v.push(violacao('RN-FAT-02', 'texto', `O texto da correção deve ter de ${TAMANHO_TEXTO_CCE.min} a ${TAMANHO_TEXTO_CCE.max} caracteres.`));

@@ -10,6 +10,8 @@ import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
 import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro, situacaoAprovadaDeTeste } from './apoio-teste';
 import { repositoriosSql, pedidosAprovadosSql, notaEmAbertoSql } from './sql';
+import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { criarPluginFaturamento } from './index';
 import { criarTransmissor } from './transmissor';
 
 describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, migração 0013)', () => {
@@ -165,10 +167,20 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     await admin("INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao) VALUES ($1, $2, 'producao', 'R-20261122-000000-alexandre')", [A, IDS.filial]);
     // A fila a faturar mostra o mesmo ambiente que a emissão usa (a lista nunca promete homologação para filial em produção).
-    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens.map((i) => i.ambiente)).toEqual(expect.arrayContaining(['producao']));
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens.filter((i) => i.filial_id === IDS.filial).map((i) => i.ambiente)).toEqual(expect.arrayContaining(['producao']));
     const { tr, t } = transmissor(s);
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('ambiente_mudou');
     expect(t.chamadas).toEqual([]);
+    await admin('DELETE FROM core.ambiente_fiscal WHERE tenant_id = $1', [A]);
+  });
+
+  it('RN-FAT-04: GET /filiais/:id/configuracao devolve o ambiente da filial: sem configuração, homologação; com produção aprovada, produção', async () => {
+    const plugin = criarPluginFaturamento({ ...servico().deps, notas: repos.notas, pedidos: repos.pedidos, ambiente: repos.ambiente, titulos: repos.titulos, configuracao: configuracaoFaturamentoSql } as never);
+    const rota = plugin.rotas.find((r) => r.metodo === 'GET' && r.caminho === '/filiais/:id/configuracao')!;
+    const ler = (perfil: string) => app.comTenant(A, (tx) => rota.executar({ tx, sessao: { usuario_id: uuid(5), tenant_id: A, perfil, filial_ids: [] } } as never, { params: { id: IDS.filial }, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never));
+    expect((await ler('faturista')).corpo).toEqual({ filial_id: IDS.filial, faturamento_real_nfe_simulada: false, ambiente: 'homologacao' });
+    await admin("INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao) VALUES ($1, $2, 'producao', 'R-20261122-000000-alexandre')", [A, IDS.filial]);
+    expect((await ler('faturista')).corpo).toMatchObject({ ambiente: 'producao' });
     await admin('DELETE FROM core.ambiente_fiscal WHERE tenant_id = $1', [A]);
   });
 

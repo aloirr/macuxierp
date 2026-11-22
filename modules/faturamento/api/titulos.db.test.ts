@@ -152,10 +152,35 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     expect(await titulosDe(A, r.nota.id)).toEqual([]);
     const varrer = criarVarreduraTitulos({ titulos: repos.titulos, notas: repos.notas, log: () => undefined });
     const agoraBanco = { ha_minutos: 0, limite: 50 };
-    const v = await app.comTenant(A, (tx) => varrer(tx, agoraBanco));
+    const v = await worker.comTenant(A, (tx) => varrer(tx, agoraBanco));
     expect(v.geradas).toBe(2);
     expect(await titulosDe(A, r.nota.id)).toHaveLength(2);
-    expect((await app.comTenant(A, (tx) => varrer(tx, agoraBanco))).geradas).toBe(0);
+    expect((await worker.comTenant(A, (tx) => varrer(tx, agoraBanco))).geradas).toBe(0);
+  });
+
+  it('RN-FAT-03: o teto de tentativas da varredura vale no banco (titulo_geracao, 0028): N falhas seguidas param no teto, também com uma nova instância (reinício do worker)', async () => {
+    const r = await app.comTenant(A, async (tx) => emissao.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar, boleto), idempotencia: `idem-titdb-${++idem}` }));
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    const quebrado = { ...repos.titulos, inserirParcelas: async () => { throw new Error('falha de teste'); } };
+    const tr = criarTransmissor({ banco: worker, notas: repos.notas, titulos: quebrado, log: () => undefined, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
+    expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('autorizada');
+    expect(await titulosDe(A, r.nota.id)).toEqual([]);
+    const logs: { evento: string; nota_id?: string }[] = [];
+    const instancia = () => criarVarreduraTitulos({ titulos: quebrado, notas: repos.notas, log: (e) => logs.push(e) }, { max_tentativas: 3 });
+    const rodar = (varrer: ReturnType<typeof instancia>) => worker.comTenant(A, (tx) => varrer(tx, { ha_minutos: 0, limite: 50 }));
+    const tentativas = async () => (await admin('SELECT tentativas, motivo FROM faturamento.titulo_geracao WHERE nota_id = $1', [r.nota.id]))[0];
+    const v1 = instancia();
+    expect(await rodar(v1)).toMatchObject({ verificadas: 1, pendentes: 1, desistidas: 0 });
+    expect(await rodar(v1)).toMatchObject({ verificadas: 1, pendentes: 1, desistidas: 0 });
+    expect((await tentativas())?.tentativas).toBe(2);
+    // Reinício: instância nova, mesmo banco. A terceira falha chega ao teto.
+    expect(await rodar(instancia())).toMatchObject({ verificadas: 1, pendentes: 1, desistidas: 1 });
+    expect(logs.filter((l) => l.evento === 'faturamento.titulo.geracao_desistida' && l.nota_id === r.nota.id)).toHaveLength(1);
+    // No teto: nem a instância antiga nem uma nova voltam a tentar a nota.
+    expect(await rodar(v1)).toMatchObject({ verificadas: 0, pendentes: 0 });
+    expect(await rodar(instancia())).toMatchObject({ verificadas: 0, pendentes: 0 });
+    expect(await tentativas()).toMatchObject({ tentativas: 3 });
+    expect(String((await tentativas())?.motivo).length).toBeLessThanOrEqual(255);
   });
 
   it('RN-PED-04: título de nota conta_como_real (homologação com a bandeira ligada na emissão) entra no saldo aberto do cliente', async () => {
