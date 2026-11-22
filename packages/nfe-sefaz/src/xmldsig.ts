@@ -6,7 +6,8 @@
  *  - `<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">` irmã do elemento assinado (`infNFe`, `infEvento`,
  *    `infInut`), uma só `Reference` com `URI="#<Id>"`;
  *  - C14N 1.0 (2001) no `SignedInfo`, transformações `enveloped-signature` + C14N, RSA-SHA1 e SHA-1;
- *  - o certificado no `KeyInfo/X509Data/X509Certificate`, com o CNPJ no titular (`CN=<NOME>:<CNPJ>`).
+ *  - o certificado no `KeyInfo/X509Data/X509Certificate`, com o CNPJ do titular no SAN ICP-Brasil ou no CN
+ *    (`cnpjDoTitularIcp` e `impressaoDigitalSha256`, do `@macuxierp/platform-sdk`; o `ErroCertificado` vira 292).
  * C14N e verificação: `xml-crypto` (JS puro). Leitura do certificado: `node:crypto` (`X509Certificate`). Sem rede:
  * não confere cadeia ICP-Brasil nem LCR (fica para a SEFAZ real, T-0046).
  *
@@ -15,7 +16,7 @@
  */
 import { X509Certificate } from 'node:crypto';
 import { DOMParser } from '@xmldom/xmldom';
-import { cnpjRaiz, cnpjValido } from '@macuxierp/platform-sdk';
+import { ErroCertificado, cnpjDoTitularIcp, cnpjRaiz, impressaoDigitalSha256 } from '@macuxierp/platform-sdk';
 import { SignedXml } from 'xml-crypto';
 
 export const NS_NFE = 'http://www.portalfiscal.inf.br/nfe';
@@ -44,6 +45,7 @@ export type FalhaAssinatura =
   /** Certificado ilegível. */
   | 'certificado_invalido'
   | 'certificado_fora_da_validade'
+  /** Titular sem CNPJ aceitável (`ErroCertificado` do SDK: `cnpj_ausente`, `dv_invalido` ou `cnpj_divergente` SAN × CN). */
   | 'certificado_sem_cnpj'
   /** O CNPJ-base do certificado difere do CNPJ-base esperado (emitente, autor do evento ou da inutilização). */
   | 'cnpj_difere_do_certificado';
@@ -95,13 +97,6 @@ export const ERRO_XML_CRYPTO_DIFERE = /invalid signature|digest|does not match/i
 
 const falhou = (falha: FalhaAssinatura): ResultadoAssinatura => ({ ok: false, falha, cStat: CSTAT_FALHA_ASSINATURA[falha] });
 
-/** CNPJ do titular no padrão ICP-Brasil (`CN=<NOME>:<CNPJ>`), com o DV conferido. `null` se não houver. */
-export function cnpjDoCertificado(sujeito: string): string | null {
-  const cn = /(?:^|\n)CN=([^\n]+)/.exec(sujeito)?.[1] ?? '';
-  const m = /:([0-9A-Z]{12}\d{2})\s*$/.exec(cn);
-  return m?.[1] && cnpjValido(m[1]) ? m[1] : null;
-}
-
 function filhos(el: Element, ns: string, nome: string): Element[] {
   const r: Element[] = [];
   for (let n = el.firstChild; n; n = n.nextSibling) {
@@ -131,6 +126,11 @@ export function filhoNfe(el: Element | null | undefined, ...caminho: string[]): 
     atual = achado;
   }
   return atual;
+}
+
+/** Texto (aparado) do filho no caminho do leiaute, ou `''` (`textoNfe(inf, 'emit', 'CNPJ')`). */
+export function textoNfe(el: Element | null | undefined, ...caminho: string[]): string {
+  return filhoNfe(el, ...caminho)?.textContent?.trim() ?? '';
 }
 
 /** `<!DOCTYPE`, em qualquer caixa: a NF-e não usa DTD, e DTD abre a porta para entidades externas (XXE). */
@@ -220,15 +220,21 @@ export function verificarAssinaturaXml(xml: string, o: OpcoesVerificacao): Resul
   const validoDe = new Date(x509.validFrom);
   const validoAte = new Date(x509.validTo);
   if (agora < validoDe || agora > validoAte) return falhou('certificado_fora_da_validade');
-  const cnpj = cnpjDoCertificado(x509.subject);
-  if (!cnpj) return falhou('certificado_sem_cnpj');
+  let cnpj: string;
+  try {
+    cnpj = cnpjDoTitularIcp(x509).cnpj;
+  } catch (e) {
+    // cnpj_ausente, dv_invalido e cnpj_divergente (SAN × CN): o certificado não identifica o titular PJ → 292.
+    return falhou(e instanceof ErroCertificado ? 'certificado_sem_cnpj' : 'falha_na_verificacao');
+  }
+  const impressaoDigital = impressaoDigitalSha256(x509);
   if (o.cnpjEsperado !== undefined && cnpjRaiz(o.cnpjEsperado) !== cnpjRaiz(cnpj)) return falhou('cnpj_difere_do_certificado');
 
   return {
     ok: true,
     id,
     digestValue: padrao.digestValue,
-    certificado: { cnpj, validoDe, validoAte, impressaoDigital: x509.fingerprint256.replace(/:/g, '').toLowerCase() },
+    certificado: { cnpj, validoDe, validoAte, impressaoDigital },
   };
 }
 

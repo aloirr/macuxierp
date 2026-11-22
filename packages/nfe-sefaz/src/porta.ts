@@ -20,7 +20,11 @@ const digitos = (n: number) => z.string().regex(new RegExp(`^\\d{${n}}$`), `${n}
 
 /** Código de status da SEFAZ (3 dígitos). Ex.: 100 autorizado, 104 lote processado, 107 serviço em operação. */
 export const CStat = digitos(3);
-export const ChaveNFe = digitos(44);
+/**
+ * Chave de acesso (44 posições): o CNPJ do emitente (posições 7 a 20) pode ser alfanumérico desde jul/2026, como no
+ * `TChNFe` do PL_010g (`[0-9]{6}[0-9A-Z]{12}[0-9]{26}`). O DV é conferido por `chaveNFeComDvValido`, não aqui.
+ */
+export const ChaveNFe = z.string().regex(/^\d{6}[0-9A-Z]{12}\d{26}$/, 'chave de 44 posições (CNPJ alfanumérico aceito)');
 /** Número do protocolo (15 dígitos). */
 export const NProt = digitos(15);
 /** Número do recibo do lote assíncrono (15 dígitos). */

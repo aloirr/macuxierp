@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
+    "@macuxierp/nfe-emissor": "workspace:*",
     "@macuxierp/nfe-sefaz": "workspace:*",
     "@macuxierp/sefaz-simulador": "workspace:*",
     "@types/node": "^22.18.0",

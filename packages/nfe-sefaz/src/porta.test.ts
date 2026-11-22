@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ChaveNFe,
   ErroSefaz,
   PedidoAutorizacao,
   PedidoEvento,
@@ -10,6 +11,7 @@ import {
   ehDataHoraSefaz,
   validarPedidoSefaz,
 } from './index';
+import { INSTANTE_DE_TESTE } from './teste';
 
 const CHAVE = '13261112345678000199550010000000011000000015';
 const XML_DE_CLIENTE = '<NFe><infNFe><dest><xNome>Fulano</xNome></dest></infNFe></NFe>';
@@ -42,6 +44,17 @@ describe('pedidos da porta', () => {
     expect((erro as ErroSefaz).codigo).toBe('SEFAZ_PEDIDO_INVALIDO');
     expect((erro as ErroSefaz).message).toContain('idLote');
     expect((erro as ErroSefaz).message).not.toContain('Fulano');
+  });
+});
+
+describe('chave de acesso no contrato', () => {
+  it('aceita o CNPJ alfanumérico nas posições 7 a 20, como o TChNFe do PL_010g; o resto continua só dígitos', () => {
+    expect(ChaveNFe.safeParse(CHAVE).success).toBe(true);
+    expect(ChaveNFe.safeParse('132611' + '12ABC34501DE35' + '550010000000011000000015').success).toBe(true);
+    expect(ChaveNFe.safeParse('1A2611' + '12ABC34501DE35' + '550010000000011000000015').success).toBe(false);
+    expect(ChaveNFe.safeParse('132611' + '12abc34501de35' + '550010000000011000000015').success).toBe(false);
+    expect(ChaveNFe.safeParse('132611' + '12ABC34501DE3X' + '550010000000011000000015').success).toBe(false);
+    expect(ChaveNFe.safeParse(CHAVE.slice(1)).success).toBe(false);
   });
 });
 
@@ -84,9 +97,9 @@ describe('respostas da porta', () => {
 
 describe('dataHoraSefaz', () => {
   it('formata em Manaus (-04:00) e o resultado é aceito pelo contrato', () => {
-    const texto = dataHoraSefaz(new Date('2026-11-22T02:59:00Z'));
+    const texto = dataHoraSefaz(INSTANTE_DE_TESTE);
     expect(texto).toBe('2026-11-21T22:59:00-04:00');
     expect(ehDataHoraSefaz(texto)).toBe(true);
-    expect(dataHoraSefaz(new Date('2026-11-22T02:59:00Z'), 0)).toBe('2026-11-22T02:59:00+00:00');
+    expect(dataHoraSefaz(INSTANTE_DE_TESTE, 0)).toBe('2026-11-22T02:59:00+00:00');
   });
 });

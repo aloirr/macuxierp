@@ -248,6 +248,9 @@ importers:
       '@macuxierp/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@macuxierp/nfe-emissor':
+        specifier: workspace:*
+        version: link:../../packages/nfe-emissor
       '@macuxierp/nfe-sefaz':
         specifier: workspace:*
         version: link:../../packages/nfe-sefaz
@@ -591,6 +594,43 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.1)
 
+  packages/nfe-emissor:
+    dependencies:
+      '@macuxierp/nfe-sefaz':
+        specifier: workspace:*
+        version: link:../nfe-sefaz
+      '@macuxierp/platform-sdk':
+        specifier: workspace:*
+        version: link:../platform-sdk
+      node-forge:
+        specifier: 1.4.3
+        version: 1.4.3
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@macuxierp/config':
+        specifier: workspace:*
+        version: link:../config
+      '@macuxierp/sefaz-simulador':
+        specifier: workspace:*
+        version: link:../sefaz-simulador
+      '@types/node':
+        specifier: ^22.18.0
+        version: 22.20.5
+      '@types/node-forge':
+        specifier: 1.3.14
+        version: 1.3.14
+      eslint:
+        specifier: ^9.39.0
+        version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.1)
+
   packages/nfe-sefaz:
     dependencies:
       '@macuxierp/platform-sdk':
@@ -649,12 +689,18 @@ importers:
       '@types/node':
         specifier: ^22.18.0
         version: 22.20.5
+      '@types/node-forge':
+        specifier: 1.3.14
+        version: 1.3.14
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
       eslint:
         specifier: ^9.39.0
         version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)
+      node-forge:
+        specifier: 1.4.3
+        version: 1.4.3
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -670,9 +716,6 @@ importers:
       '@macuxierp/platform-sdk':
         specifier: workspace:*
         version: link:../platform-sdk
-      '@xmldom/xmldom':
-        specifier: 0.8.15
-        version: 0.8.15
     devDependencies:
       '@macuxierp/config':
         specifier: workspace:*

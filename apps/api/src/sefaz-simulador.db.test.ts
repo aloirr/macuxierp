@@ -5,11 +5,16 @@
  * NF-e mínima de teste é assinada e autorizada no simulador da SEFAZ-AM, escolhido pelo seletor com o ambiente lido do
  * core (`GET /v1/core/ambientes-fiscais`). E a regra 7 de ponta a ponta: filial em produção (gravada pelo operador,
  * ADR 0006) → `SimuladorEmProducaoErro`, sem o simulador ser chamado.
+ * Depois, como o worker fará: o A1 decifrado da filial pelo core (`lerA1DecifradoDaFilial`, papel `macuxierp_worker`,
+ * RLS do tenant), aberto pelo leitor do emissor (`abrirA1`), assina a NF-e e o simulador autoriza com 100.
  * Nenhum `.pfx`/`.p12` em disco ou no repositório; nenhum log, resposta ou protocolo traz o PFX, a senha ou a chave.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Writable } from 'node:stream';
+import { inspect } from 'node:util';
+import { lerA1DecifradoDaFilial } from '@macuxierp/core/api';
 import { CertificadoResumo, ListaAmbientes, ListaCertificados } from '@macuxierp/core/contracts';
+import { abrirA1 } from '@macuxierp/nfe-emissor';
 import {
   SimuladorEmProducaoErro,
   criarSeletorTransporte,
@@ -152,6 +157,38 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045: A1 de teste pela ADR 0005 e NF-e autori
     expect(chamadas).toBe(0);
   });
 
+  it('o A1 decifrado da filial pelo core (papel do worker) é aberto pelo emissor, assina a NF-e e o simulador autoriza com 100', async () => {
+    const worker = b.banco('macuxierp_worker');
+    const lido = await worker.comTenant(tenant, (tx) => lerA1DecifradoDaFilial(tx, chaveA1, filial));
+    expect(lido).not.toBeNull();
+    // O mesmo PKCS#12 e a mesma senha do upload, só em memória e ocultos em serialização e inspeção.
+    expect(lido!.pfx.equals(a1.pfx)).toBe(true);
+    expect(lido!.senha).toBe(a1.senha);
+    const visto = [JSON.stringify(lido), String(lido), inspect(lido)];
+    respostas.push(...visto);
+    for (const v of visto) expect(v.includes(a1.senha) || v.includes(a1.pfx.toString('base64').slice(0, 40))).toBe(false);
+    // Outro tenant não enxerga a linha (RLS): sem certificado, e não erro.
+    const outroTenant = await criarTenant(b.admin, `t0045-outro-${randomUUID().slice(0, 8)}`, ['faturamento']);
+    expect(await worker.comTenant(outroTenant, (tx) => lerA1DecifradoDaFilial(tx, chaveA1, filial))).toBeNull();
+
+    const aberto = abrirA1(lido!.pfx, lido!.senha);
+    lido!.pfx.fill(0); // quem recebe zera o PFX ao terminar (leitura-a1.ts)
+    const lista = await get(`/v1/core/certificados?filial_id=${filial}`);
+    const [resumo] = ListaCertificados.parse(lista.json()).itens;
+    expect(aberto).toMatchObject({ cnpj: CNPJ_EMITENTE_DE_TESTE, impressaoDigital: resumo!.impressao_digital });
+
+    const transporte = criarSeletorTransporte({ transporte: 'simulador', simulador: (d: DestinoSimulador) => criarSimuladorSefaz(d) })(
+      await filialEmissora(filial),
+      { pfx: a1.pfx, senha: a1.senha },
+    );
+    const nfe = montarNFeDeTeste({ nNF: 2, dhEmi: new Date(Date.now() - 60_000) });
+    const assinada = assinarXmlDeTeste(nfe.xml, { elemento: 'infNFe', a1: aberto });
+    const r = await transporte.autorizar({ idLote: '2', sincrono: true, nfes: [assinada] });
+    respostas.push(r.xml);
+    expect(r.protocolos[0]).toMatchObject({ cStat: '100', chNFe: nfe.chave, tpAmb: 2 });
+    expect(r.protocolos[0]!.nProt).toMatch(new RegExp(`^${PREFIXO_NUMERO_SIMULADOR}\\d{14}$`));
+  });
+
   it('nenhum log, resposta ou protocolo traz o PFX, a senha ou a chave privada', () => {
     const { chavePrivadaPem } = a1;
     const tudo = [...logs, ...respostas].join('\n');
@@ -162,5 +199,4 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045: A1 de teste pela ADR 0005 e NF-e autori
     expect(tudo).not.toMatch(/PRIVATE KEY/);
   });
 
-  it.todo('decifrar o A1 da filial pela função do core (falta em @macuxierp/core/api: exportar decifrarA1 e ler o cifrado por filial; recado ao modulo-core)');
 });
