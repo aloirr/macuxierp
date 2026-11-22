@@ -4,8 +4,8 @@
 // Uso: node .claude/hooks/guarda-merge-mcp.mjs [nome-do-agente]
 //  - identidade igual à do guarda-bash (agenteDaSessao em scripts/coord-lib.mjs);
 //  - regras (guarda-merge-lib.mjs, conferirMergeMcp): só squash; SHA esperado de 40 caracteres conferido com o
-//    head do PR; CI do PR e do main verdes; PR que toca CAMINHOS_DE_GOVERNANCA, na nuvem ou local,
-//    só o gerente-projetos com o recado do Alexandre "autorizo o merge do PR #N no commit <sha>" e Agente: alexandre;
+//    head do PR; CI do PR e do main verdes; PR que toca CAMINHOS_DE_GOVERNANCA nunca pela nuvem e, localmente,
+//    só o gerente-projetos com o recado do Alexandre "autorizo o merge do PR #N no commit <sha>";
 //  - consulta pela API REST (gh api) com prazo; sem gh, sem rede ou resposta inválida → BLOQUEADO (exit 2);
 //  - qualquer erro inesperado do próprio hook também bloqueia (exit 2): falha fechada. Ferramenta que não é
 //    merge de PR passa (exit 0) sem consultar nada.

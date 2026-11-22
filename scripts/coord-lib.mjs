@@ -739,6 +739,44 @@ export function agenteDaSessao({ argumento, entrada, env = process.env, raiz = R
 // - Token só do ambiente: MACUXI_RECADOS_TOKEN, GH_TOKEN, GITHUB_TOKEN ou `gh auth token`. Nunca vai para arquivo,
 //   argumento de processo ou log (vai ao processo filho pelo stdin).
 
+/**
+ * Identidade dos processos pai (Linux, /proc): para cada ancestral, o MACUXI_AGENTE e os marcadores do Claude Code
+ * do ambiente com que ele NASCEU (/proc/<pid>/environ não muda depois). Um "MACUXI_AGENTE=x" no próprio comando não
+ * muda o ambiente do Claude Code que rodou o shell. Sem /proc (Windows, macOS) devolve null.
+ * @returns {{pid: number, agente: string|null, claudecode: boolean, remoto: boolean, legivel: boolean}[] | null}
+ */
+export function identidadeDosProcessosPai({ pid = process.ppid, ler = (c) => readFileSync(c), existe = existsSync, limite = 64 } = {}) {
+  if (!existe('/proc/self/environ')) return null;
+  const res = [];
+  for (let atual = pid, n = 0; atual > 1 && n < limite; n++) {
+    let env = null;
+    try { env = String(ler(`/proc/${atual}/environ`)).split('\0'); } catch { env = null; }
+    const valor = (k) => { const l = env?.find((x) => x.startsWith(`${k}=`)); return l === undefined ? null : l.slice(k.length + 1); };
+    const agente = env ? (String(valor('MACUXI_AGENTE') ?? '').trim().toLowerCase() || null) : null;
+    res.push({ pid: atual, agente, claudecode: Boolean(valor('CLAUDECODE')), remoto: String(valor('CLAUDE_CODE_REMOTE') ?? '').toLowerCase() === 'true', legivel: Boolean(env) });
+    let stat = '';
+    try { stat = String(ler(`/proc/${atual}/stat`)); } catch { break; }
+    const pai = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+    if (!Number.isInteger(pai) || pai === atual) break;
+    atual = pai;
+  }
+  return res;
+}
+
+/**
+ * Motivo para recusar `enviar --de alexandre` pelos processos pai (null = passa). Recusa se algum ancestral nasceu
+ * com outro MACUXI_AGENTE (troca no comando) e, dentro do Claude Code (CLAUDECODE ou CLAUDE_CODE_REMOTE no processo
+ * ou num ancestral), se nenhum ancestral nasceu com MACUXI_AGENTE=alexandre.
+ */
+export function motivoAlexandrePelosPais(ancestrais, env = process.env) {
+  if (!ancestrais) return null;
+  const outro = ancestrais.find((a) => a.agente && a.agente !== 'alexandre');
+  if (outro) return `um processo pai desta sessão roda como ${outro.agente} (MACUXI_AGENTE com que ele nasceu): trocar a identidade no comando não vale`;
+  const noClaude = Boolean(env.CLAUDECODE) || String(env.CLAUDE_CODE_REMOTE || '').toLowerCase() === 'true' || ancestrais.some((a) => a.claudecode || a.remoto);
+  if (noClaude && !ancestrais.some((a) => a.agente === 'alexandre')) return 'nenhum processo pai desta sessão nasceu com MACUXI_AGENTE=alexandre';
+  return null;
+}
+
 export const REPO_RECADOS = 'aloirr/macuxierp-recados';
 export const BRANCH_RECADOS = 'main';
 export const API_GITHUB = 'https://api.github.com';

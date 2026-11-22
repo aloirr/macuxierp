@@ -17,6 +17,7 @@ import {
   modoDosRecados, podeAlterar, regraDoRecadoNovo, globParaRegex, shaDoBlob, aplicarMudancas, tokenDoAmbiente, ghAuthToken,
   criarClienteDeRecados, atualizarIndiceDeRecados, enviarRecadoNoGitHub, marcarLidosNoGitHub, recadosDaPastaNoGitHub,
   recadosDoIndice, idsDoIndice, lidosDoIndice, ErroRecados, MOTIVO_RECADOS_NO_GITHUB, criarCommitPorGit,
+  identidadeDosProcessosPai, motivoAlexandrePelosPais,
   AGENTES, PESSOAS, DESTINOS, REMETENTES_DE_SISTEMA, ehRemetenteDeSistema, remetenteDoRecado, classificarMudancas,
 } from './coord-lib.mjs';
 import { lerRecadosDoGerente, autorizacoesDoAlexandre } from '../.claude/hooks/guarda-merge-lib.mjs';
@@ -912,4 +913,30 @@ test('subir-pendentes: sobe o que falta num commit só, une os lidos, não sobre
     assert.match(r.saida, /0 recado\(s\)\/anexo\(s\) a subir, 0 arquivo\(s\) de lidos a unir \(0 linha\(s\)\), 4 já no GitHub, 1 conflito/);
     assert.equal(gh.historico().length, 3, 'rodar de novo não grava nada');
   } finally { await s.fechar(); }
+});
+
+test('parecer do PR #48: --de alexandre confere a identidade com que os processos pai nasceram (/proc)', () => {
+  // árvore falsa a partir do pai do coord: 300 (shell do comando) → 200 (shell) → 100 (Claude Code) → 1
+  const arvore = (envs) => {
+    const pais = { 300: 200, 200: 100, 100: 1 };
+    return (c) => {
+      const [, pid, arq] = c.match(/^\/proc\/(\d+)\/(environ|stat)$/) || [];
+      if (!pid || !(pid in pais)) throw new Error('ENOENT');
+      if (arq === 'stat') return `${pid} (x) S ${pais[pid]} 0 0`;
+      return Object.entries(envs[pid] || {}).map(([k, v]) => `${k}=${v}`).join('\0');
+    };
+  };
+  const ident = (envs) => identidadeDosProcessosPai({ pid: 300, ler: arvore(envs), existe: () => true });
+  const CLAUDE = { CLAUDECODE: '1', CLAUDE_CODE_REMOTE: 'true' };
+  // sessão do Alexandre de verdade: passa
+  assert.equal(motivoAlexandrePelosPais(ident({ 100: { ...CLAUDE, MACUXI_AGENTE: 'alexandre' }, 200: { MACUXI_AGENTE: 'alexandre' }, 300: { MACUXI_AGENTE: 'alexandre' } }), {}), null);
+  // gerente com "MACUXI_AGENTE=alexandre" no comando: o Claude Code nasceu como gerente-projetos
+  assert.match(motivoAlexandrePelosPais(ident({ 100: { ...CLAUDE, MACUXI_AGENTE: 'gerente-projetos' }, 200: { MACUXI_AGENTE: 'gerente-projetos' }, 300: { MACUXI_AGENTE: 'alexandre' } }), {}), /roda como gerente-projetos/);
+  // dentro do Claude Code sem nenhum ancestral alexandre (variável apagada no caminho)
+  assert.match(motivoAlexandrePelosPais(ident({ 100: { ...CLAUDE }, 200: {}, 300: {} }), { MACUXI_AGENTE: 'alexandre' }), /nenhum processo pai/);
+  // terminal do Alexandre fora do Claude Code (sem CLAUDECODE em lugar nenhum): passa
+  assert.equal(motivoAlexandrePelosPais(ident({ 100: {}, 200: {}, 300: {} }), {}), null);
+  // sem /proc (Windows, macOS): não se aplica
+  assert.equal(identidadeDosProcessosPai({ existe: () => false }), null);
+  assert.equal(motivoAlexandrePelosPais(null), null);
 });

@@ -901,9 +901,60 @@ export function escritasDoComando(comando, cwdInicial = '', nivel = 0) {
  *   desde o v6 (a classificação é feita aqui); cwd: pasta atual da sessão (entrada.cwd do hook).
  * @returns {string[]} motivos do bloqueio (vazio = passa)
  */
+/** Variáveis que dão a identidade da sessão (coord.mjs e guardiões): agente nenhum as muda no comando. */
+const VARS_DE_IDENTIDADE = '(?:MACUXI_AGENTE|CLAUDECODE|CLAUDE_CODE_REMOTE)';
+const RE_IDENT_ATRIBUI = new RegExp(`\\b${VARS_DE_IDENTIDADE}\\s*\\+?=`);
+const RE_IDENT_BUILTIN = new RegExp(`\\b(?:unset|export|declare|typeset|readonly|local)\\b[^\\n;&|]*\\b${VARS_DE_IDENTIDADE}\\b`);
+const RE_IDENT_ENV_U = new RegExp(`(?:^|\\s)(?:-u\\s*|--unset[= ])${VARS_DE_IDENTIDADE}\\b`);
+const RE_IDENT_CODIGO = new RegExp(`(?:environ|process\\.env|getenv|putenv|setenv|unsetenv)[^\\n]{0,60}\\b${VARS_DE_IDENTIDADE}\\b`);
+const BUILTINS_DE_VARIAVEL = new Set(['export', 'declare', 'typeset', 'readonly', 'local', 'unset']);
+
+/**
+ * Troca de identidade no comando (decisão do Alexandre, R-20261121-220014; furo do parecer do PR #48): atribuir,
+ * exportar, apagar ou mexer por código em MACUXI_AGENTE, CLAUDECODE ou CLAUDE_CODE_REMOTE, ou exportar/declarar
+ * variável com nome dinâmico ($V, $(...)) ou passar ao env um argumento dinâmico. Função pura; [] = passa.
+ */
+export function motivosTrocaDeIdentidade({ comando, agente }) {
+  if (!agente || agente === 'alexandre') return [];
+  const t = String(comando);
+  const motivos = [];
+  if (RE_IDENT_ATRIBUI.test(t) || RE_IDENT_BUILTIN.test(t) || RE_IDENT_ENV_U.test(t) || RE_IDENT_CODIGO.test(t))
+    motivos.push(`o comando muda a identidade da sessão (MACUXI_AGENTE, CLAUDECODE ou CLAUDE_CODE_REMOTE): ${agente} trabalha com a identidade que a sessão já tem`);
+  visitarComandos(t, ({ nome, args, tirados = [] }) => {
+    const prefixoEnv = tirados.some((w) => !w.incerto && nomeBase(w.valor) === 'env');
+    if (prefixoEnv && (nome?.incerto || tirados.some((w) => w.incerto)))
+      motivos.push(`env com argumento dinâmico ($V, $(...)): ${agente} não monta variável de ambiente por nome calculado`);
+    if (nome && !nome.incerto && BUILTINS_DE_VARIAVEL.has(nomeBase(nome.valor)) && args.some((a) => a.incerto && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(a.valor)))
+      motivos.push(`${nomeBase(nome.valor)} com nome de variável dinâmico ($V, $(...)): ${agente} não monta variável de ambiente por nome calculado`);
+  });
+  return [...new Set(motivos)];
+}
+
+/** git que grava no repositório de recados por fora do coord.mjs (clone, pasta ou URL do macuxierp-recados). */
+const GIT_GRAVA_REMOTO = new Set(['push', 'commit', 'am', 'apply', 'update-ref', 'commit-tree', 'merge', 'rebase', 'cherry-pick', 'revert', 'tag']);
+export function motivosGitNoRepoDeRecados({ comando, agente, cwd = '' }) {
+  if (!agente || agente === 'alexandre') return [];
+  const naPasta = /macuxierp-recados/i.test(String(cwd || ''));
+  const citaRepo = /macuxierp-recados/i.test(String(comando));
+  const motivos = [];
+  visitarComandos(String(comando), ({ nome, args }) => {
+    if (!nome || nome.incerto || nomeBase(nome.valor) !== 'git') return;
+    let i = 0;
+    let outraPasta = '';
+    while (i < args.length && args[i].valor.startsWith('-')) {
+      if (args[i].valor === '-C') { outraPasta = args[i + 1]?.incerto ? '?' : String(args[i + 1]?.valor || ''); i += 2; } else if (['-c', '--git-dir', '--work-tree'].includes(args[i].valor)) { if (args[i].valor !== '-c') outraPasta = String(args[i + 1]?.valor || '?'); i += 2; } else i++;
+    }
+    const sub = args[i];
+    if (!sub || sub.incerto || !GIT_GRAVA_REMOTO.has(sub.valor)) return;
+    if (naPasta || citaRepo || /macuxierp-recados|^\?$/i.test(outraPasta))
+      motivos.push(`git ${sub.valor} no repositório de recados: ${agente} grava recado só pelo node scripts/coord.mjs enviar --de ${agente}`);
+  });
+  return [...new Set(motivos)];
+}
+
 export function motivosRecadoFalso({ comando, agente, cwd = '' }) {
   if (!agente || agente === 'alexandre') return [];
-  const motivos = [];
+  const motivos = [...motivosTrocaDeIdentidade({ comando, agente }), ...motivosGitNoRepoDeRecados({ comando, agente, cwd })];
   visitarComandos(comando, ({ nome, args }) => {
     if (!nome || nome.incerto || !['node', 'nodejs'].includes(nomeBase(nome.valor))) return;
     const i = args.findIndex((a) => !a.valor.startsWith('-'));
@@ -1059,10 +1110,9 @@ export function mensagemRecadoFalso(agente, motivos) {
 //  c) o hook consulta o GitHub pela API REST (gh api; o GraphQL não responde nas sessões da nuvem):
 //     PR aberto, head = SHA esperado, CI do head do PR verde e CI do main verde (todos os check-runs
 //     concluídos com success/neutral/skipped; "main vermelho = nuvem não faz merge");
-//  d) PR com caminho de governança (CAMINHOS_DE_GOVERNANCA): na nuvem ou local, só o gerente-projetos com identidade
-//     confiável (MACUXI_AGENTE ou agent_type), com o recado do Alexandre "autorizo o merge do PR #N no commit <sha>"
-//     (mesmo N e SHA; a sessão do PO grava por delegação, R-20261121-215904) e "Agente: alexandre" na commit_message
-//     (CI da T-0049); decisão do Alexandre R-20261121-220014.
+//  d) PR com caminho de governança (CAMINHOS_DE_GOVERNANCA): nunca na nuvem (CLAUDE_CODE_REMOTE=true); localmente
+//     só o gerente-projetos com identidade confiável (como no v5), com o recado do Alexandre "autorizo o merge do
+//     PR #N no commit <sha>" (mesmo N e SHA) e "Agente: alexandre" na commit_message (CI da T-0049).
 //  gh ausente, sem rede, sem login, resposta inválida, lista de arquivos ou de checks incompleta, prazo estourado
 //  → BLOQUEADO (falha fechada).
 
@@ -1293,8 +1343,8 @@ export function conferirMergeMcp({ ferramenta, entrada, agente, origem = '', sub
       }
       if (governanca.length) {
         const lista = `${governanca.slice(0, 5).join(', ')}${governanca.length > 5 ? ', ...' : ''}`;
-        // regra d) do cabeçalho v6
-        if (agente !== AGENTE_DO_MERGE || !ORIGENS_CONFIAVEIS.includes(origem)) erros.push(`PR de governança (${lista}): só o gerente-projetos (MACUXI_AGENTE ou agent_type) faz o merge, com a autorização do Alexandre por recado; esta sessão é de ${agente} (${origem})${nuvem ? ' na nuvem' : ''}`);
+        if (nuvem) erros.push(`o PR #${v.pr} altera caminho de governança (${lista}): sessão da nuvem não faz esse merge. Termine com "[PRONTO PARA MERGE]" e o recado ao gerente (PR, head SHA, arquivos); o merge é local, com a autorização do Alexandre`);
+        else if (agente !== AGENTE_DO_MERGE || !ORIGENS_CONFIAVEIS.includes(origem)) erros.push(`PR de governança (${lista}): só o gerente-projetos na sessão local (MACUXI_AGENTE ou agent_type) faz o merge, com a autorização do Alexandre; esta sessão é de ${agente} (${origem})`);
         if (v.agenteDoCommit !== 'alexandre') erros.push('PR de governança: a commit_message do squash termina com "Agente: alexandre" (trailer de governança, CI da T-0049)');
       }
       erros.push(...d.erros.map((e) => e.replace(/--match-head-commit/g, 'SHA esperado')));
@@ -1309,7 +1359,7 @@ export function mensagemMergeMcp(erros) {
     `${CABECALHO_MCP}\n${erros.map((e) => ` - ${e}`).join('\n')}\n` +
     'Chamada aceita: merge_pull_request com owner "aloirr", repo "macuxierp", pullNumber N, merge_method "squash" e commit_message ' +
     'com "Head-SHA: <sha de 40 caracteres>" e "Agente: <dono da tarefa>" no último bloco; CI do PR e do main verdes.\n' +
-    `PR de governança: só o gerente-projetos (sessão principal, MACUXI_AGENTE ou agent_type), na nuvem ou local, com "Agente: alexandre" e o recado do Alexandre em ${PASTA_AUTORIZACOES} "autorizo o merge do PR #N no commit <sha>".\n` +
+    `PR de governança: só local, pelo gerente-projetos, com o recado do Alexandre em ${PASTA_AUTORIZACOES} "autorizo o merge do PR #N no commit <sha>".\n` +
     'Não contorne o bloqueio (gh api, outra ferramenta, script): se a regra impede o merge, avise o gerente ou o Alexandre por recado.'
   );
 }

@@ -43,7 +43,7 @@ Tudo o que o Alexandre disser no chat com você é gravado como recado `aviso` p
 
 ## Merge
 - PR comum ("[PRONTO PARA MERGE]", sem caminho de governança): com o CI do PR e do `main` verdes, `verificar --base origin/main` OK e o parecer do corretor no head SHA. Na nuvem (sem `gh` com escrita), pela ferramenta `mcp__github__merge_pull_request` na sessão principal: `merge_method: squash`, `expectedHeadSha: <sha de 40 caracteres>` e, no último bloco da mensagem, `Head-SHA: <sha>` e `Agente: <dono>`. Se a ferramenta não aparecer, carregue com `ToolSearch` ("select:mcp__github__merge_pull_request,mcp__github__pull_request_read"). No PC: `gh pr merge N -R aloirr/macuxierp --squash --match-head-commit <sha> --body "Agente: <dono>"`. Subagente não faz merge (o guardião bloqueia).
-- PR de governança (`.claude/**`, `.coord/donos.json`, `scripts/coord*.mjs`, `.github/**`): só com o recado do Alexandre "autorizo o merge do PR #N no commit <sha>" (a sessão do PO grava por delegação dele, R-20261121-215904) e com `Agente: alexandre` no último bloco do squash. Na nuvem ou local, pela sessão principal (R-20261121-220014).
+- PR de governança (`.claude/**`, `.coord/donos.json`, `scripts/coord*.mjs`, `.github/**`): só com o recado do Alexandre "autorizo o merge do PR #N no commit <sha>". O merge de governança é o clique do Alexandre no GitHub (o guarda-merge-mcp barra a nuvem; R-20261121-220014). `add_repo` só para o `aloirr/macuxierp-recados` (o guarda-mcp barra os outros).
 - Deploy: só com "aprovo deploy vX.Y.Z" do Alexandre. Produção fiscal de uma empresa: só com "aprovo produção fiscal <empresa>".
 
 ## Regras

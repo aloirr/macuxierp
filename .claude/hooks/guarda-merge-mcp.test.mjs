@@ -148,22 +148,16 @@ test('v6 mcp: sem gh/rede para conferir = bloqueia (falha fechada), inclusive li
   assert.equal(avaliarChecks({ total_count: 2, check_runs: [{ name: 'a', status: 'completed', conclusion: 'skipped' }, { name: 'b', status: 'completed', conclusion: 'neutral' }] }).verde, true);
 });
 
-test('v6 mcp: PR de governança — nuvem ou local, só o gerente com o recado do Alexandre (mesmo N e SHA) e Agente: alexandre', () => {
-  // nuvem, agente de módulo: bloqueado mesmo com autorização
+test('v6 mcp: PR de governança — nuvem nunca; local só o gerente com o recado do Alexandre (mesmo N e SHA) e Agente: alexandre', () => {
+  // nuvem: bloqueado mesmo com autorização
   const nuvem = conferir({ consulta: GOV, recados: [AUTORIZA_40] });
   assert.equal(nuvem.ok, false);
-  assert.match(nuvem.mensagem, /PR de governança \(\.claude\/hooks\/guarda-bash\.mjs, \.github\/workflows\/ci\.yml\): só o gerente-projetos .* na nuvem/);
+  assert.match(nuvem.mensagem, /altera caminho de governança \(\.claude\/hooks\/guarda-bash\.mjs, \.github\/workflows\/ci\.yml\): sessão da nuvem não faz esse merge/);
   assert.deepEqual(nuvem.governanca, ['.claude/hooks/guarda-bash.mjs', '.github/workflows/ci.yml']);
-  // nuvem, gerente (MACUXI_AGENTE), com a autorização certa e Agente: alexandre → passa (R-20261121-220014)
-  const gEntrada = entradaOk({ commit_message: mensagem('alexandre') });
-  const gNuvem = { agente: 'gerente-projetos', origem: 'variável MACUXI_AGENTE', nuvem: true };
-  const gerenteNuvem = conferir({ consulta: GOV, recados: [AUTORIZA_40], ident: gNuvem, entrada: gEntrada });
-  assert.equal(gerenteNuvem.ok, true, gerenteNuvem.mensagem);
-  assert.equal(gerenteNuvem.autorizacao, 'R-20261102-120000-alexandre');
-  // nuvem, gerente identificado só pelo trailer do branch, ou subagente: bloqueado
-  assert.equal(conferir({ consulta: GOV, ident: { agente: 'gerente-projetos', origem: 'trailer "Agente:" do branch nuvem/T-0099-x', nuvem: true }, entrada: gEntrada, recados: [AUTORIZA_40] }).ok, false);
-  assert.equal(conferir({ consulta: GOV, ident: gNuvem, subagente: true, entrada: gEntrada, recados: [AUTORIZA_40] }).ok, false);
+  const gerenteNuvem = conferir({ consulta: GOV, recados: [AUTORIZA_40], ident: { agente: 'gerente-projetos', origem: 'variável MACUXI_AGENTE', nuvem: true }, entrada: entradaOk({ commit_message: mensagem('alexandre') }) });
+  assert.match(gerenteNuvem.mensagem, /sessão da nuvem não faz esse merge/);
   // local, gerente, sem autorização
+  const gEntrada = entradaOk({ commit_message: mensagem('alexandre') });
   const sem = conferir({ consulta: GOV, ident: GERENTE_LOCAL, entrada: gEntrada });
   assert.equal(sem.ok, false);
   assert.match(sem.mensagem, /não há recado do Alexandre \(de: alexandre, em \.coord\/recados\/gerente-projetos\) com "autorizo o merge do PR #40 no commit a1b2c3d4/);
@@ -181,8 +175,8 @@ test('v6 mcp: PR de governança — nuvem ou local, só o gerente com o recado d
   // com autorização, mas trailer de outro agente no squash (CI da T-0049 deixaria o main vermelho)
   assert.match(conferir({ consulta: GOV, ident: GERENTE_LOCAL, recados: [AUTORIZA_40] }).mensagem, /termina com "Agente: alexandre"/);
   // com autorização, mas outro agente local, ou o gerente identificado só pelo branch/trailer
-  assert.match(conferir({ consulta: GOV, ident: { agente: 'modulo-core', origem: 'sessão local (agent_type)' }, entrada: gEntrada, recados: [AUTORIZA_40] }).mensagem, /só o gerente-projetos \(MACUXI_AGENTE ou agent_type\)/);
-  assert.match(conferir({ consulta: GOV, ident: { agente: 'gerente-projetos', origem: 'branch gerente-projetos/T-0099-x' }, entrada: gEntrada, recados: [AUTORIZA_40] }).mensagem, /só o gerente-projetos \(MACUXI_AGENTE ou agent_type\)/);
+  assert.match(conferir({ consulta: GOV, ident: { agente: 'modulo-core', origem: 'sessão local (agent_type)' }, entrada: gEntrada, recados: [AUTORIZA_40] }).mensagem, /só o gerente-projetos na sessão local/);
+  assert.match(conferir({ consulta: GOV, ident: { agente: 'gerente-projetos', origem: 'branch gerente-projetos/T-0099-x' }, entrada: gEntrada, recados: [AUTORIZA_40] }).mensagem, /só o gerente-projetos na sessão local/);
   // com autorização, mas CI vermelho: não passa
   assert.equal(conferir({ consulta: { ...GOV, ciMain: { verde: false, detalhe: 'vermelho' } }, ident: GERENTE_LOCAL, entrada: gEntrada, recados: [AUTORIZA_40] }).ok, false);
   // arquivo renomeado PARA fora da governança conta pelo caminho antigo (consultarPrRest inclui previous_filename)
@@ -253,7 +247,7 @@ test('v6 mcp: consultarPrRest lê PR, arquivos (paginados, com o nome antigo dos
     `api ${R}/commits/main/check-runs?per_page=100`,
   ]);
   const r = conferirMergeMcp({ ferramenta: FERRAMENTA, entrada: entradaOk(), ...NUVEM_CORE, consultarPr: () => c });
-  assert.match(r.mensagem, /PR de governança \(scripts\/coord\.mjs\)/, 'renomear arquivo de governança para fora continua sendo governança');
+  assert.match(r.mensagem, /altera caminho de governança \(scripts\/coord\.mjs\)/, 'renomear arquivo de governança para fora continua sendo governança');
 });
 
 test('v6 mcp: consultarPrRest — gh fora do ar, resposta que não é JSON, PR inexistente e lentidão = falha fechada', () => {
@@ -310,14 +304,14 @@ function hook(repo, { ferramenta = FERRAMENTA, entrada = entradaOk(), json = {},
   return { codigo: r.status, erro: r.stderr };
 }
 
-test('hook v6 mcp: sessão da nuvem do modulo-core faz o merge do PR comum (exit 0); o de governança é bloqueado (exit 2), mesmo com autorização', () => {
+test('hook v6 mcp: sessão da nuvem do modulo-core faz o merge do PR comum (exit 0); o de governança é bloqueado (exit 2)', () => {
   const repo = criarRepo();
   const ok = hook(repo);
   assert.equal(ok.codigo, 0, ok.erro);
   assert.equal(chamadasGh(repo).length, 4, 'PR, arquivos, CI do PR, CI do main');
   const gov = hook(repo, { entrada: entradaOk({ pullNumber: 41, commit_message: mensagem('alexandre') }) });
   assert.equal(gov.codigo, 2);
-  assert.match(gov.erro, /BLOQUEADO \(merge pelo MCP do GitHub\)[\s\S]*\.claude\/settings\.json\): só o gerente-projetos/);
+  assert.match(gov.erro, /BLOQUEADO \(merge pelo MCP do GitHub\)[\s\S]*\.claude\/settings\.json\): sessão da nuvem não faz esse merge/);
   // mesmo com o recado de autorização no disco da nuvem
   escrever(repo.dir, '.coord/recados/gerente-projetos/R-20261102-120000-alexandre.md', recado('R-20261102-120000-alexandre', `Autorizo o merge do PR #41 no commit ${HEAD}`).texto);
   assert.equal(hook(repo, { entrada: entradaOk({ pullNumber: 41, commit_message: mensagem('alexandre') }) }).codigo, 2);

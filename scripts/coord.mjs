@@ -59,6 +59,7 @@ import {
   carregarDonos, donoDe, caminhoRelativo, podeAlterar,
   PESSOAS, classificarMudancas, agruparPorDono, agenteDoBranch, agenteDosTrailers, trailersAgente,
   WORKSPACE_PNPM, workspaceMudouSoEmBuilds, mudancasDeGovernanca, CAMINHOS_DE_GOVERNANCA, estadoDosRecados,
+  identidadeDosProcessosPai, motivoAlexandrePelosPais,
   modoDosRecados, regraDoRecadoNovo, ErroRecados, conexaoDeRecados, atualizarIndiceDeRecados, recadosDoIndice,
   lidosDoIndice, enviarRecadoNoGitHub, marcarLidosNoGitHub, ehRemetenteDeSistema,
 } from './coord-lib.mjs';
@@ -544,6 +545,11 @@ switch (cmd) {
     const naSessao = String(process.env.MACUXI_AGENTE || '').trim().toLowerCase();
     if (de === 'alexandre' && (naSessao ? naSessao !== 'alexandre' : Boolean(process.env.CLAUDECODE)))
       falhar('--de alexandre só na sessão do Alexandre (MACUXI_AGENTE=alexandre ou o terminal dele, fora do Claude Code). Envie com o seu nome: --de <agente>');
+    // R-20261121-220014 (parecer do PR #48): no Linux, confere também a identidade com que os processos pai nasceram.
+    if (de === 'alexandre') {
+      const motivo = motivoAlexandrePelosPais(identidadeDosProcessosPai());
+      if (motivo) falhar(`--de alexandre recusado: ${motivo}. Envie com o seu nome: --de <agente>`);
+    }
     if (naSessao && naSessao !== 'alexandre' && PESSOAS.includes(naSessao) && de !== naSessao)
       falhar(`esta sessão é de ${naSessao} (MACUXI_AGENTE): envie com --de ${naSessao}`);
     if (!para.length) falhar('informe --para');

@@ -74,6 +74,19 @@ test('v7 mcp: classifica — leitura, merge (fica com o v6), arquivo do GitHub, 
   assert.equal(ehNomeDeLeitura('getaway_write'), false, 'verbo só como palavra inteira');
 });
 
+test('mcp: add_repo — os agentes só anexam o aloirr/macuxierp-recados; o alexandre anexa o que precisar', () => {
+  const ADD = 'mcp__claude-code-remote__add_repo';
+  const GERENTE = { agente: 'gerente-projetos', origem: 'variável MACUXI_AGENTE' };
+  assert.equal(conferir({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxierp-recados', access: 'push' }, ident: GERENTE }).ok, true);
+  assert.equal(conferir({ ferramenta: ADD, entrada: { owner: 'Aloirr', repo: 'MacuxiERP-Recados' }, ident: GERENTE }).ok, true);
+  bloqueia({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxifdv', access: 'push' }, ident: GERENTE }, /só anexam o aloirr\/macuxierp-recados \(veio aloirr\/macuxifdv\)/);
+  bloqueia({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxierp' }, ident: NUVEM_CORE }, /veio aloirr\/macuxierp\)/);
+  bloqueia({ ferramenta: ADD, entrada: {}, ident: GERENTE }, /veio \?\/\?/);
+  assert.equal(conferir({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxifdv' }, ident: { agente: 'alexandre', origem: 'variável MACUXI_AGENTE' } }).ok, true);
+  // outras ferramentas do mesmo servidor não mudam
+  assert.equal(conferir({ ferramenta: 'mcp__claude-code-remote__send_message', entrada: { message: 'x' }, ident: GERENTE }).ok, true);
+});
+
 test('v7 mcp: push_files do agente no branch da tarefa, nos próprios caminhos e com o trailer passa', () => {
   assert.equal(conferir().ok, true, conferir().mensagem);
   assert.equal(conferir({ ferramenta: 'mcp__github__create_or_update_file', entrada: { owner: 'aloirr', repo: 'macuxierp', branch: 'nuvem/T-0099-x', path: 'modules/core/a.ts', content: 'x', message: msg(), sha: 'abc' } }).ok, true);
