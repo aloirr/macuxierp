@@ -120,6 +120,9 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const [n] = await admin('SELECT status, protocolo, c_stat, recibo, autorizada_em FROM faturamento.nota WHERE id = $1', [r.nota.id]);
     expect(n).toMatchObject({ status: 'autorizada', protocolo: '113260000000001', c_stat: 100, recibo: '131000000000001' });
     expect(n?.autorizada_em).toBeInstanceOf(Date);
+    // A tela decide o botão "Cancelar" por esta data: o detalhe tem de trazê-la (sem ela o cancelamento ficaria bloqueado para sempre).
+    const det = await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id));
+    expect(det?.autorizada_em).toBe((n?.autorizada_em as Date).toISOString());
     const [x] = await admin("SELECT tipo, protocolo, xml, sha256 FROM faturamento.nota_xml WHERE nota_id = $1 AND tipo = 'nfe_autorizada'", [r.nota.id]);
     expect(x).toMatchObject({ tipo: 'nfe_autorizada', protocolo: '113260000000001' });
     expect(x?.xml).toMatch(/^<nfeProc /);
@@ -138,7 +141,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const { tr } = transmissor(s, { recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('rejeitada');
     const painel = await app.comTenant(A, (tx) => repos.notas.listarRejeicoes(tx, { limite: 50 }));
-    expect(painel.itens.find((i) => i.id === r.nota.id)).toMatchObject({ codigo: '778', numero: r.nota.numero });
+    expect(painel.itens.find((i) => i.id === r.nota.id)).toMatchObject({ codigo: '778', numero: r.nota.numero, ambiente: 'homologacao' });
     const re = await app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, r.nota.id, { travar: true }))!));
     expect(re.ok && re.nota).toMatchObject({ numero: r.nota.numero, chave_acesso: r.nota.chave_acesso, status: 'rejeitada', revisao: 2 });
     const [n] = await admin('SELECT status, recibo FROM faturamento.nota WHERE id = $1', [r.nota.id]);
@@ -214,5 +217,16 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       expect(await aberta()).toBe(true); // autorizada: o pedido só cancela depois de cancelar a nota
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]]));
     });
+  });
+
+  it('regra 4: o total da fila é lido como inteiro (valor grande sem perda) e acima de 2^53 falha em vez de arredondar', async () => {
+    const C = await criarTenant(efemero.admin, 'fat-c', ['faturamento']);
+    await app.comTenant(C, (tx) => pedidosAprovadosSql.gravar(tx, pedido));
+    const total = async (v: string) => {
+      await admin(`UPDATE faturamento.pedido_a_faturar SET payload = jsonb_set(payload, '{total_centavos}', '${v}'::jsonb) WHERE tenant_id = $1`, [C]);
+      return app.comTenant(C, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }));
+    };
+    expect((await total('9007199254740991')).itens[0]?.total_centavos).toBe(9_007_199_254_740_991);
+    await expect(total('9007199254740993')).rejects.toThrow(/faixa segura/);
   });
 });

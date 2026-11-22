@@ -5,22 +5,23 @@
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDataHora, interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
 import { BaixarTituloEntrada, DataCivil, StatusTitulo, type TituloResumo } from '../contracts';
-import { BASE_API, CHAVE_OK, comChave, type Montagem, type Requisicao } from './notas';
+import { dataCivilManaus } from '../domain/fuso';
+import { BASE_API, comChave, exigirChave, falha, type Montagem, type Selo } from './notas';
 
 const CAMINHO_BAIXAR = `${BASE_API}/titulos/:id/baixas`;
 const CAMINHO_ESTORNAR = `${BASE_API}/titulos/:id/baixas/:baixa_id/estornar`;
 
-export const ROTULO_STATUS_TITULO: Readonly<Record<StatusTitulo, string>> = { aberto: 'Em aberto', baixado: 'Baixado', cancelado: 'Cancelado' };
+const ROTULO_STATUS_TITULO: Readonly<Record<StatusTitulo, string>> = { aberto: 'Em aberto', baixado: 'Baixado', cancelado: 'Cancelado' };
 
 const MS_DIA = 86_400_000;
 /** Dias de atraso entre duas datas civis (`hoje` no fuso do tenant); 0 ou negativo = não venceu. */
-export const diasDeAtraso = (vencimento: string, hoje: string): number => Math.round((Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${vencimento}T00:00:00Z`)) / MS_DIA);
+const diasDeAtraso = (vencimento: string, hoje: string): number => Math.round((Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${vencimento}T00:00:00Z`)) / MS_DIA);
 
-/** Data civil de hoje no fuso do tenant (AAAA-MM-DD). */
-export const hojeCivil = (fuso: string, agora: Date = new Date()): string => new Intl.DateTimeFormat('en-CA', { timeZone: fuso, year: 'numeric', month: '2-digit', day: '2-digit' }).format(agora);
+/** Data civil de hoje (AAAA-MM-DD) no fuso da filial emissora (Manaus, RD-0617): a conta vive só em `dataCivilManaus`. */
+export const hojeCivil = (agora: Date = new Date()): string => dataCivilManaus(agora);
 
 /** Situação para a coluna "Status": título aberto e vencido vira "Vencido há N dias" no tom `erro` que já existe. */
-export function situacaoDoTitulo(t: Pick<TituloResumo, 'status' | 'vencimento'>, hoje: string): { texto: string; tom: 'ok' | 'alerta' | 'erro' | 'neutro' } {
+export function situacaoDoTitulo(t: Pick<TituloResumo, 'status' | 'vencimento'>, hoje: string): Selo {
   if (t.status === 'aberto') {
     const d = diasDeAtraso(t.vencimento, hoje);
     if (d > 0) return { texto: `Vencido há ${d} ${d === 1 ? 'dia' : 'dias'}`, tom: 'erro' };
@@ -28,7 +29,7 @@ export function situacaoDoTitulo(t: Pick<TituloResumo, 'status' | 'vencimento'>,
   return { texto: ROTULO_STATUS_TITULO[t.status], tom: t.status === 'baixado' ? 'ok' : 'neutro' };
 }
 
-export interface AcoesDoTitulo {
+interface AcoesDoTitulo {
   baixar: boolean;
   estornar: boolean;
 }
@@ -57,16 +58,18 @@ export function formularioBaixa(e: { valor: string; data: string; saldo_centavos
   return { ok: true, valor_centavos: valor, data_baixa: e.data };
 }
 
-/** `forma` opcional (até 30 caracteres; a API assume `manual`). */
-export const requisicaoBaixa = (titulo_id: string, b: Pick<BaixarTituloEntrada, 'valor_centavos' | 'data_baixa'> & { forma?: string }, chave: string): Requisicao => ({
-  metodo: 'POST', caminho: CAMINHO_BAIXAR.replace(':id', titulo_id), cabecalhos: comChave(chave),
-  corpo: { valor_centavos: b.valor_centavos, data_baixa: b.data_baixa, ...(b.forma ? { forma: b.forma } : {}) },
-});
+/** `forma` opcional (até 30 caracteres; a API assume `manual`). Valida a Idempotency-Key e o corpo como as demais requisições. */
+export function requisicaoBaixa(titulo_id: string, b: Pick<BaixarTituloEntrada, 'valor_centavos' | 'data_baixa'> & { forma?: string }, chave: string): Montagem {
+  const semChave = exigirChave(chave);
+  if (semChave) return semChave;
+  const v = BaixarTituloEntrada.safeParse({ valor_centavos: b.valor_centavos, data_baixa: b.data_baixa, ...(b.forma ? { forma: b.forma } : {}) });
+  if (!v.success) return falha('Confira o valor e a data da baixa.');
+  return { ok: true, requisicao: { metodo: 'POST', caminho: CAMINHO_BAIXAR.replace(':id', titulo_id), cabecalhos: comChave(chave), corpo: { valor_centavos: v.data.valor_centavos, data_baixa: v.data.data_baixa, ...(b.forma ? { forma: v.data.forma } : {}) } } };
+}
 
 /** Estorno sem corpo: só confirmação (a API abate o saldo de volta e audita). */
 export function requisicaoEstornar(titulo_id: string, baixa_id: string, chave: string): Montagem {
-  if (!CHAVE_OK.test(chave)) return { ok: false, erro: 'Não foi possível identificar a operação. Recarregue a página e tente de novo.' };
-  return { ok: true, requisicao: { metodo: 'POST', caminho: CAMINHO_ESTORNAR.replace(':id', titulo_id).replace(':baixa_id', baixa_id), cabecalhos: comChave(chave) } };
+  return exigirChave(chave) ?? { ok: true, requisicao: { metodo: 'POST', caminho: CAMINHO_ESTORNAR.replace(':id', titulo_id).replace(':baixa_id', baixa_id), cabecalhos: comChave(chave) } };
 }
 
 /** "Estornar a baixa de R$ X feita em dd/mm?" (confirmação simples; sem motivo, a API não pede). */

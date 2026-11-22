@@ -318,6 +318,8 @@ export const RejeicaoNota = z.object({
   id: Uuid,
   filial_id: Uuid,
   pedido_id: Uuid.nullable(),
+  /** A lista de rejeições mostra o selo de homologação (RN-FAT-04). */
+  ambiente: Ambiente,
   serie: z.number().int(),
   numero: z.number().int().nullable(),
   codigo: z.string().nullable(),
@@ -337,12 +339,15 @@ export type TransmitirNotaPayload = z.infer<typeof TransmitirNotaPayload>;
 
 // ---- Eventos fiscais (T-0021, lote 2): cancelamento, CC-e, inutilização e consulta (RN-FAT-01, RN-FAT-02, RN-FAT-03) ----
 
+/** Limites de caracteres (após o trim) dos textos dos eventos fiscais: a tela e a API leem daqui (RN-FAT-02, RN-FAT-01). */
+export const LIMITES_TEXTO = { justificativa: { min: 15, max: 255 }, cartaCorrecao: { min: 15, max: 1000 } } as const;
+
 /** `POST /v1/faturamento/notas/:id/cancelar`: só nota autorizada, até 24 h da autorização (RN-FAT-02). */
-export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(15).max(255) });
+export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(LIMITES_TEXTO.justificativa.min).max(LIMITES_TEXTO.justificativa.max) });
 export type CancelarNotaEntrada = z.infer<typeof CancelarNotaEntrada>;
 
 /** `POST /v1/faturamento/notas/:id/carta-correcao`: só nota autorizada, até 20 por nota (RN-FAT-02). */
-export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(15).max(1000) });
+export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(LIMITES_TEXTO.cartaCorrecao.min).max(LIMITES_TEXTO.cartaCorrecao.max) });
 export type CartaCorrecaoEntrada = z.infer<typeof CartaCorrecaoEntrada>;
 
 /** `POST /v1/faturamento/inutilizacoes`: faixa da série da filial emissora (RN-FAT-01). Sem `serie` = a da filial; sem `ano` = o do ano corrente (Manaus). */
@@ -353,7 +358,7 @@ export const InutilizarEntrada = z
     numero_inicial: z.number().int().min(1).max(999_999_999),
     numero_final: z.number().int().min(1).max(999_999_999),
     ano: z.number().int().min(2000).max(2099).optional(),
-    justificativa: z.string().trim().min(15).max(255),
+    justificativa: z.string().trim().min(LIMITES_TEXTO.justificativa.min).max(LIMITES_TEXTO.justificativa.max),
   })
   .refine((e) => e.numero_inicial <= e.numero_final, { message: 'o número inicial não pode ser maior que o final', path: ['numero_final'] });
 export type InutilizarEntrada = z.infer<typeof InutilizarEntrada>;

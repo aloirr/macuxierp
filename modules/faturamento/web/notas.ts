@@ -4,47 +4,60 @@
  */
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
-import { CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, InutilizarEntrada, type Ambiente, type StatusNota, type StatusPedidoAFaturar } from '../contracts';
+import { CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, InutilizarEntrada, LIMITES_TEXTO, type Ambiente, type StatusNota, type StatusPedidoAFaturar } from '../contracts';
 import { prazoDeCancelamentoEsgotado } from '../domain/cancelamento';
 
 export const BASE_API = '/v1/faturamento';
-/** RN-FAT-04: nota de homologação não tem valor fiscal e a tela diz isso em todo lugar onde a nota aparece. */
-export const TEXTO_HOMOLOGACAO = 'Homologação — sem valor fiscal';
+/** RN-FAT-04: nota de homologação não tem valor fiscal e a tela diz isso em todo lugar onde a nota aparece (uma só fonte do texto). */
+const SEM_VALOR_FISCAL = 'sem valor fiscal';
+const TEXTO_HOMOLOGACAO = `Homologação — ${SEM_VALOR_FISCAL}`;
+/** "Não dá para desfazer" dos diálogos de cancelar e inutilizar. */
+const NAO_DESFAZ = 'Não dá para desfazer';
+/** Vira `true` quando a rota do DANFE do lote 3 (PR do DANFE) entrar; até lá `GET /notas/:id/danfe` dá 404 e o botão fica desabilitado. */
+export const DANFE_DISPONIVEL = false;
 
 export type Tom = 'ok' | 'alerta' | 'erro' | 'neutro';
 export interface Selo {
   texto: string;
   tom: Tom;
+  /** Dica curta (tooltip) para o status que pede explicação. */
+  dica?: string;
 }
 
 export const ROTULO_STATUS_NOTA: Readonly<Record<StatusNota, Selo>> = {
   rascunho: { texto: 'Rascunho', tom: 'neutro' },
-  em_autorizacao: { texto: 'Em autorização', tom: 'alerta' },
-  autorizada_guarda_pendente: { texto: 'Autorizada (guardando o XML)', tom: 'alerta' },
+  em_autorizacao: { texto: 'Em autorização', tom: 'alerta', dica: 'Aguardando a SEFAZ' },
+  autorizada_guarda_pendente: { texto: 'Autorizada', tom: 'alerta', dica: 'Autorizada. Salvando o arquivo da nota' },
   autorizada: { texto: 'Autorizada', tom: 'ok' },
   rejeitada: { texto: 'Rejeitada', tom: 'erro' },
-  denegada: { texto: 'Denegada', tom: 'erro' },
+  denegada: { texto: 'Denegada', tom: 'erro', dica: 'A SEFAZ recusou em definitivo. Fale com o fiscal' },
   cancelada: { texto: 'Cancelada', tom: 'neutro' },
-  emitida_contingencia: { texto: 'Emitida em contingência', tom: 'alerta' },
+  emitida_contingencia: { texto: 'Emitida em contingência', tom: 'alerta', dica: 'Emitida sem a SEFAZ no ar. Será enviada depois' },
   inutilizada: { texto: 'Inutilizada', tom: 'neutro' },
 };
 
 export const ROTULO_STATUS_PEDIDO: Readonly<Record<StatusPedidoAFaturar, string>> = { a_faturar: 'A faturar', faturado_parcial: 'Faturado em parte', faturado: 'Faturado', cancelado: 'Cancelado' };
 
-/** Texto curto da coluna "Ambiente" e do CSV; o texto longo fica só no selo (`badgesDaNota`) e na faixa do detalhe. */
+/** Texto curto do ambiente no CSV; na tela o ambiente é o selo (`badgesDaNota`) e a faixa do detalhe. */
 export const textoDoAmbiente = (a: Ambiente): string => (a === 'homologacao' ? 'Homologação' : 'Produção');
+/** Linha "Ambiente: ..." das confirmações fiscais (emitir e reenviar); em produção o tom é de alerta (a nota vale). */
+export const ambienteDaConfirmacao = (a: Ambiente): { texto: string; tom: Tom } =>
+  a === 'homologacao' ? { texto: `Ambiente: Homologação, ${SEM_VALOR_FISCAL}`, tom: 'neutro' } : { texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' };
 
 /** Faixa fixa no topo do detalhe da nota de homologação (sem cor nova: o shell usa o tom `alerta` do `aviso`). */
-export const FAIXA_HOMOLOGACAO = 'NOTA DE HOMOLOGAÇÃO — SEM VALOR FISCAL';
+const FAIXA_HOMOLOGACAO = `NOTA DE HOMOLOGAÇÃO — ${SEM_VALOR_FISCAL.toUpperCase()}`;
 export const faixaDaNota = (n: { ambiente: Ambiente }): string | null => (n.ambiente === 'homologacao' ? FAIXA_HOMOLOGACAO : null);
 
 /** "123/1"; sem número (rascunho) devolve "" (a coluna e o CSV ficam vazios). */
 export const numeroSerie = (n: { numero: number | null; serie: number }): string => (n.numero === null ? '' : `${n.numero}/${n.serie}`);
 
-/** Selos da nota: o de homologação vem primeiro (tpAmb 2), depois o status. */
+/** Selo do ambiente: só a homologação tem (tpAmb 2); produção não leva selo. */
+export const seloDoAmbiente = (ambiente: Ambiente): Selo | null => (ambiente === 'homologacao' ? { texto: TEXTO_HOMOLOGACAO, tom: 'alerta' } : null);
+
+/** Selos da nota: o de homologação vem primeiro, depois o status. */
 export function badgesDaNota(n: { status: StatusNota; ambiente: Ambiente }): Selo[] {
-  const status = ROTULO_STATUS_NOTA[n.status];
-  return n.ambiente === 'homologacao' ? [{ texto: TEXTO_HOMOLOGACAO, tom: 'alerta' }, status] : [status];
+  const ambiente = seloDoAmbiente(n.ambiente);
+  return ambiente ? [ambiente, ROTULO_STATUS_NOTA[n.status]] : [ROTULO_STATUS_NOTA[n.status]];
 }
 
 export interface NotaParaAcao {
@@ -54,15 +67,25 @@ export interface NotaParaAcao {
   autorizada_em?: string | null;
 }
 
-export interface AcoesDaNota {
-  baixarXml: boolean;
-  baixarDanfe: boolean;
-  reenviar: boolean;
-  cancelar: boolean;
-  cartaCorrecao: boolean;
-  consultar: boolean;
+/** Na ordem da barra de ações: Cancelar por último. */
+export const ACOES_DA_NOTA = ['baixarDanfe', 'baixarXml', 'reenviar', 'consultar', 'cartaCorrecao', 'cancelar'] as const;
+export type AcaoDaNota = (typeof ACOES_DA_NOTA)[number];
+
+export const ROTULO_ACAO_NOTA: Readonly<Record<AcaoDaNota, { rotulo: string; destrutiva: boolean }>> = {
+  baixarDanfe: { rotulo: 'Baixar DANFE', destrutiva: false },
+  baixarXml: { rotulo: 'Baixar XML', destrutiva: false },
+  reenviar: { rotulo: 'Reenviar', destrutiva: false },
+  consultar: { rotulo: 'Consultar na SEFAZ', destrutiva: false },
+  cartaCorrecao: { rotulo: 'Carta de correção (CC-e)', destrutiva: false },
+  cancelar: { rotulo: 'Cancelar nota', destrutiva: true },
+};
+
+/** Uma ação principal por status: Reenviar (ou Emitir) na rejeitada/rascunho; na autorizada, o DANFE (ou o XML enquanto o DANFE não existe). */
+export function acaoPrincipalDaNota(status: StatusNota): AcaoDaNota | null {
+  if (status === 'rejeitada' || status === 'rascunho') return 'reenviar';
+  if (status === 'autorizada') return DANFE_DISPONIVEL ? 'baixarDanfe' : 'baixarXml';
+  return null;
 }
-export type AcaoDaNota = keyof AcoesDaNota;
 
 const COM_XML: readonly StatusNota[] = ['autorizada', 'cancelada'];
 const CONSULTAVEIS: readonly StatusNota[] = ['em_autorizacao', 'autorizada_guarda_pendente', 'autorizada', 'rejeitada', 'emitida_contingencia'];
@@ -73,29 +96,24 @@ const SEM_PERMISSAO = 'Sem permissão para esta ação';
  * `faturamento.nota.emitir` (a leitura só vê; o XML tem dado do destinatário). O cancelamento some depois de 24 h (RN-FAT-02); nota
  * autorizada nunca é reenviada nem editada, só recebe evento (RN-FAT-07).
  */
-export function motivoIndisponivel(perfil: Perfil, n: NotaParaAcao, agora: Date, acao: AcaoDaNota): string | null {
+function motivoIndisponivel(perfil: Perfil, n: NotaParaAcao, agora: Date, acao: AcaoDaNota): string | null {
   if (!pode(perfil, 'faturamento.nota.emitir')) return SEM_PERMISSAO;
   switch (acao) {
     case 'baixarXml':
-    case 'baixarDanfe':
       return COM_XML.includes(n.status) ? null : 'Disponível só para nota autorizada ou cancelada';
+    case 'baixarDanfe':
+      if (!COM_XML.includes(n.status)) return 'Disponível só para nota autorizada ou cancelada';
+      return DANFE_DISPONIVEL ? null : 'DANFE em breve. Por enquanto, baixe o XML';
     case 'reenviar':
       return n.status === 'rejeitada' || n.status === 'rascunho' ? null : 'Disponível só para nota rejeitada ou em rascunho';
     case 'cancelar':
       if (n.status !== 'autorizada') return 'Disponível só para nota autorizada';
-      return n.autorizada_em && !prazoDeCancelamentoEsgotado(new Date(n.autorizada_em), agora) ? null : 'Prazo de cancelamento encerrado';
+      return n.autorizada_em && !prazoDeCancelamentoEsgotado(new Date(n.autorizada_em), agora) ? null : 'O prazo de 24 h para cancelar já passou. Use a carta de correção ou fale com o fiscal.';
     case 'cartaCorrecao':
       return n.status === 'autorizada' ? null : 'Disponível só para nota autorizada';
     case 'consultar':
       return CONSULTAVEIS.includes(n.status) ? null : 'Não há o que consultar neste status';
   }
-}
-
-export const ACOES_DA_NOTA: readonly AcaoDaNota[] = ['baixarXml', 'baixarDanfe', 'reenviar', 'cancelar', 'cartaCorrecao', 'consultar'];
-
-export function acoesDaNota(perfil: Perfil, n: NotaParaAcao, agora: Date): AcoesDaNota {
-  const ok = (a: AcaoDaNota): boolean => motivoIndisponivel(perfil, n, agora, a) === null;
-  return { baixarXml: ok('baixarXml'), baixarDanfe: ok('baixarDanfe'), reenviar: ok('reenviar'), cancelar: ok('cancelar'), cartaCorrecao: ok('cartaCorrecao'), consultar: ok('consultar') };
 }
 
 /** Motivos das ações indisponíveis, por ação (só as que não estão liberadas): o shell mostra no botão desabilitado. */
@@ -113,7 +131,7 @@ export const rotuloReenviar = (status: StatusNota): string => (status === 'rascu
 
 // ---- Diálogos: props prontas para o `DialogoMotivo` do packages/ui (textoObrigatorio, validar) ----
 
-export const PRAZO_CANCELAMENTO_AVISO = 'Não dá para desfazer. Prazo: 24 h da autorização.';
+const PRAZO_CANCELAMENTO_AVISO = `${NAO_DESFAZ}. O cancelamento só é aceito até 24 h depois da autorização.`;
 
 /** Contador do campo de justificativa: "faltam N caracteres", "N/máx" ou "N caracteres a mais". */
 export function contadorDeCaracteres(texto: string, min: number, max: number): string {
@@ -129,6 +147,10 @@ export interface DialogoDeTexto {
   textoObrigatorio: true;
   rotuloTexto: string;
   rotuloConfirmar: string;
+  /** Botão que fecha sem agir. */
+  rotuloFechar: string;
+  /** Confirmação em estilo destrutivo. */
+  destrutivo: boolean;
   minimo: number;
   maximo: number;
   /** Para o `validar` do DialogoMotivo (recebe `{ texto }`). */
@@ -137,7 +159,7 @@ export interface DialogoDeTexto {
   contador: (texto: string) => string;
 }
 
-function dialogoDeTexto(d: { titulo: string; aviso: string | null; rotuloTexto: string; rotuloConfirmar: string; minimo: number; maximo: number; mensagem: string }): DialogoDeTexto {
+function dialogoDeTexto(d: { titulo: string; aviso: string | null; rotuloTexto: string; rotuloConfirmar: string; rotuloFechar: string; destrutivo: boolean; minimo: number; maximo: number; mensagem: string }): DialogoDeTexto {
   const { mensagem, ...resto } = d;
   return {
     ...resto,
@@ -152,28 +174,33 @@ function dialogoDeTexto(d: { titulo: string; aviso: string | null; rotuloTexto: 
 
 export const dialogoCancelar = (n: { numero: number | null; serie: number }): DialogoDeTexto =>
   dialogoDeTexto({
-    titulo: `Cancelar a nota ${numeroSerie(n) || 'sem número'}?`, aviso: PRAZO_CANCELAMENTO_AVISO, rotuloTexto: 'Justificativa', rotuloConfirmar: 'Cancelar a nota',
-    minimo: 15, maximo: 255, mensagem: 'A justificativa do cancelamento deve ter de 15 a 255 caracteres.',
+    titulo: `Cancelar a nota ${numeroSerie(n) || 'sem número'}?`, aviso: PRAZO_CANCELAMENTO_AVISO, rotuloTexto: 'Justificativa', rotuloConfirmar: 'Cancelar nota', rotuloFechar: 'Manter a nota', destrutivo: true,
+    minimo: LIMITES_TEXTO.justificativa.min, maximo: LIMITES_TEXTO.justificativa.max, mensagem: mensagemDeTamanho(ASSUNTO.cancelar, LIMITES_TEXTO.justificativa),
   });
 
 export const dialogoCartaCorrecao = (n: { numero: number | null; serie: number }): DialogoDeTexto =>
   dialogoDeTexto({
-    titulo: `Carta de correção da nota ${numeroSerie(n) || 'sem número'}`, aviso: null, rotuloTexto: 'Texto da correção', rotuloConfirmar: 'Enviar correção',
-    minimo: 15, maximo: 1000, mensagem: 'O texto da carta de correção deve ter de 15 a 1000 caracteres.',
+    titulo: `Carta de correção da nota ${numeroSerie(n) || 'sem número'}`, aviso: null, rotuloTexto: 'Texto da correção', rotuloConfirmar: 'Enviar correção', rotuloFechar: 'Voltar', destrutivo: false,
+    minimo: LIMITES_TEXTO.cartaCorrecao.min, maximo: LIMITES_TEXTO.cartaCorrecao.max, mensagem: mensagemDeTamanho(ASSUNTO.carta, LIMITES_TEXTO.cartaCorrecao),
   });
 
 export const dialogoInutilizar = (faixa: { numero_inicial: number; numero_final: number }): DialogoDeTexto =>
   dialogoDeTexto({
-    titulo: `Inutilizar a faixa ${faixa.numero_inicial} a ${faixa.numero_final}?`, aviso: 'Não dá para desfazer. Os números deixam de poder ser usados.', rotuloTexto: 'Justificativa',
-    rotuloConfirmar: 'Inutilizar a faixa', minimo: 15, maximo: 255, mensagem: 'A justificativa da inutilização deve ter de 15 a 255 caracteres.',
+    titulo: faixa.numero_inicial === faixa.numero_final ? `Inutilizar o número ${faixa.numero_inicial}?` : `Inutilizar os números ${faixa.numero_inicial} a ${faixa.numero_final}?`,
+    aviso: `Use quando um número foi pulado e a nota nunca será emitida. ${NAO_DESFAZ}: esses números não poderão mais ser usados.`, rotuloTexto: 'Justificativa',
+    rotuloConfirmar: 'Inutilizar números', rotuloFechar: 'Voltar', destrutivo: true, minimo: LIMITES_TEXTO.justificativa.min, maximo: LIMITES_TEXTO.justificativa.max, mensagem: mensagemDeTamanho(ASSUNTO.inutilizar, LIMITES_TEXTO.justificativa),
   });
 
-/** Confirmação simples do "Reenviar"/"Emitir": o botão fica em carregamento até a API responder (202). */
-export function confirmacaoReenviar(n: { numero: number | null; serie: number; status: StatusNota }): { titulo: string; aviso: string; rotuloConfirmar: string; textoCarregando: string } {
+/** Confirmação do "Reenviar"/"Emitir": mostra o ambiente (a nota de produção vale) e o botão fica em carregamento até a API responder (202). */
+export function confirmacaoReenviar(n: { numero: number | null; serie: number; status: StatusNota; ambiente: Ambiente }): {
+  titulo: string; aviso: string; ambiente: string; tomAmbiente: Tom; rotuloConfirmar: string; textoCarregando: string;
+} {
   const emitir = n.status === 'rascunho';
+  const amb = ambienteDaConfirmacao(n.ambiente);
   return {
     titulo: `${emitir ? 'Emitir' : 'Reenviar'} a nota ${numeroSerie(n) || 'sem número'} à SEFAZ?`,
-    aviso: 'A nota segue o mesmo número. Confira os dados antes de enviar.',
+    aviso: emitir ? 'A nota será enviada à SEFAZ agora. Confira os dados.' : 'Reenvia com o mesmo número. Corrija a causa da rejeição antes.',
+    ambiente: amb.texto, tomAmbiente: amb.tom,
     rotuloConfirmar: rotuloReenviar(n.status),
     textoCarregando: emitir ? 'Emitindo…' : 'Reenviando…',
   };
@@ -198,10 +225,16 @@ export interface Requisicao {
 }
 export type Montagem = { ok: true; requisicao: Requisicao } | { ok: false; erro: string };
 
-const falha = (erro: string): { ok: false; erro: string } => ({ ok: false, erro });
+export const falha = (erro: string): { ok: false; erro: string } => ({ ok: false, erro });
 export const comChave = (chave: string) => ({ 'Idempotency-Key': chave });
-export const CHAVE_OK = /^[A-Za-z0-9_.:-]{8,128}$/;
-const MSG_CHAVE = 'Não foi possível identificar a operação. Recarregue a página e tente de novo.';
+/** `null` = a Idempotency-Key é aceitável; senão a falha pronta (mesma validação em toda requisição com chave). */
+export const exigirChave = (chave: string): { ok: false; erro: string } | null => (CHAVE_OK.test(chave) ? null : falha(MSG_CHAVE));
+type Limite = { readonly min: number; readonly max: number };
+/** "A justificativa do cancelamento deve ter de 15 a 255 caracteres." (limites do contrato). */
+export const mensagemDeTamanho = (assunto: string, l: Limite): string => `${assunto} deve ter de ${l.min} a ${l.max} caracteres.`;
+const ASSUNTO = { cancelar: 'A justificativa do cancelamento', carta: 'O texto da carta de correção', inutilizar: 'A justificativa da inutilização' } as const;
+const CHAVE_OK = /^[A-Za-z0-9_.:-]{8,128}$/;
+export const MSG_CHAVE = 'Não foi possível identificar a operação. Recarregue a página e tente de novo.';
 
 export interface ItemParcial {
   sequencia: number;
@@ -211,7 +244,8 @@ export interface ItemParcial {
 
 /** RF-FAT-01: nota total (sem `itens`) ou parcial (itens e quantidades). A `Idempotency-Key` vai no cabeçalho e no corpo (RN-CORE-05). */
 export function requisicaoEmitir(e: { pedido_id: string; chave: string; itens?: readonly ItemParcial[] }): Montagem {
-  if (!CHAVE_OK.test(e.chave)) return falha(MSG_CHAVE);
+  const semChave = exigirChave(e.chave);
+  if (semChave) return semChave;
   let itens: { sequencia: number; quantidade?: number }[] | undefined;
   if (e.itens) {
     if (e.itens.length === 0) return falha('Escolha ao menos um item para a nota parcial.');
@@ -235,32 +269,37 @@ export function requisicaoEmitir(e: { pedido_id: string; chave: string; itens?: 
   return { ok: true, requisicao: { metodo: 'POST', caminho: `${BASE_API}/notas`, cabecalhos: comChave(e.chave), corpo: v.data } };
 }
 
-/** RN-FAT-02: justificativa de 15 a 255 caracteres. */
+/** RN-FAT-02: justificativa dentro dos limites do contrato. */
 export function requisicaoCancelar(nota_id: string, justificativa: string, chave: string): Montagem {
-  if (!CHAVE_OK.test(chave)) return falha(MSG_CHAVE);
+  const semChave = exigirChave(chave);
+  if (semChave) return semChave;
   const v = CancelarNotaEntrada.safeParse({ justificativa });
-  if (!v.success) return falha('A justificativa do cancelamento deve ter de 15 a 255 caracteres.');
+  if (!v.success) return falha(mensagemDeTamanho(ASSUNTO.cancelar, LIMITES_TEXTO.justificativa));
   return { ok: true, requisicao: { metodo: 'POST', caminho: `${BASE_API}/notas/${nota_id}/cancelar`, cabecalhos: comChave(chave), corpo: v.data } };
 }
 
 /** RN-FAT-02: texto da carta de correção de 15 a 1000 caracteres. */
 export function requisicaoCartaCorrecao(nota_id: string, texto: string, chave: string): Montagem {
-  if (!CHAVE_OK.test(chave)) return falha(MSG_CHAVE);
+  const semChave = exigirChave(chave);
+  if (semChave) return semChave;
   const v = CartaCorrecaoEntrada.safeParse({ texto });
-  if (!v.success) return falha('O texto da carta de correção deve ter de 15 a 1000 caracteres.');
+  if (!v.success) return falha(mensagemDeTamanho(ASSUNTO.carta, LIMITES_TEXTO.cartaCorrecao));
   return { ok: true, requisicao: { metodo: 'POST', caminho: `${BASE_API}/notas/${nota_id}/carta-correcao`, cabecalhos: comChave(chave), corpo: v.data } };
 }
 
-/** RN-FAT-01: inutilização de faixa (a API tem `POST /inutilizacoes`); justificativa de 15 a 255 caracteres. */
+/** RN-FAT-01: inutilização de faixa (a API tem `POST /inutilizacoes`); justificativa dentro dos limites do contrato. */
 export function requisicaoInutilizar(e: { filial_id: string; numero_inicial: number; numero_final: number; serie?: number; ano?: number; justificativa: string }, chave: string): Montagem {
-  if (!CHAVE_OK.test(chave)) return falha(MSG_CHAVE);
+  const semChave = exigirChave(chave);
+  if (semChave) return semChave;
   const v = InutilizarEntrada.safeParse(e);
-  if (!v.success) return falha(v.error.issues[0]?.path.includes('numero_final') ? 'O número inicial não pode ser maior que o final.' : 'Confira a filial, a faixa de números e a justificativa (15 a 255 caracteres).');
+  if (!v.success) return falha(v.error.issues[0]?.path.includes('numero_final') ? 'O número inicial não pode ser maior que o final.' : `Confira a filial, a faixa de números e a justificativa (${LIMITES_TEXTO.justificativa.min} a ${LIMITES_TEXTO.justificativa.max} caracteres).`);
   return { ok: true, requisicao: { metodo: 'POST', caminho: `${BASE_API}/inutilizacoes`, cabecalhos: comChave(chave), corpo: v.data } };
 }
 
-export const requisicaoReenviar = (nota_id: string): Requisicao => ({ metodo: 'POST', caminho: `${BASE_API}/notas/${nota_id}/reenviar` });
-export const requisicaoConsultar = (nota_id: string): Requisicao => ({ metodo: 'POST', caminho: `${BASE_API}/notas/${nota_id}/consultar` });
+/** POST sem corpo, com a Idempotency-Key como as demais. */
+export const postSemCorpo = (caminho: string, chave: string): Montagem => exigirChave(chave) ?? { ok: true, requisicao: { metodo: 'POST', caminho, cabecalhos: comChave(chave) } };
+export const requisicaoReenviar = (nota_id: string, chave: string): Montagem => postSemCorpo(`${BASE_API}/notas/${nota_id}/reenviar`, chave);
+export const requisicaoConsultar = (nota_id: string, chave: string): Montagem => postSemCorpo(`${BASE_API}/notas/${nota_id}/consultar`, chave);
 
 export const urlDoXml = (nota_id: string): string => `${BASE_API}/notas/${nota_id}/xml`;
 /** O link fica pronto; a rota do DANFE em PDF chega no lote 3 da T-0021 (até lá a API responde 404). */

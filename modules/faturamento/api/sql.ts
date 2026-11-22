@@ -349,7 +349,7 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
 
     async listarRejeicoes(tx, f: FiltroRejeicoes): Promise<Pagina<RejeicaoNota>> {
       const linhas = await tx.consultar<Omit<RejeicaoNota, 'acao_sugerida'>>(
-        `SELECT n.id, n.filial_id, n.pedido_id, n.serie::int AS serie, n.numero, n.c_stat::text AS codigo, n.x_motivo AS mensagem, ${ISO('n.updated_at')} AS rejeitada_em
+        `SELECT n.id, n.filial_id, n.pedido_id, n.ambiente, n.serie::int AS serie, n.numero, n.c_stat::text AS codigo, n.x_motivo AS mensagem, ${ISO('n.updated_at')} AS rejeitada_em
            FROM faturamento.nota n
           WHERE n.deleted_at IS NULL AND n.status = 'rejeitada' AND ($1::uuid IS NULL OR n.filial_id = $1) AND ($2::uuid IS NULL OR n.id > $2)
           ORDER BY n.id LIMIT $3`,
@@ -550,6 +550,13 @@ export function repositorioEventosSql(): RepositorioEventos {
   };
 }
 
+/** RN regra 4: centavos lidos como `bigint::text` e convertidos sem perda; acima de 2^53 falha em vez de arredondar em silêncio. */
+function centavosInteiros(texto: string): number {
+  const n = Number(texto);
+  if (!Number.isSafeInteger(n)) throw new Error('valor em centavos fora da faixa segura');
+  return n;
+}
+
 export const pedidosAprovadosSql: PedidosAprovados = {
   async obter(tx, pedido_id) {
     const [l] = await tx.consultar<{ payload: unknown }>('SELECT payload FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
@@ -571,10 +578,10 @@ export const pedidosAprovadosSql: PedidosAprovados = {
     await tx.consultar(`UPDATE faturamento.pedido_a_faturar SET status = 'cancelado', updated_at = now() WHERE pedido_id = $1 AND status <> 'cancelado' AND deleted_at IS NULL`, [pedido_id]);
   },
   async listar(tx, f: FiltroPedidosAFaturar): Promise<Pagina<PedidoAFaturarResumo>> {
-    const linhas = await tx.consultar<PedidoAFaturarResumo>(
+    const linhas = await tx.consultar<Omit<PedidoAFaturarResumo, 'total_centavos'> & { total_centavos: string }>(
       `SELECT p.id, p.pedido_id, (p.payload->>'numero')::int AS numero, p.filial_id, p.cliente_id,
               p.payload->'pedido'->'cliente_retrato'->>'razao_social' AS cliente_razao_social, p.status,
-              (p.payload->>'total_centavos')::float8 AS total_centavos, ${ISO('p.recebido_em')} AS recebido_em
+              (p.payload->>'total_centavos')::numeric::bigint::text AS total_centavos, ${ISO('p.recebido_em')} AS recebido_em
          FROM faturamento.pedido_a_faturar p
         WHERE p.deleted_at IS NULL
           AND (($3::text IS NULL AND p.status IN ('a_faturar', 'faturado_parcial')) OR p.status = $3)
@@ -585,7 +592,7 @@ export const pedidosAprovadosSql: PedidosAprovados = {
         ORDER BY p.id LIMIT $7`,
       [f.filial_id ?? null, f.cliente_id ?? null, f.status ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1],
     );
-    return paginar(linhas, f.limite);
+    return paginar(linhas.map((l) => ({ ...l, total_centavos: centavosInteiros(l.total_centavos) })), f.limite);
   },
 };
 
