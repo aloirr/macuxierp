@@ -108,7 +108,7 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
       const [cabecalho, linha] = csv.slice(1).split('\r\n');
       const vePeloPerfil = pode(perfil, 'cadastros.produto.editar');
       expect(cabecalho!.split(';').includes('Custo'), perfil).toBe(vePeloPerfil);
-      expect(linha!.includes('R$ 4,50'), perfil).toBe(vePeloPerfil);
+      expect(linha!.replace(/\u00a0/g, ' ').includes('R$ 4,50'), perfil).toBe(vePeloPerfil);
       expect(r.json().itens[0].custo_centavos, perfil).toBe(vePeloPerfil ? 450 : null); // a API esconde também
     }
   });
