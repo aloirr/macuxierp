@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RegraTributaria } from '../contracts';
+import { RegraTributaria } from '../contracts';
 import { regra } from './fixtures';
 import { selecionarRegra, type AlvoRegra } from './regra';
 
@@ -68,5 +68,36 @@ describe('selecionarRegra', () => {
     expect(selecionarRegra([regra({ codigo: '500' })], { ...alvo, crt: 4 })).toMatchObject({ ok: true });
     expect(selecionarRegra([regra({ codigo: '00' })], { ...alvo, crt: 2 })).toMatchObject({ ok: true });
     expect(selecionarRegra([regra({ codigo: '60' })], { ...alvo, crt: 3 })).toMatchObject({ ok: true });
+  });
+});
+
+describe('selecionarRegra por tributo', () => {
+  it('RN-FIS-01: a seleção roda separada por tributo; linha de ICMS sem cst_ipi não serve ao IPI', () => {
+    const icms = regra({ cst_ipi: null });
+    const ipi = regra({ tributo: 'ipi', cst_ipi: '50', aliquota_ipi: 100000 });
+    expect(selecionarRegra([icms, ipi], alvo)).toMatchObject({ ok: true, valor: { id: icms.id } });
+    expect(selecionarRegra([icms, ipi], { ...alvo, tributo: 'ipi' })).toMatchObject({ ok: true, valor: { id: ipi.id } });
+    expect(selecionarRegra([icms], { ...alvo, tributo: 'ipi' })).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_NAO_ENCONTRADA' }] });
+  });
+  it('RN-FIS-01: linha única com cst_pis serve ao PIS, e o mais específico vence dentro do tributo', () => {
+    const geral = regra({ cst_pis: '01' });
+    const esp = regra({ tributo: 'pis', ncm_prefixo: '2202', cst_pis: '01', aliquota_pis: 16500 });
+    expect(selecionarRegra([geral, esp], { ...alvo, tributo: 'pis' })).toMatchObject({ ok: true, valor: { id: esp.id } });
+  });
+  it('RN-FIS-01: empate dentro do tributo é erro; a compatibilidade CST/CSOSN só vale para o ICMS', () => {
+    const a = regra({ tributo: 'cofins', cst_cofins: '01' });
+    const b = regra({ tributo: 'cofins', cst_cofins: '01' });
+    expect(selecionarRegra([a, b], { ...alvo, tributo: 'cofins' })).toMatchObject({ ok: false, erros: [{ codigo: 'REGRA_EMPATE' }] });
+    expect(selecionarRegra([a], { ...alvo, tributo: 'cofins', crt: 1 })).toMatchObject({ ok: true });
+  });
+});
+
+describe('contrato da regra (codigo de ICMS)', () => {
+  const base = { id: '00000000-0000-4000-8000-0000000000aa', ncm_prefixo: null, uf_origem: null, uf_destino: null, tipo_cliente: null, crt: null, cfop: null, fonte: { tipo: 'NT', referencia: 'x' }, versao: '1', vigencia_inicio: '2024-01-01', vigencia_fim: null };
+  it('RN-FIS-01: linha dedicada de IPI/PIS/COFINS dispensa o codigo de ICMS; linha de ICMS o exige', () => {
+    expect(RegraTributaria.safeParse({ ...base, tributo: 'ipi', cst_ipi: '50', aliquota_ipi: 100000 }).success).toBe(true);
+    expect(RegraTributaria.safeParse({ ...base, tributo: 'pis', codigo: null, cst_pis: '01' }).success).toBe(true);
+    expect(RegraTributaria.safeParse({ ...base, tributo: 'icms' }).success).toBe(false);
+    expect(RegraTributaria.safeParse({ ...base, codigo: '00' }).success).toBe(true);
   });
 });
