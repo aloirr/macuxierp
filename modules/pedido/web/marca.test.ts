@@ -6,6 +6,7 @@ import { formularioVazio, totalDoFormulario, validarFormulario, type Formulario 
 import { rotuloDoCliente } from './fontes';
 import { ROTULO_ORIGEM } from './lista';
 import { chaveDoCampo, mensagemDaIssue } from './erros';
+import { semEspacoDuro } from './apoio-teste';
 import { validarAprovacao, validarMotivo } from './acoes';
 
 const U1 = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -100,7 +101,9 @@ describe('decisão vigente reflete o status final', () => {
 describe('total antes de lançar', () => {
   it('soma as linhas válidas com calcularTotal e formata em R$', () => {
     const f: Formulario = { ...formularioVazio(), itens: [{ produto_id: U1, quantidade: '2,5', preco: '10,00', desconto: '1,00' }, { produto_id: '', quantidade: '', preco: '', desconto: '' }] };
-    expect(totalDoFormulario(f.itens)).toEqual({ centavos: 2400, texto: 'R$ 24,00' });
-    expect(totalDoFormulario([])).toEqual({ centavos: 0, texto: 'R$ 0,00' });
+    const t = totalDoFormulario(f.itens);
+    expect({ ...t, texto: semEspacoDuro(t.texto) }).toEqual({ centavos: 2400, texto: 'R$ 24,00' });
+    const v = totalDoFormulario([]);
+    expect({ ...v, texto: semEspacoDuro(v.texto) }).toEqual({ centavos: 0, texto: 'R$ 0,00' });
   });
 });
