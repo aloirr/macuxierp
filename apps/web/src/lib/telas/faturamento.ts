@@ -112,8 +112,11 @@ function acaoEmitirParcial(l: Linha, perfil: Perfil): AcaoVista | null {
 }
 
 /** Itens do diálogo, já na regra do módulo (`formularioParcial`: só itens com saldo, rótulo, saldo em pt-BR e o valor inicial do campo, sem milhar). */
-const itensDoPedido = (dados: unknown): readonly ItemDoDialogo[] =>
-  formularioParcial({ itens: PedidoAFaturarDetalhe.parse(dados).itens }).campos.map((c) => ({ sequencia: c.sequencia, descricao: c.rotulo, saldo: c.saldo, saldoTexto: c.saldoTexto, saldoCampo: c.valorInicial }));
+const itensDoPedido = (dados: unknown): readonly ItemDoDialogo[] => {
+  const itens = PedidoAFaturarDetalhe.parse(dados).itens;
+  const crua = new Map(itens.map((i) => [i.sequencia, i.descricao ?? '']));
+  return formularioParcial({ itens }).campos.map((c) => ({ sequencia: c.sequencia, descricao: crua.get(c.sequencia) ?? '', rotulo: c.rotulo, saldo: c.saldo, saldoTexto: c.saldoTexto, saldoCampo: c.valorInicial }));
+};
 
 /** Nota parcial (RF-FAT-01): a regra é única e do módulo (`formularioParcial`, vazio tira o item, sem nenhum item recusa). A saída `ok` vai direto ao `requisicaoEmitir`
  *  (sem `itens` = nota total); o erro de campo sai como vem do módulo (o rótulo do item já está no texto), o geral é o `MOTIVO_SEM_ITEM`. */

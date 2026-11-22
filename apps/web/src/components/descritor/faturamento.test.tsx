@@ -140,11 +140,11 @@ describe('ambiente e contador nos diálogos (RN-FAT-04)', () => {
 
 describe('nota parcial e tabelas com ações (T-0021)', () => {
   it('o diálogo mostra descrição, saldo e um campo por item, começando no saldo; sem itens, "Carregando" ou a falha', () => {
-    const linhas = [{ sequencia: 1, descricao: 'Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }];
+    const linhas = [{ sequencia: 1, descricao: 'Água 500 ml', rotulo: '1 - Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: '', rotulo: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }];
     const h = renderToStaticMarkup(<ItensDoDialogo linhas={linhas} falha={null} quantidades={{ 1: '2,5', 2: '1' }} aoMudar={vi.fn()} />);
     expect(h).toContain('Água 500 ml');
     expect(h).toMatch(/<td class="num sem-quebra">2,5<\/td>/);
-    expect(h).toContain('aria-label="Quantidade de Água 500 ml"');
+    expect(h).toContain('aria-label="Quantidade de 1 - Água 500 ml"');
     expect(h).toContain('value="2,5"');
     expect(renderToStaticMarkup(<ItensDoDialogo linhas={null} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toContain('Carregando os itens…');
     expect(renderToStaticMarkup(<ItensDoDialogo linhas={null} falha="Registro não encontrado." quantidades={{}} aoMudar={vi.fn()} />)).toContain('role="alert"');

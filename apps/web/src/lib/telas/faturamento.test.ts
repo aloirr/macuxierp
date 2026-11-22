@@ -387,13 +387,25 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
       { sequencia: 2, produto_id: P, descricao: null, quantidade_pedida: 10000, quantidade_faturada: 0, saldo: 10000, valor_unitario_centavos: 100 },
     ] };
     const r = exec.itensDaLeitura!({ ...detalhe, filial_id: ID, cliente_id: ID, cliente_razao_social: null, recebido_em: '2026-11-22T14:00:00.000Z', total_centavos: 1 });
-    expect(r).toEqual([{ sequencia: 1, descricao: '1 - Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }]);
+    expect(r).toEqual([{ sequencia: 1, descricao: 'Água 500 ml', rotulo: '1 - Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: '', rotulo: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }]);
   });
   it('a quantidade em pt-BR vira qtd4 sem float; o limite é o saldo; vazio tira o item', () => {
     const a = mais('administrador')[0]!;
     const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '1,5', 25000], [2, '', 10000], [3, '0,1234', 20000]) });
     expect(r).toEqual({ ok: true, corpo: { pedido_id: P, itens: [{ sequencia: 1, quantidade: 15000 }, { sequencia: 3, quantidade: 1234 }], idempotencia: 'chave-parcial-1' } });
     expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '2,5', 25000]) })).toMatchObject({ ok: true }); // igual ao saldo: vale
+  });
+  it('erro de saldo com os itens vindos do diálogo (descrição crua): sem o número do item duplicado', () => {
+    const detalhe = { id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ambiente: 'homologacao', filial_id: ID, cliente_id: ID, cliente_razao_social: null, recebido_em: '2026-11-22T14:00:00.000Z', total_centavos: 1,
+      itens: [{ sequencia: 1, produto_id: P, descricao: 'Café torrado 500 g', quantidade_pedida: 240000, quantidade_faturada: 0, saldo: 240000, valor_unitario_centavos: 1 }] };
+    const l = exec.itensDaLeitura!(detalhe);
+    const a = mais('administrador')[0]!;
+    const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: l.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao, saldo: i.saldo, quantidade: '25' })) });
+    const esperado = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Café torrado 500 g', saldo: 240000 }] }).validar({ 1: '25' });
+    expect(esperado.ok).toBe(false);
+    expect(r).toEqual({ ok: false, erro: Object.values((esperado as { erros: Record<number, string> }).erros)[0] });
+    expect((r as { erro: string }).erro).toContain('1 - Café torrado 500 g');
+    expect((r as { erro: string }).erro).not.toMatch(/(\d+ - )\1/);
   });
   it('o campo da quantidade começa no saldo sem ponto de milhar, e o validador o aceita como está', () => {
     const r = exec.itensDaLeitura!({ id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ambiente: 'homologacao', filial_id: ID, cliente_id: ID, cliente_razao_social: null, recebido_em: '2026-11-22T14:00:00.000Z', total_centavos: 1,
@@ -413,6 +425,8 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     const acima = itens([1, '2,5001', 25000]);
     expect(doModulo(acima)).toBeTruthy();
     expect(e(acima)).toEqual({ ok: false, erro: doModulo(acima) });
+    expect(doModulo(acima)).toContain('1 - Produto 1'); // rótulo montado uma vez só
+    expect(String(doModulo(acima))).not.toMatch(/(\d+ - )\1/);
     expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('até 4 casas decimais') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });

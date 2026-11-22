@@ -30,8 +30,8 @@ export type Escrita = { metodo: AcaoVista['metodo']; caminho: string };
 
 /** Leitura (GET) que o diálogo de uma ação pode pedir ao servidor: `caminho` com `:id` (UUID) e o schema que valida a resposta (fica no servidor). */
 export interface Leitura { caminho: string; schema: ZodTypeAny }
-/** Item do diálogo de nota parcial, já em texto para pessoas: `saldo` em qtd4 (10000 = 1 un). */
-export interface ItemDoDialogo { sequencia: number; descricao: string; saldo: number; saldoTexto: string; saldoCampo: string }
+/** Item do diálogo de nota parcial, já em texto para pessoas: `descricao` é a crua do pedido ('' se não houver; vai ao `formularioParcial`) e `rotulo` o texto da tela ("1 - Café…"); `saldo` em qtd4 (10000 = 1 un). */
+export interface ItemDoDialogo { sequencia: number; descricao: string; rotulo: string; saldo: number; saldoTexto: string; saldoCampo: string }
 /** Item do diálogo de nota parcial com a quantidade que a pessoa digitou (texto pt-BR). */
 export interface ItemEscolhido { sequencia: number; descricao: string; saldo: number; quantidade: string }
 export type AmbienteVista = { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' };

@@ -195,9 +195,9 @@ export function ItensDoDialogo({ linhas, falha, quantidades, invalido, aoMudar }
           <tbody>
             {linhas.map((i) => (
               <tr key={i.sequencia}>
-                <th scope="row">{i.descricao}</th>
+                <th scope="row">{i.rotulo}</th>
                 <td className="num sem-quebra">{i.saldoTexto}</td>
-                <td><input className="entrada" inputMode="decimal" aria-label={`Quantidade de ${i.descricao}`} value={quantidades[i.sequencia] ?? ''} onChange={(e) => aoMudar(i.sequencia, e.target.value)} aria-invalid={invalido} /></td>
+                <td><input className="entrada" inputMode="decimal" aria-label={`Quantidade de ${i.rotulo}`} value={quantidades[i.sequencia] ?? ''} onChange={(e) => aoMudar(i.sequencia, e.target.value)} aria-invalid={invalido} /></td>
               </tr>
             ))}
           </tbody>
