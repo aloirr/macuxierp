@@ -6,7 +6,7 @@
  */
 import { csvDaLista, definirRota, ErroApi, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import {
-  BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
+  BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, ConfiguracaoFilialResposta, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
 import type { EventoNotaResumo } from '../contracts';
@@ -302,7 +302,12 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
       async executar(c, e) {
         SEM_VENDEDOR(c);
         const filial_id = idDe(e.params);
-        return { corpo: { filial_id, faturamento_real_nfe_simulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id) } };
+        const resposta: ConfiguracaoFilialResposta = {
+          filial_id,
+          faturamento_real_nfe_simulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id),
+          ambiente: await deps.ambiente.ambiente(c.tx, filial_id),
+        };
+        return { corpo: resposta };
       },
     }),
     definirRota({

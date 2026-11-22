@@ -58,12 +58,12 @@ exports[`DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II) > RF-FAT-03: monta ca
   "duplicatas": [
     {
       "numero": "001",
-      "valor": "R$ 15,75",
+      "valor": "R$ 15,75",
       "vencimento": "21/12/2026",
     },
     {
       "numero": "002",
-      "valor": "R$ 15,75",
+      "valor": "R$ 15,75",
       "vencimento": "20/01/2027",
     },
   ],

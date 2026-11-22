@@ -433,6 +433,11 @@ export interface RepositorioTitulos {
    * derruba a guarda do nfeProc feita antes na mesma tx.
    */
   emSavepoint<T>(tx: Transacao, fn: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; erro: unknown }>;
-  /** Ids das notas autorizadas de boleto, autorizadas há ao menos `ha_minutos`, sem nenhuma parcela (varredura de reconciliação). `excluir`: notas que a varredura desistiu de gerar (teto de tentativas). */
-  notasBoletoSemTitulo(tx: Transacao, opcoes: { ha_minutos: number; limite: number; excluir?: readonly string[] }): Promise<string[]>;
+  /**
+   * Ids das notas autorizadas de boleto, autorizadas há ao menos `ha_minutos`, sem nenhuma parcela (varredura de reconciliação).
+   * Fora as que já atingiram `max_tentativas` em `faturamento.titulo_geracao` (0028); as nunca tentadas vêm antes e, depois, as de tentativa mais antiga.
+   */
+  notasBoletoSemTitulo(tx: Transacao, opcoes: { ha_minutos: number; limite: number; max_tentativas: number }): Promise<string[]>;
+  /** Soma uma tentativa falha de gerar os títulos da nota (upsert em `titulo_geracao`, 0028; vale entre reinícios e réplicas) e devolve o total. `motivo`: só código ou texto do catálogo, até 255. */
+  registrarFalhaGeracao(tx: Transacao, nota_id: string, motivo: string): Promise<number>;
 }

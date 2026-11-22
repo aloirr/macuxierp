@@ -3,7 +3,7 @@ import { EVENTO_PEDIDO_APROVADO } from '@macuxierp/pedido/contracts';
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { nfeProcDeTeste } from '../domain/fixtures-danfe';
-import { TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
+import { ConfiguracaoFilialResposta, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
 import { configuracaoFake, depsFake, titulosFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import { criarConsumidorPedidoAprovado } from './consumidor';
 import { criarPluginFaturamento } from './index';
@@ -310,6 +310,28 @@ describe('rotas de títulos e da bandeira da filial', () => {
     expect(ambiente().rota('POST', '/titulos/:id/baixas').idempotencia).toBe('obrigatoria');
   });
 
+  it('RN-FAT-04: GET /filiais/:id/configuracao devolve também o ambiente vigente da filial (o mesmo da emissão), para o diálogo de inutilizar', async () => {
+    const a = ambiente('faturista');
+    const corpo = (await a.chamar('GET', '/filiais/:id/configuracao', { params: { id: IDS.filial } })).corpo;
+    expect(ConfiguracaoFilialResposta.parse(corpo)).toEqual({ filial_id: IDS.filial, faturamento_real_nfe_simulada: false, ambiente: 'producao' });
+    const h = ambiente('leitura');
+    (h.deps.ambiente as { ambiente: () => Promise<string> }).ambiente = async () => 'homologacao';
+    expect(((await h.chamar('GET', '/filiais/:id/configuracao', { params: { id: IDS.filial } })).corpo as { ambiente: string }).ambiente).toBe('homologacao');
+    await expect(ambiente('vendedor').chamar('GET', '/filiais/:id/configuracao', { params: { id: IDS.filial } })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('RF-FAT-08: o CSV da lista para no teto de 10.000 linhas (a leitura por páginas de 200 não passa do teto)', async () => {
+    const a = ambiente('faturista');
+    let paginas = 0;
+    const linha = { id: uuid(1), filial_id: IDS.filial, cliente_id: uuid(2), pedido_id: uuid(3), ambiente: 'homologacao', serie: 1, numero: 1, chave_acesso: null, status: 'autorizada', emitida_em: '2026-11-21T14:30:00.000Z', total_centavos: 100, protocolo: null, c_stat: null, x_motivo: null };
+    const pagina = Array.from({ length: 200 }, () => linha); // a mesma referência: sem 10 mil objetos
+    a.deps.notas.listar = async () => ({ itens: (paginas++, pagina), proximo_cursor: 'sempre-mais' }) as never;
+    const r = await a.chamar('GET', '/notas/exportar');
+    expect(paginas).toBe(50);
+    const linhas = (r.corpo as string).split('\r\n').filter((l) => l !== '');
+    expect(linhas.length).toBe(10_001); // cabeçalho + 10.000
+  });
+
   it('RN-FAT-04: PUT /filiais/:id/configuracao só do administrador, com Idempotency-Key, audita e confere a filial; o padrão é desligada', async () => {
     const adm = ambiente('administrador');
     expect(((await adm.chamar('GET', '/filiais/:id/configuracao', { params: { id: IDS.filial } })).corpo as { faturamento_real_nfe_simulada: boolean }).faturamento_real_nfe_simulada).toBe(false);
@@ -373,7 +395,7 @@ describe('CSV das listas (RF-FAT-08)', () => {
     for (const caminho of ['/pedidos-a-faturar/exportar', '/notas/exportar', '/rejeicoes/exportar', '/titulos/exportar']) {
       await expect(ambiente('vendedor').chamar('GET', caminho)).rejects.toMatchObject({ status: 403 });
     }
-    expect(() => ambiente().chamar('GET', '/notas/exportar', { consulta: { status: 'inexistente' } })).rejects.toBeTruthy();
+    await expect(ambiente().chamar('GET', '/notas/exportar', { consulta: { status: 'inexistente' } })).rejects.toBeTruthy();
   });
 
   it('proteção contra fórmula: célula que começa com "=" sai com apóstrofo (o SDK faz)', async () => {

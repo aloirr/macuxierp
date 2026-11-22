@@ -94,18 +94,13 @@ export const MAX_TENTATIVAS_GERACAO_TITULOS = 5;
 /**
  * Varredura (worker, por tenant): as notas autorizadas de boleto, sem título, autorizadas há ao menos `ha_minutos`, geram os títulos de novo. Idempotente pelo
  * `titulo_parcela_uq` (parcela existente não é regravada nem republicada). Cada nota tem o próprio savepoint: uma falha não impede as outras.
- * RN-FAT-03: as mais antigas na última tentativa vêm primeiro (nunca tentadas, antes de todas) e, no teto de tentativas (`max_tentativas`, padrão 5), a nota sai
- * da varredura com `faturamento.titulo.geracao_desistida` no log. O controle é da instância (memória do worker): a nota autorizada não aceita mais gravação
- * (0013: só status, updated_at e cancelada_em mudam), então um contador persistente pede coluna ou tabela própria (pedido ao banco-dados); reiniciar o worker o zera.
+ * RN-FAT-03: no teto de tentativas (`max_tentativas`, padrão 5) a nota sai da varredura com `faturamento.titulo.geracao_desistida` no log.
+ * O contador é persistente (`titulo_geracao`, 0028): o teto vale entre reinícios e réplicas.
  */
 export function criarVarreduraTitulos(deps: DepsTitulos & { log: LogFaturamento }, config: { max_tentativas?: number } = {}) {
   const max = config.max_tentativas ?? MAX_TENTATIVAS_GERACAO_TITULOS;
-  const controle = new Map<string, { tentativas: number; ordem: number }>();
-  let relogio = 0;
   return async function varrer(tx: Transacao, opcoes: { ha_minutos: number; limite?: number }): Promise<ResultadoVarreduraTitulos> {
-    const desistidas = [...controle].filter(([, c]) => c.tentativas >= max).map(([id]) => id);
-    const achadas = await deps.titulos.notasBoletoSemTitulo(tx, { ha_minutos: opcoes.ha_minutos, limite: opcoes.limite ?? 50, excluir: desistidas });
-    const ids = [...achadas].sort((a, b) => (controle.get(a)?.ordem ?? 0) - (controle.get(b)?.ordem ?? 0));
+    const ids = await deps.titulos.notasBoletoSemTitulo(tx, { ha_minutos: opcoes.ha_minutos, limite: opcoes.limite ?? 50, max_tentativas: max });
     const r: ResultadoVarreduraTitulos = { verificadas: 0, geradas: 0, pendentes: 0, desistidas: 0 };
     for (const id of ids) {
       const nota = await deps.notas.obter(tx, id, { travar: true });
@@ -114,12 +109,10 @@ export function criarVarreduraTitulos(deps: DepsTitulos & { log: LogFaturamento 
       const g = await gerarTitulosSeguro(tx, deps, nota, deps.log);
       if (g.ok) {
         r.geradas += g.titulos.length;
-        controle.delete(id);
         continue;
       }
       r.pendentes++;
-      const tentativas = (controle.get(id)?.tentativas ?? 0) + 1;
-      controle.set(id, { tentativas, ordem: ++relogio });
+      const tentativas = await deps.titulos.registrarFalhaGeracao(tx, id, g.motivo);
       if (tentativas >= max) {
         r.desistidas++;
         deps.log({ evento: 'faturamento.titulo.geracao_desistida', tenant_id: nota.tenant_id, nota_id: id, motivo: `${tentativas} tentativas: ${g.motivo}`.slice(0, 255) });

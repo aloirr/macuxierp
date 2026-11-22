@@ -66,17 +66,32 @@ export const repositorioTitulosSql: RepositorioTitulos = {
     }
   },
 
-  async notasBoletoSemTitulo(tx, { ha_minutos, limite, excluir = [] }) {
+  async notasBoletoSemTitulo(tx, { ha_minutos, limite, max_tentativas }) {
     // Só o boleto gera título (tPag 15). A nota autorizada há `ha_minutos` e sem nenhuma parcela é pendência de geração (a reconciliação do lote já passou).
+    // Teto e ordem: ver RepositorioTitulos.notasBoletoSemTitulo (0028).
     return tx.consultar<{ id: string }>(
       `SELECT n.id FROM faturamento.nota n
+        LEFT JOIN faturamento.titulo_geracao g ON g.tenant_id = n.tenant_id AND g.nota_id = n.id
         WHERE n.status = 'autorizada' AND n.deleted_at IS NULL AND n.pagamento->'pagamentos'->0->>'tPag' = '15'
           AND n.autorizada_em <= now() - make_interval(mins => $1::int)
           AND NOT EXISTS (SELECT 1 FROM faturamento.titulo t WHERE t.tenant_id = n.tenant_id AND t.nota_id = n.id)
-          AND n.id <> ALL($3::uuid[])
-        ORDER BY n.autorizada_em LIMIT $2`,
-      [ha_minutos, limite, excluir],
+          AND COALESCE(g.tentativas, 0) < $3::int
+        ORDER BY g.ultima_tentativa_em NULLS FIRST, n.autorizada_em LIMIT $2`,
+      [ha_minutos, limite, max_tentativas],
     ).then((l) => l.map((x) => x.id));
+  },
+
+  async registrarFalhaGeracao(tx, nota_id, motivo) {
+    // Upsert da 0028 (o worker só tem INSERT e UPDATE de tentativas, ultima_tentativa_em e motivo); atômico entre réplicas.
+    const [l] = await tx.consultar<{ tentativas: number }>(
+      `INSERT INTO faturamento.titulo_geracao (tenant_id, nota_id, tentativas, ultima_tentativa_em, motivo)
+       VALUES (plataforma.tenant_atual(), $1, 1, now(), $2)
+       ON CONFLICT (tenant_id, nota_id) DO UPDATE
+         SET tentativas = faturamento.titulo_geracao.tentativas + 1, ultima_tentativa_em = EXCLUDED.ultima_tentativa_em, motivo = EXCLUDED.motivo
+       RETURNING tentativas`,
+      [nota_id, motivo.slice(0, 255)],
+    );
+    return Number(l?.tentativas ?? 1);
   },
 
   async cancelar(tx, ids) {

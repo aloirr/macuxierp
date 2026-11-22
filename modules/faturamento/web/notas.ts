@@ -144,11 +144,11 @@ export const rotuloReenviar = (status: StatusNota): string => (status === 'rascu
 
 const PRAZO_CANCELAMENTO_AVISO = `${NAO_DESFAZ}. O cancelamento só é aceito até 24 h depois da autorização.`;
 
-/** Contador do campo de justificativa: "faltam N caracteres", "N/máx" ou "N caracteres a mais". */
+/** Contador do campo de justificativa: "falta 1 caractere"/"faltam N caracteres", "N/máx" ou "1 caractere a mais"/"N caracteres a mais". */
 export function contadorDeCaracteres(texto: string, min: number, max: number): string {
   const n = texto.trim().length;
-  if (n < min) return `faltam ${min - n} caracteres`;
-  if (n > max) return `${n - max} caracteres a mais`;
+  if (n < min) return min - n === 1 ? 'falta 1 caractere' : `faltam ${min - n} caracteres`;
+  if (n > max) return n - max === 1 ? '1 caractere a mais' : `${n - max} caracteres a mais`;
   return `${n}/${max}`;
 }
 

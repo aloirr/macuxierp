@@ -5,7 +5,7 @@ import { manifest } from '../manifest';
 import * as publico from './index';
 import {
   ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, faixaDoTitulo, rotuloDaForma, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
-  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, hojeCivil, motivosDasAcoes, perfilVeFaturamento, requisicaoBaixa,
+  contadorDeCaracteres, dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, hojeCivil, motivosDasAcoes, perfilVeFaturamento, requisicaoBaixa,
   requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoXml,
   type AcaoDaNota, type NotaParaAcao,
 } from './index';
@@ -234,6 +234,13 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
   it('RN-FAT-02: o prazo (cancelamento) dentro de 24 h libera, sem a data da autorização (nota sem autorizada_em) bloqueia', () => {
     expect(liberadas('faturista', nota({ autorizada_em: '2026-11-22T12:00:00.000Z' }), AGORA).cancelar).toBe(true);
     expect(liberadas('faturista', nota({ autorizada_em: null }), AGORA).cancelar).toBe(false);
+  });
+  it('UX: contador de caracteres no singular com 1 e no plural a partir de 2', () => {
+    expect(contadorDeCaracteres('x'.repeat(14), 15, 255)).toBe('falta 1 caractere');
+    expect(contadorDeCaracteres('x'.repeat(13), 15, 255)).toBe('faltam 2 caracteres');
+    expect(contadorDeCaracteres('x'.repeat(256), 15, 255)).toBe('1 caractere a mais');
+    expect(contadorDeCaracteres('x'.repeat(257), 15, 255)).toBe('2 caracteres a mais');
+    expect(contadorDeCaracteres('x'.repeat(20), 15, 255)).toBe('20/255');
   });
   it('RN-FAT-02: diálogos de cancelamento (15 a 255) e CC-e (15 a 1000) com os limites do contrato, textos e botões da UX', () => {
     const d = dialogoCancelar({ numero: 123, serie: 1 });

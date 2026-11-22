@@ -118,7 +118,7 @@ export function formatarDecimalXml(valor: string, casas: number): string {
   const negativo = m[1] === '-' && n !== 0n ? '-' : '';
   return `${negativo}${inteiro}${casas ? `,${s.slice(s.length - casas)}` : ''}`;
 }
-export const formatarMoeda = (valor: string): string => (valor.trim() === '' ? '' : `R$ ${formatarDecimalXml(valor, 2)}`);
+export const formatarMoeda = (valor: string): string => (valor.trim() === '' ? '' : `R$\u00a0${formatarDecimalXml(valor, 2)}`);
 
 /** Telefone (premissa do modulo-fiscal, a conferir no MOC 7.0 Anexo II): 10 dígitos "(DD) NNNN-NNNN", 11 dígitos "(DD) NNNNN-NNNN"; outro tamanho sai só com os dígitos. */
 export function formatarFone(f: string): string {
