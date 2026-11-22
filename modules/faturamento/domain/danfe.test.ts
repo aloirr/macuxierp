@@ -144,6 +144,12 @@ describe('fixture base do DANFE (regressão das amostras)', () => {
       expect(semEspacoDuro(d.valor)).toMatch(/^R\$ \d/);
     }
   });
+  it('RD-0735: vDup "100.000" sai "R$ 100,00"; vDup com 3 casas significativas ("100.005") faz montarDanfe lançar', () => {
+    const base = nfeProcDeTeste({ duplicatas: true });
+    const troca = (v: string) => base.replace(/<vDup>[^<]*<\/vDup>/, `<vDup>${v}</vDup>`);
+    expect(semEspacoDuro(montarDanfe({ nfeProc: troca('100.000') }).duplicatas[0]!.valor)).toBe('R$ 100,00');
+    expect(() => montarDanfe({ nfeProc: troca('100.005') })).toThrow();
+  });
   it('amostras: com vProd de 13 inteiros no item 1, BC do ICMS e totais acompanham o item (nota coerente)', () => {
     const x = nfeProcDeTeste({ itens: 1, item1: { vProd: '1234567890123.00' } });
     expect(x).toContain('<vBC>1234567890123.00</vBC><pICMS>');
