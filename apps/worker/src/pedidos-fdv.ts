@@ -7,17 +7,30 @@
  * - **alerta do monitor** (`Alertar` do `integracao-fdv`): sem tabela própria na v1, vai ao log do worker como `warn`
  *   com `alerta`, `tenant_id` e `modulo`; do contexto só passam chave e valor com cara de código ou id (LGPD);
  * - **resolvedor de chaves** (`ResolvedorChaveErp`, ADR 0010, item 2): `criarResolvedorChaveErp(repositoriosSql)` do
- *   `cadastros/api` (#115), ligado no `main.ts`; o tipo vem do mesmo subcaminho público.
+ *   `cadastros/api` (#115), em `resolvedorChaveErpDeProducao`.
+ * As agendas (busca e retorno) e o consumidor `integracao-fdv.retorno-pedido` são montados em `modulos.ts`.
  *
- * Desligamento (até a virada, T-0027): `MACUXIERP_FDV_RECEBIMENTO` = `ligado` | `desligado` (padrão `desligado`; outro
- * valor derruba a partida). Desligado, nada sai para `GET /pedidos/pendentes` nem para `POST /pedidos/{uuid}/retorno`.
- * Ligar hoje também derruba a partida: faltam as agendas do `integracao-fdv` (busca e retorno; o módulo ainda não exporta o
- * `./api` com elas, o consumidor `integracao-fdv.retorno-pedido` e o `ClienteHubPedidos` sobre o cliente do Hub).
+ * Desligamento (fonte: desenho T-0002 §2, "Ligações da F3"; até a virada, T-0027): `MACUXIERP_FDV_RECEBIMENTO` = `ligado` | `desligado` (padrão `desligado`; outro
+ * valor derruba a partida). Só a BUSCA (`GET /pedidos/pendentes`) depende dele: desligado, a agenda de busca não é
+ * registrada e a coluna `sinal.proxima_busca_pedidos_em` fica parada no banco. O retorno, o conector e os consumidores
+ * entram sempre. `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
  */
-import { criarConsultaParaPedido, repositoriosSql, type ResolvedorChaveErp } from '@macuxierp/cadastros/api';
+import { criarConsultaParaPedido, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
+import type { DepsAgendasPedidosFdv } from '@macuxierp/integracao-fdv/api';
 import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido, type RecebedorPedidoFdv } from '@macuxierp/pedido/api';
 import type { DestinoAuditoria, FonteLicencas, Outbox, Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
+
+/**
+ * Tipado pela porta do `integracao-fdv` (`DepsAgendasPedidosFdv`, ADR 0010, item 2), sem declaração própria no worker:
+ * o `tsc` confere que a implementação do cadastros cabe nela.
+ */
+export type ResolvedorChaveErp = DepsAgendasPedidosFdv['resolvedor'];
+
+/** O resolvedor do `cadastros/api` sobre os repositórios SQL. */
+export function resolvedorChaveErpDeProducao(): ResolvedorChaveErp {
+  return criarResolvedorChaveErp(repositoriosSql);
+}
 
 export type EstadoRecebimentoFdv = 'ligado' | 'desligado';
 
@@ -74,30 +87,27 @@ export function criarAlertaMonitor(log: LogAlerta): (tenantId: string, codigo: s
   };
 }
 
-export interface MontagemPedidosFdv {
+/** Recebedor, resolvedor e alerta para as agendas do `integracao-fdv`, com o estado do recebimento. */
+export interface MontagemPedidosFdv extends Pick<DepsAgendasPedidosFdv, 'recebedor' | 'resolvedor' | 'alertar'> {
   recebimento: EstadoRecebimentoFdv;
-  recebedor: RecebedorPedidoFdv;
-  resolvedor: ResolvedorChaveErp;
-  alertar: ReturnType<typeof criarAlertaMonitor>;
 }
 
 export class RecebimentoFdvIndisponivel extends Error {
   override readonly name = 'RecebimentoFdvIndisponivel';
 }
 
-/**
- * Peças do recebimento para a agenda do `integracao-fdv`. Com `ligado`, exige as agendas do módulo (`agendaDoModulo`),
- * senão derruba a partida: ligar sem elas não buscaria pedido nem enviaria retorno ao Hub.
- */
+/** Recusa `ligado` quando falta variável do laço de agenda; o erro cita só os nomes. */
+export function conferirRecebimentoFdv(recebimento: EstadoRecebimentoFdv, faltando: readonly string[]): void {
+  if (recebimento === 'ligado' && faltando.length > 0) {
+    throw new RecebimentoFdvIndisponivel(`MACUXIERP_FDV_RECEBIMENTO=ligado sem: ${faltando.join(', ')}`);
+  }
+}
+
+/** Peças do recebimento para as agendas do `integracao-fdv` (`montarAgendas`). */
 export function montarPedidosFdv(d: DependenciasRecebedorWorker & {
   log: LogPedido & LogAlerta;
   recebimento: EstadoRecebimentoFdv;
   resolvedor: ResolvedorChaveErp;
-  /** `true` quando o `integracao-fdv/api` entregar as agendas de busca e de retorno (hoje, sempre `false`). */
-  agendaDoModulo: boolean;
 }): MontagemPedidosFdv {
-  if (d.recebimento === 'ligado') {
-    if (!d.agendaDoModulo) throw new RecebimentoFdvIndisponivel('MACUXIERP_FDV_RECEBIMENTO=ligado sem: agendas do integracao-fdv');
-  }
   return { recebimento: d.recebimento, recebedor: montarRecebedorPedidoFdv(d), resolvedor: d.resolvedor, alertar: criarAlertaMonitor(d.log) };
 }

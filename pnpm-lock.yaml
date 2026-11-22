@@ -342,6 +342,9 @@ importers:
       '@macuxierp/core':
         specifier: workspace:*
         version: link:../../modules/core
+      '@macuxierp/integracao-fdv':
+        specifier: workspace:*
+        version: link:../../modules/integracao-fdv
       '@macuxierp/pedido':
         specifier: workspace:*
         version: link:../../modules/pedido

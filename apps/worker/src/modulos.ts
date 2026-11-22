@@ -7,8 +7,11 @@
  *   O armazenamento vem do SDK.
  * - Carga inicial do cadastros (C-4, desenho T-0009 §4; ligada na T-0042): o consumidor de
  *   `integracao-fdv.carga_inicial.solicitada@1` enfileira um trabalho por entidade e o executor republica página a página.
- * - Agendas por tenant (contrato C-9, T-0009 §6.1): `montarAgendas`, vazia até o `integracao-fdv` ligar a dele.
- * - Pedidos do FDV (T-0016): em pedidos-fdv.ts (pendências no desenho T-0002 §2).
+ * - Agendas por tenant (contrato C-9, T-0009 §6.1; T-0016): `montarAgendas`: conector e pedidos (a busca depende de
+ *   `MACUXIERP_FDV_RECEBIMENTO`, pedidos-fdv.ts).
+ * - Consumidores do `integracao-fdv` (T-0016): `integracao-fdv.publicar-cadastros` (espelho do que vai ao Hub, com a
+ *   licença PG) e `integracao-fdv.retorno-pedido` (grava o retorno do status do pedido para a agenda de retorno).
+ * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
  */
 import { criarConsumidorCargaInicial, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
@@ -19,6 +22,14 @@ import {
   registroExportacoesSql,
 } from '@macuxierp/core/api';
 import {
+  AGENDA_BUSCA_PEDIDOS_ID,
+  criarAgendaConector,
+  criarAgendasPedidosFdv,
+  criarConsumidorPublicarCadastros,
+  criarConsumidorRetornoPedido,
+} from '@macuxierp/integracao-fdv/api';
+import {
+  PADRAO_ID_AGENDA,
   PADRAO_TIPO_TRABALHO,
   type AgendaModulo,
   type Armazenamento,
@@ -27,13 +38,16 @@ import {
   type ConsumidorEvento,
   type ExecutorTrabalho,
   type FilaDeTrabalhos,
+  type FonteLicencas,
   type Outbox,
+  type Relogio,
 } from '@macuxierp/platform-sdk';
 import { exportadorPedido } from '@macuxierp/pedido/api';
-import { FilaDeTrabalhosPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
+import { FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
+import type { MontagemPedidosFdv } from './pedidos-fdv';
 import type { RotinaDiaria } from './rotinas';
 
 export class RegistroExecutoresInvalido extends Error {
@@ -50,11 +64,11 @@ export function registrarExecutores(executores: readonly ExecutorTrabalho[]): re
   return Object.freeze([...executores]);
 }
 
-/** Id `<modulo>.<agenda>` do próprio módulo (padrão do tipo de trabalho) e sem duplicidade. */
+/** Id `<modulo>.<agenda>` do próprio módulo (`PADRAO_ID_AGENDA` do C-9) e sem duplicidade. */
 export function registrarAgendas(agendas: readonly AgendaModulo[]): readonly AgendaModulo[] {
   const ids = new Set<string>();
   for (const a of agendas) {
-    if (!PADRAO_TIPO_TRABALHO.test(a.id) || !a.id.startsWith(`${a.modulo}.`)) {
+    if (!PADRAO_ID_AGENDA.test(a.id) || !a.id.startsWith(`${a.modulo}.`)) {
       throw new RegistroExecutoresInvalido(`agenda "${a.id}" fora de <modulo>.<agenda> do módulo ${a.modulo}`);
     }
     if (ids.has(a.id)) throw new RegistroExecutoresInvalido(`duas agendas "${a.id}"`);
@@ -86,9 +100,26 @@ export function montarExecutores(d: DependenciasModulosWorker): readonly Executo
   ]);
 }
 
-/** Consumidores da outbox, com os adaptadores reais (o despachante já roda cada um na transação do tenant do evento). */
-export function montarConsumidores(d: { fila?: FilaDeTrabalhos } = {}): readonly ConsumidorEvento[] {
-  return Object.freeze([criarConsumidorCargaInicial({ fila: d.fila ?? new FilaDeTrabalhosPg() })]);
+export interface DependenciasConsumidoresWorker {
+  log: Logger;
+  relogio: Relogio;
+  /** Padrão: `plataforma.trabalho` (PG), na transação do tenant. */
+  fila?: FilaDeTrabalhos;
+  /** Padrão: `plataforma.tenant_modulo` (PG). */
+  licencas?: FonteLicencas;
+}
+
+/**
+ * Consumidores da outbox, com os adaptadores reais (o despachante já roda cada um na transação do tenant do evento):
+ * carga inicial do cadastros, espelho do `integracao-fdv` (`publicar-cadastros`) e retorno do pedido ao Hub. O retorno
+ * entra mesmo com o recebimento desligado: sem `pedido_recebido` do conector, ele só loga e ignora.
+ */
+export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly ConsumidorEvento[] {
+  return Object.freeze([
+    criarConsumidorCargaInicial({ fila: d.fila ?? new FilaDeTrabalhosPg() }),
+    criarConsumidorPublicarCadastros({ licencas: d.licencas ?? new LicencasPg(), agora: () => d.relogio.agora() }),
+    criarConsumidorRetornoPedido({ log: d.log, relogio: d.relogio }),
+  ]);
 }
 
 /** Rotinas diárias, com os adaptadores reais. */
@@ -96,10 +127,24 @@ export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log'
   return Object.freeze([criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log })]);
 }
 
+export interface DependenciasAgendasWorker {
+  log: Logger;
+  relogio: Relogio;
+  /** As peças do `montarPedidosFdv`. */
+  pedidosFdv: MontagemPedidosFdv;
+  /** Padrão: `plataforma.evento` (PG); a agenda do conector grava `lote.enviado@1`/`lote.falhou@1` na transação do lote. */
+  outbox?: Outbox;
+}
+
 /**
- * Agendas por tenant (T-0009 §6.1). Vazia por ora: o `integracao-fdv` acrescenta a dele (envio, lote, sinal,
- * reconciliação) na T-0011 L2, com os adaptadores SQL do módulo. Só roda com o cliente do Hub configurado (`main.ts`).
+ * Agendas por tenant (T-0009 §6.1), todas do `integracao-fdv`: o conector (envio, sinal, reconciliação), o retorno de
+ * pedidos e, com o recebimento ligado, a busca. A outbox vai pela fábrica (`criarAgendaConector({ outbox })`).
  */
-export function montarAgendas(_d: Pick<DependenciasModulosWorker, 'banco' | 'log'>): readonly AgendaModulo[] {
-  return registrarAgendas([]);
+export function montarAgendas(d: DependenciasAgendasWorker): readonly AgendaModulo[] {
+  const { recebedor, resolvedor, alertar, recebimento } = d.pedidosFdv;
+  const pedidos = criarAgendasPedidosFdv({ recebedor, resolvedor, alertar, log: d.log, relogio: d.relogio });
+  return registrarAgendas([
+    criarAgendaConector({ outbox: d.outbox ?? new OutboxPg() }),
+    ...(recebimento === 'ligado' ? pedidos : pedidos.filter((a) => a.id !== AGENDA_BUSCA_PEDIDOS_ID)),
+  ]);
 }
