@@ -16,7 +16,7 @@ async function pastaDosAtivos(diretorio?: string): Promise<string | null> {
   if (env) return env;
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 8; i++) {
-    const candidata = path.join(dir, 'docs', 'marca', 'ativos', VERSAO_ATIVOS);
+    const candidata = path.join(dir, 'docs/marca/ativos', VERSAO_ATIVOS);
     if (await stat(candidata).then((s) => s.isDirectory(), () => false)) return candidata;
     dir = path.dirname(dir);
   }
