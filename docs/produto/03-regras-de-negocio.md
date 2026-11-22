@@ -21,13 +21,18 @@
 - **RN-CAD-06** Preço vale por filial e por vigência; tabela sem item na filial usa a filial padrão (mesma regra do FDV, RN-CORE-39 do FDV).
 - **RN-CAD-07** Estoque simples: saldo por filial, nunca negativo sem permissão do gerente.
 - **RN-CAD-08** Cadastro excluído é inativado (`deleted_at`), nunca apagado, e o FDV recebe a inativação.
-- **RN-CAD-09** Condição de pagamento: de 1 a 36 parcelas, cada prazo de 0 a 999 dias, em qualquer ordem. A mesma regra vale no cadastro manual e na carga por CSV (T-0026); o limite de 24 parcelas do kit do Conector do FDV não vale para o ERP (decisão do Alexandre, 21/11/2026). Condição com forma de pagamento à vista (dinheiro, PIX ou cartão de débito; tPag 01, 17, 04) só aceita prazos 0: forma à vista com algum prazo maior que 0 é recusada, no cadastro manual e na carga por CSV (decisão do Alexandre, 22/11, 00h30).
+- **RN-CAD-09** Condição de pagamento: cada condição tem **uma forma** e o tipo de prazo amarrado a ela (decisões do Alexandre de 22/11: R-20261121-234806, R-20261121-235222 e R-20261121-235249). Só quatro formas são aceitas:
+  - **Dinheiro, PIX e Débito** (tPag 01, 17, 04) = **à vista**: prazo 0, sem parcelas;
+  - **Cartão de crédito** (tPag 03): de **1x a 12x** (`parcelas_cartao`, inteiro de 1 a 12, preenchido só no tPag 03), cada parcela vencendo de 30 em 30 dias (30, 60, …);
+  - **Boleto** (tPag 15): de 1 a 36 parcelas, cada prazo de 0 a 999 dias, em qualquer ordem; o limite de 24 parcelas do kit do Conector do FDV não vale para o ERP (decisão de 21/11).
+  - Qualquer outra forma (cheque, depósito, transferência, outros; tPag 02, 16, 18, 99 e demais) é **recusada** no cadastro manual e na carga por CSV (T-0026) com a mensagem "forma não aceita: use Dinheiro, PIX, Cartão ou Boleto". Combinação de forma e prazo fora da regra acima também é recusada.
+  - Condições que já existirem com forma recusada são **desativadas, nunca apagadas**, pela ação `cadastros.condicao_pagamento.desativar_recusadas` (só o ADMINISTRADOR, com auditoria); o FDV recebe a inativação (RN-CAD-08).
 
 ## Pedido (RN-PED)
 - **RN-PED-01** Pedido do FDV é idempotente pelo UUID do FDV: reenvio não duplica. O pedido do FDV chega aprovado pelo vendedor e entra no ERP **já aprovado**, sem nova aprovação nem análise de crédito. Problema de cadastro (cliente, produto, filial ou condição inexistente ou inativa, item incoerente) ou **pedido sem condição de pagamento** recusa o recebimento (todos esses casos, opção A da decisão de 22/11, 00h30) e volta ao FDV como `rejeitado_erp` com motivo (decisões do Alexandre, 21/11, 23h10 e 23h55).
 - **RN-PED-02** Status: recebido → aprovado | em_analise; em_analise → aprovado | recusado; aprovado → faturado_parcial | faturado | cancelado; faturado_parcial → faturado | cancelado. recusado, faturado e cancelado são finais. Transição fora da lista é recusada com a lista do que é possível.
 - **RN-PED-03** Pedido manual: aprovação automática quando preço, desconto, crédito e estoque passam; senão vai para análise com as pendências listadas.
-- **RN-PED-04** Crédito (pedido manual): saldo de títulos abertos + pedidos aprovados não faturados + este pedido ≤ limite do cliente. Limite 0 = sem crédito: o pedido vai para análise, **exceto à vista**, que não passa pela análise de crédito; preço e estoque continuam validados. **À vista = forma de pagamento dinheiro, PIX ou cartão de débito (tPag 01, 17, 04) E todos os prazos da condição = 0** (decisão de 22/11, 00h30); boleto e cartão de crédito com prazo 0 não são à vista. **O pedido à vista não conta no limite de crédito** dos outros pedidos do cliente (decisões do Alexandre, 21/11, 23h10 e 23h55).
+- **RN-PED-04** Crédito (pedido manual): saldo de títulos abertos + pedidos aprovados não faturados + este pedido ≤ limite do cliente. Limite 0 = sem crédito: o pedido vai para análise. **Fica fora do crédito do cliente** (não passa pela análise nem conta no compromisso dos outros pedidos) o pedido **à vista** (Dinheiro, PIX ou Débito, tPag 01, 17, 04, prazo 0) e o pedido no **Cartão de crédito** (tPag 03, 1x a 12x); preço e estoque continuam validados. Só o **Boleto** passa pela análise de crédito, mesmo com prazo 0. A classe da forma é gravada no pedido (`a_vista` = fora do crédito) na criação e na aprovação (decisões do Alexandre de 22/11, R-20261121-235222 e R-20261121-235249).
 - **RN-PED-05** Todo status novo volta ao FDV (`retorno`) com o número do pedido no ERP.
 
 ## Fiscal (RN-FIS)
@@ -42,7 +47,7 @@
 - **RN-FAT-03** O XML autorizado (com o protocolo) é **guardado antes de qualquer outra coisa** (DANFE, e-mail, evento, integração). Falha ao guardar = a nota fica "autorizada, guarda pendente" e nada mais anda até guardar.
 - **RN-FAT-04** Homologação e produção separadas por tenant e filial; nota de homologação leva a marca de "sem valor fiscal" e nunca vai ao FDV como faturamento real.
 - **RN-FAT-05** Contingência só quando a SEFAZ estiver indisponível (consulta de status) e só pela modalidade registrada em ADR; ao voltar, a nota é transmitida e conferida.
-- **RN-FAT-06** Títulos a receber: uma parcela por prazo da condição de pagamento, rateio sem perder centavo (RN-CORE-03).
+- **RN-FAT-06** Títulos a receber: **só o Boleto gera título contra o cliente**, uma parcela por prazo da condição, rateio sem perder centavo (RN-CORE-03). À vista (Dinheiro, PIX, Débito) e Cartão de crédito **não** geram título contra o cliente; no Cartão, a NF-e leva o grupo do cartão e o recebível da operadora fica para depois da v1 (decisão do Alexandre de 22/11, R-20261121-235249).
 - **RN-FAT-07** Rejeição da SEFAZ mostra o código, a mensagem e a ação sugerida; a nota rejeitada pode ser corrigida e reenviada com o mesmo número.
 
 ## Integração FDV (RN-INF)
