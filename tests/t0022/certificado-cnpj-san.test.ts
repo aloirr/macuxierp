@@ -2,13 +2,15 @@
 // 2026-11-21-T-0045-simulador.md): A1 com o CNPJ só no SAN (otherName 2.16.76.1.3.3, ICP-Brasil DOC-ICP-04) e sem o
 // `:CNPJ` no CN do titular. Leitores públicos do CNPJ do certificado:
 // - core: `LeitorPfxTls` (`@macuxierp/core/api`), usado no upload do A1 (POST /v1/core/certificados, ADR 0005);
-// - nfe-sefaz: `verificarAssinaturaNFe` (`cnpjDoTitularIcp` do platform-sdk), usado pelo simulador (292/213) e pelo worker.
-// A T-0018 (RD-0294) fez o nfe-sefaz ler o SAN e cair no CN (testado no pacote); o core ainda só lê o CN: `it.fails` abaixo.
+// - nfe-sefaz: `verificarAssinaturaNFe`, usado pelo simulador (292/213) e pelo worker.
+// Com a T-0018 (RD-0294), o core e o nfe-sefaz leem o CNPJ no SAN e depois no CN, pelo `cnpjDoTitularIcp` do platform-sdk
+// (o lado do nfe-sefaz é testado no pacote).
 // Os A1 vêm do `gerarA1DeTeste` (`cnpjNoTitular`, RD-0444). Tudo na memória: nada vai a disco nem a log.
 import { X509Certificate } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { LeitorPfxTls, PfxInvalido } from '../../modules/core/api/index';
+import { LeitorPfxTls } from '../../modules/core/api/index';
 import { verificarAssinaturaNFe } from '../../packages/nfe-sefaz/src/index';
+import { ErroCertificado } from '../../packages/platform-sdk/src/index';
 import {
   CNPJ_EMITENTE_DE_TESTE,
   INSTANTE_DE_TESTE,
@@ -58,19 +60,15 @@ describe('T-0022: CNPJ do A1 no CN × só no SAN (RD-0294, caso do corretor)', (
     expect(derSoNoSan.includes(Buffer.from(`:${CNPJ_EMITENTE_DE_TESTE}`, 'ascii'))).toBe(false);
   });
 
-  it('core: A1 sem CNPJ em lugar nenhum é recusado no upload com PfxInvalido (o 292 do verificador fica no pacote)', async () => {
+  it("core: LeitorPfxTls recusa o A1 sem CNPJ em lugar nenhum com ErroCertificado 'cnpj_ausente' (o 292 do verificador fica no pacote)", async () => {
     const semCnpj = gerarA1DeTeste({ ...VALIDADE_DE_TESTE, semCnpj: true });
-    await expect(new LeitorPfxTls().abrir(semCnpj.pfx, semCnpj.senha)).rejects.toBeInstanceOf(PfxInvalido);
+    const recusa = new LeitorPfxTls().abrir(semCnpj.pfx, semCnpj.senha);
+    await expect(recusa).rejects.toBeInstanceOf(ErroCertificado);
+    await expect(recusa).rejects.toMatchObject({ codigo: 'cnpj_ausente' });
   });
 
-  // Prende o motivo do `it.fails` abaixo; sai quando ele virar `it`.
-  it('hoje, core: o A1 com o CNPJ só no SAN é recusado com "Certificado sem CNPJ no titular"', async () => {
-    await expect(new LeitorPfxTls().abrir(soNoSan.pfx, soNoSan.senha)).rejects.toThrow('Certificado sem CNPJ no titular');
-  });
-
-  // ESPERADO (DOC-ICP-04; RD-0294): o core lê o CNPJ do SAN. Pendente: modulo-core adotar o `cnpjDoTitularIcp` no
-  // `LeitorPfxTls`.
-  it.fails('core: LeitorPfxTls aceita o A1 com o CNPJ só no SAN e devolve o CNPJ', async () => {
+  // DOC-ICP-04; RD-0294: o core lê o CNPJ do SAN.
+  it('core: LeitorPfxTls aceita o A1 com o CNPJ só no SAN e devolve o CNPJ', async () => {
     await expect(new LeitorPfxTls().abrir(soNoSan.pfx, soNoSan.senha)).resolves.toMatchObject({ cnpj: CNPJ_EMITENTE_DE_TESTE });
   });
 });
