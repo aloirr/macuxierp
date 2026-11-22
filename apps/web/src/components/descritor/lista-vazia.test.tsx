@@ -29,9 +29,10 @@ describe('lista vazia sem e com filtro (MC-0016)', () => {
     expect(h).toContain(VAZIO.semFiltro);
     expect(h).not.toContain('Limpar filtros');
   });
-  it('sem vazio declarado, vale o TEXTO_VAZIO do módulo (textoVazio) com ou sem filtro', async () => {
-    const t = comVazio();
-    expect(await render(t, '')).toContain(String(t.textoVazio));
-    expect(await render(t, 'status=aberto')).toContain(String(t.textoVazio));
+  it('sem vazio declarado na página nem na tela, vale o texto genérico do shell com ou sem filtro', async () => {
+    const { vazio: _, ...semVazio } = LISTA_TITULOS.pagina;
+    const t = { ...LISTA_TITULOS, pagina: semVazio } as TelaLista;
+    expect(await render(t, '')).toContain('Nenhum registro com estes filtros.');
+    expect(await render(t, 'status=aberto')).toContain('Nenhum registro com estes filtros.');
   });
 });

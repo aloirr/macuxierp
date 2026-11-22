@@ -55,6 +55,9 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .tabela-rolavel { overflow-x: auto; max-width: 100%; }
 /* Se a tabela ainda não couber, a coluna de ações (ex.: "Emitir nota") fica fixa à direita, com fundo e divisória por token; nenhuma coluna é cortada. */
 .tabela-rolavel.com-acoes th:last-child, .tabela-rolavel.com-acoes td:last-child { position: sticky; right: 0; background: var(--mx-cor-branco); border-left: 1px solid var(--mx-cor-borda-tabela); }
+/* O diálogo nasce dentro da célula de ações (que é sticky e cria o próprio contexto de empilhamento): a célula que o contém sobe acima das demais, senão as células fixas das linhas seguintes ficam brancas por cima da cortina. */
+.tabela-rolavel.com-acoes td:last-child:has(.dialogo-fundo) { z-index: 20; }
+.entrada[aria-invalid="true"], .campo input[aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
 .itens-parcial .entrada { width: 7rem; text-align: right; }
 .itens-parcial td, .itens-parcial th { padding: 6px 8px; }
 /* Colunas de largura fixa: a grade não muda com o tamanho do rótulo; "Filtrar" e "Limpar" ficam juntos na última célula. */
