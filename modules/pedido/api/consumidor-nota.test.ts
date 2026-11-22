@@ -2,7 +2,8 @@ import { criarEvento } from '@macuxierp/platform-sdk';
 import { OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { describe, expect, it } from 'vitest';
 import { PedidoFaturadoV1 } from '../contracts';
-import { consumidoresDoPedido, idFaturadoDaNota } from './consumidor-nota';
+import { idFaturadoDaNota } from './eventos';
+import { consumidoresDoPedido } from './consumidor-nota';
 import { dependenciasEmMemoria, TENANT_MEMORIA } from './memoria';
 import type { PedidoGravado } from './portas';
 
