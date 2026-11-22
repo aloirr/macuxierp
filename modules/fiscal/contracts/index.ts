@@ -42,6 +42,7 @@ export const TenantId = z.string().uuid();
  *  - vBC do IBS/CBS por item (BaseCalculoUnificadaService da Calculadora RTC): vProd + vFrete + vSeg + vOutro + vII + vIS (vIS só a partir de 2027)
  *    − vDesc − vPIS − vCOFINS − vICMS − vICMSUFDest − vFCP − vFCPUFDest − vICMSMono − vISSQN; o vIPI NÃO entra; os componentes de ICMS/FCP/ICMSMono
  *    só valem para bem, de 2026 a 2032.
+ *  - lote 4 (T-0020, pedido do faturamento T-0021): ICMS-ST retido (CST 60/CSOSN 500), CST 51 (diferimento) e emitente MEI (CRT 4); detalhes nos JSDocs de `ItemCalculo.st_retido`, `RegraTributaria.p_dif`/`p_icms_efet` e `IcmsItem`.
  */
 
 export const CALCULO_VERSAO = 1 as const;
@@ -115,6 +116,21 @@ export const CargaAproximadaItem = z.object({
 });
 export type CargaAproximadaItem = z.infer<typeof CargaAproximadaItem>;
 
+/** ST retido na compra (alíquotas com 4 casas). FCP-ST retido: os três campos juntos ou nenhum. */
+export const StRetido = z.object({
+  v_bc_st_ret: CentavosNaoNeg,
+  /** pST: alíquota suportada pelo consumidor final (ICMS-ST + FCP-ST). */
+  p_st: Percentual,
+  v_icms_substituto: CentavosNaoNeg,
+  v_icms_st_ret: CentavosNaoNeg,
+  v_bc_fcp_st_ret: CentavosNaoNeg.optional(),
+  p_fcp_st_ret: Percentual.optional(),
+  v_fcp_st_ret: CentavosNaoNeg.optional(),
+  /** pRedBCEfet (ICMS efetivo, consumidor final); padrão 0. */
+  p_red_bc_efet: Percentual.optional(),
+});
+export type StRetido = z.infer<typeof StRetido>;
+
 export const ItemCalculo = z.object({
   id: z.string().min(1),
   ncm: z.string().regex(/^\d{8}$/),
@@ -148,6 +164,11 @@ export const ItemCalculo = z.object({
   v_fcp_uf_dest: CentavosNaoNeg.default(0),
   v_icms_mono: CentavosNaoNeg.default(0),
   v_issqn: CentavosNaoNeg.default(0),
+  /**
+   * ICMS-ST retido anteriormente (CST 60 / CSOSN 500), da nota de COMPRA do item; nos demais códigos é ignorado. O motor só valida a coerência e repassa
+   * (valor retido maior que a base = ENTRADA_INVALIDA). Com consumidor final e `p_icms_efet` na regra, calcula também o ICMS efetivo. Não entra no vST nem no vNF.
+   */
+  st_retido: StRetido.optional(),
 });
 
 export const FonteRegra = z.object({
@@ -197,6 +218,10 @@ const RegraBase = z.object({
   p_fcp_st: Percentual.nullable().default(null),
   /** Crédito do Simples (CSOSN 101/201/900), vem da faixa do contribuinte. */
   p_cred_sn: Percentual.nullable().default(null),
+  /** CST 51: percentual de diferimento (pDif, 4 casas; 1000000 = 100%). Obrigatório nessa regra (sem ele: REGRA_INCOMPLETA). Com `p_fcp` o CST 51 é CODIGO_NAO_SUPORTADO (FCP diferido sem fonte). */
+  p_dif: Percentual.nullable().default(null),
+  /** CST 60/CSOSN 500 com `st_retido` e consumidor final: pICMSEfet (alíquota efetiva da UF do emitente, 4 casas). Sem ele o grupo do ICMS efetivo não sai. */
+  p_icms_efet: Percentual.nullable().default(null),
   /** IPI: CST (2 dígitos), alíquota ad valorem, enquadramento legal (padrão '999') e valor por unidade (×10^4 de real, ver cabeçalho). Alíquota e valor por unidade ao mesmo tempo = regra ambígua (REGRA_INCOMPLETA). */
   cst_ipi: z.string().regex(/^\d{2}$/).nullable().default(null),
   aliquota_ipi: Percentual.nullable().default(null),
@@ -271,6 +296,16 @@ export const IcmsItem = z.object({
   v_fcp_st: CentavosNaoNeg.optional(),
   p_cred_sn: Percentual.optional(),
   v_cred_icms_sn: CentavosNaoNeg.optional(),
+  /** CST 51: vICMSOp, pDif e vICMSDif (vICMS = vICMSOp − vICMSDif). */
+  v_icms_op: CentavosNaoNeg.optional(),
+  p_dif: Percentual.optional(),
+  v_icms_dif: CentavosNaoNeg.optional(),
+  /** CST 60 / CSOSN 500: ST retido (de `ItemCalculo.st_retido`) e ICMS efetivo. */
+  ...StRetido.omit({ p_red_bc_efet: true }).partial().shape,
+  p_red_bc_efet: Percentual.optional(),
+  v_bc_efet: CentavosNaoNeg.optional(),
+  p_icms_efet: Percentual.optional(),
+  v_icms_efet: CentavosNaoNeg.optional(),
 });
 export type IcmsItem = z.infer<typeof IcmsItem>;
 
@@ -367,6 +402,8 @@ export const TotaisCalculo = z.object({
   v_st: CentavosNaoNeg,
   v_fcp: CentavosNaoNeg,
   v_fcp_st: CentavosNaoNeg,
+  /** vFCPSTRet (W06b): soma do FCP-ST retido dos itens; só sai se algum item o traz. Fora do vNF (já pago na compra). */
+  v_fcp_st_ret: CentavosNaoNeg.optional(),
   v_prod: CentavosNaoNeg,
   v_desc: CentavosNaoNeg,
   v_frete: CentavosNaoNeg,
@@ -403,6 +440,8 @@ export const CodigoErroFiscal = z.enum([
   'BASE_NEGATIVA',
   /** Lote 2: CST de PIS/COFINS incompatível com o regime (cumulativo/não cumulativo). */
   'CODIGO_INCOMPATIVEL_REGIME',
+  /** Lote 4: dado da ENTRADA incoerente (ex.: ST retido com valor maior que a base), diferente de erro de cadastro da regra. */
+  'ENTRADA_INVALIDA',
 ]);
 export const ErroFiscal = z.object({
   rn: z.string().regex(/^RN-FIS-\d{2}$/),
