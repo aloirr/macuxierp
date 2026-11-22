@@ -104,7 +104,30 @@
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/modules/core/domain/**",
         "$TURBO_ROOT$/scripts/deploy/producao/**",
+        "!$TURBO_ROOT$/**/node_modules/**",
+        "!$TURBO_ROOT$/**/.turbo/**",
+        "!$TURBO_ROOT$/**/.next/**",
+        "!$TURBO_ROOT$/**/.expo/**",
+        "!$TURBO_ROOT$/**/dist/**",
+        "!$TURBO_ROOT$/**/*.tsbuildinfo"
+      ]
+    },
+    "api#test": {
+      "dependsOn": [
+        "transit"
+      ],
+      "outputs": [],
+      "env": [
+        "MACUXI_PG_*",
+        "MACUXI_DB_MIGRACOES"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/db/migrations/**",
+        "$TURBO_ROOT$/scripts/deploy/producao/**",
+        "$TURBO_ROOT$/scripts/plataforma/**",
         "!$TURBO_ROOT$/**/node_modules/**",
         "!$TURBO_ROOT$/**/.turbo/**",
         "!$TURBO_ROOT$/**/.next/**",
