@@ -1,5 +1,6 @@
 export * from './modulo';
 export * from './dinheiro';
+export * from './formatar';
 export * from './documentos';
 export * from './permissoes';
 export * from './erros';

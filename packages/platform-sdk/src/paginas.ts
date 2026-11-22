@@ -24,9 +24,17 @@ export interface PaginaBase {
   readonly aviso?: string;
   /** Ação que libera ver a página e o item de menu. Sem `ver`, vale a licença e o perfil do módulo. */
   readonly ver?: Acao;
+  /**
+   * A página existe pela rota, mas não vira item de menu (ex.: detalhe aberto a partir de uma lista). Quem filtra o
+   * menu é o shell; `paginaVisivel` não olha este campo, porque ele trata de quem pode ver, não de onde aparece.
+   */
+  readonly ocultaNoMenu?: boolean;
 }
 
-/** A página aparece para o perfil: sem `ver`, sempre; com `ver`, só se `pode(perfil, ver)`. Esconde, não protege: a API checa de novo (RN-CORE-02). */
+/**
+ * A página aparece para o perfil: sem `ver`, sempre; com `ver`, só se `pode(perfil, ver)`. Esconde, não protege: a API
+ * checa de novo (RN-CORE-02).
+ */
 export function paginaVisivel(pagina: PaginaBase, perfil: Perfil): boolean {
   return !pagina.ver || pode(perfil, pagina.ver);
 }
