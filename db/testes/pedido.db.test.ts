@@ -290,6 +290,22 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
     ).toEqual([{ v: 1990, qtd: 10000 }]);
   });
 
+  it('massa (T-0013 §7, D-A): aprovação só no pedido bko; o do FDV guarda a dele em aprovado_origem_em', () => {
+    expect(
+      consultar(
+        banco.conexao,
+        `SELECT p.numero::int AS n, p.origem AS o, p.status AS s, p.aprovado_origem_em IS NOT NULL AS origem_em,
+           a.automatica AS auto, a.decidido_por AS por
+         FROM pedido.pedido p LEFT JOIN pedido.aprovacao a ON a.tenant_id = p.tenant_id AND a.pedido_id = p.id
+         WHERE p.id IN ('${A.pedido}', '${A.pedidoBko}') ORDER BY p.numero`,
+        APP_A,
+      ),
+    ).toEqual([
+      { n: 1, o: 'fdv', s: 'aprovado', origem_em: true, auto: null, por: null },
+      { n: 2, o: 'bko', s: 'aprovado', origem_em: false, auto: true, por: null },
+    ]);
+  });
+
   it('numeracao: uma por tenant; o número sai do UPDATE ... RETURNING, independente em cada tenant', () => {
     const proximo = 'UPDATE pedido.numeracao SET proximo = proximo + 1 RETURNING proximo - 1;';
     expect(
@@ -300,14 +316,14 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
           { transacao: true },
         ),
       ),
-    ).toEqual([2, 3]);
+    ).toEqual([3, 4]);
     expect(
       numeros(
         rodarScript(banco.conexao, `SET ROLE macuxierp_app; SET app.tenant_id = '${B.id}';\n${proximo}`, {
           transacao: true,
         }),
       ),
-    ).toEqual([2]);
+    ).toEqual([3]);
     expect(
       falha(() =>
         executar(banco.conexao, `INSERT INTO pedido.numeracao (tenant_id) VALUES ('${A.id}');`, APP_A),
