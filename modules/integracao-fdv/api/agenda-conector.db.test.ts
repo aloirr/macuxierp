@@ -543,6 +543,17 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', () => {
       expect(s.proxima_reconciliacao_em.toISOString()).toBe('2026-11-23T06:00:00.000Z');
     });
 
+    it('RD-0481: semLicenca de sinal e reconciliação não religa a linha do sinal apagada', async () => {
+      const { t } = await cenario('cre-b2');
+      await adm('INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, deleted_at) VALUES ($1, $2, $2, $3)', [t, depois(-1), AGORA]);
+      await banco.comTenant(t, async (tx) => {
+        await agenda.semLicenca({ tenant_id: t, tarefa: 'sinal', chave: null }, tx, AGORA);
+        await agenda.semLicenca({ tenant_id: t, tarefa: 'reconciliacao', chave: null }, tx, AGORA);
+      });
+      const s = (await adm('SELECT proximo_sinal_em, proxima_reconciliacao_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [t]))[0]!;
+      expect([s.proximo_sinal_em.getTime(), s.proxima_reconciliacao_em.getTime()]).toEqual([depois(-1).getTime(), depois(-1).getTime()]);
+    });
+
     it('chave que não abre (cifrado adulterado): pausa a credencial sem chamar o Hub e sem vazar nada', async () => {
       const { t, cred } = await cenario('cre-c');
       await adm('ALTER TABLE integracao_fdv.credencial DISABLE TRIGGER credencial_chave_so_anula');

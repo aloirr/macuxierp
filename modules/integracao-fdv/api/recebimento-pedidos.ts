@@ -4,20 +4,21 @@
  * tradução e a porta, e a contagem de tentativas fica); com 5 tentativas o pedido vira `rejeitado` (`falha_interna`).
  * Nunca lê tabela do FDV: só a API do Hub, por `ClienteHubPedidos`. Log só com ids e códigos (LGPD).
  */
-import { sha256Hex, type Banco, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
+import { MARGEM_POSSE_AGENDA_MS, sha256Hex, type Banco, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { PedidoParaErpLido, type EntidadeChaveErp } from '../contracts';
+import { PedidoParaErpLido, type EntidadeChaveErp, type MotivoPausa } from '../contracts';
 import { chavesParaResolver, traduzirPedido, type ChavesResolvidas, type CodigoRejeicao, type CodigoRejeicaoPedido } from '../domain/pedido-fdv';
 import { jsonCanonico } from '../domain/canonico';
 import { retornoRejeitadoErp } from '../domain/retorno-pedido';
 import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv, ResolvedorChaveErp } from './portas';
-import { agendarRetorno, credencialRecusada, gravarRetorno } from './util-pedidos';
+import { UMA_HORA_S, adiarPresoAPosse, adiarSinalSemLicenca, mais } from './conector-comum';
+import { agendarRetorno, gravarRetorno, motivoDaRecusa } from './util-pedidos';
 
 const LIMITE_BUSCA = 50;
 export const MAX_TENTATIVAS = 5;
 
 export interface DepsRecebimento {
-  banco: Banco;
+  banco: Pick<Banco, 'comTenant'>;
   hub: ClienteHubPedidos;
   recebedor: RecebedorPedidoFdv;
   /** Implementação do `cadastros/api` (ADR 0010, item 2). */
@@ -25,16 +26,24 @@ export interface DepsRecebimento {
   relogio: Relogio;
   log: LogPedidos;
   alertar: Alertar;
+  /** Fim da posse da reserva da agenda: a busca para antes dele (`MARGEM_POSSE_AGENDA_MS`), como o envio de retornos. Sem ele não há trava. */
+  posseAte?: Date;
 }
 
 export interface ResumoBusca {
-  /** `imediata` = veio o lote cheio (50): buscar já; `pausa` = 401/403/426 (credencial); `desligada` = módulo pedido sem licença. */
+  /** `imediata` = veio o lote cheio (50): buscar já; `pausa` = 401/403/426 (credencial); `desligada` = módulo pedido sem licença (a agenda adia 1 h). */
   proxima: 'imediata' | 'intervalo' | 'pausa' | 'desligada' | 'erro';
   buscados: number;
   entregues: number;
   rejeitados: number;
   repetidos: number;
   pendentes: number;
+  /** `Retry-After` da última resposta não-200 do Hub (`proxima` = 'erro'): a agenda decide a espera. */
+  retryAfterS?: number;
+  /** Motivo da pausa quando `proxima` = 'pausa' (a agenda pausa o conector). */
+  motivoPausa?: MotivoPausa;
+  /** A busca parou antes do fim da posse: o que sobrou volta já (`proxima` = 'imediata'). */
+  posseCurta?: boolean;
 }
 
 const UuidSo = z.object({ pedido_uuid: z.string().uuid() }).passthrough();
@@ -164,25 +173,30 @@ async function processar(tx: Transacao, d: DepsRecebimento, tenantId: string, br
 /** Uma busca no Hub e o recebimento de cada pedido, numa transação por pedido. */
 export async function buscarPedidosPendentes(d: DepsRecebimento, tenantId: string): Promise<ResumoBusca> {
   const resumo: ResumoBusca = { proxima: 'intervalo', buscados: 0, entregues: 0, rejeitados: 0, repetidos: 0, pendentes: 0 };
+  const curta = (): boolean => d.posseAte != null && d.relogio.agora().getTime() >= d.posseAte.getTime() - MARGEM_POSSE_AGENDA_MS;
+  if (curta()) return { ...resumo, proxima: 'imediata', posseCurta: true };
   const resp = await d.hub.pendentes(LIMITE_BUSCA);
-  if (credencialRecusada(resp.status)) return { ...resumo, proxima: 'pausa' };
-  if (resp.status !== 200 || !resp.pedidos) {
+  const motivoPausa = motivoDaRecusa(resp.status, resp.codigo);
+  if (motivoPausa) return { ...resumo, proxima: 'pausa', motivoPausa };
+  if (resp.status < 200 || resp.status >= 300 || !resp.pedidos) {
     d.log.warn({ tenant_id: tenantId, modulo: 'integracao-fdv', http: resp.status }, 'busca de pedidos no Hub falhou');
-    return { ...resumo, proxima: 'erro' };
+    return { ...resumo, proxima: 'erro', ...(resp.retryAfterS != null ? { retryAfterS: resp.retryAfterS } : {}) };
   }
   resumo.buscados = resp.pedidos.length;
   for (const bruto of resp.pedidos) {
+    // posse quase vencida: o resto fica no Hub (continua pendente lá) e a busca volta já
+    if (curta()) return { ...resumo, proxima: 'imediata', posseCurta: true };
     const desfecho = await d.banco.comTenant(tenantId, (tx) => processar(tx, d, tenantId, bruto));
     if (desfecho === 'entregue') resumo.entregues++;
     else if (desfecho === 'rejeitado') resumo.rejeitados++;
     else if (desfecho === 'repetido') resumo.repetidos++;
     else if (desfecho === 'pendente') resumo.pendentes++;
     else if (desfecho === 'desligar') {
-      // Sem licença do `pedido`: desliga a agenda e alerta; o pedido segue `recebido` (T-0013 §5.3).
-      await d.banco.comTenant(tenantId, (tx) =>
-        tx.consultar(`UPDATE integracao_fdv.sinal SET proxima_busca_pedidos_em = NULL, updated_at = now() WHERE tenant_id = $1 AND deleted_at IS NULL`, [tenantId]),
-      );
+      // Sem licença do `pedido`: alerta e para; o pedido segue `recebido` (T-0013 §5.3). A própria busca adia a coluna em 1 h
+      // (presa à posse, se houver; incondicional sem ela), então o resultado não depende de quem a chama; volta sozinha com a licença.
       d.alertar(tenantId, 'recebimento_pedidos_desligado');
+      const para = mais(d.relogio.agora(), UMA_HORA_S);
+      await d.banco.comTenant(tenantId, (tx) => (d.posseAte ? adiarPresoAPosse(tx, tenantId, { sinal: 'proxima_busca_pedidos_em' }, d.posseAte, para) : adiarSinalSemLicenca(tx, tenantId, 'proxima_busca_pedidos_em', para)));
       return { ...resumo, proxima: 'desligada' };
     }
   }
