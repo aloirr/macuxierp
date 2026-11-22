@@ -29,6 +29,8 @@ export interface RepoSimples<E extends { id: string }, D> {
   atualizar(id: string, parcial: Partial<D>): Promise<E | null>;
   /** Inativa (`deleted_at`), nunca apaga (RN-CAD-08). */
   inativar(id: string): Promise<E | null>;
+  /** Página por cursor (id crescente), inativos incluídos: a carga inicial (C-4). */
+  paginaPorCursor(apos: string | null, limite: number): Promise<E[]>;
   /** Dos ids pedidos, os que existem e estão ativos (uma consulta só; o lote de preços confere 5.000 produtos). */
   idsAtivos(ids: readonly string[]): Promise<Set<string>>;
 }
@@ -76,6 +78,8 @@ export interface RepoEstoque {
   saldos(q: { filial_id?: string; produto_id?: string }): Promise<SaldoEstoque[]>;
   /** Lê o saldo travando a linha (`FOR UPDATE`): dois movimentos simultâneos não furam a RN-CAD-07. */
   saldoParaAtualizar(filialId: string, produtoId: string): Promise<number>;
+  /** Saldos por cursor `(produto_id, filial_id)` crescente: a carga inicial (C-4). */
+  paginaPorCursor(apos: { filial_id: string; produto_id: string } | null, limite: number): Promise<SaldoEstoque[]>;
   gravarMovimento(mov: MovimentoGravado, saldoNovo: number): Promise<{ id: string }>;
   movimentoPorExternalId(externalId: string): Promise<{ id: string } | null>;
 }
@@ -103,6 +107,8 @@ export interface RepoConsultaExterna {
 
 export interface RepoOficiais {
   listar(tabela: (typeof import('../contracts').TABELAS_OFICIAIS)[number], q: OficialConsulta): Promise<Pagina<Record<string, unknown>>>;
+  /** C-1: nome do IBGE por código de município (o que não existir fica fora do mapa). */
+  nomesMunicipios(codigos: readonly string[]): Promise<Map<string, string>>;
   ncmVigente(ncm: string, data: string): Promise<boolean>;
   /** O NCM tem CEST vigente em `cest_ncm` (segmento com substituição tributária). */
   ncmExigeCest(ncm: string, data: string): Promise<boolean>;

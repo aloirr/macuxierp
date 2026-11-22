@@ -106,6 +106,11 @@ class RepoTabela<E extends { id: string }, D> implements RepoSimples<E, D> {
     return this.obter(id);
   }
 
+  async paginaPorCursor(apos: string | null, limite: number): Promise<E[]> {
+    const l = await executar(this.tx, `SELECT ${selecionar(this.m)} FROM ${this.m.tabela} WHERE ($1::uuid IS NULL OR id > $1::uuid) ORDER BY id LIMIT $2`, [apos, limite]);
+    return this.hidratar(l.map((x) => this.m.deLinha(x)));
+  }
+
   async idsAtivos(ids: readonly string[]): Promise<Set<string>> {
     if (ids.length === 0) return new Set();
     const l = await executar<{ id: string }>(this.tx, `SELECT id FROM ${this.m.tabela} WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`, [[...ids]]);
@@ -281,6 +286,13 @@ export function repositoriosSql(tx: Transacao): Repositorios {
       if (q.produto_id) w.push(`produto_id = $${p.push(q.produto_id)}`);
       return executar<{ filial_id: string; produto_id: string; quantidade: number }>(tx, `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY produto_id, filial_id`, p);
     },
+    // Sem `inativo` no saldo: o evento não expressa saldo apagado, por isso o cursor (diferente das demais entidades) pula `deleted_at`.
+    paginaPorCursor: (apos: { filial_id: string; produto_id: string } | null, limite: number) =>
+      executar<{ filial_id: string; produto_id: string; quantidade: number }>(
+        tx,
+        `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE deleted_at IS NULL AND ($1::uuid IS NULL OR (produto_id, filial_id) > ($1::uuid, $2::uuid)) ORDER BY produto_id, filial_id LIMIT $3`,
+        [apos?.produto_id ?? null, apos?.filial_id ?? null, limite],
+      ),
     async saldoParaAtualizar(filialId: string, produtoId: string) {
       await executar(tx, 'INSERT INTO cadastros.estoque_saldo (tenant_id, filial_id, produto_id, quantidade) VALUES (plataforma.tenant_atual(), $1, $2, 0) ON CONFLICT (tenant_id, filial_id, produto_id) DO NOTHING', [filialId, produtoId]);
       const r = await executar<{ quantidade: number }>(tx, `SELECT ${N('quantidade')} FROM cadastros.estoque_saldo WHERE filial_id = $1 AND produto_id = $2 FOR UPDATE`, [filialId, produtoId]);
@@ -380,6 +392,11 @@ function oficiaisSql(tx: Transacao): RepoOficiais {
         p,
       );
       return { itens, total: total[0]?.n ?? 0 };
+    },
+    async nomesMunicipios(codigos) {
+      if (codigos.length === 0) return new Map();
+      const l = await executar<{ codigo: string; nome: string }>(tx, 'SELECT DISTINCT ON (codigo) codigo, nome FROM cadastros.municipio WHERE codigo = ANY($1::text[]) ORDER BY codigo, vigencia_inicio DESC NULLS LAST', [[...codigos]]);
+      return new Map(l.map((m) => [m.codigo, m.nome]));
     },
     ncmVigente: (ncm, data) => existe(`SELECT 1 FROM cadastros.ncm n WHERE n.codigo = $1 AND ${VIGENTE('n')}`, [ncm], data),
     ncmExigeCest: (ncm, data) =>

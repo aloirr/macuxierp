@@ -5,11 +5,14 @@
  * Cada chamada de `consultar` roda numa transação própria do psql, com SET ROLE e app.tenant_id como a API faz.
  */
 import { randomUUID } from 'node:crypto';
+import { TRABALHO_CARGA_INICIAL, type PayloadCargaInicial } from '../contracts';
 import { readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { Transacao } from '@macuxierp/platform-sdk';
+import { FilaDeTrabalhosPg } from '@macuxierp/platform-sdk/pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { externalDoTrabalho } from './carga-inicial';
 import { criarPluginCadastros } from './index';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { CNPJ_A, CNPJ_B, clienteValido, filialValida, produtoValido } from './fixtures-teste';
@@ -37,6 +40,7 @@ const lit = (v: unknown): string => {
   if (v instanceof Date) return `'${v.toISOString()}'::timestamptz`;
   if (Array.isArray(v)) return v.length ? `ARRAY[${v.map(lit).join(',')}]` : "'{}'";
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (typeof v === 'object') return `'${JSON.stringify(v).replaceAll("'", "''")}'`;
   return `'${String(v).replaceAll("'", "''")}'`;
 };
 
@@ -171,6 +175,22 @@ describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
     expect(() => admin(`INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte) VALUES ('${A}', 'cnpj', '52998224725', '{}', 'x');`)).toThrow(); // o banco recusa CPF como chave
   }, 120_000);
 
+  it('C-1 e C-4: nomesMunicipios pelo IBGE e página por cursor com inativos, só do tenant', async () => {
+    const rA = repositoriosSql(txA());
+    const nomes = await rA.oficiais.nomesMunicipios(['1302603', '0000000']);
+    expect(nomes.get('0000000')).toBeUndefined();
+    const todos: string[] = [];
+    for (let apos: string | null = null; ; ) {
+      const lote: { id: string }[] = await rA.clientes.paginaPorCursor(apos, 1);
+      if (lote.length === 0) break;
+      todos.push(...lote.map((c) => c.id));
+      apos = (lote.at(-1) as { id: string }).id;
+    }
+    const esperados = JSON.parse(admin(`SELECT coalesce(json_agg(id ORDER BY id), '[]') FROM cadastros.cliente WHERE tenant_id = '${A}';`).trim()) as string[];
+    expect(todos).toEqual(esperados);
+    expect(await repositoriosSql(txB()).clientes.paginaPorCursor(null, 10)).toEqual([]);
+  }, 120_000);
+
   it('RLS: o tenant B não enxerga nada do tenant A pelo adaptador', async () => {
     const b = montar(txB());
     for (const rota of ['/filiais', '/clientes', '/produtos', '/tabelas-preco', '/vendedores', '/estoque']) {
@@ -180,4 +200,25 @@ describe.skipIf(!pronto)('adaptador SQL do cadastros (PostgreSQL real)', () => {
     const ncm = await b.chamar('GET', '/oficiais/ncm', { sessao: adm });
     expect(ncm.corpo.total).toBe(1); // as tabelas oficiais são do tenant de referência e todo tenant lê
   }, 120_000);
+  it('carga inicial: enfileira 1a e 2a página (cursor UUID e cursor composto do estoque) dentro do limite do external_id e o reenvio é idempotente', async () => {
+    const fila = new FilaDeTrabalhosPg();
+    const origem = randomUUID();
+    const cursores: [PayloadCargaInicial['entidade'], string | null][] = [
+      ['cliente', null], ['cliente', randomUUID()], ['estoque', null], ['estoque', `${randomUUID()}|${randomUUID()}`],
+    ];
+    const enviar = async () => {
+      const ids: string[] = [];
+      for (const [entidade, apos] of cursores) {
+        const payload: PayloadCargaInicial = { origem, entidade, apos, tabela_id: null, pagina: 1 };
+        const external_id = externalDoTrabalho(payload);
+        expect(external_id.length).toBeLessThanOrEqual(64);
+        ids.push((await fila.enfileirar(txA(), { tipo: TRABALHO_CARGA_INICIAL, tenant_id: A, payload, external_id })).id);
+      }
+      return ids;
+    };
+    const primeira = await enviar();
+    expect(new Set(primeira).size).toBe(4);
+    expect(await enviar()).toEqual(primeira);
+    expect(admin(`SELECT count(*) FROM plataforma.trabalho WHERE tipo = '${TRABALHO_CARGA_INICIAL}' AND tenant_id = '${A}';`).trim()).toBe('4');
+  });
 });

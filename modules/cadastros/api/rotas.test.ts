@@ -43,6 +43,12 @@ describe('filiais (RF-CAD-08)', () => {
     expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.filial.alterada@1', agregado_id: r.corpo.id, versao: 1, payload: { inativo: false, nfe_serie: 1 } });
     expect(t.auditoria[0]).toMatchObject({ acao: 'filial.criar', entidade: 'filial', entidade_id: r.corpo.id });
   });
+  it('C-1: o evento da filial traz endereco.municipio_nome do IBGE', async () => {
+    const t = montar();
+    t.repos.oficiais.municipios.set('1302603', 'Manaus');
+    await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida() });
+    expect(t.eventos[0]?.payload.endereco).toMatchObject({ municipio_ibge: '1302603', municipio_nome: 'Manaus' });
+  });
   it('só o administrador edita filial', async () => {
     const t = montar();
     expect((await t.chamar('POST', '/filiais', { sessao: gerente, corpo: filialValida() })).status).toBe(403);
@@ -106,6 +112,18 @@ describe('clientes (RF-CAD-01)', () => {
     expect(r.corpo.enderecos).toHaveLength(1);
     expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.cliente.alterado@1', payload: { documento: CNPJ_B, vendedor_id: null, inativo: false } });
     expect((t.eventos[0]?.payload.enderecos as unknown[]).length).toBe(1);
+  });
+  it('C-1 e C-3: o evento do cliente traz enderecos[].id e municipio_nome (null se o IBGE não está na tabela oficial)', async () => {
+    const t = montar();
+    t.repos.oficiais.municipios.set('1302603', 'Manaus');
+    const f = await comFilial(t);
+    const r = await t.chamar('POST', '/clientes', { sessao: faturista, corpo: clienteValido(f) });
+    const [end] = t.eventos[0]?.payload.enderecos as Record<string, unknown>[];
+    expect(end).toMatchObject({ id: r.corpo.enderecos[0].id, municipio_ibge: '1302603', municipio_nome: 'Manaus', tipo: 'principal' });
+    t.repos.oficiais.municipios.clear();
+    t.eventos.length = 0;
+    await t.chamar('POST', `/clientes/${r.corpo.id}/enderecos`, { sessao: adm, corpo: { ...ENDERECO_AM, tipo: 'entrega' } });
+    expect((t.eventos[0]?.payload.enderecos as Record<string, unknown>[]).map((e) => e.municipio_nome)).toEqual([null, null]);
   });
   it('RN-CAD-01: CNPJ inválido (dígito) em cliente PJ é 422 RN-CAD-01; CPF válido em PF passa', async () => {
     const t = montar();
@@ -368,8 +386,19 @@ describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
     await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens: [{ filial_id: f1, produto_id: p, preco_centavos: 1000 }] } });
     t.eventos.length = 0;
     await t.chamar('PATCH', `/tabelas-preco/${tab}`, { sessao: gerente, corpo: { vigencia_fim: '2027-06-30' } });
+    const precos = t.eventos.filter((e) => e.nome === 'cadastros.preco.alterado@1');
+    expect(precos).toHaveLength(1);
+    expect(precos[0]?.payload.vigencia_fim).toBe('2027-06-30');
+  });
+  it('C-2: a criação e a alteração da tabela publicam cadastros.tabela_preco.alterada@1 (agregado = tabela)', async () => {
+    const t = montar();
+    const criada = await t.chamar('POST', '/tabelas-preco', { sessao: gerente, corpo: { nome: 'Atacado', vigencia_inicio: '2026-01-01' } });
     expect(t.eventos).toHaveLength(1);
-    expect(t.eventos[0]?.payload.vigencia_fim).toBe('2027-06-30');
+    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.tabela_preco.alterada@1', agregado_id: criada.corpo.id, versao: 1, payload: { id: criada.corpo.id, nome: 'Atacado', inativo: false } });
+    t.eventos.length = 0;
+    await t.chamar('PATCH', `/tabelas-preco/${criada.corpo.id}`, { sessao: gerente, corpo: { nome: 'Atacado 2' } });
+    expect(t.eventos).toHaveLength(1);
+    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.tabela_preco.alterada@1', agregado_id: criada.corpo.id, payload: { nome: 'Atacado 2' } });
   });
 });
 
