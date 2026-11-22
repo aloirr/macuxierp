@@ -1,7 +1,7 @@
 /**
  * Status do ERP -> Hub (RN-PED-05; T-0013 §6.2, ADR 0007). Função pura: recebe o evento `pedido.pedido.*@1` e o último
- * status já gravado para o pedido, e diz o que enviar. O recusado vai como `cancelado` com motivo (o Hub não aceita
- * `integrado -> rejeitado_erp`); `rejeitado_erp` é só do recebimento recusado (`retornoRejeitadoErp`).
+ * status já gravado para o pedido, e diz o que enviar. O cancelamento vai como `cancelado` com motivo (o Hub não aceita
+ * `integrado -> rejeitado_erp`); o `recusado@1` não é consumido (RN-PED-01, T-0013 §6.1); `rejeitado_erp` é só do recebimento recusado (`retornoRejeitadoErp`).
  */
 import { z } from 'zod';
 import { jsonCanonico } from './canonico';
@@ -28,15 +28,12 @@ const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
  * `condicao_ausente` vem no lote 1c da T-0015; tirar o `| 'condicao_ausente'` depois que ele entrar.
  */
 const TEXTO_DA_REJEICAO: Readonly<Record<CodigoRejeicao | 'condicao_ausente', string>> = {
-  cliente_desconhecido: 'Cliente não cadastrado no ERP',
-  vendedor_desconhecido: 'Vendedor não cadastrado no ERP',
-  produto_desconhecido: 'Produto não cadastrado no ERP',
-  filial_desconhecida: 'Filial não cadastrada no ERP',
   sequencia_repetida: 'Itens com sequência repetida',
   quantidade_invalida: 'Quantidade inválida',
   pedido_fora_do_contrato: 'Pedido fora do contrato',
   modulo_pedido_inativo: 'Módulo de pedidos inativo no ERP',
   cliente_inexistente: 'Cliente não cadastrado no ERP',
+  vendedor_inexistente: 'Vendedor não cadastrado no ERP',
   produto_inexistente: 'Produto não cadastrado no ERP',
   filial_inexistente: 'Filial não cadastrada no ERP',
   cliente_inativo: 'Cliente inativo no ERP',
@@ -73,7 +70,6 @@ export type PayloadPedidoLido = z.infer<typeof PayloadPedidoLido>;
 
 export const EVENTOS_DE_RETORNO = [
   'pedido.pedido.recebido@1',
-  'pedido.pedido.recusado@1',
   'pedido.pedido.cancelado@1',
   'pedido.pedido.faturado@1',
 ] as const;
@@ -108,7 +104,6 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
       if (p.status !== 'aprovado' && p.status !== 'em_analise') return { acao: 'ignorar', motivo: 'status_sem_retorno' };
       if (ultimoStatusHub) return { acao: 'ignorar', motivo: 'hub_ja_adiante' };
       return { acao: 'enviar', corpo: { ...comum, status: 'integrado' } };
-    case 'pedido.pedido.recusado@1':
     case 'pedido.pedido.cancelado@1': {
       const motivo = motivoDe(p);
       return { acao: 'enviar', corpo: { ...comum, status: 'cancelado', ...(motivo ? { motivo } : {}) } };
@@ -125,7 +120,7 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
           nota: { numero: p.nota.numero, serie: p.nota.serie, chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos },
           itens_faturados: p.itens_faturados.map((i) => ({
             sequencia: i.sequencia,
-            produto_external_id: i.produto_id,
+            produto_external_id: i.produto_id, // F4: traduzir para a chave do Hub (ADR 0010, item 1)
             quantidade: i.quantidade / 10_000,
             valor_cents: i.valor_centavos,
           })),

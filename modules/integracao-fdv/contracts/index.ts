@@ -3,6 +3,7 @@
  * Mudança incompatível = nova versão do contrato (@2) + ADR + recado aos consumidores.
  */
 import { z } from 'zod';
+import type { EntidadeHub } from './hub';
 
 export const MODULO = 'integracao-fdv' as const;
 
@@ -19,12 +20,14 @@ export * from './monitor';
  * `passthrough`: campo novo do Hub não derruba o pedido. Item fora do contrato = `rejeitado` com `pedido_fora_do_contrato`.
  */
 const UuidLido = z.string().uuid();
+/** Chave do Hub (`external_id`, 1 a 200 caracteres, comparada por bytes): a do kit (ex.: `C000123`) ou o UUID do ERP (ADR 0010). */
+const ChaveHubLida = z.string().min(1).max(200);
 const DecimalLido = z.union([z.number(), z.string().regex(/^-?\d+(\.\d+)?$/)]);
 const CentavosLido = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const ItemPedidoParaErpLido = z
   .object({
     sequencia: z.number().int().min(1),
-    produto_external_id: UuidLido,
+    produto_external_id: ChaveHubLida,
     quantidade: DecimalLido,
     unidade: z.string().max(6).nullish(),
     fator: DecimalLido.nullish(),
@@ -38,14 +41,13 @@ const ItemPedidoParaErpLido = z
 export const PedidoParaErpLido = z
   .object({
     pedido_uuid: UuidLido,
-    cliente_external_id: UuidLido,
-    vendedor_external_id: UuidLido,
-    filial: z.object({ external_id: UuidLido.nullish() }).passthrough().nullish(),
+    cliente_external_id: ChaveHubLida,
+    vendedor_external_id: ChaveHubLida,
+    filial: z.object({ external_id: ChaveHubLida.nullish() }).passthrough().nullish(),
     pagamento: z
-      .object({ prazo_external_id: UuidLido.nullish(), condicao_pagamento_erp: z.string().max(60).nullish() })
+      .object({ prazo_external_id: ChaveHubLida.nullish() })
       .passthrough()
       .nullish(),
-    condicao_pagamento_erp: z.string().max(60).nullish(),
     criado_em: z.string().datetime({ offset: true }),
     aprovado_em: z.string().datetime({ offset: true }).nullish(),
     observacao: z.string().max(500).nullish(),
@@ -58,6 +60,9 @@ export const PedidoParaErpLido = z
   })
   .passthrough();
 export type PedidoParaErpLido = z.infer<typeof PedidoParaErpLido>;
+
+/** Entidades do Hub cujas chaves o ERP resolve para UUID pela porta `ResolvedorChaveErp` (ADR 0010, item 2). */
+export type EntidadeChaveErp = Extract<EntidadeHub, 'cliente' | 'vendedor' | 'filial' | 'produto' | 'prazo_pagamento' | 'cliente_endereco'>;
 
 /** Status aceitos pelo Hub no retorno do pedido (doc 06; `retorno_enviado.status`). */
 export const StatusRetornoHub = z.enum(['integrado', 'rejeitado_erp', 'faturado_parcial', 'faturado_total', 'cancelado']);
@@ -74,7 +79,7 @@ export const RetornoErp = z.object({
     .object({ numero: z.number().int(), serie: z.number().int(), chave: z.string(), emitida_em: z.string(), total_cents: CentavosLido })
     .optional(),
   itens_faturados: z
-    .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: UuidLido, quantidade: z.number(), valor_cents: CentavosLido }))
+    .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: ChaveHubLida, quantidade: z.number(), valor_cents: CentavosLido }))
     .optional(),
   ocorrido_em: z.string().datetime(),
 });

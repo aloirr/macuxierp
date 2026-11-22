@@ -38,6 +38,8 @@ export const PERMISSOES = {
   'cadastros.vendedor.editar': ADM_GERENTE,
   'cadastros.carteira.transferir': ADM_GERENTE,
   'cadastros.consulta.externa': CADASTRO,
+  // ADR 0010, item 3 (RN-CORE-05): troca controlada do external_id
+  'cadastros.external_id.trocar': ADM,
   // T-0026 (D8): carga de CSV; cada arquivo ainda confere a ação de edição da entidade (filial só o administrador)
   'cadastros.carga.executar': ADM_GERENTE,
   // pedido, fiscal, faturamento e integração (F2 a F4; a matriz do doc 03 já fixa)

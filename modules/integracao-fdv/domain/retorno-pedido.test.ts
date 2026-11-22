@@ -18,11 +18,10 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
       expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'integrado', numero_erp: '42', pedido_uuid: U(2) } });
     }
   });
-  it('RN-PED-05: recusa depois do integrado vira cancelado com o texto do catálogo', () => {
-    const d = retornoDoPedido(ev('pedido.pedido.recusado@1', { status: 'recusado', motivo_codigo: 'credito_insuficiente' }), 'integrado');
-    expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'cancelado', numero_erp: '42', motivo: 'Crédito insuficiente' } });
+  it('RN-PED-01: recusado@1 não é consumido e não gera retorno (a recusa só existe no pedido bko)', () => {
+    expect(retornoDoPedido(ev('pedido.pedido.recusado@1', { status: 'recusado', motivo_codigo: 'credito_insuficiente' }), 'integrado')).toEqual({ acao: 'ignorar', motivo: 'evento_sem_retorno' });
   });
-  it('RN-PED-05: motivo outro leva o texto livre; cancelado@1 também vira cancelado', () => {
+  it('RN-PED-05: cancelado@1 vira cancelado; motivo outro leva o texto livre', () => {
     const d = retornoDoPedido(ev('pedido.pedido.cancelado@1', { status: 'cancelado', motivo_codigo: 'outro', motivo_texto: 'combinado' }), 'integrado');
     expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'cancelado', motivo: 'combinado' } });
   });
@@ -51,13 +50,13 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(retornoDoPedido(ev('pedido.pedido.recebido@1'), 'integrado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_adiante' });
   });
   it('RN-PED-05: rejeitado_erp do recebimento recusado leva o motivo do catálogo e nenhum numero_erp', () => {
-    const c = retornoRejeitadoErp(U(2), 'cliente_desconhecido', new Date('2026-11-21T18:00:00Z'));
-    expect(c).toMatchObject({ status: 'rejeitado_erp', motivo: 'Cliente não cadastrado no ERP' });
+    const c = retornoRejeitadoErp(U(2), 'cliente_inexistente', new Date('2026-11-21T18:00:00Z'));
     expect(c.numero_erp).toBeUndefined();
   });
   it.each([
     ['modulo_pedido_inativo', 'Módulo de pedidos inativo no ERP'],
     ['cliente_inexistente', 'Cliente não cadastrado no ERP'],
+    ['vendedor_inexistente', 'Vendedor não cadastrado no ERP'],
     ['produto_inexistente', 'Produto não cadastrado no ERP'],
     ['filial_inexistente', 'Filial não cadastrada no ERP'],
     ['cliente_inativo', 'Cliente inativo no ERP'],
