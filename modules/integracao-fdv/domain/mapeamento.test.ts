@@ -294,3 +294,30 @@ describe('RN-INF-02: chave do Hub = external_id da carga, senão o UUID (23h22)'
     expect(mapearTabelaPreco({ id: U(10), nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: true, external_id: null, inativo: false }, EM).dados.chave).toBe(U(10));
   });
 });
+
+describe('ADR 0010: chave do Hub de unidade, endereço e preço (RN-INF-02)', () => {
+  const prod = (unidades: unknown[], o: Record<string, unknown> = {}) =>
+    ({ id: U(2), codigo: 'SKU1', descricao: 'Arroz', ncm: '10063021', cest: null, unidade_comercial: 'CX', unidade_tributavel: 'UN', fator_tributavel: 10_000, ean: null, marca: null, origem: '0', grupo_tributacao: 'G', custo_centavos: 1, external_id: 'P-KIT', inativo: false, unidades, ...o }) as unknown as EventoProduto;
+
+  it('a unidade usa o external_id do kit e guarda o UUID como erp_id; sem external_id fica o UUID; o pai vai pela chave do pai', () => {
+    const { unidades } = mapearProduto(prod([{ id: U(3), unidade: 'CX', fator: 10_000, ean: null, external_id: 'UN-KIT' }, { id: U(4), unidade: 'UN', fator: 1_000, ean: null, external_id: null }, { id: U(5), unidade: 'PCT', fator: 500, ean: null }]), EM);
+    expect(unidades.map((u) => [u.external_id, u.erp_id, u.payload.external_id])).toEqual([['UN-KIT', U(3), 'UN-KIT'], [U(4), U(4), U(4)], [U(5), U(5), U(5)]]);
+    expect(unidades[0]!.payload.produto_external_id).toBe('P-KIT');
+  });
+
+  it('o endereço usa o external_id do kit (erp_id = id); sem external_id fica o UUID', () => {
+    const ev = { id: U(20), razao_social: 'Cliente', documento: '12345678000195', filial_id: U(1), vendedor_id: U(5), condicao_pagamento_id: U(6), external_id: 'CLI-KIT', inativo: false, enderecos: [{ ...end, id: U(21), tipo: 'principal', external_id: 'END-KIT' }, { ...end, id: U(22), tipo: 'entrega' }] } as unknown as EventoCliente;
+    const { enderecos } = mapearCliente(ev, EM, { condicao: null });
+    expect(enderecos.map((e) => [e.external_id, e.erp_id])).toEqual([['END-KIT', U(21)], [U(22), U(22)]]);
+    expect(enderecos[0]!.payload.cliente_external_id).toBe('CLI-KIT');
+  });
+
+  it('o preço usa o external_id do evento; o agregado_id segue como erp_id; sem external_id fica o agregado_id', () => {
+    const ev = { tabela_preco_id: U(10), filial_id: U(1), produto_id: U(2), preco_centavos: 1990, desconto_maximo_bp: 0, inativo: false, vigencia_inicio: '2026-01-01', vigencia_fim: null };
+    const ctx = { tabela: { chave: 'TAB', nome: 'V' }, filialPadraoId: U(1) };
+    const com = mapearPreco(U(11), { ...ev, external_id: 'PR-KIT' } as never, EM, ctx);
+    expect([com.external_id, com.erp_id, com.payload.external_id]).toEqual(['PR-KIT', U(11), 'PR-KIT']);
+    expect(mapearPreco(U(11), { ...ev, external_id: null } as never, EM, ctx).external_id).toBe(U(11));
+    expect(mapearPreco(U(11), ev as never, EM, ctx).external_id).toBe(U(11));
+  });
+});

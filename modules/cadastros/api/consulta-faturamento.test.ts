@@ -43,6 +43,7 @@ describe('consulta de cadastros para o faturamento (memória)', () => {
     const f = await consulta.filial(tx, ids.filial as string);
     expect(f).toEqual({
       id: ids.filial, cnpj: CNPJ_A, razao_social: 'Thathyany Comercio Ltda', nome_fantasia: 'Thathyany', ie: '012345679', crt: 1, emissora: true, nfe_serie: 2,
+      industrial_ipi: false, regime_pis_cofins: null,
       endereco: { logradouro: 'Av. Djalma Batista', numero: '100', complemento: null, bairro: 'Chapada', municipio_ibge: '1302603', municipio_nome: 'Manaus', uf: 'AM', cep: '69050010' },
     });
     expect(await consulta.filial(tx, randomUUID())).toBeNull();

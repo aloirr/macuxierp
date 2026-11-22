@@ -22,6 +22,17 @@ describe('filial', () => {
   });
 });
 
+describe('regime PIS/COFINS (RN-FIS-02)', () => {
+  it('RN-FIS-02: regime_pis_cofins só vale no CRT 3; informado nos CRT 1, 2 e 4 é violação', () => {
+    for (const crt of ['1', '2', '4'] as const) {
+      expect(validarFilial({ ...ok, crt, regime_pis_cofins: 'cumulativo' })[0]).toMatchObject({ rn: 'RN-FIS-02', campo: 'regime_pis_cofins' });
+      expect(validarFilial({ ...ok, crt, regime_pis_cofins: null })).toEqual([]);
+    }
+    expect(validarFilial({ ...ok, crt: '3', regime_pis_cofins: 'nao_cumulativo' })).toEqual([]);
+    expect(validarFilial({ ...ok, crt: '3', regime_pis_cofins: null })).toEqual([]);
+  });
+});
+
 describe('inativação', () => {
   it('RN-CAD-08: filial padrão e tabela de preço padrão não são inativadas enquanto forem a padrão', () => {
     expect(bloqueiosDeInativacao('filial', { padrao: true })[0]).toMatchObject({ rn: 'RN-CAD-08' });

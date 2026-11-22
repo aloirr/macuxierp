@@ -2,3 +2,4 @@
 2026-11-21 — T-0007 — correções da revisão do PR #15: CNPJ da consulta via validarDocumentoCliente, testes duplicados removidos, auditoria do limite de crédito, RN-CAD-03 (endereço principal) e RN-CAD-06 (vigência) no domain
 2026-11-22 — C-10 — external_id de unidade, preço e endereço nos eventos (ADR 0010)
 2026-11-22 — T-0021 — consumidor de estoque das notas (autorizada baixa, cancelada devolve)
+2026-11-22 — T-0021 — campos fiscais da filial e do produto, consulta para o fiscal

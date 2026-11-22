@@ -39,3 +39,24 @@ describe('RN-CORE-05: ehConflitoDeChave', () => {
     expect((['nada', 'troca', 'chave_alterada', 'chave_duplicada'] as const).filter(ehConflitoDeChave)).toEqual(['chave_alterada', 'chave_duplicada']);
   });
 });
+
+describe('RN-CORE-05: adoção do UUID para o external_id (unidade, endereço e preço, sem marcador)', () => {
+  const ag = { erpId: ERP, chaveEspelho: ERP, chaveNova: 'PR-KIT', anterior: undefined as string | null | undefined, outroErpIdComChaveNova: null as string | null };
+
+  it('RN-CORE-05: espelho no UUID e evento com a chave nova sem marcador é troca', () => {
+    expect(decidirTrocaDeChave(ag)).toBe('troca');
+    expect(decidirTrocaDeChave({ ...ag, anterior: null })).toBe('troca');
+  });
+
+  it('RN-CORE-05: espelho já com external_id e chave mudada sem marcador segue chave_alterada', () => {
+    expect(decidirTrocaDeChave({ ...ag, chaveEspelho: 'PR-ANTIGA' })).toBe('chave_alterada');
+  });
+
+  it('RN-CORE-05: adoção com chave de outro erp_id é chave_duplicada', () => {
+    expect(decidirTrocaDeChave({ ...ag, outroErpIdComChaveNova: 'outro' })).toBe('chave_duplicada');
+  });
+
+  it('RN-CORE-05: o espelho que segue com o UUID não é troca', () => {
+    expect(decidirTrocaDeChave({ ...ag, chaveNova: ERP })).toBe('nada');
+  });
+});
