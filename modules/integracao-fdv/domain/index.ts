@@ -9,3 +9,4 @@ export * from './mapeamento';
 export * from './mensagens';
 export * from './recomposicao';
 export * from './resposta';
+export * from './troca-chave';

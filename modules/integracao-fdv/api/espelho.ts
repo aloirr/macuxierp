@@ -6,7 +6,7 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { EntidadeHub } from '../contracts';
-import { ALVO_DA_CHAVE_REFS, inativarRegistro, proximaReconciliacaoEm, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
+import { ALVO_DA_CHAVE_REFS, inativarRegistro, proximaReconciliacaoEm, recomporRegistro, tabelaDaReferencia, type CodigoConflitoChave, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
 
 export interface LinhaRegistro {
   id: string;
@@ -45,7 +45,7 @@ type ResultadoGravacao = { resultado: 'descartado' | 'conflito' } | { resultado:
  * Grava o registro do espelho. Evento mais velho que o `fonte_ocorrido_em` já aplicado é descartado (M3). Hash igual ao
  * `hash_confirmado` = não fica pendente (RN-INF-03). `alterado_em` só avança e só quando o conteúdo mudou.
  * RN-CORE-05 e ADR 0010 item 3 (nada é sobrescrito): a chave do Hub que já pertence a outro cadastro (`erp_id` diferente)
- * não é gravada; devolve `conflito` (o L2b transforma em `conflito_chave`).
+ * não é gravada; devolve `conflito` (`aplicarRegistros` grava `chave_duplicada` em `conflito_chave`).
  */
 export async function gravarRegistro(tx: Transacao, tenantId: string, r: RegistroEspelho, ocorridoEm: Date): Promise<ResultadoGravacao> {
   for (let tentativa = 0; tentativa < 2; tentativa++) {
@@ -124,7 +124,7 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
          FROM unnest($3::uuid[]) AS b(erp_id)
          JOIN integracao_fdv.registro_publicado r
            ON r.tenant_id = $1 AND r.entidade = $2 AND r.erp_id = b.erp_id AND r.deleted_at IS NULL
-        ORDER BY r.ativo DESC, r.updated_at DESC`,
+        ORDER BY r.ativo DESC, r.fonte_ocorrido_em DESC`,
       [tenantId, alvo, [...ids]],
     );
     for (const l of linhas) {
@@ -149,12 +149,16 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
   const tabelas = new Map<string, TabelaReferencia>();
   const idsTabela = [...(porEntidade.get('tabela') ?? [])];
   if (idsTabela.length > 0) {
-    const linhas = await tx.consultar<{ erp_id: string; external_id: string | null; dados: Record<string, unknown> }>(
-      `SELECT erp_id, external_id, dados FROM integracao_fdv.referencia
+    const linhas = await tx.consultar<{ erp_id: string; dados: Record<string, unknown> }>(
+      `SELECT erp_id, dados FROM integracao_fdv.referencia
         WHERE tenant_id = $1 AND tipo = 'tabela_preco' AND erp_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
       [tenantId, idsTabela],
     );
-    for (const l of linhas) tabelas.set(l.erp_id, tabelaDaReferencia(l.dados, l.external_id ?? l.erp_id));
+    for (const l of linhas) {
+      // RD-0318: a chave do Hub da tabela é `dados.chave`; sem ela a referência não conta (o preço fica referencia_ausente)
+      const t = tabelaDaReferencia(l.dados);
+      if (t) tabelas.set(l.erp_id, t);
+    }
   }
   const padrao = await tx.consultar<{ erp_id: string }>(
     `SELECT erp_id FROM integracao_fdv.referencia
@@ -175,16 +179,96 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
   };
 }
 
-/** Recompõe e grava os registros do conjunto (os que já estão compostos com o mesmo hash não são tocados). */
-export async function aplicarRegistros(tx: Transacao, tenantId: string, regs: readonly RegistroEspelho[], ocorridoEm: Date): Promise<Set<EntidadeHub>> {
+/**
+ * Recompõe e grava os registros do conjunto (os que já estão compostos com o mesmo hash não são tocados). Chave do Hub que
+ * já é de outro `erp_id` não é gravada: vira `chave_duplicada` em `conflito_chave` (ADR 0010, item 3). Gravado ou igual
+ * encerra o conflito aberto do registro (o próximo evento coerente).
+ */
+export async function aplicarRegistros(
+  tx: Transacao,
+  tenantId: string,
+  regs: readonly RegistroEspelho[],
+  ocorridoEm: Date,
+  /** `falhar`: conflito lança erro (a transação volta e o evento é refeito); usado no principal, depois da troca de chave. */
+  aoConflito: 'registrar' | 'falhar' = 'registrar',
+): Promise<Set<EntidadeHub>> {
   const pendentes = new Set<EntidadeHub>();
   if (regs.length === 0) return pendentes;
   const fontes = await carregarFontes(tx, tenantId, regs);
+  const coerentes: RegistroEspelho[] = [];
   for (const r of regs) {
-    const g = await gravarRegistro(tx, tenantId, recomporRegistro(r, fontes), ocorridoEm);
+    const composto = recomporRegistro(r, fontes);
+    const g = await gravarRegistro(tx, tenantId, composto, ocorridoEm);
+    if (g.resultado === 'conflito') {
+      if (aoConflito === 'falhar') throw new Error('espelho: conflito de chave depois da troca; a transação volta e o evento é refeito');
+      if (composto.erp_id) await registrarConflito(tx, tenantId, composto.entidade, composto.erp_id, composto.external_id, 'chave_duplicada');
+      continue;
+    }
+    if (g.resultado !== 'descartado') coerentes.push(composto);
     if ('pendente' in g && g.pendente) pendentes.add(r.entidade);
   }
+  await encerrarConflitos(tx, tenantId, coerentes);
   return pendentes;
+}
+
+// ---- conflito de chave (integracao_fdv.conflito_chave, 0015) ----
+
+/**
+ * Grava o conflito aberto do registro (único em aberto por `(tenant, entidade, erp_id)`). Igual ao que já está aberto = nada;
+ * diferente (outro código ou outra chave) = encerra o aberto e abre o novo (o worker só tem UPDATE em `resolvido_em` e `deleted_at`).
+ */
+export async function registrarConflito(tx: Transacao, tenantId: string, entidade: EntidadeHub, erpId: string, chave: string, codigo: CodigoConflitoChave): Promise<void> {
+  const [aberto] = await tx.consultar<{ id: string; chave: string; codigo: string }>(
+    `SELECT id, chave, codigo FROM integracao_fdv.conflito_chave
+      WHERE tenant_id = $1 AND entidade = $2 AND erp_id = $3 AND resolvido_em IS NULL FOR UPDATE`,
+    [tenantId, entidade, erpId],
+  );
+  if (aberto?.chave === chave && aberto.codigo === codigo) return;
+  if (aberto) await tx.consultar(`UPDATE integracao_fdv.conflito_chave SET resolvido_em = now() WHERE tenant_id = $1 AND id = $2`, [tenantId, aberto.id]);
+  await tx.consultar(
+    `INSERT INTO integracao_fdv.conflito_chave (tenant_id, entidade, erp_id, chave, codigo) VALUES ($1, $2, $3, $4, $5)`,
+    [tenantId, entidade, erpId, chave, codigo],
+  );
+}
+
+/** Os registros gravados de forma coerente encerram o conflito aberto deles (uma instrução por entidade). */
+async function encerrarConflitos(tx: Transacao, tenantId: string, regs: readonly RegistroEspelho[]): Promise<void> {
+  const porEntidade = new Map<EntidadeHub, string[]>();
+  for (const r of regs) if (r.erp_id) porEntidade.set(r.entidade, [...(porEntidade.get(r.entidade) ?? []), r.erp_id]);
+  for (const [entidade, ids] of porEntidade) {
+    await tx.consultar(
+      `UPDATE integracao_fdv.conflito_chave SET resolvido_em = now()
+        WHERE tenant_id = $1 AND entidade = $2 AND erp_id = ANY($3::uuid[]) AND resolvido_em IS NULL`,
+      [tenantId, entidade, ids],
+    );
+  }
+}
+
+/**
+ * Situação da chave do Hub de um `erp_id` no espelho, para `decidirTrocaDeChave`. Existe antes da gravação porque a troca e o
+ * conflito precisam ser decididos antes de gravar; a guarda de `gravarRegistro` cobre só a corrida e os registros sem consulta prévia.
+ * A linha do `erp_id` é a ativa, ou a mais recente se todas estão inativas (um cadastro inativo também troca de chave).
+ */
+export async function situacaoDaChave(
+  tx: Transacao,
+  tenantId: string,
+  entidade: EntidadeHub,
+  erpId: string,
+  chaveNova: string,
+): Promise<{ chaveEspelho: string | null; outroErpId: string | null; fonteOcorridoEm: Date | null }> {
+  const [atual] = await tx.consultar<{ chave: string; fonte_ocorrido_em: Date }>(
+    `SELECT registro_external_id AS chave, fonte_ocorrido_em FROM integracao_fdv.registro_publicado
+      WHERE tenant_id = $1 AND entidade = $2 AND erp_id = $3 AND deleted_at IS NULL
+      ORDER BY ativo DESC, fonte_ocorrido_em DESC LIMIT 1`,
+    [tenantId, entidade, erpId],
+  );
+  // a chave é única no espelho (também a de linha inativa ou já saída): se é de outro erp_id, a nova não pode ser gravada
+  const [outro] = await tx.consultar<{ erp_id: string }>(
+    `SELECT erp_id FROM integracao_fdv.registro_publicado
+      WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = $3 AND erp_id IS NOT NULL AND erp_id <> $4 LIMIT 1`,
+    [tenantId, entidade, chaveNova, erpId],
+  );
+  return { chaveEspelho: atual?.chave ?? null, outroErpId: outro?.erp_id ?? null, fonteOcorridoEm: atual?.fonte_ocorrido_em ?? null };
 }
 
 const PAGINA_DEPENDENTES = 500;
@@ -219,15 +303,15 @@ export async function recomporDependentes(tx: Transacao, tenantId: string, chave
 }
 
 /**
- * Registros do ERP (coluna `erp_id`) da entidade cuja chave no Hub era outra (o `external_id` do cadastro mudou): o
- * antigo é inativado no Hub (RN-CAD-08), nunca apagado.
+ * Troca controlada (ADR 0010, item 3): a linha antiga do `erp_id` fica viva, com o mesmo `erp_id`, `ativo = false` e
+ * pendente até o Hub confirmar a inativação; o `finalizar` do lote a tira (`deleted_at`) só depois. Nunca apaga (RN-CAD-08).
  */
-export async function inativarChaveAntiga(tx: Transacao, tenantId: string, entidade: EntidadeHub, erpId: string, chaveAtual: string, ocorridoEm: Date): Promise<Set<EntidadeHub>> {
+export async function aplicarTrocaDeChave(tx: Transacao, tenantId: string, entidade: EntidadeHub, erpId: string, chaveNova: string, ocorridoEm: Date): Promise<Set<EntidadeHub>> {
   const linhas = await tx.consultar<LinhaRegistro>(
     `SELECT ${COLUNAS} FROM integracao_fdv.registro_publicado
       WHERE tenant_id = $1 AND entidade = $2 AND erp_id = $3 AND registro_external_id <> $4
         AND ativo AND deleted_at IS NULL AND payload IS NOT NULL`,
-    [tenantId, entidade, erpId, chaveAtual],
+    [tenantId, entidade, erpId, chaveNova],
   );
   return inativarLinhas(tx, tenantId, linhas, ocorridoEm);
 }
@@ -276,33 +360,37 @@ export async function outroPrazoAtivoDaForma(tx: Transacao, tenantId: string, fo
 
 // ---- referência (tabela de preço, filial padrão) ----
 
-/** Devolve `true` se a referência mudou (ou é nova); `false` se igual ou descartada por ser mais velha (M3). */
+/**
+ * `mudou` = a referência mudou ou é nova (`false` se igual ou descartada por ser mais velha, M3); `dadosAntes` = os dados que
+ * estavam gravados e ativos (`null` = não havia), lidos na mesma leitura `FOR UPDATE`.
+ */
 export async function gravarReferencia(
   tx: Transacao,
   tenantId: string,
-  r: { tipo: 'tabela_preco' | 'filial_padrao'; erp_id: string; dados: Record<string, unknown>; external_id?: string },
+  r: { tipo: 'tabela_preco' | 'filial_padrao'; erp_id: string; dados: Record<string, unknown> },
   ocorridoEm: Date,
-): Promise<boolean> {
-  const [atual] = await tx.consultar<{ id: string; dados: Record<string, unknown>; external_id: string | null; fonte_ocorrido_em: Date; deleted_at: Date | null }>(
-    `SELECT id, dados, external_id, fonte_ocorrido_em, deleted_at FROM integracao_fdv.referencia
+): Promise<{ mudou: boolean; dadosAntes: Record<string, unknown> | null }> {
+  const [atual] = await tx.consultar<{ id: string; dados: Record<string, unknown>; fonte_ocorrido_em: Date; deleted_at: Date | null }>(
+    `SELECT id, dados, fonte_ocorrido_em, deleted_at FROM integracao_fdv.referencia
       WHERE tenant_id = $1 AND tipo = $2 AND erp_id = $3 FOR UPDATE`,
     [tenantId, r.tipo, r.erp_id],
   );
-  if (atual && atual.fonte_ocorrido_em.getTime() > ocorridoEm.getTime()) return false;
-  const externalId = r.external_id ?? null;
-  if (atual && !atual.deleted_at && JSON.stringify(atual.dados) === JSON.stringify(r.dados) && atual.external_id === externalId) {
+  const dadosAntes = atual && !atual.deleted_at ? atual.dados : null;
+  if (atual && atual.fonte_ocorrido_em.getTime() > ocorridoEm.getTime()) return { mudou: false, dadosAntes };
+  if (atual && !atual.deleted_at && JSON.stringify(atual.dados) === JSON.stringify(r.dados)) {
     await tx.consultar(`UPDATE integracao_fdv.referencia SET fonte_ocorrido_em = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2`, [tenantId, atual.id, ocorridoEm]);
-    return false;
+    return { mudou: false, dadosAntes };
   }
   await tx.consultar(
-    `INSERT INTO integracao_fdv.referencia (tenant_id, tipo, erp_id, dados, external_id, fonte_ocorrido_em)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+    // RD-0318: a chave da tabela mora em `dados.chave`; `external_id` da referência fica nulo (sem uso)
+    `INSERT INTO integracao_fdv.referencia (tenant_id, tipo, erp_id, dados, fonte_ocorrido_em)
+     VALUES ($1, $2, $3, $4::jsonb, $5)
      ON CONFLICT (tenant_id, tipo, erp_id) DO UPDATE
-        SET dados = EXCLUDED.dados, external_id = EXCLUDED.external_id, fonte_ocorrido_em = EXCLUDED.fonte_ocorrido_em,
+        SET dados = EXCLUDED.dados, external_id = NULL, fonte_ocorrido_em = EXCLUDED.fonte_ocorrido_em,
             deleted_at = NULL, updated_at = now()`,
-    [tenantId, r.tipo, r.erp_id, JSON.stringify(r.dados), externalId, ocorridoEm],
+    [tenantId, r.tipo, r.erp_id, JSON.stringify(r.dados), ocorridoEm],
   );
-  return true;
+  return { mudou: true, dadosAntes };
 }
 
 /** A filial deixou de ser a padrão (ou foi inativada): a referência sai, se o evento não for mais velho que ela. */

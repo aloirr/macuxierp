@@ -172,14 +172,14 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
   it('RN-PED-01: pedido fora do contrato é rejeitado e ao Hub vai só o nome do campo', async () => {
     const uuid = U();
     const d = dublê();
-    const hub = hubCom([{ pedido_uuid: uuid, itens: [], observacao: 'observação sigilosa', total_cents: 'abc' }]);
+    const hub = hubCom([{ pedido_uuid: uuid, itens: [], observacao: 'observação sigilosa', total_cents: 'zz-marcador-xyz' }]);
     await buscarPedidosPendentes({ banco, hub, recebedor: recebedorDuble().r, resolvedor, relogio, log: d.log, alertar: d.alertar }, A);
     await enviarRetornosPendentes({ banco, hub, relogio, log: d.log, alertar: d.alertar }, A);
     const corpo = hub.enviados.find((e) => e.uuid === uuid)!.corpo;
     expect(corpo.status).toBe('rejeitado_erp');
     expect(corpo.motivo).toContain('itens');
     expect(JSON.stringify(corpo)).not.toContain('sigilosa');
-    expect(JSON.stringify(corpo)).not.toContain('abc');
+    expect(JSON.stringify(corpo)).not.toContain('zz-marcador-xyz');
   });
 
   it('RN-PED-01: falha da porta desfaz só a tradução; com 5 tentativas vira rejeitado por falha_interna e alerta, sem dado pessoal no log', async () => {
