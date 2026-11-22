@@ -2,3 +2,5 @@
 2026-11-21 — T-0028 — tokens da marca ampliados (cores §3, fontes §5.1, pesos, escala, aliases); valores vieram de outra sessão: AINDA FALTA conferir com o manual do FDV (add_repo indisponível)
 2026-11-21 — T-0028 — correções da validação do design-de-marca e do corretor (azulClaro #9AA3B0, sem azulSuave/azulSerra, pesos 500/600 por papel, aviso, título 20/24, exports nomeados); NÃO conferido com o manual do FDV (add_repo indisponível): valores vieram da tarefa
 2026-11-21 — T-0028 — ajuste dos comentários de papel das cores e dos pesos 600 (abaAtiva, rotuloPequeno) em tokens.ts; tokens.css regenerado
+2026-11-22 — T-0021 — bordaCampo, botões únicos (MC-0008), DialogoMotivo rotuloFechar/destrutivo, erros por campo, nowrap, legenda 600 e S-01 (AssinaturaErp + favicon) em packages/ui; 897c12c (#242); corretor RD-0725–0732 sem 🔴, engenheiro aprovado.
+2026-11-22 — T-0021 — 2º PR: foco visível nos botões, erro junto do campo no diálogo, campoBase (canto 6 px), contorno do rádio e dinheiro pelo formatar do sdk (RD-0723); 4a18223 (#248); corretor RD-0753–0760 sem 🔴, engenheiro liberado.
