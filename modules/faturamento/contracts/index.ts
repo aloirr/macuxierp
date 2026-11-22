@@ -162,6 +162,11 @@ export const NotaResumo = z.object({
   protocolo: z.string().nullable(),
   c_stat: z.number().int().nullable(),
   x_motivo: z.string().nullable(),
+  /** Só na lista do BKO (RF-FAT-08 / T-0021 item C): nome do destinatário no retrato da nota; ausente nos eventos e no painel de rejeições. */
+  cliente_razao_social: z.string().nullable().optional(),
+  /** Para as colunas "Filial" e "Pedido" do BKO. PENDENTE na API (hoje ausentes): nome da filial vem do cadastros e o número do pedido do retrato em `pedido_a_faturar`. */
+  filial_nome: z.string().nullable().optional(),
+  pedido_numero: z.number().int().nullable().optional(),
 });
 export type NotaResumo = z.infer<typeof NotaResumo>;
 
@@ -170,11 +175,15 @@ export const NotaDetalhe = NotaResumo.extend({
   tipo_emissao: TipoEmissao,
   recibo: z.string().nullable(),
   itens: z.array(ItemNotaEvento),
+  /** RF-FAT-08: só na nota `rejeitada`, a ação sugerida para o cStat/xMotivo (mesma do painel `GET /rejeicoes`). */
+  acao_sugerida: z.string().nullable().optional(),
+  /** Base do prazo de cancelamento (RN-FAT-02): a tela só oferece o botão dentro de 24 h; a API revalida. */
+  autorizada_em: z.string().datetime().nullable().optional(),
 });
 export type NotaDetalhe = z.infer<typeof NotaDetalhe>;
 
 /** Local até o sdk exportar a data civil (RD-0369). */
-const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** `GET /v1/faturamento/notas`: filtros na URL (o BKO mantém o link). `de` e `ate` são datas civis do fuso do tenant. */
 export const FiltroNotas = ConsultaPaginada.extend({
@@ -190,6 +199,33 @@ export const FiltroNotas = ConsultaPaginada.extend({
 });
 export type FiltroNotas = z.infer<typeof FiltroNotas>;
 
+/** Status do pedido na fila de faturamento (`faturamento.pedido_a_faturar.status`). */
+export const StatusPedidoAFaturar = z.enum(['a_faturar', 'faturado_parcial', 'faturado', 'cancelado']);
+export type StatusPedidoAFaturar = z.infer<typeof StatusPedidoAFaturar>;
+
+/** `GET /v1/faturamento/pedidos-a-faturar` (RF-FAT-01): por padrão só `a_faturar` e `faturado_parcial`. `de`/`ate` = data do recebimento (fuso do tenant). */
+export const FiltroPedidosAFaturar = ConsultaPaginada.extend({
+  filial_id: Uuid.optional(),
+  cliente_id: Uuid.optional(),
+  status: StatusPedidoAFaturar.optional(),
+  de: DataCivil.optional(),
+  ate: DataCivil.optional(),
+});
+export type FiltroPedidosAFaturar = z.infer<typeof FiltroPedidosAFaturar>;
+
+export const PedidoAFaturarResumo = z.object({
+  id: Uuid,
+  pedido_id: Uuid,
+  numero: z.number().int().nullable(),
+  filial_id: Uuid,
+  cliente_id: Uuid,
+  cliente_razao_social: z.string().nullable(),
+  status: StatusPedidoAFaturar,
+  total_centavos: Centavos,
+  recebido_em: z.string().datetime(),
+});
+export type PedidoAFaturarResumo = z.infer<typeof PedidoAFaturarResumo>;
+
 /** `GET /v1/faturamento/rejeicoes` (RF-FAT-08): notas rejeitadas com o código, a mensagem e a ação sugerida da SEFAZ. */
 export const FiltroRejeicoes = ConsultaPaginada.extend({ filial_id: Uuid.optional() });
 export type FiltroRejeicoes = z.infer<typeof FiltroRejeicoes>;
@@ -204,6 +240,9 @@ export const RejeicaoNota = z.object({
   mensagem: z.string().nullable(),
   acao_sugerida: z.string(),
   rejeitada_em: z.string().datetime(),
+  /** Mesmos campos opcionais da `NotaResumo` (pendentes na API). */
+  filial_nome: z.string().nullable().optional(),
+  pedido_numero: z.number().int().nullable().optional(),
 });
 export type RejeicaoNota = z.infer<typeof RejeicaoNota>;
 
@@ -281,3 +320,41 @@ export type ProcessarInutilizacaoPayload = z.infer<typeof ProcessarInutilizacaoP
 export const TRABALHO_CONSULTAR_NOTA = 'faturamento.consultar_nota' as const;
 export const ConsultarNotaPayload = z.object({ nota_id: Uuid });
 export type ConsultarNotaPayload = z.infer<typeof ConsultarNotaPayload>;
+
+// ---- Títulos a receber (RF-FAT-06): formatos PROVISÓRIOS até as rotas do lote 5 da T-0021 ----
+
+export const StatusTitulo = z.enum(['aberto', 'baixado', 'cancelado']);
+export type StatusTitulo = z.infer<typeof StatusTitulo>;
+
+export const BaixaTitulo = z.object({ id: Uuid, valor_centavos: Centavos.optional(), baixado_em: z.string().datetime().optional(), estornada_em: z.string().datetime().nullable() });
+export type BaixaTitulo = z.infer<typeof BaixaTitulo>;
+
+export const TituloResumo = z.object({
+  id: Uuid,
+  nota_id: Uuid,
+  filial_id: Uuid.optional(),
+  cliente_id: Uuid,
+  cliente_razao_social: z.string().nullable().optional(),
+  numero: z.number().int(),
+  serie: z.number().int(),
+  parcela: z.number().int(),
+  total_parcelas: z.number().int(),
+  vencimento: DataCivil,
+  valor_centavos: Centavos,
+  saldo_centavos: Centavos,
+  status: StatusTitulo,
+  baixas: z.array(BaixaTitulo).optional(),
+});
+export type TituloResumo = z.infer<typeof TituloResumo>;
+
+/** `GET /v1/faturamento/titulos`. */
+export const FiltroTitulos = ConsultaPaginada.extend({ cliente_id: Uuid.optional(), status: StatusTitulo.optional(), de: DataCivil.optional(), ate: DataCivil.optional() });
+export type FiltroTitulos = z.infer<typeof FiltroTitulos>;
+
+/** Corpo de `POST /titulos/:id/baixas`: valor em centavos e data civil da baixa. */
+export const BaixarTituloEntrada = z.object({ valor_centavos: Centavos, data_baixa: DataCivil });
+export type BaixarTituloEntrada = z.infer<typeof BaixarTituloEntrada>;
+
+/** Corpo de `POST /titulos/:id/baixas/:baixa_id/estornar`: motivo de 15 a 255 caracteres. */
+export const EstornarBaixaEntrada = z.object({ motivo: z.string().trim().min(15).max(255) });
+export type EstornarBaixaEntrada = z.infer<typeof EstornarBaixaEntrada>;

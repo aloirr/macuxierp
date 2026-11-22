@@ -6,7 +6,7 @@
  */
 import { definirRota, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import {
-  CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroRejeicoes, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
+  CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
 import type { EventoNotaResumo } from '../contracts';
@@ -37,6 +37,14 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     c.enfileirar({ tipo: TRABALHO_PROCESSAR_EVENTO, payload: { evento_id }, external_id: `${evento_id}:${dh_evento}` });
 
   return [
+    // RF-FAT-01: fila do BKO "Pedidos a faturar" (pedidos aprovados que ainda têm saldo). Só leitura; a emissão é o POST /notas.
+    definirRota({
+      metodo: 'GET', caminho: '/pedidos-a-faturar', acao: 'faturamento.ver', consulta: FiltroPedidosAFaturar,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return { corpo: await deps.pedidos.listar(c.tx, e.consulta) };
+      },
+    }),
     definirRota({
       metodo: 'GET', caminho: '/notas', acao: 'faturamento.ver', consulta: FiltroNotas,
       async executar(c, e) {

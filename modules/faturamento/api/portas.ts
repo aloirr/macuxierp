@@ -9,7 +9,7 @@ import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
-import type { Ambiente, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
+import type { Ambiente, EventoNotaResumo, FiltroNotas, FiltroPedidosAFaturar, PedidoAFaturarResumo, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
 import type { ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
@@ -27,6 +27,8 @@ export interface PedidosAprovados {
   obter(tx: Transacao, pedido_id: string): Promise<PedidoFaturavel | null>;
   /** Consumidor de `pedido.pedido.aprovado@1`: idempotente por (tenant, pedido): evento repetido não regrava. */
   gravar(tx: Transacao, pedido: PedidoFaturavel): Promise<'novo' | 'repetido'>;
+  /** Fila do BKO (RF-FAT-01): sem filtro de status, só `a_faturar` e `faturado_parcial`; por cursor de `id`. */
+  listar(tx: Transacao, filtro: FiltroPedidosAFaturar): Promise<Pagina<PedidoAFaturarResumo>>;
 }
 
 /** Entrada do adaptador do cálculo fiscal (o fiscal.calculo@1 exige mais: regras, CFOP; quem implementa a porta os busca). */

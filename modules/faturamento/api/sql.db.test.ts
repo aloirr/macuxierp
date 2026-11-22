@@ -65,6 +65,10 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido_id).toBe(IDS.pedido);
     expect(await app.comTenant(B, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido))).toBeNull();
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
+    const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }));
+    expect(fila.itens).toHaveLength(1);
+    expect(fila.itens[0]).toMatchObject({ status: 'a_faturar', total_centavos: expect.any(Number) });
+    expect((await app.comTenant(B, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens).toHaveLength(0);
   });
 
   it('RN-FAT-01: emite sem buraco (100, 101), é idempotente pela chave, grava o conteúdo e o ambiente vem do banco', async () => {

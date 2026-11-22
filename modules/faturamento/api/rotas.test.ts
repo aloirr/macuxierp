@@ -44,6 +44,7 @@ describe('rotas /v1/faturamento', () => {
       'GET /notas/:id faturamento.ver',
       'GET /notas/:id/eventos faturamento.ver',
       'GET /notas/:id/xml faturamento.nota.emitir',
+      'GET /pedidos-a-faturar faturamento.ver',
       'GET /rejeicoes faturamento.ver',
       'POST /inutilizacoes faturamento.nota.emitir',
       'POST /notas faturamento.nota.emitir',
@@ -137,6 +138,17 @@ describe('rotas /v1/faturamento', () => {
     const a = ambiente('vendedor');
     await expect(a.chamar('GET', '/notas')).rejects.toMatchObject({ status: 403 });
     await expect(a.chamar('GET', '/rejeicoes')).rejects.toMatchObject({ status: 403 });
+    await expect(a.chamar('GET', '/pedidos-a-faturar')).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('RF-FAT-01: GET /pedidos-a-faturar lista a fila do repositório com o cursor da consulta; o perfil de leitura enxerga, o filtro inválido é recusado', async () => {
+    const a = ambiente('leitura');
+    const chamadas: unknown[] = [];
+    a.deps.pedidos.listar = async (_tx, f) => (chamadas.push(f), { itens: [], proximo_cursor: null });
+    const r = await a.chamar('GET', '/pedidos-a-faturar', { consulta: { status: 'faturado_parcial', de: '2026-11-01' } });
+    expect(r.corpo).toEqual({ itens: [], proximo_cursor: null });
+    expect(chamadas[0]).toMatchObject({ status: 'faturado_parcial', de: '2026-11-01', limite: 50 });
+    await expect(a.chamar('GET', '/pedidos-a-faturar', { consulta: { status: 'inventado' } })).rejects.toBeDefined();
   });
 });
 
@@ -221,6 +233,7 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     const vistos = new Set<string>();
     const c = criarConsumidorPedidoAprovado({
       obter: async () => null,
+      listar: async () => ({ itens: [], proximo_cursor: null }),
       gravar: async (_t, p) => {
         gravados.push(p.pedido_id);
         if (vistos.has(p.pedido_id)) return 'repetido';
