@@ -66,7 +66,7 @@ export interface FormularioMotivo {
 
 export type ResultadoDecisao<T> = { ok: true; corpo: T } | { ok: false; erros: Record<string, string> };
 
-const ESPECIFICAS_MOTIVO = { motivo_codigo: 'Escolha o motivo', motivo_texto: 'Descreva o motivo' };
+const ESPECIFICAS_MOTIVO = { motivo_codigo: 'Motivo obrigatório. Escolha o motivo.', motivo_texto: 'Motivo obrigatório. Descreva o motivo.' };
 
 /** Valida o motivo antes de enviar com o schema do contrato (a API revalida); o texto só segue em "outro". */
 export function validarMotivo(decisao: DecisaoComMotivo, f: FormularioMotivo): ResultadoDecisao<RecusarEntrada | CancelarEntrada> {
@@ -80,7 +80,7 @@ export function validarMotivo(decisao: DecisaoComMotivo, f: FormularioMotivo): R
 /** Valida a justificativa da aprovação: obrigatória na tela quando há pendência não bloqueante; o limite é o do contrato. */
 export function validarAprovacao(exigeJustificativa: boolean, justificativa: string): ResultadoDecisao<AprovarEntrada> {
   const t = justificativa.trim();
-  if (exigeJustificativa && !t) return { ok: false, erros: { justificativa: 'Explique por que aprova com pendência' } };
+  if (exigeJustificativa && !t) return { ok: false, erros: { justificativa: 'Justificativa obrigatória. Explique por que aprova com pendência.' } };
   const r = AprovarEntrada.safeParse(t ? { justificativa: t } : {});
   return r.success ? { ok: true, corpo: r.data } : { ok: false, erros: errosPorCampo(r.error.issues) };
 }

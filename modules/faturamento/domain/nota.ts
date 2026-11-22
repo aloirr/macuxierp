@@ -171,10 +171,15 @@ export interface EntradaMontagem extends EntradaItens {
 export type ResultadoItens = { ok: true; itens: NotaItemBase[] } | { ok: false; violacoes: Violacao[] };
 export type ResultadoMontagem = { ok: true; nota: NotaMontada } | { ok: false; violacoes: Violacao[] };
 
+/** RN-PED-02: só pedido `aprovado` ou `faturado_parcial` aceita nota (a API ao emitir e o worker ao assinar usam a mesma regra). */
+export function pedidoAceitaNota(status: string | null | undefined): boolean {
+  return status === 'aprovado' || status === 'faturado_parcial';
+}
+
 /** Passo 1 da nota: confere situação e saldo, e calcula valor, desconto, frete e outras por item (sem o cálculo fiscal). */
 export function ratearItens(e: EntradaItens): ResultadoItens {
   const v: Violacao[] = [];
-  if (e.situacao.status !== 'aprovado' && e.situacao.status !== 'faturado_parcial') {
+  if (!pedidoAceitaNota(e.situacao.status)) {
     return { ok: false, violacoes: [violacao('RN-PED-02', 'status', `Pedido em "${e.situacao.status}" não pode ser faturado.`)] };
   }
   const itensPedido = e.pedido.pedido.itens;

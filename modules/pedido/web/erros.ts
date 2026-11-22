@@ -9,15 +9,15 @@ export function chaveDoCampo(path: readonly (string | number)[], renomear: Reado
   return path.map((p) => (typeof p === 'string' ? (renomear[p] ?? p) : String(p))).join('.');
 }
 
-/** Mensagem em português para a issue: o limite máximo vem do Zod; nos demais casos quem chama sobrepõe por campo (`especificas`, pela chave final do path). */
+/** Mensagem em português (problema + ação, com ponto final) para a issue: o limite máximo vem do Zod; nos demais casos quem chama sobrepõe por campo (`especificas`, pela chave final do path). */
 export function mensagemDaIssue(i: ZodIssue, especificas: Readonly<Record<string, string>> = {}): string {
   const ultimo = String(i.path[i.path.length - 1] ?? '');
-  if (i.code === 'too_big') return `No máximo ${String(i.maximum)} ${i.type === 'array' ? 'itens' : 'caracteres'}`;
+  if (i.code === 'too_big') return i.type === 'array' ? `Itens demais. Inclua no máximo ${String(i.maximum)} itens.` : `Texto longo demais. Use no máximo ${String(i.maximum)} caracteres.`;
   const propria = especificas[ultimo];
   if (propria) return propria;
-  if (i.code === 'too_small') return i.type === 'array' ? 'Inclua ao menos um item' : 'Preencha o campo';
-  if (i.code === 'invalid_enum_value') return 'Escolha uma das opções';
-  return 'Valor inválido';
+  if (i.code === 'too_small') return i.type === 'array' ? 'Nenhum item. Inclua ao menos um item.' : 'Campo obrigatório. Preencha o campo.';
+  if (i.code === 'invalid_enum_value') return 'Opção inválida. Escolha uma das opções.';
+  return 'Valor inválido. Confira o campo.';
 }
 
 /** Primeira mensagem de cada campo (a ordem do Zod é a da tela). */
