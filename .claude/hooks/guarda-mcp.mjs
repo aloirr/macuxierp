@@ -39,7 +39,9 @@ try {
   if ((entrada.hook_event_name || 'PreToolUse') !== 'PreToolUse' || !ferramenta.startsWith('mcp__')) process.exit(0);
   const { classificarFerramentaMcp, conferirFerramentaMcp } = await import('./guarda-mcp-lib.mjs');
   const classe = classificarFerramentaMcp(ferramenta, entrada.tool_input || {});
-  if (!classe || classe === 'merge' || classe === 'leitura' || classe === 'outro') process.exit(0);
+  // add_repo (claude-code-remote) passa pela conferência mesmo sendo da classe 'outro' (motivoAnexarRepositorio).
+  const anexa = /__add_?repo$/i.test(ferramenta);
+  if (!anexa && (!classe || classe === 'merge' || classe === 'leitura' || classe === 'outro')) process.exit(0);
   const {
     RAIZ, agenteDaSessao, podeAlterar, caminhoRelativo, carregarDonos, juncoesDeRecados, relativoPorJuncao, MOTIVO_CLONE_DE_RECADOS,
   } = await import('../../scripts/coord-lib.mjs');

@@ -30,7 +30,7 @@
 //     (o verificar --por-commit do CI exige o trailer); subagente e sessão sem agente do time = BLOQUEADO;
 //  d) sessão manual local (sem agente): só a) e b).
 import { partesFerramentaMcp, tipoFerramentaMerge, ultimoBlocoDaMensagem, REPO_OFICIAL } from './guarda-merge-lib.mjs';
-import { PESSOAS, CAMINHOS_DE_GOVERNANCA, globParaRegex } from '../../scripts/coord-lib.mjs';
+import { PESSOAS, CAMINHOS_DE_GOVERNANCA, globParaRegex, REPO_RECADOS } from '../../scripts/coord-lib.mjs';
 
 const CABECALHO = '[guardião Macuxi] BLOQUEADO (ferramenta MCP):';
 const RE_GOVERNANCA = CAMINHOS_DE_GOVERNANCA.map(globParaRegex);
@@ -150,7 +150,7 @@ const ehAlexandre = (agente) => agente === 'alexandre';
  * @returns {{ok: boolean, classe: string|null, mensagem?: string}}
  */
 /** Repositório que os agentes podem anexar à sessão pelo add_repo. */
-export const REPO_ANEXAVEL = 'aloirr/macuxierp-recados';
+export const REPO_ANEXAVEL = REPO_RECADOS;
 
 /** Motivo para barrar o add_repo (null = passa): só o alexandre anexa outro repositório que não o de recados. */
 export function motivoAnexarRepositorio(ferramenta, entrada = {}, agente = '') {
