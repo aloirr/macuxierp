@@ -180,7 +180,7 @@ export function repoFake() {
     async listarRejeicoes(_t, f) {
       const linhas = [...notas.values()]
         .filter((n) => n.status === 'rejeitada')
-        .map((n) => ({ id: n.id, filial_id: n.filial_id, pedido_id: n.pedido_id, serie: n.serie, numero: n.numero, codigo: '778', mensagem: 'Rejeicao: NCM inexistente', rejeitada_em: n.emitida_em, acao_sugerida: interpretarRetorno('778', '').acao }));
+        .map((n) => ({ id: n.id, filial_id: n.filial_id, pedido_id: n.pedido_id, ambiente: n.ambiente, serie: n.serie, numero: n.numero, codigo: '778', mensagem: 'Rejeicao: NCM inexistente', rejeitada_em: n.emitida_em, acao_sugerida: interpretarRetorno('778', '').acao }));
       return paginar(linhas, f.limite);
     },
     async pendentesDeTransmissao(_t, limite, paradasHaMinutos, esperaEnvioPendenteMin) {
@@ -411,7 +411,7 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
   const deps: DepsEmissao & Pick<DepsEventos, 'eventos'> = {
     log: () => undefined,
     emissor: espiao.emissor,
-    pedidos: { obter: async () => pedido, gravar: async () => 'novo', marcarCancelado: async () => undefined },
+    pedidos: { obter: async () => pedido, gravar: async () => 'novo', marcarCancelado: async () => undefined, listar: async () => ({ itens: [], proximo_cursor: null }) },
     situacao: { situacao: async () => situacao },
     cadastros: {
       filial: async () => ({

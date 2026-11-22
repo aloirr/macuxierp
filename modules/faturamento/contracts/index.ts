@@ -186,6 +186,11 @@ export const NotaResumo = z.object({
   protocolo: z.string().nullable(),
   c_stat: z.number().int().nullable(),
   x_motivo: z.string().nullable(),
+  /** Só na lista do BKO (RF-FAT-08 / T-0021 item C): nome do destinatário no retrato da nota; ausente nos eventos e no painel de rejeições. */
+  cliente_razao_social: z.string().nullable().optional(),
+  /** Para as colunas "Filial" e "Pedido" do BKO. PENDENTE na API (hoje ausentes): nome da filial vem do cadastros e o número do pedido do retrato em `pedido_a_faturar`. */
+  filial_nome: z.string().nullable().optional(),
+  pedido_numero: z.number().int().nullable().optional(),
 });
 export type NotaResumo = z.infer<typeof NotaResumo>;
 
@@ -194,11 +199,17 @@ export const NotaDetalhe = NotaResumo.extend({
   tipo_emissao: TipoEmissao,
   recibo: z.string().nullable(),
   itens: z.array(ItemNotaEvento),
+  /** RF-FAT-08: só na nota `rejeitada`, a ação sugerida para o cStat/xMotivo (mesma do painel `GET /rejeicoes`). */
+  acao_sugerida: z.string().nullable().optional(),
+  /** Base do prazo de cancelamento (RN-FAT-02): a tela só oferece o botão dentro de 24 h; a API revalida. */
+  autorizada_em: z.string().datetime().nullable().optional(),
+  /** Há cancelamento `pendente` (aguardando a SEFAZ): a tela bloqueia novo cancelamento e a CC-e até o retorno. */
+  cancelamento_pendente: z.boolean().optional(),
 });
 export type NotaDetalhe = z.infer<typeof NotaDetalhe>;
 
 /** Local até o sdk exportar a data civil (RD-0369). */
-const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** `GET /v1/faturamento/notas`: filtros na URL (o BKO mantém o link). `de` e `ate` são datas civis do fuso do tenant. */
 export const FiltroNotas = ConsultaPaginada.extend({
@@ -213,6 +224,35 @@ export const FiltroNotas = ConsultaPaginada.extend({
   ate: DataCivil.optional(),
 });
 export type FiltroNotas = z.infer<typeof FiltroNotas>;
+
+/** Status do pedido na fila de faturamento (`faturamento.pedido_a_faturar.status`). */
+export const StatusPedidoAFaturar = z.enum(['a_faturar', 'faturado_parcial', 'faturado', 'cancelado']);
+export type StatusPedidoAFaturar = z.infer<typeof StatusPedidoAFaturar>;
+
+/** `GET /v1/faturamento/pedidos-a-faturar` (RF-FAT-01): por padrão só `a_faturar` e `faturado_parcial`. `de`/`ate` = data do recebimento (fuso do tenant). */
+export const FiltroPedidosAFaturar = ConsultaPaginada.extend({
+  filial_id: Uuid.optional(),
+  cliente_id: Uuid.optional(),
+  status: StatusPedidoAFaturar.optional(),
+  de: DataCivil.optional(),
+  ate: DataCivil.optional(),
+});
+export type FiltroPedidosAFaturar = z.infer<typeof FiltroPedidosAFaturar>;
+
+export const PedidoAFaturarResumo = z.object({
+  id: Uuid,
+  pedido_id: Uuid,
+  numero: z.number().int().nullable(),
+  filial_id: Uuid,
+  cliente_id: Uuid,
+  cliente_razao_social: z.string().nullable(),
+  status: StatusPedidoAFaturar,
+  /** RN-FAT-04: ambiente da filial emissora (`faturamento.ambiente_da_filial`; sem configuração = homologação, a falha segura). */
+  ambiente: Ambiente,
+  total_centavos: Centavos,
+  recebido_em: z.string().datetime(),
+});
+export type PedidoAFaturarResumo = z.infer<typeof PedidoAFaturarResumo>;
 
 /** `PUT /v1/faturamento/filiais/:id/configuracao` (só administrador; `Idempotency-Key` obrigatória). Desligada por padrão. A nota segue de homologação no XML (tpAmb 2, "SEM VALOR FISCAL"). */
 export const ConfigurarFilialEntrada = z.object({ faturamento_real_nfe_simulada: z.boolean() });
@@ -282,12 +322,17 @@ export const RejeicaoNota = z.object({
   id: Uuid,
   filial_id: Uuid,
   pedido_id: Uuid.nullable(),
+  /** A lista de rejeições mostra o selo de homologação (RN-FAT-04). */
+  ambiente: Ambiente,
   serie: z.number().int(),
   numero: z.number().int().nullable(),
   codigo: z.string().nullable(),
   mensagem: z.string().nullable(),
   acao_sugerida: z.string(),
   rejeitada_em: z.string().datetime(),
+  /** Mesmos campos opcionais da `NotaResumo` (pendentes na API). */
+  filial_nome: z.string().nullable().optional(),
+  pedido_numero: z.number().int().nullable().optional(),
 });
 export type RejeicaoNota = z.infer<typeof RejeicaoNota>;
 
@@ -298,12 +343,15 @@ export type TransmitirNotaPayload = z.infer<typeof TransmitirNotaPayload>;
 
 // ---- Eventos fiscais (T-0021, lote 2): cancelamento, CC-e, inutilização e consulta (RN-FAT-01, RN-FAT-02, RN-FAT-03) ----
 
+/** Limites de caracteres (após o trim) dos textos dos eventos fiscais: a tela e a API leem daqui (RN-FAT-02, RN-FAT-01). */
+export const LIMITES_TEXTO = { justificativa: { min: 15, max: 255 }, cartaCorrecao: { min: 15, max: 1000 } } as const;
+
 /** `POST /v1/faturamento/notas/:id/cancelar`: só nota autorizada, até 24 h da autorização (RN-FAT-02). */
-export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(15).max(255) });
+export const CancelarNotaEntrada = z.object({ justificativa: z.string().trim().min(LIMITES_TEXTO.justificativa.min).max(LIMITES_TEXTO.justificativa.max) });
 export type CancelarNotaEntrada = z.infer<typeof CancelarNotaEntrada>;
 
 /** `POST /v1/faturamento/notas/:id/carta-correcao`: só nota autorizada, até 20 por nota (RN-FAT-02). */
-export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(15).max(1000) });
+export const CartaCorrecaoEntrada = z.object({ texto: z.string().trim().min(LIMITES_TEXTO.cartaCorrecao.min).max(LIMITES_TEXTO.cartaCorrecao.max) });
 export type CartaCorrecaoEntrada = z.infer<typeof CartaCorrecaoEntrada>;
 
 /** `POST /v1/faturamento/inutilizacoes`: faixa da série da filial emissora (RN-FAT-01). Sem `serie` = a da filial; sem `ano` = o do ano corrente (Manaus). */
@@ -314,7 +362,7 @@ export const InutilizarEntrada = z
     numero_inicial: z.number().int().min(1).max(999_999_999),
     numero_final: z.number().int().min(1).max(999_999_999),
     ano: z.number().int().min(2000).max(2099).optional(),
-    justificativa: z.string().trim().min(15).max(255),
+    justificativa: z.string().trim().min(LIMITES_TEXTO.justificativa.min).max(LIMITES_TEXTO.justificativa.max),
   })
   .refine((e) => e.numero_inicial <= e.numero_final, { message: 'o número inicial não pode ser maior que o final', path: ['numero_final'] });
 export type InutilizarEntrada = z.infer<typeof InutilizarEntrada>;

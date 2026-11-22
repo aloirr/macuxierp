@@ -9,7 +9,7 @@ import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
-import type { Ambiente, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
+import type { Ambiente, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, FiltroPedidosAFaturar, PedidoAFaturarResumo, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
 import type { StatusFilaFaturar, ParcelaGerada, ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
@@ -35,6 +35,8 @@ export interface PedidosAprovados {
   gravar(tx: Transacao, pedido: PedidoFaturavel, status?: StatusFilaFaturar): Promise<'novo' | 'repetido'>;
   /** Reentrega de pedido cancelado: marca `cancelado` se já estiver na fila; se não estiver, não grava nada. */
   marcarCancelado(tx: Transacao, pedido_id: string): Promise<void>;
+  /** Fila do BKO (RF-FAT-01): sem filtro de status, só `a_faturar` e `faturado_parcial`; por cursor de `id`. */
+  listar(tx: Transacao, filtro: FiltroPedidosAFaturar): Promise<Pagina<PedidoAFaturarResumo>>;
 }
 
 /** Entrada do adaptador do cálculo fiscal (o fiscal.calculo@1 exige mais: regras, CFOP; quem implementa a porta os busca). */
