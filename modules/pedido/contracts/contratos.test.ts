@@ -43,9 +43,9 @@ describe('ResultadoRecebimentoFdv', () => {
   it('aceita repetido com qualquer StatusPedido', () => {
     for (const status of StatusPedido.options) expect(ResultadoRecebimentoFdv.safeParse({ resultado: 'repetido', pedido_id: id, numero: 1, status }).success).toBe(true);
   });
-  it('os códigos de recusa são exatamente os 10 esperados', () => {
+  it('os códigos de recusa são exatamente os 11 esperados', () => {
     expect([...CodigoRecusaRecebimento.options].sort()).toEqual(
-      ['cliente_inativo', 'cliente_inexistente', 'condicao_inativa', 'condicao_inexistente', 'filial_inexistente', 'filial_nao_emissora', 'item_incoerente', 'modulo_pedido_inativo', 'produto_inativo', 'produto_inexistente'],
+      ['cliente_inativo', 'cliente_inexistente', 'condicao_ausente', 'condicao_inativa', 'condicao_inexistente', 'filial_inexistente', 'filial_nao_emissora', 'item_incoerente', 'modulo_pedido_inativo', 'produto_inativo', 'produto_inexistente'],
     );
   });
 });
