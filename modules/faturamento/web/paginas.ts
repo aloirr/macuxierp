@@ -2,7 +2,7 @@
  * Páginas do BKO do faturamento, descritas como dados (rota, menu, API, colunas, filtros na URL, CSV e permissão). O shell desenha;
  * a proteção real é da API (RN-CORE-02). O vendedor não vê nada daqui (a API responde 403): `perfilVeFaturamento`.
  */
-import { pode, type Perfil, type PaginaBase } from '@macuxierp/platform-sdk';
+import { FUSO_PADRAO, pode, type Perfil, type PaginaBase } from '@macuxierp/platform-sdk';
 import { definirPaginaLista, filtrosDaUrl, paraCsv, urlDaLista, type ColunaLista } from '@macuxierp/platform-sdk/listas';
 import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import {
@@ -10,12 +10,6 @@ import {
 } from '../contracts';
 import { BASE_API, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, numeroSerie, seloDoAmbiente, seloDoPedido, textoDoAmbiente, type Selo } from './notas';
 import { hojeCivil, situacaoDoTitulo } from './titulos';
-
-/**
- * Fuso só dos descritores abaixo (`paginaNotas.colunas` etc.), que servem a `definirPaginaLista` e à API. O shell NÃO usa esse fuso:
- * desenha com `colunasDaPagina(id, fuso)` e `csvDaPagina(pagina, linhas, fuso)`, passando o fuso do tenant (`eu.empresa.fuso`).
- */
-const FUSO_PADRAO = 'America/Manaus';
 
 /** Local até o sdk ter `formatarDataCivil` (RD-0590): AAAA-MM-DD vira DD/MM/AAAA. */
 const dataCivil = (d: string): string => (DataCivil.safeParse(d).success ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : d);
@@ -36,13 +30,13 @@ const seloDe = (a: Parameters<typeof seloDoAmbiente>[0]): readonly Selo[] => {
 };
 
 /** Número/Série: primeira coluna das listas de nota e de rejeição. */
-const colunaNumeracao = <L extends { numero: number | null; serie: number }>(): ColunaFaturamento<L> => ({ id: 'numero', titulo: 'Número/Série', valor: (l) => numeroSerie(l) });
+const colunaNumeracao = <L extends { numero: number | null; serie: number }>(): ColunaFaturamento<L> => ({ id: 'numero', titulo: 'Número/Série', tipo: 'numero', valor: (l) => numeroSerie(l) });
 const colunaAmbiente = <L extends { ambiente: Parameters<typeof textoDoAmbiente>[0] }>(): ColunaFaturamento<L> => ({
   id: 'ambiente', titulo: 'Ambiente', valor: (l) => textoDoAmbiente(l.ambiente), selos: (l) => seloDe(l.ambiente),
 });
 
 const colunasPedidos: Fabrica<PedidoAFaturarResumo> = (fuso) => [
-  { id: 'numero', titulo: 'Pedido', valor: (p) => p.numero },
+  { id: 'numero', titulo: 'Pedido', tipo: 'numero', valor: (p) => p.numero },
   { id: 'cliente', titulo: 'Cliente', valor: (p) => ou(p.cliente_razao_social) },
   { id: 'total', titulo: 'Total', tipo: 'dinheiro', valor: (p) => valor(p.total_centavos) },
   { id: 'status', titulo: 'Status', tipo: 'status', valor: (p) => ROTULO_STATUS_PEDIDO[p.status], selos: (p) => [seloDoPedido(p.status)] },
@@ -53,7 +47,7 @@ const colunasPedidos: Fabrica<PedidoAFaturarResumo> = (fuso) => [
 
 const colunasNotas: Fabrica<NotaResumo> = (fuso) => [
   colunaNumeracao(),
-  { id: 'pedido', titulo: 'Pedido', valor: (n) => ou(n.pedido_numero == null ? null : String(n.pedido_numero)) },
+  { id: 'pedido', titulo: 'Pedido', tipo: 'numero', valor: (n) => ou(n.pedido_numero == null ? null : String(n.pedido_numero)) },
   { id: 'filial', titulo: 'Filial', valor: (n) => ou(n.filial_nome) },
   { id: 'cliente', titulo: 'Cliente', valor: (n) => ou(n.cliente_razao_social) },
   { id: 'status', titulo: 'Status', tipo: 'status', valor: (n) => ROTULO_STATUS_NOTA[n.status].texto, selos: (n) => [ROTULO_STATUS_NOTA[n.status]] },
@@ -76,8 +70,8 @@ const colunasTitulos: Fabrica<TituloResumo> = () => {
   return [
     { id: 'cliente', titulo: 'Cliente', valor: (t) => ou(t.cliente_razao_social) },
     // O título só traz o número da nota (sem série no contrato): fica o número.
-    { id: 'nota', titulo: 'Nota', valor: (t) => String(t.numero) },
-    { id: 'parcela', titulo: 'Parcela', valor: (t) => `${t.parcela}/${t.total_parcelas}` },
+    { id: 'nota', titulo: 'Nota', tipo: 'numero', valor: (t) => String(t.numero) },
+    { id: 'parcela', titulo: 'Parcela', tipo: 'numero', valor: (t) => `${t.parcela}/${t.total_parcelas}` },
     { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', valor: (t) => dataCivil(t.vencimento) },
     { id: 'valor', titulo: 'Valor', tipo: 'dinheiro', valor: (t) => valor(t.valor_centavos) },
     { id: 'saldo', titulo: 'Saldo', tipo: 'dinheiro', valor: (t) => valor(t.saldo_centavos) },
@@ -141,9 +135,18 @@ const fabricaDe = (id: string): Fabrica<unknown> | undefined => (Object.hasOwn(F
 
 /** CSV da lista que o usuário está vendo, com as datas no fuso do tenant e proteção contra fórmula (RF-FAT-08). */
 export function csvDaPagina(pagina: { id: string }, linhas: readonly unknown[], fuso: string): string {
+  return paraCsv(paginaNoFuso(pagina as { id: string; colunas: readonly ColunaLista<never>[] }, fuso).colunas as readonly ColunaLista<unknown>[], linhas);
+}
+
+/**
+ * A página com as colunas de data e hora no fuso do tenant (a API usa nas rotas `/exportar` de notas, pedidos e rejeições; títulos têm data civil).
+ * O `colunas` do descritor fica no `FUSO_PADRAO` do SDK (serve só a `definirPaginaLista`); o shell usa `colunasDaPagina(id, fuso)` e `csvDaPagina(pagina, linhas, fuso)`
+ * com `eu.empresa.fuso`. Não dá para usar o 4º argumento do `csvDaLista` (RD-0788): as colunas já formatam a data na fábrica, e o SDK só converte ISO cru.
+ */
+export function paginaNoFuso<P extends { id: string; colunas: readonly ColunaLista<never>[] }>(pagina: P, fuso: string): P {
   const fabrica = fabricaDe(pagina.id);
   if (!fabrica) throw new Error(`página sem colunas: ${pagina.id}`);
-  return paraCsv(fabrica(fuso), linhas);
+  return { ...pagina, colunas: fabrica(fuso) as unknown as P['colunas'] };
 }
 
 /** Colunas da tabela no fuso do tenant (o shell chama com `eu.empresa.fuso`). */

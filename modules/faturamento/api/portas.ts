@@ -36,7 +36,8 @@ export interface PedidosAprovados {
   /** Reentrega de pedido cancelado: marca `cancelado` se já estiver na fila; se não estiver, não grava nada. */
   marcarCancelado(tx: Transacao, pedido_id: string): Promise<void>;
   /** Fila do BKO (RF-FAT-01): sem filtro de status, só `a_faturar` e `faturado_parcial`; por cursor de `id`. */
-  listar(tx: Transacao, filtro: FiltroPedidosAFaturar): Promise<Pagina<PedidoAFaturarResumo>>;
+  /** `fuso`: como em `NotasRepositorio.listar` (filtros `de`/`ate` sobre `recebido_em`). */
+  listar(tx: Transacao, filtro: FiltroPedidosAFaturar, fuso: string): Promise<Pagina<PedidoAFaturarResumo>>;
   /**
    * Detalhe da fila (`id` = linha de `pedido_a_faturar`): resumo e itens com quantidade já faturada e saldo (ver `PedidoAFaturarItem`).
    * `situacaoDe` lê a situação do pedido pela porta `situacao` (mesma conta da emissão). Nulo = não existe (ou é de outro tenant, RLS).
@@ -267,7 +268,8 @@ export interface RepositorioNotas {
   publicarEvento(tx: Transacao, evento: { nome: string; agregado_id: string; payload: Record<string, unknown> }): Promise<void>;
 
   // Leituras das rotas e do worker
-  listar(tx: Transacao, filtro: FiltroNotas): Promise<Pagina<NotaResumo>>;
+  /** `fuso` (IANA do tenant, `fusoDaRota(c)`): onde os filtros `de`/`ate` (datas civis) começam e terminam. Obrigatório na porta; o padrão `FUSO_PADRAO` fica só no adaptador SQL e no dublê. */
+  listar(tx: Transacao, filtro: FiltroNotas, fuso: string): Promise<Pagina<NotaResumo>>;
   detalhar(tx: Transacao, nota_id: string): Promise<NotaDetalhe | null>;
   /** XML autorizado guardado (nulo se a nota ainda não o tem). */
   lerXmlAutorizado(tx: Transacao, nota_id: string): Promise<{ xml: string; protocolo: string; chave_acesso: string } | null>;

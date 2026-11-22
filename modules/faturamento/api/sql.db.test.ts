@@ -14,6 +14,7 @@ import { configuracaoFaturamentoSql } from './sql-configuracao';
 import { criarPluginFaturamento } from './index';
 import { criarTransmissor } from './transmissor';
 
+const MANAUS = 'America/Manaus';
 describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, migração 0013)', () => {
   let efemero: BancoEfemero;
   let app: BancoPg;
@@ -74,11 +75,11 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido_id).toBe(IDS.pedido);
     expect(await app.comTenant(B, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido))).toBeNull();
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
-    const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }));
+    const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }, MANAUS));
     expect(fila.itens).toHaveLength(1);
     // RN-FAT-04: cada linha traz o ambiente da filial emissora (sem configuração em core.ambiente_fiscal = homologação, a falha segura).
     expect(fila.itens[0]).toMatchObject({ status: 'a_faturar', total_centavos: expect.any(Number), ambiente: 'homologacao' });
-    expect((await app.comTenant(B, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens).toHaveLength(0);
+    expect((await app.comTenant(B, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }, MANAUS))).itens).toHaveLength(0);
   });
 
   it('RF-FAT-01: reentrega de aprovado antigo: grava com o status da situação atual, só atualiza quando o status muda e marcarCancelado não cria linha', async () => {
@@ -107,10 +108,24 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect((await admin('SELECT numero_inicial, proximo FROM faturamento.serie_numeracao'))[0]).toMatchObject({ numero_inicial: 100, proximo: 102 });
     expect(await app.comTenant(A, (tx) => tx.consultar('SELECT * FROM faturamento.buracos_numeracao()'))).toEqual([]);
     expect(await app.comTenant(B, (tx) => repos.notas.obter(tx, r1.nota.id))).toBeNull();
-    expect((await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50 }))).itens).toHaveLength(2);
+    expect((await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50 }, MANAUS))).itens).toHaveLength(2);
     const cont = await app.comTenant(A, (tx) => repos.notas.lerConteudo(tx, r1.nota.id));
     expect(cont?.itens.map((i) => [i.sequencia, i.quantidade, i.origem, i.calculo.cfop])).toEqual([[1, 20_000, '0', '5102'], [2, 10_000, '0', '5102']]);
     expect(cont?.cobranca?.parcelas).toHaveLength(2);
+  });
+
+  it('RD-0772: o filtro de/até das notas e dos pedidos a faturar respeita o fuso pedido (Manaus UTC-4 x Sao_Paulo UTC-3)', async () => {
+    const r = await emitir(A, 'idem-db-fuso-1');
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    // 03:30Z de 21/11 = 20/11 23:30 em Manaus (UTC-4) e 21/11 00:30 em Sao_Paulo (UTC-3)
+    await admin("UPDATE faturamento.nota SET emitida_em = '2026-11-21T03:30:00Z' WHERE id = $1", [r.nota.id]);
+    await admin("UPDATE faturamento.pedido_a_faturar SET recebido_em = '2026-11-21T03:30:00Z' WHERE pedido_id = $1", [r.nota.pedido_id]);
+    const n = (dia: string, fuso = MANAUS) => app.comTenant(A, async (tx) => (await repos.notas.listar(tx, { limite: 50, de: dia, ate: dia, pedido_id: r.nota.pedido_id! }, fuso)).itens.length);
+    const p = (dia: string, fuso = MANAUS) => app.comTenant(A, async (tx) => (await pedidosAprovadosSql.listar(tx, { limite: 50, de: dia, ate: dia }, fuso)).itens.length);
+    expect([await n('2026-11-20'), await n('2026-11-21')]).toEqual([1, 0]); // padrão = Manaus: dia 20
+    expect([await n('2026-11-20', 'America/Sao_Paulo'), await n('2026-11-21', 'America/Sao_Paulo')]).toEqual([0, 1]);
+    expect([await p('2026-11-20'), await p('2026-11-21')]).toEqual([1, 0]);
+    expect([await p('2026-11-20', 'America/Sao_Paulo'), await p('2026-11-21', 'America/Sao_Paulo')]).toEqual([0, 1]);
   });
 
   it('RF-FAT-01: GET detalhe do pedido a faturar traz os itens com quantidade faturada pelo faturamento e saldo; outro tenant e id inexistente dão null (RLS)', async () => {
@@ -145,7 +160,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
   it('RF-FAT-08: a lista de notas traz pedido_numero (retrato da fila) e filial_nome (emitente_retrato da própria nota, sem ler o cadastros)', async () => {
     const r = await emitir(A, 'idem-db-0001');
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
-    const lista = await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50, pedido_id: r.nota.pedido_id! }));
+    const lista = await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50, pedido_id: r.nota.pedido_id! }, MANAUS));
     expect(lista.itens).toHaveLength(1);
     expect(lista.itens[0]).toMatchObject({ pedido_numero: pedido.numero, filial_nome: 'EMITENTE LTDA' }); // sem fantasia, vale a razão social
     // o detalhe da nota traz os mesmos dois campos, pela mesma projeção
@@ -155,7 +170,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     await admin("ALTER TABLE faturamento.nota DISABLE TRIGGER USER");
     try {
       await admin("UPDATE faturamento.nota SET emitente_retrato = emitente_retrato || jsonb_build_object('fantasia', 'Matriz Manaus') WHERE id = $1", [r.nota.id]);
-      com = await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50, pedido_id: r.nota.pedido_id! }));
+      com = await app.comTenant(A, (tx) => repos.notas.listar(tx, { limite: 50, pedido_id: r.nota.pedido_id! }, MANAUS));
       detCom = await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id));
     } finally {
       await admin("ALTER TABLE faturamento.nota ENABLE TRIGGER USER");
@@ -218,7 +233,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     await admin("INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao) VALUES ($1, $2, 'producao', 'R-20261122-000000-alexandre')", [A, IDS.filial]);
     // A fila a faturar mostra o mesmo ambiente que a emissão usa (a lista nunca promete homologação para filial em produção).
-    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens.filter((i) => i.filial_id === IDS.filial).map((i) => i.ambiente)).toEqual(expect.arrayContaining(['producao']));
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }, MANAUS))).itens.filter((i) => i.filial_id === IDS.filial).map((i) => i.ambiente)).toEqual(expect.arrayContaining(['producao']));
     const { tr, t } = transmissor(s);
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('ambiente_mudou');
     expect(t.chamadas).toEqual([]);
@@ -300,7 +315,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     await app.comTenant(C, (tx) => pedidosAprovadosSql.gravar(tx, pedido));
     const total = async (v: string) => {
       await admin(`UPDATE faturamento.pedido_a_faturar SET payload = jsonb_set(payload, '{total_centavos}', '${v}'::jsonb) WHERE tenant_id = $1`, [C]);
-      return app.comTenant(C, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }));
+      return app.comTenant(C, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }, MANAUS));
     };
     expect((await total('9007199254740991')).itens[0]?.total_centavos).toBe(9_007_199_254_740_991);
     await expect(total('9007199254740993')).rejects.toThrow(/faixa segura/);
