@@ -2,8 +2,6 @@ import { ErroApi, erros, type CamposErro, type EntradaRota } from '@macuxierp/pl
 import { PADRAO_UUID } from '@macuxierp/platform-sdk';
 import type { Violacao } from '../domain';
 
-export const naoEncontrado = (o = 'Registro') => new ErroApi(404, 'NAO_ENCONTRADO', `${o} não encontrado`);
-
 /** Regra de negócio violada → 422 com o código da RN; decisões "D*" (configuração) → 400 de validação. */
 export function erroDeViolacoes(v: readonly Violacao[]): ErroApi {
   const primeira = v[0];
@@ -18,7 +16,7 @@ export function exigir(v: readonly Violacao[]): void {
 
 export function idDe(e: EntradaRota<unknown, unknown>, nome = 'id'): string {
   const id = e.params[nome];
-  if (!id || !PADRAO_UUID.test(id)) throw naoEncontrado();
+  if (!id || !PADRAO_UUID.test(id)) throw erros.naoEncontrado('Registro');
   return id;
 }
 

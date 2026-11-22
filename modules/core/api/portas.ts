@@ -104,7 +104,7 @@ export interface RepositorioCore {
   substituirCertificado(tx: Transacao, novo: NovoCertificado, agora: Date): Promise<void>;
 
   ambientes(tx: Transacao, filialId?: string): Promise<LinhaAmbiente[]>;
-  gravarAmbiente(tx: Transacao, a: LinhaAmbiente & { alterado_por: string }, agora: Date): Promise<void>;
+  gravarAmbiente(tx: Transacao, a: LinhaAmbiente & { ambiente: 'homologacao'; alterado_por: string }, agora: Date): Promise<void>;
 
   auditoria(tx: Transacao, f: { entidade?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]>;
 

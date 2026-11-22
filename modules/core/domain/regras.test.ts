@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avaliarTrocaAmbiente } from './ambiente';
+import { avaliarTrocaAmbienteTenant, MENSAGEM_PRODUCAO_DO_OPERADOR } from './ambiente';
 import { alertaVencimento, avaliarA1Valido, avaliarCertificado, diasParaVencer } from './certificado';
 import { avaliarAlteracaoUsuario, gerarSenhaProvisoria } from './usuarios';
 
@@ -55,26 +55,20 @@ describe('RF-CORE-04: alerta de vencimento do A1', () => {
   });
 });
 
-describe('RN-CORE-08: ambiente fiscal por filial', () => {
-  const ok = 'R-20261121-153000-alexandre';
-
-  it('RN-CORE-08: sem linha vale homologação (atual nulo) e voltar para homologação não pede recado', () => {
-    expect(avaliarTrocaAmbiente({ atual: null, novo: 'homologacao', recado: null })).toEqual({ ok: true, ambiente: 'homologacao', recado: null });
+describe('RN-CORE-08: ambiente fiscal por filial (ADR 0006)', () => {
+  it('RN-CORE-08: pedir produção é recusado para qualquer ambiente atual, inclusive produção', () => {
+    for (const atual of [null, 'homologacao', 'producao'] as const) {
+      expect(avaliarTrocaAmbienteTenant({ atual, novo: 'producao' })).toEqual({ ok: false, mensagem: MENSAGEM_PRODUCAO_DO_OPERADOR });
+    }
   });
 
-  it('RN-CORE-08: produção exige o recado de aprovação do Alexandre', () => {
-    expect(avaliarTrocaAmbiente({ atual: null, novo: 'producao', recado: null })).toMatchObject({ ok: false });
-    expect(avaliarTrocaAmbiente({ atual: 'homologacao', novo: 'producao', recado: 'R-20261121-153000-joao' })).toMatchObject({ ok: false });
-    expect(avaliarTrocaAmbiente({ atual: 'homologacao', novo: 'producao', recado: 'R-2026-alexandre' })).toMatchObject({ ok: false });
+  it('RN-CORE-08: voltar para homologação é permitido e só "muda" se a filial não está em homologação', () => {
+    expect(avaliarTrocaAmbienteTenant({ atual: 'homologacao', novo: 'homologacao' })).toEqual({ ok: true, ambiente: 'homologacao', muda: false });
+    expect(avaliarTrocaAmbienteTenant({ atual: 'producao', novo: 'homologacao' })).toEqual({ ok: true, ambiente: 'homologacao', muda: true });
   });
 
-  it('RN-CORE-08: aceita R-AAAAMMDD-HHMMSS-alexandre e com sufixo numérico, registrando o recado', () => {
-    expect(avaliarTrocaAmbiente({ atual: 'homologacao', novo: 'producao', recado: ok })).toEqual({ ok: true, ambiente: 'producao', recado: ok });
-    expect(avaliarTrocaAmbiente({ atual: null, novo: 'producao', recado: 'R-20261121-153000-2-alexandre' })).toMatchObject({ ok: true });
-  });
-
-  it('RN-CORE-08: voltar à homologação descarta o recado enviado', () => {
-    expect(avaliarTrocaAmbiente({ atual: 'producao', novo: 'homologacao', recado: ok })).toEqual({ ok: true, ambiente: 'homologacao', recado: null });
+  it('RN-CORE-08: sem linha, a homologação nasce explícita (muda = true)', () => {
+    expect(avaliarTrocaAmbienteTenant({ atual: null, novo: 'homologacao' })).toEqual({ ok: true, ambiente: 'homologacao', muda: true });
   });
 });
 

@@ -21,7 +21,14 @@ export interface ContextoRota {
   tx: Transacao;
   request_id: string;
   agora: Date;
-  publicar(evento: { nome: string; agregado_id: string; versao: number; payload: Record<string, unknown> }): Promise<EnvelopeEvento>;
+  /** Grava o evento na outbox da transação e devolve o envelope com a versão real do agregado. */
+  publicar(evento: {
+    nome: string;
+    agregado_id: string;
+    /** @deprecated ignorada; a versão vem da outbox (T-0034). */
+    versao: number;
+    payload: Record<string, unknown>;
+  }): Promise<EnvelopeEvento>;
   auditar(dados: DadosAuditoria): Promise<void>;
   /** Enfileira trabalho do próprio módulo para o worker (rotas que respondem 202, D5). */
   enfileirar(pedido: Omit<PedidoTrabalho, 'tenant_id'>): Promise<{ id: string }>;

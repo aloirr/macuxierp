@@ -47,10 +47,68 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores PostgreSQL da plataforma', () => {
 
   it('outbox grava o envelope inteiro e ele volta igual', async () => {
     const ator = randomUUID();
-    const e = criarEvento({ nome: 'cadastros.cliente.alterado@1', tenant_id: t1, agregado_id: randomUUID(), versao: 3, ator, request_id: 'r-1', payload: { inativo: false, nome: 'x' } }, new Date());
-    await app.comTenant(t1, (tx) => new OutboxPg().gravar(tx, e));
+    const e = criarEvento({ nome: 'cadastros.cliente.alterado@1', tenant_id: t1, agregado_id: randomUUID(), ator, request_id: 'r-1', payload: { inativo: false, nome: 'x' } }, new Date());
+    const versao = await app.comTenant(t1, (tx) => new OutboxPg().gravar(tx, e));
     const { rows } = await b.admin.query<LinhaEvento>(`SELECT ${SELECT_EVENTO} FROM plataforma.evento WHERE id = $1`, [e.id]);
-    expect(envelopeDaLinha(rows[0]!)).toEqual(e);
+    expect(envelopeDaLinha(rows[0]!)).toEqual({ ...e, versao });
+  });
+
+  describe('versão do evento por agregado (T-0034)', () => {
+    const evento = (tenant: string, agregado: string, nome = 'cadastros.cliente.alterado@1') =>
+      criarEvento({ nome, tenant_id: tenant, agregado_id: agregado, versao: 99, ator: 'sistema', request_id: 'r-versao', payload: {} }, new Date());
+    const versoes = async (tenant: string, agregado: string) =>
+      (await b.admin.query<{ versao: string }>('SELECT versao FROM plataforma.evento WHERE tenant_id = $1 AND agregado_id = $2 ORDER BY versao', [tenant, agregado])).rows.map((r) => Number(r.versao));
+
+    it('conta 1, 2... por (tenant, agregado), para qualquer nome, e ignora a versão recebida', async () => {
+      const [a, bAg] = [randomUUID(), randomUUID()];
+      const outbox = new OutboxPg();
+      expect(await app.comTenant(t1, (tx) => outbox.gravar(tx, evento(t1, a)))).toBe(1);
+      expect(await app.comTenant(t1, (tx) => outbox.gravar(tx, evento(t1, a, 'cadastros.carteira.alterada@1')))).toBe(2);
+      expect(await app.comTenant(t1, (tx) => outbox.gravar(tx, evento(t1, bAg)))).toBe(1);
+      expect(await app.comTenant(t2, (tx) => outbox.gravar(tx, evento(t2, a)))).toBe(1);
+      expect(await versoes(t1, a)).toEqual([1, 2]);
+      expect(await versoes(t1, bAg)).toEqual([1]);
+      expect(await versoes(t2, a)).toEqual([1]);
+    });
+
+    it('rollback não consome versão', async () => {
+      const a = randomUUID();
+      const outbox = new OutboxPg();
+      await expect(
+        app.comTenant(t1, async (tx) => {
+          expect(await outbox.gravar(tx, evento(t1, a))).toBe(1);
+          throw new Error('desfaz');
+        }),
+      ).rejects.toThrow('desfaz');
+      expect(await app.comTenant(t1, (tx) => outbox.gravar(tx, evento(t1, a)))).toBe(1);
+      expect(await versoes(t1, a)).toEqual([1]);
+    });
+
+    it('duas conexões no mesmo agregado ao mesmo tempo gravam 1 e 2, sem violar o UNIQUE', async () => {
+      const a = randomUUID();
+      const outbox = new OutboxPg();
+      const outra = b.banco('macuxierp_app', 1);
+      let soltar!: () => void;
+      const segura = new Promise<void>((r) => (soltar = r));
+      let gravou!: () => void;
+      const primeiraGravou = new Promise<void>((r) => (gravou = r));
+      // A primeira grava e segura a transação aberta (com o lock); a segunda entra e espera o lock.
+      const primeira = app.comTenant(t1, async (tx) => {
+        const v = await outbox.gravar(tx, evento(t1, a));
+        gravou();
+        await segura;
+        return v;
+      });
+      await primeiraGravou;
+      const segunda = outra.comTenant(t1, (tx) => outbox.gravar(tx, evento(t1, a, 'cadastros.carteira.alterada@1')));
+      const esperandoLock = async () =>
+        Number((await b.admin.query<{ n: string }>(`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`)).rows[0]!.n);
+      for (let i = 0; i < 200 && (await esperandoLock()) === 0; i++) await new Promise((r) => setTimeout(r, 10));
+      expect(await esperandoLock()).toBe(1);
+      soltar();
+      expect([await primeira, await segunda].sort()).toEqual([1, 2]);
+      expect(await versoes(t1, a)).toEqual([1, 2]);
+    });
   });
 
   it('outbox de outro tenant é recusada pela RLS', async () => {

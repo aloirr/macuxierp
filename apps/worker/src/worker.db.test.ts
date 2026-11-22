@@ -40,11 +40,11 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
   });
 
   /** Grava pela API (outbox na transação do tenant). O instante anda 1 s por evento: a ordem de ocorrido_em é a da gravação. */
-  async function publicar(tenant: string, agregado: string, versao: number) {
+  async function publicar(tenant: string, agregado: string) {
     relogio.avancar(1_000);
-    const e = criarEvento({ nome: NOME, tenant_id: tenant, agregado_id: agregado, versao, ator: 'sistema', request_id: `r-${versao}`, payload: { versao } }, relogio.agora());
-    await app.comTenant(tenant, (tx) => new OutboxPg().gravar(tx, e));
-    return e;
+    const e = criarEvento({ nome: NOME, tenant_id: tenant, agregado_id: agregado, ator: 'sistema', request_id: 'r-worker', payload: {} }, relogio.agora());
+    const versao = await app.comTenant(tenant, (tx) => new OutboxPg().gravar(tx, e));
+    return { ...e, versao };
   }
 
   const despachar = (consumidores: ConsumidorEvento[]) =>
@@ -52,9 +52,9 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
 
   it('entrega cada evento na transação do tenant dele, em ordem, e grava publicado e consumido', async () => {
     const ag = randomUUID();
-    const e1 = await publicar(t1, ag, 1);
-    const e2 = await publicar(t2, randomUUID(), 1);
-    const e3 = await publicar(t1, ag, 2);
+    const e1 = await publicar(t1, ag);
+    const e2 = await publicar(t2, randomUUID());
+    const e3 = await publicar(t1, ag);
     const vistos: string[] = [];
     const consumidor: ConsumidorEvento = {
       id: 'integracao-fdv.teste',
@@ -77,8 +77,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
 
   it('falha aplica backoff e segura o agregado; na volta, quem já consumiu não reaplica', async () => {
     const ag = randomUUID();
-    const e1 = await publicar(t1, ag, 1);
-    await publicar(t1, ag, 2);
+    const e1 = await publicar(t1, ag);
+    await publicar(t1, ag);
     let falhar = true;
     const aplicados: string[] = [];
     const consumidores: ConsumidorEvento[] = [
@@ -109,7 +109,7 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
   });
 
   it('um despachante por vez: o segundo sai com lote vazio enquanto o primeiro segura a trava', async () => {
-    await publicar(t1, randomUUID(), 1);
+    await publicar(t1, randomUUID());
     relogio.avancar(1_000);
     let liberar!: () => void;
     const segurando = new Promise<void>((r) => (liberar = r));
