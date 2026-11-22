@@ -9,24 +9,32 @@ import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
-import type { Ambiente, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
-import type { ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
+import type { Ambiente, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
+import type { StatusFilaFaturar, ParcelaGerada, ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
 export interface SituacaoPedidoDoPedido {
   situacao(tx: Transacao, pedido_id: string): Promise<SituacaoPedidoParaFaturar | null>;
 }
 
-/** Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): nota `em_autorizacao` bloqueia o cancelamento. */
+/**
+ * Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): é "nota em aberto" (RN-PED-02) a do pedido em rascunho
+ * numerada, `em_autorizacao` ou `emitida_contingencia`. Rejeitada (opção A do Alexandre, 22/11 03h23 (R-20261122-032334-alexandre): não bloqueia o cancelamento; número vai para inutilização), autorizada e guarda pendente ficam FORA desta porta:
+ * a autorizada é lida por `notasAutorizadas`, e o pedido faturado_parcial ainda cancela o saldo.
+ */
 export interface NotaEmAberto {
   temNotaEmAutorizacao(tx: Transacao, pedido_id: string): Promise<boolean>;
+  /** Ids das notas `autorizada` ou `autorizada_guarda_pendente` do pedido (não apagadas): o pedido recusa o cancelamento enquanto houver autorizada ainda não aplicada. */
+  notasAutorizadas(tx: Transacao, pedido_id: string): Promise<string[]>;
 }
 
 /** Pedido aprovado como a fila `faturamento.pedido_a_faturar` o guarda (payload de `pedido.pedido.aprovado@1`, sem ler o schema `pedido`). */
 export interface PedidosAprovados {
   obter(tx: Transacao, pedido_id: string): Promise<PedidoFaturavel | null>;
   /** Consumidor de `pedido.pedido.aprovado@1`: idempotente por (tenant, pedido): evento repetido não regrava. */
-  gravar(tx: Transacao, pedido: PedidoFaturavel): Promise<'novo' | 'repetido'>;
+  gravar(tx: Transacao, pedido: PedidoFaturavel, status?: StatusFilaFaturar): Promise<'novo' | 'repetido'>;
+  /** Reentrega de pedido cancelado: marca `cancelado` se já estiver na fila; se não estiver, não grava nada. */
+  marcarCancelado(tx: Transacao, pedido_id: string): Promise<void>;
 }
 
 /** Entrada do adaptador do cálculo fiscal (o fiscal.calculo@1 exige mais: regras, CFOP; quem implementa a porta os busca). */
@@ -161,7 +169,7 @@ export interface NotaRegistro {
   revisao: number;
   /** Itens como o pedido os solicitou (nulo = nota total do saldo): o reenvio da rejeitada refaz a nota com os mesmos itens. */
   itens_solicitados: { sequencia: number; quantidade?: number }[] | null;
-  itens: { sequencia: number; quantidade: number; valor_centavos: number }[];
+  itens: { sequencia: number; produto_id?: string; quantidade: number; valor_centavos: number }[];
 }
 export type NovaNota = Omit<NotaRegistro, 'id' | 'status' | 'protocolo' | 'autorizada_em' | 'recibo' | 'itens' | 'vai_ao_fdv' | 'revisao'>;
 
@@ -195,6 +203,13 @@ export interface RepositorioNotas {
   /** `pg_advisory_xact_lock` pela chave: duas emissões simultâneas com a mesma chave não reservam dois números (RN-CORE-05). */
   travarIdempotencia(tx: Transacao, tenant_id: string, idempotencia: string): Promise<void>;
   buscarPorIdempotencia(tx: Transacao, tenant_id: string, idempotencia: string): Promise<NotaRegistro | null>;
+  /** `FOR UPDATE` na linha do pedido em `faturamento.pedido_a_faturar`: duas emissões do mesmo pedido não passam juntas pelo saldo (RN-FAT-01). */
+  travarPedido(tx: Transacao, pedido_id: string): Promise<void>;
+  /**
+   * Soma, por sequência do item, as quantidades (qtd4) das notas do pedido em qualquer status menos cancelada, inutilizada e denegada
+   * (saldo pelo próprio faturamento, sem esperar o evento). `exceto_nota_id`: o reenvio não conta a si mesmo.
+   */
+  quantidadesJaFaturadas(tx: Transacao, pedido_id: string, exceto_nota_id?: string): Promise<Map<number, number>>;
   /** `travar`: `FOR UPDATE` (o retorno da SEFAZ e o reenvio não correm juntos sobre a mesma nota). */
   obter(tx: Transacao, nota_id: string, opcoes?: { travar?: boolean }): Promise<NotaRegistro | null>;
   /** Retratos, itens com o cálculo fiscal, pagamento e transporte: base para refazer o XML (`notaParaEmissaoDe`). */
@@ -366,4 +381,47 @@ export interface RepositorioEventos {
   registrarDivergenciaInutilizacao(tx: Transacao, id: string, r: { cStat: string; xMotivo: string }): Promise<void>;
   /** Eventos e inutilizações pendentes mais antigos primeiro (varredura do worker), parados há mais de `paradasHaMinutos` e SEM lease ativo; exclui a divergência 563. */
   pendentes(tx: Transacao, limite: number, paradasHaMinutos: number, leaseMin: number): Promise<{ tipo: 'evento' | 'inutilizacao'; id: string }[]>;
+}
+
+/**
+ * Bandeira por filial "faturamento real com NF-e simulada" (desligada por padrão; sem linha = false). Adaptador SQL sobre `faturamento.configuracao_filial`
+ * (filial_id, faturamento_real_nfe_simulada, alterado_por), tabela que o banco-dados ainda cria. Ausente nos deps do worker = bandeira desligada.
+ */
+export interface ConfiguracaoFaturamento {
+  faturamentoRealComNfeSimulada(tx: Transacao, filial_id: string): Promise<boolean>;
+  definir(tx: Transacao, filial_id: string, ligada: boolean, usuario_id: string): Promise<void>;
+  /** Leitura que NUNCA lança (tabela ainda inexistente, por exemplo): vale false e chama `avisar(motivo)`. O adaptador SQL usa SAVEPOINT para não abortar a transação. */
+  lerBandeiraSegura(tx: Transacao, filial_id: string, avisar: (motivo: string) => void): Promise<boolean>;
+}
+
+/**
+ * Repositório SQL dos títulos a receber (`api/sql-titulos.ts`, 0013: `titulo` e `titulo_baixa`). Roda na `tx` do chamador. O banco confere tudo: título só de
+ * nota autorizada, saldo = valor − baixas não estornadas (o gatilho de `titulo_baixa` atualiza o saldo e o status na mesma tx da baixa e do estorno).
+ */
+export interface RepositorioTitulos {
+  /** Idempotente por (nota, parcela): devolve só as parcelas NOVAS (reprocesso não duplica nem republica). */
+  inserirParcelas(tx: Transacao, nota: Pick<NotaRegistro, 'id' | 'filial_id' | 'cliente_id'> & { conta_como_real: boolean }, parcelas: readonly ParcelaGerada[]): Promise<TituloResumo[]>;
+  listarDaNota(tx: Transacao, nota_id: string, opcoes?: { travar?: boolean }): Promise<TituloResumo[]>;
+  obter(tx: Transacao, id: string, opcoes?: { travar?: boolean }): Promise<TituloResumo | null>;
+  baixasDoTitulo(tx: Transacao, titulo_id: string): Promise<BaixaTituloResumo[]>;
+  /** INSERT em `titulo_baixa`; o gatilho do banco abate o saldo. */
+  registrarBaixa(tx: Transacao, titulo_id: string, b: { valor_centavos: number; forma: string; usuario_id: string | null; baixado_em: Date }): Promise<BaixaTituloResumo>;
+  /** UPDATE de `estornada_em` (uma vez); o gatilho devolve o saldo. */
+  estornarBaixa(tx: Transacao, baixa_id: string, estornada_em: Date): Promise<void>;
+  /** Cancela só títulos `aberto` (o banco recusa o resto). */
+  cancelar(tx: Transacao, ids: readonly string[]): Promise<void>;
+  listar(tx: Transacao, filtro: FiltroTitulos): Promise<Pagina<TituloResumo>>;
+  detalhar(tx: Transacao, id: string): Promise<TituloDetalhe | null>;
+  /**
+   * Soma dos saldos `aberto` do cliente de nota não cancelada, de produção OU `conta_como_real` (RN-PED-04; decisão do Alexandre de 22/11: a nota simulada vale como real).
+   * Lê a coluna `faturamento.titulo.conta_como_real` (0026), gravada na geração com o valor da nota.
+   */
+  saldoAbertoCliente(tx: Transacao, cliente_id: string): Promise<number>;
+  /**
+   * Roda `fn` num SAVEPOINT: se lançar, desfaz só o que `fn` gravou e DEVOLVE o erro (a transação segue viva). RN-FAT-03: a geração dos títulos nunca
+   * derruba a guarda do nfeProc feita antes na mesma tx.
+   */
+  emSavepoint<T>(tx: Transacao, fn: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; erro: unknown }>;
+  /** Ids das notas autorizadas de boleto, autorizadas há ao menos `ha_minutos`, sem nenhuma parcela (varredura de reconciliação). `excluir`: notas que a varredura desistiu de gerar (teto de tentativas). */
+  notasBoletoSemTitulo(tx: Transacao, opcoes: { ha_minutos: number; limite: number; excluir?: readonly string[] }): Promise<string[]>;
 }

@@ -16,16 +16,26 @@ import { createHash } from 'node:crypto';
 import { ErroCertificadoA1, ErroMontagemNFe, type EmissorNFe } from '@macuxierp/nfe-emissor';
 import { Uf, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
-import { digestValueDoXml, emTransmissao, ErroViolacao } from '../domain';
+import { digestValueDoXml, emTransmissao, ErroViolacao, pedidoAceitaNota } from '../domain';
 import { criarProcessadorRetorno, mudarNota, xmlDaNota, type ResultadoRetorno } from './emissao';
-import type { A1DaFilial, AmbienteFiscalDaFilial, NotaRegistro, RepositorioNotas, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import type { A1DaFilial, AmbienteFiscalDaFilial, SituacaoPedidoDoPedido, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import type { LogFaturamento } from './titulos';
 import { comA1, descarregar as descarregarLog, medir as medirChamada } from './sefaz-comum';
 import { retornoDaAutorizacao, retornoDaConsulta, retornoDoRecibo } from './retorno-sefaz';
 
 export interface DepsTransmissor {
   banco: Banco;
   notas: RepositorioNotas;
+  /** Títulos a receber: gerados na MESMA tx da autorização (RF-FAT-07). Ligar sempre (`repositoriosSql().titulos`). */
+  titulos: RepositorioTitulos;
+  /** Log sem dado pessoal, OBRIGATÓRIO: a geração de título pendente (a varredura gera depois) não pode sumir. */
+  log: LogFaturamento;
   ambiente: AmbienteFiscalDaFilial;
+  /**
+   * RN-PED-02: situação do pedido (`criarConsultaParaFaturar().situacao` do pedido, com FOR SHARE), consultada ANTES de ler o A1 e assinar rascunho ou rejeitada.
+   * OBRIGATÓRIA: a guarda fiscal (pedido cancelado não vira nota assinada) é exigida pelo tipo.
+   */
+  situacao: SituacaoPedidoDoPedido;
   /**
    * Liga o `lerA1DecifradoDaFilial(tx, chave, filial)` do core à chave do secret do servidor e abre o certificado (`abrirA1`): o `certificado` assina e
    * a `credencial` (pfx + senha) vai ao mTLS do transporte. `null` = filial sem A1 ativo; `ErroCertificadoA1` (fora da validade, senha) = A1 inválido.
@@ -44,21 +54,21 @@ export type ResultadoTransmissao =
   /** A filial não tem A1 ativo: nada foi enviado; a nota continua como estava (com o motivo, se ainda não assinada). */
   | { resultado: 'sem_certificado' }
   /** Não assinada: A1 inválido/vencido (`a1_invalido`) ou remontagem que não bate com a nota (`remontagem_divergente`). Nota em rascunho/rejeitada, com o motivo; número intacto. */
-  | { resultado: 'nao_assinada'; motivo: 'a1_invalido' | 'remontagem_divergente' }
+  | { resultado: 'nao_assinada'; motivo: 'a1_invalido' | 'remontagem_divergente' | 'destino_indisponivel' | 'pedido_cancelado' | 'situacao_indisponivel' }
   /** RN-FAT-04: o ambiente da filial mudou depois da nota; o envio é recusado (a nota é de outro ambiente). */
   | { resultado: 'ambiente_mudou' }
   | { resultado: 'falha'; codigo: string };
 
 type Preparo =
   | { tipo: 'fim'; resultado: ResultadoTransmissao; a1?: undefined }
-  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null };
+  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null; transporte?: ReturnType<SeletorTransporte> };
 
 /** Só estes status são assinados pelo worker (0020: a `nfe_assinada` não entra em `em_autorizacao`). Contingência é do lote 4. */
 const precisaAssinar = (status: NotaRegistro['status']): boolean => status === 'rascunho' || status === 'rejeitada';
 
 export function criarTransmissor(deps: DepsTransmissor) {
   const agora = deps.agora ?? ((): Date => new Date());
-  const processar = criarProcessadorRetorno(deps.notas);
+  const processar = criarProcessadorRetorno(deps.notas, deps.titulos, deps.log);
 
   /** Motivo curto e sem dado pessoal: só rótulos de regra e de campo. */
   const motivoDe = (e: unknown): string | null => {
@@ -85,6 +95,18 @@ export function criarTransmissor(deps: DepsTransmissor) {
         }
         // RN-FAT-04: a nota é do ambiente em que nasceu; se a filial mudou, nada sai (o banco recusa o reenvio também).
         if ((await deps.ambiente.ambiente(tx, nota.filial_id)) !== nota.ambiente) return { tipo: 'fim', resultado: { resultado: 'ambiente_mudou' } };
+        // RN-PED-02 / RN-FAT-07: pedido não faturável (ou situação indisponível) não é assinado; número intacto (README P-2).
+        if (assinar) {
+          const s = await deps.situacao.situacao(tx, nota.pedido_id);
+          if (!s) {
+            await deps.notas.registrarMotivoEnvio(tx, nota.id, 'RN-PED-02: situação do pedido indisponível');
+            return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'situacao_indisponivel' } };
+          }
+          if (!pedidoAceitaNota(s.status)) {
+            await deps.notas.registrarMotivoEnvio(tx, nota.id, 'RN-PED-02: pedido cancelado');
+            return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'pedido_cancelado' } };
+          }
+        }
         let a1: A1DaFilial | null;
         try {
           a1 = await abrirA1(nota.filial_id);
@@ -107,6 +129,15 @@ export function criarTransmissor(deps: DepsTransmissor) {
         const ultimo = await deps.notas.ultimoXmlAssinado(tx, nota.id);
         // Rejeitada já assinada para o conteúdo atual (revisão) e sem reenvio novo: trabalho velho, nada a fazer.
         if (ultimo && ultimo.versao >= nota.revisao) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
+        // RN-FAT-04/RN-FAT-07: o destino é resolvido ANTES de assinar. Se o seletor recusar (produção sem transporte real, endereço não conferido), a nota fica em
+        // rascunho com o motivo, sem nfe_assinada e sem em_autorizacao; o número fica na nota e aparece em numeradasNaoEnviadas.
+        let transporte: ReturnType<SeletorTransporte>;
+        try {
+          transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: 'normal' }, a1.credencial);
+        } catch {
+          await deps.notas.registrarMotivoEnvio(tx, nota.id, 'destino_indisponivel');
+          return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'destino_indisponivel' } };
+        }
         let xml: string;
         try {
           xml = xmlDaNota(deps.emissor, nota, conteudo); // MESMO número, cNF e dhEmi gravados; a chave refeita tem de bater com a da nota (RN-FAT-07)
@@ -121,7 +152,7 @@ export function criarTransmissor(deps: DepsTransmissor) {
         await deps.notas.gravarXmlAssinado(tx, nota.id, assinado.xml, createHash('sha256').update(assinado.xml, 'utf8').digest('hex'));
         // A revisão lida vai no UPDATE: se a API gravou outra no meio, o UPDATE não pega, a tx desfaz e a próxima volta usa a revisão nova.
         const enviada = await mudarNota(deps.notas, tx, nota, 'em_autorizacao', { revisao: nota.revisao });
-        return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml) };
+        return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml), transporte };
       });
     }
   }
@@ -159,7 +190,7 @@ export function criarTransmissor(deps: DepsTransmissor) {
     if (p.tipo === 'fim') return p.resultado;
     const { nota, a1, xmlAssinado, digestValue } = p;
     try {
-      const transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
+      const transporte = p.transporte ?? deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
       const log: TransmissaoRegistrada[] = [];
       const medir = <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => medirChamada(agora, transporte, chamar, { nota_id, servico }, log);
       const descarregar = (t: Transacao): Promise<void> => descarregarLog(log, (reg) => deps.notas.registrarTransmissao(t, reg));

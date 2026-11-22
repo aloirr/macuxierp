@@ -201,6 +201,45 @@ INSERT INTO pedido.aprovacao (tenant_id, pedido_id, decisao, automatica)
 `;
 }
 
+/** Retrato mínimo que passa no pedido_retrato_endereco_objeto (0016); valores fictícios. */
+export const RETRATO = '{"tipo_pessoa": "PJ", "endereco": {"municipio_ibge": "1302603", "uf": "AM"}}';
+
+export interface NovoPedido {
+  id?: string;
+  tenant?: string;
+  origem?: 'fdv' | 'bko';
+  externalId?: string | null;
+  status?: string;
+  total?: number;
+  pendencias?: string;
+  retrato?: string;
+}
+
+/**
+ * INSERTs de pedido e item do tenant (valores fictícios, sem dado pessoal real). O número do pedido começa em
+ * `primeiroNumero` e avança a cada pedidoSql. Usado em pedido.db.test.ts e pedido-recuo-0027.db.test.ts.
+ */
+export function sqlDePedido(tenant: string, primeiroNumero: number) {
+  let proximoNumero = primeiroNumero;
+  const pedidoSql = (p: NovoPedido = {}): string => {
+    const ext = p.externalId === undefined || p.externalId === null ? 'NULL' : `'${p.externalId}'`;
+    const colStatus = p.status === undefined ? '' : ', status';
+    const valStatus = p.status === undefined ? '' : `, '${p.status}'`;
+    const colPend = p.pendencias === undefined ? '' : ', pendencias';
+    const valPend = p.pendencias === undefined ? '' : `, '${p.pendencias}'`;
+    return `INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
+      total_centavos, external_id${colStatus}${colPend})
+    VALUES ('${p.id ?? randomUUID()}', '${p.tenant ?? tenant}', ${proximoNumero++}, '${p.origem ?? 'bko'}',
+      gen_random_uuid(), gen_random_uuid(), '${p.retrato ?? RETRATO}', now(), ${p.total ?? 1000}, ${ext}${valStatus}${valPend});`;
+  };
+  const itemSql = (pedido: string, sequencia: number, extra: { retrato?: string; faturada?: number } = {}): string =>
+    `INSERT INTO pedido.pedido_item (tenant_id, pedido_id, sequencia, produto_id, produto_retrato, quantidade,
+      preco_unitario_centavos, total_centavos, quantidade_faturada)
+    VALUES ('${tenant}', '${pedido}', ${sequencia}, gen_random_uuid(), '${extra.retrato ?? '{"codigo": "P1"}'}', 10000,
+      100, 100, ${extra.faturada ?? 0});`;
+  return { pedidoSql, itemSql };
+}
+
 /**
  * Chave de acesso fictícia coerente com a nota (cUF 13, AAMM 2611, CNPJ da massa, modelo 55); cnf (cNF, 8 dígitos)
  * diferencia notas de mesmo número em tenants, filiais ou ambientes diferentes (a chave é única no banco). DV fictício
@@ -319,6 +358,59 @@ export function fixtureConfiguracaoFilial(t: Tenant): string {
 INSERT INTO faturamento.configuracao_filial (tenant_id, filial_id, faturamento_real_nfe_simulada, alterado_por)
   VALUES ('${t.id}', '${t.filial}', true, '${t.usuario}');
 `;
+}
+
+/**
+ * Contador de geração de títulos (0028): uma tentativa registrada para a nota da massa. Fora da fixtureFaturamento
+ * porque os testes que migram só até antes da 0028 também usam aquela.
+ */
+export function fixtureTituloGeracao(t: Tenant): string {
+  return `
+INSERT INTO faturamento.titulo_geracao (tenant_id, nota_id, tentativas, ultima_tentativa_em, motivo)
+  VALUES ('${t.id}', '${t.nota}', 1, '2026-11-22T12:00:00Z', 'RN-FAT-03: forma sem prazo na massa');
+`;
+}
+
+/** Recado fictício de aprovação de produção fiscal da massa (core.ambiente_fiscal.recado_aprovacao). */
+const RECADO_APROVACAO = 'R-20261121-120000-alexandre';
+
+/**
+ * Nota autorizada com o XML guardado (o caminho da T-0019: reserva do número, rascunho, em autorização, autorizada
+ * com guarda pendente e XML), na filial e no ambiente pedidos, série 1. Em produção grava antes a filial no
+ * core.ambiente_fiscal com o recado de aprovação (RN-FAT-04). Gravada pelo admin, que passa pelas mesmas travas.
+ * Use uma filial nova por nota (o número sai 1) e um `cnf` diferente por nota (a chave é única no banco).
+ * Devolve o id da nota e o SQL.
+ */
+export function sqlNotaAutorizada(
+  t: Tenant,
+  filial: string,
+  ambiente: 'homologacao' | 'producao',
+  cnf: number,
+): { id: string; sql: string } {
+  const nota = randomUUID();
+  const chave = chaveAcesso(1, 1, cnf);
+  const protocolo = `1132600000${String(cnf % 100000).padStart(5, '0')}`;
+  const xml = `<nfeProc>${nota}</nfeProc>`;
+  const producao =
+    ambiente === 'producao'
+      ? `INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao)
+  VALUES ('${t.id}', '${filial}', 'producao', '${RECADO_APROVACAO}');`
+      : '';
+  const sql = `
+SELECT set_config('app.tenant_id', '${t.id}', true);
+${producao}
+INSERT INTO faturamento.nota (id, tenant_id, filial_id, serie, numero, idempotencia_chave, cliente_id,
+  natureza_operacao)
+  VALUES ('${nota}', '${t.id}', '${filial}', 1, faturamento.reservar_numero('${filial}', '${ambiente}', 1::smallint, 1),
+    '${randomUUID()}', '${t.cliente}', 'Venda');
+UPDATE faturamento.nota SET status = 'em_autorizacao', chave_acesso = '${chave}', c_nf = '${cnfDe(cnf)}'
+  WHERE id = '${nota}';
+UPDATE faturamento.nota SET status = 'autorizada_guarda_pendente', protocolo = '${protocolo}',
+  autorizada_em = now(), c_stat = 100 WHERE id = '${nota}';
+INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protocolo, xml, sha256)
+  VALUES ('${t.id}', 'nfe_autorizada', '${nota}', '${chave}', '${protocolo}', '${xml}', ${hashSql(xml)});
+`;
+  return { id: nota, sql };
 }
 
 /** Linha geral (tenant de referência) da carga aproximada: só o dono grava. */

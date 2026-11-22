@@ -5,6 +5,7 @@
  */
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type { z } from 'zod';
+import type { MotivoSistema } from '../domain';
 import type { CondicaoPagamento, Filial, PrecoVigente, SaldoEstoque } from '@macuxierp/cadastros/contracts';
 import type {
   ClienteParaPedido, ClienteRetrato, DecisaoPedido, EnderecoEntrega, Frete, HistoricoPedido, MotivoCodigo, OrigemPedido,
@@ -35,6 +36,8 @@ export interface ConsultaTitulosPedido {
 /** Porta inversa da F4 (P-2): há nota em autorização para o pedido? F3 = false. */
 export interface NotaEmAberto {
   temNotaEmAutorizacao(tx: Transacao, pedido_id: string): Promise<boolean>;
+  /** Ids das notas autorizadas e não canceladas do pedido (quem implementa é o faturamento). O pedido confere quais já aplicou. */
+  notasAutorizadas(tx: Transacao, pedido_id: string): Promise<string[]>;
 }
 
 /** Log sem dado pessoal (regra 8): só `tenant_id`, `modulo`, `pedido_id`, status e códigos. O pino satisfaz. */
@@ -117,7 +120,7 @@ export interface NovoEvento {
   para: StatusPedido;
   ator_tipo: 'usuario' | 'sistema';
   ator_id: string | null;
-  motivo_codigo: MotivoCodigo | null;
+  motivo_codigo: MotivoCodigo | MotivoSistema | null;
   motivo_texto: string | null;
   pendencias: Pendencia[] | null;
   evento_id: string | null;
@@ -172,8 +175,14 @@ export interface RepoPedidos {
    * em pendências. Só o worker tem o GRANT dessas colunas; o gatilho `validar_status` valida a transição.
    */
   aplicarFaturamento(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: StatusPedido): Promise<void>;
-  /** Já há histórico do pedido com este `evento_id` (idempotência do consumidor de nota). */
-  eventoRegistrado(pedidoId: string, eventoId: string): Promise<boolean>;
+  /** Quais destes `evento_id` já estão no histórico do pedido (uma consulta) (idempotência do consumidor de nota). */
+  eventosRegistrados(pedidoId: string, ids: string[]): Promise<Set<string>>;
+  /**
+   * Recuo por nota cancelada (T-0015, 0027): só o worker. Liga o GUC `macuxierp.recuo_nota` na transação, grava os itens, o valor e,
+   * em comandos separados (o gatilho precisa enxergar o que os anteriores gravaram), o status; desliga o GUC. Roda num savepoint:
+   * se o gatilho recusar (MXP02), desfaz o savepoint, deixa a transação utilizável e lança `RecuoRecusadoPeloBanco`.
+   */
+  aplicarRecuo(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: StatusPedido): Promise<void>;
   registrarAprovacao(a: NovaAprovacao): Promise<void>;
   historico(pedidoId: string): Promise<HistoricoPedido[]>;
   decisao(pedidoId: string): Promise<DecisaoPedido | null>;
@@ -192,5 +201,5 @@ export interface Dependencias {
   log?: LogPedido;
 }
 
-export const semNotaEmAberto: NotaEmAberto = { temNotaEmAutorizacao: async () => false };
+export const semNotaEmAberto: NotaEmAberto = { temNotaEmAutorizacao: async () => false, notasAutorizadas: async () => [] };
 export const semTitulos: ConsultaTitulosPedido = { saldoAbertoCliente: async () => 0 };
