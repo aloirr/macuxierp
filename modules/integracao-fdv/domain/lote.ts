@@ -4,6 +4,7 @@
  */
 import { VERSAO_CONTRATO_HUB, type CorpoLote, type CursorHub, type EntidadeHub, type EstadoLote, type LinhaInvalida, type ModoLote, type RegistroLote } from '../contracts';
 import { utf8 } from './hash';
+import { paraLinhaHub } from './linhas';
 import { compararBinario, jsonCanonico, sha256HexTexto } from './canonico';
 
 const tamanhoUtf8 = (t: string): number => utf8(t).length;
@@ -72,6 +73,10 @@ export interface EntradaMontagem {
   geracao?: number;
   /** Só no modo completo: id da sessão (UUID). */
   sessaoId?: string;
+  /** Só no modo completo: número da parte do primeiro lote montado (padrão 1; a sessão continua de partes já enviadas). */
+  sessaoParteInicial?: number;
+  /** Só no modo completo: ainda há registros da sessão depois destes (a última parte montada não leva `ultimo: true`). */
+  sessaoContinua?: boolean;
   limiteRegistros?: number;
   limiteBytes?: number;
 }
@@ -87,7 +92,7 @@ export function montarLotes(e: EntradaMontagem): LoteMontado[] {
   const maxBytes = e.limiteBytes ?? LIMITE_BYTES_LOTE;
   const ordenados = ordenarRegistros(e.registros);
   const invalidas = e.linhas_invalidas ?? [];
-  const detalhadas = invalidas.slice(0, LIMITE_LINHAS_INVALIDAS_DETALHADAS);
+  const detalhadas = invalidas.slice(0, LIMITE_LINHAS_INVALIDAS_DETALHADAS).map(paraLinhaHub);
   const omitidas = invalidas.length - detalhadas.length;
 
   if (e.modo === 'delta' && ordenados.length === 0 && invalidas.length === 0) return [];
@@ -116,7 +121,9 @@ export function montarLotes(e: EntradaMontagem): LoteMontado[] {
       modo: e.modo,
       enviado_em: e.enviadoEm,
       cursor: ultimo ? cursorDoRegistro(ultimo) : null,
-      ...(e.modo === 'completo' ? { sessao: { id: e.sessaoId!, parte: i + 1, ultimo: i === grupos.length - 1 } } : {}),
+      ...(e.modo === 'completo'
+        ? { sessao: { id: e.sessaoId!, parte: (e.sessaoParteInicial ?? 1) + i, ultimo: i === grupos.length - 1 && !e.sessaoContinua } }
+        : {}),
       registros: [...registros],
       linhas_invalidas: i === 0 ? [...detalhadas] : [],
       linhas_invalidas_omitidas: i === 0 ? omitidas : 0,

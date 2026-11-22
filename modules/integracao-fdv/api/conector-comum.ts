@@ -1,0 +1,162 @@
+/**
+ * Peças comuns da agenda do conector (envio, sinal, reconciliação): credencial ativa (leitura, abertura e pausa), pausa por
+ * motivo, regravação do `proximo*_em` presa à posse da reserva (`adiarPresoAPosse`) e leitura tolerante das respostas do Hub.
+ * `tenant_id` explícito em todo SQL (as tabelas da agenda têm a política `worker_global`: o papel do worker as enxerga de
+ * todos os tenants). Sem `SELECT *`. A chave do conector só existe em memória, dentro de `abrirOuPausar`: nunca vai a log,
+ * erro, banco nem evento.
+ */
+import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
+import { z } from 'zod';
+import { AmbienteHub, CursorHub, type EstadoLote, type MotivoPausa } from '../contracts';
+
+export const UMA_HORA_S = 3600;
+/** Estados do lote que ainda não chegaram ao fim: no máximo um por entidade (RN-INF-03). */
+export const ESTADOS_EM_VOO = ['montado', 'enviando', 'aceito'] as const satisfies readonly EstadoLote[];
+
+export const mais = (d: Date, segundos: number): Date => new Date(d.getTime() + segundos * 1000);
+
+/** Dependências da agenda do conector (e do envio, que roda dentro dela). */
+export interface DepsAgendaConector {
+  /** Outbox da plataforma (`OutboxPg` no worker): `lote.enviado@1` e `lote.falhou@1` saem na transação do lote. */
+  outbox: Outbox;
+}
+
+/** Credencial ativa do tenant, ainda cifrada. Só colunas nomeadas (recado R-20261121-221350). */
+interface CredencialAtiva {
+  id: string;
+  conector_id: string;
+  ambiente: AmbienteHub;
+  chave_cifrada: Uint8Array;
+  chave_mestra_versao: number;
+}
+
+async function lerCredencialAtiva(tx: Transacao, tenantId: string): Promise<CredencialAtiva | null> {
+  const [c] = await tx.consultar<CredencialAtiva>(
+    `SELECT id, conector_id, ambiente, chave_cifrada, chave_mestra_versao
+       FROM integracao_fdv.credencial
+      WHERE tenant_id = $1 AND substituida_em IS NULL AND deleted_at IS NULL AND chave_cifrada IS NOT NULL`,
+    [tenantId],
+  );
+  return c ?? null;
+}
+
+/**
+ * Credencial pronta para chamar o Hub: lida e ainda cifrada. Sem credencial ativa chama `semCredencial`; com a credencial
+ * já recusada pelo Hub (pausa de credencial ou de licença do FDV) chama `recusada`: nada é chamado de novo (limite de falhas
+ * por IP). Em ambos os casos devolve `null`; cada tarefa decide o que fazer (adiar, pausar).
+ */
+export async function prepararCredencial(
+  tx: Transacao,
+  tenantId: string,
+  aoFaltar: { semCredencial: () => Promise<void>; recusada: (c: CredencialAtiva) => Promise<void> },
+): Promise<CredencialAtiva | null> {
+  const c = await lerCredencialAtiva(tx, tenantId);
+  if (!c) {
+    await aoFaltar.semCredencial();
+    return null;
+  }
+  if (await credencialJaRecusada(tx, tenantId, c.id)) {
+    await aoFaltar.recusada(c);
+    return null;
+  }
+  return c;
+}
+
+/** A chave não abriu (versão desconhecida, adulterada ou de outro tenant): defeito de configuração, a credencial pausa. */
+class CredencialIlegivel extends Error {
+  override readonly name = 'CredencialIlegivel';
+}
+
+function abrirCredencial(ctx: Pick<ContextoAgenda, 'decifrarCredencial'>, c: CredencialAtiva, tenantId: string): CredencialHub {
+  try {
+    return { conectorId: c.conector_id, chave: ctx.decifrarCredencial(c.chave_cifrada, tenantId, c.chave_mestra_versao), ambiente: AmbienteHub.parse(c.ambiente) };
+  } catch {
+    // mensagem fixa: a original da cifra não vai adiante
+    throw new CredencialIlegivel('credencial ilegível');
+  }
+}
+
+/** Abre a chave só em memória, na hora da chamada. Se não abrir, pausa a credencial (todas as entidades) e devolve `null`. */
+export async function abrirOuPausar(ctx: ContextoAgenda, tenantId: string, c: CredencialAtiva): Promise<CredencialHub | null> {
+  try {
+    return abrirCredencial(ctx, c, tenantId);
+  } catch (e) {
+    if (!(e instanceof CredencialIlegivel)) throw e;
+    await ctx.emTransacao((tx) => pausarEntidades(tx, tenantId, null, 'credencial', c.id, ctx.agora));
+    return null;
+  }
+}
+
+/** Erro de uso da porta que repetir não conserta (defeito do ERP): código do catálogo e se a credencial é a culpada. */
+export function defeitoDoCliente(e: unknown): { codigo: string; credencial: boolean } | null {
+  if (!(e instanceof ErroClienteHub)) return null;
+  return e.codigo === 'credencial_invalida' || e.codigo === 'ambiente_invalido' ? { codigo: 'credencial_invalida', credencial: true } : { codigo: e.codigo, credencial: false };
+}
+
+/** Onde mora o `proximo*_em` da tarefa: a linha da entidade em `cursor_entidade` ou uma coluna da linha única de `sinal`. */
+type AlvoAgenda = { entidade: string } | { sinal: 'proximo_sinal_em' | 'proxima_reconciliacao_em' };
+
+/**
+ * Regrava o `proximo*_em` da tarefa presa à posse: só muda se ainda for o `posseAte` desta reserva (se outro processo já
+ * mexeu, a regravação não desfaz o que ele fez). As colunas vêm de uma união fechada, nunca de texto externo.
+ */
+export async function adiarPresoAPosse(tx: Transacao, tenantId: string, alvo: AlvoAgenda, posseAte: Date, para: Date): Promise<void> {
+  if ('entidade' in alvo) {
+    await tx.consultar(
+      `UPDATE integracao_fdv.cursor_entidade SET proximo_em = $4, updated_at = now() WHERE tenant_id = $1 AND entidade = $2 AND proximo_em = $3`,
+      [tenantId, alvo.entidade, posseAte, para],
+    );
+    return;
+  }
+  const c = alvo.sinal;
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET ${c} = $3, updated_at = now() WHERE tenant_id = $1 AND ${c} = $2`, [tenantId, posseAte, para]);
+}
+
+/** Pausa a(s) entidade(s) do tenant. `entidade = null` = todas as linhas ainda não pausadas. Idempotente. */
+export async function pausarEntidades(tx: Transacao, tenantId: string, entidade: string | null, motivo: MotivoPausa, credencialId: string | null, agora: Date): Promise<void> {
+  await tx.consultar(
+    `UPDATE integracao_fdv.cursor_entidade
+        SET pausada_motivo = $3, pausada_em = $4, credencial_id = coalesce($5::uuid, credencial_id), updated_at = now()
+      WHERE tenant_id = $1 AND ($2::text IS NULL OR entidade::text = $2) AND pausada_motivo IS NULL AND deleted_at IS NULL`,
+    [tenantId, entidade, motivo, agora, credencialId],
+  );
+}
+
+/** Já há pausa de credencial (ou licença do FDV) para esta mesma credencial? Então nada é chamado (limite de falhas por IP). */
+async function credencialJaRecusada(tx: Transacao, tenantId: string, credencialId: string): Promise<boolean> {
+  const l = await tx.consultar(
+    `SELECT 1 FROM integracao_fdv.cursor_entidade
+      WHERE tenant_id = $1 AND credencial_id = $2 AND pausada_motivo IN ('credencial', 'licenca_fdv') AND deleted_at IS NULL LIMIT 1`,
+    [tenantId, credencialId],
+  );
+  return l.length > 0;
+}
+
+export async function marcarUsoDaCredencial(tx: Transacao, tenantId: string, credencialId: string, agora: Date): Promise<void> {
+  await tx.consultar('UPDATE integracao_fdv.credencial SET ultimo_uso_em = $3 WHERE tenant_id = $1 AND id = $2', [tenantId, credencialId, agora]);
+}
+
+// ---- leitura tolerante das respostas do Hub (campo novo não derruba) ----
+export const RespostaCursorLida = z.object({ cursor: CursorHub.nullable() }).passthrough();
+export const LoteAceitoLido = z.object({ lote_id: z.string().uuid(), repetido: z.boolean().optional() }).passthrough();
+const ErroLinhaLido = z
+  .object({
+    indice: z.number().int().min(0),
+    external_id: z.string().min(1).max(200),
+    codigo: z.string(),
+    campo: z.string().nullish(),
+    reprocessavel: z.boolean().optional(),
+    origem: z.string().nullish(),
+  })
+  .passthrough();
+export const LoteResultadoLido = z
+  .object({
+    status: z.string(),
+    contagens: z.record(z.unknown()).optional(),
+    /** Sem teto: o Hub pode listar menos erros que `contagens.com_erro` (o envio confere), nunca derruba a leitura. */
+    erros: z.array(ErroLinhaLido).optional(),
+    cursor: CursorHub.nullish(),
+  })
+  .passthrough();
+export type LoteResultadoLido = z.infer<typeof LoteResultadoLido>;
+export const RespostaSinalLida = z.object({ politica_versao: z.record(z.unknown()).nullish() }).passthrough();
