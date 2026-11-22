@@ -60,12 +60,8 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
       for (const c of p.colunas) expect(item, `${p.id}.${c.chave}`).toHaveProperty(c.chave);
     });
 
-    /*
-     * D-05: a página de estoque usa a mesma URL das outras (`consultaDaUrl` lê `busca`, `cursor` e `limite` do contrato de
-     * listas do SDK), mas GET /estoque só aceita filial_id e produto_id (`EstoqueConsulta`): a busca e a paginação da tela
-     * seriam descartadas caladas e a lista vem inteira, sem `proximo_cursor`.
-     */
-    const ignoradas = () => {
+    // D-05, corrigido no #71: o estoque segue o contrato de listas.
+    it('todo filtro da URL da página (os dela, busca, cursor e limite; inativos onde há a coluna Situação) é aceito pela consulta da rota', () => {
       const rota = rotaGet(plugin('cadastros'), 'cadastros', p.api);
       expect(rota, p.api).toBeDefined();
       const aceitas = chavesDaConsulta(rota!);
@@ -75,16 +71,9 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
       const daTela = new URLSearchParams(paraQuery(consultaDaUrl(p, url)));
       const pedidas = [...daTela.keys()].filter((k) => p.filtros.includes(k) || comuns.includes(k));
       expect(pedidas, 'a tela pede busca, cursor e limite').toEqual(expect.arrayContaining(['busca', 'cursor', 'limite']));
-      return pedidas.filter((k) => !aceitas.includes(k));
-    };
-    const filtroIt = p.id === 'estoque' ? it.fails : it;
-    filtroIt(`${p.id === 'estoque' ? '[D-05] ' : ''}todo filtro da URL da página (os dela, busca, cursor e limite; inativos onde há a coluna Situação) é aceito pela consulta da rota`, () => {
-      expect(ignoradas(), `chaves da tela que a API ignora em ${p.api}`).toEqual([]);
+      expect(pedidas.filter((k) => !aceitas.includes(k)), `chaves da tela que a API ignora em ${p.api}`).toEqual([]);
     });
-    if (p.id === 'estoque') it('[D-05, hoje] a rota GET do estoque é encontrada e ignora exatamente busca, cursor e limite', () => {
-      expect(ignoradas()).toEqual(['busca', 'cursor', 'limite']);
-    });
-    if (p.id !== 'estoque') it('a resposta segue o contrato de listas do SDK: { itens, proximo_cursor } (P-02, #44)', async () => {
+    it('a resposta segue o contrato de listas do SDK: { itens, proximo_cursor } (P-02, #44)', async () => {
       const r = await get(p.api);
       expect(Object.keys(r.json()).sort()).toEqual(['itens', 'proximo_cursor']);
     });
@@ -102,19 +91,12 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
     expect((await get(`${url}?${filtro}=${valor}`)).json().itens, `${url} ${filtro}`).toHaveLength(1);
     expect((await get(`${url}?${filtro}=${outro}`)).json().itens, `${url} ${filtro} de outro`).toHaveLength(0);
   };
-  it('filtros na URL filtram de verdade: filial do cliente e do estoque; produto do estoque', async () => {
+  // D-06, corrigido no #71: o SQL dos vendedores filtra por filial.
+  it('filtros na URL filtram de verdade no Postgres: filial do cliente, do estoque e dos vendedores; produto do estoque', async () => {
     await filtra('/v1/cadastros/clientes', 'filial_id', ids.filial!);
+    await filtra('/v1/cadastros/vendedores', 'filial_id', ids.filial!);
     await filtra('/v1/cadastros/estoque', 'filial_id', ids.filial!);
     await filtra('/v1/cadastros/estoque', 'produto_id', ids.produto!);
-  });
-  // D-06: o repositório SQL dos vendedores (modules/cadastros/api/sql.ts, `simples('cadastros.vendedor', ...)`) não liga o filtro de filial.
-  it.fails('[D-06] Equipe e carteira: ?filial_id= filtra os vendedores no Postgres (hoje: ignorado, vem a equipe toda)', async () => {
-    await filtra('/v1/cadastros/vendedores', 'filial_id', ids.filial!);
-  });
-  it('[D-06, hoje] Equipe e carteira: a filial certa traz 1 vendedor e o filial_id de outro também traz 1 (o filtro é ignorado)', async () => {
-    const itens = async (filial: string) => (await get(`/v1/cadastros/vendedores?filial_id=${filial}`)).json().itens as { id: string }[];
-    expect((await itens(ids.filial!)).map((x) => x.id)).toEqual([ids.vendedor]);
-    expect((await itens(outro)).map((x) => x.id)).toEqual([ids.vendedor]);
   });
 
   it('CSV dos produtos: custo some da coluna e do arquivo para vendedor e leitura; aparece para quem edita produto', async () => {

@@ -23,7 +23,7 @@ export default async function Licencas() {
               <tr key={m.id}>
                 <th scope="row">{NOMES_MODULOS[m.id]}</th>
                 <td>{m.descricao}</td>
-                <td><span className={`selo ${ativo ? 'selo-ativo' : 'selo-inativo'}`}>{ativo ? 'Licenciado' : 'Não contratado'}</span></td>
+                <td><span className={`selo ${ativo ? 'selo-ativo' : 'selo-inativo'}`}>{ativo ? 'Contratado' : 'Não contratado'}</span></td>
               </tr>
             );
           })}

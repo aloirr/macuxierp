@@ -391,7 +391,8 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/estoque', acao: 'cadastros.ver', consulta: EstoqueConsulta,
       async executar(c, e) {
-        return { corpo: { itens: await R(c).estoque.saldos(e.consulta) } };
+        const p = await R(c).estoque.listar(e.consulta);
+        return { corpo: { itens: p.itens, proximo_cursor: p.proximo_cursor } };
       },
     }),
     definirRota({

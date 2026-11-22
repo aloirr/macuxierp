@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { motivosRecadoFalso, classificarComando, escritasDoComando, motivosIndiceDeRecados, comandosDeIndice, vigiarRecados } from './guarda-merge-lib.mjs';
+import { motivosRecadoFalso, motivosTrocaDeIdentidade, motivosGitNoRepoDeRecados, classificarComando, escritasDoComando, motivosIndiceDeRecados, comandosDeIndice, vigiarRecados } from './guarda-merge-lib.mjs';
 import { tokenizar, comandosSimples } from './guarda-bash-lib.mjs';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -332,4 +332,37 @@ test('hook v6: alterar o recado do Alexandre antes do add continua bloqueado (me
   r = rodar(dir, 'git commit -q -m x');
   assert.equal(r.codigo, 2);
   assert.match(r.erro, /conteúdo no índice difere do disco \(git status "AM"\)/);
+});
+
+test('parecer do PR #48: troca de identidade no comando é bloqueada para os agentes; leitura e a sessão do Alexandre passam', () => {
+  const bloqueia = [
+    'MACUXI_AGENTE=alexandre node scripts/coord.mjs enviar --de alexandre --para todos --assunto x',
+    'U=$(echo YWxleGFuZHJl | base64 -d); MACUXI_AGENTE=$U node scripts/coord.mjs enviar --de $U --para todos',
+    'export MACUXI_AGENTE=alexandre && node scripts/coord.mjs caixa x',
+    'unset CLAUDECODE; node scripts/coord.mjs enviar --de alexandre',
+    'env -u CLAUDE_CODE_REMOTE node x.mjs',
+    'export $(echo TUFDVVhJ | base64 -d)',
+    'env "$V=alexandre" node scripts/coord.mjs caixa x',
+    'declare -x "$N"=alexandre',
+    'node -e "process.env.MACUXI_AGENTE=String.fromCharCode(97)"',
+    'python3 -c "import os; os.environ[\'MACUXI_AGENTE\']=\'x\'"',
+  ];
+  for (const c of bloqueia) assert.ok(motivosTrocaDeIdentidade({ comando: c, agente: 'gerente-projetos' }).length > 0, `devia bloquear: ${c}`);
+  for (const c of bloqueia.slice(0, 3)) assert.match(m(c).join('\n'), /muda a identidade da sessão/, c);
+  const passa = ['echo $MACUXI_AGENTE', 'node scripts/coord.mjs caixa gerente-projetos', 'FOO=1 env BAR=2 pnpm test', 'export PATH=$PATH:/x', 'git log --oneline'];
+  for (const c of passa) assert.deepEqual(motivosTrocaDeIdentidade({ comando: c, agente: 'gerente-projetos' }), [], c);
+  assert.deepEqual(motivosTrocaDeIdentidade({ comando: bloqueia[0], agente: 'alexandre' }), []);
+});
+
+test('parecer do PR #48: git que grava no repositório de recados por fora do coord.mjs é bloqueado para os agentes', () => {
+  const g = (comando, cwd = '/repo', agente = 'gerente-projetos') => motivosGitNoRepoDeRecados({ comando, agente, cwd });
+  assert.ok(g('git -C /home/user/macuxierp-recados push origin main').length);
+  assert.ok(g('git push origin main', '/home/user/macuxierp-recados').length);
+  assert.ok(g('git commit -m x && git push', '/home/user/macuxierp-recados/recados').length);
+  assert.ok(g('git clone https://github.com/aloirr/macuxierp-recados /tmp/r && cd /tmp/r && git push').length);
+  assert.ok(g('git -C "$D" push').length, '-C dinâmico');
+  assert.deepEqual(g('git clone https://github.com/aloirr/macuxierp-recados'), [], 'clonar para ler passa');
+  assert.deepEqual(g('git -C /home/user/macuxierp-recados log --oneline'), []);
+  assert.deepEqual(g('git push -u origin nuvem/T-0001-x'), []);
+  assert.deepEqual(g('git push origin main', '/home/user/macuxierp-recados', 'alexandre'), []);
 });
