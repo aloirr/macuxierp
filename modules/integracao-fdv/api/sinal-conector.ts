@@ -84,7 +84,7 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
       const lida = RespostaSinalLida.safeParse(resp.corpo);
       await tx.consultar(
         `UPDATE integracao_fdv.sinal
-            SET ultimo_envio_em = $2, ultimo_aceito_em = $2, ultimo_http = $3, politica_versao = $4::jsonb, parado_por_versao = $5, updated_at = now()
+            SET ultimo_envio_em = $2, ultimo_aceito_em = $2, ultimo_http = $3, politica_versao = $4::jsonb, parado_por_versao = $5
           WHERE tenant_id = $1`,
         [tenant, agora, status, lida.success && lida.data.politica_versao ? JSON.stringify(lida.data.politica_versao) : null, paradoPorVersao],
       );
@@ -92,7 +92,7 @@ export async function executarSinal(item: ItemAgenda, ctx: ContextoAgenda): Prom
       await adiarSinal(tx, tenant, 'proximo_sinal_em', ctx.posseAte, mais(agora, INTERVALO_SINAL_S));
       return;
     }
-    await tx.consultar(`UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2, ultimo_http = coalesce($3::int, ultimo_http), parado_por_versao = $4, updated_at = now() WHERE tenant_id = $1`, [tenant, agora, status, paradoPorVersao]);
+    await tx.consultar(`UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2, ultimo_http = coalesce($3::int, ultimo_http), parado_por_versao = $4 WHERE tenant_id = $1`, [tenant, agora, status, paradoPorVersao]);
     const acao = classificarResposta(resp);
     if (acao.acao === 'pausar' && (acao.motivo === 'credencial' || acao.motivo === 'licenca_fdv')) {
       await pausarEntidades(tx, tenant, null, acao.motivo, base.credencial.id, agora);
@@ -159,7 +159,7 @@ export async function executarReconciliacao(item: ItemAgenda, ctx: ContextoAgend
         `INSERT INTO integracao_fdv.reconciliacao (tenant_id, entidade, data_referencia, contagem, resposta_http, enviado_em)
          VALUES ($1, $2, $3::date, $4, $5, $6)
          ON CONFLICT (tenant_id, entidade, data_referencia) DO UPDATE
-            SET contagem = EXCLUDED.contagem, resposta_http = EXCLUDED.resposta_http, enviado_em = EXCLUDED.enviado_em, deleted_at = NULL, updated_at = now()`,
+            SET contagem = EXCLUDED.contagem, resposta_http = EXCLUDED.resposta_http, enviado_em = EXCLUDED.enviado_em, deleted_at = NULL`,
         [tenant, c.entidade, dia, c.contagem, resp.status, resp.tipo === 'ok' ? agora : null],
       ),
     );

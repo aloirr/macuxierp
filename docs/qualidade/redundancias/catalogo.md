@@ -73,3 +73,6 @@ Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #1
 | RD-0489 | 22/11/2026 | T-0016 | autorizacao-rotas.test.ts: literal de módulos em vez de [...MODULOS_BASE, ...LICENCIADOS] | código | baixa | testes | corrigido no #145 | 2026-11-22-T-0016-rotas.md |
 | RD-0490 | 22/11/2026 | T-0016 | autorizacao-rotas.test.ts: lista semRotas 2× | teste | baixa | testes | corrigido no #145 | 2026-11-22-T-0016-rotas.md |
 | RD-0491 | 22/11/2026 | T-0016 | autorizacao-rotas.test.ts: ativa() não usada para faturamento e fiscal | código | baixa | testes | corrigido no #145 | 2026-11-22-T-0016-rotas.md |
+| RD-0540 | 22/11/2026 | T-0049 | README.md:6 e assinatura-erp.md §6 item 9 e §8: "propostas removidas" 4× | doc | baixa | design-de-marca | resolvido (PR #168, 8f5b031) | 2026-11-22-T-0049-ativos-marca.md |
+| RD-0541 | 22/11/2026 | T-0049 | assinatura-erp.md cabeçalho e §8 repetem decisoes.md | doc | média | design-de-marca | resolvido (PR #168, 8f5b031) | 2026-11-22-T-0049-ativos-marca.md |
+| RD-0542 | 22/11/2026 | T-0049 | README.md:5 repete ativos/LEIA-ME.md | doc | baixa | design-de-marca | resolvido (PR #168, 8f5b031) | 2026-11-22-T-0049-ativos-marca.md |

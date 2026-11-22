@@ -8,6 +8,7 @@
 import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type ItemAgenda, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { AmbienteHub, CursorHub, type EstadoLote, type MotivoPausa } from '../contracts';
+import { proximaReconciliacaoEm } from '../domain';
 
 export const UMA_HORA_S = 3600;
 /** Estados do lote que ainda não chegaram ao fim: no máximo um por entidade (RN-INF-03). */
@@ -108,13 +109,13 @@ type AlvoAgenda = { entidade: string } | { sinal: ColunaSinalAgenda };
 export async function adiarPresoAPosse(tx: Transacao, tenantId: string, alvo: AlvoAgenda, posseAte: Date, para: Date): Promise<void> {
   if ('entidade' in alvo) {
     await tx.consultar(
-      `UPDATE integracao_fdv.cursor_entidade SET proximo_em = $4, updated_at = now() WHERE tenant_id = $1 AND entidade = $2 AND proximo_em = $3`,
+      `UPDATE integracao_fdv.cursor_entidade SET proximo_em = $4 WHERE tenant_id = $1 AND entidade = $2 AND proximo_em = $3`,
       [tenantId, alvo.entidade, posseAte, para],
     );
     return;
   }
   const c = alvo.sinal;
-  await tx.consultar(`UPDATE integracao_fdv.sinal SET ${c} = $3, updated_at = now() WHERE tenant_id = $1 AND ${c} = $2`, [tenantId, posseAte, para]);
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET ${c} = $3 WHERE tenant_id = $1 AND ${c} = $2`, [tenantId, posseAte, para]);
 }
 
 /**
@@ -126,7 +127,7 @@ export async function reservarSinal(tx: Transacao, coluna: ColunaSinalAgenda, ta
   const l = await tx.consultar<{ tenant_id: string }>(
     `WITH v AS (
        SELECT id FROM integracao_fdv.sinal WHERE ${coluna} <= $1 AND deleted_at IS NULL ORDER BY ${coluna} LIMIT $2 FOR NO KEY UPDATE SKIP LOCKED)
-     UPDATE integracao_fdv.sinal s SET ${coluna} = $3, updated_at = now() FROM v WHERE s.id = v.id RETURNING s.tenant_id`,
+     UPDATE integracao_fdv.sinal s SET ${coluna} = $3 FROM v WHERE s.id = v.id RETURNING s.tenant_id`,
     [agora, limite, posseAte],
   );
   return l.map((x) => ({ tenant_id: x.tenant_id, tarefa, chave: null }));
@@ -134,14 +135,53 @@ export async function reservarSinal(tx: Transacao, coluna: ColunaSinalAgenda, ta
 
 /** Módulo sem licença: a tarefa de `sinal` volta a olhar em `para`. Não liga o que está desligado (coluna nula) nem linha apagada. */
 export async function adiarSinalSemLicenca(tx: Transacao, tenantId: string, coluna: ColunaSinalAgenda, para: Date): Promise<void> {
-  await tx.consultar(`UPDATE integracao_fdv.sinal SET ${coluna} = $2, updated_at = now() WHERE tenant_id = $1 AND ${coluna} IS NOT NULL AND deleted_at IS NULL`, [tenantId, para]);
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET ${coluna} = $2 WHERE tenant_id = $1 AND ${coluna} IS NOT NULL AND deleted_at IS NULL`, [tenantId, para]);
+}
+
+/**
+ * Garante a linha única de `sinal` do tenant (nunca duas): sem ela a agenda não reserva o sinal de vida nem a reconciliação.
+ * Nasce com sinal e busca de pedidos já (o retorno nasce desligado: `agendarRetorno` o liga com o primeiro retorno), e a reconciliação no próximo 06h00 UTC (02h00 de Manaus). Linha que já existe:
+ * liga a busca de pedidos desligada (nula; quem a mantém desligada é o worker) e nunca adia o que já está mais
+ * perto (`least`). Com `anteciparSinal` também traz o próximo sinal para já. É o único `INSERT` em `sinal`; o `ON CONFLICT ... DO
+ * UPDATE` trava a linha até o fim da transação, então quem chama primeiro serializa os concorrentes (`PUT /credencial`).
+ * `updated_at` fica com o trigger da tabela.
+ */
+export async function garantirLinhaDoSinal(tx: Transacao, tenantId: string, agora: Date, o: { anteciparSinal?: boolean } = {}): Promise<void> {
+  await tx.consultar(
+    `INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em)
+     VALUES ($1, $2, $3, $2)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       proximo_sinal_em = CASE WHEN $4::boolean THEN least(integracao_fdv.sinal.proximo_sinal_em, EXCLUDED.proximo_sinal_em) ELSE integracao_fdv.sinal.proximo_sinal_em END,
+       proxima_reconciliacao_em = least(integracao_fdv.sinal.proxima_reconciliacao_em, EXCLUDED.proxima_reconciliacao_em),
+       proxima_busca_pedidos_em = coalesce(integracao_fdv.sinal.proxima_busca_pedidos_em, EXCLUDED.proxima_busca_pedidos_em)`,
+    [tenantId, agora, proximaReconciliacaoEm(agora), o.anteciparSinal ?? false],
+  );
+}
+
+/**
+ * Antecipa o envio das entidades para já (`least`: nunca adia), criando a linha do cursor que faltar. O `least` desfaz de propósito
+ * a posse de uma reserva em andamento: quem a tem regrava o `proximo_em` só se ainda for o `posseAte` (`adiarPresoAPosse`).
+ */
+export async function anteciparEntidades(tx: Transacao, tenantId: string, entidades: readonly string[], agora: Date): Promise<void> {
+  if (entidades.length === 0) return;
+  await tx.consultar(
+    `INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, proximo_em)
+     SELECT $1, e::integracao_fdv.entidade_hub, $3 FROM unnest($2::text[]) AS e
+     ON CONFLICT (tenant_id, entidade) DO UPDATE SET proximo_em = least(integracao_fdv.cursor_entidade.proximo_em, EXCLUDED.proximo_em)`,
+    [tenantId, [...entidades], agora],
+  );
+}
+
+/** Antecipa o próximo sinal de vida para já (`least`), irmã de `agendarRetorno`. Sem linha de `sinal` não faz nada (ver `garantirLinhaDoSinal`). */
+export async function anteciparSinal(tx: Transacao, tenantId: string, agora: Date): Promise<void> {
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET proximo_sinal_em = least(proximo_sinal_em, $2) WHERE tenant_id = $1 AND deleted_at IS NULL`, [tenantId, agora]);
 }
 
 /** Pausa a(s) entidade(s) do tenant. `entidade = null` = todas as linhas ainda não pausadas. Idempotente. */
 export async function pausarEntidades(tx: Transacao, tenantId: string, entidade: string | null, motivo: MotivoPausa, credencialId: string | null, agora: Date): Promise<void> {
   await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade
-        SET pausada_motivo = $3, pausada_em = $4, credencial_id = coalesce($5::uuid, credencial_id), updated_at = now()
+        SET pausada_motivo = $3, pausada_em = $4, credencial_id = coalesce($5::uuid, credencial_id)
       WHERE tenant_id = $1 AND ($2::text IS NULL OR entidade::text = $2) AND pausada_motivo IS NULL AND deleted_at IS NULL`,
     [tenantId, entidade, motivo, agora, credencialId],
   );
