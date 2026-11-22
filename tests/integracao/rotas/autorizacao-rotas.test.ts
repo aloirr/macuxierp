@@ -7,7 +7,8 @@
  */
 import { PERFIS, PERMISSOES, type Licenca, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { describe, expect, it } from 'vitest';
-import { montarApiMemoria, SEGREDO_JWT, TENANT_A, TENANT_B, usarApiMemoria } from '../../apoio/api-memoria';
+import { CNPJ_EMPRESA, FILIAL_A, montarApiMemoria, SEGREDO_JWT, TENANT_A, TENANT_B, usarApiMemoria } from '../../apoio/api-memoria';
+import { formulario } from '../../apoio/multipart';
 import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 
 const montar = usarApiMemoria();
@@ -72,8 +73,12 @@ describe.each(ROTAS)('$nome', ({ modulo, r }) => {
   it('RN-CORE-02: o tenant da transação é o do token (A abre A, B abre B)', async () => {
     const a = await api();
     const p = comPermissao(r);
-    await a.app.inject({ method: r.metodo, url: url(modulo, r), headers: a.auth(p, TENANT_A) });
-    await a.app.inject({ method: r.metodo, url: url(modulo, r), headers: a.auth(p, TENANT_B) });
+    // Rota multipart (POST /v1/core/certificados, #42): o arquivo é lido antes da transação (apps/api/src/app.ts), então
+    // o pedido leva um formulário completo; sem ele, 400 VALIDACAO sem abrir transação.
+    const f = r.multipart ? formulario({ filial_id: FILIAL_A, senha: 'x' }, Object.fromEntries(r.multipart.arquivos.map((x) => [x.campo, Buffer.from('PPPP')]))) : undefined;
+    const pedido = (tenant: string) => ({ method: r.metodo, url: url(modulo, r), ...(f ? { payload: f.payload } : {}), headers: { ...f?.headers, ...a.auth(p, tenant) } });
+    await a.app.inject(pedido(TENANT_A));
+    await a.app.inject(pedido(TENANT_B));
     expect(a.banco.aberturas).toEqual([TENANT_A, TENANT_B]);
   });
 
@@ -133,24 +138,37 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
   });
 
   /*
-   * Multipart (#19): o `@fastify/multipart` está registrado na API, mas nenhuma rota real é multipart ainda — o
-   * POST /v1/core/certificados segue em JSON (`arquivo_base64`, provisório pelo desenho T-0002; achado A-05). O que vale
-   * hoje para um multipart na rota real: sessão e perfil antes de tudo, e o corpo cai na validação (400), nunca em 500.
+   * Multipart (#19) na rota real do A1: desde o #42 (T-0040, 410e8a8) o POST /v1/core/certificados é multipart, com o
+   * `.pfx` no campo `arquivo` (até 50 KB, PFX_TAMANHO_MAXIMO do contrato) e `filial_id`/`senha` em texto; o
+   * `arquivo_base64` saiu do contrato (A-05 resolvido). Sessão e perfil antes de ler o arquivo; acima do limite, 413.
    */
-  it('multipart na rota real do A1: sem sessão 401, vendedor 403 PERFIL_SEM_PERMISSAO, administrador 400 VALIDACAO (rota em JSON, A-05)', async () => {
+  it('multipart na rota real do A1 (A-05, resolvido pelo #42): declaração, 401, 403 do vendedor, 413, JSON antigo 400 e .pfx aceito 201', async () => {
     const a = await api();
-    expect(a.plugins.core.rotas.filter((r) => r.multipart)).toEqual([]);
-    const limite = 't0008';
-    const payload = Buffer.from(
-      `--${limite}\r\nContent-Disposition: form-data; name="senha"\r\n\r\nx\r\n--${limite}\r\nContent-Disposition: form-data; name="arquivo"; filename="a.pfx"\r\nContent-Type: application/x-pkcs12\r\n\r\nPPPP\r\n--${limite}--\r\n`,
-    );
-    const enviar = (h: Record<string, string> = {}) =>
-      a.app.inject({ method: 'POST', url: '/v1/core/certificados', payload, headers: { 'content-type': `multipart/form-data; boundary=${limite}`, ...h } });
-    expect([(await enviar()).statusCode]).toEqual([401]);
-    expect((await enviar(a.auth('vendedor'))).json()).toMatchObject({ codigo: 'PERFIL_SEM_PERMISSAO' });
-    const adm = await enviar(a.auth('administrador'));
-    expect([adm.statusCode, adm.json().codigo]).toEqual([400, 'VALIDACAO']);
+    const multiparts = a.plugins.core.rotas.filter((r) => r.multipart).map((r) => [`${r.metodo} ${r.caminho}`, r.multipart]);
+    expect(multiparts).toEqual([['POST /certificados', { arquivos: [{ campo: 'arquivo', tamanhoMaximo: 51200 }] }]]);
+    const enviar = (pfx: Buffer, h: Record<string, string> = {}) => {
+      const f = formulario({ filial_id: FILIAL_A, senha: 'senha-ficticia' }, { arquivo: pfx });
+      return a.app.inject({ method: 'POST', url: '/v1/core/certificados', payload: f.payload, headers: { ...f.headers, ...h } });
+    };
+    expect((await enviar(Buffer.from('PPPP'))).statusCode).toBe(401);
+    const vendedor = await enviar(Buffer.from('PPPP'), a.auth('vendedor'));
+    expect([vendedor.statusCode, vendedor.json().codigo]).toEqual([403, 'PERFIL_SEM_PERMISSAO']);
+    const grande = await enviar(Buffer.alloc(51201, 'P'), a.auth('administrador'));
+    expect([grande.statusCode, grande.json().codigo]).toEqual([413, 'ARQUIVO_GRANDE']);
+    const antigo = await a.app.inject({ method: 'POST', url: '/v1/core/certificados', payload: { filial_id: FILIAL_A, senha: 'x', arquivo_base64: 'UFBQUA==' }, headers: a.auth('administrador') });
+    expect([antigo.statusCode, antigo.json().codigo]).toEqual([400, 'VALIDACAO']);
+    expect(a.banco.aberturas).toEqual([]);
     expect(a.outbox.eventos).toEqual([]);
+
+    // .pfx que o leitor recusa (como senha errada): 422 RN-CORE-06, sem evento; aceito: 201 com o resumo, sem senha.
+    const recusado = await enviar(Buffer.from('PPPP'), a.auth('administrador'));
+    expect([recusado.statusCode, recusado.json().codigo]).toEqual([422, 'RN-CORE-06']);
+    a.leitorPfx.dados = { titular: 'EMPRESA FICTICIA LTDA', cnpj: CNPJ_EMPRESA, valido_de: new Date('2026-01-01T00:00:00Z'), valido_ate: new Date('2027-01-01T00:00:00Z'), impressao_digital: 'ab'.repeat(32) };
+    const ok = await enviar(Buffer.from('PPPP'), a.auth('administrador'));
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json()).toMatchObject({ filial_id: FILIAL_A, cnpj: CNPJ_EMPRESA, ativo: true });
+    expect(ok.body).not.toContain('senha-ficticia');
+    expect(a.outbox.eventos.map((e) => e.nome)).toEqual(['core.certificado.alterado@1']);
   });
 });
 
