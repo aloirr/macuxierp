@@ -1,6 +1,6 @@
 # T-0021 — Cancelamento do pedido concorrente com o reenvio da nota (plano e relatório)
 
-Dono: `testes`. Branch `nuvem/T-0021-testes-cancelamento-concorrente`, sobre o `origin/main` **6370f36**; harness ajustado ao `main` **244fbd0** (#205 e #210) em 22/11/2026, às 03h40 (Manaus). Pedido do
+Dono: `testes`. Branch `nuvem/T-0021-testes-cancelamento-concorrente`, sobre o `origin/main` **6370f36**; harness ajustado ao `main` **244fbd0** (#205 e #210) em 22/11/2026, às 03h40 (Manaus), e à decisão da `rejeitada` (branch `nuvem/T-0021-testes-conc-rejeitada`, sobre o head do #216, 088596d). Pedido do
 `gerente-projetos` (lote 5 do faturamento). Sessão da nuvem de 22/11/2026, das 03h00 às 03h50 (horário de Manaus), com
 o Postgres local (`bash db/scripts/pg-local.sh`, PostgreSQL 16) e Node 24.
 
@@ -8,7 +8,8 @@ o Postgres local (`bash db/scripts/pg-local.sh`, PostgreSQL 16) e Node 24.
 cancelamento do pedido e o reenvio da nota chegam juntos e (1) o cancelamento é recusado com 422 `RN-PED-02` ("O pedido
 tem nota em autorização", `modules/pedido/api/servico.ts:451`); (2) não há deadlock (40P01) e as duas transações
 terminam no prazo; (3) o saldo não passa (`quantidade_faturada` e `valor_faturado_centavos` ≤ pedido), o status final é
-coerente (nunca `cancelado` com nota autorizada) e nenhuma nota é duplicada.
+coerente (nunca `cancelado` com nota autorizada) e nenhuma nota é duplicada. Com a nota `rejeitada`, o cancelamento
+passa e quem segura é o reenvio (RN-PED-02) ou o worker, que não assina (seção "Decisão de 22/11").
 
 ## Arquivo e montagem
 
@@ -48,30 +49,51 @@ Como rodar: `bash db/scripts/pg-local.sh` e
   quando ele tiver o método e, até lá, ao `semNotaEmAberto.notasAutorizadas` (devolve `[]`, o mesmo da produção). Quem
   preenche é o `modulo-faturamento`.
 - Com o #205, **D-01, D-02, D-03 e D-03b passaram** pelo lado do cancelamento: os `it.fails` ficaram vermelhos e viraram
-  `it` (com `expect(preparo).toBeDefined()` no lugar da guarda). O cenário 6 mudou de resultado esperado: a `rejeitada`
-  conta como em aberto, o cancelamento é 422 e o reenvio, que esperou o `FOR UPDATE` do pedido, segue até `faturado`.
+  `it` (com `expect(preparo).toBeDefined()` no lugar da guarda).
+
+## Decisão de 22/11 (rejeitada e divisão da porta)
+
+- **Alexandre, 22/11/2026, 03h23 (Manaus) (R-20261122-032334-alexandre), opção A**, confirmada pelo `gerente-projetos` às 03h47: a nota `rejeitada` **não**
+  bloqueia o cancelamento do pedido. O cancelamento passa; o reenvio é recusado (`RN-PED-02`) ou o worker não assina
+  (`nao_assinada`, motivo `RN-PED-02: pedido cancelado`); a nota fica `rejeitada`, com o número pendente de inutilização.
+- **Divisão da porta** (gerente e engenheiro, 22/11, 03h19–03h22): o `temNotaEmAutorizacao` conta `rascunho`, `em_autorizacao`,
+  `emitida_contingencia` e `autorizada_guarda_pendente`; a `autorizada` sai dele (senão o `faturado_parcial` nunca cancelaria o
+  saldo, T-0013 §2) e passa ao `notasAutorizadas`. Quem recusa com 422 `RN-PED-02` é o cancelar do pedido (#210), pela
+  autorizada ainda não aplicada (`detalhes.notas_pendentes`). Implementação: `modulo-faturamento` (branch
+  `nuvem/T-0021-faturamento-concorrencia`); **este PR entra depois do dele**.
+- Testes mudados: **[D-02]** (afirma que o `notasAutorizadas` contém a nota; resultado igual, 422 e `faturado`), **cenário 6**
+  (cancelamento 200, reenvio recusado ou worker sem assinar, nota `rejeitada` na lista de numeradas não enviadas) e as
+  **rodadas soltas da `rejeitada`** (cancelamento 200 ou 422, conforme quem chega antes; o invariante vale nos dois casos).
 
 ## Matriz (critério → teste → resultado)
 
-Resultado: 15 testes, verdes **3 vezes seguidas** (≈ 7,6 s cada), em 22/11/2026, 03h25 (Manaus); de novo no `main` 244fbd0, 3 vezes (≈ 7,8 s), às 03h40. Cada defeito tem um
-`it` de preparo (corre o cenário, afirma sem deadlock e as pré-condições, guarda o observado) e um `it.fails` só com a
-asserção do esperado; corrigido, o `it.fails` fica vermelho e vira `it`. Cada `it.fails` abre com uma guarda: sem o
-preparo (por exemplo, rodado sozinho com `-t "\[D-01]"`), ele sai cedo, não falha e fica **vermelho**, em vez de passar
-por um `TypeError`.
+Resultado: 15 testes, verdes **3 vezes seguidas** (≈ 7,6 s cada), em 22/11/2026, 03h25 (Manaus); de novo no `main` 244fbd0, 3 vezes (≈ 7,8 s), às 03h40.
+Com a decisão de 22/11: no `main` (088596d e fd843b2), 13 verdes e 2 vermelhos, só os esperados (ver "Contra o main");
+com a correção do faturamento, 15 verdes (relatório do `modulo-faturamento`). Cada defeito tem um `it` de preparo (corre o
+cenário, afirma sem deadlock e as pré-condições, guarda o observado) e um `it` com a asserção do esperado, que abre com
+`expect(preparo).toBeDefined()`: rodado sozinho (por exemplo, `-t "\[D-01]"`), ele falha com a mensagem "o preparo rodou".
 
 | # | Cenário | Teste | Resultado |
 |---|---|---|---|
 | 1 | Nota `em_autorizacao`, sem corrida: a porta diz `true`, o cancelamento é 422 `RN-PED-02`; autorizada, a nota fatura o pedido (`faturado`, 1 × 10 000 Qtd4, R$ 10,00); o evento reentregue não soma de novo | `preparo: nota em_autorizacao …` | verde |
-| 2a | `em_autorizacao` × reenvio pela API, **cancelamento primeiro** (cancelamento segura `FOR UPDATE` do pedido; desde o #205 o reenvio não espera): 422 `RN-PED-02`, reenvio recusado `RN-FAT-07`, sem deadlock, uma nota, depois `faturado` | `em_autorizacao × reenvio pela API (cancelamento primeiro)` | verde |
-| 2b | O mesmo, **reenvio primeiro** (o reenvio segura `FOR UPDATE` da nota; desde o #205 o cancelamento lê a nota sem `FOR SHARE` e não espera) | `… (reenvio primeiro)` | verde |
+| 2a | `em_autorizacao` × reenvio pela API, **cancelamento primeiro** (cancelamento segura `FOR UPDATE` do pedido; sem espera, ver "Ajuste ao main"): 422 `RN-PED-02`, reenvio recusado `RN-FAT-07`, sem deadlock, uma nota, depois `faturado` | `em_autorizacao × reenvio pela API (cancelamento primeiro)` | verde |
+| 2b | O mesmo, **reenvio primeiro** (o reenvio segura `FOR UPDATE` da nota; sem espera, ver "Ajuste ao main") | `… (reenvio primeiro)` | verde |
 | 2c | 20 rodadas soltas de 2a/2b | `… 20 rodadas soltas` | verde |
 | 3 | `em_autorizacao` × retorno autorizado no worker, **cancelamento primeiro**: a porta vê `em_autorizacao` sem travar a nota; 422, depois autorizada e `faturado` | `em_autorizacao × retorno autorizado no worker (cancelamento primeiro)` | verde |
 | 4 | `em_autorizacao` × retorno autorizado no worker, **worker primeiro** (a nota fica autorizada na transação do worker, ainda sem commit; o cancelamento lê a versão confirmada, `em_autorizacao`) | `[D-01, preparo]` + `[D-01]` | verde (D-01 corrigido no #205) |
-| 5 | Nota autorizada com o `nota.autorizada@1` ainda na outbox (sem corrida) | `[D-02, preparo]` + `[D-02]` | verde (D-02 corrigido no #205) |
-| 6 | `rejeitada` × reenvio pela API, **cancelamento primeiro**: desde o #205 o cancelamento é 422 `RN-PED-02` (`rejeitada` em aberto); o reenvio espera no `FOR SHARE` da situação e segue; autorizada, `faturado` | `rejeitada × reenvio pela API (cancelamento primeiro)` | verde |
-| 7 | `rejeitada` × reenvio pela API, **reenvio primeiro** (o reenvio segura o `FOR SHARE` do pedido; o cancelamento espera e passa depois do commit) | `[D-03, preparo]` + `[D-03]` | verde (D-03 corrigido no #205, pelo cancelamento) |
+| 5 | Nota autorizada com o `nota.autorizada@1` ainda na outbox (sem corrida): o `notasAutorizadas` da porta contém a nota; 422 `RN-PED-02`; `faturado` | `[D-02, preparo]` + `[D-02]` | verde com a correção do faturamento; vermelho no `main` (porta sem `notasAutorizadas`) |
+| 6 | `rejeitada` × reenvio pela API, **cancelamento primeiro**: o cancelamento passa (`cancelado`); o reenvio espera o `FOR UPDATE` do pedido no `FOR SHARE` da situação e é recusado `RN-PED-02`, ou o worker não assina (`RN-PED-02: pedido cancelado`); nota `rejeitada`, número em `numeradasNaoEnviadas`; nunca `cancelado` com autorizada | `rejeitada × reenvio pela API (cancelamento primeiro)` | verde com a correção do faturamento; vermelho no `main` (a `rejeitada` ainda bloqueia: 422) |
+| 7 | `rejeitada` × reenvio pela API, **reenvio primeiro** (o reenvio segura o `FOR SHARE` do pedido; o cancelamento espera e passa depois do commit; com a correção, o worker não assina) | `[D-03, preparo]` + `[D-03]` | verde (no `main`, pelo cancelamento; com a correção, pelo worker) |
 | 7b | Nota `rascunho` recém-emitida, **sem corrida**: o cancelamento passa e o worker assina e autoriza depois | `[D-03b, preparo]` + `[D-03b]` | verde (D-03b corrigido no #205, pelo cancelamento) |
-| 8 | 20 rodadas soltas de 6/7: nunca deadlock; cancelamento 200 ou 422; reenvio responde pelo domínio; uma nota; saldo íntegro | `rejeitada × reenvio pela API, 20 rodadas soltas` | verde |
+| 8 | 20 rodadas soltas de 6/7: nunca deadlock; cancelamento 200 ou 422 (quem chega antes); reenvio responde pelo domínio; cancelamento aceito com reenvio aceito → o worker não assina; nunca `cancelado` com autorizada; uma nota; saldo íntegro | `rejeitada × reenvio pela API, 20 rodadas soltas` | verde (no `main`, todas 422) |
+
+## Contra o main
+
+Arquivo rodado no head deste branch (088596d, código do `main` 8356e14) e no `origin/main` fd843b2 (#215), Postgres 16 local:
+**13 verdes, 2 vermelhos**, só os esperados. `[D-02]`: `notasAutorizadas da porta: expected [] to include '<nota>'` (o
+`notaEmAbertoSql` do `main` não tem o método; o gancho cai no `semNotaEmAberto`). Cenário 6: `cancelamento: expected { ok: false … }
+to match object { ok: true … }` (a porta do `main` conta a `rejeitada` e recusa com 422). As rodadas soltas da `rejeitada`
+ficam verdes no `main` (todas 422, invariante mantido).
 
 **Deadlock:** nenhum 40P01 em nenhuma ordem (6 corridas com portão e 40 soltas por rodada, 3 rodadas). As travas
 sempre se encadeiam no mesmo sentido ou esperam o commit da outra. **Saldo:** nunca passou do pedido. **Nota
@@ -82,7 +104,8 @@ duplicada:** nenhuma.
 Situação no `main` 244fbd0: os quatro **corrigidos pelo lado do cancelamento** (porta do #205). A conferência do pedido no
 worker antes de assinar (dependência `situacao` do transmissor) é a segunda metade da correção de D-03 e D-03b, ainda na
 branch do `modulo-faturamento`; com o cancelamento já recusado, este arquivo não consegue mais chegar ao worker com o pedido
-`cancelado`, então a prova dela fica nos testes do faturamento.
+`cancelado`, então a prova dela fica nos testes do faturamento. Com a decisão de 22/11 (`rejeitada` fora da porta), o D-03 e as
+rodadas soltas da `rejeitada` com o reenvio primeiro voltam a chegar ao worker com o pedido `cancelado` e provam essa metade aqui.
 
 | Id | Defeito | Observado (antes do #205) | Esperado | Dono |
 |---|---|---|---|---|
@@ -93,6 +116,7 @@ branch do `modulo-faturamento`; com o cancelamento já recusado, este arquivo n�
 
 **Correção proposta pelo engenheiro:** a porta `NotaEmAberto` conta `rascunho`, `em_autorizacao`, `emitida_contingencia`,
 `autorizada_guarda_pendente` e `autorizada` (a `rejeitada` fica para decisão de produto); o worker confere o pedido com `FOR SHARE` antes de assinar.
+Substituída pela divisão de 22/11 (seção "Decisão de 22/11"): a `autorizada` vai ao `notasAutorizadas` e a `rejeitada` fica fora.
 
 **Texto de `RN-PED-02`:** o `ehRecusaNotaEmAberto` do teste reconhece a recusa da porta pelo 422, pelo código `RN-PED-02`
 e pela palavra "nota" no texto (`modules/pedido/api/servico.ts:451`, hoje "O pedido tem nota em autorização"), sem
