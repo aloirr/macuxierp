@@ -50,12 +50,11 @@ MANUT="${MACUXIERP_BANCO_MANUTENCAO:-postgres}"
 [[ "$MANUT" =~ $IDENT ]] || erro 2 "MACUXIERP_BANCO_MANUTENCAO inválido"
 
 # ---------- 1. conexão TLS e privilégios do admin ----------
+[ -s "$ORIGEM/conexao-admin.sql" ] || erro 2 "$ORIGEM/conexao-admin.sql ausente (o workflow copia scripts/deploy/producao/* junto com este script)"
 info=""
 for t in 1 2 3; do
-  info="$(psqlc -d "$MANUT" -c "select current_setting('server_version'), coalesce(s.ssl::text, 'f'), coalesce(s.version, '-'),
-                                       r.rolsuper, r.rolbypassrls, r.rolcreatedb, r.rolcreaterole
-                                  from pg_roles r left join pg_stat_ssl s on s.pid = pg_backend_pid()
-                                 where r.rolname = current_user")" && break
+  # A consulta fica em conexao-admin.sql (ao lado deste script) e vai pelo stdin: o contêiner não vê o disco do host.
+  info="$(psqlc -d "$MANUT" -f - < "$ORIGEM/conexao-admin.sql")" && break
   [ "$t" = 3 ] && erro 3 "sem conexão com o DBaaS como o admin (host, porta, usuário/senha do admin ou TLS; veja a linha do psql acima)"
   log "conexão falhou (tentativa $t); de novo em 10 s"
   sleep 10

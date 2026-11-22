@@ -93,6 +93,26 @@
         "!$TURBO_ROOT$/**/*.tsbuildinfo"
       ]
     },
+    "@macuxierp/config#test": {
+      "dependsOn": [
+        "transit"
+      ],
+      "outputs": [],
+      "env": [
+        "MACUXI_PG_*",
+        "MACUXI_DB_MIGRACOES"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/deploy/producao/**",
+        "!$TURBO_ROOT$/**/node_modules/**",
+        "!$TURBO_ROOT$/**/.turbo/**",
+        "!$TURBO_ROOT$/**/.next/**",
+        "!$TURBO_ROOT$/**/.expo/**",
+        "!$TURBO_ROOT$/**/dist/**",
+        "!$TURBO_ROOT$/**/*.tsbuildinfo"
+      ]
+    },
     "//#lint:tests": {
       "inputs": [
         "tests/**",
