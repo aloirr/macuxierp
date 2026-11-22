@@ -31,11 +31,11 @@
 | [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | em_revisao | PR #5 (escolha do Alexandre: A, B ou C) |
 | [T-0024](tarefas/T-0024.md) | Deploy do ERP na VM do FDV com trava compartilhada (ADR 0003) | F1 | engenheiro-software | em_andamento | nuvem/T-0024-deploy |
 | [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | bloqueada | — |
-| [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | em_andamento | nuvem/T-0026-carga-csv |
+| [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | em_andamento | PR #26 (desenho da carga, 6f34859); implementação em nuvem/T-0026-carga-csv-impl depois do #19 |
 | [T-0027](tarefas/T-0027.md) | Virada do conector da thathyany: kit do FDV sai, conector nativo do ERP entra | F3 | modulo-integracao-fdv | aberta | — |
 | [T-0028](tarefas/T-0028.md) | Tokens da marca em packages/ui (cores, situação, escala tipográfica) | F1 | designer-ux | concluida | PR #12 → 4c4d46f |
 | [T-0029](tarefas/T-0029.md) | Integração de plataforma da F1 (módulos na API, multipart, worker, helpers comuns) | F1 | engenheiro-software | em_revisao | PR #19 |
-| [T-0030](tarefas/T-0030.md) | Troca da filial para produção fiscal só com a aprovação do Alexandre conferida (regra 7) | F1 | engenheiro-software | em_andamento | PR #24 (desenho e ADR 0006, ebe539c); etapa 2 em nuvem/T-0030-producao-fiscal-impl depois do #19 |
+| [T-0030](tarefas/T-0030.md) | Troca da filial para produção fiscal só com a aprovação do Alexandre conferida (regra 7) | F1 | engenheiro-software | em_andamento | PR #24 (desenho e ADR 0006, 1753312) e PR #25 (corretor); etapa 2 em nuvem/T-0030-producao-fiscal-impl depois do #19 |
 | [T-0031](tarefas/T-0031.md) | Core: resíduos da revisão do PR #14 (RD-0008, RD-0009, lint e teste de banco da concorrência) | F1 | modulo-core | concluida | PR #18 → 65a25f3 |
 | [T-0032](tarefas/T-0032.md) | Banco: updated_at estritamente crescente por linha (token de concorrência) | F1 | banco-dados | concluida | PR #20 → ee17b80 |
 | [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | concluida | PR #22 → cba7f5f |
@@ -55,6 +55,7 @@
 ## Reservas
 - ADR: 0001–0005 usadas; 0006 reservada para a T-0030 (21/11). Migrações: 0007 reservada para a T-0010 e 0008 para a T-0030, se precisar.
 - Tarefas: T-0001–T-0033 usadas; próxima livre: T-0034.
+- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); próxima livre: RD-0034. Sessão que vai numerar pede a faixa ao gerente por send_message.
 
 ## Depende do Alexandre
 - Secrets do GitHub e `.env` de produção (banco `macuxierp`, `MACUXIERP_CHAVE_A1` (32 bytes, obrigatória), S3, SMTP); DNS e rota `erp.` no túnel.
