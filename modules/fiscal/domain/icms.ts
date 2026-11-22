@@ -1,6 +1,7 @@
-import type { ErroFiscal, IcmsItem, ItemCalculo, RegraTributaria } from '../contracts';
+import type { IcmsItem, ItemCalculo, RegraTributaria } from '../contracts';
+import type { CodigoErroCalculo } from './erros';
 import { ehCsosn } from './regra';
-import { aplicarPercentual, BASE_PERCENTUAL, divArredonda } from './dinheiro';
+import { aplicarPercentual, BASE_PERCENTUAL, divArredonda, valorOperacao } from './dinheiro';
 
 /** Resolução do Senado 13/2012: 4% (40000) nas interestaduais de mercadoria importada (origens 1, 2, 3 e 8). */
 export const ALIQUOTA_INTERESTADUAL_IMPORTADO = 40000;
@@ -14,7 +15,7 @@ export function aliquotaInterestadual(origem: string, aliquotaDaRegra: number | 
 
 /** Base do ICMS próprio antes da redução: vProd + frete + seguro + outras − desconto (+ IPI quando `ipiNaBc`). Pode ser negativa (o chamador valida). */
 export function baseIcms(item: ItemCalculo, ipiNaBc: boolean): number {
-  return item.valor_bruto_centavos + item.frete_centavos + item.seguro_centavos + item.outras_despesas_centavos - item.desconto_centavos + (ipiNaBc ? item.ipi_centavos : 0);
+  return valorOperacao(item) + (ipiNaBc ? item.ipi_centavos : 0);
 }
 
 /** Consumidor final ou destinatário não contribuinte: o IPI integra a BC do ICMS próprio. */
@@ -91,12 +92,12 @@ const COM_ST = ['10', '30', '70', '201', '202', '203'];
 /** CST 90 e CSOSN 900: calculam ICMS próprio/ST só se a regra trouxer a alíquota. */
 const COM_ALIQ_OPCIONAL = ['90', '900'];
 
-export type ResultadoIcmsItem = { ok: true; icms: IcmsItem } | { ok: false; codigo: Extract<ErroFiscal['codigo'], 'CODIGO_NAO_SUPORTADO' | 'REGRA_INCOMPLETA' | 'BASE_NEGATIVA'>; mensagem: string };
+export type ResultadoIcmsItem = { ok: true; icms: IcmsItem } | { ok: false; codigo: CodigoErroCalculo; mensagem: string };
 
 /** Monta o grupo ICMS do item conforme o CST/CSOSN da regra (RN-FIS-02). Os códigos 51 (diferimento) ficam para lote posterior. */
 export function calcularIcmsItem(c: ContextoIcmsItem): ResultadoIcmsItem {
   const { item, regra } = c;
-  const cod = regra.codigo;
+  const cod = regra.codigo ?? '';
   const simples = ehCsosn(cod);
   const icms: IcmsItem = { orig: item.origem, ...(simples ? { csosn: cod } : { cst: cod }) };
   if (item.desconto_centavos > item.valor_bruto_centavos) return { ok: false, codigo: 'BASE_NEGATIVA', mensagem: 'O desconto é maior que o valor bruto do item.' };
