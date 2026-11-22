@@ -5,6 +5,8 @@ import { cores } from './tokens.js';
  * (assinatura "A" negativa sobre azul-noite e símbolo negativo do FDV). Não edite à mão: se o ativo mudar,
  * copie o literal de novo por script e atualize o hash. Os hex ficam dentro dos SVGs, por isso este arquivo
  * não entra na regra de "sem cor literal" dos componentes.
+ *
+ * Subpath `@macuxierp/ui/marca`: sem hook e sem importar o barrel, para o Server Component do layout.
  */
 
 /** SHA-256 do arquivo oficial `docs/marca/ativos/2026-11-22-v1/macuxi-erp-a-negativo-azul-noite.svg` (com a quebra de linha final). */
@@ -23,3 +25,30 @@ export const paraDataUri = (svg: string): string => 'data:image/svg+xml,' + enco
 export const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" fill="${cores.azulNoite}"/><g transform="translate(6 6) scale(0.8125)">${simboloNegativo}</g></svg>`;
 
 export const faviconDataUri = paraDataUri(faviconSvg);
+
+/** SHA-256 dos bytes do PNG `appleTouchIconPngBase64` (180x180). */
+export const SHA256_APPLE_TOUCH_ICON = 'f27b69248c802831e638acd1f5bd8df84415f0b996fd3e0b02546f36aacbff48';
+
+/**
+ * apple-touch-icon 180x180: o `faviconSvg` rasterizado. Gerado em 22/11/2026 (T-0021) com o `sharp` do repositório:
+ * `sharp(Buffer.from(faviconSvg), { density: 1200 }).resize(180, 180).png({ compressionLevel: 9 })`.
+ * Se o favicon mudar, gere de novo, troque o base64 e atualize `SHA256_APPLE_TOUCH_ICON` (o teste confere).
+ */
+export const appleTouchIconPngBase64 =
+  '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';
+
+export const appleTouchIconDataUri = 'data:image/png;base64,' + appleTouchIconPngBase64;
+
+export interface AssinaturaErpProps {
+  /** Altura em px; fica entre 20 e 32 (assinatura-erp §4). Padrão: 24. */
+  altura?: number;
+}
+
+/** Altura válida da assinatura: de 20 a 32 px. */
+export const alturaAssinatura = (h: number): number => Math.min(32, Math.max(20, h));
+
+/** Assinatura "Macuxi ERP" (versão A, negativa) para o topo azul-noite do shell. */
+export function AssinaturaErp({ altura = 24 }: AssinaturaErpProps) {
+  const h = alturaAssinatura(altura);
+  return <img src={paraDataUri(assinaturaANegativoAzulNoite)} alt="Macuxi ERP" height={h} style={{ display: 'block', height: h, width: 'auto' }} />;
+}

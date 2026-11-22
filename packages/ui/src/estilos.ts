@@ -53,6 +53,12 @@ export const botaoSecundario = (desabilitado?: boolean): CSSProperties => ({
   border: `1px solid ${cor('bordaCampo')}`,
 });
 
+/** Hover do botão principal: fundo e borda em grafite (só cor da paleta; sem `filter`). */
+const botaoPrincipalHover: CSSProperties = { background: cor('grafite'), border: `1px solid ${cor('grafite')}` };
+
+/** Hover do botão secundário: fundo névoa. */
+const botaoSecundarioHover: CSSProperties = { background: cor('nevoa') };
+
 /** Foco visível dos botões (MC-0011): contorno de 2 px em azul-noite. */
 export const focoVisivel: CSSProperties = { outline: `2px solid ${cor('azulNoite')}`, outlineOffset: '2px' };
 
@@ -69,6 +75,8 @@ export function gerarCssBotoes(): string {
     '/* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */\n' +
     regraCss('.mx-botao', botaoPrincipal()) +
     regraCss('.mx-botao-secundario', botaoSecundario()) +
+    regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
+    regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
     regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible', focoVisivel) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true))
   );

@@ -49,10 +49,10 @@ describe('canto e campoBase', () => {
 });
 
 describe('contorno do rádio', () => {
-  it('o rádio mostra a borda-campo e o azul-noite', () => {
+  it('o rádio fecha com borda-campo (o marcado em azul-noite fica no ajustes3)', () => {
     const h = dialogo({ motivos });
-    expect(h).toMatch(/<input type="radio"[^>]*accent-color:var\(--mx-cor-azul-noite\)/);
-    expect(h).toMatch(/<input type="radio"[^>]*box-shadow:0 0 0 1px var\(--mx-cor-borda-campo\)/);
+    expect(h).not.toContain('accent-color');
+    expect(h).toMatch(/<input type="radio"[^>]*appearance:none[^>]*border:1px solid var\(--mx-cor-borda-campo\)/);
   });
 });
 

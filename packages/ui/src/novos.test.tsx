@@ -2,12 +2,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { AssinaturaErp, alturaAssinatura } from './AssinaturaErp.js';
 import { DialogoMotivo } from './DialogoMotivo.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { TabelaDensa, type ColunaTabela } from './TabelaDensa.js';
 import { botaoPrincipal, botaoSecundario, gerarCssBotoes } from './estilos.js';
-import { SHA256_ASSINATURA_A_NEGATIVO_AZUL_NOITE, SHA256_SIMBOLO_NEGATIVO, assinaturaANegativoAzulNoite, faviconDataUri, faviconSvg, paraDataUri, simboloNegativo } from './marca.js';
+import { AssinaturaErp, SHA256_ASSINATURA_A_NEGATIVO_AZUL_NOITE, SHA256_SIMBOLO_NEGATIVO, alturaAssinatura, assinaturaANegativoAzulNoite, faviconDataUri, faviconSvg, paraDataUri, simboloNegativo } from './marca.js';
 
 const sha256 = (literal: string) => createHash('sha256').update(literal + '\n').digest('hex');
 const novoItem = (chave: string): ItemLinha => ({ chave, produtoId: null, quantidade: 1, precoUnitarioCentavos: 0, descontoCentavos: 0 });
