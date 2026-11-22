@@ -15,6 +15,12 @@ export type TpAmb = z.infer<typeof TpAmb>;
 export const TP_AMB = Object.freeze({ producao: 1, homologacao: 2 } as const satisfies Record<AmbienteFiscal, TpAmb>);
 
 /**
+ * `xNome` do destinatário em homologação (`tpAmb` 2): o texto que o Manual exige (regra de validação E04; RN-FAT-04).
+ * Fonte única para quem monta a NF-e (emissor, faturamento) e para os documentos de teste (RD-0254).
+ */
+export const XNOME_HOMOLOGACAO = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
+
+/**
  * Modo de emissão que passa pelo transporte. `normal` vai ao autorizador da UF; `svc-an` e `svc-rs` são as
  * contingências on-line (SEFAZ Virtual). FS-DA (tpEmis 5) e EPEC (tpEmis 4) não entram aqui: a FS-DA não transmite
  * na hora (a nota segue depois pelo modo normal) e o EPEC é evento do Ambiente Nacional, fora da v1 (desenho §2.2).

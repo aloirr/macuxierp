@@ -1,14 +1,14 @@
 /** Verificador XMLDSig (xml-crypto): padrão da NF-e, CNPJ do certificado (213), validade, embrulho e o 202 por dublê. */
+import { X509Certificate } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 import { SignedXml } from 'xml-crypto';
-import { CNPJ_OUTRO_DE_TESTE, INSTANTE_DE_TESTE, VALIDADE_DE_TESTE, assinarXmlDeTeste, gerarA1DeTeste, montarInutilizacaoDeTeste, montarNFeDeTeste } from './teste';
+import { CNPJ_EMITENTE_DE_TESTE, CNPJ_OUTRO_DE_TESTE, INSTANTE_DE_TESTE, VALIDADE_DE_TESTE, assinarXmlDeTeste, gerarA1DeTeste, montarInutilizacaoDeTeste, montarNFeDeTeste } from './teste';
 import {
   CSTAT_FALHA_ASSINATURA,
   ERRO_XML_CRYPTO_DIFERE,
   NS_NFE,
   NS_XMLDSIG,
-  cnpjDoCertificado,
   filhoNfe,
   lerXml,
   verificarAssinaturaNFe,
@@ -61,10 +61,17 @@ describe('verificarAssinaturaXml', () => {
     expect(verificarAssinaturaXml(inut, { elemento: 'infNFe', agora: AGORA })).toMatchObject({ cStat: '298' });
   });
 
-  it('cnpjDoCertificado segue o titular ICP-Brasil e confere o DV', () => {
-    expect(cnpjDoCertificado('CN=EMPRESA LTDA:11222333000181\nO=ICP-Brasil')).toBe('11222333000181');
-    expect(cnpjDoCertificado('CN=EMPRESA LTDA:11222333000182')).toBeNull();
-    expect(cnpjDoCertificado('CN=EMPRESA LTDA')).toBeNull();
+  it('CNPJ só no SAN ICP-Brasil (2.16.76.1.3.3), sem o :CNPJ no CN: passa; nem no SAN nem no CN: 292 (RD-0294)', () => {
+    const soSan = gerarA1DeTeste({ ...VALIDADE_DE_TESTE, cnpjNoTitular: 'san' });
+    expect(new X509Certificate(soSan.certificadoPem).subject).not.toContain(soSan.cnpj);
+    const r = verificarAssinaturaNFe(assinarXmlDeTeste(nfe.xml, { elemento: 'infNFe', a1: soSan }), { cnpjEsperado: soSan.cnpj, agora: AGORA });
+    expect(r).toMatchObject({ ok: true, certificado: { cnpj: soSan.cnpj } });
+  });
+
+  it('qualquer ErroCertificado do SDK vira 292 (os 3 códigos são provados no certificado-icp.test.ts do SDK; RD-0294)', () => {
+    const recusado = gerarA1DeTeste({ ...VALIDADE_DE_TESTE, cnpj: CNPJ_EMITENTE_DE_TESTE, cnpjNoCn: CNPJ_OUTRO_DE_TESTE });
+    const xml = assinarXmlDeTeste(nfe.xml, { elemento: 'infNFe', a1: recusado });
+    expect(verificarAssinaturaNFe(xml, { agora: AGORA })).toEqual({ ok: false, falha: 'certificado_sem_cnpj', cStat: '292' });
   });
 
   it('297 × 202 travado no xml-crypto 6.4.0: digest ou valor adulterado vira 297, nunca 202', () => {

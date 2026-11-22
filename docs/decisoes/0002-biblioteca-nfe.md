@@ -55,3 +55,11 @@ Também vistas: `@brasil-fiscal/nfe` (MIT, IBS/CBS no README, ~36 estrelas), `nf
 - T-0018 (spike): sinete × porte do sped-nfe em homologação AM, com o A1 de teste; confere endereços, SVC-RS e a NT vigente no portal oficial; registra o resultado aqui.
 - A versão da NT usada fica nesta ADR (adendo a cada NT nova).
 - `fiscal` expõe o cálculo em `contracts`; `faturamento` monta o XML a partir dele.
+
+## Adendo — Resultado do spike T-0018 (22/11/2026, 00h20 Manaus)
+- **A decisão não muda: opção A.** O porte do sped-nfe (`@macuxierp/nfe-emissor`, atribuição MIT nos cabeçalhos) passou em C1, C2 e C3 contra o simulador da SEFAZ-AM da T-0045 (ADR 0008); o sinete empatou em C1, C2 e C4 e perdeu em C5 (PL_010f) e C7 (pré-alfa). Comparação e números: desenho `docs/desenho/T-0018.md`, §6 e §7.
+- **NT e pacote em uso:** NT 2025.002-RTC **v1.53** e **PL_010g**, "a conferir" no portal oficial na T-0046 (a sessão da nuvem continua sem acesso ao governo; o C3 foi contra o simulador, como manda a ADR 0008).
+- **Arredondamento:** IBS, CBS e IS em meio-para-par (ABNT NBR 5891) e ICMS, IPI, PIS e COFINS em meio para cima (decisão do Alexandre, 22/11/2026, 00h15; RN-FIS-03 e RN-CORE-03). A conta é a do SDK (`dividirArredondando` e `aplicarAliquota` com o modo, em `packages/platform-sdk/src/dinheiro.ts`); o emissor e o desenho T-0018 apontam para este bullet.
+- **Quem monta:** decidido pelo gerente em 22/11/2026, 00h42 (Manaus): fica o nfe-emissor atrás da porta EmissorNFe; o faturamento monta a entrada NotaParaEmissao, chama a porta (montar, assinar, transmitir e os eventos) e guarda o nfeProc. Vale no lugar da linha "`faturamento` monta o XML a partir dele" das Consequências (RD-0254; desenho T-0018 §7.4 e §8, "Troca da T-0021").
+- **Dependências:** nenhuma de produção nova além das da ADR 0008 (`node-forge`, que ela já previa para a leitura do `.pfx` na T-0018). Sem ADR 0009. O sinete não fica no repositório: saiu no fim do spike, com o teste de comparação (C4) e as devDependencies dele.
+- **Pendências da T-0046** (obrigatória antes da F5): desenho T-0018 §2.6.

@@ -1,16 +1,15 @@
 /**
  * Documentos SÓ DE TESTE, sem assinatura, no leiaute 4.00 / PL_010g: uma NF-e mínima (um item, com os grupos IBS e
  * CBS da NT 2025.002-RTC e, se pedido, o IS), o evento de cancelamento, a CC-e e a inutilização. Montagem de teste:
- * a montagem de produção é da T-0018/T-0021. Os textos de homologação seguem o Manual ("SEM VALOR FISCAL").
+ * a montagem de produção é da T-0018/T-0021. Os textos de homologação são o `XNOME_HOMOLOGACAO` (RD-0254).
  */
-import { CUF, TP_AMB, TP_EMIS, type ModoEmissao } from '../ambiente';
+import { CUF, TP_AMB, TP_EMIS, XNOME_HOMOLOGACAO, type ModoEmissao } from '../ambiente';
 import { montarChaveNFe } from '../chave';
 import { aammSefaz, dataHoraSefaz } from '../datas';
-import { TIPO_EVENTO } from '../porta';
+import { DESC_EVENTO, X_COND_USO_CCE, idEvento, idInutilizacao } from '../eventos';
+import { TIPO_EVENTO, type TipoEvento } from '../porta';
 import { NS_NFE } from '../xmldsig';
 import { CNPJ_EMITENTE_DE_TESTE, CNPJ_OUTRO_DE_TESTE } from './a1-de-teste';
-
-const SEM_VALOR = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
 
 export interface OpcoesNFeDeTeste {
   nNF: number;
@@ -72,8 +71,8 @@ export function montarNFeDeTeste(o: OpcoesNFeDeTeste): NFeDeTeste {
     `<tpEmis>${tpEmis}</tpEmis><cDV>${chave.slice(-1)}</cDV><tpAmb>${tpAmb}</tpAmb><finNFe>1</finNFe><indFinal>1</indFinal>` +
     `<indPres>1</indPres><procEmi>0</procEmi><verProc>MACUXI-TESTE-0.1</verProc>${contingencia}</ide>` +
     `<emit><CNPJ>${cnpj}</CNPJ><xNome>EMPRESA FICTICIA DE TESTE LTDA</xNome>${endereco('enderEmit')}<IE>062000012</IE><CRT>3</CRT></emit>` +
-    `<dest><${tagDoc}>${doc}</${tagDoc}><xNome>${SEM_VALOR}</xNome>${endereco('enderDest')}<indIEDest>9</indIEDest></dest>` +
-    `<det nItem="1"><prod><cProd>0001</cProd><cEAN>SEM GTIN</cEAN><xProd>${SEM_VALOR}</xProd><NCM>22021000</NCM>` +
+    `<dest><${tagDoc}>${doc}</${tagDoc}><xNome>${XNOME_HOMOLOGACAO}</xNome>${endereco('enderDest')}<indIEDest>9</indIEDest></dest>` +
+    `<det nItem="1"><prod><cProd>0001</cProd><cEAN>SEM GTIN</cEAN><xProd>${XNOME_HOMOLOGACAO}</xProd><NCM>22021000</NCM>` +
     `<CFOP>5102</CFOP><uCom>UN</uCom><qCom>1.0000</qCom><vUnCom>${reais(v)}</vUnCom><vProd>${reais(v)}</vProd>` +
     `<cEANTrib>SEM GTIN</cEANTrib><uTrib>UN</uTrib><qTrib>1.0000</qTrib><vUnTrib>${reais(v)}</vUnTrib><indTot>1</indTot></prod>` +
     `<imposto><ICMS><ICMS00><orig>0</orig><CST>00</CST><modBC>3</modBC><vBC>${reais(v)}</vBC><pICMS>20.00</pICMS><vICMS>${reais(vICMS)}</vICMS></ICMS00></ICMS>` +
@@ -102,8 +101,8 @@ export interface OpcoesEventoDeTeste {
   cOrgao?: number;
 }
 
-function evento(o: OpcoesEventoDeTeste, tpEvento: string, nSeq: number, detalhe: string): string {
-  const id = `ID${tpEvento}${o.chave}${String(nSeq).padStart(2, '0')}`;
+function evento(o: OpcoesEventoDeTeste, tpEvento: TipoEvento, nSeq: number, detalhe: string): string {
+  const id = idEvento(tpEvento, o.chave, nSeq);
   return (
     `<evento xmlns="${NS_NFE}" versao="1.00"><infEvento Id="${id}"><cOrgao>${o.cOrgao ?? CUF.AM}</cOrgao><tpAmb>${o.tpAmb ?? 2}</tpAmb>` +
     `<CNPJ>${o.cnpj ?? CNPJ_EMITENTE_DE_TESTE}</CNPJ><chNFe>${o.chave}</chNFe><dhEvento>${dataHoraSefaz(o.dhEvento)}</dhEvento>` +
@@ -115,19 +114,13 @@ function evento(o: OpcoesEventoDeTeste, tpEvento: string, nSeq: number, detalhe:
 /** `<evento>` 110111 sem assinatura. */
 export function montarCancelamentoDeTeste(o: OpcoesEventoDeTeste & { nProt: string; xJust?: string }): string {
   const xJust = o.xJust ?? 'Cancelamento de teste no simulador da SEFAZ';
-  return evento(o, TIPO_EVENTO.cancelamento, 1, `<descEvento>Cancelamento</descEvento><nProt>${o.nProt}</nProt><xJust>${xJust}</xJust>`);
+  return evento(o, TIPO_EVENTO.cancelamento, 1, `<descEvento>${DESC_EVENTO[TIPO_EVENTO.cancelamento]}</descEvento><nProt>${o.nProt}</nProt><xJust>${xJust}</xJust>`);
 }
-
-const CONDICAO_CCE =
-  'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para ' +
-  'regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que ' +
-  'determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; ' +
-  'II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.';
 
 /** `<evento>` 110110 (CC-e) sem assinatura. */
 export function montarCartaCorrecaoDeTeste(o: OpcoesEventoDeTeste & { nSeqEvento: number; xCorrecao?: string }): string {
   const x = o.xCorrecao ?? 'Correcao de teste: o endereco de entrega e Rua de Teste, 100';
-  return evento(o, TIPO_EVENTO.cartaCorrecao, o.nSeqEvento, `<descEvento>Carta de Correcao</descEvento><xCorrecao>${x}</xCorrecao><xCondUso>${CONDICAO_CCE}</xCondUso>`);
+  return evento(o, TIPO_EVENTO.cartaCorrecao, o.nSeqEvento, `<descEvento>${DESC_EVENTO[TIPO_EVENTO.cartaCorrecao]}</descEvento><xCorrecao>${x}</xCorrecao><xCondUso>${X_COND_USO_CCE}</xCondUso>`);
 }
 
 /** `<inutNFe>` sem assinatura. `ano` com 2 dígitos. */
@@ -144,7 +137,7 @@ export function montarInutilizacaoDeTeste(o: {
   const cnpj = o.cnpj ?? CNPJ_EMITENTE_DE_TESTE;
   const serie = o.serie ?? 1;
   const cUF = o.cUF ?? CUF.AM;
-  const id = `ID${cUF}${o.ano}${cnpj}55${String(serie).padStart(3, '0')}${String(o.nNFIni).padStart(9, '0')}${String(o.nNFFin).padStart(9, '0')}`;
+  const id = idInutilizacao({ cUF, ano: o.ano, cnpj, serie, nNFIni: o.nNFIni, nNFFin: o.nNFFin });
   return (
     `<inutNFe xmlns="${NS_NFE}" versao="4.00"><infInut Id="${id}"><tpAmb>${o.tpAmb ?? 2}</tpAmb><xServ>INUTILIZAR</xServ><cUF>${cUF}</cUF>` +
     `<ano>${o.ano}</ano><CNPJ>${cnpj}</CNPJ><mod>55</mod><serie>${serie}</serie><nNFIni>${o.nNFIni}</nNFIni><nNFFin>${o.nNFFin}</nNFFin>` +

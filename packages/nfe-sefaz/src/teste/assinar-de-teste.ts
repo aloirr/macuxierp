@@ -1,7 +1,8 @@
 /**
  * Assinatura XMLDSig SÓ DE TESTE, no padrão da NF-e (enveloped, C14N 2001, RSA-SHA1, SHA-1, `Reference URI="#Id"`,
  * certificado no `X509Data`), com o `xml-crypto` (ADR 0008). Assina NF-e, evento e inutilização de teste, inclusive
- * XML forjado. O assinador de produção (T-0018) só assina a NF-e que ele mesmo monta: este arquivo fica.
+ * XML forjado. O assinador de produção só assina o que o emissor monta (forma canônica); XML forjado precisa deste
+ * arquivo.
  */
 import { SignedXml } from 'xml-crypto';
 import { ALGORITMOS_XMLDSIG_NFE, type ElementoAssinado } from '../xmldsig';
