@@ -89,7 +89,7 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
     ...dependenciasPedido(criarConsultaParaPedido(d.cadastros?.repositorios ?? repositoriosSql), d.log ? { log: d.log } : {}),
     ...d.pedido,
   });
-  const integracaoFdv = criarPluginIntegracaoFdv(d.integracaoFdv ?? { chaveMestra: null, chaveVersao: 1 });
+  const integracaoFdv = criarPluginIntegracaoFdv(d.integracaoFdv ?? { chaveMestra: null });
   return registrarModulos([criarPluginCore(d.core), cadastros, pedido, integracaoFdv, ...SEM_ROTAS]);
 }
 
@@ -131,7 +131,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     avisosA1: avisosA1MaisRecentes,
     modulos: montarModulos({
       core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
-      integracaoFdv: { chaveMestra: e.chaveIntegracao ?? null, chaveVersao: 1 },
+      integracaoFdv: { chaveMestra: e.chaveIntegracao ?? null },
       ...(e.log ? { log: e.log } : {}),
     }),
   };
