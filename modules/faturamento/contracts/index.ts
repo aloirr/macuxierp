@@ -31,8 +31,8 @@ export const StatusNota = z.enum([
 ]);
 export type StatusNota = z.infer<typeof StatusNota>;
 
-/** tpEmis: 1 normal, 6 SVC-AN, 7 SVC-RS (RN-FAT-05; a modalidade fica em ADR). */
-export const TipoEmissao = z.union([z.literal(1), z.literal(6), z.literal(7)]);
+/** tpEmis: 1 normal, 4 EPEC, 6 SVC-AN, 7 SVC-RS (RN-FAT-05, ADR 0011). */
+export const TipoEmissao = z.union([z.literal(1), z.literal(4), z.literal(6), z.literal(7)]);
 export type TipoEmissao = z.infer<typeof TipoEmissao>;
 
 /**

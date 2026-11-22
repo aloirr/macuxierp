@@ -19,6 +19,6 @@ export { montarDanfe, ErroDanfe, type EntradaDanfe, type LinhaProduto, type Mode
 export * from './fila';
 export {
   modalidadeDaUf, sugerirContingencia, contaComoFaturada, prazoEpec, situacaoPrazoEpec, validarEntradaContingencia, aplicarContingenciaAoConteudo, podeTransmitirNaVolta, transicaoEntradaContingencia, transicaoVoltaContingencia,
-  PRAZO_EPEC_HORAS, JANELA_PERTO_DO_FIM_HORAS, TP_EMIS_DA_MODALIDADE, MOTIVO_MIN, MOTIVO_MAX,
-  type ModalidadeContingencia, type TabelaSvc, type EntradaContingencia, type ContingenciaDaNota, type NotaNaVolta, type TpEmisContingencia, type ConsultaStatus, type MotivoSugestao, type SituacaoPrazoEpec,
+  PRAZO_EPEC_HORAS, CSTAT_SERVICO_INDISPONIVEL, JANELA_PERTO_DO_FIM_HORAS, TP_EMIS_DA_MODALIDADE, MOTIVO_MIN, MOTIVO_MAX,
+  type ModalidadeContingencia, type TabelaSvc, type EntradaContingencia, type ContingenciaDaNota, type NotaNaVolta, type TpEmisContingencia, type MotivoSugestao, type SituacaoPrazoEpec,
 } from './contingencia';
