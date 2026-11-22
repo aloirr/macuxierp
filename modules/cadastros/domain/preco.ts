@@ -19,6 +19,11 @@ export type ResultadoPreco =
   | { ok: true; item: ItemPreco; origem_filial_id: string }
   | { ok: false; motivo: 'fora_da_vigencia' | 'sem_preco' };
 
+/** RN-CAD-06: a tabela vale na data (AAAA-MM-DD) se está ativa e a data cai na vigência, com os limites inclusivos. */
+export function tabelaVigente(tabela: TabelaVigencia, data: string): boolean {
+  return !tabela.inativa && data >= tabela.vigencia_inicio && (tabela.vigencia_fim === null || data <= tabela.vigencia_fim);
+}
+
 /** RN-CAD-06: preço vale por filial e por vigência (datas inclusivas); sem item na filial, cai na filial padrão. */
 export function precoVigente(p: {
   tabela: TabelaVigencia;
@@ -29,7 +34,7 @@ export function precoVigente(p: {
   data: string;
 }): ResultadoPreco {
   const { tabela, data } = p;
-  if (tabela.inativa || data < tabela.vigencia_inicio || (tabela.vigencia_fim !== null && data > tabela.vigencia_fim)) {
+  if (!tabelaVigente(tabela, data)) {
     return { ok: false, motivo: 'fora_da_vigencia' };
   }
   for (const filial of [p.filial_id, p.filial_padrao_id]) {

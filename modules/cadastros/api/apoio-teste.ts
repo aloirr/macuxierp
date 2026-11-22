@@ -8,6 +8,9 @@ import {
 } from '@macuxierp/platform-sdk';
 import { IdempotenciaMemoria } from '@macuxierp/platform-sdk/testes';
 
+/** Transação do tenant sobre o banco real (RLS), para os testes de banco. */
+export const transacaoDe = (banco: { comTenant<R>(tenant: string, f: (tx: Transacao) => Promise<R>): Promise<R> }, tenant: string): Transacao => ({ consultar: <L>(sql: string, p: readonly unknown[] = []) => banco.comTenant(tenant, (tx) => tx.consultar<L>(sql, p)) });
+
 export const TENANT = '11111111-1111-4111-8111-111111111111';
 export const sessaoDe = (perfil: Perfil, usuario_id = '22222222-2222-4222-8222-222222222222'): Sessao => ({ usuario_id, tenant_id: TENANT, perfil, filial_ids: [] });
 
