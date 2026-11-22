@@ -16,7 +16,7 @@ import { gzipSync } from 'node:zlib';
 import {
   modoDosRecados, podeAlterar, regraDoRecadoNovo, globParaRegex, shaDoBlob, aplicarMudancas, tokenDoAmbiente, ghAuthToken,
   criarClienteDeRecados, atualizarIndiceDeRecados, enviarRecadoNoGitHub, marcarLidosNoGitHub, recadosDaPastaNoGitHub,
-  recadosDoIndice, idsDoIndice, lidosDoIndice, ErroRecados, MOTIVO_RECADOS_NO_GITHUB,
+  recadosDoIndice, idsDoIndice, lidosDoIndice, ErroRecados, MOTIVO_RECADOS_NO_GITHUB, criarCommitPorGit,
   AGENTES, PESSOAS, DESTINOS, REMETENTES_DE_SISTEMA, ehRemetenteDeSistema, remetenteDoRecado, classificarMudancas,
 } from './coord-lib.mjs';
 import { lerRecadosDoGerente, autorizacoesDoAlexandre } from '../.claude/hooks/guarda-merge-lib.mjs';
@@ -45,6 +45,7 @@ class GitHubFalso {
     this.antesDoCommit = null;
     this.perderResposta = false;
     this.semPacote = false;
+    this.recusarEscrita = false; // proxy da nuvem: lê pela API, mas a escrita dá HTTP 403 (T-0025)
     this.head = this.novoCommit(null, arquivos, 'inicial');
   }
   /** Árvore com hash pelo conteúdo: guarda os arquivos abaixo de `prefixo` (caminhos relativos a ele). */
@@ -81,6 +82,7 @@ class GitHubFalso {
     const ok = (j) => ({ status: 200, texto: JSON.stringify(j) });
     const nao = { status: 404, texto: '{"message":"Not Found"}' };
     if (op === 'graphql') return { status: 403, texto: '{"message":"GraphQL bloqueado pelo proxy"}' };
+    if (this.recusarEscrita && (op.startsWith('criar') || op === 'atualizarRef')) return { status: 403, texto: '{"message":"Write access to this GitHub API path is not permitted through this proxy."}' };
     if (!m || m[1] !== 'aloirr/macuxierp-recados') return nao;
     const id = resto.split('/').pop();
     switch (op) {
@@ -444,6 +446,142 @@ test('enviar: sem GitHub → erro e nada gravado; conferência sem GitHub → "N
     cliente: { ...cliente, commitar: (p) => { gh.offline = true; return cliente.commitar(p); } }, cache, de: 'modulo-core', destinos: ['testes'], esperar: semEspera,
     gerarId: () => 'R-20261109-110000-modulo-core', montar: (id) => recado({ id, de: 'modulo-core', para: 'testes' }),
   }), /NÃO foi confirmado.*node scripts\/coord\.mjs ler R-20261109-110000-modulo-core/);
+});
+
+// ───────────────────────── T-0025: escrita por git quando a API dá 403 ─────────────────────────
+
+/** porGit de mentira sobre o GitHubFalso: mesmo contrato do criarCommitPorGit (topo diferente → "mudou", nada publicado). */
+const porGitNoFalso = (gh) => {
+  const chamadas = [];
+  const f = ({ esperado, adicoes, titulo }) => {
+    chamadas.push(titulo);
+    if (gh.antesDoCommit) { const x = gh.antesDoCommit; gh.antesDoCommit = null; x(gh); }
+    if (gh.head !== esperado) throw new ErroRecados('o main mudou antes do commit (git); nada foi publicado');
+    const arquivos = { ...gh.arquivos };
+    for (const a of adicoes) arquivos[a.caminho] = String(a.conteudo);
+    gh.head = gh.novoCommit(gh.head, arquivos, titulo);
+    return { oid: gh.head, porGit: true };
+  };
+  f.chamadas = chamadas;
+  return f;
+};
+
+test('T-0025 cliente: HTTP 403 na escrita pela API → o commit vai por git, com os mesmos dados; outro erro não', () => {
+  const gh = base();
+  gh.recusarEscrita = true;
+  const porGit = porGitNoFalso(gh);
+  const cliente = criarClienteDeRecados({ http: httpDe(gh), porGit });
+  const r = enviarRecadoNoGitHub({
+    cliente, cache: cacheEmMemoria(), de: 'modulo-core', destinos: ['testes', 'gerente-projetos'], esperar: semEspera,
+    gerarId: () => 'R-20261121-210000-modulo-core', montar: (id) => recado({ id, de: 'modulo-core', para: 'testes, gerente-projetos' }),
+  });
+  assert.equal(r.commit.porGit, true);
+  assert.deepEqual(porGit.chamadas, ['recados: R-20261121-210000-modulo-core']);
+  assert.ok(gh.arquivos['recados/testes/R-20261121-210000-modulo-core.md'] && gh.arquivos['recados/gerente-projetos/R-20261121-210000-modulo-core.md']);
+  assert.equal(gh.historico().length, 2, 'um commit só');
+  assert.equal(gh.ops('atualizarRef'), 0, 'a API recusou já no primeiro POST: o branch não foi tocado por ela');
+  // sem porGit, o 403 continua sendo erro (comportamento anterior)
+  assert.throws(() => enviarTeste(gh, cacheEmMemoria()), /recado NÃO enviado \(nada foi gravado\): .*HTTP 403/);
+  // erro que não é 403 não cai para o git
+  gh.recusarEscrita = false;
+  gh.offline = true;
+  const p2 = porGitNoFalso(gh);
+  assert.throws(() => criarClienteDeRecados({ http: httpDe(gh), porGit: p2 }).commitar({ esperado: gh.head, adicoes: [{ caminho: 'lidos/x.txt', conteudo: 'R\n' }], titulo: 't' }), /sem acesso ao GitHub/);
+  assert.equal(p2.chamadas.length, 0);
+});
+
+test('T-0025 enviar e lido por git: o main mudou no meio → relê e tenta de novo; nada se perde', () => {
+  const gh = base();
+  gh.recusarEscrita = true;
+  const cliente = criarClienteDeRecados({ http: httpDe(gh), porGit: porGitNoFalso(gh) });
+  gh.antesDoCommit = (g) => g.externo('recados/testes/R-outro.md', 'x', 'outro agente');
+  const r = enviarRecadoNoGitHub({
+    cliente, cache: cacheEmMemoria(), de: 'modulo-core', destinos: ['testes'], esperar: semEspera,
+    gerarId: () => 'R-20261121-210100-modulo-core', montar: (id) => recado({ id, de: 'modulo-core', para: 'testes' }),
+  });
+  assert.equal(r.tentativas, 2);
+  assert.ok(gh.arquivos['recados/testes/R-outro.md'], 'o commit do outro fica');
+  assert.ok(gh.arquivos['recados/testes/R-20261121-210100-modulo-core.md']);
+  gh.antesDoCommit = (g) => g.externo('lidos/testes.txt', 'R-1\nR-9\n', 'lidos: outro processo');
+  const l = marcarLidosNoGitHub({ cliente, agente: 'testes', ids: ['R-2'], esperar: semEspera });
+  assert.equal(l.commit.porGit, true);
+  assert.equal(gh.arquivos['lidos/testes.txt'], 'R-1\nR-9\nR-2\n');
+});
+
+/** Repositório "remoto" de verdade (bare) com o main e dois arquivos; devolve {url, topo(), arquivo(c), empurrar(c, t)}. */
+function remotoGit() {
+  const raiz = pastaTemp('coord-git-');
+  const url = join(raiz, 'recados.git');
+  const g = (args, cwd = raiz) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const quem = ['-c', 'user.name=teste', '-c', 'user.email=teste@exemplo.invalid'];
+  g(['init', '--quiet', '--bare', '--initial-branch=main', url]);
+  const trab = join(raiz, 'trab');
+  g(['clone', '--quiet', url, trab]);
+  mkdirSync(join(trab, 'recados', 'testes'), { recursive: true });
+  mkdirSync(join(trab, 'lidos'));
+  writeFileSync(join(trab, 'recados', 'testes', 'R-1.md'), 'um\n');
+  writeFileSync(join(trab, 'lidos', 'testes.txt'), 'R-1\n');
+  g(['add', '.'], trab);
+  g([...quem, 'commit', '--quiet', '-m', 'inicial'], trab);
+  g(['push', '--quiet', 'origin', 'HEAD:main'], trab);
+  return {
+    url,
+    topo: () => g(['rev-parse', 'main'], url).trim(),
+    arquivo: (c) => { try { return g(['show', `main:${c}`], url); } catch { return null; } },
+    commits: () => Number(g(['rev-list', '--count', 'main'], url).trim()),
+    empurrar(c, t) {
+      g(['pull', '--quiet', '--ff-only', 'origin', 'main'], trab);
+      mkdirSync(dirname(join(trab, c)), { recursive: true });
+      writeFileSync(join(trab, c), t);
+      g(['add', c], trab);
+      g([...quem, 'commit', '--quiet', '-m', `externo ${c}`], trab);
+      g(['push', '--quiet', 'origin', 'HEAD:main'], trab);
+    },
+  };
+}
+
+test('T-0025 criarCommitPorGit: clone raso, um commit e push sem force; topo diferente ou push recusado → nada publicado', () => {
+  const rem = remotoGit();
+  const pastas = [];
+  const pastaTempGit = () => { const d = pastaTemp('coord-git-clone-'); rmSync(d, { recursive: true }); pastas.push(d); return d; };
+  const commitar = criarCommitPorGit({ url: rem.url, pastaTemp: pastaTempGit });
+  const antes = rem.topo();
+  const r = commitar({ esperado: antes, titulo: 'recados: R-2', corpo: 'de modulo-core para testes', adicoes: [
+    { caminho: 'recados/testes/R-2.md', conteudo: 'dois, com acentuação\n' },
+    { caminho: 'recados/gerente-projetos/R-2.md', conteudo: Buffer.from('dois, com acentuação\n') },
+  ] });
+  assert.equal(r.porGit, true);
+  assert.equal(r.oid, rem.topo(), 'o oid devolvido é o novo topo do main');
+  assert.equal(rem.arquivo('recados/testes/R-2.md'), 'dois, com acentuação\n');
+  assert.equal(rem.arquivo('recados/gerente-projetos/R-2.md'), 'dois, com acentuação\n');
+  assert.equal(rem.arquivo('recados/testes/R-1.md'), 'um\n', 'o resto da árvore continua');
+  assert.equal(rem.commits(), 2);
+  assert.ok(pastas.every((d) => { try { readdirSync(d); return false; } catch { return true; } }), 'o clone temporário é apagado');
+
+  // topo diferente do esperado (outro agente gravou depois da leitura): recusa sem publicar
+  assert.throws(() => commitar({ esperado: antes, titulo: 'x', adicoes: [{ caminho: 'lidos/testes.txt', conteudo: 'R-1\nR-2\n' }] }),
+    (e) => e instanceof ErroRecados && /mudou antes do commit/.test(e.message) && !e.rede);
+  assert.equal(rem.commits(), 2);
+
+  // o main muda entre o clone e o push: o push (sem force) é recusado e nada se perde
+  const topo = rem.topo();
+  const gitQueEmpurraAntes = (args, o) => {
+    if (args.includes('push')) rem.empurrar('recados/testes/R-3.md', 'tres\n');
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...o });
+  };
+  const corrida = criarCommitPorGit({ url: rem.url, git: gitQueEmpurraAntes, pastaTemp: pastaTempGit });
+  assert.throws(() => corrida({ esperado: topo, titulo: 'y', adicoes: [{ caminho: 'lidos/testes.txt', conteudo: 'R-1\nR-2\n' }] }),
+    (e) => e instanceof ErroRecados && /mudou antes do commit \(git push recusado/.test(e.message));
+  assert.equal(rem.arquivo('recados/testes/R-3.md'), 'tres\n', 'o commit do outro fica');
+  assert.equal(rem.arquivo('lidos/testes.txt'), 'R-1\n', 'o deste não entrou');
+
+  // caminho fora do repositório é recusado
+  assert.throws(() => commitar({ esperado: rem.topo(), titulo: 'z', adicoes: [{ caminho: '../fora.txt', conteudo: 'x' }] }), /caminho inválido/);
+  assert.throws(() => commitar({ esperado: rem.topo(), titulo: 'z', adicoes: [{ caminho: '.git/hooks/post-commit', conteudo: 'x' }] }), /caminho inválido/);
+
+  // remoto que não existe: erro de rede (quem chama confere antes de dizer "enviado")
+  const sem = criarCommitPorGit({ url: join(rem.url, 'nao-existe.git'), pastaTemp: pastaTempGit });
+  assert.throws(() => sem({ esperado: topo, titulo: 'w', adicoes: [{ caminho: 'lidos/a.txt', conteudo: 'x' }] }), (e) => e instanceof ErroRecados && e.rede && /sem acesso ao main por git/.test(e.message));
 });
 
 test('lido: acrescenta só o que falta; dois agentes ao mesmo tempo no mesmo arquivo não perdem linha', () => {

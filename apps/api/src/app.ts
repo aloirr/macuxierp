@@ -3,12 +3,16 @@
  * - `/v1/saude` (pública), `/v1/auth/*` (login, refresh rotativo em cookie httpOnly, sair, eu);
  * - cada módulo em `/v1/<modulo>`, montado pelas rotas declaradas no plugin (`definirPlugin` do SDK), com a ordem
  *   sessão → perfil → tenant → licença (RN-CORE-02) em toda rota;
+ * - rota multipart (upload do A1) com limite por arquivo declarado na rota; os bytes nunca vão para log;
  * - logs pino com `request_id`, `tenant_id`, `usuario_id` e `modulo`; sem corpo, cookie, token nem query string.
  */
 import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import {
+  ArquivoRecebido,
   auditar,
+  cabecalhosDaRota,
   criarEvento,
   ErroApi,
   EuResposta,
@@ -16,6 +20,7 @@ import {
   eventoDoModulo,
   executarAutorizado,
   modulosLicenciados,
+  pode,
   trabalhoDoModulo,
   type Banco,
   type ContextoRota,
@@ -27,6 +32,8 @@ import {
   type Relogio,
   type RotaModulo,
   type Sessao,
+  TAMANHO_MAXIMO_ARQUIVO,
+  type ArquivoEsperado,
 } from '@macuxierp/platform-sdk';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
@@ -87,11 +94,13 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
       return typeof h === 'string' && REQUEST_ID.test(h) ? h : randomUUID();
     },
     requestIdLogLabel: 'request_id',
-    bodyLimit: 1_048_576,
+    bodyLimit: TAMANHO_MAXIMO_ARQUIVO,
   });
   const servico = new ServicoAuth(d.banco, d.repoAuth, d.auth, d.relogio);
 
   await app.register(cookie);
+  // Tetos globais do multipart; o limite de cada arquivo é o da rota (`lerMultipart`). Campo de texto até 64 KB.
+  await app.register(multipart, { limits: { fileSize: TAMANHO_MAXIMO_ARQUIVO, files: 5, fields: 50, fieldSize: 65_536, parts: 60 } });
   app.decorateRequest('sessao', null);
 
   app.addHook('onRequest', async (req, reply) => {
@@ -180,6 +189,11 @@ function montarModulo(app: FastifyInstance, plugin: PluginModulo, d: Dependencia
 
 async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: RotaModulo, modulo: string, d: DependenciasApp) {
   req.log = reply.log = req.log.child({ modulo });
+  // O multipart é lido antes da transação (não segura conexão enquanto o arquivo sobe), mas só depois da sessão e do
+  // perfil, na ordem da RN-CORE-02; tenant e licença seguem no `executarAutorizado`, antes de qualquer uso dos dados.
+  if (rota.multipart && !req.sessao) throw erros.naoAutenticado();
+  if (rota.multipart && !pode(req.sessao!.perfil, rota.acao)) throw erros.perfilSemPermissao();
+  const entrada = rota.multipart ? await lerMultipart(req, rota.multipart.arquivos) : { corpo: req.body, arquivos: {} };
   const agora = d.relogio.agora();
   const resposta = await executarAutorizado({
     sessao: req.sessao,
@@ -210,12 +224,65 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
         },
       };
       return rota.executar(ctx, {
-        corpo: rota.corpo ? rota.corpo.parse(req.body) : undefined,
+        corpo: rota.corpo ? rota.corpo.parse(entrada.corpo) : undefined,
         consulta: rota.consulta ? rota.consulta.parse(req.query) : undefined,
         params: req.params as Record<string, string>,
+        cabecalhos: cabecalhosDaRota(req.headers),
+        arquivos: entrada.arquivos,
       });
     },
   });
   if (resposta.cabecalhos) reply.headers(resposta.cabecalhos);
   return reply.status(resposta.status ?? 200).send(resposta.corpo ?? null);
+}
+
+/**
+ * Lê o `multipart/form-data` da rota: campos de texto (validados depois pelo `corpo` da rota) e os arquivos declarados,
+ * cada um com o próprio limite (413 `ARQUIVO_GRANDE`). Campo repetido ou arquivo não declarado é 400 `VALIDACAO`.
+ * Limite da rota igual ao teto global: o `@fastify/multipart` corta antes e o 413 dele vira `ARQUIVO_GRANDE` do campo.
+ */
+async function lerMultipart(req: FastifyRequest, esperados: readonly ArquivoEsperado[]) {
+  if (!req.isMultipart()) throw erros.validacao({ _: 'envie multipart/form-data' });
+  const porCampo = new Map(esperados.map((a) => [a.campo, a]));
+  const corpo: Record<string, unknown> = {};
+  const arquivos: Record<string, ArquivoRecebido> = {};
+  let lendo: ArquivoEsperado | undefined;
+  try {
+    await lerPartes(req, porCampo, corpo, arquivos, (a) => (lendo = a));
+  } catch (e) {
+    if (lendo && (e as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE') throw erros.arquivoGrande(lendo.campo, lendo.tamanhoMaximo);
+    throw e;
+  }
+  const faltando = esperados.filter((a) => a.obrigatorio !== false && !arquivos[a.campo]);
+  if (faltando.length) throw erros.validacao(Object.fromEntries(faltando.map((a) => [a.campo, 'arquivo obrigatório'])));
+  return { corpo, arquivos };
+}
+
+async function lerPartes(
+  req: FastifyRequest,
+  porCampo: ReadonlyMap<string, ArquivoEsperado>,
+  corpo: Record<string, unknown>,
+  arquivos: Record<string, ArquivoRecebido>,
+  lendo: (a: ArquivoEsperado) => void,
+) {
+  const repetido = (campo: string) => campo in corpo || campo in arquivos;
+  for await (const parte of req.parts()) {
+    if (parte.type === 'field') {
+      if (repetido(parte.fieldname) || porCampo.has(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'campo repetido ou no lugar de arquivo' });
+      corpo[parte.fieldname] = parte.value;
+      continue;
+    }
+    const esperado = porCampo.get(parte.fieldname);
+    if (!esperado || repetido(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'arquivo não esperado' });
+    lendo(esperado);
+    const pedacos: Buffer[] = [];
+    let total = 0;
+    for await (const p of parte.file as AsyncIterable<Buffer>) {
+      total += p.length;
+      if (total > esperado.tamanhoMaximo) throw erros.arquivoGrande(esperado.campo, esperado.tamanhoMaximo);
+      pedacos.push(p);
+    }
+    if (total === 0) throw erros.validacao({ [esperado.campo]: 'arquivo vazio' });
+    arquivos[esperado.campo] = new ArquivoRecebido(esperado.campo, parte.filename, parte.mimetype, Buffer.concat(pedacos));
+  }
 }
