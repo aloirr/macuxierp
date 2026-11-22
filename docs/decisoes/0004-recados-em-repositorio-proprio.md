@@ -16,3 +16,10 @@
 ## Consequências
 - A autorização de merge de governança e de deploy é lida do GitHub pelo guardião (`guarda-merge`), sempre no repositório `aloirr/macuxierp-recados`.
 - Nenhum agente cria recado em nome do Alexandre: o guardião barra.
+
+## Adendo — 21/11/2026 (horário de Manaus) — escrita por git quando a API responde 403
+Pedido do Alexandre em R-20261121-212900-alexandre (T-0025). A decisão acima continua valendo: a API REST segue como caminho principal; a implementação está no PR #27.
+- **Troca:** quando a API REST recusa a escrita com **HTTP 403** (o proxy da nuvem barra escrita na API), o `coord.mjs` grava por git: clone raso do `main` numa pasta temporária, conferência de que o topo é o mesmo lido pela API, commit e `git push` para `main` **sem force**. O remoto pode ser trocado por `MACUXI_RECADOS_GIT_URL`.
+- **Concorrência:** push recusado por avanço do remoto relê e tenta de novo no laço que já existe, até 6 tentativas com espera crescente; antes de dizer "não enviado", confere no GitHub, por leitura, se o arquivo já está lá com o mesmo hash.
+- **Credencial:** a do git do ambiente; nenhum token passa por esse caminho.
+- **Escopo:** só o status 403 cai no git, sem ler a mensagem. Um limite de uso (rate limit) devolvido como 403 também vai pelo git, sem dano, porque o caminho é idempotente e conferido. Os outros erros, inclusive o 429, seguem como antes.

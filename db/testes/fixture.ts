@@ -61,6 +61,8 @@ INSERT INTO core.certificado (tenant_id, filial_id, titular, cnpj, valido_de, va
   pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce)
   VALUES ('${id}', '${t.filial}', 'TITULAR FICTICIO', '12345678000195', now(), now() + interval '1 year',
     repeat('c', 64), '\\x00', decode(repeat('01', 12), 'hex'), '\\x00', decode(repeat('02', 12), 'hex'));
+INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia)
+  SELECT tenant_id, id, filial_id, valido_ate, 30, '2026-01-01' FROM core.certificado WHERE tenant_id = '${id}';
 INSERT INTO core.ambiente_fiscal (tenant_id, filial_id) VALUES ('${id}', '${t.filial}');
 INSERT INTO core.parametro (tenant_id, chave, valor) VALUES ('${id}', 'fuso', '"America/Manaus"');
 INSERT INTO core.exportacao (tenant_id, pedido_por) VALUES ('${id}', '${t.usuario}');

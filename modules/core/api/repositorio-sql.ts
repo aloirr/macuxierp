@@ -144,7 +144,7 @@ export class RepositorioCoreSql implements RepositorioCore {
     );
   }
 
-  async gravarAmbiente(tx: Transacao, a: LinhaAmbiente & { alterado_por: string }): Promise<void> {
+  async gravarAmbiente(tx: Transacao, a: LinhaAmbiente & { ambiente: 'homologacao'; alterado_por: string }): Promise<void> {
     await tx.consultar(
       `INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao, alterado_por)
        VALUES (plataforma.tenant_atual(), $1, $2, $3, $4)

@@ -5,7 +5,7 @@ import { ErroApi, erros } from './erros';
 import { criarEvento } from './eventos';
 import { defineModule } from './modulo';
 import { definirPlugin, definirRota, eventoDoModulo, PluginInvalido, trabalhoDoModulo } from './rotas';
-import { AuditoriaMemoria } from './testes';
+import { AuditoriaMemoria, OutboxMemoria } from './testes';
 
 const INSTANTE = new Date('2026-11-21T15:00:00Z');
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -26,6 +26,17 @@ describe('eventos (envelope do contrato)', () => {
     expect(() => criarEvento({ ...dados, versao: 0 }, INSTANTE)).toThrow();
     expect(eventoDoModulo('cadastros', 'cadastros.cliente.alterado@1')).toBe(true);
     expect(eventoDoModulo('pedido', 'cadastros.cliente.alterado@1')).toBe(false);
+  });
+
+  it('sem versão, o envelope sai com a provisória 1; a outbox de teste conta por (tenant, agregado) e ignora a recebida (T-0034)', async () => {
+    const { versao: _v, ...semVersao } = dados;
+    expect(criarEvento(semVersao, INSTANTE).versao).toBe(1);
+    const outbox = new OutboxMemoria();
+    const OUTRO = '44444444-4444-4444-8444-444444444444';
+    expect(await outbox.gravar(tx, criarEvento({ ...dados, versao: 9 }, INSTANTE))).toBe(1);
+    expect(await outbox.gravar(tx, criarEvento({ ...dados, nome: 'cadastros.carteira.alterada@1' }, INSTANTE))).toBe(2);
+    expect(await outbox.gravar(tx, criarEvento({ ...dados, agregado_id: OUTRO }, INSTANTE))).toBe(1);
+    expect(await outbox.gravar(tx, criarEvento({ ...dados, tenant_id: OUTRO }, INSTANTE))).toBe(1);
   });
 
   it('trabalho enfileirado é do próprio módulo e segue <modulo>.<tarefa>', () => {
