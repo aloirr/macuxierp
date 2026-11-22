@@ -4,4 +4,4 @@ export {
   faixaDaNota, motivosDasAcoes, numeroSerie, requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar,
   urlDoDanfe, urlDoXml, type AcaoDaNota, type DialogoDeTexto, type Montagem, type NotaParaAcao, type Requisicao, type Selo,
 } from './notas';
-export { acoesDoTitulo, dialogoEstornar, formularioBaixa, hojeCivil, requisicaoBaixa, requisicaoEstornar, situacaoDoTitulo, type ResultadoBaixa } from './titulos';
+export { acoesDoTitulo, dialogoEstornar, faixaDoTitulo, formularioBaixa, hojeCivil, requisicaoBaixa, requisicaoEstornar, rotuloDaForma, situacaoDoTitulo, type ResultadoBaixa } from './titulos';

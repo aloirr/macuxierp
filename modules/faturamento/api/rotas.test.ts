@@ -47,10 +47,14 @@ describe('rotas /v1/faturamento', () => {
       'GET /notas/:id faturamento.ver',
       'GET /notas/:id/eventos faturamento.ver',
       'GET /notas/:id/xml faturamento.nota.emitir',
+      'GET /notas/exportar faturamento.ver',
       'GET /pedidos-a-faturar faturamento.ver',
+      'GET /pedidos-a-faturar/exportar faturamento.ver',
       'GET /rejeicoes faturamento.ver',
+      'GET /rejeicoes/exportar faturamento.ver',
       'GET /titulos faturamento.ver',
       'GET /titulos/:id faturamento.ver',
+      'GET /titulos/exportar faturamento.ver',
       'POST /inutilizacoes faturamento.nota.emitir',
       'POST /notas faturamento.nota.emitir',
       'POST /notas/:id/cancelar faturamento.nota.emitir',
@@ -282,6 +286,67 @@ describe('rotas de títulos e da bandeira da filial', () => {
     for (const perfil of ['gerente', 'faturista', 'fiscal', 'leitura'] as const) {
       await expect(ambiente(perfil).chamar('PUT', '/filiais/:id/configuracao', { params: { id: IDS.filial }, corpo: { faturamento_real_nfe_simulada: true } })).rejects.toMatchObject({ status: 403 });
     }
+  });
+});
+
+describe('CSV das listas (RF-FAT-08)', () => {
+  const nota = (a: ReturnType<typeof ambiente>, n: number, status: 'autorizada' | 'rejeitada', total: number, razao?: string) => {
+    const id = uuid(600 + n);
+    a.notas.set(id, { id, tenant_id: TENANT, pedido_id: IDS.pedido, pedido_uuid: null, filial_id: IDS.filial, cliente_id: IDS.cliente, vendedor_id: null, ambiente: 'homologacao', vai_ao_fdv: true, serie: 1, numero: n, cnf: '1', chave_acesso: 'x', tp_emis: 1, status, emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: total, protocolo: NPROT, autorizada_em: null, recibo: null, idempotencia: `i${n}`, revisao: 1, itens_solicitados: null, itens: [] });
+    return razao;
+  };
+  const corpoDe = (r: { corpo?: unknown }) => r.corpo as string;
+
+  it('RF-FAT-08: /notas/exportar entrega o CSV com os mesmos filtros da lista, cabeçalho de arquivo e valor em reais', async () => {
+    const a = ambiente('leitura');
+    nota(a, 1, 'autorizada', 12345);
+    nota(a, 2, 'rejeitada', 500);
+    const r = await a.chamar('GET', '/notas/exportar', { consulta: { status: 'autorizada' } });
+    expect(r.cabecalhos).toMatchObject({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="notas-fiscais.csv"' });
+    const linhas = corpoDe(r).trim().split('\r\n');
+    expect(linhas).toHaveLength(2);
+    expect(linhas[0]).toContain('Número/Série');
+    expect(linhas[1]).toContain('123,45');
+    expect(corpoDe(r)).not.toContain('5,00');
+  });
+
+  it('RF-FAT-08: /rejeicoes/exportar e /pedidos-a-faturar/exportar respondem CSV com o nome de arquivo da lista', async () => {
+    const a = ambiente('gerente');
+    nota(a, 3, 'rejeitada', 100);
+    const rej = await a.chamar('GET', '/rejeicoes/exportar');
+    expect(rej.cabecalhos).toMatchObject({ 'content-disposition': 'attachment; filename="rejeicoes.csv"' });
+    expect(corpoDe(rej)).toContain('Rejeicao: NCM inexistente');
+    const ped = await a.chamar('GET', '/pedidos-a-faturar/exportar');
+    expect(ped.cabecalhos).toMatchObject({ 'content-disposition': 'attachment; filename="pedidos-a-faturar.csv"' });
+    expect(corpoDe(ped).trim().split('\r\n')[0]).toContain('Pedido');
+  });
+
+  it('RF-FAT-08: /titulos/exportar respeita os filtros de status e vencimento', async () => {
+    const a = ambiente('fiscal');
+    const nid = uuid(700);
+    a.notas.set(nid, { id: nid, tenant_id: TENANT, pedido_id: IDS.pedido, pedido_uuid: null, filial_id: IDS.filial, cliente_id: IDS.cliente, vendedor_id: null, ambiente: 'producao', vai_ao_fdv: true, serie: 1, numero: 9, cnf: '1', chave_acesso: 'x', tp_emis: 1, status: 'autorizada', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 3000, protocolo: NPROT, autorizada_em: null, recibo: null, idempotencia: 'i', revisao: 1, itens_solicitados: null, itens: [] });
+    await a.tit.repo.inserirParcelas(tx, { id: nid, filial_id: IDS.filial, cliente_id: IDS.cliente, conta_como_real: false }, [{ parcela: 1, total_parcelas: 1, vencimento: '2026-12-21', valor_centavos: 3000, ambiente: 'producao' }]);
+    const r = await a.chamar('GET', '/titulos/exportar', { consulta: { status: 'aberto', vencimento_ate: '2026-12-31' } });
+    expect(r.cabecalhos).toMatchObject({ 'content-disposition': 'attachment; filename="titulos-a-receber.csv"' });
+    expect(corpoDe(r)).toContain('21/12/2026');
+    expect(corpoDe(r)).toContain('30,00');
+    const vazio = await a.chamar('GET', '/titulos/exportar', { consulta: { status: 'baixado' } });
+    expect(corpoDe(vazio).trim().split('\r\n')).toHaveLength(1);
+  });
+
+  it('RN-CORE-02: o vendedor recebe 403 nas 4 exportações; consulta inválida é recusada pelo contrato', async () => {
+    for (const caminho of ['/pedidos-a-faturar/exportar', '/notas/exportar', '/rejeicoes/exportar', '/titulos/exportar']) {
+      await expect(ambiente('vendedor').chamar('GET', caminho)).rejects.toMatchObject({ status: 403 });
+    }
+    expect(() => ambiente().chamar('GET', '/notas/exportar', { consulta: { status: 'inexistente' } })).rejects.toBeTruthy();
+  });
+
+  it('proteção contra fórmula: célula que começa com "=" sai com apóstrofo (o SDK faz)', async () => {
+    const a = ambiente('administrador');
+    const id = uuid(800);
+    a.notas.set(id, { id, tenant_id: TENANT, pedido_id: IDS.pedido, filial_id: IDS.filial, cliente_id: IDS.cliente, ambiente: 'producao', serie: 1, numero: 1, status: 'rejeitada', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 1, itens: [] } as never);
+    const r = await a.chamar('GET', '/rejeicoes/exportar');
+    expect(corpoDe(r)).not.toMatch(/;=|\r\n=/);
   });
 });
 

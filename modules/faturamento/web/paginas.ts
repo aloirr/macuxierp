@@ -127,7 +127,7 @@ export const ROTULO_LINHA: { readonly [K in IdLista]: (linha: LinhaDa[K]) => str
   'pedidos-a-faturar': (p) => `Emitir nota do pedido ${p.numero ?? ''}`.trim(),
   notas: rotuloNota,
   rejeicoes: rotuloNota,
-  titulos: (t) => `Abrir a nota ${t.numero} do título`,
+  titulos: (t) => `Abrir o título ${t.numero} (parcela ${t.parcela}/${t.total_parcelas})`,
 };
 
 const FABRICAS: { readonly [K in IdLista]: Fabrica<LinhaDa[K]> } = { 'pedidos-a-faturar': colunasPedidos, notas: colunasNotas, rejeicoes: colunasRejeicoes, titulos: colunasTitulos };
@@ -162,8 +162,10 @@ export const PAGINAS_FATURAMENTO: readonly PaginaFaturamento[] = [
   { id: 'pedidos-a-faturar', tipo: 'lista', menu: 'Pedidos a faturar', titulo: 'Pedidos a faturar', rota: '/faturamento/pedidos-a-faturar', api: paginaPedidosAFaturar.api, ver: VER },
   { id: 'notas', tipo: 'lista', menu: 'Notas fiscais', titulo: 'Notas fiscais', rota: '/faturamento/notas', api: paginaNotas.api, ver: VER },
   { id: 'nota', tipo: 'detalhe', menu: 'Notas fiscais', titulo: 'Nota fiscal', rota: '/faturamento/notas/:id', ver: VER, ocultaNoMenu: true },
-  { id: 'rejeicoes', tipo: 'lista', menu: 'Notas fiscais', titulo: 'Rejeições', rota: '/faturamento/rejeicoes', api: paginaRejeicoes.api, ver: VER },
+  { id: 'rejeicoes', tipo: 'lista', menu: 'Rejeições', titulo: 'Rejeições', rota: '/faturamento/rejeicoes', api: paginaRejeicoes.api, ver: VER },
   { id: 'titulos', tipo: 'lista', menu: 'Títulos a receber', titulo: 'Títulos a receber', rota: '/faturamento/titulos', api: paginaTitulos.api, ver: VER },
+  /** Detalhe do título (baixa e estorno: `acoesDoTitulo`, `formularioBaixa`, `dialogoEstornar`, `situacaoDoTitulo`): abre pela lista. */
+  { id: 'titulo', tipo: 'detalhe', menu: 'Títulos a receber', titulo: 'Título a receber', rota: '/faturamento/titulos/:id', ver: VER, ocultaNoMenu: true },
 ];
 
 /** `vendedor` não acessa o faturamento na v1 (a API devolve 403): a tela e o menu também o escondem. */

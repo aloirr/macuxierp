@@ -4,13 +4,14 @@
  * o enfileiramento. A SEFAZ NUNCA é chamada daqui e o A1 não é lido: o worker assina e transmite (`transmissor.ts`, ADR 0005 item 4).
  * `vendedor` não acessa as notas na v1 (a carteira por vendedor entra com o BKO): 403.
  */
-import { definirRota, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
+import { csvDaLista, definirRota, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import {
   BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
 import type { EventoNotaResumo } from '../contracts';
 import { podeBaixarTitulo } from '../domain';
+import { paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
 import type { ConfiguracaoFaturamento, EventoRegistro, RepositorioTitulos } from './portas';
 import { criarServicoTitulos } from './titulos';
 import { criarServicoEmissao, type DepsEmissao } from './emissao';
@@ -19,6 +20,26 @@ import { traduzirErroBanco } from './sql';
 import { erroDeViolacoes, idDe } from './util';
 
 const semDhEvento = ({ dh_evento: _d, ...resto }: EventoRegistro): EventoNotaResumo => resto;
+
+/** Teto de linhas do CSV (o mesmo do pedido, RF-PED-05); a lista paginada não tem teto. */
+const MAXIMO_LINHAS_CSV = 10_000;
+
+/** Lê a lista inteira, página a página (com os mesmos filtros da tela), até o teto de linhas do CSV. */
+async function todasAsLinhas<L, F extends { limite: number; cursor?: string | undefined }>(
+  listar: (filtro: F) => Promise<{ itens: L[]; proximo_cursor: string | null }>,
+  consulta: F,
+): Promise<L[]> {
+  const { cursor: _c, limite: _l, ...filtros } = consulta;
+  const saida: L[] = [];
+  let cursor: string | undefined;
+  while (saida.length < MAXIMO_LINHAS_CSV) {
+    const p = await listar({ ...filtros, limite: 200, ...(cursor ? { cursor } : {}) } as unknown as F);
+    saida.push(...p.itens);
+    if (!p.proximo_cursor || p.itens.length === 0) break;
+    cursor = p.proximo_cursor;
+  }
+  return saida.slice(0, MAXIMO_LINHAS_CSV);
+}
 
 const SEM_VENDEDOR = (c: ContextoRota): void => {
   if (c.sessao.perfil === 'vendedor') throw erros.perfilSemPermissao();
@@ -51,6 +72,38 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
       async executar(c, e) {
         SEM_VENDEDOR(c);
         return { corpo: await deps.pedidos.listar(c.tx, e.consulta) };
+      },
+    }),
+    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
+    definirRota({
+      metodo: 'GET', caminho: '/pedidos-a-faturar/exportar', acao: 'faturamento.ver', consulta: FiltroPedidosAFaturar,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return csvDaLista(paginaPedidosAFaturar, c.sessao.perfil, await todasAsLinhas((f) => deps.pedidos.listar(c.tx, f), e.consulta));
+      },
+    }),
+    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
+    definirRota({
+      metodo: 'GET', caminho: '/notas/exportar', acao: 'faturamento.ver', consulta: FiltroNotas,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return csvDaLista(paginaNotas, c.sessao.perfil, await todasAsLinhas((f) => notas.listar(c.tx, f), e.consulta));
+      },
+    }),
+    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
+    definirRota({
+      metodo: 'GET', caminho: '/rejeicoes/exportar', acao: 'faturamento.ver', consulta: FiltroRejeicoes,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return csvDaLista(paginaRejeicoes, c.sessao.perfil, await todasAsLinhas((f) => notas.listarRejeicoes(c.tx, f), e.consulta));
+      },
+    }),
+    // CSV da lista (RF-FAT-08): mesmos filtros da tela e mesma permissão; antes do caminho com `:id`. Sem dado pessoal em log.
+    definirRota({
+      metodo: 'GET', caminho: '/titulos/exportar', acao: 'faturamento.ver', consulta: FiltroTitulos,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return csvDaLista(paginaTitulos, c.sessao.perfil, await todasAsLinhas((f) => deps.titulos.listar(c.tx, f), e.consulta));
       },
     }),
     definirRota({

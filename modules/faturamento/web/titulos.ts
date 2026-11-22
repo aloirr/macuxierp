@@ -6,7 +6,7 @@ import type { Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDataHora, interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
 import { BaixarTituloEntrada, DataCivil, StatusTitulo, type TituloResumo } from '../contracts';
 import { dataCivilManaus } from '../domain/fuso';
-import { BASE_API, comChave, exigirChave, falha, type Montagem, type Selo } from './notas';
+import { BASE_API, FAIXA_TITULO_HOMOLOGACAO, comChave, exigirChave, falha, type Montagem, type Selo } from './notas';
 
 const CAMINHO_BAIXAR = `${BASE_API}/titulos/:id/baixas`;
 const CAMINHO_ESTORNAR = `${BASE_API}/titulos/:id/baixas/:baixa_id/estornar`;
@@ -78,3 +78,12 @@ export function dialogoEstornar(baixa: { valor_centavos?: number; baixado_em?: s
   const dia = baixa.baixado_em ? ` feita em ${formatarDataHora(baixa.baixado_em, fuso).slice(0, 5)}` : '';
   return { titulo: `Estornar a baixa${valor}${dia}?`, aviso: 'O saldo do título volta a subir pelo valor da baixa.', rotuloConfirmar: 'Estornar a baixa', textoCarregando: 'Estornando…' };
 }
+
+/** Faixa do detalhe do título quando a nota é de homologação; produção não tem faixa. */
+export const faixaDoTitulo = (t: { ambiente: 'homologacao' | 'producao' }): string | null => (t.ambiente === 'homologacao' ? FAIXA_TITULO_HOMOLOGACAO : null);
+
+/** Rótulo da forma de baixa na tela: primeira letra maiúscula ("manual" vira "Manual"). O valor enviado à API não muda. */
+export const rotuloDaForma = (forma: string): string => {
+  const f = forma.trim();
+  return f === '' ? '' : f.charAt(0).toLocaleUpperCase('pt-BR') + f.slice(1);
+};

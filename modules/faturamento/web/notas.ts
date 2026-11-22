@@ -46,6 +46,8 @@ export const ambienteDaConfirmacao = (a: Ambiente): { texto: string; tom: Tom } 
 
 /** Faixa fixa no topo do detalhe da nota de homologação (sem cor nova: o shell usa o tom `alerta` do `aviso`). */
 const FAIXA_HOMOLOGACAO = `NOTA DE HOMOLOGAÇÃO — ${SEM_VALOR_FISCAL.toUpperCase()}`;
+/** Faixa do detalhe do título de nota de homologação (o mesmo aviso, com "título"). */
+export const FAIXA_TITULO_HOMOLOGACAO = `TÍTULO DE NOTA DE HOMOLOGAÇÃO — ${SEM_VALOR_FISCAL.toUpperCase()}`;
 export const faixaDaNota = (n: { ambiente: Ambiente }): string | null => (n.ambiente === 'homologacao' ? FAIXA_HOMOLOGACAO : null);
 
 /** "123/1"; sem número (rascunho) devolve "" (a coluna e o CSV ficam vazios). */
@@ -89,7 +91,7 @@ export function acaoPrincipalDaNota(status: StatusNota): AcaoDaNota | null {
 
 const COM_XML: readonly StatusNota[] = ['autorizada', 'cancelada'];
 const CONSULTAVEIS: readonly StatusNota[] = ['em_autorizacao', 'autorizada_guarda_pendente', 'autorizada', 'rejeitada', 'emitida_contingencia'];
-const SEM_PERMISSAO = 'Sem permissão para esta ação';
+const SEM_PERMISSAO = 'sem permissão para esta ação';
 
 /**
  * Por que a ação não está disponível (texto para o shell mostrar ao lado do botão desabilitado), ou `null` se está. Todas pedem
@@ -100,19 +102,19 @@ function motivoIndisponivel(perfil: Perfil, n: NotaParaAcao, agora: Date, acao: 
   if (!pode(perfil, 'faturamento.nota.emitir')) return SEM_PERMISSAO;
   switch (acao) {
     case 'baixarXml':
-      return COM_XML.includes(n.status) ? null : 'Disponível só para nota autorizada ou cancelada';
+      return COM_XML.includes(n.status) ? null : 'disponível só para nota autorizada ou cancelada.';
     case 'baixarDanfe':
-      if (!COM_XML.includes(n.status)) return 'Disponível só para nota autorizada ou cancelada';
-      return DANFE_DISPONIVEL ? null : 'DANFE em breve. Por enquanto, baixe o XML';
+      if (!COM_XML.includes(n.status)) return 'disponível só para nota autorizada ou cancelada.';
+      return DANFE_DISPONIVEL ? null : 'DANFE em breve; por enquanto, baixe o XML.';
     case 'reenviar':
-      return n.status === 'rejeitada' || n.status === 'rascunho' ? null : 'Disponível só para nota rejeitada ou em rascunho';
+      return n.status === 'rejeitada' || n.status === 'rascunho' ? null : 'disponível só para nota rejeitada ou em rascunho.';
     case 'cancelar':
-      if (n.status !== 'autorizada') return 'Disponível só para nota autorizada';
-      return n.autorizada_em && !prazoDeCancelamentoEsgotado(new Date(n.autorizada_em), agora) ? null : 'O prazo de 24 h para cancelar já passou. Use a carta de correção ou fale com o fiscal.';
+      if (n.status !== 'autorizada') return 'disponível só para nota autorizada.';
+      return n.autorizada_em && !prazoDeCancelamentoEsgotado(new Date(n.autorizada_em), agora) ? null : 'prazo de cancelamento encerrado.';
     case 'cartaCorrecao':
-      return n.status === 'autorizada' ? null : 'Disponível só para nota autorizada';
+      return n.status === 'autorizada' ? null : 'disponível só para nota autorizada.';
     case 'consultar':
-      return CONSULTAVEIS.includes(n.status) ? null : 'Não há o que consultar neste status';
+      return CONSULTAVEIS.includes(n.status) ? null : 'não há o que consultar neste status.';
   }
 }
 

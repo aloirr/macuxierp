@@ -3,7 +3,7 @@ import { paginaVisivel } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
 import * as publico from './index';
 import {
-  ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
+  ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, faixaDoTitulo, rotuloDaForma, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
   dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, hojeCivil, motivosDasAcoes, perfilVeFaturamento, requisicaoBaixa,
   requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoXml,
   type AcaoDaNota, type NotaParaAcao,
@@ -184,8 +184,8 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(faixaDaNota({ ambiente: 'producao' })).toBeNull();
   });
   it('RN-FAT-02: ação indisponível devolve o motivo; rascunho tem "Emitir"; reenviar confirma, mostra o ambiente e carregamento', () => {
-    expect(motivosDasAcoes('faturista', nota({ autorizada_em: '2026-11-21T12:00:00.000Z' }), AGORA).cancelar).toBe('O prazo de 24 h para cancelar já passou. Use a carta de correção ou fale com o fiscal.');
-    expect(motivosDasAcoes('faturista', nota({ status: 'rejeitada' }), AGORA).cancelar).toBe('Disponível só para nota autorizada');
+    expect(motivosDasAcoes('faturista', nota({ autorizada_em: '2026-11-21T12:00:00.000Z' }), AGORA).cancelar).toBe('prazo de cancelamento encerrado.');
+    expect(motivosDasAcoes('faturista', nota({ status: 'rejeitada' }), AGORA).cancelar).toBe('disponível só para nota autorizada.');
     expect(motivosDasAcoes('faturista', nota(), AGORA)).toMatchObject({ reenviar: expect.any(String) });
     expect(Object.keys(motivosDasAcoes('leitura', nota(), AGORA))).toHaveLength(6);
     expect(rotuloReenviar('rascunho')).toBe('Emitir');
@@ -199,9 +199,9 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
   });
   it('RF-FAT-08: DANFE sem rota (lote 3) fica desabilitado com o motivo, e o XML é a ação principal da autorizada; leitura nunca age', () => {
     expect(DANFE_DISPONIVEL).toBe(false);
-    expect(motivosDasAcoes('faturista', nota(), AGORA).baixarDanfe).toBe('DANFE em breve. Por enquanto, baixe o XML');
+    expect(motivosDasAcoes('faturista', nota(), AGORA).baixarDanfe).toBe('DANFE em breve; por enquanto, baixe o XML.');
     expect(motivosDasAcoes('faturista', nota(), AGORA).baixarXml).toBeUndefined();
-    expect(motivosDasAcoes('faturista', nota({ status: 'rejeitada' }), AGORA).baixarDanfe).toBe('Disponível só para nota autorizada ou cancelada');
+    expect(motivosDasAcoes('faturista', nota({ status: 'rejeitada' }), AGORA).baixarDanfe).toBe('disponível só para nota autorizada ou cancelada.');
     expect(acaoPrincipalDaNota('autorizada')).toBe('baixarXml');
     expect(acaoPrincipalDaNota('rejeitada')).toBe('reenviar');
     expect(acaoPrincipalDaNota('rascunho')).toBe('reenviar');
@@ -242,13 +242,20 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(d.aviso).toBe('Use quando um número foi pulado e a nota nunca será emitida. Não dá para desfazer: esses números não poderão mais ser usados.');
     expect(dialogoInutilizar({ numero_inicial: 7, numero_final: 7 }).titulo).toBe('Inutilizar o número 7?');
   });
+  it('texto: faixa do título de homologação e rótulo da forma de baixa com maiúscula', () => {
+    expect(faixaDoTitulo({ ambiente: 'homologacao' })).toBe('TÍTULO DE NOTA DE HOMOLOGAÇÃO — SEM VALOR FISCAL');
+    expect(faixaDoTitulo({ ambiente: 'producao' })).toBeNull();
+    expect(rotuloDaForma('manual')).toBe('Manual');
+    expect(rotuloDaForma('pix')).toBe('Pix');
+    expect(rotuloDaForma('')).toBe('');
+  });
   it('textos de lista vazia, rótulo de linha, colunas à direita e "—" no lugar do UUID', () => {
     expect(Object.keys(TEXTO_VAZIO).sort()).toEqual(['notas', 'pedidos-a-faturar', 'rejeicoes', 'titulos']);
     expect(TEXTO_VAZIO.notas).toBe('Nenhuma nota neste filtro. Limpe os filtros.');
     expect(TEXTO_VAZIO.rejeicoes).toBe('Nenhuma nota rejeitada. Está tudo certo.');
     expect(TEXTO_VAZIO.titulos).toBe('Nenhum título neste filtro. Os títulos aparecem quando uma nota a prazo é autorizada.');
     const t = { id: ID, nota_id: ID, cliente_id: ID, numero: 123, filial_id: ID, ambiente: 'producao' as const, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 1, saldo_centavos: 1, status: 'aberto' as const };
-    expect(ROTULO_LINHA.titulos({ ...t, cliente_razao_social: null })).toBe('Abrir a nota 123 do título');
+    expect(ROTULO_LINHA.titulos({ ...t, cliente_razao_social: null })).toBe('Abrir o título 123 (parcela 1/2)');
     expect(ROTULO_LINHA.notas({ numero: 5, serie: 1 } as never)).toBe('Abrir nota 5/1');
     const cols = colunasDaPagina('titulos', 'America/Manaus');
     expect(cols.filter((c) => c.tipo === 'dinheiro').map((c) => c.id)).toEqual(['valor', 'saldo']);
@@ -289,9 +296,9 @@ describe('API pública do web', () => {
   it('o index exporta só o que o shell importa (valores), mais as duas funções de ação da tela (rótulos e ação principal)', () => {
     expect(Object.keys(publico).sort()).toEqual([
       'ACOES_DA_NOTA', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'badgesDaNota', 'colunasDaPagina',
-      'confirmacaoReenviar', 'contadorDeCaracteres', 'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota',
+      'confirmacaoReenviar', 'contadorDeCaracteres', 'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
       'formularioBaixa', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar',
-      'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar', 'requisicaoReenviar', 'rotuloReenviar', 'situacaoDoTitulo', 'urlDoDanfe', 'urlDoXml',
+      'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar', 'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'situacaoDoTitulo', 'urlDoDanfe', 'urlDoXml',
     ]);
   });
 });
