@@ -136,7 +136,8 @@ export function criarServico(deps: Dependencias) {
   };
 
   const exigirTransicao = (de: StatusPedido, para: StatusPedido): void => {
-    if (!validarTransicao(de, para).ok) throw erroTransicao(possiveis(de));
+    const r = validarTransicao(de, para);
+    if (!r.ok) throw erroTransicao(possiveis(de), r.mensagem);
   };
 
   const rotuloAtor = (fx: Efeitos) => ({ ator_tipo: fx.ator.tipo, ator_id: fx.ator.tipo === 'usuario' ? fx.ator.id : null });
@@ -351,7 +352,7 @@ export function criarServico(deps: Dependencias) {
     for (const k of chaves) await repo.travarCliente(k);
     const p = await travarOu404(repo, id);
     if (p.updated_at !== ifMatch) throw erros.conflito('O pedido foi alterado por outra pessoa: recarregue e tente de novo');
-    if (p.status !== 'em_analise') throw erroTransicao(possiveis(p.status));
+    if (p.status !== 'em_analise') throw erroTransicao(possiveis(p.status), 'Só o pedido em análise pode ser editado');
 
     const { itens, cad, entrega } = await prepararManual(tx, entrada);
     const { cliente } = cad;
@@ -386,7 +387,7 @@ export function criarServico(deps: Dependencias) {
     const previo = await obterOu404(repo, id);
     await repo.travarCliente(travaCliente(fx.tenant_id, previo.cliente_id));
     const p = await travarOu404(repo, id);
-    if (p.status !== 'em_analise') throw erroTransicao(possiveis(p.status));
+    if (p.status !== 'em_analise') throw erroTransicao(possiveis(p.status), 'Só o pedido em análise pode ser revalidado');
     const av = await reavaliar(tx, repo, p);
     if (!av) throw erros.validacao({ cliente_id: 'Cadastro do pedido não encontrado' });
     const pendencias = semValores(av.detalhadas);

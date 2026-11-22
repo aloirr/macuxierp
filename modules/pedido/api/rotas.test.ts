@@ -346,6 +346,14 @@ describe('revalidação e edição (RF-PED-02 e 03, P7)', () => {
     expect(t.armazem.eventos.at(-1)).toMatchObject({ de: 'em_analise', para: 'aprovado', ator_tipo: 'sistema', ator_id: null });
     expect(t.auditoria.map((a) => a.acao)).toEqual(['pedido.lancar', 'pedido.revalidar', 'pedido.revalidar']);
   });
+  it('RN-PED-02: editar e revalidar fora de análise trazem a mensagem específica e detalhes.possiveis', async () => {
+    const t = montar();
+    const p = (await lancar(t)).corpo;
+    const rev = await t.chamar('POST', `/pedidos/${p.id}/revalidar`, { sessao: adm });
+    expect(rev).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', mensagem: 'Só o pedido em análise pode ser revalidado', detalhes: { possiveis: ['faturado_parcial', 'faturado', 'cancelado'] } } });
+    const edit = await t.chamar('PUT', `/pedidos/${p.id}`, { sessao: adm, corpo: pedidoManual(), cabecalhos: { 'if-match': `"${p.updated_at}"` } });
+    expect(edit).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', mensagem: 'Só o pedido em análise pode ser editado', detalhes: { possiveis: ['faturado_parcial', 'faturado', 'cancelado'] } } });
+  });
   it('RN-PED-02: revalidar o pedido que não está em análise é 422 com os possíveis', async () => {
     const t = montar();
     const p = (await lancar(t)).corpo;

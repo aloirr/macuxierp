@@ -27,6 +27,6 @@ export const dataNoFuso = (iso: string | Date, fuso: string = FUSO_TENANT): stri
   new Intl.DateTimeFormat('en-CA', { timeZone: fuso, year: 'numeric', month: '2-digit', day: '2-digit' }).format(typeof iso === 'string' ? new Date(iso) : iso);
 
 /** RN-PED-02: transição de status fora da tabela → 422 com `detalhes.possiveis` (lista). Única montagem: serviço, gatilho MXP02 e memória. */
-export function erroTransicao(possiveis: readonly StatusPedido[]): ErroApi {
-  return erros.regra('RN-PED-02', 'Transição de status não permitida', undefined, { possiveis: [...possiveis] });
+export function erroTransicao(possiveis: readonly StatusPedido[], mensagem = 'Transição de status não permitida'): ErroApi {
+  return erros.regra('RN-PED-02', mensagem, undefined, { possiveis: [...possiveis] });
 }
