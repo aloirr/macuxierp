@@ -1,5 +1,5 @@
 /**
- * Peças do recebimento de pedidos do FDV no worker (T-0016): desligamento por configuração até a virada (T-0027), alerta
+ * Peças do recebimento de pedidos do FDV no worker (T-0016): desligamento por configuração, alerta
  * do monitor sem dado pessoal (regra 8) e a recusa de ligar com o laço de agenda desligado (sem Hub ou sem a chave).
  */
 import { relogioDoSistema } from '@macuxierp/platform-sdk';

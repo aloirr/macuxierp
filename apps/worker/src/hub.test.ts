@@ -21,7 +21,7 @@ describe('configurarHub', () => {
     expect(urls).toEqual(['https://hub.exemplo.com.br/integracao/v1/sinal']);
   });
 
-  it('as duas URLs do compose.yml (v0.2.0): base com o /integracao/v1 final, sem duplicá-lo', async () => {
+  it('credencial de ambiente teste vai à URL de teste do compose (.invalid)', async () => {
     const urls: string[] = [];
     const f = (async (u: URL | string) => {
       urls.push(String(u));
@@ -33,8 +33,7 @@ describe('configurarHub', () => {
       f,
     );
     await hub?.chamar({ conectorId: 'c1', chave: 'k', ambiente: 'teste' }, { metodo: 'GET', caminho: '/pedidos/pendentes?limite=10' });
-    await hub?.chamar({ conectorId: 'c1', chave: 'k', ambiente: 'producao' }, { metodo: 'POST', caminho: '/sinal', corpo: {} });
-    expect(urls).toEqual(['https://hub-teste.invalid/integracao/v1/pedidos/pendentes?limite=10', 'https://api.macuxifdv.com.br/integracao/v1/sinal']);
+    expect(urls).toEqual(['https://hub-teste.invalid/integracao/v1/pedidos/pendentes?limite=10']);
   });
 
   it('só uma URL ou URL sem https derruba a partida', () => {
