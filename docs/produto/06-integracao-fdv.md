@@ -43,8 +43,9 @@ Ordem de dependência do Hub: **filial → vendedor → (forma e prazo de pagame
 
 | Status no ERP | Retorno ao Hub |
 |---|---|
-| recebido / em_analise / aprovado | `integrado` (com `numero_erp`) |
-| recusado | `rejeitado_erp` (com `motivo`) |
+| recebido / em_analise / aprovado | `integrado` (com `numero_erp`; enviado no recebimento) |
+| recusado (depois do recebimento) | `cancelado` (com `numero_erp` e `motivo`) |
+| recebimento recusado, sem pedido criado | `rejeitado_erp` (com `motivo`) |
 | faturado_parcial | `faturado_parcial` (nota + itens) |
 | faturado | `faturado_total` (nota + itens) |
 | cancelado | `cancelado` |

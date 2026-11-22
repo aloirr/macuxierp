@@ -3,7 +3,8 @@
  * BYPASSRLS), laço da outbox e dos trabalhos e encerramento limpo no SIGTERM do deploy (ADR 0003).
  * Ambiente: conexão pelas variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_worker`, `PGPASSWORD`,
  * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000) e `MACUXIERP_PG_POOL` (padrão 5). Nada de segredo em código.
- * Executores e rotinas: `modulos.ts` (exportação LGPD e alerta do A1, com os adaptadores SQL do core). O log leva só
+ * Consumidores, executores e rotinas: `modulos.ts` (carga inicial do cadastros, exportação LGPD de core e cadastros e alerta
+ * do A1, com os adaptadores SQL dos módulos). O log leva só
  * contagens, ids e nomes de erro, nunca dado pessoal (regra 8).
  * Agendas por tenant (contrato C-9, T-0009 §6.1; `agenda.ts`, `montarAgendas`) falam com o Hub do FDV (T-0009 §6):
  * `MACUXIERP_HUB_URL_TESTE` e `MACUXIERP_HUB_URL_PRODUCAO` (`hub.ts`) e a chave mestra das credenciais do conector
@@ -16,7 +17,7 @@ import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/p
 import { pino } from 'pino';
 import { configurarCredenciais } from './credencial';
 import { configurarHub, versaoDoErp } from './hub';
-import { montarAgendas, montarExecutores, montarRotinas } from './modulos';
+import { montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
@@ -42,7 +43,7 @@ const worker = iniciarWorker({
   outbox: new FilaOutboxPg(),
   trabalhos: new ReservaTrabalhosPg(),
   consumo: new RegistroConsumoPg(),
-  consumidores: [],
+  consumidores: montarConsumidores(),
   executores: montarExecutores({ banco, log, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogioDoSistema.agora() }),
   rotinas: montarRotinas({ banco, log }),
   ...(hub && decifrarCredencial ? { agenda: { agendas: montarAgendas({ banco, log }), licencas: new LicencasPg(), hub, decifrarCredencial } } : {}),
