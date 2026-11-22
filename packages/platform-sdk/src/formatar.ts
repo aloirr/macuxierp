@@ -15,11 +15,22 @@ export function formatarDocumento(doc: string): string {
 
 const milhar = (n: bigint) => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-/** 123456 → "R$ 1.234,56"; -250 → "-R$ 2,50". RangeError se não for inteiro (centavo nunca é float). */
-export function formatarCentavos(c: number): string {
-  const neg = c < 0;
+/**
+ * O valor sem o prefixo (RD-0706), para campo de entrada e coluna que já diz "R$": 123456 → "1.234,56";
+ * -250 → "-2,50". RangeError se não for inteiro (centavo nunca é float).
+ */
+export function formatarValorCentavos(c: number): string {
   const abs = BigInt(Math.abs(c));
-  return `${neg ? '-' : ''}R$ ${milhar(abs / 100n)},${String(abs % 100n).padStart(2, '0')}`;
+  return `${c < 0 ? '-' : ''}${milhar(abs / 100n)},${String(abs % 100n).padStart(2, '0')}`;
+}
+
+/**
+ * 123456 → "R$ 1.234,56"; -250 → "-R$ 2,50" (o sinal antes do "R$"). Entre o "R$" e o valor vai um espaço não
+ * separável (U+00A0), para o R$ não quebrar de linha. Monta sobre `formatarValorCentavos` (mesma conta e RangeError).
+ */
+export function formatarCentavos(c: number): string {
+  const valor = formatarValorCentavos(c);
+  return c < 0 ? `-R$\u00a0${valor.slice(1)}` : `R$\u00a0${valor}`;
 }
 
 /** "1.234,56" → 123456. Duas casas no máximo; `null` se não for número. */
