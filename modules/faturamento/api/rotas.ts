@@ -4,14 +4,17 @@
  * o enfileiramento. A SEFAZ NUNCA é chamada daqui e o A1 não é lido: o worker assina e transmite (`transmissor.ts`, ADR 0005 item 4).
  * `vendedor` não acessa as notas na v1 (a carteira por vendedor entra com o BKO): 403.
  */
-import { definirRota, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
+import { definirRota, ErroApi, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import {
   BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
 import type { EventoNotaResumo } from '../contracts';
+import { montarDanfe } from '../domain/danfe';
+import { lerAssinaturaDaMarca, MENSAGEM_ATIVO_AUSENTE, type ResultadoAtivosDanfe } from './ativos-marca';
+import { renderizarDanfe } from './danfe-pdf';
 import { podeBaixarTitulo } from '../domain';
-import type { ConfiguracaoFaturamento, EventoRegistro, RepositorioTitulos } from './portas';
+import type { ConfiguracaoFaturamento, EventoRegistro, PortaDanfe, RepositorioTitulos } from './portas';
 import { criarServicoTitulos } from './titulos';
 import { criarServicoEmissao, type DepsEmissao } from './emissao';
 import { criarServicoEventos, type DepsEventos } from './eventos';
@@ -25,7 +28,7 @@ const SEM_VENDEDOR = (c: ContextoRota): void => {
 };
 
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
-export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento };
+export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
 
 /** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06). A rota usa `faturamento.ver` (licença e tenant) e confere o perfil aqui, até existir ação própria no platform-sdk. */
 const SO_QUEM_BAIXA = (c: ContextoRota): void => {
@@ -78,6 +81,37 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         return {
           corpo: xml.xml,
           cabecalhos: { 'content-type': 'application/xml; charset=utf-8', 'content-disposition': `attachment; filename="NFe${xml.chave_acesso}.xml"`, 'cache-control': 'no-store' },
+        };
+      },
+    }),
+    // RF-FAT-03: DANFE gerado sob demanda a partir do nfeProc guardado (a fonte é o XML; o PDF não é guardado). Leitura: vendedor não acessa.
+    definirRota({
+      metodo: 'GET', caminho: '/notas/:id/danfe', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const nota = await notas.obter(c.tx, idDe(e.params));
+        if (!nota) throw erros.naoEncontrado('Nota');
+        if (nota.status !== 'autorizada' && nota.status !== 'cancelada') {
+          throw erros.regra('RN-FAT-03', 'O DANFE só existe para nota autorizada ou cancelada.', { status: nota.status });
+        }
+        const xml = await notas.lerXmlAutorizado(c.tx, nota.id);
+        if (!xml) throw erros.naoEncontrado('XML autorizado');
+        let modelo;
+        try {
+          modelo = montarDanfe({ nfeProc: xml.xml, cancelada: nota.status === 'cancelada' });
+        } catch (err) {
+          throw erros.regra('RN-FAT-03', 'O XML autorizado guardado não pôde ser lido para o DANFE.', { nota: err instanceof Error ? err.constructor.name : 'erro' });
+        }
+        const assinaturaMarca = await (deps.danfe?.assinaturaMarca ?? lerAssinaturaDaMarca)();
+        if ((deps.ativosDanfe && !deps.ativosDanfe.ok) || !assinaturaMarca) throw new ErroApi(503, 'ATIVO_MARCA_AUSENTE', MENSAGEM_ATIVO_AUSENTE); // nunca um DANFE sem o rodapé
+        const pdf = await renderizarDanfe(modelo, {
+          logoEmitente: (await deps.danfe?.logoEmitente?.(c.tx, nota.filial_id)) ?? null,
+          assinaturaMarca,
+          agora: c.agora,
+        });
+        return {
+          corpo: Buffer.from(pdf),
+          cabecalhos: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="DANFE${xml.chave_acesso}.pdf"`, 'cache-control': 'no-store' },
         };
       },
     }),

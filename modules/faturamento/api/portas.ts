@@ -384,6 +384,15 @@ export interface RepositorioEventos {
 }
 
 /**
+ * Portas opcionais do DANFE (RF-FAT-03). `logoEmitente`: PNG do logo da filial emissora (o do CLIENTE; nulo = quadro sem logo, dados centralizados).
+ * `assinaturaMarca`: PNG do rodapé "Emitido pelo" (ativo do design-de-marca); sem a porta, `ativos-marca.ts` lê `docs/marca/ativos` por caminho.
+ */
+export interface PortaDanfe {
+  logoEmitente?(tx: Transacao, filial_id: string): Promise<Uint8Array | null>;
+  assinaturaMarca?(): Promise<Uint8Array | null>;
+}
+
+/**
  * Bandeira por filial "faturamento real com NF-e simulada" (desligada por padrão; sem linha = false). Adaptador SQL sobre `faturamento.configuracao_filial`
  * (filial_id, faturamento_real_nfe_simulada, alterado_por), tabela que o banco-dados ainda cria. Ausente nos deps do worker = bandeira desligada.
  */
