@@ -80,6 +80,9 @@ env:
   MACUXI_PG_PORTA: '5432'
   MACUXI_PG_ADMIN_USUARIO: postgres
   MACUXI_PG_ADMIN_SENHA: postgres
+  # Testes de banco dos módulos (ex.: modules/cadastros/api/sql.db.test.ts): sem a pasta das migrações eles pulam.
+  # O turbo.json repassa a variável e põe db/migrations/** nos inputs (T-0029).
+  MACUXI_DB_MIGRACOES: ${{ github.workspace }}/db/migrations
   NEXT_TELEMETRY_DISABLED: '1'
   TURBO_TELEMETRY_DISABLED: '1'
   TURBO_CACHE_DIR: .turbo/cache
