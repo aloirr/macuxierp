@@ -38,12 +38,11 @@
 | [T-0030](tarefas/T-0030.md) | Troca da filial para produção fiscal só com a aprovação do Alexandre conferida (regra 7) | F1 | engenheiro-software | em_andamento | nuvem/T-0030-producao-fiscal |
 | [T-0031](tarefas/T-0031.md) | Core: resíduos da revisão do PR #14 (RD-0008, RD-0009, lint e teste de banco da concorrência) | F1 | modulo-core | concluida | PR #18 → 65a25f3 |
 | [T-0032](tarefas/T-0032.md) | Banco: updated_at estritamente crescente por linha (token de concorrência) | F1 | banco-dados | concluida | PR #20 → ee17b80 |
-| [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | em_andamento | nuvem/T-0033-core-exports (ed9c34d, falta o PR) |
+| [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | concluida | PR #22 → cba7f5f |
 
 ## Travado pela nuvem (retomada de 21/11, 21h15)
 | Sessão | Caminhos |
 |---|---|
-| nuvem/T-0033-core-exports (modulo-core, session_019xHEXsuENL8Z36PRPVv8mV) | `modules/core/` |
 | nuvem/T-0029-integracao-f1 (engenheiro-software, session_019xHEXpYmU4MzrgksrNchfF) | `apps/api`, `apps/worker`, `packages/platform-sdk`, `scripts/plataforma/` |
 | nuvem/T-0024-deploy (engenheiro-software, session_019xHEXoK7AspqQTPJNMcz1h) | `compose.yml`, `apps/api/Dockerfile`, `apps/worker/Dockerfile`, `scripts/implantacao/` (sem `.github/**`; Dockerfile do web por pedido ao engenheiro-apps) |
 | nuvem/T-0030-producao-fiscal (engenheiro-software, desenho, session_019xHEXqu48yEhqy1UTdHw8c) | `docs/decisoes/0006-*`, `docs/desenho/T-0030.md` |
@@ -65,7 +64,7 @@
 
 ## Próximos lotes (ordem do doc 05)
 > Retomada em 21/11/2026, 21h15 (Manaus): as sessões da T-0029 e da T-0033 caíram por volta das 18h50. Sessões novas abertas para os mesmos branches.
-1. Caminho crítico: T-0033 (PR do branch `nuvem/T-0033-core-exports`) → merge → T-0029 troca as cópias pelos exports do core → merge do #19.
+1. Caminho crítico: T-0033 no main (PR #22, cba7f5f) → T-0029 troca as cópias pelos exports do core → merge do #19.
 2. Em paralelo, sem depender do #19: T-0030 (desenho e ADR 0006), T-0024 (deploy, sem publicar), T-0009 e T-0010 (F2, liberada pelo doc 05 com `cadastros` fechado), T-0026 (desenho da carga) e T-0008 (plano e testes da F1 sobre o `main`).
 3. Depois do #19: ligações do core, do cadastros (cursor, CSV, LGPD), do banco-dados (tenants ativos, avisos) e do engenheiro-apps (listas no shell); implementação da T-0030 e da T-0026.
 4. Depois da F3 e da T-0024: T-0027.
