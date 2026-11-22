@@ -224,8 +224,7 @@ export const classeForma = (tpag: string): ClasseForma | null => (Object.prototy
 /** tPag à vista: 01 dinheiro, 17 PIX, 04 cartão de débito. */
 export const FORMAS_A_VISTA = (Object.keys(CLASSE_FORMA) as (keyof typeof CLASSE_FORMA)[]).filter((f) => CLASSE_FORMA[f] === 'a_vista');
 /** Critério único de "à vista" (pedido, faturamento): só a forma de pagamento (RN-CAD-09 garante o prazo 0). */
-/** `prazos_dias` é aceito e ignorado, para não quebrar quem ainda passa a condição inteira. */
-export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag'> & { prazos_dias?: readonly number[] }): boolean => classeForma(c.forma_tpag) === 'a_vista';
+export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag'>): boolean => classeForma(c.forma_tpag) === 'a_vista';
 export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
 export const CondicaoPagamento = CondicaoPagamentoDados.extend({ id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;

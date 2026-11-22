@@ -9,6 +9,7 @@ import type {
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import { CLASSE_FORMA } from '../contracts';
+import { MOTIVO_PARCELAS_FORMA } from '../domain/condicao';
 import type {
   FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
@@ -19,12 +20,20 @@ const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'p
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
 
+/** CHECKs das parcelas do cartão: `condicao_parcelas_cartao_ck` (0017) e `condicao_parcelas_cartao_forma_ck` (0019). */
+const CHECKS_PARCELAS_CARTAO: ReadonlySet<string> = new Set(['condicao_parcelas_cartao_ck', 'condicao_parcelas_cartao_forma_ck']);
+
 async function executar<L = Dict>(tx: Transacao, sql: string, p: readonly unknown[] = []): Promise<L[]> {
   try {
     return await tx.consultar<L>(sql, p);
   } catch (e) {
-    if ((e as { code?: string }).code === '23505') throw erros.conflito('Já existe um cadastro com esse documento, código ou identificador externo');
-    if ((e as { code?: string }).code === '23503') throw erros.validacao({ referencia: 'Cadastro referenciado inexistente' });
+    const pg = e as { code?: string; table?: string; constraint?: string; schema?: string };
+    if (pg.code === '23505') throw erros.conflito('Já existe um cadastro com esse documento, código ou identificador externo');
+    // RN-CAD-09: só os CHECKs das parcelas do cartão (0017 e 0019), pelo nome da constraint. Mensagem fixa: não ecoa valores do Postgres.
+    if (pg.code === '23514' && (pg.schema === undefined || pg.schema === 'cadastros') && pg.constraint !== undefined && CHECKS_PARCELAS_CARTAO.has(pg.constraint)) {
+      throw erros.regra('RN-CAD-09', `Condição de pagamento inválida: ${MOTIVO_PARCELAS_FORMA}`, { parcelas_cartao: 'Incompatível com a forma de pagamento' });
+    }
+    if (pg.code === '23503') throw erros.validacao({ referencia: 'Cadastro referenciado inexistente' });
     throw e;
   }
 }

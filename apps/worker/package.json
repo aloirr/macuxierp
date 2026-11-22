@@ -11,6 +11,7 @@
   "dependencies": {
     "@macuxierp/cadastros": "workspace:*",
     "@macuxierp/core": "workspace:*",
+    "@macuxierp/integracao-fdv": "workspace:*",
     "@macuxierp/pedido": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
     "pino": "^10.4.0",
@@ -23,5 +24,5 @@
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   },
-  "description": "Worker do Macuxi ERP: outbox, fila de trabalhos (consulta de IE, exportação LGPD; depois SEFAZ e Hub do FDV) e rotinas diárias (alerta do A1)."
+  "description": "Worker do Macuxi ERP: outbox, fila de trabalhos (exportação LGPD, carga inicial; depois SEFAZ), agendas do Hub do FDV (conector, busca e retorno de pedidos) e rotinas diárias (alerta do A1)."
 }
