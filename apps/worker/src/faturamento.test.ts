@@ -137,8 +137,9 @@ describe('faturamento montado no worker', () => {
     const fat = montarFaturamentoWorker({ banco, chaveA1: Buffer.alloc(32, 7), log, tenants: fonteTenants([T1, T2, 'sem-licenca']), licencas: licencas({ [T1]: lic, [T2]: lic }) });
     const r = await fat.periodicas[0]!.executar(AGORA);
     expect(buscas).toEqual([
-      { tenant: T1, params: [TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS, []] },
-      { tenant: T2, params: [TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS, []] },
+      // 5 = MAX_TENTATIVAS_GERACAO_TITULOS (modules/faturamento/api/titulos.ts), não exportada pelo index da api.
+      { tenant: T1, params: [TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS, 5] },
+      { tenant: T2, params: [TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS, 5] },
     ]);
     expect([TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS]).toEqual([5, 50]);
     expect(r).toMatchObject({ tenants: 2, falhas: 1, titulos: 0 });
