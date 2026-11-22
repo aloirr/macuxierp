@@ -9,6 +9,7 @@ import {
   formatarDocumento,
   formatarPontosBase,
   formatarQuantidade,
+  formatarValorCentavos,
   interpretarCentavos,
   interpretarQuantidade,
 } from './formatar';
@@ -23,11 +24,11 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
   });
 
   it('dinheiro: centavos inteiros viram R$ e voltam sem float', () => {
-    expect(formatarCentavos(123456)).toBe('R$ 1.234,56');
-    expect(formatarCentavos(5)).toBe('R$ 0,05');
-    expect(formatarCentavos(-250)).toBe('-R$ 2,50');
-    expect(formatarCentavos(centavos(100_000_000_00))).toBe('R$ 100.000.000,00');
-    expect(formatarCentavos(0)).toBe('R$ 0,00');
+    expect(formatarCentavos(123456)).toBe('R$\u00a01.234,56');
+    expect(formatarCentavos(5)).toBe('R$\u00a00,05');
+    expect(formatarCentavos(-250)).toBe('-R$\u00a02,50');
+    expect(formatarCentavos(centavos(100_000_000_00))).toBe('R$\u00a0100.000.000,00');
+    expect(formatarCentavos(0)).toBe('R$\u00a00,00');
     expect(interpretarCentavos('1.234,56')).toBe(123456);
     expect(interpretarCentavos('0,05')).toBe(5);
     expect(interpretarCentavos(' 12,5 ')).toBe(1250);
@@ -37,6 +38,24 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
 
   it('dinheiro fora de centavo inteiro não é formatado (regra 4: nunca float)', () => {
     expect(() => formatarCentavos(1.5)).toThrow(RangeError);
+  });
+
+  it('R-20261122-035009: o R$ e o valor ficam juntos com espaço não separável (U+00A0), sem quebrar de linha', () => {
+    expect(formatarCentavos(123456)).toBe('R$\u00a01.234,56');
+    expect(formatarCentavos(-250)).toBe('-R$\u00a02,50');
+    expect(formatarCentavos(123456)).not.toContain('R$ ');
+  });
+
+  it('RD-0706: o valor em centavos sem o prefixo R$, com a mesma conta e o mesmo RangeError do formatarCentavos', () => {
+    expect(formatarValorCentavos(123456)).toBe('1.234,56');
+    expect(formatarValorCentavos(-250)).toBe('-2,50');
+    expect(formatarValorCentavos(5)).toBe('0,05');
+    expect(formatarValorCentavos(0)).toBe('0,00');
+    expect(formatarValorCentavos(centavos(100_000_000_00))).toBe('100.000.000,00');
+    expect(() => formatarValorCentavos(1.5)).toThrow(RangeError);
+    for (const c of [0, 5, 123456, -250, -1, 100_000_000_00]) {
+      expect(formatarCentavos(c)).toBe(`${c < 0 ? '-' : ''}R$\u00a0${formatarValorCentavos(Math.abs(c))}`);
+    }
   });
 
   it('D11: quantidade × 10^4 vira decimal e volta sem float', () => {
@@ -73,6 +92,7 @@ describe('formatação de exibição do BKO (RD-0362)', () => {
     expect(indice.formatarDocumento).toBe(formatarDocumento);
     expect(indice.formatarPontosBase).toBe(formatarPontosBase);
     expect(indice.formatarQuantidade).toBe(formatarQuantidade);
+    expect(indice.formatarValorCentavos).toBe(formatarValorCentavos);
     expect(indice.interpretarCentavos).toBe(interpretarCentavos);
     expect(indice.interpretarQuantidade).toBe(interpretarQuantidade);
   });
