@@ -4,7 +4,7 @@ import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { manifest } from '../manifest';
 import * as publico from './index';
 import {
-  ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, faixaDoTitulo, rotuloDaForma, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
+  ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, faixaDoTitulo, rotuloDaForma, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
   contadorDeCaracteres, dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, paginaNoFuso, perfilVeFaturamento, urlDaConfiguracaoDaFilial, requisicaoBaixa,
   requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type NotaParaAcao,
@@ -302,8 +302,7 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(rotuloDaForma('pix')).toBe('Pix');
     expect(rotuloDaForma('')).toBe('');
   });
-  it('textos de lista vazia, rótulo de linha, colunas à direita e "—" no lugar do UUID', () => {
-    expect(TEXTO_VAZIO).toEqual({ notas: 'Nenhuma nota encontrada.', 'pedidos-a-faturar': 'Nenhum pedido encontrado.', rejeicoes: 'Nenhuma rejeição encontrada.', titulos: 'Nenhum título encontrado.' });
+  it('rótulo de linha, colunas à direita e "—" no lugar do UUID', () => {
     const t = { id: ID, nota_id: ID, cliente_id: ID, numero: 123, filial_id: ID, ambiente: 'producao' as const, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 1, saldo_centavos: 1, status: 'aberto' as const };
     expect(ROTULO_LINHA.titulos({ ...t, cliente_razao_social: null })).toBe('Abrir o título 123 (parcela 1/2)');
     expect(ROTULO_LINHA.notas({ numero: 5, serie: 1 } as never)).toBe('Abrir nota 5/1');
@@ -344,15 +343,15 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
 describe('MC-0016: vazio das listas e hora exportada', () => {
   it('as 4 páginas declaram vazio validado pelo SDK, com os textos exatos e sem "Limpe os filtros"', () => {
     const esperado = {
-      notas: ['Nenhuma nota emitida ainda.', 'Nenhuma nota com estes filtros.'],
-      'pedidos-a-faturar': ['Nenhum pedido aprovado esperando nota.', 'Nenhum pedido com estes filtros.'],
+      notas: ['Nenhuma nota emitida ainda. Emita a primeira em Pedidos a faturar.', 'Nenhuma nota com estes filtros.'],
+      'pedidos-a-faturar': ['Nenhum pedido aprovado esperando nota. Os pedidos aparecem aqui quando são aprovados.', 'Nenhum pedido com estes filtros.'],
       rejeicoes: ['Nenhuma nota rejeitada. Está tudo certo.', 'Nenhuma rejeição com estes filtros.'],
       titulos: ['Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', 'Nenhum título com estes filtros.'],
     };
     for (const p of [paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos]) {
       const [sem, com] = esperado[p.id as keyof typeof esperado];
       expect(p.vazio).toEqual({ semFiltro: sem, comFiltro: com });
-      expect(JSON.stringify([p.vazio, TEXTO_VAZIO[p.id as keyof typeof TEXTO_VAZIO]])).not.toMatch(/Limpe os filtros|neste filtro/);
+      expect(JSON.stringify(p.vazio)).not.toMatch(/Limpe os filtros|neste filtro/);
     }
   });
   it('hora(fuso) formata no fuso e devolve vazio para nulo', () => {
@@ -366,7 +365,7 @@ describe('API pública do web', () => {
   it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
       'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
-      'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
+      'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
       'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
       'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
@@ -408,8 +407,22 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
   });
 
   it('erros por campo: acima do saldo, zero e texto inválido', () => {
-    expect(f.validar({ 1: '12,5001', 2: '0', })).toEqual({ ok: false, erros: { 1: '1 - Água 500 ml: a quantidade passa do saldo (12,5). Informe até 12,5 ou deixe o campo vazio.', 2: 'Informe uma quantidade maior que zero ou deixe em branco.' } });
-    expect(f.validar({ 1: '1,23456', 2: 'abc' })).toEqual({ ok: false, erros: { 1: expect.stringContaining('4 casas'), 2: expect.stringContaining('4 casas') } });
+    expect(f.validar({ 1: '12,5001', 2: '0', })).toEqual({
+      ok: false,
+      erros: { 1: '1 - Água 500 ml: a quantidade passa do saldo (12,5). Informe até 12,5 ou deixe o campo vazio.', 2: 'Item 2: a quantidade precisa ser maior que zero. Informe a quantidade ou deixe o campo vazio.' },
+      errosPartes: {
+        1: { rotulo: '1 - Água 500 ml', mensagem: 'A quantidade passa do saldo (12,5). Informe até 12,5 ou deixe o campo vazio.' },
+        2: { rotulo: 'Item 2', mensagem: 'A quantidade precisa ser maior que zero. Informe a quantidade ou deixe o campo vazio.' },
+      },
+    });
+    expect(f.validar({ 1: '1,23456', 2: 'abc' })).toEqual({
+      ok: false,
+      erros: { 1: '1 - Água 500 ml: informe a quantidade com até 4 casas decimais (ex.: 1,5).', 2: 'Item 2: informe a quantidade com até 4 casas decimais (ex.: 1,5).' },
+      errosPartes: {
+        1: { rotulo: '1 - Água 500 ml', mensagem: 'Informe a quantidade com até 4 casas decimais (ex.: 1,5).' },
+        2: { rotulo: 'Item 2', mensagem: 'Informe a quantidade com até 4 casas decimais (ex.: 1,5).' },
+      },
+    });
     expect(f.validar({ 2: '3,0001' })).toMatchObject({ ok: false, erros: { 2: 'Item 2: a quantidade passa do saldo (3). Informe até 3 ou deixe o campo vazio.' } });
   });
 
@@ -440,7 +453,7 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
 
   it('nenhum item com quantidade: erro geral e botão desligado com o mesmo texto único', () => {
     expect(f.motivoBotaoDesligado).toBe('Informe a quantidade de pelo menos um item.');
-    expect(f.validar({})).toEqual({ ok: false, erros: {}, geral: 'Informe a quantidade de pelo menos um item.' });
+    expect(f.validar({})).toEqual({ ok: false, erros: {}, errosPartes: {}, geral: 'Informe a quantidade de pelo menos um item.' });
     expect(f.validar({ 1: '', 2: ' ' })).toMatchObject({ ok: false, geral: f.motivoBotaoDesligado });
     expect(f.emitirHabilitado({})).toBe(false);
     expect(f.emitirHabilitado({ 1: '' })).toBe(false);
