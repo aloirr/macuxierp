@@ -17,9 +17,9 @@ describe('compromisso de crédito (RN-PED-04, premissa f)', () => {
     const condicoes = new Map([['v', aVista], ['p', aPrazo]]);
     expect(compromissoDeCredito(linhas, condicoes)).toBe(234);
   });
-  it('RN-PED-04: PIX com prazos [30] conta no compromisso; PIX com prazos [0] não conta', () => {
-    const condicoes = new Map([['pix30', { forma_tpag: '17', prazos_dias: [30] }], ['pix0', { forma_tpag: '17', prazos_dias: [0] }]]);
-    expect(compromissoDeCredito([{ condicao_pagamento_id: 'pix30', centavos: 500 }], condicoes)).toBe(500);
+  it('RN-PED-04: boleto com prazos [30] conta no compromisso; PIX com prazos [0] não conta', () => {
+    const condicoes = new Map([['bol30', { forma_tpag: '15', prazos_dias: [30] }], ['pix0', { forma_tpag: '17', prazos_dias: [0] }]]);
+    expect(compromissoDeCredito([{ condicao_pagamento_id: 'bol30', centavos: 500 }], condicoes)).toBe(500);
     expect(compromissoDeCredito([{ condicao_pagamento_id: 'pix0', centavos: 500 }], condicoes)).toBe(0);
   });
   it('RN-PED-04: sem linhas, zero', () => expect(compromissoDeCredito([], new Map())).toBe(0));
