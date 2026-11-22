@@ -35,6 +35,8 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 | `cadastros.vendedor.alterado@1` | vendedor | `Vendedor` + `inativo` |
 | `cadastros.carteira.alterada@1` | vendedor de destino | `de`, `para`, `cliente_ids[]`. Resumo da transferência, para auditoria (D7) |
 
+**Campos aditivos em `CondicaoPagamento` (T-0026, D12 do `docs/desenho/T-0026.md`):** `forma_external_id` (até 64, anulável), `forma_codigo` (até 20, anulável) e `forma_nome` (até 60, anulável), ao lado do `forma_tpag` que já existe. São **opcionais e compatíveis**: o evento continua `cadastros.condicao_pagamento.alterada@1`, e o consumidor que não os conhece segue igual. Vêm da carga do `forma_pagamento.csv` do kit (a forma não é tabela própria: cada condição leva a sua). Na F2, o `integracao-fdv` publica forma e prazo ao Hub a partir desses campos, sem ler tabela.
+
 ### Aditivo T-0034 (sem ADR)
 `cadastros.cliente.alterado@1` ganha `enderecos[].id` e `enderecos[].municipio_nome`; `cadastros.filial.alterada@1` ganha `endereco.municipio_nome` (C-1 e C-3 de `docs/desenho/T-0009.md` §7). Os campos são opcionais para o leitor e vêm nulos quando o código IBGE não está na tabela oficial. Mudança aditiva: segue `@1`.
 

@@ -15,3 +15,8 @@ Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #1
 | RD-0031 | 21/11/2026 | T-0026 | desenho T-0026 §3.11 repetia as linhas *ERP:* das tabelas | doc | baixa | engenheiro-software | corrigido | 2026-11-21-T-0026-etapa1-desenho.md |
 | RD-0032 | 21/11/2026 | T-0026 | desenho T-0026 §3: "200" e "filial padrão" repetidos nas tabelas | doc | baixa | engenheiro-software | corrigido | 2026-11-21-T-0026-etapa1-desenho.md |
 | RD-0033 | 21/11/2026 | T-0026 | desenho T-0026: repetições internas (l. 169, 233, 259, 276, 279) | doc | baixa | engenheiro-software | corrigido | 2026-11-21-T-0026-etapa1-desenho.md |
+| RD-0124 | 21/11/2026 | T-0041 | listas.ts: regra de inativos em normalizar e trocarFiltro | código | média | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
+| RD-0125 | 21/11/2026 | T-0041 | listas.ts: ConsultaDaLista e RESERVADAS com literais repetidos | código | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
+| RD-0126 | 21/11/2026 | T-0041 | listas.ts: exports sem consumidor (ChavePaginacao, BUSCA_MAXIMO) | código | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
+| RD-0127 | 21/11/2026 | T-0041 | contrato listas.md: chaves reservadas e 'a mesma query' ditas 2 vezes | doc | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |
+| RD-0128 | 21/11/2026 | T-0041 | listas.test.ts: asserções tautológicas e repetidas | teste | baixa | engenheiro-software | aplicado (62133e6) | 2026-11-21-T-0041-descritor-listas.md |

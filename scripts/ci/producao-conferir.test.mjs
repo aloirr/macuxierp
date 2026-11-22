@@ -47,7 +47,7 @@ function execFalso({ main = true, ancestral = true, ci = '1', digest = `sha256:$
 }
 
 /** Erro do execFileSync quando o docker diz que a tag não existe (a saída do comando vem no stdout do ghcr-tentar). */
-const ausente = () => Object.assign(new Error('Command failed'), { stdout: 'ERROR: ghcr.io/aloirr/macuxi-api:x: not found\n' });
+const ausente = () => Object.assign(new Error('Command failed'), { stdout: 'ERROR: ghcr.io/aloirr/macuxierp-api:x: not found\n' });
 
 const ALVO = { sha: SHA, versao: 'v1.0.7', dono: 'AloirR', repositorio: 'aloirr/macuxierp' };
 
@@ -56,10 +56,10 @@ test('conferir: no main, CI verde e imagem → api por digest e dono minúsculo'
   const r = conferir(ALVO, exec);
   assert.equal(r.erro, undefined);
   assert.equal(r.dono, 'aloirr');
-  assert.equal(r.api, `ghcr.io/aloirr/macuxi-api@sha256:${'a'.repeat(64)}`);
+  assert.equal(r.api, `ghcr.io/aloirr/macuxierp-api@sha256:${'a'.repeat(64)}`);
   const gh = chamadas.find((c) => c[0] === 'gh');
   for (const f of [`head_sha=${SHA}`, 'event=push', 'branch=main', 'status=success']) assert.ok(gh.includes(f), f);
-  assert.ok(chamadas.find((c) => c[0] === 'bash').includes(`ghcr.io/aloirr/macuxi-api:${SHA}`));
+  assert.ok(chamadas.find((c) => c[0] === 'bash').includes(`ghcr.io/aloirr/macuxierp-api:${SHA}`));
 });
 
 test('conferir: cada falha vira erro e para antes do passo seguinte', () => {
@@ -83,7 +83,7 @@ test('commit: no main e CI verde, sem consultar o GHCR (o liberar confere antes 
 });
 
 test('imagem no GHCR: só "não existe" do registro libera o build; falha de consulta nunca remonta a tag', () => {
-  const img = `ghcr.io/aloirr/macuxi-api:${SHA}`;
+  const img = `ghcr.io/aloirr/macuxierp-api:${SHA}`;
   assert.deepEqual(digestNoGhcr(img, execFalso().exec), { digest: `sha256:${'a'.repeat(64)}` });
   assert.deepEqual(digestNoGhcr(img, execFalso({ digest: ausente() }).exec), { ausente: true });
   for (const stdout of ['manifest unknown', 'MANIFEST_UNKNOWN: manifest unknown'])
@@ -122,7 +122,7 @@ test('liberar monta a imagem da API (ADR 0051): CI verde antes do build, só se 
   for (const p of passos.filter((x) => /setup-buildx|build-push|docker push|ref: \$\{\{ inputs\.sha \}\}/.test(x)))
     assert.match(p, /if: steps\.existe\.outputs\.existe == '0'/, p.split('\n')[0]);
   assert.match(lib, /context: alvo\n\s+file: alvo\/apps\/api\/Dockerfile/);
-  assert.doesNotMatch(lib, /macuxi-api:main|--force|push: true/);
+  assert.doesNotMatch(lib, /macuxierp-api:main|--force|push: true/);
   assert.match(lib, /needs: imagem/);
 });
 

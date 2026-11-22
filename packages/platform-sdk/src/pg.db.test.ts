@@ -2,7 +2,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarEvento } from './eventos';
-import { AuditoriaPg, CatalogoArquivosPg, envelopeDaLinha, FilaDeTrabalhosPg, LicencasPg, OutboxPg, SELECT_EVENTO, type BancoPg, type LinhaEvento } from './pg';
+import { executarIdempotente, VALIDADE_IDEMPOTENCIA_MS } from './idempotencia';
+import { AuditoriaPg, CatalogoArquivosPg, envelopeDaLinha, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg, SELECT_EVENTO, type BancoPg, type LinhaEvento } from './pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from './pg-testes';
 
 // hora-fixa-ok: data de guarda do arquivo, só conferida na volta (não se compara ao relógio)
@@ -145,6 +146,28 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores PostgreSQL da plataforma', () => {
     expect((await app.comTenant(t1, (tx) => licencas.ler(tx, t1))).map((l) => l.modulo)).toEqual(['cadastros']);
     // pedir as do outro tenant dentro da transação do t1 não devolve nada (RLS)
     expect(await app.comTenant(t1, (tx) => licencas.ler(tx, t2))).toEqual([]);
+  });
+
+  it('Idempotency-Key: guarda a resposta, repete sem executar, 409 com outro pedido, isola o tenant e desfaz com a rota', async () => {
+    const repo = new IdempotenciaPg();
+    const agora = new Date();
+    const pedido = { tenant_id: t1, chave: `k-${randomUUID()}`, rota: 'POST /v1/cadastros/cargas', hash_corpo: 'a'.repeat(64), agora };
+    let n = 0;
+    const executar = async () => ({ status: 200, corpo: { n: ++n, texto: 'ok' } });
+    expect((await app.comTenant(t1, (tx) => executarIdempotente(repo, tx, pedido, executar))).repetida).toBe(false);
+    expect(await app.comTenant(t1, (tx) => executarIdempotente(repo, tx, pedido, executar))).toEqual({ resposta: { status: 200, corpo: { n: 1, texto: 'ok' } }, repetida: true });
+    await expect(app.comTenant(t1, (tx) => executarIdempotente(repo, tx, { ...pedido, hash_corpo: 'b'.repeat(64) }, executar))).rejects.toMatchObject({ status: 409 });
+    // a mesma chave no outro tenant é outra chave (RLS e UNIQUE por tenant)
+    expect((await app.comTenant(t2, (tx) => executarIdempotente(repo, tx, { ...pedido, tenant_id: t2 }, executar))).repetida).toBe(false);
+    // a rota que falha desfaz a reserva: o reenvio executa
+    const falha = { ...pedido, chave: `k-${randomUUID()}` };
+    await expect(app.comTenant(t1, (tx) => executarIdempotente(repo, tx, falha, async () => Promise.reject(new Error('rota falhou'))))).rejects.toThrow('rota falhou');
+    expect((await app.comTenant(t1, (tx) => executarIdempotente(repo, tx, falha, executar))).repetida).toBe(false);
+    // vencida (24 h depois) é substituída
+    const depois = { ...pedido, agora: new Date(agora.getTime() + VALIDADE_IDEMPOTENCIA_MS + 1000), hash_corpo: 'c'.repeat(64) };
+    expect(await app.comTenant(t1, (tx) => executarIdempotente(repo, tx, depois, executar))).toMatchObject({ repetida: false, resposta: { corpo: { n: 4 } } });
+    const { rows } = await b.admin.query('SELECT tenant_id, status FROM plataforma.idempotencia WHERE chave = $1 ORDER BY tenant_id = $2', [pedido.chave, t1]);
+    expect(rows).toHaveLength(2);
   });
 
   it('conferirPapel aceita o papel da aplicação e recusa outro', async () => {
