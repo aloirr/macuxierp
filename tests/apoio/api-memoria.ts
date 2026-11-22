@@ -18,7 +18,7 @@ import { CONFIG_AUTH_PADRAO } from '../../apps/api/src/auth/servico';
 import { montarModulos } from '../../apps/api/src/modulos';
 import type { Fontes } from '../../modules/cadastros/api/index';
 import { dependenciasEmMemoria } from '../../modules/cadastros/api/memoria';
-import { lerChaveA1 } from '../../modules/core/api/cifra';
+import { lerChaveA1 } from '../../modules/core/api/index';
 import type { DadosPfx, LeitorPfx } from '../../modules/core/api/portas';
 import { PfxInvalido } from '../../modules/core/api/portas';
 import { RepositorioCoreMemoria } from '../../modules/core/api/repositorio-memoria';
