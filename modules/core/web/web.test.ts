@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERFIS } from '@macuxierp/platform-sdk';
 import { criarClienteCore, ErroCliente, SenhaUmaVez, type Fetch } from './cliente';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
-import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO } from './paginas';
+import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
 
 describe('BKO do core: permissões refletidas na UI (a proteção real é da API)', () => {
   it('RN-CORE-02: administrador vê tudo; leitura só a empresa e os perfis; fiscal e faturista veem o ambiente', () => {
@@ -23,6 +23,12 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
     expect(botoes[0]).toMatchObject({ id: 'voltar-homologacao', rotulo: 'Voltar para homologação', confirma: true });
     expect(botoes.map((b) => b.rotulo.toLowerCase()).join()).not.toContain('produ');
     expect(TEXTO_AMBIENTE_HOMOLOGACAO).toContain('peça à Macuxi');
+  });
+
+  it('T-0040: a página de exportação avisa que o armazenamento ainda não existe', () => {
+    const exp = PAGINAS_CORE.find((p) => p.id === 'exportacao');
+    expect(exp?.aviso).toBe(TEXTO_EXPORTACAO_INDISPONIVEL);
+    expect(PAGINAS_CORE.filter((p) => p.aviso).map((p) => p.id)).toEqual(['exportacao']);
   });
 
   it('todo perfil conhecido tem ao menos a página da empresa', () => {
