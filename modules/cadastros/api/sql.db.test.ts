@@ -15,14 +15,10 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarPluginCadastros, exportadorCadastros } from './index';
 import { TABELAS_EXPORTADAS } from './exportador';
-import { criarAmbiente, sessaoDe } from './apoio-teste';
+import { criarAmbiente, sessaoDe, transacaoDe } from './apoio-teste';
 import { CNPJ_A, CNPJ_B, clienteValido, filialValida, produtoValido } from './fixtures-teste';
 import { fontesHttp } from './fontes-http';
 import { repositoriosSql } from './sql';
-
-function transacaoDe(banco: BancoPg, tenant: string): Transacao {
-  return { consultar: <L>(sql: string, p: readonly unknown[] = []) => banco.comTenant(tenant, (tx) => tx.consultar<L>(sql, p)) };
-}
 
 describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', () => {
   let efemero: BancoEfemero;

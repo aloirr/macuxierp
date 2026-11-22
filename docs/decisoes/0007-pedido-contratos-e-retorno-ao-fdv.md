@@ -32,13 +32,22 @@ A F3 liga o pedido ao FDV nos dois sentidos. O pedido chega pelo `GET /integraca
 
 1. **Porta de recebimento** `RecebedorPedidoFdv` (ponto 1): RN-PED-01, T-0013 P2.
 2. **Eventos do `pedido`, versão 1** (ponto 3): Eventos pedido.pedido.{recebido,aprovado,recusado,cancelado,faturado}@1 com payload Base comum e aprovado@1 com o pedido completo; forma em T-0013 §8.
-3. **Status ao Hub** (ponto 2; função pura `retornoDoPedido` do `integracao-fdv`, que consome `recebido@1`, `recusado@1`, `cancelado@1` e `faturado@1`, e não `aprovado@1`): integrado no recebimento, também em análise; recusa depois do integrado = cancelado com motivo; rejeitado_erp só quando o ERP não recebe o pedido. Tabela em T-0013 §6.2.
+3. **Status ao Hub** (ponto 2; função pura `retornoDoPedido` do `integracao-fdv`, que consome `recebido@1`, `cancelado@1` e `faturado@1`, e não `aprovado@1` nem `recusado@1`): integrado no recebimento; cancelamento depois do integrado = cancelado com motivo; rejeitado_erp, com motivo, só quando o ERP não recebe o pedido. Tabela em T-0013 §6.2. Redação dada pela emenda abaixo.
 4. O `.coord/contratos/eventos.md` (engenheiro-software), os manifests (donos) e os textos da RN-PED-02 e do doc 06 (gerente-projetos) mudam conforme o desenho T-0013, seções 2, 6.2 e 8.
 
 ## Consequências
 - O pedido do FDV nasce, ou é recusado, numa transação só. O monitor mostra `entregue` ou `rejeitado` sem estado intermediário, e o vendedor recebe o número do ERP em segundos.
-- No FDV, o pedido recusado na análise aparece como **cancelado pelo ERP**, com o motivo, e não como "rejeitado". É a única forma que o Hub aceita depois de `integrado`. O vendedor vê o motivo do mesmo jeito.
+- No FDV, o pedido cancelado no ERP depois do `integrado` aparece como **cancelado pelo ERP**, com o motivo. É a única forma que o Hub aceita depois de `integrado`.
 - O `integracao-fdv` passa a depender, em tempo de execução, da porta do `pedido` ligada pelo `apps/worker`. No pacote, já dependia (`depende: ['core', 'cadastros', 'pedido']`), então não há ciclo.
 - O faturamento tem o pedido inteiro no `aprovado@1` e não lê o schema `pedido`. O `pedido` lê os eventos de nota com leitor tolerante, porque o `faturamento` depende do `pedido`.
 - Mudança incompatível em qualquer payload acima = `@2`, nova ADR e recado aos consumidores (`faturamento`, `integracao-fdv`). Campo novo opcional continua no `@1`.
 - Se o FDV um dia aceitar `integrado → rejeitado_erp` (opção c), basta mudar a função `retornoDoPedido`, sem mexer nos contratos do ERP.
+
+## Emenda — 21/11/2026, 23h10 (Manaus): decisão do Alexandre R-20261121-230608
+Sem ADR nova; o detalhe está no desenho T-0013 (emenda D-A, RD-0301 a RD-0303; a segunda passada, com as decisões de 23h12 e 23h22 e a conciliação com o PR #81, está na RD-0303).
+- **O pedido do FDV chega aprovado** e entra no ERP como `aprovado`, sem `avaliarPedido`, sem análise e sem linha em `aprovacao`. A porta `RecebedorPedidoFdv` confere só o cadastro (`conferirPedidoFdv`) e, com problema, devolve `recusado` com um `CodigoRecusaFdv`, que vira `rejeitado_erp` com motivo (T-0013 §5.3). Só o pedido manual passa por `avaliarPedido` e pela aprovação.
+- **Mapeamento ao Hub:** sai a linha `recusado@1 → cancelado`, porque o pedido do FDV nunca é recusado no ERP. O `integrado` continua saindo do `recebido@1`, e o `aprovado@1` não gera nada para o Hub. O cancelamento depois do `integrado` continua como `cancelado` com motivo. O `integracao-fdv` deixa de consumir `recusado@1`.
+- **Contratos (ainda `@1`, porque nada foi publicado):** `aprovado@1` mantém o `automatica: boolean` do PR #81 (T-0015 lote 1), e quem decidiu se lê por `origem` + `automatica` (`fdv` = decisão do FDV, com `automatica = true`; `bko` = automática ou humana). `ResultadoRecebimentoFdv` usa a lista única `CodigoRecusaFdv` (T-0013 §8.2), conciliada com o enum do #81 e com os códigos de cadastro inativo; `total_divergente` sai de `CodigoPendencia` e vira a recusa `item_incoerente`. O `PedidoAprovado` leva o endereço principal do destinatário no `cliente_retrato` (campo novo, na forma do #81). Depois da primeira publicação, mudança assim é `@2`.
+- **Crédito do à vista:** à vista é a forma de pagamento da condição (dinheiro, PIX ou cartão de débito), não o prazo (decisão de 23h55); o pedido à vista não usa crédito em caso nenhum e não entra no compromisso (T-0013 §3.1, PR-6). Não muda contrato entre módulos.
+- **Onde se testa:** T-0013 §9.2 (decisões de 23h12 e 23h22). Não muda nenhum ponto da decisão.
+- O ponto 2 (b) continua valendo pelo motivo de contrato do Hub; a parte do "pedido em análise" deixou de existir para o FDV.

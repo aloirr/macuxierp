@@ -17,8 +17,16 @@ export const TenantId = z.string().uuid();
  *  - alíquotas, reduções e MVA em DÉCIMOS DE MILÉSIMO DE PONTO PERCENTUAL (4 casas), inteiros (180000 = 18,0000%; 1000000 = 100%);
  *  - datas de vigência e de emissão como 'AAAA-MM-DD' (data civil do tenant);
  *  - campos opcionais ipi/pis/cofins (lote 2) e ibs/cbs/is (lote 3) já declarados para não quebrar o @1;
- *  - evolução compatível no @1: a RegraTributaria vai ganhar `tributo` (padrão 'icms') nos lotes 2 e 3, e novos códigos de erro
- *    podem surgir; o consumidor deve tratar código de erro desconhecido (mostrar a mensagem e o rn, sem quebrar).
+ *  - evolução compatível no @1: a RegraTributaria ganhou `tributo` (padrão 'icms') e os campos de IPI/PIS/COFINS (todos opcionais com padrão;
+ *    o lote 3 acrescenta IBS/CBS/IS do mesmo jeito), e novos códigos de erro podem surgir (ex.: CODIGO_INCOMPATIVEL_REGIME);
+ *    o consumidor deve tratar código de erro desconhecido (mostrar a mensagem e o rn, sem quebrar).
+ *  - lote 2: o motor calcula IPI, PIS e COFINS e cobre só NF-e de SAÍDA (CST de entrada é recusado com CODIGO_INCOMPATIVEL_REGIME).
+ *    Precedência do `ipi_centavos` de entrada: ver o campo em ItemCalculo.
+ *  - PIS/COFINS: Simples (CRT 1, 2 e 4) recolhe no DAS e não exige regra (sem regra sai CST 99, sem valor). CRT 3 exige a regra:
+ *    sem regra de PIS ou de COFINS o erro é REGRA_NAO_ENCONTRADA. No CRT 3 o `regime_pis_cofins` do emitente é exigido, mas a falta dele
+ *    é erro tipado (REGRA_INCOMPLETA), não exceção do Zod, para não quebrar o parse de quem já usa o @1.
+ *  - valor por unidade (vUnid/vAliqProd, 11v4 do Manual): inteiro em DÉCIMOS DE MILÉSIMO DE REAL (×10^4; R$ 0,1411 = 1411).
+ *    A quantidade (qTrib) vale com até 4 casas; o valor em centavos é quantidade × valor por unidade, meio para cima.
  */
 
 export const CALCULO_VERSAO = 1 as const;
@@ -26,6 +34,8 @@ export const CALCULO_VERSAO = 1 as const;
 // Centavos: não vem de cadastros porque aqui é inteiro seguro e o piso (não negativo) é aplicado à parte; repetido de propósito (como o TenantId).
 const Centavos = z.number().int().safe();
 const CentavosNaoNeg = Centavos.nonnegative();
+/** Valor por unidade (vUnid/vAliqProd, 11v4 do Manual) em décimos de milésimo de real (×10^4): R$ 0,1411 = 1411. */
+const ValorUnidade4 = z.number().int().safe().nonnegative();
 /** Alíquota/MVA em décimos de milésimo de ponto percentual, 4 casas (180000 = 18,0000%). Teto largo: só a MVA o usa. */
 export const Aliquota = z.number().int().nonnegative().max(100_000_000);
 /** Alíquota, FCP, pCredSN e reduções: no máximo 100% (1_000_000). */
@@ -51,6 +61,8 @@ export const EmitenteCalculo = z.object({
   crt: Crt,
   /** Regime de PIS/COFINS da filial (lote 2). */
   regime_pis_cofins: z.enum(['cumulativo', 'nao_cumulativo']).optional(),
+  /** Emitente industrial ou equiparado a industrial (contribuinte do IPI). Falso (padrão): o grupo IPI não é calculado. */
+  industrial_ipi: z.boolean().default(false),
 });
 export const DestinatarioCalculo = z.object({
   uf: Uf,
@@ -78,7 +90,10 @@ export const ItemCalculo = z.object({
   seguro_centavos: CentavosNaoNeg.default(0),
   outras_despesas_centavos: CentavosNaoNeg.default(0),
   origem: OrigemMercadoria,
-  /** IPI do item, quando já calculado (lote 2 passa a calculá-lo aqui dentro). Entra na BC do ICMS/ST conforme o destinatário. */
+  /**
+   * IPI do item informado por quem chama. Precedência: havendo regra de IPI aplicável (emitente `industrial_ipi` = true), o valor
+   * calculado SUBSTITUI este campo; sem regra, ele é usado como está (compatível com o lote 1). Entra na BC do ICMS/ST conforme o destinatário.
+   */
   ipi_centavos: CentavosNaoNeg.default(0),
 });
 
@@ -87,9 +102,24 @@ export const FonteRegra = z.object({
   referencia: z.string(),
 });
 
-/** RN-FIS-01/04: filtros nulos significam "todos"; fonte e vigência são obrigatórias para a regra valer. */
-export const RegraTributaria = z.object({
+export const TributoRegra = z.enum(['icms', 'ipi', 'pis', 'cofins']);
+export type TributoRegra = z.infer<typeof TributoRegra>;
+/** IPI de SAÍDA (Manual da NF-e): 50 e 99 tributados; 51..55 sem valor. 00..05 e 49 são de entrada e o motor os recusa. */
+export const CST_IPI_TRIBUTADO = ['50', '99'] as const;
+export const CST_IPI_SEM_VALOR = ['51', '52', '53', '54', '55'] as const;
+export const CST_IPI_ENTRADA = ['00', '01', '02', '03', '04', '05', '49'] as const;
+
+/**
+ * RN-FIS-01/04: filtros nulos significam "todos"; fonte e vigência são obrigatórias para a regra valer.
+ * Uma regra serve a um tributo de duas formas (a seleção roda separada por tributo):
+ *  - linha dedicada: `tributo` = 'ipi' | 'pis' | 'cofins' e os campos daquele tributo (cst_ipi/aliquota_ipi, cst_pis/aliquota_pis ...);
+ *    `codigo` (ICMS) é opcional/nulo nessas linhas (obrigatório só quando `tributo` = 'icms', conforme o CHECK do banco);
+ *  - linha única (formato do banco): `tributo` = 'icms' e, além do ICMS, os campos de IPI/PIS/COFINS preenchidos; a linha vale
+ *    para cada tributo cujo `cst_*` não é nulo.
+ */
+const RegraBase = z.object({
   id: z.string().uuid(),
+  tributo: TributoRegra.default('icms'),
   /** Prefixo de NCM de 2 a 8 dígitos (8 = exato); null = todos. */
   ncm_prefixo: z.string().regex(/^\d{2,8}$/).nullable(),
   uf_origem: Uf.nullable(),
@@ -97,8 +127,8 @@ export const RegraTributaria = z.object({
   tipo_cliente: TipoContribuinte.nullable(),
   crt: Crt.nullable(),
   cfop: Cfop.nullable(),
-  /** CST (2 dígitos) ou CSOSN (3 dígitos); a compatibilidade com o CRT é validada no domínio (RN-FIS-02). */
-  codigo: z.string().regex(/^\d{2,3}$/),
+  /** CST (2 dígitos) ou CSOSN (3 dígitos) do ICMS; a compatibilidade com o CRT é validada no domínio (RN-FIS-02). Nulo só nas linhas de IPI/PIS/COFINS. */
+  codigo: z.string().regex(/^\d{2,3}$/).nullable().default(null),
   mod_bc: z.number().int().min(0).max(3).default(3),
   aliquota_icms: Percentual.nullable().default(null),
   reducao_bc: Percentual.nullable().default(null),
@@ -114,11 +144,27 @@ export const RegraTributaria = z.object({
   p_fcp_st: Percentual.nullable().default(null),
   /** Crédito do Simples (CSOSN 101/201/900), vem da faixa do contribuinte. */
   p_cred_sn: Percentual.nullable().default(null),
+  /** IPI: CST (2 dígitos), alíquota ad valorem, enquadramento legal (padrão '999') e valor por unidade (×10^4 de real, ver cabeçalho). Alíquota e valor por unidade ao mesmo tempo = regra ambígua (REGRA_INCOMPLETA). */
+  cst_ipi: z.string().regex(/^\d{2}$/).nullable().default(null),
+  aliquota_ipi: Percentual.nullable().default(null),
+  c_enq: z.string().regex(/^\d{3}$/).default('999'),
+  valor_unidade_ipi: ValorUnidade4.nullable().default(null),
+  /** PIS e COFINS: CST, alíquota (cumulativo 0,65%/3%, não cumulativo 1,65%/7,6%: vêm da regra) e valor por unidade (pauta, ×10^4 de real). */
+  cst_pis: z.string().regex(/^\d{2}$/).nullable().default(null),
+  aliquota_pis: Percentual.nullable().default(null),
+  valor_unidade_pis: ValorUnidade4.nullable().default(null),
+  cst_cofins: z.string().regex(/^\d{2}$/).nullable().default(null),
+  aliquota_cofins: Percentual.nullable().default(null),
+  valor_unidade_cofins: ValorUnidade4.nullable().default(null),
+  /** Tema 69 do STF: exclui o vICMS do item da BC de PIS/COFINS. Padrão false (BC cheia). */
+  excluir_icms_bc: z.boolean().default(false),
   fonte: FonteRegra.nullable(),
   versao: z.string().min(1),
   vigencia_inicio: DataCivil,
   vigencia_fim: DataCivil.nullable(),
 });
+/** O código de ICMS é obrigatório na linha de ICMS (espelha o CHECK do banco: tributo <> 'icms' OR codigo IS NOT NULL). */
+export const RegraTributaria = RegraBase.refine((r) => r.tributo !== 'icms' || r.codigo !== null, { message: "codigo é obrigatório quando tributo = 'icms'", path: ['codigo'] });
 export type RegraTributaria = z.infer<typeof RegraTributaria>;
 
 export const CalculoEntrada = z.object({
@@ -161,9 +207,13 @@ export const RegraUsada = z.object({ id: z.string().uuid(), fonte: FonteRegra, v
 
 /** Grupos dos lotes 2 e 3, com os campos do Manual (todos opcionais até o lote que os calcula). */
 export const IpiItem = z
-  .object({ cst: z.string(), c_enq: z.string(), v_bc: CentavosNaoNeg, p_ipi: Percentual, v_ipi: CentavosNaoNeg })
+  .object({ cst: z.string(), c_enq: z.string(), v_bc: CentavosNaoNeg, p_ipi: Percentual, q_unid: z.number(), /** ×10^4 de real */ v_unid: ValorUnidade4, v_ipi: CentavosNaoNeg })
   .partial();
-export const PisCofinsItem = z.object({ cst: z.string(), v_bc: CentavosNaoNeg, p_aliq: Percentual, v_valor: CentavosNaoNeg }).partial();
+export type IpiItem = z.infer<typeof IpiItem>;
+export const PisCofinsItem = z
+  .object({ cst: z.string(), v_bc: CentavosNaoNeg, p_aliq: Percentual, q_bc_prod: z.number(), /** ×10^4 de real */ v_aliq_prod: ValorUnidade4, v_valor: CentavosNaoNeg })
+  .partial();
+export type PisCofinsItem = z.infer<typeof PisCofinsItem>;
 export const IbsCbsItem = z
   .object({
     cst: z.string(),
@@ -207,7 +257,7 @@ export const TotaisCalculo = z.object({
   v_seg: CentavosNaoNeg,
   v_outro: CentavosNaoNeg,
   v_ipi: CentavosNaoNeg,
-  /** Parcial no lote 1: vProd − vDesc + vFrete + vSeg + vOutro + vST + vFCPST + vIPI informado. */
+  /** vProd − vDesc + vFrete + vSeg + vOutro + vST + vFCPST + vIPI (calculado no lote 2); IBS/CBS/IS entram no lote 3. */
   v_nf: CentavosNaoNeg,
   v_cred_icms_sn: CentavosNaoNeg,
   /** Lotes 2 e 3: opcionais para não quebrar o @1. */
@@ -229,6 +279,8 @@ export const CodigoErroFiscal = z.enum([
   'CODIGO_NAO_SUPORTADO',
   'REGRA_INCOMPLETA',
   'BASE_NEGATIVA',
+  /** Lote 2: CST de PIS/COFINS incompatível com o regime (cumulativo/não cumulativo). */
+  'CODIGO_INCOMPATIVEL_REGIME',
 ]);
 export const ErroFiscal = z.object({
   rn: z.string().regex(/^RN-FIS-\d{2}$/),
