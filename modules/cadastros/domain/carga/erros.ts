@@ -1,5 +1,4 @@
 import type { Violacao } from '../violacao';
-import { MOTIVO_A_VISTA_COM_PRAZO } from '../condicao';
 
 /** Erro de uma linha. Nunca leva o valor digitado (RN-CORE-07, D9): `motivo` sai de mensagens fixas. */
 export interface ErroLinha {
@@ -18,12 +17,12 @@ const MOTIVOS: Readonly<Record<string, string>> = {
   'RN-CAD-06': 'Vigência ou preço inválido',
   'RN-CAD-07': 'Saldo de estoque inválido',
   'RN-CAD-08': 'Cadastro padrão não pode ser inativado',
-  'RN-CAD-09': MOTIVO_A_VISTA_COM_PRAZO,
   D8: 'Configuração da NF-e incompleta',
 };
 
 export function erroDeViolacao(linha: number, v: Violacao, campo?: string): ErroLinha {
-  return { linha, campo: campo ?? v.campo, codigo: v.rn, motivo: MOTIVOS[v.rn] ?? 'Regra de negócio violada' };
+  // RN-CAD-09: as mensagens do domain são constantes curtas por classe, sem o valor digitado.
+  return { linha, campo: campo ?? v.campo, codigo: v.rn, motivo: v.rn === 'RN-CAD-09' ? v.mensagem : (MOTIVOS[v.rn] ?? 'Regra de negócio violada') };
 }
 
 export const erroLinha = (linha: number, campo: string | null, codigo: string, motivo: string): ErroLinha => ({ linha, campo, codigo, motivo });

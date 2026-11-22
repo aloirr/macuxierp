@@ -19,6 +19,7 @@ import {
 import {
   TRATADORES, estadoVazio, novoLoteId, planejarEstoque, podeCarregar, type Estado, type Saida,
 } from './carga-entidades';
+import { tratarCartaoSemParcelas } from './formas-recusadas';
 import type { Dependencias, Repositorios, TabelaChave } from './portas';
 import { ENTIDADES_RESOLVIDAS } from './resolvedor-chave';
 import { dataIso, violacaoExternalId } from './util';
@@ -204,6 +205,14 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   const produto = arquivos.find((x) => x.entidade === 'produto');
   if (produto && [...st.descontos.keys()].some((p) => !st.produtosNoPreco.has(p))) {
     produto.resultado.avisos.push('Desconto máximo de produto sem preço no lote: não foi aplicado');
+  }
+  if (st.gravar) {
+    // RN-CAD-09: nada fica "cartão sem parcelas" (preenche quando os prazos são 30×N; senão desativa).
+    const limpeza = await tratarCartaoSemParcelas(c, r, await r.carga.condicoesAtivasCartaoSemParcelas());
+    const destino = arquivos.find((x) => x.entidade === 'prazo_pagamento') ?? arquivos.find((x) => x.entidade === 'forma_pagamento');
+    if (destino && limpeza.preenchidas.total + limpeza.desativadas.total > 0) {
+      destino.resultado.avisos.push(`Cartão sem parcelas: ${limpeza.preenchidas.total} preenchida(s), ${limpeza.desativadas.total} desativada(s)`);
+    }
   }
   for (const a of arquivos) a.resultado.recusadas = Math.max(0, a.resultado.lidas - a.resultado.inseridas - a.resultado.atualizadas - a.resultado.sem_mudanca);
 

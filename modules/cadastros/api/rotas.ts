@@ -16,16 +16,20 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
+  validarCondicaoPagamento, completarPrazos, completarPrazosNoPatch, validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga } from './carga';
+import { desativarCondicoesRecusadas, tratarCartaoSemParcelas } from './formas-recusadas';
 import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
 import { dataIso, erroDeViolacoes, exigir, idDe, violacaoExternalId } from './util';
+
+/** Criação da condição: no cartão (tPag 03) o `prazos_dias` é opcional, o domain gera 30×N (RN-CAD-09). */
+const CondicaoPagamentoCriacao = CondicaoPagamentoDados.extend({ prazos_dias: CondicaoPagamentoDados.shape.prazos_dias.optional() });
 
 type Dict = Record<string, unknown>;
 /** `external_id` de um cadastro (`null` se ausente). */
@@ -64,6 +68,8 @@ interface ConfigCrud<E extends Entidade, D extends Dict> {
   repo(r: Repositorios): RepoSimples<E, D>;
   /** Publica o evento do cadastro na outbox (`antes` = estado anterior; `null` na criação). */
   emitir(c: ContextoRota, r: Repositorios, e: E, antes: E | null): Promise<void>;
+  /** Preenche o que o domain deriva do corpo (criação e PATCH; ex.: prazos do cartão), antes de validar e gravar. */
+  completar?(corpo: Dict, antes?: Dict): Dict;
   /** Regras do domain sobre o cadastro já completo (criação ou criação + alteração). */
   validar?(r: Repositorios, completo: Dict, parcial: Dict | null, agora: Date): Promise<Violacao[]>;
   /** Campos que exigem permissão a mais (limite de crédito). */
@@ -113,7 +119,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
       metodo: 'POST', caminho: cfg.caminho, acao: cfg.editar, corpo: cfg.dados,
       async executar(c, e) {
         const r = R(c);
-        const corpo = e.corpo as Dict;
+        const corpo = cfg.completar ? cfg.completar(e.corpo as Dict) : (e.corpo as Dict);
         const externo = typeof corpo.external_id === 'string' ? await cfg.repo(r).porExternalId(corpo.external_id) : null;
         if (externo) return { status: 200, corpo: ocultar(c, externo) }; // escrita idempotente (regra 4)
         // Guarda RD-0317 (ver domain/external-id.ts)
@@ -122,7 +128,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         if (cfg.validar) exigir(await cfg.validar(r, corpo, null, c.agora));
         const padrao = cfg.padrao?.(r);
         if (padrao && corpo.padrao === true) await padrao.desmarcarPadrao(null);
-        const criado = await cfg.repo(r).inserir(e.corpo);
+        const criado = await cfg.repo(r).inserir(corpo as never);
         await cfg.emitir(c, r, criado, null);
         await aud(c, 'criar', criado.id, null, criado);
         return { status: 201, corpo: ocultar(c, criado) };
@@ -133,7 +139,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
       async executar(c, e) {
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
-        const parcial = e.corpo as Dict;
+        const parcial = cfg.completar ? cfg.completar(e.corpo as Dict, antes as unknown as Dict) : (e.corpo as Dict);
         // ADR 0010, item 3: preenchido, o external_id só muda pela troca controlada; para nulo, nunca
         const atual = extDe(antes);
         if (atual !== null && parcial.external_id !== undefined && parcial.external_id !== atual)
@@ -149,7 +155,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         if (cfg.validar) exigir(await cfg.validar(r, { ...(antes as unknown as Dict), ...parcial }, parcial, c.agora));
         const padrao = cfg.padrao?.(r);
         if (padrao && parcial.padrao === true) await padrao.desmarcarPadrao(antes.id);
-        const depois = await cfg.repo(r).atualizar(antes.id, e.corpo);
+        const depois = await cfg.repo(r).atualizar(antes.id, parcial as never);
         if (!depois) throw erros.naoEncontrado('Registro');
         await cfg.emitir(c, r, depois, antes);
         await aud(c, 'alterar', depois.id, antes, depois);
@@ -454,9 +460,21 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Condições de pagamento (RF-CAD-09) ----
   rotas.push(...rotasCrud(deps, {
-    tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
+    tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoCriacao, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
-    validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[] }),
+    // RN-CAD-09: cartão sem prazos_dias → o domain gera 30×N; o PATCH valida o cadastro MESCLADO.
+    completar: (corpo, antes) => (antes ? completarPrazosNoPatch(corpo as never, antes as never) : completarPrazos(corpo as never)) as Dict,
+    validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[], parcelas_cartao: (c.parcelas_cartao ?? null) as number | null }),
+  }));
+  // RN-CAD-09: comando do administrador (por tenant): desativa as condições ligadas a forma recusada e trata o cartão sem parcelas (preenche ou desativa). Idempotente.
+  rotas.push(definirRota({
+    metodo: 'POST', caminho: '/condicoes-pagamento/desativar-formas-recusadas', acao: 'cadastros.condicao_pagamento.desativar_recusadas', // só o administrador
+    async executar(c) {
+      const r = R(c);
+      const recusadas = await desativarCondicoesRecusadas(c, r, (await r.carga.condicoesAtivasDeFormaRecusada()).filter((x) => !x.inativo));
+      const cartao = await tratarCartaoSemParcelas(c, r, await r.carga.condicoesAtivasCartaoSemParcelas());
+      return { corpo: { desativadas: { total: recusadas.length + cartao.desativadas.total, ids: [...recusadas, ...cartao.desativadas.ids] }, preenchidas: cartao.preenchidas } };
+    },
   }));
 
   // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----

@@ -7,15 +7,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ContextoRota } from '@macuxierp/platform-sdk';
 import { pode } from '@macuxierp/platform-sdk';
 import {
-  ClienteDados, CondicaoPagamentoDados, EnderecoCliente, FilialDados, ProdutoDados, TabelaPrecoDados, UnidadeDados, VendedorDados,
+  ClienteDados, CondicaoPagamentoDados, classeForma, MAX_PARCELAS_CARTAO, EnderecoCliente, FilialDados, ProdutoDados, TabelaPrecoDados, UnidadeDados, VendedorDados,
   type CondicaoPagamento, type EntidadeCarga, type LinhaCliente, type LinhaClienteEndereco, type LinhaEstoque, type LinhaFilial,
   type LinhaFormaPagamento, type LinhaPrazoPagamento, type LinhaPreco, type LinhaProduto, type LinhaProdutoUnidade, type LinhaVendedor,
   type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
 } from '../domain';
+import { desativarCondicoesRecusadas } from './formas-recusadas';
 import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, comExternalIdAnterior, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
 import type { AlvoExterno, Repositorios, RepoSimples } from './portas';
 import { agregadoEstoque } from './uuid';
@@ -240,6 +241,17 @@ async function forma(l: LinhaFormaPagamento, st: Estado): Promise<Saida> {
   st.formas.set(l.external_id, {
     codigo: d.forma_codigo ?? primeira?.forma_codigo ?? null, nome: d.forma_nome ?? primeira?.forma_nome ?? null, tpag: d.forma_tpag ?? primeira?.forma_tpag ?? null,
   });
+  if (d.forma_tpag !== undefined && classeForma(d.forma_tpag) === null) {
+    // RN-CAD-09: forma recusada. Sem condição gravada, a linha é erro; com condições antigas, elas são desativadas (RN-CAD-08) com aviso e auditoria.
+    if (conds.length === 0) return violacoes(l.linha, [violacao('RN-CAD-09', 'forma_tpag', MOTIVO_FORMA_NAO_ACEITA)]);
+    const ativas = conds.filter((c) => !c.inativo);
+    if (ativas.length === 0) {
+      l.avisos.push(`${MOTIVO_FORMA_NAO_ACEITA}: nenhuma condição ativa a desativar`);
+      return { efeito: 'sem_mudanca' };
+    }
+    l.avisos.push(`${MOTIVO_FORMA_NAO_ACEITA}: ${ativas.length} condição(ões) desativada(s)`);
+    return { efeito: 'atualizada', async aplicar() { await desativarCondicoesRecusadas(st.c, st.r, ativas); } };
+  }
   if (conds.length === 0) {
     if (st.prazosNoLote.has(l.external_id)) return { efeito: 'inserida' };
     l.avisos.push('Forma sem prazo no lote nem no banco: nada gravado');
@@ -247,7 +259,8 @@ async function forma(l: LinhaFormaPagamento, st: Estado): Promise<Saida> {
   }
   if (d.forma_tpag !== undefined) {
     for (const c of conds) {
-      const vc = validarCondicaoPagamento({ forma_tpag: d.forma_tpag, prazos_dias: c.prazos_dias });
+      if (c.inativo) continue;
+      const vc = validarCondicaoPagamento({ forma_tpag: d.forma_tpag, prazos_dias: c.prazos_dias, parcelas_cartao: c.parcelas_cartao });
       if (vc.length) return violacoes(l.linha, vc);
     }
   }
@@ -274,6 +287,21 @@ async function dadosDaForma(st: Estado, ext: string) {
   return st.formas.get(ext) ?? null;
 }
 
+/**
+ * Cartão (RN-CAD-09): a célula "3" (sem o x) chega como prazos [3] e vale 3 parcelas; "3x" já chega em `parcelas_cartao`.
+ * Com as parcelas, o domain gera os prazos (30×N). Fora do cartão a linha segue como veio.
+ */
+function normalizarPrazo(tpag: string, d: Dict): Dict {
+  let x: Dict = { ...d };
+  const prazos = x.prazos_dias as number[] | undefined;
+  if (classeForma(tpag) === 'cartao' && x.parcelas_cartao === undefined && prazos?.length === 1) {
+    x = { ...x, parcelas_cartao: prazos[0] };
+    delete x.prazos_dias;
+  }
+  const c = completarPrazos({ forma_tpag: tpag, prazos_dias: x.prazos_dias as number[] | undefined, parcelas_cartao: x.parcelas_cartao as number | undefined });
+  return c.prazos_dias === undefined ? x : { ...x, prazos_dias: c.prazos_dias };
+}
+
 async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
   const repo = st.r.condicoesPagamento;
   const d = l.dados;
@@ -283,8 +311,11 @@ async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
   const campoForma: Dict = l.refs.forma === undefined || !f ? {} : { forma_external_id: l.refs.forma, forma_codigo: f.codigo, forma_nome: f.nome, ...(f.tpag ? { forma_tpag: f.tpag } : {}) };
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
-    const patch: Dict = { ...d, ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
-    const vc = validarCondicaoPagamento({ forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[] });
+    const patch: Dict = { ...normalizarPrazo(((campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag), d), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
+    const vc = validarCondicaoPagamento({
+      forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
+      parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
+    });
     if (vc.length) return violacoes(l.linha, vc);
     if (camposAlterados(patch, ex as unknown as Dict).length === 0) return { efeito: 'sem_mudanca', alvo };
     return {
@@ -300,7 +331,12 @@ async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
   const p = prepararCriacao('prazo_pagamento', l, { formaNome: f?.nome ?? null });
   if (!p.ok) return { erros: p.erros };
   if (!f) return mover(l.linha, 'forma_external_id', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
-  const r = CondicaoPagamentoDados.safeParse({ ...p.linha.dados, forma_tpag: f.tpag ?? undefined, ...campoForma, external_id: l.external_id });
+  const pre = normalizarPrazo(f.tpag ?? '', p.linha.dados);
+  // 13x ou mais: a linha aceita até 99; a faixa do cartão é do domain (RN-CAD-09, mensagem do cartão), antes do Zod da condição.
+  if (classeForma(f.tpag ?? '') === 'cartao' && typeof pre.parcelas_cartao === 'number' && pre.parcelas_cartao > MAX_PARCELAS_CARTAO) {
+    return violacoes(l.linha, validarCondicaoPagamento({ forma_tpag: f.tpag as string, parcelas_cartao: pre.parcelas_cartao }));
+  }
+  const r = CondicaoPagamentoDados.safeParse({ ...pre, forma_tpag: f.tpag ?? undefined, ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
   const vc = validarCondicaoPagamento(r.data);
   if (vc.length) return violacoes(l.linha, vc);
