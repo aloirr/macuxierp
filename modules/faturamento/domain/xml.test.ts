@@ -13,7 +13,7 @@ const calculo: ItemCalculado = calc(1, {
   ibs: { cst: '000', c_class_trib: '000001', v_bc: 2000, v_ibs_uf: 2, v_cbs: 18 },
 });
 const pedido = pedidoAprovado([
-  { ...itemPedido(1, 20_000, 1000), produto_retrato: { codigo: 'REF-001', descricao: 'Refrigerante <Cola> & "Cia"', ncm: '2202.10.00', unidade_comercial: 'UN', ean: null } },
+  { ...itemPedido(1, 20_000, 1000), produto_retrato: { codigo: 'REF-001', descricao: 'Refrigerante <Cola> & "Cia"', ncm: '2202.10.00', unidade_comercial: 'UN', ean: null, origem: '0' } },
 ]);
 const endereco = { logradouro: 'Rua A', numero: '10', bairro: 'Centro', municipio_ibge: '1302603', municipio_nome: 'Manaus', uf: 'AM', cep: '69000-000' };
 

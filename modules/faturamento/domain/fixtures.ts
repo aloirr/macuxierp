@@ -13,7 +13,7 @@ export const IDS = {
 export const itemPedido = (sequencia: number, quantidade: number, preco: number, desconto = 0, ncm = '22021000'): ItemPedidoAprovado => ({
   sequencia,
   produto_id: `00000000-0000-4000-8000-00000000000${sequencia}`,
-  produto_retrato: { codigo: `P${sequencia}`, descricao: `Produto ${sequencia}`, ncm, unidade_comercial: 'UN', ean: null },
+  produto_retrato: { codigo: `P${sequencia}`, descricao: `Produto ${sequencia}`, ncm, unidade_comercial: 'UN', ean: null, origem: '0' },
   quantidade,
   preco_unitario_centavos: preco,
   desconto_centavos: desconto,
@@ -46,6 +46,9 @@ export function pedidoAprovado(itens: PedidoFaturavel['pedido']['itens'], extra:
     automatica: false,
     pedido: {
       condicao_pagamento_id: null,
+      forma_tpag: '15',
+      forma_codigo: 'BOLETO',
+      forma_nome: 'Boleto bancário',
       tabela_preco_id: null,
       emitido_em: '2026-11-21T14:00:00.000Z',
       observacao: null,
