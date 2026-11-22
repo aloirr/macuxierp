@@ -30,7 +30,7 @@
 | [T-0022](tarefas/T-0022.md) | 20 notas em homologação na SEFAZ-AM com o XML guardado | F4 | testes | aberta | — |
 | [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | em_revisao | PR #5: A principal e C vertical (decisão de 21/11, 21h29); design-de-marca ajusta |
 | [T-0024](tarefas/T-0024.md) | Deploy do ERP na VM do FDV com trava compartilhada (ADR 0003) | F1 | engenheiro-software | em_andamento | nuvem/T-0024-deploy |
-| [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | bloqueada | — |
+| [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | em_revisao | PR #27 (governança; revisão do engenheiro, depois "autorizo o merge" do Alexandre) |
 | [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | em_andamento | PR #26 (desenho da carga, 6f34859); implementação em nuvem/T-0026-carga-csv-impl depois do #19 |
 | [T-0027](tarefas/T-0027.md) | Virada do conector da thathyany: kit do FDV sai, conector nativo do ERP entra | F3 | modulo-integracao-fdv | aberta | — |
 | [T-0028](tarefas/T-0028.md) | Tokens da marca em packages/ui (cores, situação, escala tipográfica) | F1 | designer-ux | concluida | PR #12 → 4c4d46f |
@@ -38,6 +38,8 @@
 | [T-0030](tarefas/T-0030.md) | Troca da filial para produção fiscal só com a aprovação do Alexandre conferida (regra 7) | F1 | engenheiro-software | em_andamento | PR #24 (desenho e ADR 0006, 1753312) e PR #25 (corretor); etapa 2 em nuvem/T-0030-producao-fiscal-impl depois do #19 |
 | [T-0031](tarefas/T-0031.md) | Core: resíduos da revisão do PR #14 (RD-0008, RD-0009, lint e teste de banco da concorrência) | F1 | modulo-core | concluida | PR #18 → 65a25f3 |
 | [T-0032](tarefas/T-0032.md) | Banco: updated_at estritamente crescente por linha (token de concorrência) | F1 | banco-dados | concluida | PR #20 → ee17b80 |
+| [T-0034](tarefas/T-0034.md) | Cadastros: versão crescente por agregado nos eventos (D6; hoje tudo sai com versao 1) | F1 | modulo-cadastros | aberta | depois do #19 |
+| [T-0035](tarefas/T-0035.md) | Alerta do A1: adaptadores SQL de FonteCertificados.vencendoAte (limite exclusivo) e DestinoAvisos (UNIQUE certificado e dia) | F1 | modulo-core | aberta | depois do #19 |
 | [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | concluida | PR #22 → cba7f5f |
 
 ## Travado pela nuvem (retomada de 21/11, 21h15)
@@ -54,16 +56,17 @@
 
 ## Reservas
 - ADR: 0001–0005 usadas; 0006 reservada para a T-0030 (21/11). Migrações: 0007 reservada para a T-0010 e 0008 para a T-0030, se precisar.
-- Tarefas: T-0001–T-0033 usadas; próxima livre: T-0034.
-- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); RD-0034–0040 T-0029; RD-0041–0047 T-0024; RD-0048–0054 T-0009; RD-0055–0061 T-0010; RD-0062–0068 T-0008; RD-0069–0072 T-0023; próxima livre: RD-0073. Sessão que vai numerar pede a faixa ao gerente por send_message.
+- Tarefas: T-0001–T-0035 usadas; próxima livre: T-0036.
+- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); RD-0034–0040 T-0029; RD-0041–0047 T-0024; RD-0048–0054 T-0009; RD-0055–0061 T-0010; RD-0062–0068 T-0008; RD-0069–0072 T-0023; RD-0073–0079 T-0034; RD-0080–0086 T-0035; próxima livre: RD-0087. Sessão que vai numerar pede a faixa ao gerente por send_message.
 
 ## Depende do Alexandre
 > Decisão de 21/11, 21h29 (Manaus): "SEGUIR COM O RECOMENDADO" (`docs/status/2026-11-21-decisoes-alexandre.md`).
-- T-0025: abrir a sessão com `MACUXI_AGENTE=alexandre` (roteiro no doc de decisões, seção 1) e autorizar o merge do PR dela.
+- T-0025: PR #27 feito pela sessão do Alexandre (21/11); falta escrever "autorizo o merge do PR #27 no commit <sha>" depois da revisão do engenheiro.
 - Secrets do GitHub, `.env` de produção (com `MACUXIERP_CHAVE_A1`, 32 bytes, obrigatória), DNS e rota `erp.` no túnel: preparar agora (lista na seção 2). O deploy só sai com "aprovo deploy vX.Y.Z".
 - Pedido ao time do FDV: tenant de teste com conector e `flock` no `implantar.sh` (texto na seção 3).
 - Credenciamento da thathyany na SEFAZ-AM e A1 de homologação pela tela do BKO (seção 4).
 - Merges dos PRs comuns, até nova decisão: o gerente manda número e head ao PO, que leva ao Alexandre.
+- T-0009 P-2: o Hub pode recusar o conector do ERP (versão 0.x) pela versão mínima dos conectores (1.x). Opções: (A) declarar compatibilidade 1.4.0 no cabeçalho (premissa do gerente, reversível); (B) o FDV cria um tipo de conector nativo.
 - Pendência aberta: aceitar ou não um "produto incompleto" (sem NCM) na carga da T-0026. Se aceitar, muda o contrato e pede ADR.
 
 ## Próximos lotes (ordem do doc 05)
