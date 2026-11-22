@@ -4,8 +4,12 @@
  */
 import { z } from 'zod';
 
+/** Item da nota: o pedido só usa sequência, quantidade e valor. */
+export const ItemNotaLido = z.object({ sequencia: z.number().int().min(1), quantidade: z.number().int(), valor_centavos: z.number().int() }).passthrough();
+
 export const NotaAutorizadaLida = z.object({
-  pedido_id: z.string().uuid(),
+  /** Nota sem pedido (avulsa) não é do pedido: o consumidor a ignora. */
+  pedido_id: z.string().uuid().nullish(),
   ambiente: z.enum(['homologacao', 'producao']),
   conta_como_real: z.boolean().optional(),
   nota: z.object({
@@ -16,6 +20,6 @@ export const NotaAutorizadaLida = z.object({
     emitida_em: z.string().datetime(),
     total_centavos: z.number().int(),
   }).passthrough(),
-  itens: z.array(z.object({ sequencia: z.number().int().min(1), quantidade: z.number().int(), valor_centavos: z.number().int() }).passthrough()),
+  itens: z.array(ItemNotaLido),
 }).passthrough();
 export type NotaAutorizadaLida = z.infer<typeof NotaAutorizadaLida>;

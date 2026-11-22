@@ -283,6 +283,31 @@ INSERT INTO faturamento.nota_xml (tenant_id, tipo, inutilizacao_id, protocolo, x
 `;
 }
 
+/**
+ * Massa do sefaz_simulador (T-0045, 0025): uma nota autorizada no destino (filial da massa, modo normal), uma CC-e
+ * dela, uma inutilização (números 2 a 3) e um recibo. O nRec é global e vem do tenant, para A e B não repetirem.
+ */
+export function fixtureSefazSimulador(t: Tenant): string {
+  const id = t.id;
+  const cnf = cnfDoTenant(t);
+  const chave = chaveAcesso(1, 1, cnf);
+  const nRec = `1326${String(cnf).padStart(11, '0')}`;
+  return `
+INSERT INTO sefaz_simulador.nota (tenant_id, filial_id, modo, ch_nfe, cnpj, serie, nnf, dh_emi, autorizada_em, situacao,
+  n_prot, dig_val, c_stat, dh_recbto, xml_prot)
+  VALUES ('${id}', '${t.filial}', 'normal', '${chave}', '12345678000195', 1, 1, now(), now(), 'autorizada',
+    '913260000000001', 'ZGlnVmFs', '100', '2026-11-22T10:00:00-04:00', '<protNFe/>');
+INSERT INTO sefaz_simulador.evento (tenant_id, filial_id, modo, ch_nfe, tp_evento, n_seq_evento, n_prot, c_stat,
+  dh_reg_evento, xml_ret, evento_xml)
+  VALUES ('${id}', '${t.filial}', 'normal', '${chave}', '110110', 1, '913260000000002', '135',
+    '2026-11-22T10:05:00-04:00', '<retEvento/>', '<evento/>');
+INSERT INTO sefaz_simulador.inutilizacao (tenant_id, filial_id, modo, cnpj, serie, ano, nnf_ini, nnf_fin, n_prot)
+  VALUES ('${id}', '${t.filial}', 'normal', '12345678000195', 1, '26', 2, 3, '913260000000003');
+INSERT INTO sefaz_simulador.recibo (tenant_id, filial_id, modo, n_rec, dh_recbto, pronto_em)
+  VALUES ('${id}', '${t.filial}', 'normal', '${nRec}', '2026-11-22T10:00:00-04:00', now());
+`;
+}
+
 /** Linha geral (tenant de referência) da carga aproximada: só o dono grava. */
 export function fixtureCargaGeral(): string {
   return `

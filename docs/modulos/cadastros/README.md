@@ -31,6 +31,13 @@ Fatia vertical: `contracts` (Zod, eventos), `domain` (regras puras), `api` (plug
 
 C-10 (ADR 0010): `external_id` opcional em unidades, endereços e itens de preço nos eventos, e `external_id_anterior` no preço; o contrato está em `.coord/contratos/eventos.md` (Aditivo C-10). O `PUT /tabelas-preco/:id/itens` não aceita `external_id`: só a carga define a chave.
 
+## Estoque pelas notas do faturamento (T-0021)
+Decisão R-20261122-022626: o faturamento real sai pelo ERP. O consumidor `criarConsumidorEstoqueNota` (`api/consumidor-estoque-nota.ts`) consome `faturamento.nota.autorizada@1` (saída) e `faturamento.nota.cancelada@1` (entrada, devolve), e publica `cadastros.estoque.alterado@1` por movimento.
+- **Quando move (RN-CAD-07, `deveMoverEstoque`):** nota de `ambiente = producao`, ou com `conta_como_real = true` (homologação que vale como faturamento real). O cadastros não lê a bandeira da filial no faturamento: usa o campo `conta_como_real` do evento. Homologação sem a bandeira não move.
+- **Idempotência:** a plataforma deduplica por consumidor; além disso cada movimento tem `external_id` = UUID v5 de (id do evento, tipo, índice do item) e o consumidor confere antes de gravar. Saldo lido com `FOR UPDATE`, tudo na transação do evento. Motivo: `NF-e <número>/<série>` (cancelada: `Cancelamento da NF-e ...`), até 120 caracteres; `usuario_id` nulo.
+- **Premissa do negativo (RN-CAD-07):** "a baixa pela nota sempre acontece, mesmo com saldo negativo" é PREMISSA, aceita pelo gerente e levada ao PO para o Alexandre confirmar (a nota autorizada é fato consumado). A trava de negativo continua só no pedido, na aprovação e nas rotas de movimento (`aplicarMovimento`).
+- **Premissa dos campos (ainda a criar no faturamento, aditivos e opcionais):** por item `produto_id`, `filial_id` e `quantidade` (× 10^4, inteiro); no payload `conta_como_real?: boolean` (enviado pelo faturamento quando a bandeira "faturamento real com NF-e simulada" da filial está ligada; ausente = falso). Leitor tolerante com Zod local, sem importar o pacote do faturamento; payload sem esses campos é ignorado. Item sem os campos também.
+
 ## Campos fiscais e consulta para o fiscal (T-0021)
 - **Filial**: `industrial_ipi` (boolean, padrão `false`) e `regime_pis_cofins` (`cumulativo` | `nao_cumulativo`, nulo por padrão). RN-FIS-02: o regime de PIS/COFINS só vale no CRT 3; informado nos CRT 1, 2 ou 4 a API devolve 422 `RN-FIS-02` (violação, não normalização). Exigir o regime no CRT 3 é do fiscal.
 - **Produto**: `producao_propria` (boolean, padrão `false`): fabricado pelo estabelecimento (CFOP 5101/6101) × revendido (5102/6102).

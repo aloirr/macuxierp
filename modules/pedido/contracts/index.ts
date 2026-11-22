@@ -400,7 +400,7 @@ const CHAVE_ACESSO_REGEX = /^\d{6}[A-Z0-9]{12}\d{26}$/;
 
 export const PedidoFaturadoV1 = PedidoEventoBase.extend({
   ambiente: z.enum(['homologacao', 'producao']),
-  /** Faturamento real com NF-e simulada (T-0015): copiado da nota; ausente continua ausente. Para o FDV tudo é real. */
+  /** Faturamento real com NF-e simulada (T-0015): copiado da nota. Para o FDV tudo é real. */
   conta_como_real: z.boolean().optional(),
   nota: z.object({
     id: Uuid,

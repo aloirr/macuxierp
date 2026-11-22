@@ -192,6 +192,22 @@ class RepoPedidosSql implements RepoPedidos {
     );
   }
 
+  async aplicarFaturamento(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: StatusPedido): Promise<void> {
+    await executar(
+      this.tx,
+      `UPDATE pedido.pedido_item i SET quantidade_faturada = v.q
+         FROM unnest($2::int[], $3::bigint[]) AS v(seq, q)
+        WHERE i.pedido_id = $1 AND i.sequencia = v.seq AND i.deleted_at IS NULL`,
+      [id, itens.map((i) => i.sequencia), itens.map((i) => String(i.quantidade_faturada))],
+    );
+    await executar(this.tx, 'UPDATE pedido.pedido SET status = $2, valor_faturado_centavos = $3 WHERE id = $1', [id, status, String(valorFaturadoCentavos)]);
+  }
+
+  async eventoRegistrado(pedidoId: string, eventoId: string): Promise<boolean> {
+    const l = await executar(this.tx, 'SELECT 1 FROM pedido.pedido_evento WHERE pedido_id = $1 AND evento_id = $2 LIMIT 1', [pedidoId, eventoId]);
+    return l.length > 0;
+  }
+
   async registrarAprovacao(a: NovaAprovacao): Promise<void> {
     await executar(
       this.tx,
