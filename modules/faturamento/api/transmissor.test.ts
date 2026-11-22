@@ -6,7 +6,7 @@ import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA } fr
 import { a1DeTeste, a1VencidoDeTeste, depsFake, titulosFake, protocolo, transporteFake, tx, TENANT, type Roteiro } from './apoio-teste';
 import { criarTransmissor } from './transmissor';
 
-function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'producao'; semA1?: boolean; a1Vencido?: boolean } = {}) {
+function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'producao'; semA1?: boolean; a1Vencido?: boolean; situacaoPedido?: 'aprovado' | 'cancelado' | null } = {}) {
   const f = depsFake({ ambiente: 'homologacao' });
   const t = transporteFake(roteiro);
   let dentro = 0;
@@ -35,12 +35,14 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
   const filiaisPedidas: unknown[] = [];
   const leituras = { n: 0 };
   const deps_sefaz = { recusar: false };
+  const situacaoPedido: { valor: string | null } = { valor: o.situacaoPedido === undefined ? 'aprovado' : o.situacaoPedido };
   const transmissor = criarTransmissor({
     log: () => undefined,
     banco,
     notas: f.r.repo, titulos: titulosFake().repo,
     emissor: f.emissor,
     ambiente: { ambiente: async () => o.ambienteAtual ?? 'homologacao' },
+    situacao: { situacao: async () => (situacaoPedido.valor === null ? null : { status: situacaoPedido.valor as never, itens: [] }) },
     lerA1: async () => {
       leituras.n++;
       if (o.a1Vencido) return a1VencidoDeTeste();
@@ -54,7 +56,7 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
     },
     agora: () => new Date('2026-11-21T14:30:00Z'),
   });
-  return { ...f, ...f.r, t, a1, leituras, filiaisPedidas, deps_sefaz, transmissor, svc: criarServicoEmissao(f.deps) };
+  return { ...f, ...f.r, situacaoPedido, t, a1, leituras, filiaisPedidas, deps_sefaz, transmissor, svc: criarServicoEmissao(f.deps) };
 }
 /** `parcial`: nota de 0,5000 do item 1 (várias notas do mesmo pedido não passam do saldo, RN-FAT-01). */
 async function emitir(m: ReturnType<typeof montar>, idempotencia = 'idem-0000001', parcial = false) {
@@ -83,6 +85,30 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(m.transmissoes.map((t) => [t.servico, t.destino, t.cStat])).toEqual([['autorizacao', 'simulador', '103'], ['ret_autorizacao', 'simulador', '104']]);
     expect([...m.a1.credencial.pfx].every((b) => b === 0)).toBe(true);
     expect(m.filiaisPedidas[0]).toEqual({ filial_id: IDS.filial, ambiente: 'homologacao', uf: 'AM', modo: 'normal' });
+  });
+
+  it.each([['cancelado'], [null]] as const)('RN-PED-02, RN-FAT-07: pedido %s com a nota em rascunho: o worker não lê o A1, não assina nem transmite; o número fica na nota com o motivo', async (situacao) => {
+    const m = montar();
+    const nota = await emitir(m);
+    m.situacaoPedido.valor = situacao;
+    const r = await m.transmissor.transmitirNota(TENANT, nota.id);
+    expect(r).toEqual({ resultado: 'nao_assinada', motivo: 'pedido_cancelado' });
+    expect(m.leituras.n).toBe(0);
+    expect(m.assinados).toHaveLength(0);
+    expect(m.t.chamadas).toEqual([]);
+    expect(m.notas.get(nota.id)).toMatchObject({ status: 'rascunho', numero: 100 });
+    expect(m.motivos.get(nota.id)).toBe('RN-PED-02: pedido cancelado');
+    expect((await m.repo.numeradasNaoEnviadas(tx, new Date('2030-01-01T00:00:00Z'))).map((n) => n.id)).toContain(nota.id); // pendência de inutilização visível
+  });
+
+  it('RN-PED-02, RN-FAT-07: pedido cancelado depois da rejeição: o worker não reassina a rejeitada reenviada', async () => {
+    const m = montar({ recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
+    const nota = await emitir(m);
+    expect((await m.transmissor.transmitirNota(TENANT, nota.id)).resultado).toBe('rejeitada');
+    m.situacaoPedido.valor = 'cancelado';
+    expect(await m.transmissor.transmitirNota(TENANT, nota.id)).toEqual({ resultado: 'nao_assinada', motivo: 'pedido_cancelado' });
+    expect(m.assinados).toHaveLength(1);
+    expect(m.notas.get(nota.id)?.status).toBe('rejeitada');
   });
 
   it('RN-FAT-07: rejeição da SEFAZ (778) vira rejeitada com nota.rejeitada@1 e uma única chamada de envio', async () => {

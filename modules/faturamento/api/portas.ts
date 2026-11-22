@@ -18,12 +18,14 @@ export interface SituacaoPedidoDoPedido {
 }
 
 /**
- * Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): é "nota em aberto" toda nota do pedido em rascunho
- * numerada, `em_autorizacao`, `emitida_contingencia`, `autorizada_guarda_pendente`, `autorizada` ou `rejeitada` (pode ser reenviada). Só
- * `cancelada`, `inutilizada` e `denegada` ficam fora: para cancelar o pedido, cancele a nota antes.
+ * Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): é "nota em aberto" (RN-PED-02) a do pedido em rascunho
+ * numerada, `em_autorizacao` ou `emitida_contingencia`. Rejeitada (decisão do PO pendente), autorizada e guarda pendente ficam FORA desta porta:
+ * a autorizada é lida por `notasAutorizadas`, e o pedido faturado_parcial ainda cancela o saldo.
  */
 export interface NotaEmAberto {
   temNotaEmAutorizacao(tx: Transacao, pedido_id: string): Promise<boolean>;
+  /** Ids das notas `autorizada` ou `autorizada_guarda_pendente` do pedido (não apagadas): o pedido recusa o cancelamento enquanto houver autorizada ainda não aplicada. */
+  notasAutorizadas(tx: Transacao, pedido_id: string): Promise<string[]>;
 }
 
 /** Pedido aprovado como a fila `faturamento.pedido_a_faturar` o guarda (payload de `pedido.pedido.aprovado@1`, sem ler o schema `pedido`). */

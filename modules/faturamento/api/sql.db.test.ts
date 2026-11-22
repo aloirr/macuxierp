@@ -187,7 +187,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       expect(await app.comTenant(A, (tx) => tx.consultar('SELECT * FROM faturamento.buracos_numeracao()'))).toEqual([]);
     });
 
-    it('RN-PED-02 (P-2): nota rascunho, autorizada ou rejeitada bloqueia o cancelamento do pedido; cancelada e denegada não; quantidadesJaFaturadas ignora cancelada e a própria nota', async () => {
+    it('RN-PED-02 (P-2): só nota rascunho/em_autorizacao bloqueia o cancelamento do pedido (rejeitada e autorizada não; a autorizada vem de notasAutorizadas); quantidadesJaFaturadas ignora cancelada e a própria nota', async () => {
       const p = pedidoCorrida(2);
       await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p));
       expect(await app.comTenant(A, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, p.pedido_id))).toBe(false);
@@ -195,19 +195,23 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
       const id = r.nota.id;
       const aberta = (): Promise<boolean> => app.comTenant(A, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, p.pedido_id));
+      const autorizadas = (): Promise<string[]> => app.comTenant(A, (tx) => notaEmAbertoSql.notasAutorizadas(tx, p.pedido_id));
       expect(await aberta()).toBe(true); // rascunho numerada
+      expect(await autorizadas()).toEqual([]);
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id, id))).toEqual(new Map());
       const s = servico();
       s.deps.pedidos = repos.pedidos;
       const { tr } = transmissor(s, { recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
       expect((await tr.transmitirNota(A, id)).resultado).toBe('rejeitada');
-      expect(await aberta()).toBe(true); // rejeitada pode ser reenviada
+      expect(await aberta()).toBe(false); // rejeitada fica fora (decisão do PO pendente)
+      expect(await autorizadas()).toEqual([]);
       const re = await app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, id, { travar: true }))!));
       expect(re.ok).toBe(true);
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]])); // o reenvio não conta a si mesmo em dobro
       const { tr: tr2 } = transmissor(s);
       expect((await tr2.transmitirNota(A, id)).resultado).toBe('autorizada');
-      expect(await aberta()).toBe(true); // autorizada: o pedido só cancela depois de cancelar a nota
+      expect(await aberta()).toBe(false); // autorizada fica fora: o pedido a barra por notasAutorizadas
+      expect(await autorizadas()).toEqual([id]);
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]]));
     });
   });

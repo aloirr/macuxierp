@@ -18,7 +18,7 @@ import { Uf, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import { digestValueDoXml, emTransmissao, ErroViolacao } from '../domain';
 import { criarProcessadorRetorno, mudarNota, xmlDaNota, type ResultadoRetorno } from './emissao';
-import type { A1DaFilial, AmbienteFiscalDaFilial, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import type { A1DaFilial, AmbienteFiscalDaFilial, SituacaoPedidoDoPedido, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
 import type { LogFaturamento } from './titulos';
 import { comA1, descarregar as descarregarLog, medir as medirChamada } from './sefaz-comum';
 import { retornoDaAutorizacao, retornoDaConsulta, retornoDoRecibo } from './retorno-sefaz';
@@ -31,6 +31,11 @@ export interface DepsTransmissor {
   /** Log sem dado pessoal, OBRIGATÓRIO: a geração de título pendente (a varredura gera depois) não pode sumir. */
   log: LogFaturamento;
   ambiente: AmbienteFiscalDaFilial;
+  /**
+   * RN-PED-02: situação do pedido (`criarConsultaParaFaturar().situacao` do pedido, com FOR SHARE), consultada ANTES de ler o A1 e assinar rascunho ou rejeitada.
+   * Opcional só para não quebrar quem ainda não liga; o engenheiro deve ligar no worker (sem a porta a checagem não existe).
+   */
+  situacao?: SituacaoPedidoDoPedido;
   /**
    * Liga o `lerA1DecifradoDaFilial(tx, chave, filial)` do core à chave do secret do servidor e abre o certificado (`abrirA1`): o `certificado` assina e
    * a `credencial` (pfx + senha) vai ao mTLS do transporte. `null` = filial sem A1 ativo; `ErroCertificadoA1` (fora da validade, senha) = A1 inválido.
@@ -49,7 +54,7 @@ export type ResultadoTransmissao =
   /** A filial não tem A1 ativo: nada foi enviado; a nota continua como estava (com o motivo, se ainda não assinada). */
   | { resultado: 'sem_certificado' }
   /** Não assinada: A1 inválido/vencido (`a1_invalido`) ou remontagem que não bate com a nota (`remontagem_divergente`). Nota em rascunho/rejeitada, com o motivo; número intacto. */
-  | { resultado: 'nao_assinada'; motivo: 'a1_invalido' | 'remontagem_divergente' | 'destino_indisponivel' }
+  | { resultado: 'nao_assinada'; motivo: 'a1_invalido' | 'remontagem_divergente' | 'destino_indisponivel' | 'pedido_cancelado' }
   /** RN-FAT-04: o ambiente da filial mudou depois da nota; o envio é recusado (a nota é de outro ambiente). */
   | { resultado: 'ambiente_mudou' }
   | { resultado: 'falha'; codigo: string };
@@ -90,6 +95,15 @@ export function criarTransmissor(deps: DepsTransmissor) {
         }
         // RN-FAT-04: a nota é do ambiente em que nasceu; se a filial mudou, nada sai (o banco recusa o reenvio também).
         if ((await deps.ambiente.ambiente(tx, nota.filial_id)) !== nota.ambiente) return { tipo: 'fim', resultado: { resultado: 'ambiente_mudou' } };
+        // RN-PED-02 / RN-FAT-07: pedido cancelado (ou situação indisponível) não vira nota assinada. O número reservado NÃO é tocado: a nota fica em
+        // rascunho/rejeitada com o motivo e aparece em numeradasNaoEnviadas, e o número se fecha por inutilização.
+        if (assinar && deps.situacao) {
+          const s = await deps.situacao.situacao(tx, nota.pedido_id);
+          if (!s || (s.status !== 'aprovado' && s.status !== 'faturado_parcial')) {
+            await deps.notas.registrarMotivoEnvio(tx, nota.id, 'RN-PED-02: pedido cancelado');
+            return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'pedido_cancelado' } };
+          }
+        }
         let a1: A1DaFilial | null;
         try {
           a1 = await abrirA1(nota.filial_id);
