@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { montarDanfe } from '../domain/danfe';
 import { nfeProcDeTeste } from '../domain/fixtures-danfe';
 import { exigirAssinaturaDaMarca, lerAssinaturaDaMarca, verificarAtivosDanfe } from './ativos-marca';
-import { larg, largurasColunas, linhasCabecalhoTabela, renderizarDanfe } from './danfe-pdf';
+import { larg, largurasColunas, linhasCabecalhoTabela, renderizarDanfe as renderizarDanfeBruto, type OpcoesPdfDanfe } from './danfe-pdf';
 import { ErroLogo, logoEmCinza } from './logo-cinza';
 
 const hex = (t: string) => Buffer.from(t, 'latin1').toString('hex').toUpperCase();
@@ -22,6 +22,9 @@ async function latin1Hex(b: Uint8Array): Promise<string> {
   }
   return todo.toUpperCase();
 }
+/** O rodapé é obrigatório: os testes usam a assinatura real da marca, salvo quando passam a própria. */
+const renderizarDanfe = async (m: Parameters<typeof renderizarDanfeBruto>[0], o: Partial<OpcoesPdfDanfe> = {}) =>
+  renderizarDanfeBruto(m, { assinaturaMarca: await exigirAssinaturaDaMarca(), ...o });
 const paginas = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
 
 /** PNG RGBA de teste sem biblioteca: IHDR + IDAT (filtro 0) + IEND (CRC não é conferido pelo leitor). */
@@ -61,9 +64,14 @@ describe('DANFE em PDF (RF-FAT-03)', { timeout: 30_000 }, () => {
     expect(c).toContain(hex('CANCELADA'));
   });
 
-  it('RF-FAT-03: nota com 60 itens quebra em 3 folhas (paginação por altura: ~21 itens na 1ª e ~30 nas demais, com o cabeçalho completo)', async () => {
+  it('RD-0690: nota com 60 itens quebra em 3 folhas (paginação só pela altura das linhas, feita aqui no PDF: ~21 itens na 1ª folha e ~30 nas demais, com o cabeçalho completo)', async () => {
     const m = montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 60 }) });
     expect(await paginas(await renderizarDanfe(m))).toBe(3);
+  });
+
+  it('RF-FAT-03 (defeito: PDF sem rodapé em silêncio): renderizarDanfe sem assinaturaMarca lança erro', async () => {
+    const m = montarDanfe({ nfeProc: nfeProcDeTeste() });
+    await expect(renderizarDanfeBruto(m, {} as OpcoesPdfDanfe)).rejects.toThrow('assinaturaMarca obrigatória');
   });
 
   it('marca §4/§1: rodapé "Emitido pelo" em todas as folhas, sem "Macuxi ERP" em texto; logo do emitente entra em cinza; logo inválido não derruba o DANFE', async () => {
@@ -77,7 +85,7 @@ describe('DANFE em PDF (RF-FAT-03)', { timeout: 30_000 }, () => {
     expect(t).toContain('/DEVICEGRAY'.toUpperCase()); // logo do cliente em tons de cinza
     const doc = await PDFDocument.load(pdf);
     expect(doc.getCreator()).toBe('Macuxi ERP');
-    const ruim = await renderizarDanfe(m, { logoEmitente: new Uint8Array([1, 2, 3]) });
+    const ruim = await renderizarDanfe(m, { assinaturaMarca: assinatura, logoEmitente: new Uint8Array([1, 2, 3]) });
     expect(await paginas(ruim)).toBe(2);
   });
 });
@@ -85,10 +93,10 @@ describe('DANFE em PDF (RF-FAT-03)', { timeout: 30_000 }, () => {
 describe('DANFE: fontes mínimas (marca §3)', { timeout: 30_000 }, () => {
   it('marca §3: item com quantidade 99.999.999,9999 e valor 9.999.999.999,99 não fica abaixo de 7 pt (coluna alarga, descrição quebra)', async () => {
     const m = montarDanfe({ nfeProc: nfeProcDeTeste() });
-    m.paginas[0]!.itens[0]!.quantidade = '99.999.999,9999';
-    m.paginas[0]!.itens[0]!.valorUnitario = '9.999.999.999,99';
-    m.paginas[0]!.itens[0]!.valorTotal = '9.999.999.999,99';
-    m.paginas[0]!.itens[0]!.descricao = 'Descrição bem longa do produto para obrigar a quebra de linha na célula da tabela';
+    m.itens[0]!.quantidade = '99.999.999,9999';
+    m.itens[0]!.valorUnitario = '9.999.999.999,99';
+    m.itens[0]!.valorTotal = '9.999.999.999,99';
+    m.itens[0]!.descricao = 'Descrição bem longa do produto para obrigar a quebra de linha na célula da tabela';
     const c = await latin1Hex(await renderizarDanfe(m));
     const tamanhos = [...c.matchAll(/\/[A-Z0-9-]+ ([\d.]+) TF/g)].map((x) => Number(x[1]));
     expect(tamanhos.length).toBeGreaterThan(0);
@@ -153,7 +161,7 @@ async function textos(b: Uint8Array): Promise<Texto[]> {
 const DESC120 = 'Cabo de força tripolar flexível 750V isolação dupla antichama, bobina 100 metros, cor preta, norma NBR 13249, lote 26-11';
 if (DESC120.length !== 120) throw new Error(`DESC120 tem ${DESC120.length} caracteres, não 120`);
 
-describe('DANFE: ressalvas do design-de-marca (2ª rodada)', { timeout: 30_000 }, () => {
+describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
   it('marca §3: a legenda "Documento Auxiliar da Nota Fiscal Eletrônica" sai em 2 linhas de 7 pt', async () => {
     const ts = await textos(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste() })));
     const a = ts.find((x) => x.t === 'Documento Auxiliar da');
@@ -167,7 +175,7 @@ describe('DANFE: ressalvas do design-de-marca (2ª rodada)', { timeout: 30_000 }
     const doc = await PDFDocument.create();
     const reg = await doc.embedFont(StandardFonts.Helvetica);
     const extremo = montarDanfe({ nfeProc: nfeProcDeTeste({ item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
-    for (const itens of [[], extremo.paginas[0]!.itens]) {
+    for (const itens of [[], extremo.itens]) {
       const ws = largurasColunas(reg, itens);
       const cab = linhasCabecalhoTabela(reg, ws);
       expect(cab).toHaveLength(ws.length);
@@ -214,7 +222,7 @@ describe('DANFE: ressalvas do design-de-marca (2ª rodada)', { timeout: 30_000 }
   it('marca §3: a paginação acompanha a altura variável: mais linhas de descrição, mais folhas', async () => {
     const curtas = await paginas(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 40 }) })));
     const m = montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 40 }) });
-    for (const it of m.paginas.flatMap((f) => f.itens)) it.descricao = DESC120;
+    for (const it of m.itens) it.descricao = DESC120;
     const longas = await paginas(await renderizarDanfe(m));
     expect(longas).toBeGreaterThan(curtas);
     expect(curtas).toBe(2);
@@ -324,14 +332,14 @@ describe('DANFE: rodapé "Emitido pelo" (marca §4) e ativo obrigatório', { tim
   });
 });
 
-describe('DANFE: cabeçalho da tabela de itens (3ª rodada)', { timeout: 30_000 }, () => {
+describe('DANFE: cabeçalho da tabela de itens ', { timeout: 30_000 }, () => {
   const extremo = () => montarDanfe({ nfeProc: nfeProcDeTeste({ item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
 
   it('marca §3: cada cabeçalho fica a 1,5 pt da linha (direita nas colunas numéricas, esquerda nas de texto), nunca cruza, medido no PDF', async () => {
     const doc = await PDFDocument.create();
     const reg = await doc.embedFont(StandardFonts.Helvetica);
     for (const m of [montarDanfe({ nfeProc: nfeProcDeTeste() }), extremo()]) {
-      const ws = largurasColunas(reg, m.paginas[0]!.itens);
+      const ws = largurasColunas(reg, m.itens);
       const xs = ws.map((_, i) => 28.35 + ws.slice(0, i).reduce((a, b) => a + b, 0));
       const cab = linhasCabecalhoTabela(reg, ws);
       const ts = (await textos(await renderizarDanfe(m))).filter((x) => x.pagina === 1 && x.pt === 6);
@@ -358,7 +366,7 @@ describe('DANFE: cabeçalho da tabela de itens (3ª rodada)', { timeout: 30_000 
   it('marca §3: o rótulo "DESCRIÇÃO DO PROD./SERV." ocupa no máximo 2 linhas, nunca 3, inclusive com o item extremo', async () => {
     const doc = await PDFDocument.create();
     const reg = await doc.embedFont(StandardFonts.Helvetica);
-    for (const itens of [[], extremo().paginas[0]!.itens]) {
+    for (const itens of [[], extremo().itens]) {
       const ws = largurasColunas(reg, itens);
       const d = linhasCabecalhoTabela(reg, ws)[1]!;
       expect(d.linhas.length).toBeLessThanOrEqual(2);
@@ -378,7 +386,7 @@ describe('DANFE: cabeçalho da tabela de itens (3ª rodada)', { timeout: 30_000 
       const folha = ts.find((x) => x.t === 'Folha 1/1')!;
       // base do quadro do cabeçalho: 28 + 54 + 4 + 4 + 100 = 190 (de cima), ou 841,89 - 190 de baixo
       expect(folha.y - descende(7) - (841.89 - 190)).toBeGreaterThanOrEqual(1.5 - 0.001);
-      const ws = largurasColunas(reg, m.paginas[0]!.itens);
+      const ws = largurasColunas(reg, m.itens);
       const linhas = Math.max(...linhasCabecalhoTabela(reg, ws).map((c) => c.linhas.length));
       const hCab = 6 + linhas * 6.5;
       const y0 = ts.find((x) => x.t === 'CÓDIGO')!.y; // 1ª linha de base (9,5 abaixo do topo do cabeçalho)
@@ -388,7 +396,7 @@ describe('DANFE: cabeçalho da tabela de itens (3ª rodada)', { timeout: 30_000 
     }
   });
 
-  it('marca §3 (5ª rodada): "Folha x/y" a 7 pt tem a linha de base em <= 186,925 (folha 1) e <= 124,925 (folha 2), medida do topo (base = linha - 3,5)', async () => {
+  it('marca §3: "Folha x/y" a 7 pt tem a linha de base em <= 186,925 (folha 1) e <= 124,925 (folha 2), medida do topo (base = linha - 3,5)', async () => {
     const ts = await textos(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 30, duplicatas: true, transportador: true }) })));
     const f1 = ts.find((x) => x.t === 'Folha 1/2')!;
     const f2 = ts.find((x) => x.t === 'Folha 2/2')!;
@@ -399,7 +407,7 @@ describe('DANFE: cabeçalho da tabela de itens (3ª rodada)', { timeout: 30_000 
   });
 });
 
-describe('DANFE: rótulos desenhados e respiro vertical (4ª rodada)', { timeout: 30_000 }, () => {
+describe('DANFE: rótulos desenhados e respiro vertical ', { timeout: 30_000 }, () => {
   const extremo = () => montarDanfe({ nfeProc: nfeProcDeTeste({ item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
   const ROT = ['QUANT.', 'V. UNIT.', 'V. DESC.', 'V. TOTAL', 'BC ICMS', 'V. ICMS', 'V. IPI', 'A.ICMS', 'A.IPI'];
 
@@ -407,7 +415,7 @@ describe('DANFE: rótulos desenhados e respiro vertical (4ª rodada)', { timeout
     const doc = await PDFDocument.create();
     const reg = await doc.embedFont(StandardFonts.Helvetica);
     for (const m of [montarDanfe({ nfeProc: nfeProcDeTeste() }), extremo()]) {
-      const ws = largurasColunas(reg, m.paginas[0]!.itens);
+      const ws = largurasColunas(reg, m.itens);
       const xs = ws.map((_, i) => 28.35 + ws.slice(0, i).reduce((a, b) => a + b, 0));
       const ts = (await textos(await renderizarDanfe(m))).filter((x) => x.pagina === 1 && x.pt === 6);
       const y0 = ts.find((x) => x.t === 'CÓDIGO')!.y;

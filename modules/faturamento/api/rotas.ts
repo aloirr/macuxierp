@@ -102,9 +102,8 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         } catch (err) {
           throw erros.regra('RN-FAT-03', 'O XML autorizado guardado não pôde ser lido para o DANFE.', { nota: err instanceof Error ? err.constructor.name : 'erro' });
         }
-        if (deps.ativosDanfe && !deps.ativosDanfe.ok) throw new ErroApi(503, 'ATIVO_MARCA_AUSENTE', MENSAGEM_ATIVO_AUSENTE);
         const assinaturaMarca = await (deps.danfe?.assinaturaMarca ?? lerAssinaturaDaMarca)();
-        if (!assinaturaMarca) throw new ErroApi(503, 'ATIVO_MARCA_AUSENTE', MENSAGEM_ATIVO_AUSENTE); // nunca um DANFE sem o rodapé
+        if ((deps.ativosDanfe && !deps.ativosDanfe.ok) || !assinaturaMarca) throw new ErroApi(503, 'ATIVO_MARCA_AUSENTE', MENSAGEM_ATIVO_AUSENTE); // nunca um DANFE sem o rodapé
         const pdf = await renderizarDanfe(modelo, {
           logoEmitente: (await deps.danfe?.logoEmitente?.(c.tx, nota.filial_id)) ?? null,
           assinaturaMarca,

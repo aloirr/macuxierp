@@ -16,8 +16,8 @@ import { ErroLogo, logoEmCinza } from './logo-cinza';
 export interface OpcoesPdfDanfe {
   /** PNG do logo do EMITENTE (nunca o da Macuxi). Inválido ou ausente: o quadro sai sem logo, com os dados centralizados. */
   logoEmitente?: Uint8Array | null;
-  /** PNG da assinatura "Emitido pelo ..." (ativo da marca). Ausente: só o texto "Emitido pelo" não faz sentido, então o rodapé é omitido. */
-  assinaturaMarca?: Uint8Array | null;
+  /** PNG da assinatura "Emitido pelo ..." (ativo da marca). Obrigatória: DANFE sem rodapé nunca é gerado. */
+  assinaturaMarca: Uint8Array;
   /** Instante gravado nos metadados (padrão: agora). */
   agora?: Date;
 }
@@ -182,8 +182,7 @@ function desenharImagem(c: Ctx, nome: ReturnType<PDFPage['node']['newXObject']>,
   c.pagina.pushOperators(pushGraphicsState(), concatTransformationMatrix(w, 0, 0, h, x, yBase), drawObject(nome), popGraphicsState());
 }
 
-function rodape(c: Ctx, m: ModeloDanfe, assinatura: PDFImageLike | null): void {
-  if (!assinatura) return;
+function rodape(c: Ctx, m: ModeloDanfe, assinatura: PDFImageLike): void {
   const r = m.rodape;
   const xDir = A4.l - MARGEM;
   const xImg = xDir - r.larguraAssinaturaPt;
@@ -433,7 +432,8 @@ function tabelaProdutos(c: Ctx, topo: number, ws: number[], cab: { linhas: strin
 }
 
 /** RF-FAT-03: renderiza o DANFE. Folha A4 retrato, Helvetica embutida; devolve os bytes do PDF. */
-export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe = {}): Promise<Uint8Array> {
+export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe): Promise<Uint8Array> {
+  if (!opcoes?.assinaturaMarca || opcoes.assinaturaMarca.length === 0) throw new Error('assinaturaMarca obrigatória: DANFE nunca sai sem o rodapé');
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const neg = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -451,7 +451,7 @@ export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe = {
       if (!(e instanceof ErroLogo)) throw e; // logo ruim não derruba o DANFE: sai sem logo (o aviso é de quem chama)
     }
   }
-  const assinatura: PDFImageLike | null = opcoes.assinaturaMarca ? { imagem: await doc.embedPng(opcoes.assinaturaMarca) } : null;
+  const assinatura: PDFImageLike = { imagem: await doc.embedPng(opcoes.assinaturaMarca) };
 
   const folhas: { c: Ctx; folha: PosFolha }[] = [];
   /** Abre uma folha: marcas d'água por baixo, aviso de homologação e o cabeçalho (completo em todas; canhoto, destinatário, imposto e transportador só na 1ª). */
@@ -467,7 +467,7 @@ export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe = {
   };
 
   // tabela de produtos: paginada por altura (linha variável)
-  const itens = m.paginas.flatMap((f) => f.itens);
+  const itens = m.itens;
   const ws = largurasColunas(reg, itens);
   const cab = linhasCabecalhoTabela(reg, ws);
   const hCab = 6 + Math.max(...cab.map((k) => k.linhas.length)) * 6.5;

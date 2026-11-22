@@ -1,8 +1,9 @@
 /**
  * Ativo da marca usado no rodapé do DANFE: `docs/marca/ativos/2026-11-22-v1/macuxi-erp-a-mono-preto-400.png` (do design-de-marca, não é
  * copiado para o módulo). Lido por caminho em tempo de execução: `MACUXI_ATIVOS_MARCA` (pasta dos ativos) ou, sem ela, subindo a partir
- * deste arquivo até achar `docs/marca/ativos`. Ausente, `lerAssinaturaDaMarca` devolve `null`; quem gera o DANFE NÃO pode seguir sem o ativo
- * (a rota responde 503, o boot da API falha em `verificarAtivosDanfe` e a geração de amostras dá erro): rodapé omitido em silêncio é regressão.
+ * deste arquivo até achar `docs/marca/ativos`. Ausente, `lerAssinaturaDaMarca` devolve `null`; quem gera o DANFE NÃO pode seguir sem o ativo:
+ * `verificarAtivosDanfe` nunca lança (só informa `faltando`, para o log do boot); quem garante é a rota (503) e o renderizador, que exige
+ * `assinaturaMarca` e lança sem ela. Rodapé omitido em silêncio é regressão.
  */
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';

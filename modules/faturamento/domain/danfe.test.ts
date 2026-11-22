@@ -1,27 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { codigoBarras128C } from './codigo-barras';
 import {
-  AVISO_HOMOLOGACAO, caixaDoLogo, formatarChave, formatarDataHora, formatarDecimal, formatarDocumento, formatarFone, ITENS_DEMAIS_FOLHAS, ITENS_PRIMEIRA_FOLHA, LOGO_RESPIRO_PT, montarDanfe,
+  AVISO_HOMOLOGACAO, caixaDoLogo, formatarChave, formatarDataHoraXml, formatarDecimalXml, formatarFone, LOGO_RESPIRO_PT, montarDanfe,
   ErroDanfe, RODAPE_DANFE,
 } from './danfe';
 import { CHAVE_DANFE, nfeProcDeTeste } from './fixtures-danfe';
 
 describe('DANFE: formatação pt-BR (RF-FAT-03)', () => {
   it('RF-FAT-03: decimais do XML em pt-BR, arredondando metade para cima sem ponto flutuante', () => {
-    expect(formatarDecimal('1234567.8', 2)).toBe('1.234.567,80');
-    expect(formatarDecimal('1.0000', 4)).toBe('1,0000');
-    expect(formatarDecimal('10.5000000000', 4)).toBe('10,5000');
-    expect(formatarDecimal('0.005', 2)).toBe('0,01');
-    expect(formatarDecimal('1.00499', 2)).toBe('1,00');
-    expect(formatarDecimal('-3.5', 2)).toBe('-3,50');
-    expect(formatarDecimal('7', 0)).toBe('7');
+    expect(formatarDecimalXml('1234567.8', 2)).toBe('1.234.567,80');
+    expect(formatarDecimalXml('1.0000', 4)).toBe('1,0000');
+    expect(formatarDecimalXml('10.5000000000', 4)).toBe('10,5000');
+    expect(formatarDecimalXml('0.005', 2)).toBe('0,01');
+    expect(formatarDecimalXml('1.00499', 2)).toBe('1,00');
+    expect(formatarDecimalXml('-3.5', 2)).toBe('-3,50');
+    expect(formatarDecimalXml('7', 0)).toBe('7');
   });
   it('RF-FAT-03: datas no fuso informado (Manaus UTC-4) e chave em grupos de 4', () => {
-    expect(formatarDataHora('2026-11-21T10:31:02-04:00', -240)).toBe('21/11/2026 10:31:02');
-    expect(formatarDataHora('2026-11-21T10:31:02-04:00', -180)).toBe('21/11/2026 11:31:02');
-    expect(formatarDataHora('2026-11-21T01:00:00Z', -240, true)).toBe('20/11/2026');
+    expect(formatarDataHoraXml('2026-11-21T10:31:02-04:00', -240)).toBe('21/11/2026 10:31:02');
+    expect(formatarDataHoraXml('2026-11-21T10:31:02-04:00', -180)).toBe('21/11/2026 11:31:02');
+    expect(formatarDataHoraXml('2026-11-21T01:00:00Z', -240, true)).toBe('20/11/2026');
     expect(formatarChave(CHAVE_DANFE)).toBe('1326 1104 6415 3800 0145 5500 1000 0001 2312 3456 7890');
-    expect(formatarDocumento('04641538000145')).toBe('04.641.538/0001-45');
   });
 });
 
@@ -80,13 +79,18 @@ describe('DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II)', () => {
     expect(montarDanfe({ nfeProc: nfeProcDeTeste() }).tarjaCancelada).toBeNull();
   });
 
-  it('RF-FAT-03: 60 itens quebram em folhas (11 na primeira, 36 nas demais) com "folha x/y"', () => {
+  it('RD-0690: o modelo traz todos os itens em lista única (a paginação é do PDF)', () => {
     const m = montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 60 }) });
-    expect(m.paginas.map((p) => p.itens.length)).toEqual([ITENS_PRIMEIRA_FOLHA, ITENS_DEMAIS_FOLHAS, 60 - ITENS_PRIMEIRA_FOLHA - ITENS_DEMAIS_FOLHAS]);
-    expect(m.paginas.map((p) => p.folha)).toEqual(['1/3', '2/3', '3/3']);
-    expect(m.paginas[2]!.itens[0]!.codigo).toBe('P48');
-    expect(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: ITENS_PRIMEIRA_FOLHA }) }).paginas).toHaveLength(1);
-    expect(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: ITENS_PRIMEIRA_FOLHA + 1 }) }).paginas).toHaveLength(2);
+    expect(m.itens).toHaveLength(60);
+    expect(m.itens[47]!.codigo).toBe('P48');
+  });
+
+  it('RF-FAT-03 (defeito: CNPJ alfanumérico saía sem máscara): CNPJ alfanumérico do emitente e do destinatário sai mascarado', () => {
+    const base = nfeProcDeTeste();
+    const xml = base.replace('<emit><CNPJ>04641538000145', '<emit><CNPJ>12ABC34501DE35').replace('<dest><CNPJ>45723174000110', '<dest><CNPJ>98XYZ76543AB21');
+    const m = montarDanfe({ nfeProc: xml });
+    expect(m.operacao.cnpj).toBe('12.ABC.345/01DE-35');
+    expect(m.destinatario.documento).toBe('98.XYZ.765/43AB-21');
   });
 
   it('RF-FAT-03: recusa o que não é nfeProc autorizado', () => {

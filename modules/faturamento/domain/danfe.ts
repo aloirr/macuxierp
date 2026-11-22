@@ -4,6 +4,7 @@
  * Retrato, preto e branco. Ambiente 2 (homologação) leva a marca d'água "SEM VALOR FISCAL" e o aviso, obrigatórios; nota cancelada leva a tarja.
  * Valores em pt-BR; datas no fuso informado (padrão Manaus). Sem dado pessoal em log: só se lê e devolve o que está no XML.
  */
+import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
 import { codigoBarras128C, type CodigoBarras128C } from './codigo-barras';
 import { FUSO_MANAUS_MINUTOS } from './fuso';
 import { achar, lerXml, textoDe, todos, type NoXml } from './xml-leve';
@@ -44,9 +45,6 @@ export function caixaDoLogo(quadro: { largura: number; altura: number }, imagem:
 export const AVISO_HOMOLOGACAO = 'EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL';
 export const MARCA_DAGUA_HOMOLOGACAO = 'SEM VALOR FISCAL';
 export const TARJA_CANCELADA = 'CANCELADA';
-/** Linhas de produto por folha: a 1ª divide espaço com o cabeçalho e os blocos; as demais só repetem o cabeçalho curto. */
-export const ITENS_PRIMEIRA_FOLHA = 11;
-export const ITENS_DEMAIS_FOLHAS = 36;
 
 export class ErroDanfe extends Error {}
 
@@ -66,13 +64,6 @@ export interface LinhaProduto {
   valorIpi: string;
   aliquotaIcms: string;
   aliquotaIpi: string;
-}
-export interface FolhaDanfe {
-  numero: number;
-  total: number;
-  /** "1/2" */
-  folha: string;
-  itens: LinhaProduto[];
 }
 export interface Campo {
   rotulo: string;
@@ -108,14 +99,15 @@ export interface ModeloDanfe {
   duplicatas: { numero: string; vencimento: string; valor: string }[];
   imposto: Campo[];
   transportador: Campo[];
-  paginas: FolhaDanfe[];
+  /** Todas as linhas de produto; a paginação (por altura) é do renderizador do PDF. */
+  itens: LinhaProduto[];
   dadosAdicionais: { informacoesComplementares: string; fisco: string };
 }
 
 // ---------- formatação pt-BR ----------
 
 /** Decimal do XML ("1234.5678") em pt-BR com `casas` casas, arredondando metade para cima, sem passar por ponto flutuante. */
-export function formatarDecimal(valor: string, casas: number): string {
+export function formatarDecimalXml(valor: string, casas: number): string {
   const m = /^(-?)(\d*)(?:\.(\d*))?$/.exec(valor.trim());
   if (!m || (m[2] === '' && !m[3])) return valor.trim() === '' ? '' : valor.trim();
   const frac = m[3] ?? '';
@@ -126,13 +118,8 @@ export function formatarDecimal(valor: string, casas: number): string {
   const negativo = m[1] === '-' && n !== 0n ? '-' : '';
   return `${negativo}${inteiro}${casas ? `,${s.slice(s.length - casas)}` : ''}`;
 }
-export const formatarMoeda = (valor: string): string => (valor.trim() === '' ? '' : `R$ ${formatarDecimal(valor, 2)}`);
+export const formatarMoeda = (valor: string): string => (valor.trim() === '' ? '' : `R$ ${formatarDecimalXml(valor, 2)}`);
 
-export function formatarDocumento(d: string): string {
-  if (/^\d{14}$/.test(d)) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-  if (/^\d{11}$/.test(d)) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-  return d;
-}
 /** Telefone (premissa do modulo-fiscal, a conferir no MOC 7.0 Anexo II): 10 dígitos "(DD) NNNN-NNNN", 11 dígitos "(DD) NNNNN-NNNN"; outro tamanho sai só com os dígitos. */
 export function formatarFone(f: string): string {
   const d = f.replace(/\D/g, '');
@@ -143,7 +130,7 @@ export const formatarCep = (c: string): string => (/^\d{8}$/.test(c) ? `${c.slic
 export const formatarChave = (chave: string): string => chave.replace(/(\d{4})(?=\d)/g, '$1 ');
 
 /** Instante com deslocamento ("2026-11-21T10:00:00-04:00") no fuso pedido: "21/11/2026 10:00:00". Texto sem data válida volta como veio. */
-export function formatarDataHora(iso: string, fusoMinutos: number, soData = false): string {
+export function formatarDataHoraXml(iso: string, fusoMinutos: number, soData = false): string {
   const t = Date.parse(iso);
   if (!iso || Number.isNaN(t)) return iso;
   const d = new Date(t + fusoMinutos * 60_000);
@@ -178,23 +165,17 @@ const linhaProduto = (det: NoXml): LinhaProduto => {
     cst: `${orig}${cst}`,
     cfop: textoDe(det, 'prod', 'CFOP'),
     unidade: textoDe(det, 'prod', 'uCom'),
-    quantidade: formatarDecimal(textoDe(det, 'prod', 'qCom'), 4),
-    valorUnitario: formatarDecimal(textoDe(det, 'prod', 'vUnCom'), 4),
-    valorDesconto: formatarDecimal(textoDe(det, 'prod', 'vDesc') || '0', 2),
-    valorTotal: formatarDecimal(textoDe(det, 'prod', 'vProd'), 2),
-    baseIcms: formatarDecimal(textoDe(icms, 'vBC') || '0', 2),
-    valorIcms: formatarDecimal(textoDe(icms, 'vICMS') || '0', 2),
-    valorIpi: formatarDecimal(textoDe(ipi, 'vIPI') || '0', 2),
-    aliquotaIcms: formatarDecimal(textoDe(icms, 'pICMS') || '0', 2),
-    aliquotaIpi: formatarDecimal(textoDe(ipi, 'pIPI') || '0', 2),
+    quantidade: formatarDecimalXml(textoDe(det, 'prod', 'qCom'), 4),
+    valorUnitario: formatarDecimalXml(textoDe(det, 'prod', 'vUnCom'), 4),
+    valorDesconto: formatarDecimalXml(textoDe(det, 'prod', 'vDesc') || '0', 2),
+    valorTotal: formatarDecimalXml(textoDe(det, 'prod', 'vProd'), 2),
+    baseIcms: formatarDecimalXml(textoDe(icms, 'vBC') || '0', 2),
+    valorIcms: formatarDecimalXml(textoDe(icms, 'vICMS') || '0', 2),
+    valorIpi: formatarDecimalXml(textoDe(ipi, 'vIPI') || '0', 2),
+    aliquotaIcms: formatarDecimalXml(textoDe(icms, 'pICMS') || '0', 2),
+    aliquotaIpi: formatarDecimalXml(textoDe(ipi, 'pIPI') || '0', 2),
   };
 };
-
-export function paginar(itens: LinhaProduto[]): FolhaDanfe[] {
-  const grupos: LinhaProduto[][] = [itens.slice(0, ITENS_PRIMEIRA_FOLHA)];
-  for (let i = ITENS_PRIMEIRA_FOLHA; i < itens.length; i += ITENS_DEMAIS_FOLHAS) grupos.push(itens.slice(i, i + ITENS_DEMAIS_FOLHAS));
-  return grupos.map((g, i) => ({ numero: i + 1, total: grupos.length, folha: `${i + 1}/${grupos.length}`, itens: g }));
-}
 
 export interface EntradaDanfe {
   /** `nfeProc` autorizado guardado (`nfe_autorizada`). */
@@ -226,12 +207,12 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
   const numero = textoDe(ide, 'nNF').padStart(9, '0').replace(/(\d{3})(?=\d)/g, '$1.');
   const serie = textoDe(ide, 'serie');
   const tpNF = textoDe(ide, 'tpNF');
-  const protocolo = `${textoDe(prot, 'nProt')} - ${formatarDataHora(textoDe(prot, 'dhRecbto'), fuso)}`;
+  const protocolo = `${textoDe(prot, 'nProt')} - ${formatarDataHoraXml(textoDe(prot, 'dhRecbto'), fuso)}`;
   const end = (n: NoXml | undefined) => [textoDe(n, 'xLgr'), textoDe(n, 'nro'), textoDe(n, 'xCpl')].filter(Boolean).join(', ');
   const ee = achar(emit, 'enderEmit');
   const ed = achar(dest, 'enderDest');
   const tot = achar(inf, 'total', 'ICMSTot');
-  const m = (nome: string) => formatarDecimal(textoDe(tot, nome) || '0', 2); // sem "R$": o quadro do imposto é só número, como a tabela de itens (marca §3)
+  const m = (nome: string) => formatarDecimalXml(textoDe(tot, nome) || '0', 2); // sem "R$": o quadro do imposto é só número, como a tabela de itens (marca §3)
 
   const transp = achar(inf, 'transp');
   const tr = achar(transp, 'transporta');
@@ -251,11 +232,11 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
     { rotulo: 'Espécie', valor: textoDe(vol, 'esp') },
     { rotulo: 'Marca', valor: textoDe(vol, 'marca') },
     { rotulo: 'Numeração', valor: textoDe(vol, 'nVol') },
-    { rotulo: 'Peso bruto', valor: textoDe(vol, 'pesoB') ? formatarDecimal(textoDe(vol, 'pesoB'), 3) : '' },
-    { rotulo: 'Peso líquido', valor: textoDe(vol, 'pesoL') ? formatarDecimal(textoDe(vol, 'pesoL'), 3) : '' },
+    { rotulo: 'Peso bruto', valor: textoDe(vol, 'pesoB') ? formatarDecimalXml(textoDe(vol, 'pesoB'), 3) : '' },
+    { rotulo: 'Peso líquido', valor: textoDe(vol, 'pesoL') ? formatarDecimalXml(textoDe(vol, 'pesoL'), 3) : '' },
   ];
 
-  const emissao = formatarDataHora(textoDe(ide, 'dhEmi'), fuso, true);
+  const emissao = formatarDataHoraXml(textoDe(ide, 'dhEmi'), fuso, true);
   const saidaTxt = textoDe(ide, 'dhSaiEnt');
   const cancelada = entrada.cancelada === true;
 
@@ -313,7 +294,7 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
       fone: formatarFone(textoDe(ed, 'fone')),
       ie: textoDe(dest, 'IE'),
       emissao,
-      saida: saidaTxt ? formatarDataHora(saidaTxt, fuso, true) : '',
+      saida: saidaTxt ? formatarDataHoraXml(saidaTxt, fuso, true) : '',
     },
     duplicatas: todos(achar(inf, 'cobr'), 'dup').map((d) => ({ numero: textoDe(d, 'nDup'), vencimento: dataSimples(textoDe(d, 'dVenc')), valor: formatarMoeda(textoDe(d, 'vDup')) })),
     imposto: [
@@ -330,7 +311,7 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
       { rotulo: 'Valor total da nota', valor: m('vNF') },
     ],
     transportador,
-    paginas: paginar(todos(inf, 'det').map(linhaProduto)),
+    itens: todos(inf, 'det').map(linhaProduto),
     dadosAdicionais: { informacoesComplementares: textoDe(inf, 'infAdic', 'infCpl'), fisco: textoDe(inf, 'infAdic', 'infAdFisco') },
   };
 }
