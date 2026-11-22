@@ -46,6 +46,8 @@ interface Mapa<E, D> {
   expressoes?: readonly string[];
   busca: readonly string[];
   filtros?: { filial?: boolean; vendedor?: boolean };
+  /** Valores gravados só na criação quando o campo (opcional no contrato) vem ausente; na atualização parcial, ausente não altera. */
+  padroesCriacao?: Dict;
   paraLinha(d: Partial<D>): Dict;
   deLinha(l: Dict): E;
 }
@@ -95,7 +97,7 @@ class RepoTabela<E extends { id: string }, D> implements RepoSimples<E, D> {
   }
 
   async inserir(dados: D): Promise<E> {
-    const campos = definidos(this.m.paraLinha(dados));
+    const campos = definidos({ ...this.m.padroesCriacao, ...semIndefinidos(this.m.paraLinha(dados)) });
     const r = await executar<{ id: string }>(
       this.tx,
       `INSERT INTO ${this.m.tabela} (tenant_id, ${campos.map(([c]) => c).join(', ')}) VALUES (plataforma.tenant_atual(), ${campos.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
@@ -181,18 +183,20 @@ class RepoFilhoSql<E extends { id: string }, D> implements RepoFilho<E, D> {
 
 const ENDERECO = ['logradouro', 'numero', 'complemento', 'bairro', 'municipio_ibge', 'uf', 'cep', 'pais_bacen'] as const;
 const pegar = (o: Dict, cols: readonly string[]) => Object.fromEntries(cols.filter((c) => c in o).map((c) => [c, o[c]]));
+const semIndefinidos = (o: Dict): Dict => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const semExterno = (d: Dict) => ({ ...d });
 
 const mapaFilial: Mapa<Filial, FilialDados> = {
   tabela: 'cadastros.filial',
-  colunas: ['cnpj', 'ie', 'razao_social', 'nome_fantasia', 'crt', ...ENDERECO, 'padrao', 'emissora', 'nfe_serie', 'nfe_numero_inicial'],
+  colunas: ['cnpj', 'ie', 'razao_social', 'nome_fantasia', 'crt', ...ENDERECO, 'padrao', 'emissora', 'nfe_serie', 'nfe_numero_inicial', 'industrial_ipi', 'regime_pis_cofins'],
   busca: ['razao_social', 'nome_fantasia', 'cnpj'],
+  padroesCriacao: { industrial_ipi: false, regime_pis_cofins: null },
   paraLinha: (d) => {
     const { endereco, ...resto } = d as Dict & { endereco?: Dict };
     return { ...resto, ...(endereco ?? {}) };
   },
   deLinha: (l) => ({
-    ...pegar(l, ['id', 'external_id', 'inativo', 'cnpj', 'ie', 'razao_social', 'nome_fantasia', 'crt', 'padrao', 'emissora', 'nfe_serie', 'nfe_numero_inicial']),
+    ...pegar(l, ['id', 'external_id', 'inativo', 'cnpj', 'ie', 'razao_social', 'nome_fantasia', 'crt', 'padrao', 'emissora', 'nfe_serie', 'nfe_numero_inicial', 'industrial_ipi', 'regime_pis_cofins']),
     endereco: pegar(l, ENDERECO),
   }) as unknown as Filial,
 };
@@ -250,9 +254,10 @@ class RepoClientesSql extends RepoTabela<Cliente, ClienteDados> {
 const colunasTabelaPreco = { colunas: ['nome', 'padrao'], expressoes: [DATA('vigencia_inicio'), DATA('vigencia_fim')] };
 const mapaProduto: Mapa<Produto, ProdutoDados> = {
   tabela: 'cadastros.produto',
-  colunas: ['codigo', 'descricao', 'ncm', 'cest', 'unidade_comercial', 'unidade_tributavel', 'ean', 'marca', 'origem', 'grupo_tributacao'],
+  colunas: ['codigo', 'descricao', 'ncm', 'cest', 'unidade_comercial', 'unidade_tributavel', 'ean', 'marca', 'origem', 'grupo_tributacao', 'producao_propria'],
   expressoes: [N('fator_tributavel'), N('custo_centavos')],
   busca: ['codigo', 'descricao', 'ean', 'marca'],
+  padroesCriacao: { producao_propria: false },
   paraLinha: (d) => ({ ...d }),
   deLinha: (l) => l as unknown as Produto,
 };

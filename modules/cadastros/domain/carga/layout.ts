@@ -16,7 +16,7 @@ const ign = (s: string) => s.split(' ');
 export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
   filial: {
     obrigatorias: ign('external_id codigo nome cidade uf cnpj logradouro numero bairro cep'),
-    usadas: ign('external_id nome ativo cidade uf cnpj logradouro numero complemento bairro cep crt ie municipio_ibge'),
+    usadas: ign('external_id nome ativo cidade uf cnpj logradouro numero complemento bairro cep crt ie municipio_ibge industrial_ipi regime_pis_cofins'),
     ignoradas: ign('codigo alterado_em telefone'),
   },
   vendedor: {
@@ -36,7 +36,7 @@ export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
   },
   produto: {
     obrigatorias: ign('external_id sku nome unidade'),
-    usadas: ign('external_id sku nome unidade ativo ean marca custo_cents desconto_maximo_pct ncm cest origem grupo_tributacao'),
+    usadas: ign('external_id sku nome unidade ativo ean marca custo_cents desconto_maximo_pct ncm cest origem grupo_tributacao producao_propria'),
     ignoradas: ign(
       'alterado_em marca_codigo categoria embalagem_medida embalagem_quantidade catalogo_no_external_id preco_venda_cents aplicacao ' +
         'referencia_1 marca_referencia_codigo_1 marca_referencia_1 referencia_2 marca_referencia_codigo_2 marca_referencia_2 ' +
