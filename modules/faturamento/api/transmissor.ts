@@ -14,11 +14,12 @@
  */
 import { createHash } from 'node:crypto';
 import { ErroCertificadoA1, ErroMontagemNFe, type EmissorNFe } from '@macuxierp/nfe-emissor';
-import { Uf, type SefazTransporte, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
+import { Uf, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import { digestValueDoXml, emTransmissao, ErroViolacao } from '../domain';
 import { criarProcessadorRetorno, mudarNota, xmlDaNota, type ResultadoRetorno } from './emissao';
 import type { A1DaFilial, AmbienteFiscalDaFilial, NotaRegistro, RepositorioNotas, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import { comA1, descarregar as descarregarLog, medir as medirChamada } from './sefaz-comum';
 import { retornoDaAutorizacao, retornoDaConsulta, retornoDoRecibo } from './retorno-sefaz';
 
 export interface DepsTransmissor {
@@ -49,14 +50,11 @@ export type ResultadoTransmissao =
   | { resultado: 'falha'; codigo: string };
 
 type Preparo =
-  | { tipo: 'fim'; resultado: ResultadoTransmissao }
+  | { tipo: 'fim'; resultado: ResultadoTransmissao; a1?: undefined }
   | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null };
 
 /** Só estes status são assinados pelo worker (0020: a `nfe_assinada` não entra em `em_autorizacao`). Contingência é do lote 4. */
 const precisaAssinar = (status: NotaRegistro['status']): boolean => status === 'rascunho' || status === 'rejeitada';
-
-const destinoDoLog = (t: SefazTransporte): TransmissaoRegistrada['destino'] =>
-  t.destino.tipo === 'simulador' ? 'simulador' : t.destino.modo === 'normal' ? 'sefaz_am' : 'svc';
 
 export function criarTransmissor(deps: DepsTransmissor) {
   const agora = deps.agora ?? ((): Date => new Date());
@@ -71,11 +69,9 @@ export function criarTransmissor(deps: DepsTransmissor) {
   };
 
   async function preparar(tenant_id: string, nota_id: string): Promise<Preparo> {
-    // Um único ponto zera o pfx: tudo que não entrega o A1 ao chamador (retorno cedo, exceção, falha do commit) cai no finally.
-    let aberto: A1DaFilial | null = null;
-    let entregue = false;
-    try {
-      const p = await deps.banco.comTenant(tenant_id, async (tx): Promise<Preparo> => {
+    // `comA1` (sefaz-comum) zera o pfx em tudo que não entrega o A1 ao chamador (retorno cedo, exceção, falha do commit).
+    {
+      return comA1(deps.banco, deps.lerA1, tenant_id, async (tx, abrirA1): Promise<Preparo> => {
         // Outra transmissão da mesma nota em curso: sai sem fazer nada (a trava vale até o fim desta tx).
         if (!(await deps.notas.travarTransmissao(tx, nota_id))) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'em_transmissao' } };
         let nota = await deps.notas.obter(tx, nota_id);
@@ -89,8 +85,9 @@ export function criarTransmissor(deps: DepsTransmissor) {
         }
         // RN-FAT-04: a nota é do ambiente em que nasceu; se a filial mudou, nada sai (o banco recusa o reenvio também).
         if ((await deps.ambiente.ambiente(tx, nota.filial_id)) !== nota.ambiente) return { tipo: 'fim', resultado: { resultado: 'ambiente_mudou' } };
+        let a1: A1DaFilial | null;
         try {
-          aberto = await deps.lerA1(tx, nota.filial_id);
+          a1 = await abrirA1(nota.filial_id);
         } catch (e) {
           if (!(e instanceof ErroCertificadoA1)) throw e;
           // A1 vencido ou revogado entre as fases: a nota fica como está, com o motivo, sem queimar número (RN-CORE-06, RN-FAT-07).
@@ -98,7 +95,6 @@ export function criarTransmissor(deps: DepsTransmissor) {
           await deps.notas.registrarMotivoEnvio(tx, nota.id, `A1 inválido: ${e.message}`);
           return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'a1_invalido' } };
         }
-        const a1 = aberto;
         if (!a1) {
           if (assinar) await deps.notas.registrarMotivoEnvio(tx, nota.id, 'sem certificado A1 ativo para a filial');
           return { tipo: 'fim', resultado: { resultado: 'sem_certificado' } };
@@ -127,10 +123,6 @@ export function criarTransmissor(deps: DepsTransmissor) {
         const enviada = await mudarNota(deps.notas, tx, nota, 'em_autorizacao', { revisao: nota.revisao });
         return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml) };
       });
-      entregue = p.tipo === 'enviar';
-      return p;
-    } finally {
-      if (!entregue) (aberto as A1DaFilial | null)?.credencial.pfx.fill(0);
     }
   }
 
@@ -168,19 +160,9 @@ export function criarTransmissor(deps: DepsTransmissor) {
     const { nota, a1, xmlAssinado, digestValue } = p;
     try {
       const transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
-      const destino = destinoDoLog(transporte);
       const log: TransmissaoRegistrada[] = [];
-      const medir = async <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => {
-        const inicio = agora();
-        const resposta = await chamar();
-        const fim = agora();
-        log.push({ nota_id, servico, destino, cStat: resposta.cStat, xMotivo: resposta.xMotivo.slice(0, 255), enviada_em: inicio.toISOString(), respondida_em: fim.toISOString(), duracao_ms: Math.max(0, fim.getTime() - inicio.getTime()) });
-        return resposta;
-      };
-      /** Grava (e esvazia) o log das chamadas já feitas, na tx que o chamador abriu. */
-      const descarregar = async (t: Transacao): Promise<void> => {
-        for (const reg of log.splice(0)) await deps.notas.registrarTransmissao(t, reg);
-      };
+      const medir = <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => medirChamada(agora, transporte, chamar, { nota_id, servico }, log);
+      const descarregar = (t: Transacao): Promise<void> => descarregarLog(log, (reg) => deps.notas.registrarTransmissao(t, reg));
 
       let retorno: RetornoSefaz;
       if (nota.status === 'autorizada_guarda_pendente') {
