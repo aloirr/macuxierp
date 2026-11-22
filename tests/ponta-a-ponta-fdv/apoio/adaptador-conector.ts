@@ -42,7 +42,11 @@ export interface OpcoesConector extends OpcoesLado {
 
 const BASE_FICTICIA_DUBLE = 'https://duble-hub.invalid';
 
-function clienteDoSdk(o: OpcoesConector): { cliente: ClienteHub; cred: CredencialSdk } {
+/** Cliente do SDK e a credencial na forma dele (também usado pela volta dos pedidos, `cliente-hub-pedidos.ts`). */
+export function clienteDoSdk(o: Pick<OpcoesConector, 'url' | 'credencial' | 'versaoErp'>): {
+  cliente: ClienteHub;
+  cred: CredencialSdk;
+} {
   const base = o.url.replace(/\/integracao\/v1$/, '');
   const local = base.startsWith('http://127.0.0.1:');
   const cliente = criarClienteHub({
