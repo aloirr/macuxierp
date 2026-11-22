@@ -9,6 +9,7 @@
 import { ErroMontagemNFe, type EmissorNFe, type NotaParaEmissaoEntrada } from '@macuxierp/nfe-emissor';
 import { montarNfeProc } from '@macuxierp/nfe-sefaz';
 import { violacao, type Transacao, type Violacao } from '@macuxierp/platform-sdk';
+import { baseEventoDaNota } from './eventos';
 import {
   NotaAutorizadaPayload,
   NotaRejeitadaPayload,
@@ -388,24 +389,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
 export function criarProcessadorRetorno(notas: RepositorioNotas) {
   const mudar = (tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> =>
     mudarNota(notas, tx, nota, para, dados, extra);
-  const base = (n: NotaRegistro, protocolo: string | null): Record<string, unknown> => ({
-    pedido_id: n.pedido_id,
-    ambiente: n.ambiente,
-    nota: {
-      id: n.id,
-      filial_id: n.filial_id,
-      cliente_id: n.cliente_id,
-      serie: n.serie,
-      numero: n.numero,
-      chave_acesso: n.chave_acesso,
-      emitida_em: n.emitida_em,
-      total_centavos: n.total_centavos,
-      protocolo,
-    },
-    itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
-    vendedor_id: n.vendedor_id,
-    quantidade_itens: n.itens.length,
-  });
+  const base = baseEventoDaNota;
 
   /**
    * Retorno da SEFAZ (autorização, recibo ou consulta, já normalizado) aplicado à nota.

@@ -19,7 +19,8 @@ import type { Ambiente, StatusNota } from '../contracts';
 import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, resumoDoItem, type ConteudoNota } from '../domain';
 import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import type { DepsEmissao } from './emissao';
-import type { A1DaFilial, NotaRegistro, RepositorioNotas, TransmissaoRegistrada } from './portas';
+import type { DepsEventos } from './eventos';
+import type { A1DaFilial, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos, RepositorioNotas, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
 
 export const tx = {} as Transacao;
 export const TENANT = IDS.tenant;
@@ -67,6 +68,7 @@ export function repoFake() {
         id: uuid(notas.size + 1),
         status: 'rascunho',
         protocolo: null,
+        autorizada_em: null,
         recibo: null,
         vai_ao_fdv: n.ambiente === 'producao',
         revisao: 1,
@@ -105,7 +107,7 @@ export function repoFake() {
       if (para === 'autorizada') throw new Error('autorizada só por guardarXmlAutorizado (gatilho do banco)');
       if (n.status !== de) throw new Error(`status atual ${n.status}, esperado ${de}`);
       if (dados?.revisao !== undefined && n.revisao !== dados.revisao) throw new Error(`revisão atual ${n.revisao}, esperada ${dados.revisao}`);
-      notas.set(id, { ...n, status: para, protocolo: dados?.protocolo ?? n.protocolo, recibo: dados?.recibo ?? n.recibo });
+      notas.set(id, { ...n, status: para, protocolo: dados?.protocolo ?? n.protocolo, recibo: dados?.recibo ?? n.recibo, autorizada_em: dados?.autorizadaEm ?? n.autorizada_em });
       atualizadaEm.set(id, estado.relogio);
       dadosStatus.push({ para, dados });
       log.push(`status:${para}`);
@@ -189,6 +191,150 @@ export function repoFake() {
 
 export type RepoFake = ReturnType<typeof repoFake>;
 
+/**
+ * Repositório de eventos em memória: imita os gatilhos da 0013 (evento só em nota autorizada, CC-e na sequência, um cancelamento; XML guardado
+ * registra o evento e cancela a nota; faixa até proximo+99, sem sobreposição, só rascunho ou rejeitada; registrada inutiliza a faixa). Divide o
+ * mapa de notas e o `log` com o `repoFake`, para conferir a ORDEM das escritas.
+ */
+export function eventosFake(r: RepoFake, relogio: () => Date = () => r.estado.relogio) {
+  const eventos = new Map<string, EventoRegistro>();
+  const inutilizacoes = new Map<string, InutilizacaoRegistro>();
+  const xmls: { tipo: string; id: string; conteudo: string; protocolo: string }[] = [];
+  const transmissoes: TransmissaoDeEvento[] = [];
+  /** Leases de transmissão: `aberto` até o retorno ser gravado; `vencido` imita o relógio passando de `leaseMin`. */
+  const leases = new Map<string, { chave: string; aberto: boolean; vencido: boolean; base: Omit<TransmissaoDeEvento, 'cStat' | 'xMotivo' | 'enviada_em' | 'respondida_em' | 'duracao_ms'> }>();
+  const vencerLeases = (): void => {
+    for (const l of leases.values()) l.vencido = true;
+  };
+  let n = 5000;
+  const iso = (): string => relogio().toISOString();
+  const proximo = (): number => (r.estado.proximo === 0 ? 100 : r.estado.proximo + 1);
+  const repo: RepositorioEventos = {
+    async listarEventos(_t, nota_id) {
+      return [...eventos.values()].filter((e) => e.nota_id === nota_id).sort((a, b) => a.tipo.localeCompare(b.tipo) || a.n_seq_evento - b.n_seq_evento).map((e) => ({ ...e }));
+    },
+    async obterEvento(_t, id) {
+      const e = eventos.get(id);
+      return e ? { ...e } : null;
+    },
+    async criarEvento(_t, e) {
+      const nota = r.notas.get(e.nota_id);
+      if (nota?.status !== 'autorizada') throw new Error(`RN-FAT-03: evento só em nota autorizada com o XML guardado (status ${nota?.status ?? 'inexistente'})`);
+      const mesmos = [...eventos.values()].filter((x) => x.nota_id === e.nota_id && x.tipo === e.tipo);
+      if (e.tipo === 'cancelamento' && mesmos.length > 0) throw new Error('duplicate key value violates unique constraint "nota_evento_seq_uq"');
+      const prox = Math.max(0, ...mesmos.map((x) => x.n_seq_evento)) + 1;
+      if (e.tipo === 'cce' && e.n_seq_evento !== prox) throw new Error(`RN-FAT-02: a CC-e desta nota é a sequência ${prox}`);
+      if (e.tipo === 'cce' && e.n_seq_evento > 20) throw new Error('new row for relation "nota_evento" violates check constraint');
+      const reg: EventoRegistro = { id: uuid(++n), ...e, status: 'pendente', protocolo: null, c_stat: null, x_motivo: null, registrado_em: null, criado_em: iso(), dh_evento: iso() };
+      eventos.set(reg.id, reg);
+      r.log.push(`evento:pendente:${e.tipo}`);
+      return { ...reg };
+    },
+    async reabrirEvento(_t, id, texto) {
+      const e = eventos.get(id) as EventoRegistro;
+      if (e.status !== 'rejeitado') throw new Error('RN-FAT-02: só o evento rejeitado volta a pendente');
+      const novo = { ...e, status: 'pendente' as const, texto, c_stat: null, x_motivo: null, dh_evento: iso() };
+      eventos.set(id, novo);
+      return { ...novo };
+    },
+    async rejeitarEvento(_t, id, x) {
+      const e = eventos.get(id) as EventoRegistro;
+      if (e.status !== 'pendente') throw new Error('RN-FAT-02: o evento não está pendente');
+      eventos.set(id, { ...e, status: 'rejeitado', c_stat: Number(x.cStat), x_motivo: x.xMotivo });
+      r.log.push('evento:rejeitado');
+    },
+    async guardarXmlEvento(_t, e, xml) {
+      const atual = eventos.get(e.id) as EventoRegistro;
+      if (atual.status !== 'pendente') throw new Error('RN-FAT-03: o XML do evento entra só no evento pendente do mesmo tipo');
+      xmls.push({ tipo: `evento_${e.tipo}`, id: e.id, conteudo: xml.conteudo, protocolo: xml.protocolo });
+      r.log.push(`xml:evento_${e.tipo}`);
+      eventos.set(e.id, { ...atual, status: 'registrado', protocolo: xml.protocolo, registrado_em: xml.dhRegistro });
+      if (e.tipo === 'cancelamento') {
+        r.notas.set(e.nota_id, { ...(r.notas.get(e.nota_id) as NotaRegistro), status: 'cancelada' }); // o gatilho nota_evento_depois
+        r.log.push('status:cancelada');
+      }
+    },
+    async listarInutilizacoes() {
+      return [...inutilizacoes.values()];
+    },
+    async obterInutilizacao(_t, id) {
+      const i = inutilizacoes.get(id);
+      return i ? { ...i } : null;
+    },
+    async criarInutilizacao(_t, i) {
+      const prox = proximo();
+      if (i.numero_inicial > prox) throw new Error(`RN-FAT-01: a inutilização começa no máximo no próximo número (${prox})`);
+      if (i.numero_final > prox + 99) throw new Error(`RN-FAT-01: a inutilização vai no máximo até o número ${prox + 99} (100 a partir do próximo)`);
+      if ([...inutilizacoes.values()].some((x) => x.filial_id === i.filial_id && x.serie === i.serie && x.status !== 'rejeitado' && x.numero_inicial <= i.numero_final && x.numero_final >= i.numero_inicial))
+        throw new Error('RN-FAT-01: faixa já inutilizada (sobreposição)');
+      if ([...r.notas.values()].some((x) => x.serie === i.serie && x.numero >= i.numero_inicial && x.numero <= i.numero_final && x.status !== 'rejeitada' && x.status !== 'rascunho'))
+        throw new Error('RN-FAT-01: a faixa tem nota que não está rejeitada nem em rascunho');
+      if (i.numero_final >= prox) r.estado.proximo = i.numero_final;
+      const reg: InutilizacaoRegistro = { id: uuid(++n), ...i, status: 'pendente', protocolo: null, c_stat: null, x_motivo: null, registrado_em: null, criado_em: iso() };
+      inutilizacoes.set(reg.id, reg);
+      r.log.push('inutilizacao:pendente');
+      return { ...reg };
+    },
+    async rejeitarInutilizacao(_t, id, x) {
+      const i = inutilizacoes.get(id) as InutilizacaoRegistro;
+      inutilizacoes.set(id, { ...i, status: 'rejeitado', c_stat: Number(x.cStat), x_motivo: x.xMotivo });
+      r.log.push('inutilizacao:rejeitada');
+    },
+    async guardarXmlInutilizacao(_t, i, xml) {
+      const atual = inutilizacoes.get(i.id) as InutilizacaoRegistro;
+      if (atual.status !== 'pendente') throw new Error('RN-FAT-03: o XML da inutilização entra só na inutilização pendente');
+      xmls.push({ tipo: 'inutilizacao', id: i.id, conteudo: xml.conteudo, protocolo: xml.protocolo });
+      r.log.push('xml:inutilizacao');
+      inutilizacoes.set(i.id, { ...atual, status: 'registrado', protocolo: xml.protocolo, registrado_em: xml.dhRegistro });
+      for (const x of r.notas.values())
+        if (x.serie === i.serie && x.numero >= i.numero_inicial && x.numero <= i.numero_final && (x.status === 'rascunho' || x.status === 'rejeitada')) r.notas.set(x.id, { ...x, status: 'inutilizada' });
+    },
+    async proximoNumero(_t, _f, _a, _s) {
+      return proximo();
+    },
+    async notasNaFaixa(_t, _f, _a, serie, ini, fim) {
+      return [...r.notas.values()].filter((x) => x.serie === serie && x.numero >= ini && x.numero <= fim).map((x) => ({ numero: x.numero, status: x.status }));
+    },
+    async registrarTransmissao(_t, t) {
+      transmissoes.push(t);
+    },
+    async situacaoTransmissaoEvento(_t, evento_id) {
+      const meus = [...leases.values()].filter((x) => x.chave === `evento:${evento_id}`);
+      return { tentativas: meus.length + transmissoes.filter((x) => x.evento_id === evento_id && !meus.length).length, leaseAtivo: meus.some((x) => x.aberto && !x.vencido) };
+    },
+    async iniciarTransmissao(_t, l) {
+      const chave = `${l.servico}:${l.evento_id ?? l.inutilizacao_id}`;
+      const p = l.servico === 'evento' ? eventos.get(l.evento_id as string) : inutilizacoes.get(l.inutilizacao_id as string);
+      if (p?.status !== 'pendente') return null;
+      if ([...leases.values()].some((x) => x.chave === chave && x.aberto && !x.vencido)) return null;
+      const id = uuid(++n);
+      const { leaseMin: _m, ...base } = l;
+      leases.set(id, { chave, aberto: true, vencido: false, base });
+      return { id };
+    },
+    async concluirTransmissao(_t, id, x) {
+      const l = leases.get(id);
+      if (!l) return;
+      l.aberto = false;
+      transmissoes.push({ ...l.base, ...x, enviada_em: x.respondida_em });
+    },
+    async registrarDivergenciaInutilizacao(_t, id, x) {
+      const i = inutilizacoes.get(id) as InutilizacaoRegistro;
+      if (i.status !== 'pendente') throw new Error('RN-FAT-01: a inutilização não está pendente');
+      inutilizacoes.set(id, { ...i, c_stat: Number(x.cStat), x_motivo: x.xMotivo });
+      r.log.push('inutilizacao:divergente');
+    },
+    async pendentes() {
+      const ativo = (chave: string): boolean => [...leases.values()].some((x) => x.chave === chave && x.aberto && !x.vencido);
+      return [
+        ...[...eventos.values()].filter((e) => e.status === 'pendente' && !ativo(`evento:${e.id}`)).map((e) => ({ tipo: 'evento' as const, id: e.id })),
+        ...[...inutilizacoes.values()].filter((i) => i.status === 'pendente' && i.c_stat !== 563 && !ativo(`inutilizacao:${i.id}`)).map((i) => ({ tipo: 'inutilizacao' as const, id: i.id })),
+      ];
+    },
+  };
+  return { repo, eventos, inutilizacoes, xmls, transmissoes, vencerLeases };
+}
+
 /** CNPJ do A1 de teste: o emitente das notas dos testes (a SEFAZ confere o CNPJ do certificado com o do emitente). */
 export const CNPJ_EMITENTE = CNPJ_EMITENTE_DE_TESTE;
 /** IE do emitente com DV válido no AM. */
@@ -250,7 +396,8 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
     ],
   };
   const espiao = emissorEspiao();
-  const deps: DepsEmissao = {
+  const ev = eventosFake(r);
+  const deps: DepsEmissao & Pick<DepsEventos, 'eventos'> = {
     emissor: espiao.emissor,
     pedidos: { obter: async () => pedido, gravar: async () => 'novo' },
     situacao: { situacao: async () => situacao },
@@ -294,8 +441,9 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
     certificado: { temA1Ativo: async () => (opc.semA1 ? { valido: false, motivo: 'sem_certificado', mensagem: 'Filial sem certificado A1 ativo: cadastre o A1 antes de emitir.' } : { valido: true, valido_ate: '2027-11-21T00:00:00.000Z', dias_para_vencer: 365 }) },
     agora: () => INSTANTE_DE_TESTE,
     sorteio: () => 48_213_705,
+    eventos: ev.repo,
   };
-  return { deps, r, pedido, emissor: espiao.emissor, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
+  return { deps, r, ev, pedido, emissor: espiao.emissor, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
 }
 
 // ---- A porta real SefazTransporte, com respostas no formato real e contagem de chamadas ----
