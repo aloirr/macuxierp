@@ -201,6 +201,45 @@ INSERT INTO pedido.aprovacao (tenant_id, pedido_id, decisao, automatica)
 `;
 }
 
+/** Retrato mínimo que passa no pedido_retrato_endereco_objeto (0016); valores fictícios. */
+export const RETRATO = '{"tipo_pessoa": "PJ", "endereco": {"municipio_ibge": "1302603", "uf": "AM"}}';
+
+export interface NovoPedido {
+  id?: string;
+  tenant?: string;
+  origem?: 'fdv' | 'bko';
+  externalId?: string | null;
+  status?: string;
+  total?: number;
+  pendencias?: string;
+  retrato?: string;
+}
+
+/**
+ * INSERTs de pedido e item do tenant (valores fictícios, sem dado pessoal real). O número do pedido começa em
+ * `primeiroNumero` e avança a cada pedidoSql. Usado em pedido.db.test.ts e pedido-recuo-0027.db.test.ts.
+ */
+export function sqlDePedido(tenant: string, primeiroNumero: number) {
+  let proximoNumero = primeiroNumero;
+  const pedidoSql = (p: NovoPedido = {}): string => {
+    const ext = p.externalId === undefined || p.externalId === null ? 'NULL' : `'${p.externalId}'`;
+    const colStatus = p.status === undefined ? '' : ', status';
+    const valStatus = p.status === undefined ? '' : `, '${p.status}'`;
+    const colPend = p.pendencias === undefined ? '' : ', pendencias';
+    const valPend = p.pendencias === undefined ? '' : `, '${p.pendencias}'`;
+    return `INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
+      total_centavos, external_id${colStatus}${colPend})
+    VALUES ('${p.id ?? randomUUID()}', '${p.tenant ?? tenant}', ${proximoNumero++}, '${p.origem ?? 'bko'}',
+      gen_random_uuid(), gen_random_uuid(), '${p.retrato ?? RETRATO}', now(), ${p.total ?? 1000}, ${ext}${valStatus}${valPend});`;
+  };
+  const itemSql = (pedido: string, sequencia: number, extra: { retrato?: string; faturada?: number } = {}): string =>
+    `INSERT INTO pedido.pedido_item (tenant_id, pedido_id, sequencia, produto_id, produto_retrato, quantidade,
+      preco_unitario_centavos, total_centavos, quantidade_faturada)
+    VALUES ('${tenant}', '${pedido}', ${sequencia}, gen_random_uuid(), '${extra.retrato ?? '{"codigo": "P1"}'}', 10000,
+      100, 100, ${extra.faturada ?? 0});`;
+  return { pedidoSql, itemSql };
+}
+
 /**
  * Chave de acesso fictícia coerente com a nota (cUF 13, AAMM 2611, CNPJ da massa, modelo 55); cnf (cNF, 8 dígitos)
  * diferencia notas de mesmo número em tenants, filiais ou ambientes diferentes (a chave é única no banco). DV fictício

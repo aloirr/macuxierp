@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { TRANSICOES } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { CPF_DO_CLIENTE, IDS, MOTIVO_LIVRE, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoManual, prepararCadastros } from './fixtures-teste';
+import { idFaturadoDaNota } from './eventos';
 import { criarPluginPedido } from './index';
 import { dependenciasEmMemoria } from './memoria';
 
 type Montagem = ReturnType<typeof montar>;
-function montar(o: { limite?: number; saldo?: number; notaEmAutorizacao?: boolean } = {}) {
+function montar(o: { limite?: number; saldo?: number; notaEmAutorizacao?: boolean; notasAutorizadas?: string[] } = {}) {
   const m = dependenciasEmMemoria(o);
   prepararCadastros(m.cadastros, o);
   const amb = criarAmbiente(criarPluginPedido(m.deps));
@@ -327,6 +328,31 @@ describe('aprovação humana (RN-PED-03)', () => {
     const q = (await lancar(n)).corpo;
     expect(await n.chamar('POST', `/pedidos/${q.id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } })).toMatchObject({ status: 422 });
     expect(n.armazem.pedidos[0]?.status).toBe('aprovado');
+  });
+});
+
+describe('cancelar com nota autorizada (T-0015, RN-PED-02)', () => {
+  const NOTA = '00000000-0000-4000-8000-000000000301';
+  const cancelar = (t: Montagem, id: string) => t.chamar('POST', `/pedidos/${id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } });
+  it('RN-PED-02: nota autorizada ainda não aplicada impede o cancelamento e devolve só os ids pendentes', async () => {
+    const t = montar({ notasAutorizadas: [NOTA] });
+    const p = (await lancar(t)).corpo;
+    const r = await cancelar(t, p.id);
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', mensagem: 'O pedido tem nota autorizada ainda não registrada: aguarde alguns segundos e tente de novo', detalhes: { notas_pendentes: [NOTA] } } });
+    expect(t.armazem.pedidos[0]?.status).toBe('aprovado');
+  });
+  it('RN-PED-02: com a nota já aplicada o faturado_parcial cancela o saldo', async () => {
+    const t = montar({ notasAutorizadas: [NOTA] });
+    const p = (await lancar(t)).corpo;
+    const g = t.armazem.pedidos[0]!;
+    g.status = 'faturado_parcial';
+    t.armazem.eventos.push({ pedido_id: g.id, de: 'aprovado', para: 'faturado_parcial', ator_tipo: 'sistema', ator_id: null, motivo_codigo: null, motivo_texto: null, pendencias: null, evento_id: idFaturadoDaNota(NOTA), ocorrido_em: new Date(), id: 'e1' });
+    expect(await cancelar(t, p.id)).toMatchObject({ status: 200, corpo: { status: 'cancelado' } });
+  });
+  it('RN-PED-02: nota em autorização continua impedindo, com a mensagem própria', async () => {
+    const t = montar({ notaEmAutorizacao: true });
+    const p = (await lancar(t)).corpo;
+    expect(await cancelar(t, p.id)).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', mensagem: 'O pedido tem nota em autorização: aguarde o resultado antes de cancelar' } });
   });
 });
 
