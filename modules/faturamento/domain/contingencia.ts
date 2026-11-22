@@ -1,39 +1,30 @@
 /**
  * Contingência da NF-e 55. Funções puras, sem I/O. Regras (doc 03 v0.2.1):
- * RN-FAT-05 (o operador decide a entrada; o sistema sugere), RN-FAT-08 (mesma série e número; tpEmis e xJust no XML; EPEC só conta como faturada
- * após o evento), RN-FAT-09 (o operador encerra; EPEC em fila na volta, dentro do prazo), RN-FAT-10 (filial com NF-e simulada não entra).
- * Modalidades v1: SVC-AN (tpEmis 6), SVC-RS (tpEmis 7) e EPEC (tpEmis 4, evento 110140). FS-DA fora da v1.
+ * RN-FAT-05 (o operador decide a entrada; o sistema sugere), RN-FAT-08 (mesma série e número; tpEmis e xJust no XML; EPEC conta como faturada desde o evento autorizado, ainda "vinculado, pendente de autorização"), RN-FAT-09 (o operador encerra; EPEC em fila na volta, dentro do prazo), RN-FAT-10 (filial com NF-e simulada não entra).
+ * Modalidades v1 (coluna `modalidade`): svc_an (tpEmis 6), svc_rs (tpEmis 7) e epec (tpEmis 4, evento 110140); no XML ficam os nomes do Manual (tpEmis, dhCont, xJust). FS-DA fora da v1.
  */
 import type { StatusNota } from '../contracts';
 import type { ConteudoNota } from './tipos-nota';
 import { validarTransicao } from './estados';
 import { violacao, type Violacao } from './violacao';
 
-export type ModalidadeContingencia = 'SVC-AN' | 'SVC-RS' | 'EPEC';
+/** Valores da coluna `modalidade` de faturamento.contingencia (0013 + 0032 acrescenta 'epec'). A contingência é por filial E ambiente: a API filtra (tenant, filial, ambiente) e checa a uma-aberta-por-vez; o domínio não recebe o ambiente. */
+export type ModalidadeContingencia = 'svc_an' | 'svc_rs' | 'epec';
 export type TpEmisContingencia = 4 | 6 | 7;
-export const TP_EMIS_DA_MODALIDADE: Readonly<Record<ModalidadeContingencia, TpEmisContingencia>> = { 'SVC-AN': 6, 'SVC-RS': 7, EPEC: 4 };
+export const TP_EMIS_DA_MODALIDADE: Readonly<Record<ModalidadeContingencia, TpEmisContingencia>> = { 'svc_an': 6, 'svc_rs': 7, epec: 4 };
 
-/** Qual SVC atende cada UF (sigla -> 'SVC-AN' | 'SVC-RS'). Vem por parâmetro: tabela do Manual de Contingência (conferir com o fiscal). */
-export type TabelaSvc = Readonly<Record<string, 'SVC-AN' | 'SVC-RS'>>;
-
-/**
- * Tabela padrão (conferir com o Manual/NT antes de produção; a fonte oficial é do fiscal). SVC-RS atende AM, BA, CE, GO, MA, MS, MT, PA, PE, PI e PR;
- * as demais UFs usam SVC-AN.
- */
-export const TABELA_SVC_PADRAO: TabelaSvc = Object.fromEntries([
-  ...['AM', 'BA', 'CE', 'GO', 'MA', 'MS', 'MT', 'PA', 'PE', 'PI', 'PR'].map((u) => [u, 'SVC-RS'] as const),
-  ...['AC', 'AL', 'AP', 'DF', 'ES', 'MG', 'PB', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'].map((u) => [u, 'SVC-AN'] as const),
-]);
+/** Qual SVC atende cada UF (sigla -> 'svc_an' | 'svc_rs'). Vem por parâmetro: a fonte única é `SVC_DA_UF` de packages/nfe-sefaz (ADR 0011); o domain não guarda tabela. CE, PA e PI ficam fora do SVC até a confirmação do fiscal (só EPEC); AM -> SVC-RS. */
+export type TabelaSvc = Readonly<Record<string, 'svc_an' | 'svc_rs'>>;
 
 /** SVC que atende a UF do emitente; nulo quando a UF não consta na tabela (o chamador trata como violação). */
-export function modalidadeDaUf(uf: string, tabela: TabelaSvc): 'SVC-AN' | 'SVC-RS' | null {
+export function modalidadeDaUf(uf: string, tabela: TabelaSvc): 'svc_an' | 'svc_rs' | null {
   return tabela[uf.trim().toUpperCase()] ?? null;
 }
 
-export const XJUST_MIN = 15;
-export const XJUST_MAX = 256;
+export const MOTIVO_MIN = 15;
+export const MOTIVO_MAX = 256;
 /** Tolerância de relógio para dhCont "no futuro" (ms). */
-export const TOLERANCIA_DHCONT_MS = 5 * 60 * 1000;
+export const TOLERANCIA_INICIO_MS = 5 * 60 * 1000;
 
 export type ConsultaStatus = 'ok' | 'indisponivel' | 'desconhecida';
 export type MotivoSugestao = 'consulta_indisponivel' | 'tempo_limite' | 'nenhum';
@@ -52,8 +43,10 @@ export interface EntradaContingencia {
   /** RN-FAT-10: bandeira `faturamento_real_nfe_simulada` da configuracao_filial. */
   nfeSimulada: boolean;
   modalidade: ModalidadeContingencia;
-  xJust: string;
-  dhCont: Date;
+  /** Coluna `motivo` de faturamento.contingencia (vira xJust no XML). */
+  motivo: string;
+  /** Coluna `inicio_em` (vira dhCont no XML). */
+  inicioEm: Date;
   agora: Date;
 }
 
@@ -62,23 +55,23 @@ export function validarEntradaContingencia(e: EntradaContingencia): Violacao[] {
   const v: Violacao[] = [];
   if (e.nfeSimulada) v.push(violacao('RN-FAT-10', 'nfeSimulada', 'Filial com NF-e simulada não entra em contingência.'));
   if (!(e.modalidade in TP_EMIS_DA_MODALIDADE)) v.push(violacao('RN-FAT-05', 'modalidade', 'Modalidade de contingência desconhecida.'));
-  if (e.xJust !== e.xJust.trim()) v.push(violacao('RN-FAT-05', 'xJust', 'A justificativa não pode ter espaços no início ou no fim.'));
-  const n = e.xJust.trim().length;
-  if (n < XJUST_MIN || n > XJUST_MAX) v.push(violacao('RN-FAT-05', 'xJust', `A justificativa deve ter de ${XJUST_MIN} a ${XJUST_MAX} caracteres (tem ${n}).`));
-  if (Number.isNaN(e.dhCont.getTime())) v.push(violacao('RN-FAT-05', 'dhCont', 'Data e hora da entrada em contingência inválidas.'));
-  else if (e.dhCont.getTime() > e.agora.getTime() + TOLERANCIA_DHCONT_MS) v.push(violacao('RN-FAT-05', 'dhCont', 'A entrada em contingência não pode estar no futuro.'));
+  if (e.motivo !== e.motivo.trim()) v.push(violacao('RN-FAT-05', 'motivo', 'A justificativa não pode ter espaços no início ou no fim.'));
+  const n = e.motivo.trim().length;
+  if (n < MOTIVO_MIN || n > MOTIVO_MAX) v.push(violacao('RN-FAT-05', 'motivo', `A justificativa deve ter de ${MOTIVO_MIN} a ${MOTIVO_MAX} caracteres (tem ${n}).`));
+  if (Number.isNaN(e.inicioEm.getTime())) v.push(violacao('RN-FAT-05', 'inicioEm', 'Data e hora da entrada em contingência inválidas.'));
+  else if (e.inicioEm.getTime() > e.agora.getTime() + TOLERANCIA_INICIO_MS) v.push(violacao('RN-FAT-05', 'inicioEm', 'A entrada em contingência não pode estar no futuro.'));
   return v;
 }
 
 export interface ContingenciaDaNota {
   modalidade: ModalidadeContingencia;
-  xJust: string;
-  dhCont: Date;
+  motivo: string;
+  inicioEm: Date;
 }
 
 /** Devolve um conteúdo novo com tpEmis, dhCont (ISO UTC) e xJust (RN-FAT-08; série e número não mudam); não muda o original. A chave de acesso muda com tpEmis (dígito 35): é refeita na identidade. */
 export function aplicarContingenciaAoConteudo(c: ConteudoNota, k: ContingenciaDaNota): ConteudoNota {
-  return { ...c, contingencia: { tpEmis: TP_EMIS_DA_MODALIDADE[k.modalidade], dhCont: k.dhCont.toISOString(), xJust: k.xJust.trim() } };
+  return { ...c, contingencia: { tpEmis: TP_EMIS_DA_MODALIDADE[k.modalidade], dhCont: k.inicioEm.toISOString(), xJust: k.motivo.trim() } };
 }
 
 export interface NotaNaVolta {
@@ -108,17 +101,19 @@ export function transicaoVoltaContingencia(n: NotaNaVolta): Violacao[] {
  * (nota `emitida_contingencia` com `epecAutorizado`), ou autorizada de fato na volta. Usado nas etapas 3/4 no saldo do pedido (`quantidadeFaturada`).
  */
 export function contaComoFaturada(n: NotaNaVolta): boolean {
-  if (n.tpEmis === 4) return n.status === 'autorizada' || (n.status === 'emitida_contingencia' && n.epecAutorizado === true);
+  if (n.tpEmis === 4) return n.epecAutorizado === true && !['cancelada', 'inutilizada', 'denegada'].includes(n.status);
   return n.status === 'autorizada';
 }
 
-/** RN-FAT-09: limite para transmitir a EPEC = emissão + `prazoHoras` (parâmetro; conferir com o Manual/NT (fiscal)). */
-export function prazoEpec(p: { emitidaEm: Date; prazoHoras: number }): Date {
-  return new Date(p.emitidaEm.getTime() + p.prazoHoras * 3_600_000);
+/** RN-FAT-09 (PO, PR #271): a transmissão posterior sai assim que a SEFAZ normal responder, no máximo 168 h depois da AUTORIZAÇÃO DO EPEC. */
+export const PRAZO_EPEC_HORAS = 168;
+/** RN-FAT-09: limite = autorização do EPEC (`epec_autorizada_em`) + `prazoHoras` (padrão 168 h). Não conta da emissão nem do encerramento da contingência. */
+export function prazoEpec(p: { epecAutorizadoEm: Date; prazoHoras?: number }): Date {
+  return new Date(p.epecAutorizadoEm.getTime() + (p.prazoHoras ?? PRAZO_EPEC_HORAS) * 3_600_000);
 }
 
 export type SituacaoPrazoEpec = 'no_prazo' | 'perto_do_fim' | 'vencido';
-/** Janela padrão de "perto do fim" (horas; conferir com o fiscal/PO). Vencido -> alerta vermelho ao administrador (RN-FAT-09). */
+/** Janela padrão de "perto do fim" (horas): decisão de UX nossa, não do Manual (conferir com o PO). Vencido -> alerta vermelho ao administrador (RN-FAT-09). */
 export const JANELA_PERTO_DO_FIM_HORAS = 6;
 export function situacaoPrazoEpec(agora: Date, prazo: Date, janelaHoras: number = JANELA_PERTO_DO_FIM_HORAS): SituacaoPrazoEpec {
   const restante = prazo.getTime() - agora.getTime();
