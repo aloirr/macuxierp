@@ -109,7 +109,7 @@ export function digestNoGhcr(img, exec = executar) {
   let saida = '';
   try {
     saida = String(
-      exec('bash', ['scripts/deploy/demo/ghcr-tentar.sh', 'digest da API no GHCR', '--',
+      exec('bash', ['scripts/deploy/producao/ghcr-tentar.sh', 'digest da API no GHCR', '--',
         'docker', 'buildx', 'imagetools', 'inspect', img, '--format', '{{.Manifest.Digest}}']),
     ).trim();
   } catch (e) {
