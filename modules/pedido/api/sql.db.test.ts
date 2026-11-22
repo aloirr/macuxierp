@@ -21,6 +21,7 @@ import { criarServico, type Efeitos } from './servico';
 import { idFaturadoDaNota } from './eventos';
 import { consumidoresDoPedido } from './consumidor-nota';
 import { repositorioSql } from './sql';
+import { RecuoRecusadoPeloBanco } from './util';
 
 const AGORA = new Date('2026-11-21T15:00:00Z');
 const USUARIO = '22222222-2222-4222-8222-222222222222';
@@ -439,6 +440,73 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [p.id]))[0]?.status).toBe('faturado_parcial');
     autorizadas = [N1];
     await expect(cancelar()).resolves.toMatchObject({ status: 'cancelado' });
+  });
+
+  it('T-0015 (0027): nota cancelada recua o pedido com o papel worker, sem publicar evento; reprocesso não duplica; o app não recua', async () => {
+    const T = await criarTenant(efemero.admin, 'nota-cancelada', ['pedido']);
+    const p = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 30_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }, { produto_id: IDS.produto2, quantidade: 10_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    const alertas: { codigo: string; contexto?: Record<string, string> }[] = [];
+    const [autorizada, cancelada] = consumidoresDoPedido({ outbox: new OutboxPg(), relogio: new RelogioFixo(AGORA), alertar: (_t, codigo, contexto) => void alertas.push({ codigo, ...(contexto ? { contexto } : {}) }) });
+    const nid = (n: number) => `00000000-0000-4000-8000-00000000030${n}`;
+    const itensDe = (seq: number, quantidade: number) => [{ sequencia: seq, quantidade, valor_centavos: quantidade / 10 }];
+    const evento = (nome: string, n: number, itens: unknown, id?: string) => criarEvento({
+      nome, tenant_id: T, agregado_id: nid(n), ator: 'sistema', request_id: 'req-nota',
+      payload: { pedido_id: p.id, ambiente: 'homologacao', nota: { id: nid(n), numero: n, serie: 1, chave_acesso: '4'.repeat(44), emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: 1 }, itens },
+    }, AGORA, id);
+    const tratar = (c: typeof autorizada, e: ReturnType<typeof evento>) => worker.comTenant(T, (tx) => c!.tratar(e, tx));
+    const estado = async () => (await admin('SELECT status, valor_faturado_centavos::int AS v, (SELECT string_agg(quantidade_faturada::int::text, \',\' ORDER BY sequencia) FROM pedido.pedido_item WHERE pedido_id = $1) AS q FROM pedido.pedido WHERE id = $1', [p.id]))[0];
+    const faturados = () => admin("SELECT count(*)::int AS n FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'pedido.pedido.faturado@1'", [p.id]);
+    // cancelada antes de qualquer autorizada: alerta e não mexe
+    await tratar(cancelada, evento('faturamento.nota.cancelada@1', 1, itensDe(1, 30_000)));
+    expect(alertas.map((a) => a.codigo)).toEqual(['nota_cancelada_sem_aplicacao']);
+    expect((await estado())?.status).toBe('aprovado');
+    // duas notas autorizadas levam a faturado
+    await tratar(autorizada, evento('faturamento.nota.autorizada@1', 1, itensDe(1, 30_000)));
+    await tratar(autorizada, evento('faturamento.nota.autorizada@1', 2, itensDe(2, 10_000)));
+    expect(await estado()).toEqual({ status: 'faturado', v: 4000, q: '30000,10000' });
+    const antes = (await faturados())[0]?.n;
+    // faturado → faturado_parcial → aprovado, por duas canceladas
+    const c1 = evento('faturamento.nota.cancelada@1', 1, itensDe(1, 30_000));
+    await tratar(cancelada, c1);
+    await tratar(cancelada, evento('faturamento.nota.cancelada@1', 1, itensDe(1, 30_000))); // reprocesso: outro evento da mesma nota
+    expect(await estado()).toEqual({ status: 'faturado_parcial', v: 1000, q: '0,10000' });
+    await tratar(cancelada, evento('faturamento.nota.cancelada@1', 2, itensDe(2, 10_000)));
+    expect(await estado()).toEqual({ status: 'aprovado', v: 0, q: '0,0' });
+    expect(alertas.map((a) => a.codigo)).toEqual(['nota_cancelada_sem_aplicacao']);
+    // histórico: ator sistema, motivo nota_cancelada, uma linha por nota; nenhum faturado@1 novo
+    expect(await admin("SELECT de, para, ator_tipo, motivo_codigo FROM pedido.pedido_evento WHERE pedido_id = $1 AND motivo_codigo = 'nota_cancelada' ORDER BY ocorrido_em, created_at", [p.id]))
+      .toEqual([{ de: 'faturado', para: 'faturado_parcial', ator_tipo: 'sistema', motivo_codigo: 'nota_cancelada' }, { de: 'faturado_parcial', para: 'aprovado', ator_tipo: 'sistema', motivo_codigo: 'nota_cancelada' }]);
+    expect((await faturados())[0]?.n).toBe(antes);
+    expect((await admin("SELECT current_setting('macuxierp.recuo_nota', true) AS g"))[0]?.g ?? '').not.toBe('on');
+    // faturado_parcial → aprovado direto: nota 3 fatura parte, nota 3 cancelada
+    const q = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 30_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    const sobre = (nome: string, n: number) => criarEvento({
+      nome, tenant_id: T, agregado_id: nid(n), ator: 'sistema', request_id: 'req-nota',
+      payload: { pedido_id: q.id, ambiente: 'homologacao', nota: { id: nid(n), numero: n, serie: 1, chave_acesso: '5'.repeat(44), emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: 1 }, itens: itensDe(1, 10_000) },
+    }, AGORA);
+    await tratar(autorizada, sobre('faturamento.nota.autorizada@1', 7));
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [q.id]))[0]?.status).toBe('faturado_parcial');
+    // o app (sem o papel de worker) não recua, nem com o GUC ligado: com o estado coerente para aprovado, o gatilho recusa (MXP02)
+    await admin('UPDATE pedido.pedido_item SET quantidade_faturada = 0 WHERE pedido_id = $1', [q.id]);
+    await admin('UPDATE pedido.pedido SET valor_faturado_centavos = 0 WHERE id = $1', [q.id]);
+    await expect(app.comTenant(T, async (tx) => {
+      await tx.consultar("SELECT set_config('macuxierp.recuo_nota', 'on', true)");
+      await tx.consultar("UPDATE pedido.pedido SET status = 'aprovado' WHERE id = $1", [q.id]);
+    })).rejects.toMatchObject({ code: 'MXP02' });
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [q.id]))[0]?.status).toBe('faturado_parcial');
+    await admin('UPDATE pedido.pedido_item SET quantidade_faturada = 10000 WHERE pedido_id = $1', [q.id]);
+    await admin('UPDATE pedido.pedido SET valor_faturado_centavos = 1000 WHERE id = $1', [q.id]);
+    await tratar(cancelada, sobre('faturamento.nota.cancelada@1', 7));
+    expect((await admin('SELECT status, valor_faturado_centavos::int AS v FROM pedido.pedido WHERE id = $1', [q.id]))[0]).toEqual({ status: 'aprovado', v: 0 });
+    // repo direto com valor incoerente (aprovado com faturado > 0): o gatilho recusa, o savepoint é desfeito e a mesma transação segue utilizável
+    const r = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 30_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    await tratar(autorizada, { ...sobre('faturamento.nota.autorizada@1', 8), payload: { ...(sobre('faturamento.nota.autorizada@1', 8).payload as Record<string, unknown>), pedido_id: r.id } } as ReturnType<typeof evento>);
+    await worker.comTenant(T, async (tx) => {
+      await expect(repositorioSql(tx).aplicarRecuo(r.id, [{ sequencia: 1, quantidade_faturada: 10_000 }], 1000, 'aprovado')).rejects.toBeInstanceOf(RecuoRecusadoPeloBanco);
+      const guc = (await tx.consultar<{ g: string | null }>("SELECT current_setting('macuxierp.recuo_nota', true) AS g"))[0]?.g ?? '';
+      expect(['', 'off']).toContain(guc);
+      expect((await tx.consultar<{ status: string }>('SELECT status FROM pedido.pedido WHERE id = $1', [r.id]))[0]?.status).toBe('faturado_parcial');
+    });
   });
 
   it('RN-CORE-07: a exportação LGPD traz as 5 tabelas do schema pedido, só do tenant, com o item retirado e o retrato do cliente', async () => {

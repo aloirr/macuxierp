@@ -98,14 +98,20 @@ export function faturadoDaNota(nota: NotaAutorizadaLida, p: PedidoGravado, statu
   };
 }
 
-/** UUID determinístico (forma v5) do `faturado@1` de uma nota. Única fonte da regra do id derivado. */
-export function idFaturadoDaNota(notaId: string): string {
-  const h = createHash('sha1').update(`pedido.pedido.faturado@1:${notaId}`).digest();
+/** UUID determinístico (forma v5) a partir de uma chave: a mesma nota gera sempre o mesmo id. */
+function uuidDeterministico(chave: string): string {
+  const h = createHash('sha1').update(chave).digest();
   h[6] = ((h[6] as number) & 0x0f) | 0x50;
   h[8] = ((h[8] as number) & 0x3f) | 0x80;
   const x = h.subarray(0, 16).toString('hex');
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
 }
+
+/** `evento_id` do `faturado@1` (e da linha de histórico) de uma nota autorizada. */
+export const idFaturadoDaNota = (notaId: string): string => uuidDeterministico(`pedido.pedido.faturado@1:${notaId}`);
+
+/** `evento_id` da linha de histórico do recuo por uma nota cancelada (não há evento publicado; serve só à idempotência). */
+export const idRecuoDaNota = (notaId: string): string => uuidDeterministico(`pedido.pedido.recuo-nota-cancelada:${notaId}`);
 
 /** Ids das notas já aplicadas ao pedido (têm o `pedido_evento` de id derivado), numa consulta só. */
 export async function notasAplicadas(repo: Pick<RepoPedidos, 'eventosRegistrados'>, pedidoId: string, notaIds: string[]): Promise<Set<string>> {

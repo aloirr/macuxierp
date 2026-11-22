@@ -2,7 +2,7 @@
  * Detalhe do pedido (RF-PED-04): cabeçalho, itens, pendências com esperado e informado, histórico e decisão, já
  * formatados para a tela (R$, quantidade, data no fuso do tenant, português). Funções puras sobre o contrato `Pedido`.
  */
-import { textoMotivo } from '../domain/motivos';
+import { textoMotivo, textoMotivoSistema } from '../domain/motivos';
 import { MotivoCodigo, type CodigoPendencia, Pedido, PendenciaDetalhada } from '../contracts';
 import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { ROTULO_ORIGEM, ROTULO_STATUS } from './lista';
@@ -27,7 +27,7 @@ export const ROTULO_PERFIL: Readonly<Record<string, string>> = { administrador: 
 function motivoLegivel(codigo: string | null, texto: string | null): string {
   if (!codigo) return '';
   const c = MotivoCodigo.safeParse(codigo);
-  return c.success ? textoMotivo(c.data, texto) : codigo;
+  return c.success ? textoMotivo(c.data, texto) : (textoMotivoSistema(codigo) ?? codigo);
 }
 
 /** Unidade do esperado/informado por código (contratos: `PendenciaDetalhada`). */
