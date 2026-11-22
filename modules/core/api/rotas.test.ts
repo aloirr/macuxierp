@@ -16,7 +16,7 @@ import {
   type RespostaRota,
 } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxierp/platform-sdk/testes';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { decifrarA1, lerChaveA1 } from './cifra';
 import { LeitorPfxTls } from './leitor-pfx';
 import { PfxInvalido, type DadosPfx, type LeitorPfx, type LinhaAmbiente } from './portas';
@@ -427,10 +427,14 @@ describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próp
     }
   }
 
+  // A geração de chave RSA pelo openssl é a parte lenta: gera os dois A1 uma vez por arquivo, fora do tempo dos testes.
   let pfx: Buffer;
-  beforeEach(() => {
-    if (temOpenssl && !pfx) pfx = gerarPfx('EMPRESA PILOTO LTDA:11222333000262', 'senha-gerada-no-teste');
-  });
+  let pfxOutraRaiz: Buffer;
+  beforeAll(() => {
+    if (!temOpenssl) return;
+    pfx = gerarPfx('EMPRESA PILOTO LTDA:11222333000262', 'senha-gerada-no-teste');
+    pfxOutraRaiz = gerarPfx('OUTRA EMPRESA SA:11444777000161', 'x-teste');
+  }, 60_000);
 
   it.skipIf(!temOpenssl)('RN-CORE-06: lê titular, CNPJ, validade e impressão digital; senha errada falha sem vazar', async () => {
     const leitor = new LeitorPfxTls();
@@ -456,10 +460,9 @@ describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próp
   });
 
   it.skipIf(!temOpenssl)('RN-CORE-06: A1 de outra raiz de CNPJ é recusado com o arquivo real', async () => {
-    const outro = gerarPfx('OUTRA EMPRESA SA:11444777000161', 'x-teste');
     const t = montar(new LeitorPfxTls());
-    const d = await new LeitorPfxTls().abrir(outro, 'x-teste');
-    await regra(t.chamar('POST', '/certificados', { corpo: { filial_id: FILIAL, senha: 'x-teste' }, arquivos: { arquivo: new ArquivoRecebido('arquivo', 'a1.pfx', 'application/x-pkcs12', outro) }, agora: new Date(d.valido_de.getTime() + 86_400_000) }), 'RN-CORE-06');
+    const d = await new LeitorPfxTls().abrir(pfxOutraRaiz, 'x-teste');
+    await regra(t.chamar('POST', '/certificados', { corpo: { filial_id: FILIAL, senha: 'x-teste' }, arquivos: { arquivo: new ArquivoRecebido('arquivo', 'a1.pfx', 'application/x-pkcs12', pfxOutraRaiz) }, agora: new Date(d.valido_de.getTime() + 86_400_000) }), 'RN-CORE-06');
   });
 });
 
