@@ -8,7 +8,7 @@
  * `{ pagamentos, cobranca }` (ver "Pendências" do README); `transporte.revisao` conta as gravações do conteúdo (1 na emissão, +1 no reenvio)
  * e é a `versao` do XML assinado que o cobre. O XML assinado vai em `nota_xml` (tipo `nfe_assinada`, só INSERT, `UNIQUE (nota_id, versao)`).
  */
-import { criarEvento, erros, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
+import { criarEvento, erros, FUSO_PADRAO, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
 import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
@@ -20,8 +20,6 @@ import { repositorioTitulosSql } from './sql-titulos';
 
 type Dict = Record<string, unknown>;
 
-/** PENDÊNCIA (README): fuso fixo porque a v1 só tem tenant no AM; passa a vir do tenant (RN-CORE). */
-const FUSO_TENANT = 'America/Manaus';
 const ISO = (c: string): string => `to_char(${c} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
 const json = (v: unknown): string | null => (v === null || v === undefined ? null : JSON.stringify(v));
 
@@ -320,7 +318,7 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
       await deps.outbox.gravar(tx, envelope);
     },
 
-    async listar(tx, f: FiltroNotas): Promise<Pagina<NotaResumo>> {
+    async listar(tx, f: FiltroNotas, fuso = FUSO_PADRAO): Promise<Pagina<NotaResumo>> {
       const linhas = await tx.consultar<NotaResumo>(
         `SELECT ${COLUNAS_RESUMO}, n.destinatario_retrato->>'razao_social' AS cliente_razao_social, ${COLUNAS_FILIAL_PEDIDO}
            FROM ${DE_NOTA}
@@ -328,11 +326,11 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
             AND ($1::uuid IS NULL OR n.filial_id = $1) AND ($2::uuid IS NULL OR n.cliente_id = $2) AND ($3::uuid IS NULL OR n.pedido_id = $3)
             AND ($4::text IS NULL OR n.status = $4) AND ($5::text IS NULL OR n.ambiente = $5) AND ($6::int IS NULL OR n.serie = $6)
             AND ($7::int IS NULL OR n.numero = $7)
-            AND ($8::date IS NULL OR n.emitida_em >= ($8::date)::timestamp AT TIME ZONE '${FUSO_TENANT}')
-            AND ($9::date IS NULL OR n.emitida_em < (($9::date + 1))::timestamp AT TIME ZONE '${FUSO_TENANT}')
+            AND ($8::date IS NULL OR n.emitida_em >= ($8::date)::timestamp AT TIME ZONE $12::text)
+            AND ($9::date IS NULL OR n.emitida_em < (($9::date + 1))::timestamp AT TIME ZONE $12::text)
             AND ($10::uuid IS NULL OR n.id > $10)
           ORDER BY n.id LIMIT $11`,
-        [f.filial_id ?? null, f.cliente_id ?? null, f.pedido_id ?? null, f.status ?? null, f.ambiente ?? null, f.serie ?? null, f.numero ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1],
+        [f.filial_id ?? null, f.cliente_id ?? null, f.pedido_id ?? null, f.status ?? null, f.ambiente ?? null, f.serie ?? null, f.numero ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1, fuso],
       );
       return paginar(linhas, f.limite);
     },
@@ -594,18 +592,18 @@ export const pedidosAprovadosSql: PedidosAprovados = {
   async marcarCancelado(tx, pedido_id) {
     await tx.consultar(`UPDATE faturamento.pedido_a_faturar SET status = 'cancelado', updated_at = now() WHERE pedido_id = $1 AND status <> 'cancelado' AND deleted_at IS NULL`, [pedido_id]);
   },
-  async listar(tx, f: FiltroPedidosAFaturar): Promise<Pagina<PedidoAFaturarResumo>> {
+  async listar(tx, f: FiltroPedidosAFaturar, fuso = FUSO_PADRAO): Promise<Pagina<PedidoAFaturarResumo>> {
     const linhas = await tx.consultar<LinhaPedidoResumo>(
       `SELECT ${COLUNAS_PEDIDO_RESUMO}
          FROM faturamento.pedido_a_faturar p
         WHERE p.deleted_at IS NULL
           AND (($3::text IS NULL AND p.status IN ('a_faturar', 'faturado_parcial')) OR p.status = $3)
           AND ($1::uuid IS NULL OR p.filial_id = $1) AND ($2::uuid IS NULL OR p.cliente_id = $2)
-          AND ($4::date IS NULL OR p.recebido_em >= ($4::date)::timestamp AT TIME ZONE '${FUSO_TENANT}')
-          AND ($5::date IS NULL OR p.recebido_em < (($5::date + 1))::timestamp AT TIME ZONE '${FUSO_TENANT}')
+          AND ($4::date IS NULL OR p.recebido_em >= ($4::date)::timestamp AT TIME ZONE $8::text)
+          AND ($5::date IS NULL OR p.recebido_em < (($5::date + 1))::timestamp AT TIME ZONE $8::text)
           AND ($6::uuid IS NULL OR p.id > $6)
         ORDER BY p.id LIMIT $7`,
-      [f.filial_id ?? null, f.cliente_id ?? null, f.status ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1],
+      [f.filial_id ?? null, f.cliente_id ?? null, f.status ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1, fuso],
     );
     return paginar(linhas.map((l) => ({ ...l, total_centavos: centavosInteiros(l.total_centavos) })), f.limite);
   },

@@ -5,7 +5,7 @@ import { manifest } from '../manifest';
 import * as publico from './index';
 import {
   ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, faixaDoTitulo, rotuloDaForma, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
-  contadorDeCaracteres, dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, hojeCivil, motivosDasAcoes, perfilVeFaturamento, requisicaoBaixa,
+  contadorDeCaracteres, dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, paginaNoFuso, perfilVeFaturamento, urlDaConfiguracaoDaFilial, requisicaoBaixa,
   requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type NotaParaAcao,
 } from './index';
@@ -175,6 +175,26 @@ describe('colunas e CSV', () => {
     expect(csv[2]).toContain('12/1;—;—;');
     expect(colunasDaPagina('notas', 'America/Manaus').map((c) => c.id).slice(0, 3)).toEqual(['numero', 'pedido', 'filial']);
   });
+  it('RF-FAT-01: urlDaConfiguracaoDaFilial aponta para a configuração da filial na API', () => {
+    expect(urlDaConfiguracaoDaFilial(ID)).toBe(`/v1/faturamento/filiais/${ID}/configuracao`);
+  });
+
+  it('RD-0772: paginaNoFuso refaz as colunas de data e hora no fuso pedido; o descritor fica no padrão (Manaus)', () => {
+    const n = { numero: 1, serie: 1, emitida_em: '2026-11-21T14:00:00.000Z' } as never;
+    const col = (p: { colunas: readonly { id: string; valor: (l: never) => unknown }[] }) => String(p.colunas.find((c) => c.id === 'emitida_em')!.valor(n));
+    expect(col(paginaNotas as never)).toBe('21/11/2026 10:00');
+    expect(col(paginaNoFuso(paginaNotas, 'America/Rio_Branco') as never)).toBe('21/11/2026 09:00');
+    expect(col(paginaNoFuso(paginaNotas, 'America/Sao_Paulo') as never)).toBe('21/11/2026 11:00');
+  });
+
+  it('RN-FAT-02: números alinham à direita (tipo numero): Número/Série, Pedido, Nota e Parcela', () => {
+    const tipos = (id: string) => Object.fromEntries(colunasDaPagina(id, 'America/Manaus').map((c) => [c.id, c.tipo]));
+    expect(tipos('notas')).toMatchObject({ numero: 'numero', pedido: 'numero' });
+    expect(tipos('rejeicoes')).toMatchObject({ numero: 'numero' });
+    expect(tipos('pedidos-a-faturar')).toMatchObject({ numero: 'numero' });
+    expect(tipos('titulos')).toMatchObject({ nota: 'numero', parcela: 'numero' });
+  });
+
   it('RF-FAT-01: urlDoPedidoAFaturar aponta para o detalhe do pedido a faturar na API', () => {
     expect(urlDoPedidoAFaturar(ID)).toBe(`/v1/faturamento/pedidos-a-faturar/${ID}`);
   });
@@ -326,12 +346,83 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
 describe('API pública do web', () => {
   it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
-      'ACOES_DA_NOTA', 'BASE_API', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
+      'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
       'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
       'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
-      'formularioBaixa', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
+      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
-      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDoDanfe', 'urlDoPedidoAFaturar', 'urlDoXml',
+      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDoDanfe', 'urlDoPedidoAFaturar', 'urlDoXml',
     ]);
+  });
+});
+
+describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
+  const itens = [
+    { sequencia: 1, descricao: 'Água 500 ml', saldo: 125_000 }, // 12,5
+    { sequencia: 2, descricao: null, saldo: 30_000 }, // 3
+    { sequencia: 3, descricao: 'Sem saldo', saldo: 0 },
+  ];
+  const f = formularioParcial({ itens });
+
+  it('campos pré-preenchidos com o saldo; item sem saldo não ganha campo', () => {
+    expect(f.campos.map((c) => [c.sequencia, c.valorInicial, c.saldo])).toEqual([[1, '12,5', 125_000], [2, '3', 30_000]]);
+    expect(f.campos[0]?.rotulo).toBe('1 - Água 500 ml');
+    expect(f.campos[1]?.rotulo).toBe('Item 2');
+  });
+
+  it('regra do campo vazio: vazio = item fora da nota; parcial devolve só os que entram, em qtd4', () => {
+    expect(f.validar({ 1: '1,5', 2: '' })).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1,5', qtd4: 15_000 }] });
+    expect(f.validar({ 1: '  ', 2: '3' })).toEqual({ ok: true, itens: [{ sequencia: 2, quantidade: '3', qtd4: 30_000 }] }); // item 1 fora: parcial
+  });
+
+  it('todos pelo saldo inteiro: nota total (sem itens, o que o requisicaoEmitir aceita)', () => {
+    const r = f.validar({ 1: '12,5', 2: '3,0000' });
+    expect(r).toEqual({ ok: true });
+    expect(requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-1', ...(r.ok && r.itens ? { itens: r.itens } : {}) }).ok).toBe(true);
+  });
+
+  it('a saída parcial alimenta o requisicaoEmitir', () => {
+    const r = f.validar({ 1: '1,2345', 2: '' });
+    if (!r.ok || !r.itens) throw new Error('esperava parcial');
+    const m = requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-2', itens: r.itens });
+    expect(m).toMatchObject({ ok: true, requisicao: { corpo: { itens: [{ sequencia: 1, quantidade: 12_345 }] } } });
+  });
+
+  it('erros por campo: acima do saldo, zero e texto inválido', () => {
+    expect(f.validar({ 1: '12,5001', 2: '0', })).toEqual({ ok: false, erros: { 1: 'Máximo 12,5.', 2: 'Informe uma quantidade maior que zero ou deixe em branco.' } });
+    expect(f.validar({ 1: '1,23456', 2: 'abc' })).toEqual({ ok: false, erros: { 1: expect.stringContaining('4 casas'), 2: expect.stringContaining('4 casas') } });
+    expect(f.validar({ 2: '3,0001' })).toMatchObject({ ok: false, erros: { 2: 'Máximo 3.' } });
+  });
+
+  it('RD-0780: saldo >= 1.000 não quebra a nota parcial (valorInicial sem milhar; milhar digitado bem formado aceito)', () => {
+    const g = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Caixa', saldo: 12_000_000 }, { sequencia: 2, descricao: 'Lata', saldo: 10_000_000 }] });
+    expect(g.campos.map((c) => [c.valorInicial, c.saldoTexto])).toEqual([['1200', '1.200'], ['1000', '1.000']]);
+    const inicial = Object.fromEntries(g.campos.map((c) => [c.sequencia, c.valorInicial]));
+    expect(g.validar(inicial)).toEqual({ ok: true }); // pré-preenchido: nota total, itens omitidos
+    expect(g.validar({ 1: '1.200', 2: '1.000' })).toEqual({ ok: true }); // milhar digitado
+    expect(g.validar({ 1: '1.200,5', 2: '' })).toMatchObject({ ok: false, erros: { 1: 'Máximo 1.200.' } });
+    const parcial = g.validar({ 1: '1.000,5', 2: '' });
+    expect(parcial).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000,5', qtd4: 10_005_000 }] }); // saída sem milhar
+    const m = requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-3', itens: parcial.ok && parcial.itens ? parcial.itens : [] });
+    expect(m).toMatchObject({ ok: true, requisicao: { corpo: { itens: [{ sequencia: 1, quantidade: 10_005_000 }] } } });
+    const mil = g.validar({ 1: '1000', 2: '' });
+    expect(mil).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000', qtd4: 10_000_000 }] });
+    expect(requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-4', itens: mil.ok && mil.itens ? mil.itens : [] }).ok).toBe(true);
+    expect(g.validar({ 1: '1.2000' })).toMatchObject({ ok: false, erros: { 1: expect.stringContaining('4 casas') } });
+    expect(g.validar({ 1: '1.20' })).toMatchObject({ ok: false });
+  });
+
+  it('o botão liga com "0" ou texto inválido (o validar mostra o erro no campo); só campo vazio desliga', () => {
+    expect(f.emitirHabilitado({ 1: '0' })).toBe(true);
+    expect(f.emitirHabilitado({ 1: 'abc', 2: '' })).toBe(true);
+  });
+
+  it('nenhum item com quantidade: erro geral e botão desligado com o mesmo texto único', () => {
+    expect(f.motivoBotaoDesligado).toBe('Informe a quantidade de pelo menos um item');
+    expect(f.validar({})).toEqual({ ok: false, erros: {}, geral: 'Informe a quantidade de pelo menos um item' });
+    expect(f.validar({ 1: '', 2: ' ' })).toMatchObject({ ok: false, geral: f.motivoBotaoDesligado });
+    expect(f.emitirHabilitado({})).toBe(false);
+    expect(f.emitirHabilitado({ 1: '' })).toBe(false);
+    expect(f.emitirHabilitado({ 2: '1' })).toBe(true);
   });
 });

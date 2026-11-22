@@ -4,7 +4,8 @@
  * o enfileiramento. A SEFAZ NUNCA é chamada daqui e o A1 não é lido: o worker assina e transmite (`transmissor.ts`, ADR 0005 item 4).
  * `vendedor` não acessa as notas na v1 (a carteira por vendedor entra com o BKO): 403.
  */
-import { csvDaLista, definirRota, ErroApi, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
+import { csvDaLista, definirRota, ErroApi, erros, fusoDaRota, type ContextoRota, type RespostaRota, type RotaModulo } from '@macuxierp/platform-sdk';
+import type { ColunaLista } from '@macuxierp/platform-sdk/listas';
 import {
   BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, ConfiguracaoFilialResposta, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
@@ -14,7 +15,7 @@ import { montarDanfe } from '../domain/danfe';
 import { lerAssinaturaDaMarca, MENSAGEM_ATIVO_AUSENTE, type ResultadoAtivosDanfe } from './ativos-marca';
 import { renderizarDanfe } from './danfe-pdf';
 import { podeBaixarTitulo } from '../domain';
-import { paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
+import { paginaNoFuso, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
 import type { ConfiguracaoFaturamento, EventoRegistro, PortaDanfe, RepositorioTitulos } from './portas';
 import { criarServicoTitulos } from './titulos';
 import { criarServicoEmissao, type DepsEmissao } from './emissao';
@@ -42,6 +43,12 @@ async function todasAsLinhas<L, F extends { limite: number; cursor?: string | un
     cursor = p.proximo_cursor;
   }
   return saida.slice(0, MAXIMO_LINHAS_CSV);
+}
+
+/** CSV das listas com data e hora no fuso do tenant: lê `fusoDaRota(c)` uma vez e o usa nas linhas (filtros `de`/`ate`) e nas colunas (`paginaNoFuso`). */
+async function csvNoFuso<L>(c: ContextoRota, pagina: Parameters<typeof paginaNoFuso<{ id: string; colunas: readonly ColunaLista<L>[]; csv: { readonly arquivo: string } | false }>>[0], linhasNoFuso: (fuso: string) => Promise<L[]>): Promise<RespostaRota> {
+  const fuso = fusoDaRota(c);
+  return csvDaLista(paginaNoFuso(pagina, fuso), c.sessao.perfil, await linhasNoFuso(fuso));
 }
 
 const SEM_VENDEDOR = (c: ContextoRota): void => {
@@ -74,7 +81,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
       metodo: 'GET', caminho: '/pedidos-a-faturar', acao: 'faturamento.ver', consulta: FiltroPedidosAFaturar,
       async executar(c, e) {
         SEM_VENDEDOR(c);
-        return { corpo: await deps.pedidos.listar(c.tx, e.consulta) };
+        return { corpo: await deps.pedidos.listar(c.tx, e.consulta, fusoDaRota(c)) };
       },
     }),
     // Exportações CSV das listas (RF-FAT-08): mesmos filtros da tela e mesma permissão, sem dado pessoal em log. Ficam antes dos caminhos com `:id`.
@@ -82,7 +89,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
       metodo: 'GET', caminho: '/pedidos-a-faturar/exportar', acao: 'faturamento.ver', consulta: FiltroPedidosAFaturar,
       async executar(c, e) {
         SEM_VENDEDOR(c);
-        return csvDaLista(paginaPedidosAFaturar, c.sessao.perfil, await todasAsLinhas((f) => deps.pedidos.listar(c.tx, f), e.consulta));
+        return csvNoFuso(c, paginaPedidosAFaturar, (fuso) => todasAsLinhas((f) => deps.pedidos.listar(c.tx, f, fuso), e.consulta));
       },
     }),
     // RF-FAT-01: detalhe com os itens e o saldo (base da nota parcial). `:id` = linha da fila (`PedidoAFaturarResumo.id`).
@@ -99,14 +106,14 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
       metodo: 'GET', caminho: '/notas/exportar', acao: 'faturamento.ver', consulta: FiltroNotas,
       async executar(c, e) {
         SEM_VENDEDOR(c);
-        return csvDaLista(paginaNotas, c.sessao.perfil, await todasAsLinhas((f) => notas.listar(c.tx, f), e.consulta));
+        return csvNoFuso(c, paginaNotas, (fuso) => todasAsLinhas((f) => notas.listar(c.tx, f, fuso), e.consulta));
       },
     }),
     definirRota({
       metodo: 'GET', caminho: '/rejeicoes/exportar', acao: 'faturamento.ver', consulta: FiltroRejeicoes,
       async executar(c, e) {
         SEM_VENDEDOR(c);
-        return csvDaLista(paginaRejeicoes, c.sessao.perfil, await todasAsLinhas((f) => notas.listarRejeicoes(c.tx, f), e.consulta));
+        return csvNoFuso(c, paginaRejeicoes, () => todasAsLinhas((f) => notas.listarRejeicoes(c.tx, f), e.consulta));
       },
     }),
     definirRota({
@@ -120,7 +127,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
       metodo: 'GET', caminho: '/notas', acao: 'faturamento.ver', consulta: FiltroNotas,
       async executar(c, e) {
         SEM_VENDEDOR(c);
-        return { corpo: await notas.listar(c.tx, e.consulta) };
+        return { corpo: await notas.listar(c.tx, e.consulta, fusoDaRota(c)) };
       },
     }),
     // RF-FAT-08: painel de rejeições. Caminho fixo antes de `/notas/:id`.
