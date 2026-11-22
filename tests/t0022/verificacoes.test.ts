@@ -1,27 +1,21 @@
 // T-0022 (F4): testes reais das verificações puras do arnês e da coerência da matriz das 20 notas.
-// Não dependem da base (T-0019 a T-0021, T-0045): rodam hoje, sem banco nem simulador.
-import { describe, expect, it, vi } from 'vitest';
+// Não dependem do faturamento (T-0019, T-0021): rodam hoje, sem banco nem simulador.
+import { describe, expect, it } from 'vitest';
 import {
+  BASE_PENDENTE,
   COBERTURA_OBRIGATORIA,
+  DEPENDENCIAS,
   FILIAIS,
   FILIAL_LOTE_A1,
   FILIAL_LOTE_A2,
-  FILIAL_LOTE_A3,
   FILIAL_LOTE_B1,
   INUTILIZACOES,
   MATRIZ,
   TENANT_LOTE_A,
   TENANT_LOTE_B,
+  dependeDe,
 } from './apoio/matriz';
-import {
-  chamarSimuladorSeHomologacao,
-  conferirNumeracaoPorSerie,
-  conferirSequencia,
-  decidirChamadaAoSimulador,
-  EmissaoBloqueadaAntesDaRede,
-  NUMERO_MAXIMO_NFE,
-  rotuloSerie,
-} from './apoio/numeracao';
+import { conferirNumeracaoPorSerie, conferirSequencia, NUMERO_MAXIMO_NFE, rotuloSerie } from './apoio/numeracao';
 
 describe('RN-FAT-01: conferirSequencia (uma série)', () => {
   it('sequência contínua a partir de 1 não tem buraco', () => {
@@ -182,55 +176,6 @@ describe('RN-FAT-01: conferirNumeracaoPorSerie (por tenant, filial e série)', (
   });
 });
 
-describe('RN-CORE-08 e RN-FAT-04: só homologação alcança o simulador', () => {
-  const filial = '0f0e0d0c-0b0a-4909-8807-060504030201';
-
-  it('homologação da própria filial: permitido com tpAmb 2', () => {
-    expect(decidirChamadaAoSimulador(filial, { filial_id: filial, ambiente: 'homologacao' })).toEqual({
-      permitido: true,
-      tpAmb: 2,
-    });
-  });
-
-  it('produção é bloqueada', () => {
-    expect(decidirChamadaAoSimulador(filial, { filial_id: filial, ambiente: 'producao' })).toEqual({
-      permitido: false,
-      motivo: 'FILIAL_EM_PRODUCAO',
-    });
-  });
-
-  it('falha fechada: ambiente ausente, fora do enum ou de outra filial bloqueia', () => {
-    expect(decidirChamadaAoSimulador(filial, null)).toMatchObject({ motivo: 'AMBIENTE_DESCONHECIDO' });
-    expect(decidirChamadaAoSimulador(filial, undefined)).toMatchObject({ motivo: 'AMBIENTE_DESCONHECIDO' });
-    const estranho = { filial_id: filial, ambiente: 'Homologacao' } as unknown as {
-      filial_id: string;
-      ambiente: 'homologacao';
-    };
-    expect(decidirChamadaAoSimulador(filial, estranho)).toMatchObject({ motivo: 'AMBIENTE_DESCONHECIDO' });
-    expect(decidirChamadaAoSimulador(filial, { filial_id: 'outra', ambiente: 'homologacao' })).toMatchObject({
-      motivo: 'FILIAL_DIFERENTE',
-    });
-  });
-
-  it('produção: a chamada ao simulador nunca acontece (bloqueio antes da rede)', async () => {
-    const chamar = vi.fn(async () => 'autorizada');
-    await expect(
-      chamarSimuladorSeHomologacao(filial, { filial_id: filial, ambiente: 'producao' }, chamar),
-    ).rejects.toBeInstanceOf(EmissaoBloqueadaAntesDaRede);
-    await expect(chamarSimuladorSeHomologacao(filial, null, chamar)).rejects.toThrow('AMBIENTE_DESCONHECIDO');
-    expect(chamar).not.toHaveBeenCalled();
-  });
-
-  it('homologação: chama uma vez, com tpAmb 2', async () => {
-    const chamar = vi.fn(async (tpAmb: 2) => `ok-${tpAmb}`);
-    await expect(
-      chamarSimuladorSeHomologacao(filial, { filial_id: filial, ambiente: 'homologacao' }, chamar),
-    ).resolves.toBe('ok-2');
-    expect(chamar).toHaveBeenCalledTimes(1);
-    expect(chamar).toHaveBeenCalledWith(2);
-  });
-});
-
 describe('T-0022: coerência da matriz das 20 notas', () => {
   it('tem exatamente N01 a N20, em ordem e sem repetição', () => {
     expect(MATRIZ.map((n) => n.id)).toEqual(
@@ -249,13 +194,10 @@ describe('T-0022: coerência da matriz das 20 notas', () => {
     ]);
   });
 
-  it('toda nota sai de filial homologada do próprio tenant; a A3 é a única em produção', () => {
+  it('toda nota sai de filial homologada do próprio tenant', () => {
     for (const n of MATRIZ) {
       expect(FILIAIS[n.filial], n.id).toMatchObject({ tenant: n.tenant, ambiente: 'homologacao' });
     }
-    const emProducao = Object.entries(FILIAIS).filter(([, f]) => f.ambiente === 'producao');
-    expect(emProducao.map(([id]) => id)).toEqual([FILIAL_LOTE_A3]);
-    expect(FILIAIS[FILIAL_LOTE_A2]?.crt).toBe(1);
   });
 
   it('cobre todos os itens obrigatórios do plano', () => {
@@ -274,9 +216,21 @@ describe('T-0022: coerência da matriz das 20 notas', () => {
     }
   });
 
-  it('a inutilização 9–10 fica entre a N08 (nº 8) e a N09 (nº 11)', () => {
+  it('a faixa de INUTILIZACOES fica entre a N08 e a N09, na mesma série', () => {
+    const [faixa] = INUTILIZACOES;
     const n08 = MATRIZ.find((n) => n.id === 'N08');
     const n09 = MATRIZ.find((n) => n.id === 'N09');
-    expect([n08?.numero, n09?.numero]).toEqual([8, 11]);
+    expect(rotuloSerie(n08!)).toBe(rotuloSerie(faixa!));
+    expect(rotuloSerie(n09!)).toBe(rotuloSerie(faixa!));
+    expect([n08?.numero, n09?.numero]).toEqual([faixa!.inicio - 1, faixa!.fim + 1]);
+  });
+
+  it('dependências: alemDaBase não repete nem traz item de BASE_PENDENTE; toda dependência descrita é usada', () => {
+    for (const n of MATRIZ) {
+      expect(new Set(n.alemDaBase).size, n.id).toBe(n.alemDaBase.length);
+      expect(n.alemDaBase.filter((d) => BASE_PENDENTE.includes(d)), n.id).toEqual([]);
+    }
+    const usadas = new Set(MATRIZ.flatMap(dependeDe));
+    expect(Object.keys(DEPENDENCIAS).filter((d) => !usadas.has(d as keyof typeof DEPENDENCIAS))).toEqual([]);
   });
 });

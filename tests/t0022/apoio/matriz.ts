@@ -27,11 +27,26 @@ export const COBERTURA_OBRIGATORIA = [
 ] as const;
 export type Cobertura = (typeof COBERTURA_OBRIGATORIA)[number];
 
-/** Tarefas da base: T-0045 simulador e A1 de teste, T-0019 banco, T-0020 motor fiscal, T-0021 emissão. */
-export type Dependencia = 'T-0019' | 'T-0020' | 'T-0021' | 'T-0045';
+/** O que falta para a nota passar pelo PRODUTO (API ou worker do faturamento), por chave de `alemDaBase`. */
+export const DEPENDENCIAS = {
+  'T-0019-0013': 'migração 0013 do faturamento (banco-dados): numeração por série, nota, nota_xml imutável e inutilização',
+  'T-0021-emissao':
+    'faturamento P-3b (branches nuvem/T-0021-faturamento-emissao e -1b): rotas /v1/faturamento, repositório SQL e worker da emissão, ' +
+    'com a porta SefazTransporte do @macuxierp/nfe-sefaz (no lugar do dublê de api/portas.ts) obtida pelo criarSeletorTransporte ' +
+    'e a FabricaTransporteSimulador injetável no worker (o contador do teste fica em volta dela)',
+  'T-0021-eventos': 'faturamento P-5: cancelamento (110111), CC-e (110110) e inutilização pela API/worker',
+  'T-0021-danfe': 'faturamento P-5: DANFE em PDF',
+  'T-0021-titulos': 'faturamento P-5: títulos a receber da nota (RF-FAT-06)',
+  'T-0021-rejeicoes': 'faturamento P-5: painel de rejeições com código, mensagem e ação sugerida (RF-FAT-08)',
+  'T-0020-ibs-cbs-is': 'motor fiscal: IBS, CBS e IS (NT 2025.002-RTC)',
+  'T-0045-rejeicao-roteirizada':
+    'simulador: controle para rejeitar o próximo envio de uma filial com um cStat escolhido (hoje só paralisar, ' +
+    'atrasarRecibo, falharTransporte e denegar); sem ele, a rejeição pelo produto exige forjar o XML ou o A1',
+} as const;
+export type Dependencia = keyof typeof DEPENDENCIAS;
 
-/** Toda nota precisa da base inteira para sair autorizada; `destravadoPor` diz a peça específica que ela prova. */
-export const BASE_NECESSARIA: readonly Dependencia[] = ['T-0045', 'T-0019', 'T-0020', 'T-0021'];
+/** Toda nota depende disto para passar pela API ou pelo worker. */
+export const BASE_PENDENTE: readonly Dependencia[] = ['T-0019-0013', 'T-0021-emissao'];
 
 export interface NotaDaMatriz extends NumeroEmitido {
   id: `N${string}`;
@@ -41,8 +56,12 @@ export interface NotaDaMatriz extends NumeroEmitido {
   /** RN do doc 03 e/ou regra do CLAUDE.md (`CLAUDE-7` = regra inegociável 7, fiscal). */
   regras: string[];
   cobertura: Cobertura[];
-  destravadoPor: Dependencia;
+  /** Pendências da nota além de `BASE_PENDENTE`; a lista completa é `dependeDe(nota)`. */
+  alemDaBase: Dependencia[];
 }
+
+/** Tudo o que falta para a nota virar `it`: `BASE_PENDENTE` e o específico do cenário. */
+export const dependeDe = (n: Pick<NotaDaMatriz, 'alemDaBase'>): Dependencia[] => [...BASE_PENDENTE, ...n.alemDaBase];
 
 /** Nomes lógicos do lote (os UUIDs são gerados no banco efêmero); distintos dos de tests/apoio/api-memoria.ts. */
 export const TENANT_LOTE_A = 'tenant-lote-a';
@@ -84,10 +103,10 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     cenario: 'Autorização simples, venda interna AM, ICMS CST 00',
     entrada: 'Pedido aprovado com 1 item, cliente contribuinte AM, CFOP 5102',
     esperado:
-      'cStat 100 com protocolo; XML com o protocolo guardado antes do DANFE e do evento; tpAmb 2; marca "sem valor fiscal"',
+      'cStat 100 com nProt do simulador; o nfeProc (montarNfeProc, válido no XSD procNFe, verAplic do simulador) guardado antes do DANFE e do evento; tpAmb 2; marca "sem valor fiscal"',
     regras: ['RN-FAT-03', 'RN-FAT-04', 'CLAUDE-7'],
     cobertura: ['autorizacao', 'xml-guardado-antes', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: [],
   },
   {
     id: 'N02',
@@ -98,7 +117,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Autorizada; ICMS, IPI, PIS e COFINS por item e totais iguais à fórmula da RN com o arredondamento do Manual, na tela, no XML e no DANFE',
     regras: ['RN-FIS-01', 'RN-FIS-02', 'RN-CORE-03'],
     cobertura: ['autorizacao', 'valor-regra', 'numeracao'],
-    destravadoPor: 'T-0020',
+    alemDaBase: ['T-0021-danfe'],
   },
   {
     id: 'N03',
@@ -109,7 +128,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Autorizada; grupos IBS (UF e município) e CBS por item e no total, conferidos contra a NT na versão da ADR',
     regras: ['RN-FIS-03', 'RN-FIS-04', 'RN-CORE-03'],
     cobertura: ['autorizacao', 'ibs-cbs-is', 'valor-regra', 'numeracao'],
-    destravadoPor: 'T-0020',
+    alemDaBase: ['T-0020-ibs-cbs-is'],
   },
   {
     id: 'N04',
@@ -119,19 +138,19 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'Autorizada; grupo IS só no item sujeito; total do IS e a base do IBS/CBS conforme a NT',
     regras: ['RN-FIS-03', 'RN-CORE-03'],
     cobertura: ['autorizacao', 'ibs-cbs-is', 'valor-regra', 'numeracao'],
-    destravadoPor: 'T-0020',
+    alemDaBase: ['T-0020-ibs-cbs-is'],
   },
   {
     id: 'N05',
     ...a1(1, 5),
     cenario: 'Rejeição e reenvio com o mesmo número',
     entrada:
-      'Roteiro do simulador rejeita o próximo envio da A1 (código e motivo); o usuário corrige o dado e reenvia',
+      'O simulador rejeita o próximo envio da A1 (cStat e xMotivo no protNFe; controle pendente na T-0045); o usuário corrige o dado e reenvia',
     esperado:
       'Painel mostra código, mensagem e ação sugerida; o reenvio usa o nº 5 (a tentativa rejeitada não é linha à parte); a próxima nota (N06) é o nº 6',
     regras: ['RN-FAT-07', 'RN-FAT-01', 'CLAUDE-7'],
     cobertura: ['rejeicao', 'autorizacao', 'numeracao'],
-    destravadoPor: 'T-0045',
+    alemDaBase: ['T-0021-rejeicoes', 'T-0045-rejeicao-roteirizada'],
   },
   {
     id: 'N06',
@@ -142,7 +161,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Uma nota só, nº 6, a mesma chave de acesso nas 3 respostas; 1 chamada de autorização no contador do simulador',
     regras: ['RN-CORE-05', 'RN-FAT-01', 'CLAUDE-4'],
     cobertura: ['idempotencia', 'numeracao', 'autorizacao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: [],
   },
   {
     id: 'N07',
@@ -154,7 +173,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Edição: API responde 422 citando RN-FAT-02 e o UPDATE no banco falha, nota intacta; cancelamento: evento homologado e guardado, XML autorizado byte a byte igual, status cancelada, DANFE marca cancelada',
     regras: ['RN-FAT-02', 'CLAUDE-7'],
     cobertura: ['autorizacao', 'nota-nao-editada', 'cancelamento', 'xml-imutavel', 'danfe', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: ['T-0021-eventos', 'T-0021-danfe'],
   },
   {
     id: 'N08',
@@ -165,7 +184,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Seq 1 e 2 homologadas e guardadas; a de valor/imposto recusada antes do simulador; XML autorizado intacto',
     regras: ['RN-FAT-02', 'CLAUDE-7'],
     cobertura: ['autorizacao', 'cce', 'xml-imutavel', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: ['T-0021-eventos'],
   },
   {
     id: 'N09',
@@ -176,7 +195,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Inutilização homologada e guardada; a nota sai com o nº 11; a série 1 da A1 não tem buraco fora da faixa',
     regras: ['RN-FAT-01', 'CLAUDE-7'],
     cobertura: ['inutilizacao', 'numeracao', 'autorizacao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: ['T-0021-eventos'],
   },
   {
     id: 'N10',
@@ -187,7 +206,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'PDF gerado só depois do XML guardado; chave, protocolo, totais e "sem valor fiscal" no texto do PDF',
     regras: ['RN-FAT-03', 'RN-FAT-04', 'RF-FAT-03'],
     cobertura: ['autorizacao', 'danfe', 'xml-guardado-antes', 'valor-regra', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: ['T-0021-danfe'],
   },
   {
     id: 'N11',
@@ -197,7 +216,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'Recebem 13 e 14, sem número repetido nem buraco, cada uma com a sua chave',
     regras: ['RN-FAT-01', 'CLAUDE-7'],
     cobertura: ['concorrencia', 'numeracao', 'autorizacao'],
-    destravadoPor: 'T-0019',
+    alemDaBase: [],
   },
   {
     id: 'N12',
@@ -207,7 +226,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'O outro número da dupla (13/14); a ordem entre as duas pode variar, o conjunto não',
     regras: ['RN-FAT-01', 'CLAUDE-7'],
     cobertura: ['concorrencia', 'numeracao', 'autorizacao'],
-    destravadoPor: 'T-0019',
+    alemDaBase: [],
   },
   {
     id: 'N13',
@@ -217,7 +236,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'Sai com o nº 1 da série 2; a série 1 não anda',
     regras: ['RN-FAT-01'],
     cobertura: ['numeracao', 'autorizacao'],
-    destravadoPor: 'T-0019',
+    alemDaBase: [],
   },
   {
     id: 'N14',
@@ -229,7 +248,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Nota "autorizada, guarda pendente" sem DANFE, evento nem outbox até guardar; depois UPDATE e DELETE falham',
     regras: ['RN-FAT-03', 'RF-FAT-06', 'CLAUDE-7'],
     cobertura: ['xml-guardado-antes', 'xml-imutavel', 'autorizacao', 'numeracao'],
-    destravadoPor: 'T-0019',
+    alemDaBase: [],
   },
   {
     id: 'N15',
@@ -242,7 +261,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'Sai com o nº 1 (sequência por filial); CSOSN no lugar do CST',
     regras: ['RN-FAT-01', 'RN-FIS-02'],
     cobertura: ['numeracao', 'autorizacao', 'valor-regra'],
-    destravadoPor: 'T-0020',
+    alemDaBase: [],
   },
   {
     id: 'N16',
@@ -253,10 +272,10 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     cenario: 'Filial em produção nunca alcança o simulador',
     entrada: 'Emissão pedida na A3 (produção) pela API de produção; em seguida a mesma emissão na A2',
     esperado:
-      'A3: a API ou o worker bloqueia antes de reservar número e antes da rede; contador do simulador com 0 chamadas para o CNPJ da A3; A2: nº 2 autorizado',
+      'A3: a API ou o worker bloqueia antes de reservar número e antes da rede (SimuladorEmProducaoErro, SEFAZ_SIMULADOR_EM_PRODUCAO, do seletor); 0 chamadas para o filial_id da A3 no contador da FabricaTransporteSimulador; A2: nº 2 autorizado',
     regras: ['RN-CORE-08', 'RN-FAT-04', 'CLAUDE-7'],
     cobertura: ['producao-bloqueada', 'autorizacao', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: [],
   },
   {
     id: 'N17',
@@ -269,7 +288,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'B sai com o nº 1; A não vê a nota nem o XML de B (lista vazia, 404 pelo id, nada pela chave)',
     regras: ['CLAUDE-5', 'RN-CORE-02', 'RN-FAT-01'],
     cobertura: ['rls-multitenant', 'numeracao', 'autorizacao'],
-    destravadoPor: 'T-0019',
+    alemDaBase: [],
   },
   {
     id: 'N18',
@@ -282,7 +301,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     esperado: 'Sem licença: 403 MODULO_INATIVO, nada reservado nem enviado; com licença: nº 2 autorizado',
     regras: ['RN-CORE-02', 'CLAUDE-6'],
     cobertura: ['licenca', 'autorizacao', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: [],
   },
   {
     id: 'N19',
@@ -294,7 +313,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'Autorizada; 3 títulos, rateio sem perder centavo (diferença na 1ª parcela); pedido faturado_parcial',
     regras: ['RN-FAT-06', 'RN-CORE-03', 'RN-PED-02'],
     cobertura: ['autorizacao', 'valor-regra', 'numeracao'],
-    destravadoPor: 'T-0021',
+    alemDaBase: ['T-0021-titulos'],
   },
   {
     id: 'N20',
@@ -303,7 +322,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
     entrada:
       'Última emissão; leitura de notas, inutilizações, último número reservado por série, XML guardados, contador do simulador e logs; UPDATE de deleted_at no XML guardado pelo papel macuxierp_app',
     esperado:
-      '20 autorizadas e 20 XML guardados; séries sem buraco fora da 9-10, contando o último reservado; 0 chamadas para a A3 no simulador; deleted_at do XML não é marcado (o UPDATE falha); log sem A1, senha nem dado pessoal',
+      '20 autorizadas e 20 XML guardados; séries sem buraco fora da 9-10, contando o último reservado; 0 chamadas para a A3 no contador da FabricaTransporteSimulador; deleted_at do XML não é marcado (o UPDATE falha); log sem A1, senha nem dado pessoal',
     regras: ['RN-FAT-01', 'RN-FAT-03', 'RN-CORE-07', 'CLAUDE-7', 'CLAUDE-8', 'CLAUDE-9'],
     cobertura: [
       'autorizacao',
@@ -313,7 +332,7 @@ export const MATRIZ: readonly NotaDaMatriz[] = [
       'guarda-fiscal',
       'producao-bloqueada',
     ],
-    destravadoPor: 'T-0045',
+    alemDaBase: ['T-0021-eventos'],
   },
 ];
 

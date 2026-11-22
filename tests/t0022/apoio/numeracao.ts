@@ -1,13 +1,7 @@
 /**
- * T-0022: verificações puras da F4, usadas hoje nos testes da matriz e, quando a base existir (T-0019 a T-0021, T-0045),
- * sobre as notas lidas do banco.
- *
- * - RN-FAT-01 (CLAUDE.md, regra 7): numeração sequencial por série e filial, sem buraco; buraco só por inutilização.
- * - RN-CORE-08 e RN-FAT-04: o simulador só é chamado para filial em homologação; produção é barrada antes da rede.
- *
- * Só tipos de `contracts` (fronteiras): nada de `modules/<x>/domain`, `api` ou `db`.
+ * T-0022: RN-FAT-01 (CLAUDE.md, regra 7), numeração sequencial por série e filial, sem buraco; buraco só por
+ * inutilização. Verificação pura, usada hoje na matriz e, quando a base existir, sobre as notas lidas do banco.
  */
-import type { AmbienteFiscal } from '../../../modules/core/contracts';
 
 /** Chave da numeração: a sequência é independente por tenant, filial emissora e série (RN-FAT-01). */
 export interface ChaveSerie {
@@ -115,45 +109,4 @@ export function conferirNumeracaoPorSerie(
       conferirSequencia(numeros.get(k) ?? [], faixas.get(k) ?? [], 1, reservados.get(k)),
     ]),
   );
-}
-
-/** Ambiente como vem do `core` (contrato `AmbienteFiscal`); ausente = filial sem ambiente lido. */
-export type AmbienteDaFilial = Pick<AmbienteFiscal, 'filial_id' | 'ambiente'> | null | undefined;
-
-export type DecisaoSimulador =
-  | { permitido: true; tpAmb: 2 }
-  | { permitido: false; motivo: 'FILIAL_EM_PRODUCAO' | 'AMBIENTE_DESCONHECIDO' | 'FILIAL_DIFERENTE' };
-
-/**
- * RN-CORE-08 e RN-FAT-04: só homologação (`tpAmb` 2) alcança o simulador. Falha fechada: produção, ambiente ausente,
- * valor fora do enum ou ambiente de outra filial bloqueiam.
- */
-export function decidirChamadaAoSimulador(filialId: string, ambiente: AmbienteDaFilial): DecisaoSimulador {
-  if (!ambiente) return { permitido: false, motivo: 'AMBIENTE_DESCONHECIDO' };
-  if (ambiente.filial_id !== filialId) return { permitido: false, motivo: 'FILIAL_DIFERENTE' };
-  if (ambiente.ambiente === 'producao') return { permitido: false, motivo: 'FILIAL_EM_PRODUCAO' };
-  if (ambiente.ambiente !== 'homologacao') return { permitido: false, motivo: 'AMBIENTE_DESCONHECIDO' };
-  return { permitido: true, tpAmb: 2 };
-}
-
-export class EmissaoBloqueadaAntesDaRede extends Error {
-  constructor(readonly motivo: Exclude<DecisaoSimulador, { permitido: true }>['motivo']) {
-    super(`emissão bloqueada antes da rede: ${motivo}`);
-    this.name = 'EmissaoBloqueadaAntesDaRede';
-  }
-}
-
-/**
- * Guarda só para os testes puros: a função `chamar` só roda depois da decisão. Nas notas reais (N16, N20) o cliente do
- * simulador NÃO passa por aqui: a contagem vem do próprio simulador (chamadas por filial/CNPJ e por tpAmb) e o bloqueio
- * tem de vir da API ou do worker, antes de reservar número e antes da rede; senão o teste provaria o arnês, não o produto.
- */
-export async function chamarSimuladorSeHomologacao<T>(
-  filialId: string,
-  ambiente: AmbienteDaFilial,
-  chamar: (tpAmb: 2) => Promise<T>,
-): Promise<T> {
-  const d = decidirChamadaAoSimulador(filialId, ambiente);
-  if (!d.permitido) throw new EmissaoBloqueadaAntesDaRede(d.motivo);
-  return chamar(d.tpAmb);
 }
