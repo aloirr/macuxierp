@@ -51,7 +51,7 @@ Garantias:
 4. O revisor final (engenheiro) recusa entrega com violação.
 
 ## Protocolo de recados (universal, igual para todos)
-**Onde**: repositório privado `aloirr/macuxierp-recados`, em `recados/<destinatario>/` — um arquivo por recado, imutável. Destinatários: os 14 agentes + `alexandre` + `todos`. A CLI grava e lê direto no GitHub (API REST).
+**Onde**: repositório privado `aloirr/macuxierp-recados`, em `recados/<destinatario>/` — um arquivo por recado, imutável. Destinatários: os 14 agentes + `alexandre` + `todos`. A CLI grava e lê direto no GitHub (API REST). Quando a API recusa a escrita (HTTP 403, proxy da nuvem), a CLI grava por git, com clone raso e push sem force (T-0025); nada muda para quem usa.
 **Como criar** (sempre pela CLI, para manter o formato idêntico):
 ```bash
 node scripts/coord.mjs enviar --de modulo-pedido --para modulo-cadastros --tipo pedido \

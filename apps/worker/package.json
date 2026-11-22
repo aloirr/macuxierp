@@ -9,8 +9,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@macuxierp/core": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
-    "pino": "^10.4.0"
+    "pino": "^10.4.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
@@ -19,5 +21,5 @@
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   },
-  "description": "Worker do Macuxi ERP: filas da SEFAZ e da integração com o FDV (outbox). Entra na F1/F2."
+  "description": "Worker do Macuxi ERP: outbox, fila de trabalhos (consulta de IE, exportação LGPD; depois SEFAZ e Hub do FDV) e rotinas diárias (alerta do A1)."
 }
