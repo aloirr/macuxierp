@@ -1,6 +1,6 @@
 /**
  * Adaptador PostgreSQL da bandeira por filial "faturamento real com NF-e simulada": `faturamento.configuracao_filial`
- * (filial_id, faturamento_real_nfe_simulada, alterado_por), tabela que o banco-dados ainda vai criar (recado de pedido de tabela). Sem linha = false.
+ * (0026; filial_id, faturamento_real_nfe_simulada, alterado_por obrigatório). Sem linha = false. O histórico é gravado só pelo gatilho do banco; o app não escreve nele.
  * `definir` faz UPDATE e, se nada mudou, INSERT (sem depender do nome da restrição única).
  */
 import type { ConfiguracaoFaturamento } from './portas';
@@ -31,7 +31,7 @@ export const configuracaoFaturamentoSql: ConfiguracaoFaturamento = {
 
   async definir(tx, filial_id, ligada, usuario_id) {
     const r = await tx.consultar<{ id: string }>(
-      'UPDATE faturamento.configuracao_filial SET faturamento_real_nfe_simulada = $2, alterado_por = $3, updated_at = now() WHERE filial_id = $1 AND deleted_at IS NULL RETURNING id',
+      'UPDATE faturamento.configuracao_filial SET faturamento_real_nfe_simulada = $2, alterado_por = $3 WHERE filial_id = $1 AND deleted_at IS NULL RETURNING id',
       [filial_id, ligada, usuario_id],
     );
     if (r.length > 0) return;

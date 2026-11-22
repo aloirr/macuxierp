@@ -166,5 +166,8 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
     const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => transporteFake().transporte, agora: () => new Date('2026-11-21T14:31:02Z') });
     expect((await tr.transmitirNota(B, r.nota.id)).resultado).toBe('autorizada');
     expect(await app.comTenant(B, (tx) => consultaTitulosPedido(repos.titulos).saldoAbertoCliente(tx, IDS.cliente))).toBe(r.nota.total_centavos);
+    // O saldo lê a coluna titulo.conta_como_real (0026), gravada na geração com o valor da nota.
+    expect((await admin('SELECT bool_and(conta_como_real) AS v FROM faturamento.titulo WHERE nota_id = $1', [r.nota.id]))[0]?.v).toBe(true);
+    expect((await admin('SELECT bool_or(conta_como_real) AS v FROM faturamento.titulo WHERE tenant_id = $1 AND nota_id <> $2', [B, r.nota.id]))[0]?.v ?? false).toBe(false);
   });
 });

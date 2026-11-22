@@ -1,8 +1,6 @@
 /**
- * Bandeira por filial "faturamento real com NF-e simulada" contra o PostgreSQL real.
- * ATENÇÃO: este teste FALHA até o banco-dados criar `faturamento.configuracao_filial` (filial_id, faturamento_real_nfe_simulada, alterado_por; tenant_id,
- * id, created_at, updated_at, deleted_at, external_id, RLS; grants SELECT, INSERT, UPDATE para macuxierp_app). Fica em arquivo separado de propósito.
- * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`).
+ * Bandeira por filial "faturamento real com NF-e simulada" contra o PostgreSQL real (`faturamento.configuracao_filial`, migração 0026).
+ * O histórico é gravado só pelo gatilho do banco; o adaptador não escreve nele. Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`).
  */
 import { type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
@@ -11,7 +9,7 @@ import { IDS } from '../domain/fixtures';
 import { uuid } from './apoio-teste';
 import { configuracaoFaturamentoSql as repo } from './sql-configuracao';
 
-describe.skipIf(!PG_DISPONIVEL)('configuração da filial (PostgreSQL real, tabela faturamento.configuracao_filial, ainda sem migração)', () => {
+describe.skipIf(!PG_DISPONIVEL)('configuração da filial (PostgreSQL real, tabela faturamento.configuracao_filial, 0026)', () => {
   let efemero: BancoEfemero;
   let app: BancoPg;
   let A: string;
@@ -35,6 +33,18 @@ describe.skipIf(!PG_DISPONIVEL)('configuração da filial (PostgreSQL real, tabe
     expect(await app.comTenant(A, (tx) => repo.faturamentoRealComNfeSimulada(tx, IDS.filial))).toBe(false);
     const linhas = (await efemero.admin.query('SELECT alterado_por FROM faturamento.configuracao_filial WHERE tenant_id = $1', [A])).rows;
     expect(linhas).toEqual([{ alterado_por: uuid(6) }]); // uma linha por filial, atualizada
+  });
+
+  it('RN-FAT-04: cada mudança na configuração gera exatamente 1 linha no histórico, gravada pelo gatilho', async () => {
+    const T = await criarTenant(efemero.admin, 'fat-config-h', ['faturamento']);
+    const hist = async () => (await efemero.admin.query('SELECT valor_anterior, valor_novo, alterado_por FROM faturamento.configuracao_filial_historico WHERE tenant_id = $1 ORDER BY alterado_em, id', [T])).rows;
+    await app.comTenant(T, (tx) => repo.definir(tx, IDS.filial, true, uuid(5)));
+    expect(await hist()).toEqual([{ valor_anterior: null, valor_novo: true, alterado_por: uuid(5) }]);
+    await app.comTenant(T, (tx) => repo.definir(tx, IDS.filial, false, uuid(6)));
+    expect(await hist()).toEqual([
+      { valor_anterior: null, valor_novo: true, alterado_por: uuid(5) },
+      { valor_anterior: true, valor_novo: false, alterado_por: uuid(6) },
+    ]);
   });
 
   it('RN-CORE-01: a configuração de um tenant não vale para o outro (RLS)', async () => {

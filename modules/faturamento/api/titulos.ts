@@ -54,7 +54,7 @@ export async function gerarTitulosDaNota(tx: Transacao, deps: DepsTitulos, nota:
   const dominio = paraDomain(nota, 'autorizada');
   const comoReal = contaComoRealDaNota(conteudo, nota);
   const parcelas = gerarParcelas(dominio, { prazos_dias: prazosDaNota(conteudo.prazos_dias, conteudo.cobranca, dominio.emissao) }, classe);
-  const novos = await deps.titulos.inserirParcelas(tx, nota, parcelas);
+  const novos = await deps.titulos.inserirParcelas(tx, { id: nota.id, filial_id: nota.filial_id, cliente_id: nota.cliente_id, conta_como_real: comoReal }, parcelas);
   for (const t of novos) {
     const payload = TituloGeradoPayload.parse(payloadTituloGerado(dominio, t, comoReal));
     await deps.notas.publicarEvento(tx, { nome: EVENTO_TITULO_GERADO, agregado_id: t.id, payload });

@@ -15,13 +15,13 @@ export const repositorioTitulosSql: RepositorioTitulos = {
     if (parcelas.length === 0) return [];
     // Filial, cliente e ambiente são conferidos contra a nota pelo gatilho, que também põe o saldo inicial (= valor, RD-0603).
     return tx.consultar<TituloResumo>(
-      `WITH ins AS (INSERT INTO faturamento.titulo (tenant_id, nota_id, filial_id, cliente_id, ambiente, parcela, total_parcelas, vencimento, valor_centavos)
-       SELECT plataforma.tenant_atual(), $1, $2, $3, x.ambiente, x.parcela, x.total_parcelas, x.vencimento::date, x.valor_centavos
+      `WITH ins AS (INSERT INTO faturamento.titulo (tenant_id, nota_id, filial_id, cliente_id, ambiente, conta_como_real, parcela, total_parcelas, vencimento, valor_centavos)
+       SELECT plataforma.tenant_atual(), $1, $2, $3, x.ambiente, $5::boolean, x.parcela, x.total_parcelas, x.vencimento::date, x.valor_centavos
          FROM jsonb_to_recordset($4::jsonb) AS x(ambiente text, parcela int, total_parcelas int, vencimento text, valor_centavos bigint)
        ON CONFLICT ON CONSTRAINT titulo_parcela_uq DO NOTHING
        RETURNING *)
        SELECT ${COLUNAS} FROM ${DE.replace('faturamento.titulo t', 'ins t')} ORDER BY t.parcela`,
-      [nota.id, nota.filial_id, nota.cliente_id, JSON.stringify(parcelas.map((p) => ({ ambiente: p.ambiente, parcela: p.parcela, total_parcelas: p.total_parcelas, vencimento: p.vencimento, valor_centavos: p.valor_centavos })))],
+      [nota.id, nota.filial_id, nota.cliente_id, JSON.stringify(parcelas.map((p) => ({ ambiente: p.ambiente, parcela: p.parcela, total_parcelas: p.total_parcelas, vencimento: p.vencimento, valor_centavos: p.valor_centavos }))), nota.conta_como_real],
     );
   },
 
@@ -106,7 +106,7 @@ export const repositorioTitulosSql: RepositorioTitulos = {
     const [l] = await tx.consultar<{ saldo: number }>(
       `SELECT COALESCE(SUM(t.saldo_centavos), 0)::float8 AS saldo
          FROM ${DE}
-        WHERE t.cliente_id = $1 AND t.status = 'aberto' AND (t.ambiente = 'producao' OR n.pagamento->>'conta_como_real' = 'true') AND n.status <> 'cancelada' AND t.deleted_at IS NULL`,
+        WHERE t.cliente_id = $1 AND t.status = 'aberto' AND (t.ambiente = 'producao' OR t.conta_como_real) AND n.status <> 'cancelada' AND t.deleted_at IS NULL`,
       [cliente_id],
     );
     return l?.saldo ?? 0;

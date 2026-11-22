@@ -398,7 +398,7 @@ export interface ConfiguracaoFaturamento {
  */
 export interface RepositorioTitulos {
   /** Idempotente por (nota, parcela): devolve só as parcelas NOVAS (reprocesso não duplica nem republica). */
-  inserirParcelas(tx: Transacao, nota: Pick<NotaRegistro, 'id' | 'filial_id' | 'cliente_id'>, parcelas: readonly ParcelaGerada[]): Promise<TituloResumo[]>;
+  inserirParcelas(tx: Transacao, nota: Pick<NotaRegistro, 'id' | 'filial_id' | 'cliente_id'> & { conta_como_real: boolean }, parcelas: readonly ParcelaGerada[]): Promise<TituloResumo[]>;
   listarDaNota(tx: Transacao, nota_id: string, opcoes?: { travar?: boolean }): Promise<TituloResumo[]>;
   obter(tx: Transacao, id: string, opcoes?: { travar?: boolean }): Promise<TituloResumo | null>;
   baixasDoTitulo(tx: Transacao, titulo_id: string): Promise<BaixaTituloResumo[]>;
@@ -412,7 +412,7 @@ export interface RepositorioTitulos {
   detalhar(tx: Transacao, id: string): Promise<TituloDetalhe | null>;
   /**
    * Soma dos saldos `aberto` do cliente de nota não cancelada, de produção OU `conta_como_real` (RN-PED-04; decisão do Alexandre de 22/11: a nota simulada vale como real).
-   * Até a coluna `faturamento.titulo.conta_como_real` existir (0026), lê o valor guardado no conteúdo da nota (`nota.pagamento`); com a coluna, o SQL passa a lê-la.
+   * Lê a coluna `faturamento.titulo.conta_como_real` (0026), gravada na geração com o valor da nota.
    */
   saldoAbertoCliente(tx: Transacao, cliente_id: string): Promise<number>;
   /**

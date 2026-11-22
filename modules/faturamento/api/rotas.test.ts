@@ -227,7 +227,7 @@ describe('rotas de títulos e da bandeira da filial', () => {
   const semente = (a: ReturnType<typeof ambiente>) => {
     const nota = uuid(500);
     a.notas.set(nota, { id: nota, tenant_id: TENANT, pedido_id: IDS.pedido, pedido_uuid: null, filial_id: IDS.filial, cliente_id: IDS.cliente, vendedor_id: null, ambiente: 'producao', vai_ao_fdv: true, serie: 1, numero: 1, cnf: '1', chave_acesso: 'x', tp_emis: 1, status: 'autorizada', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 3000, protocolo: NPROT, autorizada_em: null, recibo: null, idempotencia: 'i', revisao: 1, itens_solicitados: null, itens: [] });
-    return a.tit.repo.inserirParcelas(tx, { id: nota, filial_id: IDS.filial, cliente_id: IDS.cliente }, [{ parcela: 1, total_parcelas: 1, vencimento: '2026-12-21', valor_centavos: 3000, ambiente: 'producao' }]).then(([t]) => t!.id);
+    return a.tit.repo.inserirParcelas(tx, { id: nota, filial_id: IDS.filial, cliente_id: IDS.cliente, conta_como_real: false }, [{ parcela: 1, total_parcelas: 1, vencimento: '2026-12-21', valor_centavos: 3000, ambiente: 'producao' }]).then(([t]) => t!.id);
   };
 
   it('RN-FAT-06: GET /titulos filtra por cliente, status e vencimento e GET /titulos/:id traz as baixas', async () => {
