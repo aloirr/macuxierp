@@ -44,6 +44,8 @@ const ADM_B = usuario('loja-b', 'administrador');
 const EMPRESA_A = dados.empresas.A.nome;
 const EMPRESA_B = dados.empresas.B.nome;
 const MENU_CADASTROS = ['Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 'Condições de pagamento', 'Equipe e carteira', 'Filiais', 'Tabelas oficiais'];
+// T-0026: o administrador vê também a carga (cadastros.carga.executar), que tem tela própria, fora do passo das listas.
+const MENU_CADASTROS_ADM = [...MENU_CADASTROS, 'Carga de cadastros'];
 
 const resultados = [];
 const prints = [];
@@ -125,7 +127,7 @@ try {
     exigir(t.includes(EMPRESA_A) && t.includes('Matriz Manaus'), `topo sem empresa/filial: ${t}`);
     exigir(!t.includes(EMPRESA_B) && !t.includes('Boa Vista'), 'vazou o tenant B no topo');
     const itens = (await nav().getByRole('region', { name: 'Cadastros' }).getByRole('link').allTextContents()).map((s) => s.trim());
-    exigir(JSON.stringify(itens) === JSON.stringify(MENU_CADASTROS), `itens: ${JSON.stringify(itens)}`);
+    exigir(JSON.stringify(itens) === JSON.stringify(MENU_CADASTROS_ADM), `itens: ${JSON.stringify(itens)}`);
     const menu = (await nav().textContent()) ?? '';
     exigir(menu.includes('Pedidos') && menu.includes('Notas fiscais'), 'faltou módulo licenciado de A');
     exigir(!/Regras fiscais|Integração FDV/.test(menu), 'menu mostra módulo sem licença');
@@ -142,13 +144,13 @@ try {
     });
   }
 
-  await passo('tenant A: Licenças mostra cadastros, pedido e faturamento licenciados; fiscal e integração não contratados', async () => {
+  await passo('tenant A: Licenças mostra cadastros, pedido e faturamento contratados; fiscal e integração não contratados', async () => {
     await p.getByRole('link', { name: 'Licenças' }).click();
     await p.getByRole('heading', { level: 1, name: 'Licenças' }).waitFor();
     const linhas = await p.locator('tbody tr').allTextContents();
     exigir(linhas.length === 6, 'esperava os 6 módulos da v1');
-    const licenciados = linhas.filter((l) => l.includes('Licenciado')).length;
-    exigir(licenciados === 4, `esperava core + 3 licenciados, vieram ${licenciados}`);
+    const contratados = linhas.filter((l) => l.includes('Contratado')).length;
+    exigir(contratados === 4, `esperava core + 3 contratados, vieram ${contratados}`);
     await print(p, '05-licencas-tenant-a.png', { x: 290, y: 70, width: 1030, height: 496 });
   });
 
