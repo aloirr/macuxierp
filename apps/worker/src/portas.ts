@@ -21,7 +21,28 @@ export interface FilaOutbox {
   reservar(tx: Transacao, limite: number, agora: Date): Promise<EventoPendente[]>;
   marcarPublicado(tx: Transacao, id: string, agora: Date): Promise<void>;
   marcarFalha(tx: Transacao, id: string, tentativas: number, proximoEm: Date, erro: string): Promise<void>;
+  /**
+   * Estado terminal `falhou` (limite de tentativas, T-0045) sem coluna nova: `publicado_em = agora` (sai da fila e libera
+   * o agregado), `tentativas` e `erro` (começa por `falhou: `). Quem não aplicou fica sem linha em `evento_consumido`.
+   */
+  marcarFalhou(tx: Transacao, id: string, tentativas: number, agora: Date, erro: string): Promise<void>;
 }
+
+/**
+ * Releitura dos eventos já publicados para a reentrega da partida (`reentrega.ts`). Só `plataforma.evento` e
+ * `plataforma.evento_consumido` (regra 1: nada de schema de módulo), em `banco.semTenant` no papel do worker.
+ */
+export interface FonteReentrega {
+  /**
+   * Até `limite` eventos `nome` com `publicado_em` preenchido e sem falha terminal (`erro` nulo), sem linha em
+   * `evento_consumido` para `consumidor` e fora de `ignorar` (ids que já falharam nesta rodada), em ordem de
+   * `ocorrido_em`, `versao` e `id`.
+   */
+  pendentes(tx: Transacao, consumidor: string, nome: string, ignorar: readonly string[], limite: number): Promise<EnvelopeEvento[]>;
+}
+
+/** Alerta do monitor (mesma forma do `Alertar` do integracao-fdv): só código e ids no contexto, nunca dado pessoal. */
+export type AlertarWorker = (tenantId: string, codigo: string, contexto?: Record<string, string>) => void;
 
 /** `plataforma.evento_consumido`: no máximo uma aplicação por `(consumidor, evento)`. Roda na transação do tenant. */
 export interface RegistroConsumo {
