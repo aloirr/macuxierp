@@ -11,7 +11,7 @@
  * código.
  */
 import pg from 'pg';
-import type { Licenca, FonteLicencas, FonteTodosTenants } from './acesso';
+import type { Licenca, FonteLicencasComFuso, FonteTodosTenants } from './acesso';
 import type { CatalogoArquivos, RegistroArquivo } from './arquivos';
 import type { DestinoAuditoria, RegistroAuditoria } from './auditoria';
 import { PADRAO_UUID, type Banco, type Transacao } from './banco';
@@ -195,12 +195,28 @@ export class CatalogoArquivosPg implements CatalogoArquivos {
 }
 
 /** `plataforma.tenant_modulo` do tenant da transação (a RLS só mostra a dele). */
-export class LicencasPg implements FonteLicencas {
+export class LicencasPg implements FonteLicencasComFuso {
   async ler(tx: Transacao, tenantId: string): Promise<Licenca[]> {
     return tx.consultar<Licenca>(
       'SELECT modulo, ativo, valido_ate FROM plataforma.tenant_modulo WHERE tenant_id = $1 AND deleted_at IS NULL',
       [tenantId],
     );
+  }
+
+  /**
+   * As mesmas licenças do `ler` e o `plataforma.tenant.fuso`, numa consulta só (T-0042). Parte de uma linha fixa: o
+   * tenant sem licença ainda devolve o fuso, e as licenças não dependem da linha do tenant.
+   */
+  async lerComFuso(tx: Transacao, tenantId: string): Promise<{ licencas: Licenca[]; fuso: string | null }> {
+    const linhas = await tx.consultar<{ fuso: string | null; modulo: Licenca['modulo'] | null; ativo: boolean | null; valido_ate: Date | null }>(
+      `SELECT t.fuso, m.modulo, m.ativo, m.valido_ate
+         FROM (SELECT $1::uuid AS id) p
+         LEFT JOIN plataforma.tenant t ON t.id = p.id
+         LEFT JOIN plataforma.tenant_modulo m ON m.tenant_id = p.id AND m.deleted_at IS NULL`,
+      [tenantId],
+    );
+    const licencas = linhas.flatMap((l) => (l.modulo === null ? [] : [{ modulo: l.modulo, ativo: l.ativo === true, valido_ate: l.valido_ate }]));
+    return { licencas, fuso: linhas[0]?.fuso ?? null };
   }
 }
 

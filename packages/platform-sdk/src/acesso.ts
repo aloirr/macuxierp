@@ -44,6 +44,18 @@ export interface FonteLicencas {
 }
 
 /**
+ * Licenças e o fuso IANA do tenant (`plataforma.tenant.fuso`) na mesma consulta (T-0042): a API preenche o `fuso` do
+ * `ContextoRota` sem ida extra ao banco. `fuso` nulo = tenant invisível na transação (RLS). Adaptador: `LicencasPg`.
+ */
+export interface FonteLicencasComFuso extends FonteLicencas {
+  lerComFuso(tx: Transacao, tenantId: string): Promise<{ licencas: Licenca[]; fuso: string | null }>;
+}
+
+export function temFuso(f: FonteLicencas): f is FonteLicencasComFuso {
+  return typeof (f as Partial<FonteLicencasComFuso>).lerComFuso === 'function';
+}
+
+/**
  * TODOS os tenants de `plataforma.tenant`, inclusive os desativados (roda em `semTenant`), para as rotinas de retenção (LGPD). Mesmo formato da
  * `FonteTenants` do worker (um método `(tx) => ids`). Adaptador: `TodosTenantsPg` (`platform-sdk/pg`).
  */

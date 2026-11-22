@@ -30,6 +30,7 @@ export const CLIENTES = definirPaginaLista({
 - Tela (sem Node, por `@macuxierp/platform-sdk/listas`): `filtrosDaUrl(pagina, location.search)`, `urlDaLista(caminho, filtros)` (a mesma para a tela e para `pagina.api`), `trocarFiltro` (volta à primeira página), `primeiraPagina`, `proximaPagina(filtros, proximo_cursor)` (null na última) e `recomecarLista` (depois do 400).
 - Colunas: `ColunaLista<L> = ColunaCsv<L> & { id, exige? }`; `colunasDoPerfil(pagina, perfil)` esconde a coluna de quem não tem a ação (a API protege de novo).
 - CSV na API: `csvDaLista(pagina, perfil, linhas)` = `respostaCsv(csv.arquivo, paraCsv(colunasDoPerfil(...), linhas))`; página com `csv: false` lança.
+- `csvDaLista(pagina, perfil, linhas, fuso?)`: com `fuso`, só o instante ISO completo vira data e hora no fuso; sem `fuso`, o CSV é o de antes. Os módulos passam `fusoDaRota(c)`.
 - Formatação de exibição (documento, centavos) fica na coluna (`valor`), no `web` do módulo; o CSV sai com o mesmo texto da tela.
 
 ## Filtros na URL
