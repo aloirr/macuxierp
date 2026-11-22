@@ -10,7 +10,14 @@ const METODOS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * barreira do shell: a API checa de novo perfil, tenant, licença e a ação (RN-CORE-02).
  */
 export function escritaPermitida(metodo: string, caminho: string, eu: EuResposta, manifestos: readonly ManifestoModulo[]): ModuloId | null {
-  if (!METODOS.has(metodo) || caminho.includes('..')) return null;
+  return METODOS.has(metodo) ? caminhoPermitido(caminho, eu, manifestos) : null;
+}
+
+/** Mesma barreira da escrita, para a leitura (GET) de um diálogo: caminho `/v1/<modulo>/...`, módulo licenciado e perfil no manifesto. */
+export const leituraPermitida = caminhoPermitido;
+
+function caminhoPermitido(caminho: string, eu: EuResposta, manifestos: readonly ManifestoModulo[]): ModuloId | null {
+  if (caminho.includes('..')) return null;
   const m = CAMINHO_ESCRITA.exec(caminho);
   if (!m) return null;
   const modulo = m[1] as ModuloId;

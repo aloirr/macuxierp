@@ -75,7 +75,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
             ...(selos ? { selos } : {}),
             chave: typeof item.id === 'string' ? item.id : String(i),
             celulas: Object.fromEntries(colunas.map((c) => [c.id, rotuloDaCelula(texto[c.id] ?? '', rotulos.get(c.id))])),
-            ...(tela.acaoDaLinha ? { acao: tela.acaoDaLinha.acao(item, perfil) ?? undefined } : {}),
+            ...(tela.acaoDaLinha ? { acao: tela.acaoDaLinha.acao(item, perfil) ?? undefined, maisAcoes: tela.acaoDaLinha.maisAcoes?.(item, perfil) ?? [] } : {}),
             ...(tela.rotaDaLinha ? { destino: tela.rotaDaLinha(item), rotulo: tela.rotuloDaLinha?.(item) ?? 'Abrir' } : {}),
           };
         })}
