@@ -5,15 +5,13 @@
  * Valores em pt-BR; datas no fuso informado (padrão Manaus). Sem dado pessoal em log: só se lê e devolve o que está no XML.
  */
 import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
-import { codigoBarras128C, type CodigoBarras128C } from './codigo-barras';
 import { FUSO_MANAUS_MINUTOS } from './fuso';
 import { achar, lerXml, textoDe, todos, type NoXml } from './xml-leve';
 
-/**
- * Regras de marca (docs/marca/danfe-e-pdfs-fiscais.md): rodapé "Emitido pelo" + assinatura A mono preto (PNG, sem texto "Macuxi ERP"),
- * 24 pt de altura (111,4 pt de largura), 14,9 pt livres em volta, linha de base do texto 8,3 pt acima da base da caixa do logo.
- */
-export const RODAPE_DANFE = { texto: 'Emitido pelo', fontePt: 7, alturaAssinaturaPt: 24, larguraAssinaturaPt: 111.4, protecaoPt: 14.9, baseTextoPt: 8.3 } as const;
+/** Corpo do conteúdo do DANFE (marca §3): 7 pt, o mínimo aceito; única fonte desse número (rodapé, legenda do quadro e tabela). */
+export const FONTE_CONTEUDO_PT = 7;
+/** Rodapé "Emitido pelo" + assinatura A mono preto (marca §4; números na constante). */
+export const RODAPE_DANFE = { texto: 'Emitido pelo', fontePt: FONTE_CONTEUDO_PT, alturaAssinaturaPt: 24, larguraAssinaturaPt: 111.4, protecaoPt: 14.9, baseTextoPt: 8.3 } as const;
 /** Marca d'água: Helvetica negrito 60 pt, 45°, no centro da folha, #D9D9D9 (0,85), por baixo do conteúdo. */
 export const MARCA_DAGUA = { fontePt: 60, anguloGraus: 45, cinza: 0.85 } as const;
 export const MM = 72 / 25.4;
@@ -70,29 +68,23 @@ export interface Campo {
   valor: string;
 }
 export interface ModeloDanfe {
-  ambiente: 'producao' | 'homologacao';
-  cancelada: boolean;
+  /** `null` = nota não cancelada; texto presente = cancelada. */
   tarjaCancelada: string | null;
   marcaDagua: string | null;
+  /** `marcaDagua` e `avisoHomologacao` só existem em homologação (tpAmb 2). */
   avisoHomologacao: string | null;
-  rodape: typeof RODAPE_DANFE;
-  marcaDaguaEstilo: typeof MARCA_DAGUA;
-  canhoto: { texto: string; numero: string; serie: string };
+  canhoto: { texto: string };
   cabecalho: {
     emitente: { nome: string; linhasEndereco: string[]; fone: string };
-    titulo: 'DANFE';
-    subtitulo: string;
     /** Legenda do quadro DANFE em 2 linhas, no tamanho de conteúdo (7 pt): a marca não aceita legenda abaixo disso. */
     subtituloLinhas: [string, string];
-    subtituloPt: number;
-    tipoOperacao: { codigo: string; descricao: string };
+    /** Código do tipo (tpNF) e as duas legendas fixas do quadro, na ordem 0, 1. */
+    tipoOperacao: { codigo: string; legendas: [string, string] };
     numero: string;
     serie: string;
     chave: string;
     chaveFormatada: string;
-    barras: CodigoBarras128C;
     consultaTexto: string;
-    protocolo: string;
   };
   operacao: { naturezaOperacao: string; protocolo: string; ie: string; ieSubstituicao: string; cnpj: string };
   destinatario: { nome: string; documento: string; endereco: string; bairro: string; cep: string; municipio: string; uf: string; fone: string; ie: string; emissao: string; saida: string };
@@ -238,20 +230,13 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
 
   const emissao = formatarDataHoraXml(textoDe(ide, 'dhEmi'), fuso, true);
   const saidaTxt = textoDe(ide, 'dhSaiEnt');
-  const cancelada = entrada.cancelada === true;
 
   return {
-    ambiente,
-    cancelada,
-    tarjaCancelada: cancelada ? TARJA_CANCELADA : null,
+    tarjaCancelada: entrada.cancelada === true ? TARJA_CANCELADA : null,
     marcaDagua: ambiente === 'homologacao' ? MARCA_DAGUA_HOMOLOGACAO : null,
     avisoHomologacao: ambiente === 'homologacao' ? AVISO_HOMOLOGACAO : null,
-    rodape: RODAPE_DANFE,
-    marcaDaguaEstilo: MARCA_DAGUA,
     canhoto: {
       texto: `RECEBEMOS DE ${textoDe(emit, 'xNome')} OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA AO LADO`,
-      numero,
-      serie,
     },
     cabecalho: {
       emitente: {
@@ -263,18 +248,13 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
         ].filter(Boolean),
         fone: formatarFone(textoDe(ee, 'fone')),
       },
-      titulo: 'DANFE',
-      subtitulo: 'Documento Auxiliar da Nota Fiscal Eletrônica',
       subtituloLinhas: ['Documento Auxiliar da', 'Nota Fiscal Eletrônica'],
-      subtituloPt: 7,
-      tipoOperacao: { codigo: tpNF, descricao: tpNF === '0' ? '0 - ENTRADA' : '1 - SAÍDA' },
+      tipoOperacao: { codigo: tpNF, legendas: ['0 - ENTRADA', '1 - SAÍDA'] },
       numero,
       serie,
       chave,
       chaveFormatada: formatarChave(chave),
-      barras: codigoBarras128C(chave),
       consultaTexto: 'Consulta de autenticidade no portal nacional da NF-e (www.nfe.fazenda.gov.br/portal) ou no site da SEFAZ autorizadora',
-      protocolo,
     },
     operacao: {
       naturezaOperacao: textoDe(ide, 'natOp'),

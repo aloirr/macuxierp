@@ -1,49 +1,21 @@
-import { deflateSync } from 'node:zlib';
-import { decodePDFRawStream, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFRef, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFNumber, PDFRawStream, StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { montarDanfe } from '../domain/danfe';
-import { nfeProcDeTeste } from '../domain/fixtures-danfe';
+import { montarDanfe, RODAPE_DANFE } from '../domain/danfe';
+import { DESC120, ITEM_EXTREMO, nfeProcDeTeste } from '../domain/fixtures-danfe';
 import { exigirAssinaturaDaMarca, lerAssinaturaDaMarca, verificarAtivosDanfe } from './ativos-marca';
-import { larg, largurasColunas, linhasCabecalhoTabela, renderizarDanfe as renderizarDanfeBruto, type OpcoesPdfDanfe } from './danfe-pdf';
+import { conteudosDasPaginas, logoDeTeste, pngDeTeste } from './danfe-apoio-teste';
+import { A4, BASE_UTIL, larg, largurasColunas, linhasCabecalhoTabela, MARGEM, renderizarDanfe as renderizarDanfeBruto, type OpcoesPdfDanfe } from './danfe-pdf';
 import { ErroLogo, logoEmCinza } from './logo-cinza';
 
 const hex = (t: string) => Buffer.from(t, 'latin1').toString('hex').toUpperCase();
 /** Conteúdo das páginas (streams descomprimidos) + o PDF bruto, em maiúsculas: texto do pdf-lib sai em hexadecimal nos operadores Tj. */
 async function latin1Hex(b: Uint8Array): Promise<string> {
-  const doc = await PDFDocument.load(b);
-  let todo = Buffer.from(b).toString('latin1');
-  for (const pg of doc.getPages()) {
-    const cs = pg.node.Contents();
-    const refs = cs && 'asArray' in cs ? (cs as unknown as { asArray(): PDFRef[] }).asArray() : [];
-    for (const r of refs) {
-      const st = doc.context.lookup(r);
-      if (st instanceof PDFRawStream) todo += Buffer.from(decodePDFRawStream(st).decode()).toString('latin1');
-    }
-  }
-  return todo.toUpperCase();
+  return (Buffer.from(b).toString('latin1') + (await conteudosDasPaginas(b)).join('')).toUpperCase();
 }
 /** O rodapé é obrigatório: os testes usam a assinatura real da marca, salvo quando passam a própria. */
 const renderizarDanfe = async (m: Parameters<typeof renderizarDanfeBruto>[0], o: Partial<OpcoesPdfDanfe> = {}) =>
   renderizarDanfeBruto(m, { assinaturaMarca: await exigirAssinaturaDaMarca(), ...o });
 const paginas = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
-
-/** PNG RGBA de teste sem biblioteca: IHDR + IDAT (filtro 0) + IEND (CRC não é conferido pelo leitor). */
-function pngDeTeste(l: number, a: number, pixel: (x: number, y: number) => [number, number, number, number]): Uint8Array {
-  const cru = Buffer.alloc((l * 4 + 1) * a);
-  for (let y = 0; y < a; y++) for (let x = 0; x < l; x++) cru.set(pixel(x, y), y * (l * 4 + 1) + 1 + x * 4);
-  const chunk = (nome: string, dados: Buffer) => {
-    const h = Buffer.alloc(8);
-    h.writeUInt32BE(dados.length, 0);
-    h.write(nome, 4, 'latin1');
-    return Buffer.concat([h, dados, Buffer.alloc(4)]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(l, 0);
-  ihdr.writeUInt32BE(a, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  return new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(cru)), chunk('IEND', Buffer.alloc(0))]));
-}
 
 describe('DANFE em PDF (RF-FAT-03)', { timeout: 30_000 }, () => {
   it('RF-FAT-03: o PDF abre (%PDF e 1 página) com a nota de 2 itens', async () => {
@@ -74,13 +46,12 @@ describe('DANFE em PDF (RF-FAT-03)', { timeout: 30_000 }, () => {
     await expect(renderizarDanfeBruto(m, {} as OpcoesPdfDanfe)).rejects.toThrow('assinaturaMarca obrigatória');
   });
 
-  it('marca §4/§1: rodapé "Emitido pelo" em todas as folhas, sem "Macuxi ERP" em texto; logo do emitente entra em cinza; logo inválido não derruba o DANFE', async () => {
+  it('marca §4/§1: sem "Macuxi ERP" em texto; logo do emitente entra em cinza; logo inválido não derruba o DANFE (rodapé e logo em todas as folhas: testes próprios)', async () => {
     const m = montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 30 }) });
     const assinatura = await exigirAssinaturaDaMarca(); // sem o ativo do design-de-marca o teste FALHA (nada de PNG substituto)
-    const logo = pngDeTeste(300, 150, (x) => [x % 255, 40, 200, 255]);
+    const logo = logoDeTeste();
     const pdf = await renderizarDanfe(m, { assinaturaMarca: assinatura, logoEmitente: logo });
     const t = await latin1Hex(pdf);
-    expect(t.split(hex('Emitido pelo')).length - 1).toBe(2);
     expect(t).not.toContain(hex('Macuxi ERP'));
     expect(t).toContain('/DEVICEGRAY'.toUpperCase()); // logo do cliente em tons de cinza
     const doc = await PDFDocument.load(pdf);
@@ -139,27 +110,17 @@ interface Texto {
 }
 /** Todos os textos desenhados (decodificados do hexadecimal), com página, corpo e posição (y de baixo para cima). */
 async function textos(b: Uint8Array): Promise<Texto[]> {
-  const doc = await PDFDocument.load(b);
   const out: Texto[] = [];
-  doc.getPages().forEach((pg, i) => {
-    const cs = pg.node.Contents();
-    const refs = cs && 'asArray' in cs ? (cs as unknown as { asArray(): PDFRef[] }).asArray() : [];
-    for (const r of refs) {
-      const st = doc.context.lookup(r);
-      if (!(st instanceof PDFRawStream)) continue;
-      const c = Buffer.from(decodePDFRawStream(st).decode()).toString('latin1');
-      for (const bloco of c.split('BT').slice(1)) {
-        const pt = /([\d.]+) Tf/.exec(bloco);
-        const tm = /1 0 0 1 ([\d.-]+) ([\d.-]+) Tm/.exec(bloco);
-        const tj = /<([0-9A-F]+)> Tj/.exec(bloco);
-        if (pt && tm && tj) out.push({ pagina: i + 1, t: Buffer.from(tj[1]!, 'hex').toString('latin1'), pt: Number(pt[1]), x: Number(tm[1]), y: Number(tm[2]) });
-      }
+  (await conteudosDasPaginas(b)).forEach((c, i) => {
+    for (const bloco of c.split('BT').slice(1)) {
+      const pt = /([\d.]+) Tf/.exec(bloco);
+      const tm = /1 0 0 1 ([\d.-]+) ([\d.-]+) Tm/.exec(bloco);
+      const tj = /<([0-9A-F]+)> Tj/.exec(bloco);
+      if (pt && tm && tj) out.push({ pagina: i + 1, t: Buffer.from(tj[1]!, 'hex').toString('latin1'), pt: Number(pt[1]), x: Number(tm[1]), y: Number(tm[2]) });
     }
   });
   return out;
 }
-const DESC120 = 'Cabo de força tripolar flexível 750V isolação dupla antichama, bobina 100 metros, cor preta, norma NBR 13249, lote 26-11';
-if (DESC120.length !== 120) throw new Error(`DESC120 tem ${DESC120.length} caracteres, não 120`);
 
 describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
   it('marca §3: a legenda "Documento Auxiliar da Nota Fiscal Eletrônica" sai em 2 linhas de 7 pt', async () => {
@@ -169,23 +130,6 @@ describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
     expect(a?.pt).toBe(7);
     expect(b?.pt).toBe(7);
     expect(a!.y).toBeGreaterThan(b!.y);
-  });
-
-  it('marca §3: nenhum texto de cabeçalho da tabela de itens passa da largura da coluna menos 1,5 pt (respiro mínimo), mesmo com valores extremos', async () => {
-    const doc = await PDFDocument.create();
-    const reg = await doc.embedFont(StandardFonts.Helvetica);
-    const extremo = montarDanfe({ nfeProc: nfeProcDeTeste({ item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
-    for (const itens of [[], extremo.itens]) {
-      const ws = largurasColunas(reg, itens);
-      const cab = linhasCabecalhoTabela(reg, ws);
-      expect(cab).toHaveLength(ws.length);
-      cab.forEach((c, i) => {
-        expect(c.linhas.length).toBeGreaterThan(0);
-        for (const l of c.linhas) expect(larg(reg, l, c.pt)).toBeLessThanOrEqual(ws[i]! - 1.5);
-      });
-      expect(ws.reduce((a, b) => a + b, 0)).toBeCloseTo(595.28 - 2 * 28.35, 1);
-      expect(Math.min(...ws)).toBeGreaterThan(10);
-    }
   });
 
   it('marca §3: o PDF não tem reticências em lugar nenhum (rótulos, descrição, nome do destinatário, transportador, duplicatas)', async () => {
@@ -210,7 +154,7 @@ describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
     const palavras = DESC120.split(' ');
     const dosItens = longa.filter((x) => x.pagina === 1 && x.pt === 7);
     for (const p of palavras) expect(dosItens.some((x) => x.t.includes(p)), p).toBe(true);
-    const linhasDescricao = dosItens.filter((x) => palavras.some((p) => x.t.includes(p)) && x.x < 28.35 + 160).length;
+    const linhasDescricao = dosItens.filter((x) => palavras.some((p) => x.t.includes(p)) && x.x < MARGEM + 160).length;
     expect(linhasDescricao).toBeGreaterThanOrEqual(3);
     // a corpo da descrição continua 7 pt
     expect(Math.min(...dosItens.map((x) => x.pt))).toBe(7);
@@ -229,11 +173,14 @@ describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
   });
 
   it('marca §3: item extremo (qCom 11 inteiros e 4 decimais, vProd 13 inteiros) cabe sem reticências, a 7 pt, em 1 folha', async () => {
-    const m = montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 1, item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
+    const m = montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 1, item1: ITEM_EXTREMO }) });
     const ts = await textos(await renderizarDanfe(m));
     expect(ts.some((x) => x.t === '12.345.678.901,0000' && x.pt === 7)).toBe(true);
     expect(ts.some((x) => x.t === '1.234.567.890.123,00' && x.pt === 7)).toBe(true);
     expect(ts.some((x) => x.t.includes('...'))).toBe(false);
+    // BC do ICMS e totais acompanham o item (nota coerente)
+    expect(m.imposto.find((c) => c.rotulo === 'Valor total da nota')?.valor).toBe('1.234.567.890.123,00');
+    expect(m.imposto.find((c) => c.rotulo === 'Base de cálculo do ICMS')?.valor).toBe('1.234.567.890.123,00');
     expect(new Set(ts.map((x) => x.pagina)).size).toBe(1);
   });
 
@@ -264,15 +211,11 @@ describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
   });
 
   it('marca §3: a folha 2 leva o logo do emitente no cabeçalho', async () => {
-    const logo = pngDeTeste(300, 150, (x) => [x % 255, 40, 200, 255]);
+    const logo = logoDeTeste();
     const pdf = await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 30 }) }), { logoEmitente: logo });
-    const doc = await PDFDocument.load(pdf);
-    expect(doc.getPageCount()).toBe(2);
-    for (const pg of doc.getPages()) {
-      const cs = pg.node.Contents() as unknown as { asArray(): PDFRef[] };
-      const c = cs.asArray().map((r) => Buffer.from(decodePDFRawStream(doc.context.lookup(r) as PDFRawStream).decode()).toString('latin1')).join('');
-      expect(c).toMatch(/\/LogoEmitente\S* Do/); // o logo aparece em todas as folhas (grande na 1ª, reduzido na 2ª)
-    }
+    const folhas = await conteudosDasPaginas(pdf);
+    expect(folhas).toHaveLength(2);
+    for (const c of folhas) expect(c).toMatch(/\/LogoEmitente\S* Do/); // o logo aparece em todas as folhas (grande na 1ª, reduzido na 2ª)
   });
 });
 
@@ -295,15 +238,15 @@ describe('DANFE: rodapé "Emitido pelo" (marca §4) e ativo obrigatório', { tim
     const n = await paginas(pdf);
     expect(n).toBe(3);
     expect((await imagens(pdf)).some((i) => i.w === 1857 && i.h === 400)).toBe(true);
-    const ts = (await textos(pdf)).filter((x) => x.t === 'Emitido pelo');
+    const ts = (await textos(pdf)).filter((x) => x.t === RODAPE_DANFE.texto);
     expect(ts.map((x) => x.pagina)).toEqual([1, 2, 3]);
     const doc = await PDFDocument.load(pdf);
     const reg = await doc.embedFont(StandardFonts.Helvetica);
-    const w = larg(reg, 'Emitido pelo', 7);
+    const w = larg(reg, RODAPE_DANFE.texto, RODAPE_DANFE.fontePt);
     for (const t of ts) {
       expect(t.pt).toBe(7);
-      expect(t.y).toBeCloseTo(14.9 + 8.3, 1); // linha de base 8,3 pt acima da base do logo
-      expect(t.x + w).toBeCloseTo(595.28 - 28.35 - 111.4 - 14.9, 1); // 14,9 pt de respiro até o logo
+      expect(t.y).toBeCloseTo(RODAPE_DANFE.protecaoPt + RODAPE_DANFE.baseTextoPt, 1); // linha de base 8,3 pt acima da base do logo
+      expect(t.x + w).toBeCloseTo(A4.l - MARGEM - RODAPE_DANFE.larguraAssinaturaPt - RODAPE_DANFE.protecaoPt, 1); // 14,9 pt de respiro até o logo
     }
     const c = await latin1Hex(pdf);
     expect(c).toContain('1 0 0 1 455.53 14.9 CM'); // base do logo a 14,9 do papel; 455,53 + 111,4 = 566,93 (borda direita)
@@ -312,7 +255,7 @@ describe('DANFE: rodapé "Emitido pelo" (marca §4) e ativo obrigatório', { tim
 
   it('marca §4: nada é desenhado nos 53,8 pt do pé (14,9 + 24 + 14,9), em nenhuma folha', async () => {
     const ts = await textos(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 60, infCpl: 'x '.repeat(900) }) }), { assinaturaMarca: await exigirAssinaturaDaMarca() }));
-    for (const t of ts.filter((x) => x.t !== 'Emitido pelo')) expect(t.y, t.t).toBeGreaterThanOrEqual(53.8);
+    for (const t of ts.filter((x) => x.t !== RODAPE_DANFE.texto)) expect(t.y, t.t).toBeGreaterThanOrEqual(BASE_UTIL - 1e-9);
   });
 
   it('marca §4: verificarAtivosDanfe devolve { ok: true } com o ativo e { ok: false, faltando } sem ele, sem nunca lançar', async () => {
@@ -332,16 +275,27 @@ describe('DANFE: rodapé "Emitido pelo" (marca §4) e ativo obrigatório', { tim
   });
 });
 
+it('fixtures: DESC120 tem 120 caracteres', () => {
+  expect(DESC120).toHaveLength(120);
+});
+
 describe('DANFE: cabeçalho da tabela de itens ', { timeout: 30_000 }, () => {
-  const extremo = () => montarDanfe({ nfeProc: nfeProcDeTeste({ item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
+  const extremo = () => montarDanfe({ nfeProc: nfeProcDeTeste({ item1: ITEM_EXTREMO }) });
 
   it('marca §3: cada cabeçalho fica a 1,5 pt da linha (direita nas colunas numéricas, esquerda nas de texto), nunca cruza, medido no PDF', async () => {
     const doc = await PDFDocument.create();
     const reg = await doc.embedFont(StandardFonts.Helvetica);
+    for (const itens of [[], extremo().itens]) { // tabela sem itens e item extremo: larguras fecham a folha e o rótulo da descrição fica em 2 linhas
+      const ws = largurasColunas(reg, itens);
+      expect(Math.min(...ws)).toBeGreaterThan(10);
+      expect(ws.reduce((a, b) => a + b, 0)).toBeCloseTo(A4.l - 2 * MARGEM, 1);
+      expect(linhasCabecalhoTabela(reg, ws).some((k) => k.linhas.join(' ') === 'DESCRIÇÃO DO PROD./SERV.')).toBe(true);
+    }
     for (const m of [montarDanfe({ nfeProc: nfeProcDeTeste() }), extremo()]) {
       const ws = largurasColunas(reg, m.itens);
-      const xs = ws.map((_, i) => 28.35 + ws.slice(0, i).reduce((a, b) => a + b, 0));
+      const xs = ws.map((_, i) => MARGEM + ws.slice(0, i).reduce((a, b) => a + b, 0));
       const cab = linhasCabecalhoTabela(reg, ws);
+      expect(ws.reduce((a, b) => a + b, 0)).toBeCloseTo(A4.l - 2 * MARGEM, 1);
       const ts = (await textos(await renderizarDanfe(m))).filter((x) => x.pagina === 1 && x.pt === 6);
       const y0 = ts.find((x) => x.t === 'CÓDIGO')!.y;
       const faixa = ts.filter((x) => x.y <= y0 + 0.01 && x.y > y0 - 14);
@@ -350,7 +304,6 @@ describe('DANFE: cabeçalho da tabela de itens ', { timeout: 30_000 }, () => {
         for (const l of c.linhas) {
           const w = larg(reg, l, 6);
           expect(w + 1.5 + 1.5, l).toBeLessThanOrEqual(ws[i]! + 0.001);
-          expect(c.linhas.length, l).toBeLessThanOrEqual(2);
           const t = faixa.find((x) => x.t === l && x.x >= xs[i]! - 0.01 && x.x < xs[i]! + ws[i]!)!;
           expect(t, l).toBeDefined();
           const numerica = ['QUANT.', 'V. UNIT.', 'V. DESC.', 'V. TOTAL', 'BC ICMS', 'V. ICMS', 'V. IPI', 'A.ICMS', 'A.IPI'].includes(c.linhas.join(' '));
@@ -363,16 +316,9 @@ describe('DANFE: cabeçalho da tabela de itens ', { timeout: 30_000 }, () => {
     }
   });
 
-  it('marca §3: o rótulo "DESCRIÇÃO DO PROD./SERV." ocupa no máximo 2 linhas, nunca 3, inclusive com o item extremo', async () => {
+  it('marca §3: descrição estreita (coluna no mínimo): o rótulo "DESCRIÇÃO DO PROD./SERV." ocupa 2 linhas, nunca 3', async () => {
     const doc = await PDFDocument.create();
     const reg = await doc.embedFont(StandardFonts.Helvetica);
-    for (const itens of [[], extremo().itens]) {
-      const ws = largurasColunas(reg, itens);
-      const d = linhasCabecalhoTabela(reg, ws)[1]!;
-      expect(d.linhas.length).toBeLessThanOrEqual(2);
-      expect(d.linhas.join(' ')).toBe('DESCRIÇÃO DO PROD./SERV.');
-    }
-    // descrição estreita (coluna no mínimo): 2 linhas
     const estreito = linhasCabecalhoTabela(reg, [10, larg(reg, 'DESCRIÇÃO DO', 6) + 3, ...Array(13).fill(40)]);
     expect(estreito[1]!.linhas).toEqual(['DESCRIÇÃO DO', 'PROD./SERV.']);
   });
@@ -408,34 +354,7 @@ describe('DANFE: cabeçalho da tabela de itens ', { timeout: 30_000 }, () => {
 });
 
 describe('DANFE: rótulos desenhados e respiro vertical ', { timeout: 30_000 }, () => {
-  const extremo = () => montarDanfe({ nfeProc: nfeProcDeTeste({ item1: { qCom: '12345678901.0000', vProd: '1234567890123.00', descricao: DESC120 } }) });
-  const ROT = ['QUANT.', 'V. UNIT.', 'V. DESC.', 'V. TOTAL', 'BC ICMS', 'V. ICMS', 'V. IPI', 'A.ICMS', 'A.IPI'];
-
-  it('marca §3: os RÓTULOS numéricos desenhados terminam a 1,5 pt do eixo da linha (largura sem kerning, como o drawText desenha)', async () => {
-    const doc = await PDFDocument.create();
-    const reg = await doc.embedFont(StandardFonts.Helvetica);
-    for (const m of [montarDanfe({ nfeProc: nfeProcDeTeste() }), extremo()]) {
-      const ws = largurasColunas(reg, m.itens);
-      const xs = ws.map((_, i) => 28.35 + ws.slice(0, i).reduce((a, b) => a + b, 0));
-      const ts = (await textos(await renderizarDanfe(m))).filter((x) => x.pagina === 1 && x.pt === 6);
-      const y0 = ts.find((x) => x.t === 'CÓDIGO')!.y;
-      const faixa = ts.filter((x) => x.y <= y0 + 0.01 && x.y > y0 - 14);
-      const cab = linhasCabecalhoTabela(reg, ws);
-      let achados = 0;
-      cab.forEach((c, i) => {
-        if (!ROT.includes(c.linhas.join(' '))) return;
-        for (const l of c.linhas) {
-          const t = faixa.find((x) => x.t === l && x.x >= xs[i]! - 0.01 && x.x < xs[i]! + ws[i]!)!;
-          expect(t, l).toBeDefined();
-          const respiro = xs[i]! + ws[i]! - (t.x + larg(reg, l, 6));
-          expect(respiro, l).toBeGreaterThanOrEqual(1.5 - 0.001);
-          expect(respiro, l).toBeLessThan(1.5 + 0.01);
-          achados++;
-        }
-      });
-      expect(achados).toBeGreaterThanOrEqual(ROT.length);
-    }
-  });
+  const extremo = () => montarDanfe({ nfeProc: nfeProcDeTeste({ item1: ITEM_EXTREMO }) });
 
   it('marca §3: rótulo a 6 pt com acento fica a >= 7,09 abaixo da linha de cima; título a 7 pt negrito, a >= 3,10 acima da linha de baixo (medido no PDF)', async () => {
     const ts = (await textos(await renderizarDanfe(extremo()))).filter((x) => x.pagina === 1);

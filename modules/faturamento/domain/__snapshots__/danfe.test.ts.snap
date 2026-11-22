@@ -2,7 +2,6 @@
 
 exports[`DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II) > RF-FAT-03: monta canhoto, cabeçalho, destinatário, imposto, produtos e dados adicionais do nfeProc (snapshot do modelo) 1`] = `
 {
-  "ambiente": "homologacao",
   "avisoHomologacao": "EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL",
   "cabecalho": {
     "chave": "13261104641538000145550010000001231234567890",
@@ -18,24 +17,20 @@ exports[`DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II) > RF-FAT-03: monta ca
       "nome": "EMITENTE LTDA",
     },
     "numero": "000.000.123",
-    "protocolo": "113260000000001 - 21/11/2026 10:31:02",
     "serie": "1",
-    "subtitulo": "Documento Auxiliar da Nota Fiscal Eletrônica",
     "subtituloLinhas": [
       "Documento Auxiliar da",
       "Nota Fiscal Eletrônica",
     ],
-    "subtituloPt": 7,
     "tipoOperacao": {
       "codigo": "1",
-      "descricao": "1 - SAÍDA",
+      "legendas": [
+        "0 - ENTRADA",
+        "1 - SAÍDA",
+      ],
     },
-    "titulo": "DANFE",
   },
-  "cancelada": false,
   "canhoto": {
-    "numero": "000.000.123",
-    "serie": "1",
     "texto": "RECEBEMOS DE EMITENTE LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA AO LADO",
   },
   "dadosAdicionais": {
@@ -150,25 +145,12 @@ exports[`DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II) > RF-FAT-03: monta ca
     },
   ],
   "marcaDagua": "SEM VALOR FISCAL",
-  "marcaDaguaEstilo": {
-    "anguloGraus": 45,
-    "cinza": 0.85,
-    "fontePt": 60,
-  },
   "operacao": {
     "cnpj": "04.641.538/0001-45",
     "ie": "041234561",
     "ieSubstituicao": "",
     "naturezaOperacao": "Venda de mercadoria",
     "protocolo": "113260000000001 - 21/11/2026 10:31:02",
-  },
-  "rodape": {
-    "alturaAssinaturaPt": 24,
-    "baseTextoPt": 8.3,
-    "fontePt": 7,
-    "larguraAssinaturaPt": 111.4,
-    "protecaoPt": 14.9,
-    "texto": "Emitido pelo",
   },
   "tarjaCancelada": null,
   "transportador": [

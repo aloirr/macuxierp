@@ -15,7 +15,5 @@ export * from './carta-correcao';
 export * from './inutilizacao';
 export * from './consulta';
 export * from './retorno-evento';
-export * from './codigo-barras';
-export * from './xml-leve';
-export * from './danfe';
+export { montarDanfe, ErroDanfe, type EntradaDanfe, type LinhaProduto, type ModeloDanfe } from './danfe';
 export * from './fila';
