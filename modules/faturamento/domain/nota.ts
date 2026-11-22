@@ -4,21 +4,16 @@
  */
 import { centavos, ratear, valorItem } from '@macuxierp/platform-sdk';
 import type { ItemResultado } from '@macuxierp/fiscal/contracts';
-import type { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
+import type { PedidoAprovadoV1, SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Ambiente, ItemEmissao } from '../contracts';
 import { violacao, type Violacao } from './violacao';
-
-export const XNOME_HOMOLOGACAO = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
 
 /** Pedido aprovado como o evento `pedido.pedido.aprovado@1` o entrega (contrato real, T-0013 §8.1): identificação + `pedido` inteiro. */
 export type PedidoFaturavel = PedidoAprovadoV1;
 export type ItemPedidoAprovado = PedidoFaturavel['pedido']['itens'][number];
 
-// DUBLÊ até o pedido expor a porta `SituacaoPedidoParaFaturar` nos contracts (T-0015): `pedido/contracts` ainda só traz o evento.
-export interface SituacaoPedido {
-  status: string;
-  itens: { sequencia: number; quantidade: number; quantidade_faturada: number }[];
-}
+/** Contrato real da porta do pedido (`criarConsultaParaFaturar` do `pedido/api`): status e saldo por item, lidos com `FOR SHARE`. */
+export type SituacaoPedido = SituacaoPedidoParaFaturar;
 
 /**
  * Resultado fiscal de um item (`fiscal.calculo@1`, `ItemResultado`) + o CFOP. O contrato do cálculo recebe o CFOP na
@@ -39,7 +34,7 @@ const ICMS_COM_ST = new Set(['10', '201', '202', '203']);
 /**
  * Valores do item no formato do XML, lidos do `ItemResultado` (ausente = 0). Soma só o que o XML emite em cada CST/CSOSN
  * (RN-FAT-01): CST 40/41/50 e CSOSN 101/102/103/300/400 não emitem vBC/vICMS; vST e FCP-ST só em CST 10 e CSOSN 201/202/203.
- * IBS = UF + município; CBS vem do grupo `cbs` ou do `ibs`.
+ * IBS/CBS/IS do lote 3 do fiscal (`ibs_cbs`: vIBS e `g_cbs.v_cbs`; `is.v_is`); os grupos `ibs` e `cbs` do @1 são obsoletos e só servem de reserva.
  */
 export function valoresFiscais(r: ItemResultado): {
   vBC: number; vICMS: number; vBCST: number; vST: number; vFCP: number; vFCPST: number; vIPI: number; vPIS: number; vCOFINS: number; vIBS: number; vCBS: number; vIS: number;
@@ -57,11 +52,21 @@ export function valoresFiscais(r: ItemResultado): {
     vIPI: r.ipi?.v_ipi ?? 0,
     vPIS: pisCofinsComValor(r.pis?.cst) ? (r.pis?.v_valor ?? 0) : 0,
     vCOFINS: pisCofinsComValor(r.cofins?.cst) ? (r.cofins?.v_valor ?? 0) : 0,
-    vIBS: (r.ibs?.v_ibs_uf ?? 0) + (r.ibs?.v_ibs_mun ?? 0),
-    vCBS: r.cbs?.v_cbs ?? r.ibs?.v_cbs ?? 0,
+    vIBS: r.ibs_cbs?.v_ibs ?? (r.ibs?.v_ibs_uf ?? 0) + (r.ibs?.v_ibs_mun ?? 0),
+    vCBS: r.ibs_cbs?.g_cbs?.v_cbs ?? r.cbs?.v_cbs ?? r.ibs?.v_cbs ?? 0,
     vIS: r.is?.v_is ?? 0,
   };
 }
+
+/** CFOP do item: o do `ItemResultado.cfop` do fiscal (lote 3); sem ele, o que a porta do cálculo devolveu à parte. */
+export const cfopDoItem = (r: ItemResultado, doMapa: string | undefined): string => r.cfop ?? doMapa ?? '';
+
+/** Resumo do item nos eventos e na consulta da nota: quantidade e valor líquido (produto − desconto). */
+export const resumoDoItem = (i: Pick<NotaItemBase, 'sequencia' | 'quantidade' | 'valor_produto_centavos' | 'desconto_centavos'>): { sequencia: number; quantidade: number; valor_centavos: number } => ({
+  sequencia: i.sequencia,
+  quantidade: i.quantidade,
+  valor_centavos: i.valor_produto_centavos - i.desconto_centavos,
+});
 
 /** Mesmo item de `EmitirNotaEntrada` (contracts); `quantidade` em escala 4, omitida = todo o saldo do item. */
 export type SolicitacaoItem = ItemEmissao;
@@ -76,6 +81,8 @@ export interface NotaItemBase {
   ncm: string;
   unidade: string;
   gtin: string | null;
+  /** Origem da mercadoria (`ProdutoRetrato.origem`): vira o `orig` do ICMS no XML. */
+  origem: string;
   quantidade: number;
   preco_unitario_centavos: number;
   valor_produto_centavos: number;
@@ -119,7 +126,7 @@ export interface NotaMontada {
   totais: TotaisNota;
 }
 
-/** Divide `num / den` meio para cima, em inteiros exatos (não negativos). O SDK ainda não exporta o `divArred` (RD-0273 a RD-0276). */
+/** Divide `num / den` meio para cima, em inteiros exatos (não negativos). Local até o sdk exportar (RD-0367/0368). */
 function divArred(num: bigint, den: bigint): bigint {
   if (den === 0n) throw new RangeError('divisão por zero');
   const q = num / den;
@@ -137,11 +144,6 @@ export function ratearProporcional(total: number, pesos: readonly number[]): num
   return partes;
 }
 
-/** RN-FAT-04: em homologação o xNome do destinatário é o texto do Manual. */
-export function xNomeDestinatario(ambiente: Ambiente, nome: string): string {
-  return ambiente === 'homologacao' ? XNOME_HOMOLOGACAO : nome;
-}
-
 const nfeVaiAoFdv = (ambiente: Ambiente): boolean => ambiente === 'producao';
 
 export interface EntradaItens {
@@ -149,10 +151,7 @@ export interface EntradaItens {
   situacao: SituacaoPedido;
   /** Sem lista = nota total do saldo. */
   itens?: SolicitacaoItem[];
-  /**
-   * Frete em centavos. O contrato do pedido (`Frete`) só traz modalidade e transportadora, sem valor: até ele trazer,
-   * o valor vem de quem chama (padrão 0). Ver "Pendências" no README.
-   */
+  /** Frete em centavos; omitido = `Frete.valor_centavos` do pedido (nulo vale 0). */
   frete_centavos?: number;
   outras_centavos?: number;
 }
@@ -216,7 +215,7 @@ export function ratearItens(e: EntradaItens): ResultadoItens {
   if (v.length > 0) return { ok: false, violacoes: v };
 
   // Frete do pedido pelo acumulado do valor bruto faturado (RN-CORE-03): arred(F × depois / bruto) − arred(F × antes / bruto).
-  const frete = e.frete_centavos ?? 0;
+  const frete = e.frete_centavos ?? e.pedido.pedido.frete?.valor_centavos ?? 0;
   const brutoPedido = itensPedido.reduce((a, i) => a + valorItem(i.quantidade, i.preco_unitario_centavos), 0);
   const brutoAntes = itensPedido.reduce((a, i) => a + valorItem(faturadaDe.get(i.sequencia) ?? 0, i.preco_unitario_centavos), 0);
   const brutoDepois = escolhidos.reduce(
@@ -241,6 +240,7 @@ export function ratearItens(e: EntradaItens): ResultadoItens {
       ncm: item.produto_retrato.ncm,
       unidade: item.produto_retrato.unidade_comercial,
       gtin: item.produto_retrato.ean,
+      origem: item.produto_retrato.origem,
       quantidade,
       preco_unitario_centavos: item.preco_unitario_centavos,
       valor_produto_centavos: brutos[i] ?? 0,
@@ -251,16 +251,11 @@ export function ratearItens(e: EntradaItens): ResultadoItens {
   };
 }
 
-/** Passo 2: junta o cálculo fiscal aos itens e fecha os totais. */
-export function montarNota(e: EntradaMontagem): ResultadoMontagem {
-  const base = ratearItens(e);
-  if (!base.ok) return base;
-  const calcDe = new Map(e.calculo.map((c) => [c.sequencia, c]));
-  const faltando = base.itens.filter((i) => !calcDe.has(i.sequencia));
-  if (faltando.length > 0) {
-    return { ok: false, violacoes: faltando.map((i) => violacao('RF-FAT-01', `itens.${i.sequencia}.calculo`, `Sem cálculo fiscal para o item ${i.sequencia}.`)) };
-  }
-  const itens: NotaItemMontado[] = base.itens.map((i) => ({ ...i, calculo: calcDe.get(i.sequencia) as ItemCalculado }));
+/**
+ * Totais da nota pela soma dos itens. vNF = vProd − vDesc + vFrete + vOutro + vIPI + vST + vFCPST (IBS/CBS/IS não entram em
+ * 2026). É a única conta de vNF; a referência é o `totais.v_nf` do fiscal (RD-0283). Também refaz os totais de uma nota gravada.
+ */
+export function calcularTotais(itens: readonly NotaItemMontado[]): TotaisNota {
   const soma = (f: (i: NotaItemMontado) => number): number => itens.reduce((a, i) => a + f(i), 0);
   const val = (i: NotaItemMontado): ReturnType<typeof valoresFiscais> => valoresFiscais(i.calculo.resultado);
   const totais: TotaisNota = {
@@ -282,9 +277,21 @@ export function montarNota(e: EntradaMontagem): ResultadoMontagem {
     vIS: soma((i) => val(i).vIS),
     vNF: 0,
   };
-  // vNF = vProd − vDesc + vFrete + vOutro + vIPI + vST + vFCPST (IBS/CBS/IS não entram em 2026). É a única conta aqui; a referência é o
-  // `totais.v_nf` do fiscal (RD-0283), e a divergência impede a nota antes de reservar número.
   totais.vNF = totais.vProd - totais.vDesc + totais.vFrete + totais.vOutro + totais.vIPI + totais.vST + totais.vFCPST;
+  return totais;
+}
+
+/** Passo 2: junta o cálculo fiscal aos itens e fecha os totais. */
+export function montarNota(e: EntradaMontagem): ResultadoMontagem {
+  const base = ratearItens(e);
+  if (!base.ok) return base;
+  const calcDe = new Map(e.calculo.map((c) => [c.sequencia, c]));
+  const faltando = base.itens.filter((i) => !calcDe.has(i.sequencia));
+  if (faltando.length > 0) {
+    return { ok: false, violacoes: faltando.map((i) => violacao('RF-FAT-01', `itens.${i.sequencia}.calculo`, `Sem cálculo fiscal para o item ${i.sequencia}.`)) };
+  }
+  const itens: NotaItemMontado[] = base.itens.map((i) => ({ ...i, calculo: calcDe.get(i.sequencia) as ItemCalculado }));
+  const totais = calcularTotais(itens);
   if (e.v_nf_fiscal !== undefined && e.v_nf_fiscal !== totais.vNF) {
     return { ok: false, violacoes: [violacao('RF-FAT-01', 'total', `vNF da nota (${totais.vNF}) difere do v_nf do cálculo fiscal (${e.v_nf_fiscal}).`)] };
   }

@@ -27,7 +27,7 @@ export const retratoCliente: PedidoFaturavel['pedido']['cliente_retrato'] = {
   nome_fantasia: null,
   ie: '04.123.456-1',
   ind_ie_dest: '1',
-  endereco: { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000-000', pais_bacen: '1058' },
+  endereco: { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058', municipio_nome: 'Manaus' },
 };
 
 export function pedidoAprovado(itens: PedidoFaturavel['pedido']['itens'], extra: Partial<PedidoFaturavel> = {}): PedidoFaturavel {

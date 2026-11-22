@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { StatusNota } from '../contracts';
-import { numeroInutilizavel, podeEditar, podeSeguirAposAutorizacao, reenvioMantemNumero, TRANSICOES, validarTransicao } from './estados';
+import { emTransmissao, ESTADOS_EM_TRANSMISSAO, numeroInutilizavel, podeEditar, podeSeguirAposAutorizacao, reenvioMantemNumero, TRANSICOES, validarTransicao } from './estados';
 
 describe('máquina de estados da nota', () => {
   it('RN-FAT-07: rejeitada reenvia com o mesmo número', () => {
@@ -43,5 +43,9 @@ describe('máquina de estados da nota', () => {
     expect(StatusNota.options.filter(numeroInutilizavel)).toEqual(['rejeitada']);
     expect(validarTransicao('rejeitada', 'cancelada', { porEvento: true })[0]).toMatchObject({ rn: 'RN-FAT-07' });
     expect(validarTransicao('rejeitada', 'autorizada')[0]).toMatchObject({ rn: 'RN-FAT-07' });
+  });
+  it('RN-FAT-03: só em_autorizacao e autorizada_guarda_pendente são transmitidos pelo worker', () => {
+    expect(StatusNota.options.filter(emTransmissao)).toEqual([...ESTADOS_EM_TRANSMISSAO]);
+    expect(ESTADOS_EM_TRANSMISSAO).toEqual(['em_autorizacao', 'autorizada_guarda_pendente']);
   });
 });
