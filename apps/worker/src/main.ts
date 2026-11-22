@@ -11,12 +11,13 @@
  * `MACUXIERP_CHAVE_INTEGRACAO` (`credencial.ts`). Sem essa configuração o laço de agenda fica desligado (nada sai para o
  * Hub e as agendas ficam paradas no banco), com um aviso só no log listando as variáveis que faltam. A versão do ERP
  * (User-Agent) vem de `MACUXIERP_VERSAO` (o compose entrega; padrão 'dev').
- * Pedidos do FDV (T-0016): `MACUXIERP_FDV_RECEBIMENTO`, ver pedidos-fdv.ts.
+ * `MACUXIERP_FDV_RECEBIMENTO` (pedidos do FDV, T-0016) e `MACUXIERP_FDV_ENVIO`: trava de 22/11/2026, ver envio-fdv.ts.
  */
 import { armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
 import { configurarCredenciais } from './credencial';
+import { configurarEnvioFdv } from './envio-fdv';
 import { configurarHub, versaoDoErp } from './hub';
 import { montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
 import { conferirRecebimentoFdv, configurarRecebimentoFdv, montarPedidosFdv, resolvedorChaveErpDeProducao } from './pedidos-fdv';
@@ -39,11 +40,12 @@ const hub = configurarHub(process.env, versaoDoErp(process.env));
 const decifrarCredencial = configurarCredenciais(process.env);
 const faltando = [...(hub ? [] : ['MACUXIERP_HUB_URL_TESTE', 'MACUXIERP_HUB_URL_PRODUCAO']), ...(decifrarCredencial ? [] : ['MACUXIERP_CHAVE_INTEGRACAO'])];
 const recebimento = configurarRecebimentoFdv(process.env);
+const envio = configurarEnvioFdv(process.env);
 conferirRecebimentoFdv(recebimento, faltando);
 if (faltando.length) log.warn({ faltando }, 'laço de agenda desligado');
 const pedidosFdv = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor: resolvedorChaveErpDeProducao() });
-const agendas = hub && decifrarCredencial ? montarAgendas({ log, relogio: relogioDoSistema, pedidosFdv }) : [];
-log.info({ recebimento_pedidos_fdv: recebimento, agendas: agendas.map((a) => a.id) }, 'pedidos do FDV');
+const agendas = hub && decifrarCredencial ? montarAgendas({ log, relogio: relogioDoSistema, pedidosFdv, envio }) : [];
+log.info({ recebimento_pedidos_fdv: recebimento, envio_fdv: envio, agendas: agendas.map((a) => a.id) }, 'pedidos do FDV');
 
 const worker = iniciarWorker({
   banco,
