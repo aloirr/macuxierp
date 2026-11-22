@@ -1,6 +1,6 @@
 /**
- * Endereço do cliente com o nome do município do IBGE, montado em um lugar só: o evento do cliente (C-1/C-3) e a
- * consulta para o pedido (T-0015) usam o mesmo helper, em lote (uma consulta por chamada, sem repetir código).
+ * Endereço do cliente com o nome do município do IBGE, montado em um lugar só: o evento do cliente (C-1/C-3) e as
+ * consultas para o pedido (T-0015) e o faturamento (T-0021) usam o mesmo helper, em lote.
  */
 import type { Repositorios } from './portas';
 
