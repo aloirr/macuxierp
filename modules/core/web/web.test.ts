@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERFIS } from '@macuxierp/platform-sdk';
 import { criarClienteCore, ErroCliente, SenhaUmaVez, type Fetch } from './cliente';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
-import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis } from './paginas';
+import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO } from './paginas';
 
 describe('BKO do core: permissões refletidas na UI (a proteção real é da API)', () => {
   it('RN-CORE-02: administrador vê tudo; leitura só a empresa e os perfis; fiscal e faturista veem o ambiente', () => {
@@ -12,11 +12,17 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
     expect(paginasVisiveis('faturista').map((p) => p.id)).not.toContain('usuarios');
   });
 
-  it('RN-CORE-08: só o administrador vê o botão de trocar o ambiente fiscal, com confirmação', () => {
+  it('RN-CORE-08: só o administrador vê o botão de voltar para homologação, com confirmação e só com a filial em produção; não há botão de produção', () => {
     const amb = PAGINAS_CORE.find((p) => p.id === 'ambiente');
     if (!amb) throw new Error('sem página');
-    expect(botoesVisiveis('fiscal', amb)).toEqual([]);
-    expect(botoesVisiveis('administrador', amb)[0]).toMatchObject({ id: 'trocar', confirma: true });
+    expect(botoesVisiveis('fiscal', amb, 'producao')).toEqual([]);
+    expect(botoesVisiveis('administrador', amb, 'homologacao')).toEqual([]);
+    expect(botoesVisiveis('administrador', amb)).toEqual([]);
+    const botoes = botoesVisiveis('administrador', amb, 'producao');
+    expect(botoes).toHaveLength(1);
+    expect(botoes[0]).toMatchObject({ id: 'voltar-homologacao', rotulo: 'Voltar para homologação', confirma: true });
+    expect(botoes.map((b) => b.rotulo.toLowerCase()).join()).not.toContain('produ');
+    expect(TEXTO_AMBIENTE_HOMOLOGACAO).toContain('peça à Macuxi');
   });
 
   it('todo perfil conhecido tem ao menos a página da empresa', () => {

@@ -1,6 +1,6 @@
 /**
  * T-0003, lote 2: core e cadastros — vazamento entre tenants em todas as tabelas, FKs compostas presas ao tenant,
- * certificado A1 (só o worker lê o cifrado; a leitura não vê a tabela), produção fiscal só com aprovação (RN-CORE-08),
+ * certificado A1 (só o worker lê o cifrado; a leitura não vê a tabela), produção fiscal só pelo operador (RN-CORE-08, T-0030),
  * movimento de estoque só de inserção e D8 (a filial guarda só série e número inicial).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -129,24 +129,78 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — core e cadastros (T-0003, l
     );
   });
 
-  it('produção fiscal só com o recado de aprovação do Alexandre (RN-CORE-08, regra 7)', () => {
-    expect(
-      falha(() => executar(banco.conexao, `UPDATE core.ambiente_fiscal SET ambiente = 'producao';`, APP_A)),
-    ).toMatch(/ambiente_producao_aprovada/);
-    expect(
-      falha(() =>
-        executar(
+  describe('produção fiscal só pelo operador (regra 7, RN-CORE-08, ADR 0006, T-0030)', () => {
+    const RECADO_OK = 'R-20261121-120000-alexandre';
+    const AMBIENTE_A = `SELECT ambiente, recado_aprovacao FROM core.ambiente_fiscal WHERE filial_id = '${A.filial}'`;
+    const DA_FILIAL_A = `WHERE tenant_id = '${A.id}' AND filial_id = '${A.filial}'`;
+    const NOVA_FILIAL = '0f000000-0000-4000-8000-000000000030';
+    /** O upsert da API (modules/core/api/repositorio-sql.ts, gravarAmbiente). */
+    const upsert = (filial: string, ambiente: string, recado: string | null) =>
+      `INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao)
+       VALUES (plataforma.tenant_atual(), '${filial}', '${ambiente}', ${recado === null ? 'NULL' : `'${recado}'`})
+       ON CONFLICT (tenant_id, filial_id) DO UPDATE
+         SET ambiente = EXCLUDED.ambiente, recado_aprovacao = EXCLUDED.recado_aprovacao, deleted_at = NULL;`;
+    const homologacao = [{ ambiente: 'homologacao', recado_aprovacao: null }];
+
+    it('pré-requisito: o papel das migrações (e do operador) é dono da tabela, com RLS e sem FORCE', () => {
+      expect(
+        consultar(
           banco.conexao,
-          `UPDATE core.ambiente_fiscal SET ambiente = 'producao', recado_aprovacao = 'R-20261121-120000-gerente';`,
+          `SELECT pg_get_userbyid(relowner) = current_user AS dono, relrowsecurity AS rls, relforcerowsecurity AS forca
+           FROM pg_class WHERE oid = 'core.ambiente_fiscal'::regclass`,
+        ),
+      ).toEqual([{ dono: true, rls: true, forca: false }]);
+    });
+
+    it('o app não faz UPDATE para produção, nem com o recado válido (cai na RLS)', () => {
+      expect(
+        falha(() =>
+          executar(
+            banco.conexao,
+            `UPDATE core.ambiente_fiscal SET ambiente = 'producao', recado_aprovacao = '${RECADO_OK}';`,
+            APP_A,
+          ),
+        ),
+      ).toMatch(/row-level security/);
+      expect(consultar(banco.conexao, AMBIENTE_A, APP_A)).toEqual(homologacao);
+    });
+
+    it('o app não faz INSERT nem INSERT … ON CONFLICT DO UPDATE para produção; homologação grava', () => {
+      expect(falha(() => executar(banco.conexao, upsert(NOVA_FILIAL, 'producao', RECADO_OK), APP_A))).toMatch(
+        /row-level security/,
+      );
+      expect(falha(() => executar(banco.conexao, upsert(A.filial, 'producao', RECADO_OK), APP_A))).toMatch(
+        /row-level security/,
+      );
+      expect(
+        consultar(
+          banco.conexao,
+          `SELECT count(*)::int AS n FROM core.ambiente_fiscal WHERE filial_id = '${NOVA_FILIAL}'`,
           APP_A,
         ),
-      ),
-    ).toMatch(/ambiente_producao_aprovada/);
-    executar(
-      banco.conexao,
-      `UPDATE core.ambiente_fiscal SET ambiente = 'producao', recado_aprovacao = 'R-20261121-120000-alexandre';`,
-      APP_A,
-    );
+      ).toEqual([{ n: 0 }]);
+      expect(consultar(banco.conexao, AMBIENTE_A, APP_A)).toEqual(homologacao);
+      executar(banco.conexao, upsert(NOVA_FILIAL, 'homologacao', null), APP_A);
+    });
+
+    it('o dono põe em produção só com o recado válido (CHECK); o app só volta para homologação', () => {
+      for (const set of [`ambiente = 'producao'`, `ambiente = 'producao', recado_aprovacao = 'R-20261121-120000-gerente'`]) {
+        expect(
+          falha(() => executar(banco.conexao, `UPDATE core.ambiente_fiscal SET ${set} ${DA_FILIAL_A};`)),
+        ).toMatch(/ambiente_producao_aprovada/);
+      }
+      executar(
+        banco.conexao,
+        `UPDATE core.ambiente_fiscal SET ambiente = 'producao', recado_aprovacao = '${RECADO_OK}' ${DA_FILIAL_A};`,
+      );
+      expect(consultar(banco.conexao, AMBIENTE_A, APP_A)).toEqual([{ ambiente: 'producao', recado_aprovacao: RECADO_OK }]);
+      // Em produção, o app não grava nada que mantenha a linha em produção.
+      expect(
+        falha(() => executar(banco.conexao, `UPDATE core.ambiente_fiscal SET external_id = 'x';`, APP_A)),
+      ).toMatch(/row-level security/);
+      executar(banco.conexao, upsert(A.filial, 'homologacao', null), APP_A);
+      expect(consultar(banco.conexao, AMBIENTE_A, APP_A)).toEqual(homologacao);
+    });
   });
 
   it('movimento de estoque é só de inserção; o app não apaga cadastro (exclusão = deleted_at)', () => {
