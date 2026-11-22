@@ -73,6 +73,13 @@ export type MotivoCancelamento = z.infer<typeof MotivoCancelamento>;
 export const MotivoCodigo = z.enum([...new Set([...MotivoRecusa.options, ...MotivoCancelamento.options])] as [MotivoRecusa | MotivoCancelamento, ...(MotivoRecusa | MotivoCancelamento)[]]);
 export type MotivoCodigo = z.infer<typeof MotivoCodigo>;
 
+/** Resposta de `GET /v1/pedido/motivos`: o catálogo com o texto em português (T-0013 §4.3), para a tela montar o seletor. */
+export const CatalogoMotivos = z.object({
+  recusa: z.array(z.object({ codigo: MotivoRecusa, texto: z.string() })),
+  cancelamento: z.array(z.object({ codigo: MotivoCancelamento, texto: z.string() })),
+});
+export type CatalogoMotivos = z.infer<typeof CatalogoMotivos>;
+
 const MotivoTexto = z.string().trim().min(1).max(300).nullable().default(null);
 const exigeTextoEmOutro = (v: { motivo_codigo: string; motivo_texto: string | null }, ctx: z.RefinementCtx) => {
   if (v.motivo_codigo === 'outro' && !v.motivo_texto) {
