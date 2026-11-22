@@ -5,7 +5,7 @@ import { MANIFESTOS } from '@/lib/manifestos';
 import { montarMenu } from '@/lib/menu';
 import { contexto } from '@/lib/sessao';
 import { NavLateral } from './nav-lateral';
-import { sairAction } from './sair';
+import { BotaoSair } from './botao-sair';
 
 export default async function Casca({ children }: { children: ReactNode }) {
   const { eu, filial } = await contexto();
@@ -21,7 +21,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
         {eu.filiais.length > 1 && <a href="/filial">Trocar filial</a>}
         <span className="espaco" />
         <span>{eu.usuario.nome} ({eu.usuario.perfil})</span>
-        <form action={sairAction}><button className="mx-botao-secundario" type="submit">Sair</button></form>
+        <BotaoSair />
       </header>
       <NavLateral menu={menu} />
       <main id="conteudo" className="conteudo">{children}</main>
