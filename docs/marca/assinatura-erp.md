@@ -1,77 +1,69 @@
-# Assinatura "Macuxi ERP": PROPOSTA (T-0023)
+# Assinatura "Macuxi ERP" (T-0023)
 
-> **PROPOSTA, não aprovada.** Nada deste arquivo entra no manual da marca sem o "aprovo" do Alexandre, dado em recado ou no chat. Até lá, nenhum agente aplica a assinatura em tela, PDF, e-mail ou ícone.
-> Autor: design-de-marca · 21/11/2026 (horário de Manaus) · Tarefa T-0023 (F1).
+> **APROVADA COM CONDIÇÃO — conformidade com o FDV pendente.** Ainda **não é REGRA**: nenhum agente aplica a assinatura em tela, PDF, e-mail ou ícone até a versão final estar em `docs/marca/ativos/` e este arquivo virar regra.
+> Decisão do Alexandre em 21/11/2026, 21h29 (Manaus): "SEGUIR COM O RECOMENDADO" — A principal, C vertical de apoio, B descartada ([decisoes.md](decisoes.md)).
+> Autor: design-de-marca · atualizado em 21/11/2026 (Manaus) · Tarefa T-0023.
 
 ## 1. Regra da assinatura
-O ERP **não ganha marca nova**. Ele usa a mesma marca Macuxi do FDV: mesmo símbolo, mesma palavra MACUXI, mesma paleta e mesma tipografia. **Só o descritor muda**: "ERP" entra no lugar de "FORÇA DE VENDAS".
+O ERP **não ganha marca nova**. Usa a mesma marca Macuxi do FDV: mesmo símbolo (Monte Roraima), mesma escrita "Macuxi", mesma paleta e mesma composição. **Só o descritor muda**: "ERP" entra no lugar de "FORÇA DE VENDAS".
 
-Por quê, em linguagem de negócio: o cliente do ERP é o mesmo cliente do FDV. Quando ele vê a mesma marca no celular do vendedor, no BKO e no DANFE, entende que é um produto só, da mesma empresa. Uma segunda marca dividiria o reconhecimento que o FDV já construiu.
+Por quê: o cliente do ERP é o mesmo cliente do FDV. Vendo a mesma marca no celular do vendedor, no BKO e no DANFE, ele entende que é um produto só, da mesma empresa.
 
-| Elemento | Origem | Situação |
-|---|---|---|
-| Símbolo | Manual do FDV (`aloirr/macuxifdv`, `docs/marca/manual.md`) | **A conferir (§6).** Nos SVGs, ele aparece como um quadro tracejado "SÍMBOLO FDV", só para marcar o lugar. Não foi redesenhado. |
-| Palavra MACUXI | Manual do FDV | Peso, caixa e espaçamento **a conferir (§6)**. Na simulação, caixa alta, peso 800 e fonte genérica do sistema. |
-| Descritor | Específico do ERP | "ERP", em caixa alta. Essa é a proposta. |
-| Paleta | Tokens de `packages/ui/src/index.ts` (que citam o manual do FDV, §3) | Só tokens existentes, nenhuma cor nova. |
-| Tipografia | Manual do FDV | **A conferir (§6).** Os tokens do ERP ainda não têm família tipográfica. |
+## 2. Versões aprovadas (com condição)
+- **A — principal (horizontal):** símbolo à esquerda; "Macuxi" em cima; "ERP" embaixo, no lugar do "FORÇA DE VENDAS". Para cabeçalho e menu do BKO, quadro do emitente do DANFE e e-mail.
+- **C — vertical de apoio (empilhado):** símbolo em cima, escrita embaixo, centralizada. Equivale ao empilhado do FDV ("splash e materiais quadrados"): login, capa e avatar quadrado.
 
-## 2. Cores de cada versão (só tokens)
-| Versão | Fundo | MACUXI e símbolo | Descritor "ERP" | Contraste do descritor |
+## 3. Cores de cada versão (as do FDV, pelos tokens)
+| Versão | Fundo | Símbolo | Sol | Escrita "Macuxi" | Descritor "ERP" | Contraste do descritor |
+|---|---|---|---|---|---|---|
+| Positivo | `branco` | `azulNoite` | `solLaranja` | `grafite` | `textoSecundario` | 7,59:1 (7,03:1 sobre `perola`) |
+| Negativo azul-noite | `azulNoite` | `branco` | `solClaro` | `branco` | `bordaCinza` | 8,07:1 |
+| Negativo grafite (menu do BKO) | `grafite` | `azulClaro` | `solClaro` | `branco` | #C9D0D8 do FDV (sem token no ERP) | 10,59:1 |
+| Mono preto / mono branco | liso | uma cor | uma cor | uma cor | uma cor | — |
+
+- O laranja é **só do sol** do logo e dos gráficos. O descritor **nunca** é laranja.
+- O #C9D0D8 só existe dentro do arquivo SVG oficial do FDV. No ERP, o menu usa o arquivo, não um hex no código. Se o `designer-ux` precisar dele como token, é cor nova e vai ao Alexandre. Não vale trocar por `bordaCinza` (#C9CED5, quase igual não é igual).
+
+## 4. Conferência com o FDV (21/11/2026)
+Feita pelo gerente contra o `aloirr/macuxifdv` (só leitura, busca de código). O conteúdo integral dos SVGs oficiais não estava acessível nesta sessão.
+
+| Item | FDV (`docs/marca/manual.md` e `gerar-ativos.mjs`) | Proposta de 21/11 | Resultado | Correção (segue o FDV) |
 |---|---|---|---|---|
-| Clara | `branco` | `azulNoite` (12,77:1 sobre `branco`) | `solLaranja` | 4,60:1 (passa 4,5:1) |
-| Escura | `azulNoite` | `perola` (11,82:1) | `solClaro` | 5,85:1 (passa 4,5:1) |
-| Monocromática | transparente | `grafite` | `grafite` | 16,48:1 sobre `branco` |
+| Símbolo | Monte Roraima: tepui de topo plano, sol nascendo atrás, linha do lavrado; fresta entre o sol e o topo da serra, também no mono | Quadro tracejado "SÍMBOLO FDV" | Bate (lugar reservado, sem redesenho) | Entrar o SVG oficial na versão final |
+| Escrita e tipografia | "Macuxi" em caixa alta e baixa, Archivo ExtraBold, em contorno nos ativos. A fonte do sistema vale só para texto de interface (R-20261115-110600) | "MACUXI" em caixa alta, fonte do sistema | Diverge | "Macuxi", Archivo ExtraBold, convertida em curvas |
+| Paleta | As da tabela do §3 | Escrita `azulNoite`; descritor `solLaranja`/`solClaro` | Diverge | Cores da tabela do §3 |
+| Posição do descritor | Embaixo da escrita; linha do lavrado na base do "FORÇA DE VENDAS"; topo do sol na linha do topo do "M" | Embaixo (A) e empilhado (C) | Bate | Manter; alinhar topo do sol e base do descritor como no FDV |
+| Largura do descritor | Regra 3: "FORÇA DE VENDAS" vai de ponta a ponta da tinta de "Macuxi" | "ERP" curto, à esquerda | Diverge | — |
+| Espaço símbolo–escrita | 0,3 da altura do logo; no empilhado, símbolo com 0,62 da largura da tinta da escrita e espaço de 0,3 da altura do símbolo | Espaço livre | Diverge | Usar as proporções do FDV |
+| Área de proteção | Altura do "M" | Altura do "M" | Bate | — |
+| Tamanho mínimo | 20 px de altura com a escrita; abaixo disso, só o símbolo, a partir de 16 px | 120/80 px de largura | Diverge | 20 px de altura com a escrita; 16 px só o símbolo (favicon) |
+| Versões | Positivo, negativo azul-noite, negativo grafite, mono preto, mono branco, empilhado positivo/negativo, símbolo (positivo, negativo, mono) | Clara, escura, mono | Diverge (falta o negativo grafite) | Mesmas versões do FDV, com "ERP"; empilhado positivo/negativo para a C |
 
-Cuidados encontrados no cálculo:
-- `solLaranja` sobre `perola` dá **4,26:1**. Passa só como texto grande (3:1). Na versão clara, o fundo recomendado é `branco`. Sobre `perola`, o descritor só pode ser usado acima do tamanho mínimo do item 4 (ERP com altura de 14 px ou mais).
-- `solLaranja` sobre `azulNoite` dá **2,78:1**: **proibido**. No fundo escuro, o descritor é sempre `solClaro`.
-- A monocromática serve para carimbo, fax, impressão em uma cor e o quadro do emitente quando o DANFE sai em preto. Ela também pode sair em `branco` sobre fundo escuro (versão negativa a uma cor).
+## 5. Arquivos desta pasta (simulação)
+`assinatura-erp-opcao-a-{clara,escura,mono}.svg` e `assinatura-erp-opcao-c-{clara,escura,mono}.svg` são **simulação da posição**, não ativo final. Já seguem o FDV em caixa ("Macuxi") e nas cores do §3 ("clara" = positivo, "escura" = negativo azul-noite). Ainda usam fonte do sistema, o quadro tracejado no lugar do símbolo e o "ERP" curto, até a versão final. Todos passam no `xmllint --noout`.
 
-## 3. Opções de composição
-A posição do "FORÇA DE VENDAS" na assinatura do FDV está **a conferir (§6)**. A recomendação abaixo parte da regra "muda só o descritor": a opção certa é a que repete a composição do FDV.
+## 6. Decisão em aberto: "ERP" de ponta a ponta
+A regra 3 do FDV manda o descritor ir de ponta a ponta da tinta de "Macuxi". Com "FORÇA DE VENDAS" (15 caracteres) isso sai natural; com "ERP" (3 letras), não.
 
-### Opção A: descritor embaixo, alinhado à esquerda (RECOMENDADA)
-Símbolo à esquerda; MACUXI em cima; "ERP" embaixo, alinhado à esquerda com a palavra, em caixa alta espaçada, na cor de destaque.
-Arquivos: `assinatura-erp-opcao-a-clara.svg`, `-escura.svg` e `-mono.svg`.
-- **A favor:** é a composição clássica de marca com descritor, a mais provável de bater com a do FDV, em que o descritor fica embaixo da palavra. Funciona no cabeçalho do BKO, no login e no quadro do emitente do DANFE, onde a altura é curta.
-- **Contra:** "ERP" é curto e ocupa pouco da largura da palavra. Isso é proposital, mas o espaçamento precisa ser ajustado com a fonte final.
+| Opção | Como fica | A favor | Contra |
+|---|---|---|---|
+| **(1) "ERP" espaçado de ponta a ponta** — RECOMENDADA | "E" alinhado ao início de "Macuxi" e "P" ao fim, letras com espaçamento aberto, na mesma altura de letra do "FORÇA DE VENDAS" | Mantém a regra do FDV intacta: as duas assinaturas têm a mesma caixa e o mesmo desenho; reconhecimento igual em tela, DANFE e e-mail | Espaçamento muito aberto entre 3 letras; em tamanho pequeno, o "ERP" pode ler como letras soltas |
+| (2) "ERP" à esquerda, como exceção escrita | Mesma altura de letra do "FORÇA DE VENDAS", alinhado à esquerda com "Macuxi", sem esticar | Lê como uma palavra só | Abre exceção à regra 3 do FDV; a assinatura do ERP fica com outra silhueta |
 
-### Opção B: em linha, com fio separador
-Símbolo, MACUXI, fio vertical fino e "ERP" na mesma altura, com peso regular, na cor de destaque.
-Arquivos: `assinatura-erp-opcao-b-*.svg`.
-- **A favor:** é a mais legível em tamanho pequeno, porque o "ERP" fica grande, e serve para faixa estreita (barra do topo e rodapé do e-mail).
-- **Contra:** ocupa mais largura e se afasta da composição do FDV se lá o descritor fica embaixo. Aí o ERP pareceria um produto separado.
+**Recomendação: (1).** Consistência antes de novidade: a regra do FDV fica igual para os dois produtos. Resposta esperada do Alexandre: "aprovo ERP ponta a ponta" (1) ou "aprovo ERP à esquerda" (2).
 
-### Opção C: vertical, centralizada
-Símbolo em cima; MACUXI e "ERP" centralizados embaixo.
-Arquivos: `assinatura-erp-opcao-c-*.svg`.
-- **A favor:** serve para a tela de login, capa de apresentação e avatar quadrado.
-- **Contra:** não cabe no cabeçalho do BKO nem no quadro do emitente do DANFE. É uma versão de apoio, não a principal.
-
-**Recomendação:** aprovar a **A como assinatura principal** e a **C como versão vertical de apoio** (login e capas), **desde que** as duas batam com a composição do FDV quando forem conferidas. A B fica como alternativa se o Alexandre preferir o "ERP" mais visível em tamanho pequeno.
-
-## 4. Área de proteção, tamanho mínimo e fundos
-Valores propostos, a conferir (§6). Se o manual do FDV tiver valores próprios, valem os do FDV.
-- **Área de proteção:** espaço livre em volta de toda a assinatura igual à altura da letra "M" de MACUXI. Nada entra nessa área: texto, borda ou logo do cliente.
-- **Tamanho mínimo em tela:** opção A com 120 px de largura (o "ERP" fica perto de 6 px de altura); opção B com 140 px; opção C com 80 px. **Em impressão:** A com 30 mm e C com 20 mm.
-- **Abaixo do mínimo** (favicon e ícone de 16 a 24 px): só o símbolo do FDV, sem a palavra e sem o descritor.
-- **Fundos permitidos:** clara sobre `branco` (ou `perola`, respeitando o item 2); escura sobre `azulNoite`; monocromática sobre fundo liso que dê pelo menos 4,5:1. Nunca sobre foto ou grafismo sem uma área lisa por baixo.
-
-## 5. Usos proibidos
-1. Cor do descritor fora dos tokens ou fora da tabela do §2.
+## 7. Usos proibidos
+1. Descritor em laranja ou fora das cores do §3.
 2. Esticar, girar, inclinar, pôr sombra, contorno ou degradê.
-3. Escrever "Macuxi Erp", "MacuxiERP" ou "ERP Macuxi", ou mudar a ordem dos elementos. O nome por extenso em texto corrido é "Macuxi ERP".
-4. Usar "FORÇA DE VENDAS" e "ERP" juntos na mesma assinatura, ou criar descritor novo (por exemplo, "FISCAL" ou "NF-e") sem aprovação.
+3. Escrever "MACUXI ERP", "Macuxi Erp", "MacuxiERP" ou "ERP Macuxi". Em texto corrido, o nome é "Macuxi ERP".
+4. Usar "FORÇA DE VENDAS" e "ERP" juntos, ou criar descritor novo (por exemplo, "FISCAL") sem aprovação.
 5. Pôr a assinatura do ERP no mesmo nível do logo do cliente (tenant). No DANFE, a marca do cliente fica no quadro do emitente; a Macuxi aparece no máximo como rodapé discreto, fora dos campos do leiaute do Manual da NF-e.
-6. Redesenhar o símbolo ou trocar a tipografia do FDV para o ERP.
-7. Pôr grafismo de inspiração macuxi junto da assinatura sem origem registrada e sem a validação da seção de grafismos do manual do FDV.
+6. Redesenhar o símbolo ou trocar a tipografia do logo.
+7. Grafismo de inspiração macuxi junto da assinatura sem origem registrada e sem a validação do manual do FDV.
 
-## 6. Pendências antes do "aprovo"
-1. **Conferir contra o manual do FDV** (`aloirr/macuxifdv`, `docs/marca/manual.md`), que não estava acessível nesta sessão (o clone pediu login): o desenho do **símbolo**, a **tipografia** (família, peso e espaçamento da palavra MACUXI), a **paleta** (se os tokens de `packages/ui` batem com o §3) e a **posição do "FORÇA DE VENDAS"**, que decide entre A e B.
-2. Trocar o quadro tracejado pelo símbolo oficial e o texto por curvas na fonte oficial. Os SVGs de hoje são simulação: usam fonte do sistema, e a largura muda de uma máquina para outra.
-3. Confirmar a área de proteção e os tamanhos mínimos com os do FDV.
-4. Depois do "aprovo": registrar em `docs/marca/decisoes.md` (data e ID do recado), passar os arquivos finais para `docs/marca/ativos/` e avisar por recado o `designer-ux` (BKO, login e favicon) e o `modulo-faturamento` (quadro do emitente no DANFE e e-mail). Eles aplicam; o design-de-marca valida no print.
-
-## 7. Como ver
-Abra os nove SVGs no navegador: `assinatura-erp-opcao-{a,b,c}-{clara,escura,mono}.svg`, nesta pasta. Todos passaram no `xmllint --noout` e usam só os tokens de `packages/ui/src/index.ts`.
+## 8. Próximos passos
+1. Alexandre decide o §6 (opção 1 ou 2).
+2. Anexar o `aloirr/macuxifdv` à sessão (só leitura) para pegar os SVGs oficiais de `docs/marca/ativos/2026-11-12-v1/` e o `docs/marca/ativos/gerar-ativos.mjs`.
+3. Gerar os SVGs finais em `docs/marca/ativos/` (nova pasta com data e versão), com o símbolo oficial e o texto em curvas, nas versões do §4.
+4. Reescrever este arquivo como **REGRA** e registrar em [decisoes.md](decisoes.md).
+5. Avisar por recado o `designer-ux` (cabeçalho e menu do BKO com o negativo grafite, login com a C, favicon só com o símbolo) e o `modulo-faturamento` (quadro do emitente e rodapé do DANFE, e-mail). Eles aplicam; o design-de-marca valida no print.
