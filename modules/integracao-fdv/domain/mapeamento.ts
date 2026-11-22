@@ -211,9 +211,9 @@ export function mapearProduto(ev: EventoProduto, ocorridoEm: string): { produto:
       'produto_unidade',
       ocorridoEm,
       {
-        external_id: u.id,
+        external_id: chaveHub(u),
         ativo: !ev.inativo,
-        produto_external_id: ev.id,
+        produto_external_id: chaveHub(ev),
         unidade: siglaMedida(u.unidade),
         fator: quantidade4(u.fator),
         ean: eanU,
@@ -245,7 +245,8 @@ export function mapearPreco(agregadoId: string, ev: EventoPreco, ocorridoEm: str
     'preco',
     ocorridoEm,
     {
-      external_id: agregadoId,
+      // ADR 0010: chave do Hub = external_id do evento ?? agregado_id (o erp_id segue o agregado_id)
+      external_id: chaveHub({ id: agregadoId, external_id: ev.external_id }),
       // O evento repete o `inativo` da tabela: tabela inativa = preço inativo.
       ativo: !ev.inativo,
       // RD-0318: a chave do Hub da tabela vem da referência, nunca o UUID cru do evento (sem referência, o campo falta)
@@ -340,7 +341,7 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: Contex
             'cliente_endereco',
             ocorridoEm,
             {
-              external_id: e.id,
+              external_id: chaveHub({ id: e.id, external_id: e.external_id }),
               ativo: !ev.inativo,
               cliente_external_id: chaveHub(ev),
               logradouro: e.logradouro,

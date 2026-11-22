@@ -33,7 +33,7 @@ import { lerCredencialResumo, lerMonitor, listarErrosDoLote, listarLotes, loteEx
 
 export interface DependenciasRotas {
   /**
-   * `MACUXIERP_CHAVE_INTEGRACAO` já lida pelo `apps/api` (`lerChaveIntegracao`): 32 bytes. Nunca vai a log nem a resposta.
+   * `MACUXIERP_CHAVE_INTEGRACAO` já lida pelo `apps/api` (`chaveIntegracaoDoAmbiente` do SDK): 32 bytes. Nunca vai a log nem a resposta.
    * `null` = a variável não está configurada: o `PUT /credencial` responde 503 (as demais rotas seguem). Outro tamanho é erro na montagem.
    */
   chaveMestra: Buffer | null;
