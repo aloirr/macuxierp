@@ -10,7 +10,7 @@ import { jsonCanonico } from '../domain';
 import { criarAgendaConector } from './agenda-conector';
 import { mais } from './conector-comum';
 import {
-  AGORA, CHAVE_CLARA, admSql, ciclo, criarCredencial, cursorEntidade, ErroClienteHub, espelho, hubDuble, ok, payloadProduto, recusa, retentavel,
+  AGORA, CHAVE_CLARA, admSql, ciclo, criarCredencial, cursorEntidade, ErroClienteHub, espelho, hubDuble, ok, payloadProduto, recusa, retentavel, U,
 } from './apoio-conector-teste';
 
 const agenda = criarAgendaConector({ outbox: new OutboxPg() });
@@ -246,6 +246,26 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', () => {
       const hub = hubDuble({ 'GET /cursores/produto': [ok({ cursor: { alterado_em: '2026-11-22T08:00:00.000Z', external_id: 'P000' } })], 'POST /lotes': [ok(aceito())] });
       await ciclo(banco, agenda, hub, AGORA, [t]);
       expect((await lotes(t))[0]!).toMatchObject({ modo: 'delta', sessao_parte: null });
+    });
+
+    it('carga completa pedida pelo BKO enquanto o ERP consulta o cursor do Hub: o lote sai em completo com a sessão do BKO e o cursor do Hub não a sobrescreve', async () => {
+      const { t } = await cenario('env-b3', { completo: true });
+      const sessaoBko = U();
+      const base = hubDuble({ 'GET /cursores/produto': [ok({ cursor: { alterado_em: '2026-11-22T08:00:00.000Z', external_id: 'P000' } })], 'POST /lotes': [ok(aceito())] });
+      const hub = {
+        ...base,
+        async chamar(cred: Parameters<typeof base.chamar>[0], p: Parameters<typeof base.chamar>[1]) {
+          // o que a rota de carga completa grava (cursor zerado e sessão nova) entre a leitura do cursor e a montagem
+          if (p.caminho === '/cursores/produto') await adm("UPDATE integracao_fdv.cursor_entidade SET sessao_aberta_id = $2, cursor_alterado_em = NULL, cursor_external_id = NULL WHERE tenant_id = $1 AND entidade = 'produto'", [t, sessaoBko]);
+          return base.chamar(cred, p);
+        },
+      };
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      const [l] = await lotes(t);
+      expect(l).toMatchObject({ modo: 'completo', sessao_parte: 1 });
+      expect(l!.corpo.sessao.id).toBe(sessaoBko);
+      expect((await cur(t)).sessao_aberta_id).toBe(sessaoBko);
+      expect((await cur(t)).cursor_external_id).toBeNull();
     });
 
     it('RN-INF-03: replay (Idempotent-Replay) grava repetido e segue como aceito', async () => {

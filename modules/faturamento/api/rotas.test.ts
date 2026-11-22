@@ -51,18 +51,27 @@ describe('rotas /v1/faturamento', () => {
     expect(pode('faturista', 'faturamento.nota.emitir')).toBe(true);
   });
 
-  it('RF-FAT-01: POST /notas emite (201), audita e enfileira a transmissão; a repetição devolve 200 sem novo número nem novo trabalho', async () => {
+  it('RF-FAT-01 / RN-FAT-03: POST /notas emite (201), audita e enfileira a transmissão; a repetição devolve 200 sem novo número; só enfileira de novo se a nota ainda está em rascunho', async () => {
     const a = ambiente();
     const r = await a.chamar('POST', '/notas', { corpo: emitirCorpo });
     expect(r.status).toBe(201);
-    expect(r.corpo).toMatchObject({ status: 'em_autorizacao', numero: 100, total_centavos: 4500 });
+    expect(r.corpo).toMatchObject({ status: 'rascunho', numero: 100, total_centavos: 4500 }); // a API não assina: o worker leva a em_autorizacao
     expect(a.trabalhos).toHaveLength(1);
     expect(a.trabalhos[0]).toMatchObject({ tipo: TRABALHO_TRANSMITIR_NOTA, payload: { nota_id: (r.corpo as { id: string }).id } });
     expect(a.auditoria).toEqual(['faturamento.nota.emitir']);
     const repetida = await a.chamar('POST', '/notas', { corpo: emitirCorpo });
     expect(repetida.status).toBe(200);
-    expect(a.trabalhos).toHaveLength(1);
     expect(a.estado.reservas).toBe(1);
+    expect(a.auditoria).toEqual(['faturamento.nota.emitir']); // a repetição não audita de novo
+    // nota ainda em rascunho (trabalho perdido): a repetição enfileira outra vez, com external_id próprio (não some na deduplicação)
+    expect(a.trabalhos).toHaveLength(2);
+    expect(a.trabalhos[1]).toMatchObject({ tipo: TRABALHO_TRANSMITIR_NOTA, payload: { nota_id: (r.corpo as { id: string }).id } });
+    expect(a.trabalhos[1]?.external_id).not.toBe(a.trabalhos[0]?.external_id);
+    // já assinada pelo worker (em_autorizacao): a repetição não enfileira nada
+    const id = (r.corpo as { id: string }).id;
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'em_autorizacao' });
+    expect((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).status).toBe(200);
+    expect(a.trabalhos).toHaveLength(2);
   });
 
   it('RN-PED-02: violação de regra vira 422 com a RN; violação de dado, 400; nenhum número é queimado', async () => {
@@ -79,14 +88,15 @@ describe('rotas /v1/faturamento', () => {
     await expect(ambiente().chamar('POST', '/notas', { corpo: { pedido_id: IDS.pedido } })).rejects.toThrow();
   });
 
-  it('RN-FAT-07: POST /notas/:id/reenviar só aceita a rejeitada e enfileira de novo', async () => {
+  it('RN-FAT-07: POST /notas/:id/reenviar só aceita a rejeitada ou o rascunho (não assinado) e enfileira de novo', async () => {
     const a = ambiente();
     const emitida = await a.chamar('POST', '/notas', { corpo: emitirCorpo });
     const id = (emitida.corpo as { id: string }).id;
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'em_autorizacao' });
     await expect(a.chamar('POST', '/notas/:id/reenviar', { params: { id } })).rejects.toMatchObject({ codigo: 'RN-FAT-07' });
     a.notas.set(id, { ...a.notas.get(id)!, status: 'rejeitada' });
     const r = await a.chamar('POST', '/notas/:id/reenviar', { params: { id } });
-    expect(r.corpo).toMatchObject({ status: 'em_autorizacao', numero: 100 });
+    expect(r.corpo).toMatchObject({ status: 'rejeitada', numero: 100 }); // o worker assina e vai a em_autorizacao
     expect(a.trabalhos).toHaveLength(2);
     expect(a.trabalhos[1]?.external_id).toBe(`${id}:req-1`);
   });

@@ -1,7 +1,7 @@
 /**
  * Rotas `/v1/faturamento` (RF-FAT-01, RF-FAT-08). Perfil, tenant e licença do módulo `faturamento` são checados pela API antes do
  * `executar` (RN-CORE-02; sem licença, 403 `MODULO_INATIVO`); aqui entram as regras do domain (a API sempre revalida), a auditoria e
- * o enfileiramento da transmissão. A SEFAZ NUNCA é chamada daqui: o worker transmite (`transmissor.ts`).
+ * o enfileiramento. A SEFAZ NUNCA é chamada daqui e o A1 não é lido: o worker assina e transmite (`transmissor.ts`, ADR 0005 item 4).
  * `vendedor` não acessa as notas na v1 (a carteira por vendedor entra com o BKO): 403.
  */
 import { definirRota, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
@@ -66,12 +66,15 @@ export function criarRotas(deps: DepsEmissao): RotaModulo[] {
         if (!r.repetida) {
           await c.auditar({ acao: 'faturamento.nota.emitir', entidade: 'nota', entidade_id: r.nota.id, depois: { pedido_id: r.nota.pedido_id, serie: r.nota.serie, numero: r.nota.numero, ambiente: r.nota.ambiente } });
           await enfileirar(c, r.nota.id, false);
+        } else if (r.nota.status === 'rascunho') {
+          // Repetição com a nota ainda em rascunho (trabalho perdido ou worker sem A1): enfileira de novo; o worker é idempotente (RN-FAT-03).
+          await enfileirar(c, r.nota.id, true);
         }
         const detalhe = await notas.detalhar(c.tx, r.nota.id);
         return { status: r.repetida ? 200 : 201, corpo: detalhe };
       },
     }),
-    // RN-FAT-07: reenvio da rejeitada com o MESMO número; a API refaz o XML e reassina; o worker transmite.
+    // RN-FAT-07: reenvio da rejeitada (ou do rascunho não assinado) com o MESMO número; a API refaz o conteúdo; o worker reassina e transmite.
     definirRota({
       metodo: 'POST', caminho: '/notas/:id/reenviar', acao: 'faturamento.nota.emitir',
       async executar(c, e) {

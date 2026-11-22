@@ -1,6 +1,7 @@
 export * from './chave';
 export * from './corpo';
 export { NAMESPACE_INTEGRACAO_FDV, compararBinario, externalIdForma, hashRegistro, jsonCanonico, uuidV5 } from './canonico';
+export * from './configuracao';
 export * from './credencial';
 export * from './limites';
 export * from './linhas';

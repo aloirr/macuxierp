@@ -283,6 +283,84 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect((await retornos(A, uuid)).map((r) => r.status)).toEqual(['integrado', 'cancelado']);
     });
 
+    it('ADR 0010 item 1 / A-02: o faturado@1 manda a chave do Hub do produto achada no espelho pelo erp_id, nunca o UUID; sem a chave o consumidor falha e nada é gravado', async () => {
+      const uuid = await pedidoEntregue(A);
+      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
+      const produtoErp = U();
+      const nota = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
+      const faturado = () => evento(A, 'pedido.pedido.faturado@1', uuid, { status: 'faturado', ambiente: 'producao', nota, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] });
+      // espelho sem o produto: o despachante repete com backoff, e o UUID cru nunca vai ao Hub
+      await expect(aplicar(A, faturado())).rejects.toThrow('produto faturado sem chave do Hub no espelho');
+      expect((await retornos(A, uuid)).map((r) => r.status)).toEqual(['integrado']);
+      // o produto chega ao espelho (chave do kit P001) e o mesmo evento passa
+      await adm(
+        `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo, pendente, erp_id)
+         VALUES ($1, 'produto', 'P001', '{}', repeat('c', 64), $3, $3, true, false, $2)`,
+        [A, produtoErp, relogio.agora()],
+      );
+      await aplicar(A, faturado());
+      const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid]);
+      expect(f!.corpo.itens_faturados).toEqual([{ sequencia: 1, produto_external_id: 'P001', quantidade: 2.5, valor_cents: 5000 }]);
+      expect(JSON.stringify(f!.corpo)).not.toContain(produtoErp);
+      expect(JSON.stringify(d.logs)).not.toContain(produtoErp);
+    });
+
+    const NOTA = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
+    const faturadoDe = (uuid: string, produtoErp: string) =>
+      evento(A, 'pedido.pedido.faturado@1', uuid, { status: 'faturado', ambiente: 'producao', nota: NOTA, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] });
+
+    it('A-02: produto inativo no espelho também tem chave: o faturado@1 passa (a linha ativa vem primeiro quando há duas)', async () => {
+      const uuid = await pedidoEntregue(A);
+      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
+      const inativoErp = U();
+      const duplicadoErp = U();
+      const linha = (chave: string, erp: string, ativo: boolean, em: string) =>
+        adm(
+          `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo, pendente, erp_id)
+           VALUES ($1, 'produto', $2, '{}', repeat('d', 64), $4, $4, $5, false, $3)`,
+          [A, chave, erp, new Date(em), ativo],
+        );
+      await linha('P-INATIVO', inativoErp, false, '2026-11-20T10:00:00Z');
+      await linha('P-VELHA', duplicadoErp, false, '2026-11-19T10:00:00Z');
+      await linha('P-NOVA', duplicadoErp, true, '2026-11-18T10:00:00Z');
+      await aplicar(A, faturadoDe(uuid, inativoErp));
+      const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid]);
+      expect(f!.corpo.itens_faturados[0].produto_external_id).toBe('P-INATIVO');
+      const outro = await pedidoEntregue(A);
+      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', outro));
+      await aplicar(A, faturadoDe(outro, duplicadoErp));
+      const [g] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, outro]);
+      expect(g!.corpo.itens_faturados[0].produto_external_id).toBe('P-NOVA');
+    });
+
+    it('RN-PED-05 / A-02: depois de 24 h sem a chave o consumidor não lança erro: grava falhou com só os UUIDs, alerta uma vez e não agenda envio', async () => {
+      const T = await criarTenant(efemero.admin, 'ped-sem-chave', ['integracao-fdv', 'pedido']);
+      await adm('INSERT INTO integracao_fdv.sinal (tenant_id) VALUES ($1)', [T]);
+      const uuid = await pedidoEntregue(T);
+      const dd = dublê();
+      const tarde: Relogio = { agora: () => new Date('2026-11-22T18:00:00Z') }; // 24 h depois do evento (21/11 18:00)
+      const cedo: Relogio = { agora: () => new Date('2026-11-22T17:59:59Z') };
+      const comRelogio = (r: Relogio) => criarConsumidorRetornoPedido({ log: dd.log, relogio: r, alertar: dd.alertar });
+      const produtoErp = U();
+      const ev = (e: string) => ({ ...evento(T, e, uuid), ocorrido_em: '2026-11-21T18:00:00.000Z' });
+      await banco.comTenant(T, (tx) => criarConsumidorRetornoPedido({ log: dd.log, relogio }).tratar(ev('pedido.pedido.recebido@1'), tx));
+      const faturado = { ...faturadoDe(uuid, produtoErp), tenant_id: T };
+      // 1 s antes do prazo: ainda aguarda
+      await expect(banco.comTenant(T, (tx) => comRelogio(cedo).tratar(faturado, tx))).rejects.toThrow('produto faturado sem chave do Hub no espelho');
+      await adm('UPDATE integracao_fdv.sinal SET proximo_retorno_em = NULL WHERE tenant_id = $1', [T]);
+      await banco.comTenant(T, (tx) => comRelogio(tarde).tratar(faturado, tx));
+      const [r] = await adm(`SELECT estado, tentativas, itens_descartados, corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [T, uuid]);
+      expect(r).toMatchObject({ estado: 'falhou', tentativas: 0, itens_descartados: [{ produto_id: produtoErp }] });
+      expect(r!.corpo.itens_faturados).toEqual([]);
+      expect(JSON.stringify(r!.itens_descartados)).not.toMatch(/valor|quantidade/); // o descarte leva só o UUID
+      expect(dd.alertas).toEqual([`${T}:retorno_sem_chave_produto:${JSON.stringify({ pedido_uuid: uuid })}`]);
+      expect((await adm('SELECT proximo_retorno_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [T]))[0]!.proximo_retorno_em).toBeNull();
+      // o despachante repete o mesmo evento: nada novo, sem novo alerta
+      await banco.comTenant(T, (tx) => comRelogio(tarde).tratar(faturado, tx));
+      expect(dd.alertas).toHaveLength(1);
+      expect(JSON.stringify(dd.logs)).not.toContain(produtoErp);
+    });
+
     it('RN-PED-05: tenant B não enxerga retorno do tenant A (RLS)', async () => {
       const uuid = await pedidoEntregue(A);
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));

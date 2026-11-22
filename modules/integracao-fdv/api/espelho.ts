@@ -5,8 +5,9 @@
  * (o payload do inativado e confirmado é anulado pela retenção). `tenant_id` explícito em todo SQL.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import type { EntidadeHub } from '../contracts';
-import { ALVO_DA_CHAVE_REFS, inativarRegistro, proximaReconciliacaoEm, recomporRegistro, tabelaDaReferencia, type CodigoConflitoChave, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
+import type { CodigoConflitoChave, EntidadeHub } from '../contracts';
+import { ALVO_DA_CHAVE_REFS, inativarRegistro, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
+import { anteciparEntidades, garantirLinhaDoSinal } from './conector-comum';
 
 export interface LinhaRegistro {
   id: string;
@@ -71,7 +72,7 @@ export async function gravarRegistro(tx: Transacao, tenantId: string, r: Registr
     if (atual.hash === r.hash) {
       await tx.consultar(
         `UPDATE integracao_fdv.registro_publicado
-            SET fonte_ocorrido_em = greatest(fonte_ocorrido_em, $3), fonte_refs = $4::jsonb, erp_id = $5, deleted_at = NULL, updated_at = now()
+            SET fonte_ocorrido_em = greatest(fonte_ocorrido_em, $3), fonte_refs = $4::jsonb, erp_id = $5, deleted_at = NULL
           WHERE tenant_id = $1 AND id = $2`,
         [tenantId, atual.id, ocorridoEm, JSON.stringify(r.fonte_refs), r.erp_id],
       );
@@ -81,7 +82,7 @@ export async function gravarRegistro(tx: Transacao, tenantId: string, r: Registr
     await tx.consultar(
       `UPDATE integracao_fdv.registro_publicado
           SET payload = $3::jsonb, hash = $4, alterado_em = greatest(alterado_em, $5), fonte_ocorrido_em = $5, fonte_refs = $6::jsonb,
-              ativo = $7, pendente = $8, erp_id = $9, deleted_at = NULL, updated_at = now()
+              ativo = $7, pendente = $8, erp_id = $9, deleted_at = NULL
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, atual.id, JSON.stringify(r.payload), r.hash, ocorridoEm, JSON.stringify(r.fonte_refs), r.ativo, pendente, r.erp_id],
     );
@@ -95,7 +96,7 @@ async function atualizarConteudo(tx: Transacao, tenantId: string, l: LinhaRegist
   const pendente = l.hash_confirmado !== novo.hash;
   await tx.consultar(
     `UPDATE integracao_fdv.registro_publicado
-        SET payload = $3::jsonb, hash = $4, alterado_em = greatest(alterado_em, $5), ativo = $6, pendente = $7, updated_at = now()
+        SET payload = $3::jsonb, hash = $4, alterado_em = greatest(alterado_em, $5), ativo = $6, pendente = $7
       WHERE tenant_id = $1 AND id = $2`,
     [tenantId, l.id, JSON.stringify(novo.payload), novo.hash, ocorridoEm, novo.ativo, pendente],
   );
@@ -378,7 +379,7 @@ export async function gravarReferencia(
   const dadosAntes = atual && !atual.deleted_at ? atual.dados : null;
   if (atual && atual.fonte_ocorrido_em.getTime() > ocorridoEm.getTime()) return { mudou: false, dadosAntes };
   if (atual && !atual.deleted_at && JSON.stringify(atual.dados) === JSON.stringify(r.dados)) {
-    await tx.consultar(`UPDATE integracao_fdv.referencia SET fonte_ocorrido_em = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2`, [tenantId, atual.id, ocorridoEm]);
+    await tx.consultar(`UPDATE integracao_fdv.referencia SET fonte_ocorrido_em = $3 WHERE tenant_id = $1 AND id = $2`, [tenantId, atual.id, ocorridoEm]);
     return { mudou: false, dadosAntes };
   }
   await tx.consultar(
@@ -387,7 +388,7 @@ export async function gravarReferencia(
      VALUES ($1, $2, $3, $4::jsonb, $5)
      ON CONFLICT (tenant_id, tipo, erp_id) DO UPDATE
         SET dados = EXCLUDED.dados, external_id = NULL, fonte_ocorrido_em = EXCLUDED.fonte_ocorrido_em,
-            deleted_at = NULL, updated_at = now()`,
+            deleted_at = NULL`,
     [tenantId, r.tipo, r.erp_id, JSON.stringify(r.dados), ocorridoEm],
   );
   return { mudou: true, dadosAntes };
@@ -396,25 +397,11 @@ export async function gravarReferencia(
 /** A filial deixou de ser a padrão (ou foi inativada): a referência sai, se o evento não for mais velho que ela. */
 export async function removerReferencia(tx: Transacao, tenantId: string, tipo: 'filial_padrao', erpId: string, ocorridoEm: Date): Promise<boolean> {
   const l = await tx.consultar<{ id: string }>(
-    `UPDATE integracao_fdv.referencia SET deleted_at = now(), fonte_ocorrido_em = $4, updated_at = now()
+    `UPDATE integracao_fdv.referencia SET deleted_at = now(), fonte_ocorrido_em = $4
       WHERE tenant_id = $1 AND tipo = $2 AND erp_id = $3 AND deleted_at IS NULL AND fonte_ocorrido_em <= $4 RETURNING id`,
     [tenantId, tipo, erpId, ocorridoEm],
   );
   return l.length > 0;
-}
-
-/** Cria a linha de `sinal` do tenant: sinal já, reconciliação no próximo 06h00 UTC (02h00 de Manaus). */
-async function garantirLinhaDoSinal(tx: Transacao, tenantId: string, agora: Date): Promise<void> {
-  // A linha de `sinal` (uma por tenant) nasce aqui: sem ela a agenda nunca reserva o sinal de vida nem a reconciliação.
-  // A busca de pedidos nasce ligada (`proxima_busca_pedidos_em = agora`); quem a mantém desligada até a T-0027 é o worker, pela
-  // `MACUXIERP_FDV_RECEBIMENTO`. Linha que já existe com a coluna nula (criada antes) é ligada; as demais colunas não mudam.
-  await tx.consultar(
-    `INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em)
-     VALUES ($1, $2, $3, $2)
-     ON CONFLICT (tenant_id) DO UPDATE SET proxima_busca_pedidos_em = coalesce(integracao_fdv.sinal.proxima_busca_pedidos_em, EXCLUDED.proxima_busca_pedidos_em), updated_at = now()
-      WHERE integracao_fdv.sinal.proxima_busca_pedidos_em IS NULL`,
-    [tenantId, agora, proximaReconciliacaoEm(agora)],
-  );
 }
 
 /**
@@ -425,12 +412,5 @@ async function garantirLinhaDoSinal(tx: Transacao, tenantId: string, agora: Date
  */
 export async function agendarEnvio(tx: Transacao, tenantId: string, entidades: ReadonlySet<EntidadeHub>, agora: Date): Promise<void> {
   await garantirLinhaDoSinal(tx, tenantId, agora);
-  if (entidades.size === 0) return;
-  await tx.consultar(
-    `INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, proximo_em)
-     SELECT $1, e::integracao_fdv.entidade_hub, $3 FROM unnest($2::text[]) AS e
-     ON CONFLICT (tenant_id, entidade) DO UPDATE
-        SET proximo_em = least(integracao_fdv.cursor_entidade.proximo_em, EXCLUDED.proximo_em), updated_at = now()`,
-    [tenantId, [...entidades], agora],
-  );
+  await anteciparEntidades(tx, tenantId, [...entidades], agora);
 }

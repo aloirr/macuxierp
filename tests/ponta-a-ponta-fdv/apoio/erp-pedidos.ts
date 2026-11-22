@@ -67,7 +67,9 @@ export function criarLadoErpPedidos(o: { banco: Banco; relogio: Relogio }): Lado
   const reg = criarRegistroLgpd();
   const pedido = dependenciasDeProducao(criarConsultaParaPedido(repositoriosSql), { log: reg.log });
   const recebedor = criarRecebedorFdv({ ...pedido, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: o.relogio });
-  const consumidor = criarConsumidorRetornoPedido({ log: reg.log, relogio: o.relogio });
+  // L3 da T-0011: `alertar` opcional (`retorno_sem_chave_produto`); em objeto à parte para tipar também sem o parâmetro.
+  const opcoesRetorno = { log: reg.log, relogio: o.relogio, alertar: reg.alertar };
+  const consumidor = criarConsumidorRetornoPedido(opcoesRetorno);
   const resolvedor = criarResolvedorChaveErp(repositoriosSql);
   const comum = { banco: o.banco, relogio: o.relogio, log: reg.log, alertar: reg.alertar };
   const lado: LadoErpPedidos = {

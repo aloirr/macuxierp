@@ -1,6 +1,6 @@
 /**
  * Ponta a ponta do lote 1c com o emissor REAL (`criarEmissorNFe`), um A1 gerado em tempo de execução e o simulador da SEFAZ-AM (T-0045):
- * pedido → nota (montada e assinada na emissão, em rascunho) → transmitida pelo worker → protocolo 100 → nfeProc guardado ANTES de
+ * pedido → nota (API: montada e gravada em rascunho, sem A1) → worker (remonta, assina com o A1, guarda a nfe_assinada, transmite) → protocolo 100 → nfeProc guardado ANTES de
  * a nota passar a autorizada → evento `nota.autorizada@1`. Repositório em memória que imita os gatilhos da 0013 e da 0020.
  */
 import { criarSeletorTransporte, validarXsd, verificarAssinaturaNFe } from '@macuxierp/nfe-sefaz';
@@ -42,7 +42,7 @@ function montar(mei = false) {
   const transmissor = criarTransmissor({
     banco,
     notas: f.r.repo,
-    emissor: f.deps.emissor,
+    emissor: f.emissor,
     ambiente: { ambiente: async () => 'homologacao' },
     lerA1: async () => a1DeTeste(),
     sefaz: seletor,
@@ -51,16 +51,20 @@ function montar(mei = false) {
   return { ...f, ...f.r, transmissor, svc: criarServicoEmissao(f.deps) };
 }
 
-describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → autorizada', () => {
+// XSD e assinatura reais, lentos quando a suíte roda em paralelo (o padrão de 5 s estourou): 30 s. A ordem das escritas fica no transmissor.test.
+describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → autorizada', { timeout: 30_000 }, () => {
   for (const mei of [false, true]) {
     it(`RN-FAT-03: ${mei ? 'nota de MEI (CRT 4, CSOSN 102)' : 'nota do Lucro Presumido/Real (CRT 3, ICMS 00)'} autorizada pelo simulador; o XML assinado vale no XSD e o nfeProc é guardado antes de autorizar`, async () => {
       const m = montar(mei);
       const emissao = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: `idem-ponta-${mei ? 'mei' : 'normal'}` });
       if (!emissao.ok) throw new Error(JSON.stringify(emissao.violacoes));
       const nota = emissao.nota;
-      expect(nota.status).toBe('em_autorizacao');
-      // montada e assinada na emissão, com a nota em rascunho
-      expect(m.log).toEqual(['trava', 'numero:100', 'gravar', 'xml:assinado:1', 'status:em_autorizacao']);
+      expect(nota.status).toBe('rascunho'); // a API não assina (ADR 0005 item 4)
+      expect(m.log).toEqual(['trava', 'numero:100', 'gravar']);
+      expect(m.assinados).toEqual([]);
+
+      const r = await m.transmissor.transmitirNota(TENANT, nota.id);
+      expect(r.resultado).toBe('autorizada');
       const assinado = m.assinados[0]!.xml;
       expect((await validarXsd(assinado, 'nfe')).erros).toEqual([]);
       expect(verificarAssinaturaNFe(assinado, { agora: INSTANTE_DE_TESTE })).toMatchObject({ ok: true });
@@ -68,15 +72,11 @@ describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → 
       if (mei) expect(assinado).toContain('<CRT>4</CRT>');
       expect(assinado).not.toContain('<IBSCBS>');
 
-      const r = await m.transmissor.transmitirNota(TENANT, nota.id);
-      expect(r.resultado).toBe('autorizada');
       const proc = m.xmls[0]!.conteudo;
       expect((await validarXsd(proc, 'procNFe')).erros).toEqual([]);
       expect(proc).toContain(assinado); // bytes assinados intactos
       expect(proc).toContain(m.notas.get(nota.id)!.protocolo!);
       expect(m.notas.get(nota.id)?.status).toBe('autorizada');
-      // ordem: assinado guardado → nfeProc guardado → só então o evento
-      expect(m.log.slice(-3)).toEqual(['status:autorizada_guarda_pendente', 'xml:autorizado', `evento:${EVENTO_NOTA_AUTORIZADA}`]);
       expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
       expect(m.transmissoes.every((t) => t.destino === 'simulador')).toBe(true);
     });
