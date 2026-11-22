@@ -23,6 +23,7 @@ import {
   fixtureModulos,
   fixturePlataforma,
   novoTenant,
+  regraTributaria,
 } from './fixture.ts';
 import { verificarVazamento } from './vazamento.ts';
 
@@ -30,29 +31,6 @@ const A = novoTenant('fiscal-a');
 const B = novoTenant('fiscal-b');
 const APP_A = { papel: 'macuxierp_app', tenant: A.id };
 const APP_B = { papel: 'macuxierp_app', tenant: B.id };
-
-/** Regra válida do ICMS no regime normal; `campos` sobrescreve colunas (valores já em SQL). */
-function regra(campos: Record<string, string> = {}): string {
-  const base: Record<string, string> = {
-    tenant_id: 'plataforma.tenant_atual()',
-    crt: '3',
-    uf_origem: `'AM'`,
-    uf_destino: `'PA'`,
-    cfop: `'6102'`,
-    codigo: `'00'`,
-    aliquota_icms: '120000',
-    cst_pis: `'01'`,
-    cst_cofins: `'01'`,
-    versao_nt_rtc: `'NT 2025.002-RTC v1.30'`,
-    fonte_tipo: `'lei'`,
-    fonte_referencia: `'RICMS-AM'`,
-    versao: `'2026.1'`,
-    vigencia_inicio: `'2026-01-01'`,
-    ...campos,
-  };
-  const colunas = Object.keys(base).filter((k) => base[k] !== 'OMITIR');
-  return `INSERT INTO fiscal.regra_tributaria (${colunas.join(', ')}) VALUES (${colunas.map((k) => base[k]).join(', ')});`;
-}
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', () => {
   let banco: BancoDeTeste;
@@ -93,69 +71,69 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
       }
     }
     expect(
-      falha(() => executar(banco.conexao, regra(), { papel: 'macuxierp_worker', tenant: A.id })),
+      falha(() => executar(banco.conexao, regraTributaria(), { papel: 'macuxierp_worker', tenant: A.id })),
     ).toMatch(/permission denied/);
   });
 
   it('o app grava a regra só no próprio tenant', () => {
-    executar(banco.conexao, regra(), APP_A);
-    expect(falha(() => executar(banco.conexao, regra({ tenant_id: `'${B.id}'` }), APP_A))).toMatch(
+    executar(banco.conexao, regraTributaria(), APP_A);
+    expect(falha(() => executar(banco.conexao, regraTributaria({ tenant_id: `'${B.id}'` }), APP_A))).toMatch(
       /row-level security/,
     );
   });
 
   it('RN-FIS-02: CSOSN (3 dígitos) no Simples e no MEI, CST (2) no regime normal', () => {
-    expect(falha(() => executar(banco.conexao, regra({ crt: '1', uf_destino: `'RR'` }), APP_A))).toMatch(
+    expect(falha(() => executar(banco.conexao, regraTributaria({ crt: '1', uf_destino: `'RR'` }), APP_A))).toMatch(
       /regra_tributaria_cst_ou_csosn/,
     );
     executar(
       banco.conexao,
-      regra({ crt: '1', uf_destino: `'RR'`, codigo: `'102'`, aliquota_icms: 'NULL', p_cred_sn: '125000' }),
+      regraTributaria({ crt: '1', uf_destino: `'RR'`, codigo: `'102'`, aliquota_icms: 'NULL', p_cred_sn: '125000' }),
       APP_A,
     );
     expect(
-      falha(() => executar(banco.conexao, regra({ crt: '2', uf_destino: `'RR'`, codigo: `'102'` }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ crt: '2', uf_destino: `'RR'`, codigo: `'102'` }), APP_A)),
     ).toMatch(/regra_tributaria_cst_ou_csosn/);
-    expect(falha(() => executar(banco.conexao, regra({ crt: '5', uf_destino: `'RO'` }), APP_A))).toMatch(
+    expect(falha(() => executar(banco.conexao, regraTributaria({ crt: '5', uf_destino: `'RO'` }), APP_A))).toMatch(
       /check constraint/,
     );
   });
 
   it('RN-FIS-01: mesmos filtros e mesmo início de vigência é cadastro repetido; outra vigência passa', () => {
     const filtros = { uf_destino: `'AC'`, ncm_prefixo: `'2202'`, tipo_cliente: `'contribuinte'` };
-    executar(banco.conexao, regra(filtros), APP_A);
+    executar(banco.conexao, regraTributaria(filtros), APP_A);
     expect(
-      falha(() => executar(banco.conexao, regra({ ...filtros, aliquota_icms: '70000' }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ ...filtros, aliquota_icms: '70000' }), APP_A)),
     ).toMatch(/regra_tributaria_filtros_uq/);
-    executar(banco.conexao, regra({ ...filtros, vigencia_inicio: `'2027-01-01'` }), APP_A);
+    executar(banco.conexao, regraTributaria({ ...filtros, vigencia_inicio: `'2027-01-01'` }), APP_A);
     expect(
-      falha(() => executar(banco.conexao, regra({ uf_destino: `'AC'`, ncm_prefixo: `'2'` }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ uf_destino: `'AC'`, ncm_prefixo: `'2'` }), APP_A)),
     ).toMatch(/check constraint/);
   });
 
   it('RN-FIS-03 e 04: IBS/CBS com CST e cClassTrib juntos; fonte e vigência obrigatórias e coerentes', () => {
     expect(
-      falha(() => executar(banco.conexao, regra({ uf_destino: `'AP'`, cst_ibs_cbs: `'000'` }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ uf_destino: `'AP'`, cst_ibs_cbs: `'000'` }), APP_A)),
     ).toMatch(/regra_tributaria_ibs_cbs_par/);
     expect(
-      falha(() => executar(banco.conexao, regra({ uf_destino: `'AP'`, fonte_referencia: 'OMITIR' }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ uf_destino: `'AP'`, fonte_referencia: 'OMITIR' }), APP_A)),
     ).toMatch(/null value/);
     expect(
-      falha(() => executar(banco.conexao, regra({ uf_destino: `'AP'`, fonte_tipo: `'portaria'` }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ uf_destino: `'AP'`, fonte_tipo: `'portaria'` }), APP_A)),
     ).toMatch(/check constraint/);
     expect(
       falha(() =>
-        executar(banco.conexao, regra({ uf_destino: `'AP'`, vigencia_fim: `'2025-12-31'` }), APP_A),
+        executar(banco.conexao, regraTributaria({ uf_destino: `'AP'`, vigencia_fim: `'2025-12-31'` }), APP_A),
       ),
     ).toMatch(/regra_tributaria_vigencia/);
     expect(
-      falha(() => executar(banco.conexao, regra({ uf_destino: `'AP'`, aliquota_icms: '1000001' }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ uf_destino: `'AP'`, aliquota_icms: '1000001' }), APP_A)),
     ).toMatch(/check constraint/);
   });
 
   it('lote 2: a linha do ICMS exige o código; as de IPI, PIS e COFINS usam só o próprio tributo', () => {
     expect(
-      falha(() => executar(banco.conexao, regra({ uf_destino: `'SE'`, codigo: 'NULL' }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ uf_destino: `'SE'`, codigo: 'NULL' }), APP_A)),
     ).toMatch(/regra_tributaria_icms_com_codigo/);
     const ipi = {
       tributo: `'ipi'`,
@@ -167,16 +145,16 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
       cst_ipi: `'50'`,
       aliquota_ipi: '65000',
     };
-    executar(banco.conexao, regra(ipi), APP_A);
+    executar(banco.conexao, regraTributaria(ipi), APP_A);
     expect(
-      falha(() => executar(banco.conexao, regra({ ...ipi, uf_destino: `'SP'`, cst_pis: `'01'` }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ ...ipi, uf_destino: `'SP'`, cst_pis: `'01'` }), APP_A)),
     ).toMatch(/regra_tributaria_so_o_tributo/);
     expect(
-      falha(() => executar(banco.conexao, regra({ ...ipi, uf_destino: `'SP'`, codigo: `'00'` }), APP_A)),
+      falha(() => executar(banco.conexao, regraTributaria({ ...ipi, uf_destino: `'SP'`, codigo: `'00'` }), APP_A)),
     ).toMatch(/regra_tributaria_so_o_tributo/);
     executar(
       banco.conexao,
-      regra({
+      regraTributaria({
         tributo: `'pis'`,
         uf_destino: `'SE'`,
         codigo: 'OMITIR',
@@ -187,7 +165,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
       }),
       APP_A,
     );
-    executar(banco.conexao, regra({ uf_destino: `'MG'`, excluir_icms_bc: 'true' }), APP_A);
+    executar(banco.conexao, regraTributaria({ uf_destino: `'MG'`, excluir_icms_bc: 'true' }), APP_A);
     expect(
       consultar(
         banco.conexao,
@@ -207,7 +185,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
     };
     executar(
       banco.conexao,
-      regra({
+      regraTributaria({
         ...dedicada,
         tributo: `'ibs_cbs'`,
         cst_ibs_cbs: `'000'`,
@@ -218,7 +196,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
     );
     executar(
       banco.conexao,
-      regra({
+      regraTributaria({
         ...dedicada,
         tributo: `'is'`,
         cst_is: `'000'`,
@@ -237,22 +215,22 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
       ),
     ).toEqual([{ tributo: 'is', p_is: 100000, v: 1411, t: 'bigint' }]);
     const pis = { ...dedicada, uf_destino: `'PE'`, tributo: `'pis'`, cst_pis: `'01'`, aliquota_pis: '16500' };
-    expect(falha(() => executar(banco.conexao, regra({ ...pis, p_is: '100000' }), APP_A))).toMatch(
+    expect(falha(() => executar(banco.conexao, regraTributaria({ ...pis, p_is: '100000' }), APP_A))).toMatch(
       /regra_tributaria_so_o_tributo/,
     );
-    expect(falha(() => executar(banco.conexao, regra({ ...pis, valor_unidade_is: '1411' }), APP_A))).toMatch(
+    expect(falha(() => executar(banco.conexao, regraTributaria({ ...pis, valor_unidade_is: '1411' }), APP_A))).toMatch(
       /regra_tributaria_so_o_tributo/,
     );
     expect(
       falha(() =>
-        executar(banco.conexao, regra({ ...pis, cst_ibs_cbs: `'000'`, c_class_trib: `'000001'` }), APP_A),
+        executar(banco.conexao, regraTributaria({ ...pis, cst_ibs_cbs: `'000'`, c_class_trib: `'000001'` }), APP_A),
       ),
     ).toMatch(/regra_tributaria_so_o_tributo/);
     expect(
       falha(() =>
         executar(
           banco.conexao,
-          regra({ ...dedicada, uf_destino: `'PE'`, tributo: `'is'`, p_cbs: '9000' }),
+          regraTributaria({ ...dedicada, uf_destino: `'PE'`, tributo: `'is'`, p_cbs: '9000' }),
           APP_A,
         ),
       ),
@@ -261,7 +239,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
       falha(() =>
         executar(
           banco.conexao,
-          regra({ ...dedicada, uf_destino: `'PE'`, tributo: `'is'`, cst_is: `'000'` }),
+          regraTributaria({ ...dedicada, uf_destino: `'PE'`, tributo: `'is'`, cst_is: `'000'` }),
           APP_A,
         ),
       ),
@@ -270,7 +248,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
       falha(() =>
         executar(
           banco.conexao,
-          regra({
+          regraTributaria({
             ...dedicada,
             uf_destino: `'PE'`,
             tributo: `'is'`,
@@ -284,7 +262,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
     // Linha única do ICMS (CRT 3, com PIS e COFINS) pode trazer IBS/CBS e IS juntos.
     executar(
       banco.conexao,
-      regra({
+      regraTributaria({
         uf_destino: `'PE'`,
         cst_ibs_cbs: `'000'`,
         c_class_trib: `'000001'`,
@@ -296,7 +274,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — fiscal (T-0019, T-0020)', (
     );
     expect(
       falha(() =>
-        executar(banco.conexao, regra({ ...dedicada, uf_destino: `'PE'`, tributo: `'iss'` }), APP_A),
+        executar(banco.conexao, regraTributaria({ ...dedicada, uf_destino: `'PE'`, tributo: `'iss'` }), APP_A),
       ),
     ).toMatch(/check constraint/);
   });
