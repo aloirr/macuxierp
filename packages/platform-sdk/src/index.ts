@@ -13,3 +13,7 @@ export * from './idempotencia';
 export * from './trabalhos';
 export * from './eu';
 export * from './listas';
+export * from './hub';
+export * from './agenda';
+export * from './cifra';
+export * from './paginas';

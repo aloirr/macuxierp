@@ -43,6 +43,8 @@ export const PERMISSOES = {
   // pedido, fiscal, faturamento e integração (F2 a F4; a matriz do doc 03 já fixa)
   'pedido.ver': VER,
   'pedido.pedido.aprovar': ADM_GERENTE,
+  'pedido.pedido.lancar': CADASTRO, // T-0013 §4.1: criar, editar e revalidar o pedido manual
+  'pedido.pedido.cancelar': ADM_GERENTE, // T-0013 §4.1
   'fiscal.ver': VER,
   'fiscal.regra.editar': ['administrador', 'fiscal'],
   'faturamento.ver': VER,

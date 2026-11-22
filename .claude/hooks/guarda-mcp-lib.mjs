@@ -30,7 +30,7 @@
 //     (o verificar --por-commit do CI exige o trailer); subagente e sessão sem agente do time = BLOQUEADO;
 //  d) sessão manual local (sem agente): só a) e b).
 import { partesFerramentaMcp, tipoFerramentaMerge, ultimoBlocoDaMensagem, REPO_OFICIAL } from './guarda-merge-lib.mjs';
-import { PESSOAS, CAMINHOS_DE_GOVERNANCA, globParaRegex } from '../../scripts/coord-lib.mjs';
+import { PESSOAS, CAMINHOS_DE_GOVERNANCA, globParaRegex, REPO_RECADOS } from '../../scripts/coord-lib.mjs';
 
 const CABECALHO = '[guardião Macuxi] BLOQUEADO (ferramenta MCP):';
 const RE_GOVERNANCA = CAMINHOS_DE_GOVERNANCA.map(globParaRegex);
@@ -149,8 +149,25 @@ const ehAlexandre = (agente) => agente === 'alexandre';
  *   porJuncao?: (c: string) => ({rel: string}|{bloqueio: string}|null)}} p  caminho fora da raiz pela junção de recados
  * @returns {{ok: boolean, classe: string|null, mensagem?: string}}
  */
+/** Repositório que os agentes podem anexar à sessão pelo add_repo. */
+export const REPO_ANEXAVEL = REPO_RECADOS;
+
+/** Motivo para barrar o add_repo (null = passa): só o alexandre anexa outro repositório que não o de recados. */
+export function motivoAnexarRepositorio(ferramenta, entrada = {}, agente = '') {
+  const p = partesFerramentaMcp(ferramenta);
+  if (!p || compacto(p.nome) !== 'addrepo' || agente === 'alexandre') return null;
+  const dono = String(entrada?.owner ?? '').trim().toLowerCase();
+  const repo = String(entrada?.repo ?? '').trim().toLowerCase();
+  if (`${dono}/${repo}` === REPO_ANEXAVEL) return null;
+  return `anexar repositório à sessão: os agentes só anexam o ${REPO_ANEXAVEL} (veio ${dono || '?'}/${repo || '?'}); outro repositório é com o Alexandre`;
+}
+
 export function conferirFerramentaMcp({ ferramenta, entrada = {}, agente, origem = '', subagente = false, podeAlterar, caminhoRelativo, somenteLeitura = [], porJuncao = () => null }) {
   const classe = classificarFerramentaMcp(ferramenta, entrada);
+  // Anexar repositório à sessão (claude-code-remote add_repo): os agentes só anexam o macuxierp-recados (decisão do
+  // Alexandre, R-20261121-220014; o FDV é só consulta e nenhum agente o altera). O alexandre anexa o que precisar.
+  const motivoAnexo = motivoAnexarRepositorio(ferramenta, entrada, agente);
+  if (motivoAnexo) return { ok: false, classe: classe || 'outro', mensagem: mensagemMcp(ferramenta, [motivoAnexo]) };
   if (!classe || classe === 'merge' || classe === 'leitura' || classe === 'outro') return { ok: true, classe };
   const erros = [];
   const p = partesFerramentaMcp(ferramenta);

@@ -429,6 +429,21 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
     t.eventos.length = 0;
     return { t, f, p };
   }
+  it('D-05: GET /estoque segue o contrato de listas: { itens, proximo_cursor }, limite, cursor e busca', async () => {
+    const { t, f, p } = await cenario();
+    const p2 = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P2', descricao: 'Guaraná lata' }) })).corpo.id as string;
+    for (const prod of [p, p2]) await t.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f, produto_id: prod, tipo: 'entrada', quantidade: 5_0000, motivo: 'Compra' } });
+    const um = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { limite: 1 } });
+    expect(Object.keys(um.corpo).sort()).toEqual(['itens', 'proximo_cursor']);
+    expect(um.corpo.itens).toHaveLength(1);
+    expect(um.corpo.proximo_cursor).toBe(um.corpo.itens[0].id);
+    const dois = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { limite: 1, cursor: um.corpo.proximo_cursor } });
+    expect(dois.corpo.itens).toHaveLength(1);
+    expect(dois.corpo.itens[0].id).not.toBe(um.corpo.itens[0].id);
+    expect(dois.corpo.proximo_cursor).toBeNull();
+    const achado = await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { busca: 'guaraná' } });
+    expect(achado.corpo.itens.map((i: { produto_id: string }) => i.produto_id)).toEqual([p2]);
+  });
   it('entrada e saída atualizam o saldo (× 10^4) e publicam cadastros.estoque.alterado@1', async () => {
     const { t, f, p } = await cenario();
     const e = await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: p, tipo: 'entrada', quantidade: 100_0000, motivo: 'Compra' } });

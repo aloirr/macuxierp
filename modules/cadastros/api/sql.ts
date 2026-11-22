@@ -5,7 +5,7 @@
  */
 import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type {
-  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
+  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import type {
@@ -248,8 +248,8 @@ const mapaProduto: Mapa<Produto, ProdutoDados> = {
 
 export function repositoriosSql(tx: Transacao): Repositorios {
   const tabela = <E extends { id: string }, D>(m: Mapa<E, D>) => new RepoTabela<E, D>(tx, m);
-  const simples = (t: string, colunas: string[], busca: string[], expressoes: string[] = []) =>
-    tabela({ tabela: t, colunas, expressoes, busca, paraLinha: (d: Dict) => ({ ...d }), deLinha: (l: Dict) => l as never });
+  const simples = (t: string, colunas: string[], busca: string[], expressoes: string[] = [], filtros?: Mapa<unknown, unknown>['filtros']) =>
+    tabela({ tabela: t, colunas, expressoes, busca, filtros, paraLinha: (d: Dict) => ({ ...d }), deLinha: (l: Dict) => l as never });
 
   const produtos = Object.assign(tabela(mapaProduto), { unidades: new RepoFilhoSql(tx, mapaUnidade) });
   const tabelasPreco = Object.assign(
@@ -293,12 +293,30 @@ export function repositoriosSql(tx: Transacao): Repositorios {
 
   const condicoesPagamentoRepo = simples('cadastros.condicao_pagamento', COLUNAS_CONDICAO, ['codigo', 'descricao']) as unknown as RepoSimples<CondicaoPagamento, CondicaoPagamentoDados>;
 
+  /** Filtros comuns de `estoque_saldo` (excluídos fora, filial e produto), usados por `listar` e `saldos`. */
+  const filtroSaldo = (q: { filial_id?: string; produto_id?: string }, par: (v: unknown) => string): string[] => {
+    const w = ['deleted_at IS NULL'];
+    if (q.filial_id) w.push(`filial_id = ${par(q.filial_id)}`);
+    if (q.produto_id) w.push(`produto_id = ${par(q.produto_id)}`);
+    return w;
+  };
+
   const estoque = {
+    async listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>> {
+      const p: unknown[] = [];
+      const par = (v: unknown) => `$${p.push(v)}`;
+      const w = filtroSaldo(q, par);
+      if (q.busca) {
+        const b = par(`%${q.busca}%`);
+        w.push(`(produto_id IN (SELECT id FROM cadastros.produto WHERE deleted_at IS NULL AND (codigo ILIKE ${b} OR descricao ILIKE ${b})) OR filial_id IN (SELECT id FROM cadastros.filial WHERE deleted_at IS NULL AND (razao_social ILIKE ${b} OR nome_fantasia ILIKE ${b})))`);
+      }
+      if (q.cursor) w.push(`id > ${par(q.cursor)}`);
+      const linhas = await executar<SaldoEstoqueItem>(tx, `SELECT id, filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY id LIMIT ${par(q.limite + 1)}`, p);
+      return paginar(linhas, q.limite);
+    },
     saldos: (q: { filial_id?: string; produto_id?: string }) => {
       const p: unknown[] = [];
-      const w = ['deleted_at IS NULL'];
-      if (q.filial_id) w.push(`filial_id = $${p.push(q.filial_id)}`);
-      if (q.produto_id) w.push(`produto_id = $${p.push(q.produto_id)}`);
+      const w = filtroSaldo(q, (v) => `$${p.push(v)}`);
       return executar<{ filial_id: string; produto_id: string; quantidade: number }>(tx, `SELECT filial_id, produto_id, ${N('quantidade')} FROM cadastros.estoque_saldo WHERE ${w.join(' AND ')} ORDER BY produto_id, filial_id`, p);
     },
     // Sem `inativo` no saldo: o evento não expressa saldo apagado, por isso o cursor (diferente das demais entidades) pula `deleted_at`.
@@ -329,7 +347,7 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     },
   };
 
-  const vendedores = Object.assign(simples('cadastros.vendedor', ['codigo', 'nome', 'filial_id', 'usuario_id'], ['codigo', 'nome']), {
+  const vendedores = Object.assign(simples('cadastros.vendedor', ['codigo', 'nome', 'filial_id', 'usuario_id'], ['codigo', 'nome'], [], { filial: true }), {
     async idsDoUsuario(usuarioId: string) {
       return (await executar<{ id: string }>(tx, 'SELECT id FROM cadastros.vendedor WHERE usuario_id = $1 AND deleted_at IS NULL', [usuarioId])).map((r) => r.id);
     },

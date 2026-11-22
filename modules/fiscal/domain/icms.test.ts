@@ -1,0 +1,180 @@
+import { describe, expect, it } from 'vitest';
+import type { ItemCalculo } from '../contracts';
+import { aliquotaInterestadual, baseIcms, calcularIcms, calcularIcmsItem, calcularIcmsSt, mvaAjustada } from './icms';
+import { item, regra } from './fixtures';
+
+describe('calcularIcms', () => {
+  it('RN-FIS-02: operação interna a 18% sobre R$ 1.000,00 dá vICMS R$ 180,00', () => {
+    expect(calcularIcms({ base_centavos: 100000, reducao_bc: null, aliquota: 180000 })).toEqual({ v_bc: 100000, v_icms: 18000 });
+  });
+  it('RN-FIS-02: alíquota vem da regra, sem UF fixa no código (AM a 20% = R$ 200,00)', () => {
+    expect(calcularIcms({ base_centavos: 100000, reducao_bc: null, aliquota: 200000 }).v_icms).toBe(20000);
+  });
+  it('RN-FIS-02: BC = produto + frete + seguro + outras − desconto', () => {
+    expect(baseIcms(item({ frete_centavos: 10000, seguro_centavos: 1000, outras_despesas_centavos: 2000, desconto_centavos: 8000 }), false)).toBe(105000);
+  });
+  it('RN-FIS-02: IPI entra na BC do próprio só quando pedido (consumidor final/não contribuinte)', () => {
+    const i = item({ ipi_centavos: 10000 });
+    expect(baseIcms(i, true)).toBe(110000);
+    expect(baseIcms(i, false)).toBe(100000);
+  });
+  it('RN-FIS-02: redução de BC de 33,33% leva a BC a R$ 666,70 e o ICMS a R$ 120,01 (meio para cima)', () => {
+    expect(calcularIcms({ base_centavos: 100000, reducao_bc: 333300, aliquota: 180000 })).toEqual({ v_bc: 66670, v_icms: 12001 });
+  });
+  it('RN-FIS-02: arredondamento meio para cima ao centavo, em inteiros', () => {
+    // 1,25 × 10% = 0,125 -> 0,13 ; 1,24 × 10% = 0,124 -> 0,12
+    expect(calcularIcms({ base_centavos: 125, reducao_bc: null, aliquota: 100000 }).v_icms).toBe(13);
+    expect(calcularIcms({ base_centavos: 124, reducao_bc: null, aliquota: 100000 }).v_icms).toBe(12);
+  });
+  it('RN-FIS-02: valores muito altos não perdem precisão', () => {
+    expect(calcularIcms({ base_centavos: 9_000_000_000_000, reducao_bc: null, aliquota: 180000 }).v_icms).toBe(1_620_000_000_000);
+  });
+});
+
+describe('alíquota interestadual', () => {
+  it('RN-FIS-02: origem 1, 2, 3 e 8 usam 4% (Resolução do Senado 13/2012)', () => {
+    for (const o of ['1', '2', '3', '8']) expect(aliquotaInterestadual(o, 120000)).toBe(40000);
+    for (const o of ['0', '4', '5', '6', '7']) expect(aliquotaInterestadual(o, 120000)).toBe(120000);
+  });
+});
+
+describe('calcularIcmsSt e MVA ajustada', () => {
+  it('RN-FIS-02: MVA ajustada = [(1+40%)×(1−12%)/(1−18%)]−1 = 50,2439%', () => {
+    expect(mvaAjustada(400000, 120000, 180000)).toBe(502439);
+  });
+  it('RN-FIS-02: ST interno com MVA 40%: BC ST 1.400,00; ST = 252,00 − 180,00 = 72,00', () => {
+    expect(calcularIcmsSt({ base_centavos: 100000, mva: 400000, reducao_bc_st: null, aliquota_st: 180000, v_icms_proprio: 18000 })).toEqual({ v_bc_st: 140000, v_icms_st: 7200 });
+  });
+  it('RN-FIS-02: ST com MVA 50,24%: BC ST 1.502,40; ST = 270,43 − 120,00 = 150,43', () => {
+    expect(calcularIcmsSt({ base_centavos: 100000, mva: 502400, reducao_bc_st: null, aliquota_st: 180000, v_icms_proprio: 12000 })).toEqual({ v_bc_st: 150240, v_icms_st: 15043 });
+  });
+  it('RN-FIS-02: redução da BC do ST e ST nunca negativo', () => {
+    expect(calcularIcmsSt({ base_centavos: 100000, mva: 400000, reducao_bc_st: 100000, aliquota_st: 180000, v_icms_proprio: 0 }).v_bc_st).toBe(126000);
+    expect(calcularIcmsSt({ base_centavos: 100000, mva: null, reducao_bc_st: null, aliquota_st: 100000, v_icms_proprio: 50000 }).v_icms_st).toBe(0);
+  });
+});
+
+describe('MVA ajustada: casos limite (Conv. ICMS 142/2018)', () => {
+  it('RN-FIS-02: ALQ intra <= ALQ inter usa a MVA original, nunca negativa', () => {
+    expect(mvaAjustada(400000, 120000, 120000)).toBe(400000);
+    expect(mvaAjustada(400000, 120000, 70000)).toBe(400000);
+    expect(mvaAjustada(0, 120000, 70000)).toBe(0);
+  });
+  it('RN-FIS-02: ALQ intra de 100% não divide por zero', () => {
+    expect(mvaAjustada(400000, 120000, 1_000_000)).toBe(400000);
+  });
+});
+
+describe('alíquotas fracionárias (4 casas)', () => {
+  it('RN-FIS-02: ICMS a 17,5000% sobre R$ 3,33 = 0,58275 -> R$ 0,58', () => {
+    expect(calcularIcms({ base_centavos: 333, reducao_bc: null, aliquota: 175000 })).toEqual({ v_bc: 333, v_icms: 58 });
+  });
+  it('RN-FIS-02: MVA ajustada a 4 casas: [(1,40)×(0,88)/(0,825)]−1 = 49,3333%', () => {
+    expect(mvaAjustada(400000, 120000, 175000)).toBe(493333);
+  });
+  it('RN-FIS-02: ST com MVA 49,3333% e alíquota 17,5000%: BC ST 1.493,33; ST = 261,33 − 120,00 = 141,33', () => {
+    expect(calcularIcmsSt({ base_centavos: 100000, mva: 493333, reducao_bc_st: null, aliquota_st: 175000, v_icms_proprio: 12000 })).toEqual({ v_bc_st: 149333, v_icms_st: 14133 });
+  });
+  it('RN-FIS-02: redução de BC com 4 casas (33,3333%) leva R$ 1.000,00 a R$ 666,67', () => {
+    expect(calcularIcms({ base_centavos: 100000, reducao_bc: 333333, aliquota: 180000 }).v_bc).toBe(66667);
+  });
+});
+
+describe('calcularIcmsItem por código', () => {
+  const ctx = (r: Parameters<typeof regra>[0], i: Partial<ItemCalculo> = {}, interestadual = false, ipi_na_bc = false) => ({ item: item(i), regra: regra(r), interestadual, ipi_na_bc });
+
+  it('RN-FIS-02: CST 00 interno a 18%', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '00' }));
+    expect(r).toMatchObject({ ok: true, icms: { orig: '0', cst: '00', mod_bc: 3, v_bc: 100000, p_icms: 180000, v_icms: 18000 } });
+  });
+  it('RN-FIS-02: interestadual AM→SP a 12% da regra', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '00', aliquota_icms: 120000 }, {}, true));
+    expect(r).toMatchObject({ ok: true, icms: { p_icms: 120000, v_icms: 12000 } });
+  });
+  it('RN-FIS-02: importado (origem 1) interestadual usa 4% mesmo com 12% na regra; interno não', () => {
+    expect(calcularIcmsItem(ctx({ aliquota_icms: 120000 }, { origem: '1' }, true))).toMatchObject({ ok: true, icms: { p_icms: 40000, v_icms: 4000 } });
+    expect(calcularIcmsItem(ctx({ aliquota_icms: 180000 }, { origem: '1' }, false))).toMatchObject({ ok: true, icms: { p_icms: 180000, v_icms: 18000 } });
+  });
+  it('RN-FIS-02: CST 20 com redução de BC', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '20', reducao_bc: 333300 }))).toMatchObject({ ok: true, icms: { p_red_bc: 333300, v_bc: 66670, v_icms: 12001 } });
+  });
+  it('RN-FIS-02: CST 10 interestadual com MVA ajustada pela fórmula (50,2439%)', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '10', aliquota_icms: 120000, mva_original: 400000, ajustar_mva: true, aliquota_interna_destino: 180000 }, {}, true));
+    expect(r).toMatchObject({ ok: true, icms: { v_icms: 12000, mod_bc_st: 4, p_mva_st: 502439, v_bc_st: 150244, p_icms_st: 180000, v_icms_st: 15044 } });
+  });
+  it('RN-FIS-02: CST 10 interno usa a MVA original (sem ajuste)', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '10', mva_original: 400000, ajustar_mva: true, aliquota_interna_destino: 180000 }));
+    expect(r).toMatchObject({ ok: true, icms: { p_mva_st: 400000, v_bc_st: 140000, v_icms_st: 7200 } });
+  });
+  it('RN-FIS-02: MVA ajustada cadastrada na regra vale na interestadual', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '10', aliquota_icms: 120000, mva_original: 400000, mva_ajustada: 500000, aliquota_interna_destino: 180000 }, {}, true));
+    expect(r).toMatchObject({ ok: true, icms: { p_mva_st: 500000, v_bc_st: 150000 } });
+  });
+  it('RN-FIS-02: IPI entra na BC do ST sempre e na do próprio conforme o destinatário', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '10', mva_original: 400000, aliquota_interna_destino: 180000 }, { ipi_centavos: 10000 }, false, false));
+    expect(r).toMatchObject({ ok: true, icms: { v_bc: 100000, v_bc_st: 154000 } });
+    const r2 = calcularIcmsItem(ctx({ codigo: '00' }, { ipi_centavos: 10000 }, false, true));
+    expect(r2).toMatchObject({ ok: true, icms: { v_bc: 110000, v_icms: 19800 } });
+  });
+  it('RN-FIS-02: FCP e FCP-ST somam ao grupo; vFCPST = BC ST × pFCPST − vFCP próprio', () => {
+    // Conferido à mão: BC 1.000,00 × 2% = vFCP 20,00; BC ST 1.400,00 × 2% = 28,00; vFCPST = 28,00 − 20,00 = 8,00.
+    // Premissa: o abatimento do FCP próprio segue a NT 2016.002; confirmar com a UF.
+    const r = calcularIcmsItem(ctx({ codigo: '10', mva_original: 400000, aliquota_interna_destino: 180000, p_fcp: 20000, p_fcp_st: 20000 }));
+    expect(r).toMatchObject({ ok: true, icms: { p_fcp: 20000, v_fcp: 2000, v_bc_fcp_st: 140000, p_fcp_st: 20000, v_fcp_st: 800 } });
+  });
+  it('RN-FIS-02: CSOSN 201/202/203 também trazem FCP-ST (NT 2016.002), sem FCP próprio a abater', () => {
+    // BC ST 1.400,00 × 2% = 28,00. Premissa: confirmar com a UF.
+    for (const codigo of ['201', '202', '203']) {
+      const r = calcularIcmsItem(ctx({ codigo, mva_original: 400000, aliquota_interna_destino: 180000, aliquota_icms: 180000, p_fcp_st: 20000, p_cred_sn: codigo === '201' ? 28200 : null }));
+      expect(r).toMatchObject({ ok: true, icms: { v_bc_fcp_st: 140000, p_fcp_st: 20000, v_fcp_st: 2800 } });
+    }
+  });
+  it('RN-FIS-02: vFCPST nunca fica negativo', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '10', mva_original: 0, aliquota_interna_destino: 180000, p_fcp: 40000, p_fcp_st: 10000 }));
+    expect(r).toMatchObject({ ok: true, icms: { v_fcp: 4000, v_fcp_st: 0 } });
+  });
+  it('RN-FIS-02: desconto maior que o valor bruto é erro, mesmo com frete cobrindo a base', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '00' }, { desconto_centavos: 100001, frete_centavos: 50000 }))).toMatchObject({ ok: false, codigo: 'BASE_NEGATIVA' });
+    expect(calcularIcmsItem(ctx({ codigo: '40' }, { desconto_centavos: 100001 }))).toMatchObject({ ok: false, codigo: 'BASE_NEGATIVA' });
+  });
+  it('RN-FIS-02: venda interestadual a consumidor final não contribuinte (DIFAL) é código não suportado', () => {
+    const c = { ...ctx({ codigo: '00', aliquota_icms: 120000 }, {}, true), destinatario_nao_contribuinte_final: true };
+    expect(calcularIcmsItem(c)).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+    expect(calcularIcmsItem({ ...c, interestadual: false })).toMatchObject({ ok: true });
+  });
+  it('RN-FIS-02: CST 30 tem ST sem ICMS próprio', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '30', mva_original: 400000, aliquota_interna_destino: 180000 }))).toMatchObject({ ok: true, icms: { v_bc_st: 140000, v_icms_st: 25200 } });
+  });
+  it('RN-FIS-02: CST 40, 41, 50 e 60 não calculam nada', () => {
+    for (const codigo of ['40', '41', '50', '60']) {
+      const r = calcularIcmsItem(ctx({ codigo }));
+      expect(r).toEqual({ ok: true, icms: { orig: '0', cst: codigo } });
+    }
+  });
+  it('RN-FIS-02: CSOSN 101 com crédito de 2,82%: vCredICMSSN = R$ 28,20', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '101', p_cred_sn: 28200 }));
+    expect(r).toEqual({ ok: true, icms: { orig: '0', csosn: '101', p_cred_sn: 28200, v_cred_icms_sn: 2820 } });
+  });
+  it('RN-FIS-02: CSOSN 101 sem pCredSN na regra é regra incompleta', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '101' }))).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+  });
+  it('RN-FIS-02: CSOSN 201 com ST (MVA 40%) abate o ICMS nominal e leva crédito', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '201', mva_original: 400000, aliquota_interna_destino: 180000, aliquota_icms: 180000, p_cred_sn: 28200 }));
+    expect(r).toMatchObject({ ok: true, icms: { csosn: '201', v_bc_st: 140000, v_icms_st: 7200, v_cred_icms_sn: 2820 } });
+  });
+  it('RN-FIS-02: CSOSN 202 tem ST sem crédito; 102, 103, 300, 400 e 500 não calculam', () => {
+    const r = calcularIcmsItem(ctx({ codigo: '202', mva_original: 400000, aliquota_interna_destino: 180000, aliquota_icms: 180000 }));
+    expect(r).toMatchObject({ ok: true, icms: { v_icms_st: 7200 } });
+    expect((r as { icms: object }).icms).not.toHaveProperty('v_cred_icms_sn');
+    for (const codigo of ['102', '103', '300', '400', '500']) expect(calcularIcmsItem(ctx({ codigo }))).toEqual({ ok: true, icms: { orig: '0', csosn: codigo } });
+  });
+  it('RN-FIS-02: desconto maior que o item dá erro de base negativa', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '00' }, { desconto_centavos: 200000 }))).toMatchObject({ ok: false, codigo: 'BASE_NEGATIVA' });
+  });
+  it('RN-FIS-02: CST 51 ainda não suportado volta como erro tipado', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '51' }))).toMatchObject({ ok: false, codigo: 'CODIGO_NAO_SUPORTADO' });
+  });
+  it('RN-FIS-02: CST 10 sem alíquota interna do destino é regra incompleta', () => {
+    expect(calcularIcmsItem(ctx({ codigo: '10', mva_original: 400000 }))).toMatchObject({ ok: false, codigo: 'REGRA_INCOMPLETA' });
+  });
+});
