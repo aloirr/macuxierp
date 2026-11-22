@@ -4,7 +4,7 @@
  */
 import { classeForma, ehAVista } from '@macuxierp/cadastros/contracts';
 import { centavos, ratear } from '@macuxierp/platform-sdk';
-import { instanteManaus } from './fuso';
+import { dataCivilManaus } from './fuso';
 
 export const TPAG_NAO_INFORMADO = '99';
 export const XPAG_NAO_INFORMADO = 'Conforme condição combinada';
@@ -65,7 +65,7 @@ export function montarPagamento(e: EntradaPagamento): { pagamentos: PagamentoXml
   };
   let cobranca: CobrancaXml | null = null;
   if (classeForma(tPag) === 'boleto' && e.total_centavos > 0) {
-    const emissao = instanteManaus(e.emissao).toISOString().slice(0, 10);
+    const emissao = dataCivilManaus(e.emissao);
     const valores = ratear(centavos(e.total_centavos), prazos.length);
     cobranca = {
       nFat: String(e.numero),

@@ -24,7 +24,12 @@ import {
   type OpcoesEventoDeTeste,
   type OpcoesNFeDeTeste,
 } from '@macuxierp/nfe-sefaz/teste';
-import { criarRegistroSimulador, criarSimuladorSefaz, type OpcoesSimulador, type SimuladorSefaz } from './index';
+import {
+  criarRegistroSimulador,
+  criarSimuladorSefaz,
+  type OpcoesSimulador,
+  type SimuladorSefaz,
+} from './index';
 
 export const FILIAL = '7f1c2a50-3b8e-4c1d-9a2f-0e6b5d4c3a21';
 /** 21/11/2026, 22h59 em Manaus (`INSTANTE_DE_TESTE`). */
@@ -45,17 +50,35 @@ export function criarRelogio() {
 /** Os A1 dos testes: `VALIDADE_DE_TESTE`, um ano antes e um ano depois do `INICIO` (independem do relógio real). */
 let a1s: { emitente: A1DeTeste; outro: A1DeTeste } | null = null;
 export function a1DeTeste(): { emitente: A1DeTeste; outro: A1DeTeste } {
-  a1s ??= { emitente: gerarA1DeTeste({ ...VALIDADE_DE_TESTE }), outro: gerarA1DeTeste({ ...VALIDADE_DE_TESTE, cnpj: CNPJ_OUTRO_DE_TESTE, nome: 'OUTRA EMPRESA FICTICIA LTDA' }) };
+  a1s ??= {
+    emitente: gerarA1DeTeste({ ...VALIDADE_DE_TESTE }),
+    outro: gerarA1DeTeste({
+      ...VALIDADE_DE_TESTE,
+      cnpj: CNPJ_OUTRO_DE_TESTE,
+      nome: 'OUTRA EMPRESA FICTICIA LTDA',
+    }),
+  };
   return a1s;
 }
 
 export function destinoDe(modo: ModoEmissao = 'normal', filial = FILIAL): DestinoSimulador {
-  return escolherDestinoSefaz({ filial_id: filial, ambiente: 'homologacao', uf: 'AM', modo }, { transporte: 'simulador' }) as DestinoSimulador;
+  return escolherDestinoSefaz(
+    { filial_id: filial, ambiente: 'homologacao', uf: 'AM', modo },
+    { transporte: 'simulador' },
+  ) as DestinoSimulador;
 }
 
-export function novoSimulador(o: OpcoesSimulador & { modo?: ModoEmissao } = {}): { s: SimuladorSefaz; relogio: ReturnType<typeof criarRelogio> } {
+export function novoSimulador(o: OpcoesSimulador & { modo?: ModoEmissao } = {}): {
+  s: SimuladorSefaz;
+  relogio: ReturnType<typeof criarRelogio>;
+} {
   const relogio = criarRelogio();
-  const s = criarSimuladorSefaz(destinoDe(o.modo), { agora: relogio.agora, registro: o.registro ?? criarRegistroSimulador(), ...(o.tMed === undefined ? {} : { tMed: o.tMed }) });
+  const s = criarSimuladorSefaz(destinoDe(o.modo), {
+    agora: relogio.agora,
+    registro: o.registro ?? criarRegistroSimulador(),
+    ...(o.tMed === undefined ? {} : { tMed: o.tMed }),
+    ...(o.estado === undefined ? {} : { estado: o.estado }),
+  });
   return { s, relogio };
 }
 
@@ -70,15 +93,25 @@ export function nfeAssinada(
   return { chave: n.chave, xml: assinarXmlDeTeste(xml, { elemento: 'infNFe', a1 }) };
 }
 
-export function cancelamentoAssinado(o: OpcoesEventoDeTeste & { nProt: string; xJust?: string }, a1: A1DeTeste = a1DeTeste().emitente): string {
+export function cancelamentoAssinado(
+  o: OpcoesEventoDeTeste & { nProt: string; xJust?: string },
+  a1: A1DeTeste = a1DeTeste().emitente,
+): string {
   return assinarXmlDeTeste(montarCancelamentoDeTeste(o), { elemento: 'infEvento', a1 });
 }
 
-export function cceAssinada(o: OpcoesEventoDeTeste & { nSeqEvento: number }, a1: A1DeTeste = a1DeTeste().emitente, ajustar: (x: string) => string = (x) => x): string {
+export function cceAssinada(
+  o: OpcoesEventoDeTeste & { nSeqEvento: number; xCorrecao?: string },
+  a1: A1DeTeste = a1DeTeste().emitente,
+  ajustar: (x: string) => string = (x) => x,
+): string {
   return assinarXmlDeTeste(ajustar(montarCartaCorrecaoDeTeste(o)), { elemento: 'infEvento', a1 });
 }
 
-export function inutilizacaoAssinada(o: Parameters<typeof montarInutilizacaoDeTeste>[0], a1: A1DeTeste = a1DeTeste().emitente): string {
+export function inutilizacaoAssinada(
+  o: Parameters<typeof montarInutilizacaoDeTeste>[0],
+  a1: A1DeTeste = a1DeTeste().emitente,
+): string {
   return assinarXmlDeTeste(montarInutilizacaoDeTeste(o), { elemento: 'infInut', a1 });
 }
 

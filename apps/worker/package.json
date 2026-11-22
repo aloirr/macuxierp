@@ -11,18 +11,23 @@
   "dependencies": {
     "@macuxierp/cadastros": "workspace:*",
     "@macuxierp/core": "workspace:*",
+    "@macuxierp/faturamento": "workspace:*",
     "@macuxierp/integracao-fdv": "workspace:*",
+    "@macuxierp/nfe-emissor": "workspace:*",
+    "@macuxierp/nfe-sefaz": "workspace:*",
     "@macuxierp/pedido": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
+    "@macuxierp/sefaz-simulador": "workspace:*",
     "pino": "^10.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
     "@types/node": "^22.18.0",
+    "api": "workspace:*",
     "eslint": "^9.39.0",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   },
-  "description": "Worker do Macuxi ERP: outbox, fila de trabalhos (exportação LGPD, carga inicial; depois SEFAZ), agendas do Hub do FDV (conector, busca e retorno de pedidos) e rotinas diárias (alerta do A1)."
+  "description": "Worker do Macuxi ERP: outbox, fila de trabalhos (exportação LGPD, carga inicial, faturamento com a SEFAZ simulada), agendas do Hub do FDV (conector, busca e retorno de pedidos) e rotinas (varredura do faturamento, alerta do A1 e das numeradas não enviadas)."
 }

@@ -12,7 +12,7 @@ export interface ItemDeNota {
   valor_centavos?: number;
 }
 
-export type CodigoRecusaNota = 'status_invalido' | 'nota_sem_itens' | 'quantidade_invalida' | 'sequencia_inexistente' | 'quantidade_acima_do_saldo' | 'quantidade_acima_do_faturado';
+export type CodigoRecusaNota = 'status_invalido' | 'nota_sem_itens' | 'quantidade_invalida' | 'sequencia_inexistente' | 'quantidade_acima_do_saldo' | 'quantidade_acima_do_faturado' | 'valor_acima_do_faturado' | 'valor_faturado_incoerente';
 
 export type ResultadoNota =
   | { ok: true; status: StatusPedido; itens: { sequencia: number; quantidade_faturada: number }[]; valor_centavos: number }
@@ -61,3 +61,23 @@ export const aplicarNotaAutorizada = (itens: readonly ItemFaturavel[], itensNota
 /** RN-PED-02: nota cancelada subtrai do faturado; faturado e faturado_parcial → faturado_parcial ou aprovado (recuo). Pura, sem consumidor no lote 4a. */
 export const aplicarNotaCancelada = (itens: readonly ItemFaturavel[], itensNota: readonly ItemDeNota[], statusAtual: StatusPedido): ResultadoNota =>
   aplicar(itens, itensNota, statusAtual, ['faturado', 'faturado_parcial'], -1);
+
+export type ResultadoRecuo =
+  | { ok: true; status: StatusPedido; itens: { sequencia: number; quantidade_faturada: number }[]; valor_faturado_centavos: number }
+  | { ok: false; rn: 'RN-PED-02'; codigo: CodigoRecusaNota; mensagem: string };
+
+/**
+ * RN-PED-02: recuo do pedido por nota cancelada. Além de `aplicarNotaCancelada`, calcula o novo `valor_faturado_centavos` e garante o
+ * que o gatilho do banco (0027) exige: o recuo a `aprovado` só com itens zerados e valor faturado zero; valor negativo é recusado.
+ * Pura. `itens` são só os não excluídos.
+ */
+export function recuarPorNotaCancelada(itens: readonly ItemFaturavel[], itensNota: readonly ItemDeNota[], statusAtual: StatusPedido, valorFaturado: number): ResultadoRecuo {
+  const r = aplicarNotaCancelada(itens, itensNota, statusAtual);
+  if (!r.ok) return r;
+  const valor = valorFaturado - r.valor_centavos;
+  if (valor < 0) return { ok: false, rn: 'RN-PED-02', codigo: 'valor_acima_do_faturado', mensagem: 'Valor da nota cancelada acima do valor faturado do pedido' };
+  if (r.status === 'aprovado' && (valor !== 0 || r.itens.some((i) => i.quantidade_faturada !== 0))) {
+    return { ok: false, rn: 'RN-PED-02', codigo: 'valor_faturado_incoerente', mensagem: 'Recuo a aprovado exige valor faturado e quantidades faturadas zerados' };
+  }
+  return { ok: true, status: r.status, itens: r.itens, valor_faturado_centavos: valor };
+}

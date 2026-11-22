@@ -144,11 +144,17 @@ export function ratearProporcional(total: number, pesos: readonly number[]): num
   return partes;
 }
 
-const nfeVaiAoFdv = (ambiente: Ambiente): boolean => ambiente === 'producao';
+/** RN-FAT-04: só produção vai ao FDV (único lugar que decide). */
+export const nfeVaiAoFdv = (ambiente: Ambiente): boolean => ambiente === 'producao';
 
 export interface EntradaItens {
   pedido: PedidoFaturavel;
   situacao: SituacaoPedido;
+  /**
+   * Quantidades (qtd4) já em notas do MESMO pedido no próprio faturamento (tudo menos cancelada, inutilizada e denegada), por sequência.
+   * O faturado de cada item é o MAIOR entre isto e a `quantidade_faturada` do pedido (que fica atrasada até o consumo do evento).
+   */
+  ja_faturadas?: ReadonlyMap<number, number>;
   /** Sem lista = nota total do saldo. */
   itens?: SolicitacaoItem[];
   /** Frete em centavos; omitido = `Frete.valor_centavos` do pedido (nulo vale 0). */
@@ -165,14 +171,20 @@ export interface EntradaMontagem extends EntradaItens {
 export type ResultadoItens = { ok: true; itens: NotaItemBase[] } | { ok: false; violacoes: Violacao[] };
 export type ResultadoMontagem = { ok: true; nota: NotaMontada } | { ok: false; violacoes: Violacao[] };
 
+/** RN-PED-02: só pedido `aprovado` ou `faturado_parcial` aceita nota (a API ao emitir e o worker ao assinar usam a mesma regra). */
+export function pedidoAceitaNota(status: string | null | undefined): boolean {
+  return status === 'aprovado' || status === 'faturado_parcial';
+}
+
 /** Passo 1 da nota: confere situação e saldo, e calcula valor, desconto, frete e outras por item (sem o cálculo fiscal). */
 export function ratearItens(e: EntradaItens): ResultadoItens {
   const v: Violacao[] = [];
-  if (e.situacao.status !== 'aprovado' && e.situacao.status !== 'faturado_parcial') {
+  if (!pedidoAceitaNota(e.situacao.status)) {
     return { ok: false, violacoes: [violacao('RN-PED-02', 'status', `Pedido em "${e.situacao.status}" não pode ser faturado.`)] };
   }
   const itensPedido = e.pedido.pedido.itens;
-  const saldoDe = new Map(e.situacao.itens.map((i) => [i.sequencia, i.quantidade - i.quantidade_faturada]));
+  const faturadaDe = new Map(e.situacao.itens.map((i) => [i.sequencia, Math.max(i.quantidade_faturada, e.ja_faturadas?.get(i.sequencia) ?? 0)]));
+  const saldoDe = new Map(e.situacao.itens.map((i) => [i.sequencia, i.quantidade - (faturadaDe.get(i.sequencia) ?? 0)]));
   const pedidoDe = new Map(itensPedido.map((i) => [i.sequencia, i]));
   const solicitados: SolicitacaoItem[] =
     e.itens ?? [...saldoDe.entries()].filter(([, s]) => s > 0).map(([sequencia]) => ({ sequencia }));
@@ -201,7 +213,6 @@ export function ratearItens(e: EntradaItens): ResultadoItens {
 
   const brutos: number[] = escolhidos.map(({ item, quantidade }) => valorItem(quantidade, item.preco_unitario_centavos));
   // Pelo acumulado (RN-CORE-03): arred(v × (faturada + q) / qtd) − arred(v × faturada / qtd). A soma das notas parciais bate com o pedido.
-  const faturadaDe = new Map(e.situacao.itens.map((i) => [i.sequencia, i.quantidade_faturada]));
   const descontos: number[] = escolhidos.map(({ item, quantidade }) => {
     const antes = faturadaDe.get(item.sequencia) ?? 0;
     const acumulado = (q: number): bigint => divArred(BigInt(item.desconto_centavos) * BigInt(q), BigInt(item.quantidade));

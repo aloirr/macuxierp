@@ -16,6 +16,7 @@
     "@macuxierp/faturamento": "workspace:*",
     "@macuxierp/fiscal": "workspace:*",
     "@macuxierp/integracao-fdv": "workspace:*",
+    "@macuxierp/nfe-emissor": "workspace:*",
     "@macuxierp/pedido": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
     "fastify": "^5.12.8",
@@ -24,7 +25,6 @@
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
-    "@macuxierp/nfe-emissor": "workspace:*",
     "@macuxierp/nfe-sefaz": "workspace:*",
     "@macuxierp/sefaz-simulador": "workspace:*",
     "@types/node": "^22.18.0",

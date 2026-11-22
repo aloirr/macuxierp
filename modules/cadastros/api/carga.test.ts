@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { erros } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
-import { prazosDoCartao } from '../domain';
+import { MSG_REGIME_PIS_COFINS_CRT3, prazosDoCartao } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginCadastros } from './index';
 import { dependenciasEmMemoria } from './memoria';
@@ -186,6 +186,18 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     const outro = readFileSync(join(pasta, 'filial.csv'), 'utf8').replace('F-EX-01', 'F-OUTRO');
     const r2 = (await t.carregar('gravar', { arquivos: [{ nome: 'filial.csv', conteudo: outro }] })).corpo as RelatorioCarga;
     expect(r2.erros).toEqual([expect.objectContaining({ codigo: 'CARGA_CONFLITO', campo: 'cnpj' })]);
+  });
+
+  it('RN-FIS-02: filial CRT 3 sem regime de PIS/COFINS (na célula e no cadastro) é recusada; com o regime no cadastro, a linha sem a célula passa', async () => {
+    const t = montar();
+    const sem = readFileSync(join(pasta, 'filial.csv'), 'utf8').replace(';nao_cumulativo', ';');
+    const r = (await t.carregar('gravar', { arquivos: [{ nome: 'filial.csv', conteudo: sem }] })).corpo as RelatorioCarga;
+    expect(r.erros).toEqual([expect.objectContaining({ linha: 2, codigo: 'RN-FIS-02', campo: 'regime_pis_cofins', motivo: MSG_REGIME_PIS_COFINS_CRT3 })]);
+    expect(t.repos.filiais.linhas).toHaveLength(0);
+    await t.carregar('gravar', { arquivos: arquivos().filter((a) => a.nome === 'filial.csv') });
+    const ok = (await t.carregar('gravar', { arquivos: [{ nome: 'filial.csv', conteudo: sem.replace('Matriz', 'Matriz 2') }] })).corpo as RelatorioCarga;
+    expect(ok.erros).toEqual([]);
+    expect(porEntidade(ok).filial).toMatchObject({ atualizadas: 1 });
   });
 
   it('RN-CORE-05: a adoção pela carga publica external_id_anterior nulo; sem mudança de chave o campo fica ausente', async () => {

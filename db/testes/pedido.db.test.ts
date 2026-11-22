@@ -26,7 +26,7 @@ import {
   rodarScript,
   verboso,
 } from './apoio.ts';
-import { fixturePedido, fixturePlataforma, novoTenant } from './fixture.ts';
+import { fixturePedido, fixturePlataforma, novoTenant, RETRATO, sqlDePedido } from './fixture.ts';
 import { verificarVazamento } from './vazamento.ts';
 
 const A = novoTenant('pedido-a');
@@ -115,46 +115,7 @@ const CAMINHO: Record<string, string[]> = {
   cancelado: ['aprovado', 'cancelado'],
 };
 
-let proximoNumero = 100;
-
-/** Retrato mínimo que passa no pedido_retrato_endereco_objeto (0016); valores fictícios. */
-const RETRATO = '{"tipo_pessoa": "PJ", "endereco": {"municipio_ibge": "1302603", "uf": "AM"}}';
-
-interface NovoPedido {
-  id?: string;
-  tenant?: string;
-  origem?: 'fdv' | 'bko';
-  externalId?: string | null;
-  status?: string;
-  total?: number;
-  pendencias?: string;
-  retrato?: string;
-}
-
-/** INSERT de um pedido com número novo (valores fictícios, sem dado pessoal real). */
-function pedidoSql(p: NovoPedido = {}): string {
-  const tenant = p.tenant ?? A.id;
-  const ext = p.externalId === undefined || p.externalId === null ? 'NULL' : `'${p.externalId}'`;
-  const colStatus = p.status === undefined ? '' : ', status';
-  const valStatus = p.status === undefined ? '' : `, '${p.status}'`;
-  const colPend = p.pendencias === undefined ? '' : ', pendencias';
-  const valPend = p.pendencias === undefined ? '' : `, '${p.pendencias}'`;
-  return `INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
-      total_centavos, external_id${colStatus}${colPend})
-    VALUES ('${p.id ?? randomUUID()}', '${tenant}', ${proximoNumero++}, '${p.origem ?? 'bko'}', gen_random_uuid(),
-      gen_random_uuid(), '${p.retrato ?? RETRATO}', now(), ${p.total ?? 1000}, ${ext}${valStatus}${valPend});`;
-}
-
-function itemSql(
-  pedido: string,
-  sequencia: number,
-  extra: { retrato?: string; faturada?: number } = {},
-): string {
-  return `INSERT INTO pedido.pedido_item (tenant_id, pedido_id, sequencia, produto_id, produto_retrato, quantidade,
-      preco_unitario_centavos, total_centavos, quantidade_faturada)
-    VALUES ('${A.id}', '${pedido}', ${sequencia}, gen_random_uuid(), '${extra.retrato ?? '{"codigo": "P1"}'}', 10000,
-      100, 100, ${extra.faturada ?? 0});`;
-}
+const { pedidoSql, itemSql } = sqlDePedido(A.id, 100);
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
   let banco: BancoDeTeste;
