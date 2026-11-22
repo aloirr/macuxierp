@@ -9,7 +9,7 @@ import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
 import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
-import { a1DeTeste, depsFake, titulosFake, tx, TENANT } from './apoio-teste';
+import { a1DeTeste, depsFake, titulosFake, tx, TENANT, situacaoAprovadaDeTeste } from './apoio-teste';
 import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA } from './emissao';
 import { criarTransmissor } from './transmissor';
 
@@ -46,7 +46,7 @@ function montar(mei = false) {
     notas: f.r.repo, titulos: tit.repo,
     emissor: f.emissor,
     ambiente: { ambiente: async () => 'homologacao' },
-    lerA1: async () => a1DeTeste(),
+    situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(),
     sefaz: seletor,
     agora: () => INSTANTE_DE_TESTE,
   });

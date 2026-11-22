@@ -578,8 +578,7 @@ export const ambienteFiscalSql: AmbienteFiscalDaFilial = {
 };
 
 /**
- * Porta inversa do pedido (RN-PED-02): nota em aberto = `rascunho`, `em_autorizacao` ou `emitida_contingencia` (ainda pode virar autorizada pelo worker).
- * Rejeitada, autorizada e guarda pendente ficam fora: a autorizada vem de `notasAutorizadas` e o faturado_parcial ainda cancela o saldo (T-0013 §2).
+ * Implementa NotaEmAberto (ver portas.ts).
  * SEM `FOR SHARE` na nota (deadlock com o reenvio, que trava a nota e depois pede `FOR SHARE` no pedido): o `FOR UPDATE` do pedido no
  * cancelamento já basta, porque todo caminho que cria ou reabre nota pede o `FOR SHARE` do pedido antes e espera o cancelamento.
  */

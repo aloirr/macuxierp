@@ -34,6 +34,8 @@ describe.skipIf(!PG_DISPONIVEL)('configuração da filial (PostgreSQL real, tabe
     ]);
     const n = (await efemero.admin.query('SELECT count(*)::int AS n FROM faturamento.configuracao_filial WHERE tenant_id = $1', [T])).rows[0].n;
     expect(n).toBe(1);
+    const h = (await efemero.admin.query('SELECT count(*)::int AS n FROM faturamento.configuracao_filial_historico WHERE tenant_id = $1', [T])).rows[0].n;
+    expect(h).toBe(3); // o gatilho grava uma linha por escrita, mesmo simultânea
   });
 
   it('RN-FAT-04: sem linha a bandeira é desligada; definir liga, desliga e grava quem alterou', async () => {

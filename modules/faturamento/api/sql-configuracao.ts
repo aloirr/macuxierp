@@ -30,7 +30,7 @@ export const configuracaoFaturamentoSql: ConfiguracaoFaturamento = {
   },
 
   async definir(tx, filial_id, ligada, usuario_id) {
-    // UPSERT atômico por (tenant_id, filial_id) (configuracao_filial_uq): gravações simultâneas não dão 23505. Só as colunas que o GRANT da 0026 libera.
+    // Só as colunas que o GRANT da 0026 libera (restrição configuracao_filial_uq).
     await tx.consultar(
       `INSERT INTO faturamento.configuracao_filial (tenant_id, filial_id, faturamento_real_nfe_simulada, alterado_por)
        VALUES (plataforma.tenant_atual(), $1, $2, $3)

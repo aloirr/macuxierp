@@ -19,7 +19,7 @@ export interface SituacaoPedidoDoPedido {
 
 /**
  * Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): é "nota em aberto" (RN-PED-02) a do pedido em rascunho
- * numerada, `em_autorizacao` ou `emitida_contingencia`. Rejeitada (decisão do PO pendente), autorizada e guarda pendente ficam FORA desta porta:
+ * numerada, `em_autorizacao` ou `emitida_contingencia`. Rejeitada (opção A do Alexandre, 22/11 03h23 (R-20261122-032334-alexandre): não bloqueia o cancelamento; número vai para inutilização), autorizada e guarda pendente ficam FORA desta porta:
  * a autorizada é lida por `notasAutorizadas`, e o pedido faturado_parcial ainda cancela o saldo.
  */
 export interface NotaEmAberto {

@@ -8,7 +8,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
-import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro } from './apoio-teste';
+import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro, situacaoAprovadaDeTeste } from './apoio-teste';
 import { repositoriosSql, pedidosAprovadosSql, notaEmAbertoSql } from './sql';
 import { criarTransmissor } from './transmissor';
 
@@ -48,7 +48,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
         notas: repos.notas, titulos: repos.titulos,
         emissor: s.emissor,
         ambiente: repos.ambiente,
-        lerA1: async () => a1DeTeste(),
+        situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(),
         sefaz: () => t.transporte,
         agora: () => new Date('2026-11-21T14:30:00Z'),
       }),
@@ -203,7 +203,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       s.deps.pedidos = repos.pedidos;
       const { tr } = transmissor(s, { recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
       expect((await tr.transmitirNota(A, id)).resultado).toBe('rejeitada');
-      expect(await aberta()).toBe(false); // rejeitada fica fora (decisão do PO pendente)
+      expect(await aberta()).toBe(false); // rejeitada fica fora (opção A do Alexandre, 22/11 03h23 (R-20261122-032334-alexandre): não bloqueia o cancelamento; número vai para inutilização)
       expect(await autorizadas()).toEqual([]);
       const re = await app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, id, { travar: true }))!));
       expect(re.ok).toBe(true);
