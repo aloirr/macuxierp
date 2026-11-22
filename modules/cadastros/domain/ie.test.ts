@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { sugerirIndIeDest as sugerir, validarIe, validarIndIeDest } from './ie';
 
 describe('inscrição estadual', () => {
-  it('RN-CAD-02: IE do AM com dígito verificador correto passa; errado não', () => {
+  it('RN-CAD-02: UF com DV no SDK: DV certo passa e devolve a IE limpa; errado não', () => {
     expect(validarIe('AM', '01.234.567-9')).toEqual({ ok: true, ie: '012345679' });
     expect(validarIe('AM', '012345678').ok).toBe(false);
-  });
-  it('RN-CAD-02: IE de SP (12 posições, dois dígitos) pela regra da UF', () => {
-    expect(validarIe('SP', '110.042.490.114').ok).toBe(true);
+    expect(validarIe('PA', '15.000000-6')).toEqual({ ok: true, ie: '150000006' });
+    expect(validarIe('PA', '150000007').ok).toBe(false);
+    expect(validarIe('SP', '110.042.490.114')).toEqual({ ok: true, ie: '110042490114' });
     expect(validarIe('SP', '110042490115').ok).toBe(false);
   });
-  it('RN-CAD-02: UF sem algoritmo no módulo valida só o formato (2 a 14 posições numéricas)', () => {
+  it('RN-CAD-02: UF sem DV no SDK valida só o formato (2 a 14 posições numéricas)', () => {
     expect(validarIe('RS', '0123456789').ok).toBe(true);
     expect(validarIe('RS', 'AB').ok).toBe(false);
   });

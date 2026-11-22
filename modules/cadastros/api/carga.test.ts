@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { erros } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
 import { prazosDoCartao } from '../domain';
@@ -375,5 +376,11 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.id === ok.id)).toHaveLength(1);
     expect(t.repos.condicoesPagamento.linhas.filter((c) => !c.inativo && c.forma_tpag === '03' && c.parcelas_cartao == null)).toHaveLength(0);
   });
-});
 
+  it('RN-CAD-09: um aplicar que lança RN-CAD-09 (ex.: 23514 traduzido) vira erro de linha RN-CAD-09 com a mensagem do erro', async () => {
+    const t = montar();
+    t.repos.condicoesPagamento.inserir = async () => { throw erros.regra('RN-CAD-09', 'Condição de pagamento inválida: fixa', { parcelas_cartao: 'x' }); };
+    const r = (await t.carregar('gravar', { arquivos: lote('FP-C;CARTAO;Cartão;;sim;1', 'Z-1;FP-C;C1;1x;;sim;;;;1') })).corpo as RelatorioCarga;
+    expect(r.erros.filter((x) => x.codigo === 'RN-CAD-09')).toEqual([expect.objectContaining({ arquivo: 'prazo_pagamento.csv', campo: 'parcelas_cartao' })]);
+  });
+});
