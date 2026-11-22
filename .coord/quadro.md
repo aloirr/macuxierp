@@ -28,7 +28,7 @@
 | [T-0020](tarefas/T-0020.md) | Fiscal: motor ICMS, ST, IPI, PIS, COFINS, IBS, CBS e IS | F4 | modulo-fiscal | aberta | — |
 | [T-0021](tarefas/T-0021.md) | Faturamento: NF-e 55, eventos, DANFE, contingência, títulos | F4 | modulo-faturamento | aberta | — |
 | [T-0022](tarefas/T-0022.md) | 20 notas em homologação na SEFAZ-AM com o XML guardado | F4 | testes | aberta | — |
-| [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | em_revisao | PR #5 (escolha do Alexandre: A, B ou C) |
+| [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | em_revisao | PR #5: A principal e C vertical (decisão de 21/11, 21h29); design-de-marca ajusta |
 | [T-0024](tarefas/T-0024.md) | Deploy do ERP na VM do FDV com trava compartilhada (ADR 0003) | F1 | engenheiro-software | em_andamento | nuvem/T-0024-deploy |
 | [T-0025](tarefas/T-0025.md) | coord.mjs: gravar recado por git quando a API recusar a escrita na nuvem | F1 | alexandre | bloqueada | — |
 | [T-0026](tarefas/T-0026.md) | Carga inicial dos cadastros da thathyany pelos CSVs do kit | F1 | modulo-cadastros | em_andamento | PR #26 (desenho da carga, 6f34859); implementação em nuvem/T-0026-carga-csv-impl depois do #19 |
@@ -58,10 +58,13 @@
 - Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); RD-0034–0040 T-0029; RD-0041–0047 T-0024; RD-0048–0054 T-0009; RD-0055–0061 T-0010; RD-0062–0068 T-0008; próxima livre: RD-0069. Sessão que vai numerar pede a faixa ao gerente por send_message.
 
 ## Depende do Alexandre
-- Secrets do GitHub e `.env` de produção (banco `macuxierp`, `MACUXIERP_CHAVE_A1` (32 bytes, obrigatória), S3, SMTP); DNS e rota `erp.` no túnel.
-- A1 de homologação da thathyany pela tela do BKO (ADR 0005); credenciamento da thathyany na SEFAZ-AM.
-- T-0025 (governança): abrir uma sessão com `MACUXI_AGENTE=alexandre` (só o Alexandre define), porque a sessão aberta rodou como gerente-projetos e o guardião bloqueou `scripts/coord*.mjs`; depois, autorizar o merge do PR dela. É ela que destrava a gravação de recados na nuvem.
-- Pedir ao time do FDV: tenant de teste com conector (F2) e a trava `flock` no `implantar.sh` do FDV (ADR 0003); depois da F3, a virada do kit-thathyany (T-0027).
+> Decisão de 21/11, 21h29 (Manaus): "SEGUIR COM O RECOMENDADO" (`docs/status/2026-11-21-decisoes-alexandre.md`).
+- T-0025: abrir a sessão com `MACUXI_AGENTE=alexandre` (roteiro no doc de decisões, seção 1) e autorizar o merge do PR dela.
+- Secrets do GitHub, `.env` de produção (com `MACUXIERP_CHAVE_A1`, 32 bytes, obrigatória), DNS e rota `erp.` no túnel: preparar agora (lista na seção 2). O deploy só sai com "aprovo deploy vX.Y.Z".
+- Pedido ao time do FDV: tenant de teste com conector e `flock` no `implantar.sh` (texto na seção 3).
+- Credenciamento da thathyany na SEFAZ-AM e A1 de homologação pela tela do BKO (seção 4).
+- Merges dos PRs comuns, até nova decisão: o gerente manda número e head ao PO, que leva ao Alexandre.
+- Pendência aberta: aceitar ou não um "produto incompleto" (sem NCM) na carga da T-0026. Se aceitar, muda o contrato e pede ADR.
 
 ## Próximos lotes (ordem do doc 05)
 > Retomada em 21/11/2026, 21h15 (Manaus): as sessões da T-0029 e da T-0033 caíram por volta das 18h50. Sessões novas abertas para os mesmos branches.
