@@ -7,7 +7,7 @@ import { COOKIE_REFRESH, criarApp } from './app';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { gerarHashSenha } from './auth/senha';
-import { MODULOS_MONTADOS } from './modulos';
+import { modulosDeTeste } from './apoio-teste';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const OUTRO_TENANT = '7a1e2d3c-4b5a-4f6e-8d7c-9b0a1f2e3d4c';
@@ -27,7 +27,8 @@ afterEach(async () => {
 });
 
 /** Módulo de teste no lugar do cadastros: uma rota de escrita com Zod, evento, auditoria e 422. */
-const manifestoCadastros = MODULOS_MONTADOS.find((m) => m.manifesto.id === 'cadastros')!.manifesto;
+const MODULOS = modulosDeTeste();
+const manifestoCadastros = MODULOS.find((m) => m.manifesto.id === 'cadastros')!.manifesto;
 const pluginTeste = definirPlugin(manifestoCadastros, [
   definirRota({
     metodo: 'POST',
@@ -80,7 +81,7 @@ async function montar(opcoes: { licencas?: Licenca[]; logs?: string[] } = {}) {
     auditoria,
     trabalhos,
     relogio,
-    modulos: [...MODULOS_MONTADOS.filter((m) => m.manifesto.id !== 'cadastros'), pluginTeste],
+    modulos: [...MODULOS.filter((m) => m.manifesto.id !== 'cadastros'), pluginTeste],
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,
   });
   apps.push(app);
