@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { paginaVisivel } from '@macuxierp/platform-sdk';
+import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { manifest } from '../manifest';
 import * as publico from './index';
 import {
@@ -304,7 +305,7 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-17' }, '2026-11-22')).toEqual({ texto: 'Vencido há 5 dias', tom: 'erro' });
     expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-22' }, '2026-11-22').tom).not.toBe('erro');
     expect(hojeCivil(new Date('2026-11-22T02:00:00Z'))).toBe('2026-11-21');
-    expect(dialogoEstornar({ valor_centavos: 12_345, baixado_em: '2026-11-20T15:00:00.000Z' }, 'America/Manaus').titulo).toBe('Estornar a baixa de R$ 123,45 feita em 20/11?');
+    expect(semEspacoDuro(dialogoEstornar({ valor_centavos: 12_345, baixado_em: '2026-11-20T15:00:00.000Z' }, 'America/Manaus').titulo)).toBe('Estornar a baixa de R$ 123,45 feita em 20/11?');
   });
 });
 
