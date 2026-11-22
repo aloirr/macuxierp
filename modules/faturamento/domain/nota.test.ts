@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { IcmsItem, ItemResultado } from '@macuxierp/fiscal/contracts';
 import { valorItem } from '@macuxierp/platform-sdk';
 import { calc, itemPedido, pedidoAprovado } from './fixtures';
-import { cfopDoItem, pedidoAceitaNota, resumoDoItem, montarNota, ratearProporcional, valoresFiscais, type SituacaoPedido } from './nota';
+import { cfopDoItem, pedidoAceitaNota, quantidadeFaturadaDoItem, resumoDoItem, montarNota, ratearProporcional, valoresFiscais, type SituacaoPedido } from './nota';
 
 const item = itemPedido;
 const pedido = pedidoAprovado([item(1, 30_000, 1000, 300), item(2, 10_000, 2500)]);
@@ -82,6 +82,14 @@ describe('montar nota a partir do pedido aprovado', () => {
     // vale o maior: o pedido já consumiu mais que as notas
     const maior = montarNota({ ...base, situacao: situacao('faturado_parcial', 30_000, 0), ja_faturadas: new Map([[1, 10_000]]), itens: [{ sequencia: 1, quantidade: 1 }], calculo: [calc(1)] });
     expect(maior.ok).toBe(false);
+  });
+  it('RN-FAT-01: quantidadeFaturadaDoItem vale o maior entre a situação do pedido e as notas do faturamento (mesma conta da emissão e do detalhe)', () => {
+    const ja = new Map([[1, 10_000]]);
+    expect(quantidadeFaturadaDoItem(1, situacao('aprovado', 0, 0), ja)).toBe(10_000);
+    expect(quantidadeFaturadaDoItem(1, situacao('faturado_parcial', 30_000, 0), ja)).toBe(30_000);
+    expect(quantidadeFaturadaDoItem(2, situacao('aprovado', 0, 4_000), ja)).toBe(4_000);
+    expect(quantidadeFaturadaDoItem(2, null, ja)).toBe(0);
+    expect(quantidadeFaturadaDoItem(1, null, ja)).toBe(10_000);
   });
   it('RN-PED-02: pedidoAceitaNota só aceita aprovado e faturado_parcial (cancelado, nulo e demais não)', () => {
     expect(pedidoAceitaNota('aprovado')).toBe(true);

@@ -10,8 +10,8 @@
  */
 import { criarEvento, erros, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
-import type { FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
-import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
+import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
+import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
 import type {
   AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento,
 } from './portas';
@@ -41,6 +41,10 @@ const COLUNAS_NOTA = `n.id, n.tenant_id, n.pedido_id, p.payload->>'pedido_uuid' 
   n.protocolo, ${ISO('n.autorizada_em')} AS autorizada_em, n.recibo, n.idempotencia_chave AS idempotencia, n.transporte->'itens_solicitados' AS itens_solicitados,
   COALESCE((n.transporte->>'revisao')::int, 1) AS revisao`;
 const DE_NOTA = `faturamento.nota n LEFT JOIN faturamento.pedido_a_faturar p ON p.tenant_id = n.tenant_id AND p.pedido_id = n.pedido_id AND p.deleted_at IS NULL`;
+
+/** Filial (fantasia, ou o nome do emitente retratado na nota) e número do pedido (retrato da fila): lista e detalhe da nota. Exige `DE_NOTA`. */
+const COLUNAS_FILIAL_PEDIDO = `COALESCE(NULLIF(n.emitente_retrato->>'fantasia', ''), NULLIF(n.emitente_retrato->>'nome', '')) AS filial_nome,
+  (p.payload->>'numero')::int AS pedido_numero`;
 
 const COLUNAS_RESUMO = `n.id, n.filial_id, n.cliente_id, n.pedido_id, n.ambiente, n.serie::int AS serie, n.numero, n.chave_acesso, n.status,
   ${ISO('n.emitida_em')} AS emitida_em, n.total_nota_centavos::float8 AS total_centavos, n.protocolo, n.c_stat::int AS c_stat, n.x_motivo`;
@@ -107,6 +111,19 @@ async function gravarItens(tx: Transacao, notaId: string, itens: readonly NotaIt
   );
 }
 
+/** Soma, por sequência do item, a quantidade (qtd4) das notas do pedido em qualquer status menos cancelada, inutilizada e denegada (RN-FAT-01). */
+async function quantidadesFaturadasSql(tx: Transacao, pedido_id: string, exceto_nota_id?: string): Promise<Map<number, number>> {
+  const r = await tx.consultar<{ sequencia: number; quantidade: number }>(
+    `SELECT i.pedido_item_sequencia::int AS sequencia, sum(i.quantidade)::float8 AS quantidade
+       FROM faturamento.nota_item i JOIN faturamento.nota n ON n.tenant_id = i.tenant_id AND n.id = i.nota_id
+      WHERE n.pedido_id = $1 AND n.deleted_at IS NULL AND i.deleted_at IS NULL AND i.pedido_item_sequencia IS NOT NULL
+        AND n.status NOT IN ('cancelada', 'inutilizada', 'denegada') AND ($2::uuid IS NULL OR n.id <> $2::uuid)
+      GROUP BY i.pedido_item_sequencia`,
+    [pedido_id, exceto_nota_id ?? null],
+  );
+  return new Map(r.map((l) => [l.sequencia, l.quantidade]));
+}
+
 export interface DependenciasSql {
   outbox: Outbox;
   agora?: () => Date;
@@ -123,17 +140,7 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
       await tx.consultar('SELECT id FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL FOR UPDATE', [pedido_id]);
     },
 
-    async quantidadesJaFaturadas(tx, pedido_id, exceto_nota_id) {
-      const r = await tx.consultar<{ sequencia: number; quantidade: number }>(
-        `SELECT i.pedido_item_sequencia::int AS sequencia, sum(i.quantidade)::float8 AS quantidade
-           FROM faturamento.nota_item i JOIN faturamento.nota n ON n.tenant_id = i.tenant_id AND n.id = i.nota_id
-          WHERE n.pedido_id = $1 AND n.deleted_at IS NULL AND i.deleted_at IS NULL AND i.pedido_item_sequencia IS NOT NULL
-            AND n.status NOT IN ('cancelada', 'inutilizada', 'denegada') AND ($2::uuid IS NULL OR n.id <> $2::uuid)
-          GROUP BY i.pedido_item_sequencia`,
-        [pedido_id, exceto_nota_id ?? null],
-      );
-      return new Map(r.map((l) => [l.sequencia, l.quantidade]));
-    },
+    quantidadesJaFaturadas: quantidadesFaturadasSql,
 
     async buscarPorIdempotencia(tx, _tenant_id, idempotencia) {
       const [l] = await tx.consultar(`SELECT ${COLUNAS_NOTA} FROM ${DE_NOTA} WHERE n.idempotencia_chave = $1 AND n.deleted_at IS NULL`, [idempotencia]);
@@ -315,7 +322,8 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
 
     async listar(tx, f: FiltroNotas): Promise<Pagina<NotaResumo>> {
       const linhas = await tx.consultar<NotaResumo>(
-        `SELECT ${COLUNAS_RESUMO}, n.destinatario_retrato->>'razao_social' AS cliente_razao_social FROM faturamento.nota n
+        `SELECT ${COLUNAS_RESUMO}, n.destinatario_retrato->>'razao_social' AS cliente_razao_social, ${COLUNAS_FILIAL_PEDIDO}
+           FROM ${DE_NOTA}
           WHERE n.deleted_at IS NULL
             AND ($1::uuid IS NULL OR n.filial_id = $1) AND ($2::uuid IS NULL OR n.cliente_id = $2) AND ($3::uuid IS NULL OR n.pedido_id = $3)
             AND ($4::text IS NULL OR n.status = $4) AND ($5::text IS NULL OR n.ambiente = $5) AND ($6::int IS NULL OR n.serie = $6)
@@ -331,9 +339,9 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
 
     async detalhar(tx, nota_id): Promise<NotaDetalhe | null> {
       const [l] = await tx.consultar<Omit<NotaDetalhe, 'itens'>>(
-        `SELECT ${COLUNAS_RESUMO}, n.natureza_operacao, n.tipo_emissao::int AS tipo_emissao, n.recibo, ${ISO('n.autorizada_em')} AS autorizada_em,
+        `SELECT ${COLUNAS_RESUMO}, n.natureza_operacao, n.tipo_emissao::int AS tipo_emissao, n.recibo, ${ISO('n.autorizada_em')} AS autorizada_em, ${COLUNAS_FILIAL_PEDIDO},
                 EXISTS (SELECT 1 FROM faturamento.nota_evento e WHERE e.nota_id = n.id AND e.tipo = 'cancelamento' AND e.status = 'pendente') AS cancelamento_pendente
-           FROM faturamento.nota n WHERE n.id = $1 AND n.deleted_at IS NULL`,
+           FROM ${DE_NOTA} WHERE n.id = $1 AND n.deleted_at IS NULL`,
         [nota_id],
       );
       if (!l) return null;
@@ -559,6 +567,13 @@ function centavosInteiros(texto: string): number {
   return n;
 }
 
+/** Resumo da fila (lista e detalhe); o detalhe soma `p.payload` só para os itens. */
+const COLUNAS_PEDIDO_RESUMO = `p.id, p.pedido_id, (p.payload->>'numero')::int AS numero, p.filial_id, p.cliente_id,
+  p.payload->'pedido'->'cliente_retrato'->>'razao_social' AS cliente_razao_social, p.status,
+  faturamento.ambiente_da_filial(p.tenant_id, p.filial_id) AS ambiente,
+  (p.payload->>'total_centavos')::numeric::bigint::text AS total_centavos, ${ISO('p.recebido_em')} AS recebido_em`;
+type LinhaPedidoResumo = Omit<PedidoAFaturarResumo, 'total_centavos'> & { total_centavos: string };
+
 export const pedidosAprovadosSql: PedidosAprovados = {
   async obter(tx, pedido_id) {
     const [l] = await tx.consultar<{ payload: unknown }>('SELECT payload FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
@@ -580,11 +595,8 @@ export const pedidosAprovadosSql: PedidosAprovados = {
     await tx.consultar(`UPDATE faturamento.pedido_a_faturar SET status = 'cancelado', updated_at = now() WHERE pedido_id = $1 AND status <> 'cancelado' AND deleted_at IS NULL`, [pedido_id]);
   },
   async listar(tx, f: FiltroPedidosAFaturar): Promise<Pagina<PedidoAFaturarResumo>> {
-    const linhas = await tx.consultar<Omit<PedidoAFaturarResumo, 'total_centavos'> & { total_centavos: string }>(
-      `SELECT p.id, p.pedido_id, (p.payload->>'numero')::int AS numero, p.filial_id, p.cliente_id,
-              p.payload->'pedido'->'cliente_retrato'->>'razao_social' AS cliente_razao_social, p.status,
-              faturamento.ambiente_da_filial(p.tenant_id, p.filial_id) AS ambiente,
-              (p.payload->>'total_centavos')::numeric::bigint::text AS total_centavos, ${ISO('p.recebido_em')} AS recebido_em
+    const linhas = await tx.consultar<LinhaPedidoResumo>(
+      `SELECT ${COLUNAS_PEDIDO_RESUMO}
          FROM faturamento.pedido_a_faturar p
         WHERE p.deleted_at IS NULL
           AND (($3::text IS NULL AND p.status IN ('a_faturar', 'faturado_parcial')) OR p.status = $3)
@@ -596,6 +608,29 @@ export const pedidosAprovadosSql: PedidosAprovados = {
       [f.filial_id ?? null, f.cliente_id ?? null, f.status ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite + 1],
     );
     return paginar(linhas.map((l) => ({ ...l, total_centavos: centavosInteiros(l.total_centavos) })), f.limite);
+  },
+  async detalhar(tx, id, situacaoDe): Promise<PedidoAFaturarDetalhe | null> {
+    const [l] = await tx.consultar<LinhaPedidoResumo & { payload: unknown }>(
+      `SELECT ${COLUNAS_PEDIDO_RESUMO}, p.payload FROM faturamento.pedido_a_faturar p WHERE p.id = $1 AND p.deleted_at IS NULL`,
+      [id],
+    );
+    if (!l) return null;
+    const { payload, ...resumo } = l;
+    const pedido = PedidoAprovadoV1.parse(payload);
+    // Mesma conta da emissão (RN-FAT-01): vale o maior entre as notas do faturamento e a situação do pedido.
+    const jaFaturadas = await quantidadesFaturadasSql(tx, pedido.pedido_id);
+    const situacao = await situacaoDe(pedido.pedido_id);
+    return {
+      ...resumo,
+      total_centavos: centavosInteiros(resumo.total_centavos),
+      itens: pedido.pedido.itens.map((i) => {
+        const faturada = Math.round(quantidadeFaturadaDoItem(i.sequencia, situacao, jaFaturadas));
+        return {
+          sequencia: i.sequencia, produto_id: i.produto_id, descricao: i.produto_retrato.descricao || null, quantidade_pedida: i.quantidade,
+          quantidade_faturada: faturada, saldo: Math.max(0, i.quantidade - faturada), valor_unitario_centavos: i.preco_unitario_centavos,
+        };
+      }),
+    };
   },
 };
 

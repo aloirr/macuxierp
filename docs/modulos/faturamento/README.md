@@ -50,7 +50,10 @@ Cabeçalhos com o passo a passo, em `api/emissao.ts` (API: confere, reserva o n�
 | Rota | Ação | Notas |
 |---|---|---|
 | `POST /notas` | `faturamento.nota.emitir` | emite do pedido (total ou parcial); 201, ou 200 na repetição; enfileira a transmissão; audita |
-| `GET /notas`, `GET /notas/:id` | `faturamento.ver` | filtros na URL (filial, cliente, pedido, status, ambiente, série, número, `de`/`ate`), cursor por `id`; `vendedor` recebe 403 (carteira entra com o BKO) |
+| `GET /pedidos-a-faturar` | `faturamento.ver` | fila do BKO (RF-FAT-01): pedidos aprovados com saldo; filtros filial, cliente, status e `de`/`ate`, cursor por `id`; `vendedor` 403 |
+| `GET /pedidos-a-faturar/:id` | `faturamento.ver` | detalhe (`:id` = linha da fila) com os itens, a quantidade já faturada (maior entre as notas do faturamento e a situação do pedido, mesma conta da emissão) e o saldo; 404 se não existe |
+| `GET /pedidos-a-faturar/exportar`, `GET /notas/exportar`, `GET /rejeicoes/exportar`, `GET /titulos/exportar` | `faturamento.ver` | CSV das listas (RF-FAT-08), mesmos filtros e colunas da tela, teto de 10.000 linhas |
+| `GET /notas`, `GET /notas/:id` | `faturamento.ver` | a lista e o detalhe trazem `filial_nome` e `pedido_numero`; filtros na URL (filial, cliente, pedido, status, ambiente, série, número, `de`/`ate`), cursor por `id`; `vendedor` recebe 403 (carteira entra com o BKO) |
 | `GET /notas/:id/xml` | `faturamento.nota.emitir` | download do `nfeProc` guardado (404 enquanto não guardado) |
 | `GET /rejeicoes` | `faturamento.ver` | painel RF-FAT-08: código, mensagem e ação sugerida |
 | `POST /notas/:id/reenviar` | `faturamento.nota.emitir` | só rejeitada, mesmo número (RN-FAT-07); enfileira a transmissão |
@@ -70,7 +73,7 @@ Cabeçalhos com o passo a passo, em `api/emissao.ts` (API: confere, reserva o n�
 | `SituacaoPedidoDoPedido` | `criarConsultaParaFaturar` de `@macuxierp/pedido/api` | situação do pedido (contrato real `SituacaoPedidoParaFaturar`) com `FOR SHARE` |
 | `NotaEmAberto` | aqui, consumida pelo pedido | `temNotaEmAutorizacao` bloqueia o cancelamento do pedido |
 | `CalculoFiscal` | adaptador sobre `fiscal.calculo@1` (motor do fiscal + regras buscadas pela API) | devolve `CalculoSaida` e o CFOP por item; `item_id` = `String(sequencia)` |
-| `PedidosAprovados` | `api/sql.ts` + consumidor `criarConsumidorPedidoAprovado` | fila `faturamento.pedido_a_faturar`, sem ler o schema `pedido` |
+| `PedidosAprovados` | `api/sql.ts` + consumidor `criarConsumidorPedidoAprovado` | fila `faturamento.pedido_a_faturar`, sem ler o schema `pedido`; `listar` e `detalhar` (itens e saldo, com a situação do pedido pela porta `situacao`) |
 | `RepositorioNotas` | `api/sql.ts` (0013) | numeração, nota com conteúdo, status, guarda do XML, transmissões, eventos e leituras das rotas, na mesma tx |
 | `SefazTransporte` | `@macuxierp/nfe-sefaz` (real), via `SeletorTransporte` injetado no worker | autorizar, consultarRecibo, consultarProtocolo (o faturamento não importa simulador nem transporte real) |
 | `EmissorNFe` | `criarEmissorNFe()` do `@macuxierp/nfe-emissor` (REAL) | `montar(NotaParaEmissao)` → `{xml, chave, cNF, dhEmi}`; `assinar(xml, a1)` → `{xml, digVal}`; `transmitir(xmlAssinado, idLote, transporte)`; eventos e inutilização no lote 2. Único montador do XML (RD-0254) |

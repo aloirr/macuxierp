@@ -6,7 +6,7 @@ import * as publico from './index';
 import {
   ACOES_DA_NOTA, PAGINAS_FATURAMENTO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, badgesDaNota, faixaDoTitulo, rotuloDaForma, colunasDaPagina, confirmacaoReenviar, csvDaPagina,
   contadorDeCaracteres, dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, enderecoDaConsulta, faixaDaNota, formularioBaixa, hojeCivil, motivosDasAcoes, perfilVeFaturamento, requisicaoBaixa,
-  requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoXml,
+  requisicaoCancelar, requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloReenviar, situacaoDoTitulo, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type NotaParaAcao,
 } from './index';
 import { DANFE_DISPONIVEL } from './notas';
@@ -166,8 +166,17 @@ describe('colunas e CSV', () => {
     expect(csv).toContain("'=CMD()");
     expect(csv).toContain(';Homologação;');
     expect(csv).not.toContain('sem valor fiscal');
-    expect(csv).not.toContain('Filial');
-    expect(csv).not.toContain('Pedido');
+  });
+  it('RF-FAT-08: a lista de notas traz as colunas Pedido e Filial (vazias com travessão quando a nota não tem), no CSV e na tela', () => {
+    const base = { id: ID, status: 'autorizada' as const, ambiente: 'producao' as const, serie: 1, numero: 12, total_centavos: 100, emitida_em: '2026-11-22T02:30:00.000Z' };
+    const csv = csvDaPagina(paginaNotas, [{ ...base, pedido_numero: 77, filial_nome: 'Matriz Manaus' }, { ...base, pedido_numero: null, filial_nome: null }], 'America/Manaus').split('\r\n');
+    expect(csv[0]).toContain('Número/Série;Pedido;Filial;Cliente');
+    expect(csv[1]).toContain('12/1;77;Matriz Manaus;');
+    expect(csv[2]).toContain('12/1;—;—;');
+    expect(colunasDaPagina('notas', 'America/Manaus').map((c) => c.id).slice(0, 3)).toEqual(['numero', 'pedido', 'filial']);
+  });
+  it('RF-FAT-01: urlDoPedidoAFaturar aponta para o detalhe do pedido a faturar na API', () => {
+    expect(urlDoPedidoAFaturar(ID)).toBe(`/v1/faturamento/pedidos-a-faturar/${ID}`);
   });
   it('a fila de pedidos e os títulos mostram cliente, total, saldo e vencimento em formato brasileiro', () => {
     const p = csvDaPagina(paginaPedidosAFaturar, [{ id: ID, pedido_id: ID, numero: 7, cliente_razao_social: 'Mercado Boa Vista', total_centavos: 50_000, status: 'a_faturar', ambiente: 'homologacao' as const, recebido_em: '2026-11-22T15:00:00.000Z', filial_id: ID, cliente_id: ID }], 'America/Manaus');
@@ -287,15 +296,13 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
     expect(colunasDaPagina('inexistente', 'America/Manaus')).toEqual([]);
     expect(paginaNotas.chaves).toEqual(expect.arrayContaining(['serie', 'numero', 'pedido_id']));
   });
-  it('B: a lista de notas e a de rejeições mostram o selo de homologação (produção sem selo); só Número/Série, sem Filial e Pedido', () => {
+  it('B: a lista de notas e a de rejeições mostram o selo de homologação (produção sem selo); sem Pedido e Filial nas rejeições', () => {
     for (const id of ['notas', 'rejeicoes']) {
       const cols = colunasDaPagina(id, 'America/Manaus');
       const amb = cols.find((c) => c.id === 'ambiente');
       expect(amb?.selos?.({ ambiente: 'homologacao' })).toEqual([{ texto: 'Homologação — sem valor fiscal', tom: 'alerta' }]);
       expect(amb?.selos?.({ ambiente: 'producao' })).toEqual([]);
-      expect(cols.map((c) => c.id)).not.toEqual(expect.arrayContaining(['filial']));
-      expect(cols.map((c) => c.id)).not.toContain('pedido');
-      expect(cols[0]?.id).toBe('numero');
+      if (id === 'rejeicoes') for (const ausente of ['pedido', 'filial']) expect(cols.map((c) => c.id)).not.toContain(ausente);
     }
   });
   it('UX: rejeições com "O que fazer" logo após o número, "Código da SEFAZ" e "Fale com o fiscal" quando falta a ação', () => {
@@ -324,7 +331,7 @@ describe('API pública do web', () => {
       'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
       'formularioBaixa', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
-      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDoDanfe', 'urlDoXml',
+      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDoDanfe', 'urlDoPedidoAFaturar', 'urlDoXml',
     ]);
   });
 });

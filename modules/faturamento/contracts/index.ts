@@ -188,7 +188,7 @@ export const NotaResumo = z.object({
   x_motivo: z.string().nullable(),
   /** Só na lista do BKO (RF-FAT-08 / T-0021 item C): nome do destinatário no retrato da nota; ausente nos eventos e no painel de rejeições. */
   cliente_razao_social: z.string().nullable().optional(),
-  /** Para as colunas "Filial" e "Pedido" do BKO. PENDENTE na API (hoje ausentes): nome da filial vem do cadastros e o número do pedido do retrato em `pedido_a_faturar`. */
+  /** Colunas "Filial" e "Pedido" do BKO, só na lista: nome fantasia (ou razão social) do emitente no retrato da nota, e número do pedido no retrato de `pedido_a_faturar`. */
   filial_nome: z.string().nullable().optional(),
   pedido_numero: z.number().int().nullable().optional(),
 });
@@ -253,6 +253,27 @@ export const PedidoAFaturarResumo = z.object({
   recebido_em: z.string().datetime(),
 });
 export type PedidoAFaturarResumo = z.infer<typeof PedidoAFaturarResumo>;
+
+/**
+ * Item do pedido a faturar (RF-FAT-01, nota parcial). Quantidades em qtd4 (inteiro, 4 casas: 10000 = 1 unidade), como no pedido e na nota.
+ * `quantidade_faturada` = o maior entre a soma das notas do próprio faturamento (as que contam como faturadas: qualquer status menos
+ * cancelada, inutilizada e denegada, RN-FAT-01) e a quantidade faturada da situação do pedido (a mesma conta da emissão);
+ * `saldo` = pedida menos faturada, nunca negativo. Sem dado pessoal.
+ */
+export const PedidoAFaturarItem = z.object({
+  sequencia: z.number().int().min(1),
+  produto_id: Uuid,
+  descricao: z.string().nullable(),
+  quantidade_pedida: Qtd4,
+  quantidade_faturada: Qtd4,
+  saldo: Qtd4,
+  valor_unitario_centavos: Centavos,
+});
+export type PedidoAFaturarItem = z.infer<typeof PedidoAFaturarItem>;
+
+/** `GET /v1/faturamento/pedidos-a-faturar/:id` (`:id` = `PedidoAFaturarResumo.id`, a linha da fila): o resumo mais os itens, para a emissão parcial. */
+export const PedidoAFaturarDetalhe = PedidoAFaturarResumo.extend({ itens: z.array(PedidoAFaturarItem) });
+export type PedidoAFaturarDetalhe = z.infer<typeof PedidoAFaturarDetalhe>;
 
 /** `PUT /v1/faturamento/filiais/:id/configuracao` (só administrador; `Idempotency-Key` obrigatória). Desligada por padrão. A nota segue de homologação no XML (tpAmb 2, "SEM VALOR FISCAL"). */
 export const ConfigurarFilialEntrada = z.object({ faturamento_real_nfe_simulada: z.boolean() });
@@ -333,7 +354,7 @@ export const RejeicaoNota = z.object({
   mensagem: z.string().nullable(),
   acao_sugerida: z.string(),
   rejeitada_em: z.string().datetime(),
-  /** Mesmos campos opcionais da `NotaResumo` (pendentes na API). */
+  /** Mesmos campos da `NotaResumo`, preenchidos na lista e no detalhe da nota; nas rejeições continuam pendentes. */
   filial_nome: z.string().nullable().optional(),
   pedido_numero: z.number().int().nullable().optional(),
 });
