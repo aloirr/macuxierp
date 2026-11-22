@@ -2,6 +2,7 @@
 
 > **REGRA derivada** do manual da marca do FDV (`aloirr/macuxifdv`, `docs/marca/manual.md`) e da [assinatura-erp.md](assinatura-erp.md). Não é decisão nova do Alexandre: aplica ao DANFE o que já está aprovado. Origem do pedido: T-0021 (lote 3 do faturamento), com a nota simulada de R-20261122-022626-alexandre. Autor: design-de-marca · 22/11/2026 (Manaus).
 > Vale para o DANFE da NF-e 55 e para todo PDF fiscal impresso em preto (por exemplo, a impressão da CC-e). Dono da aplicação: `modulo-faturamento`.
+> Revisão 22/11/2026 (Manaus), T-0021: ajustes de redação e lacunas após a validação das amostras (fd5c177); sem mudança de marca.
 
 O leiaute é o do **Manual de Orientação do Contribuinte (MOC), Anexo II**. A marca não muda campo, ordem, tamanho de quadro nem texto legal do MOC. Quando o MOC pedir algo diferente do que está aqui (tamanho de fonte, aviso, posição), **vale o MOC**.
 
@@ -13,22 +14,30 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
 - **Proporção:** escala uniforme até o primeiro lado da caixa bater ("caber inteiro"). Nunca esticar, achatar, recortar, girar nem pôr borda ou sombra.
 - **Alinhamento:** logo centrado na vertical e encostado à esquerda da caixa. Os dados do emitente (razão social, endereço, telefone) ficam centralizados no espaço que sobra à direita.
 - **Sem logo:** o quadro fica só com os dados do emitente, centralizados na largura toda do quadro. Não se deixa espaço vazio reservado.
+- **Folhas 2 em diante:** o logo se repete no cabeçalho reduzido, com as mesmas regras desta seção (caixa, proporção, alinhamento e sem logo), medidas sobre o quadro reduzido.
 - **Preto e branco:** se o arquivo do cliente for colorido, o PDF leva o logo em **tons de cinza pela luminância** (0,2126 R + 0,7152 G + 0,0722 B), sem virar preto chapado. Transparência compõe sobre branco. O cinza dentro do logo do cliente é permitido: é a marca dele.
 - **Nitidez:** no tamanho impresso, no mínimo **150 dpi** efetivos. Se o arquivo for pequeno, o logo sai menor, centrado na caixa; nunca ampliado além disso.
 
 ## 2. Cores
 - **Preto `preto` #000000** em todo texto, linha, quadro, código de barras e na assinatura do rodapé.
-- **Cinza só na marca d'água** (§5): tinta de preto a **15%**, que no papel branco dá **#D9D9D9**. Não é cor nova da paleta; é a tinta do `preto` só para esse uso. Qualquer outro cinza no DANFE (exceto o logo do cliente, §1; fundo de título de quadro, linhas, zebrado de itens) **não é permitido**: títulos de quadro em preto, sem fundo.
+- **Cinza só na marca d'água** (§5): tinta de preto a **15%**, que no papel branco dá **#D9D9D9**. Não é cor nova da paleta; é a tinta do `preto` só para esse uso. Qualquer outro cinza no DANFE **não é permitido**, exceto dentro do logo do cliente (§1): título de quadro sem fundo e itens sem zebrado.
 - **Contraste conferido** (WCAG 2.x, mesma conta do FDV): texto preto sobre a marca d'água = **14,88:1** (mínimo 4,5:1). Os dados continuam legíveis onde a marca d'água passa por baixo.
 
 ## 3. Tipografia
 - **Helvetica regular e Helvetica negrito** (`StandardFonts.Helvetica` e `StandardFonts.HelveticaBold` do `pdf-lib`). É **exceção registrada** à IBM Plex Sans da marca, por restrição técnica do `pdf-lib`, e vale **só nos PDFs fiscais**. BKO e e-mail seguem a tipografia do manual do FDV.
 - Nenhuma outra família, itálico nem peso.
 - **Tamanhos mínimos da marca** (onde o MOC pedir maior, vale o MOC):
-  - rótulo de campo: **6 pt**, regular, caixa alta;
-  - conteúdo de campo: **7 pt**, regular;
+  - rótulo de campo: **6 pt**, regular, caixa alta (o único texto em 6 pt);
+  - conteúdo de campo, legendas e textos fixos (por exemplo, "Documento Auxiliar da Nota Fiscal Eletrônica", "Consulta de autenticidade…", "Folha x/y"): **7 pt**, regular;
+  - títulos de quadro: **7 pt**, negrito, caixa alta;
   - destaques (número, série, chave de acesso, valor total): **8 pt**, negrito;
-  - texto do rodapé "Emitido pelo": **7 pt**, regular.
+  - texto do rodapé "Emitido pelo": conforme §4.
+- **Texto que não cabe:**
+  - nunca reduzir a fonte abaixo do mínimo nem cortar com reticências;
+  - quebrar em quantas linhas precisar (descrição do item e valor alinhado à direita);
+  - o rótulo pode usar a abreviação do MOC ou quebrar em 2 linhas;
+  - respiro mínimo de **1,5 pt** entre o texto e a linha do quadro; o texto nunca cruza a linha;
+  - o "item extremo" das amostras de teste é o máximo do leiaute: `qCom` com 11 inteiros e 4 decimais, `vProd` com 13 inteiros e 2 decimais e descrição com 120 caracteres.
 - A Helvetica do `pdf-lib` só tem os caracteres do WinAnsi. Acentos do português funcionam; símbolos fora dele (por exemplo, o sinal de menos U+2212) saem trocados por equivalente simples ("-"), nunca por outra fonte.
 
 ## 4. Rodapé "Emitido pelo Macuxi ERP"
@@ -45,7 +54,7 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
 - **Texto exato:** `SEM VALOR FISCAL`, em caixa alta, numa linha só.
 - **Fonte:** Helvetica negrito, **60 pt**.
 - **Cor:** tinta de preto a 15% (**#D9D9D9** no papel branco, §2). Desenhe **por baixo do conteúdo** (antes dos quadros e textos), em cor sólida `rgb(0,85; 0,85; 0,85)`. Se precisar desenhar por cima, use preto #000000 com **opacidade 0,15**, que dá o mesmo tom.
-- **Ângulo e posição:** **45°**, subindo da esquerda para a direita, com o centro do texto no centro da folha.
+- **Ângulo e posição:** **45°**, subindo da esquerda para a direita, com o centro do texto no centro da folha (tolerância de **± 2 mm**).
 - **Folhas:** em **todas** as folhas do DANFE.
 - **Não substitui** nenhum aviso legal do MOC para homologação: os textos exigidos continuam nos campos próprios. A marca d'água é um reforço visual.
 - Se o DANFE precisar de outra marca d'água de texto (por exemplo, nota cancelada), ela segue o mesmo padrão visual: fonte, tom, ângulo e centro.
