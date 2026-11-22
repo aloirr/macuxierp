@@ -4,12 +4,14 @@
  * O core não importa `apps/worker`: a rodada do alerta é montada aqui com os adaptadores e o `domain` (mesma lógica
  * de `criarRotinaAlertaA1`: limite exclusivo de agora + 31 dias e conferência com `alertaVencimento`).
  */
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DIAS_ALERTA_A1 } from '../contracts';
 import { alertaVencimento, diasParaVencer } from '../domain/certificado';
+import { cifrarA1 } from './cifra';
+import { lerA1DecifradoDaFilial } from './leitura-a1';
 import { avisosA1MaisRecentes, destinoAvisosSql, exportadorCore, fonteCertificadosSql, fonteTenantsSql, registroExportacoesSql } from './adaptadores-worker';
 
 const DIA_MS = 86_400_000;
@@ -181,5 +183,56 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores do core para o worker (PostgreSQL r
     expect(json).not.toContain('PFX-CIFRADO-SECRETO');
     expect(json).not.toMatch(/senha_hash|pfx_cifrado|senha_cifrada|nonce|refresh/i);
     expect(json).not.toContain('Outro Tenant');
+  });
+});
+
+describe.skipIf(!PG_DISPONIVEL)('T-0045/T-0021: leitura do A1 decifrado pelo worker (PostgreSQL real, RLS)', () => {
+  let b: BancoEfemero;
+  let worker: Banco;
+  let A: string;
+  let B: string;
+  const chave = randomBytes(32);
+  const FA = randomUUID();
+  const FSEM = randomUUID();
+  const FTROCADO = randomUUID();
+  const PFX = Buffer.from('PFX-DB-SECRETO');
+  const SENHA = 'senha-db-secreta';
+
+  async function inserir(tenant: string, filial: string, ativo: boolean, pfx = PFX): Promise<string> {
+    const id = randomUUID();
+    const c = cifrarA1({ chave, tenantId: tenant, pfx, senha: SENHA });
+    await b.admin.query(
+      `INSERT INTO core.certificado (id, tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, impressao_digital, pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce, ativo)
+       VALUES ($1, $2, $3, 'Titular', '11222333000181', now() - interval '1 day', now() + interval '300 days', $4, $5, $6, $7, $8, $9)`,
+      [id, tenant, filial, 'cd'.repeat(32), c.pfx_cifrado, c.pfx_nonce, c.senha_cifrada, c.senha_nonce, ativo],
+    );
+    return id;
+  }
+
+  beforeAll(async () => {
+    b = await criarBancoEfemero();
+    worker = b.banco('macuxierp_worker');
+    A = await criarTenant(b.admin, 'leitura-a1-a');
+    B = await criarTenant(b.admin, 'leitura-a1-b');
+    await inserir(A, FA, true);
+    await inserir(A, FTROCADO, false, Buffer.from('PFX-ANTIGO'));
+  }, 120_000);
+  afterAll(async () => {
+    await b?.remover();
+  });
+
+  it('RN-CORE-06: o worker lê o A1 da filial do próprio tenant, decifrado', async () => {
+    const r = await worker.comTenant(A, (tx) => lerA1DecifradoDaFilial(tx, chave, FA));
+    expect(r?.pfx.equals(PFX)).toBe(true);
+    expect(r?.senha).toBe(SENHA);
+  });
+
+  it('RLS: no outro tenant, a mesma filial devolve null', async () => {
+    expect(await worker.comTenant(B, (tx) => lerA1DecifradoDaFilial(tx, chave, FA))).toBeNull();
+  });
+
+  it('RN-CORE-06: filial sem A1 devolve null; certificado substituído (inativo) não é devolvido', async () => {
+    expect(await worker.comTenant(A, (tx) => lerA1DecifradoDaFilial(tx, chave, FSEM))).toBeNull();
+    expect(await worker.comTenant(A, (tx) => lerA1DecifradoDaFilial(tx, chave, FTROCADO))).toBeNull();
   });
 });

@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarConsultaParaPedido } from './consulta-pedido';
-import { CNPJ_B, clienteValido, filialValida, produtoValido } from './fixtures-teste';
+import { CNPJ_A, CNPJ_B, ENDERECO_AM, clienteValido, filialValida, produtoValido } from './fixtures-teste';
 import { criarPluginCadastros } from './index';
 import { dependenciasEmMemoria } from './memoria';
 
@@ -56,7 +56,7 @@ describe('consulta de cadastros para o pedido (memória)', () => {
   it('produtos: em lote sem repetição, com unidades e sem custo; inativo volta marcado; lista vazia dá vazio', async () => {
     const r = await consulta.produtos(tx, [ids.p1 as string, ids.p2 as string, ids.p1 as string, randomUUID()]);
     expect(r.map((p) => p.id).sort()).toEqual([ids.p1, ids.p2].sort());
-    expect(r.find((p) => p.id === ids.p1)).toMatchObject({ codigo: 'P001', ean: '7891000100103', inativo: false, unidades: [{ unidade: 'CX', fator: 120_000 }] });
+    expect(r.find((p) => p.id === ids.p1)).toMatchObject({ codigo: 'P001', ean: '7891000100103', origem: '0', inativo: false, unidades: [{ unidade: 'CX', fator: 120_000 }] });
     expect(r.find((p) => p.id === ids.p2)?.unidades).toEqual([]);
     for (const p of r) expect(p).not.toHaveProperty('custo_centavos');
     expect(await consulta.produtos(tx, [])).toEqual([]);
@@ -94,8 +94,28 @@ describe('consulta de cadastros para o pedido (memória)', () => {
     const c = await consulta.cliente(tx, ids.cliente as string);
     expect(c).toMatchObject({ id: ids.cliente, limite_credito_centavos: 500_000, inativo: false });
     expect(c).not.toHaveProperty('email');
+    expect(c?.enderecos).toHaveLength(1);
+    expect(c?.enderecos[0]).toMatchObject({ id: expect.any(String), tipo: 'principal', municipio_ibge: '1302603', municipio_nome: 'Manaus' });
     expect(await consulta.filial(tx, ids.filialOutra as string)).toEqual({ id: ids.filialOutra, emissora: false, padrao: false, inativo: false });
     expect(await consulta.filialPadrao(tx)).toBe(ids.filialPadrao);
     expect(await consulta.cliente(tx, randomUUID())).toBeNull();
+  });
+
+  it('cliente: código IBGE fora da tabela dá municipio_nome null; 2+ endereços no mesmo município resolvem o nome sem repetir', async () => {
+    m.repos.oficiais.municipios.set('1300029', 'Alvarães');
+    const a = criarAmbiente(criarPluginCadastros(m.deps));
+    const e = (extra: Record<string, unknown>) => ({ ...ENDERECO_AM, ...extra });
+    const r = await a.chamar('POST', '/clientes', {
+      sessao: adm,
+      corpo: clienteValido(ids.filialPadrao as string, {
+        documento: CNPJ_A,
+        enderecos: [e({ tipo: 'principal' }), e({ tipo: 'entrega', numero: '200' }), e({ tipo: 'cobranca', municipio_ibge: '1300029' })],
+      }),
+    });
+    expect(r.status).toBe(201);
+    m.repos.oficiais.municipios.delete('1300029'); // o código sai da tabela depois do cadastro
+    const c = await consulta.cliente(tx, (r.corpo as { id: string }).id);
+    expect(c?.enderecos.map((x) => x.municipio_nome)).toEqual(['Manaus', 'Manaus', null]);
+    expect(new Set(c?.enderecos.map((x) => x.id)).size).toBe(3);
   });
 });

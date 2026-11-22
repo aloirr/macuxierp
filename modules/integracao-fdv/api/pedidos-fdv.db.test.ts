@@ -8,7 +8,8 @@ import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RetornoErp } from '../contracts';
-import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv, RespostaRetorno } from './portas';
+import type { EntidadeChaveErp } from '../contracts';
+import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv, ResolvedorChaveErp, RespostaRetorno } from './portas';
 import { buscarPedidosPendentes, MAX_TENTATIVAS } from './recebimento-pedidos';
 import { criarConsumidorRetornoPedido, enviarRetornosPendentes, esperaDoRetorno } from './retorno-pedidos';
 
@@ -34,16 +35,22 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
   let A: string;
   let B: string;
   const adm = async (sql: string, p: unknown[] = []): Promise<Record<string, any>[]> => (await efemero.admin.query(sql, p)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const ids = { cliente: U(), vendedor: U(), produto: U(), filial: U() };
+  const KIT = 'C000123';
+  const ids = { cliente: U(), clienteErp: U(), clienteKit: U(), vendedor: U(), produto: U(), filial: U(), filialPedido: U(), prazo: U() };
 
-  async function espelho(tenant: string, entidade: string, id: string, payload: object = {}): Promise<void> {
-    await adm(
-      `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em,
-         fonte_ocorrido_em, ativo, pendente, hash_confirmado, confirmado_em)
-       VALUES ($1, $2, $3, $4::jsonb, repeat('a', 64), $5, $5, true, false, repeat('a', 64), $5)`,
-      [tenant, entidade, id, JSON.stringify(payload), relogio.agora()],
-    );
-  }
+  /** Dublê da porta do `cadastros/api` (ADR 0010, item 2): chave do Hub (kit ou UUID do ERP) -> UUID do ERP, por entidade. */
+  const tabela: Record<EntidadeChaveErp, Map<string, string>> = {
+    cliente: new Map(), vendedor: new Map(), filial: new Map(), produto: new Map(), prazo_pagamento: new Map(), cliente_endereco: new Map(),
+  };
+  // Inativo também resolve (a porta não filtra situação).
+  const consultas: Array<[string, readonly string[]]> = [];
+  const resolvedor: ResolvedorChaveErp = {
+    resolver: async (_tx, entidade, chaves) => {
+      consultas.push([entidade, chaves]);
+      const t = (tabela as Partial<Record<string, Map<string, string>>>)[entidade] ?? new Map<string, string>();
+      return new Map(chaves.filter((c) => t.has(c)).map((c) => [c, t.get(c)!]));
+    },
+  };
   const pedidoDoHub = (uuid: string, extra: Record<string, unknown> = {}) => ({
     pedido_uuid: uuid, cliente_external_id: ids.cliente, vendedor_external_id: ids.vendedor,
     criado_em: '2026-11-21T14:00:00Z', observacao: 'observação sigilosa', total_cents: 2500, tentativa: 1,
@@ -83,11 +90,13 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
     banco = efemero.banco('macuxierp_worker', 4);
     A = await criarTenant(efemero.admin, 'ped-a', ['integracao-fdv', 'pedido']);
     B = await criarTenant(efemero.admin, 'ped-b', ['integracao-fdv', 'pedido']);
+    tabela.cliente.set(ids.cliente, ids.clienteErp).set(KIT, ids.clienteKit);
+    tabela.vendedor.set(ids.vendedor, U());
+    tabela.produto.set(ids.produto, U());
+    tabela.filial.set(ids.filialPedido, U());
+    tabela.prazo_pagamento.set(ids.prazo, U());
     for (const t of [A, B]) {
       await adm('INSERT INTO integracao_fdv.sinal (tenant_id) VALUES ($1)', [t]);
-      await espelho(t, 'cliente', ids.cliente);
-      await espelho(t, 'vendedor', ids.vendedor);
-      await espelho(t, 'produto', ids.produto);
       await adm(
         `INSERT INTO integracao_fdv.referencia (tenant_id, tipo, erp_id, fonte_ocorrido_em) VALUES ($1, 'filial_padrao', $2, $3)`,
         [t, ids.filial, relogio.agora()],
@@ -102,7 +111,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
     const uuid = U();
     const d = dublê();
     const rec = recebedorDuble();
-    const deps = { banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor: rec.r, relogio, log: d.log, alertar: d.alertar };
+    const deps = { banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor: rec.r, resolvedor, relogio, log: d.log, alertar: d.alertar };
     await Promise.all([buscarPedidosPendentes(deps, A), buscarPedidosPendentes(deps, A)]);
     await buscarPedidosPendentes(deps, A);
     const linhas = await adm('SELECT estado, pedido_id FROM integracao_fdv.pedido_recebido WHERE tenant_id = $1 AND pedido_uuid = $2', [A, uuid]);
@@ -116,35 +125,55 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
     const uuid = U();
     const d = dublê();
     const rec = recebedorDuble();
-    const mk = (p: unknown) => ({ banco, hub: hubCom([p]), recebedor: rec.r, relogio, log: d.log, alertar: d.alertar });
+    const mk = (p: unknown) => ({ banco, hub: hubCom([p]), recebedor: rec.r, resolvedor, relogio, log: d.log, alertar: d.alertar });
     await buscarPedidosPendentes(mk(pedidoDoHub(uuid)), A);
     await buscarPedidosPendentes(mk(pedidoDoHub(uuid, { total_cents: 9999 })), A);
     expect(d.alertas.some((a) => a.startsWith('pedido_fdv_conteudo_divergente'))).toBe(true);
     expect(rec.chamadas()).toBe(1);
   });
 
-  it('RN-INF-05 e RN-PED-05: cliente fora do espelho é rejeitado e volta ao Hub como rejeitado_erp', async () => {
+  it('ADR 0010: chave do kit e UUID do ERP chegam à porta como UUID do ERP; a busca é uma por entidade', async () => {
+    const d = dublê();
+    const vistos: Array<{ cliente: string; filial: string; condicao: string | null }> = [];
+    const recebedor: RecebedorPedidoFdv = {
+      receber: async (_tx, e) => {
+        vistos.push({ cliente: e.cliente_id, filial: e.filial_id, condicao: e.condicao_pagamento_id });
+        return { resultado: 'criado', pedido_id: U(), numero: 1, status: 'aprovado' };
+      },
+    };
+    consultas.length = 0;
+    const kit = pedidoDoHub(U(), { cliente_external_id: KIT, filial: { external_id: ids.filialPedido }, pagamento: { prazo_external_id: ids.prazo } });
+    await buscarPedidosPendentes({ banco, hub: hubCom([kit, pedidoDoHub(U())]), recebedor, resolvedor, relogio, log: d.log, alertar: d.alertar }, A);
+    expect(vistos[0]).toMatchObject({ cliente: ids.clienteKit, filial: tabela.filial.get(ids.filialPedido), condicao: tabela.prazo_pagamento.get(ids.prazo) });
+    expect(vistos[1]).toEqual({ cliente: ids.clienteErp, filial: ids.filial, condicao: null }); // sem filial: padrão; sem prazo: null
+    expect(consultas.filter(([e]) => e === 'cliente')).toHaveLength(2); // 1 por pedido
+    expect(consultas.filter(([e]) => e === 'filial')).toHaveLength(1); // o pedido sem filial não consulta
+  });
+
+  it.each([
+    ['cliente com chave do kit inexistente', { cliente_external_id: 'C999999' }, 'cliente_inexistente', 'Cliente não cadastrado no ERP'],
+    ['condição', { pagamento: { prazo_external_id: 'X-NAO-EXISTE' } }, 'condicao_inexistente', 'Condição de pagamento não cadastrada no ERP'],
+  ])('RN-INF-05: chave desconhecida de %s rejeita sem chamar a porta e volta como rejeitado_erp', async (_n, extra, codigo, motivo) => {
     const uuid = U();
     const d = dublê();
     const rec = recebedorDuble();
-    const hub = hubCom([pedidoDoHub(uuid, { cliente_external_id: U() })]);
-    const r = await buscarPedidosPendentes({ banco, hub, recebedor: rec.r, relogio, log: d.log, alertar: d.alertar }, A);
+    const hub = hubCom([pedidoDoHub(uuid, extra)]);
+    const r = await buscarPedidosPendentes({ banco, hub, recebedor: rec.r, resolvedor, relogio, log: d.log, alertar: d.alertar }, A);
     expect(r.rejeitados).toBe(1);
     expect(rec.chamadas()).toBe(0);
     const [pr] = await adm('SELECT estado, erro_codigo FROM integracao_fdv.pedido_recebido WHERE tenant_id = $1 AND pedido_uuid = $2', [A, uuid]);
-    expect(pr).toMatchObject({ estado: 'rejeitado', erro_codigo: 'cliente_desconhecido' });
-    const envio = await enviarRetornosPendentes({ banco, hub, relogio, log: d.log, alertar: d.alertar }, A);
-    expect(envio.enviados).toBeGreaterThanOrEqual(1);
-    const enviado = hub.enviados.find((e) => e.uuid === uuid)!;
-    expect(enviado.corpo).toMatchObject({ status: 'rejeitado_erp', motivo: 'Cliente não cadastrado no ERP' });
-    expect(enviado.corpo.numero_erp).toBeUndefined();
+    expect(pr).toMatchObject({ estado: 'rejeitado', erro_codigo: codigo });
+    await enviarRetornosPendentes({ banco, hub, relogio, log: d.log, alertar: d.alertar }, A);
+    const corpo = hub.enviados.find((e) => e.uuid === uuid)!.corpo;
+    expect(corpo).toMatchObject({ status: 'rejeitado_erp', motivo });
+    expect(corpo.numero_erp).toBeUndefined();
   });
 
   it('RN-PED-01: pedido fora do contrato é rejeitado e ao Hub vai só o nome do campo', async () => {
     const uuid = U();
     const d = dublê();
     const hub = hubCom([{ pedido_uuid: uuid, itens: [], observacao: 'observação sigilosa', total_cents: 'abc' }]);
-    await buscarPedidosPendentes({ banco, hub, recebedor: recebedorDuble().r, relogio, log: d.log, alertar: d.alertar }, A);
+    await buscarPedidosPendentes({ banco, hub, recebedor: recebedorDuble().r, resolvedor, relogio, log: d.log, alertar: d.alertar }, A);
     await enviarRetornosPendentes({ banco, hub, relogio, log: d.log, alertar: d.alertar }, A);
     const corpo = hub.enviados.find((e) => e.uuid === uuid)!.corpo;
     expect(corpo.status).toBe('rejeitado_erp');
@@ -162,7 +191,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
         throw new Error('Fulano de Tal 12345678000199 motivo livre sigiloso');
       },
     };
-    const deps = { banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor, relogio, log: d.log, alertar: d.alertar };
+    const deps = { banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor, resolvedor, relogio, log: d.log, alertar: d.alertar };
     for (let i = 1; i < MAX_TENTATIVAS; i++) {
       const r = await buscarPedidosPendentes(deps, A);
       expect(r.pendentes).toBe(1);
@@ -183,7 +212,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
     const recebedor: RecebedorPedidoFdv = { receber: async () => ({ resultado: 'recusado', codigo: 'cliente_inexistente' }) };
     let chamadas = 0;
     const quebra: Relogio = { agora: () => { if (++chamadas === 2) throw new Error('falha no rejeitar'); return relogio.agora(); } };
-    const mk = (r: Relogio) => ({ banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor, relogio: r, log: d.log, alertar: d.alertar });
+    const mk = (r: Relogio) => ({ banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor, resolvedor, relogio: r, log: d.log, alertar: d.alertar });
     expect((await buscarPedidosPendentes(mk(quebra), A)).pendentes).toBe(1);
     const [l] = await adm('SELECT estado, tentativas FROM integracao_fdv.pedido_recebido WHERE tenant_id = $1 AND pedido_uuid = $2', [A, uuid]);
     expect(l).toMatchObject({ estado: 'recebido', tentativas: 1 });
@@ -192,7 +221,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
 
   it('RN-PED-01: pedido sem uuid é ignorado e alerta pedido_sem_uuid', async () => {
     const d = dublê();
-    await buscarPedidosPendentes({ banco, hub: hubCom([{ cliente_external_id: ids.cliente }]), recebedor: recebedorDuble().r, relogio, log: d.log, alertar: d.alertar }, A);
+    await buscarPedidosPendentes({ banco, hub: hubCom([{ cliente_external_id: ids.cliente }]), recebedor: recebedorDuble().r, resolvedor, relogio, log: d.log, alertar: d.alertar }, A);
     expect(d.alertas).toContain('pedido_sem_uuid:{}');
   });
 
@@ -208,7 +237,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
         return { resultado: 'criado', pedido_id: U(), numero: 1, status: 'aprovado' };
       },
     };
-    const mk = (p: unknown) => ({ banco, hub: hubCom([p]), recebedor, relogio, log: d.log, alertar: d.alertar });
+    const mk = (p: unknown) => ({ banco, hub: hubCom([p]), recebedor, resolvedor, relogio, log: d.log, alertar: d.alertar });
     await buscarPedidosPendentes(mk(pedidoDoHub(uuid)), A);
     falha = false;
     await buscarPedidosPendentes(mk(pedidoDoHub(uuid, { total_cents: 9999 })), A);
@@ -220,7 +249,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
     const d = dublê();
     await adm('UPDATE integracao_fdv.sinal SET proxima_busca_pedidos_em = $2 WHERE tenant_id = $1', [B, relogio.agora()]);
     const recebedor: RecebedorPedidoFdv = { receber: async () => ({ resultado: 'recusado', codigo: 'modulo_pedido_inativo' }) };
-    const r = await buscarPedidosPendentes({ banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor, relogio, log: d.log, alertar: d.alertar }, B);
+    const r = await buscarPedidosPendentes({ banco, hub: hubCom([pedidoDoHub(uuid)]), recebedor, resolvedor, relogio, log: d.log, alertar: d.alertar }, B);
     expect(r.proxima).toBe('desligada');
     const [l] = await adm('SELECT estado FROM integracao_fdv.pedido_recebido WHERE tenant_id = $1 AND pedido_uuid = $2', [B, uuid]);
     expect(l!.estado).toBe('recebido');
@@ -256,10 +285,11 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect(s!.proximo_retorno_em).not.toBeNull();
     });
 
-    it('RN-PED-05: recusa depois do integrado vira cancelado com motivo gravado', async () => {
+    it('RN-PED-05: cancelado@1 depois do integrado vira cancelado com motivo; recusado@1 não gera retorno', async () => {
       const uuid = await pedidoEntregue(A);
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid, { status: 'em_analise' }));
       await aplicar(A, evento(A, 'pedido.pedido.recusado@1', uuid, { status: 'recusado', motivo_codigo: 'credito_insuficiente' }));
+      await aplicar(A, evento(A, 'pedido.pedido.cancelado@1', uuid, { status: 'cancelado', motivo_codigo: 'sem_estoque' }));
       expect((await retornos(A, uuid)).map((r) => r.status)).toEqual(['integrado', 'cancelado']);
     });
 

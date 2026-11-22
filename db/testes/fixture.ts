@@ -158,7 +158,8 @@ INSERT INTO integracao_fdv.reconciliacao (tenant_id, entidade, data_referencia, 
 /**
  * Massa do schema pedido (T-0014): uma linha em cada tabela. O pedido é o do FDV da massa (external_id = pedidoFdv),
  * nasce recebido e vai a aprovado pela transição da RN-PED-02 (o gatilho vale também para o dono). cliente_id,
- * filial_id e produto_id são os UUIDs da massa de cadastros, opacos (sem FK entre schemas).
+ * filial_id e produto_id são os UUIDs da massa de cadastros, opacos (sem FK entre schemas). Como na D-A (0016), o
+ * retrato traz o endereço e as colunas da validação do manual ficam nulas.
  */
 export function fixturePedido(t: Tenant): string {
   const id = t.id;
@@ -167,13 +168,15 @@ INSERT INTO pedido.numeracao (tenant_id, proximo) VALUES ('${id}', 2);
 INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
   total_centavos, total_informado_centavos, external_id)
   VALUES ('${t.pedido}', '${id}', 1, 'fdv', '${t.filial}', '${t.cliente}',
-    '{"tipo_pessoa": "PJ", "razao_social": "Cliente ${t.slug}", "ind_ie_dest": "9"}', '2026-11-21T12:00:00.123Z',
+    '{"tipo_pessoa": "PJ", "razao_social": "Cliente ${t.slug}", "ind_ie_dest": "9", "endereco": {"logradouro": "Rua A",
+      "numero": "1", "bairro": "Centro", "municipio_ibge": "1302603", "uf": "AM", "cep": "69000000", "pais_bacen": "1058"}}',
+    '2026-11-21T12:00:00.123Z',
     3980, 3980, '${t.pedidoFdv}');
 INSERT INTO pedido.pedido_item (tenant_id, pedido_id, sequencia, produto_id, produto_retrato, quantidade,
-  preco_unitario_centavos, preco_tabela_centavos, desconto_maximo_bp, total_centavos, total_informado_centavos)
+  preco_unitario_centavos, total_centavos, total_informado_centavos)
   VALUES ('${id}', '${t.pedido}', 1, '${t.produto}', '{"codigo": "P1", "descricao": "Refrigerante 2 L", "ncm": "22021000"}',
-    20000, 1990, 1990, 0, 3980, 3980);
-UPDATE pedido.pedido SET status = 'aprovado', validado_em = now() WHERE id = '${t.pedido}';
+    20000, 1990, 3980, 3980);
+UPDATE pedido.pedido SET status = 'aprovado' WHERE id = '${t.pedido}';
 INSERT INTO pedido.pedido_evento (tenant_id, pedido_id, de, para, ator_tipo, pendencias)
   VALUES ('${id}', '${t.pedido}', NULL, 'recebido', 'sistema', '[]'),
     ('${id}', '${t.pedido}', 'recebido', 'aprovado', 'sistema', '[]');
