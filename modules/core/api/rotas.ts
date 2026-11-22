@@ -6,6 +6,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   definirPlugin,
+  ErroCertificado,
   definirRota,
   erros,
   paginar,
@@ -304,6 +305,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
           dados = await deps.leitorPfx.abrir(pfx, corpo.senha);
         } catch (e) {
           if (e instanceof PfxInvalido) throw erros.regra('RN-CORE-06', 'Não foi possível abrir o certificado: confira o arquivo e a senha');
+          if (e instanceof ErroCertificado) throw erros.regra('RN-CORE-06', e.message);
           throw e;
         }
         const av = avaliarCertificado({ cnpjEmpresa: empresa.cnpj, cnpjCertificado: dados.cnpj, validoDe: dados.valido_de, validoAte: dados.valido_ate, agora: c.agora, fuso: empresa.fuso });
