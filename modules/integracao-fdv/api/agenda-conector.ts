@@ -24,7 +24,7 @@ async function reservarEnvios(tx: Transacao, limite: number, agora: Date, posseA
        SELECT id FROM integracao_fdv.cursor_entidade
         WHERE proximo_em <= $1 AND pausada_motivo IS NULL AND deleted_at IS NULL
         ORDER BY proximo_em LIMIT $2 FOR NO KEY UPDATE SKIP LOCKED)
-     UPDATE integracao_fdv.cursor_entidade c SET proximo_em = $3, updated_at = now()
+     UPDATE integracao_fdv.cursor_entidade c SET proximo_em = $3
        FROM v WHERE c.id = v.id RETURNING c.tenant_id, c.entidade::text AS entidade`,
     [agora, limite, posseAte],
   );
@@ -52,7 +52,7 @@ export function criarAgendaConector(deps: DepsAgendaConector): AgendaModulo {
     async semLicenca(item, tx, agora) {
       if (item.tarefa === 'envio') {
         await tx.consultar(
-          `UPDATE integracao_fdv.cursor_entidade SET pausada_motivo = 'licenca_erp', pausada_em = $3, updated_at = now()
+          `UPDATE integracao_fdv.cursor_entidade SET pausada_motivo = 'licenca_erp', pausada_em = $3
             WHERE tenant_id = $1 AND entidade::text = $2 AND pausada_motivo IS NULL AND deleted_at IS NULL`,
           [item.tenant_id, item.chave, agora],
         );
