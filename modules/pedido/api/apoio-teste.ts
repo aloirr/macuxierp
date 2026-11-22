@@ -4,7 +4,7 @@
  * da licença são da API (testadas em apps/api); aqui vale o que é do módulo.
  */
 import {
-  ErroApi, chaveDoPedido, executarIdempotente, hashDoPedido, pode, type DadosAuditoria, type EnvelopeEvento, type MetodoHttp, type Perfil, type PluginModulo, type Sessao,
+  ErroApi, corpoErroApi, chaveDoPedido, executarIdempotente, hashDoPedido, pode, type DadosAuditoria, type EnvelopeEvento, type MetodoHttp, type Perfil, type PluginModulo, type Sessao,
   type Transacao,
 } from '@macuxierp/platform-sdk';
 import { IdempotenciaMemoria } from '@macuxierp/platform-sdk/testes';
@@ -67,7 +67,7 @@ export function criarAmbiente(plugin: PluginModulo, agora = new Date('2026-11-21
         const r = await executarIdempotente(idempotencia, tx, { tenant_id: TENANT, chave, rota: `${rota.metodo} /v1/pedido${rota.caminho}`, hash_corpo: hashDoPedido(entrada), agora: relogio.agora }, () => rota.executar(ctx, entrada));
         return { status: r.resposta.status ?? 200, corpo: r.resposta.corpo, repetida: r.repetida };
       } catch (e) {
-        if (e instanceof ErroApi) return { status: e.status, corpo: { codigo: e.codigo, mensagem: e.message, campos: e.campos } };
+        if (e instanceof ErroApi) return { status: e.status, corpo: corpoErroApi(e) };
         throw e;
       }
     }

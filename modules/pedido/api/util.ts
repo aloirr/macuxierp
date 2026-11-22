@@ -1,5 +1,6 @@
 import { PADRAO_RN, PADRAO_UUID, erros, type CamposErro, type ErroApi } from '@macuxierp/platform-sdk';
 import type { Violacao } from '../domain';
+import type { StatusPedido } from '../contracts';
 
 /** Regra de negócio violada → 422 com o código da RN; referência e decisões "REF"/"D*" → 400 de validação. */
 function erroDeViolacoes(v: readonly Violacao[]): ErroApi {
@@ -24,3 +25,8 @@ export const FUSO_TENANT = 'America/Manaus';
 /** Data `AAAA-MM-DD` no fuso do tenant. */
 export const dataNoFuso = (iso: string | Date, fuso: string = FUSO_TENANT): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: fuso, year: 'numeric', month: '2-digit', day: '2-digit' }).format(typeof iso === 'string' ? new Date(iso) : iso);
+
+/** RN-PED-02: transição de status fora da tabela → 422 com `detalhes.possiveis` (lista). Única montagem: serviço, gatilho MXP02 e memória. */
+export function erroTransicao(possiveis: readonly StatusPedido[], mensagem = 'Transição de status não permitida'): ErroApi {
+  return erros.regra('RN-PED-02', mensagem, undefined, { possiveis: [...possiveis] });
+}

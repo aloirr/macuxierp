@@ -1,8 +1,9 @@
 /** Dublês em memória das portas do pedido: servem aos testes de rota (sem PostgreSQL). Não entram em produção. */
 import { randomUUID } from 'node:crypto';
-import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
+import { paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type { CondicaoPagamento, Filial, PrecoVigente, SaldoEstoque } from '@macuxierp/cadastros/contracts';
 import type { ClienteParaPedido, DecisaoPedido, HistoricoPedido, Pendencia, ProdutoParaPedido } from '../contracts';
+import { erroTransicao } from './util';
 import { STATUS_COMPROMETEM, possiveis, validarTransicao } from '../domain';
 import type {
   ConsultaCadastrosPedido, ConsultaTitulosPedido, DadosCabecalho, Dependencias, FiltroPedidos, ItemGravado, LinhaLista, LogPedido,
@@ -71,7 +72,7 @@ class RepoMemoria implements RepoPedidos {
     const p = this.achar(id) as PedidoGravado;
     // Espelha o gatilho pedido.validar_status: transição fora da tabela = 422 RN-PED-02 com os possíveis.
     if (status !== p.status && !validarTransicao(p.status, status).ok) {
-      throw erros.regra('RN-PED-02', 'Transição de status não permitida', { possiveis: possiveis(p.status).join(',') });
+      throw erroTransicao(possiveis(p.status));
     }
     p.status = status;
     p.pendencias = structuredClone([...pendencias]);

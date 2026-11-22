@@ -6,9 +6,9 @@
  * O gatilho `pedido.validar_status` (0012) é a última barreira: SQLSTATE MXP02 vira 422 `RN-PED-02` com os status possíveis
  * (só nomes de status; o `DETAIL` cru nunca vai a log nem a resposta).
  */
-import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
+import { paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { STATUS_COMPROMETEM } from '../domain';
-import { FUSO_TENANT } from './util';
+import { FUSO_TENANT, erroTransicao } from './util';
 import { StatusPedido, type DecisaoPedido, type HistoricoPedido, type Pendencia } from '../contracts';
 import type {
   DadosCabecalho, FiltroPedidos, ItemGravado, LinhaLista, NovaAprovacao, NovoEvento, NovoItem, NovoPedido, PedidoGravado, RepoPedidos,
@@ -38,13 +38,13 @@ const COLUNAS_ITEM = [
 
 const json = (v: unknown): string | null => (v === null || v === undefined ? null : JSON.stringify(v));
 
-/** SQLSTATE MXP02 (gatilho de status) → 422 RN-PED-02 com `campos.possiveis`; o resto sobe como está. */
+/** SQLSTATE MXP02 (gatilho de status) → 422 RN-PED-02 com `detalhes.possiveis`; o resto sobe como está. */
 function traduzir(e: unknown): never {
   const err = e as { code?: string; detail?: string };
   if (err.code === 'MXP02') {
     const lista = /^possiveis=(.*)$/.exec(err.detail ?? '')?.[1] ?? '';
-    const possiveis = lista.split(',').filter((s) => StatusPedido.safeParse(s).success);
-    throw erros.regra('RN-PED-02', 'Transição de status não permitida', { possiveis: possiveis.join(',') });
+    const possiveis = lista.split(',').flatMap((s) => { const r = StatusPedido.safeParse(s); return r.success ? [r.data] : []; });
+    throw erroTransicao(possiveis);
   }
   throw e;
 }
