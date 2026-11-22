@@ -124,6 +124,20 @@ class RepoMemoria implements RepoPedidos {
   async registrarEvento(e: NovoEvento) {
     this.a.eventos.push({ ...e, id: randomUUID() });
   }
+  async aplicarFaturamento(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: PedidoGravado['status']) {
+    const p = this.achar(id) as PedidoGravado;
+    if (status !== p.status && !validarTransicao(p.status, status).ok) throw erroTransicao(possiveis(p.status));
+    for (const n of itens) {
+      const i = p.itens.find((x) => x.sequencia === n.sequencia);
+      if (i) i.quantidade_faturada = n.quantidade_faturada;
+    }
+    p.valor_faturado_centavos = valorFaturadoCentavos;
+    p.status = status;
+    this.tocar(p);
+  }
+  async eventoRegistrado(pedidoId: string, eventoId: string) {
+    return this.a.eventos.some((e) => e.pedido_id === pedidoId && e.evento_id === eventoId);
+  }
   async registrarAprovacao(ap: NovaAprovacao) {
     if (this.a.aprovacoes.some((x) => x.pedido_id === ap.pedido_id)) throw new Error('aprovacao_uma_por_pedido');
     this.a.aprovacoes.push(structuredClone(ap));
@@ -218,10 +232,10 @@ export class CadastrosMemoria implements ConsultaCadastrosPedido {
 }
 
 /** Log em memória com o formato do pino (uma linha JSON por registro): o teste de LGPD varre o texto. */
-function logEmMemoria(): LogPedido & { linhas: string[] } {
+function logEmMemoria(): LogPedido & { error: LogPedido['warn'] } & { linhas: string[] } {
   const linhas: string[] = [];
   const grava = (nivel: string) => (dados: Record<string, unknown>, mensagem: string) => void linhas.push(JSON.stringify({ nivel, ...dados, msg: mensagem }));
-  return { linhas, info: grava('info'), warn: grava('warn') };
+  return { linhas, info: grava('info'), warn: grava('warn'), error: grava('error') };
 }
 
 export function dependenciasEmMemoria(p: { notaEmAutorizacao?: boolean; saldoTitulos?: number } = {}) {

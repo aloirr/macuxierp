@@ -18,6 +18,7 @@ import { CadastrosMemoria } from './memoria';
 import type { Dependencias } from './portas';
 import { criarRecebedorFdv } from './recebedor';
 import { criarServico, type Efeitos } from './servico';
+import { consumidoresDoPedido, idFaturadoDaNota } from './consumidor-nota';
 import { repositorioSql } from './sql';
 
 const AGORA = new Date('2026-11-21T15:00:00Z');
@@ -341,6 +342,77 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     }).catch((e: unknown) => e);
     const [, r] = await Promise.all([faturando, cancelando]);
     expect(r).toMatchObject({ code: '55P03' });
+  });
+
+  it('T-0015: nota parcial e depois total leva a faturado; reprocessar não duplica; faturado@1 copia conta_como_real; o worker tem o GRANT e o app não', async () => {
+    const T = await criarTenant(efemero.admin, 'nota-autorizada', ['pedido']);
+    const p = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 30_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    const alertas: string[] = [];
+    const [consumidor] = consumidoresDoPedido({ outbox: new OutboxPg(), relogio: new RelogioFixo(AGORA), alertar: (_t, codigo) => void alertas.push(codigo) });
+    const nota = (n: number, quantidade: number, extra: Record<string, unknown> = {}) => criarEvento({
+      nome: 'faturamento.nota.autorizada@1', tenant_id: T, agregado_id: `00000000-0000-4000-8000-00000000010${n}`, ator: 'sistema', request_id: 'req-nota',
+      payload: {
+        pedido_id: p.id, ambiente: 'homologacao', conta_como_real: true,
+        nota: { id: `00000000-0000-4000-8000-00000000010${n}`, numero: n, serie: 1, chave_acesso: '2'.repeat(44), emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: quantidade / 10 },
+        itens: [{ sequencia: 1, quantidade, valor_centavos: quantidade / 10 }], ...extra,
+      },
+    }, AGORA);
+    const aplicar = (e: ReturnType<typeof nota>) => worker.comTenant(T, (tx) => consumidor!.tratar(e, tx));
+    const parcial = nota(1, 10_000);
+    await aplicar(parcial);
+    await aplicar(parcial); // reprocesso: mesmo evento, nada muda
+    expect((await admin('SELECT status, valor_faturado_centavos::int AS v FROM pedido.pedido WHERE id = $1', [p.id]))[0]).toEqual({ status: 'faturado_parcial', v: 1000 });
+    await aplicar(nota(2, 20_000, { conta_como_real: false }));
+    expect((await admin('SELECT status, valor_faturado_centavos::int AS v FROM pedido.pedido WHERE id = $1', [p.id]))[0]).toEqual({ status: 'faturado', v: 3000 });
+    expect((await admin('SELECT quantidade_faturada::int AS q FROM pedido.pedido_item WHERE pedido_id = $1', [p.id]))).toEqual([{ q: 30_000 }]);
+    expect(await admin('SELECT de, para, ator_tipo, ator_id FROM pedido.pedido_evento WHERE pedido_id = $1 AND para = ANY($2::pedido.status[]) ORDER BY ocorrido_em, created_at', [p.id, ['faturado_parcial', 'faturado']]))
+      .toEqual([{ de: 'aprovado', para: 'faturado_parcial', ator_tipo: 'sistema', ator_id: null }, { de: 'faturado_parcial', para: 'faturado', ator_tipo: 'sistema', ator_id: null }]);
+    const faturados = await admin("SELECT id, payload->'payload' AS p FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'pedido.pedido.faturado@1' ORDER BY versao", [p.id]);
+    expect(faturados.map((f) => [f.id, f.p.status, f.p.ambiente, f.p.conta_como_real])).toEqual([
+      [idFaturadoDaNota('00000000-0000-4000-8000-000000000101'), 'faturado_parcial', 'homologacao', true],
+      [idFaturadoDaNota('00000000-0000-4000-8000-000000000102'), 'faturado', 'homologacao', false],
+    ]);
+    // saldo esgotado (já faturado): outra nota é recusada, alerta, NÃO lança e não grava nada
+    const antes = (await admin('SELECT count(*)::int AS n FROM pedido.pedido_evento WHERE pedido_id = $1', [p.id]))[0]?.n;
+    await aplicar(nota(3, 10_000));
+    expect(alertas).toEqual(['status_invalido']);
+    expect((await admin('SELECT count(*)::int AS n FROM pedido.pedido_evento WHERE pedido_id = $1', [p.id]))[0]?.n).toBe(antes);
+    // GRANT: o worker atualiza as colunas do faturado; o app não
+    await expect(app.comTenant(T, (tx) => tx.consultar('UPDATE pedido.pedido_item SET quantidade_faturada = 0 WHERE pedido_id = $1', [p.id]))).rejects.toMatchObject({ code: '42501' });
+    await expect(app.comTenant(T, (tx) => tx.consultar('UPDATE pedido.pedido SET valor_faturado_centavos = 0 WHERE id = $1', [p.id]))).rejects.toMatchObject({ code: '42501' });
+    // pedido de outro tenant não é tocado pela nota (RLS): ignorada
+    await worker.comTenant(B, (tx) => consumidor!.tratar(nota(4, 10_000), tx));
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [p.id]))[0]?.status).toBe('faturado');
+  });
+
+  it('T-0015: consumidor completo com o papel worker (FOR UPDATE, gatilho validar_status, GRANT); pedido cancelado recusa, alerta e não lança', async () => {
+    const T = await criarTenant(efemero.admin, 'nota-recusa', ['pedido']);
+    const p = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 20_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    const alertas: { codigo: string; contexto?: Record<string, string> }[] = [];
+    const [consumidor] = consumidoresDoPedido({ outbox: new OutboxPg(), relogio: new RelogioFixo(AGORA), alertar: (_t, codigo, contexto) => void alertas.push({ codigo, ...(contexto ? { contexto } : {}) }) });
+    const nota = (n: number, quantidade: number) => criarEvento({
+      nome: 'faturamento.nota.autorizada@1', tenant_id: T, agregado_id: `00000000-0000-4000-8000-00000000020${n}`, ator: 'sistema', request_id: 'req-nota',
+      payload: {
+        pedido_id: p.id, ambiente: 'producao', conta_como_real: true,
+        nota: { id: `00000000-0000-4000-8000-00000000020${n}`, numero: n, serie: 1, chave_acesso: '3'.repeat(44), emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: quantidade / 10 },
+        itens: [{ sequencia: 1, quantidade, valor_centavos: quantidade / 10 }],
+      },
+    }, AGORA);
+    const aplicar = (e: ReturnType<typeof nota>) => worker.comTenant(T, (tx) => consumidor!.tratar(e, tx));
+    await aplicar(nota(1, 10_000));
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [p.id]))[0]?.status).toBe('faturado_parcial');
+    await aplicar(nota(2, 10_000));
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [p.id]))[0]?.status).toBe('faturado');
+    expect(alertas).toEqual([]);
+    // pedido cancelado (outro pedido, ainda aprovado): a nota é recusada sem lançar
+    const q = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 10_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    await app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), q.id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }));
+    const recusada = criarEvento({ ...nota(3, 10_000), nome: 'faturamento.nota.autorizada@1', tenant_id: T, agregado_id: q.id, ator: 'sistema', request_id: 'req-nota', payload: { ...(nota(3, 10_000).payload as Record<string, unknown>), pedido_id: q.id } }, AGORA);
+    await expect(aplicar(recusada)).resolves.toBeUndefined();
+    expect(alertas).toHaveLength(1);
+    expect(alertas[0]).toMatchObject({ codigo: 'status_invalido', contexto: { pedido_id: q.id } });
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [q.id]))[0]?.status).toBe('cancelado');
+    expect((await admin("SELECT count(*)::int AS n FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'pedido.pedido.faturado@1'", [q.id]))[0]?.n).toBe(0);
   });
 
   it('RN-CORE-07: a exportação LGPD traz as 5 tabelas do schema pedido, só do tenant, com o item retirado e o retrato do cliente', async () => {
