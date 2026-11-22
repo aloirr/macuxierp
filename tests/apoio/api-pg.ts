@@ -20,7 +20,7 @@ const SEGREDO = 'segredo-de-teste-t0008-db-com-mais-de-32-caracteres';
 /** CNPJ da empresa de todo tenant de teste (fictício, com DV válido). */
 export const CNPJ_EMPRESA_PG = '11222333000181';
 
-export type Metodo = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type Metodo = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** `tenants`: apelido → módulos licenciados (o core é base). Cada tenant ganha a empresa e um administrador. */
 export async function montarApiPg<K extends string>(tenants: Record<K, readonly string[]>) {

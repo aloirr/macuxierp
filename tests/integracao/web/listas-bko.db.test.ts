@@ -7,9 +7,9 @@
  * só (paginas.test.ts e web.test.ts sem API; rotas.test.ts sem as páginas).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { pode, PERFIS, type Perfil, type RotaModulo } from '../../../packages/platform-sdk/src/index';
+import { paraQuery, pode, PERFIS, type Perfil, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { clienteValido, filialValida, produtoValido } from '../../../modules/cadastros/api/fixtures-teste';
-import { acoesDaPagina, consultaDaUrl, PAGINAS, paraCsv, urlDaConsulta, type PaginaCadastros } from '../../../modules/cadastros/web/index';
+import { acoesDaPagina, consultaDaUrl, csvDaPagina, PAGINAS, type PaginaCadastros } from '../../../modules/cadastros/web/index';
 import { PAGINAS_CORE } from '../../../modules/core/web/index';
 import { PG_DISPONIVEL } from '../../../packages/platform-sdk/src/pg-testes';
 import { montarApiPg } from '../../apoio/api-pg';
@@ -61,24 +61,32 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
     });
 
     /*
-     * D-05: a página de estoque usa a mesma URL das outras (`consultaDaUrl` lê `busca` e `pagina`), mas GET /estoque só
-     * aceita filial_id e produto_id: a busca e a paginação da tela seriam descartadas caladas e a lista vem inteira.
+     * D-05: a página de estoque usa a mesma URL das outras (`consultaDaUrl` lê `busca`, `cursor` e `limite` do contrato de
+     * listas do SDK), mas GET /estoque só aceita filial_id e produto_id (`EstoqueConsulta`): a busca e a paginação da tela
+     * seriam descartadas caladas e a lista vem inteira, sem `proximo_cursor`.
      */
     const ignoradas = () => {
       const rota = rotaGet(plugin('cadastros'), 'cadastros', p.api);
       expect(rota, p.api).toBeDefined();
       const aceitas = chavesDaConsulta(rota!);
-      const comuns = ['busca', 'pagina', ...(p.colunas.some((c) => c.chave === 'inativo') ? ['inativos'] : [])];
-      const daTela = new URLSearchParams(urlDaConsulta(consultaDaUrl(p, new URLSearchParams([...p.filtros.map((f): [string, string] => [f, 'x']), ['busca', 'x'], ['pagina', '2'], ['inativos', 'true']]))));
+      const comuns = ['busca', 'cursor', 'limite', ...(p.colunas.some((c) => c.chave === 'inativo') ? ['inativos'] : [])];
+      // limite=100: o 50 (LIMITE_PADRAO) não vai para a URL.
+      const url = new URLSearchParams([...p.filtros.map((f): [string, string] => [f, 'x']), ['busca', 'x'], ['cursor', 'x'], ['limite', '100'], ['inativos', 'true']]);
+      const daTela = new URLSearchParams(paraQuery(consultaDaUrl(p, url)));
       const pedidas = [...daTela.keys()].filter((k) => p.filtros.includes(k) || comuns.includes(k));
+      expect(pedidas, 'a tela pede busca, cursor e limite').toEqual(expect.arrayContaining(['busca', 'cursor', 'limite']));
       return pedidas.filter((k) => !aceitas.includes(k));
     };
     const filtroIt = p.id === 'estoque' ? it.fails : it;
-    filtroIt(`${p.id === 'estoque' ? '[D-05] ' : ''}todo filtro da URL da página (os dela, busca e página; inativos onde há a coluna Situação) é aceito pela consulta da rota`, () => {
+    filtroIt(`${p.id === 'estoque' ? '[D-05] ' : ''}todo filtro da URL da página (os dela, busca, cursor e limite; inativos onde há a coluna Situação) é aceito pela consulta da rota`, () => {
       expect(ignoradas(), `chaves da tela que a API ignora em ${p.api}`).toEqual([]);
     });
-    if (p.id === 'estoque') it('[D-05, hoje] a rota GET do estoque é encontrada e ignora exatamente busca e pagina', () => {
-      expect(ignoradas()).toEqual(['busca', 'pagina']);
+    if (p.id === 'estoque') it('[D-05, hoje] a rota GET do estoque é encontrada e ignora exatamente busca, cursor e limite', () => {
+      expect(ignoradas()).toEqual(['busca', 'cursor', 'limite']);
+    });
+    if (p.id !== 'estoque') it('a resposta segue o contrato de listas do SDK: { itens, proximo_cursor } (P-02, #44)', async () => {
+      const r = await get(p.api);
+      expect(Object.keys(r.json()).sort()).toEqual(['itens', 'proximo_cursor']);
     });
 
     if (p.editar) it(`o botão de editar segue a ação da rota POST da API (${p.editar}): some para quem a API recusa`, () => {
@@ -113,9 +121,8 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
     const produtos = PAGINAS.find((p) => p.id === 'produtos')!;
     for (const perfil of PERFIS) {
       const r = await get('/v1/cadastros/produtos', perfil);
-      const visiveis = acoesDaPagina(perfil, produtos);
-      expect(visiveis.exportar).toBe(true);
-      const csv = paraCsv(produtos.colunas.filter((c) => visiveis.colunasVisiveis.includes(c.chave)), r.json().itens);
+      expect(acoesDaPagina(perfil, produtos).exportar).toBe(true);
+      const csv = csvDaPagina(produtos, perfil, r.json().itens);
       const [cabecalho, linha] = csv.slice(1).split('\r\n');
       const vePeloPerfil = pode(perfil, 'cadastros.produto.editar');
       expect(cabecalho!.split(';').includes('Custo'), perfil).toBe(vePeloPerfil);
@@ -137,28 +144,24 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
   });
 
   /*
-   * P-02: o contrato comum de listas do #19 (.coord/contratos/listas.md, `@macuxierp/platform-sdk/listas`) é por
-   * cursor (`?limite=` e `?cursor=`, resposta `{ itens, proximo_cursor }`, "fora do contrato: pagina, por_pagina,
-   * total"). O cadastros ainda responde `{ itens, total, pagina, por_pagina }` e a página dele monta `?pagina=`; a troca
-   * já foi pedida pelo engenheiro-software ao modulo-cadastros e ao engenheiro-apps (T-0029). `it.fails` fica verde
-   * enquanto a troca não vem; quando vier, vira `it` e o "hoje" ao lado sai.
+   * P-02 (corrigido no #44, a57cb80): o cadastros segue o contrato comum de listas do SDK (`.coord/contratos/listas.md`):
+   * `?limite=` e `?cursor=`, resposta `{ itens, proximo_cursor }`, sem `pagina`, `por_pagina` nem `total`.
    */
   describe('P-02 (dois clientes na lista)', () => {
     beforeAll(async () => {
       const r = await api.chamar('A', 'POST', '/v1/cadastros/clientes', clienteValido(ids.filial!, { documento: '34028316000103', razao_social: 'Segundo Cliente Ltda', ie: null, ind_ie_dest: '9' }));
       expect(r.statusCode, r.body).toBe(201);
     });
-    it.fails('P-02: lista do cadastros no contrato do SDK: ?limite=1 devolve 1 item e proximo_cursor', async () => {
-      const r = await get('/v1/cadastros/clientes?limite=1');
-      expect(r.statusCode).toBe(200);
-      expect(r.json().itens).toHaveLength(1);
-      expect(r.json().proximo_cursor).toEqual(expect.any(String));
-    });
-    it('[P-02, hoje] ?limite=1 é ignorado: vêm os 2 clientes e não há proximo_cursor', async () => {
-      const r = await get('/v1/cadastros/clientes?limite=1');
-      expect(r.statusCode).toBe(200);
-      expect(r.json().itens).toHaveLength(2);
-      expect(r.json()).not.toHaveProperty('proximo_cursor');
+    it('P-02: ?limite=1 devolve 1 item e proximo_cursor; o cursor traz o outro e fecha com proximo_cursor nulo', async () => {
+      const r1 = await get('/v1/cadastros/clientes?limite=1');
+      expect(r1.statusCode).toBe(200);
+      expect(r1.json().itens).toHaveLength(1);
+      expect(r1.json().proximo_cursor).toBe(r1.json().itens[0].id);
+      const r2 = await get(`/v1/cadastros/clientes?limite=1&cursor=${r1.json().proximo_cursor}`);
+      expect(r2.statusCode).toBe(200);
+      expect(r2.json().itens).toHaveLength(1);
+      expect(r2.json().itens[0].id).not.toBe(r1.json().itens[0].id);
+      expect(r2.json().proximo_cursor).toBeNull();
     });
   });
 });

@@ -45,8 +45,8 @@ describe('RN-CAD-08: exclusão = inativação', () => {
     const f = await comFilial(a);
     const c = (await post(a, '/clientes', clienteValido(f))).json().id as string;
     expect((await a.app.inject({ method: 'DELETE', url: `${URL}/clientes/${c}`, headers: a.auth() })).statusCode).toBe(200);
-    expect((await a.app.inject({ method: 'GET', url: `${URL}/clientes`, headers: a.auth() })).json().total).toBe(0);
+    expect((await a.app.inject({ method: 'GET', url: `${URL}/clientes`, headers: a.auth() })).json().itens).toEqual([]);
     const inativos = await a.app.inject({ method: 'GET', url: `${URL}/clientes?inativos=true`, headers: a.auth() });
-    expect(inativos.json().total).toBe(1);
+    expect(inativos.json().itens.map((x: { id: string; inativo: boolean }) => [x.id, x.inativo])).toEqual([[c, true]]);
   });
 });

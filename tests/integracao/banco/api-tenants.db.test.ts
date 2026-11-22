@@ -4,7 +4,8 @@
  * `BancoPg` no papel macuxierp_app — a RLS valendo de verdade.
  * Prova pelo HTTP: o tenant B não lê, não altera e não inativa o cadastro do tenant A (404, como se não existisse);
  * as listas não se misturam; a licença vem de plataforma.tenant_modulo (403 MODULO_INATIVO); o external_id é
- * idempotente no banco (RN-CORE-05); o cadastros vê o A1 da filial pela porta do core no Postgres (RN-CORE-06).
+ * idempotente no banco (RN-CORE-05); o cadastros vê o A1 da filial pela porta do core no Postgres (RN-CORE-06); a versão
+ * do evento é por agregado (D-01 e D-04, #39); o ambiente fiscal só volta para homologação pela API (RN-CORE-08, #45 a #47).
  * Sem Postgres, pula; com MACUXI_PG_EXIGIR=1, falha.
  */
 import { spawnSync } from 'node:child_process';
@@ -55,7 +56,7 @@ describe.skipIf(!PG_DISPONIVEL)('API + SQL: isolamento entre tenants pelo HTTP (
     expect((await chamar('B', 'GET', `/v1/cadastros/clientes/${id}`)).statusCode).toBe(404);
     expect((await chamar('B', 'PATCH', `/v1/cadastros/clientes/${id}`, { razao_social: 'Invadido Ltda' })).statusCode).toBe(404);
     expect((await chamar('B', 'DELETE', `/v1/cadastros/clientes/${id}`)).statusCode).toBe(404);
-    expect((await chamar('B', 'GET', '/v1/cadastros/clientes')).json().total).toBe(0);
+    expect((await chamar('B', 'GET', '/v1/cadastros/clientes')).json()).toEqual({ itens: [], proximo_cursor: null });
 
     const deA = await chamar('A', 'GET', `/v1/cadastros/clientes/${id}`);
     expect(deA.json()).toMatchObject({ razao_social: 'Cliente Exemplo Ltda', inativo: false });
@@ -101,14 +102,11 @@ describe.skipIf(!PG_DISPONIVEL)('API + SQL: isolamento entre tenants pelo HTTP (
   });
 
   /*
-   * DEFEITO D-01 (recado ao modulo-cadastros no relatório docs/testes/T-0008.md): o plugin do cadastros publica todo
-   * evento com `versao: 1` (modules/cadastros/api/rotas.ts, função publicar), e plataforma.evento tem
-   * UNIQUE (tenant_id, nome, agregado_id, versao). A 2ª alteração do mesmo cadastro (PATCH ou DELETE) estoura 23505 e a
-   * API responde 500. O OutboxMemoria dos testes do módulo não tem a unicidade, por isso só aparece no banco.
-   * `it.fails` roda de verdade e fica verde enquanto o defeito existe; quando o dono corrigir, ele fica vermelho e deve
-   * virar `it` (o esperado já está escrito abaixo).
+   * D-01 (corrigido no #39, 02d8311): o cadastros publicava todo evento com `versao: 1` e a UNIQUE
+   * (tenant_id, nome, agregado_id, versao) de plataforma.evento dava 23505 → 500 na 2ª alteração. Desde o #39 a outbox
+   * (`OutboxPg.gravar`) dá a versão por (tenant_id, agregado_id): max + 1 na transação, ignorando a `versao` recebida.
    */
-  it.fails('RN-CAD-08 [D-01]: PATCH e DELETE do próprio cadastro = 200, com deleted_at gravado e um evento por alteração (hoje: 500)', async () => {
+  it('RN-CAD-08 [D-01, corrigido no #39]: PATCH e DELETE do próprio cadastro = 200, com deleted_at gravado e um evento por alteração, versões 1, 2 e 3', async () => {
     const f = (await chamar('A', 'GET', '/v1/cadastros/filiais')).json().itens[0].id as string;
     const c = await chamar('A', 'POST', '/v1/cadastros/clientes', clienteValido(f, { documento: '12ABC34501DE35', razao_social: 'Para Inativar Ltda' }));
     expect(c.statusCode).toBe(201);
@@ -117,21 +115,23 @@ describe.skipIf(!PG_DISPONIVEL)('API + SQL: isolamento entre tenants pelo HTTP (
     expect((await chamar('A', 'DELETE', `/v1/cadastros/clientes/${id}`)).statusCode).toBe(200);
     const l = await api.b.admin.query('SELECT deleted_at IS NOT NULL AS inativo FROM cadastros.cliente WHERE id = $1', [id]);
     expect(l.rows).toEqual([{ inativo: true }]);
-    const ev = await api.b.admin.query("SELECT payload->'payload'->>'inativo' AS inativo FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'cadastros.cliente.alterado@1' ORDER BY ocorrido_em", [id]);
-    expect(ev.rows.map((x) => x.inativo)).toEqual(['false', 'false', 'true']);
+    const ev = await api.b.admin.query("SELECT versao::int AS versao, payload->'payload'->>'inativo' AS inativo FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'cadastros.cliente.alterado@1' ORDER BY versao", [id]);
+    expect(ev.rows.map((x) => [x.versao, x.inativo])).toEqual([[1, 'false'], [2, 'false'], [3, 'true']]);
   });
 
-  it('RN-CAD-08 [D-01, hoje]: a 2ª alteração dá 500 e falha inteira (transação desfeita): linha ativa e só o evento da criação', async () => {
-    const f = (await chamar('A', 'GET', '/v1/cadastros/filiais')).json().itens[0].id as string;
-    const c = await chamar('A', 'POST', '/v1/cadastros/clientes', clienteValido(f, { documento: '34028316000103', razao_social: 'Atomicidade Ltda', ie: null, ind_ie_dest: '9' }));
-    expect(c.statusCode).toBe(201);
-    const id = c.json().id as string;
-    const r = await chamar('A', 'DELETE', `/v1/cadastros/clientes/${id}`);
-    expect(r.statusCode).toBe(500);
-    const l = await api.b.admin.query('SELECT deleted_at IS NOT NULL AS inativo FROM cadastros.cliente WHERE id = $1', [id]);
-    const eventos = await api.b.admin.query("SELECT count(*)::int AS n FROM plataforma.evento WHERE agregado_id = $1", [id]);
-    // Corrigido o D-01, este teste fica vermelho e sai: o esperado (200, linha inativa, eventos) está no it.fails acima.
-    expect([l.rows[0].inativo, eventos.rows[0].n]).toEqual([false, 1]);
+  /*
+   * D-04 (corrigido no #39): o core publica com `versao: c.agora.getTime()` (modules/core/api/rotas.ts), e duas
+   * alterações no mesmo milissegundo colidiam na mesma UNIQUE. A outbox ignora a versão recebida (`@deprecated`) e grava
+   * 1, 2, ... por agregado: o ms do relógio não chega ao banco.
+   */
+  it('[D-04, corrigido no #39] core: duas alterações da empresa gravam as versões 1 e 2 do agregado, não o instante em ms', async () => {
+    const corpo = { razao_social: 'Empresa B', nome_fantasia: null, ie: null, fuso: 'America/Manaus' };
+    const antes = await api.b.admin.query("SELECT coalesce(max(versao), 0)::int AS v FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'core.empresa.alterada@1'", [api.t.B]);
+    expect((await chamar('B', 'PATCH', '/v1/core/empresa', { ...corpo, nome_fantasia: 'Um' })).statusCode).toBe(200);
+    expect((await chamar('B', 'PATCH', '/v1/core/empresa', { ...corpo, nome_fantasia: 'Dois' })).statusCode).toBe(200);
+    const ev = await api.b.admin.query("SELECT versao::int AS v FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'core.empresa.alterada@1' ORDER BY versao", [api.t.B]);
+    const v0 = antes.rows[0].v as number;
+    expect(ev.rows.map((x) => x.v).slice(-2)).toEqual([v0 + 1, v0 + 2]);
   });
 
   /*
@@ -161,5 +161,43 @@ describe.skipIf(!PG_DISPONIVEL)('API + SQL: isolamento entre tenants pelo HTTP (
     await api.b.admin.query("UPDATE core.certificado SET valido_de = now() - interval '2 years', valido_ate = now() - interval '1 day' WHERE filial_id = $1", [filialA]);
     const vencido = await ie('A', filialA);
     expect([vencido.statusCode, vencido.json().codigo]).toEqual([422, 'RN-CORE-06']);
+  });
+
+  /*
+   * #45 a #47 (T-0030, ADR 0006): a API só volta para homologação; produção só pelo operador (dono da tabela, com o
+   * recado de aprovação). Nenhuma rota nova (o `autorizacao-rotas.test.ts` já cobre o PUT); aqui, a rota contra a
+   * política 0008 no Postgres, no papel macuxierp_app. A política em si é testada pelo banco-dados.
+   */
+  const RECADO_APROVACAO = 'R-20261121-120000-alexandre'; // formato exigido pelo CHECK ambiente_producao_aprovada (0003)
+
+  it('RN-CORE-08 (#45/#46): PUT produção pela API = 422 RN-CORE-08, sem linha e sem evento; o GET segue em homologação', async () => {
+    const filial = '0f000000-0000-4000-8000-0000000000a1';
+    const r = await chamar('A', 'PUT', `/v1/core/ambientes-fiscais/${filial}`, { ambiente: 'producao' });
+    expect([r.statusCode, r.json().codigo]).toEqual([422, 'RN-CORE-08']);
+    const conta = async (sql: string) => (await api.b.admin.query(sql, [filial])).rows[0].n as number;
+    expect(await conta('SELECT count(*)::int AS n FROM core.ambiente_fiscal WHERE filial_id = $1')).toBe(0);
+    expect(await conta('SELECT count(*)::int AS n FROM plataforma.evento WHERE agregado_id = $1')).toBe(0);
+    const g = await chamar('A', 'GET', `/v1/core/ambientes-fiscais?filial_id=${filial}`);
+    expect(g.json().itens).toEqual([{ filial_id: filial, ambiente: 'homologacao', recado_aprovacao: null }]);
+  });
+
+  it('RN-CORE-08 (#45/#46/#47): produção gravada pelo operador; o tenant só volta para homologação pela API (200, recado limpo, evento)', async () => {
+    const filial = '0f000000-0000-4000-8000-0000000000a2';
+    // O operador (scripts/plataforma/ambiente-fiscal.mjs) grava como dono da tabela; aqui, a conexão admin do banco efêmero.
+    await api.b.admin.query(
+      "INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao) VALUES ($1, $2, 'producao', $3)",
+      [api.t.A, filial, RECADO_APROVACAO],
+    );
+    const g = await chamar('A', 'GET', `/v1/core/ambientes-fiscais?filial_id=${filial}`);
+    expect(g.json().itens).toEqual([{ filial_id: filial, ambiente: 'producao', recado_aprovacao: RECADO_APROVACAO }]);
+    const r = await chamar('A', 'PUT', `/v1/core/ambientes-fiscais/${filial}`, { ambiente: 'homologacao' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toEqual({ filial_id: filial, ambiente: 'homologacao', recado_aprovacao: null });
+    const l = await api.b.admin.query('SELECT ambiente, recado_aprovacao FROM core.ambiente_fiscal WHERE filial_id = $1', [filial]);
+    expect(l.rows).toEqual([{ ambiente: 'homologacao', recado_aprovacao: null }]);
+    const ev = await api.b.admin.query("SELECT versao::int AS v FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'core.ambiente_fiscal.alterado@1'", [filial]);
+    expect(ev.rows).toEqual([{ v: 1 }]);
+    // De volta a produção, só o operador: a API recusa de novo.
+    expect((await chamar('A', 'PUT', `/v1/core/ambientes-fiscais/${filial}`, { ambiente: 'producao' })).statusCode).toBe(422);
   });
 });
