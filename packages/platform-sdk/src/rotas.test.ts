@@ -2,7 +2,17 @@ import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { erros, ErroApi, PADRAO_RN } from './erros';
 import { defineModule } from './modulo';
-import { ArquivoRecebido, cabecalhosDaRota, definirPlugin, definirRota, PluginInvalido, TAMANHO_MAXIMO_ARQUIVO } from './rotas';
+import {
+  ArquivoRecebido,
+  cabecalhosDaRota,
+  definirPlugin,
+  definirRota,
+  PluginInvalido,
+  QUANTIDADE_MAXIMA_ARQUIVOS,
+  TAMANHO_MAXIMO_MULTIPART,
+  tamanhoMaximoTotal,
+  TEMPO_MAXIMO_ROTA_MS,
+} from './rotas';
 
 const manifesto = defineModule({ id: 'core', versao: '0.1.0', descricao: 'teste', depende: [], perfis: ['administrador'], publica: [], consome: [] });
 const rota = (extra: object) => definirRota({ metodo: 'POST', caminho: '/certificados', acao: 'core.certificado.gerir', executar: async () => ({}), ...extra });
@@ -54,6 +64,37 @@ describe('multipart (upload do A1)', () => {
     expect(() => definirPlugin(manifesto, [rota({ metodo: 'GET', multipart: { arquivos: [arq] } })])).toThrow(PluginInvalido);
     expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [] } })])).toThrow(PluginInvalido);
     expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [arq, arq] } })])).toThrow(PluginInvalido);
-    expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [{ campo: 'arquivo', tamanhoMaximo: TAMANHO_MAXIMO_ARQUIVO + 1 }] } })])).toThrow(PluginInvalido);
+    expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [{ campo: 'arquivo', tamanhoMaximo: TAMANHO_MAXIMO_MULTIPART + 1 }] } })])).toThrow(PluginInvalido);
+  });
+});
+
+describe('multipart com vários arquivos, limite total, Idempotency-Key e tempo por rota (T-0026)', () => {
+  const carga = { campo: 'arquivos', tamanhoMaximo: TAMANHO_MAXIMO_MULTIPART, quantidadeMaxima: 16 };
+
+  it('aceita até 10 MB por arquivo e no total, e até 32 arquivos por campo', () => {
+    expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [carga], tamanhoMaximoTotal: TAMANHO_MAXIMO_MULTIPART } })])).not.toThrow();
+    for (const errado of [{ ...carga, quantidadeMaxima: 0 }, { ...carga, quantidadeMaxima: QUANTIDADE_MAXIMA_ARQUIVOS + 1 }, { ...carga, quantidadeMaxima: 1.5 }]) {
+      expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [errado] } })])).toThrow(PluginInvalido);
+    }
+    expect(() => definirPlugin(manifesto, [rota({ multipart: { arquivos: [carga], tamanhoMaximoTotal: TAMANHO_MAXIMO_MULTIPART + 1 } })])).toThrow(PluginInvalido);
+  });
+
+  it('total padrão = soma dos limites dos campos, até o teto', () => {
+    expect(tamanhoMaximoTotal({ arquivos: [{ campo: 'a', tamanhoMaximo: 100 }, { campo: 'b', tamanhoMaximo: 50, quantidadeMaxima: 3 }] })).toBe(250);
+    expect(tamanhoMaximoTotal({ arquivos: [carga] })).toBe(TAMANHO_MAXIMO_MULTIPART);
+    expect(tamanhoMaximoTotal({ arquivos: [carga], tamanhoMaximoTotal: 1000 })).toBe(1000);
+  });
+
+  it('Idempotency-Key só em POST, PUT ou PATCH; tempoMaximoMs de 1 s a 120 s', () => {
+    expect(() => definirPlugin(manifesto, [rota({ idempotencia: 'obrigatoria', tempoMaximoMs: TEMPO_MAXIMO_ROTA_MS })])).not.toThrow();
+    expect(() => definirPlugin(manifesto, [rota({ metodo: 'GET', idempotencia: 'opcional' })])).toThrow(PluginInvalido);
+    expect(() => definirPlugin(manifesto, [rota({ metodo: 'DELETE', idempotencia: 'opcional' })])).toThrow(PluginInvalido);
+    for (const t of [999, TEMPO_MAXIMO_ROTA_MS + 1, 1500.5]) expect(() => definirPlugin(manifesto, [rota({ tempoMaximoMs: t })])).toThrow(PluginInvalido);
+  });
+
+  it('definirRota: sem todosArquivos, a rota recebe cada arquivo numa lista', async () => {
+    const a = new ArquivoRecebido('arquivo', 'x.csv', 'text/csv', Buffer.from('a'));
+    const r = definirRota({ metodo: 'POST', caminho: '/x', acao: 'core.empresa.editar', executar: async (_c, e) => ({ corpo: e.todosArquivos }) });
+    expect((await r.executar({} as never, { corpo: undefined, consulta: undefined, params: {}, arquivos: { arquivo: a } })).corpo).toEqual({ arquivo: [a] });
   });
 });

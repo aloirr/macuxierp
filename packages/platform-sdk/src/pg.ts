@@ -5,7 +5,8 @@
  * - `BancoPg`: uma transação por chamada; `comTenant` põe o tenant com `set_config('app.tenant_id', ..., true)` (o
  *   equivalente a `SET LOCAL`: vale só na transação, nunca na conexão do pool). `papel` faz `SET LOCAL ROLE` (testes e
  *   admin); em produção a conexão já é do papel (`macuxierp_app` na API, `macuxierp_worker` no worker).
- * - Outbox, auditoria, fila de trabalho, catálogo de arquivos e licenças sobre `plataforma.*` (migração 0002).
+ * - Outbox, auditoria, fila de trabalho, catálogo de arquivos, licenças e `Idempotency-Key` sobre `plataforma.*`
+ *   (migração 0002).
  * Conexão pelas variáveis padrão do libpq (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`): nada de senha em
  * código.
  */
@@ -16,6 +17,7 @@ import type { DestinoAuditoria, RegistroAuditoria } from './auditoria';
 import { PADRAO_UUID, type Banco, type Transacao } from './banco';
 import { erros } from './erros';
 import type { EnvelopeEvento, Outbox } from './eventos';
+import type { ConclusaoIdempotencia, RegistroIdempotencia, RepositorioIdempotencia, ReservaIdempotencia } from './idempotencia';
 import type { FilaDeTrabalhos, PedidoTrabalho } from './trabalhos';
 
 const PAPEL = /^[a-z_][a-z0-9_]*$/;
@@ -198,6 +200,37 @@ export class LicencasPg implements FonteLicencas {
     return tx.consultar<Licenca>(
       'SELECT modulo, ativo, valido_ate FROM plataforma.tenant_modulo WHERE tenant_id = $1 AND deleted_at IS NULL',
       [tenantId],
+    );
+  }
+}
+
+/**
+ * `plataforma.idempotencia` na transação do tenant (RLS). A vencida é apagada e substituída; a reserva concorrente com
+ * a mesma chave espera o `COMMIT` da 1ª no índice único e então lê a resposta dela.
+ */
+export class IdempotenciaPg implements RepositorioIdempotencia {
+  async reservar(tx: Transacao, p: ReservaIdempotencia): Promise<RegistroIdempotencia | null> {
+    const chave = [p.tenant_id, p.chave, p.rota];
+    await tx.consultar('DELETE FROM plataforma.idempotencia WHERE tenant_id = $1 AND chave = $2 AND rota = $3 AND expira_em <= $4', [...chave, p.agora]);
+    const [nova] = await tx.consultar<{ id: string }>(
+      `INSERT INTO plataforma.idempotencia (tenant_id, chave, rota, hash_corpo, expira_em) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (tenant_id, chave, rota) DO NOTHING RETURNING id`,
+      [...chave, p.hash_corpo, p.expira_em],
+    );
+    if (nova) return null;
+    const [r] = await tx.consultar<RegistroIdempotencia>(
+      'SELECT hash_corpo, status, resposta FROM plataforma.idempotencia WHERE tenant_id = $1 AND chave = $2 AND rota = $3',
+      chave,
+    );
+    if (!r) throw erros.conflito('Idempotency-Key em uso: tente de novo');
+    return r;
+  }
+
+  async concluir(tx: Transacao, p: ConclusaoIdempotencia): Promise<void> {
+    await tx.consultar(
+      'UPDATE plataforma.idempotencia SET status = $4, resposta = $5::jsonb WHERE tenant_id = $1 AND chave = $2 AND rota = $3',
+      // jsonb pelo texto (como na auditoria): string ou null também viram JSON válido.
+      [p.tenant_id, p.chave, p.rota, p.status, JSON.stringify(p.resposta ?? null)],
     );
   }
 }

@@ -9,6 +9,7 @@ export * from './eventos';
 export * from './auditoria';
 export * from './arquivos';
 export * from './rotas';
+export * from './idempotencia';
 export * from './trabalhos';
 export * from './eu';
 export * from './listas';

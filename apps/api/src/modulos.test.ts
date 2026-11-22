@@ -4,11 +4,11 @@
  * para a rota multipart do A1 com limite de 50 KB (RF-CORE-04) e cabeçalhos na rota. O `.pfx` nunca vai para o log.
  */
 import { Writable } from 'node:stream';
-import { defineModule, definirPlugin, definirRota, ErroApi, TAMANHO_MAXIMO_ARQUIVO, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
-import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
+import { defineModule, definirPlugin, definirRota, ErroApi, TAMANHO_MAXIMO_MULTIPART, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
+import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { criarApp } from './app';
+import { criarApp, type DependenciasApp } from './app';
 import { emitirTokenAcesso } from './auth/jwt';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
@@ -43,7 +43,7 @@ const coreDuble = definirPlugin(manifesto('core'), [
     metodo: 'POST',
     caminho: '/anexos',
     acao: 'core.certificado.gerir',
-    multipart: { arquivos: [{ campo: 'anexo', tamanhoMaximo: TAMANHO_MAXIMO_ARQUIVO }] },
+    multipart: { arquivos: [{ campo: 'anexo', tamanhoMaximo: TAMANHO_MAXIMO_MULTIPART }] },
     executar: async (_c, e) => ({ status: 201, corpo: { tamanho: e.arquivos.anexo!.tamanho } }),
   }),
   definirRota({ metodo: 'GET', caminho: '/eco', acao: 'core.empresa.ver', executar: async (_c, e) => ({ corpo: e.cabecalhos }) }),
@@ -56,7 +56,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 
-async function montar(licencas: Licenca[] = [], logs?: string[], modulos: readonly PluginModulo[] = registrarModulos([coreDuble, cadastrosDuble])) {
+async function montar(licencas: Licenca[] = [], logs?: string[], modulos: readonly PluginModulo[] = registrarModulos([coreDuble, cadastrosDuble]), extra: Partial<DependenciasApp> = {}) {
   const app = await criarApp({
     versao: '0.1.0',
     auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: SEGREDO },
@@ -70,6 +70,7 @@ async function montar(licencas: Licenca[] = [], logs?: string[], modulos: readon
     relogio: new RelogioFixo(AGORA),
     modulos,
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,
+    ...extra,
   });
   apps.push(app);
   return app;
@@ -196,16 +197,16 @@ describe('multipart do A1 (até 50 KB)', () => {
     expect(r.json()).toMatchObject({ codigo: 'ARQUIVO_GRANDE', campos: { arquivo: 'até 50 KB' } });
   });
 
-  it('limite da rota igual ao teto global (1 MiB): aceita no limite e acima dele é 413 ARQUIVO_GRANDE, não CORPO_GRANDE', async () => {
+  it('limite da rota igual ao teto global (10 MiB): aceita no limite e acima dele é 413 ARQUIVO_GRANDE, não CORPO_GRANDE', async () => {
     const app = await montar();
     const anexo = async (n: number) => {
       const f = formulario({}, { anexo: pfx(n) });
       return app.inject({ method: 'POST', url: '/v1/core/anexos', payload: f.payload, headers: { ...f.headers, authorization: token('administrador') } });
     };
-    expect((await anexo(TAMANHO_MAXIMO_ARQUIVO)).statusCode).toBe(201);
-    const r = await anexo(TAMANHO_MAXIMO_ARQUIVO + 1);
+    expect((await anexo(TAMANHO_MAXIMO_MULTIPART)).statusCode).toBe(201);
+    const r = await anexo(TAMANHO_MAXIMO_MULTIPART + 1);
     expect(r.statusCode).toBe(413);
-    expect(r.json()).toMatchObject({ codigo: 'ARQUIVO_GRANDE', campos: { anexo: 'até 1024 KB' } });
+    expect(r.json()).toMatchObject({ codigo: 'ARQUIVO_GRANDE', campos: { anexo: 'até 10240 KB' } });
   });
 
   it('sem arquivo, arquivo vazio, arquivo não declarado, campo inválido ou JSON no lugar do multipart é 400', async () => {
@@ -219,5 +220,91 @@ describe('multipart do A1 (até 50 KB)', () => {
     ];
     expect(casos.map((r) => [r.statusCode, r.json().codigo])).toEqual(Array(5).fill([400, 'VALIDACAO']));
     expect(vistos).toEqual([]);
+  });
+});
+
+describe('rota de lote: vários arquivos, total, Idempotency-Key e tempo por rota (T-0026)', () => {
+  let ms = 0;
+  let execucoes = 0;
+  const lotes = definirPlugin(manifesto('core'), [
+    definirRota({
+      metodo: 'POST',
+      caminho: '/lotes',
+      acao: 'core.certificado.gerir',
+      corpo: z.object({ modo: z.enum(['validar', 'gravar']) }),
+      multipart: { arquivos: [{ campo: 'arquivos', tamanhoMaximo: 100, quantidadeMaxima: 3 }], tamanhoMaximoTotal: 150 },
+      idempotencia: 'opcional',
+      tempoMaximoMs: 1_000,
+      executar: async (c, e) => {
+        execucoes++;
+        if (e.corpo.modo === 'gravar') {
+          ms += 1_001; // a rota "demora": a próxima consulta passa do prazo
+          await c.tx.consultar('SELECT 1');
+        }
+        return { corpo: { n: execucoes, arquivos: e.todosArquivos.arquivos!.map((a) => [a.nome, a.tamanho]) }, cabecalhos: { 'x-teste': 'sim' } };
+      },
+    }),
+  ]);
+  const montarLotes = (idempotencia = new IdempotenciaMemoria()) =>
+    montar([], undefined, registrarModulos([lotes, cadastrosDuble]), { idempotencia, cronometro: () => ms });
+
+  function formularioLote(modo: string, arquivos: [string, string][]) {
+    const limite = 'limite-lote-0026';
+    const partes = [`--${limite}\r\nContent-Disposition: form-data; name="modo"\r\n\r\n${modo}\r\n`];
+    for (const [nome, conteudo] of arquivos) {
+      partes.push(`--${limite}\r\nContent-Disposition: form-data; name="arquivos"; filename="${nome}"\r\nContent-Type: text/csv\r\n\r\n${conteudo}\r\n`);
+    }
+    partes.push(`--${limite}--\r\n`);
+    return { payload: Buffer.from(partes.join('')), headers: { 'content-type': `multipart/form-data; boundary=${limite}` } };
+  }
+  const enviar = (app: Awaited<ReturnType<typeof montar>>, modo: string, arquivos: [string, string][], chave?: string) => {
+    const f = formularioLote(modo, arquivos);
+    return app.inject({ method: 'POST', url: '/v1/core/lotes', payload: f.payload, headers: { ...f.headers, authorization: token('administrador'), ...(chave ? { 'idempotency-key': chave } : {}) } });
+  };
+  afterEach(() => {
+    ms = 0;
+    execucoes = 0;
+  });
+
+  it('vários arquivos no mesmo campo chegam em ordem, com o nome; acima da quantidade é 400 e do total é 413', async () => {
+    const app = await montarLotes();
+    const r = await enviar(app, 'validar', [['cliente.csv', 'a'.repeat(60)], ['produto.csv', 'b'.repeat(40)]]);
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ n: 1, arquivos: [['cliente.csv', 60], ['produto.csv', 40]] });
+    const muitos = await enviar(app, 'validar', [['a.csv', 'a'], ['b.csv', 'b'], ['c.csv', 'c'], ['d.csv', 'd']]);
+    expect([muitos.statusCode, muitos.json().codigo]).toEqual([400, 'VALIDACAO']);
+    const grande = await enviar(app, 'validar', [['a.csv', 'a'.repeat(100)], ['b.csv', 'b'.repeat(51)]]);
+    expect([grande.statusCode, grande.json()]).toEqual([413, expect.objectContaining({ codigo: 'ARQUIVO_GRANDE', campos: { _: 'até 0 KB' } })]);
+    const umGrande = await enviar(app, 'validar', [['a.csv', 'a'.repeat(101)]]);
+    expect(umGrande.json()).toMatchObject({ codigo: 'ARQUIVO_GRANDE', campos: { arquivos: 'até 0 KB' } });
+    expect(execucoes).toBe(1);
+  });
+
+  it('Idempotency-Key: o reenvio devolve a mesma resposta sem executar; outro pedido com a chave chega ao HTTP como 409', async () => {
+    const repo = new IdempotenciaMemoria();
+    const app = await montarLotes(repo);
+    const arquivos: [string, string][] = [['cliente.csv', 'x;y']];
+    const a = await enviar(app, 'validar', arquivos, 'chave-lote-0001');
+    const b = await enviar(app, 'validar', arquivos, 'chave-lote-0001');
+    expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
+    expect(b.json()).toEqual(a.json());
+    expect([a.headers['x-teste'], b.headers['idempotency-replayed']]).toEqual(['sim', 'true']);
+    expect(execucoes).toBe(1);
+    const outro = await enviar(app, 'validar', [['cliente.csv', 'x;z']], 'chave-lote-0001');
+    expect([outro.statusCode, outro.json().codigo]).toEqual([409, 'CONFLITO']);
+    expect((await enviar(app, 'validar', arquivos)).statusCode).toBe(200); // opcional: sem a chave executa sempre
+    expect(execucoes).toBe(2);
+    expect([...repo.registros.keys()]).toEqual([`${TENANT}|POST /v1/core/lotes|chave-lote-0001`]);
+  });
+
+  it('passou do tempo da rota: 503 TEMPO_ESGOTADO e nada é guardado na idempotência', async () => {
+    const repo = new IdempotenciaMemoria();
+    const r = await enviar(await montarLotes(repo), 'gravar', [['cliente.csv', 'x']], 'chave-lote-0002');
+    expect([r.statusCode, r.json().codigo]).toEqual([503, 'TEMPO_ESGOTADO']);
+    expect([...repo.registros.values()].every((x) => x.status === null)).toBe(true);
+  });
+
+  it('rota com idempotencia sem o repositório na API não sobe', async () => {
+    await expect(montar([], undefined, registrarModulos([lotes, cadastrosDuble]))).rejects.toThrow(/idempotencia sem o repositório/);
   });
 });
