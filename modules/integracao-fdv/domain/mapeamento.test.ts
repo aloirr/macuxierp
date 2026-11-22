@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  decimal4,
+  quantidade4,
   filiaisComCodigoRepetido,
   inativarRegistro,
   mapearCliente,
@@ -9,6 +9,7 @@ import {
   mapearFilial,
   mapearPreco,
   mapearProduto,
+  mapearTabelaPreco,
   mapearVendedor,
   prazoMedioMaxDias,
   validarRegistro,
@@ -22,14 +23,19 @@ const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 const EM = '2026-11-21T20:00:00.123Z';
 const end = { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058', municipio_nome: 'Manaus' };
 
+/** CNPJ com dígito verificador válido (módulo 11), de teste. */
+const CNPJ_OK = '11222333000181';
 const filial = (o: Partial<EventoFilial> = {}): EventoFilial => ({
-  id: U(1), cnpj: '12345678000195', ie: null, razao_social: 'Empresa LTDA', nome_fantasia: null, crt: '3', endereco: end, padrao: true, emissora: true, nfe_serie: 1, nfe_numero_inicial: 1, inativo: false, ...o,
+  id: U(1), cnpj: CNPJ_OK, ie: null, razao_social: 'Empresa LTDA', nome_fantasia: null, crt: '3', endereco: end, padrao: true, emissora: true, nfe_serie: 1, nfe_numero_inicial: 1, inativo: false, ...o,
 });
 
 describe('RF-INF-01 filial', () => {
   it('codigo = ordem do CNPJ, nome cai na razão social, cidade do C-1, sem dado fiscal', () => {
     const { registro, referencia } = mapearFilial(filial(), EM);
-    expect(registro.payload).toEqual({ external_id: U(1), ativo: true, codigo: '0001', nome: 'Empresa LTDA', cidade: 'Manaus', uf: 'AM' });
+    expect(registro.payload).toEqual({
+      external_id: U(1), ativo: true, codigo: '0001', nome: 'Empresa LTDA', cidade: 'Manaus', uf: 'AM',
+      cnpj: CNPJ_OK, logradouro: 'Rua A', numero: '10', bairro: 'Centro', cep: '69000000',
+    });
     expect(registro.alterado_em).toBe(EM);
     expect(referencia).toMatchObject({ tipo: 'filial_padrao', erp_id: U(1) });
     expect(JSON.stringify(registro.payload)).not.toMatch(/crt|ie|nfe/);
@@ -43,6 +49,35 @@ describe('RF-INF-01 filial', () => {
     expect(referencia).toBeNull();
   });
 
+  it('A-01 (RN-CORE-39 do FDV): CNPJ sem máscara, endereço e CEP só com dígitos; complemento só quando existe', () => {
+    const p = mapearFilial(filial({ cnpj: '11.222.333/0001-81', endereco: { ...end, cep: '69.000-000', complemento: 'Sala 2' } } as Partial<EventoFilial>), EM).registro.payload;
+    expect(p).toMatchObject({ cnpj: '11222333000181', cep: '69000000', complemento: 'Sala 2', logradouro: 'Rua A', numero: '10', bairro: 'Centro' });
+    expect('telefone' in p).toBe(false);
+  });
+
+  it('A-01: CNPJ de dígito válido passa; dígito inválido vira campo_invalido em cnpj sem ecoar o valor', () => {
+    const ok = mapearFilial(filial(), EM).registro;
+    expect(validarRegistro(ok, () => true)).toBeNull();
+    const ruim = mapearFilial(filial({ cnpj: '11222333000182' }), EM).registro;
+    const l = validarRegistro(ruim, () => true);
+    expect(l).toEqual({ external_id: U(1), codigo: 'campo_invalido', campo: 'cnpj' });
+    expect(JSON.stringify(l)).not.toContain('11222333000182');
+  });
+
+  it('A-01: filial sem logradouro, número, bairro, CEP, cidade ou UF é campo_obrigatorio no campo certo', () => {
+    for (const [campo, endereco] of [
+      ['logradouro', { ...end, logradouro: '' }],
+      ['numero', { ...end, numero: '' }],
+      ['bairro', { ...end, bairro: '' }],
+      ['cep', { ...end, cep: '' }],
+      ['cidade', { ...end, municipio_nome: undefined }],
+      ['uf', { ...end, uf: '' }],
+    ] as const) {
+      const r = mapearFilial(filial({ endereco } as Partial<EventoFilial>), EM).registro;
+      expect(validarRegistro(r, () => true)).toEqual({ external_id: U(1), codigo: 'campo_obrigatorio', campo });
+    }
+  });
+
   it('P-5: duas filiais com a mesma ordem de CNPJ viram linha inválida', () => {
     const a = mapearFilial(filial({ id: U(1) }), EM).registro;
     const b = mapearFilial(filial({ id: U(2), cnpj: '99999999000100' }), EM).registro;
@@ -51,10 +86,31 @@ describe('RF-INF-01 filial', () => {
   });
 });
 
+describe('A-04 sigla da medida (RN-CORE-19 do FDV)', () => {
+  const prod = (unidade: string, unidades: EventoProduto['unidades'] = []): EventoProduto =>
+    ({ id: U(2), codigo: 'SKU1', descricao: 'Arroz', ncm: '10063021', cest: null, unidade_comercial: unidade, unidade_tributavel: 'UN', fator_tributavel: 10_000, ean: null, marca: null, origem: '0', grupo_tributacao: 'G', custo_centavos: 1, external_id: null, inativo: false, unidades }) as EventoProduto;
+
+  it('sobe em maiúsculas e sem espaços; 1 a 4 letras passa', () => {
+    const { produto, unidades } = mapearProduto(prod(' cx ', [{ id: U(3), unidade: 'pct', fator: 120_000, ean: null }]), EM);
+    expect(produto.payload.unidade).toBe('CX');
+    expect(unidades[0]!.payload).toMatchObject({ unidade: 'PCT', padrao: false });
+    expect(validarRegistro(produto, () => true)).toBeNull();
+  });
+
+  it('sigla com número, símbolo ou mais de 4 letras vira campo_invalido em unidade, sem o valor', () => {
+    for (const ruim of ['C1', 'CAIXA', 'KG.', 'M²']) {
+      const { produto, unidades } = mapearProduto(prod(ruim, [{ id: U(3), unidade: ruim, fator: 10_000, ean: null }]), EM);
+      expect(validarRegistro(produto, () => true)).toEqual({ external_id: produto.external_id, codigo: 'campo_invalido', campo: 'unidade' });
+      expect(validarRegistro(unidades[0]!, () => true)).toEqual({ external_id: U(3), codigo: 'campo_invalido', campo: 'unidade' });
+    }
+  });
+});
+
 describe('RF-INF-01 vendedor, condição, estoque', () => {
   it('vendedor: nome, filial e referência; sem código nem usuário', () => {
     const r = mapearVendedor({ id: U(5), codigo: 'V1', nome: 'Ana', filial_id: U(1), usuario_id: U(9), inativo: false }, EM);
     expect(r.payload).toEqual({ external_id: U(5), ativo: true, nome: 'Ana', filial_external_id: U(1) });
+    expect(r.erp_id).toBe(U(5));
     expect(r.fonte_refs).toEqual({ filial_id: U(1) });
   });
 
@@ -66,12 +122,13 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
     expect(mapearCondicao({ id: U(7), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: false }).prazo.payload.parcelas_dias).toBe('0');
   });
 
-  it('D11: estoque com saldo decimal por string, um depósito por filial, negativo como está', () => {
+  it('D11: estoque com saldo numérico, um depósito por filial, negativo como está', () => {
     const r = mapearEstoque(U(8), { filial_id: U(1), produto_id: U(2), quantidade: -15_000 }, EM, { depositoNome: 'Matriz' });
-    expect(r.payload).toEqual({ external_id: U(8), ativo: true, deposito_external_id: U(1), deposito_nome: 'Matriz', produto_external_id: U(2), saldo: '-1.5', filial_external_id: U(1) });
-    expect(decimal4(10_000)).toBe('1');
-    expect(decimal4(1)).toBe('0.0001');
-    expect(decimal4(0)).toBe('0');
+    expect(r.payload).toEqual({ external_id: U(8), ativo: true, deposito_external_id: U(1), deposito_nome: 'Matriz', produto_external_id: U(2), saldo: -1.5, filial_external_id: U(1) });
+    expect(quantidade4(10_000)).toBe(1);
+    expect(quantidade4(1)).toBe(0.0001);
+    expect(quantidade4(0)).toBe(0);
+    expect(JSON.stringify(quantidade4(125))).toBe('0.0125');
   });
 });
 
@@ -91,9 +148,10 @@ describe('RF-INF-01 produto e produto_unidade', () => {
 
   it('unidades: fator decimal, padrão = unidade comercial, produto inativo inativa as unidades', () => {
     const { unidades } = mapearProduto(ev, EM);
-    expect(unidades.map((u) => u.payload.fator)).toEqual(['1', '0.0125']);
+    expect(unidades.map((u) => u.payload.fator)).toEqual([1, 0.0125]);
     expect(unidades.map((u) => u.payload.padrao)).toEqual([true, false]);
     expect(unidades[1]!.payload.ean).toBe('7891234567895');
+    expect(unidades[0]!.erp_id).toBe(U(3));
     expect(unidades[0]!.fonte_refs).toEqual({ produto_id: U(2) });
     expect(mapearProduto({ ...ev, inativo: true }, EM).unidades.every((u) => !u.ativo)).toBe(true);
   });
@@ -111,20 +169,22 @@ describe('RF-INF-01 produto e produto_unidade', () => {
 describe('RF-INF-01 preço', () => {
   const ev = { tabela_preco_id: U(10), filial_id: U(1), produto_id: U(2), preco_centavos: 1990, desconto_maximo_bp: 500, inativo: false, vigencia_inicio: '2026-01-01', vigencia_fim: null };
 
-  it('sem a referência da tabela não vai (referencia_ausente, C-2)', () => {
-    expect(mapearPreco(U(11), ev, EM, { tabela: null, filialPadraoId: U(1) })).toBeNull();
+  it('sem a referência da tabela o preço entra sem tabela_nome e vira referencia_ausente (C-2)', () => {
+    const r = mapearPreco(U(11), ev, EM, { tabela: null, filialPadraoId: U(1) });
+    expect(r.payload.tabela_nome).toBeUndefined();
+    expect(validarRegistro(r, () => true)).toMatchObject({ codigo: 'referencia_ausente', campo: 'tabela_nome' });
   });
 
   it('preço em centavos, tabela com nome, sem desconto máximo; filial padrão sai sem filial (P-1)', () => {
-    const r = mapearPreco(U(11), ev, EM, { tabela: { nome: 'Varejo' }, filialPadraoId: U(1) })!;
+    const r = mapearPreco(U(11), ev, EM, { tabela: { nome: 'Varejo' }, filialPadraoId: U(1) });
     expect(r.payload).toEqual({ external_id: U(11), ativo: true, tabela_external_id: U(10), tabela_nome: 'Varejo', vigencia_inicio: '2026-01-01', produto_external_id: U(2), preco_cents: 1990 });
-    const outra = mapearPreco(U(12), { ...ev, filial_id: U(9) }, EM, { tabela: { nome: 'Varejo' }, filialPadraoId: U(1) })!;
+    const outra = mapearPreco(U(12), { ...ev, filial_id: U(9) }, EM, { tabela: { nome: 'Varejo' }, filialPadraoId: U(1) });
     expect(outra.payload.filial_external_id).toBe(U(9));
     expect(JSON.stringify(r.payload)).not.toMatch(/desconto/);
   });
 
   it('tabela inativa = preço ativo false', () => {
-    expect(mapearPreco(U(11), { ...ev, inativo: true }, EM, { tabela: { nome: 'V' }, filialPadraoId: null })!.ativo).toBe(false);
+    expect(mapearPreco(U(11), { ...ev, inativo: true }, EM, { tabela: { nome: 'V' }, filialPadraoId: null }).ativo).toBe(false);
   });
 });
 
@@ -142,6 +202,7 @@ describe('RF-INF-01 cliente com carteira (D7) e LGPD (M9)', () => {
     const { cliente } = mapearCliente(ev, EM, { condicao: { forma_tpag: '15', prazos_dias: [28, 56, 85] } });
     expect(cliente.payload).toMatchObject({ vendedor_external_id: U(5), filial_external_id: U(1), documento: '12345678000195', limite_credito_cents: 500_000, formas_pagamento: ['BOLETO'], prazo_medio_max_dias: 57 });
     expect((cliente.payload.endereco as Record<string, unknown>).cidade).toBe('Manaus');
+    expect(cliente.erp_id).toBe(U(20));
     expect(cliente.fonte_refs).toEqual({ vendedor_id: U(5), filial_id: U(1), condicao_pagamento_id: U(6) });
     expect(prazoMedioMaxDias([0])).toBe(0);
   });
@@ -196,5 +257,28 @@ describe('M5 validação local sem o valor (RN-INF-04)', () => {
     const r = validarRegistro(f, confirmadoTodos);
     expect(r).toMatchObject({ codigo: 'campo_invalido', campo: 'uf' });
     expect(JSON.stringify(r)).not.toContain('amazonas');
+  });
+});
+
+describe('RN-INF-02: chave do Hub = external_id da carga, senão o UUID (23h22)', () => {
+  it('filial, produto, cliente e vendedor usam o external_id quando existe', () => {
+    expect(mapearFilial(filial({ external_id: 'FIL-01' }), EM).registro.external_id).toBe('FIL-01');
+    expect(mapearFilial(filial(), EM).registro.external_id).toBe(U(1));
+    expect(mapearVendedor({ id: U(5), codigo: 'V1', nome: 'Ana', filial_id: U(1), usuario_id: null, external_id: ' VEN-5 ', inativo: false }, EM).external_id).toBe('VEN-5');
+    expect(mapearFilial(filial({ external_id: 'FIL-01' }), EM).registro.erp_id).toBe(U(1));
+  });
+
+  it('D12 (T-0026): a forma da carga viaja na condição; sem ela, UUID v5 do tPag e nome do MOC', () => {
+    const ev = { id: U(6), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], inativo: false, forma_external_id: 'FP-DIN', forma_codigo: 'DIN', forma_nome: 'Dinheiro da loja', external_id: 'PZ-1' };
+    const { forma, prazo } = mapearCondicao(ev, EM, { tenantId: U(100), formaAtiva: true });
+    expect(forma.external_id).toBe('FP-DIN');
+    expect(forma.payload).toMatchObject({ codigo: 'DIN', nome: 'Dinheiro da loja' });
+    expect(prazo.external_id).toBe('PZ-1');
+    expect(prazo.payload.forma_external_id).toBe('FP-DIN');
+  });
+
+  it('C-2: a tabela de preço vira referência com a chave própria e sem vigencia_fim nula', () => {
+    const r = mapearTabelaPreco({ id: U(10), nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: true, external_id: 'TAB-A', inativo: false }, EM);
+    expect(r).toEqual({ tipo: 'tabela_preco', erp_id: U(10), dados: { nome: 'Varejo', vigencia_inicio: '2026-01-01', inativo: false }, fonte_ocorrido_em: EM, external_id: 'TAB-A' });
   });
 });

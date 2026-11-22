@@ -60,14 +60,35 @@ export const SinalResumo = z.object({
 });
 export type SinalResumo = z.infer<typeof SinalResumo>;
 
-/** Corpo de `POST /integracao/v1/sinal` (seção 6): sem dado pessoal. */
+/**
+ * Corpo de `POST /integracao/v1/sinal` (`SinalConector` do FDV, conferido na L2a): sem dado pessoal. `fila` é a fila do
+ * conector por estado (registros do ERP ainda por enviar e lotes em voo); `entidades` o estado de cada entidade.
+ */
 export const CorpoSinal = z.object({
   versao_contrato: z.literal(VERSAO_CONTRATO_HUB),
-  conector_id: z.string(),
-  versao_conector: z.string(),
+  conector_id: z.string().min(1).max(100),
+  versao_conector: z.string().regex(/^\d+\.\d+\.\d+$/),
   em: z.string().datetime(),
-  fila: z.array(z.object({ entidade: EntidadeHub, pendentes: z.number().int().min(0) })),
-  entidades: z.array(z.object({ entidade: EntidadeHub, ultimo_envio_em: Instante, situacao: SituacaoEntidade })),
+  fila: z.array(z.object({ estado: z.string(), lotes: z.number().int().min(0), linhas: z.number().int().min(0), maisAntigo: Instante })),
+  entidades: z.array(
+    z.object({
+      entidade: EntidadeHub,
+      fase: z.enum(['completo', 'delta']),
+      ultimo_sucesso: Instante,
+      bloqueada: z.boolean(),
+      lotes_na_fila: z.number().int().min(0),
+    }),
+  ),
   parado_por_versao: z.boolean().optional(),
 });
 export type CorpoSinal = z.infer<typeof CorpoSinal>;
+
+/** Corpo de `POST /integracao/v1/reconciliacoes`: uma chamada por entidade e dia (`ReconciliacaoEnvio` do FDV). `soma` nula na v1. */
+export const CorpoReconciliacao = z.object({
+  versao_contrato: z.literal(VERSAO_CONTRATO_HUB),
+  entidade: EntidadeHub,
+  data_referencia: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  contagem: z.number().int().min(0),
+  soma: z.number().nullable(),
+});
+export type CorpoReconciliacao = z.infer<typeof CorpoReconciliacao>;

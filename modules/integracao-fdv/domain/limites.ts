@@ -41,3 +41,15 @@ export function decidirChamada(e: Pick<EntradaLimite, 'agora' | 'chamadasEm'>): 
   if (chamadas.length >= CHAMADAS_POR_MINUTO) return { permitido: false, motivo: 'limite_chamadas', esperarSegundos: espera(chamadas, CHAMADAS_POR_MINUTO, e.agora) };
   return { permitido: true };
 }
+
+/**
+ * Cotas de uma reserva da agenda (T-0009 6.1): o sinal (uma linha por tenant, vence a cada minuto) e a reconciliação
+ * (diária) nunca ocupam o limite todo e o envio nunca fica sem vez. O que o sinal e a reconciliação não usarem sobra para
+ * o envio. Reserva-se nesta ordem: sinal, reconciliação, envio.
+ */
+export function repartirLimiteAgenda(limite: number): { sinal: number; reconciliacao: number; envio: number } {
+  const l = Math.max(0, Math.floor(limite));
+  const sinal = Math.min(Math.ceil(l / 3), Math.max(0, l - 1));
+  const reconciliacao = Math.min(Math.ceil(l / 6), Math.max(0, l - sinal - 1));
+  return { sinal, reconciliacao, envio: l - sinal - reconciliacao };
+}
