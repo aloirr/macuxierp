@@ -39,6 +39,11 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(quem('pedido.pedido.cancelar')).toEqual(['administrador', 'gerente']);
   });
 
+  it('RN-FAT-06: baixar título com administrador, gerente e faturista (matriz do doc 03); fiscal, vendedor e leitura não', () => {
+    expect(quem('faturamento.titulo.baixar')).toEqual(['administrador', 'gerente', 'faturista']);
+    expect(moduloDaAcao('faturamento.titulo.baixar')).toBe('faturamento');
+  });
+
   it('RN-CORE-08: trocar ambiente fiscal só o administrador (o recado do Alexandre é conferido no core)', () => {
     expect(quem('core.ambiente.trocar')).toEqual(['administrador']);
   });

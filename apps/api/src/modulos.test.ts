@@ -14,7 +14,7 @@ import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { formulario, NOME_ARQUIVO_PADRAO } from './apoio-multipart';
 import { modulosDeTeste, repoCoreDuble } from './apoio-teste';
-import { certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
+import { a1AtivoDoCore, certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const USUARIO = '1f2e3d4c-5b6a-4789-8a9b-0c1d2e3f4a5b';
@@ -92,10 +92,10 @@ describe('registrarModulos', () => {
     expect(() => registrarModulos([coreDuble, manifesto('pedido', ['core', 'cadastros'])])).toThrow(/depende de cadastros/);
   });
 
-  it('montarModulos: os seis da v1; core, cadastros, pedido (T-0016) e integração FDV (T-0011) com rotas, os outros só com o manifesto', () => {
+  it('montarModulos: os seis da v1; core, cadastros, pedido (T-0016), faturamento (T-0045 lote A) e integração FDV (T-0011) com rotas, o fiscal só com o manifesto', () => {
     const m = modulosDeTeste();
     expect(m.map((p) => p.manifesto.id)).toEqual(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']);
-    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, false, false, true]);
+    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, true, false, true]);
     const integracao = m.find((p) => p.manifesto.id === 'integracao-fdv')!;
     expect(integracao.rotas.map((r) => `${r.metodo} ${r.caminho}`).sort()).toEqual(
       [
@@ -105,6 +105,23 @@ describe('registrarModulos', () => {
     );
     const pedido = m.find((p) => p.manifesto.id === 'pedido')!;
     expect(pedido.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toContain('POST /pedidos');
+    const faturamento = m.find((p) => p.manifesto.id === 'faturamento')!;
+    expect(faturamento.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toEqual(
+      expect.arrayContaining(['POST /notas', 'GET /notas', 'POST /notas/:id/cancelar', 'POST /notas/:id/carta-correcao', 'POST /inutilizacoes', 'POST /notas/:id/consultar']),
+    );
+    // RN-CORE-02: toda rota do faturamento declara a ação (perfil); tenant e licença ficam no `executarAutorizado` da plataforma.
+    expect(faturamento.rotas.every((r) => r.acao.startsWith('faturamento.'))).toBe(true);
+  });
+
+  it('faturamento na API: o veredito do A1 vem da porta do core na transação da rota (sem decifrar)', async () => {
+    const tx = { marca: 'tx-da-rota' } as never;
+    const vistas: unknown[] = [];
+    const repo = repoCoreDuble({
+      empresa: async (t) => (vistas.push(t), null),
+      certificados: async (t) => (vistas.push(t), [{ ativo: true, valido_de: new Date('2026-01-01T00:00:00Z'), valido_ate: new Date('2027-01-01T00:00:00Z') }] as never),
+    });
+    expect(await a1AtivoDoCore(repo, () => AGORA).temA1Ativo(tx, FILIAL)).toMatchObject({ valido: true });
+    expect(vistas).toEqual([tx, tx]);
   });
 });
 
