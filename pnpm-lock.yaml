@@ -324,6 +324,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@macuxierp/cadastros':
+        specifier: workspace:*
+        version: link:../../modules/cadastros
       '@macuxierp/core':
         specifier: workspace:*
         version: link:../../modules/core
