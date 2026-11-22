@@ -13,7 +13,8 @@ import { hojeCivil, situacaoDoTitulo } from './titulos';
 
 /** Local até o sdk ter `formatarDataCivil` (RD-0590): AAAA-MM-DD vira DD/MM/AAAA. */
 const dataCivil = (d: string): string => (DataCivil.safeParse(d).success ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : d);
-const hora = (fuso: string) => (iso: string | null | undefined): string => (iso ? formatarDataHora(iso, fuso) : '');
+/** Formata um instante ISO no fuso do tenant (`DD/MM/AAAA HH:mm`); vazio para nulo ou ausente. */
+export const hora = (fuso: string) => (iso: string | null | undefined): string => (iso ? formatarDataHora(iso, fuso) : '');
 const valor = (c: number | null | undefined): string => (c === null || c === undefined ? '' : formatarCentavos(c));
 const ou = (t: string | null | undefined): string => (t && t.trim() !== '' ? t : '—');
 
@@ -93,29 +94,33 @@ const SEM_CURSOR = { cursor: true, limite: true } as const;
 export const paginaPedidosAFaturar = definirPaginaLista({
   id: 'pedidos-a-faturar', api: `${BASE_API}/pedidos-a-faturar`, item: PedidoAFaturarResumo,
   filtros: FiltroPedidosAFaturar.omit(SEM_CURSOR).shape, colunas: colunasPedidos(FUSO_PADRAO), csv: { arquivo: 'pedidos-a-faturar.csv' },
+  vazio: { semFiltro: 'Nenhum pedido aprovado esperando nota.', comFiltro: 'Nenhum pedido com estes filtros.' },
 });
 
 /** Filtros `serie`, `numero` e `pedido_id` permitem a busca por número (e por pedido) na URL. */
 export const paginaNotas = definirPaginaLista({
   id: 'notas', api: `${BASE_API}/notas`, item: NotaResumo,
   filtros: FiltroNotas.omit(SEM_CURSOR).shape, colunas: colunasNotas(FUSO_PADRAO), csv: { arquivo: 'notas-fiscais.csv' },
+  vazio: { semFiltro: 'Nenhuma nota emitida ainda.', comFiltro: 'Nenhuma nota com estes filtros.' },
 });
 
 export const paginaRejeicoes = definirPaginaLista({
   id: 'rejeicoes', api: `${BASE_API}/rejeicoes`, item: RejeicaoNota, filtros: FiltroRejeicoes.omit(SEM_CURSOR).shape, colunas: colunasRejeicoes(FUSO_PADRAO), csv: { arquivo: 'rejeicoes.csv' },
+  vazio: { semFiltro: 'Nenhuma nota rejeitada. Está tudo certo.', comFiltro: 'Nenhuma rejeição com estes filtros.' },
 });
 
 export const paginaTitulos = definirPaginaLista({
   id: 'titulos', api: `${BASE_API}/titulos`, item: TituloResumo,
   filtros: FiltroTitulos.omit(SEM_CURSOR).shape, colunas: colunasTitulos(FUSO_PADRAO), csv: { arquivo: 'titulos-a-receber.csv' },
+  vazio: { semFiltro: 'Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', comFiltro: 'Nenhum título com estes filtros.' },
 });
 
-/** `textoVazio` da `TabelaDensa` de cada lista: o problema e a ação. */
+/** @deprecated use pagina.vazio (MC-0016); sai quando o shell ler pagina.vazio e trocar o IdLista (apps/web faturamento.ts:56). Texto neutro: vale com e sem filtro. */
 export const TEXTO_VAZIO: Readonly<Record<IdLista, string>> = {
-  'pedidos-a-faturar': 'Nenhum pedido a faturar. Pedidos aprovados aparecem aqui.',
-  rejeicoes: 'Nenhuma nota rejeitada. Está tudo certo.',
-  notas: 'Nenhuma nota neste filtro. Limpe os filtros.',
-  titulos: 'Nenhum título neste filtro. Os títulos aparecem quando uma nota a prazo é autorizada.',
+  'pedidos-a-faturar': 'Nenhum pedido encontrado.',
+  rejeicoes: 'Nenhuma rejeição encontrada.',
+  notas: 'Nenhuma nota encontrada.',
+  titulos: 'Nenhum título encontrado.',
 };
 
 const rotuloNota = (n: { numero: number | null; serie: number }): string => `Abrir nota ${numeroSerie(n) || 'sem número'}`;

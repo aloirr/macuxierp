@@ -1,5 +1,5 @@
 export {
-  PAGINAS_FATURAMENTO, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, TEXTO_VAZIO, ROTULO_LINHA, colunasDaPagina, csvDaPagina, paginaNoFuso, enderecoDaConsulta, perfilVeFaturamento,
+  PAGINAS_FATURAMENTO, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, TEXTO_VAZIO, ROTULO_LINHA, hora, colunasDaPagina, csvDaPagina, paginaNoFuso, enderecoDaConsulta, perfilVeFaturamento,
 } from './paginas';
 export {
   ACOES_DA_NOTA, BASE_API, ROTULO_ACAO_NOTA, ambienteDaConfirmacao, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, seloDoPedido, textoDoAmbiente, acaoPrincipalDaNota, acoesDoPedidoAFaturar, badgesDaNota, confirmacaoReenviar, contadorDeCaracteres, dialogoCancelar, dialogoCartaCorrecao, dialogoInutilizar,
