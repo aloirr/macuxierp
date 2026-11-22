@@ -5,16 +5,13 @@ body { font-family: var(--mx-fonte-texto); font-size: var(--mx-tamanho-base); ba
 a { color: var(--mx-cor-azul-noite); }
 :focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
 .topo :focus-visible, .lateral :focus-visible { outline: 2px solid var(--mx-cor-branco); outline-offset: 2px; }
+.topo .mx-botao-secundario:focus-visible { outline-color: var(--mx-cor-branco); }
 .pular { position: absolute; left: -999px; top: 0; background: var(--mx-cor-branco); padding: 8px 12px; z-index: 10; }
 .pular:focus { left: 8px; top: 8px; }
 .num { font-variant-numeric: var(--mx-fonte-numeros); }
 
 .marca { font-weight: var(--mx-peso-titulo); letter-spacing: .02em; }
 /* Botões: estilo único de @macuxierp/ui/botoes.css (MC-0008); aqui só o que é do shell. */
-/* provisório: sai quando o @macuxierp/ui gerar :hover/:focus-visible (pedido ao designer-ux) */
-.mx-botao:hover:not(:disabled) { background: var(--mx-cor-grafite); }
-.mx-botao-secundario:hover:not(:disabled) { background: var(--mx-cor-nevoa); border-color: var(--mx-cor-azul-noite); }
-.mx-botao:focus-visible, .mx-botao-secundario:focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
 .campo { display: block; margin-bottom: 16px; }
 .campo span { display: block; font-weight: var(--mx-peso-rotulo-campo); margin-bottom: 4px; }
 .campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
@@ -47,12 +44,18 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .selo { white-space: nowrap; padding: 2px 8px; border-radius: 10px; font-size: var(--mx-tamanho-selo); font-weight: var(--mx-peso-rotulo-pequeno); }
 .selo-ativo { background: var(--mx-cor-ativo-fundo); color: var(--mx-cor-ativo-texto); }
 .selo-inativo { background: var(--mx-cor-inativo-fundo); color: var(--mx-cor-texto-secundario); }
+/* Em 1024 px o contêiner tinha 700 px (menu de 260 + paddings de 32) e as tabelas pedem de 733 a 857: o menu e o respiro encolhem entre 801 e 1100 px. */
+@media (min-width: 801px) and (max-width: 1100px) { .casca { grid-template-columns: 208px minmax(0, 1fr); } .conteudo { padding: 24px; } .tabela-rolavel .selo { white-space: normal; display: inline-block; } /* "Homologação — sem valor fiscal" quebra em duas linhas em vez de pedir 230 px */ }
 @media (max-width: 800px) { .casca { grid-template-columns: 1fr; } .conteudo { padding: 16px; } }
 .faixa-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); border: 1px solid var(--mx-cor-aviso-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 
 /* Telas genéricas de descritor (T-0015): os componentes visuais são do @macuxierp/ui; aqui só o que o shell desenha. */
 .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tabela-rolavel { overflow-x: auto; max-width: 100%; }
+/* Se a tabela ainda não couber, a coluna de ações (ex.: "Emitir nota") fica fixa à direita, com fundo e divisória por token; nenhuma coluna é cortada. */
+.tabela-rolavel.com-acoes th:last-child, .tabela-rolavel.com-acoes td:last-child { position: sticky; right: 0; background: var(--mx-cor-branco); border-left: 1px solid var(--mx-cor-borda-tabela); }
+.itens-parcial .entrada { width: 7rem; text-align: right; }
+.itens-parcial td, .itens-parcial th { padding: 6px 8px; }
 /* Colunas de largura fixa: a grade não muda com o tamanho do rótulo; "Filtrar" e "Limpar" ficam juntos na última célula. */
 .filtros { display: grid; grid-template-columns: repeat(auto-fill, 220px); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
 .filtros .campo { margin: 0; min-width: 0; }

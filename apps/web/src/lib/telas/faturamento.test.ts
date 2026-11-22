@@ -6,7 +6,7 @@ import { EU_FALSO } from '../falso';
 import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
 import { PAGINAS_REGISTRADAS, casarRota, paginasDoMenu } from '../paginas';
-import { escritaDeclarada, executorDaTela, executorDeAcoes, telaDaRota } from '../telas';
+import { escritaDeclarada, executorDaTela, executorDeAcoes, leituraDeclarada, telaDaRota } from '../telas';
 import { aposResposta, chaveParaEnvio, ehRespostaDefinitiva, estadoDoClique } from '../descritor/idempotencia';
 import { DETALHE_NOTA, DETALHE_TITULO, LISTA_NOTAS, LISTA_PEDIDOS_A_FATURAR, LISTA_REJEICOES, LISTA_TITULOS, validarAcaoDaNota, validarAcaoDoTitulo, vistaDaNota, vistaDoTitulo } from './faturamento';
 
@@ -343,9 +343,72 @@ describe('linha "Ambiente:" das confirmações fiscais (RN-FAT-04)', () => {
     expect(emitir({ ambiente: 'homologacao' })?.ambiente).toEqual({ texto: 'Ambiente: Homologação, sem valor fiscal', tom: 'neutro' });
     expect(emitir({ ambiente: 'producao' })?.ambiente).toEqual({ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' });
   });
-  it('Inutilizar leva a linha de ambiente (o shell não tem o ambiente da filial) e os limites do contador', () => {
+  it('Inutilizar declara a leitura do ambiente da filial; a resposta vira a linha do módulo e a ausência fica no texto de aviso', () => {
+    const a = LISTA_NOTAS.acaoDaBarra!.acao('administrador')!;
+    const ex = LISTA_NOTAS.acaoDaBarra!;
+    expect(a.ambientePorFilial).toBe('/v1/faturamento/filiais/:id/configuracao');
+    expect(leituraDeclarada(`/v1/faturamento/filiais/${ID}/configuracao`)).toBeDefined();
+    expect(leituraDeclarada(`/v1/faturamento/filiais/${ID}/outra`)).toBeUndefined();
+    expect(ex.ambienteDaLeitura!({ filial_id: ID, faturamento_real_nfe_simulada: false, ambiente: 'producao' })).toEqual({ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' });
+    expect(ex.ambienteDaLeitura!({ filial_id: ID, faturamento_real_nfe_simulada: false, ambiente: 'homologacao' })).toEqual({ texto: 'Ambiente: Homologação, sem valor fiscal', tom: 'neutro' });
+    expect(ex.ambienteDaLeitura!({ lixo: true })).toBeNull();
+  });
+  it('Inutilizar leva a linha de ambiente de ausência e os limites do contador', () => {
     const a = LISTA_NOTAS.acaoDaBarra!.acao('administrador')!;
     expect(a.ambiente).toEqual({ texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' });
     expect(a.limitesTexto).toMatchObject({ min: expect.any(Number), max: expect.any(Number) });
+  });
+});
+
+describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
+  const linha = { id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ambiente: 'homologacao' };
+  const exec = LISTA_PEDIDOS_A_FATURAR.acaoDaLinha!;
+  const mais = (perfil: Parameters<typeof exec.acao>[1], l: Record<string, unknown> = linha) => exec.maisAcoes?.(l, perfil) ?? [];
+  const itens = (...q: [number, string, number][]) => q.map(([sequencia, quantidade, saldo]) => ({ sequencia, descricao: `Produto ${sequencia}`, saldo, quantidade }));
+
+  it('só administrador, faturista e fiscal veem; leitura, gerente e vendedor não; pedido faturado não oferece', () => {
+    for (const p of ['administrador', 'faturista', 'fiscal'] as const) expect(mais(p)[0], p).toMatchObject({ id: 'emitir-parcial', rotulo: 'Emitir nota parcial', entrada: 'itens', metodo: 'POST', caminho: '/v1/faturamento/notas', leitura: `/v1/faturamento/pedidos-a-faturar/${ID}` });
+    for (const p of ['leitura', 'gerente', 'vendedor'] as const) expect(mais(p), p).toEqual([]);
+    expect(mais('administrador', { ...linha, status: 'faturado' })).toEqual([]);
+    expect(mais('faturista', { ...linha, status: 'faturado_parcial' })).toHaveLength(1);
+  });
+  it('a leitura usa o id da linha (não o pedido_id) e é declarada; o ambiente do pedido vai no diálogo', () => {
+    const a = mais('administrador', { ...linha, ambiente: 'producao' })[0]!;
+    expect(a.ambiente).toEqual({ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' });
+    expect(mais('administrador')[0]!.ambiente).toEqual({ texto: 'Ambiente: Homologação, sem valor fiscal', tom: 'neutro' });
+    expect(leituraDeclarada(`/v1/faturamento/pedidos-a-faturar/${ID}`)).toBeDefined();
+    expect(leituraDeclarada(`/v1/faturamento/pedidos-a-faturar/${ID}/x`)).toBeUndefined();
+    expect(leituraDeclarada('/v1/cadastros/clientes')).toBeUndefined();
+  });
+  it('os itens do diálogo trazem descrição (ou "Item n"), saldo em qtd4 e o texto pt-BR', () => {
+    const detalhe = { id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ambiente: 'homologacao', itens: [
+      { sequencia: 1, produto_id: P, descricao: 'Água 500 ml', quantidade_pedida: 30000, quantidade_faturada: 5000, saldo: 25000, valor_unitario_centavos: 250 },
+      { sequencia: 2, produto_id: P, descricao: null, quantidade_pedida: 10000, quantidade_faturada: 0, saldo: 10000, valor_unitario_centavos: 100 },
+    ] };
+    const r = exec.itensDaLeitura!({ ...detalhe, filial_id: ID, cliente_id: ID, cliente_razao_social: null, recebido_em: '2026-11-22T14:00:00.000Z', total_centavos: 1 });
+    expect(r).toEqual([{ sequencia: 1, descricao: 'Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }]);
+  });
+  it('a quantidade em pt-BR vira qtd4 sem float; o limite é o saldo; 0 tira o item', () => {
+    const a = mais('administrador')[0]!;
+    const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '1,5', 25000], [2, '0', 10000], [3, '0,1234', 20000]) });
+    expect(r).toEqual({ ok: true, corpo: { pedido_id: P, itens: [{ sequencia: 1, quantidade: 15000 }, { sequencia: 3, quantidade: 1234 }], idempotencia: 'chave-parcial-1' } });
+    expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '2,5', 25000]) })).toMatchObject({ ok: true }); // igual ao saldo: vale
+  });
+  it('o campo da quantidade começa no saldo sem ponto de milhar, e o validador o aceita como está', () => {
+    const r = exec.itensDaLeitura!({ id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ambiente: 'homologacao', filial_id: ID, cliente_id: ID, cliente_razao_social: null, recebido_em: '2026-11-22T14:00:00.000Z', total_centavos: 1,
+      itens: [{ sequencia: 1, produto_id: P, descricao: 'Água', quantidade_pedida: 15000000, quantidade_faturada: 0, saldo: 15000000, valor_unitario_centavos: 1 }] });
+    expect(r[0]).toMatchObject({ saldoTexto: '1.500', saldoCampo: '1500' });
+    const a = mais('administrador')[0]!;
+    expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: [{ sequencia: 1, descricao: 'Água', saldo: 15000000, quantidade: r[0]!.saldoCampo }] })).toMatchObject({ ok: true });
+  });
+  it('acima do saldo, vazio, inválido ou tudo zerado recusam com texto claro', () => {
+    const a = mais('administrador')[0]!;
+    const e = (i: ReturnType<typeof itens>) => exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: i });
+    expect(e(itens([1, '2,5001', 25000]))).toEqual({ ok: false, erro: '"Produto 1": a quantidade passa do saldo (2,5).' });
+    expect(e(itens([1, '', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('quantidade válida') });
+    expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
+    expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
+    expect(e(itens([1, '0', 25000], [2, '0,0', 10000]))).toEqual({ ok: false, erro: 'Deixe ao menos um item com quantidade maior que zero.' });
+    expect(e([])).toMatchObject({ ok: false });
   });
 });
