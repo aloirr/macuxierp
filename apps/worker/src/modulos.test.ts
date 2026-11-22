@@ -100,9 +100,11 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     expect(agendas('desligado', 'ligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
   });
 
-  it('consumidores: carga inicial, espelho dos cadastros e retorno do pedido, cada um uma vez', () => {
+  it('consumidores: carga inicial, espelho dos cadastros, retorno do pedido e notas (pedido e estoque), cada um uma vez', () => {
     const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
-    expect(consumidores.map((c) => c.id)).toEqual(['cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido']);
+    expect(consumidores.map((c) => c.id)).toEqual(['cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido', 'pedido.nota-autorizada', 'cadastros.estoque-nota']);
+    expect(consumidores[3]!.eventos).toEqual(['faturamento.nota.autorizada@1']);
+    expect(consumidores[4]!.eventos).toEqual(['faturamento.nota.autorizada@1', 'faturamento.nota.cancelada@1']);
     expect(consumidores[1]!.eventos).toEqual(EVENTOS_CADASTROS_PUBLICADOS);
     expect(consumidores[2]!.eventos).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1']);
   });

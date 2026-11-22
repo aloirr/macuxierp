@@ -13,7 +13,7 @@
  *   licença PG) e `integracao-fdv.retorno-pedido` (grava o retorno do status do pedido para a agenda de retorno).
  * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
  */
-import { criarConsumidorCargaInicial, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
+import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
   destinoAvisosSql,
   exportadorCore,
@@ -41,10 +41,11 @@ import {
   type Outbox,
   type Relogio,
 } from '@macuxierp/platform-sdk';
-import { exportadorPedido } from '@macuxierp/pedido/api';
+import { consumidoresDoPedido, exportadorPedido } from '@macuxierp/pedido/api';
 import { FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
+import { depsConsumidorEstoqueNota, depsConsumidoresPedido } from './consumidores-nota';
 import type { EstadoEnvioFdv } from './envio-fdv';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
 import { criarAlertaMonitor, type MontagemPedidosFdv } from './pedidos-fdv';
@@ -114,13 +115,16 @@ export interface DependenciasConsumidoresWorker {
  * carga inicial do cadastros, espelho do `integracao-fdv` (`publicar-cadastros`) e retorno do pedido. O consumidor do
  * retorno entra mesmo com o recebimento desligado: só grava a fila local (`retorno_enviado`) e nunca chama o Hub; sem
  * `pedido_recebido` do conector, ele só loga e ignora. O alerta do monitor (`criarAlertaMonitor`, T-0011) vai junto: o
- * retorno descartado sem chave do produto aparece no monitor.
+ * retorno descartado sem chave do produto aparece no monitor. Notas do faturamento (T-0045): pedido e estoque, com as
+ * dependências de `consumidores-nota.ts`.
  */
 export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly ConsumidorEvento[] {
   return Object.freeze([
     criarConsumidorCargaInicial({ fila: d.fila ?? new FilaDeTrabalhosPg() }),
     criarConsumidorPublicarCadastros({ licencas: d.licencas ?? new LicencasPg(), agora: () => d.relogio.agora() }),
     criarConsumidorRetornoPedido({ log: d.log, relogio: d.relogio, alertar: criarAlertaMonitor(d.log) }),
+    ...consumidoresDoPedido(depsConsumidoresPedido(d)),
+    criarConsumidorEstoqueNota(depsConsumidorEstoqueNota(d)),
   ]);
 }
 

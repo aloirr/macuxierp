@@ -4,7 +4,7 @@
 
 | Módulo | Publica | Consome |
 |---|---|---|
-| `cadastros` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1`, `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1` | `core.usuario.alterado@1` (liga vendedor a usuário), `integracao-fdv.carga_inicial.solicitada@1` (leitor tolerante, T-0034) |
+| `cadastros` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1`, `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1` | `core.usuario.alterado@1` (liga vendedor a usuário), `integracao-fdv.carga_inicial.solicitada@1` (leitor tolerante, T-0034), `faturamento.nota.autorizada@1` e `faturamento.nota.cancelada@1` (estoque pela nota, T-0021) |
 | `core` | `core.empresa.alterada@1`, `core.usuario.alterado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` | — |
 | `faturamento` | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.nota.rejeitada@1`, `faturamento.titulo.gerado@1`, `faturamento.titulo.baixado@1` | `pedido.pedido.aprovado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` (F4, a confirmar na T-0018) |
 | `fiscal` | `fiscal.regra.alterada@1` | — |
@@ -15,6 +15,11 @@
 `{ id: uuid, nome: "<m>.<ent>.<fato>@vN", tenant_id, agregado_id, versao, ocorrido_em (UTC), ator: usuario_id | "sistema", request_id, payload }`. Gravado na outbox (`plataforma.evento`) na mesma transação da escrita. O consumidor é idempotente por `(consumidor, evento_id)` em `plataforma.evento_consumido` e descarta `versao` menor que a última já aplicada ao agregado.
 
 `versao` (inteiro ≥ 1) é definida pela outbox (`Outbox.gravar`), não pelo módulo: contador por `(tenant_id, agregado_id)`, para qualquer nome de evento, sem buraco e sem repetição; rollback não consome versão. O `versao` passado a `ContextoRota.publicar` está obsoleto e é ignorado; o envelope devolvido traz a versão gravada (T-0034). A forma do envelope não muda (inteiro ≥ 1), por isso sem ADR nem nova versão de contrato.
+
+### Entrega, limite de tentativas e reentrega (T-0045, sem mudança de envelope)
+- **Limite:** o despachante tenta cada evento até `MACUXIERP_OUTBOX_MAX_TENTATIVAS` (padrão 10) com backoff (10 s, 20 s... teto 1 h). Na última falha o evento vai ao estado terminal **`falhou`** sem coluna nova: `publicado_em` preenchido, `erro` começando por `falhou: ` e sem linha em `evento_consumido` para o consumidor que falhou. Sai o alerta do monitor `evento_falhou` (`evento_id`, `consumidor`) e os eventos seguintes do agregado seguem. O contador `tentativas` é do evento (dois consumidores falhando somam no mesmo).
+- **Recusa definitiva não lança:** o consumidor que sabe que a repetição não muda nada (payload fora do contrato, status inválido) loga, alerta e retorna; só o erro transitório (banco, rede) lança.
+- **Reentrega na partida:** consumidor ligado depois do evento publicado o recebe na partida do worker (`apps/worker/src/reentrega.ts`), desde o início, para os nomes de `EVENTOS_REENTREGA_PADRAO` (hoje `pedido.pedido.aprovado@1`). Lê só `plataforma.evento` e `plataforma.evento_consumido`; pula evento em `falhou`; idempotente por `(consumidor, evento_id)`. Quem consome um nome da lista precisa aceitar eventos antigos (conferir o estado atual do agregado antes de agir).
 
 ## Payloads de core e cadastros (v1)
 Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: boolean` (RN-CAD-08). Os campos seguem os esboços Zod de `docs/desenho/T-0002.md`.
