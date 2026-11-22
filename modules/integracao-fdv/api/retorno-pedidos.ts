@@ -11,7 +11,31 @@ import type { Alertar, ClienteHubPedidos, LogPedidos } from './portas';
 import { adiarPresoAPosse } from './conector-comum';
 import { codigoSeguro, gravarRetorno, motivoDaRecusa } from './util-pedidos';
 
-export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: Relogio }): ConsumidorEvento {
+/** Mensagem fixa: o despachante registra o nome e a tentativa e repete com backoff até o espelho ter o produto. */
+export class ChaveDoProdutoAusente extends Error {
+  override readonly name = 'ChaveDoProdutoAusente';
+  constructor() {
+    super('produto faturado sem chave do Hub no espelho');
+  }
+}
+
+/**
+ * Chave do Hub dos produtos pelo `erp_id` do espelho (ADR 0010, item 1). Só colunas nomeadas; produto fora do espelho fica fora do
+ * mapa. Produto inativo também tem chave (o faturado de um produto depois inativado não pode ficar sem retorno): a linha ativa vem
+ * primeiro e, entre as demais, a mais recente.
+ */
+async function chavesHubDosProdutos(tx: Transacao, tenantId: string, ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const l = await tx.consultar<{ erp_id: string; chave: string }>(
+    `SELECT DISTINCT ON (erp_id) erp_id, registro_external_id AS chave FROM integracao_fdv.registro_publicado
+      WHERE tenant_id = $1 AND entidade = 'produto' AND erp_id = ANY($2::uuid[]) AND deleted_at IS NULL
+      ORDER BY erp_id, ativo DESC, alterado_em DESC`,
+    [tenantId, [...new Set(ids)]],
+  );
+  return new Map(l.map((x) => [x.erp_id, x.chave]));
+}
+
+export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: Relogio; alertar?: Alertar }): ConsumidorEvento {
   return {
     id: 'integracao-fdv.retorno-pedido',
     eventos: EVENTOS_DE_RETORNO,
@@ -36,8 +60,23 @@ export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: R
           ORDER BY created_at DESC, id DESC LIMIT 1`,
         [evento.tenant_id, uuid],
       );
-      const decisao = retornoDoPedido({ nome: evento.nome, ocorrido_em: evento.ocorrido_em, payload: payload.data }, ultimo[0]?.status ?? null);
-      if (decisao.acao === 'enviar') await gravarRetorno(tx, evento.tenant_id, decisao.corpo, deps.relogio.agora());
+      const chavesProduto = evento.nome === 'pedido.pedido.faturado@1' ? await chavesHubDosProdutos(tx, evento.tenant_id, (payload.data.itens_faturados ?? []).map((i) => i.produto_id)) : new Map<string, string>();
+      const agora = deps.relogio.agora();
+      const decisao = retornoDoPedido({ nome: evento.nome, ocorrido_em: evento.ocorrido_em, payload: payload.data }, ultimo[0]?.status ?? null, chavesProduto, agora);
+      if (decisao.acao === 'descartar_sem_chave') {
+        // Prazo vencido (RN-PED-05): o evento termina sem erro (o despachante não repete mais). O registro `falhou` leva só os UUIDs dos produtos sem chave.
+        const criou = await gravarRetorno(tx, evento.tenant_id, decisao.corpo, agora, { produtos: decisao.produtos });
+        if (criou) {
+          deps.log.error({ tenant_id: evento.tenant_id, modulo: 'integracao-fdv', pedido_uuid: uuid, codigo: 'retorno_sem_chave_produto', produtos: decisao.produtos.length }, 'retorno faturado descartado: produto sem chave do Hub');
+          deps.alertar?.(evento.tenant_id, 'retorno_sem_chave_produto', { pedido_uuid: uuid });
+        }
+        return;
+      }
+      if (decisao.acao === 'aguardar_chave') {
+        deps.log.warn({ tenant_id: evento.tenant_id, modulo: 'integracao-fdv', pedido_uuid: uuid, codigo: 'produto_sem_chave_no_espelho', produtos: decisao.produtos.length }, 'retorno faturado aguarda a chave do produto');
+        throw new ChaveDoProdutoAusente();
+      }
+      if (decisao.acao === 'enviar') await gravarRetorno(tx, evento.tenant_id, decisao.corpo, agora);
     },
   };
 }
@@ -71,7 +110,7 @@ export interface ResumoEnvio {
 /** Regrava `sinal.proximo_retorno_em`: presa à posse (`adiarPresoAPosse`, o único caminho) quando há `posseAte`; sem ela, incondicional. */
 async function gravarProximoRetorno(tx: Transacao, tenantId: string, para: Date, posseAte?: Date): Promise<void> {
   if (posseAte) return adiarPresoAPosse(tx, tenantId, { sinal: 'proximo_retorno_em' }, posseAte, para);
-  await tx.consultar(`UPDATE integracao_fdv.sinal SET proximo_retorno_em = $2, updated_at = now() WHERE tenant_id = $1 AND deleted_at IS NULL`, [tenantId, para]);
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET proximo_retorno_em = $2 WHERE tenant_id = $1 AND deleted_at IS NULL`, [tenantId, para]);
 }
 
 const RODADAS_MAX = 20;
@@ -101,7 +140,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
       if (linhas.length === 0) {
         // Só zera se nada ficou pendente e, com posse, só se ela ainda é desta reserva: um retorno gravado depois da leitura não perde o wakeup.
         await tx.consultar(
-          `UPDATE integracao_fdv.sinal SET proximo_retorno_em = NULL, updated_at = now()
+          `UPDATE integracao_fdv.sinal SET proximo_retorno_em = NULL
             WHERE tenant_id = $1 AND deleted_at IS NULL
               AND ($2::timestamptz IS NULL OR proximo_retorno_em = $2)
               AND NOT EXISTS (SELECT 1 FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND estado = 'pendente' AND deleted_at IS NULL)`,
@@ -130,7 +169,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
         await d.banco.comTenant(tenantId, (tx) =>
           tx.consultar(
             `UPDATE integracao_fdv.retorno_enviado SET estado = 'enviado', enviado_em = $3, resposta_http = $4,
-                    itens_descartados = $5::jsonb, tentativas = tentativas + 1, updated_at = now()
+                    itens_descartados = $5::jsonb, tentativas = tentativas + 1
               WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, agora, resp.status, descartados.length ? JSON.stringify(descartados) : null],
           ),
@@ -144,7 +183,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
         const espera = atrasoRetentativaSegundos(item.tentativas + 1, resp.retryAfterS) * 1000;
         await d.banco.comTenant(tenantId, async (tx) => {
           await tx.consultar(
-            `UPDATE integracao_fdv.retorno_enviado SET tentativas = tentativas + 1, resposta_http = $3, updated_at = now()
+            `UPDATE integracao_fdv.retorno_enviado SET tentativas = tentativas + 1, resposta_http = $3
               WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, resp.status === 0 ? null : resp.status],
           );
@@ -158,7 +197,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
         // 400 e 422: definitivos (o Hub recusou o retorno). Só o código do Hub vai ao monitor.
         await d.banco.comTenant(tenantId, (tx) =>
           tx.consultar(
-            `UPDATE integracao_fdv.retorno_enviado SET estado = 'falhou', resposta_http = $3, tentativas = tentativas + 1, updated_at = now()
+            `UPDATE integracao_fdv.retorno_enviado SET estado = 'falhou', resposta_http = $3, tentativas = tentativas + 1
               WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, resp.status],
           ),

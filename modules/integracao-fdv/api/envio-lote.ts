@@ -77,6 +77,11 @@ class GeracoesEsgotadas extends Error {
   override readonly name = 'GeracoesEsgotadas';
 }
 
+/** A sessão da entidade mudou entre a leitura e a gravação (carga completa pedida no meio): a transação é desfeita e o envio repete na próxima agenda. */
+class CursorMudou extends Error {
+  override readonly name = 'CursorMudou';
+}
+
 interface LinhaCursor {
   cursor_alterado_em: Date | null;
   cursor_external_id: string | null;
@@ -120,6 +125,11 @@ interface Exec {
  * a mesma regra de `adiarPresoAPosse`, junto com as outras colunas na mesma instrução).
  */
 interface MudancaCursor {
+  /**
+   * `sessao_aberta_id` que o `montarLoteNoBanco` leu (com a linha travada): a gravação só vale se ainda for esta (`IS NOT DISTINCT
+   * FROM`, que também casa `null`). Sem condição = `undefined`. Se a linha mudou, a transação inteira é desfeita e o envio repete.
+   */
+  sessaoLida?: string | null;
   proximoEm: Date;
   envioEm?: Date;
   sucessoEm?: Date;
@@ -127,7 +137,7 @@ interface MudancaCursor {
   sessaoAberta?: { id: string | null };
 }
 async function gravarCursor(tx: Transacao, e: Exec, m: MudancaCursor): Promise<void> {
-  await tx.consultar(
+  const gravadas = await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade SET
         proximo_em = CASE WHEN proximo_em = $3 THEN $4 ELSE proximo_em END,
         ultimo_envio_em = coalesce($5::timestamptz, ultimo_envio_em),
@@ -135,15 +145,17 @@ async function gravarCursor(tx: Transacao, e: Exec, m: MudancaCursor): Promise<v
         cursor_alterado_em = CASE WHEN $7::boolean THEN $8::timestamptz ELSE cursor_alterado_em END,
         cursor_external_id = CASE WHEN $7::boolean THEN $9::text ELSE cursor_external_id END,
         sessao_aberta_id = CASE WHEN $10::boolean THEN $11::uuid ELSE sessao_aberta_id END,
-        credencial_id = coalesce(credencial_id, $12::uuid),
-        updated_at = now()
-      WHERE tenant_id = $1 AND entidade = $2`,
+        credencial_id = coalesce(credencial_id, $12::uuid)
+      WHERE tenant_id = $1 AND entidade = $2 AND (NOT $13::boolean OR sessao_aberta_id IS NOT DISTINCT FROM $14::uuid)
+      RETURNING 1 AS ok`,
     [
       e.tenant, e.entidade, e.ctx.posseAte, m.proximoEm, m.envioEm ?? null, m.sucessoEm ?? null,
       m.cursor !== undefined, m.cursor?.alterado_em ?? null, m.cursor?.external_id ?? null,
       m.sessaoAberta !== undefined, m.sessaoAberta?.id ?? null, e.credId,
+      m.sessaoLida !== undefined, m.sessaoLida ?? null,
     ],
   );
+  if (m.sessaoLida !== undefined && gravadas.length === 0) throw new CursorMudou();
 }
 
 async function publicar(tx: Transacao, e: Exec, nome: typeof EVENTO_LOTE_ENVIADO | typeof EVENTO_LOTE_FALHOU, loteId: string, payload: Record<string, unknown>): Promise<void> {
@@ -230,15 +242,23 @@ async function montarEEnviar(e: Exec, cursor: LinhaCursor): Promise<void> {
     }
     hubCursor = lido.data.cursor;
   }
-  const decisao = await e.ctx.emTransacao((tx) => montarLoteNoBanco(tx, e, cursor, hubCursor));
+  const decisao = await e.ctx.emTransacao((tx) => montarLoteNoBanco(tx, e, hubCursor));
   if (decisao.tipo === 'nada') return;
   await enviarLote(e, decisao.lote);
 }
 
 type Decisao = { tipo: 'nada' } | { tipo: 'lote'; lote: LinhaLote };
 
-async function montarLoteNoBanco(tx: Transacao, e: Exec, cursor: LinhaCursor, hubCursor: CursorHub | null | undefined): Promise<Decisao> {
+async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | null | undefined): Promise<Decisao> {
   const { tenant, entidade, agora } = e;
+  // O cursor foi lido numa transação anterior (e o Hub consultado depois): reler com a linha travada. A carga completa do BKO, que
+  // também trava esta linha, ou já valeu (vale a leitura de agora) ou espera esta transação acabar e vê o lote montado (409).
+  const [cursor] = await tx.consultar<LinhaCursor>(
+    `SELECT cursor_alterado_em, cursor_external_id, sessao_aberta_id, pausada_motivo
+       FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1 AND entidade = $2 AND deleted_at IS NULL FOR NO KEY UPDATE`,
+    [tenant, entidade],
+  );
+  if (!cursor || cursor.pausada_motivo) return { tipo: 'nada' };
   // limites próprios do tenant: 15 lotes e 120 chamadas por minuto (domain/limites)
   const recentes = await tx.consultar<{ enviado_em: Date }>(
     `SELECT enviado_em FROM integracao_fdv.lote_envio WHERE tenant_id = $1 AND enviado_em > $2 AND deleted_at IS NULL`,
@@ -258,7 +278,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, cursor: LinhaCursor, hu
     if (hubCursor) {
       // o Hub já tem dados deste conector: segue em delta a partir do cursor dele
       localCursor = hubCursor;
-      await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, cursor: hubCursor });
+      await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, cursor: hubCursor, sessaoLida: cursor.sessao_aberta_id });
     } else {
       sessaoId = randomUUID();
     }
@@ -362,7 +382,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, cursor: LinhaCursor, hu
   for (const [indice, l] of detalhadas.entries()) {
     await gravarErroDeLinha(tx, e, { loteId: novo.id, origem: 'erp', indice, externalId: l.external_id, codigo: l.codigo, campo: l.campo, reprocessavel: l.codigo === 'referencia_ausente' });
   }
-  if (sessaoId && !cursor.sessao_aberta_id) await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, sessaoAberta: { id: sessaoId } });
+  if (sessaoId && !cursor.sessao_aberta_id) await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, sessaoAberta: { id: sessaoId }, sessaoLida: cursor.sessao_aberta_id });
   return {
     tipo: 'lote',
     lote: { id: novo.id, estado: 'montado', modo, sessao_id: novo.sessao?.id ?? null, sessao_parte: novo.sessao?.parte ?? null, sessao_ultimo: novo.sessao?.ultimo ?? null, geracao, chave_idempotencia: chave, corpo: montado.corpo, hub_lote_id: null, tentativas: 0, enviado_em: null, contagens: novo.contagens },
@@ -434,13 +454,13 @@ async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
   e.loteAtual = lote;
   const tentativas = await e.ctx.emTransacao(async (tx) => {
     const [l] = await tx.consultar<{ tentativas: number }>(
-      `UPDATE integracao_fdv.lote_envio SET estado = 'enviando', tentativas = tentativas + 1, enviado_em = coalesce(enviado_em, $3), updated_at = now()
+      `UPDATE integracao_fdv.lote_envio SET estado = 'enviando', tentativas = tentativas + 1, enviado_em = coalesce(enviado_em, $3)
         WHERE tenant_id = $1 AND id = $2 AND estado IN ('montado', 'enviando') RETURNING tentativas`,
       [e.tenant, lote.id, e.agora],
     );
     if (!l) return null;
     await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, envioEm: e.agora });
-    await tx.consultar('UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2, updated_at = now() WHERE tenant_id = $1', [e.tenant, e.agora]);
+    await tx.consultar('UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2 WHERE tenant_id = $1', [e.tenant, e.agora]);
     return l.tentativas;
   });
   if (tentativas === null) return; // outro processo já avançou este lote
@@ -454,7 +474,7 @@ async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
     }
     await e.ctx.emTransacao(async (tx) => {
       await tx.consultar(
-        `UPDATE integracao_fdv.lote_envio SET estado = 'aceito', hub_lote_id = $3, repetido = $4, ultimo_erro_codigo = NULL, updated_at = now()
+        `UPDATE integracao_fdv.lote_envio SET estado = 'aceito', hub_lote_id = $3, repetido = $4, ultimo_erro_codigo = NULL
           WHERE tenant_id = $1 AND id = $2 AND estado IN ('montado', 'enviando')`,
         [e.tenant, lote.id, aceito.data.lote_id, acao.acao === 'replay' || aceito.data.repetido === true],
       );
@@ -465,7 +485,7 @@ async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
   }
   if (acao.acao === 'retentar') {
     await e.ctx.emTransacao(async (tx) => {
-      await tx.consultar(`UPDATE integracao_fdv.lote_envio SET ultimo_erro_codigo = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2 AND estado IN ('montado', 'enviando')`, [e.tenant, lote.id, acao.codigo]);
+      await tx.consultar(`UPDATE integracao_fdv.lote_envio SET ultimo_erro_codigo = $3 WHERE tenant_id = $1 AND id = $2 AND estado IN ('montado', 'enviando')`, [e.tenant, lote.id, acao.codigo]);
       await gravarCursor(tx, e, { proximoEm: mais(e.agora, atrasoRetentativaSegundos(tentativas, acao.retryAfterSegundos)) });
     });
     return;
@@ -493,7 +513,7 @@ async function tratarFalhaSemLote(e: Exec, resp: RespostaHub): Promise<void> {
  */
 async function recusarLote(tx: Transacao, e: Exec, lote: Pick<LinhaLote, 'id' | 'tentativas' | 'geracao' | 'modo'>, codigo: string, publicarEvento = true): Promise<boolean> {
   const l = await tx.consultar<{ id: string }>(
-    `UPDATE integracao_fdv.lote_envio SET estado = 'recusado', ultimo_erro_codigo = $3, concluido_em = $4, updated_at = now()
+    `UPDATE integracao_fdv.lote_envio SET estado = 'recusado', ultimo_erro_codigo = $3, concluido_em = $4
       WHERE tenant_id = $1 AND id = $2 AND estado = ANY($5::text[]) RETURNING id`,
     [e.tenant, lote.id, codigo, e.agora, [...ESTADOS_EM_VOO]],
   );
@@ -534,7 +554,7 @@ async function dividir(tx: Transacao, e: Exec, lote: LinhaLote, resp: RespostaHu
     [e.tenant, lote.id, novo.id],
   );
   await tx.consultar(
-    `UPDATE integracao_fdv.lote_erro SET resolvido_em = $4, resolvido_no_lote_envio_id = $3, updated_at = now()
+    `UPDATE integracao_fdv.lote_erro SET resolvido_em = $4, resolvido_no_lote_envio_id = $3
       WHERE tenant_id = $1 AND lote_envio_id = $2 AND origem = 'erp' AND resolvido_em IS NULL`,
     [e.tenant, lote.id, novo.id, e.agora],
   );
@@ -569,7 +589,7 @@ async function consultarLote(e: Exec, lote: LinhaLote): Promise<void> {
     // `lote_nao_encontrado`: o Hub perdeu o lote; reenvia o mesmo corpo com a mesma chave (guia do Hub)
     await e.ctx.emTransacao(async (tx) => {
       await tx.consultar(
-        `UPDATE integracao_fdv.lote_envio SET estado = 'enviando', hub_lote_id = NULL, updated_at = now() WHERE tenant_id = $1 AND id = $2 AND estado = 'aceito'`,
+        `UPDATE integracao_fdv.lote_envio SET estado = 'enviando', hub_lote_id = NULL WHERE tenant_id = $1 AND id = $2 AND estado = 'aceito'`,
         [e.tenant, lote.id],
       );
       await gravarCursor(tx, e, { proximoEm: e.agora });
@@ -592,7 +612,7 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
   const fechado = await tx.consultar<{ id: string }>(
     `UPDATE integracao_fdv.lote_envio
         SET estado = $3, concluido_em = $4, contagens = contagens || $5::jsonb,
-            ultimo_erro_codigo = CASE WHEN $3 = 'falhou' THEN 'falha_processamento' ELSE NULL END, updated_at = now()
+            ultimo_erro_codigo = CASE WHEN $3 = 'falhou' THEN 'falha_processamento' ELSE NULL END
       WHERE tenant_id = $1 AND id = $2 AND estado = 'aceito' RETURNING id`,
     [e.tenant, lote.id, status, e.agora, JSON.stringify({ hub })],
   );
@@ -622,7 +642,7 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
     if (aceitosOk.length > 0) {
       await tx.consultar(
         `UPDATE integracao_fdv.registro_publicado r
-            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4, updated_at = now()
+            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4
            FROM unnest($5::text[], $6::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
         [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash)],
@@ -630,7 +650,7 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
       // troca de chave (ADR 0010, item 3): a linha antiga, inativa e já confirmada no Hub, sai (`deleted_at`) quando há outra
       // linha ativa do mesmo `erp_id`. Inativação comum (sem sucessora) fica no espelho.
       await tx.consultar(
-        `UPDATE integracao_fdv.registro_publicado r SET deleted_at = $3, updated_at = now()
+        `UPDATE integracao_fdv.registro_publicado r SET deleted_at = $3
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = ANY($4::text[])
             AND NOT r.ativo AND NOT r.pendente AND r.deleted_at IS NULL AND r.erp_id IS NOT NULL
             AND EXISTS (SELECT 1 FROM integracao_fdv.registro_publicado n
@@ -639,7 +659,7 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
         [tenant, entidade, agora, aceitosOk.map((x) => x.chave)],
       );
       await tx.consultar(
-        `UPDATE integracao_fdv.lote_erro SET resolvido_em = $4, resolvido_no_lote_envio_id = $3, updated_at = now()
+        `UPDATE integracao_fdv.lote_erro SET resolvido_em = $4, resolvido_no_lote_envio_id = $3
           WHERE tenant_id = $1 AND entidade = $2 AND resolvido_em IS NULL AND lote_envio_id <> $3 AND registro_external_id = ANY($5::text[])`,
         [tenant, entidade, lote.id, agora, aceitosOk.map((x) => x.chave)],
       );
@@ -649,7 +669,7 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
     const saemDaFila = [...recusadosFirmes.map((x) => [x.chave, x.hash] as const), ...(lote.contagens.firmes ?? [])];
     if (saemDaFila.length > 0) {
       await tx.consultar(
-        `UPDATE integracao_fdv.registro_publicado r SET pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $3, updated_at = now()
+        `UPDATE integracao_fdv.registro_publicado r SET pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $3
            FROM unnest($4::text[], $5::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
         [tenant, entidade, lote.id, saemDaFila.map((x) => x[0]), saemDaFila.map((x) => x[1])],
@@ -695,7 +715,7 @@ async function acordarDependentes(tx: Transacao, tenant: string, entidade: Entid
   const depois = ENTIDADES_HUB_F2.slice(ENTIDADES_HUB_F2.indexOf(entidade) + 1);
   if (depois.length === 0) return;
   await tx.consultar(
-    `UPDATE integracao_fdv.cursor_entidade c SET proximo_em = least(c.proximo_em, $3), updated_at = now()
+    `UPDATE integracao_fdv.cursor_entidade c SET proximo_em = least(c.proximo_em, $3)
       WHERE c.tenant_id = $1 AND c.entidade::text = ANY($2::text[]) AND c.pausada_motivo IS NULL AND c.deleted_at IS NULL
         AND EXISTS (SELECT 1 FROM integracao_fdv.registro_publicado r WHERE r.tenant_id = $1 AND r.entidade = c.entidade AND r.pendente AND r.deleted_at IS NULL)`,
     [tenant, depois, agora],

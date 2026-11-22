@@ -2,14 +2,12 @@
  * Montagem de lote, Idempotency-Key e regra de geração (RN-INF-03, T-0009 seções 3 e 4).
  * Funções puras: o relógio (`enviado_em`) e o id da sessão chegam por parâmetro.
  */
-import { VERSAO_CONTRATO_HUB, type CorpoLote, type CursorHub, type EntidadeHub, type EstadoLote, type LinhaInvalida, type ModoLote, type RegistroLote } from '../contracts';
+import { LIMITE_REGISTROS_LOTE, VERSAO_CONTRATO_HUB, type CorpoLote, type CursorHub, type EntidadeHub, type EstadoLote, type LinhaInvalida, type ModoLote, type RegistroLote } from '../contracts';
 import { utf8 } from './hash';
 import { paraLinhaHub } from './linhas';
 import { compararBinario, jsonCanonico, sha256HexTexto } from './canonico';
 
 const tamanhoUtf8 = (t: string): number => utf8(t).length;
-
-export const LIMITE_REGISTROS_LOTE = 5000;
 
 /** Registros por lote: o teto da credencial (1 a 5.000, 0015) limitado ao do contrato; sem credencial vale o do contrato. */
 export function limiteRegistrosDoLote(daCredencial?: number): number {

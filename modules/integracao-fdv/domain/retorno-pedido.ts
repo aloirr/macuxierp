@@ -80,8 +80,19 @@ export interface EventoPedido {
   payload: PayloadPedidoLido;
 }
 
+/**
+ * RN-PED-05 / A-02: quanto o retorno faturado espera a chave do Hub de um produto chegar ao espelho. PREMISSA (a confirmar pelo
+ * gerente): 24 h, contadas do `ocorrido_em` do evento; é o prazo em que a carga de produtos do conector (modo completo ou delta)
+ * já deveria ter publicado o produto. Passado o prazo o consumidor desiste do retorno (monitor + alerta) em vez de repetir sem fim.
+ */
+export const PRAZO_AGUARDAR_CHAVE_MS = 24 * 60 * 60 * 1000;
+
 type DecisaoRetorno =
   | { acao: 'enviar'; corpo: RetornoErp }
+  /** Faturado com produto sem chave do Hub no espelho, dentro do prazo: o consumidor falha (retentativa) até a chave existir; nunca vai o UUID cru. */
+  | { acao: 'aguardar_chave'; produtos: string[] }
+  /** Prazo vencido sem a chave: o retorno não vai ao Hub. `corpo` é o que seria enviado, sem itens (só para o registro `falhou`); `produtos` são UUIDs do ERP. */
+  | { acao: 'descartar_sem_chave'; produtos: string[]; corpo: RetornoErp }
   | { acao: 'ignorar'; motivo: 'origem_nao_fdv' | 'homologacao' | 'status_sem_retorno' | 'evento_sem_retorno' | 'hub_ja_terminal' | 'hub_ja_adiante' };
 
 const TERMINAIS: ReadonlySet<StatusRetornoHub> = new Set(['rejeitado_erp', 'cancelado', 'faturado_total']);
@@ -92,7 +103,11 @@ function motivoDe(p: PayloadPedidoLido): string | undefined {
   return codigo ? (TEXTO_DO_MOTIVO[codigo] ?? undefined) : undefined;
 }
 
-export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRetornoHub | null): DecisaoRetorno {
+/**
+ * `chavesProduto`: UUID do produto no ERP -> chave do Hub (`registro_external_id` do espelho, achada pelo `erp_id`; ADR 0010,
+ * item 1). Só o faturado usa. `agora` (relógio do consumidor) decide o prazo `PRAZO_AGUARDAR_CHAVE_MS`; sem ele o retorno sempre aguarda.
+ */
+export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRetornoHub | null, chavesProduto: ReadonlyMap<string, string> = new Map(), agora?: Date): DecisaoRetorno {
   const p = evento.payload;
   if (p.origem !== 'fdv' || !p.pedido_uuid) return { acao: 'ignorar', motivo: 'origem_nao_fdv' };
   if (ultimoStatusHub && TERMINAIS.has(ultimoStatusHub)) return { acao: 'ignorar', motivo: 'hub_ja_terminal' };
@@ -110,16 +125,22 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
     case 'pedido.pedido.faturado@1': {
       if (p.ambiente !== 'producao') return { acao: 'ignorar', motivo: 'homologacao' };
       if (!p.nota || !p.itens_faturados) return { acao: 'ignorar', motivo: 'status_sem_retorno' };
+      const faltam = [...new Set(p.itens_faturados.filter((i) => !chavesProduto.has(i.produto_id)).map((i) => i.produto_id))];
       const status: StatusRetornoHub = p.status === 'faturado' ? 'faturado_total' : 'faturado_parcial';
+      const notaHub = { numero: p.nota.numero, serie: p.nota.serie, chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
+      if (faltam.length > 0) {
+        const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
+        return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status, nota: notaHub, itens_faturados: [] } } : { acao: 'aguardar_chave', produtos: faltam };
+      }
       return {
         acao: 'enviar',
         corpo: {
           ...comum,
           status,
-          nota: { numero: p.nota.numero, serie: p.nota.serie, chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos },
+          nota: notaHub,
           itens_faturados: p.itens_faturados.map((i) => ({
             sequencia: i.sequencia,
-            produto_external_id: i.produto_id, // F4: traduzir para a chave do Hub (ADR 0010, item 1)
+            produto_external_id: chavesProduto.get(i.produto_id)!, // chave do Hub, nunca o UUID (ADR 0010, item 1)
             quantidade: i.quantidade / 10_000,
             valor_cents: i.valor_centavos,
           })),
