@@ -174,10 +174,12 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
       else l.erros.push(erroDeViolacao(l.linha, r.violacao, 'ie'));
     }
     const crt = l.cel('crt');
+    // RN-FIS-02: CRT diferente de 3 com a célula do regime vazia zera o regime (normaliza em vez de travar em 422 por um regime antigo).
+    const regime = l.cel('regime_pis_cofins')?.toLowerCase() ?? (crt !== undefined && crt !== '3' ? null : undefined);
     return fechar<'filial'>(l, LinhaFilial, {
       external_id: l.id('external_id'),
       ativo: l.ativo(),
-      dados: limparDados({ cnpj, ie, crt, razao_social: l.texto('nome', LIMITES.texto60, 'razao_social') }),
+      dados: limparDados({ cnpj, ie, crt, industrial_ipi: l.conv('industrial_ipi', celulaBooleana), regime_pis_cofins: regime, razao_social: l.texto('nome', LIMITES.texto60, 'razao_social') }),
       endereco: l.endereco(ctx, ''),
     });
   },
@@ -245,6 +247,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
         cest,
         origem: l.cel('origem'),
         grupo_tributacao: l.texto('grupo_tributacao', LIMITES.grupo30),
+        producao_propria: l.conv('producao_propria', celulaBooleana),
       }),
       desconto_maximo_bp: pct,
     });

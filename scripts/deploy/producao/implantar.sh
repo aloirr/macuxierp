@@ -68,7 +68,7 @@ fi
 # ---------- arquivos de /opt/macuxierp ----------
 [ -d "$PASTA" ] || { echo "[implantar] $PASTA ausente: rode o preparar-vm.sh" >&2; exit 1; }
 cd "$PASTA"
-[ -f .env ] || { echo "[implantar] $PASTA/.env ausente: o Alexandre cria a partir do env.modelo (modo 600)" >&2; exit 1; }
+[ -f .env ] || { echo "[implantar] $PASTA/.env ausente: o preparar-vm.sh cria (ambiente-vm.sh)" >&2; exit 1; }
 modo="$(stat -c %a .env)"
 [ "$modo" = 600 ] || { echo "[implantar] $PASTA/.env com modo $modo: precisa ser 600 (chmod 600 $PASTA/.env)" >&2; exit 1; }
 # Chaves mestras: 32 bytes, em hex (64) ou base64 (44 com o "="). O valor nunca é impresso.
@@ -79,17 +79,17 @@ chave_32_ok() { # nome
   [[ "$v" =~ ^[A-Za-z0-9+/]{43}=$ ]] && [ "$(printf '%s' "$v" | base64 -d 2>/dev/null | wc -c)" = 32 ] && return 0
   return 1
 }
-chave_32_ok MACUXIERP_CHAVE_A1 || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_A1 válida (32 bytes em hex ou base64; openssl rand -base64 32)" >&2; exit 1; }
+chave_32_ok MACUXIERP_CHAVE_A1 || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_A1 válida (32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar)" >&2; exit 1; }
 # Conector do Hub (opcionais, env.modelo): vazia = laço de agenda do worker desligado; presente e inválida derrubaria o worker.
 if [ -n "$(valor_env .env MACUXIERP_CHAVE_INTEGRACAO)" ]; then
-  chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env com MACUXIERP_CHAVE_INTEGRACAO inválida (vazia ou 32 bytes em hex ou base64; openssl rand -hex 32)" >&2; exit 1; }
+  chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env com MACUXIERP_CHAVE_INTEGRACAO inválida (vazia ou 32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar)" >&2; exit 1; }
 fi
 # MACUXIERP_HUB_URL_PRODUCAO fica vazia: ver env.modelo.
 if [ -n "$(valor_env .env MACUXIERP_HUB_URL_PRODUCAO)" ]; then
   echo "[implantar] $PASTA/.env com MACUXIERP_HUB_URL_PRODUCAO preenchida: deixe vazia por ora (env.modelo; o worker não subiria)" >&2; exit 1
 fi
 for f in gerados.env banco.env admin.env; do
-  [ -s "$f" ] || { echo "[implantar] $PASTA/$f ausente: o preparar-vm.sh (gerados.env) e o workflow (banco.env, admin.env) gravam antes" >&2; exit 1; }
+  [ -s "$f" ] || { echo "[implantar] $PASTA/$f ausente: o preparar-vm.sh grava antes (gerados.env; banco.env e admin.env copiados do /opt/macuxi do FDV)" >&2; exit 1; }
 done
 REDE_TUNEL="$(rede_tunel)"
 docker network inspect "$REDE_TUNEL" >/dev/null 2>&1 \
@@ -111,7 +111,7 @@ restaurar_arquivos() {
 }
 
 # ---------- TLS do banco ----------
-# verify-full só com a CA do DBaaS (secret PROD_PG_CA_CERT → certs/dbaas-ca.pem); sem ela, cifra sem conferir o
+# verify-full só com a CA do DBaaS (/opt/macuxi/certs/dbaas-ca.pem do FDV → certs/, pelo preparar-vm.sh); sem ela, cifra sem conferir o
 # certificado. MACUXI_PG_SSL_FORCAR=require|verify-full troca (só manutenção).
 if [ -n "${MACUXI_PG_SSL_FORCAR:-}" ]; then
   LIBPQ="$MACUXI_PG_SSL_FORCAR"
@@ -122,7 +122,7 @@ else
 fi
 case "$LIBPQ" in
   verify-full) NODE_SSL=verify-full ;;
-  require) NODE_SSL=no-verify; echo "::warning::TLS com o DBaaS sem conferir o certificado (falta o secret PROD_PG_CA_CERT): a conexão é cifrada, mas não autenticada" ;;
+  require) NODE_SSL=no-verify; echo "::warning::TLS com o DBaaS sem conferir o certificado (falta /opt/macuxi/certs/dbaas-ca.pem do FDV): a conexão é cifrada, mas não autenticada" ;;
   *) echo "[implantar] MACUXI_PG_SSL_FORCAR inválido: $LIBPQ (require|verify-full)" >&2; exit 2 ;;
 esac
 

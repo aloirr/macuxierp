@@ -30,6 +30,9 @@ export interface PaginaCadastros extends PaginaBase {
 const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', formatar: (v) => (v ? 'Inativo' : 'Ativo') };
 const DOC: ColunaPagina['formatar'] = (v) => formatarDocumento(String(v ?? ''));
 
+/** RN-FIS-02: só a filial de CRT 3 tem regime; nos demais a API recusa o valor, então a célula vem vazia. */
+const REGIME_PIS_COFINS: ColunaPagina['formatar'] = (v) => (v === 'cumulativo' ? 'Cumulativo' : v === 'nao_cumulativo' ? 'Não cumulativo' : '');
+
 export const PAGINAS: readonly PaginaCadastros[] = [
   {
     id: 'clientes', menu: 'Clientes', titulo: 'Clientes', rota: '/cadastros/clientes', api: '/v1/cadastros/clientes', filtros: ['filial_id', 'vendedor_id'],
@@ -38,7 +41,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'produtos', menu: 'Produtos', titulo: 'Produtos', rota: '/cadastros/produtos', api: '/v1/cadastros/produtos', filtros: [],
-    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'ncm', rotulo: 'NCM' }, { chave: 'cest', rotulo: 'CEST' }, { chave: 'unidade_comercial', rotulo: 'Un.' }, { chave: 'custo_centavos', rotulo: 'Custo', formatar: (v) => (v === null || v === undefined ? '' : formatarCentavos(Number(v))), exige: 'cadastros.produto.editar' }, ATIVO],
+    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'ncm', rotulo: 'NCM' }, { chave: 'cest', rotulo: 'CEST' }, { chave: 'unidade_comercial', rotulo: 'Un.' }, { chave: 'producao_propria', rotulo: 'Fabricado pela empresa', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'custo_centavos', rotulo: 'Custo', formatar: (v) => (v === null || v === undefined ? '' : formatarCentavos(Number(v))), exige: 'cadastros.produto.editar' }, ATIVO],
     editar: 'cadastros.produto.editar',
   },
   {
@@ -63,7 +66,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'filiais', menu: 'Filiais', titulo: 'Filiais', rota: '/cadastros/filiais', api: '/v1/cadastros/filiais', filtros: [],
-    colunas: [{ chave: 'cnpj', rotulo: 'CNPJ', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'ie', rotulo: 'IE' }, { chave: 'crt', rotulo: 'CRT' }, { chave: 'padrao', rotulo: 'Padrão', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'nfe_serie', rotulo: 'Série NF-e' }, ATIVO],
+    colunas: [{ chave: 'cnpj', rotulo: 'CNPJ', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'ie', rotulo: 'IE' }, { chave: 'crt', rotulo: 'CRT' }, { chave: 'padrao', rotulo: 'Padrão', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'nfe_serie', rotulo: 'Série NF-e' }, { chave: 'industrial_ipi', rotulo: 'Industrial (IPI)', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'regime_pis_cofins', rotulo: 'Regime PIS/COFINS', formatar: REGIME_PIS_COFINS }, ATIVO],
     editar: 'cadastros.filial.editar',
   },
   {

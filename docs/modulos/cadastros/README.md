@@ -30,3 +30,10 @@ Fatia vertical: `contracts` (Zod, eventos), `domain` (regras puras), `api` (plug
 ## C-10 — external_id nos eventos
 
 C-10 (ADR 0010): `external_id` opcional em unidades, endereços e itens de preço nos eventos, e `external_id_anterior` no preço; o contrato está em `.coord/contratos/eventos.md` (Aditivo C-10). O `PUT /tabelas-preco/:id/itens` não aceita `external_id`: só a carga define a chave.
+
+## Campos fiscais e consulta para o fiscal (T-0021)
+- **Filial**: `industrial_ipi` (boolean, padrão `false`) e `regime_pis_cofins` (`cumulativo` | `nao_cumulativo`, nulo por padrão). RN-FIS-02: o regime de PIS/COFINS só vale no CRT 3; informado nos CRT 1, 2 ou 4 a API devolve 422 `RN-FIS-02` (violação, não normalização). Exigir o regime no CRT 3 é do fiscal.
+- **Produto**: `producao_propria` (boolean, padrão `false`): fabricado pelo estabelecimento (CFOP 5101/6101) × revendido (5102/6102).
+- Campos aditivos nos contratos e nos eventos `cadastros.filial.alterada@1` e `cadastros.produto.alterado@1` (seguem `@1`). Colunas `regime_pis_cofins` e `producao_propria` vêm da migração 0023 do banco-dados.
+- **CSV**: linha de filial com CRT diferente de 3 e célula do regime vazia grava o regime como nulo (normalização pela RN-FIS-02, não 422). Filial aceita `industrial_ipi` e `regime_pis_cofins`; produto aceita `producao_propria` (célula vazia não altera). BKO: colunas "Industrial (IPI)", "Regime PIS/COFINS" e "Fabricado pela empresa".
+- **Consulta para o fiscal** (`api/consulta-fiscal.ts`, `criarConsultaParaFiscal`): `emitente(tx, filial_id)` devolve `{ uf, crt (numérico 1..4), regime_pis_cofins?, industrial_ipi }` ou `null`; `producaoPropria(tx, produto_ids)` devolve o `Set` dos produtos fabricados. Compatível com `ConsultaEmitenteFiscal` do fiscal sem importá-lo. `FilialParaFaturamento` ganhou `industrial_ipi` e `regime_pis_cofins`.

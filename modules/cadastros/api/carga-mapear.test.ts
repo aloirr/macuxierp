@@ -157,6 +157,26 @@ describe('mapeamento da fixture (os 10 arquivos)', () => {
   });
 });
 
+describe('campos fiscais na carga (T-0021)', () => {
+  it('RN-FIS-02: produto lê producao_propria (vazio = não altera) e a filial lê industrial_ipi e regime_pis_cofins', () => {
+    const p = mapear('produto', { producao_propria: 'sim' });
+    expect(p.ok && p.linha.dados.producao_propria).toBe(true);
+    const vazio = mapear('produto', { producao_propria: '' });
+    expect(vazio.ok && vazio.linha.dados.producao_propria).toBeUndefined();
+    const f = mapear('filial', { crt: '3', industrial_ipi: '1', regime_pis_cofins: 'Nao_Cumulativo' });
+    expect(f.ok && f.linha.dados).toMatchObject({ crt: '3', industrial_ipi: true, regime_pis_cofins: 'nao_cumulativo' });
+    expect(mapear('filial', { regime_pis_cofins: 'outro' })).toMatchObject({ ok: false });
+  });
+  it('RN-FIS-02: CRT diferente de 3 com regime vazio normaliza o regime para null; CRT 3 ou sem CRT não altera', () => {
+    const c1 = mapear('filial', { crt: '1', regime_pis_cofins: '' });
+    expect(c1.ok && c1.linha.dados.regime_pis_cofins).toBeNull();
+    const c3 = mapear('filial', { crt: '3', regime_pis_cofins: '' });
+    expect(c3.ok && c3.linha.dados.regime_pis_cofins).toBeUndefined();
+    const semCrt = mapear('filial', { regime_pis_cofins: '' });
+    expect(semCrt.ok && semCrt.linha.dados.regime_pis_cofins).toBeUndefined();
+  });
+});
+
 describe('padrões e obrigatórios na criação', () => {
   it('RN-CAD-04: produto novo sem NCM é recusado pedindo a coluna ncm', () => {
     const r = mapear('produto', { ncm: '' });

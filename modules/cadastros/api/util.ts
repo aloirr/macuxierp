@@ -1,5 +1,6 @@
 import { ErroApi, erros, type CamposErro, type EntradaRota } from '@macuxierp/platform-sdk';
 import { PADRAO_UUID } from '@macuxierp/platform-sdk';
+import type { FilialDados, RegimePisCofins } from '../contracts';
 import { externalIdColideComId, type Violacao } from '../domain';
 import type { Repositorios, TabelaChave } from './portas';
 
@@ -32,4 +33,15 @@ export function escolher<T extends object, K extends keyof T>(obj: T, campos: re
   const saida = {} as Pick<T, K>;
   for (const k of campos) saida[k] = obj[k];
   return saida;
+}
+
+export type CrtCadastros = 1 | 2 | 3 | 4;
+/** CRT do cadastro (texto) -> número da NF-e; um lugar só para as consultas do faturamento e do fiscal. */
+export const CRT: Record<FilialDados['crt'], CrtCadastros> = { '1': 1, '2': 2, '3': 3, '4': 4 };
+
+/** Dados fiscais da filial como as consultas os entregam; ausente no cadastro = padrão de criação (false / null). */
+export function dadosFiscaisDaFilial(f: { crt: FilialDados['crt']; industrial_ipi?: boolean; regime_pis_cofins?: RegimePisCofins | null }): {
+  crt: CrtCadastros; industrial_ipi: boolean; regime_pis_cofins: RegimePisCofins | null;
+} {
+  return { crt: CRT[f.crt], industrial_ipi: f.industrial_ipi ?? false, regime_pis_cofins: f.regime_pis_cofins ?? null };
 }
