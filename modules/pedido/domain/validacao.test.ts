@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avaliarPedido, avaliarCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
-import { ehAVista, FORMAS_A_VISTA } from '@macuxierp/cadastros/contracts';
+import { avaliarPedido, avaliarCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, ehAVista, FORMAS_A_VISTA, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -123,6 +122,7 @@ describe('avaliação do pedido', () => {
   });
 
   it('RN-PED-04: ehAVista olha só a forma de pagamento: dinheiro (01), PIX (17) e débito (04)', () => {
+    expect([...FORMAS_A_VISTA].sort()).toEqual(['01', '04', '17']);
     for (const forma_tpag of ['01', '17', '04']) expect(ehAVista({ forma_tpag, prazos_dias: [0] })).toBe(true);
   });
 
@@ -253,10 +253,6 @@ describe('recebimento do pedido do FDV', () => {
   it('RN-PED-01: produto_inativo', () => expect(codigo({ produtos: [{ id: P1, inativo: true }] })).toEqual({ resultado: 'recusado', codigo: 'produto_inativo' }));
   it('RN-PED-01: item_incoerente (desconto maior que o valor do item)', () =>
     expect(codigo({ itens: [item({ desconto_centavos: 2001 })] })).toEqual({ resultado: 'recusado', codigo: 'item_incoerente' }));
-  it('RN-PED-01: item_incoerente (sequência repetida)', () =>
-    expect(codigo({ itens: [item({ sequencia: 1 }), item({ sequencia: 1 })] })).toEqual({ resultado: 'recusado', codigo: 'item_incoerente' }));
-  it('RN-PED-01: sequências distintas passam', () =>
-    expect(codigo({ itens: [item({ sequencia: 1 }), item({ sequencia: 2 })] })).toEqual({ resultado: 'aprovado' }));
   it('RN-PED-01: a ordem dos códigos é cliente, filial, condição, produto, item', () => {
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: null, produtos: [] })).toMatchObject({ codigo: 'condicao_inexistente' });
     expect(codigo({ cliente: { inativo: true }, filial: null })).toMatchObject({ codigo: 'cliente_inativo' });

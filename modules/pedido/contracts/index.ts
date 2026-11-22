@@ -103,16 +103,9 @@ export const PedidoManualEntrada = z.object({
 });
 export type PedidoManualEntrada = z.infer<typeof PedidoManualEntrada>;
 
-export const Frete = z.object({
-  modalidade: z.enum(['CIF', 'FOB']),
-  transportadora: z.record(z.string(), z.unknown()).nullable().default(null),
-  /** Centavos; nulo vale 0. Na v1 nem o FDV nem o BKO informam o valor (aditivo no @1, T-0021). */
-  valor_centavos: Centavos.nullable().optional(),
-});
+export const Frete = z.object({ modalidade: z.enum(['CIF', 'FOB']), transportadora: z.record(z.string(), z.unknown()).nullable().default(null) });
 export type Frete = z.infer<typeof Frete>;
-/** Retrato do endereço de entrega: livre, mas sempre com `municipio_nome` (nulo quando desconhecido; aditivo no @1, T-0021). */
-const RetratoEndereco = z.object({ municipio_nome: z.string().nullable().optional() }).passthrough();
-export const EnderecoEntrega = z.object({ endereco_id: Uuid.nullable().default(null), retrato: RetratoEndereco.nullable().default(null) });
+export const EnderecoEntrega = z.object({ endereco_id: Uuid.nullable().default(null), retrato: z.record(z.string(), z.unknown()).nullable().default(null) });
 export type EnderecoEntrega = z.infer<typeof EnderecoEntrega>;
 
 export const ItemPedidoFdvEntrada = z.object({
@@ -198,10 +191,8 @@ export const ClienteParaPedido = ClienteSchema.pick({
   tabela_preco_id: true,
   filial_id: true,
   vendedor_id: true,
+  enderecos: true,
   inativo: true,
-}).extend({
-  /** O `id` do endereço (T-0009, C-3) é o que `endereco_entrega_id` do pedido manual aponta; ausente = não dá para escolher por id. */
-  enderecos: z.array(EnderecoClienteSchema.extend({ id: Uuid.optional(), municipio_nome: z.string().nullable().optional() })).min(1),
 });
 export type ClienteParaPedido = z.infer<typeof ClienteParaPedido>;
 export const ProdutoParaPedido = ProdutoSchema.pick({
@@ -211,7 +202,6 @@ export const ProdutoParaPedido = ProdutoSchema.pick({
   unidade_comercial: true,
   ean: true,
   ncm: true,
-  origem: true,
   inativo: true,
 }).extend({ unidades: z.array(z.object({ unidade: z.string(), fator: Qtd4 }).passthrough()).default([]) });
 export type ProdutoParaPedido = z.infer<typeof ProdutoParaPedido>;
@@ -234,7 +224,7 @@ export const ClienteRetrato = z.object({
     uf: true,
     cep: true,
     pais_bacen: true,
-  }).extend({ municipio_nome: z.string().nullable().optional() }),
+  }),
 });
 export type ClienteRetrato = z.infer<typeof ClienteRetrato>;
 export const ProdutoRetrato = z.object({
@@ -243,8 +233,6 @@ export const ProdutoRetrato = z.object({
   unidade_comercial: z.string(),
   ean: z.string().nullable(),
   ncm: z.string(),
-  /** Origem da mercadoria (NF-e), do cadastro do produto (aditivo no @1, T-0021). */
-  origem: ProdutoSchema.shape.origem,
 });
 export type ProdutoRetrato = z.infer<typeof ProdutoRetrato>;
 
@@ -261,10 +249,6 @@ const ItemAprovado = z.object({
 /** T-0013 §8.1: o pedido inteiro, para o faturamento montar a fila "a faturar" sem ler o schema `pedido`. */
 export const PedidoAprovado = z.object({
   condicao_pagamento_id: Uuid.nullable(),
-  /** Da condição de pagamento lida na aprovação (aditivo no @1, T-0021); sem condição, os três são nulos. */
-  forma_tpag: z.string().regex(/^\d{2}$/).nullable().default(null),
-  forma_codigo: z.string().nullable().default(null),
-  forma_nome: z.string().nullable().default(null),
   tabela_preco_id: Uuid.nullable(),
   emitido_em: z.string().datetime(),
   observacao: z.string().nullable(),
@@ -328,8 +312,6 @@ export const PedidoLista = z.object({
 export type PedidoLista = z.infer<typeof PedidoLista>;
 
 export const Pedido = PedidoAprovado.omit({ itens: true }).extend({
-  /** `documento` nulo = o perfil (vendedor) não pode ver o documento do cliente (LGPD). */
-  cliente_retrato: ClienteRetrato.extend({ documento: z.string().nullable() }),
   id: Uuid,
   numero: z.number().int(),
   origem: OrigemPedido,
@@ -408,10 +390,3 @@ export const EVENTOS = {
   [EVENTO_PEDIDO_FATURADO]: PedidoFaturadoV1,
 } as const;
 export type NomeEventoPedido = keyof typeof EVENTOS;
-
-/** Porta `SituacaoPedidoParaFaturar` (T-0021): status e saldo por item, lidos com `FOR SHARE` na transação da nota. */
-export const SituacaoPedidoParaFaturar = z.object({
-  status: StatusPedido,
-  itens: z.array(z.object({ sequencia: z.number().int().min(1), quantidade: Qtd4, quantidade_faturada: Qtd4 })),
-});
-export type SituacaoPedidoParaFaturar = z.infer<typeof SituacaoPedidoParaFaturar>;

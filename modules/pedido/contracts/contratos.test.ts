@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AprovarEntrada, CancelarEntrada, PedidoCanceladoV1, PedidoManualEntrada, PedidoRecusadoV1, RecusarEntrada, ResultadoRecebimentoFdv, CodigoRecusaRecebimento, StatusPedido, Frete, PedidoAprovado, ProdutoRetrato, ClienteRetrato, EnderecoEntrega, SituacaoPedidoParaFaturar } from './index';
+import { AprovarEntrada, CancelarEntrada, PedidoCanceladoV1, PedidoManualEntrada, PedidoRecusadoV1, RecusarEntrada, ResultadoRecebimentoFdv, CodigoRecusaRecebimento, StatusPedido } from './index';
 
 const U = '00000000-0000-4000-8000-000000000001';
 
@@ -47,35 +47,5 @@ describe('ResultadoRecebimentoFdv', () => {
     expect([...CodigoRecusaRecebimento.options].sort()).toEqual(
       ['cliente_inativo', 'cliente_inexistente', 'condicao_ausente', 'condicao_inativa', 'condicao_inexistente', 'filial_inexistente', 'filial_nao_emissora', 'item_incoerente', 'modulo_pedido_inativo', 'produto_inativo', 'produto_inexistente'],
     );
-  });
-  it('T-0021: SituacaoPedidoParaFaturar traz status e itens com quantidade e quantidade_faturada em Qtd4', () => {
-    expect(SituacaoPedidoParaFaturar.safeParse({ status: 'aprovado', itens: [{ sequencia: 1, quantidade: 20_000, quantidade_faturada: 0 }] }).success).toBe(true);
-    expect(SituacaoPedidoParaFaturar.safeParse({ status: 'x', itens: [] }).success).toBe(false);
-    expect(SituacaoPedidoParaFaturar.safeParse({ status: 'aprovado', itens: [{ sequencia: 1, quantidade: 1.5, quantidade_faturada: 0 }] }).success).toBe(false);
-  });
-  it('T-0021: Frete.valor_centavos é opcional: ausente passa (nulo vale 0)', () => {
-    expect(Frete.parse({ modalidade: 'CIF' }).valor_centavos).toBeUndefined();
-    expect(Frete.parse({ modalidade: 'FOB', valor_centavos: 1500 }).valor_centavos).toBe(1500);
-    expect(Frete.safeParse({ modalidade: 'FOB', valor_centavos: 1.5 }).success).toBe(false);
-  });
-  it('T-0021: forma_tpag, forma_codigo e forma_nome do PedidoAprovado são nulos por padrão e forma_tpag tem 2 dígitos', () => {
-    const base = PedidoAprovado.shape;
-    expect(base.forma_tpag.parse(undefined)).toBeNull();
-    expect(base.forma_codigo.parse(undefined)).toBeNull();
-    expect(base.forma_nome.parse(undefined)).toBeNull();
-    expect(base.forma_tpag.safeParse('01').success).toBe(true);
-    expect(base.forma_tpag.safeParse('1').success).toBe(false);
-  });
-  it('T-0021: municipio_nome nos retratos (opcional, sem default) e origem do produto de 0 a 8 com padrão 0', () => {
-    const end = { logradouro: 'R', numero: '1', complemento: null, bairro: 'B', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058' };
-    const cli = { tipo_pessoa: 'PF', documento: '1', razao_social: 'X', nome_fantasia: null, ie: null, ind_ie_dest: '9', endereco: end };
-    expect(ClienteRetrato.parse({ ...cli, endereco: { ...end, municipio_nome: null } }).endereco.municipio_nome).toBeNull();
-    expect(ClienteRetrato.parse(cli).endereco.municipio_nome).toBeUndefined();
-    expect(ClienteRetrato.parse({ ...cli, endereco: { ...end, municipio_nome: 'Manaus' } }).endereco.municipio_nome).toBe('Manaus');
-    expect(EnderecoEntrega.parse({ retrato: { logradouro: 'R' } }).retrato).toMatchObject({ logradouro: 'R' });
-    const prod = { codigo: 'P', descricao: 'D', unidade_comercial: 'UN', ean: null, ncm: '22021000' };
-    expect(ProdutoRetrato.parse(prod).origem).toBe('0');
-    expect(ProdutoRetrato.parse({ ...prod, origem: '2' }).origem).toBe('2');
-    expect(ProdutoRetrato.safeParse({ ...prod, origem: '9' }).success).toBe(false);
   });
 });

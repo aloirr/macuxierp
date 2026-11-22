@@ -7,7 +7,6 @@ import {
   EVENTOS, type Cliente, type Filial, type PrecoItem, type Produto, type TabelaPreco, type NomeEventoCadastros,
 } from '../contracts';
 import type { Repositorios } from './portas';
-import { comNomeMunicipio } from './enderecos';
 import { agregadoPreco } from './uuid';
 
 type Dict = Record<string, unknown>;
@@ -34,8 +33,11 @@ export async function eventoFilial(r: Repositorios, f: Filial): Promise<EventoPr
 
 /** C-1 e C-3: cada endereço sai com `id` e `municipio_nome`. */
 export async function eventoCliente(r: Repositorios, c: Cliente): Promise<EventoPronto> {
-  const enderecos = await comNomeMunicipio(r, (c.enderecos ?? []) as readonly { municipio_ibge: string }[]);
-  return pronto('cadastros.cliente.alterado@1', c.id, { ...c, enderecos, inativo: c.inativo });
+  const enderecos = (c.enderecos ?? []) as readonly { municipio_ibge: string }[];
+  const nome = await nomes(r, enderecos.map((e) => e.municipio_ibge));
+  return pronto('cadastros.cliente.alterado@1', c.id, {
+    ...c, enderecos: enderecos.map((e) => ({ ...e, municipio_nome: nome(e.municipio_ibge) })), inativo: c.inativo,
+  });
 }
 
 export const eventoProduto = async (r: Repositorios, p: Produto): Promise<EventoPronto> =>

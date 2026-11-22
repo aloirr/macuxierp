@@ -4,20 +4,9 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
-import type { EntidadeChaveErp, RetornoErp } from '../contracts';
+import type { RetornoErp } from '../contracts';
 
 export type { ResultadoRecebimentoFdv };
-
-/**
- * Resolve chaves do Hub (`external_id ?? id` do registro) para o UUID do ERP, em lote (ADR 0010, item 2; RD-0317).
- * Implementação do `cadastros/api`, ligada pelo `apps/worker`: procura por `(tenant_id, external_id)` e, só se não achar e a
- * chave tiver o formato do UUID canônico, por `(tenant_id, id)` de registro com `external_id` nulo. Nunca adivinha por
- * código, documento ou nome, e não exige espelho confirmado. Chave sem registro fica fora do mapa. Não filtra inativo: o cliente inativo resolve e vira `cliente_inativo` na conferência do pedido. O endereço de entrega é `cliente_endereco`, nunca `endereco`. Roda na transação do chamador.
- * Entidades pelo nome do Hub (`EntidadeChaveErp`): a condição de pagamento é `prazo_pagamento`.
- */
-export interface ResolvedorChaveErp {
-  resolver(tx: Transacao, entidade: EntidadeChaveErp, chaves: readonly string[]): Promise<Map<string, string>>;
-}
 
 /** Implementação no `pedido/api` (T-0015): roda na transação do chamador, com o ator `sistema`. */
 export interface RecebedorPedidoFdv {

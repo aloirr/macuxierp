@@ -6,11 +6,11 @@
  */
 import { sha256Hex, type Banco, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { PedidoParaErpLido, type EntidadeChaveErp } from '../contracts';
-import { chavesParaResolver, traduzirPedido, type ChavesResolvidas, type CodigoRejeicao, type CodigoRejeicaoPedido } from '../domain/pedido-fdv';
+import { PedidoParaErpLido } from '../contracts';
+import { chavesDaCondicao, traduzirPedido, type CodigoRejeicao, type CodigoRejeicaoPedido, type Espelho } from '../domain/pedido-fdv';
 import { jsonCanonico } from '../domain/canonico';
 import { retornoRejeitadoErp } from '../domain/retorno-pedido';
-import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv, ResolvedorChaveErp } from './portas';
+import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv } from './portas';
 import { agendarRetorno, credencialRecusada, gravarRetorno } from './util-pedidos';
 
 const LIMITE_BUSCA = 50;
@@ -20,8 +20,6 @@ export interface DepsRecebimento {
   banco: Banco;
   hub: ClienteHubPedidos;
   recebedor: RecebedorPedidoFdv;
-  /** Implementação do `cadastros/api` (ADR 0010, item 2). */
-  resolvedor: ResolvedorChaveErp;
   relogio: Relogio;
   log: LogPedidos;
   alertar: Alertar;
@@ -40,21 +38,33 @@ export interface ResumoBusca {
 const UuidSo = z.object({ pedido_uuid: z.string().uuid() }).passthrough();
 const sha256 = (v: unknown): string => sha256Hex(jsonCanonico(v));
 
-async function resolverChaves(tx: Transacao, d: DepsRecebimento, tenantId: string, p: PedidoParaErpLido): Promise<ChavesResolvidas> {
-  const pedidas = chavesParaResolver(p);
-  const por = async (e: EntidadeChaveErp): Promise<Map<string, string>> =>
-    pedidas[e].length ? d.resolvedor.resolver(tx, e, pedidas[e]) : new Map();
-  // Uma chamada por entidade e por pedido; a filial padrão só é lida quando o pedido não traz filial.
-  const [cliente, vendedor, filial, produto, prazo_pagamento, cliente_endereco] = [await por('cliente'), await por('vendedor'), await por('filial'), await por('produto'), await por('prazo_pagamento'), await por('cliente_endereco')];
-  let filialPadraoId: string | null = null;
-  if (!p.filial?.external_id) {
-    const padrao = await tx.consultar<{ erp_id: string }>(
-      `SELECT erp_id FROM integracao_fdv.referencia WHERE tenant_id = $1 AND tipo = 'filial_padrao' AND deleted_at IS NULL LIMIT 1`,
-      [tenantId],
-    );
-    filialPadraoId = padrao[0]?.erp_id ?? null;
-  }
-  return { cliente, vendedor, filial, produto, prazo_pagamento, cliente_endereco, filialPadraoId };
+async function carregarEspelho(tx: Transacao, tenantId: string, p: PedidoParaErpLido): Promise<Espelho> {
+  const { prazoId: condicaoId, codigoErp } = chavesDaCondicao(p);
+  // Confirmado no Hub = hash_confirmado (RN-INF-05). Pedido do FDV chega aprovado: inativo no ERP é recusa do pedido (rejeitado_erp com motivo), nunca análise nem reaprovação.
+  const linhas = await tx.consultar<{ entidade: string; id: string; codigo: string | null }>(
+    `SELECT entidade, registro_external_id AS id, payload->>'codigo' AS codigo
+       FROM integracao_fdv.registro_publicado
+      WHERE tenant_id = $1 AND deleted_at IS NULL AND confirmado_em IS NOT NULL
+        AND ((entidade = 'cliente' AND registro_external_id = $2)
+          OR (entidade = 'vendedor' AND registro_external_id = $3)
+          OR (entidade = 'produto' AND registro_external_id = ANY($4::text[]))
+          OR (entidade = 'prazo_pagamento' AND (registro_external_id = $5 OR payload->>'codigo' = $6)))`,
+    [tenantId, p.cliente_external_id, p.vendedor_external_id, p.itens.map((i) => i.produto_external_id), condicaoId, codigoErp],
+  );
+  const ids = (e: string) => new Set(linhas.filter((l) => l.entidade === e).map((l) => l.id));
+  const padrao = await tx.consultar<{ erp_id: string }>(
+    `SELECT erp_id FROM integracao_fdv.referencia WHERE tenant_id = $1 AND tipo = 'filial_padrao' AND deleted_at IS NULL LIMIT 1`,
+    [tenantId],
+  );
+  const prazos = linhas.filter((l) => l.entidade === 'prazo_pagamento');
+  return {
+    clientes: ids('cliente'),
+    vendedores: ids('vendedor'),
+    produtos: ids('produto'),
+    filialPadraoId: padrao[0]?.erp_id ?? null,
+    condicoes: new Set(prazos.map((l) => l.id)),
+    condicaoPorCodigo: new Map(prazos.filter((l) => l.codigo).map((l) => [l.codigo as string, l.id])),
+  };
 }
 
 async function rejeitar(tx: Transacao, d: DepsRecebimento, tenantId: string, uuid: string, codigo: CodigoRejeicao, detalhe?: string): Promise<void> {
@@ -121,8 +131,8 @@ async function processar(tx: Transacao, d: DepsRecebimento, tenantId: string, br
 
   await tx.consultar('SAVEPOINT sp_pedido_fdv');
   try {
-    const chaves = await resolverChaves(tx, d, tenantId, guardado.data);
-    const trad = traduzirPedido(guardado.data, chaves);
+    const espelho = await carregarEspelho(tx, tenantId, guardado.data);
+    const trad = traduzirPedido(guardado.data, espelho);
     if (!trad.ok) {
       await rejeitar(tx, d, tenantId, pedidoUuid, trad.codigo satisfies CodigoRejeicaoPedido);
       await tx.consultar('RELEASE SAVEPOINT sp_pedido_fdv');

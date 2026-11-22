@@ -8,9 +8,8 @@ describe('manifesto do módulo integracao-fdv', () => {
     expect(manifest.publica.every((e) => e.startsWith('integracao-fdv.'))).toBe(true);
   });
 
-  it('RN-PED-05: consome os eventos de retorno do pedido, sem aprovado@1 nem recusado@1 e com faturado@1 (RD-0164)', () => {
+  it('RN-PED-05: consome os eventos de retorno do pedido, sem aprovado@1 e com faturado@1 (RD-0164)', () => {
     expect(manifest.consome).toEqual(expect.arrayContaining([...EVENTOS_DE_RETORNO]));
     expect(manifest.consome).not.toContain('pedido.pedido.aprovado@1');
-    expect(manifest.consome).not.toContain('pedido.pedido.recusado@1');
   });
 });

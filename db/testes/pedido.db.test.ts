@@ -1,13 +1,10 @@
 /**
- * T-0014: schema pedido (migrações 0012 e 0016, desenho T-0013 seções 2 e 7, emenda D-A) — vazamento entre tenants nas
- * 5 tabelas, matriz de privilégios (tabela e coluna, sem DELETE para ninguém), idempotência do pedido do FDV
- * (RN-PED-01), transições de status (RN-PED-02, gatilho com SQLSTATE MXP02), histórico e decisão só de inserção, CHECKs
- * e FKs compostas; na 0016, a_vista com o índice parcial do crédito (RN-PED-04), o endereço no retrato e os CHECKs da
- * D-A.
+ * T-0014: schema pedido (migração 0012, desenho T-0013 seções 2 e 7) — vazamento entre tenants nas 5 tabelas, matriz
+ * de privilégios (tabela e coluna, sem DELETE para ninguém), idempotência do pedido do FDV (RN-PED-01), transições de
+ * status (RN-PED-02, gatilho com SQLSTATE MXP02), histórico e decisão só de inserção, CHECKs e FKs compostas.
  * Roda com o superusuário (5432) e com o admin sem superusuário (5433), sempre pelos papéis da aplicação.
  */
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrar } from '../src/migrar.ts';
 import {
@@ -47,7 +44,6 @@ const PRIVILEGIOS: Record<TabelaPedido, Record<(typeof PAPEIS_APP)[number], stri
 };
 
 const CABECALHO = [
-  'a_vista',
   'cliente_id',
   'cliente_retrato',
   'condicao_pagamento_id',
@@ -116,9 +112,6 @@ const CAMINHO: Record<string, string[]> = {
 
 let proximoNumero = 100;
 
-/** Retrato mínimo que passa no pedido_retrato_endereco_objeto (0016); valores fictícios. */
-const RETRATO = '{"tipo_pessoa": "PJ", "endereco": {"municipio_ibge": "1302603", "uf": "AM"}}';
-
 interface NovoPedido {
   id?: string;
   tenant?: string;
@@ -127,7 +120,6 @@ interface NovoPedido {
   status?: string;
   total?: number;
   pendencias?: string;
-  retrato?: string;
 }
 
 /** INSERT de um pedido com número novo (valores fictícios, sem dado pessoal real). */
@@ -141,7 +133,7 @@ function pedidoSql(p: NovoPedido = {}): string {
   return `INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
       total_centavos, external_id${colStatus}${colPend})
     VALUES ('${p.id ?? randomUUID()}', '${tenant}', ${proximoNumero++}, '${p.origem ?? 'bko'}', gen_random_uuid(),
-      gen_random_uuid(), '${p.retrato ?? RETRATO}', now(), ${p.total ?? 1000}, ${ext}${valStatus}${valPend});`;
+      gen_random_uuid(), '{"tipo_pessoa": "PJ"}', now(), ${p.total ?? 1000}, ${ext}${valStatus}${valPend});`;
 }
 
 function itemSql(
@@ -329,7 +321,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
         executar(
           banco.conexao,
           `INSERT INTO pedido.pedido (tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
-             total_centavos) VALUES ('${A.id}', 1, 'bko', gen_random_uuid(), gen_random_uuid(), '${RETRATO}', now(), 0);`,
+             total_centavos) VALUES ('${A.id}', 1, 'bko', gen_random_uuid(), gen_random_uuid(), '{}', now(), 0);`,
           APP_A,
         ),
       ),
@@ -635,120 +627,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
         ),
         APP_A,
       );
-    });
-  });
-  describe('0016: a_vista, índice do crédito, endereço no retrato e D-A', () => {
-    /** SQLSTATE 23514 (check_violation) e o nome da restrição, pela saída verbosa do psql. */
-    const violaCheck = (sql: string, papel: { papel: string; tenant: string }, nome: string): void => {
-      const e = falhaDetalhada(() => executar(banco.conexao, verboso(sql), papel));
-      expect(e.saida).toMatch(/ERROR:\s+23514:/);
-      expect(e.saida).toContain(`"${nome}"`);
-    };
-
-    it('a_vista: boolean NOT NULL com padrão false (a massa e o pedido novo nascem a prazo)', () => {
-      const [col] = consultar<{ tipo: string; nulo: string; padrao: string }>(
-        banco.conexao,
-        `SELECT data_type AS tipo, is_nullable AS nulo, column_default AS padrao FROM information_schema.columns
-         WHERE table_schema = 'pedido' AND table_name = 'pedido' AND column_name = 'a_vista'`,
-      );
-      expect(col).toEqual({ tipo: 'boolean', nulo: 'NO', padrao: 'false' });
-      const id = randomUUID();
-      executar(banco.conexao, pedidoSql({ id }), APP_A);
-      expect(
-        consultar<{ a: boolean }>(
-          banco.conexao,
-          `SELECT a_vista AS a FROM pedido.pedido WHERE id IN ('${id}', '${A.pedido}')`,
-          APP_A,
-        ),
-      ).toEqual([{ a: false }, { a: false }]);
-    });
-
-    it('índice do crédito parcial (WHERE NOT a_vista); o total da 0012 não existe mais', () => {
-      const indices = consultar<{ i: string; def: string }>(
-        banco.conexao,
-        `SELECT indexname AS i, indexdef AS def FROM pg_indexes
-         WHERE schemaname = 'pedido' AND indexname IN ('pedido_credito_idx', 'pedido_cliente_status_idx')`,
-      );
-      expect(indices.map((l) => l.i)).toEqual(['pedido_credito_idx']);
-      expect(indices[0]?.def).toMatch(/\(tenant_id, cliente_id, status\) WHERE \(NOT a_vista\)$/);
-    });
-
-    it('CHECK pedido_retrato_endereco_objeto: sem endereco ou com endereco fora de objeto falha; objeto passa', () => {
-      for (const retrato of [
-        '{"tipo_pessoa": "PJ"}',
-        '{"tipo_pessoa": "PJ", "endereco": "Rua A, 1"}',
-        '{"tipo_pessoa": "PJ", "endereco": null}',
-        '{"tipo_pessoa": "PJ", "endereco": []}',
-      ]) {
-        violaCheck(pedidoSql({ retrato }), APP_A, 'pedido_retrato_endereco_objeto');
-      }
-      violaCheck(
-        `UPDATE pedido.pedido SET cliente_retrato = '{"tipo_pessoa": "PJ"}' WHERE id = '${A.pedido}';`,
-        APP_A,
-        'pedido_retrato_endereco_objeto',
-      );
-      executar(banco.conexao, pedidoSql({ retrato: RETRATO }), APP_A);
-    });
-
-    it('CHECK pedido_fdv_sem_analise (D-A): o FDV recebido vai a aprovado e não a em_analise', () => {
-      const fdv = randomUUID();
-      violaCheck(
-        `${pedidoSql({ id: fdv, origem: 'fdv', externalId: randomUUID() })}
-         UPDATE pedido.pedido SET status = 'em_analise' WHERE id = '${fdv}';`,
-        WORKER_A,
-        'pedido_fdv_sem_analise',
-      );
-      executar(
-        banco.conexao,
-        `${pedidoSql({ id: fdv, origem: 'fdv', externalId: randomUUID() })}
-         UPDATE pedido.pedido SET status = 'aprovado' WHERE id = '${fdv}';`,
-        WORKER_A,
-      );
-      const [r] = consultar<{ s: string }>(
-        banco.conexao,
-        `SELECT status AS s FROM pedido.pedido WHERE id = '${fdv}'`,
-        WORKER_A,
-      );
-      expect(r?.s).toBe('aprovado');
-    });
-
-    it('CHECK pedido_fdv_sem_pendencia (D-A): o FDV só com pendencias vazia; o BKO aceita pendências', () => {
-      const pend = '[{"codigo": "credito_excedido", "bloqueante": false}]';
-      violaCheck(
-        pedidoSql({ origem: 'fdv', externalId: randomUUID(), pendencias: pend }),
-        WORKER_A,
-        'pedido_fdv_sem_pendencia',
-      );
-      violaCheck(
-        `UPDATE pedido.pedido SET pendencias = '${pend}' WHERE id = '${A.pedido}';`,
-        WORKER_A,
-        'pedido_fdv_sem_pendencia',
-      );
-      violaCheck(
-        pedidoSql({ origem: 'fdv', externalId: randomUUID(), pendencias: '{}' }),
-        WORKER_A,
-        'pedido_fdv_sem_pendencia',
-      );
-      executar(
-        banco.conexao,
-        pedidoSql({ origem: 'fdv', externalId: randomUUID(), pendencias: '[]' }),
-        WORKER_A,
-      );
-      executar(banco.conexao, pedidoSql({ pendencias: pend }), APP_A);
-    });
-
-    it('a 0016 é reexecutável (mesmo resultado, sem erro)', () => {
-      const sql = readFileSync(
-        new URL('../migrations/0016_pedido_a_vista_e_d_a.sql', import.meta.url),
-        'utf8',
-      );
-      rodarScript(banco.conexao, sql, { transacao: true });
-      const [r] = consultar<{ n: number }>(
-        banco.conexao,
-        `SELECT count(*)::int AS n FROM pg_constraint WHERE conrelid = 'pedido.pedido'::regclass
-           AND conname IN ('pedido_retrato_endereco_objeto', 'pedido_fdv_sem_analise', 'pedido_fdv_sem_pendencia')`,
-      );
-      expect(r?.n).toBe(3);
     });
   });
 });

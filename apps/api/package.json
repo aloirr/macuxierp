@@ -23,8 +23,6 @@
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
-    "@macuxierp/nfe-sefaz": "workspace:*",
-    "@macuxierp/sefaz-simulador": "workspace:*",
     "@types/node": "^22.18.0",
     "eslint": "^9.39.0",
     "typescript": "~5.9.3",
