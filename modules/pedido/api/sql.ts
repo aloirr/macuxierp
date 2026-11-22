@@ -203,9 +203,10 @@ class RepoPedidosSql implements RepoPedidos {
     await executar(this.tx, 'UPDATE pedido.pedido SET status = $2, valor_faturado_centavos = $3 WHERE id = $1', [id, status, String(valorFaturadoCentavos)]);
   }
 
-  async eventoRegistrado(pedidoId: string, eventoId: string): Promise<boolean> {
-    const l = await executar(this.tx, 'SELECT 1 FROM pedido.pedido_evento WHERE pedido_id = $1 AND evento_id = $2 LIMIT 1', [pedidoId, eventoId]);
-    return l.length > 0;
+  async eventosRegistrados(pedidoId: string, ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const l = await executar<{ evento_id: string }>(this.tx, 'SELECT evento_id FROM pedido.pedido_evento WHERE pedido_id = $1 AND evento_id = ANY($2::uuid[])', [pedidoId, ids]);
+    return new Set(l.map((r) => r.evento_id));
   }
 
   async registrarAprovacao(a: NovaAprovacao): Promise<void> {

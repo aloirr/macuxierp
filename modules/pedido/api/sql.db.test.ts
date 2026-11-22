@@ -18,7 +18,8 @@ import { CadastrosMemoria } from './memoria';
 import type { Dependencias } from './portas';
 import { criarRecebedorFdv } from './recebedor';
 import { criarServico, type Efeitos } from './servico';
-import { consumidoresDoPedido, idFaturadoDaNota } from './consumidor-nota';
+import { idFaturadoDaNota } from './eventos';
+import { consumidoresDoPedido } from './consumidor-nota';
 import { repositorioSql } from './sql';
 
 const AGORA = new Date('2026-11-21T15:00:00Z');
@@ -413,6 +414,31 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     expect(alertas[0]).toMatchObject({ codigo: 'status_invalido', contexto: { pedido_id: q.id } });
     expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [q.id]))[0]?.status).toBe('cancelado');
     expect((await admin("SELECT count(*)::int AS n FROM plataforma.evento WHERE agregado_id = $1 AND nome = 'pedido.pedido.faturado@1'", [q.id]))[0]?.n).toBe(0);
+  });
+
+  it('T-0015 RN-PED-02: cancelar com nota autorizada ainda não aplicada dá 422; aplicada pelo consumidor, cancela o saldo', async () => {
+    const T = await criarTenant(efemero.admin, 'nota-cancelar', ['pedido']);
+    const p = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 30_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;
+    const N1 = '00000000-0000-4000-8000-000000000401';
+    const N2 = '00000000-0000-4000-8000-000000000402';
+    let autorizadas = [N1, N2];
+    const comPorta = criarServico({ ...deps, notas: { temNotaEmAutorizacao: async () => false, notasAutorizadas: async () => autorizadas } });
+    const cancelar = () => app.comTenant(T, (tx) => comPorta.cancelar(tx, efeitos(tx, T), p.id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }));
+    const [consumidor] = consumidoresDoPedido({ outbox: new OutboxPg(), relogio: new RelogioFixo(AGORA), alertar: () => undefined });
+    const nota = criarEvento({
+      nome: 'faturamento.nota.autorizada@1', tenant_id: T, agregado_id: N1, ator: 'sistema', request_id: 'req-nota',
+      payload: {
+        pedido_id: p.id, ambiente: 'homologacao', conta_como_real: true,
+        nota: { id: N1, numero: 1, serie: 1, chave_acesso: '4'.repeat(44), emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: 1000 },
+        itens: [{ sequencia: 1, quantidade: 10_000, valor_centavos: 1000 }],
+      },
+    }, AGORA);
+    await worker.comTenant(T, (tx) => consumidor!.tratar(nota, tx));
+    // N1 aplicada, N2 não: só N2 é pendente
+    await expect(cancelar()).rejects.toMatchObject({ status: 422, codigo: 'RN-PED-02', detalhes: { notas_pendentes: [N2] } });
+    expect((await admin('SELECT status FROM pedido.pedido WHERE id = $1', [p.id]))[0]?.status).toBe('faturado_parcial');
+    autorizadas = [N1];
+    await expect(cancelar()).resolves.toMatchObject({ status: 'cancelado' });
   });
 
   it('RN-CORE-07: a exportação LGPD traz as 5 tabelas do schema pedido, só do tenant, com o item retirado e o retrato do cliente', async () => {

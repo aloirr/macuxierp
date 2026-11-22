@@ -17,7 +17,7 @@ import {
   avaliarPedidoDetalhado, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, travaCliente,
   validarTransicao, verificarItens, violacao, type Violacao,
 } from '../domain';
-import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, type CondicaoDoEvento, type EventoPronto } from './eventos';
+import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, notasAplicadas, type CondicaoDoEvento, type EventoPronto } from './eventos';
 import type { Dependencias, NovoItem, NovoPedido, PedidoGravado, RepoPedidos } from './portas';
 import { dataNoFuso, erroTransicao, exigir } from './util';
 
@@ -448,7 +448,13 @@ export function criarServico(deps: Dependencias) {
     const repo = deps.repositorios(tx);
     const p = await travarOu404(repo, id);
     exigirTransicao(p.status, 'cancelado');
+    // A ordem importa: temNotaEmAutorizacao primeiro, notasAutorizadas depois. Cada consulta toma FOR SHARE e, sob READ COMMITTED,
+    // a segunda reavalia as linhas já com a nota que acabou de autorizar; invertida, uma nota poderia passar entre as duas.
     if (await notas.temNotaEmAutorizacao(tx, id)) throw erros.regra('RN-PED-02', 'O pedido tem nota em autorização: aguarde o resultado antes de cancelar');
+    const autorizadas = await notas.notasAutorizadas(tx, id);
+    const aplicadas = await notasAplicadas(repo, id, autorizadas);
+    const pendentes = autorizadas.filter((n) => !aplicadas.has(n));
+    if (pendentes.length > 0) throw erros.regra('RN-PED-02', 'O pedido tem nota autorizada ainda não registrada: aguarde alguns segundos e tente de novo', undefined, { notas_pendentes: pendentes });
     await repo.atualizarStatus(id, 'cancelado', p.pendencias, null);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoCancelado(final, p.status, entrada.motivo_codigo, entrada.motivo_texto));
