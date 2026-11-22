@@ -24,8 +24,10 @@ export const cores = {
   textoApoio: '#5B6673',
   /** Linha suave, chip neutro e fundo de mapa. */
   nevoa: '#ECEEF1',
-  /** Campo, linha forte, borda do mapa, caixas do PDF e texto claro na faixa. A borda do cartão é `bordaTabela`. */
+  /** Linha forte, borda do mapa, caixas do PDF e texto claro na faixa. A borda do cartão é `bordaTabela`; a de campo e botão secundário é `bordaCampo`. */
   bordaCinza: '#C9CED5',
+  /** Borda de campo, caixa de texto e botão secundário (contraste de componente, decisão #232). */
+  bordaCampo: '#7A8593',
   /** Borda do cartão, chip, cartão em destaque e linha (inclui borda de tabela). */
   bordaTabela: '#DFE2E6',
   /** SÓ situação (ativo, autorizada). */

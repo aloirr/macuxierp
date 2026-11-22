@@ -13,6 +13,7 @@ describe('tokens da marca', () => {
       nevoa: '#ECEEF1',
       bordaTabela: '#DFE2E6',
       bordaCinza: '#C9CED5',
+      bordaCampo: '#7A8593',
       azulClaro: '#9AA3B0',
       azulNoite: '#1E3350',
       solLaranja: '#C2540A',
@@ -37,6 +38,11 @@ describe('tokens da marca', () => {
       linhaSuave: 'nevoa',
       graficoSerieCinza: 'textoSecundario',
     });
+  });
+  it('bordaCampo (#232): borda de componente com token próprio; bordaCinza não muda', () => {
+    expect(cores.bordaCampo).toBe('#7A8593');
+    expect(cores.bordaCinza).toBe('#C9CED5');
+    expect(css).toContain('--mx-cor-borda-campo: #7A8593;');
   });
   it('fontes sem @font-face e números tabulares', () => {
     expect(fontes.texto).toBe('system-ui, "Segoe UI", Roboto, -apple-system, sans-serif');
