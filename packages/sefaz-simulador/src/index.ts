@@ -16,6 +16,7 @@ import {
   type DestinoSimulador,
   type FabricaTransporteSimulador,
   type SefazTransporte,
+  type SefazTransporteEpec,
 } from '@macuxierp/nfe-sefaz';
 import { autorizar, consultarRecibo } from './autorizacao';
 import { consultarProtocolo, statusServico } from './consultas';
@@ -27,7 +28,7 @@ import {
   type FonteEstadoSimulador,
   type RegistroSimulador,
 } from './estado';
-import { registrarEvento } from './eventos';
+import { registrarEpec, registrarEvento } from './eventos';
 import { inutilizar } from './inutilizacao';
 
 export {
@@ -104,8 +105,13 @@ export interface ControlesSimulador {
   denegar(documento: string, quem: 'emitente' | 'destinatario'): void;
 }
 
-/** O simulador é um `SefazTransporte` com destino de simulador (o tipo já impede produção). */
-export interface SimuladorSefaz extends SefazTransporte {
+/**
+ * O simulador é um `SefazTransporte` com destino de simulador (o tipo já impede produção) e, PARA OS TESTES, também o
+ * `SefazTransporteEpec` (a recepção da EPEC do Ambiente Nacional, no destino normal; ADR 0011). O worker nunca chega
+ * à EPEC nem à SVC do simulador: o seletor recusa contingência com o simulador e a porta do Postgres não guarda EPEC
+ * (RN-FAT-10).
+ */
+export interface SimuladorSefaz extends SefazTransporte, SefazTransporteEpec {
   readonly destino: DestinoSimulador;
   readonly controles: ControlesSimulador;
 }
@@ -182,6 +188,10 @@ export function criarSimuladorSefaz(destino: DestinoSimulador, opcoes: OpcoesSim
     async inutilizar(pedido: PedidoInutilizacao) {
       const p = validarPedidoSefaz(PedidoInutilizacao, pedido);
       return conversa(ctx, 'inutilizacao', () => inutilizar(ctx, p.inutilizacaoAssinada));
+    },
+    async epec(pedido: PedidoEvento) {
+      const p = validarPedidoSefaz(PedidoEvento, pedido);
+      return conversa(ctx, 'recepcaoEpec', () => registrarEpec(ctx, p.idLote, p.eventoAssinado), { semParalisacao: true });
     },
   });
 }

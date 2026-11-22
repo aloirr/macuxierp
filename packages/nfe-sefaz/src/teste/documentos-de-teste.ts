@@ -3,9 +3,10 @@
  * CBS da NT 2025.002-RTC e, se pedido, o IS), o evento de cancelamento, a CC-e e a inutilização. Montagem de teste:
  * a montagem de produção é da T-0018/T-0021. Os textos de homologação são o `XNOME_HOMOLOGACAO` (RD-0254).
  */
-import { CUF, TP_AMB, TP_EMIS, XNOME_HOMOLOGACAO, type ModoEmissao } from '../ambiente';
+import { CUF, C_ORGAO_AN, TP_AMB, TP_EMIS, XNOME_HOMOLOGACAO, type ModoEmissao, type TpEmis } from '../ambiente';
 import { montarChaveNFe } from '../chave';
 import { aammSefaz, dataHoraSefaz } from '../datas';
+import { dadosEpecDaNFe, type DadosEpec } from '../epec';
 import { DESC_EVENTO, X_COND_USO_CCE, idEvento, idInutilizacao } from '../eventos';
 import { TIPO_EVENTO, type TipoEvento } from '../porta';
 import { NS_NFE } from '../xmldsig';
@@ -20,6 +21,13 @@ export interface OpcoesNFeDeTeste {
   /** 8 dígitos; padrão: derivado do número (determinístico). */
   cNF?: string;
   modo?: ModoEmissao;
+  /** `tpEmis` do XML e da chave (padrão: o do `modo`). 4 = EPEC. */
+  tpEmis?: TpEmis;
+  /**
+   * `dhCont` e `xJust` da contingência. Padrão: presentes quando o `tpEmis` não é 1 (`dhCont` = `dhEmi`). `null`
+   * tira os dois (para forjar o 557); com `tpEmis` 1, informar os dois forja o 556.
+   */
+  contingencia?: { dhCont: Date; xJust?: string } | null;
   /** Para forjar o 252: 1 = produção. Padrão 2. */
   tpAmb?: 1 | 2;
   /** Para forjar o 226. Padrão 13 (AM). */
@@ -44,7 +52,7 @@ export function montarNFeDeTeste(o: OpcoesNFeDeTeste): NFeDeTeste {
   const cnpj = o.cnpj ?? CNPJ_EMITENTE_DE_TESTE;
   const serie = o.serie ?? 1;
   const modo = o.modo ?? 'normal';
-  const tpEmis = TP_EMIS[modo];
+  const tpEmis = o.tpEmis ?? TP_EMIS[modo];
   const cUF = o.cUF ?? CUF.AM;
   const tpAmb = o.tpAmb ?? TP_AMB.homologacao;
   const cNF = o.cNF ?? String((o.nNF * 7919 + 13) % 100_000_000).padStart(8, '0');
@@ -58,7 +66,10 @@ export function montarNFeDeTeste(o: OpcoesNFeDeTeste): NFeDeTeste {
   const vICMS = Math.round((v * 2000) / 10_000);
   const doc = o.docDestinatario ?? CNPJ_OUTRO_DE_TESTE;
   const tagDoc = doc.length === 11 ? 'CPF' : 'CNPJ';
-  const contingencia = modo === 'normal' ? '' : `<dhCont>${dhEmi}</dhCont><xJust>SEFAZ-AM indisponivel, emissao em contingencia SVC (teste)</xJust>`;
+  const cont = o.contingencia === undefined ? (tpEmis === 1 ? null : { dhCont: o.dhEmi }) : o.contingencia;
+  const contingencia = cont
+    ? `<dhCont>${dataHoraSefaz(cont.dhCont)}</dhCont><xJust>${cont.xJust ?? 'SEFAZ-AM indisponivel, emissao em contingencia (teste)'}</xJust>`
+    : '';
   const endereco = (tag: string) =>
     `<${tag}><xLgr>Rua de Teste</xLgr><nro>100</nro><xBairro>Centro</xBairro><cMun>1302603</cMun><xMun>Manaus</xMun><UF>AM</UF><CEP>69005000</CEP><cPais>1058</cPais><xPais>Brasil</xPais></${tag}>`;
   const is = o.comIS ? `<IS><CSTIS>000</CSTIS><cClassTribIS>000001</cClassTribIS><vBCIS>${reais(v)}</vBCIS><pIS>2.00</pIS><vIS>${reais(vIS)}</vIS></IS>` : '';
@@ -121,6 +132,28 @@ export function montarCancelamentoDeTeste(o: OpcoesEventoDeTeste & { nProt: stri
 export function montarCartaCorrecaoDeTeste(o: OpcoesEventoDeTeste & { nSeqEvento: number; xCorrecao?: string }): string {
   const x = o.xCorrecao ?? 'Correcao de teste: o endereco de entrega e Rua de Teste, 100';
   return evento(o, TIPO_EVENTO.cartaCorrecao, o.nSeqEvento, `<descEvento>${DESC_EVENTO[TIPO_EVENTO.cartaCorrecao]}</descEvento><xCorrecao>${x}</xCorrecao><xCondUso>${X_COND_USO_CCE}</xCondUso>`);
+}
+
+/**
+ * `<evento>` 110140 (EPEC) sem assinatura, com o resumo tirado da NF-e de teste (`dadosEpecDaNFe`): o `cOrgao` é o do
+ * Ambiente Nacional (91). `ajustar` mexe nos dados antes de montar (para forjar o 467 na volta).
+ */
+export function montarEpecDeTeste(
+  nfeXml: string,
+  o: Omit<OpcoesEventoDeTeste, 'chave'> & { ajustar?: (d: DadosEpec) => DadosEpec },
+): string {
+  const lido = dadosEpecDaNFe(nfeXml);
+  if (!lido) throw new Error('montarEpecDeTeste: NF-e de teste ilegível');
+  const d = o.ajustar ? o.ajustar(lido) : lido;
+  const doc = `<${d.dest.documento.tag}>${d.dest.documento.valor}</${d.dest.documento.tag}>`;
+  return evento(
+    { ...o, chave: d.chNFe, cOrgao: o.cOrgao ?? C_ORGAO_AN, cnpj: o.cnpj ?? d.cnpj },
+    TIPO_EVENTO.epec,
+    1,
+    `<descEvento>${DESC_EVENTO[TIPO_EVENTO.epec]}</descEvento><cOrgaoAutor>${d.cOrgaoAutor}</cOrgaoAutor><tpAutor>1</tpAutor>` +
+      `<verAplic>${d.verAplic}</verAplic><dhEmi>${d.dhEmi}</dhEmi><tpNF>${d.tpNF}</tpNF><IE>${d.IE}</IE>` +
+      `<dest><UF>${d.dest.UF}</UF>${doc}${d.dest.IE ? `<IE>${d.dest.IE}</IE>` : ''}<vNF>${d.vNF}</vNF><vICMS>${d.vICMS}</vICMS><vST>${d.vST}</vST></dest>`,
+  );
 }
 
 /** `<inutNFe>` sem assinatura. `ano` com 2 dígitos. */

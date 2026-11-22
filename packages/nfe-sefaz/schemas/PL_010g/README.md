@@ -16,8 +16,14 @@ Usados por `validarXsd` (`packages/nfe-sefaz/src/xsd.ts`). Dono: engenheiro-soft
 ## O que entrou (só o necessário: NF-e 55, lote, `nfeProc`, cancelamento, CC-e, inutilização e os retornos)
 Lista e hashes: `SHA256SUMS` (formato do `sha256sum -c`; o teste `src/xsd.test.ts` confere). Mudou um `.xsd`, atualize o `SHA256SUMS`.
 
+### Acréscimo da EPEC (T-0021, ADR 0011, 22/11/2026)
+- `envEPEC_v1.00.xsd`, `leiauteEPEC_v1.00.xsd` e `retEnvEPEC_v1.00.xsd`, do mesmo espelho e do mesmo commit `4596b89`
+  (`schemes/PL_010g`), baixados pelo `raw.githubusercontent.com` em 22/11/2026 para fora do repositório e copiados byte a
+  byte (nenhum script executado; sem `DOCTYPE` nem `ENTITY`). Dependem só do `tiposBasico_v1.03.xsd` e do
+  `xmldsig-core-schema_v1.01.xsd`, que já estavam aqui. Hashes no `SHA256SUMS`. **A conferir com o ZIP oficial (T-0046).**
+
 ## O que ficou de fora
-- Os demais 190 arquivos do espelho (outros eventos, distribuição DF-e, versões 3.10, EPEC, etc.): a v1 não os usa.
+- Os demais 187 arquivos do espelho (outros eventos, distribuição DF-e, versões 3.10, etc.): a v1 não os usa.
 - O arquivo com espaço no nome, `e112120_v1.00 .xsd` (SHA-256 `9129b37c0a75157e17b2e88624d80c99576442968e986976beb92cdc30d07042`),
   é de um evento fora da v1 e **não foi copiado**. Se entrar um dia, entra com o nome corrigido para `e112120_v1.00.xsd`.
 

@@ -6,7 +6,8 @@
  *   quando o worker reinicia nem a nota de antes "sumir" (217) no cancelamento, na CC-e e no recibo;
  * - os CONTROLES DE TESTE (paralisação, recibo atrasado, falha de transporte, denegação e rejeição forçada), que ficam
  *   sempre em memória, por destino, no `RegistroSimulador`.
- * Tudo é por DESTINO (filial emissora + modo: normal ou SVC-RS). Os contadores são únicos no repositório inteiro (no
+ * Tudo é por DESTINO (filial emissora + modo: normal ou SVC-RS). A EPEC fica no destino normal (a nota EPEC é
+ * transmitida ao autorizador normal na volta) e só na porta em memória (RN-FAT-10, ADR 0011). Os contadores são únicos no repositório inteiro (no
  * Postgres, as sequências globais `seq_nprot` e `seq_nrec`): duas filiais nunca repetem protocolo.
  * Nada destas estruturas vai a log: o `<evento>` da CC-e traz o `xCorrecao`, texto livre.
  */
@@ -104,6 +105,13 @@ export interface EstadoSimuladorRepo {
   /** Eventos da nota, na ordem em que foram registrados. */
   eventosDaNota(d: DestinoDoEstado, chNFe: string): Promise<EventoSimulado[]>;
   gravarEvento(d: DestinoDoEstado, chNFe: string, evento: EventoSimulado): Promise<void>;
+  /**
+   * EPEC (110140) registrada para a chave, antes de a nota existir (ADR 0011). No Postgres (o simulador do worker)
+   * nunca há EPEC: filial simulada não entra em contingência (RN-FAT-10), e a leitura devolve `null`.
+   */
+  epecPorChave(d: DestinoDoEstado, chNFe: string): Promise<EventoSimulado | null>;
+  /** Grava a EPEC. No Postgres lança `SEFAZ_CONTINGENCIA_SIMULADA` (RN-FAT-10): só a porta em memória (testes) guarda. */
+  gravarEpec(d: DestinoDoEstado, chNFe: string, evento: EventoSimulado): Promise<void>;
   /** O número está numa faixa inutilizada do CNPJ e da série (206)? */
   numeroInutilizado(d: DestinoDoEstado, cnpj: string, serie: number, nNF: number): Promise<boolean>;
   /**
@@ -149,6 +157,8 @@ interface DestinoNaMemoria {
   /** `cnpj|serie|nNF` → chave. */
   readonly numeros: Map<string, string>;
   readonly eventos: Map<string, EventoSimulado[]>;
+  /** EPEC por chave (registrada antes da nota; ADR 0011). */
+  readonly epecs: Map<string, EventoSimulado>;
   readonly inutilizacoes: InutilizacaoSimulada[];
   readonly recibos: Map<string, ReciboSimulado>;
 }
@@ -169,7 +179,7 @@ function criarMemoria(o: OpcoesEstadoMemoria): Memoria {
   const de = (d: DestinoDoEstado): DestinoNaMemoria => {
     let e = destinos.get(chaveDestino(d));
     if (!e) {
-      e = { notas: new Map(), numeros: new Map(), eventos: new Map(), inutilizacoes: [], recibos: new Map() };
+      e = { notas: new Map(), numeros: new Map(), eventos: new Map(), epecs: new Map(), inutilizacoes: [], recibos: new Map() };
       destinos.set(chaveDestino(d), e);
     }
     return e;
@@ -222,6 +232,14 @@ function criarMemoria(o: OpcoesEstadoMemoria): Memoria {
         throw new Error('simulador: evento já gravado');
       e.eventos.set(chNFe, [...lista, evento]);
     },
+    async epecPorChave(d, chNFe) {
+      return de(d).epecs.get(chNFe) ?? null;
+    },
+    async gravarEpec(d, chNFe, evento) {
+      const e = de(d);
+      if (e.epecs.has(chNFe)) throw new Error('simulador: EPEC já gravada');
+      e.epecs.set(chNFe, evento);
+    },
     async numeroInutilizado(d, cnpj, serie, nNF) {
       return de(d).inutilizacoes.some(
         (i) => i.cnpj === cnpj && i.serie === serie && nNF >= i.nNFIni && nNF <= i.nNFFin,
@@ -273,6 +291,7 @@ export const OPERACOES_REJEITAVEIS = [
   'cancelar',
   'cartaCorrecao',
   'inutilizar',
+  'epec',
 ] as const;
 export type OperacaoRejeitavel = (typeof OPERACOES_REJEITAVEIS)[number];
 
