@@ -35,6 +35,7 @@ export const PERMISSOES = {
   'cadastros.estoque.movimentar': CADASTRO,
   'cadastros.estoque.negativo': ADM_GERENTE, // RN-CAD-07
   'cadastros.condicao_pagamento.editar': ADM_GERENTE,
+  'cadastros.condicao_pagamento.desativar_recusadas': ADM, // RN-CAD-09
   'cadastros.vendedor.editar': ADM_GERENTE,
   'cadastros.carteira.transferir': ADM_GERENTE,
   'cadastros.consulta.externa': CADASTRO,
