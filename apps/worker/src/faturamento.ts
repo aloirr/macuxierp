@@ -9,6 +9,7 @@
  *   delas); a `tx` do executor não é usada. Erro de configuração da SEFAZ desiste na hora (422, sem retentativa): repetir não muda nada.
  * - Lote 5 (#205): `titulos` e `log` no transmissor e no processador; varredura dos títulos de boleto (`criarVarreduraTitulos`) na mesma rotina de 60 s,
  *   só em tenant licenciado; consumidor do pedido aprovado com a situação ATUAL do pedido (`criarConsultaParaFaturar`, a mesma porta da API).
+ * - #222: o transmissor recebe a situação do pedido (`criarConsultaParaFaturar`, RN-PED-02): pedido cancelado não lê o A1 nem assina.
  * Logs: só ids, contagens, códigos e nomes de erro; nunca XML, CNPJ/CPF, certificado ou senha.
  */
 import { criarConsultaParaFaturamento, repositoriosSql as repositoriosCadastros } from '@macuxierp/cadastros/api';
@@ -127,6 +128,11 @@ export interface DependenciasFaturamentoWorker {
   sefaz?: SeletorTransporte;
   /** Padrão: `criarEmissorNFe()` completo (montar, assinar, transmitir). */
   emissor?: EmissorNFe;
+  /**
+   * RN-PED-02: situação do pedido antes de assinar (#222). Padrão: `criarConsultaParaFaturar().situacao` do pedido, a MESMA porta da emissão
+   * na API e do consumidor do pedido aprovado (pedido cancelado não vira nota assinada).
+   */
+  situacao?: SituacaoPedidoDoPedido;
   /** Intervalo da varredura (padrão 60 s). */
   intervaloVarreduraMs?: number;
   /** Hora UTC do alerta das numeradas não enviadas (padrão 11 h UTC = 7 h em Manaus). */
@@ -171,7 +177,8 @@ export function montarFaturamentoWorker(d: DependenciasFaturamentoWorker): Monta
   const sefaz = d.sefaz ?? criarSefazDoWorker();
   const log = logFaturamentoDoWorker(d.log);
   const comuns = { banco: d.banco, notas: repos.notas, titulos: repos.titulos, log, ambiente: repos.ambiente, lerA1, emissor, sefaz, agora };
-  const transmissor = criarTransmissor(comuns);
+  const situacao = d.situacao ?? criarConsultaParaFaturar();
+  const transmissor = criarTransmissor({ ...comuns, situacao });
   const processador = criarProcessadorEventos({ ...comuns, eventos: repos.eventos, cadastros: criarConsultaParaFaturamento(repositoriosCadastros) });
   // Uma por processo: o teto de tentativas por nota fica na memória da instância (titulos.md).
   const varrerTitulos = criarVarreduraTitulos({ titulos: repos.titulos, notas: repos.notas, log });

@@ -248,6 +248,19 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
     expect(proc?.xml).toContain('<tpEvento>110111</tpEvento>');
   });
 
+  // #222 ligado no worker: o transmissor de produção consulta a situação do pedido (`criarConsultaParaFaturar`) antes de ler o A1 e assinar.
+  // O cancelamento pela rota é recusado com nota em rascunho (P-2); aqui o pedido muda pelo admin entre a emissão e o worker, como numa corrida.
+  it('RN-PED-02 e RN-FAT-07: pedido cancelado depois da emissão — o worker não assina nem transmite; a nota fica em rascunho com o número', async () => {
+    const nota = await emitirNota('matriz');
+    const antes = destinos.length;
+    await admin("UPDATE pedido.pedido SET status = 'cancelado' WHERE id = $1", [nota.pedido_id]);
+    await rodarWorker();
+    expect((await trabalhos('faturamento.transmitir_nota')).at(-1)).toMatchObject({ estado: 'concluido', resultado: { resultado: 'nao_assinada', motivo: 'pedido_cancelado' } });
+    expect((await notaNoBanco(nota.id)).status).toBe('rascunho');
+    expect(await xmlsDaNota(nota.id)).toEqual([]);
+    expect(destinos.length).toBe(antes);
+  });
+
   it('nota MEI (CRT 4): autorizada no simulador, com o CRT 4 no XML guardado', async () => {
     await enviarA1('mei');
     const nota = await emitirNota('mei');

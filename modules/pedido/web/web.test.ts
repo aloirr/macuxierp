@@ -66,7 +66,7 @@ describe('páginas do BKO do pedido', () => {
     expect(l.total_centavos).toBe('R$ 1.234,56');
     expect(l.emitido_em).toBe('21/11/2026 22:30');
     expect(l.status).toBe('Em análise');
-    expect(l.origem).toBe('ERP');
+    expect(l.origem).toBe('Manual');
     expect(Object.keys(l)).toEqual(colunasDaTela('gerente').map((c) => c.id));
   });
 });
@@ -110,7 +110,7 @@ describe('ações do detalhe por status e perfil (RN-PED-02)', () => {
 
 describe('motivos e justificativa (§4.3)', () => {
   it('"outro" exige o texto; os demais não mandam texto; código fora do catálogo é recusado', () => {
-    expect(validarMotivo('recusar', { motivo_codigo: 'outro', motivo_texto: '  ' })).toEqual({ ok: false, erros: { motivo_texto: 'Descreva o motivo' } });
+    expect(validarMotivo('recusar', { motivo_codigo: 'outro', motivo_texto: '  ' })).toEqual({ ok: false, erros: { motivo_texto: 'Motivo obrigatório. Descreva o motivo.' } });
     expect(validarMotivo('recusar', { motivo_codigo: 'outro', motivo_texto: ' sem acordo ' })).toEqual({ ok: true, corpo: { motivo_codigo: 'outro', motivo_texto: 'sem acordo' } });
     expect(validarMotivo('cancelar', { motivo_codigo: 'sem_estoque', motivo_texto: 'ignorado' })).toEqual({ ok: true, corpo: { motivo_codigo: 'sem_estoque', motivo_texto: null } });
     expect(validarMotivo('cancelar', { motivo_codigo: 'credito_insuficiente', motivo_texto: '' }).ok).toBe(false);
@@ -124,8 +124,8 @@ describe('motivos e justificativa (§4.3)', () => {
     expect(avisoDoMotivo('fdv', 'sem_estoque')).toBeNull();
   });
   it('o limite do texto vem do contrato, em português', () => {
-    expect(validarMotivo('cancelar', { motivo_codigo: 'outro', motivo_texto: 'x'.repeat(301) })).toEqual({ ok: false, erros: { motivo_texto: 'No máximo 300 caracteres' } });
-    expect(validarAprovacao(false, 'x'.repeat(501))).toEqual({ ok: false, erros: { justificativa: 'No máximo 500 caracteres' } });
+    expect(validarMotivo('cancelar', { motivo_codigo: 'outro', motivo_texto: 'x'.repeat(301) })).toEqual({ ok: false, erros: { motivo_texto: 'Texto longo demais. Use no máximo 300 caracteres.' } });
+    expect(validarAprovacao(false, 'x'.repeat(501))).toEqual({ ok: false, erros: { justificativa: 'Texto longo demais. Use no máximo 500 caracteres.' } });
   });
   it('a justificativa é obrigatória só com pendência não bloqueante', () => {
     expect(validarAprovacao(true, ' ').ok).toBe(false);
@@ -189,7 +189,7 @@ describe('formulário do pedido manual', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(Object.keys(r.erros).sort()).toEqual(['cliente_id', 'filial_id', 'itens.0.preco', 'itens.0.produto_id', 'itens.0.quantidade']);
     const semItens = validarFormulario({ ...valido(), itens: [] });
-    expect(!semItens.ok && semItens.erros.itens).toBe('Inclua ao menos um item');
+    expect(!semItens.ok && semItens.erros.itens).toBe('Nenhum item. Inclua ao menos um item.');
   });
   it('quantidade zero, preço malformado e desconto acima do valor do item são recusados', () => {
     const com = (i: Partial<Formulario['itens'][0]>) => validarFormulario({ ...valido(), itens: [{ ...(valido().itens[0] as Formulario['itens'][0]), ...i }] });
@@ -240,7 +240,7 @@ describe('formulário do pedido manual', () => {
   });
   it('limite do contrato vira mensagem em português por campo', () => {
     const r = validarFormulario({ ...valido(), observacao: 'x'.repeat(501) });
-    expect(!r.ok && r.erros.observacao).toBe('No máximo 500 caracteres');
+    expect(!r.ok && r.erros.observacao).toBe('Texto longo demais. Use no máximo 500 caracteres.');
   });
   it('resposta 5xx que não é JSON vira ErroPedido; o id vai codificado na URL', async () => {
     const urls: string[] = [];
@@ -288,7 +288,7 @@ describe('edição, endereço de entrega e fontes dos seletores (T-0015, lote 3b
     const com = validarFormulario({ ...valido(), endereco_entrega_id: U3 });
     expect(com.ok && com.entrada.endereco_entrega_id).toBe(U3);
     const ruim = validarFormulario({ ...valido(), endereco_entrega_id: 'x' });
-    expect(!ruim.ok && ruim.erros.endereco_entrega_id).toBe('Endereço inválido');
+    expect(!ruim.ok && ruim.erros.endereco_entrega_id).toBe('Endereço inválido. Escolha outro.');
     const f = formularioDoPedido({ filial_id: U1, cliente_id: U2, condicao_pagamento_id: null, endereco_entrega: { endereco_id: U3 }, observacao: null, itens: [] } as unknown as Pedido);
     expect(f.endereco_entrega_id).toBe(U3);
   });

@@ -285,6 +285,16 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.eventos).toEqual([]);
   });
 
+  it('RN-PED-02, RN-FAT-07: reenvio da rejeitada com o pedido cancelado é recusado, sem mudar número nem conteúdo', async () => {
+    const m = montar();
+    const nota = await emitir(m);
+    await m.svc.processarRetorno(tx, nota, retorno('778', 'Rejeicao: NCM inexistente'), opcoes);
+    m.deps.situacao.situacao = async () => ({ status: 'cancelado' as never, itens: [] });
+    const re = await criarServicoEmissao(m.deps).reenviarNota(tx, m.notas.get(nota.id)!);
+    expect(!re.ok && re.violacoes[0]?.rn).toBe('RN-PED-02');
+    expect(m.notas.get(nota.id)).toMatchObject({ status: 'rejeitada', numero: 100, revisao: 1 });
+  });
+
   it('RN-FAT-07: rejeitada publica nota.rejeitada@1 e o reenvio mantém série, número e chave, sem reservar outro', async () => {
     const m = montar();
     const nota = await emitir(m);
