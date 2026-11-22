@@ -11,7 +11,7 @@
  *  - perfil thathyany-seguro: recusado pelo `exigirCenario` (`config.test.ts`).
  * Sem Postgres, a parte de banco pula (`bash db/scripts/pg-local.sh`).
  */
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarEvento, type PluginModulo } from '../../packages/platform-sdk/src/index';
 import { envelopeDaLinha, OutboxPg, SELECT_EVENTO, type BancoPg, type LinhaEvento } from '../../packages/platform-sdk/src/pg';
@@ -159,7 +159,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     (await adm('SELECT estado, erro_codigo, tentativas, pedido_id FROM integracao_fdv.pedido_recebido WHERE tenant_id = $1 AND pedido_uuid = $2', [T[k], uuid]))[0] ?? null;
   const retornos = async (k: Apelido, uuid: string) =>
     adm(
-      `SELECT status, estado, numero_erp, corpo, tentativas, resposta_http FROM integracao_fdv.retorno_enviado
+      `SELECT status, estado, numero_erp, corpo, tentativas, resposta_http, itens_descartados FROM integracao_fdv.retorno_enviado
         WHERE tenant_id = $1 AND pedido_uuid = $2 ORDER BY created_at, id`,
       [T[k], uuid],
     );
@@ -392,9 +392,8 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     for (const p of [sem, doErp, editado]) expect(noHub('A', p.pedido_uuid).estado).toBe('integrado');
   });
 
-  // Achado A-01 (docs/testes/T-0017.md): a regra do Hub é o external_id, não a origem; origem ausente vale 'erp'.
-  let enderecoA01: unknown;
-  it('pedido-endereco (A-01, preparo): origem ausente com external_id preenchido entra e é integrado', async () => {
+  // Achado A-01 (docs/testes/T-0017.md; corrigido pelo L3 da T-0011): a regra do Hub é o external_id, não a origem; origem ausente vale 'erp'.
+  it('pedido-endereco (A-01): origem ausente com external_id preenchido entra, é integrado e usa o endereço do ERP', async () => {
     exigir('pedido-endereco');
     const p = pedidoFdv(massa.A, { endereco_entrega: { external_id: massa.A.enderecoEntrega, principal: false, logradouro: ENTREGA_ERP.logradouro, cidade: 'Manaus', uf: 'AM' } });
     aprovar('A', p);
@@ -402,10 +401,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     const ped = await pedidoErp('A', p.pedido_uuid);
     expect(ped.status).toBe('aprovado');
     expect(noHub('A', p.pedido_uuid).estado).toBe('integrado');
-    enderecoA01 = ped.endereco_entrega.endereco_id;
-  });
-  it.fails('pedido-endereco (A-01): origem ausente com external_id preenchido usa o endereço do ERP', () => {
-    expect(enderecoA01).toBe(massa.A.enderecoEntrega);
+    expect(ped.endereco_entrega.endereco_id).toBe(massa.A.enderecoEntrega);
   });
 
   /** A F4 ainda não publica `pedido.pedido.faturado@1` (o pedido não consome `nota.autorizada@1`): o evento entra pela outbox. */
@@ -414,9 +410,22 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
       new OutboxPg().gravar(tx, criarEvento({ nome: 'pedido.pedido.faturado@1', tenant_id: T.A, agregado_id: pedidoId, ator: 'sistema', request_id: 't0017', payload }, relogio.agora())),
     );
   const nota = (numero: number, total: number) => ({ numero, serie: 1, chave: `1326111122233300018155001${String(numero).padStart(9, '0')}1000000010`.slice(0, 44), emitida_em: relogio.agora().toISOString(), total_centavos: total });
+  /**
+   * Põe o produto no espelho do Conector (`registro_publicado`, entidade 'produto', `erp_id` = UUID do produto), como o
+   * consumidor de cadastros faria ao publicar: é de lá que o retorno tira a chave do Hub do item faturado (A-02, L3 da T-0011).
+   */
+  const noEspelho = async (k: Apelido, produtoId: string, chave: string) => {
+    const payload = { external_id: chave, ativo: true, sku: `SKU-${chave}`, nome: `Produto ${chave}`, unidade: 'UN' };
+    await adm(
+      `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, erp_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo)
+       VALUES ($1, 'produto', $2, $3, $4::jsonb, $5, $6, $6, true) ON CONFLICT (tenant_id, entidade, registro_external_id) DO NOTHING`,
+      [T[k], chave, produtoId, JSON.stringify(payload), createHash('sha256').update(JSON.stringify(payload)).digest('hex'), relogio.agora()],
+    );
+  };
 
   it('pedido-faturado (só a perna do retorno; o faturamento é PENDENTE): faturado_parcial e faturado_total chegam ao Hub; homologação não volta', async () => {
     exigir('pedido-faturado');
+    await noEspelho('A', massa.A.produtoErp, massa.A.produtoErp); // nascido no ERP: a chave do Hub é o UUID (ADR 0010)
     const p = pedidoFdv(massa.A);
     aprovar('A', p);
     await lado.ciclo(T.A, hub.A);
@@ -436,10 +445,11 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(lado.lgpd.alertas.slice(alertasAntes)).toEqual([]);
   });
 
-  // Achado A-02: o item faturado volta com o UUID do produto no ERP, não com a chave do Hub (o kit: `P001`); o Hub descarta.
-  let alertasA02: string[] | undefined;
-  it('pedido-faturado (A-02, preparo): o faturado_parcial com item do produto do kit é enviado ao Hub', async () => {
+  // Achado A-02 (corrigido pelo L3 da T-0011; regra aceita pelo gerente em 22/11/2026, 01h50 de Manaus): o item faturado
+  // volta com a chave do Hub do produto (registro_external_id do espelho pelo erp_id; o kit: `P001`), não com o UUID do ERP.
+  it('pedido-faturado (A-02): item faturado de produto com chave do kit volta com a chave do Hub (sem itens_descartados)', async () => {
     exigir('pedido-faturado');
+    await noEspelho('A', massa.A.produtoKit, KIT.produto);
     const p = pedidoFdv(massa.A);
     aprovar('A', p);
     expect((await lado.ciclo(T.A, hub.A)).busca).toMatchObject({ entregues: 1 });
@@ -449,10 +459,39 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     const alertasAntes = lado.lgpd.alertas.length;
     expect(await lado.enviar(T.A, hub.A)).toMatchObject({ enviados: 1, falhou: 0 });
     expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado', 'faturado_parcial']);
-    alertasA02 = lado.lgpd.alertas.slice(alertasAntes);
+    const [, fat] = await retornos('A', p.pedido_uuid);
+    expect(fat!.corpo.itens_faturados).toEqual([{ sequencia: 1, produto_external_id: KIT.produto, quantidade: 12, valor_cents: 6000 }]);
+    expect(fat!.itens_descartados).toBeNull();
+    expect(lado.lgpd.alertas.slice(alertasAntes)).toEqual([]);
   });
-  it.fails('pedido-faturado (A-02): item faturado de produto com chave do kit volta com a chave do Hub (sem itens_descartados)', () => {
-    expect(alertasA02).toEqual([]);
+
+  // Regra do A-02 sem chave: produto fora do espelho aguarda até 24 h do ocorrido_em do faturamento; depois, 'falhou'
+  // (itens_descartados, itens_faturados vazio, nada ao Hub) e o alerta `retorno_sem_chave_produto` com o pedido_uuid.
+  it('pedido-faturado (A-02, sem chave): produto fora do espelho aguarda até 24 h; passado o prazo, falhou com itens_descartados e alerta', async () => {
+    exigir('pedido-faturado');
+    const r = await api.chamar('A', 'POST', '/v1/cadastros/produtos', produtoValido({ codigo: 'P003', descricao: 'Suco de caju 1L', cest: '0300700' }));
+    expect(r.statusCode).toBeLessThan(300);
+    const foraDoEspelho = (r.json() as { id: string }).id;
+    const p = pedidoFdv(massa.A);
+    aprovar('A', p);
+    expect((await lado.ciclo(T.A, hub.A)).busca).toMatchObject({ entregues: 1 });
+    const ped = await pedidoErp('A', p.pedido_uuid);
+    const ocorrido = relogio.agora().getTime();
+    await faturar(ped.id, { pedido_id: ped.id, numero: Number(ped.numero), origem: 'fdv', pedido_uuid: p.pedido_uuid, status: 'faturado_parcial', ambiente: 'producao', nota: nota(4, 250), itens_faturados: [{ sequencia: 2, produto_id: foraDoEspelho, quantidade: 10_000, valor_centavos: 250 }] });
+    const alertasAntes = lado.lgpd.alertas.length;
+    // antes das 24 h: aguarda (nada vai ao Hub, nada falha)
+    await lado.despachar();
+    expect(await lado.enviar(T.A, hub.A)).toMatchObject({ enviados: 0, falhou: 0 });
+    expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado']);
+    // passadas as 24 h do ocorrido_em do faturamento
+    relogio.avancar(ocorrido + 24 * 3_600_000 + 60_000 - relogio.agora().getTime());
+    await lado.despachar();
+    await lado.enviar(T.A, hub.A);
+    const fat = (await retornos('A', p.pedido_uuid)).filter((x) => x.status === 'faturado_parcial');
+    expect(fat).toMatchObject([{ estado: 'falhou', itens_descartados: [{ produto_id: foraDoEspelho }] }]);
+    expect(fat[0]!.corpo.itens_faturados).toEqual([]);
+    expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado']);
+    expect(lado.lgpd.alertas.slice(alertasAntes)).toContain(`retorno_sem_chave_produto:${JSON.stringify({ pedido_uuid: p.pedido_uuid })}`);
   });
 
   it('pedido-multi-tenant: o mesmo pedido_uuid em dois tenants vira dois pedidos; o do tenant A não aparece no B (banco, API e fila do Hub)', async () => {

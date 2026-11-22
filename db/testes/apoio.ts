@@ -7,9 +7,11 @@ import { randomUUID } from 'node:crypto';
 import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { expect } from 'vitest';
 import { listarMigracoes } from '../src/migrar.ts';
 import {
   type Conexao,
+  type Contexto,
   consultar,
   conexaoDoAmbiente,
   ErroPsql,
@@ -60,7 +62,8 @@ export interface PastaDeMigracoes {
  */
 export function pastaComMigracoesAntesDe(prefixo: string): PastaDeMigracoes {
   const pasta = mkdtempSync(join(tmpdir(), `macuxi-${prefixo}-`));
-  for (const m of listarMigracoes().filter((x) => x.nome < prefixo)) copyFileSync(m.caminho, join(pasta, m.nome));
+  for (const m of listarMigracoes().filter((x) => x.nome < prefixo))
+    copyFileSync(m.caminho, join(pasta, m.nome));
   return { pasta, remover: () => rmSync(pasta, { recursive: true, force: true }) };
 }
 
@@ -184,6 +187,19 @@ export function falhaDetalhada(fn: () => unknown): { mensagem: string; saida: st
 
 /** Liga o SQLSTATE na saída do psql (`\set VERBOSITY verbose`), para `falhaDetalhada` conferir o código. */
 export const verboso = (sql: string): string => `\\set VERBOSITY verbose\n${sql}`;
+
+/** Falha esperada, com o SQLSTATE (`codigo`) na saída do psql e o `padrao` na mensagem; o SQL vai junto no erro. */
+export function recusaDetalhada(
+  conexao: Conexao,
+  sql: string,
+  codigo: string,
+  padrao: RegExp,
+  ctx?: Contexto,
+): void {
+  const e = falhaDetalhada(() => executar(conexao, verboso(sql), ctx));
+  expect({ sql, saida: e.saida }).toMatchObject({ sql, saida: expect.stringContaining(codigo) });
+  expect({ sql, mensagem: e.mensagem }).toMatchObject({ sql, mensagem: expect.stringMatching(padrao) });
+}
 
 /** Linhas não vazias da saída do psql (valores de RETURNING e SELECT de uma coluna de texto). */
 export const linhas = (saida: string): string[] =>

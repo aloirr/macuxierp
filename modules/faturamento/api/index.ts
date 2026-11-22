@@ -1,19 +1,25 @@
 import { definirPlugin, type PluginModulo } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
-import type { DepsEmissao } from './emissao';
-import { criarRotas } from './rotas';
+import { criarRotas, type DepsRotas } from './rotas';
 
 /** Só o que o README liga no apps/api e no apps/worker; o resto é interno do módulo. */
 export { criarConsumidorPedidoAprovado } from './consumidor';
 export type {
-  A1DaFilial, AmbienteFiscalDaFilial, CalculoFiscal, ClienteDestinatario, CondicaoDoPedido, ConsultaCadastrosFaturamento,
-  EntradaCalculoFiscal, FilialEmissora, NotaEmAberto, PedidosAprovados, RepositorioNotas, ResultadoCalculoFiscal, SituacaoPedidoDoPedido,
+  A1DaFilial, AmbienteFiscalDaFilial, CalculoFiscal, ClienteDestinatario, CondicaoDoPedido, ConsultaA1Ativo, ConsultaCadastrosFaturamento,
+  EntradaCalculoFiscal, EventoRegistro, FilialEmissora, InutilizacaoRegistro, NotaEmAberto, PedidosAprovados, RepositorioEventos, RepositorioNotas, ResultadoA1Ativo,
+  ResultadoCalculoFiscal, SituacaoPedidoDoPedido,
 } from './portas';
 export { repositoriosSql } from './sql';
+export { criarProcessadorEventos, type DepsProcessadorEventos, type ResultadoConsultaNota, type ResultadoEventoProcessado, type ResultadoInutilizacaoProcessada } from './processador-eventos';
 export { criarTransmissor, type DepsTransmissor, type ResultadoTransmissao } from './transmissor';
 
-/** Dependências do plugin: as portas da emissão (a API monta com os adaptadores de pedido, cadastros, fiscal e `repositoriosSql`). */
-export type DependenciasFaturamento = DepsEmissao;
+/**
+ * FÁBRICA DA API (apps/api). Dependências do plugin: as portas da emissão (adaptadores de pedido, cadastros, fiscal, `repositoriosSql`), o `emissor` só para
+ * `montar`, `certificado.temA1Ativo` (veredito sobre metadados, `A1ValidoDaFilial` do core, também nos eventos) e `eventos` (pedidos `pendente`). NÃO tem `lerA1`
+ * nem assinatura: o `macuxierp_app` não lê o A1 decifrado (ADR 0005 item 4). As fábricas do WORKER são `criarTransmissor` e `criarProcessadorEventos` (acima),
+ * com `lerA1`, o emissor completo e o seletor de transporte.
+ */
+export type DependenciasFaturamento = DepsRotas;
 
 export function criarPluginFaturamento(deps: DependenciasFaturamento): PluginModulo {
   return definirPlugin(manifest, criarRotas(deps));

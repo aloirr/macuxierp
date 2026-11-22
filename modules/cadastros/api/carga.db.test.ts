@@ -83,6 +83,23 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     expect(await fotos(A)).toEqual(antes);
   }, 180_000);
 
+  it('ADR 0010 / RN-CORE-05 (C-10): depois da carga com chaves do kit, preço, unidade e endereço saem com external_id; a adoção leva external_id_anterior nulo no preço', async () => {
+    const T = await criarTenant(efemero.admin, 'carga-c10', ['cadastros']);
+    const g = await carregar(T, 'gravar');
+    expect(g.rel.erros).toEqual([]);
+    const de = (n: string) => g.eventos.filter((e) => e.nome === n).map((e) => e.payload as Record<string, any>); // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(de('cadastros.preco.alterado@1').map((p) => p.external_id).sort()).toEqual(['PR-EX-01', 'PR-EX-02']);
+    expect(de('cadastros.produto.alterado@1').flatMap((p) => p.unidades.map((u: { external_id: string }) => u.external_id))).toContain('PU-EX-01');
+    expect(de('cadastros.cliente.alterado@1').flatMap((p) => p.enderecos.map((e: { external_id: string }) => e.external_id))).toContain('CE-EX-01');
+    // adoção: zera a chave dos itens e recarrega
+    await admin('UPDATE cadastros.tabela_preco_item SET external_id = NULL WHERE tenant_id = $1', [T]);
+    const r = await carregar(T, 'gravar');
+    expect(r.rel.erros).toEqual([]);
+    const adotados = r.eventos.filter((e) => e.nome === 'cadastros.preco.alterado@1').map((e) => e.payload as Record<string, unknown>);
+    expect(adotados).toHaveLength(2);
+    for (const p of adotados) expect(p).toMatchObject({ external_id: expect.stringMatching(/^PR-EX-0[12]$/), external_id_anterior: null });
+  }, 180_000);
+
   it('multi-tenant: B com os MESMOS external_id; a carga em A não lê nem altera B (linhas e updated_at)', async () => {
     const b = await carregar(B, 'gravar');
     expect(b.rel.erros).toEqual([]);

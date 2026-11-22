@@ -1,16 +1,15 @@
 /**
- * Serviço de aplicação da emissão (RF-FAT-01, RF-FAT-08): orquestra as portas, sem SQL nem HTTP. Toda escrita acontece na
- * transação `tx` recebida (número, nota, itens, status e evento confirmam juntos). A API NÃO fala com a SEFAZ.
- * `emitirNota` (ordem da T-0018, na MESMA transação da reserva do número): nota em `rascunho` com chave, cNF e dhEmi → assina com o A1
- * (porta `lerA1`; o `pfx` é zerado ao fim) → INSERT da `nfe_assinada` → só então `em_autorizacao` (a migração 0020 recusa a `nfe_assinada` em
- * `em_autorizacao`). O reenvio da rejeitada remonta e reassina com a nota ainda em `rejeitada`, grava a versão nova e só então vai a
- * `em_autorizacao`. O worker NÃO assina: lê a última `nfe_assinada` e transmite FORA da transação, e aplica o retorno com `processarRetorno`
- * (ver `transmissor.ts`). Contingência (lote 4): o assinado só entra depois do UPDATE para `emitida_contingencia`.
+ * Serviço de aplicação da emissão (RF-FAT-01, RF-FAT-08), FASE DA API: orquestra as portas, sem SQL nem HTTP. Toda escrita acontece na
+ * transação `tx` recebida (número, nota, itens e conteúdo confirmam juntos). A API NÃO fala com a SEFAZ, NÃO lê o A1 decifrado (o
+ * `macuxierp_app` não tem SELECT nas colunas cifradas, ADR 0005 item 4, RN-CORE-06) e NÃO assina: confere só que a filial tem A1 ATIVO
+ * (`temA1Ativo`, metadados) e deixa a nota em `rascunho`, com conteúdo, chave, cNF e dhEmi gravados. O worker (`transmissor.ts`) remonta,
+ * assina, guarda a `nfe_assinada` e leva a `em_autorizacao` na mesma transação (a migração 0020 só aceita a `nfe_assinada` em rascunho,
+ * rejeitada ou emitida_contingencia). O reenvio da rejeitada refaz o conteúdo e mantém o status; o worker reassina (versão = max+1).
  */
 import { ErroMontagemNFe, type EmissorNFe, type NotaParaEmissaoEntrada } from '@macuxierp/nfe-emissor';
 import { montarNfeProc } from '@macuxierp/nfe-sefaz';
 import { violacao, type Transacao, type Violacao } from '@macuxierp/platform-sdk';
-import { createHash } from 'node:crypto';
+import { baseEventoDaNota } from './eventos';
 import {
   NotaAutorizadaPayload,
   NotaRejeitadaPayload,
@@ -42,9 +41,9 @@ import {
   type SituacaoPedido,
 } from '../domain';
 import type {
-  A1DaFilial,
   AmbienteFiscalDaFilial,
   CalculoFiscal,
+  ConsultaA1Ativo,
   ConsultaCadastrosFaturamento,
   DadosMudancaStatus,
   FilialEmissora,
@@ -61,20 +60,18 @@ export const EVENTO_NOTA_REJEITADA = 'faturamento.nota.rejeitada@1' as const;
 /** Texto fiscal padrão até a configuração por filial existir (ver "Pendências" no README). */
 const NAT_OP_PADRAO = 'VENDA DE MERCADORIA';
 
+/** Dependências da FASE DA API: sem `lerA1` e sem assinatura (o tipo impede ligar o A1 decifrado na API). */
 export interface DepsEmissao {
-  /** Porta `EmissorNFe` (`criarEmissorNFe` do `@macuxierp/nfe-emissor`): o serviço nunca gera XML nem chave por conta própria. */
-  emissor: EmissorNFe;
+  /** Porta `EmissorNFe` (`criarEmissorNFe`), SÓ o `montar`: a API confere o documento com número provisório e grava a chave e o cNF; o worker assina. */
+  emissor: Pick<EmissorNFe, 'montar'>;
   pedidos: PedidosAprovados;
   situacao: SituacaoPedidoDoPedido;
   cadastros: ConsultaCadastrosFaturamento;
   calculo: CalculoFiscal;
   ambiente: AmbienteFiscalDaFilial;
   notas: RepositorioNotas;
-  /**
-   * A1 da filial aberto em memória (`lerA1DecifradoDaFilial` do core + `abrirA1` do emissor, ligados no worker/api). `null` = filial sem A1
-   * ativo: violação ANTES da reserva do número. A emissão o usa só para assinar e zera o `pfx` ao fim.
-   */
-  lerA1(tx: Transacao, filial_id: string): Promise<A1DaFilial | null>;
+  /** A filial tem A1 ATIVO e dentro da validade? Só metadados do core (sem decifrar). Sem A1: violação ANTES da reserva do número. */
+  certificado: ConsultaA1Ativo;
   agora?: () => Date;
   /** Sorteio do cNF (inteiro em [0, 100000000), injetável em teste); sem ele, o emissor sorteia. */
   sorteio?: () => number;
@@ -145,20 +142,27 @@ const identidadeDe = (n: NotaRegistro): IdentidadeNota =>
   identidadeNota({ ...n, tpEmis: n.tp_emis }, { numero: n.numero, cnf: n.cnf, emitida_em: new Date(n.emitida_em) });
 
 /**
- * XML (sem assinatura) montado pelo emissor do conteúdo gravado (RN-FAT-02). É o que a API assina (com o A1 lido pela porta `lerA1`) na emissão e no reenvio da
- * rejeitada; o worker reutiliza o assinado guardado. Série, número, dhEmi e cNF não mudam: a chave e o cNF que o emissor devolve
+ * XML (sem assinatura) montado pelo emissor do conteúdo gravado (RN-FAT-02). É o que o WORKER assina (com o A1 decifrado) na primeira transmissão e no reenvio da
+ * rejeitada; retries com a nota em `em_autorizacao` reutilizam o assinado guardado. Série, número, dhEmi e cNF não mudam: a chave e o cNF que o emissor devolve
  * têm de ser os da nota.
  */
-export function xmlDaNota(emissor: EmissorNFe, nota: NotaRegistro, conteudo: ConteudoNota): string {
+export function xmlDaNota(emissor: Pick<EmissorNFe, 'montar'>, nota: NotaRegistro, conteudo: ConteudoNota): string {
   const e = notaParaEmissaoDe(identidadeDe(nota), conteudo);
   if (!e.ok) throw new ErroViolacao(e.violacoes);
   const r = emissor.montar(e.nota);
-  if (r.chave !== nota.chave_acesso) throw new Error('RN-FAT-07: a chave refeita difere da chave da nota');
-  if (r.cNF !== nota.cnf) throw new Error('RN-FAT-07: o cNF refeito difere do cNF da nota');
+  const divergencia = conferirIdentidade(r, nota);
+  if (divergencia) throw new Error(`RN-FAT-07: ${divergencia.mensagem}`);
   return r.xml;
 }
 
-async function mudarNota(notas: RepositorioNotas, tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> {
+/** RN-FAT-07: a remontagem tem de dar a chave e o cNF gravados na nota; `null` = confere. Usada pelo reenvio (API) e pela remontagem do worker. */
+export function conferirIdentidade(montada: { chave: string; cNF: string }, nota: Pick<NotaRegistro, 'chave_acesso' | 'cnf'>): { campo: 'chave' | 'cNF'; mensagem: string } | null {
+  if (montada.chave !== nota.chave_acesso) return { campo: 'chave', mensagem: 'a chave refeita difere da chave da nota (série, número ou data mudariam): reemita ou inutilize' };
+  if (montada.cNF !== nota.cnf) return { campo: 'cNF', mensagem: 'o cNF refeito difere do cNF da nota' };
+  return null;
+}
+
+export async function mudarNota(notas: RepositorioNotas, tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> {
   const v = validarTransicao(nota.status, para);
   if (v.length > 0) throw new ErroViolacao(v);
   await notas.mudarStatus(tx, nota.id, nota.status, para, dados);
@@ -168,8 +172,6 @@ async function mudarNota(notas: RepositorioNotas, tx: Transacao, nota: NotaRegis
 export function criarServicoEmissao(deps: DepsEmissao) {
   const agora = deps.agora ?? ((): Date => new Date());
   const tpEmis: TipoEmissao = deps.tpEmis ?? 1;
-  const mudar = (tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> =>
-    mudarNota(deps.notas, tx, nota, para, dados, extra);
 
   /** Tudo que independe do número: situação com FOR SHARE, ambiente, cálculo fiscal, nota montada, destinatário e pagamento. */
   async function preparar(
@@ -187,6 +189,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     if (!filial?.emissora || filial.nfe_serie === null) {
       return { ok: false, violacoes: [violacao('RN-FAT-01', 'filial_id', 'Filial não é emissora de NF-e ou está sem série configurada.')] };
     }
+    if (!filial.ie.trim()) return { ok: false, violacoes: [violacao('RF-FAT-01', 'filial_id', 'Cadastre a inscrição estadual da filial emissora.')] };
     const ambiente = await deps.ambiente.ambiente(tx, pedido.filial_id);
 
     const base = ratearItens({ pedido, situacao, itens });
@@ -277,22 +280,16 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     }
   }
 
-  /** A1 da filial ou violação (antes da reserva do número: nenhum número queimado por filial sem certificado). */
-  async function abrirA1(tx: Transacao, filial_id: string): Promise<{ ok: true; a1: A1DaFilial } | { ok: false; violacoes: Violacao[] }> {
-    const a1 = await deps.lerA1(tx, filial_id);
-    if (!a1) return { ok: false, violacoes: [violacao('RN-CORE-06', 'filial_id', 'Filial sem certificado A1 ativo: cadastre o A1 antes de emitir.')] };
-    return { ok: true, a1 };
-  }
-
-  /** Assina o XML montado e guarda a `nfe_assinada` (só INSERT, versão = max+1), com a nota ainda em rascunho ou rejeitada. */
-  async function assinarEGuardar(tx: Transacao, nota_id: string, xml: string, a1: A1DaFilial): Promise<void> {
-    const assinado = deps.emissor.assinar(xml, a1.certificado);
-    await deps.notas.gravarXmlAssinado(tx, nota_id, assinado.xml, createHash('sha256').update(assinado.xml, 'utf8').digest('hex'));
+  /** Filial sem A1 ativo e válido: violação ANTES da reserva do número (nenhum número queimado por filial sem certificado). */
+  async function violacaoSemA1(tx: Transacao, filial_id: string): Promise<Violacao[] | null> {
+    const r = await deps.certificado.temA1Ativo(tx, filial_id);
+    if (r.valido) return null;
+    return [violacao('RN-CORE-06', 'filial_id', r.mensagem)];
   }
 
   /**
    * RF-FAT-01. Idempotente pela chave: repetir devolve a mesma nota sem reservar outro número (RN-CORE-05). Nasce em `rascunho` e
-   * vai a `em_autorizacao` na mesma transação que reserva o número (RN-FAT-01). Violação devolve `ok: false` ANTES da reserva:
+   * assim fica na mesma transação que reserva o número (RN-FAT-01); o worker a leva a `em_autorizacao`. Violação devolve `ok: false` ANTES da reserva:
    * nenhum número é queimado.
    */
   async function emitirNota(tx: Transacao, tenant_id: string, entrada: EmitirNotaEntrada): Promise<ResultadoEmissao> {
@@ -311,16 +308,12 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     if (!p.ok) return p;
     const provisoria = conferir(identidade(p, { numero: 1, cnf: null, emitida_em }), montarConteudo(p, 1, emitida_em, entrada.itens));
     if (!provisoria.ok) return provisoria;
-    const aberto = await abrirA1(tx, p.filial.id);
-    if (!aberto.ok) return aberto;
-    try {
-      return await emitirComA1(tx, tenant_id, entrada, p, emitida_em, aberto.a1);
-    } finally {
-      aberto.a1.credencial.pfx.fill(0);
-    }
+    const semA1 = await violacaoSemA1(tx, p.filial.id);
+    if (semA1) return { ok: false, violacoes: semA1 };
+    return reservarEGravar(tx, tenant_id, entrada, p, emitida_em);
   }
 
-  async function emitirComA1(tx: Transacao, tenant_id: string, entrada: EmitirNotaEntrada, p: Preparado, emitida_em: Date, a1: A1DaFilial): Promise<ResultadoEmissao> {
+  async function reservarEGravar(tx: Transacao, tenant_id: string, entrada: EmitirNotaEntrada, p: Preparado, emitida_em: Date): Promise<ResultadoEmissao> {
     const serie = p.filial.nfe_serie as number;
     const inicial = await deps.cadastros.numeroInicial(tx, p.filial.id, serie);
     if (inicial === null) return { ok: false, violacoes: [violacao('RN-FAT-01', 'filial_id', `Série ${serie} sem número inicial cadastrado.`)] };
@@ -354,14 +347,13 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       },
       conteudo,
     );
-    await assinarEGuardar(tx, rascunho.id, montada.xml, a1); // com a nota em rascunho (0020), antes de qualquer outra coisa
-    const nota = await mudar(tx, rascunho, 'em_autorizacao');
-    return { ok: true, nota, repetida: false };
+    // A nota FICA em rascunho: o worker assina, guarda a nfe_assinada e a leva a em_autorizacao (ADR 0005 item 4).
+    return { ok: true, nota: rascunho, repetida: false };
   }
 
   /**
-   * RN-FAT-07: reenvio da `rejeitada` com o MESMO série, número, cNF e chave (nada de reservar outro). O conteúdo é refeito
-   * (o faturista pode ter corrigido cadastro, e a `revisao` sobe) e volta a `em_autorizacao`; a API monta (`emissor.montar`), assina (`emissor.assinar`) e guarda uma nova versão do XML assinado.
+   * RN-FAT-07: reenvio da `rejeitada` (ou do `rascunho` que o worker não pôde assinar) com o MESMO série, número, cNF e chave (nada de reservar outro).
+   * O conteúdo é refeito (o faturista pode ter corrigido cadastro, e a `revisao` sobe); a API só confere (`emissor.montar`) e grava; o worker assina.
    */
   async function reenviarNota(tx: Transacao, nota: NotaRegistro): Promise<ResultadoEmissao> {
     const v = validarTransicao(nota.status, 'em_autorizacao');
@@ -376,23 +368,15 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     const conteudo = montarConteudo(p, nota.numero, emitida_em, nota.itens_solicitados ?? undefined);
     const conferida = conferir(id, conteudo);
     if (!conferida.ok) return conferida;
-    if (conferida.montada.chave !== nota.chave_acesso) {
-      return { ok: false, violacoes: [violacao('RN-FAT-07', 'chave', 'O reenvio mudaria a chave de acesso (série, número ou data): reemita ou inutilize.')] };
-    }
+    const divergencia = conferirIdentidade(conferida.montada, nota);
+    if (divergencia) return { ok: false, violacoes: [violacao('RN-FAT-07', divergencia.campo, `Reenvio recusado: ${divergencia.mensagem}.`)] };
+    const semA1 = await violacaoSemA1(tx, p.filial.id);
+    if (semA1) return { ok: false, violacoes: semA1 };
     // Total e itens refeitos entram na nota ANTES de transmitir: o evento autorizado leva o mesmo total do vNF do XML (RN-FAT-07).
-    const aberto = await abrirA1(tx, p.filial.id);
-    if (!aberto.ok) return aberto;
-    try {
-      await deps.notas.atualizarConteudo(tx, nota.id, conteudo);
-      // Remonta e reassina com a nota AINDA rejeitada (0020), grava a versão nova e só então vai a em_autorizacao.
-      // Sem catch do 23505: após o erro a tx fica abortada (sem savepoint). A rota trava a nota com FOR UPDATE, então o reenvio é serial.
-      await assinarEGuardar(tx, nota.id, conferida.montada.xml, aberto.a1);
-    } finally {
-      aberto.a1.credencial.pfx.fill(0);
-    }
+    // O status NÃO muda: o worker remonta, reassina (nfe_assinada versão = max+1, a 0020 exige rejeitada ou rascunho) e só então vai a em_autorizacao.
+    await deps.notas.atualizarConteudo(tx, nota.id, conteudo);
     const itens = conteudo.itens.map(resumoDoItem);
-    const atualizada = await mudar(tx, nota, 'em_autorizacao', undefined, { total_centavos: p.nota.totais.vNF, itens, recibo: null });
-    return { ok: true, nota: atualizada, repetida: false };
+    return { ok: true, nota: { ...nota, total_centavos: p.nota.totais.vNF, itens, recibo: null, revisao: nota.revisao + 1 }, repetida: false };
   }
 
   return { emitirNota, reenviarNota, processarRetorno: criarProcessadorRetorno(deps.notas) };
@@ -405,24 +389,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
 export function criarProcessadorRetorno(notas: RepositorioNotas) {
   const mudar = (tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> =>
     mudarNota(notas, tx, nota, para, dados, extra);
-  const base = (n: NotaRegistro, protocolo: string | null): Record<string, unknown> => ({
-    pedido_id: n.pedido_id,
-    ambiente: n.ambiente,
-    nota: {
-      id: n.id,
-      filial_id: n.filial_id,
-      cliente_id: n.cliente_id,
-      serie: n.serie,
-      numero: n.numero,
-      chave_acesso: n.chave_acesso,
-      emitida_em: n.emitida_em,
-      total_centavos: n.total_centavos,
-      protocolo,
-    },
-    itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
-    vendedor_id: n.vendedor_id,
-    quantidade_itens: n.itens.length,
-  });
+  const base = baseEventoDaNota;
 
   /**
    * Retorno da SEFAZ (autorização, recibo ou consulta, já normalizado) aplicado à nota.
