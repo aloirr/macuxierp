@@ -1,2 +1,10 @@
 export { aliasCores, cores, escala, fontes, papeis, pesos } from './tokens.js';
 export type { Cor } from './tokens.js';
+export { TabelaDensa, ordenarLinhas, proximaOrdem } from './TabelaDensa.js';
+export type { ColunaTabela, DirecaoOrdem, OrdemTabela, TabelaDensaProps, TipoColuna } from './TabelaDensa.js';
+export { FaixaPendencias, ordenarPendencias } from './FaixaPendencias.js';
+export type { FaixaPendenciasProps, NivelPendencia, Pendencia } from './FaixaPendencias.js';
+export { AVISO_LGPD, DialogoMotivo, proximoFoco, validarMotivo } from './DialogoMotivo.js';
+export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
+export { FormularioItens, novoItem, totalItemCentavos } from './FormularioItens.js';
+export type { FormularioItensProps, ItemLinha, SeletorProdutoProps } from './FormularioItens.js';
