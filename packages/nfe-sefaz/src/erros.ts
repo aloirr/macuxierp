@@ -19,7 +19,9 @@ export type CodigoErroSefaz =
   /** Pedido fora do contrato (Zod) antes de sair para a SEFAZ. */
   | 'SEFAZ_PEDIDO_INVALIDO'
   /** Rede, TLS, tempo esgotado ou SOAP ilegível: a SEFAZ não deu `cStat`. */
-  | 'SEFAZ_FALHA_TRANSPORTE';
+  | 'SEFAZ_FALHA_TRANSPORTE'
+  /** Simulador: a sequência do `nProt`/`nRec` chegou ao fim (permanente, sem retry; T-0045 lote B). */
+  | 'SEFAZ_SIMULADOR_ESGOTADO';
 
 export class ErroSefaz extends Error {
   override readonly name: string = 'ErroSefaz';

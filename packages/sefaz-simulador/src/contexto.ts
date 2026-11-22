@@ -1,10 +1,16 @@
 /**
- * O que toda operação do simulador recebe: destino (só homologação), estado do destino, registro (contadores),
- * relógio injetável e `tMed`. Também a tabela de `xMotivo` (textos do Manual de Orientação, sem acento, como a SEFAZ
+ * O que toda operação do simulador recebe: destino (só homologação), controles de teste do destino (memória), a fonte
+ * da porta de estado (`FonteEstadoSimulador`: memória ou Postgres), relógio injetável e `tMed`. Também a tabela de `xMotivo` (textos do Manual de Orientação, sem acento, como a SEFAZ
  * devolve) e a numeração de protocolo e recibo com o prefixo do simulador.
  */
 import { FalhaTransporteSefaz, aammSefaz, dataHoraSefaz, type DestinoSimulador } from '@macuxierp/nfe-sefaz';
-import type { EstadoDestino, OperacaoRejeitavel, RegistroSimulador } from './estado';
+import type {
+  EstadoDestino,
+  EstadoSimuladorRepo,
+  FonteEstadoSimulador,
+  OperacaoRejeitavel,
+  TipoNumeroSimulador,
+} from './estado';
 import { tag } from './xml';
 
 /** `verAplic` das respostas: identifica, em qualquer XML guardado, que veio do simulador e não da SEFAZ. */
@@ -18,8 +24,10 @@ export const PREFIXO_NUMERO_SIMULADOR = '9';
 
 export interface Contexto {
   readonly d: DestinoSimulador;
+  /** Controles de teste do destino (sempre em memória, no `RegistroSimulador`). */
   readonly estado: EstadoDestino;
-  readonly registro: RegistroSimulador;
+  /** Abre a unidade de trabalho (no Postgres, a transação do tenant) e entrega a porta de estado. */
+  readonly fonte: FonteEstadoSimulador;
   readonly agora: () => Date;
   readonly tMed: number;
 }
@@ -27,8 +35,13 @@ export interface Contexto {
 /** Ano (2 dígitos) no fuso de Manaus. */
 export const anoSefaz = (instante: Date) => aammSefaz(dataHoraSefaz(instante)).slice(0, 2);
 
-export function novoNumero(ctx: Contexto, tipo: 'nProt' | 'nRec'): string {
-  const seq = String(ctx.registro.proximo(tipo)).padStart(9, '0');
+/** `nProt`/`nRec` do simulador: o sequencial vem da porta (no Postgres, `seq_nprot`/`seq_nrec`, nunca repete). */
+export async function novoNumero(
+  ctx: Contexto,
+  repo: EstadoSimuladorRepo,
+  tipo: TipoNumeroSimulador,
+): Promise<string> {
+  const seq = String(await repo.proximo(tipo)).padStart(9, '0');
   return `${PREFIXO_NUMERO_SIMULADOR}${ctx.d.tpEmis}${String(ctx.d.cUF).padStart(2, '0')}${anoSefaz(ctx.agora())}${seq}`;
 }
 
@@ -80,11 +93,13 @@ export const MOTIVO = Object.freeze({
   '455': 'Rejeicao: Orgao Autor do evento diferente da UF da Chave de Acesso',
   '494': 'Rejeicao: Chave de Acesso inexistente',
   '501': 'Rejeicao: Prazo de Cancelamento superior ao previsto na Legislacao',
-  '502': 'Rejeicao: Erro na Chave de Acesso - Campo Id nao corresponde a concatenacao dos campos correspondentes',
+  '502':
+    'Rejeicao: Erro na Chave de Acesso - Campo Id nao corresponde a concatenacao dos campos correspondentes',
   '539': 'Duplicidade de NF-e com diferenca na Chave de Acesso',
   '563': 'Rejeicao: Ja existe pedido de Inutilizacao com a mesma faixa de inutilizacao',
   '570': 'Rejeicao: Tipo de Emissao 3, 6 ou 7 so e valido nas contingencias SCAN/SVC',
-  '572': 'Rejeicao: Erro Atributo ID do evento nao corresponde a concatenacao dos campos (ID + tpEvento + chNFe + nSeqEvento)',
+  '572':
+    'Rejeicao: Erro Atributo ID do evento nao corresponde a concatenacao dos campos (ID + tpEvento + chNFe + nSeqEvento)',
   '573': 'Rejeicao: Duplicidade de Evento',
   '574': 'Rejeicao: O autor do evento diverge do emissor da NF-e',
   '577': 'Rejeicao: A data do evento nao pode ser menor que a data de emissao da NF-e',
@@ -94,7 +109,9 @@ export const MOTIVO = Object.freeze({
 export type CStatSimulador = keyof typeof MOTIVO;
 
 /** Todos os `cStat` que o simulador sabe devolver (o teste de cobertura confere que cada um é exercitado). */
-export const CSTAT_DO_SIMULADOR: readonly CStatSimulador[] = Object.freeze(Object.keys(MOTIVO) as CStatSimulador[]);
+export const CSTAT_DO_SIMULADOR: readonly CStatSimulador[] = Object.freeze(
+  Object.keys(MOTIVO) as CStatSimulador[],
+);
 
 function motivo(cStat: CStatSimulador, complemento = ''): string {
   return `${MOTIVO[cStat]}${complemento}`.slice(0, 255);
@@ -109,7 +126,10 @@ export function retornoBase<C extends CStatSimulador>(ctx: Contexto, cStat: C, c
  * As tags do cabeçalho na ordem do leiaute: `tpAmb`, `verAplic`, [`meio`], `cStat`, `xMotivo`. O `meio` é o que o
  * leiaute põe entre `verAplic` e `cStat` (`nRec` no recibo, `cOrgao` no evento).
  */
-export function tagsRetorno(r: { tpAmb: number; verAplic: string; cStat: string; xMotivo: string }, meio = ''): string {
+export function tagsRetorno(
+  r: { tpAmb: number; verAplic: string; cStat: string; xMotivo: string },
+  meio = '',
+): string {
   return `${tag('tpAmb', r.tpAmb)}${tag('verAplic', r.verAplic)}${meio}${tag('cStat', r.cStat)}${tag('xMotivo', r.xMotivo)}`;
 }
 
@@ -126,12 +146,18 @@ export const PRAZO_CANCELAMENTO_MS = 24 * 3_600_000;
  */
 export async function conversa<T>(ctx: Contexto, servico: string, fn: () => Promise<T>): Promise<T> {
   const c = ctx.estado.controles;
-  if (c.paralisacao) throw new FalhaTransporteSefaz(servico, true, `servico paralisado no simulador (${c.paralisacao})`);
+  if (c.paralisacao)
+    throw new FalhaTransporteSefaz(servico, true, `servico paralisado no simulador (${c.paralisacao})`);
   if (c.falhas.restantes <= 0) return fn();
   c.falhas.restantes -= 1;
-  if (!c.falhas.aposProcessar) throw new FalhaTransporteSefaz(servico, true, 'falha de transporte simulada antes do processamento');
+  if (!c.falhas.aposProcessar)
+    throw new FalhaTransporteSefaz(servico, true, 'falha de transporte simulada antes do processamento');
   await fn();
-  throw new FalhaTransporteSefaz(servico, true, 'falha de transporte simulada depois do processamento (resposta perdida)');
+  throw new FalhaTransporteSefaz(
+    servico,
+    true,
+    'falha de transporte simulada depois do processamento (resposta perdida)',
+  );
 }
 
 /**
