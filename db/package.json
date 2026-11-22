@@ -6,7 +6,9 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "migrar": "node src/cli/migrar.ts",
+    "admin-sem-superusuario": "node src/cli/admin-sem-superusuario.ts"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",

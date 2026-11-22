@@ -1,5 +1,5 @@
-/** Worker do Macuxi ERP: filas da SEFAZ e da integração com o FDV (outbox). Entra na F1/F2. */
-import { MODULOS } from '@macuxierp/platform-sdk';
-
-export const SERVICO = 'worker' as const;
-export const modulosConhecidos = MODULOS;
+/** Worker do Macuxi ERP: despachante da outbox e fila de trabalhos (D10). A entrada é `main.ts` (adaptadores PostgreSQL). */
+export { despacharOutbox, type ResumoDespacho } from './despachante';
+export { processarTrabalhos, type ResumoTrabalhos } from './trabalhos';
+export { ciclo, iniciarWorker, type DependenciasWorker } from './worker';
+export type { EventoPendente, FilaOutbox, ReservaTrabalhos, RegistroConsumo } from './portas';

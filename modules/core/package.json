@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     "./manifest": "./manifest.ts",
-    "./contracts": "./contracts/index.ts"
+    "./contracts": "./contracts/index.ts",
+    "./api": "./api/index.ts",
+    "./domain": "./domain/index.ts",
+    "./web": "./web/index.ts"
   },
   "scripts": {
     "lint": "eslint .",
