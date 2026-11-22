@@ -26,3 +26,10 @@ export const dataIso = (d: Date): string => d.toISOString().slice(0, 10);
 /** Guarda RD-0317 (ver domain/external-id.ts): a rota exige (422 RN-CORE-05) e a carga vira CARGA_CONFLITO da linha. */
 export const violacaoExternalId = (r: Repositorios, tabela: TabelaChave, externalId: unknown): Promise<Violacao | null> =>
   externalIdColideComId(externalId, (id) => r.chaves.existeId(tabela, id));
+
+/** Copia só as chaves listadas: o que não está na lista (custo, e-mail, contatos) nunca sai. */
+export function escolher<T extends object, K extends keyof T>(obj: T, campos: readonly K[]): Pick<T, K> {
+  const saida = {} as Pick<T, K>;
+  for (const k of campos) saida[k] = obj[k];
+  return saida;
+}
