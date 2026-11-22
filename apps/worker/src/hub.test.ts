@@ -21,7 +21,7 @@ describe('configurarHub', () => {
     expect(urls).toEqual(['https://hub.exemplo.com.br/integracao/v1/sinal']);
   });
 
-  it('as duas URLs do compose.yml (v0.1.1): base com o /integracao/v1 final, sem duplicá-lo', async () => {
+  it('as duas URLs do compose.yml (v0.2.0): base com o /integracao/v1 final, sem duplicá-lo', async () => {
     const urls: string[] = [];
     const f = (async (u: URL | string) => {
       urls.push(String(u));
