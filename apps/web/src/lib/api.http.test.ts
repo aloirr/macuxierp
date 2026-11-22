@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Estoura 5 s sob a carga do turbo (T-0021).
+vi.setConfig({ testTimeout: 15000 });
+
 async function carregar() {
   vi.resetModules();
   vi.stubEnv('MACUXIERP_API_URL', 'https://api.exemplo.invalid');

@@ -53,7 +53,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
 
   function confirmar() {
     const r = { valor, data, filial, inicial, final, texto: texto.trim() };
-    const e = validar(r) ?? (pedeTexto?.obrigatorio && r.texto === '' ? 'Descreva o motivo.' : null);
+    const e = validar(r) ?? (pedeTexto?.obrigatorio && r.texto === '' ? 'O detalhe está vazio. Descreva o motivo.' : null);
     setErro(e);
     if (!e) aoConfirmar(r);
   }
@@ -136,8 +136,8 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
         {aviso && <p id={`${id}-aviso`} className="faixa-aviso">{aviso}</p>}
         {erro && <p id={`${id}-erro`} role="alert" className="erro">{erro}</p>}
         <div className="barra-acoes dialogo-botoes">
-          <button type="button" className="btn btn-sec" disabled={ocupado} onClick={aoCancelar}>{rotuloFechar}</button>
-          <button type="button" className="btn" disabled={ocupado} onClick={confirmar}>{ocupado ? textoCarregando : rotuloConfirmar}</button>
+          <button type="button" className="mx-botao-secundario" disabled={ocupado} onClick={aoCancelar}>{rotuloFechar}</button>
+          <button type="button" className="mx-botao" disabled={ocupado} onClick={confirmar}>{ocupado ? textoCarregando : rotuloConfirmar}</button>
         </div>
       </div>
     </div>

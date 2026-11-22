@@ -216,6 +216,8 @@ export interface TelaFormulario {
     /** Linha da tela para o texto que o módulo valida. */
     paraTexto: (item: ItemLinha) => ItemFormulario;
     formatarCentavos: (centavos: number) => string;
+    /** Total do pedido já formatado, pela regra do módulo, mostrado acima do botão de envio. */
+    totalTexto?: (itens: readonly ItemFormulario[]) => string;
   };
   /** Validação local (a API sempre revalida). Devolve erros por campo (`itens` = erro geral dos itens). */
   validar: (valores: ValoresFormulario, itens: readonly ItemFormulario[]) => ErrosFormulario;

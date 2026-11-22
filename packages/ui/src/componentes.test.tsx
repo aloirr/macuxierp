@@ -127,7 +127,9 @@ describe('FormularioItens', () => {
     expect(textoParaQuantidade('-1')).toBeNull();
   });
   it('index exporta só componentes', () => {
-    expect(Object.keys(indice).filter((k) => /^[a-z]/.test(k) && !['aliasCores', 'cores', 'escala', 'fontes', 'papeis', 'pesos'].includes(k))).toEqual([]);
+    // compat #249: faviconDataUri e appleTouchIconDataUri vêm da marca até o shell trocar o import
+    const permitidos = ['aliasCores', 'cores', 'escala', 'fontes', 'papeis', 'pesos', 'faviconDataUri', 'appleTouchIconDataUri'];
+    expect(Object.keys(indice).filter((k) => /^[a-z]/.test(k) && !permitidos.includes(k))).toEqual([]);
   });
   it('renderiza linhas, seletor injetado, total formatado pelo chamador e ações', () => {
     const itens = [{ chave: 'item-1', produtoId: 'p1', quantidade: 2, precoUnitarioCentavos: 1000, descontoCentavos: 0 }];
@@ -172,12 +174,12 @@ describe('ajustes de marca (T-0015)', () => {
     expect(h).toContain('data-regra="RN-PED-004"');
     expect(h).not.toContain('>RN-PED-004<');
   });
-  it('remover sem vermelho, aviso em 13px, rádio com accentColor, ordenar sem all:unset', () => {
+  it('remover sem vermelho, aviso em 13px, rádio sem accentColor, ordenar sem all:unset', () => {
     const itens = [{ chave: 'item-1', produtoId: null, quantidade: 1, precoUnitarioCentavos: 0, descontoCentavos: 0 }];
     const f = renderToStaticMarkup(<FormularioItens itens={itens} aoMudar={() => {}} novoItem={novoItem} calcularTotal={total} formatarCentavos={String} renderSeletorProduto={() => null} />);
     expect(f).not.toMatch(/<button[^>]*erro-texto/);
     const d = renderToStaticMarkup(<DialogoMotivo titulo="t" aviso="a" motivos={[{ codigo: 'x', rotulo: 'X' }]} aoConfirmar={() => {}} aoCancelar={() => {}} />);
-    expect(d).toContain('accent-color:var(--mx-cor-azul-noite)');
+    expect(d).not.toContain('accent-color');
     expect(d).toMatch(/font-size:var\(--mx-tamanho-pequeno\)[^"]*"[^>]*>a</);
     const t = renderToStaticMarkup(<TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.id} />);
     expect(t).not.toContain('all:unset');

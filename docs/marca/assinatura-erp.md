@@ -56,7 +56,8 @@ Guias de consulta (não aplicar): `guia-area-de-protecao-a.svg` e `guia-area-de-
 ## 5. Onde se aplica (todo o ERP)
 | Aplicação | Versão | Dono |
 |---|---|---|
-| Cabeçalho e menu do BKO | A negativo grafite (20 a 32 px) | `designer-ux` |
+| Topo do BKO (fundo azul-noite) | A negativo azul-noite (20 a 32 px), com a área de proteção da §4 | `designer-ux` (componente) · `engenheiro-apps` (aplicação) |
+| Menu lateral do BKO (fundo grafite), se a assinatura for para lá | A negativo grafite (20 a 32 px) | `designer-ux` |
 | Login e telas de marca | C positivo sobre pérola, ou C negativo azul-noite | `designer-ux` |
 | Favicon e ícone da aba | só o símbolo (negativo sobre `azulNoite`, como o favicon do FDV) | `designer-ux` |
 | DANFE e PDFs | A mono preto, **só como rodapé discreto**, fora dos campos do leiaute do Manual da NF-e. O quadro do emitente é da marca do cliente (tenant). Medidas, cores, fonte e marca d'água: [danfe-e-pdfs-fiscais.md](danfe-e-pdfs-fiscais.md) | `modulo-faturamento` |
