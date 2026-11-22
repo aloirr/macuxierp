@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota } from './emissao';
+import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota, type DepsEmissao } from './emissao';
 import { CNPJ_EMITENTE, depsFake, DIGVAL, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import type { NotaRegistro, RetornoSefaz } from './portas';
 
@@ -13,23 +13,41 @@ function montar(o: Parameters<typeof depsFake>[0] = {}) {
   const f = depsFake(o);
   return { ...f, ...f.r, svc: criarServicoEmissao(f.deps) };
 }
-async function emitir(m: ReturnType<typeof montar>, idem?: string): Promise<NotaRegistro> {
+/** Fase da API: a nota nasce em rascunho (a API não assina). */
+async function emitirRascunho(m: ReturnType<typeof montar>, idem?: string): Promise<NotaRegistro> {
   const r = await m.svc.emitirNota(tx, TENANT, entrada(idem));
   if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
   return r.nota;
 }
+/** Emite e simula o início da fase do worker (assinar e ir a em_autorizacao): para os testes do retorno da SEFAZ, que só olham a nota em autorização. */
+async function emitir(m: ReturnType<typeof montar>, idem?: string): Promise<NotaRegistro> {
+  const n = await emitirRascunho(m, idem);
+  await m.repo.mudarStatus(tx, n.id, 'rascunho', 'em_autorizacao');
+  m.log.length = 0;
+  return m.notas.get(n.id)!;
+}
 
 describe('emissão da NF-e (serviço de aplicação, portas em memória)', () => {
-  it('RN-FAT-01: trava a idempotência, reserva o número, grava a nota em rascunho, assina e guarda a nfe_assinada (v1) e só então vai a em_autorizacao, na mesma tx, sem falar com a SEFAZ', async () => {
+  it('RN-FAT-01: trava a idempotência, reserva o número, grava a nota em rascunho (conteúdo, chave, cNF e dhEmi) e a deixa em rascunho: a API não assina, não guarda nfe_assinada e não fala com a SEFAZ', async () => {
     const m = montar();
-    const nota = await emitir(m);
-    expect(nota).toMatchObject({ numero: 100, serie: 1, status: 'em_autorizacao', ambiente: 'producao', total_centavos: 4500 });
+    const nota = await emitirRascunho(m);
+    expect(nota).toMatchObject({ numero: 100, serie: 1, status: 'rascunho', ambiente: 'producao', total_centavos: 4500 });
     expect(nota.chave_acesso).toMatch(new RegExp(`^132611${CNPJ_EMITENTE}550010000001001\\d{9}$`));
     expect(nota.cnf).toBe(nota.chave_acesso.slice(35, 43)); // o cNF sorteado pelo emissor é gravado na nota
-    expect(m.log).toEqual(['trava', 'numero:100', 'gravar', 'xml:assinado:1', 'status:em_autorizacao']);
-    expect(m.assinados[0]?.xml).toContain(`Id="NFe${nota.chave_acesso}"`);
+    expect(m.log).toEqual(['trava', 'numero:100', 'gravar']);
+    expect(m.assinados).toEqual([]);
+    expect(m.assinadas).toEqual([]);
     expect(m.estado.ambienteReserva).toBe('producao');
-    expect((await emitir(m, 'idem-0000002')).numero).toBe(101); // sem buraco
+    expect((await emitirRascunho(m, 'idem-0000002')).numero).toBe(101); // sem buraco
+  });
+
+  it('ADR 0005 item 4: a API emite sem nenhum A1 decifrado: a porta lerA1 nem existe nas dependências da API (o tipo a recusa)', async () => {
+    const m = montar();
+    // @ts-expect-error DepsEmissao (API) não tem `lerA1`: só o worker lê o A1 decifrado
+    const comA1: DepsEmissao = { ...m.deps, lerA1: async () => null };
+    expect(Object.keys(m.deps)).not.toContain('lerA1');
+    expect(comA1).toBeDefined();
+    expect((await emitirRascunho(m)).status).toBe('rascunho');
   });
 
   it('RF-FAT-01: a NotaParaEmissao entregue ao emissor traz detPag (indPag), frete, origem do produto e CRT do emitente; o boleto fica no conteúdo gravado', async () => {
@@ -68,30 +86,48 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.recebidas.at(-1)?.emit.CRT).toBe(4);
   });
 
-  it('RN-CORE-06: filial sem A1 ativo é violação ANTES da reserva do número (nenhum número queimado, nada assinado)', async () => {
+  it('RF-FAT-01: filial emissora sem IE (o cadastros devolve "") é violação explícita ANTES da reserva do número', async () => {
+    const m = montar();
+    const filial = m.deps.cadastros.filial;
+    m.deps.cadastros.filial = async (t, id) => {
+      const f = await filial(t, id);
+      return f ? { ...f, ie: '' } : f;
+    };
+    const r = await criarServicoEmissao(m.deps).emitirNota(tx, TENANT, entrada());
+    expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'filial_id', mensagem: 'Cadastre a inscrição estadual da filial emissora.' });
+    expect(m.estado.reservas).toBe(0);
+    expect(m.notas.size).toBe(0);
+  });
+
+  it('RN-CORE-06: filial sem A1 ativo (metadados, sem decifrar) é violação ANTES da reserva do número (nenhum número queimado)', async () => {
     const m = montar({ semA1: true });
     const r = await m.svc.emitirNota(tx, TENANT, entrada());
     expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-CORE-06', campo: 'filial_id' });
     expect(m.estado.reservas).toBe(0);
-    expect(m.assinados).toEqual([]);
+    expect(m.notas.size).toBe(0);
   });
 
-  it('RN-FAT-07: o reenvio da rejeitada reassina com a nota AINDA rejeitada (0020), grava a versão 2 e só depois vai a em_autorizacao; erro 23505 sobe (sem catch: a rota trava a nota)', async () => {
+  it('RN-FAT-07: o reenvio da rejeitada só refaz e regrava o conteúdo (revisão +1), MANTÉM o status rejeitada e o número; não assina nem guarda nfe_assinada (o worker o faz)', async () => {
     const m = montar();
     const nota = await emitir(m);
     await m.svc.processarRetorno(tx, nota, retorno('778', 'Rejeicao: NCM inexistente'), opcoes);
     m.log.length = 0;
     const re = await m.svc.reenviarNota(tx, m.notas.get(nota.id)!);
-    expect(re.ok && re.nota.status).toBe('em_autorizacao');
-    expect(m.log).toEqual(['conteudo', 'xml:assinado:2', 'status:em_autorizacao']);
-    expect(m.assinados.map((a) => a.versao)).toEqual([1, 2]);
-    // UNIQUE (23505) na gravação: o erro sobe (a tx ficaria abortada), sem mudar o status
-    await m.svc.processarRetorno(tx, m.notas.get(nota.id)!, retorno('778', 'Rejeicao: NCM inexistente'), opcoes);
-    m.repo.gravarXmlAssinado = async () => {
-      throw Object.assign(new Error('duplicate key'), { code: '23505' });
-    };
-    await expect(criarServicoEmissao(m.deps).reenviarNota(tx, m.notas.get(nota.id)!)).rejects.toMatchObject({ code: '23505' });
-    expect(m.notas.get(nota.id)?.status).toBe('rejeitada');
+    expect(re.ok && re.nota).toMatchObject({ status: 'rejeitada', numero: 100, revisao: 2 });
+    expect(m.log).toEqual(['conteudo']);
+    expect(m.assinados).toEqual([]);
+    expect(m.estado.reservas).toBe(1);
+  });
+
+  it('RN-CORE-06: o reenvio sem A1 ativo é violação e não regrava o conteúdo', async () => {
+    const m = montar();
+    const nota = await emitir(m);
+    await m.svc.processarRetorno(tx, nota, retorno('778', 'x'), opcoes);
+    m.log.length = 0;
+    m.deps.certificado.temA1Ativo = async () => ({ valido: false, motivo: 'vencido', mensagem: 'A1 vencido' });
+    const re = await criarServicoEmissao(m.deps).reenviarNota(tx, m.notas.get(nota.id)!);
+    expect(!re.ok && re.violacoes[0]?.rn).toBe('RN-CORE-06');
+    expect(m.log).toEqual([]);
   });
 
   it('RN-CORE-05: a repetição com a mesma idempotência não reserva outro número nem grava outra nota', async () => {
@@ -107,7 +143,7 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     const rh = await montar({ ambiente: 'homologacao' }).svc.emitirNota(tx, TENANT, entrada());
     if (!rh.ok) throw new Error('esperava ok');
     expect(rh.nota).toMatchObject({ ambiente: 'homologacao', vai_ao_fdv: false });
-    expect((await emitir(montar())).vai_ao_fdv).toBe(true);
+    expect((await emitirRascunho(montar())).vai_ao_fdv).toBe(true);
   });
 
   it('RN-FAT-01: violação ANTES da reserva não queima número (pedido não faturável, xMun, CFOP, cálculo fiscal, vNF)', async () => {
@@ -234,14 +270,14 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     const reservas = m.estado.reservas;
     const re = await m.svc.reenviarNota(tx, rejeitada);
     if (!re.ok) throw new Error(JSON.stringify(re.violacoes));
-    expect(re.nota).toMatchObject({ numero: 100, serie: 1, chave_acesso: nota.chave_acesso, status: 'em_autorizacao', recibo: null });
+    expect(re.nota).toMatchObject({ numero: 100, serie: 1, chave_acesso: nota.chave_acesso, status: 'rejeitada', recibo: null });
     expect(m.estado.reservas).toBe(reservas);
     expect(m.notas.size).toBe(1);
   });
 
   it('RN-FAT-07: só a rejeitada pode ser reenviada', async () => {
     const m = montar();
-    const r = await m.svc.reenviarNota(tx, await emitir(m));
+    const r = await m.svc.reenviarNota(tx, await emitir(m)); // em_autorizacao
     expect(!r.ok && r.violacoes[0]?.rn).toBe('RN-FAT-07');
   });
 
@@ -292,6 +328,7 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     if (!re.ok) throw new Error(JSON.stringify(re.violacoes));
     expect(re.nota).toMatchObject({ total_centavos: 4700, numero: 100 });
     expect(xmlDaNota(m.deps.emissor, re.nota, m.conteudos.get(nota.id)!)).toContain('<vNF>47.00</vNF>');
+    await m.repo.mudarStatus(tx, nota.id, 'rejeitada', 'em_autorizacao'); // o worker assina e transmite
     const aut = await criarServicoEmissao(m.deps).processarRetorno(tx, m.notas.get(nota.id)!, autorizada, opcoes);
     expect(aut.resultado).toBe('autorizada');
     expect(m.eventos.at(-1)?.payload).toMatchObject({ nota: { total_centavos: 4700 } });
