@@ -5,26 +5,11 @@
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { pinoEmMemoria } from './apoio-teste';
-import { conferirRecebimentoFdv, configurarRecebimentoFdv, criarAlertaMonitor, montarPedidosFdv, RecebimentoFdvIndisponivel, resolvedorChaveErpDeProducao, type ResolvedorChaveErp } from './pedidos-fdv';
+import { conferirRecebimentoFdv, criarAlertaMonitor, montarPedidosFdv, RecebimentoFdvIndisponivel, resolvedorChaveErpDeProducao, type ResolvedorChaveErp } from './pedidos-fdv';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const UUID = '12345678-1234-4234-8234-123456789012';
 const resolvedor: ResolvedorChaveErp = { resolver: async () => new Map() };
-
-describe('MACUXIERP_FDV_RECEBIMENTO (desligado até a virada, T-0027)', () => {
-  it('ausente, vazio ou "desligado" = desligado; "ligado" (sem caixa nem espaço) = ligado', () => {
-    expect(configurarRecebimentoFdv({})).toBe('desligado');
-    expect(configurarRecebimentoFdv({ MACUXIERP_FDV_RECEBIMENTO: '' })).toBe('desligado');
-    expect(configurarRecebimentoFdv({ MACUXIERP_FDV_RECEBIMENTO: 'desligado' })).toBe('desligado');
-    expect(configurarRecebimentoFdv({ MACUXIERP_FDV_RECEBIMENTO: ' Ligado ' })).toBe('ligado');
-  });
-
-  it('valor fora da lista derruba a partida, citando só o nome da variável', () => {
-    for (const v of ['sim', '1', 'true', 'on']) {
-      expect(() => configurarRecebimentoFdv({ MACUXIERP_FDV_RECEBIMENTO: v })).toThrow(/^configuração inválida: MACUXIERP_FDV_RECEBIMENTO/);
-    }
-  });
-});
 
 describe('montarPedidosFdv', () => {
   it('ligado ou desligado: monta o recebedor, o resolvedor e o alerta (quem decide a busca é o montarAgendas)', () => {

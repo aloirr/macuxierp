@@ -7,8 +7,8 @@
  *   O armazenamento vem do SDK.
  * - Carga inicial do cadastros (C-4, desenho T-0009 §4; ligada na T-0042): o consumidor de
  *   `integracao-fdv.carga_inicial.solicitada@1` enfileira um trabalho por entidade e o executor republica página a página.
- * - Agendas por tenant (contrato C-9, T-0009 §6.1; T-0016): `montarAgendas`: conector e pedidos (a busca depende de
- *   `MACUXIERP_FDV_RECEBIMENTO`, pedidos-fdv.ts).
+ * - Agendas por tenant (contrato C-9, T-0009 §6.1; T-0016): `montarAgendas`: conector (`MACUXIERP_FDV_ENVIO`) e pedidos
+ *   (`MACUXIERP_FDV_RECEBIMENTO`); trava de 22/11/2026, ver envio-fdv.ts.
  * - Consumidores do `integracao-fdv` (T-0016): `integracao-fdv.publicar-cadastros` (espelho do que vai ao Hub, com a
  *   licença PG) e `integracao-fdv.retorno-pedido` (grava o retorno do status do pedido para a agenda de retorno).
  * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
@@ -22,7 +22,6 @@ import {
   registroExportacoesSql,
 } from '@macuxierp/core/api';
 import {
-  AGENDA_BUSCA_PEDIDOS_ID,
   criarAgendaConector,
   criarAgendasPedidosFdv,
   criarConsumidorPublicarCadastros,
@@ -46,6 +45,7 @@ import { exportadorPedido } from '@macuxierp/pedido/api';
 import { FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
+import type { EstadoEnvioFdv } from './envio-fdv';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
 import type { MontagemPedidosFdv } from './pedidos-fdv';
 import type { RotinaDiaria } from './rotinas';
@@ -111,8 +111,9 @@ export interface DependenciasConsumidoresWorker {
 
 /**
  * Consumidores da outbox, com os adaptadores reais (o despachante já roda cada um na transação do tenant do evento):
- * carga inicial do cadastros, espelho do `integracao-fdv` (`publicar-cadastros`) e retorno do pedido ao Hub. O retorno
- * entra mesmo com o recebimento desligado: sem `pedido_recebido` do conector, ele só loga e ignora.
+ * carga inicial do cadastros, espelho do `integracao-fdv` (`publicar-cadastros`) e retorno do pedido. O consumidor do
+ * retorno entra mesmo com o recebimento desligado: só grava a fila local (`retorno_enviado`) e nunca chama o Hub; sem
+ * `pedido_recebido` do conector, ele só loga e ignora.
  */
 export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly ConsumidorEvento[] {
   return Object.freeze([
@@ -132,19 +133,21 @@ export interface DependenciasAgendasWorker {
   relogio: Relogio;
   /** As peças do `montarPedidosFdv`. */
   pedidosFdv: MontagemPedidosFdv;
+  /** `MACUXIERP_FDV_ENVIO`: trava de 22/11/2026, ver envio-fdv.ts. */
+  envio: EstadoEnvioFdv;
   /** Padrão: `plataforma.evento` (PG); a agenda do conector grava `lote.enviado@1`/`lote.falhou@1` na transação do lote. */
   outbox?: Outbox;
 }
 
 /**
- * Agendas por tenant (T-0009 §6.1), todas do `integracao-fdv`: o conector (envio, sinal, reconciliação), o retorno de
- * pedidos e, com o recebimento ligado, a busca. A outbox vai pela fábrica (`criarAgendaConector({ outbox })`).
+ * Agendas por tenant (T-0009 §6.1), todas do `integracao-fdv`: o conector só com o envio ligado e a busca e o retorno de
+ * pedidos só com o recebimento ligado (trava de 22/11/2026, ver envio-fdv.ts). A outbox vai pela fábrica
+ * (`criarAgendaConector({ outbox })`).
  */
 export function montarAgendas(d: DependenciasAgendasWorker): readonly AgendaModulo[] {
   const { recebedor, resolvedor, alertar, recebimento } = d.pedidosFdv;
-  const pedidos = criarAgendasPedidosFdv({ recebedor, resolvedor, alertar, log: d.log, relogio: d.relogio });
   return registrarAgendas([
-    criarAgendaConector({ outbox: d.outbox ?? new OutboxPg() }),
-    ...(recebimento === 'ligado' ? pedidos : pedidos.filter((a) => a.id !== AGENDA_BUSCA_PEDIDOS_ID)),
+    ...(d.envio === 'ligado' ? [criarAgendaConector({ outbox: d.outbox ?? new OutboxPg() })] : []),
+    ...(recebimento === 'ligado' ? criarAgendasPedidosFdv({ recebedor, resolvedor, alertar, log: d.log, relogio: d.relogio }) : []),
   ]);
 }
