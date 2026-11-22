@@ -3,7 +3,9 @@
  * - `/v1/saude` (pública), `/v1/auth/*` (login, refresh rotativo em cookie httpOnly, sair, eu);
  * - cada módulo em `/v1/<modulo>`, montado pelas rotas declaradas no plugin (`definirPlugin` do SDK), com a ordem
  *   sessão → perfil → tenant → licença (RN-CORE-02) em toda rota;
- * - rota multipart (upload do A1) com limite por arquivo declarado na rota; os bytes nunca vão para log;
+ * - rota multipart (upload do A1, carga de CSV) com limite por arquivo, quantidade e total declarados na rota; os bytes
+ *   e os nomes dos arquivos nunca vão para log;
+ * - `Idempotency-Key` (`idempotencia` da rota, RN-CORE-05) e tempo máximo por rota (`tempoMaximoMs`, T-0026 D7);
  * - logs pino com `request_id`, `tenant_id`, `usuario_id` e `modulo`; sem corpo, cookie, token nem query string.
  */
 import { randomUUID } from 'node:crypto';
@@ -12,14 +14,19 @@ import multipart from '@fastify/multipart';
 import {
   ArquivoRecebido,
   auditar,
+  CABECALHO_REPETIDA,
   cabecalhosDaRota,
+  chaveDoPedido,
   criarEvento,
   ErroApi,
   EuResposta,
   erros,
   eventoDoModulo,
   executarAutorizado,
+  executarIdempotente,
+  hashDoPedido,
   modulosLicenciados,
+  QUANTIDADE_MAXIMA_ARQUIVOS,
   pode,
   trabalhoDoModulo,
   type Banco,
@@ -30,10 +37,16 @@ import {
   type Outbox,
   type PluginModulo,
   type Relogio,
+  type RepositorioIdempotencia,
+  type RespostaRota,
   type RotaModulo,
   type Sessao,
   TAMANHO_MAXIMO_ARQUIVO,
+  TAMANHO_MAXIMO_MULTIPART,
+  tamanhoMaximoTotal,
+  transacaoComPrazo,
   type ArquivoEsperado,
+  type MultipartRota,
 } from '@macuxierp/platform-sdk';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
@@ -44,6 +57,8 @@ import { ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servic
 export const COOKIE_REFRESH = 'macuxierp_refresh';
 const CAMINHO_COOKIE = '/v1/auth';
 const REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/;
+/** Campos de texto aceitos num multipart (teto global). */
+const CAMPOS_MULTIPART = 50;
 
 export interface DependenciasApp {
   versao: string;
@@ -57,6 +72,10 @@ export interface DependenciasApp {
   auditoria: DestinoAuditoria;
   trabalhos: FilaDeTrabalhos;
   relogio: Relogio;
+  /** `plataforma.idempotencia`; obrigatório se alguma rota montada declara `idempotencia`. */
+  idempotencia?: RepositorioIdempotencia;
+  /** Milissegundos monotônicos para o `tempoMaximoMs` das rotas (padrão `performance.now`; os testes trocam). */
+  cronometro?: () => number;
   /** Módulos montados (manifesto + rotas). O tenant só acessa os licenciados (MODULO_INATIVO). */
   modulos: readonly PluginModulo[];
   /** Opções do pino; `false` desliga (testes). */
@@ -99,8 +118,11 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   const servico = new ServicoAuth(d.banco, d.repoAuth, d.auth, d.relogio);
 
   await app.register(cookie);
-  // Tetos globais do multipart; o limite de cada arquivo é o da rota (`lerMultipart`). Campo de texto até 64 KB.
-  await app.register(multipart, { limits: { fileSize: TAMANHO_MAXIMO_ARQUIVO, files: 5, fields: 50, fieldSize: 65_536, parts: 60 } });
+  // Tetos globais do multipart; o limite de cada arquivo, a quantidade e o total são os da rota (`lerMultipart`).
+  // Campo de texto até 64 KB.
+  await app.register(multipart, {
+    limits: { fileSize: TAMANHO_MAXIMO_MULTIPART, files: QUANTIDADE_MAXIMA_ARQUIVOS, fields: CAMPOS_MULTIPART, fieldSize: 65_536, parts: CAMPOS_MULTIPART + QUANTIDADE_MAXIMA_ARQUIVOS },
+  });
   app.decorateRequest('sessao', null);
 
   app.addHook('onRequest', async (req, reply) => {
@@ -179,6 +201,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
 function montarModulo(app: FastifyInstance, plugin: PluginModulo, d: DependenciasApp): void {
   const modulo = plugin.manifesto.id;
   for (const rota of plugin.rotas) {
+    if (rota.idempotencia && !d.idempotencia) throw new Error(`${modulo}: ${rota.metodo} ${rota.caminho} declara idempotencia sem o repositório na API`);
     app.route({
       method: rota.metodo,
       url: `/v1/${modulo}${rota.caminho}`,
@@ -189,19 +212,24 @@ function montarModulo(app: FastifyInstance, plugin: PluginModulo, d: Dependencia
 
 async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: RotaModulo, modulo: string, d: DependenciasApp) {
   req.log = reply.log = req.log.child({ modulo });
+  const cronometro = d.cronometro ?? (() => performance.now());
+  const inicio = cronometro();
+  const estourou = () => rota.tempoMaximoMs !== undefined && cronometro() - inicio > rota.tempoMaximoMs;
   // O multipart é lido antes da transação (não segura conexão enquanto o arquivo sobe), mas só depois da sessão e do
   // perfil, na ordem da RN-CORE-02; tenant e licença seguem no `executarAutorizado`, antes de qualquer uso dos dados.
   if (rota.multipart && !req.sessao) throw erros.naoAutenticado();
   if (rota.multipart && !pode(req.sessao!.perfil, rota.acao)) throw erros.perfilSemPermissao();
-  const entrada = rota.multipart ? await lerMultipart(req, rota.multipart.arquivos) : { corpo: req.body, arquivos: {} };
+  const entrada = rota.multipart ? await lerMultipart(req, rota.multipart) : { corpo: req.body, todosArquivos: {} };
+  if (estourou()) throw erros.tempoEsgotado(Math.round(rota.tempoMaximoMs! / 1000));
   const agora = d.relogio.agora();
-  const resposta = await executarAutorizado({
+  const resultado = await executarAutorizado({
     sessao: req.sessao,
     acao: rota.acao,
     agora,
     banco: d.banco,
     licencas: d.licencas,
-    executar: async (tx, sessao) => {
+    executar: async (txTenant, sessao) => {
+      const tx = rota.tempoMaximoMs === undefined ? txTenant : transacaoComPrazo(txTenant, { restanteMs: rota.tempoMaximoMs - (cronometro() - inicio), limiteRotaMs: rota.tempoMaximoMs }, cronometro);
       const ctx: ContextoRota = {
         sessao,
         tx,
@@ -223,66 +251,83 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
           return d.trabalhos.enfileirar(tx, { ...pedido, tenant_id: sessao.tenant_id });
         },
       };
-      return rota.executar(ctx, {
+      const todosArquivos = entrada.todosArquivos;
+      const e = {
         corpo: rota.corpo ? rota.corpo.parse(entrada.corpo) : undefined,
         consulta: rota.consulta ? rota.consulta.parse(req.query) : undefined,
         params: req.params as Record<string, string>,
         cabecalhos: cabecalhosDaRota(req.headers),
-        arquivos: entrada.arquivos,
-      });
+        arquivos: Object.fromEntries(Object.entries(todosArquivos).map(([k, v]) => [k, v[0]!])),
+        todosArquivos,
+      };
+      const chave = rota.idempotencia ? chaveDoPedido(e.cabecalhos, rota.idempotencia) : null;
+      if (!chave) return { resposta: await rota.executar(ctx, e), repetida: false };
+      const pedido = { tenant_id: sessao.tenant_id, chave, rota: `${rota.metodo} /v1/${modulo}${rota.caminho}`, hash_corpo: hashDoPedido(e), agora };
+      return executarIdempotente(d.idempotencia!, tx, pedido, () => rota.executar(ctx, e));
     },
   });
-  if (resposta.cabecalhos) reply.headers(resposta.cabecalhos);
+  return responder(reply, resultado.resposta, resultado.repetida);
+}
+
+function responder(reply: FastifyReply, resposta: RespostaRota, repetida: boolean) {
+  if (repetida) reply.header(CABECALHO_REPETIDA, 'true');
+  else if (resposta.cabecalhos) reply.headers(resposta.cabecalhos);
   return reply.status(resposta.status ?? 200).send(resposta.corpo ?? null);
 }
 
 /**
  * Lê o `multipart/form-data` da rota: campos de texto (validados depois pelo `corpo` da rota) e os arquivos declarados,
- * cada um com o próprio limite (413 `ARQUIVO_GRANDE`). Campo repetido ou arquivo não declarado é 400 `VALIDACAO`.
- * Limite da rota igual ao teto global: o `@fastify/multipart` corta antes e o 413 dele vira `ARQUIVO_GRANDE` do campo.
+ * cada um com o próprio limite (413 `ARQUIVO_GRANDE`), a quantidade do campo e o total da rota (413 `ARQUIVO_GRANDE`
+ * em `_`). Campo de texto repetido, arquivo não declarado ou acima da quantidade é 400 `VALIDACAO`. Limite da rota igual
+ * ao teto global: o `@fastify/multipart` corta antes e o 413 dele vira `ARQUIVO_GRANDE` do campo.
  */
-async function lerMultipart(req: FastifyRequest, esperados: readonly ArquivoEsperado[]) {
+async function lerMultipart(req: FastifyRequest, m: MultipartRota) {
   if (!req.isMultipart()) throw erros.validacao({ _: 'envie multipart/form-data' });
-  const porCampo = new Map(esperados.map((a) => [a.campo, a]));
+  const porCampo = new Map(m.arquivos.map((a) => [a.campo, a]));
   const corpo: Record<string, unknown> = {};
-  const arquivos: Record<string, ArquivoRecebido> = {};
+  const todosArquivos: Record<string, ArquivoRecebido[]> = {};
   let lendo: ArquivoEsperado | undefined;
   try {
-    await lerPartes(req, porCampo, corpo, arquivos, (a) => (lendo = a));
+    await lerPartes(req, { porCampo, total: tamanhoMaximoTotal(m) }, corpo, todosArquivos, (a) => (lendo = a));
   } catch (e) {
     if (lendo && (e as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE') throw erros.arquivoGrande(lendo.campo, lendo.tamanhoMaximo);
     throw e;
   }
-  const faltando = esperados.filter((a) => a.obrigatorio !== false && !arquivos[a.campo]);
+  const faltando = m.arquivos.filter((a) => a.obrigatorio !== false && !todosArquivos[a.campo]);
   if (faltando.length) throw erros.validacao(Object.fromEntries(faltando.map((a) => [a.campo, 'arquivo obrigatório'])));
-  return { corpo, arquivos };
+  return { corpo, todosArquivos };
 }
 
 async function lerPartes(
   req: FastifyRequest,
-  porCampo: ReadonlyMap<string, ArquivoEsperado>,
+  limites: { porCampo: ReadonlyMap<string, ArquivoEsperado>; total: number },
   corpo: Record<string, unknown>,
-  arquivos: Record<string, ArquivoRecebido>,
+  arquivos: Record<string, ArquivoRecebido[]>,
   lendo: (a: ArquivoEsperado) => void,
 ) {
-  const repetido = (campo: string) => campo in corpo || campo in arquivos;
+  let totalLote = 0;
   for await (const parte of req.parts()) {
     if (parte.type === 'field') {
-      if (repetido(parte.fieldname) || porCampo.has(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'campo repetido ou no lugar de arquivo' });
+      if (parte.fieldname in corpo || limites.porCampo.has(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'campo repetido ou no lugar de arquivo' });
       corpo[parte.fieldname] = parte.value;
       continue;
     }
-    const esperado = porCampo.get(parte.fieldname);
-    if (!esperado || repetido(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'arquivo não esperado' });
+    const esperado = limites.porCampo.get(parte.fieldname);
+    const ja = arquivos[parte.fieldname] ?? [];
+    if (!esperado || parte.fieldname in corpo) throw erros.validacao({ [parte.fieldname]: 'arquivo não esperado' });
+    const maximo = esperado.quantidadeMaxima ?? 1;
+    if (ja.length >= maximo) throw erros.validacao({ [parte.fieldname]: maximo === 1 ? 'arquivo repetido' : `no máximo ${maximo} arquivos` });
     lendo(esperado);
     const pedacos: Buffer[] = [];
     let total = 0;
     for await (const p of parte.file as AsyncIterable<Buffer>) {
       total += p.length;
+      totalLote += p.length;
       if (total > esperado.tamanhoMaximo) throw erros.arquivoGrande(esperado.campo, esperado.tamanhoMaximo);
+      if (totalLote > limites.total) throw erros.arquivoGrande('_', limites.total);
       pedacos.push(p);
     }
     if (total === 0) throw erros.validacao({ [esperado.campo]: 'arquivo vazio' });
-    arquivos[esperado.campo] = new ArquivoRecebido(esperado.campo, parte.filename, parte.mimetype, Buffer.concat(pedacos));
+    arquivos[esperado.campo] = [...ja, new ArquivoRecebido(esperado.campo, parte.filename, parte.mimetype, Buffer.concat(pedacos))];
   }
 }

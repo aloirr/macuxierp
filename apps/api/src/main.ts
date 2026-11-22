@@ -5,7 +5,7 @@
  */
 import { LeitorPfxTls, RepositorioCoreSql } from '@macuxierp/core/api';
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
-import { AuditoriaPg, BancoPg, criarPool, FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
+import { AuditoriaPg, BancoPg, criarPool, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import { criarApp } from './app';
 import { RepositorioAuthPg } from './auth/repositorio-pg';
 import { gerarHashSenha } from './auth/senha';
@@ -28,6 +28,7 @@ const app = await criarApp({
   outbox: new OutboxPg(),
   auditoria: new AuditoriaPg(),
   trabalhos: new FilaDeTrabalhosPg(),
+  idempotencia: new IdempotenciaPg(),
   relogio: relogioDoSistema,
   modulos: montarModulos({
     core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: cfg.chaveA1, armazenamento: armazenamentoIndisponivel },

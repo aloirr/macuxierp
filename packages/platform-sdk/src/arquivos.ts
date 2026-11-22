@@ -67,7 +67,8 @@ export interface CatalogoArquivos {
   inserir(tx: Transacao, registro: RegistroArquivo): Promise<void>;
 }
 
-const sha256 = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
+/** SHA-256 em hex minúsculo (o domínio `plataforma.sha256_hex`). */
+export const sha256Hex = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
 
 export interface PedidoGuarda {
   armazenamento: Armazenamento;
@@ -85,13 +86,13 @@ export interface PedidoGuarda {
 
 export async function guardarArquivo(p: PedidoGuarda): Promise<RegistroArquivo> {
   const chave = chaveArquivo(p.tenantId, ...p.partes);
-  const hash = sha256(p.corpo);
+  const hash = sha256Hex(p.corpo);
   try {
     await p.armazenamento.gravar(chave, p.corpo, { tipo: p.tipo, imutavel: p.imutavel });
   } catch (e) {
     if (!(e instanceof ArquivoJaExiste)) throw e;
     const existente = await p.armazenamento.ler(chave);
-    if (!existente || sha256(existente) !== hash) throw erros.conflito('Arquivo imutável já gravado com outro conteúdo');
+    if (!existente || sha256Hex(existente) !== hash) throw erros.conflito('Arquivo imutável já gravado com outro conteúdo');
   }
   let guardaAte: Date | null = null;
   if (p.guardaAnos !== null) {

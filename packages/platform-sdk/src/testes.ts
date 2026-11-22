@@ -5,6 +5,7 @@
 import type { DestinoAuditoria, RegistroAuditoria } from './auditoria';
 import type { Banco, Relogio, Transacao } from './banco';
 import type { EnvelopeEvento, Outbox } from './eventos';
+import type { ChaveIdempotencia, ConclusaoIdempotencia, RegistroIdempotencia, RepositorioIdempotencia, ReservaIdempotencia } from './idempotencia';
 import type { FilaDeTrabalhos, PedidoTrabalho } from './trabalhos';
 
 /** Transação de mentira: guarda o tenant e recusa SQL (o teste usa os repositórios em memória). */
@@ -78,5 +79,24 @@ export class FilaDeTrabalhosMemoria implements FilaDeTrabalhos {
     const id = `00000000-0000-4000-8000-${String(this.pedidos.length + 1).padStart(12, '0')}`;
     this.pedidos.push({ ...pedido, id });
     return { id };
+  }
+}
+
+/** `plataforma.idempotencia` em memória (sem transação: a reserva de uma rota que falhou fica; o teste limpa se precisar). */
+export class IdempotenciaMemoria implements RepositorioIdempotencia {
+  readonly registros = new Map<string, RegistroIdempotencia & { expira_em: Date }>();
+  private id = (c: ChaveIdempotencia) => `${c.tenant_id}|${c.rota}|${c.chave}`;
+
+  async reservar(_tx: Transacao, p: ReservaIdempotencia): Promise<RegistroIdempotencia | null> {
+    const atual = this.registros.get(this.id(p));
+    if (atual && atual.expira_em.getTime() > p.agora.getTime()) return { hash_corpo: atual.hash_corpo, status: atual.status, resposta: atual.resposta };
+    this.registros.set(this.id(p), { hash_corpo: p.hash_corpo, status: null, resposta: null, expira_em: p.expira_em });
+    return null;
+  }
+
+  async concluir(_tx: Transacao, p: ConclusaoIdempotencia): Promise<void> {
+    const atual = this.registros.get(this.id(p));
+    if (!atual) throw new Error('IdempotenciaMemoria: concluir sem reservar');
+    this.registros.set(this.id(p), { ...atual, status: p.status, resposta: structuredClone(p.resposta) });
   }
 }
