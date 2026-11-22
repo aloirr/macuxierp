@@ -42,7 +42,9 @@ Feita pelo gerente contra o `aloirr/macuxifdv` (só leitura, busca de código). 
 ## 5. Arquivos desta pasta (simulação)
 `assinatura-erp-opcao-a-{clara,escura,mono}.svg` e `assinatura-erp-opcao-c-{clara,escura,mono}.svg` são **simulação da posição**, não ativo final. Já seguem o FDV em caixa ("Macuxi") e nas cores do §3 ("clara" = positivo, "escura" = negativo azul-noite). Ainda usam fonte do sistema, o quadro tracejado no lugar do símbolo e o "ERP" curto, até a versão final. Todos passam no `xmllint --noout`.
 
-## 6. Decisão em aberto: "ERP" de ponta a ponta
+## 6. Decisão em aberto (aguarda o Alexandre): "ERP" de ponta a ponta
+**AGUARDA O ALEXANDRE.** A pergunta "o 'seguir com o recomendado' de 1 a 6 (R-20261121-213141-alexandre) cobre o §6?" foi levada ao Agente PO pelo gerente em 22/11/2026, às 00h52 (Manaus).
+
 A regra 3 do FDV manda o descritor ir de ponta a ponta da tinta de "Macuxi". Com "FORÇA DE VENDAS" (15 caracteres) isso sai natural; com "ERP" (3 letras), não.
 
 | Opção | Como fica | A favor | Contra |
