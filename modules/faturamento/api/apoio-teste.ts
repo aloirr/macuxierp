@@ -411,7 +411,7 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
   const deps: DepsEmissao & Pick<DepsEventos, 'eventos'> = {
     log: () => undefined,
     emissor: espiao.emissor,
-    pedidos: { obter: async () => pedido, gravar: async () => 'novo' },
+    pedidos: { obter: async () => pedido, gravar: async () => 'novo', marcarCancelado: async () => undefined },
     situacao: { situacao: async () => situacao },
     cadastros: {
       filial: async () => ({

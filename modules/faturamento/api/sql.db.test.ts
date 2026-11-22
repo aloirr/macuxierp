@@ -74,6 +74,20 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
   });
 
+  it('RF-FAT-01: reentrega de aprovado antigo: grava com o status da situação atual, só atualiza quando o status muda e marcarCancelado não cria linha', async () => {
+    const id = await app.comTenant(A, (tx) => pedidoNovoNaFila(tx, (t, p) => pedidosAprovadosSql.gravar(t, p, 'faturado')));
+    const status = async (): Promise<unknown> => (await admin('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [id]))[0]?.status;
+    expect(await status()).toBe('faturado');
+    const p = await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id));
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado'))).toBe('repetido');
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado_parcial'))).toBe('repetido');
+    expect(await status()).toBe('faturado_parcial');
+    await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, id));
+    expect(await status()).toBe('cancelado');
+    await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, uuid(999)));
+    expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [uuid(999)])).toEqual([{ n: 0 }]);
+  });
+
   it('RN-FAT-01: emite sem buraco (100, 101), é idempotente pela chave, grava o conteúdo e o ambiente vem do banco', async () => {
     const r1 = await emitir(A, 'idem-db-0001');
     if (!r1.ok) throw new Error(JSON.stringify(r1.violacoes));

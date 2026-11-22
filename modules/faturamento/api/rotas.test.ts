@@ -274,24 +274,53 @@ describe('rotas de títulos e da bandeira da filial', () => {
 });
 
 describe('consumidor de pedido.pedido.aprovado@1', () => {
-  it('RF-FAT-01: grava o pedido aprovado na fila a faturar, idempotente', async () => {
-    const gravados: string[] = [];
-    const vistos = new Set<string>();
+  type Fila = Map<string, string>;
+  const montarC = (situacao: { status: 'aprovado' | 'cancelado' | 'faturado' | 'faturado_parcial'; itens: { sequencia: number; quantidade: number; quantidade_faturada: number }[] }) => {
+    const fila: Fila = new Map();
     const c = criarConsumidorPedidoAprovado({
-      obter: async () => null,
-      gravar: async (_t, p) => {
-        gravados.push(p.pedido_id);
-        if (vistos.has(p.pedido_id)) return 'repetido';
-        vistos.add(p.pedido_id);
-        return 'novo';
+      situacao: { situacao: async () => situacao },
+      pedidos: {
+        obter: async () => null,
+        gravar: async (_t, p, status = 'a_faturar') => {
+          const novo = !fila.has(p.pedido_id);
+          const igual = fila.get(p.pedido_id) === status;
+          fila.set(p.pedido_id, status);
+          return novo && !igual ? 'novo' : 'repetido';
+        },
+        marcarCancelado: async (_t, id) => {
+          if (fila.has(id)) fila.set(id, 'cancelado');
+        },
       },
     });
+    return { c, fila };
+  };
+  const evento = () => ({ id: uuid(1), nome: EVENTO_PEDIDO_APROVADO, tenant_id: TENANT, agregado_id: IDS.pedido, versao: 1, ocorrido_em: '2026-11-21T14:00:00.000Z', ator: 'sistema' as const, request_id: 'r', payload: pedidoAprovado([itemPedido(1, 10_000, 1000)]) as unknown as Record<string, unknown> });
+
+  it('RF-FAT-01: grava o pedido aprovado na fila a faturar, idempotente', async () => {
+    const { c, fila } = montarC({ status: 'aprovado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 0 }] });
     expect(c.eventos).toEqual([EVENTO_PEDIDO_APROVADO]);
-    const evento = { id: uuid(1), nome: EVENTO_PEDIDO_APROVADO, tenant_id: TENANT, agregado_id: IDS.pedido, versao: 1, ocorrido_em: '2026-11-21T14:00:00.000Z', ator: 'sistema' as const, request_id: 'r', payload: pedidoAprovado([itemPedido(1, 10_000, 1000)]) as unknown as Record<string, unknown> };
-    await c.tratar(evento, tx);
-    await c.tratar(evento, tx);
-    expect(gravados).toEqual([IDS.pedido, IDS.pedido]);
-    await expect(c.tratar({ ...evento, payload: { lixo: true } }, tx)).rejects.toThrow();
+    await c.tratar(evento(), tx);
+    await c.tratar(evento(), tx);
+    expect([...fila.entries()]).toEqual([[IDS.pedido, 'a_faturar']]);
+    await expect(c.tratar({ ...evento(), payload: { lixo: true } }, tx)).rejects.toThrow();
+  });
+
+  it('RF-FAT-01: reentrega de aprovado antigo de pedido CANCELADO não entra na fila (e marca cancelado se já estava)', async () => {
+    const { c, fila } = montarC({ status: 'cancelado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 0 }] });
+    await c.tratar(evento(), tx);
+    expect(fila.size).toBe(0);
+    fila.set(IDS.pedido, 'a_faturar');
+    await c.tratar(evento(), tx);
+    expect(fila.get(IDS.pedido)).toBe('cancelado');
+  });
+
+  it('RF-FAT-01: reentrega de aprovado antigo de pedido JÁ FATURADO grava faturado; saldo parcial, faturado_parcial; idempotente', async () => {
+    const total = montarC({ status: 'faturado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 10_000 }] });
+    await total.c.tratar(evento(), tx);
+    await total.c.tratar(evento(), tx);
+    expect(total.fila.get(IDS.pedido)).toBe('faturado');
+    const parcial = montarC({ status: 'faturado_parcial', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 4_000 }] });
+    await parcial.c.tratar(evento(), tx);
+    expect(parcial.fila.get(IDS.pedido)).toBe('faturado_parcial');
   });
 });
-

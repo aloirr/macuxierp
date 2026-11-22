@@ -10,7 +10,7 @@ import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type { Ambiente, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
-import type { ParcelaGerada, ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
+import type { StatusFilaFaturar, ParcelaGerada, ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
 export interface SituacaoPedidoDoPedido {
@@ -30,7 +30,9 @@ export interface NotaEmAberto {
 export interface PedidosAprovados {
   obter(tx: Transacao, pedido_id: string): Promise<PedidoFaturavel | null>;
   /** Consumidor de `pedido.pedido.aprovado@1`: idempotente por (tenant, pedido): evento repetido não regrava. */
-  gravar(tx: Transacao, pedido: PedidoFaturavel): Promise<'novo' | 'repetido'>;
+  gravar(tx: Transacao, pedido: PedidoFaturavel, status?: StatusFilaFaturar): Promise<'novo' | 'repetido'>;
+  /** Reentrega de pedido cancelado: marca `cancelado` se já estiver na fila; se não estiver, não grava nada. */
+  marcarCancelado(tx: Transacao, pedido_id: string): Promise<void>;
 }
 
 /** Entrada do adaptador do cálculo fiscal (o fiscal.calculo@1 exige mais: regras, CFOP; quem implementa a porta os busca). */

@@ -553,13 +553,20 @@ export const pedidosAprovadosSql: PedidosAprovados = {
     const [l] = await tx.consultar<{ payload: unknown }>('SELECT payload FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
     return l ? PedidoAprovadoV1.parse(l.payload) : null;
   },
-  async gravar(tx, pedido) {
-    const r = await tx.consultar(
-      `INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload)
-       VALUES (plataforma.tenant_atual(), $1, $2, $3, $4::jsonb) ON CONFLICT (tenant_id, pedido_id) DO NOTHING RETURNING id`,
-      [pedido.pedido_id, pedido.filial_id, pedido.cliente_id, JSON.stringify(pedido)],
+  // Idempotente: repetir não muda nada; só um status DIFERENTE (situação atual do pedido, RF-FAT-01) atualiza a linha existente.
+  async gravar(tx, pedido, status = 'a_faturar') {
+    const r = await tx.consultar<{ inserido: boolean }>(
+      `INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload, status)
+       VALUES (plataforma.tenant_atual(), $1, $2, $3, $4::jsonb, $5)
+       ON CONFLICT (tenant_id, pedido_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now()
+         WHERE faturamento.pedido_a_faturar.status IS DISTINCT FROM EXCLUDED.status AND faturamento.pedido_a_faturar.deleted_at IS NULL
+       RETURNING (xmax = 0) AS inserido`,
+      [pedido.pedido_id, pedido.filial_id, pedido.cliente_id, JSON.stringify(pedido), status],
     );
-    return r.length > 0 ? 'novo' : 'repetido';
+    return r[0]?.inserido ? 'novo' : 'repetido';
+  },
+  async marcarCancelado(tx, pedido_id) {
+    await tx.consultar(`UPDATE faturamento.pedido_a_faturar SET status = 'cancelado', updated_at = now() WHERE pedido_id = $1 AND status <> 'cancelado' AND deleted_at IS NULL`, [pedido_id]);
   },
 };
 

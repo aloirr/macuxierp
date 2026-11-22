@@ -15,3 +15,4 @@ export * from './carta-correcao';
 export * from './inutilizacao';
 export * from './consulta';
 export * from './retorno-evento';
+export * from './fila';
