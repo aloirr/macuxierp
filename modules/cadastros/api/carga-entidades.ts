@@ -542,7 +542,7 @@ async function preco(l: LinhaPreco, st: Estado): Promise<Saida> {
           externalId: l.external_id, inativo,
         });
         const tabela = await st.r.tabelasPreco.obter(t.id);
-        if (tabela) await publicarPronto(st.c, eventoPreco(item, { ...tabela, inativo: inativo || tabela.inativo }));
+        if (tabela) await publicarPronto(st.c, comExternalIdAnterior(eventoPreco(item, { ...tabela, inativo: inativo || tabela.inativo }), item, ex));
       } catch (e) {
         Object.assign(t, antes);
         throw e;

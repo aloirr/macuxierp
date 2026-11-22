@@ -1,5 +1,6 @@
 import { PAGINAS, PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { PAGINAS_CORE } from '@macuxierp/core/web';
+import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { PAGINAS_PEDIDO } from '@macuxierp/pedido/web';
 import { paginaVisivel, type ModuloId, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 
@@ -24,6 +25,8 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   // Pedido (T-0015): detalhe `/:id` e "novo" abrem pela URL sem item de menu; `/novo` vence `/:id` por ser rota exata (casarRota).
   // O módulo já marca `ocultaNoMenu` em novo e detalhe (#135), mas não no editar; até marcar, o shell aplica a ponte (o campo do módulo vence).
   ...PAGINAS_PEDIDO.map((p) => registrar('pedido', p, { ocultaNoMenu: p.ocultaNoMenu ?? p.tipo !== 'lista' })),
+  // Integração FDV (T-0011): o monitor é o item de menu; os envios (lotes) abrem a partir dele (`ocultaNoMenu` vem do módulo).
+  ...PAGINAS_INTEGRACAO_FDV.map((p) => registrar('integracao-fdv', p)),
 ];
 
 export { paginaVisivel };

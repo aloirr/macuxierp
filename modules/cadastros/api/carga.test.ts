@@ -210,6 +210,28 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     expect(t.eventos[0]!.payload.external_id_anterior).toBeUndefined();
   });
 
+  it('ADR 0010 / RN-CORE-05 (C-10): unidade, preço e endereço saem nos eventos com o external_id do kit', async () => {
+    const t = montar();
+    await t.carregar('gravar');
+    const preco = t.eventos.filter((e) => e.nome === 'cadastros.preco.alterado@1').map((e) => e.payload.external_id).sort();
+    expect(preco).toEqual(['PR-EX-01', 'PR-EX-02']);
+    const prod = t.eventos.filter((e) => e.nome === 'cadastros.produto.alterado@1' && e.payload.external_id === 'P-EX-01').at(-1)!;
+    expect((prod.payload.unidades as { external_id: string }[]).map((u) => u.external_id)).toContain('PU-EX-01');
+    const cli = t.eventos.filter((e) => e.nome === 'cadastros.cliente.alterado@1' && e.payload.external_id === 'C-EX-01').at(-1)!;
+    expect((cli.payload.enderecos as { external_id: string }[]).map((x) => x.external_id)).toContain('CE-EX-01');
+  });
+
+  it('ADR 0010 / RN-CORE-05 (C-10): a adoção da chave do preço pela carga publica external_id_anterior nulo', async () => {
+    const t = montar();
+    await t.carregar('gravar');
+    for (const i of t.repos.tabelasPreco.itensPreco) (i as unknown as { external_id: string | null }).external_id = null;
+    t.eventos.length = 0;
+    await t.carregar('gravar');
+    const ev = t.eventos.filter((e) => e.nome === 'cadastros.preco.alterado@1');
+    expect(ev).toHaveLength(2);
+    for (const e of ev) expect(e.payload).toMatchObject({ external_id: expect.stringMatching(/^PR-EX-0[12]$/), external_id_anterior: null });
+  });
+
   it('RN-CORE-05: external_id repetido no arquivo recusa a 2ª ocorrência (CARGA_DUPLICADO)', async () => {
     const t = montar();
     const v = 'external_id;nome\nV1;Ana\nV1;Beto\n';

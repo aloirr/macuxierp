@@ -119,6 +119,28 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     ]);
   });
 
+  it('T-0011: o retorno faturado descartado sem chave do produto (prazo vencido) avisa o monitor (alerta) só com o código e o pedido_uuid', async () => {
+    const { log: pinoLog, registros } = pinoEmMemoria();
+    const { banco } = bancoGravador([
+      [/FROM integracao_fdv\.pedido_recebido/, [{ '?column?': 1 }]],
+      [/INSERT INTO integracao_fdv\.retorno_enviado/, [{ id: 'novo' }]],
+    ]);
+    const relogio = { agora: () => new Date(AGORA.getTime() + 25 * 60 * 60 * 1000) };
+    const retorno = montarConsumidores({ log: pinoLog, relogio })[2]!;
+    const pedido = '30000000-0000-4000-8000-000000000006';
+    const uuid = '40000000-0000-4000-8000-000000000007';
+    const produto = '50000000-0000-4000-8000-000000000008';
+    const payload = {
+      pedido_id: pedido, numero: 8, origem: 'fdv', pedido_uuid: uuid, status: 'faturado', ambiente: 'producao',
+      nota: { numero: 1, serie: 1, chave: '1'.repeat(44), emitida_em: AGORA.toISOString(), total_centavos: 1990 },
+      itens_faturados: [{ sequencia: 1, produto_id: produto, quantidade: 1, valor_centavos: 1990 }],
+    };
+    const evento = { id: '20000000-0000-4000-8000-000000000009', nome: 'pedido.pedido.faturado@1', tenant_id: T1, agregado_id: pedido, versao: 1, ocorrido_em: AGORA.toISOString(), ator: 'sistema' as const, request_id: 'r', payload };
+    await banco.comTenant(T1, (tx) => retorno.tratar(evento, tx));
+    const alerta = registros().find((r) => r.alerta === 'retorno_sem_chave_produto');
+    expect(alerta).toMatchObject({ level: 40, tenant_id: T1, modulo: 'integracao-fdv', pedido_uuid: uuid });
+  });
+
   it('o consumidor do retorno sem pedido_recebido do conector (recebimento desligado) só loga o código e não grava nada', async () => {
     const { log: pinoLog, linhas } = pinoEmMemoria();
     const { banco, sql } = bancoGravador([]);

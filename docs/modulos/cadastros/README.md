@@ -26,3 +26,7 @@ Fatia vertical: `contracts` (Zod, eventos), `domain` (regras puras), `api` (plug
 
 ## Teste com PostgreSQL
 `bash db/scripts/pg-local.sh` e depois `MACUXI_DB_MIGRACOES=<raiz>/db/migrations pnpm --filter @macuxierp/cadastros test`. Sem a variável, o `sql.db.test.ts` pula (o teste não lê fora do pacote por caminho fixo: regra R2 do grafo-turbo).
+
+## C-10 — external_id nos eventos
+
+C-10 (ADR 0010): `external_id` opcional em unidades, endereços e itens de preço nos eventos, e `external_id_anterior` no preço; o contrato está em `.coord/contratos/eventos.md` (Aditivo C-10). O `PUT /tabelas-preco/:id/itens` não aceita `external_id`: só a carga define a chave.

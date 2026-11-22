@@ -9,8 +9,8 @@ import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
-import type { Ambiente, FiltroNotas, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
-import type { ConteudoNota, Crt, EnderecoNota, IndIeDest, PedidoFaturavel } from '../domain';
+import type { Ambiente, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
+import type { ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
 export interface SituacaoPedidoDoPedido {
@@ -153,6 +153,8 @@ export interface NotaRegistro {
   emitida_em: string;
   total_centavos: number;
   protocolo: string | null;
+  /** UTC ISO do `dhRecbto` da autorização (nulo antes dela): base do prazo de 24 h do cancelamento (RN-FAT-02). */
+  autorizada_em: string | null;
   recibo: string | null;
   idempotencia: string;
   /** Quantas vezes o conteúdo foi gravado (1 na emissão, +1 a cada reenvio da rejeitada): a `versao` da `nfe_assinada` que o cobre. */
@@ -161,7 +163,7 @@ export interface NotaRegistro {
   itens_solicitados: { sequencia: number; quantidade?: number }[] | null;
   itens: { sequencia: number; quantidade: number; valor_centavos: number }[];
 }
-export type NovaNota = Omit<NotaRegistro, 'id' | 'status' | 'protocolo' | 'recibo' | 'itens' | 'vai_ao_fdv' | 'revisao'>;
+export type NovaNota = Omit<NotaRegistro, 'id' | 'status' | 'protocolo' | 'autorizada_em' | 'recibo' | 'itens' | 'vai_ao_fdv' | 'revisao'>;
 
 export interface DadosMudancaStatus {
   protocolo?: string;
@@ -270,4 +272,98 @@ export interface NotaNumeradaNaoEnviada {
   numero: number;
   status: 'rascunho' | 'rejeitada';
   emitida_em: string;
+}
+
+/** Evento da nota como o banco o guarda (`nota_evento`, 0013). `dh_evento` é o `updated_at` do pedido pendente: estável até o fim do ciclo. */
+export interface EventoRegistro extends EventoNotaResumo {
+  /** UTC ISO: o `dhEvento` do pedido guardado antes de transmitir (RN-FAT-03); a retentativa o reenvia IGUAL. */
+  dh_evento: string;
+}
+/** Inutilização como o banco a guarda (`inutilizacao`, 0013). */
+export interface InutilizacaoRegistro extends InutilizacaoResumo {
+  criado_em: string;
+}
+
+/** Log da chamada à SEFAZ de um evento ou inutilização (`transmissao`): sem XML e sem dado pessoal. */
+export type TransmissaoDeEvento = Omit<TransmissaoRegistrada, 'nota_id' | 'servico'> & {
+  servico: 'evento' | 'inutilizacao';
+  evento_id?: string;
+  nota_id?: string;
+  inutilizacao_id?: string;
+};
+
+/** Lease de transmissão (RN-FAT-01): `respondida_em` nulo e `enviada_em` recente = chamada à SEFAZ em curso para o pedido. */
+export interface LeaseDeTransmissao {
+  servico: 'evento' | 'inutilizacao';
+  evento_id?: string;
+  nota_id?: string;
+  inutilizacao_id?: string;
+  destino: TransmissaoRegistrada['destino'];
+  /** Minutos que o lease vale; vencido, outra volta (fila ou varredura) pode retomar o pedido. */
+  leaseMin: number;
+}
+
+export interface NovoEvento {
+  nota_id: string;
+  tipo: 'cancelamento' | 'cce';
+  n_seq_evento: number;
+  texto: string;
+}
+export interface NovaInutilizacao {
+  filial_id: string;
+  ambiente: Ambiente;
+  serie: number;
+  ano: number;
+  numero_inicial: number;
+  numero_final: number;
+  justificativa: string;
+}
+
+/**
+ * Repositório SQL dos eventos e da inutilização (`api/sql.ts`, 0013 e 0020). Ordem da T-0018 §8: o PEDIDO nasce `pendente` (`criarEvento`,
+ * `criarInutilizacao`) antes de qualquer chamada à SEFAZ; o retorno é guardado em `nota_xml` (`guardarXmlEvento`, `guardarXmlInutilizacao`) ANTES de o
+ * status mudar: o gatilho do banco leva o evento a `registrado` (e a nota a `cancelada`) e a inutilização a `registrado` (e as notas da faixa a
+ * `inutilizada`). Nada daqui edita a nota autorizada.
+ */
+export interface RepositorioEventos {
+  listarEventos(tx: Transacao, nota_id: string): Promise<EventoRegistro[]>;
+  /** `travar`: `FOR UPDATE` (o processamento e uma nova tentativa não correm juntos). */
+  obterEvento(tx: Transacao, evento_id: string, opcoes?: { travar?: boolean }): Promise<EventoRegistro | null>;
+  /** INSERT `pendente`. O banco recusa fora da nota autorizada, CC-e fora da sequência e cancelamento repetido. */
+  criarEvento(tx: Transacao, e: NovoEvento): Promise<EventoRegistro>;
+  /** `rejeitado` → `pendente` com a MESMA sequência (texto novo, `dh_evento` novo). */
+  reabrirEvento(tx: Transacao, evento_id: string, texto: string): Promise<EventoRegistro>;
+  rejeitarEvento(tx: Transacao, evento_id: string, r: { cStat: string; xMotivo: string }): Promise<void>;
+  /** Guarda o `procEventoNFe` (`nota_xml`, tipos `evento_cancelamento` e `evento_cce`); o gatilho registra o evento e cancela a nota. Lança se falhar. */
+  guardarXmlEvento(tx: Transacao, evento: EventoRegistro, xml: { conteudo: string; protocolo: string; dhRegistro: string }): Promise<void>;
+
+  listarInutilizacoes(tx: Transacao, filtro: { filial_id?: string }): Promise<InutilizacaoRegistro[]>;
+  obterInutilizacao(tx: Transacao, id: string, opcoes?: { travar?: boolean }): Promise<InutilizacaoRegistro | null>;
+  /** INSERT `pendente`: o banco confere a faixa (até proximo+99, sem sobreposição, só rascunho ou rejeitada) e avança a numeração. */
+  criarInutilizacao(tx: Transacao, i: NovaInutilizacao): Promise<InutilizacaoRegistro>;
+  rejeitarInutilizacao(tx: Transacao, id: string, r: { cStat: string; xMotivo: string }): Promise<void>;
+  guardarXmlInutilizacao(tx: Transacao, i: InutilizacaoRegistro, xml: { conteudo: string; protocolo: string; dhRegistro: string }): Promise<void>;
+  /** Próximo número da série da filial (`serie_numeracao.proximo`); nulo = série sem numeração. */
+  proximoNumero(tx: Transacao, filial_id: string, ambiente: Ambiente, serie: number): Promise<number | null>;
+  /** `travar`: `FOR UPDATE` nas notas da faixa (a inutilização muda o status delas). */
+  notasNaFaixa(tx: Transacao, filial_id: string, ambiente: Ambiente, serie: number, inicial: number, final: number, opcoes?: { travar?: boolean }): Promise<NotaNaFaixa[]>;
+  registrarTransmissao(tx: Transacao, t: TransmissaoDeEvento): Promise<void>;
+  /** Tentativas de transmissão do evento (qualquer linha em `transmissao`) e se há lease ativo (sem resposta e dentro de `leaseMin`). */
+  situacaoTransmissaoEvento(tx: Transacao, evento_id: string, leaseMin: number): Promise<{ tentativas: number; leaseAtivo: boolean }>;
+  /**
+   * Trava de transmissão (RN-FAT-01), numa tx curta ANTES de chamar a porta: trava a linha do pedido (`FOR UPDATE`) e, se ele está `pendente` e SEM lease
+   * ativo, grava a tentativa em `transmissao` com `respondida_em` nulo (o lease) e devolve o id dela. `null` = outro trabalho já transmite (ou o pedido
+   * não está mais pendente): quem chama sai sem chamar a SEFAZ. A advisory lock da tx1 não cobre a chamada, que roda fora de transação.
+   */
+  iniciarTransmissao(tx: Transacao, l: LeaseDeTransmissao): Promise<{ id: string } | null>;
+  /** Fecha o lease com o retorno da chamada (cStat, xMotivo, respondida_em, duração): uma linha por tentativa. */
+  concluirTransmissao(tx: Transacao, lease_id: string, r: Pick<TransmissaoDeEvento, 'cStat' | 'xMotivo' | 'respondida_em' | 'duracao_ms'>): Promise<void>;
+  // (cStat nulo = a chamada falhou antes de haver resposta; o lease fecha e a próxima volta retoma.)
+  /**
+   * 563 (faixa já inutilizada na SEFAZ): a inutilização FICA `pendente` (a faixa segue reservada, as notas não mudam) e grava `c_stat`/`x_motivo` com o
+   * motivo `ja_inutilizada_na_sefaz`; a varredura não a retoma (divergência para o suporte). Só vale com a inutilização pendente.
+   */
+  registrarDivergenciaInutilizacao(tx: Transacao, id: string, r: { cStat: string; xMotivo: string }): Promise<void>;
+  /** Eventos e inutilizações pendentes mais antigos primeiro (varredura do worker), parados há mais de `paradasHaMinutos` e SEM lease ativo; exclui a divergência 563. */
+  pendentes(tx: Transacao, limite: number, paradasHaMinutos: number, leaseMin: number): Promise<{ tipo: 'evento' | 'inutilizacao'; id: string }[]>;
 }

@@ -47,7 +47,7 @@ import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import type { EstadoEnvioFdv } from './envio-fdv';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
-import type { MontagemPedidosFdv } from './pedidos-fdv';
+import { criarAlertaMonitor, type MontagemPedidosFdv } from './pedidos-fdv';
 import type { RotinaDiaria } from './rotinas';
 
 export class RegistroExecutoresInvalido extends Error {
@@ -113,13 +113,14 @@ export interface DependenciasConsumidoresWorker {
  * Consumidores da outbox, com os adaptadores reais (o despachante já roda cada um na transação do tenant do evento):
  * carga inicial do cadastros, espelho do `integracao-fdv` (`publicar-cadastros`) e retorno do pedido. O consumidor do
  * retorno entra mesmo com o recebimento desligado: só grava a fila local (`retorno_enviado`) e nunca chama o Hub; sem
- * `pedido_recebido` do conector, ele só loga e ignora.
+ * `pedido_recebido` do conector, ele só loga e ignora. O alerta do monitor (`criarAlertaMonitor`, T-0011) vai junto: o
+ * retorno descartado sem chave do produto aparece no monitor.
  */
 export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly ConsumidorEvento[] {
   return Object.freeze([
     criarConsumidorCargaInicial({ fila: d.fila ?? new FilaDeTrabalhosPg() }),
     criarConsumidorPublicarCadastros({ licencas: d.licencas ?? new LicencasPg(), agora: () => d.relogio.agora() }),
-    criarConsumidorRetornoPedido({ log: d.log, relogio: d.relogio }),
+    criarConsumidorRetornoPedido({ log: d.log, relogio: d.relogio, alertar: criarAlertaMonitor(d.log) }),
   ]);
 }
 
