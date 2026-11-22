@@ -3,12 +3,13 @@
  * BYPASSRLS), laço da outbox e dos trabalhos e encerramento limpo no SIGTERM do deploy (ADR 0003).
  * Ambiente: conexão pelas variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_worker`, `PGPASSWORD`,
  * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000) e `MACUXIERP_PG_POOL` (padrão 5). Nada de segredo em código.
- * Executores e rotinas: `modulos.ts` (a ligação do core e do cadastros entra com os adaptadores que faltam).
+ * Executores e rotinas: `modulos.ts` (exportação LGPD e alerta do A1, com os adaptadores SQL do core). O log leva só
+ * contagens, ids e nomes de erro, nunca dado pessoal (regra 8).
  */
-import { relogioDoSistema } from '@macuxierp/platform-sdk';
-import { BancoPg, criarPool } from '@macuxierp/platform-sdk/pg';
+import { armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
+import { BancoPg, CatalogoArquivosPg, criarPool } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
-import { registrarExecutores } from './modulos';
+import { montarExecutores, montarRotinas } from './modulos';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
@@ -30,8 +31,8 @@ const worker = iniciarWorker({
   trabalhos: new ReservaTrabalhosPg(),
   consumo: new RegistroConsumoPg(),
   consumidores: [],
-  executores: registrarExecutores([]),
-  rotinas: [],
+  executores: montarExecutores({ banco, log, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogioDoSistema.agora() }),
+  rotinas: montarRotinas({ banco, log }),
   relogio: relogioDoSistema,
   log,
   intervaloMs: inteiro('MACUXIERP_WORKER_INTERVALO_MS', 1_000, 100, 60_000),

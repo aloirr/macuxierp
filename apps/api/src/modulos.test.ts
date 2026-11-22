@@ -4,7 +4,7 @@
  * para a rota multipart do A1 com limite de 50 KB (RF-CORE-04) e cabeçalhos na rota. O `.pfx` nunca vai para o log.
  */
 import { Writable } from 'node:stream';
-import { defineModule, definirPlugin, definirRota, ErroApi, TAMANHO_MAXIMO_MULTIPART, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
+import { defineModule, definirPlugin, definirRota, TAMANHO_MAXIMO_MULTIPART, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -13,7 +13,7 @@ import { emitirTokenAcesso } from './auth/jwt';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { modulosDeTeste, repoCoreDuble } from './apoio-teste';
-import { armazenamentoIndisponivel, certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
+import { certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const USUARIO = '1f2e3d4c-5b6a-4789-8a9b-0c1d2e3f4a5b';
@@ -68,6 +68,7 @@ async function montar(licencas: Licenca[] = [], logs?: string[], modulos: readon
     auditoria: new AuditoriaMemoria(),
     trabalhos: new FilaDeTrabalhosMemoria(),
     relogio: new RelogioFixo(AGORA),
+    avisosA1: async () => [],
     modulos,
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,
     ...extra,
@@ -147,11 +148,6 @@ describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
     expect(await porta([cert(new Date('2027-01-01T00:00:00Z'))]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(true);
     expect(await porta([cert(new Date('2026-11-01T00:00:00Z'))]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(false);
     expect(await porta([]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(false);
-  });
-
-  it('sem o adaptador S3 (T-0024) o armazenamento responde 503 INDISPONIVEL', async () => {
-    await expect(armazenamentoIndisponivel.urlAssinada('k', 60)).rejects.toMatchObject({ status: 503, codigo: 'INDISPONIVEL' });
-    await expect(armazenamentoIndisponivel.gravar('k', new Uint8Array(), { tipo: 'x', imutavel: true })).rejects.toBeInstanceOf(ErroApi);
   });
 });
 
