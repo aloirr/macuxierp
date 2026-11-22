@@ -33,4 +33,9 @@ export interface ExecutorTrabalho {
   /** Depois disso o trabalho fica `falhou` (padrão 5). */
   maxTentativas?: number;
   executar(trabalho: Trabalho, tx: Transacao): Promise<Record<string, unknown> | null>;
+  /**
+   * Depois da última tentativa, numa transação própria do tenant (a do `executar` já foi desfeita): o módulo marca o
+   * próprio registro como falho (ex.: a exportação LGPD vira `falhou`). Idempotente.
+   */
+  aoDesistir?(trabalho: Trabalho, tx: Transacao): Promise<void>;
 }
