@@ -7,6 +7,6 @@ export const manifest = defineModule({
   depende: ['core', 'cadastros', 'pedido', 'fiscal'],
   perfis: ['administrador', 'gerente', 'faturista', 'fiscal', 'leitura'],
   web: { menus: ['Notas fiscais', 'Títulos a receber'] },
-  publica: ['faturamento.nota.autorizada@1', 'faturamento.nota.cancelada@1', 'faturamento.nota.rejeitada@1', 'faturamento.titulo.gerado@1'],
+  publica: ['faturamento.nota.autorizada@1', 'faturamento.nota.cancelada@1', 'faturamento.nota.rejeitada@1', 'faturamento.titulo.gerado@1', 'faturamento.titulo.baixado@1'],
   consome: ['pedido.pedido.aprovado@1'],
 });
