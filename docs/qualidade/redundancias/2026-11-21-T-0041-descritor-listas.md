@@ -1,0 +1,15 @@
+# Redundâncias — T-0041 (descritor comum de página de lista)
+
+Rodada única antes do push, 21/11/2026 (Manaus). Branch `nuvem/T-0041-descritor-listas`, diff sem commit contra `origin/main`.
+Escopo: `packages/platform-sdk/src/listas.ts`, `packages/platform-sdk/src/listas.test.ts` e `.coord/contratos/listas.md`. Dono: engenheiro-software.
+Fica fora do escopo a duplicação que já existia em `apps/web/src/lib/listas*.ts`, `modules/core/web/{filtros,csv}.ts` e `modules/cadastros/web`, que sai por adoção (T-0040, T-0037 e engenheiro-apps).
+Sem achado: `urlDaLista` e `filtrosDaUrl` usam `paraQuery` e `lerFiltros` (não reimplementam); `csvDaLista` usa `paraCsv` e `respostaCsv`; `ConsultaLista` e o descritor usam o mesmo Zod de `busca` e de `inativos`.
+Nenhum achado bloqueia o PR. O engenheiro-software aplicou os 5 achados no commit 62133e6.
+
+| ID | Onde | Tipo | O que se repete | Sev. | Proposta | Status |
+|---|---|---|---|---|---|---|
+| RD-0124 | listas.ts:236 e :272 | código | A regra "inativos só com `true`; vazio sai" está escrita 2 vezes: em `normalizar` e em `trocarFiltro` | média | `trocarFiltro`: `const novo = primeiraPagina(filtros); delete novo[chave]; return chave === CHAVE_CURSOR ? novo : normalizar({ ...novo, [chave]: valor ?? '' });` (a regra fica só em `normalizar`) | aplicado (62133e6) |
+| RD-0125 | listas.ts:149 e :178 | código | `ConsultaDaLista` usa os literais `{ busca?: string; inativos?: boolean }`, que repetem o tipo de `ConsultaLista`. `RESERVADAS` declara os literais `'pagina','por_pagina','total','offset'`, que o contrato também lista | baixa | `Partial<Pick<ConsultaLista, typeof CHAVE_BUSCA \| typeof CHAVE_INATIVOS>>`; `export const CHAVES_FORA_DO_CONTRATO = ['pagina','por_pagina','total','offset'] as const`, usada em `RESERVADAS` e no teste "recusa descritor" | aplicado (62133e6) |
+| RD-0126 | listas.ts:21 e :25 | código | `ChavePaginacao` não tem consumidor no repositório. `BUSCA_MAXIMO` é exportado, mas só o próprio arquivo usa | baixa | Tirar o `export` dos dois. `manter?` só se a T-0040 for usar e o recado de adoção disser isso | aplicado (62133e6) |
+| RD-0127 | listas.md:11 × :28; :30 × :37 | doc | As chaves reservadas aparecem listadas 2 vezes. "A mesma [query] para a tela e para a API" aparece 2 vezes, em `paraQuery` e em `urlDaLista` | baixa | Linha 28: "fora das chaves reservadas (paginação, `busca`, `inativos` e as de *Fora do contrato*)". Linha 37: cortar "a mesma para a URL da tela e para a chamada à API" e pôr "base de `urlDaLista`" | aplicado (62133e6) |
+| RD-0128 | listas.test.ts:59-65 × :68-74 e :84-87 | teste | `toEqual(['busca','inativos'])` em `CHAVE_BUSCA`/`CHAVE_INATIVOS` é tautológico. `auditoria.busca/inativos === false` repete o caso do teste "sem busca e inativos declarados" | baixa | No teste RD-0121, ficar só com `Object.keys(ConsultaPaginada.shape)` igual a `CHAVES_PAGINACAO`. Tirar as duas linhas `auditoria.busca/inativos`, porque o `chaves` e o teste da linha 84 já cobrem o caso | aplicado (62133e6) |
