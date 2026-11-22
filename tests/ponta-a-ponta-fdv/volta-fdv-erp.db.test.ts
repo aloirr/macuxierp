@@ -207,7 +207,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(ped).toMatchObject({ origem: 'fdv', status: 'aprovado', external_id: p.pedido_uuid, cliente_id: massa.A.clienteKit, filial_id: massa.A.filial, observacao: OBSERVACAO });
     expect(Number(ped.total_centavos)).toBe(12_750);
     expect(new Date(ped.aprovado_origem_em).toISOString()).toBe('2026-11-21T14:05:00.000Z');
-    // sem avaliarPedido e sem análise: pendências vazias (a linha em `aprovacao` é o achado A-03, no `it.fails` abaixo)
+    // sem avaliarPedido e sem análise: pendências vazias (sem linha em `aprovacao`: achado A-03, corrigido pelo lote 2b da T-0015; teste abaixo)
     expect(ped.pendencias).toEqual([]);
     expect((await adm('SELECT nome FROM plataforma.evento WHERE agregado_id = $1 ORDER BY versao', [ped.id])).map((e) => e.nome)).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.aprovado@1']);
     // quantidade na unidade base (Qtd4); a embalagem só para exibição; chave do kit e UUID do ERP resolvidos (ADR 0010)
@@ -229,20 +229,15 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect((await lado.buscar(T.A, hub.A)).buscados).toBe(0);
   });
 
-  // Achado A-03: a decisão é a do FDV; o ERP não grava `aprovacao` no pedido do FDV (T-0013 §2, §5.3 item 4 e critério 8).
-  // O `it` faz o preparo e afirma as pré-condições (falha do arnês fica vermelha); o `it.fails` só tem a asserção do defeito.
-  let aprovacoesA03: Record<string, unknown>[] | undefined;
-  it('pedido-caminho-feliz (A-03, preparo): o pedido do FDV entra aprovado', async () => {
+  // Achado A-03 (corrigido pelo lote 2b da T-0015): a decisão é a do FDV; o ERP não grava `aprovacao` no pedido do FDV (T-0013 §2, §5.3 item 4 e critério 8).
+  it('pedido-caminho-feliz (A-03): o pedido do FDV entra aprovado sem linha em pedido.aprovacao', async () => {
     exigir('pedido-caminho-feliz');
     const p = pedidoFdv(massa.A);
     aprovar('A', p);
     expect((await lado.ciclo(T.A, hub.A)).busca).toMatchObject({ entregues: 1 });
     const ped = await pedidoErp('A', p.pedido_uuid);
     expect(ped.status).toBe('aprovado');
-    aprovacoesA03 = await adm('SELECT automatica FROM pedido.aprovacao WHERE pedido_id = $1', [ped.id]);
-  });
-  it.fails('pedido-caminho-feliz (A-03): o pedido do FDV entra aprovado sem linha em pedido.aprovacao', () => {
-    expect(aprovacoesA03).toEqual([]);
+    expect(await adm('SELECT automatica FROM pedido.aprovacao WHERE pedido_id = $1', [ped.id])).toEqual([]);
   });
 
   it('pedido-cancelado: cancelado no ERP depois de integrado → retorno cancelado com motivo; nunca rejeitado_erp depois de integrado', async () => {
