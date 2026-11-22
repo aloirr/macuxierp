@@ -35,7 +35,8 @@ export interface DialogoEscritaProps {
   itens?: { carregar: CarregarItens };
   /** Em `faixa`: busca o ambiente da filial escolhida; `null` = sem leitura (vale o texto de `ambiente`). */
   carregarAmbiente?: (filial: string) => Promise<AmbienteVista | null>;
-  validar: (r: EntradaDialogo) => string | null;
+  /** Erro geral (texto) ou erros por campo de item (`erros`, mostrados junto do campo); `null` = válido. */
+  validar: (r: EntradaDialogo) => string | { erro: string; erros?: Readonly<Record<number, string>> } | null;
   aoConfirmar: (r: EntradaDialogo) => void;
   aoCancelar: () => void;
 }
@@ -52,6 +53,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
   const [final, setFinal] = useState('');
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState<string | null>(null);
+  const [errosItens, setErrosItens] = useState<Readonly<Record<number, string>>>({});
   const [linhas, setLinhas] = useState<readonly ItemDoDialogo[] | null>(null);
   const [quantidades, setQuantidades] = useState<Record<number, string>>({});
   const [falhaItens, setFalhaItens] = useState<string | null>(null);
@@ -86,9 +88,13 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
 
   function confirmar() {
     const r: EntradaDialogo = { valor, data, filial, inicial, final, texto: texto.trim(), ...(linhas ? { itens: linhas.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao, saldo: i.saldo, quantidade: quantidades[i.sequencia] ?? '' })) } : {}) };
-    const e = validar(r) ?? (pedeTexto?.obrigatorio && r.texto === '' ? 'O detalhe está vazio. Descreva o motivo.' : null);
+    const v = validar(r);
+    const porCampo = v !== null && typeof v === 'object' && v.erros && Object.keys(v.erros).length > 0 ? v.erros : {};
+    const geral = v === null ? null : typeof v === 'string' ? v : Object.keys(porCampo).length > 0 ? null : v.erro;
+    const e = geral ?? (v === null && pedeTexto?.obrigatorio && r.texto === '' ? 'O detalhe está vazio. Descreva o motivo.' : null);
+    setErrosItens(porCampo);
     setErro(e);
-    if (!e) aoConfirmar(r);
+    if (!e && Object.keys(porCampo).length === 0) aoConfirmar(r);
   }
 
   /** Corrigir um campo tira a mensagem de erro anterior (ela volta, se ainda valer, ao confirmar). */
@@ -136,7 +142,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
             </label>
           </>
         )}
-        {pedeItens && <ItensDoDialogo linhas={linhas} falha={falhaItens} quantidades={quantidades} invalido={invalido} aoMudar={(sequencia, v) => { setQuantidades({ ...quantidades, [sequencia]: v }); setErro(null); }} />}
+        {pedeItens && <ItensDoDialogo id={`${id}-item`} linhas={linhas} falha={falhaItens} quantidades={quantidades} erros={errosItens} aoMudar={(sequencia, v) => { setQuantidades({ ...quantidades, [sequencia]: v }); setErro(null); setErrosItens({}); }} />}
         {pedeTexto && (
           <label className="campo">
             <span>{pedeTexto.rotulo}{pedeTexto.obrigatorio ? '' : ' (opcional)'}</span>
@@ -184,11 +190,13 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
 }
 
 /** Itens da nota parcial: descrição, saldo e um campo de quantidade por item (o padrão é o saldo; vazio tira o item). */
-export function ItensDoDialogo({ linhas, falha, quantidades, invalido, aoMudar }: { linhas: readonly ItemDoDialogo[] | null; falha: string | null; quantidades: Readonly<Record<number, string>>; invalido?: true | undefined; aoMudar: (sequencia: number, valor: string) => void }) {
+/** `erros` (por sequência) marca só o campo errado (`aria-invalid`, borda) e liga `aria-describedby` à mensagem logo abaixo dele (MC-0015). */
+export function ItensDoDialogo({ id = 'itens', linhas, falha, quantidades, erros = {}, aoMudar }: { id?: string; linhas: readonly ItemDoDialogo[] | null; falha: string | null; quantidades: Readonly<Record<number, string>>; erros?: Readonly<Record<number, string>>; aoMudar: (sequencia: number, valor: string) => void }) {
   return (
     <div className="itens-parcial">
       {!linhas && !falha && <p className="apoio" role="status">Carregando os itens…</p>}
       {falha && <p className="erro" role="alert">{falha}</p>}
+      <p className="so-leitor" role="status" aria-live="polite">{Object.keys(erros).length > 0 ? 'Há campos com erro. Confira as mensagens abaixo de cada campo.' : ''}</p>
       {linhas && (
         <table>
           <thead><tr><th scope="col">Item</th><th scope="col">Saldo</th><th scope="col">Quantidade</th></tr></thead>
@@ -197,7 +205,10 @@ export function ItensDoDialogo({ linhas, falha, quantidades, invalido, aoMudar }
               <tr key={i.sequencia}>
                 <th scope="row">{i.rotulo}</th>
                 <td className="num sem-quebra">{i.saldoTexto}</td>
-                <td><input className="entrada" inputMode="decimal" aria-label={`Quantidade de ${i.rotulo}`} value={quantidades[i.sequencia] ?? ''} onChange={(e) => aoMudar(i.sequencia, e.target.value)} aria-invalid={invalido} /></td>
+                <td>
+                  <input className="entrada" inputMode="decimal" aria-label={`Quantidade de ${i.rotulo}`} value={quantidades[i.sequencia] ?? ''} onChange={(e) => aoMudar(i.sequencia, e.target.value)} aria-invalid={erros[i.sequencia] ? true : undefined} aria-describedby={erros[i.sequencia] ? `${id}-erro-${i.sequencia}` : undefined} />
+                  {erros[i.sequencia] ? <span id={`${id}-erro-${i.sequencia}`} className="erro-campo">{erros[i.sequencia]}</span> : null}
+                </td>
               </tr>
             ))}
           </tbody>

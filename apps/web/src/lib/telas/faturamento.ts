@@ -4,7 +4,7 @@
  * a API revalida tudo (RN-CORE-02). Sem dado pessoal em log; horários no fuso do tenant.
  */
 import {
-  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
+  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
   dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
   requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
@@ -15,7 +15,7 @@ import {
 } from '@macuxierp/faturamento/contracts';
 import { z } from 'zod';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos, formatarDataHora, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { formatarCentavos, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import type { AcaoVista, AmbienteVista, DetalheVista, ItemDoDialogo, Leitura, DownloadVista, Escrita, EntradaAcao, EventoVista, FiltroTela, Linha, ResultadoAcao, SeloVista, TelaDescrita, TelaDetalhe, TelaLista } from '../descritor/tipos';
 
 const rotaDe = (id: string): string => PAGINAS_FATURAMENTO.find((p) => p.id === id)?.rota ?? `/faturamento/${id}`;
@@ -52,7 +52,8 @@ const DE: FiltroTela = { chave: 'de', rotulo: 'De', tipo: 'data' };
 const ATE: FiltroTela = { chave: 'ate', rotulo: 'Até', tipo: 'data' };
 const AMBIENTE: FiltroTela = { chave: 'ambiente', rotulo: 'Ambiente', tipo: 'selecao', opcoes: Ambiente.options.map((a) => ({ valor: a, rotulo: textoDoAmbiente(a) })) };
 
-type IdLista = keyof typeof TEXTO_VAZIO;
+/** Id da lista = id da página do módulo; `definirPaginaLista` tipa `id` como string, então a união literal vem das chaves de `ROTULO_LINHA` (as mesmas dos ids). */
+type IdLista = keyof typeof ROTULO_LINHA;
 
 function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly FiltroTela[], extra: Partial<TelaLista> = {}): TelaLista {
   return {
@@ -62,7 +63,6 @@ function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly F
     colunas: (_perfil, fuso) => colunasDaPagina(id, fuso).map((c) => ({ id: c.id, rotulo: c.titulo, ...(c.tipo ? { tipo: c.tipo } : {}) })),
     linha: (item, fuso) => Object.fromEntries(colunasDaPagina(id, fuso).map((c) => { const v = c.valor(item); return [c.id, v === null || v === undefined ? '' : String(v)]; })),
     selos: (item, fuso) => Object.fromEntries(colunasDaPagina(id, fuso).flatMap((c) => (c.selos ? [[c.id, c.selos(item).map(selo)] as const] : []))),
-    textoVazio: TEXTO_VAZIO[id],
     ...extra,
   };
 }
@@ -125,7 +125,7 @@ function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   const r = formularioParcial({ itens }).validar(Object.fromEntries(itens.map((i) => [i.sequencia, i.quantidade])));
   if (!r.ok) {
     const [, erro] = Object.entries(r.erros)[0] ?? [];
-    return { ok: false, erro: r.geral ?? erro ?? '' };
+    return { ok: false, erro: r.geral ?? erro ?? '', ...(Object.keys(r.erros).length > 0 ? { erros: r.erros } : {}) };
   }
   return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, ...(r.itens ? { itens: r.itens } : {}) }));
 }
@@ -214,7 +214,6 @@ const RespostaEventos = z.object({ itens: z.array(EventoNotaResumo) });
 /** Eventos já lidos (`DETALHE_NOTA.lerEventos`): o parse acontece uma vez, na tela; aqui só se monta o texto. */
 export type EventosLidos = z.infer<typeof RespostaEventos>;
 const semPonto = (t: string): string => t.trim().replace(/\.+$/, '');
-const dataHora = (iso: string | null | undefined, fuso: string): string => (iso ? formatarDataHora(iso, fuso) : '');
 
 /** Corpo e caminho da requisição do módulo (a chave só valida; o envio usa a Idempotency-Key real). */
 const caminhoDe = (m: Montagem): string => (m.ok ? m.requisicao.caminho : '');
@@ -227,12 +226,13 @@ const ROTULO_STATUS_EVENTO = { pendente: 'aguardando a SEFAZ', registrado: 'regi
 
 /** Histórico da nota (`GET /notas/:id/eventos`): do mais antigo ao mais novo, horários no fuso do tenant. O texto livre do evento (justificativa) não é repetido aqui. */
 export function historicoDaNota({ itens }: EventosLidos, fuso: string): EventoVista[] {
+  const quando = hora(fuso);
   return [...itens]
     .sort((a, b) => a.criado_em.localeCompare(b.criado_em))
     .map((e) => {
       const nome = e.tipo === 'cce' ? `${ROTULO_EVENTO.cce} nº ${e.n_seq_evento}` : ROTULO_EVENTO.cancelamento;
       const detalhe = e.status === 'rejeitado' ? [e.c_stat === null ? '' : String(e.c_stat), semPonto(e.x_motivo ?? '')].filter(Boolean).join(': ') : e.protocolo ? `protocolo ${e.protocolo}` : '';
-      return { quando: dataHora(e.registrado_em ?? e.criado_em, fuso), texto: `${nome} · ${ROTULO_STATUS_EVENTO[e.status]}${detalhe ? ` · ${detalhe}` : ''}` };
+      return { quando: quando(e.registrado_em ?? e.criado_em), texto: `${nome} · ${ROTULO_STATUS_EVENTO[e.status]}${detalhe ? ` · ${detalhe}` : ''}` };
     });
 }
 
@@ -276,6 +276,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     }
   }
 
+  const quando = hora(fuso);
   const pendencias: DetalheVista['pendencias'][number][] = [];
   if (n.status === 'rejeitada') {
     const codigo = n.c_stat === null ? '' : `${n.c_stat}: `;
@@ -290,7 +291,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     cabecalho: [
       { rotulo: 'Filial', valor: n.filial_nome ?? '' }, { rotulo: 'Pedido', valor: n.pedido_numero === null || n.pedido_numero === undefined ? '' : String(n.pedido_numero) },
       { rotulo: 'Cliente', valor: n.cliente_razao_social ?? '' }, { rotulo: 'Ambiente', valor: textoDoAmbiente(n.ambiente) }, { rotulo: 'Natureza da operação', valor: n.natureza_operacao },
-      { rotulo: 'Total', valor: formatarCentavos(n.total_centavos) }, { rotulo: 'Emitida em', valor: dataHora(n.emitida_em, fuso) }, { rotulo: 'Autorizada em', valor: dataHora(n.autorizada_em, fuso) },
+      { rotulo: 'Total', valor: formatarCentavos(n.total_centavos) }, { rotulo: 'Emitida em', valor: quando(n.emitida_em) }, { rotulo: 'Autorizada em', valor: quando(n.autorizada_em) },
       { rotulo: 'Chave de acesso', valor: chaveEmGrupos(n.chave_acesso), linhaInteira: true, numerico: true }, { rotulo: 'Protocolo', valor: n.protocolo ?? '' },
     ],
     pendencias,
@@ -333,6 +334,7 @@ const ESCRITAS_TITULO = [POST(BAIXAS), POST(ESTORNO)];
 
 export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, agora: Date = new Date()): DetalheVista {
   const hoje = hojeCivil(agora);
+  const quando = hora(fuso);
   const sit = situacaoDoTitulo(t, hoje);
   const a = acoesDoTitulo(perfil, t);
   const acoes: AcaoVista[] = [];
@@ -367,7 +369,7 @@ export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, ag
     tabelas: [{
       titulo: 'Baixas',
       colunas: [{ id: 'quando', rotulo: 'Baixada em' }, { id: 'valor', rotulo: 'Valor', numerica: true }, { id: 'forma', rotulo: 'Forma' }, { id: 'situacao', rotulo: 'Situação' }],
-      linhas: t.baixas.map((b) => ({ quando: dataHora(b.baixado_em, fuso), valor: formatarCentavos(b.valor_centavos), forma: rotuloDaForma(b.forma), situacao: b.estornada_em ? `Estornada em ${dataHora(b.estornada_em, fuso)}` : 'Vigente' })),
+      linhas: t.baixas.map((b) => ({ quando: quando(b.baixado_em), valor: formatarCentavos(b.valor_centavos), forma: rotuloDaForma(b.forma), situacao: b.estornada_em ? `Estornada em ${quando(b.estornada_em)}` : 'Vigente' })),
     }],
   };
 }

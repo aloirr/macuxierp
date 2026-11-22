@@ -33,7 +33,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
   const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');
   const aoLimpar = urlDaLista(rota, filtros.limite ? { limite: filtros.limite } : {});
   const declarado = tela.pagina.vazio;
-  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : (tela.textoVazio ?? 'Nenhum registro com estes filtros.');
+  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : 'Nenhum registro com estes filtros.';
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
   const acaoBarra = tela.acaoDaBarra?.acao(perfil) ?? null;
   const iFilial = tela.filtrosTela.findIndex((f) => f.chave === 'filial_id');
