@@ -1,4 +1,4 @@
-/** T-0029, migração 0029. Motivo em docs/banco/README.md (0029). */
+/** T-0029, migrações 0029 e 0030. Motivo em docs/banco/README.md (0029, 0030). */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,7 @@ import {
 import { fixtureModulos, fixturePlataforma, novoTenant, type Tenant } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0029_estoque_worker.sql', import.meta.url));
+const MIGRACAO_0030 = fileURLToPath(new URL('../migrations/0030_estoque_saldo_update_coluna.sql', import.meta.url));
 const A = novoTenant('estoque-0029-a');
 const B = novoTenant('estoque-0029-b');
 const WORKER = (t: Tenant) => ({ papel: 'macuxierp_worker', tenant: t.id });
@@ -55,16 +56,28 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — estoque gravado pelo worker
 
   afterAll(() => banco?.remover());
 
-  it('worker igual ao app (movimento só de inserção); leitura só lê; DELETE para ninguém', () => {
+  /** Colunas do saldo com UPDATE para o papel (has_column_privilege: pega o UPDATE de tabela e o de coluna). */
+  const colunasComUpdate = (papel: string): string[] =>
+    consultar<{ c: string }>(
+      banco.conexao,
+      `SELECT a.attname AS c FROM pg_attribute a
+       WHERE a.attrelid = 'cadastros.estoque_saldo'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+         AND has_column_privilege('${papel}', a.attrelid, a.attnum, 'UPDATE') ORDER BY 1`,
+    ).map((r) => r.c);
+
+  it('worker com UPDATE só em quantidade no saldo (0030); movimento só de inserção; leitura só lê; DELETE para ninguém', () => {
     const matriz = ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura'].map((papel) => ({
       papel,
       saldo: privilegiosDe(banco.conexao, papel, 'cadastros.estoque_saldo'),
       movimento: privilegiosDe(banco.conexao, papel, 'cadastros.estoque_movimento'),
+      update: colunasComUpdate(papel),
     }));
+    const todas = colunasComUpdate('macuxierp_app');
+    expect(todas).toContain('filial_id');
     expect(matriz).toEqual([
-      { papel: 'macuxierp_app', saldo: 'SIU', movimento: 'SI' },
-      { papel: 'macuxierp_worker', saldo: 'SIU', movimento: 'SI' },
-      { papel: 'macuxierp_leitura', saldo: 'S', movimento: 'S' },
+      { papel: 'macuxierp_app', saldo: 'SIU', movimento: 'SI', update: todas },
+      { papel: 'macuxierp_worker', saldo: 'SI', movimento: 'SI', update: ['quantidade'] },
+      { papel: 'macuxierp_leitura', saldo: 'S', movimento: 'S', update: [] },
     ]);
     recusaDetalhada(banco.conexao, 'UPDATE cadastros.estoque_movimento SET motivo = motivo;', '42501', /permission denied/, WORKER(A));
   });
@@ -104,6 +117,18 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — estoque gravado pelo worker
     ).toEqual([{ n: 2 }]);
   });
 
+  it('0030: o UPDATE de outra coluna do saldo como worker cai em 42501', () => {
+    const antes = saldo(A);
+    recusaDetalhada(
+      banco.conexao,
+      `UPDATE cadastros.estoque_saldo SET filial_id = '${A.filial}' WHERE filial_id = '${A.filial}' AND produto_id = '${A.produto}';`,
+      '42501',
+      /permission denied/,
+      WORKER(A),
+    );
+    expect(saldo(A)).toBe(antes);
+  });
+
   it('RLS: o UPDATE do worker no saldo do tenant B atinge 0 linhas; o INSERT no B é recusado', () => {
     const antesB = saldo(B);
     const saida = rodarComo(
@@ -123,11 +148,20 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — estoque gravado pelo worker
     );
   });
 
-  it('a 0029 roda de novo sem erro e a matriz não muda', () => {
+  it('a 0029 roda de novo sem erro (devolve o UPDATE da tabela até a 0030 rodar)', () => {
     const sql = readFileSync(MIGRACAO, 'utf8');
     rodarScript(banco.conexao, sql, { transacao: true });
     rodarScript(banco.conexao, sql, { transacao: true });
     expect(privilegiosDe(banco.conexao, 'macuxierp_worker', 'cadastros.estoque_saldo')).toBe('SIU');
     expect(privilegiosDe(banco.conexao, 'macuxierp_worker', 'cadastros.estoque_movimento')).toBe('SI');
+  });
+
+  it('a 0030 roda de novo sem erro e o worker volta a ter UPDATE só em quantidade', () => {
+    const sql = readFileSync(MIGRACAO_0030, 'utf8');
+    // Os testes deste arquivo dependem da ordem: a reexecução da 0029 (teste anterior) deixa SIU até esta rodar.
+    rodarScript(banco.conexao, sql, { transacao: true });
+    rodarScript(banco.conexao, sql, { transacao: true });
+    expect(colunasComUpdate('macuxierp_worker')).toEqual(['quantidade']);
+    expect(privilegiosDe(banco.conexao, 'macuxierp_worker', 'cadastros.estoque_saldo')).toBe('SI'); // o REVOKE de tabela
   });
 });
