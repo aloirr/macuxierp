@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RetornoErp } from '../contracts';
-import { corpoCanonicoDoRetorno, PayloadPedidoLido, retornoDoPedido, retornoRejeitadoErp, type EventoPedido } from './retorno-pedido';
+import { corpoCanonicoDoRetorno, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, type EventoPedido } from './retorno-pedido';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ev = (nome: string, extra: Record<string, unknown> = {}): EventoPedido => ({
@@ -9,6 +9,7 @@ const ev = (nome: string, extra: Record<string, unknown> = {}): EventoPedido => 
   payload: PayloadPedidoLido.parse({ pedido_id: U(1), numero: 42, origem: 'fdv', pedido_uuid: U(2), status: 'aprovado', ...extra }),
 });
 const nota = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
+const CHAVES = new Map([[U(3), 'P001']]);
 const itens = [{ sequencia: 1, produto_id: U(3), quantidade: 25_000, valor_centavos: 5000 }];
 
 describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
@@ -34,10 +35,28 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     }
   });
   it('RN-PED-05: faturado parcial e total trazem nota e itens desta nota, com a quantidade na unidade base', () => {
-    const p = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado');
-    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: 10, total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: U(3), quantidade: 2.5, valor_cents: 5000 }] } });
-    const t = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'faturado_parcial');
+    const p = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
+    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: 10, total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2.5, valor_cents: 5000 }] } });
+    const t = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'faturado_parcial', CHAVES);
     expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total' } });
+    expect(JSON.stringify([p, t])).not.toContain(U(3)); // ADR 0010 item 1: a chave do Hub, nunca o UUID do ERP
+  });
+  it('ADR 0010 item 1: produto faturado sem chave do Hub no espelho não segue com o UUID cru: devolve aguardar_chave com os produtos', () => {
+    const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', new Map());
+    expect(d).toEqual({ acao: 'aguardar_chave', produtos: [U(3)] });
+  });
+  it('RN-PED-05 / A-02: sem a chave, o retorno faturado aguarda só nas primeiras 24 h do evento; depois descarta os itens sem chave, sem UUID cru no corpo', () => {
+    const faturado = ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens });
+    const ocorrido = Date.parse(faturado.ocorrido_em);
+    const em = (ms: number) => new Date(ocorrido + ms);
+    expect(retornoDoPedido(faturado, 'integrado', new Map(), em(0))).toEqual({ acao: 'aguardar_chave', produtos: [U(3)] });
+    expect(retornoDoPedido(faturado, 'integrado', new Map(), em(PRAZO_AGUARDAR_CHAVE_MS - 1))).toMatchObject({ acao: 'aguardar_chave' });
+    const d = retornoDoPedido(faturado, 'integrado', new Map(), em(PRAZO_AGUARDAR_CHAVE_MS));
+    expect(d).toMatchObject({ acao: 'descartar_sem_chave', produtos: [U(3)], corpo: { status: 'faturado_total', itens_faturados: [] } });
+    if (d.acao === 'descartar_sem_chave') expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
+    expect(JSON.stringify(d.acao === 'descartar_sem_chave' ? d.corpo : null)).not.toContain(U(3));
+    // com a chave, o prazo não importa: envia
+    expect(retornoDoPedido(faturado, 'integrado', CHAVES, em(PRAZO_AGUARDAR_CHAVE_MS * 3))).toMatchObject({ acao: 'enviar' });
   });
   it('RN-PED-05: pedido do BKO não gera retorno', () => {
     expect(retornoDoPedido(ev('pedido.pedido.recebido@1', { origem: 'bko', pedido_uuid: null }), null)).toEqual({ acao: 'ignorar', motivo: 'origem_nao_fdv' });
