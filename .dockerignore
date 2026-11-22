@@ -1,0 +1,25 @@
+# Contexto do docker build = raiz do monorepo (T-0024, ADR 0003; apps/api/Dockerfile e apps/web/Dockerfile).
+# Nada de segredo, dado local nem dependência instalada entra na imagem: o pnpm install roda dentro do build.
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+**/coverage
+**/*.log
+**/*.tsbuildinfo
+.git
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.pfx
+**/*.p12
+.claude
+.coord
+.github
+graphify-out
+docs
+tests
+compose.yml

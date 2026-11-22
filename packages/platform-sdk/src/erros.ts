@@ -33,6 +33,9 @@ export const erros = {
   /** Corpo ou arquivo acima do limite declarado pela rota (multipart). */
   arquivoGrande: (campo: string, limiteBytes: number) =>
     new ErroApi(413, 'ARQUIVO_GRANDE', 'Arquivo acima do limite', { [campo]: `até ${Math.floor(limiteBytes / 1024)} KB` }),
+  /** A rota passou do `tempoMaximoMs`: a transação foi desfeita (nada gravado). */
+  tempoEsgotado: (segundos: number) =>
+    new ErroApi(503, 'TEMPO_ESGOTADO', `A operação passou de ${segundos} s e foi desfeita: divida o envio ou tente de novo`),
   muitasTentativas: (mensagem: string) => new ErroApi(429, 'MUITAS_TENTATIVAS', mensagem),
   /** Dependência externa fora do ar (SEFAZ, BrasilAPI, Hub do FDV): 503, o cliente tenta de novo mais tarde. */
   indisponivel: (servico: string) => new ErroApi(503, 'INDISPONIVEL', `${servico} indisponível no momento: tente de novo em instantes`),

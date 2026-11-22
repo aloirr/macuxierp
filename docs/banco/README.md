@@ -33,9 +33,9 @@ O servidor é o DBaaS do FDV: o admin tem `CREATEDB` e `CREATEROLE`, **sem super
 | Papel | Uso | Pode |
 |---|---|---|
 | dono (o admin) | migrações | dono de tudo; RLS não vale para ele (sem `FORCE`), por isso nenhum serviço roda como admin |
-| `macuxierp_app` | API | lê e grava no próprio tenant; sem `DELETE` (exclusão = `deleted_at`), salvo `sessao`, `idempotencia` e `consulta_externa`; licença e tenant só leitura (D12); `evento` e `auditoria` só inserção; certificado: grava e lê só o resumo, nunca `pfx_cifrado`/`senha_cifrada` |
-| `macuxierp_worker` | despachante e filas | lê o próprio tenant (exportação LGPD); atualiza só as colunas de controle de `evento`, `trabalho`, `exportacao` e o cache; no `certificado`, só `ativo` e `substituido_em` (nunca `pfx_cifrado` nem a senha); vê a fila de **todos** os tenants em `evento`, `evento_consumido`, `trabalho` e `idempotencia` (política `worker_global`, D10) |
-| `macuxierp_leitura` | consulta e diagnóstico | só lê o próprio tenant; não vê `core.certificado`, `plataforma.sessao`, `usuario.senha_hash` nem `idempotencia.resposta` (pode trazer dado pessoal) |
+| `macuxierp_app` | API | lê e grava no próprio tenant; sem `DELETE` (exclusão = `deleted_at`), salvo `sessao`, `idempotencia` e `consulta_externa`; licença e tenant só leitura (D12); `evento` e `auditoria` só inserção; certificado: grava e lê só o resumo, nunca `pfx_cifrado`/`senha_cifrada`; `integracao_fdv`: lê tudo (monitor); na `credencial` insere, lê só o resumo (nunca `chave_cifrada`) e marca `substituida_em`/`deleted_at`; nas ações do BKO (carga completa, retomar, troca de conector) insere `cursor_entidade` e atualiza só credencial, cursor, sessão, pausa, `proximo_em` e `deleted_at`, e no `registro_publicado` só `pendente`, `hash_confirmado` e `confirmado_em`; o `sinal` só cria; `core.ambiente_fiscal`: só grava `homologacao` (políticas restritivas `app_so_homologacao_*`, 0008); `core.aviso_a1`: só lê (0009) |
+| `macuxierp_worker` | despachante e filas | lê o próprio tenant (exportação LGPD); atualiza só as colunas de controle de `evento`, `trabalho`, `exportacao` e o cache; no `certificado`, só `ativo` e `substituido_em` (nunca `pfx_cifrado` nem a senha); vê a fila de **todos** os tenants em `evento`, `evento_consumido`, `trabalho` e `idempotencia` (política `worker_global`, D10); `integracao_fdv`: lê a `credencial` cifrada e só marca `ultimo_uso_em` e anula a chave da substituída; lê e grava (sem `DELETE`) as outras nove tabelas; `worker_global` em `cursor_entidade` e `sinal` (agenda); `core.aviso_a1`: lê e insere (0009); executa `plataforma.tenants_ativos()` (0009, sem tenant) |
+| `macuxierp_leitura` | consulta e diagnóstico | só lê o próprio tenant; não vê `core.certificado`, `integracao_fdv.credencial`, `plataforma.sessao`, `usuario.senha_hash` nem `idempotencia.resposta` (pode trazer dado pessoal); lê `core.aviso_a1` (0009) |
 
 O banco não tem acesso ao FDV, e só os três papéis têm `CONNECT` (o `REVOKE ALL ... FROM PUBLIC` tira o resto).
 
@@ -52,6 +52,33 @@ O banco não tem acesso ao FDV, e só os três papéis têm `CONNECT` (o `REVOKE
 - **Exceção registrada:** `controle.migracao` (registro das migrações) não tem tenant nem RLS; o schema `controle` não é visível a nenhum papel da aplicação.
 - Dinheiro em `bigint` de centavos (`*_centavos`); quantidade em `bigint` com escala 4 (D11); percentual em pontos-base. O teste recusa `real`, `double`, `numeric` e `money`.
 
+## Schema `integracao_fdv` (0007, T-0010)
+Estado do conector nativo do ERP no Hub `/integracao/v1` do FDV. Fonte dos nomes e colunas: `docs/desenho/T-0009.md`, seção 8 (engenheiro-software). O ERP nunca lê tabela do FDV (RN-INF-01) e este schema não lê os outros: o que vai ao Hub sai do espelho próprio. UUIDs do ERP (`fonte_refs`, `erp_id`, `pedido_id`) são opacos, sem FK entre schemas.
+
+| Tabela | O que guarda | Chaves e regras no banco |
+|---|---|---|
+| `credencial` | `conector_id`, `ambiente` (`teste`\|`producao`), `chave_cifrada` (nonce 12 + cifrado + tag 16; AES-256-GCM, dado associado = `tenant_id`, chave mestra `MACUXIERP_CHAVE_INTEGRACAO` no secret do servidor), `chave_prefixo` (≤ 8), `chave_mestra_versao`, `substituida_em`, `criada_por`, `ultimo_uso_em` | uma ativa por tenant (`substituida_em` e `deleted_at` nulos); troca = linha nova; a trigger `credencial_chave_so_anula` só deixa anular a chave (nunca regravar), e a chave nula só na substituída |
+| `registro_publicado` | espelho (M1): `entidade`, `registro_external_id` (`COLLATE "C"`), `payload` canônico do Hub, `hash`, `alterado_em`, `fonte_ocorrido_em`, `fonte_refs`, `ativo`, `pendente`, `hash_confirmado`, `confirmado_em`, `ultimo_lote_envio_id` | única por `(tenant_id, entidade, registro_external_id)`; fila (`where pendente`) e carga completa (`where ativo`) em `(tenant_id, entidade, alterado_em, registro_external_id COLLATE "C")`; GIN `jsonb_path_ops` em `fonte_refs`; payload sem `custo_cents`, `custo_centavos` nem `preco_venda_cents` (M8); payload nulo só no inativo confirmado |
+| `referencia` | `tipo` (`tabela_preco`\|`filial_padrao`), `erp_id`, `dados` (só `nome`, `vigencia_inicio`, `vigencia_fim`, `inativo`, `filial_id`), `fonte_ocorrido_em` | única por `(tenant_id, tipo, erp_id)` |
+| `cursor_entidade` | `entidade`, `credencial_id`, par do cursor (`cursor_alterado_em`, `cursor_external_id COLLATE "C"`; nulo = carga completa), `sessao_aberta_id`, `pausada_motivo` (`credencial`, `licenca_fdv`, `licenca_erp`, `versao`, `envelope`, `idempotencia`, `topologia`) com `pausada_em`, `proximo_em` (agenda), `ultimo_envio_em`, `ultimo_sucesso_em` | única por `(tenant_id, entidade)`; agenda `(proximo_em) where pausada_motivo is null`; `worker_global` |
+| `lote_envio` | `entidade`, `credencial_id`, `modo` (`completo`\|`delta`), `sessao_*`, `geracao`, `chave_idempotencia`, `corpo` (congelado até o estado final, M6), `cursor_declarado`, `hub_lote_id`, `estado`, `repetido`, `contagens`, `tentativas`, `ultimo_erro_codigo`, `enviado_em`, `concluido_em` | única por `(tenant_id, chave_idempotencia)`; **um em voo** (`montado`, `enviando`, `aceito`) por `(tenant_id, entidade)`; o estado final (`concluido`, `concluido_com_erros`, `falhou`, `recusado`) exige `concluido_em`, e `falhou`/`recusado` exigem o código; sem data própria de retentativa |
+| `lote_erro` | `lote_envio_id`, `indice`, `origem` (`erp`\|`hub`), `entidade`, `registro_external_id`, `codigo`, `campo`, `reprocessavel`, `resolvido_em`, `resolvido_no_lote_envio_id` | única por `(lote_envio_id, origem, indice)`; **sem mensagem livre nem valor** |
+| `pedido_recebido` (F3) | `pedido_uuid`, `payload`, `hash`, `recebido_em` (última entrega do Hub; `created_at` é a primeira), `estado` (`recebido`\|`entregue`\|`rejeitado`), `pedido_id`, `tentativas`, `erro_codigo` | única por `(tenant_id, pedido_uuid)` (RN-PED-01); `rejeitado` exige o código e fica fora da fila; payload nulo só no `entregue` |
+| `retorno_enviado` (F3) | `pedido_uuid`, `status`, `numero_erp`, `corpo`, `hash`, `estado` (`pendente`\|`enviado`\|`falhou`), `tentativas`, `resposta_http`, `itens_descartados`, `enviado_em` | única por `(tenant_id, pedido_uuid, status, hash)`; FK `(tenant_id, pedido_uuid)` para `pedido_recebido`; fila `(tenant_id, created_at) where estado = 'pendente'` (`falhou` é terminal) |
+| `sinal` | uma linha por tenant: último envio e aceito, `ultimo_http`, `politica_versao`, `parado_por_versao` e a agenda (`proximo_sinal_em`, `proxima_reconciliacao_em`; na F3 `proxima_busca_pedidos_em` e `proximo_retorno_em`, nulos até lá) | única por `tenant_id`; um índice por coluna da agenda; `worker_global` |
+| `reconciliacao` | `entidade`, `data_referencia`, `contagem`, `soma` (nula na v1), `resposta_http`, `enviado_em` | única por `(tenant_id, entidade, data_referencia)` |
+
+- `external_id` (regra 5) existe em todas e fica nulo: a chave do Hub é `registro_external_id`. Códigos de erro e de motivo usam o domínio `integracao_fdv.codigo` (identificador minúsculo, nunca texto livre); entidades, o domínio `integracao_fdv.entidade_hub` (as 12 da seção 2 do desenho).
+- Datas de negócio em `timestamptz(3)`; `created_at`, `updated_at` e `deleted_at` seguem `timestamptz` como no resto do banco. Hashes em `plataforma.sha256_hex`.
+- **Agenda (seção 6.1):** a reserva roda sem tenant, como `macuxierp_worker`, só em `cursor_entidade` e `sinal` (política `worker_global`), com `FOR NO KEY UPDATE SKIP LOCKED`, e adia o `proximo*_em` na mesma transação. O resto roda com o tenant na sessão.
+- **Retenção (anulação de coluna, sem `DELETE`):** `lote_envio.corpo` 7 dias após o estado final; chave da credencial substituída em 7 dias; `registro_publicado.payload` do inativo confirmado em 30 dias; `pedido_recebido.payload` 90 dias após `entregue`.
+
+**Ainda em aberto no desenho da T-0009** (fora do banco, salvo enum novo):
+- ADR da credencial (rotação da `MACUXIERP_CHAVE_INTEGRACAO`, como a ADR 0005), na tarefa de código; o secret é criado só pelo dono do servidor;
+- P-1: nomes e enums exatos do Hub (`status` do retorno, entidades); valor novo = CHECK ou `ALTER DOMAIN` em migração nova;
+- quem roda a retenção acima (trabalho do worker) e a remoção das linhas de 12 meses;
+- gravação de `referencia` pelo BKO: nenhuma ação da C-7 a usa, por isso o app só lê (se surgir, GRANT por coluna em migração nova).
+
 ## Alerta do A1 (T-0035, migração 0009)
 - `core.aviso_a1`: um aviso por certificado e por dia UTC (`UNIQUE (tenant_id, certificado_id, dia)`, constraint `aviso_a1_um_por_dia`), FK composta `(tenant_id, certificado_id)` para `core.certificado`. Só ids, validade e dias (sem dado pessoal). Worker: `SELECT` e `INSERT`; app e leitura: só `SELECT` (selo do BKO). Nenhum papel altera nem apaga.
 - `plataforma.tenants_ativos()` (`SECURITY DEFINER`, só para o worker): ids dos tenants com `situacao = 'ativo'` e sem `deleted_at`; o de referência fica de fora.
@@ -59,6 +86,10 @@ O banco não tem acesso ao FDV, e só os três papéis têm `CONNECT` (o `REVOKE
   - `FonteTenants.ativos` (em `semTenant`): `SELECT t AS id FROM plataforma.tenants_ativos() t`
   - `FonteCertificados.vencendoAte`: `SELECT id, filial_id, valido_ate FROM core.certificado WHERE ativo AND deleted_at IS NULL AND valido_ate < $1 ORDER BY valido_ate, id` (usa o índice `certificado_vencimento_idx`)
   - `DestinoAvisos.registrarA1`: `INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia) VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5::date) ON CONFLICT (tenant_id, certificado_id, dia) DO NOTHING RETURNING id` — sem linha devolvida = `false` (o aviso do dia já existia).
+
+## Forma de pagamento na condição (T-0026, migração 0010)
+- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64), `forma_codigo` (≤ 20) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
+- Índice parcial `condicao_pagamento_forma_external_id_ix` em `(tenant_id, forma_external_id) where forma_external_id is not null`: a carga do `forma_pagamento.csv` atualiza todas as condições da forma por ele. RLS, política, trigger e grants da 0004 não mudam.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.

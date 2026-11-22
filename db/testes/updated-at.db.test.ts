@@ -2,7 +2,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrar } from '../src/migrar.ts';
 import { rodarScriptAssincrono } from '../src/psql.ts';
-import { type BancoDeTeste, criarBancoDeTeste, executar, PG_DISPONIVEL, rodarScript } from './apoio.ts';
+import {
+  type BancoDeTeste,
+  criarBancoDeTeste,
+  executar,
+  numeros,
+  PG_DISPONIVEL,
+  rodarScript,
+} from './apoio.ts';
 import { fixturePlataforma, novoTenant } from './fixture.ts';
 
 const A = novoTenant('updated-at-a');
@@ -10,12 +17,6 @@ const SOMAR = `UPDATE plataforma.trabalho SET tentativas = tentativas + 1 WHERE 
 /** updated_at em microssegundos desde a época (inteiro), para comparar sem perder precisão. */
 const US = `(extract(epoch FROM updated_at) * 1000000)::bigint`;
 const ms = (us: number): number => Math.floor(us / 1000);
-const numeros = (saida: string): number[] =>
-  saida
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => /^-?\d+$/.test(l))
-    .map(Number);
 
 /** UPDATE condicionado ao token (updated_at truncado em ms), como o core faz; devolve as linhas gravadas (1 ou nada). */
 function gravarComToken(banco: BancoDeTeste, tokenMs: number): string {
