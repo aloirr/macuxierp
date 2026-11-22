@@ -1,11 +1,12 @@
 /**
- * T-0008 (c), RN-CORE-02: TODA rota de core e cadastros, montada na API real (`criarApp`), checa sessão (401), perfil
+ * T-0008 (c), RN-CORE-02: TODA rota de core, cadastros e pedido (T-0016), montada na API real (`criarApp`), checa sessão (401), perfil
  * (403 PERFIL_SEM_PERMISSAO), tenant (transação aberta no tenant do token) e licença do módulo (403 MODULO_INATIVO),
  * nesta ordem. As rotas são enumeradas do próprio plugin: rota nova entra no teste sem ninguém lembrar.
  * Os plugins vêm do `montarModulos` de produção (tests/apoio/api-memoria.ts), o mesmo que o main.ts monta.
- * O core é a base do tenant (MODULOS_BASE do SDK): sempre licenciado, por isso a licença só derruba rotas de cadastros.
+ * O core é a base do tenant (MODULOS_BASE do SDK): sempre licenciado, por isso a licença só derruba rotas de cadastros e
+ * de pedido; cada módulo licenciado responde só à própria licença.
  */
-import { PERFIS, PERMISSOES, type Licenca, type RotaModulo } from '../../../packages/platform-sdk/src/index';
+import { MODULOS_BASE, PERFIS, PERMISSOES, type Licenca, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { describe, expect, it } from 'vitest';
 import { CNPJ_EMPRESA, FILIAL_A, montarApiMemoria, SEGREDO_JWT, TENANT_A, TENANT_B, usarApiMemoria } from '../../apoio/api-memoria';
 import { formulario } from '../../apoio/multipart';
@@ -13,6 +14,13 @@ import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 
 const montar = usarApiMemoria();
 const api = (licencas?: Licenca[]) => montar({ licencas });
+/** Módulos com licença (o core é base). O padrão do apoio licencia só o cadastros; o pedido pede a própria linha. */
+const LICENCIADOS = ['cadastros', 'pedido'] as const;
+type Licenciado = (typeof LICENCIADOS)[number];
+const ehLicenciado = (m: string): m is Licenciado => (LICENCIADOS as readonly string[]).includes(m);
+const ativa = (modulo: Licenca['modulo']): Licenca => ({ modulo, ativo: true, valido_ate: null });
+/** Licenças em que todos os módulos com rota estão ativos (o caminho feliz até a rota). */
+const TODAS = LICENCIADOS.map(ativa);
 
 const VALOR_PARAM: Record<string, string> = { tabela: 'ncm', cnpj: '11222333000181', cep: '69050010', chave: 'fuso' };
 const url = (modulo: string, r: RotaModulo) =>
@@ -20,7 +28,8 @@ const url = (modulo: string, r: RotaModulo) =>
 
 /** As rotas reais dos plugins (montados uma vez só para listar). */
 const referencia = await montarApiMemoria();
-const ROTAS = (['core', 'cadastros'] as const).flatMap((modulo) => referencia.plugins[modulo].rotas.map((r) => ({ modulo, r, nome: `${r.metodo} /v1/${modulo}${r.caminho}` })));
+const plugin = (id: string) => referencia.modulos.find((m) => m.manifesto.id === id)!;
+const ROTAS = [...MODULOS_BASE, ...LICENCIADOS].flatMap((modulo) => plugin(modulo).rotas.map((r) => ({ modulo, r, nome: `${r.metodo} /v1/${modulo}${r.caminho}` })));
 await referencia.app.close();
 
 /**
@@ -46,9 +55,10 @@ const semPermissao = (r: RotaModulo) => PERFIS.find((p) => !(PERMISSOES[r.acao] 
 const comPermissao = (r: RotaModulo) => PERFIS.find((p) => (PERMISSOES[r.acao] as readonly string[]).includes(p))!;
 
 describe('enumeração das rotas (RN-CORE-02)', () => {
-  it('core e cadastros têm o mínimo de rotas (o registro no Fastify é conferido pelo printRoutes, abaixo)', () => {
+  it('core, cadastros e pedido têm o mínimo de rotas (o registro no Fastify é conferido pelo printRoutes, abaixo)', () => {
     expect(ROTAS.filter((x) => x.modulo === 'core').length).toBeGreaterThanOrEqual(19);
     expect(ROTAS.filter((x) => x.modulo === 'cadastros').length).toBeGreaterThanOrEqual(40);
+    expect(ROTAS.filter((x) => x.modulo === 'pedido').length).toBeGreaterThanOrEqual(10);
   });
   it('toda rota declara uma ação da matriz de permissões do próprio módulo', () => {
     for (const { modulo, r } of ROTAS) {
@@ -90,19 +100,20 @@ describe.each(ROTAS)('$nome', ({ modulo, r }) => {
   });
 
   it('RN-CORE-02: o tenant da transação é o do token (A abre A, B abre B)', async () => {
-    const a = await api();
+    const a = await api(TODAS);
     const p = comPermissao(r);
     await a.app.inject(pedido(modulo, r, a.auth(p, TENANT_A)));
     await a.app.inject(pedido(modulo, r, a.auth(p, TENANT_B)));
     expect(a.banco.aberturas).toEqual([TENANT_A, TENANT_B]);
   });
 
-  if (modulo === 'cadastros') {
+  if (ehLicenciado(modulo)) {
+    const outros = TODAS.filter((l) => l.modulo !== modulo);
     it.each([
       ['sem linha de licença', [] as Licenca[]],
-      ['licença inativa', [{ modulo: 'cadastros', ativo: false, valido_ate: null }] as Licenca[]],
-      ['licença vencida', [{ modulo: 'cadastros', ativo: true, valido_ate: new Date('2026-11-20T00:00:00Z') }] as Licenca[]],
-      ['licença de outro módulo', [{ modulo: 'pedido', ativo: true, valido_ate: null }] as Licenca[]],
+      ['licença inativa', [...outros, { modulo, ativo: false, valido_ate: null }]],
+      ['licença vencida', [...outros, { modulo, ativo: true, valido_ate: new Date('2026-11-20T00:00:00Z') }]],
+      ['só a licença dos outros módulos', outros],
     ])('RN-CORE-02: %s = 403 MODULO_INATIVO, sem executar a rota', async (_n, licencas) => {
       const a = await api(licencas);
       const res = await a.app.inject(pedido(modulo, r, a.auth(comPermissao(r))));
@@ -143,9 +154,11 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
     expect(declaradas.length).toBe(ROTAS.length);
   });
 
-  it('módulos montados só com o manifesto (pedido, faturamento, fiscal, integração FDV): nenhuma rota, 404 mesmo com sessão', async () => {
-    const a = await api([{ modulo: 'pedido', ativo: true, valido_ate: null }, { modulo: 'fiscal', ativo: true, valido_ate: null }]);
-    for (const m of ['pedido', 'faturamento', 'fiscal', 'integracao-fdv']) {
+  it('módulos montados só com o manifesto (faturamento, fiscal, integração FDV): nenhuma rota, 404 mesmo com sessão', async () => {
+    const a = await api([...TODAS, ativa('faturamento'), ativa('fiscal')]);
+    const semRotas = a.modulos.filter((p) => p.rotas.length === 0).map((p) => p.manifesto.id);
+    expect(semRotas).toEqual(['faturamento', 'fiscal', 'integracao-fdv']);
+    for (const m of semRotas) {
       const r = await a.app.inject({ url: `/v1/${m}/qualquer`, headers: a.auth() });
       expect(r.statusCode, m).toBe(404);
     }
@@ -190,6 +203,6 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
 describe('perfis da matriz (RN-CORE-01 e RN-CORE-02)', () => {
   it('só ações de leitura são liberadas a todos os perfis (as demais têm perfil que leva 403)', () => {
     const livres = [...new Set(ROTAS.filter((x) => semPermissao(x.r) === undefined).map((x) => x.r.acao))].sort();
-    expect(livres).toEqual(['cadastros.ver', 'core.empresa.ver', 'core.perfil.ver']);
+    expect(livres).toEqual(['cadastros.ver', 'core.empresa.ver', 'core.perfil.ver', 'pedido.ver']);
   });
 });
