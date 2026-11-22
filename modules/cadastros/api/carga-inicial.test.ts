@@ -23,7 +23,7 @@ function ambiente() {
     },
   };
   const gravados: EnvelopeEvento[] = [];
-  const outbox: Outbox = { gravar: async (_tx, e) => void gravados.push(e) };
+  const outbox: Outbox = { gravar: async (_tx, e) => gravados.push(e) };
   const consumidor = criarConsumidorCargaInicial({ fila: filaPorta });
   const executor = criarExecutorCargaInicial({ repositorios: () => repos, fila: filaPorta, outbox, agora: () => new Date('2026-11-21T15:00:00Z') });
   const solicitar = (payload: Record<string, unknown>, tenant = TENANT) =>
@@ -47,7 +47,7 @@ describe('carga inicial: consumidor tolerante (C-4)', () => {
     const a = ambiente();
     expect(a.consumidor.eventos).toEqual(['integracao-fdv.carga_inicial.solicitada@1']);
     await a.solicitar({ entidades: ['cliente'], motivo: 'primeira_credencial', conector_id: 'x' });
-    expect([...a.fila.values()].map((t) => t.payload)).toEqual([{ origem: ORIGEM, entidade: 'cliente', apos: null, tabela_id: null, pagina: 1 }]);
+    expect([...a.fila.values()].map((t) => t.payload)).toEqual([{ origem: ORIGEM, entidade: 'cliente', apos: null, tabela_id: null, pagina: 1, cursor_itens: null }]);
     expect([...a.fila.values()][0]?.tipo).toBe(TRABALHO_CARGA_INICIAL);
   });
   it('ignora entidade desconhecida, traduz nomes do Hub e não duplica entidade', async () => {

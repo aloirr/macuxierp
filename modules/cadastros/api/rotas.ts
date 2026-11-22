@@ -8,7 +8,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import {
-  ClienteAtualizacao, ClienteDados, type Cliente, type PrecoItem, type Produto, type TabelaPreco, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
+  ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
   EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta,
   OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
@@ -30,7 +30,8 @@ type Entidade = { id: string; inativo: boolean };
 
 async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: string, payload: unknown): Promise<void> {
   const dados = EVENTOS[nome].parse(payload) as Dict;
-  await c.publicar({ nome, agregado_id: agregadoId, payload: dados });
+  await c.publicar({ nome, agregado_id: agregadoId, versao: 1, // @deprecated no SDK, ignorada (T-0034), mas ainda exigida pelo tipo
+    payload: dados });
 }
 
 const publicarPronto = (c: ContextoRota, e: EventoPronto) => publicar(c, e.nome, e.agregado_id, e.payload);

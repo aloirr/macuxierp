@@ -39,7 +39,7 @@ export function entidadesPedidas(nomes: readonly string[]): EntidadeCarga[] {
 /** UUID v5 da chave (solicitação, entidade, cursor, tabela, página): cabe no limite de 64 caracteres do `external_id` e é estável. */
 const NS_CARGA = '7d0c6a52-2f1e-5b8a-9c47-1e3a5b7d9f21';
 export const externalDoTrabalho = (p: PayloadCargaInicial): string =>
-  uuidV5(`carga:${p.origem}:${p.entidade}:${p.apos ?? 'inicio'}:${p.tabela_id ?? '-'}:${p.pagina}`, NS_CARGA);
+  uuidV5(`carga:${p.origem}:${p.entidade}:${p.apos ?? 'inicio'}:${p.tabela_id ?? '-'}:${p.cursor_itens ?? '-'}`, NS_CARGA);
 
 export function criarConsumidorCargaInicial(deps: { fila: FilaDeTrabalhos }): ConsumidorEvento {
   return {
@@ -49,7 +49,7 @@ export function criarConsumidorCargaInicial(deps: { fila: FilaDeTrabalhos }): Co
       const lido = SolicitacaoCargaInicial.safeParse(evento.payload);
       if (!lido.success) return;
       for (const entidade of entidadesPedidas(lido.data.entidades)) {
-        const payload: PayloadCargaInicial = { origem: evento.id, entidade, apos: null, tabela_id: null, pagina: 1 };
+        const payload: PayloadCargaInicial = { origem: evento.id, entidade, apos: null, tabela_id: null, pagina: 1, cursor_itens: null };
         await deps.fila.enfileirar(tx, { tipo: TRABALHO_CARGA_INICIAL, tenant_id: evento.tenant_id, payload, external_id: externalDoTrabalho(payload) });
       }
     },
@@ -82,7 +82,7 @@ export function criarExecutorCargaInicial(deps: {
 }
 
 async function pagina(r: Repositorios, p: PayloadCargaInicial): Promise<{ eventos: EventoPronto[]; proximo: PayloadCargaInicial | null }> {
-  const seguinte = (apos: string | null, extra: Partial<PayloadCargaInicial> = {}): PayloadCargaInicial => ({ ...p, apos, tabela_id: null, pagina: 1, ...extra });
+  const seguinte = (apos: string | null, extra: Partial<PayloadCargaInicial> = {}): PayloadCargaInicial => ({ ...p, apos, tabela_id: null, pagina: 1, cursor_itens: null, ...extra });
   const porCursor = async <E extends { id: string }>(
     repo: { paginaPorCursor(apos: string | null, limite: number): Promise<E[]> },
     montar: (e: E) => Promise<EventoPronto> | EventoPronto,
@@ -114,10 +114,9 @@ async function pagina(r: Repositorios, p: PayloadCargaInicial): Promise<{ evento
       // Uma tabela por vez, PAGINA_ITENS_PRECO itens por execução; `apos` = última tabela começada.
       const t = p.tabela_id ? await r.tabelasPreco.obter(p.tabela_id) : ((await r.tabelasPreco.paginaPorCursor(p.apos, 1))[0] ?? null);
       if (!t) return { eventos: [], proximo: p.tabela_id ? seguinte(p.tabela_id) : null };
-      const pg = p.tabela_id ? p.pagina : 1;
-      const { itens } = await r.tabelasPreco.itens(t.id, { pagina: pg, por_pagina: PAGINA_ITENS_PRECO });
+      const { itens, proximo_cursor } = await r.tabelasPreco.itens(t.id, { limite: PAGINA_ITENS_PRECO, cursor: p.tabela_id ? (p.cursor_itens ?? undefined) : undefined });
       const eventos = itens.map((i) => eventoPreco(i, t));
-      return { eventos, proximo: itens.length === PAGINA_ITENS_PRECO ? seguinte(t.id, { tabela_id: t.id, pagina: pg + 1 }) : seguinte(t.id) };
+      return { eventos, proximo: proximo_cursor ? seguinte(t.id, { tabela_id: t.id, cursor_itens: proximo_cursor }) : seguinte(t.id) };
     }
   }
 }

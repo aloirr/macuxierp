@@ -166,7 +166,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
       todos.push(...lote.map((c) => c.id));
       apos = (lote.at(-1) as { id: string }).id;
     }
-    const esperados = JSON.parse(admin(`SELECT coalesce(json_agg(id ORDER BY id), '[]') FROM cadastros.cliente WHERE tenant_id = '${A}';`).trim()) as string[];
+    const esperados = (await admin(`SELECT id FROM cadastros.cliente WHERE tenant_id = '${A}' ORDER BY id;`)).map((l) => l.id as string);
     expect(todos).toEqual(esperados);
     expect(await repositoriosSql(txB()).clientes.paginaPorCursor(null, 10)).toEqual([]);
   }, 120_000);
@@ -189,7 +189,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     const enviar = async () => {
       const ids: string[] = [];
       for (const [entidade, apos] of cursores) {
-        const payload: PayloadCargaInicial = { origem, entidade, apos, tabela_id: null, pagina: 1 };
+        const payload: PayloadCargaInicial = { origem, entidade, apos, tabela_id: null, pagina: 1, cursor_itens: null };
         const external_id = externalDoTrabalho(payload);
         expect(external_id.length).toBeLessThanOrEqual(64);
         ids.push((await fila.enfileirar(txA(), { tipo: TRABALHO_CARGA_INICIAL, tenant_id: A, payload, external_id })).id);
@@ -199,6 +199,6 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     const primeira = await enviar();
     expect(new Set(primeira).size).toBe(4);
     expect(await enviar()).toEqual(primeira);
-    expect(admin(`SELECT count(*) FROM plataforma.trabalho WHERE tipo = '${TRABALHO_CARGA_INICIAL}' AND tenant_id = '${A}';`).trim()).toBe('4');
+    expect(Number((await admin(`SELECT count(*) AS n FROM plataforma.trabalho WHERE tipo = '${TRABALHO_CARGA_INICIAL}' AND tenant_id = '${A}';`))[0]?.n)).toBe(4);
   });
 });

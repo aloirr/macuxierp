@@ -335,5 +335,7 @@ export const PayloadCargaInicial = z.object({
   /** Só no preço: tabela em curso e próxima página dos itens dela. */
   tabela_id: z.string().nullable().default(null),
   pagina: z.number().int().min(1).default(1),
+  /** Só no preço: cursor dos itens da tabela em curso (lista por cursor); `null` = do começo. */
+  cursor_itens: z.string().nullable().default(null),
 });
 export type PayloadCargaInicial = z.infer<typeof PayloadCargaInicial>;
