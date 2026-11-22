@@ -27,6 +27,21 @@ export const TenantId = z.string().uuid();
  *    é erro tipado (REGRA_INCOMPLETA), não exceção do Zod, para não quebrar o parse de quem já usa o @1.
  *  - valor por unidade (vUnid/vAliqProd, 11v4 do Manual): inteiro em DÉCIMOS DE MILÉSIMO DE REAL (×10^4; R$ 0,1411 = 1411).
  *    A quantidade (qTrib) vale com até 4 casas; o valor em centavos é quantidade × valor por unidade, meio para cima.
+ *  - lote 3 (RF-FIS-03/04, RN-FIS-03): IBS/CBS (grupo gIBSCBS da NT 2025.002-RTC) e IS (gIS) por regra de `tributo` 'ibs_cbs' | 'is' (ou nos campos
+ *    cst_ibs_cbs/cst_is da linha única); a versão da NT vem da regra (`versao_nt_rtc`, obrigatória para calcular) e sai UMA vez por item
+ *    (`versao_nt_rtc` do ItemResultado), não em cada grupo. Sem regra de IBS/CBS ou de IS o grupo simplesmente não sai (fase de teste de 2026).
+ *    Leiaute do resultado igual à NT: `ibs_cbs` { cst, cClassTrib, vBC, gIBSUF, gIBSMun, vIBS, gCBS } com gRed (pRedAliq, pAliqEfet) separado em
+ *    UF, Município e CBS, e `is` (gIS). Os grupos `ibs` e `cbs` do @1 são OBSOLETOS: não são mais preenchidos e saem no @2.
+ *    Carga aproximada (Lei 12.741, IBPT): `carga_aproximada` por item (a API busca em fiscal.carga_aproximada); sai vTotTrib por item e no total.
+ *  - Arredondamento (decisão do Alexandre, 22/11/2026, Manaus): IBS, CBS e IS em MEIO-PARA-PAR (ABNT NBR 5891), igual à Calculadora RTC da RFB
+ *    (github.com/ReceitaFederal/calculadora-rtc-regime-regular, HALF_EVEN: vBC arredondado uma vez a 2 casas; pAliqEfet = alíquota × (1 − pRedAliq)
+ *    a 4 casas; valor = arred2(vBC × pAliqEfet ÷ 100)). ICMS, IPI, PIS e COFINS seguem meio para cima (RN-CORE-03).
+ *  - vNF (regra única, aqui): vNF = vProd − vDesc + vFrete + vSeg + vOutro + vST + vFCPST + vIPI e NÃO soma IBS/CBS/IS (em 2026, fase de teste, a NT os
+ *    destaca "por fora"). O total com os tributos por fora sai à parte em `totais.v_nf_tot` (opcional) = vNF + vIBS + vCBS + vIS.
+ *    Alíquotas de 2026 (teste: CBS 0,9% e IBS 0,1%) vêm sempre da regra, nunca do código.
+ *  - vBC do IBS/CBS por item (BaseCalculoUnificadaService da Calculadora RTC): vProd + vFrete + vSeg + vOutro + vII + vIS (vIS só a partir de 2027)
+ *    − vDesc − vPIS − vCOFINS − vICMS − vICMSUFDest − vFCP − vFCPUFDest − vICMSMono − vISSQN; o vIPI NÃO entra; os componentes de ICMS/FCP/ICMSMono
+ *    só valem para bem, de 2026 a 2032.
  */
 
 export const CALCULO_VERSAO = 1 as const;
@@ -76,6 +91,30 @@ export const OperacaoCalculo = z.object({
   data_emissao: DataCivil,
 });
 
+/**
+ * RF-FIS-04 (Lei 12.741/2012, Decreto 8.264/2014): alíquotas aproximadas por NCM, 4 casas (Percentual), com versão e fonte da tabela IBPT.
+ * Federal tem duas alíquotas (nacional e importado); o motor escolhe pela origem da mercadoria (origens 1, 2, 6 e 7 = importado; as demais são nacionais, inclusive 3, 4, 5 e 8).
+ */
+export const CargaAproximada = z.object({
+  federal_nacional: Percentual,
+  federal_importado: Percentual,
+  estadual: Percentual,
+  municipal: Percentual,
+  versao: z.string().min(1),
+  fonte: z.string().min(1),
+});
+export type CargaAproximada = z.infer<typeof CargaAproximada>;
+
+/** Resultado da carga aproximada de um item (RF-FIS-04): abertura por esfera, com a versão e a fonte da tabela. */
+export const CargaAproximadaItem = z.object({
+  v_federal: CentavosNaoNeg,
+  v_estadual: CentavosNaoNeg,
+  v_municipal: CentavosNaoNeg,
+  versao: z.string(),
+  fonte: z.string(),
+});
+export type CargaAproximadaItem = z.infer<typeof CargaAproximadaItem>;
+
 export const ItemCalculo = z.object({
   id: z.string().min(1),
   ncm: z.string().regex(/^\d{8}$/),
@@ -95,6 +134,20 @@ export const ItemCalculo = z.object({
    * calculado SUBSTITUI este campo; sem regra, ele é usado como está (compatível com o lote 1). Entra na BC do ICMS/ST conforme o destinatário.
    */
   ipi_centavos: CentavosNaoNeg.default(0),
+  /** RF-FIS-04: alíquotas aproximadas do NCM do item (IBPT), já buscadas pela API. Sem este campo não há vTotTrib do item. */
+  carga_aproximada: CargaAproximada.optional(),
+  /** Unidade tributável (uTrib) do item; sai no gIS específico (ad rem) quando informada. */
+  u_trib: z.string().min(1).max(6).optional(),
+  /**
+   * Componentes da vBC do IBS/CBS (Calculadora RTC da RFB), todos com padrão 0 para não virar erro silencioso quando o DIFAL, o monofásico, o II e
+   * o ISSQN entrarem no motor: imposto de importação (soma); ICMS e FCP da UF de destino, ICMS monofásico e ISSQN (subtraem).
+   * Premissa: quem chama informa os valores já apurados; o motor ainda não os calcula.
+   */
+  v_ii: CentavosNaoNeg.default(0),
+  v_icms_uf_dest: CentavosNaoNeg.default(0),
+  v_fcp_uf_dest: CentavosNaoNeg.default(0),
+  v_icms_mono: CentavosNaoNeg.default(0),
+  v_issqn: CentavosNaoNeg.default(0),
 });
 
 export const FonteRegra = z.object({
@@ -102,7 +155,7 @@ export const FonteRegra = z.object({
   referencia: z.string(),
 });
 
-export const TributoRegra = z.enum(['icms', 'ipi', 'pis', 'cofins']);
+export const TributoRegra = z.enum(['icms', 'ipi', 'pis', 'cofins', 'ibs_cbs', 'is']);
 export type TributoRegra = z.infer<typeof TributoRegra>;
 /** IPI de SAÍDA (Manual da NF-e): 50 e 99 tributados; 51..55 sem valor. 00..05 e 49 são de entrada e o motor os recusa. */
 export const CST_IPI_TRIBUTADO = ['50', '99'] as const;
@@ -156,6 +209,24 @@ const RegraBase = z.object({
   cst_cofins: z.string().regex(/^\d{2}$/).nullable().default(null),
   aliquota_cofins: Percentual.nullable().default(null),
   valor_unidade_cofins: ValorUnidade4.nullable().default(null),
+  /**
+   * IBS/CBS (NT 2025.002-RTC, gIBSCBS): CST (3 dígitos) e cClassTrib (6 dígitos; os 3 primeiros são o CST, como na tabela oficial), alíquotas de
+   * IBS UF, IBS Mun e CBS e as reduções de alíquota (pRedAliq) de IBS (vale para UF e Mun) e de CBS. As alíquotas vêm da regra (ver o cabeçalho do contrato).
+   */
+  cst_ibs_cbs: z.string().regex(/^\d{3}$/).nullable().default(null),
+  c_class_trib: z.string().regex(/^\d{6}$/).nullable().default(null),
+  p_ibs_uf: Percentual.nullable().default(null),
+  p_ibs_mun: Percentual.nullable().default(null),
+  p_cbs: Percentual.nullable().default(null),
+  p_red_ibs: Percentual.nullable().default(null),
+  p_red_cbs: Percentual.nullable().default(null),
+  /** Imposto Seletivo (gIS): CST, cClassTrib, alíquota ad valorem e valor por unidade (×10^4 de real, ad rem). Os dois ao mesmo tempo (combinada) valem só no CST 000: soma das duas. */
+  cst_is: z.string().regex(/^\d{3}$/).nullable().default(null),
+  c_class_trib_is: z.string().regex(/^\d{6}$/).nullable().default(null),
+  p_is: Percentual.nullable().default(null),
+  valor_unidade_is: ValorUnidade4.nullable().default(null),
+  /** RN-FIS-03: versão da NT 2025.002-RTC em que a regra de IBS/CBS/IS se apoia (aparece na tela de regras). Obrigatória para calcular. */
+  versao_nt_rtc: z.string().min(1).nullable().default(null),
   /** Tema 69 do STF: exclui o vICMS do item da BC de PIS/COFINS. Padrão false (BC cheia). */
   excluir_icms_bc: z.boolean().default(false),
   fonte: FonteRegra.nullable(),
@@ -204,6 +275,9 @@ export const IcmsItem = z.object({
 export type IcmsItem = z.infer<typeof IcmsItem>;
 
 export const RegraUsada = z.object({ id: z.string().uuid(), fonte: FonteRegra, versao: z.string() });
+/** Regra de IBS/CBS ou de IS usada no item (auditoria, RN-FIS-04). */
+export const RegraRtcUsada = RegraUsada.extend({ tributo: z.enum(['ibs_cbs', 'is']), versao_nt_rtc: z.string() });
+export type RegraRtcUsada = z.infer<typeof RegraRtcUsada>;
 
 /** Grupos dos lotes 2 e 3, com os campos do Manual (todos opcionais até o lote que os calcula). */
 export const IpiItem = z
@@ -214,6 +288,7 @@ export const PisCofinsItem = z
   .object({ cst: z.string(), v_bc: CentavosNaoNeg, p_aliq: Percentual, q_bc_prod: z.number(), /** ×10^4 de real */ v_aliq_prod: ValorUnidade4, v_valor: CentavosNaoNeg })
   .partial();
 export type PisCofinsItem = z.infer<typeof PisCofinsItem>;
+/** OBSOLETO (sai no @2): leiaute antigo dos grupos `ibs` e `cbs`. Não é mais preenchido; use `ItemResultado.ibs_cbs`. */
 export const IbsCbsItem = z
   .object({
     cst: z.string(),
@@ -228,7 +303,36 @@ export const IbsCbsItem = z
     p_red_aliq: Percentual,
   })
   .partial();
-export const IsItem = z.object({ cst_is: z.string(), c_class_trib_is: z.string(), v_bc_is: CentavosNaoNeg, p_is: Percentual, v_is: CentavosNaoNeg }).partial();
+export type IbsCbsItem = z.infer<typeof IbsCbsItem>;
+/** gRed da NT: pRedAliq e pAliqEfet (4 casas). */
+export const GRed = z.object({ p_red_aliq: Percentual, p_aliq_efet: Percentual });
+export type GRed = z.infer<typeof GRed>;
+/** gIBSUF, gIBSMun e gCBS (NT 2025.002-RTC): alíquota, redução (só nos CST com redução) e valor. */
+export const GIbsUf = z.object({ p_ibs_uf: Percentual, g_red: GRed.optional(), v_ibs_uf: CentavosNaoNeg });
+export const GIbsMun = z.object({ p_ibs_mun: Percentual, g_red: GRed.optional(), v_ibs_mun: CentavosNaoNeg });
+export const GCbs = z.object({ p_cbs: Percentual, g_red: GRed.optional(), v_cbs: CentavosNaoNeg });
+/**
+ * Grupo IBSCBS do item no leiaute da NT 2025.002-RTC. Nos CST sem valor (400, 410, 550) saem só cst e c_class_trib. A versão da NT fica em
+ * `ItemResultado.versao_nt_rtc`.
+ */
+export const IbsCbsGrupo = z.object({
+  cst: z.string(),
+  c_class_trib: z.string(),
+  v_bc: CentavosNaoNeg.optional(),
+  g_ibs_uf: GIbsUf.optional(),
+  g_ibs_mun: GIbsMun.optional(),
+  /** vIBS = vIBSUF + vIBSMun. */
+  v_ibs: CentavosNaoNeg.optional(),
+  g_cbs: GCbs.optional(),
+});
+export type IbsCbsGrupo = z.infer<typeof IbsCbsGrupo>;
+/**
+ * gIS: cst_is, cClassTrib, vBCIS, pIS (ad valorem), pISEspec (ad rem, ×10^4 de real por unidade), uTrib, qTrib e vIS.
+ */
+export const IsItem = z
+  .object({ cst_is: z.string(), c_class_trib_is: z.string(), v_bc_is: CentavosNaoNeg, p_is: Percentual, p_is_espec: ValorUnidade4, u_trib: z.string(), q_trib: z.number(), v_is: CentavosNaoNeg })
+  .partial();
+export type IsItem = z.infer<typeof IsItem>;
 
 export const ItemResultado = z.object({
   item_id: z.string(),
@@ -237,10 +341,22 @@ export const ItemResultado = z.object({
   ipi: IpiItem.optional(),
   pis: PisCofinsItem.optional(),
   cofins: PisCofinsItem.optional(),
+  /** OBSOLETOS (saem no @2): não são mais preenchidos; use `ibs_cbs`. */
   ibs: IbsCbsItem.optional(),
   cbs: IbsCbsItem.optional(),
+  /** Grupo IBSCBS no leiaute da NT (lote 3). */
+  ibs_cbs: IbsCbsGrupo.optional(),
   is: IsItem.optional(),
+  /** Versão da NT 2025.002-RTC usada no item (IBS/CBS/IS), uma vez por item (RN-FIS-03). */
+  versao_nt_rtc: z.string().optional(),
+  /** CFOP do item (o da entrada), para o faturamento. */
+  cfop: Cfop.optional(),
+  /** RF-FIS-04: vTotTrib do item e a abertura por esfera, com a versão e a fonte da tabela (DANFE). */
+  v_tot_trib: CentavosNaoNeg.optional(),
+  carga_aproximada: CargaAproximadaItem.optional(),
   regra: RegraUsada,
+  /** Auditoria (RN-FIS-04): regras de IBS/CBS e IS usadas no item, com fonte e versão da regra e da NT. */
+  regras_rtc: z.array(RegraRtcUsada).optional(),
 });
 export type ItemResultado = z.infer<typeof ItemResultado>;
 
@@ -257,15 +373,21 @@ export const TotaisCalculo = z.object({
   v_seg: CentavosNaoNeg,
   v_outro: CentavosNaoNeg,
   v_ipi: CentavosNaoNeg,
-  /** vProd − vDesc + vFrete + vSeg + vOutro + vST + vFCPST + vIPI (calculado no lote 2); IBS/CBS/IS entram no lote 3. */
+  /** vProd − vDesc + vFrete + vSeg + vOutro + vST + vFCPST + vIPI. Não soma IBS/CBS/IS (ver o cabeçalho do contrato). */
   v_nf: CentavosNaoNeg,
   v_cred_icms_sn: CentavosNaoNeg,
   /** Lotes 2 e 3: opcionais para não quebrar o @1. */
   v_pis: CentavosNaoNeg.optional(),
   v_cofins: CentavosNaoNeg.optional(),
+  /** IBSCBSTot (NT 2025.002-RTC): base, IBS UF, IBS Mun, IBS total e CBS. */
+  v_bc_ibs_cbs: CentavosNaoNeg.optional(),
+  v_ibs_uf: CentavosNaoNeg.optional(),
+  v_ibs_mun: CentavosNaoNeg.optional(),
   v_ibs: CentavosNaoNeg.optional(),
   v_cbs: CentavosNaoNeg.optional(),
   v_is: CentavosNaoNeg.optional(),
+  /** vNFTot da NT: total da NF com IBS, CBS e IS por fora = vNF + vIBS + vCBS + vIS. Só sai quando há IBS/CBS ou IS no documento. */
+  v_nf_tot: CentavosNaoNeg.optional(),
   v_tot_trib: CentavosNaoNeg.optional(),
 });
 export type TotaisCalculo = z.infer<typeof TotaisCalculo>;

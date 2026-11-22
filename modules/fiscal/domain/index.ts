@@ -5,3 +5,5 @@ export * from './icms';
 export * from './documento';
 export * from './ipi';
 export * from './pis-cofins';
+export * from './ibs-cbs';
+export * from './carga-aproximada';

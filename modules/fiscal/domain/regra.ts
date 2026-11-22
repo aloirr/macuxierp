@@ -59,6 +59,8 @@ export function cstDoTributo(r: RegraTributaria, t: TributoRegra): string | null
 export function camposDoTributo(r: RegraTributaria, t: TributoRegra): { cst: string | null; aliquota: number | null; valor_unidade: number | null } {
   if (t === 'ipi') return { cst: r.cst_ipi, aliquota: r.aliquota_ipi, valor_unidade: r.valor_unidade_ipi };
   if (t === 'pis') return { cst: r.cst_pis, aliquota: r.aliquota_pis, valor_unidade: r.valor_unidade_pis };
+  if (t === 'ibs_cbs') return { cst: r.cst_ibs_cbs, aliquota: null, valor_unidade: null };
+  if (t === 'is') return { cst: r.cst_is, aliquota: null, valor_unidade: null };
   if (t === 'cofins') return { cst: r.cst_cofins, aliquota: r.aliquota_cofins, valor_unidade: r.valor_unidade_cofins };
   return { cst: r.codigo, aliquota: r.aliquota_icms, valor_unidade: null };
 }

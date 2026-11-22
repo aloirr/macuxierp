@@ -198,7 +198,8 @@ export function criarServico(deps: Dependencias) {
     let idAprovado: string | null = null;
     if (decisao.status === 'aprovado') {
       idAprovado = await fx.publicar(eventoAprovado(final, 'recebido', true, condicao));
-      await aprovacaoAutomatica(repo, fx, p.id);
+      // Pedido do FDV: decidido na origem, sem linha em `aprovacao` (T-0013 §2 e §7, ADR 0007).
+      if (p.origem !== 'fdv') await aprovacaoAutomatica(repo, fx, p.id);
     }
     await repo.registrarEvento({ pedido_id: p.id, de: 'recebido', para: decisao.status, ...sistema, motivo_codigo: null, motivo_texto: null, pendencias: decisao.pendencias, evento_id: idAprovado ?? idRecebido, ocorrido_em: fx.agora });
   };

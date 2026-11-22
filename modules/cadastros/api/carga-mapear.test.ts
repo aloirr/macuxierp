@@ -93,14 +93,29 @@ describe('mapeamento da fixture (os 10 arquivos)', () => {
   it('external_id vazio é recusado como obrigatório', () => {
     expect(mapear('vendedor', { external_id: '' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_OBRIGATORIO' }] });
   });
-  it('D12: tPag pelo dicionário do código, 99 com aviso fora dele e a coluna tpag vence', () => {
+  it('RN-CAD-09: tPag pelo dicionário (dinheiro, PIX, cartão, débito, boleto); fora dele vira tPag recusado, sem aviso; a coluna tpag vence', () => {
+    const tpag = (codigo: string) => { const r = mapear('forma_pagamento', { codigo }); return r.ok && r.linha.dados.forma_tpag; };
+    const esperado: Record<string, string> = { DINHEIRO: '01', PIX: '17', cartao: '03', CARTAO_CREDITO: '03', CARTAO_DEBITO: '04', BOLETO: '15', CHEQUE: '99', DEPOSITO: '99', TRANSFERENCIA: '99', FIADO: '99' };
+    for (const [c, t] of Object.entries(esperado)) expect(tpag(c), c).toBe(t);
     const boleto = mapear('forma_pagamento', {});
     expect(boleto.ok && boleto.linha.dados.forma_tpag).toBe('15');
-    const outro = mapear('forma_pagamento', { codigo: 'FIADO' });
-    expect(outro.ok && outro.linha.dados.forma_tpag).toBe('99');
-    expect(outro.ok && outro.linha.avisos).toHaveLength(1);
     const explicito = mapear('forma_pagamento', { tpag: '05' });
     expect(explicito.ok && explicito.linha.dados.forma_tpag).toBe('05');
+    const vence = mapear('forma_pagamento', { codigo: 'PIX', tpag: '03' });
+    expect(vence.ok && vence.linha.dados.forma_tpag).toBe('03');
+  });
+  it('RN-CAD-09: parcelas_dias "3x" vira parcelas_cartao; "13x" passa na linha (1 a 99; a faixa 1 a 12 é do domain); "3" segue como prazo e a gravação decide pela forma', () => {
+    const tres = mapear('prazo_pagamento', { parcelas_dias: '3x' });
+    expect(tres.ok && tres.linha.dados).toMatchObject({ parcelas_cartao: 3 });
+    expect(tres.ok && tres.linha.dados.prazos_dias).toBeUndefined();
+    const doze = mapear('prazo_pagamento', { parcelas_dias: '12X' });
+    expect(doze.ok && doze.linha.dados.parcelas_cartao).toBe(12);
+    const treze = mapear('prazo_pagamento', { parcelas_dias: '13x' });
+    expect(treze.ok && treze.linha.dados.parcelas_cartao).toBe(13);
+    expect(mapear('prazo_pagamento', { parcelas_dias: '100x' })).toMatchObject({ ok: false, erros: [{ campo: 'parcelas_cartao' }] });
+    expect(mapear('prazo_pagamento', { parcelas_dias: '0x' })).toMatchObject({ ok: false });
+    const simples = mapear('prazo_pagamento', { parcelas_dias: '3' });
+    expect(simples.ok && simples.linha.dados.prazos_dias).toEqual([3]);
   });
   it('critério 4: parcelas_dias usa a regra do contrato (1 a 36 parcelas, 0 a 999 dias) e aceita qualquer ordem; fator inteiro de 1 a 9999', () => {
     const r = mapear('prazo_pagamento', { parcelas_dias: '30/60/90' });
