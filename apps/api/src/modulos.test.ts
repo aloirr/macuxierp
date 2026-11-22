@@ -115,10 +115,12 @@ describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
       core: repoCoreDuble({ empresa: async () => EMPRESA }),
       cadastros: { condicoesPagamento: { listar: async () => ({ itens: [], proximo_cursor: null }) } as never },
     });
+  // Os módulos reais podem declarar rotas idempotentes (ex.: carga de CSV do cadastros): a API exige o repositório.
+  const montarReais = (licencas: Licenca[] = []) => montar(licencas, undefined, reais(), { idempotencia: new IdempotenciaMemoria() });
   const get = (app: Awaited<ReturnType<typeof montar>>, url: string, perfil: Perfil) => app.inject({ url, headers: { authorization: token(perfil) } });
 
   it('core responde sem licença no tenant (sempre licenciado); perfil sem permissão é 403 PERFIL_SEM_PERMISSAO', async () => {
-    const app = await montar([], undefined, reais());
+    const app = await montarReais();
     const r = await get(app, '/v1/core/empresa', 'leitura');
     expect(r.statusCode).toBe(200);
     expect(r.json()).toMatchObject({ id: TENANT, razao_social: 'Empresa Piloto LTDA' });
@@ -128,11 +130,11 @@ describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
   });
 
   it('cadastros sem licença é 403 MODULO_INATIVO; com licença responde; leitura não edita', async () => {
-    const sem = await get(await montar([], undefined, reais()), '/v1/cadastros/condicoes-pagamento', 'administrador');
+    const sem = await get(await montarReais(), '/v1/cadastros/condicoes-pagamento', 'administrador');
     expect([sem.statusCode, sem.json().codigo]).toEqual([403, 'MODULO_INATIVO']);
-    const vencida = await get(await montar([{ modulo: 'cadastros', ativo: true, valido_ate: new Date('2026-11-20T00:00:00Z') }], undefined, reais()), '/v1/cadastros/condicoes-pagamento', 'administrador');
+    const vencida = await get(await montarReais([{ modulo: 'cadastros', ativo: true, valido_ate: new Date('2026-11-20T00:00:00Z') }]), '/v1/cadastros/condicoes-pagamento', 'administrador');
     expect(vencida.json().codigo).toBe('MODULO_INATIVO');
-    const app = await montar([{ modulo: 'cadastros', ativo: true, valido_ate: null }], undefined, reais());
+    const app = await montarReais([{ modulo: 'cadastros', ativo: true, valido_ate: null }]);
     const ok = await get(app, '/v1/cadastros/condicoes-pagamento', 'leitura');
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ itens: [] });

@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { RepositorioCoreSql } from '@macuxierp/core/api';
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
-import { AuditoriaPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
+import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { COOKIE_REFRESH, criarApp } from './app';
@@ -56,6 +56,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
       outbox: new OutboxPg(),
       auditoria: new AuditoriaPg(),
       trabalhos: new FilaDeTrabalhosPg(),
+      idempotencia: new IdempotenciaPg(),
       relogio: relogioDoSistema,
       // core e cadastros com os adaptadores SQL de produção (armazenamento em memória)
       modulos: montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) }),
