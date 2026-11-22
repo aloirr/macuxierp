@@ -23,6 +23,12 @@ describe('lista vazia sem e com filtro (MC-0016)', () => {
     expect(h).toContain(VAZIO.comFiltro);
     expect(h).toMatch(/<a class="mx-botao-secundario" href="\/faturamento\/titulos">Limpar filtros<\/a>/);
   });
+  it('com filtro e limite, "Limpar filtros" preserva o limite; só limite ou cursor não contam como filtro', async () => {
+    expect(await render(comVazio(VAZIO), 'status=aberto&limite=50')).toMatch(/href="\/faturamento\/titulos\?limite=50">Limpar filtros/);
+    const h = await render(comVazio(VAZIO), 'limite=50&cursor=abc');
+    expect(h).toContain(VAZIO.semFiltro);
+    expect(h).not.toContain('Limpar filtros');
+  });
   it('sem vazio declarado, vale o TEXTO_VAZIO do módulo (textoVazio) com ou sem filtro', async () => {
     const t = comVazio();
     expect(await render(t, '')).toContain(String(t.textoVazio));

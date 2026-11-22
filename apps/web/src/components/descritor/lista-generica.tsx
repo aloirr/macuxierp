@@ -5,7 +5,7 @@ import { RespostaFonte, opcoesDaResposta, caminhoDaFonte, type Opcao } from '@/l
 import { getValidado } from '@/lib/api';
 import { filtrosDaUrl } from '@macuxierp/platform-sdk/listas';
 import { rotuloDaCelula, textoTodos } from '@/lib/descritor/lista';
-import { urlProxima } from '@/lib/listas-url';
+import { urlDaLista, urlProxima } from '@/lib/listas-url';
 import type { FiltroTela, TelaLista } from '@/lib/descritor/tipos';
 import { AcoesDetalhe } from './acoes-detalhe';
 import { TabelaVista } from './ui-cliente';
@@ -29,7 +29,9 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
     Promise.all(tela.filtrosTela.map((f) => opcoesDoFiltro(f, acesso, perfil))),
   ]);
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
-  const filtrada = Object.keys(filtros).length > 0;
+  /** Só filtro real acende o "Limpar filtros": cursor e limite são paginação. */
+  const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');
+  const aoLimpar = urlDaLista(rota, filtros.limite ? { limite: filtros.limite } : {});
   const declarado = tela.pagina.vazio;
   const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : (tela.textoVazio ?? 'Nenhum registro com estes filtros.');
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
@@ -83,7 +85,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
           };
         })}
       />
-      {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={rota}>Limpar filtros</Link></p>}
+      {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={aoLimpar}>Limpar filtros</Link></p>}
       <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
     </section>
   );

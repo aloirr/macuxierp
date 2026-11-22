@@ -14,3 +14,4 @@
 2026-11-22 — T-0021 — shell: nota parcial, ambiente no inutilizar, foco do Sair, tabelas em 1024 e ui (marca, ícones, hover); assinatura C no login e na seleção de filial (header azul-noite, área de proteção no padding); correção do milhar no campo da nota parcial (saldoCampo); corretor RD-0779, RD-0781 a RD-0784
 2026-11-22 — T-0021 — nota parcial com a regra do PO (vazio = fora; botão desligado sem itens), ponto de troca no validarParcial (R-20261122-055826)
 2026-11-22 — T-0021 — shell: formularioParcial do módulo, urlDaConfiguracaoDaFilial, vazio com e sem filtro, assinatura C 100 px, rádio azul-noite e textos da parcial
+2026-11-22 — T-0021 — PR D, 2º commit: aviso da parcial sem "(ou 0)", lista só conta filtro real (limite preservado no Limpar filtros), RD do corretor (testes repetidos, FUSO, erro do item)

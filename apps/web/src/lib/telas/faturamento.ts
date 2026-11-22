@@ -5,7 +5,7 @@
  */
 import {
   ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
-  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, MOTIVO_SEM_ITEM, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
+  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
   requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
 } from '@macuxierp/faturamento/web';
@@ -106,7 +106,7 @@ function acaoEmitirParcial(l: Linha, perfil: Perfil): AcaoVista | null {
   const { numero, ...base } = b;
   return {
     ...base, id: 'emitir-parcial', rotulo: 'Emitir nota parcial', entrada: 'itens', leitura: urlDoPedidoAFaturar((l as unknown as PedidoAFaturarResumo).id),
-    tituloDialogo: `Emitir nota parcial do pedido${numero}`, aviso: 'A nota leva só as quantidades informadas, até o saldo de cada item. Campo vazio (ou 0) tira o item da nota.',
+    tituloDialogo: `Emitir nota parcial do pedido${numero}`, aviso: 'A nota leva só as quantidades informadas, até o saldo de cada item. Campo vazio tira o item da nota.',
     rotuloConfirmar: 'Emitir nota parcial',
   };
 }
@@ -115,7 +115,7 @@ function acaoEmitirParcial(l: Linha, perfil: Perfil): AcaoVista | null {
 const itensDoPedido = (dados: unknown): readonly ItemDoDialogo[] =>
   formularioParcial({ itens: PedidoAFaturarDetalhe.parse(dados).itens }).campos.map((c) => ({ sequencia: c.sequencia, descricao: c.rotulo, saldo: c.saldo, saldoTexto: c.saldoTexto, saldoCampo: c.valorInicial }));
 
-/** Nota parcial (RF-FAT-01): a regra é única e do módulo (`formularioParcial`, vazio ou 0 fora da nota, sem nenhum item recusa). A saída `ok` vai direto ao `requisicaoEmitir`
+/** Nota parcial (RF-FAT-01): a regra é única e do módulo (`formularioParcial`, vazio tira o item, sem nenhum item recusa). A saída `ok` vai direto ao `requisicaoEmitir`
  *  (sem `itens` = nota total); o erro de campo sai com o nome do item, o geral é o `MOTIVO_SEM_ITEM`. */
 function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   const itens = e.itens ?? [];
@@ -123,7 +123,7 @@ function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   if (!r.ok) {
     const [seq, erro] = Object.entries(r.erros)[0] ?? [];
     const item = itens.find((i) => String(i.sequencia) === seq);
-    return { ok: false, erro: r.geral ?? (item && erro ? `"${item.descricao}": ${erro}` : (erro ?? MOTIVO_SEM_ITEM)) };
+    return { ok: false, erro: r.geral ?? `"${item?.descricao}": ${erro}` };
   }
   return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, ...(r.itens ? { itens: r.itens } : {}) }));
 }

@@ -183,7 +183,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
   );
 }
 
-/** Itens da nota parcial: descrição, saldo e um campo de quantidade por item (o padrão é o saldo; vazio ou 0 tira o item). */
+/** Itens da nota parcial: descrição, saldo e um campo de quantidade por item (o padrão é o saldo; vazio tira o item). */
 export function ItensDoDialogo({ linhas, falha, quantidades, invalido, aoMudar }: { linhas: readonly ItemDoDialogo[] | null; falha: string | null; quantidades: Readonly<Record<number, string>>; invalido?: true | undefined; aoMudar: (sequencia: number, valor: string) => void }) {
   return (
     <div className="itens-parcial">

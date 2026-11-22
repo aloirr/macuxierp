@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NotaDetalhe, TituloDetalhe } from '@macuxierp/faturamento/contracts';
-import { formularioParcial, MOTIVO_SEM_ITEM, urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
+import { urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
 import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { arquivoPermitido } from '../arquivos';
 import { EU_FALSO } from '../falso';
@@ -71,7 +71,7 @@ describe('listas do faturamento', () => {
     const l = LISTA_NOTAS.linha({ ...nota('autorizada') }, FUSO);
     expect(l).toMatchObject({ numero: '12/1', status: 'Autorizada', ambiente: 'Produção', emitida_em: '22/11/2026 10:00', cliente: 'Bar do Zé' });
     expect(LISTA_NOTAS.rotaDaLinha?.({ id: ID })).toBe(`/faturamento/notas/${ID}`);
-    expect(LISTA_NOTAS.colunas('leitura', 'America/Manaus').find((c) => c.id === 'total')?.tipo).toBe('dinheiro');
+    expect(LISTA_NOTAS.colunas('leitura', FUSO).find((c) => c.id === 'total')?.tipo).toBe('dinheiro');
     expect(LISTA_NOTAS.linha({ ...nota('autorizada') }, 'UTC').emitida_em).toBe('22/11/2026 14:00');
   });
   it('textos de lista vazia vêm do módulo e o CSV vem da API (`/exportar`), sem contorno no shell', () => {
@@ -99,14 +99,14 @@ describe('lista de notas: selo do ambiente e inutilizar números', () => {
     expect(LISTA_REJEICOES.selos?.(rej, FUSO).ambiente?.[0]?.tom).toBe('aviso');
   });
   it('a lista de notas tem Número/Série, Pedido e Filial no começo e mostra "—" quando vazio; "Aprovado em" virou "Recebido em"', () => {
-    expect(LISTA_NOTAS.colunas('administrador', 'America/Manaus').slice(0, 3).map((c) => c.rotulo)).toEqual(['Número/Série', 'Pedido', 'Filial']);
+    expect(LISTA_NOTAS.colunas('administrador', FUSO).slice(0, 3).map((c) => c.rotulo)).toEqual(['Número/Série', 'Pedido', 'Filial']);
     const vazia = LISTA_NOTAS.linha({ ...nota('autorizada'), pedido_numero: null, filial_nome: null }, FUSO);
     expect(vazia.pedido).toBe('—');
     expect(vazia.filial).toBe('—');
     const cheia = LISTA_NOTAS.linha({ ...nota('autorizada'), pedido_numero: 42, filial_nome: 'Matriz' }, FUSO);
     expect(cheia.pedido).toBe('42');
     expect(cheia.filial).toBe('Matriz');
-    expect(LISTA_PEDIDOS_A_FATURAR.colunas('administrador', 'America/Manaus').map((c) => c.rotulo)).toContain('Recebido em');
+    expect(LISTA_PEDIDOS_A_FATURAR.colunas('administrador', FUSO).map((c) => c.rotulo)).toContain('Recebido em');
   });
   it('o cabeçalho do detalhe da nota mostra Filial e Pedido', () => {
     const v = vistaDaNota({ ...(nota('autorizada') as NotaDetalhe), filial_nome: 'Matriz', pedido_numero: 42 }, 'administrador', FUSO);
@@ -409,7 +409,7 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('até 4 casas decimais') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
-    expect(e(itens([1, '0', 25000]))).toEqual({ ok: false, erro: '"Produto 1": Informe uma quantidade maior que zero ou deixe em branco.' }); // o módulo recusa 0 no campo (o aviso do shell diz "ou 0": pendência do modulo-faturamento)
+    expect(e(itens([1, '0', 25000]))).toEqual({ ok: false, erro: '"Produto 1": Informe uma quantidade maior que zero ou deixe em branco.' }); // o módulo recusa 0 no campo; o aviso do shell só fala de campo vazio
     expect(e(itens([1, '', 25000], [2, ' ', 10000]))).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
     expect(e([])).toMatchObject({ ok: false });
   });
@@ -428,20 +428,6 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
   });
   it('RD-0772: as colunas e o vencimento usam o fuso do tenant, não um fixo', () => {
     expect(LISTA_NOTAS.linha({ ...nota('autorizada') }, 'America/Rio_Branco').emitida_em).toBe('22/11/2026 09:00');
-  });
-  it('o botão desligado vem do módulo: emitirHabilitado só com todos vazios, e o motivo é o MOTIVO_SEM_ITEM', () => {
-    const f = formularioParcial({ itens: [{ sequencia: 1, descricao: 'A', saldo: 10000 }, { sequencia: 2, descricao: null, saldo: 10000 }] });
-    expect(f.emitirHabilitado({ 1: '', 2: ' ' })).toBe(false);
-    expect(f.emitirHabilitado({ 1: '', 2: '0,5' })).toBe(true);
-    expect(f.motivoBotaoDesligado).toBe(MOTIVO_SEM_ITEM);
-  });
-  it('campo vazio deixa o item fora da nota, sem erro (R-20261122-055826)', () => {
-    const a = mais('administrador')[0]!;
-    const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '', 25000], [2, '  ', 10000], [3, '0,1234', 20000]) });
-    expect(r).toEqual({ ok: true, corpo: { pedido_id: P, itens: [{ sequencia: 3, quantidade: 1234 }], idempotencia: 'chave-parcial-1' } });
-  });
-  it('todos vazios: recusa com a mensagem do PO', () => {
-    const a = mais('administrador')[0]!;
-    expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '', 25000], [2, '', 10000]) })).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
+    expect(vistaDoTitulo(titulo(), 'faturista', 'America/Rio_Branco', AGORA).cabecalho.find((c) => c.rotulo === 'Vencimento')?.valor).toBe('20/11/2026');
   });
 });
