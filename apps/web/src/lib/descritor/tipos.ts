@@ -5,6 +5,7 @@
  */
 import type { Acao, Perfil, PaginaLista } from '@macuxierp/platform-sdk';
 import type { ItemLinha } from '@macuxierp/ui';
+import type { ZodTypeAny } from 'zod';
 
 /** Fonte de opções de seletor (cliente, vendedor, filial, condição, produto): caminho da lista no cadastros (`/v1/cadastros/clientes`). */
 export type FonteOpcoes = string;
@@ -27,6 +28,14 @@ export interface SeloVista { texto: string; tom: 'ok' | 'aviso' | 'erro' | 'neut
 /** Escrita que a tela pode fazer: método e caminho (com `:id` onde o UUID do registro entra). O servidor só aceita as declaradas. */
 export type Escrita = { metodo: AcaoVista['metodo']; caminho: string };
 
+/** Leitura (GET) que o diálogo de uma ação pode pedir ao servidor: `caminho` com `:id` (UUID) e o schema que valida a resposta (fica no servidor). */
+export interface Leitura { caminho: string; schema: ZodTypeAny }
+/** Item do diálogo de nota parcial, já em texto para pessoas: `descricao` é a crua do pedido ('' se não houver; vai ao `formularioParcial`) e `rotulo` o texto da tela ("1 - Café…"); `saldo` em qtd4 (10000 = 1 un). */
+export interface ItemDoDialogo { sequencia: number; descricao: string; rotulo: string; saldo: number; saldoTexto: string; saldoCampo: string }
+/** Item do diálogo de nota parcial com a quantidade que a pessoa digitou (texto pt-BR). */
+export interface ItemEscolhido { sequencia: number; descricao: string; saldo: number; quantidade: string }
+export type AmbienteVista = { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' };
+
 /** O que toda tela com ações declara: a validação do diálogo (e o corpo), as escritas permitidas e o gerador da Idempotency-Key. */
 export interface ExecutorDeAcoes {
   /** Validação do diálogo da ação e corpo do envio, pela regra do módulo (a API revalida). */
@@ -35,6 +44,12 @@ export interface ExecutorDeAcoes {
   escritas: readonly Escrita[];
   /** Gera a Idempotency-Key. */
   novaChave: () => string;
+  /** Leituras (GET) que os diálogos das ações podem pedir; o servidor só atende as declaradas. */
+  leituras?: readonly Leitura[];
+  /** Itens do diálogo (entrada `itens`) a partir da resposta da leitura da ação. */
+  itensDaLeitura?: (dados: unknown) => readonly ItemDoDialogo[];
+  /** Linha "Ambiente" a partir da resposta de `ambientePorFilial` (null = filial sem configuração legível). */
+  ambienteDaLeitura?: (dados: unknown) => AmbienteVista | null;
 }
 
 /** Ação da barra da lista (não é de uma linha): ex.: "Inutilizar números" na lista de notas. */
@@ -45,6 +60,8 @@ export interface AcaoDaBarra extends ExecutorDeAcoes {
 /** Ação por linha (ex.: "Emitir nota" no pedido a faturar), já filtrada por perfil e status pelo módulo. */
 export interface AcaoDaLinha extends ExecutorDeAcoes {
   acao: (linha: Linha, perfil: Perfil) => AcaoVista | null;
+  /** Outras ações da mesma linha (ex.: "Emitir nota parcial"), depois da principal. */
+  maisAcoes?: (linha: Linha, perfil: Perfil) => readonly AcaoVista[];
 }
 
 /** Arquivo para baixar pelo proxy do shell (XML e DANFE): `href` é caminho da API; `desabilitado` traz o motivo. */
@@ -55,7 +72,7 @@ export interface TelaLista {
   pagina: PaginaLista;
   filtrosTela: readonly FiltroTela[];
   /** Colunas da tabela para o perfil (id e título). */
-  colunas: (perfil: Perfil) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }[];
+  colunas: (perfil: Perfil, fuso: string) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }[];
   /** Linha pronta para exibir (texto por id de coluna), no fuso do tenant. */
   linha: (item: Linha, fuso: string) => Readonly<Record<string, string>>;
   /** Botão "Novo", quando houver; some se o perfil não puder `criar`. */
@@ -66,7 +83,7 @@ export interface TelaLista {
   rotuloDaLinha?: (linha: Linha) => string;
   /** Rótulo do campo `busca` (a página aceita `busca`). */
   rotuloBusca?: string;
-  /** Texto da tabela sem linhas (o problema e a ação); sem ele, a mensagem padrão da lista. */
+  /** Alternativa enquanto o módulo não declara `pagina.vazio` (MC-0016: sem e com filtro). Texto da tabela sem linhas (o problema e a ação); sem ele, a mensagem padrão da lista. */
   textoVazio?: string;
   /** Selos por coluna (ex.: ambiente de homologação); a coluna sem selo mostra o texto de `linha`. */
   selos?: (item: Linha, fuso: string) => Readonly<Record<string, readonly SeloVista[]>>;
@@ -94,9 +111,14 @@ export interface AcaoVista {
   /**
    * `justificativa`: texto livre (aprovar com pendência não bloqueante); `motivo`: diálogo com catálogo; `nenhum`: envia direto;
    * `confirmar`: diálogo só de confirmação (título e aviso do módulo); `baixa`: valor em reais e data (baixa de título);
-   * `faixa`: filial, número inicial, número final e justificativa (inutilizar números).
+   * `faixa`: filial, número inicial, número final e justificativa (inutilizar números);
+   * `itens`: carrega os itens de `leitura` e pede uma quantidade por item (nota parcial).
    */
-  entrada: 'nenhum' | 'justificativa' | 'motivo' | 'confirmar' | 'baixa' | 'faixa';
+  entrada: 'nenhum' | 'justificativa' | 'motivo' | 'confirmar' | 'baixa' | 'faixa' | 'itens';
+  /** Em `itens`: caminho GET (UUID já preenchido) dos itens do registro. */
+  leitura?: string;
+  /** Em `faixa`: modelo GET com `:id` = filial escolhida (ex.: `/v1/faturamento/filiais/:id/configuracao`) para a linha de ambiente. */
+  ambientePorFilial?: string;
   /** Botão que fecha o diálogo sem agir (ex.: "Manter a nota"); sem ele, "Cancelar". */
   rotuloFechar?: string;
   /** Ação que não se desfaz. Na v1 não muda a cor (o vermelho fica para a próxima versão): o botão de confirmar usa o estilo principal e o texto explícito da ação. */
@@ -144,6 +166,8 @@ export interface EntradaAcao {
   filial?: string;
   inicial?: string;
   final?: string;
+  /** Em `itens`: quantidade digitada por item (texto pt-BR) e o saldo (qtd4) que o diálogo mostrou. */
+  itens?: readonly ItemEscolhido[];
   /** Idempotency-Key da tentativa, para o módulo montar corpos que a levam (ex.: emitir). Na validação do diálogo pode faltar. */
   chave?: string;
 }

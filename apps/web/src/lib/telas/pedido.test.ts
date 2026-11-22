@@ -5,6 +5,7 @@ import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { LISTA_PEDIDOS, NOVO_PEDIDO, vistaDoPedido } from './pedido';
 
 
+const FUSO = 'America/Manaus';
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const F = '8a2b6c10-1d3e-4f5a-8b7c-9d0e1f2a3b4c';
 const C = 'c4d5e6f7-0a1b-4c2d-9e3f-5a6b7c8d9e0f';
@@ -32,14 +33,14 @@ describe('adaptador do pedido', () => {
   it('lista: filtros do descritor com cadastros como fonte, colunas por perfil sem documento, linha em Manaus', () => {
     expect(LISTA_PEDIDOS.filtrosTela.map((f) => f.chave)).toEqual(['status', 'cliente_id', 'vendedor_id', 'filial_id', 'origem', 'de', 'ate']);
     expect(LISTA_PEDIDOS.filtrosTela.filter((f) => f.tipo === 'cadastro').map((f) => f.fonte)).toEqual(['/v1/cadastros/clientes', '/v1/cadastros/vendedores', '/v1/cadastros/filiais']);
-    expect(LISTA_PEDIDOS.colunas('vendedor').map((c) => c.id)).not.toContain('cliente_documento');
-    const l = LISTA_PEDIDOS.linha({ id: ID, numero: 7, origem: 'bko', status: 'em_analise', filial_id: F, cliente_id: C, cliente_razao_social: 'Bar', vendedor_id: null, emitido_em: '2026-11-22T02:30:00.000Z', total_centavos: 123456, pendencias: 1 }, 'America/Manaus');
+    expect(LISTA_PEDIDOS.colunas('vendedor', FUSO).map((c) => c.id)).not.toContain('cliente_documento');
+    const l = LISTA_PEDIDOS.linha({ id: ID, numero: 7, origem: 'bko', status: 'em_analise', filial_id: F, cliente_id: C, cliente_razao_social: 'Bar', vendedor_id: null, emitido_em: '2026-11-22T02:30:00.000Z', total_centavos: 123456, pendencias: 1 }, FUSO);
     expect(semEspacoDuro(l.emitido_em)).toBe('21/11/2026 22:30');
     expect(LISTA_PEDIDOS.rotaDaLinha?.({ id: ID })).toBe(`/pedido/pedidos/${ID}`);
   });
 
   it('detalhe: gerente vê aprovar com justificativa (pendência aceitável), recusar, revalidar; documento nulo some (LGPD)', () => {
-    const v = vistaDoPedido(pedido('em_analise', 'bko', [{ bloqueante: false }]), 'gerente', 'America/Manaus', catalogo);
+    const v = vistaDoPedido(pedido('em_analise', 'bko', [{ bloqueante: false }]), 'gerente', FUSO, catalogo);
     expect(v.acoes.map((a) => a.id)).toEqual(['aprovar', 'recusar', 'revalidar']);
     expect(v.acoes[0]).toMatchObject({ entrada: 'justificativa', justificativaObrigatoria: true, caminho: `/v1/pedido/pedidos/${ID}/aprovar` });
     expect(v.cabecalho.map((c) => c.rotulo)).not.toContain('Documento');
@@ -49,23 +50,23 @@ describe('adaptador do pedido', () => {
   });
 
   it('pendência bloqueante deixa o aprovar visível e desabilitado (RN-PED-03)', () => {
-    const v = vistaDoPedido(pedido('em_analise', 'bko', [{ bloqueante: true }]), 'administrador', 'America/Manaus', catalogo);
+    const v = vistaDoPedido(pedido('em_analise', 'bko', [{ bloqueante: true }]), 'administrador', FUSO, catalogo);
     expect(v.acoes.find((a) => a.id === 'aprovar')?.desabilitada).toBe('corrija a pendência bloqueante e revalide.');
     expect(v.acoes.filter((a) => a.principal).map((a) => a.id)).toEqual(['aprovar']); // uma ação principal por tela
     expect(v.pendencias[0]).toMatchObject({ bloqueante: true, codigoRn: 'RN-PED-03' });
   });
 
   it('cancelar usa o catálogo de motivos; aviso de LGPD só no "outro"; faturista e vendedor sem decisão', () => {
-    const v = vistaDoPedido(pedido('aprovado', 'fdv'), 'gerente', 'America/Manaus', catalogo);
+    const v = vistaDoPedido(pedido('aprovado', 'fdv'), 'gerente', FUSO, catalogo);
     const c = v.acoes.find((a) => a.id === 'cancelar');
     expect(c?.motivos).toEqual([{ codigo: 'sem_estoque', rotulo: 'Sem estoque' }]);
     expect(c?.aviso).toMatch(/vendedor no Macuxi FDV/);
-    expect(vistaDoPedido(pedido('aprovado', 'bko'), 'gerente', 'America/Manaus', catalogo).acoes.find((a) => a.id === 'cancelar')?.aviso).toMatch(/histórico/);
-    expect(vistaDoPedido(pedido('em_analise', 'bko'), 'vendedor', 'America/Manaus', catalogo).acoes).toEqual([]);
+    expect(vistaDoPedido(pedido('aprovado', 'bko'), 'gerente', FUSO, catalogo).acoes.find((a) => a.id === 'cancelar')?.aviso).toMatch(/histórico/);
+    expect(vistaDoPedido(pedido('em_analise', 'bko'), 'vendedor', FUSO, catalogo).acoes).toEqual([]);
   });
 
   it('catálogo de motivos fora do ar: o detalhe abre e recusar/cancelar ficam desabilitados', () => {
-    const v = vistaDoPedido(pedido('em_analise', 'bko'), 'gerente', 'America/Manaus', null);
+    const v = vistaDoPedido(pedido('em_analise', 'bko'), 'gerente', FUSO, null);
     expect(v.acoes.find((a) => a.id === 'recusar')).toMatchObject({ motivos: [], desabilitada: expect.stringMatching(/catálogo/) });
     expect(v.acoes.find((a) => a.id === 'aprovar')?.desabilitada).toBeUndefined();
   });

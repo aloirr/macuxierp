@@ -3,7 +3,7 @@
  * `POST /titulos/:id/baixas/:baixa_id/estornar` (sem corpo; a baixa e o estorno exigem `Idempotency-Key` no POST da baixa).
  */
 import type { Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos, formatarDataHora, interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
+import { formatarCentavos, formatarDataHora, formatarQuantidade, interpretarCentavos, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { BaixarTituloEntrada, DataCivil, StatusTitulo, type TituloResumo } from '../contracts';
 import { podeBaixarTitulo } from '../domain';
 import { dataCivilManaus } from '../domain/fuso';
@@ -85,3 +85,83 @@ export const rotuloDaForma = (forma: string): string => {
   const f = forma.trim();
   return f === '' ? '' : f.charAt(0).toLocaleUpperCase('pt-BR') + f.slice(1);
 };
+
+/** Campo do formulário de nota parcial: um por item com saldo. `valorInicial` = o saldo inteiro, como o usuário digitaria ("12,5"). */
+export interface CampoParcial {
+  sequencia: number;
+  rotulo: string;
+  /** Saldo em qtd4 (quantidade × 10^4). */
+  saldo: number;
+  saldoTexto: string;
+  valorInicial: string;
+}
+
+export type ResultadoParcial =
+  | { ok: true; itens?: { sequencia: number; quantidade: string; qtd4: number }[] }
+  | { ok: false; erros: Record<number, string>; geral?: string };
+
+const semMilhar = (texto: string): string => texto.replaceAll('.', '');
+/** Aceita o ponto de milhar bem formado ("1.200,5"); qualquer outro ponto segue inválido. Sai quando o `interpretarQuantidade` do SDK aceitar milhar (PR do engenheiro). */
+const tirarMilhar = (texto: string): string => (/^\d{1,3}(\.\d{3})+(,\d{1,4})?$/.test(texto) ? semMilhar(texto) : texto);
+
+/** Fonte única do texto: erro geral do `validar` e `motivoBotaoDesligado` (botão de emitir desligado). */
+export const MOTIVO_SEM_ITEM = 'Informe a quantidade de pelo menos um item.';
+
+/** Fonte única do erro de quantidade acima do saldo; cita o item pelo rótulo do formulário. */
+export const erroSaldoExcedido = (rotulo: string, saldoTexto: string): string =>
+  `${rotulo}: a quantidade passa do saldo (${saldoTexto}). Informe até ${saldoTexto} ou deixe o campo vazio.`;
+
+export interface FormularioParcial {
+  campos: CampoParcial[];
+  /** Texto do botão de emitir desligado (nenhum item com quantidade). */
+  motivoBotaoDesligado: string;
+  /** `false` só com todos os campos vazios; "0" ou texto inválido ligam o botão e o `validar` mostra o erro no campo. */
+  emitirHabilitado(valores: Readonly<Record<number, string | undefined>>): boolean;
+  validar(valores: Readonly<Record<number, string | undefined>>): ResultadoParcial;
+}
+
+/**
+ * Formulário da nota parcial (RF-FAT-01), no molde de `formularioBaixa`. `itens` vem do `PedidoAFaturarDetalhe` (item sem saldo não ganha campo).
+ * Regra única: campo vazio = item FORA da nota (quantidade 0), nunca inválido. Preenchido: maior que zero, até o saldo, em qtd4
+ * (vírgula decimal, até 4 casas). Pelo menos um item precisa ficar na nota. Saída `ok`: `itens` (só os que entram, `quantidade` no texto que o
+ * `requisicaoEmitir` aceita e `qtd4` já em número) ou, se todos os itens com saldo foram pelo saldo inteiro, `itens` AUSENTE: nota total
+ * (`requisicaoEmitir` sem `itens`). Os erros saem por `sequencia`. A API revalida.
+ */
+export function formularioParcial(e: { itens: readonly { sequencia: number; descricao: string | null; saldo: number }[] }): FormularioParcial {
+  const comSaldo = e.itens.filter((i) => i.saldo > 0);
+  const campos = comSaldo.map((i) => {
+    const saldoTexto = formatarQuantidade(i.saldo); // exibição, com milhar (RD-0793: calculado uma vez)
+    return {
+      sequencia: i.sequencia,
+      rotulo: i.descricao && i.descricao.trim() !== '' ? `${i.sequencia} - ${i.descricao}` : `Item ${i.sequencia}`,
+      saldo: i.saldo,
+      saldoTexto,
+      valorInicial: semMilhar(saldoTexto), // campo editável e `requisicaoEmitir` não aceitam ponto de milhar
+    };
+  });
+  return {
+    campos,
+    motivoBotaoDesligado: MOTIVO_SEM_ITEM,
+    emitirHabilitado: (valores) => campos.some((c) => (valores[c.sequencia] ?? '').trim() !== ''),
+    validar(valores) {
+      const erros: Record<number, string> = {};
+      const entram: { sequencia: number; quantidade: string; qtd4: number }[] = [];
+      let todosInteiros = true;
+      for (const c of campos) {
+        const texto = (valores[c.sequencia] ?? '').trim();
+        if (texto === '') { todosInteiros = false; continue; }
+        const q = interpretarQuantidade(tirarMilhar(texto));
+        if (q === null) erros[c.sequencia] = 'Informe a quantidade com até 4 casas decimais (ex.: 1,5).';
+        else if (q <= 0) erros[c.sequencia] = 'Informe uma quantidade maior que zero ou deixe em branco.';
+        else if (q > c.saldo) erros[c.sequencia] = erroSaldoExcedido(c.rotulo, c.saldoTexto);
+        else {
+          entram.push({ sequencia: c.sequencia, quantidade: semMilhar(formatarQuantidade(q)), qtd4: q });
+          if (q !== c.saldo) todosInteiros = false;
+        }
+      }
+      if (Object.keys(erros).length > 0) return { ok: false, erros };
+      if (entram.length === 0) return { ok: false, erros, geral: MOTIVO_SEM_ITEM };
+      return todosInteiros ? { ok: true } : { ok: true, itens: entram };
+    },
+  };
+}

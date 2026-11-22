@@ -81,7 +81,11 @@ export class ErroClienteHub extends Error {
   }
 }
 
-/** Base `https://host[:porta][/prefixo]`, sem credencial, consulta nem fragmento. Devolve sem a barra final. */
+/**
+ * Base `https://host[:porta][/prefixo]`, sem credencial, consulta nem fragmento. Devolve sem a barra final e sem o
+ * `/integracao/v1` final (o cliente o acrescenta): a configuração pode trazer a URL do Hub como no doc 06
+ * (`https://api.macuxifdv.com.br/integracao/v1`) sem dobrar o prefixo.
+ */
 export function validarUrlHub(url: string): string {
   let u: URL;
   try {
@@ -90,7 +94,7 @@ export function validarUrlHub(url: string): string {
     throw new ErroClienteHub('url_invalida');
   }
   if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) throw new ErroClienteHub('url_invalida');
-  return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
+  return `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/integracao\/v1$/, '')}`;
 }
 
 function caminhoValido(caminho: string): boolean {

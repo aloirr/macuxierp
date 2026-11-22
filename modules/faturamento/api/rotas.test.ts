@@ -38,7 +38,7 @@ function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
     const consulta = r.consulta ? r.consulta.parse(e.consulta ?? {}) : undefined;
     return r.executar(ctx, { corpo, consulta, params: e.params ?? {} } as never);
   };
-  return { ...f.r, tit, cfg, deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
+  return { ...f.r, ctx, tit, cfg, deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
 }
 const emitirCorpo = { pedido_id: IDS.pedido, idempotencia: 'idem-0000001' };
 
@@ -385,6 +385,20 @@ describe('CSV das listas (RF-FAT-08)', () => {
     expect(linhas[0]).toContain('Número/Série');
     expect(linhas[1]).toContain('123,45');
     expect(corpoDe(r)).not.toContain('5,00');
+  });
+
+  it('RD-0772: /notas/exportar usa um fuso do tenant diferente do padrão (America/Rio_Branco, UTC-5) na hora do CSV e o repassa ao listar', async () => {
+    const a = ambiente('leitura');
+    nota(a, 1, 'autorizada', 12345); // emitida_em 14:00Z
+    a.ctx.fuso = 'America/Rio_Branco';
+    const r = await a.chamar('GET', '/notas/exportar');
+    expect(corpoDe(r)).toContain('21/11/2026 09:00');
+    const vistos: unknown[] = [];
+    const listar = a.deps.notas.listar;
+    a.deps.notas.listar = async (tx, f, fuso) => (vistos.push(fuso), listar(tx, f, fuso));
+    a.ctx.fuso = 'America/Rio_Branco';
+    await a.chamar('GET', '/notas');
+    expect(vistos).toEqual(['America/Rio_Branco']);
   });
 
   it('RF-FAT-08: /rejeicoes/exportar e /pedidos-a-faturar/exportar respondem CSV com o nome de arquivo da lista', async () => {

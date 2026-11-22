@@ -5,7 +5,7 @@ import { RespostaFonte, opcoesDaResposta, caminhoDaFonte, type Opcao } from '@/l
 import { getValidado } from '@/lib/api';
 import { filtrosDaUrl } from '@macuxierp/platform-sdk/listas';
 import { rotuloDaCelula, textoTodos } from '@/lib/descritor/lista';
-import { urlProxima } from '@/lib/listas-url';
+import { urlDaLista, urlProxima } from '@/lib/listas-url';
 import type { FiltroTela, TelaLista } from '@/lib/descritor/tipos';
 import { AcoesDetalhe } from './acoes-detalhe';
 import { TabelaVista } from './ui-cliente';
@@ -23,12 +23,17 @@ async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Pr
 /** Lista genérica a partir do descritor: filtros na URL (formulário GET, sem JS), tabela densa, paginação por cursor e CSV. */
 export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   const filtros = filtrosDaUrl(tela.pagina, busca);
-  const colunas = tela.colunas(perfil);
+  const colunas = tela.colunas(perfil, fuso);
   const [pagina, opcoes] = await Promise.all([
     buscarPagina(tela.pagina.api, filtros, tela.pagina.item, acesso),
     Promise.all(tela.filtrosTela.map((f) => opcoesDoFiltro(f, acesso, perfil))),
   ]);
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
+  /** Só filtro real acende o "Limpar filtros": cursor e limite são paginação. */
+  const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');
+  const aoLimpar = urlDaLista(rota, filtros.limite ? { limite: filtros.limite } : {});
+  const declarado = tela.pagina.vazio;
+  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : (tela.textoVazio ?? 'Nenhum registro com estes filtros.');
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
   const acaoBarra = tela.acaoDaBarra?.acao(perfil) ?? null;
   const iFilial = tela.filtrosTela.findIndex((f) => f.chave === 'filial_id');
@@ -65,7 +70,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
       </div>
       <TabelaVista
         colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}) }))}
-        vazio={tela.textoVazio ?? 'Nenhum registro com estes filtros.'}
+        vazio={textoVazio}
         acoes={tela.acaoDaLinha ? { rota, rotaDaPagina } : undefined}
         linhas={pagina.itens.map((l, i) => {
           const item = l as Record<string, unknown>;
@@ -75,11 +80,12 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
             ...(selos ? { selos } : {}),
             chave: typeof item.id === 'string' ? item.id : String(i),
             celulas: Object.fromEntries(colunas.map((c) => [c.id, rotuloDaCelula(texto[c.id] ?? '', rotulos.get(c.id))])),
-            ...(tela.acaoDaLinha ? { acao: tela.acaoDaLinha.acao(item, perfil) ?? undefined } : {}),
+            ...(tela.acaoDaLinha ? { acao: tela.acaoDaLinha.acao(item, perfil) ?? undefined, maisAcoes: tela.acaoDaLinha.maisAcoes?.(item, perfil) ?? [] } : {}),
             ...(tela.rotaDaLinha ? { destino: tela.rotaDaLinha(item), rotulo: tela.rotuloDaLinha?.(item) ?? 'Abrir' } : {}),
           };
         })}
       />
+      {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={aoLimpar}>Limpar filtros</Link></p>}
       <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
     </section>
   );

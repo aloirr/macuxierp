@@ -11,3 +11,9 @@
 2026-11-22 — T-0021 — shell: colunas Pedido e Filial de volta na lista de notas e no cabeçalho do detalhe (acompanha o #251)
 2026-11-22 — T-0021 — ajustes do shell: hover, btn-sec, 1024 px, números à direita, h1, loading, filtros, "Todas", lista vazia, selo de status, rotuloDoCliente (LGPD), total do pedido, R$ sem quebra, diálogo 15 px, testTimeout
 2026-11-22 — T-0021 — ajustes B do shell sobre o #242: botoes.css (mx-botao/mx-botao-secundario no lugar de .btn), AssinaturaErp no topo (invólucro cliente), favicon no metadata, bordaCampo nos campos, legenda "Itens do pedido", DialogoMotivo com rotuloFechar/destrutivo ("Manter a nota"), testes de identidade e prints; corretor RD-0749 a RD-0752 (semEspacoDuro, CSS de link e disabled, testes negativos), hover provisório com token e testTimeout de 15 s só em api.http e listas
+2026-11-22 — T-0021 — shell: nota parcial, ambiente no inutilizar, foco do Sair, tabelas em 1024 e ui (marca, ícones, hover); assinatura C no login e na seleção de filial (header azul-noite, área de proteção no padding); correção do milhar no campo da nota parcial (saldoCampo); corretor RD-0779, RD-0781 a RD-0784
+2026-11-22 — T-0021 — nota parcial com a regra do PO (vazio = fora; botão desligado sem itens), ponto de troca no validarParcial (R-20261122-055826)
+2026-11-22 — T-0021 — shell: formularioParcial do módulo, urlDaConfiguracaoDaFilial, vazio com e sem filtro, assinatura C 100 px, rádio azul-noite e textos da parcial
+2026-11-22 — T-0021 — PR D, 2º commit: aviso da parcial sem "(ou 0)", lista só conta filtro real (limite preservado no Limpar filtros), RD do corretor (testes repetidos, FUSO, erro do item)
+2026-11-22 — T-0021 — 3º push do PR #265: junta o main (#264) e mostra o erro do item como vem do formularioParcial; testes comparam com a saída do módulo
+2026-11-22 — T-0021 — 4º push do PR #265: erro de saldo da nota parcial sem o número do item duplicado (descrição crua no ItemDoDialogo, rótulo separado)

@@ -1,5 +1,5 @@
 /** Registro das telas por rota da página (mesma chave de `PaginaRegistrada.rota`). Módulo novo soma o adaptador dele aqui. */
-import type { AcaoVista, ExecutorDeAcoes, TelaDescrita, TelaDetalhe, TelaFormulario } from './descritor/tipos';
+import type { AcaoVista, ExecutorDeAcoes, Leitura, TelaDescrita, TelaDetalhe, TelaFormulario } from './descritor/tipos';
 import { UUID_PADRAO } from './uuid';
 import { TELAS_FATURAMENTO } from './telas/faturamento';
 import { TELAS_INTEGRACAO_FDV } from './telas/integracao-fdv';
@@ -27,6 +27,12 @@ export type OrigemDasAcoes = 'detalhe' | 'barra' | 'linha';
 /** Quem valida o diálogo e gera a Idempotency-Key das ações da página, conforme a origem da ação. */
 export const executorDeAcoes = (rotaDaPagina: string, origem: OrigemDasAcoes = 'detalhe'): ExecutorDeAcoes | undefined => executorDaTela(TELAS[rotaDaPagina], origem);
 
+/** Todos os executores de ações de uma tela (detalhe, barra e linha da lista). */
+function executoresDa(t: TelaDescrita): ExecutorDeAcoes[] {
+  const execs: (ExecutorDeAcoes | undefined)[] = t.tipo === 'detalhe' ? [t] : t.tipo === 'lista' ? [t.acaoDaLinha, t.acaoDaBarra] : [];
+  return execs.filter((e): e is ExecutorDeAcoes => e !== undefined);
+}
+
 export function executorDaTela(t: TelaDescrita | undefined, origem: OrigemDasAcoes): ExecutorDeAcoes | undefined {
   if (t?.tipo === 'detalhe') return origem === 'detalhe' ? t : undefined;
   if (t?.tipo === 'lista') return origem === 'linha' ? t.acaoDaLinha : origem === 'barra' ? t.acaoDaBarra : undefined;
@@ -39,7 +45,17 @@ const padraoDe = (caminho: string) => new RegExp(`^${caminho.split(/:[a-z_]*id\b
 export function escritaDeclarada(metodo: AcaoVista['metodo'] | string, caminho: string, telas: readonly TelaDescrita[] = Object.values(TELAS)): boolean {
   return telas.some((t) => {
     if (t.tipo === 'formulario') return metodo === 'POST' && t.api === caminho;
-    const escritas = t.tipo === 'detalhe' ? t.escritas : t.tipo === 'lista' ? [...(t.acaoDaLinha?.escritas ?? []), ...(t.acaoDaBarra?.escritas ?? [])] : [];
-    return escritas.some((e) => e.metodo === metodo && padraoDe(e.caminho).test(caminho));
+    return executoresDa(t).flatMap((e) => e.escritas ?? []).some((e) => e.metodo === metodo && padraoDe(e.caminho).test(caminho));
   });
+}
+
+/** A leitura (GET) é a que algum descritor declarou para o diálogo de uma ação; devolve o schema que valida a resposta. */
+export function leituraDeclarada(caminho: string, telas: readonly TelaDescrita[] = Object.values(TELAS)): Leitura | undefined {
+  for (const t of telas) {
+    for (const e of executoresDa(t)) {
+      const l = e.leituras?.find((x) => padraoDe(x.caminho).test(caminho));
+      if (l) return l;
+    }
+  }
+  return undefined;
 }

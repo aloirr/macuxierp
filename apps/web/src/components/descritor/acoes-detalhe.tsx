@@ -1,18 +1,18 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DialogoMotivo, type ResultadoMotivo } from '@macuxierp/ui';
-import type { AcaoVista, EntradaAcao } from '@/lib/descritor/tipos';
+import type { AcaoVista, AmbienteVista, EntradaAcao } from '@/lib/descritor/tipos';
 import { aposResposta, chaveParaEnvio, estadoDoClique, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { executorDeAcoes, type OrigemDasAcoes } from '@/lib/telas';
-import { escrever } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
-import { DialogoEscrita, type EntradaDialogo } from './dialogo-escrita';
+import { escrever, ler } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
+import { DialogoEscrita, type CarregarItens, type EntradaDialogo } from './dialogo-escrita';
 
 /**
  * Botões de ação (detalhe ou linha de lista) e o diálogo. A regra do diálogo (motivo, justificativa, texto, valor) é do módulo, via
  * `validarAcao` do descritor. Cada ação tem a própria Idempotency-Key: o reenvio do mesmo corpo reusa a chave (RN-CORE-05).
  */
-const entradaDe = (r: EntradaDialogo): EntradaAcao => ({ texto: r.texto, valor: r.valor, data: r.data, filial: r.filial, inicial: r.inicial, final: r.final });
+const entradaDe = (r: EntradaDialogo): EntradaAcao => ({ texto: r.texto, valor: r.valor, data: r.data, filial: r.filial, inicial: r.inicial, final: r.final, ...(r.itens ? { itens: r.itens } : {}) });
 
 export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, origem = 'detalhe' }: { acoes: readonly AcaoVista[]; rota: string; rotaDaPagina: string; compacta?: boolean; origem?: OrigemDasAcoes }) {
   const router = useRouter();
@@ -49,6 +49,26 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
     }
   }
 
+  const leituraItens = aberta?.entrada === 'itens' ? aberta.leitura : undefined;
+  const carregarItens = useCallback<CarregarItens>(async () => {
+    const itensDe = executor?.itensDaLeitura;
+    if (!leituraItens || !itensDe) return { ok: false, erro: 'Tela não encontrada.' };
+    const r = await ler(leituraItens);
+    if (!r.ok) return { ok: false, erro: r.mensagem };
+    try {
+      return { ok: true, itens: itensDe(r.dados) };
+    } catch {
+      return { ok: false, erro: 'A API respondeu fora do contrato.' };
+    }
+  }, [executor, leituraItens]);
+
+  const modeloAmbiente = aberta?.entrada === 'faixa' ? aberta.ambientePorFilial : undefined;
+  const carregarAmbiente = useCallback(async (filial: string): Promise<AmbienteVista | null> => {
+    if (!modeloAmbiente || !executor?.ambienteDaLeitura) return null;
+    const r = await ler(modeloAmbiente.replace(':id', filial));
+    return r.ok ? executor.ambienteDaLeitura(r.dados) : null;
+  }, [executor, modeloAmbiente]);
+
   function abrir(a: AcaoVista) {
     setErro('');
     if (a.entrada === 'nenhum') void enviar(a, { texto: '' });
@@ -80,6 +100,8 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
           baixa={a.entrada === 'baixa' ? a.baixa : undefined}
           texto={a.entrada === 'justificativa' ? { rotulo: a.rotuloTexto ?? 'Justificativa', obrigatorio: Boolean(a.justificativaObrigatoria) } : undefined}
           faixa={a.entrada === 'faixa' ? { filiais: a.filiais ?? [], rotuloTexto: a.rotuloTexto ?? 'Justificativa' } : undefined}
+          itens={a.entrada === 'itens' ? { carregar: carregarItens } : undefined}
+          carregarAmbiente={a.entrada === 'faixa' && a.ambientePorFilial ? carregarAmbiente : undefined}
           validar={(r) => { const v = executor?.validarAcao(a, entradaDe(r)); return v && !v.ok ? v.erro : null; }}
           aoConfirmar={(r) => void enviar(a, entradaDe(r))}
           aoCancelar={aoCancelar}

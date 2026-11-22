@@ -16,7 +16,8 @@
 #      com LOGIN e SEM senha). 3 tentativas;
 #   4. senhas dos três papéis (gerados.env): o node calcula o verificador SCRAM-SHA-256 DENTRO do contêiner e o psql aplica
 #      o ALTER ROLE; depois cada papel entra uma vez com a própria senha (select current_user);
-#   5. conferência: os três com LOGIN, sem SUPERUSER, sem BYPASSRLS, sem CREATEDB e sem CREATEROLE.
+#   5. conferência: os três com LOGIN, sem SUPERUSER, sem BYPASSRLS, sem CREATEDB e sem CREATEROLE, e nenhum membro de
+#      outro em pg_auth_members (o macuxierp_app nunca no macuxierp_worker).
 # Qualquer falha sai com código != 0 e nada da aplicação é trocado (o implantar.sh só sobe a versão nova depois).
 # Nenhum segredo é impresso: as senhas só existem no gerados.env e no ambiente do contêiner papeis.
 set -euo pipefail
@@ -142,5 +143,18 @@ if [ "$SO_CONFERIR" = 1 ] && [ -z "$papeis" ]; then
 fi
 [ "$papeis" = "$esperado" ] || erro 1 "papéis da aplicação fora do esperado (LOGIN, sem SUPERUSER/BYPASSRLS/CREATEDB/CREATEROLE): $(printf '%s' "$papeis" | tr '\n' ' ')"
 log "papéis: macuxierp_app, macuxierp_worker e macuxierp_leitura com LOGIN, sem SUPERUSER, BYPASSRLS, CREATEDB e CREATEROLE"
+# Nenhum papel da aplicação é membro de outro (pg_auth_members, direto ou por cadeia). Sobretudo: macuxierp_app membro de
+# macuxierp_worker herdaria a política worker_global (leitura sem tenant) e furaria o RLS da api (revisão da migração 0027).
+membros="$(psqlc -d "$BANCO" -c "with recursive cadeia(membro, papel) as (
+                                     select m.member, m.roleid from pg_auth_members m
+                                     union
+                                     select c.membro, m.roleid from cadeia c join pg_auth_members m on m.member = c.papel)
+                                   select a.rolname || ' em ' || b.rolname
+                                     from cadeia c join pg_roles a on a.oid = c.membro join pg_roles b on b.oid = c.papel
+                                    where a.rolname in ('macuxierp_app', 'macuxierp_leitura', 'macuxierp_worker')
+                                      and b.rolname in ('macuxierp_app', 'macuxierp_leitura', 'macuxierp_worker')
+                                    order by 1")"
+[ -z "$membros" ] || erro 1 "papel da aplicação membro de outro (pg_auth_members; o RLS da api deixaria de valer): $(printf '%s' "$membros" | tr '\n' ';')"
+log "pg_auth_members: nenhum papel da aplicação é membro de outro (macuxierp_app fora do macuxierp_worker)"
 ultima="$(psqlc -d "$BANCO" -c "select nome from controle.migracao order by nome desc limit 1")"
 log "pronto: banco $BANCO, última migração $ultima"

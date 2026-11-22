@@ -149,6 +149,14 @@ export interface DefinicaoPaginaLista<I extends z.ZodTypeAny, F extends FiltrosL
   colunas: readonly ColunaLista<z.infer<I>>[];
   /** Exportação CSV: a rota de CSV do módulo usa `csvDaLista` com este nome de arquivo; `false` = a página não exporta. */
   csv: { arquivo: string } | false;
+  /** Texto do estado vazio (MC-0016): sem filtro (nada cadastrado) e com filtro (nada com estes filtros). Opcional. */
+  vazio?: TextoVazioLista;
+}
+
+/** Texto do estado vazio da lista, sem e com filtro (R-20261122-040324, MC-0016). */
+export interface TextoVazioLista {
+  semFiltro: string;
+  comFiltro: string;
 }
 
 /** Consulta validada da lista (saída do Zod): paginação, busca/inativos quando declarados e os filtros do módulo. */
@@ -164,6 +172,8 @@ export interface PaginaLista<I extends z.ZodTypeAny = z.ZodTypeAny, F extends Fi
   readonly filtros: F;
   readonly colunas: readonly ColunaLista<z.infer<I>>[];
   readonly csv: { readonly arquivo: string } | false;
+  /** Texto do estado vazio, quando a definição declarou; ausente, a tela usa o texto padrão dela. */
+  readonly vazio?: Readonly<TextoVazioLista>;
   /** Chaves aceitas na URL da tela e na consulta da API, em ordem alfabética (filtros, busca, inativos e paginação). */
   readonly chaves: readonly string[];
   /** Zod da consulta da rota GET da lista (`definirRota({ consulta: pagina.consulta })`): inválido = 400 VALIDACAO. */
@@ -205,6 +215,8 @@ export function definirPaginaLista<I extends z.ZodTypeAny, F extends FiltrosList
     ids.add(c.id);
   }
   if (d.csv && !ARQUIVO_CSV.test(d.csv.arquivo)) falha('csv.arquivo deve ser <nome>.csv em minúsculas');
+  const textoOk = (t: unknown) => typeof t === 'string' && t.trim() !== '';
+  if (d.vazio !== undefined && !(textoOk(d.vazio.semFiltro) && textoOk(d.vazio.comFiltro))) falha('vazio.semFiltro e vazio.comFiltro devem ser texto não vazio');
 
   const busca = d.busca ?? false;
   const inativos = d.inativos ?? false;
@@ -224,6 +236,7 @@ export function definirPaginaLista<I extends z.ZodTypeAny, F extends FiltrosList
     filtros: Object.freeze({ ...filtros }),
     colunas: Object.freeze([...d.colunas]),
     csv: d.csv ? Object.freeze({ arquivo: d.csv.arquivo }) : false,
+    ...(d.vazio ? { vazio: Object.freeze({ semFiltro: d.vazio.semFiltro, comFiltro: d.vazio.comFiltro }) } : {}),
     chaves: Object.freeze(chaves),
     consulta,
     resposta: paginaDe(d.item),

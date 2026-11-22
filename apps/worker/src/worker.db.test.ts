@@ -4,25 +4,29 @@
  * Integração com o FDV montada como no `main.ts` (T-0016): `montarAgendas` e `montarConsumidores` com os adaptadores PG,
  * o laço real (`rodarAgendas`, `despacharOutbox`) e um DUBLÊ do `ClienteHub` (nunca a rede); recebedor e resolvedor
  * dublês (o recebimento de verdade é testado no `pedidos-fdv.db.test.ts` e no `integracao-fdv`). Só tenants de teste.
- * Espelha o apoio-conector-teste do integracao-fdv até ele exportar um subcaminho de teste (RD-0512).
+ * O dublê do Hub, a resposta `ok`, a credencial e a chave mestra vêm do apoio de teste do módulo
+ * (`@macuxierp/integracao-fdv/api/testes`, RD-0512; R-20261122-042502).
  */
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID } from '@macuxierp/integracao-fdv/api';
-import { cifrarCampo, criarEvento, type ClienteHub, type ConsumidorEvento, type CredencialHub, type PedidoHub, type RespostaHub } from '@macuxierp/platform-sdk';
-import { FilaDeTrabalhosPg, LicencasPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
+import { CHAVE_MESTRA, criarCredencial, hubDuble, ok } from '@macuxierp/integracao-fdv/api/testes';
+import { armazenamentoIndisponivel, criarEvento, type ClienteHub, type ConsumidorEvento } from '@macuxierp/platform-sdk';
+import { CatalogoArquivosPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { pino } from 'pino';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rodarAgendas } from './agenda';
 import { pinoEmMemoria } from './apoio-teste';
-import { criarDecifradorCredencial } from './credencial';
+import { configurarCredenciais, criarDecifradorCredencial } from './credencial';
 import { despacharOutbox } from './despachante';
-import type { EstadoEnvioFdv } from './envio-fdv';
-import { montarAgendas, montarConsumidores } from './modulos';
-import { criarAlertaMonitor, type EstadoRecebimentoFdv, type MontagemPedidosFdv } from './pedidos-fdv';
+import { configurarEnvioFdv, type EstadoEnvioFdv } from './envio-fdv';
+import { configurarHub } from './hub';
+import { montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
+import { conferirRecebimentoFdv, configurarRecebimentoFdv, criarAlertaMonitor, type EstadoRecebimentoFdv, type MontagemPedidosFdv } from './pedidos-fdv';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { processarTrabalhos } from './trabalhos';
+import { ciclo } from './worker';
 
 const log = pino({ level: 'silent' });
 const NOME = 'cadastros.cliente.alterado@1';
@@ -178,26 +182,10 @@ describe.skipIf(!PG_DISPONIVEL)('worker no PostgreSQL (papel macuxierp_worker)',
   });
 });
 
-/** Dublê do `ClienteHub`: resposta por `METODO caminho` (uuid no fim vira `{id}`) e o registro de cada chamada. */
-function hubDuble(rotas: Record<string, (p: PedidoHub) => RespostaHub>): ClienteHub & { chamadas: Array<{ cred: CredencialHub; pedido: PedidoHub }> } {
-  const chamadas: Array<{ cred: CredencialHub; pedido: PedidoHub }> = [];
-  return {
-    chamadas,
-    async chamar(cred, pedido) {
-      chamadas.push({ cred, pedido });
-      const rota = rotas[`${pedido.metodo} ${pedido.caminho.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/, '{id}')}`];
-      if (!rota) throw new Error(`dublê do Hub: sem rota para ${pedido.metodo} ${pedido.caminho}`);
-      return rota(pedido);
-    },
-  };
-}
-const ok = (corpo: unknown, status = 200): RespostaHub => ({ tipo: 'ok', status, corpo, replay: false });
-
 describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL, papel macuxierp_worker, Hub dublê)', () => {
   // Uma linha do tempo só: o instante real da coleta, que o RelogioFixo de cada teste faz andar.
   const AGORA = new Date();
   const LONGE = new Date(AGORA.getTime() + 100 * 365 * 86_400_000);
-  const CHAVE_MESTRA = randomBytes(32);
   const decifrarCredencial = criarDecifradorCredencial(new Map([[1, CHAVE_MESTRA]]));
   const ids = { cliente: randomUUID(), vendedor: randomUUID(), produto: randomUUID(), filial: randomUUID() };
   let b: BancoEfemero;
@@ -229,13 +217,12 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
   const despacharConsumidores = () =>
     despacharOutbox({ banco: worker, fila: new FilaOutboxPg(), consumo: new RegistroConsumoPg(), consumidores: montarConsumidores({ log, relogio }), relogio, log });
 
-  async function tenantComCredencial(slug: string, modulos: string[]): Promise<{ t: string; conector: string; chave: string }> {
+  /** Tenant com os módulos e a credencial do conector (`criarCredencial` do apoio do módulo, cifrada com a `CHAVE_MESTRA` dele). */
+  async function tenantComCredencial(slug: string, modulos: string[], ambiente: 'teste' | 'producao' = 'teste'): Promise<{ t: string; conector: string; chave: string }> {
     const t = await criarTenant(b.admin, slug, modulos);
     const conector = `conector-${slug}`;
     const chave = `chave-de-teste-${slug}-${randomUUID()}`;
-    await adm('INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo) VALUES ($1, $2, $3, $4, $5)', [
-      t, conector, 'teste', cifrarCampo({ chave: CHAVE_MESTRA, tenantId: t, claro: chave }), 'chave-de',
-    ]);
+    await criarCredencial(b.admin, t, { conector, ambiente, chave });
     return { t, conector, chave };
   }
 
@@ -288,8 +275,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     ]);
     const lote = randomUUID();
     const hub = hubDuble({
-      'POST /lotes': () => ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` }, 202),
-      'GET /lotes/{id}': () => ok({ lote_id: lote, entidade: 'produto', modo: 'delta', status: 'concluido', contagens: { recebidas: 1, com_erro: 0, novas: 1 }, erros: [] }),
+      'POST /lotes': [ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` })],
+      'GET /lotes/{id}': [ok({ lote_id: lote, entidade: 'produto', modo: 'delta', status: 'concluido', contagens: { recebidas: 1, com_erro: 0, novas: 1 }, erros: [] }, false, 200)],
     });
 
     const r1 = rodada('desligado', hub);
@@ -314,8 +301,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     await sinal(t, { busca: new Date(AGORA.getTime() - 5_000) });
     const uuid = randomUUID();
     const hub = hubDuble({
-      'GET /pedidos/pendentes?limite=50': () => ok({ pedidos: [pedidoDoHub(uuid)] }),
-      'POST /pedidos/{id}/retorno': () => ok({ repetido: false }),
+      'GET /pedidos/pendentes?limite=50': [ok({ pedidos: [pedidoDoHub(uuid)] }, false, 200)],
+      [`POST /pedidos/${uuid}/retorno`]: [ok({ repetido: false }, false, 200)],
     });
 
     const busca = rodada('ligado', hub);
@@ -355,8 +342,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     const retornoAgendado = (await lerSinal(t)).proximo_retorno_em as Date;
     expect(retornoAgendado.getTime()).toBeLessThanOrEqual(relogio.agora().getTime());
     const hub = hubDuble({
-      'GET /pedidos/pendentes?limite=50': () => ok({ pedidos: [] }),
-      'POST /pedidos/{id}/retorno': () => ok({ repetido: false }),
+      'GET /pedidos/pendentes?limite=50': [ok({ pedidos: [] }, false, 200)],
+      [`POST /pedidos/${uuid}/retorno`]: [ok({ repetido: false }, false, 200)],
     });
 
     relogio.avancar(1_000);
@@ -383,9 +370,9 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     await adm('INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em) VALUES ($1, $2, $2)', [t, vencida]);
     const lote = randomUUID();
     const hub = hubDuble({
-      'POST /lotes': () => ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` }, 202),
-      'POST /sinal': () => ok({}),
-      'POST /reconciliacoes': () => ok({}),
+      'POST /lotes': [ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` })],
+      'POST /sinal': [ok({}, false, 200)],
+      'POST /reconciliacoes': [ok({}, false, 200)],
     });
 
     const desligado = rodada('desligado', hub, 'desligado');
@@ -403,5 +390,89 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     const ligado = rodada('desligado', hub, 'ligado');
     await ligado.resumo;
     expect(hub.chamadas.map((c) => `${c.pedido.metodo} ${c.pedido.caminho}`)).toEqual(['POST /sinal', 'GET /cursores/produto']);
+  });
+
+  it('trava mantida na v0.2.0 (R-20261122-061838): com o ambiente do compose.yml, chave e credencial gravada, o laço inteiro não faz nenhum fetch', async () => {
+    const { t } = await tenantComCredencial('worker-trava-v020', ['integracao-fdv', 'pedido', 'cadastros'], 'producao');
+    const vencida = new Date(AGORA.getTime() - 60_000);
+    // tudo vencido: envio (registro pendente e cursor), sinal, reconciliação, busca de pedidos e retorno pendente
+    const payload = { ativo: true, external_id: 'P003', nome: 'Produto P003', sku: 'SKU-P003', unidade: 'UN' };
+    await adm(
+      `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, fonte_refs, ativo, pendente)
+       VALUES ($1, 'produto', 'P003', $2::jsonb, $3, $4, $4, '{}'::jsonb, true, true)`,
+      [t, JSON.stringify(payload), createHash('sha256').update(JSON.stringify(payload)).digest('hex'), new Date(AGORA.getTime() - 3_600_000)],
+    );
+    await adm('INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, proximo_em) VALUES ($1, $2, $3)', [t, 'produto', vencida]);
+    await adm('INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em) VALUES ($1, $2, $2, $2)', [t, vencida]);
+    const uuid = randomUUID();
+    await adm(`INSERT INTO integracao_fdv.pedido_recebido (tenant_id, pedido_uuid, payload, hash, estado) VALUES ($1, $2, '{}', repeat('d', 64), 'entregue')`, [t, uuid]);
+    await publicarRecebido(t, uuid); // o consumidor do laço grava o retorno pendente e vence o proximo_retorno_em
+
+    // Espelho do serviço macuxierp-worker do compose.yml (os dois interruptores fixos em desligado; URLs fixas) mais a chave do .env.
+    const ENV_COMPOSE = {
+      MACUXIERP_HUB_URL_PRODUCAO: 'https://api.macuxifdv.com.br/integracao/v1',
+      MACUXIERP_HUB_URL_TESTE: 'https://hub-teste.invalid/integracao/v1',
+      MACUXIERP_FDV_RECEBIMENTO: 'desligado',
+      MACUXIERP_FDV_ENVIO: 'desligado',
+      MACUXIERP_CHAVE_INTEGRACAO: CHAVE_MESTRA.toString('hex'),
+    };
+    // Dublê na rede: todo fetch do cliente real do Hub cai aqui (qualquer método e caminho, leitura incluída), e o fetch global também é espionado.
+    const urls: string[] = [];
+    const fetchDuble = (async (u: URL | string, init?: RequestInit) => (urls.push(`${init?.method ?? 'GET'} ${String(u)}`), new Response('{}', { status: 200 }))) as typeof fetch;
+    const global = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      throw new Error('o worker não pode chamar a rede');
+    });
+
+    /** Montagem do `main.ts` com o ambiente dado: hub, credenciais, interruptores, agendas, consumidores, executores e rotinas. */
+    async function ciclos(env: Record<string, string>, n: number): Promise<string[]> {
+      const { log: pinoLog, linhas } = pinoEmMemoria();
+      const hub = configurarHub(env, '0.2.0', fetchDuble);
+      const decifrar = configurarCredenciais(env);
+      expect([hub, decifrar].every(Boolean)).toBe(true); // laço de agenda ligado: o que segura o Hub são só os interruptores
+      const recebimento = configurarRecebimentoFdv(env);
+      const envio = configurarEnvioFdv(env);
+      conferirRecebimentoFdv(recebimento, []);
+      const d = {
+        banco: worker,
+        outbox: new FilaOutboxPg(),
+        trabalhos: new ReservaTrabalhosPg(),
+        consumo: new RegistroConsumoPg(),
+        consumidores: montarConsumidores({ log: pinoLog, relogio }),
+        executores: montarExecutores({ banco: worker, log: pinoLog, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogio.agora() }),
+        rotinas: montarRotinas({ banco: worker, log: pinoLog }),
+        agenda: { agendas: montarAgendas({ log: pinoLog, relogio, pedidosFdv: pedidosFdv(recebimento, pinoLog), envio }), licencas: new LicencasPg(), hub: hub!, decifrarCredencial: decifrar! },
+        relogio,
+        log: pinoLog,
+      };
+      const estado = new Map();
+      for (let i = 0; i < n; i++) {
+        await ciclo(d, estado);
+        relogio.avancar(20 * 60_000); // 20 min por ciclo: passa a curva de 5 s a 15 min e o intervalo do sinal
+      }
+      return linhas;
+    }
+
+    try {
+      const linhas = await ciclos(ENV_COMPOSE, 6);
+      expect(urls).toEqual([]);
+      expect(global).not.toHaveBeenCalled();
+      expect(linhas.join('')).not.toContain(CHAVE_MESTRA.toString('hex'));
+      // o laço rodou de verdade: o consumidor gravou o retorno local; nada foi reservado nem montado para o Hub
+      expect(await adm('SELECT estado FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1', [t])).toEqual([{ estado: 'pendente' }]);
+      expect(await adm('SELECT id FROM integracao_fdv.lote_envio WHERE tenant_id = $1', [t])).toEqual([]);
+      expect((await adm('SELECT proximo_em FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1', [t]))[0]!.proximo_em.getTime()).toBe(vencida.getTime());
+      const [s] = await adm('SELECT proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [t]);
+      expect([s!.proximo_sinal_em, s!.proxima_reconciliacao_em, s!.proxima_busca_pedidos_em].map((x: Date) => x.getTime())).toEqual([vencida.getTime(), vencida.getTime(), vencida.getTime()]);
+
+      // contraprova: o mesmo laço com os dois ligados chama o Hub de produção (pelo dublê), então o zero acima vem da trava
+      await ciclos({ ...ENV_COMPOSE, MACUXIERP_FDV_RECEBIMENTO: 'ligado', MACUXIERP_FDV_ENVIO: 'ligado' }, 1);
+      expect(urls.length).toBeGreaterThan(0);
+      expect(urls.every((u) => u.includes(' https://api.macuxifdv.com.br/integracao/v1/'))).toBe(true);
+      expect(urls.some((u) => u.endsWith('/integracao/v1/sinal'))).toBe(true);
+      expect(urls.some((u) => u.includes('/integracao/v1/pedidos/pendentes'))).toBe(true);
+      expect(global).not.toHaveBeenCalled();
+    } finally {
+      global.mockRestore();
+    }
   });
 });

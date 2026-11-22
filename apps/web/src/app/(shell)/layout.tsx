@@ -1,4 +1,4 @@
-import { Assinatura } from './assinatura';
+import { AssinaturaErp } from '@macuxierp/ui/marca';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { MANIFESTOS } from '@/lib/manifestos';
@@ -16,7 +16,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
     <div className="casca">
       <a className="pular" href="#conteudo">Pular para o conteúdo</a>
       <header className="topo">
-        <span className="marca"><Assinatura /></span>
+        <span className="marca"><AssinaturaErp /></span>
         <span>{eu.empresa.razao_social} · {filial.nome}</span>
         {eu.filiais.length > 1 && <a href="/filial">Trocar filial</a>}
         <span className="espaco" />
