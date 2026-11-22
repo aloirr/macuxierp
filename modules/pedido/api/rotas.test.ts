@@ -253,7 +253,7 @@ describe('transições (RN-PED-02)', () => {
         t.armazem.aprovacoes.length = 0;
         const r = await t.chamar('POST', `/pedidos/${p.corpo.id}/${a.nome}`, { sessao: gerente, corpo: a.corpo });
         if (ok) expect(r).toMatchObject({ status: 200, corpo: { status: a.alvo } });
-        else expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', campos: { possiveis: TRANSICOES[de].join(',') } } });
+        else expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', detalhes: { possiveis: TRANSICOES[de] } } });
       });
     }
   }
@@ -263,7 +263,7 @@ describe('transições (RN-PED-02)', () => {
     expect((await t.chamar('POST', `/pedidos/${p.id}/recusar`, { sessao: gerente, corpo: { motivo_codigo: 'cliente_bloqueado' } })).status).toBe(200);
     const antes = t.eventos.length;
     const r = await t.chamar('POST', `/pedidos/${p.id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } });
-    expect(r).toMatchObject({ status: 422, corpo: { campos: { possiveis: '' } } });
+    expect(r).toMatchObject({ status: 422, corpo: { detalhes: { possiveis: [] } } });
     expect(t.eventos).toHaveLength(antes);
   });
 });
@@ -273,7 +273,7 @@ describe('aprovação humana (RN-PED-03)', () => {
     const t = montar();
     const p = await emAnalise(t, { itens: [{ ...unidades(1), produto_id: IDS.produtoInativo }] });
     const r = await t.chamar('POST', `/pedidos/${p.id}/aprovar`, { sessao: gerente, corpo: { justificativa: 'preciso' } });
-    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-03', campos: { bloqueantes: 'produto_inativo' } } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-03', detalhes: { bloqueantes: ['produto_inativo'] } } });
     expect(t.armazem.pedidos[0]?.status).toBe('em_analise');
   });
   it('pendência não bloqueante sem justificativa é 400; com justificativa aprova e grava as pendências aceitas', async () => {
@@ -349,7 +349,7 @@ describe('revalidação e edição (RF-PED-02 e 03, P7)', () => {
   it('RN-PED-02: revalidar o pedido que não está em análise é 422 com os possíveis', async () => {
     const t = montar();
     const p = (await lancar(t)).corpo;
-    expect(await t.chamar('POST', `/pedidos/${p.id}/revalidar`, { sessao: adm })).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', campos: { possiveis: 'faturado_parcial,faturado,cancelado' } } });
+    expect(await t.chamar('POST', `/pedidos/${p.id}/revalidar`, { sessao: adm })).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02', detalhes: { possiveis: ['faturado_parcial', 'faturado', 'cancelado'] } } });
   });
   it('editar exige If-Match; token velho é 409; só o manual em análise; revalida e pode aprovar', async () => {
     const t = montar();

@@ -19,7 +19,7 @@ import {
 } from '../domain';
 import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, type CondicaoDoEvento, type EventoPronto } from './eventos';
 import type { Dependencias, NovoItem, NovoPedido, PedidoGravado, RepoPedidos } from './portas';
-import { dataNoFuso, exigir } from './util';
+import { dataNoFuso, erroTransicao, exigir } from './util';
 
 type Ator = { tipo: 'usuario'; id: string; perfil: Perfil } | { tipo: 'sistema' };
 
@@ -135,13 +135,8 @@ export function criarServico(deps: Dependencias) {
     return avaliar(tx, repo, { ...cad, cliente: cad.cliente, filial: cad.filial }, { ...p, pedido_id: p.id, itens: p.itens.map((i) => ({ ...i })) });
   };
 
-  const erroTransicao = (de: StatusPedido, para: StatusPedido, mensagem?: string) => {
-    const r = validarTransicao(de, para);
-    const lista = possiveis(de).join(',');
-    return erros.regra('RN-PED-02', mensagem ?? (r.ok ? 'Transição não permitida' : r.mensagem), { possiveis: lista });
-  };
   const exigirTransicao = (de: StatusPedido, para: StatusPedido): void => {
-    if (!validarTransicao(de, para).ok) throw erroTransicao(de, para);
+    if (!validarTransicao(de, para).ok) throw erroTransicao(possiveis(de));
   };
 
   const rotuloAtor = (fx: Efeitos) => ({ ator_tipo: fx.ator.tipo, ator_id: fx.ator.tipo === 'usuario' ? fx.ator.id : null });
@@ -356,7 +351,7 @@ export function criarServico(deps: Dependencias) {
     for (const k of chaves) await repo.travarCliente(k);
     const p = await travarOu404(repo, id);
     if (p.updated_at !== ifMatch) throw erros.conflito('O pedido foi alterado por outra pessoa: recarregue e tente de novo');
-    if (p.status !== 'em_analise') throw erroTransicao(p.status, p.status, 'Só o pedido em análise pode ser editado');
+    if (p.status !== 'em_analise') throw erroTransicao(possiveis(p.status));
 
     const { itens, cad, entrega } = await prepararManual(tx, entrada);
     const { cliente } = cad;
@@ -391,7 +386,7 @@ export function criarServico(deps: Dependencias) {
     const previo = await obterOu404(repo, id);
     await repo.travarCliente(travaCliente(fx.tenant_id, previo.cliente_id));
     const p = await travarOu404(repo, id);
-    if (p.status !== 'em_analise') throw erroTransicao(p.status, p.status, 'Só o pedido em análise pode ser revalidado');
+    if (p.status !== 'em_analise') throw erroTransicao(possiveis(p.status));
     const av = await reavaliar(tx, repo, p);
     if (!av) throw erros.validacao({ cliente_id: 'Cadastro do pedido não encontrado' });
     const pendencias = semValores(av.detalhadas);
@@ -417,7 +412,7 @@ export function criarServico(deps: Dependencias) {
     const pendencias = semValores(av.detalhadas);
     const d = decidirAprovacao(pendencias, entrada.justificativa);
     if (!d.ok) {
-      if (d.tipo === 'regra') throw erros.regra(d.rn, d.mensagem, { bloqueantes: d.bloqueantes.map((b) => b.codigo).join(',') });
+      if (d.tipo === 'regra') throw erros.regra(d.rn, d.mensagem, undefined, { bloqueantes: d.bloqueantes.map((b) => b.codigo) });
       throw erros.validacao({ [d.campo]: d.mensagem });
     }
     await gravarPrecosDeTabela(repo, p, av.precos);
