@@ -116,6 +116,27 @@ export function falha(fn: () => unknown): string {
   return erro;
 }
 
+/**
+ * Erro do psql com a saída completa (DETAIL, e o SQLSTATE com `\set VERBOSITY verbose`), ou null se o comando passou.
+ * Erro que não é do psql sobe.
+ */
+export function erroDetalhadoDe(fn: () => unknown): { mensagem: string; saida: string } | null {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    if (e instanceof ErroPsql) return { mensagem: e.message, saida: e.saida };
+    throw e;
+  }
+}
+
+/** Como `falha`, com a saída completa do psql. */
+export function falhaDetalhada(fn: () => unknown): { mensagem: string; saida: string } {
+  const erro = erroDetalhadoDe(fn);
+  if (erro === null) throw new Error('era para falhar e passou');
+  return erro;
+}
+
 /** Linhas da saída do psql que são inteiros (os valores de RETURNING e SELECT de uma coluna numérica). */
 export const numeros = (saida: string): number[] =>
   saida

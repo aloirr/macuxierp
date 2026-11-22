@@ -12,8 +12,10 @@ export interface Tenant {
   filial: string;
   cliente: string;
   produto: string;
-  /** pedido_uuid do FDV do pedido recebido (integracao_fdv). */
+  /** pedido_uuid do FDV do pedido recebido (integracao_fdv); é também o external_id do pedido do schema pedido. */
   pedidoFdv: string;
+  /** id do pedido da massa do schema pedido (T-0014). */
+  pedido: string;
 }
 
 export function novoTenant(slug: string): Tenant {
@@ -26,6 +28,7 @@ export function novoTenant(slug: string): Tenant {
     cliente: randomUUID(),
     produto: randomUUID(),
     pedidoFdv: randomUUID(),
+    pedido: randomUUID(),
   };
 }
 
@@ -146,5 +149,31 @@ INSERT INTO integracao_fdv.sinal (tenant_id, ultimo_envio_em, ultimo_aceito_em, 
   VALUES ('${id}', now(), now(), 200);
 INSERT INTO integracao_fdv.reconciliacao (tenant_id, entidade, data_referencia, contagem)
   VALUES ('${id}', 'cliente', '2026-11-21', 1);
+`;
+}
+
+/**
+ * Massa do schema pedido (T-0014): uma linha em cada tabela. O pedido é o do FDV da massa (external_id = pedidoFdv),
+ * nasce recebido e vai a aprovado pela transição da RN-PED-02 (o gatilho vale também para o dono). cliente_id,
+ * filial_id e produto_id são os UUIDs da massa de cadastros, opacos (sem FK entre schemas).
+ */
+export function fixturePedido(t: Tenant): string {
+  const id = t.id;
+  return `
+INSERT INTO pedido.numeracao (tenant_id, proximo) VALUES ('${id}', 2);
+INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, cliente_retrato, emitido_em,
+  total_centavos, total_informado_centavos, external_id)
+  VALUES ('${t.pedido}', '${id}', 1, 'fdv', '${t.filial}', '${t.cliente}',
+    '{"tipo_pessoa": "PJ", "razao_social": "Cliente ${t.slug}", "ind_ie_dest": "9"}', '2026-11-21T12:00:00.123Z',
+    3980, 3980, '${t.pedidoFdv}');
+INSERT INTO pedido.pedido_item (tenant_id, pedido_id, sequencia, produto_id, produto_retrato, quantidade,
+  preco_unitario_centavos, preco_tabela_centavos, desconto_maximo_bp, total_centavos, total_informado_centavos)
+  VALUES ('${id}', '${t.pedido}', 1, '${t.produto}', '{"codigo": "P1", "descricao": "Refrigerante 2 L", "ncm": "22021000"}',
+    20000, 1990, 1990, 0, 3980, 3980);
+UPDATE pedido.pedido SET status = 'aprovado', validado_em = now() WHERE id = '${t.pedido}';
+INSERT INTO pedido.pedido_evento (tenant_id, pedido_id, de, para, ator_tipo, pendencias)
+  VALUES ('${id}', '${t.pedido}', NULL, 'recebido', 'sistema', '[]'),
+    ('${id}', '${t.pedido}', 'recebido', 'aprovado', 'sistema', '[]');
+INSERT INTO pedido.aprovacao (tenant_id, pedido_id, decisao, automatica) VALUES ('${id}', '${t.pedido}', 'aprovado', true);
 `;
 }
