@@ -3,6 +3,7 @@ export * from './condicao';
 export * from './consulta';
 export * from './documento';
 export * from './estoque';
+export * from './external-id';
 export * from './filial';
 export * from './ie';
 export * from './municipio';
