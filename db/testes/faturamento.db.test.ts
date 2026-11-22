@@ -34,6 +34,7 @@ import {
   fixtureTituloGeracao,
   hashSql,
   novoTenant,
+  sqlAbrirContingencia,
 } from './fixture.ts';
 import { verificarVazamento } from './vazamento.ts';
 
@@ -821,8 +822,7 @@ ROLLBACK;
         falha(() =>
           executar(
             banco.conexao,
-            `INSERT INTO faturamento.contingencia (tenant_id, filial_id, ambiente, modalidade, motivo)
-             VALUES (plataforma.tenant_atual(), '${filial}', 'producao', 'svc_an', 'Motivo com mais de quinze');`,
+            sqlAbrirContingencia(filial, 'svc_an', A.usuario, 'producao'),
             APP_A,
           ),
         ),
@@ -1202,9 +1202,7 @@ INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protoc
   describe('RN-FAT-05: contingência (A5)', () => {
     it('uma contingência aberta por filial e ambiente; fechada não muda; nota em contingência só com ela aberta', () => {
       const filial = randomUUID();
-      const abrir = (f: string) =>
-        `INSERT INTO faturamento.contingencia (tenant_id, filial_id, modalidade, motivo)
-         VALUES (plataforma.tenant_atual(), '${f}', 'svc_an', 'SEFAZ-AM sem resposta há 5 min');`;
+      const abrir = (f: string) => sqlAbrirContingencia(f, 'svc_an', A.usuario);
       const n = criarNota(filial);
       const emContingencia = `UPDATE faturamento.nota SET status = 'emitida_contingencia', tipo_emissao = 6,
           chave_acesso = '${chaveAcesso(1, n.numero, n.cnf, 6)}', c_nf = '${cnfDe(n.cnf)}', contingencia_em = now(),
@@ -1230,7 +1228,7 @@ INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protoc
       ).toMatch(/RN-FAT-05: nota emitida em contingência só recebe o retorno/);
       executar(
         banco.conexao,
-        `UPDATE faturamento.contingencia SET fim_em = now() WHERE filial_id = '${filial}';
+        `UPDATE faturamento.contingencia SET fim_em = now(), desligada_por = '${A.usuario}' WHERE filial_id = '${filial}';
          UPDATE faturamento.nota SET status = 'em_autorizacao' WHERE id = '${n.id}';`,
         WORKER_A,
       );
@@ -1248,7 +1246,7 @@ INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protoc
         falha(() =>
           executar(
             banco.conexao,
-            `UPDATE faturamento.contingencia SET fim_em = now() WHERE filial_id = '${filial}';`,
+            `UPDATE faturamento.contingencia SET fim_em = now(), desligada_por = '${A.usuario}' WHERE filial_id = '${filial}';`,
             APP_A,
           ),
         ),
