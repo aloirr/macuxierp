@@ -148,6 +148,19 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores PostgreSQL da plataforma', () => {
     expect(await app.comTenant(t1, (tx) => licencas.ler(tx, t2))).toEqual([]);
   });
 
+  it('licenças com o fuso do tenant numa consulta só (T-0042); sem licença o fuso vem; outro tenant, nada (RLS)', async () => {
+    const licencas = new LicencasPg();
+    const t3 = await criarTenant(b.admin, 'sdk-tres', []);
+    await b.admin.query("UPDATE plataforma.tenant SET fuso = 'America/Sao_Paulo' WHERE id = $1", [t3]);
+    const consultas: string[] = [];
+    const lerContando = (t: string, alvo: string) =>
+      app.comTenant(t, (tx) => licencas.lerComFuso({ consultar: <L,>(sql: string, p?: readonly unknown[]) => (consultas.push(sql), tx.consultar<L>(sql, p)) }, alvo));
+    expect(await lerContando(t1, t1)).toEqual({ licencas: [{ modulo: 'cadastros', ativo: true, valido_ate: null }], fuso: 'America/Manaus' });
+    expect(await lerContando(t3, t3)).toEqual({ licencas: [], fuso: 'America/Sao_Paulo' });
+    expect(await lerContando(t1, t3)).toEqual({ licencas: [], fuso: null });
+    expect(consultas).toHaveLength(3);
+  });
+
   it('Idempotency-Key: guarda a resposta, repete sem executar, 409 com outro pedido, isola o tenant e desfaz com a rota', async () => {
     const repo = new IdempotenciaPg();
     const agora = new Date();

@@ -4,7 +4,7 @@
  * salvo no teste do selo às 05h UTC, que fixa o instante da API.
  */
 import { randomUUID } from 'node:crypto';
-import { relogioDoSistema, type Relogio } from '@macuxierp/platform-sdk';
+import { defineModule, definirPlugin, definirRota, relogioDoSistema, type Relogio } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -142,6 +142,25 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
       instanteFixo = null;
       await b.admin.query('DELETE FROM core.aviso_a1');
       await b.admin.query('DELETE FROM core.certificado');
+    }
+  });
+
+  it('T-0042: a rota de módulo recebe o fuso do tenant (America/Sao_Paulo), lido junto com as licenças', async () => {
+    const t = await criarTenant(b.admin, 'loja-sp', ['cadastros']);
+    await b.admin.query("UPDATE plataforma.tenant SET fuso = 'America/Sao_Paulo' WHERE id = $1", [t]);
+    await inserirAdministradorDeTeste(b.admin, t, { id: randomUUID(), email: 'adm@loja-sp.teste', nome: 'Adm SP', filialIds: [] });
+    const manifesto = defineModule({ id: 'cadastros', versao: '0.1.0', descricao: 'eco do fuso', depende: ['core'], perfis: ['administrador'], publica: [], consome: [] });
+    const eco = definirPlugin(manifesto, [definirRota({ metodo: 'GET', caminho: '/fuso', acao: 'cadastros.ver', executar: async (c) => ({ corpo: { fuso: c.fuso ?? null } }) })]);
+    const { app: comEco } = await appPgDeTeste({ b, relogio, modulos: [eco] });
+    try {
+      const login = await comEco.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'loja-sp', email: 'adm@loja-sp.teste', senha: SENHA_DE_TESTE } });
+      const token = login.json<{ token_acesso: string }>().token_acesso;
+      const fuso = (bearer: string) => comEco.inject({ url: '/v1/cadastros/fuso', headers: { authorization: `Bearer ${bearer}` } });
+      expect((await fuso(token)).json()).toEqual({ fuso: 'America/Sao_Paulo' });
+      const manaus = (await entrar()).json<{ token_acesso: string }>().token_acesso;
+      expect((await fuso(manaus)).json()).toEqual({ fuso: 'America/Manaus' });
+    } finally {
+      await comEco.close();
     }
   });
 

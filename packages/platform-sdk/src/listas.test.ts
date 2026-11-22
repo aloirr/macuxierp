@@ -212,6 +212,38 @@ describe('colunas e CSV do descritor', () => {
     expect(String(r.corpo).slice(1)).toBe(`Nome\r\n'=HIPERLINK()\r\n`);
   });
 
+  describe('csvDaLista com o fuso do tenant (T-0042, regra 4)', () => {
+    const notas = definirPaginaLista({
+      id: 'notas',
+      api: '/v1/faturamento/notas',
+      item: z.object({ id: z.string(), emitida_em: z.string(), vencimento: z.string(), obs: z.string() }),
+      colunas: [
+        { id: 'emitida_em', titulo: 'Emitida em', valor: (n) => n.emitida_em },
+        { id: 'vencimento', titulo: 'Vencimento', valor: (n) => n.vencimento },
+        { id: 'obs', titulo: 'Obs', valor: (n) => n.obs },
+      ],
+      csv: { arquivo: 'notas.csv' },
+    });
+    const nota = { id: id(1), emitida_em: '2026-11-22T02:00:00Z', vencimento: '2026-11-30', obs: '21/11/2026 22:00' };
+
+    it('instante UTC sai no fuso: 2026-11-22T02:00:00Z em America/Manaus é 21/11/2026 22:00 (dia anterior)', () => {
+      expect(String(csvDaLista(notas, 'administrador', [nota], 'America/Manaus').corpo).slice(1)).toBe(
+        'Emitida em;Vencimento;Obs\r\n21/11/2026 22:00;2026-11-30;21/11/2026 22:00\r\n',
+      );
+      expect(String(csvDaLista(notas, 'administrador', [{ ...nota, emitida_em: '2026-11-22T02:00:00.000Z' }], 'America/Sao_Paulo').corpo)).toContain('21/11/2026 23:00;');
+    });
+
+    it('sem fuso, o comportamento é o de antes (ISO como veio)', () => {
+      const r = csvDaLista(notas, 'administrador', [nota]);
+      expect(r.corpo).toBe(paraCsv(colunasDoPerfil(notas, 'administrador'), [nota]));
+    });
+
+    it('só o instante ISO completo muda: data civil, texto e valor já formatado ficam como estão', () => {
+      const r = String(csvDaLista(notas, 'administrador', [{ ...nota, emitida_em: '2026-11-22T02:00' }], 'America/Manaus').corpo);
+      expect(r).toContain('2026-11-22T02:00;2026-11-30;21/11/2026 22:00');
+    });
+  });
+
   it('página sem CSV não exporta', () => {
     const p = definirPaginaLista({ id: 'perfis', api: '/v1/core/perfis', item: Cliente, colunas: [], csv: false });
     expect(() => csvDaLista(p, 'administrador', [])).toThrow(PaginaListaInvalida);

@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import type { CamposErro } from './erros';
+import { formatarDataHora } from './formatar';
 import type { Perfil } from './modulo';
 import { pode, type Acao } from './permissoes';
 import type { RespostaRota } from './rotas';
@@ -291,10 +292,29 @@ export function colunasDoPerfil<L>(pagina: { colunas: readonly ColunaLista<L>[] 
   return pagina.colunas.filter((c) => !c.exige || pode(perfil, c.exige));
 }
 
-/** CSV da lista para a rota da API: colunas do perfil, `paraCsv` e `respostaCsv` com o nome do descritor. */
-export function csvDaLista<L>(pagina: { id: string; colunas: readonly ColunaLista<L>[]; csv: { readonly arquivo: string } | false }, perfil: Perfil, linhas: readonly L[]): RespostaRota {
+/** Instante ISO 8601 completo, com `Z` ou deslocamento (como sai do banco e do `toISOString`); data civil não entra. */
+const INSTANTE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * CSV da lista para a rota da API: colunas do perfil, `paraCsv` e `respostaCsv` com o nome do descritor.
+ * `fuso` (IANA, `fusoDaRota(c)`; T-0042, regra 4): a célula que é um instante ISO completo (coluna de data e hora com
+ * o valor cru da API) sai como `formatarDataHora(iso, fuso)` ("21/11/2026 22:00"); data civil, texto e valor já
+ * formatado ficam como estão. Sem `fuso`, o CSV é o de antes (o ISO como veio).
+ */
+export function csvDaLista<L>(
+  pagina: { id: string; colunas: readonly ColunaLista<L>[]; csv: { readonly arquivo: string } | false },
+  perfil: Perfil,
+  linhas: readonly L[],
+  fuso?: string,
+): RespostaRota {
   if (!pagina.csv) throw new PaginaListaInvalida(`página de lista "${pagina.id}": sem CSV declarado`);
-  return respostaCsv(pagina.csv.arquivo, paraCsv(colunasDoPerfil(pagina, perfil), linhas));
+  const colunas = colunasDoPerfil(pagina, perfil);
+  const noFuso = fuso === undefined ? colunas : colunas.map((c) => ({ ...c, valor: (l: L) => instanteNoFuso(c.valor(l), fuso) }));
+  return respostaCsv(pagina.csv.arquivo, paraCsv(noFuso, linhas));
+}
+
+function instanteNoFuso(v: ValorCsv, fuso: string): ValorCsv {
+  return typeof v === 'string' && INSTANTE_ISO.test(v) ? formatarDataHora(v, fuso) : v;
 }
 
 // ---- Leitura de CSV (D11 da T-0026): só o genérico; layout, mapeamento e RN ficam no domain do módulo ----

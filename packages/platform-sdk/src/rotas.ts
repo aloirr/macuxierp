@@ -21,6 +21,12 @@ export interface ContextoRota {
   tx: Transacao;
   request_id: string;
   agora: Date;
+  /**
+   * Fuso IANA do tenant (`core.tenant.fuso`, ex.: `America/Sao_Paulo`), o mesmo do `/v1/auth/eu`: a apps/api sempre
+   * preenche. Opcional só para os dublês de teste dos módulos que montam o contexto à mão; leia com `fusoDaRota(c)`,
+   * que cai em `FUSO_PADRAO` ('America/Manaus') quando falta. Regra 4: data em UTC, exibição no fuso do tenant.
+   */
+  fuso?: string;
   /** Grava o evento na outbox da transação e devolve o envelope com a versão real do agregado. */
   publicar(evento: {
     nome: string;
@@ -32,6 +38,14 @@ export interface ContextoRota {
   auditar(dados: DadosAuditoria): Promise<void>;
   /** Enfileira trabalho do próprio módulo para o worker (rotas que respondem 202, D5). */
   enfileirar(pedido: Omit<PedidoTrabalho, 'tenant_id'>): Promise<{ id: string }>;
+}
+
+/** Fuso de quem não tem o do tenant (dublê de teste): o padrão do `core.tenant.fuso`. */
+export const FUSO_PADRAO = 'America/Manaus';
+
+/** Fuso do tenant da rota (`c.fuso`) ou `FUSO_PADRAO` no dublê sem fuso. */
+export function fusoDaRota(c: Pick<ContextoRota, 'fuso'>): string {
+  return c.fuso ?? FUSO_PADRAO;
 }
 
 export interface EntradaRota<TC, TQ> {

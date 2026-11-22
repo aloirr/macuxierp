@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { executarAutorizado, moduloLicenciado, modulosLicenciados, type Licenca, type Sessao } from './acesso';
+import { executarAutorizado, moduloLicenciado, modulosLicenciados, temFuso, type Licenca, type Sessao } from './acesso';
 import { ErroApi } from './erros';
 import { BancoMemoria, tenantDaTx } from './testes';
 
@@ -81,5 +81,13 @@ describe('licença por módulo (RF-CORE-03, D12)', () => {
     expect(moduloLicenciado(l, 'pedido', INSTANTE)).toBe(false);
     expect(moduloLicenciado(l, 'fiscal', INSTANTE)).toBe(false);
     expect(modulosLicenciados(l, INSTANTE)).toEqual(['core', 'cadastros']);
+  });
+});
+
+describe('fonte de licenças com o fuso do tenant (T-0042)', () => {
+  it('temFuso reconhece a fonte com lerComFuso', () => {
+    expect(temFuso({ ler: async () => [] })).toBe(false);
+    const comFuso = { ler: async () => [], lerComFuso: async () => ({ licencas: [], fuso: 'America/Manaus' }) };
+    expect(temFuso(comFuso)).toBe(true);
   });
 });
