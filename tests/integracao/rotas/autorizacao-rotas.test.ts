@@ -15,14 +15,14 @@ import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 const montar = usarApiMemoria();
 const api = (licencas?: Licenca[]) => montar({ licencas });
 /** Módulos com licença (o core é base). O padrão do apoio licencia só o cadastros; o pedido pede a própria linha. */
-const LICENCIADOS = ['cadastros', 'pedido'] as const;
+const LICENCIADOS = ['cadastros', 'pedido', 'integracao-fdv'] as const;
 type Licenciado = (typeof LICENCIADOS)[number];
 const ehLicenciado = (m: string): m is Licenciado => (LICENCIADOS as readonly string[]).includes(m);
 const ativa = (modulo: Licenca['modulo']): Licenca => ({ modulo, ativo: true, valido_ate: null });
 /** Licenças em que todos os módulos com rota estão ativos (o caminho feliz até a rota). */
 const TODAS = LICENCIADOS.map(ativa);
 
-const VALOR_PARAM: Record<string, string> = { tabela: 'ncm', cnpj: '11222333000181', cep: '69050010', chave: 'fuso' };
+const VALOR_PARAM: Record<string, string> = { tabela: 'ncm', cnpj: '11222333000181', cep: '69050010', chave: 'fuso', entidade: 'cliente' };
 const url = (modulo: string, r: RotaModulo) =>
   `/v1/${modulo}${r.caminho.replace(/:([a-z_]+)/g, (_, p: string) => VALOR_PARAM[p] ?? '9f000000-0000-4000-8000-000000000001')}`;
 
@@ -154,10 +154,10 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
     expect(declaradas.length).toBe(ROTAS.length);
   });
 
-  it('módulos montados só com o manifesto (faturamento, fiscal, integração FDV): nenhuma rota, 404 mesmo com sessão', async () => {
+  it('módulos montados só com o manifesto (faturamento, fiscal): nenhuma rota, 404 mesmo com sessão', async () => {
     const a = await api([...TODAS, ativa('faturamento'), ativa('fiscal')]);
     const semRotas = a.modulos.filter((p) => p.rotas.length === 0).map((p) => p.manifesto.id);
-    expect(semRotas).toEqual(['faturamento', 'fiscal', 'integracao-fdv']);
+    expect(semRotas).toEqual(['faturamento', 'fiscal']);
     for (const m of semRotas) {
       const r = await a.app.inject({ url: `/v1/${m}/qualquer`, headers: a.auth() });
       expect(r.statusCode, m).toBe(404);
