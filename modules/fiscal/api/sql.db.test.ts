@@ -75,7 +75,7 @@ describe.skipIf(!PG_DISPONIVEL)('leitura fiscal (PostgreSQL real)', () => {
     expect(b.get('22021000')).toMatchObject({ federal_nacional: 100000, versao: '26.2.A', fonte: 'IBPT' });
   });
   it('RN-FIS-03: o adaptador calcula de ponta a ponta no banco (CST 51 com p_dif, vTotTrib do IBPT)', async () => {
-    const calc = criarCalculoFiscal({ emitentes: { emitente: async () => ({ uf: 'AM', crt: 3, regime_pis_cofins: 'cumulativo' }) } });
+    const calc = criarCalculoFiscal({ emitentes: { emitente: async () => ({ uf: 'AM', crt: 3, regime_pis_cofins: 'cumulativo' }), producaoPropria: async () => new Set<string>() } });
     const r = await app.comTenant(A, (tx) =>
       calc.calcular(tx, {
         filial_id: 'f', data_emissao: '2026-11-21',
