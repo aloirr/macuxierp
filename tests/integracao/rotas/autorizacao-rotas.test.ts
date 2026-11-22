@@ -23,6 +23,25 @@ const referencia = await montarApiMemoria();
 const ROTAS = (['core', 'cadastros'] as const).flatMap((modulo) => referencia.plugins[modulo].rotas.map((r) => ({ modulo, r, nome: `${r.metodo} /v1/${modulo}${r.caminho}` })));
 await referencia.app.close();
 
+/**
+ * Campos de texto do formulário de cada rota multipart. O arquivo é lido antes da transação (apps/api/src/app.ts): sem
+ * um formulário completo, 400 VALIDACAO antes do tenant e da licença. POST /v1/core/certificados desde o #42 (T-0040);
+ * POST /v1/cadastros/cargas com o PR do cadastros da T-0026 (sem ele, a rota não existe e a entrada não é usada).
+ */
+const CAMPOS_MULTIPART: Record<string, Record<string, string>> = {
+  'POST /v1/core/certificados': { filial_id: FILIAL_A, senha: 'x' },
+  'POST /v1/cadastros/cargas': { modo: 'validar' },
+};
+/** Pedido de `app.inject` da rota: JSON sem corpo ou, na rota multipart, o formulário completo (um arquivo por campo). */
+function pedido(modulo: string, r: RotaModulo, headers: Record<string, string>) {
+  if (!r.multipart) return { method: r.metodo, url: url(modulo, r), headers };
+  const nome = `${r.metodo} /v1/${modulo}${r.caminho}`;
+  const campos = CAMPOS_MULTIPART[nome];
+  if (!campos) throw new Error(`${nome}: rota multipart nova sem campos em CAMPOS_MULTIPART`);
+  const f = formulario(campos, Object.fromEntries(r.multipart.arquivos.map((x) => [x.campo, Buffer.from('PPPP')])));
+  return { method: r.metodo, url: url(modulo, r), payload: f.payload, headers: { ...f.headers, ...headers } };
+}
+
 const semPermissao = (r: RotaModulo) => PERFIS.find((p) => !(PERMISSOES[r.acao] as readonly string[]).includes(p));
 const comPermissao = (r: RotaModulo) => PERFIS.find((p) => (PERMISSOES[r.acao] as readonly string[]).includes(p))!;
 
@@ -73,12 +92,8 @@ describe.each(ROTAS)('$nome', ({ modulo, r }) => {
   it('RN-CORE-02: o tenant da transação é o do token (A abre A, B abre B)', async () => {
     const a = await api();
     const p = comPermissao(r);
-    // Rota multipart (POST /v1/core/certificados, #42): o arquivo é lido antes da transação (apps/api/src/app.ts), então
-    // o pedido leva um formulário completo; sem ele, 400 VALIDACAO sem abrir transação.
-    const f = r.multipart ? formulario({ filial_id: FILIAL_A, senha: 'x' }, Object.fromEntries(r.multipart.arquivos.map((x) => [x.campo, Buffer.from('PPPP')]))) : undefined;
-    const pedido = (tenant: string) => ({ method: r.metodo, url: url(modulo, r), ...(f ? { payload: f.payload } : {}), headers: { ...f?.headers, ...a.auth(p, tenant) } });
-    await a.app.inject(pedido(TENANT_A));
-    await a.app.inject(pedido(TENANT_B));
+    await a.app.inject(pedido(modulo, r, a.auth(p, TENANT_A)));
+    await a.app.inject(pedido(modulo, r, a.auth(p, TENANT_B)));
     expect(a.banco.aberturas).toEqual([TENANT_A, TENANT_B]);
   });
 
@@ -90,7 +105,7 @@ describe.each(ROTAS)('$nome', ({ modulo, r }) => {
       ['licença de outro módulo', [{ modulo: 'pedido', ativo: true, valido_ate: null }] as Licenca[]],
     ])('RN-CORE-02: %s = 403 MODULO_INATIVO, sem executar a rota', async (_n, licencas) => {
       const a = await api(licencas);
-      const res = await a.app.inject({ method: r.metodo, url: url(modulo, r), headers: a.auth(comPermissao(r)) });
+      const res = await a.app.inject(pedido(modulo, r, a.auth(comPermissao(r))));
       expect(res.statusCode).toBe(403);
       expect(res.json()).toMatchObject({ codigo: 'MODULO_INATIVO' });
       expect(a.outbox.eventos).toEqual([]);
