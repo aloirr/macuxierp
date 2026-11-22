@@ -80,14 +80,10 @@ chave_32_ok() { # nome
   return 1
 }
 chave_32_ok MACUXIERP_CHAVE_A1 || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_A1 válida (32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar)" >&2; exit 1; }
-# Conector do Hub (opcionais, env.modelo): vazia = laço de agenda do worker desligado; presente e inválida derrubaria o worker.
-if [ -n "$(valor_env .env MACUXIERP_CHAVE_INTEGRACAO)" ]; then
-  chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env com MACUXIERP_CHAVE_INTEGRACAO inválida (vazia ou 32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar)" >&2; exit 1; }
-fi
-# MACUXIERP_HUB_URL_PRODUCAO fica vazia: ver env.modelo.
-if [ -n "$(valor_env .env MACUXIERP_HUB_URL_PRODUCAO)" ]; then
-  echo "[implantar] $PASTA/.env com MACUXIERP_HUB_URL_PRODUCAO preenchida: deixe vazia por ora (env.modelo; o worker não subiria)" >&2; exit 1
-fi
+chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_INTEGRACAO válida (32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar ou estiver vazia; obrigatória desde a v0.2.0, ver T-0002)" >&2; exit 1; }
+for v in MACUXIERP_HUB_URL_PRODUCAO MACUXIERP_HUB_URL_TESTE; do
+  [ -z "$(valor_env .env "$v")" ] || echo "::warning::$PASTA/.env com $v: ignorada (a URL do Hub é fixa no compose.yml); apague a linha"
+done
 for f in gerados.env banco.env admin.env; do
   [ -s "$f" ] || { echo "[implantar] $PASTA/$f ausente: o preparar-vm.sh grava antes (gerados.env; banco.env e admin.env copiados do /opt/macuxi do FDV)" >&2; exit 1; }
 done

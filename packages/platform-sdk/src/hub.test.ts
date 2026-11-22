@@ -1,7 +1,7 @@
 /** Porta do Hub (T-0009 §6, contrato C-9): cliente HTTP com `fetch` dublê. A curva de espera é do domain do `integracao-fdv`. */
 import { describe, expect, it } from 'vitest';
 import * as sdk from './index';
-import { criarClienteHub, ErroClienteHub, LIMITE_RESPOSTA_HUB_BYTES, retryAfterEmMs, type CredencialHub, type PedidoHub, type RespostaHub } from './hub';
+import { criarClienteHub, ErroClienteHub, LIMITE_RESPOSTA_HUB_BYTES, retryAfterEmMs, validarUrlHub, type CredencialHub, type PedidoHub, type RespostaHub } from './hub';
 
 const CHAVE = 'mfdv_SEGREDO-de-teste-0123456789abcdef';
 const CRED: CredencialHub = { conectorId: 'conector-erp-1', chave: CHAVE, ambiente: 'teste' };
@@ -149,6 +149,14 @@ describe('criarClienteHub', () => {
     for (const url of ['http://hub.exemplo.com.br', 'https://u:s@hub.exemplo.com.br', 'https://hub.exemplo.com.br/?a=1', 'nada']) {
       expect(() => criarClienteHub({ urls: { ...URLS, producao: url }, versaoErp: '0.1.0' })).toThrow(ErroClienteHub);
     }
+  });
+
+  it('base com ou sem o /integracao/v1 final chama o mesmo endereço (sem prefixo dobrado)', () => {
+    for (const url of ['https://api.exemplo.com.br', 'https://api.exemplo.com.br/', 'https://api.exemplo.com.br/integracao/v1', 'https://api.exemplo.com.br/integracao/v1/']) {
+      expect(validarUrlHub(url)).toBe('https://api.exemplo.com.br');
+    }
+    // prefixo próprio antes do /integracao/v1 continua (proxy com caminho)
+    expect(validarUrlHub('https://h.exemplo.com.br/fdv/integracao/v1')).toBe('https://h.exemplo.com.br/fdv');
   });
 
   it('5xx e 429 são retentáveis, com Retry-After e o código do corpo', async () => {

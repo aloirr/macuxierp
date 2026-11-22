@@ -17,9 +17,11 @@ import { ArmazenamentoMemoria, relogioDoSistema, type Banco, type Transacao } fr
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { pinoEmMemoria } from './apoio-teste';
-import type { EstadoEnvioFdv } from './envio-fdv';
+import { configurarCredenciais } from './credencial';
+import { configurarEnvioFdv, type EstadoEnvioFdv } from './envio-fdv';
+import { configurarHub } from './hub';
 import { EXPORTADORES, montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
-import { montarPedidosFdv, type EstadoRecebimentoFdv } from './pedidos-fdv';
+import { conferirRecebimentoFdv, configurarRecebimentoFdv, montarPedidosFdv, type EstadoRecebimentoFdv } from './pedidos-fdv';
 
 const T1 = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const CERT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -97,6 +99,22 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
       [AGENDA_BUSCA_PEDIDOS_ID, 'integracao-fdv'],
       [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
     ]);
+  });
+
+  it('trava mantida na v0.2.0 (R-20261122-061838): o ambiente do compose.yml liga o laço de agenda (URLs e chave) e não registra nenhuma agenda', () => {
+    // espelho do serviço macuxierp-worker do compose.yml mais a chave do .env (a prova com o laço e o banco: worker.db.test.ts)
+    const env = {
+      MACUXIERP_HUB_URL_PRODUCAO: 'https://api.macuxifdv.com.br/integracao/v1',
+      MACUXIERP_HUB_URL_TESTE: 'https://hub-teste.invalid/integracao/v1',
+      MACUXIERP_FDV_RECEBIMENTO: 'desligado',
+      MACUXIERP_FDV_ENVIO: 'desligado',
+      MACUXIERP_CHAVE_INTEGRACAO: 'ab'.repeat(32),
+    };
+    expect(configurarHub(env, '0.2.0')).not.toBeNull();
+    expect(configurarCredenciais(env)).not.toBeNull();
+    const recebimento = configurarRecebimentoFdv(env);
+    expect(() => conferirRecebimentoFdv(recebimento, [])).not.toThrow();
+    expect(agendas(recebimento, configurarEnvioFdv(env))).toEqual([]);
   });
 
   it('MACUXIERP_FDV_ENVIO=ligado: a agenda do conector entra', () => {

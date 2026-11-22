@@ -10,7 +10,7 @@ import { Writable } from 'node:stream';
 import { decifrarCampo } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { appPgDeTeste, inserirAdministradorDeTeste, SENHA_DE_TESTE } from './apoio-teste';
 
 const LICENCAS = ['cadastros', 'pedido', 'integracao-fdv'];
@@ -86,5 +86,32 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV montada na API: PUT /credencia
     const { rows } = await b.admin.query('SELECT count(*)::int AS n FROM integracao_fdv.credencial WHERE tenant_id = $1', [tenantSem]);
     expect(rows[0].n).toBe(0);
     expect(linhas.join('')).not.toContain(chaveConector);
+  });
+
+  it('trava mantida na v0.2.0 (R-20261122-061838): PUT /credencial e "Testar conexão" só gravam no banco, sem nenhum fetch (Hub ou outro)', async () => {
+    const tenant = await criarTenant(b.admin, 'loja-trava', LICENCAS);
+    await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@loja-trava.teste', nome: 'Administradora', filialIds: [] });
+    const auth = await token(comChave, 'loja-trava');
+    const espiao = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      throw new Error('a API não pode chamar a rede');
+    });
+    try {
+      const put = await comChave.inject({ method: 'PUT', url: '/v1/integracao-fdv/credencial', headers: { authorization: auth }, payload: { ...corpo(), ambiente: 'producao' } });
+      expect(put.statusCode).toBe(201);
+      const antes = await b.admin.query('SELECT proximo_sinal_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [tenant]);
+      const testar = await comChave.inject({ method: 'POST', url: '/v1/integracao-fdv/credencial/testar', headers: { authorization: auth } });
+      expect(testar.statusCode).toBe(202);
+      const { pedido_em } = testar.json<{ aceito: boolean; pedido_em: string }>();
+      // "Testar conexão" só antecipa o sinal no banco: quem o manda é a agenda do conector do worker (desligada pela trava)
+      const depois = await b.admin.query('SELECT proximo_sinal_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [tenant]);
+      expect(depois.rows).toHaveLength(1);
+      expect(new Date(depois.rows[0].proximo_sinal_em).getTime()).toBeLessThanOrEqual(new Date(pedido_em).getTime());
+      expect(new Date(depois.rows[0].proximo_sinal_em).getTime()).toBeLessThanOrEqual(new Date(antes.rows[0].proximo_sinal_em).getTime());
+      const monitor = await comChave.inject({ method: 'GET', url: '/v1/integracao-fdv/monitor', headers: { authorization: auth } });
+      expect(monitor.statusCode).toBe(200);
+      expect(espiao).not.toHaveBeenCalled();
+    } finally {
+      espiao.mockRestore();
+    }
   });
 });
