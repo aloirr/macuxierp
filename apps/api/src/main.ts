@@ -15,7 +15,7 @@ const banco = new BancoPg(pool);
 await banco.conferirPapel('macuxierp_app');
 
 const log = pino({ level: 'info', base: { servico: 'macuxierp-api' } });
-const app = await criarApp(montarDependenciasProducao({ banco, chaveA1: cfg.chaveA1, config: cfg, log }));
+const app = await criarApp(montarDependenciasProducao({ banco, chaveA1: cfg.chaveA1, chaveIntegracao: cfg.chaveIntegracao, config: cfg, log }));
 await app.listen({ port: cfg.porta, host: cfg.host });
 
 for (const sinal of ['SIGTERM', 'SIGINT'] as const) {

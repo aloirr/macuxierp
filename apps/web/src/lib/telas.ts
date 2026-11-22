@@ -1,8 +1,9 @@
 /** Registro das telas por rota da página (mesma chave de `PaginaRegistrada.rota`). Módulo novo soma o adaptador dele aqui. */
 import type { AcaoVista, TelaDescrita, TelaDetalhe, TelaFormulario } from './descritor/tipos';
+import { TELAS_INTEGRACAO_FDV } from './telas/integracao-fdv';
 import { TELAS_PEDIDO } from './telas/pedido';
 
-const TELAS: Readonly<Record<string, TelaDescrita>> = { ...TELAS_PEDIDO };
+const TELAS: Readonly<Record<string, TelaDescrita>> = { ...TELAS_PEDIDO, ...TELAS_INTEGRACAO_FDV };
 
 export function telaDaRota(rotaDaPagina: string): TelaDescrita | undefined {
   return TELAS[rotaDaPagina];

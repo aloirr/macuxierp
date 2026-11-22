@@ -24,6 +24,19 @@ export function lerChaveMestra(nomeVar: string, valor: string | undefined): Buff
   return bytes;
 }
 
+/** Variável da chave mestra das credenciais do conector do Hub (T-0009 §6): versão 1. */
+export const VAR_CHAVE_INTEGRACAO = 'MACUXIERP_CHAVE_INTEGRACAO';
+
+/**
+ * `MACUXIERP_CHAVE_INTEGRACAO` do ambiente, a mesma regra no `apps/api` e no `apps/worker` (T-0011): ausente ou em branco =
+ * `null` (a API sobe e o `PUT /credencial` responde 503; o worker não liga o laço do conector); presente e inválida =
+ * `ErroCifra` que derruba a partida citando só o nome da variável.
+ */
+export function chaveIntegracaoDoAmbiente(env: Readonly<Record<string, string | undefined>>): Buffer | null {
+  const bruto = env[VAR_CHAVE_INTEGRACAO];
+  return bruto?.trim() ? lerChaveMestra(VAR_CHAVE_INTEGRACAO, bruto) : null;
+}
+
 function conferirChave(chave: Buffer): void {
   if (!Buffer.isBuffer(chave) || chave.length !== 32) throw new ErroCifra('cifra: chave inválida');
 }

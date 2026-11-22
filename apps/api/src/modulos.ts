@@ -14,7 +14,7 @@ import {
 } from '@macuxierp/core/api';
 import { manifest as faturamento } from '@macuxierp/faturamento/manifest';
 import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
-import { manifest as integracaoFdv } from '@macuxierp/integracao-fdv/manifest';
+import { criarPluginIntegracaoFdv, type DependenciasRotas as DependenciasIntegracaoFdv } from '@macuxierp/integracao-fdv/api';
 import { criarPluginPedido, dependenciasDeProducao as dependenciasPedido, type Dependencias as DependenciasPedido, type LogPedido } from '@macuxierp/pedido/api';
 import { armazenamentoIndisponivel, definirPlugin, MODULOS, relogioDoSistema, type Banco, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
@@ -52,7 +52,7 @@ export function registrarModulos(entradas: readonly EntradaModulo[]): readonly P
 }
 
 /** Módulos ainda sem rotas: só o manifesto (menus do `/eu`). */
-const SEM_ROTAS: readonly ManifestoModulo[] = [fiscal, faturamento, integracaoFdv];
+const SEM_ROTAS: readonly ManifestoModulo[] = [fiscal, faturamento];
 
 /** A1 válido da filial para o cadastros (consulta de IE, RN-CORE-06), pela porta pública do core, na transação da rota. */
 export function certificadosDoCore(repo: RepositorioCore): PortaCertificados {
@@ -73,6 +73,8 @@ export interface DependenciasModulos {
    * autorização até a F4) sobre a `criarConsultaParaPedido` do cadastros com os mesmos repositórios do cadastros.
    */
   pedido?: Partial<DependenciasPedido>;
+  /** Rotas do BKO do conector (T-0011). Padrão: sem chave mestra (ver `EntradaProducao.chaveIntegracao`). */
+  integracaoFdv?: DependenciasIntegracaoFdv;
   /** Log dos módulos que recebem um (pedido): o pino da API. Só ids e códigos (regra 8). Sem ele, o módulo não loga. */
   log?: LogPedido;
 }
@@ -87,7 +89,8 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
     ...dependenciasPedido(criarConsultaParaPedido(d.cadastros?.repositorios ?? repositoriosSql), d.log ? { log: d.log } : {}),
     ...d.pedido,
   });
-  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, ...SEM_ROTAS]);
+  const integracaoFdv = criarPluginIntegracaoFdv(d.integracaoFdv ?? { chaveMestra: null });
+  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, integracaoFdv, ...SEM_ROTAS]);
 }
 
 export interface EntradaProducao {
@@ -95,6 +98,11 @@ export interface EntradaProducao {
   banco: Banco;
   /** Chave mestra do A1 (ADR 0005), lida do secret do servidor; nunca vai para log. */
   chaveA1: Buffer;
+  /**
+   * Chave mestra das credenciais do conector (`MACUXIERP_CHAVE_INTEGRACAO`, versão 1), lida pelo `lerConfigApi`; nunca vai para
+   * log. `null` ou ausente = variável não configurada: só o `PUT /v1/integracao-fdv/credencial` fica indisponível (503).
+   */
+  chaveIntegracao?: Buffer | null;
   config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro'>;
   /** Pino da API para o log dos módulos (o `main.ts` cria; os testes passam um com destino em memória). */
   log?: LogPedido;
@@ -103,7 +111,8 @@ export interface EntradaProducao {
 /**
  * Dependências de produção da API (T-0042, achado A-06 da T-0008): adaptadores PostgreSQL da plataforma, auth em SQL,
  * argon2id, relógio do sistema, selo do A1 do core e os módulos com os adaptadores reais (`RepositorioCoreSql`,
- * `LeitorPfxTls`, armazenamento indisponível até a T-0024; cadastros e pedido com os padrões do `montarModulos`). O `main.ts` e
+ * `LeitorPfxTls`, armazenamento indisponível até a T-0024; cadastros e pedido com os padrões do `montarModulos`; integração FDV
+ * com a chave do conector, T-0011). O `main.ts` e
  * os testes de ponta a ponta usam esta mesma função: o que muda num muda no outro.
  */
 export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp {
@@ -122,6 +131,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     avisosA1: avisosA1MaisRecentes,
     modulos: montarModulos({
       core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
+      integracaoFdv: { chaveMestra: e.chaveIntegracao ?? null },
       ...(e.log ? { log: e.log } : {}),
     }),
   };
