@@ -5,7 +5,7 @@
  */
 import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type {
-  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto, SaldoEstoque, TabelaPreco,
+  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemComChave, PrecoItemConsulta, PrecoItemLista, Produto, SaldoEstoque, TabelaPreco,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import { CLASSE_FORMA } from '../contracts';
@@ -212,7 +212,7 @@ const mapaCliente: Mapa<Cliente, ClienteDados> = {
 
 const mapaEndereco: Mapa<EnderecoClienteItem, EnderecoCliente> & { pai: string } = {
   tabela: 'cadastros.cliente_endereco', pai: 'cliente_id', colunas: ['tipo', ...ENDERECO], busca: [],
-  paraLinha: (d) => ({ ...d }), deLinha: (l) => pegar(l, ['id', 'tipo', ...ENDERECO]) as unknown as EnderecoClienteItem,
+  paraLinha: (d) => ({ ...d }), deLinha: (l) => pegar(l, ['id', 'external_id', 'tipo', ...ENDERECO]) as unknown as EnderecoClienteItem,
 };
 const mapaContato: Mapa<ContatoItem, Contato> & { pai: string } = {
   tabela: 'cadastros.cliente_contato', pai: 'cliente_id', colunas: ['nome', 'email', 'telefone', 'papel'], busca: [],
@@ -220,7 +220,7 @@ const mapaContato: Mapa<ContatoItem, Contato> & { pai: string } = {
 };
 const mapaUnidade: Mapa<UnidadeItem, UnidadeDados> & { pai: string } = {
   tabela: 'cadastros.produto_unidade', pai: 'produto_id', colunas: ['unidade', 'ean'], expressoes: [N('fator')], busca: [],
-  paraLinha: (d) => ({ ...d }), deLinha: (l) => pegar(l, ['id', 'unidade', 'fator', 'ean']) as unknown as UnidadeItem,
+  paraLinha: (d) => ({ ...d }), deLinha: (l) => pegar(l, ['id', 'external_id', 'unidade', 'fator', 'ean']) as unknown as UnidadeItem,
 };
 
 class RepoClientesSql extends RepoTabela<Cliente, ClienteDados> {
@@ -284,7 +284,7 @@ export function repositoriosSql(tx: Transacao): Repositorios {
         if (q.cursor) w.push(`id > $${p.push(q.cursor)}`);
         const linhas = await executar<PrecoItemLista>(
           tx,
-          `SELECT id, tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')} ORDER BY id LIMIT $${p.push(q.limite + 1)}`,
+          `SELECT id, external_id, tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')} ORDER BY id LIMIT $${p.push(q.limite + 1)}`,
           p,
         );
         return paginar(linhas, q.limite);
@@ -315,7 +315,7 @@ export function repositoriosSql(tx: Transacao): Repositorios {
              WHERE cadastros.tabela_preco_item.preco_centavos IS DISTINCT FROM EXCLUDED.preco_centavos
                 OR cadastros.tabela_preco_item.desconto_maximo_bp IS DISTINCT FROM EXCLUDED.desconto_maximo_bp
                 OR cadastros.tabela_preco_item.deleted_at IS NOT NULL
-           RETURNING tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp`,
+           RETURNING tabela_preco_id, filial_id, produto_id, external_id, ${N('preco_centavos')}, desconto_maximo_bp`,
           [tabelaId, itens.map((i) => i.filial_id), itens.map((i) => i.produto_id), itens.map((i) => i.preco_centavos), itens.map((i) => i.desconto_maximo_bp)],
         ),
     },
@@ -512,10 +512,10 @@ function cargaSql(tx: Transacao): RepoCarga {
          ON CONFLICT (tenant_id, tabela_preco_id, filial_id, produto_id) DO UPDATE
            SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, external_id = EXCLUDED.external_id,
                deleted_at = CASE WHEN $7::boolean THEN COALESCE(cadastros.tabela_preco_item.deleted_at, now()) END
-         RETURNING tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp`,
+         RETURNING tabela_preco_id, filial_id, produto_id, external_id, ${N('preco_centavos')}, desconto_maximo_bp`,
         [p.tabelaId, p.filialId, p.produtoId, p.preco_centavos, p.desconto_maximo_bp, p.externalId, p.inativo],
       );
-      return r[0] as PrecoItem;
+      return r[0] as PrecoItemComChave;
     },
     async comSavepoint(fn) {
       await tx.consultar('SAVEPOINT carga_linha');

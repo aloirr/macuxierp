@@ -95,7 +95,7 @@ export const ClienteAtualizacao = ClienteDados.omit({ enderecos: true }).partial
 export type ClienteAtualizacao = z.infer<typeof ClienteAtualizacao>;
 export const Cliente = ClienteDados.extend({ id: Uuid, inativo: z.boolean().default(false) });
 export type Cliente = z.infer<typeof Cliente>;
-export const EnderecoClienteItem = EnderecoCliente.extend({ id: Uuid });
+export const EnderecoClienteItem = EnderecoCliente.extend({ id: Uuid, external_id: IdExterno });
 export type EnderecoClienteItem = z.infer<typeof EnderecoClienteItem>;
 export const ContatoItem = Contato.extend({ id: Uuid });
 export type ContatoItem = z.infer<typeof ContatoItem>;
@@ -129,7 +129,7 @@ export const UnidadeDados = z.object({
   ean: Ean.nullable().default(null),
 });
 export type UnidadeDados = z.infer<typeof UnidadeDados>;
-export const UnidadeItem = UnidadeDados.extend({ id: Uuid });
+export const UnidadeItem = UnidadeDados.extend({ id: Uuid, external_id: IdExterno });
 export type UnidadeItem = z.infer<typeof UnidadeItem>;
 
 // ---- Tabela de preço (RF-CAD-05) ----
@@ -154,8 +154,11 @@ export const PrecoItem = z.object({
   desconto_maximo_bp: z.number().int().min(0).max(10_000),
 });
 export type PrecoItem = z.infer<typeof PrecoItem>;
+/** Item de preço com a chave do kit (ADR 0010): saída da leitura e do evento; a entrada do PUT não a aceita. */
+export const PrecoItemComChave = PrecoItem.extend({ external_id: IdExterno });
+export type PrecoItemComChave = z.infer<typeof PrecoItemComChave>;
 /** Item na lista paginada: o `id` da linha é o cursor. */
-export const PrecoItemLista = PrecoItem.extend({ id: Uuid });
+export const PrecoItemLista = PrecoItem.extend({ id: Uuid, external_id: IdExterno });
 export type PrecoItemLista = z.infer<typeof PrecoItemLista>;
 /** `GET /tabelas-preco/:id/itens`. */
 export const PrecoItemConsulta = ConsultaPaginada.extend({ filial_id: Uuid.optional(), produto_id: Uuid.optional() });
@@ -495,10 +498,12 @@ export const EVENTOS = {
   /** C-2: publicado na criação e na alteração da tabela; `agregado_id` = id da tabela. */
   'cadastros.tabela_preco.alterada@1': TabelaPreco.merge(Inativo).merge(ExternalIdAnterior),
   'cadastros.produto.alterado@1': Produto.merge(Inativo).extend({ unidades: z.array(UnidadeItem) }).merge(ExternalIdAnterior),
+  /** C-10 (ADR 0010): `external_id` do item (chave do kit) e `external_id_anterior` na adoção; aditivos no @1. */
   'cadastros.preco.alterado@1': PrecoItem.merge(Inativo).extend({
     vigencia_inicio: z.string(),
     vigencia_fim: z.string().nullable(),
-  }),
+    external_id: IdExterno,
+  }).merge(ExternalIdAnterior),
   'cadastros.estoque.alterado@1': SaldoEstoque,
   'cadastros.condicao_pagamento.alterada@1': CondicaoPagamento.merge(Inativo).merge(ExternalIdAnterior),
   'cadastros.vendedor.alterado@1': Vendedor.merge(Inativo).merge(ExternalIdAnterior),
