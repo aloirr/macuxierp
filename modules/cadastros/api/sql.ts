@@ -368,9 +368,9 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     async gravarMovimento(m: MovimentoGravado, saldoNovo: number) {
       const r = await executar<{ id: string }>(
         tx,
-        `INSERT INTO cadastros.estoque_movimento (tenant_id, filial_id, produto_id, tipo, quantidade, motivo, usuario_id, external_id)
-         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        [m.filial_id, m.produto_id, m.tipo, m.quantidade, m.motivo, m.usuario_id, m.external_id ?? null],
+        `INSERT INTO cadastros.estoque_movimento (tenant_id, filial_id, produto_id, tipo, quantidade, motivo, usuario_id, external_id, origem_tipo, origem_id)
+         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [m.filial_id, m.produto_id, m.tipo, m.quantidade, m.motivo, m.usuario_id, m.external_id ?? null, m.origem_tipo ?? null, m.origem_id ?? null],
       );
       await executar(tx, 'UPDATE cadastros.estoque_saldo SET quantidade = $3 WHERE filial_id = $1 AND produto_id = $2', [m.filial_id, m.produto_id, saldoNovo]);
       return { id: r[0]?.id as string };
