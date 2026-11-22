@@ -1,22 +1,11 @@
-import { violacao, type Violacao } from './violacao';
+import { valorItem } from '@macuxierp/platform-sdk/dinheiro';
+import { violacao, type Violacao } from '@macuxierp/platform-sdk/erros';
 
-const DEZ4 = 10_000n;
+export { valorItem };
 
-/**
- * Valor do item: arred(qtd4 × preço_unitário / 10⁴), meio para cima (RN-CORE-03, como o vProd da NF-e), em BigInt.
- * Provisório até o valorItem do SDK (T-0013 §9).
- */
-export function valorItem(qtd4: number, precoCentavos: number): number {
-  const bruto = BigInt(qtd4) * BigInt(precoCentavos);
-  const q = bruto / DEZ4;
-  const r = bruto % DEZ4;
-  const valor = Number(r * 2n >= DEZ4 ? q + 1n : q);
-  if (!Number.isSafeInteger(valor)) throw new RangeError('Valor do item fora do intervalo inteiro seguro');
-  return valor;
-}
 
 /** Erro de entrada incoerente (não é pendência): a API devolve 422 `RN-PED-03` no campo indicado. */
-export class EntradaIncoerente extends Error {
+class EntradaIncoerente extends Error {
   constructor(public readonly violacao: Violacao) {
     super(violacao.mensagem);
   }

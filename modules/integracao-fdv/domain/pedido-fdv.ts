@@ -1,33 +1,35 @@
 /**
  * Tradução do `PedidoParaErp` do Hub (já lido pelo `PedidoParaErpLido`) para a entrada da porta de recebimento do
- * pedido (T-0013 §5.2). Função pura: o que depende do espelho (cliente, vendedor, produto, filial padrão, condição) chega
- * pronto em `Espelho`. RN-PED-01: `pedido_uuid` vira o `external_id` do pedido. Valores em centavos e Qtd4 (inteiros).
+ * pedido (T-0013 §5.2). Função pura: as chaves do Hub já resolvidas para UUID do ERP pela porta `ResolvedorChaveErp`
+ * (ADR 0010, item 2) chegam em `ChavesResolvidas`; chave desconhecida rejeita com `*_inexistente`. RN-PED-01: `pedido_uuid` vira o `external_id` do pedido. Valores em centavos e Qtd4 (inteiros).
  */
 import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
-import type { PedidoParaErpLido } from '../contracts';
+import type { EntidadeChaveErp, PedidoParaErpLido } from '../contracts';
 
 export type { PedidoFdvEntrada };
 /** Código de recusa da porta de recebimento (contrato do pedido, RD-0241). */
 export type CodigoRecusaRecebimento = Extract<ResultadoRecebimentoFdv, { resultado: 'recusado' }>['codigo'];
 
-/** Ids que o espelho confirmou (RN-INF-05: só o que o ERP publicou entra) e as referências para filial e condição. */
-export interface Espelho {
-  clientes: ReadonlySet<string>;
-  vendedores: ReadonlySet<string>;
-  produtos: ReadonlySet<string>;
+/** Chave do Hub -> UUID do ERP, por entidade, já resolvidos pela porta. Chave ausente no mapa = desconhecida. */
+export interface ChavesResolvidas {
+  cliente: ReadonlyMap<string, string>;
+  vendedor: ReadonlyMap<string, string>;
+  filial: ReadonlyMap<string, string>;
+  produto: ReadonlyMap<string, string>;
+  prazo_pagamento: ReadonlyMap<string, string>;
+  /** Endereço de entrega `origem = erp` achado pela porta; chave não achada fica fora (o retrato segue, sem rejeitar). */
+  cliente_endereco: ReadonlyMap<string, string>;
+  /** `referencia` `filial_padrao`: vale quando o pedido não traz filial (ADR 0040 do FDV). */
   filialPadraoId: string | null;
-  /** `prazo_pagamento.codigo` do ERP -> id da condição. */
-  condicaoPorCodigo: ReadonlyMap<string, string>;
-  /** Ids de condição conhecidos no espelho (para validar `prazo_external_id`). */
-  condicoes: ReadonlySet<string>;
 }
 
 export type CodigoRejeicaoPedido =
-  | 'cliente_desconhecido'
-  | 'vendedor_desconhecido'
-  | 'produto_desconhecido'
+  | 'cliente_inexistente'
+  | 'vendedor_inexistente'
+  | 'filial_inexistente'
+  | 'produto_inexistente'
+  | 'condicao_inexistente'
   | 'sequencia_repetida'
-  | 'filial_desconhecida'
   | 'quantidade_invalida'
   | 'pedido_fora_do_contrato';
 
@@ -48,11 +50,21 @@ function opcionalQtd4(valor: number | string | null | undefined): number | null 
   return valor === null || valor === undefined ? null : paraQtd4(valor);
 }
 
-/** Chaves da condição de pagamento do pedido: id do prazo no espelho e código do ERP (RN-INF-05). */
-export function chavesDaCondicao(p: PedidoParaErpLido): { prazoId: string | null; codigoErp: string | null } {
+/** Endereço de entrega escolhido no cadastro do ERP (`origem = 'erp'`) com a chave do Hub; o digitado não tem chave. */
+function chaveDoEnderecoErp(p: PedidoParaErpLido): string | null {
+  const e = p.endereco_entrega;
+  return e && e.origem === 'erp' && typeof e.external_id === 'string' && e.external_id.length > 0 ? e.external_id : null;
+}
+
+/** Chaves do pedido que a porta resolve, por entidade, sem repetição (uma consulta por entidade, RN-INF-05). */
+export function chavesParaResolver(p: PedidoParaErpLido): Record<EntidadeChaveErp, string[]> {
   return {
-    prazoId: p.pagamento?.prazo_external_id ?? null,
-    codigoErp: p.pagamento?.condicao_pagamento_erp ?? p.condicao_pagamento_erp ?? null,
+    cliente: [p.cliente_external_id],
+    vendedor: [p.vendedor_external_id],
+    filial: p.filial?.external_id ? [p.filial.external_id] : [],
+    produto: [...new Set(p.itens.map((i) => i.produto_external_id))],
+    prazo_pagamento: p.pagamento?.prazo_external_id ? [p.pagamento.prazo_external_id] : [],
+    cliente_endereco: chaveDoEnderecoErp(p) ? [chaveDoEnderecoErp(p)!] : [],
   };
 }
 
@@ -64,23 +76,27 @@ function traduzirFrete(frete: Record<string, unknown> | null | undefined): Pedid
   return { modalidade, transportadora: t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, unknown>) : null };
 }
 
-export function traduzirPedido(p: PedidoParaErpLido, espelho: Espelho): ResultadoTraducao {
-  if (!espelho.clientes.has(p.cliente_external_id)) return { ok: false, codigo: 'cliente_desconhecido' };
-  if (!espelho.vendedores.has(p.vendedor_external_id)) return { ok: false, codigo: 'vendedor_desconhecido' };
-  const filial = p.filial?.external_id ?? espelho.filialPadraoId;
-  if (!filial) return { ok: false, codigo: 'filial_desconhecida' };
+export function traduzirPedido(p: PedidoParaErpLido, chaves: ChavesResolvidas): ResultadoTraducao {
+  const cliente = chaves.cliente.get(p.cliente_external_id);
+  if (!cliente) return { ok: false, codigo: 'cliente_inexistente' };
+  const vendedor = chaves.vendedor.get(p.vendedor_external_id);
+  if (!vendedor) return { ok: false, codigo: 'vendedor_inexistente' };
+  const filialChave = p.filial?.external_id;
+  const filial = filialChave ? chaves.filial.get(filialChave) : chaves.filialPadraoId;
+  if (!filial) return { ok: false, codigo: 'filial_inexistente' };
 
   const vistas = new Set<number>();
   const itens: PedidoFdvEntrada['itens'] = [];
   for (const i of p.itens) {
     if (vistas.has(i.sequencia)) return { ok: false, codigo: 'sequencia_repetida' };
     vistas.add(i.sequencia);
-    if (!espelho.produtos.has(i.produto_external_id)) return { ok: false, codigo: 'produto_desconhecido' };
+    const produto = chaves.produto.get(i.produto_external_id);
+    if (!produto) return { ok: false, codigo: 'produto_inexistente' };
     const quantidade = paraQtd4(i.quantidade);
     if (quantidade === null) return { ok: false, codigo: 'quantidade_invalida' };
     itens.push({
       sequencia: i.sequencia,
-      produto_id: i.produto_external_id,
+      produto_id: produto,
       quantidade,
       unidade_venda: i.unidade ?? null,
       fator_venda: opcionalQtd4(i.fator),
@@ -92,23 +108,31 @@ export function traduzirPedido(p: PedidoParaErpLido, espelho: Espelho): Resultad
     });
   }
 
-  const { prazoId: prazo, codigoErp } = chavesDaCondicao(p);
-  const condicao =
-    prazo && espelho.condicoes.has(prazo) ? prazo : codigoErp ? (espelho.condicaoPorCodigo.get(codigoErp) ?? null) : null;
+  // Sem prazo no pedido: `null`, e a porta `RecebedorPedidoFdv` recusa com `condicao_ausente`. Nunca procura por código.
+  const prazoChave = p.pagamento?.prazo_external_id;
+  let condicao: string | null = null;
+  if (prazoChave) {
+    condicao = chaves.prazo_pagamento.get(prazoChave) ?? null;
+    if (!condicao) return { ok: false, codigo: 'condicao_inexistente' };
+  }
+
+  // Endereço não achado: `endereco_id` null, retrato mantido, sem rejeitar (T-0013 §5.2).
+  const chaveEndereco = chaveDoEnderecoErp(p);
+  const enderecoId = chaveEndereco ? (chaves.cliente_endereco.get(chaveEndereco) ?? null) : null;
 
   return {
     ok: true,
     entrada: {
       pedido_uuid: p.pedido_uuid,
-      cliente_id: p.cliente_external_id,
-      vendedor_id: p.vendedor_external_id,
+      cliente_id: cliente,
+      vendedor_id: vendedor,
       filial_id: filial,
       condicao_pagamento_id: condicao,
       emitido_em: new Date(p.criado_em).toISOString(),
       aprovado_origem_em: p.aprovado_em ? new Date(p.aprovado_em).toISOString() : null,
       observacao: p.observacao ?? null,
       frete: traduzirFrete(p.frete),
-      endereco_entrega: p.endereco_entrega ? { endereco_id: null, retrato: p.endereco_entrega } : null,
+      endereco_entrega: p.endereco_entrega ? { endereco_id: enderecoId, retrato: p.endereco_entrega } : null,
       total_informado_centavos: p.total_cents,
       itens,
     },

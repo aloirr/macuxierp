@@ -8,7 +8,7 @@
 |---|---|---|
 | F0 Fundação | Repositórios, governança, guardião, recados, CI, ADRs 0001 a 0005 (0002 proposta), docs 01 a 07 | `coord.mjs verificar` limpo e CI verde num PR vazio |
 | F1 Cadastros | Empresa, filial, cliente, produto, equipe e tabelas fiscais (NCM, CEST, CFOP, IBGE), com consulta de CNPJ e CEP | Testes de RN, RLS e BKO de cadastro com print revisado |
-| F2 Integração FDV, ida | O ERP publica cadastros no Hub do FDV (contrato do doc 06 do FDV) | Um tenant de teste do FDV recebe tudo sem erro, de forma idempotente |
+| F2 Integração FDV, ida | O ERP publica cadastros no Hub do FDV (contrato do doc 06 do FDV) | T-0012 verde contra o dublê do Hub **e** Etapa 2 do roteiro da virada (forma_pagamento na thathyany) conferida, sem erro e com reenvio idempotente (decisão do gerente, 22/11, 00h10, pela decisão do Alexandre de 23h22) |
 | F3 Pedidos | O FDV manda o pedido, e o ERP aprova e devolve o status | Ida e volta testadas de ponta a ponta |
 | F4 Faturamento em homologação | NF-e 55 contra o simulador da SEFAZ-AM em homologação (T-0045, ADR 0008): autorização, rejeição, cancelamento, CC-e, inutilização, consulta, contingência, DANFE, IBS/CBS/IS | 20 notas autorizadas no simulador, com o XML guardado (decisão do Alexandre, 21/11, 22h59) |
 | Homologação real (antes da F5) | As mesmas operações na homologação real da SEFAZ-AM, com o A1 e o credenciamento da thathyany (T-0046) | Notas autorizadas na homologação real, com o XML guardado; etapa obrigatória antes da F5 |
@@ -123,3 +123,4 @@ F2 pode começar assim que a F1 fechar `cadastros`; F3 depende de F2 (o canal co
 - 20/11/2026, 23h30 — versão 1 mantida. Motivo: piloto thathyany e ADR 0002 opção A (seção "Empresa piloto").
 - 21/11/2026, 23h00 — versão 2. Motivo: decisão do Alexandre de 22h59 (tudo em paralelo; certificado e homologação simulados). A F4 passa a ter o critério das 20 notas no simulador, a T-0045 entra e a homologação real vira a T-0046.
 - 21/11/2026, 23h50 — versão 2 mantida nas datas do ERP. Motivo: decisões de 23h10, 23h12 e 23h22 (pedido do FDV entra aprovado; virada na thathyany; external_id). A T-0011 passa de 16h06 para 18h41 e a T-0016 ganha 1h21; a primeira nota simulada não muda. A rodada real da F2/F3 passa a depender do deploy (T-0024) e da carga da thathyany no ERP (Etapa 1 do roteiro).
+- 22/11/2026, 00h40 — versão 2 mantida. Motivos: T-0020 ganha o lote 4 (CST 60/CSOSN 500 com ST retido e CST 51 com diferimento), de 18h24 para 20h42; T-0015 de 14h57 para 15h43 (decisões de 23h55 e 00h30); a primeira nota simulada não muda.

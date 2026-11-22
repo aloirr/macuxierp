@@ -4,7 +4,7 @@
  * (fronteira, regra 1). Cada função roda na `Transacao` que o worker abre (`comTenant`, RLS do tenant), exceto
  * `tenantsAtivos`, que roda em `semTenant`.
  *
- * Segredos (regras 8 e 9): nenhuma consulta daqui lê `pfx_cifrado`, `senha_cifrada`, nonce, `senha_hash` nem token.
+ * Segredos (regras 8 e 9): nenhuma consulta daqui lê `pfx_cifrado`, `senha_cifrada`, nonce, `senha_hash` nem token (a leitura do A1 para assinar a NF-e é isolada em `leitura-a1.ts`).
  * As colunas são listadas uma a uma, então a coluna sensível nem sai do banco. Nada é logado.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
