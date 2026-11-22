@@ -45,6 +45,17 @@ export function repoFake() {
     async travarIdempotencia() {
       log.push('trava');
     },
+    async travarPedido() {
+      /* sem efeito em memória: a trava real é do SQL */
+    },
+    async quantidadesJaFaturadas(_t, pedido_id, exceto) {
+      const m = new Map<number, number>();
+      for (const n of notas.values()) {
+        if (n.pedido_id !== pedido_id || n.id === exceto || ['cancelada', 'inutilizada', 'denegada'].includes(n.status)) continue;
+        for (const i of n.itens) m.set(i.sequencia, (m.get(i.sequencia) ?? 0) + i.quantidade);
+      }
+      return m;
+    },
     async buscarPorIdempotencia(_t, _tenant, idem) {
       return [...notas.values()].find((n) => n.idempotencia === idem) ?? null;
     },
@@ -591,4 +602,15 @@ export function configuracaoFake(inicial: Record<string, boolean> = {}) {
     },
   };
   return { repo, linhas };
+}
+
+let pedidoNovoSeq = 0;
+/** Grava na fila a faturar uma CÓPIA do pedido (id novo): várias notas totais no mesmo teste não passam do saldo de um pedido só (RN-FAT-01). */
+export async function pedidoNovoNaFila(tx: Transacao, gravar: (tx: Transacao, p: ReturnType<typeof pedidoAprovado>) => Promise<unknown>, modelo?: ReturnType<typeof pedidoAprovado>): Promise<string> {
+  const base = modelo ?? pedidoAprovado([itemPedido(1, 20_000, 1000), itemPedido(2, 10_000, 2500)]);
+  if (!modelo) base.pedido.condicao_pagamento_id = uuid(77);
+  const copia = structuredClone(base);
+  copia.pedido_id = uuid(50_000 + ++pedidoNovoSeq);
+  await gravar(tx, copia);
+  return copia.pedido_id;
 }

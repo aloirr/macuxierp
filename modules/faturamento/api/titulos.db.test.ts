@@ -7,7 +7,7 @@ import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { a1DeTeste, depsFake, transporteFake, uuid } from './apoio-teste';
+import { a1DeTeste, depsFake, transporteFake, pedidoNovoNaFila, uuid } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
 import { configuracaoFake } from './apoio-teste';
@@ -41,7 +41,8 @@ describe.skipIf(!PG_DISPONIVEL)('títulos a receber (PostgreSQL real, migração
 
   /** Emite e autoriza pelo transmissor com o repositório SQL de títulos (mesma tx do `nota.autorizada@1`). */
   async function autorizar(tenant: string, pedido_id: string) {
-    const r = await app.comTenant(tenant, (tx) => (tenant === C ? emissaoC : emissao).emitirNota(tx, tenant, { pedido_id, idempotencia: `idem-titdb-${++idem}` }));
+    const modelo = [boleto, cartao, aVista].find((m) => m.pedido_id === pedido_id) ?? boleto;
+    const r = await app.comTenant(tenant, async (tx) => (tenant === C ? emissaoC : emissao).emitirNota(tx, tenant, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar, modelo), idempotencia: `idem-titdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const t = transporteFake();
     const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:31:02Z') });

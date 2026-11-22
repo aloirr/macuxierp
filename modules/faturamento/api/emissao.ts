@@ -191,9 +191,14 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     pedido_id: string,
     itens: EmitirNotaEntrada['itens'],
     emitidaEm: Date,
+    exceto_nota_id?: string,
   ): Promise<Preparado | { ok: false; violacoes: Violacao[] }> {
     const pedido = await deps.pedidos.obter(tx, pedido_id);
     if (!pedido) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
+    // Trava a fila do pedido: duas emissões do mesmo pedido não leem o saldo juntas (RN-FAT-01).
+    await deps.notas.travarPedido(tx, pedido_id);
+    // Saldo pelo próprio faturamento: a quantidade_faturada do pedido só anda quando o worker consome o evento.
+    const ja_faturadas = await deps.notas.quantidadesJaFaturadas(tx, pedido_id, exceto_nota_id);
     // FOR SHARE: o pedido não muda de status (nem é cancelado) enquanto esta transação reserva o número (RN-PED-02).
     const situacao: SituacaoPedido | null = await deps.situacao.situacao(tx, pedido_id);
     if (!situacao) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Situação do pedido indisponível.')] };
@@ -204,7 +209,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     if (!filial.ie.trim()) return { ok: false, violacoes: [violacao('RF-FAT-01', 'filial_id', 'Cadastre a inscrição estadual da filial emissora.')] };
     const ambiente = await deps.ambiente.ambiente(tx, pedido.filial_id);
 
-    const base = ratearItens({ pedido, situacao, itens });
+    const base = ratearItens({ pedido, situacao, itens, ja_faturadas });
     if (!base.ok) return base;
     const calc = await deps.calculo.calcular(tx, {
       ambiente,
@@ -229,7 +234,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       const sequencia = Number(r.item_id);
       return { sequencia, cfop: cfopDoItem(r, calc.cfops[sequencia]), resultado: r };
     });
-    const montada = montarNota({ pedido, situacao, itens, ambiente, calculo, v_nf_fiscal: calc.saida.totais.v_nf });
+    const montada = montarNota({ pedido, situacao, ja_faturadas, itens, ambiente, calculo, v_nf_fiscal: calc.saida.totais.v_nf });
     if (!montada.ok) return montada;
 
     const cliente = await deps.cadastros.cliente(tx, pedido.cliente_id);
@@ -383,7 +388,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       return { ok: false, violacoes: [violacao('RN-FAT-07', 'status', `Só a nota rejeitada ou em rascunho é reenviada (status "${nota.status}").`)] };
     }
     const emitida_em = new Date(nota.emitida_em);
-    const p = await preparar(tx, nota.pedido_id, nota.itens_solicitados ?? undefined, emitida_em);
+    const p = await preparar(tx, nota.pedido_id, nota.itens_solicitados ?? undefined, emitida_em, nota.id);
     if (!p.ok) return p;
     const id = identidade(p, { numero: nota.numero, cnf: nota.cnf, emitida_em });
     const conteudo = montarConteudo(p, nota.numero, emitida_em, nota.itens_solicitados ?? undefined);

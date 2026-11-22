@@ -99,8 +99,8 @@ describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → 
 
   it('RN-FAT-01: duas notas em sequência saem com nNF 100 e 101, sem buraco, e o simulador autoriza as duas', async () => {
     const m = montar();
-    const a = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-1' });
-    const b = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-2' });
+    const a = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-1', itens: [{ sequencia: 1, quantidade: 10_000 }] });
+    const b = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-ponta-seq-2', itens: [{ sequencia: 1, quantidade: 10_000 }] });
     if (!a.ok || !b.ok) throw new Error('esperava ok');
     expect([a.nota.numero, b.nota.numero]).toEqual([100, 101]);
     expect((await m.transmissor.transmitirNota(TENANT, a.nota.id)).resultado).toBe('autorizada');

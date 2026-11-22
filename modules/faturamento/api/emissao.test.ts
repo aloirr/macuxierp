@@ -41,7 +41,10 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.assinados).toEqual([]);
     expect(m.assinadas).toEqual([]);
     expect(m.estado.ambienteReserva).toBe('producao');
-    expect((await emitirRascunho(m, 'idem-0000002')).numero).toBe(101); // sem buraco
+    // RN-FAT-01/RF-FAT-01: o pedido já saiu todo na 1ª nota; a 2ª é recusada pelo saldo do próprio faturamento (o pedido ainda diz 0) e não gasta número.
+    const segunda = await m.svc.emitirNota(tx, TENANT, entrada('idem-0000002'));
+    expect(!segunda.ok && segunda.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens' });
+    expect(m.estado.reservas).toBe(1);
   });
 
   it('ADR 0005 item 4: a API emite sem nenhum A1 decifrado: a porta lerA1 nem existe nas dependências da API (o tipo a recusa)', async () => {

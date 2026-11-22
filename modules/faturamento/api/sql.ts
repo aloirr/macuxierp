@@ -119,6 +119,22 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
       await tx.consultar('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`faturamento.nota:${tenant_id}:${idempotencia}`]);
     },
 
+    async travarPedido(tx, pedido_id) {
+      await tx.consultar('SELECT id FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL FOR UPDATE', [pedido_id]);
+    },
+
+    async quantidadesJaFaturadas(tx, pedido_id, exceto_nota_id) {
+      const r = await tx.consultar<{ sequencia: number; quantidade: number }>(
+        `SELECT i.pedido_item_sequencia::int AS sequencia, sum(i.quantidade)::float8 AS quantidade
+           FROM faturamento.nota_item i JOIN faturamento.nota n ON n.tenant_id = i.tenant_id AND n.id = i.nota_id
+          WHERE n.pedido_id = $1 AND n.deleted_at IS NULL AND i.deleted_at IS NULL AND i.pedido_item_sequencia IS NOT NULL
+            AND n.status NOT IN ('cancelada', 'inutilizada', 'denegada') AND ($2::uuid IS NULL OR n.id <> $2::uuid)
+          GROUP BY i.pedido_item_sequencia`,
+        [pedido_id, exceto_nota_id ?? null],
+      );
+      return new Map(r.map((l) => [l.sequencia, l.quantidade]));
+    },
+
     async buscarPorIdempotencia(tx, _tenant_id, idempotencia) {
       const [l] = await tx.consultar(`SELECT ${COLUNAS_NOTA} FROM ${DE_NOTA} WHERE n.idempotencia_chave = $1 AND n.deleted_at IS NULL`, [idempotencia]);
       return l ? montarRegistro(tx, l) : null;
@@ -554,10 +570,13 @@ export const ambienteFiscalSql: AmbienteFiscalDaFilial = {
   },
 };
 
-/** Porta inversa do pedido (P-2): nota em autorização ou em contingência bloqueia o cancelamento; `FOR SHARE` na linha da nota. */
+/**
+ * Porta inversa do pedido (P-2): nota em aberto (rascunho numerada, em_autorizacao, emitida_contingencia, autorizada_guarda_pendente,
+ * autorizada ou rejeitada) bloqueia o cancelamento do pedido; só cancelada, inutilizada e denegada ficam fora. `FOR SHARE` na linha da nota.
+ */
 export const notaEmAbertoSql: NotaEmAberto = {
   async temNotaEmAutorizacao(tx, pedido_id) {
-    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1 FOR SHARE`, [pedido_id]);
+    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status NOT IN ('cancelada', 'inutilizada', 'denegada') AND deleted_at IS NULL LIMIT 1 FOR SHARE`, [pedido_id]);
     return r.length > 0;
   },
 };

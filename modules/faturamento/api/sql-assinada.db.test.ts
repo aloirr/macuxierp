@@ -7,9 +7,9 @@
 import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
+import { itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
-import { a1DeTeste, a1VencidoDeTeste, depsFake, protocolo, transporteFake, uuid, type Roteiro } from './apoio-teste';
+import { a1DeTeste, a1VencidoDeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro } from './apoio-teste';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
 import { criarTransmissor } from './transmissor';
 
@@ -47,7 +47,7 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
     };
   }
   const emitir = async (s: ReturnType<typeof servico>, idem: string) => {
-    const r = await app.comTenant(A, (tx) => s.svc.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: idem }));
+    const r = await app.comTenant(A, async (tx) => s.svc.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: idem }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     return r.nota;
   };

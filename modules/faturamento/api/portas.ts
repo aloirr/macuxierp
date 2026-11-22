@@ -17,7 +17,11 @@ export interface SituacaoPedidoDoPedido {
   situacao(tx: Transacao, pedido_id: string): Promise<SituacaoPedidoParaFaturar | null>;
 }
 
-/** Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): nota `em_autorizacao` bloqueia o cancelamento. */
+/**
+ * Porta inversa, implementada AQUI e consumida pelo cancelamento do pedido (P-2): é "nota em aberto" toda nota do pedido em rascunho
+ * numerada, `em_autorizacao`, `emitida_contingencia`, `autorizada_guarda_pendente`, `autorizada` ou `rejeitada` (pode ser reenviada). Só
+ * `cancelada`, `inutilizada` e `denegada` ficam fora: para cancelar o pedido, cancele a nota antes.
+ */
 export interface NotaEmAberto {
   temNotaEmAutorizacao(tx: Transacao, pedido_id: string): Promise<boolean>;
 }
@@ -195,6 +199,13 @@ export interface RepositorioNotas {
   /** `pg_advisory_xact_lock` pela chave: duas emissões simultâneas com a mesma chave não reservam dois números (RN-CORE-05). */
   travarIdempotencia(tx: Transacao, tenant_id: string, idempotencia: string): Promise<void>;
   buscarPorIdempotencia(tx: Transacao, tenant_id: string, idempotencia: string): Promise<NotaRegistro | null>;
+  /** `FOR UPDATE` na linha do pedido em `faturamento.pedido_a_faturar`: duas emissões do mesmo pedido não passam juntas pelo saldo (RN-FAT-01). */
+  travarPedido(tx: Transacao, pedido_id: string): Promise<void>;
+  /**
+   * Soma, por sequência do item, as quantidades (qtd4) das notas do pedido em qualquer status menos cancelada, inutilizada e denegada
+   * (saldo pelo próprio faturamento, sem esperar o evento). `exceto_nota_id`: o reenvio não conta a si mesmo.
+   */
+  quantidadesJaFaturadas(tx: Transacao, pedido_id: string, exceto_nota_id?: string): Promise<Map<number, number>>;
   /** `travar`: `FOR UPDATE` (o retorno da SEFAZ e o reenvio não correm juntos sobre a mesma nota). */
   obter(tx: Transacao, nota_id: string, opcoes?: { travar?: boolean }): Promise<NotaRegistro | null>;
   /** Retratos, itens com o cálculo fiscal, pagamento e transporte: base para refazer o XML (`notaParaEmissaoDe`). */

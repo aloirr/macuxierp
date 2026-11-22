@@ -54,8 +54,9 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
   });
   return { ...f, ...f.r, t, a1, leituras, filiaisPedidas, transmissor, svc: criarServicoEmissao(f.deps) };
 }
-async function emitir(m: ReturnType<typeof montar>, idempotencia = 'idem-0000001') {
-  const r = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia });
+/** `parcial`: nota de 0,5000 do item 1 (várias notas do mesmo pedido não passam do saldo, RN-FAT-01). */
+async function emitir(m: ReturnType<typeof montar>, idempotencia = 'idem-0000001', parcial = false) {
+  const r = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia, ...(parcial ? { itens: [{ sequencia: 1, quantidade: 5_000 }] } : {}) });
   if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
   return r.nota;
 }
@@ -241,7 +242,7 @@ describe('worker: assinar e transmitir a nota', () => {
 
   /** A nota já assinada e em autorização (a SEFAZ caiu no envio): é o que a varredura enxerga. */
   async function emAutorizacao(m: ReturnType<typeof montar>, idem?: string) {
-    const nota = await emitir(m, idem);
+    const nota = await emitir(m, idem, true);
     const original = m.t.transporte.autorizar;
     m.t.transporte.autorizar = async () => {
       throw new FalhaTransporteSefaz('autorizacao', true, 'tempo esgotado');
@@ -284,8 +285,8 @@ describe('worker: assinar e transmitir a nota', () => {
 
   it('RN-FAT-01: numeradasNaoEnviadas lista só rascunho e rejeitada emitidas antes do corte (alerta do prazo de inutilização)', async () => {
     const m = montar({ recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
-    const rascunho = await emitir(m, 'idem-0000020');
-    const rejeitada = await emitir(m, 'idem-0000021');
+    const rascunho = await emitir(m, 'idem-0000020', true);
+    const rejeitada = await emitir(m, 'idem-0000021', true);
     await m.transmissor.transmitirNota(TENANT, rejeitada.id);
     expect(m.notas.get(rejeitada.id)?.status).toBe('rejeitada');
     const emitida = new Date(rascunho.emitida_em).getTime();
