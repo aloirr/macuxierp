@@ -75,7 +75,8 @@ test('documentação: .coord/**, docs/** e *.md da raiz; fora dela, as pastas qu
 });
 
 test('no repositório real nenhum código lê documentação (a lista cresce com os inputs $TURBO_ROOT$/docs/ do turbo.json)', () => {
-  assert.deepEqual(lidosPeloCodigo(lerWorkspace(RAIZ).turbo), []);
+  // T-0024 (#219): o DANFE lê o ativo da marca, declarado em $TURBO_ROOT$/docs/marca/ativos/** no turbo.json.
+  assert.deepEqual(lidosPeloCodigo(lerWorkspace(RAIZ).turbo), ['docs/marca/ativos/']);
 });
 
 test('afetados: o pacote alterado e os dependentes declarados, em cadeia; inputs do turbo.json valem só para a tarefa deles', () => {

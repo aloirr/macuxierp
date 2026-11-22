@@ -8,7 +8,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
-import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro } from './apoio-teste';
+import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro, situacaoAprovadaDeTeste } from './apoio-teste';
 import { repositoriosSql, pedidosAprovadosSql, notaEmAbertoSql } from './sql';
 import { criarTransmissor } from './transmissor';
 
@@ -48,7 +48,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
         notas: repos.notas, titulos: repos.titulos,
         emissor: s.emissor,
         ambiente: repos.ambiente,
-        lerA1: async () => a1DeTeste(),
+        situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(),
         sefaz: () => t.transporte,
         agora: () => new Date('2026-11-21T14:30:00Z'),
       }),
@@ -74,7 +74,8 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
     const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }));
     expect(fila.itens).toHaveLength(1);
-    expect(fila.itens[0]).toMatchObject({ status: 'a_faturar', total_centavos: expect.any(Number) });
+    // RN-FAT-04: cada linha traz o ambiente da filial emissora (sem configuração em core.ambiente_fiscal = homologação, a falha segura).
+    expect(fila.itens[0]).toMatchObject({ status: 'a_faturar', total_centavos: expect.any(Number), ambiente: 'homologacao' });
     expect((await app.comTenant(B, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens).toHaveLength(0);
   });
 
@@ -123,6 +124,12 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     // A tela decide o botão "Cancelar" por esta data: o detalhe tem de trazê-la (sem ela o cancelamento ficaria bloqueado para sempre).
     const det = await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id));
     expect(det?.autorizada_em).toBe((n?.autorizada_em as Date).toISOString());
+    // RN-FAT-02: cancelamento aguardando a SEFAZ (evento pendente) aparece no detalhe; rejeitado ou registrado não conta.
+    expect(det?.cancelamento_pendente).toBe(false);
+    await admin("INSERT INTO faturamento.nota_evento (tenant_id, nota_id, tipo, n_seq_evento, texto) VALUES ($1, $2, 'cancelamento', 1, 'Cancelamento por erro de digitacao no pedido')", [A, r.nota.id]);
+    expect((await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id)))?.cancelamento_pendente).toBe(true);
+    await admin("UPDATE faturamento.nota_evento SET status = 'rejeitado', c_stat = 573, x_motivo = 'Rejeicao' WHERE nota_id = $1", [r.nota.id]);
+    expect((await app.comTenant(A, (tx) => repos.notas.detalhar(tx, r.nota.id)))?.cancelamento_pendente).toBe(false);
     const [x] = await admin("SELECT tipo, protocolo, xml, sha256 FROM faturamento.nota_xml WHERE nota_id = $1 AND tipo = 'nfe_autorizada'", [r.nota.id]);
     expect(x).toMatchObject({ tipo: 'nfe_autorizada', protocolo: '113260000000001' });
     expect(x?.xml).toMatch(/^<nfeProc /);
@@ -157,6 +164,8 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const r = await emitir(A, 'idem-db-0005', s);
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     await admin("INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao) VALUES ($1, $2, 'producao', 'R-20261122-000000-alexandre')", [A, IDS.filial]);
+    // A fila a faturar mostra o mesmo ambiente que a emissão usa (a lista nunca promete homologação para filial em produção).
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }))).itens.map((i) => i.ambiente)).toEqual(expect.arrayContaining(['producao']));
     const { tr, t } = transmissor(s);
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('ambiente_mudou');
     expect(t.chamadas).toEqual([]);
@@ -194,7 +203,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       expect(await app.comTenant(A, (tx) => tx.consultar('SELECT * FROM faturamento.buracos_numeracao()'))).toEqual([]);
     });
 
-    it('RN-PED-02 (P-2): nota rascunho, autorizada ou rejeitada bloqueia o cancelamento do pedido; cancelada e denegada não; quantidadesJaFaturadas ignora cancelada e a própria nota', async () => {
+    it('RN-PED-02 (P-2): só nota rascunho/em_autorizacao bloqueia o cancelamento do pedido (rejeitada e autorizada não; a autorizada vem de notasAutorizadas); quantidadesJaFaturadas ignora cancelada e a própria nota', async () => {
       const p = pedidoCorrida(2);
       await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p));
       expect(await app.comTenant(A, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, p.pedido_id))).toBe(false);
@@ -202,19 +211,23 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
       const id = r.nota.id;
       const aberta = (): Promise<boolean> => app.comTenant(A, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, p.pedido_id));
+      const autorizadas = (): Promise<string[]> => app.comTenant(A, (tx) => notaEmAbertoSql.notasAutorizadas(tx, p.pedido_id));
       expect(await aberta()).toBe(true); // rascunho numerada
+      expect(await autorizadas()).toEqual([]);
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id, id))).toEqual(new Map());
       const s = servico();
       s.deps.pedidos = repos.pedidos;
       const { tr } = transmissor(s, { recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
       expect((await tr.transmitirNota(A, id)).resultado).toBe('rejeitada');
-      expect(await aberta()).toBe(true); // rejeitada pode ser reenviada
+      expect(await aberta()).toBe(false); // rejeitada fica fora (opção A do Alexandre, 22/11 03h23 (R-20261122-032334-alexandre): não bloqueia o cancelamento; número vai para inutilização)
+      expect(await autorizadas()).toEqual([]);
       const re = await app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, id, { travar: true }))!));
       expect(re.ok).toBe(true);
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]])); // o reenvio não conta a si mesmo em dobro
       const { tr: tr2 } = transmissor(s);
       expect((await tr2.transmitirNota(A, id)).resultado).toBe('autorizada');
-      expect(await aberta()).toBe(true); // autorizada: o pedido só cancela depois de cancelar a nota
+      expect(await aberta()).toBe(false); // autorizada fica fora: o pedido a barra por notasAutorizadas
+      expect(await autorizadas()).toEqual([id]);
       expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, p.pedido_id))).toEqual(new Map([[1, 5_000]]));
     });
   });

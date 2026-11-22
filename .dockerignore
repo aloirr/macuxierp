@@ -21,5 +21,7 @@
 .github
 graphify-out
 docs
+# exceção: ativos da marca do DANFE (apps/api/Dockerfile, T-0045 lote A); só a versão vigente
+!docs/marca/ativos/2026-11-22-v1
 tests
 compose.yml

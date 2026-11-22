@@ -6,7 +6,7 @@
 import { MARGEM_POSSE_AGENDA_MS, type Banco, type ConsumidorEvento, type EnvelopeEvento, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import type { MotivoPausa, RetornoErp, StatusRetornoHub } from '../contracts';
 import { atrasoRetentativaSegundos } from '../domain';
-import { EVENTOS_DE_RETORNO, PayloadPedidoLido, retornoDoPedido } from '../domain/retorno-pedido';
+import { EVENTOS_DE_RETORNO, ORDEM_HUB, PayloadPedidoLido, retornoDoPedido } from '../domain/retorno-pedido';
 import type { Alertar, ClienteHubPedidos, LogPedidos } from './portas';
 import { adiarPresoAPosse } from './conector-comum';
 import { codigoSeguro, gravarRetorno, motivoDaRecusa } from './util-pedidos';
@@ -35,6 +35,12 @@ async function chavesHubDosProdutos(tx: Transacao, tenantId: string, ids: readon
   return new Map(l.map((x) => [x.erp_id, x.chave]));
 }
 
+/** `CASE` do degrau de cada status no Hub, montado de `ORDEM_HUB` (única fonte; sem números à mão). Só chaves da constante entram no SQL. */
+function casoOrdemHub(coluna: string): string {
+  const quando = Object.entries(ORDEM_HUB).map(([status, n]) => `WHEN '${status}' THEN ${n}`);
+  return `CASE ${coluna} ${quando.join(' ')} END`;
+}
+
 export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: Relogio; alertar?: Alertar }): ConsumidorEvento {
   return {
     id: 'integracao-fdv.retorno-pedido',
@@ -55,14 +61,16 @@ export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: R
         deps.log.warn({ tenant_id: evento.tenant_id, modulo: 'integracao-fdv', pedido_uuid: uuid, codigo: 'pedido_nao_recebido_pelo_conector' }, 'evento de pedido sem pedido_recebido');
         return;
       }
-      const ultimo = await tx.consultar<{ status: StatusRetornoHub }>(
-        `SELECT status FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND deleted_at IS NULL
-          ORDER BY created_at DESC, id DESC LIMIT 1`,
+      // Último status ACEITO pelo Hub (estado 'enviado'; falhou e pendente não contam): o mais avançado segundo `ORDEM_HUB`, e o mais recente no empate.
+      const ultimo = await tx.consultar<{ status: StatusRetornoHub; chave_nota: string | null }>(
+        `SELECT status, corpo #>> '{nota,chave}' AS chave_nota FROM integracao_fdv.retorno_enviado
+          WHERE tenant_id = $1 AND pedido_uuid = $2 AND estado = 'enviado' AND deleted_at IS NULL
+          ORDER BY ${casoOrdemHub('status')} DESC, enviado_em DESC, id DESC LIMIT 1`,
         [evento.tenant_id, uuid],
       );
       const chavesProduto = evento.nome === 'pedido.pedido.faturado@1' ? await chavesHubDosProdutos(tx, evento.tenant_id, (payload.data.itens_faturados ?? []).map((i) => i.produto_id)) : new Map<string, string>();
       const agora = deps.relogio.agora();
-      const decisao = retornoDoPedido({ nome: evento.nome, ocorrido_em: evento.ocorrido_em, payload: payload.data }, ultimo[0]?.status ?? null, chavesProduto, agora);
+      const decisao = retornoDoPedido({ nome: evento.nome, ocorrido_em: evento.ocorrido_em, payload: payload.data }, ultimo[0]?.status ?? null, chavesProduto, agora, ultimo[0]?.chave_nota ?? null);
       if (decisao.acao === 'descartar_sem_chave') {
         // Prazo vencido (RN-PED-05): o evento termina sem erro (o despachante não repete mais). O registro `falhou` leva só os UUIDs dos produtos sem chave.
         const criou = await gravarRetorno(tx, evento.tenant_id, decisao.corpo, agora, { produtos: decisao.produtos });
@@ -194,15 +202,31 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
         r.reagendados++;
         return r; // Hub fora do ar ou resposta inesperada: não adianta insistir nos outros agora
       } else {
-        // 400 e 422: definitivos (o Hub recusou o retorno). Só o código do Hub vai ao monitor.
-        await d.banco.comTenant(tenantId, (tx) =>
-          tx.consultar(
+        // 400 e 422: definitivos (o Hub recusou o retorno; sem estado 'ignorado' no CHECK: fica 'falhou'). Só o código do Hub vai ao monitor.
+        // 422 transicao_invalida só é silenciado com PROVA LOCAL de regressão (RN-PED-05): na mesma transação do UPDATE, um retorno ACEITO ('enviado')
+        // do mesmo pedido de ordem >= à deste (`ORDEM_HUB`; terminal incluso, e parcial aceito vale para parcial, com nota igual ou diferente).
+        // Sem a prova, o alerta `retorno_recusado_pelo_hub` segue como antes.
+        const candidato = resp.status === 422 && resp.codigo === 'transicao_invalida';
+        const regressao = await d.banco.comTenant(tenantId, async (tx) => {
+          let prova = false;
+          if (candidato) {
+            const [p] = await tx.consultar<{ ok: boolean }>(
+              `SELECT EXISTS (SELECT 1 FROM integracao_fdv.retorno_enviado
+                               WHERE tenant_id = $1 AND pedido_uuid = $2 AND estado = 'enviado' AND deleted_at IS NULL
+                                 AND ${casoOrdemHub('status')} >= ${casoOrdemHub('$3::text')}) AS ok`,
+              [tenantId, item.pedido_uuid, item.corpo.status],
+            );
+            prova = p?.ok === true;
+          }
+          await tx.consultar(
             `UPDATE integracao_fdv.retorno_enviado SET estado = 'falhou', resposta_http = $3, tentativas = tentativas + 1
               WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, resp.status],
-          ),
-        );
-        d.alertar(tenantId, 'retorno_recusado_pelo_hub', { pedido_uuid: item.pedido_uuid, codigo: codigoSeguro(resp.codigo, resp.status) });
+          );
+          return prova;
+        });
+        if (regressao) d.log.info({ tenant_id: tenantId, modulo: 'integracao-fdv', pedido_uuid: item.pedido_uuid, http: 422, codigo: 'transicao_invalida' }, 'retorno ignorado: o Hub já está adiante (prova local)');
+        else d.alertar(tenantId, 'retorno_recusado_pelo_hub', { pedido_uuid: item.pedido_uuid, codigo: codigoSeguro(resp.codigo, resp.status) });
         r.falhou++;
         progresso = true;
       }

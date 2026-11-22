@@ -1,4 +1,4 @@
-/** Adaptador PostgreSQL dos títulos a receber (migração 0013: `faturamento.titulo` e `titulo_baixa`). Roda na transação do tenant (RLS). */
+/** Adaptador PostgreSQL dos títulos a receber (migrações 0013 e 0026: `faturamento.titulo` e `titulo_baixa`). Roda na transação do tenant (RLS). */
 import { paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type { BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo } from '../contracts';
 import type { RepositorioTitulos } from './portas';

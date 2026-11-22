@@ -13,8 +13,8 @@ const SEM_VALOR_FISCAL = 'sem valor fiscal';
 const TEXTO_HOMOLOGACAO = `Homologação — ${SEM_VALOR_FISCAL}`;
 /** "Não dá para desfazer" dos diálogos de cancelar e inutilizar. */
 const NAO_DESFAZ = 'Não dá para desfazer';
-/** Vira `true` quando a rota do DANFE do lote 3 (PR do DANFE) entrar; até lá `GET /notas/:id/danfe` dá 404 e o botão fica desabilitado. */
-export const DANFE_DISPONIVEL = false;
+/** A rota `GET /notas/:id/danfe` (RF-FAT-03, #219) está no ar: o DANFE é a ação principal da nota autorizada e fica ativo também na cancelada. */
+export const DANFE_DISPONIVEL = true;
 
 export type Tom = 'ok' | 'alerta' | 'erro' | 'neutro';
 export interface Selo {
@@ -37,6 +37,10 @@ export const ROTULO_STATUS_NOTA: Readonly<Record<StatusNota, Selo>> = {
 };
 
 export const ROTULO_STATUS_PEDIDO: Readonly<Record<StatusPedidoAFaturar, string>> = { a_faturar: 'A faturar', faturado_parcial: 'Faturado em parte', faturado: 'Faturado', cancelado: 'Cancelado' };
+
+/** Selo do status do pedido na fila: o texto é o de `ROTULO_STATUS_PEDIDO`; só o faturado ganha o tom `ok` e o faturado em parte pede atenção. */
+const TOM_STATUS_PEDIDO: Readonly<Record<StatusPedidoAFaturar, Tom>> = { a_faturar: 'neutro', faturado_parcial: 'alerta', faturado: 'ok', cancelado: 'neutro' };
+export const seloDoPedido = (status: StatusPedidoAFaturar): Selo => ({ texto: ROTULO_STATUS_PEDIDO[status], tom: TOM_STATUS_PEDIDO[status] });
 
 /** Texto curto do ambiente no CSV; na tela o ambiente é o selo (`badgesDaNota`) e a faixa do detalhe. */
 export const textoDoAmbiente = (a: Ambiente): string => (a === 'homologacao' ? 'Homologação' : 'Produção');
@@ -67,6 +71,8 @@ export interface NotaParaAcao {
   ambiente: Ambiente;
   /** UTC ISO da autorização: base do prazo de cancelamento (RN-FAT-02). */
   autorizada_em?: string | null;
+  /** Há cancelamento aguardando a SEFAZ (`cancelamento_pendente` do detalhe): bloqueia novo cancelamento e a CC-e. */
+  cancelamento_pendente?: boolean | null;
 }
 
 /** Na ordem da barra de ações: Cancelar por último. */
@@ -82,7 +88,7 @@ export const ROTULO_ACAO_NOTA: Readonly<Record<AcaoDaNota, { rotulo: string; des
   cancelar: { rotulo: 'Cancelar nota', destrutiva: true },
 };
 
-/** Uma ação principal por status: Reenviar (ou Emitir) na rejeitada/rascunho; na autorizada, o DANFE (ou o XML enquanto o DANFE não existe). */
+/** Uma ação principal por status: Reenviar (ou Emitir) na rejeitada/rascunho; na autorizada, o DANFE. */
 export function acaoPrincipalDaNota(status: StatusNota): AcaoDaNota | null {
   if (status === 'rejeitada' || status === 'rascunho') return 'reenviar';
   if (status === 'autorizada') return DANFE_DISPONIVEL ? 'baixarDanfe' : 'baixarXml';
@@ -91,6 +97,7 @@ export function acaoPrincipalDaNota(status: StatusNota): AcaoDaNota | null {
 
 const COM_XML: readonly StatusNota[] = ['autorizada', 'cancelada'];
 const CONSULTAVEIS: readonly StatusNota[] = ['em_autorizacao', 'autorizada_guarda_pendente', 'autorizada', 'rejeitada', 'emitida_contingencia'];
+const CANCELAMENTO_PENDENTE = 'cancelamento aguardando a SEFAZ.';
 const SEM_PERMISSAO = 'sem permissão para esta ação';
 
 /**
@@ -110,9 +117,11 @@ function motivoIndisponivel(perfil: Perfil, n: NotaParaAcao, agora: Date, acao: 
       return n.status === 'rejeitada' || n.status === 'rascunho' ? null : 'disponível só para nota rejeitada ou em rascunho.';
     case 'cancelar':
       if (n.status !== 'autorizada') return 'disponível só para nota autorizada.';
+      if (n.cancelamento_pendente) return CANCELAMENTO_PENDENTE;
       return n.autorizada_em && !prazoDeCancelamentoEsgotado(new Date(n.autorizada_em), agora) ? null : 'prazo de cancelamento encerrado.';
     case 'cartaCorrecao':
-      return n.status === 'autorizada' ? null : 'disponível só para nota autorizada.';
+      if (n.status !== 'autorizada') return 'disponível só para nota autorizada.';
+      return n.cancelamento_pendente ? CANCELAMENTO_PENDENTE : null;
     case 'consultar':
       return CONSULTAVEIS.includes(n.status) ? null : 'não há o que consultar neste status.';
   }

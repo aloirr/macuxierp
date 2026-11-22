@@ -8,7 +8,7 @@ import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/form
 import {
   DataCivil, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, NotaResumo, PedidoAFaturarResumo, RejeicaoNota, TituloResumo,
 } from '../contracts';
-import { BASE_API, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, numeroSerie, seloDoAmbiente, textoDoAmbiente, type Selo } from './notas';
+import { BASE_API, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, numeroSerie, seloDoAmbiente, seloDoPedido, textoDoAmbiente, type Selo } from './notas';
 import { hojeCivil, situacaoDoTitulo } from './titulos';
 
 /**
@@ -45,7 +45,8 @@ const colunasPedidos: Fabrica<PedidoAFaturarResumo> = (fuso) => [
   { id: 'numero', titulo: 'Pedido', valor: (p) => p.numero },
   { id: 'cliente', titulo: 'Cliente', valor: (p) => ou(p.cliente_razao_social) },
   { id: 'total', titulo: 'Total', tipo: 'dinheiro', valor: (p) => valor(p.total_centavos) },
-  { id: 'status', titulo: 'Status', tipo: 'status', valor: (p) => ROTULO_STATUS_PEDIDO[p.status] },
+  { id: 'status', titulo: 'Status', tipo: 'status', valor: (p) => ROTULO_STATUS_PEDIDO[p.status], selos: (p) => [seloDoPedido(p.status)] },
+  colunaAmbiente(),
   // O contrato só tem `recebido_em` (a fila grava quando recebe o evento de aprovação); não há `aprovado_em`.
   { id: 'recebido_em', titulo: 'Recebido em', tipo: 'data', valor: (p) => hora(fuso)(p.recebido_em) },
 ];
@@ -79,6 +80,7 @@ const colunasTitulos: Fabrica<TituloResumo> = () => {
     { id: 'valor', titulo: 'Valor', tipo: 'dinheiro', valor: (t) => valor(t.valor_centavos) },
     { id: 'saldo', titulo: 'Saldo', tipo: 'dinheiro', valor: (t) => valor(t.saldo_centavos) },
     { id: 'status', titulo: 'Status', tipo: 'status', valor: (t) => situacaoDoTitulo(t, hoje).texto, selos: (t) => [situacaoDoTitulo(t, hoje)] },
+    colunaAmbiente(),
   ];
 };
 

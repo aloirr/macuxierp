@@ -331,7 +331,9 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
 
     async detalhar(tx, nota_id): Promise<NotaDetalhe | null> {
       const [l] = await tx.consultar<Omit<NotaDetalhe, 'itens'>>(
-        `SELECT ${COLUNAS_RESUMO}, n.natureza_operacao, n.tipo_emissao::int AS tipo_emissao, n.recibo, ${ISO('n.autorizada_em')} AS autorizada_em FROM faturamento.nota n WHERE n.id = $1 AND n.deleted_at IS NULL`,
+        `SELECT ${COLUNAS_RESUMO}, n.natureza_operacao, n.tipo_emissao::int AS tipo_emissao, n.recibo, ${ISO('n.autorizada_em')} AS autorizada_em,
+                EXISTS (SELECT 1 FROM faturamento.nota_evento e WHERE e.nota_id = n.id AND e.tipo = 'cancelamento' AND e.status = 'pendente') AS cancelamento_pendente
+           FROM faturamento.nota n WHERE n.id = $1 AND n.deleted_at IS NULL`,
         [nota_id],
       );
       if (!l) return null;
@@ -581,6 +583,7 @@ export const pedidosAprovadosSql: PedidosAprovados = {
     const linhas = await tx.consultar<Omit<PedidoAFaturarResumo, 'total_centavos'> & { total_centavos: string }>(
       `SELECT p.id, p.pedido_id, (p.payload->>'numero')::int AS numero, p.filial_id, p.cliente_id,
               p.payload->'pedido'->'cliente_retrato'->>'razao_social' AS cliente_razao_social, p.status,
+              faturamento.ambiente_da_filial(p.tenant_id, p.filial_id) AS ambiente,
               (p.payload->>'total_centavos')::numeric::bigint::text AS total_centavos, ${ISO('p.recebido_em')} AS recebido_em
          FROM faturamento.pedido_a_faturar p
         WHERE p.deleted_at IS NULL
@@ -604,15 +607,18 @@ export const ambienteFiscalSql: AmbienteFiscalDaFilial = {
 };
 
 /**
- * Porta inversa do pedido (P-2): nota em aberto (rascunho numerada, em_autorizacao, emitida_contingencia, autorizada_guarda_pendente,
- * autorizada ou rejeitada) bloqueia o cancelamento do pedido; só cancelada, inutilizada e denegada ficam fora.
+ * Implementa NotaEmAberto (ver portas.ts).
  * SEM `FOR SHARE` na nota (deadlock com o reenvio, que trava a nota e depois pede `FOR SHARE` no pedido): o `FOR UPDATE` do pedido no
  * cancelamento já basta, porque todo caminho que cria ou reabre nota pede o `FOR SHARE` do pedido antes e espera o cancelamento.
  */
 export const notaEmAbertoSql: NotaEmAberto = {
   async temNotaEmAutorizacao(tx, pedido_id) {
-    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status NOT IN ('cancelada', 'inutilizada', 'denegada') AND deleted_at IS NULL LIMIT 1`, [pedido_id]);
+    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('rascunho', 'em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1`, [pedido_id]);
     return r.length > 0;
+  },
+  async notasAutorizadas(tx, pedido_id) {
+    const r = await tx.consultar<{ id: string }>(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('autorizada', 'autorizada_guarda_pendente') AND deleted_at IS NULL ORDER BY id`, [pedido_id]);
+    return r.map((l) => l.id);
   },
 };
 
