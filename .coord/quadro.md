@@ -50,12 +50,12 @@
 | nuvem/T-0010-schema-integracao (banco-dados, session_019xHEXsJDwtbfrqPb59WRhi) | `db/migrations/0007_integracao_fdv.sql`, `db/` testes, `modules/integracao-fdv/db/` |
 | nuvem/T-0026-carga-csv (engenheiro-software, desenho, session_019xHEXs2e5KztsidbXc31AK) | `docs/desenho/T-0026.md` (implementação do modulo-cadastros depois do #19) |
 | nuvem/T-0008-testes-f1 (testes, session_019xHEXqAcErk9EQAtPnDHCk) | `tests/`, `docs/testes/` |
-| nuvem/T-0023-assinatura-erp (PR #5) | `docs/marca/` |
+| nuvem/T-0023-assinatura-erp (PR #5, design-de-marca, session_019xHEXsi68pkRSBNcRmrmW9) | `docs/marca/` |
 
 ## Reservas
 - ADR: 0001–0005 usadas; 0006 reservada para a T-0030 (21/11). Migrações: 0007 reservada para a T-0010 e 0008 para a T-0030, se precisar.
 - Tarefas: T-0001–T-0033 usadas; próxima livre: T-0034.
-- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); RD-0034–0040 T-0029; RD-0041–0047 T-0024; RD-0048–0054 T-0009; RD-0055–0061 T-0010; RD-0062–0068 T-0008; próxima livre: RD-0069. Sessão que vai numerar pede a faixa ao gerente por send_message.
+- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); RD-0034–0040 T-0029; RD-0041–0047 T-0024; RD-0048–0054 T-0009; RD-0055–0061 T-0010; RD-0062–0068 T-0008; RD-0069–0072 T-0023; próxima livre: RD-0073. Sessão que vai numerar pede a faixa ao gerente por send_message.
 
 ## Depende do Alexandre
 > Decisão de 21/11, 21h29 (Manaus): "SEGUIR COM O RECOMENDADO" (`docs/status/2026-11-21-decisoes-alexandre.md`).
