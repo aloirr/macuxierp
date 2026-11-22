@@ -770,6 +770,10 @@ importers:
         version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(supports-color@7.2.0)(yaml@2.9.1)
 
   packages/ui:
+    dependencies:
+      '@macuxierp/platform-sdk':
+        specifier: workspace:*
+        version: link:../platform-sdk
     devDependencies:
       '@macuxierp/config':
         specifier: workspace:*
