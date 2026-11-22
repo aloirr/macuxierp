@@ -159,6 +159,19 @@ describe('rotas /v1/faturamento', () => {
     await expect(ambiente('vendedor').chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 403 });
   });
 
+  it('RN-FAT-03: GET /notas/:id/danfe com vDup ilegível vira 422 RN-FAT-03, sem dado do XML na resposta', async () => {
+    const a = ambiente();
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'autorizada' });
+    a.xmls.push({ id, conteudo: nfeProcDeTeste({ duplicatas: true }).replace(/<vDup>[^<]*<\/vDup>/, '<vDup>100.005</vDup>'), protocolo: NPROT });
+    const e = await a.chamar('GET', '/notas/:id/danfe', { params: { id } }).catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 422 });
+    const txt = JSON.stringify({ m: (e as Error).message, d: (e as { detalhes?: unknown }).detalhes, c: (e as { codigo?: unknown }).codigo, r: (e as { regra?: unknown }).regra });
+    expect(txt).toContain('RN-FAT-03');
+    expect(txt).not.toContain('100.005');
+    expect(txt).not.toContain('<');
+  });
+
   it('marca §4: GET /notas/:id/danfe sem o ativo do rodapé responde 503 "Ativo de marca do DANFE não encontrado", nunca um PDF sem rodapé', async () => {
     const a = ambiente('faturista', { assinaturaMarca: async () => null });
     const b = ambiente();

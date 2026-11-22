@@ -3,6 +3,7 @@
  * `POST /titulos/:id/baixas/:baixa_id/estornar` (sem corpo; a baixa e o estorno exigem `Idempotency-Key` no POST da baixa).
  */
 import type { Perfil } from '@macuxierp/platform-sdk';
+import { plural } from '@macuxierp/platform-sdk/texto';
 import { formatarCentavos, formatarDataHora, formatarQuantidade, interpretarCentavos, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { BaixarTituloEntrada, DataCivil, StatusTitulo, type TituloResumo } from '../contracts';
 import { podeBaixarTitulo } from '../domain';
@@ -25,7 +26,7 @@ export const hojeCivil = (agora: Date = new Date()): string => dataCivilManaus(a
 export function situacaoDoTitulo(t: Pick<TituloResumo, 'status' | 'vencimento'>, hoje: string): Selo {
   if (t.status === 'aberto') {
     const d = diasDeAtraso(t.vencimento, hoje);
-    if (d > 0) return { texto: `Vencido há ${d} ${d === 1 ? 'dia' : 'dias'}`, tom: 'erro' };
+    if (d > 0) return { texto: `Vencido há ${plural(d, 'dia', 'dias')}`, tom: 'erro' };
   }
   return { texto: ROTULO_STATUS_TITULO[t.status], tom: t.status === 'baixado' ? 'ok' : 'neutro' };
 }
@@ -98,18 +99,20 @@ export interface CampoParcial {
 
 export type ResultadoParcial =
   | { ok: true; itens?: { sequencia: number; quantidade: string; qtd4: number }[] }
-  | { ok: false; erros: Record<number, string>; geral?: string };
+  | { ok: false; erros: Record<number, string>; /** Mesmo erro de `erros`, em partes (aditivo): `mensagem` pronta para exibir sozinha (inicial maiúscula); `erros[s]` é derivado dela. */ errosPartes: Record<number, ErroParcialPartes>; geral?: string };
+
+export interface ErroParcialPartes { rotulo: string; mensagem: string }
 
 const semMilhar = (texto: string): string => texto.replaceAll('.', '');
-/** Aceita o ponto de milhar bem formado ("1.200,5"); qualquer outro ponto segue inválido. Sai quando o `interpretarQuantidade` do SDK aceitar milhar (PR do engenheiro). */
-const tirarMilhar = (texto: string): string => (/^\d{1,3}(\.\d{3})+(,\d{1,4})?$/.test(texto) ? semMilhar(texto) : texto);
 
 /** Fonte única do texto: erro geral do `validar` e `motivoBotaoDesligado` (botão de emitir desligado). */
 export const MOTIVO_SEM_ITEM = 'Informe a quantidade de pelo menos um item.';
 
-/** Fonte única do erro de quantidade acima do saldo; cita o item pelo rótulo do formulário. */
-export const erroSaldoExcedido = (rotulo: string, saldoTexto: string): string =>
-  `${rotulo}: a quantidade passa do saldo (${saldoTexto}). Informe até ${saldoTexto} ou deixe o campo vazio.`;
+/** Fonte única do texto inteiro do erro de um campo: `${rotulo}: ${mensagem}` com a inicial da mensagem em minúscula (a `mensagem` das partes é para exibir sozinha, em maiúscula). */
+const textoDoErro = (p: ErroParcialPartes): string => `${p.rotulo}: ${p.mensagem.charAt(0).toLowerCase()}${p.mensagem.slice(1)}`;
+const mensagemSaldoExcedido = (saldoTexto: string): string => `A quantidade passa do saldo (${saldoTexto}). Informe até ${saldoTexto} ou deixe o campo vazio.`;
+const MENSAGEM_QUANTIDADE_ZERO = 'A quantidade precisa ser maior que zero. Informe a quantidade ou deixe o campo vazio.';
+const MENSAGEM_QUANTIDADE_INVALIDA = 'Informe a quantidade com até 4 casas decimais (ex.: 1,5).';
 
 export interface FormularioParcial {
   campos: CampoParcial[];
@@ -136,7 +139,7 @@ export function formularioParcial(e: { itens: readonly { sequencia: number; desc
       rotulo: i.descricao && i.descricao.trim() !== '' ? `${i.sequencia} - ${i.descricao}` : `Item ${i.sequencia}`,
       saldo: i.saldo,
       saldoTexto,
-      valorInicial: semMilhar(saldoTexto), // campo editável e `requisicaoEmitir` não aceitam ponto de milhar
+      valorInicial: semMilhar(saldoTexto), // valor inicial sem milhar, como o usuário digitaria
     };
   });
   return {
@@ -144,23 +147,28 @@ export function formularioParcial(e: { itens: readonly { sequencia: number; desc
     motivoBotaoDesligado: MOTIVO_SEM_ITEM,
     emitirHabilitado: (valores) => campos.some((c) => (valores[c.sequencia] ?? '').trim() !== ''),
     validar(valores) {
-      const erros: Record<number, string> = {};
+      const errosPartes: Record<number, ErroParcialPartes> = {};
+      const erra = (c: { sequencia: number; rotulo: string }, mensagem: string): void => {
+        const partes = { rotulo: c.rotulo, mensagem };
+        errosPartes[c.sequencia] = partes;
+      };
       const entram: { sequencia: number; quantidade: string; qtd4: number }[] = [];
       let todosInteiros = true;
       for (const c of campos) {
         const texto = (valores[c.sequencia] ?? '').trim();
         if (texto === '') { todosInteiros = false; continue; }
-        const q = interpretarQuantidade(tirarMilhar(texto));
-        if (q === null) erros[c.sequencia] = 'Informe a quantidade com até 4 casas decimais (ex.: 1,5).';
-        else if (q <= 0) erros[c.sequencia] = 'Informe uma quantidade maior que zero ou deixe em branco.';
-        else if (q > c.saldo) erros[c.sequencia] = erroSaldoExcedido(c.rotulo, c.saldoTexto);
+        const q = interpretarQuantidade(texto);
+        if (q === null) erra(c, MENSAGEM_QUANTIDADE_INVALIDA);
+        else if (q <= 0) erra(c, MENSAGEM_QUANTIDADE_ZERO);
+        else if (q > c.saldo) erra(c, mensagemSaldoExcedido(c.saldoTexto));
         else {
-          entram.push({ sequencia: c.sequencia, quantidade: semMilhar(formatarQuantidade(q)), qtd4: q });
+          entram.push({ sequencia: c.sequencia, quantidade: formatarQuantidade(q), qtd4: q });
           if (q !== c.saldo) todosInteiros = false;
         }
       }
-      if (Object.keys(erros).length > 0) return { ok: false, erros };
-      if (entram.length === 0) return { ok: false, erros, geral: MOTIVO_SEM_ITEM };
+      const erros: Record<number, string> = Object.fromEntries(Object.entries(errosPartes).map(([k, p]) => [k, textoDoErro(p)]));
+      if (Object.keys(erros).length > 0) return { ok: false, erros, errosPartes };
+      if (entram.length === 0) return { ok: false, erros, errosPartes, geral: MOTIVO_SEM_ITEM };
       return todosInteiros ? { ok: true } : { ok: true, itens: entram };
     },
   };

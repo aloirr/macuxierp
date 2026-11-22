@@ -84,7 +84,6 @@ export interface TelaLista {
   /** Rótulo do campo `busca` (a página aceita `busca`). */
   rotuloBusca?: string;
   /** Alternativa enquanto o módulo não declara `pagina.vazio` (MC-0016: sem e com filtro). Texto da tabela sem linhas (o problema e a ação); sem ele, a mensagem padrão da lista. */
-  textoVazio?: string;
   /** Selos por coluna (ex.: ambiente de homologação); a coluna sem selo mostra o texto de `linha`. */
   selos?: (item: Linha, fuso: string) => Readonly<Record<string, readonly SeloVista[]>>;
   /** Ação na barra da lista, ao lado do "Exportar CSV". */
@@ -172,7 +171,7 @@ export interface EntradaAcao {
   chave?: string;
 }
 /** Resultado da validação do módulo: corpo pronto para a API ou a mensagem de erro (regra e texto do módulo). */
-export type ResultadoAcao = { ok: true; corpo?: unknown } | { ok: false; erro: string };
+export type ResultadoAcao = { ok: true; corpo?: unknown } | { ok: false; erro: string; /** Erro por campo (chave = sequência do item), para mostrar junto do campo; sem ele, `erro` é geral. */ erros?: Readonly<Record<number, string>> };
 
 export interface DetalheVista {
   titulo: string;
