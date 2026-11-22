@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { violacao, type Violacao } from './erros';
+import { corpoErroApi, ErroApi, erros, violacao, type Violacao } from './erros';
 
 describe('Violacao (RD-0235)', () => {
   it('violacao(rn, campo, mensagem) monta o formato que cadastros e pedido já usam', () => {
@@ -17,5 +17,18 @@ describe('Violacao (RD-0235)', () => {
       const src = readFileSync(new URL(f, import.meta.url), 'utf8');
       expect(src).not.toMatch(/from ['"](node:|pg['"])/);
     }
+  });
+});
+
+describe('detalhes no ErroApi (T-0016, pedido do modulo-pedido)', () => {
+  it('RN-PED-02: erros.regra leva os detalhes estruturados ao corpo, ao lado dos campos', () => {
+    const e = erros.regra('RN-PED-02', 'Transição não permitida', undefined, { possiveis: ['aprovado', 'recusado'] });
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-PED-02', detalhes: { possiveis: ['aprovado', 'recusado'] } });
+    expect(corpoErroApi(e)).toEqual({ codigo: 'RN-PED-02', mensagem: 'Transição não permitida', detalhes: { possiveis: ['aprovado', 'recusado'] } });
+  });
+
+  it('sem campos nem detalhes, o corpo continua { codigo, mensagem } (compatível com o que já existe)', () => {
+    expect(corpoErroApi(new ErroApi(404, 'NAO_ENCONTRADO', 'Cliente não encontrado'))).toEqual({ codigo: 'NAO_ENCONTRADO', mensagem: 'Cliente não encontrado' });
+    expect(corpoErroApi(erros.validacao({ nome: 'obrigatório' }))).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { nome: 'obrigatório' } });
   });
 });

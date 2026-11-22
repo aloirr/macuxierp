@@ -92,10 +92,12 @@ describe('registrarModulos', () => {
     expect(() => registrarModulos([coreDuble, manifesto('pedido', ['core', 'cadastros'])])).toThrow(/depende de cadastros/);
   });
 
-  it('montarModulos: os seis da v1, core e cadastros com rotas, os outros só com o manifesto', () => {
+  it('montarModulos: os seis da v1; core, cadastros e pedido com rotas (T-0016), os outros só com o manifesto', () => {
     const m = modulosDeTeste();
     expect(m.map((p) => p.manifesto.id)).toEqual(['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv']);
-    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, false, false, false, false]);
+    expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, false, false, false]);
+    const pedido = m.find((p) => p.manifesto.id === 'pedido')!;
+    expect(pedido.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toContain('POST /pedidos');
   });
 });
 
