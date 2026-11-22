@@ -57,7 +57,8 @@ Zod em `modules/faturamento/contracts/index.ts` (fonte da verdade); regras em `d
 
 | Evento | `agregado_id` | Payload |
 |---|---|---|
-| `faturamento.titulo.baixado@1` | nota | campos do `TituloGeradoPayload` + `baixado_em` (data civil) + `valor_baixado_centavos`. Motivo: C-5 de `docs/desenho/T-0009.md` §7 (§2.9). Consome: `integracao-fdv`, com leitor tolerante |
+| `faturamento.titulo.gerado@1` | título | `TituloGeradoPayload` (com `nota_id`). Consome: `integracao-fdv`, com leitor tolerante |
+| `faturamento.titulo.baixado@1` | título | campos do `TituloGeradoPayload` + `baixado_em` (data civil) + `valor_baixado_centavos`. Motivo: C-5 de `docs/desenho/T-0009.md` §7 (§2.9). Consome: `integracao-fdv`, com leitor tolerante |
 
 ## Payloads de integracao-fdv (v1)
 | Evento | `agregado_id` | Payload |
