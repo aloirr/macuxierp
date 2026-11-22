@@ -1,6 +1,6 @@
 # Roteiro da virada da thathyany para o Macuxi ERP (replanejado em 22/11, 02h15)
 
-> Dono: gerente-projetos. Primeira versão: 21/11/2026, 23h50 (Manaus). Replanejado em 22/11, 02h15 (Manaus).
+> Dono: gerente-projetos. Primeira versão: 21/11/2026, 23h50 (Manaus). Replanejado em 22/11, 02h15 e 02h25 (Manaus).
 > Motivo do replanejamento (via PO, 22/11, ~02h00): o Alexandre **desativou o Conector do kit** ("Esqueca o conector da thathyany, ja desative. Agora é so via api nuvem") e **ativou todos os módulos no Conector `macuxierp`** ("Todos os modulos estao ativos na api. Vai enviar tudo"). Não existe mais o passo "desligar no kit".
 > Base que segue valendo: teste na empresa da thathyany (R-20261121-230608); external_id do kit preservados (ADR 0010); decisões das formas de pagamento.
 > Fonte das telas do FDV: código e docs do aloirr/macuxifdv@b75ab88, lidos pela T-0011. O ERP só lê o FDV e não altera nada lá.
@@ -32,21 +32,20 @@ Cada **primeiro envio real** abaixo é uma etapa própria, que só começa com o
 - Ao terminar, mande ao PO a frase da coluna **Devolva**.
 - Se a tela mostrar algo que o roteiro não prevê, pare e mande ao PO o texto da tela.
 
-## Fase A — o mínimo para voltar a receber pedidos
+## Fase A — o mínimo para voltar a receber pedidos (versão de 02h25, com o deploy automatizado: R-20261122-021030-alexandre)
 | # | O que | Quem | Previsão (Manaus) | Devolva |
 |---|---|---|---|---|
-| A1 | Secrets do GitHub, `.env` de produção, VM e banco, DNS e rota `erp.macuxifdv.com.br` (lista abaixo) | Alexandre | 02h30 → 03h30 | `infra pronta` |
-| A2 | **Deploy 1** (o main do dia): `producao-liberar` com a suíte completa → issue → **"aprovo deploy vX.Y.Z"** → publicar. O pacote vem pronto do gerente pelo PO. | gerente e engenheiro; a frase é do Alexandre | 03h30 → 04h15 | a frase |
-| A3 | Carga dos CSVs do kit pela tela **Cadastros > Carga** (os external_id do kit ficam guardados). Depois, **Desativar formas recusadas** em cada empresa (administrador). O gerente confere. | Alexandre ou thathyany | 04h15 → 05h15 | `carga da thathyany feita no ERP` |
-| A4 | Código, em paralelo desde já: L3a da T-0011 (rotas C-7 de configuração do Conector), o integracao-fdv montado na API (R-013902) e a tela Integração FDV, com a validação do design-de-marca | T-0011, engenheiro, engenheiro-apps | 02h15 → 06h45 | — |
-| A5 | **Deploy 2** com o A4 | gerente; a frase é do Alexandre | 06h45 → 07h45 | a frase |
-| A6 | Tela **Integração FDV** do ERP: identificador `macuxierp`, ambiente produção e a chave `mxc_…` digitada **só ali**. Se a chave se perdeu: **Rotacionar chave** no Conector `macuxierp` do BKO do FDV (a antiga vale 24 h). O botão **Testar conexão** tem de dar certo. | Alexandre | 07h45 → 08h00 | `conector configurado no ERP` |
-| A7 | **Primeiro envio real: pedidos** (com o ok do PO). No `.env`, `MACUXIERP_FDV_RECEBIMENTO=ligado`, e reiniciar o worker. Os pedidos da fila chegam ao ERP, que não duplica (RN-PED-01) e devolve o status ao FDV. | o PO aprova; o Alexandre liga | 08h00 → 08h30 | `recebimento ligado` |
+| A1 | Só os 3 secrets do GitHub (`PROD_SSH_KEY`, `PROD_HOST`, `PROD_USER`) e a rota `erp.macuxifdv.com.br` no túnel do FDV (`/v1` → `macuxierp-api:8100`; o resto → `macuxierp-web`) | Alexandre (~10 min) | antes das 04h30 | `secrets e rota feitos` |
+| A2 | Código, em paralelo: L3 (#170 e #171, no main), plugin do conector na API (R-013902), tela Integração FDV (com a validação do design-de-marca), variáveis do conector com envio e recebimento desligados, e a automação do deploy (PR de governança, com "autorizo o merge do PR #N no commit <sha>" levado pelo PO) | engenheiro (2 sessões), engenheiro-apps | 02h20 → 04h30 | — |
+| A3 | **Deploy v0.1.0**: suíte completa no SHA congelado → `producao-liberar` → **"aprovo deploy v0.1.0"** (pelo PO) → publicar. O deploy prepara a VM, o banco, os papéis e o `.env` (chaves geradas na VM uma vez só, sem log; banco e S3 do FDV reaproveitados na VM; SMTP e alerta desligados). Envio e recebimento desligados no código e endereço do Hub vazio. 1 h de folga para o primeiro uso. | gerente e engenheiro; a frase é do PO | 04h30 → 06h15 | — |
+| A4 | Carga dos CSVs do kit pela tela **Cadastros > Carga** (o time não tem os CSVs; eles não passam por chat nem recado). Depois, **Desativar formas recusadas** em cada empresa. O gerente confere. | Alexandre | 06h15 → 07h00 | `carga da thathyany feita no ERP` |
+| A5 | Tela **Integração FDV**: identificador `macuxierp`, ambiente produção e a chave `mxc_…` digitada **só ali**. Se a chave se perdeu: **Rotacionar chave** no BKO do FDV (a antiga vale 24 h). | Alexandre | 07h00 → 07h15 | `chave gravada no ERP` |
+| A6 | **Primeiro envio real: pedidos** (com o ok do PO). PR pequeno e deploy **v0.1.1**: endereço do Hub, recebimento LIGADO e envio ligado **sem nenhuma entidade habilitada**. Os pedidos da fila chegam ao ERP, que não duplica (RN-PED-01) e devolve "integrado" ao FDV. | o PO aprova o PR e o deploy | 07h15 → 08h00 | — |
 
 ## Fase B — publicar os cadastros, uma entidade por vez
 **Passos de cada linha:**
 1. Ok do PO ("primeiro envio real: `<entidade>`").
-2. O gerente habilita a entidade na tela Integração FDV do ERP.
+2. A entidade é habilitada na tela Integração FDV do ERP (Configuração > entidades habilitadas).
 3. O ERP faz a primeira carga completa em lotes de 50, com os mesmos external_id do kit.
 4. Em **Integração ERP > Inativações**, no BKO do FDV:
    - se aparecer uma pendência dessa entidade, **RECUSE**;
@@ -56,11 +55,11 @@ Cada **primeiro envio real** abaixo é uma etapa própria, que só começa com o
 
 | # | Entidade(s) | Previsão | A partir daí, mantida no ERP |
 |---|---|---|---|
-| B1 | `forma_pagamento` e `prazo_pagamento` | 08h30 → 09h15 | formas e condições |
-| B2 | `filial` e depois `vendedor` | 09h15 → 10h00 | filiais, equipe e carteira |
-| B3 | `produto` e depois `produto_unidade` | 10h00 → 10h45 | produtos |
-| B4 | `preco` | 10h45 → 11h15 | tabelas de preço |
-| B5 | `cliente` e depois `cliente_endereco` | 11h15 → 12h00 | clientes |
+| B1 | `forma_pagamento` e `prazo_pagamento` | 08h00 → 08h45 | formas e condições |
+| B2 | `filial` e depois `vendedor` | 08h45 → 09h30 | filiais, equipe e carteira |
+| B3 | `produto` | 09h30 → 10h00 | produtos |
+| B4 | `cliente` (a carteira vai dentro) | 10h00 → 10h30 | clientes |
+| B5 | `produto_unidade`, `preco` e `cliente_endereco` | depois da C-10 no cadastros (os eventos ainda levam o código do ERP, e não a chave do kit: ADR 0010); previsão do cadastros a confirmar | unidades, preços e endereços |
 
 ## Fase C — estoque, títulos e notas
 Nascem do faturamento do ERP. Por isso, só entram com a F5:
@@ -79,22 +78,13 @@ Os passos são os mesmos da Fase B. Até lá, estoque e títulos ficam congelado
 
 **c) Estoque e títulos congelados no app até a F5,** se a resposta de (b) for a Opção 1.
 
-## Lista do Alexandre para a A1 (só nomes; valores nunca em chat, recado ou repositório)
-1. **Secrets do GitHub** (`aloirr/macuxierp` > Settings > Secrets and variables > Actions): os da seção 2.1 de `docs/status/2026-11-21-decisoes-alexandre.md`.
-2. **VM e DBaaS:**
-   - rodar o `preparar-vm.sh` da T-0024 (`/opt/macuxierp` e a trava);
-   - criar o banco `macuxierp` e os papéis `macuxierp_app`, `macuxierp_worker` e `macuxierp_leitura`.
-3. **`/opt/macuxierp/.env`** (modo 600), pelo `env.modelo` da T-0024:
-   - `MACUXIERP_BANCO`;
-   - `MACUXIERP_CHAVE_A1`: `openssl rand -hex 32`. Guarde fora do servidor: se ela se perder, o A1 cifrado não abre mais;
-   - `MACUXIERP_CHAVE_INTEGRACAO`: outra chave, também com `openssl rand -hex 32`. Ela cifra a chave do Conector;
-   - `MACUXIERP_JWT_SEGREDO`;
-   - `MACUXIERP_HUB_URL_PRODUCAO` e `MACUXIERP_HUB_URL_TESTE` (o engenheiro confirma os valores);
-   - `MACUXIERP_FDV_RECEBIMENTO=desligado`, que só vira `ligado` na A7;
-   - a configuração com padrão no modelo, mais S3 e SMTP.
-4. **Cloudflare:** o hostname público `erp.macuxifdv.com.br` no túnel do FDV:
-   - `/v1` → `macuxierp-api`;
-   - o resto → `macuxierp-web`.
+## O que o Alexandre faz (R-20261122-021030-alexandre)
+1. Os 3 secrets: `PROD_SSH_KEY`, `PROD_HOST` e `PROD_USER`.
+2. A rota `erp.macuxifdv.com.br` no túnel do FDV.
+3. Os CSVs do kit, pela tela de carga do ERP (A4).
+4. A chave `mxc_…`, na tela Integração FDV (A5).
+
+Todo o resto é automático pelo deploy. As frases de governança e de deploy saem pelo PO.
 
 ## Conferido pelo time no código do FDV (22/11, 00h00)
 A T-0011 conferiu por busca de código no aloirr/macuxifdv:
