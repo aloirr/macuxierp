@@ -21,7 +21,7 @@ export const PERMISSOES = {
   'core.licenca.ver': ADM, // D12: o tenant só lê; muda pelo scripts/plataforma/licenca.mjs
   'core.certificado.gerir': ADM,
   'core.ambiente.ver': ['administrador', 'fiscal', 'faturista'],
-  'core.ambiente.trocar': ADM, // + o recado "aprovo produção fiscal" do Alexandre (RN-CORE-08, no domain do core)
+  'core.ambiente.trocar': ADM, // só volta para homologação; produção é do operador, ADR 0006 (RN-CORE-08)
   'core.auditoria.ver': ADM,
   'core.exportacao.pedir': ADM,
   'core.parametro.gerir': ADM,
