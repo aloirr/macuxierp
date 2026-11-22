@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RetornoErp } from '../contracts';
-import { corpoCanonicoDoRetorno, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, type EventoPedido } from './retorno-pedido';
+import { corpoCanonicoDoRetorno, ORDEM_HUB, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, type EventoPedido } from './retorno-pedido';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ev = (nome: string, extra: Record<string, unknown> = {}): EventoPedido => ({
@@ -76,6 +76,32 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   it('RN-PED-05: depois de status terminal no Hub, nada mais é enviado; integrado repetido é ignorado', () => {
     expect(retornoDoPedido(ev('pedido.pedido.cancelado@1', { status: 'cancelado' }), 'cancelado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
     expect(retornoDoPedido(ev('pedido.pedido.recebido@1'), 'integrado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_adiante' });
+  });
+  it('RN-PED-05: parcial depois de total aceito é ignorado (hub_ja_terminal) sem olhar o espelho', () => {
+    const parcial = ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens });
+    expect(retornoDoPedido(parcial, 'faturado_total', CHAVES)).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
+    // ignora antes de olhar o espelho: nem aguarda chave de produto
+    expect(retornoDoPedido(parcial, 'faturado_total', new Map()).acao).toBe('ignorar');
+  });
+  it('RN-PED-05: cancelado@1 depois de faturado_total aceito vai ao Hub (transição aceita); depois de cancelado ou rejeitado_erp, não', () => {
+    const cancelado = ev('pedido.pedido.cancelado@1', { status: 'cancelado' });
+    expect(retornoDoPedido(cancelado, 'faturado_total')).toMatchObject({ acao: 'enviar', corpo: { status: 'cancelado' } });
+    expect(retornoDoPedido(cancelado, 'cancelado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
+    expect(retornoDoPedido(cancelado, 'rejeitado_erp')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
+  });
+  it('RN-PED-05: ORDEM_HUB: integrado < parcial < total, e os terminais no mesmo degrau do total', () => {
+    expect(ORDEM_HUB).toEqual({ integrado: 1, faturado_parcial: 2, faturado_total: 3, rejeitado_erp: 3, cancelado: 3 });
+  });
+  it('RN-PED-05: parcial depois de parcial vai se a nota for diferente ou desconhecida; com a mesma nota é ignorado (hub_ja_adiante)', () => {
+    const parcial = ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens });
+    expect(retornoDoPedido(parcial, 'faturado_parcial', CHAVES, undefined, '2'.repeat(44))).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial' } });
+    expect(retornoDoPedido(parcial, 'faturado_parcial', CHAVES, undefined, nota.chave)).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_adiante' });
+    // nota desconhecida (parcial aceito sem chave de nota): vai; o Hub deduplica repetidos pelo corpo
+    expect(retornoDoPedido(parcial, 'faturado_parcial', CHAVES, undefined, null)).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial' } });
+    expect(retornoDoPedido(parcial, 'faturado_parcial', CHAVES).acao).toBe('enviar');
+    // total depois de parcial segue (avanço); parcial depois de integrado também
+    expect(retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'faturado_parcial', CHAVES, undefined, nota.chave).acao).toBe('enviar');
+    expect(retornoDoPedido(parcial, 'integrado', CHAVES).acao).toBe('enviar');
   });
   it('RN-PED-05: rejeitado_erp do recebimento recusado leva o motivo do catálogo e nenhum numero_erp', () => {
     const c = retornoRejeitadoErp(U(2), 'cliente_inexistente', new Date('2026-11-21T18:00:00Z'));
