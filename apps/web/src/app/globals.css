@@ -48,3 +48,33 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .selo-inativo { background: var(--mx-cor-inativo-fundo); color: var(--mx-cor-texto-secundario); }
 @media (max-width: 800px) { .casca { grid-template-columns: 1fr; } .conteudo { padding: 16px; } }
 .faixa-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); border: 1px solid var(--mx-cor-aviso-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
+
+/* Telas genéricas de descritor (T-0015): tabela densa, pendências, diálogo, itens. Trocar por packages/ui quando publicado. */
+.so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tabela-rolavel { overflow-x: auto; }
+.tabela-densa { width: 100%; border-collapse: collapse; font-size: var(--mx-tamanho-pequeno); }
+.tabela-densa th, .tabela-densa td { padding: 6px 10px; border-bottom: 1px solid var(--mx-cor-borda-tabela); text-align: left; vertical-align: top; }
+.tabela-densa th.num, .tabela-densa td.num { text-align: right; }
+.tabela-densa input, .tabela-densa select { width: 100%; padding: 6px; font: inherit; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 4px; }
+.filtros { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; margin-bottom: 16px; }
+.filtros .campo { margin: 0; min-width: 160px; }
+.filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.barra-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.faixa-pendencias { border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; margin: 0 0 16px; }
+.faixa-pendencias ul { list-style: none; margin: 0; padding: 0; }
+.faixa-pendencias li { padding: 8px 12px; }
+.pendencia-bloqueante { background: var(--mx-cor-erro-fundo); color: var(--mx-cor-erro-texto); }
+.pendencia-aceitavel { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
+.selo-ok { background: var(--mx-cor-ativo-fundo); color: var(--mx-cor-ativo-texto); }
+.selo-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
+.selo-erro { background: var(--mx-cor-erro-fundo); color: var(--mx-cor-erro-texto); }
+.selo-neutro { background: var(--mx-cor-inativo-fundo); color: var(--mx-cor-texto-secundario); }
+.dados { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 24px; margin: 0 0 16px; }
+.dados dt { font-size: var(--mx-tamanho-pequeno); color: var(--mx-cor-texto-secundario); }
+.dados dd { margin: 0; font-weight: var(--mx-peso-medio); }
+.dialogo { border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 24px; max-width: 520px; width: 92vw; }
+.dialogo::backdrop { background: rgba(0, 0, 0, .45); }
+.erro-campo { color: var(--mx-cor-erro-texto); display: block; margin-top: 4px; }
+.itens { border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; margin: 0 0 16px; padding: 8px 12px; }
+.paginacao { display: flex; gap: 12px; margin-top: 12px; }
+a.btn { text-decoration: none; display: inline-block; }

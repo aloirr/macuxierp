@@ -151,3 +151,51 @@ export async function enviarCarga(acesso: string, formulario: FormData): Promise
   const dados = RelatorioCarga.safeParse(await r.json().catch(() => null));
   return dados.success ? { ok: true, relatorio: dados.data } : { ok: false, erro: 'A API respondeu fora do contrato.' };
 }
+
+/** GET de um registro (detalhe, catálogo): como `getValidado` com status distintos; 404 vira `null`. Modo falso: `null`. */
+export async function buscarRegistro<S extends z.ZodTypeAny>(caminho: string, schema: S, acesso: string, rotulo: string): Promise<z.infer<S> | null> {
+  if (usaApiFalsa) return null;
+  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  if (r.status === 401) throw new NaoAutenticado();
+  if (r.status === 403) throw new SemPermissao();
+  if (r.status === 404) return null;
+  if (r.status === 400) throw new DadosInvalidos(`${rotulo}: VALIDACAO`);
+  if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`);
+  const dados = schema.safeParse(await r.json().catch(() => null));
+  if (!dados.success) throw new ApiIndisponivel(`${rotulo} fora do contrato`);
+  return dados.data;
+}
+
+export interface RespostaEscrita {
+  ok: boolean;
+  status: number;
+  /** Corpo JSON da API (resposta de sucesso ou erro `{ codigo, mensagem, campos }`); nunca vai a log. */
+  corpo: unknown;
+}
+
+/** POST/PATCH/DELETE com JSON, Idempotency-Key e If-Match opcionais. Falha de rede lança ApiIndisponivel; 401 lança NaoAutenticado. */
+export async function escreverJson(
+  metodo: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  caminho: string,
+  corpo: unknown,
+  acesso: string,
+  opcoes: { idempotencia?: string; versao?: string } = {},
+): Promise<RespostaEscrita> {
+  if (usaApiFalsa) throw new ApiIndisponivel('a escrita precisa da API real: configure MACUXIERP_API_URL');
+  const cabecalhos: Record<string, string> = { authorization: `Bearer ${acesso}`, 'content-type': 'application/json' };
+  if (opcoes.idempotencia) cabecalhos['idempotency-key'] = opcoes.idempotencia;
+  if (opcoes.versao) cabecalhos['if-match'] = opcoes.versao;
+  const r = await chamar(caminho, { method: metodo, headers: cabecalhos, body: corpo === undefined ? undefined : JSON.stringify(corpo) });
+  if (r.status === 401) throw new NaoAutenticado();
+  return { ok: r.ok, status: r.status, corpo: await r.json().catch(() => null) };
+}
+
+/** GET de um CSV na API (exportação da lista), com o token. Devolve o corpo e o tipo, ou `null` se a API falhar. Modo falso: `null`. */
+export async function baixarCsv(caminho: string, acesso: string): Promise<{ corpo: ArrayBuffer; tipo: string } | null> {
+  if (usaApiFalsa || !CAMINHO_CSV.test(caminho.split('?')[0] ?? '')) return null;
+  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  if (r.status === 401) throw new NaoAutenticado();
+  if (!r.ok) return null;
+  return { corpo: await r.arrayBuffer(), tipo: r.headers.get('content-type') ?? 'text/csv; charset=utf-8' };
+}
+const CAMINHO_CSV = /^\/v1\/[a-z][a-z0-9-]*\/[a-z0-9/_-]+$/;
