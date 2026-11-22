@@ -1,0 +1,344 @@
+/**
+ * Apoio dos testes da api (não é exportado pelo pacote): repositório em memória que imita os gatilhos da 0013 (guardar o XML
+ * autorizado leva a nota a `autorizada`), massa de pedido e cálculo no formato real dos contracts, e a porta `SefazTransporte`
+ * real (`@macuxierp/nfe-sefaz`) com respostas no formato real e contagem de chamadas.
+ */
+import { abrirA1, criarEmissorNFe, type CertificadoA1EmMemoria, type EmissorNFe, type NotaParaEmissaoEntrada } from '@macuxierp/nfe-emissor';
+import {
+  escolherDestinoSefaz,
+  type ProtocoloNFe,
+  type RespostaAutorizacao,
+  type RespostaConsultaProtocolo,
+  type RespostaConsultaRecibo,
+  type SefazTransporte,
+} from '@macuxierp/nfe-sefaz';
+import { CNPJ_EMITENTE_DE_TESTE, INSTANTE_DE_TESTE, VALIDADE_DE_TESTE, gerarA1DeTeste } from '@macuxierp/nfe-sefaz/teste';
+import type { Transacao } from '@macuxierp/platform-sdk';
+import { paginar } from '@macuxierp/platform-sdk';
+import type { Ambiente, StatusNota } from '../contracts';
+import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, resumoDoItem, type ConteudoNota } from '../domain';
+import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
+import type { DepsEmissao } from './emissao';
+import type { A1DaFilial, NotaRegistro, RepositorioNotas, TransmissaoRegistrada } from './portas';
+
+export const tx = {} as Transacao;
+export const TENANT = IDS.tenant;
+export const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+export const NPROT = '113260000000001';
+export const DIGVAL = 'ZGlnZXN0b2RhYXNzaW5hdHVyYQ==';
+
+/** Repositório em memória: `log` guarda a ordem das escritas (a mesma tx). */
+export function repoFake() {
+  const notas = new Map<string, NotaRegistro>();
+  const conteudos = new Map<string, ConteudoNota>();
+  const xmls: { id: string; conteudo: string; protocolo: string }[] = [];
+  const eventos: { nome: string; payload: Record<string, unknown> }[] = [];
+  const transmissoes: TransmissaoRegistrada[] = [];
+  const assinados: { id: string; versao: number; xml: string; sha256: string }[] = [];
+  const atualizadaEm = new Map<string, Date>();
+  const dadosStatus: { para: StatusNota; dados: unknown }[] = [];
+  const log: string[] = [];
+  const estado = { proximo: 0, reservas: 0, falharGuarda: false, ambienteReserva: '' as string, travadas: new Set<string>(), relogio: new Date('2026-11-21T14:30:00Z'), agoraBanco: new Date('2026-11-21T15:30:00Z') };
+  const repo: RepositorioNotas = {
+    async travarIdempotencia() {
+      log.push('trava');
+    },
+    async buscarPorIdempotencia(_t, _tenant, idem) {
+      return [...notas.values()].find((n) => n.idempotencia === idem) ?? null;
+    },
+    async obter(_t, id) {
+      const n = notas.get(id);
+      return n ? { ...n } : null;
+    },
+    async lerConteudo(_t, id) {
+      return conteudos.get(id) ?? null;
+    },
+    async reservarNumero(_t, _tenant, _filial, ambiente, _serie, inicial) {
+      estado.reservas++;
+      estado.ambienteReserva = ambiente;
+      estado.proximo = estado.proximo === 0 ? inicial : estado.proximo + 1;
+      log.push(`numero:${estado.proximo}`);
+      return estado.proximo;
+    },
+    async gravarNota(_t, n, conteudo) {
+      const nota: NotaRegistro = {
+        ...n,
+        id: uuid(notas.size + 1),
+        status: 'rascunho',
+        protocolo: null,
+        recibo: null,
+        vai_ao_fdv: n.ambiente === 'producao',
+        revisao: 1,
+        itens: conteudo.itens.map(resumoDoItem),
+      };
+      notas.set(nota.id, nota);
+      atualizadaEm.set(nota.id, estado.relogio);
+      conteudos.set(nota.id, conteudo);
+      log.push('gravar');
+      return { ...nota };
+    },
+    async atualizarConteudo(_t, id, conteudo) {
+      const n = notas.get(id) as NotaRegistro;
+      if (n.status !== 'rejeitada' && n.status !== 'rascunho') throw new Error(`status ${n.status} não aceita novo conteúdo`);
+      notas.set(id, {
+        ...n,
+        total_centavos: calcularTotais(conteudo.itens).vNF,
+        recibo: null,
+        revisao: n.revisao + 1,
+        itens: conteudo.itens.map(resumoDoItem),
+      });
+      atualizadaEm.set(id, estado.relogio);
+      conteudos.set(id, conteudo);
+      log.push('conteudo');
+    },
+    async mudarStatus(_t, id, de, para, dados) {
+      const n = notas.get(id) as NotaRegistro;
+      if (para === 'autorizada') throw new Error('autorizada só por guardarXmlAutorizado (gatilho do banco)');
+      if (n.status !== de) throw new Error(`status atual ${n.status}, esperado ${de}`);
+      notas.set(id, { ...n, status: para, protocolo: dados?.protocolo ?? n.protocolo, recibo: dados?.recibo ?? n.recibo });
+      atualizadaEm.set(id, estado.relogio);
+      dadosStatus.push({ para, dados });
+      log.push(`status:${para}`);
+    },
+    async registrarRecibo(_t, id, recibo) {
+      const n = notas.get(id) as NotaRegistro;
+      notas.set(id, { ...n, recibo });
+      log.push('recibo');
+    },
+    async guardarXmlAutorizado(_t, id, xml) {
+      if (estado.falharGuarda) throw new Error('falha de armazenamento');
+      if (xmls.some((x) => x.id === id)) throw new Error('RN-FAT-03: o XML guardado é imutável');
+      xmls.push({ id, ...xml });
+      const n = notas.get(id) as NotaRegistro;
+      if (n.status === 'autorizada_guarda_pendente') notas.set(id, { ...n, status: 'autorizada' }); // o gatilho do banco
+      log.push('xml:autorizado');
+    },
+    async travarTransmissao(_t, id) {
+      return !estado.travadas.has(id);
+    },
+    async gravarXmlAssinado(_t, id, xml, sha256) {
+      // Regras da migração 0020: só com a nota em rascunho, rejeitada ou emitida_contingencia, e a chave da nota igual à do XML.
+      const n = notas.get(id) as NotaRegistro;
+      if (!['rascunho', 'rejeitada', 'emitida_contingencia'].includes(n.status)) throw new Error(`0020: nfe_assinada não entra com a nota em ${n.status}`);
+      if (!xml.includes(`Id="NFe${n.chave_acesso}"`)) throw new Error('0020: a chave da nota difere da chave do XML');
+      const versao = Math.max(0, ...assinados.filter((a) => a.id === id).map((a) => a.versao)) + 1;
+      assinados.push({ id, versao, xml, sha256 });
+      log.push(`xml:assinado:${versao}`);
+      return versao;
+    },
+    async ultimoXmlAssinado(_t, id) {
+      const a = assinados.filter((x) => x.id === id).sort((x, y) => y.versao - x.versao)[0];
+      return a ? { versao: a.versao, xml: a.xml } : null;
+    },
+    async registrarTransmissao(_t, t) {
+      transmissoes.push(t);
+    },
+    async publicarEvento(_t, e) {
+      eventos.push({ nome: e.nome, payload: e.payload });
+      log.push(`evento:${e.nome}`);
+    },
+    async listar(_t, f) {
+      const linhas = [...notas.values()]
+        .filter((n) => (!f.status || n.status === f.status) && (!f.pedido_id || n.pedido_id === f.pedido_id))
+        .map((n) => ({ id: n.id, filial_id: n.filial_id, cliente_id: n.cliente_id, pedido_id: n.pedido_id, ambiente: n.ambiente, serie: n.serie, numero: n.numero, chave_acesso: n.chave_acesso, status: n.status, emitida_em: n.emitida_em, total_centavos: n.total_centavos, protocolo: n.protocolo, c_stat: null, x_motivo: null }));
+      return paginar(linhas, f.limite);
+    },
+    async detalhar(_t, id) {
+      const n = notas.get(id);
+      return n
+        ? { id: n.id, filial_id: n.filial_id, cliente_id: n.cliente_id, pedido_id: n.pedido_id, ambiente: n.ambiente, serie: n.serie, numero: n.numero, chave_acesso: n.chave_acesso, status: n.status, emitida_em: n.emitida_em, total_centavos: n.total_centavos, protocolo: n.protocolo, c_stat: null, x_motivo: null, natureza_operacao: 'VENDA DE MERCADORIA', tipo_emissao: n.tp_emis, recibo: n.recibo, itens: n.itens }
+        : null;
+    },
+    async lerXmlAutorizado(_t, id) {
+      const x = xmls.find((v) => v.id === id);
+      const n = notas.get(id);
+      return x && n ? { xml: x.conteudo, protocolo: x.protocolo, chave_acesso: n.chave_acesso } : null;
+    },
+    async listarRejeicoes(_t, f) {
+      const linhas = [...notas.values()]
+        .filter((n) => n.status === 'rejeitada')
+        .map((n) => ({ id: n.id, filial_id: n.filial_id, pedido_id: n.pedido_id, serie: n.serie, numero: n.numero, codigo: '778', mensagem: 'Rejeicao: NCM inexistente', rejeitada_em: n.emitida_em, acao_sugerida: interpretarRetorno('778', '').acao }));
+      return paginar(linhas, f.limite);
+    },
+    async pendentesDeTransmissao(_t, limite, paradasHaMinutos) {
+      const corte = estado.agoraBanco.getTime() - paradasHaMinutos * 60_000;
+      return [...notas.values()].filter((n) => emTransmissao(n.status) && (atualizadaEm.get(n.id) as Date).getTime() < corte).slice(0, limite).map((n) => ({ id: n.id, status: n.status }));
+    },
+  };
+  return { repo, notas, conteudos, xmls, assinados, eventos, transmissoes, dadosStatus, log, estado };
+}
+
+export type RepoFake = ReturnType<typeof repoFake>;
+
+/** CNPJ do A1 de teste: o emitente das notas dos testes (a SEFAZ confere o CNPJ do certificado com o do emitente). */
+export const CNPJ_EMITENTE = CNPJ_EMITENTE_DE_TESTE;
+/** IE do emitente com DV válido no AM. */
+export const IE_EMITENTE = '041234561';
+
+/**
+ * A porta `EmissorNFe` REAL (`criarEmissorNFe` do `@macuxierp/nfe-emissor`) com espiões: guarda as entradas montadas e os XMLs assinados.
+ * Um objeto por teste (o teste pode trocar `montar` sem vazar para os outros).
+ */
+export function emissorEspiao() {
+  const real = criarEmissorNFe();
+  const montagens: NotaParaEmissaoEntrada[] = [];
+  const assinaturas: string[] = [];
+  const emissor: EmissorNFe = {
+    ...real,
+    montar: (nota, opcoes) => {
+      montagens.push(nota);
+      return real.montar(nota, opcoes);
+    },
+    assinar: (xml, a1) => {
+      const r = real.assinar(xml, a1);
+      assinaturas.push(r.xml);
+      return r;
+    },
+  };
+  return { emissor, montagens, assinaturas };
+}
+
+let a1Gerado: ReturnType<typeof gerarA1DeTeste> | undefined;
+let a1Aberto: CertificadoA1EmMemoria | undefined;
+/**
+ * A1 de teste gerado em tempo de execução (nada de certificado em arquivo), com o CNPJ só no SAN ICP-Brasil, como as ACs emitem.
+ * A geração do par RSA é cara: gera uma vez e entrega uma CÓPIA do pfx a cada chamada (o transmissor zera o pfx ao fim).
+ */
+export function a1DeTeste(): A1DaFilial {
+  a1Gerado ??= gerarA1DeTeste({ ...VALIDADE_DE_TESTE, cnpjNoTitular: 'san' });
+  a1Aberto ??= abrirA1(a1Gerado.pfx, a1Gerado.senha, INSTANTE_DE_TESTE);
+  return { certificado: a1Aberto, credencial: { pfx: Uint8Array.from(a1Gerado.pfx), senha: a1Gerado.senha } };
+}
+
+/** Dependências da emissão em memória: dois itens (R$ 20,00 e R$ 25,00), emitente em Manaus, boleto em duas parcelas. */
+export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFake; semA1?: boolean } = {}) {
+  const r = opc.r ?? repoFake();
+  const pedido = pedidoAprovado([itemPedido(1, 20_000, 1000), itemPedido(2, 10_000, 2500)]);
+  pedido.pedido.condicao_pagamento_id = uuid(77);
+  const situacao = {
+    status: (opc.status ?? 'aprovado') as 'aprovado',
+    itens: [
+      { sequencia: 1, quantidade: 20_000, quantidade_faturada: 0 },
+      { sequencia: 2, quantidade: 10_000, quantidade_faturada: 0 },
+    ],
+  };
+  const espiao = emissorEspiao();
+  const deps: DepsEmissao = {
+    emissor: espiao.emissor,
+    pedidos: { obter: async () => pedido, gravar: async () => 'novo' },
+    situacao: { situacao: async () => situacao },
+    cadastros: {
+      filial: async () => ({
+        id: IDS.filial,
+        cnpj: CNPJ_EMITENTE,
+        razao_social: 'EMITENTE LTDA',
+        nome_fantasia: null,
+        ie: IE_EMITENTE,
+        crt: 3,
+        endereco: { logradouro: 'Rua E', numero: '1', bairro: 'Centro', municipio_ibge: '1302603', municipio_nome: 'Manaus', uf: 'AM', cep: '69000-000' },
+        emissora: true,
+        nfe_serie: 1,
+      }),
+      cliente: async () => null,
+      condicao: async () => ({ forma_tpag: '15', prazos_dias: [30, 60] }),
+      numeroInicial: async () => 100,
+    },
+    calculo: {
+      calcular: async (_t, e) => ({
+        ok: true,
+        cfops: Object.fromEntries(e.itens.map((i) => [i.sequencia, '5102'])),
+        saida: {
+          operacao: 'interna',
+          itens: e.itens.map(
+            (i) =>
+              // Valores coerentes (o emissor confere vBC × alíquota = valor, tolerância de R$ 0,01).
+              calc(i.sequencia, {
+                icms: { orig: i.origem as '0', cst: '00', mod_bc: 3, v_bc: i.valor_centavos, p_icms: 200_000, v_icms: Math.round(i.valor_centavos * 0.2) },
+                pis: { cst: '01', v_bc: i.valor_centavos, p_aliq: 16_500, v_valor: Math.round(i.valor_centavos * 0.0165) },
+                cofins: { cst: '01', v_bc: i.valor_centavos, p_aliq: 76_000, v_valor: Math.round(i.valor_centavos * 0.076) },
+              }).resultado,
+          ),
+          totais: { v_bc: 0, v_icms: 0, v_bc_st: 0, v_st: 0, v_fcp: 0, v_fcp_st: 0, v_prod: 0, v_desc: 0, v_frete: 0, v_seg: 0, v_outro: 0, v_ipi: 0, v_nf: e.itens.reduce((a, i) => a + i.valor_centavos - i.desconto_centavos + i.frete_centavos + i.outras_centavos, 0), v_cred_icms_sn: 0 },
+        },
+      }),
+    },
+    ambiente: { ambiente: async () => opc.ambiente ?? 'producao' },
+    notas: r.repo,
+    lerA1: async () => (opc.semA1 ? null : a1DeTeste()),
+    agora: () => INSTANTE_DE_TESTE,
+    sorteio: () => 48_213_705,
+  };
+  return { deps, r, pedido, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
+}
+
+// ---- A porta real SefazTransporte, com respostas no formato real e contagem de chamadas ----
+
+/** `DigestValue` da assinatura de cada NF-e que chegou ao transporte: a SEFAZ o devolve no `digVal` do protocolo. */
+const DIGESTS = new Map<string, string>();
+
+export const protocolo = (chNFe: string, extra: Partial<ProtocoloNFe> = {}): ProtocoloNFe => ({
+  tpAmb: 2,
+  verAplic: 'SIMULADOR',
+  cStat: '100',
+  xMotivo: 'Autorizado o uso da NF-e',
+  chNFe,
+  dhRecbto: '2026-11-21T10:31:02-04:00',
+  nProt: NPROT,
+  digVal: DIGESTS.get(chNFe) ?? DIGVAL,
+  xml: `<protNFe versao="4.00"><infProt><chNFe>${chNFe}</chNFe><nProt>${NPROT}</nProt></infProt></protNFe>`,
+  ...extra,
+});
+
+export interface Roteiro {
+  /** Resultado de `consultarRecibo` e de `consultarProtocolo`: por padrão, autorizada. */
+  recibo?: (chave: string) => ProtocoloNFe | null;
+  autorizar?: (chave: string) => ProtocoloNFe | 'recibo' | { cStat: string; xMotivo: string };
+  consulta?: (chave: string) => ProtocoloNFe | null;
+}
+
+/** Transporte com o contrato real: lê a chave do `infNFe Id` do XML enviado. Conta as chamadas em `chamadas`. */
+export function transporteFake(roteiro: Roteiro = {}, filial = IDS.filial) {
+  const chamadas: string[] = [];
+  const base = { tpAmb: 2 as const, verAplic: 'SIMULADOR', cUF: 13 };
+  const chaveDe = (xml: string): string => /Id="NFe(\w{44})"/.exec(xml)?.[1] ?? '0'.repeat(44);
+  let ultimaChave = '0'.repeat(44);
+  const t: SefazTransporte = {
+    destino: escolherDestinoSefaz({ filial_id: filial, ambiente: 'homologacao', uf: 'AM' }, { transporte: 'simulador' }),
+    async autorizar(p): Promise<RespostaAutorizacao> {
+      chamadas.push('autorizar');
+      ultimaChave = chaveDe(p.nfes[0] ?? '');
+      DIGESTS.set(ultimaChave, digestValueDoXml(p.nfes[0] ?? '') ?? DIGVAL);
+      const r = roteiro.autorizar?.(ultimaChave) ?? 'recibo';
+      const comum = { ...base, dhRecbto: '2026-11-21T10:31:00-04:00', xml: '<retEnviNFe/>' };
+      if (r === 'recibo') return { ...comum, cStat: '103', xMotivo: 'Lote recebido com sucesso', recibo: { nRec: '131000000000001', tMed: 1 }, protocolos: [] };
+      if ((r as { chNFe?: string }).chNFe) return { ...comum, cStat: '104', xMotivo: 'Lote processado', recibo: null, protocolos: [r as ProtocoloNFe] };
+      return { ...comum, cStat: r.cStat, xMotivo: r.xMotivo, recibo: null, protocolos: [] };
+    },
+    async consultarRecibo(): Promise<RespostaConsultaRecibo> {
+      chamadas.push('consultarRecibo');
+      const p = roteiro.recibo ? roteiro.recibo(ultimaChave) : protocolo(ultimaChave);
+      const comum = { ...base, nRec: '131000000000001', dhRecbto: '2026-11-21T10:31:01-04:00', xml: '<retConsReciNFe/>' };
+      return p ? { ...comum, cStat: '104', xMotivo: 'Lote processado', protocolos: [p] } : { ...comum, cStat: '105', xMotivo: 'Lote em processamento', protocolos: [] };
+    },
+    async consultarProtocolo(p): Promise<RespostaConsultaProtocolo> {
+      chamadas.push('consultarProtocolo');
+      const pr = roteiro.consulta ? roteiro.consulta(p.chNFe) : protocolo(p.chNFe);
+      const comum = { ...base, chNFe: p.chNFe, dhRecbto: '2026-11-21T10:31:03-04:00', eventos: [], xml: '<retConsSitNFe/>' };
+      return pr ? { ...comum, cStat: pr.cStat, xMotivo: pr.xMotivo, protocolo: pr } : { ...comum, cStat: '217', xMotivo: 'NF-e nao consta na base de dados da SEFAZ', protocolo: null };
+    },
+    async statusServico() {
+      chamadas.push('statusServico');
+      return { ...base, cStat: '107', xMotivo: 'Servico em operacao', dhRecbto: '2026-11-21T10:31:03-04:00', tMed: null, dhRetorno: null, xObs: null, xml: '<retConsStatServ/>' };
+    },
+    async cancelar() {
+      throw new Error('fora do lote 1c');
+    },
+    async cartaCorrecao() {
+      throw new Error('fora do lote 1c');
+    },
+    async inutilizar() {
+      throw new Error('fora do lote 1c');
+    },
+  };
+  return { transporte: t, chamadas };
+}
