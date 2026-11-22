@@ -1,11 +1,8 @@
-import { contexto } from '@/lib/sessao';
-
-export default async function Inicio() {
-  const { eu } = await contexto();
+export default function Inicio() {
   return (
     <>
-      <h1>Olá, {eu.usuario.nome}</h1>
-      <p className="apoio">Escolha uma opção no menu ao lado.</p>
+      <h1>Boas-vindas ao Macuxi ERP</h1>
+      <p className="apoio">Comece pelo menu ao lado: ele mostra o que a sua empresa contratou.</p>
     </>
   );
 }

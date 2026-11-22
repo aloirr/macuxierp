@@ -16,8 +16,6 @@ export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
       <ul>{item('/', 'Início')}</ul>
       {menu.map((g) => {
         const nome = NOMES_MODULOS[g.modulo];
-        const unico = g.itens.length === 1 && g.itens[0]?.rotulo === nome;
-        if (unico) return <ul key={g.modulo}>{g.itens.map((i) => item(i.href, i.rotulo))}</ul>;
         const idTitulo = `menu-${g.modulo}`;
         return (
           <section key={g.modulo} aria-labelledby={idTitulo}>
@@ -26,8 +24,10 @@ export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
           </section>
         );
       })}
-      <h2>Conta</h2>
-      <ul>{item('/licencas', 'Licenças')}</ul>
+      <section aria-labelledby="menu-conta">
+        <h2 id="menu-conta">Conta</h2>
+        <ul>{item('/licencas', 'Licenças')}</ul>
+      </section>
     </nav>
   );
 }
