@@ -14,6 +14,7 @@ import { avisosA1MaisRecentes, destinoAvisosSql, exportadorCore, fonteCertificad
 
 const DIA_MS = 86_400_000;
 const AGORA = new Date('2026-11-21T11:00:00Z');
+const DEPOIS = new Date('2026-11-22T12:00:00Z');
 const dias = (n: number) => new Date(AGORA.getTime() + n * DIA_MS);
 
 /** Uma rodada do alerta, como `criarRotinaAlertaA1`: devolve avisos novos e repetidos. */
@@ -107,19 +108,40 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores do core para o worker (PostgreSQL r
   });
 
   it('RLS: o worker só vê e só grava avisos do tenant da sessão; o app lê os do próprio tenant (selo do /eu)', async () => {
-    const doT = await app.comTenant(T, (tx) => avisosA1MaisRecentes(tx, '2026-11-22'));
+    const doT = await app.comTenant(T, (tx) => avisosA1MaisRecentes(tx, DEPOIS));
     expect(doT.map((a) => a.filial_id).sort()).toEqual([F30, F31, FVENCIDO].sort());
     expect(doT.every((a) => a.dia === '2026-11-22')).toBe(true); // o mais recente de cada filial
-    const doT2 = await app.comTenant(T2, (tx) => avisosA1MaisRecentes(tx, '2026-11-22'));
+    const doT2 = await app.comTenant(T2, (tx) => avisosA1MaisRecentes(tx, DEPOIS));
     expect(doT2.map((a) => a.filial_id)).toEqual([FOUTRO]);
-    // só o dia pedido, e só certificado ativo e não excluído: o A1 trocado não acende o selo
-    expect(await app.comTenant(T, (tx) => avisosA1MaisRecentes(tx, '2026-11-21'))).toHaveLength(2);
+    // só certificado ativo e não excluído: o A1 trocado não acende o selo
     await b.admin.query("UPDATE core.certificado SET ativo = false WHERE id = $1", [certificado30]);
-    const semTrocado = await app.comTenant(T, (tx) => avisosA1MaisRecentes(tx, '2026-11-22'));
+    const semTrocado = await app.comTenant(T, (tx) => avisosA1MaisRecentes(tx, DEPOIS));
     expect(semTrocado.map((a) => a.filial_id)).not.toContain(F30);
     await b.admin.query("UPDATE core.certificado SET ativo = true WHERE id = $1", [certificado30]);
     const certsT2 = await worker.comTenant(T2, (tx) => fonteCertificadosSql.vencendoAte(tx, dias(400)));
     expect(certsT2.map((c) => c.filial_id)).toEqual([FOUTRO]);
+  });
+
+  it('RF-CORE-04, RN-CORE-06: às 05h UTC o aviso de ontem ainda vale (dias recalculado); de anteontem não; certificado desativado não', async () => {
+    const T3 = await criarTenant(b.admin, 'selo-a1');
+    const D = new Date('2026-12-10T05:00:00Z');
+    const validoAte = new Date('2026-12-25T10:00:00Z'); // 15,2 dias de D; ontem às 11h eram 15 dias e 23 h
+    const fOntem = randomUUID();
+    const fAnteontem = randomUUID();
+    const fOff = randomUUID();
+    const cOntem = await certificado(T3, fOntem, validoAte);
+    const cAnte = await certificado(T3, fAnteontem, validoAte);
+    const cOff = await certificado(T3, fOff, validoAte, false);
+    const aviso = (c: string, f: string, dia: string, d: number) =>
+      b.admin.query('INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia) VALUES ($1, $2, $3, $4, $5, $6::date)', [T3, c, f, validoAte, d, dia]);
+    await aviso(cOntem, fOntem, '2026-12-09', 16);
+    await aviso(cAnte, fAnteontem, '2026-12-08', 17);
+    await aviso(cOff, fOff, '2026-12-09', 16);
+    const selo = await app.comTenant(T3, (tx) => avisosA1MaisRecentes(tx, D));
+    expect(selo.map((a) => a.filial_id)).toEqual([fOntem]);
+    expect(selo[0]?.dias).toBe(diasParaVencer(validoAte, D)); // 15, não os 16 gravados ontem
+    expect(selo[0]?.dias).toBe(15);
+    expect(selo[0]?.dia).toBe('2026-12-09');
   });
 
   it('RF-CORE-06: estados da exportação: pendente vira pronta com o arquivo; pronta não volta; falhar só sai de pendente ou gerando', async () => {

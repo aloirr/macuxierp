@@ -9,6 +9,7 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { ExportacaoEstado } from '../contracts';
+import { diasParaVencer } from '../domain';
 
 /** Espelha `CertificadoVencendo` do worker. */
 export interface CertificadoVencendoLinha {
@@ -61,16 +62,21 @@ export const destinoAvisosSql = {
 };
 
 /**
- * Leitura do selo do BKO: os avisos do `dia` (`AAAA-MM-DD`, UTC) dos certificados ativos e não excluídos (um A1 já
- * trocado não acende o selo), um por filial (RLS). A API do `/v1/auth/eu` chama isto quando o contrato ganhar o campo.
+ * Leitura do selo do BKO: o aviso mais recente de cada filial entre ontem e hoje (UTC) dos certificados ativos e não
+ * excluídos (um A1 já trocado não acende o selo). A rotina grava às 11h UTC; o aviso de ontem vale até a nova rodada,
+ * então o selo não some de 0h às 11h UTC (RF-CORE-04, RN-CORE-06). `dias` é recalculado de `valido_ate` no instante
+ * `agora`, para não vir com um dia a mais antes da rodada. Um por filial (RLS).
  */
-export async function avisosA1MaisRecentes(tx: Transacao, dia: string): Promise<AvisoA1[]> {
-  return tx.consultar<AvisoA1>(
+export async function avisosA1MaisRecentes(tx: Transacao, agora: Date): Promise<AvisoA1[]> {
+  const dia = agora.toISOString().slice(0, 10);
+  const linhas = await tx.consultar<AvisoA1>(
     `SELECT DISTINCT ON (a.filial_id) a.filial_id, a.certificado_id, a.valido_ate, a.dias, to_char(a.dia, 'YYYY-MM-DD') AS dia
        FROM core.aviso_a1 a JOIN core.certificado c ON c.id = a.certificado_id AND c.ativo AND c.deleted_at IS NULL
-      WHERE a.deleted_at IS NULL AND a.dia = $1::date ORDER BY a.filial_id, a.created_at DESC`,
+      WHERE a.deleted_at IS NULL AND a.dia >= $1::date - 1
+      ORDER BY a.filial_id, a.dia DESC, a.created_at DESC`,
     [dia],
   );
+  return linhas.map((l) => ({ ...l, dias: diasParaVencer(l.valido_ate, agora) }));
 }
 
 /** `RegistroExportacoes` do worker sobre `core.exportacao`. */
