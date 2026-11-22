@@ -1,9 +1,18 @@
 /**
- * Erros da API (desenho T-0002, seção 2). A API traduz cada um no status e no corpo `{ codigo, mensagem, campos? }`.
- * Regra de negócio: 422 com `codigo` = a RN (`RN-CAD-01`). A mensagem nunca leva dado pessoal nem segredo.
+ * Erros da API (desenho T-0002, seção 2). A API traduz cada um no status e no corpo `{ codigo, mensagem, campos?, detalhes? }`
+ * (`corpoErroApi`). Regra de negócio: 422 com `codigo` = a RN (`RN-CAD-01`). A mensagem nunca leva dado pessoal nem segredo.
  */
 
 export type CamposErro = Record<string, string>;
+
+/** Valor de `detalhes`: escalar ou lista de escalares (JSON simples). */
+export type ValorDetalhe = string | number | boolean | null | readonly (string | number)[];
+
+/**
+ * Dados estruturados do erro de regra (T-0016, pedido do `modulo-pedido`; desenho T-0013 §2): ex. `{ possiveis: ['aprovado'] }`
+ * na RN-PED-02 e `{ bloqueantes: ['estoque_insuficiente'] }` na RN-PED-03. Só códigos, status e ids: nunca dado pessoal.
+ */
+export type DetalhesErro = Readonly<Record<string, ValorDetalhe>>;
 
 export type StatusErroApi = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 503;
 
@@ -14,9 +23,15 @@ export class ErroApi extends Error {
     readonly codigo: string,
     mensagem: string,
     readonly campos?: CamposErro,
+    readonly detalhes?: DetalhesErro,
   ) {
     super(mensagem);
   }
+}
+
+/** Corpo HTTP do `ErroApi` (a API e os apoios de teste dos módulos usam o mesmo): `campos` e `detalhes` só quando há. */
+export function corpoErroApi(e: ErroApi): { codigo: string; mensagem: string; campos?: CamposErro; detalhes?: DetalhesErro } {
+  return { codigo: e.codigo, mensagem: e.message, ...(e.campos ? { campos: e.campos } : {}), ...(e.detalhes ? { detalhes: e.detalhes } : {}) };
 }
 
 /** Código de regra de negócio (`RN-CORE-06`, `RN-CAD-01`): o `codigo` dos 422 e a citação nos testes (RD-0001). */
@@ -39,10 +54,10 @@ export const erros = {
   muitasTentativas: (mensagem: string) => new ErroApi(429, 'MUITAS_TENTATIVAS', mensagem),
   /** Dependência externa fora do ar (SEFAZ, BrasilAPI, Hub do FDV): 503, o cliente tenta de novo mais tarde. */
   indisponivel: (servico: string) => new ErroApi(503, 'INDISPONIVEL', `${servico} indisponível no momento: tente de novo em instantes`),
-  /** Regra de negócio violada: 422 com o código da RN (ex.: `RN-CAD-01`). */
-  regra: (codigoRn: string, mensagem: string, campos?: CamposErro) => {
+  /** Regra de negócio violada: 422 com o código da RN (ex.: `RN-CAD-01`); `detalhes` estruturados opcionais (`DetalhesErro`). */
+  regra: (codigoRn: string, mensagem: string, campos?: CamposErro, detalhes?: DetalhesErro) => {
     if (!PADRAO_RN.test(codigoRn)) throw new RangeError(`erros.regra: "${codigoRn}" não é código de RN`);
-    return new ErroApi(422, codigoRn, mensagem, campos);
+    return new ErroApi(422, codigoRn, mensagem, campos, detalhes);
   },
 };
 

@@ -2,13 +2,13 @@
  * Worker da F1 (T-0029): exportação LGPD (RF-CORE-06), alerta diário do A1 (RF-CORE-04, RN-CORE-06), rotinas diárias
  * e a fila com um executor dublê da consulta de IE (D5). Sem dado pessoal no log nem no resultado do trabalho.
  */
-import { Writable } from 'node:stream';
 import { inflateRawSync, crc32 } from 'node:zlib';
 import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
 import { ArmazenamentoMemoria, ErroApi, erros, type StatusErroApi, type CatalogoArquivos, type ExecutorTrabalho, type RegistroArquivo, type Transacao } from '@macuxierp/platform-sdk';
 import { BancoMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
+import { pinoEmMemoria } from './apoio-teste';
 import { criarRotinaAlertaA1, type AvisoA1, type CertificadoVencendo } from './alerta-a1';
 import { criarExecutorExportacao, type RegistroExportacoes } from './exportacao-lgpd';
 import { ReservaTrabalhosMemoria } from './memoria';
@@ -24,10 +24,6 @@ const FILIAL = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const AGORA = new Date('2026-11-21T15:00:00Z');
 const DIA = 86_400_000;
 const silencioso = pino({ level: 'silent' });
-
-function logEm(linhas: string[]) {
-  return pino({ level: 'info' }, new Writable({ write: (c, _e, cb) => (linhas.push(String(c)), cb()) }));
-}
 
 /** Lê o .zip pelo diretório central e confere o CRC de cada entrada. */
 function lerZip(zip: Buffer): Record<string, string> {
@@ -88,8 +84,8 @@ function cenarioExportacao(exportar: (tx: Transacao) => Promise<Record<string, r
   const relogio = new RelogioFixo(AGORA);
   const executor = criarExecutorExportacao({ registro, exportadores: [{ modulo: 'cadastros', exportar }], armazenamento, catalogo, agora: () => relogio.agora() });
   fila.adicionar('10000000-0000-4000-8000-000000000001', { tipo: TRABALHO_EXPORTAR, tenant_id: T1, payload: { exportacao_id: EXP } }, AGORA);
-  const logs: string[] = [];
-  const d = { banco, fila, executores: registrarExecutores([executor]), relogio, log: logEm(logs) };
+  const { log, linhas: logs } = pinoEmMemoria();
+  const d = { banco, fila, executores: registrarExecutores([executor]), relogio, log };
   return { registro, armazenamento, catalogo, fila, relogio, d, logs, executor };
 }
 
@@ -146,7 +142,7 @@ describe('alerta diário do A1 (RF-CORE-04)', () => {
       [T2]: [{ id: 'a1-vencido', filial_id: FILIAL, valido_ate: new Date(AGORA.getTime() - DIA) }],
     };
     const avisos = new Map<string, AvisoA1 & { tenant: string | null }>();
-    const logs: string[] = [];
+    const { log, linhas: logs } = pinoEmMemoria();
     const limites: Date[] = [];
     const rotina = criarRotinaAlertaA1({
       banco,
@@ -166,7 +162,7 @@ describe('alerta diário do A1 (RF-CORE-04)', () => {
           return true;
         },
       },
-      log: logEm(logs),
+      log,
     });
     return { banco, avisos, rotina, logs, limites };
   }

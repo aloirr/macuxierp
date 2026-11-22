@@ -17,6 +17,7 @@ import {
   CABECALHO_REPETIDA,
   cabecalhosDaRota,
   chaveDoPedido,
+  corpoErroApi,
   criarEvento,
   ErroApi,
   EuResposta,
@@ -148,7 +149,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   app.setErrorHandler((recebido, req, reply) => {
     const erro = recebido instanceof ZodError ? erros.validacao(camposZod(recebido)) : recebido;
     if (erro instanceof ErroApi) {
-      return reply.status(erro.status).send({ codigo: erro.codigo, mensagem: erro.message, ...(erro.campos ? { campos: erro.campos } : {}) });
+      return reply.status(erro.status).send(corpoErroApi(erro));
     }
     const status = (erro as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {

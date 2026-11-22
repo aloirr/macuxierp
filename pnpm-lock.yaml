@@ -241,6 +241,9 @@ importers:
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
+      pino:
+        specifier: ^10.4.0
+        version: 10.4.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -336,6 +339,9 @@ importers:
       '@macuxierp/core':
         specifier: workspace:*
         version: link:../../modules/core
+      '@macuxierp/pedido':
+        specifier: workspace:*
+        version: link:../../modules/pedido
       '@macuxierp/platform-sdk':
         specifier: workspace:*
         version: link:../../packages/platform-sdk

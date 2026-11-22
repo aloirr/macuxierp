@@ -5,6 +5,7 @@
 import { exportadorCadastros } from '@macuxierp/cadastros/api';
 import { EVENTO_CARGA_INICIAL, TRABALHO_CARGA_INICIAL } from '@macuxierp/cadastros/contracts';
 import { exportadorCore } from '@macuxierp/core/api';
+import { exportadorPedido } from '@macuxierp/pedido/api';
 import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
 import { ArmazenamentoMemoria, type Banco, type Transacao } from '@macuxierp/platform-sdk';
 import { pino } from 'pino';
@@ -50,11 +51,11 @@ describe('worker: rotinas e executores com os adaptadores reais', () => {
     expect(sql.join('\n')).not.toMatch(/pfx_cifrado|senha_cifrada|titular/);
   });
 
-  it('RF-CORE-06: a exportação LGPD, com o registro SQL do core e os exportadores de core e cadastros (T-0037)', async () => {
+  it('RF-CORE-06: a exportação LGPD, com o registro SQL do core e os exportadores de core, cadastros (T-0037) e pedido (T-0016)', async () => {
     const { banco, sql } = bancoGravador([[/SELECT estado FROM core\.exportacao/, [{ estado: 'pronta' }]]]);
     const executores = montarExecutores({ banco, log, armazenamento: new ArmazenamentoMemoria(), catalogo: { inserir: async () => undefined }, agora: () => AGORA });
     expect(executores.map((e) => e.tipo)).toEqual([TRABALHO_EXPORTAR, TRABALHO_CARGA_INICIAL]);
-    expect(EXPORTADORES).toEqual([exportadorCore, exportadorCadastros]);
+    expect(EXPORTADORES).toEqual([exportadorCore, exportadorCadastros, exportadorPedido]);
     const id = '10000000-0000-4000-8000-000000000001';
     const r = await banco.comTenant(T1, (tx) => executores[0]!.executar({ id, tipo: TRABALHO_EXPORTAR, tenant_id: T1, payload: { exportacao_id: id }, tentativas: 0 }, tx));
     // já pronta: não gera de novo (idempotente), e quem respondeu foi a core.exportacao

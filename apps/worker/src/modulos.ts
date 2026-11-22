@@ -2,11 +2,13 @@
  * Executores e rotinas montados no worker (T-0029). Desenho, ligações e adaptadores pendentes: `docs/desenho/T-0002.md`
  * (§2, "Integração de plataforma da F1", item "Worker").
  * - Rotina diária do alerta do A1 (RF-CORE-04, T-0035): adaptadores SQL do core.
- * - Exportação LGPD (RF-CORE-06, T-0040): registro SQL do core e um exportador por módulo (core e cadastros, T-0037).
+ * - Exportação LGPD (RF-CORE-06, T-0040): registro SQL do core e um exportador por módulo (core e cadastros, T-0037;
+ *   pedido, T-0016).
  *   O armazenamento vem do SDK.
  * - Carga inicial do cadastros (C-4, desenho T-0009 §4; ligada na T-0042): o consumidor de
  *   `integracao-fdv.carga_inicial.solicitada@1` enfileira um trabalho por entidade e o executor republica página a página.
  * - Agendas por tenant (contrato C-9, T-0009 §6.1): `montarAgendas`, vazia até o `integracao-fdv` ligar a dele.
+ * - Pedidos do FDV (T-0016): em pedidos-fdv.ts (pendências no desenho T-0002 §2).
  */
 import { criarConsumidorCargaInicial, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
@@ -27,6 +29,7 @@ import {
   type FilaDeTrabalhos,
   type Outbox,
 } from '@macuxierp/platform-sdk';
+import { exportadorPedido } from '@macuxierp/pedido/api';
 import { FilaDeTrabalhosPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
@@ -61,7 +64,7 @@ export function registrarAgendas(agendas: readonly AgendaModulo[]): readonly Age
 }
 
 /** Um por módulo que guarda dado do tenant; cada módulo acrescenta o seu quando tiver o adaptador. */
-export const EXPORTADORES: readonly ExportadorModulo[] = Object.freeze([exportadorCore, exportadorCadastros]);
+export const EXPORTADORES: readonly ExportadorModulo[] = Object.freeze([exportadorCore, exportadorCadastros, exportadorPedido]);
 
 export interface DependenciasModulosWorker {
   banco: Banco;
