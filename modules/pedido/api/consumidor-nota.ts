@@ -13,11 +13,10 @@
  * (o schema exige `para` do status do pedido), então o rastro é o log e o alerta. Só o erro transitório (banco, rede) sobe e é
  * repetido pelo despachante.
  */
-import { createHash } from 'node:crypto';
 import { criarEvento, type ConsumidorEvento, type Outbox, type Relogio } from '@macuxierp/platform-sdk';
 import { EVENTO_PEDIDO_FATURADO, PedidoFaturadoV1 } from '../contracts';
 import { aplicarNotaAutorizada } from '../domain';
-import { faturadoDaNota } from './eventos';
+import { faturadoDaNota, idFaturadoDaNota, notasAplicadas } from './eventos';
 import { NotaAutorizadaLida } from './leitores';
 import type { Dependencias, LogPedido } from './portas';
 import { repositorioSql } from './sql';
@@ -39,15 +38,6 @@ export interface DependenciasConsumidoresPedido {
   alertar?: AlertarPedido;
   /** Padrão: o adaptador SQL; os testes em memória passam o dublê. */
   repositorios?: Dependencias['repositorios'];
-}
-
-/** UUID determinístico (forma v5) do `faturado@1` de uma nota. */
-export function idFaturadoDaNota(notaId: string): string {
-  const h = createHash('sha1').update(`pedido.pedido.faturado@1:${notaId}`).digest();
-  h[6] = ((h[6] as number) & 0x0f) | 0x50;
-  h[8] = ((h[8] as number) & 0x3f) | 0x80;
-  const x = h.subarray(0, 16).toString('hex');
-  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
 }
 
 export function criarConsumidorNotaAutorizada(d: DependenciasConsumidoresPedido): ConsumidorEvento {
@@ -72,7 +62,7 @@ export function criarConsumidorNotaAutorizada(d: DependenciasConsumidoresPedido)
         return;
       }
       const eventoId = idFaturadoDaNota(nota.nota.id);
-      if (await repo.eventoRegistrado(pedido.id, eventoId)) return;
+      if ((await notasAplicadas(repo, pedido.id, [nota.nota.id])).has(nota.nota.id)) return;
       const r = aplicarNotaAutorizada(pedido.itens, nota.itens, pedido.status);
       if (!r.ok) {
         d.log?.error({ tenant_id: evento.tenant_id, modulo: 'pedido', evento_id: evento.id, nota_id: nota.nota.id, pedido_id: pedido.id, codigo: r.codigo }, 'nota autorizada recusada pelo pedido');
