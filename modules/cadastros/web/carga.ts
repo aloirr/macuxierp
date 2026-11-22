@@ -3,21 +3,30 @@
  * escolhe os CSVs, chama `POST /v1/cadastros/cargas` e desenha o relatório. A página NÃO guarda o arquivo (D9): o
  * navegador só o envia. A permissão aqui só esconde o botão; a proteção real é a da API (RN-CORE-02).
  */
-import { paraCsv, pode, type Perfil } from '@macuxierp/platform-sdk';
+import { paginaVisivel, paraCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 import { ENTIDADES_CARGA, MAX_ARQUIVOS_LOTE, MAX_BYTES_LOTE, type ErroCarga, type ModoCarga, type RelatorioCarga, type ResultadoEntidade } from '../contracts';
 
-export const PAGINA_CARGA = {
+export interface PaginaCarga extends PaginaBase {
+  /** Caminho do envio em `/v1/cadastros`. */
+  readonly api: string;
+  readonly campoArquivos: string;
+  readonly maxArquivos: number;
+  readonly maxBytes: number;
+}
+
+export const PAGINA_CARGA: PaginaCarga = {
   id: 'carga',
   menu: 'Carga de cadastros',
   titulo: 'Carga de cadastros',
   /** Convenção do shell: `/<módulo>/<slug do rótulo>` (apps/web/src/lib/menu.ts), para o href do menu bater com a rota. */
   rota: '/cadastros/carga-de-cadastros',
+  ver: 'cadastros.carga.executar',
   api: '/v1/cadastros/cargas',
   /** Campo do arquivo no multipart (a API aceita até 16). */
   campoArquivos: 'arquivos',
   maxArquivos: MAX_ARQUIVOS_LOTE,
   maxBytes: MAX_BYTES_LOTE,
-} as const;
+};
 
 export const ROTULOS_ENTIDADE: Readonly<Record<ResultadoEntidade['entidade'], string>> = {
   filial: 'Filiais', vendedor: 'Vendedores', forma_pagamento: 'Formas de pagamento', prazo_pagamento: 'Prazos de pagamento', produto: 'Produtos',
@@ -36,7 +45,7 @@ export interface AcoesDaCarga {
 }
 
 export function acoesDaCarga(perfil: Perfil): AcoesDaCarga {
-  const pode_ = pode(perfil, 'cadastros.carga.executar');
+  const pode_ = paginaVisivel(PAGINA_CARGA, perfil);
   return { abrir: pode_, validar: pode_, gravar: pode_ };
 }
 

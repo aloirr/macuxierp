@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { precoVigente, validarLotePreco, validarVigenciaTabela } from './preco';
+import { precoVigente, tabelaVigente, validarLotePreco, validarVigenciaTabela } from './preco';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -60,5 +60,17 @@ describe('vigência da tabela de preço', () => {
     const r = validarVigenciaTabela('2026-01-10', '2026-01-09');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.violacao).toMatchObject({ rn: 'RN-CAD-06', campo: 'vigencia_fim' });
+  });
+});
+
+describe('tabela vigente', () => {
+  it('RN-CAD-06: vigente só ativa e dentro das datas, com os limites inclusivos e fim aberto', () => {
+    expect(tabelaVigente(tabela, '2026-06-01')).toBe(true);
+    expect(tabelaVigente(tabela, '2026-01-01')).toBe(true);
+    expect(tabelaVigente(tabela, '2026-12-31')).toBe(true);
+    expect(tabelaVigente(tabela, '2025-12-31')).toBe(false);
+    expect(tabelaVigente(tabela, '2027-01-01')).toBe(false);
+    expect(tabelaVigente({ ...tabela, inativa: true }, '2026-06-01')).toBe(false);
+    expect(tabelaVigente({ ...tabela, vigencia_fim: null }, '2099-01-01')).toBe(true);
   });
 });
