@@ -3,7 +3,7 @@ import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
 import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA } from './emissao';
-import { a1DeTeste, a1VencidoDeTeste, depsFake, protocolo, transporteFake, tx, TENANT, type Roteiro } from './apoio-teste';
+import { a1DeTeste, a1VencidoDeTeste, depsFake, titulosFake, protocolo, transporteFake, tx, TENANT, type Roteiro } from './apoio-teste';
 import { criarTransmissor } from './transmissor';
 
 function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'producao'; semA1?: boolean; a1Vencido?: boolean } = {}) {
@@ -36,7 +36,7 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
   const leituras = { n: 0 };
   const transmissor = criarTransmissor({
     banco,
-    notas: f.r.repo,
+    notas: f.r.repo, titulos: titulosFake().repo,
     emissor: f.emissor,
     ambiente: { ambiente: async () => o.ambienteAtual ?? 'homologacao' },
     lerA1: async () => {
@@ -71,11 +71,11 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(m.assinadas[0]).toContain(`Id="NFe${nota.chave_acesso}"`);
     expect(m.assinados.map((a) => [a.id, a.versao])).toEqual([[nota.id, 1]]); // gravado pelo WORKER com a nota em rascunho, antes da SEFAZ
     expect(m.log.slice(0, 6)).toEqual(['trava', 'numero:100', 'gravar', 'xml:assinado:1', 'status:em_autorizacao', 'recibo']);
-    expect(m.log.slice(-3)).toEqual(['status:autorizada_guarda_pendente', 'xml:autorizado', `evento:${EVENTO_NOTA_AUTORIZADA}`]); // nfeProc guardado antes do evento
+    expect(m.log.slice(-5)).toEqual(['status:autorizada_guarda_pendente', 'xml:autorizado', `evento:${EVENTO_NOTA_AUTORIZADA}`, 'evento:faturamento.titulo.gerado@1', 'evento:faturamento.titulo.gerado@1']); // nfeProc guardado antes do evento; os títulos vêm depois, na mesma tx
     expect(m.notas.get(nota.id)?.status).toBe('autorizada');
     expect(m.xmls[0]?.conteudo).toMatch(/^<nfeProc .*<protNFe/);
     expect(m.xmls[0]?.conteudo).toContain(m.assinadas[0] as string);
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
     expect(m.transmissoes.map((t) => [t.servico, t.destino, t.cStat])).toEqual([['autorizacao', 'simulador', '103'], ['ret_autorizacao', 'simulador', '104']]);
     expect([...m.a1.credencial.pfx].every((b) => b === 0)).toBe(true);
     expect(m.filiaisPedidas[0]).toEqual({ filial_id: IDS.filial, ambiente: 'homologacao', uf: 'AM', modo: 'normal' });
@@ -102,7 +102,7 @@ describe('worker: assinar e transmitir a nota', () => {
     const r = await m.transmissor.transmitirNota(TENANT, (await emitir(m)).id);
     expect(r.resultado).toBe('autorizada');
     expect(m.t.chamadas).toEqual(['autorizar', 'consultarProtocolo']);
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
   });
 
   it('RN-FAT-07: duplicidade que a consulta não resolve (217) deixa a nota em_autorizacao, sem evento', async () => {
@@ -133,7 +133,7 @@ describe('worker: assinar e transmitir a nota', () => {
     m.estado.falharGuarda = false;
     expect((await m.transmissor.transmitirNota(TENANT, nota.id)).resultado).toBe('autorizada');
     expect(m.t.chamadas).toEqual(['autorizar', 'consultarRecibo', 'consultarProtocolo']);
-    expect(m.eventos).toHaveLength(1);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.'))).toHaveLength(1);
   });
 
   it('RN-CORE-06: filial sem A1 ativo no worker não assina nem envia nada e a nota continua em rascunho, com o motivo', async () => {
@@ -198,7 +198,7 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(m.leituras.n).toBe(2); // o A1 é lido de novo só para o mTLS
     expect(m.xmls[0]?.conteudo).toContain(primeiro);
     expect(m.xmls[0]?.conteudo).not.toContain('data-emissor');
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
   });
 
   it('RN-FAT-03: duplicidade e guarda pendente reutilizam o assinado guardado mesmo com o emissor trocado', async () => {
@@ -323,7 +323,7 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(reenvio.ok).toBe(true);
     expect(m.motivos.has(nota.id)).toBe(false);
     const ok = montar({});
-    const worker = criarTransmissor({ banco: { comTenant: async (_i, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true }, notas: m.repo, emissor: m.emissor, ambiente: { ambiente: async () => 'homologacao' }, lerA1: async () => a1DeTeste(), sefaz: () => ok.t.transporte });
+    const worker = criarTransmissor({ banco: { comTenant: async (_i, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true }, notas: m.repo, titulos: titulosFake().repo, emissor: m.emissor, ambiente: { ambiente: async () => 'homologacao' }, lerA1: async () => a1DeTeste(), sefaz: () => ok.t.transporte });
     expect((await worker.transmitirNota(TENANT, nota.id)).resultado).toBe('autorizada');
     expect(m.notas.get(nota.id)).toMatchObject({ numero: 100, chave_acesso: nota.chave_acesso });
     expect(m.estado.reservas).toBe(1); // nenhum número novo

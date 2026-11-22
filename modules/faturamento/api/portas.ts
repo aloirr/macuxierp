@@ -9,8 +9,8 @@ import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
-import type { Ambiente, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
-import type { ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
+import type { Ambiente, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
+import type { ParcelaGerada, ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
 export interface SituacaoPedidoDoPedido {
@@ -161,7 +161,7 @@ export interface NotaRegistro {
   revisao: number;
   /** Itens como o pedido os solicitou (nulo = nota total do saldo): o reenvio da rejeitada refaz a nota com os mesmos itens. */
   itens_solicitados: { sequencia: number; quantidade?: number }[] | null;
-  itens: { sequencia: number; quantidade: number; valor_centavos: number }[];
+  itens: { sequencia: number; produto_id?: string; quantidade: number; valor_centavos: number }[];
 }
 export type NovaNota = Omit<NotaRegistro, 'id' | 'status' | 'protocolo' | 'autorizada_em' | 'recibo' | 'itens' | 'vai_ao_fdv' | 'revisao'>;
 
@@ -366,4 +366,47 @@ export interface RepositorioEventos {
   registrarDivergenciaInutilizacao(tx: Transacao, id: string, r: { cStat: string; xMotivo: string }): Promise<void>;
   /** Eventos e inutilizações pendentes mais antigos primeiro (varredura do worker), parados há mais de `paradasHaMinutos` e SEM lease ativo; exclui a divergência 563. */
   pendentes(tx: Transacao, limite: number, paradasHaMinutos: number, leaseMin: number): Promise<{ tipo: 'evento' | 'inutilizacao'; id: string }[]>;
+}
+
+/**
+ * Bandeira por filial "faturamento real com NF-e simulada" (desligada por padrão; sem linha = false). Adaptador SQL sobre `faturamento.configuracao_filial`
+ * (filial_id, faturamento_real_nfe_simulada, alterado_por), tabela que o banco-dados ainda cria. Ausente nos deps do worker = bandeira desligada.
+ */
+export interface ConfiguracaoFaturamento {
+  faturamentoRealComNfeSimulada(tx: Transacao, filial_id: string): Promise<boolean>;
+  definir(tx: Transacao, filial_id: string, ligada: boolean, usuario_id: string): Promise<void>;
+  /** Leitura que NUNCA lança (tabela ainda inexistente, por exemplo): vale false e chama `avisar(motivo)`. O adaptador SQL usa SAVEPOINT para não abortar a transação. */
+  lerBandeiraSegura(tx: Transacao, filial_id: string, avisar: (motivo: string) => void): Promise<boolean>;
+}
+
+/**
+ * Repositório SQL dos títulos a receber (`api/sql-titulos.ts`, 0013: `titulo` e `titulo_baixa`). Roda na `tx` do chamador. O banco confere tudo: título só de
+ * nota autorizada, saldo = valor − baixas não estornadas (o gatilho de `titulo_baixa` atualiza o saldo e o status na mesma tx da baixa e do estorno).
+ */
+export interface RepositorioTitulos {
+  /** Idempotente por (nota, parcela): devolve só as parcelas NOVAS (reprocesso não duplica nem republica). */
+  inserirParcelas(tx: Transacao, nota: Pick<NotaRegistro, 'id' | 'filial_id' | 'cliente_id'>, parcelas: readonly ParcelaGerada[]): Promise<TituloResumo[]>;
+  listarDaNota(tx: Transacao, nota_id: string, opcoes?: { travar?: boolean }): Promise<TituloResumo[]>;
+  obter(tx: Transacao, id: string, opcoes?: { travar?: boolean }): Promise<TituloResumo | null>;
+  baixasDoTitulo(tx: Transacao, titulo_id: string): Promise<BaixaTituloResumo[]>;
+  /** INSERT em `titulo_baixa`; o gatilho do banco abate o saldo. */
+  registrarBaixa(tx: Transacao, titulo_id: string, b: { valor_centavos: number; forma: string; usuario_id: string | null; baixado_em: Date }): Promise<BaixaTituloResumo>;
+  /** UPDATE de `estornada_em` (uma vez); o gatilho devolve o saldo. */
+  estornarBaixa(tx: Transacao, baixa_id: string, estornada_em: Date): Promise<void>;
+  /** Cancela só títulos `aberto` (o banco recusa o resto). */
+  cancelar(tx: Transacao, ids: readonly string[]): Promise<void>;
+  listar(tx: Transacao, filtro: FiltroTitulos): Promise<Pagina<TituloResumo>>;
+  detalhar(tx: Transacao, id: string): Promise<TituloDetalhe | null>;
+  /**
+   * Soma dos saldos `aberto` do cliente de nota não cancelada, de produção OU `conta_como_real` (RN-PED-04; decisão do Alexandre de 22/11: a nota simulada vale como real).
+   * Até a coluna `faturamento.titulo.conta_como_real` existir (0026), lê o valor guardado no conteúdo da nota (`nota.pagamento`); com a coluna, o SQL passa a lê-la.
+   */
+  saldoAbertoCliente(tx: Transacao, cliente_id: string): Promise<number>;
+  /**
+   * Roda `fn` num SAVEPOINT: se lançar, desfaz só o que `fn` gravou e DEVOLVE o erro (a transação segue viva). RN-FAT-03: a geração dos títulos nunca
+   * derruba a guarda do nfeProc feita antes na mesma tx.
+   */
+  emSavepoint<T>(tx: Transacao, fn: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; erro: unknown }>;
+  /** Ids das notas autorizadas de boleto, autorizadas há ao menos `ha_minutos`, sem nenhuma parcela (varredura de reconciliação). */
+  notasBoletoSemTitulo(tx: Transacao, opcoes: { ha_minutos: number; limite: number }): Promise<string[]>;
 }

@@ -8,16 +8,17 @@ import type { AmbienteFiscalDaFilial, ConsultaA1Ativo, ConsultaCadastrosFaturame
 export const EVENTO_NOTA_CANCELADA = 'faturamento.nota.cancelada@1' as const;
 
 /** Base dos payloads de `nota.*@1` (agregado = nota.id): pedido, ambiente, nota, itens e vendedor. */
-export const baseEventoDaNota = (n: NotaRegistro, protocolo: string | null): Record<string, unknown> => ({
+export const baseEventoDaNota = (n: NotaRegistro, protocolo: string | null, comoReal = false): Record<string, unknown> => ({
   pedido_id: n.pedido_id,
   ambiente: n.ambiente,
   nota: {
     id: n.id, filial_id: n.filial_id, cliente_id: n.cliente_id, serie: n.serie, numero: n.numero, chave_acesso: n.chave_acesso,
     emitida_em: n.emitida_em, total_centavos: n.total_centavos, protocolo,
   },
-  itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
+  itens: n.itens.map((i) => ({ sequencia: i.sequencia, quantidade: i.quantidade, valor_centavos: i.valor_centavos, ...(i.produto_id ? { produto_id: i.produto_id, filial_id: n.filial_id } : {}) })),
   vendedor_id: n.vendedor_id,
   quantidade_itens: n.itens.length,
+  ...(comoReal ? { conta_como_real: true } : {}),
 });
 
 /** Texto livre da SEFAZ: sem espaço nas pontas nem repetido (o emissor recusa), quebra de linha vira espaço. */

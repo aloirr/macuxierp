@@ -8,8 +8,9 @@ import {
   digestValueDoXml, emTransmissao, FUSO_MANAUS_MINUTOS, interpretarRetornoEvento, interpretarRetornoInutilizacao, prazoDeCancelamentoEsgotado, PRAZO_CANCELAMENTO_HORAS, reconciliarConsulta, TAMANHO_JUSTIFICATIVA, type AcaoConsulta, type SituacaoSefaz,
 } from '../domain';
 import { criarProcessadorRetorno } from './emissao';
+import { cancelarTitulosDaNotaCancelada, contaComoRealDaNota, type LogFaturamento, type ResultadoCancelamentoTitulos } from './titulos';
 import { baseEventoDaNota, EVENTO_NOTA_CANCELADA } from './eventos';
-import type { A1DaFilial, AmbienteFiscalDaFilial, ConsultaCadastrosFaturamento, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos, RepositorioNotas, TransmissaoDeEvento } from './portas';
+import type { A1DaFilial, AmbienteFiscalDaFilial, ConsultaCadastrosFaturamento, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos, RepositorioNotas, RepositorioTitulos, TransmissaoDeEvento } from './portas';
 import { justificativaDoProc, montarProcEvento, montarProcInutilizacao, procEventoDaConsulta } from './xml-proc-eventos';
 import { abrirA1OuNulo, comA1 as comA1Comum, descarregar as descarregarLog, destinoDoLog, medir as medirChamada } from './sefaz-comum';
 import { retornoDaConsulta } from './retorno-sefaz';
@@ -17,6 +18,10 @@ import { retornoDaConsulta } from './retorno-sefaz';
 export interface DepsProcessadorEventos {
   banco: Banco;
   notas: RepositorioNotas;
+  /** Títulos a receber: gerados na autorização reconciliada pela consulta e cancelados com a nota (RF-FAT-07). */
+  titulos: RepositorioTitulos;
+  /** Log sem dado pessoal (só ids e códigos), OBRIGATÓRIO: a divergência de título com baixa em nota cancelada e a geração de título pendente não podem sumir. */
+  log: LogFaturamento;
   eventos: RepositorioEventos;
   cadastros: Pick<ConsultaCadastrosFaturamento, 'filial'>;
   ambiente: AmbienteFiscalDaFilial;
@@ -33,7 +38,8 @@ export interface DepsProcessadorEventos {
 }
 
 export type ResultadoEventoProcessado =
-  | { resultado: 'registrado'; evento: EventoRegistro; nota: NotaRegistro }
+  /** `titulos`: só no cancelamento. Baixa em título NÃO bloqueia o cancelamento: `divergentes` vai ao financeiro (titulos.md). */
+  | { resultado: 'registrado'; evento: EventoRegistro; nota: NotaRegistro; titulos?: ResultadoCancelamentoTitulos }
   | { resultado: 'rejeitado'; codigo: string; mensagem: string }
   | { resultado: 'ignorada'; motivo: 'evento_inexistente' | 'nao_pendente' | 'nota_inexistente' | 'nota_nao_autorizada' | 'em_processamento' }
   | { resultado: 'sem_certificado' }
@@ -58,7 +64,7 @@ const TIPO_SEFAZ = { cancelamento: '110111', cce: '110110' } as const;
 
 export function criarProcessadorEventos(deps: DepsProcessadorEventos) {
   const agora = deps.agora ?? ((): Date => new Date());
-  const retorno = criarProcessadorRetorno(deps.notas);
+  const retorno = criarProcessadorRetorno(deps.notas, deps.titulos, deps.log);
 
   const leaseMin = deps.leaseMin ?? 5;
   type Base = Pick<TransmissaoDeEvento, 'servico' | 'evento_id' | 'nota_id' | 'inutilizacao_id'>;
@@ -179,6 +185,8 @@ export function criarProcessadorEventos(deps: DepsProcessadorEventos) {
         if (atual.tipo === 'cancelamento') {
           depois = { ...depois, status: 'cancelada' };
           await publicarCancelada(tx, depois, registro.nProt, atual.texto);
+          const titulos = await aoCancelar(tx, tenant_id, depois);
+          return { resultado: 'registrado', evento: registrado, nota: depois, titulos };
         }
         return { resultado: 'registrado', evento: registrado, nota: depois };
       }
@@ -189,8 +197,15 @@ export function criarProcessadorEventos(deps: DepsProcessadorEventos) {
 
   /** `faturamento.nota.cancelada@1`: só depois da guarda; o pedido devolve as quantidades pelo payload (P-2). */
   async function publicarCancelada(tx: Transacao, nota: NotaRegistro, protocoloCancelamento: string, motivo: string): Promise<void> {
-    const payload = NotaCanceladaPayload.parse({ ...baseEventoDaNota(nota, nota.protocolo), pedido_uuid: nota.pedido_uuid, protocolo_cancelamento: protocoloCancelamento, motivo });
+    const payload = NotaCanceladaPayload.parse({ ...baseEventoDaNota(nota, nota.protocolo, contaComoRealDaNota(await deps.notas.lerConteudo(tx, nota.id), nota)), pedido_uuid: nota.pedido_uuid, protocolo_cancelamento: protocoloCancelamento, motivo });
     await deps.notas.publicarEvento(tx, { nome: EVENTO_NOTA_CANCELADA, agregado_id: nota.id, payload });
+  }
+
+  /** RN-FAT-06: nota cancelada cancela os títulos abertos sem baixa, na mesma tx do evento; com baixa, o cancelamento segue e o caso vira divergência (log sem dado pessoal). */
+  async function aoCancelar(tx: Transacao, tenant_id: string, nota: NotaRegistro): Promise<ResultadoCancelamentoTitulos> {
+    const r = await cancelarTitulosDaNotaCancelada(tx, deps, nota.id);
+    if (r.divergentes.length > 0) deps.log({ evento: 'faturamento.titulo.divergencia_cancelamento', tenant_id, nota_id: nota.id, titulos_divergentes: r.divergentes.length });
+    return r;
   }
 
   // ---------------------------------------------------------------- inutilização
@@ -307,6 +322,7 @@ export function criarProcessadorEventos(deps: DepsProcessadorEventos) {
         await deps.eventos.guardarXmlEvento(tx, evento, { conteudo: proc, protocolo: prot.nProt, dhRegistro: new Date(prot.dhRegEvento).toISOString() });
         const cancelada: NotaRegistro = { ...atual, status: 'cancelada' };
         await publicarCancelada(tx, cancelada, prot.nProt, xJust);
+        await aoCancelar(tx, tenant_id, cancelada);
         return fim('marcar_cancelada', rec.mensagem, 'cancelada');
       }
       return fim(rec.acao, rec.mensagem);

@@ -219,6 +219,14 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.notas.get(nota.id)).toMatchObject({ status: 'autorizada', protocolo: NPROT });
     expect(m.xmls[0]?.conteudo).toBe(`<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">${opcoes.xmlAssinado}<protNFe versao="4.00"/></nfeProc>`);
     expect(m.eventos[0]?.payload).toMatchObject({ ambiente: 'producao', pedido_id: IDS.pedido, nota: { numero: 100, protocolo: NPROT } });
+    // Estoque: por item, produto_id e filial_id (quantidade já é inteiro em escala 4); ambiente, nota.numero e nota.serie já estão na raiz.
+    const p = m.eventos[0]?.payload as { filial_id?: string; itens: { produto_id?: string; filial_id?: string; quantidade: number; quantidade_escala4?: number }[] };
+    expect(p.filial_id).toBeUndefined();
+    expect(p.itens.length).toBeGreaterThan(0);
+    for (const i of p.itens) {
+      expect(i).toMatchObject({ produto_id: expect.any(String), filial_id: nota.filial_id, quantidade: expect.any(Number) });
+      expect(i.quantidade_escala4).toBeUndefined();
+    }
   });
 
   it('RN-FAT-03: falha na guarda deixa a nota em autorizada_guarda_pendente e nenhum evento sai; o reprocesso fecha o ciclo', async () => {

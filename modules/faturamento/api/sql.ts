@@ -11,10 +11,12 @@
 import { criarEvento, erros, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { FiltroNotas, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
-import { calcularTotais, interpretarRetorno, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
+import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
 import type {
-  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas,
+  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento,
 } from './portas';
+import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { repositorioTitulosSql } from './sql-titulos';
 
 type Dict = Record<string, unknown>;
 
@@ -45,7 +47,7 @@ const COLUNAS_RESUMO = `n.id, n.filial_id, n.cliente_id, n.pedido_id, n.ambiente
 
 async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro['itens']> {
   return tx.consultar<NotaRegistro['itens'][number]>(
-    `SELECT n_item::int AS sequencia, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
+    `SELECT n_item::int AS sequencia, produto_id, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
        FROM faturamento.nota_item WHERE nota_id = $1 AND deleted_at IS NULL ORDER BY n_item`,
     [notaId],
   );
@@ -53,7 +55,7 @@ async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro[
 
 async function montarRegistro(tx: Transacao, l: Dict): Promise<NotaRegistro> {
   const r = l as unknown as Omit<NotaRegistro, 'vai_ao_fdv' | 'itens'>;
-  return { ...r, vai_ao_fdv: r.ambiente === 'producao', itens: await itensDaNota(tx, r.id) };
+  return { ...r, vai_ao_fdv: nfeVaiAoFdv(r.ambiente), itens: await itensDaNota(tx, r.id) };
 }
 
 /** Linhas de `nota_item` a partir do conteúdo (a mesma carga serve ao INSERT e ao reenvio, por `ON CONFLICT`). */
@@ -85,7 +87,7 @@ function paramsTotais(itens: readonly NotaItemMontado[]): number[] {
 }
 
 const transporteDe = (c: ConteudoNota, revisao = 1): Dict => ({ mod_frete: c.modFrete, inf_cpl: c.infCpl, itens_solicitados: c.itensSolicitados, revisao });
-const pagamentoDe = (c: ConteudoNota): Dict => ({ pagamentos: c.pagamentos, cobranca: c.cobranca });
+const pagamentoDe = (c: ConteudoNota): Dict => ({ pagamentos: c.pagamentos, cobranca: c.cobranca, prazos_dias: c.prazos_dias ?? null, conta_como_real: c.conta_como_real === true });
 
 async function gravarItens(tx: Transacao, notaId: string, itens: readonly NotaItemMontado[]): Promise<void> {
   await tx.consultar(
@@ -169,6 +171,8 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
         itensSolicitados: (n.transporte.itens_solicitados as ConteudoNota['itensSolicitados']) ?? null,
         pagamentos: (n.pagamento.pagamentos as ConteudoNota['pagamentos']) ?? [],
         cobranca: (n.pagamento.cobranca as ConteudoNota['cobranca']) ?? null,
+        prazos_dias: (n.pagamento.prazos_dias as number[] | null | undefined) ?? null,
+        conta_como_real: n.pagamento.conta_como_real === true,
         itens,
       };
     },
@@ -559,6 +563,6 @@ export const notaEmAbertoSql: NotaEmAberto = {
 };
 
 /** Repositórios de produção, ligados pelo apps/api e pelo apps/worker (a `Outbox` vem do SDK: `new OutboxPg()`). */
-export function repositoriosSql(deps: DependenciasSql): { notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
-  return { notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
+export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
+  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
 }

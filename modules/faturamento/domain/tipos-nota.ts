@@ -49,6 +49,14 @@ export interface ConteudoNota {
   pagamentos: PagamentoXml[];
   /** Só no boleto (15): parcelas de `cobr/dup`. */
   cobranca: CobrancaXml | null;
+  /** Prazos (dias) da condição de pagamento do pedido, gravados na nota: base dos títulos a receber (RN-FAT-06). Ausente em nota antiga. */
+  prazos_dias?: number[] | null;
+  /**
+   * `conta_como_real` calculado na EMISSÃO (bandeira da filial E ambiente de homologação; RN-FAT-04) e guardado em `nota.pagamento`: a nota autorizada não muda mais
+   * (0013), então `nota.autorizada@1`, `titulo.gerado@1`, `titulo.baixado@1` e `nota.cancelada@1` leem este valor, não a bandeira de agora. Ausente = false.
+   * Quando a coluna própria existir (pedido ao banco-dados), o valor passa para ela.
+   */
+  conta_como_real?: boolean;
   itens: NotaItemMontado[];
 }
 

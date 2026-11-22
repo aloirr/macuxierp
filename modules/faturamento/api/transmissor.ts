@@ -18,13 +18,18 @@ import { Uf, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import { digestValueDoXml, emTransmissao, ErroViolacao } from '../domain';
 import { criarProcessadorRetorno, mudarNota, xmlDaNota, type ResultadoRetorno } from './emissao';
-import type { A1DaFilial, AmbienteFiscalDaFilial, NotaRegistro, RepositorioNotas, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import type { A1DaFilial, AmbienteFiscalDaFilial, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import type { LogFaturamento } from './titulos';
 import { comA1, descarregar as descarregarLog, medir as medirChamada } from './sefaz-comum';
 import { retornoDaAutorizacao, retornoDaConsulta, retornoDoRecibo } from './retorno-sefaz';
 
 export interface DepsTransmissor {
   banco: Banco;
   notas: RepositorioNotas;
+  /** Títulos a receber: gerados na MESMA tx da autorização (RF-FAT-07). Ligar sempre (`repositoriosSql().titulos`). */
+  titulos: RepositorioTitulos;
+  /** Log sem dado pessoal: geração de título pendente (a varredura gera depois). */
+  log?: LogFaturamento;
   ambiente: AmbienteFiscalDaFilial;
   /**
    * Liga o `lerA1DecifradoDaFilial(tx, chave, filial)` do core à chave do secret do servidor e abre o certificado (`abrirA1`): o `certificado` assina e
@@ -58,7 +63,7 @@ const precisaAssinar = (status: NotaRegistro['status']): boolean => status === '
 
 export function criarTransmissor(deps: DepsTransmissor) {
   const agora = deps.agora ?? ((): Date => new Date());
-  const processar = criarProcessadorRetorno(deps.notas);
+  const processar = criarProcessadorRetorno(deps.notas, deps.titulos, deps.log);
 
   /** Motivo curto e sem dado pessoal: só rótulos de regra e de campo. */
   const motivoDe = (e: unknown): string | null => {

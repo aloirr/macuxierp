@@ -36,7 +36,7 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
       t,
       tr: criarTransmissor({
         banco: worker,
-        notas: repos.notas,
+        notas: repos.notas, titulos: repos.titulos,
         emissor: s.emissor,
         ambiente: repos.ambiente,
         lerA1: async () => a1DeTeste(),
@@ -116,7 +116,7 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
     const s = servico();
     const nota = await emitir(s, 'idem-assinada-5');
     const t = transporteFake();
-    const vencido = criarTransmissor({ banco: worker, notas: repos.notas, emissor: s.emissor, ambiente: repos.ambiente, lerA1: async () => a1VencidoDeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:30:00Z') });
+    const vencido = criarTransmissor({ banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: s.emissor, ambiente: repos.ambiente, lerA1: async () => a1VencidoDeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:30:00Z') });
     expect(await vencido.transmitirNota(A, nota.id)).toEqual({ resultado: 'nao_assinada', motivo: 'a1_invalido' });
     const [n] = await admin("SELECT status, numero, transporte->'envio_pendente'->>'motivo' AS motivo FROM faturamento.nota WHERE id = $1", [nota.id]);
     expect(n).toMatchObject({ status: 'rascunho', numero: nota.numero });
@@ -156,7 +156,7 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
     let reenvioTerminou = false;
     const tr = criarTransmissor({
       banco: worker,
-      notas: repos.notas,
+      notas: repos.notas, titulos: repos.titulos,
       emissor: s.emissor,
       ambiente: repos.ambiente,
       // O A1 é lido DENTRO da tx1, já com a linha travada: aqui a API tenta reenviar e tem de ficar esperando.

@@ -22,11 +22,13 @@ import {
   destinatarioDoRetrato,
   emTransmissao,
   ErroViolacao,
-  instanteManaus,
+  dataCivilManaus,
   interpretarRetorno,
   modFreteDoPedido,
   montarNota,
   montarPagamento,
+  contaComoReal,
+  validarTitulosDoBoleto,
   notaParaEmissaoDe,
   podeEditar,
   ratearItens,
@@ -50,9 +52,12 @@ import type {
   NotaRegistro,
   PedidosAprovados,
   RepositorioNotas,
+  ConfiguracaoFaturamento,
+  RepositorioTitulos,
   RetornoSefaz,
   SituacaoPedidoDoPedido,
 } from './portas';
+import { contaComoRealDaNota, gerarTitulosSeguro, type LogFaturamento } from './titulos';
 
 export const EVENTO_NOTA_AUTORIZADA = 'faturamento.nota.autorizada@1' as const;
 export const EVENTO_NOTA_REJEITADA = 'faturamento.nota.rejeitada@1' as const;
@@ -76,6 +81,10 @@ export interface DepsEmissao {
   /** Sorteio do cNF (inteiro em [0, 100000000), injetável em teste); sem ele, o emissor sorteia. */
   sorteio?: () => number;
   tpEmis?: TipoEmissao;
+  /** Bandeira "faturamento real com NF-e simulada": lida na EMISSÃO e guardada no conteúdo da nota (`conta_como_real`); ausente = desligada. */
+  configuracao?: ConfiguracaoFaturamento;
+  /** Log sem dado pessoal (falha ao ler a bandeira). */
+  log?: LogFaturamento;
 }
 
 interface Preparado {
@@ -87,13 +96,16 @@ interface Preparado {
   /** Da condição de pagamento do pedido (nulos = sem condição: tPag 99). */
   forma_tpag: string | null;
   prazos_dias: number[] | null;
+  /** RN-FAT-04: bandeira da filial E homologação, calculada agora e guardada no conteúdo. */
+  conta_como_real: boolean;
 }
 
 export type ResultadoEmissao = { ok: true; nota: NotaRegistro; repetida: boolean } | { ok: false; violacoes: Violacao[] };
 
 /** Como o retorno ficou aplicado; o worker decide o que fazer em seguida (consultar protocolo, reagendar, nada). */
 export type ResultadoRetorno =
-  | { resultado: 'autorizada'; nota: NotaRegistro }
+  /** `titulos_pendentes`: motivo (sem dado pessoal) de a geração dos títulos ter falhado; a nota está autorizada e a varredura gera depois. */
+  | { resultado: 'autorizada'; nota: NotaRegistro; titulos_pendentes?: string }
   /** XML autorizado NÃO guardado: sem evento, sem DANFE; reprocessar com `consultarProtocolo` (RN-FAT-03). */
   | { resultado: 'guarda_pendente'; nota: NotaRegistro; motivo: 'sem_xml' | 'sem_digest' | 'falha_na_guarda' | 'digest_diferente' }
   | { resultado: 'rejeitada'; nota: NotaRegistro; codigo: string; mensagem: string; acao: string }
@@ -198,7 +210,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       ambiente,
       filial_id: pedido.filial_id,
       pedido,
-      data_emissao: instanteManaus(emitidaEm).toISOString().slice(0, 10),
+      data_emissao: dataCivilManaus(emitidaEm),
       itens: base.itens.map((i) => ({
         sequencia: i.sequencia,
         produto_id: i.produto_id,
@@ -233,7 +245,14 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       prazos = condicao.prazos_dias;
       forma = forma ?? condicao.forma_tpag;
     }
-    return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos };
+    // RN-FAT-06, ANTES de reservar o número: boleto sem prazos ou com total menor que as parcelas não gera título; a nota não nasce assim.
+    const semTitulos = validarTitulosDoBoleto({ forma_tpag: forma, prazos_dias: prazos, total_centavos: montada.nota.totais.vNF });
+    if (semTitulos.length > 0) return { ok: false, violacoes: semTitulos };
+    // Bandeira com leitura segura (erro, como tabela inexistente, vale false com log): nunca derruba a emissão.
+    const bandeira = deps.configuracao
+      ? await deps.configuracao.lerBandeiraSegura(tx, pedido.filial_id, (motivo) => deps.log?.({ evento: 'faturamento.bandeira.leitura_falhou', motivo }))
+      : false;
+    return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos, conta_como_real: contaComoReal(ambiente, bandeira) };
   }
 
   function montarConteudo(p: Preparado, numero: number, emitida_em: Date, itensSolicitados: EmitirNotaEntrada['itens']): ConteudoNota {
@@ -247,6 +266,8 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       itensSolicitados: itensSolicitados ?? null,
       pagamentos: pag.pagamentos,
       cobranca: pag.cobranca,
+      prazos_dias: p.prazos_dias,
+      conta_como_real: p.conta_como_real,
       itens: p.nota.itens,
     };
   }
@@ -386,7 +407,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
  * Aplica o retorno da SEFAZ (autorização, recibo ou consulta) à nota: único caminho que leva a nota a autorizada, denegada ou rejeitada.
  * Só precisa do repositório: o worker o usa direto, sem as portas da emissão.
  */
-export function criarProcessadorRetorno(notas: RepositorioNotas) {
+export function criarProcessadorRetorno(notas: RepositorioNotas, titulos?: RepositorioTitulos, log?: LogFaturamento) {
   const mudar = (tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> =>
     mudarNota(notas, tx, nota, para, dados, extra);
   const base = baseEventoDaNota;
@@ -426,6 +447,8 @@ export function criarProcessadorRetorno(notas: RepositorioNotas) {
       // O XML assinado só vale se for o que a SEFAZ autorizou: o digest da assinatura é o digVal do protocolo. Sem um dos dois, não guarda.
       if (!opcoes.digestValue || !retorno.digVal) return { resultado: 'guarda_pendente', nota: atual, motivo: 'sem_digest' };
       if (opcoes.digestValue !== retorno.digVal) return { resultado: 'guarda_pendente', nota: atual, motivo: 'digest_diferente' };
+      // Lido ANTES da guarda: depois dela nada pode lançar (um erro faria o rollback do nfeProc, RN-FAT-03).
+      const conteudo = await notas.lerConteudo(tx, atual.id);
       try {
         await notas.guardarXmlAutorizado(tx, atual.id, { conteudo: montarNfeProc(opcoes.xmlAssinado, retorno.xmlProtocolo), protocolo });
       } catch {
@@ -433,9 +456,12 @@ export function criarProcessadorRetorno(notas: RepositorioNotas) {
       }
       // Guardar o XML levou a nota a `autorizada` por gatilho do banco: nenhum `mudarStatus` depois.
       const autorizada = comStatus(atual, 'autorizada');
-      const payload = NotaAutorizadaPayload.parse({ ...base(autorizada, protocolo), pedido_uuid: autorizada.pedido_uuid });
+      const payload = NotaAutorizadaPayload.parse({ ...base(autorizada, protocolo, contaComoRealDaNota(conteudo, autorizada)), pedido_uuid: autorizada.pedido_uuid });
       await notas.publicarEvento(tx, { nome: EVENTO_NOTA_AUTORIZADA, agregado_id: autorizada.id, payload });
-      return { resultado: 'autorizada', nota: autorizada };
+      // RF-FAT-07: títulos na MESMA tx, depois da guarda do nfeProc e do evento, num SAVEPOINT (RN-FAT-03): se a geração falhar, a nota segue autorizada com o
+      // nfeProc guardado, a pendência vai ao log e ao resultado, e a varredura gera depois. `titulos` só falta no serviço de emissão dos testes.
+      const g = titulos ? await gerarTitulosSeguro(tx, { titulos, notas }, autorizada, log) : null;
+      return { resultado: 'autorizada', nota: autorizada, ...(g && !g.ok ? { titulos_pendentes: g.motivo } : {}) };
     }
 
     if (r.situacao === 'denegada') {

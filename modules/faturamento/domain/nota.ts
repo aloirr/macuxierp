@@ -144,7 +144,8 @@ export function ratearProporcional(total: number, pesos: readonly number[]): num
   return partes;
 }
 
-const nfeVaiAoFdv = (ambiente: Ambiente): boolean => ambiente === 'producao';
+/** RN-FAT-04: só produção vai ao FDV (único lugar que decide). */
+export const nfeVaiAoFdv = (ambiente: Ambiente): boolean => ambiente === 'producao';
 
 export interface EntradaItens {
   pedido: PedidoFaturavel;
