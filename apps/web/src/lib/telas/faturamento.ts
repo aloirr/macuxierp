@@ -107,7 +107,7 @@ function acaoEmitirParcial(l: Linha, perfil: Perfil): AcaoVista | null {
   const { numero, ...base } = b;
   return {
     ...base, id: 'emitir-parcial', rotulo: 'Emitir nota parcial', entrada: 'itens', leitura: urlDoPedidoAFaturar((l as unknown as PedidoAFaturarResumo).id),
-    tituloDialogo: `Emitir nota parcial do pedido${numero}`, aviso: 'A nota leva só as quantidades abaixo, até o saldo de cada item. Zero tira o item da nota.',
+    tituloDialogo: `Emitir nota parcial do pedido${numero}`, aviso: 'A nota leva só as quantidades abaixo, até o saldo de cada item. Campo vazio (ou 0) tira o item da nota.',
     rotuloConfirmar: 'Emitir nota parcial',
   };
 }
@@ -116,18 +116,21 @@ function acaoEmitirParcial(l: Linha, perfil: Perfil): AcaoVista | null {
 const itensDoPedido = (dados: unknown): readonly ItemDoDialogo[] =>
   PedidoAFaturarDetalhe.parse(dados).itens.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao ?? `Item ${i.sequencia}`, saldo: i.saldo, saldoTexto: formatarQuantidade(i.saldo), saldoCampo: formatarQuantidade(i.saldo).replaceAll('.', '') }));
 
-/** Nota parcial: quantidade vazia ou inválida recusa; 0 tira o item; acima do saldo recusa (a API revalida). Texto → qtd4 pelo módulo (`interpretarQuantidade`, sem float). */
+/** Nota parcial, regra do PO (R-20261122-055826): campo vazio ou 0 deixa o item fora da nota (nunca é erro); o preenchido tem de ser > 0 e no máximo o saldo; sem nenhum item, recusa. Texto → qtd4 pelo módulo (`interpretarQuantidade`, sem float).
+ *  Ponto de troca: trocar pelo formularioParcial do @macuxierp/faturamento/web quando existir (R-20261122-055826). */
+export const MSG_PARCIAL_SEM_ITENS = 'Informe a quantidade de pelo menos um item';
 function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   const escolhidos: { sequencia: number; quantidade: string }[] = [];
   for (const i of e.itens ?? []) {
     const texto = i.quantidade.trim();
+    if (texto === '') continue;
     const q = interpretarQuantidade(texto);
-    if (q === null || q < 0) return { ok: false, erro: `Informe uma quantidade válida para "${i.descricao}", com até 4 casas decimais (0 tira o item).` };
+    if (q === null || q < 0) return { ok: false, erro: `"${i.descricao}": informe uma quantidade válida, com até 4 casas decimais, ou deixe o campo vazio para tirar o item.` };
     if (q === 0) continue;
     if (q > i.saldo) return { ok: false, erro: `"${i.descricao}": a quantidade passa do saldo (${formatarQuantidade(i.saldo)}).` };
     escolhidos.push({ sequencia: i.sequencia, quantidade: texto });
   }
-  if (escolhidos.length === 0) return { ok: false, erro: 'Deixe ao menos um item com quantidade maior que zero.' };
+  if (escolhidos.length === 0) return { ok: false, erro: MSG_PARCIAL_SEM_ITENS };
   return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, itens: escolhidos }));
 }
 

@@ -405,10 +405,19 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     const a = mais('administrador')[0]!;
     const e = (i: ReturnType<typeof itens>) => exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: i });
     expect(e(itens([1, '2,5001', 25000]))).toEqual({ ok: false, erro: '"Produto 1": a quantidade passa do saldo (2,5).' });
-    expect(e(itens([1, '', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('quantidade válida') });
+    expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('quantidade válida') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
-    expect(e(itens([1, '0', 25000], [2, '0,0', 10000]))).toEqual({ ok: false, erro: 'Deixe ao menos um item com quantidade maior que zero.' });
+    expect(e(itens([1, '0', 25000], [2, '0,0', 10000]))).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
     expect(e([])).toMatchObject({ ok: false });
+  });
+  it('campo vazio deixa o item fora da nota, sem erro (R-20261122-055826)', () => {
+    const a = mais('administrador')[0]!;
+    const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '', 25000], [2, '  ', 10000], [3, '0,1234', 20000]) });
+    expect(r).toEqual({ ok: true, corpo: { pedido_id: P, itens: [{ sequencia: 3, quantidade: 1234 }], idempotencia: 'chave-parcial-1' } });
+  });
+  it('todos vazios: recusa com a mensagem do PO', () => {
+    const a = mais('administrador')[0]!;
+    expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '', 25000], [2, '', 10000]) })).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
   });
 });

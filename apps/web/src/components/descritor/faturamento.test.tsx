@@ -6,7 +6,7 @@ import type { NotaDetalhe } from '@macuxierp/faturamento/contracts';
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { vistaDaNota } from '@/lib/telas/faturamento';
 import { DetalheGenerico } from './detalhe-generico';
-import { DialogoEscrita, ItensDoDialogo } from './dialogo-escrita';
+import { DialogoEscrita, ItensDoDialogo, nenhumItemPreenchido } from './dialogo-escrita';
 import { TabelaVista } from './ui-cliente';
 import Carregando from '@/app/(shell)/[modulo]/[...pagina]/loading';
 
@@ -148,6 +148,13 @@ describe('nota parcial e tabelas com ações (T-0021)', () => {
     expect(h).toContain('value="2,5"');
     expect(renderToStaticMarkup(<ItensDoDialogo linhas={null} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toContain('Carregando os itens…');
     expect(renderToStaticMarkup(<ItensDoDialogo linhas={null} falha="Registro não encontrado." quantidades={{}} aoMudar={vi.fn()} />)).toContain('role="alert"');
+  });
+  it('sem nenhum item preenchido (vazio ou zero) o botão desliga; um item basta para ligar', () => {
+    const l = [{ sequencia: 1, descricao: 'A', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }, { sequencia: 2, descricao: 'B', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }];
+    expect(nenhumItemPreenchido(l, { 1: '', 2: '' })).toBe(true);
+    expect(nenhumItemPreenchido(l, { 1: '0', 2: '0,0' })).toBe(true);
+    expect(nenhumItemPreenchido(l, { 1: '', 2: '0,5' })).toBe(false);
+    expect(nenhumItemPreenchido(l, { 1: '1', 2: '' })).toBe(false);
   });
   it('o diálogo de itens mostra a linha de ambiente e mantém o confirmar desligado até carregar', () => {
     const h = renderToStaticMarkup(<DialogoEscrita titulo="Emitir nota parcial do pedido 7" rotuloConfirmar="Emitir nota parcial" ocupado={false} ambiente={{ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' }} itens={{ carregar: vi.fn() }} validar={() => null} aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
