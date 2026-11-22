@@ -7,6 +7,7 @@ import { filtrosDaUrl } from '@macuxierp/platform-sdk/listas';
 import { rotuloDaCelula } from '@/lib/descritor/lista';
 import { urlProxima } from '@/lib/listas-url';
 import type { FiltroTela, TelaLista } from '@/lib/descritor/tipos';
+import { AcoesDetalhe } from './acoes-detalhe';
 import { TabelaVista } from './ui-cliente';
 
 async function opcoesDoFiltro(f: FiltroTela, acesso: string): Promise<readonly Opcao[]> {
@@ -20,7 +21,7 @@ async function opcoesDoFiltro(f: FiltroTela, acesso: string): Promise<readonly O
 }
 
 /** Lista genérica a partir do descritor: filtros na URL (formulário GET, sem JS), tabela densa, paginação por cursor e CSV. */
-export async function ListaGenerica({ tela, rota, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
+export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   const filtros = filtrosDaUrl(tela.pagina, busca);
   const colunas = tela.colunas(perfil);
   const [pagina, opcoes] = await Promise.all([
@@ -29,6 +30,9 @@ export async function ListaGenerica({ tela, rota, busca, perfil, acesso, fuso }:
   ]);
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
+  const acaoBarra = tela.acaoDaBarra?.acao(perfil) ?? null;
+  const iFilial = tela.filtrosTela.findIndex((f) => f.chave === 'filial_id');
+  const barra = acaoBarra && acaoBarra.entrada === 'faixa' ? { ...acaoBarra, filiais: iFilial >= 0 ? (opcoes[iFilial] ?? []) : [] } : acaoBarra;
   const csv = tela.pagina.csv ? `/exportar-csv?${new URLSearchParams({ rota, ...filtros }).toString()}` : null;
   return (
     <section>
@@ -55,16 +59,21 @@ export async function ListaGenerica({ tela, rota, busca, perfil, acesso, fuso }:
       <div className="barra-acoes">
         {tela.novo && (!tela.novo.criar || pode(perfil, tela.novo.criar)) && <Link className="btn" href={tela.novo.rota}>{tela.novo.rotulo}</Link>}
         {csv && <a className="btn btn-sec" href={csv}>Exportar CSV</a>}
+        {barra && <AcoesDetalhe acoes={[barra]} rota={rota} rotaDaPagina={rotaDaPagina} origem="barra" compacta />}
       </div>
       <TabelaVista
-        colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo }))}
-        vazio="Nenhum registro com estes filtros."
+        colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}) }))}
+        vazio={tela.textoVazio ?? 'Nenhum registro com estes filtros.'}
+        acoes={tela.acaoDaLinha ? { rota, rotaDaPagina } : undefined}
         linhas={pagina.itens.map((l, i) => {
           const item = l as Record<string, unknown>;
           const texto = tela.linha(item, fuso);
+          const selos = tela.selos?.(item, fuso);
           return {
+            ...(selos ? { selos } : {}),
             chave: typeof item.id === 'string' ? item.id : String(i),
             celulas: Object.fromEntries(colunas.map((c) => [c.id, rotuloDaCelula(texto[c.id] ?? '', rotulos.get(c.id))])),
+            ...(tela.acaoDaLinha ? { acao: tela.acaoDaLinha.acao(item, perfil) ?? undefined } : {}),
             ...(tela.rotaDaLinha ? { destino: tela.rotaDaLinha(item), rotulo: tela.rotuloDaLinha?.(item) ?? 'Abrir' } : {}),
           };
         })}

@@ -2,7 +2,7 @@ import type { EuResposta } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { EU_FALSO } from './falso';
 import { MANIFESTOS } from './manifestos';
-import { montarMenu, resolverPagina, slug } from './menu';
+import { hrefAtivo, montarMenu, resolverPagina, slug } from './menu';
 
 describe('slug', () => {
   it('tira acento e espaço', () => expect(slug('Regras fiscais')).toBe('regras-fiscais'));
@@ -44,11 +44,11 @@ describe('montarMenu (RN-CORE-02, RD-11)', () => {
     expect(resolverPagina(m, '/core/inexistente', 'administrador')).toBeUndefined();
   });
   it('resolverPagina devolve undefined para o que não está no menu e o rótulo para módulo sem páginas', () => {
-    const m = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'gerente');
-    // Faturamento ainda não declara páginas: a rota vem do rótulo do manifesto.
-    const rotulo = m.find((g) => g.modulo === 'faturamento')!.itens[0]!;
-    expect(resolverPagina(m, rotulo.href, 'gerente')).toEqual({ rotulo: rotulo.rotulo });
-    expect(resolverPagina(m, '/fiscal/regras-fiscais', 'gerente')).toBeUndefined();
+    // Fiscal ainda não declara páginas: a rota vem do rótulo do manifesto (o faturamento já declara as dele, T-0021).
+    const m = montarMenu([...EU_FALSO.modulos, { id: 'fiscal', menus: ['Regras fiscais'] }], MANIFESTOS, 'administrador');
+    const rotulo = m.find((g) => g.modulo === 'fiscal')!.itens[0]!;
+    expect(resolverPagina(m, rotulo.href, 'administrador')).toEqual({ rotulo: rotulo.rotulo });
+    expect(resolverPagina(m, '/fiscal/outra-coisa', 'administrador')).toBeUndefined();
   });
 });
 
@@ -72,5 +72,22 @@ describe('o `ver` de cada página por perfil (esconde o link e a rota)', () => {
     expect(resolverPagina(m, '/core/empresa/certificado', 'gerente', paginas)).toBeUndefined();
     expect(resolverPagina(m, '/core/auditoria', 'gerente', paginas)).toBeUndefined();
     expect(resolverPagina(m, '/core/empresa', 'gerente', paginas)?.rotulo).toBe('Empresa');
+  });
+});
+
+describe('hrefAtivo (item marcado no menu lateral)', () => {
+  const hrefs = ['/', '/faturamento/notas', '/faturamento/rejeicoes', '/faturamento/titulos', '/pedido/pedidos', '/core/empresa', '/licencas'];
+  it('a própria lista marca a si mesma', () => expect(hrefAtivo('/faturamento/notas', hrefs)).toBe('/faturamento/notas'));
+  it('o detalhe marca a lista de origem (notas/:id e titulos/:id), como o pedido', () => {
+    expect(hrefAtivo('/faturamento/notas/3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70', hrefs)).toBe('/faturamento/notas');
+    expect(hrefAtivo('/faturamento/titulos/3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70', hrefs)).toBe('/faturamento/titulos');
+    expect(hrefAtivo('/pedido/pedidos/3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70/editar', hrefs)).toBe('/pedido/pedidos');
+    expect(hrefAtivo('/core/empresa/certificado', hrefs)).toBe('/core/empresa');
+  });
+  it('Rejeições marca só a si; o início só marca "/"; rota fora do menu não marca nada', () => {
+    expect(hrefAtivo('/faturamento/rejeicoes', hrefs)).toBe('/faturamento/rejeicoes');
+    expect(hrefAtivo('/', hrefs)).toBe('/');
+    expect(hrefAtivo('/faturamento/notas-extras', hrefs)).toBeUndefined();
+    expect(hrefAtivo('/outra', hrefs)).toBeUndefined();
   });
 });

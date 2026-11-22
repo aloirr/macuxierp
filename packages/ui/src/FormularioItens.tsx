@@ -19,7 +19,12 @@ export interface SeletorProdutoProps {
   rotulo: string;
   /** O formulário está desabilitado: o seletor não deve aceitar escolha. */
   desabilitado?: boolean;
+  /** Id da mensagem de erro do produto, se houver: o chamador liga ao seu campo por `aria-describedby`. */
+  idErro?: string;
 }
+
+/** Erros por campo de uma linha. */
+export type ErrosItem = { produtoId?: string; quantidade?: string; precoUnitarioCentavos?: string; descontoCentavos?: string };
 
 export interface FormularioItensProps<T extends ItemLinha = ItemLinha> {
   itens: T[];
@@ -33,11 +38,13 @@ export interface FormularioItensProps<T extends ItemLinha = ItemLinha> {
   /** Total da linha pela regra do módulo (a API revalida). */
   calcularTotal: (item: T) => number;
   desabilitado?: boolean;
-  /** Mensagem por chave de linha (erro do domínio). */
-  erros?: Record<string, string>;
+  /** Erro do domínio por chave de linha: texto (aparece abaixo do seletor de produto) ou um erro por campo, abaixo de cada um. */
+  erros?: Record<string, string | ErrosItem>;
+  /** Legenda da tabela (`<caption>`), ex.: "Itens do pedido". */
+  legenda?: string;
 }
 
-const campo = { ...texto('pequeno'), minWidth: 0, border: `1px solid ${cor('bordaCinza')}`, padding: espaco.xs, width: '100%', boxSizing: 'border-box' } as const;
+const campo = { ...texto('pequeno'), minWidth: 0, border: `1px solid ${cor('bordaCampo')}`, padding: espaco.xs, width: '100%', boxSizing: 'border-box' } as const;
 
 interface CampoProps {
   rotulo: string;
@@ -51,6 +58,8 @@ interface CampoProps {
   inputMode: 'decimal' | 'numeric';
   /** Mensagem abaixo do campo quando o texto não é válido: o problema e a ação. */
   mensagemInvalido: string;
+  /** Erro vindo de fora (domínio); o texto inválido local tem prioridade. */
+  erro?: string;
 }
 
 /** Mantém o texto digitado localmente ("1,5", "1." ) e só publica quando é válido. */
@@ -61,12 +70,13 @@ function CampoNumerico(p: CampoProps) {
   const atual = p.paraValor(t);
   if (!invalido && atual !== null && atual !== p.valor) setT(p.paraTexto(p.valor));
   const idErro = useId();
+  const mensagem = invalido ? p.mensagemInvalido : p.erro;
   return (
     <div>
       <input
         aria-label={p.rotulo}
-        aria-invalid={invalido ? true : undefined}
-        aria-describedby={invalido ? idErro : undefined}
+        aria-invalid={mensagem ? true : undefined}
+        aria-describedby={mensagem ? idErro : undefined}
         inputMode={p.inputMode}
         disabled={p.desabilitado}
         value={t}
@@ -77,15 +87,18 @@ function CampoNumerico(p: CampoProps) {
           setInvalido(v === null);
           if (v !== null) p.aoValor(v);
         }}
-        style={{ ...campo, ...numerico, ...(p.desabilitado ? { ...desabilitadoEstilo(true), background: cor('nevoa') } : {}), ...(invalido ? { borderColor: cor('erroTexto') } : {}) }}
+        style={{ ...campo, ...numerico, ...(p.desabilitado ? { ...desabilitadoEstilo(true), background: cor('nevoa') } : {}), ...(mensagem ? { borderColor: cor('erroTexto') } : {}) }}
       />
-      {invalido ? <div id={idErro} role="alert" style={mensagemErro}>{p.mensagemInvalido}</div> : null}
+      {mensagem ? <div id={idErro} role="alert" style={mensagemErro}>{mensagem}</div> : null}
     </div>
   );
 }
 
+const thNum = (largura: number, titulo: string) => <th style={{ ...tabela.cabecalho, ...numerico, width: largura }}>{titulo}</th>;
+
 export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioItensProps<T>) {
-  const { itens, aoMudar, novoItem, renderSeletorProduto, formatarCentavos, calcularTotal, desabilitado, erros = {} } = p;
+  const { itens, aoMudar, novoItem, renderSeletorProduto, formatarCentavos, calcularTotal, desabilitado, erros = {}, legenda } = p;
+  const base = useId();
   const mudar = (chave: string, parte: Partial<ItemLinha>) =>
     aoMudar(itens.map((i) => (i.chave === chave ? ({ ...i, ...parte } as T) : i)));
   const adicionar = () => {
@@ -97,13 +110,14 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
   return (
     <div style={{ display: 'grid', gap: espaco.sm }}>
       <table style={tabela.raiz}>
+        {legenda ? <caption style={tabela.legenda}>{legenda}</caption> : null}
         <thead>
           <tr>
             <th style={tabela.cabecalho}>Produto</th>
-            <th style={{ ...tabela.cabecalho, ...numerico }}>Qtd.</th>
-            <th style={{ ...tabela.cabecalho, ...numerico }}>Preço unit. (R$)</th>
-            <th style={{ ...tabela.cabecalho, ...numerico }}>Desconto (R$)</th>
-            <th style={{ ...tabela.cabecalho, ...numerico }}>Total</th>
+            {thNum(88, 'Qtd.')}
+            {thNum(120, 'Preço unit. (R$)')}
+            {thNum(120, 'Desconto (R$)')}
+            {thNum(120, 'Total')}
             <th style={tabela.cabecalho}><span style={{ position: 'absolute', left: -9999 }}>Ações</span></th>
           </tr>
         </thead>
@@ -114,26 +128,28 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
             </tr>
           ) : null}
           {itens.map((i, n) => {
-            const rotulo = `Item ${n + 1}`;
-            const erro = erros[i.chave];
+            const item = `item ${n + 1}`;
+            const bruto = erros[i.chave];
+            const e: ErrosItem = typeof bruto === 'string' ? { produtoId: bruto } : (bruto ?? {});
+            const idProduto = `${base}-${i.chave}-produto`;
             return (
               <tr key={i.chave}>
                 <td style={tabela.celula}>
-                  {renderSeletorProduto({ valor: i.produtoId, aoEscolher: (id) => mudar(i.chave, { produtoId: id }), rotulo: `Produto do ${rotulo.toLowerCase()}`, desabilitado })}
-                  {erro ? <div role="alert" style={mensagemErro}>{erro}</div> : null}
+                  {renderSeletorProduto({ valor: i.produtoId, aoEscolher: (id) => mudar(i.chave, { produtoId: id }), rotulo: `Produto do ${item}`, desabilitado, idErro: e.produtoId ? idProduto : undefined })}
+                  {e.produtoId ? <div id={idProduto} role="alert" style={mensagemErro}>{e.produtoId}</div> : null}
                 </td>
                 <td style={tabela.celula}>
-                  <CampoNumerico rotulo={`Quantidade do ${rotulo.toLowerCase()}`} inputMode="decimal" mensagemInvalido="Quantidade inválida. Use só números, até 4 casas, ex.: 1,5." desabilitado={desabilitado} valor={i.quantidade} paraTexto={String} paraValor={textoParaQuantidade} aoValor={(v) => mudar(i.chave, { quantidade: v })} />
+                  <CampoNumerico rotulo={`Quantidade do ${item}`} inputMode="decimal" mensagemInvalido="Quantidade inválida. Use só números, até 4 casas, ex.: 1,5." desabilitado={desabilitado} erro={e.quantidade} valor={i.quantidade} paraTexto={String} paraValor={textoParaQuantidade} aoValor={(v) => mudar(i.chave, { quantidade: v })} />
                 </td>
                 <td style={tabela.celula}>
-                  <CampoNumerico rotulo={`Preço unitário do ${rotulo.toLowerCase()}`} inputMode="decimal" mensagemInvalido="Preço inválido. Digite em reais, ex.: 12,50." desabilitado={desabilitado} valor={i.precoUnitarioCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { precoUnitarioCentavos: v })} />
+                  <CampoNumerico rotulo={`Preço unitário do ${item}`} inputMode="decimal" mensagemInvalido="Preço inválido. Digite em reais, ex.: 12,50." desabilitado={desabilitado} erro={e.precoUnitarioCentavos} valor={i.precoUnitarioCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { precoUnitarioCentavos: v })} />
                 </td>
                 <td style={tabela.celula}>
-                  <CampoNumerico rotulo={`Desconto do ${rotulo.toLowerCase()}`} inputMode="decimal" mensagemInvalido="Desconto inválido. Digite em reais, ex.: 5,00." desabilitado={desabilitado} valor={i.descontoCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { descontoCentavos: v })} />
+                  <CampoNumerico rotulo={`Desconto do ${item}`} inputMode="decimal" mensagemInvalido="Desconto inválido. Digite em reais, ex.: 5,00." desabilitado={desabilitado} erro={e.descontoCentavos} valor={i.descontoCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { descontoCentavos: v })} />
                 </td>
-                <td style={{ ...tabela.celula, ...numerico }}>{formatarCentavos(calcularTotal(i))}</td>
+                <td style={{ ...tabela.celula, ...tabela.celulaNumerica }}>{formatarCentavos(calcularTotal(i))}</td>
                 <td style={tabela.celula}>
-                  <button type="button" disabled={desabilitado} aria-label={`Remover ${rotulo.toLowerCase()}`} onClick={() => aoMudar(itens.filter((x) => x.chave !== i.chave))} style={botaoSecundario(desabilitado)}>
+                  <button type="button" disabled={desabilitado} aria-label={`Remover ${item}`} onClick={() => aoMudar(itens.filter((x) => x.chave !== i.chave))} style={botaoSecundario(desabilitado)}>
                     Remover
                   </button>
                 </td>
@@ -143,7 +159,7 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
         </tbody>
       </table>
       <div>
-        <button type="button" disabled={desabilitado} onClick={adicionar} style={{ ...botaoSecundario(desabilitado), padding: `${espaco.xs}px ${espaco.md}px` }}>
+        <button type="button" disabled={desabilitado} onClick={adicionar} style={botaoSecundario(desabilitado)}>
           Adicionar item
         </button>
       </div>

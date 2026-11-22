@@ -257,6 +257,9 @@ export type PedidoAFaturarResumo = z.infer<typeof PedidoAFaturarResumo>;
 /** `PUT /v1/faturamento/filiais/:id/configuracao` (só administrador; `Idempotency-Key` obrigatória). Desligada por padrão. A nota segue de homologação no XML (tpAmb 2, "SEM VALOR FISCAL"). */
 export const ConfigurarFilialEntrada = z.object({ faturamento_real_nfe_simulada: z.boolean() });
 export type ConfigurarFilialEntrada = z.infer<typeof ConfigurarFilialEntrada>;
+/** Resposta do `GET /v1/faturamento/filiais/:id/configuracao`: a bandeira mais o ambiente fiscal vigente da filial (`faturamento.ambiente_da_filial`; sem configuração = homologação), para o diálogo de inutilizar. */
+export const ConfiguracaoFilialResposta = z.object({ filial_id: Uuid, faturamento_real_nfe_simulada: z.boolean(), ambiente: Ambiente });
+export type ConfiguracaoFilialResposta = z.infer<typeof ConfiguracaoFilialResposta>;
 
 // ---- Títulos a receber (RF-FAT-07, RN-FAT-06) ----
 export const StatusTitulo = z.enum(['aberto', 'baixado', 'cancelado']);

@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./tokens.css": "./src/tokens.css"
+    "./tokens.css": "./src/tokens.css",
+    "./botoes.css": "./src/botoes.css",
+    "./marca": "./src/marca.ts"
   },
   "scripts": {
     "lint": "eslint .",

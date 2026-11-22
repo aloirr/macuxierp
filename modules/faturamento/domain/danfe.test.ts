@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import {
   AVISO_HOMOLOGACAO, caixaDoLogo, formatarChave, formatarDataHoraXml, formatarDecimalXml, formatarFone, LOGO_RESPIRO_PT, montarDanfe,
   ErroDanfe, FONTE_CONTEUDO_PT, MARCA_DAGUA, RODAPE_DANFE,
@@ -135,6 +136,19 @@ describe('fixture base do DANFE (regressão das amostras)', () => {
     expect(json).toContain('TRANSPORTES RIO NEGRO LTDA');
     expect(json).not.toContain('Sem ocorrência de transporte');
     for (const v of ['12', 'CAIXA', 'MARCA TESTE', '1 a 12', '131,250', '120,500']) expect(json).toContain(v);
+  });
+  it('RD-0724: o valor da duplicata usa "R$" + espaço duro (U+00A0), como o formatarCentavos do sdk', () => {
+    const m = montarDanfe({ nfeProc: nfeProcDeTeste({ duplicatas: true }) });
+    expect(m.duplicatas.length).toBeGreaterThan(0);
+    for (const d of m.duplicatas) {
+      expect(semEspacoDuro(d.valor)).toMatch(/^R\$ \d/);
+    }
+  });
+  it('amostras: com vProd de 13 inteiros no item 1, BC do ICMS e totais acompanham o item (nota coerente)', () => {
+    const x = nfeProcDeTeste({ itens: 1, item1: { vProd: '1234567890123.00' } });
+    expect(x).toContain('<vBC>1234567890123.00</vBC><pICMS>');
+    expect(x).toContain('<ICMSTot><vBC>1234567890123.00</vBC>');
+    expect(x).toContain('<vNF>1234567890123.00</vNF>');
   });
   it('amostras: duplicatas somam exatamente o vNF e o total de ICMS é a soma dos vICMS dos itens, em todas as variações', () => {
     const cent = (v: string) => Math.round(Number(v) * 100);

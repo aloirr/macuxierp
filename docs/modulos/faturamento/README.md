@@ -62,7 +62,7 @@ Cabeçalhos com o passo a passo, em `api/emissao.ts` (API: confere, reserva o n�
 | `GET /titulos`, `GET /titulos/:id` | `faturamento.ver` | títulos a receber: filtros cliente, status e vencimento, paginado (`vendedor` 403) |
 | `POST /titulos/:id/baixas` | `faturamento.ver` + perfil | baixa parcial ou total; `Idempotency-Key` obrigatória; só administrador, gerente e faturista (ver titulos.md) |
 | `POST /titulos/:id/baixas/:baixa_id/estornar` | `faturamento.ver` + perfil | estorna a baixa; mesmo perfil |
-| `GET`/`PUT /filiais/:id/configuracao` | `faturamento.ver`; PUT só administrador | bandeira "faturamento real com NF-e simulada" (desligada por padrão); PUT com `Idempotency-Key` obrigatória e auditoria |
+| `GET`/`PUT /filiais/:id/configuracao` | `faturamento.ver`; PUT só administrador | bandeira "faturamento real com NF-e simulada" (desligada por padrão); o GET devolve também `ambiente` da filial; PUT com `Idempotency-Key` obrigatória e auditoria |
 
 ## Portas (`api/portas.ts`)
 | Porta | Quem implementa | Uso |

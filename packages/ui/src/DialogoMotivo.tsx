@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { botaoSecundario, cor, espaco, mensagemErro, texto } from './estilos.js';
+import { botaoPrincipal, botaoSecundario, cor, espaco, mensagemErro, texto } from './estilos.js';
 
 export interface MotivoOpcao {
   codigo: string;
@@ -19,6 +19,10 @@ export interface DialogoMotivoProps {
   textoObrigatorio?: boolean;
   rotuloTexto?: string;
   rotuloConfirmar?: string;
+  /** Texto do botão que chama `aoCancelar` (padrão: "Cancelar"). Ex.: "Manter a nota". */
+  rotuloFechar?: string;
+  /** Só sinal: marca o botão de confirmar com `data-destrutivo="true"`. Nenhuma cor muda nesta versão. */
+  destrutivo?: boolean;
   /** Aviso fixo do módulo (ex.: sobre dado pessoal). Sem aviso, nada aparece. */
   aviso?: string | null;
   /** Validação do módulo; devolve a mensagem de erro ou null. Roda depois da checagem básica. */
@@ -46,7 +50,7 @@ export function proximoFoco(atual: number, total: number, voltar: boolean): numb
 }
 
 export function DialogoMotivo(props: DialogoMotivoProps) {
-  const { titulo, motivos = [], textoObrigatorio = false, rotuloTexto = 'Detalhe', rotuloConfirmar = 'Confirmar', aviso = null, validar, aoConfirmar, aoCancelar } = props;
+  const { titulo, motivos = [], textoObrigatorio = false, rotuloTexto = 'Detalhe', rotuloConfirmar = 'Confirmar', rotuloFechar = 'Cancelar', destrutivo = false, aviso = null, validar, aoConfirmar, aoCancelar } = props;
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [motivo, setMotivo] = useState<string | undefined>();
@@ -78,15 +82,6 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         itens[i]?.focus();
       }
     }
-  };
-
-  const botaoPrincipal = {
-    ...texto('pequeno', 'botao-principal'),
-    padding: `${espaco.sm}px ${espaco.lg}px`,
-    cursor: 'pointer' as const,
-    border: `1px solid ${cor('azulNoite')}`,
-    background: cor('azulNoite'),
-    color: cor('branco'),
   };
 
   return (
@@ -129,7 +124,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
             aria-invalid={erro ? true : undefined}
             aria-describedby={erro ? `${id}-erro` : undefined}
             onChange={(e) => setTextoLivre(e.target.value)}
-            style={{ ...texto('base'), border: `1px solid ${cor('bordaCinza')}`, padding: espaco.sm }}
+            style={{ ...texto('base'), border: `1px solid ${cor('bordaCampo')}`, padding: espaco.sm }}
           />
         </label>
         {aviso ? (
@@ -139,8 +134,8 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         ) : null}
         {erro ? <p id={`${id}-erro`} role="alert" style={{ ...mensagemErro, margin: 0 }}>{erro}</p> : null}
         <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={aoCancelar} style={{ ...botaoSecundario(), padding: `${espaco.sm}px ${espaco.lg}px` }}>Cancelar</button>
-          <button type="button" onClick={confirmar} style={botaoPrincipal}>{rotuloConfirmar}</button>
+          <button type="button" onClick={aoCancelar} style={botaoSecundario()}>{rotuloFechar}</button>
+          <button type="button" onClick={confirmar} data-destrutivo={destrutivo ? 'true' : undefined} style={botaoPrincipal()}>{rotuloConfirmar}</button>
         </div>
       </div>
     </div>

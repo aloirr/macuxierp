@@ -531,6 +531,22 @@ export function transporteFake(roteiro: Roteiro = {}, filial = IDS.filial) {
   return { transporte: t, chamadas };
 }
 
+/** Contador de tentativas da varredura em memória (imita `faturamento.titulo_geracao`, 0028): sem tentativa vem antes; depois, a de falha mais antiga. */
+export function geracaoFake() {
+  const geracao = new Map<string, { tentativas: number; ordem: number }>();
+  let relogio = 0;
+  return {
+    filtrarEOrdenar(ids: string[], max: number): string[] {
+      return ids.filter((i) => (geracao.get(i)?.tentativas ?? 0) < max).sort((a, b) => (geracao.get(a)?.ordem ?? 0) - (geracao.get(b)?.ordem ?? 0));
+    },
+    async registrarFalhaGeracao(_t: unknown, nota_id: string): Promise<number> {
+      const tentativas = (geracao.get(nota_id)?.tentativas ?? 0) + 1;
+      geracao.set(nota_id, { tentativas, ordem: ++relogio });
+      return tentativas;
+    },
+  };
+}
+
 /**
  * Títulos em memória (imita os gatilhos da 0013): parcela única por (nota, parcela), saldo = valor − baixas não estornadas, status pelo saldo,
  * baixa só em título aberto, cancelamento só do aberto.
@@ -539,6 +555,7 @@ export function transporteFake(roteiro: Roteiro = {}, filial = IDS.filial) {
 export function titulosFake(notasBoleto: () => Iterable<string> = () => [], notaComoReal: (nota_id: string) => boolean = () => false) {
   const titulos = new Map<string, TituloResumo>();
   const baixas = new Map<string, BaixaTituloResumo>();
+  const geracao = geracaoFake();
   let n = 0;
   const recalcular = (t: TituloResumo): TituloResumo => {
     const saldo = t.valor_centavos - [...baixas.values()].filter((b) => b.titulo_id === t.id && b.estornada_em === null).reduce((a, b) => a + b.valor_centavos, 0);
@@ -577,10 +594,11 @@ export function titulosFake(notasBoleto: () => Iterable<string> = () => [], nota
     async emSavepoint(_t, fn) {
       try { return { ok: true, valor: await fn() }; } catch (erro) { return { ok: false, erro }; }
     },
-    async notasBoletoSemTitulo(_t, { limite, excluir = [] }) {
+    async notasBoletoSemTitulo(_t, { limite, max_tentativas }) {
       const com = new Set([...titulos.values()].map((t) => t.nota_id));
-      return [...notasBoleto()].filter((id) => !com.has(id) && !excluir.includes(id)).slice(0, limite);
+      return geracao.filtrarEOrdenar([...notasBoleto()].filter((id) => !com.has(id)), max_tentativas).slice(0, limite);
     },
+    registrarFalhaGeracao: geracao.registrarFalhaGeracao,
     async cancelar(_t, ids) { for (const id of ids) { const t = titulos.get(id); if (t?.status === 'aberto') titulos.set(id, { ...t, status: 'cancelado' }); } },
     async listar(_t, f) {
       const l = [...titulos.values()].filter((t) => (!f.cliente_id || t.cliente_id === f.cliente_id) && (!f.status || t.status === f.status) && (!f.vencimento_de || t.vencimento >= f.vencimento_de) && (!f.vencimento_ate || t.vencimento <= f.vencimento_ate)).sort((a, b) => a.id.localeCompare(b.id));

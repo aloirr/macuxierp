@@ -1,7 +1,7 @@
 import { ErroApi } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
-import { configuracaoFake, depsFake, DIGVAL, NPROT, titulosFake, tx, TENANT } from './apoio-teste';
+import { configuracaoFake, depsFake, DIGVAL, geracaoFake, NPROT, titulosFake, tx, TENANT } from './apoio-teste';
 import { criarProcessadorRetorno, criarServicoEmissao, EVENTO_NOTA_AUTORIZADA } from './emissao';
 import type { NotaRegistro, RetornoSefaz } from './portas';
 import { cancelarTitulosDaNotaCancelada, criarServicoTitulos, EVENTO_TITULO_BAIXADO, EVENTO_TITULO_GERADO, contaComoRealDaNota, criarVarreduraTitulos, gerarTitulosDaNota, consultaTitulosPedido } from './titulos';
@@ -245,8 +245,11 @@ describe('varredura de títulos: teto de tentativas (RN-FAT-03)', () => {
     const geradas: string[] = [];
     let atual = '';
     const notas = { obter: async (_t: unknown, id: string) => { atual = id; return { id, tenant_id: TENANT, status: 'autorizada' }; } };
+    const geracao = geracaoFake();
     const titulos = {
-      notasBoletoSemTitulo: async (_t: unknown, o: { limite: number; excluir?: readonly string[] }) => ids.filter((i) => !geradas.includes(i) && !o.excluir?.includes(i)).slice(0, o.limite),
+      notasBoletoSemTitulo: async (_t: unknown, o: { limite: number; max_tentativas: number }) =>
+        geracao.filtrarEOrdenar(ids.filter((i) => !geradas.includes(i)), o.max_tentativas).slice(0, o.limite),
+      registrarFalhaGeracao: geracao.registrarFalhaGeracao,
       emSavepoint: async () => (atual === 'ruim' ? { ok: false as const, erro: new Error('falha') } : (geradas.push(atual), { ok: true as const, valor: [] as unknown[] })),
     };
     const varrer = criarVarreduraTitulos({ titulos, notas, log: (e: { evento: string; nota_id?: string; motivo?: string }) => logs.push(e) } as unknown as Parameters<typeof criarVarreduraTitulos>[0], max === undefined ? {} : { max_tentativas: max });
@@ -255,11 +258,11 @@ describe('varredura de títulos: teto de tentativas (RN-FAT-03)', () => {
 
   it('RN-FAT-03: a nota que sempre falha sai da varredura no teto (5), vai ao log como titulo.geracao_desistida e não trava as outras', async () => {
     const v = varredura(['ruim', 'boa']);
-    for (let i = 1; i <= 4; i++) expect(await v.varrer(tx, { ha_minutos: 5, limite: 1 })).toMatchObject({ pendentes: 1, desistidas: 0 });
+    for (let i = 1; i <= 4; i++) expect(await v.varrer(tx, { ha_minutos: 5, limite: 5 })).toMatchObject({ pendentes: 1, desistidas: 0 });
     expect(v.logs.filter((l) => l.evento === 'faturamento.titulo.geracao_desistida')).toHaveLength(0);
-    expect(await v.varrer(tx, { ha_minutos: 5, limite: 1 })).toMatchObject({ pendentes: 1, desistidas: 1 }); // 5ª tentativa
+    expect(await v.varrer(tx, { ha_minutos: 5, limite: 5 })).toMatchObject({ pendentes: 1, desistidas: 1 }); // 5ª tentativa
     expect(v.logs.filter((l) => l.evento === 'faturamento.titulo.geracao_desistida')).toEqual([expect.objectContaining({ nota_id: 'ruim' })]);
-    expect(await v.varrer(tx, { ha_minutos: 5, limite: 1 })).toMatchObject({ geradas: 0, verificadas: 1, pendentes: 0 }); // 'ruim' não volta; 'boa' é gerada
+    expect(await v.varrer(tx, { ha_minutos: 5, limite: 5 })).toMatchObject({ geradas: 0, verificadas: 0, pendentes: 0 }); // 'ruim' não volta
     expect(v.geradas).toEqual(['boa']);
   });
 

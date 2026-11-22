@@ -134,6 +134,15 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
     expect(await admin('SELECT 1 FROM faturamento.nota_evento WHERE nota_id = $1', [nota.id])).toHaveLength(0);
   });
 
+  it('RN-FAT-02: com o cancelamento pendente, a CC-e é recusada e nada é gravado', async () => {
+    const nota = await autorizada();
+    const c = await pedirCancelamento(nota);
+    expect(c.ok).toBe(true);
+    const r = await app.comTenant(A, (tx) => svc(new Date(AUTORIZADA_EM.getTime() + 3_600_000)).pedirCartaCorrecao(tx, nota, { texto: 'Endereço de entrega: Rua de Teste, 100' }));
+    expect(r).toMatchObject({ ok: false, violacoes: [{ rn: 'RN-FAT-02', campo: 'status' }] });
+    expect(await admin("SELECT 1 FROM faturamento.nota_evento WHERE nota_id = $1 AND tipo = 'cce'", [nota.id])).toHaveLength(0);
+  });
+
   it('RN-FAT-02: rejeitado volta a pendente com a mesma sequência; a nota segue autorizada', async () => {
     const nota = await autorizada();
     const r = await pedirCancelamento(nota);

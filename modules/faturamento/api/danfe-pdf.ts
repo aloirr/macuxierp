@@ -79,7 +79,7 @@ function quebrar(f: PDFFont, t: string, pt: number, largura: number): string[] {
   const linhas: string[] = [];
   for (const par of t.split(/\r?\n/)) {
     let atual = '';
-    for (const palavra of par.split(/\s+/).filter(Boolean)) {
+    for (const palavra of par.split(/[ \t]+/).filter(Boolean)) {
       const tent = atual ? `${atual} ${palavra}` : palavra;
       if (larg(f, tent, pt) <= largura) atual = tent;
       else {

@@ -148,6 +148,14 @@ describe('DANFE: ressalvas do design-de-marca', { timeout: 30_000 }, () => {
     expect(ts.filter((x) => x.t.startsWith('008 21/12/2026')).length).toBeGreaterThan(0);
   });
 
+  it('RD-0724: com o valor em "R$" + espaço duro (U+00A0), "R$" e o número nunca ficam em linhas diferentes na quebra da duplicata', async () => {
+    const m = montarDanfe({ nfeProc: nfeProcDeTeste({ duplicatas: true }) });
+    m.duplicatas = Array.from({ length: 8 }, (_, i) => ({ numero: `00${i + 1}`, vencimento: '21/12/2026', valor: 'R$\u00a0123.456.789.012,34' }));
+    const ts = (await textos(await renderizarDanfe(m))).map((x) => x.t.replace(/\u00a0/g, ' '));
+    expect(ts.filter((t) => /(^|\s)R\$\s*$/.test(t))).toEqual([]); // "R$" nunca termina a linha
+    expect(ts.filter((t) => t.includes('R$ 123.456.789.012,34')).length).toBeGreaterThanOrEqual(8);
+  });
+
   it('marca §3: descrição de 120 caracteres quebra em quantas linhas precisar, sem reduzir a fonte, com altura de linha variável', async () => {
     const curta = await textos(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 3 }) })));
     const longa = await textos(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 3, item1: { descricao: DESC120 } }) })));
@@ -374,5 +382,6 @@ describe('DANFE: rótulos desenhados e respiro vertical ', { timeout: 30_000 }, 
     expect(m.imposto.every((c) => !c.valor.includes('R$'))).toBe(true);
     const c = await latin1Hex(await renderizarDanfe(m));
     expect(c).not.toContain(hex('R$ '));
+    expect(c).not.toContain(hex('R$\u00a0'));
   });
 });

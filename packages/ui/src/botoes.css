@@ -1,0 +1,29 @@
+/* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */
+.mx-botao {
+  font-family: var(--mx-fonte-texto);
+  font-size: var(--mx-tamanho-base);
+  font-weight: var(--mx-peso-botao-principal);
+  color: var(--mx-cor-branco);
+  padding: 8px 16px;
+  border-radius: 6px;
+  line-height: 1.5;
+  cursor: pointer;
+  background: var(--mx-cor-azul-noite);
+  border: 1px solid var(--mx-cor-azul-noite);
+}
+.mx-botao-secundario {
+  font-family: var(--mx-fonte-texto);
+  font-size: var(--mx-tamanho-base);
+  font-weight: var(--mx-peso-medio);
+  color: var(--mx-cor-grafite);
+  padding: 8px 16px;
+  border-radius: 6px;
+  line-height: 1.5;
+  cursor: pointer;
+  background: var(--mx-cor-branco);
+  border: 1px solid var(--mx-cor-borda-campo);
+}
+.mx-botao:disabled, .mx-botao-secundario:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
