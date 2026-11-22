@@ -76,7 +76,7 @@ A empresa piloto é a **thathyany**, que já usa o Macuxi FDV pelo kit do Conect
 
 A base das duas entra na versão 2 da previsão, medida no fim da F1.
 
-Os testes da F2 e da F3 continuam num **tenant de teste do FDV**, nunca no tenant da thathyany.
+~~Os testes da F2 e da F3 continuam num tenant de teste do FDV.~~ Substituído em 21/11, 23h22: "O TESTE É NA EMPRESA DA THATHYANY E PONTO FINAL". A rodada real da F2 e da F3 é a virada entidade por entidade na thathyany (`docs/status/2026-11-21-roteiro-virada-thathyany.md`); o dublê do Hub fica só nos testes unitários.
 
 ### Resumo
 | Fase | Esforço (+15%) | Caminho crítico (+15%) |
@@ -122,3 +122,4 @@ F2 pode começar assim que a F1 fechar `cadastros`; F3 depende de F2 (o canal co
 - 21/11/2026 — versão 1 (F0, gerente-projetos).
 - 20/11/2026, 23h30 — versão 1 mantida. Motivo: piloto thathyany e ADR 0002 opção A (seção "Empresa piloto").
 - 21/11/2026, 23h00 — versão 2. Motivo: decisão do Alexandre de 22h59 (tudo em paralelo; certificado e homologação simulados). A F4 passa a ter o critério das 20 notas no simulador, a T-0045 entra e a homologação real vira a T-0046.
+- 21/11/2026, 23h50 — versão 2 mantida nas datas do ERP. Motivo: decisões de 23h10, 23h12 e 23h22 (pedido do FDV entra aprovado; virada na thathyany; external_id). A T-0011 passa de 16h06 para 18h41 e a T-0016 ganha 1h21; a primeira nota simulada não muda. A rodada real da F2/F3 passa a depender do deploy (T-0024) e da carga da thathyany no ERP (Etapa 1 do roteiro).

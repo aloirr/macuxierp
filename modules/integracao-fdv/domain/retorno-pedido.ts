@@ -38,6 +38,11 @@ const TEXTO_DA_REJEICAO: Readonly<Record<CodigoRejeicao, string>> = {
   cliente_inexistente: 'Cliente não cadastrado no ERP',
   produto_inexistente: 'Produto não cadastrado no ERP',
   filial_inexistente: 'Filial não cadastrada no ERP',
+  cliente_inativo: 'Cliente inativo no ERP',
+  produto_inativo: 'Produto inativo no ERP',
+  filial_nao_emissora: 'Filial não emissora no ERP',
+  condicao_inexistente: 'Condição de pagamento não cadastrada no ERP',
+  condicao_inativa: 'Condição de pagamento inativa no ERP',
   item_incoerente: 'Item com desconto maior que o valor do item',
   falha_interna: 'Falha interna do ERP ao receber o pedido',
 };
