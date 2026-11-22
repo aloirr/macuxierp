@@ -14,8 +14,9 @@ import {
   falha,
   numeros,
   PAPEIS_APP,
-  PG_DISPONIVEL,
   permitirSetRole,
+  PG_DISPONIVEL,
+  privilegiosDe,
   rodarScript,
 } from './apoio.ts';
 import { fixtureIntegracao, fixturePlataforma, novoTenant } from './fixture.ts';
@@ -241,16 +242,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
     for (const t of TABELAS) {
       obtido[t] = {};
       for (const papel of PAPEIS_APP) {
-        const [r] = consultar<{ p: string }>(
-          banco.conexao,
-          `SELECT concat(
-             CASE WHEN has_table_privilege('${papel}', 'integracao_fdv.${t}', 'SELECT') THEN 'S' END,
-             CASE WHEN has_table_privilege('${papel}', 'integracao_fdv.${t}', 'INSERT') THEN 'I' END,
-             CASE WHEN has_table_privilege('${papel}', 'integracao_fdv.${t}', 'UPDATE') THEN 'U' END,
-             CASE WHEN has_table_privilege('${papel}', 'integracao_fdv.${t}', 'DELETE') THEN 'D' END,
-             CASE WHEN has_table_privilege('${papel}', 'integracao_fdv.${t}', 'TRUNCATE') THEN 'T' END) AS p`,
-        );
-        obtido[t][papel] = r?.p || '-';
+        obtido[t][papel] = privilegiosDe(banco.conexao, papel, `integracao_fdv.${t}`);
       }
     }
     expect(obtido).toEqual(PRIVILEGIOS);

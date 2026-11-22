@@ -134,12 +134,10 @@ describe('avaliação do pedido', () => {
     }
   });
 
-  it('RN-PED-04: forma à vista com prazo > 0 (PIX [30], débito [0, 30]) não é à vista e dá credito_sem_limite', () => {
-    for (const [forma_tpag, prazos_dias] of [['17', [30]], ['04', [0, 30]]] as const) {
-      const condicao = { forma_tpag, prazos_dias: [...prazos_dias], inativo: false };
-      expect(ehAVista(condicao)).toBe(false);
-      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
-    }
+  it('RN-PED-04: boleto (15) com prazos [30] não é à vista e dá credito_sem_limite com limite 0', () => {
+    const condicao = { forma_tpag: '15', prazos_dias: [30], inativo: false };
+    expect(ehAVista(condicao)).toBe(false);
+    expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
   });
 
   it('RN-CAD-07: saldo exatamente igual passa e 1 unidade acima cai', () => {

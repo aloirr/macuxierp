@@ -184,6 +184,74 @@ describe('clientes (RF-CAD-01)', () => {
     expect(b.corpo.id).toBe(a.corpo.id);
     expect(t.eventos).toHaveLength(1);
   });
+  describe('RN-CORE-05: external_id imutável (ADR 0010, item 3)', () => {
+    async function com(ext: string | null = 'K1') {
+      const t = montar();
+      const f = await comFilial(t);
+      const c = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, ext ? { external_id: ext } : {}) })).corpo.id as string;
+      t.eventos.length = 0;
+      t.auditoria.length = 0;
+      return { t, f, c };
+    }
+    it('RN-CORE-05: preencher um external_id nulo pelo PATCH é livre e o evento traz external_id_anterior nulo', async () => {
+      const { t, c } = await com(null);
+      const r = await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: 'K9' } });
+      expect(r.status).toBe(200);
+      expect(t.eventos[0]?.payload).toMatchObject({ external_id: 'K9', external_id_anterior: null });
+    });
+    it('RN-CORE-05: adotar pelo PATCH um external_id que outro registro já usa é 409', async () => {
+      const { t, f, c } = await com(null);
+      await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { external_id: 'K7', documento: CNPJ_A, tipo_pessoa: 'PJ', ie: null, ind_ie_dest: '9' }) });
+      t.eventos.length = 0;
+      expect((await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: 'K7' } })).status).toBe(409);
+      expect(t.eventos).toHaveLength(0);
+    });
+    it('RN-CORE-05: repetir o mesmo valor passa e não marca external_id_anterior', async () => {
+      const { t, c } = await com();
+      expect((await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: 'K1' } })).status).toBe(200);
+      expect(t.eventos[0]?.payload.external_id_anterior).toBeUndefined();
+    });
+    it('RN-CORE-05: trocar por outro valor ou por nulo pelo PATCH comum é 422 sem ecoar valores', async () => {
+      const { t, c } = await com();
+      for (const novo of ['K2', null]) {
+        const r = await t.chamar('PATCH', `/clientes/${c}`, { sessao: adm, corpo: { external_id: novo } });
+        expect(r.status).toBe(422);
+        expect(r.corpo.codigo).toBe('RN-CORE-05');
+        expect(JSON.stringify(r.corpo)).not.toContain('K1');
+      }
+      expect(t.eventos).toHaveLength(0);
+    });
+    it('RN-CORE-05: a troca controlada pelo administrador é 200, audita com o motivo e publica external_id_anterior', async () => {
+      const { t, c } = await com();
+      const r = await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: 'K2', motivo: 'Correção da chave de origem' } });
+      expect(r.status).toBe(200);
+      expect(r.corpo.external_id).toBe('K2');
+      expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.cliente.alterado@1', payload: { external_id: 'K2', external_id_anterior: 'K1' } });
+      expect(t.auditoria[0]).toMatchObject({ acao: 'cliente.external_id.trocar', antes: { external_id: 'K1' }, depois: { external_id: 'K2', motivo: 'Correção da chave de origem' } });
+    });
+    it('RN-CORE-05: só o administrador troca (gerente 403) e o motivo é obrigatório', async () => {
+      const { t, c } = await com();
+      expect((await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: gerente, corpo: { external_id: 'K2', motivo: 'x' } })).status).toBe(403);
+      expect((await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: 'K2' } })).status).toBe(400);
+    });
+    it('RN-CORE-05: a troca para o id de outro registro é 422 (RD-0317) e para external_id já usado é 409', async () => {
+      const { t, f, c } = await com();
+      const outro = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { external_id: 'K3', documento: CNPJ_A, tipo_pessoa: 'PJ', ie: null, ind_ie_dest: '9' }) })).corpo.id as string;
+      const r = await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: outro, motivo: 'x' } });
+      expect(r.status).toBe(422);
+      expect(r.corpo.codigo).toBe('RN-CORE-05');
+      expect((await t.chamar('POST', `/clientes/${c}/external-id`, { sessao: adm, corpo: { external_id: 'K3', motivo: 'x' } })).status).toBe(409);
+    });
+    it('RN-CORE-05: a mesma regra vale nas outras entidades (produto)', async () => {
+      const t = montar();
+      t.repos.oficiais.ncms.add('22021000');
+      const p = await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ external_id: 'P1' }) });
+      expect(p.status).toBe(201);
+      expect((await t.chamar('PATCH', `/produtos/${p.corpo.id}`, { sessao: adm, corpo: { external_id: 'P2' } })).status).toBe(422);
+      const r = await t.chamar('POST', `/produtos/${p.corpo.id}/external-id`, { sessao: adm, corpo: { external_id: 'P2', motivo: 'Ajuste' } });
+      expect(r.status).toBe(200);
+    });
+  });
   it('RN-CAD-01: documento repetido é 409', async () => {
     const t = montar();
     const f = await comFilial(t);

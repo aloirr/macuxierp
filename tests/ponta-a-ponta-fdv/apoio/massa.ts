@@ -1,6 +1,6 @@
 /**
- * T-0012: massa de uma execução da ida ERP → FDV, já no formato do Hub (payloads do desenho T-0009 seção 2, mais o que
- * o Hub exige e o C-6 ainda não tem: CNPJ e endereço da filial — achado A-01 de docs/testes/T-0012.md).
+ * T-0012: massa de uma execução da ida ERP → FDV, já no formato do Hub (payloads do desenho T-0009 seção 2, com o CNPJ
+ * e o endereço da filial que o Hub exige — achado A-01 de docs/testes/T-0012.md, corrigido pelo #123).
  *
  * Cada execução tem identificadores próprios (UUID, como o `id` do ERP, M2) e códigos com o sufixo da execução: no
  * tenant de teste real, uma rodada não esbarra na anterior. Nomes e documentos são fictícios (CNPJ e CPF com dígito

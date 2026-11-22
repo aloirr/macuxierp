@@ -45,7 +45,7 @@ O workflow `producao-publicar.yml` já lê estes nomes.
 ### 2.2 `.env` de produção (`/opt/macuxierp/.env`, gerado pelo publicar ou criado pelo Alexandre)
 O modelo oficial é o `env.modelo` da T-0024, com os nomes usados pelo código no PR #19:
 - `MACUXIERP_BANCO`: conexão com o banco `macuxierp`, pelos papéis `macuxierp_app` e `macuxierp_worker`;
-- `MACUXIERP_CHAVE_A1`: **32 bytes, obrigatória**, porque a API não sobe sem ela. Gere uma vez e guarde fora do repositório. Se ela se perder, o A1 cifrado não abre mais;
+- `MACUXIERP_CHAVE_A1`: **32 bytes em hexadecimal (64 caracteres), obrigatória**, porque a API não sobe sem ela. Gere uma vez com `openssl rand -hex 32` e guarde fora do repositório; o valor nunca vai a chat, recado ou log. Se ela se perder, o A1 cifrado não abre mais;
 - `MACUXIERP_JWT_SEGREDO`: segredo das sessões do BKO;
 - `MACUXIERP_COOKIE_SEGURO` (ligado em produção), `MACUXIERP_HOST`, `MACUXIERP_PORTA`, `MACUXIERP_PG_POOL`, `MACUXIERP_WORKER_INTERVALO_MS`, `MACUXIERP_VERSAO` e `MACUXIERP_API_URL`: configuração sem segredo, com valores padrão no `env.modelo`;
 - S3 e SMTP, com os nomes que o `env.modelo` da T-0024 fixar.

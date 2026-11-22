@@ -13,6 +13,8 @@ export const MENSAGENS_ERRO: Readonly<Record<string, string>> = {
   acima_do_limite: 'O lote passou do limite do FDV. O ERP divide e reenvia.',
   rede: 'Sem resposta do FDV. O envio repete sozinho.',
   limite_de_taxa: 'O FDV pediu para aguardar. O envio repete sozinho.',
+  resposta_grande: 'A resposta do FDV passou do limite aceito pelo ERP. O envio repete sozinho; se persistir, fale com o suporte.',
+  pedido_invalido: 'O ERP montou uma chamada inválida ao FDV (defeito do ERP). Fale com o suporte informando o código.',
 };
 
 /** Códigos que causam pausa: o status HTTP típico, para o motivo sair de `classificarResposta` (uma só fonte). */
@@ -22,6 +24,7 @@ const STATUS_DO_CODIGO_DE_PAUSA: Readonly<Record<string, number>> = {
   credencial_revogada: 403,
   modulo_inativo: 403,
   abaixo_da_minima: 426,
+  versao_conector_nao_suportada: 426,
   chave_idempotencia_reutilizada: 409,
   entidade_de_outro_conector: 422,
 };

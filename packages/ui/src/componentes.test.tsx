@@ -155,6 +155,41 @@ describe('FormularioItens', () => {
   });
 });
 
+describe('ajustes de marca (T-0015)', () => {
+  it('seletor de produto recebe desabilitado do formulário', () => {
+    const itens = [{ chave: 'item-1', produtoId: null, quantidade: 1, precoUnitarioCentavos: 0, descontoCentavos: 0 }];
+    const h = renderToStaticMarkup(
+      <FormularioItens itens={itens} desabilitado aoMudar={() => {}} novoItem={novoItem} calcularTotal={total} formatarCentavos={String} renderSeletorProduto={(s) => <span data-desab={String(s.desabilitado)} />} />,
+    );
+    expect(h).toContain('data-desab="true"');
+    const h2 = renderToStaticMarkup(
+      <FormularioItens itens={itens} aoMudar={() => {}} novoItem={novoItem} calcularTotal={total} formatarCentavos={String} renderSeletorProduto={(s) => <span data-desab={String(s.desabilitado)} />} />,
+    );
+    expect(h2).toContain('data-desab="undefined"');
+  });
+  it('código RN vai para data-regra, sem aparecer no texto', () => {
+    const h = renderToStaticMarkup(<FaixaPendencias itens={[{ nivel: 'bloqueante', codigoRn: 'RN-PED-004', texto: 'Falta cliente.' }]} />);
+    expect(h).toContain('data-regra="RN-PED-004"');
+    expect(h).not.toContain('>RN-PED-004<');
+  });
+  it('remover sem vermelho, aviso em 13px, rádio com accentColor, ordenar sem all:unset', () => {
+    const itens = [{ chave: 'item-1', produtoId: null, quantidade: 1, precoUnitarioCentavos: 0, descontoCentavos: 0 }];
+    const f = renderToStaticMarkup(<FormularioItens itens={itens} aoMudar={() => {}} novoItem={novoItem} calcularTotal={total} formatarCentavos={String} renderSeletorProduto={() => null} />);
+    expect(f).not.toMatch(/<button[^>]*erro-texto/);
+    const d = renderToStaticMarkup(<DialogoMotivo titulo="t" aviso="a" motivos={[{ codigo: 'x', rotulo: 'X' }]} aoConfirmar={() => {}} aoCancelar={() => {}} />);
+    expect(d).toContain('accent-color:var(--mx-cor-azul-noite)');
+    expect(d).toMatch(/font-size:var\(--mx-tamanho-pequeno\)[^"]*"[^>]*>a</);
+    const t = renderToStaticMarkup(<TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.id} />);
+    expect(t).not.toContain('all:unset');
+  });
+  it('datas em algarismos tabulares e vazio com ação', () => {
+    const cols: ColunaTabela<L>[] = [{ id: 'nome', titulo: 'Emissão', tipo: 'data' }];
+    const t = renderToStaticMarkup(<TabelaDensa colunas={cols} linhas={linhas} chaveLinha={(l) => l.id} />);
+    expect(t).toContain('font-variant-numeric:tabular-nums');
+    expect(renderToStaticMarkup(<TabelaDensa colunas={cols} linhas={[]} chaveLinha={(l) => l.id} />)).toContain('Ajuste os filtros ou crie o primeiro.');
+  });
+});
+
 describe('regra de cores', () => {
   it('nenhum componente tem cor literal (só var(--mx-...))', () => {
     const dir = new URL('./', import.meta.url);

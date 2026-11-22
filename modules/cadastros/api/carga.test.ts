@@ -186,6 +186,28 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     expect(r2.erros).toEqual([expect.objectContaining({ codigo: 'CARGA_CONFLITO', campo: 'cnpj' })]);
   });
 
+  it('RN-CORE-05: a adoção pela carga publica external_id_anterior nulo; sem mudança de chave o campo fica ausente', async () => {
+    const t = montar();
+    await t.carregar('gravar');
+    const repos = [t.repos.filiais, t.repos.vendedores, t.repos.condicoesPagamento, t.repos.produtos, t.repos.clientes];
+    for (const r of repos) for (const l of r.linhas) (l as { external_id: string | null }).external_id = null;
+    t.eventos.length = 0;
+    const rel = (await t.carregar('gravar')).corpo as RelatorioCarga;
+    expect(rel.erros).toEqual([]);
+    const nomes = ['cadastros.filial.alterada@1', 'cadastros.vendedor.alterado@1', 'cadastros.condicao_pagamento.alterada@1', 'cadastros.produto.alterado@1', 'cadastros.cliente.alterado@1'];
+    for (const n of nomes) {
+      const ev = t.eventos.filter((e) => e.nome === n);
+      expect(ev.length, n).toBeGreaterThan(0);
+      expect(ev[0]!.payload, n).toMatchObject({ external_id_anterior: null });
+    }
+    // recarga com a célula alterada: a chave não muda, o campo fica ausente
+    t.eventos.length = 0;
+    const vend = readFileSync(join(pasta, 'vendedor.csv'), 'utf8').replace('Vendedor Exemplo 01', 'Vendedor Exemplo Novo');
+    await t.carregar('gravar', { arquivos: [{ nome: 'vendedor.csv', conteudo: vend }] });
+    expect(t.eventos).toHaveLength(1);
+    expect(t.eventos[0]!.payload.external_id_anterior).toBeUndefined();
+  });
+
   it('RN-CORE-05: external_id repetido no arquivo recusa a 2ª ocorrência (CARGA_DUPLICADO)', async () => {
     const t = montar();
     const v = 'external_id;nome\nV1;Ana\nV1;Beto\n';

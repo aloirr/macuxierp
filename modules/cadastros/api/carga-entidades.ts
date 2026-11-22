@@ -16,7 +16,7 @@ import {
   ajusteDeCarga, bloqueiosDeInativacao, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
 } from '../domain';
-import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
+import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, comExternalIdAnterior, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
 import type { AlvoExterno, Repositorios, RepoSimples } from './portas';
 import { agregadoEstoque } from './uuid';
 import { violacaoExternalId } from './util';
@@ -119,10 +119,12 @@ async function concluirEscrita<E extends { id: string }>(
   ativo: boolean | undefined,
   inativoAntes: boolean,
   evento: (r: Repositorios, e: E) => EventoPronto | Promise<EventoPronto>,
+  antes?: unknown,
 ): Promise<E | null> {
   await aplicarAtivo(repo, id, ativo, inativoAntes);
   const depois = await repo.obter(id);
-  if (depois) await publicarPronto(st.c, await evento(st.r, depois));
+  // ADR 0010, item 3 / RN-CORE-05: a adoção (nulo → chave do kit) publica external_id_anterior: null
+  if (depois) await publicarPronto(st.c, comExternalIdAnterior(await evento(st.r, depois), depois, antes));
   return depois;
 }
 
@@ -150,7 +152,7 @@ async function filial(l: LinhaFilial, st: Estado): Promise<Saida> {
         const parcial: Dict = { ...d, ...(adotar ? { external_id: l.external_id } : {}) };
         if (l.endereco) parcial.endereco = { ...ex.endereco, ...e };
         if (Object.keys(parcial).length > 0) await repo.atualizar(ex.id, parcial as never);
-        const depois = await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, eventoFilial);
+        const depois = await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, eventoFilial, ex);
         if (!depois) return ex.id;
         await st.c.auditar({ acao: 'filial.alterar', entidade: 'filial', entidade_id: ex.id, antes: ex, depois });
         return ex.id;
@@ -204,7 +206,7 @@ async function vendedor(l: LinhaVendedor, st: Estado): Promise<Saida> {
       async aplicar() {
         const { inativo: _i, ...parcial } = patch;
         if (Object.keys(parcial).length > 0) await repo.atualizar(ex.id, parcial as never);
-        await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, EVENTO_VENDEDOR);
+        await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, EVENTO_VENDEDOR, ex);
         return ex.id;
       },
     };
@@ -290,7 +292,7 @@ async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
       async aplicar() {
         const { inativo: _i, ...parcial } = patch;
         await repo.atualizar(ex.id, parcial as never);
-        await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, EVENTO_CONDICAO);
+        await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, EVENTO_CONDICAO, ex);
         return ex.id;
       },
     };
@@ -354,7 +356,7 @@ async function produto(l: LinhaProduto, st: Estado): Promise<Saida> {
         const { inativo: _i, ...parcial } = patch;
         if (Object.keys(parcial).length > 0) await repo.atualizar(ex.id, parcial as never);
         await aplicarAtivo(repo, ex.id, l.ativo, ex.inativo);
-        await publicarProdutoPorId(st, ex.id);
+        await publicarProdutoPorId(st, ex.id, ex);
         return ex.id;
       },
     };
@@ -378,9 +380,9 @@ async function produto(l: LinhaProduto, st: Estado): Promise<Saida> {
   };
 }
 
-async function publicarProdutoPorId(st: Estado, id: string): Promise<void> {
+async function publicarProdutoPorId(st: Estado, id: string, antes?: unknown): Promise<void> {
   const p = await st.r.produtos.obter(id);
-  if (p) await publicarPronto(st.c, await eventoProduto(st.r, p));
+  if (p) await publicarPronto(st.c, comExternalIdAnterior(await eventoProduto(st.r, p), p, antes));
 }
 
 // ---- unidades do produto ----
@@ -610,7 +612,7 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
         const { inativo: _i, ...parcial } = patch;
         if (Object.keys(parcial).length > 0) await repo.atualizar(ex.id, parcial as never);
         if (endMuda && principal) await repo.enderecos.atualizar(ex.id, principal.id, endPatch as never);
-        await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, eventoCliente);
+        await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, eventoCliente, ex);
         if (d.limite_credito_centavos !== undefined && d.limite_credito_centavos !== ex.limite_credito_centavos) {
           await st.c.auditar({ acao: 'cliente.limite_credito_centavos.alterar', entidade: 'cliente', entidade_id: ex.id, antes: { limite_credito_centavos: ex.limite_credito_centavos }, depois: { limite_credito_centavos: d.limite_credito_centavos } });
         }

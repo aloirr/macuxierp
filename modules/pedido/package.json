@@ -6,7 +6,8 @@
   "exports": {
     "./manifest": "./manifest.ts",
     "./contracts": "./contracts/index.ts",
-    "./api": "./api/index.ts"
+    "./api": "./api/index.ts",
+    "./web": "./web/index.ts"
   },
   "scripts": {
     "lint": "eslint .",
