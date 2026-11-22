@@ -217,6 +217,17 @@ describe('lançamento manual (RF-PED-02, RN-PED-03)', () => {
     const c = await lancar(t, pedidoManual({ condicao_pagamento_id: IDS.condicaoAVista, itens: [unidades(20)] }));
     expect(c.corpo.pendencias).toEqual([expect.objectContaining({ codigo: 'estoque_insuficiente', esperado: 100_000, informado: 200_000 })]);
   });
+  it('RN-PED-04: cartão (03) com limite 0 passa; o pedido aprovado no cartão não soma no compromisso de outro a prazo; boleto soma', async () => {
+    const t = montar({ saldo: 10_000_000 });
+    const cartao = await lancar(t, pedidoManual({ condicao_pagamento_id: IDS.condicaoCartao, itens: [unidades(150)] })); // acima do limite de R$ 1.000
+    expect(cartao.corpo).toMatchObject({ status: 'aprovado', pendencias: [] });
+    expect(t.armazem.pedidos.find((p) => p.id === cartao.corpo.id)!.a_vista).toBe(true);
+    const a = await lancar(t, pedidoManual({ itens: [unidades(60)] }));
+    expect(a.corpo.status).toBe('aprovado'); // o cartão não entrou no compromisso
+    expect(t.armazem.pedidos.find((p) => p.id === a.corpo.id)!.a_vista).toBe(false);
+    const b = await lancar(t, pedidoManual({ itens: [unidades(60)] })); // boleto soma: 60.000 + 60.000 > 100.000
+    expect(b.corpo.pendencias).toEqual([expect.objectContaining({ codigo: 'credito_excedido', informado: 120_000 })]);
+  });
   it('RN-CAD-06: o preço e o desconto máximo da tabela ficam gravados no item', async () => {
     const t = montar();
     const r = await lancar(t);

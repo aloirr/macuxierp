@@ -11,7 +11,7 @@ import { STATUS_COMPROMETEM } from '../domain';
 import { FUSO_TENANT } from './util';
 import { StatusPedido, type DecisaoPedido, type HistoricoPedido, type Pendencia } from '../contracts';
 import type {
-  CompromissoCredito, DadosCabecalho, FiltroPedidos, ItemGravado, LinhaLista, NovaAprovacao, NovoEvento, NovoItem, NovoPedido, PedidoGravado, RepoPedidos,
+  DadosCabecalho, FiltroPedidos, ItemGravado, LinhaLista, NovaAprovacao, NovoEvento, NovoItem, NovoPedido, PedidoGravado, RepoPedidos,
 } from './portas';
 
 type Dict = Record<string, unknown>;
@@ -21,7 +21,7 @@ const COMPROMETEM = STATUS_COMPROMETEM.map((s) => `'${s}'`).join(', ');
 const N = (c: string) => `${c}::float8`;
 
 const COLUNAS_PEDIDO = [
-  'id', `${N('numero')} AS numero`, 'origem', 'status', 'external_id', 'filial_id', 'cliente_id', 'vendedor_id', 'condicao_pagamento_id',
+  'id', `${N('numero')} AS numero`, 'origem', 'status', 'external_id', 'filial_id', 'cliente_id', 'vendedor_id', 'condicao_pagamento_id', 'a_vista',
   'tabela_preco_id', 'cliente_retrato', 'endereco_entrega', 'frete', `${ISO('emitido_em')} AS emitido_em`,
   `${ISO('aprovado_origem_em')} AS aprovado_origem_em`, 'observacao', `${N('total_centavos')} AS total_centavos`,
   `${N('total_informado_centavos')} AS total_informado_centavos`, `${N('valor_faturado_centavos')} AS valor_faturado_centavos`,
@@ -82,12 +82,12 @@ class RepoPedidosSql implements RepoPedidos {
       this.tx,
       `INSERT INTO pedido.pedido (id, tenant_id, numero, origem, filial_id, cliente_id, vendedor_id, condicao_pagamento_id, tabela_preco_id,
          cliente_retrato, endereco_entrega, frete, emitido_em, aprovado_origem_em, observacao, total_centavos, total_informado_centavos,
-         pendencias, validado_em, criado_por, external_id)
-       VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12, $13, $14, $15, $16, $17::jsonb, $18, $19, $20)
+         pendencias, validado_em, criado_por, external_id, a_vista)
+       VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12, $13, $14, $15, $16, $17::jsonb, $18, $19, $20, $21)
        ON CONFLICT (tenant_id, external_id) WHERE external_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [id, numero, p.origem, p.filial_id, p.cliente_id, p.vendedor_id, p.condicao_pagamento_id, p.tabela_preco_id, json(p.cliente_retrato), json(p.endereco_entrega), json(p.frete),
-        p.emitido_em, p.aprovado_origem_em, p.observacao, p.total_centavos, p.total_informado_centavos, json(p.pendencias), p.validado_em, p.criado_por, p.external_id],
+        p.emitido_em, p.aprovado_origem_em, p.observacao, p.total_centavos, p.total_informado_centavos, json(p.pendencias), p.validado_em, p.criado_por, p.external_id, p.a_vista],
     );
     if (r.length === 0) return false; // external_id repetido (RN-PED-01)
     await this.inserirItens(id, p.itens);
@@ -137,12 +137,16 @@ class RepoPedidosSql implements RepoPedidos {
     await executar(this.tx, 'UPDATE pedido.pedido SET pendencias = $2::jsonb, validado_em = $3 WHERE id = $1', [id, json(pendencias), validadoEm]);
   }
 
+  async atualizarAVista(id: string, aVista: boolean): Promise<void> {
+    await executar(this.tx, 'UPDATE pedido.pedido SET a_vista = $2 WHERE id = $1', [id, aVista]);
+  }
+
   async atualizarCabecalho(id: string, d: DadosCabecalho): Promise<void> {
     await executar(
       this.tx,
       `UPDATE pedido.pedido SET filial_id = $2, cliente_id = $3, vendedor_id = $4, condicao_pagamento_id = $5, tabela_preco_id = $6,
-         cliente_retrato = $7::jsonb, endereco_entrega = $8::jsonb, observacao = $9, total_centavos = $10 WHERE id = $1`,
-      [id, d.filial_id, d.cliente_id, d.vendedor_id, d.condicao_pagamento_id, d.tabela_preco_id, json(d.cliente_retrato), json(d.endereco_entrega), d.observacao, d.total_centavos],
+         cliente_retrato = $7::jsonb, endereco_entrega = $8::jsonb, observacao = $9, total_centavos = $10, a_vista = $11 WHERE id = $1`,
+      [id, d.filial_id, d.cliente_id, d.vendedor_id, d.condicao_pagamento_id, d.tabela_preco_id, json(d.cliente_retrato), json(d.endereco_entrega), d.observacao, d.total_centavos, d.a_vista],
     );
   }
 
@@ -259,16 +263,16 @@ class RepoPedidosSql implements RepoPedidos {
     return (await executar(this.tx, `SELECT ${this.selecaoLista(f.comDocumento === true)} FROM pedido.pedido p WHERE ${w.join(' AND ')} ORDER BY p.emitido_em DESC, p.id LIMIT $${p.push(maximo)}`, p)) as unknown as LinhaLista[];
   }
 
-  /** P5: total não faturado dos pedidos aprovados e parcialmente faturados do cliente, por condição de pagamento. */
-  async compromissoCredito(clienteId: string, exceto: string | null): Promise<CompromissoCredito[]> {
-    return (await executar(
+  /** P5: total não faturado dos pedidos aprovados e parcialmente faturados do cliente, só dos pedidos com `NOT a_vista` (valor gravado). */
+  async compromissoCredito(clienteId: string, exceto: string | null): Promise<number> {
+    const linhas = (await executar(
       this.tx,
-      `SELECT condicao_pagamento_id, sum(total_centavos - valor_faturado_centavos)::float8 AS centavos
+      `SELECT coalesce(sum(total_centavos - valor_faturado_centavos), 0)::float8 AS centavos
        FROM pedido.pedido
-       WHERE cliente_id = $1 AND status IN (${COMPROMETEM}) AND deleted_at IS NULL AND ($2::uuid IS NULL OR id <> $2::uuid)
-       GROUP BY condicao_pagamento_id`,
+       WHERE cliente_id = $1 AND NOT a_vista AND status IN (${COMPROMETEM}) AND deleted_at IS NULL AND ($2::uuid IS NULL OR id <> $2::uuid)`,
       [clienteId, exceto],
-    )) as unknown as CompromissoCredito[];
+    )) as unknown as { centavos: number }[];
+    return Number(linhas[0]?.centavos ?? 0);
   }
 
   /** P5: saldo ainda não faturado dos itens dos pedidos aprovados da filial, por produto. */

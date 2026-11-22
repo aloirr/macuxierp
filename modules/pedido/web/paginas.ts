@@ -65,5 +65,5 @@ export const PAGINAS_PEDIDO: readonly PaginaPedido[] = [
   { id: 'pedidos', tipo: 'lista', menu: 'Pedidos', titulo: 'Pedidos', rota: '/pedido/pedidos', ver: 'pedido.ver' },
   { id: 'novo', tipo: 'novo', menu: 'Pedidos', titulo: 'Novo pedido', rota: '/pedido/pedidos/novo', ver: 'pedido.pedido.lancar', ocultaNoMenu: true },
   { id: 'detalhe', tipo: 'detalhe', menu: 'Pedidos', titulo: 'Pedido', rota: '/pedido/pedidos/:id', ver: 'pedido.ver', ocultaNoMenu: true },
-  { id: 'editar', tipo: 'editar', menu: 'Pedidos', titulo: 'Editar pedido', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar' },
+  { id: 'editar', tipo: 'editar', menu: 'Pedidos', titulo: 'Editar pedido', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar', ocultaNoMenu: true },
 ];

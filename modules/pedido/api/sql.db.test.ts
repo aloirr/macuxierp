@@ -206,27 +206,29 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     await worker.comTenant(A, (tx) => tx.consultar('UPDATE pedido.pedido SET valor_faturado_centavos = 0 WHERE id = $1', [p.id]));
   });
 
-  it('o compromisso de crédito e de estoque sai do próprio pedido: aprovado e faturado_parcial contam, em_analise não, e o à vista é filtrado pela condição', async () => {
+  it('o compromisso de crédito e de estoque sai do próprio pedido: aprovado e faturado_parcial contam, em_analise não, e o fora do crédito (a_vista gravado) é filtrado', async () => {
     const T = await criarTenant(efemero.admin, 'compromisso', ['pedido']);
     const item = (q: number) => ({ produto_id: IDS.produto2, quantidade: q * 10_000, preco_unitario_centavos: 1000, desconto_centavos: 0 });
     const a = (await lancar(T, pedidoManual({ itens: [item(10)] }))).pedido; // 10.000, aprovado
     const v = (await lancar(T, pedidoManual({ condicao_pagamento_id: IDS.condicaoAVista, itens: [item(5)] }))).pedido; // 5.000 à vista, aprovado
+    const c = (await lancar(T, pedidoManual({ condicao_pagamento_id: IDS.condicaoCartao, itens: [item(2)] }))).pedido; // 2.000 cartão, aprovado
+    const gravado = Object.fromEntries((await admin('SELECT id, a_vista FROM pedido.pedido WHERE tenant_id = $1', [T])).map((l) => [l.id, l.a_vista]));
+    expect(gravado).toMatchObject({ [a.id]: false, [v.id]: true, [c.id]: true }); // boleto false; à vista e cartão true
     await lancar(T, pedidoManual({ condicao_pagamento_id: null, itens: [item(3)] })); // em análise
     await app.comTenant(T, async (tx) => {
       const repo = repositorioSql(tx);
-      const por = Object.fromEntries((await repo.compromissoCredito(IDS.cliente, null)).map((c) => [c.condicao_pagamento_id, c.centavos]));
-      expect(por).toEqual({ [IDS.condicao30]: 10_000, [IDS.condicaoAVista]: 5_000 });
-      expect(await repo.compromissoCredito(IDS.cliente, a.id)).toEqual([{ condicao_pagamento_id: IDS.condicaoAVista, centavos: 5_000 }]);
-      expect(await repo.compromissoEstoque(IDS.filial, [IDS.produto2], null)).toEqual([{ produto_id: IDS.produto2, quantidade: 150_000 }]);
-      expect(await repo.compromissoEstoque(IDS.filial, [IDS.produto2], v.id)).toEqual([{ produto_id: IDS.produto2, quantidade: 100_000 }]);
+      expect(await repo.compromissoCredito(IDS.cliente, null)).toBe(10_000); // só o boleto
+      expect(await repo.compromissoCredito(IDS.cliente, a.id)).toBe(0);
+      expect(await repo.compromissoEstoque(IDS.filial, [IDS.produto2], null)).toEqual([{ produto_id: IDS.produto2, quantidade: 170_000 }]); // o estoque conta tudo
+      expect(await repo.compromissoEstoque(IDS.filial, [IDS.produto2], v.id)).toEqual([{ produto_id: IDS.produto2, quantidade: 120_000 }]);
     });
     // o faturado reduz o compromisso (F4 grava pelo worker)
     await worker.comTenant(T, (tx) => tx.consultar('UPDATE pedido.pedido_item SET quantidade_faturada = 40000 WHERE pedido_id = $1', [a.id]));
     await worker.comTenant(T, (tx) => tx.consultar("UPDATE pedido.pedido SET valor_faturado_centavos = 4000, status = 'faturado_parcial' WHERE id = $1", [a.id]));
     await app.comTenant(T, async (tx) => {
       const repo = repositorioSql(tx);
-      expect((await repo.compromissoCredito(IDS.cliente, v.id)).map((c) => c.centavos)).toEqual([6_000]);
-      expect(await repo.compromissoEstoque(IDS.filial, [IDS.produto2], v.id)).toEqual([{ produto_id: IDS.produto2, quantidade: 60_000 }]);
+      expect(await repo.compromissoCredito(IDS.cliente, v.id)).toBe(6_000);
+      expect(await repo.compromissoEstoque(IDS.filial, [IDS.produto2], v.id)).toEqual([{ produto_id: IDS.produto2, quantidade: 80_000 }]);
     });
   });
 
