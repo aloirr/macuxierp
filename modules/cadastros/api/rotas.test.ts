@@ -105,6 +105,18 @@ describe('filiais (RF-CAD-08)', () => {
     expect(ok.status).toBe(200);
     expect(ok.corpo).toMatchObject({ crt: '1', regime_pis_cofins: null });
   });
+  it('RN-FIS-02: POST e PATCH dão 422 para CRT 3 sem regime (criar, trocar de CRT 1 para 3 e regime null)', async () => {
+    const t = montar();
+    const sem = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '3' }) });
+    expect(sem).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+    expect((await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '3', regime_pis_cofins: null }) })).status).toBe(422);
+    const c1 = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '1' }) });
+    expect(c1.status).toBe(201);
+    expect(await t.chamar('PATCH', `/filiais/${c1.corpo.id}`, { sessao: adm, corpo: { crt: '3' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+    const c3 = await t.chamar('PATCH', `/filiais/${c1.corpo.id}`, { sessao: adm, corpo: { crt: '3', regime_pis_cofins: 'cumulativo' } });
+    expect(c3.status).toBe(200);
+    expect(await t.chamar('PATCH', `/filiais/${c1.corpo.id}`, { sessao: adm, corpo: { regime_pis_cofins: null } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+  });
   it('trocar a padrão desmarca a anterior', async () => {
     const t = montar();
     const a = await comFilial(t);
