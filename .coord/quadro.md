@@ -55,7 +55,7 @@
 ## Reservas
 - ADR: 0001–0005 usadas; 0006 reservada para a T-0030 (21/11). Migrações: 0007 reservada para a T-0010 e 0008 para a T-0030, se precisar.
 - Tarefas: T-0001–T-0033 usadas; próxima livre: T-0034.
-- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); próxima livre: RD-0034. Sessão que vai numerar pede a faixa ao gerente por send_message.
+- Achados do corretor (RD): reservados pelo gerente antes de numerar. RD-0020–0022 T-0033 (PR #22); RD-0023–0026 T-0030 (PRs #24 e #25); RD-0027–0033 T-0026 (PR #26, renumerar os RD-0025–0031); RD-0034–0040 T-0029; RD-0041–0047 T-0024; RD-0048–0054 T-0009; RD-0055–0061 T-0010; RD-0062–0068 T-0008; próxima livre: RD-0069. Sessão que vai numerar pede a faixa ao gerente por send_message.
 
 ## Depende do Alexandre
 - Secrets do GitHub e `.env` de produção (banco `macuxierp`, `MACUXIERP_CHAVE_A1` (32 bytes, obrigatória), S3, SMTP); DNS e rota `erp.` no túnel.
