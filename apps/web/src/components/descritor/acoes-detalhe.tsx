@@ -71,6 +71,8 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
         <DialogoEscrita
           titulo={a.tituloDialogo ?? a.rotulo}
           aviso={a.aviso ?? null}
+          ambiente={a.ambiente}
+          limitesTexto={a.limitesTexto}
           rotuloConfirmar={a.rotuloConfirmar ?? 'Confirmar'}
           {...(a.rotuloFechar ? { rotuloFechar: a.rotuloFechar } : {})}
           textoCarregando={a.textoCarregando}

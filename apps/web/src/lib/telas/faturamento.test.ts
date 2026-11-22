@@ -209,7 +209,7 @@ describe('detalhe da nota: ações por perfil e status', () => {
     expect(ids(v)).toEqual(['reenviar', 'consultar']);
     expect(v.acoes[0]).toMatchObject({ principal: true, caminho: `/v1/faturamento/notas/${ID}/reenviar`, entrada: 'confirmar', tituloDialogo: 'Reenviar a nota 12/1 à SEFAZ?' });
     expect(v.pendencias[0]).toMatchObject({ bloqueante: true, codigoRn: 'RN-FAT-07' });
-    expect(v.pendencias[0]?.texto).toMatch(/539: Duplicidade de NF-e.*Consulte a chave e reenvie/);
+    expect(v.pendencias[0]?.texto).toMatch(/539: Duplicidade de NF-e.*consulte a chave e reenvie/);
     expect(v.downloads?.every((d) => d.desabilitado)).toBe(true);
     expect(ver('fiscal', nota('rejeitada', { autorizada_em: null })).acoes[0]).toMatchObject({ id: 'reenviar', principal: true });
   });
@@ -319,5 +319,21 @@ describe('download pelo proxy', () => {
     expect(arquivoPermitido(`/v1/faturamento/notas/${ID}/xml`)).toBe(true);
     expect(arquivoPermitido(`/v1/faturamento/notas/${ID}/danfe`)).toBe(true);
     for (const ruim of [`/v1/faturamento/notas/${ID}`, `/v1/faturamento/notas/${ID}/xml?x=1`, `/v1/faturamento/notas/../xml`, `/v1/cadastros/clientes`, `/v1/faturamento/notas/${ID}/eventos`]) expect(arquivoPermitido(ruim), ruim).toBe(false);
+  });
+});
+
+describe('linha "Ambiente:" das confirmações fiscais (RN-FAT-04)', () => {
+  const emitir = (l: Record<string, unknown>) => LISTA_PEDIDOS_A_FATURAR.acaoDaLinha?.acao({ id: ID, pedido_id: P, numero: 7, status: 'a_faturar', ...l }, 'administrador');
+  it('Emitir sem o campo: manda conferir a filial emissora, em alerta', () => {
+    expect(emitir({})?.ambiente).toEqual({ texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' });
+  });
+  it('Emitir com o campo usa os dizeres do módulo (homologação neutro, produção alerta)', () => {
+    expect(emitir({ ambiente: 'homologacao' })?.ambiente).toEqual({ texto: 'Ambiente: Homologação, sem valor fiscal', tom: 'neutro' });
+    expect(emitir({ ambiente: 'producao' })?.ambiente).toEqual({ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' });
+  });
+  it('Inutilizar leva a linha de ambiente (o shell não tem o ambiente da filial) e os limites do contador', () => {
+    const a = LISTA_NOTAS.acaoDaBarra!.acao('administrador')!;
+    expect(a.ambiente?.tom).toBe('alerta');
+    expect(a.limitesTexto).toMatchObject({ min: expect.any(Number), max: expect.any(Number) });
   });
 });

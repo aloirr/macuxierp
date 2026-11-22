@@ -1,4 +1,5 @@
 'use client';
+import { contadorDeCaracteres } from '@macuxierp/faturamento/web';
 import { useEffect, useId, useRef, useState } from 'react';
 
 /**
@@ -11,6 +12,10 @@ export interface EntradaDialogo { valor: string; data: string; filial: string; i
 export interface DialogoEscritaProps {
   titulo: string;
   aviso?: string | null;
+  /** Linha "Ambiente: ..." (RN-FAT-04): texto neutro na homologação, caixa de aviso quando `alerta`. Na faixa, só depois de escolher a filial. */
+  ambiente?: { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' } | undefined;
+  /** Mostra o contador do módulo abaixo do campo de texto. */
+  limitesTexto?: { min: number; max: number } | undefined;
   rotuloConfirmar: string;
   /** Botão que fecha sem agir; sem ele, "Cancelar". */
   rotuloFechar?: string;
@@ -29,7 +34,7 @@ export interface DialogoEscritaProps {
 
 const FOCAVEIS = 'button:not([disabled]), input, select, textarea, [href]';
 
-export function DialogoEscrita({ titulo, aviso = null, rotuloConfirmar, rotuloFechar = 'Cancelar', textoCarregando = 'Enviando…', ocupado, baixa, texto: pedeTexto, faixa, validar, aoConfirmar, aoCancelar }: DialogoEscritaProps) {
+export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, rotuloConfirmar, rotuloFechar = 'Cancelar', textoCarregando = 'Enviando…', ocupado, baixa, texto: pedeTexto, faixa, validar, aoConfirmar, aoCancelar }: DialogoEscritaProps) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [valor, setValor] = useState(baixa?.valorInicial ?? '');
@@ -73,6 +78,8 @@ export function DialogoEscrita({ titulo, aviso = null, rotuloConfirmar, rotuloFe
     }
   }
 
+  const contador = limitesTexto ? <small className="apoio" data-contador>{contadorDeCaracteres(texto, limitesTexto.min, limitesTexto.max)}</small> : null;
+  const linhaAmbiente = ambiente && (!faixa || filial) ? <p data-ambiente className={ambiente.tom === 'alerta' ? 'faixa-aviso' : 'apoio'}>{ambiente.texto}</p> : null;
   const invalido = erro ? true : undefined;
   const descreve = erro ? `${id}-erro` : undefined;
   return (
@@ -96,6 +103,7 @@ export function DialogoEscrita({ titulo, aviso = null, rotuloConfirmar, rotuloFe
           <label className="campo">
             <span>{pedeTexto.rotulo}{pedeTexto.obrigatorio ? '' : ' (opcional)'}</span>
             <textarea className="entrada" rows={3} value={texto} onChange={(e) => edita(setTexto, e.target.value)} aria-invalid={invalido} aria-describedby={descreve} required={pedeTexto.obrigatorio} aria-required={pedeTexto.obrigatorio} />
+            {contador}
           </label>
         )}
         {faixa && (
@@ -120,9 +128,11 @@ export function DialogoEscrita({ titulo, aviso = null, rotuloConfirmar, rotuloFe
             <label className="campo">
               <span>{faixa.rotuloTexto}</span>
               <textarea className="entrada" rows={3} value={texto} onChange={(e) => edita(setTexto, e.target.value)} aria-invalid={invalido} aria-describedby={descreve} />
+              {contador}
             </label>
           </>
         )}
+        {linhaAmbiente}
         {aviso && <p id={`${id}-aviso`} className="faixa-aviso">{aviso}</p>}
         {erro && <p id={`${id}-erro`} role="alert" className="erro">{erro}</p>}
         <div className="barra-acoes dialogo-botoes">

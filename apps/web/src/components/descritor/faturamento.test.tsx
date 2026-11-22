@@ -13,6 +13,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 vi.mock('@/app/(shell)/[modulo]/[...pagina]/acoes', () => ({ escrever: vi.fn() }));
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
+const P2 = '8a2b4c6d-1e3f-4a5b-9c7d-0e1f2a3b4c5d';
 const AGORA = new Date('2026-11-22T16:00:00.000Z');
 const nota = (status: NotaDetalhe['status'], extra: Partial<NotaDetalhe> = {}): NotaDetalhe => ({
   id: ID, filial_id: ID, cliente_id: ID, pedido_id: ID, ambiente: 'producao', serie: 1, numero: 12, chave_acesso: null, status, emitida_em: '2026-11-22T14:00:00.000Z', total_centavos: 123456,
@@ -92,5 +93,33 @@ describe('render da lista e dos diálogos', () => {
     expect(h).toContain('Número inicial');
     expect(h).toContain('Número final');
     expect(h).toContain('Matriz');
+  });
+});
+
+describe('ambiente e contador nos diálogos (RN-FAT-04)', () => {
+  it('Reenviar na homologação mostra a linha neutra; em produção, a caixa de aviso', () => {
+    const rej = (ambiente: 'homologacao' | 'producao') => nota('rejeitada', { ambiente, autorizada_em: null, acao_sugerida: 'Consulte a chave e reenvie' });
+    const a = (ambiente: 'homologacao' | 'producao') => vistaDaNota(rej(ambiente), 'faturista', 'America/Manaus', AGORA).acoes.find((x) => x.id === 'reenviar')!;
+    const dlg = (x: ReturnType<typeof a>) => renderToStaticMarkup(<DialogoEscrita titulo="t" rotuloConfirmar="Reenviar" ocupado={false} ambiente={x.ambiente} validar={() => null} aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
+    const h = dlg(a('homologacao'));
+    expect(h).toContain('Ambiente: Homologação, sem valor fiscal');
+    expect(h).toMatch(/<p data-ambiente="true" class="apoio">/);
+    expect(dlg(a('producao'))).toMatch(/<p data-ambiente="true" class="faixa-aviso">Ambiente: Produção, com valor fiscal/);
+  });
+  it('Inutilizar mostra a linha depois de escolher a filial e o contador abaixo do texto', () => {
+    const h = renderToStaticMarkup(<DialogoEscrita titulo="Inutilizar" rotuloConfirmar="Inutilizar" ocupado={false} ambiente={{ texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' }} limitesTexto={{ min: 15, max: 255 }} faixa={{ filiais: [{ valor: ID, rotulo: 'Matriz' }], rotuloTexto: 'Justificativa' }} validar={() => null} aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
+    expect(h).toContain('Ambiente: confira a configuração da filial emissora');
+    expect(h).toContain('faltam 15 caracteres');
+    const duas = renderToStaticMarkup(<DialogoEscrita titulo="Inutilizar" rotuloConfirmar="Inutilizar" ocupado={false} ambiente={{ texto: 'Ambiente: x', tom: 'alerta' }} faixa={{ filiais: [{ valor: ID, rotulo: 'A' }, { valor: P2, rotulo: 'B' }], rotuloTexto: 'Justificativa' }} validar={() => null} aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
+    expect(duas).not.toContain('Ambiente: x');
+  });
+  it('depois de "O que fazer:" o texto começa em minúscula; o xMotivo não muda', () => {
+    const v = vistaDaNota(nota('rejeitada', { c_stat: 539, x_motivo: 'Duplicidade de NF-e', acao_sugerida: 'Consulte a chave e reenvie', autorizada_em: null }), 'faturista', 'America/Manaus', AGORA);
+    expect(v.pendencias[0]?.texto).toContain('539: Duplicidade de NF-e. O que fazer: consulte a chave e reenvie.');
+  });
+  it('a coluna "#" dos itens é estreita e numérica', () => {
+    const v = vistaDaNota(nota('autorizada'), 'administrador', 'America/Manaus', AGORA);
+    const c = v.tabelas?.[0]?.colunas.find((x) => x.id === 'sequencia');
+    expect(c).toMatchObject({ numerica: true, largura: '3rem' });
   });
 });

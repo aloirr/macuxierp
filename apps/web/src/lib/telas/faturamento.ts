@@ -78,18 +78,31 @@ function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly F
   };
 }
 
+/** Sem o ambiente conhecido, a confirmação não afirma nada: manda conferir a filial emissora (RN-FAT-04). */
+const AMBIENTE_DESCONHECIDO = { texto: 'Ambiente: confira a configuração da filial emissora', tom: 'alerta' } as const;
+/** Linha "Ambiente:" do módulo (os mesmos dizeres do Reenviar), a partir do ambiente da filial emissora; ausente ou inválido, o aviso de conferir. */
+function ambienteDaFilial(a: unknown): { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' } {
+  const v = Ambiente.safeParse(a);
+  if (!v.success) return AMBIENTE_DESCONHECIDO;
+  const c = confirmacaoReenviar({ numero: null, serie: 1, status: 'rascunho', ambiente: v.data });
+  return { texto: c.ambiente, tom: c.tomAmbiente };
+}
+
+/** Baixa só a primeira letra ("Consulte…" vira "consulte…"); o resto, siglas e xMotivo, não muda. */
+const minuscula = (t: string): string => (t === '' ? t : t.charAt(0).toLowerCase() + t.slice(1));
+
 const rotuloDaLinha = (id: IdLista) => (l: Linha): string => (ROTULO_LINHA[id] as (x: unknown) => string)(l);
 
 // ---- Pedidos a faturar: ação "Emitir nota" por linha (nota total; a parcial pede os itens do pedido e fica para o detalhe) ----
 
 function acaoEmitir(l: Linha, perfil: Perfil): AcaoVista | null {
-  const p = l as unknown as PedidoAFaturarResumo;
+  const p = l as unknown as PedidoAFaturarResumo & { ambiente?: unknown }; // `ambiente` entra no resumo pelo modulo-faturamento; opcional até lá
   if (!acoesDoPedidoAFaturar(perfil, p.status).emitir) return null;
   const numero = p.numero === null || p.numero === undefined ? '' : ` ${p.numero}`;
   return {
     id: 'emitir', rotulo: 'Emitir nota', metodo: 'POST', caminho: NOTAS, entrada: 'confirmar', principal: true,
     tituloDialogo: `Emitir a nota do pedido${numero}?`, aviso: 'A nota leva todo o saldo do pedido e segue para a SEFAZ. Confira o cliente e o total antes de emitir.',
-    rotuloConfirmar: 'Emitir nota', textoCarregando: 'Emitindo…', dados: { pedido_id: p.pedido_id },
+    rotuloConfirmar: 'Emitir nota', textoCarregando: 'Emitindo…', ambiente: ambienteDaFilial(p.ambiente), dados: { pedido_id: p.pedido_id },
   };
 }
 
@@ -113,6 +126,7 @@ function acaoInutilizar(perfil: Perfil): AcaoVista | null {
   return {
     id: 'inutilizar', rotulo: 'Inutilizar números', metodo: 'POST', caminho: INUTILIZACOES, entrada: 'faixa', tituloDialogo: 'Inutilizar números',
     rotuloTexto: d.rotuloTexto, rotuloConfirmar: d.rotuloConfirmar, rotuloFechar: d.rotuloFechar, destrutivo: d.destrutivo, ...(d.aviso ? { aviso: d.aviso } : {}),
+    ambiente: ambienteDaFilial(undefined), limitesTexto: { min: d.minimo, max: d.maximo }, // o shell não recebe o ambiente da filial (cadastro só traz nome)
   };
 }
 
@@ -217,7 +231,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     }
     if (id === 'reenviar') {
       const c = confirmacaoReenviar(n);
-      acoes.push({ id, rotulo: c.rotuloConfirmar, metodo: 'POST', caminho: caminhoDe(requisicaoReenviar(n.id, CHAVE_DE_VALIDACAO)), entrada: 'confirmar', ...(ehPrincipal ? { principal: true } : {}), tituloDialogo: c.titulo, aviso: c.aviso, rotuloConfirmar: c.rotuloConfirmar, textoCarregando: c.textoCarregando, dados });
+      acoes.push({ id, rotulo: c.rotuloConfirmar, metodo: 'POST', caminho: caminhoDe(requisicaoReenviar(n.id, CHAVE_DE_VALIDACAO)), entrada: 'confirmar', ...(ehPrincipal ? { principal: true } : {}), tituloDialogo: c.titulo, aviso: c.aviso, ambiente: { texto: c.ambiente, tom: c.tomAmbiente }, rotuloConfirmar: c.rotuloConfirmar, textoCarregando: c.textoCarregando, dados });
     } else if (id === 'consultar') {
       acoes.push({ id, rotulo: r.rotulo, metodo: 'POST', caminho: caminhoDe(requisicaoConsultar(n.id, CHAVE_DE_VALIDACAO)), entrada: 'nenhum', dados });
     } else {
@@ -225,7 +239,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
       // Sem vermelho na v1: o botão de confirmar é o principal e o texto diz a ação ("Cancelar a nota 12/1"). "Manter a nota" (rotuloFechar) é do módulo.
       acoes.push({
         id, rotulo: r.rotulo, metodo: 'POST', caminho: caminho(id === 'cancelar' ? 'cancelar' : 'carta-correcao'), entrada: 'justificativa', justificativaObrigatoria: true, tituloDialogo: d.titulo, rotuloTexto: d.rotuloTexto,
-        rotuloConfirmar: id === 'cancelar' ? `Cancelar a nota ${sigla}` : d.rotuloConfirmar, rotuloFechar: d.rotuloFechar, destrutivo: d.destrutivo, ...(d.aviso ? { aviso: d.aviso } : {}), dados,
+        rotuloConfirmar: id === 'cancelar' ? `Cancelar a nota ${sigla}` : d.rotuloConfirmar, rotuloFechar: d.rotuloFechar, destrutivo: d.destrutivo, ...(d.aviso ? { aviso: d.aviso } : {}), limitesTexto: { min: d.minimo, max: d.maximo }, dados,
       });
     }
   }
@@ -233,7 +247,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
   const pendencias: DetalheVista['pendencias'][number][] = [];
   if (n.status === 'rejeitada') {
     const codigo = n.c_stat === null ? '' : `${n.c_stat}: `;
-    pendencias.push({ texto: `Rejeitada pela SEFAZ. ${codigo}${semPonto(n.x_motivo ?? 'sem mensagem')}. O que fazer: ${semPonto(n.acao_sugerida ?? 'confira os dados e reenvie')}.`, bloqueante: true, codigoRn: 'RN-FAT-07' });
+    pendencias.push({ texto: `Rejeitada pela SEFAZ. ${codigo}${semPonto(n.x_motivo ?? 'sem mensagem')}. O que fazer: ${minuscula(semPonto(n.acao_sugerida ?? 'confira os dados e reenvie'))}.`, bloqueante: true, codigoRn: 'RN-FAT-07' });
   }
   if (n.status === 'autorizada_guarda_pendente') pendencias.push({ texto: 'Autorizada pela SEFAZ. O XML ainda está sendo guardado; nada mais anda até guardar.', bloqueante: true, codigoRn: 'RN-FAT-03' });
 
@@ -253,7 +267,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     ...(eventos === undefined ? {} : { historico: historicoDaNota(eventos, fuso) }),
     tabelas: [{
       titulo: 'Itens',
-      colunas: [{ id: 'sequencia', rotulo: '#', numerica: true }, { id: 'quantidade', rotulo: 'Quantidade', numerica: true }, { id: 'valor', rotulo: 'Valor', numerica: true }],
+      colunas: [{ id: 'sequencia', rotulo: '#', numerica: true, largura: '3rem' }, { id: 'quantidade', rotulo: 'Quantidade', numerica: true }, { id: 'valor', rotulo: 'Valor', numerica: true }],
       linhas: n.itens.map((i) => ({ sequencia: String(i.sequencia), quantidade: formatarQuantidade(i.quantidade), valor: formatarCentavos(i.valor_centavos) })),
     }],
   };

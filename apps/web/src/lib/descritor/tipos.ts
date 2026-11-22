@@ -78,7 +78,7 @@ export interface TelaLista {
 
 /** `linhaInteira`: o campo ocupa a linha toda da grade (valores longos, como a chave de acesso); `numerico`: números tabulares. */
 export interface CampoVista { rotulo: string; valor: string; linhaInteira?: boolean; numerico?: boolean }
-export interface ColunaVista { id: string; rotulo: string; numerica?: boolean; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }
+export interface ColunaVista { id: string; rotulo: string; numerica?: boolean; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status'; /** Largura mínima da coluna (ex.: '3rem'). */ largura?: string }
 export interface TabelaVista { titulo: string; colunas: readonly ColunaVista[]; linhas: readonly Readonly<Record<string, string>>[] }
 /** Pendência para a faixa da ui: `codigoRn` e texto vêm do módulo. */
 export interface PendenciaVista { texto: string; bloqueante: boolean; codigoRn: string }
@@ -119,6 +119,10 @@ export interface AcaoVista {
   motivos?: readonly { codigo: string; rotulo: string }[];
   /** Aviso fixo do módulo a mostrar no diálogo (ex.: LGPD do texto livre). */
   aviso?: string;
+  /** Linha "Ambiente: ..." das confirmações fiscais (RN-FAT-04); `alerta` em produção ou quando o ambiente é desconhecido. */
+  ambiente?: { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' };
+  /** Limites do texto (cancelar, CC-e, inutilizar): mostra o contador do módulo abaixo do campo. */
+  limitesTexto?: { min: number; max: number };
   /** Botão visível porém desabilitado, com o motivo (ex.: aprovar com pendência bloqueante). */
   desabilitada?: string;
   /** Ação principal da tela (uma só): as demais saem como botão secundário. */
