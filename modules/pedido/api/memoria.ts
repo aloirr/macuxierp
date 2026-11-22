@@ -135,8 +135,8 @@ class RepoMemoria implements RepoPedidos {
     p.status = status;
     this.tocar(p);
   }
-  async eventoRegistrado(pedidoId: string, eventoId: string) {
-    return this.a.eventos.some((e) => e.pedido_id === pedidoId && e.evento_id === eventoId);
+  async eventosRegistrados(pedidoId: string, ids: string[]) {
+    return new Set(this.a.eventos.filter((e) => e.pedido_id === pedidoId && e.evento_id !== null && ids.includes(e.evento_id)).map((e) => e.evento_id as string));
   }
   async registrarAprovacao(ap: NovaAprovacao) {
     if (this.a.aprovacoes.some((x) => x.pedido_id === ap.pedido_id)) throw new Error('aprovacao_uma_por_pedido');
@@ -238,12 +238,12 @@ function logEmMemoria(): LogPedido & { error: LogPedido['warn'] } & { linhas: st
   return { linhas, info: grava('info'), warn: grava('warn'), error: grava('error') };
 }
 
-export function dependenciasEmMemoria(p: { notaEmAutorizacao?: boolean; saldoTitulos?: number } = {}) {
+export function dependenciasEmMemoria(p: { notaEmAutorizacao?: boolean; notasAutorizadas?: string[]; saldoTitulos?: number } = {}) {
   const armazem = new ArmazemMemoria();
   const cadastros = new CadastrosMemoria();
   const log = logEmMemoria();
   const titulos: ConsultaTitulosPedido = { saldoAbertoCliente: async () => p.saldoTitulos ?? 0 };
-  const notas: NotaEmAberto = { temNotaEmAutorizacao: async () => p.notaEmAutorizacao ?? false };
+  const notas: NotaEmAberto = { temNotaEmAutorizacao: async () => p.notaEmAutorizacao ?? false, notasAutorizadas: async () => p.notasAutorizadas ?? [] };
   const deps: Dependencias = { repositorios: () => new RepoMemoria(armazem), cadastros, titulos, notas, log };
   return { deps, armazem, cadastros, log };
 }
