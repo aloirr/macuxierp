@@ -49,6 +49,11 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     }
   });
 
+  it('integração FDV (T-0011): ver só administrador, gerente e leitura; configurar só o administrador', () => {
+    expect(quem('integracao-fdv.ver')).toEqual(['administrador', 'gerente', 'leitura']);
+    expect(quem('integracao-fdv.configurar')).toEqual(['administrador']);
+  });
+
   it('toda ação começa com um módulo conhecido e só lista perfis da RN-CORE-01', () => {
     for (const [acao, perfis] of Object.entries(PERMISSOES)) {
       expect(MODULOS).toContain(moduloDaAcao(acao as Acao));

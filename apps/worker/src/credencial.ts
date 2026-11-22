@@ -3,9 +3,9 @@
  * - `MACUXIERP_CHAVE_INTEGRACAO` (32 bytes, hex ou base64) é a **versão 1**. Rotação futura = nova variável e nova
  *   versão aqui; o módulo guarda a versão junto do cifrado.
  * Sem a configuração, devolve `null`. Variável presente mas inválida derruba a partida (o erro cita só o nome, nunca o
- * valor).
+ * valor). A leitura é a `chaveIntegracaoDoAmbiente` do SDK, a mesma da API (T-0011).
  */
-import { decifrarCampo, ErroCifra, lerChaveMestra, type ContextoAgenda } from '@macuxierp/platform-sdk';
+import { chaveIntegracaoDoAmbiente, decifrarCampo, ErroCifra, type ContextoAgenda } from '@macuxierp/platform-sdk';
 
 export type DecifrarCredencial = ContextoAgenda['decifrarCredencial'];
 
@@ -20,7 +20,6 @@ export function criarDecifradorCredencial(chaves: ReadonlyMap<number, Buffer>): 
 }
 
 export function configurarCredenciais(env: Readonly<Record<string, string | undefined>>): DecifrarCredencial | null {
-  const bruto = env.MACUXIERP_CHAVE_INTEGRACAO;
-  if (!bruto?.trim()) return null;
-  return criarDecifradorCredencial(new Map([[1, lerChaveMestra('MACUXIERP_CHAVE_INTEGRACAO', bruto)]]));
+  const chave = chaveIntegracaoDoAmbiente(env);
+  return chave ? criarDecifradorCredencial(new Map([[1, chave]])) : null;
 }
