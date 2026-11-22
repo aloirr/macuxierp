@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { afterEach } from 'vitest';
 import { Writable } from 'node:stream';
 import { ArmazenamentoMemoria, type Licenca, type Perfil, type PluginModulo, type Sessao } from '../../packages/platform-sdk/src/index';
-import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo } from '../../packages/platform-sdk/src/testes';
+import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo } from '../../packages/platform-sdk/src/testes';
 import { criarApp } from '../../apps/api/src/app';
 import { emitirTokenAcesso } from '../../apps/api/src/auth/jwt';
 import { RepositorioAuthMemoria } from '../../apps/api/src/auth/repositorio-memoria';
@@ -91,6 +91,7 @@ export async function montarApiMemoria(o: OpcoesApi = {}) {
     outbox,
     auditoria,
     trabalhos,
+    idempotencia: new IdempotenciaMemoria(),
     relogio,
     modulos,
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,

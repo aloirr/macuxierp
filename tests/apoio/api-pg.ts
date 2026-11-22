@@ -1,12 +1,12 @@
 /**
  * T-0008: a API real (`criarApp`) com o `montarModulos` de produção e exatamente os adaptadores do `apps/api/src/main.ts`
- * (PR #19): `RepositorioCoreSql`, argon2id da plataforma, `LeitorPfxTls`, armazenamento indisponível (503 até a T-0024)
+ * (PR #19): `RepositorioCoreSql`, `IdempotenciaPg` (T-0026), argon2id da plataforma, `LeitorPfxTls`, armazenamento indisponível (503 até a T-0024)
  * e, no cadastros, os padrões do `montarModulos` (SQL, fontes HTTP e o A1 pela porta do core). Banco efêmero migrado,
  * `BancoPg` no papel `macuxierp_app` (a RLS vale de verdade). Só a chave do A1 e o segredo do JWT são de teste.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { relogioDoSistema, type Perfil } from '../../packages/platform-sdk/src/index';
-import { AuditoriaPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '../../packages/platform-sdk/src/pg';
+import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '../../packages/platform-sdk/src/pg';
 import { criarBancoEfemero, criarTenant, type BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
 import { criarApp } from '../../apps/api/src/app';
 import { emitirTokenAcesso } from '../../apps/api/src/auth/jwt';
@@ -50,6 +50,7 @@ export async function montarApiPg<K extends string>(tenants: Record<K, readonly 
     outbox: new OutboxPg(),
     auditoria: new AuditoriaPg(),
     trabalhos: new FilaDeTrabalhosPg(),
+    idempotencia: new IdempotenciaPg(),
     relogio: relogioDoSistema,
     modulos,
     logger: false,

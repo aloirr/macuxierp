@@ -13,7 +13,7 @@ import { gerarHashSenha } from '../../apps/api/src/auth/senha';
 import { montarModulos } from '../../apps/api/src/modulos';
 import { RepositorioCoreSql } from '../../modules/core/api';
 import { relogioDoSistema } from '../../packages/platform-sdk/src/banco';
-import { AuditoriaPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '../../packages/platform-sdk/src/pg';
+import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '../../packages/platform-sdk/src/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
 
 const raiz = join(import.meta.dirname, '..', '..');
@@ -82,6 +82,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
       outbox: new OutboxPg(),
       auditoria: new AuditoriaPg(),
       trabalhos: new FilaDeTrabalhosPg(),
+      idempotencia: new IdempotenciaPg(),
       relogio: relogioDoSistema,
       modulos: montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) }),
       logger: false,
