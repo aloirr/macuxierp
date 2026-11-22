@@ -39,7 +39,7 @@ Até o ERP entrar em produção (Etapa 1), `forma_pagamento` fica parada no Hub:
 
 **Devolva:** `Conector criado: macuxierp` (o identificador não é segredo). Depois do formulário: `chave gravada`.
 
-> **Situação da Etapa 0 em 22/11, 01h20 (Manaus):** a chave gravada às 00h50 no ambiente do gerente é a do Conector do **kit** (`thathyany-conector`), que já publica `forma_pagamento` desde 15/11. Nada foi enviado com ela. Falta criar o Conector **novo** do ERP (só `forma_pagamento`, "recebe pedidos" desmarcado) e gravar a chave dele pelo formulário seguro; a chave nova substitui a do kit.
+> **Etapa 0 CONCLUÍDA em 22/11, 02h06 (Manaus):** o Conector novo do ERP no Hub do FDV é `macuxierp` (só `forma_pagamento`, "recebe pedidos" desmarcado), com a chave gravada pelo formulário seguro no ambiente do gerente (substituiu a do kit). Leitura de teste `GET /integracao/v1/cursores/forma_pagamento`: HTTP 200, sem cursor (Conector novo). Nada foi enviado. A confirmar com o Alexandre: o kit segue com a chave do Conector dele (`thathyany-conector`), só com `forma_pagamento` desligada. Próximo: Etapa 1.
 
 ## Etapa 1 — Pré-requisitos do lado do ERP (sem ação no FDV)
 A virada só funciona com o ERP em produção e com os dados da thathyany carregados nele, porque o Conector do ERP publica o que está no banco do ERP.
