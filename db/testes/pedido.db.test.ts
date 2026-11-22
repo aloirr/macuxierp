@@ -20,6 +20,7 @@ import {
   PG_DISPONIVEL,
   permitirSetRole,
   rodarScript,
+  verboso,
 } from './apoio.ts';
 import { fixturePedido, fixturePlataforma, novoTenant } from './fixture.ts';
 import { verificarVazamento } from './vazamento.ts';
@@ -145,8 +146,6 @@ function itemSql(
     VALUES ('${A.id}', '${pedido}', ${sequencia}, gen_random_uuid(), '${extra.retrato ?? '{"codigo": "P1"}'}', 10000,
       100, 100, ${extra.faturada ?? 0});`;
 }
-
-const verboso = (sql: string): string => `\\set VERBOSITY verbose\n${sql}`;
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
   let banco: BancoDeTeste;
