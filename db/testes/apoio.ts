@@ -4,6 +4,10 @@
  * Sem Postgres: pula, salvo com MACUXI_PG_EXIGIR=1 (CI e rodar-antes-do-push.sh), quando falha.
  */
 import { randomUUID } from 'node:crypto';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { listarMigracoes } from '../src/migrar.ts';
 import {
   type Conexao,
   consultar,
@@ -43,6 +47,21 @@ export function criarBancoDeTeste(): BancoDeTeste {
     conexao: { ...ADMIN, banco: nome },
     remover: () => rodarScript(ADMIN, `DROP DATABASE IF EXISTS ${nome};`),
   };
+}
+
+export interface PastaDeMigracoes {
+  pasta: string;
+  remover(): void;
+}
+
+/**
+ * Pasta temporária só com as migrações anteriores ao prefixo (mesmos nomes e sha256 das originais), para testar uma
+ * migração sobre linhas gravadas antes dela.
+ */
+export function pastaComMigracoesAntesDe(prefixo: string): PastaDeMigracoes {
+  const pasta = mkdtempSync(join(tmpdir(), `macuxi-${prefixo}-`));
+  for (const m of listarMigracoes().filter((x) => x.nome < prefixo)) copyFileSync(m.caminho, join(pasta, m.nome));
+  return { pasta, remover: () => rmSync(pasta, { recursive: true, force: true }) };
 }
 
 /**

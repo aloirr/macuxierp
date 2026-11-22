@@ -5,19 +5,18 @@
  * E a tabela conflito_chave (ADR 0010, item 3; T-0009 §8): um aberto por (entidade, erp_id), CHECKs, RLS e privilégios.
  */
 import { randomUUID } from 'node:crypto';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { listarMigracoes, migrar } from '../src/migrar.ts';
 import {
   type BancoDeTeste,
+  type PastaDeMigracoes,
   consultar,
   criarBancoDeTeste,
   executar,
   falhaDetalhada,
   numeros,
   PG_DISPONIVEL,
+  pastaComMigracoesAntesDe,
   permitirSetRole,
   rodarScript,
   verboso,
@@ -572,23 +571,21 @@ describe.skipIf(!PG_DISPONIVEL)(
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — 0015 sobre linhas já gravadas (T-0011)', () => {
   let banco: BancoDeTeste;
-  let pasta: string;
+  let anteriores: PastaDeMigracoes;
   const C = novoTenant('espelho-c');
 
   beforeAll(() => {
     banco = criarBancoDeTeste();
-    pasta = mkdtempSync(join(tmpdir(), 'macuxi-0015-'));
-    for (const m of listarMigracoes().filter((x) => x.nome < '0015'))
-      copyFileSync(m.caminho, join(pasta, m.nome));
+    anteriores = pastaComMigracoesAntesDe('0015');
   });
 
   afterAll(() => {
     banco?.remover();
-    if (pasta) rmSync(pasta, { recursive: true, force: true });
+    anteriores?.remover();
   });
 
   it('a credencial gravada antes ganha o padrão; os registros antigos ficam com erp_id nulo, sem conflito', () => {
-    expect(migrar(banco.conexao, { pasta, oficiais: false })).not.toContain(MIGRACAO);
+    expect(migrar(banco.conexao, { pasta: anteriores.pasta, oficiais: false })).not.toContain(MIGRACAO);
     executar(
       banco.conexao,
       `${fixturePlataforma(C)}

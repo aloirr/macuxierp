@@ -150,8 +150,6 @@ export interface ItemPrecoGravado {
 
 /** O que só a carga de CSV (T-0026) precisa do banco; o resto usa os repositórios das rotas. */
 export interface RepoCarga {
-  /** `external_id` → `id` dos cadastros ativos (confere as referências e resolve o UUID). */
-  idsPorExternalId(alvo: AlvoExterno, externalIds: readonly string[]): Promise<Map<string, string>>;
   /** Condições de uma forma de pagamento (D12), também as inativas. */
   condicoesDaForma(formaExternalId: string): Promise<CondicaoPagamento[]>;
   filhoPorExternalId(tabela: TabelaFilha, externalId: string): Promise<FilhoGravado | null>;
@@ -165,7 +163,23 @@ export interface RepoCarga {
   comSavepoint<T>(fn: () => Promise<T>): Promise<T>;
 }
 
+/** Tabelas com `external_id` que a resolução de chaves (ADR 0010) e a guarda da RD-0317 consultam. */
+export type TabelaChave =
+  | 'cliente' | 'vendedor' | 'filial' | 'produto' | 'condicao_pagamento' | 'cliente_endereco'
+  | 'tabela_preco' | 'produto_unidade' | 'tabela_preco_item';
+
+/** Consultas de chave em lote (ADR 0010). Nunca filtram `deleted_at`, salvo `soAtivos` (a carga): o inativo também resolve (o pedido devolve `*_inativo`). */
+export interface RepoChaves {
+  /** `external_id` → `id`, em uma consulta; `soAtivos` (a carga confere referências) ignora os inativos. */
+  idsPorExternalId(tabela: TabelaChave, externalIds: readonly string[], soAtivos?: boolean): Promise<Map<string, string>>;
+  /** Dos `ids`, os que existem com `external_id` nulo (RD-0317: o UUID só vale para o que nasceu no ERP), em uma consulta. */
+  idsSemExternalId(tabela: TabelaChave, ids: readonly string[]): Promise<Set<string>>;
+  /** Existe registro com este `id` (ativo ou inativo)? Guarda da RD-0317. */
+  existeId(tabela: TabelaChave, id: string): Promise<boolean>;
+}
+
 export interface Repositorios {
+  chaves: RepoChaves;
   filiais: RepoFiliais;
   clientes: RepoClientes;
   produtos: RepoProdutos;

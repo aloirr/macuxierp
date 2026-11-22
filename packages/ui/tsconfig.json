@@ -1,5 +1,5 @@
 {
-  "extends": "@macuxierp/config/tsconfig.base.json",
+  "extends": "@macuxierp/config/tsconfig.web.json",
   "compilerOptions": {
     "types": [
       "node"
