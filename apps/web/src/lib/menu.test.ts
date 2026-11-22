@@ -45,7 +45,9 @@ describe('montarMenu (RN-CORE-02, RD-11)', () => {
   });
   it('resolverPagina devolve undefined para o que não está no menu e o rótulo para módulo sem páginas', () => {
     const m = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'gerente');
-    expect(resolverPagina(m, '/pedido/pedidos', 'gerente')).toEqual({ rotulo: 'Pedidos' });
+    // Faturamento ainda não declara páginas: a rota vem do rótulo do manifesto.
+    const rotulo = m.find((g) => g.modulo === 'faturamento')!.itens[0]!;
+    expect(resolverPagina(m, rotulo.href, 'gerente')).toEqual({ rotulo: rotulo.rotulo });
     expect(resolverPagina(m, '/fiscal/regras-fiscais', 'gerente')).toBeUndefined();
   });
 });
