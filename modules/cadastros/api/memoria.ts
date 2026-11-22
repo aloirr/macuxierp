@@ -44,6 +44,16 @@ export class ColecaoMemoria<E extends { id: string }, D extends Record<string, u
     const x = this.linhas.find((l) => l.external_id === ext);
     return x ? this.ler(x) : null;
   }
+  async porCampo(campo: string, valor: string) {
+    const x = this.linhas.find((l) => l[campo] === valor);
+    return x ? this.ler(x) : null;
+  }
+  async reativar(id: string): Promise<E | null> {
+    const x = this.linhas.find((l) => l.id === id);
+    if (!x) return null;
+    x.inativo = false;
+    return this.ler(x);
+  }
   protected conferirUnico(novo: Record<string, unknown>, ignorar?: string): void {
     for (const campo of this.opcoes.unicos ?? []) {
       if (this.linhas.some((l) => l.id !== ignorar && !l.inativo && l[campo] === novo[campo])) throw new ErroApi(409, 'CONFLITO', `${campo} já cadastrado`);
@@ -224,6 +234,11 @@ export function repositoriosEmMemoria() {
     /** NCM → CESTs válidos para ele. */
     cests: new Map<string, string[]>(),
     todosCests: new Set<string>(),
+    /** Municípios vigentes por UF (a carga resolve cidade → IBGE, RN-CAD-03). */
+    municipiosPorUf: new Map<string, { ibge: string; nome: string }[]>(),
+    async municipiosDaUf(uf: string) {
+      return oficiais.municipiosPorUf.get(uf) ?? [];
+    },
     /** código IBGE → nome. */
     municipios: new Map<string, string>(),
     async nomesMunicipios(codigos: readonly string[]) {
@@ -245,7 +260,53 @@ export function repositoriosEmMemoria() {
       return (oficiais.cests.get(ncm) ?? []).includes(cest);
     },
   };
-  const repos = { filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
+  type Item = PrecoItem & { id: string; external_id: string | null; inativo: boolean };
+  const itemDe = (i: Item) => ({ id: i.id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp, inativo: i.inativo });
+  const filhasMem = { produto_unidade: { col: unidades, pai: 'produto_id' }, cliente_endereco: { col: enderecos, pai: 'cliente_id' } } as const;
+  const alvos = { filial: filiais, vendedor: vendedores, condicao_pagamento: condicoesPagamento, produto: produtos, tabela_preco: tabelasPreco, cliente: baseCliente };
+  const carga = {
+    falharProxima: null as null | (() => Error),
+    async idsPorExternalId(alvo: keyof typeof alvos, ids: readonly string[]) {
+      return new Map(alvos[alvo].linhas.filter((l) => !l.inativo && l.external_id && ids.includes(l.external_id)).map((l) => [l.external_id as string, l.id]));
+    },
+    async condicoesDaForma(ext: string) {
+      return condicoesPagamento.linhas.filter((l) => l.forma_external_id === ext).map((l) => structuredClone(l) as never);
+    },
+    async filhoPorExternalId(t: keyof typeof filhasMem, ext: string) {
+      const l = filhasMem[t].col.linhas.find((x) => x.external_id === ext);
+      return l ? { id: l.id, pai_id: l.pai, external_id: l.external_id ?? null, inativo: l.inativo, atual: structuredClone(l) } : null;
+    },
+    async unidadePorChave(produtoId: string, unidade: string) {
+      const l = unidades.linhas.find((x) => x.pai === produtoId && x.unidade === unidade);
+      return l ? { id: l.id, pai_id: l.pai, external_id: l.external_id ?? null, inativo: l.inativo, atual: structuredClone(l) } : null;
+    },
+    async reativarFilho(t: keyof typeof filhasMem, id: string) {
+      const l = filhasMem[t].col.linhas.find((x) => x.id === id);
+      if (l) l.inativo = false;
+    },
+    async itemPrecoPorExternalId(ext: string) {
+      const i = (itensPreco as Item[]).find((x) => x.external_id === ext);
+      return i ? itemDe(i) : null;
+    },
+    async itemPrecoPorChave(t: string, f: string, p: string) {
+      const i = (itensPreco as Item[]).find((x) => x.tabela_preco_id === t && x.filial_id === f && x.produto_id === p);
+      return i ? itemDe(i) : null;
+    },
+    async gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }) {
+      let i = (itensPreco as Item[]).find((x) => x.tabela_preco_id === p.tabelaId && x.filial_id === p.filialId && x.produto_id === p.produtoId);
+      if (!i) {
+        i = { id: randomUUID(), tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: 0, desconto_maximo_bp: 0, external_id: null, inativo: false };
+        itensPreco.push(i);
+      }
+      Object.assign(i, { preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp, external_id: p.externalId, inativo: p.inativo });
+      return { tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp };
+    },
+    /** Sem transação: o dublê só repassa (o rollback de verdade é testado no PostgreSQL). */
+    async comSavepoint<T>(fn: () => Promise<T>) {
+      return fn();
+    },
+  };
+  const repos = { carga, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
   return repos as unknown as Repositorios & typeof repos;
 }
 

@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { PAGINAS, acoesDaPagina, consultaDaUrl, csvDaPagina } from './paginas';
 import { paraQuery } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
+import { PAGINA_CARGA } from './carga';
 
 describe('páginas do BKO', () => {
   it('toda página do manifesto tem rota própria e menu declarado', () => {
     const menus = new Set<string>(manifest.web?.menus);
     for (const p of PAGINAS) expect(menus.has(p.menu), p.menu).toBe(true);
     expect(new Set(PAGINAS.map((p) => p.rota)).size).toBe(PAGINAS.length);
-    for (const m of menus) expect(PAGINAS.some((p) => p.menu === m), m).toBe(true);
+    for (const m of menus) expect(PAGINAS.some((p) => p.menu === m) || m === PAGINA_CARGA.menu, m).toBe(true);
   });
   it('filtros vivem na URL: ida e volta preserva busca, cursor e filtros e ignora o que não é da página', () => {
     const clientes = PAGINAS.find((p) => p.id === 'clientes')!;

@@ -5,14 +5,16 @@
  */
 import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type {
-  Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
+  CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import type {
-  ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
+  AlvoExterno, FilhoGravado, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 type Dict = Record<string, unknown>;
+/** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
+const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
 
@@ -104,6 +106,16 @@ class RepoTabela<E extends { id: string }, D> implements RepoSimples<E, D> {
 
   async inativar(id: string): Promise<E | null> {
     await executar(this.tx, `UPDATE ${this.m.tabela} SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
+    return this.obter(id);
+  }
+
+  async porCampo(campo: 'cnpj' | 'documento' | 'codigo', valor: string): Promise<E | null> {
+    if (!this.m.colunas.includes(campo)) throw new RangeError(`${this.m.tabela} sem a coluna ${campo}`);
+    return this.um(`${campo} = $1`, valor);
+  }
+
+  async reativar(id: string): Promise<E | null> {
+    await executar(this.tx, `UPDATE ${this.m.tabela} SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
     return this.obter(id);
   }
 
@@ -279,6 +291,8 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     },
   );
 
+  const condicoesPagamentoRepo = simples('cadastros.condicao_pagamento', COLUNAS_CONDICAO, ['codigo', 'descricao']) as unknown as RepoSimples<CondicaoPagamento, CondicaoPagamentoDados>;
+
   const estoque = {
     saldos: (q: { filial_id?: string; produto_id?: string }) => {
       const p: unknown[] = [];
@@ -355,10 +369,82 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     produtos,
     tabelasPreco: tabelasPreco as unknown as Repositorios['tabelasPreco'],
     estoque,
-    condicoesPagamento: simples('cadastros.condicao_pagamento', ['codigo', 'descricao', 'forma_tpag', 'prazos_dias'], ['codigo', 'descricao']) as never,
+    condicoesPagamento: condicoesPagamentoRepo,
     vendedores: vendedores as unknown as Repositorios['vendedores'],
     consultaExterna,
     oficiais: oficiaisSql(tx),
+    carga: cargaSql(tx),
+  };
+}
+
+const ALVOS: Record<AlvoExterno, string> = {
+  filial: 'cadastros.filial', vendedor: 'cadastros.vendedor', condicao_pagamento: 'cadastros.condicao_pagamento',
+  produto: 'cadastros.produto', tabela_preco: 'cadastros.tabela_preco', cliente: 'cadastros.cliente',
+};
+const FILHAS: Record<TabelaFilha, { tabela: string; pai: string; colunas: readonly string[]; numericas: readonly string[] }> = {
+  produto_unidade: { tabela: 'cadastros.produto_unidade', pai: 'produto_id', colunas: ['unidade', 'ean'], numericas: ['fator'] },
+  cliente_endereco: { tabela: 'cadastros.cliente_endereco', pai: 'cliente_id', colunas: ['tipo', ...ENDERECO], numericas: [] },
+};
+
+/** SQL da carga de CSV (T-0026): consultas por `external_id` e chave natural e o SAVEPOINT por linha (D7). */
+function cargaSql(tx: Transacao): RepoCarga {
+  const colunasFilho = (f: (typeof FILHAS)[TabelaFilha]) =>
+    ['id', 'external_id', f.pai, '(deleted_at IS NOT NULL) AS inativo', ...f.colunas, ...f.numericas.map(N)].join(', ');
+  const paraFilho = (f: (typeof FILHAS)[TabelaFilha], l: Dict): FilhoGravado => ({
+    id: l.id as string, pai_id: l[f.pai] as string, external_id: (l.external_id as string | null) ?? null, inativo: l.inativo === true,
+    atual: pegar(l, [...f.colunas, ...f.numericas]),
+  });
+  const colunasItem = `id, external_id, ${N('preco_centavos')}, desconto_maximo_bp, (deleted_at IS NOT NULL) AS inativo`;
+  const item = async (onde: string, p: unknown[]) => (await executar<ItemPrecoGravado>(tx, `SELECT ${colunasItem} FROM cadastros.tabela_preco_item WHERE ${onde} LIMIT 1`, p))[0] ?? null;
+  return {
+    async idsPorExternalId(alvo, ids) {
+      if (ids.length === 0) return new Map();
+      const l = await executar<{ id: string; external_id: string }>(tx, `SELECT id, external_id FROM ${ALVOS[alvo]} WHERE external_id = ANY($1::text[]) AND deleted_at IS NULL`, [[...ids]]);
+      return new Map(l.map((x) => [x.external_id, x.id]));
+    },
+    async condicoesDaForma(ext) {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE forma_external_id = $1 ORDER BY id`, [ext]);
+      return l as unknown as CondicaoPagamento[];
+    },
+    async filhoPorExternalId(t, ext) {
+      const f = FILHAS[t];
+      const l = await executar(tx, `SELECT ${colunasFilho(f)} FROM ${f.tabela} WHERE external_id = $1 LIMIT 1`, [ext]);
+      return l[0] ? paraFilho(f, l[0]) : null;
+    },
+    async unidadePorChave(produtoId, unidade) {
+      const f = FILHAS.produto_unidade;
+      const l = await executar(tx, `SELECT ${colunasFilho(f)} FROM ${f.tabela} WHERE produto_id = $1 AND unidade = $2 LIMIT 1`, [produtoId, unidade]);
+      return l[0] ? paraFilho(f, l[0]) : null;
+    },
+    async reativarFilho(t, id) {
+      await executar(tx, `UPDATE ${FILHAS[t].tabela} SET deleted_at = NULL WHERE id = $1`, [id]);
+    },
+    itemPrecoPorExternalId: (ext) => item('external_id = $1', [ext]),
+    itemPrecoPorChave: (t, f, p) => item('tabela_preco_id = $1 AND filial_id = $2 AND produto_id = $3', [t, f, p]),
+    async gravarItemPreco(p) {
+      const r = await executar<PrecoItem>(
+        tx,
+        `INSERT INTO cadastros.tabela_preco_item (tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos, desconto_maximo_bp, external_id, deleted_at)
+         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, CASE WHEN $7::boolean THEN now() END)
+         ON CONFLICT (tenant_id, tabela_preco_id, filial_id, produto_id) DO UPDATE
+           SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, external_id = EXCLUDED.external_id,
+               deleted_at = CASE WHEN $7::boolean THEN COALESCE(cadastros.tabela_preco_item.deleted_at, now()) END
+         RETURNING tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp`,
+        [p.tabelaId, p.filialId, p.produtoId, p.preco_centavos, p.desconto_maximo_bp, p.externalId, p.inativo],
+      );
+      return r[0] as PrecoItem;
+    },
+    async comSavepoint(fn) {
+      await tx.consultar('SAVEPOINT carga_linha');
+      try {
+        const r = await fn();
+        await tx.consultar('RELEASE SAVEPOINT carga_linha');
+        return r;
+      } catch (e) {
+        await tx.consultar('ROLLBACK TO SAVEPOINT carga_linha');
+        throw e;
+      }
+    },
   };
 }
 
@@ -393,6 +479,9 @@ function oficiaisSql(tx: Transacao): RepoOficiais {
         p,
       );
       return paginar(linhas, q.limite);
+    },
+    async municipiosDaUf(uf, data) {
+      return executar<{ ibge: string; nome: string }>(tx, `SELECT o.codigo AS ibge, o.nome FROM cadastros.municipio o WHERE o.uf = $1 AND ${VIGENTE('o').replaceAll('$D', '$2')}`, [uf, data]);
     },
     async nomesMunicipios(codigos) {
       if (codigos.length === 0) return new Map();

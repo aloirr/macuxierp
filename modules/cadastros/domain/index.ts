@@ -8,3 +8,4 @@ export * from './municipio';
 export * from './preco';
 export * from './produto';
 export * from './violacao';
+export * from './carga';

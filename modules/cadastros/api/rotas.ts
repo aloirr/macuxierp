@@ -19,7 +19,8 @@ import {
   validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
-import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
+import { rotaCarga } from './carga';
+import { publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
@@ -34,7 +35,6 @@ async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: 
     payload: dados });
 }
 
-const publicarPronto = (c: ContextoRota, e: EventoPronto) => publicar(c, e.nome, e.agregado_id, e.payload);
 /** Emissor de um cadastro: monta o evento pronto (de `eventos.ts`) e publica; serve de `emitir` do CRUD e de `aoGravar` do filho. */
 const emitirCom =
   <E>(montar: (r: Repositorios, e: E) => EventoPronto | Promise<EventoPronto>) =>
@@ -330,12 +330,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     async emitir(c, r, t, antes) {
       await publicarPronto(c, eventoTabelaPreco(t)); // C-2: criação e alteração
       if (!antes || (antes.vigencia_inicio === t.vigencia_inicio && antes.vigencia_fim === t.vigencia_fim && antes.inativo === t.inativo)) return;
-      let cursor: string | undefined;
-      do {
-        const pagina = await r.tabelasPreco.itens(t.id, { limite: 1000, cursor });
-        for (const i of pagina.itens) await publicarPronto(c, eventoPreco(i, t));
-        cursor = pagina.proximo_cursor ?? undefined;
-      } while (cursor);
+      await republicarItensDaTabela(c, r, t);
     },
     async validar(_r, t) {
       const vig = validarVigenciaTabela(t.vigencia_inicio as string, t.vigencia_fim as string | null);
@@ -525,6 +520,8 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       return { corpo: await R(c).oficiais.listar(tabela, e.consulta) };
     },
   }));
+
+  rotas.push(rotaCarga(deps));
 
   return rotas;
 }
