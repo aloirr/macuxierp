@@ -45,6 +45,11 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 |---|---|---|
 | `integracao-fdv.carga_inicial.solicitada@1` | tenant (`tenant_id`) | `{ entidades: string[] }`. Motivo: o espelho do Hub está vazio na primeira credencial ou na troca de conector (C-4). Consome: `cadastros`, com leitor tolerante (Zod local com `passthrough`, sem importar o pacote do `integracao-fdv`, ignorando entidade desconhecida), que republica os `alterado@1` do tenant pelo trabalho paginado `cadastros.carga_inicial` |
 
+## Payloads de pedido (v1)
+| Evento | `agregado_id` | Payload |
+|---|---|---|
+| `pedido.pedido.faturado@1` | pedido | `Base` + `ambiente` + `nota {…}` + `itens_faturados […]`. Campos em `docs/desenho/T-0013.md` §8; Zod em `modules/pedido/contracts` |
+
 ## Dependências
 core ← cadastros ← (pedido, fiscal) ← faturamento; integracao-fdv ← (cadastros, pedido) e consome eventos de faturamento. Quando importar o contrato do publicador criaria ciclo de pacotes (ex.: `cadastros` lendo `faturamento.nota.autorizada@1` para baixar estoque, na F4), o consumidor valida o evento com um leitor tolerante próprio (subconjunto do payload). O publicador continua dono do schema.
 

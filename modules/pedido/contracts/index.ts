@@ -30,7 +30,6 @@ export const CodigoPendencia = z.enum([
   'credito_sem_limite',
   'credito_excedido',
   'estoque_insuficiente',
-  'total_divergente',
 ]);
 export type CodigoPendencia = z.infer<typeof CodigoPendencia>;
 
@@ -50,7 +49,6 @@ export type Pendencia = z.infer<typeof Pendencia>;
  * - `credito_sem_limite`: centavos (esperado = limite do cliente, 0; informado = total do pedido);
  * - `credito_excedido`: centavos (esperado = limite do cliente; informado = títulos abertos + compromisso + este pedido);
  * - `estoque_insuficiente`: Qtd4 (esperado = saldo livre, já descontado o compromisso, mínimo 0; informado = quantidade pedida do produto);
- * - `total_divergente`: centavos (esperado = total recalculado pelo ERP; informado = total vindo do FDV);
  * - demais códigos: nulos.
  */
 export const PendenciaDetalhada = Pendencia.extend({
@@ -124,7 +122,12 @@ export const ItemPedidoFdvEntrada = z.object({
 });
 export type ItemPedidoFdvEntrada = z.infer<typeof ItemPedidoFdvEntrada>;
 
-/** RF-PED-01: o `PedidoParaErp` já traduzido pelo `integracao-fdv` (T-0013 §5.2, coluna ERP). */
+/**
+ * RF-PED-01: o `PedidoParaErp` já traduzido pelo `integracao-fdv` (T-0013 §5.2, coluna ERP).
+ * O pedido do FDV já vem aprovado na origem e entra no ERP como `aprovado`, sem análise de crédito nem nova aprovação:
+ * `recebido@1` com `pendencias: []` e `aprovado@1` com `automatica: true`, na mesma transação.
+ * O total é sempre recalculado pelos itens; `total_informado_centavos` (e o do item) só fica guardado.
+ */
 export const PedidoFdvEntrada = z.object({
   pedido_uuid: Uuid,
   cliente_id: Uuid,
@@ -142,13 +145,27 @@ export const PedidoFdvEntrada = z.object({
 });
 export type PedidoFdvEntrada = z.infer<typeof PedidoFdvEntrada>;
 
+/** Recusa do recebimento do FDV (decisão de 21/11/2026, 23h10): problema de cadastro; a T-0016 devolve `rejeitado_erp`. */
+export const CodigoRecusaRecebimento = z.enum([
+  'modulo_pedido_inativo',
+  'cliente_inexistente',
+  'cliente_inativo',
+  'produto_inexistente',
+  'produto_inativo',
+  'filial_inexistente',
+  'filial_nao_emissora',
+  'condicao_inexistente',
+  'condicao_inativa',
+  'item_incoerente',
+]);
+export type CodigoRecusaRecebimento = z.infer<typeof CodigoRecusaRecebimento>;
+
 export const ResultadoRecebimentoFdv = z.discriminatedUnion('resultado', [
-  z.object({ resultado: z.enum(['criado', 'repetido']), pedido_id: Uuid, numero: z.number().int().positive(), status: StatusPedido }),
-  // `item_incoerente`: desconto maior que o valor do item; a porta `criarRecebedorFdv` chama `verificarItens` antes de avaliar.
-  z.object({
-    resultado: z.literal('recusado'),
-    codigo: z.enum(['modulo_pedido_inativo', 'cliente_inexistente', 'produto_inexistente', 'filial_inexistente', 'item_incoerente']),
-  }),
+  // Criado: o pedido do FDV entra sempre `aprovado`. Repetido: devolve o status atual do pedido já existente.
+  z.object({ resultado: z.literal('criado'), pedido_id: Uuid, numero: z.number().int().positive(), status: z.literal('aprovado') }),
+  z.object({ resultado: z.literal('repetido'), pedido_id: Uuid, numero: z.number().int().positive(), status: StatusPedido }),
+  // `item_incoerente`: desconto maior que o valor do item (`verificarItens`).
+  z.object({ resultado: z.literal('recusado'), codigo: CodigoRecusaRecebimento }),
 ]);
 export type ResultadoRecebimentoFdv = z.infer<typeof ResultadoRecebimentoFdv>;
 

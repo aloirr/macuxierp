@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./dinheiro": "./src/dinheiro.ts",
+    "./erros": "./src/erros.ts",
     "./listas": "./src/listas.ts",
     "./paginas": "./src/paginas.ts",
     "./pg": "./src/pg.ts",
