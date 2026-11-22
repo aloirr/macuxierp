@@ -25,12 +25,17 @@ A ordem inversa dá o erro **409 topologia_conflitante** e nada muda.
 A partir da virada de uma entidade, **essa entidade passa a ser mantida no Macuxi ERP**: por exemplo, o preço é alterado no ERP, e não mais no sistema antigo. O kit para de mandar só aquela entidade; as outras continuam normais.
 
 ## Etapa 0 — Criar o Conector do ERP (pode ser feita agora)
+O FDV não aceita um Conector sem entidades: com o campo em branco, ele nasce com as 8 entidades padrão e dá 409 contra o kit. Por isso o Conector do ERP já nasce com `forma_pagamento`, depois que ela sai do kit.
+
 | # | Onde | O que fazer |
 |---|---|---|
-| 0.1 | BKO do FDV, empresa thathyany, perfil administrador | Abra **Integração ERP > Conectores > Novo Conector**. |
-| 0.2 | Cadastro do Conector | Preencha:<br>- identificador: `macuxierp`;<br>- nome: `Macuxi ERP (nuvem)`;<br>- tipo: API direta;<br>- **recebe pedidos: DESMARCADO**;<br>- aceita cancelamento: desmarcado;<br>- **entidades: nenhuma**. Se a tela não aceitar a lista vazia, marque só `forma_pagamento` e faça antes os passos 2.1 e 2.2 da Etapa 2. |
-| 0.3 | Ao salvar | A chave `mxc_…` aparece **uma única vez**. **Não copie a chave para chat, recado nem e-mail.** Deixe a tela aberta. |
-| 0.4 | Claude (formulário seguro) | Avise o PO com a frase da coluna "Devolva". O gerente abre o formulário seguro do ambiente MacuxiERP-GP para `api.macuxifdv.com.br` (Authorization: Bearer). Digite a chave **só no formulário**. Se a chave se perder, use **Rotacionar chave** no Conector; a chave anterior continua valendo por 24 h. |
+| 0.1 | Máquina do kit | No `conector.json` do kit, desative `forma_pagamento`. |
+| 0.2 | BKO do FDV, empresa thathyany, perfil administrador > **Integração ERP > Conectores** > Conector do **kit** | Desmarque `forma_pagamento` e salve. |
+| 0.3 | BKO do FDV > **Integração ERP > Conectores > Novo Conector** | Preencha:<br>- identificador: `macuxierp`;<br>- nome: `Macuxi ERP (nuvem)`;<br>- **tipo: nuvem**;<br>- **recebe pedidos: DESMARCADO**;<br>- aceita cancelamento: desmarcado;<br>- **entidades: só `forma_pagamento`**. |
+| 0.4 | Ao salvar | A chave `mxc_…` aparece **uma única vez**. **Não copie a chave para chat, recado ou e-mail.** Deixe a tela aberta. |
+| 0.5 | Claude (formulário seguro) | Avise o PO (veja "Devolva" abaixo). O gerente abre o formulário seguro do ambiente MacuxiERP-GP para `api.macuxifdv.com.br` (Authorization: Bearer). Digite a chave **só no formulário**. Se a chave se perder, use **Rotacionar chave** no Conector; a chave anterior ainda vale por 24 h. |
+
+Até o ERP entrar em produção (Etapa 1), `forma_pagamento` fica parada no Hub: o app dos vendedores continua com as formas que já estão lá, porque nada é inativado.
 
 **Devolva:** `Conector criado: macuxierp` (o identificador não é segredo). Depois do formulário: `chave gravada`.
 
@@ -60,7 +65,7 @@ Os passos são os mesmos em todas essas etapas. Troque `<entidade>` pelo nome da
 
 | Etapa | Entidade(s) | Quando ("pronto para a etapa N") | A partir daí, mantida no ERP |
 |---|---|---|---|
-| 2 | `forma_pagamento` | Depois de: L2 e L3 do conector (T-0011), ADR 0010 e migração 0015 no main; T-0012 verde no dublê; deploy com o conector ligado; Etapas 0 e 1 feitas. | formas de pagamento |
+| 2 | `forma_pagamento`: os passos a a c já foram feitos na Etapa 0; ficam d a f (primeira carga e conferência) | Depois de: L2 e L3 do conector (T-0011), ADR 0010 e migração 0015 no main; T-0012 verde no dublê; deploy com o conector ligado; Etapas 0 e 1 feitas. | formas de pagamento |
 | 3 | `prazo_pagamento` | Etapa 2 conferida | condições e prazos |
 | 4 | `filial` e depois `vendedor`. O vendedor exige a filial. | Etapa 3 conferida | filiais, equipe e carteira |
 | 5 | `produto` e depois `produto_unidade` | Etapa 4 conferida | cadastro de produtos |
@@ -83,10 +88,9 @@ Estoque, títulos e notas nascem do faturamento. Enquanto a thathyany faturar no
 | 9.3 | Conector **macuxierp** | Marque **recebe pedidos** e salve. Na v1, um só Conector por empresa recebe pedidos. |
 | 9.4 | — | Mande ao PO: `virada de pedidos feita`. O ERP passa a buscar os pedidos aprovados. Um pedido sem retorno volta à fila em 10 min, e o ERP não duplica (RN-PED-01). |
 
-## O que o time confere antes da Etapa 2 (sem pergunta ao Alexandre)
-O time do ERP confere no código do FDV, antes de pedir a Etapa 2, os pontos que o código não diz com todas as letras:
-- o valor do tipo "API direta" no cadastro;
-- se o BKO aceita um Conector sem entidades;
-- se a inativação da carga completa conta só os registros daquele Conector ou todos os da entidade;
-- se a fila de pedidos pendentes é da empresa ou do Conector.
-Se algum ponto mudar um passo, o roteiro é corrigido antes do aviso "pronto para a etapa 2".
+## Conferido pelo time no código do FDV (22/11, 00h00)
+A T-0011 conferiu por busca de código no aloirr/macuxifdv:
+- **Tipo:** `nuvem` (`TIPOS_CONECTOR = ['conector', 'nuvem', 'arquivo']`). O tipo `conector` é o serviço on-premise e o `arquivo` é o portal de CSV.
+- **Entidades:** o Conector precisa de pelo menos 1 entidade (`check cardinality(entidades) >= 1`). Daí a Etapa 0 acima.
+- **Inativação da carga completa:** conta só os registros do próprio Conector (`registro_atual ... conector_id = $3`). A chave do registro é da empresa, `(tenant_id, entidade, external_id)`. Com os mesmos external_id do kit, o ERP atualiza o mesmo registro e não duplica. O que o ERP não mandar fica ativo, com o Conector do kit.
+- **Fila de pedidos:** é da empresa, por `(tenant, pedido_uuid)`, e só é entregue a um Conector com "recebe pedidos". Na Etapa 9, os pedidos pendentes passam ao ERP.
