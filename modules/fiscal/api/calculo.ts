@@ -61,11 +61,19 @@ export function criarCalculoFiscal(deps: DepsCalculoFiscal): CalculoFiscalDoFisc
         repo.cargas(tx, { data_emissao: entrada.data_emissao, uf: ufEmit.data, ncms }),
       ]);
 
+      const idsProdutos = [...new Set(entrada.itens.flatMap((i) => (i.produto_id ? [i.produto_id] : [])))];
+      const fabricados = idsProdutos.length > 0 ? await deps.emitentes.producaoPropria(tx, idsProdutos) : new Set<string>();
       const dest = destinatarioPeloIndIe(retrato.ind_ie_dest);
-      const ctx: EntradaCfop = { uf_emitente: ufEmit.data, uf_destino: ufDest.data, industrial_ipi: emitente.industrial_ipi ?? false, tipo_contribuinte: dest.tipo_contribuinte };
+      const ctxItem = (i: { produto_id?: string }): EntradaCfop => ({
+        uf_emitente: ufEmit.data,
+        uf_destino: ufDest.data,
+        producao_propria: i.produto_id !== undefined && fabricados.has(i.produto_id),
+        tipo_contribuinte: dest.tipo_contribuinte,
+      });
+      const ctxPorSeq = new Map(entrada.itens.map((i) => [i.sequencia, ctxItem(i)]));
       const montar = (cfops: Record<number, string>): ReturnType<typeof CalculoEntrada.safeParse> =>
         CalculoEntrada.safeParse({
-          emitente: { uf: ufEmit.data, crt: emitente.crt, regime_pis_cofins: emitente.regime_pis_cofins, industrial_ipi: ctx.industrial_ipi },
+          emitente: { uf: ufEmit.data, crt: emitente.crt, regime_pis_cofins: emitente.regime_pis_cofins, industrial_ipi: emitente.industrial_ipi ?? false },
           destinatario: {
             uf: ufDest.data,
             tipo_contribuinte: dest.tipo_contribuinte,
@@ -91,18 +99,19 @@ export function criarCalculoFiscal(deps: DepsCalculoFiscal): CalculoFiscalDoFisc
           regras,
         });
 
-      let cfops: Record<number, string> = Object.fromEntries(entrada.itens.map((i) => [i.sequencia, cfopBase(ctx)]));
+      let cfops: Record<number, string> = Object.fromEntries(entrada.itens.map((i) => [i.sequencia, cfopBase(ctxPorSeq.get(i.sequencia)!)]));
       for (let passada = 0; passada < 2; passada++) {
         const e = montar(cfops);
         if (!e.success) return falha('ENTRADA_INVALIDA', `Entrada do cálculo inválida: ${e.error.issues[0]?.path.join('.') ?? ''}.`);
         const r = calcularDocumento(e.data);
         if (!r.ok) return { ok: false, erros: r.erros };
-        const novos = Object.fromEntries(
-          r.valor.itens.map((it) => {
-            const seq = Number(it.item_id);
-            return [seq, cfopPeloIcms(ctx, it.icms.csosn ?? it.icms.cst)];
-          }),
-        ) as Record<number, string>;
+        const novos: Record<number, string> = {};
+        for (const it of r.valor.itens) {
+          const seq = Number(it.item_id);
+          const ctx = ctxPorSeq.get(seq);
+          if (!ctx) return { ok: false, erros: [{ rn: 'RN-FIS-01', codigo: 'REGRA_INCOMPLETA', item_id: it.item_id, mensagem: 'Item devolvido pelo motor não consta da entrada' }] };
+          novos[seq] = cfopPeloIcms(ctx, it.icms.csosn ?? it.icms.cst);
+        }
         const diverge = entrada.itens.find((i) => novos[i.sequencia] !== cfops[i.sequencia]);
         if (!diverge) {
           const saida: CalculoSaida = { ...r.valor, itens: r.valor.itens.map((it) => ({ ...it, cfop: cfops[Number(it.item_id)] })) };

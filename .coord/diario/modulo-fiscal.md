@@ -1,2 +1,4 @@
 2026-11-22 — T-0021 — adaptador CalculoFiscal (fiscal/api) sobre fiscal.calculo@1, CFOP puro, leitura de regras/IBPT com RLS
 2026-11-22 — T-0021 — ajustes da revisão (RD-0529/0530/0531): cfop e ind_ie_dest no domain, ResultadoCalculoFiscal em contracts, CFOP incoerente vira REGRA_INCOMPLETA
+2026-11-22 — T-0021 — CFOP por item pela produção própria do produto (porta producaoPropria, domain/cfop, calculo)
+2026-11-22 — T-0021 — CFOP por item pela produção própria (ConsultaEmitenteFiscal.producaoPropria): fabricado 5101/6101/6107/5401/6401, revenda 5102/6102/6108/5403/6403; RD-0628 a RD-0630 aplicados; revisão do engenheiro aprovada.

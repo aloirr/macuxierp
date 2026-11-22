@@ -61,8 +61,17 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   it('RN-PED-05: pedido do BKO não gera retorno', () => {
     expect(retornoDoPedido(ev('pedido.pedido.recebido@1', { origem: 'bko', pedido_uuid: null }), null)).toEqual({ acao: 'ignorar', motivo: 'origem_nao_fdv' });
   });
-  it('RN-PED-05: faturado de homologação não gera retorno', () => {
-    expect(retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'homologacao', nota, itens_faturados: itens }), 'integrado')).toEqual({ acao: 'ignorar', motivo: 'homologacao' });
+  it('RN-PED-05 / RN-FAT-04/M7: faturado de homologação sem conta_como_real true não gera retorno', () => {
+    for (const extra of [{}, { conta_como_real: false }]) {
+      expect(retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'homologacao', ...extra, nota, itens_faturados: itens }), 'integrado', CHAVES)).toEqual({ acao: 'ignorar', motivo: 'homologacao' });
+    }
+  });
+  it('RN-FAT-04/M7: nota de homologação com conta_como_real true vai ao FDV com número e série', () => {
+    const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'homologacao', conta_como_real: true, nota, itens_faturados: itens }), 'integrado', CHAVES);
+    expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total', nota: { numero: nota.numero, serie: nota.serie } } });
+  });
+  it('RN-FAT-04/M7: faturado de produção vai ao FDV mesmo com conta_como_real false', () => {
+    expect(retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', conta_como_real: false, nota, itens_faturados: itens }), 'integrado', CHAVES).acao).toBe('enviar');
   });
   it('RN-PED-05: depois de status terminal no Hub, nada mais é enviado; integrado repetido é ignorado', () => {
     expect(retornoDoPedido(ev('pedido.pedido.cancelado@1', { status: 'cancelado' }), 'cancelado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
