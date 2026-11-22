@@ -20,4 +20,14 @@ describe('EuResposta (contrato do GET /v1/auth/eu)', () => {
     expect(() => EuResposta.parse({ ...eu, empresa: { ...eu.empresa, id: 'x' } })).toThrow();
     expect(EuResposta.parse({ ...eu, usuario: { ...eu.usuario, email: 'a@b.c' } }).usuario).not.toHaveProperty('email');
   });
+
+  it('T-0035: avisos_a1 é opcional (compatível) e, quando vem, tem filial, dias inteiros e validade ISO UTC', () => {
+    expect(EuResposta.parse(eu)).not.toHaveProperty('avisos_a1');
+    const aviso = { filial_id: eu.filiais[0]!.id, dias: -2, valido_ate: '2026-11-19T00:00:00.000Z' };
+    expect(EuResposta.parse({ ...eu, avisos_a1: [aviso] }).avisos_a1).toEqual([aviso]);
+    expect(EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, titular: 'Fulano' }] }).avisos_a1?.[0]).not.toHaveProperty('titular');
+    expect(() => EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, dias: 1.5 }] })).toThrow();
+    expect(() => EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, valido_ate: '19/11/2026' }] })).toThrow();
+    expect(() => EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, filial_id: 'x' }] })).toThrow();
+  });
 });

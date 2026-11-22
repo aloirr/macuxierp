@@ -7,6 +7,6 @@ export const manifest = defineModule({
   depende: ['core'],
   perfis: ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'],
   web: { menus: ['Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 'Condições de pagamento', 'Equipe e carteira', 'Filiais', 'Tabelas oficiais'] },
-  publica: ['cadastros.cliente.alterado@1', 'cadastros.produto.alterado@1', 'cadastros.preco.alterado@1', 'cadastros.estoque.alterado@1', 'cadastros.filial.alterada@1', 'cadastros.vendedor.alterado@1', 'cadastros.carteira.alterada@1', 'cadastros.condicao_pagamento.alterada@1'],
-  consome: [],
+  publica: ['cadastros.cliente.alterado@1', 'cadastros.produto.alterado@1', 'cadastros.preco.alterado@1', 'cadastros.estoque.alterado@1', 'cadastros.filial.alterada@1', 'cadastros.vendedor.alterado@1', 'cadastros.carteira.alterada@1', 'cadastros.condicao_pagamento.alterada@1', 'cadastros.tabela_preco.alterada@1'],
+  consome: ['integracao-fdv.carga_inicial.solicitada@1'],
 });
