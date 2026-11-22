@@ -4,7 +4,7 @@
  */
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import type { AuditoriaItem, CertificadoResumo, Licenca, Usuario } from '../contracts';
-import type { ColunaCsv } from './csv';
+import type { ColunaCsv } from '@macuxierp/platform-sdk/listas';
 
 export interface Coluna<L> extends ColunaCsv<L> {
   id: string;

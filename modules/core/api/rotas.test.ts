@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import {
   ArmazenamentoMemoria,
+  ArquivoRecebido,
   auditar,
   criarEvento,
   erros,
@@ -58,7 +59,7 @@ function montar(leitor: LeitorPfx = new LeitorFalso()) {
   async function chamar(
     metodo: string,
     caminho: string,
-    o: { perfil?: Perfil; corpo?: unknown; consulta?: unknown; params?: Record<string, string>; agora?: Date } = {},
+    o: { perfil?: Perfil; corpo?: unknown; consulta?: unknown; params?: Record<string, string>; arquivos?: Record<string, ArquivoRecebido>; agora?: Date } = {},
   ): Promise<RespostaRota> {
     const rota = plugin.rotas.find((r) => r.metodo === metodo && r.caminho === caminho);
     if (!rota) throw new Error(`rota inexistente ${metodo} ${caminho}`);
@@ -83,7 +84,7 @@ function montar(leitor: LeitorPfx = new LeitorFalso()) {
     };
     const corpo = rota.corpo ? rota.corpo.parse(o.corpo) : undefined;
     const consulta = rota.consulta ? rota.consulta.parse(o.consulta ?? {}) : undefined;
-    return rota.executar(c, { corpo, consulta, params: o.params ?? {} });
+    return rota.executar(c, { corpo, consulta, params: o.params ?? {}, cabecalhos: {}, arquivos: o.arquivos ?? {} });
   }
 
   return { repo, auditoria, outbox, fila, armazenamento, chamar, plugin };
@@ -293,14 +294,15 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     impressao_digital: 'ab'.repeat(32),
     ...o,
   });
-  const envio = (pfx: Buffer, senha = 'senha-do-teste') => ({ filial_id: FILIAL, arquivo_base64: pfx.toString('base64'), senha });
+  /** POST /certificados é multipart: campos de texto em `corpo` e o `.pfx` em `arquivos.arquivo`. */
+  const envio = (pfx: Buffer, senha = 'senha-do-teste') => ({ corpo: { filial_id: FILIAL, senha }, arquivos: { arquivo: new ArquivoRecebido('arquivo', 'a1.pfx', 'application/x-pkcs12', pfx) } });
 
   it('RF-CORE-04: grava cifrado, devolve só o resumo e nada de .pfx ou senha em resposta, auditoria ou evento', async () => {
     const leitor = new LeitorFalso();
     leitor.dados = dados();
     const t = montar(leitor);
     const pfx = randomBytes(900);
-    const r = await t.chamar('POST', '/certificados', { corpo: envio(pfx) });
+    const r = await t.chamar('POST', '/certificados', envio(pfx));
     expect(r.status).toBe(201);
     expect(r.corpo).toMatchObject({ filial_id: FILIAL, cnpj: '11222333000262', dias_para_vencer: 49, alerta_vencimento: false, ativo: true });
     const guardado = t.repo.certificadosLinhas[0];
@@ -321,7 +323,7 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     const leitor = new LeitorFalso();
     leitor.dados = dados({ valido_ate: new Date('2026-11-01T03:00:00Z') });
     const t = montar(leitor);
-    const e = await regra(t.chamar('POST', '/certificados', { corpo: envio(randomBytes(100)) }), 'RN-CORE-06');
+    const e = await regra(t.chamar('POST', '/certificados', envio(randomBytes(100))), 'RN-CORE-06');
     expect(e.message).toBe('Certificado vencido em 31/10/2026: envie o novo');
     expect(t.repo.certificadosLinhas).toHaveLength(0);
   });
@@ -330,28 +332,39 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     const leitor = new LeitorFalso();
     leitor.dados = dados({ cnpj: '99888777000155' });
     const t = montar(leitor);
-    await regra(t.chamar('POST', '/certificados', { corpo: envio(randomBytes(100)) }), 'RN-CORE-06');
+    await regra(t.chamar('POST', '/certificados', envio(randomBytes(100))), 'RN-CORE-06');
     leitor.dados = null; // o leitor falha como falha com senha errada
-    const e = await regra(t.chamar('POST', '/certificados', { corpo: envio(randomBytes(100), 'senha-errada') }), 'RN-CORE-06');
+    const e = await regra(t.chamar('POST', '/certificados', envio(randomBytes(100), 'senha-errada')), 'RN-CORE-06');
     expect(e.message).not.toContain('senha-errada');
     expect(t.repo.certificadosLinhas).toHaveLength(0);
   });
 
-  it('ADR 0005: .pfx acima de 50 KB é 400; novo certificado substitui o ativo da filial', async () => {
+  it('ADR 0005: .pfx vazio é 400 (o limite de 50 KB é do multipart); novo certificado substitui o ativo da filial', async () => {
     const leitor = new LeitorFalso();
     leitor.dados = dados();
     const t = montar(leitor);
-    await expect(t.chamar('POST', '/certificados', { corpo: envio(randomBytes(50 * 1024 + 1)) })).rejects.toMatchObject({ status: 400 });
-    await t.chamar('POST', '/certificados', { corpo: envio(randomBytes(100)) });
-    await t.chamar('POST', '/certificados', { corpo: envio(randomBytes(100)) });
+    await expect(t.chamar('POST', '/certificados', envio(Buffer.alloc(0)))).rejects.toMatchObject({ status: 400 });
+    await t.chamar('POST', '/certificados', envio(randomBytes(100)));
+    await t.chamar('POST', '/certificados', envio(randomBytes(100)));
     expect(t.repo.certificadosLinhas.map((c) => c.ativo)).toEqual([false, true]);
+  });
+
+  it('RF-CORE-04: a rota declara multipart com o campo arquivo até 50 KB e sem arquivo_base64', () => {
+    const rota = montar(new LeitorFalso()).plugin.rotas.find((r) => r.metodo === 'POST' && r.caminho === '/certificados');
+    expect(rota?.multipart).toEqual({ arquivos: [{ campo: 'arquivo', tamanhoMaximo: 50 * 1024 }] });
+    expect(JSON.stringify(rota?.corpo?.safeParse({ filial_id: FILIAL, senha: 'x' }))).not.toContain('arquivo');
+  });
+
+  it('RN-CORE-06: sem o campo arquivo, 400', async () => {
+    const t = montar(new LeitorFalso());
+    await expect(t.chamar('POST', '/certificados', { corpo: { filial_id: FILIAL, senha: 'x' } })).rejects.toMatchObject({ status: 400 });
   });
 
   it('RF-CORE-04: o resumo marca alerta a 30 dias ou menos de vencer', async () => {
     const leitor = new LeitorFalso();
     leitor.dados = dados({ valido_ate: new Date('2026-12-10T12:00:00Z') });
     const t = montar(leitor);
-    const r = await t.chamar('POST', '/certificados', { corpo: envio(randomBytes(100)) });
+    const r = await t.chamar('POST', '/certificados', envio(randomBytes(100)));
     expect(r.corpo).toMatchObject({ dias_para_vencer: 18, alerta_vencimento: true });
   });
 });
@@ -398,18 +411,18 @@ describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próp
   it.skipIf(!temOpenssl)('RN-CORE-06: de ponta a ponta, o A1 real da mesma raiz entra e, depois da validade, é recusado', async () => {
     const t = montar(new LeitorPfxTls());
     const dados = await new LeitorPfxTls().abrir(pfx, 'senha-gerada-no-teste');
-    const corpo = { filial_id: FILIAL, arquivo_base64: pfx.toString('base64'), senha: 'senha-gerada-no-teste' };
+    const envio = { corpo: { filial_id: FILIAL, senha: 'senha-gerada-no-teste' }, arquivos: { arquivo: new ArquivoRecebido('arquivo', 'a1.pfx', 'application/x-pkcs12', pfx) } };
     const dentro = new Date(dados.valido_de.getTime() + 86_400_000);
-    expect((await t.chamar('POST', '/certificados', { corpo, agora: dentro })).status).toBe(201);
+    expect((await t.chamar('POST', '/certificados', { ...envio, agora: dentro })).status).toBe(201);
     const depois = new Date(dados.valido_ate.getTime() + 86_400_000);
-    await regra(t.chamar('POST', '/certificados', { corpo, agora: depois }), 'RN-CORE-06');
+    await regra(t.chamar('POST', '/certificados', { ...envio, agora: depois }), 'RN-CORE-06');
   });
 
   it.skipIf(!temOpenssl)('RN-CORE-06: A1 de outra raiz de CNPJ é recusado com o arquivo real', async () => {
     const outro = gerarPfx('OUTRA EMPRESA SA:11444777000161', 'x-teste');
     const t = montar(new LeitorPfxTls());
     const d = await new LeitorPfxTls().abrir(outro, 'x-teste');
-    await regra(t.chamar('POST', '/certificados', { corpo: { filial_id: FILIAL, arquivo_base64: outro.toString('base64'), senha: 'x-teste' }, agora: new Date(d.valido_de.getTime() + 86_400_000) }), 'RN-CORE-06');
+    await regra(t.chamar('POST', '/certificados', { corpo: { filial_id: FILIAL, senha: 'x-teste' }, arquivos: { arquivo: new ArquivoRecebido('arquivo', 'a1.pfx', 'application/x-pkcs12', outro) }, agora: new Date(d.valido_de.getTime() + 86_400_000) }), 'RN-CORE-06');
   });
 });
 
