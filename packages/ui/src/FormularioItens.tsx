@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import { botaoSecundario, cor, desabilitadoEstilo, espaco, mensagemErro, numerico, tabela, texto } from './estilos.js';
+import { botaoSecundario, campoBase, cor, desabilitadoEstilo, espaco, mensagemErro, numerico, tabela } from './estilos.js';
 import { centavosParaReais, reaisParaCentavos, textoParaQuantidade } from './entradas.js';
 
 /** Linha mínima do formulário. Valores monetários em centavos (inteiros). O módulo pode estender com campos próprios. */
@@ -44,7 +44,7 @@ export interface FormularioItensProps<T extends ItemLinha = ItemLinha> {
   legenda?: string;
 }
 
-const campo = { ...texto('pequeno'), minWidth: 0, border: `1px solid ${cor('bordaCampo')}`, padding: espaco.xs, width: '100%', boxSizing: 'border-box' } as const;
+const campo = { ...campoBase, minWidth: 0, width: '100%', boxSizing: 'border-box' } as const;
 
 interface CampoProps {
   rotulo: string;

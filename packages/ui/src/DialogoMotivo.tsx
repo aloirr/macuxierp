@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { botaoPrincipal, botaoSecundario, cor, espaco, mensagemErro, texto } from './estilos.js';
+import { botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, texto } from './estilos.js';
 
 export interface MotivoOpcao {
   codigo: string;
@@ -31,14 +31,30 @@ export interface DialogoMotivoProps {
   aoCancelar: () => void;
 }
 
-/** Mensagem de erro ou null. Com motivos listados, escolher um é obrigatório. */
+/** Erro de campo (MC-0015): qual campo e a mensagem; ou null. Com motivos listados, escolher um é obrigatório. */
+export interface ErroDialogo {
+  campo: 'motivo' | 'texto';
+  mensagem: string;
+}
+
 export function exigeEscolha(
   r: ResultadoMotivo,
   cfg: { motivos?: MotivoOpcao[]; textoObrigatorio?: boolean },
-): string | null {
-  if (cfg.motivos && cfg.motivos.length > 0 && !r.motivo) return 'Escolha um motivo.';
-  if (cfg.textoObrigatorio && r.texto.trim() === '') return 'Descreva o motivo.';
+): ErroDialogo | null {
+  if (cfg.motivos && cfg.motivos.length > 0 && !r.motivo) return { campo: 'motivo', mensagem: 'Nenhum motivo escolhido. Escolha um da lista.' };
+  if (cfg.textoObrigatorio && r.texto.trim() === '') return { campo: 'texto', mensagem: 'O detalhe está vazio. Descreva o motivo.' };
   return null;
+}
+
+/** Checagem do confirmar: a básica primeiro; o `validar` do módulo só roda se ela não achou erro. */
+export function avaliarConfirmacao(
+  r: ResultadoMotivo,
+  cfg: { motivos?: MotivoOpcao[]; textoObrigatorio?: boolean; validar?: (r: ResultadoMotivo) => string | null },
+): ErroDialogo | null {
+  const basico = exigeEscolha(r, cfg);
+  if (basico) return basico;
+  const msg = cfg.validar?.(r) ?? null;
+  return msg ? { campo: 'texto', mensagem: msg } : null;
 }
 
 const FOCAVEIS = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
@@ -55,7 +71,11 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
   const raiz = useRef<HTMLDivElement>(null);
   const [motivo, setMotivo] = useState<string | undefined>();
   const [textoLivre, setTextoLivre] = useState('');
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<ErroDialogo | null>(null);
+
+  const erroMotivo = erro?.campo === 'motivo' ? erro.mensagem : null;
+  const erroTexto = erro?.campo === 'texto' ? erro.mensagem : null;
+  const coluna = { display: 'grid', gap: espaco.xs } as const;
 
   useEffect(() => {
     const anterior = document.activeElement as HTMLElement | null;
@@ -65,7 +85,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
 
   const confirmar = () => {
     const r = { motivo, texto: textoLivre.trim() };
-    const e = exigeEscolha(r, { motivos, textoObrigatorio }) ?? validar?.(r) ?? null;
+    const e = avaliarConfirmacao(r, { motivos, textoObrigatorio, validar });
     setErro(e);
     if (!e) aoConfirmar(r);
   };
@@ -101,17 +121,21 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
       >
         <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0 }}>{titulo}</h2>
         {motivos.length > 0 ? (
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: espaco.xs }}>
+          <>
+          <fieldset aria-describedby={erroMotivo ? `${id}-erro-motivo` : undefined} style={{ border: 0, padding: 0, margin: 0, ...coluna }}>
             <legend style={texto('pequeno', 'rotulo-campo')}>Motivo</legend>
             {motivos.map((m) => (
               <label key={m.codigo} style={{ display: 'flex', gap: espaco.sm, alignItems: 'center' }}>
-                <input type="radio" style={{ accentColor: cor('azulNoite') }} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
+                <input type="radio" style={{ accentColor: cor('azulNoite'), boxShadow: `0 0 0 1px ${cor('bordaCampo')}`, borderRadius: '50%' }} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
                 {m.rotulo}
               </label>
             ))}
           </fieldset>
+          {erroMotivo ? <span id={`${id}-erro-motivo`} role="alert" style={mensagemErro}>{erroMotivo}</span> : null}
+          </>
         ) : null}
-        <label style={{ display: 'grid', gap: espaco.xs }}>
+        <div style={coluna}>
+        <label style={coluna}>
           <span style={texto('pequeno', 'rotulo-campo')}>
             {rotuloTexto}
             {textoObrigatorio ? '' : ' (opcional)'}
@@ -121,18 +145,19 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
             value={textoLivre}
             required={textoObrigatorio}
             aria-required={textoObrigatorio}
-            aria-invalid={erro ? true : undefined}
-            aria-describedby={erro ? `${id}-erro` : undefined}
+            aria-invalid={erroTexto ? true : undefined}
+            aria-describedby={erroTexto ? `${id}-erro-texto` : undefined}
             onChange={(e) => setTextoLivre(e.target.value)}
-            style={{ ...texto('base'), border: `1px solid ${cor('bordaCampo')}`, padding: espaco.sm }}
+            style={{ ...campoBase, padding: espaco.sm, ...(erroTexto ? { borderColor: cor('erroTexto') } : {}) }}
           />
         </label>
+        {erroTexto ? <span id={`${id}-erro-texto`} role="alert" style={mensagemErro}>{erroTexto}</span> : null}
+        </div>
         {aviso ? (
           <p id={`${id}-aviso`} style={{ ...texto('pequeno'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
             {aviso}
           </p>
         ) : null}
-        {erro ? <p id={`${id}-erro`} role="alert" style={{ ...mensagemErro, margin: 0 }}>{erro}</p> : null}
         <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end' }}>
           <button type="button" onClick={aoCancelar} style={botaoSecundario()}>{rotuloFechar}</button>
           <button type="button" onClick={confirmar} data-destrutivo={destrutivo ? 'true' : undefined} style={botaoPrincipal()}>{rotuloConfirmar}</button>

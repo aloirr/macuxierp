@@ -53,6 +53,9 @@ export const botaoSecundario = (desabilitado?: boolean): CSSProperties => ({
   border: `1px solid ${cor('bordaCampo')}`,
 });
 
+/** Foco visível dos botões (MC-0011): contorno de 2 px em azul-noite. */
+export const focoVisivel: CSSProperties = { outline: `2px solid ${cor('azulNoite')}`, outlineOffset: '2px' };
+
 const kebabCss = (k: string) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const regraCss = (seletor: string, e: CSSProperties) =>
   `${seletor} {\n${Object.entries(e)
@@ -66,9 +69,18 @@ export function gerarCssBotoes(): string {
     '/* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */\n' +
     regraCss('.mx-botao', botaoPrincipal()) +
     regraCss('.mx-botao-secundario', botaoSecundario()) +
+    regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible', focoVisivel) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true))
   );
 }
+
+/** Campo de texto do pacote (input, textarea): 13 px, borda de campo e canto de 6 px. */
+export const campoBase: CSSProperties = {
+  ...texto('pequeno'),
+  border: `1px solid ${cor('bordaCampo')}`,
+  borderRadius: canto,
+  padding: espaco.xs,
+};
 
 /** Mensagem de erro de campo (MC-0015). */
 export const mensagemErro: CSSProperties = { ...texto('pequeno'), color: cor('erroTexto') };
