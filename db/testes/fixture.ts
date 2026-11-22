@@ -360,6 +360,59 @@ INSERT INTO faturamento.configuracao_filial (tenant_id, filial_id, faturamento_r
 `;
 }
 
+/**
+ * Contador de geração de títulos (0028): uma tentativa registrada para a nota da massa. Fora da fixtureFaturamento
+ * porque os testes que migram só até antes da 0028 também usam aquela.
+ */
+export function fixtureTituloGeracao(t: Tenant): string {
+  return `
+INSERT INTO faturamento.titulo_geracao (tenant_id, nota_id, tentativas, ultima_tentativa_em, motivo)
+  VALUES ('${t.id}', '${t.nota}', 1, '2026-11-22T12:00:00Z', 'RN-FAT-03: forma sem prazo na massa');
+`;
+}
+
+/** Recado fictício de aprovação de produção fiscal da massa (core.ambiente_fiscal.recado_aprovacao). */
+const RECADO_APROVACAO = 'R-20261121-120000-alexandre';
+
+/**
+ * Nota autorizada com o XML guardado (o caminho da T-0019: reserva do número, rascunho, em autorização, autorizada
+ * com guarda pendente e XML), na filial e no ambiente pedidos, série 1. Em produção grava antes a filial no
+ * core.ambiente_fiscal com o recado de aprovação (RN-FAT-04). Gravada pelo admin, que passa pelas mesmas travas.
+ * Use uma filial nova por nota (o número sai 1) e um `cnf` diferente por nota (a chave é única no banco).
+ * Devolve o id da nota e o SQL.
+ */
+export function sqlNotaAutorizada(
+  t: Tenant,
+  filial: string,
+  ambiente: 'homologacao' | 'producao',
+  cnf: number,
+): { id: string; sql: string } {
+  const nota = randomUUID();
+  const chave = chaveAcesso(1, 1, cnf);
+  const protocolo = `1132600000${String(cnf % 100000).padStart(5, '0')}`;
+  const xml = `<nfeProc>${nota}</nfeProc>`;
+  const producao =
+    ambiente === 'producao'
+      ? `INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao)
+  VALUES ('${t.id}', '${filial}', 'producao', '${RECADO_APROVACAO}');`
+      : '';
+  const sql = `
+SELECT set_config('app.tenant_id', '${t.id}', true);
+${producao}
+INSERT INTO faturamento.nota (id, tenant_id, filial_id, serie, numero, idempotencia_chave, cliente_id,
+  natureza_operacao)
+  VALUES ('${nota}', '${t.id}', '${filial}', 1, faturamento.reservar_numero('${filial}', '${ambiente}', 1::smallint, 1),
+    '${randomUUID()}', '${t.cliente}', 'Venda');
+UPDATE faturamento.nota SET status = 'em_autorizacao', chave_acesso = '${chave}', c_nf = '${cnfDe(cnf)}'
+  WHERE id = '${nota}';
+UPDATE faturamento.nota SET status = 'autorizada_guarda_pendente', protocolo = '${protocolo}',
+  autorizada_em = now(), c_stat = 100 WHERE id = '${nota}';
+INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protocolo, xml, sha256)
+  VALUES ('${t.id}', 'nfe_autorizada', '${nota}', '${chave}', '${protocolo}', '${xml}', ${hashSql(xml)});
+`;
+  return { id: nota, sql };
+}
+
 /** Linha geral (tenant de referência) da carga aproximada: só o dono grava. */
 export function fixtureCargaGeral(): string {
   return `
