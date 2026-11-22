@@ -232,6 +232,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
       { c: 'core.empresa.cnpj', d: 'cnpj' },
       { c: 'cadastros.tabela_oficial_versao.sha256', d: 'sha256_hex' },
       { c: 'core.certificado.impressao_digital', d: 'sha256_hex' },
+      { c: 'faturamento.nota_xml.sha256', d: 'sha256_hex' },
       { c: 'integracao_fdv.lote_envio.chave_idempotencia', d: 'sha256_hex' },
       { c: 'integracao_fdv.pedido_recebido.hash', d: 'sha256_hex' },
       { c: 'integracao_fdv.registro_publicado.hash', d: 'sha256_hex' },

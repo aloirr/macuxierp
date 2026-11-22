@@ -5,6 +5,7 @@
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import type { AuditoriaItem, CertificadoResumo, Licenca, Usuario } from '../contracts';
 import type { ColunaCsv } from '@macuxierp/platform-sdk/listas';
+import { paginaVisivel, type PaginaBase } from '@macuxierp/platform-sdk/paginas';
 
 export interface Coluna<L> extends ColunaCsv<L> {
   id: string;
@@ -26,10 +27,8 @@ export const TEXTO_AMBIENTE_HOMOLOGACAO = 'Para emitir em produção, peça à M
 /** T-0040: até o armazenamento S3 (T-0024) o `arquivos.ts` responde 503 e toda exportação LGPD termina como `falhou`. */
 export const TEXTO_EXPORTACAO_INDISPONIVEL = "A exportação ainda não está disponível: o armazenamento de arquivos entra em breve.";
 
-export interface PaginaCore {
+export interface PaginaCore extends PaginaBase {
   id: string;
-  rota: string;
-  titulo: string;
   menu: 'Empresa' | 'Usuários e perfis';
   rf: string;
   /** Ação que libera a página inteira; sem ela o perfil nem vê o item de menu. */
@@ -38,8 +37,6 @@ export interface PaginaCore {
   filtros: readonly string[];
   exportaCsv: boolean;
   botoes: readonly Botao[];
-  /** Faixa de aviso no topo da página, quando houver. */
-  aviso?: string;
 }
 
 export const PAGINAS_CORE: readonly PaginaCore[] = [
@@ -100,7 +97,7 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
 
 /** Páginas que o perfil enxerga (esconde, não protege: a API checa de novo). */
 export function paginasVisiveis(perfil: Perfil): PaginaCore[] {
-  return PAGINAS_CORE.filter((p) => pode(perfil, p.ver));
+  return PAGINAS_CORE.filter((p) => paginaVisivel(p, perfil));
 }
 
 /** Botões que o perfil pode usar na página. */

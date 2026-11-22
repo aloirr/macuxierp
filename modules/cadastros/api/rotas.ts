@@ -9,7 +9,7 @@ import {
 import { z } from 'zod';
 import {
   ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
-  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta,
+  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta, TrocaExternalId,
   OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
   type NomeEventoCadastros,
@@ -20,14 +20,16 @@ import {
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga } from './carga';
-import { publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
+import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
-import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
+import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
-import { dataIso, erroDeViolacoes, exigir, idDe } from './util';
+import { dataIso, erroDeViolacoes, exigir, idDe, violacaoExternalId } from './util';
 
 type Dict = Record<string, unknown>;
+/** `external_id` de um cadastro (`null` se ausente). */
+const extDe = (x: unknown): string | null => ((x as Dict).external_id as string | null | undefined) ?? null;
 type Entidade = { id: string; inativo: boolean };
 
 async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: string, payload: unknown): Promise<void> {
@@ -39,11 +41,13 @@ async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: 
 /** Emissor de um cadastro: monta o evento pronto (de `eventos.ts`) e publica; serve de `emitir` do CRUD e de `aoGravar` do filho. */
 const emitirCom =
   <E>(montar: (r: Repositorios, e: E) => EventoPronto | Promise<EventoPronto>) =>
-  async (c: ContextoRota, r: Repositorios, e: E): Promise<void> =>
-    publicarPronto(c, await montar(r, e));
+  async (c: ContextoRota, r: Repositorios, e: E, antes?: unknown): Promise<void> =>
+    publicarPronto(c, comExternalIdAnterior(await montar(r, e), e, antes));
 
 const requisitoFilial = async (r: Repositorios, id: string | null, campo: string): Promise<Violacao[]> =>
   id === null || (await r.filiais.obter(id)) ? [] : [violacao('REF', campo, 'Filial inexistente')];
+
+const violacoesDe = async (v: Promise<Violacao | null>): Promise<Violacao[]> => [(await v)].filter((x): x is Violacao => x !== null);
 
 interface ConfigCrud<E extends Entidade, D extends Dict> {
   caminho: string;
@@ -51,6 +55,8 @@ interface ConfigCrud<E extends Entidade, D extends Dict> {
   dados: z.ZodType<D, z.ZodTypeDef, unknown>;
   atualizacao: z.ZodType<Partial<D>, z.ZodTypeDef, unknown>;
   entidade: string;
+  /** Tabela do `external_id` (guarda da RD-0317). */
+  tabela: TabelaChave;
   /** Ação marcada (A) no desenho: grava em `plataforma.auditoria`. */
   auditado: boolean;
   /** Campos marcados (A) numa entidade não auditada por inteiro: só a troca deles grava em `plataforma.auditoria` (sem dado pessoal). */
@@ -110,6 +116,8 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const corpo = e.corpo as Dict;
         const externo = typeof corpo.external_id === 'string' ? await cfg.repo(r).porExternalId(corpo.external_id) : null;
         if (externo) return { status: 200, corpo: ocultar(c, externo) }; // escrita idempotente (regra 4)
+        // Guarda RD-0317 (ver domain/external-id.ts)
+        exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, corpo.external_id)));
         cfg.campoRestrito?.(c.sessao, corpo, true);
         if (cfg.validar) exigir(await cfg.validar(r, corpo, null, c.agora));
         const padrao = cfg.padrao?.(r);
@@ -126,6 +134,17 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
         const parcial = e.corpo as Dict;
+        // ADR 0010, item 3: preenchido, o external_id só muda pela troca controlada; para nulo, nunca
+        const atual = extDe(antes);
+        if (atual !== null && parcial.external_id !== undefined && parcial.external_id !== atual)
+          exigir([violacao('RN-CORE-05', 'external_id', 'O external_id preenchido não muda por aqui: use a troca controlada (administrador)')]);
+        // Guarda RD-0317 (ver domain/external-id.ts), só quando o valor muda
+        if (parcial.external_id !== undefined && parcial.external_id !== atual) {
+          exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, parcial.external_id)));
+          // a adoção (nulo → valor) também não pode tomar o valor de outro registro
+          const outro = await cfg.repo(r).porExternalId(parcial.external_id as string);
+          if (outro && outro.id !== antes.id) throw erros.conflito('Já existe um cadastro com esse identificador externo');
+        }
         cfg.campoRestrito?.(c.sessao, parcial, false);
         if (cfg.validar) exigir(await cfg.validar(r, { ...(antes as unknown as Dict), ...parcial }, parcial, c.agora));
         const padrao = cfg.padrao?.(r);
@@ -134,6 +153,24 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         if (!depois) throw erros.naoEncontrado('Registro');
         await cfg.emitir(c, r, depois, antes);
         await aud(c, 'alterar', depois.id, antes, depois);
+        return { corpo: ocultar(c, depois) };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: `${cfg.caminho}/:id/external-id`, acao: 'cadastros.external_id.trocar', corpo: TrocaExternalId,
+      async executar(c, e) {
+        const r = R(c);
+        const antes = await carregar(c, r, idDe(e));
+        const { external_id: novo, motivo } = e.corpo as { external_id: string; motivo: string };
+        const anterior = extDe(antes);
+        if (novo === anterior) return { corpo: ocultar(c, antes) }; // idempotente
+        exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, novo))); // RD-0317
+        const outro = await cfg.repo(r).porExternalId(novo);
+        if (outro) throw erros.conflito('Já existe um cadastro com esse identificador externo');
+        const depois = await cfg.repo(r).atualizar(antes.id, { external_id: novo } as unknown as Partial<D>);
+        if (!depois) throw erros.naoEncontrado('Registro');
+        await cfg.emitir(c, r, depois, antes);
+        await c.auditar({ acao: `${cfg.entidade}.external_id.trocar`, entidade: cfg.entidade, entidade_id: depois.id, antes: { external_id: anterior }, depois: { external_id: novo, motivo } });
         return { corpo: ocultar(c, depois) };
       },
     }),
@@ -238,7 +275,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Filiais (RF-CAD-08) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
+    tabela: 'filial', caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
     entidade: 'filial', auditado: true, repo: (r) => r.filiais, emitir: emitirCom(eventoFilial),
     inativavel: 'filial', padrao: (r) => r.filiais,
     async validar(_r, f) {
@@ -257,7 +294,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     return cli.vendedor_id !== null && meus.includes(cli.vendedor_id);
   };
   rotas.push(...rotasCrud(deps, {
-    caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
+    tabela: 'cliente', caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
     entidade: 'cliente', auditado: false, camposAuditados: ['limite_credito_centavos'], repo: (r) => r.clientes, emitir: emitirCom(eventoCliente), inativavel: 'cliente',
     campoRestrito(s, corpo, criacao) {
       const mexe = criacao ? (corpo.limite_credito_centavos ?? 0) !== 0 : 'limite_credito_centavos' in corpo;
@@ -303,7 +340,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
+    tabela: 'produto', caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
     entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: emitirCom(eventoProduto),
     ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
     async validar(r, p, parcial, agora) {
@@ -325,11 +362,11 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Tabelas de preço (RF-CAD-05, RN-CAD-06) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/tabelas-preco', editar: 'cadastros.preco.editar', dados: TabelaPrecoDados, atualizacao: TabelaPrecoAtualizacao,
+    tabela: 'tabela_preco', caminho: '/tabelas-preco', editar: 'cadastros.preco.editar', dados: TabelaPrecoDados, atualizacao: TabelaPrecoAtualizacao,
     entidade: 'tabela_preco', auditado: true, repo: (r) => r.tabelasPreco, inativavel: 'tabela_preco', padrao: (r) => r.tabelasPreco,
     /** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
     async emitir(c, r, t, antes) {
-      await publicarPronto(c, eventoTabelaPreco(t)); // C-2: criação e alteração
+      await publicarPronto(c, comExternalIdAnterior(eventoTabelaPreco(t), t, antes)); // C-2: criação e alteração
       if (!antes || (antes.vigencia_inicio === t.vigencia_inicio && antes.vigencia_fim === t.vigencia_fim && antes.inativo === t.inativo)) return;
       await republicarItensDaTabela(c, r, t);
     },
@@ -417,14 +454,14 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Condições de pagamento (RF-CAD-09) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
+    tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
     validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[] }),
   }));
 
   // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----
   rotas.push(...rotasCrud(deps, {
-    caminho: '/vendedores', editar: 'cadastros.vendedor.editar', dados: VendedorDados, atualizacao: VendedorAtualizacao,
+    tabela: 'vendedor', caminho: '/vendedores', editar: 'cadastros.vendedor.editar', dados: VendedorDados, atualizacao: VendedorAtualizacao,
     entidade: 'vendedor', auditado: false, repo: (r) => r.vendedores, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.vendedor.alterado@1', x)),
     validar: async (r, v) => requisitoFilial(r, v.filial_id as string, 'filial_id'),
   }));

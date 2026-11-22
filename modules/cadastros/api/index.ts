@@ -9,9 +9,10 @@ export { criarConsumidorCargaInicial, criarExecutorCargaInicial } from './carga-
 export { criarConsultaParaPedido } from './consulta-pedido';
 export type { ConsultaCadastrosParaPedido } from './consulta-pedido';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';
+export { criarResolvedorChaveErp, type ResolvedorChaveErp } from './resolvedor-chave';
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
-export type { Dependencias, FonteExterna, Fontes, PortaCertificados, Repositorios } from './portas';
+export type { Dependencias, FonteExterna, Fontes, PortaCertificados, RepoChaves, Repositorios, TabelaChave } from './portas';
 export { criarRotas } from './rotas';
 export { repositoriosSql } from './sql';
 

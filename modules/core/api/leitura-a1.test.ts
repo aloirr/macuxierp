@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { inspect } from 'node:util';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { cifrarA1 } from './cifra';
+import { cifrarColunasA1 } from './colunas-a1';
 import { lerA1DecifradoDaFilial } from './leitura-a1';
 
 const CHAVE = randomBytes(32);
@@ -14,7 +14,7 @@ const SENHA = 'senha-secreta-do-teste';
 function txCom(linhas: unknown[]): Transacao {
   return { consultar: async () => linhas as never };
 }
-const linha = (tenant: string) => ({ id: randomUUID(), tenant_id: tenant, chave_versao: 1, ...cifrarA1({ chave: CHAVE, tenantId: tenant, pfx: PFX, senha: SENHA }) });
+const linha = (tenant: string) => ({ id: randomUUID(), tenant_id: tenant, chave_versao: 1, ...cifrarColunasA1({ chave: CHAVE, tenantId: tenant, pfx: PFX, senha: SENHA }) });
 
 describe('T-0045/T-0021: lerA1DecifradoDaFilial (ADR 0005)', () => {
   it('RN-CORE-06: devolve o pfx e a senha decifrados', async () => {

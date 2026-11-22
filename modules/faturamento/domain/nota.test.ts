@@ -1,39 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { montarNota, ratearProporcional, valorItem, xNomeDestinatario, XNOME_HOMOLOGACAO, type CalculoFiscalItem, type PedidoAprovadoMin } from './nota';
+import type { IcmsItem, ItemResultado } from '@macuxierp/fiscal/contracts';
+import { valorItem } from '@macuxierp/platform-sdk';
+import { calc, itemPedido, pedidoAprovado } from './fixtures';
+import { montarNota, ratearProporcional, valoresFiscais, xNomeDestinatario, XNOME_HOMOLOGACAO } from './nota';
 
-const item = (sequencia: number, quantidade: number, preco: number, desconto = 0) => ({
-  sequencia,
-  produto_id: `00000000-0000-4000-8000-00000000000${sequencia}`,
-  produto_retrato: { codigo: `P${sequencia}`, descricao: `Produto ${sequencia}`, ncm: '22021000', unidade: 'UN', gtin: null },
-  quantidade,
-  preco_unitario_centavos: preco,
-  desconto_centavos: desconto,
-  total_centavos: valorItem(quantidade, preco) - desconto,
-});
-const pedido: PedidoAprovadoMin = {
-  pedido_id: '00000000-0000-4000-8000-0000000000a1',
-  filial_id: '00000000-0000-4000-8000-0000000000b1',
-  cliente_id: '00000000-0000-4000-8000-0000000000c1',
-  vendedor_id: null,
-  condicao_pagamento_id: null,
-  emitido_em: '2026-11-21T14:00:00.000Z',
-  observacao: null,
-  frete_centavos: 1000,
-  itens: [item(1, 30_000, 1000, 300), item(2, 10_000, 2500)],
-  total_centavos: 0,
-};
-const calc = (sequencia: number, extra: Partial<CalculoFiscalItem> = {}): CalculoFiscalItem => ({
-  sequencia,
-  cfop: '5102',
-  icms: { orig: 0, cst: '00', vbc_centavos: 1000, aliquota_pct: 20, valor_centavos: 200 },
-  ipi_centavos: 0,
-  st_centavos: 0,
-  pis_centavos: 10,
-  cofins_centavos: 46,
-  ibs_cbs: null,
-  imposto_seletivo: null,
-  ...extra,
-});
+const item = itemPedido;
+const pedido = pedidoAprovado([item(1, 30_000, 1000, 300), item(2, 10_000, 2500)]);
 const situacao = (status = 'aprovado', f1 = 0, f2 = 0) => ({
   status,
   itens: [
@@ -41,7 +13,7 @@ const situacao = (status = 'aprovado', f1 = 0, f2 = 0) => ({
     { sequencia: 2, quantidade: 10_000, quantidade_faturada: f2 },
   ],
 });
-const base = { pedido, ambiente: 'producao' as const, calculo: [calc(1), calc(2)] };
+const base = { pedido, ambiente: 'producao' as const, calculo: [calc(1), calc(2)], frete_centavos: 1000 };
 
 describe('montar nota a partir do pedido aprovado', () => {
   it('RF-FAT-01: valor do item = arred(qtd4 × preço / 10^4), meio para cima', () => {
@@ -67,7 +39,7 @@ describe('montar nota a partir do pedido aprovado', () => {
     expect(r.nota.totais.vFrete).toBe(Math.round((1000 * 1000) / 5500)); // 182, proporcional ao valor da nota
   });
   it('RN-CORE-03: 3 notas parciais pelo acumulado somam exatamente desconto e frete do pedido', () => {
-    const p3: PedidoAprovadoMin = { ...pedido, frete_centavos: 1001, itens: [item(1, 30_000, 333, 100), item(2, 10_000, 2500)] };
+    const p3 = pedidoAprovado([item(1, 30_000, 333, 100), item(2, 10_000, 2500)]);
     const fatias: [number, number][] = [
       [10_000, 3_333],
       [10_000, 3_333],
@@ -79,7 +51,7 @@ describe('montar nota a partir do pedido aprovado', () => {
     let frete = 0;
     fatias.forEach(([q1, q2]) => {
       const itens = [{ sequencia: 1, quantidade: q1 }, { sequencia: 2, quantidade: q2 }];
-      const r = montarNota({ ...base, pedido: p3, situacao: situacao('faturado_parcial', fat1, fat2), itens });
+      const r = montarNota({ ...base, pedido: p3, frete_centavos: 1001, situacao: situacao('faturado_parcial', fat1, fat2), itens });
       if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
       desc += r.nota.totais.vDesc;
       frete += r.nota.totais.vFrete;
@@ -121,11 +93,31 @@ describe('montar nota a partir do pedido aprovado', () => {
     expect(r.nota.totais.vOutro).toBe(101);
     expect(r.nota.totais.vFrete).toBe(1000);
   });
-  it('RN-CORE-03: totais da nota somam o cálculo fiscal, incluindo IBS/CBS/IS informativos', () => {
-    const ibs = { cst: '000', cclasstrib: '000001', vbc_centavos: 1000, ibs_centavos: 1, cbs_centavos: 9 };
-    const r = montarNota({ ...base, situacao: situacao(), calculo: [calc(1, { ibs_cbs: ibs, ipi_centavos: 50 }), calc(2, { ibs_cbs: ibs })] });
+  it('RN-CORE-03: totais da nota somam o cálculo fiscal, incluindo IPI e IBS/CBS informativos', () => {
+    const ibs = { cst: '000', c_class_trib: '000001', v_bc: 1000, v_ibs_uf: 1, v_cbs: 9 };
+    const ipi = { cst: '50', c_enq: '999', v_bc: 1000, p_ipi: 50_000, v_ipi: 50 };
+    const r = montarNota({ ...base, situacao: situacao(), calculo: [calc(1, { ibs, ipi }), calc(2, { ibs })] });
     if (!r.ok) throw new Error('esperava ok');
     expect(r.nota.totais).toMatchObject({ vIBS: 2, vCBS: 18, vIPI: 50, vNF: 5500 - 300 + 1000 + 50 });
+  });
+  it('RN-CORE-03: vNF soma o ICMS-ST e o FCP-ST do cálculo (mesma fórmula do fiscal.calculo@1)', () => {
+    const st = { orig: '0' as const, cst: '10', v_bc: 1000, p_icms: 200_000, v_icms: 200, mod_bc_st: 4, v_bc_st: 1500, p_icms_st: 200_000, v_icms_st: 100, v_fcp_st: 5 };
+    const r = montarNota({ ...base, situacao: situacao(), calculo: [calc(1, { icms: st }), calc(2)] });
+    if (!r.ok) throw new Error('esperava ok');
+    expect(r.nota.totais).toMatchObject({ vST: 100, vBCST: 1500, vFCPST: 5, vNF: 5500 - 300 + 1000 + 100 + 5 });
+  });
+  it('RN-FAT-01: valoresFiscais soma só o que o XML emite em cada CST/CSOSN (CST 40 e CSOSN 102 sem vBC/vICMS; vST só em CST 10 e CSOSN 201/202/203; PIS/COFINS NT sem valor)', () => {
+    const r = (icms: Omit<IcmsItem, 'orig'>, extra: Partial<ItemResultado> = {}) => valoresFiscais(calc(1, { icms: { orig: '0', ...icms }, ...extra }).resultado);
+    expect(r({ cst: '40', v_bc: 1000, v_icms: 200, v_icms_st: 50, v_fcp: 3 })).toMatchObject({ vBC: 0, vICMS: 0, vST: 0, vFCP: 0 });
+    expect(r({ csosn: '102', v_bc: 1000, v_icms: 200 })).toMatchObject({ vBC: 0, vICMS: 0 });
+    expect(r({ cst: '00', v_bc: 1000, v_icms: 200, v_icms_st: 50 })).toMatchObject({ vBC: 1000, vICMS: 200, vST: 0 });
+    expect(r({ csosn: '202', v_bc_st: 900, v_icms_st: 50, v_fcp_st: 2, v_icms: 7 })).toMatchObject({ vBCST: 900, vST: 50, vFCPST: 2, vICMS: 0 });
+    expect(r({ cst: '00', v_bc: 1 }, { pis: { cst: '07', v_valor: 9 }, cofins: { cst: '99', v_valor: 4 } })).toMatchObject({ vPIS: 0, vCOFINS: 4 });
+  });
+  it('RF-FAT-01: vNF da nota difere do v_nf do cálculo fiscal = violação (a referência é o fiscal, RD-0283)', () => {
+    const r = montarNota({ ...base, situacao: situacao(), v_nf_fiscal: 5500 - 300 + 1000 + 1 });
+    expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'total' });
+    expect(montarNota({ ...base, situacao: situacao(), v_nf_fiscal: 5500 - 300 + 1000 }).ok).toBe(true);
   });
   it('RN-FAT-04: homologação troca o xNome do destinatário e não vai ao FDV', () => {
     expect(xNomeDestinatario('homologacao', 'CLIENTE X')).toBe(XNOME_HOMOLOGACAO);

@@ -19,8 +19,9 @@ import {
 import {
   TRATADORES, estadoVazio, novoLoteId, planejarEstoque, podeCarregar, type Estado, type Saida,
 } from './carga-entidades';
-import type { Dependencias } from './portas';
-import { dataIso } from './util';
+import type { Dependencias, Repositorios, TabelaChave } from './portas';
+import { ENTIDADES_RESOLVIDAS } from './resolvedor-chave';
+import { dataIso, violacaoExternalId } from './util';
 
 type Linha = LinhasCarga[EntidadeCarga];
 
@@ -191,7 +192,8 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     } else {
       for (const l of linhas) {
         const tratar = TRATADORES[entidade] as (l: Linha, st: Estado) => Promise<Saida>;
-        const ok = await executar(await tratar(l, st), [l.linha], l.external_id);
+        const colisao = await colisaoComId(r, entidade, l.external_id);
+        const ok = await executar(colisao ?? (await tratar(l, st)), [l.linha], l.external_id);
         l.avisos.forEach((x) => avisos.add(x));
         if (ok) boas.push(l);
       }
@@ -221,6 +223,16 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   });
 }
 
+/** Tabela de cada entidade da carga que grava `external_id` (a forma de pagamento e o estoque não têm tabela própria). */
+const TABELA_DA_ENTIDADE: Partial<Record<EntidadeCarga, TabelaChave>> = { ...ENTIDADES_RESOLVIDAS, produto_unidade: 'produto_unidade', preco: 'tabela_preco_item' };
+
+/** Guarda RD-0317 (ver domain/external-id.ts): vira `CARGA_CONFLITO` da linha. */
+async function colisaoComId(r: Repositorios, entidade: EntidadeCarga, externalId: unknown): Promise<Saida | null> {
+  const tabela = TABELA_DA_ENTIDADE[entidade];
+  const v = tabela ? await violacaoExternalId(r, tabela, externalId) : null;
+  return v ? { erros: [erroLinha(0, 'external_id', 'CARGA_CONFLITO', v.mensagem)] } : null;
+}
+
 /** Referências que a entidade cita e ainda não são conhecidas (nem do lote, nem do banco): uma consulta por alvo. */
 async function carregarReferencias(st: Estado, entidade: EntidadeCarga, linhas: readonly Linha[]): Promise<void> {
   for (const [campo, alvo] of Object.entries(REFS_CARGA[entidade])) {
@@ -234,7 +246,7 @@ async function carregarReferencias(st: Estado, entidade: EntidadeCarga, linhas: 
       for (const ext of faltam) if ((await st.r.carga.condicoesDaForma(ext)).length > 0) st.conhecidos.forma.add(ext);
       continue;
     }
-    for (const [ext, id] of await st.r.carga.idsPorExternalId(alvo, [...faltam])) {
+    for (const [ext, id] of await st.r.chaves.idsPorExternalId(alvo, [...faltam], true)) {
       st.ids[alvo].set(ext, id);
       st.conhecidos[alvo].add(ext);
     }

@@ -5,7 +5,7 @@ import type { EstoqueConsulta, PrecoItem, PrecoItemConsulta, SaldoEstoqueItem } 
 import { tabelaVigente } from '../domain';
 import { agregadoPreco } from './uuid';
 import type {
-  ConsultaGravada, Dependencias, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
+  ConsultaGravada, Dependencias, RepoChaves, TabelaChave, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 /** Ordem estável por `id` e `id > cursor`, como o adaptador SQL (`.coord/contratos/listas.md`); devolve `limite + 1` linhas no máximo para `paginar`. */
@@ -293,12 +293,8 @@ export function repositoriosEmMemoria() {
   type Item = PrecoItem & { id: string; external_id: string | null; inativo: boolean };
   const itemDe = (i: Item) => ({ id: i.id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp, inativo: i.inativo });
   const filhasMem = { produto_unidade: { col: unidades, pai: 'produto_id' }, cliente_endereco: { col: enderecos, pai: 'cliente_id' } } as const;
-  const alvos = { filial: filiais, vendedor: vendedores, condicao_pagamento: condicoesPagamento, produto: produtos, tabela_preco: tabelasPreco, cliente: baseCliente };
   const carga = {
     falharProxima: null as null | (() => Error),
-    async idsPorExternalId(alvo: keyof typeof alvos, ids: readonly string[]) {
-      return new Map(alvos[alvo].linhas.filter((l) => !l.inativo && l.external_id && ids.includes(l.external_id)).map((l) => [l.external_id as string, l.id]));
-    },
     async condicoesDaForma(ext: string) {
       return condicoesPagamento.linhas.filter((l) => l.forma_external_id === ext).map((l) => structuredClone(l) as never);
     },
@@ -336,7 +332,21 @@ export function repositoriosEmMemoria() {
       return fn();
     },
   };
-  const repos = { carga, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
+  const colecaoDe = (t: TabelaChave): readonly Reg[] =>
+    ({ cliente: baseCliente.linhas, vendedor: vendedores.linhas, filial: filiais.linhas, produto: produtos.linhas, condicao_pagamento: condicoesPagamento.linhas, cliente_endereco: enderecos.linhas, tabela_preco: tabelasPreco.linhas, produto_unidade: unidades.linhas, tabela_preco_item: itensPreco as unknown as Reg[] })[t];
+  /** Sem `tenant_id` (um tenant por dublê) e sem filtro de inativo, como o adaptador SQL. */
+  const chaves: RepoChaves = {
+    async idsPorExternalId(t, ext, soAtivos = false) {
+      return new Map(colecaoDe(t).filter((l) => l.external_id && ext.includes(l.external_id) && !(soAtivos && l.inativo)).map((l) => [l.external_id as string, l.id]));
+    },
+    async idsSemExternalId(t, ids) {
+      return new Set(colecaoDe(t).filter((l) => !l.external_id && ids.includes(l.id)).map((l) => l.id));
+    },
+    async existeId(t, id) {
+      return colecaoDe(t).some((l) => l.id === id);
+    },
+  };
+  const repos = { chaves, carga, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
   return repos as unknown as Repositorios & typeof repos;
 }
 

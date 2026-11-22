@@ -132,9 +132,14 @@ function preambulo(ctx: Contexto = {}): string {
   return linhas.join('\n');
 }
 
+/** Executa comandos (um script) no contexto, numa transação, e devolve o stdout (valores de RETURNING e SELECT). */
+export function rodarComo(c: Conexao, sql: string, ctx: Contexto = {}): string {
+  return rodarScript(c, `${preambulo(ctx)}\n${sql}\n`, { transacao: true });
+}
+
 /** Executa comandos (um script) no contexto, numa transação. */
 export function executar(c: Conexao, sql: string, ctx: Contexto = {}): void {
-  rodarScript(c, `${preambulo(ctx)}\n${sql}\n`, { transacao: true });
+  rodarComo(c, sql, ctx);
 }
 
 /** Consulta que devolve linhas como objetos (via json_agg). */

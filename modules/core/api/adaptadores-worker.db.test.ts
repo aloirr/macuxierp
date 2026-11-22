@@ -10,7 +10,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DIAS_ALERTA_A1 } from '../contracts';
 import { alertaVencimento, diasParaVencer } from '../domain/certificado';
-import { cifrarA1 } from './cifra';
+import { cifrarColunasA1 } from './colunas-a1';
 import { lerA1DecifradoDaFilial } from './leitura-a1';
 import { avisosA1MaisRecentes, destinoAvisosSql, exportadorCore, fonteCertificadosSql, fonteTenantsSql, registroExportacoesSql } from './adaptadores-worker';
 
@@ -200,7 +200,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045/T-0021: leitura do A1 decifrado pelo wor
 
   async function inserir(tenant: string, filial: string, ativo: boolean, pfx = PFX): Promise<string> {
     const id = randomUUID();
-    const c = cifrarA1({ chave, tenantId: tenant, pfx, senha: SENHA });
+    const c = cifrarColunasA1({ chave, tenantId: tenant, pfx, senha: SENHA });
     await b.admin.query(
       `INSERT INTO core.certificado (id, tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, impressao_digital, pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce, ativo)
        VALUES ($1, $2, $3, 'Titular', '11222333000181', now() - interval '1 day', now() + interval '300 days', $4, $5, $6, $7, $8, $9)`,
