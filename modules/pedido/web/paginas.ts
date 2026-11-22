@@ -6,7 +6,7 @@ import type { PaginaBase } from '@macuxierp/platform-sdk/paginas';
 import { definirPaginaLista, type ColunaLista } from '@macuxierp/platform-sdk/listas';
 import { Uuid } from '@macuxierp/cadastros/contracts';
 import { z } from 'zod';
-import { formatarCentavos } from './formatar';
+import { formatarCentavos } from '@macuxierp/platform-sdk/formatar';
 import { OrigemPedido, PedidoLista, StatusPedido } from '../contracts';
 
 /** Linha da lista; `cliente_documento` só vem no CSV de quem pode ver o documento (nunca para o vendedor). */
@@ -50,16 +50,20 @@ export const paginaPedidos = definirPaginaLista({
 
 // ---- Páginas do BKO (T-0015, lote 3): rotas, menu e permissões como dados; o shell desenha ----
 
-export type TipoPaginaPedido = 'lista' | 'detalhe' | 'novo';
+export type TipoPaginaPedido = 'lista' | 'detalhe' | 'novo' | 'editar';
 
 export interface PaginaPedido extends PaginaBase {
   readonly id: string;
   readonly tipo: TipoPaginaPedido;
 }
 
-/** Ordem: lista, novo, detalhe. `/pedido/pedidos/novo` vem antes de `/pedido/pedidos/:id`, para o fixo vencer o parâmetro. */
+/**
+ * Ordem: lista, novo, detalhe, editar. `/novo` vem antes de `/:id`, para o fixo vencer o parâmetro; `/:id/editar` tem outro tamanho.
+ * `editar` só vale para o pedido `bko` em `em_analise` (`acoesDoPedido`/`possiveis`); usa `formularioDoPedido` e o PUT com `If-Match`.
+ */
 export const PAGINAS_PEDIDO: readonly PaginaPedido[] = [
   { id: 'pedidos', tipo: 'lista', menu: 'Pedidos', titulo: 'Pedidos', rota: '/pedido/pedidos', ver: 'pedido.ver' },
-  { id: 'novo', tipo: 'novo', menu: 'Pedidos', titulo: 'Novo pedido', rota: '/pedido/pedidos/novo', ver: 'pedido.pedido.lancar' },
-  { id: 'detalhe', tipo: 'detalhe', menu: 'Pedidos', titulo: 'Pedido', rota: '/pedido/pedidos/:id', ver: 'pedido.ver' },
+  { id: 'novo', tipo: 'novo', menu: 'Pedidos', titulo: 'Novo pedido', rota: '/pedido/pedidos/novo', ver: 'pedido.pedido.lancar', ocultaNoMenu: true },
+  { id: 'detalhe', tipo: 'detalhe', menu: 'Pedidos', titulo: 'Pedido', rota: '/pedido/pedidos/:id', ver: 'pedido.ver', ocultaNoMenu: true },
+  { id: 'editar', tipo: 'editar', menu: 'Pedidos', titulo: 'Editar pedido', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar' },
 ];

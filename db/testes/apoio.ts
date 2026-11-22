@@ -8,7 +8,15 @@ import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { listarMigracoes } from '../src/migrar.ts';
-import { type Conexao, consultar, conexaoDoAmbiente, ErroPsql, executar, rodarScript } from '../src/psql.ts';
+import {
+  type Conexao,
+  consultar,
+  conexaoDoAmbiente,
+  ErroPsql,
+  executar,
+  rodarComo,
+  rodarScript,
+} from '../src/psql.ts';
 
 const ADMIN = conexaoDoAmbiente(process.env, 'postgres');
 
@@ -102,20 +110,38 @@ export function papelLe(c: Conexao, papel: PapelApp, t: Tabela): boolean {
   return r?.le === true;
 }
 
+/**
+ * Linhas que o papel vê no tenant e quantas são de outro tenant. `geral`: a tabela tem leitura geral (política
+ * leitura_geral, D9), e as linhas do tenant de referência não contam como vazamento; nas demais, contam.
+ */
 export function contarComo(
   c: Conexao,
   papel: PapelApp,
   tenant: string | null,
   t: Tabela,
   tenantAlvo: string,
+  geral = false,
 ): { total: number; alheias: number } {
+  const referencia = geral ? ' AND tenant_id <> plataforma.tenant_referencia()' : '';
   const [r] = consultar<{ total: number; alheias: number }>(
     c,
-    `SELECT count(tenant_id)::int AS total, count(tenant_id) FILTER (WHERE tenant_id <> '${tenantAlvo}')::int AS alheias
+    `SELECT count(tenant_id)::int AS total,
+       count(tenant_id) FILTER (WHERE tenant_id <> '${tenantAlvo}'${referencia})::int AS alheias
      FROM ${t.esquema}.${t.tabela}`,
     { papel, tenant },
   );
   return r ?? { total: 0, alheias: 0 };
+}
+
+/** Privilégios do papel na tabela (esquema.tabela), em letras: S, I, U, D, T; '-' = nenhum. */
+export function privilegiosDe(c: Conexao, papel: string, tabela: string): string {
+  const [r] = consultar<{ p: string }>(
+    c,
+    `SELECT concat(${['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']
+      .map((p) => `CASE WHEN has_table_privilege('${papel}', '${tabela}', '${p}') THEN '${p[0]}' END`)
+      .join(', ')}) AS p`,
+  );
+  return r?.p || '-';
 }
 
 /** Mensagem do erro do psql, ou null se o comando passou. */
@@ -159,6 +185,13 @@ export function falhaDetalhada(fn: () => unknown): { mensagem: string; saida: st
 /** Liga o SQLSTATE na saída do psql (`\set VERBOSITY verbose`), para `falhaDetalhada` conferir o código. */
 export const verboso = (sql: string): string => `\\set VERBOSITY verbose\n${sql}`;
 
+/** Linhas não vazias da saída do psql (valores de RETURNING e SELECT de uma coluna de texto). */
+export const linhas = (saida: string): string[] =>
+  saida
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
 /** Linhas da saída do psql que são inteiros (os valores de RETURNING e SELECT de uma coluna numérica). */
 export const numeros = (saida: string): number[] =>
   saida
@@ -167,4 +200,4 @@ export const numeros = (saida: string): number[] =>
     .filter((l) => /^-?\d+$/.test(l))
     .map(Number);
 
-export { consultar, executar, rodarScript };
+export { consultar, executar, rodarComo, rodarScript };

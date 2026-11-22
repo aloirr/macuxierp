@@ -22,7 +22,7 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   // Carga de cadastros (T-0026): fora de PAGINAS, entra pelo mesmo descritor.
   registrar('cadastros', PAGINA_CARGA),
   // Pedido (T-0015): detalhe `/:id` e "novo" abrem pela URL sem item de menu; `/novo` vence `/:id` por ser rota exata (casarRota).
-  // R-20261122-001923: o módulo ainda não marca `ocultaNoMenu` nos descritores; até marcar, o shell aplica aqui (o campo do módulo vence).
+  // O módulo já marca `ocultaNoMenu` em novo e detalhe (#135), mas não no editar; até marcar, o shell aplica a ponte (o campo do módulo vence).
   ...PAGINAS_PEDIDO.map((p) => registrar('pedido', p, { ocultaNoMenu: p.ocultaNoMenu ?? p.tipo !== 'lista' })),
 ];
 

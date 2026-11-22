@@ -20,8 +20,9 @@ import {
   falhaDetalhada,
   numeros,
   PAPEIS_APP,
-  PG_DISPONIVEL,
   permitirSetRole,
+  PG_DISPONIVEL,
+  privilegiosDe,
   rodarScript,
   verboso,
 } from './apoio.ts';
@@ -218,16 +219,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
     for (const t of TABELAS) {
       obtido[t] = {};
       for (const papel of PAPEIS_APP) {
-        const [r] = consultar<{ p: string }>(
-          banco.conexao,
-          `SELECT concat(
-             CASE WHEN has_table_privilege('${papel}', 'pedido.${t}', 'SELECT') THEN 'S' END,
-             CASE WHEN has_table_privilege('${papel}', 'pedido.${t}', 'INSERT') THEN 'I' END,
-             CASE WHEN has_table_privilege('${papel}', 'pedido.${t}', 'UPDATE') THEN 'U' END,
-             CASE WHEN has_table_privilege('${papel}', 'pedido.${t}', 'DELETE') THEN 'D' END,
-             CASE WHEN has_table_privilege('${papel}', 'pedido.${t}', 'TRUNCATE') THEN 'T' END) AS p`,
-        );
-        obtido[t][papel] = r?.p || '-';
+        obtido[t][papel] = privilegiosDe(banco.conexao, papel, `pedido.${t}`);
       }
     }
     expect(obtido).toEqual(PRIVILEGIOS);

@@ -9,15 +9,16 @@ import { aposResposta, chaveParaEnvio, ehRespostaDefinitiva, novoEstado } from '
 import { rotuloDaCelula } from './lista';
 import { escritaDeclarada } from '../telas';
 import { urlProxima } from '../listas-url';
+import { telaDaRota } from '../telas';
 import { validarAcao } from '../telas/pedido';
 import type { AcaoVista } from './tipos';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 
 describe('rota do pedido no shell (T-0015)', () => {
-  it('as três páginas estão registradas e só a lista entra no menu', () => {
+  it('as quatro páginas estão registradas e só a lista entra no menu', () => {
     expect(PAGINAS_REGISTRADAS.filter((p) => p.modulo === 'pedido').map((p) => [p.rota, Boolean(p.ocultaNoMenu)])).toEqual([
-      ['/pedido/pedidos', false], ['/pedido/pedidos/novo', true], ['/pedido/pedidos/:id', true],
+      ['/pedido/pedidos', false], ['/pedido/pedidos/novo', true], ['/pedido/pedidos/:id', true], ['/pedido/pedidos/:id/editar', true],
     ]);
     expect(paginasDoMenu('pedido', 'Pedidos').map((p) => p.rota)).toEqual(['/pedido/pedidos']);
   });
@@ -27,6 +28,11 @@ describe('rota do pedido no shell (T-0015)', () => {
     expect(c?.pagina.rota).toBe('/pedido/pedidos/:id');
     expect(c?.params).toEqual({ id: ID });
     expect(casarRota(`/pedido/pedidos/${ID}/x`)).toBeUndefined();
+    // /:id e /:id/editar têm tamanhos diferentes e não se confundem; o editar ainda não tem tela construída (aviso padrão).
+    const ed = casarRota(`/pedido/pedidos/${ID}/editar`);
+    expect(ed?.pagina.rota).toBe('/pedido/pedidos/:id/editar');
+    expect(ed?.params).toEqual({ id: ID });
+    expect(telaDaRota('/pedido/pedidos/:id/editar')).toBeUndefined();
     expect(casarRota('/pedido/pedidos/%E0%A4%A')).toBeUndefined();
   });
   it('o menu aponta para a lista e a resolução exige licença, perfil e `ver` da página', () => {

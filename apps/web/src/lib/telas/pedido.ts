@@ -2,9 +2,9 @@
  * Adaptador do pedido: transforma os descritores de `@macuxierp/pedido/web` (lista, detalhe, ações e formulário) nos tipos do
  * renderizador genérico. Nenhuma regra de negócio aqui: pendências, ações por perfil, motivos e validação vêm do módulo.
  */
-import { valorItem } from '@macuxierp/platform-sdk';
+import { formatarCentavos } from '@macuxierp/platform-sdk/formatar';
 import {
-  FILTROS_TELA, ITEM_VAZIO, ROTULO_BUSCA, acoesDoPedido, avisoDoMotivo, cabecalhoDoPedido, colunasDaTela, formatarCentavos, linhaDaTela, linhasDeHistorico, linhasDeItens,
+  FILTROS_TELA, ITEM_VAZIO, ROTULO_BUSCA, acoesDoPedido, avisoDoMotivo, cabecalhoDoPedido, calcularTotal as totalDoModulo, colunasDaTela, linhaDaTela, linhasDeHistorico, linhasDeItens,
   linhasDePendencias, motivosDaDecisao, novaChaveDoFormulario, paginaPedidos, resumoDaDecisao, textoCentavos, tituloDaColuna, validarAprovacao, validarFormulario, validarMotivo,
   type DecisaoComMotivo, type ItemListaPedido,
 } from '@macuxierp/pedido/web';
@@ -68,7 +68,7 @@ export function vistaDoPedido(p: Pedido, perfil: Parameters<typeof acoesDoPedido
   const decisao = resumoDaDecisao(p, fuso);
   return {
     titulo: c.titulo,
-    selo: { texto: c.status, tom: TOM[p.status] },
+    selo: { texto: c.selo.rotulo, tom: TOM[p.status] },
     cabecalho: [
       { rotulo: 'Origem', valor: c.origem }, { rotulo: 'Cliente', valor: c.cliente },
       ...(c.documento ? [{ rotulo: 'Documento', valor: c.documento }] : []),
@@ -77,7 +77,7 @@ export function vistaDoPedido(p: Pedido, perfil: Parameters<typeof acoesDoPedido
     ],
     pendencias: linhasDePendencias(p.pendencias).map((l) => ({
       texto: `${l.texto}${l.item ? ` (item ${l.item})` : ''}${l.esperado || l.informado ? `. Esperado: ${l.esperado || '—'}; informado: ${l.informado || '—'}.` : ''}`,
-      bloqueante: l.gravidade === 'Bloqueante',
+      bloqueante: l.gravidade === 'Bloqueia',
       codigoRn: 'RN-PED-03',
     })),
     acoes,
@@ -125,15 +125,22 @@ export const DETALHE_PEDIDO: TelaDetalhe = {
 
 /** Linha vazia da tela, a partir do item vazio do módulo (texto vazio = 0). */
 const novoItem = (chave: string): ItemLinha => ({ chave, produtoId: ITEM_VAZIO.produto_id || null, quantidade: 0, precoUnitarioCentavos: 0, descontoCentavos: 0 });
-/** Total da linha: valor (Qtd4 × preço, arredondamento do SDK) menos o desconto; a API revalida. */
+/** Qtd4 da linha (quantidade × 10^4). */
 const qtd4 = (i: ItemLinha): number => Math.round(i.quantidade * 10_000);
-/** Só inteiros seguros entram no `valorItem` do SDK (que lança RangeError); fora disso a linha mostra erro de campo. */
+/** Só inteiros seguros entram no cálculo do módulo; fora disso a linha mostra erro de campo. */
 const erroItem = (i: ItemLinha): string | null =>
   Number.isSafeInteger(qtd4(i)) && Number.isSafeInteger(i.precoUnitarioCentavos) && Number.isSafeInteger(i.descontoCentavos)
     ? null
     : 'Valor fora do limite. Confira quantidade, preço e desconto.';
-const calcularTotal = (i: ItemLinha): number =>
-  erroItem(i) ? 0 : Math.max(0, valorItem(qtd4(i), i.precoUnitarioCentavos) - i.descontoCentavos);
+/** Total da linha pelo `calcularTotal` do módulo (RN-PED-03); desconto acima do valor (EntradaIncoerente) mostra 0 e a API revalida. */
+const calcularTotal = (i: ItemLinha): number => {
+  if (erroItem(i)) return 0;
+  try {
+    return totalDoModulo([{ quantidade: qtd4(i), preco_unitario_centavos: i.precoUnitarioCentavos, desconto_centavos: i.descontoCentavos }]).total;
+  } catch {
+    return 0;
+  }
+};
 /** Texto que o módulo valida: "1,5" e "12,50" (o módulo interpreta; 0 vira texto e falha na validação do módulo). */
 const paraTexto = (i: ItemLinha): ItemFormulario => ({
   produto_id: i.produtoId ?? '',

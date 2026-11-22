@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RespostaHub, atrasoRetentativaSegundos, classificarResposta, codigoSeguro } from './resposta';
+import { type RespostaHub, atrasoRetentativaSegundos, classificarResposta, campoDoHub, codigoDoHub, codigoSeguro, esperaConsultaSegundos } from './resposta';
 
 describe('curva de retentativa do Hub', () => {
   it('RN-INF-04: 5 s, 10 s, 20 s… até 15 min', () => {
@@ -37,7 +37,8 @@ describe('classificação de resposta HTTP', () => {
 
   it('RN-INF-04: 403 modulo_inativo, 426, 409 de idempotência e outro conector pausam só a entidade', () => {
     expect(c(rec(403, 'modulo_inativo'))).toMatchObject({ motivo: 'licenca_fdv', todasEntidades: true });
-    expect(c(rec(426))).toMatchObject({ motivo: 'versao', todasEntidades: false });
+    expect(c(rec(426))).toMatchObject({ motivo: 'versao', codigo: 'versao_conector_nao_suportada', todasEntidades: false });
+    expect(c(rec(426, 'versao_conector_nao_suportada'))).toMatchObject({ motivo: 'versao', todasEntidades: false });
     expect(c(rec(409, 'chave_idempotencia_reutilizada'))).toMatchObject({ motivo: 'idempotencia' });
     expect(c(rec(422, 'entidade_de_outro_conector'))).toMatchObject({ motivo: 'topologia' });
   });
@@ -49,11 +50,43 @@ describe('classificação de resposta HTTP', () => {
     expect(c(rec(400))).toMatchObject({ motivo: 'envelope' });
   });
 
+  it('RN-INF-04: resposta 2xx grande demais vira pausa de envelope, sem ecoar o corpo', () => {
+    expect(c(rec(200, 'resposta_grande'))).toMatchObject({ acao: 'pausar', motivo: 'envelope', codigo: 'resposta_grande' });
+    expect(c(ret(503, null, 'resposta_grande'))).toMatchObject({ acao: 'retentar', codigo: 'resposta_grande' });
+  });
+
   it('RN-INF-04: código fora do formato de identificador cai para http_<status> ou rede', () => {
     expect(codigoSeguro('CHAVE-REVOGADA', 403)).toBe('http_403');
     expect(codigoSeguro('texto livre', null)).toBe('rede');
     expect(codigoSeguro('chave_revogada', 403)).toBe('chave_revogada');
     expect(c(rec(403, 'CHAVE-REVOGADA'))).toMatchObject({ motivo: 'credencial', codigo: 'http_403' });
     expect(c(ret(500, null, 'Erro: CPF 123'))).toMatchObject({ acao: 'retentar', codigo: 'http_500' });
+  });
+});
+
+describe('consulta do lote aceito', () => {
+  it('RF-INF-02: 5 s no primeiro minuto, depois backoff até 60 s', () => {
+    expect([0, 30, 60, 61, 120, 200, 400, 900].map(esperaConsultaSegundos)).toEqual([5, 5, 5, 10, 10, 20, 40, 60]);
+  });
+});
+
+describe('texto do Hub só entra no banco no formato do catálogo', () => {
+  it('RN-INF-04: codigoDoHub aceita identificador e troca texto livre por erro_desconhecido', () => {
+    expect(codigoDoHub('campo_obrigatorio')).toBe('campo_obrigatorio');
+    expect(codigoDoHub('O produto Fulano não existe')).toBe('erro_desconhecido');
+    expect(codigoDoHub('')).toBe('erro_desconhecido');
+  });
+
+  it('RN-INF-04: campoDoHub aceita caminho de campo e descarta texto livre, vazio e nulo', () => {
+    expect(campoDoHub('enderecos[0].cep')).toBe('enderecos[0].cep');
+    expect(campoDoHub('valor de Fulano')).toBeNull();
+    expect(campoDoHub('')).toBeNull();
+    expect(campoDoHub(null)).toBeNull();
+    expect(campoDoHub(undefined)).toBeNull();
+  });
+
+  it('RN-INF-04: codigoSeguro usa o mesmo formato do contrato', () => {
+    expect(codigoSeguro('Texto livre', 500)).toBe('http_500');
+    expect(codigoSeguro(null, null)).toBe('rede');
   });
 });

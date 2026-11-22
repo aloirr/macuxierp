@@ -4,13 +4,15 @@
  * (`registro_publicado`): payload canônico do Hub, hash (RN-INF-03), `alterado_em` = `ocorrido_em` do evento (M3) e as
  * referências do ERP de que depende (M10).
  *
- * Premissas do P-1 (a conferir contra o contrato do FDV): decimais por string; preço da filial padrão sai sem
+ * Premissas do P-1 (a conferir contra o contrato do FDV): quantidades como número (P-1 conferido); preço da filial padrão sai sem
  * `filial_external_id` (= todas as filiais); `formas_pagamento` do cliente é lista de códigos de forma do Hub.
  */
 import type { z } from 'zod';
 import type { EVENTOS } from '@macuxierp/cadastros/contracts';
 import { PAYLOADS_HUB, type EntidadeHub, type LinhaInvalida } from '../contracts';
 import { externalIdForma, hashRegistro } from './canonico';
+import { chaveHub } from './chave';
+import { cnpjValido } from '@macuxierp/platform-sdk';
 
 type Evento<N extends keyof typeof EVENTOS> = z.infer<(typeof EVENTOS)[N]>;
 export type EventoFilial = Evento<'cadastros.filial.alterada@1'>;
@@ -32,6 +34,8 @@ export interface RegistroEspelho {
   /** Payload canônico do Hub, sem `alterado_em`. Nunca tem custo (M8). */
   payload: Record<string, unknown>;
   hash: string;
+  /** UUID do ERP do registro (coluna `erp_id`, RD-0318); `null` na `forma_pagamento`, que não tem registro próprio. */
+  erp_id: string | null;
   /** UUIDs do ERP de que o registro depende (M10). */
   fonte_refs: Record<string, string>;
 }
@@ -42,6 +46,11 @@ export interface ReferenciaEspelho {
   erp_id: string;
   dados: Record<string, unknown>;
   fonte_ocorrido_em: string;
+  /**
+   * Chave da tabela de preço no Hub (`chaveHub`; vai em `referencia.external_id`, ≤ 64). Provisório: a ADR 0010 (RD-0318) manda
+   * guardá-la em `dados`, mas o CHECK de `dados` (0007) ainda não aceita a chave `chave` (pedido ao banco-dados; troca no L2b).
+   */
+  external_id?: string;
 }
 
 /** Remove `undefined` e `null` de campos opcionais do Hub (campo ausente, nunca nulo). */
@@ -55,7 +64,7 @@ export function instanteUtc(ocorridoEm: string): string {
   return new Date(t).toISOString();
 }
 
-function registro(entidade: EntidadeHub, ocorridoEm: string, payload: Record<string, unknown>, refs: Record<string, string | null | undefined> = {}): RegistroEspelho {
+function registro(entidade: EntidadeHub, ocorridoEm: string, payload: Record<string, unknown>, erpId: string | null, refs: Record<string, string | null | undefined> = {}): RegistroEspelho {
   const limpo = limpar(payload);
   const fonte_refs = Object.fromEntries(Object.entries(refs).filter((e): e is [string, string] => typeof e[1] === 'string'));
   return {
@@ -65,18 +74,20 @@ function registro(entidade: EntidadeHub, ocorridoEm: string, payload: Record<str
     ativo: limpo.ativo === true,
     payload: limpo,
     hash: hashRegistro(limpo),
+    erp_id: erpId,
     fonte_refs,
   };
 }
 
-/** Escala 4 (D11) → decimal por string, sem float: `15000` → `"1.5"`, `-5000` → `"-0.5"`. */
-export function decimal4(valor: number): string {
+/** Escala 4 (D11) → número do Hub (`Quantidade` é `number`, P-1): `15000` → `1.5`, `-5000` → `-0.5`. */
+export function quantidade4(valor: number): number {
   if (!Number.isInteger(valor)) throw new Error('quantidade deve ser inteira na escala 4');
-  const neg = valor < 0;
-  const abs = Math.abs(valor);
-  const inteiro = Math.floor(abs / 10_000);
-  const frac = String(abs % 10_000).padStart(4, '0').replace(/0+$/, '');
-  return `${neg ? '-' : ''}${inteiro}${frac ? `.${frac}` : ''}`;
+  return valor / 10_000;
+}
+
+/** A-04: o Hub compara a sigla da medida em maiúsculas (RN-CORE-19 do FDV); o ERP envia assim. */
+export function siglaMedida(sigla: string): string {
+  return sigla.trim().toUpperCase();
 }
 
 /** tPag do MOC → código e nome da forma no Hub (códigos a conferir, P-1). Os demais pelo nome do MOC. */
@@ -106,44 +117,70 @@ export function formaDoTpag(tpag: string): { codigo: string; nome: string } {
 }
 
 // ---- 2.1 filial ----
-/** Filial + a referência `filial_padrao` (usada no preço, M10). O CNPJ/IE não vão (fiscais). */
+/** Filial + a referência `filial_padrao` (usada no preço, M10). O Hub exige CNPJ e endereço (A-01); a IE e os dados fiscais não vão. */
 export function mapearFilial(ev: EventoFilial, ocorridoEm: string): { registro: RegistroEspelho; referencia: ReferenciaEspelho | null } {
   const cnpj = ev.cnpj.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
   const r = registro('filial', ocorridoEm, {
-    external_id: ev.id,
+    external_id: chaveHub(ev),
     ativo: !ev.inativo,
     // RN-INF-02/T-0009 2.1: o código no Hub é a ordem do CNPJ (posições 9-12).
     codigo: cnpj.slice(8, 12),
     nome: ev.nome_fantasia ?? ev.razao_social,
     cidade: ev.endereco.municipio_nome ?? undefined,
     uf: ev.endereco.uf,
-  });
+    // A-01 (RN-CORE-39 do FDV): CNPJ sem máscara e endereço do evento; telefone não existe no evento do cadastros.
+    cnpj,
+    logradouro: ev.endereco.logradouro,
+    numero: ev.endereco.numero,
+    complemento: ev.endereco.complemento,
+    bairro: ev.endereco.bairro,
+    cep: ev.endereco.cep.replace(/\D/g, ''),
+  }, ev.id);
   const referencia = ev.padrao && !ev.inativo ? { tipo: 'filial_padrao' as const, erp_id: ev.id, dados: { filial_id: ev.id }, fonte_ocorrido_em: r.alterado_em } : null;
   return { registro: r, referencia };
 }
 
+/** C-2: a tabela de preço vira `referencia` (nome e vigência compõem o preço, M10); a chave no Hub é a `chaveHub` dela. */
+export function mapearTabelaPreco(ev: EventoTabelaPreco, ocorridoEm: string): ReferenciaEspelho {
+  return {
+    tipo: 'tabela_preco',
+    erp_id: ev.id,
+    dados: { nome: ev.nome, vigencia_inicio: ev.vigencia_inicio, ...(ev.vigencia_fim ? { vigencia_fim: ev.vigencia_fim } : {}), inativo: ev.inativo },
+    fonte_ocorrido_em: instanteUtc(ocorridoEm),
+    external_id: chaveHub(ev),
+  };
+}
+
 // ---- 2.2 vendedor ----
 export function mapearVendedor(ev: EventoVendedor, ocorridoEm: string): RegistroEspelho {
-  return registro('vendedor', ocorridoEm, { external_id: ev.id, ativo: !ev.inativo, nome: ev.nome, filial_external_id: ev.filial_id }, { filial_id: ev.filial_id });
+  return registro('vendedor', ocorridoEm, { external_id: chaveHub(ev), ativo: !ev.inativo, nome: ev.nome, filial_external_id: ev.filial_id }, ev.id, { filial_id: ev.filial_id });
 }
 
 // ---- 2.3 forma_pagamento e prazo_pagamento ----
 /** `formaAtiva`: o consumidor calcula (há prazo ativo no espelho com a mesma forma, incluindo este). */
 export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho } {
-  const formaId = externalIdForma(ctx.tenantId, ev.forma_tpag);
+  // D12 (T-0026): a forma da carga viaja na condição; sem ela, UUID v5 do tPag (M2) e o nome do tPag do MOC.
+  const formaId = chaveHub({ id: externalIdForma(ctx.tenantId, ev.forma_tpag), external_id: ev.forma_external_id });
   const f = formaDoTpag(ev.forma_tpag);
-  const forma = registro('forma_pagamento', ocorridoEm, { external_id: formaId, ativo: ctx.formaAtiva, codigo: f.codigo, nome: f.nome }, { condicao_pagamento_id: ev.id });
+  const forma = registro(
+    'forma_pagamento',
+    ocorridoEm,
+    { external_id: formaId, ativo: ctx.formaAtiva, codigo: ev.forma_codigo ?? f.codigo, nome: ev.forma_nome ?? f.nome },
+    null,
+    { condicao_pagamento_id: ev.id },
+  );
   const prazo = registro(
     'prazo_pagamento',
     ocorridoEm,
     {
-      external_id: ev.id,
+      external_id: chaveHub(ev),
       ativo: !ev.inativo,
       forma_external_id: formaId,
       codigo: ev.codigo,
       parcelas_dias: ev.prazos_dias.join('/'),
       descricao: ev.descricao,
     },
+    ev.id,
     { condicao_pagamento_id: ev.id },
   );
   return { forma, prazo };
@@ -157,15 +194,20 @@ export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { te
  */
 export function mapearProduto(ev: EventoProduto, ocorridoEm: string): { produto: RegistroEspelho; unidades: RegistroEspelho[] } {
   const ean = ev.ean && ev.ean !== 'SEM GTIN' ? ev.ean : undefined;
-  const produto = registro('produto', ocorridoEm, {
-    external_id: ev.id,
-    ativo: !ev.inativo,
-    sku: ev.codigo,
-    nome: ev.descricao,
-    unidade: ev.unidade_comercial,
-    ean,
-    marca: ev.marca,
-  });
+  const produto = registro(
+    'produto',
+    ocorridoEm,
+    {
+      external_id: chaveHub(ev),
+      ativo: !ev.inativo,
+      sku: ev.codigo,
+      nome: ev.descricao,
+      unidade: siglaMedida(ev.unidade_comercial),
+      ean,
+      marca: ev.marca,
+    },
+    ev.id,
+  );
   const unidades = ev.unidades.map((u) => {
     const eanU = u.ean && u.ean !== 'SEM GTIN' ? u.ean : undefined;
     return registro(
@@ -175,11 +217,12 @@ export function mapearProduto(ev: EventoProduto, ocorridoEm: string): { produto:
         external_id: u.id,
         ativo: !ev.inativo,
         produto_external_id: ev.id,
-        unidade: u.unidade,
-        fator: decimal4(u.fator),
+        unidade: siglaMedida(u.unidade),
+        fator: quantidade4(u.fator),
         ean: eanU,
-        padrao: u.unidade === ev.unidade_comercial,
+        padrao: siglaMedida(u.unidade) === siglaMedida(ev.unidade_comercial),
       },
+      u.id,
       { produto_id: ev.id },
     );
   });
@@ -194,9 +237,12 @@ export interface ContextoPreco {
   filialPadraoId: string | null;
 }
 
-/** `agregadoId` = `agregado_id` do evento (UUID v5 de tabela+filial+produto do cadastros, M2). `null` = sem tabela. */
-export function mapearPreco(agregadoId: string, ev: EventoPreco, ocorridoEm: string, ctx: ContextoPreco): RegistroEspelho | null {
-  if (!ctx.tabela) return null;
+/**
+ * `agregadoId` = `agregado_id` do evento (UUID v5 de tabela+filial+produto do cadastros, M2). Sem a referência da tabela
+ * (C-2 ainda não chegou) o registro entra no espelho sem `tabela_nome`: `validarRegistro` o aponta como `referencia_ausente`
+ * e a chegada da tabela o recompõe (M10).
+ */
+export function mapearPreco(agregadoId: string, ev: EventoPreco, ocorridoEm: string, ctx: ContextoPreco): RegistroEspelho {
   const naPadrao = ctx.filialPadraoId !== null && ev.filial_id === ctx.filialPadraoId;
   return registro(
     'preco',
@@ -206,7 +252,7 @@ export function mapearPreco(agregadoId: string, ev: EventoPreco, ocorridoEm: str
       // O evento repete o `inativo` da tabela: tabela inativa = preço inativo.
       ativo: !ev.inativo,
       tabela_external_id: ev.tabela_preco_id,
-      tabela_nome: ctx.tabela.nome,
+      tabela_nome: ctx.tabela?.nome,
       vigencia_inicio: ev.vigencia_inicio,
       vigencia_fim: ev.vigencia_fim,
       produto_external_id: ev.produto_id,
@@ -214,6 +260,7 @@ export function mapearPreco(agregadoId: string, ev: EventoPreco, ocorridoEm: str
       // Premissa P-1: a filial padrão vale para as filiais sem item, e no Hub "sem filial = todas".
       filial_external_id: naPadrao ? undefined : ev.filial_id,
     },
+    agregadoId,
     { tabela_preco_id: ev.tabela_preco_id, produto_id: ev.produto_id, filial_id: ev.filial_id },
   );
 }
@@ -230,9 +277,10 @@ export function mapearEstoque(agregadoId: string, ev: EventoEstoque, ocorridoEm:
       deposito_external_id: ev.filial_id,
       deposito_nome: ctx.depositoNome ?? undefined,
       produto_external_id: ev.produto_id,
-      saldo: decimal4(ev.quantidade),
+      saldo: quantidade4(ev.quantidade),
       filial_external_id: ev.filial_id,
     },
+    agregadoId,
     { filial_id: ev.filial_id, produto_id: ev.produto_id },
   );
 }
@@ -240,7 +288,7 @@ export function mapearEstoque(agregadoId: string, ev: EventoEstoque, ocorridoEm:
 // ---- 2.7 cliente e 2.8 cliente_endereco ----
 export interface ContextoCliente {
   /** Condição do cliente já no espelho (M10); `null` = sem condição, `formas_pagamento` e prazo não vão. */
-  condicao: { forma_tpag: string; prazos_dias: readonly number[] } | null;
+  condicao: { forma_tpag: string; forma_codigo?: string | null; prazos_dias: readonly number[] } | null;
 }
 
 /** Média simples dos prazos, arredondada para cima. */
@@ -271,7 +319,7 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: Contex
     'cliente',
     ocorridoEm,
     {
-      external_id: ev.id,
+      external_id: chaveHub(ev),
       ativo: !ev.inativo,
       razao_social: ev.razao_social,
       nome_fantasia: ev.nome_fantasia,
@@ -281,9 +329,10 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: Contex
       filial_external_id: ev.filial_id,
       endereco,
       limite_credito_cents: ev.limite_credito_centavos,
-      formas_pagamento: ctx.condicao ? [formaDoTpag(ctx.condicao.forma_tpag).codigo] : undefined,
+      formas_pagamento: ctx.condicao ? [ctx.condicao.forma_codigo ?? formaDoTpag(ctx.condicao.forma_tpag).codigo] : undefined,
       prazo_medio_max_dias: ctx.condicao ? prazoMedioMaxDias(ctx.condicao.prazos_dias) : undefined,
     },
+    ev.id,
     { vendedor_id: ev.vendedor_id, filial_id: ev.filial_id, condicao_pagamento_id: ev.condicao_pagamento_id },
   );
   const enderecos = ev.enderecos.flatMap((e) =>
@@ -295,7 +344,7 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: Contex
             {
               external_id: e.id,
               ativo: !ev.inativo,
-              cliente_external_id: ev.id,
+              cliente_external_id: chaveHub(ev),
               logradouro: e.logradouro,
               numero: e.numero,
               complemento: e.complemento,
@@ -306,6 +355,7 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: Contex
               tipo: e.tipo,
               principal: e.tipo === 'principal',
             },
+            e.id,
             { cliente_id: ev.id },
           ),
         ]
@@ -322,7 +372,7 @@ export function inativarRegistro(r: RegistroEspelho, ocorridoEm: string): Regist
 
 // ---- Validação local (M5) ----
 const OBRIGATORIOS: Record<string, readonly string[]> = {
-  filial: ['codigo', 'nome'],
+  filial: ['codigo', 'nome', 'cnpj', 'logradouro', 'numero', 'bairro', 'cep', 'cidade', 'uf'],
   vendedor: ['nome'],
   forma_pagamento: ['codigo', 'nome'],
   prazo_pagamento: ['forma_external_id', 'codigo', 'parcelas_dias'],
@@ -333,6 +383,9 @@ const OBRIGATORIOS: Record<string, readonly string[]> = {
   cliente: ['razao_social', 'filial_external_id'],
   cliente_endereco: ['cliente_external_id', 'logradouro', 'cidade', 'uf'],
 };
+
+/** Campos obrigatórios compostos de outra referência do ERP (M10): ausentes = `referencia_ausente`. */
+const CAMPOS_DE_REFERENCIA: Record<string, readonly string[]> = { preco: ['tabela_nome'] };
 
 /** Referências que precisam estar confirmadas no Hub: campo → entidade alvo (RN-INF-02, ordem de carga). */
 export const REFERENCIAS_HUB: Record<string, ReadonlyArray<readonly [string, EntidadeHub]>> = {
@@ -355,7 +408,8 @@ export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: Entid
     const v = r.payload[c];
     return v === undefined || v === null || v === '';
   });
-  if (falta) return { external_id: r.external_id, codigo: 'campo_obrigatorio', campo: falta };
+  // Campo composto de outra referência (C-2): ausente = a referência ainda não chegou (reprocessável), não erro do cadastro.
+  if (falta) return { external_id: r.external_id, codigo: (CAMPOS_DE_REFERENCIA[r.entidade] ?? []).includes(falta) ? 'referencia_ausente' : 'campo_obrigatorio', campo: falta };
   const schema = PAYLOADS_HUB[r.entidade as keyof typeof PAYLOADS_HUB];
   if (schema) {
     // `strict`: chave a mais no payload também é `campo_invalido`.
@@ -367,6 +421,8 @@ export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: Entid
       return { external_id: r.external_id, codigo: 'campo_invalido', campo };
     }
   }
+  // A-01: o Hub confere o dígito verificador do CNPJ da filial (RN-CORE-39 do FDV); o valor nunca vai na linha (RN-INF-04).
+  if (r.entidade === 'filial' && !cnpjValido(String(r.payload.cnpj))) return { external_id: r.external_id, codigo: 'campo_invalido', campo: 'cnpj' };
   for (const [campo, alvo] of REFERENCIAS_HUB[r.entidade] ?? []) {
     const v = r.payload[campo];
     if (typeof v === 'string' && !confirmado(alvo, v)) return { external_id: r.external_id, codigo: 'referencia_ausente', campo };

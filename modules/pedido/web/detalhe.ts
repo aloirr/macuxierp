@@ -4,7 +4,7 @@
  */
 import { textoMotivo } from '../domain/motivos';
 import { MotivoCodigo, type CodigoPendencia, Pedido, PendenciaDetalhada } from '../contracts';
-import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from './formatar';
+import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { ROTULO_ORIGEM, ROTULO_STATUS } from './lista';
 
 export const ROTULO_PENDENCIA: Readonly<Record<CodigoPendencia, string>> = {
@@ -41,8 +41,8 @@ function valorDaPendencia(codigo: CodigoPendencia, v: number | null): string {
 
 export interface LinhaPendencia {
   texto: string;
-  /** `Bloqueante` impede a aprovação (RN-PED-03); `Aceitável` aprova com justificativa. */
-  gravidade: 'Bloqueante' | 'Aceitável';
+  /** `Bloqueia` impede a aprovação (RN-PED-03); `Atenção` aprova com justificativa. */
+  gravidade: 'Bloqueia' | 'Atenção';
   item: number | null;
   esperado: string;
   informado: string;
@@ -51,7 +51,7 @@ export interface LinhaPendencia {
 export function linhasDePendencias(pendencias: readonly PendenciaDetalhada[]): LinhaPendencia[] {
   return pendencias.map((p) => ({
     texto: ROTULO_PENDENCIA[p.codigo],
-    gravidade: p.bloqueante ? 'Bloqueante' : 'Aceitável',
+    gravidade: p.bloqueante ? 'Bloqueia' : 'Atenção',
     item: p.sequencia,
     esperado: valorDaPendencia(p.codigo, p.esperado),
     informado: valorDaPendencia(p.codigo, p.informado),
@@ -86,7 +86,8 @@ export function cabecalhoDoPedido(p: Pedido, fuso: string) {
   const r = p.cliente_retrato;
   return {
     titulo: `Pedido ${p.numero}`,
-    status: ROTULO_STATUS[p.status],
+    /** Selo ao lado do h1; o shell desenha. */
+    selo: { rotulo: ROTULO_STATUS[p.status] },
     origem: ROTULO_ORIGEM[p.origem],
     cliente: r.razao_social,
     /** Nulo para o vendedor (LGPD): a tela não mostra o campo. */
@@ -98,8 +99,13 @@ export function cabecalhoDoPedido(p: Pedido, fuso: string) {
   };
 }
 
-export function resumoDaDecisao(p: Pick<Pedido, 'decisao'>, fuso: string) {
+export function resumoDaDecisao(p: Pick<Pedido, 'decisao'> & Partial<Pick<Pedido, 'origem' | 'aprovado_origem_em'>>, fuso: string) {
   const d = p.decisao;
+  if (!d && p.origem === 'fdv') {
+    // Pedido do FDV: aprovado na origem, sem linha em `aprovacao` (ADR 0007).
+    const quando = p.aprovado_origem_em ? formatarDataHora(p.aprovado_origem_em, fuso) : '';
+    return { decisao: quando ? `Aprovado no Macuxi FDV em ${quando}` : 'Aprovado no Macuxi FDV', quem: 'Macuxi FDV', quando, justificativa: '', motivo: '', pendencias_aceitas: [] as string[] };
+  }
   if (!d) return null;
   return {
     decisao: d.decisao === 'aprovado' ? 'Aprovado' : 'Recusado',

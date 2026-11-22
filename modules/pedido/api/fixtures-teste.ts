@@ -46,11 +46,14 @@ export function prepararCadastros(c: CadastrosMemoria, o: { limite?: number; sal
     c.precos.set(`${IDS.tabela}:${IDS.filial}:${id}`, { tabela_preco_id: IDS.tabela, filial_id: IDS.filial, produto_id: id, preco_centavos: 1000, desconto_maximo_bp: 500, origem_filial_id: IDS.filial, vigencia_inicio: '2026-01-01', vigencia_fim: null });
     c.saldosPor.set(`${IDS.filial}:${id}`, o.saldo ?? 1_000_000);
   }
-  const condicao = (id: string, prazos: number[], inativo = false) =>
-    c.condicoes.set(id, { id, codigo: id.slice(-1), descricao: 'Condição', forma_tpag: '01', prazos_dias: prazos, forma_external_id: null, forma_codigo: 'DIN', forma_nome: 'Dinheiro', external_id: null, inativo });
-  condicao(IDS.condicao30, [30]);
-  condicao(IDS.condicaoAVista, [0]);
-  condicao(IDS.condicaoInativa, [30], true);
+  // RN-CAD-09: à vista (01, 17, 04) só com prazo 0; a prazo usa boleto (15).
+  const condicao = (id: string, prazos: number[], forma: { tpag: string; codigo: string; nome: string }, inativo = false) =>
+    c.condicoes.set(id, { id, codigo: id.slice(-1), descricao: 'Condição', forma_tpag: forma.tpag, prazos_dias: prazos, forma_external_id: null, forma_codigo: forma.codigo, forma_nome: forma.nome, external_id: null, inativo });
+  const DINHEIRO = { tpag: '01', codigo: 'DIN', nome: 'Dinheiro' };
+  const BOLETO = { tpag: '15', codigo: 'BOL', nome: 'Boleto' };
+  condicao(IDS.condicao30, [30], BOLETO);
+  condicao(IDS.condicaoAVista, [0], DINHEIRO);
+  condicao(IDS.condicaoInativa, [30], BOLETO, true);
   c.vendedores.set(IDS.usuarioVendedor, IDS.vendedor);
   c.vendedores.set(IDS.usuarioOutroVendedor, IDS.outroVendedor);
 }
