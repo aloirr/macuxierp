@@ -14,8 +14,8 @@ export interface EntradaAvaliacao {
   cliente: { inativo: boolean; limite_credito_centavos: number };
   filial: { emissora: boolean; inativo: boolean };
   condicao_pagamento_id: string | null;
-  /** Nulo = não encontrada (ou não informada). `prazos_dias` define se é à vista (`ehAVista`). */
-  condicao: Pick<CondicaoPagamento, 'prazos_dias' | 'inativo'> | null;
+  /** Nulo = não encontrada (ou não informada). `forma_tpag` define se é à vista (`ehAVista`). */
+  condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias' | 'inativo'> | null;
   itens: readonly ItemAvaliacao[];
   produtos: readonly { id: string; inativo: boolean }[];
   /** Preço de tabela vigente por produto; produto ausente = sem preço na tabela. */
@@ -29,12 +29,15 @@ export interface EntradaAvaliacao {
   compromisso_credito_centavos: number;
 }
 
-/** À vista = todos os prazos são 0 dia. Premissa (a): vale `prazos_dias`, não `forma_tpag`. */
-export const ehAVista = (condicao: Pick<CondicaoPagamento, 'prazos_dias'>): boolean => condicao.prazos_dias.every((d) => d === 0);
+/** Decisões de 21/11/2026 23h55 e 22/11 00h30: à vista = tPag 01, 17 ou 04 E todos os prazos_dias iguais a 0 ("PIX em 30 dias" não é à vista). */
+export const FORMAS_A_VISTA = Object.freeze(['01', '17', '04'] as const);
 
-/** RN-PED-04; decisão do Alexandre 21/11 23h10 (à vista fora da análise de crédito); premissa (a): à vista = todos os prazos_dias 0. */
+export const ehAVista = (condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'>): boolean =>
+  (FORMAS_A_VISTA as readonly string[]).includes(condicao.forma_tpag) && condicao.prazos_dias.every((d) => d === 0);
+
+/** RN-PED-04; decisões de 21/11 23h10, 23h55 e 22/11 00h30: à vista fica fora da análise e do limite de crédito. */
 export function avaliarCredito(a: {
-  condicao: Pick<CondicaoPagamento, 'prazos_dias'> | null;
+  condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'prazos_dias'> | null;
   limite_credito_centavos: number;
   titulos_abertos_centavos: number;
   compromisso_credito_centavos: number;
@@ -132,7 +135,7 @@ type CodigoRecusaCadastro = Exclude<CodigoRecusaRecebimento, 'modulo_pedido_inat
 export interface RetratoRecebimentoFdv {
   cliente: { inativo: boolean } | null;
   filial: { emissora: boolean; inativo: boolean } | null;
-  /** Nulo = não encontrada; só conta quando `condicao_pagamento_id` foi informado. */
+  /** Nulo = não encontrada; com `condicao_pagamento_id` nulo a recusa é `condicao_ausente`. */
   condicao: { inativo: boolean } | null;
   condicao_pagamento_id: string | null;
   produtos: readonly { id: string; inativo: boolean }[];
@@ -151,11 +154,10 @@ export function decidirRecebimentoFdv(r: RetratoRecebimentoFdv): DecisaoRecebime
   if (r.cliente.inativo) return recusa('cliente_inativo');
   if (r.filial === null) return recusa('filial_inexistente');
   if (!r.filial.emissora || r.filial.inativo) return recusa('filial_nao_emissora');
-  // premissa (e): pendente com o Alexandre.Condição nula (o FDV não informou) continua aprovada.
-  if (r.condicao_pagamento_id !== null) {
-    if (r.condicao === null) return recusa('condicao_inexistente');
-    if (r.condicao.inativo) return recusa('condicao_inativa');
-  }
+  // Decisão 23h55: pedido do FDV sem condição de pagamento é recusado.
+  if (r.condicao_pagamento_id === null) return recusa('condicao_ausente');
+  if (r.condicao === null) return recusa('condicao_inexistente');
+  if (r.condicao.inativo) return recusa('condicao_inativa');
   const produtos = new Map(r.produtos.map((p) => [p.id, p]));
   if (r.itens.some((i) => !produtos.has(i.produto_id))) return recusa('produto_inexistente');
   if (r.itens.some((i) => produtos.get(i.produto_id)?.inativo)) return recusa('produto_inativo');
