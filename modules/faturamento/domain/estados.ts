@@ -50,3 +50,7 @@ export const reenvioMantemNumero = (de: StatusNota, para: StatusNota): boolean =
  * fechado por inutilização quando o faturista desiste do reenvio. A inutilização é evento da série/faixa, não transição da nota.
  */
 export const numeroInutilizavel = (status: StatusNota): boolean => status === 'rejeitada';
+
+/** RN-FAT-03: estados em que a nota ainda é transmitida pelo worker (envio, recibo, consulta de protocolo e guarda do XML). */
+export const ESTADOS_EM_TRANSMISSAO: readonly StatusNota[] = ['em_autorizacao', 'autorizada_guarda_pendente'];
+export const emTransmissao = (status: StatusNota): boolean => ESTADOS_EM_TRANSMISSAO.includes(status);

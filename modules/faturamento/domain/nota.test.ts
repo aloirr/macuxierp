@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { IcmsItem, ItemResultado } from '@macuxierp/fiscal/contracts';
 import { valorItem } from '@macuxierp/platform-sdk';
 import { calc, itemPedido, pedidoAprovado } from './fixtures';
-import { montarNota, ratearProporcional, valoresFiscais, xNomeDestinatario, XNOME_HOMOLOGACAO } from './nota';
+import { cfopDoItem, resumoDoItem, montarNota, ratearProporcional, valoresFiscais, type SituacaoPedido } from './nota';
 
 const item = itemPedido;
 const pedido = pedidoAprovado([item(1, 30_000, 1000, 300), item(2, 10_000, 2500)]);
-const situacao = (status = 'aprovado', f1 = 0, f2 = 0) => ({
+const situacao = (status: SituacaoPedido['status'] = 'aprovado', f1 = 0, f2 = 0) => ({
   status,
   itens: [
     { sequencia: 1, quantidade: 30_000, quantidade_faturada: f1 },
@@ -72,7 +72,7 @@ describe('montar nota a partir do pedido aprovado', () => {
     expect(!zerado.ok && zerado.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens' });
   });
   it('RN-PED-02: só pedido aprovado ou faturado_parcial é faturado', () => {
-    for (const s of ['cancelado', 'recebido', 'em_analise', 'recusado', 'faturado']) {
+    for (const s of ['cancelado', 'recebido', 'em_analise', 'recusado', 'faturado'] as const) {
       const r = montarNota({ ...base, situacao: situacao(s) });
       expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-PED-02' });
     }
@@ -114,17 +114,48 @@ describe('montar nota a partir do pedido aprovado', () => {
     expect(r({ csosn: '202', v_bc_st: 900, v_icms_st: 50, v_fcp_st: 2, v_icms: 7 })).toMatchObject({ vBCST: 900, vST: 50, vFCPST: 2, vICMS: 0 });
     expect(r({ cst: '00', v_bc: 1 }, { pis: { cst: '07', v_valor: 9 }, cofins: { cst: '99', v_valor: 4 } })).toMatchObject({ vPIS: 0, vCOFINS: 4 });
   });
+  it('RN-FAT-01: IBS/CBS/IS do lote 3 do fiscal (ibs_cbs com g_cbs e is) entram nos totais; o vNF não os soma em 2026', () => {
+    const ibs_cbs = { cst: '000', c_class_trib: '000001', v_bc: 1000, v_ibs: 3, g_cbs: { p_cbs: 9000, v_cbs: 9 } };
+    const is = { cst_is: '000', c_class_trib_is: '000001', v_bc_is: 1000, v_is: 5 };
+    expect(valoresFiscais(calc(1, { ibs_cbs, is }).resultado)).toMatchObject({ vIBS: 3, vCBS: 9, vIS: 5 });
+    const r = montarNota({ ...base, situacao: situacao(), calculo: [calc(1, { ibs_cbs, is }), calc(2)] });
+    if (!r.ok) throw new Error('esperava ok');
+    expect(r.nota.totais).toMatchObject({ vIBS: 3, vCBS: 9, vIS: 5, vNF: 5500 - 300 + 1000 });
+  });
+  it('RF-FAT-01: o CFOP do item vem do ItemResultado.cfop do fiscal quando existe; senão do mapa de CFOP da porta', () => {
+    expect(cfopDoItem({ ...calc(1).resultado, cfop: '6102' }, '5102')).toBe('6102');
+    expect(cfopDoItem(calc(1).resultado, '5102')).toBe('5102');
+    expect(cfopDoItem(calc(1).resultado, undefined)).toBe('');
+  });
+  it('RF-FAT-01: o resumo do item (evento e consulta) é sequência, quantidade e valor líquido (produto − desconto)', () => {
+    const r = montarNota({ ...base, situacao: situacao() });
+    if (!r.ok) throw new Error('esperava ok');
+    expect(r.nota.itens.map(resumoDoItem)).toEqual([{ sequencia: 1, quantidade: 30_000, valor_centavos: 3000 - 300 }, { sequencia: 2, quantidade: 10_000, valor_centavos: 2500 }]);
+  });
   it('RF-FAT-01: vNF da nota difere do v_nf do cálculo fiscal = violação (a referência é o fiscal, RD-0283)', () => {
     const r = montarNota({ ...base, situacao: situacao(), v_nf_fiscal: 5500 - 300 + 1000 + 1 });
     expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'total' });
     expect(montarNota({ ...base, situacao: situacao(), v_nf_fiscal: 5500 - 300 + 1000 }).ok).toBe(true);
   });
-  it('RN-FAT-04: homologação troca o xNome do destinatário e não vai ao FDV', () => {
-    expect(xNomeDestinatario('homologacao', 'CLIENTE X')).toBe(XNOME_HOMOLOGACAO);
-    expect(xNomeDestinatario('producao', 'CLIENTE X')).toBe('CLIENTE X');
+  it('RN-FAT-04: nota de homologação não vai ao FDV (o xNome de homologação é do emissor)', () => {
     const h = montarNota({ ...base, ambiente: 'homologacao', situacao: situacao() });
     const p = montarNota({ ...base, situacao: situacao() });
     expect(h.ok && h.nota.vai_ao_fdv).toBe(false);
     expect(p.ok && p.nota.vai_ao_fdv).toBe(true);
+  });
+  it('RF-FAT-01: sem frete_centavos informado, o vFrete vem do Frete.valor_centavos do pedido (nulo vale 0)', () => {
+    const comFrete = pedidoAprovado([item(1, 30_000, 1000, 300), item(2, 10_000, 2500)]);
+    comFrete.pedido.frete = { modalidade: 'CIF', transportadora: null, valor_centavos: 777 };
+    const r = montarNota({ pedido: comFrete, ambiente: 'producao', calculo: [calc(1), calc(2)], situacao: situacao() });
+    expect(r.ok && r.nota.totais.vFrete).toBe(777);
+    comFrete.pedido.frete = { modalidade: 'FOB', transportadora: null, valor_centavos: null };
+    const r0 = montarNota({ pedido: comFrete, ambiente: 'producao', calculo: [calc(1), calc(2)], situacao: situacao() });
+    expect(r0.ok && r0.nota.totais.vFrete).toBe(0);
+    const semFrete = montarNota({ pedido, ambiente: 'producao', calculo: [calc(1), calc(2)], situacao: situacao() });
+    expect(semFrete.ok && semFrete.nota.totais.vFrete).toBe(0);
+  });
+  it('RF-FAT-01: a origem do ProdutoRetrato acompanha o item da nota', () => {
+    const r = montarNota({ ...base, situacao: situacao() });
+    expect(r.ok && r.nota.itens.map((i) => i.origem)).toEqual(['0', '0']);
   });
 });

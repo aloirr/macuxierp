@@ -9,6 +9,7 @@ export const MOTIVO_FORMA_NAO_ACEITA = 'forma não aceita: use Dinheiro, PIX, Ca
 export const MOTIVO_A_VISTA = 'à vista: prazo único igual a 0 e sem parcelas de cartão';
 export const MOTIVO_CARTAO_PARCELAS = `cartão: informe de 1 a ${MAX_PARCELAS_CARTAO} parcelas`;
 export const MOTIVO_CARTAO_PRAZOS = 'cartão: prazos de 30 em 30 dias, um por parcela';
+export const MOTIVO_PARCELAS_FORMA = 'cartão exige parcelas e as demais formas não as têm';
 export const MOTIVO_BOLETO = `boleto: 1 a ${MAX_PARCELAS} parcelas de 0 a ${MAX_DIAS} dias e sem parcelas de cartão`;
 
 /** Prazos do cartão de crédito em N parcelas: 30, 60, …, 30×N. */

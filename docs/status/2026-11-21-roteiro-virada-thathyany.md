@@ -39,6 +39,8 @@ Até o ERP entrar em produção (Etapa 1), `forma_pagamento` fica parada no Hub:
 
 **Devolva:** `Conector criado: macuxierp` (o identificador não é segredo). Depois do formulário: `chave gravada`.
 
+> **Situação da Etapa 0 em 22/11, 01h20 (Manaus):** a chave gravada às 00h50 no ambiente do gerente é a do Conector do **kit** (`thathyany-conector`), que já publica `forma_pagamento` desde 15/11. Nada foi enviado com ela. Falta criar o Conector **novo** do ERP (só `forma_pagamento`, "recebe pedidos" desmarcado) e gravar a chave dele pelo formulário seguro; a chave nova substitui a do kit.
+
 ## Etapa 1 — Pré-requisitos do lado do ERP (sem ação no FDV)
 A virada só funciona com o ERP em produção e com os dados da thathyany carregados nele, porque o Conector do ERP publica o que está no banco do ERP.
 
@@ -46,6 +48,7 @@ A virada só funciona com o ERP em produção e com os dados da thathyany carreg
 |---|---|---|
 | 1.1 | `.env` de produção, secrets do GitHub, DNS e rota `erp.macuxifdv.com.br` (lista em `docs/status/2026-11-21-decisoes-alexandre.md`, seção 2) | Alexandre |
 | 1.2 | Deploy, com a frase **"aprovo deploy vX.Y.Z"**. O pedido de deploy vem pronto do gerente pelo PO: versão, SHA, suíte verde e issue. | Alexandre, quando o pedido chegar |
+| 1.2b | Logo depois do deploy (que aplica a migração 0019), na tela de condições de pagamento do ERP, a ação **Desativar formas recusadas** (`POST /condicoes-pagamento/desativar-formas-recusadas`, só administrador) em cada empresa. Até isso rodar, editar uma condição antiga de cartão sem parcelas dá erro. | administrador da empresa no ERP |
 | 1.3 | Carga dos CSVs do kit da thathyany pela tela **Cadastros > Carga** do ERP, já em produção (T-0026). Os external_id do kit ficam guardados no ERP. | Alexandre ou thathyany, no ERP |
 | 1.4 | No ERP, tela **Integração FDV**: identificador `macuxierp`, ambiente de produção e entidades habilitadas: nenhuma | gerente (pelo time), depois do 1.2 |
 

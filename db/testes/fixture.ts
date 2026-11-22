@@ -296,3 +296,26 @@ INSERT INTO fiscal.carga_aproximada (tenant_id, ncm, uf, aliquota_federal_nacion
 export const inserirCondicao = (tenant: string, codigo: string, forma: string, parcelas: string): string =>
   `INSERT INTO cadastros.condicao_pagamento (tenant_id, codigo, descricao, forma_tpag, prazos_dias, parcelas_cartao)
    VALUES ('${tenant}', '${codigo}', 'Condição ${codigo}', '${forma}', '{0}', ${parcelas});`;
+
+/** INSERT de uma regra válida do ICMS no regime normal (fiscal.regra_tributaria, T-0020); `campos` sobrescreve colunas (valores já em SQL). */
+export function regraTributaria(campos: Record<string, string> = {}): string {
+  const base: Record<string, string> = {
+    tenant_id: 'plataforma.tenant_atual()',
+    crt: '3',
+    uf_origem: `'AM'`,
+    uf_destino: `'PA'`,
+    cfop: `'6102'`,
+    codigo: `'00'`,
+    aliquota_icms: '120000',
+    cst_pis: `'01'`,
+    cst_cofins: `'01'`,
+    versao_nt_rtc: `'NT 2025.002-RTC v1.30'`,
+    fonte_tipo: `'lei'`,
+    fonte_referencia: `'RICMS-AM'`,
+    versao: `'2026.1'`,
+    vigencia_inicio: `'2026-01-01'`,
+    ...campos,
+  };
+  const colunas = Object.keys(base).filter((k) => base[k] !== 'OMITIR');
+  return `INSERT INTO fiscal.regra_tributaria (${colunas.join(', ')}) VALUES (${colunas.map((k) => base[k]).join(', ')});`;
+}

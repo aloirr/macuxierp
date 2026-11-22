@@ -1,0 +1,183 @@
+/**
+ * Trabalho do worker: transmitir a nota `em_autorizacao` (RF-FAT-01, RN-FAT-03, RN-FAT-07). A SEFAZ é chamada FORA de transação:
+ *   tx1 (trava a nota, lê o A1 para o transporte e lê o XML ASSINADO: a última `nfe_assinada`, gravada pela emissão com a nota em rascunho) → chamada à SEFAZ sem transação → tx2 (aplica o retorno com `processarRetorno`, guarda o nfeProc
+ *   montado do assinado guardado e publica o evento). Depois do 103, o `nRec` é gravado numa tx curta ANTES de consultar o recibo.
+ *   Duplicidade (204/539): `consultarProtocolo` fora da transação e tx3. Retry, duplicidade e guarda pendente nunca remontam o XML:
+ *   mudar emissor, verProc ou A1 entre o envio e o retry não muda o digest que a SEFAZ viu (RN-FAT-03).
+ * O worker entrega as portas prontas: o `SeletorTransporte` (`criarSeletorTransporte` do nfe-sefaz, com a trava do simulador, ou o
+ * simulador direto no arnês de teste), o A1 aberto (`lerA1DecifradoDaFilial` do core + `abrirA1` do emissor) e a porta `EmissorNFe`. Nada daqui importa o simulador
+ * nem o transporte real. O A1 vive só em memória e o `pfx` é zerado ao fim. Sem dado pessoal em log.
+ */
+import type { EmissorNFe } from '@macuxierp/nfe-emissor';
+import { Uf, type SefazTransporte, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
+import type { Banco, Transacao } from '@macuxierp/platform-sdk';
+import { digestValueDoXml, emTransmissao } from '../domain';
+import { criarProcessadorRetorno, type ResultadoRetorno } from './emissao';
+import type { A1DaFilial, AmbienteFiscalDaFilial, NotaRegistro, RepositorioNotas, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import { retornoDaAutorizacao, retornoDaConsulta, retornoDoRecibo } from './retorno-sefaz';
+
+export interface DepsTransmissor {
+  banco: Banco;
+  notas: RepositorioNotas;
+  ambiente: AmbienteFiscalDaFilial;
+  /**
+   * Liga o `lerA1DecifradoDaFilial(tx, chave, filial)` do core à chave do secret do servidor. O worker usa só a `credencial` (pfx + senha)
+   * no mTLS do transporte; `null` = filial sem A1 ativo.
+   */
+  lerA1(tx: Transacao, filial_id: string): Promise<A1DaFilial | null>;
+  /** Porta `EmissorNFe` (`criarEmissorNFe`): o worker só usa `transmitir`; montar e assinar são da emissão. */
+  emissor: EmissorNFe;
+  /** Fábrica INJETADA: `criarSeletorTransporte(...)` no worker de produção; o simulador direto no arnês da T-0022. */
+  sefaz: SeletorTransporte;
+  agora?: () => Date;
+}
+
+export type ResultadoTransmissao =
+  | ResultadoRetorno
+  | { resultado: 'ignorada'; motivo: 'nota_inexistente' | 'status_nao_transmissivel' | 'em_transmissao' }
+  /** A filial não tem A1 ativo: nada foi enviado; a nota continua `em_autorizacao`. */
+  | { resultado: 'sem_certificado' }
+  /** RN-FAT-04: o ambiente da filial mudou depois da nota; o envio é recusado (a nota é de outro ambiente). */
+  | { resultado: 'ambiente_mudou' }
+  | { resultado: 'falha'; codigo: string };
+
+type Preparo =
+  | { tipo: 'fim'; resultado: ResultadoTransmissao }
+  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null };
+
+const destinoDoLog = (t: SefazTransporte): TransmissaoRegistrada['destino'] =>
+  t.destino.tipo === 'simulador' ? 'simulador' : t.destino.modo === 'normal' ? 'sefaz_am' : 'svc';
+
+export function criarTransmissor(deps: DepsTransmissor) {
+  const agora = deps.agora ?? ((): Date => new Date());
+  const processar = criarProcessadorRetorno(deps.notas);
+
+  async function preparar(tenant_id: string, nota_id: string): Promise<Preparo> {
+    return deps.banco.comTenant(tenant_id, async (tx) => {
+      // Outra transmissão da mesma nota em curso: sai sem fazer nada (a trava vale até o fim desta tx).
+      if (!(await deps.notas.travarTransmissao(tx, nota_id))) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'em_transmissao' } };
+      const nota = await deps.notas.obter(tx, nota_id);
+      if (!nota) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'nota_inexistente' } };
+      if (!emTransmissao(nota.status)) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
+      // RN-FAT-04: a nota é do ambiente em que nasceu; se a filial mudou, nada sai (o banco recusa o reenvio também).
+      if ((await deps.ambiente.ambiente(tx, nota.filial_id)) !== nota.ambiente) return { tipo: 'fim', resultado: { resultado: 'ambiente_mudou' } };
+      const a1 = await deps.lerA1(tx, nota.filial_id);
+      if (!a1) return { tipo: 'fim', resultado: { resultado: 'sem_certificado' } };
+      try {
+        const uf = await ufDaNota(tx, nota_id);
+        if (!uf) {
+          a1.credencial.pfx.fill(0);
+          return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'nota_inexistente' } };
+        }
+        const assinado = await xmlAssinadoDaNota(tx, nota);
+        return { tipo: 'enviar', nota, uf, a1, ...assinado };
+      } catch (e) {
+        a1.credencial.pfx.fill(0);
+        throw e;
+      }
+    });
+  }
+
+  async function ufDaNota(tx: Transacao, nota_id: string): Promise<Uf | null> {
+    const conteudo = await deps.notas.lerConteudo(tx, nota_id);
+    return conteudo ? Uf.parse(conteudo.emitente.endereco.uf) : null;
+  }
+
+  /**
+   * RN-FAT-03: o worker NÃO assina. Lê a última `nfe_assinada` guardada pela emissão (ou pelo reenvio da rejeitada) e a transmite; retry,
+   * duplicidade e guarda pendente usam o MESMO assinado e o `DigestValue` dele (o `digVal` do protocolo tem de ser igual).
+   */
+  async function xmlAssinadoDaNota(tx: Transacao, nota: NotaRegistro): Promise<{ xmlAssinado: string; digestValue: string | null }> {
+    const ultimo = await deps.notas.ultimoXmlAssinado(tx, nota.id);
+    if (!ultimo) throw new Error('RN-FAT-03: a nota em_autorizacao não tem XML assinado guardado');
+    return { xmlAssinado: ultimo.xml, digestValue: digestValueDoXml(ultimo.xml) };
+  }
+
+  /** Aplica o retorno numa transação própria (tx2 e tx3). `autorizada_guarda_pendente` também passa por aqui (reprocessa a guarda). */
+  async function aplicar(
+    tenant_id: string,
+    nota_id: string,
+    retorno: RetornoSefaz,
+    opcoes: { xmlAssinado: string; digestValue: string | null; jaConsultou?: boolean },
+    descarregar: (tx: Transacao) => Promise<void>,
+  ): Promise<ResultadoRetorno | { resultado: 'ignorada'; motivo: 'nota_inexistente' }> {
+    return deps.banco.comTenant(tenant_id, async (tx) => {
+      const nota = await deps.notas.obter(tx, nota_id, { travar: true });
+      if (!nota) return { resultado: 'ignorada', motivo: 'nota_inexistente' } as const;
+      await descarregar(tx);
+      const r = await processar(tx, nota, retorno, opcoes);
+      if (r.resultado === 'aguardando' && retorno.nRec) await deps.notas.registrarRecibo(tx, nota_id, retorno.nRec);
+      return r;
+    });
+  }
+
+  async function transmitirNota(tenant_id: string, nota_id: string): Promise<ResultadoTransmissao> {
+    const p = await preparar(tenant_id, nota_id);
+    if (p.tipo === 'fim') return p.resultado;
+    const { nota, a1, xmlAssinado, digestValue } = p;
+    try {
+      const transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
+      const destino = destinoDoLog(transporte);
+      const log: TransmissaoRegistrada[] = [];
+      const medir = async <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => {
+        const inicio = agora();
+        const resposta = await chamar();
+        const fim = agora();
+        log.push({ nota_id, servico, destino, cStat: resposta.cStat, xMotivo: resposta.xMotivo.slice(0, 255), enviada_em: inicio.toISOString(), respondida_em: fim.toISOString(), duracao_ms: Math.max(0, fim.getTime() - inicio.getTime()) });
+        return resposta;
+      };
+      /** Grava (e esvazia) o log das chamadas já feitas, na tx que o chamador abriu. */
+      const descarregar = async (t: Transacao): Promise<void> => {
+        for (const reg of log.splice(0)) await deps.notas.registrarTransmissao(t, reg);
+      };
+
+      let retorno: RetornoSefaz;
+      if (nota.status === 'autorizada_guarda_pendente') {
+        // Já autorizada na SEFAZ, só falta guardar: o protocolo vem da consulta; o XML assinado guardado é o mesmo (mesmo digest).
+        retorno = retornoDaConsulta(await medir('consulta', () => transporte.consultarProtocolo({ chNFe: nota.chave_acesso })));
+      } else if (nota.recibo) {
+        retorno = retornoDoRecibo(await medir('ret_autorizacao', () => transporte.consultarRecibo({ nRec: nota.recibo as string })), nota.chave_acesso);
+      } else {
+        const envio = await medir('autorizacao', () => deps.emissor.transmitir(xmlAssinado, String(agora().getTime()).slice(-15), transporte));
+        retorno = retornoDaAutorizacao(envio, nota.chave_acesso);
+        if (envio.recibo && retorno.cStat === '103') {
+          // O recibo é gravado ANTES de consultá-lo: se a consulta falhar, o retry consulta este recibo em vez de reenviar o lote.
+          const nRec = envio.recibo.nRec;
+          await deps.banco.comTenant(tenant_id, async (t) => {
+            await descarregar(t);
+            await deps.notas.registrarRecibo(t, nota_id, nRec);
+          });
+          retorno = { ...retornoDoRecibo(await medir('ret_autorizacao', () => transporte.consultarRecibo({ nRec })), nota.chave_acesso), nRec };
+        }
+      }
+
+      const r = await aplicar(tenant_id, nota_id, retorno, { xmlAssinado, digestValue }, descarregar);
+      if (r.resultado !== 'consultar_protocolo') return r;
+
+      // Duplicidade: a nota pode já estar autorizada na SEFAZ. Consulta FORA de transação e reinterpreta (nunca vira rejeição).
+      const consulta = await medir('consulta', () => transporte.consultarProtocolo({ chNFe: nota.chave_acesso }));
+      return await aplicar(tenant_id, nota_id, retornoDaConsulta(consulta), { xmlAssinado, digestValue, jaConsultou: true }, descarregar);
+    } finally {
+      a1.credencial.pfx.fill(0);
+    }
+  }
+
+  /**
+   * Varredura: notas `em_autorizacao` e `autorizada_guarda_pendente` paradas há mais de `paradasHaMinutos` (padrão 2), uma de cada vez;
+   * falha de uma não trava as outras.
+   */
+  async function transmitirPendentes(tenant_id: string, limite = 20, paradasHaMinutos = 2): Promise<{ nota_id: string; resultado: ResultadoTransmissao }[]> {
+    const pendentes = await deps.banco.comTenant(tenant_id, (tx) => deps.notas.pendentesDeTransmissao(tx, limite, paradasHaMinutos));
+    const saida: { nota_id: string; resultado: ResultadoTransmissao }[] = [];
+    for (const n of pendentes) {
+      try {
+        saida.push({ nota_id: n.id, resultado: await transmitirNota(tenant_id, n.id) });
+      } catch (e) {
+        saida.push({ nota_id: n.id, resultado: { resultado: 'falha', codigo: e instanceof Error ? e.name : 'ERRO' } });
+      }
+    }
+    return saida;
+  }
+
+  return { transmitirNota, transmitirPendentes };
+}

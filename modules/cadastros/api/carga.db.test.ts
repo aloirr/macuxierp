@@ -144,4 +144,26 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     await carregar(T, 'gravar', [{ nome: 'vendedor.csv', conteudo: vend('sim') }]);
     expect((await admin('SELECT deleted_at IS NOT NULL AS i FROM cadastros.vendedor WHERE tenant_id = $1', [T]))[0]!.i).toBe(false);
   }, 120_000);
+  it('RN-CAD-09: reativar pela carga um cartão sem parcelas (desativado pela limpeza) é erro de linha, sem 23514 nem 500', async () => {
+    const T = await criarTenant(efemero.admin, 'carga-g', ['cadastros']);
+    await admin(
+      `INSERT INTO cadastros.condicao_pagamento (tenant_id, codigo, descricao, forma_tpag, prazos_dias, deleted_at, external_id, forma_external_id, forma_codigo, forma_nome)
+       VALUES ($1, 'CC1', 'Cartão antigo', '03', '{30}', now(), 'PZ-CC1', 'FP-CC', 'CARTAO', 'Cartão')`,
+      [T],
+    );
+    const csv = 'external_id;codigo;nome;alterado_em;ativo;ordem\nFP-CC;CARTAO;Cartão;;sim;1\n';
+    const r = await carregar(T, 'gravar', [{ nome: 'forma_pagamento.csv', conteudo: csv }]);
+    expect(r.status).toBe(200);
+    expect(r.rel.erros).toEqual([expect.objectContaining({ arquivo: 'forma_pagamento.csv', linha: 2, codigo: 'RN-CAD-09' })]);
+    expect((await admin('SELECT deleted_at IS NOT NULL AS i FROM cadastros.condicao_pagamento WHERE tenant_id = $1', [T]))[0]!.i).toBe(true);
+  }, 120_000);
+  it('RN-CAD-09: o 23514 real dos CHECKs 0017/0019 (gravação que burla o domain) vira 422 RN-CAD-09 e a transação segue utilizável', async () => {
+    const T = await criarTenant(efemero.admin, 'carga-h', ['cadastros']);
+    const tentar = (dados: Record<string, unknown>) =>
+      app.comTenant(T, async (tx) => repositoriosSql(tx).condicoesPagamento.inserir({ codigo: 'H1', descricao: 'H', ...dados } as never).catch((e: unknown) => e));
+    for (const dados of [{ forma_tpag: '01', prazos_dias: [0], parcelas_cartao: 3 }, { forma_tpag: '03', prazos_dias: [30], parcelas_cartao: null }]) {
+      const e = (await tentar(dados)) as { status?: number; codigo?: string };
+      expect({ status: e.status, codigo: e.codigo }).toEqual({ status: 422, codigo: 'RN-CAD-09' });
+    }
+  }, 120_000);
 });
