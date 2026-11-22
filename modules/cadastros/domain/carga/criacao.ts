@@ -39,6 +39,8 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       const p = l as LinhasCarga['prazo_pagamento'];
       if (p.dados.descricao === undefined && extras.formaNome != null && p.dados.prazos_dias !== undefined) {
         p.dados.descricao = `${extras.formaNome} ${p.dados.prazos_dias.join('/')}`.slice(0, 60);
+      } else if (p.dados.descricao === undefined && extras.formaNome != null && p.dados.parcelas_cartao != null) {
+        p.dados.descricao = `${extras.formaNome} ${p.dados.parcelas_cartao}x`.slice(0, 60);
       }
       if (p.dados.descricao === undefined) erros.push(falta(n, 'descricao'));
       break;

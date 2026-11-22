@@ -32,6 +32,13 @@ describe('páginas do BKO do pedido', () => {
     expect(rotas.indexOf('/pedido/pedidos/novo')).toBeLessThan(rotas.indexOf('/pedido/pedidos/:id'));
   });
 
+  it('detalhe e novo existem pela rota, sem item próprio no menu; a lista fica no menu', () => {
+    const oculta = (id: string) => PAGINAS_PEDIDO.find((p) => p.id === id)?.ocultaNoMenu;
+    expect(oculta('detalhe')).toBe(true);
+    expect(oculta('novo')).toBe(true);
+    expect(oculta('pedidos')).toBeUndefined();
+  });
+
   it('a lista vem do descritor: filtros do RF-PED-05, busca por número e CSV', () => {
     expect(Object.keys(paginaPedidos.filtros).sort()).toEqual(['ate', 'cliente_id', 'de', 'filial_id', 'origem', 'status', 'vendedor_id']);
     expect(paginaPedidos.busca).toBe(true);
@@ -157,6 +164,8 @@ describe('detalhe', () => {
     );
     expect(h[0]).toEqual({ quando: '21/11/2026 08:00', de: 'Em análise', para: 'Recusado', ator: 'Usuário', motivo: 'Cliente bloqueado' });
     expect(resumoDaDecisao({ decisao: null }, 'America/Manaus')).toBeNull();
+    expect(resumoDaDecisao({ decisao: null, origem: 'fdv', aprovado_origem_em: '2026-11-21T23:05:00.000Z' }, 'America/Manaus')).toMatchObject({ decisao: 'Aprovado no Macuxi FDV em 21/11/2026 19:05' });
+    expect(resumoDaDecisao({ decisao: null, origem: 'fdv', aprovado_origem_em: null }, 'America/Manaus')).toMatchObject({ decisao: 'Aprovado no Macuxi FDV' });
     expect(resumoDaDecisao({ decisao: { decisao: 'aprovado', automatica: true, decidido_por: null, perfil: null, pendencias_aceitas: [], justificativa: null, motivo_codigo: null, motivo_texto: null, decidido_em: '2026-11-21T12:00:00.000Z' } }, 'America/Manaus')).toMatchObject({ decisao: 'Aprovado', quem: 'Automática (sem pendência)' });
   });
 });

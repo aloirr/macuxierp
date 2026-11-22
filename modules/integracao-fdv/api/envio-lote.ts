@@ -7,10 +7,9 @@
  * `recusado` (pausa). O corpo fica congelado até o estado final (M6): a retentativa reenvia o mesmo corpo com a mesma chave.
  * Uma chamada de `executarEnvio` faz um passo: envia o lote montado, consulta o aceito ou monta e envia um novo.
  *
- * Premissas (o que não cabe no schema 0007; as colunas `entidades_habilitadas` e `limite_registros_lote` chegam
- * na migração 0015, uso no L2b; `erp_id` já é lido): (1) o modo e a sessão da carga completa são `cursor nulo` no Hub e no ERP ou `sessao_aberta_id`
+ * Premissas (o que não cabe no schema 0007; `entidades_habilitadas` e `limite_registros_lote` vêm da credencial, 0015): (1) o modo e a sessão da carga completa são `cursor nulo` no Hub e no ERP ou `sessao_aberta_id`
  * preenchido (o BKO o preenche na ação "carga completa"); (2) o avanço local do cursor fica em `lote_envio.contagens.avanco`
- * até o lote concluir; (3) o limite por lote é o do `domain` (5.000 registros e 4 MiB), sem ajuste por entidade;
+ * até o lote concluir; (3) o limite por lote é `limiteRegistrosDoLote` (o menor entre `limite_registros_lote` da credencial e 5.000 registros), e 4 MiB;
  * (4) `ultimo_erro_codigo` do lote guarda o último erro de HTTP ou o motivo da recusa; o do registro, a tabela `lote_erro`;
  * (5) linha inválida firme (erro do próprio registro, sem remédio por referência) já declarada sai da fila ao fim do lote
  * (`pendente = false`, guardada pelo hash, lista em `contagens.firmes`): só um evento novo, com conteúdo diferente, a recoloca;
@@ -35,7 +34,7 @@ import {
 } from '../contracts';
 import {
   ATRASO_MAXIMO_S,
-  LIMITE_REGISTROS_LOTE,
+  limiteRegistrosDoLote,
   REFERENCIAS_HUB,
   atrasoRetentativaSegundos,
   campoDoHub,
@@ -110,6 +109,8 @@ interface Exec {
   cred: CredencialHub;
   credId: string;
   agora: Date;
+  /** `limiteRegistrosDoLote(limite_registros_lote da credencial)` (0015). */
+  limiteRegistros: number;
   /** Lote em tratamento nesta execução (para fechar como recusado se o cliente HTTP acusar defeito). */
   loteAtual: LinhaLote | null;
 }
@@ -175,13 +176,19 @@ export async function executarEnvio(item: ItemAgenda, ctx: ContextoAgenda, deps:
         WHERE tenant_id = $1 AND entidade = $2 AND estado = ANY($3::text[]) AND deleted_at IS NULL ORDER BY created_at LIMIT 1`,
       [tenant, entidade.data, [...ESTADOS_EM_VOO]],
     );
+    // entidade desabilitada na credencial (0015): a reserva não filtra (credencial com RLS); aqui não monta lote novo, não pausa
+    // e adia 1 h. Lote já em voo termina (consulta e envio), para não deixar o Hub com lote aceito sem resposta.
+    if (!lote && !credencial.entidades_habilitadas.includes(entidade.data)) {
+      await adiarPresoAPosse(tx, tenant, { entidade: entidade.data }, ctx.posseAte, mais(agora, UMA_HORA_S));
+      return null;
+    }
     return { cursor, credencial, lote: lote ?? null };
   });
   if (!antes) return;
 
   const cred = await abrirOuPausar(ctx, tenant, antes.credencial);
   if (!cred) return;
-  const e: Exec = { tenant, entidade: entidade.data, ctx, deps, cred, credId: antes.credencial.id, agora, loteAtual: antes.lote };
+  const e: Exec = { tenant, entidade: entidade.data, ctx, deps, cred, credId: antes.credencial.id, agora, limiteRegistros: limiteRegistrosDoLote(antes.credencial.limite_registros_lote), loteAtual: antes.lote };
   try {
     if (antes.lote) {
       if (antes.lote.estado === 'aceito') await consultarLote(e, antes.lote);
@@ -265,17 +272,17 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, cursor: LinhaCursor, hu
           `SELECT ${COLUNAS} FROM integracao_fdv.registro_publicado
             WHERE tenant_id = $1 AND entidade = $2 AND pendente AND deleted_at IS NULL AND payload IS NOT NULL
             ORDER BY alterado_em, registro_external_id COLLATE "C" LIMIT $3`,
-          [tenant, entidade, LIMITE_REGISTROS_LOTE],
+          [tenant, entidade, e.limiteRegistros],
         )
       : await tx.consultar<LinhaRegistro>(
           `SELECT ${COLUNAS} FROM integracao_fdv.registro_publicado
             WHERE tenant_id = $1 AND entidade = $2 AND ativo AND deleted_at IS NULL AND payload IS NOT NULL
               AND ($3::timestamptz IS NULL OR (alterado_em, registro_external_id COLLATE "C") > ($3::timestamptz, $4::text COLLATE "C"))
             ORDER BY alterado_em, registro_external_id COLLATE "C" LIMIT $5`,
-          [tenant, entidade, localCursor?.alterado_em ?? null, localCursor?.external_id ?? null, LIMITE_REGISTROS_LOTE + 1],
+          [tenant, entidade, localCursor?.alterado_em ?? null, localCursor?.external_id ?? null, e.limiteRegistros + 1],
         );
-  const continua = modo === 'completo' && candidatos.length > LIMITE_REGISTROS_LOTE;
-  const chunk = continua ? candidatos.slice(0, LIMITE_REGISTROS_LOTE) : candidatos;
+  const continua = modo === 'completo' && candidatos.length > e.limiteRegistros;
+  const chunk = continua ? candidatos.slice(0, e.limiteRegistros) : candidatos;
 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
   const confirmados = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
@@ -315,7 +322,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, cursor: LinhaCursor, hu
     : 1;
 
   const lotes = montarLotes({
-    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, enviadoEm: agora.toISOString(),
+    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
     ...(sessaoId ? { sessaoId, sessaoParteInicial: parteInicial, sessaoContinua: continua } : {}),
   });
   const montado = lotes[0];
@@ -619,6 +626,17 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
            FROM unnest($5::text[], $6::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
         [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash)],
+      );
+      // troca de chave (ADR 0010, item 3): a linha antiga, inativa e já confirmada no Hub, sai (`deleted_at`) quando há outra
+      // linha ativa do mesmo `erp_id`. Inativação comum (sem sucessora) fica no espelho.
+      await tx.consultar(
+        `UPDATE integracao_fdv.registro_publicado r SET deleted_at = $3, updated_at = now()
+          WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = ANY($4::text[])
+            AND NOT r.ativo AND NOT r.pendente AND r.deleted_at IS NULL AND r.erp_id IS NOT NULL
+            AND EXISTS (SELECT 1 FROM integracao_fdv.registro_publicado n
+                         WHERE n.tenant_id = r.tenant_id AND n.entidade = r.entidade AND n.erp_id = r.erp_id
+                           AND n.fonte_ocorrido_em > r.fonte_ocorrido_em AND n.deleted_at IS NULL AND n.id <> r.id)`,
+        [tenant, entidade, agora, aceitosOk.map((x) => x.chave)],
       );
       await tx.consultar(
         `UPDATE integracao_fdv.lote_erro SET resolvido_em = $4, resolvido_no_lote_envio_id = $3, updated_at = now()

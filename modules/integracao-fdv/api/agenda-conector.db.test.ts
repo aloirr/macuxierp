@@ -40,6 +40,13 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', () => {
     return { t, cred, chaves };
   }
 
+  /** Regrava a linha do produto como inativa (payload, hash e coluna coerentes, como o consumidor grava). */
+  async function inativarNoEspelho(t: string, chave: string): Promise<void> {
+    const alterado = (await adm('SELECT alterado_em FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND registro_external_id = $2', [t, chave]))[0]!.alterado_em as Date;
+    await adm('DELETE FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND registro_external_id = $2', [t, chave]);
+    await espelho(efemero.admin, t, 'produto', payloadProduto(chave, { ativo: false }), { alterado, ativo: false });
+  }
+
   beforeAll(async () => {
     efemero = await criarBancoEfemero();
     adm = admSql(efemero);
@@ -134,6 +141,87 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', () => {
       const ev = await eventos(t);
       expect(ev.map((x) => x.nome)).toEqual(['integracao-fdv.lote.enviado@1']);
       expect(ev[0]!.payload.payload).toMatchObject({ entidade: 'produto', modo: 'delta', geracao: 1, registros: 3, aceitos: 3, com_erro: 0 });
+    });
+
+    it('ADR 0010 item 3: a linha antiga da troca de chave, confirmada inativa no Hub, sai (deleted_at) só no finalizar; a nova e as demais ficam', async () => {
+      const { t, chaves } = await cenario('env-troca');
+      const erp = '11111111-1111-4111-8111-111111111111';
+      await inativarNoEspelho(t, chaves[0]!);
+      await adm("UPDATE integracao_fdv.registro_publicado SET erp_id = $2 WHERE tenant_id = $1 AND registro_external_id = $3", [t, erp, chaves[0]]);
+      await adm("UPDATE integracao_fdv.registro_publicado SET erp_id = $2 WHERE tenant_id = $1 AND registro_external_id = $3", [t, erp, chaves[1]]);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      const antes = await adm('SELECT registro_external_id, deleted_at FROM integracao_fdv.registro_publicado WHERE tenant_id = $1', [t]);
+      expect(antes.every((r) => r.deleted_at === null)).toBe(true); // ainda não confirmado pelo Hub
+      await ciclo(banco, agenda, hub, depois(6), [t]);
+      const linhas = await adm('SELECT registro_external_id, deleted_at, pendente FROM integracao_fdv.registro_publicado WHERE tenant_id = $1', [t]);
+      const por = (c: string) => linhas.find((r) => r.registro_external_id === c)!;
+      expect(por(chaves[0]!).deleted_at).not.toBeNull();
+      expect(por(chaves[0]!).pendente).toBe(false);
+      expect(por(chaves[1]!).deleted_at).toBeNull();
+      expect(por(chaves[2]!).deleted_at).toBeNull();
+    });
+
+    it('0015: inativação comum (sem linha sucessora do mesmo erp_id) não faz a linha sair do espelho', async () => {
+      const { t, chaves } = await cenario('env-inativa', { produtos: 1 });
+      await inativarNoEspelho(t, chaves[0]!);
+      await adm("UPDATE integracao_fdv.registro_publicado SET erp_id = $2 WHERE tenant_id = $1", [t, '22222222-2222-4222-8222-222222222222']);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      await ciclo(banco, agenda, hub, depois(6), [t]);
+      const [l] = await adm('SELECT deleted_at, pendente FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND registro_external_id = $2', [t, chaves[0]]);
+      expect(l).toMatchObject({ deleted_at: null, pendente: false });
+    });
+
+    it('0015: o lote respeita min(limite_registros_lote da credencial, 5.000)', async () => {
+      const { t } = await cenario('env-limite', { produtos: 5 });
+      await adm('UPDATE integracao_fdv.credencial SET limite_registros_lote = 2 WHERE tenant_id = $1', [t]);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('processando'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      expect((hub.chamadas[0]!.pedido.corpo as { registros: unknown[] }).registros).toHaveLength(2);
+    });
+
+    it('0015: entidade fora de entidades_habilitadas (ou lista vazia) não chama o Hub, não monta lote, não pausa nem erra; só volta a olhar em 1 h', async () => {
+      // a credencial tem RLS por tenant e a reserva roda sem tenant (worker_global só nas tabelas da agenda): o filtro é no executar
+      const { t } = await cenario('env-desab');
+      let esperado = depois(10 + 3600).getTime();
+      for (const lista of ["ARRAY['filial']", 'ARRAY[]']) {
+        await adm(`UPDATE integracao_fdv.credencial SET entidades_habilitadas = ${lista}::integracao_fdv.entidade_hub[] WHERE tenant_id = $1`, [t]);
+        const hub = hubDuble();
+        const itens = await ciclo(banco, agenda, hub, depois(10), [t]);
+        expect(itens.filter((i) => i.tarefa === 'envio')).toHaveLength(1);
+        expect(hub.chamadas).toHaveLength(0);
+        const c = await cur(t);
+        expect(c.pausada_motivo).toBeNull();
+        expect(c.proximo_em.getTime()).toBe(esperado);
+        expect(await lotes(t)).toHaveLength(0);
+        expect(await eventos(t)).toHaveLength(0);
+        await adm('UPDATE integracao_fdv.cursor_entidade SET proximo_em = $2 WHERE tenant_id = $1', [t, depois(-1)]);
+        esperado = depois(10 + 3600).getTime();
+      }
+      // habilitada de novo: volta a ser reservada e envia
+      await adm("UPDATE integracao_fdv.credencial SET entidades_habilitadas = ARRAY['produto']::integracao_fdv.entidade_hub[] WHERE tenant_id = $1", [t]);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('processando'))] });
+      await ciclo(banco, agenda, hub, depois(10), [t]);
+      expect(hub.chamadas.length).toBeGreaterThan(0);
+    });
+
+    it('0015: desabilitar a entidade com lote aceito deixa consultar e concluir; só montar lote novo fica bloqueado', async () => {
+      const { t, chaves } = await cenario('env-desab-voo');
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      expect((await lotes(t))[0]!.estado).toBe('aceito');
+      await adm("UPDATE integracao_fdv.credencial SET entidades_habilitadas = ARRAY['filial']::integracao_fdv.entidade_hub[] WHERE tenant_id = $1", [t]);
+      await ciclo(banco, agenda, hub, depois(6), [t]);
+      expect((await lotes(t))[0]!.estado).toBe('concluido');
+      for (const c of chaves) expect(await reg(t, c)).toMatchObject({ pendente: false });
+      // com o lote fechado, um registro novo pendente não vira lote enquanto estiver desabilitada
+      await espelho(efemero.admin, t, 'produto', payloadProduto('P900'), { alterado: depois(20) });
+      await adm('UPDATE integracao_fdv.cursor_entidade SET proximo_em = $2 WHERE tenant_id = $1', [t, depois(21)]);
+      const n = hub.chamadas.length;
+      await ciclo(banco, agenda, hub, depois(30), [t]);
+      expect(hub.chamadas).toHaveLength(n);
+      expect(await lotes(t)).toHaveLength(1);
     });
 
     it('carga completa: cursor nulo no Hub abre sessão, manda os ativos e fecha a sessão na última parte', async () => {

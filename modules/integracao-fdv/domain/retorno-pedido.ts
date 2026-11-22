@@ -25,9 +25,8 @@ const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
 /**
  * Motivos do recebimento recusado: um texto por código da porta (`CodigoRecusaRecebimento`, vindo do contrato do pedido)
  * e por código da tradução local. `Record` exaustivo: código novo no contrato quebra o typecheck aqui.
- * `condicao_ausente` vem no lote 1c da T-0015; tirar o `| 'condicao_ausente'` depois que ele entrar.
  */
-const TEXTO_DA_REJEICAO: Readonly<Record<CodigoRejeicao | 'condicao_ausente', string>> = {
+const TEXTO_DA_REJEICAO: Readonly<Record<CodigoRejeicao, string>> = {
   sequencia_repetida: 'Itens com sequência repetida',
   quantidade_invalida: 'Quantidade inválida',
   pedido_fora_do_contrato: 'Pedido fora do contrato',

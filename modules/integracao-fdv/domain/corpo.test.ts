@@ -30,6 +30,12 @@ describe('sinal de vida', () => {
     expect(montarCorpoSinal({ ...base, pendentes: {}, emVoo: {}, entidades: [], paradoPorVersao: true }).parado_por_versao).toBe(true);
   });
 
+  it('RF-INF-04: os lotes pendentes são estimados com o limite da credencial', () => {
+    const pendentes = { produto: { registros: 1000, maisAntigo: '2026-11-21T19:00:00.000Z' } };
+    expect(montarCorpoSinal({ ...base, pendentes, emVoo: {}, entidades: [], limiteRegistrosLote: 100 }).fila[0]!.lotes).toBe(10);
+    expect(montarCorpoSinal({ ...base, pendentes, emVoo: {}, entidades: [] }).fila[0]!.lotes).toBe(1);
+  });
+
   it('fila vazia quando não há pendente nem lote em voo', () => {
     expect(montarCorpoSinal({ ...base, pendentes: { produto: { registros: 0, maisAntigo: null } }, emVoo: {}, entidades: [] }).fila).toEqual([]);
   });

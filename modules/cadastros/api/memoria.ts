@@ -1,7 +1,7 @@
 /** Repositórios em memória: dublê das portas para os testes de rota (sem PostgreSQL). Não entra em produção. */
 import { randomUUID } from 'node:crypto';
 import { ErroApi, paginar, type Pagina } from '@macuxierp/platform-sdk';
-import type { EstoqueConsulta, PrecoItem, PrecoItemConsulta, SaldoEstoqueItem } from '../contracts';
+import { classeForma, type EstoqueConsulta, type PrecoItem, type PrecoItemConsulta, type SaldoEstoqueItem } from '../contracts';
 import { tabelaVigente } from '../domain';
 import { agregadoPreco } from './uuid';
 import type {
@@ -297,6 +297,12 @@ export function repositoriosEmMemoria() {
     falharProxima: null as null | (() => Error),
     async condicoesDaForma(ext: string) {
       return condicoesPagamento.linhas.filter((l) => l.forma_external_id === ext).map((l) => structuredClone(l) as never);
+    },
+    async condicoesAtivasDeFormaRecusada() {
+      return condicoesPagamento.linhas.filter((l) => !l.inativo && classeForma(String(l.forma_tpag)) === null).map((l) => structuredClone(l) as never);
+    },
+    async condicoesAtivasCartaoSemParcelas() {
+      return condicoesPagamento.linhas.filter((l) => !l.inativo && l.forma_tpag === '03' && (l.parcelas_cartao ?? null) === null).map((l) => structuredClone(l) as never);
     },
     async filhoPorExternalId(t: keyof typeof filhasMem, ext: string) {
       const l = filhasMem[t].col.linhas.find((x) => x.external_id === ext);

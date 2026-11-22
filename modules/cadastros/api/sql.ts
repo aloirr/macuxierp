@@ -8,13 +8,14 @@ import type {
   CondicaoPagamento, CondicaoPagamentoDados, Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EstoqueConsulta, SaldoEstoqueItem, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto, SaldoEstoque, TabelaPreco,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
+import { CLASSE_FORMA } from '../contracts';
 import type {
   FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 type Dict = Record<string, unknown>;
 /** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
-const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'forma_external_id', 'forma_codigo', 'forma_nome'];
+const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
 
@@ -468,6 +469,15 @@ function cargaSql(tx: Transacao): RepoCarga {
   return {
     async condicoesDaForma(ext) {
       const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE forma_external_id = $1 ORDER BY id`, [ext]);
+      return l as unknown as CondicaoPagamento[];
+    },
+    async condicoesAtivasDeFormaRecusada() {
+      const aceitas = Object.keys(CLASSE_FORMA);
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND NOT (forma_tpag = ANY($1::text[])) ORDER BY id`, [aceitas]);
+      return l as unknown as CondicaoPagamento[];
+    },
+    async condicoesAtivasCartaoSemParcelas() {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND forma_tpag = '03' AND parcelas_cartao IS NULL ORDER BY id`, []);
       return l as unknown as CondicaoPagamento[];
     },
     async filhoPorExternalId(t, ext) {
