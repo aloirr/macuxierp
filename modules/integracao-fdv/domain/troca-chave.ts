@@ -25,14 +25,16 @@ export interface EntradaTrocaDeChave {
 /**
  * - `chave_duplicada`: a chave nova é de outro `erp_id` (nada é sobrescrito, nem na troca coerente).
  * - `nada`: sem chave no espelho ou chave igual.
- * - `troca`: marcador igual à chave do espelho, ou `null` (adoção) quando a chave do espelho era o UUID.
+ * - `troca`: marcador igual à chave do espelho, ou adoção (chave do espelho = UUID, marcador `null` ou ausente).
  * - `chave_alterada`: a chave mudou sem marcador coerente (campo ausente inclusive).
  */
 export function decidirTrocaDeChave(e: EntradaTrocaDeChave): DecisaoDeChave {
   if (e.outroErpIdComChaveNova !== null) return 'chave_duplicada';
   if (e.chaveEspelho === null || e.chaveEspelho === e.chaveNova) return 'nada';
-  if (e.anterior === undefined) return 'chave_alterada';
-  if (e.anterior === null) return e.chaveEspelho === e.erpId ? 'troca' : 'chave_alterada';
+  // adoção UUID -> external_id: o espelho ainda tem o UUID e o evento traz outra chave; vale com ou sem marcador
+  // (unidade e endereço não têm marcador por item). Valor -> valor exige o marcador.
+  if (e.chaveEspelho === e.erpId && (e.anterior === undefined || e.anterior === null)) return 'troca';
+  if (e.anterior === undefined || e.anterior === null) return 'chave_alterada';
   return e.anterior === e.chaveEspelho ? 'troca' : 'chave_alterada';
 }
 
