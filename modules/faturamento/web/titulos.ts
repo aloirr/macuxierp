@@ -105,7 +105,11 @@ const semMilhar = (texto: string): string => texto.replaceAll('.', '');
 const tirarMilhar = (texto: string): string => (/^\d{1,3}(\.\d{3})+(,\d{1,4})?$/.test(texto) ? semMilhar(texto) : texto);
 
 /** Fonte única do texto: erro geral do `validar` e `motivoBotaoDesligado` (botão de emitir desligado). */
-export const MOTIVO_SEM_ITEM = 'Informe a quantidade de pelo menos um item';
+export const MOTIVO_SEM_ITEM = 'Informe a quantidade de pelo menos um item.';
+
+/** Fonte única do erro de quantidade acima do saldo; cita o item pelo rótulo do formulário. */
+export const erroSaldoExcedido = (rotulo: string, saldoTexto: string): string =>
+  `${rotulo}: a quantidade passa do saldo (${saldoTexto}). Informe até ${saldoTexto} ou deixe o campo vazio.`;
 
 export interface FormularioParcial {
   campos: CampoParcial[];
@@ -149,7 +153,7 @@ export function formularioParcial(e: { itens: readonly { sequencia: number; desc
         const q = interpretarQuantidade(tirarMilhar(texto));
         if (q === null) erros[c.sequencia] = 'Informe a quantidade com até 4 casas decimais (ex.: 1,5).';
         else if (q <= 0) erros[c.sequencia] = 'Informe uma quantidade maior que zero ou deixe em branco.';
-        else if (q > c.saldo) erros[c.sequencia] = `Máximo ${c.saldoTexto}.`;
+        else if (q > c.saldo) erros[c.sequencia] = erroSaldoExcedido(c.rotulo, c.saldoTexto);
         else {
           entram.push({ sequencia: c.sequencia, quantidade: semMilhar(formatarQuantidade(q)), qtd4: q });
           if (q !== c.saldo) todosInteiros = false;
