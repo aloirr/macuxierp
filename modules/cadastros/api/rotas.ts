@@ -8,7 +8,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import {
-  ClienteAtualizacao, ClienteDados, type Cliente, type PrecoItem, type Produto, type TabelaPreco, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
+  ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
   EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta,
   OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
@@ -19,7 +19,8 @@ import {
   validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
-import { agregadoEstoque, agregadoPreco } from './uuid';
+import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
+import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
 import { dataIso, erroDeViolacoes, exigir, idDe } from './util';
@@ -29,22 +30,19 @@ type Entidade = { id: string; inativo: boolean };
 
 async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: string, payload: unknown): Promise<void> {
   const dados = EVENTOS[nome].parse(payload) as Dict;
-  await c.publicar({ nome, agregado_id: agregadoId, versao: 1, payload: dados });
+  await c.publicar({ nome, agregado_id: agregadoId, versao: 1, // @deprecated no SDK, ignorada (T-0034), mas ainda exigida pelo tipo
+    payload: dados });
 }
 
-const publicarPreco = (c: ContextoRota, i: PrecoItem, t: TabelaPreco) =>
-  publicar(c, 'cadastros.preco.alterado@1', agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id), {
-    ...i, vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim, inativo: t.inativo,
-  });
+const publicarPronto = (c: ContextoRota, e: EventoPronto) => publicar(c, e.nome, e.agregado_id, e.payload);
+/** Emissor de um cadastro: monta o evento pronto (de `eventos.ts`) e publica; serve de `emitir` do CRUD e de `aoGravar` do filho. */
+const emitirCom =
+  <E>(montar: (r: Repositorios, e: E) => EventoPronto | Promise<EventoPronto>) =>
+  async (c: ContextoRota, r: Repositorios, e: E): Promise<void> =>
+    publicarPronto(c, await montar(r, e));
 
 const requisitoFilial = async (r: Repositorios, id: string | null, campo: string): Promise<Violacao[]> =>
   id === null || (await r.filiais.obter(id)) ? [] : [violacao('REF', campo, 'Filial inexistente')];
-
-/** Evento "simples": o próprio cadastro (mais `inativo`) como payload. */
-const eventoDe =
-  <E extends Entidade>(nome: NomeEventoCadastros, extra?: (e: E, r: Repositorios) => Promise<Dict>) =>
-  async (c: ContextoRota, r: Repositorios, e: E): Promise<void> =>
-    publicar(c, nome, e.id, { ...e, ...(extra ? await extra(e, r) : {}), inativo: e.inativo });
 
 interface ConfigCrud<E extends Entidade, D extends Dict> {
   caminho: string;
@@ -240,7 +238,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   // ---- Filiais (RF-CAD-08) ----
   rotas.push(...rotasCrud(deps, {
     caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
-    entidade: 'filial', auditado: true, repo: (r) => r.filiais, emitir: eventoDe('cadastros.filial.alterada@1'),
+    entidade: 'filial', auditado: true, repo: (r) => r.filiais, emitir: emitirCom(eventoFilial),
     inativavel: 'filial', padrao: (r) => r.filiais,
     async validar(_r, f) {
       const end = f.endereco as FilialDados['endereco'];
@@ -257,10 +255,9 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     const meus = await r.vendedores.idsDoUsuario(s.usuario_id);
     return cli.vendedor_id !== null && meus.includes(cli.vendedor_id);
   };
-  const eventoCliente = async (c: ContextoRota, _r: Repositorios, cli: Cliente) => publicar(c, 'cadastros.cliente.alterado@1', cli.id, { ...cli, inativo: cli.inativo });
   rotas.push(...rotasCrud(deps, {
     caminho: '/clientes', editar: 'cadastros.cliente.editar', dados: ClienteDados, atualizacao: ClienteAtualizacao,
-    entidade: 'cliente', auditado: false, camposAuditados: ['limite_credito_centavos'], repo: (r) => r.clientes, emitir: eventoCliente, inativavel: 'cliente',
+    entidade: 'cliente', auditado: false, camposAuditados: ['limite_credito_centavos'], repo: (r) => r.clientes, emitir: emitirCom(eventoCliente), inativavel: 'cliente',
     campoRestrito(s, corpo, criacao) {
       const mexe = criacao ? (corpo.limite_credito_centavos ?? 0) !== 0 : 'limite_credito_centavos' in corpo;
       if (mexe && !pode(s.perfil, 'cadastros.cliente.credito')) throw erros.perfilSemPermissao(); // limite de crédito: adm e gerente
@@ -295,7 +292,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/clientes/:id/enderecos', editar: 'cadastros.cliente.editar', dados: EnderecoCliente, atualizacao: EnderecoCliente.partial(),
-    pai: (r) => r.clientes, filho: (r) => r.clientes.enderecos, visivel: clienteVisivel, aoGravar: eventoCliente,
+    pai: (r) => r.clientes, filho: (r) => r.clientes.enderecos, visivel: clienteVisivel, aoGravar: emitirCom(eventoCliente),
     validar: async (_r, d) => verificarMunicipioEndereco(d as { municipio_ibge: string; uf: string }, 'municipio_ibge'),
   }));
   rotas.push(...rotasFilho(deps, {
@@ -304,11 +301,9 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
 
   // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
-  const eventoProduto = async (c: ContextoRota, r: Repositorios, p: Produto) =>
-    publicar(c, 'cadastros.produto.alterado@1', p.id, { ...p, unidades: await r.produtos.unidades.listar(p.id), inativo: p.inativo });
   rotas.push(...rotasCrud(deps, {
     caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
-    entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: eventoProduto,
+    entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: emitirCom(eventoProduto),
     ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
     async validar(r, p, parcial, agora) {
       if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return [];
@@ -324,7 +319,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/produtos/:id/unidades', editar: 'cadastros.produto.editar', dados: UnidadeDados, atualizacao: UnidadeDados.partial(),
-    pai: (r) => r.produtos, filho: (r) => r.produtos.unidades, aoGravar: eventoProduto,
+    pai: (r) => r.produtos, filho: (r) => r.produtos.unidades, aoGravar: emitirCom(eventoProduto),
   }));
 
   // ---- Tabelas de preço (RF-CAD-05, RN-CAD-06) ----
@@ -333,11 +328,12 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     entidade: 'tabela_preco', auditado: true, repo: (r) => r.tabelasPreco, inativavel: 'tabela_preco', padrao: (r) => r.tabelasPreco,
     /** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
     async emitir(c, r, t, antes) {
+      await publicarPronto(c, eventoTabelaPreco(t)); // C-2: criação e alteração
       if (!antes || (antes.vigencia_inicio === t.vigencia_inicio && antes.vigencia_fim === t.vigencia_fim && antes.inativo === t.inativo)) return;
       let cursor: string | undefined;
       do {
         const pagina = await r.tabelasPreco.itens(t.id, { limite: 1000, cursor });
-        for (const i of pagina.itens) await publicarPreco(c, i, t);
+        for (const i of pagina.itens) await publicarPronto(c, eventoPreco(i, t));
         cursor = pagina.proximo_cursor ?? undefined;
       } while (cursor);
     },
@@ -371,7 +367,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
         const produtosOk = await r.produtos.idsAtivos([...produtos]);
         if ([...produtos].some((p) => !produtosOk.has(p))) throw erros.validacao({ produto_id: 'Produto inexistente' });
         const alterados = await r.tabelasPreco.gravarLote(t.id, e.corpo.itens);
-        for (const i of alterados) await publicarPreco(c, i, t);
+        for (const i of alterados) await publicarPronto(c, eventoPreco(i, t));
         await c.auditar({ acao: 'tabela_preco.itens_lote', entidade: 'tabela_preco', entidade_id: t.id, depois: { recebidos: e.corpo.itens.length, alterados: alterados.length } });
         return { corpo: { recebidos: e.corpo.itens.length, alterados: alterados.length } };
       },
@@ -421,7 +417,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
         const res = aplicarMovimento({ saldo, tipo: m.tipo, quantidade: m.quantidade, podeNegativo: pode(c.sessao.perfil, 'cadastros.estoque.negativo') });
         if (!res.ok) throw erroDeViolacoes([res.violacao]);
         const mov = await r.estoque.gravarMovimento({ ...m, usuario_id: c.sessao.usuario_id }, res.saldo);
-        await publicar(c, 'cadastros.estoque.alterado@1', agregadoEstoque(m.filial_id, m.produto_id), { filial_id: m.filial_id, produto_id: m.produto_id, quantidade: res.saldo });
+        await publicarPronto(c, eventoEstoque(agregadoEstoque(m.filial_id, m.produto_id), { filial_id: m.filial_id, produto_id: m.produto_id, quantidade: res.saldo }));
         return { status: 201, corpo: { movimento_id: mov.id, filial_id: m.filial_id, produto_id: m.produto_id, quantidade: res.saldo } };
       },
     }),
@@ -430,13 +426,13 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   // ---- Condições de pagamento (RF-CAD-09) ----
   rotas.push(...rotasCrud(deps, {
     caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
-    entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: eventoDe('cadastros.condicao_pagamento.alterada@1'),
+    entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
   }));
 
   // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----
   rotas.push(...rotasCrud(deps, {
     caminho: '/vendedores', editar: 'cadastros.vendedor.editar', dados: VendedorDados, atualizacao: VendedorAtualizacao,
-    entidade: 'vendedor', auditado: false, repo: (r) => r.vendedores, emitir: eventoDe('cadastros.vendedor.alterado@1'),
+    entidade: 'vendedor', auditado: false, repo: (r) => r.vendedores, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.vendedor.alterado@1', x)),
     validar: async (r, v) => requisitoFilial(r, v.filial_id as string, 'filial_id'),
   }));
   rotas.push(definirRota({
@@ -453,7 +449,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       await r.clientes.transferir(para, plano.cliente_ids);
       for (const id of plano.cliente_ids) {
         const cli = await r.clientes.obter(id);
-        if (cli) await publicar(c, 'cadastros.cliente.alterado@1', cli.id, { ...cli, inativo: cli.inativo });
+        if (cli) await emitirCom(eventoCliente)(c, r, cli);
       }
       await publicar(c, 'cadastros.carteira.alterada@1', para, { de, para, cliente_ids: plano.cliente_ids });
       await c.auditar({ acao: 'carteira.transferir', entidade: 'vendedor', entidade_id: para, depois: { de, para, total: plano.cliente_ids.length } });

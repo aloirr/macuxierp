@@ -289,9 +289,20 @@ export type OficialConsulta = z.infer<typeof OficialConsulta>;
 
 // ---- Eventos publicados (payloads v1; .coord/contratos/eventos.md) ----
 const Inativo = z.object({ inativo: z.boolean() });
+/**
+ * C-1: endereço nos eventos = `Endereco` + `municipio_nome` (nome do IBGE, de `cadastros.municipio` pelo código). Aditivo no @1.
+ * `nullable`: o código pode não estar na tabela oficial; `optional`: os eventos já gravados na outbox não têm o campo e o
+ * leitor é tolerante. O publicador sempre preenche (nome ou `null`).
+ */
+const MunicipioNome = z.string().nullable().optional();
+const EnderecoEvento = Endereco.extend({ municipio_nome: MunicipioNome });
+/** C-3: o evento do cliente traz o `id` de cada endereço e o `municipio_nome`; `id` opcional para ler eventos antigos (o publicador sempre preenche). */
+const EnderecoClienteEvento = EnderecoClienteItem.extend({ id: Uuid.optional(), municipio_nome: MunicipioNome });
 export const EVENTOS = {
-  'cadastros.filial.alterada@1': Filial.merge(Inativo),
-  'cadastros.cliente.alterado@1': Cliente.merge(Inativo),
+  'cadastros.filial.alterada@1': Filial.extend({ endereco: EnderecoEvento }).merge(Inativo),
+  'cadastros.cliente.alterado@1': Cliente.extend({ enderecos: z.array(EnderecoClienteEvento) }).merge(Inativo),
+  /** C-2: publicado na criação e na alteração da tabela; `agregado_id` = id da tabela. */
+  'cadastros.tabela_preco.alterada@1': TabelaPreco.merge(Inativo),
   'cadastros.produto.alterado@1': Produto.merge(Inativo).extend({ unidades: z.array(UnidadeItem) }),
   'cadastros.preco.alterado@1': PrecoItem.merge(Inativo).extend({
     vigencia_inicio: z.string(),
@@ -304,3 +315,27 @@ export const EVENTOS = {
 } as const;
 export type NomeEventoCadastros = keyof typeof EVENTOS;
 
+
+// ---- Consumo: carga inicial pedida pelo integracao-fdv (C-4) ----
+export const EVENTO_CARGA_INICIAL = 'integracao-fdv.carga_inicial.solicitada@1' as const;
+/** Zod local, sem importar o pacote do integracao-fdv (que depende de cadastros). */
+export const SolicitacaoCargaInicial = z.object({ entidades: z.array(z.string()) }).passthrough();
+export type SolicitacaoCargaInicial = z.infer<typeof SolicitacaoCargaInicial>;
+/** Entidades que a carga republica (nome do Hub ou do ERP; apelidos levam à mesma entidade). */
+export const ENTIDADES_CARGA = ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'tabela_preco', 'preco', 'estoque', 'cliente'] as const;
+export type EntidadeCarga = (typeof ENTIDADES_CARGA)[number];
+export const TRABALHO_CARGA_INICIAL = 'cadastros.carga_inicial' as const;
+/** Payload do trabalho paginado da carga. */
+export const PayloadCargaInicial = z.object({
+  /** `id` do evento que pediu (`evento.id`, não o external_id): amarra a idempotência de toda a cadeia. */
+  origem: z.string().min(1),
+  entidade: z.enum(ENTIDADES_CARGA),
+  /** Cursor: último id (ou `filial|produto` no estoque) já publicado; `null` = do começo. */
+  apos: z.string().nullable(),
+  /** Só no preço: tabela em curso e próxima página dos itens dela. */
+  tabela_id: z.string().nullable().default(null),
+  pagina: z.number().int().min(1).default(1),
+  /** Só no preço: cursor dos itens da tabela em curso (lista por cursor); `null` = do começo. */
+  cursor_itens: z.string().nullable().default(null),
+});
+export type PayloadCargaInicial = z.infer<typeof PayloadCargaInicial>;

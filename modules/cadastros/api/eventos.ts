@@ -1,0 +1,57 @@
+/**
+ * Montagem dos payloads dos eventos `cadastros.*` (validados contra `EVENTOS`). Usada pelas rotas (que publicam pelo
+ * `ContextoRota`) e pela carga inicial (que grava na outbox pelo worker): o mesmo evento nos dois caminhos.
+ */
+import {
+  EVENTOS, type Cliente, type Filial, type PrecoItem, type Produto, type TabelaPreco, type NomeEventoCadastros,
+} from '../contracts';
+import type { Repositorios } from './portas';
+import { agregadoPreco } from './uuid';
+
+type Dict = Record<string, unknown>;
+export interface EventoPronto {
+  nome: NomeEventoCadastros;
+  agregado_id: string;
+  payload: Dict;
+}
+
+const pronto = (nome: NomeEventoCadastros, agregado_id: string, payload: unknown): EventoPronto => ({
+  nome, agregado_id, payload: EVENTOS[nome].parse(payload) as Dict,
+});
+
+/** C-1: nome do município pelo código IBGE (`null` se o código não está na tabela oficial). */
+async function nomes(r: Repositorios, codigos: readonly string[]): Promise<(ibge: string) => string | null> {
+  const mapa = await r.oficiais.nomesMunicipios([...new Set(codigos)]);
+  return (ibge) => mapa.get(ibge) ?? null;
+}
+
+export async function eventoFilial(r: Repositorios, f: Filial): Promise<EventoPronto> {
+  const nome = await nomes(r, [f.endereco.municipio_ibge]);
+  return pronto('cadastros.filial.alterada@1', f.id, { ...f, endereco: { ...f.endereco, municipio_nome: nome(f.endereco.municipio_ibge) }, inativo: f.inativo });
+}
+
+/** C-1 e C-3: cada endereço sai com `id` e `municipio_nome`. */
+export async function eventoCliente(r: Repositorios, c: Cliente): Promise<EventoPronto> {
+  const enderecos = (c.enderecos ?? []) as readonly { municipio_ibge: string }[];
+  const nome = await nomes(r, enderecos.map((e) => e.municipio_ibge));
+  return pronto('cadastros.cliente.alterado@1', c.id, {
+    ...c, enderecos: enderecos.map((e) => ({ ...e, municipio_nome: nome(e.municipio_ibge) })), inativo: c.inativo,
+  });
+}
+
+export const eventoProduto = async (r: Repositorios, p: Produto): Promise<EventoPronto> =>
+  pronto('cadastros.produto.alterado@1', p.id, { ...p, unidades: await r.produtos.unidades.listar(p.id), inativo: p.inativo });
+
+/** C-2 */
+export const eventoTabelaPreco = (t: TabelaPreco): EventoPronto => pronto('cadastros.tabela_preco.alterada@1', t.id, { ...t, inativo: t.inativo });
+
+export const eventoPreco = (i: PrecoItem, t: TabelaPreco): EventoPronto =>
+  pronto('cadastros.preco.alterado@1', agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id), {
+    ...i, vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim, inativo: t.inativo,
+  });
+
+/** Evento "simples": o próprio cadastro mais `inativo`. */
+export const eventoSimples = (nome: NomeEventoCadastros, e: { id: string; inativo: boolean }): EventoPronto => pronto(nome, e.id, { ...e, inativo: e.inativo });
+
+export const eventoEstoque = (agregado_id: string, s: { filial_id: string; produto_id: string; quantidade: number }): EventoPronto =>
+  pronto('cadastros.estoque.alterado@1', agregado_id, s);

@@ -7,7 +7,10 @@ import { manifest as faturamento } from '@macuxierp/faturamento/manifest';
 import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
 import { manifest as integracaoFdv } from '@macuxierp/integracao-fdv/manifest';
 import { manifest as pedido } from '@macuxierp/pedido/manifest';
-import { definirPlugin, erros, MODULOS, type Armazenamento, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
+import { definirPlugin, MODULOS, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
+
+/** @deprecated use o de @macuxierp/platform-sdk */
+export { armazenamentoIndisponivel } from '@macuxierp/platform-sdk';
 
 export type EntradaModulo = PluginModulo | ManifestoModulo;
 
@@ -45,15 +48,6 @@ export function certificadosDoCore(repo: RepositorioCore): PortaCertificados {
     },
   };
 }
-
-/**
- * Armazenamento enquanto o adaptador S3 não chega (T-0024, com ADR): gravar e ler falham e o link de download responde
- * 503 `INDISPONIVEL`. Nenhum arquivo é aceito sem ter onde guardar.
- */
-const fora = async (): Promise<never> => {
-  throw erros.indisponivel('Armazenamento de arquivos');
-};
-export const armazenamentoIndisponivel: Armazenamento = { gravar: fora, ler: fora, urlAssinada: fora };
 
 export interface DependenciasModulos {
   core: DependenciasCore;

@@ -14,7 +14,7 @@ export interface Resposta {
 }
 
 export function criarAmbiente(plugin: PluginModulo, agora = new Date('2026-11-21T15:00:00Z'), tx: Transacao = { consultar: async () => [] }) {
-  const eventos: { nome: string; agregado_id: string; versao: number; payload: Record<string, unknown> }[] = [];
+  const eventos: { nome: string; agregado_id: string; versao?: number; payload: Record<string, unknown> }[] = [];
   const auditoria: DadosAuditoria[] = [];
   const trabalhos: (Omit<PedidoTrabalho, 'tenant_id'> & { id: string })[] = [];
   const relogio = { agora };

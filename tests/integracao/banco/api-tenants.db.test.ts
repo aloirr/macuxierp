@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PG_DISPONIVEL } from '../../../packages/platform-sdk/src/pg-testes';
 import { CNPJ_A, CNPJ_B, clienteValido, filialValida, produtoValido } from '../../../modules/cadastros/api/fixtures-teste';
 import { CNPJ_EMPRESA_PG, montarApiPg, type Metodo } from '../../apoio/api-pg';
+import { formulario } from '../../apoio/multipart';
 
 /** `.pfx` fictício gerado na hora pelo openssl (titular "NOME:CNPJ", como o ICP-Brasil grava); nada fica no disco. */
 function gerarPfx(senha: string): Buffer {
@@ -146,7 +147,9 @@ describe.skipIf(!PG_DISPONIVEL)('API + SQL: isolamento entre tenants pelo HTTP (
     expect([antes.statusCode, antes.json().codigo]).toEqual([422, 'RN-CORE-06']);
 
     const senha = `t0008-${Date.now()}`;
-    const envio = await chamar('A', 'POST', '/v1/core/certificados', { filial_id: filialA, senha, arquivo_base64: gerarPfx(senha).toString('base64') });
+    // Multipart desde o #42 (T-0040): filial_id e senha em texto, o .pfx fictício do openssl no campo `arquivo`.
+    const f = formulario({ filial_id: filialA, senha }, { arquivo: gerarPfx(senha) });
+    const envio = await api.app.inject({ method: 'POST', url: '/v1/core/certificados', payload: f.payload, headers: { ...f.headers, ...api.auth('A') } });
     expect(envio.statusCode).toBe(201);
     expect(envio.json()).toMatchObject({ filial_id: filialA, cnpj: CNPJ_EMPRESA_PG });
     expect(JSON.stringify(envio.json())).not.toContain(senha);

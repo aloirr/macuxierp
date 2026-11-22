@@ -3,7 +3,7 @@ import { definirPlugin, definirRota, erros, EuResposta, type Licenca } from '@ma
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { COOKIE_REFRESH, criarApp } from './app';
+import { COOKIE_REFRESH, criarApp, type LeitorAvisosA1 } from './app';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { gerarHashSenha } from './auth/senha';
@@ -46,7 +46,7 @@ const pluginTeste = definirPlugin(manifestoCadastros, [
   }),
 ]);
 
-async function montar(opcoes: { licencas?: Licenca[]; logs?: string[] } = {}) {
+async function montar(opcoes: { licencas?: Licenca[]; logs?: string[]; avisosA1?: LeitorAvisosA1 } = {}) {
   hash ??= await gerarHashSenha(SENHA, ARGON2_RAPIDO);
   const banco = new BancoMemoria();
   const repo = new RepositorioAuthMemoria();
@@ -82,6 +82,7 @@ async function montar(opcoes: { licencas?: Licenca[]; logs?: string[] } = {}) {
     auditoria,
     trabalhos,
     relogio,
+    avisosA1: opcoes.avisosA1 ?? (async () => []),
     modulos: [...MODULOS.filter((m) => m.manifesto.id !== 'cadastros'), pluginTeste],
     logger: logs ? { stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) } : false,
   });
@@ -223,7 +224,24 @@ describe('GET /v1/auth/eu', () => {
         { id: 'core', menus: expect.any(Array) },
         { id: 'cadastros', menus: expect.arrayContaining(['Clientes']) },
       ],
+      avisos_a1: [],
     });
+  });
+
+  it('T-0035 (RF-CORE-04): o selo do A1 vem dos avisos vigentes no instante do relógio, lidos na transação do tenant do usuário', async () => {
+    const lidos: string[] = [];
+    const avisosA1: LeitorAvisosA1 = async (tx, agora) => {
+      lidos.push(`${tenantDaTx(tx)}:${agora.toISOString()}`);
+      // campo a mais do adaptador não passa do contrato
+      const linha = { filial_id: MATRIZ, dias: 12, valido_ate: new Date('2026-12-03T15:00:00Z'), certificado_id: FILIAL_2 };
+      return [linha];
+    };
+    const { app, relogio } = await montar({ avisosA1 });
+    const token: string = (await entrar(app)).json().token_acesso;
+    const r = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().avisos_a1).toEqual([{ filial_id: MATRIZ, dias: 12, valido_ate: '2026-12-03T15:00:00.000Z' }]);
+    expect(lidos).toEqual([`${TENANT}:${relogio.agora().toISOString()}`]);
   });
 
   it('dado fora do contrato é 500 ERRO_INTERNO (erro da plataforma), não 400 VALIDACAO', async () => {
