@@ -1,23 +1,20 @@
-/** Ambiente fiscal por filial emissora (RN-CORE-08): produção só com o recado de aprovação registrado. */
-import { PADRAO_RECADO_APROVACAO } from '../contracts';
-
+/**
+ * Ambiente fiscal por filial emissora (RN-CORE-08, ADR 0006): pelo tenant, só se volta (ou fica) em homologação;
+ * a ida para produção é do operador, com o recado de aprovação conferido.
+ */
 export type Ambiente = 'homologacao' | 'producao';
 
-export type AvaliacaoAmbiente =
-  | { ok: true; ambiente: Ambiente; recado: string | null }
+export type AvaliacaoAmbienteTenant =
+  | { ok: true; ambiente: 'homologacao'; muda: boolean }
   | { ok: false; mensagem: string };
 
-export interface TrocaAmbiente {
+export const MENSAGEM_PRODUCAO_DO_OPERADOR = 'A troca para produção fiscal é feita pela Macuxi, com a aprovação do Alexandre';
+
+export function avaliarTrocaAmbienteTenant(t: {
   /** `null` = sem linha (vale homologação). */
   atual: Ambiente | null;
   novo: Ambiente;
-  recado: string | null;
-}
-
-export function avaliarTrocaAmbiente(t: TrocaAmbiente): AvaliacaoAmbiente {
-  if (t.novo === 'homologacao') return { ok: true, ambiente: 'homologacao', recado: null };
-  if (!t.recado || !PADRAO_RECADO_APROVACAO.test(t.recado)) {
-    return { ok: false, mensagem: 'Produção fiscal exige o id do recado de aprovação (formato R-AAAAMMDD-HHMMSS-<aprovador>)' };
-  }
-  return { ok: true, ambiente: 'producao', recado: t.recado };
+}): AvaliacaoAmbienteTenant {
+  if (t.novo === 'producao') return { ok: false, mensagem: MENSAGEM_PRODUCAO_DO_OPERADOR };
+  return { ok: true, ambiente: 'homologacao', muda: t.atual !== 'homologacao' };
 }
