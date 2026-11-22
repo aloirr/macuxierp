@@ -15,11 +15,14 @@ export function formatarDocumento(doc: string): string {
 
 const milhar = (n: bigint) => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-/** 123456 → "R$ 1.234,56"; -250 → "-R$ 2,50". RangeError se não for inteiro (centavo nunca é float). */
+/**
+ * 123456 → "R$ 1.234,56"; -250 → "-R$ 2,50". Entre o "R$" e o valor vai um espaço não separável (U+00A0), para o R$
+ * não quebrar de linha. RangeError se não for inteiro (centavo nunca é float).
+ */
 export function formatarCentavos(c: number): string {
   const neg = c < 0;
   const abs = BigInt(Math.abs(c));
-  return `${neg ? '-' : ''}R$ ${milhar(abs / 100n)},${String(abs % 100n).padStart(2, '0')}`;
+  return `${neg ? '-' : ''}R$\u00a0${milhar(abs / 100n)},${String(abs % 100n).padStart(2, '0')}`;
 }
 
 /** "1.234,56" → 123456. Duas casas no máximo; `null` se não for número. */
