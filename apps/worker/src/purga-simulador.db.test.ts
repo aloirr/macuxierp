@@ -111,7 +111,6 @@ describe.skipIf(!PG_DISPONIVEL)('purga da memória do simulador (PostgreSQL, pap
   });
 
   it('com o adaptador da produção (TodosTenantsPg): a lista traz os desativados e a purga roda neles', async (ctx) => {
-    // PENDÊNCIA (banco-dados): a função `plataforma.tenants_todos()` ainda não existe na migração; até lá este caso pula (o anterior roda).
     if (!(await funcaoExiste())) return ctx.skip();
     const ids = await worker.semTenant((tx) => new TodosTenantsPg().todos(tx));
     expect(ids).toEqual(expect.arrayContaining(Object.values(tenants)));
