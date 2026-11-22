@@ -1,8 +1,8 @@
 // Biblioteca comum do protocolo de coordenação do time Macuxi.
 // Usada pelo guardião (.claude/hooks/guarda-donos.mjs) e pela CLI (scripts/coord.mjs).
 // Sem dependências externas.
-import { readFileSync, existsSync, statSync, mkdirSync, writeFileSync, renameSync, realpathSync } from 'node:fs';
-import { join, relative, isAbsolute, resolve, dirname } from 'node:path';
+import { readFileSync, existsSync, statSync, mkdirSync, writeFileSync, renameSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
+import { join, relative, isAbsolute, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { tmpdir, homedir } from 'node:os';
@@ -757,13 +757,22 @@ export function modoDosRecados({ raiz = RAIZ, env = process.env } = {}) {
 }
 
 export class ErroRecados extends Error {
-  /** @param {string} mensagem @param {{rede?: boolean}} [o] rede = o GitHub não respondeu (vale a cópia local na leitura) */
-  constructor(mensagem, { rede = false } = {}) { super(mensagem); this.name = 'ErroRecados'; this.rede = rede; }
+  /**
+   * @param {string} mensagem
+   * @param {{rede?: boolean, status?: number|null}} [o] rede = o GitHub não respondeu (vale a cópia local na leitura);
+   *   status = o HTTP da recusa (403: ver criarCommitPorGit)
+   */
+  constructor(mensagem, { rede = false, status = null } = {}) { super(mensagem); this.name = 'ErroRecados'; this.rede = rede; this.status = status; }
 }
 
 /** Hash do git de um blob (sha1 de "blob <bytes>\0<conteúdo>"): confere o cache e reconhece o próprio envio. */
+/** Conteúdo como Buffer (texto em UTF-8). */
+const paraBuffer = (c) => (Buffer.isBuffer(c) ? c : Buffer.from(String(c), 'utf8'));
+/** Mensagem do commit, igual na API e no git. */
+const mensagemDoCommit = (titulo, corpo) => (corpo ? `${titulo}\n\n${corpo}` : titulo);
+
 export function shaDoBlob(conteudo) {
-  const b = Buffer.isBuffer(conteudo) ? conteudo : Buffer.from(String(conteudo), 'utf8');
+  const b = paraBuffer(conteudo);
   return createHash('sha1').update(`blob ${b.length}\0`).update(b).digest('hex');
 }
 
@@ -915,9 +924,10 @@ export function conteudosDoTar(dados) {
 
 /**
  * Cliente da API REST do GitHub para o repositório de recados (síncrono). `http` é injetável (testes).
- * @param {{http: (reqs: any[]) => any[], repo?: string, api?: string, branch?: string, origem?: string}} p
+ * `porGit`: commit alternativo usado no HTTP 403 da escrita (ver criarCommitPorGit).
+ * @param {{http: (reqs: any[]) => any[], repo?: string, api?: string, branch?: string, origem?: string, porGit?: Function|null}} p
  */
-export function criarClienteDeRecados({ http, repo = REPO_RECADOS, api = API_GITHUB, branch = BRANCH_RECADOS, origem = 'token' }) {
+export function criarClienteDeRecados({ http, repo = REPO_RECADOS, api = API_GITHUB, branch = BRANCH_RECADOS, origem = 'token', porGit = null }) {
   const raiz = `${api}/repos/${repo}`;
   const caminhoUrl = (c) => c.split('/').map(encodeURIComponent).join('/');
 
@@ -927,7 +937,7 @@ export function criarClienteDeRecados({ http, repo = REPO_RECADOS, api = API_GIT
     let j = null;
     try { j = JSON.parse(r.texto); } catch { /* abaixo */ }
     if (r.status === 401) throw new ErroRecados(`o GitHub recusou o token (${origem}, HTTP 401)`);
-    if (r.status === 403 || r.status === 429) throw new ErroRecados(`o GitHub recusou o pedido (HTTP ${r.status}${j?.message ? `: ${j.message}` : ''})`, { rede: true });
+    if (r.status === 403 || r.status === 429) throw new ErroRecados(`o GitHub recusou o pedido (HTTP ${r.status}${j?.message ? `: ${j.message}` : ''})`, { rede: true, status: r.status });
     if (r.status === 404 && aceita404) return null;
     if (r.status === 404) throw new ErroRecados(`o token (${origem}) não enxerga ${repo} (HTTP 404)`);
     if (r.status >= 400 || !j) throw new ErroRecados(`GitHub: HTTP ${r.status}${j?.message ? ` (${j.message})` : ''}`, { rede: r.status >= 500 });
@@ -1067,25 +1077,86 @@ export function criarClienteDeRecados({ http, repo = REPO_RECADOS, api = API_GIT
      * commit são criados soltos; só o avanço do branch (PATCH sem force) publica. Se o main mudou, o GitHub recusa o
      * avanço (não é fast-forward) e nada aparece no branch.
      */
-    commitar({ esperado, adicoes, titulo, corpo = '' }) {
-      const bufs = adicoes.map((a) => (Buffer.isBuffer(a.conteudo) ? a.conteudo : Buffer.from(String(a.conteudo), 'utf8')));
-      const unicos = [...new Map(bufs.map((b) => [shaDoBlob(b), b])).entries()];
-      const criados = pedir(unicos.map(([, b]) => ({ url: `${raiz}/git/blobs`, metodo: 'POST', corpo: { content: b.toString('base64'), encoding: 'base64' } })));
-      criados.forEach((j, i) => { if (j?.sha !== unicos[i][0]) throw new ErroRecados('o GitHub devolveu um blob diferente do enviado'); });
-      const arvore = um({
-        url: `${raiz}/git/trees`, metodo: 'POST',
-        corpo: { base_tree: arvoreDoCommit(esperado), tree: adicoes.map((a, i) => ({ path: a.caminho, mode: '100644', type: 'blob', sha: shaDoBlob(bufs[i]) })) },
-      });
-      const c = um({ url: `${raiz}/git/commits`, metodo: 'POST', corpo: { message: corpo ? `${titulo}\n\n${corpo}` : titulo, tree: arvore?.sha, parents: [esperado] } });
-      if (!c?.sha) throw new ErroRecados('o GitHub não devolveu o commit');
-      const [r] = http([{ url: `${raiz}/git/refs/heads/${caminhoUrl(branch)}`, metodo: 'PATCH', corpo: { sha: c.sha, force: false } }]);
-      if (r.status === 409 || r.status === 422) {
-        throw new ErroRecados(`o ${branch} do ${repo} mudou antes do commit (HTTP ${r.status}); nada foi publicado`);
+    commitar(p) {
+      try {
+        return commitarPelaApi(p);
+      } catch (e) {
+        if (porGit && e instanceof ErroRecados && e.status === 403) return porGit(p);
+        throw e;
       }
-      const j = json(r);
-      if (j?.object?.sha !== c.sha) throw new ErroRecados('o GitHub não confirmou o avanço do branch');
-      return { oid: c.sha, url: c.html_url };
     },
+  };
+
+  function commitarPelaApi({ esperado, adicoes, titulo, corpo = '' }) {
+    const bufs = adicoes.map((a) => paraBuffer(a.conteudo));
+    const unicos = [...new Map(bufs.map((b) => [shaDoBlob(b), b])).entries()];
+    const criados = pedir(unicos.map(([, b]) => ({ url: `${raiz}/git/blobs`, metodo: 'POST', corpo: { content: b.toString('base64'), encoding: 'base64' } })));
+    criados.forEach((j, i) => { if (j?.sha !== unicos[i][0]) throw new ErroRecados('o GitHub devolveu um blob diferente do enviado'); });
+    const arvore = um({
+      url: `${raiz}/git/trees`, metodo: 'POST',
+      corpo: { base_tree: arvoreDoCommit(esperado), tree: adicoes.map((a, i) => ({ path: a.caminho, mode: '100644', type: 'blob', sha: shaDoBlob(bufs[i]) })) },
+    });
+    const c = um({ url: `${raiz}/git/commits`, metodo: 'POST', corpo: { message: mensagemDoCommit(titulo, corpo), tree: arvore?.sha, parents: [esperado] } });
+    if (!c?.sha) throw new ErroRecados('o GitHub não devolveu o commit');
+    const [r] = http([{ url: `${raiz}/git/refs/heads/${caminhoUrl(branch)}`, metodo: 'PATCH', corpo: { sha: c.sha, force: false } }]);
+    if (r.status === 409 || r.status === 422) {
+      throw new ErroRecados(`o ${branch} do ${repo} mudou antes do commit (HTTP ${r.status}); nada foi publicado`);
+    }
+    const j = json(r);
+    if (j?.object?.sha !== c.sha) throw new ErroRecados('o GitHub não confirmou o avanço do branch');
+    return { oid: c.sha, url: c.html_url };
+  }
+}
+
+const executarGit = (args, opcoes = {}) =>
+  execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000, windowsHide: true, ...opcoes });
+
+/**
+ * Commit no main do repositório de recados por git (T-0025), para quando a API recusa a escrita (HTTP 403, proxy da
+ * nuvem). Mesmo contrato do `commitar` da API: clone raso do branch numa pasta temporária, confere que o topo ainda é
+ * `esperado`, grava os arquivos, um commit e `git push` sem force (só avança o branch). Se o main mudou, o clone ou o
+ * push recusam e nada é publicado: lança "mudou antes do commit", e quem chama relê e tenta de novo.
+ * A credencial é a do git do ambiente (proxy da nuvem ou credential helper do PC): nenhum token passa por aqui.
+ * @param {{url: string, branch?: string, git?: Function, pastaTemp?: () => string, apagar?: (d: string) => void}} p
+ */
+export function criarCommitPorGit({ url, branch = BRANCH_RECADOS, git = executarGit, pastaTemp = () => mkdtempSync(join(tmpdir(), 'macuxi-recados-git-')), apagar = (d) => rmSync(d, { recursive: true, force: true }) }) {
+  return function commitarPorGit({ esperado, adicoes, titulo, corpo = '' }) {
+    const dir = pastaTemp();
+    const g = (args) => git(['-C', dir, ...args]);
+    const textoDoErro = (e) => String(e?.stderr || e?.message || e);
+    const motivo = (e) => textoDoErro(e).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-1)[0] || 'falha no git';
+    try {
+      try {
+        git(['clone', '--quiet', '--depth', '1', '--single-branch', '--branch', branch, '--no-tags', url, dir]);
+      } catch (e) {
+        throw new ErroRecados(`sem acesso ao ${branch} por git (${motivo(e)})`, { rede: true });
+      }
+      const topo = g(['rev-parse', 'HEAD']).trim();
+      if (topo !== esperado) throw new ErroRecados(`o ${branch} mudou antes do commit (git: topo ${topo.slice(0, 7)}); nada foi publicado`);
+      for (const a of adicoes) {
+        const destino = resolve(dir, a.caminho);
+        if (!destino.startsWith(resolve(dir) + sep) || destino.includes(`${sep}.git${sep}`)) throw new ErroRecados(`caminho inválido no commit: ${a.caminho}`);
+        mkdirSync(dirname(destino), { recursive: true });
+        writeFileSync(destino, paraBuffer(a.conteudo));
+      }
+      g(['add', '--', ...adicoes.map((a) => a.caminho)]);
+      const cfg = (k) => { try { return g(['config', k]).trim(); } catch { return ''; } };
+      const quem = [...(cfg('user.name') ? [] : ['-c', 'user.name=macuxi-coord']), ...(cfg('user.email') ? [] : ['-c', 'user.email=coord@macuxierp.invalid'])];
+      git(['-C', dir, ...quem, 'commit', '--quiet', '--no-verify', '-m', mensagemDoCommit(titulo, corpo)]);
+      const oid = g(['rev-parse', 'HEAD']).trim();
+      try {
+        g(['push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`]);
+      } catch (e) {
+        const m = motivo(e);
+        if (/non-fast-forward|fetch first|rejected|stale info/i.test(textoDoErro(e))) {
+          throw new ErroRecados(`o ${branch} mudou antes do commit (git push recusado: ${m}); nada foi publicado`);
+        }
+        throw new ErroRecados(`o git push não foi confirmado (${m})`, { rede: true });
+      }
+      return { oid, porGit: true };
+    } finally {
+      apagar(dir);
+    }
   };
 }
 
@@ -1276,11 +1347,13 @@ export function recadosDaPastaNoGitHub({ cliente, cache, pasta, filtro = () => t
 /**
  * Conexão real com o repositório de recados: {cliente, cache}. Repositório, API e cache trocáveis por variável
  * (MACUXI_RECADOS_REPO, MACUXI_RECADOS_API, MACUXI_RECADOS_CACHE). Sem token, o cliente falha com a explicação.
+ * MACUXI_RECADOS_GIT_URL: remoto do commit por git (ver criarCommitPorGit; padrão: github.com/<repo>).
  */
 export function conexaoDeRecados({ env = process.env, gh } = {}) {
   const repo = String(env.MACUXI_RECADOS_REPO || REPO_RECADOS).trim();
   const api = String(env.MACUXI_RECADOS_API || API_GITHUB).trim().replace(/\/+$/, '');
   const tk = tokenDoAmbiente({ env, ...(gh ? { gh } : {}) });
   const http = tk ? httpSincrono({ token: tk.token, env }) : () => { throw new ErroRecados(SEM_TOKEN, { rede: true }); };
-  return { cliente: criarClienteDeRecados({ http, repo, api, origem: tk?.origem || 'sem token' }), cache: cacheDeRecadosEmArquivo(pastaDoCacheDeRecados(env), repo) };
+  const porGit = criarCommitPorGit({ url: String(env.MACUXI_RECADOS_GIT_URL || `https://github.com/${repo}.git`).trim() });
+  return { cliente: criarClienteDeRecados({ http, repo, api, origem: tk?.origem || 'sem token', porGit }), cache: cacheDeRecadosEmArquivo(pastaDoCacheDeRecados(env), repo) };
 }
