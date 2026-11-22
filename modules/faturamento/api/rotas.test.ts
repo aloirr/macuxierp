@@ -38,7 +38,7 @@ function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
     const consulta = r.consulta ? r.consulta.parse(e.consulta ?? {}) : undefined;
     return r.executar(ctx, { corpo, consulta, params: e.params ?? {} } as never);
   };
-  return { ...f.r, tit, cfg, deps: f.deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
+  return { ...f.r, tit, cfg, deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
 }
 const emitirCorpo = { pedido_id: IDS.pedido, idempotencia: 'idem-0000001' };
 
