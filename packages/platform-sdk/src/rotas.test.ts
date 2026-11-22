@@ -1,5 +1,5 @@
 import { inspect } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { erros, ErroApi, PADRAO_RN } from './erros';
 import { defineModule } from './modulo';
 import {
@@ -7,6 +7,7 @@ import {
   cabecalhosDaRota,
   definirPlugin,
   definirRota,
+  type ContextoRota,
   PluginInvalido,
   QUANTIDADE_MAXIMA_ARQUIVOS,
   TAMANHO_MAXIMO_MULTIPART,
@@ -96,5 +97,13 @@ describe('multipart com vários arquivos, limite total, Idempotency-Key e tempo 
     const a = new ArquivoRecebido('arquivo', 'x.csv', 'text/csv', Buffer.from('a'));
     const r = definirRota({ metodo: 'POST', caminho: '/x', acao: 'core.empresa.editar', executar: async (_c, e) => ({ corpo: e.todosArquivos }) });
     expect((await r.executar({} as never, { corpo: undefined, consulta: undefined, params: {}, arquivos: { arquivo: a } })).corpo).toEqual({ arquivo: [a] });
+  });
+});
+
+describe('ContextoRota.publicar (T-0042)', () => {
+  it('versao é opcional no tipo', () => {
+    type Evento = Parameters<ContextoRota['publicar']>[0];
+    expectTypeOf<{ nome: string; agregado_id: string; payload: Record<string, unknown> }>().toMatchTypeOf<Evento>();
+    expectTypeOf<Evento['versao']>().toEqualTypeOf<number | undefined>();
   });
 });
