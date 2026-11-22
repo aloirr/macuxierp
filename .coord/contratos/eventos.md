@@ -6,9 +6,9 @@
 |---|---|---|
 | `cadastros` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1`, `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1` | `core.usuario.alterado@1` (liga vendedor a usuário), `integracao-fdv.carga_inicial.solicitada@1` (leitor tolerante, T-0034) |
 | `core` | `core.empresa.alterada@1`, `core.usuario.alterado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` | — |
-| `faturamento` | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.nota.rejeitada@1`, `faturamento.titulo.gerado@1` | `pedido.pedido.aprovado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` (F4, a confirmar na T-0018) |
+| `faturamento` | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.nota.rejeitada@1`, `faturamento.titulo.gerado@1`, `faturamento.titulo.baixado@1` | `pedido.pedido.aprovado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` (F4, a confirmar na T-0018) |
 | `fiscal` | `fiscal.regra.alterada@1` | — |
-| `integracao-fdv` | `integracao-fdv.lote.enviado@1`, `integracao-fdv.lote.falhou@1`, `integracao-fdv.carga_inicial.solicitada@1` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1` (só registro, T-0009), `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1`, `pedido.pedido.recebido@1`, `pedido.pedido.cancelado@1`, `pedido.pedido.faturado@1` (F4), `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.titulo.gerado@1` (sem `pedido.pedido.aprovado@1` nem `pedido.pedido.recusado@1`: RN-PED-01, ADR 0007 e emenda, T-0013 §6.1) |
+| `integracao-fdv` | `integracao-fdv.lote.enviado@1`, `integracao-fdv.lote.falhou@1`, `integracao-fdv.carga_inicial.solicitada@1` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1` (só registro, T-0009), `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1`, `pedido.pedido.recebido@1`, `pedido.pedido.cancelado@1`, `pedido.pedido.faturado@1` (F4), `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.titulo.gerado@1`, `faturamento.titulo.baixado@1` (sem `pedido.pedido.aprovado@1` nem `pedido.pedido.recusado@1`: RN-PED-01, ADR 0007 e emenda, T-0013 §6.1) |
 | `pedido` | `pedido.pedido.recebido@1`, `pedido.pedido.aprovado@1`, `pedido.pedido.recusado@1`, `pedido.pedido.cancelado@1`, `pedido.pedido.faturado@1` (F4); payloads em `docs/desenho/T-0013.md` §8 (ADR 0007) | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1` |
 
 ## Envelope (platform-sdk)
@@ -39,6 +39,26 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 
 ### Aditivo T-0034 (sem ADR)
 `cadastros.cliente.alterado@1` ganha `enderecos[].id` e `enderecos[].municipio_nome`; `cadastros.filial.alterada@1` ganha `endereco.municipio_nome` (C-1 e C-3 de `docs/desenho/T-0009.md` §7). Os campos são opcionais para o leitor e vêm nulos quando o código IBGE não está na tabela oficial. Mudança aditiva: segue `@1`.
+
+### Aditivo C-10 (ADR 0010, sem ADR nova)
+Chave do Hub e regras de troca e conflito: ADR 0010. Publica: `cadastros`. Consome: `integracao-fdv`. Mudança aditiva: segue `@1`, com recado aos consumidores.
+
+| Evento | Campo aditivo (opcional, anulável) |
+|---|---|
+| `cadastros.preco.alterado@1` | `external_id` do item da tabela |
+| `cadastros.produto.alterado@1` | `unidades[].external_id` |
+| `cadastros.cliente.alterado@1` | `enderecos[].external_id` |
+| todo `cadastros.*.alterado@1` | `external_id_anterior`: o valor de antes quando o `external_id` muda, `null` na adoção |
+
+Trocar um `external_id` preenchido só pela ação `cadastros.external_id.trocar` (ADR 0010, item 3).
+
+## Payloads de faturamento (v1)
+Zod em `modules/faturamento/contracts/index.ts` (fonte da verdade); regras em `docs/modulos/faturamento/README.md`, "Eventos publicados".
+
+| Evento | `agregado_id` | Payload |
+|---|---|---|
+| `faturamento.titulo.gerado@1` | título | `TituloGeradoPayload` (com `nota_id`). Consome: `integracao-fdv`, com leitor tolerante |
+| `faturamento.titulo.baixado@1` | título | campos do `TituloGeradoPayload` + `baixado_em` (data civil) + `valor_baixado_centavos`. Motivo: C-5 de `docs/desenho/T-0009.md` §7 (§2.9). Consome: `integracao-fdv`, com leitor tolerante |
 
 ## Payloads de integracao-fdv (v1)
 | Evento | `agregado_id` | Payload |
