@@ -54,24 +54,23 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
   // ---- pedido ----
   const cad = new CadastrosMemoria();
   /**
-   * Ganchos da corrida: o cancelamento para depois da porta `NotaEmAberto` (já com o `FOR UPDATE` do pedido; desde o #205 a
-   * porta lê a nota sem `FOR SHARE`); o reenvio, depois do `FOR UPDATE` da nota ou do `FOR SHARE` da situação do pedido; o worker, depois de publicar
+   * Ganchos da corrida: o cancelamento para depois do `temNotaEmAutorizacao` (já com o `FOR UPDATE` do pedido; a porta não trava
+   * a nota, doc, "Ajuste ao main"); o reenvio, depois do `FOR UPDATE` da nota ou do `FOR SHARE` da situação do pedido; o worker, depois de publicar
    * a `nota.autorizada@1` (nota já autorizada na transação dele, ainda sem commit).
    */
   const g: { aposNotaEmAberto?: Portao; aposSituacao?: Portao; aposTravarNota?: Portao; aposPublicarAutorizada?: Portao } = {};
   // O-01 do doc: a produção ainda liga semNotaEmAberto; aqui, o notaEmAbertoSql pelo `extras`, como a F4.
-  // O-02 do doc: o `notasAutorizadas` (#210) ainda não tem implementação no faturamento (o `notaEmAbertoSql` do main só tem o
-  // `temNotaEmAutorizacao`); até o faturamento preencher, o gancho delega ao `semNotaEmAberto` (devolve []), o mesmo da produção.
-  const servicoPedido = criarServico(dependenciasDeProducao(cad, {
-    notas: {
-      async temNotaEmAutorizacao(tx, pedido_id) {
-        const r = await notaEmAbertoSql.temNotaEmAutorizacao(tx, pedido_id);
-        await g.aposNotaEmAberto?.parar();
-        return r;
-      },
-      notasAutorizadas: (tx, pedido_id) => ('notasAutorizadas' in notaEmAbertoSql ? (notaEmAbertoSql as NotaEmAbertoPedido) : semNotaEmAberto).notasAutorizadas(tx, pedido_id),
+  // O-02 do doc: o `notasAutorizadas` (#210) só existe no `notaEmAbertoSql` com a correção do faturamento (T-0021); sem ela, o gancho
+  // delega ao `semNotaEmAberto` (devolve []), o mesmo da produção. O teste lê a porta por aqui, e tipa com ou sem o método.
+  const portaNotas: NotaEmAbertoPedido = {
+    async temNotaEmAutorizacao(tx, pedido_id) {
+      const r = await notaEmAbertoSql.temNotaEmAutorizacao(tx, pedido_id);
+      await g.aposNotaEmAberto?.parar();
+      return r;
     },
-  }));
+    notasAutorizadas: (tx, pedido_id) => ('notasAutorizadas' in notaEmAbertoSql ? (notaEmAbertoSql as NotaEmAbertoPedido) : semNotaEmAberto).notasAutorizadas(tx, pedido_id),
+  };
+  const servicoPedido = criarServico(dependenciasDeProducao(cad, { notas: portaNotas }));
   const efeitos = (tx: Transacao): Efeitos => ({
     tenant_id: T,
     ator: { tipo: 'usuario', id: USUARIO, perfil: 'gerente' },
@@ -120,8 +119,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
   const transmissor = (roteiro: Roteiro) => {
     const t = transporteFake(roteiro);
     // `situacao` (porta `SituacaoPedidoParaFaturar`, a mesma consulta com FOR SHARE do reenvio) é para a correção do D-03 e do
-    // D-03b no faturamento: o transmissor confere o pedido antes de assinar. O main ainda não tem a chave; as deps vão numa
-    // variável (sem a checagem de propriedade extra do literal), e o transmissor do main simplesmente a ignora.
+    // D-03b no faturamento: o transmissor confere o pedido antes de assinar. As deps vão numa variável (sem a checagem de
+    // propriedade extra do literal): o transmissor sem a correção simplesmente a ignora.
     const deps = {
       banco: worker, notas: notasDoWorker, titulos: repos.titulos, log: () => undefined, emissor: f.emissor, ambiente: repos.ambiente,
       lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AGORA, situacao: situacaoReal,
@@ -173,6 +172,23 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
   }
 
   const statusNota = async (id: string): Promise<string> => (await admin('SELECT status FROM faturamento.nota WHERE id = $1', [id]))[0]?.status;
+  /** A nota na lista de numeradas não enviadas (`rascunho`/`rejeitada`), a que o alerta de inutilização lê (RN-FAT-01). */
+  const pendenteDeInutilizacao = async (id: string) =>
+    (await worker.comTenant(T, (tx) => repos.notas.numeradasNaoEnviadas(tx, new Date('2100-01-01T00:00:00Z')))).find((n) => n.id === id);
+  /** Motivo do envio pendente gravado na nota pelo worker (`registrarMotivoEnvio`), ou `null`. */
+  const motivoEnvio = async (id: string): Promise<string | null> =>
+    (await admin("SELECT transporte->'envio_pendente'->>'motivo' AS m FROM faturamento.nota WHERE id = $1", [id]))[0]?.m ?? null;
+  /** Pedido cancelado com o reenvio já aceito: o worker não assina, com o motivo `RN-PED-02: pedido cancelado` (no resultado ou na nota). */
+  async function workerRecusouPedidoCancelado(transmissao: unknown, nota_id: string): Promise<void> {
+    expect(transmissao).toMatchObject({ resultado: 'nao_assinada' });
+    const motivo = `${(transmissao as { motivo?: string }).motivo ?? ''} ${(await motivoEnvio(nota_id)) ?? ''}`;
+    expect(motivo, 'motivo da não assinatura').toMatch(/RN-PED-02: pedido cancelado/);
+  }
+  /** Reenvio recusado pela emissão com `RN-PED-02` (o `FOR SHARE` da situação viu o pedido cancelado). */
+  const reenvioRecusadoPedidoCancelado = (r: Resultado<unknown>): boolean => {
+    const v = r.ok ? (r.valor as { ok?: boolean; violacoes?: { rn: string }[] }) : undefined;
+    return v?.ok === false && !!v.violacoes?.some((x) => x.rn === 'RN-PED-02');
+  };
   async function estado(c: Caso) {
     const [p] = await admin('SELECT status, valor_faturado_centavos::int AS valor, total_centavos::int AS total FROM pedido.pedido WHERE id = $1', [c.pedido_id]);
     const itens = await admin('SELECT quantidade::float8 AS q, quantidade_faturada::float8 AS f FROM pedido.pedido_item WHERE pedido_id = $1 AND deleted_at IS NULL', [c.pedido_id]);
@@ -293,8 +309,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
       const [canc, reenv] = ordem === 'cancelamento primeiro' ? [r.primeira, r.segunda] : [r.segunda, r.primeira];
       semTrava(canc, 'cancelamento');
       semTrava(reenv, 'reenvio');
-      // Sem espera desde o #205: a porta lê a nota sem FOR SHARE e o reenvio da em_autorizacao para no RN-FAT-07 antes do
-      // FOR SHARE do pedido. Nenhuma das duas espera a outra; o que vale é sem deadlock, uma nota e o saldo íntegro.
+      // Nenhuma das duas espera a outra (doc, "Ajuste ao main"); o reenvio da em_autorizacao para no RN-FAT-07 antes do FOR SHARE do pedido.
       expect(ehRecusaNotaEmAberto(canc)).toBe(true);
       expect(reenv).toMatchObject({ ok: true, valor: { ok: false, violacoes: [expect.objectContaining({ rn: 'RN-FAT-07' })] } });
       expect(await estado(c)).toMatchObject({ pedido: 'aprovado', notas: [{ status: 'em_autorizacao' }] });
@@ -339,14 +354,14 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
     const r = await corrida('aposPublicarAutorizada', () => c.transmissor.transmitirNota(T, c.nota_id), () => cancelar(c.pedido_id));
     semTrava(r.primeira, 'worker');
     semTrava(r.segunda, 'cancelamento');
-    // Sem espera desde o #205 (porta sem FOR SHARE): o cancelamento lê a versão confirmada da nota (em_autorizacao) e recusa.
+    // Sem espera (doc, "Ajuste ao main"): o cancelamento lê a versão confirmada da nota (em_autorizacao) e recusa.
     expect(r.primeira).toMatchObject({ ok: true, valor: { resultado: 'autorizada' } });
     await aplicarAutorizadas(c.nota_id);
     const e = await conferirSaldo(c);
     Object.assign(d01, { cancelamento: r.segunda, pedido: e.pedido, nota: e.notas[0]?.status, alertas: alertas.slice(antes) });
     expect(d01.nota).toBe('autorizada');
   });
-  // Corrigido no main (#205: porta sem FOR SHARE, conta autorizada; #210: o pedido confere as autorizadas não aplicadas): `it`.
+  // Corrigido (#205: porta sem trava na nota; #210: o pedido confere as autorizadas não aplicadas): `it`.
   it('[D-01] nota autorizada e ainda não aplicada ao pedido: o cancelamento concorrente é recusado (422 RN-PED-02) e o pedido termina faturado, não cancelado', () => {
     expect(d01.cancelamento, 'o preparo [D-01] rodou').toBeDefined();
     expect(ehRecusaNotaEmAberto(d01.cancelamento)).toBe(true);
@@ -355,40 +370,46 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
   });
 
   // D-02: o mesmo buraco sem corrida nenhuma — nota autorizada com o nota.autorizada@1 ainda na outbox.
-  const d02: { cancelamento?: Resultado<unknown>; notaEmAberto?: boolean; pedido?: string; alertas?: string[] } = {};
+  const d02: { nota_id?: string; cancelamento?: Resultado<unknown>; autorizadas?: string[]; pedido?: string; alertas?: string[] } = {};
   it('[D-02, preparo] nota autorizada, evento ainda não consumido: guarda a porta, o cancelamento e o resultado do consumidor', async () => {
     const c = await emAutorizacao();
     expect(await c.transmissor.transmitirNota(T, c.nota_id)).toMatchObject({ resultado: 'autorizada' });
     const antes = alertas.length;
-    d02.notaEmAberto = await app.comTenant(T, (tx) => notaEmAbertoSql.temNotaEmAutorizacao(tx, c.pedido_id));
+    d02.nota_id = c.nota_id;
+    d02.autorizadas = await app.comTenant(T, (tx) => portaNotas.notasAutorizadas(tx, c.pedido_id));
     d02.cancelamento = await capturar(cancelar(c.pedido_id));
     await aplicarAutorizadas(c.nota_id);
     const e = await conferirSaldo(c);
     Object.assign(d02, { pedido: e.pedido, alertas: alertas.slice(antes) });
     expect(e.notas[0]?.status).toBe('autorizada');
   });
-  // Corrigido no main (#205: a porta conta autorizada e autorizada_guarda_pendente): `it`.
-  it('[D-02] nota autorizada não aplicada conta como nota em aberto: a porta diz true, o cancelamento é 422 RN-PED-02 e o pedido fica faturado', () => {
+  // A autorizada não aplicada vem do `notasAutorizadas` da porta; quem recusa é o cancelar do pedido (#210), doc, "Decisão de 22/11".
+  it('[D-02] nota autorizada não aplicada: o notasAutorizadas da porta a contém, o cancelamento é 422 RN-PED-02 e o pedido fica faturado', () => {
     expect(d02.cancelamento, 'o preparo [D-02] rodou').toBeDefined();
-    expect(d02.notaEmAberto).toBe(true);
+    expect(d02.autorizadas, 'notasAutorizadas da porta').toContain(d02.nota_id);
     expect(ehRecusaNotaEmAberto(d02.cancelamento)).toBe(true);
     expect(d02.pedido).toBe('faturado');
   });
 
   // ------------------------------------------------------------------ 4. rejeitada × reenvio pela API
 
-  // Desde o #205 a `rejeitada` conta como nota em aberto: o cancelamento é recusado e o reenvio, que esperou, segue.
-  it('rejeitada × reenvio pela API (cancelamento primeiro): o cancelamento é 422 RN-PED-02 (rejeitada conta como em aberto); o reenvio espera o FOR UPDATE do pedido no FOR SHARE da situação e segue; depois autorizada e faturado', async () => {
+  // A `rejeitada` não bloqueia o cancelamento (doc, "Decisão de 22/11"): o reenvio, que esperou o pedido, é recusado (RN-PED-02)
+  // ou, se passou, o worker não assina; a nota fica rejeitada, com o número para inutilizar.
+  it('rejeitada × reenvio pela API (cancelamento primeiro): o cancelamento passa; o reenvio espera o FOR UPDATE do pedido e é recusado (RN-PED-02) ou o worker não assina; a nota fica rejeitada, pendente de inutilização', async () => {
     const c = await rejeitada();
     const r = await corrida('aposNotaEmAberto', () => cancelar(c.pedido_id), () => reenviar(c.nota_id));
     semTrava(r.primeira, 'cancelamento');
     semTrava(r.segunda, 'reenvio');
     expect(r.segundaBloqueou, 'o reenvio esperou a trava do pedido (FOR SHARE da situação)').toBe(true);
-    expect(ehRecusaNotaEmAberto(r.primeira)).toBe(true);
-    expect(r.segunda).toMatchObject({ ok: true, valor: { ok: true } });
-    expect(await c.transmissor.transmitirNota(T, c.nota_id)).toMatchObject({ resultado: 'autorizada' });
+    expect(r.primeira, 'cancelamento').toMatchObject({ ok: true, valor: { status: 'cancelado' } });
+    expect(r.segunda.ok, 'o reenvio devolve resultado do domínio, sem exceção').toBe(true);
+    const transmissao = await c.transmissor.transmitirNota(T, c.nota_id); // o trabalho que a rota teria enfileirado
+    if (!reenvioRecusadoPedidoCancelado(r.segunda)) await workerRecusouPedidoCancelado(transmissao, c.nota_id);
     await aplicarAutorizadas(c.nota_id);
-    expect(await conferirSaldo(c)).toMatchObject({ pedido: 'faturado', valor: c.total, notas: [{ status: 'autorizada' }] });
+    const e = await conferirSaldo(c);
+    expect(e).toMatchObject({ pedido: 'cancelado', valor: 0, notas: [{ status: 'rejeitada' }] });
+    expect(await pendenteDeInutilizacao(c.nota_id), 'número pendente de inutilização').toMatchObject({ status: 'rejeitada', numero: e.notas[0]?.numero });
+    nuncaCanceladoComAutorizada({ cancelamento: r.primeira, transmissao, pedido: e.pedido, nota: e.notas[0]?.status });
   });
 
   // D-03: o reenvio confirma primeiro (a nota segue `rejeitada`, com conteúdo novo e trabalho na fila); o cancelamento passa.
@@ -406,7 +427,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
     const e = await conferirSaldo(c);
     Object.assign(d03, { cancelamento: r.segunda, reenvio: r.primeira, pedido: e.pedido, nota: e.notas[0]?.status, alertas: alertas.slice(antes) });
   });
-  // Corrigido no main pelo lado do cancelamento (#205: a porta conta `rejeitada`): `it`. A trava do worker (`situacao`) é a outra metade.
+  // Com a `rejeitada` fora da porta (doc, "Decisão de 22/11"), o cancelamento passa e quem segura é o worker (`situacao`): não assina.
   it('[D-03] nota reenviada (rejeitada com reenvio na fila) segura o cancelamento, ou o worker não transmite nota de pedido cancelado: nunca pedido cancelado com nota autorizada', () => {
     expect(d03.cancelamento, 'o preparo [D-03] rodou').toBeDefined();
     nuncaCanceladoComAutorizada(d03);
@@ -424,13 +445,13 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
     const e = await conferirSaldo(c);
     Object.assign(d03b, { pedido: e.pedido, nota: e.notas[0]?.status });
   });
-  // Corrigido no main pelo lado do cancelamento (#205: a porta conta `rascunho`): `it`. A trava do worker (`situacao`) é a outra metade.
+  // Corrigido pelo lado do cancelamento (#205: a porta conta `rascunho`): `it`. A trava do worker (`situacao`) é a outra metade.
   it('[D-03b] nota rascunho na fila segura o cancelamento, ou o worker não assina nota de pedido cancelado: nunca pedido cancelado com nota autorizada', () => {
     expect(d03b.cancelamento, 'o preparo [D-03b] rodou').toBeDefined();
     nuncaCanceladoComAutorizada(d03b);
   });
 
-  it(`rejeitada × reenvio pela API, ${RODADAS} rodadas soltas (Promise.all, as duas ordens): nunca deadlock, respostas do domínio, uma nota, saldo íntegro`, async () => {
+  it(`rejeitada × reenvio pela API, ${RODADAS} rodadas soltas (Promise.all, as duas ordens): nunca deadlock, cancelamento 200 ou 422 (quem chegar antes), nunca cancelado com autorizada, uma nota, saldo íntegro`, async () => {
     for (let i = 0; i < RODADAS; i++) {
       const c = await rejeitada();
       const { canc, reenv } = await soltas(c, i);
@@ -438,9 +459,11 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021 — cancelamento do pedido × reenvio da
       semTrava(reenv, `rodada ${i} reenvio`);
       expect(canc.ok || ehRecusaNotaEmAberto(canc), `rodada ${i}: cancelamento ok ou 422`).toBe(true);
       expect(reenv.ok, `rodada ${i}: o reenvio devolve resultado do domínio, sem exceção`).toBe(true);
-      await c.transmissor.transmitirNota(T, c.nota_id);
+      const transmissao = await c.transmissor.transmitirNota(T, c.nota_id);
+      if (canc.ok && !reenvioRecusadoPedidoCancelado(reenv)) await workerRecusouPedidoCancelado(transmissao, c.nota_id);
       await aplicarAutorizadas(c.nota_id);
-      await conferirSaldo(c);
+      const e = await conferirSaldo(c);
+      nuncaCanceladoComAutorizada({ cancelamento: canc, transmissao, pedido: e.pedido, nota: e.notas[0]?.status });
     }
   }, 120_000);
 });
