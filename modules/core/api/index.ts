@@ -19,3 +19,5 @@ export {
   type AvisoA1,
   type CertificadoVencendoLinha,
 } from './adaptadores-worker';
+// A1 decifrado para o worker assinar a NF-e (ADR 0005).
+export { lerA1DecifradoDaFilial, type A1DecifradoDaFilial } from './leitura-a1';
