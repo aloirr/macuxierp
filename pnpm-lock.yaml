@@ -232,6 +232,9 @@ importers:
       '@macuxierp/integracao-fdv':
         specifier: workspace:*
         version: link:../../modules/integracao-fdv
+      '@macuxierp/nfe-emissor':
+        specifier: workspace:*
+        version: link:../../packages/nfe-emissor
       '@macuxierp/pedido':
         specifier: workspace:*
         version: link:../../modules/pedido
@@ -251,9 +254,6 @@ importers:
       '@macuxierp/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@macuxierp/nfe-emissor':
-        specifier: workspace:*
-        version: link:../../packages/nfe-emissor
       '@macuxierp/nfe-sefaz':
         specifier: workspace:*
         version: link:../../packages/nfe-sefaz
@@ -342,15 +342,27 @@ importers:
       '@macuxierp/core':
         specifier: workspace:*
         version: link:../../modules/core
+      '@macuxierp/faturamento':
+        specifier: workspace:*
+        version: link:../../modules/faturamento
       '@macuxierp/integracao-fdv':
         specifier: workspace:*
         version: link:../../modules/integracao-fdv
+      '@macuxierp/nfe-emissor':
+        specifier: workspace:*
+        version: link:../../packages/nfe-emissor
+      '@macuxierp/nfe-sefaz':
+        specifier: workspace:*
+        version: link:../../packages/nfe-sefaz
       '@macuxierp/pedido':
         specifier: workspace:*
         version: link:../../modules/pedido
       '@macuxierp/platform-sdk':
         specifier: workspace:*
         version: link:../../packages/platform-sdk
+      '@macuxierp/sefaz-simulador':
+        specifier: workspace:*
+        version: link:../../packages/sefaz-simulador
       pino:
         specifier: ^10.4.0
         version: 10.4.0
@@ -364,6 +376,9 @@ importers:
       '@types/node':
         specifier: ^22.18.0
         version: 22.20.5
+      api:
+        specifier: workspace:*
+        version: link:../api
       eslint:
         specifier: ^9.39.0
         version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)

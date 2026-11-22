@@ -8,7 +8,10 @@ import { exportadorCadastros } from '@macuxierp/cadastros/api';
 import { EVENTO_CARGA_INICIAL, TRABALHO_CARGA_INICIAL } from '@macuxierp/cadastros/contracts';
 import { exportadorCore } from '@macuxierp/core/api';
 import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID, CONSUMIDOR_PUBLICAR_CADASTROS, EVENTOS_CADASTROS_PUBLICADOS } from '@macuxierp/integracao-fdv/api';
+import { manifest as manifestCadastros } from '@macuxierp/cadastros/manifest';
+import { manifest as manifestFaturamento } from '@macuxierp/faturamento/manifest';
 import { exportadorPedido } from '@macuxierp/pedido/api';
+import { manifest as manifestPedido } from '@macuxierp/pedido/manifest';
 import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
 import { ArmazenamentoMemoria, relogioDoSistema, type Banco, type Transacao } from '@macuxierp/platform-sdk';
 import { pino } from 'pino';
@@ -100,11 +103,29 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     expect(agendas('desligado', 'ligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
   });
 
-  it('consumidores: carga inicial, espelho dos cadastros e retorno do pedido, cada um uma vez', () => {
+  it('consumidores: carga inicial, espelho dos cadastros, retorno do pedido, pedido a faturar (T-0045), nota autorizada e cancelada no pedido (#194, #215) e estoque (#192), cada um uma vez', () => {
     const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
-    expect(consumidores.map((c) => c.id)).toEqual(['cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido']);
+    expect(consumidores.map((c) => c.id)).toEqual([
+      'cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido', 'faturamento.fila-a-faturar', 'pedido.nota-autorizada', 'pedido.nota-cancelada', 'cadastros.estoque-nota',
+    ]);
+    expect(consumidores[3]!.eventos).toEqual(['pedido.pedido.aprovado@1']);
     expect(consumidores[1]!.eventos).toEqual(EVENTOS_CADASTROS_PUBLICADOS);
     expect(consumidores[2]!.eventos).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1']);
+  });
+
+  it('todo evento que o faturamento publica tem consumidor no worker, salvo os que ainda não têm dono consumindo (lista fechada)', () => {
+    const consumidores = montarConsumidores({ log, relogio: relogioDoSistema, outbox: { gravar: async () => 1 } });
+    const de = (evento: string) => consumidores.filter((c) => c.eventos.includes(evento)).map((c) => c.id);
+    expect(de('faturamento.nota.autorizada@1')).toEqual(['pedido.nota-autorizada', 'cadastros.estoque-nota']);
+    expect(de('faturamento.nota.cancelada@1')).toEqual(['pedido.nota-cancelada', 'cadastros.estoque-nota']); // recuo do pedido (#215, lote 4b da T-0015)
+    // Sem consumidor ainda (nenhum módulo trata no worker). Um evento novo do faturamento sem consumidor quebra aqui.
+    const semConsumidor = manifestFaturamento.publica.filter((e) => de(e).length === 0);
+    expect(semConsumidor).toEqual(['faturamento.nota.rejeitada@1', 'faturamento.titulo.gerado@1', 'faturamento.titulo.baixado@1']);
+    // Tudo o que pedido e cadastros declaram consumir do faturamento está ligado (o recuo do pedido entrou no #215).
+    const soltos = [manifestPedido, manifestCadastros].flatMap((m) =>
+      m.consome.filter((e) => e.startsWith('faturamento.') && !de(e).some((id) => id.startsWith(`${m.id}.`))).map((e) => `${m.id} ← ${e}`),
+    );
+    expect(soltos).toEqual([]);
   });
 
   it('MACUXIERP_FDV_RECEBIMENTO=desligado: só o conector entra; nem a busca nem o retorno de pedidos', () => {

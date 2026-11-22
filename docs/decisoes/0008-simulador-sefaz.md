@@ -1,6 +1,6 @@
 # ADR 0008 — Simulador da SEFAZ-AM na F4, fronteira homologação × produção e bibliotecas de XML
 
-- **Status:** aceita; implementada na T-0045, etapas 1 a 5 (engenheiro-software)
+- **Status:** aceita; implementada na T-0045, etapas 1 a 5 (engenheiro-software); **emendada em 22/11/2026** (simulador no ERP de produção, seção ao final)
 - **Data:** 21/11/2026, 23h40 (Manaus)
 - **Dono:** engenheiro-software
 - **Base:** `CLAUDE.md`, regras 7, 8 e 9; ADR 0002 (biblioteca da NF-e, opção A, PL_010g); ADR 0005 (A1 cifrado); ADR 0006 (só o operador põe filial em produção); desenho `docs/desenho/T-0045.md`
@@ -58,3 +58,23 @@ Os XSD do PL_010g vêm do espelho do sped-nfe (commit `4596b89`), conferidos pel
 - Quatro dependências novas no `nfe-sefaz`, sem nativo. O XSD custa entre 50 e 150 ms por documento (o WASM compila o schema a cada chamada). Isso é aceitável na fila da SEFAZ; se pesar, o próximo passo é reaproveitar a instância.
 - **Simplificações conhecidas do simulador** (documentadas no código): o lote assíncrono é processado no recebimento (a consulta de protocolo já vê a nota antes do `tMed`); o estado da SVC-RS não se sincroniza com o do AM; não confere cadeia ICP-Brasil, LCR nem as regras de negócio da NF-e (totais, CFOP, tributos); o 570 é usado também para o `tpEmis` 1 na SVC; o 242 (cabeçalho SOAP) só faz sentido no servidor SOAP local, que fica para depois.
 - **Pendente no core** (leitura do A1 decifrado por filial para o worker): desenho T-0045 §5.
+
+## Emenda de 22/11/2026 — simulador no ERP de produção
+- **Data:** 22/11/2026, 02h46 (Manaus) · **Dono:** engenheiro-software · **Tarefa:** T-0045, lote A (com a ligação do faturamento da T-0021 no api e no worker)
+
+### Decisão citada
+Decisão do Alexandre (recado **R-20261122-022626**): a thathyany roda em **produção** pelo ERP — pedidos, faturamento, títulos e estoque reais —, e a NF-e é **simulada** pelo `sefaz-simulador` até a T-0046. A filial fica no ambiente fiscal de **homologação** (`core.ambiente_fiscal` sem linha ou `homologacao`), apontando para o simulador, dentro do ERP de produção. Nada vai à SEFAZ real. A regra 7 continua intacta: a produção fiscal só com "aprovo produção fiscal thathyany". Vale também a trava do Hub (R-20261122-020834): nenhuma escrita no Hub real do FDV; os testes usam só o dublê e o simulador.
+
+### Onde roda
+**In-process no worker** (`apps/worker/src/faturamento.ts`). Na subida, o worker monta um seletor só com a fábrica do simulador (`criarSefazDoWorker`, que chama `criarSeletorTransporte({ transporte: 'simulador', simulador: criarFabricaSimulador() })`) e registra os trabalhos `faturamento.transmitir_nota`, `faturamento.processar_evento`, `faturamento.processar_inutilizacao` e `faturamento.consultar_nota`, a varredura periódica (`transmitirPendentes` e `processarPendentes`) e o alerta diário das numeradas não enviadas (RN-FAT-01). A API monta, reserva o número, grava o rascunho e enfileira; ela não lê o A1 decifrado (ADR 0005 item 4). O worker precisa da `MACUXIERP_CHAVE_A1` (a mesma da API); sem ela, os trabalhos da SEFAZ ficam na fila e o log avisa. O servidor SOAP local do simulador não é usado em produção.
+
+### Barreiras
+- **(a) Filial em produção fiscal nunca chega ao simulador.** O seletor lança `SimuladorEmProducaoErro` antes de chamar qualquer fábrica, e o trabalho desiste na hora (422 `SEFAZ_SIMULADOR_EM_PRODUCAO`, sem retentativa). Testes: `apps/worker/src/faturamento.test.ts` (seletor do worker com espião, inclusive com variáveis de ambiente "tentadoras") e `apps/worker/src/faturamento.db.test.ts` (filial gravada em produção pelo operador: o trabalho fica `falhou`, a fábrica do simulador não é chamada para ela e a nota não é autorizada).
+- **(b) O worker não tem a fábrica da SEFAZ real.** O transporte da homologação é a constante `TRANSPORTE_HOMOLOGACAO_DO_WORKER = 'simulador'`. Não há leitura de `MACUXIERP_SEFAZ_HOMOLOGACAO` nem de outra variável, e a `criarFabricaTransporteSoap` não é passada ao seletor; com `transporte: 'sefaz'`, ele daria `SEFAZ_TRANSPORTE_NAO_CONFIGURADO`. Ligar a SEFAZ real é a T-0046, por PR, com a fábrica SOAP e esta emenda revista. Teste: `apps/worker/src/faturamento.test.ts` (o destino continua `simulador` com o ambiente alterado; o código do worker não importa o transporte SOAP nem lê variável da SEFAZ).
+- **(c) Produção fiscal fechada duas vezes.** Só o operador grava `producao` em `core.ambiente_fiscal`, com o recado de aprovação (ADR 0006, CHECK `ambiente_producao_aprovada`). E, mesmo com a fábrica real ligada, o seletor para em `SEFAZ_ENDERECO_NAO_CONFERIDO` enquanto a tabela de endereços estiver "a conferir" (T-0046).
+
+### A NF-e simulada não tem valor fiscal
+A nota sai com `tpAmb` 2 e com o `xNome` de homologação no destinatário ("NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL", RN-FAT-04). O `nProt` começa com o 9 do simulador, e o `verAplic` é `MACUXI-SIMULADOR-0.1`. Ela **não** acoberta a circulação da mercadoria nem substitui a NF-e real; com `vai_ao_fdv = false`, não vai ao FDV como faturamento (RN-FAT-04). Pedidos, títulos e estoque são reais; o documento fiscal, não.
+
+### Pendência: persistência do estado do simulador (lote B)
+Hoje o estado do simulador (notas autorizadas, eventos, faixas inutilizadas, recibos e os contadores de `nProt` e `nRec`) fica **em memória**, no processo do worker. **O reinício do worker zera esse estado e o contador do `nProt`.** Depois dele, o simulador não conhece as notas já autorizadas: a consulta de protocolo e o cancelamento de uma nota anterior voltam 217, e um `nProt` pode se repetir. O XML autorizado já guardado no ERP não muda, porque é imutável. O schema `sefaz_simulador` já está no `main` (migração 0025, #193); o lote B (`nuvem/T-0045-simulador-persistente`) liga o simulador a ele. Até lá, cancelamento e CC-e só valem para notas autorizadas desde a última subida do worker, e o deploy deve evitar reiniciar o worker com nota em `em_autorizacao`.
