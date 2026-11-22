@@ -14,6 +14,8 @@
 ## Envelope (platform-sdk)
 `{ id: uuid, nome: "<m>.<ent>.<fato>@vN", tenant_id, agregado_id, versao, ocorrido_em (UTC), ator: usuario_id | "sistema", request_id, payload }`. Gravado na outbox (`plataforma.evento`) na mesma transação da escrita. O consumidor é idempotente por `(consumidor, evento_id)` em `plataforma.evento_consumido` e descarta `versao` menor que a última já aplicada ao agregado.
 
+`versao` (inteiro ≥ 1) é definida pela outbox (`Outbox.gravar`), não pelo módulo: contador por `(tenant_id, agregado_id)`, para qualquer nome de evento, sem buraco e sem repetição; rollback não consome versão. O `versao` passado a `ContextoRota.publicar` está obsoleto e é ignorado; o envelope devolvido traz a versão gravada (T-0034). A forma do envelope não muda (inteiro ≥ 1), por isso sem ADR nem nova versão de contrato.
+
 ## Payloads de core e cadastros (v1)
 Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: boolean` (RN-CAD-08). Os campos seguem os esboços Zod de `docs/desenho/T-0002.md`.
 
@@ -31,6 +33,8 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 | `cadastros.condicao_pagamento.alterada@1` | condição | `CondicaoPagamento` + `inativo` |
 | `cadastros.vendedor.alterado@1` | vendedor | `Vendedor` + `inativo` |
 | `cadastros.carteira.alterada@1` | vendedor de destino | `de`, `para`, `cliente_ids[]`. Resumo da transferência, para auditoria (D7) |
+
+**Campos aditivos em `CondicaoPagamento` (T-0026, D12 do `docs/desenho/T-0026.md`):** `forma_external_id` (até 64, anulável), `forma_codigo` (até 20, anulável) e `forma_nome` (até 60, anulável), ao lado do `forma_tpag` que já existe. São **opcionais e compatíveis**: o evento continua `cadastros.condicao_pagamento.alterada@1`, e o consumidor que não os conhece segue igual. Vêm da carga do `forma_pagamento.csv` do kit (a forma não é tabela própria: cada condição leva a sua). Na F2, o `integracao-fdv` publica forma e prazo ao Hub a partir desses campos, sem ler tabela.
 
 ## Dependências
 core ← cadastros ← (pedido, fiscal) ← faturamento; integracao-fdv ← (cadastros, pedido) e consome eventos de faturamento. Quando importar o contrato do publicador criaria ciclo de pacotes (ex.: `cadastros` lendo `faturamento.nota.autorizada@1` para baixar estoque, na F4), o consumidor valida o evento com um leitor tolerante próprio (subconjunto do payload). O publicador continua dono do schema.

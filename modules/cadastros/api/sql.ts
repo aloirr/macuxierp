@@ -3,13 +3,13 @@
  * por isso nenhum SQL repete `tenant_id` no WHERE, e o INSERT usa `plataforma.tenant_atual()`. Exclusão = `deleted_at`
  * (RN-CAD-08). bigint volta como `float8` (centavos e quantidade × 10^4 cabem em 2^53).
  */
-import { erros, type Transacao } from '@macuxierp/platform-sdk';
+import { erros, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import type {
-  Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EnderecoClienteItem, Filial, FilialDados, PrecoItem, Produto,
+  Cliente, ClienteDados, Contato, ContatoItem, EnderecoCliente, EnderecoClienteItem, Filial, FilialDados, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
   ProdutoDados, UnidadeDados, UnidadeItem,
 } from '../contracts';
 import type {
-  ConsultaGravada, FiltroLista, MovimentoGravado, Pagina, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
+  ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 type Dict = Record<string, unknown>;
@@ -59,14 +59,15 @@ class RepoTabela<E extends { id: string }, D> implements RepoSimples<E, D> {
     if (q.filial_id && this.m.filtros?.filial) w.push(`filial_id = ${par(q.filial_id)}`);
     if (q.vendedor_id && this.m.filtros?.vendedor) w.push(`vendedor_id = ${par(q.vendedor_id)}`);
     if (q.vendedor_ids && this.m.filtros?.vendedor) w.push(`vendedor_id = ANY(${par([...q.vendedor_ids])}::uuid[])`);
+    if (q.cursor) w.push(`id > ${par(q.cursor)}`);
     const onde = w.length ? `WHERE ${w.join(' AND ')}` : '';
-    const total = await executar<{ n: number }>(this.tx, `SELECT count(*)::int AS n FROM ${this.m.tabela} ${onde}`, p);
     const linhas = await executar(
       this.tx,
-      `SELECT ${selecionar(this.m)} FROM ${this.m.tabela} ${onde} ORDER BY created_at, id LIMIT ${par(q.por_pagina)} OFFSET ${par((q.pagina - 1) * q.por_pagina)}`,
+      `SELECT ${selecionar(this.m)} FROM ${this.m.tabela} ${onde} ORDER BY id LIMIT ${par(q.limite + 1)}`,
       p,
     );
-    return { itens: await this.hidratar(linhas.map((l) => this.m.deLinha(l))), total: total[0]?.n ?? 0 };
+    const pagina = paginar(linhas.map((l) => this.m.deLinha(l)), q.limite);
+    return { itens: await this.hidratar(pagina.itens), proximo_cursor: pagina.proximo_cursor };
   }
 
   private async um(onde: string, valor: string): Promise<E | null> {
@@ -237,18 +238,18 @@ export function repositoriosSql(tx: Transacao): Repositorios {
   const tabelasPreco = Object.assign(
     simples('cadastros.tabela_preco', ['nome', 'padrao'], ['nome'], [DATA('vigencia_inicio'), DATA('vigencia_fim')]),
     {
-      async itens(tabelaId: string, q: { filial_id?: string; produto_id?: string; pagina: number; por_pagina: number }) {
+      async itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItemLista>> {
         const p: unknown[] = [tabelaId];
         const w = ['tabela_preco_id = $1', 'deleted_at IS NULL'];
         if (q.filial_id) w.push(`filial_id = $${p.push(q.filial_id)}`);
         if (q.produto_id) w.push(`produto_id = $${p.push(q.produto_id)}`);
-        const total = await executar<{ n: number }>(tx, `SELECT count(*)::int AS n FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')}`, p);
-        const itens = await executar<PrecoItem>(
+        if (q.cursor) w.push(`id > $${p.push(q.cursor)}`);
+        const linhas = await executar<PrecoItemLista>(
           tx,
-          `SELECT tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')} ORDER BY produto_id, filial_id LIMIT $${p.push(q.por_pagina)} OFFSET $${p.push((q.pagina - 1) * q.por_pagina)}`,
+          `SELECT id, tabela_preco_id, filial_id, produto_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE ${w.join(' AND ')} ORDER BY id LIMIT $${p.push(q.limite + 1)}`,
           p,
         );
-        return { itens, total: total[0]?.n ?? 0 };
+        return paginar(linhas, q.limite);
       },
       itensDoProduto: (tabelaId: string, produtoId: string, filialIds: readonly string[]) =>
         executar<PrecoItem>(
@@ -366,20 +367,20 @@ function oficiaisSql(tx: Transacao): RepoOficiais {
   return {
     async listar(tabela, q) {
       const cfg = OFICIAIS[tabela];
-      if (!cfg) return { itens: [], total: 0 };
+      if (!cfg) return { itens: [], proximo_cursor: null };
       const data = q.data ?? new Date().toISOString().slice(0, 10);
       const p: unknown[] = [data];
       const w = [VIGENTE('o').replaceAll('$D', '$1')];
       if (q.busca) w.push(`(${cfg.busca.map((c) => `o.${c} ILIKE $${p.push(`%${q.busca}%`)}`).join(' OR ')})`);
       if (q.uf && cfg.uf) w.push(`o.${cfg.uf} = $${p.push(q.uf)}`);
       if (q.tipo && cfg.tipo) w.push(`o.tipo = $${p.push(q.tipo)}`);
-      const total = await executar<{ n: number }>(tx, `SELECT count(*)::int AS n FROM ${cfg.tabela} o WHERE ${w.join(' AND ')}`, p);
-      const itens = await executar(
+      if (q.cursor) w.push(`o.id > $${p.push(q.cursor)}`);
+      const linhas = await executar<{ id: string } & Dict>(
         tx,
-        `SELECT ${cfg.colunas.split(', ').map((c) => `o.${c}`).join(', ')}, to_char(o.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio, to_char(o.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim FROM ${cfg.tabela} o WHERE ${w.join(' AND ')} ORDER BY o.codigo LIMIT $${p.push(q.por_pagina)} OFFSET $${p.push((q.pagina - 1) * q.por_pagina)}`,
+        `SELECT o.id, ${cfg.colunas.split(', ').map((c) => `o.${c}`).join(', ')}, to_char(o.vigencia_inicio, 'YYYY-MM-DD') AS vigencia_inicio, to_char(o.vigencia_fim, 'YYYY-MM-DD') AS vigencia_fim FROM ${cfg.tabela} o WHERE ${w.join(' AND ')} ORDER BY o.id LIMIT $${p.push(q.limite + 1)}`,
         p,
       );
-      return { itens, total: total[0]?.n ?? 0 };
+      return paginar(linhas, q.limite);
     },
     ncmVigente: (ncm, data) => existe(`SELECT 1 FROM cadastros.ncm n WHERE n.codigo = $1 AND ${VIGENTE('n')}`, [ncm], data),
     ncmExigeCest: (ncm, data) =>

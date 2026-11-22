@@ -7,8 +7,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import {
   definirPlugin,
   definirRota,
-  ErroApi,
   erros,
+  paginar,
   PERFIS,
   PERMISSOES,
   type ContextoRota,
@@ -39,7 +39,7 @@ import {
   type Exportacao,
   type Usuario,
 } from '../contracts';
-import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbiente, diasParaVencer, gerarSenhaProvisoria } from '../domain';
+import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria } from '../domain';
 import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarA1 } from './cifra';
 import {
@@ -54,7 +54,6 @@ import {
 } from './portas';
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
-const naoEncontrado = (o: string) => new ErroApi(404, 'NAO_ENCONTRADO', `${o} não encontrado`);
 /** Valida o parâmetro de rota com o `Id` dos contracts; 400 VALIDACAO se não for UUID. */
 function idDoParam(params: Record<string, string>, nome: string): string {
   const r = Id.safeParse(params[nome]);
@@ -112,11 +111,6 @@ async function publicar(c: ContextoRota, nome: string, agregado_id: string, payl
   await c.publicar({ nome, agregado_id, versao: c.agora.getTime(), payload });
 }
 
-function paginar<T extends { id: string }>(linhas: T[], limite: number): { itens: T[]; proximo_cursor: string | null } {
-  const itens = linhas.slice(0, limite);
-  return { itens, proximo_cursor: linhas.length > limite ? (itens[itens.length - 1]?.id ?? null) : null };
-}
-
 export function criarPluginCore(deps: DependenciasCore): PluginModulo {
   const { repo } = deps;
   const aleatorios = deps.aleatorios ?? ((n: number) => randomBytes(n));
@@ -124,20 +118,20 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
 
   async function empresaOuErro(c: ContextoRota): Promise<LinhaEmpresa> {
     const e = await repo.empresa(c.tx);
-    if (!e) throw naoEncontrado('Empresa');
+    if (!e) throw erros.naoEncontrado('Empresa');
     return e;
   }
 
   async function usuarioOuErro(c: ContextoRota, params: Record<string, string>): Promise<LinhaUsuario> {
     const u = await repo.usuarioPorId(c.tx, idDoParam(params, 'id'));
-    if (!u) throw naoEncontrado('Usuário');
+    if (!u) throw erros.naoEncontrado('Usuário');
     return u;
   }
 
   /** RN-CORE-01: a sequência (trava, leitura, contagem, domain, gravação) é a de `alterarUsuarioComTrava`. */
   async function mudarUsuario(c: ContextoRota, params: Record<string, string>, patch: PatchUsuario, acao: string, opcoes: OpcoesAlterarUsuario = {}): Promise<LinhaUsuario | null> {
     const r = await alterarUsuarioComTrava(repo, c.tx, idDoParam(params, 'id'), patch, c.agora, opcoes);
-    if (r.tipo === 'nao_encontrado') throw naoEncontrado('Usuário');
+    if (r.tipo === 'nao_encontrado') throw erros.naoEncontrado('Usuário');
     if (r.tipo === 'sem_mudanca') return null;
     if (r.tipo === 'recusado') throw erros.regra('RN-CORE-01', r.mensagem);
     if (r.tipo === 'conflito') return ou409<LinhaUsuario>(null);
@@ -297,9 +291,13 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/certificados',
       acao: 'core.certificado.gerir',
       corpo: CertificadoEnviar,
-      async executar(c, { corpo }) {
-        const pfx = Buffer.from(corpo.arquivo_base64, 'base64');
-        if (pfx.length === 0 || pfx.length > PFX_TAMANHO_MAXIMO) throw erros.validacao({ arquivo_base64: 'O .pfx precisa ter até 50 KB' });
+      // Multipart: filial_id e senha são campos de texto; o `.pfx` vem em `arquivo` (a API barra acima do limite com 413).
+      multipart: { arquivos: [{ campo: 'arquivo', tamanhoMaximo: PFX_TAMANHO_MAXIMO }] },
+      async executar(c, { corpo, arquivos }) {
+        const recebido = arquivos.arquivo;
+        if (!recebido) throw erros.validacao({ arquivo: 'Envie o arquivo .pfx' });
+        const pfx = recebido.conteudo();
+        if (pfx.length === 0) throw erros.validacao({ arquivo: 'O arquivo .pfx está vazio' });
         const empresa = await empresaOuErro(c);
         let dados;
         try {
@@ -342,19 +340,21 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         const filialId = idDoParam(params, 'filial_id');
         const [atualLinha] = await repo.ambientes(c.tx, filialId);
         const atual = atualLinha?.ambiente ?? null;
-        const r = avaliarTrocaAmbiente({ atual, novo: corpo.ambiente, recado: corpo.recado_aprovacao });
+        const r = avaliarTrocaAmbienteTenant({ atual, novo: corpo.ambiente });
         if (!r.ok) throw erros.regra('RN-CORE-08', r.mensagem);
-        const nova: LinhaAmbiente = { filial_id: filialId, ambiente: r.ambiente, recado_aprovacao: r.recado };
+        if (!r.muda && atualLinha) return { corpo: ambienteDto(atualLinha) };
+        const nova: LinhaAmbiente & { ambiente: 'homologacao' } = { filial_id: filialId, ambiente: r.ambiente, recado_aprovacao: null };
         await repo.gravarAmbiente(c.tx, { ...nova, alterado_por: c.sessao.usuario_id }, c.agora);
+        const dto = ambienteDto(nova);
         await c.auditar({
           acao: 'core.ambiente.trocado',
           entidade: 'ambiente_fiscal',
           entidade_id: nova.filial_id,
-          antes: { ambiente: atual ?? AMBIENTE_PADRAO },
-          depois: ambienteDto(nova),
+          antes: { ambiente: atual ?? AMBIENTE_PADRAO, recado_aprovacao: atualLinha?.recado_aprovacao ?? null },
+          depois: { ...dto, origem: 'api' },
         });
-        await publicar(c, EVENTO_AMBIENTE, nova.filial_id, ambienteDto(nova));
-        return { corpo: ambienteDto(nova) };
+        await publicar(c, EVENTO_AMBIENTE, nova.filial_id, dto);
+        return { corpo: dto };
       },
     }),
 
@@ -395,7 +395,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.exportacao.pedir',
       async executar(c, { params }) {
         const e = await repo.exportacao(c.tx, idDoParam(params, 'id'));
-        if (!e) throw naoEncontrado('Exportação');
+        if (!e) throw erros.naoEncontrado('Exportação');
         let url: string | null = null;
         if (e.estado === 'pronta' && e.arquivo_id) {
           const chave = await repo.chaveDoArquivo(c.tx, e.arquivo_id);

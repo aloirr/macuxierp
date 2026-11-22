@@ -40,3 +40,11 @@ export const CLIENTES = definirPaginaLista({
 - `paraCsv(colunas, linhas)` com `ColunaCsv<L> = { titulo, valor(linha) }`: separador `;`, BOM UTF-8 e CRLF (Excel em pt-BR); texto que começa com `= + - @` ganha apóstrofo (injeção de fórmula); número negativo segue número.
 - Na API: `respostaCsv('clientes.csv', csv)` devolve `content-type: text/csv; charset=utf-8`, `content-disposition: attachment` e `cache-control: no-store`.
 - O CSV é do usuário logado e respeita as mesmas checagens da rota (RN-CORE-02); nunca vai para log.
+
+## Leitura de CSV (T-0026, D11)
+- `lerCsv(bytesOuTexto, { aceitas, obrigatorias? })` → `{ ok: true, separador, colunas, linhas: [{ numero, celulas }], errosLinha }` ou `{ ok: false, erro: { codigo, linha, coluna, motivo } }`.
+  - UTF-8 com ou sem BOM (outro: `CSV_CODIFICACAO`, "Salvar como CSV UTF-8"); separador `;` ou `,` pela 1ª linha (empate dá `;`); aspas da RFC 4180; células aparadas.
+  - Cabeçalho por nome, sem diferença de maiúsculas, em qualquer ordem. Coluna fora de `aceitas` (`CSV_COLUNA_DESCONHECIDA`), repetida (`CSV_COLUNA_REPETIDA`) ou obrigatória ausente (`CSV_COLUNA_AUSENTE`) recusa o arquivo.
+  - Linha em branco é ignorada e conta na numeração (`numero` = linha física, 1 = cabeçalho). Linha com células preenchidas a mais vai para `errosLinha` (`CSV_CELULAS_A_MAIS`). Nenhum erro traz valor de célula; `coluna` só traz o texto do cabeçalho se ele parece nome de coluna (`^[a-z][a-z0-9_.]{0,59}$`), senão a posição ("coluna 3"), porque num CSV sem cabeçalho a 1ª linha é dado pessoal.
+- Conversores (`celulaBooleana`, `celulaData`, `celulaDataHora`, `celulaInteiro(s, { min, max })`, `celulaCentavos`, `celulaDecimal(s, casas, { negativo })`, `celulaLista`) → `{ ok: true, valor }` ou `{ ok: false, motivo }`; célula vazia = `valor: undefined` (não altera). `celulaDecimal` devolve inteiro na escala de `casas` e recusa `1.500`/`1,500` (milhar ambíguo).
+- Layout, mapeamento e RN ficam no `domain` do módulo (RD-0028); o SDK é só o genérico.

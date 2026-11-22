@@ -20,16 +20,19 @@ export const EnvelopeEvento = z.object({
 });
 export type EnvelopeEvento = z.infer<typeof EnvelopeEvento>;
 
-export type DadosEvento = Omit<EnvelopeEvento, 'id' | 'ocorrido_em'>;
+export type DadosEvento = Omit<EnvelopeEvento, 'id' | 'ocorrido_em' | 'versao'> & { versao?: number };
 
 /** Monta e valida o envelope (id e instante gerados aqui, em UTC). */
 export function criarEvento(dados: DadosEvento, agora: Date, id: string = randomUUID()): EnvelopeEvento {
-  return EnvelopeEvento.parse({ ...dados, id, ocorrido_em: agora.toISOString() });
+  return EnvelopeEvento.parse({ ...dados, versao: dados.versao ?? 1, id, ocorrido_em: agora.toISOString() });
 }
 
-/** Porta da outbox: grava o evento na transação corrente. */
+/**
+ * Porta da outbox: grava o evento na transação corrente com a próxima versão do agregado (a `versao` recebida é
+ * ignorada) e devolve a versão gravada. A versão só é consumida se a transação confirmar.
+ */
 export interface Outbox {
-  gravar(tx: Transacao, evento: EnvelopeEvento): Promise<void>;
+  gravar(tx: Transacao, evento: EnvelopeEvento): Promise<number>;
 }
 
 /**

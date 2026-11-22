@@ -4,7 +4,7 @@
  * Rotas e permissões: docs/desenho/T-0002.md, seção 4. Eventos: .coord/contratos/eventos.md.
  * Dinheiro em centavos; quantidade e fator × 10^4 (D11); desconto em pontos-base (10_000 = 100%).
  */
-import { Cnpj, normalizarDocumento } from '@macuxierp/platform-sdk';
+import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 export const MODULO = 'cadastros' as const;
@@ -152,6 +152,12 @@ export const PrecoItem = z.object({
   desconto_maximo_bp: z.number().int().min(0).max(10_000),
 });
 export type PrecoItem = z.infer<typeof PrecoItem>;
+/** Item na lista paginada: o `id` da linha é o cursor. */
+export const PrecoItemLista = PrecoItem.extend({ id: Uuid });
+export type PrecoItemLista = z.infer<typeof PrecoItemLista>;
+/** `GET /tabelas-preco/:id/itens`. */
+export const PrecoItemConsulta = ConsultaPaginada.extend({ filial_id: Uuid.optional(), produto_id: Uuid.optional() });
+export type PrecoItemConsulta = z.infer<typeof PrecoItemConsulta>;
 export const MAX_ITENS_LOTE_PRECO = 5000;
 /** Item do `PUT /tabelas-preco/:id/itens` (a tabela vem da rota). */
 export const PrecoItemEntrada = PrecoItem.omit({ tabela_preco_id: true }).extend({
@@ -223,11 +229,8 @@ export const TransferenciaCarteira = z.object({
 export type TransferenciaCarteira = z.infer<typeof TransferenciaCarteira>;
 
 // ---- Listas ----
-export const ListaConsulta = z.object({
-  pagina: z.coerce.number().int().min(1).default(1),
-  por_pagina: z.coerce.number().int().min(1).max(200).default(50),
-  busca: z.string().trim().max(60).optional(),
-  inativos: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+/** Paginação por cursor do SDK (`.coord/contratos/listas.md`): `limite`, `cursor`, `busca` e `inativos`, mais os filtros do módulo. */
+export const ListaConsulta = ConsultaLista.extend({
   filial_id: Uuid.optional(),
   vendedor_id: Uuid.optional(),
 });
@@ -276,13 +279,11 @@ export const TRABALHO_CONSULTAR_IE = 'cadastros.consultar_ie' as const;
 
 // ---- Tabelas oficiais (RF-CAD-10), só leitura ----
 export const TABELAS_OFICIAIS = ['ncm', 'cest', 'cfop', 'cst', 'municipios', 'classificacao-tributaria'] as const;
-export const OficialConsulta = z.object({
-  busca: z.string().trim().max(60).optional(),
+export const OficialConsulta = ConsultaPaginada.extend({
+  busca: ConsultaLista.shape.busca,
   uf: Uf.optional(),
   tipo: z.string().max(10).optional(),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  pagina: z.coerce.number().int().min(1).default(1),
-  por_pagina: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type OficialConsulta = z.infer<typeof OficialConsulta>;
 
