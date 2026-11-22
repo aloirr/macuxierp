@@ -62,6 +62,8 @@ O banco não tem acesso ao FDV, e só os três papéis têm `CONNECT` (o `REVOKE
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
+**Numeração reservada:** o gerente pode reservar números para tarefas em paralelo (ex.: 0007–0009 reservadas e a 0010 da T-0026 entrando antes). O `migrar` aplica as pendentes em ordem de nome e não exige sequência contínua: uma migração de número menor que chegue depois é aplicada na execução seguinte. Por isso, migrações com números reservados não podem depender umas das outras fora da ordem de merge.
+
 ## Teste de vazamento entre tenants
 `db/testes/vazamento.ts` varre **todas** as tabelas dos schemas pedidos (as novas entram sozinhas): para cada papel com leitura, no tenant A, lê só linhas de A (e alguma, para provar que a massa cobre a tabela), sem tenant não lê nada, e o app não altera, não apaga e não move linha para o tenant B. Um teste prova que ele acusa uma tabela sem RLS. Tabela nova precisa de linha na massa (`db/testes/fixture.ts`), senão o teste falha.
 
