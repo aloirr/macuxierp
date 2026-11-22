@@ -9,6 +9,9 @@ import { manifest as integracaoFdv } from '@macuxierp/integracao-fdv/manifest';
 import { manifest as pedido } from '@macuxierp/pedido/manifest';
 import { definirPlugin, MODULOS, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
 
+/** @deprecated use o de @macuxierp/platform-sdk */
+export { armazenamentoIndisponivel } from '@macuxierp/platform-sdk';
+
 export type EntradaModulo = PluginModulo | ManifestoModulo;
 
 export class RegistroModulosInvalido extends Error {

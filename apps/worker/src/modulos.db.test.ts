@@ -37,9 +37,10 @@ describe.skipIf(!PG_DISPONIVEL)('worker montado com os adaptadores do core (Post
     await b?.remover();
   });
 
-  it('RF-CORE-04: a rotina montada grava o aviso do A1', async () => {
+  it('RF-CORE-04: a rotina montada grava o aviso do A1 e não duplica na segunda rodada do dia', async () => {
     const [alerta] = montarRotinas({ banco: worker, log });
     expect(await alerta!.executar(agora)).toMatchObject({ avisos: 1, repetidos: 0, falhas: 0 });
+    expect(await alerta!.executar(agora)).toMatchObject({ avisos: 0, repetidos: 1, falhas: 0 });
     const { rows } = await b.admin.query('SELECT filial_id, dias, dia::text AS dia FROM core.aviso_a1 WHERE tenant_id = $1', [T]);
     expect(rows).toEqual([{ filial_id: filial, dias: 12, dia: agora.toISOString().slice(0, 10) }]);
   });

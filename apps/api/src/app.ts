@@ -79,7 +79,8 @@ export interface DependenciasApp {
   cronometro?: () => number;
   /** Módulos montados (manifesto + rotas). O tenant só acessa os licenciados (MODULO_INATIVO). */
   modulos: readonly PluginModulo[];
-  avisosA1: LeitorAvisosA1;
+  /** Selo do A1 no `/v1/auth/eu`; padrão sem avisos (`async () => []`). O `main.ts` passa o leitor real do core. */
+  avisosA1?: LeitorAvisosA1;
   /** Opções do pino; `false` desliga (testes). */
   logger?: boolean | Record<string, unknown>;
 }
@@ -90,6 +91,8 @@ export interface DependenciasApp {
  * ontem vale até a nova rodada, com `dias` recalculado em `agora`).
  */
 export type LeitorAvisosA1 = (tx: Transacao, agora: Date) => Promise<readonly { filial_id: string; dias: number; valido_ate: Date }[]>;
+
+const semAvisosA1: LeitorAvisosA1 = async () => [];
 
 const Login = z.object({ empresa: z.string().min(1).max(60), email: z.string().email().max(254), senha: z.string().min(1).max(256) });
 
@@ -189,7 +192,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
         if (!usuario || !usuario.ativo || !tenant) throw erros.naoAutenticado();
         const ativos = new Set(modulosLicenciados(licencas, agora));
         const filiais = await d.repoAuth.filiaisPorIds(tx, usuario.filial_ids);
-        const avisos = await d.avisosA1(tx, agora);
+        const avisos = await (d.avisosA1 ?? semAvisosA1)(tx, agora);
         // A saída passa pelo contrato: campo a mais (e-mail, tenant_id) não vaza, e dado fora dele é 500 (erro nosso),
         // nunca o 400 VALIDACAO do ZodError, que é do corpo do pedido.
         const eu = EuResposta.safeParse({
