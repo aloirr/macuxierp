@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AprovarEntrada, CancelarEntrada, PedidoCanceladoV1, PedidoManualEntrada, PedidoRecusadoV1, RecusarEntrada, ResultadoRecebimentoFdv, CodigoRecusaRecebimento, StatusPedido, Frete, PedidoAprovado, ProdutoRetrato, ClienteRetrato, EnderecoEntrega, SituacaoPedidoParaFaturar } from './index';
+import { AprovarEntrada, CancelarEntrada, PedidoCanceladoV1, PedidoManualEntrada, PedidoRecusadoV1, RecusarEntrada, ResultadoRecebimentoFdv, CodigoRecusaRecebimento, StatusPedido, Frete, PedidoAprovado, ProdutoRetrato, ClienteRetrato, EnderecoEntrega, SituacaoPedidoParaFaturar, PedidoFaturadoV1 } from './index';
 
 const U = '00000000-0000-4000-8000-000000000001';
 
@@ -77,5 +77,24 @@ describe('ResultadoRecebimentoFdv', () => {
     expect(ProdutoRetrato.parse(prod).origem).toBe('0');
     expect(ProdutoRetrato.parse({ ...prod, origem: '2' }).origem).toBe('2');
     expect(ProdutoRetrato.safeParse({ ...prod, origem: '9' }).success).toBe(false);
+  });
+  describe('pedido.pedido.faturado@1 (T-0015)', () => {
+    const base = {
+      pedido_id: U, numero: 1, origem: 'fdv', pedido_uuid: U, status: 'faturado', status_anterior: 'aprovado', filial_id: U, cliente_id: U, vendedor_id: null, total_centavos: 100,
+      ambiente: 'homologacao',
+      nota: { id: U, numero: 1, serie: 1, chave: '13261112345678000199550010000001231876543210', emitida_em: '2026-11-22T10:00:00.000Z', total_centavos: 100 },
+      itens_faturados: [{ sequencia: 1, produto_id: U, quantidade: 10_000, valor_centavos: 100 }],
+    };
+    it('T-0015: conta_como_real é opcional e booleano (aditivo no @1)', () => {
+      expect(PedidoFaturadoV1.safeParse(base).success).toBe(true);
+      expect(PedidoFaturadoV1.safeParse({ ...base, conta_como_real: true }).success).toBe(true);
+      expect(PedidoFaturadoV1.safeParse({ ...base, conta_como_real: 'sim' }).success).toBe(false);
+    });
+    it('T-0015: nota.chave aceita CNPJ alfanumérico e rejeita formato inválido', () => {
+      const chave = (c: string) => ({ ...base, nota: { ...base.nota, chave: c } });
+      expect(PedidoFaturadoV1.safeParse(chave('13261112AB34CD01DE3555001000000123187654321' + '0')).success).toBe(true);
+      expect(PedidoFaturadoV1.safeParse(chave('13261112ab34cd01de3555001000000123187654321' + '0')).success).toBe(false);
+      expect(PedidoFaturadoV1.safeParse(chave('13261112AB34CD01DE35550010000001231876543210' + '1')).success).toBe(false);
+    });
   });
 });
