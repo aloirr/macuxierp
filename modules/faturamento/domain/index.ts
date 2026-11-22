@@ -4,3 +4,4 @@ export * from './estados';
 export * from './nota';
 export * from './xml';
 export * from './retorno';
+export * from './destinatario';

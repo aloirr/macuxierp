@@ -19,6 +19,7 @@ import {
 import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
 import type { AlvoExterno, Repositorios, RepoSimples } from './portas';
 import { agregadoEstoque } from './uuid';
+import { violacaoExternalId } from './util';
 
 type Dict = Record<string, unknown>;
 export type Efeito = 'inserida' | 'atualizada' | 'sem_mudanca';
@@ -440,6 +441,11 @@ async function preco(l: LinhaPreco, st: Estado): Promise<Saida> {
     st.ids.tabela_preco.set(extTab, tab.id);
   }
   const t = tab;
+  if (t.existente === null && !t.pronta) {
+    // Guarda RD-0317 (ver domain/external-id.ts): a tabela que a carga cria leva extTab no external_id
+    const v = await violacaoExternalId(st.r, 'tabela_preco', extTab);
+    if (v) return mover(l.linha, 'tabela_external_id', 'CARGA_CONFLITO', v.mensagem);
+  }
   const prodId = st.ids.produto.get(extProd) as string;
   const fil = await filialDaLinha(st, l.refs.filial, l.linha);
   if ('erro' in fil) return fil.erro;

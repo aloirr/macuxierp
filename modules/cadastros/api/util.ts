@@ -1,6 +1,7 @@
 import { ErroApi, erros, type CamposErro, type EntradaRota } from '@macuxierp/platform-sdk';
 import { PADRAO_UUID } from '@macuxierp/platform-sdk';
-import type { Violacao } from '../domain';
+import { externalIdColideComId, type Violacao } from '../domain';
+import type { Repositorios, TabelaChave } from './portas';
 
 /** Regra de negócio violada → 422 com o código da RN; decisões "D*" (configuração) → 400 de validação. */
 export function erroDeViolacoes(v: readonly Violacao[]): ErroApi {
@@ -21,3 +22,7 @@ export function idDe(e: EntradaRota<unknown, unknown>, nome = 'id'): string {
 }
 
 export const dataIso = (d: Date): string => d.toISOString().slice(0, 10);
+
+/** Guarda RD-0317 (ver domain/external-id.ts): a rota exige (422 RN-CORE-05) e a carga vira CARGA_CONFLITO da linha. */
+export const violacaoExternalId = (r: Repositorios, tabela: TabelaChave, externalId: unknown): Promise<Violacao | null> =>
+  externalIdColideComId(externalId, (id) => r.chaves.existeId(tabela, id));

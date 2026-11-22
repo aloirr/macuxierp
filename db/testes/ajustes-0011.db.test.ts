@@ -3,19 +3,19 @@
  * (teto 30, sem piso) e o índice (tenant_id, agregado_id, versao) da versão por agregado em plataforma.evento (T-0034).
  */
 import { randomUUID } from 'node:crypto';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { listarMigracoes, migrar } from '../src/migrar.ts';
+import { migrar } from '../src/migrar.ts';
 import {
   type BancoDeTeste,
+  type PastaDeMigracoes,
   consultar,
   criarBancoDeTeste,
   executar,
   falha,
   PG_DISPONIVEL,
+  pastaComMigracoesAntesDe,
   permitirSetRole,
   rodarScript,
 } from './apoio.ts';
@@ -101,22 +101,20 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — ajustes do aviso do A1 e ve
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — 0011 sobre aviso gravado antes com outra filial (T-0043)', () => {
   let banco: BancoDeTeste;
-  let pasta: string;
+  let anteriores: PastaDeMigracoes;
 
   beforeAll(() => {
     banco = criarBancoDeTeste();
-    // Pasta temporária só com as migrações anteriores à 0011 (mesmos nomes e sha256 das originais).
-    pasta = mkdtempSync(join(tmpdir(), 'macuxi-0011-'));
-    for (const m of listarMigracoes().filter((x) => x.nome < '0011')) copyFileSync(m.caminho, join(pasta, m.nome));
+    anteriores = pastaComMigracoesAntesDe('0011');
   });
 
   afterAll(() => {
     banco?.remover();
-    if (pasta) rmSync(pasta, { recursive: true, force: true });
+    anteriores?.remover();
   });
 
   it('o UPDATE da 0011 leva a filial do aviso para a do certificado e a FK composta passa a existir', () => {
-    expect(migrar(banco.conexao, { pasta, oficiais: false })).not.toContain('0011_aviso_a1_e_versao_evento.sql');
+    expect(migrar(banco.conexao, { pasta: anteriores.pasta, oficiais: false })).not.toContain('0011_aviso_a1_e_versao_evento.sql');
     executar(banco.conexao, fixturePlataforma(B) + fixtureModulos(B));
     const outra = randomUUID();
     // Como dono (fora da RLS), um aviso de outro dia com outra filial: a 0009 aceita.

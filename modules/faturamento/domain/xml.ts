@@ -1,18 +1,20 @@
 /**
  * XML da NF-e 4.00 (`<NFe><infNFe>` sem assinatura). Determinístico: mesma entrada, mesmos bytes (sem relógio nem
  * sorteio aqui; `cNF` e a chave vêm prontos). A assinatura com o A1 é da porta `AssinadorA1`.
- * Os grupos IBS/CBS/IS são estrutura mínima: DUBLÊ até a T-0020 (NT 2025.002-RTC), a ajustar ao leiaute vigente.
+ * Lê o `ItemResultado` de `fiscal.calculo@1` (alíquotas em décimos de milésimo de ponto percentual). IBS/CBS/IS: ver `habilitarIbsCbs`.
  */
+import { normalizarDocumento } from '@macuxierp/platform-sdk';
+import type { Crt as CrtFiscal, IcmsItem, ItemResultado } from '@macuxierp/fiscal/contracts';
 import type { Ambiente, TipoEmissao } from '../contracts';
 import { chaveValida, CUF_AM, instanteManaus, MODELO_NFE } from './chave';
-import { xNomeDestinatario, type NotaItemMontado, type NotaMontada } from './nota';
+import { pisCofinsComValor, valoresFiscais, xNomeDestinatario, type NotaItemMontado, type NotaMontada } from './nota';
 import { ErroViolacao, violacao, type Violacao } from './violacao';
 
-export const NS_NFE = 'http://www.portalfiscal.inf.br/nfe';
-export const VERSAO_LEIAUTE = '4.00';
+const NS_NFE = 'http://www.portalfiscal.inf.br/nfe';
+const VERSAO_LEIAUTE = '4.00';
 
-/** Alias dos domínios fechados que o contracts ainda não expõe (CRT do emitente, indIEDest do destinatário). */
-export type Crt = 1 | 2 | 3;
+/** CRT do emitente, do contrato do fiscal (1, 2, 3 e 4/MEI); indIEDest do destinatário (no retrato vem como texto). */
+export type Crt = CrtFiscal;
 export type IndIeDest = 1 | 2 | 9;
 
 export interface EnderecoXml {
@@ -44,8 +46,13 @@ export interface DadosXml {
   indPres?: 1 | 2 | 3 | 4 | 5 | 9;
   /** Padrão: 0 em venda a contribuinte (ind_ie_dest 1), 1 nos demais casos. */
   indFinal?: 0 | 1;
-  pagamentos: { tPag: string; valor_centavos: number }[];
+  pagamentos: { tPag: string; xPag?: string; valor_centavos: number }[];
   infCpl?: string | null;
+  /**
+   * Só teste. O leiaute final de IBS/CBS/IS (NT 2025.002-RTC) vem do fiscal no lote 3 da T-0020: até lá, item com esses grupos
+   * gera violação e nenhum XML sai. Nenhum serviço da api liga esta flag; ligar em produção exige trocar este código (T-0020).
+   */
+  habilitarIbsCbs?: boolean;
 }
 
 /** Escape de XML 1.0: 5 entidades; caracteres de controle proibidos são removidos. */
@@ -83,8 +90,8 @@ const t = (tag: string, valor: string | number): string => `<${tag}>${escaparXml
 const g = (tag: string, ...filhos: (string | false | null | undefined)[]): string => `<${tag}>${filhos.filter(Boolean).join('')}</${tag}>`;
 /** IE, CPF, CEP e NCM: só dígitos. */
 const so = (s: string): string => s.replace(/\D/g, '');
-/** CNPJ alfanumérico (NT 2025.001): mantém letras e dígitos, sem máscara; letras em maiúsculas. */
-const soCnpj = (s: string): string => s.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+/** CNPJ alfanumérico (NT 2025.001): o `normalizarDocumento` do SDK tira só máscara e espaço (mantém as letras) e passa para maiúsculas. */
+const soCnpj = normalizarDocumento;
 
 function enderecoXml(tag: string, e: EnderecoXml): string {
   return g(
@@ -102,63 +109,121 @@ function enderecoXml(tag: string, e: EnderecoXml): string {
   );
 }
 
-const CSOSN_SEM_CREDITO = new Set(['102', '103', '300', '400']);
-const CST_SUPORTADOS = new Set(['00', '40', '41', '50']);
+/** Alíquota em décimos de milésimo de ponto percentual (180000 = 18,0000%) → "18.0000", em inteiros. */
+const pctXml = (p4: number): string => `${Math.trunc(p4 / 10_000)}.${String(p4 % 10_000).padStart(4, '0')}`;
 
-/** Erros que a SEFAZ rejeitaria; até a T-0020 trazer o cálculo completo, o XML não é gerado nestes casos. */
-function violacoesItem(i: NotaItemMontado): Violacao[] {
+const CSOSN_SEM_CREDITO = new Set(['102', '103', '300', '400']);
+const CST_SEM_TRIBUTO = new Set(['40', '41', '50']);
+const CST_SUPORTADOS = new Set(['00', '10', '20', ...CST_SEM_TRIBUTO]);
+
+const faltam = (o: object, campos: readonly string[]): string[] => campos.filter((c) => (o as Record<string, unknown>)[c] === undefined);
+
+const CST_PIS_NT = /^0[4-9]$/;
+/** PIS/COFINS: 01/02 → Aliq; 03 → Qtde (o contrato não traz quantidade e alíquota por unidade: violação); 04 a 09 → NT; 49 a 99 → Outr. */
+function violacoesPisCofins(nome: string, rotulo: string, g: ItemResultado['pis'], campo: (f: string) => string): Violacao[] {
+  if (!g?.cst) return (g?.v_valor ?? 0) > 0 ? [violacao('RF-FAT-01', campo(nome), `${rotulo} com valor exige cst (fiscal.calculo@1).`)] : [];
+  const cst = g.cst;
+  if (cst === '03') return [violacao('RF-FAT-01', campo(nome), `${rotulo} CST 03 (por quantidade) sem suporte: o cálculo não traz quantidade e alíquota por unidade (fiscal.calculo@1).`)];
+  if (CST_PIS_NT.test(cst)) return (g.v_valor ?? 0) > 0 ? [violacao('RF-FAT-01', campo(nome), `${rotulo} CST ${cst} (não tributado) não leva valor.`)] : [];
+  if (!pisCofinsComValor(cst)) return [violacao('RF-FAT-01', campo(nome), `${rotulo} CST ${cst} sem suporte (só 01, 02, 04 a 09 e 49 a 99).`)];
+  const f = ['v_bc', 'p_aliq'].filter((c) => (g as Record<string, unknown>)[c] === undefined);
+  return f.length > 0 && (g.v_valor ?? 0) > 0 ? [violacao('RF-FAT-01', campo(nome), `${rotulo} com valor exige ${f.join(', ')} (fiscal.calculo@1).`)] : [];
+}
+
+/** Erros que a SEFAZ rejeitaria ou que o contrato do cálculo não permite montar: o XML não é gerado (RF-FAT-01). */
+function violacoesItem(i: NotaItemMontado, habilitarIbsCbs: boolean): Violacao[] {
   const v: Violacao[] = [];
-  const c = i.calculo;
+  const r = i.calculo.resultado;
   const campo = (f: string): string => `itens.${i.sequencia}.${f}`;
-  const icms = c.icms;
+  const exige = (grupo: string, o: object | undefined, campos: readonly string[], motivo: string): void => {
+    const f = o ? faltam(o, campos) : [...campos];
+    if (f.length > 0) v.push(violacao('RF-FAT-01', campo(grupo), `${motivo} exige ${f.join(', ')} (fiscal.calculo@1).`));
+  };
+  if (!/^\d{4}$/.test(i.calculo.cfop)) v.push(violacao('RF-FAT-01', campo('cfop'), 'CFOP ausente ou inválido.'));
+  const icms = r.icms;
+  const st = ['mod_bc_st', 'v_bc_st', 'p_icms_st', 'v_icms_st'] as const;
   if (icms.csosn) {
-    if (icms.csosn === '101') {
-      if (!(icms.pcredsn_pct && icms.pcredsn_pct > 0) || icms.vcredicmssn_centavos === undefined) {
-        v.push(violacao('RF-FAT-01', campo('icms'), 'CSOSN 101 exige pCredSN e vCredICMSSN.'));
-      }
-    } else if (!CSOSN_SEM_CREDITO.has(icms.csosn)) {
-      v.push(violacao('RF-FAT-01', campo('icms'), `CSOSN ${icms.csosn} sem suporte (só 101, 102, 103, 300 e 400 até a T-0020).`));
+    if (icms.csosn === '101') exige('icms', icms, ['p_cred_sn', 'v_cred_icms_sn'], 'CSOSN 101');
+    else if (icms.csosn === '201') exige('icms', icms, [...st, 'p_cred_sn', 'v_cred_icms_sn'], 'CSOSN 201');
+    else if (icms.csosn === '202' || icms.csosn === '203') exige('icms', icms, st, `CSOSN ${icms.csosn}`);
+    else if (!CSOSN_SEM_CREDITO.has(icms.csosn)) {
+      v.push(violacao('RF-FAT-01', campo('icms'), `CSOSN ${icms.csosn} sem suporte (só 101, 102, 103, 201, 202, 203, 300 e 400; o 500 exige o ICMS retido anteriormente, que o contrato não traz).`));
     }
   } else if (!icms.cst) {
     v.push(violacao('RF-FAT-01', campo('icms'), 'ICMS sem CST nem CSOSN.'));
   } else if (!CST_SUPORTADOS.has(icms.cst)) {
-    v.push(violacao('RF-FAT-01', campo('icms'), `CST ${icms.cst} sem suporte (só 00, 40, 41 e 50 até a T-0020).`));
-  }
-  if (c.ipi_centavos > 0 && !c.ipi) v.push(violacao('RF-FAT-01', campo('ipi'), 'IPI maior que zero sem o grupo IPI do item.'));
-  for (const [nome, valor, g] of [['pis', c.pis_centavos, c.pis], ['cofins', c.cofins_centavos, c.cofins]] as const) {
-    if (valor > 0 && !(g && g.vbc_centavos > 0 && g.aliquota_pct > 0)) {
-      v.push(violacao('RF-FAT-01', campo(nome), `${nome.toUpperCase()} com valor e base ou alíquota zeradas.`));
-    }
+    v.push(violacao('RF-FAT-01', campo('icms'), `CST ${icms.cst} sem suporte (só 00, 10, 20, 40, 41 e 50; 30, 51, 60, 70 e 90 pedem campos que o contrato não traz).`));
+  } else if (icms.cst === '00') exige('icms', icms, ['v_bc', 'p_icms', 'v_icms'], 'CST 00');
+  else if (icms.cst === '10') exige('icms', icms, ['v_bc', 'p_icms', 'v_icms', ...st], 'CST 10');
+  else if (icms.cst === '20') exige('icms', icms, ['v_bc', 'p_icms', 'v_icms', 'p_red_bc'], 'CST 20');
+  if ((icms.v_fcp ?? 0) > 0) exige('icms', icms, ['v_bc_fcp', 'p_fcp'], 'FCP');
+  if ((icms.v_fcp_st ?? 0) > 0) exige('icms', icms, ['v_bc_fcp_st', 'p_fcp_st'], 'FCP-ST');
+  const f = valoresFiscais(r);
+  if (f.vIPI > 0) exige('ipi', r.ipi, ['cst', 'c_enq', 'v_bc', 'p_ipi'], 'IPI com valor');
+  v.push(...violacoesPisCofins('pis', 'PIS', r.pis, campo));
+  v.push(...violacoesPisCofins('cofins', 'COFINS', r.cofins, campo));
+  if ((r.ibs || r.cbs || r.is) && !habilitarIbsCbs) {
+    v.push(violacao('RF-FAT-01', campo('ibs_cbs'), 'IBS/CBS/IS aguardando leiaute NT 2025.002 (T-0020): a nota não é emitida com esses grupos.'));
+  } else {
+    if (r.ibs || r.cbs) exige('ibs_cbs', r.ibs ?? r.cbs, ['cst', 'c_class_trib', 'v_bc'], 'IBS/CBS');
+    if (r.is) exige('is', r.is, ['cst_is', 'c_class_trib_is', 'v_bc_is', 'v_is'], 'IS');
   }
   return v;
 }
 
-function icmsXml(c: NotaItemMontado['calculo']['icms']): string {
-  if (c.csosn === '101') {
-    return g('ICMS', g('ICMSSN101', t('orig', c.orig), t('CSOSN', '101'), t('pCredSN', (c.pcredsn_pct ?? 0).toFixed(4)), t('vCredICMSSN', dinheiroXml(c.vcredicmssn_centavos ?? 0))));
+const dinOpc = (n: number | undefined): string => dinheiroXml(n ?? 0);
+const grupoFcp = (c: IcmsItem): (string | false)[] =>
+  (c.v_fcp ?? 0) > 0 ? [t('vBCFCP', dinOpc(c.v_bc_fcp)), t('pFCP', pctXml(c.p_fcp ?? 0)), t('vFCP', dinOpc(c.v_fcp))] : [];
+const grupoFcpSt = (c: IcmsItem): (string | false)[] =>
+  (c.v_fcp_st ?? 0) > 0 ? [t('vBCFCPST', dinOpc(c.v_bc_fcp_st)), t('pFCPST', pctXml(c.p_fcp_st ?? 0)), t('vFCPST', dinOpc(c.v_fcp_st))] : [];
+const grupoSt = (c: IcmsItem): (string | false)[] => [
+  t('modBCST', c.mod_bc_st ?? 4),
+  c.p_mva_st !== undefined && t('pMVAST', pctXml(c.p_mva_st)),
+  c.p_red_bc_st !== undefined && t('pRedBCST', pctXml(c.p_red_bc_st)),
+  t('vBCST', dinOpc(c.v_bc_st)),
+  t('pICMSST', pctXml(c.p_icms_st ?? 0)),
+  t('vICMSST', dinOpc(c.v_icms_st)),
+];
+
+function icmsXml(c: IcmsItem): string {
+  const orig = t('orig', c.orig);
+  if (c.csosn === '101') return g('ICMS', g('ICMSSN101', orig, t('CSOSN', '101'), t('pCredSN', pctXml(c.p_cred_sn ?? 0)), t('vCredICMSSN', dinOpc(c.v_cred_icms_sn))));
+  if (c.csosn === '201') {
+    return g('ICMS', g('ICMSSN201', orig, t('CSOSN', '201'), ...grupoSt(c), ...grupoFcpSt(c), t('pCredSN', pctXml(c.p_cred_sn ?? 0)), t('vCredICMSSN', dinOpc(c.v_cred_icms_sn))));
   }
-  if (c.csosn) return g('ICMS', g('ICMSSN102', t('orig', c.orig), t('CSOSN', c.csosn)));
+  if (c.csosn === '202' || c.csosn === '203') return g('ICMS', g('ICMSSN202', orig, t('CSOSN', c.csosn), ...grupoSt(c), ...grupoFcpSt(c)));
+  if (c.csosn) return g('ICMS', g('ICMSSN102', orig, t('CSOSN', c.csosn)));
   const cst = c.cst as string;
+  const mod = t('modBC', c.mod_bc ?? 3);
   if (cst === '00') {
-    return g('ICMS', g('ICMS00', t('orig', c.orig), t('CST', '00'), t('modBC', 3), t('vBC', dinheiroXml(c.vbc_centavos)), t('pICMS', c.aliquota_pct.toFixed(4)), t('vICMS', dinheiroXml(c.valor_centavos))));
+    return g('ICMS', g('ICMS00', orig, t('CST', '00'), mod, t('vBC', dinOpc(c.v_bc)), t('pICMS', pctXml(c.p_icms ?? 0)), t('vICMS', dinOpc(c.v_icms)), ...grupoFcp(c)));
   }
-  return g('ICMS', g(`ICMS${cst === '40' || cst === '41' || cst === '50' ? '40' : cst}`, t('orig', c.orig), t('CST', cst)));
+  if (cst === '10') {
+    return g('ICMS', g('ICMS10', orig, t('CST', '10'), mod, t('vBC', dinOpc(c.v_bc)), t('pICMS', pctXml(c.p_icms ?? 0)), t('vICMS', dinOpc(c.v_icms)), ...grupoFcp(c), ...grupoSt(c), ...grupoFcpSt(c)));
+  }
+  if (cst === '20') {
+    return g('ICMS', g('ICMS20', orig, t('CST', '20'), mod, t('pRedBC', pctXml(c.p_red_bc ?? 0)), t('vBC', dinOpc(c.v_bc)), t('pICMS', pctXml(c.p_icms ?? 0)), t('vICMS', dinOpc(c.v_icms)), ...grupoFcp(c)));
+  }
+  return g('ICMS', g('ICMS40', orig, t('CST', cst)));
 }
 
-function ipiXml(c: NotaItemMontado['calculo']): string | null {
-  if (!c.ipi) return null;
-  return g('IPI', t('cEnq', c.ipi.cenq), g('IPITrib', t('CST', c.ipi.cst), t('vBC', dinheiroXml(c.ipi.vbc_centavos)), t('pIPI', c.ipi.aliquota_pct.toFixed(4)), t('vIPI', dinheiroXml(c.ipi_centavos))));
+function ipiXml(r: ItemResultado): string | null {
+  const ipi = r.ipi;
+  if (!ipi || !(ipi.v_ipi && ipi.v_ipi > 0)) return null;
+  return g('IPI', t('cEnq', ipi.c_enq ?? ''), g('IPITrib', t('CST', ipi.cst ?? ''), t('vBC', dinOpc(ipi.v_bc)), t('pIPI', pctXml(ipi.p_ipi ?? 0)), t('vIPI', dinOpc(ipi.v_ipi))));
 }
 
-/** PIS e COFINS: com base e alíquota, `Aliq` (CST 01/02) ou `Outr`; sem valor, `Outr` 99 zerado. */
-function pisCofinsXml(nome: 'PIS' | 'COFINS', valor: number, grupo: { cst: string; vbc_centavos: number; aliquota_pct: number } | undefined): string {
+/** PIS e COFINS por CST (as violações de CST sem suporte já barraram antes): 01/02 Aliq; 04 a 09 NT com a CST informada; 49 a 99 Outr; sem grupo, Outr 99 zerado. */
+function pisCofinsXml(nome: 'PIS' | 'COFINS', grupo: ItemResultado['pis']): string {
   const cst = grupo?.cst ?? '99';
+  if (CST_PIS_NT.test(cst)) return g(nome, g(`${nome}NT`, t('CST', cst)));
   const tag = `${nome}${cst === '01' || cst === '02' ? 'Aliq' : 'Outr'}`;
-  return g(nome, g(tag, t('CST', cst), t('vBC', dinheiroXml(grupo?.vbc_centavos ?? 0)), t(`p${nome}`, (grupo?.aliquota_pct ?? 0).toFixed(4)), t(`v${nome}`, dinheiroXml(valor))));
+  const dados = grupo?.cst ? grupo : undefined;
+  return g(nome, g(tag, t('CST', cst), t('vBC', dinheiroXml(dados?.v_bc ?? 0)), t(`p${nome}`, pctXml(dados?.p_aliq ?? 0)), t(`v${nome}`, dinheiroXml(dados?.v_valor ?? 0))));
 }
 
-function detXml(i: NotaItemMontado): string {
-  const c = i.calculo;
+function detXml(i: NotaItemMontado, habilitarIbsCbs: boolean): string {
+  const r = i.calculo.resultado;
   const ean = i.gtin ?? 'SEM GTIN';
   const prod = g(
     'prod',
@@ -166,7 +231,7 @@ function detXml(i: NotaItemMontado): string {
     t('cEAN', ean),
     t('xProd', i.descricao),
     t('NCM', so(i.ncm)),
-    t('CFOP', c.cfop),
+    t('CFOP', i.calculo.cfop),
     t('uCom', i.unidade),
     t('qCom', quantidadeXml(i.quantidade)),
     t('vUnCom', unitarioXml(i.preco_unitario_centavos)),
@@ -180,26 +245,26 @@ function detXml(i: NotaItemMontado): string {
     i.outras_centavos > 0 && t('vOutro', dinheiroXml(i.outras_centavos)),
     t('indTot', 1),
   );
-  const ibs = c.ibs_cbs
+  const ib = habilitarIbsCbs ? (r.ibs ?? r.cbs) : undefined;
+  const ibs = ib
     ? g(
-        'IBSCBS', // DUBLÊ até T-0020
-        t('CST', c.ibs_cbs.cst),
-        t('cClassTrib', c.ibs_cbs.cclasstrib),
-        g('gIBSCBS', t('vBC', dinheiroXml(c.ibs_cbs.vbc_centavos)), g('gIBSUF', t('vIBSUF', dinheiroXml(c.ibs_cbs.ibs_centavos))), g('gCBS', t('vCBS', dinheiroXml(c.ibs_cbs.cbs_centavos)))),
+        'IBSCBS',
+        t('CST', ib.cst ?? ''),
+        t('cClassTrib', ib.c_class_trib ?? ''),
+        g(
+          'gIBSCBS',
+          t('vBC', dinOpc(ib.v_bc)),
+          g('gIBSUF', ib.p_ibs_uf !== undefined && t('pIBSUF', pctXml(ib.p_ibs_uf)), t('vIBSUF', dinOpc(r.ibs?.v_ibs_uf))),
+          g('gIBSMun', r.ibs?.p_ibs_mun !== undefined && t('pIBSMun', pctXml(r.ibs.p_ibs_mun)), t('vIBSMun', dinOpc(r.ibs?.v_ibs_mun))),
+          t('vIBS', dinheiroXml(valoresFiscais(r).vIBS)),
+          g('gCBS', (r.cbs?.p_cbs ?? r.ibs?.p_cbs) !== undefined && t('pCBS', pctXml((r.cbs?.p_cbs ?? r.ibs?.p_cbs) as number)), t('vCBS', dinheiroXml(valoresFiscais(r).vCBS))),
+        ),
       )
     : null;
-  const is = c.imposto_seletivo
-    ? g('IS', t('CSTIS', c.imposto_seletivo.cst), t('cClassTribIS', c.imposto_seletivo.cclasstrib), t('vBCIS', dinheiroXml(c.imposto_seletivo.vbc_centavos)), t('vIS', dinheiroXml(c.imposto_seletivo.valor_centavos))) // DUBLÊ até T-0020
+  const is = habilitarIbsCbs && r.is
+    ? g('IS', t('CSTIS', r.is.cst_is ?? ''), t('cClassTribIS', r.is.c_class_trib_is ?? ''), t('vBCIS', dinOpc(r.is.v_bc_is)), r.is.p_is !== undefined && t('pIS', pctXml(r.is.p_is)), t('vIS', dinOpc(r.is.v_is)))
     : null;
-  const imposto = g(
-    'imposto',
-    icmsXml(c.icms),
-    ipiXml(c),
-    pisCofinsXml('PIS', c.pis_centavos, c.pis),
-    pisCofinsXml('COFINS', c.cofins_centavos, c.cofins),
-    is,
-    ibs,
-  );
+  const imposto = g('imposto', icmsXml(r.icms), ipiXml(r), pisCofinsXml('PIS', r.pis), pisCofinsXml('COFINS', r.cofins), is, ibs);
   return `<det nItem="${i.sequencia}">${prod}${imposto}</det>`;
 }
 
@@ -209,7 +274,7 @@ function detXml(i: NotaItemMontado): string {
  */
 export function gerarXmlNFe(d: DadosXml): string {
   const tot = d.nota.totais;
-  const v: Violacao[] = d.nota.itens.flatMap(violacoesItem);
+  const v: Violacao[] = d.nota.itens.flatMap((i) => violacoesItem(i, d.habilitarIbsCbs === true));
   if (!chaveValida(d.chave)) v.push(violacao('RN-FAT-01', 'chave', 'Chave de acesso inválida (formato ou DV).'));
   const somaPag = d.pagamentos.reduce((a, p) => a + p.valor_centavos, 0);
   if (somaPag !== tot.vNF) v.push(violacao('RF-FAT-01', 'pagamentos', `Soma dos vPag (${somaPag}) difere do vNF (${tot.vNF}).`));
@@ -264,10 +329,10 @@ export function gerarXmlNFe(d: DadosXml): string {
       t('vBC', dinheiroXml(tot.vBC)),
       t('vICMS', dinheiroXml(tot.vICMS)),
       t('vICMSDeson', '0.00'),
-      t('vFCP', '0.00'),
-      t('vBCST', '0.00'),
+      t('vFCP', dinheiroXml(tot.vFCP)),
+      t('vBCST', dinheiroXml(tot.vBCST)),
       t('vST', dinheiroXml(tot.vST)),
-      t('vFCPST', '0.00'),
+      t('vFCPST', dinheiroXml(tot.vFCPST)),
       t('vFCPSTRet', '0.00'),
       t('vProd', dinheiroXml(tot.vProd)),
       t('vFrete', dinheiroXml(tot.vFrete)),
@@ -281,14 +346,14 @@ export function gerarXmlNFe(d: DadosXml): string {
       t('vOutro', dinheiroXml(tot.vOutro)),
       t('vNF', dinheiroXml(tot.vNF)),
     ),
-    tot.vIS > 0 ? g('ISTot', t('vIS', dinheiroXml(tot.vIS))) : null, // DUBLÊ até T-0020
-    tot.vIBS > 0 || tot.vCBS > 0 ? g('IBSCBSTot', t('vIBS', dinheiroXml(tot.vIBS)), t('vCBS', dinheiroXml(tot.vCBS))) : null, // DUBLÊ até T-0020
+    tot.vIS > 0 ? g('ISTot', t('vIS', dinheiroXml(tot.vIS))) : null,
+    tot.vIBS > 0 || tot.vCBS > 0 ? g('IBSCBSTot', t('vIBS', dinheiroXml(tot.vIBS)), t('vCBS', dinheiroXml(tot.vCBS))) : null,
   );
   const pag = g(
     'pag',
-    ...d.pagamentos.map((p) => g('detPag', t('tPag', p.tPag), t('vPag', dinheiroXml(p.valor_centavos)))),
+    ...d.pagamentos.map((p) => g('detPag', t('tPag', p.tPag), p.xPag && t('xPag', p.xPag), t('vPag', dinheiroXml(p.valor_centavos)))),
   );
   const infAdic = d.infCpl ? g('infAdic', t('infCpl', d.infCpl)) : null;
-  const inf = `<infNFe versao="${VERSAO_LEIAUTE}" Id="NFe${d.chave}">${ide}${emit}${dest}${d.nota.itens.map(detXml).join('')}${total}${g('transp', t('modFrete', d.modFrete ?? 9))}${pag}${infAdic ?? ''}</infNFe>`;
+  const inf = `<infNFe versao="${VERSAO_LEIAUTE}" Id="NFe${d.chave}">${ide}${emit}${dest}${d.nota.itens.map((i) => detXml(i, d.habilitarIbsCbs === true)).join('')}${total}${g('transp', t('modFrete', d.modFrete ?? 9))}${pag}${infAdic ?? ''}</infNFe>`;
   return `<NFe xmlns="${NS_NFE}">${inf}</NFe>`;
 }

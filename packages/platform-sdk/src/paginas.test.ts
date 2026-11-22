@@ -56,9 +56,18 @@ describe('PaginaBase (RD-0178): um tipo de página para os módulos e o shell', 
     expectTypeOf<PaginaBase['id']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<PaginaBase['aviso']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<PaginaBase['ver']>().toEqualTypeOf<Acao | undefined>();
+    expectTypeOf<PaginaBase['ocultaNoMenu']>().toEqualTypeOf<boolean | undefined>();
     // @ts-expect-error: `ver` fora da matriz de permissões não compila.
     const errada: PaginaBase = { menu: 'X', titulo: 'X', rota: '/core/x', ver: 'core.nao.existe' };
     expect(errada.menu).toBe('X');
+  });
+});
+
+describe('ocultaNoMenu: a página existe pela rota sem item no menu', () => {
+  it('não muda paginaVisivel: a página oculta no menu continua acessível pela rota para quem pode', () => {
+    const oculta: PaginaBase = { menu: 'Empresa', titulo: 'Certificado A1', rota: '/core/empresa/certificado', ver: 'core.certificado.gerir', ocultaNoMenu: true };
+    for (const perfil of PERFIS) expect(paginaVisivel(oculta, perfil)).toBe(pode(perfil, 'core.certificado.gerir'));
+    expect(paginaVisivel({ ...oculta, ver: undefined }, 'leitura')).toBe(true);
   });
 });
 

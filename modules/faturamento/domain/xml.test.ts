@@ -1,44 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { montarChave } from './chave';
-import { montarNota, XNOME_HOMOLOGACAO, type CalculoFiscalItem, type NotaItemMontado, type PedidoAprovadoMin } from './nota';
+import type { ItemResultado } from '@macuxierp/fiscal/contracts';
+import { calc, itemPedido, pedidoAprovado } from './fixtures';
+import { montarNota, XNOME_HOMOLOGACAO, type ItemCalculado, type NotaItemMontado } from './nota';
 import { ErroViolacao } from './violacao';
 import { dhEmiManaus, dinheiroXml, escaparXml, gerarXmlNFe, quantidadeXml, type DadosXml } from './xml';
 
-const calculo: CalculoFiscalItem = {
-  sequencia: 1,
-  cfop: '5102',
-  icms: { orig: 0, cst: '00', vbc_centavos: 2000, aliquota_pct: 20, valor_centavos: 400 },
-  ipi_centavos: 0,
-  st_centavos: 0,
-  pis_centavos: 33,
-  cofins_centavos: 152,
-  pis: { cst: '01', vbc_centavos: 2000, aliquota_pct: 1.65 },
-  cofins: { cst: '01', vbc_centavos: 2000, aliquota_pct: 7.6 },
-  ibs_cbs: { cst: '000', cclasstrib: '000001', vbc_centavos: 2000, ibs_centavos: 2, cbs_centavos: 18 },
-  imposto_seletivo: null,
-};
-const pedido: PedidoAprovadoMin = {
-  pedido_id: '00000000-0000-4000-8000-0000000000a1',
-  filial_id: '00000000-0000-4000-8000-0000000000b1',
-  cliente_id: '00000000-0000-4000-8000-0000000000c1',
-  vendedor_id: null,
-  condicao_pagamento_id: null,
-  emitido_em: '2026-11-21T14:00:00.000Z',
-  observacao: null,
-  frete_centavos: 0,
-  itens: [
-    {
-      sequencia: 1,
-      produto_id: 'abcdef12-0000-4000-8000-000000000001',
-      produto_retrato: { codigo: 'REF-001', descricao: 'Refrigerante <Cola> & "Cia"', ncm: '2202.10.00', unidade: 'UN', gtin: null },
-      quantidade: 20_000,
-      preco_unitario_centavos: 1000,
-      desconto_centavos: 0,
-      total_centavos: 2000,
-    },
-  ],
-  total_centavos: 2000,
-};
+const calculo: ItemCalculado = calc(1, {
+  icms: { orig: '0', cst: '00', mod_bc: 3, v_bc: 2000, p_icms: 200_000, v_icms: 400 },
+  pis: { cst: '01', v_bc: 2000, p_aliq: 16_500, v_valor: 33 },
+  cofins: { cst: '01', v_bc: 2000, p_aliq: 76_000, v_valor: 152 },
+  ibs: { cst: '000', c_class_trib: '000001', v_bc: 2000, v_ibs_uf: 2, v_cbs: 18 },
+});
+const pedido = pedidoAprovado([
+  { ...itemPedido(1, 20_000, 1000), produto_retrato: { codigo: 'REF-001', descricao: 'Refrigerante <Cola> & "Cia"', ncm: '2202.10.00', unidade_comercial: 'UN', ean: null, origem: '0' } },
+]);
 const endereco = { logradouro: 'Rua A', numero: '10', bairro: 'Centro', municipio_ibge: '1302603', municipio_nome: 'Manaus', uf: 'AM', cep: '69000-000' };
 
 function dados(ambiente: 'homologacao' | 'producao'): DadosXml {
@@ -59,6 +35,7 @@ function dados(ambiente: 'homologacao' | 'producao'): DadosXml {
     nota: r.nota,
     pagamentos: [{ tPag: '15', valor_centavos: 2000 }],
     infCpl: 'Pedido <1>',
+    habilitarIbsCbs: true, // só em teste: em produção os grupos IBS/CBS/IS aguardam a T-0020
   };
 }
 
@@ -95,16 +72,37 @@ describe('XML da NF-e 4.00', () => {
     expect(x).toContain(`<dest><CNPJ>45723174000110</CNPJ><xNome>${XNOME_HOMOLOGACAO}</xNome>`);
     expect(x).toContain('<tpAmb>2</tpAmb>');
   });
-  it('RF-FAT-01: IBS/CBS entram quando o cálculo os traz (dublê até T-0020) e saem quando não', () => {
+  it('RF-FAT-01: IBS/CBS entram quando o cálculo os traz e saem quando não', () => {
     const com = gerarXmlNFe(dados('producao'));
     expect(com).toContain('<IBSCBS>');
     expect(com).toContain('<IBSCBSTot><vIBS>0.02</vIBS><vCBS>0.18</vCBS></IBSCBSTot>');
     const d = dados('producao');
-    (d.nota.itens[0] as NotaItemMontado).calculo = { ...calculo, ibs_cbs: null };
+    (d.nota.itens[0] as NotaItemMontado).calculo = { ...calculo, resultado: { ...calculo.resultado, ibs: undefined } };
     d.nota.totais.vIBS = 0;
     d.nota.totais.vCBS = 0;
     const sem = gerarXmlNFe(d);
     expect(sem).not.toContain('IBSCBS');
+  });
+  it('RF-FAT-01: sem a flag, item com IBS/CBS/IS gera violação "aguardando leiaute NT 2025.002 (T-0020)" e nenhum XML sai', () => {
+    const d = { ...dados('producao'), habilitarIbsCbs: undefined };
+    expect(() => gerarXmlNFe(d)).toThrow(/aguardando leiaute NT 2025\.002 \(T-0020\)/);
+    const is = { cst_is: '000', c_class_trib_is: '000001', v_bc_is: 2000, p_is: 10_000, v_is: 20 };
+    expect(() => gerarXmlNFe({ ...comCalculo({ ibs: undefined, is }), habilitarIbsCbs: false })).toThrow(/T-0020/);
+  });
+  it('RF-FAT-01: PIS/COFINS por CST: 01/02 Aliq, 04 a 09 NT com a CST informada, 49 a 99 Outr, 03 violação', () => {
+    const sem = { ibs: undefined };
+    const nt = gerarXmlNFe(comCalculo({ ...sem, pis: { cst: '07' }, cofins: { cst: '04' } }, (d) => {
+      d.nota.totais.vPIS = 0;
+      d.nota.totais.vCOFINS = 0;
+    }));
+    expect(nt).toContain('<PIS><PISNT><CST>07</CST></PISNT></PIS>');
+    expect(nt).toContain('<COFINS><COFINSNT><CST>04</CST></COFINSNT></COFINS>');
+    const outr = gerarXmlNFe(comCalculo({ ...sem, pis: { cst: '99', v_bc: 2000, p_aliq: 16_500, v_valor: 33 } }));
+    expect(outr).toContain('<PISOutr><CST>99</CST><vBC>20.00</vBC><pPIS>1.6500</pPIS><vPIS>0.33</vPIS></PISOutr>');
+    expect(gerarXmlNFe(comCalculo({ ...sem, pis: { cst: '02', v_bc: 2000, p_aliq: 16_500, v_valor: 33 } }))).toContain('<PISAliq><CST>02</CST>');
+    expect(() => gerarXmlNFe(comCalculo({ ...sem, pis: { cst: '03', v_bc: 2000, p_aliq: 16_500, v_valor: 33 } }))).toThrow(/CST 03/);
+    expect(() => gerarXmlNFe(comCalculo({ ...sem, cofins: { cst: '03' } }))).toThrow(/COFINS CST 03/);
+    expect(() => gerarXmlNFe(comCalculo({ ...sem, pis: { cst: '20' } }))).toThrow(/sem suporte/);
   });
   it('RN-CORE-03: formatação em inteiros, sem float', () => {
     expect(dinheiroXml(5)).toBe('0.05');
@@ -118,33 +116,63 @@ describe('XML da NF-e 4.00', () => {
     expect(x).toContain('<PISAliq><CST>01</CST><vBC>20.00</vBC><pPIS>1.6500</pPIS><vPIS>0.33</vPIS></PISAliq>');
     expect(x).toContain('<pCOFINS>7.6000</pCOFINS>');
   });
-  const comCalculo = (parcial: Partial<CalculoFiscalItem>, ajusta?: (d: DadosXml) => void): DadosXml => {
+  const comCalculo = (parcial: Partial<ItemResultado>, ajusta?: (d: DadosXml) => void): DadosXml => {
     const d = dados('producao');
-    (d.nota.itens[0] as NotaItemMontado).calculo = { ...calculo, ...parcial };
+    (d.nota.itens[0] as NotaItemMontado).calculo = { ...calculo, resultado: { ...calculo.resultado, ...parcial } };
     ajusta?.(d);
     return d;
   };
-  it('RF-FAT-01: não gera XML que a SEFAZ rejeitaria (CSOSN sem suporte, ICMS sem CST, CST sem suporte)', () => {
-    expect(() => gerarXmlNFe(comCalculo({ icms: { ...calculo.icms, cst: undefined, csosn: '500' } }))).toThrow(ErroViolacao);
-    expect(() => gerarXmlNFe(comCalculo({ icms: { ...calculo.icms, cst: undefined } }))).toThrow(/sem CST/);
-    expect(() => gerarXmlNFe(comCalculo({ icms: { ...calculo.icms, cst: '10' } }))).toThrow(/sem suporte/);
-    expect(() => gerarXmlNFe(comCalculo({ icms: { ...calculo.icms, cst: undefined, csosn: '101' } }))).toThrow(/pCredSN/);
-    const ok102 = gerarXmlNFe(comCalculo({ icms: { ...calculo.icms, cst: undefined, csosn: '400' } }));
+  const icms = calculo.resultado.icms;
+  it('RF-FAT-01: não gera XML que a SEFAZ rejeitaria (CSOSN sem suporte, ICMS sem CST, CST sem suporte, campos que o contrato não traz)', () => {
+    expect(() => gerarXmlNFe(comCalculo({ icms: { ...icms, cst: undefined, csosn: '500' } }))).toThrow(ErroViolacao);
+    expect(() => gerarXmlNFe(comCalculo({ icms: { ...icms, cst: undefined } }))).toThrow(/sem CST/);
+    expect(() => gerarXmlNFe(comCalculo({ icms: { ...icms, cst: '60' } }))).toThrow(/sem suporte/);
+    expect(() => gerarXmlNFe(comCalculo({ icms: { ...icms, cst: undefined, csosn: '101' } }))).toThrow(/p_cred_sn/);
+    expect(() => gerarXmlNFe(comCalculo({ icms: { ...icms, cst: '00', v_bc: undefined } }))).toThrow(/v_bc/);
+    expect(() => gerarXmlNFe(comCalculo({}, (d) => ((d.nota.itens[0] as NotaItemMontado).calculo.cfop = '')))).toThrow(/CFOP/);
+    const ok102 = gerarXmlNFe(comCalculo({ icms: { ...icms, cst: undefined, csosn: '400' } }));
     expect(ok102).toContain('<ICMSSN102><orig>0</orig><CSOSN>400</CSOSN></ICMSSN102>');
-    const ok101 = gerarXmlNFe(comCalculo({ icms: { ...calculo.icms, cst: undefined, csosn: '101', pcredsn_pct: 1.25, vcredicmssn_centavos: 25 } }));
+    const ok101 = gerarXmlNFe(comCalculo({ icms: { ...icms, cst: undefined, csosn: '101', p_cred_sn: 12_500, v_cred_icms_sn: 25 } }));
     expect(ok101).toContain('<pCredSN>1.2500</pCredSN><vCredICMSSN>0.25</vCredICMSSN>');
   });
-  it('RF-FAT-01: IPI maior que zero exige o grupo IPI e o gera; PIS/COFINS com valor exigem base e alíquota', () => {
+  it('RF-FAT-01: ICMS 00 usa a alíquota do cálculo (décimos de milésimo de ponto percentual) e CST 40/41/50 saem sem base', () => {
+    expect(gerarXmlNFe(dados('producao'))).toContain('<ICMS00><orig>0</orig><CST>00</CST><modBC>3</modBC><vBC>20.00</vBC><pICMS>20.0000</pICMS><vICMS>4.00</vICMS></ICMS00>');
+    const x = gerarXmlNFe(comCalculo({ icms: { orig: '1', cst: '41' } }));
+    expect(x).toContain('<ICMS40><orig>1</orig><CST>41</CST></ICMS40>');
+  });
+  it('RF-FAT-01: ICMS-ST (CST 10 e CSOSN 201/202) leva o grupo ST e os totais vBCST/vST/vFCPST; sem o grupo, violação', () => {
+    const st = { mod_bc_st: 4, p_mva_st: 400_000, v_bc_st: 3000, p_icms_st: 200_000, v_icms_st: 200, v_fcp_st: 5, v_bc_fcp_st: 3000, p_fcp_st: 20_000 };
+    const x = gerarXmlNFe(comCalculo({ icms: { ...icms, cst: '10', ...st } }, (d) => {
+      d.nota.totais.vBCST = 3000;
+      d.nota.totais.vST = 200;
+      d.nota.totais.vFCPST = 5;
+      d.nota.totais.vNF += 205;
+      d.pagamentos = [{ tPag: '15', valor_centavos: d.nota.totais.vNF }];
+    }));
+    expect(x).toContain('<modBCST>4</modBCST><pMVAST>40.0000</pMVAST><vBCST>30.00</vBCST><pICMSST>20.0000</pICMSST><vICMSST>2.00</vICMSST><vBCFCPST>30.00</vBCFCPST><pFCPST>2.0000</pFCPST><vFCPST>0.05</vFCPST>');
+    expect(x).toContain('<vBCST>30.00</vBCST><vST>2.00</vST><vFCPST>0.05</vFCPST>');
+    expect(() => gerarXmlNFe(comCalculo({ icms: { ...icms, cst: '10' } }))).toThrow(/v_bc_st/);
+    expect(gerarXmlNFe(comCalculo({ icms: { orig: '0', csosn: '202', ...st } }))).toContain('<ICMSSN202><orig>0</orig><CSOSN>202</CSOSN>');
+    expect(() => gerarXmlNFe(comCalculo({ icms: { orig: '0', csosn: '201', ...st } }))).toThrow(/p_cred_sn/);
+  });
+  it('RF-FAT-01: IPI com valor exige o grupo IPI completo e o gera; PIS/COFINS com valor exigem CST, base e alíquota', () => {
     const ipiOk = (d: DadosXml): void => {
       d.nota.totais.vIPI = 100;
       d.nota.totais.vNF += 100;
       d.pagamentos = [{ tPag: '15', valor_centavos: d.nota.totais.vNF }];
     };
-    expect(() => gerarXmlNFe(comCalculo({ ipi_centavos: 100 }, ipiOk))).toThrow(/grupo IPI/);
-    const x = gerarXmlNFe(comCalculo({ ipi_centavos: 100, ipi: { cst: '50', cenq: '999', vbc_centavos: 2000, aliquota_pct: 5 } }, ipiOk));
+    expect(() => gerarXmlNFe(comCalculo({ ipi: { v_ipi: 100 } }, ipiOk))).toThrow(/IPI/);
+    const x = gerarXmlNFe(comCalculo({ ipi: { cst: '50', c_enq: '999', v_bc: 2000, p_ipi: 50_000, v_ipi: 100 } }, ipiOk));
     expect(x).toContain('<IPI><cEnq>999</cEnq><IPITrib><CST>50</CST><vBC>20.00</vBC><pIPI>5.0000</pIPI><vIPI>1.00</vIPI></IPITrib></IPI>');
-    expect(() => gerarXmlNFe(comCalculo({ pis: { cst: '01', vbc_centavos: 0, aliquota_pct: 1.65 } }))).toThrow(/PIS/);
-    expect(() => gerarXmlNFe(comCalculo({ cofins: undefined }))).toThrow(/COFINS/);
+    expect(() => gerarXmlNFe(comCalculo({ pis: { v_valor: 33 } }))).toThrow(/PIS/);
+    expect(() => gerarXmlNFe(comCalculo({ cofins: { v_valor: 152 } }))).toThrow(/COFINS/);
+  });
+  it('RF-FAT-01: IS e IBS/CBS completos saem no item; sem CST/cClassTrib, violação', () => {
+    const is = { cst_is: '000', c_class_trib_is: '000001', v_bc_is: 2000, p_is: 10_000, v_is: 20 };
+    const x = gerarXmlNFe(comCalculo({ is }, (d) => (d.nota.totais.vIS = 20)));
+    expect(x).toContain('<IS><CSTIS>000</CSTIS><cClassTribIS>000001</cClassTribIS><vBCIS>20.00</vBCIS><pIS>1.0000</pIS><vIS>0.20</vIS></IS>');
+    expect(x).toContain('<ISTot><vIS>0.20</vIS></ISTot>');
+    expect(() => gerarXmlNFe(comCalculo({ ibs: { v_bc: 2000 } }))).toThrow(/IBS\/CBS/);
   });
   it('RF-FAT-01: a soma dos vPag deve bater com o vNF e a chave deve ser válida', () => {
     expect(() => gerarXmlNFe({ ...dados('producao'), pagamentos: [{ tPag: '15', valor_centavos: 1999 }] })).toThrow(/vPag/);
