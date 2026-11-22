@@ -116,4 +116,12 @@ export function falha(fn: () => unknown): string {
   return erro;
 }
 
+/** Linhas da saída do psql que são inteiros (os valores de RETURNING e SELECT de uma coluna numérica). */
+export const numeros = (saida: string): number[] =>
+  saida
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^-?\d+$/.test(l))
+    .map(Number);
+
 export { consultar, executar, rodarScript };

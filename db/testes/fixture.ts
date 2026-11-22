@@ -12,6 +12,8 @@ export interface Tenant {
   filial: string;
   cliente: string;
   produto: string;
+  /** pedido_uuid do FDV do pedido recebido (integracao_fdv). */
+  pedidoFdv: string;
 }
 
 export function novoTenant(slug: string): Tenant {
@@ -23,6 +25,7 @@ export function novoTenant(slug: string): Tenant {
     filial: randomUUID(),
     cliente: randomUUID(),
     produto: randomUUID(),
+    pedidoFdv: randomUUID(),
   };
 }
 
@@ -96,5 +99,49 @@ INSERT INTO cadastros.estoque_movimento (tenant_id, filial_id, produto_id, tipo,
   VALUES ('${id}', '${t.filial}', '${t.produto}', 'entrada', 100000, 'carga inicial');
 INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte)
   VALUES ('${id}', 'cep', '69000000', '{}', 'viacep');
+`;
+}
+
+/**
+ * Massa do schema integracao_fdv (T-0010): uma linha em cada tabela. Chave cifrada fictícia (bytes sem segredo:
+ * nonce + texto + tag). O registro publicado é o próprio cliente da massa (registro_external_id = id no ERP, M2).
+ */
+export function fixtureIntegracao(t: Tenant): string {
+  const id = t.id;
+  return `
+INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo, criada_por)
+  VALUES ('${id}', 'conector-${t.slug}', 'teste', decode(repeat('aa', 40), 'hex'), 'mxf_abcd', '${t.usuario}');
+WITH l AS (
+  INSERT INTO integracao_fdv.lote_envio (tenant_id, entidade, credencial_id, modo, sessao_id, sessao_parte,
+    sessao_ultimo, chave_idempotencia, hub_lote_id, estado, contagens, enviado_em, concluido_em)
+  SELECT '${id}', 'cliente', c.id, 'completo', gen_random_uuid(), 1, true, repeat('d', 64), gen_random_uuid(),
+    'concluido_com_erros', '{"aceitos": 1, "rejeitados": 1}', now(), now()
+  FROM integracao_fdv.credencial c WHERE c.tenant_id = '${id}' RETURNING id
+), e AS (
+  INSERT INTO integracao_fdv.lote_erro (tenant_id, lote_envio_id, indice, origem, entidade, registro_external_id,
+    codigo, campo, reprocessavel)
+  SELECT '${id}', l.id, 1, 'hub', 'cliente', '${t.cliente}', 'campo_invalido', 'documento', false FROM l RETURNING 1
+)
+INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em,
+  fonte_ocorrido_em, fonte_refs, ativo, pendente, hash_confirmado, confirmado_em, ultimo_lote_envio_id)
+  SELECT '${id}', 'cliente', '${t.cliente}', '{"razao_social": "Cliente ${t.slug}"}', repeat('1', 64),
+    '2026-11-21T12:00:00.123Z', '2026-11-21T12:00:00.123Z', '{"condicao_pagamento_id": "${t.produto}"}', true, false,
+    repeat('1', 64), now(), l.id
+  FROM l, e;
+INSERT INTO integracao_fdv.referencia (tenant_id, tipo, erp_id, dados, fonte_ocorrido_em)
+  VALUES ('${id}', 'tabela_preco', gen_random_uuid(), '{"nome": "Padrão", "vigencia_inicio": "2026-01-01"}', now());
+INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, credencial_id, cursor_alterado_em, cursor_external_id,
+  ultimo_envio_em, ultimo_sucesso_em)
+  SELECT '${id}', 'cliente', c.id, '2026-11-21T12:00:00.123Z', '${t.cliente}', now(), now()
+  FROM integracao_fdv.credencial c WHERE c.tenant_id = '${id}';
+INSERT INTO integracao_fdv.pedido_recebido (tenant_id, pedido_uuid, payload, hash)
+  VALUES ('${id}', '${t.pedidoFdv}', '{"itens": []}', repeat('e', 64));
+INSERT INTO integracao_fdv.retorno_enviado (tenant_id, pedido_uuid, status, numero_erp, corpo, hash)
+  VALUES ('${id}', '${t.pedidoFdv}', 'integrado', 'PED-1', '{"status": "integrado", "numero_erp": "PED-1"}',
+    repeat('f', 64));
+INSERT INTO integracao_fdv.sinal (tenant_id, ultimo_envio_em, ultimo_aceito_em, ultimo_http)
+  VALUES ('${id}', now(), now(), 200);
+INSERT INTO integracao_fdv.reconciliacao (tenant_id, entidade, data_referencia, contagem)
+  VALUES ('${id}', 'cliente', '2026-11-21', 1);
 `;
 }
