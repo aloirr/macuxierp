@@ -4,24 +4,16 @@
  * salvo no teste do selo às 05h UTC, que fixa o instante da API.
  */
 import { randomUUID } from 'node:crypto';
-import { avisosA1MaisRecentes, RepositorioCoreSql } from '@macuxierp/core/api';
 import { relogioDoSistema, type Relogio } from '@macuxierp/platform-sdk';
-import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COOKIE_REFRESH, criarApp } from './app';
-import { RepositorioAuthPg } from './auth/repositorio-pg';
-import { CONFIG_AUTH_PADRAO } from './auth/servico';
-import { gerarHashSenha } from './auth/senha';
-import { dependenciasCoreDeTeste } from './apoio-teste';
-import { montarModulos } from './modulos';
-
-const SENHA = 'senha-de-teste-123';
-const ARGON2_RAPIDO = { memoria: 64, passes: 1, paralelismo: 1 };
+import { COOKIE_REFRESH } from './app';
+import { appPgDeTeste, inserirAdministradorDeTeste, inserirFilialDeTeste, SENHA_DE_TESTE } from './apoio-teste';
 
 describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () => {
   let b: BancoEfemero;
-  let app: Awaited<ReturnType<typeof criarApp>>;
+  let app: FastifyInstance;
   let tenant: string;
   const usuario = randomUUID();
   const matriz = randomUUID();
@@ -30,50 +22,23 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
   let instanteFixo: Date | null = null;
   const relogio: Relogio = { agora: () => (instanteFixo ? new Date(instanteFixo.getTime()) : relogioDoSistema.agora()) };
 
-  async function filial(tenantId: string, id: string, cnpj: string, nome: string) {
-    await b.admin.query(
-      `INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, nome_fantasia, crt, logradouro, numero, bairro,
-         municipio_ibge, uf, cep) VALUES ($1, $2, $3, $4, $4, '3', 'Rua A', '1', 'Centro', '1302603', 'AM', '69000000')`,
-      [id, tenantId, cnpj, nome],
-    );
-  }
-
   beforeAll(async () => {
     b = await criarBancoEfemero();
     tenant = await criarTenant(b.admin, 'loja-um', ['cadastros']);
     const outro = await criarTenant(b.admin, 'loja-dois', ['cadastros', 'pedido']);
-    await filial(tenant, matriz, '11222333000181', 'Matriz Manaus');
-    await filial(outro, filialOutro, '11444777000161', 'Filial de outro tenant');
+    await inserirFilialDeTeste(b.admin, tenant, { id: matriz, cnpj: '11222333000181', nome: 'Matriz Manaus' });
+    await inserirFilialDeTeste(b.admin, outro, { id: filialOutro, cnpj: '11444777000161', nome: 'Filial de outro tenant' });
     // filial_ids com uma filial de outro tenant: a RLS da cadastros.filial_resumo a esconde no /eu.
-    await b.admin.query(
-      `INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, filial_ids)
-       VALUES ($1, $2, 'adm@loja-um.teste', 'Administradora', $3, 'administrador', $4::uuid[])`,
-      [usuario, tenant, await gerarHashSenha(SENHA, ARGON2_RAPIDO), [matriz, filialOutro]],
-    );
-    app = await criarApp({
-      versao: 'teste',
-      auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: 'segredo-de-teste-com-mais-de-32-caracteres', argon2: ARGON2_RAPIDO },
-      cookieSeguro: true,
-      banco: b.banco('macuxierp_app'),
-      repoAuth: new RepositorioAuthPg(),
-      licencas: new LicencasPg(),
-      outbox: new OutboxPg(),
-      auditoria: new AuditoriaPg(),
-      trabalhos: new FilaDeTrabalhosPg(),
-      idempotencia: new IdempotenciaPg(),
-      relogio,
-      avisosA1: avisosA1MaisRecentes,
-      // core e cadastros com os adaptadores SQL de produção (armazenamento em memória)
-      modulos: montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) }),
-      logger: false,
-    });
+    await inserirAdministradorDeTeste(b.admin, tenant, { id: usuario, email: 'adm@loja-um.teste', nome: 'Administradora', filialIds: [matriz, filialOutro] });
+    // dependências de produção; core e cadastros com os adaptadores SQL (armazenamento em memória)
+    ({ app } = await appPgDeTeste({ b, relogio }));
   });
   afterAll(async () => {
     await app?.close();
     await b?.remover();
   });
 
-  const entrar = (senha = SENHA, empresa = 'loja-um') =>
+  const entrar = (senha = SENHA_DE_TESTE, empresa = 'loja-um') =>
     app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa, email: 'ADM@loja-um.teste', senha } });
   const refreshDe = (r: { cookies: { name: string; value: string }[] }) => r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value;
   const comRefresh = (url: string, refresh: string) => app.inject({ method: 'POST', url, cookies: { [COOKIE_REFRESH]: refresh } });
@@ -184,7 +149,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     expect((await entrar('errada')).statusCode).toBe(401);
     const { rows } = await b.admin.query('SELECT falhas_login FROM plataforma.usuario WHERE id = $1', [usuario]);
     expect(rows).toEqual([{ falhas_login: 1 }]);
-    for (const empresa of ['loja-dois', 'nao-existe']) expect((await entrar(SENHA, empresa)).statusCode).toBe(401);
+    for (const empresa of ['loja-dois', 'nao-existe']) expect((await entrar(SENHA_DE_TESTE, empresa)).statusCode).toBe(401);
     // o login certo zera a contagem
     expect((await entrar()).statusCode).toBe(200);
     expect((await b.admin.query('SELECT falhas_login FROM plataforma.usuario WHERE id = $1', [usuario])).rows).toEqual([{ falhas_login: 0 }]);

@@ -9,6 +9,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@macuxierp/cadastros": "workspace:*",
     "@macuxierp/core": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
     "pino": "^10.4.0",
