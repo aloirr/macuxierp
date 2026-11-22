@@ -41,6 +41,10 @@ describe('RF-CORE-04: alerta de vencimento do A1', () => {
     expect(diasParaVencer(dia(30), AGORA)).toBe(30);
     expect(diasParaVencer(new Date(AGORA.getTime() + 29.5 * 86_400_000), AGORA)).toBe(29);
     expect(diasParaVencer(dia(-1), AGORA)).toBe(-1);
+    // RN-CORE-06: Math.floor
+    expect(diasParaVencer(dia(0.5), AGORA)).toBe(0);
+    expect(diasParaVencer(new Date(dia(30).getTime() + 1), AGORA)).toBe(30);
+    expect(diasParaVencer(dia(-0.5), AGORA)).toBe(-1);
   });
 
   it('RF-CORE-04: alerta a 30 dias ou menos, inclusive vencido; sem alerta a 31', () => {

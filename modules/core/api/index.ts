@@ -6,5 +6,5 @@ export { RepositorioCoreSql } from './repositorio-sql';
 export { criarPluginCore } from './rotas';
 export { criarPortaA1 } from './porta-a1';
 export { lerChaveA1 } from './cifra';
-// Validade e alerta do A1: o worker usa exatamente estas funções (RN-CORE-06, RF-CORE-04).
+// RN-CORE-06: usado pelo worker
 export { alertaVencimento, diasParaVencer } from '../domain/certificado';
