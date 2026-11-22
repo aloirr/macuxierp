@@ -425,6 +425,16 @@ describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
     const r = await t.chamar('POST', '/tabelas-preco', { sessao: gerente, corpo: { nome: 'X', vigencia_inicio: '2026-05-01', vigencia_fim: '2026-04-01' } });
     expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-06' } });
   });
+  it('ADR 0010: o PUT de itens ignora external_id no corpo e o evento preco.alterado mantém a chave gravada pela carga', async () => {
+    const { t, f1, p, tab } = await cenario();
+    await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens: [{ filial_id: f1, produto_id: p, preco_centavos: 1000 }] } });
+    await t.repos.carga.gravarItemPreco({ tabelaId: tab, filialId: f1, produtoId: p, preco_centavos: 1000, desconto_maximo_bp: 0, externalId: 'PR-1', inativo: false });
+    t.eventos.length = 0;
+    const r = await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens: [{ filial_id: f1, produto_id: p, preco_centavos: 1500, external_id: 'OUTRA' }] } });
+    expect(r.corpo).toEqual({ recebidos: 1, alterados: 1 });
+    expect(t.eventos).toHaveLength(1);
+    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.preco.alterado@1', payload: { preco_centavos: 1500, external_id: 'PR-1' } });
+  });
   it('PUT em lote grava e publica um evento por item alterado; repetir o mesmo lote não publica nada', async () => {
     const { t, f1, f2, p, tab } = await cenario();
     const itens = [{ filial_id: f1, produto_id: p, preco_centavos: 1000, desconto_maximo_bp: 500 }, { filial_id: f2, produto_id: p, preco_centavos: 1200 }];

@@ -137,4 +137,19 @@ describe('carga inicial: trabalho paginado (C-4)', () => {
       'cadastros.produto.alterado@1', 'cadastros.tabela_preco.alterada@1', 'cadastros.vendedor.alterado@1',
     ]);
   });
+  it('ADR 0010 / RN-CORE-05 (C-10): a republicação leva o external_id de preço, unidade e endereço', async () => {
+    const a = ambiente();
+    const f = await a.repos.filiais.inserir(filialValida({ cnpj: CNPJ_A }) as never);
+    const prod = await a.repos.produtos.inserir({ codigo: 'P1', descricao: 'X', ncm: '22021000', unidade_comercial: 'UN', unidade_tributavel: 'UN', grupo_tributacao: 'B' } as never);
+    await a.repos.produtos.unidades.inserir(prod.id, { unidade: 'CX', fator: 120_000, ean: null, external_id: 'PU-1' } as never);
+    const tab = await a.repos.tabelasPreco.inserir({ nome: 'T', padrao: true, vigencia_inicio: '2026-01-01', vigencia_fim: null } as never);
+    await a.repos.carga.gravarItemPreco({ tabelaId: tab.id, filialId: f.id, produtoId: prod.id, preco_centavos: 100, desconto_maximo_bp: 0, externalId: 'PR-1', inativo: false });
+    await a.repos.clientes.inserir(clienteValido(f.id, { enderecos: [{ ...ENDERECO_AM, tipo: 'principal', external_id: 'CE-1' }] }) as never);
+    await a.solicitar({ entidades: ['preco', 'produto', 'cliente'] });
+    await a.drenar();
+    const payload = (n: string) => a.gravados.find((e) => e.nome === n)!.payload as Record<string, unknown>;
+    expect(payload('cadastros.preco.alterado@1').external_id).toBe('PR-1');
+    expect((payload('cadastros.produto.alterado@1').unidades as { external_id: string }[]).map((u) => u.external_id)).toEqual(['PU-1']);
+    expect((payload('cadastros.cliente.alterado@1').enderecos as { external_id: string }[]).map((u) => u.external_id)).toEqual(['CE-1']);
+  });
 });
