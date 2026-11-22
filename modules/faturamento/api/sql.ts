@@ -578,15 +578,18 @@ export const ambienteFiscalSql: AmbienteFiscalDaFilial = {
 };
 
 /**
- * Porta inversa do pedido (P-2): nota em aberto (rascunho numerada, em_autorizacao, emitida_contingencia, autorizada_guarda_pendente,
- * autorizada ou rejeitada) bloqueia o cancelamento do pedido; só cancelada, inutilizada e denegada ficam fora.
+ * Implementa NotaEmAberto (ver portas.ts).
  * SEM `FOR SHARE` na nota (deadlock com o reenvio, que trava a nota e depois pede `FOR SHARE` no pedido): o `FOR UPDATE` do pedido no
  * cancelamento já basta, porque todo caminho que cria ou reabre nota pede o `FOR SHARE` do pedido antes e espera o cancelamento.
  */
 export const notaEmAbertoSql: NotaEmAberto = {
   async temNotaEmAutorizacao(tx, pedido_id) {
-    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status NOT IN ('cancelada', 'inutilizada', 'denegada') AND deleted_at IS NULL LIMIT 1`, [pedido_id]);
+    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('rascunho', 'em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1`, [pedido_id]);
     return r.length > 0;
+  },
+  async notasAutorizadas(tx, pedido_id) {
+    const r = await tx.consultar<{ id: string }>(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('autorizada', 'autorizada_guarda_pendente') AND deleted_at IS NULL ORDER BY id`, [pedido_id]);
+    return r.map((l) => l.id);
   },
 };
 
