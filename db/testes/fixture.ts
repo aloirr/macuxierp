@@ -110,7 +110,8 @@ INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte)
 
 /**
  * Massa do schema integracao_fdv (T-0010): uma linha em cada tabela. Chave cifrada fictícia (bytes sem segredo:
- * nonce + texto + tag). O registro publicado é o próprio cliente da massa (registro_external_id = id no ERP, M2).
+ * nonce + texto + tag). O registro publicado é o próprio cliente da massa (registro_external_id = erp_id = id no ERP,
+ * M2 e 0015).
  */
 export function fixtureIntegracao(t: Tenant): string {
   const id = t.id;
@@ -129,11 +130,13 @@ WITH l AS (
   SELECT '${id}', l.id, 1, 'hub', 'cliente', '${t.cliente}', 'campo_invalido', 'documento', false FROM l RETURNING 1
 )
 INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em,
-  fonte_ocorrido_em, fonte_refs, ativo, pendente, hash_confirmado, confirmado_em, ultimo_lote_envio_id)
+  fonte_ocorrido_em, fonte_refs, ativo, pendente, hash_confirmado, confirmado_em, ultimo_lote_envio_id, erp_id)
   SELECT '${id}', 'cliente', '${t.cliente}', '{"razao_social": "Cliente ${t.slug}"}', repeat('1', 64),
     '2026-11-21T12:00:00.123Z', '2026-11-21T12:00:00.123Z', '{"condicao_pagamento_id": "${t.produto}"}', true, false,
-    repeat('1', 64), now(), l.id
+    repeat('1', 64), now(), l.id, '${t.cliente}'
   FROM l, e;
+INSERT INTO integracao_fdv.conflito_chave (tenant_id, entidade, erp_id, chave, codigo)
+  VALUES ('${id}', 'produto', '${t.produto}', 'P-${t.slug}', 'chave_duplicada');
 INSERT INTO integracao_fdv.referencia (tenant_id, tipo, erp_id, dados, fonte_ocorrido_em)
   VALUES ('${id}', 'tabela_preco', gen_random_uuid(), '{"nome": "Padrão", "vigencia_inicio": "2026-01-01"}', now());
 INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, credencial_id, cursor_alterado_em, cursor_external_id,

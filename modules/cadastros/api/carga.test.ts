@@ -79,6 +79,26 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     expect(aud?.depois).toMatchObject({ modo: 'gravar', arquivos: expect.arrayContaining([{ entidade: 'filial', sha256: expect.stringMatching(/^[0-9a-f]{64}$/), bytes: expect.any(Number) }]) });
   });
 
+  it('RN-CAD-09: linha de prazo com forma à vista e prazo maior que 0 vira erro da linha; as demais seguem', async () => {
+    const t = montar();
+    const prazo = readFileSync(join(pasta, 'prazo_pagamento.csv'), 'utf8').replace('PZ-EX-03;FP-EX-02;PIXV;0;', 'PZ-EX-03;FP-EX-02;PIXV;0/30;');
+    const rel = (await t.carregar('gravar', { arquivos: [...arquivos(['prazo_pagamento.csv']), { nome: 'prazo_pagamento.csv', conteudo: prazo }] })).corpo as RelatorioCarga;
+    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'prazo_pagamento.csv', codigo: 'RN-CAD-09', campo: 'prazos_dias' }));
+    expect(JSON.stringify(rel.erros)).not.toContain('0/30');
+    expect(t.repos.condicoesPagamento.linhas).toHaveLength(2);
+  });
+
+  it('RN-CAD-09: forma_pagamento que troca o tPag para à vista com condição a prazo gravada vira erro da linha e não atualiza nenhuma condição', async () => {
+    const t = montar();
+    await t.carregar('gravar');
+    const antes = JSON.stringify(t.repos.condicoesPagamento.linhas);
+    const forma = readFileSync(join(pasta, 'forma_pagamento.csv'), 'utf8').replace('FP-EX-01;BOLETO;', 'FP-EX-01;PIX;');
+    const rel = (await t.carregar('gravar', { arquivos: [...arquivos(['forma_pagamento.csv']), { nome: 'forma_pagamento.csv', conteudo: forma }] })).corpo as RelatorioCarga;
+    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'forma_pagamento.csv', codigo: 'RN-CAD-09', campo: 'prazos_dias' }));
+    expect(JSON.stringify(rel.erros)).not.toContain('PIX');
+    expect(JSON.stringify(t.repos.condicoesPagamento.linhas)).toBe(antes);
+  });
+
   it('D5: gravar duas vezes, a 2ª é toda sem_mudanca e não publica evento nem duplica', async () => {
     const t = montar();
     await t.carregar('gravar');

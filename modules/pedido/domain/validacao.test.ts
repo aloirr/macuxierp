@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avaliarPedido, avaliarCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, ehAVista, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
+import { avaliarPedido, avaliarCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, ehAVista, FORMAS_A_VISTA, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -28,8 +28,7 @@ function base(o: Partial<EntradaAvaliacao> = {}): EntradaAvaliacao {
     ...o,
   };
 }
-const PRAZO = { prazos_dias: [30], inativo: false };
-const VISTA = { prazos_dias: [0], inativo: false };
+const PRAZO = { forma_tpag: '15', prazos_dias: [30], inativo: false };
 const codigos = (e: EntradaAvaliacao) => avaliarPedido(e).map((p) => p.codigo);
 
 describe('avaliação do pedido', () => {
@@ -105,23 +104,42 @@ describe('avaliação do pedido', () => {
   });
 
   it('RN-PED-04: à vista com limite 0 passa, sem pendência de crédito', () => {
-    expect(codigos(base({ condicao: VISTA, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual([]);
+    for (const forma_tpag of FORMAS_A_VISTA) {
+      expect(codigos(base({ condicao: { forma_tpag, prazos_dias: [0], inativo: false }, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual([]);
+    }
   });
 
   it('RN-PED-04: à vista acima do limite passa, mas preço e estoque continuam validados', () => {
-    expect(codigos(base({ condicao: VISTA, cliente: { inativo: false, limite_credito_centavos: 1 }, titulos_abertos_centavos: 99_999 }))).toEqual([]);
-    expect(codigos(base({ condicao: VISTA, cliente: { inativo: false, limite_credito_centavos: 0 }, precos: [], saldos: [] }))).toEqual(['preco_sem_tabela', 'estoque_insuficiente']);
+    for (const forma_tpag of FORMAS_A_VISTA) {
+      const condicao = { forma_tpag, prazos_dias: [0], inativo: false };
+      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 1 }, titulos_abertos_centavos: 99_999 }))).toEqual([]);
+      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 }, precos: [], saldos: [] }))).toEqual(['preco_sem_tabela', 'estoque_insuficiente']);
+    }
   });
 
   it('RN-PED-04: sem condição segue a regra normal de crédito, com condicao_ausente', () => {
     expect(codigos(base({ condicao_pagamento_id: null, condicao: null, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['condicao_ausente', 'credito_sem_limite']);
   });
 
-  it('RN-PED-04: ehAVista só quando todos os prazos são 0', () => {
-    expect(ehAVista({ prazos_dias: [0] })).toBe(true);
-    expect(ehAVista({ prazos_dias: [0, 0] })).toBe(true);
-    expect(ehAVista({ prazos_dias: [0, 30] })).toBe(false);
-    expect(ehAVista({ prazos_dias: [30] })).toBe(false);
+  it('RN-PED-04: ehAVista olha só a forma de pagamento: dinheiro (01), PIX (17) e débito (04)', () => {
+    expect([...FORMAS_A_VISTA].sort()).toEqual(['01', '04', '17']);
+    for (const forma_tpag of ['01', '17', '04']) expect(ehAVista({ forma_tpag, prazos_dias: [0] })).toBe(true);
+  });
+
+  it('RN-PED-04: boleto (15) e cartão de crédito (03) com prazos [0] não são à vista', () => {
+    for (const forma_tpag of ['15', '03']) {
+      const condicao = { forma_tpag, prazos_dias: [0], inativo: false };
+      expect(ehAVista(condicao)).toBe(false);
+      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
+    }
+  });
+
+  it('RN-PED-04: forma à vista com prazo > 0 (PIX [30], débito [0, 30]) não é à vista e dá credito_sem_limite', () => {
+    for (const [forma_tpag, prazos_dias] of [['17', [30]], ['04', [0, 30]]] as const) {
+      const condicao = { forma_tpag, prazos_dias: [...prazos_dias], inativo: false };
+      expect(ehAVista(condicao)).toBe(false);
+      expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
+    }
   });
 
   it('RN-CAD-07: saldo exatamente igual passa e 1 unidade acima cai', () => {
@@ -165,7 +183,7 @@ describe('avaliação do pedido', () => {
   it('RF-PED-03: sem condição ou condição inativa são pendências', () => {
     expect(codigos(base({ condicao_pagamento_id: null, condicao: null }))).toEqual(['condicao_ausente']);
     expect(codigos(base({ condicao: null }))).toEqual(['condicao_ausente']);
-    expect(codigos(base({ condicao: { prazos_dias: [30], inativo: true } }))).toEqual(['condicao_inativa']);
+    expect(codigos(base({ condicao: { forma_tpag: '15', prazos_dias: [30], inativo: true } }))).toEqual(['condicao_inativa']);
   });
 
   it('RN-PED-03: o total do pedido para o crédito é a soma dos itens com arredondamento por item', () => {
@@ -203,8 +221,8 @@ describe('recebimento do pedido do FDV', () => {
   const retrato = (o: Partial<RetratoRecebimentoFdv> = {}): RetratoRecebimentoFdv => ({
     cliente: { inativo: false },
     filial: { emissora: true, inativo: false },
-    condicao_pagamento_id: null,
-    condicao: null,
+    condicao_pagamento_id: 'c1',
+    condicao: { inativo: false },
     produtos: [{ id: P1, inativo: false }],
     itens: [item()],
     ...o,
@@ -225,8 +243,10 @@ describe('recebimento do pedido do FDV', () => {
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: null })).toEqual({ resultado: 'recusado', codigo: 'condicao_inexistente' }));
   it('RN-PED-01: condicao_inativa', () =>
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: { inativo: true } })).toEqual({ resultado: 'recusado', codigo: 'condicao_inativa' }));
-  it('RN-PED-01: condição nula (o FDV não informou) continua aprovada; condição ativa também', () => {
-    expect(codigo({ condicao_pagamento_id: null, condicao: null })).toEqual({ resultado: 'aprovado' });
+  it('RN-PED-01: condicao_ausente (o FDV não informou a condição)', () => {
+    expect(codigo({ condicao_pagamento_id: null, condicao: null })).toEqual({ resultado: 'recusado', codigo: 'condicao_ausente' });
+  });
+  it('RN-PED-01: condição ativa é aprovada', () => {
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: { inativo: false } })).toEqual({ resultado: 'aprovado' });
   });
   it('RN-PED-01: produto_inexistente', () => expect(codigo({ produtos: [] })).toEqual({ resultado: 'recusado', codigo: 'produto_inexistente' }));

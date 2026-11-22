@@ -29,6 +29,7 @@ const WORKER_B = { papel: 'macuxierp_worker', tenant: B.id };
 const LEITURA_A = { papel: 'macuxierp_leitura', tenant: A.id };
 
 const TABELAS = [
+  'conflito_chave',
   'credencial',
   'cursor_entidade',
   'lote_envio',
@@ -44,6 +45,7 @@ type TabelaIntegracao = (typeof TABELAS)[number];
 
 /** Privilégios de tabela esperados (S, I, U, D, T; "-" = nenhum). Os de coluna têm teste próprio. */
 const PRIVILEGIOS: Record<TabelaIntegracao, Record<(typeof PAPEIS_APP)[number], string>> = {
+  conflito_chave: { macuxierp_app: 'S', macuxierp_worker: 'SI', macuxierp_leitura: 'S' },
   credencial: { macuxierp_app: 'I', macuxierp_worker: 'S', macuxierp_leitura: '-' },
   cursor_entidade: { macuxierp_app: 'SI', macuxierp_worker: 'SIU', macuxierp_leitura: 'S' },
   lote_envio: { macuxierp_app: 'S', macuxierp_worker: 'SIU', macuxierp_leitura: 'S' },
@@ -58,6 +60,7 @@ const PRIVILEGIOS: Record<TabelaIntegracao, Record<(typeof PAPEIS_APP)[number], 
 
 /** Colunas com privilégio só de coluna (sem o de tabela): o que cada papel pode além da matriz acima. */
 const COLUNAS: { papel: string; tabela: TabelaIntegracao; acao: string; colunas: string[] }[] = [
+  { papel: 'macuxierp_app', tabela: 'conflito_chave', acao: 'UPDATE', colunas: ['resolvido_em'] },
   {
     papel: 'macuxierp_app',
     tabela: 'credencial',
@@ -70,15 +73,22 @@ const COLUNAS: { papel: string; tabela: TabelaIntegracao; acao: string; colunas:
       'created_at',
       'criada_por',
       'deleted_at',
+      'entidades_habilitadas',
       'external_id',
       'id',
+      'limite_registros_lote',
       'substituida_em',
       'tenant_id',
       'ultimo_uso_em',
       'updated_at',
     ].sort(),
   },
-  { papel: 'macuxierp_app', tabela: 'credencial', acao: 'UPDATE', colunas: ['deleted_at', 'substituida_em'] },
+  {
+    papel: 'macuxierp_app',
+    tabela: 'credencial',
+    acao: 'UPDATE',
+    colunas: ['deleted_at', 'entidades_habilitadas', 'limite_registros_lote', 'substituida_em'],
+  },
   {
     papel: 'macuxierp_app',
     tabela: 'cursor_entidade',
@@ -105,6 +115,12 @@ const COLUNAS: { papel: string; tabela: TabelaIntegracao; acao: string; colunas:
     tabela: 'credencial',
     acao: 'UPDATE',
     colunas: ['chave_cifrada', 'ultimo_uso_em'],
+  },
+  {
+    papel: 'macuxierp_worker',
+    tabela: 'conflito_chave',
+    acao: 'UPDATE',
+    colunas: ['deleted_at', 'resolvido_em'],
   },
 ];
 
@@ -135,7 +151,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
 
   afterAll(() => banco?.remover());
 
-  it('tem exatamente as dez tabelas da seção 8', () => {
+  it('tem exatamente as onze tabelas da seção 8 (dez da 0007 e conflito_chave da 0015)', () => {
     const linhas = consultar<{ t: string }>(
       banco.conexao,
       `SELECT k.relname AS t FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace
@@ -256,7 +272,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
       `SELECT count(*)::int AS n FROM pg_attribute a JOIN pg_class k ON k.oid = a.attrelid
          JOIN pg_namespace n ON n.oid = k.relnamespace
        WHERE n.nspname = 'integracao_fdv' AND k.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
-         AND k.relname NOT IN ('credencial', 'cursor_entidade', 'registro_publicado')
+         AND k.relname NOT IN ('conflito_chave', 'credencial', 'cursor_entidade', 'registro_publicado')
          AND has_column_privilege('macuxierp_app', a.attrelid, a.attnum, 'UPDATE')`,
     );
     expect(r?.n).toBe(0);
