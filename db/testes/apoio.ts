@@ -137,6 +137,9 @@ export function falhaDetalhada(fn: () => unknown): { mensagem: string; saida: st
   return erro;
 }
 
+/** Liga o SQLSTATE na saída do psql (`\set VERBOSITY verbose`), para `falhaDetalhada` conferir o código. */
+export const verboso = (sql: string): string => `\\set VERBOSITY verbose\n${sql}`;
+
 /** Linhas da saída do psql que são inteiros (os valores de RETURNING e SELECT de uma coluna numérica). */
 export const numeros = (saida: string): number[] =>
   saida

@@ -14,6 +14,11 @@ export function regra(p: Partial<RegraTributaria> = {}): RegraTributaria {
     cfop: null,
     codigo: '00',
     aliquota_icms: 180000,
+    // Regime normal exige PIS/COFINS (cumulativo: 0,65% e 3%); os testes de ICMS usam a linha única.
+    cst_pis: '01',
+    aliquota_pis: 6500,
+    cst_cofins: '01',
+    aliquota_cofins: 30000,
     fonte: { tipo: 'convenio', referencia: 'Convênio ICMS 142/2018' },
     versao: '2025.1',
     vigencia_inicio: '2024-01-01',

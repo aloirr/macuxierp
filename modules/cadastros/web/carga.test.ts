@@ -19,6 +19,7 @@ describe('página de carga do BKO', () => {
   // O item de menu só entra no manifesto quando o shell (engenheiro-apps) tiver a página: os testes de tests/ conferem menu × páginas.
   it('o menu está no manifesto, a rota é a do shell (slug do rótulo) e a ação é a da API (cadastros.carga.executar)', () => {
     expect(manifest.web?.menus).toContain(PAGINA_CARGA.menu);
+    expect(PAGINA_CARGA.ver).toBe('cadastros.carga.executar');
     expect(PAGINA_CARGA.rota).toBe('/cadastros/carga-de-cadastros'); // `/<módulo>/<slug do rótulo>`; tests/ confere contra o shell (D-02)
     expect(acoesDaCarga('administrador')).toEqual({ abrir: true, validar: true, gravar: true });
     expect(acoesDaCarga('gerente').gravar).toBe(true);

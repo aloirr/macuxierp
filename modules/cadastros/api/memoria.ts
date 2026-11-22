@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { ErroApi, paginar, type Pagina } from '@macuxierp/platform-sdk';
 import type { EstoqueConsulta, PrecoItem, PrecoItemConsulta, SaldoEstoqueItem } from '../contracts';
+import { tabelaVigente } from '../domain';
 import { agregadoPreco } from './uuid';
 import type {
   ConsultaGravada, Dependencias, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
@@ -146,7 +147,16 @@ export function repositoriosEmMemoria() {
       for (const l of baseCliente.linhas) if (ids.includes(l.id)) l.vendedor_id = para;
     },
   });
-  const produtos = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['codigo'], texto: ['descricao', 'codigo'] }), { unidades });
+  const produtosBase = new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['codigo'], texto: ['descricao', 'codigo'] });
+  const produtos = Object.assign(produtosBase, {
+    unidades,
+    async porIds(ids: readonly string[]) {
+      return produtosBase.linhas.filter((l) => ids.includes(l.id)).map((l) => structuredClone(l) as unknown as { id: string });
+    },
+    async unidadesDe(ids: readonly string[]) {
+      return unidades.linhas.filter((u) => ids.includes(u.pai as string) && !u.inativo).map((u) => ({ produto_id: u.pai as string, unidade: u.unidade as string, fator: u.fator as number }));
+    },
+  });
   const filiais = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['cnpj'], texto: ['razao_social'] }), {
     async padrao() {
       const f = filiais.linhas.find((l) => l.padrao === true && !l.inativo);
@@ -162,8 +172,12 @@ export function repositoriosEmMemoria() {
         .map((i) => ({ ...i, id: agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id) }));
       return paginar(depoisDoCursor(l, q.cursor), q.limite);
     },
-    async itensDoProduto(tabelaId: string, produtoId: string, filialIds: readonly string[]) {
-      return itensPreco.filter((i) => i.tabela_preco_id === tabelaId && i.produto_id === produtoId && filialIds.includes(i.filial_id));
+    async itensDosProdutos(tabelaId: string, produtoIds: readonly string[], filialIds: readonly string[]) {
+      return itensPreco.filter((i) => i.tabela_preco_id === tabelaId && produtoIds.includes(i.produto_id) && filialIds.includes(i.filial_id));
+    },
+    async padraoEm(data: string) {
+      const t = tabelasPreco.linhas.find((l) => l.padrao === true && tabelaVigente({ vigencia_inicio: String(l.vigencia_inicio), vigencia_fim: l.vigencia_fim == null ? null : String(l.vigencia_fim), inativa: l.inativo === true }, data));
+      return t ? (structuredClone(t) as unknown as { id: string }) : null;
     },
     async gravarLote(tabelaId: string, itens: readonly Omit<PrecoItem, 'tabela_preco_id'>[]) {
       const mudou: PrecoItem[] = [];
@@ -190,6 +204,9 @@ export function repositoriosEmMemoria() {
       return [...saldos]
         .map(([k, quantidade]) => ({ filial_id: k.split('|')[0] as string, produto_id: k.split('|')[1] as string, quantidade }))
         .filter((s) => (!q.filial_id || s.filial_id === q.filial_id) && (!q.produto_id || s.produto_id === q.produto_id));
+    },
+    async saldosDe(filialId: string, produtoIds: readonly string[]) {
+      return (await repoEstoque.saldos({ filial_id: filialId })).filter((s) => produtoIds.includes(s.produto_id));
     },
     async listar(q: EstoqueConsulta): Promise<Pagina<SaldoEstoqueItem>> {
       const busca = q.busca?.toLowerCase();

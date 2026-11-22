@@ -6,6 +6,8 @@ import { criarRotas } from './rotas';
 import { repositoriosSql } from './sql';
 
 export { criarConsumidorCargaInicial, criarExecutorCargaInicial } from './carga-inicial';
+export { criarConsultaParaPedido } from './consulta-pedido';
+export type { ConsultaCadastrosParaPedido } from './consulta-pedido';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
