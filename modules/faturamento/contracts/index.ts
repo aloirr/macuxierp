@@ -60,7 +60,14 @@ export const NotaEvento = z.object({
 });
 export type NotaEvento = z.infer<typeof NotaEvento>;
 
-export const ItemNotaEvento = z.object({ sequencia: z.number().int().min(1), quantidade: Qtd4, valor_centavos: Centavos });
+/** `produto_id` e `filial_id` (opcionais, aditivos no @1) servem ao consumidor de estoque; `quantidade` é Qtd4 (inteiro, escala 4). */
+export const ItemNotaEvento = z.object({
+  sequencia: z.number().int().min(1),
+  quantidade: Qtd4,
+  valor_centavos: Centavos,
+  produto_id: Uuid.optional(),
+  filial_id: Uuid.optional(),
+});
 export type ItemNotaEvento = z.infer<typeof ItemNotaEvento>;
 
 /**
@@ -85,6 +92,11 @@ export const NotaAutorizadaPayload = BaseEventoNota.extend({
   nota: NotaEventoAutorizada,
   /** UUID do pedido no FDV (T-0009 2.10); nulo para pedido nascido no ERP. */
   pedido_uuid: Uuid.nullable(),
+  /**
+   * true quando a filial tem a bandeira 'faturamento real com NF-e simulada' e a nota é de homologação;
+   * consumidores (FDV, estoque) tratam como produção. Ausente = false (decisão do Alexandre, 22/11, 02h31).
+   */
+  conta_como_real: z.boolean().optional(),
 });
 export type NotaAutorizadaPayload = z.infer<typeof NotaAutorizadaPayload>;
 
@@ -94,6 +106,11 @@ export const NotaCanceladaPayload = BaseEventoNota.extend({
   pedido_uuid: Uuid.nullable(),
   protocolo_cancelamento: Protocolo,
   motivo: z.string().min(15).max(255),
+  /**
+   * true quando a filial tem a bandeira 'faturamento real com NF-e simulada' e a nota é de homologação;
+   * consumidores (FDV, estoque) tratam como produção. Ausente = false (decisão do Alexandre, 22/11, 02h31).
+   */
+  conta_como_real: z.boolean().optional(),
 });
 export type NotaCanceladaPayload = z.infer<typeof NotaCanceladaPayload>;
 
@@ -120,6 +137,11 @@ export const TituloGeradoPayload = z.object({
   vencimento: z.string().date(),
   valor_centavos: Centavos,
   saldo_centavos: Centavos,
+  /**
+   * true quando a filial tem a bandeira 'faturamento real com NF-e simulada' e a nota é de homologação;
+   * consumidores (FDV, estoque) tratam como produção. Ausente = false (decisão do Alexandre, 22/11, 02h31).
+   */
+  conta_como_real: z.boolean().optional(),
 });
 export type TituloGeradoPayload = z.infer<typeof TituloGeradoPayload>;
 

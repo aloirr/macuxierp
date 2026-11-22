@@ -10,7 +10,7 @@ import { z } from 'zod';
 import {
   ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
   EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta, TrocaExternalId,
-  OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
+  OficialConsulta, PrecoLote, PrecoVigenteConsulta, type RegimePisCofins, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
   type NomeEventoCadastros,
 } from '../contracts';
@@ -289,6 +289,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       return validarFilial({
         uf: end.uf, municipio_ibge: end.municipio_ibge, ie: (f.ie as string | null) ?? null, emissora: f.emissora === true,
         nfe_serie: (f.nfe_serie as number | null) ?? null, nfe_numero_inicial: (f.nfe_numero_inicial as number | null) ?? null,
+        crt: f.crt as FilialDados['crt'], regime_pis_cofins: (f.regime_pis_cofins as RegimePisCofins | null) ?? null,
       });
     },
   }));

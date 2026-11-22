@@ -76,3 +76,6 @@ Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #1
 | RD-0540 | 22/11/2026 | T-0049 | README.md:6 e assinatura-erp.md §6 item 9 e §8: "propostas removidas" 4× | doc | baixa | design-de-marca | resolvido (PR #168, 8f5b031) | 2026-11-22-T-0049-ativos-marca.md |
 | RD-0541 | 22/11/2026 | T-0049 | assinatura-erp.md cabeçalho e §8 repetem decisoes.md | doc | média | design-de-marca | resolvido (PR #168, 8f5b031) | 2026-11-22-T-0049-ativos-marca.md |
 | RD-0542 | 22/11/2026 | T-0049 | README.md:5 repete ativos/LEIA-ME.md | doc | baixa | design-de-marca | resolvido (PR #168, 8f5b031) | 2026-11-22-T-0049-ativos-marca.md |
+| RD-0555 | 22/11/2026 | T-0012 | apoio/config.ts:231/299/384, adaptador-conector.ts:55, emissor-minimo.ts:89: prefixo e data da trava, `motivoTravaEscrita` e `travado` repetidos | código | baixa | testes | corrigido no #182 | 2026-11-22-T-0012-trava-escrita.md |
+| RD-0556 | 22/11/2026 | T-0012 | config.test.ts:374 e 390-392: trava do thathyany-seguro conferida de novo (já no `travaTodos`) | teste | baixa | testes | corrigido no #182 | 2026-11-22-T-0012-trava-escrita.md |
+| RD-0557 | 22/11/2026 | T-0012 | T-0012.md:210-215 e 322-324, config.ts:34-38: regra da trava reescrita fora da seção-fonte | doc | média | testes | corrigido no #182 | 2026-11-22-T-0012-trava-escrita.md |
