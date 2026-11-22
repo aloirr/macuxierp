@@ -6,6 +6,7 @@
  * (703/228), numeração (206/204/218/205/539), denegação (301/302) e, passando tudo, 100.
  */
 import {
+  ChaveNFe,
   NS_NFE,
   TAMANHO_MAXIMO_XML_SEFAZ,
   aammSefaz,
@@ -16,6 +17,7 @@ import {
   montarChaveNFe,
   montarEnviNFe,
   semDeclaracaoXml,
+  textoNfe,
   validarXsd,
   verificarAssinaturaXml,
   type PedidoAutorizacao,
@@ -24,9 +26,9 @@ import {
   type RespostaConsultaRecibo,
 } from '@macuxierp/nfe-sefaz';
 import { cnpjValido } from '@macuxierp/platform-sdk';
-import { ATRASO_MAXIMO_EMISSAO_MS, TOLERANCIA_FUTURO_MS, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
+import { ATRASO_MAXIMO_EMISSAO_MS, TOLERANCIA_FUTURO_MS, consumirRejeicao, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
 import { chaveNumero, refAutorizacao } from './estado';
-import { tag, texto } from './xml';
+import { tag } from './xml';
 
 function protocoloXml(p: Omit<ProtocoloNFe, 'xml'>): string {
   const id = p.nProt ? ` Id="ID${p.nProt}"` : '';
@@ -51,32 +53,33 @@ function protocolo(
 
 const CHAVE_VAZIA = '0'.repeat(44);
 
-/** Uma NF-e do lote (já passou no schema do lote). */
-function processarNFe(ctx: Contexto, nfeXml: string, recebidoEm: Date, dhRecbto: string): ProtocoloNFe {
+/** Uma NF-e do lote (já passou no schema do lote). `forcado`: a rejeição do apoio de teste (não grava nada). */
+function processarNFe(ctx: Contexto, nfeXml: string, recebidoEm: Date, dhRecbto: string, forcado: CStatSimulador | null): ProtocoloNFe {
   const inf = filhoNfe(lerXml(nfeXml)?.documentElement, 'infNFe');
   const chNFe = (inf?.getAttribute('Id') ?? '').replace(/^NFe/, '');
-  const chave = /^\d{44}$/.test(chNFe) ? chNFe : CHAVE_VAZIA;
+  const chave = ChaveNFe.safeParse(chNFe).success ? chNFe : CHAVE_VAZIA;
   const rejeitar = (cStat: CStatSimulador, complemento?: string) => protocolo(ctx, chave, dhRecbto, cStat, complemento ? { complemento } : {});
   if (!inf || chave === CHAVE_VAZIA) return rejeitar('225');
+  if (forcado) return rejeitar(forcado);
 
   const ide = filhoNfe(inf, 'ide');
-  const cnpj = texto(inf, 'emit', 'CNPJ');
-  const serie = Number(texto(ide, 'serie'));
-  const nNF = Number(texto(ide, 'nNF'));
-  const dhEmiTexto = texto(ide, 'dhEmi');
+  const cnpj = textoNfe(inf, 'emit', 'CNPJ');
+  const serie = Number(textoNfe(ide, 'serie'));
+  const nNF = Number(textoNfe(ide, 'nNF'));
+  const dhEmiTexto = textoNfe(ide, 'dhEmi');
   const dhEmi = new Date(dhEmiTexto);
 
-  if (texto(ide, 'tpAmb') !== String(ctx.d.tpAmb)) return rejeitar('252');
-  if (texto(ide, 'cUF') !== String(ctx.d.cUF)) return rejeitar('226');
-  if (texto(ide, 'tpEmis') !== String(ctx.d.tpEmis)) return rejeitar('570');
+  if (textoNfe(ide, 'tpAmb') !== String(ctx.d.tpAmb)) return rejeitar('252');
+  if (textoNfe(ide, 'cUF') !== String(ctx.d.cUF)) return rejeitar('226');
+  if (textoNfe(ide, 'tpEmis') !== String(ctx.d.tpEmis)) return rejeitar('570');
   let montada: string;
   try {
-    montada = montarChaveNFe({ cUF: ctx.d.cUF, aamm: aammSefaz(dhEmiTexto), cnpj, mod: '55', serie, nNF, tpEmis: ctx.d.tpEmis, cNF: texto(ide, 'cNF') });
+    montada = montarChaveNFe({ cUF: ctx.d.cUF, aamm: aammSefaz(dhEmiTexto), cnpj, mod: '55', serie, nNF, tpEmis: ctx.d.tpEmis, cNF: textoNfe(ide, 'cNF') });
   } catch {
     return rejeitar('502');
   }
   if (montada.slice(0, 43) !== chave.slice(0, 43)) return rejeitar('502');
-  if (!chaveNFeComDvValido(chave) || texto(ide, 'cDV') !== chave.slice(-1)) return rejeitar('253');
+  if (!chaveNFeComDvValido(chave) || textoNfe(ide, 'cDV') !== chave.slice(-1)) return rejeitar('253');
   if (!cnpjValido(cnpj)) return rejeitar('207');
 
   const assinatura = verificarAssinaturaXml(nfeXml, { elemento: 'infNFe', cnpjEsperado: cnpj, agora: recebidoEm });
@@ -97,7 +100,7 @@ function processarNFe(ctx: Contexto, nfeXml: string, recebidoEm: Date, dhRecbto:
   const outra = outraChave ? e.notas.get(outraChave) : undefined;
   if (outra) return rejeitar('539', ` [chNFe:${outra.chNFe}]${refAutorizacao(outra)}`);
 
-  const docDest = texto(inf, 'dest', 'CNPJ') || texto(inf, 'dest', 'CPF');
+  const docDest = textoNfe(inf, 'dest', 'CNPJ') || textoNfe(inf, 'dest', 'CPF');
   const denegacao = e.controles.denegados.get(cnpj) === '301' ? '301' : docDest && e.controles.denegados.get(docDest) === '302' ? '302' : null;
   const cStat: CStatSimulador = denegacao ?? '100';
   const p = protocolo(ctx, chave, dhRecbto, cStat, { nProt: novoNumero(ctx, 'nProt'), digVal: assinatura.digestValue });
@@ -121,7 +124,8 @@ export async function autorizar(ctx: Contexto, pedido: PedidoAutorizacao): Promi
   if (Buffer.byteLength(lote, 'utf8') > TAMANHO_MAXIMO_XML_SEFAZ) return respostaAutorizacao(ctx, dhRecbto, '214', semNada);
   if (!(await validarXsd(lote, 'enviNFe')).valido) return respostaAutorizacao(ctx, dhRecbto, '225', semNada);
 
-  const protocolos = pedido.nfes.map((x) => processarNFe(ctx, semDeclaracaoXml(x), recebidoEm, dhRecbto));
+  const forcado = consumirRejeicao(ctx, 'autorizar');
+  const protocolos = pedido.nfes.map((x) => processarNFe(ctx, semDeclaracaoXml(x), recebidoEm, dhRecbto, forcado));
   if (pedido.sincrono) return respostaAutorizacao(ctx, dhRecbto, '104', { recibo: null, protocolos });
 
   const nRec = novoNumero(ctx, 'nRec');
@@ -133,8 +137,10 @@ export function consultarRecibo(ctx: Contexto, nRec: string): RespostaConsultaRe
   const agora = ctx.agora();
   const lote = ctx.estado.lotes.get(nRec);
   const c = ctx.estado.controles;
+  const forcado = consumirRejeicao(ctx, 'consultarRecibo');
   let cStat: CStatSimulador;
-  if (!lote) cStat = '106';
+  if (forcado) cStat = forcado;
+  else if (!lote) cStat = '106';
   else if (c.recibosAtrasados > 0) {
     c.recibosAtrasados -= 1;
     cStat = '105';

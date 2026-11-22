@@ -3,7 +3,7 @@
  * Desenho: docs/desenho/T-0045.md. Consumidores: worker (fila da SEFAZ), faturamento (T-0021), testes (T-0022),
  * simulador (`@macuxierp/sefaz-simulador`) e emissor real (T-0018).
  */
-export { AmbienteFiscal, CUF, ModoEmissao, TP_AMB, TP_EMIS, TpAmb, Uf } from './ambiente';
+export { AmbienteFiscal, CUF, ModoEmissao, TP_AMB, TP_EMIS, TpAmb, Uf, XNOME_HOMOLOGACAO } from './ambiente';
 export { DESLOCAMENTO_MANAUS_MIN, aammSefaz, dataHoraSefaz, ehDataHoraSefaz } from './datas';
 export {
   FilialEmissoraSefaz,
@@ -69,9 +69,9 @@ export {
   CSTAT_FALHA_ASSINATURA,
   NS_NFE,
   NS_XMLDSIG,
-  cnpjDoCertificado,
   filhoNfe,
   lerXml,
+  textoNfe,
   verificarAssinaturaNFe,
   verificarAssinaturaXml,
   type CertificadoDaAssinatura,
@@ -80,4 +80,5 @@ export {
   type OpcoesVerificacao,
   type ResultadoAssinatura,
 } from './xmldsig';
+export { DESC_EVENTO, X_COND_USO_CCE, garantirTipoEvento, idEvento, idInutilizacao, type CamposIdInutilizacao } from './eventos';
 export { montarEnvEvento, montarEnviNFe, montarNfeProc, semDeclaracaoXml } from './proc';

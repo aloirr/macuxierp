@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Simulador da SEFAZ-AM (só homologação): implementa a porta SefazTransporte de @macuxierp/nfe-sefaz para o faturamento e os testes (T-0045).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./teste": "./src/teste/index.ts"
   },
   "scripts": {
     "lint": "eslint .",
@@ -14,8 +15,7 @@
   },
   "dependencies": {
     "@macuxierp/nfe-sefaz": "workspace:*",
-    "@macuxierp/platform-sdk": "workspace:*",
-    "@xmldom/xmldom": "0.8.15"
+    "@macuxierp/platform-sdk": "workspace:*"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
