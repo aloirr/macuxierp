@@ -6,4 +6,10 @@ describe('manifesto do módulo pedido', () => {
     expect(manifest.id).toBe('pedido');
     expect(manifest.publica.every((e) => e.startsWith('pedido.'))).toBe(true);
   });
+
+  it('publica os cinco eventos pedido.pedido.*@1, inclusive faturado@1', () => {
+    expect([...manifest.publica].sort()).toEqual(
+      ['aprovado', 'cancelado', 'faturado', 'recebido', 'recusado'].map((f) => `pedido.pedido.${f}@1`),
+    );
+  });
 });

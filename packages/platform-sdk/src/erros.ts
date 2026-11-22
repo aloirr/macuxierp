@@ -45,3 +45,16 @@ export const erros = {
     return new ErroApi(422, codigoRn, mensagem, campos);
   },
 };
+
+/**
+ * Violação de regra apontada pelo `domain` (RD-0235): `rn` é a RN (`RN-PED-03`) ou a decisão do desenho (`D7`, `REF`);
+ * `campo` é o caminho no corpo (`itens[0].desconto_centavos`). A API decide o erro: RN vira 422 (`erros.regra`), o resto 400.
+ * Sem dado pessoal na mensagem. Sem Node: serve ao `domain` e ao `web` (`@macuxierp/platform-sdk/erros`).
+ */
+export interface Violacao {
+  rn: string;
+  campo: string;
+  mensagem: string;
+}
+
+export const violacao = (rn: string, campo: string, mensagem: string): Violacao => ({ rn, campo, mensagem });

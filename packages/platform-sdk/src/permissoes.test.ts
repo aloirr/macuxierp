@@ -34,6 +34,11 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(quem('faturamento.nota.emitir')).toEqual(['administrador', 'faturista', 'fiscal']);
   });
 
+  it('pedido manual (T-0013 §4.1): lançar com administrador, gerente e faturista; cancelar com administrador e gerente', () => {
+    expect(quem('pedido.pedido.lancar')).toEqual(['administrador', 'gerente', 'faturista']);
+    expect(quem('pedido.pedido.cancelar')).toEqual(['administrador', 'gerente']);
+  });
+
   it('RN-CORE-08: trocar ambiente fiscal só o administrador (o recado do Alexandre é conferido no core)', () => {
     expect(quem('core.ambiente.trocar')).toEqual(['administrador']);
   });
