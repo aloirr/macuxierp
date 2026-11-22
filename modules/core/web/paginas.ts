@@ -23,6 +23,9 @@ export interface Botao {
 /** RN-CORE-08 (ADR 0006): texto da página "Ambiente fiscal" em homologação, que não tem botão de produção. */
 export const TEXTO_AMBIENTE_HOMOLOGACAO = 'Para emitir em produção, peça à Macuxi. A troca é feita com a aprovação do Alexandre.';
 
+/** T-0040: até o armazenamento S3 (T-0024) o `arquivos.ts` responde 503 e toda exportação LGPD termina como `falhou`. */
+export const TEXTO_EXPORTACAO_INDISPONIVEL = "A exportação ainda não está disponível: o armazenamento de arquivos entra em breve.";
+
 export interface PaginaCore {
   id: string;
   rota: string;
@@ -35,6 +38,8 @@ export interface PaginaCore {
   filtros: readonly string[];
   exportaCsv: boolean;
   botoes: readonly Botao[];
+  /** Faixa de aviso no topo da página, quando houver. */
+  aviso?: string;
 }
 
 export const PAGINAS_CORE: readonly PaginaCore[] = [
@@ -71,6 +76,7 @@ export const PAGINAS_CORE: readonly PaginaCore[] = [
     filtros: [],
     exportaCsv: false,
     botoes: [{ id: 'pedir', rotulo: 'Gerar exportação', acao: 'core.exportacao.pedir' }],
+    aviso: TEXTO_EXPORTACAO_INDISPONIVEL,
   },
   {
     id: 'usuarios',
