@@ -1,10 +1,15 @@
 /** Repositórios em memória: dublê das portas para os testes de rota (sem PostgreSQL). Não entra em produção. */
 import { randomUUID } from 'node:crypto';
-import { ErroApi } from '@macuxierp/platform-sdk';
-import type { PrecoItem } from '../contracts';
+import { ErroApi, paginar, type Pagina } from '@macuxierp/platform-sdk';
+import type { PrecoItem, PrecoItemConsulta } from '../contracts';
+import { agregadoPreco } from './uuid';
 import type {
-  ConsultaGravada, Dependencias, FiltroLista, MovimentoGravado, Pagina, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
+  ConsultaGravada, Dependencias, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
+
+/** Ordem estável por `id` e `id > cursor`, como o adaptador SQL (`.coord/contratos/listas.md`); devolve `limite + 1` linhas no máximo para `paginar`. */
+const depoisDoCursor = <T extends { id: string }>(linhas: readonly T[], cursor?: string): T[] =>
+  [...linhas].sort((a, b) => (a.id < b.id ? -1 : 1)).filter((x) => !cursor || x.id > cursor);
 
 type Reg = { id: string; inativo: boolean; external_id?: string | null } & Record<string, unknown>;
 
@@ -25,8 +30,8 @@ export class ColecaoMemoria<E extends { id: string }, D extends Record<string, u
     if (q.filial_id) l = l.filter((x) => x.filial_id === q.filial_id);
     if (q.vendedor_id) l = l.filter((x) => x.vendedor_id === q.vendedor_id);
     if (q.vendedor_ids) l = l.filter((x) => typeof x.vendedor_id === 'string' && q.vendedor_ids?.includes(x.vendedor_id));
-    const ini = (q.pagina - 1) * q.por_pagina;
-    return { itens: l.slice(ini, ini + q.por_pagina).map((x) => this.ler(x)), total: l.length };
+    const pagina = paginar(depoisDoCursor(l, q.cursor), q.limite);
+    return { itens: pagina.itens.map((x) => this.ler(x)), proximo_cursor: pagina.proximo_cursor };
   }
   protected ler(x: Reg): E {
     return structuredClone(x) as unknown as E;
@@ -141,10 +146,11 @@ export function repositoriosEmMemoria() {
   const itensPreco: (PrecoItem & { alterado?: boolean })[] = [];
   const tabelasPreco = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ texto: ['nome'] }), {
     itensPreco,
-    async itens(tabelaId: string, q: { filial_id?: string; produto_id?: string; pagina: number; por_pagina: number }) {
-      const l = itensPreco.filter((i) => i.tabela_preco_id === tabelaId && (!q.filial_id || i.filial_id === q.filial_id) && (!q.produto_id || i.produto_id === q.produto_id));
-      const ini = (q.pagina - 1) * q.por_pagina;
-      return { itens: l.slice(ini, ini + q.por_pagina), total: l.length };
+    async itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItem & { id: string }>> {
+      const l = itensPreco
+        .filter((i) => i.tabela_preco_id === tabelaId && (!q.filial_id || i.filial_id === q.filial_id) && (!q.produto_id || i.produto_id === q.produto_id))
+        .map((i) => ({ ...i, id: agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id) }));
+      return paginar(depoisDoCursor(l, q.cursor), q.limite);
     },
     async itensDoProduto(tabelaId: string, produtoId: string, filialIds: readonly string[]) {
       return itensPreco.filter((i) => i.tabela_preco_id === tabelaId && i.produto_id === produtoId && filialIds.includes(i.filial_id));
@@ -224,7 +230,7 @@ export function repositoriosEmMemoria() {
       return new Map(codigos.filter((c) => oficiais.municipios.has(c)).map((c) => [c, oficiais.municipios.get(c) as string]));
     },
     async listar() {
-      return { itens: [], total: 0 };
+      return { itens: [], proximo_cursor: null };
     },
     async ncmVigente(ncm: string) {
       return oficiais.ncms.has(ncm);

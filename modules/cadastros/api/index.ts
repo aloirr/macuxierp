@@ -7,6 +7,7 @@ import { repositoriosSql } from './sql';
 
 export { criarConsumidorCargaInicial, criarExecutorCargaInicial } from './carga-inicial';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';
+export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
 export type { Dependencias, FonteExterna, Fontes, PortaCertificados, Repositorios } from './portas';
 export { criarRotas } from './rotas';

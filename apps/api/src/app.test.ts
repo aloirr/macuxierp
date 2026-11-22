@@ -37,10 +37,11 @@ const pluginTeste = definirPlugin(manifestoCadastros, [
     corpo: z.object({ preco_centavos: z.number().int().min(0) }),
     executar: async (c, e) => {
       if (e.corpo.preco_centavos === 13) throw erros.regra('RN-CAD-06', 'preço fora da vigência');
-      await c.publicar({ nome: 'cadastros.preco.alterado@1', agregado_id: ADM, versao: 1, payload: { preco_centavos: e.corpo.preco_centavos } });
+      const v1 = await c.publicar({ nome: 'cadastros.preco.alterado@1', agregado_id: ADM, versao: 1, payload: { preco_centavos: e.corpo.preco_centavos } });
+      const v2 = await c.publicar({ nome: 'cadastros.preco.alterado@1', agregado_id: ADM, versao: 7, payload: { preco_centavos: e.corpo.preco_centavos } });
       await c.auditar({ acao: 'cadastros.preco.editar', entidade: 'preco', entidade_id: ADM, depois: e.corpo });
       await c.enfileirar({ tipo: 'cadastros.recalcular_precos', payload: {}, external_id: 'p1' });
-      return { status: 201, corpo: { tenant: tenantDaTx(c.tx) } };
+      return { status: 201, corpo: { tenant: tenantDaTx(c.tx), versoes: [v1.versao, v2.versao] } };
     },
   }),
 ]);
@@ -263,9 +264,9 @@ describe('rotas de módulo: ordem de checagem (RN-CORE-02)', () => {
     expect(regra.json()).toEqual({ codigo: 'RN-CAD-06', mensagem: 'preço fora da vigência' });
     const ok = await app.inject({ method: 'POST', url: '/v1/cadastros/precos', payload: { preco_centavos: 990 }, headers: { authorization: `Bearer ${adm}`, 'x-request-id': 'req-teste-0001' } });
     expect(ok.statusCode).toBe(201);
-    expect(ok.json()).toEqual({ tenant: TENANT });
+    expect(ok.json()).toEqual({ tenant: TENANT, versoes: [1, 2] });
     expect(ok.headers['x-request-id']).toBe('req-teste-0001');
-    expect(outbox.eventos).toHaveLength(1);
+    expect(outbox.eventos).toHaveLength(2);
     expect(outbox.eventos[0]).toMatchObject({ nome: 'cadastros.preco.alterado@1', tenant_id: TENANT, ator: ADM, request_id: 'req-teste-0001', ocorrido_em: '2026-11-21T15:00:00.000Z' });
     expect(auditoria.registros[0]).toMatchObject({ tenant_id: TENANT, usuario_id: ADM, request_id: 'req-teste-0001', acao: 'cadastros.preco.editar' });
     expect(trabalhos.pedidos).toEqual([expect.objectContaining({ tipo: 'cadastros.recalcular_precos', tenant_id: TENANT, external_id: 'p1' })]);

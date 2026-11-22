@@ -230,7 +230,7 @@ describe('carteira do vendedor (D7)', () => {
     const { t, uA, cA } = await cenario();
     const r = await t.chamar('GET', '/clientes', { sessao: sessaoDe('vendedor', uA) });
     expect(r.corpo.itens.map((c: { id: string }) => c.id)).toEqual([cA]);
-    expect(r.corpo.total).toBe(1);
+    expect(r.corpo.proximo_cursor).toBeNull();
   });
   it('RF-CAD-07: o vendedor não abre cliente de outra carteira nem os endereços e contatos dele (404)', async () => {
     const { t, uA, cA, cB, semDono } = await cenario();
@@ -253,8 +253,20 @@ describe('carteira do vendedor (D7)', () => {
   });
   it('RF-CAD-07: gerente e administrador veem a carteira inteira', async () => {
     const { t } = await cenario();
-    expect((await t.chamar('GET', '/clientes', { sessao: gerente })).corpo.total).toBe(3);
-    expect((await t.chamar('GET', '/clientes', { sessao: adm })).corpo.total).toBe(3);
+    expect((await t.chamar('GET', '/clientes', { sessao: gerente })).corpo.itens).toHaveLength(3);
+    expect((await t.chamar('GET', '/clientes', { sessao: adm })).corpo.itens).toHaveLength(3);
+  });
+  it('listas: paginação por cursor (limite, proximo_cursor e id > cursor), sem pagina, por_pagina nem total', async () => {
+    const { t, cA, cB, semDono } = await cenario();
+    const todos = [cA, cB, semDono].sort();
+    const p1 = await t.chamar('GET', '/clientes', { sessao: adm, consulta: { limite: '2' } });
+    expect(p1.corpo.itens.map((c: { id: string }) => c.id)).toEqual(todos.slice(0, 2));
+    expect(p1.corpo.proximo_cursor).toBe(todos[1]);
+    expect(p1.corpo).not.toHaveProperty('total');
+    const p2 = await t.chamar('GET', '/clientes', { sessao: adm, consulta: { limite: '2', cursor: p1.corpo.proximo_cursor } });
+    expect(p2.corpo).toMatchObject({ itens: [{ id: todos[2] }], proximo_cursor: null });
+    expect((await t.chamar('GET', '/clientes', { sessao: adm, consulta: { limite: '201' } })).status).toBe(400);
+    expect((await t.chamar('GET', '/clientes', { sessao: adm, consulta: { cursor: 'abc' } })).status).toBe(400);
   });
   it('D7: transferir carteira move os clientes, publica carteira e cliente, e audita', async () => {
     const { t, vA, vB, cA } = await cenario();
@@ -356,7 +368,13 @@ describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
     expect((await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens } })).corpo.alterados).toBe(0);
     expect(t.eventos).toHaveLength(0);
     const lista = await t.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: sessaoDe('leitura') });
-    expect(lista.corpo.total).toBe(2);
+    expect(lista.corpo).toMatchObject({ itens: [{ preco_centavos: expect.any(Number), id: expect.any(String) }, {}], proximo_cursor: null });
+    const p1 = await t.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: sessaoDe('leitura'), consulta: { limite: '1' } });
+    expect(p1.corpo.itens).toHaveLength(1);
+    const p2 = await t.chamar('GET', `/tabelas-preco/${tab}/itens`, { sessao: sessaoDe('leitura'), consulta: { limite: '1', cursor: p1.corpo.proximo_cursor } });
+    expect(p2.corpo.itens).toHaveLength(1);
+    expect(p2.corpo.itens[0].id).not.toBe(p1.corpo.itens[0].id);
+    expect(p2.corpo.proximo_cursor).toBeNull();
   });
   it('PUT em lote aceita 5.000 itens e recusa 5.001 (400)', async () => {
     const { t, f1, tab } = await cenario();
@@ -453,6 +471,6 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     expect(r.status).toBe(201);
     expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { prazos_dias: [30, 60], inativo: false } });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'X', prazos_dias: [] } })).status).toBe(400);
-    expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.total).toBe(1);
+    expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.itens).toHaveLength(1);
   });
 });

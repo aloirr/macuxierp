@@ -8,8 +8,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import {
-  ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
-  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque,
+  ClienteAtualizacao, ClienteDados, type Cliente, type PrecoItem, type Produto, type TabelaPreco, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
+  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta,
   OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
   type NomeEventoCadastros,
@@ -23,14 +23,14 @@ import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto,
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios } from './portas';
-import { dataIso, erroDeViolacoes, exigir, idDe, naoEncontrado } from './util';
+import { dataIso, erroDeViolacoes, exigir, idDe } from './util';
 
 type Dict = Record<string, unknown>;
 type Entidade = { id: string; inativo: boolean };
 
 async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: string, payload: unknown): Promise<void> {
   const dados = EVENTOS[nome].parse(payload) as Dict;
-  await c.publicar({ nome, agregado_id: agregadoId, versao: 1, payload: dados });
+  await c.publicar({ nome, agregado_id: agregadoId, payload: dados });
 }
 
 const publicarPronto = (c: ContextoRota, e: EventoPronto) => publicar(c, e.nome, e.agregado_id, e.payload);
@@ -81,7 +81,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
   };
   const carregar = async (c: ContextoRota, r: Repositorios, id: string): Promise<E> => {
     const e = await cfg.repo(r).obter(id);
-    if (!e || (cfg.visivel && !(await cfg.visivel(r, c.sessao, e)))) throw naoEncontrado();
+    if (!e || (cfg.visivel && !(await cfg.visivel(r, c.sessao, e)))) throw erros.naoEncontrado('Registro');
     return e;
   };
 
@@ -92,7 +92,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const r = R(c);
         const escopo = cfg.escopo ? await cfg.escopo(r, c.sessao) : {};
         const p = await cfg.repo(r).listar({ ...e.consulta, ...escopo });
-        return { corpo: { itens: p.itens.map((i) => ocultar(c, i)), total: p.total, pagina: e.consulta.pagina, por_pagina: e.consulta.por_pagina } };
+        return { corpo: { itens: p.itens.map((i) => ocultar(c, i)), proximo_cursor: p.proximo_cursor } };
       },
     }),
     definirRota({
@@ -129,7 +129,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const padrao = cfg.padrao?.(r);
         if (padrao && parcial.padrao === true) await padrao.desmarcarPadrao(antes.id);
         const depois = await cfg.repo(r).atualizar(antes.id, e.corpo);
-        if (!depois) throw naoEncontrado();
+        if (!depois) throw erros.naoEncontrado('Registro');
         await cfg.emitir(c, r, depois, antes);
         await aud(c, 'alterar', depois.id, antes, depois);
         return { corpo: ocultar(c, depois) };
@@ -142,7 +142,7 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const antes = await carregar(c, r, idDe(e));
         if (cfg.inativavel) exigir(bloqueiosDeInativacao(cfg.inativavel, { padrao: (antes as unknown as Dict).padrao === true }));
         const depois = await cfg.repo(r).inativar(antes.id); // RN-CAD-08: inativa, nunca apaga
-        if (!depois) throw naoEncontrado();
+        if (!depois) throw erros.naoEncontrado('Registro');
         await cfg.emitir(c, r, depois, antes);
         await aud(c, 'inativar', depois.id, antes, depois);
         return { corpo: ocultar(c, depois) };
@@ -170,7 +170,7 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
   const R = (c: ContextoRota) => deps.repositorios(c.tx);
   const pai = async (c: ContextoRota, r: Repositorios, id: string) => {
     const p = await cfg.pai(r).obter(id);
-    if (!p || (cfg.visivel && !(await cfg.visivel(r, c.sessao, p)))) throw naoEncontrado();
+    if (!p || (cfg.visivel && !(await cfg.visivel(r, c.sessao, p)))) throw erros.naoEncontrado('Registro');
     return p;
   };
   const depois = async (c: ContextoRota, r: Repositorios, p: P) => {
@@ -203,10 +203,10 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
         const r = R(c);
         const p = await pai(c, r, idDe(e));
         const atual = await cfg.filho(r).obter(p.id, idDe(e, 'filho_id'));
-        if (!atual) throw naoEncontrado();
+        if (!atual) throw erros.naoEncontrado('Registro');
         if (cfg.validar) exigir(await cfg.validar(r, { ...(atual as unknown as Dict), ...(e.corpo as Dict) }, c));
         const novo = await cfg.filho(r).atualizar(p.id, atual.id, e.corpo);
-        if (!novo) throw naoEncontrado();
+        if (!novo) throw erros.naoEncontrado('Registro');
         await depois(c, r, p);
         return { corpo: novo };
       },
@@ -217,7 +217,7 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
         const r = R(c);
         const p = await pai(c, r, idDe(e));
         const inativado = await cfg.filho(r).inativar(p.id, idDe(e, 'filho_id'));
-        if (!inativado) throw naoEncontrado();
+        if (!inativado) throw erros.naoEncontrado('Registro');
         await depois(c, r, p);
         return { corpo: inativado };
       },
@@ -329,11 +329,12 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     async emitir(c, r, t, antes) {
       await publicarPronto(c, eventoTabelaPreco(t)); // C-2: criação e alteração
       if (!antes || (antes.vigencia_inicio === t.vigencia_inicio && antes.vigencia_fim === t.vigencia_fim && antes.inativo === t.inativo)) return;
-      for (let pagina = 1; ; pagina++) {
-        const { itens } = await r.tabelasPreco.itens(t.id, { pagina, por_pagina: 1000 });
-        for (const i of itens) await publicarPronto(c, eventoPreco(i, t));
-        if (itens.length < 1000) break;
-      }
+      let cursor: string | undefined;
+      do {
+        const pagina = await r.tabelasPreco.itens(t.id, { limite: 1000, cursor });
+        for (const i of pagina.itens) await publicarPronto(c, eventoPreco(i, t));
+        cursor = pagina.proximo_cursor ?? undefined;
+      } while (cursor);
     },
     async validar(_r, t) {
       const vig = validarVigenciaTabela(t.vigencia_inicio as string, t.vigencia_fim as string | null);
@@ -342,13 +343,12 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
   rotas.push(
     definirRota({
-      metodo: 'GET', caminho: '/tabelas-preco/:id/itens', acao: 'cadastros.ver', consulta: ListaConsulta.pick({ pagina: true, por_pagina: true, filial_id: true }).extend({ produto_id: z.string().uuid().optional() }),
+      metodo: 'GET', caminho: '/tabelas-preco/:id/itens', acao: 'cadastros.ver', consulta: PrecoItemConsulta,
       async executar(c, e) {
         const r = R(c);
         const t = await r.tabelasPreco.obter(idDe(e));
-        if (!t) throw naoEncontrado('Tabela de preço');
-        const p = await r.tabelasPreco.itens(t.id, e.consulta);
-        return { corpo: { ...p, pagina: e.consulta.pagina, por_pagina: e.consulta.por_pagina } };
+        if (!t) throw erros.naoEncontrado('Tabela de preço');
+        return { corpo: await r.tabelasPreco.itens(t.id, e.consulta) };
       },
     }),
     definirRota({
@@ -356,7 +356,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       async executar(c, e) {
         const r = R(c);
         const t = await r.tabelasPreco.obter(idDe(e));
-        if (!t || t.inativo) throw naoEncontrado('Tabela de preço');
+        if (!t || t.inativo) throw erros.naoEncontrado('Tabela de preço');
         exigir(validarLotePreco(e.corpo.itens));
         const filiais = new Set<string>();
         const produtos = new Set<string>();
@@ -377,7 +377,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
         const r = R(c);
         const q = e.consulta;
         const t = await r.tabelasPreco.obter(q.tabela_preco_id);
-        if (!t) throw naoEncontrado('Tabela de preço');
+        if (!t) throw erros.naoEncontrado('Tabela de preço');
         const padrao = (await r.filiais.padrao())?.id ?? q.filial_id;
         const itens = await r.tabelasPreco.itensDoProduto(t.id, q.produto_id, [...new Set([q.filial_id, padrao])]);
         const res = precoVigente({
@@ -508,7 +508,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       async executar(c, e) {
         const id = idDe(e);
         const g = await R(c).consultaExterna.porExternalId('ie', id);
-        if (!g) throw naoEncontrado('Consulta');
+        if (!g) throw erros.naoEncontrado('Consulta');
         const estado = (g.resposta.estado as string | undefined) ?? 'concluida';
         return { corpo: { id, estado, resultado: estado === 'concluida' ? { ...(g.resposta.resultado as Dict | undefined), consultado_em: g.consultado_em.toISOString() } : null } };
       },
@@ -520,9 +520,8 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     metodo: 'GET', caminho: '/oficiais/:tabela', acao: 'cadastros.ver', consulta: OficialConsulta,
     async executar(c, e) {
       const tabela = TABELAS_OFICIAIS.find((t) => t === e.params.tabela);
-      if (!tabela) throw naoEncontrado('Tabela oficial');
-      const p = await R(c).oficiais.listar(tabela, e.consulta);
-      return { corpo: { ...p, pagina: e.consulta.pagina, por_pagina: e.consulta.por_pagina } };
+      if (!tabela) throw erros.naoEncontrado('Tabela oficial');
+      return { corpo: await R(c).oficiais.listar(tabela, e.consulta) };
     },
   }));
 

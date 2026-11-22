@@ -2,17 +2,12 @@
  * Portas do plugin cadastros: o que as rotas precisam do banco, das fontes externas e do core. O adaptador SQL
  * (`sql.ts`) roda na transação do tenant (RLS); o adaptador em memória (`memoria.ts`) serve aos testes de rota.
  */
-import type { Transacao } from '@macuxierp/platform-sdk';
+import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type {
   Cliente, ClienteDados, Contato, ContatoItem, CondicaoPagamento, CondicaoPagamentoDados, EnderecoCliente,
-  EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, Produto,
+  EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
   ProdutoDados, SaldoEstoque, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
 } from '../contracts';
-
-export interface Pagina<T> {
-  itens: T[];
-  total: number;
-}
 
 export type FiltroLista = ListaConsulta & {
   /** Escopo da carteira do vendedor (D7): só clientes destes vendedores. */
@@ -63,7 +58,7 @@ export interface RepoProdutos extends RepoSimples<Produto, ProdutoDados> {
 
 export interface RepoTabelasPreco extends RepoSimples<TabelaPreco, TabelaPrecoDados> {
   desmarcarPadrao(exceto: string | null): Promise<void>;
-  itens(tabelaId: string, q: { filial_id?: string; produto_id?: string; pagina: number; por_pagina: number }): Promise<Pagina<PrecoItem>>;
+  itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItemLista>>;
   /** Itens da tabela de um produto nas filiais pedidas (preço vigente, RN-CAD-06). */
   itensDoProduto(tabelaId: string, produtoId: string, filialIds: readonly string[]): Promise<PrecoItem[]>;
   /** Insere ou atualiza o lote (único por tabela, filial e produto). Devolve só o que mudou. */

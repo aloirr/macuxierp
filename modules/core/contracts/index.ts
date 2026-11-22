@@ -18,8 +18,6 @@ const Instante = z.string().datetime();
 export const Perfil = z.enum(PERFIS);
 export type Perfil = z.infer<typeof Perfil>;
 
-/** RN-CORE-08: id do recado em que o Alexandre aprovou a produção fiscal (`R-AAAAMMDD-HHMMSS[-n]-alexandre`). */
-export const PADRAO_RECADO_APROVACAO = /^R-\d{8}-\d{6}(-\d+)?-alexandre$/;
 /** ADR 0005: tamanho máximo do `.pfx` enviado. */
 export const PFX_TAMANHO_MAXIMO = 50 * 1024;
 /** RF-CORE-04: o aviso de vencimento do A1 começa a 30 dias ou menos. */
@@ -147,9 +145,9 @@ export const AmbienteFiscal = z.object({
 export type AmbienteFiscal = z.infer<typeof AmbienteFiscal>;
 
 export const AmbienteConsulta = z.object({ filial_id: Id.optional() });
+/** RN-CORE-08 (ADR 0006): o enum mantém `producao` para o pedido receber 422 com a regra citada, não um 400 mudo. */
 export const AmbienteTrocar = z.object({
   ambiente: z.enum(['homologacao', 'producao']),
-  recado_aprovacao: z.string().trim().max(80).nullable().default(null),
 });
 export type AmbienteTrocar = z.infer<typeof AmbienteTrocar>;
 export const ListaAmbientes = z.object({ itens: z.array(AmbienteFiscal) });

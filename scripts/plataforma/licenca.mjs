@@ -11,44 +11,29 @@
  * Conexão: MACUXIERP_DATABASE_URL_OPERADOR (no .env do servidor; nunca em recado nem no repositório).
  * `--ate` vale até o fim do dia no horário de Manaus (UTC−4): grava `valido_ate` = dia seguinte 04:00 UTC.
  *
- * Depende do schema `plataforma` da T-0003: `tenant_modulo` (único por tenant e módulo), `auditoria` e a função
- * `plataforma.tenant_por_slug(text)` (a mesma do login).
+ * Depende do schema `plataforma` da T-0003: `tenant`, `tenant_modulo` (único por tenant e módulo) e `auditoria`.
  */
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { abrirTenant, conectarOperador, ErroUso, lerOpcoes, PADRAO_OPERADOR, PADRAO_SLUG } from './comum.mjs';
 
 // Cópia de `MODULOS` (packages/platform-sdk/src/modulo.ts) e `MODULOS_BASE` (acesso.ts): o Node do servidor não
 // importa o TS do SDK. O licenca.test.mjs falha se as listas divergirem.
 export const MODULOS = ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv'];
 export const MODULOS_BASE = ['core'];
 const COMANDOS = ['listar', 'ativar', 'desativar'];
-
-export class ErroUso extends Error {
-  name = 'ErroUso';
-}
+const OPCOES = ['--empresa', '--modulo', '--ate', '--operador', '--motivo'];
 
 /** Lê e valida os argumentos. Lança ErroUso com a explicação. */
 export function lerArgumentos(argv) {
   const [comando, ...resto] = argv;
   if (!COMANDOS.includes(comando)) throw new ErroUso(`comando deve ser ${COMANDOS.join(', ')}`);
-  const op = { comando, confirmar: false };
-  for (let i = 0; i < resto.length; i++) {
-    const chave = resto[i];
-    if (chave === '--confirmar') {
-      op.confirmar = true;
-      continue;
-    }
-    const valor = resto[i + 1];
-    if (!['--empresa', '--modulo', '--ate', '--operador', '--motivo'].includes(chave)) throw new ErroUso(`opção desconhecida: ${chave}`);
-    if (valor === undefined || valor.startsWith('--')) throw new ErroUso(`${chave} exige um valor`);
-    op[chave.slice(2)] = valor;
-    i++;
-  }
-  if (!op.empresa || !/^[a-z0-9][a-z0-9-]{1,59}$/.test(op.empresa)) throw new ErroUso('--empresa exige o slug da empresa');
+  const op = { comando, ...lerOpcoes(resto, OPCOES) };
+  if (!op.empresa || !PADRAO_SLUG.test(op.empresa)) throw new ErroUso('--empresa exige o slug da empresa');
   if (comando === 'listar') return op;
   if (!MODULOS.includes(op.modulo)) throw new ErroUso(`--modulo deve ser ${MODULOS.join(', ')}`);
   if (MODULOS_BASE.includes(op.modulo)) throw new ErroUso(`o ${op.modulo} é a base do tenant e é sempre licenciado`);
-  if (!op.operador || !/^[a-z][a-z0-9._-]{1,39}$/.test(op.operador)) throw new ErroUso('--operador exige o nome de quem executa (ex.: alexandre)');
+  if (!op.operador || !PADRAO_OPERADOR.test(op.operador)) throw new ErroUso('--operador exige o nome de quem executa (ex.: alexandre)');
   if (!op.motivo || op.motivo.trim().length < 5) throw new ErroUso('--motivo exige o motivo (mínimo 5 caracteres), que vai para a auditoria');
   if (op.ate !== undefined) {
     if (comando !== 'ativar') throw new ErroUso('--ate só vale para ativar');
@@ -83,10 +68,7 @@ export function planejar(atual, op) {
 export async function executar(cliente, op, agora) {
   await cliente.query('begin');
   try {
-    const t = await cliente.query('select id, nome from plataforma.tenant_por_slug($1)', [op.empresa]);
-    const tenant = t.rows[0];
-    if (!tenant) throw new ErroUso(`empresa não encontrada: ${op.empresa}`);
-    await cliente.query("select set_config('app.tenant_id', $1, true)", [tenant.id]);
+    const tenant = await abrirTenant(cliente, op.empresa);
     if (op.comando === 'listar') {
       const r = await cliente.query('select modulo, ativo, valido_ate from plataforma.tenant_modulo where tenant_id = $1 and deleted_at is null order by modulo', [tenant.id]);
       await cliente.query('rollback');
@@ -125,14 +107,13 @@ async function main(argv) {
     console.error(`licenca: ${e.message}\n(veja o cabeçalho de scripts/plataforma/licenca.mjs)`);
     return 2;
   }
-  const url = process.env.MACUXIERP_DATABASE_URL_OPERADOR;
-  if (!url) {
-    console.error('licenca: defina MACUXIERP_DATABASE_URL_OPERADOR (no .env do servidor)');
-    return 2;
+  let cliente;
+  try {
+    cliente = await conectarOperador();
+  } catch (e) {
+    console.error(`licenca: ${e instanceof ErroUso ? e.message : `falhou ao conectar (${[e.name, e.code].filter(Boolean).join(' ')})`}`);
+    return e instanceof ErroUso ? 2 : 1;
   }
-  const { default: pg } = await import('pg');
-  const cliente = new pg.Client({ connectionString: url });
-  await cliente.connect();
   try {
     const r = await executar(cliente, op, new Date());
     if (op.comando === 'listar') {

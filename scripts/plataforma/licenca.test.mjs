@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { ErroUso, executar, fimDoDiaManaus, lerArgumentos, MODULOS, MODULOS_BASE, planejar } from './licenca.mjs';
+import { ErroUso } from './comum.mjs';
+import { executar, fimDoDiaManaus, lerArgumentos, MODULOS, MODULOS_BASE, planejar } from './licenca.mjs';
 
-const TENANT = { id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', nome: 'Thathyany' };
+const TENANT = { id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', slug: 'thathyany', nome: 'Thathyany' };
 const INSTANTE = new Date('2026-11-21T15:00:00Z');
 const base = ['--empresa', 'thathyany', '--modulo', 'pedido', '--operador', 'alexandre', '--motivo', 'contrato assinado'];
 
@@ -15,7 +16,7 @@ function clienteFalso(licencaAtual) {
     sqls,
     async query(sql, params = []) {
       sqls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
-      if (sql.includes('tenant_por_slug')) return { rows: params[0] === 'thathyany' ? [TENANT] : [] };
+      if (sql.includes('from plataforma.tenant ')) return { rows: params[0] === TENANT.slug ? [TENANT] : [] };
       if (sql.includes('for update')) return { rows: licencaAtual ? [licencaAtual] : [] };
       if (sql.includes('insert into plataforma.tenant_modulo')) return { rows: [{ id: params[0] }] };
       if (sql.includes('order by modulo')) return { rows: [{ modulo: 'cadastros', ativo: true, valido_ate: null }] };
@@ -57,7 +58,7 @@ describe('licenca.mjs: plano e execução', () => {
     const r = await executar(c, lerArgumentos(['ativar', ...base, '--confirmar']), INSTANTE);
     assert.equal(r.aplicado, true);
     const seq = c.sqls.map((s) => s.sql.split(' ').slice(0, 3).join(' '));
-    assert.deepEqual(seq, ['begin', 'select id, nome', "select set_config('app.tenant_id', $1,", 'select id, ativo,', 'insert into plataforma.tenant_modulo', 'insert into plataforma.auditoria', 'commit']);
+    assert.deepEqual(seq, ['begin', 'select id, slug,', "select set_config('app.tenant_id', $1,", 'select id, ativo,', 'insert into plataforma.tenant_modulo', 'insert into plataforma.auditoria', 'commit']);
     assert.deepEqual(c.sqls[2].params, [TENANT.id]);
     const auditoria = c.sqls[5];
     assert.equal(auditoria.params[1], TENANT.id);

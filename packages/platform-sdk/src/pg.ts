@@ -130,14 +130,26 @@ export function envelopeDaLinha(l: LinhaEvento): EnvelopeEvento {
   };
 }
 
+/**
+ * Versão por agregado (T-0034): o advisory lock da transação serializa quem grava no mesmo `(tenant_id, agregado_id)`;
+ * depois vem `max(versao) + 1` e o INSERT, em comandos separados (o snapshot de cada comando já enxerga o que outra
+ * transação confirmou antes de soltar o lock). Rollback solta o lock sem consumir a versão.
+ */
 export class OutboxPg implements Outbox {
-  async gravar(tx: Transacao, e: EnvelopeEvento): Promise<void> {
+  async gravar(tx: Transacao, e: EnvelopeEvento): Promise<number> {
+    await tx.consultar(`SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))`, [e.tenant_id, e.agregado_id]);
+    const [proxima] = await tx.consultar<{ versao: string | number }>(
+      'SELECT coalesce(max(versao), 0) + 1 AS versao FROM plataforma.evento WHERE tenant_id = $1 AND agregado_id = $2',
+      [e.tenant_id, e.agregado_id],
+    );
+    const versao = Number(proxima!.versao);
     const corpo: LinhaEvento['payload'] = { ator: e.ator, request_id: e.request_id, payload: e.payload };
     await tx.consultar(
       `INSERT INTO plataforma.evento (id, tenant_id, nome, agregado_id, versao, ocorrido_em, proximo_em, payload)
        VALUES ($1, $2, $3, $4, $5, $6, $6, $7)`,
-      [e.id, e.tenant_id, e.nome, e.agregado_id, e.versao, e.ocorrido_em, corpo],
+      [e.id, e.tenant_id, e.nome, e.agregado_id, versao, e.ocorrido_em, corpo],
     );
+    return versao;
   }
 }
 
