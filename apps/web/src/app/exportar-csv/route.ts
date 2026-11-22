@@ -5,6 +5,7 @@ import { MANIFESTOS } from '@/lib/manifestos';
 import { montarMenu, resolverPagina } from '@/lib/menu';
 import { NaoAutenticado, baixarCsv } from '@/lib/api';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
+import { redirecionar } from '@/lib/redirecionar';
 import { telaDaRota } from '@/lib/telas';
 
 /**
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
   const tela = resolvida?.pagina ? telaDaRota(resolvida.pagina.rota) : undefined;
   if (!resolvida?.pagina || tela?.tipo !== 'lista' || !tela.pagina.csv) return new NextResponse('Não encontrado.', { status: 404 });
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
-  const renovar = () => NextResponse.redirect(new URL('/sessao/renovar', req.url));
+  const renovar = () => redirecionar('/sessao/renovar');
   if (!acesso) return renovar();
   const { cursor: _c, limite: _l, ...filtros } = filtrosDaUrl(tela.pagina, req.nextUrl.searchParams);
   let r;
