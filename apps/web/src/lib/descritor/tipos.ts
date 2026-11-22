@@ -22,12 +22,40 @@ export interface FiltroTela {
 
 export type Linha = Readonly<Record<string, unknown>>;
 
+/** Selo de célula ou de título (tom do módulo já mapeado para as classes do shell); `dica` vira o tooltip. */
+export interface SeloVista { texto: string; tom: 'ok' | 'aviso' | 'erro' | 'neutro'; dica?: string }
+/** Escrita que a tela pode fazer: método e caminho (com `:id` onde o UUID do registro entra). O servidor só aceita as declaradas. */
+export type Escrita = { metodo: AcaoVista['metodo']; caminho: string };
+
+/** O que toda tela com ações declara: a validação do diálogo (e o corpo), as escritas permitidas e o gerador da Idempotency-Key. */
+export interface ExecutorDeAcoes {
+  /** Validação do diálogo da ação e corpo do envio, pela regra do módulo (a API revalida). */
+  validarAcao: (acao: AcaoVista, entrada: EntradaAcao) => ResultadoAcao;
+  /** Escritas que esta tela pode fazer; `:id` (e `:baixa_id`) é o UUID do registro. O servidor só aceita estas. */
+  escritas: readonly Escrita[];
+  /** Gera a Idempotency-Key. */
+  novaChave: () => string;
+}
+
+/** Ação da barra da lista (não é de uma linha): ex.: "Inutilizar números" na lista de notas. */
+export interface AcaoDaBarra extends ExecutorDeAcoes {
+  acao: (perfil: Perfil) => AcaoVista | null;
+}
+
+/** Ação por linha (ex.: "Emitir nota" no pedido a faturar), já filtrada por perfil e status pelo módulo. */
+export interface AcaoDaLinha extends ExecutorDeAcoes {
+  acao: (linha: Linha, perfil: Perfil) => AcaoVista | null;
+}
+
+/** Arquivo para baixar pelo proxy do shell (XML e DANFE): `href` é caminho da API; `desabilitado` traz o motivo. */
+export type DownloadVista = { rotulo: string; href: string; desabilitado?: string; principal?: boolean };
+
 export interface TelaLista {
   tipo: 'lista';
   pagina: PaginaLista;
   filtrosTela: readonly FiltroTela[];
   /** Colunas da tabela para o perfil (id e título). */
-  colunas: (perfil: Perfil) => readonly { id: string; rotulo: string }[];
+  colunas: (perfil: Perfil) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }[];
   /** Linha pronta para exibir (texto por id de coluna), no fuso do tenant. */
   linha: (item: Linha, fuso: string) => Readonly<Record<string, string>>;
   /** Botão "Novo", quando houver; some se o perfil não puder `criar`. */
@@ -38,10 +66,19 @@ export interface TelaLista {
   rotuloDaLinha?: (linha: Linha) => string;
   /** Rótulo do campo `busca` (a página aceita `busca`). */
   rotuloBusca?: string;
+  /** Texto da tabela sem linhas (o problema e a ação); sem ele, a mensagem padrão da lista. */
+  textoVazio?: string;
+  /** Selos por coluna (ex.: ambiente de homologação); a coluna sem selo mostra o texto de `linha`. */
+  selos?: (item: Linha, fuso: string) => Readonly<Record<string, readonly SeloVista[]>>;
+  /** Ação na barra da lista, ao lado do "Exportar CSV". */
+  acaoDaBarra?: AcaoDaBarra;
+  /** Ação por linha. */
+  acaoDaLinha?: AcaoDaLinha;
 }
 
-export interface CampoVista { rotulo: string; valor: string }
-export interface ColunaVista { id: string; rotulo: string; numerica?: boolean }
+/** `linhaInteira`: o campo ocupa a linha toda da grade (valores longos, como a chave de acesso); `numerico`: números tabulares. */
+export interface CampoVista { rotulo: string; valor: string; linhaInteira?: boolean; numerico?: boolean }
+export interface ColunaVista { id: string; rotulo: string; numerica?: boolean; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status'; /** Largura mínima da coluna (ex.: '3rem'). */ largura?: string }
 export interface TabelaVista { titulo: string; colunas: readonly ColunaVista[]; linhas: readonly Readonly<Record<string, string>>[] }
 /** Pendência para a faixa da ui: `codigoRn` e texto vêm do módulo. */
 export interface PendenciaVista { texto: string; bloqueante: boolean; codigoRn: string }
@@ -54,57 +91,98 @@ export interface AcaoVista {
   metodo: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** Caminho na API, `/v1/<modulo>/...`; tem de casar com um de `TelaDetalhe.escritas`. */
   caminho: string;
-  /** `justificativa`: texto livre (aprovar com pendência não bloqueante); `motivo`: diálogo com catálogo; `nenhum`: confirma direto. */
-  entrada: 'nenhum' | 'justificativa' | 'motivo';
+  /**
+   * `justificativa`: texto livre (aprovar com pendência não bloqueante); `motivo`: diálogo com catálogo; `nenhum`: envia direto;
+   * `confirmar`: diálogo só de confirmação (título e aviso do módulo); `baixa`: valor em reais e data (baixa de título);
+   * `faixa`: filial, número inicial, número final e justificativa (inutilizar números).
+   */
+  entrada: 'nenhum' | 'justificativa' | 'motivo' | 'confirmar' | 'baixa' | 'faixa';
+  /** Botão que fecha o diálogo sem agir (ex.: "Manter a nota"); sem ele, "Cancelar". */
+  rotuloFechar?: string;
+  /** Ação que não se desfaz. Na v1 não muda a cor (o vermelho fica para a próxima versão): o botão de confirmar usa o estilo principal e o texto explícito da ação. */
+  destrutivo?: boolean;
+  /** Em `faixa`: filiais para escolher (preenchidas pela lista a partir do cadastro). */
+  filiais?: readonly { valor: string; rotulo: string }[];
+  /** Título do diálogo, quando difere do rótulo do botão (ex.: "Cancelar a nota 12/1?"). */
+  tituloDialogo?: string;
+  /** Rótulo do campo de texto, quando difere de "Justificativa" (ex.: "Texto da correção"). */
+  rotuloTexto?: string;
+  /** Rótulo do botão de confirmar do diálogo (ex.: "Cancelar a nota"). */
+  rotuloConfirmar?: string;
+  /** Texto do botão enquanto a API responde (ex.: "Emitindo…"). */
+  textoCarregando?: string;
+  /** Em `baixa`: saldo em texto (R$), valor inicial e a data de hoje no fuso do tenant (AAAA-MM-DD). */
+  baixa?: { saldo: string; valorInicial: string; hoje: string };
   /** Em `justificativa`: o texto é obrigatório? (dado do módulo) */
   justificativaObrigatoria?: boolean;
   /** Em `motivo`: catálogo (`GET /motivos`) já resolvido. */
   motivos?: readonly { codigo: string; rotulo: string }[];
   /** Aviso fixo do módulo a mostrar no diálogo (ex.: LGPD do texto livre). */
   aviso?: string;
+  /** Linha "Ambiente: ..." das confirmações fiscais (RN-FAT-04); `alerta` em produção ou quando o ambiente é desconhecido. */
+  ambiente?: { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' };
+  /** Limites do texto (cancelar, CC-e, inutilizar): mostra o contador do módulo abaixo do campo. */
+  limitesTexto?: { min: number; max: number };
   /** Botão visível porém desabilitado, com o motivo (ex.: aprovar com pendência bloqueante). */
   desabilitada?: string;
   /** Ação principal da tela (uma só): as demais saem como botão secundário. */
   principal?: boolean;
   /** Versão do registro (If-Match). */
   versao?: string;
+  /** Dados do registro (ids, saldo) que o módulo usa para validar e montar o corpo; o shell só os repassa. */
+  dados?: Readonly<Record<string, string>>;
 }
 
 /** O que a pessoa informou no diálogo. */
-export interface EntradaAcao { motivo?: string; texto: string }
+export interface EntradaAcao {
+  motivo?: string;
+  texto: string;
+  /** Em `baixa`: valor digitado em reais e a data civil. */
+  valor?: string;
+  data?: string;
+  /** Em `faixa`: filial e números digitados. */
+  filial?: string;
+  inicial?: string;
+  final?: string;
+  /** Idempotency-Key da tentativa, para o módulo montar corpos que a levam (ex.: emitir). Na validação do diálogo pode faltar. */
+  chave?: string;
+}
 /** Resultado da validação do módulo: corpo pronto para a API ou a mensagem de erro (regra e texto do módulo). */
 export type ResultadoAcao = { ok: true; corpo?: unknown } | { ok: false; erro: string };
 
 export interface DetalheVista {
   titulo: string;
-  selo?: { texto: string; tom: 'ok' | 'aviso' | 'erro' | 'neutro' };
+  selo?: SeloVista;
   cabecalho: readonly CampoVista[];
   tabelas: readonly TabelaVista[];
   pendencias: readonly PendenciaVista[];
-  historico: readonly EventoVista[];
+  /** Ausente = a tela não mostra a seção (o módulo ainda não traz eventos). */
+  historico?: readonly EventoVista[];
+  /** Faixa fixa no topo do detalhe (ex.: nota de homologação, sem valor fiscal). */
+  faixa?: string;
+  /** Arquivos do registro (XML e DANFE), pelo proxy do shell. */
+  downloads?: readonly DownloadVista[];
   /** Quem decidiu, quando e por quê (texto já em Manaus). */
   decisao?: readonly CampoVista[];
   acoes: readonly AcaoVista[];
 }
 
-export interface TelaDetalhe {
+export interface TelaDetalhe extends ExecutorDeAcoes {
   tipo: 'detalhe';
   /** Caminho GET do registro. */
   api: (id: string) => string;
   /** Monta a vista a partir da resposta já validada (`ler`), do perfil e do fuso do tenant. `motivos` é o corpo do catálogo. */
-  montar: (dados: unknown, perfil: Perfil, fuso: string, motivos: unknown) => DetalheVista;
+  montar: (dados: unknown, perfil: Perfil, fuso: string, motivos: unknown, eventos?: unknown) => DetalheVista;
   /** Parse da resposta da API (Zod `.parse`). */
   ler: (corpo: unknown) => unknown;
   /** Catálogo de motivos (`GET`), quando houver ação com motivo. */
   motivosApi?: string;
+  /** Histórico em endpoint próprio (`GET`), quando o detalhe não o traz (nota: `/notas/:id/eventos`). Acessório: se falhar, o detalhe abre sem a seção. */
+  eventosApi?: (id: string) => string;
+  /** Parse da resposta de `eventosApi` (Zod `.parse`). */
+  lerEventos?: (corpo: unknown) => unknown;
   /** Rota de volta para a lista. */
   voltar: string;
-  /** Validação do diálogo da ação e corpo do envio, pela regra do módulo (a API revalida). */
-  validarAcao: (acao: AcaoVista, entrada: EntradaAcao) => ResultadoAcao;
-  /** Escritas que esta tela pode fazer; `:id` é o UUID do registro. O servidor só aceita estas. */
-  escritas: readonly { metodo: AcaoVista['metodo']; caminho: string }[];
-  /** Gera a Idempotency-Key. */
-  novaChave: () => string;
 }
 
 export type TipoCampo = 'texto' | 'area' | 'data' | 'numero' | 'selecao' | 'cadastro';

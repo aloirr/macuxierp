@@ -27,19 +27,27 @@ async function opcoes(fonte: string, acesso: string): Promise<readonly Opcao[]> 
 /** Escolhe lista, detalhe ou formulário pelo descritor. Erros da API viram mensagem fixa, sem dado do registro. */
 export async function TelaGenerica({ tela, rotaDaPagina, rota, params, busca, perfil, acesso, fuso }: { tela: TelaDescrita; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   try {
-    if (tela.tipo === 'lista') return <ListaGenerica tela={tela} rota={rota} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
+    if (tela.tipo === 'lista') return <ListaGenerica tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
     if (tela.tipo === 'detalhe') {
       const id = params.id ?? '';
       if (!UUID.safeParse(id).success) notFound();
-      const [dados, motivos] = await Promise.all([
+      const [dados, motivos, eventos] = await Promise.all([
         buscarRegistro(tela.api(id), z.unknown(), acesso, 'detalhe'),
         // O catálogo é acessório: se falhar, o detalhe abre sem ele (as ações com motivo ficam desabilitadas).
         tela.motivosApi ? buscarRegistro(tela.motivosApi, z.unknown(), acesso, 'motivos').catch((e: unknown) => { if (e instanceof NaoAutenticado) throw e; return null; }) : Promise.resolve(null),
+        // O histórico em endpoint próprio também é acessório: sem ele, a tela não mostra a seção "Histórico".
+        tela.eventosApi ? buscarRegistro(tela.eventosApi(id), z.unknown(), acesso, 'eventos').catch((e: unknown) => { if (e instanceof NaoAutenticado) throw e; return null; }) : Promise.resolve(null),
       ]);
       if (dados === null) notFound();
       let vista;
       try {
-        vista = tela.montar(tela.ler(dados), perfil, fuso, motivos);
+        let historico: unknown;
+        try {
+          historico = eventos === null || !tela.lerEventos ? undefined : tela.lerEventos(eventos);
+        } catch {
+          historico = undefined; // eventos fora do contrato: o detalhe abre sem a seção
+        }
+        vista = tela.montar(tela.ler(dados), perfil, fuso, motivos, historico);
       } catch {
         throw new ApiIndisponivel('detalhe fora do contrato');
       }

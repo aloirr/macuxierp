@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { montarMenu, resolverPagina } from '@/lib/menu';
+import { paginasDoMenu } from '@/lib/paginas';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
@@ -26,12 +28,19 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   const tela = declarada ? telaDaRota(declarada.rota) : undefined;
   const busca = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) if (typeof v === 'string') busca.set(k, v);
+  // Páginas visíveis do mesmo item de menu (ex.: as telas da Empresa, no core): o menu leva à primeira; as demais abrem por estas seções.
+  const secoes = declarada ? paginasDoMenu(declarada.modulo, declarada.menu, perfil) : [];
   const monitor = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor');
   const lotes = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'lotes');
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value ?? '';
   return (
     <>
       <h1>{declarada?.titulo ?? resolvida.rotulo}</h1>
+      {secoes.length > 1 && (
+        <nav className="secoes" aria-label="Seções">
+          {secoes.map((p) => <Link key={p.rota} className="btn btn-sec" href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
+        </nav>
+      )}
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {rota === PAGINA_CARGA.rota && <TelaCarga api="/envio-carga" />}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} rotaLotes={`${lotes?.rota ?? monitor.rota}?estado=concluido_com_erros`} />}

@@ -19,6 +19,12 @@ export function chaveParaEnvio(e: EstadoChave, corpo: unknown, gerar: () => stri
   return { ...e, corpo: json };
 }
 
+/**
+ * Estado de partida de um clique em ação cujo corpo carrega a própria chave (ex.: emitir nota): depois de 4xx definitivo a chave é nova,
+ * senão o corpo nunca muda e a API devolveria a resposta guardada. O corpo e o cabeçalho usam sempre a chave devolvida aqui.
+ */
+export const estadoDoClique = (e: EstadoChave | undefined, gerar: () => string): EstadoChave => (e && !e.definitivo ? e : novoEstado(gerar));
+
 /** Registra se a resposta foi definitiva (4xx, exceto 408 e 429, que se repetem). */
 export const aposResposta = (e: EstadoChave, definitivo: boolean): EstadoChave => ({ ...e, definitivo });
 
