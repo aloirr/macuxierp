@@ -3,6 +3,7 @@
  * RN-CORE-06) gera um aviso no BKO da filial, uma vez por certificado e por dia (UTC). Idempotente: rodar de novo no
  * mesmo dia não duplica. O log leva só contagens, `tenant_id` e o nome do erro; nunca titular, CNPJ nem o certificado.
  */
+import { alertaVencimento, diasParaVencer } from '@macuxierp/core/api';
 import { DIAS_ALERTA_A1 } from '@macuxierp/core/contracts';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
@@ -10,16 +11,6 @@ import { nomeDoErro } from './backoff';
 import type { RotinaDiaria } from './rotinas';
 
 const DIA_MS = 86_400_000;
-
-/** Dias inteiros até o vencimento, arredondados para cima (vence hoje à noite = 1; venceu = 0 ou negativo). */
-export function diasParaVencer(validoAte: Date, agora: Date): number {
-  return Math.ceil((validoAte.getTime() - agora.getTime()) / DIA_MS);
-}
-
-/** RF-CORE-04: alerta a 30 dias ou menos, inclusive o já vencido. */
-export function precisaAlertaA1(validoAte: Date, agora: Date): boolean {
-  return diasParaVencer(validoAte, agora) <= DIAS_ALERTA_A1;
-}
 
 export interface CertificadoVencendo {
   id: string;
@@ -41,7 +32,10 @@ export interface FonteTenants {
   ativos(tx: Transacao): Promise<string[]>;
 }
 
-/** Certificados ativos do tenant da transação com `valido_ate <= limite` (adaptador do core, na RLS do tenant). */
+/**
+ * Certificados ativos do tenant da transação com `valido_ate < limite` (exclusivo; adaptador do core, na RLS do tenant).
+ * A fonte pode trazer a mais: a rotina confere cada um com `alertaVencimento` do core.
+ */
 export interface FonteCertificados {
   vencendoAte(tx: Transacao, limite: Date): Promise<CertificadoVencendo[]>;
 }
@@ -68,13 +62,14 @@ export function criarRotinaAlertaA1(d: DependenciasAlertaA1): RotinaDiaria {
     async executar(agora) {
       const resumo = { tenants: 0, avisos: 0, repetidos: 0, falhas: 0 };
       const dia = agora.toISOString().slice(0, 10);
-      const limite = new Date(agora.getTime() + DIAS_ALERTA_A1 * DIA_MS);
+      // Com o floor da RN-CORE-06, "30 dias ou menos" vale para tudo abaixo de 31 dias: limite exclusivo em agora + 31 d.
+      const limite = new Date(agora.getTime() + (DIAS_ALERTA_A1 + 1) * DIA_MS);
       for (const tenant of await d.banco.semTenant((tx) => d.tenants.ativos(tx))) {
         resumo.tenants++;
         try {
           await d.banco.comTenant(tenant, async (tx) => {
             for (const c of await d.certificados.vencendoAte(tx, limite)) {
-              if (!precisaAlertaA1(c.valido_ate, agora)) continue;
+              if (!alertaVencimento(c.valido_ate, agora)) continue;
               const novo = await d.avisos.registrarA1(tx, { certificado_id: c.id, filial_id: c.filial_id, valido_ate: c.valido_ate, dias: diasParaVencer(c.valido_ate, agora), dia });
               if (novo) resumo.avisos++;
               else resumo.repetidos++;

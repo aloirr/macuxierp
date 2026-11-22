@@ -9,7 +9,7 @@ import { ArmazenamentoMemoria, ErroApi, erros, type StatusErroApi, type Catalogo
 import { BancoMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { criarRotinaAlertaA1, diasParaVencer, precisaAlertaA1, type AvisoA1, type CertificadoVencendo } from './alerta-a1';
+import { criarRotinaAlertaA1, type AvisoA1, type CertificadoVencendo } from './alerta-a1';
 import { criarExecutorExportacao, type RegistroExportacoes } from './exportacao-lgpd';
 import { ReservaTrabalhosMemoria } from './memoria';
 import { RegistroExecutoresInvalido, registrarExecutores } from './modulos';
@@ -134,30 +134,30 @@ describe('exportação LGPD (RF-CORE-06, RN-CORE-07)', () => {
 });
 
 describe('alerta diário do A1 (RF-CORE-04)', () => {
-  it('dias para vencer e a regra dos 30 dias, inclusive o vencido (RN-CORE-06)', () => {
-    expect(diasParaVencer(new Date(AGORA.getTime() + 30 * DIA), AGORA)).toBe(30);
-    expect(diasParaVencer(new Date(AGORA.getTime() + 29.5 * DIA), AGORA)).toBe(30);
-    expect(precisaAlertaA1(new Date(AGORA.getTime() + 30 * DIA), AGORA)).toBe(true);
-    expect(precisaAlertaA1(new Date(AGORA.getTime() + 30 * DIA + 1), AGORA)).toBe(false);
-    expect(precisaAlertaA1(new Date(AGORA.getTime() - DIA), AGORA)).toBe(true);
-  });
-
+  // diasParaVencer e alertaVencimento (floor, RN-CORE-06) são testados no core; aqui só a rotina do worker.
   function cenarioA1() {
     const banco = new BancoMemoria();
     const certs: Record<string, CertificadoVencendo[]> = {
       [T1]: [
         { id: 'a1-vence-10', filial_id: FILIAL, valido_ate: new Date(AGORA.getTime() + 10 * DIA) },
+        { id: 'a1-vence-30,5', filial_id: FILIAL, valido_ate: new Date(AGORA.getTime() + 30.5 * DIA) },
         { id: 'a1-vence-31', filial_id: FILIAL, valido_ate: new Date(AGORA.getTime() + 31 * DIA) },
       ],
       [T2]: [{ id: 'a1-vencido', filial_id: FILIAL, valido_ate: new Date(AGORA.getTime() - DIA) }],
     };
     const avisos = new Map<string, AvisoA1 & { tenant: string | null }>();
     const logs: string[] = [];
+    const limites: Date[] = [];
     const rotina = criarRotinaAlertaA1({
       banco,
       tenants: { ativos: async (tx) => (tenantDaTx(tx) === null ? [T1, T2] : []) },
-      // a fonte filtra por limite, mas a rotina confere de novo a regra (o 31 não passa)
-      certificados: { vencendoAte: async (tx) => certs[tenantDaTx(tx)!] ?? [] },
+      // dublê com a semântica do adaptador: `valido_ate < limite` (exclusivo)
+      certificados: {
+        vencendoAte: async (tx, limite) => {
+          limites.push(limite);
+          return (certs[tenantDaTx(tx)!] ?? []).filter((c) => c.valido_ate < limite);
+        },
+      },
       avisos: {
         registrarA1: async (tx, a) => {
           const chave = `${a.certificado_id}|${a.dia}`;
@@ -168,18 +168,28 @@ describe('alerta diário do A1 (RF-CORE-04)', () => {
       },
       log: logEm(logs),
     });
-    return { banco, avisos, rotina, logs };
+    return { banco, avisos, rotina, logs, limites };
   }
 
   it('avisa por tenant, na RLS dele, uma vez por certificado e por dia', async () => {
     const c = cenarioA1();
-    expect(await c.rotina.executar(AGORA)).toEqual({ tenants: 2, avisos: 2, repetidos: 0, falhas: 0 });
+    expect(await c.rotina.executar(AGORA)).toEqual({ tenants: 2, avisos: 3, repetidos: 0, falhas: 0 });
     expect([...c.avisos.values()].map((a) => [a.tenant, a.certificado_id, a.dias, a.dia])).toEqual([
       [T1, 'a1-vence-10', 10, '2026-11-21'],
+      [T1, 'a1-vence-30,5', 30, '2026-11-21'],
       [T2, 'a1-vencido', -1, '2026-11-21'],
     ]);
     expect(c.banco.aberturas).toEqual([null, T1, T2]);
-    expect(await c.rotina.executar(AGORA)).toMatchObject({ avisos: 0, repetidos: 2 });
+    expect(await c.rotina.executar(AGORA)).toMatchObject({ avisos: 0, repetidos: 3 });
+  });
+
+  it('o limite da consulta casa com o floor da RN-CORE-06: 30,5 dias avisa, 31 dias não', async () => {
+    const c = cenarioA1();
+    await c.rotina.executar(AGORA);
+    expect(c.limites.map((l) => l.getTime())).toEqual([AGORA.getTime() + 31 * DIA, AGORA.getTime() + 31 * DIA]);
+    const ids = [...c.avisos.values()].map((a) => a.certificado_id);
+    expect(ids).toContain('a1-vence-30,5');
+    expect(ids).not.toContain('a1-vence-31');
   });
 
   it('um tenant com erro não segura os outros e o log leva só o nome do erro', async () => {
