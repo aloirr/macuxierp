@@ -79,7 +79,7 @@ describe('consulta de cadastros para o faturamento (memória)', () => {
     expect(await consulta.cliente(tx, c2)).toMatchObject({ ind_ie_dest: 2 });
     for (const e of m.repos.clientes.enderecos.linhas) if (e.pai === c2) e.inativo = true;
     expect(await consulta.cliente(tx, c2)).toBeNull();
-    const f3 = await a.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ cnpj: '44555666000181', padrao: false, emissora: false, crt: '3' }) });
+    const f3 = await a.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ cnpj: '44555666000181', padrao: false, emissora: false, crt: '3', regime_pis_cofins: 'cumulativo' }) });
     expect(f3.status).toBe(201);
     expect((await consulta.filial(tx, (f3.corpo as { id: string }).id))?.crt).toBe(3);
   });

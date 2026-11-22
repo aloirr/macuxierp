@@ -6,14 +6,16 @@
  */
 import { definirRota, ErroApi, erros, type ContextoRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import {
-  CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroRejeicoes, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
+  BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
 import type { EventoNotaResumo } from '../contracts';
 import { montarDanfe } from '../domain/danfe';
 import { lerAssinaturaDaMarca, MENSAGEM_ATIVO_AUSENTE, type ResultadoAtivosDanfe } from './ativos-marca';
 import { renderizarDanfe } from './danfe-pdf';
-import type { EventoRegistro, PortaDanfe } from './portas';
+import { podeBaixarTitulo } from '../domain';
+import type { ConfiguracaoFaturamento, EventoRegistro, PortaDanfe, RepositorioTitulos } from './portas';
+import { criarServicoTitulos } from './titulos';
 import { criarServicoEmissao, type DepsEmissao } from './emissao';
 import { criarServicoEventos, type DepsEventos } from './eventos';
 import { traduzirErroBanco } from './sql';
@@ -26,12 +28,18 @@ const SEM_VENDEDOR = (c: ContextoRota): void => {
 };
 
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
-export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
+export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
+
+/** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06). A rota usa `faturamento.ver` (licença e tenant) e confere o perfil aqui, até existir ação própria no platform-sdk. */
+const SO_QUEM_BAIXA = (c: ContextoRota): void => {
+  if (!podeBaixarTitulo(c.sessao.perfil)) throw erros.perfilSemPermissao();
+};
 
 export function criarRotas(deps: DepsRotas): RotaModulo[] {
   const servico = criarServicoEmissao(deps);
   const eventosSvc = criarServicoEventos({ eventos: deps.eventos, cadastros: deps.cadastros, ambiente: deps.ambiente, certificado: deps.certificado, agora: deps.agora });
   const notas = deps.notas;
+  const titulosSvc = criarServicoTitulos({ titulos: deps.titulos, notas: deps.notas }, deps.agora);
 
   const enfileirar = (c: ContextoRota, nota_id: string, reenvio: boolean) =>
     c.enfileirar({ tipo: TRABALHO_TRANSMITIR_NOTA, payload: { nota_id }, external_id: reenvio ? `${nota_id}:${c.request_id}` : nota_id });
@@ -186,6 +194,67 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         await c.auditar({ acao: 'faturamento.nota.consultar', entidade: 'nota', entidade_id: nota.id });
         await c.enfileirar({ tipo: TRABALHO_CONSULTAR_NOTA, payload: { nota_id: nota.id }, external_id: `${nota.id}:${c.request_id}` });
         return { status: 202, corpo: { nota_id: nota.id, enfileirada: true } };
+      },
+    }),
+    // ---- Títulos a receber (lote 5, RF-FAT-07). Baixa e estorno gravam em `titulo_baixa` (o gatilho do banco abate o saldo na mesma tx). ----
+    definirRota({
+      metodo: 'GET', caminho: '/titulos', acao: 'faturamento.ver', consulta: FiltroTitulos,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return { corpo: await deps.titulos.listar(c.tx, e.consulta) };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/titulos/:id', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const t = await deps.titulos.detalhar(c.tx, idDe(e.params));
+        if (!t) throw erros.naoEncontrado('Título');
+        return { corpo: t };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: '/titulos/:id/baixas', acao: 'faturamento.ver', corpo: BaixarTituloEntrada, idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        SO_QUEM_BAIXA(c);
+        const id = idDe(e.params);
+        const r = await titulosSvc.baixar(c.tx, id, e.corpo, c.sessao.usuario_id).catch(traduzirErroBanco);
+        await c.auditar({ acao: 'faturamento.titulo.baixar', entidade: 'titulo', entidade_id: id, depois: { baixa_id: r.baixa.id, valor_centavos: r.baixa.valor_centavos, forma: r.baixa.forma, saldo_centavos: r.titulo.saldo_centavos } });
+        return { status: 201, corpo: { baixa: r.baixa, titulo: r.titulo } };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: '/titulos/:id/baixas/:baixa_id/estornar', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        SO_QUEM_BAIXA(c);
+        const id = idDe(e.params);
+        const baixa_id = idDe(e.params, 'baixa_id');
+        const r = await titulosSvc.estornar(c.tx, id, baixa_id).catch(traduzirErroBanco);
+        await c.auditar({ acao: 'faturamento.titulo.estornar', entidade: 'titulo', entidade_id: id, depois: { baixa_id, saldo_centavos: r.titulo.saldo_centavos } });
+        return { corpo: { titulo: r.titulo } };
+      },
+    }),
+    // ---- Bandeira por filial "faturamento real com NF-e simulada" (desligada por padrão; só o administrador liga). A nota segue de homologação no XML (regra 7). ----
+    definirRota({
+      metodo: 'GET', caminho: '/filiais/:id/configuracao', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const filial_id = idDe(e.params);
+        return { corpo: { filial_id, faturamento_real_nfe_simulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id) } };
+      },
+    }),
+    definirRota({
+      metodo: 'PUT', caminho: '/filiais/:id/configuracao', acao: 'faturamento.ver', corpo: ConfigurarFilialEntrada, idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        if (c.sessao.perfil !== 'administrador') throw erros.perfilSemPermissao();
+        const filial_id = idDe(e.params);
+        if (!(await deps.cadastros.filial(c.tx, filial_id))) throw erros.naoEncontrado('Filial');
+        const antes = await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id);
+        await deps.configuracao.definir(c.tx, filial_id, e.corpo.faturamento_real_nfe_simulada, c.sessao.usuario_id);
+        await c.auditar({ acao: 'faturamento.filial.configurar', entidade: 'filial', entidade_id: filial_id, antes: { faturamento_real_nfe_simulada: antes }, depois: { faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } });
+        return { corpo: { filial_id, faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } };
       },
     }),
     definirRota({

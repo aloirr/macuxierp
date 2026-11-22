@@ -71,6 +71,18 @@ describe('montar nota a partir do pedido aprovado', () => {
     const zerado = montarNota({ ...base, situacao: situacao('aprovado', 30_000, 10_000) });
     expect(!zerado.ok && zerado.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens' });
   });
+  it('RN-FAT-01/RF-FAT-01: a 2ª nota acima do saldo é recusada pelas notas do próprio faturamento, mesmo com o pedido sem consumir a 1ª', () => {
+    const ja = new Map([[1, 30_000], [2, 4_000]]);
+    // o pedido ainda diz 0 faturado; a soma das notas manda
+    const total = montarNota({ ...base, situacao: situacao('aprovado', 0, 0), ja_faturadas: ja });
+    if (!total.ok) throw new Error('esperava ok');
+    expect(total.nota.itens.map((i) => [i.sequencia, i.quantidade])).toEqual([[2, 6_000]]);
+    const acima = montarNota({ ...base, situacao: situacao('aprovado', 0, 0), ja_faturadas: ja, itens: [{ sequencia: 1, quantidade: 1 }], calculo: [calc(1)] });
+    expect(!acima.ok && acima.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens.1.quantidade' });
+    // vale o maior: o pedido já consumiu mais que as notas
+    const maior = montarNota({ ...base, situacao: situacao('faturado_parcial', 30_000, 0), ja_faturadas: new Map([[1, 10_000]]), itens: [{ sequencia: 1, quantidade: 1 }], calculo: [calc(1)] });
+    expect(maior.ok).toBe(false);
+  });
   it('RN-PED-02: só pedido aprovado ou faturado_parcial é faturado', () => {
     for (const s of ['cancelado', 'recebido', 'em_analise', 'recusado', 'faturado'] as const) {
       const r = montarNota({ ...base, situacao: situacao(s) });
