@@ -157,6 +157,20 @@ describe('definirPaginaLista: rota da API, item Zod, filtros, colunas e CSV', ()
     expect(erro({ ...base, csv: { arquivo: 'x.txt' } })).toThrow(PaginaListaInvalida);
   });
 
+  it('R-20261122-040324 (MC-0016): texto do estado vazio com e sem filtro, opcional; sem ele, nada muda', () => {
+    const base = { id: 'x', api: '/v1/cadastros/x', item: Cliente, colunas: [], csv: false as const };
+    const vazio = { semFiltro: 'Nenhum cliente cadastrado ainda.', comFiltro: 'Nenhum cliente com estes filtros.' };
+    const p = definirPaginaLista({ ...base, vazio });
+    expect(p.vazio).toEqual(vazio);
+    expect(Object.isFrozen(p.vazio)).toBe(true);
+    const sem = definirPaginaLista(base);
+    expect(sem.vazio).toBeUndefined();
+    expect('vazio' in sem).toBe(false);
+    for (const ruim of [{ semFiltro: '', comFiltro: 'x' }, { semFiltro: 'x', comFiltro: '   ' }, { semFiltro: 'x' } as never]) {
+      expect(() => definirPaginaLista({ ...base, vazio: ruim }), JSON.stringify(ruim)).toThrow(PaginaListaInvalida);
+    }
+  });
+
   it('o descritor é congelado (dado, não estado)', () => {
     expect(Object.isFrozen(clientes)).toBe(true);
     expect(Object.isFrozen(clientes.chaves)).toBe(true);
