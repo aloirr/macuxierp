@@ -43,13 +43,20 @@ interface LoteNoSimulador {
   readonly protocolos: readonly ProtocoloNFe[];
 }
 
-/** Controles de teste (desenho §4): paralisação, recibo atrasado, falha de transporte e denegação. */
+/** Operações que o apoio de teste (`@macuxierp/sefaz-simulador/teste`) sabe rejeitar no próximo envio. */
+/** Operações em que o apoio de teste pode forçar a rejeição do próximo envio. */
+export const OPERACOES_REJEITAVEIS = ['autorizar', 'consultarRecibo', 'cancelar', 'cartaCorrecao', 'inutilizar'] as const;
+export type OperacaoRejeitavel = (typeof OPERACOES_REJEITAVEIS)[number];
+
+/** Controles de teste (desenho §4): paralisação, recibo atrasado, falha de transporte, denegação e rejeição forçada. */
 interface ControlesNoEstado {
   paralisacao: '108' | '109' | null;
   recibosAtrasados: number;
   falhas: { restantes: number; aposProcessar: boolean };
   /** CNPJ/CPF → 301 (emitente irregular) ou 302 (destinatário irregular). */
   readonly denegados: Map<string, '301' | '302'>;
+  /** Rejeição forçada do próximo envio de cada operação (só o apoio de teste grava; some ao ser usada). */
+  readonly rejeicoes: Map<OperacaoRejeitavel, string>;
 }
 
 export interface EstadoDestino {
@@ -81,7 +88,7 @@ export function criarRegistroSimulador(): RegistroSimulador {
           numeros: new Map(),
           inutilizacoes: [],
           lotes: new Map(),
-          controles: { paralisacao: null, recibosAtrasados: 0, falhas: { restantes: 0, aposProcessar: false }, denegados: new Map() },
+          controles: { paralisacao: null, recibosAtrasados: 0, falhas: { restantes: 0, aposProcessar: false }, denegados: new Map(), rejeicoes: new Map() },
         };
         estados.set(chave, e);
       }

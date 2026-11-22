@@ -11,18 +11,19 @@ import {
   lerXml,
   semDeclaracaoXml,
   validarXsd,
+  textoNfe,
   verificarAssinaturaXml,
   type RespostaInutilizacao,
 } from '@macuxierp/nfe-sefaz';
-import { anoSefaz, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
-import { tag, texto } from './xml';
+import { anoSefaz, consumirRejeicao, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
+import { tag } from './xml';
 
 type Faixa = Pick<RespostaInutilizacao, 'ano' | 'CNPJ' | 'mod' | 'serie' | 'nNFIni' | 'nNFFin'>;
 const SEM_FAIXA: Faixa = { ano: null, CNPJ: null, mod: null, serie: null, nNFIni: null, nNFFin: null };
 
 function decidir(ctx: Contexto, xml: string, f: Faixa, agora: Date, inf: Element | null): CStatSimulador {
-  if (texto(inf, 'tpAmb') !== String(ctx.d.tpAmb)) return '252';
-  if (texto(inf, 'cUF') !== String(ctx.d.cUF)) return '226';
+  if (textoNfe(inf, 'tpAmb') !== String(ctx.d.tpAmb)) return '252';
+  if (textoNfe(inf, 'cUF') !== String(ctx.d.cUF)) return '226';
   const assinatura = verificarAssinaturaXml(xml, { elemento: 'infInut', cnpjEsperado: f.CNPJ ?? '', agora });
   if (!assinatura.ok) return assinatura.cStat as CStatSimulador;
   const { nNFIni: ini, nNFFin: fim, ano, CNPJ: cnpj, serie } = f as { [K in keyof Faixa]: NonNullable<Faixa[K]> };
@@ -50,14 +51,14 @@ export async function inutilizar(ctx: Contexto, inutilizacaoAssinada: string): P
   let nProt: string | null = null;
   if (valido) {
     faixa = {
-      ano: texto(inf, 'ano'),
-      CNPJ: texto(inf, 'CNPJ'),
+      ano: textoNfe(inf, 'ano'),
+      CNPJ: textoNfe(inf, 'CNPJ'),
       mod: '55',
-      serie: Number(texto(inf, 'serie')),
-      nNFIni: Number(texto(inf, 'nNFIni')),
-      nNFFin: Number(texto(inf, 'nNFFin')),
+      serie: Number(textoNfe(inf, 'serie')),
+      nNFIni: Number(textoNfe(inf, 'nNFIni')),
+      nNFFin: Number(textoNfe(inf, 'nNFFin')),
     };
-    cStat = decidir(ctx, xml, faixa, agora, inf);
+    cStat = consumirRejeicao(ctx, 'inutilizar') ?? decidir(ctx, xml, faixa, agora, inf);
     if (cStat === '102') {
       nProt = novoNumero(ctx, 'nProt');
       ctx.estado.inutilizacoes.push({ cnpj: faixa.CNPJ!, serie: faixa.serie!, ano: faixa.ano!, nNFIni: faixa.nNFIni!, nNFFin: faixa.nNFFin!, nProt });

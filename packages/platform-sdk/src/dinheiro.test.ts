@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarAliquota, centavos, ratear, valorItem } from './dinheiro';
+import { aplicarAliquota, centavos, dividirArredondando, ratear, valorItem } from './dinheiro';
 
 describe('dinheiro em centavos', () => {
   it('recusa valor que não é inteiro', () => {
@@ -10,6 +10,23 @@ describe('dinheiro em centavos', () => {
     expect(aplicarAliquota(centavos(10_000), 18)).toBe(1_800);
     expect(aplicarAliquota(centavos(333), 1.65)).toBe(5); // 5,4945 → 5
     expect(aplicarAliquota(centavos(1_000), 0.65)).toBe(7); // 6,5 → 7
+  });
+
+  it('RN-CORE-03 e RN-FIS-03: meio para cima × meio-para-par só diferem no empate exato', () => {
+    expect(dividirArredondando(25n, 10n)).toBe(3n);
+    expect(dividirArredondando(25n, 10n, 'meio-para-par')).toBe(2n);
+    expect(dividirArredondando(35n, 10n, 'meio-para-par')).toBe(4n);
+    expect(dividirArredondando(24n, 10n, 'meio-para-cima')).toBe(2n);
+    expect(dividirArredondando(26n, 10n, 'meio-para-par')).toBe(3n);
+    expect(dividirArredondando(-25n, 10n)).toBe(-3n);
+    expect(dividirArredondando(-25n, 10n, 'meio-para-par')).toBe(-2n);
+    expect(() => dividirArredondando(1n, 0n)).toThrow(RangeError);
+  });
+
+  it('RN-FIS-03: alíquota com o modo do tributo (0,5 centavo: ICMS sobe, IBS/CBS/IS vão ao par)', () => {
+    expect(aplicarAliquota(centavos(50), 1)).toBe(1);
+    expect(aplicarAliquota(centavos(50), 1, 'meio-para-par')).toBe(0);
+    expect(aplicarAliquota(centavos(150), 1, 'meio-para-par')).toBe(2); // 1,5 → 2 (par)
   });
 
   it('rateia sem perder centavo e põe a diferença na primeira parcela', () => {
