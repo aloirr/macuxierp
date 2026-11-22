@@ -11,13 +11,12 @@
 #   1. confere root, o usuário de deploy e o docker compose;
 #   2. /opt/macuxierp (dono o usuário, 750) e /opt/macuxierp/certs;
 #   3. /var/lock/macuxi-producao-vm.lock (grupo docker, 660): a trava compartilhada com o FDV (ADR 0003, item 2);
-#   4. /opt/macuxierp/gerados.env (600), gerado UMA vez com openssl rand: senhas de macuxierp_app, macuxierp_worker e
-#      macuxierp_leitura e MACUXIERP_JWT_SEGREDO. Nunca regenera, nunca imprime, nunca sai da VM;
+#   4. arquivos de ambiente: ambiente-vm.sh (lista em env.modelo);
 #   5. confere a rede do túnel do FDV (só aviso: o implantar.sh é que falha sem ela);
 #   6. alerta de saúde: /opt/macuxierp/alerta-saude.sh e o timer macuxierp-alerta.timer (5 min, como o usuário de deploy).
 #      Nomes próprios: os macuxi-* do FDV não são tocados;
 #   7. imprime o roteiro do banco (criado pelo banco.sh no implantar.sh, sem superusuário). Este script não roda SQL.
-# O /opt/macuxierp/.env não é criado aqui (quem grava cada arquivo: env.modelo); só há aviso se faltar.
+# Quem grava cada arquivo: env.modelo. O workflow só entra com PROD_SSH_KEY, PROD_HOST e PROD_USER.
 set -euo pipefail
 ORIGEM="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source-path=SCRIPTDIR source=comum.sh
@@ -29,7 +28,7 @@ log() { echo "[preparar-vm] $*"; }
 # ---------- conferência do banco (só leitura; o mesmo caminho do banco.sh do implantar) ----------
 if [ "${1:-}" = "--conferir-banco" ]; then
   for f in admin.env banco.env; do
-    [ -s "$PASTA/$f" ] || { echo "[preparar-vm] $PASTA/$f ausente: o workflow grava no primeiro deploy; nada a conferir ainda" >&2; exit 1; }
+    [ -s "$PASTA/$f" ] || { echo "[preparar-vm] $PASTA/$f ausente: o sudo bash preparar-vm.sh copia do /opt/macuxi; nada a conferir ainda" >&2; exit 1; }
   done
   MACUXIERP_DIR="$PASTA" exec bash "$ORIGEM/banco.sh" --so-conferir
 fi
@@ -72,26 +71,8 @@ else
   chmod g+rw "$TRAVA"
 fi
 
-# ---------- 4. segredos gerados na VM ----------
-GERADOS="$PASTA/gerados.env"
-umask 077
-[ -f "$GERADOS" ] || : > "$GERADOS"
-acrescentar() { # nome valor: só se a variável ainda não existir (nunca regenera)
-  grep -q "^$1=" "$GERADOS" || { printf '%s=%s\n' "$1" "$2" >> "$GERADOS"; log "gerado $1"; }
-}
-acrescentar MACUXIERP_SENHA_APP "$(openssl rand -hex 32)"
-acrescentar MACUXIERP_SENHA_WORKER "$(openssl rand -hex 32)"
-acrescentar MACUXIERP_SENHA_LEITURA "$(openssl rand -hex 32)"
-acrescentar MACUXIERP_JWT_SEGREDO "$(openssl rand -hex 48)"
-chown "$USUARIO:$USUARIO" "$GERADOS"
-chmod 600 "$GERADOS"
-# todos os arquivos de ambiente da pasta (lista em env.modelo): dono o usuário de deploy, 600
-for f in "$PASTA"/.env "$PASTA"/*.env; do
-  [ -f "$f" ] && { chown "$USUARIO:$USUARIO" "$f"; chmod 600 "$f"; }
-done
-if [ ! -f "$PASTA/.env" ]; then
-  echo "::warning::$PASTA/.env ausente: criar a partir do scripts/deploy/producao/env.modelo; sem ele o implantar.sh não publica"
-fi
+# ---------- 4. arquivos de ambiente (gerados, chaves do .env e configuração do FDV) ----------
+bash "$ORIGEM/ambiente-vm.sh" "$USUARIO"
 
 # ---------- 5. rede do túnel do FDV ----------
 REDE_TUNEL="$(rede_tunel "$PASTA")"
@@ -156,14 +137,10 @@ fi
 log "pronto: $PASTA (dono $USUARIO), trava $TRAVA, compose $(docker compose version --short)"
 
 # ---------- 7. roteiro do banco (nada é executado aqui; sem senha em argv ou log) ----------
-if [ -s "$PASTA/admin.env" ] && [ -s "$PASTA/banco.env" ]; then
-  conferir="bash ~/macuxierp-deploy/preparar-vm.sh --conferir-banco   (só leitura, como $USUARIO)"
-else
-  conferir="depois que o workflow gravar admin.env e banco.env: bash ~/macuxierp-deploy/preparar-vm.sh --conferir-banco"
-fi
+conferir="bash ~/macuxierp-deploy/preparar-vm.sh --conferir-banco   (só leitura, como $USUARIO)"
 cat <<ROTEIRO
 [preparar-vm] banco do ERP no DBaaS do FDV, sem superusuário:
-  1. o admin do DBaaS (secrets PROD_PG_ADMIN_USUARIO/SENHA → admin.env) precisa de CREATEDB e CREATEROLE, NOSUPERUSER;
+  1. o admin do DBaaS (o mesmo do FDV: /opt/macuxi/admin.env → admin.env) precisa de CREATEDB e CREATEROLE, NOSUPERUSER;
   2. o banco.sh, chamado pelo implantar.sh, cria o banco macuxierp se faltar, aplica as migrações (a 0001 cria
      macuxierp_app, macuxierp_worker e macuxierp_leitura) e aplica as senhas do gerados.env por verificador SCRAM;
   3. conferir: $conferir

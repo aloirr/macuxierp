@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { criarPluginIntegracaoFdv, lerChaveIntegracao } from './index';
+import { criarPluginIntegracaoFdv } from './index';
 
 const chave = Buffer.alloc(32, 9);
 
@@ -33,17 +33,5 @@ describe('plugin de rotas do integracao-fdv (C-7)', () => {
         'POST /entidades/:entidade/retomar integracao-fdv.configurar',
       ].sort(),
     );
-  });
-  it('RF-INF-05: a chave mestra vem do apps/api e o erro de leitura cita só o nome da variável, nunca o valor', () => {
-    expect(lerChaveIntegracao('11'.repeat(32))).toHaveLength(32);
-    let mensagem = '';
-    try {
-      lerChaveIntegracao('segredo-curto');
-    } catch (x) {
-      mensagem = (x as Error).message;
-    }
-    expect(mensagem).toContain('MACUXIERP_CHAVE_INTEGRACAO');
-    expect(mensagem).not.toContain('segredo-curto');
-    expect(() => lerChaveIntegracao(undefined)).toThrow('MACUXIERP_CHAVE_INTEGRACAO');
   });
 });

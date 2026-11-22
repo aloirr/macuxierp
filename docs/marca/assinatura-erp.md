@@ -59,7 +59,7 @@ Guias de consulta (não aplicar): `guia-area-de-protecao-a.svg` e `guia-area-de-
 | Cabeçalho e menu do BKO | A negativo grafite (20 a 32 px) | `designer-ux` |
 | Login e telas de marca | C positivo sobre pérola, ou C negativo azul-noite | `designer-ux` |
 | Favicon e ícone da aba | só o símbolo (negativo sobre `azulNoite`, como o favicon do FDV) | `designer-ux` |
-| DANFE e PDFs | A mono preto, **só como rodapé discreto**, fora dos campos do leiaute do Manual da NF-e. O quadro do emitente é da marca do cliente (tenant) | `modulo-faturamento` |
+| DANFE e PDFs | A mono preto, **só como rodapé discreto**, fora dos campos do leiaute do Manual da NF-e. O quadro do emitente é da marca do cliente (tenant). Medidas, cores, fonte e marca d'água: [danfe-e-pdfs-fiscais.md](danfe-e-pdfs-fiscais.md) | `modulo-faturamento` |
 | E-mail transacional | A positivo sobre branco, com 32 px ou mais, no topo ou na assinatura | `modulo-faturamento` (e quem enviar e-mail) |
 
 ## 6. Usos proibidos
@@ -74,4 +74,4 @@ Guias de consulta (não aplicar): `guia-area-de-protecao-a.svg` e `guia-area-de-
 9. Usar as propostas antigas da T-0023 (`assinatura-erp-opcao-*.svg`), removidas em 22/11/2026.
 
 ## 7. Aplicação
-Os avisos do recado **R-20261122-005555** (ao `designer-ux`, com cópia ao `modulo-faturamento`) **passam a valer com estes arquivos**, depois do merge: o dono aplica pelo §5, usando o arquivo SVG (nunca hex solto nem texto redigitado), e o design-de-marca valida no print do navegador, do DANFE e do e-mail antes do lote.
+Os avisos do recado **R-20261122-005555** (ao `designer-ux`, com cópia ao `modulo-faturamento`) **passam a valer com estes arquivos**, depois do merge: o dono aplica pelo §5, usando o arquivo SVG (nunca hex solto nem texto redigitado; no DANFE, o PNG gerado do SVG oficial, conforme [danfe-e-pdfs-fiscais.md](danfe-e-pdfs-fiscais.md) §4), e o design-de-marca valida no print do navegador, do DANFE e do e-mail antes do lote.

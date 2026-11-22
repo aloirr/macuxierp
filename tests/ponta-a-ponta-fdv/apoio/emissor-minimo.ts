@@ -12,6 +12,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import type { CredencialHub } from './config';
+import { exigirLeitura, guardarFetch, travaAtiva } from './trava-escrita';
 import {
   emFatias,
   LIMITE_REGISTROS_LOTE,
@@ -84,8 +85,13 @@ async function lerCorpoLimitado(r: Response, limite: number): Promise<string | n
 export function transporteFetch(
   o: Pick<OpcoesEmissor, 'url' | 'credencial' | 'versaoErp' | 'relogio'>,
 ): Transporte {
+  // trava de escrita (R-20261122-020834), no pedido e no `fetch`: fora do dublê local, sem a escrita liberada ou com
+  // o Conector macuxierp
+  const travado = travaAtiva(o.url, o.credencial);
+  const buscar: typeof fetch = travado ? guardarFetch() : (entrada, init) => fetch(entrada, init);
   return {
     async chamar(metodo, caminho, corpo, chave): Promise<RespostaTransporte> {
+      if (travado) exigirLeitura(metodo, caminho);
       const headers: Record<string, string> = {
         Authorization: o.credencial.autorizacao(),
         'X-Macuxi-Conector-Id': o.credencial.conectorId,
@@ -97,7 +103,7 @@ export function transporteFetch(
       if (chave) headers['Idempotency-Key'] = chave;
       let r: Response;
       try {
-        r = await fetch(`${o.url}${caminho}`, {
+        r = await buscar(`${o.url}${caminho}`, {
           method: metodo,
           headers,
           body: corpo === undefined ? undefined : JSON.stringify(corpo),

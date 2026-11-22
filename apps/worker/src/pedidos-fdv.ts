@@ -11,15 +11,17 @@
  * As agendas (busca e retorno) e o consumidor `integracao-fdv.retorno-pedido` são montados em `modulos.ts`.
  *
  * Desligamento (fonte: desenho T-0002 §2, "Ligações da F3"; até a virada, T-0027): `MACUXIERP_FDV_RECEBIMENTO` = `ligado` | `desligado` (padrão `desligado`; outro
- * valor derruba a partida). Só a BUSCA (`GET /pedidos/pendentes`) depende dele: desligado, a agenda de busca não é
- * registrada e a coluna `sinal.proxima_busca_pedidos_em` fica parada no banco. O retorno, o conector e os consumidores
- * entram sempre. `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
+ * valor derruba a partida). A BUSCA (`GET /pedidos/pendentes`) e o RETORNO (`POST /pedidos/{id}/retorno`) dependem dele:
+ * desligado, nenhuma das duas agendas é registrada e `sinal.proxima_busca_pedidos_em`/`proximo_retorno_em` ficam paradas
+ * no banco. Os consumidores entram sempre (o do retorno só grava a fila local, sem chamar o Hub); trava de 22/11/2026,
+ * ver envio-fdv.ts. `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
  */
 import { criarConsultaParaPedido, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
 import type { DepsAgendasPedidosFdv } from '@macuxierp/integracao-fdv/api';
 import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido, type RecebedorPedidoFdv } from '@macuxierp/pedido/api';
 import type { DestinoAuditoria, FonteLicencas, Outbox, Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
+import { chaveLigadoDesligado, type EstadoChaveFdv } from './chaves-fdv';
 
 /**
  * Tipado pela porta do `integracao-fdv` (`DepsAgendasPedidosFdv`, ADR 0010, item 2), sem declaração própria no worker:
@@ -32,14 +34,11 @@ export function resolvedorChaveErpDeProducao(): ResolvedorChaveErp {
   return criarResolvedorChaveErp(repositoriosSql);
 }
 
-export type EstadoRecebimentoFdv = 'ligado' | 'desligado';
+export type EstadoRecebimentoFdv = EstadoChaveFdv;
 
-/** `MACUXIERP_FDV_RECEBIMENTO`: ausente ou vazio = `desligado`. Valor fora da lista derruba a partida (cita só o nome). */
+/** `MACUXIERP_FDV_RECEBIMENTO` (chaves-fdv.ts). */
 export function configurarRecebimentoFdv(env: Readonly<Record<string, string | undefined>>): EstadoRecebimentoFdv {
-  const v = env.MACUXIERP_FDV_RECEBIMENTO?.trim().toLowerCase();
-  if (!v || v === 'desligado') return 'desligado';
-  if (v === 'ligado') return 'ligado';
-  throw new Error('configuração inválida: MACUXIERP_FDV_RECEBIMENTO (ligado ou desligado)');
+  return chaveLigadoDesligado(env, 'MACUXIERP_FDV_RECEBIMENTO');
 }
 
 export interface DependenciasRecebedorWorker {

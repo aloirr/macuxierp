@@ -391,7 +391,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — 0024 sobre o evento pendent
       '0024_evento_dh_lote_fuso.sql',
     );
     permitirSetRole(banco.conexao);
-    executar(banco.conexao, fixturePlataforma(C) + fixtureModulos(C) + fixtureFaturamento(C));
+    executar(banco.conexao, fixturePlataforma(C) + fixtureModulos(C) + fixtureFaturamento(C, true));
     const ids = Object.fromEntries(TABELAS.map((t) => [t, inserir(banco, t, C, null)])) as Record<
       TabelaDh,
       string

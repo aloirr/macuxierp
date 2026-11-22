@@ -5,16 +5,8 @@ import {
   tituloDoRelatorio, totaisDoRelatorio,
 } from '@macuxierp/cadastros/web';
 import type { ModoCarga, RelatorioCarga } from '@macuxierp/cadastros/contracts';
+import { baixarCsv } from '@/lib/baixar-csv';
 import { CARGA_NAO_CONCLUIDA } from '@/lib/textos';
-
-function baixar(nome: string, texto: string) {
-  const url = URL.createObjectURL(new Blob([`\uFEFF${texto}`], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Tela da carga de cadastros: escolhe os CSVs, valida ou grava e mostra o relatório. O arquivo não é guardado no navegador além do envio. */
 export function TelaCarga({ api }: { api: string }) {
@@ -85,8 +77,8 @@ export function TelaCarga({ api }: { api: string }) {
           ))}
           {relatorio.erros_omitidos > 0 && <p className="apoio">Mais {relatorio.erros_omitidos} erros não aparecem aqui. Corrija estes e valide de novo.</p>}
           <p>
-            <button className="btn" type="button" onClick={() => baixar('carga-resumo.csv', csvDoResumo(relatorio))}>Exportar resumo CSV</button>{' '}
-            <button className="btn" type="button" disabled={relatorio.erros.length === 0} onClick={() => baixar('carga-erros.csv', csvDosErros(relatorio))}>Exportar erros CSV</button>
+            <button className="btn" type="button" onClick={() => baixarCsv('carga-resumo.csv', csvDoResumo(relatorio))}>Exportar resumo CSV</button>{' '}
+            <button className="btn" type="button" disabled={relatorio.erros.length === 0} onClick={() => baixarCsv('carga-erros.csv', csvDosErros(relatorio))}>Exportar erros CSV</button>
           </p>
         </div>
       )}

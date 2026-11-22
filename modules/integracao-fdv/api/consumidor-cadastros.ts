@@ -84,6 +84,16 @@ export function criarConsumidorPublicarCadastros(deps: DepsConsumidorCadastros):
 }
 
 /**
+ * Só chega aqui depois de `conferirChave` ter dito `troca` ou `nada` (regra em troca-chave.ts): a linha antiga sai antes de a
+ * nova entrar (o índice único do `erp_id` vale só entre as ativas) e, depois da troca, a gravação é `'falhar'`: o erro desfaz a
+ * troca e o evento refeito registra o conflito limpo.
+ */
+async function trocarEGravar(tx: Transacao, t: string, em: Date, pendentes: Pendentes, reg: RegistroEspelho, erpId: string, modo?: 'falhar'): Promise<void> {
+  juntar(pendentes, await aplicarTrocaDeChave(tx, t, reg.entidade, erpId, reg.external_id, em));
+  juntar(pendentes, await aplicarRegistros(tx, t, [reg], em, modo));
+}
+
+/**
  * Grava `principal` (a chave antiga do mesmo cadastro sai antes) e recompõe os dependentes só se algo de que eles derivam
  * mudou (a assinatura dos derivados). Os filhos (unidades, endereços) quem grava é o chamador, depois deste.
  * A chave de `fonte_refs` com que os dependentes apontam para o registro vem de `CHAVE_FONTE_REFS`.
@@ -97,15 +107,32 @@ async function gravarComDependentes(
   erpId: string,
 ): Promise<void> {
   const antes = await assinaturaAnterior(tx, t, principal.entidade, principal.external_id);
-  // a chave antiga sai antes de a nova entrar: o índice único do `erp_id` vale só entre as linhas ativas (0015). Só chega aqui
-  // depois de `conferirChave` ter dito `troca` ou `nada`; a linha antiga só é mexida se a chave do espelho for outra.
-  juntar(pendentes, await aplicarTrocaDeChave(tx, t, principal.entidade, erpId, principal.external_id, em));
-  // depois da troca o conflito não pode mais ser registrado aqui: o erro desfaz a troca e o evento refeito grava `chave_duplicada` limpo
-  juntar(pendentes, await aplicarRegistros(tx, t, [principal], em, 'falhar'));
+  await trocarEGravar(tx, t, em, pendentes, principal, erpId, 'falhar');
   const chaveRef = CHAVE_FONTE_REFS[principal.entidade];
   if (chaveRef && (antes === null || antes !== assinaturaDeDerivados(principal))) {
     juntar(pendentes, await recomporDependentes(tx, t, chaveRef, erpId, em));
   }
+}
+
+/**
+ * Grava os filhos (unidades, endereços) um a um, cada um conferido contra o espelho, e inativa os que saíram da lista do pai
+ * (`pai`: entidade do filho, chave de `fonte_refs` e `erp_id` do pai; RN-CAD-08).
+ */
+async function gravarFilhos(
+  tx: Transacao,
+  t: string,
+  em: Date,
+  pendentes: Pendentes,
+  filhos: readonly RegistroEspelho[],
+  pai: { entidade: EntidadeHub; chaveRef: string; erpId: string },
+): Promise<void> {
+  for (const f of filhos) {
+    const erpId = f.erp_id;
+    if (!erpId) continue;
+    if (!(await conferirChave(tx, t, f.entidade, erpId, f.external_id, undefined, em))) continue;
+    await trocarEGravar(tx, t, em, pendentes, f, erpId, 'falhar');
+  }
+  juntar(pendentes, await inativarRetirados(tx, t, pai.entidade, pai.chaveRef, pai.erpId, filhos.flatMap((f) => (f.erp_id ? [f.erp_id] : [])), em));
 }
 
 /**
@@ -174,8 +201,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const { produto, unidades } = mapearProduto(p.data, emIso);
       if (!(await conferirChave(tx, t, 'produto', p.data.id, produto.external_id, p.data.external_id_anterior, em))) return;
       await gravarComDependentes(tx, t, em, pendentes, produto, p.data.id);
-      juntar(pendentes, await aplicarRegistros(tx, t, unidades, em));
-      juntar(pendentes, await inativarRetirados(tx, t, 'produto_unidade', 'produto_id', p.data.id, p.data.unidades.map((u) => u.id), em));
+      await gravarFilhos(tx, t, em, pendentes, unidades, { entidade: 'produto_unidade', chaveRef: 'produto_id', erpId: p.data.id });
       return;
     }
     case 'cadastros.tabela_preco.alterada@1': {
@@ -194,7 +220,9 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.preco.alterado@1'].safeParse(evento.payload);
       if (!p.success) return;
       // tabela e filial padrão entram na recomposição (única via, M10); aqui só o registro bruto
-      juntar(pendentes, await aplicarRegistros(tx, t, [mapearPreco(evento.agregado_id, p.data, emIso, { tabela: null, filialPadraoId: null })], em));
+      const preco = mapearPreco(evento.agregado_id, p.data, emIso, { tabela: null, filialPadraoId: null });
+      if (!(await conferirChave(tx, t, 'preco', evento.agregado_id, preco.external_id, p.data.external_id_anterior, em))) return;
+      await trocarEGravar(tx, t, em, pendentes, preco, evento.agregado_id, 'falhar');
       return;
     }
     case 'cadastros.estoque.alterado@1': {
@@ -209,8 +237,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const { cliente, enderecos } = mapearCliente(p.data, emIso, { condicao: null });
       if (!(await conferirChave(tx, t, 'cliente', p.data.id, cliente.external_id, p.data.external_id_anterior, em))) return;
       await gravarComDependentes(tx, t, em, pendentes, cliente, p.data.id);
-      juntar(pendentes, await aplicarRegistros(tx, t, enderecos, em));
-      juntar(pendentes, await inativarRetirados(tx, t, 'cliente_endereco', 'cliente_id', p.data.id, enderecos.map((e) => e.erp_id ?? ''), em));
+      await gravarFilhos(tx, t, em, pendentes, enderecos, { entidade: 'cliente_endereco', chaveRef: 'cliente_id', erpId: p.data.id });
       return;
     }
     default:

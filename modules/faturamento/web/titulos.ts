@@ -1,11 +1,11 @@
 /**
- * Títulos a receber (RF-FAT-06). DEPENDÊNCIA DO LOTE 5 da T-0021: as rotas ainda não existem na API; a página é declarada contra os
- * caminhos combinados e os formatos (em `contracts/`) são PROVISÓRIOS. Enquanto isso a lista responde 404 e a página sai com `aviso`.
+ * Títulos a receber (RF-FAT-06/07), contra as rotas do lote 5: `GET /titulos`, `GET /titulos/:id` (com baixas), `POST /titulos/:id/baixas` e
+ * `POST /titulos/:id/baixas/:baixa_id/estornar` (sem corpo; a baixa e o estorno exigem `Idempotency-Key` no POST da baixa).
  */
-import { pode, type Perfil } from '@macuxierp/platform-sdk';
+import type { Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDataHora, interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
-import { BaixarTituloEntrada, DataCivil, EstornarBaixaEntrada, StatusTitulo, type TituloResumo } from '../contracts';
-import { BASE_API, CHAVE_OK, comChave, type DialogoDeTexto, type Montagem, type Requisicao, contadorDeCaracteres } from './notas';
+import { BaixarTituloEntrada, DataCivil, StatusTitulo, type TituloResumo } from '../contracts';
+import { BASE_API, CHAVE_OK, comChave, type Montagem, type Requisicao } from './notas';
 
 const CAMINHO_BAIXAR = `${BASE_API}/titulos/:id/baixas`;
 const CAMINHO_ESTORNAR = `${BASE_API}/titulos/:id/baixas/:baixa_id/estornar`;
@@ -33,16 +33,19 @@ export interface AcoesDoTitulo {
   estornar: boolean;
 }
 
-/** Baixar e estornar pedem `faturamento.nota.emitir` até existir ação própria (lote 5 pode pedir uma ao engenheiro-software). */
+/** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06); a API confere o mesmo (403). Fiscal, leitura e vendedor não agem. */
+const PERFIS_BAIXA: readonly Perfil[] = ['administrador', 'gerente', 'faturista'];
+
+/** `baixas` vem do detalhe (`GET /titulos/:id`); na lista (sem baixas) o estorno fica oculto. */
 export function acoesDoTitulo(perfil: Perfil, t: { status: StatusTitulo; saldo_centavos: number; baixas?: readonly { id: string; estornada_em: string | null }[] }): AcoesDoTitulo {
-  const age = pode(perfil, 'faturamento.nota.emitir');
+  const age = PERFIS_BAIXA.includes(perfil);
   return {
     baixar: age && t.status === 'aberto' && t.saldo_centavos > 0,
     estornar: age && t.status !== 'cancelado' && (t.baixas ?? []).some((b) => b.estornada_em === null),
   };
 }
 
-export type ResultadoBaixa = ({ ok: true } & BaixarTituloEntrada) | { ok: false; erro: string };
+export type ResultadoBaixa = ({ ok: true } & Pick<BaixarTituloEntrada, 'valor_centavos' | 'data_baixa'>) | { ok: false; erro: string };
 
 /** Valor digitado em R$ ("1.234,56", sem float) e data civil: maior que zero, até o saldo, sem data futura (`hoje` no fuso do tenant). A API revalida. */
 export function formularioBaixa(e: { valor: string; data: string; saldo_centavos: number; hoje: string }): ResultadoBaixa {
@@ -54,25 +57,21 @@ export function formularioBaixa(e: { valor: string; data: string; saldo_centavos
   return { ok: true, valor_centavos: valor, data_baixa: e.data };
 }
 
-export const requisicaoBaixa = (titulo_id: string, b: BaixarTituloEntrada, chave: string): Requisicao => ({
-  metodo: 'POST', caminho: CAMINHO_BAIXAR.replace(':id', titulo_id), cabecalhos: comChave(chave), corpo: { valor_centavos: b.valor_centavos, data_baixa: b.data_baixa },
+/** `forma` opcional (até 30 caracteres; a API assume `manual`). */
+export const requisicaoBaixa = (titulo_id: string, b: Pick<BaixarTituloEntrada, 'valor_centavos' | 'data_baixa'> & { forma?: string }, chave: string): Requisicao => ({
+  metodo: 'POST', caminho: CAMINHO_BAIXAR.replace(':id', titulo_id), cabecalhos: comChave(chave),
+  corpo: { valor_centavos: b.valor_centavos, data_baixa: b.data_baixa, ...(b.forma ? { forma: b.forma } : {}) },
 });
 
-/** Estorno pede confirmação e motivo (15 a 255 caracteres; formato provisório até o lote 5). */
-export function requisicaoEstornar(titulo_id: string, baixa_id: string, motivo: string, chave: string): Montagem {
+/** Estorno sem corpo: só confirmação (a API abate o saldo de volta e audita). */
+export function requisicaoEstornar(titulo_id: string, baixa_id: string, chave: string): Montagem {
   if (!CHAVE_OK.test(chave)) return { ok: false, erro: 'Não foi possível identificar a operação. Recarregue a página e tente de novo.' };
-  const v = EstornarBaixaEntrada.safeParse({ motivo });
-  if (!v.success) return { ok: false, erro: 'O motivo do estorno deve ter de 15 a 255 caracteres.' };
-  return { ok: true, requisicao: { metodo: 'POST', caminho: CAMINHO_ESTORNAR.replace(':id', titulo_id).replace(':baixa_id', baixa_id), cabecalhos: comChave(chave), corpo: v.data } };
+  return { ok: true, requisicao: { metodo: 'POST', caminho: CAMINHO_ESTORNAR.replace(':id', titulo_id).replace(':baixa_id', baixa_id), cabecalhos: comChave(chave) } };
 }
 
-/** "Estornar a baixa de R$ X feita em dd/mm?" com motivo obrigatório (props do `DialogoMotivo`). */
-export function dialogoEstornar(baixa: { valor_centavos?: number; baixado_em?: string }, fuso: string): DialogoDeTexto {
+/** "Estornar a baixa de R$ X feita em dd/mm?" (confirmação simples; sem motivo, a API não pede). */
+export function dialogoEstornar(baixa: { valor_centavos?: number; baixado_em?: string }, fuso: string): { titulo: string; aviso: string; rotuloConfirmar: string; textoCarregando: string } {
   const valor = baixa.valor_centavos === undefined ? '' : ` de ${formatarCentavos(baixa.valor_centavos)}`;
   const dia = baixa.baixado_em ? ` feita em ${formatarDataHora(baixa.baixado_em, fuso).slice(0, 5)}` : '';
-  return {
-    titulo: `Estornar a baixa${valor}${dia}?`, aviso: null, textoObrigatorio: true, rotuloTexto: 'Motivo do estorno', rotuloConfirmar: 'Estornar a baixa', minimo: 15, maximo: 255,
-    validar: (r) => { const n = r.texto.trim().length; return n < 15 || n > 255 ? 'O motivo do estorno deve ter de 15 a 255 caracteres.' : null; },
-    contador: (t) => contadorDeCaracteres(t, 15, 255),
-  };
+  return { titulo: `Estornar a baixa${valor}${dia}?`, aviso: 'O saldo do título volta a subir pelo valor da baixa.', rotuloConfirmar: 'Estornar a baixa', textoCarregando: 'Estornando…' };
 }

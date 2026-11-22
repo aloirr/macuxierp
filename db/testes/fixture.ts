@@ -225,10 +225,12 @@ export const hashSql = (texto: string): string => `encode(sha256(convert_to('${t
  * pelo XML, título com baixa parcial, inutilização do número 2 registrada pelo XML, contingência encerrada,
  * transmissão e pedido a faturar). Mais uma linha geral (tenant de referência) da carga aproximada, se `geral`.
  * Gravada pelo admin, que passa pelas mesmas travas (as triggers valem para o dono); precisa da filial no
- * core.ambiente_fiscal da fixtureModulos (homologação).
+ * core.ambiente_fiscal da fixtureModulos (homologação). `antes0026`: título sem conta_como_real, para os testes que
+ * migram só até antes da 0026 (depois dela a coluna é obrigatória no INSERT).
  */
-export function fixtureFaturamento(t: Tenant): string {
+export function fixtureFaturamento(t: Tenant, antes0026 = false): string {
   const id = t.id;
+  const [colReal, valReal] = antes0026 ? ['', ''] : [', conta_como_real', ', false'];
   const cnf = cnfDoTenant(t);
   const chave = chaveAcesso(1, 1, cnf);
   const xml = `<nfeProc><NFe>massa ${t.slug}</NFe></nfeProc>`;
@@ -271,8 +273,8 @@ INSERT INTO faturamento.nota_evento (tenant_id, nota_id, tipo, n_seq_evento, tex
 INSERT INTO faturamento.nota_xml (tenant_id, tipo, evento_id, protocolo, xml, sha256)
   SELECT '${id}', 'evento_cce', e.id, '113260000000002', '${evento}', ${hashSql(evento)}
   FROM faturamento.nota_evento e WHERE e.nota_id = '${t.nota}';
-INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos)
-  VALUES ('${id}', '${t.nota}', 1, 1, '2026-12-21', 1990);
+INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos${colReal})
+  VALUES ('${id}', '${t.nota}', 1, 1, '2026-12-21', 1990${valReal});
 INSERT INTO faturamento.titulo_baixa (tenant_id, titulo_id, valor_centavos, usuario_id, forma)
   SELECT '${id}', x.id, 990, '${t.usuario}', 'pix' FROM faturamento.titulo x WHERE x.nota_id = '${t.nota}';
 INSERT INTO faturamento.inutilizacao (tenant_id, filial_id, serie, ano, numero_inicial, numero_final, justificativa)
@@ -280,6 +282,42 @@ INSERT INTO faturamento.inutilizacao (tenant_id, filial_id, serie, ano, numero_i
 INSERT INTO faturamento.nota_xml (tenant_id, tipo, inutilizacao_id, protocolo, xml, sha256)
   SELECT '${id}', 'inutilizacao', i.id, '113260000000003', '${inut}', ${hashSql(inut)}
   FROM faturamento.inutilizacao i WHERE i.tenant_id = '${id}';
+`;
+}
+
+/**
+ * Massa do sefaz_simulador (T-0045, 0025): uma nota autorizada no destino (filial da massa, modo normal), uma CC-e
+ * dela, uma inutilização (números 2 a 3) e um recibo. O nRec é global e vem do tenant, para A e B não repetirem.
+ */
+export function fixtureSefazSimulador(t: Tenant): string {
+  const id = t.id;
+  const cnf = cnfDoTenant(t);
+  const chave = chaveAcesso(1, 1, cnf);
+  const nRec = `1326${String(cnf).padStart(11, '0')}`;
+  return `
+INSERT INTO sefaz_simulador.nota (tenant_id, filial_id, modo, ch_nfe, cnpj, serie, nnf, dh_emi, autorizada_em, situacao,
+  n_prot, dig_val, c_stat, dh_recbto, xml_prot)
+  VALUES ('${id}', '${t.filial}', 'normal', '${chave}', '12345678000195', 1, 1, now(), now(), 'autorizada',
+    '913260000000001', 'ZGlnVmFs', '100', '2026-11-22T10:00:00-04:00', '<protNFe/>');
+INSERT INTO sefaz_simulador.evento (tenant_id, filial_id, modo, ch_nfe, tp_evento, n_seq_evento, n_prot, c_stat,
+  dh_reg_evento, xml_ret, evento_xml)
+  VALUES ('${id}', '${t.filial}', 'normal', '${chave}', '110110', 1, '913260000000002', '135',
+    '2026-11-22T10:05:00-04:00', '<retEvento/>', '<evento/>');
+INSERT INTO sefaz_simulador.inutilizacao (tenant_id, filial_id, modo, cnpj, serie, ano, nnf_ini, nnf_fin, n_prot)
+  VALUES ('${id}', '${t.filial}', 'normal', '12345678000195', 1, '26', 2, 3, '913260000000003');
+INSERT INTO sefaz_simulador.recibo (tenant_id, filial_id, modo, n_rec, dh_recbto, pronto_em)
+  VALUES ('${id}', '${t.filial}', 'normal', '${nRec}', '2026-11-22T10:00:00-04:00', now());
+`;
+}
+
+/**
+ * Configuração do faturamento da filial (0026): bandeira ligada, com alterado_por; o gatilho grava a linha do
+ * histórico. Fora da fixtureFaturamento porque os testes que migram só até antes da 0026 também usam aquela.
+ */
+export function fixtureConfiguracaoFilial(t: Tenant): string {
+  return `
+INSERT INTO faturamento.configuracao_filial (tenant_id, filial_id, faturamento_real_nfe_simulada, alterado_por)
+  VALUES ('${t.id}', '${t.filial}', true, '${t.usuario}');
 `;
 }
 

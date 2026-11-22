@@ -22,11 +22,13 @@ import {
   destinatarioDoRetrato,
   emTransmissao,
   ErroViolacao,
-  instanteManaus,
+  dataCivilManaus,
   interpretarRetorno,
   modFreteDoPedido,
   montarNota,
   montarPagamento,
+  contaComoReal,
+  validarTitulosDoBoleto,
   notaParaEmissaoDe,
   podeEditar,
   ratearItens,
@@ -50,9 +52,12 @@ import type {
   NotaRegistro,
   PedidosAprovados,
   RepositorioNotas,
+  ConfiguracaoFaturamento,
+  RepositorioTitulos,
   RetornoSefaz,
   SituacaoPedidoDoPedido,
 } from './portas';
+import { contaComoRealDaNota, gerarTitulosSeguro, type LogFaturamento } from './titulos';
 
 export const EVENTO_NOTA_AUTORIZADA = 'faturamento.nota.autorizada@1' as const;
 export const EVENTO_NOTA_REJEITADA = 'faturamento.nota.rejeitada@1' as const;
@@ -76,6 +81,15 @@ export interface DepsEmissao {
   /** Sorteio do cNF (inteiro em [0, 100000000), injetável em teste); sem ele, o emissor sorteia. */
   sorteio?: () => number;
   tpEmis?: TipoEmissao;
+  /** Bandeira "faturamento real com NF-e simulada": lida na EMISSÃO e guardada no conteúdo da nota (`conta_como_real`); ausente = desligada. */
+  configuracao?: ConfiguracaoFaturamento;
+  /** Log sem dado pessoal, OBRIGATÓRIO (falha ao ler a bandeira; pendência de título). */
+  log: LogFaturamento;
+  /**
+   * RN-FAT-04: emissão em PRODUÇÃO fiscal só com esta flag ligada; padrão `false`. O engenheiro liga `false` até a T-0046 (transporte real homologado):
+   * sem transporte real a nota de produção ficaria numerada e parada. Recusa ANTES de reservar o número (a série não anda).
+   */
+  emissaoProducaoHabilitada?: boolean;
 }
 
 interface Preparado {
@@ -87,13 +101,16 @@ interface Preparado {
   /** Da condição de pagamento do pedido (nulos = sem condição: tPag 99). */
   forma_tpag: string | null;
   prazos_dias: number[] | null;
+  /** RN-FAT-04: bandeira da filial E homologação, calculada agora e guardada no conteúdo. */
+  conta_como_real: boolean;
 }
 
 export type ResultadoEmissao = { ok: true; nota: NotaRegistro; repetida: boolean } | { ok: false; violacoes: Violacao[] };
 
 /** Como o retorno ficou aplicado; o worker decide o que fazer em seguida (consultar protocolo, reagendar, nada). */
 export type ResultadoRetorno =
-  | { resultado: 'autorizada'; nota: NotaRegistro }
+  /** `titulos_pendentes`: motivo (sem dado pessoal) de a geração dos títulos ter falhado; a nota está autorizada e a varredura gera depois. */
+  | { resultado: 'autorizada'; nota: NotaRegistro; titulos_pendentes?: string }
   /** XML autorizado NÃO guardado: sem evento, sem DANFE; reprocessar com `consultarProtocolo` (RN-FAT-03). */
   | { resultado: 'guarda_pendente'; nota: NotaRegistro; motivo: 'sem_xml' | 'sem_digest' | 'falha_na_guarda' | 'digest_diferente' }
   | { resultado: 'rejeitada'; nota: NotaRegistro; codigo: string; mensagem: string; acao: string }
@@ -179,9 +196,14 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     pedido_id: string,
     itens: EmitirNotaEntrada['itens'],
     emitidaEm: Date,
+    exceto_nota_id?: string,
   ): Promise<Preparado | { ok: false; violacoes: Violacao[] }> {
     const pedido = await deps.pedidos.obter(tx, pedido_id);
     if (!pedido) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
+    // Trava a fila do pedido: duas emissões do mesmo pedido não leem o saldo juntas (RN-FAT-01).
+    await deps.notas.travarPedido(tx, pedido_id);
+    // Saldo pelo próprio faturamento: a quantidade_faturada do pedido só anda quando o worker consome o evento.
+    const ja_faturadas = await deps.notas.quantidadesJaFaturadas(tx, pedido_id, exceto_nota_id);
     // FOR SHARE: o pedido não muda de status (nem é cancelado) enquanto esta transação reserva o número (RN-PED-02).
     const situacao: SituacaoPedido | null = await deps.situacao.situacao(tx, pedido_id);
     if (!situacao) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Situação do pedido indisponível.')] };
@@ -191,14 +213,17 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     }
     if (!filial.ie.trim()) return { ok: false, violacoes: [violacao('RF-FAT-01', 'filial_id', 'Cadastre a inscrição estadual da filial emissora.')] };
     const ambiente = await deps.ambiente.ambiente(tx, pedido.filial_id);
+    if (ambiente === 'producao' && !deps.emissaoProducaoHabilitada) {
+      return { ok: false, violacoes: [violacao('RN-FAT-04', 'filial_id', 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).')] };
+    }
 
-    const base = ratearItens({ pedido, situacao, itens });
+    const base = ratearItens({ pedido, situacao, itens, ja_faturadas });
     if (!base.ok) return base;
     const calc = await deps.calculo.calcular(tx, {
       ambiente,
       filial_id: pedido.filial_id,
       pedido,
-      data_emissao: instanteManaus(emitidaEm).toISOString().slice(0, 10),
+      data_emissao: dataCivilManaus(emitidaEm),
       itens: base.itens.map((i) => ({
         sequencia: i.sequencia,
         produto_id: i.produto_id,
@@ -217,7 +242,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       const sequencia = Number(r.item_id);
       return { sequencia, cfop: cfopDoItem(r, calc.cfops[sequencia]), resultado: r };
     });
-    const montada = montarNota({ pedido, situacao, itens, ambiente, calculo, v_nf_fiscal: calc.saida.totais.v_nf });
+    const montada = montarNota({ pedido, situacao, ja_faturadas, itens, ambiente, calculo, v_nf_fiscal: calc.saida.totais.v_nf });
     if (!montada.ok) return montada;
 
     const cliente = await deps.cadastros.cliente(tx, pedido.cliente_id);
@@ -233,7 +258,14 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       prazos = condicao.prazos_dias;
       forma = forma ?? condicao.forma_tpag;
     }
-    return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos };
+    // RN-FAT-06, ANTES de reservar o número: boleto sem prazos ou com total menor que as parcelas não gera título; a nota não nasce assim.
+    const semTitulos = validarTitulosDoBoleto({ forma_tpag: forma, prazos_dias: prazos, total_centavos: montada.nota.totais.vNF });
+    if (semTitulos.length > 0) return { ok: false, violacoes: semTitulos };
+    // Bandeira com leitura segura (erro, como tabela inexistente, vale false com log): nunca derruba a emissão.
+    const bandeira = deps.configuracao
+      ? await deps.configuracao.lerBandeiraSegura(tx, pedido.filial_id, (motivo) => deps.log({ evento: 'faturamento.bandeira.leitura_falhou', motivo }))
+      : false;
+    return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos, conta_como_real: contaComoReal(ambiente, bandeira) };
   }
 
   function montarConteudo(p: Preparado, numero: number, emitida_em: Date, itensSolicitados: EmitirNotaEntrada['itens']): ConteudoNota {
@@ -247,6 +279,8 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       itensSolicitados: itensSolicitados ?? null,
       pagamentos: pag.pagamentos,
       cobranca: pag.cobranca,
+      prazos_dias: p.prazos_dias,
+      conta_como_real: p.conta_como_real,
       itens: p.nota.itens,
     };
   }
@@ -362,7 +396,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       return { ok: false, violacoes: [violacao('RN-FAT-07', 'status', `Só a nota rejeitada ou em rascunho é reenviada (status "${nota.status}").`)] };
     }
     const emitida_em = new Date(nota.emitida_em);
-    const p = await preparar(tx, nota.pedido_id, nota.itens_solicitados ?? undefined, emitida_em);
+    const p = await preparar(tx, nota.pedido_id, nota.itens_solicitados ?? undefined, emitida_em, nota.id);
     if (!p.ok) return p;
     const id = identidade(p, { numero: nota.numero, cnf: nota.cnf, emitida_em });
     const conteudo = montarConteudo(p, nota.numero, emitida_em, nota.itens_solicitados ?? undefined);
@@ -379,14 +413,15 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     return { ok: true, nota: { ...nota, total_centavos: p.nota.totais.vNF, itens, recibo: null, revisao: nota.revisao + 1 }, repetida: false };
   }
 
-  return { emitirNota, reenviarNota, processarRetorno: criarProcessadorRetorno(deps.notas) };
+  // O retorno da SEFAZ é do worker (`criarProcessadorRetorno` com `titulos` e `log`): a API não o expõe, para a geração de títulos não ficar sem a porta.
+  return { emitirNota, reenviarNota };
 }
 
 /**
  * Aplica o retorno da SEFAZ (autorização, recibo ou consulta) à nota: único caminho que leva a nota a autorizada, denegada ou rejeitada.
  * Só precisa do repositório: o worker o usa direto, sem as portas da emissão.
  */
-export function criarProcessadorRetorno(notas: RepositorioNotas) {
+export function criarProcessadorRetorno(notas: RepositorioNotas, titulos: RepositorioTitulos, log: LogFaturamento) {
   const mudar = (tx: Transacao, nota: NotaRegistro, para: StatusNota, dados?: DadosMudancaStatus, extra: Partial<NotaRegistro> = {}): Promise<NotaRegistro> =>
     mudarNota(notas, tx, nota, para, dados, extra);
   const base = baseEventoDaNota;
@@ -426,6 +461,8 @@ export function criarProcessadorRetorno(notas: RepositorioNotas) {
       // O XML assinado só vale se for o que a SEFAZ autorizou: o digest da assinatura é o digVal do protocolo. Sem um dos dois, não guarda.
       if (!opcoes.digestValue || !retorno.digVal) return { resultado: 'guarda_pendente', nota: atual, motivo: 'sem_digest' };
       if (opcoes.digestValue !== retorno.digVal) return { resultado: 'guarda_pendente', nota: atual, motivo: 'digest_diferente' };
+      // Lido ANTES da guarda: depois dela nada pode lançar (um erro faria o rollback do nfeProc, RN-FAT-03).
+      const conteudo = await notas.lerConteudo(tx, atual.id);
       try {
         await notas.guardarXmlAutorizado(tx, atual.id, { conteudo: montarNfeProc(opcoes.xmlAssinado, retorno.xmlProtocolo), protocolo });
       } catch {
@@ -433,9 +470,12 @@ export function criarProcessadorRetorno(notas: RepositorioNotas) {
       }
       // Guardar o XML levou a nota a `autorizada` por gatilho do banco: nenhum `mudarStatus` depois.
       const autorizada = comStatus(atual, 'autorizada');
-      const payload = NotaAutorizadaPayload.parse({ ...base(autorizada, protocolo), pedido_uuid: autorizada.pedido_uuid });
+      const payload = NotaAutorizadaPayload.parse({ ...base(autorizada, protocolo, contaComoRealDaNota(conteudo, autorizada)), pedido_uuid: autorizada.pedido_uuid });
       await notas.publicarEvento(tx, { nome: EVENTO_NOTA_AUTORIZADA, agregado_id: autorizada.id, payload });
-      return { resultado: 'autorizada', nota: autorizada };
+      // RF-FAT-07: títulos na MESMA tx, depois da guarda do nfeProc e do evento, num SAVEPOINT (RN-FAT-03): se a geração falhar, a nota segue autorizada com o
+      // nfeProc guardado, a pendência vai ao log e ao resultado, e a varredura gera depois.
+      const g = await gerarTitulosSeguro(tx, { titulos, notas }, autorizada, log);
+      return { resultado: 'autorizada', nota: autorizada, ...(!g.ok ? { titulos_pendentes: g.motivo } : {}) };
     }
 
     if (r.situacao === 'denegada') {

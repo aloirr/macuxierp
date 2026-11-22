@@ -9,7 +9,7 @@ import { INSTANTE_DE_TESTE } from '@macuxierp/nfe-sefaz/teste';
 import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
-import { a1DeTeste, depsFake, NPROT, transporteFake, tx, TENANT } from './apoio-teste';
+import { a1DeTeste, depsFake, titulosFake, NPROT, transporteFake, tx, TENANT } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { criarServicoEventos } from './eventos';
 import { criarProcessadorEventos } from './processador-eventos';
@@ -85,7 +85,7 @@ async function montar(opc: { agora?: Date; agoraWorker?: Date; semA1Api?: boolea
   };
   const proc = criarProcessadorEventos({
     banco,
-    notas: f.r.repo,
+    notas: f.r.repo, titulos: titulosFake().repo, log: () => undefined,
     eventos: f.ev.repo,
     cadastros: f.deps.cadastros,
     ambiente: { ambiente: async () => 'homologacao' },

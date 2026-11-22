@@ -3,7 +3,7 @@ import { EVENTO_PEDIDO_APROVADO } from '@macuxierp/pedido/contracts';
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
-import { depsFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
+import { configuracaoFake, depsFake, titulosFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import { criarConsumidorPedidoAprovado } from './consumidor';
 import { criarPluginFaturamento } from './index';
 
@@ -11,7 +11,9 @@ const sessao = (perfil: Perfil): Sessao => ({ usuario_id: uuid(5), tenant_id: TE
 
 function ambiente(perfil: Perfil = 'faturista') {
   const f = depsFake();
-  const plugin = criarPluginFaturamento(f.deps);
+  const tit = titulosFake();
+  const cfg = configuracaoFake();
+  const plugin = criarPluginFaturamento({ ...f.deps, titulos: tit.repo, configuracao: cfg.repo });
   const trabalhos: { tipo: string; payload: Record<string, unknown>; external_id?: string }[] = [];
   const auditoria: string[] = [];
   const ctx: ContextoRota = {
@@ -32,7 +34,7 @@ function ambiente(perfil: Perfil = 'faturista') {
     const consulta = r.consulta ? r.consulta.parse(e.consulta ?? {}) : undefined;
     return r.executar(ctx, { corpo, consulta, params: e.params ?? {} } as never);
   };
-  return { ...f.r, deps: f.deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
+  return { ...f.r, tit, cfg, deps: f.deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
 }
 const emitirCorpo = { pedido_id: IDS.pedido, idempotencia: 'idem-0000001' };
 
@@ -40,18 +42,24 @@ describe('rotas /v1/faturamento', () => {
   it('RN-CORE-02: toda rota declara ação do módulo; a emissão e o XML pedem faturista/fiscal/administrador; leitura é aberta aos perfis de leitura', () => {
     const a = ambiente();
     expect(a.plugin.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao}`).sort()).toEqual([
+      'GET /filiais/:id/configuracao faturamento.ver',
       'GET /notas faturamento.ver',
       'GET /notas/:id faturamento.ver',
       'GET /notas/:id/eventos faturamento.ver',
       'GET /notas/:id/xml faturamento.nota.emitir',
       'GET /pedidos-a-faturar faturamento.ver',
       'GET /rejeicoes faturamento.ver',
+      'GET /titulos faturamento.ver',
+      'GET /titulos/:id faturamento.ver',
       'POST /inutilizacoes faturamento.nota.emitir',
       'POST /notas faturamento.nota.emitir',
       'POST /notas/:id/cancelar faturamento.nota.emitir',
       'POST /notas/:id/carta-correcao faturamento.nota.emitir',
       'POST /notas/:id/consultar faturamento.nota.emitir',
       'POST /notas/:id/reenviar faturamento.nota.emitir',
+      'POST /titulos/:id/baixas faturamento.ver',
+      'POST /titulos/:id/baixas/:baixa_id/estornar faturamento.ver',
+      'PUT /filiais/:id/configuracao faturamento.ver',
     ]);
     expect(pode('leitura', 'faturamento.nota.emitir')).toBe(false);
     expect(pode('faturista', 'faturamento.nota.emitir')).toBe(true);
@@ -84,7 +92,7 @@ describe('rotas /v1/faturamento', () => {
     const a = ambiente();
     const svc = a.deps;
     svc.situacao = { situacao: async () => ({ status: 'cancelado', itens: [] }) };
-    const e1 = await criarPluginFaturamento(svc).rotas.find((r) => r.metodo === 'POST')!.executar({ ...({} as ContextoRota), tx, sessao: sessao('faturista'), enfileirar: async () => ({ id: 'x' }), auditar: async () => undefined } as ContextoRota, { corpo: emitirCorpo, params: {}, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never).catch((e: unknown) => e);
+    const e1 = await criarPluginFaturamento({ ...svc, titulos: titulosFake().repo, configuracao: configuracaoFake().repo }).rotas.find((r) => r.metodo === 'POST')!.executar({ ...({} as ContextoRota), tx, sessao: sessao('faturista'), enfileirar: async () => ({ id: 'x' }), auditar: async () => undefined } as ContextoRota, { corpo: emitirCorpo, params: {}, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never).catch((e: unknown) => e);
     expect(e1).toBeInstanceOf(ErroApi);
     expect(e1).toMatchObject({ status: 422, codigo: 'RN-PED-02' });
     expect(a.estado.reservas).toBe(0);
@@ -227,26 +235,105 @@ describe('rotas de eventos /v1/faturamento (lote 2)', () => {
   });
 });
 
-describe('consumidor de pedido.pedido.aprovado@1', () => {
-  it('RF-FAT-01: grava o pedido aprovado na fila a faturar, idempotente', async () => {
-    const gravados: string[] = [];
-    const vistos = new Set<string>();
-    const c = criarConsumidorPedidoAprovado({
-      obter: async () => null,
-      listar: async () => ({ itens: [], proximo_cursor: null }),
-      gravar: async (_t, p) => {
-        gravados.push(p.pedido_id);
-        if (vistos.has(p.pedido_id)) return 'repetido';
-        vistos.add(p.pedido_id);
-        return 'novo';
-      },
-    });
-    expect(c.eventos).toEqual([EVENTO_PEDIDO_APROVADO]);
-    const evento = { id: uuid(1), nome: EVENTO_PEDIDO_APROVADO, tenant_id: TENANT, agregado_id: IDS.pedido, versao: 1, ocorrido_em: '2026-11-21T14:00:00.000Z', ator: 'sistema' as const, request_id: 'r', payload: pedidoAprovado([itemPedido(1, 10_000, 1000)]) as unknown as Record<string, unknown> };
-    await c.tratar(evento, tx);
-    await c.tratar(evento, tx);
-    expect(gravados).toEqual([IDS.pedido, IDS.pedido]);
-    await expect(c.tratar({ ...evento, payload: { lixo: true } }, tx)).rejects.toThrow();
+describe('rotas de títulos e da bandeira da filial', () => {
+  const semente = (a: ReturnType<typeof ambiente>) => {
+    const nota = uuid(500);
+    a.notas.set(nota, { id: nota, tenant_id: TENANT, pedido_id: IDS.pedido, pedido_uuid: null, filial_id: IDS.filial, cliente_id: IDS.cliente, vendedor_id: null, ambiente: 'producao', vai_ao_fdv: true, serie: 1, numero: 1, cnf: '1', chave_acesso: 'x', tp_emis: 1, status: 'autorizada', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 3000, protocolo: NPROT, autorizada_em: null, recibo: null, idempotencia: 'i', revisao: 1, itens_solicitados: null, itens: [] });
+    return a.tit.repo.inserirParcelas(tx, { id: nota, filial_id: IDS.filial, cliente_id: IDS.cliente, conta_como_real: false }, [{ parcela: 1, total_parcelas: 1, vencimento: '2026-12-21', valor_centavos: 3000, ambiente: 'producao' }]).then(([t]) => t!.id);
+  };
+
+  it('RN-FAT-06: GET /titulos filtra por cliente, status e vencimento e GET /titulos/:id traz as baixas', async () => {
+    const a = ambiente('leitura');
+    const id = await semente(a);
+    const l = (await a.chamar('GET', '/titulos', { consulta: { cliente_id: IDS.cliente, status: 'aberto', vencimento_ate: '2026-12-31' } })).corpo as { itens: { id: string }[] };
+    expect(l.itens.map((t) => t.id)).toEqual([id]);
+    expect(((await a.chamar('GET', '/titulos', { consulta: { status: 'baixado' } })).corpo as { itens: unknown[] }).itens).toEqual([]);
+    expect((await a.chamar('GET', '/titulos/:id', { params: { id } })).corpo).toMatchObject({ id, baixas: [] });
+    await expect(a.chamar('GET', '/titulos/:id', { params: { id: uuid(404) } })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('RN-FAT-06: baixa e estorno só para administrador, gerente e faturista (fiscal, leitura e vendedor recebem 403)', async () => {
+    for (const perfil of ['fiscal', 'leitura', 'vendedor'] as const) {
+      const a = ambiente(perfil);
+      const id = await semente(a);
+      await expect(a.chamar('POST', '/titulos/:id/baixas', { params: { id }, corpo: { valor_centavos: 100, forma: 'pix' } })).rejects.toMatchObject({ status: 403 });
+      await expect(a.chamar('POST', '/titulos/:id/baixas/:baixa_id/estornar', { params: { id, baixa_id: uuid(1) } })).rejects.toMatchObject({ status: 403 });
+    }
+    for (const perfil of ['administrador', 'gerente', 'faturista'] as const) {
+      const a = ambiente(perfil);
+      const id = await semente(a);
+      const r = await a.chamar('POST', '/titulos/:id/baixas', { params: { id }, corpo: { valor_centavos: 1000, forma: 'pix' } });
+      expect(r.status).toBe(201);
+      const baixa = (r.corpo as { baixa: { id: string } }).baixa.id;
+      expect(((await a.chamar('POST', '/titulos/:id/baixas/:baixa_id/estornar', { params: { id, baixa_id: baixa } })).corpo as { titulo: { saldo_centavos: number } }).titulo.saldo_centavos).toBe(3000);
+      expect(a.auditoria).toEqual(['faturamento.titulo.baixar', 'faturamento.titulo.estornar']);
+    }
+    expect(ambiente().rota('POST', '/titulos/:id/baixas').idempotencia).toBe('obrigatoria');
+  });
+
+  it('RN-FAT-04: PUT /filiais/:id/configuracao só do administrador, com Idempotency-Key, audita e confere a filial; o padrão é desligada', async () => {
+    const adm = ambiente('administrador');
+    expect(((await adm.chamar('GET', '/filiais/:id/configuracao', { params: { id: IDS.filial } })).corpo as { faturamento_real_nfe_simulada: boolean }).faturamento_real_nfe_simulada).toBe(false);
+    const r = await adm.chamar('PUT', '/filiais/:id/configuracao', { params: { id: IDS.filial }, corpo: { faturamento_real_nfe_simulada: true } });
+    expect(r.corpo).toEqual({ filial_id: IDS.filial, faturamento_real_nfe_simulada: true });
+    expect(adm.cfg.linhas.get(IDS.filial)).toEqual({ ligada: true, alterado_por: uuid(5) });
+    expect(adm.auditoria).toEqual(['faturamento.filial.configurar']);
+    expect(adm.rota('PUT', '/filiais/:id/configuracao').idempotencia).toBe('obrigatoria');
+    for (const perfil of ['gerente', 'faturista', 'fiscal', 'leitura'] as const) {
+      await expect(ambiente(perfil).chamar('PUT', '/filiais/:id/configuracao', { params: { id: IDS.filial }, corpo: { faturamento_real_nfe_simulada: true } })).rejects.toMatchObject({ status: 403 });
+    }
   });
 });
 
+describe('consumidor de pedido.pedido.aprovado@1', () => {
+  type Fila = Map<string, string>;
+  const montarC = (situacao: { status: 'aprovado' | 'cancelado' | 'faturado' | 'faturado_parcial'; itens: { sequencia: number; quantidade: number; quantidade_faturada: number }[] }) => {
+    const fila: Fila = new Map();
+    const c = criarConsumidorPedidoAprovado({
+      situacao: { situacao: async () => situacao },
+      pedidos: {
+        obter: async () => null,
+        listar: async () => ({ itens: [], proximo_cursor: null }),
+        gravar: async (_t, p, status = 'a_faturar') => {
+          const novo = !fila.has(p.pedido_id);
+          const igual = fila.get(p.pedido_id) === status;
+          fila.set(p.pedido_id, status);
+          return novo && !igual ? 'novo' : 'repetido';
+        },
+        marcarCancelado: async (_t, id) => {
+          if (fila.has(id)) fila.set(id, 'cancelado');
+        },
+      },
+    });
+    return { c, fila };
+  };
+  const evento = () => ({ id: uuid(1), nome: EVENTO_PEDIDO_APROVADO, tenant_id: TENANT, agregado_id: IDS.pedido, versao: 1, ocorrido_em: '2026-11-21T14:00:00.000Z', ator: 'sistema' as const, request_id: 'r', payload: pedidoAprovado([itemPedido(1, 10_000, 1000)]) as unknown as Record<string, unknown> });
+
+  it('RF-FAT-01: grava o pedido aprovado na fila a faturar, idempotente', async () => {
+    const { c, fila } = montarC({ status: 'aprovado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 0 }] });
+    expect(c.eventos).toEqual([EVENTO_PEDIDO_APROVADO]);
+    await c.tratar(evento(), tx);
+    await c.tratar(evento(), tx);
+    expect([...fila.entries()]).toEqual([[IDS.pedido, 'a_faturar']]);
+    await expect(c.tratar({ ...evento(), payload: { lixo: true } }, tx)).rejects.toThrow();
+  });
+
+  it('RF-FAT-01: reentrega de aprovado antigo de pedido CANCELADO não entra na fila (e marca cancelado se já estava)', async () => {
+    const { c, fila } = montarC({ status: 'cancelado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 0 }] });
+    await c.tratar(evento(), tx);
+    expect(fila.size).toBe(0);
+    fila.set(IDS.pedido, 'a_faturar');
+    await c.tratar(evento(), tx);
+    expect(fila.get(IDS.pedido)).toBe('cancelado');
+  });
+
+  it('RF-FAT-01: reentrega de aprovado antigo de pedido JÁ FATURADO grava faturado; saldo parcial, faturado_parcial; idempotente', async () => {
+    const total = montarC({ status: 'faturado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 10_000 }] });
+    await total.c.tratar(evento(), tx);
+    await total.c.tratar(evento(), tx);
+    expect(total.fila.get(IDS.pedido)).toBe('faturado');
+    const parcial = montarC({ status: 'faturado_parcial', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 4_000 }] });
+    await parcial.c.tratar(evento(), tx);
+    expect(parcial.fila.get(IDS.pedido)).toBe('faturado_parcial');
+  });
+});

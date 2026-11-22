@@ -115,7 +115,7 @@ describe('requisições (a API revalida; aqui só se monta o pedido)', () => {
 describe('títulos a receber (rotas do lote 5, declaradas contra o caminho combinado)', () => {
   it('declara os caminhos combinados e a dependência do lote 5', () => {
     expect(paginaTitulos.api).toBe('/v1/faturamento/titulos');
-    expect(PAGINAS_FATURAMENTO.find((p) => p.rota === '/faturamento/titulos')?.aviso).toContain('lote 5');
+    expect(PAGINAS_FATURAMENTO.find((p) => p.rota === '/faturamento/titulos')?.aviso).toBeUndefined();
   });
   it('RF-FAT-06: baixa em R$ vira centavos sem float, não passa do saldo, nem de hoje, e vira POST com Idempotency-Key', () => {
     expect(formularioBaixa({ valor: '1.234,56', data: '2026-11-20', saldo_centavos: 200_000, hoje: '2026-11-22' })).toEqual({ ok: true, valor_centavos: 123_456, data_baixa: '2026-11-20' });
@@ -126,8 +126,8 @@ describe('títulos a receber (rotas do lote 5, declaradas contra o caminho combi
     expect(requisicaoBaixa(ID, { valor_centavos: 1000, data_baixa: '2026-11-20' }, 'chave-baixa-0001')).toEqual({
       metodo: 'POST', caminho: `/v1/faturamento/titulos/${ID}/baixas`, cabecalhos: { 'Idempotency-Key': 'chave-baixa-0001' }, corpo: { valor_centavos: 1000, data_baixa: '2026-11-20' },
     });
-    expect(requisicaoEstornar(ID, ID, 'curto', 'chave-estorno-01')).toMatchObject({ ok: false });
-    expect(requisicaoEstornar(ID, ID, 'Baixa lançada no título errado', 'chave-estorno-01')).toMatchObject({ ok: true, requisicao: { metodo: 'POST', caminho: `/v1/faturamento/titulos/${ID}/baixas/${ID}/estornar` } });
+    expect(requisicaoEstornar(ID, ID, 'curta')).toMatchObject({ ok: false });
+    expect(requisicaoEstornar(ID, ID, 'chave-estorno-01')).toMatchObject({ ok: true, requisicao: { metodo: 'POST', caminho: `/v1/faturamento/titulos/${ID}/baixas/${ID}/estornar` } });
   });
   it('"Baixar" só no título aberto com saldo; "Estornar" só com baixa não estornada; leitura não age', () => {
     const aberto = { status: 'aberto' as const, saldo_centavos: 5000, baixas: [] };
@@ -135,6 +135,8 @@ describe('títulos a receber (rotas do lote 5, declaradas contra o caminho combi
     expect(acoesDoTitulo('faturista', { status: 'baixado', saldo_centavos: 0, baixas: [{ id: ID, estornada_em: null }] })).toEqual({ baixar: false, estornar: true });
     expect(acoesDoTitulo('faturista', { status: 'baixado', saldo_centavos: 0, baixas: [{ id: ID, estornada_em: '2026-11-21T10:00:00.000Z' }] }).estornar).toBe(false);
     expect(acoesDoTitulo('leitura', aberto)).toEqual({ baixar: false, estornar: false });
+    expect(acoesDoTitulo('fiscal', aberto)).toEqual({ baixar: false, estornar: false });
+    expect(acoesDoTitulo('gerente', aberto).baixar).toBe(true);
   });
 });
 
@@ -152,7 +154,7 @@ describe('colunas e CSV', () => {
     const p = csvDaPagina(paginaPedidosAFaturar, [{ id: ID, pedido_id: ID, numero: 7, cliente_razao_social: 'Mercado Boa Vista', total_centavos: 50_000, status: 'a_faturar', recebido_em: '2026-11-22T15:00:00.000Z', filial_id: ID, cliente_id: ID }], 'America/Manaus');
     expect(p).toContain('Mercado Boa Vista');
     expect(p).toContain('500,00');
-    const t = csvDaPagina(paginaTitulos, [{ id: ID, nota_id: ID, cliente_id: ID, cliente_razao_social: 'Mercado Boa Vista', numero: 12, serie: 1, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 10_000, saldo_centavos: 2_500, status: 'aberto' }], 'America/Manaus');
+    const t = csvDaPagina(paginaTitulos, [{ id: ID, nota_id: ID, cliente_id: ID, cliente_razao_social: 'Mercado Boa Vista', filial_id: ID, ambiente: 'producao' as const, numero: 12, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 10_000, saldo_centavos: 2_500, status: 'aberto' }], 'America/Manaus');
     expect(t).toContain('05/12/2026');
     expect(t).toContain('25,00');
   });
@@ -193,8 +195,8 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
   it('textos de lista vazia, rótulo de linha, colunas à direita e "—" no lugar do UUID', () => {
     expect(Object.keys(TEXTO_VAZIO).sort()).toEqual(['notas', 'pedidos-a-faturar', 'rejeicoes', 'titulos']);
     expect(TEXTO_VAZIO['notas']).toBe('Nenhuma nota neste filtro. Limpe os filtros.');
-    const t = { id: ID, nota_id: ID, cliente_id: ID, numero: 123, serie: 1, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 1, saldo_centavos: 1, status: 'aberto' as const };
-    expect(ROTULO_LINHA['titulos']?.(t as never)).toBe('Abrir nota 123/1');
+    const t = { id: ID, nota_id: ID, cliente_id: ID, numero: 123, filial_id: ID, ambiente: 'producao' as const, parcela: 1, total_parcelas: 2, vencimento: '2026-12-05', valor_centavos: 1, saldo_centavos: 1, status: 'aberto' as const };
+    expect(ROTULO_LINHA['titulos']?.(t as never)).toBe('Abrir a nota 123 do título');
     const cols = colunasDaPagina('titulos', 'America/Manaus');
     expect(cols.filter((c) => c.tipo === 'dinheiro').map((c) => c.id)).toEqual(['valor', 'saldo']);
     expect(cols.find((c) => c.id === 'cliente')?.valor(t)).toBe('—');

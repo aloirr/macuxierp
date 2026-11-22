@@ -61,7 +61,7 @@ for t in 1 2 3; do
 done
 IFS='|' read -r versao ssl tls super bypass createdb createrole <<< "$info"
 [ "$ssl" = t ] || erro 3 "conexão SEM TLS com o DBaaS: recusado (produção só com TLS)"
-log "DBaaS: PostgreSQL $versao, TLS $tls ($(grep -q '^MACUXIERP_PG_SSL_LIBPQ=verify-full' imagens.env && echo 'certificado conferido' || echo 'certificado NÃO conferido: sem PROD_PG_CA_CERT'))"
+log "DBaaS: PostgreSQL $versao, TLS $tls ($(grep -q '^MACUXIERP_PG_SSL_LIBPQ=verify-full' imagens.env && echo 'certificado conferido' || echo 'certificado NÃO conferido: sem a CA do DBaaS do FDV'))"
 [ "$createdb" = t ] && [ "$createrole" = t ] || erro 2 "o admin precisa de CREATEDB e CREATEROLE (tem createdb=$createdb createrole=$createrole)"
 log "admin: superuser=$super bypassrls=$bypass (no DBaaS, os dois são f)"
 

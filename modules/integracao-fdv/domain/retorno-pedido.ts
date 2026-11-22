@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { jsonCanonico } from './canonico';
 import type { CodigoRejeicao } from './pedido-fdv';
+import { PedidoFaturadoV1 } from '@macuxierp/pedido/contracts';
 import type { RetornoErp, StatusRetornoHub } from '../contracts';
 
 /** Catálogo de motivos do pedido (T-0013 §4.3): ao FDV vai o texto do catálogo; em `outro`, o texto livre. */
@@ -46,7 +47,7 @@ const TEXTO_DA_REJEICAO: Readonly<Record<CodigoRejeicao, string>> = {
 };
 
 const Uuid = z.string().uuid();
-/** Leitor tolerante do payload do evento (`Base` + campos do fato; T-0013 §8). Campo novo opcional não derruba. */
+/** Leitor tolerante do payload do evento (`Base` + campos do fato). Leitor tolerante e não o schema do publicador: campo novo opcional não derruba o consumidor (.coord/contratos/eventos.md, seção Dependências). */
 export const PayloadPedidoLido = z
   .object({
     pedido_id: Uuid,
@@ -57,6 +58,8 @@ export const PayloadPedidoLido = z
     motivo_codigo: z.string().nullable().optional(),
     motivo_texto: z.string().nullable().optional(),
     ambiente: z.enum(['producao', 'homologacao']).optional(),
+    /** RN-FAT-04/M7: ver PedidoFaturadoV1.conta_como_real (pedido/contracts). Ausente = false. */
+    conta_como_real: PedidoFaturadoV1.shape.conta_como_real,
     nota: z
       .object({ id: Uuid.optional(), numero: z.number().int(), serie: z.number().int(), chave: z.string(), emitida_em: z.string(), total_centavos: z.number().int() })
       .optional(),
@@ -123,7 +126,7 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
       return { acao: 'enviar', corpo: { ...comum, status: 'cancelado', ...(motivo ? { motivo } : {}) } };
     }
     case 'pedido.pedido.faturado@1': {
-      if (p.ambiente !== 'producao') return { acao: 'ignorar', motivo: 'homologacao' };
+      if (p.ambiente !== 'producao' && !p.conta_como_real) return { acao: 'ignorar', motivo: 'homologacao' };
       if (!p.nota || !p.itens_faturados) return { acao: 'ignorar', motivo: 'status_sem_retorno' };
       const faltam = [...new Set(p.itens_faturados.filter((i) => !chavesProduto.has(i.produto_id)).map((i) => i.produto_id))];
       const status: StatusRetornoHub = p.status === 'faturado' ? 'faturado_total' : 'faturado_parcial';

@@ -15,6 +15,7 @@ import {
 import {
   ajusteDeCarga, bloqueiosDeInativacao, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
+  type FatosFilial,
 } from '../domain';
 import { desativarCondicoesRecusadas } from './formas-recusadas';
 import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, comExternalIdAnterior, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
@@ -144,6 +145,7 @@ async function filial(l: LinhaFilial, st: Estado): Promise<Saida> {
     const v = validarFilial({
       uf: m.uf as string, municipio_ibge: m.municipio_ibge as string, ie: (m.ie as string | null) ?? null, emissora: ex.emissora,
       nfe_serie: ex.nfe_serie ?? null, nfe_numero_inicial: ex.nfe_numero_inicial ?? null,
+      crt: m.crt as FatosFilial['crt'], regime_pis_cofins: (m.regime_pis_cofins as FatosFilial['regime_pis_cofins']) ?? null,
     });
     if (l.ativo === false && !ex.inativo) v.push(...bloqueiosDeInativacao('filial', { padrao: ex.padrao }));
     if (v.length > 0) return violacoes(l.linha, v);
@@ -169,7 +171,7 @@ async function filial(l: LinhaFilial, st: Estado): Promise<Saida> {
     padrao: !temPadrao && l.ativo !== false, emissora: false, external_id: l.external_id,
   });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
-  const v = validarFilial({ uf: r.data.endereco.uf, municipio_ibge: r.data.endereco.municipio_ibge, ie: r.data.ie, emissora: false, nfe_serie: null, nfe_numero_inicial: null });
+  const v = validarFilial({ uf: r.data.endereco.uf, municipio_ibge: r.data.endereco.municipio_ibge, ie: r.data.ie, emissora: false, nfe_serie: null, nfe_numero_inicial: null, crt: r.data.crt, regime_pis_cofins: r.data.regime_pis_cofins });
   if (v.length > 0) return violacoes(l.linha, v);
   // No modo validar nada é gravado: a marca vale já no planejamento. No gravar, só depois do INSERT (e é desfeita se a linha falhar).
   if (r.data.padrao && !st.gravar) st.filialPadrao = { carregada: true, id: '' };

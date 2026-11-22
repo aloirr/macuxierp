@@ -3,7 +3,7 @@ import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
 import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA } from './emissao';
-import { a1DeTeste, a1VencidoDeTeste, depsFake, protocolo, transporteFake, tx, TENANT, type Roteiro } from './apoio-teste';
+import { a1DeTeste, a1VencidoDeTeste, depsFake, titulosFake, protocolo, transporteFake, tx, TENANT, type Roteiro } from './apoio-teste';
 import { criarTransmissor } from './transmissor';
 
 function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'producao'; semA1?: boolean; a1Vencido?: boolean } = {}) {
@@ -34,9 +34,11 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
   const a1 = a1DeTeste();
   const filiaisPedidas: unknown[] = [];
   const leituras = { n: 0 };
+  const deps_sefaz = { recusar: false };
   const transmissor = criarTransmissor({
+    log: () => undefined,
     banco,
-    notas: f.r.repo,
+    notas: f.r.repo, titulos: titulosFake().repo,
     emissor: f.emissor,
     ambiente: { ambiente: async () => o.ambienteAtual ?? 'homologacao' },
     lerA1: async () => {
@@ -47,14 +49,16 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
     sefaz: (filial, credencial) => {
       expect(credencial).toBe(a1.credencial); // o seletor recebe o pfx + senha, não o certificado aberto
       filiaisPedidas.push(filial);
+      if (deps_sefaz.recusar) throw new Error('SimuladorEmProducaoErro');
       return t.transporte;
     },
     agora: () => new Date('2026-11-21T14:30:00Z'),
   });
-  return { ...f, ...f.r, t, a1, leituras, filiaisPedidas, transmissor, svc: criarServicoEmissao(f.deps) };
+  return { ...f, ...f.r, t, a1, leituras, filiaisPedidas, deps_sefaz, transmissor, svc: criarServicoEmissao(f.deps) };
 }
-async function emitir(m: ReturnType<typeof montar>, idempotencia = 'idem-0000001') {
-  const r = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia });
+/** `parcial`: nota de 0,5000 do item 1 (várias notas do mesmo pedido não passam do saldo, RN-FAT-01). */
+async function emitir(m: ReturnType<typeof montar>, idempotencia = 'idem-0000001', parcial = false) {
+  const r = await m.svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia, ...(parcial ? { itens: [{ sequencia: 1, quantidade: 5_000 }] } : {}) });
   if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
   return r.nota;
 }
@@ -71,11 +75,11 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(m.assinadas[0]).toContain(`Id="NFe${nota.chave_acesso}"`);
     expect(m.assinados.map((a) => [a.id, a.versao])).toEqual([[nota.id, 1]]); // gravado pelo WORKER com a nota em rascunho, antes da SEFAZ
     expect(m.log.slice(0, 6)).toEqual(['trava', 'numero:100', 'gravar', 'xml:assinado:1', 'status:em_autorizacao', 'recibo']);
-    expect(m.log.slice(-3)).toEqual(['status:autorizada_guarda_pendente', 'xml:autorizado', `evento:${EVENTO_NOTA_AUTORIZADA}`]); // nfeProc guardado antes do evento
+    expect(m.log.slice(-5)).toEqual(['status:autorizada_guarda_pendente', 'xml:autorizado', `evento:${EVENTO_NOTA_AUTORIZADA}`, 'evento:faturamento.titulo.gerado@1', 'evento:faturamento.titulo.gerado@1']); // nfeProc guardado antes do evento; os títulos vêm depois, na mesma tx
     expect(m.notas.get(nota.id)?.status).toBe('autorizada');
     expect(m.xmls[0]?.conteudo).toMatch(/^<nfeProc .*<protNFe/);
     expect(m.xmls[0]?.conteudo).toContain(m.assinadas[0] as string);
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
     expect(m.transmissoes.map((t) => [t.servico, t.destino, t.cStat])).toEqual([['autorizacao', 'simulador', '103'], ['ret_autorizacao', 'simulador', '104']]);
     expect([...m.a1.credencial.pfx].every((b) => b === 0)).toBe(true);
     expect(m.filiaisPedidas[0]).toEqual({ filial_id: IDS.filial, ambiente: 'homologacao', uf: 'AM', modo: 'normal' });
@@ -102,7 +106,7 @@ describe('worker: assinar e transmitir a nota', () => {
     const r = await m.transmissor.transmitirNota(TENANT, (await emitir(m)).id);
     expect(r.resultado).toBe('autorizada');
     expect(m.t.chamadas).toEqual(['autorizar', 'consultarProtocolo']);
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
   });
 
   it('RN-FAT-07: duplicidade que a consulta não resolve (217) deixa a nota em_autorizacao, sem evento', async () => {
@@ -133,7 +137,7 @@ describe('worker: assinar e transmitir a nota', () => {
     m.estado.falharGuarda = false;
     expect((await m.transmissor.transmitirNota(TENANT, nota.id)).resultado).toBe('autorizada');
     expect(m.t.chamadas).toEqual(['autorizar', 'consultarRecibo', 'consultarProtocolo']);
-    expect(m.eventos).toHaveLength(1);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.'))).toHaveLength(1);
   });
 
   it('RN-CORE-06: filial sem A1 ativo no worker não assina nem envia nada e a nota continua em rascunho, com o motivo', async () => {
@@ -150,6 +154,19 @@ describe('worker: assinar e transmitir a nota', () => {
     const m = montar({}, { ambienteAtual: 'producao' });
     expect((await m.transmissor.transmitirNota(TENANT, (await emitir(m)).id)).resultado).toBe('ambiente_mudou');
     expect(m.t.chamadas).toEqual([]);
+  });
+
+  it('RN-FAT-04: nota de produção que chega ao worker sem destino (seletor recusa) continua em rascunho: não assina, não grava nfe_assinada, não vai a em_autorizacao; o número fica e o motivo é destino_indisponivel', async () => {
+    const m = montar();
+    const nota = await emitir(m);
+    m.deps_sefaz.recusar = true;
+    expect(await m.transmissor.transmitirNota(TENANT, nota.id)).toEqual({ resultado: 'nao_assinada', motivo: 'destino_indisponivel' });
+    expect(m.notas.get(nota.id)).toMatchObject({ status: 'rascunho', numero: 100 });
+    expect(m.assinados).toEqual([]);
+    expect(m.assinadas).toEqual([]);
+    expect(m.t.chamadas).toEqual([]);
+    expect(m.motivos.get(nota.id)).toBe('destino_indisponivel');
+    expect([...m.a1.credencial.pfx].every((b) => b === 0)).toBe(true);
   });
 
   it('RN-FAT-02: nota autorizada ou inexistente é ignorada (idempotente)', async () => {
@@ -198,7 +215,7 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(m.leituras.n).toBe(2); // o A1 é lido de novo só para o mTLS
     expect(m.xmls[0]?.conteudo).toContain(primeiro);
     expect(m.xmls[0]?.conteudo).not.toContain('data-emissor');
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
+    expect(m.eventos.filter((e) => e.nome.startsWith('faturamento.nota.')).map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
   });
 
   it('RN-FAT-03: duplicidade e guarda pendente reutilizam o assinado guardado mesmo com o emissor trocado', async () => {
@@ -240,7 +257,7 @@ describe('worker: assinar e transmitir a nota', () => {
 
   /** A nota já assinada e em autorização (a SEFAZ caiu no envio): é o que a varredura enxerga. */
   async function emAutorizacao(m: ReturnType<typeof montar>, idem?: string) {
-    const nota = await emitir(m, idem);
+    const nota = await emitir(m, idem, true);
     const original = m.t.transporte.autorizar;
     m.t.transporte.autorizar = async () => {
       throw new FalhaTransporteSefaz('autorizacao', true, 'tempo esgotado');
@@ -283,8 +300,8 @@ describe('worker: assinar e transmitir a nota', () => {
 
   it('RN-FAT-01: numeradasNaoEnviadas lista só rascunho e rejeitada emitidas antes do corte (alerta do prazo de inutilização)', async () => {
     const m = montar({ recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
-    const rascunho = await emitir(m, 'idem-0000020');
-    const rejeitada = await emitir(m, 'idem-0000021');
+    const rascunho = await emitir(m, 'idem-0000020', true);
+    const rejeitada = await emitir(m, 'idem-0000021', true);
     await m.transmissor.transmitirNota(TENANT, rejeitada.id);
     expect(m.notas.get(rejeitada.id)?.status).toBe('rejeitada');
     const emitida = new Date(rascunho.emitida_em).getTime();
@@ -323,7 +340,7 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(reenvio.ok).toBe(true);
     expect(m.motivos.has(nota.id)).toBe(false);
     const ok = montar({});
-    const worker = criarTransmissor({ banco: { comTenant: async (_i, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true }, notas: m.repo, emissor: m.emissor, ambiente: { ambiente: async () => 'homologacao' }, lerA1: async () => a1DeTeste(), sefaz: () => ok.t.transporte });
+    const worker = criarTransmissor({ log: () => undefined, banco: { comTenant: async (_i, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true }, notas: m.repo, titulos: titulosFake().repo, emissor: m.emissor, ambiente: { ambiente: async () => 'homologacao' }, lerA1: async () => a1DeTeste(), sefaz: () => ok.t.transporte });
     expect((await worker.transmitirNota(TENANT, nota.id)).resultado).toBe('autorizada');
     expect(m.notas.get(nota.id)).toMatchObject({ numero: 100, chave_acesso: nota.chave_acesso });
     expect(m.estado.reservas).toBe(1); // nenhum número novo

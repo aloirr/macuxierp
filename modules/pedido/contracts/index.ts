@@ -392,13 +392,21 @@ export const PedidoRecusadoV1 = PedidoEventoBase.extend({ motivo_codigo: MotivoR
 export type PedidoRecusadoV1 = z.infer<typeof PedidoRecusadoV1>;
 export const PedidoCanceladoV1 = PedidoEventoBase.extend({ motivo_codigo: MotivoCancelamento, motivo_texto: z.string().nullable() }).superRefine(textoSoEmOutro);
 export type PedidoCanceladoV1 = z.infer<typeof PedidoCanceladoV1>;
+/**
+ * Cópia do `CHAVE_ACESSO_REGEX` de `modules/faturamento/contracts` (CNPJ alfanumérico: 6 dígitos, 12 de A-Z/0-9, 26 dígitos).
+ * Não se importa do faturamento, que depende do pedido; mantenha igual à origem.
+ */
+const CHAVE_ACESSO_REGEX = /^\d{6}[A-Z0-9]{12}\d{26}$/;
+
 export const PedidoFaturadoV1 = PedidoEventoBase.extend({
   ambiente: z.enum(['homologacao', 'producao']),
+  /** Faturamento real com NF-e simulada (T-0015): copiado da nota. Para o FDV tudo é real. */
+  conta_como_real: z.boolean().optional(),
   nota: z.object({
     id: Uuid,
     numero: z.number().int(),
     serie: z.number().int(),
-    chave: z.string().regex(/^\d{44}$/),
+    chave: z.string().regex(CHAVE_ACESSO_REGEX),
     emitida_em: z.string().datetime(),
     total_centavos: Centavos,
   }),

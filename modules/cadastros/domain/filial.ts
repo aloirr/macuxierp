@@ -1,6 +1,11 @@
+import type { FilialDados, RegimePisCofins } from '../contracts';
 import { validarIe } from './ie';
 import { validarMunicipio } from './municipio';
 import { violacao, type Violacao } from './violacao';
+
+/** Mensagem fixa da RN-FIS-02 (CRT 3 sem regime); sem valor digitado, por isso a carga a repassa (D9). */
+export const MSG_REGIME_PIS_COFINS_CRT3 =
+  'Filial no Lucro Real/Presumido (CRT 3) precisa do regime de PIS/COFINS: cumulativo ou não cumulativo.';
 
 export interface FatosFilial {
   uf: string;
@@ -9,6 +14,9 @@ export interface FatosFilial {
   emissora: boolean;
   nfe_serie: number | null;
   nfe_numero_inicial: number | null;
+  /** Ausente = não avaliar (chamadores que não têm o dado). */
+  crt?: FilialDados['crt'];
+  regime_pis_cofins?: RegimePisCofins | null;
 }
 
 /**
@@ -28,6 +36,14 @@ export function validarFilial(f: FatosFilial): Violacao[] {
   if (f.nfe_serie === null && f.nfe_numero_inicial !== null) v.push(violacao('D8', 'nfe_serie', 'Informe a série junto do número inicial'));
   if (f.nfe_serie !== null && f.nfe_numero_inicial === null) v.push(violacao('D8', 'nfe_numero_inicial', 'Informe o número inicial junto da série'));
   if (f.emissora && f.nfe_serie === null && f.nfe_numero_inicial === null) v.push(violacao('D8', 'nfe_serie', 'Filial emissora precisa de série e número inicial da NF-e'));
+  // RN-FIS-02: o regime de PIS/COFINS só existe no regime normal (CRT 3); nos demais, o cálculo não o usa e o dado ficaria enganoso.
+  // Violação (não normalização silenciosa), como as demais regras da filial: quem digitou vê o motivo. No CRT 3 ele é obrigatório: sem ele o cálculo fiscal cai em REGRA_INCOMPLETA.
+  if (f.regime_pis_cofins != null && f.crt !== undefined && f.crt !== '3') {
+    v.push(violacao('RN-FIS-02', 'regime_pis_cofins', 'Regime de PIS/COFINS só vale para filial de CRT 3 (regime normal)'));
+  }
+  if (f.crt === '3' && f.regime_pis_cofins == null) {
+    v.push(violacao('RN-FIS-02', 'regime_pis_cofins', MSG_REGIME_PIS_COFINS_CRT3));
+  }
   return v;
 }
 

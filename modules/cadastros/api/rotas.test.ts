@@ -95,6 +95,28 @@ describe('filiais (RF-CAD-08)', () => {
     const lista = await t.chamar('GET', '/filiais', { sessao: adm });
     expect(lista.corpo.itens.map((f: { id: string }) => f.id)).toEqual([padrao]);
   });
+  it('RN-FIS-02: PATCH de CRT 3 com regime para CRT 1 sem limpar o regime é 422; com regime null é 200', async () => {
+    const t = montar();
+    const criada = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '3', regime_pis_cofins: 'nao_cumulativo' }) });
+    expect(criada.status).toBe(201);
+    const id = criada.corpo.id as string;
+    expect(await t.chamar('PATCH', `/filiais/${id}`, { sessao: adm, corpo: { crt: '1' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+    const ok = await t.chamar('PATCH', `/filiais/${id}`, { sessao: adm, corpo: { crt: '1', regime_pis_cofins: null } });
+    expect(ok.status).toBe(200);
+    expect(ok.corpo).toMatchObject({ crt: '1', regime_pis_cofins: null });
+  });
+  it('RN-FIS-02: POST e PATCH dão 422 para CRT 3 sem regime (criar, trocar de CRT 1 para 3 e regime null)', async () => {
+    const t = montar();
+    const sem = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '3' }) });
+    expect(sem).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+    expect((await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '3', regime_pis_cofins: null }) })).status).toBe(422);
+    const c1 = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ crt: '1' }) });
+    expect(c1.status).toBe(201);
+    expect(await t.chamar('PATCH', `/filiais/${c1.corpo.id}`, { sessao: adm, corpo: { crt: '3' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+    const c3 = await t.chamar('PATCH', `/filiais/${c1.corpo.id}`, { sessao: adm, corpo: { crt: '3', regime_pis_cofins: 'cumulativo' } });
+    expect(c3.status).toBe(200);
+    expect(await t.chamar('PATCH', `/filiais/${c1.corpo.id}`, { sessao: adm, corpo: { regime_pis_cofins: null } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-FIS-02' } });
+  });
   it('trocar a padrão desmarca a anterior', async () => {
     const t = montar();
     const a = await comFilial(t);

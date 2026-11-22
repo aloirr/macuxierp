@@ -14,6 +14,7 @@ export const SCHEMAS = [
   'faturamento',
   'fiscal',
   'integracao_fdv',
+  'sefaz_simulador',
 ] as const;
 /** Tenant de referência das tabelas oficiais (D9). */
 export const TENANT_REFERENCIA = '00000000-0000-0000-0000-000000000000' as const;

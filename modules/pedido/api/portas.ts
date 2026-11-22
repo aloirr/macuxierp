@@ -167,6 +167,13 @@ export interface RepoPedidos {
   /** Preço de tabela e desconto máximo da última avaliação, por sequência. */
   atualizarPrecosDeTabela(pedidoId: string, linhas: readonly { sequencia: number; preco_tabela_centavos: number | null; desconto_maximo_bp: number | null }[]): Promise<void>;
   registrarEvento(e: NovoEvento): Promise<void>;
+  /**
+   * Nota autorizada aplicada (T-0015): grava `quantidade_faturada` por sequência, `valor_faturado_centavos` e o status, sem tocar
+   * em pendências. Só o worker tem o GRANT dessas colunas; o gatilho `validar_status` valida a transição.
+   */
+  aplicarFaturamento(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: StatusPedido): Promise<void>;
+  /** Já há histórico do pedido com este `evento_id` (idempotência do consumidor de nota). */
+  eventoRegistrado(pedidoId: string, eventoId: string): Promise<boolean>;
   registrarAprovacao(a: NovaAprovacao): Promise<void>;
   historico(pedidoId: string): Promise<HistoricoPedido[]>;
   decisao(pedidoId: string): Promise<DecisaoPedido | null>;

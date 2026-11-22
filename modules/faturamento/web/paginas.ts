@@ -58,7 +58,7 @@ const colunasTitulos: Fabrica<TituloResumo> = (fuso) => {
   const hoje = hojeCivil(fuso);
   return [
     { id: 'cliente', titulo: 'Cliente', valor: (t) => ou(t.cliente_razao_social) },
-    { id: 'nota', titulo: 'Nota', valor: (t) => numeroSerie(t) },
+    { id: 'nota', titulo: 'Nota', valor: (t) => String(t.numero) },
     { id: 'parcela', titulo: 'Parcela', valor: (t) => `${t.parcela}/${t.total_parcelas}` },
     { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', valor: (t) => dataCivil(t.vencimento) },
     { id: 'valor', titulo: 'Valor', tipo: 'dinheiro', valor: (t) => valor(t.valor_centavos) },
@@ -84,7 +84,6 @@ export const paginaRejeicoes = definirPaginaLista({
   id: 'rejeicoes', api: `${BASE_API}/rejeicoes`, item: RejeicaoNota, filtros: FiltroRejeicoes.omit(SEM_CURSOR).shape, colunas: colunasRejeicoes(FUSO_PADRAO), csv: { arquivo: 'rejeicoes.csv' },
 });
 
-/** Rota do lote 5 (ainda não existe na API): ver `titulos.ts`. */
 export const paginaTitulos = definirPaginaLista({
   id: 'titulos', api: `${BASE_API}/titulos`, item: TituloResumo,
   filtros: FiltroTitulos.omit(SEM_CURSOR).shape, colunas: colunasTitulos(FUSO_PADRAO), csv: { arquivo: 'titulos-a-receber.csv' },
@@ -95,7 +94,7 @@ export const TEXTO_VAZIO: Readonly<Record<string, string>> = {
   'pedidos-a-faturar': 'Nenhum pedido a faturar. Pedidos aprovados aparecem aqui.',
   rejeicoes: 'Nenhuma rejeição. As notas estão passando.',
   notas: 'Nenhuma nota neste filtro. Limpe os filtros.',
-  titulos: 'Títulos a receber ainda não estão disponíveis.',
+  titulos: 'Nenhum título neste filtro. Títulos nascem das notas autorizadas a prazo.',
 };
 
 /** `rotuloLinha` (aria-label da linha clicável) de cada lista. */
@@ -103,7 +102,7 @@ export const ROTULO_LINHA: Readonly<Record<string, (linha: never) => string>> = 
   'pedidos-a-faturar': ((p: PedidoAFaturarResumo) => `Emitir nota do pedido ${p.numero ?? ''}`.trim()) as (l: never) => string,
   notas: ((n: NotaResumo) => `Abrir nota ${numeroSerie(n) || 'sem número'}`) as (l: never) => string,
   rejeicoes: ((r: RejeicaoNota) => `Abrir nota ${numeroSerie(r) || 'sem número'}`) as (l: never) => string,
-  titulos: ((t: TituloResumo) => `Abrir nota ${numeroSerie(t)}`) as (l: never) => string,
+  titulos: ((t: TituloResumo) => `Abrir a nota ${t.numero} do título`) as (l: never) => string,
 };
 
 const FABRICAS: Readonly<Record<string, Fabrica<never>>> = {
@@ -138,7 +137,7 @@ export const PAGINAS_FATURAMENTO: readonly PaginaFaturamento[] = [
   { id: 'notas', tipo: 'lista', menu: 'Notas fiscais', titulo: 'Notas fiscais', rota: '/faturamento/notas', api: paginaNotas.api, ver: VER },
   { id: 'nota', tipo: 'detalhe', menu: 'Notas fiscais', titulo: 'Nota fiscal', rota: '/faturamento/notas/:id', ver: VER, ocultaNoMenu: true },
   { id: 'rejeicoes', tipo: 'lista', menu: 'Notas fiscais', titulo: 'Rejeições', rota: '/faturamento/rejeicoes', api: paginaRejeicoes.api, ver: VER },
-  { id: 'titulos', tipo: 'lista', menu: 'Títulos a receber', titulo: 'Títulos a receber', rota: '/faturamento/titulos', api: paginaTitulos.api, ver: VER, aviso: 'Títulos a receber chegam no lote 5 da T-0021 (T-0040). Até lá a lista fica vazia.' },
+  { id: 'titulos', tipo: 'lista', menu: 'Títulos a receber', titulo: 'Títulos a receber', rota: '/faturamento/titulos', api: paginaTitulos.api, ver: VER },
 ];
 
 /** `vendedor` não acessa o faturamento na v1 (a API devolve 403): a tela e o menu também o escondem. */
