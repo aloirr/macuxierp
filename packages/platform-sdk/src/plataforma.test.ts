@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ArmazenamentoMemoria, chaveArquivo, guardarArquivo, type RegistroArquivo } from './arquivos';
+import { ArmazenamentoMemoria, armazenamentoIndisponivel, chaveArquivo, guardarArquivo, type RegistroArquivo } from './arquivos';
 import { auditar, OMITIDO } from './auditoria';
 import { ErroApi, erros } from './erros';
 import { criarEvento } from './eventos';
@@ -90,6 +90,11 @@ describe('arquivos (prefixo macuxierp/<tenant>)', () => {
     expect(r.guarda_ate?.toISOString()).toBe('2031-11-21T15:00:00.000Z');
     await expect(guardarArquivo({ ...base, corpo })).resolves.toMatchObject({ sha256: r.sha256 });
     await expect(guardarArquivo({ ...base, corpo: new TextEncoder().encode('<outra/>') })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('sem o adaptador S3 (T-0024) o armazenamento responde 503 INDISPONIVEL', async () => {
+    await expect(armazenamentoIndisponivel.urlAssinada('k', 60)).rejects.toMatchObject({ status: 503, codigo: 'INDISPONIVEL' });
+    await expect(armazenamentoIndisponivel.gravar('k', new Uint8Array(), { tipo: 'x', imutavel: true })).rejects.toBeInstanceOf(ErroApi);
   });
 });
 

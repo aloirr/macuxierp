@@ -1,10 +1,11 @@
 /**
  * API de ponta a ponta no PostgreSQL migrado: adaptadores PG no papel `macuxierp_app` (RLS valendo), login com argon2,
- * refresh rotativo, `GET /v1/auth/eu` e as licenças da `plataforma.tenant_modulo`. Relógio real (o banco usa now()).
+ * refresh rotativo, `GET /v1/auth/eu` e as licenças da `plataforma.tenant_modulo`. Relógio real (o banco usa now()),
+ * salvo no teste do selo às 05h UTC, que fixa o instante da API.
  */
 import { randomUUID } from 'node:crypto';
-import { RepositorioCoreSql } from '@macuxierp/core/api';
-import { relogioDoSistema } from '@macuxierp/platform-sdk';
+import { avisosA1MaisRecentes, RepositorioCoreSql } from '@macuxierp/core/api';
+import { relogioDoSistema, type Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -25,6 +26,9 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
   const usuario = randomUUID();
   const matriz = randomUUID();
   const filialOutro = randomUUID();
+  // relógio real, salvo quando um teste fixa o instante da API
+  let instanteFixo: Date | null = null;
+  const relogio: Relogio = { agora: () => (instanteFixo ? new Date(instanteFixo.getTime()) : relogioDoSistema.agora()) };
 
   async function filial(tenantId: string, id: string, cnpj: string, nome: string) {
     await b.admin.query(
@@ -56,7 +60,8 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
       outbox: new OutboxPg(),
       auditoria: new AuditoriaPg(),
       trabalhos: new FilaDeTrabalhosPg(),
-      relogio: relogioDoSistema,
+      relogio,
+      avisosA1: avisosA1MaisRecentes,
       // core e cadastros com os adaptadores SQL de produção (armazenamento em memória)
       modulos: montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) }),
       logger: false,
@@ -90,6 +95,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
       filiais: [{ id: matriz, nome: 'Matriz Manaus', cnpj: '11222333000181' }],
       // core (sempre) e cadastros (licenciado); pedido é licença só do outro tenant
       modulos: [expect.objectContaining({ id: 'core' }), expect.objectContaining({ id: 'cadastros' })],
+      avisos_a1: [],
     });
 
     const r1 = refreshDe(login);
@@ -119,6 +125,58 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     const filiais = await get('/v1/cadastros/filiais');
     expect(filiais.statusCode).toBe(200);
     expect(filiais.json().itens.map((f: { id: string }) => f.id)).toEqual([matriz]);
+  });
+
+  it('T-0035 (RF-CORE-04): selo do A1 no /eu com os avisos de hoje (UTC) do próprio tenant, pela core.aviso_a1', async () => {
+    // hora-fixa-ok: o /eu lê o dia UTC do relógio real da API (relogioDoSistema), o mesmo dia gravado aqui
+    const hoje = new Date().toISOString().slice(0, 10);
+    // hora-fixa-ok: meio dia de folga sobre o relógio real; o /eu recalcula `dias` na leitura (floor) e dá 10 como o gravado
+    const validoAte = new Date(Date.now() + 10.5 * 86_400_000);
+    validoAte.setUTCMilliseconds(0);
+    const cert = async (tenantId: string, filialId: string) => {
+      const id = randomUUID();
+      await b.admin.query(
+        `INSERT INTO core.certificado (id, tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, impressao_digital, pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce, ativo)
+         VALUES ($1, $2, $3, 'Titular', '11222333000181', $4, $5, $6, $7, $8, $7, $9, true)`,
+        [id, tenantId, filialId, new Date(validoAte.getTime() - 365 * 86_400_000), validoAte, 'cd'.repeat(32), Buffer.from('x'), Buffer.alloc(12, 1), Buffer.alloc(12, 2)],
+      );
+      await b.admin.query('INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia) VALUES ($1, $2, $3, $4, 10, $5::date)', [tenantId, id, filialId, validoAte, hoje]);
+    };
+    await cert(tenant, matriz);
+    await cert((await b.admin.query<{ tenant_id: string }>('SELECT tenant_id FROM cadastros.filial WHERE id = $1', [filialOutro])).rows[0]!.tenant_id, filialOutro);
+    try {
+      const token = (await entrar()).json<{ token_acesso: string }>().token_acesso;
+      const eu = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
+      expect(eu.statusCode).toBe(200);
+      // só o aviso do próprio tenant (RLS); sem titular nem CNPJ do certificado
+      expect(eu.json().avisos_a1).toEqual([{ filial_id: matriz, dias: 10, valido_ate: validoAte.toISOString() }]);
+    } finally {
+      await b.admin.query('DELETE FROM core.aviso_a1');
+      await b.admin.query('DELETE FROM core.certificado');
+    }
+  });
+
+  it('T-0035 (RF-CORE-04, RN-CORE-06): às 05h UTC, só com o aviso de ontem, o selo aparece com dias recalculado', async () => {
+    const validoAte = new Date('2026-12-25T10:00:00Z');
+    const cert = randomUUID();
+    await b.admin.query(
+      `INSERT INTO core.certificado (id, tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, impressao_digital, pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce, ativo)
+       VALUES ($1, $2, $3, 'Titular', '11222333000181', $4, $5, $6, $7, $8, $7, $9, true)`,
+      [cert, tenant, matriz, new Date('2025-12-25T10:00:00Z'), validoAte, 'ef'.repeat(32), Buffer.from('x'), Buffer.alloc(12, 1), Buffer.alloc(12, 2)],
+    );
+    // gravado ontem às 11h UTC, com 16 dias; a rodada de hoje ainda não passou
+    await b.admin.query("INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia) VALUES ($1, $2, $3, $4, 16, '2026-12-09'::date)", [tenant, cert, matriz, validoAte]);
+    instanteFixo = new Date('2026-12-10T05:00:00Z');
+    try {
+      const token = (await entrar()).json<{ token_acesso: string }>().token_acesso;
+      const eu = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
+      expect(eu.statusCode).toBe(200);
+      expect(eu.json().avisos_a1).toEqual([{ filial_id: matriz, dias: 15, valido_ate: validoAte.toISOString() }]);
+    } finally {
+      instanteFixo = null;
+      await b.admin.query('DELETE FROM core.aviso_a1');
+      await b.admin.query('DELETE FROM core.certificado');
+    }
   });
 
   it('senha errada conta a falha no banco; slug de outro tenant ou inexistente dá o mesmo 401', async () => {

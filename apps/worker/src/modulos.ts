@@ -1,8 +1,22 @@
 /**
  * Executores e rotinas montados no worker (T-0029). Desenho, ligações e adaptadores pendentes: `docs/desenho/T-0002.md`
  * (§2, "Integração de plataforma da F1", item "Worker").
+ * - Rotina diária do alerta do A1 (RF-CORE-04, T-0035): adaptadores SQL do core.
+ * - Exportação LGPD (RF-CORE-06, T-0040): registro SQL do core e um exportador por módulo (hoje só o core tem).
+ *   O armazenamento vem do SDK.
  */
-import { PADRAO_TIPO_TRABALHO, type ExecutorTrabalho } from '@macuxierp/platform-sdk';
+import {
+  destinoAvisosSql,
+  exportadorCore,
+  fonteCertificadosSql,
+  fonteTenantsSql,
+  registroExportacoesSql,
+} from '@macuxierp/core/api';
+import { PADRAO_TIPO_TRABALHO, type Armazenamento, type Banco, type CatalogoArquivos, type ExecutorTrabalho } from '@macuxierp/platform-sdk';
+import type { Logger } from 'pino';
+import { criarRotinaAlertaA1 } from './alerta-a1';
+import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
+import type { RotinaDiaria } from './rotinas';
 
 export class RegistroExecutoresInvalido extends Error {
   override readonly name = 'RegistroExecutoresInvalido';
@@ -16,4 +30,27 @@ export function registrarExecutores(executores: readonly ExecutorTrabalho[]): re
     tipos.add(e.tipo);
   }
   return Object.freeze([...executores]);
+}
+
+/** Um por módulo que guarda dado do tenant; cada módulo acrescenta o seu quando tiver o adaptador. */
+export const EXPORTADORES: readonly ExportadorModulo[] = Object.freeze([exportadorCore]);
+
+export interface DependenciasModulosWorker {
+  banco: Banco;
+  log: Logger;
+  armazenamento: Armazenamento;
+  catalogo: CatalogoArquivos;
+  agora: () => Date;
+}
+
+/** Executores da fila de trabalhos, com os adaptadores reais. */
+export function montarExecutores(d: DependenciasModulosWorker): readonly ExecutorTrabalho[] {
+  return registrarExecutores([
+    criarExecutorExportacao({ registro: registroExportacoesSql, exportadores: EXPORTADORES, armazenamento: d.armazenamento, catalogo: d.catalogo, agora: d.agora }),
+  ]);
+}
+
+/** Rotinas diárias, com os adaptadores reais. */
+export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log'>): readonly RotinaDiaria[] {
+  return Object.freeze([criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log })]);
 }

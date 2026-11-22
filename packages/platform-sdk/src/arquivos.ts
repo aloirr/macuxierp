@@ -51,6 +51,17 @@ export class ArmazenamentoMemoria implements Armazenamento {
   }
 }
 
+/**
+ * Armazenamento enquanto o adaptador S3 não chega (T-0024, com ADR): gravar, ler e assinar falham com 503
+ * `INDISPONIVEL` (a API responde 503; no worker o trabalho segue o backoff). Nenhum arquivo é aceito sem ter onde guardar.
+ * Consequência aceita (decisão do gerente): até o S3 da T-0024, toda exportação LGPD (RF-CORE-06) esgota as tentativas
+ * e termina em `falhou` (`aoDesistir` do executor); o texto do BKO para esse estado é do modulo-core.
+ */
+const fora = async (): Promise<never> => {
+  throw erros.indisponivel('Armazenamento de arquivos');
+};
+export const armazenamentoIndisponivel: Armazenamento = { gravar: fora, ler: fora, urlAssinada: fora };
+
 /** Linha de `plataforma.arquivo`. */
 export interface RegistroArquivo {
   id: string;
