@@ -475,19 +475,24 @@ const MunicipioNome = z.string().nullable().optional();
 const EnderecoEvento = Endereco.extend({ municipio_nome: MunicipioNome });
 /** C-3: o evento do cliente traz o `id` de cada endereço e o `municipio_nome`; `id` opcional para ler eventos antigos (o publicador sempre preenche). */
 const EnderecoClienteEvento = EnderecoClienteItem.extend({ id: Uuid.optional(), municipio_nome: MunicipioNome });
+/** ADR 0010, item 3: toda mudança de `external_id` leva o valor de antes (`null` na adoção); aditivo e opcional no @1. */
+const ExternalIdAnterior = z.object({ external_id_anterior: IdExterno });
+/** Troca controlada do `external_id` (`POST /v1/cadastros/<entidade>/:id/external-id`, só administrador). */
+export const TrocaExternalId = z.object({ external_id: IdExternoValor, motivo: Texto(200) });
+export type TrocaExternalId = z.infer<typeof TrocaExternalId>;
 export const EVENTOS = {
-  'cadastros.filial.alterada@1': Filial.extend({ endereco: EnderecoEvento }).merge(Inativo),
-  'cadastros.cliente.alterado@1': Cliente.extend({ enderecos: z.array(EnderecoClienteEvento) }).merge(Inativo),
+  'cadastros.filial.alterada@1': Filial.extend({ endereco: EnderecoEvento }).merge(Inativo).merge(ExternalIdAnterior),
+  'cadastros.cliente.alterado@1': Cliente.extend({ enderecos: z.array(EnderecoClienteEvento) }).merge(Inativo).merge(ExternalIdAnterior),
   /** C-2: publicado na criação e na alteração da tabela; `agregado_id` = id da tabela. */
-  'cadastros.tabela_preco.alterada@1': TabelaPreco.merge(Inativo),
-  'cadastros.produto.alterado@1': Produto.merge(Inativo).extend({ unidades: z.array(UnidadeItem) }),
+  'cadastros.tabela_preco.alterada@1': TabelaPreco.merge(Inativo).merge(ExternalIdAnterior),
+  'cadastros.produto.alterado@1': Produto.merge(Inativo).extend({ unidades: z.array(UnidadeItem) }).merge(ExternalIdAnterior),
   'cadastros.preco.alterado@1': PrecoItem.merge(Inativo).extend({
     vigencia_inicio: z.string(),
     vigencia_fim: z.string().nullable(),
   }),
   'cadastros.estoque.alterado@1': SaldoEstoque,
-  'cadastros.condicao_pagamento.alterada@1': CondicaoPagamento.merge(Inativo),
-  'cadastros.vendedor.alterado@1': Vendedor.merge(Inativo),
+  'cadastros.condicao_pagamento.alterada@1': CondicaoPagamento.merge(Inativo).merge(ExternalIdAnterior),
+  'cadastros.vendedor.alterado@1': Vendedor.merge(Inativo).merge(ExternalIdAnterior),
   'cadastros.carteira.alterada@1': z.object({ de: Uuid, para: Uuid, cliente_ids: z.array(Uuid) }),
 } as const;
 export type NomeEventoCadastros = keyof typeof EVENTOS;

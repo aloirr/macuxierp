@@ -61,6 +61,14 @@ export async function publicarPronto(c: ContextoRota, e: EventoPronto): Promise<
     payload: e.payload });
 }
 
+/** ADR 0010, item 3: mudou o external_id (inclusive a adoção, nulo → valor): o evento leva o valor de antes. */
+export function comExternalIdAnterior(ev: EventoPronto, e: unknown, antes: unknown): EventoPronto {
+  if (!antes) return ev;
+  const anterior = ((antes as Dict).external_id as string | null | undefined) ?? null;
+  if (anterior === (((e as Dict).external_id as string | null | undefined) ?? null)) return ev;
+  return { ...ev, payload: EVENTOS[ev.nome].parse({ ...ev.payload, external_id_anterior: anterior }) as Dict };
+}
+
 /** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
 export async function republicarItensDaTabela(c: ContextoRota, r: Repositorios, t: TabelaPreco): Promise<void> {
   let cursor: string | undefined;
