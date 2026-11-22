@@ -12,7 +12,9 @@ function origemPermitida(req: Request): boolean {
   const origem = req.headers.get('origin');
   if (!origem) return true;
   try {
-    return new URL(origem).host === req.headers.get('host');
+    // Atrás do túnel o Host é o interno; o público vem em x-forwarded-host (só o 1º valor). Sem ele, vale o Host. A Origin tem de bater com UM só: o público.
+    const encaminhado = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+    return new URL(origem).host === (encaminhado || req.headers.get('host'));
   } catch {
     return false; // "null" ou inválida
   }
