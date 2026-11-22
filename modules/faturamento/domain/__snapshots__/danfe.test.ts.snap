@@ -1,0 +1,244 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II) > RF-FAT-03: monta canhoto, cabeçalho, destinatário, imposto, produtos e dados adicionais do nfeProc (snapshot do modelo) 1`] = `
+{
+  "ambiente": "homologacao",
+  "avisoHomologacao": "EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL",
+  "cabecalho": {
+    "chave": "13261104641538000145550010000001231234567890",
+    "chaveFormatada": "1326 1104 6415 3800 0145 5500 1000 0001 2312 3456 7890",
+    "consultaTexto": "Consulta de autenticidade no portal nacional da NF-e (www.nfe.fazenda.gov.br/portal) ou no site da SEFAZ autorizadora",
+    "emitente": {
+      "fone": "(92) 3333-4444",
+      "linhasEndereco": [
+        "Rua E, 1",
+        "Centro - 69000-000",
+        "Manaus - AM",
+      ],
+      "nome": "EMITENTE LTDA",
+    },
+    "numero": "000.000.123",
+    "protocolo": "113260000000001 - 21/11/2026 10:31:02",
+    "serie": "1",
+    "subtitulo": "Documento Auxiliar da Nota Fiscal Eletrônica",
+    "subtituloLinhas": [
+      "Documento Auxiliar da",
+      "Nota Fiscal Eletrônica",
+    ],
+    "subtituloPt": 7,
+    "tipoOperacao": {
+      "codigo": "1",
+      "descricao": "1 - SAÍDA",
+    },
+    "titulo": "DANFE",
+  },
+  "cancelada": false,
+  "canhoto": {
+    "numero": "000.000.123",
+    "serie": "1",
+    "texto": "RECEBEMOS DE EMITENTE LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA AO LADO",
+  },
+  "dadosAdicionais": {
+    "fisco": "",
+    "informacoesComplementares": "Pedido 1 <obs>",
+  },
+  "destinatario": {
+    "bairro": "Centro",
+    "cep": "69000-000",
+    "documento": "45.723.174/0001-10",
+    "emissao": "21/11/2026",
+    "endereco": "Rua A, 10",
+    "fone": "",
+    "ie": "041234561",
+    "municipio": "Manaus",
+    "nome": "CLIENTE & FILHOS",
+    "saida": "",
+    "uf": "AM",
+  },
+  "duplicatas": [
+    {
+      "numero": "001",
+      "valor": "R$ 15,75",
+      "vencimento": "21/12/2026",
+    },
+    {
+      "numero": "002",
+      "valor": "R$ 15,75",
+      "vencimento": "20/01/2027",
+    },
+  ],
+  "imposto": [
+    {
+      "rotulo": "Base de cálculo do ICMS",
+      "valor": "31,50",
+    },
+    {
+      "rotulo": "Valor do ICMS",
+      "valor": "6,30",
+    },
+    {
+      "rotulo": "Base de cálculo do ICMS ST",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Valor do ICMS ST",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Valor total dos produtos",
+      "valor": "31,50",
+    },
+    {
+      "rotulo": "Valor do frete",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Valor do seguro",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Desconto",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Outras despesas",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Valor do IPI",
+      "valor": "0,00",
+    },
+    {
+      "rotulo": "Valor total da nota",
+      "valor": "31,50",
+    },
+  ],
+  "marcaDagua": "SEM VALOR FISCAL",
+  "marcaDaguaEstilo": {
+    "anguloGraus": 45,
+    "cinza": 0.85,
+    "fontePt": 60,
+  },
+  "operacao": {
+    "cnpj": "04.641.538/0001-45",
+    "ie": "041234561",
+    "ieSubstituicao": "",
+    "naturezaOperacao": "Venda de mercadoria",
+    "protocolo": "113260000000001 - 21/11/2026 10:31:02",
+  },
+  "paginas": [
+    {
+      "folha": "1/1",
+      "itens": [
+        {
+          "aliquotaIcms": "20,00",
+          "aliquotaIpi": "0,00",
+          "baseIcms": "10,50",
+          "cfop": "5102",
+          "codigo": "P1",
+          "cst": "000",
+          "descricao": "Produto 1 & cia",
+          "ncm": "22021000",
+          "quantidade": "1,0000",
+          "unidade": "UN",
+          "valorDesconto": "0,00",
+          "valorIcms": "2,10",
+          "valorIpi": "0,00",
+          "valorTotal": "10,50",
+          "valorUnitario": "10,5000",
+        },
+        {
+          "aliquotaIcms": "20,00",
+          "aliquotaIpi": "0,00",
+          "baseIcms": "21,00",
+          "cfop": "5102",
+          "codigo": "P2",
+          "cst": "000",
+          "descricao": "Produto 2 & cia",
+          "ncm": "22021000",
+          "quantidade": "2,0000",
+          "unidade": "UN",
+          "valorDesconto": "0,00",
+          "valorIcms": "4,20",
+          "valorIpi": "0,00",
+          "valorTotal": "21,00",
+          "valorUnitario": "10,5000",
+        },
+      ],
+      "numero": 1,
+      "total": 1,
+    },
+  ],
+  "rodape": {
+    "alturaAssinaturaPt": 24,
+    "baseTextoPt": 8.3,
+    "fontePt": 7,
+    "larguraAssinaturaPt": 111.4,
+    "protecaoPt": 14.9,
+    "texto": "Emitido pelo",
+  },
+  "tarjaCancelada": null,
+  "transportador": [
+    {
+      "rotulo": "Nome / razão social",
+      "valor": "",
+    },
+    {
+      "rotulo": "Frete por conta",
+      "valor": "9 - Sem ocorrência de transporte",
+    },
+    {
+      "rotulo": "Placa do veículo",
+      "valor": "",
+    },
+    {
+      "rotulo": "UF (veículo)",
+      "valor": "",
+    },
+    {
+      "rotulo": "CNPJ / CPF",
+      "valor": "",
+    },
+    {
+      "rotulo": "Endereço",
+      "valor": "",
+    },
+    {
+      "rotulo": "Município",
+      "valor": "",
+    },
+    {
+      "rotulo": "UF",
+      "valor": "",
+    },
+    {
+      "rotulo": "Inscrição estadual",
+      "valor": "",
+    },
+    {
+      "rotulo": "Quantidade",
+      "valor": "",
+    },
+    {
+      "rotulo": "Espécie",
+      "valor": "",
+    },
+    {
+      "rotulo": "Marca",
+      "valor": "",
+    },
+    {
+      "rotulo": "Numeração",
+      "valor": "",
+    },
+    {
+      "rotulo": "Peso bruto",
+      "valor": "",
+    },
+    {
+      "rotulo": "Peso líquido",
+      "valor": "",
+    },
+  ],
+}
+`;

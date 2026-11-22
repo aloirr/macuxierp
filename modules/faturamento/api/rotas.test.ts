@@ -2,15 +2,18 @@ import { ErroApi, pode, type ContextoRota, type Perfil, type RotaModulo, type Se
 import { EVENTO_PEDIDO_APROVADO } from '@macuxierp/pedido/contracts';
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
+import { nfeProcDeTeste } from '../domain/fixtures-danfe';
 import { TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
 import { depsFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import { criarConsumidorPedidoAprovado } from './consumidor';
 import { criarPluginFaturamento } from './index';
+import type { DepsRotas } from './rotas';
 
 const sessao = (perfil: Perfil): Sessao => ({ usuario_id: uuid(5), tenant_id: TENANT, perfil, filial_ids: [] });
 
-function ambiente(perfil: Perfil = 'faturista') {
+function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
   const f = depsFake();
+  if (danfe) (f.deps as DepsRotas).danfe = danfe;
   const plugin = criarPluginFaturamento(f.deps);
   const trabalhos: { tipo: string; payload: Record<string, unknown>; external_id?: string }[] = [];
   const auditoria: string[] = [];
@@ -42,6 +45,7 @@ describe('rotas /v1/faturamento', () => {
     expect(a.plugin.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao}`).sort()).toEqual([
       'GET /notas faturamento.ver',
       'GET /notas/:id faturamento.ver',
+      'GET /notas/:id/danfe faturamento.ver',
       'GET /notas/:id/eventos faturamento.ver',
       'GET /notas/:id/xml faturamento.nota.emitir',
       'GET /rejeicoes faturamento.ver',
@@ -123,6 +127,36 @@ describe('rotas /v1/faturamento', () => {
     const r = await a.chamar('GET', '/notas/:id/xml', { params: { id } });
     expect(r.corpo).toBe('<nfeProc/>');
     expect(r.cabecalhos).toMatchObject({ 'content-type': expect.stringContaining('application/xml') });
+  });
+
+  it('RF-FAT-03: GET /notas/:id/danfe gera o PDF só de nota autorizada ou cancelada com nfeProc guardado; vendedor recebe 403', async () => {
+    const a = ambiente();
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 422 }); // rascunho
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'autorizada' });
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 404 }); // sem nfeProc
+    a.xmls.push({ id, conteudo: nfeProcDeTeste(), protocolo: NPROT });
+    const r = await a.chamar('GET', '/notas/:id/danfe', { params: { id } });
+    expect(r.cabecalhos).toMatchObject({ 'content-type': 'application/pdf' });
+    expect(Buffer.from(r.corpo as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'cancelada' });
+    expect(((await a.chamar('GET', '/notas/:id/danfe', { params: { id } })).corpo as Buffer).length).toBeGreaterThan(1000);
+    await expect(ambiente('vendedor').chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('marca §4: GET /notas/:id/danfe sem o ativo do rodapé responde 503 "Ativo de marca do DANFE não encontrado", nunca um PDF sem rodapé', async () => {
+    const a = ambiente('faturista', { assinaturaMarca: async () => null });
+    const b = ambiente();
+    (b.deps as DepsRotas).ativosDanfe = { ok: false, faltando: ['macuxi-erp-a-mono-preto-400.png'] };
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'autorizada' });
+    a.xmls.push({ id, conteudo: nfeProcDeTeste(), protocolo: NPROT });
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 503, message: 'Ativo de marca do DANFE não encontrado' });
+    // resultado do boot (verificarAtivosDanfe) com ok=false: 503 mesmo com o ativo legível na hora
+    const id2 = ((await b.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    b.notas.set(id2, { ...b.notas.get(id2)!, status: 'autorizada' });
+    b.xmls.push({ id: id2, conteudo: nfeProcDeTeste(), protocolo: NPROT });
+    await expect(b.chamar('GET', '/notas/:id/danfe', { params: { id: id2 } })).rejects.toMatchObject({ status: 503, message: 'Ativo de marca do DANFE não encontrado' });
   });
 
   it('RF-FAT-08: GET /rejeicoes lista as rejeitadas com a ação sugerida', async () => {

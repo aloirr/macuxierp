@@ -8,7 +8,9 @@ import { INSTANTE_DE_TESTE } from '@macuxierp/nfe-sefaz/teste';
 import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
 import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
+import { montarDanfe } from '../domain/danfe';
 import { IDS } from '../domain/fixtures';
+import { renderizarDanfe } from './danfe-pdf';
 import { a1DeTeste, depsFake, tx, TENANT } from './apoio-teste';
 import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA } from './emissao';
 import { criarTransmissor } from './transmissor';
@@ -77,6 +79,14 @@ describe('ponta a ponta: pedido → nota → simulador → nfeProc guardado → 
       expect(proc).toContain(assinado); // bytes assinados intactos
       expect(proc).toContain(m.notas.get(nota.id)!.protocolo!);
       expect(m.notas.get(nota.id)?.status).toBe('autorizada');
+      // RF-FAT-03: o DANFE sai do nfeProc REAL do emissor + simulador (homologação: marca d'água), com o protocolo e o número da nota
+      const danfe = montarDanfe({ nfeProc: proc });
+      expect(danfe.cabecalho.chave).toBe(nota.chave_acesso);
+      expect(danfe.cabecalho.protocolo).toContain(m.notas.get(nota.id)!.protocolo!);
+      expect(danfe.marcaDagua).toBe('SEM VALOR FISCAL');
+      expect(danfe.paginas[0]!.itens).toHaveLength(2);
+      expect(danfe.imposto.find((c) => c.rotulo === 'Valor total da nota')?.valor).toBe('45,00');
+      expect((await renderizarDanfe(danfe)).length).toBeGreaterThan(1000);
       expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_AUTORIZADA]);
       expect(m.transmissoes.every((t) => t.destino === 'simulador')).toBe(true);
     });

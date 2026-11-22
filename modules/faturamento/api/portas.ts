@@ -367,3 +367,12 @@ export interface RepositorioEventos {
   /** Eventos e inutilizações pendentes mais antigos primeiro (varredura do worker), parados há mais de `paradasHaMinutos` e SEM lease ativo; exclui a divergência 563. */
   pendentes(tx: Transacao, limite: number, paradasHaMinutos: number, leaseMin: number): Promise<{ tipo: 'evento' | 'inutilizacao'; id: string }[]>;
 }
+
+/**
+ * Portas opcionais do DANFE (RF-FAT-03). `logoEmitente`: PNG do logo da filial emissora (o do CLIENTE; nulo = quadro sem logo, dados centralizados).
+ * `assinaturaMarca`: PNG do rodapé "Emitido pelo" (ativo do design-de-marca); sem a porta, `ativos-marca.ts` lê `docs/marca/ativos` por caminho.
+ */
+export interface PortaDanfe {
+  logoEmitente?(tx: Transacao, filial_id: string): Promise<Uint8Array | null>;
+  assinaturaMarca?(): Promise<Uint8Array | null>;
+}
