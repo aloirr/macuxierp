@@ -39,8 +39,9 @@ describe('subpath marca sem hook (T-0021)', () => {
     for (const h of ['useState', 'useEffect', 'useId', 'useRef']) expect(marca).not.toContain(h);
     expect(marca).not.toContain("from './index");
   });
-  it('a assinatura tem um caminho só: fora do barrel', () => {
-    expect(fonte('index.ts')).not.toContain('AssinaturaErp');
+  it('o barrel re-exporta a marca só por compatibilidade', () => {
+    expect(fonte('index.ts')).toMatch(/from '\.\/marca\.js'/);
+    expect(fonte('marca.tsx')).not.toMatch(/from '\.\/index/);
   });
 });
 

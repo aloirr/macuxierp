@@ -127,7 +127,9 @@ describe('FormularioItens', () => {
     expect(textoParaQuantidade('-1')).toBeNull();
   });
   it('index exporta só componentes', () => {
-    expect(Object.keys(indice).filter((k) => /^[a-z]/.test(k) && !['aliasCores', 'cores', 'escala', 'fontes', 'papeis', 'pesos'].includes(k))).toEqual([]);
+    // compat #249: faviconDataUri e appleTouchIconDataUri vêm da marca até o shell trocar o import
+    const permitidos = ['aliasCores', 'cores', 'escala', 'fontes', 'papeis', 'pesos', 'faviconDataUri', 'appleTouchIconDataUri'];
+    expect(Object.keys(indice).filter((k) => /^[a-z]/.test(k) && !permitidos.includes(k))).toEqual([]);
   });
   it('renderiza linhas, seletor injetado, total formatado pelo chamador e ações', () => {
     const itens = [{ chave: 'item-1', produtoId: 'p1', quantidade: 2, precoUnitarioCentavos: 1000, descontoCentavos: 0 }];
