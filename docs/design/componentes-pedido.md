@@ -53,6 +53,7 @@ Valores em `packages/ui/src/estilos.ts` e `tokens.ts`; aqui só o que vale para 
 ## S-01: assinatura e favicon (docs/marca/assinatura-erp.md)
 - **Subpath sem hook:** `@macuxierp/ui/marca` (`marca.tsx`) traz a assinatura, o favicon e o apple-touch-icon, para o Server Component do layout; o porquê está no cabeçalho de `marca.tsx`. A `AssinaturaErp` tem esse caminho só (fora do `index.ts`).
 - **Topo azul-noite:** `<AssinaturaErp altura={24} />`; a altura fica entre 20 e 32 px; `alt="Macuxi ERP"`.
+- **Variante C** (`<AssinaturaErp variante="C" />`): cabeçalho do cartão de login e seleção de filial.
 - **Ícones:** `import { AssinaturaErp, faviconDataUri, appleTouchIconDataUri } from '@macuxierp/ui/marca'` e, no layout do Next: `export const metadata = { icons: { icon: faviconDataUri, apple: appleTouchIconDataUri } }`. PNG 180×180 do favicon (geração e SHA-256 em `marca.tsx`). O mesmo subpath tem `faviconSvg`, `paraDataUri`, `assinaturaANegativoAzulNoite` e `simboloNegativo`, cópia fiel dos ativos oficiais (o teste confere o SHA-256).
 - **Hover dos botões (`botoes.css`):** principal vira fundo e borda grafite; secundário vira fundo névoa. Só cor da paleta, nunca `filter: brightness`; não vale para `:disabled`.
 - **`'use client'`:** `TabelaDensa`, `DialogoMotivo` e `FormularioItens` usam hook e levam a diretiva; `FaixaPendencias` fica sem. Um Server Component não pode passar função (como `celula`) à `TabelaDensa`: a página que a usa vira cliente. O `package.json` declara `sideEffects: ["*.css"]` para o tree-shaking.

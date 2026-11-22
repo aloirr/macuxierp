@@ -10,4 +10,4 @@ export { FormularioItens } from './FormularioItens.js';
 export type { ErrosItem, FormularioItensProps, ItemLinha, SeletorProdutoProps } from './FormularioItens.js';
 // compat: usar @macuxierp/ui/marca; sai depois que o shell trocar o import (#249)
 export { AssinaturaErp, faviconDataUri, appleTouchIconDataUri } from './marca.js';
-export type { AssinaturaErpProps } from './marca.js';
+export type { AssinaturaErpProps, VarianteAssinatura } from './marca.js';
