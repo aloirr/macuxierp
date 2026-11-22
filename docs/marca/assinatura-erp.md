@@ -1,7 +1,7 @@
 # Assinatura "Macuxi ERP" (T-0023)
 
 > **APROVADA COM CONDIÇÃO — conformidade com o FDV pendente.** Ainda **não é REGRA**: nenhum agente aplica a assinatura em tela, PDF, e-mail ou ícone até a versão final estar em `docs/marca/ativos/` e este arquivo virar regra.
-> Decisão do Alexandre em 21/11/2026, 21h29 (Manaus): "SEGUIR COM O RECOMENDADO" — A principal, C vertical de apoio, B descartada ([decisoes.md](decisoes.md)).
+> Decisão do Alexandre em 21/11/2026, 21h29 (Manaus): "SEGUIR COM O RECOMENDADO" — A principal, C vertical de apoio, B descartada; reforçada às 21h31 (Manaus): "Decisoes de 1 a 6 : seguir com o recomendado" (recado R-20261121-213141-alexandre) ([decisoes.md](decisoes.md)). O reforço não escolhe entre "ponta a ponta" e "à esquerda": o §6 continua em aberto.
 > Autor: design-de-marca · atualizado em 21/11/2026 (Manaus) · Tarefa T-0023.
 
 ## 1. Regra da assinatura
