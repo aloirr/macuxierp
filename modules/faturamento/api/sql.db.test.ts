@@ -39,7 +39,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
       tr: criarTransmissor({
         banco: worker,
         notas: repos.notas,
-        emissor: s.deps.emissor,
+        emissor: s.emissor,
         ambiente: repos.ambiente,
         lerA1: async () => a1DeTeste(),
         sefaz: () => t.transporte,
@@ -70,7 +70,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
   it('RN-FAT-01: emite sem buraco (100, 101), é idempotente pela chave, grava o conteúdo e o ambiente vem do banco', async () => {
     const r1 = await emitir(A, 'idem-db-0001');
     if (!r1.ok) throw new Error(JSON.stringify(r1.violacoes));
-    expect(r1.nota).toMatchObject({ numero: 100, serie: 1, status: 'em_autorizacao', ambiente: 'homologacao', total_centavos: 4500, vai_ao_fdv: false });
+    expect(r1.nota).toMatchObject({ numero: 100, serie: 1, status: 'rascunho', ambiente: 'homologacao', total_centavos: 4500, vai_ao_fdv: false });
     const rep = await emitir(A, 'idem-db-0001');
     expect(rep.ok && rep.repetida && rep.nota.id).toBe(r1.nota.id);
     const r2 = await emitir(A, 'idem-db-0002');
@@ -106,7 +106,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(await app.comTenant(B, (tx) => repos.notas.lerXmlAutorizado(tx, r.nota.id))).toBeNull();
   });
 
-  it('RN-FAT-07: rejeitada (778) publica nota.rejeitada@1, aparece no painel e o reenvio mantém o número e volta a em_autorizacao', async () => {
+  it('RN-FAT-07: rejeitada (778) publica nota.rejeitada@1, aparece no painel e o reenvio (API) mantém o número e o status rejeitada; o worker reassina e volta a em_autorizacao', async () => {
     const s = servico();
     const r = await emitir(A, 'idem-db-0004', s);
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
@@ -115,9 +115,12 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const painel = await app.comTenant(A, (tx) => repos.notas.listarRejeicoes(tx, { limite: 50 }));
     expect(painel.itens.find((i) => i.id === r.nota.id)).toMatchObject({ codigo: '778', numero: r.nota.numero });
     const re = await app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, r.nota.id, { travar: true }))!));
-    expect(re.ok && re.nota).toMatchObject({ numero: r.nota.numero, chave_acesso: r.nota.chave_acesso, status: 'em_autorizacao' });
+    expect(re.ok && re.nota).toMatchObject({ numero: r.nota.numero, chave_acesso: r.nota.chave_acesso, status: 'rejeitada', revisao: 2 });
     const [n] = await admin('SELECT status, recibo FROM faturamento.nota WHERE id = $1', [r.nota.id]);
-    expect(n).toMatchObject({ status: 'em_autorizacao', recibo: null });
+    expect(n).toMatchObject({ status: 'rejeitada', recibo: null });
+    const { tr: tr2 } = transmissor(s); // o worker reassina (v2) e volta a em_autorizacao; a SEFAZ do roteiro padrão autoriza
+    expect((await tr2.transmitirNota(A, r.nota.id)).resultado).toBe('autorizada');
+    expect((await admin("SELECT versao FROM faturamento.nota_xml WHERE nota_id = $1 AND tipo = 'nfe_assinada' ORDER BY versao", [r.nota.id])).map((l) => l.versao)).toEqual([1, 2]);
     expect(await app.comTenant(A, (tx) => tx.consultar('SELECT * FROM faturamento.buracos_numeracao()'))).toEqual([]);
   });
 
