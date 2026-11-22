@@ -17,11 +17,11 @@
  *             main e a tag ainda não existe no GitHub.
  *   commit    SHA, GITHUB_REPOSITORY, GH_TOKEN → o commit está no main (origin/main do checkout com fetch-depth 0) e
  *             tem CI verde de push no main. Sem GHCR: é o que o liberar confere ANTES de montar a imagem.
- *   imagem    SHA, DONO → a imagem ghcr.io/<dono>/macuxi-api:<sha> já existe? Escreve existe=1|0 em $GITHUB_OUTPUT;
+ *   imagem    SHA, DONO → a imagem ghcr.io/<dono>/macuxierp-api:<sha> já existe? Escreve existe=1|0 em $GITHUB_OUTPUT;
  *             falha (sem build) se o GHCR não respondeu: tag existente nunca é montada de novo (o digest não muda).
  *   suite     SHA, GITHUB_REPOSITORY, GH_TOKEN → a árvore do SHA tem o artefato ci-verde-completa-<árvore> de um run do
  *             main (liberar ou ci.yml manual) com testes-pacotes e testes-integracao verdes.
- *   conferir  SHA, VERSAO, DONO, GITHUB_REPOSITORY, GH_TOKEN → o `commit` e a imagem ghcr.io/<dono>/macuxi-api:<sha>
+ *   conferir  SHA, VERSAO, DONO, GITHUB_REPOSITORY, GH_TOKEN → o `commit` e a imagem ghcr.io/<dono>/macuxierp-api:<sha>
  *             existe no GHCR (docker login feito antes). Escreve sha, versao, dono e api (por digest) em $GITHUB_OUTPUT.
  * Saída: 0 = ok; 1 = conferência falhou (com ::error::); 2 = erro de uso.
  */
@@ -184,13 +184,13 @@ export function conferir({ sha, versao, dono, repositorio }, exec = executar) {
   if (c.erro) return c;
   const n = c.ci;
 
-  const img = `ghcr.io/${donoMin}/macuxi-api:${sha}`;
+  const img = `ghcr.io/${donoMin}/macuxierp-api:${sha}`;
   const d = digestNoGhcr(img, exec);
   if (d.erro) return { erro: d.erro };
   if (d.ausente)
     return { erro: `${img} não está no GHCR (o "producao — liberar versão" monta a imagem do commit: libere a versão por ele)` };
 
-  return { sha, versao, dono: donoMin, api: `ghcr.io/${donoMin}/macuxi-api@${d.digest}`, ci: n };
+  return { sha, versao, dono: donoMin, api: `ghcr.io/${donoMin}/macuxierp-api@${d.digest}`, ci: n };
 }
 
 const erro = (m) => console.log(`::error::${m}`);
@@ -222,7 +222,7 @@ function principal(modo, env) {
     return 0;
   }
   if (modo === 'imagem') {
-    const img = `ghcr.io/${String(env.DONO || '').toLowerCase()}/macuxi-api:${env.SHA}`;
+    const img = `ghcr.io/${String(env.DONO || '').toLowerCase()}/macuxierp-api:${env.SHA}`;
     if (!env.DONO || !SHA_COMPLETO.test(String(env.SHA || ''))) return erro('faltam DONO e SHA completo'), 1;
     const d = digestNoGhcr(img);
     if (d.erro) return erro(`${d.erro}: a imagem não é montada de novo sem a certeza de que ela não existe`), 1;

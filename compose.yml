@@ -1,0 +1,212 @@
+# Produção do Macuxi ERP na VM do FDV: projeto Compose próprio (macuxierp), copiado para /opt/macuxierp pelo implantar.sh.
+# Decisões (nomes dos serviços, rotas do túnel, portas, limites, segredos): docs/decisoes/0003-deploy-na-vm-do-fdv.md,
+# seção "Implementação". Arquivos e variáveis de ambiente: scripts/deploy/producao/env.modelo. Comandos: dc() do comum.sh.
+name: macuxierp
+
+x-imagem-api: &imagem-api
+  image: ${MACUXIERP_IMAGEM_API:?rode o implantar.sh (grava imagens.env)}
+
+x-log: &log
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+# api, worker e web: sobem sozinhos, sem capability nem escalada de privilégio (usuário node, portas acima de 1024)
+x-servico: &servico
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging: *log
+
+# api e worker: a mesma imagem, segredos e e-mail, a CA do DBaaS (o papel, a senha e os limites ficam em cada serviço)
+x-app: &app
+  <<: [*servico, *imagem-api]
+  env_file:
+    # S3 e SMTP: contrato para o core e o faturamento; o código ainda não lê
+    - path: segredos.env
+      required: false
+    - path: email.env
+      required: false
+  volumes:
+    - ./certs:/certs:ro
+
+x-ambiente-app: &ambiente-app
+  PGHOST: ${MACUXI_PG_HOST:?banco.env sem MACUXI_PG_HOST (workflow)}
+  PGPORT: ${MACUXI_PG_PORTA:-5432}
+  PGDATABASE: ${MACUXIERP_BANCO:-macuxierp}
+  # TLS sempre (node-postgres lê o PGSSLMODE): verify-full com certs/dbaas-ca.pem, senão no-verify. Nunca "disable".
+  PGSSLMODE: ${MACUXIERP_PG_SSL_NODE:-no-verify}
+  NODE_EXTRA_CA_CERTS: /certs/dbaas-ca.pem
+  MACUXIERP_VERSAO: ${MACUXIERP_VERSAO:?rode o implantar.sh (grava imagens.env)}
+  # arquivos no S3 do FDV, prefixo macuxierp/<tenant>/: contrato para o core e o faturamento; o código ainda não lê
+  MACUXIERP_ARQUIVOS_PREFIXO: macuxierp/
+  MACUXIERP_S3_ENDPOINT: ${MACUXIERP_S3_ENDPOINT:-}
+  MACUXIERP_S3_REGIAO: ${MACUXIERP_S3_REGIAO:-}
+  MACUXIERP_S3_BUCKET: ${MACUXIERP_S3_BUCKET:-}
+
+# Ferramentas (docker compose --profile ferramentas run --rm ...), como o admin do DBaaS. libpq: require ou verify-full.
+# A senha do admin vai pelo ambiente (env_file), nunca no argv; sai do ambiente antes do exec.
+x-ferramenta: &ferramenta
+  <<: *imagem-api
+  profiles: [ferramentas]
+  restart: 'no'
+  env_file: [banco.env, admin.env]
+  entrypoint:
+    - sh
+    - -c
+    - 'export PGHOST="$$MACUXI_PG_HOST" PGPORT="$${MACUXI_PG_PORTA:-5432}" PGUSER="$$MACUXI_PG_ADMIN_USUARIO" PGPASSWORD="$$MACUXI_PG_ADMIN_SENHA"; unset MACUXI_PG_ADMIN_SENHA; exec "$$@"'
+    - entrada-admin
+  command: ['psql', '--version']
+  mem_limit: 256m
+  memswap_limit: 256m
+  cpus: 0.5
+  pids_limit: 64
+  logging: *log
+  healthcheck:
+    disable: true
+  volumes:
+    - ./certs:/certs:ro
+  networks: [padrao]
+
+x-ambiente-ferramenta: &ambiente-ferramenta
+  PGTZ: UTC
+  MACUXIERP_BANCO: ${MACUXIERP_BANCO:-macuxierp}
+  PGDATABASE: ${MACUXIERP_BANCO:-macuxierp}
+  PGSSLMODE: ${MACUXIERP_PG_SSL_LIBPQ:-require}
+  PGSSLROOTCERT: /certs/dbaas-ca.pem
+  PGCONNECT_TIMEOUT: '10'
+  NODE_OPTIONS: --max-old-space-size=160
+
+services:
+  macuxierp-api:
+    <<: *app
+    environment:
+      <<: *ambiente-app
+      PGUSER: macuxierp_app
+      PGPASSWORD: ${MACUXIERP_SENHA_APP:?gerados.env sem MACUXIERP_SENHA_APP (preparar-vm.sh)}
+      MACUXIERP_JWT_SEGREDO: ${MACUXIERP_JWT_SEGREDO:?gerados.env sem MACUXIERP_JWT_SEGREDO (preparar-vm.sh)}
+      MACUXIERP_CHAVE_A1: ${MACUXIERP_CHAVE_A1:?.env sem MACUXIERP_CHAVE_A1 (env.modelo)}
+      MACUXIERP_HOST: 0.0.0.0
+      MACUXIERP_PORTA: '8100'
+      MACUXIERP_COOKIE_SEGURO: '1'
+      # pool: api 10 + worker 5 = 15 conexões no DBaaS, somadas às do FDV
+      MACUXIERP_PG_POOL: '10'
+      NODE_OPTIONS: --max-old-space-size=384
+    ports:
+      - '127.0.0.1:8200:8100'
+    networks:
+      padrao: {}
+      tunel:
+        aliases: [macuxierp-api]
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8100/v1/saude').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    # limites (ADR 0003): api 512m + worker 384m + web 384m = 1,25 GiB e 2 CPUs; memswap = mem (sem swap)
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+
+  macuxierp-worker:
+    <<: *app
+    command: ['node', 'dist/worker.mjs']
+    # a chave do A1 entra no worker com a fila da SEFAZ (F2), que assina a NF-e; até lá, só a api a recebe
+    environment:
+      <<: *ambiente-app
+      PGUSER: macuxierp_worker
+      PGPASSWORD: ${MACUXIERP_SENHA_WORKER:?gerados.env sem MACUXIERP_SENHA_WORKER (preparar-vm.sh)}
+      MACUXIERP_PG_POOL: '5'
+      MACUXIERP_WORKER_INTERVALO_MS: '1000'
+      NODE_OPTIONS: --max-old-space-size=256
+    networks: [padrao]
+    # sem HTTP: saudável = o processo principal (PID 1, o node do worker) vivo; se ele cair, o restart sobe de novo
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'process.kill(1, 0)']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      macuxierp-api:
+        condition: service_healthy
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 128
+
+  # BKO de produção (macuxierp-web-prod): o servidor Next lê MACUXIERP_API_URL em tempo de execução
+  macuxierp-web:
+    <<: *servico
+    image: ${MACUXIERP_IMAGEM_WEB:?rode o implantar.sh (grava imagens.env)}
+    environment:
+      MACUXIERP_API_URL: http://macuxierp-api:8100
+      NODE_OPTIONS: --max-old-space-size=256
+    depends_on:
+      macuxierp-api:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3200:3100'
+    networks:
+      padrao: {}
+      tunel:
+        aliases: [macuxierp-web]
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3100/login').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 256
+
+  # migrações (db/src/cli/migrar.ts, dono banco-dados): lê MACUXI_PG_* direto e chama o psql 16
+  migrar:
+    <<: *ferramenta
+    entrypoint: ['node']
+    command: ['db/src/cli/migrar.ts']
+    environment:
+      <<: *ambiente-ferramenta
+      PGAPPNAME: macuxierp-migrar
+
+  # psql 16 como o admin (banco.sh e manutenção)
+  psql:
+    <<: *ferramenta
+    environment:
+      <<: *ambiente-ferramenta
+      PGAPPNAME: macuxierp-psql
+
+  # senhas dos três papéis (banco.sh): o verificador SCRAM é calculado dentro do contêiner; a senha não vai ao argv
+  papeis:
+    <<: *ferramenta
+    environment:
+      <<: *ambiente-ferramenta
+      PGAPPNAME: macuxierp-papeis
+      MACUXIERP_SENHA_APP: ${MACUXIERP_SENHA_APP:?gerados.env sem MACUXIERP_SENHA_APP (preparar-vm.sh)}
+      MACUXIERP_SENHA_WORKER: ${MACUXIERP_SENHA_WORKER:?gerados.env sem MACUXIERP_SENHA_WORKER (preparar-vm.sh)}
+      MACUXIERP_SENHA_LEITURA: ${MACUXIERP_SENHA_LEITURA:?gerados.env sem MACUXIERP_SENHA_LEITURA (preparar-vm.sh)}
+
+networks:
+  # rede própria do projeto (macuxierp_padrao), com saída para o DBaaS e o S3
+  padrao: {}
+  # rede do túnel da Cloudflare do FDV: externa, o ERP só entra (nunca cria nem apaga). Nome: dc() do comum.sh
+  tunel:
+    external: true
+    name: ${MACUXIERP_REDE_TUNEL:?use o dc() do comum.sh (define a rede do túnel do FDV)}
