@@ -32,6 +32,13 @@
       "Bash(git push origin agente/*)",
       "Bash(git push -u origin agente/*)",
       "mcp__claude-code-remote__send_message",
+      "mcp__github__pull_request_read",
+      "mcp__github__list_pull_requests",
+      "mcp__github__actions_list",
+      "mcp__github__actions_get",
+      "mcp__claude-code-remote__list_sessions",
+      "mcp__claude-code-remote__get_session",
+      "mcp__claude-code-remote__list_events",
       "Bash(bash db/scripts/pg-local.sh*)",
       "Bash(bash tests/scripts/rodar-antes-do-push.sh*)"
     ],
