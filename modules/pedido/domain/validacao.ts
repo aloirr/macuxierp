@@ -1,10 +1,9 @@
-import { CodigoPendencia, type Pendencia, type PendenciaDetalhada } from '../contracts';
-import { totalItem, valorItem, type ItemValor } from './valores';
+import type { CondicaoPagamento } from '@macuxierp/cadastros/contracts';
+import { CodigoPendencia, type CodigoRecusaRecebimento, type Pendencia, type PendenciaDetalhada } from '../contracts';
+import { totalItem, valorItem, verificarItens, type ItemValor } from './valores';
 
 export interface ItemAvaliacao extends ItemValor {
   produto_id: string;
-  /** Só no pedido do FDV; nulo no manual. */
-  total_informado_centavos: number | null;
 }
 
 /**
@@ -15,8 +14,8 @@ export interface EntradaAvaliacao {
   cliente: { inativo: boolean; limite_credito_centavos: number };
   filial: { emissora: boolean; inativo: boolean };
   condicao_pagamento_id: string | null;
-  /** Nulo = não encontrada (ou não informada). */
-  condicao: { inativa: boolean } | null;
+  /** Nulo = não encontrada (ou não informada). `prazos_dias` define se é à vista (`ehAVista`). */
+  condicao: Pick<CondicaoPagamento, 'prazos_dias' | 'inativo'> | null;
   itens: readonly ItemAvaliacao[];
   produtos: readonly { id: string; inativo: boolean }[];
   /** Preço de tabela vigente por produto; produto ausente = sem preço na tabela. */
@@ -28,15 +27,23 @@ export interface EntradaAvaliacao {
   titulos_abertos_centavos: number;
   /** Total não faturado dos outros pedidos aprovados do cliente (P5). Sem o próprio pedido. */
   compromisso_credito_centavos: number;
-  total_informado_centavos: number | null;
 }
 
-/**
- * PR-1, premissa pendente com o Alexandre: limite de crédito 0 vale como "sem crédito" (RN-PED-04 literal).
- * Para trocar para "0 = sem limite", altere só esta função.
- */
-export function creditoSemLimite(limiteCentavos: number, totalCentavos: number): boolean {
-  return limiteCentavos === 0 && totalCentavos > 0;
+/** À vista = todos os prazos são 0 dia. Premissa (a): vale `prazos_dias`, não `forma_tpag`. */
+export const ehAVista = (condicao: Pick<CondicaoPagamento, 'prazos_dias'>): boolean => condicao.prazos_dias.every((d) => d === 0);
+
+/** RN-PED-04; decisão do Alexandre 21/11 23h10 (à vista fora da análise de crédito); premissa (a): à vista = todos os prazos_dias 0. */
+export function avaliarCredito(a: {
+  condicao: Pick<CondicaoPagamento, 'prazos_dias'> | null;
+  limite_credito_centavos: number;
+  titulos_abertos_centavos: number;
+  compromisso_credito_centavos: number;
+  total_centavos: number;
+}): { codigo: 'credito_sem_limite' | 'credito_excedido'; esperado: number; informado: number } | null {
+  if (a.condicao !== null && ehAVista(a.condicao)) return null;
+  if (a.limite_credito_centavos === 0 && a.total_centavos > 0) return { codigo: 'credito_sem_limite', esperado: 0, informado: a.total_centavos };
+  const exposicao = a.titulos_abertos_centavos + a.compromisso_credito_centavos + a.total_centavos;
+  return exposicao > a.limite_credito_centavos ? { codigo: 'credito_excedido', esperado: a.limite_credito_centavos, informado: exposicao } : null;
 }
 
 const pend = (
@@ -93,14 +100,16 @@ export function avaliarPedidoDetalhado(e: EntradaAvaliacao): PendenciaDetalhada[
   }
 
   if (e.condicao_pagamento_id === null || e.condicao === null) r.push(pend('condicao_ausente', false));
-  else if (e.condicao.inativa) r.push(pend('condicao_inativa', false));
+  else if (e.condicao.inativo) r.push(pend('condicao_inativa', false));
 
-  // RN-PED-04 (+ PR-1): títulos abertos + compromisso dos outros pedidos + este pedido ≤ limite.
-  if (creditoSemLimite(e.cliente.limite_credito_centavos, total)) r.push(pend('credito_sem_limite', false, null, null, e.cliente.limite_credito_centavos, total));
-  else {
-    const exposicao = e.titulos_abertos_centavos + e.compromisso_credito_centavos + total;
-    if (exposicao > e.cliente.limite_credito_centavos) r.push(pend('credito_excedido', false, null, null, e.cliente.limite_credito_centavos, exposicao));
-  }
+  const credito = avaliarCredito({
+    condicao: e.condicao,
+    limite_credito_centavos: e.cliente.limite_credito_centavos,
+    titulos_abertos_centavos: e.titulos_abertos_centavos,
+    compromisso_credito_centavos: e.compromisso_credito_centavos,
+    total_centavos: total,
+  });
+  if (credito) r.push(pend(credito.codigo, false, null, null, credito.esperado, credito.informado));
 
   // RN-CAD-07: estoque somado por produto (um item por produto não esconde a soma).
   const pedido = somarPorProduto(itens);
@@ -111,16 +120,45 @@ export function avaliarPedidoDetalhado(e: EntradaAvaliacao): PendenciaDetalhada[
     if (qtd > livre) r.push(pend('estoque_insuficiente', false, null, produtoId, Math.max(0, livre), qtd));
   }
 
-  // Pedido do FDV: o ERP recalcula, e a diferença vira pendência.
-  for (const i of itens) {
-    if (i.total_informado_centavos !== null && i.total_informado_centavos !== i.total) {
-      r.push(pend('total_divergente', false, i.sequencia, i.produto_id, i.total, i.total_informado_centavos));
-    }
-  }
-  if (e.total_informado_centavos !== null && e.total_informado_centavos !== total) r.push(pend('total_divergente', false, null, null, total, e.total_informado_centavos));
-
   return ordenar(r);
 }
 
 const ordenar = (p: PendenciaDetalhada[]): PendenciaDetalhada[] =>
   p.sort((a, b) => CodigoPendencia.options.indexOf(a.codigo) - CodigoPendencia.options.indexOf(b.codigo) || (a.sequencia ?? 0) - (b.sequencia ?? 0));
+
+type CodigoRecusaCadastro = Exclude<CodigoRecusaRecebimento, 'modulo_pedido_inativo'>;
+
+/** Retrato do pedido do FDV lido pelas portas (cadastro apenas; nulo = não encontrado). */
+export interface RetratoRecebimentoFdv {
+  cliente: { inativo: boolean } | null;
+  filial: { emissora: boolean; inativo: boolean } | null;
+  /** Nulo = não encontrada; só conta quando `condicao_pagamento_id` foi informado. */
+  condicao: { inativo: boolean } | null;
+  condicao_pagamento_id: string | null;
+  produtos: readonly { id: string; inativo: boolean }[];
+  itens: readonly (ItemValor & { produto_id: string })[];
+}
+
+export type DecisaoRecebimentoFdv = { resultado: 'aprovado' } | { resultado: 'recusado'; codigo: CodigoRecusaCadastro };
+
+/**
+ * Decisão de 21/11/2026, 23h10: o pedido do FDV entra aprovado; só problema de cadastro recusa o recebimento (a T-0016 devolve `rejeitado_erp`).
+ * Premissas (c) e (d). Ordem: cliente, filial, condição, produto, item.
+ */
+export function decidirRecebimentoFdv(r: RetratoRecebimentoFdv): DecisaoRecebimentoFdv {
+  const recusa = (codigo: CodigoRecusaCadastro): DecisaoRecebimentoFdv => ({ resultado: 'recusado', codigo });
+  if (r.cliente === null) return recusa('cliente_inexistente');
+  if (r.cliente.inativo) return recusa('cliente_inativo');
+  if (r.filial === null) return recusa('filial_inexistente');
+  if (!r.filial.emissora || r.filial.inativo) return recusa('filial_nao_emissora');
+  // premissa (e): pendente com o Alexandre.Condição nula (o FDV não informou) continua aprovada.
+  if (r.condicao_pagamento_id !== null) {
+    if (r.condicao === null) return recusa('condicao_inexistente');
+    if (r.condicao.inativo) return recusa('condicao_inativa');
+  }
+  const produtos = new Map(r.produtos.map((p) => [p.id, p]));
+  if (r.itens.some((i) => !produtos.has(i.produto_id))) return recusa('produto_inexistente');
+  if (r.itens.some((i) => produtos.get(i.produto_id)?.inativo)) return recusa('produto_inativo');
+  if (verificarItens(r.itens).length > 0) return recusa('item_incoerente');
+  return { resultado: 'aprovado' };
+}
