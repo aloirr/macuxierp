@@ -21,7 +21,7 @@ export const ROTULO_STATUS: Readonly<Record<StatusPedido, string>> = {
   cancelado: 'Cancelado',
 };
 
-export const ROTULO_ORIGEM: Readonly<Record<OrigemPedido, string>> = { fdv: 'FDV', bko: 'ERP' };
+export const ROTULO_ORIGEM: Readonly<Record<OrigemPedido, string>> = { fdv: 'Macuxi FDV', bko: 'Manual' };
 
 /** Colunas do CSV do perfil: as do descritor, sem o documento do cliente para quem não pode vê-lo (mesma regra da API). */
 export function colunasDoCsv(perfil: Perfil): ColunaLista<ItemListaPedido>[] {

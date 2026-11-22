@@ -3,8 +3,8 @@
  * formatados para a tela (R$, quantidade, data no fuso do tenant, português). Funções puras sobre o contrato `Pedido`.
  */
 import { textoMotivo, textoMotivoSistema } from '../domain/motivos';
-import { MotivoCodigo, type CodigoPendencia, Pedido, PendenciaDetalhada } from '../contracts';
-import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { MotivoCodigo, type CodigoPendencia, type HistoricoPedido, Pedido, PendenciaDetalhada } from '../contracts';
+import { formatarCentavos, formatarDataHora, formatarDocumento, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { ROTULO_ORIGEM, ROTULO_STATUS } from './lista';
 
 export const ROTULO_PENDENCIA: Readonly<Record<CodigoPendencia, string>> = {
@@ -72,12 +72,21 @@ export function linhasDeItens(p: Pick<Pedido, 'itens'>) {
   }));
 }
 
-export function linhasDeHistorico(p: Pick<Pedido, 'historico'>, fuso: string) {
+/** Termo único do ator (Histórico e Decisão): "Sistema", o rótulo do perfil, ou "Usuário" quando o perfil não é conhecido. */
+const rotuloDoPerfil = (perfil: string | null | undefined): string => (perfil ? (ROTULO_PERFIL[perfil] ?? perfil) : 'Usuário');
+
+/** O contrato do histórico traz só o `ator_id`; o perfil é conhecido quando o ator é quem decidiu (`decisao.decidido_por`). */
+function rotuloDoAtor(h: HistoricoPedido, decisao: Pedido['decisao'] | undefined): string {
+  if (h.ator_tipo === 'sistema') return 'Sistema';
+  return rotuloDoPerfil(decisao && h.ator_id && h.ator_id === decisao.decidido_por ? decisao.perfil : null);
+}
+
+export function linhasDeHistorico(p: Pick<Pedido, 'historico'> & Partial<Pick<Pedido, 'decisao'>>, fuso: string) {
   return p.historico.map((h) => ({
     quando: formatarDataHora(h.ocorrido_em, fuso),
     de: h.de ? ROTULO_STATUS[h.de] : '',
     para: ROTULO_STATUS[h.para],
-    ator: h.ator_tipo === 'sistema' ? 'Sistema' : 'Usuário',
+    ator: rotuloDoAtor(h, p.decisao),
     motivo: motivoLegivel(h.motivo_codigo, h.motivo_texto),
   }));
 }
@@ -91,7 +100,7 @@ export function cabecalhoDoPedido(p: Pedido, fuso: string) {
     origem: ROTULO_ORIGEM[p.origem],
     cliente: r.razao_social,
     /** Nulo para o vendedor (LGPD): a tela não mostra o campo. */
-    documento: r.documento,
+    documento: r.documento ? formatarDocumento(r.documento) : null,
     emitido_em: formatarDataHora(p.emitido_em, fuso),
     observacao: p.observacao ?? '',
     total: formatarCentavos(p.total_centavos),
@@ -99,20 +108,42 @@ export function cabecalhoDoPedido(p: Pedido, fuso: string) {
   };
 }
 
-export function resumoDaDecisao(p: Pick<Pedido, 'decisao'> & Partial<Pick<Pedido, 'origem' | 'aprovado_origem_em'>>, fuso: string) {
+/**
+ * Decisão vigente: reflete o status final. Cancelado mostra "Cancelado · motivo · quando" a partir do último evento de
+ * cancelamento do histórico (a aprovação original fica só no histórico); recusado e aprovado seguem a linha de `aprovacao`.
+ */
+export function resumoDaDecisao(p: Pick<Pedido, 'decisao'> & Partial<Pick<Pedido, 'origem' | 'aprovado_origem_em' | 'status' | 'historico'>>, fuso: string) {
   const d = p.decisao;
+  const cancelamento = p.status === 'cancelado' ? [...(p.historico ?? [])].reverse().find((h) => h.para === 'cancelado') : undefined;
+  if (cancelamento) {
+    const quando = formatarDataHora(cancelamento.ocorrido_em, fuso);
+    const motivo = motivoLegivel(cancelamento.motivo_codigo, cancelamento.motivo_texto);
+    return {
+      decisao: 'Cancelado',
+      quem: rotuloDoAtor(cancelamento, d),
+      quando,
+      justificativa: '',
+      motivo,
+      pendencias_aceitas: [] as string[],
+      texto: ['Cancelado', motivo, quando].filter(Boolean).join(' · '),
+    };
+  }
   if (!d && p.origem === 'fdv') {
     // Pedido do FDV: aprovado na origem, sem linha em `aprovacao` (ADR 0007).
     const quando = p.aprovado_origem_em ? formatarDataHora(p.aprovado_origem_em, fuso) : '';
-    return { decisao: quando ? `Aprovado no Macuxi FDV em ${quando}` : 'Aprovado no Macuxi FDV', quem: 'Macuxi FDV', quando, justificativa: '', motivo: '', pendencias_aceitas: [] as string[] };
+    return { decisao: quando ? `Aprovado no Macuxi FDV em ${quando}` : 'Aprovado no Macuxi FDV', quem: 'Macuxi FDV', quando, justificativa: '', motivo: '', pendencias_aceitas: [] as string[], texto: quando ? `Aprovado no Macuxi FDV em ${quando}` : 'Aprovado no Macuxi FDV' };
   }
   if (!d) return null;
+  const rotulo = d.decisao === 'aprovado' ? 'Aprovado' : 'Recusado';
+  const quando = formatarDataHora(d.decidido_em, fuso);
+  const motivo = motivoLegivel(d.motivo_codigo, d.motivo_texto);
   return {
-    decisao: d.decisao === 'aprovado' ? 'Aprovado' : 'Recusado',
-    quem: d.automatica ? 'Automática (sem pendência)' : (d.perfil ? (ROTULO_PERFIL[d.perfil] ?? d.perfil) : 'Usuário'),
-    quando: formatarDataHora(d.decidido_em, fuso),
+    decisao: rotulo,
+    quem: d.automatica ? 'Automática (sem pendência)' : rotuloDoPerfil(d.perfil),
+    quando,
     justificativa: d.justificativa ?? '',
-    motivo: motivoLegivel(d.motivo_codigo, d.motivo_texto),
+    motivo,
     pendencias_aceitas: d.pendencias_aceitas.map((x) => ROTULO_PENDENCIA[x.codigo]),
+    texto: [rotulo, motivo, quando].filter(Boolean).join(' · '),
   };
 }
