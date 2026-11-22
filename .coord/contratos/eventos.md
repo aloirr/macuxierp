@@ -4,11 +4,11 @@
 
 | Módulo | Publica | Consome |
 |---|---|---|
-| `cadastros` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1`, `cadastros.condicao_pagamento.alterada@1` | `core.usuario.alterado@1` (liga vendedor a usuário) |
+| `cadastros` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1`, `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1` | `core.usuario.alterado@1` (liga vendedor a usuário), `integracao-fdv.carga_inicial.solicitada@1` (leitor tolerante, T-0034) |
 | `core` | `core.empresa.alterada@1`, `core.usuario.alterado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` | — |
 | `faturamento` | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.nota.rejeitada@1`, `faturamento.titulo.gerado@1` | `pedido.pedido.aprovado@1`, `core.certificado.alterado@1`, `core.ambiente_fiscal.alterado@1` (F4, a confirmar na T-0018) |
 | `fiscal` | `fiscal.regra.alterada@1` | — |
-| `integracao-fdv` | `integracao-fdv.lote.enviado@1`, `integracao-fdv.lote.falhou@1` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1` (só registro, T-0009), `cadastros.condicao_pagamento.alterada@1`, `pedido.pedido.recebido@1`, `pedido.pedido.aprovado@1`, `pedido.pedido.recusado@1`, `pedido.pedido.cancelado@1`, `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.titulo.gerado@1` |
+| `integracao-fdv` | `integracao-fdv.lote.enviado@1`, `integracao-fdv.lote.falhou@1`, `integracao-fdv.carga_inicial.solicitada@1` | `cadastros.cliente.alterado@1`, `cadastros.produto.alterado@1`, `cadastros.preco.alterado@1`, `cadastros.estoque.alterado@1`, `cadastros.filial.alterada@1`, `cadastros.vendedor.alterado@1`, `cadastros.carteira.alterada@1` (só registro, T-0009), `cadastros.condicao_pagamento.alterada@1`, `cadastros.tabela_preco.alterada@1`, `pedido.pedido.recebido@1`, `pedido.pedido.aprovado@1`, `pedido.pedido.recusado@1`, `pedido.pedido.cancelado@1`, `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1`, `faturamento.titulo.gerado@1` |
 | `pedido` | `pedido.pedido.recebido@1`, `pedido.pedido.aprovado@1`, `pedido.pedido.recusado@1`, `pedido.pedido.cancelado@1` | `faturamento.nota.autorizada@1`, `faturamento.nota.cancelada@1` |
 
 ## Envelope (platform-sdk)
@@ -28,6 +28,7 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 | `cadastros.filial.alterada@1` | filial | `Filial` + `inativo` |
 | `cadastros.cliente.alterado@1` | cliente | `Cliente` (com endereços e `vendedor_id` da carteira) + `inativo` |
 | `cadastros.produto.alterado@1` | produto | `Produto` + `unidades[]` + `inativo` (o custo vai no evento; o `integracao-fdv` não o manda ao Hub) |
+| `cadastros.tabela_preco.alterada@1` | tabela de preço | `TabelaPreco` (`id`, `nome`, `padrao`, `vigencia_inicio`, `vigencia_fim`) + `inativo`. Sai na criação e na alteração (PATCH e inativação). Consome: `integracao-fdv` (C-2 de `docs/desenho/T-0009.md` §7) |
 | `cadastros.preco.alterado@1` | item da tabela | `PrecoItem` + `vigencia_inicio`, `vigencia_fim`, `inativo` |
 | `cadastros.estoque.alterado@1` | `filial_id` + `produto_id` (UUID v5) | `filial_id`, `produto_id`, `quantidade` (escala 4) |
 | `cadastros.condicao_pagamento.alterada@1` | condição | `CondicaoPagamento` + `inativo` |
@@ -35,6 +36,14 @@ Os eventos `alterado@1` levam o **estado completo** da entidade, mais `inativo: 
 | `cadastros.carteira.alterada@1` | vendedor de destino | `de`, `para`, `cliente_ids[]`. Resumo da transferência, para auditoria (D7) |
 
 **Campos aditivos em `CondicaoPagamento` (T-0026, D12 do `docs/desenho/T-0026.md`):** `forma_external_id` (até 64, anulável), `forma_codigo` (até 20, anulável) e `forma_nome` (até 60, anulável), ao lado do `forma_tpag` que já existe. São **opcionais e compatíveis**: o evento continua `cadastros.condicao_pagamento.alterada@1`, e o consumidor que não os conhece segue igual. Vêm da carga do `forma_pagamento.csv` do kit (a forma não é tabela própria: cada condição leva a sua). Na F2, o `integracao-fdv` publica forma e prazo ao Hub a partir desses campos, sem ler tabela.
+
+### Aditivo T-0034 (sem ADR)
+`cadastros.cliente.alterado@1` ganha `enderecos[].id` e `enderecos[].municipio_nome`; `cadastros.filial.alterada@1` ganha `endereco.municipio_nome` (C-1 e C-3 de `docs/desenho/T-0009.md` §7). Os campos são opcionais para o leitor e vêm nulos quando o código IBGE não está na tabela oficial. Mudança aditiva: segue `@1`.
+
+## Payloads de integracao-fdv (v1)
+| Evento | `agregado_id` | Payload |
+|---|---|---|
+| `integracao-fdv.carga_inicial.solicitada@1` | tenant (`tenant_id`) | `{ entidades: string[] }`. Motivo: o espelho do Hub está vazio na primeira credencial ou na troca de conector (C-4). Consome: `cadastros`, com leitor tolerante (Zod local com `passthrough`, sem importar o pacote do `integracao-fdv`, ignorando entidade desconhecida), que republica os `alterado@1` do tenant pelo trabalho paginado `cadastros.carga_inicial` |
 
 ## Dependências
 core ← cadastros ← (pedido, fiscal) ← faturamento; integracao-fdv ← (cadastros, pedido) e consome eventos de faturamento. Quando importar o contrato do publicador criaria ciclo de pacotes (ex.: `cadastros` lendo `faturamento.nota.autorizada@1` para baixar estoque, na F4), o consumidor valida o evento com um leitor tolerante próprio (subconjunto do payload). O publicador continua dono do schema.
