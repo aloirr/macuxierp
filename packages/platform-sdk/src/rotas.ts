@@ -25,8 +25,8 @@ export interface ContextoRota {
   publicar(evento: {
     nome: string;
     agregado_id: string;
-    /** @deprecated ignorada; a versão vem da outbox (T-0034). */
-    versao: number;
+    /** @deprecated ignorada: a versão vem sempre da outbox (T-0034); pode omitir (T-0042). */
+    versao?: number;
     payload: Record<string, unknown>;
   }): Promise<EnvelopeEvento>;
   auditar(dados: DadosAuditoria): Promise<void>;

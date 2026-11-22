@@ -12,6 +12,7 @@ import { criarApp, type DependenciasApp } from './app';
 import { emitirTokenAcesso } from './auth/jwt';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
+import { formulario, NOME_ARQUIVO_PADRAO } from './apoio-multipart';
 import { modulosDeTeste, repoCoreDuble } from './apoio-teste';
 import { certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
 
@@ -78,17 +79,6 @@ async function montar(licencas: Licenca[] = [], logs?: string[], modulos: readon
 }
 
 const token = (perfil: Perfil) => `Bearer ${emitirTokenAcesso({ usuario_id: USUARIO, tenant_id: TENANT, perfil, filial_ids: [FILIAL] }, SEGREDO, AGORA, 900).token}`;
-
-function formulario(campos: Record<string, string>, arquivos: Record<string, Buffer>) {
-  const limite = 'limite-de-teste-0029';
-  const partes: Buffer[] = [];
-  for (const [k, v] of Object.entries(campos)) partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
-  for (const [k, v] of Object.entries(arquivos)) {
-    partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="${k}"; filename="certificado-fulano.pfx"\r\nContent-Type: application/x-pkcs12\r\n\r\n`), v, Buffer.from('\r\n'));
-  }
-  partes.push(Buffer.from(`--${limite}--\r\n`));
-  return { payload: Buffer.concat(partes), headers: { 'content-type': `multipart/form-data; boundary=${limite}` } };
-}
 
 const pfx = (n: number) => Buffer.alloc(n, 'P');
 
@@ -186,7 +176,7 @@ describe('multipart do A1 (até 50 KB)', () => {
     expect(vistos[0]).toMatchObject({ tamanho: LIMITE_PFX, senha: 'SENHA-DO-A1' });
     const log = logs.join('');
     expect(log).toContain('request completed');
-    for (const proibido of ['SENHA-DO-A1', 'PPPPPPPP', 'fulano', 'Bearer']) expect(log).not.toContain(proibido);
+    for (const proibido of ['SENHA-DO-A1', 'PPPPPPPP', NOME_ARQUIVO_PADRAO, 'Bearer']) expect(log).not.toContain(proibido);
   });
 
   it('acima de 50 KB é 413 ARQUIVO_GRANDE', async () => {
@@ -246,15 +236,8 @@ describe('rota de lote: vários arquivos, total, Idempotency-Key e tempo por rot
   const montarLotes = (idempotencia = new IdempotenciaMemoria()) =>
     montar([], undefined, registrarModulos([lotes, cadastrosDuble]), { idempotencia, cronometro: () => ms });
 
-  function formularioLote(modo: string, arquivos: [string, string][]) {
-    const limite = 'limite-lote-0026';
-    const partes = [`--${limite}\r\nContent-Disposition: form-data; name="modo"\r\n\r\n${modo}\r\n`];
-    for (const [nome, conteudo] of arquivos) {
-      partes.push(`--${limite}\r\nContent-Disposition: form-data; name="arquivos"; filename="${nome}"\r\nContent-Type: text/csv\r\n\r\n${conteudo}\r\n`);
-    }
-    partes.push(`--${limite}--\r\n`);
-    return { payload: Buffer.from(partes.join('')), headers: { 'content-type': `multipart/form-data; boundary=${limite}` } };
-  }
+  const formularioLote = (modo: string, arquivos: [string, string][]) =>
+    formulario({ modo }, arquivos.map(([nome, conteudo]) => ({ campo: 'arquivos', nome, conteudo, tipo: 'text/csv' })));
   const enviar = (app: Awaited<ReturnType<typeof montar>>, modo: string, arquivos: [string, string][], chave?: string) => {
     const f = formularioLote(modo, arquivos);
     return app.inject({ method: 'POST', url: '/v1/core/lotes', payload: f.payload, headers: { ...f.headers, authorization: token('administrador'), ...(chave ? { 'idempotency-key': chave } : {}) } });

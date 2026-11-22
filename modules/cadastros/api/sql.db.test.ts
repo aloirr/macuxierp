@@ -86,7 +86,15 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     expect(mov).toMatchObject({ status: 201, corpo: { quantidade: 12_5000 } });
     expect(await a.chamar('POST', '/estoque/movimentos', { sessao: sessaoDe('faturista'), corpo: { filial_id: f.corpo.id, produto_id: prod.corpo.id, tipo: 'saida', quantidade: 20_0000, motivo: 'Venda' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-07' } });
     expect((await a.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f.corpo.id, produto_id: prod.corpo.id, tipo: 'entrada', quantidade: 12_5000, motivo: 'Compra', external_id: 'm1' } })).status).toBe(200);
-    expect((await a.chamar('GET', '/estoque', { sessao: adm })).corpo.itens).toEqual([{ filial_id: f.corpo.id, produto_id: prod.corpo.id, quantidade: 12_5000 }]);
+    const lista = (await a.chamar('GET', '/estoque', { sessao: adm })).corpo;
+    expect(lista).toEqual({ itens: [{ id: expect.any(String), filial_id: f.corpo.id, produto_id: prod.corpo.id, quantidade: 12_5000 }], proximo_cursor: null });
+    expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { busca: 'refrigerante', limite: 1 } })).corpo.itens).toHaveLength(1); // D-05: busca pelo produto
+    expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { busca: 'nada-disso' } })).corpo.itens).toEqual([]);
+    expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { cursor: lista.itens[0].id } })).corpo.itens).toEqual([]);
+    // D-05: a busca do estoque ignora produto excluído (subconsulta em cadastros.produto filtra deleted_at)
+    await admin('UPDATE cadastros.produto SET deleted_at = now() WHERE id = $1', [prod.corpo.id]);
+    expect((await a.chamar('GET', '/estoque', { sessao: adm, consulta: { busca: 'refrigerante' } })).corpo.itens).toEqual([]);
+    await admin('UPDATE cadastros.produto SET deleted_at = NULL WHERE id = $1', [prod.corpo.id]);
 
     const oficiais = await a.chamar('GET', '/oficiais/municipios', { sessao: sessaoDe('vendedor'), consulta: { uf: 'AM', busca: 'manaus' } });
     expect(oficiais.corpo).toMatchObject({ proximo_cursor: null, itens: [{ codigo: '1302603', nome: 'Manaus', uf: 'AM' }] });
@@ -103,6 +111,15 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     expect((await a.chamar('GET', '/clientes', { sessao: adm, consulta: { inativos: 'true' } })).corpo.itens).toHaveLength(1);
     expect((await admin('SELECT count(*)::int AS n FROM cadastros.cliente WHERE id = $1 AND deleted_at IS NOT NULL', [cli.corpo.id]))[0]?.n).toBe(1); // nunca apaga (RN-CAD-08)
   }, 180_000);
+
+  it('D-06: ?filial_id= filtra os vendedores no Postgres', async () => {
+    const a = montar(txA());
+    const f = (await a.chamar('GET', '/filiais', { sessao: adm })).corpo.itens[0].id as string;
+    const todos = (await a.chamar('GET', '/vendedores', { sessao: adm })).corpo.itens as { id: string }[];
+    expect(todos.length).toBeGreaterThan(0);
+    expect((await a.chamar('GET', '/vendedores', { sessao: adm, consulta: { filial_id: f } })).corpo.itens).toHaveLength(todos.length);
+    expect((await a.chamar('GET', '/vendedores', { sessao: adm, consulta: { filial_id: randomUUID() } })).corpo.itens).toEqual([]);
+  }, 60_000);
 
   it('PUT em lote com 5.000 itens grava em um comando e o segundo envio não altera nada', async () => {
     const a = montar(txA());

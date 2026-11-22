@@ -1,5 +1,8 @@
 import type { z } from 'zod';
 import { EuResposta } from '@macuxierp/platform-sdk';
+import { RelatorioCarga } from '@macuxierp/cadastros/contracts';
+import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
+import { CARGA_NAO_CONCLUIDA, SEM_PERMISSAO_CARGA } from './textos';
 import { CREDENCIAL_FALSA, EU_FALSO, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
@@ -129,4 +132,22 @@ export async function buscarEu(acesso: string): Promise<EuResposta> {
     return EU_FALSO;
   }
   return getValidado('/v1/auth/eu', EuResposta, acesso, 'eu');
+}
+
+export type ResultadoCarga = { ok: true; relatorio: RelatorioCarga } | { ok: false; erro: string };
+
+/**
+ * POST /v1/cadastros/cargas (multipart, T-0026). O arquivo só passa pela memória; nada do conteúdo vai a log.
+ * Devolve o relatório validado pelo contrato ou uma mensagem fixa (nunca o corpo de erro cru).
+ */
+export async function enviarCarga(acesso: string, formulario: FormData): Promise<ResultadoCarga> {
+  if (usaApiFalsa) return { ok: false, erro: 'A carga precisa da API real: configure MACUXIERP_API_URL.' };
+  const r = await chamar(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario });
+  if (r.status === 401) throw new NaoAutenticado();
+  if (r.status === 403) return { ok: false, erro: SEM_PERMISSAO_CARGA };
+  if (r.status === 413) return { ok: false, erro: 'O envio é grande demais. Mande menos arquivos por vez.' };
+  if (r.status === 400) return { ok: false, erro: (await mensagemDaApi(r)) || 'Envio inválido: confira os arquivos e o modo.' };
+  if (!r.ok) return { ok: false, erro: CARGA_NAO_CONCLUIDA };
+  const dados = RelatorioCarga.safeParse(await r.json().catch(() => null));
+  return dados.success ? { ok: true, relatorio: dados.data } : { ok: false, erro: 'A API respondeu fora do contrato.' };
 }
