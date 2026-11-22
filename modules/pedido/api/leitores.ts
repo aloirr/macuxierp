@@ -23,3 +23,11 @@ export const NotaAutorizadaLida = z.object({
   itens: z.array(ItemNotaLido),
 }).passthrough();
 export type NotaAutorizadaLida = z.infer<typeof NotaAutorizadaLida>;
+
+/** `faturamento.nota.cancelada@1` (lote 4b): só o que o recuo usa; os itens são os da nota que foi cancelada. */
+export const NotaCanceladaLida = z.object({
+  pedido_id: z.string().uuid().nullish(),
+  nota: z.object({ id: z.string().uuid() }).passthrough(),
+  itens: z.array(ItemNotaLido),
+}).passthrough();
+export type NotaCanceladaLida = z.infer<typeof NotaCanceladaLida>;

@@ -615,3 +615,6 @@ export async function pedidoNovoNaFila(tx: Transacao, gravar: (tx: Transacao, p:
   await gravar(tx, copia);
   return copia.pedido_id;
 }
+
+/** Porta `situacao` do pedido para o transmissor nos testes: pedido sempre `aprovado` (a guarda RN-PED-02 é obrigatória no tipo). */
+export const situacaoAprovadaDeTeste = { situacao: async () => ({ status: 'aprovado' as const, itens: [] }) };

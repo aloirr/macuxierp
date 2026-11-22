@@ -9,7 +9,7 @@ import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid } from './apoio-teste';
+import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, situacaoAprovadaDeTeste } from './apoio-teste';
 import { criarServicoEmissao } from './emissao';
 import { criarServicoEventos } from './eventos';
 import { criarProcessadorEventos } from './processador-eventos';
@@ -60,7 +60,7 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
     const r = await app.comTenant(A, async (tx) => emissao.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: `idem-evdb-${++idem}` }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     const t = transporteFake();
-    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
     expect((await tr.transmitirNota(A, r.nota.id)).resultado).toBe('autorizada');
     return (await app.comTenant(A, (tx) => repos.notas.obter(tx, r.nota.id)))!;
   }
@@ -173,7 +173,7 @@ describe.skipIf(!PG_DISPONIVEL)('eventos fiscais (PostgreSQL real, migrações 0
     const t = transporteFake({ recibo: (c) => protocolo(c, { cStat: '778', xMotivo: 'Rejeicao: NCM inexistente', nProt: null, digVal: null }) });
     const rej = await app.comTenant(A, async (tx) => emissao.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: `idem-evdb-rej-${++idem}` }));
     if (!rej.ok) throw new Error('esperava ok');
-    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
+    const tr = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: f.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(), sefaz: () => t.transporte, agora: () => AUTORIZADA_EM });
     expect((await tr.transmitirNota(A, rej.nota.id)).resultado).toBe('rejeitada');
     const n = rej.nota.numero;
     const proximo = ((await admin('SELECT proximo FROM faturamento.serie_numeracao WHERE serie = 1'))[0] as { proximo: number }).proximo;

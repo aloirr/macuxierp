@@ -6,9 +6,9 @@
  * O gatilho `pedido.validar_status` (0012) é a última barreira: SQLSTATE MXP02 vira 422 `RN-PED-02` com os status possíveis
  * (só nomes de status; o `DETAIL` cru nunca vai a log nem a resposta).
  */
-import { paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
+import { ErroApi, paginar, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { STATUS_COMPROMETEM } from '../domain';
-import { FUSO_TENANT, erroTransicao } from './util';
+import { FUSO_TENANT, RecuoRecusadoPeloBanco, erroTransicao } from './util';
 import { StatusPedido, type DecisaoPedido, type HistoricoPedido, type Pendencia } from '../contracts';
 import type {
   DadosCabecalho, FiltroPedidos, ItemGravado, LinhaLista, NovaAprovacao, NovoEvento, NovoItem, NovoPedido, PedidoGravado, RepoPedidos,
@@ -207,6 +207,31 @@ class RepoPedidosSql implements RepoPedidos {
     if (ids.length === 0) return new Set();
     const l = await executar<{ evento_id: string }>(this.tx, 'SELECT evento_id FROM pedido.pedido_evento WHERE pedido_id = $1 AND evento_id = ANY($2::uuid[])', [pedidoId, ids]);
     return new Set(l.map((r) => r.evento_id));
+  }
+
+  async aplicarRecuo(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: StatusPedido): Promise<void> {
+    await executar(this.tx, 'SAVEPOINT recuo_nota');
+    try {
+      await executar(this.tx, "SELECT set_config('macuxierp.recuo_nota', 'on', true)");
+      await executar(
+        this.tx,
+        `UPDATE pedido.pedido_item i SET quantidade_faturada = v.q
+           FROM unnest($2::int[], $3::bigint[]) AS v(seq, q)
+          WHERE i.pedido_id = $1 AND i.sequencia = v.seq AND i.deleted_at IS NULL`,
+        [id, itens.map((i) => i.sequencia), itens.map((i) => String(i.quantidade_faturada))],
+      );
+      await executar(this.tx, 'UPDATE pedido.pedido SET valor_faturado_centavos = $2 WHERE id = $1', [id, String(valorFaturadoCentavos)]);
+      await executar(this.tx, 'UPDATE pedido.pedido SET status = $2 WHERE id = $1', [id, status]);
+      await executar(this.tx, "SELECT set_config('macuxierp.recuo_nota', 'off', true)");
+      await executar(this.tx, 'RELEASE SAVEPOINT recuo_nota');
+    } catch (e) {
+      // MXP02 chega traduzido por `executar` (ErroApi 422 RN-PED-02); só o gatilho produz esse erro aqui.
+      const recusado = (e as { code?: string }).code === 'MXP02' || (e instanceof ErroApi && e.codigo === 'RN-PED-02');
+      if (!recusado) throw e;
+      await this.tx.consultar('ROLLBACK TO SAVEPOINT recuo_nota');
+      await this.tx.consultar("SELECT set_config('macuxierp.recuo_nota', 'off', true)");
+      throw new RecuoRecusadoPeloBanco();
+    }
   }
 
   async registrarAprovacao(a: NovaAprovacao): Promise<void> {

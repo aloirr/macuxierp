@@ -6,7 +6,8 @@ import { valorItem } from '@macuxierp/platform-sdk';
 import { PedidoManualEntrada, type Pedido } from '../contracts';
 import { linhasDePendencias, type LinhaPendencia } from './detalhe';
 import { errosPorCampo } from './erros';
-import { interpretarCentavos, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { calcularTotal } from './total';
+import { formatarCentavos, interpretarCentavos, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { textoCentavos, textoQuantidade } from './texto';
 
 export interface LinhaItemFormulario {
@@ -45,18 +46,26 @@ export type ResultadoFormulario = { ok: true; entrada: PedidoManualEntrada } | {
 const CAMPO_DA_TELA = { preco_unitario_centavos: 'preco', desconto_centavos: 'desconto' } as const;
 
 const MENSAGENS = {
-  filial_id: 'Escolha a filial',
-  cliente_id: 'Escolha o cliente',
-  produto_id: 'Escolha o produto',
-  condicao_pagamento_id: 'Condição inválida',
-  endereco_entrega_id: 'Endereço inválido',
-  quantidade: 'Quantidade maior que zero, até 4 casas',
-  preco: 'Preço em reais, ex.: 12,50',
-  preco_unitario_centavos: 'Preço em reais, ex.: 12,50',
-  desconto: 'Desconto em reais, ex.: 1,00',
-  desconto_centavos: 'Desconto em reais, ex.: 1,00',
-  itens: 'Inclua ao menos um item',
+  filial_id: 'Escolha a filial.',
+  cliente_id: 'Escolha o cliente.',
+  produto_id: 'Escolha o produto.',
+  condicao_pagamento_id: 'Condição de pagamento inválida. Escolha outra.',
+  endereco_entrega_id: 'Endereço inválido. Escolha outro.',
+  quantidade: 'Informe a quantidade maior que zero, com até 4 casas.',
+  preco: 'Preço inválido. Digite em reais, ex.: 12,50.',
+  preco_unitario_centavos: 'Preço inválido. Digite em reais, ex.: 12,50.',
+  desconto: 'Desconto inválido. Digite em reais, ex.: 1,00.',
+  desconto_centavos: 'Desconto inválido. Digite em reais, ex.: 1,00.',
 } as const;
+
+/** Lê o texto digitado de uma linha (desconto vazio = 0); `null` marca o campo inválido. */
+function lerLinha(i: LinhaItemFormulario): { quantidade: number | null; preco: number | null; desconto: number | null } {
+  return {
+    quantidade: interpretarQuantidade(i.quantidade),
+    preco: interpretarCentavos(i.preco),
+    desconto: i.desconto.trim() === '' ? 0 : interpretarCentavos(i.desconto),
+  };
+}
 
 /**
  * Erros por campo (`filial_id`, `itens.0.quantidade`...), em português. Aqui fica só a conversão do texto digitado e a regra
@@ -66,13 +75,11 @@ export function validarFormulario(f: Formulario): ResultadoFormulario {
   const erros: Record<string, string> = {};
   const itens = f.itens.map((i, n) => {
     const campo = (c: string) => `itens.${n}.${c}`;
-    const quantidade = interpretarQuantidade(i.quantidade);
+    const { quantidade, preco, desconto } = lerLinha(i);
     if (quantidade === null) erros[campo('quantidade')] = MENSAGENS.quantidade;
-    const preco = interpretarCentavos(i.preco);
     if (preco === null) erros[campo('preco')] = MENSAGENS.preco;
-    const desconto = i.desconto.trim() === '' ? 0 : interpretarCentavos(i.desconto);
     if (desconto === null) erros[campo('desconto')] = MENSAGENS.desconto;
-    else if (quantidade && preco !== null && desconto > valorItem(quantidade, preco)) erros[campo('desconto')] = 'O desconto passa do valor do item';
+    else if (quantidade && preco !== null && desconto > valorItem(quantidade, preco)) erros[campo('desconto')] = 'Desconto maior que o valor do item. Reduza o desconto.';
     return { produto_id: i.produto_id, quantidade: quantidade ?? 0, preco_unitario_centavos: preco ?? 0, desconto_centavos: desconto ?? 0 };
   });
 
@@ -85,7 +92,20 @@ export function validarFormulario(f: Formulario): ResultadoFormulario {
     itens,
   });
   if (!r.success) for (const [chave, msg] of Object.entries(errosPorCampo(r.error.issues, CAMPO_DA_TELA, MENSAGENS))) erros[chave] ??= msg;
-  return Object.keys(erros).length ? { ok: false, erros } : r.success ? { ok: true, entrada: r.data } : { ok: false, erros: { formulario: 'Confira os dados do pedido' } };
+  return Object.keys(erros).length ? { ok: false, erros } : r.success ? { ok: true, entrada: r.data } : { ok: false, erros: { formulario: 'Dados do pedido inválidos. Confira os campos.' } };
+}
+
+/**
+ * Total para a tela mostrar antes de lançar: soma `calcularTotal` das linhas que já têm quantidade e preço válidos
+ * (linha incompleta ou com desconto acima do valor não entra). Sem regra nova; a API revalida.
+ */
+export function totalDoFormulario(itens: readonly LinhaItemFormulario[]): { centavos: number; texto: string } {
+  const validos = itens.flatMap((i) => {
+    const { quantidade, preco, desconto } = lerLinha(i);
+    return quantidade && preco !== null && desconto !== null && desconto <= valorItem(quantidade, preco) ? [{ quantidade, preco_unitario_centavos: preco, desconto_centavos: desconto }] : [];
+  });
+  const centavos = calcularTotal(validos).total;
+  return { centavos, texto: formatarCentavos(centavos) };
 }
 
 /** Preenche o formulário com um pedido existente, para a edição (o inverso do texto digitado). */
