@@ -49,14 +49,14 @@ export type ResultadoTransmissao =
   /** A filial não tem A1 ativo: nada foi enviado; a nota continua como estava (com o motivo, se ainda não assinada). */
   | { resultado: 'sem_certificado' }
   /** Não assinada: A1 inválido/vencido (`a1_invalido`) ou remontagem que não bate com a nota (`remontagem_divergente`). Nota em rascunho/rejeitada, com o motivo; número intacto. */
-  | { resultado: 'nao_assinada'; motivo: 'a1_invalido' | 'remontagem_divergente' }
+  | { resultado: 'nao_assinada'; motivo: 'a1_invalido' | 'remontagem_divergente' | 'destino_indisponivel' }
   /** RN-FAT-04: o ambiente da filial mudou depois da nota; o envio é recusado (a nota é de outro ambiente). */
   | { resultado: 'ambiente_mudou' }
   | { resultado: 'falha'; codigo: string };
 
 type Preparo =
   | { tipo: 'fim'; resultado: ResultadoTransmissao; a1?: undefined }
-  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null };
+  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null; transporte?: ReturnType<SeletorTransporte> };
 
 /** Só estes status são assinados pelo worker (0020: a `nfe_assinada` não entra em `em_autorizacao`). Contingência é do lote 4. */
 const precisaAssinar = (status: NotaRegistro['status']): boolean => status === 'rascunho' || status === 'rejeitada';
@@ -112,6 +112,15 @@ export function criarTransmissor(deps: DepsTransmissor) {
         const ultimo = await deps.notas.ultimoXmlAssinado(tx, nota.id);
         // Rejeitada já assinada para o conteúdo atual (revisão) e sem reenvio novo: trabalho velho, nada a fazer.
         if (ultimo && ultimo.versao >= nota.revisao) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
+        // RN-FAT-04/RN-FAT-07: o destino é resolvido ANTES de assinar. Se o seletor recusar (produção sem transporte real, endereço não conferido), a nota fica em
+        // rascunho com o motivo, sem nfe_assinada e sem em_autorizacao; o número fica na nota e aparece em numeradasNaoEnviadas.
+        let transporte: ReturnType<SeletorTransporte>;
+        try {
+          transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: 'normal' }, a1.credencial);
+        } catch {
+          await deps.notas.registrarMotivoEnvio(tx, nota.id, 'destino_indisponivel');
+          return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'destino_indisponivel' } };
+        }
         let xml: string;
         try {
           xml = xmlDaNota(deps.emissor, nota, conteudo); // MESMO número, cNF e dhEmi gravados; a chave refeita tem de bater com a da nota (RN-FAT-07)
@@ -126,7 +135,7 @@ export function criarTransmissor(deps: DepsTransmissor) {
         await deps.notas.gravarXmlAssinado(tx, nota.id, assinado.xml, createHash('sha256').update(assinado.xml, 'utf8').digest('hex'));
         // A revisão lida vai no UPDATE: se a API gravou outra no meio, o UPDATE não pega, a tx desfaz e a próxima volta usa a revisão nova.
         const enviada = await mudarNota(deps.notas, tx, nota, 'em_autorizacao', { revisao: nota.revisao });
-        return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml) };
+        return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml), transporte };
       });
     }
   }
@@ -164,7 +173,7 @@ export function criarTransmissor(deps: DepsTransmissor) {
     if (p.tipo === 'fim') return p.resultado;
     const { nota, a1, xmlAssinado, digestValue } = p;
     try {
-      const transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
+      const transporte = p.transporte ?? deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
       const log: TransmissaoRegistrada[] = [];
       const medir = <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => medirChamada(agora, transporte, chamar, { nota_id, servico }, log);
       const descarregar = (t: Transacao): Promise<void> => descarregarLog(log, (reg) => deps.notas.registrarTransmissao(t, reg));

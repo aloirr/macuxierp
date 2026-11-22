@@ -47,6 +47,17 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.estado.reservas).toBe(1);
   });
 
+  it('RN-FAT-04: filial em produção com a emissão de produção desligada (padrão): a API recusa (422) ANTES de reservar o número e a série não anda', async () => {
+    const m = montar();
+    for (const habilitada of [false, undefined]) {
+      const svc = criarServicoEmissao({ ...m.deps, emissaoProducaoHabilitada: habilitada });
+      const r = await svc.emitirNota(tx, TENANT, entrada(`idem-prod-${String(habilitada)}`));
+      expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-FAT-04', mensagem: 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).' });
+    }
+    expect(m.estado.reservas).toBe(0);
+    expect(m.log).toEqual(['trava', 'trava']);
+  });
+
   it('ADR 0005 item 4: a API emite sem nenhum A1 decifrado: a porta lerA1 nem existe nas dependências da API (o tipo a recusa)', async () => {
     const m = montar();
     // @ts-expect-error DepsEmissao (API) não tem `lerA1`: só o worker lê o A1 decifrado

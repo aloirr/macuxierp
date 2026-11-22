@@ -85,6 +85,11 @@ export interface DepsEmissao {
   configuracao?: ConfiguracaoFaturamento;
   /** Log sem dado pessoal, OBRIGATÓRIO (falha ao ler a bandeira; pendência de título). */
   log: LogFaturamento;
+  /**
+   * RN-FAT-04: emissão em PRODUÇÃO fiscal só com esta flag ligada; padrão `false`. O engenheiro liga `false` até a T-0046 (transporte real homologado):
+   * sem transporte real a nota de produção ficaria numerada e parada. Recusa ANTES de reservar o número (a série não anda).
+   */
+  emissaoProducaoHabilitada?: boolean;
 }
 
 interface Preparado {
@@ -208,6 +213,9 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     }
     if (!filial.ie.trim()) return { ok: false, violacoes: [violacao('RF-FAT-01', 'filial_id', 'Cadastre a inscrição estadual da filial emissora.')] };
     const ambiente = await deps.ambiente.ambiente(tx, pedido.filial_id);
+    if (ambiente === 'producao' && !deps.emissaoProducaoHabilitada) {
+      return { ok: false, violacoes: [violacao('RN-FAT-04', 'filial_id', 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).')] };
+    }
 
     const base = ratearItens({ pedido, situacao, itens, ja_faturadas });
     if (!base.ok) return base;

@@ -34,6 +34,7 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
   const a1 = a1DeTeste();
   const filiaisPedidas: unknown[] = [];
   const leituras = { n: 0 };
+  const deps_sefaz = { recusar: false };
   const transmissor = criarTransmissor({
     log: () => undefined,
     banco,
@@ -48,11 +49,12 @@ function montar(roteiro: Roteiro = {}, o: { ambienteAtual?: 'homologacao' | 'pro
     sefaz: (filial, credencial) => {
       expect(credencial).toBe(a1.credencial); // o seletor recebe o pfx + senha, não o certificado aberto
       filiaisPedidas.push(filial);
+      if (deps_sefaz.recusar) throw new Error('SimuladorEmProducaoErro');
       return t.transporte;
     },
     agora: () => new Date('2026-11-21T14:30:00Z'),
   });
-  return { ...f, ...f.r, t, a1, leituras, filiaisPedidas, transmissor, svc: criarServicoEmissao(f.deps) };
+  return { ...f, ...f.r, t, a1, leituras, filiaisPedidas, deps_sefaz, transmissor, svc: criarServicoEmissao(f.deps) };
 }
 /** `parcial`: nota de 0,5000 do item 1 (várias notas do mesmo pedido não passam do saldo, RN-FAT-01). */
 async function emitir(m: ReturnType<typeof montar>, idempotencia = 'idem-0000001', parcial = false) {
@@ -152,6 +154,19 @@ describe('worker: assinar e transmitir a nota', () => {
     const m = montar({}, { ambienteAtual: 'producao' });
     expect((await m.transmissor.transmitirNota(TENANT, (await emitir(m)).id)).resultado).toBe('ambiente_mudou');
     expect(m.t.chamadas).toEqual([]);
+  });
+
+  it('RN-FAT-04: nota de produção que chega ao worker sem destino (seletor recusa) continua em rascunho: não assina, não grava nfe_assinada, não vai a em_autorizacao; o número fica e o motivo é destino_indisponivel', async () => {
+    const m = montar();
+    const nota = await emitir(m);
+    m.deps_sefaz.recusar = true;
+    expect(await m.transmissor.transmitirNota(TENANT, nota.id)).toEqual({ resultado: 'nao_assinada', motivo: 'destino_indisponivel' });
+    expect(m.notas.get(nota.id)).toMatchObject({ status: 'rascunho', numero: 100 });
+    expect(m.assinados).toEqual([]);
+    expect(m.assinadas).toEqual([]);
+    expect(m.t.chamadas).toEqual([]);
+    expect(m.motivos.get(nota.id)).toBe('destino_indisponivel');
+    expect([...m.a1.credencial.pfx].every((b) => b === 0)).toBe(true);
   });
 
   it('RN-FAT-02: nota autorizada ou inexistente é ignorada (idempotente)', async () => {

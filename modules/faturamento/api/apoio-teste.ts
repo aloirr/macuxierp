@@ -454,6 +454,7 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
     agora: () => INSTANTE_DE_TESTE,
     sorteio: () => 48_213_705,
     eventos: ev.repo,
+    emissaoProducaoHabilitada: true, // os cenários de produção do arnês exercem a emissão; o teste da recusa desliga
   };
   return { deps, r, ev, pedido, emissor: espiao.emissor, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
 }
