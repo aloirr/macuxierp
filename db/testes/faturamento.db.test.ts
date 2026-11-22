@@ -31,6 +31,7 @@ import {
   fixtureFaturamento,
   fixtureModulos,
   fixturePlataforma,
+  fixtureTituloGeracao,
   hashSql,
   novoTenant,
 } from './fixture.ts';
@@ -56,6 +57,7 @@ const TABELAS = [
   'serie_numeracao',
   'titulo',
   'titulo_baixa',
+  'titulo_geracao',
   'transmissao',
 ] as const;
 
@@ -208,7 +210,11 @@ INSERT INTO faturamento.nota (tenant_id, filial_id, serie, numero, idempotencia_
       [A, B]
         .map(
           (t) =>
-            fixturePlataforma(t) + fixtureModulos(t) + fixtureFaturamento(t) + fixtureConfiguracaoFilial(t),
+            fixturePlataforma(t) +
+            fixtureModulos(t) +
+            fixtureFaturamento(t) +
+            fixtureConfiguracaoFilial(t) +
+            fixtureTituloGeracao(t),
         )
         .join('\n'),
     );
