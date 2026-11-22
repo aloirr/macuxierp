@@ -14,25 +14,24 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
 - **Proporção:** escala uniforme até o primeiro lado da caixa bater ("caber inteiro"). Nunca esticar, achatar, recortar, girar nem pôr borda ou sombra.
 - **Alinhamento:** logo centrado na vertical e encostado à esquerda da caixa. Os dados do emitente (razão social, endereço, telefone) ficam centralizados no espaço que sobra à direita.
 - **Sem logo:** o quadro fica só com os dados do emitente, centralizados na largura toda do quadro. Não se deixa espaço vazio reservado.
-- **Folhas 2 em diante:** o logo do emitente se repete no cabeçalho reduzido, com a mesma regra: caixa de até **1/3 da largura do quadro reduzido** e **altura do quadro menos 1,5 mm em cima e 1,5 mm embaixo**. Sem logo, os dados ficam centralizados, como na folha 1.
+- **Folhas 2 em diante:** o logo se repete no cabeçalho reduzido, com as mesmas regras desta seção (caixa, proporção, alinhamento e sem logo), medidas sobre o quadro reduzido.
 - **Preto e branco:** se o arquivo do cliente for colorido, o PDF leva o logo em **tons de cinza pela luminância** (0,2126 R + 0,7152 G + 0,0722 B), sem virar preto chapado. Transparência compõe sobre branco. O cinza dentro do logo do cliente é permitido: é a marca dele.
 - **Nitidez:** no tamanho impresso, no mínimo **150 dpi** efetivos. Se o arquivo for pequeno, o logo sai menor, centrado na caixa; nunca ampliado além disso.
 
 ## 2. Cores
 - **Preto `preto` #000000** em todo texto, linha, quadro, código de barras e na assinatura do rodapé.
-- **Cinza só na marca d'água** (§5): tinta de preto a **15%**, que no papel branco dá **#D9D9D9**. Não é cor nova da paleta; é a tinta do `preto` só para esse uso. Qualquer outro cinza no DANFE **não é permitido**, exceto dentro do logo do cliente (§1). Isso inclui fundo de título de quadro, linhas e zebrado de itens: títulos de quadro em preto, sem fundo.
+- **Cinza só na marca d'água** (§5): tinta de preto a **15%**, que no papel branco dá **#D9D9D9**. Não é cor nova da paleta; é a tinta do `preto` só para esse uso. Qualquer outro cinza no DANFE **não é permitido**, exceto dentro do logo do cliente (§1): título de quadro sem fundo e itens sem zebrado.
 - **Contraste conferido** (WCAG 2.x, mesma conta do FDV): texto preto sobre a marca d'água = **14,88:1** (mínimo 4,5:1). Os dados continuam legíveis onde a marca d'água passa por baixo.
 
 ## 3. Tipografia
 - **Helvetica regular e Helvetica negrito** (`StandardFonts.Helvetica` e `StandardFonts.HelveticaBold` do `pdf-lib`). É **exceção registrada** à IBM Plex Sans da marca, por restrição técnica do `pdf-lib`, e vale **só nos PDFs fiscais**. BKO e e-mail seguem a tipografia do manual do FDV.
 - Nenhuma outra família, itálico nem peso.
 - **Tamanhos mínimos da marca** (onde o MOC pedir maior, vale o MOC):
-  - rótulo de campo: **6 pt**, regular, caixa alta. Os 6 pt valem **só** para rótulo de campo em caixa alta;
-  - conteúdo de campo: **7 pt**, regular;
-  - legendas e textos fixos que não são rótulo nem conteúdo de campo (por exemplo, "Documento Auxiliar da Nota Fiscal Eletrônica", "Consulta de autenticidade…", "Folha x/y"): **7 pt**, regular;
-  - títulos de seção: **7 pt**, negrito, caixa alta;
+  - rótulo de campo: **6 pt**, regular, caixa alta (o único texto em 6 pt);
+  - conteúdo de campo, legendas e textos fixos (por exemplo, "Documento Auxiliar da Nota Fiscal Eletrônica", "Consulta de autenticidade…", "Folha x/y"): **7 pt**, regular;
+  - títulos de quadro: **7 pt**, negrito, caixa alta;
   - destaques (número, série, chave de acesso, valor total): **8 pt**, negrito;
-  - texto do rodapé "Emitido pelo": **7 pt**, regular.
+  - texto do rodapé "Emitido pelo": conforme §4.
 - **Texto que não cabe:**
   - nunca reduzir a fonte abaixo do mínimo nem cortar com reticências;
   - quebrar em quantas linhas precisar (descrição do item e valor alinhado à direita);
