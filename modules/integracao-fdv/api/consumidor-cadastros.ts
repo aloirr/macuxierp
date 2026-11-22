@@ -7,18 +7,18 @@
  * usa a chave dele quando já está no espelho e o UUID do ERP enquanto não está, e é recomposta quando ele chegar (M10).
  * (2) Sem licença do módulo `integracao-fdv` no tenant (M9) nada é gravado: a carga inicial (C-4) cobre a ligação posterior.
  * (3) Payload fora do contrato é ignorado (erro permanente: repetir não conserta e travaria o agregado na fila).
- * (4) O UUID do ERP de cada registro fica na coluna `erp_id` do espelho (0015, RD-0318); a chave da tabela de preço no Hub segue em `referencia.external_id` (ADR 0010 manda `dados`; falta o CHECK, L2b).
- * (5) PROVISÓRIO até a C-10 (`external_id_anterior` no evento): a troca de chave de um cadastro é detectada pelo `erp_id`
- * (`inativarChaveAntiga` inativa a chave velha quando a nova chega). `chave_alterada`, `conflito_chave` (a gravação já
- * recusa a chave de outro `erp_id`, ver `gravarRegistro`) e a saída por `deleted_at` ficam no L2b.
+ * (4) O UUID do ERP de cada registro fica na coluna `erp_id` do espelho (0015, RD-0318); a chave da tabela de preço no Hub fica em
+ * `referencia.dados.chave` (0018) e `referencia.external_id` não é mais usado.
+ * (5) Troca e conflito de chave (ADR 0010, item 3): `decidirTrocaDeChave` compara a chave do evento com a do espelho; `troca` inativa a linha antiga, e `chave_alterada`/`chave_duplicada` não gravam nada e abrem `conflito_chave`.
  */
 import { EVENTOS } from '@macuxierp/cadastros/contracts';
 import { moduloLicenciado, type ConsumidorEvento, type EnvelopeEvento, type FonteLicencas, type Transacao } from '@macuxierp/platform-sdk';
 import {
   CHAVE_FONTE_REFS,
-  assinaturaDaTabela,
+  assinaturaDaReferenciaTabela,
   assinaturaDeDerivados,
-  tabelaDaReferencia,
+  decidirTrocaDeChave,
+  ehConflitoDeChave,
   instanteUtc,
   mapearCliente,
   mapearCondicao,
@@ -32,7 +32,7 @@ import {
   type RegistroEspelho,
 } from '../domain';
 import type { EntidadeHub } from '../contracts';
-import { aplicarRegistros, gravarReferencia, inativarChaveAntiga, inativarRetirados, outroPrazoAtivoDaForma, recomporDependentes, removerReferencia, agendarEnvio } from './espelho';
+import { aplicarRegistros, aplicarTrocaDeChave, gravarReferencia, inativarRetirados, outroPrazoAtivoDaForma, recomporDependentes, registrarConflito, removerReferencia, situacaoDaChave, agendarEnvio } from './espelho';
 
 export const CONSUMIDOR_PUBLICAR_CADASTROS = 'integracao-fdv.publicar-cadastros';
 
@@ -97,13 +97,39 @@ async function gravarComDependentes(
   erpId: string,
 ): Promise<void> {
   const antes = await assinaturaAnterior(tx, t, principal.entidade, principal.external_id);
-  // a chave antiga sai antes de a nova entrar: o índice único do `erp_id` vale só entre as linhas ativas (0015)
-  juntar(pendentes, await inativarChaveAntiga(tx, t, principal.entidade, erpId, principal.external_id, em));
-  juntar(pendentes, await aplicarRegistros(tx, t, [principal], em));
+  // a chave antiga sai antes de a nova entrar: o índice único do `erp_id` vale só entre as linhas ativas (0015). Só chega aqui
+  // depois de `conferirChave` ter dito `troca` ou `nada`; a linha antiga só é mexida se a chave do espelho for outra.
+  juntar(pendentes, await aplicarTrocaDeChave(tx, t, principal.entidade, erpId, principal.external_id, em));
+  // depois da troca o conflito não pode mais ser registrado aqui: o erro desfaz a troca e o evento refeito grava `chave_duplicada` limpo
+  juntar(pendentes, await aplicarRegistros(tx, t, [principal], em, 'falhar'));
   const chaveRef = CHAVE_FONTE_REFS[principal.entidade];
   if (chaveRef && (antes === null || antes !== assinaturaDeDerivados(principal))) {
     juntar(pendentes, await recomporDependentes(tx, t, chaveRef, erpId, em));
   }
+}
+
+/**
+ * Confere a chave do Hub do registro contra o espelho (`decidirTrocaDeChave`). `true` = pode gravar (nada ou troca);
+ * `false` = `chave_alterada` ou `chave_duplicada`: nada é gravado e o conflito fica registrado (RN-CORE-05, RN-INF-04).
+ */
+async function conferirChave(
+  tx: Transacao,
+  t: string,
+  entidade: EntidadeHub,
+  erpId: string,
+  chaveNova: string,
+  anterior: string | null | undefined,
+  em: Date,
+): Promise<boolean> {
+  const { chaveEspelho, outroErpId, fonteOcorridoEm } = await situacaoDaChave(tx, t, entidade, erpId, chaveNova);
+  // evento mais velho que o espelho é descartado (M3), sem abrir conflito falso
+  if (fonteOcorridoEm && em.getTime() < fonteOcorridoEm.getTime()) return false;
+  const decisao = decidirTrocaDeChave({ chaveEspelho, chaveNova, anterior, outroErpIdComChaveNova: outroErpId, erpId });
+  if (ehConflitoDeChave(decisao)) {
+    await registrarConflito(tx, t, entidade, erpId, chaveNova, decisao);
+    return false;
+  }
+  return true;
 }
 
 async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em: Date, pendentes: Pendentes): Promise<void> {
@@ -113,6 +139,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.filial.alterada@1'].safeParse(evento.payload);
       if (!p.success) return;
       const { registro, referencia } = mapearFilial(p.data, emIso);
+      if (!(await conferirChave(tx, t, 'filial', p.data.id, registro.external_id, p.data.external_id_anterior, em))) return;
       const eraPadrao = await gravarPadrao(tx, t, p.data.id, referencia, em);
       await gravarComDependentes(tx, t, em, pendentes, registro, p.data.id);
       // trocar a filial padrão muda a forma de os preços dela irem ao Hub (com ou sem filial): recompõe os dela
@@ -122,7 +149,9 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
     case 'cadastros.vendedor.alterado@1': {
       const p = EVENTOS['cadastros.vendedor.alterado@1'].safeParse(evento.payload);
       if (!p.success) return;
-      await gravarComDependentes(tx, t, em, pendentes, mapearVendedor(p.data, emIso), p.data.id);
+      const vendedor = mapearVendedor(p.data, emIso);
+      if (!(await conferirChave(tx, t, 'vendedor', p.data.id, vendedor.external_id, p.data.external_id_anterior, em))) return;
+      await gravarComDependentes(tx, t, em, pendentes, vendedor, p.data.id);
       return;
     }
     case 'cadastros.condicao_pagamento.alterada@1': {
@@ -131,6 +160,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const previa = mapearCondicao(p.data, emIso, { tenantId: t, formaAtiva: !p.data.inativo });
       const formaAtiva = !p.data.inativo || (await outroPrazoAtivoDaForma(tx, t, previa.forma.external_id, previa.prazo.external_id));
       const { forma, prazo } = mapearCondicao(p.data, emIso, { tenantId: t, formaAtiva });
+      if (!(await conferirChave(tx, t, 'prazo_pagamento', p.data.id, prazo.external_id, p.data.external_id_anterior, em))) return;
       // a forma é derivada dos prazos vigentes (não de um agregado próprio): vale sempre o último evento de condição
       juntar(pendentes, await aplicarRegistros(tx, t, [forma], em));
       await gravarComDependentes(tx, t, em, pendentes, prazo, p.data.id);
@@ -142,6 +172,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.produto.alterado@1'].safeParse(evento.payload);
       if (!p.success) return;
       const { produto, unidades } = mapearProduto(p.data, emIso);
+      if (!(await conferirChave(tx, t, 'produto', p.data.id, produto.external_id, p.data.external_id_anterior, em))) return;
       await gravarComDependentes(tx, t, em, pendentes, produto, p.data.id);
       juntar(pendentes, await aplicarRegistros(tx, t, unidades, em));
       juntar(pendentes, await inativarRetirados(tx, t, 'produto_unidade', 'produto_id', p.data.id, p.data.unidades.map((u) => u.id), em));
@@ -151,14 +182,10 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.tabela_preco.alterada@1'].safeParse(evento.payload);
       if (!p.success) return;
       const ref = mapearTabelaPreco(p.data, emIso);
-      const antes = await tx.consultar<{ dados: Record<string, unknown>; external_id: string | null }>(
-        `SELECT dados, external_id FROM integracao_fdv.referencia WHERE tenant_id = $1 AND tipo = 'tabela_preco' AND erp_id = $2 AND deleted_at IS NULL`,
-        [t, ref.erp_id],
-      );
-      const mudou = await gravarReferencia(tx, t, ref, em);
-      const sig = (d: Record<string, unknown>, ext: string): string => assinaturaDaTabela(tabelaDaReferencia(d, ext));
-      const a = antes[0];
-      if (mudou && (!a || sig(a.dados, a.external_id ?? ref.erp_id) !== sig(ref.dados, ref.external_id ?? ref.erp_id))) {
+      const { mudou, dadosAntes } = await gravarReferencia(tx, t, ref, em);
+      // RD-0318: a assinatura inclui a chave do Hub; chave nova da tabela (troca de external_id) recompõe os preços dependentes
+      // (`fonte_refs.tabela_preco_id`) e os marca pendentes (`atualizarConteudo`, hash novo)
+      if (mudou && (!dadosAntes || assinaturaDaReferenciaTabela(dadosAntes) !== assinaturaDaReferenciaTabela(ref.dados))) {
         juntar(pendentes, await recomporDependentes(tx, t, 'tabela_preco_id', ref.erp_id, em));
       }
       return;
@@ -180,6 +207,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.cliente.alterado@1'].safeParse(evento.payload);
       if (!p.success) return;
       const { cliente, enderecos } = mapearCliente(p.data, emIso, { condicao: null });
+      if (!(await conferirChave(tx, t, 'cliente', p.data.id, cliente.external_id, p.data.external_id_anterior, em))) return;
       await gravarComDependentes(tx, t, em, pendentes, cliente, p.data.id);
       juntar(pendentes, await aplicarRegistros(tx, t, enderecos, em));
       juntar(pendentes, await inativarRetirados(tx, t, 'cliente_endereco', 'cliente_id', p.data.id, enderecos.map((e) => e.erp_id ?? ''), em));
@@ -198,6 +226,6 @@ async function gravarPadrao(
   referencia: ReferenciaEspelho | null,
   em: Date,
 ): Promise<boolean> {
-  if (referencia) return gravarReferencia(tx, t, referencia, em);
+  if (referencia) return (await gravarReferencia(tx, t, referencia, em)).mudou;
   return removerReferencia(tx, t, 'filial_padrao', filialId, em);
 }

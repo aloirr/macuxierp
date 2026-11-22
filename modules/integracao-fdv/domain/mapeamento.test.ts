@@ -172,19 +172,28 @@ describe('RF-INF-01 preço', () => {
   it('sem a referência da tabela o preço entra sem tabela_nome e vira referencia_ausente (C-2)', () => {
     const r = mapearPreco(U(11), ev, EM, { tabela: null, filialPadraoId: U(1) });
     expect(r.payload.tabela_nome).toBeUndefined();
-    expect(validarRegistro(r, () => true)).toMatchObject({ codigo: 'referencia_ausente', campo: 'tabela_nome' });
+    // RD-0318: sem a referência não há chave da tabela; o UUID cru do evento nunca vira tabela_external_id
+    expect(r.payload.tabela_external_id).toBeUndefined();
+    expect(validarRegistro(r, () => true)).toMatchObject({ codigo: 'referencia_ausente', campo: 'tabela_external_id' });
+  });
+
+  it('RD-0318: tabela_external_id é a chave do Hub da referência (external_id da carga), não o UUID da tabela', () => {
+    const r = mapearPreco(U(11), ev, EM, { tabela: { chave: 'TAB-KIT', nome: 'Varejo' }, filialPadraoId: U(1) });
+    expect(r.payload.tabela_external_id).toBe('TAB-KIT');
+    expect(r.payload.tabela_external_id).not.toBe(ev.tabela_preco_id);
+    expect(r.fonte_refs.tabela_preco_id).toBe(ev.tabela_preco_id);
   });
 
   it('preço em centavos, tabela com nome, sem desconto máximo; filial padrão sai sem filial (P-1)', () => {
-    const r = mapearPreco(U(11), ev, EM, { tabela: { nome: 'Varejo' }, filialPadraoId: U(1) });
+    const r = mapearPreco(U(11), ev, EM, { tabela: { chave: U(10), nome: 'Varejo' }, filialPadraoId: U(1) });
     expect(r.payload).toEqual({ external_id: U(11), ativo: true, tabela_external_id: U(10), tabela_nome: 'Varejo', vigencia_inicio: '2026-01-01', produto_external_id: U(2), preco_cents: 1990 });
-    const outra = mapearPreco(U(12), { ...ev, filial_id: U(9) }, EM, { tabela: { nome: 'Varejo' }, filialPadraoId: U(1) });
+    const outra = mapearPreco(U(12), { ...ev, filial_id: U(9) }, EM, { tabela: { chave: U(10), nome: 'Varejo' }, filialPadraoId: U(1) });
     expect(outra.payload.filial_external_id).toBe(U(9));
     expect(JSON.stringify(r.payload)).not.toMatch(/desconto/);
   });
 
   it('tabela inativa = preço ativo false', () => {
-    expect(mapearPreco(U(11), { ...ev, inativo: true }, EM, { tabela: { nome: 'V' }, filialPadraoId: null }).ativo).toBe(false);
+    expect(mapearPreco(U(11), { ...ev, inativo: true }, EM, { tabela: { chave: U(10), nome: 'V' }, filialPadraoId: null }).ativo).toBe(false);
   });
 });
 
@@ -277,8 +286,11 @@ describe('RN-INF-02: chave do Hub = external_id da carga, senão o UUID (23h22)'
     expect(prazo.payload.forma_external_id).toBe('FP-DIN');
   });
 
-  it('C-2: a tabela de preço vira referência com a chave própria e sem vigencia_fim nula', () => {
+  it('RD-0318: a tabela de preço vira referência com a chave do Hub em dados.chave e sem vigencia_fim nula', () => {
     const r = mapearTabelaPreco({ id: U(10), nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: true, external_id: 'TAB-A', inativo: false }, EM);
-    expect(r).toEqual({ tipo: 'tabela_preco', erp_id: U(10), dados: { nome: 'Varejo', vigencia_inicio: '2026-01-01', inativo: false }, fonte_ocorrido_em: EM, external_id: 'TAB-A' });
+    expect(r).toEqual({ tipo: 'tabela_preco', erp_id: U(10), dados: { chave: 'TAB-A', nome: 'Varejo', vigencia_inicio: '2026-01-01', inativo: false }, fonte_ocorrido_em: EM });
+    expect(r).not.toHaveProperty('external_id');
+    // sem external_id (cadastro sem carga) a chave do Hub é o próprio id
+    expect(mapearTabelaPreco({ id: U(10), nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: true, external_id: null, inativo: false }, EM).dados.chave).toBe(U(10));
   });
 });

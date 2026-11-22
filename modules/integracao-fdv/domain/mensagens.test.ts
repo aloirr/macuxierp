@@ -9,6 +9,10 @@ describe('catálogo de mensagens', () => {
     expect(mensagemDaPausa('credencial')).toContain('Troque a chave');
   });
 
+  it('RN-INF-04: chave_alterada e chave_duplicada têm mensagem própria no catálogo, sem valor de campo', () => {
+    for (const c of ['chave_alterada', 'chave_duplicada']) expect(mensagemDoErro(c)).not.toContain('Erro não catalogado');
+  });
+
   it('RN-INF-04: resposta_grande e pedido_invalido têm mensagem própria no catálogo', () => {
     expect(mensagemDoErro('resposta_grande')).not.toContain('Erro não catalogado');
     expect(mensagemDoErro('pedido_invalido')).not.toContain('Erro não catalogado');

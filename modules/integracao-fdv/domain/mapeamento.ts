@@ -46,11 +46,6 @@ export interface ReferenciaEspelho {
   erp_id: string;
   dados: Record<string, unknown>;
   fonte_ocorrido_em: string;
-  /**
-   * Chave da tabela de preço no Hub (`chaveHub`; vai em `referencia.external_id`, ≤ 64). Provisório: a ADR 0010 (RD-0318) manda
-   * guardá-la em `dados`, mas o CHECK de `dados` (0007) ainda não aceita a chave `chave` (pedido ao banco-dados; troca no L2b).
-   */
-  external_id?: string;
 }
 
 /** Remove `undefined` e `null` de campos opcionais do Hub (campo ausente, nunca nulo). */
@@ -140,14 +135,16 @@ export function mapearFilial(ev: EventoFilial, ocorridoEm: string): { registro: 
   return { registro: r, referencia };
 }
 
-/** C-2: a tabela de preço vira `referencia` (nome e vigência compõem o preço, M10); a chave no Hub é a `chaveHub` dela. */
+/**
+ * C-2: a tabela de preço vira `referencia` (nome e vigência compõem o preço, M10). RD-0318 (ADR 0010): a chave da tabela no
+ * Hub (`chaveHub`: `external_id ?? id`) vai em `dados.chave`; `referencia.external_id` não é mais usado.
+ */
 export function mapearTabelaPreco(ev: EventoTabelaPreco, ocorridoEm: string): ReferenciaEspelho {
   return {
     tipo: 'tabela_preco',
     erp_id: ev.id,
-    dados: { nome: ev.nome, vigencia_inicio: ev.vigencia_inicio, ...(ev.vigencia_fim ? { vigencia_fim: ev.vigencia_fim } : {}), inativo: ev.inativo },
+    dados: { chave: chaveHub(ev), nome: ev.nome, vigencia_inicio: ev.vigencia_inicio, ...(ev.vigencia_fim ? { vigencia_fim: ev.vigencia_fim } : {}), inativo: ev.inativo },
     fonte_ocorrido_em: instanteUtc(ocorridoEm),
-    external_id: chaveHub(ev),
   };
 }
 
@@ -231,8 +228,8 @@ export function mapearProduto(ev: EventoProduto, ocorridoEm: string): { produto:
 
 // ---- 2.5 preco ----
 export interface ContextoPreco {
-  /** `referencia(tabela_preco)`; sem ela a linha é `referencia_ausente` (C-2). */
-  tabela: { nome: string } | null;
+  /** `referencia(tabela_preco)` (`tabelaDaReferencia`); sem ela a linha é `referencia_ausente` (C-2). `chave` = `dados.chave` (RD-0318). */
+  tabela: { chave: string; nome: string } | null;
   /** `referencia(filial_padrao)`. */
   filialPadraoId: string | null;
 }
@@ -251,7 +248,8 @@ export function mapearPreco(agregadoId: string, ev: EventoPreco, ocorridoEm: str
       external_id: agregadoId,
       // O evento repete o `inativo` da tabela: tabela inativa = preço inativo.
       ativo: !ev.inativo,
-      tabela_external_id: ev.tabela_preco_id,
+      // RD-0318: a chave do Hub da tabela vem da referência, nunca o UUID cru do evento (sem referência, o campo falta)
+      tabela_external_id: ctx.tabela?.chave,
       tabela_nome: ctx.tabela?.nome,
       vigencia_inicio: ev.vigencia_inicio,
       vigencia_fim: ev.vigencia_fim,
@@ -385,7 +383,7 @@ const OBRIGATORIOS: Record<string, readonly string[]> = {
 };
 
 /** Campos obrigatórios compostos de outra referência do ERP (M10): ausentes = `referencia_ausente`. */
-const CAMPOS_DE_REFERENCIA: Record<string, readonly string[]> = { preco: ['tabela_nome'] };
+const CAMPOS_DE_REFERENCIA: Record<string, readonly string[]> = { preco: ['tabela_external_id', 'tabela_nome'] };
 
 /** Referências que precisam estar confirmadas no Hub: campo → entidade alvo (RN-INF-02, ordem de carga). */
 export const REFERENCIAS_HUB: Record<string, ReadonlyArray<readonly [string, EntidadeHub]>> = {

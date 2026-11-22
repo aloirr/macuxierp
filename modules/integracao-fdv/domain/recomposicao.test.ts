@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mapearCliente, mapearEstoque, mapearFilial, mapearPreco, mapearVendedor, validarRegistro, type EventoCliente } from './mapeamento';
-import { ALVO_DA_CHAVE_REFS, CHAVE_FONTE_REFS, assinaturaDeDerivados, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao } from './recomposicao';
+import { ALVO_DA_CHAVE_REFS, CHAVE_FONTE_REFS, assinaturaDaReferenciaTabela, assinaturaDaTabela, assinaturaDeDerivados, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao } from './recomposicao';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const EM = '2026-11-21T20:00:00.123Z';
@@ -51,12 +51,6 @@ describe('M10: preço compõe tabela, vigência e filial padrão', () => {
   const ev = { tabela_preco_id: U(10), filial_id: U(1), produto_id: U(2), preco_centavos: 1990, desconto_maximo_bp: 0, inativo: false, vigencia_inicio: '2026-01-01', vigencia_fim: null };
   const tabela = { external_id: 'TAB-A', nome: 'Varejo', vigencia_inicio: '2026-03-01', vigencia_fim: '2026-12-31', inativo: false };
 
-  it('sem a tabela o preço vai sem tabela_nome e a validação aponta referencia_ausente (reprocessável)', () => {
-    const p = mapearPreco(U(11), ev, EM, { tabela: null, filialPadraoId: null });
-    expect(p.payload.tabela_nome).toBeUndefined();
-    expect(validarRegistro(p, () => true)).toEqual({ external_id: U(11), codigo: 'referencia_ausente', campo: 'tabela_nome' });
-  });
-
   it('a chegada da tabela recompõe nome, vigência e chave; tabela inativa inativa o preço', () => {
     const p = mapearPreco(U(11), ev, EM, { tabela: null, filialPadraoId: null });
     const r = recomporRegistro(p, comFontes({ tabela: () => tabela }));
@@ -82,11 +76,32 @@ describe('assinatura dos derivados (evita recompor dependentes sem necessidade)'
 });
 
 describe('referência da tabela de preço (a mesma leitura no espelho e no consumidor)', () => {
-  it('RN-INF-02: tabelaDaReferencia lê os dados da referência e usa o chaveHub informado; faltando vigência fim, nula', () => {
-    expect(tabelaDaReferencia({ nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: '2026-12-31', inativo: true }, 'TAB-1')).toEqual({
+  it('RD-0318: tabelaDaReferencia lê a chave do Hub em dados.chave; faltando vigência fim, nula', () => {
+    expect(tabelaDaReferencia({ chave: 'TAB-1', nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: '2026-12-31', inativo: true })).toEqual({
       external_id: 'TAB-1', nome: 'Varejo', vigencia_inicio: '2026-01-01', vigencia_fim: '2026-12-31', inativo: true,
     });
-    expect(tabelaDaReferencia({}, U(1))).toEqual({ external_id: U(1), nome: '', vigencia_inicio: '', vigencia_fim: null, inativo: false });
+    expect(tabelaDaReferencia({ chave: U(1) })).toEqual({ external_id: U(1), nome: '', vigencia_inicio: '', vigencia_fim: null, inativo: false });
+  });
+
+  it('RD-0318: referência sem dados.chave (anterior à 0018) não vira tabela: o preço fica referencia_ausente', () => {
+    expect(tabelaDaReferencia({ nome: 'Varejo', vigencia_inicio: '2026-01-01' })).toBeNull();
+    expect(tabelaDaReferencia({ chave: '  ' })).toBeNull();
+  });
+
+  it('RD-0318: assinaturaDaReferenciaTabela é nula sem dados.chave e muda com a chave', () => {
+    expect(assinaturaDaReferenciaTabela({ nome: 'V' })).toBeNull();
+    expect(assinaturaDaReferenciaTabela({ chave: 'A', nome: 'V' })).not.toBe(assinaturaDaReferenciaTabela({ chave: 'B', nome: 'V' }));
+  });
+
+  it('RD-0318: trocar a chave da tabela muda a assinatura e recompõe tabela_external_id do preço', () => {
+    const ev = { tabela_preco_id: U(10), filial_id: U(1), produto_id: U(2), preco_centavos: 1990, desconto_maximo_bp: 0, inativo: false, vigencia_inicio: '2026-01-01', vigencia_fim: null };
+    const velha = tabelaDaReferencia({ chave: 'TAB-A', nome: 'V', vigencia_inicio: '2026-01-01' })!;
+    const nova = tabelaDaReferencia({ chave: 'TAB-B', nome: 'V', vigencia_inicio: '2026-01-01' })!;
+    expect(assinaturaDaTabela(velha)).not.toBe(assinaturaDaTabela(nova));
+    const p = recomporRegistro(mapearPreco(U(11), ev, EM, { tabela: null, filialPadraoId: null }), comFontes({ tabela: () => velha }));
+    const r = recomporRegistro(p, comFontes({ tabela: () => nova }));
+    expect(r.payload.tabela_external_id).toBe('TAB-B');
+    expect(r.hash).not.toBe(p.hash);
   });
 
   it('RN-INF-02: o alvo de cada chave de fonte_refs é derivado de CHAVE_FONTE_REFS (mais a tabela de preço)', () => {

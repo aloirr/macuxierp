@@ -4,7 +4,7 @@
  */
 import { VERSAO_CONECTOR_HUB } from '@macuxierp/platform-sdk';
 import { VERSAO_CONTRATO_HUB, type CorpoReconciliacao, type CorpoSinal, type EntidadeHub, type MotivoPausa } from '../contracts';
-import { LIMITE_REGISTROS_LOTE } from './lote';
+import { limiteRegistrosDoLote } from './lote';
 
 /** Nível de compatibilidade de Conector (P-2, opção A): a constante é do SDK, que também põe o cabeçalho; reexportada aqui. */
 export { VERSAO_CONECTOR_HUB };
@@ -18,6 +18,8 @@ export interface EntradaSinal {
   emVoo: Readonly<Partial<Record<EntidadeHub, { lotes: number; registros: number }>>>;
   entidades: ReadonlyArray<{ entidade: EntidadeHub; ultimo_sucesso_em: string | null; completa: boolean; pausada_motivo: MotivoPausa | null }>;
   paradoPorVersao?: boolean;
+  /** Teto de registros por lote da credencial: base da estimativa de lotes pendentes (sem ele, o do contrato). */
+  limiteRegistrosLote?: number;
 }
 
 /** Instante mais antigo (ISO UTC); `null` se nenhum. */
@@ -33,11 +35,12 @@ function maisAntigo(datas: ReadonlyArray<string | null>): string | null {
 export function montarCorpoSinal(e: EntradaSinal): CorpoSinal {
   const pend = Object.values(e.pendentes).filter((p): p is { registros: number; maisAntigo: string | null } => p !== undefined && p.registros > 0);
   const voo = Object.values(e.emVoo).filter((p): p is { lotes: number; registros: number } => p !== undefined && p.lotes > 0);
+  const limite = limiteRegistrosDoLote(e.limiteRegistrosLote);
   const fila: CorpoSinal['fila'] = [];
   if (pend.length > 0) {
     fila.push({
       estado: 'pendente',
-      lotes: pend.reduce((s, p) => s + Math.ceil(p.registros / LIMITE_REGISTROS_LOTE), 0),
+      lotes: pend.reduce((s, p) => s + Math.ceil(p.registros / limite), 0),
       linhas: pend.reduce((s, p) => s + p.registros, 0),
       maisAntigo: maisAntigo(pend.map((p) => p.maisAntigo)),
     });
