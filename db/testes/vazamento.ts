@@ -57,6 +57,8 @@ export function verificarVazamento(c: Conexao, esquemas: readonly string[], a: s
   const problemas: string[] = [];
   const globais = tabelasComPolitica(c, 'worker_global');
   const oficiais = tabelasOficiais(c);
+  // Leitura geral (D9): as linhas do tenant de referência são de todos e não contam como vazamento.
+  const gerais = tabelasComPolitica(c, 'leitura_geral');
   const tabelas = tabelasDos(c, esquemas).filter((t) => !oficiais.has(nome(t)));
   if (tabelas.length === 0) problemas.push(`nenhuma tabela em ${esquemas.join(', ')}`);
 
@@ -64,14 +66,14 @@ export function verificarVazamento(c: Conexao, esquemas: readonly string[], a: s
     for (const papel of PAPEIS_APP) {
       if (!papelLe(c, papel, t)) continue;
       const global = papel === 'macuxierp_worker' && globais.has(nome(t));
-      const comA = contarComo(c, papel, a, t, a);
+      const comA = contarComo(c, papel, a, t, a, gerais.has(nome(t)));
       if (comA.total === 0)
         problemas.push(`${nome(t)} (${papel}): a massa não tem linha visível do tenant A`);
       if (!global && comA.alheias > 0)
         problemas.push(`${nome(t)} (${papel}): VAZOU ${comA.alheias} linha(s) de outro tenant`);
       if (global && comA.alheias === 0)
         problemas.push(`${nome(t)} (${papel}): o worker deveria ver a fila de todos`);
-      const semTenant = contarComo(c, papel, null, t, a);
+      const semTenant = contarComo(c, papel, null, t, a, gerais.has(nome(t)));
       if (!global && semTenant.total > 0)
         problemas.push(`${nome(t)} (${papel}): sem tenant na sessão leu ${semTenant.total}`);
     }
