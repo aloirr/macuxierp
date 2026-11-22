@@ -103,6 +103,11 @@ describe('traduzirPedido (T-0013 §5.2)', () => {
     const entrega = (external_id: string) => lido({ endereco_entrega: { origem: 'erp', external_id, logradouro: 'Rua A' } });
     expect(chavesParaResolver(entrega(U(6))).cliente_endereco).toEqual([U(6)]);
     expect(chavesParaResolver(lido({ endereco_entrega: { origem: 'digitado', external_id: U(6) } })).cliente_endereco).toEqual([]);
+    // A-01 (T-0017): origem ausente vale 'erp'; external_id nulo ou vazio = só os textos
+    expect(chavesParaResolver(lido({ endereco_entrega: { external_id: U(6), principal: false } })).cliente_endereco).toEqual([U(6)]);
+    expect(chavesParaResolver(lido({ endereco_entrega: { external_id: null, logradouro: 'Rua A' } })).cliente_endereco).toEqual([]);
+    const semOrigem = traduzirPedido(lido({ endereco_entrega: { external_id: U(6), principal: false } }), chaves);
+    expect(semOrigem.ok && semOrigem.entrada.endereco_entrega).toMatchObject({ endereco_id: U(16) });
     const achado = traduzirPedido(entrega(U(6)), chaves);
     expect(achado.ok && achado.entrada.endereco_entrega).toMatchObject({ endereco_id: U(16), retrato: { logradouro: 'Rua A' } });
     const naoAchado = traduzirPedido(entrega(U(7)), chaves);

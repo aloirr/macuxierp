@@ -16,7 +16,7 @@
  * 5. O laço para de executar os itens restantes do lote quando falta menos de `MARGEM_POSSE_AGENDA_MS` para o
  *    `posseAte` da reserva: eles voltam sozinhos quando a posse vence (outro worker já pode pegá-los).
  */
-import type { ModuloId } from './modulo';
+import { MODULOS, type ModuloId } from './modulo';
 import type { Transacao } from './banco';
 import type { ClienteHub } from './hub';
 
@@ -47,8 +47,15 @@ export interface ContextoAgenda {
   emTransacao<T>(fn: (tx: Transacao) => Promise<T>): Promise<T>;
 }
 
+/**
+ * Id da agenda: `<modulo>.<agenda>`, com `<agenda>` em minúsculas, dígitos, `_` ou `-`, começando por letra ou `_` (como os ids de consumidor:
+ * `integracao-fdv.busca-pedidos`). Mais largo que o `PADRAO_TIPO_TRABALHO` (só `[a-z_]`), que valia na primeira versão do
+ * C-9: alargar é compatível (todo id antigo continua válido). O id só vai a log; não é gravado no banco.
+ */
+export const PADRAO_ID_AGENDA = new RegExp(`^(${MODULOS.join('|')})\\.[a-z_][a-z0-9_-]*$`);
+
 export interface AgendaModulo {
-  /** `<modulo>.<agenda>` (mesmo padrão do `PADRAO_TIPO_TRABALHO`, com o prefixo do próprio módulo). */
+  /** `<modulo>.<agenda>` (`PADRAO_ID_AGENDA`), com o prefixo do próprio módulo. */
   id: string;
   modulo: ModuloId;
   /**

@@ -9,6 +9,7 @@ import { EnderecoClienteItem, type Cliente, type CondicaoPagamento, Filial, Prec
 import { comNomeMunicipio } from './enderecos';
 import { precosVigentesDe, unicos } from './precos-vigentes';
 import type { Repositorios } from './portas';
+import { escolher } from './util';
 
 const CAMPOS_CLIENTE = ['id', 'tipo_pessoa', 'documento', 'razao_social', 'nome_fantasia', 'ind_ie_dest', 'ie', 'limite_credito_centavos', 'condicao_pagamento_id', 'tabela_preco_id', 'filial_id', 'vendedor_id', 'enderecos', 'inativo'] as const;
 const CAMPOS_FILIAL = ['id', 'emissora', 'padrao', 'inativo'] as const;
@@ -20,13 +21,6 @@ export type EnderecoParaPedido = EnderecoClienteItem & { municipio_nome: string 
 export type ClienteParaPedido = Omit<Pick<Cliente, (typeof CAMPOS_CLIENTE)[number]>, 'enderecos'> & { enderecos: EnderecoParaPedido[] };
 export type FilialParaPedido = Pick<Filial, (typeof CAMPOS_FILIAL)[number]>;
 export type ProdutoParaPedido = Pick<Produto, (typeof CAMPOS_PRODUTO)[number]> & { unidades: { unidade: string; fator: number }[] };
-
-/** Copia só as chaves listadas: o que não está na lista (custo, e-mail, contatos) nunca sai. */
-function escolher<T extends object, K extends keyof T>(obj: T, campos: readonly K[]): Pick<T, K> {
-  const saida = {} as Pick<T, K>;
-  for (const k of campos) saida[k] = obj[k];
-  return saida;
-}
 
 export interface ConsultaCadastrosParaPedido {
   cliente(tx: Transacao, id: string): Promise<ClienteParaPedido | null>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CorpoLote, CredencialEntrada, ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, EVENTO_LOTE_FALHOU, LinhaInvalida, LinhaInvalidaHub, ProdutoUnidadeHub, EstoqueHub } from './index';
+import { CorpoLote, CredencialEntrada, CredencialResumo, MonitorResposta, ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, EVENTO_LOTE_FALHOU, LinhaInvalida, LinhaInvalidaHub, ProdutoUnidadeHub, EstoqueHub } from './index';
 
 const corpo = { versao_contrato: 'v1', entidade: 'produto', enviado_em: '2026-11-21T20:00:00.000Z', cursor: null, registros: [], linhas_invalidas: [], linhas_invalidas_omitidas: 0 };
 
@@ -50,5 +50,15 @@ describe('contratos do módulo', () => {
     const es = { external_id: 'e', ativo: true, deposito_external_id: 'd', produto_external_id: 'p', filial_external_id: 'f' };
     expect(EstoqueHub.safeParse({ ...es, saldo: -1.5 }).success).toBe(true);
     expect(EstoqueHub.safeParse({ ...es, saldo: '1.5' }).success).toBe(false);
+  });
+
+  it('RF-INF-05: o resumo da credencial nunca devolve a chave', () => {
+    expect(Object.keys(CredencialResumo.shape)).not.toContain('chave');
+    expect(Object.keys(CredencialResumo.shape)).not.toContain('chave_cifrada');
+  });
+
+  it('RF-INF-04: a resposta do monitor não tem campo de mensagem crua nem de chave', () => {
+    const ch = Object.keys(MonitorResposta.shape);
+    expect(ch).toEqual(['credencial', 'configuracao', 'sinal', 'entidades', 'erros', 'conflitos']);
   });
 });

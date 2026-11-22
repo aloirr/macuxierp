@@ -17,6 +17,7 @@ import {
   permitirSetRole,
   PG_DISPONIVEL,
   privilegiosDe,
+  rodarComo,
   rodarScript,
 } from './apoio.ts';
 import { fixtureIntegracao, fixturePlataforma, novoTenant } from './fixture.ts';
@@ -58,6 +59,14 @@ const PRIVILEGIOS: Record<TabelaIntegracao, Record<(typeof PAPEIS_APP)[number], 
   retorno_enviado: { macuxierp_app: 'S', macuxierp_worker: 'SIU', macuxierp_leitura: 'S' },
   sinal: { macuxierp_app: 'SI', macuxierp_worker: 'SIU', macuxierp_leitura: 'S' },
 };
+
+/** Agenda do sinal (0022): as 4 colunas que o app agenda; com elas, o `updated_at` (matriz `COLUNAS`). */
+const AGENDA_SINAL = [
+  'proxima_busca_pedidos_em',
+  'proxima_reconciliacao_em',
+  'proximo_retorno_em',
+  'proximo_sinal_em',
+];
 
 /** Colunas com privilégio só de coluna (sem o de tabela): o que cada papel pode além da matriz acima. */
 const COLUNAS: { papel: string; tabela: TabelaIntegracao; acao: string; colunas: string[] }[] = [
@@ -110,6 +119,14 @@ const COLUNAS: { papel: string; tabela: TabelaIntegracao; acao: string; colunas:
     tabela: 'registro_publicado',
     acao: 'UPDATE',
     colunas: ['confirmado_em', 'hash_confirmado', 'pendente'],
+  },
+  {
+    // 0022 (T-0011, L3): o BKO do conector agenda e retoma; o app mexe só na agenda do próprio tenant e no
+    // updated_at (o modules/integracao-fdv grava updated_at = now(); o gatilho tocar_updated_at sobrescreve).
+    papel: 'macuxierp_app',
+    tabela: 'sinal',
+    acao: 'UPDATE',
+    colunas: [...AGENDA_SINAL, 'updated_at'],
   },
   {
     papel: 'macuxierp_worker',
@@ -258,13 +275,13 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
       ).map((l) => l.c);
       expect({ papel, tabela, acao, colunas: obtidas }).toEqual({ papel, tabela, acao, colunas });
     }
-    // Nenhuma outra coluna gravável pelo app fora da matriz (referencia, lote, erro, pedido, retorno, sinal, etc.).
+    // Nenhuma outra coluna gravável pelo app fora da matriz (referencia, lote, erro, pedido, retorno, etc.).
     const [r] = consultar<{ n: number }>(
       banco.conexao,
       `SELECT count(*)::int AS n FROM pg_attribute a JOIN pg_class k ON k.oid = a.attrelid
          JOIN pg_namespace n ON n.oid = k.relnamespace
        WHERE n.nspname = 'integracao_fdv' AND k.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
-         AND k.relname NOT IN ('conflito_chave', 'credencial', 'cursor_entidade', 'registro_publicado')
+         AND k.relname NOT IN ('conflito_chave', 'credencial', 'cursor_entidade', 'registro_publicado', 'sinal')
          AND has_column_privilege('macuxierp_app', a.attrelid, a.attnum, 'UPDATE')`,
     );
     expect(r?.n).toBe(0);
@@ -737,7 +754,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
     expect(pend?.n).toBe(2);
   });
 
-  it('sinal: um por tenant; o app só cria; reconciliação uma por entidade e dia', () => {
+  it('sinal: um por tenant; o app cria e só mexe na agenda; reconciliação uma por entidade e dia', () => {
     expect(
       falha(() =>
         executar(banco.conexao, `INSERT INTO integracao_fdv.sinal (tenant_id) VALUES ('${A.id}');`, APP_A),
@@ -746,6 +763,56 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
     expect(
       falha(() => executar(banco.conexao, 'UPDATE integracao_fdv.sinal SET ultimo_http = 200;', APP_A)),
     ).toMatch(/permission denied/);
+  });
+
+  it('sinal (0022): o app atualiza só a agenda do próprio tenant (RLS)', () => {
+    const agendar = AGENDA_SINAL.map((c) => `${c} = '2030-01-01T00:00:00Z'`).join(', ');
+    // App no próprio tenant: as quatro colunas da agenda e o updated_at, uma linha; o gatilho tocar_updated_at
+    // (BEFORE UPDATE, 0001/0006) troca o valor mandado pelo app pelo relógio do banco.
+    expect(
+      numeros(
+        rodarComo(
+          banco.conexao,
+          `UPDATE integracao_fdv.sinal SET ${agendar}, updated_at = '2000-01-01T00:00:00Z' RETURNING 1;`,
+          APP_A,
+        ),
+      ),
+    ).toEqual([1]);
+    const [a] = consultar<{ n: number }>(
+      banco.conexao,
+      `SELECT count(*)::int AS n FROM integracao_fdv.sinal
+       WHERE ${AGENDA_SINAL.map((c) => `${c} = '2030-01-01T00:00:00Z'`).join(' AND ')}
+         AND updated_at > now() - interval '10 minutes'`,
+      APP_A,
+    );
+    expect(a?.n).toBe(1);
+    // App no outro tenant: a RLS esconde a linha (0 linhas), mesmo filtrando pelo tenant_id dele.
+    expect(
+      numeros(
+        rodarComo(
+          banco.conexao,
+          `UPDATE integracao_fdv.sinal SET ${agendar} WHERE tenant_id = '${B.id}' RETURNING 1;`,
+          APP_A,
+        ),
+      ),
+    ).toEqual([]);
+    const [b] = consultar<{ n: number }>(
+      banco.conexao,
+      `SELECT count(*)::int AS n FROM integracao_fdv.sinal
+       WHERE tenant_id = '${B.id}' AND proximo_sinal_em = '2030-01-01T00:00:00Z'`,
+      WORKER_B,
+    );
+    expect(b?.n).toBe(0);
+    // A leitura não ganha UPDATE de coluna na sinal.
+    const [leitura] = consultar<{ n: number }>(
+      banco.conexao,
+      `SELECT count(*)::int AS n FROM pg_attribute WHERE attrelid = 'integracao_fdv.sinal'::regclass
+         AND attnum > 0 AND NOT attisdropped AND has_column_privilege('macuxierp_leitura', attrelid, attnum, 'UPDATE')`,
+    );
+    expect(leitura?.n).toBe(0);
+  });
+
+  it('sinal: o worker grava o resto do sinal; reconciliação uma por entidade e dia', () => {
     executar(
       banco.conexao,
       `UPDATE integracao_fdv.sinal SET ultimo_http = 426, parado_por_versao = true,

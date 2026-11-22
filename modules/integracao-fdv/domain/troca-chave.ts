@@ -2,7 +2,9 @@
  * Troca e conflito de chave do Hub (ADR 0010, item 3; RN-CORE-05, RN-INF-04). Função pura: o consumidor compara a chave
  * que o evento traz com a que o espelho já tem para o mesmo `erp_id`.
  */
-export type DecisaoDeChave = 'nada' | 'troca' | 'chave_alterada' | 'chave_duplicada';
+import type { CodigoConflitoChave } from '../contracts';
+
+export type DecisaoDeChave = 'nada' | 'troca' | CodigoConflitoChave;
 
 export interface EntradaTrocaDeChave {
   /** Chave do Hub da linha ativa do espelho para este `erp_id`; `null` = o registro ainda não está no espelho. */
@@ -35,8 +37,6 @@ export function decidirTrocaDeChave(e: EntradaTrocaDeChave): DecisaoDeChave {
 }
 
 /** Decisões que abrem `conflito_chave` (nada é gravado do registro). */
-export type CodigoConflitoChave = Exclude<DecisaoDeChave, 'nada' | 'troca'>;
-
 export function ehConflitoDeChave(d: DecisaoDeChave): d is CodigoConflitoChave {
   return d === 'chave_alterada' || d === 'chave_duplicada';
 }

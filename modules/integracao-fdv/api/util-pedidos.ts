@@ -9,22 +9,28 @@ export const hashDoRetorno = (corpo: RetornoErp): string => sha256Hex(corpoCanon
 /** Agenda o envio de retornos para já (`least`), sem atrasar uma agenda mais próxima. */
 export async function agendarRetorno(tx: Transacao, tenantId: string, agora: Date): Promise<void> {
   await tx.consultar(
-    `UPDATE integracao_fdv.sinal SET proximo_retorno_em = least(coalesce(proximo_retorno_em, $2), $2), updated_at = now()
+    `UPDATE integracao_fdv.sinal SET proximo_retorno_em = least(coalesce(proximo_retorno_em, $2), $2)
       WHERE tenant_id = $1 AND deleted_at IS NULL`,
     [tenantId, agora],
   );
 }
 
-/** Grava o retorno de forma idempotente (RN-PED-05; `UNIQUE (tenant_id, pedido_uuid, status, hash)`). Devolve se criou. */
-export async function gravarRetorno(tx: Transacao, tenantId: string, bruto: RetornoErp, agora: Date): Promise<boolean> {
+/**
+ * Grava o retorno de forma idempotente (RN-PED-05; `UNIQUE (tenant_id, pedido_uuid, status, hash)`). Devolve se criou.
+ * `descartado` grava direto como `falhou` (terminal, fora da fila, sem agendar o envio) com os itens sem chave: só UUIDs, sem valor.
+ */
+export async function gravarRetorno(tx: Transacao, tenantId: string, bruto: RetornoErp, agora: Date, descartado?: { produtos: readonly string[] }): Promise<boolean> {
   const corpo = RetornoErpSchema.parse(bruto); // falha alto: corpo inválido nunca vai à fila
   const linhas = await tx.consultar<{ id: string }>(
-    `INSERT INTO integracao_fdv.retorno_enviado (tenant_id, pedido_uuid, status, numero_erp, corpo, hash)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+    `INSERT INTO integracao_fdv.retorno_enviado (tenant_id, pedido_uuid, status, numero_erp, corpo, hash, estado, itens_descartados)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb)
      ON CONFLICT (tenant_id, pedido_uuid, status, hash) DO NOTHING RETURNING id`,
-    [tenantId, corpo.pedido_uuid, corpo.status, corpo.numero_erp ?? null, JSON.stringify(corpo), hashDoRetorno(corpo)],
+    [
+      tenantId, corpo.pedido_uuid, corpo.status, corpo.numero_erp ?? null, JSON.stringify(corpo), hashDoRetorno(corpo),
+      descartado ? 'falhou' : 'pendente', descartado ? JSON.stringify(descartado.produtos.map((produto_id) => ({ produto_id }))) : null,
+    ],
   );
-  await agendarRetorno(tx, tenantId, agora);
+  if (!descartado) await agendarRetorno(tx, tenantId, agora);
   return linhas.length > 0;
 }
 

@@ -60,6 +60,7 @@ const novoResultado = (entidade: ResultadoEntidade['entidade'], arquivo: string,
 function erroDeExcecao(linha: number, e: unknown): ErroLinha {
   if (e instanceof ErroApi) {
     if (e.status === 503) throw e;
+    if (e.status === 422 && e.codigo === 'RN-CAD-09') return erroLinha(linha, 'parcelas_cartao', 'RN-CAD-09', e.message);
     if (e.status === 409) return erroLinha(linha, null, 'CARGA_CONFLITO', 'Conflito com um cadastro existente (documento, código ou identificador externo)');
   }
   return erroLinha(linha, null, 'CARGA_BANCO', 'Erro do banco ao gravar a linha: nada foi gravado para ela');

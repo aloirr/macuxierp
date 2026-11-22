@@ -26,6 +26,9 @@ export type EntidadeHub = z.infer<typeof EntidadeHub>;
 /** Entidades com contrato nesta fase (F2). */
 export const ENTIDADES_HUB_F2 = ENTIDADES_HUB.slice(0, 10) as readonly EntidadeHub[];
 
+/** Registros por lote do Hub (limite do contrato, doc 06): `CorpoLote`, a credencial (`ConfiguracaoEntrada`) e o `domain/lote` usam só esta constante. */
+export const LIMITE_REGISTROS_LOTE = 5000;
+
 /** Versão do contrato do Hub que o ERP fala. */
 export const VERSAO_CONTRATO_HUB = 'v1' as const;
 
@@ -215,7 +218,7 @@ export const CorpoLote = z.object({
   enviado_em: z.string().datetime(),
   cursor: CursorHub.nullable(),
   sessao: SessaoLote.optional(),
-  registros: z.array(RegistroLote).max(5000),
+  registros: z.array(RegistroLote).max(LIMITE_REGISTROS_LOTE),
   linhas_invalidas: z.array(LinhaInvalidaHub).max(500),
   linhas_invalidas_omitidas: z.number().int().min(0),
 }).superRefine((c, ctx) => {

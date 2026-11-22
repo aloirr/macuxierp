@@ -1,0 +1,354 @@
+{
+  "origem": "macuxifdv@b75ab88 docs/marca/ativos/2026-11-12-v1 (cópia em ../fdv-2026-11-12-v1)",
+  "paleta": {
+    "azulNoite": "#1E3350",
+    "azulClaro": "#9AA3B0",
+    "azulSuave": "#DFE2E6",
+    "claroNoAzul": "#C9CED5",
+    "perola": "#F8F6F1",
+    "branco": "#FFFFFF",
+    "grafite": "#16202A",
+    "ink2": "#4A5562",
+    "ink3": "#5B6673",
+    "sol": "#C2540A",
+    "solClaro": "#F59A52",
+    "preto": "#000000",
+    "descritorNegativoGrafite": "#C9D0D8"
+  },
+  "geometria": {
+    "baseM": 68.7,
+    "capD": 81.7,
+    "baseD": 101.24,
+    "altura": 101.24,
+    "escala": 2.18,
+    "larguraS": 130.64,
+    "espaco": 30.37,
+    "xTinta": 161.01,
+    "larguraTinta": 353.4,
+    "largura": 514.41,
+    "topoVisivel": -3.7,
+    "baixo": 107.15
+  },
+  "pares": [
+    {
+      "versao": "positivo",
+      "fundo": "branco",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#16202A",
+      "bg": "#FFFFFF",
+      "razao": 16.48,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "branco",
+      "peca": "descritor \"ERP\"",
+      "fg": "#4A5562",
+      "bg": "#FFFFFF",
+      "razao": 7.59,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "branco",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#1E3350",
+      "bg": "#FFFFFF",
+      "razao": 12.77,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "branco",
+      "peca": "sol",
+      "fg": "#C2540A",
+      "bg": "#FFFFFF",
+      "razao": 4.6,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "perola",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#16202A",
+      "bg": "#F8F6F1",
+      "razao": 15.26,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "perola",
+      "peca": "descritor \"ERP\"",
+      "fg": "#4A5562",
+      "bg": "#F8F6F1",
+      "razao": 7.03,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "perola",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#1E3350",
+      "bg": "#F8F6F1",
+      "razao": 11.82,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "positivo",
+      "fundo": "perola",
+      "peca": "sol",
+      "fg": "#C2540A",
+      "bg": "#F8F6F1",
+      "razao": 4.26,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "negativo-azul-noite",
+      "fundo": "azulNoite",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#FFFFFF",
+      "bg": "#1E3350",
+      "razao": 12.77,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "negativo-azul-noite",
+      "fundo": "azulNoite",
+      "peca": "descritor \"ERP\"",
+      "fg": "#C9CED5",
+      "bg": "#1E3350",
+      "razao": 8.07,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "negativo-azul-noite",
+      "fundo": "azulNoite",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#FFFFFF",
+      "bg": "#1E3350",
+      "razao": 12.77,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "negativo-azul-noite",
+      "fundo": "azulNoite",
+      "peca": "sol",
+      "fg": "#F59A52",
+      "bg": "#1E3350",
+      "razao": 5.85,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "negativo-grafite",
+      "fundo": "grafite",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#FFFFFF",
+      "bg": "#16202A",
+      "razao": 16.48,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "negativo-grafite",
+      "fundo": "grafite",
+      "peca": "descritor \"ERP\"",
+      "fg": "#C9D0D8",
+      "bg": "#16202A",
+      "razao": 10.59,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "negativo-grafite",
+      "fundo": "grafite",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#9AA3B0",
+      "bg": "#16202A",
+      "razao": 6.47,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "negativo-grafite",
+      "fundo": "grafite",
+      "peca": "sol",
+      "fg": "#F59A52",
+      "bg": "#16202A",
+      "razao": 7.56,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "branco",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#000000",
+      "bg": "#FFFFFF",
+      "razao": 21,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "branco",
+      "peca": "descritor \"ERP\"",
+      "fg": "#000000",
+      "bg": "#FFFFFF",
+      "razao": 21,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "branco",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#000000",
+      "bg": "#FFFFFF",
+      "razao": 21,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "branco",
+      "peca": "sol",
+      "fg": "#000000",
+      "bg": "#FFFFFF",
+      "razao": 21,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "perola",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#000000",
+      "bg": "#F8F6F1",
+      "razao": 19.44,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "perola",
+      "peca": "descritor \"ERP\"",
+      "fg": "#000000",
+      "bg": "#F8F6F1",
+      "razao": 19.44,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "perola",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#000000",
+      "bg": "#F8F6F1",
+      "razao": 19.44,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-preto",
+      "fundo": "perola",
+      "peca": "sol",
+      "fg": "#000000",
+      "bg": "#F8F6F1",
+      "razao": 19.44,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "azulNoite",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#FFFFFF",
+      "bg": "#1E3350",
+      "razao": 12.77,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "azulNoite",
+      "peca": "descritor \"ERP\"",
+      "fg": "#FFFFFF",
+      "bg": "#1E3350",
+      "razao": 12.77,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "azulNoite",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#FFFFFF",
+      "bg": "#1E3350",
+      "razao": 12.77,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "azulNoite",
+      "peca": "sol",
+      "fg": "#FFFFFF",
+      "bg": "#1E3350",
+      "razao": 12.77,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "grafite",
+      "peca": "escrita \"Macuxi\"",
+      "fg": "#FFFFFF",
+      "bg": "#16202A",
+      "razao": 16.48,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "grafite",
+      "peca": "descritor \"ERP\"",
+      "fg": "#FFFFFF",
+      "bg": "#16202A",
+      "razao": 16.48,
+      "minimo": 4.5,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "grafite",
+      "peca": "símbolo (serra e lavrado)",
+      "fg": "#FFFFFF",
+      "bg": "#16202A",
+      "razao": 16.48,
+      "minimo": 3,
+      "passa": true
+    },
+    {
+      "versao": "mono-branco",
+      "fundo": "grafite",
+      "peca": "sol",
+      "fg": "#FFFFFF",
+      "bg": "#16202A",
+      "razao": 16.48,
+      "minimo": 3,
+      "passa": true
+    }
+  ]
+}

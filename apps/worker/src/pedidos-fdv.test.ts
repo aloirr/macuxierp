@@ -1,12 +1,11 @@
 /**
  * Peças do recebimento de pedidos do FDV no worker (T-0016): desligamento por configuração até a virada (T-0027), alerta
- * do monitor sem dado pessoal (regra 8) e a recusa de ligar sem as agendas do integracao-fdv.
+ * do monitor sem dado pessoal (regra 8) e a recusa de ligar com o laço de agenda desligado (sem Hub ou sem a chave).
  */
-import type { ResolvedorChaveErp } from '@macuxierp/cadastros/api';
 import { relogioDoSistema } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { pinoEmMemoria } from './apoio-teste';
-import { configurarRecebimentoFdv, criarAlertaMonitor, montarPedidosFdv, RecebimentoFdvIndisponivel } from './pedidos-fdv';
+import { conferirRecebimentoFdv, configurarRecebimentoFdv, criarAlertaMonitor, montarPedidosFdv, RecebimentoFdvIndisponivel, resolvedorChaveErpDeProducao, type ResolvedorChaveErp } from './pedidos-fdv';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const UUID = '12345678-1234-4234-8234-123456789012';
@@ -28,20 +27,33 @@ describe('MACUXIERP_FDV_RECEBIMENTO (desligado até a virada, T-0027)', () => {
 });
 
 describe('montarPedidosFdv', () => {
-  it('desligado: monta o recebedor, o resolvedor e o alerta sem a agenda do módulo (nada vai ao Hub)', () => {
+  it('ligado ou desligado: monta o recebedor, o resolvedor e o alerta (quem decide a busca é o montarAgendas)', () => {
     const { log } = pinoEmMemoria();
-    const m = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento: 'desligado', resolvedor, agendaDoModulo: false });
-    expect(m.recebimento).toBe('desligado');
-    expect(m.resolvedor).toBe(resolvedor);
-    expect(typeof m.recebedor.receber).toBe('function');
+    for (const recebimento of ['desligado', 'ligado'] as const) {
+      const m = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor });
+      expect(m.recebimento).toBe(recebimento);
+      expect(m.resolvedor).toBe(resolvedor);
+      expect(typeof m.recebedor.receber).toBe('function');
+      expect(typeof m.alertar).toBe('function');
+    }
   });
 
-  it('ligado sem as agendas do integracao-fdv derruba a partida e diz só o que falta', () => {
-    const { log } = pinoEmMemoria();
-    const base = { log, relogio: relogioDoSistema, recebimento: 'ligado' as const, resolvedor };
-    expect(() => montarPedidosFdv({ ...base, agendaDoModulo: false })).toThrow(RecebimentoFdvIndisponivel);
-    expect(() => montarPedidosFdv({ ...base, agendaDoModulo: false })).toThrow(/^MACUXIERP_FDV_RECEBIMENTO=ligado sem: agendas do integracao-fdv$/);
-    expect(montarPedidosFdv({ ...base, agendaDoModulo: true }).recebimento).toBe('ligado');
+  it('o resolvedor de produção é o do cadastros/api, tipado pela porta do integracao-fdv', () => {
+    expect(typeof resolvedorChaveErpDeProducao().resolver).toBe('function');
+  });
+});
+
+describe('conferirRecebimentoFdv (partida)', () => {
+  it('ligado com o laço de agenda desligado derruba a partida e cita só os nomes que faltam', () => {
+    const faltando = ['MACUXIERP_HUB_URL_TESTE', 'MACUXIERP_HUB_URL_PRODUCAO'];
+    expect(() => conferirRecebimentoFdv('ligado', faltando)).toThrow(RecebimentoFdvIndisponivel);
+    expect(() => conferirRecebimentoFdv('ligado', faltando)).toThrow(/^MACUXIERP_FDV_RECEBIMENTO=ligado sem: MACUXIERP_HUB_URL_TESTE, MACUXIERP_HUB_URL_PRODUCAO$/);
+  });
+
+  it('ligado com o laço de agenda ligado, ou desligado com ou sem ele, sobe', () => {
+    expect(() => conferirRecebimentoFdv('ligado', [])).not.toThrow();
+    expect(() => conferirRecebimentoFdv('desligado', [])).not.toThrow();
+    expect(() => conferirRecebimentoFdv('desligado', ['MACUXIERP_CHAVE_INTEGRACAO'])).not.toThrow();
   });
 });
 

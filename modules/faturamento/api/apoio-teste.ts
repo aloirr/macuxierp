@@ -36,6 +36,7 @@ export function repoFake() {
   const transmissoes: TransmissaoRegistrada[] = [];
   const assinados: { id: string; versao: number; xml: string; sha256: string }[] = [];
   const atualizadaEm = new Map<string, Date>();
+  const motivos = new Map<string, string>();
   const dadosStatus: { para: StatusNota; dados: unknown }[] = [];
   const log: string[] = [];
   const estado = { proximo: 0, reservas: 0, falharGuarda: false, ambienteReserva: '' as string, travadas: new Set<string>(), relogio: new Date('2026-11-21T14:30:00Z'), agoraBanco: new Date('2026-11-21T15:30:00Z') };
@@ -89,12 +90,21 @@ export function repoFake() {
       });
       atualizadaEm.set(id, estado.relogio);
       conteudos.set(id, conteudo);
+      motivos.delete(id); // o reenvio limpa o motivo pendente (a transporte é regravada)
       log.push('conteudo');
+    },
+    async registrarMotivoEnvio(_t, id, motivo) {
+      const n = notas.get(id) as NotaRegistro;
+      if (n.status !== 'rascunho' && n.status !== 'rejeitada') return;
+      motivos.set(id, motivo);
+      atualizadaEm.set(id, estado.relogio);
+      log.push('motivo');
     },
     async mudarStatus(_t, id, de, para, dados) {
       const n = notas.get(id) as NotaRegistro;
       if (para === 'autorizada') throw new Error('autorizada só por guardarXmlAutorizado (gatilho do banco)');
       if (n.status !== de) throw new Error(`status atual ${n.status}, esperado ${de}`);
+      if (dados?.revisao !== undefined && n.revisao !== dados.revisao) throw new Error(`revisão atual ${n.revisao}, esperada ${dados.revisao}`);
       notas.set(id, { ...n, status: para, protocolo: dados?.protocolo ?? n.protocolo, recibo: dados?.recibo ?? n.recibo });
       atualizadaEm.set(id, estado.relogio);
       dadosStatus.push({ para, dados });
@@ -160,12 +170,21 @@ export function repoFake() {
         .map((n) => ({ id: n.id, filial_id: n.filial_id, pedido_id: n.pedido_id, serie: n.serie, numero: n.numero, codigo: '778', mensagem: 'Rejeicao: NCM inexistente', rejeitada_em: n.emitida_em, acao_sugerida: interpretarRetorno('778', '').acao }));
       return paginar(linhas, f.limite);
     },
-    async pendentesDeTransmissao(_t, limite, paradasHaMinutos) {
-      const corte = estado.agoraBanco.getTime() - paradasHaMinutos * 60_000;
-      return [...notas.values()].filter((n) => emTransmissao(n.status) && (atualizadaEm.get(n.id) as Date).getTime() < corte).slice(0, limite).map((n) => ({ id: n.id, status: n.status }));
+    async pendentesDeTransmissao(_t, limite, paradasHaMinutos, esperaEnvioPendenteMin) {
+      const parada = (id: string): number => estado.agoraBanco.getTime() - (atualizadaEm.get(id) as Date).getTime();
+      const semAssinada = (id: string): boolean => !assinados.some((a) => a.id === id);
+      return [...notas.values()]
+        .filter((n) => (emTransmissao(n.status) && parada(n.id) > paradasHaMinutos * 60_000) || (n.status === 'rascunho' && semAssinada(n.id) && parada(n.id) > (motivos.has(n.id) ? esperaEnvioPendenteMin : paradasHaMinutos) * 60_000))
+        .slice(0, limite)
+        .map((n) => ({ id: n.id, status: n.status }));
+    },
+    async numeradasNaoEnviadas(_t, antesDe) {
+      return [...notas.values()]
+        .filter((n) => (n.status === 'rascunho' || n.status === 'rejeitada') && new Date(n.emitida_em).getTime() < antesDe.getTime())
+        .map((n) => ({ id: n.id, filial_id: n.filial_id, ambiente: n.ambiente, serie: n.serie, numero: n.numero, status: n.status as 'rascunho' | 'rejeitada', emitida_em: n.emitida_em }));
     },
   };
-  return { repo, notas, conteudos, xmls, assinados, eventos, transmissoes, dadosStatus, log, estado };
+  return { repo, notas, conteudos, motivos, xmls, assinados, eventos, transmissoes, dadosStatus, log, estado };
 }
 
 export type RepoFake = ReturnType<typeof repoFake>;
@@ -208,6 +227,14 @@ export function a1DeTeste(): A1DaFilial {
   a1Gerado ??= gerarA1DeTeste({ ...VALIDADE_DE_TESTE, cnpjNoTitular: 'san' });
   a1Aberto ??= abrirA1(a1Gerado.pfx, a1Gerado.senha, INSTANTE_DE_TESTE);
   return { certificado: a1Aberto, credencial: { pfx: Uint8Array.from(a1Gerado.pfx), senha: a1Gerado.senha } };
+}
+
+/** Abre o A1 de teste DEPOIS da validade: lança o `ErroCertificadoA1` real (`A1_FORA_DA_VALIDADE`), como o `lerA1` do worker faria com o A1 vencido. */
+export function a1VencidoDeTeste(): never {
+  a1DeTeste();
+  const g = a1Gerado as ReturnType<typeof gerarA1DeTeste>;
+  abrirA1(Uint8Array.from(g.pfx), g.senha, new Date('2099-01-01T00:00:00Z'));
+  throw new Error('o A1 de teste não deveria abrir em 2099');
 }
 
 /** Dependências da emissão em memória: dois itens (R$ 20,00 e R$ 25,00), emitente em Manaus, boleto em duas parcelas. */
@@ -264,11 +291,11 @@ export function depsFake(opc: { ambiente?: Ambiente; status?: string; r?: RepoFa
     },
     ambiente: { ambiente: async () => opc.ambiente ?? 'producao' },
     notas: r.repo,
-    lerA1: async () => (opc.semA1 ? null : a1DeTeste()),
+    certificado: { temA1Ativo: async () => (opc.semA1 ? { valido: false, motivo: 'sem_certificado', mensagem: 'Filial sem certificado A1 ativo: cadastre o A1 antes de emitir.' } : { valido: true, valido_ate: '2027-11-21T00:00:00.000Z', dias_para_vencer: 365 }) },
     agora: () => INSTANTE_DE_TESTE,
     sorteio: () => 48_213_705,
   };
-  return { deps, r, pedido, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
+  return { deps, r, pedido, emissor: espiao.emissor, recebidas: espiao.montagens, assinadas: espiao.assinaturas };
 }
 
 // ---- A porta real SefazTransporte, com respostas no formato real e contagem de chamadas ----

@@ -1,26 +1,7 @@
+import { ieComDvValido } from '@macuxierp/platform-sdk';
 import { violacao, type Violacao } from './violacao';
 
 const so = (s: string) => s.replace(/[.\-/\s]/g, '').toUpperCase();
-
-function dvAm(base: string): number {
-  const soma = [...base].reduce((acc, d, i) => acc + Number(d) * (9 - i), 0);
-  if (soma < 11) return 11 - soma;
-  const r = soma % 11;
-  return r <= 1 ? 0 : 11 - r;
-}
-
-function dvSp(digs: string, pesos: readonly number[]): number {
-  return ([...digs].reduce((acc, d, i) => acc + Number(d) * (pesos[i] ?? 0), 0) % 11) % 10;
-}
-
-/** Algoritmos por UF implementados aqui; as demais passam pela checagem de formato e pela SEFAZ (RF-CAD-03). */
-const ALGORITMOS: Record<string, (ie: string) => boolean> = {
-  AM: (ie) => /^\d{9}$/.test(ie) && dvAm(ie.slice(0, 8)) === Number(ie[8]),
-  SP: (ie) =>
-    /^\d{12}$/.test(ie) &&
-    dvSp(ie.slice(0, 8), [1, 3, 4, 5, 6, 7, 8, 10]) === Number(ie[8]) &&
-    dvSp(ie.slice(0, 11), [3, 2, 10, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(ie[11]),
-};
 
 export type ResultadoIe = { ok: true; ie: string } | { ok: false; violacao: Violacao };
 
@@ -28,8 +9,8 @@ export type ResultadoIe = { ok: true; ie: string } | { ok: false; violacao: Viol
 export function validarIe(uf: string, valor: string): ResultadoIe {
   const ie = so(valor);
   if (ie === 'ISENTO') return { ok: true, ie };
-  const algoritmo = ALGORITMOS[uf];
-  const ok = algoritmo ? algoritmo(ie) : /^\d{2,14}$/.test(ie);
+  const dv = ieComDvValido(uf, ie);
+  const ok = dv ?? /^\d{2,14}$/.test(ie);
   return ok ? { ok: true, ie } : { ok: false, violacao: violacao('RN-CAD-02', 'ie', `IE inválida para a UF ${uf}`) };
 }
 

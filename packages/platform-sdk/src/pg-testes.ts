@@ -35,6 +35,25 @@ async function postgresDisponivel(): Promise<boolean> {
 
 export const PG_DISPONIVEL = await postgresDisponivel();
 
+/**
+ * Fecha o pool e espera cada conexão terminar de verdade. O `pool.end()` do pg-pool resolve quando tira os clientes da
+ * lista, antes de o `client.end()` acabar; o `DROP DATABASE ... WITH (FORCE)` logo depois derrubava a conexão ainda
+ * viva e o 57P01 virava `'error'` do pool sem ouvinte ("Unhandled Errors" no vitest). O evento `remove` sai no fim do
+ * `client.end()`.
+ */
+async function encerrarPool(pool: pg.Pool): Promise<void> {
+  const total = pool.totalCount;
+  let removidos = 0;
+  const todosFechados = new Promise<void>((resolver) => {
+    if (total === 0) resolver();
+    pool.on('remove', () => {
+      if (++removidos >= total) resolver();
+    });
+  });
+  await pool.end();
+  await todosFechados;
+}
+
 export type PapelApp = 'macuxierp_app' | 'macuxierp_worker';
 
 export interface BancoEfemero {
@@ -73,7 +92,7 @@ export async function criarBancoEfemero(): Promise<BancoEfemero> {
       return new BancoPg(pool, { papel });
     },
     async remover() {
-      await Promise.all([admin, ...pools].map((p) => p.end()));
+      await Promise.all([admin, ...pools].map(encerrarPool));
       const c = new pg.Client({ ...ADMIN, database: 'postgres' });
       await c.connect();
       await c.query(`DROP DATABASE IF EXISTS ${nome} WITH (FORCE)`).finally(() => c.end());
