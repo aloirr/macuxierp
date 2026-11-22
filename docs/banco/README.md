@@ -51,6 +51,14 @@ O banco não tem acesso ao FDV, e só os três papéis têm `CONNECT` (o `REVOKE
 - **Exceção registrada:** `controle.migracao` (registro das migrações) não tem tenant nem RLS; o schema `controle` não é visível a nenhum papel da aplicação.
 - Dinheiro em `bigint` de centavos (`*_centavos`); quantidade em `bigint` com escala 4 (D11); percentual em pontos-base. O teste recusa `real`, `double`, `numeric` e `money`.
 
+## Alerta do A1 (T-0035, migração 0009)
+- `core.aviso_a1`: um aviso por certificado e por dia UTC (`UNIQUE (tenant_id, certificado_id, dia)`, constraint `aviso_a1_um_por_dia`), FK composta `(tenant_id, certificado_id)` para `core.certificado`. Só ids, validade e dias (sem dado pessoal). Worker: `SELECT` e `INSERT`; app e leitura: só `SELECT` (selo do BKO). Nenhum papel altera nem apaga.
+- `plataforma.tenants_ativos()` (`SECURITY DEFINER`, só para o worker): ids dos tenants com `situacao = 'ativo'` e sem `deleted_at`; o de referência fica de fora.
+- SQL dos adaptadores (worker, com `app.tenant_id` na sessão, salvo o primeiro):
+  - `FonteTenants.ativos` (em `semTenant`): `SELECT t AS id FROM plataforma.tenants_ativos() t`
+  - `FonteCertificados.vencendoAte`: `SELECT id, filial_id, valido_ate FROM core.certificado WHERE ativo AND deleted_at IS NULL AND valido_ate < $1 ORDER BY valido_ate, id` (usa o índice `certificado_vencimento_idx`)
+  - `DestinoAvisos.registrarA1`: `INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia) VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5::date) ON CONFLICT (tenant_id, certificado_id, dia) DO NOTHING RETURNING id` — sem linha devolvida = `false` (o aviso do dia já existia).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
