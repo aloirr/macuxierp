@@ -4,7 +4,7 @@
  */
 import type { ContextoRota } from '@macuxierp/platform-sdk';
 import {
-  EVENTOS, type Cliente, type Filial, type PrecoItem, type Produto, type TabelaPreco, type NomeEventoCadastros,
+  EVENTOS, type Cliente, type Filial, type PrecoItemComChave, type Produto, type TabelaPreco, type NomeEventoCadastros,
 } from '../contracts';
 import type { Repositorios } from './portas';
 import { comNomeMunicipio } from './enderecos';
@@ -44,7 +44,7 @@ export const eventoProduto = async (r: Repositorios, p: Produto): Promise<Evento
 /** C-2 */
 export const eventoTabelaPreco = (t: TabelaPreco): EventoPronto => pronto('cadastros.tabela_preco.alterada@1', t.id, { ...t, inativo: t.inativo });
 
-export const eventoPreco = (i: PrecoItem, t: TabelaPreco): EventoPronto =>
+export const eventoPreco = (i: PrecoItemComChave, t: TabelaPreco): EventoPronto =>
   pronto('cadastros.preco.alterado@1', agregadoPreco(i.tabela_preco_id, i.filial_id, i.produto_id), {
     ...i, vigencia_inicio: t.vigencia_inicio, vigencia_fim: t.vigencia_fim, inativo: t.inativo,
   });

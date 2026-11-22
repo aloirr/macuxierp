@@ -1,6 +1,6 @@
 /**
  * Ligação do worker (T-0035, T-0040, T-0016): `montarRotinas` e `montarExecutores` usam os adaptadores SQL do core;
- * `montarConsumidores` e `montarAgendas` ligam os do `integracao-fdv` (a busca de pedidos só com o recebimento ligado).
+ * `montarConsumidores` e `montarAgendas` ligam os do `integracao-fdv` (o conector só com o envio ligado; a busca e o retorno de pedidos só com o recebimento ligado).
  * Um banco que só grava o SQL prova o caminho sem PostgreSQL; as rodadas reais ficam em `modulos.db.test.ts` e
  * `worker.db.test.ts`.
  */
@@ -14,6 +14,7 @@ import { ArmazenamentoMemoria, relogioDoSistema, type Banco, type Transacao } fr
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { pinoEmMemoria } from './apoio-teste';
+import type { EstadoEnvioFdv } from './envio-fdv';
 import { EXPORTADORES, montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
 import { montarPedidosFdv, type EstadoRecebimentoFdv } from './pedidos-fdv';
 
@@ -80,11 +81,24 @@ describe('worker: rotinas e executores com os adaptadores reais', () => {
 
 describe('worker: integracao-fdv ligado (T-0016)', () => {
   const resolvedor = { resolver: async () => new Map<string, string>() };
-  const agendas = (recebimento: EstadoRecebimentoFdv) => {
+  const agendas = (recebimento: EstadoRecebimentoFdv, envio: EstadoEnvioFdv = 'ligado') => {
     const { log: pinoLog } = pinoEmMemoria();
     const pedidosFdv = montarPedidosFdv({ log: pinoLog, relogio: relogioDoSistema, recebimento, resolvedor });
-    return montarAgendas({ log: pinoLog, relogio: relogioDoSistema, pedidosFdv, outbox: { gravar: async () => 1 } }).map((a) => [a.id, a.modulo]);
+    return montarAgendas({ log: pinoLog, relogio: relogioDoSistema, pedidosFdv, envio, outbox: { gravar: async () => 1 } }).map((a) => [a.id, a.modulo]);
   };
+
+  it('MACUXIERP_FDV_ENVIO=desligado (trava de 22/11): sem a agenda do conector, nenhuma escrita no Hub (lotes, sinal, reconciliação)', () => {
+    expect(agendas('desligado', 'desligado')).toEqual([]);
+    // o recebimento é outra chave: ligado, só as agendas de pedidos entram, sem o conector
+    expect(agendas('ligado', 'desligado')).toEqual([
+      [AGENDA_BUSCA_PEDIDOS_ID, 'integracao-fdv'],
+      [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
+    ]);
+  });
+
+  it('MACUXIERP_FDV_ENVIO=ligado: a agenda do conector entra', () => {
+    expect(agendas('desligado', 'ligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
+  });
 
   it('consumidores: carga inicial, espelho dos cadastros e retorno do pedido, cada um uma vez', () => {
     const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
@@ -93,11 +107,8 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     expect(consumidores[2]!.eventos).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1']);
   });
 
-  it('MACUXIERP_FDV_RECEBIMENTO=desligado: conector e retorno entram; a busca de pedidos não', () => {
-    expect(agendas('desligado')).toEqual([
-      [AGENDA_CONECTOR_ID, 'integracao-fdv'],
-      [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
-    ]);
+  it('MACUXIERP_FDV_RECEBIMENTO=desligado: só o conector entra; nem a busca nem o retorno de pedidos', () => {
+    expect(agendas('desligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
   });
 
   it('MACUXIERP_FDV_RECEBIMENTO=ligado: conector, busca e retorno', () => {
@@ -108,7 +119,29 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     ]);
   });
 
-  it('o retorno de pedido sem pedido_recebido do conector (recebimento desligado) só loga o código e não grava nada', async () => {
+  it('T-0011: o retorno faturado descartado sem chave do produto (prazo vencido) avisa o monitor (alerta) só com o código e o pedido_uuid', async () => {
+    const { log: pinoLog, registros } = pinoEmMemoria();
+    const { banco } = bancoGravador([
+      [/FROM integracao_fdv\.pedido_recebido/, [{ '?column?': 1 }]],
+      [/INSERT INTO integracao_fdv\.retorno_enviado/, [{ id: 'novo' }]],
+    ]);
+    const relogio = { agora: () => new Date(AGORA.getTime() + 25 * 60 * 60 * 1000) };
+    const retorno = montarConsumidores({ log: pinoLog, relogio })[2]!;
+    const pedido = '30000000-0000-4000-8000-000000000006';
+    const uuid = '40000000-0000-4000-8000-000000000007';
+    const produto = '50000000-0000-4000-8000-000000000008';
+    const payload = {
+      pedido_id: pedido, numero: 8, origem: 'fdv', pedido_uuid: uuid, status: 'faturado', ambiente: 'producao',
+      nota: { numero: 1, serie: 1, chave: '1'.repeat(44), emitida_em: AGORA.toISOString(), total_centavos: 1990 },
+      itens_faturados: [{ sequencia: 1, produto_id: produto, quantidade: 1, valor_centavos: 1990 }],
+    };
+    const evento = { id: '20000000-0000-4000-8000-000000000009', nome: 'pedido.pedido.faturado@1', tenant_id: T1, agregado_id: pedido, versao: 1, ocorrido_em: AGORA.toISOString(), ator: 'sistema' as const, request_id: 'r', payload };
+    await banco.comTenant(T1, (tx) => retorno.tratar(evento, tx));
+    const alerta = registros().find((r) => r.alerta === 'retorno_sem_chave_produto');
+    expect(alerta).toMatchObject({ level: 40, tenant_id: T1, modulo: 'integracao-fdv', pedido_uuid: uuid });
+  });
+
+  it('o consumidor do retorno sem pedido_recebido do conector (recebimento desligado) só loga o código e não grava nada', async () => {
     const { log: pinoLog, linhas } = pinoEmMemoria();
     const { banco, sql } = bancoGravador([]);
     const retorno = montarConsumidores({ log: pinoLog, relogio: relogioDoSistema })[2]!;

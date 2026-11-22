@@ -331,7 +331,7 @@ export function repositoriosEmMemoria() {
         itensPreco.push(i);
       }
       Object.assign(i, { preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp, external_id: p.externalId, inativo: p.inativo });
-      return { tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp };
+      return { tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp, external_id: p.externalId };
     },
     /** Sem transação: o dublê só repassa (o rollback de verdade é testado no PostgreSQL). */
     async comSavepoint<T>(fn: () => Promise<T>) {

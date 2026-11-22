@@ -90,6 +90,8 @@ export interface OpcoesAppPg {
   modulos?: 'teste' | 'producao' | readonly PluginModulo[];
   /** Chave mestra do A1 de teste (ADR 0005) para o modo `'producao'`; padrão aleatória. O teste que a passa a conhece. */
   chaveA1?: Buffer;
+  /** Chave mestra do conector de teste (T-0011) para o modo `'producao'`; padrão sem chave (o `PUT /credencial` responde 503). */
+  chaveIntegracao?: Buffer | null;
   /** Logger da API (padrão desligado). Os testes de vazamento passam um `stream` em memória. */
   logger?: DependenciasApp['logger'];
 }
@@ -101,7 +103,7 @@ export interface OpcoesAppPg {
  */
 export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstance; modulos: readonly PluginModulo[] }> {
   const jwtSegredo = o.jwtSegredo ?? JWT_SEGREDO_DE_TESTE;
-  const producao = montarDependenciasProducao({ banco: o.b.banco('macuxierp_app'), chaveA1: o.chaveA1 ?? randomBytes(32), config: { versao: o.versao ?? 'teste', jwtSegredo, cookieSeguro: true } });
+  const producao = montarDependenciasProducao({ banco: o.b.banco('macuxierp_app'), chaveA1: o.chaveA1 ?? randomBytes(32), chaveIntegracao: o.chaveIntegracao ?? null, config: { versao: o.versao ?? 'teste', jwtSegredo, cookieSeguro: true } });
   const modulos =
     o.modulos === undefined || o.modulos === 'teste'
       ? montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) })

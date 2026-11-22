@@ -5,7 +5,7 @@
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
 import type {
   Cliente, ClienteDados, Contato, ContatoItem, CondicaoPagamento, CondicaoPagamentoDados, EnderecoCliente,
-  EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, PrecoItemConsulta, PrecoItemLista, Produto,
+  EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, PrecoItemComChave, PrecoItemConsulta, PrecoItemLista, Produto,
   ProdutoDados, SaldoEstoque, SaldoEstoqueItem, EstoqueConsulta, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
 } from '../contracts';
 
@@ -162,7 +162,7 @@ export interface RepoCarga {
   itemPrecoPorExternalId(externalId: string): Promise<ItemPrecoGravado | null>;
   itemPrecoPorChave(tabelaId: string, filialId: string, produtoId: string): Promise<ItemPrecoGravado | null>;
   /** Upsert por (tabela, filial, produto): o `external_id` é adotado e `inativo` marca `deleted_at`. */
-  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }): Promise<PrecoItem>;
+  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }): Promise<PrecoItemComChave>;
   /** SAVEPOINT por linha (D7): erro de banco na linha desfaz só ela. */
   comSavepoint<T>(fn: () => Promise<T>): Promise<T>;
 }

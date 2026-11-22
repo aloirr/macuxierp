@@ -12,7 +12,10 @@ import {
   CENARIOS_PEDIDOS,
   CENARIOS_SEGUROS,
   CENARIOS_SINTETICOS,
+  CENARIOS_SO_LEITURA,
+  cenarioDoPerfil,
   cenarioPermitido,
+  CredencialHub,
   ErroConfigHub,
   exigirCenario,
   lerConfigHub,
@@ -368,10 +371,10 @@ describe('T-0012 — perfis do alvo real: tenant-teste e thathyany-seguro (decis
     }
   });
 
-  it('cenários: thathyany-seguro só roda "carga idêntica" e "reenvio idempotente"; nada de inativação, carga completa, dado novo, ordem quebrada ou Retry-After forçado', () => {
+  it('cenários: o perfil thathyany-seguro só cabe "carga idêntica" e "reenvio idempotente"; nada de inativação, carga completa, dado novo, ordem quebrada ou Retry-After forçado', () => {
     const seguro = lerConfigHub(SEGURO());
-    expect(CENARIOS_SINTETICOS.filter((n) => cenarioPermitido(seguro, n))).toEqual([]);
-    expect(CENARIOS_SEGUROS.filter((n) => cenarioPermitido(seguro, n))).toEqual([
+    expect(CENARIOS_SINTETICOS.filter((n) => cenarioDoPerfil(seguro, n))).toEqual([]);
+    expect(CENARIOS_SEGUROS.filter((n) => cenarioDoPerfil(seguro, n))).toEqual([
       'carga-identica',
       'reenvio-idempotente',
     ]);
@@ -384,11 +387,10 @@ describe('T-0012 — perfis do alvo real: tenant-teste e thathyany-seguro (decis
     ] as const) {
       expect(() => exigirCenario(seguro, n)).toThrow(/não roda no perfil thathyany-seguro/);
     }
-    expect(() => exigirCenario(seguro, 'carga-identica')).not.toThrow();
   });
 
-  it('cenários: tenant-teste roda os sintéticos e não os do kit; o dublê roda todos', () => {
-    const teste = lerConfigHub(REAL);
+  it('cenários: tenant-teste roda os sintéticos (com a escrita liberada) e não os do kit; o dublê roda todos', () => {
+    const teste = lerConfigHub({ ...REAL, MACUXI_HUB_LIBERA_ESCRITA: '1' });
     const duble: ConfigHub = lerConfigHub({});
     expect(CENARIOS_SINTETICOS.every((n) => cenarioPermitido(teste, n))).toBe(true);
     expect(CENARIOS_SEGUROS.some((n) => cenarioPermitido(teste, n))).toBe(false);
@@ -404,11 +406,125 @@ describe('T-0012 — perfis do alvo real: tenant-teste e thathyany-seguro (decis
       expect(() => exigirCenario(seguro, n)).toThrow(ErroConfigHub);
       expect(() => exigirCenario(seguro, n)).toThrow(/MACUXI_HUB_RECEBE_PEDIDOS=0.*T-0027/);
     }
-    const teste = lerConfigHub(REAL);
+    const teste = lerConfigHub({ ...REAL, MACUXI_HUB_LIBERA_ESCRITA: '1' });
     expect(CENARIOS_PEDIDOS.every((n) => cenarioPermitido(teste, n))).toBe(true);
     expect(() => exigirCenario(teste, 'pedido-caminho-feliz')).not.toThrow();
     expect(CENARIOS_PEDIDOS.every((n) => cenarioPermitido(lerConfigHub({}), n))).toBe(true);
     // e o "recebe pedidos" ligado nunca passa no perfil seguro (a trava da T-0012 continua)
     expect(recusa({ ...SEGURO(), MACUXI_HUB_RECEBE_PEDIDOS: '1' })).toMatch(/MACUXI_HUB_RECEBE_PEDIDOS=0 é obrigatório/);
+  });
+});
+
+describe('T-0012/T-0017 — trava de escrita no Hub real (recado R-20261122-020834-gerente-projetos, 22/11/2026 02h08)', () => {
+  const TODOS = [...CENARIOS_SINTETICOS, ...CENARIOS_SEGUROS, ...CENARIOS_PEDIDOS];
+  const TRAVA = /Recusado pela trava de escrita no Hub real \(recado R-20261122-020834-gerente-projetos/;
+  let pasta: string;
+  let massa: string;
+  const SEGURO = () => ({
+    MACUXI_HUB_ALVO: 'real',
+    MACUXI_HUB_PERFIL: 'thathyany-seguro',
+    MACUXI_HUB_CHAVE_THATHYANY: CHAVE_THATHYANY,
+    MACUXI_HUB_CONECTOR_ID_THATHYANY: 'conector-novo-erp',
+    MACUXI_HUB_TENANT: 'Thathyany',
+    MACUXI_HUB_RECEBE_PEDIDOS: '0',
+    MACUXI_HUB_MASSA_KIT: massa,
+    MACUXI_HUB_ENTIDADES: 'forma_pagamento',
+  });
+  beforeAll(() => {
+    pasta = mkdtempSync(join(tmpdir(), 't0012-trava-'));
+    massa = join(pasta, 'kit.json');
+    writeFileSync(massa, JSON.stringify(massaKitFicticia(new Date('2026-11-01T12:00:00.000Z'), 2)));
+  });
+  afterAll(() => rmSync(pasta, { recursive: true, force: true }));
+
+  /** Nenhum cenário roda e cada recusa cita a trava. */
+  function travaTodos(config: ConfigHub, motivo: RegExp) {
+    expect(TODOS.filter((n) => cenarioPermitido(config, n))).toEqual([]);
+    for (const n of TODOS.filter((x) => cenarioDoPerfil(config, x))) {
+      expect(() => exigirCenario(config, n)).toThrow(ErroConfigHub);
+      expect(() => exigirCenario(config, n)).toThrow(TRAVA);
+      expect(() => exigirCenario(config, n)).toThrow(motivo);
+    }
+  }
+
+  it('nenhum cenário é só de leitura hoje: com a trava, todos recusam no real', () => {
+    expect(CENARIOS_SO_LEITURA).toEqual([]);
+  });
+
+  it('real sem MACUXI_HUB_LIBERA_ESCRITA=1 (ausente, 0, "sim", "true", vazia): escrita travada e todo cenário recusado', () => {
+    for (const libera of [undefined, '0', 'sim', 'true', '', ' 2 ']) {
+      const c = lerConfigHub({ ...REAL, MACUXI_HUB_LIBERA_ESCRITA: libera });
+      expect(c).toMatchObject({ alvo: 'real', perfil: 'tenant-teste', travaEscrita: 'sem-libera-escrita' });
+      if (c.alvo !== 'real') throw new Error('alvo errado');
+      expect(c.credencial.escritaLiberada).toBe(false);
+      travaTodos(c, /falta MACUXI_HUB_LIBERA_ESCRITA=1/);
+    }
+  });
+
+  it('real com MACUXI_HUB_LIBERA_ESCRITA=1 e o perfil thathyany-seguro: travada (a chave do Conector macuxierp), qualquer Conector', () => {
+    for (const conector of ['conector-novo-erp', 'macuxierp']) {
+      for (const libera of ['1', undefined]) {
+        const c = lerConfigHub({
+          ...SEGURO(),
+          MACUXI_HUB_CONECTOR_ID_THATHYANY: conector,
+          MACUXI_HUB_LIBERA_ESCRITA: libera,
+        });
+        expect(c).toMatchObject({ perfil: 'thathyany-seguro', travaEscrita: 'chave-macuxierp' });
+        if (c.alvo !== 'real') throw new Error('alvo errado');
+        expect(c.credencial.escritaLiberada).toBe(false);
+        travaTodos(c, /chave do Conector macuxierp.*ok do PO/);
+      }
+    }
+  });
+
+  it('real com MACUXI_HUB_LIBERA_ESCRITA=1, tenant-teste e o Conector macuxierp (sem diferenciar maiúsculas nem espaços): travada', () => {
+    for (const conector of ['macuxierp', 'MACUXIERP', 'MacuxiErp', ' macuxierp ']) {
+      const c = lerConfigHub({
+        ...REAL,
+        MACUXI_HUB_CONECTOR_ID_TENANT_TESTE: conector,
+        MACUXI_HUB_LIBERA_ESCRITA: '1',
+      });
+      expect(c).toMatchObject({ perfil: 'tenant-teste', travaEscrita: 'chave-macuxierp' });
+      if (c.alvo !== 'real') throw new Error('alvo errado');
+      expect(c.credencial.escritaLiberada).toBe(false);
+      travaTodos(c, /chave do Conector macuxierp/);
+    }
+  });
+
+  it('real com MACUXI_HUB_LIBERA_ESCRITA=1, tenant-teste e outro Conector: escrita liberada e os cenários do perfil rodam', () => {
+    for (const conector of ['macuxierp-teste', 'erp-homologacao', 'macuxierp2']) {
+      const c = lerConfigHub({
+        ...REAL,
+        MACUXI_HUB_CONECTOR_ID_TENANT_TESTE: conector,
+        MACUXI_HUB_LIBERA_ESCRITA: '1',
+      });
+      expect(c).toMatchObject({ perfil: 'tenant-teste', travaEscrita: null });
+      if (c.alvo !== 'real') throw new Error('alvo errado');
+      expect(c.credencial.escritaLiberada).toBe(true);
+      expect(JSON.parse(JSON.stringify(c.credencial))).toEqual({
+        conectorId: conector,
+        chave: '[oculta]',
+        escritaLiberada: true,
+      });
+      for (const n of [...CENARIOS_SINTETICOS, ...CENARIOS_PEDIDOS]) {
+        expect(cenarioPermitido(c, n)).toBe(true);
+        expect(() => exigirCenario(c, n)).not.toThrow();
+      }
+      // o perfil continua valendo: os seguros não são do tenant-teste
+      expect(() => exigirCenario(c, 'carga-identica')).toThrow(/não roda no perfil tenant-teste/);
+    }
+  });
+
+  it('o dublê não muda nada: MACUXI_HUB_LIBERA_ESCRITA é ignorada, a config é a mesma e todo cenário roda', () => {
+    const padrao = lerConfigHub({});
+    for (const libera of [undefined, '0', '1']) {
+      const c = lerConfigHub({ MACUXI_HUB_LIBERA_ESCRITA: libera });
+      expect(c).toEqual(padrao);
+      expect(c).not.toHaveProperty('travaEscrita');
+      expect(TODOS.every((n) => cenarioPermitido(c, n))).toBe(true);
+      for (const n of TODOS) expect(() => exigirCenario(c, n)).not.toThrow();
+    }
+    // a credencial feita à mão (a do dublê) nasce sem a escrita liberada: fora do 127.0.0.1, a guarda vale
+    expect(new CredencialHub('macuxierp-t0012', CHAVE).escritaLiberada).toBe(false);
   });
 });

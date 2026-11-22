@@ -7,7 +7,7 @@
  * Espelha o apoio-conector-teste do integracao-fdv até ele exportar um subcaminho de teste (RD-0512).
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { AGENDA_BUSCA_PEDIDOS_ID } from '@macuxierp/integracao-fdv/api';
+import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID } from '@macuxierp/integracao-fdv/api';
 import { cifrarCampo, criarEvento, type ClienteHub, type ConsumidorEvento, type CredencialHub, type PedidoHub, type RespostaHub } from '@macuxierp/platform-sdk';
 import { FilaDeTrabalhosPg, LicencasPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
@@ -18,6 +18,7 @@ import { rodarAgendas } from './agenda';
 import { pinoEmMemoria } from './apoio-teste';
 import { criarDecifradorCredencial } from './credencial';
 import { despacharOutbox } from './despachante';
+import type { EstadoEnvioFdv } from './envio-fdv';
 import { montarAgendas, montarConsumidores } from './modulos';
 import { criarAlertaMonitor, type EstadoRecebimentoFdv, type MontagemPedidosFdv } from './pedidos-fdv';
 import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
@@ -218,9 +219,9 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
   }
 
   /** Uma rodada do laço de agenda com a montagem do `main.ts`. */
-  function rodada(recebimento: EstadoRecebimentoFdv, hub: ClienteHub) {
+  function rodada(recebimento: EstadoRecebimentoFdv, hub: ClienteHub, envio: EstadoEnvioFdv = 'ligado') {
     const { log: pinoLog, linhas } = pinoEmMemoria();
-    const agendas = montarAgendas({ log: pinoLog, relogio, pedidosFdv: pedidosFdv(recebimento, pinoLog) });
+    const agendas = montarAgendas({ log: pinoLog, relogio, pedidosFdv: pedidosFdv(recebimento, pinoLog), envio });
     return { linhas, resumo: rodarAgendas(agendas, { banco: worker, licencas: new LicencasPg(), hub, decifrarCredencial, relogio, log: pinoLog }) };
   }
 
@@ -340,7 +341,7 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     expect((await lerSinal(t)).proximo_retorno_em).toBeNull(); // nada mais pendente
   });
 
-  it('desligado: a busca não roda (nada de GET /pedidos/pendentes, coluna intocada); o retorno roda', async () => {
+  it('desligado: nem a busca nem o retorno rodam (nenhuma chamada de pedido ao Hub, colunas intocadas); o consumidor só grava a fila local', async () => {
     const { t } = await tenantComCredencial('worker-desligado', ['integracao-fdv', 'pedido']);
     const vencida = new Date(AGORA.getTime() - 5_000);
     await sinal(t, { busca: vencida });
@@ -349,16 +350,58 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     await publicarRecebido(t, uuid);
     relogio.avancar(1_000);
     expect(await despacharConsumidores()).toMatchObject({ publicados: 1, falhas: 0 });
+    // o consumidor grava o retorno pendente e agenda a coluna, sem tocar no Hub
+    expect(await adm('SELECT estado FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1', [t])).toEqual([{ estado: 'pendente' }]);
+    const retornoAgendado = (await lerSinal(t)).proximo_retorno_em as Date;
+    expect(retornoAgendado.getTime()).toBeLessThanOrEqual(relogio.agora().getTime());
     const hub = hubDuble({
       'GET /pedidos/pendentes?limite=50': () => ok({ pedidos: [] }),
       'POST /pedidos/{id}/retorno': () => ok({ repetido: false }),
     });
 
+    relogio.avancar(1_000);
     const { linhas, resumo } = rodada('desligado', hub);
-    expect(await resumo).toEqual({ executados: 1, falhas: 0, semLicenca: 0 });
-    expect(hub.chamadas.map((c) => `${c.pedido.metodo} ${c.pedido.caminho}`)).toEqual([`POST /pedidos/${uuid}/retorno`]);
+    expect(await resumo).toEqual({ executados: 0, falhas: 0, semLicenca: 0 });
+    expect(hub.chamadas).toEqual([]);
     expect((await lerSinal(t)).proxima_busca_pedidos_em.getTime()).toBe(vencida.getTime());
-    expect(await adm('SELECT estado FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1', [t])).toEqual([{ estado: 'enviado' }]);
+    expect(((await lerSinal(t)).proximo_retorno_em as Date).getTime()).toBe(retornoAgendado.getTime());
+    expect(await adm('SELECT estado FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1', [t])).toEqual([{ estado: 'pendente' }]);
     expect(linhas.join('')).not.toContain(AGENDA_BUSCA_PEDIDOS_ID);
+    expect(linhas.join('')).not.toContain(AGENDA_RETORNO_PEDIDOS_ID);
+  });
+
+  it('MACUXIERP_FDV_ENVIO=desligado (trava de 22/11): com credencial gravada e tudo vencido, o Hub não recebe nenhuma chamada', async () => {
+    const { t } = await tenantComCredencial('worker-envio-desligado', ['integracao-fdv', 'pedido']);
+    const vencida = new Date(AGORA.getTime() - 60_000);
+    const payload = { ativo: true, external_id: 'P002', nome: 'Produto P002', sku: 'SKU-P002', unidade: 'UN' };
+    await adm(
+      `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, fonte_refs, ativo, pendente)
+       VALUES ($1, 'produto', 'P002', $2::jsonb, $3, $4, $4, '{}'::jsonb, true, true)`,
+      [t, JSON.stringify(payload), createHash('sha256').update(JSON.stringify(payload)).digest('hex'), new Date(AGORA.getTime() - 3_600_000)],
+    );
+    await adm('INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, proximo_em) VALUES ($1, $2, $3)', [t, 'produto', vencida]);
+    await adm('INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em) VALUES ($1, $2, $2)', [t, vencida]);
+    const lote = randomUUID();
+    const hub = hubDuble({
+      'POST /lotes': () => ok({ lote_id: lote, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${lote}` }, 202),
+      'POST /sinal': () => ok({}),
+      'POST /reconciliacoes': () => ok({}),
+    });
+
+    const desligado = rodada('desligado', hub, 'desligado');
+    expect(await desligado.resumo).toEqual({ executados: 0, falhas: 0, semLicenca: 0 });
+    expect(hub.chamadas).toEqual([]);
+    expect(desligado.linhas.join('')).not.toContain(AGENDA_CONECTOR_ID);
+    // nada reservado: as colunas seguem vencidas no banco e nenhum lote foi montado
+    expect((await adm('SELECT proximo_em FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1', [t]))[0]!.proximo_em.getTime()).toBe(vencida.getTime());
+    const [s] = await adm('SELECT proximo_sinal_em, proxima_reconciliacao_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [t]);
+    expect([s!.proximo_sinal_em.getTime(), s!.proxima_reconciliacao_em.getTime()]).toEqual([vencida.getTime(), vencida.getTime()]);
+    expect(await adm('SELECT id FROM integracao_fdv.lote_envio WHERE tenant_id = $1', [t])).toEqual([]);
+
+    // contraprova: a mesma montagem com o envio ligado chama o Hub (o sinal escreve; a leitura do cursor sem cursor local
+    // corre dentro da tarefa `envio`, por isso cai junto com a agenda; o dublê não responde o cursor e o lote não sai)
+    const ligado = rodada('desligado', hub, 'ligado');
+    await ligado.resumo;
+    expect(hub.chamadas.map((c) => `${c.pedido.metodo} ${c.pedido.caminho}`)).toEqual(['POST /sinal', 'GET /cursores/produto']);
   });
 });

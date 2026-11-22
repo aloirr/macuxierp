@@ -7,6 +7,8 @@ import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
 import { TelaCarga } from './carga';
+import { TelaIntegracaoFdv } from './tela-integracao-fdv';
+import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 
 /**
  * Espaço das telas dos módulos. A rota vem das páginas que o módulo declara (mesma fonte do menu), com `:id` para o detalhe.
@@ -24,16 +26,19 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   const tela = declarada ? telaDaRota(declarada.rota) : undefined;
   const busca = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) if (typeof v === 'string') busca.set(k, v);
+  const monitor = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor');
+  const lotes = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'lotes');
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value ?? '';
   return (
     <>
       <h1>{declarada?.titulo ?? resolvida.rotulo}</h1>
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {rota === PAGINA_CARGA.rota && <TelaCarga api="/envio-carga" />}
+      {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} rotaLotes={`${lotes?.rota ?? monitor.rota}?estado=concluido_com_erros`} />}
       {tela && declarada && (
         <TelaGenerica tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
-      {!tela && !declarada?.aviso && rota !== PAGINA_CARGA.rota && <p className="apoio">Esta tela ainda não foi construída.</p>}
+      {!tela && !declarada?.aviso && rota !== PAGINA_CARGA.rota && declarada?.rota !== monitor?.rota && <p className="apoio">Esta tela ainda não foi construída.</p>}
     </>
   );
 }

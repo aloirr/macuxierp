@@ -71,15 +71,23 @@ cd "$PASTA"
 [ -f .env ] || { echo "[implantar] $PASTA/.env ausente: o Alexandre cria a partir do env.modelo (modo 600)" >&2; exit 1; }
 modo="$(stat -c %a .env)"
 [ "$modo" = 600 ] || { echo "[implantar] $PASTA/.env com modo $modo: precisa ser 600 (chmod 600 $PASTA/.env)" >&2; exit 1; }
-# Chave do A1: 32 bytes, em hex (64) ou base64 (44 com o "="). O valor nunca é impresso.
-chave_a1_ok() {
+# Chaves mestras: 32 bytes, em hex (64) ou base64 (44 com o "="). O valor nunca é impresso.
+chave_32_ok() { # nome
   local v
-  v="$(valor_env .env MACUXIERP_CHAVE_A1)"
+  v="$(valor_env .env "$1")"
   [[ "$v" =~ ^[0-9a-fA-F]{64}$ ]] && return 0
   [[ "$v" =~ ^[A-Za-z0-9+/]{43}=$ ]] && [ "$(printf '%s' "$v" | base64 -d 2>/dev/null | wc -c)" = 32 ] && return 0
   return 1
 }
-chave_a1_ok || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_A1 válida (32 bytes em hex ou base64; openssl rand -base64 32)" >&2; exit 1; }
+chave_32_ok MACUXIERP_CHAVE_A1 || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_A1 válida (32 bytes em hex ou base64; openssl rand -base64 32)" >&2; exit 1; }
+# Conector do Hub (opcionais, env.modelo): vazia = laço de agenda do worker desligado; presente e inválida derrubaria o worker.
+if [ -n "$(valor_env .env MACUXIERP_CHAVE_INTEGRACAO)" ]; then
+  chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env com MACUXIERP_CHAVE_INTEGRACAO inválida (vazia ou 32 bytes em hex ou base64; openssl rand -hex 32)" >&2; exit 1; }
+fi
+# MACUXIERP_HUB_URL_PRODUCAO fica vazia: ver env.modelo.
+if [ -n "$(valor_env .env MACUXIERP_HUB_URL_PRODUCAO)" ]; then
+  echo "[implantar] $PASTA/.env com MACUXIERP_HUB_URL_PRODUCAO preenchida: deixe vazia por ora (env.modelo; o worker não subiria)" >&2; exit 1
+fi
 for f in gerados.env banco.env admin.env; do
   [ -s "$f" ] || { echo "[implantar] $PASTA/$f ausente: o preparar-vm.sh (gerados.env) e o workflow (banco.env, admin.env) gravam antes" >&2; exit 1; }
 done

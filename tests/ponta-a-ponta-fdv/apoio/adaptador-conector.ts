@@ -11,7 +11,10 @@
  * do Hub.
  *
  * O `criarClienteHub` só aceita base https (anti-SSRF). Contra o dublê (http em 127.0.0.1), a base é um host https
- * fictício e o `fetch` injetado troca a origem pela do dublê; contra o tenant real, nada é trocado.
+ * fictício e o `fetch` injetado troca a origem pela do dublê; contra o tenant real, nada é trocado, mas, com a trava
+ * ativa (`travaAtiva`: sem a escrita liberada na credencial ou com o Conector `macuxierp`), o cliente e o `fetch` passam
+ * pela trava de escrita (`trava-escrita.ts`, recado R-20261122-020834-gerente-projetos): só a leitura de cursor sai
+ * para a rede.
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -30,6 +33,7 @@ import {
 } from '../../../modules/integracao-fdv/domain/resposta';
 import type { CredencialHub } from './config';
 import { criarLadoErp, type LadoErp, type Montador, type OpcoesLado, type Transporte } from './lado-erp';
+import { ehDubleLocal, exigirLeitura, guardarFetch, travaAtiva } from './trava-escrita';
 
 export interface OpcoesConector extends OpcoesLado {
   /** Base com `/integracao/v1` (a do dublê pode ser http). */
@@ -48,8 +52,9 @@ export function clienteDoSdk(o: Pick<OpcoesConector, 'url' | 'credencial' | 'ver
   cred: CredencialSdk;
 } {
   const base = o.url.replace(/\/integracao\/v1$/, '');
-  const local = base.startsWith('http://127.0.0.1:');
-  const cliente = criarClienteHub({
+  const local = ehDubleLocal(base);
+  const travado = travaAtiva(base, o.credencial);
+  const sdk = criarClienteHub({
     urls: { teste: local ? BASE_FICTICIA_DUBLE : base, producao: local ? BASE_FICTICIA_DUBLE : base },
     versaoErp: o.versaoErp,
     ...(local
@@ -57,8 +62,19 @@ export function clienteDoSdk(o: Pick<OpcoesConector, 'url' | 'credencial' | 'ver
           fetch: (url: string | URL | Request, init?: RequestInit) =>
             fetch(String(url).replace(BASE_FICTICIA_DUBLE, base), init),
         }
-      : {}),
+      : travado
+        ? { fetch: guardarFetch() }
+        : {}),
   });
+  // o SDK transforma erro do `fetch` em "rede": a trava confere antes, para o erro chegar ao cenário
+  const cliente: ClienteHub = travado
+    ? {
+        chamar: async (cred, pedido) => {
+          exigirLeitura(pedido.metodo, pedido.caminho);
+          return sdk.chamar(cred, pedido);
+        },
+      }
+    : sdk;
   return {
     cliente,
     cred: {
