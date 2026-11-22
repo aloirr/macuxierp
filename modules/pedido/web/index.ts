@@ -8,4 +8,6 @@ export { ROTULO_PENDENCIA, ROTULO_PERFIL, cabecalhoDoPedido, linhasDeHistorico, 
 export { ITEM_VAZIO, formularioVazio, formularioDoPedido, novaChaveDoFormulario, retornoDoLancamento, validarFormulario, type Formulario, type LinhaItemFormulario, type ResultadoFormulario, type RetornoDoLancamento } from './formulario';
 export { chaveDoCampo, errosPorCampo, mensagemDaIssue } from './erros';
 export { ErroPedido, criarClientePedido, type FetchPedido } from './cliente';
-export { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade, interpretarCentavos, interpretarQuantidade, textoCentavos, textoQuantidade } from './formatar';
+export { textoCentavos, textoQuantidade } from './texto';
+export { calcularTotal, type ItemParaTotal } from './total';
+export { FONTE_CLIENTE, FONTE_CONDICAO, FONTE_FILIAL, FONTE_PRODUTO, FONTE_VENDEDOR, caminhoDaConsulta, caminhoDosEnderecos, opcoesDeEndereco, type FonteComBusca, type FonteDoSeletor, type OpcaoEndereco } from './fontes';

@@ -66,6 +66,10 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     const prod = await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700', fator_tributavel: 10_000 }) });
     expect(prod).toMatchObject({ status: 201, corpo: { codigo: 'P001', custo_centavos: 450, fator_tributavel: 10_000 } });
     expect((await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700' }) })).status).toBe(409);
+    // RN-CORE-05 (ADR 0010): adota no PATCH; a troca controlada grava no banco e publica external_id_anterior
+    expect((await a.chamar('PATCH', `/produtos/${prod.corpo.id}`, { sessao: adm, corpo: { external_id: 'KIT-1' } })).status).toBe(200);
+    expect(await a.chamar('POST', `/produtos/${prod.corpo.id}/external-id`, { sessao: adm, corpo: { external_id: 'KIT-2', motivo: 'Correção' } })).toMatchObject({ status: 200, corpo: { external_id: 'KIT-2' } });
+    expect(a.eventos.at(-1)).toMatchObject({ nome: 'cadastros.produto.alterado@1', payload: { external_id: 'KIT-2', external_id_anterior: 'KIT-1' } });
     const un = await a.chamar('POST', `/produtos/${prod.corpo.id}/unidades`, { sessao: adm, corpo: { unidade: 'CX', fator: 120_000 } });
     expect(un).toMatchObject({ status: 201, corpo: { unidade: 'CX', fator: 120_000 } });
     expect(a.eventos.at(-1)).toMatchObject({ nome: 'cadastros.produto.alterado@1', payload: { unidades: [{ unidade: 'CX' }] } });

@@ -112,3 +112,15 @@ describe('Idempotency-Key e geração', () => {
     expect(dividirAoMeio(montarLotes({ ...base, registros: [regs[0]!] })[0]!)).toBeNull();
   });
 });
+
+describe('RF-INF-02: sessão continuada (parte inicial e continuação)', () => {
+  const regs = [reg('a', '2026-01-01T00:00:00.000Z'), reg('b', '2026-01-02T00:00:00.000Z')];
+  const sessaoId = '11111111-1111-4111-8111-111111111111';
+
+  it('a parte começa onde a sessão parou e só a última leva ultimo', () => {
+    const [meio] = montarLotes({ entidade: 'produto', modo: 'completo', registros: regs, enviadoEm: '2026-11-21T20:00:00.000Z', sessaoId, sessaoParteInicial: 3, sessaoContinua: true });
+    expect(meio!.corpo.sessao).toEqual({ id: sessaoId, parte: 3, ultimo: false });
+    const [fim] = montarLotes({ entidade: 'produto', modo: 'completo', registros: regs, enviadoEm: '2026-11-21T20:00:00.000Z', sessaoId, sessaoParteInicial: 3 });
+    expect(fim!.corpo.sessao).toEqual({ id: sessaoId, parte: 3, ultimo: true });
+  });
+});

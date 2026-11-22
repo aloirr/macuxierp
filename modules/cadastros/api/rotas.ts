@@ -9,7 +9,7 @@ import {
 import { z } from 'zod';
 import {
   ClienteAtualizacao, ClienteDados, type Cliente, CondicaoPagamentoAtualizacao, CondicaoPagamentoDados, Contato, ConsultaIeEntrada,
-  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta,
+  EVENTOS, EnderecoCliente, EstoqueConsulta, FilialAtualizacao, FilialDados, ListaConsulta, MovimentoEstoque, PrecoItemConsulta, TrocaExternalId,
   OficialConsulta, PrecoLote, PrecoVigenteConsulta, ProdutoAtualizacao, ProdutoDados, TABELAS_OFICIAIS, TRABALHO_CONSULTAR_IE,
   TabelaPrecoAtualizacao, TabelaPrecoDados, TransferenciaCarteira, UnidadeDados, VendedorAtualizacao, VendedorDados,
   type NomeEventoCadastros,
@@ -20,7 +20,7 @@ import {
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga } from './carga';
-import { publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
+import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
@@ -28,6 +28,8 @@ import { precosVigentesDe } from './precos-vigentes';
 import { dataIso, erroDeViolacoes, exigir, idDe, violacaoExternalId } from './util';
 
 type Dict = Record<string, unknown>;
+/** `external_id` de um cadastro (`null` se ausente). */
+const extDe = (x: unknown): string | null => ((x as Dict).external_id as string | null | undefined) ?? null;
 type Entidade = { id: string; inativo: boolean };
 
 async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: string, payload: unknown): Promise<void> {
@@ -39,8 +41,8 @@ async function publicar(c: ContextoRota, nome: NomeEventoCadastros, agregadoId: 
 /** Emissor de um cadastro: monta o evento pronto (de `eventos.ts`) e publica; serve de `emitir` do CRUD e de `aoGravar` do filho. */
 const emitirCom =
   <E>(montar: (r: Repositorios, e: E) => EventoPronto | Promise<EventoPronto>) =>
-  async (c: ContextoRota, r: Repositorios, e: E): Promise<void> =>
-    publicarPronto(c, await montar(r, e));
+  async (c: ContextoRota, r: Repositorios, e: E, antes?: unknown): Promise<void> =>
+    publicarPronto(c, comExternalIdAnterior(await montar(r, e), e, antes));
 
 const requisitoFilial = async (r: Repositorios, id: string | null, campo: string): Promise<Violacao[]> =>
   id === null || (await r.filiais.obter(id)) ? [] : [violacao('REF', campo, 'Filial inexistente')];
@@ -132,8 +134,17 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         const r = R(c);
         const antes = await carregar(c, r, idDe(e));
         const parcial = e.corpo as Dict;
+        // ADR 0010, item 3: preenchido, o external_id só muda pela troca controlada; para nulo, nunca
+        const atual = extDe(antes);
+        if (atual !== null && parcial.external_id !== undefined && parcial.external_id !== atual)
+          exigir([violacao('RN-CORE-05', 'external_id', 'O external_id preenchido não muda por aqui: use a troca controlada (administrador)')]);
         // Guarda RD-0317 (ver domain/external-id.ts), só quando o valor muda
-        if (parcial.external_id !== (antes as unknown as Dict).external_id) exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, parcial.external_id)));
+        if (parcial.external_id !== undefined && parcial.external_id !== atual) {
+          exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, parcial.external_id)));
+          // a adoção (nulo → valor) também não pode tomar o valor de outro registro
+          const outro = await cfg.repo(r).porExternalId(parcial.external_id as string);
+          if (outro && outro.id !== antes.id) throw erros.conflito('Já existe um cadastro com esse identificador externo');
+        }
         cfg.campoRestrito?.(c.sessao, parcial, false);
         if (cfg.validar) exigir(await cfg.validar(r, { ...(antes as unknown as Dict), ...parcial }, parcial, c.agora));
         const padrao = cfg.padrao?.(r);
@@ -142,6 +153,24 @@ function rotasCrud<E extends Entidade, D extends Dict>(deps: Dependencias, cfg: 
         if (!depois) throw erros.naoEncontrado('Registro');
         await cfg.emitir(c, r, depois, antes);
         await aud(c, 'alterar', depois.id, antes, depois);
+        return { corpo: ocultar(c, depois) };
+      },
+    }),
+    definirRota({
+      metodo: 'POST', caminho: `${cfg.caminho}/:id/external-id`, acao: 'cadastros.external_id.trocar', corpo: TrocaExternalId,
+      async executar(c, e) {
+        const r = R(c);
+        const antes = await carregar(c, r, idDe(e));
+        const { external_id: novo, motivo } = e.corpo as { external_id: string; motivo: string };
+        const anterior = extDe(antes);
+        if (novo === anterior) return { corpo: ocultar(c, antes) }; // idempotente
+        exigir(await violacoesDe(violacaoExternalId(r, cfg.tabela, novo))); // RD-0317
+        const outro = await cfg.repo(r).porExternalId(novo);
+        if (outro) throw erros.conflito('Já existe um cadastro com esse identificador externo');
+        const depois = await cfg.repo(r).atualizar(antes.id, { external_id: novo } as unknown as Partial<D>);
+        if (!depois) throw erros.naoEncontrado('Registro');
+        await cfg.emitir(c, r, depois, antes);
+        await c.auditar({ acao: `${cfg.entidade}.external_id.trocar`, entidade: cfg.entidade, entidade_id: depois.id, antes: { external_id: anterior }, depois: { external_id: novo, motivo } });
         return { corpo: ocultar(c, depois) };
       },
     }),
@@ -337,7 +366,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     entidade: 'tabela_preco', auditado: true, repo: (r) => r.tabelasPreco, inativavel: 'tabela_preco', padrao: (r) => r.tabelasPreco,
     /** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
     async emitir(c, r, t, antes) {
-      await publicarPronto(c, eventoTabelaPreco(t)); // C-2: criação e alteração
+      await publicarPronto(c, comExternalIdAnterior(eventoTabelaPreco(t), t, antes)); // C-2: criação e alteração
       if (!antes || (antes.vigencia_inicio === t.vigencia_inicio && antes.vigencia_fim === t.vigencia_fim && antes.inativo === t.inativo)) return;
       await republicarItensDaTabela(c, r, t);
     },

@@ -6,7 +6,8 @@ import { valorItem } from '@macuxierp/platform-sdk';
 import { PedidoManualEntrada, type Pedido } from '../contracts';
 import { linhasDePendencias, type LinhaPendencia } from './detalhe';
 import { errosPorCampo } from './erros';
-import { interpretarCentavos, interpretarQuantidade, textoCentavos, textoQuantidade } from './formatar';
+import { interpretarCentavos, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { textoCentavos, textoQuantidade } from './texto';
 
 export interface LinhaItemFormulario {
   produto_id: string;

@@ -16,6 +16,8 @@ export interface Tenant {
   pedidoFdv: string;
   /** id do pedido da massa do schema pedido (T-0014). */
   pedido: string;
+  /** Nota autorizada da massa do faturamento (número 1, série 1). */
+  nota: string;
 }
 
 export function novoTenant(slug: string): Tenant {
@@ -29,6 +31,7 @@ export function novoTenant(slug: string): Tenant {
     produto: randomUUID(),
     pedidoFdv: randomUUID(),
     pedido: randomUUID(),
+    nota: randomUUID(),
   };
 }
 
@@ -181,5 +184,96 @@ INSERT INTO pedido.pedido_evento (tenant_id, pedido_id, de, para, ator_tipo, pen
   VALUES ('${id}', '${t.pedido}', NULL, 'recebido', 'sistema', '[]'),
     ('${id}', '${t.pedido}', 'recebido', 'aprovado', 'sistema', '[]');
 INSERT INTO pedido.aprovacao (tenant_id, pedido_id, decisao, automatica) VALUES ('${id}', '${t.pedido}', 'aprovado', true);
+`;
+}
+
+/**
+ * Chave de acesso fictícia coerente com a nota (cUF 13, AAMM 2611, CNPJ da massa, modelo 55); cnf (cNF, 8 dígitos)
+ * diferencia notas de mesmo número em tenants, filiais ou ambientes diferentes (a chave é única no banco). DV fictício
+ * (a API confere).
+ */
+export function chaveAcesso(serie: number, numero: number, cnf = 1, tipoEmissao = 1): string {
+  return `1326111234567800019555${String(serie).padStart(3, '0')}${String(numero).padStart(9, '0')}${tipoEmissao}${cnfDe(cnf)}0`;
+}
+
+/** cNF com 8 dígitos. */
+export const cnfDe = (cnf: number): string => String(cnf % 100000000).padStart(8, '0');
+
+/** cNF da massa do tenant (derivado do id, para A e B não repetirem a chave). */
+export const cnfDoTenant = (t: Tenant): number => parseInt(t.id.slice(0, 7), 16);
+
+/** SHA-256 hex do texto, como o banco confere (convert_to UTF8). */
+export const hashSql = (texto: string): string => `encode(sha256(convert_to('${texto}', 'UTF8')), 'hex')`;
+
+/**
+ * Massa de fiscal e faturamento (T-0019, T-0020, T-0021): uma linha em cada tabela, pelo caminho real (reserva do
+ * número, nota em rascunho, em autorização, autorizada com guarda pendente, XML guardado, CC-e pendente e registrada
+ * pelo XML, título com baixa parcial, inutilização do número 2 registrada pelo XML, contingência encerrada,
+ * transmissão e pedido a faturar). Mais uma linha geral (tenant de referência) da carga aproximada, se `geral`.
+ * Gravada pelo admin, que passa pelas mesmas travas (as triggers valem para o dono); precisa da filial no
+ * core.ambiente_fiscal da fixtureModulos (homologação).
+ */
+export function fixtureFaturamento(t: Tenant): string {
+  const id = t.id;
+  const cnf = cnfDoTenant(t);
+  const chave = chaveAcesso(1, 1, cnf);
+  const xml = `<nfeProc><NFe>massa ${t.slug}</NFe></nfeProc>`;
+  const evento = `<procEventoNFe>cce ${t.slug}</procEventoNFe>`;
+  const inut = `<procInutNFe>massa ${t.slug}</procInutNFe>`;
+  return `
+SELECT set_config('app.tenant_id', '${id}', true);
+INSERT INTO fiscal.regra_tributaria (tenant_id, uf_origem, crt, cfop, codigo, aliquota_icms, cst_pis, aliquota_pis,
+  cst_cofins, aliquota_cofins, cst_ibs_cbs, c_class_trib, p_cbs, p_ibs_uf, versao_nt_rtc, fonte_tipo, fonte_referencia,
+  versao, vigencia_inicio)
+  VALUES ('${id}', 'AM', 3, '5102', '00', 200000, '01', 16500, '01', 76000, '000', '000001', 9000, 1000,
+    'NT 2025.002-RTC v1.30', 'lei', 'RICMS-AM', '2026.1', '2026-01-01');
+INSERT INTO fiscal.carga_aproximada (tenant_id, ncm, uf, aliquota_federal_nacional, aliquota_estadual, vigencia_inicio,
+  versao, fonte)
+  VALUES ('${id}', '22021000', 'AM', 150000, 180000, '2026-01-01', '26.1.A', 'ajuste ${t.slug}');
+INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload)
+  VALUES ('${id}', '${t.pedido}', '${t.filial}', '${t.cliente}', '{"itens": []}');
+INSERT INTO faturamento.contingencia (tenant_id, filial_id, modalidade, motivo, inicio_em, fim_em)
+  VALUES ('${id}', '${t.filial}', 'svc_an', 'SEFAZ-AM fora do ar na massa', '2026-11-01T10:00:00Z',
+    '2026-11-01T11:00:00Z');
+INSERT INTO faturamento.nota (id, tenant_id, filial_id, serie, numero, idempotencia_chave, cliente_id,
+  natureza_operacao, produtos_centavos, total_nota_centavos)
+  VALUES ('${t.nota}', '${id}', '${t.filial}', 1,
+    faturamento.reservar_numero('${t.filial}', 'homologacao', 1::smallint, 1), 'massa-${t.slug}', '${t.cliente}',
+    'Venda de mercadoria', 1990, 1990);
+INSERT INTO faturamento.nota_item (tenant_id, nota_id, n_item, produto_id, produto_retrato, cfop, quantidade,
+  valor_unitario_centavos, valor_produto_centavos, valor_total_centavos)
+  VALUES ('${id}', '${t.nota}', 1, '${t.produto}', '{"codigo": "P1", "ncm": "22021000"}', '5102', 10000, 1990, 1990,
+    1990);
+UPDATE faturamento.nota SET status = 'em_autorizacao', chave_acesso = '${chave}', c_nf = '${cnfDe(cnf)}'
+  WHERE id = '${t.nota}';
+INSERT INTO faturamento.transmissao (tenant_id, nota_id, servico, destino, c_stat, x_motivo, respondida_em, duracao_ms)
+  VALUES ('${id}', '${t.nota}', 'autorizacao', 'simulador', 100, 'Autorizado o uso da NF-e', now(), 120);
+UPDATE faturamento.nota SET status = 'autorizada_guarda_pendente', protocolo = '113260000000001',
+  autorizada_em = '2026-11-21T12:00:00Z', c_stat = 100 WHERE id = '${t.nota}';
+INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protocolo, xml, sha256)
+  VALUES ('${id}', 'nfe_autorizada', '${t.nota}', '${chave}', '113260000000001', '${xml}', ${hashSql(xml)});
+INSERT INTO faturamento.nota_evento (tenant_id, nota_id, tipo, n_seq_evento, texto)
+  VALUES ('${id}', '${t.nota}', 'cce', 1, 'Correção do complemento do endereço');
+INSERT INTO faturamento.nota_xml (tenant_id, tipo, evento_id, protocolo, xml, sha256)
+  SELECT '${id}', 'evento_cce', e.id, '113260000000002', '${evento}', ${hashSql(evento)}
+  FROM faturamento.nota_evento e WHERE e.nota_id = '${t.nota}';
+INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos)
+  VALUES ('${id}', '${t.nota}', 1, 1, '2026-12-21', 1990);
+INSERT INTO faturamento.titulo_baixa (tenant_id, titulo_id, valor_centavos, usuario_id, forma)
+  SELECT '${id}', x.id, 990, '${t.usuario}', 'pix' FROM faturamento.titulo x WHERE x.nota_id = '${t.nota}';
+INSERT INTO faturamento.inutilizacao (tenant_id, filial_id, serie, ano, numero_inicial, numero_final, justificativa)
+  VALUES ('${id}', '${t.filial}', 1, 2026, 2, 2, 'Número pulado na massa de teste');
+INSERT INTO faturamento.nota_xml (tenant_id, tipo, inutilizacao_id, protocolo, xml, sha256)
+  SELECT '${id}', 'inutilizacao', i.id, '113260000000003', '${inut}', ${hashSql(inut)}
+  FROM faturamento.inutilizacao i WHERE i.tenant_id = '${id}';
+`;
+}
+
+/** Linha geral (tenant de referência) da carga aproximada: só o dono grava. */
+export function fixtureCargaGeral(): string {
+  return `
+INSERT INTO fiscal.carga_aproximada (tenant_id, ncm, uf, aliquota_federal_nacional, aliquota_federal_importado,
+  aliquota_estadual, vigencia_inicio, versao, fonte)
+  VALUES (plataforma.tenant_referencia(), '22021000', 'AM', 130000, 160000, 200000, '2026-01-01', '26.1.A', 'IBPT');
 `;
 }

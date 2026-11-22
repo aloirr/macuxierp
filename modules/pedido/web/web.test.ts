@@ -5,10 +5,12 @@ import { manifest } from '../manifest';
 import type { Pedido } from '../contracts';
 import { acoesDoPedido, avisoDoMotivo, validarAprovacao, validarMotivo } from './acoes';
 import { criarClientePedido, ErroPedido } from './cliente';
-import { linhasDeHistorico, linhasDeItens, linhasDePendencias, resumoDaDecisao } from './detalhe';
-import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from './formatar';
+import { cabecalhoDoPedido, linhasDeHistorico, linhasDeItens, linhasDePendencias, resumoDaDecisao } from './detalhe';
+import { formatarCentavos, formatarDataHora, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { calcularTotal } from './total';
 import { formularioVazio, novaChaveDoFormulario, retornoDoLancamento, formularioDoPedido, validarFormulario, type Formulario } from './formulario';
 import { colunasDaTela, colunasDoCsv, FILTROS_TELA, linhaDaTela } from './lista';
+import { caminhoDaConsulta, caminhoDosEnderecos, FONTE_CLIENTE, FONTE_PRODUTO, opcoesDeEndereco } from './fontes';
 import { PAGINAS_PEDIDO, paginaPedidos, type ItemListaPedido } from './paginas';
 
 const U1 = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
@@ -125,6 +127,11 @@ describe('motivos e justificativa (§4.3)', () => {
 });
 
 describe('detalhe', () => {
+  it('cabeçalho: título "Pedido <número>" e selo do status para o h1', () => {
+    const c = cabecalhoDoPedido({ numero: 101, status: 'em_analise', origem: 'bko', cliente_retrato: { razao_social: 'X', documento: null }, emitido_em: '2026-11-21T12:00:00.000Z', observacao: null, total_centavos: 0, valor_faturado_centavos: 0 } as unknown as Pedido, 'America/Manaus');
+    expect(c.titulo).toBe('Pedido 101');
+    expect(c.selo).toEqual({ rotulo: 'Em análise' });
+  });
   it('pendências mostram esperado e informado na unidade do código', () => {
     const l = linhasDePendencias([
       { codigo: 'desconto_acima_maximo', bloqueante: false, sequencia: 1, produto_id: U1, esperado: 500, informado: 1250 },
@@ -133,10 +140,10 @@ describe('detalhe', () => {
       { codigo: 'cliente_inativo', bloqueante: true, sequencia: null, produto_id: null, esperado: null, informado: null },
     ]);
     expect(l.map((x) => [x.texto, x.gravidade, x.esperado, x.informado])).toEqual([
-      ['Desconto acima do máximo', 'Aceitável', '5%', '12,5%'],
-      ['Limite de crédito excedido', 'Aceitável', 'R$ 1.000,00', 'R$ 1.500,50'],
-      ['Estoque insuficiente', 'Bloqueante', '2', '5'],
-      ['Cliente inativo', 'Bloqueante', '', ''],
+      ['Desconto acima do máximo', 'Atenção', '5%', '12,5%'],
+      ['Limite de crédito excedido', 'Atenção', 'R$ 1.000,00', 'R$ 1.500,50'],
+      ['Estoque insuficiente', 'Bloqueia', '2', '5'],
+      ['Cliente inativo', 'Bloqueia', '', ''],
     ]);
   });
   it('itens, histórico e decisão saem formatados', () => {
@@ -231,5 +238,66 @@ describe('formulário do pedido manual', () => {
     const r = retornoDoLancamento({ numero: 10, status: 'em_analise', pendencias: [{ codigo: 'credito_sem_limite', bloqueante: false, sequencia: null, produto_id: null, esperado: 0, informado: 5000 }] });
     expect(r.status).toBe('em_analise');
     expect(r.pendencias[0]).toMatchObject({ texto: 'Cliente sem limite de crédito', esperado: 'R$ 0,00', informado: 'R$ 50,00' });
+  });
+});
+
+describe('edição, endereço de entrega e fontes dos seletores (T-0015, lote 3b)', () => {
+  it('a página de edição exige lançar pedido e vale só para o pedido bko em análise', () => {
+    const e = PAGINAS_PEDIDO.find((p) => p.id === 'editar');
+    expect(e).toMatchObject({ tipo: 'editar', rota: '/pedido/pedidos/:id/editar', ver: 'pedido.pedido.lancar' });
+  });
+  it('o PUT da edição leva o If-Match com o updated_at carregado', async () => {
+    const chamadas: { url: string; method: string; headers: Record<string, string> }[] = [];
+    const cliente = criarClientePedido({
+      baseUrl: 'http://api', token: () => 't',
+      fetch: async (url, init) => {
+        chamadas.push({ url, method: init.method, headers: init.headers });
+        return { status: 409, ok: false, headers: { get: () => 'application/json' }, json: async () => ({ codigo: 'CONFLITO', mensagem: 'Outra edição' }) };
+      },
+    });
+    const r = validarFormulario(valido());
+    if (!r.ok) throw new Error('inválido');
+    await expect(cliente.editar(U1, r.entrada, '2026-11-22T00:00:00.000Z')).rejects.toMatchObject({ status: 409, codigo: 'CONFLITO' });
+    expect(chamadas[0]).toMatchObject({ url: `http://api/v1/pedido/pedidos/${U1}`, method: 'PUT', headers: { 'If-Match': '2026-11-22T00:00:00.000Z' } });
+  });
+  it('o endereço de entrega é opcional: vazio vira null; escolhido vai no contrato; id inválido é recusado', () => {
+    expect(formularioVazio().endereco_entrega_id).toBe('');
+    const sem = validarFormulario(valido());
+    expect(sem.ok && sem.entrada.endereco_entrega_id).toBeNull();
+    const com = validarFormulario({ ...valido(), endereco_entrega_id: U3 });
+    expect(com.ok && com.entrada.endereco_entrega_id).toBe(U3);
+    const ruim = validarFormulario({ ...valido(), endereco_entrega_id: 'x' });
+    expect(!ruim.ok && ruim.erros.endereco_entrega_id).toBe('Endereço inválido');
+    const f = formularioDoPedido({ filial_id: U1, cliente_id: U2, condicao_pagamento_id: null, endereco_entrega: { endereco_id: U3 }, observacao: null, itens: [] } as unknown as Pedido);
+    expect(f.endereco_entrega_id).toBe(U3);
+  });
+  it('as opções de endereço trazem logradouro, número, bairro e município/UF; o principal é marcado', () => {
+    const base = { logradouro: 'Rua A', numero: '10', bairro: 'Centro', uf: 'AM' } as const;
+    expect(opcoesDeEndereco([{ ...base, id: U1, tipo: 'principal', municipio_nome: 'Manaus' }, { ...base, id: U2, tipo: 'entrega' }])).toEqual([
+      { valor: U1, rotulo: 'Rua A, 10, Centro, Manaus/AM (principal)' },
+      { valor: U2, rotulo: 'Rua A, 10, Centro, AM' },
+    ]);
+    expect(caminhoDosEnderecos(U1)).toBe(`/v1/cadastros/clientes/${U1}/enderecos`);
+  });
+  it('cliente e produto buscam no servidor (?busca=, mínimo 2, limite 20, corte em 80); lista fechada fica em texto', () => {
+    expect(caminhoDaConsulta(FONTE_CLIENTE, '  ba ')).toBe('/v1/cadastros/clientes?limite=20&busca=ba');
+    expect(caminhoDaConsulta(FONTE_PRODUTO, 'b')).toBe('/v1/cadastros/produtos?limite=20');
+    expect(caminhoDaConsulta(FONTE_PRODUTO)).toBe('/v1/cadastros/produtos?limite=20');
+    expect(caminhoDaConsulta(FONTE_PRODUTO, 'x'.repeat(200))).toBe(`/v1/cadastros/produtos?limite=20&busca=${'x'.repeat(80)}`);
+    expect(caminhoDaConsulta(FONTE_PRODUTO, `${'a'.repeat(79)}😀😀`)).toBe(`/v1/cadastros/produtos?limite=20&busca=${'a'.repeat(79)}%F0%9F%98%80`);
+    expect(caminhoDaConsulta('/v1/cadastros/filiais', 'qualquer')).toBe('/v1/cadastros/filiais');
+  });
+});
+
+describe('calcularTotal (RN-PED-03: valor do item menos desconto)', () => {
+  it('RN-PED-03: total por linha e do pedido em centavos', () => {
+    const r = calcularTotal([
+      { quantidade: 25_000, preco_unitario_centavos: 1000, desconto_centavos: 500 },
+      { quantidade: 10_000, preco_unitario_centavos: 333, desconto_centavos: 0 },
+    ]);
+    expect(r).toEqual({ itens: [2000, 333], total: 2333 });
+  });
+  it('RN-PED-03: desconto acima do valor é incoerente', () => {
+    expect(() => calcularTotal([{ quantidade: 10_000, preco_unitario_centavos: 100, desconto_centavos: 200 }])).toThrow();
   });
 });
