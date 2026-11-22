@@ -1,6 +1,6 @@
 // Testes da conferência de produção (R-20261114-121700-alexandre). node --test scripts/ci/*.test.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { conferir, conferirCommit, conferirSuite, digestNoGhcr, erroDaRef, errosDaEntrada, tagExiste } from './producao-conferir.mjs';
 
@@ -230,4 +230,14 @@ test('demo desligada: nenhum workflow publica nem entra na VM da demo', () => {
     assert.throws(() => ler(`.github/workflows/${wf}.yml`), /ENOENT/, wf);
   for (const wf of ['producao-liberar', 'producao-aprovar', 'producao-publicar'])
     assert.doesNotMatch(ler(`.github/workflows/${wf}.yml`), /DEMO_|scope=macuxi-bko\b(?!-)|macuxi-demo-arquivos'/, wf);
+});
+
+test('caminhos: todo scripts/deploy/... citado no conferir e na trava existe no repositório (T-0024)', () => {
+  const faltando = [];
+  for (const arq of ['scripts/ci/producao-conferir.mjs', 'scripts/ci/producao-trava.mjs']) {
+    for (const [caminho] of ler(arq).matchAll(/scripts\/deploy\/[\w./-]*\w/g)) {
+      if (!existsSync(new URL(`../../${caminho}`, import.meta.url))) faltando.push(`${arq}: ${caminho}`);
+    }
+  }
+  assert.deepEqual(faltando, []);
 });
