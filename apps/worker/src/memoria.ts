@@ -1,6 +1,6 @@
 /** Filas em memória com o mesmo contrato das portas (testes de unidade; no banco: `pg.ts`). */
-import type { PedidoTrabalho, Trabalho, Transacao } from '@macuxierp/platform-sdk';
-import type { EventoPendente, FilaOutbox, ReservaTrabalhos, RegistroConsumo } from './portas';
+import type { EnvelopeEvento, PedidoTrabalho, Trabalho, Transacao } from '@macuxierp/platform-sdk';
+import type { EventoPendente, FilaOutbox, FonteReentrega, ReservaTrabalhos, RegistroConsumo } from './portas';
 
 interface LinhaEvento extends EventoPendente {
   publicado_em: Date | null;
@@ -32,17 +32,37 @@ export class FilaOutboxMemoria implements FilaOutbox {
   }
 
   async marcarPublicado(_tx: Transacao, id: string, agora: Date): Promise<void> {
-    this.linha(id).publicado_em = agora;
+    Object.assign(this.linha(id), { publicado_em: agora, erro: null });
   }
 
   async marcarFalha(_tx: Transacao, id: string, tentativas: number, proximoEm: Date, erro: string): Promise<void> {
     Object.assign(this.linha(id), { tentativas, proximo_em: proximoEm, erro });
   }
 
+  async marcarFalhou(_tx: Transacao, id: string, tentativas: number, agora: Date, erro: string): Promise<void> {
+    Object.assign(this.linha(id), { tentativas, publicado_em: agora, erro });
+  }
+
   private linha(id: string): LinhaEvento {
     const l = this.linhas.find((x) => x.id === id);
     if (!l) throw new Error(`evento ${id} inexistente`);
     return l;
+  }
+}
+
+/** Reentrega sobre a outbox e o registro de consumo em memória (mesmo contrato do `FonteReentregaPg`). */
+export class FonteReentregaMemoria implements FonteReentrega {
+  constructor(
+    private readonly outbox: FilaOutboxMemoria,
+    private readonly consumo: RegistroConsumoMemoria,
+  ) {}
+
+  async pendentes(_tx: Transacao, consumidor: string, nome: string, ignorar: readonly string[], limite: number): Promise<EnvelopeEvento[]> {
+    return this.outbox.linhas
+      .filter((l) => l.nome === nome && l.publicado_em && l.erro === null && !ignorar.includes(l.id) && !this.consumo.consumidos.has(`${consumidor}|${l.id}`))
+      .sort((a, b) => a.ocorrido_em.localeCompare(b.ocorrido_em) || a.versao - b.versao || a.id.localeCompare(b.id))
+      .slice(0, limite)
+      .map(({ id, tenant_id, nome: n, agregado_id, versao, ocorrido_em, ator, request_id, payload }) => ({ id, tenant_id, nome: n, agregado_id, versao, ocorrido_em, ator, request_id, payload }));
   }
 }
 

@@ -76,13 +76,14 @@ const CHAVES_RESERVADAS = new Set(['alerta', 'tenant_id', 'modulo', 'msg', 'leve
 /**
  * `Alertar` do `integracao-fdv` ligado ao monitor (log do worker). `codigo` e o contexto já vêm do módulo só com código e
  * ids; aqui é a defesa: chave fora de `[a-z0-9_]`, chave reservada ou valor com cara de texto livre é descartado.
+ * `modulo` (padrão `integracao-fdv`): o mesmo alerta serve ao pedido e ao despachante da outbox (`plataforma`, T-0045).
  */
-export function criarAlertaMonitor(log: LogAlerta): (tenantId: string, codigo: string, contexto?: Record<string, string>) => void {
+export function criarAlertaMonitor(log: LogAlerta, modulo = 'integracao-fdv'): (tenantId: string, codigo: string, contexto?: Record<string, string>) => void {
   return (tenantId, codigo, contexto = {}) => {
     const seguro = Object.fromEntries(
       Object.entries(contexto).filter(([k, v]) => CHAVE_SEGURA.test(k) && !CHAVES_RESERVADAS.has(k) && typeof v === 'string' && VALOR_SEGURO.test(v)),
     );
-    log.warn({ ...seguro, alerta: VALOR_SEGURO.test(codigo) ? codigo : 'codigo_invalido', tenant_id: tenantId, modulo: 'integracao-fdv' }, 'alerta do monitor');
+    log.warn({ ...seguro, alerta: VALOR_SEGURO.test(codigo) ? codigo : 'codigo_invalido', tenant_id: tenantId, modulo }, 'alerta do monitor');
   };
 }
 
