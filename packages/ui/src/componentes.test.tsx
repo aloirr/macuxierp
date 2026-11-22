@@ -76,8 +76,8 @@ describe('FaixaPendencias', () => {
 describe('DialogoMotivo', () => {
   const motivos = [{ codigo: 'erro', rotulo: 'Erro de digitação' }];
   it('valida motivo e texto obrigatórios', () => {
-    expect(exigeEscolha({ texto: '' }, { motivos })).toBe('Escolha um motivo.');
-    expect(exigeEscolha({ motivo: 'erro', texto: '  ' }, { motivos, textoObrigatorio: true })).toBe('Descreva o motivo.');
+    expect(exigeEscolha({ texto: '' }, { motivos })).toEqual({ campo: 'motivo', mensagem: 'Nenhum motivo escolhido. Escolha um da lista.' });
+    expect(exigeEscolha({ motivo: 'erro', texto: '  ' }, { motivos, textoObrigatorio: true })).toEqual({ campo: 'texto', mensagem: 'O detalhe está vazio. Descreva o motivo.' });
     expect(exigeEscolha({ motivo: 'erro', texto: 'x' }, { motivos, textoObrigatorio: true })).toBeNull();
     expect(exigeEscolha({ texto: '' }, {})).toBeNull();
   });
@@ -119,7 +119,7 @@ describe('FormularioItens', () => {
     expect(reaisParaCentavos('')).toBe(0);
     expect(reaisParaCentavos('1,234')).toBeNull();
     expect(reaisParaCentavos('abc')).toBeNull();
-    expect(centavosParaReais(123456)).toBe('1234,56');
+    expect(centavosParaReais(123456)).toBe('1.234,56');
     expect(centavosParaReais(5)).toBe('0,05');
     expect(textoParaQuantidade('1,5')).toBe(1.5);
     expect(textoParaQuantidade('2.25')).toBe(2.25);

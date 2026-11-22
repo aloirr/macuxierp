@@ -34,11 +34,14 @@ Campos: quantidade em texto local (aceita "1,5", até 4 casas); preço e descont
 Valores em `packages/ui/src/estilos.ts` e `tokens.ts`; aqui só o que vale para quem usa.
 - **Desabilitado (MC-0014):** `renderSeletorProduto` recebe `desabilitado`; o seletor injetado deve respeitá-lo.
 - **Campo numérico inválido (MC-0015):** mensagem abaixo do campo (`role="alert"`, ligada por `aria-describedby`), com o problema e a ação.
-- **Foco visível único (MC-0011), para o `engenheiro-apps`:** os componentes não desenham foco. A regra global em `apps/web/.../globals.css` deve ser:
+- **Foco visível (MC-0011):** regra global no `globals.css` (bloco abaixo); `botoes.css` traz a mesma regra para `.mx-botao*`, gerada de `focoVisivel`. Para o `engenheiro-apps`, o `globals.css` deve ter:
   ```css
   :focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
   ```
   Sem `outline: none` em outro lugar. Em fundo escuro (menu grafite) o shell usa `--mx-cor-branco` no mesmo seletor.
+- **Densidade e canto (ressalvas do `design-de-marca` no #242, T-0021):** Campos em 13 px (tabela densa), botões em 15 px (MC-0008); canto de 6 px nos dois (`campoBase`).
+- **Erro do `DialogoMotivo` (MC-0015):** o erro de motivo fica logo abaixo dos rádios (o `fieldset` aponta para ele por `aria-describedby`); o de texto, logo abaixo do campo (`aria-invalid`, `aria-describedby`, borda `erroTexto`). O erro do `validar` do módulo vai para o campo de texto.
+- **Dinheiro digitado (RD-0723):** o `FormularioItens` mostra "1.234,56" (formato do sdk, com milhar, igual ao do shell); aceita também "1234,5" e "R$ 12,50" ao colar.
 
 ## Botões (MC-0008), bordaCampo e nowrap
 - Dois botões, um tamanho: `botaoPrincipal(d?)` e `botaoSecundario(d?)`, de `estilos.ts`; diferem só em cor e peso. Um principal por tela.
