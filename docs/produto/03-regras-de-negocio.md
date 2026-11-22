@@ -67,5 +67,9 @@
 | Lançar pedido manual (criar, editar, revalidar) | ✔ | ✔ | ✔ | | | |
 | Aprovar pedido | ✔ | ✔ | | | | |
 | Emitir, cancelar, CC-e, inutilizar | ✔ | | ✔ | ✔ | | |
+| Integração FDV: ver o monitor, os envios e os erros (`integracao-fdv.ver`) | ✔ | ✔ | | | | ✔ |
+| Integração FDV: chave do Conector, configuração, carga completa e retomar (`integracao-fdv.configurar`) | ✔ | | | | | |
+| Baixar título (`faturamento.titulo.baixar`) | ✔ | ✔ | ✔ | | | |
+| Faturamento real com NF-e simulada na filial (bandeira, com auditoria) | ✔ | | | | | |
 | Trocar ambiente fiscal | só com o "aprovo produção fiscal" do Alexandre | | | | | |
 | Ver tudo | ✔ | ✔ | ✔ | ✔ | própria carteira | ✔ |
