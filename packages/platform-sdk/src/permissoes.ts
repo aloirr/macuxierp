@@ -53,6 +53,7 @@ export const PERMISSOES = {
   'faturamento.ver': VER,
   'faturamento.nota.emitir': ['administrador', 'faturista', 'fiscal'], // emitir, cancelar, CC-e, inutilizar
   'faturamento.titulo.baixar': CADASTRO, // doc 03, matriz: administrador, gerente e faturista (RN-FAT-06)
+  'faturamento.configurar': ADM, // bandeira da filial "faturamento real com NF-e simulada" (PUT /filiais/:id/configuracao; titulos.md): só o administrador
   'integracao-fdv.ver': ['administrador', 'gerente', 'leitura'], // T-0011: os perfis do manifesto do módulo; o monitor não é "ver tudo"
   'integracao-fdv.configurar': ADM,
 } as const satisfies Record<string, readonly Perfil[]>;

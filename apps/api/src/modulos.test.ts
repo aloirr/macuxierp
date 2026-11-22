@@ -13,8 +13,8 @@ import { emitirTokenAcesso } from './auth/jwt';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { formulario, NOME_ARQUIVO_PADRAO } from './apoio-multipart';
-import { modulosDeTeste, repoCoreDuble } from './apoio-teste';
-import { a1AtivoDoCore, certificadosDoCore, RegistroModulosInvalido, registrarModulos } from './modulos';
+import { dependenciasCoreDeTeste, modulosDeTeste, repoCoreDuble } from './apoio-teste';
+import { a1AtivoDoCore, certificadosDoCore, EMISSAO_PRODUCAO_HABILITADA, montarModulos, RegistroModulosInvalido, registrarModulos } from './modulos';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const USUARIO = '1f2e3d4c-5b6a-4789-8a9b-0c1d2e3f4a5b';
@@ -342,5 +342,41 @@ describe('integração FDV montada na API (T-0011, RN-CORE-02)', () => {
     expect([r.statusCode, r.json().codigo]).toEqual([503, 'CHAVE_INTEGRACAO_AUSENTE']);
     expect(r.body).not.toContain(CORPO.chave);
     expect(logs.join('\n')).not.toContain(CORPO.chave);
+  });
+});
+
+describe('faturamento na API: emissão em produção desligada até a T-0046 (RN-FAT-04, regra 7)', () => {
+  const PEDIDO = '5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f80';
+  const LICENCAS: Licenca[] = ['cadastros', 'pedido', 'faturamento'].map((modulo) => ({ modulo: modulo as Licenca['modulo'], ativo: true, valido_ate: null }));
+
+  it('a constante é false, sem variável de ambiente', () => {
+    expect(EMISSAO_PRODUCAO_HABILITADA).toBe(false);
+  });
+
+  it('filial em produção: POST /notas dá 422 RN-FAT-04 antes de reservar o número (a série não anda)', async () => {
+    const chamadas: string[] = [];
+    const anotar = <T>(nome: string, valor: T) => async () => (chamadas.push(nome), valor);
+    // Só o que a emissão lê ANTES do ambiente; reservar o número (ou qualquer outra porta) lança e vira 500, não 422.
+    const notas: never = new Proxy<Record<string, unknown>>(
+      { travarIdempotencia: anotar('travarIdempotencia', undefined), buscarPorIdempotencia: anotar('buscarPorIdempotencia', null), travarPedido: anotar('travarPedido', undefined), quantidadesJaFaturadas: anotar('quantidadesJaFaturadas', new Map()) },
+      { get: (alvo, prop) => (prop in alvo ? alvo[prop as string] : prop === 'then' ? undefined : async () => (chamadas.push(String(prop)), Promise.reject(new Error(`notas.${String(prop)} não esperado`)))) },
+    ) as never;
+    const modulos = montarModulos({
+      core: dependenciasCoreDeTeste(),
+      cadastros: { fontes: { cnpj: [], cep: [] } },
+      faturamento: {
+        notas,
+        pedidos: { obter: anotar('pedidos.obter', { filial_id: FILIAL }) } as never,
+        situacao: { situacao: anotar('situacao', { status: 'aprovado' }) } as never,
+        cadastros: { filial: anotar('cadastros.filial', { id: FILIAL, emissora: true, nfe_serie: 1, ie: '053000000' }) } as never,
+        ambiente: { ambiente: anotar('ambiente', 'producao') } as never,
+      },
+    });
+    const app = await montar(LICENCAS, undefined, modulos, { idempotencia: new IdempotenciaMemoria() });
+    const r = await app.inject({ method: 'POST', url: '/v1/faturamento/notas', headers: { authorization: token('faturista') }, payload: { pedido_id: PEDIDO, idempotencia: 'emissao-producao-1' } });
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.body).toContain('RN-FAT-04');
+    expect(chamadas).toContain('ambiente');
+    expect(chamadas).not.toContain('reservarNumero');
   });
 });

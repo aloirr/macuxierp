@@ -21,7 +21,14 @@ import {
   type DependenciasCore,
   type RepositorioCore,
 } from '@macuxierp/core/api';
-import { criarPluginFaturamento, repositoriosSql as repositoriosFaturamento, type ConsultaA1Ativo, type DependenciasFaturamento } from '@macuxierp/faturamento/api';
+import {
+  consultaTitulosPedido,
+  criarPluginFaturamento,
+  repositoriosSql as repositoriosFaturamento,
+  type ConsultaA1Ativo,
+  type DependenciasFaturamento,
+  type LogFaturamento,
+} from '@macuxierp/faturamento/api';
 import { criarCalculoFiscal } from '@macuxierp/fiscal/api';
 import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
 import { criarPluginIntegracaoFdv, type DependenciasRotas as DependenciasIntegracaoFdv } from '@macuxierp/integracao-fdv/api';
@@ -92,6 +99,23 @@ export function a1AtivoDoCore(repo: RepositorioCore, agora?: () => Date): Consul
 }
 
 /**
+ * RN-FAT-04 e regra 7: emissão (e reenvio) em filial de PRODUÇÃO fiscal recusada com 422 antes de reservar o número, até a T-0046 (transporte
+ * real homologado). Constante de propósito, sem variável de ambiente: ligar a produção é mudança de código, por PR, na T-0046.
+ */
+export const EMISSAO_PRODUCAO_HABILITADA = false;
+
+/** Sem log (testes que não passam um): descarta. Em produção o `main.ts` passa o pino da API. */
+const SEM_LOG: LogPedido = { info: () => undefined, warn: () => undefined };
+
+/**
+ * `LogFaturamento` sobre o log da API: uma linha `warn` por ocorrência (geração de título pendente, leitura da bandeira que falhou), com
+ * `modulo` e só o que o faturamento manda (ids, códigos e motivo de regra; nunca dado pessoal, regra 8).
+ */
+export function logFaturamentoDe(log: LogPedido = SEM_LOG): LogFaturamento {
+  return (e) => log.warn({ modulo: 'faturamento', ...e }, e.evento);
+}
+
+/**
  * Dependências de produção do faturamento na API (README do faturamento, "O que o apps/api e o apps/worker ligam"): repositórios SQL, a
  * consulta do pedido, a de cadastros (#165), o cálculo do fiscal (emitente pela `criarConsultaParaFiscal` do cadastros, #189), o emissor
  * só para `montar` e o veredito do A1 pelo core. SEM `lerA1` e sem assinatura: o tipo `DependenciasFaturamento` não os aceita (ADR 0005
@@ -101,6 +125,7 @@ function dependenciasFaturamento(o: {
   repos: ReturnType<typeof repositoriosFaturamento>;
   repoCore: RepositorioCore;
   repositoriosCadastros: DependenciasCadastros['repositorios'];
+  log?: LogPedido;
 }): DependenciasFaturamento {
   const { repos } = o;
   const cadastros = criarConsultaParaFaturamento(o.repositoriosCadastros);
@@ -114,6 +139,10 @@ function dependenciasFaturamento(o: {
     notas: repos.notas,
     eventos: repos.eventos,
     certificado: a1AtivoDoCore(o.repoCore),
+    titulos: repos.titulos,
+    configuracao: repos.configuracao,
+    log: logFaturamentoDe(o.log),
+    emissaoProducaoHabilitada: EMISSAO_PRODUCAO_HABILITADA,
   };
 }
 
@@ -122,15 +151,15 @@ export interface DependenciasModulos {
   /** Padrão: adaptador SQL, fontes HTTP reais e o A1 pela porta do core. Os testes trocam o que precisarem. */
   cadastros?: Partial<DependenciasCadastros>;
   /**
-   * Padrão (T-0016, R-20261121-234202): `dependenciasDeProducao` do pedido (adaptador SQL, sem títulos e sem nota em
-   * autorização até a F4) sobre a `criarConsultaParaPedido` do cadastros com os mesmos repositórios do cadastros.
+   * Padrão (T-0016, R-20261121-234202): `dependenciasDeProducao` do pedido (adaptador SQL, com a nota em aberto e os títulos
+   * do faturamento) sobre a `criarConsultaParaPedido` do cadastros com os mesmos repositórios do cadastros.
    */
   pedido?: Partial<DependenciasPedido>;
   /** Rotas do BKO do conector (T-0011). Padrão: sem chave mestra (ver `EntradaProducao.chaveIntegracao`). */
   integracaoFdv?: DependenciasIntegracaoFdv;
   /** Padrão: `dependenciasFaturamento` (SQL, cadastros, fiscal, emissor e o A1 pelo core). Os testes trocam o que precisarem. */
   faturamento?: Partial<DependenciasFaturamento>;
-  /** Log dos módulos que recebem um (pedido): o pino da API. Só ids e códigos (regra 8). Sem ele, o módulo não loga. */
+  /** Log dos módulos que recebem um (pedido e faturamento): o pino da API. Só ids e códigos (regra 8). Sem ele, o módulo não loga. */
   log?: LogPedido;
 }
 
@@ -142,10 +171,15 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
     certificados: d.cadastros?.certificados ?? certificadosDoCore(d.core.repo),
   });
   const reposFaturamento = repositoriosFaturamento({ outbox: new OutboxPg() });
-  const faturamento = { ...dependenciasFaturamento({ repos: reposFaturamento, repoCore: d.core.repo, repositoriosCadastros }), ...d.faturamento };
-  // P-2: nota em autorização bloqueia o cancelamento do pedido (a porta inversa vem do faturamento).
+  const faturamento = { ...dependenciasFaturamento({ repos: reposFaturamento, repoCore: d.core.repo, repositoriosCadastros, ...(d.log ? { log: d.log } : {}) }), ...d.faturamento };
+  // P-2: nota em autorização bloqueia o cancelamento do pedido (a porta inversa vem do faturamento). RN-PED-04: o saldo aberto do
+  // cliente vem dos títulos do faturamento (produção ou `conta_como_real`, titulos.md).
   const pedido = criarPluginPedido({
-    ...dependenciasPedido(criarConsultaParaPedido(repositoriosCadastros), { notas: reposFaturamento.notaEmAberto, ...(d.log ? { log: d.log } : {}) }),
+    ...dependenciasPedido(criarConsultaParaPedido(repositoriosCadastros), {
+      notas: reposFaturamento.notaEmAberto,
+      titulos: consultaTitulosPedido(reposFaturamento.titulos),
+      ...(d.log ? { log: d.log } : {}),
+    }),
     ...d.pedido,
   });
   const integracaoFdv = criarPluginIntegracaoFdv(d.integracaoFdv ?? { chaveMestra: null });

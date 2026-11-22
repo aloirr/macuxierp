@@ -44,6 +44,11 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(moduloDaAcao('faturamento.titulo.baixar')).toBe('faturamento');
   });
 
+  it('RN-FAT-04: configurar o faturamento da filial (bandeira "faturamento real com NF-e simulada") só o administrador', () => {
+    expect(quem('faturamento.configurar')).toEqual(['administrador']);
+    expect(moduloDaAcao('faturamento.configurar')).toBe('faturamento');
+  });
+
   it('RN-CORE-08: trocar ambiente fiscal só o administrador (o recado do Alexandre é conferido no core)', () => {
     expect(quem('core.ambiente.trocar')).toEqual(['administrador']);
   });

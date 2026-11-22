@@ -7,6 +7,8 @@
  *   produção fiscal recebe `SimuladorEmProducaoErro` do seletor, sem o simulador ser chamado (regra 7).
  * - Trabalhos e rotinas: README do faturamento e ADR 0008, emenda de 22/11. Cada trabalho abre as próprias transações (a SEFAZ vai fora
  *   delas); a `tx` do executor não é usada. Erro de configuração da SEFAZ desiste na hora (422, sem retentativa): repetir não muda nada.
+ * - Lote 5 (#205): `titulos` e `log` no transmissor e no processador; varredura dos títulos de boleto (`criarVarreduraTitulos`) na mesma rotina de 60 s,
+ *   só em tenant licenciado; consumidor do pedido aprovado com a situação ATUAL do pedido (`criarConsultaParaFaturar`, a mesma porta da API).
  * Logs: só ids, contagens, códigos e nomes de erro; nunca XML, CNPJ/CPF, certificado ou senha.
  */
 import { criarConsultaParaFaturamento, repositoriosSql as repositoriosCadastros } from '@macuxierp/cadastros/api';
@@ -15,9 +17,13 @@ import {
   criarConsumidorPedidoAprovado,
   criarProcessadorEventos,
   criarTransmissor,
+  criarVarreduraTitulos,
   repositoriosSql as repositoriosFaturamento,
   type A1DaFilial,
+  type LogFaturamento,
+  type PedidosAprovados,
   type RepositorioNotas,
+  type SituacaoPedidoDoPedido,
 } from '@macuxierp/faturamento/api';
 import {
   ConsultarNotaPayload,
@@ -29,6 +35,7 @@ import {
   TRABALHO_TRANSMITIR_NOTA,
   TransmitirNotaPayload,
 } from '@macuxierp/faturamento/contracts';
+import { criarConsultaParaFaturar } from '@macuxierp/pedido/api';
 import { abrirA1, criarEmissorNFe, type EmissorNFe } from '@macuxierp/nfe-emissor';
 import { criarSeletorTransporte, DESLOCAMENTO_MANAUS_MIN, ErroSefaz, type FabricaTransporteSimulador, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import { criarFabricaSimulador } from '@macuxierp/sefaz-simulador';
@@ -132,10 +139,26 @@ export interface MontagemFaturamentoWorker {
   rotinas: readonly RotinaDiaria[];
 }
 
-/** Consumidor de `pedido.pedido.aprovado@1` (fila `pedido_a_faturar`): não depende do A1 e entra sempre. */
-export function consumidoresFaturamento(): readonly ConsumidorEvento[] {
-  return [criarConsumidorPedidoAprovado()];
+/**
+ * `LogFaturamento` sobre o pino do worker: uma linha `warn` por ocorrência (título pendente ou desistido, divergência de título no cancelamento),
+ * com `modulo` e só o que o faturamento manda (ids, contagens e motivo de regra; nunca dado pessoal, regra 8).
+ */
+export function logFaturamentoDoWorker(log: Pick<Logger, 'warn'>): LogFaturamento {
+  return (e) => log.warn({ modulo: 'faturamento', ...e }, e.evento);
 }
+
+/**
+ * Consumidor de `pedido.pedido.aprovado@1` (fila `pedido_a_faturar`): não depende do A1 e entra sempre. A situação é a MESMA porta da
+ * emissão na API (`criarConsultaParaFaturar` do pedido): a reentrega de um aprovado antigo não ressuscita pedido cancelado (README do faturamento).
+ */
+export function consumidoresFaturamento(o: { pedidos?: PedidosAprovados; situacao?: SituacaoPedidoDoPedido } = {}): readonly ConsumidorEvento[] {
+  return [criarConsumidorPedidoAprovado({ pedidos: o.pedidos ?? repositoriosFaturamento({ outbox: new OutboxPg() }).pedidos, situacao: o.situacao ?? criarConsultaParaFaturar() })];
+}
+
+/** Varredura dos títulos (RN-FAT-03): nota autorizada de boleto sem título há este tempo gera de novo (a geração normal é na mesma tx da autorização). */
+export const TITULOS_PARADOS_HA_MINUTOS = 5;
+/** Notas por tenant em cada varredura de títulos. */
+export const LIMITE_VARREDURA_TITULOS = 50;
 
 /** Resultados conhecidos do `processarPendentes` (evento e inutilização); o resto é o nome do erro que o processador capturou. */
 const RESULTADOS_DE_EVENTO: ReadonlySet<string> = new Set(['registrado', 'rejeitado', 'registrada', 'rejeitada', 'divergente', 'ignorada', 'sem_certificado', 'ambiente_mudou', 'filial_invalida']);
@@ -146,9 +169,12 @@ export function montarFaturamentoWorker(d: DependenciasFaturamentoWorker): Monta
   const lerA1 = criarLerA1DoWorker(d.chaveA1, agora);
   const emissor = d.emissor ?? criarEmissorNFe();
   const sefaz = d.sefaz ?? criarSefazDoWorker();
-  const comuns = { banco: d.banco, notas: repos.notas, ambiente: repos.ambiente, lerA1, emissor, sefaz, agora };
+  const log = logFaturamentoDoWorker(d.log);
+  const comuns = { banco: d.banco, notas: repos.notas, titulos: repos.titulos, log, ambiente: repos.ambiente, lerA1, emissor, sefaz, agora };
   const transmissor = criarTransmissor(comuns);
   const processador = criarProcessadorEventos({ ...comuns, eventos: repos.eventos, cadastros: criarConsultaParaFaturamento(repositoriosCadastros) });
+  // Uma por processo: o teto de tentativas por nota fica na memória da instância (titulos.md).
+  const varrerTitulos = criarVarreduraTitulos({ titulos: repos.titulos, notas: repos.notas, log });
 
   const executores = [
     executor(TRABALHO_TRANSMITIR_NOTA, TransmitirNotaPayload, (t, p) => transmissor.transmitirNota(t, p.nota_id)),
@@ -170,9 +196,18 @@ export function montarFaturamentoWorker(d: DependenciasFaturamentoWorker): Monta
     id: 'faturamento.varredura',
     intervaloMs: d.intervaloVarreduraMs ?? 60_000,
     async executar(quando) {
-      const r = { tenants: 0, notas: 0, eventos: 0, falhas: 0 };
+      const r = { tenants: 0, notas: 0, eventos: 0, titulos: 0, titulos_pendentes: 0, falhas: 0 };
       for (const tenant_id of await tenantsLicenciados(quando)) {
         r.tenants++;
+        // Títulos à parte (savepoint por nota, na tx do tenant): uma falha na SEFAZ ou nos eventos não segura a geração, e vice-versa.
+        try {
+          const t = await d.banco.comTenant(tenant_id, (tx) => varrerTitulos(tx, { ha_minutos: TITULOS_PARADOS_HA_MINUTOS, limite: LIMITE_VARREDURA_TITULOS }));
+          r.titulos += t.geradas;
+          r.titulos_pendentes += t.pendentes;
+        } catch (e) {
+          r.falhas++;
+          d.log.warn({ rotina: 'faturamento.varredura', modulo: 'faturamento', tenant_id, erro: nomeDoErro(e) }, 'varredura de títulos falhou no tenant');
+        }
         try {
           const notas = await transmissor.transmitirPendentes(tenant_id);
           const eventos = await processador.processarPendentes(tenant_id);

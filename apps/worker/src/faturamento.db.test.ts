@@ -4,8 +4,8 @@
  * `macuxierp_worker`) → simulador da SEFAZ-AM in-process (só homologação, R-20261122-022626).
  * O A1 de teste é gerado em tempo de execução (`@macuxierp/nfe-sefaz/teste`) e sobe pela rota do core (`POST /v1/core/certificados`,
  * cifrado com a chave de teste); só o worker o decifra (ADR 0005 item 4). Nenhum `.pfx` em disco, nenhuma escrita no Hub do FDV.
- * Casos: emissão autorizada (nfeProc guardado antes do status), a nota no pedido (#194) e no estoque (#192), cancelamento 135, nota MEI (CRT 4) e a barreira (a) — filial em produção
- * fiscal: o trabalho desiste com SEFAZ_SIMULADOR_EM_PRODUCAO e o simulador nunca é chamado para ela.
+ * Casos: emissão autorizada (nfeProc guardado antes do status), a nota no pedido (#194) e no estoque (#192), cancelamento 135, nota MEI (CRT 4) e a filial em produção
+ * fiscal: a API recusa com 422 RN-FAT-04 antes de reservar o número (lote 5, #205) e o simulador nunca é chamado para ela.
  * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -136,8 +136,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
     expect(r.statusCode, r.body).toBe(201);
   }
 
-  /** Pedido aprovado na filial (pela rota do pedido) e a nota emitida pela rota do faturamento (rascunho + trabalho na fila). */
-  async function emitirNota(f: Filial): Promise<{ id: string; status: string; pedido_id: string }> {
+  /** Pedido aprovado na filial (pela rota do pedido), já na fila a faturar pelo consumidor do worker. */
+  async function aprovarPedido(f: Filial): Promise<string> {
     const ped = await post(
       '/v1/pedido/pedidos',
       { filial_id: filiais[f], cliente_id: ids.cliente, condicao_pagamento_id: ids.condicao, itens: [{ produto_id: ids.produto, quantidade: 20_000, preco_unitario_centavos: 1990, desconto_centavos: 0 }] },
@@ -147,9 +147,15 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
     const pedido = ped.json<{ id: string; status: string }>();
     expect(pedido.status).toBe('aprovado');
     await rodarWorker(); // pedido.pedido.aprovado@1 → faturamento.pedido_a_faturar (consumidor ligado no worker)
-    const nota = await post('/v1/faturamento/notas', { pedido_id: pedido.id, idempotencia: `e2e-${randomUUID()}` });
+    return pedido.id;
+  }
+
+  /** Pedido aprovado e a nota emitida pela rota do faturamento (rascunho + trabalho na fila). */
+  async function emitirNota(f: Filial): Promise<{ id: string; status: string; pedido_id: string }> {
+    const pedido_id = await aprovarPedido(f);
+    const nota = await post('/v1/faturamento/notas', { pedido_id, idempotencia: `e2e-${randomUUID()}` });
     expect(nota.statusCode, nota.body).toBe(201);
-    return { ...nota.json<{ id: string; status: string }>(), pedido_id: pedido.id };
+    return { ...nota.json<{ id: string; status: string }>(), pedido_id };
   }
 
   const notaNoBanco = async (id: string) =>
@@ -254,18 +260,22 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
     expect(proc.xml).toMatch(/<CSOSN>102<\/CSOSN>/);
   });
 
-  it('barreira (a), regra 7: filial em produção fiscal — o trabalho desiste com SEFAZ_SIMULADOR_EM_PRODUCAO e o simulador nunca é chamado', async () => {
+  // Desde o lote 5 (#205) a API recusa a emissão em produção antes do worker (`EMISSAO_PRODUCAO_HABILITADA = false` até a T-0046): a nota nem
+  // nasce, então o seletor do worker (barreira (a), `SimuladorEmProducaoErro`) fica como segunda trava, testada no `faturamento.test.ts`.
+  it('regra 7 e RN-FAT-04: filial em produção fiscal — a API recusa com 422 antes de reservar o número; nada vai à fila nem ao simulador', async () => {
     await enviarA1('producao');
     const antes = destinos.length;
-    const nota = await emitirNota('producao');
+    const trabalhosAntes = (await trabalhos('faturamento.transmitir_nota')).length;
+    const pedido_id = await aprovarPedido('producao');
+    const r = await post('/v1/faturamento/notas', { pedido_id, idempotencia: `e2e-${randomUUID()}` });
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.json<{ codigo: string }>().codigo).toBe('RN-FAT-04');
+    expect(await admin('SELECT 1 FROM faturamento.nota WHERE pedido_id = $1', [pedido_id])).toEqual([]);
+    expect(await admin('SELECT 1 FROM faturamento.serie_numeracao WHERE filial_id = $1', [filiais.producao])).toEqual([]);
     await rodarWorker();
-    const [t] = (await trabalhos('faturamento.transmitir_nota')).slice(-1);
-    expect(t).toMatchObject({ estado: 'falhou' });
-    expect(t!.erro).toMatch(/SEFAZ_SIMULADOR_EM_PRODUCAO|simulador da SEFAZ só atende homologação/);
+    expect((await trabalhos('faturamento.transmitir_nota')).length).toBe(trabalhosAntes);
     expect(destinos.length).toBe(antes);
     expect(destinos.some((d) => d.filial_id === filiais.producao)).toBe(false);
-    expect((await notaNoBanco(nota.id)).status).not.toBe('autorizada');
-    expect((await xmlsDaNota(nota.id)).map((x) => x.tipo)).not.toContain('nfe_autorizada');
   });
 
   it('regras 8 e 9: o log do worker não traz o A1, a senha, o XML nem o documento do cliente', () => {

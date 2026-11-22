@@ -25,8 +25,11 @@ import {
   criarLerA1DoWorker,
   criarSefazDoWorker,
   inicioDoMesEmManaus,
+  LIMITE_VARREDURA_TITULOS,
+  logFaturamentoDoWorker,
   montarFaturamentoWorker,
   prazoInutilizacao,
+  TITULOS_PARADOS_HA_MINUTOS,
   TRANSPORTE_HOMOLOGACAO_DO_WORKER,
 } from './faturamento';
 import { montarExecutores, montarPeriodicas, montarRotinas } from './modulos';
@@ -113,8 +116,38 @@ describe('faturamento montado no worker', () => {
       banco, chaveA1: Buffer.alloc(32, 7), log, tenants: fonteTenants([T1, T2]),
       licencas: licencas({ [T1]: [{ modulo: 'faturamento', ativo: true, valido_ate: null }], [T2]: [{ modulo: 'pedido', ativo: true, valido_ate: null }] }),
     });
-    expect(await fat.periodicas[0]!.executar(AGORA)).toEqual({ tenants: 1, notas: 0, eventos: 0, falhas: 0 });
+    expect(await fat.periodicas[0]!.executar(AGORA)).toEqual({ tenants: 1, notas: 0, eventos: 0, titulos: 0, titulos_pendentes: 0, falhas: 0 });
     expect(new Set(tenants)).toEqual(new Set([T1, T2])); // T2 só é aberto para ler a licença
+  });
+
+  it('RN-FAT-03: a varredura também procura notas de boleto sem título (há 5 min, até 50), só no tenant licenciado; a falha dela não para as notas', async () => {
+    const buscas: { tenant: string; params: unknown[] }[] = [];
+    let atual = '';
+    const tx = {
+      consultar: async (sql: string, params: unknown[] = []) => {
+        if (/NOT EXISTS \(SELECT 1 FROM faturamento\.titulo/.test(sql)) {
+          buscas.push({ tenant: atual, params });
+          if (atual === T2) throw new Error('falha simulada');
+        }
+        return [];
+      },
+    } as unknown as Transacao;
+    const banco: Banco = { comTenant: async (t, fn) => ((atual = t), fn(tx)), semTenant: async (fn) => fn(tx), ping: async () => true };
+    const lic = [{ modulo: 'faturamento' as const, ativo: true, valido_ate: null }];
+    const fat = montarFaturamentoWorker({ banco, chaveA1: Buffer.alloc(32, 7), log, tenants: fonteTenants([T1, T2, 'sem-licenca']), licencas: licencas({ [T1]: lic, [T2]: lic }) });
+    const r = await fat.periodicas[0]!.executar(AGORA);
+    expect(buscas).toEqual([
+      { tenant: T1, params: [TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS, []] },
+      { tenant: T2, params: [TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS, []] },
+    ]);
+    expect([TITULOS_PARADOS_HA_MINUTOS, LIMITE_VARREDURA_TITULOS]).toEqual([5, 50]);
+    expect(r).toMatchObject({ tenants: 2, falhas: 1, titulos: 0 });
+  });
+
+  it('logFaturamentoDoWorker: uma linha warn com modulo e só os campos do faturamento', () => {
+    const linhas: unknown[][] = [];
+    logFaturamentoDoWorker({ warn: (...a: unknown[]) => linhas.push(a) } as never)({ evento: 'faturamento.titulo.geracao_pendente', tenant_id: T1, nota_id: NOTA, motivo: 'RN-FAT-06@prazos' });
+    expect(linhas).toEqual([[{ modulo: 'faturamento', evento: 'faturamento.titulo.geracao_pendente', tenant_id: T1, nota_id: NOTA, motivo: 'RN-FAT-06@prazos' }, 'faturamento.titulo.geracao_pendente']]);
   });
 });
 
