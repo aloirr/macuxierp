@@ -17,7 +17,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxierp/platform-sdk/testes';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { decifrarA1, lerChaveA1 } from './cifra';
+import { abrirColunasA1 } from './colunas-a1';
+import { lerChaveA1 } from './index';
 import { LeitorPfxTls } from './leitor-pfx';
 import { PfxInvalido, type DadosPfx, type LeitorPfx, type LinhaAmbiente } from './portas';
 import { RepositorioCoreMemoria } from './repositorio-memoria';
@@ -344,7 +345,7 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     expect(r.corpo).toMatchObject({ filial_id: FILIAL, cnpj: '11222333000262', dias_para_vencer: 49, alerta_vencimento: false, ativo: true });
     const guardado = t.repo.certificadosLinhas[0];
     expect(guardado?.pfx_cifrado?.includes(pfx.subarray(0, 32))).toBe(false);
-    const volta = decifrarA1({ chave: lerChaveA1(CHAVE_HEX), tenantId: TENANT, pfx_cifrado: guardado?.pfx_cifrado as Buffer, pfx_nonce: guardado?.pfx_nonce as Buffer, senha_cifrada: guardado?.senha_cifrada as Buffer, senha_nonce: guardado?.senha_nonce as Buffer });
+    const volta = abrirColunasA1({ chave: lerChaveA1(CHAVE_HEX), tenantId: TENANT, pfx_cifrado: guardado?.pfx_cifrado as Buffer, pfx_nonce: guardado?.pfx_nonce as Buffer, senha_cifrada: guardado?.senha_cifrada as Buffer, senha_nonce: guardado?.senha_nonce as Buffer });
     expect(volta.pfx.equals(pfx)).toBe(true);
     expect(volta.senha).toBe('senha-do-teste');
     const rastro = JSON.stringify([r.corpo, t.auditoria.registros, t.outbox.eventos]);
