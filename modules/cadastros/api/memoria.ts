@@ -68,6 +68,9 @@ export class ColecaoMemoria<E extends { id: string }, D extends Record<string, u
     x.inativo = true;
     return this.ler(x);
   }
+  async paginaPorCursor(apos: string | null, limite: number): Promise<E[]> {
+    return this.linhas.filter((l) => apos === null || l.id > apos).sort((a, b) => (a.id < b.id ? -1 : 1)).slice(0, limite).map((x) => this.ler(x));
+  }
   async idsAtivos(ids: readonly string[]): Promise<Set<string>> {
     return new Set(this.linhas.filter((l) => !l.inativo && ids.includes(l.id)).map((l) => l.id));
   }
@@ -177,6 +180,11 @@ export function repositoriosEmMemoria() {
         .map(([k, quantidade]) => ({ filial_id: k.split('|')[0] as string, produto_id: k.split('|')[1] as string, quantidade }))
         .filter((s) => (!q.filial_id || s.filial_id === q.filial_id) && (!q.produto_id || s.produto_id === q.produto_id));
     },
+    async paginaPorCursor(apos: { filial_id: string; produto_id: string } | null, limite: number) {
+      const todos = (await repoEstoque.saldos({})).sort((a, b) => (`${a.produto_id}|${a.filial_id}` < `${b.produto_id}|${b.filial_id}` ? -1 : 1));
+      const chave = apos ? `${apos.produto_id}|${apos.filial_id}` : null;
+      return todos.filter((s) => chave === null || `${s.produto_id}|${s.filial_id}` > chave).slice(0, limite);
+    },
     async saldoParaAtualizar(f: string, p: string) {
       return saldos.get(`${f}|${p}`) ?? 0;
     },
@@ -216,6 +224,11 @@ export function repositoriosEmMemoria() {
     /** NCM → CESTs válidos para ele. */
     cests: new Map<string, string[]>(),
     todosCests: new Set<string>(),
+    /** código IBGE → nome. */
+    municipios: new Map<string, string>(),
+    async nomesMunicipios(codigos: readonly string[]) {
+      return new Map(codigos.filter((c) => oficiais.municipios.has(c)).map((c) => [c, oficiais.municipios.get(c) as string]));
+    },
     async listar() {
       return { itens: [], proximo_cursor: null };
     },

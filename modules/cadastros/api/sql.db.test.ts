@@ -6,6 +6,9 @@
  * e com `app.tenant_id` (`BancoPg.comTenant`), como a API faz.
  */
 import { randomUUID } from 'node:crypto';
+import { TRABALHO_CARGA_INICIAL, type PayloadCargaInicial } from '../contracts';
+import { externalDoTrabalho } from './carga-inicial';
+import { FilaDeTrabalhosPg } from '@macuxierp/platform-sdk/pg';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
@@ -152,6 +155,22 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     expect(Object.values(deB).every((l) => l.length === 0)).toBe(true);
   }, 120_000);
 
+  it('C-1 e C-4: nomesMunicipios pelo IBGE e página por cursor com inativos, só do tenant', async () => {
+    const rA = repositoriosSql(txA());
+    const nomes = await rA.oficiais.nomesMunicipios(['1302603', '0000000']);
+    expect(nomes.get('0000000')).toBeUndefined();
+    const todos: string[] = [];
+    for (let apos: string | null = null; ; ) {
+      const lote: { id: string }[] = await rA.clientes.paginaPorCursor(apos, 1);
+      if (lote.length === 0) break;
+      todos.push(...lote.map((c) => c.id));
+      apos = (lote.at(-1) as { id: string }).id;
+    }
+    const esperados = (await admin(`SELECT id FROM cadastros.cliente WHERE tenant_id = '${A}' ORDER BY id;`)).map((l) => l.id as string);
+    expect(todos).toEqual(esperados);
+    expect(await repositoriosSql(txB()).clientes.paginaPorCursor(null, 10)).toEqual([]);
+  }, 120_000);
+
   it('RLS: o tenant B não enxerga nada do tenant A pelo adaptador', async () => {
     const b = montar(txB());
     for (const rota of ['/filiais', '/clientes', '/produtos', '/tabelas-preco', '/vendedores', '/estoque']) {
@@ -161,4 +180,25 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     const ncm = await b.chamar('GET', '/oficiais/ncm', { sessao: adm, consulta: { busca: '22021000' } });
     expect(ncm.corpo.itens).toHaveLength(1); // as tabelas oficiais são do tenant de referência e todo tenant lê
   }, 120_000);
+  it('carga inicial: enfileira 1a e 2a página (cursor UUID e cursor composto do estoque) dentro do limite do external_id e o reenvio é idempotente', async () => {
+    const fila = new FilaDeTrabalhosPg();
+    const origem = randomUUID();
+    const cursores: [PayloadCargaInicial['entidade'], string | null][] = [
+      ['cliente', null], ['cliente', randomUUID()], ['estoque', null], ['estoque', `${randomUUID()}|${randomUUID()}`],
+    ];
+    const enviar = async () => {
+      const ids: string[] = [];
+      for (const [entidade, apos] of cursores) {
+        const payload: PayloadCargaInicial = { origem, entidade, apos, tabela_id: null, pagina: 1, cursor_itens: null };
+        const external_id = externalDoTrabalho(payload);
+        expect(external_id.length).toBeLessThanOrEqual(64);
+        ids.push((await fila.enfileirar(txA(), { tipo: TRABALHO_CARGA_INICIAL, tenant_id: A, payload, external_id })).id);
+      }
+      return ids;
+    };
+    const primeira = await enviar();
+    expect(new Set(primeira).size).toBe(4);
+    expect(await enviar()).toEqual(primeira);
+    expect(Number((await admin(`SELECT count(*) AS n FROM plataforma.trabalho WHERE tipo = '${TRABALHO_CARGA_INICIAL}' AND tenant_id = '${A}';`))[0]?.n)).toBe(4);
+  });
 });

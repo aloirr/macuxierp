@@ -5,6 +5,7 @@ import type { Dependencias, PortaCertificados } from './portas';
 import { criarRotas } from './rotas';
 import { repositoriosSql } from './sql';
 
+export { criarConsumidorCargaInicial, criarExecutorCargaInicial } from './carga-inicial';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
