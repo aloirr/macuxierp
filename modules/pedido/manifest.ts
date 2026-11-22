@@ -7,6 +7,6 @@ export const manifest = defineModule({
   depende: ['core', 'cadastros'],
   perfis: ['administrador', 'gerente', 'faturista', 'vendedor', 'leitura'],
   web: { menus: ['Pedidos'] },
-  publica: ['pedido.pedido.recebido@1', 'pedido.pedido.aprovado@1', 'pedido.pedido.recusado@1', 'pedido.pedido.cancelado@1'],
+  publica: ['pedido.pedido.recebido@1', 'pedido.pedido.aprovado@1', 'pedido.pedido.recusado@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1'],
   consome: ['faturamento.nota.autorizada@1', 'faturamento.nota.cancelada@1'],
 });
