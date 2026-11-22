@@ -407,9 +407,9 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
   });
 
   it('erros por campo: acima do saldo, zero e texto inválido', () => {
-    expect(f.validar({ 1: '12,5001', 2: '0', })).toEqual({ ok: false, erros: { 1: 'Máximo 12,5.', 2: 'Informe uma quantidade maior que zero ou deixe em branco.' } });
+    expect(f.validar({ 1: '12,5001', 2: '0', })).toEqual({ ok: false, erros: { 1: '1 - Água 500 ml: a quantidade passa do saldo (12,5). Informe até 12,5 ou deixe o campo vazio.', 2: 'Informe uma quantidade maior que zero ou deixe em branco.' } });
     expect(f.validar({ 1: '1,23456', 2: 'abc' })).toEqual({ ok: false, erros: { 1: expect.stringContaining('4 casas'), 2: expect.stringContaining('4 casas') } });
-    expect(f.validar({ 2: '3,0001' })).toMatchObject({ ok: false, erros: { 2: 'Máximo 3.' } });
+    expect(f.validar({ 2: '3,0001' })).toMatchObject({ ok: false, erros: { 2: 'Item 2: a quantidade passa do saldo (3). Informe até 3 ou deixe o campo vazio.' } });
   });
 
   it('RD-0780: saldo >= 1.000 não quebra a nota parcial (valorInicial sem milhar; milhar digitado bem formado aceito)', () => {
@@ -418,7 +418,7 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
     const inicial = Object.fromEntries(g.campos.map((c) => [c.sequencia, c.valorInicial]));
     expect(g.validar(inicial)).toEqual({ ok: true }); // pré-preenchido: nota total, itens omitidos
     expect(g.validar({ 1: '1.200', 2: '1.000' })).toEqual({ ok: true }); // milhar digitado
-    expect(g.validar({ 1: '1.200,5', 2: '' })).toMatchObject({ ok: false, erros: { 1: 'Máximo 1.200.' } });
+    expect(g.validar({ 1: '1.200,5', 2: '' })).toMatchObject({ ok: false, erros: { 1: '1 - Caixa: a quantidade passa do saldo (1.200). Informe até 1.200 ou deixe o campo vazio.' } });
     const parcial = g.validar({ 1: '1.000,5', 2: '' });
     expect(parcial).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000,5', qtd4: 10_005_000 }] }); // saída sem milhar
     const m = requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-3', itens: parcial.ok && parcial.itens ? parcial.itens : [] });
@@ -436,8 +436,8 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
   });
 
   it('nenhum item com quantidade: erro geral e botão desligado com o mesmo texto único', () => {
-    expect(f.motivoBotaoDesligado).toBe('Informe a quantidade de pelo menos um item');
-    expect(f.validar({})).toEqual({ ok: false, erros: {}, geral: 'Informe a quantidade de pelo menos um item' });
+    expect(f.motivoBotaoDesligado).toBe('Informe a quantidade de pelo menos um item.');
+    expect(f.validar({})).toEqual({ ok: false, erros: {}, geral: 'Informe a quantidade de pelo menos um item.' });
     expect(f.validar({ 1: '', 2: ' ' })).toMatchObject({ ok: false, geral: f.motivoBotaoDesligado });
     expect(f.emitirHabilitado({})).toBe(false);
     expect(f.emitirHabilitado({ 1: '' })).toBe(false);
