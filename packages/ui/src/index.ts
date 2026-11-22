@@ -8,5 +8,3 @@ export { DialogoMotivo } from './DialogoMotivo.js';
 export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
 export { FormularioItens } from './FormularioItens.js';
 export type { ErrosItem, FormularioItensProps, ItemLinha, SeletorProdutoProps } from './FormularioItens.js';
-export { AssinaturaErp } from './AssinaturaErp.js';
-export type { AssinaturaErpProps } from './AssinaturaErp.js';

@@ -39,7 +39,8 @@ Valores em `packages/ui/src/estilos.ts` e `tokens.ts`; aqui só o que vale para 
   :focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
   ```
   Sem `outline: none` em outro lugar. Em fundo escuro (menu grafite) o shell usa `--mx-cor-branco` no mesmo seletor.
-- **Densidade e canto (ressalvas do `design-de-marca` no #242, T-0021):** Campos em 13 px (tabela densa), botões em 15 px (MC-0008); canto de 6 px nos dois (`campoBase`).
+- **Densidade e canto (ressalvas do `design-de-marca` no #242, T-0021):** Campos do pacote em 13 px (tabela densa), botões em 15 px (MC-0008); canto de 6 px nos dois (`campoBase` e `botao*`).
+- **Foco e hover dos botões internos:** Os botões internos dos componentes (DialogoMotivo, FormularioItens) usam estilo inline; o foco visível vem da regra global `:focus-visible` do shell (globals.css), e o hover só existe nas classes do `botoes.css`.
 - **Erro do `DialogoMotivo` (MC-0015):** o erro de motivo fica logo abaixo dos rádios (o `fieldset` aponta para ele por `aria-describedby`); o de texto, logo abaixo do campo (`aria-invalid`, `aria-describedby`, borda `erroTexto`). O erro do `validar` do módulo vai para o campo de texto.
 - **Dinheiro digitado (RD-0723):** o `FormularioItens` mostra "1.234,56" (formato do sdk, com milhar, igual ao do shell); aceita também "1234,5" e "R$ 12,50" ao colar.
 
@@ -50,5 +51,8 @@ Valores em `packages/ui/src/estilos.ts` e `tokens.ts`; aqui só o que vale para 
 - **nowrap:** células `td` de `numero` e `dinheiro` (e o total do item) usam `celulaNumerica`, sem quebra de linha. O `th` continua só alinhado à direita.
 
 ## S-01: assinatura e favicon (docs/marca/assinatura-erp.md)
-- **Topo azul-noite:** `<AssinaturaErp altura={24} />` (de `@macuxierp/ui`); a altura fica entre 20 e 32 px; `alt="Macuxi ERP"`.
-- **Favicon:** `import { faviconDataUri } from '@macuxierp/ui/marca'` e, no layout do Next: `export const metadata = { icons: { icon: faviconDataUri } }`. O mesmo subpath tem `faviconSvg`, `paraDataUri`, `assinaturaANegativoAzulNoite` e `simboloNegativo`, cópia fiel dos ativos oficiais (o teste confere o SHA-256 dos ativos oficiais).
+- **Subpath sem hook:** `@macuxierp/ui/marca` (`marca.tsx`) traz a assinatura, o favicon e o apple-touch-icon, para o Server Component do layout; o porquê está no cabeçalho de `marca.tsx`. A `AssinaturaErp` tem esse caminho só (fora do `index.ts`).
+- **Topo azul-noite:** `<AssinaturaErp altura={24} />`; a altura fica entre 20 e 32 px; `alt="Macuxi ERP"`.
+- **Ícones:** `import { AssinaturaErp, faviconDataUri, appleTouchIconDataUri } from '@macuxierp/ui/marca'` e, no layout do Next: `export const metadata = { icons: { icon: faviconDataUri, apple: appleTouchIconDataUri } }`. PNG 180×180 do favicon (geração e SHA-256 em `marca.tsx`). O mesmo subpath tem `faviconSvg`, `paraDataUri`, `assinaturaANegativoAzulNoite` e `simboloNegativo`, cópia fiel dos ativos oficiais (o teste confere o SHA-256).
+- **Hover dos botões (`botoes.css`):** principal vira fundo e borda grafite; secundário vira fundo névoa. Só cor da paleta, nunca `filter: brightness`; não vale para `:disabled`.
+- **`'use client'`:** `TabelaDensa`, `DialogoMotivo` e `FormularioItens` usam hook e levam a diretiva; `FaixaPendencias` fica sem. Um Server Component não pode passar função (como `celula`) à `TabelaDensa`: a página que a usa vira cliente. O `package.json` declara `sideEffects: ["*.css"]` para o tree-shaking.

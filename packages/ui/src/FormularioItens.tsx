@@ -1,3 +1,5 @@
+'use client';
+
 import { useId, useState, type ReactNode } from 'react';
 import { botaoSecundario, campoBase, cor, desabilitadoEstilo, espaco, mensagemErro, numerico, tabela } from './estilos.js';
 import { centavosParaReais, reaisParaCentavos, textoParaQuantidade } from './entradas.js';

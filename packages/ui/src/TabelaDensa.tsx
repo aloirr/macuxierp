@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, type ReactNode } from 'react';
 import { numerico, tabela, tabular, texto } from './estilos.js';
 
