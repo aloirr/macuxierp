@@ -5,9 +5,10 @@
  */
 import { colunasDoPerfil, type ColunaLista } from '@macuxierp/platform-sdk/listas';
 import type { Perfil } from '@macuxierp/platform-sdk';
+import { FONTE_CLIENTE, FONTE_FILIAL, FONTE_VENDEDOR } from './fontes';
 import { podeVerDocumentoCliente } from '../domain/privacidade';
 import { OrigemPedido, StatusPedido } from '../contracts';
-import { formatarCentavos, formatarDataHora } from './formatar';
+import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { COLUNA_DOCUMENTO, paginaPedidos, type ItemListaPedido } from './paginas';
 
 export const ROTULO_STATUS: Readonly<Record<StatusPedido, string>> = {
@@ -63,9 +64,9 @@ export type FiltroTela =
 /** Filtros da barra, na ordem da tela; as chaves são as do descritor (a URL é a fonte da verdade). `busca` é o campo de número. */
 export const FILTROS_TELA: readonly FiltroTela[] = [
   { chave: 'status', rotulo: 'Status', tipo: 'selecao', opcoes: StatusPedido.options.map((valor) => ({ valor, rotulo: ROTULO_STATUS[valor] })) },
-  { chave: 'cliente_id', rotulo: 'Cliente', tipo: 'cadastro', fonte: '/v1/cadastros/clientes' },
-  { chave: 'vendedor_id', rotulo: 'Vendedor', tipo: 'cadastro', fonte: '/v1/cadastros/vendedores' },
-  { chave: 'filial_id', rotulo: 'Filial', tipo: 'cadastro', fonte: '/v1/cadastros/filiais' },
+  { chave: 'cliente_id', rotulo: 'Cliente', tipo: 'cadastro', fonte: FONTE_CLIENTE.caminho },
+  { chave: 'vendedor_id', rotulo: 'Vendedor', tipo: 'cadastro', fonte: FONTE_VENDEDOR },
+  { chave: 'filial_id', rotulo: 'Filial', tipo: 'cadastro', fonte: FONTE_FILIAL },
   { chave: 'origem', rotulo: 'Origem', tipo: 'selecao', opcoes: OrigemPedido.options.map((valor) => ({ valor, rotulo: ROTULO_ORIGEM[valor] })) },
   { chave: 'de', rotulo: 'De', tipo: 'data' },
   { chave: 'ate', rotulo: 'Até', tipo: 'data' },

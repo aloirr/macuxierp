@@ -91,6 +91,8 @@ describe('lançamento manual (RF-PED-02, RN-PED-03)', () => {
     const t = montar();
     const r = await lancar(t);
     expect(r.status).toBe(201);
+    // O corpo é o Pedido inteiro: o `id` fica no topo (o shell abre o detalhe com ele).
+    expect(r.corpo.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(r.corpo).toMatchObject({ numero: 1, origem: 'bko', status: 'aprovado', total_centavos: 1000, pendencias: [], decisao: { automatica: true, decisao: 'aprovado', decidido_por: null } });
     expect(r.corpo.historico.map((h: { de: string | null; para: string }) => [h.de, h.para])).toEqual([[null, 'recebido'], ['recebido', 'aprovado']]);
     expect(t.eventos.map((e) => e.nome)).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.aprovado@1']);
