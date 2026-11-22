@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NotaDetalhe, TituloDetalhe } from '@macuxierp/faturamento/contracts';
+import { formularioParcial, MOTIVO_SEM_ITEM, urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
 import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { arquivoPermitido } from '../arquivos';
 import { EU_FALSO } from '../falso';
@@ -70,7 +71,7 @@ describe('listas do faturamento', () => {
     const l = LISTA_NOTAS.linha({ ...nota('autorizada') }, FUSO);
     expect(l).toMatchObject({ numero: '12/1', status: 'Autorizada', ambiente: 'Produção', emitida_em: '22/11/2026 10:00', cliente: 'Bar do Zé' });
     expect(LISTA_NOTAS.rotaDaLinha?.({ id: ID })).toBe(`/faturamento/notas/${ID}`);
-    expect(LISTA_NOTAS.colunas('leitura').find((c) => c.id === 'total')?.tipo).toBe('dinheiro');
+    expect(LISTA_NOTAS.colunas('leitura', 'America/Manaus').find((c) => c.id === 'total')?.tipo).toBe('dinheiro');
     expect(LISTA_NOTAS.linha({ ...nota('autorizada') }, 'UTC').emitida_em).toBe('22/11/2026 14:00');
   });
   it('textos de lista vazia vêm do módulo e o CSV vem da API (`/exportar`), sem contorno no shell', () => {
@@ -98,14 +99,14 @@ describe('lista de notas: selo do ambiente e inutilizar números', () => {
     expect(LISTA_REJEICOES.selos?.(rej, FUSO).ambiente?.[0]?.tom).toBe('aviso');
   });
   it('a lista de notas tem Número/Série, Pedido e Filial no começo e mostra "—" quando vazio; "Aprovado em" virou "Recebido em"', () => {
-    expect(LISTA_NOTAS.colunas('administrador').slice(0, 3).map((c) => c.rotulo)).toEqual(['Número/Série', 'Pedido', 'Filial']);
+    expect(LISTA_NOTAS.colunas('administrador', 'America/Manaus').slice(0, 3).map((c) => c.rotulo)).toEqual(['Número/Série', 'Pedido', 'Filial']);
     const vazia = LISTA_NOTAS.linha({ ...nota('autorizada'), pedido_numero: null, filial_nome: null }, FUSO);
     expect(vazia.pedido).toBe('—');
     expect(vazia.filial).toBe('—');
     const cheia = LISTA_NOTAS.linha({ ...nota('autorizada'), pedido_numero: 42, filial_nome: 'Matriz' }, FUSO);
     expect(cheia.pedido).toBe('42');
     expect(cheia.filial).toBe('Matriz');
-    expect(LISTA_PEDIDOS_A_FATURAR.colunas('administrador').map((c) => c.rotulo)).toContain('Recebido em');
+    expect(LISTA_PEDIDOS_A_FATURAR.colunas('administrador', 'America/Manaus').map((c) => c.rotulo)).toContain('Recebido em');
   });
   it('o cabeçalho do detalhe da nota mostra Filial e Pedido', () => {
     const v = vistaDaNota({ ...(nota('autorizada') as NotaDetalhe), filial_nome: 'Matriz', pedido_numero: 42 }, 'administrador', FUSO);
@@ -386,11 +387,11 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
       { sequencia: 2, produto_id: P, descricao: null, quantidade_pedida: 10000, quantidade_faturada: 0, saldo: 10000, valor_unitario_centavos: 100 },
     ] };
     const r = exec.itensDaLeitura!({ ...detalhe, filial_id: ID, cliente_id: ID, cliente_razao_social: null, recebido_em: '2026-11-22T14:00:00.000Z', total_centavos: 1 });
-    expect(r).toEqual([{ sequencia: 1, descricao: 'Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }]);
+    expect(r).toEqual([{ sequencia: 1, descricao: '1 - Água 500 ml', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }]);
   });
-  it('a quantidade em pt-BR vira qtd4 sem float; o limite é o saldo; 0 tira o item', () => {
+  it('a quantidade em pt-BR vira qtd4 sem float; o limite é o saldo; vazio tira o item', () => {
     const a = mais('administrador')[0]!;
-    const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '1,5', 25000], [2, '0', 10000], [3, '0,1234', 20000]) });
+    const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '1,5', 25000], [2, '', 10000], [3, '0,1234', 20000]) });
     expect(r).toEqual({ ok: true, corpo: { pedido_id: P, itens: [{ sequencia: 1, quantidade: 15000 }, { sequencia: 3, quantidade: 1234 }], idempotencia: 'chave-parcial-1' } });
     expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '2,5', 25000]) })).toMatchObject({ ok: true }); // igual ao saldo: vale
   });
@@ -404,12 +405,35 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
   it('acima do saldo, vazio, inválido ou tudo zerado recusam com texto claro', () => {
     const a = mais('administrador')[0]!;
     const e = (i: ReturnType<typeof itens>) => exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: i });
-    expect(e(itens([1, '2,5001', 25000]))).toEqual({ ok: false, erro: '"Produto 1": a quantidade passa do saldo (2,5).' });
-    expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('quantidade válida') });
+    expect(e(itens([1, '2,5001', 25000]))).toEqual({ ok: false, erro: '"Produto 1": Máximo 2,5.' }); // texto do módulo (formularioParcial)
+    expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('até 4 casas decimais') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
-    expect(e(itens([1, '0', 25000], [2, '0,0', 10000]))).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
+    expect(e(itens([1, '0', 25000]))).toEqual({ ok: false, erro: '"Produto 1": Informe uma quantidade maior que zero ou deixe em branco.' }); // o módulo recusa 0 no campo (o aviso do shell diz "ou 0": pendência do modulo-faturamento)
+    expect(e(itens([1, '', 25000], [2, ' ', 10000]))).toEqual({ ok: false, erro: 'Informe a quantidade de pelo menos um item' });
     expect(e([])).toMatchObject({ ok: false });
+  });
+  it('o milhar digitado ("1.500") vale: o módulo e o SDK o aceitam, sem contorno no shell', () => {
+    const a = mais('administrador')[0]!;
+    expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: itens([1, '1.500', 15000000], [2, '', 10000]) })).toEqual({ ok: true, corpo: { pedido_id: P, itens: [{ sequencia: 1, quantidade: 15000000 }], idempotencia: 'chave-parcial-1' } });
+  });
+  it('todos os itens pelo saldo inteiro: nota total (corpo sem itens); a chave do corpo é a da tentativa', () => {
+    const a = mais('administrador')[0]!;
+    expect(exec.validarAcao(a, { texto: '', chave: 'chave-parcial-9', itens: itens([1, '2,5', 25000], [2, '1', 10000]) })).toEqual({ ok: true, corpo: { pedido_id: P, idempotencia: 'chave-parcial-9' } });
+  });
+  it('a configuração da filial vem do módulo (urlDaConfiguracaoDaFilial) no inutilizar e na leitura declarada', () => {
+    const inut = LISTA_NOTAS.acaoDaBarra!.acao('administrador')!;
+    expect(inut.ambientePorFilial).toBe(urlDaConfiguracaoDaFilial(':id'));
+    expect(leituraDeclarada(urlDaConfiguracaoDaFilial(ID))).toBeDefined();
+  });
+  it('RD-0772: as colunas e o vencimento usam o fuso do tenant, não um fixo', () => {
+    expect(LISTA_NOTAS.linha({ ...nota('autorizada') }, 'America/Rio_Branco').emitida_em).toBe('22/11/2026 09:00');
+  });
+  it('o botão desligado vem do módulo: emitirHabilitado só com todos vazios, e o motivo é o MOTIVO_SEM_ITEM', () => {
+    const f = formularioParcial({ itens: [{ sequencia: 1, descricao: 'A', saldo: 10000 }, { sequencia: 2, descricao: null, saldo: 10000 }] });
+    expect(f.emitirHabilitado({ 1: '', 2: ' ' })).toBe(false);
+    expect(f.emitirHabilitado({ 1: '', 2: '0,5' })).toBe(true);
+    expect(f.motivoBotaoDesligado).toBe(MOTIVO_SEM_ITEM);
   });
   it('campo vazio deixa o item fora da nota, sem erro (R-20261122-055826)', () => {
     const a = mais('administrador')[0]!;

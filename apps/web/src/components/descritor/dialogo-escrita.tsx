@@ -1,5 +1,5 @@
 'use client';
-import { contadorDeCaracteres } from '@macuxierp/faturamento/web';
+import { contadorDeCaracteres, formularioParcial } from '@macuxierp/faturamento/web';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AmbienteVista, ItemDoDialogo, ItemEscolhido } from '@/lib/descritor/tipos';
 
@@ -41,9 +41,6 @@ export interface DialogoEscritaProps {
 }
 
 const FOCAVEIS = 'button:not([disabled]), input, select, textarea, [href]';
-
-/** Nota parcial: true quando todos os campos estão vazios ou zerados (o botão fica desligado). */
-export const nenhumItemPreenchido = (linhas: readonly ItemDoDialogo[], q: Readonly<Record<number, string>>): boolean => linhas.every((i) => /^[\s0.,]*$/.test(q[i.sequencia] ?? ''));
 
 export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, rotuloConfirmar, rotuloFechar = 'Cancelar', textoCarregando = 'Enviando…', ocupado, baixa, texto: pedeTexto, faixa, itens: pedeItens, carregarAmbiente, validar, aoConfirmar, aoCancelar }: DialogoEscritaProps) {
   const id = useId();
@@ -117,8 +114,9 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
   const contador = limitesTexto ? <small className="apoio" data-contador>{contadorDeCaracteres(texto, limitesTexto.min, limitesTexto.max)}</small> : null;
   const amb = ambienteDaFilial ?? ambiente;
   const linhaAmbiente = amb && (!faixa || filial) ? <p data-ambiente className={amb.tom === 'alerta' ? 'faixa-aviso' : 'apoio'}>{amb.texto}</p> : null;
-  /** Nota parcial: nenhum item com quantidade (todos vazios ou zero) desliga o botão. Mesma mensagem do validarParcial. */
-  const semItens = Boolean(pedeItens) && Boolean(linhas) && nenhumItemPreenchido(linhas ?? [], quantidades);
+  /** Nota parcial: o botão desliga e o motivo aparece pela regra única do módulo (`formularioParcial`: `emitirHabilitado`, `motivoBotaoDesligado`). */
+  const parcial = pedeItens && linhas ? formularioParcial({ itens: linhas }) : null;
+  const semItens = parcial ? !parcial.emitirHabilitado(quantidades) : false;
   const invalido = erro ? true : undefined;
   const descreve = erro ? `${id}-erro` : undefined;
   return (
@@ -174,7 +172,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
         )}
         {linhaAmbiente}
         {aviso && <p id={`${id}-aviso`} className="faixa-aviso">{aviso}</p>}
-        {semItens && !erro && <p className="apoio" role="status">Informe a quantidade de pelo menos um item</p>}
+        {semItens && !erro && <p className="apoio" role="status">{parcial?.motivoBotaoDesligado}</p>}
         {erro && <p id={`${id}-erro`} role="alert" className="erro">{erro}</p>}
         <div className="barra-acoes dialogo-botoes">
           <button type="button" className="mx-botao-secundario" disabled={ocupado} onClick={aoCancelar}>{rotuloFechar}</button>

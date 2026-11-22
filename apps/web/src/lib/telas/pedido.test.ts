@@ -32,7 +32,7 @@ describe('adaptador do pedido', () => {
   it('lista: filtros do descritor com cadastros como fonte, colunas por perfil sem documento, linha em Manaus', () => {
     expect(LISTA_PEDIDOS.filtrosTela.map((f) => f.chave)).toEqual(['status', 'cliente_id', 'vendedor_id', 'filial_id', 'origem', 'de', 'ate']);
     expect(LISTA_PEDIDOS.filtrosTela.filter((f) => f.tipo === 'cadastro').map((f) => f.fonte)).toEqual(['/v1/cadastros/clientes', '/v1/cadastros/vendedores', '/v1/cadastros/filiais']);
-    expect(LISTA_PEDIDOS.colunas('vendedor').map((c) => c.id)).not.toContain('cliente_documento');
+    expect(LISTA_PEDIDOS.colunas('vendedor', 'America/Manaus').map((c) => c.id)).not.toContain('cliente_documento');
     const l = LISTA_PEDIDOS.linha({ id: ID, numero: 7, origem: 'bko', status: 'em_analise', filial_id: F, cliente_id: C, cliente_razao_social: 'Bar', vendedor_id: null, emitido_em: '2026-11-22T02:30:00.000Z', total_centavos: 123456, pendencias: 1 }, 'America/Manaus');
     expect(semEspacoDuro(l.emitido_em)).toBe('21/11/2026 22:30');
     expect(LISTA_PEDIDOS.rotaDaLinha?.({ id: ID })).toBe(`/pedido/pedidos/${ID}`);

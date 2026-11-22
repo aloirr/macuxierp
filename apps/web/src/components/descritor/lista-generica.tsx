@@ -23,12 +23,15 @@ async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Pr
 /** Lista genérica a partir do descritor: filtros na URL (formulário GET, sem JS), tabela densa, paginação por cursor e CSV. */
 export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   const filtros = filtrosDaUrl(tela.pagina, busca);
-  const colunas = tela.colunas(perfil);
+  const colunas = tela.colunas(perfil, fuso);
   const [pagina, opcoes] = await Promise.all([
     buscarPagina(tela.pagina.api, filtros, tela.pagina.item, acesso),
     Promise.all(tela.filtrosTela.map((f) => opcoesDoFiltro(f, acesso, perfil))),
   ]);
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
+  const filtrada = Object.keys(filtros).length > 0;
+  const declarado = tela.pagina.vazio;
+  const textoVazio = declarado ? (filtrada ? declarado.comFiltro : declarado.semFiltro) : (tela.textoVazio ?? 'Nenhum registro com estes filtros.');
   const proxima = urlProxima(rota, filtros, pagina.proximo_cursor);
   const acaoBarra = tela.acaoDaBarra?.acao(perfil) ?? null;
   const iFilial = tela.filtrosTela.findIndex((f) => f.chave === 'filial_id');
@@ -65,7 +68,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
       </div>
       <TabelaVista
         colunas={colunas.map((c) => ({ id: c.id, rotulo: c.rotulo, ...(c.tipo ? { tipo: c.tipo } : {}) }))}
-        vazio={tela.textoVazio ?? 'Nenhum registro com estes filtros.'}
+        vazio={textoVazio}
         acoes={tela.acaoDaLinha ? { rota, rotaDaPagina } : undefined}
         linhas={pagina.itens.map((l, i) => {
           const item = l as Record<string, unknown>;
@@ -80,6 +83,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
           };
         })}
       />
+      {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={rota}>Limpar filtros</Link></p>}
       <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
     </section>
   );
