@@ -138,6 +138,17 @@ class RepoMemoria implements RepoPedidos {
   async eventosRegistrados(pedidoId: string, ids: string[]) {
     return new Set(this.a.eventos.filter((e) => e.pedido_id === pedidoId && e.evento_id !== null && ids.includes(e.evento_id)).map((e) => e.evento_id as string));
   }
+  /** Só grava, como `aplicarFaturamento`: as checagens ficam no domain e o gatilho 0027 é testado no banco. */
+  async aplicarRecuo(id: string, itens: readonly { sequencia: number; quantidade_faturada: number }[], valorFaturadoCentavos: number, status: PedidoGravado['status']) {
+    const p = this.achar(id) as PedidoGravado;
+    for (const n of itens) {
+      const i = p.itens.find((x) => x.sequencia === n.sequencia);
+      if (i) i.quantidade_faturada = n.quantidade_faturada;
+    }
+    p.valor_faturado_centavos = valorFaturadoCentavos;
+    p.status = status;
+    this.tocar(p);
+  }
   async registrarAprovacao(ap: NovaAprovacao) {
     if (this.a.aprovacoes.some((x) => x.pedido_id === ap.pedido_id)) throw new Error('aprovacao_uma_por_pedido');
     this.a.aprovacoes.push(structuredClone(ap));
