@@ -901,9 +901,60 @@ export function escritasDoComando(comando, cwdInicial = '', nivel = 0) {
  *   desde o v6 (a classificação é feita aqui); cwd: pasta atual da sessão (entrada.cwd do hook).
  * @returns {string[]} motivos do bloqueio (vazio = passa)
  */
+/** Variáveis que dão a identidade da sessão (coord.mjs e guardiões): agente nenhum as muda no comando. */
+const VARS_DE_IDENTIDADE = '(?:MACUXI_AGENTE|CLAUDECODE|CLAUDE_CODE_REMOTE)';
+const RE_IDENT_ATRIBUI = new RegExp(`\\b${VARS_DE_IDENTIDADE}\\s*\\+?=`);
+const RE_IDENT_BUILTIN = new RegExp(`\\b(?:unset|export|declare|typeset|readonly|local)\\b[^\\n;&|]*\\b${VARS_DE_IDENTIDADE}\\b`);
+const RE_IDENT_ENV_U = new RegExp(`(?:^|\\s)(?:-u\\s*|--unset[= ])${VARS_DE_IDENTIDADE}\\b`);
+const RE_IDENT_CODIGO = new RegExp(`(?:environ|process\\.env|getenv|putenv|setenv|unsetenv)[^\\n]{0,60}\\b${VARS_DE_IDENTIDADE}\\b`);
+const BUILTINS_DE_VARIAVEL = new Set(['export', 'declare', 'typeset', 'readonly', 'local', 'unset']);
+
+/**
+ * Troca de identidade no comando (decisão do Alexandre, R-20261121-220014; furo do parecer do PR #48): atribuir,
+ * exportar, apagar ou mexer por código em MACUXI_AGENTE, CLAUDECODE ou CLAUDE_CODE_REMOTE, ou exportar/declarar
+ * variável com nome dinâmico ($V, $(...)) ou passar ao env um argumento dinâmico. Função pura; [] = passa.
+ */
+export function motivosTrocaDeIdentidade({ comando, agente }) {
+  if (!agente || agente === 'alexandre') return [];
+  const t = String(comando);
+  const motivos = [];
+  if (RE_IDENT_ATRIBUI.test(t) || RE_IDENT_BUILTIN.test(t) || RE_IDENT_ENV_U.test(t) || RE_IDENT_CODIGO.test(t))
+    motivos.push(`o comando muda a identidade da sessão (MACUXI_AGENTE, CLAUDECODE ou CLAUDE_CODE_REMOTE): ${agente} trabalha com a identidade que a sessão já tem`);
+  visitarComandos(t, ({ nome, args, tirados = [] }) => {
+    const prefixoEnv = tirados.some((w) => !w.incerto && nomeBase(w.valor) === 'env');
+    if (prefixoEnv && (nome?.incerto || tirados.some((w) => w.incerto)))
+      motivos.push(`env com argumento dinâmico ($V, $(...)): ${agente} não monta variável de ambiente por nome calculado`);
+    if (nome && !nome.incerto && BUILTINS_DE_VARIAVEL.has(nomeBase(nome.valor)) && args.some((a) => a.incerto && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(a.valor)))
+      motivos.push(`${nomeBase(nome.valor)} com nome de variável dinâmico ($V, $(...)): ${agente} não monta variável de ambiente por nome calculado`);
+  });
+  return [...new Set(motivos)];
+}
+
+/** git que grava no repositório de recados por fora do coord.mjs (clone, pasta ou URL do macuxierp-recados). */
+const GIT_GRAVA_REMOTO = new Set(['push', 'commit', 'am', 'apply', 'update-ref', 'commit-tree', 'merge', 'rebase', 'cherry-pick', 'revert', 'tag']);
+export function motivosGitNoRepoDeRecados({ comando, agente, cwd = '' }) {
+  if (!agente || agente === 'alexandre') return [];
+  const naPasta = /macuxierp-recados/i.test(String(cwd || ''));
+  const citaRepo = /macuxierp-recados/i.test(String(comando));
+  const motivos = [];
+  visitarComandos(String(comando), ({ nome, args }) => {
+    if (!nome || nome.incerto || nomeBase(nome.valor) !== 'git') return;
+    let i = 0;
+    let outraPasta = '';
+    while (i < args.length && args[i].valor.startsWith('-')) {
+      if (args[i].valor === '-C') { outraPasta = args[i + 1]?.incerto ? '?' : String(args[i + 1]?.valor || ''); i += 2; } else if (['-c', '--git-dir', '--work-tree'].includes(args[i].valor)) { if (args[i].valor !== '-c') outraPasta = String(args[i + 1]?.valor || '?'); i += 2; } else i++;
+    }
+    const sub = args[i];
+    if (!sub || sub.incerto || !GIT_GRAVA_REMOTO.has(sub.valor)) return;
+    if (naPasta || citaRepo || /macuxierp-recados|^\?$/i.test(outraPasta))
+      motivos.push(`git ${sub.valor} no repositório de recados: ${agente} grava recado só pelo node scripts/coord.mjs enviar --de ${agente}`);
+  });
+  return [...new Set(motivos)];
+}
+
 export function motivosRecadoFalso({ comando, agente, cwd = '' }) {
   if (!agente || agente === 'alexandre') return [];
-  const motivos = [];
+  const motivos = [...motivosTrocaDeIdentidade({ comando, agente }), ...motivosGitNoRepoDeRecados({ comando, agente, cwd })];
   visitarComandos(comando, ({ nome, args }) => {
     if (!nome || nome.incerto || !['node', 'nodejs'].includes(nomeBase(nome.valor))) return;
     const i = args.findIndex((a) => !a.valor.startsWith('-'));

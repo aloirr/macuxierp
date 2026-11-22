@@ -74,6 +74,19 @@ test('v7 mcp: classifica — leitura, merge (fica com o v6), arquivo do GitHub, 
   assert.equal(ehNomeDeLeitura('getaway_write'), false, 'verbo só como palavra inteira');
 });
 
+test('mcp: add_repo — os agentes só anexam o aloirr/macuxierp-recados; o alexandre anexa o que precisar', () => {
+  const ADD = 'mcp__claude-code-remote__add_repo';
+  const GERENTE = { agente: 'gerente-projetos', origem: 'variável MACUXI_AGENTE' };
+  assert.equal(conferir({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxierp-recados', access: 'push' }, ident: GERENTE }).ok, true);
+  assert.equal(conferir({ ferramenta: ADD, entrada: { owner: 'Aloirr', repo: 'MacuxiERP-Recados' }, ident: GERENTE }).ok, true);
+  bloqueia({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxifdv', access: 'push' }, ident: GERENTE }, /só anexam o aloirr\/macuxierp-recados \(veio aloirr\/macuxifdv\)/);
+  bloqueia({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxierp' }, ident: NUVEM_CORE }, /veio aloirr\/macuxierp\)/);
+  bloqueia({ ferramenta: ADD, entrada: {}, ident: GERENTE }, /veio \?\/\?/);
+  assert.equal(conferir({ ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxifdv' }, ident: { agente: 'alexandre', origem: 'variável MACUXI_AGENTE' } }).ok, true);
+  // outras ferramentas do mesmo servidor não mudam
+  assert.equal(conferir({ ferramenta: 'mcp__claude-code-remote__send_message', entrada: { message: 'x' }, ident: GERENTE }).ok, true);
+});
+
 test('v7 mcp: push_files do agente no branch da tarefa, nos próprios caminhos e com o trailer passa', () => {
   assert.equal(conferir().ok, true, conferir().mensagem);
   assert.equal(conferir({ ferramenta: 'mcp__github__create_or_update_file', entrada: { owner: 'aloirr', repo: 'macuxierp', branch: 'nuvem/T-0099-x', path: 'modules/core/a.ts', content: 'x', message: msg(), sha: 'abc' } }).ok, true);
@@ -265,4 +278,15 @@ test('settings.json v7: o PreToolUse roda o guarda-mcp em TODA ferramenta MCP (e
     assert.ok(re.test(f), f);
   for (const f of ['Bash', 'Write', 'Edit', 'Read']) assert.equal(re.test(f), false, f);
   assert.equal(s.hooks.PreToolUse.filter((b) => b.hooks.some((h) => h.command === 'node .claude/hooks/guarda-merge-mcp.mjs')).length, 1);
+});
+
+test('hook mcp: add_repo pelo hook real — aloirr/macuxierp-recados passa; outro repositório bloqueia; alexandre anexa o que precisar', () => {
+  const dir = criarRepo();
+  const ADD = 'mcp__claude-code-remote__add_repo';
+  const env = { MACUXI_AGENTE: 'gerente-projetos' };
+  assert.equal(hook(dir, { ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxierp-recados', access: 'push' }, env }).codigo, 0);
+  const fdv = hook(dir, { ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxifdv', access: 'push' }, env });
+  assert.equal(fdv.codigo, 2, fdv.erro);
+  assert.match(fdv.erro, /só anexam o aloirr\/macuxierp-recados \(veio aloirr\/macuxifdv\)/);
+  assert.equal(hook(dir, { ferramenta: ADD, entrada: { owner: 'aloirr', repo: 'macuxifdv' }, env: { MACUXI_AGENTE: 'alexandre' } }).codigo, 0);
 });
