@@ -4,7 +4,7 @@
  * Retrato, preto e branco. Ambiente 2 (homologação) leva a marca d'água "SEM VALOR FISCAL" e o aviso, obrigatórios; nota cancelada leva a tarja.
  * Valores em pt-BR; datas no fuso informado (padrão Manaus). Sem dado pessoal em log: só se lê e devolve o que está no XML.
  */
-import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
+import { formatarDocumento, formatarReaisDecimal } from '@macuxierp/platform-sdk/formatar';
 import { FUSO_MANAUS_MINUTOS } from './fuso';
 import { achar, lerXml, textoDe, todos, type NoXml } from './xml-leve';
 
@@ -110,7 +110,6 @@ export function formatarDecimalXml(valor: string, casas: number): string {
   const negativo = m[1] === '-' && n !== 0n ? '-' : '';
   return `${negativo}${inteiro}${casas ? `,${s.slice(s.length - casas)}` : ''}`;
 }
-export const formatarMoeda = (valor: string): string => (valor.trim() === '' ? '' : `R$\u00a0${formatarDecimalXml(valor, 2)}`);
 
 /** Telefone (premissa do modulo-fiscal, a conferir no MOC 7.0 Anexo II): 10 dígitos "(DD) NNNN-NNNN", 11 dígitos "(DD) NNNNN-NNNN"; outro tamanho sai só com os dígitos. */
 export function formatarFone(f: string): string {
@@ -179,6 +178,8 @@ export interface EntradaDanfe {
 }
 
 /** RF-FAT-03: monta o DANFE do `nfeProc`. Lança `ErroDanfe` se o XML não for um `nfeProc` autorizado (sem `protNFe`/`infNFe`). */
+const valorDuplicata = (v: string): string => (v === '' ? '' : formatarReaisDecimal(v, 2));
+
 export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
   const fuso = entrada.fusoMinutos ?? FUSO_MANAUS_MINUTOS;
   let proc: NoXml;
@@ -276,7 +277,7 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
       emissao,
       saida: saidaTxt ? formatarDataHoraXml(saidaTxt, fuso, true) : '',
     },
-    duplicatas: todos(achar(inf, 'cobr'), 'dup').map((d) => ({ numero: textoDe(d, 'nDup'), vencimento: dataSimples(textoDe(d, 'dVenc')), valor: formatarMoeda(textoDe(d, 'vDup')) })),
+    duplicatas: todos(achar(inf, 'cobr'), 'dup').map((d) => ({ numero: textoDe(d, 'nDup'), vencimento: dataSimples(textoDe(d, 'dVenc')), valor: valorDuplicata(textoDe(d, 'vDup')) })),
     imposto: [
       { rotulo: 'Base de cálculo do ICMS', valor: m('vBC') },
       { rotulo: 'Valor do ICMS', valor: m('vICMS') },

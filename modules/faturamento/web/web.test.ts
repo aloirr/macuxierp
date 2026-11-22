@@ -337,6 +337,7 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
   });
   it('RF-FAT-06: vencido mostra "Vencido há N dias" no tom de erro; hoje civil é o de Manaus; estorno pede confirmação com valor e dia', () => {
     expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-17' }, '2026-11-22')).toEqual({ texto: 'Vencido há 5 dias', tom: 'erro' });
+    expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-21' }, '2026-11-22')).toEqual({ texto: 'Vencido há 1 dia', tom: 'erro' });
     expect(situacaoDoTitulo({ status: 'aberto', vencimento: '2026-11-22' }, '2026-11-22').tom).not.toBe('erro');
     expect(hojeCivil(new Date('2026-11-22T02:00:00Z'))).toBe('2026-11-21');
     expect(semEspacoDuro(dialogoEstornar({ valor_centavos: 12_345, baixado_em: '2026-11-20T15:00:00.000Z' }, 'America/Manaus').titulo)).toBe('Estornar a baixa de R$ 123,45 feita em 20/11?');
@@ -402,12 +403,14 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
     expect(g.validar({ 1: '1.200', 2: '1.000' })).toEqual({ ok: true }); // milhar digitado
     expect(g.validar({ 1: '1.200,5', 2: '' })).toMatchObject({ ok: false, erros: { 1: '1 - Caixa: a quantidade passa do saldo (1.200). Informe até 1.200 ou deixe o campo vazio.' } });
     const parcial = g.validar({ 1: '1.000,5', 2: '' });
-    expect(parcial).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000,5', qtd4: 10_005_000 }] }); // saída sem milhar
+    expect(parcial).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1.000,5', qtd4: 10_005_000 }] }); // saída com milhar; o requisicaoEmitir a aceita
     const m = requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-3', itens: parcial.ok && parcial.itens ? parcial.itens : [] });
     expect(m).toMatchObject({ ok: true, requisicao: { corpo: { itens: [{ sequencia: 1, quantidade: 10_005_000 }] } } });
     const mil = g.validar({ 1: '1000', 2: '' });
-    expect(mil).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1000', qtd4: 10_000_000 }] });
+    expect(mil).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1.000', qtd4: 10_000_000 }] });
     expect(requisicaoEmitir({ pedido_id: ID, chave: 'chave-parcial-4', itens: mil.ok && mil.itens ? mil.itens : [] }).ok).toBe(true);
+    const g2 = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Caixa', saldo: 20_000_000 }] });
+    expect(g2.validar({ 1: '1.500,25' })).toEqual({ ok: true, itens: [{ sequencia: 1, quantidade: '1.500,25', qtd4: 15_002_500 }] });
     expect(g.validar({ 1: '1.2000' })).toMatchObject({ ok: false, erros: { 1: expect.stringContaining('4 casas') } });
     expect(g.validar({ 1: '1.20' })).toMatchObject({ ok: false });
   });
