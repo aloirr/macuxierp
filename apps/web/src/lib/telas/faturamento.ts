@@ -5,8 +5,8 @@
  */
 import {
   ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, TEXTO_VAZIO, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
-  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
-  requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
+  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
+  requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
 } from '@macuxierp/faturamento/web';
 import {
@@ -15,7 +15,7 @@ import {
 } from '@macuxierp/faturamento/contracts';
 import { z } from 'zod';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos, formatarDataHora, formatarQuantidade, interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { formatarCentavos, formatarDataHora, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import type { AcaoVista, AmbienteVista, DetalheVista, ItemDoDialogo, Leitura, DownloadVista, Escrita, EntradaAcao, EventoVista, FiltroTela, Linha, ResultadoAcao, SeloVista, TelaDescrita, TelaDetalhe, TelaLista } from '../descritor/tipos';
 
 const rotaDe = (id: string): string => PAGINAS_FATURAMENTO.find((p) => p.id === id)?.rota ?? `/faturamento/${id}`;
@@ -29,7 +29,6 @@ export const ROTA_TITULO = rotaDe('titulo');
 /** Chave só para validar o diálogo (o envio usa a Idempotency-Key real da tentativa). */
 const CHAVE_DE_VALIDACAO = 'validacao-do-dialogo';
 const TOM = { ok: 'ok', alerta: 'aviso', erro: 'erro', neutro: 'neutro' } as const;
-const FUSO_COLUNAS = 'America/Manaus';
 const selo = (x: SeloModulo): SeloVista => ({ texto: x.texto, tom: TOM[x.tom], ...(x.dica ? { dica: x.dica } : {}) });
 
 // Rótulos vêm das colunas e dos selos do módulo (uma só fonte): nada de tabela de texto copiada aqui.
@@ -46,7 +45,7 @@ const BAIXAS = `${TITULOS}/:id/baixas`;
 const ESTORNO = `${BAIXAS}/:baixa_id/estornar`;
 const preencher = (modelo: string, valores: Readonly<Record<string, string>>): string => modelo.replace(/:(\w+)/g, (_, k: string) => valores[k] ?? '');
 const POST = (caminho: string): Escrita => ({ metodo: 'POST', caminho });
-const textoDoVencimento = (vencimento: string): string => String(colunasDaPagina('titulos', FUSO_COLUNAS).find((c) => c.id === 'vencimento')?.valor({ vencimento }) ?? vencimento);
+const textoDoVencimento = (vencimento: string, fuso: string): string => String(colunasDaPagina('titulos', fuso).find((c) => c.id === 'vencimento')?.valor({ vencimento }) ?? vencimento);
 
 const FILIAL: FiltroTela = { chave: 'filial_id', rotulo: 'Filial', tipo: 'cadastro', fonte: '/v1/cadastros/filiais' };
 const DE: FiltroTela = { chave: 'de', rotulo: 'De', tipo: 'data' };
@@ -60,7 +59,7 @@ function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly F
     tipo: 'lista',
     pagina,
     filtrosTela,
-    colunas: () => colunasDaPagina(id, FUSO_COLUNAS).map((c) => ({ id: c.id, rotulo: c.titulo, ...(c.tipo ? { tipo: c.tipo } : {}) })),
+    colunas: (_perfil, fuso) => colunasDaPagina(id, fuso).map((c) => ({ id: c.id, rotulo: c.titulo, ...(c.tipo ? { tipo: c.tipo } : {}) })),
     linha: (item, fuso) => Object.fromEntries(colunasDaPagina(id, fuso).map((c) => { const v = c.valor(item); return [c.id, v === null || v === undefined ? '' : String(v)]; })),
     selos: (item, fuso) => Object.fromEntries(colunasDaPagina(id, fuso).flatMap((c) => (c.selos ? [[c.id, c.selos(item).map(selo)] as const] : []))),
     textoVazio: TEXTO_VAZIO[id],
@@ -107,31 +106,28 @@ function acaoEmitirParcial(l: Linha, perfil: Perfil): AcaoVista | null {
   const { numero, ...base } = b;
   return {
     ...base, id: 'emitir-parcial', rotulo: 'Emitir nota parcial', entrada: 'itens', leitura: urlDoPedidoAFaturar((l as unknown as PedidoAFaturarResumo).id),
-    tituloDialogo: `Emitir nota parcial do pedido${numero}`, aviso: 'A nota leva só as quantidades abaixo, até o saldo de cada item. Campo vazio (ou 0) tira o item da nota.',
+    tituloDialogo: `Emitir nota parcial do pedido${numero}`, aviso: 'A nota leva só as quantidades informadas, até o saldo de cada item. Campo vazio tira o item da nota.',
     rotuloConfirmar: 'Emitir nota parcial',
   };
 }
 
-/** Itens do diálogo: descrição (ou "Item n"), saldo em qtd4 o texto do saldo em pt-BR e o valor inicial do campo (sem ponto de milhar, que `interpretarQuantidade` recusa). */
-const itensDoPedido = (dados: unknown): readonly ItemDoDialogo[] =>
-  PedidoAFaturarDetalhe.parse(dados).itens.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao ?? `Item ${i.sequencia}`, saldo: i.saldo, saldoTexto: formatarQuantidade(i.saldo), saldoCampo: formatarQuantidade(i.saldo).replaceAll('.', '') }));
+/** Itens do diálogo, já na regra do módulo (`formularioParcial`: só itens com saldo, rótulo, saldo em pt-BR e o valor inicial do campo, sem milhar). */
+const itensDoPedido = (dados: unknown): readonly ItemDoDialogo[] => {
+  const itens = PedidoAFaturarDetalhe.parse(dados).itens;
+  const crua = new Map(itens.map((i) => [i.sequencia, i.descricao ?? '']));
+  return formularioParcial({ itens }).campos.map((c) => ({ sequencia: c.sequencia, descricao: crua.get(c.sequencia) ?? '', rotulo: c.rotulo, saldo: c.saldo, saldoTexto: c.saldoTexto, saldoCampo: c.valorInicial }));
+};
 
-/** Nota parcial, regra do PO (R-20261122-055826): campo vazio ou 0 deixa o item fora da nota (nunca é erro); o preenchido tem de ser > 0 e no máximo o saldo; sem nenhum item, recusa. Texto → qtd4 pelo módulo (`interpretarQuantidade`, sem float).
- *  Ponto de troca: trocar pelo formularioParcial do @macuxierp/faturamento/web quando existir (R-20261122-055826). */
-export const MSG_PARCIAL_SEM_ITENS = 'Informe a quantidade de pelo menos um item';
+/** Nota parcial (RF-FAT-01): a regra é única e do módulo (`formularioParcial`, vazio tira o item, sem nenhum item recusa). A saída `ok` vai direto ao `requisicaoEmitir`
+ *  (sem `itens` = nota total); o erro de campo sai como vem do módulo (o rótulo do item já está no texto), o geral é o `MOTIVO_SEM_ITEM`. */
 function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
-  const escolhidos: { sequencia: number; quantidade: string }[] = [];
-  for (const i of e.itens ?? []) {
-    const texto = i.quantidade.trim();
-    if (texto === '') continue;
-    const q = interpretarQuantidade(texto);
-    if (q === null || q < 0) return { ok: false, erro: `"${i.descricao}": informe uma quantidade válida, com até 4 casas decimais, ou deixe o campo vazio para tirar o item.` };
-    if (q === 0) continue;
-    if (q > i.saldo) return { ok: false, erro: `"${i.descricao}": a quantidade passa do saldo (${formatarQuantidade(i.saldo)}).` };
-    escolhidos.push({ sequencia: i.sequencia, quantidade: texto });
+  const itens = e.itens ?? [];
+  const r = formularioParcial({ itens }).validar(Object.fromEntries(itens.map((i) => [i.sequencia, i.quantidade])));
+  if (!r.ok) {
+    const [, erro] = Object.entries(r.erros)[0] ?? [];
+    return { ok: false, erro: r.geral ?? erro ?? '' };
   }
-  if (escolhidos.length === 0) return { ok: false, erro: MSG_PARCIAL_SEM_ITENS };
-  return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, itens: escolhidos }));
+  return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, ...(r.itens ? { itens: r.itens } : {}) }));
 }
 
 const desmontar = (m: Montagem): ResultadoAcao => (m.ok ? { ok: true, ...(m.requisicao.corpo !== undefined ? { corpo: m.requisicao.corpo } : {}) } : { ok: false, erro: m.erro });
@@ -169,7 +165,7 @@ function validarInutilizar(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
 }
 
 /** `GET /v1/faturamento/filiais/:id/configuracao` (#244): o ambiente fiscal vigente da filial; sem configuração = homologação (a API decide). */
-const CONFIGURACAO_FILIAL = `${BASE_API}/filiais/:id/configuracao`;
+const CONFIGURACAO_FILIAL = urlDaConfiguracaoDaFilial(':id');
 const LEITURA_CONFIGURACAO: Leitura = { caminho: CONFIGURACAO_FILIAL, schema: ConfiguracaoFilialResposta };
 const ambienteDaConfiguracao = (dados: unknown): AmbienteVista | null => {
   const r = ConfiguracaoFilialResposta.safeParse(dados);
@@ -363,7 +359,7 @@ export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, ag
     ...(faixaDoTitulo(t) ? { faixa: faixaDoTitulo(t) as string } : {}),
     cabecalho: [
       { rotulo: 'Cliente', valor: t.cliente_razao_social ?? '' }, { rotulo: 'Nota', valor: String(t.numero) }, { rotulo: 'Ambiente', valor: textoDoAmbiente(t.ambiente) },
-      { rotulo: 'Vencimento', valor: textoDoVencimento(t.vencimento) },
+      { rotulo: 'Vencimento', valor: textoDoVencimento(t.vencimento, fuso) },
       { rotulo: 'Valor', valor: formatarCentavos(t.valor_centavos) }, { rotulo: 'Saldo', valor: formatarCentavos(t.saldo_centavos) },
     ],
     pendencias: [],

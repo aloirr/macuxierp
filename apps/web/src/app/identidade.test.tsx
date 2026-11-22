@@ -12,7 +12,7 @@ const fonte = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 
 describe('identidade do shell (T-0021, ajustes B)', () => {
   it('o favicon do metadata é o data URI do símbolo da ui', () => {
-    expect(metadata.icons).toMatchObject({ icon: faviconDataUri, apple: appleTouchIconDataUri });
+    expect(metadata.icons).toMatchObject({ icon: faviconDataUri, apple: [{ url: appleTouchIconDataUri, sizes: '180x180' }] });
   });
   it('o topo do shell usa a AssinaturaErp (sem texto de assinatura) e o layout importa botoes.css', () => {
     const casca = fonte('(shell)/layout.tsx');
@@ -45,17 +45,18 @@ describe('assinatura no topo', () => {
 });
 
 describe('assinatura C no login e na seleção de filial', () => {
-  it('o cabeçalho dos cartões renderiza a C (altura 62) e não o texto "Macuxi ERP"', () => {
+  it('o cabeçalho dos cartões renderiza a C (altura 100) e não o texto "Macuxi ERP"', () => {
     const h = renderToStaticMarkup(<CabecalhoCartao titulo="Acesse sua conta" />);
     expect(h).toContain('alt="Macuxi ERP"');
-    expect(h).toContain('height="62"');
+    expect(h).toContain('height="100"');
     expect(h).not.toMatch(/>Macuxi ERP</);
-    expect(fonte('cabecalho-cartao.tsx')).toContain('<AssinaturaErp variante="C" />');
+    expect(fonte('cabecalho-cartao.tsx')).toContain('<AssinaturaErp variante="C" altura={100} />');
     expect(fonte('login/page.tsx')).toContain('CabecalhoCartao');
     expect(fonte('filial/page.tsx')).toContain('CabecalhoCartao');
   });
   it('a faixa é azul-noite pelo token e o padding preserva a área de proteção da C', () => {
     expect(css).toMatch(/\.cartao-central header \{[^}]*background: var\(--mx-cor-azul-noite\)/);
-    expect(css).toMatch(/\.cartao-central header \{[^}]*padding: 20px 32px/);
+    expect(css).toMatch(/\.cartao-central header \{[^}]*padding: 24px 32px/);
+    expect(css).toMatch(/\.cartao-central input\[type=radio\] \{ accent-color: var\(--mx-cor-azul-noite\)/);
   });
 });

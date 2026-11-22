@@ -30,8 +30,8 @@ export type Escrita = { metodo: AcaoVista['metodo']; caminho: string };
 
 /** Leitura (GET) que o diálogo de uma ação pode pedir ao servidor: `caminho` com `:id` (UUID) e o schema que valida a resposta (fica no servidor). */
 export interface Leitura { caminho: string; schema: ZodTypeAny }
-/** Item do diálogo de nota parcial, já em texto para pessoas: `saldo` em qtd4 (10000 = 1 un). */
-export interface ItemDoDialogo { sequencia: number; descricao: string; saldo: number; saldoTexto: string; saldoCampo: string }
+/** Item do diálogo de nota parcial, já em texto para pessoas: `descricao` é a crua do pedido ('' se não houver; vai ao `formularioParcial`) e `rotulo` o texto da tela ("1 - Café…"); `saldo` em qtd4 (10000 = 1 un). */
+export interface ItemDoDialogo { sequencia: number; descricao: string; rotulo: string; saldo: number; saldoTexto: string; saldoCampo: string }
 /** Item do diálogo de nota parcial com a quantidade que a pessoa digitou (texto pt-BR). */
 export interface ItemEscolhido { sequencia: number; descricao: string; saldo: number; quantidade: string }
 export type AmbienteVista = { texto: string; tom: 'neutro' | 'alerta' | 'ok' | 'erro' };
@@ -72,7 +72,7 @@ export interface TelaLista {
   pagina: PaginaLista;
   filtrosTela: readonly FiltroTela[];
   /** Colunas da tabela para o perfil (id e título). */
-  colunas: (perfil: Perfil) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }[];
+  colunas: (perfil: Perfil, fuso: string) => readonly { id: string; rotulo: string; tipo?: 'texto' | 'numero' | 'dinheiro' | 'data' | 'status' }[];
   /** Linha pronta para exibir (texto por id de coluna), no fuso do tenant. */
   linha: (item: Linha, fuso: string) => Readonly<Record<string, string>>;
   /** Botão "Novo", quando houver; some se o perfil não puder `criar`. */
@@ -83,7 +83,7 @@ export interface TelaLista {
   rotuloDaLinha?: (linha: Linha) => string;
   /** Rótulo do campo `busca` (a página aceita `busca`). */
   rotuloBusca?: string;
-  /** Texto da tabela sem linhas (o problema e a ação); sem ele, a mensagem padrão da lista. */
+  /** Alternativa enquanto o módulo não declara `pagina.vazio` (MC-0016: sem e com filtro). Texto da tabela sem linhas (o problema e a ação); sem ele, a mensagem padrão da lista. */
   textoVazio?: string;
   /** Selos por coluna (ex.: ambiente de homologação); a coluna sem selo mostra o texto de `linha`. */
   selos?: (item: Linha, fuso: string) => Readonly<Record<string, readonly SeloVista[]>>;
