@@ -312,7 +312,7 @@ describe('API pública do web', () => {
   it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
       'ACOES_DA_NOTA', 'BASE_API', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
-      'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
+      'TEXTO_VAZIO', 'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
       'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
       'formularioBaixa', 'hojeCivil', 'motivosDasAcoes', 'numeroSerie', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
