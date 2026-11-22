@@ -4,10 +4,11 @@
  * motivo só vai quando o código é `outro`.
  */
 import {
-  EVENTOS, PedidoAprovado, type MotivoCancelamento, type MotivoRecusa, type NomeEventoPedido, type PedidoEventoBase, type StatusPedido,
+  EVENTOS, PedidoAprovado, type MotivoCancelamento, type MotivoRecusa, type NomeEventoPedido, type PedidoEventoBase, type PedidoFaturadoV1, type StatusPedido,
 } from '../contracts';
 import type { CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import type { PedidoGravado } from './portas';
+import type { NotaAutorizadaLida } from './leitores';
 
 /** Condição lida na aprovação; só os campos que o evento leva. */
 export type CondicaoDoEvento = Pick<CondicaoPagamento, 'forma_tpag' | 'forma_codigo' | 'forma_nome'> | null;
@@ -75,3 +76,23 @@ export const eventoRecusado = (p: PedidoGravado, anterior: StatusPedido, codigo:
 
 export const eventoCancelado = (p: PedidoGravado, anterior: StatusPedido, codigo: MotivoCancelamento, texto: string | null): EventoPronto =>
   pronto('pedido.pedido.cancelado@1', p, { ...base(p, anterior), motivo_codigo: codigo, motivo_texto: textoDoMotivo(codigo, texto) });
+
+/** Payload do faturado@1 a partir da nota autorizada lida (T-0015). Pura. */
+export function faturadoDaNota(nota: NotaAutorizadaLida, p: PedidoGravado, status: StatusPedido, anterior: StatusPedido | null): PedidoFaturadoV1 {
+  if (nota.pedido_id !== p.id) throw new Error(`Nota do pedido ${nota.pedido_id} não pertence ao pedido ${p.id}`);
+  const produtoDa = (sequencia: number): string => {
+    const item = p.itens.find((i) => i.sequencia === sequencia);
+    if (!item) throw new Error(`Item ${sequencia} da nota não existe no pedido ${p.id}`);
+    return item.produto_id;
+  };
+  return {
+    ...base({ ...p, status }, anterior),
+    ambiente: nota.ambiente,
+    ...(nota.conta_como_real === undefined ? {} : { conta_como_real: nota.conta_como_real }),
+    nota: {
+      id: nota.nota.id, numero: nota.nota.numero, serie: nota.nota.serie, chave: nota.nota.chave_acesso,
+      emitida_em: nota.nota.emitida_em, total_centavos: nota.nota.total_centavos,
+    },
+    itens_faturados: nota.itens.map((i) => ({ sequencia: i.sequencia, produto_id: produtoDa(i.sequencia), quantidade: i.quantidade, valor_centavos: i.valor_centavos })),
+  };
+}

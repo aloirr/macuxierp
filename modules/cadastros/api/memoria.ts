@@ -17,11 +17,11 @@ type Reg = { id: string; inativo: boolean; external_id?: string | null } & Recor
 export class ColecaoMemoria<E extends { id: string }, D extends Record<string, unknown>> implements RepoSimples<E, D> {
   readonly linhas: Reg[] = [];
   constructor(
-    private readonly opcoes: { unicos?: string[]; texto?: string[]; filtros?: Record<string, string>; padrao?: boolean } = {},
+    private readonly opcoes: { unicos?: string[]; texto?: string[]; filtros?: Record<string, string>; padrao?: boolean; padroes?: Record<string, unknown> } = {},
   ) {}
 
   protected criar(dados: D): Reg {
-    return { ...dados, id: randomUUID(), inativo: false } as unknown as Reg;
+    return { ...this.opcoes.padroes, ...dados, id: randomUUID(), inativo: false } as unknown as Reg;
   }
 
   async listar(q: FiltroLista): Promise<Pagina<E>> {
@@ -147,7 +147,7 @@ export function repositoriosEmMemoria() {
       for (const l of baseCliente.linhas) if (ids.includes(l.id)) l.vendedor_id = para;
     },
   });
-  const produtosBase = new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['codigo'], texto: ['descricao', 'codigo'] });
+  const produtosBase = new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['codigo'], texto: ['descricao', 'codigo'], padroes: { producao_propria: false } });
   const produtos = Object.assign(produtosBase, {
     unidades,
     async porIds(ids: readonly string[]) {
@@ -157,7 +157,7 @@ export function repositoriosEmMemoria() {
       return unidades.linhas.filter((u) => ids.includes(u.pai as string) && !u.inativo).map((u) => ({ produto_id: u.pai as string, unidade: u.unidade as string, fator: u.fator as number }));
     },
   });
-  const filiais = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['cnpj'], texto: ['razao_social'] }), {
+  const filiais = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['cnpj'], texto: ['razao_social'], padroes: { industrial_ipi: false, regime_pis_cofins: null } }), {
     async padrao() {
       const f = filiais.linhas.find((l) => l.padrao === true && !l.inativo);
       return f ? (structuredClone(f) as unknown as { id: string }) : null;

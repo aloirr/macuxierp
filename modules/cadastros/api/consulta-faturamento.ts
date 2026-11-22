@@ -5,19 +5,18 @@
  * é do faturamento) e leva só os campos listados. O CRT e o indIEDest saem como número, como a NF-e os usa.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import { classeForma, type ClasseForma, type CondicaoPagamento, type EnderecoClienteItem } from '../contracts';
+import { classeForma, type ClasseForma, type RegimePisCofins, type CondicaoPagamento, type EnderecoClienteItem } from '../contracts';
 import { comNomeMunicipio } from './enderecos';
 import type { Repositorios } from './portas';
-import { escolher } from './util';
+import { dadosFiscaisDaFilial, escolher, type CrtCadastros } from './util';
 
 const CAMPOS_ENDERECO = ['logradouro', 'numero', 'complemento', 'bairro', 'municipio_ibge', 'uf', 'cep'] as const;
 
 /** Endereço da nota: sem o `pais_bacen`; `municipio_nome` é `null` quando o código não está na tabela do IBGE (xMun é obrigatório). */
 export type EnderecoNotaCadastros = Pick<EnderecoClienteItem, (typeof CAMPOS_ENDERECO)[number]> & { municipio_nome: string | null };
-export type CrtCadastros = 1 | 2 | 3 | 4;
+export type { CrtCadastros };
 export type IndIeDestCadastros = 1 | 2 | 9;
 
-const CRT: Record<'1' | '2' | '3' | '4', CrtCadastros> = { '1': 1, '2': 2, '3': 3, '4': 4 };
 const IND_IE_DEST: Record<'1' | '2' | '9', IndIeDestCadastros> = { '1': 1, '2': 2, '9': 9 };
 
 export interface FilialParaFaturamento {
@@ -31,6 +30,9 @@ export interface FilialParaFaturamento {
   endereco: EnderecoNotaCadastros;
   emissora: boolean;
   nfe_serie: number | null;
+  /** Dados do cálculo fiscal (RN-FIS-02); `regime_pis_cofins` só vale no CRT 3. */
+  industrial_ipi: boolean;
+  regime_pis_cofins: RegimePisCofins | null;
 }
 export interface ClienteParaFaturamento {
   id: string;
@@ -63,7 +65,7 @@ export function criarConsultaParaFaturamento(repositorios: (tx: Transacao) => Re
       if (!f) return null;
       return {
         id: f.id, cnpj: f.cnpj, razao_social: f.razao_social, nome_fantasia: f.nome_fantasia, ie: f.ie ?? '',
-        crt: CRT[f.crt], endereco: await enderecoDaNota(r, f.endereco), emissora: f.emissora, nfe_serie: f.nfe_serie,
+        ...dadosFiscaisDaFilial(f), endereco: await enderecoDaNota(r, f.endereco), emissora: f.emissora, nfe_serie: f.nfe_serie,
       };
     },
     async cliente(tx, id) {

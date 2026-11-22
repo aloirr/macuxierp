@@ -305,7 +305,8 @@ export async function recomporDependentes(tx: Transacao, tenantId: string, chave
 
 /**
  * Troca controlada (ADR 0010, item 3): a linha antiga do `erp_id` fica viva, com o mesmo `erp_id`, `ativo = false` e
- * pendente até o Hub confirmar a inativação; o `finalizar` do lote a tira (`deleted_at`) só depois. Nunca apaga (RN-CAD-08).
+ * pendente até o Hub confirmar a inativação; o `finalizar` do lote a tira (`deleted_at`) só depois (RN-CAD-08). Exceção: a que
+ * nunca foi ao Hub e não está em lote aberto recebe `deleted_at` na hora.
  */
 export async function aplicarTrocaDeChave(tx: Transacao, tenantId: string, entidade: EntidadeHub, erpId: string, chaveNova: string, ocorridoEm: Date): Promise<Set<EntidadeHub>> {
   const linhas = await tx.consultar<LinhaRegistro>(
@@ -314,7 +315,18 @@ export async function aplicarTrocaDeChave(tx: Transacao, tenantId: string, entid
         AND ativo AND deleted_at IS NULL AND payload IS NOT NULL`,
     [tenantId, entidade, erpId, chaveNova],
   );
-  return inativarLinhas(tx, tenantId, linhas, ocorridoEm);
+  // a que nunca foi ao Hub e não está em lote aberto não tem o que inativar lá: sai direto
+  const nuncaEnviadas = await tx.consultar<{ id: string }>(
+    `UPDATE integracao_fdv.registro_publicado r SET deleted_at = now()
+      WHERE r.tenant_id = $1 AND r.id = ANY($2::uuid[]) AND r.hash_confirmado IS NULL AND r.ultimo_lote_envio_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM integracao_fdv.lote_envio l
+                         WHERE l.tenant_id = r.tenant_id AND l.entidade = r.entidade AND l.estado IN ('montado', 'enviando', 'aceito')
+                           AND l.corpo @> jsonb_build_object('registros', jsonb_build_array(jsonb_build_object('external_id', r.registro_external_id))))
+      RETURNING r.id`,
+    [tenantId, linhas.map((l) => l.id)],
+  );
+  const saidas = new Set(nuncaEnviadas.map((x) => x.id));
+  return inativarLinhas(tx, tenantId, linhas.filter((l) => !saidas.has(l.id)), ocorridoEm);
 }
 
 /**

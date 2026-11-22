@@ -7,7 +7,7 @@
 #   - resposta sem "banco":"ok" (503) → estado "degradado" (a API está no ar, o banco não);
 #   - sem resposta                    → estado "fora".
 # Aviso: sempre no syslog (`logger -t macuxierp-alerta`; ver com `journalctl -t macuxierp-alerta`) e, se existir
-# /opt/macuxierp/alerta.env com MACUXI_ALERTA_WEBHOOK (gravado pelo workflow a partir do secret PROD_ALERTA_WEBHOOK), um POST
+# /opt/macuxierp/alerta.env com MACUXI_ALERTA_WEBHOOK (hoje não é gravado: webhook desligado no deploy), um POST
 # com o texto. Só leitura: não reinicia nada, não mexe no banco.
 #
 # Instalação: pelo deploy (preparar-vm.sh copia para /opt/macuxierp/alerta-saude.sh e liga o macuxierp-alerta.timer, a cada

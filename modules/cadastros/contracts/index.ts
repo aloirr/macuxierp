@@ -39,6 +39,9 @@ export const Endereco = z.object({
 export type Endereco = z.infer<typeof Endereco>;
 
 // ---- Filial (RF-CAD-08; D8: a numeração da NF-e é do faturamento) ----
+/** Regime de PIS/COFINS da filial (RN-FIS-02). */
+export const RegimePisCofins = z.enum(['cumulativo', 'nao_cumulativo']);
+export type RegimePisCofins = z.infer<typeof RegimePisCofins>;
 export const FilialDados = z.object({
   cnpj: Cnpj,
   ie: z.string().trim().toUpperCase().max(14).nullable().default(null),
@@ -50,6 +53,10 @@ export const FilialDados = z.object({
   emissora: z.boolean().default(false),
   nfe_serie: z.number().int().min(0).max(999).nullable().default(null),
   nfe_numero_inicial: z.number().int().min(1).max(999_999_999).nullable().default(null),
+  /** Estabelecimento industrial para o IPI (RN-FIS-02, T-0021). Ausente = false; aditivo no @1. */
+  industrial_ipi: z.boolean().optional(),
+  /** Só vale no CRT 3 (RN-FIS-02). Ausente = null; aditivo no @1. */
+  regime_pis_cofins: RegimePisCofins.nullable().optional(),
   external_id: IdExterno,
 });
 export type FilialDados = z.infer<typeof FilialDados>;
@@ -116,6 +123,8 @@ export const ProdutoDados = z.object({
   grupo_tributacao: Texto(30),
   /** Nunca vai ao FDV; a API só o mostra a quem edita produto. */
   custo_centavos: Centavos.nullable().default(null),
+  /** Fabricado pelo estabelecimento (CFOP 5101/6101) × revendido (5102/6102); T-0021. Ausente = false; aditivo no @1. */
+  producao_propria: z.boolean().optional(),
   external_id: IdExterno,
 });
 export type ProdutoDados = z.infer<typeof ProdutoDados>;

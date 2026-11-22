@@ -5,9 +5,12 @@ import type { Dependencias, PortaCertificados } from './portas';
 import { criarRotas } from './rotas';
 import { repositoriosSql } from './sql';
 
+export { criarConsumidorEstoqueNota, externalDoMovimentoDaNota, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_CANCELADA } from './consumidor-estoque-nota';
 export { criarConsumidorCargaInicial, criarExecutorCargaInicial } from './carga-inicial';
 export { criarConsultaParaFaturamento } from './consulta-faturamento';
 export type { ConsultaCadastrosParaFaturamento } from './consulta-faturamento';
+export { criarConsultaParaFiscal } from './consulta-fiscal';
+export type { ConsultaCadastrosParaFiscal, EmitenteParaFiscal } from './consulta-fiscal';
 export { criarConsultaParaPedido } from './consulta-pedido';
 export type { ConsultaCadastrosParaPedido } from './consulta-pedido';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';

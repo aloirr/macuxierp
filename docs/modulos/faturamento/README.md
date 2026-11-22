@@ -126,3 +126,4 @@ A ligação no apps/api e no worker, as rotas de títulos, a varredura e a bande
 - Q9 = `faturamento.buracos_numeracao(p_filial, p_ambiente, p_serie)`.
 - O papel de leitura não vê `destinatario_retrato`, `transporte` nem `nota_xml.xml`.
 - **Migração 0020 (banco-dados, combinado)**: `nota_xml` aceita o tipo `nfe_assinada` (só INSERT, várias linhas por nota, `UNIQUE (nota_id, versao) WHERE tipo = 'nfe_assinada'`, `protocolo` nulo, o INSERT não muda o status da nota). Até ela existir, o CHECK da 0013 recusa o tipo e a coluna `versao` não existe: `api/sql-assinada.db.test.ts` e os testes de transmissão de `api/sql.db.test.ts` falham no banco real (os unitários, com o repositório em memória, passam).
+- **T-0021 (aditivo no @1)**: `conta_como_real` (opcional) em `nota.autorizada`, `nota.cancelada`, `titulo.gerado` e `titulo.baixado`, e `produto_id`/`filial_id` (opcionais) em cada item do evento de nota; ausente = falso. O preenchimento vem no lote 5.

@@ -6,9 +6,13 @@ name: producao — publicar
 #      ghcr.io/<dono>/macuxierp-api:<sha> existe (montada pelo "producao — liberar versão"). Fixa o DIGEST;
 #   2. bko (sem segredo): monta o BKO de produção do mesmo commit
 #      → ghcr.io/<dono>/macuxierp-web-prod:<sha>, por digest;
-#   3. deploy (environment PRODUCAO): SSH da VM, copia scripts/deploy/producao e o compose.yml, grava os segredos em /opt/macuxierp
-#      (modo 600, pelo stdin do ssh), login no GHCR na VM, implantar.sh (que pega a TRAVA DA VM compartilhada com o
-#      FDV antes de qualquer compose; ADR 0003), confere e volta atrás se falhar; confere pelo domínio.
+#   3. deploy (environment PRODUCAO, só PROD_SSH_KEY, PROD_HOST e PROD_USER): SSH da VM, copia scripts/deploy/producao e o
+#      compose.yml, preparar-vm.sh (gera o .env do ERP e copia banco.env, admin.env, segredos.env e a CA do FDV NA VM,
+#      pelo ambiente-vm.sh; nenhum segredo do banco sai do GitHub), login no GHCR na VM, implantar.sh (que pega a TRAVA
+#      DA VM compartilhada com o FDV antes de qualquer compose; ADR 0003), confere e volta atrás se falhar; confere pelo domínio.
+# Chave do host (known_hosts), sempre com StrictHostKeyChecking yes, nesta ordem: secret PROD_SSH_KNOWN_HOSTS (se existir) →
+# arquivo versionado .github/producao/known_hosts → cache do runner (actions/cache, chave fixa) → TOFU (ssh-keyscan
+# ed25519, com aviso e a impressão digital SHA256 no resumo do job, e grava no cache depois do primeiro SSH que deu certo).
 # Enquanto a T-0024 (scripts/deploy/producao e Dockerfiles do ERP) não entrar, o passo "implantação do ERP pronta"
 # fica vermelho de propósito: nenhuma versão é publicada pela metade.
 # Gatilho: SÓ tag v*: push da tag ou disparo manual NA tag (workflow_dispatch com --ref v*; branch é recusada no conferir
@@ -184,6 +188,7 @@ jobs:
           # modo cone: os arquivos da raiz (compose.yml) vêm sempre junto com a pasta listada
           sparse-checkout: |
             scripts/deploy/producao
+            .github/producao
 
       - name: implantação do ERP pronta
         run: |
@@ -191,74 +196,78 @@ jobs:
             test -f "$f" || { echo "::error::$f ainda não existe (T-0024, ADR 0003): nada foi publicado"; exit 1; }
           done
 
+      # T-0024: o .env do ERP e as cópias de banco.env, admin.env, segredos.env e da CA do FDV nascem NA VM (preparar-vm.sh →
+      # ambiente-vm.sh); o GitHub só guarda o acesso SSH
       - name: secrets do environment presentes (só os nomes)
         env:
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
-          PROD_PG_HOST: ${{ secrets.PROD_PG_HOST }}
-          PROD_PG_ADMIN_USUARIO: ${{ secrets.PROD_PG_ADMIN_USUARIO }}
-          PROD_PG_ADMIN_SENHA: ${{ secrets.PROD_PG_ADMIN_SENHA }}
-          PROD_S3_KEY_ID: ${{ secrets.PROD_S3_KEY_ID }}
-          PROD_S3_SECRET: ${{ secrets.PROD_S3_SECRET }}
-          PROD_PG_PORTA: ${{ secrets.PROD_PG_PORTA }}
-          # T-0094 (ADR 0032): e-mail transacional (opcional em bloco: sem PROD_SMTP_HOST, o e-mail fica desligado)
-          PROD_SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
-          PROD_SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
-          PROD_SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
-          PROD_SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
-          PROD_SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
-          PROD_SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
         run: |
           falta=()
-          for n in PROD_SSH_KEY PROD_HOST PROD_USER PROD_PG_HOST PROD_PG_ADMIN_USUARIO PROD_PG_ADMIN_SENHA PROD_S3_KEY_ID PROD_S3_SECRET; do
+          for n in PROD_SSH_KEY PROD_HOST PROD_USER; do
             [ -n "${!n}" ] || falta+=("$n")
           done
           [ ${#falta[@]} -eq 0 ] || { echo "::error::faltam secrets no environment PRODUCAO: ${falta[*]}"; exit 1; }
-          # valores de uma linha só (colados com quebra estragariam os .env); a chave SSH é a exceção
-          for n in PROD_HOST PROD_USER PROD_PG_HOST PROD_PG_ADMIN_USUARIO PROD_PG_ADMIN_SENHA PROD_S3_KEY_ID PROD_S3_SECRET PROD_PG_PORTA; do
+          # valores de uma linha só; a chave SSH é a exceção
+          for n in PROD_HOST PROD_USER; do
             v="$(printf '%s' "${!n}" | tr -d '\r')"
             case "$v" in *$'\n'*) echo "::error::$n tem quebra de linha"; exit 1;; esac
           done
           [[ "$PROD_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::PROD_USER inválido"; exit 1; }
-          [[ "$PROD_PG_ADMIN_USUARIO" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || { echo "::error::PROD_PG_ADMIN_USUARIO inválido"; exit 1; }
-          [ -z "$PROD_PG_PORTA" ] || [[ "$PROD_PG_PORTA" =~ ^[0-9]{1,5}$ ]] || { echo "::error::PROD_PG_PORTA inválida"; exit 1; }
-          # SMTP: uma linha, sem aspas simples (o email.env grava usuário, senha e remetente entre aspas simples, sem interpolação)
-          for n in PROD_SMTP_HOST PROD_SMTP_PORTA PROD_SMTP_TLS PROD_SMTP_USUARIO PROD_SMTP_SENHA PROD_SMTP_REMETENTE; do
-            v="$(printf '%s' "${!n}" | tr -d '\r')"
-            case "$v" in *$'\n'*) echo "::error::$n tem quebra de linha"; exit 1;; *"'"*) echo "::error::$n tem aspas simples"; exit 1;; esac
-          done
-          if [ -n "$PROD_SMTP_HOST" ]; then
-            [[ "$PROD_SMTP_HOST" =~ ^[A-Za-z0-9.-]{1,253}$ ]] || { echo "::error::PROD_SMTP_HOST inválido (só o nome do servidor)"; exit 1; }
-            [ -z "$PROD_SMTP_PORTA" ] || [[ "$PROD_SMTP_PORTA" =~ ^[0-9]{1,5}$ ]] || { echo "::error::PROD_SMTP_PORTA inválida"; exit 1; }
-            [ -z "$PROD_SMTP_TLS" ] || [[ "$PROD_SMTP_TLS" =~ ^(starttls|tls)$ ]] || { echo "::error::PROD_SMTP_TLS deve ser starttls ou tls"; exit 1; }
-            [ -n "$PROD_SMTP_USUARIO" ] && [ -n "$PROD_SMTP_SENHA" ] || { echo "::error::com PROD_SMTP_HOST, PROD_SMTP_USUARIO e PROD_SMTP_SENHA são obrigatórios"; exit 1; }
-            echo "e-mail: SMTP ligado"
-          else
-            [ -z "$PROD_SMTP_PORTA$PROD_SMTP_TLS$PROD_SMTP_USUARIO$PROD_SMTP_SENHA$PROD_SMTP_REMETENTE" ] || { echo "::error::há PROD_SMTP_* sem PROD_SMTP_HOST"; exit 1; }
-            echo "::warning::sem PROD_SMTP_HOST: e-mail desligado (o BKO mostra a senha ao admin; a Equipe por CSV recusa)"
-          fi
           echo "secrets obrigatórios presentes"
 
+      # known_hosts do runner guardado no cache do Actions (chave fixa; o cache usa o token do runtime, não o GITHUB_TOKEN,
+      # e funciona com as permissões mínimas do job). Fica no workspace, fora do ~/.ssh.
+      - name: chave do host no cache do runner
+        id: conhecidos
+        uses: actions/cache/restore@v4
+        with:
+          path: .producao-ssh/known_hosts
+          key: macuxierp-prod-known-hosts-v1
+
       - name: chave SSH
+        id: ssh
         env:
           CHAVE: ${{ secrets.PROD_SSH_KEY }}
           HOST: ${{ secrets.PROD_HOST }}
           CONHECIDOS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+          DO_CACHE: ${{ steps.conhecidos.outputs.cache-hit }}
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "$CHAVE" | tr -d '\r' > ~/.ssh/prod
           chmod 600 ~/.ssh/prod
+          CACHE=.producao-ssh/known_hosts
           if [ -n "$CONHECIDOS" ]; then
             printf '%s\n' "$CONHECIDOS" | tr -d '\r' > ~/.ssh/known_hosts
+            echo "chave do host: secret PROD_SSH_KNOWN_HOSTS"
+          elif [ -s .github/producao/known_hosts ]; then
+            tr -d '\r' < .github/producao/known_hosts > ~/.ssh/known_hosts
+            echo "chave do host: .github/producao/known_hosts (versionado)"
+          elif [ "$DO_CACHE" = true ] && [ -s "$CACHE" ]; then
+            cp "$CACHE" ~/.ssh/known_hosts
+            echo "chave do host: cache do runner (macuxierp-prod-known-hosts-v1)"
           else
-            echo "::warning::sem PROD_SSH_KNOWN_HOSTS: a chave do host vem do ssh-keyscan (primeira conexão)"
-            ssh-keyscan -T 15 -t ed25519 "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            # TOFU (decisão de 22/11: sem PROD_SSH_KNOWN_HOSTS): confia na primeira resposta e grava no cache
+            install -d -m 700 .producao-ssh
+            ssh-keyscan -T 15 -t ed25519 "$HOST" 2>/dev/null | tr -d '\r' | grep -v '^#' > "$CACHE" || true
+            grep -q ' ssh-ed25519 ' "$CACHE" || { echo "::error::ssh-keyscan não trouxe a chave ed25519 do PROD_HOST"; exit 1; }
+            cp "$CACHE" ~/.ssh/known_hosts
+            # só tamanho, impressão digital e tipo (sem o nome do host)
+            digital="$(ssh-keygen -lf "$CACHE" | awk '{print $1, $2, $NF}')"
+            echo "::warning::chave do host por TOFU (ssh-keyscan, primeira conexão): $digital — confira com a da VM (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)"
+            {
+              echo "### Chave do host de produção por TOFU"
+              echo
+              echo "Sem PROD_SSH_KNOWN_HOSTS, sem .github/producao/known_hosts e sem cache: a chave veio do ssh-keyscan."
+              echo "Impressão digital: \`$digital\`. Confira com \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` na VM."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "tofu=1" >> "$GITHUB_OUTPUT"
           fi
           printf 'Host prod\n  HostName %s\n  IdentityFile ~/.ssh/prod\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n' "$HOST" > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-      - name: copiar scripts e preparar a VM (idempotente)
+      - name: copiar scripts e preparar a VM (idempotente; gera o ambiente do ERP na VM)
         env:
           USUARIO: ${{ secrets.PROD_USER }}
         run: |
@@ -266,53 +275,13 @@ jobs:
           scp -q -o User="$USUARIO" scripts/deploy/producao/* compose.yml prod:macuxierp-deploy/
           ssh -l "$USUARIO" prod 'sudo bash ~/macuxierp-deploy/preparar-vm.sh "$USER"'
 
-      - name: segredos do GitHub na VM (modo 600, pelo stdin)
-        env:
-          USUARIO: ${{ secrets.PROD_USER }}
-          PG_HOST: ${{ secrets.PROD_PG_HOST }}
-          PG_PORTA: ${{ secrets.PROD_PG_PORTA }}
-          PG_ADMIN: ${{ secrets.PROD_PG_ADMIN_USUARIO }}
-          PG_ADMIN_SENHA: ${{ secrets.PROD_PG_ADMIN_SENHA }}
-          PG_CA: ${{ secrets.PROD_PG_CA_CERT }}
-          S3_ID: ${{ secrets.PROD_S3_KEY_ID }}
-          S3_SEGREDO: ${{ secrets.PROD_S3_SECRET }}
-          WEBHOOK: ${{ secrets.PROD_ALERTA_WEBHOOK }}
-          # T-0094 (ADR 0032): e-mail transacional, só na api e no worker (email.env)
-          SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
-          SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
-          SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
-          SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
-          SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
-          SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
-        run: |
-          grava() { ssh -l "$USUARIO" prod "umask 077; cat > '/opt/macuxierp/$1.tmp' && mv -f '/opt/macuxierp/$1.tmp' '/opt/macuxierp/$1'"; }
-          printf 'MACUXI_PG_HOST=%s\nMACUXI_PG_PORTA=%s\n' "$PG_HOST" "${PG_PORTA:-5432}" | grava banco.env
-          printf 'MACUXI_PG_ADMIN_USUARIO=%s\nMACUXI_PG_ADMIN_SENHA=%s\n' "$PG_ADMIN" "$PG_ADMIN_SENHA" | grava admin.env
-          # T-0093/ADR 0031: sem convite do super-admin (ele nasce pelo workflow "producao — super-admin")
-          printf 'MACUXI_S3_CHAVE_ID=%s\nMACUXI_S3_SEGREDO=%s\n' "$S3_ID" "$S3_SEGREDO" | grava segredos.env
-          # sem tunel.env: o túnel é o do FDV (rede externa no compose.yml; ADR 0003)
-          # e-mail (T-0094): sem PROD_SMTP_HOST, email.env vazio e e-mail desligado. Valores conferidos no passo dos secrets;
-          # usuário, senha e remetente entre aspas simples (o compose não interpola $ dentro delas)
-          if [ -n "$SMTP_HOST" ]; then
-            printf 'MACUXI_SMTP_HOST=%s\n' "$SMTP_HOST"
-            [ -z "$SMTP_PORTA" ] || printf 'MACUXI_SMTP_PORTA=%s\n' "$SMTP_PORTA"
-            [ -z "$SMTP_TLS" ] || printf 'MACUXI_SMTP_TLS=%s\n' "$SMTP_TLS"
-            printf "MACUXI_SMTP_USUARIO='%s'\nMACUXI_SMTP_SENHA='%s'\n" "$SMTP_USUARIO" "$SMTP_SENHA"
-            [ -z "$SMTP_REMETENTE" ] || printf "MACUXI_SMTP_REMETENTE='%s'\n" "$SMTP_REMETENTE"
-          fi | tr -d '\r' | grava email.env
-          if [ -n "$WEBHOOK" ]; then
-            printf 'MACUXI_ALERTA_WEBHOOK=%s\n' "$WEBHOOK" | grava alerta.env
-          else
-            echo "::notice::sem PROD_ALERTA_WEBHOOK: o alerta de saúde avisa só no journal da VM (journalctl -t macuxierp-alerta)"
-          fi
-          if [ -n "$PG_CA" ]; then
-            printf '%s\n' "$PG_CA" | tr -d '\r' | grava certs/dbaas-ca.pem
-            # a CA não é segredo: 644, para o usuário node dos contêineres ler pelo volume ./certs
-            ssh -l "$USUARIO" prod 'chmod 644 /opt/macuxierp/certs/dbaas-ca.pem'
-            echo "CA do DBaaS gravada: TLS verify-full"
-          else
-            ssh -l "$USUARIO" prod 'rm -f /opt/macuxierp/certs/dbaas-ca.pem'
-          fi
+      # TOFU: grava a chave no cache só depois do primeiro SSH que deu certo (a VM aceitou a chave do deploy)
+      - name: chave do host no cache do runner (TOFU)
+        if: ${{ steps.ssh.outputs.tofu == '1' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .producao-ssh/known_hosts
+          key: macuxierp-prod-known-hosts-v1
 
       - name: publicar (login no GHCR na VM, banco, compose up, conferência, volta atrás se falhar)
         env:
@@ -346,4 +315,4 @@ jobs:
 
       - name: limpar a chave do runner
         if: ${{ always() }}
-        run: rm -f ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts
+        run: rm -rf ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts .producao-ssh

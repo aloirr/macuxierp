@@ -23,7 +23,7 @@ x-servico: &servico
 x-app: &app
   <<: [*servico, *imagem-api]
   env_file:
-    # S3 e SMTP: contrato para o core e o faturamento; o código ainda não lê
+    # S3 e SMTP: contrato para o core e o faturamento; o código ainda não lê. quem grava: env.modelo; required: false = Compose 2.24+
     - path: segredos.env
       required: false
     - path: email.env
@@ -32,7 +32,7 @@ x-app: &app
     - ./certs:/certs:ro
 
 x-ambiente-app: &ambiente-app
-  PGHOST: ${MACUXI_PG_HOST:?banco.env sem MACUXI_PG_HOST (workflow)}
+  PGHOST: ${MACUXI_PG_HOST:?banco.env sem MACUXI_PG_HOST (preparar-vm.sh)}
   PGPORT: ${MACUXI_PG_PORTA:-5432}
   PGDATABASE: ${MACUXIERP_BANCO:-macuxierp}
   # TLS sempre (node-postgres lê o PGSSLMODE): verify-full com certs/dbaas-ca.pem, senão no-verify. Nunca "disable".
@@ -86,7 +86,7 @@ services:
       PGUSER: macuxierp_app
       PGPASSWORD: ${MACUXIERP_SENHA_APP:?gerados.env sem MACUXIERP_SENHA_APP (preparar-vm.sh)}
       MACUXIERP_JWT_SEGREDO: ${MACUXIERP_JWT_SEGREDO:?gerados.env sem MACUXIERP_JWT_SEGREDO (preparar-vm.sh)}
-      MACUXIERP_CHAVE_A1: ${MACUXIERP_CHAVE_A1:?.env sem MACUXIERP_CHAVE_A1 (env.modelo)}
+      MACUXIERP_CHAVE_A1: ${MACUXIERP_CHAVE_A1:?.env sem MACUXIERP_CHAVE_A1 (preparar-vm.sh)}
       MACUXIERP_HOST: 0.0.0.0
       MACUXIERP_PORTA: '8100'
       MACUXIERP_COOKIE_SEGURO: '1'

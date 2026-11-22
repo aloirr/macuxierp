@@ -6,7 +6,7 @@ import type { EnvelopeEvento } from '@macuxierp/platform-sdk';
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AGORA, CNPJ_FILIAL_2, CNPJ_FILIAL_3, admSql, cadCliente, cadCondicao, cadFilial, cadPreco, cadProduto, cadTabela, cadVendedor, evento, licenciadas, U } from './apoio-conector-teste';
+import { AGORA, CNPJ_FILIAL_2, CNPJ_FILIAL_3, admSql, cadCliente, cadCondicao, cadFilial, cadPreco, cadProduto, cadTabela, cadVendedor, criarCredencial, evento, licenciadas, U } from './apoio-conector-teste';
 import { criarConsumidorPublicarCadastros } from './consumidor-cadastros';
 
 describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL real', () => {
@@ -198,6 +198,7 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     await tratar(t, filialEv(t, f, null as never, '2026-11-22T09:00:00.000Z'));
     await tratar(t, evento(t, 'cadastros.vendedor.alterado@1', v, cadVendedor(v, f, { external_id: 'VEN-A' }), '2026-11-22T09:00:30.000Z'));
     expect((await reg(t, 'vendedor', 'VEN-A'))!.payload.filial_external_id).toBe(f);
+    await adm("UPDATE integracao_fdv.registro_publicado SET hash_confirmado = hash, confirmado_em = $2, pendente = false WHERE tenant_id = $1 AND entidade = 'filial'", [t, AGORA]);
     await tratar(t, filialEv(t, f, 'FIL-ADOTADA', '2026-11-22T09:01:00.000Z', { external_id_anterior: null }));
     expect((await reg(t, 'filial', f))).toMatchObject({ ativo: false, pendente: true });
     expect((await reg(t, 'filial', 'FIL-ADOTADA'))!.ativo).toBe(true);
@@ -335,5 +336,131 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     await adm("INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, proximo_em) VALUES ($1, 'vendedor', $2) ON CONFLICT (tenant_id, entidade) DO UPDATE SET proximo_em = EXCLUDED.proximo_em", [B, new Date(AGORA.getTime() - 60_000)]);
     await tratar(B, evento(B, 'cadastros.vendedor.alterado@1', U(), cadVendedor(U(), f), '2026-11-22T09:00:00.000Z'));
     expect((await cursor(B, 'vendedor'))!.proximo_em.getTime()).toBe(AGORA.getTime() - 60_000);
+  });
+
+  describe('ADR 0010 (C-10): chave do Hub de unidade, endereço e preço', () => {
+    const confirmar = (t: string) => adm('UPDATE integracao_fdv.registro_publicado SET hash_confirmado = hash, confirmado_em = $2, pendente = false WHERE tenant_id = $1', [t, AGORA]);
+    const produtoEv = (t: string, p: string, unidades: Array<Record<string, unknown>>, em: string) =>
+      evento(t, 'cadastros.produto.alterado@1', p, cadProduto(p, unidades as never, { external_id: 'PRD-KIT' }), em);
+    const uni = (id: string, extra: Record<string, unknown> = {}) => ({ id, unidade: 'CX', fator: 120_000, ean: null, ...extra });
+    const enderecoDe = (id: string, extra: Record<string, unknown> = {}) => ({ id, tipo: 'principal', ...cadFilial(U()).endereco, ...extra });
+
+    it('RN-CORE-05: unidade que estava com o UUID no espelho passa à chave do kit sem conflito; a linha antiga fica inativa e pendente', async () => {
+      const t = await criarTenant(efemero.admin, 'cons-uni-adocao', ['integracao-fdv']);
+      const p = U();
+      const un = U();
+      await tratar(t, produtoEv(t, p, [uni(un)], '2026-11-22T09:00:00.000Z'));
+      expect(await reg(t, 'produto_unidade', un)).toMatchObject({ ativo: true, erp_id: un });
+      await confirmar(t);
+      await tratar(t, produtoEv(t, p, [uni(un, { external_id: 'UN-KIT' })], '2026-11-22T09:01:00.000Z'));
+      expect(await reg(t, 'produto_unidade', un)).toMatchObject({ ativo: false, pendente: true, erp_id: un });
+      expect(await reg(t, 'produto_unidade', 'UN-KIT')).toMatchObject({ ativo: true, pendente: true, erp_id: un });
+      expect((await reg(t, 'produto_unidade', 'UN-KIT'))!.payload).toMatchObject({ external_id: 'UN-KIT', produto_external_id: 'PRD-KIT' });
+      expect((await adm('SELECT deleted_at FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND registro_external_id = $2', [t, un]))[0]!.deleted_at).toBeNull();
+      expect(await conflitos(t, 'produto_unidade')).toHaveLength(0);
+      // o mesmo evento de novo não troca nada nem abre conflito
+      await tratar(t, produtoEv(t, p, [uni(un, { external_id: 'UN-KIT' })], '2026-11-22T09:02:00.000Z'));
+      expect(await conflitos(t, 'produto_unidade')).toHaveLength(0);
+    });
+
+    it('RN-CORE-05 e RN-INF-04: unidade com external_id que mudou sem marcador é chave_alterada (nada é sobrescrito); chave de outro erp_id é chave_duplicada', async () => {
+      const t = await criarTenant(efemero.admin, 'cons-uni-conflito', ['integracao-fdv']);
+      const p = U();
+      const u1 = U();
+      const u2 = U();
+      await tratar(t, produtoEv(t, p, [uni(u1, { external_id: 'UN-A' }), uni(u2, { external_id: 'UN-B' })], '2026-11-22T09:00:00.000Z'));
+      await tratar(t, produtoEv(t, p, [uni(u1, { external_id: 'UN-NOVA', fator: 10_000 }), uni(u2, { external_id: 'UN-A' })], '2026-11-22T09:01:00.000Z'));
+      expect(await reg(t, 'produto_unidade', 'UN-NOVA')).toBeUndefined();
+      expect((await reg(t, 'produto_unidade', 'UN-A'))).toMatchObject({ ativo: true, erp_id: u1 });
+      expect((await reg(t, 'produto_unidade', 'UN-B'))).toMatchObject({ ativo: true, erp_id: u2 });
+      expect(await conflitos(t, 'produto_unidade')).toMatchObject([
+        { erp_id: u1, chave: 'UN-NOVA', codigo: 'chave_alterada', resolvido_em: null },
+        { erp_id: u2, chave: 'UN-A', codigo: 'chave_duplicada', resolvido_em: null },
+      ]);
+    });
+
+    it('RN-CORE-05: preço com external_id_anterior igual à chave do espelho é troca; sem marcador, chave_alterada', async () => {
+      const t = await criarTenant(efemero.admin, 'cons-preco-troca', ['integracao-fdv']);
+      const tab = U();
+      const f = U();
+      const p = U();
+      const preco = U();
+      const ev = (extra: Record<string, unknown>, em: string) => evento(t, 'cadastros.preco.alterado@1', preco, cadPreco(tab, f, p, extra), em);
+      await tratar(t, ev({}, '2026-11-22T09:00:00.000Z'));
+      expect(await reg(t, 'preco', preco)).toMatchObject({ ativo: true, erp_id: preco });
+      await confirmar(t);
+      // adoção: o espelho tinha o agregado_id (UUID) e o evento traz o external_id e o marcador null
+      await tratar(t, ev({ external_id: 'PR-KIT', external_id_anterior: null }, '2026-11-22T09:01:00.000Z'));
+      expect(await reg(t, 'preco', preco)).toMatchObject({ ativo: false, pendente: true });
+      expect(await reg(t, 'preco', 'PR-KIT')).toMatchObject({ ativo: true, pendente: true, erp_id: preco });
+      await confirmar(t);
+      // troca controlada: o marcador é a chave do espelho
+      await tratar(t, ev({ external_id: 'PR-KIT-2', external_id_anterior: 'PR-KIT' }, '2026-11-22T09:02:00.000Z'));
+      expect(await reg(t, 'preco', 'PR-KIT')).toMatchObject({ ativo: false, pendente: true });
+      expect(await reg(t, 'preco', 'PR-KIT-2')).toMatchObject({ ativo: true, erp_id: preco });
+      // mudou sem marcador: conflito, nada gravado
+      await tratar(t, ev({ external_id: 'PR-KIT-3' }, '2026-11-22T09:03:00.000Z'));
+      expect(await reg(t, 'preco', 'PR-KIT-3')).toBeUndefined();
+      expect(await conflitos(t, 'preco')).toMatchObject([{ erp_id: preco, chave: 'PR-KIT-3', codigo: 'chave_alterada', resolvido_em: null }]);
+    });
+
+    it('C-10: payload no formato do cadastros (unidades[].external_id, enderecos[].external_id, preço com external_id e external_id_anterior) chega ao espelho com as chaves do kit', async () => {
+      const t = await criarTenant(efemero.admin, 'cons-c10', ['integracao-fdv']);
+      const f = U();
+      const c = U();
+      const p = U();
+      const un = U();
+      const e = U();
+      const tab = U();
+      const preco = U();
+      await tratar(t, evento(t, 'cadastros.produto.alterado@1', p, { ...cadProduto(p, [uni(un, { external_id: 'UN-C10' })] as never, { external_id: 'PRD-C10' }), external_id_anterior: null }, '2026-11-22T09:00:00.000Z'));
+      // o endereço já estava no espelho com o UUID: a chave do kit é adoção, sem conflito
+      await tratar(t, evento(t, 'cadastros.cliente.alterado@1', c, cadCliente(c, f, { enderecos: [enderecoDe(e)] }), '2026-11-22T08:59:59.000Z'));
+      await confirmar(t);
+      await tratar(t, evento(t, 'cadastros.cliente.alterado@1', c, { ...cadCliente(c, f, { external_id: 'CLI-C10', enderecos: [enderecoDe(e, { external_id: 'END-C10' })] }), external_id_anterior: null }, '2026-11-22T09:00:01.000Z'));
+      await tratar(t, evento(t, 'cadastros.preco.alterado@1', preco, { ...cadPreco(tab, f, p), external_id: 'PR-C10', external_id_anterior: null }, '2026-11-22T09:00:02.000Z'));
+      expect(await reg(t, 'produto_unidade', 'UN-C10')).toMatchObject({ erp_id: un, ativo: true });
+      expect(await reg(t, 'cliente_endereco', 'END-C10')).toMatchObject({ erp_id: e, ativo: true, pendente: true });
+      expect((await reg(t, 'cliente_endereco', 'END-C10'))!.payload.cliente_external_id).toBe('CLI-C10');
+      expect(await reg(t, 'cliente_endereco', e)).toMatchObject({ ativo: false, pendente: true });
+      expect(await conflitos(t, 'cliente_endereco')).toHaveLength(0);
+      expect(await reg(t, 'preco', 'PR-C10')).toMatchObject({ erp_id: preco, ativo: true });
+      expect(await reg(t, 'produto_unidade', un)).toBeUndefined();
+    });
+
+    it('RN-CORE-05: preço com o espelho no agregado_id e evento com a chave do kit sem marcador é adoção (troca), não conflito', async () => {
+      const t = await criarTenant(efemero.admin, 'cons-preco-sem-marcador', ['integracao-fdv']);
+      const tab = U();
+      const f = U();
+      const p = U();
+      const preco = U();
+      await tratar(t, evento(t, 'cadastros.preco.alterado@1', preco, cadPreco(tab, f, p), '2026-11-22T09:00:00.000Z'));
+      await confirmar(t);
+      await tratar(t, evento(t, 'cadastros.preco.alterado@1', preco, cadPreco(tab, f, p, { external_id: 'PR-KIT' }), '2026-11-22T09:01:00.000Z'));
+      expect(await reg(t, 'preco', preco)).toMatchObject({ ativo: false, pendente: true });
+      expect(await reg(t, 'preco', 'PR-KIT')).toMatchObject({ ativo: true, erp_id: preco });
+      expect(await conflitos(t, 'preco')).toHaveLength(0);
+    });
+
+    it('RN-CAD-08: na troca, a linha antiga que nunca foi ao Hub recebe deleted_at direto; a que está em lote aberto fica inativa e pendente', async () => {
+      const t = await criarTenant(efemero.admin, 'cons-troca-nunca-enviada', ['integracao-fdv']);
+      const deletada = async (chave: string) => (await adm('SELECT deleted_at FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND registro_external_id = $2', [t, chave]))[0]!.deleted_at;
+      const f = U();
+      await tratar(t, filialEv(t, f, 'FIL-A', '2026-11-22T09:00:00.000Z'));
+      await tratar(t, filialEv(t, f, 'FIL-B', '2026-11-22T09:01:00.000Z', { external_id_anterior: 'FIL-A' }));
+      expect(await deletada('FIL-A')).not.toBeNull();
+      expect(await reg(t, 'filial', 'FIL-B')).toMatchObject({ ativo: true, pendente: true, erp_id: f });
+      // FIL-B entra em um lote aberto (corpo montado): a troca seguinte não a apaga
+      const cred = await criarCredencial(efemero.admin, t);
+      await adm(
+        `INSERT INTO integracao_fdv.lote_envio (tenant_id, entidade, credencial_id, modo, chave_idempotencia, estado, corpo)
+         VALUES ($1, 'filial', $2, 'delta', $3, 'montado', $4::jsonb)`,
+        [t, cred, 'd'.repeat(64), JSON.stringify({ registros: [{ external_id: 'FIL-B' }] })],
+      );
+      await tratar(t, filialEv(t, f, 'FIL-C', '2026-11-22T09:02:00.000Z', { external_id_anterior: 'FIL-B' }));
+      expect(await deletada('FIL-B')).toBeNull();
+      expect(await reg(t, 'filial', 'FIL-B')).toMatchObject({ ativo: false, pendente: true });
+      expect(await reg(t, 'filial', 'FIL-C')).toMatchObject({ ativo: true, erp_id: f });
+    });
   });
 });

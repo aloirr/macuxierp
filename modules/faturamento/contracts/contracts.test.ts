@@ -42,4 +42,20 @@ describe('contratos de eventos do faturamento', () => {
     expect(TituloBaixadoPayload.safeParse(t).success).toBe(false);
     expect(TituloBaixadoPayload.safeParse({ ...t, valor_baixado_centavos: 100 }).success).toBe(true);
   });
+  it('T-0021: campos novos são aditivos no @1 (payload antigo continua válido)', () => {
+    expect(NotaAutorizadaPayload.safeParse({ ...base, pedido_uuid: null }).success).toBe(true);
+  });
+  it('T-0021: conta_como_real e produto_id/filial_id por item são aceitos', () => {
+    const itens = [{ sequencia: 1, quantidade: 10000, valor_centavos: 100, produto_id: u(7), filial_id: u(2) }];
+    const aut = { ...base, itens, conta_como_real: true, pedido_uuid: null };
+    expect(NotaAutorizadaPayload.safeParse(aut).success).toBe(true);
+    const canc = { ...aut, protocolo_cancelamento: '113260000000002', motivo: 'Cancelamento por erro de digitação' };
+    expect(NotaCanceladaPayload.safeParse(canc).success).toBe(true);
+    const t = { titulo_id: u(5), nota_id: u(1), pedido_id: u(4), cliente_id: u(3), ambiente: 'homologacao', numero: 5, serie: 1, parcela: 1, total_parcelas: 1, emissao: '2026-11-21', vencimento: '2026-12-21', valor_centavos: 100, saldo_centavos: 100, conta_como_real: true };
+    expect(TituloGeradoPayload.safeParse(t).success).toBe(true);
+    expect(TituloBaixadoPayload.safeParse({ ...t, baixado_em: '2026-12-20', valor_baixado_centavos: 100 }).success).toBe(true);
+  });
+  it('T-0021: conta_como_real não booleano é recusado', () => {
+    expect(NotaAutorizadaPayload.safeParse({ ...base, pedido_uuid: null, conta_como_real: 'sim' }).success).toBe(false);
+  });
 });

@@ -372,7 +372,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — 0020 sobre nota_xml gravado
       '0020_nota_xml_nfe_assinada.sql',
     );
     permitirSetRole(banco.conexao);
-    executar(banco.conexao, fixturePlataforma(C) + fixtureModulos(C) + fixtureFaturamento(C));
+    executar(banco.conexao, fixturePlataforma(C) + fixtureModulos(C) + fixtureFaturamento(C, true));
 
     expect(migrar(banco.conexao, { oficiais: false })).toContain('0020_nota_xml_nfe_assinada.sql');
 

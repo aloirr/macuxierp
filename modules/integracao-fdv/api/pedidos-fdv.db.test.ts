@@ -283,31 +283,41 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect((await retornos(A, uuid)).map((r) => r.status)).toEqual(['integrado', 'cancelado']);
     });
 
+    const NOTA = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
+    const faturadoDe = (uuid: string, produtoErp: string, extra: Record<string, unknown> = {}) =>
+      evento(A, 'pedido.pedido.faturado@1', uuid, { status: 'faturado', ambiente: 'producao', ...extra, nota: NOTA, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] });
+    const espelharProduto = (chave: string, erp: string) =>
+      adm(
+        `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo, pendente, erp_id)
+         VALUES ($1, 'produto', $2, '{}', repeat('c', 64), $4, $4, true, false, $3)`,
+        [A, chave, erp, relogio.agora()],
+      );
+
     it('ADR 0010 item 1 / A-02: o faturado@1 manda a chave do Hub do produto achada no espelho pelo erp_id, nunca o UUID; sem a chave o consumidor falha e nada é gravado', async () => {
       const uuid = await pedidoEntregue(A);
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
       const produtoErp = U();
-      const nota = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
-      const faturado = () => evento(A, 'pedido.pedido.faturado@1', uuid, { status: 'faturado', ambiente: 'producao', nota, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] });
       // espelho sem o produto: o despachante repete com backoff, e o UUID cru nunca vai ao Hub
-      await expect(aplicar(A, faturado())).rejects.toThrow('produto faturado sem chave do Hub no espelho');
+      await expect(aplicar(A, faturadoDe(uuid, produtoErp))).rejects.toThrow('produto faturado sem chave do Hub no espelho');
       expect((await retornos(A, uuid)).map((r) => r.status)).toEqual(['integrado']);
       // o produto chega ao espelho (chave do kit P001) e o mesmo evento passa
-      await adm(
-        `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo, pendente, erp_id)
-         VALUES ($1, 'produto', 'P001', '{}', repeat('c', 64), $3, $3, true, false, $2)`,
-        [A, produtoErp, relogio.agora()],
-      );
-      await aplicar(A, faturado());
+      await espelharProduto('P001', produtoErp);
+      await aplicar(A, faturadoDe(uuid, produtoErp));
       const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid]);
       expect(f!.corpo.itens_faturados).toEqual([{ sequencia: 1, produto_external_id: 'P001', quantidade: 2.5, valor_cents: 5000 }]);
       expect(JSON.stringify(f!.corpo)).not.toContain(produtoErp);
       expect(JSON.stringify(d.logs)).not.toContain(produtoErp);
     });
 
-    const NOTA = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
-    const faturadoDe = (uuid: string, produtoErp: string) =>
-      evento(A, 'pedido.pedido.faturado@1', uuid, { status: 'faturado', ambiente: 'producao', nota: NOTA, itens_faturados: [{ sequencia: 1, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 5000 }] });
+    it('RN-FAT-04/M7: faturado@1 de homologação com conta_como_real true (nota simulada) grava o retorno com número e série', async () => {
+      const produtoErp = U();
+      await espelharProduto('P-SIM', produtoErp);
+      const simulado = await pedidoEntregue(A);
+      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', simulado));
+      await aplicar(A, faturadoDe(simulado, produtoErp, { ambiente: 'homologacao', conta_como_real: true }));
+      const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, simulado]);
+      expect(f!.corpo.nota).toMatchObject({ numero: NOTA.numero, serie: NOTA.serie });
+    });
 
     it('A-02: produto inativo no espelho também tem chave: o faturado@1 passa (a linha ativa vem primeiro quando há duas)', async () => {
       const uuid = await pedidoEntregue(A);
