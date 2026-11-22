@@ -5,6 +5,7 @@ import type { Dependencias, PortaCertificados } from './portas';
 import { criarRotas } from './rotas';
 import { repositoriosSql } from './sql';
 
+export { criarConsumidorEstoqueNota, externalDoMovimentoDaNota, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_CANCELADA } from './consumidor-estoque-nota';
 export { criarConsumidorCargaInicial, criarExecutorCargaInicial } from './carga-inicial';
 export { criarConsultaParaFaturamento } from './consulta-faturamento';
 export type { ConsultaCadastrosParaFaturamento } from './consulta-faturamento';

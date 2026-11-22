@@ -77,12 +77,9 @@ export const eventoRecusado = (p: PedidoGravado, anterior: StatusPedido, codigo:
 export const eventoCancelado = (p: PedidoGravado, anterior: StatusPedido, codigo: MotivoCancelamento, texto: string | null): EventoPronto =>
   pronto('pedido.pedido.cancelado@1', p, { ...base(p, anterior), motivo_codigo: codigo, motivo_texto: textoDoMotivo(codigo, texto) });
 
-/**
- * Payload do `pedido.pedido.faturado@1` a partir da nota autorizada lida (T-0015). Pura: `status` e `anterior` vêm de quem chama.
- * Copia `ambiente` e `conta_como_real` (ausente continua ausente). O consumidor que atualiza `quantidade_faturada`, o status
- * e publica o evento vem no lote 4; aqui só a montagem do payload.
- */
+/** Payload do faturado@1 a partir da nota autorizada lida (T-0015). Pura. */
 export function faturadoDaNota(nota: NotaAutorizadaLida, p: PedidoGravado, status: StatusPedido, anterior: StatusPedido | null): PedidoFaturadoV1 {
+  if (nota.pedido_id !== p.id) throw new Error(`Nota do pedido ${nota.pedido_id} não pertence ao pedido ${p.id}`);
   const produtoDa = (sequencia: number): string => {
     const item = p.itens.find((i) => i.sequencia === sequencia);
     if (!item) throw new Error(`Item ${sequencia} da nota não existe no pedido ${p.id}`);

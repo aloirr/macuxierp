@@ -13,13 +13,14 @@ const entrada = (ufDest = 'AM', ind: '1' | '2' | '9' = '1', itens = [item(1)]): 
   filial_id: 'f1', data_emissao: '2026-11-21', itens,
   pedido: { pedido: { cliente_retrato: { tipo_pessoa: 'PJ', ind_ie_dest: ind, endereco: { uf: ufDest } } } },
 });
-function montar(emitente: EmitenteFiscal | null, regras: ReturnType<typeof regra>[]) {
+function montar(emitente: EmitenteFiscal | null, regras: ReturnType<typeof regra>[], fabricados: string[] = []) {
   const chamadas: unknown[] = [];
+  const consultas: string[][] = [];
   const repositorio: RepositorioFiscal = {
     async regras(_t, f) { chamadas.push(f); return regras; },
     async cargas() { return new Map(); },
   };
-  return { chamadas, calc: criarCalculoFiscal({ emitentes: { emitente: async () => emitente }, repositorio }) };
+  return { chamadas, calc: criarCalculoFiscal({ emitentes: { emitente: async () => emitente, producaoPropria: async (_t, ids) => { consultas.push(ids); return new Set(ids.filter((i) => fabricados.includes(i))); } }, repositorio }), consultas };
 }
 const normal: EmitenteFiscal = { uf: 'AM', crt: 3, regime_pis_cofins: 'cumulativo' };
 
@@ -34,6 +35,36 @@ describe('adaptador CalculoFiscal sobre fiscal.calculo@1', () => {
     expect(r.saida.itens[0]?.cfop).toBe('5102');
     expect(r.saida.itens[0]?.icms.v_icms).toBe(18000);
     expect(chamadas[0]).toMatchObject({ data_emissao: '2026-11-21', uf_origem: 'AM', uf_destino: 'AM', crt: 3, ncms: ['22021000'] });
+  });
+  it('RN-FIS-01: pedido misto escolhe o CFOP por item (fabricado × revenda): interna e interestadual contribuinte', async () => {
+    const itens = [item(1), item(2)];
+    const regras = [regra({ cfop: '5101' }), regra({ cfop: '5102' }), regra({ cfop: '6101' }), regra({ cfop: '6102' })];
+    const caso = async (uf: string) => {
+      const m = montar(normal, regras, ['p1']);
+      const r = await m.calc.calcular(tx, entrada(uf, '1', itens));
+      expect(m.consultas).toEqual([['p1', 'p2']]);
+      return r.ok ? r.cfops : r;
+    };
+    expect(await caso('AM')).toEqual({ 1: '5101', 2: '5102' });
+    expect(await caso('SP')).toEqual({ 1: '6101', 2: '6102' });
+  });
+  it('RN-FIS-01: com ST o item fabricado sai 5401/6401 e o de revenda 5403/6403', async () => {
+    for (const [uf, fab, rev] of [['AM', '5401', '5403'], ['SP', '6401', '6403']] as const) {
+      const st = { codigo: '10', mva_original: 400000, aliquota_interna_destino: 180000 };
+      const regras = [regra({ cfop: uf === 'AM' ? '5102' : '6102', ...st }), regra({ cfop: uf === 'AM' ? '5101' : '6101', ...st }), regra({ cfop: fab, ...st }), regra({ cfop: rev, ...st })];
+      const r = await montar(normal, regras, ['p1']).calc.calcular(tx, entrada(uf, '1', [item(1), item(2)]));
+      expect(r.ok && r.cfops).toEqual({ 1: fab, 2: rev });
+    }
+  });
+  it('RN-FIS-01: item sem produto_id é revenda e fica fora da consulta', async () => {
+    const m = montar(normal, [regra({ cfop: '5101' }), regra({ cfop: '5102' })], ['p1']);
+    const r = await m.calc.calcular(tx, entrada('AM', '1', [item(1), item(2, { produto_id: undefined })]));
+    expect(r.ok && r.cfops).toEqual({ 1: '5101', 2: '5102' });
+    expect(m.consultas).toEqual([['p1']]);
+    const sem = montar(normal, [regra({ cfop: '5102' })], ['p1']);
+    const r2 = await sem.calc.calcular(tx, entrada('AM', '1', [item(1, { produto_id: undefined })]));
+    expect(r2.ok && r2.cfops).toEqual({ 1: '5102' });
+    expect(sem.consultas).toEqual([]);
   });
   it('RN-FIS-01: venda para outra UF sai com CFOP 6102 e operação interestadual', async () => {
     const { calc } = montar(normal, [regra()]);
@@ -55,8 +86,8 @@ describe('adaptador CalculoFiscal sobre fiscal.calculo@1', () => {
   it('RN-FIS-01: não contribuinte (ind_ie_dest 9) chega ao motor como consumidor final: IPI entra na base do ICMS; contribuinte não', async () => {
     const industrial: EmitenteFiscal = { ...normal, industrial_ipi: true };
     const regras = [regra({ cfop: '5101', cst_ipi: '50', aliquota_ipi: 100000 })];
-    const nc = await montar(industrial, regras).calc.calcular(tx, entrada('AM', '9'));
-    const c = await montar(industrial, regras).calc.calcular(tx, entrada('AM', '1'));
+    const nc = await montar(industrial, regras, ['p1']).calc.calcular(tx, entrada('AM', '9'));
+    const c = await montar(industrial, regras, ['p1']).calc.calcular(tx, entrada('AM', '1'));
     expect(nc.ok && nc.saida.itens[0]?.icms.v_bc).toBe(110000);
     expect(c.ok && c.saida.itens[0]?.icms.v_bc).toBe(100000);
   });

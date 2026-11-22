@@ -21,8 +21,8 @@ const MOTIVOS: Readonly<Record<string, string>> = {
 };
 
 export function erroDeViolacao(linha: number, v: Violacao, campo?: string): ErroLinha {
-  // RN-CAD-09: as mensagens do domain são constantes curtas por classe, sem o valor digitado.
-  return { linha, campo: campo ?? v.campo, codigo: v.rn, motivo: v.rn === 'RN-CAD-09' ? v.mensagem : (MOTIVOS[v.rn] ?? 'Regra de negócio violada') };
+  // RN-CAD-09 e RN-FIS-02: as mensagens do domain são constantes curtas por classe, sem o valor digitado.
+  return { linha, campo: campo ?? v.campo, codigo: v.rn, motivo: v.rn === 'RN-CAD-09' || v.rn === 'RN-FIS-02' ? v.mensagem : (MOTIVOS[v.rn] ?? 'Regra de negócio violada') };
 }
 
 export const erroLinha = (linha: number, campo: string | null, codigo: string, motivo: string): ErroLinha => ({ linha, campo, codigo, motivo });

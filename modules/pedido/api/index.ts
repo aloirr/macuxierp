@@ -5,6 +5,7 @@ import { criarRotas } from './rotas';
 import { repositorioSql } from './sql';
 
 export { exportadorPedido, TABELAS_EXPORTADAS } from './exportador';
+export { consumidoresDoPedido, type DependenciasConsumidoresPedido } from './consumidor-nota';
 export { criarConsultaParaFaturar, type ConsultaParaFaturar } from './faturar';
 export type {
   ConsultaCadastrosPedido, ConsultaTitulosPedido, Dependencias, LogPedido, NotaEmAberto, RepoPedidos,

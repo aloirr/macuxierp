@@ -76,7 +76,11 @@ export interface RepoTabelasPreco extends RepoSimples<TabelaPreco, TabelaPrecoDa
 }
 
 export interface MovimentoGravado extends MovimentoEstoque {
-  usuario_id: string;
+  /** Nulo quando o movimento nasce de evento (a nota), sem usuário. */
+  usuario_id: string | null;
+  /** Origem do movimento (ex.: 'nfe' + id da nota); opcional. */
+  origem_tipo?: string | null;
+  origem_id?: string | null;
 }
 
 export interface RepoEstoque {
