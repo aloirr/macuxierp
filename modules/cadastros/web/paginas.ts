@@ -4,7 +4,7 @@
  * só esconde o botão: a proteção real é a da API (RN-CORE-02).
  */
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos, formatarDocumento, formatarQuantidade } from './formatar';
+import { formatarCentavos, formatarDocumento, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 
 export interface ColunaPagina {
   chave: string;
@@ -53,7 +53,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'condicoes-pagamento', menu: 'Condições de pagamento', titulo: 'Condições de pagamento', rota: '/cadastros/condicoes-pagamento', api: '/v1/cadastros/condicoes-pagamento', filtros: [],
-    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'tPag' }, { chave: 'prazos_dias', rotulo: 'Prazos (dias)', formatar: (v) => (Array.isArray(v) ? v.join('/') : '') }, ATIVO],
+    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'tPag' }, { chave: 'prazos_dias', rotulo: 'Prazos (dias)', formatar: (v) => (Array.isArray(v) ? v.join('/') : '') }, { chave: 'parcelas_cartao', rotulo: 'Parcelas', formatar: (v) => (typeof v === 'number' ? `${v}x` : '') }, ATIVO],
     editar: 'cadastros.condicao_pagamento.editar',
   },
   {

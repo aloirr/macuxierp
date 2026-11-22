@@ -197,12 +197,18 @@ export const SaldoEstoque = z.object({ filial_id: Uuid, produto_id: Uuid, quanti
 export type SaldoEstoque = z.infer<typeof SaldoEstoque>;
 
 // ---- Condição de pagamento (RF-CAD-09) ----
+/** RN-CAD-09: limites das condições de pagamento (parcelas do cartão, parcelas do boleto, dias por parcela). */
+export const MAX_PARCELAS_CARTAO = 12;
+export const MAX_PARCELAS = 36;
+export const MAX_DIAS = 999;
 export const CondicaoPagamentoDados = z.object({
   codigo: Texto(20),
   descricao: Texto(60),
   /** tPag da NF-e */
   forma_tpag: z.string().regex(/^\d{2}$/),
-  prazos_dias: z.array(z.number().int().min(0).max(999)).min(1).max(36),
+  prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS)).min(1).max(MAX_PARCELAS),
+  /** RN-CAD-09: parcelas do cartão de crédito (tPag 03), 1 a 12; nulo ou ausente nas demais formas (opcional para não quebrar quem monta a condição à mão). Aditivo, `@1` continua valendo. */
+  parcelas_cartao: z.number().int().min(1).max(MAX_PARCELAS_CARTAO).nullable().optional(),
   /** D12 (T-0026): a forma de pagamento da carga viaja junto da condição; aditivo e opcional, `@1` continua valendo. */
   forma_external_id: IdExterno,
   forma_codigo: z.string().max(20).nullable().default(null),
@@ -210,12 +216,16 @@ export const CondicaoPagamentoDados = z.object({
   external_id: IdExterno,
 });
 export type CondicaoPagamentoDados = z.infer<typeof CondicaoPagamentoDados>;
-/** RN-CAD-09: tPag da NF-e que são à vista (01 dinheiro, 04 cartão de débito, 17 PIX). */
-export const FORMAS_A_VISTA = ['01', '04', '17'] as const;
-/** Critério único de "à vista" (pedido, faturamento): forma à vista E todos os prazos iguais a 0. */
-export const ehFormaAVista = (tpag: string): boolean => (FORMAS_A_VISTA as readonly string[]).includes(tpag);
-export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag' | 'prazos_dias'>): boolean =>
-  ehFormaAVista(c.forma_tpag) && c.prazos_dias.every((p) => p === 0);
+/** RN-CAD-09: classe da forma de pagamento, derivada do tPag da NF-e (nunca gravada). */
+export const CLASSE_FORMA = { '01': 'a_vista', '17': 'a_vista', '04': 'a_vista', '03': 'cartao', '15': 'boleto' } as const;
+export type ClasseForma = (typeof CLASSE_FORMA)[keyof typeof CLASSE_FORMA];
+/** Classe do tPag, ou `null` quando a forma não é aceita (só Dinheiro, PIX, Cartão e Boleto). */
+export const classeForma = (tpag: string): ClasseForma | null => (Object.prototype.hasOwnProperty.call(CLASSE_FORMA, tpag) ? CLASSE_FORMA[tpag as keyof typeof CLASSE_FORMA] : null);
+/** tPag à vista: 01 dinheiro, 17 PIX, 04 cartão de débito. */
+export const FORMAS_A_VISTA = (Object.keys(CLASSE_FORMA) as (keyof typeof CLASSE_FORMA)[]).filter((f) => CLASSE_FORMA[f] === 'a_vista');
+/** Critério único de "à vista" (pedido, faturamento): só a forma de pagamento (RN-CAD-09 garante o prazo 0). */
+/** `prazos_dias` é aceito e ignorado, para não quebrar quem ainda passa a condição inteira. */
+export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag'> & { prazos_dias?: readonly number[] }): boolean => classeForma(c.forma_tpag) === 'a_vista';
 export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
 export const CondicaoPagamento = CondicaoPagamentoDados.extend({ id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;
@@ -354,7 +364,7 @@ export const LinhaFormaPagamento = z.object({
 });
 export const LinhaPrazoPagamento = z.object({
   ...LinhaBase, ...AvisosLinha,
-  dados: z.object({ codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias }).partial(),
+  dados: z.object({ codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias, parcelas_cartao: z.number().int().min(1).max(99).nullable().optional() }).partial(), // 1..99 aqui; a faixa 1..MAX_PARCELAS_CARTAO é do domain (RN-CAD-09 com a mensagem do cartão)
   refs: Refs('forma'),
 });
 export const LinhaProduto = z.object({
