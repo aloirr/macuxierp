@@ -29,7 +29,12 @@ describe('regime PIS/COFINS (RN-FIS-02)', () => {
       expect(validarFilial({ ...ok, crt, regime_pis_cofins: null })).toEqual([]);
     }
     expect(validarFilial({ ...ok, crt: '3', regime_pis_cofins: 'nao_cumulativo' })).toEqual([]);
-    expect(validarFilial({ ...ok, crt: '3', regime_pis_cofins: null })).toEqual([]);
+  });
+  it('RN-FIS-02: no CRT 3 o regime de PIS/COFINS é obrigatório (ausente ou nulo é violação)', () => {
+    const msg = 'Filial no Lucro Real/Presumido (CRT 3) precisa do regime de PIS/COFINS: cumulativo ou não cumulativo.';
+    expect(validarFilial({ ...ok, crt: '3', regime_pis_cofins: null })[0]).toMatchObject({ rn: 'RN-FIS-02', campo: 'regime_pis_cofins', mensagem: msg });
+    expect(validarFilial({ ...ok, crt: '3' })[0]).toMatchObject({ rn: 'RN-FIS-02', campo: 'regime_pis_cofins' });
+    expect(validarFilial({ ...ok, crt: '3', regime_pis_cofins: 'cumulativo' })).toEqual([]);
   });
 });
 

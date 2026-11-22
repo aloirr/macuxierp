@@ -3,3 +3,4 @@
 2026-11-22 — C-10 — external_id de unidade, preço e endereço nos eventos (ADR 0010)
 2026-11-22 — T-0021 — consumidor de estoque das notas (autorizada baixa, cancelada devolve)
 2026-11-22 — T-0021 — campos fiscais da filial e do produto, consulta para o fiscal
+2026-11-22 — T-0021 — regime PIS/COFINS obrigatório na filial CRT 3

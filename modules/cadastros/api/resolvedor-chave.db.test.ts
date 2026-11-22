@@ -139,7 +139,7 @@ describe.skipIf(!PG_DISPONIVEL)('resolvedor de chave do Hub e guarda do external
   });
 
   describe('guarda da RD-0317 na carga (CARGA_CONFLITO)', () => {
-    const csv = (ext: string) => `external_id;codigo;nome;ativo;cidade;uf;cnpj;logradouro;numero;bairro;cep;telefone;crt;ie\n${ext};09;Filial Carga;sim;Manaus;AM;99.000.001/0001-01;Rua Exemplo;100;Centro;69000-000;0000000000;3;012300004\n`;
+    const csv = (ext: string) => `external_id;codigo;nome;ativo;cidade;uf;cnpj;logradouro;numero;bairro;cep;telefone;crt;ie;regime_pis_cofins\n${ext};09;Filial Carga;sim;Manaus;AM;99.000.001/0001-01;Rua Exemplo;100;Centro;69000-000;0000000000;3;012300004;cumulativo\n`;
     const carregar = (ext: string) =>
       app.comTenant(A, async (tx) => {
         const x = criarAmbiente(plugin(), new Date('2026-11-21T15:00:00Z'), tx);

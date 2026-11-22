@@ -27,6 +27,7 @@ import {
 import {
   chaveAcesso,
   cnfDe,
+  fixtureConfiguracaoFilial,
   fixtureFaturamento,
   fixtureModulos,
   fixturePlataforma,
@@ -43,6 +44,8 @@ const LEITURA_A = { papel: 'macuxierp_leitura', tenant: A.id };
 const RECADO_OK = 'R-20261121-120000-alexandre';
 
 const TABELAS = [
+  'configuracao_filial',
+  'configuracao_filial_historico',
   'contingencia',
   'inutilizacao',
   'nota',
@@ -167,8 +170,8 @@ INSERT INTO faturamento.nota (tenant_id, filial_id, serie, numero, idempotencia_
   };
 
   const sqlTitulo = (nota: string, parcela: number, valor = 1000, total = 3) =>
-    `INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos)
-     VALUES (plataforma.tenant_atual(), '${nota}', ${parcela}, ${total}, '2026-12-31', ${valor});`;
+    `INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos,
+       conta_como_real) VALUES (plataforma.tenant_atual(), '${nota}', ${parcela}, ${total}, '2026-12-31', ${valor}, false);`;
 
   const sqlInutilizacao = (filial: string, ini: number, fim: number) =>
     `INSERT INTO faturamento.inutilizacao (tenant_id, filial_id, serie, ano, numero_inicial, numero_final,
@@ -202,7 +205,12 @@ INSERT INTO faturamento.nota (tenant_id, filial_id, serie, numero, idempotencia_
     permitirSetRole(banco.conexao);
     executar(
       banco.conexao,
-      [A, B].map((t) => fixturePlataforma(t) + fixtureModulos(t) + fixtureFaturamento(t)).join('\n'),
+      [A, B]
+        .map(
+          (t) =>
+            fixturePlataforma(t) + fixtureModulos(t) + fixtureFaturamento(t) + fixtureConfiguracaoFilial(t),
+        )
+        .join('\n'),
     );
   });
 
@@ -1360,7 +1368,8 @@ INSERT INTO pg_temp.disparo VALUES (1);`,
           executar(
             banco.conexao,
             `INSERT INTO faturamento.titulo (tenant_id, nota_id, cliente_id, parcela, total_parcelas, vencimento,
-               valor_centavos) VALUES (plataforma.tenant_atual(), '${n.id}', '${randomUUID()}', 1, 1, '2026-12-31', 10);`,
+               valor_centavos, conta_como_real) VALUES (plataforma.tenant_atual(), '${n.id}', '${randomUUID()}', 1, 1,
+               '2026-12-31', 10, false);`,
             APP_A,
           ),
         ),
@@ -1370,7 +1379,8 @@ INSERT INTO pg_temp.disparo VALUES (1);`,
           executar(
             banco.conexao,
             `INSERT INTO faturamento.titulo (tenant_id, nota_id, ambiente, parcela, total_parcelas, vencimento,
-               valor_centavos) VALUES (plataforma.tenant_atual(), '${n.id}', 'producao', 1, 1, '2026-12-31', 10);`,
+               valor_centavos, conta_como_real) VALUES (plataforma.tenant_atual(), '${n.id}', 'producao', 1, 1, '2026-12-31',
+               10, false);`,
             APP_A,
           ),
         ),

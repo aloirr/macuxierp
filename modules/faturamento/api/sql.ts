@@ -11,10 +11,12 @@
 import { criarEvento, erros, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { FiltroNotas, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
-import { calcularTotais, interpretarRetorno, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
+import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
 import type {
-  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas,
+  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento,
 } from './portas';
+import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { repositorioTitulosSql } from './sql-titulos';
 
 type Dict = Record<string, unknown>;
 
@@ -45,7 +47,7 @@ const COLUNAS_RESUMO = `n.id, n.filial_id, n.cliente_id, n.pedido_id, n.ambiente
 
 async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro['itens']> {
   return tx.consultar<NotaRegistro['itens'][number]>(
-    `SELECT n_item::int AS sequencia, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
+    `SELECT n_item::int AS sequencia, produto_id, quantidade::float8 AS quantidade, (valor_produto_centavos - desconto_centavos)::float8 AS valor_centavos
        FROM faturamento.nota_item WHERE nota_id = $1 AND deleted_at IS NULL ORDER BY n_item`,
     [notaId],
   );
@@ -53,7 +55,7 @@ async function itensDaNota(tx: Transacao, notaId: string): Promise<NotaRegistro[
 
 async function montarRegistro(tx: Transacao, l: Dict): Promise<NotaRegistro> {
   const r = l as unknown as Omit<NotaRegistro, 'vai_ao_fdv' | 'itens'>;
-  return { ...r, vai_ao_fdv: r.ambiente === 'producao', itens: await itensDaNota(tx, r.id) };
+  return { ...r, vai_ao_fdv: nfeVaiAoFdv(r.ambiente), itens: await itensDaNota(tx, r.id) };
 }
 
 /** Linhas de `nota_item` a partir do conteúdo (a mesma carga serve ao INSERT e ao reenvio, por `ON CONFLICT`). */
@@ -85,7 +87,7 @@ function paramsTotais(itens: readonly NotaItemMontado[]): number[] {
 }
 
 const transporteDe = (c: ConteudoNota, revisao = 1): Dict => ({ mod_frete: c.modFrete, inf_cpl: c.infCpl, itens_solicitados: c.itensSolicitados, revisao });
-const pagamentoDe = (c: ConteudoNota): Dict => ({ pagamentos: c.pagamentos, cobranca: c.cobranca });
+const pagamentoDe = (c: ConteudoNota): Dict => ({ pagamentos: c.pagamentos, cobranca: c.cobranca, prazos_dias: c.prazos_dias ?? null, conta_como_real: c.conta_como_real === true });
 
 async function gravarItens(tx: Transacao, notaId: string, itens: readonly NotaItemMontado[]): Promise<void> {
   await tx.consultar(
@@ -115,6 +117,22 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
   return {
     async travarIdempotencia(tx, tenant_id, idempotencia) {
       await tx.consultar('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`faturamento.nota:${tenant_id}:${idempotencia}`]);
+    },
+
+    async travarPedido(tx, pedido_id) {
+      await tx.consultar('SELECT id FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL FOR UPDATE', [pedido_id]);
+    },
+
+    async quantidadesJaFaturadas(tx, pedido_id, exceto_nota_id) {
+      const r = await tx.consultar<{ sequencia: number; quantidade: number }>(
+        `SELECT i.pedido_item_sequencia::int AS sequencia, sum(i.quantidade)::float8 AS quantidade
+           FROM faturamento.nota_item i JOIN faturamento.nota n ON n.tenant_id = i.tenant_id AND n.id = i.nota_id
+          WHERE n.pedido_id = $1 AND n.deleted_at IS NULL AND i.deleted_at IS NULL AND i.pedido_item_sequencia IS NOT NULL
+            AND n.status NOT IN ('cancelada', 'inutilizada', 'denegada') AND ($2::uuid IS NULL OR n.id <> $2::uuid)
+          GROUP BY i.pedido_item_sequencia`,
+        [pedido_id, exceto_nota_id ?? null],
+      );
+      return new Map(r.map((l) => [l.sequencia, l.quantidade]));
     },
 
     async buscarPorIdempotencia(tx, _tenant_id, idempotencia) {
@@ -169,6 +187,8 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
         itensSolicitados: (n.transporte.itens_solicitados as ConteudoNota['itensSolicitados']) ?? null,
         pagamentos: (n.pagamento.pagamentos as ConteudoNota['pagamentos']) ?? [],
         cobranca: (n.pagamento.cobranca as ConteudoNota['cobranca']) ?? null,
+        prazos_dias: (n.pagamento.prazos_dias as number[] | null | undefined) ?? null,
+        conta_como_real: n.pagamento.conta_como_real === true,
         itens,
       };
     },
@@ -533,13 +553,20 @@ export const pedidosAprovadosSql: PedidosAprovados = {
     const [l] = await tx.consultar<{ payload: unknown }>('SELECT payload FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
     return l ? PedidoAprovadoV1.parse(l.payload) : null;
   },
-  async gravar(tx, pedido) {
-    const r = await tx.consultar(
-      `INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload)
-       VALUES (plataforma.tenant_atual(), $1, $2, $3, $4::jsonb) ON CONFLICT (tenant_id, pedido_id) DO NOTHING RETURNING id`,
-      [pedido.pedido_id, pedido.filial_id, pedido.cliente_id, JSON.stringify(pedido)],
+  // Idempotente: repetir não muda nada; só um status DIFERENTE (situação atual do pedido, RF-FAT-01) atualiza a linha existente.
+  async gravar(tx, pedido, status = 'a_faturar') {
+    const r = await tx.consultar<{ inserido: boolean }>(
+      `INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload, status)
+       VALUES (plataforma.tenant_atual(), $1, $2, $3, $4::jsonb, $5)
+       ON CONFLICT (tenant_id, pedido_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now()
+         WHERE faturamento.pedido_a_faturar.status IS DISTINCT FROM EXCLUDED.status AND faturamento.pedido_a_faturar.deleted_at IS NULL
+       RETURNING (xmax = 0) AS inserido`,
+      [pedido.pedido_id, pedido.filial_id, pedido.cliente_id, JSON.stringify(pedido), status],
     );
-    return r.length > 0 ? 'novo' : 'repetido';
+    return r[0]?.inserido ? 'novo' : 'repetido';
+  },
+  async marcarCancelado(tx, pedido_id) {
+    await tx.consultar(`UPDATE faturamento.pedido_a_faturar SET status = 'cancelado', updated_at = now() WHERE pedido_id = $1 AND status <> 'cancelado' AND deleted_at IS NULL`, [pedido_id]);
   },
 };
 
@@ -550,15 +577,23 @@ export const ambienteFiscalSql: AmbienteFiscalDaFilial = {
   },
 };
 
-/** Porta inversa do pedido (P-2): nota em autorização ou em contingência bloqueia o cancelamento; `FOR SHARE` na linha da nota. */
+/**
+ * Implementa NotaEmAberto (ver portas.ts).
+ * SEM `FOR SHARE` na nota (deadlock com o reenvio, que trava a nota e depois pede `FOR SHARE` no pedido): o `FOR UPDATE` do pedido no
+ * cancelamento já basta, porque todo caminho que cria ou reabre nota pede o `FOR SHARE` do pedido antes e espera o cancelamento.
+ */
 export const notaEmAbertoSql: NotaEmAberto = {
   async temNotaEmAutorizacao(tx, pedido_id) {
-    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1 FOR SHARE`, [pedido_id]);
+    const r = await tx.consultar(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('rascunho', 'em_autorizacao', 'emitida_contingencia') AND deleted_at IS NULL LIMIT 1`, [pedido_id]);
     return r.length > 0;
+  },
+  async notasAutorizadas(tx, pedido_id) {
+    const r = await tx.consultar<{ id: string }>(`SELECT id FROM faturamento.nota WHERE pedido_id = $1 AND status IN ('autorizada', 'autorizada_guarda_pendente') AND deleted_at IS NULL ORDER BY id`, [pedido_id]);
+    return r.map((l) => l.id);
   },
 };
 
 /** Repositórios de produção, ligados pelo apps/api e pelo apps/worker (a `Outbox` vem do SDK: `new OutboxPg()`). */
-export function repositoriosSql(deps: DependenciasSql): { notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
-  return { notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
+export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
+  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
 }

@@ -22,8 +22,17 @@ import {
   type RespostaEvento,
   type TipoEvento,
 } from '@macuxierp/nfe-sefaz';
-import { PRAZO_CANCELAMENTO_MS, TOLERANCIA_FUTURO_MS, consumirRejeicao, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
-import { refAutorizacao } from './estado';
+import {
+  PRAZO_CANCELAMENTO_MS,
+  TOLERANCIA_FUTURO_MS,
+  consumirRejeicao,
+  novoNumero,
+  retornoBase,
+  tagsRetorno,
+  type CStatSimulador,
+  type Contexto,
+} from './contexto';
+import { refAutorizacao, type EstadoSimuladorRepo } from './estado';
 import { tag } from './xml';
 
 const X_EVENTO: Record<TipoEvento, string> = {
@@ -48,13 +57,30 @@ interface EventoLido {
   nSeqEvento: number;
 }
 
-/** Um evento (já passou no schema do lote). */
-function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido, forcado: CStatSimulador | null): ProtocoloEvento {
+/** Um evento (já passou no schema do lote). A nota e os eventos dela vêm da porta, na unidade de trabalho do evento. */
+async function processarEvento(
+  ctx: Contexto,
+  repo: EstadoSimuladorRepo,
+  eventoXml: string,
+  ev: EventoLido,
+  forcado: CStatSimulador | null,
+): Promise<ProtocoloEvento> {
   const agora = ctx.agora();
   const dhRegEvento = dataHoraSefaz(agora);
   const inf = filhoNfe(ev.raiz, 'infEvento');
-  const responder = (cStat: CStatSimulador, nProt: string | null = null, complemento = ''): ProtocoloEvento => {
-    const p = { ...retornoBase(ctx, cStat, complemento), chNFe: ev.chNFe, tpEvento: ev.tpEvento, nSeqEvento: ev.nSeqEvento, dhRegEvento, nProt };
+  const responder = (
+    cStat: CStatSimulador,
+    nProt: string | null = null,
+    complemento = '',
+  ): ProtocoloEvento => {
+    const p = {
+      ...retornoBase(ctx, cStat, complemento),
+      chNFe: ev.chNFe,
+      tpEvento: ev.tpEvento,
+      nSeqEvento: ev.nSeqEvento,
+      dhRegEvento,
+      nProt,
+    };
     return { ...p, xml: retEventoXml(p, ctx.d.cUF) };
   };
 
@@ -69,11 +95,13 @@ function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido, forca
   if (!assinatura.ok) return responder(assinatura.cStat as CStatSimulador);
   if (!chaveNFeComDvValido(ev.chNFe)) return responder('236');
 
-  const nota = ctx.estado.notas.get(ev.chNFe);
+  // Travada até o fim do evento: o 2º cancelamento simultâneo vê a nota cancelada (573), a CC-e simultânea vê 218.
+  const nota = await repo.notaPorChaveParaAtualizar(ctx.d, ev.chNFe);
   if (!nota) return responder('494');
   if (autor !== nota.cnpj) return responder('574');
   const dhEvento = new Date(textoNfe(inf, 'dhEvento'));
-  if (Number.isNaN(dhEvento.getTime()) || dhEvento.getTime() > agora.getTime() + TOLERANCIA_FUTURO_MS) return responder('578');
+  if (Number.isNaN(dhEvento.getTime()) || dhEvento.getTime() > agora.getTime() + TOLERANCIA_FUTURO_MS)
+    return responder('578');
   if (dhEvento.getTime() < nota.dhEmi.getTime()) return responder('577');
   const ref = ` ${refAutorizacao(nota)}`;
   if (nota.situacao === 'denegada') return responder('205', null, ref);
@@ -84,16 +112,23 @@ function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido, forca
     if (agora.getTime() - nota.autorizadaEm.getTime() > PRAZO_CANCELAMENTO_MS) return responder('501');
   } else {
     if (nota.situacao === 'cancelada') return responder('218', null, ref);
-    if (nota.eventos.some((e) => e.protocolo.tpEvento === ev.tpEvento && e.protocolo.nSeqEvento === ev.nSeqEvento)) return responder('573');
+    const eventos = await repo.eventosDaNota(ctx.d, ev.chNFe);
+    if (eventos.some((e) => e.protocolo.tpEvento === ev.tpEvento && e.protocolo.nSeqEvento === ev.nSeqEvento))
+      return responder('573');
   }
 
-  const p = responder('135', novoNumero(ctx, 'nProt'));
-  nota.eventos.push({ protocolo: p, eventoXml });
-  if (ev.tpEvento === TIPO_EVENTO.cancelamento) nota.situacao = 'cancelada';
+  const p = responder('135', await novoNumero(ctx, repo, 'nProt'));
+  await repo.gravarEvento(ctx.d, ev.chNFe, { protocolo: p, eventoXml });
+  if (ev.tpEvento === TIPO_EVENTO.cancelamento) await repo.mudarSituacao(ctx.d, ev.chNFe, 'cancelada');
   return p;
 }
 
-export async function registrarEvento(ctx: Contexto, esperado: TipoEvento, idLote: string, eventoAssinado: string): Promise<RespostaEvento> {
+export async function registrarEvento(
+  ctx: Contexto,
+  esperado: TipoEvento,
+  idLote: string,
+  eventoAssinado: string,
+): Promise<RespostaEvento> {
   const eventoXml = semDeclaracaoXml(eventoAssinado);
   const raiz = lerXml(eventoXml)?.documentElement ?? null;
   const inf = filhoNfe(raiz, 'infEvento');
@@ -102,9 +137,18 @@ export async function registrarEvento(ctx: Contexto, esperado: TipoEvento, idLot
   const lote = montarEnvEvento(idLote, eventoXml);
   const valido = raiz !== null && (await validarXsd(lote, esquema)).valido;
 
-  const forcado = valido ? consumirRejeicao(ctx, esperado === TIPO_EVENTO.cancelamento ? 'cancelar' : 'cartaCorrecao') : null;
-  const ev = { raiz: raiz!, chNFe: textoNfe(inf, 'chNFe'), tpEvento: esperado, nSeqEvento: Number(textoNfe(inf, 'nSeqEvento')) };
-  const eventos = valido ? [processarEvento(ctx, eventoXml, ev, forcado)] : [];
+  const forcado = valido
+    ? consumirRejeicao(ctx, esperado === TIPO_EVENTO.cancelamento ? 'cancelar' : 'cartaCorrecao')
+    : null;
+  const ev = {
+    raiz: raiz!,
+    chNFe: textoNfe(inf, 'chNFe'),
+    tpEvento: esperado,
+    nSeqEvento: Number(textoNfe(inf, 'nSeqEvento')),
+  };
+  const eventos = valido
+    ? [await ctx.fonte((repo) => processarEvento(ctx, repo, eventoXml, ev, forcado))]
+    : [];
   const cStat: CStatSimulador = valido ? '128' : '215';
   const r = { ...retornoBase(ctx, cStat), cOrgao: ctx.d.cUF, idLote, eventos };
   const xml =

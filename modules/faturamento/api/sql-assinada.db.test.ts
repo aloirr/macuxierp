@@ -7,9 +7,9 @@
 import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
+import { itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
-import { a1DeTeste, a1VencidoDeTeste, depsFake, protocolo, transporteFake, uuid, type Roteiro } from './apoio-teste';
+import { a1DeTeste, a1VencidoDeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro, situacaoAprovadaDeTeste } from './apoio-teste';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
 import { criarTransmissor } from './transmissor';
 
@@ -35,18 +35,19 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
     return {
       t,
       tr: criarTransmissor({
+        log: () => undefined,
         banco: worker,
-        notas: repos.notas,
+        notas: repos.notas, titulos: repos.titulos,
         emissor: s.emissor,
         ambiente: repos.ambiente,
-        lerA1: async () => a1DeTeste(),
+        situacao: situacaoAprovadaDeTeste, lerA1: async () => a1DeTeste(),
         sefaz: () => t.transporte,
         agora: () => new Date('2026-11-21T14:30:00Z'),
       }),
     };
   }
   const emitir = async (s: ReturnType<typeof servico>, idem: string) => {
-    const r = await app.comTenant(A, (tx) => s.svc.emitirNota(tx, A, { pedido_id: IDS.pedido, idempotencia: idem }));
+    const r = await app.comTenant(A, async (tx) => s.svc.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: idem }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
     return r.nota;
   };
@@ -116,7 +117,7 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
     const s = servico();
     const nota = await emitir(s, 'idem-assinada-5');
     const t = transporteFake();
-    const vencido = criarTransmissor({ banco: worker, notas: repos.notas, emissor: s.emissor, ambiente: repos.ambiente, lerA1: async () => a1VencidoDeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:30:00Z') });
+    const vencido = criarTransmissor({ log: () => undefined, banco: worker, notas: repos.notas, titulos: repos.titulos, emissor: s.emissor, ambiente: repos.ambiente, situacao: situacaoAprovadaDeTeste, lerA1: async () => a1VencidoDeTeste(), sefaz: () => t.transporte, agora: () => new Date('2026-11-21T14:30:00Z') });
     expect(await vencido.transmitirNota(A, nota.id)).toEqual({ resultado: 'nao_assinada', motivo: 'a1_invalido' });
     const [n] = await admin("SELECT status, numero, transporte->'envio_pendente'->>'motivo' AS motivo FROM faturamento.nota WHERE id = $1", [nota.id]);
     expect(n).toMatchObject({ status: 'rascunho', numero: nota.numero });
@@ -155,12 +156,13 @@ describe.skipIf(!PG_DISPONIVEL)('XML assinado guardado em nota_xml (PostgreSQL r
     let reenvio: Promise<{ ok: boolean }> | undefined;
     let reenvioTerminou = false;
     const tr = criarTransmissor({
+      log: () => undefined,
       banco: worker,
-      notas: repos.notas,
+      notas: repos.notas, titulos: repos.titulos,
       emissor: s.emissor,
       ambiente: repos.ambiente,
       // O A1 é lido DENTRO da tx1, já com a linha travada: aqui a API tenta reenviar e tem de ficar esperando.
-      lerA1: async () => {
+      situacao: situacaoAprovadaDeTeste, lerA1: async () => {
         reenvio = app.comTenant(A, async (tx) => s.svc.reenviarNota(tx, (await repos.notas.obter(tx, nota.id, { travar: true }))!)).finally(() => (reenvioTerminou = true));
         await new Promise((r) => setTimeout(r, 500));
         expect(reenvioTerminou).toBe(false);

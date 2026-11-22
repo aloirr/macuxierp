@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarNotaAutorizada, aplicarNotaCancelada } from './faturamento';
+import { aplicarNotaAutorizada, aplicarNotaCancelada, recuarPorNotaCancelada } from './faturamento';
 
 const itens = [
   { sequencia: 1, quantidade: 30_000, quantidade_faturada: 0 },
@@ -63,5 +63,26 @@ describe('aplicarNotaCancelada', () => {
     expect(aplicarNotaCancelada(faturados, [{ sequencia: 2, quantidade: 10_001 }], 'faturado')).toMatchObject({ ok: false, codigo: 'quantidade_acima_do_faturado' });
     expect(aplicarNotaCancelada(faturados, [{ sequencia: 2, quantidade: 1 }], 'aprovado')).toMatchObject({ ok: false, codigo: 'status_invalido' });
     expect(aplicarNotaCancelada(faturados, [{ sequencia: 2, quantidade: 1 }], 'cancelado')).toMatchObject({ ok: false, codigo: 'status_invalido' });
+  });
+});
+
+describe('recuarPorNotaCancelada', () => {
+  const faturados = [{ sequencia: 1, quantidade: 30_000, quantidade_faturada: 30_000 }, { sequencia: 2, quantidade: 10_000, quantidade_faturada: 10_000 }];
+  it('RN-PED-02: faturado → faturado_parcial subtrai itens e valor da nota', () => {
+    expect(recuarPorNotaCancelada(faturados, [{ sequencia: 1, quantidade: 30_000, valor_centavos: 300 }], 'faturado', 400))
+      .toEqual({ ok: true, status: 'faturado_parcial', valor_faturado_centavos: 100, itens: [{ sequencia: 1, quantidade_faturada: 0 }, { sequencia: 2, quantidade_faturada: 10_000 }] });
+  });
+  it('RN-PED-02: o recuo a aprovado só sai com itens zerados e valor faturado zero', () => {
+    expect(recuarPorNotaCancelada(faturados, [{ sequencia: 1, quantidade: 30_000, valor_centavos: 300 }, { sequencia: 2, quantidade: 10_000, valor_centavos: 100 }], 'faturado', 400))
+      .toMatchObject({ ok: true, status: 'aprovado', valor_faturado_centavos: 0 });
+    expect(recuarPorNotaCancelada(faturados, [{ sequencia: 1, quantidade: 30_000, valor_centavos: 300 }, { sequencia: 2, quantidade: 10_000, valor_centavos: 100 }], 'faturado', 450))
+      .toMatchObject({ ok: false, codigo: 'valor_faturado_incoerente' });
+  });
+  it('RN-PED-02: valor da nota acima do faturado é recusado', () => {
+    expect(recuarPorNotaCancelada(faturados, [{ sequencia: 1, quantidade: 10_000, valor_centavos: 500 }], 'faturado', 400)).toMatchObject({ ok: false, codigo: 'valor_acima_do_faturado' });
+  });
+  it('RN-PED-02: as recusas de aplicarNotaCancelada valem no recuo', () => {
+    expect(recuarPorNotaCancelada(faturados, [{ sequencia: 2, quantidade: 1 }], 'aprovado', 0)).toMatchObject({ ok: false, codigo: 'status_invalido' });
+    expect(recuarPorNotaCancelada(faturados, [{ sequencia: 2, quantidade: 10_001 }], 'faturado', 400)).toMatchObject({ ok: false, codigo: 'quantidade_acima_do_faturado' });
   });
 });

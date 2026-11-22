@@ -81,6 +81,8 @@ const BaseEventoNota = z.object({
   itens: z.array(ItemNotaEvento).min(1),
   vendedor_id: Uuid.nullable(),
   quantidade_itens: z.number().int().min(1),
+  /** Acréscimo opcional: `true` só quando a filial liga "faturamento real com NF-e simulada" e a nota é de homologação (o FDV a conta como faturamento real). Ausente = como sempre. */
+  conta_como_real: z.boolean().optional(),
 });
 
 /** Identificação da nota já autorizada: chave e protocolo sempre presentes. */
@@ -211,6 +213,66 @@ export const FiltroNotas = ConsultaPaginada.extend({
   ate: DataCivil.optional(),
 });
 export type FiltroNotas = z.infer<typeof FiltroNotas>;
+
+/** `PUT /v1/faturamento/filiais/:id/configuracao` (só administrador; `Idempotency-Key` obrigatória). Desligada por padrão. A nota segue de homologação no XML (tpAmb 2, "SEM VALOR FISCAL"). */
+export const ConfigurarFilialEntrada = z.object({ faturamento_real_nfe_simulada: z.boolean() });
+export type ConfigurarFilialEntrada = z.infer<typeof ConfigurarFilialEntrada>;
+
+// ---- Títulos a receber (RF-FAT-07, RN-FAT-06) ----
+export const StatusTitulo = z.enum(['aberto', 'baixado', 'cancelado']);
+export type StatusTitulo = z.infer<typeof StatusTitulo>;
+
+/** `GET /v1/faturamento/titulos`: filtros na URL. `vencimento_de` e `vencimento_ate` são datas civis (inclusivas). */
+export const FiltroTitulos = ConsultaPaginada.extend({
+  cliente_id: Uuid.optional(),
+  nota_id: Uuid.optional(),
+  status: StatusTitulo.optional(),
+  ambiente: Ambiente.optional(),
+  vencimento_de: DataCivil.optional(),
+  vencimento_ate: DataCivil.optional(),
+});
+export type FiltroTitulos = z.infer<typeof FiltroTitulos>;
+
+export const TituloResumo = z.object({
+  id: Uuid,
+  nota_id: Uuid,
+  filial_id: Uuid,
+  /** Número da nota (série na `nota`); razão social do retrato do destinatário gravado na nota. */
+  numero: z.number().int().min(1),
+  cliente_id: Uuid,
+  cliente_razao_social: z.string().nullable(),
+  ambiente: Ambiente,
+  parcela: z.number().int().min(1),
+  total_parcelas: z.number().int().min(1),
+  vencimento: DataCivil,
+  valor_centavos: Centavos,
+  saldo_centavos: Centavos,
+  status: StatusTitulo,
+});
+export type TituloResumo = z.infer<typeof TituloResumo>;
+
+export const BaixaTituloResumo = z.object({
+  id: Uuid,
+  titulo_id: Uuid,
+  valor_centavos: Centavos,
+  forma: z.string(),
+  baixado_em: z.string().datetime(),
+  estornada_em: z.string().datetime().nullable(),
+});
+export type BaixaTituloResumo = z.infer<typeof BaixaTituloResumo>;
+
+export const TituloDetalhe = TituloResumo.extend({ baixas: z.array(BaixaTituloResumo) });
+export type TituloDetalhe = z.infer<typeof TituloDetalhe>;
+
+/** `POST /v1/faturamento/titulos/:id/baixas` (`data_baixa` opcional: sem ela, hoje no fuso do tenant; `Idempotency-Key` obrigatória). */
+export const BaixarTituloEntrada = z.object({
+  valor_centavos: z.number().int().min(1),
+  /** Data civil da baixa (fuso do tenant), não futura; sem ela, hoje. */
+  data_baixa: DataCivil.optional(),
+  /** Forma do recebimento (até 30 caracteres); sem ela, `manual`. */
+  forma: z.string().trim().min(1).max(30).default('manual'),
+});
+export type BaixarTituloEntrada = z.infer<typeof BaixarTituloEntrada>;
 
 /** `GET /v1/faturamento/rejeicoes` (RF-FAT-08): notas rejeitadas com o código, a mensagem e a ação sugerida da SEFAZ. */
 export const FiltroRejeicoes = ConsultaPaginada.extend({ filial_id: Uuid.optional() });

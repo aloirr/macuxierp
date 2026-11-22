@@ -4,14 +4,37 @@
  * superusuário na 5433, variáveis `MACUXI_PG_*` do `db/scripts/pg-local.sh`), e `BancoPg` nos papéis da aplicação
  * (`SET LOCAL ROLE`), para a RLS valer. Sem Postgres, o teste pula, salvo com `MACUXI_PG_EXIGIR=1`, quando falha.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
+import { vi } from 'vitest';
 import { BancoPg } from './pg';
 
+/**
+ * Prazo dos hooks do arquivo de teste que importa este apoio. O `beforeAll` lê o `hookTimeout` do runner no registro, que
+ * vem depois das importações; o vitest volta a config ao fim de cada arquivo (`vi.resetConfig`). Os 10 s padrão não
+ * bastam no CI, com o turbo rodando vários pacotes em paralelo: `CREATE DATABASE` + a CLI de migração passavam disso.
+ */
+export const PRAZO_HOOK_BANCO_MS = 120_000;
+vi.setConfig({ hookTimeout: PRAZO_HOOK_BANCO_MS });
+
 const env = process.env;
+
+/** Roda a CLI de migração num processo novo, sem bloquear o event loop do worker do vitest. */
+function migrar(cli: string, banco: string): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolver) => {
+    const filho = spawn(process.execPath, [cli], { env: { ...env, MACUXIERP_BANCO: banco }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    filho.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d));
+    filho.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d));
+    // Falha ao criar o processo vira status null com a mensagem, sem lançar aqui.
+    filho.on('error', (e) => resolver({ status: null, stdout, stderr: stderr || e.message }));
+    filho.on('close', (status) => resolver({ status, stdout, stderr }));
+  });
+}
 const ADMIN: pg.PoolConfig = {
   host: env.MACUXI_PG_HOST ?? '127.0.0.1',
   port: Number(env.MACUXI_PG_PORTA ?? 5432),
@@ -72,7 +95,7 @@ export async function criarBancoEfemero(): Promise<BancoEfemero> {
   await raiz.query(`CREATE DATABASE ${nome}`).finally(() => raiz.end());
 
   const cli = join(dirname(createRequire(import.meta.url).resolve('@macuxierp/db/package.json')), 'src', 'cli', 'migrar.ts');
-  const r = spawnSync(process.execPath, [cli], { env: { ...env, MACUXIERP_BANCO: nome }, encoding: 'utf8' });
+  const r = await migrar(cli, nome);
   if (r.status !== 0) throw new Error(`migração do banco de teste falhou: ${(r.stderr || r.stdout).trim()}`);
 
   const admin = new pg.Pool({ ...ADMIN, database: nome });

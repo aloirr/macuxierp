@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
-import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota, type DepsEmissao } from './emissao';
-import { CNPJ_EMITENTE, depsFake, DIGVAL, NPROT, tx, TENANT, uuid } from './apoio-teste';
+import { criarProcessadorRetorno, criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota, type DepsEmissao } from './emissao';
+import { CNPJ_EMITENTE, depsFake, DIGVAL, NPROT, titulosFake, tx, TENANT, uuid } from './apoio-teste';
 import type { NotaRegistro, RetornoSefaz } from './portas';
 
 const entrada = (idempotencia = 'idem-0000001') => ({ pedido_id: IDS.pedido, idempotencia });
@@ -11,7 +11,10 @@ const opcoes = { xmlAssinado: '<NFe xmlns="http://www.portalfiscal.inf.br/nfe"><
 
 function montar(o: Parameters<typeof depsFake>[0] = {}) {
   const f = depsFake(o);
-  return { ...f, ...f.r, svc: criarServicoEmissao(f.deps) };
+  // O retorno da SEFAZ é do worker: o teste o monta com as portas de título e de log. A geração de títulos é testada em titulos.test.ts: aqui ela é neutra (sem eventos de título).
+  const titulos = { ...titulosFake().repo, emSavepoint: async <T>(_t: unknown, fn: () => Promise<T>) => { void fn; return { ok: true as const, valor: [] as unknown as T }; } };
+  const processarRetorno = criarProcessadorRetorno(f.r.repo, titulos, () => undefined);
+  return { ...f, ...f.r, svc: { ...criarServicoEmissao(f.deps), processarRetorno } };
 }
 /** Fase da API: a nota nasce em rascunho (a API não assina). */
 async function emitirRascunho(m: ReturnType<typeof montar>, idem?: string): Promise<NotaRegistro> {
@@ -38,7 +41,21 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.assinados).toEqual([]);
     expect(m.assinadas).toEqual([]);
     expect(m.estado.ambienteReserva).toBe('producao');
-    expect((await emitirRascunho(m, 'idem-0000002')).numero).toBe(101); // sem buraco
+    // RN-FAT-01/RF-FAT-01: o pedido já saiu todo na 1ª nota; a 2ª é recusada pelo saldo do próprio faturamento (o pedido ainda diz 0) e não gasta número.
+    const segunda = await m.svc.emitirNota(tx, TENANT, entrada('idem-0000002'));
+    expect(!segunda.ok && segunda.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'itens' });
+    expect(m.estado.reservas).toBe(1);
+  });
+
+  it('RN-FAT-04: filial em produção com a emissão de produção desligada (padrão): a API recusa (422) ANTES de reservar o número e a série não anda', async () => {
+    const m = montar();
+    for (const habilitada of [false, undefined]) {
+      const svc = criarServicoEmissao({ ...m.deps, emissaoProducaoHabilitada: habilitada });
+      const r = await svc.emitirNota(tx, TENANT, entrada(`idem-prod-${String(habilitada)}`));
+      expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-FAT-04', mensagem: 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).' });
+    }
+    expect(m.estado.reservas).toBe(0);
+    expect(m.log).toEqual(['trava', 'trava']);
   });
 
   it('ADR 0005 item 4: a API emite sem nenhum A1 decifrado: a porta lerA1 nem existe nas dependências da API (o tipo a recusa)', async () => {
@@ -219,6 +236,14 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(m.notas.get(nota.id)).toMatchObject({ status: 'autorizada', protocolo: NPROT });
     expect(m.xmls[0]?.conteudo).toBe(`<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">${opcoes.xmlAssinado}<protNFe versao="4.00"/></nfeProc>`);
     expect(m.eventos[0]?.payload).toMatchObject({ ambiente: 'producao', pedido_id: IDS.pedido, nota: { numero: 100, protocolo: NPROT } });
+    // Estoque: por item, produto_id e filial_id (quantidade já é inteiro em escala 4); ambiente, nota.numero e nota.serie já estão na raiz.
+    const p = m.eventos[0]?.payload as { filial_id?: string; itens: { produto_id?: string; filial_id?: string; quantidade: number; quantidade_escala4?: number }[] };
+    expect(p.filial_id).toBeUndefined();
+    expect(p.itens.length).toBeGreaterThan(0);
+    for (const i of p.itens) {
+      expect(i).toMatchObject({ produto_id: expect.any(String), filial_id: nota.filial_id, quantidade: expect.any(Number) });
+      expect(i.quantidade_escala4).toBeUndefined();
+    }
   });
 
   it('RN-FAT-03: falha na guarda deixa a nota em autorizada_guarda_pendente e nenhum evento sai; o reprocesso fecha o ciclo', async () => {
@@ -258,6 +283,16 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(await m.svc.processarRetorno(tx, m.notas.get(nota.id)!, { ...autorizada, digVal: null }, opcoes)).toMatchObject({ resultado: 'guarda_pendente', motivo: 'sem_digest' });
     expect(m.xmls).toEqual([]);
     expect(m.eventos).toEqual([]);
+  });
+
+  it('RN-PED-02, RN-FAT-07: reenvio da rejeitada com o pedido cancelado é recusado, sem mudar número nem conteúdo', async () => {
+    const m = montar();
+    const nota = await emitir(m);
+    await m.svc.processarRetorno(tx, nota, retorno('778', 'Rejeicao: NCM inexistente'), opcoes);
+    m.deps.situacao.situacao = async () => ({ status: 'cancelado' as never, itens: [] });
+    const re = await criarServicoEmissao(m.deps).reenviarNota(tx, m.notas.get(nota.id)!);
+    expect(!re.ok && re.violacoes[0]?.rn).toBe('RN-PED-02');
+    expect(m.notas.get(nota.id)).toMatchObject({ status: 'rejeitada', numero: 100, revisao: 1 });
   });
 
   it('RN-FAT-07: rejeitada publica nota.rejeitada@1 e o reenvio mantém série, número e chave, sem reservar outro', async () => {
@@ -329,7 +364,7 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     expect(re.nota).toMatchObject({ total_centavos: 4700, numero: 100 });
     expect(xmlDaNota(m.deps.emissor, re.nota, m.conteudos.get(nota.id)!)).toContain('<vNF>47.00</vNF>');
     await m.repo.mudarStatus(tx, nota.id, 'rejeitada', 'em_autorizacao'); // o worker assina e transmite
-    const aut = await criarServicoEmissao(m.deps).processarRetorno(tx, m.notas.get(nota.id)!, autorizada, opcoes);
+    const aut = await m.svc.processarRetorno(tx, m.notas.get(nota.id)!, autorizada, opcoes);
     expect(aut.resultado).toBe('autorizada');
     expect(m.eventos.at(-1)?.payload).toMatchObject({ nota: { total_centavos: 4700 } });
   });
