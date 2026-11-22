@@ -14,6 +14,7 @@
  * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
  * - Faturamento (T-0045 lote A, T-0021): consumidor de `pedido.pedido.aprovado@1` sempre; trabalhos da SEFAZ (só o simulador) e rotinas
  *   só com a `MACUXIERP_CHAVE_A1` (faturamento.ts). As notas autorizadas e canceladas chegam ao pedido (#194) e ao estoque (#192).
+ * - Purga da memória do simulador: purga-simulador.ts (T-0045 §9).
  */
 import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
@@ -40,17 +41,19 @@ import {
   type ExecutorTrabalho,
   type FilaDeTrabalhos,
   type FonteLicencas,
+  type FonteTodosTenants,
   type Outbox,
   type Relogio,
 } from '@macuxierp/platform-sdk';
 import { consumidoresDoPedido, exportadorPedido } from '@macuxierp/pedido/api';
-import { FilaDeTrabalhosPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
+import { FilaDeTrabalhosPg, LicencasPg, OutboxPg, TodosTenantsPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import type { EstadoEnvioFdv } from './envio-fdv';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
 import { consumidoresFaturamento, type MontagemFaturamentoWorker } from './faturamento';
 import { criarAlertaMonitor, type MontagemPedidosFdv } from './pedidos-fdv';
+import { criarRotinaPurgaSimulador } from './purga-simulador';
 import type { RotinaDiaria, RotinaPeriodica } from './rotinas';
 
 export class RegistroExecutoresInvalido extends Error {
@@ -144,11 +147,12 @@ export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly 
   ]);
 }
 
-/** Rotinas diárias, com os adaptadores reais. */
-export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log' | 'faturamento'>): readonly RotinaDiaria[] {
+/** Rotinas diárias, com os adaptadores reais (`todosTenants`: padrão `TodosTenantsPg` do SDK). */
+export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log' | 'faturamento'> & { todosTenants?: FonteTodosTenants }): readonly RotinaDiaria[] {
   return Object.freeze([
     criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log }),
     ...(d.faturamento?.rotinas ?? []),
+    criarRotinaPurgaSimulador({ banco: d.banco, tenants: d.todosTenants ?? new TodosTenantsPg(), log: d.log }),
   ]);
 }
 

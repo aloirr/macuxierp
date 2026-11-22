@@ -42,14 +42,14 @@ function bancoGravador(respostas: [RegExp, unknown[]][]) {
 const log = pino({ level: 'silent' });
 
 describe('worker: rotinas e executores com os adaptadores reais', () => {
-  it('RF-CORE-04: uma rotina, o alerta do A1 às 11 h UTC (7 h em Manaus), pelos adaptadores SQL do core', async () => {
+  it('RF-CORE-04: o alerta do A1 às 11 h UTC (7 h em Manaus), pelos adaptadores SQL do core; a purga do simulador às 7 h UTC (T-0045 §9)', async () => {
     const { banco, sql } = bancoGravador([
       [/tenants_ativos/, [{ id: T1 }]],
       [/FROM core\.certificado/, [{ id: CERT, filial_id: FILIAL, valido_ate: new Date('2026-12-01T00:00:00Z') }]],
       [/INSERT INTO core\.aviso_a1/, [{ id: 'novo' }]],
     ]);
     const rotinas = montarRotinas({ banco, log });
-    expect(rotinas.map((r) => [r.id, r.horaUtc])).toEqual([['core.alerta_a1', 11]]);
+    expect(rotinas.map((r) => [r.id, r.horaUtc])).toEqual([['core.alerta_a1', 11], ['sefaz_simulador.purga', 7]]);
     expect(await rotinas[0]!.executar(AGORA)).toEqual({ tenants: 1, avisos: 1, repetidos: 0, falhas: 0 });
     expect(sql).toEqual([
       expect.stringContaining('plataforma.tenants_ativos()'),
