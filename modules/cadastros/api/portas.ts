@@ -19,6 +19,10 @@ export interface RepoSimples<E extends { id: string }, D> {
   /** Traz também o inativo (RN-CAD-08). */
   obter(id: string): Promise<E | null>;
   porExternalId(externalId: string): Promise<E | null>;
+  /** Chave natural da carga (D4): `cnpj`, `documento` ou `codigo`; traz também o inativo. */
+  porCampo(campo: 'cnpj' | 'documento' | 'codigo', valor: string): Promise<E | null>;
+  /** Reativa o cadastro inativado (`deleted_at = NULL`; carga, D6). */
+  reativar(id: string): Promise<E | null>;
   /** Lança `ErroApi` 409 se violar unicidade (CNPJ, documento, código). */
   inserir(dados: D): Promise<E>;
   atualizar(id: string, parcial: Partial<D>): Promise<E | null>;
@@ -109,6 +113,46 @@ export interface RepoOficiais {
   ncmExigeCest(ncm: string, data: string): Promise<boolean>;
   cestVigente(cest: string, data: string): Promise<boolean>;
   cestCombinaComNcm(cest: string, ncm: string, data: string): Promise<boolean>;
+  /** Municípios vigentes da UF (a carga lê uma vez por UF, RN-CAD-03). */
+  municipiosDaUf(uf: string, data: string): Promise<{ ibge: string; nome: string }[]>;
+}
+
+/** Cadastros que as linhas da carga referenciam por `external_id` (D13). */
+/** Cadastros que as linhas da carga referenciam por `external_id` (D13); a forma de pagamento não é tabela própria. */
+export type AlvoExterno = 'filial' | 'vendedor' | 'condicao_pagamento' | 'produto' | 'tabela_preco' | 'cliente';
+export type TabelaFilha = 'produto_unidade' | 'cliente_endereco';
+
+export interface FilhoGravado {
+  id: string;
+  pai_id: string;
+  external_id: string | null;
+  inativo: boolean;
+  atual: Record<string, unknown>;
+}
+
+export interface ItemPrecoGravado {
+  id: string;
+  external_id: string | null;
+  preco_centavos: number;
+  desconto_maximo_bp: number;
+  inativo: boolean;
+}
+
+/** O que só a carga de CSV (T-0026) precisa do banco; o resto usa os repositórios das rotas. */
+export interface RepoCarga {
+  /** `external_id` → `id` dos cadastros ativos (confere as referências e resolve o UUID). */
+  idsPorExternalId(alvo: AlvoExterno, externalIds: readonly string[]): Promise<Map<string, string>>;
+  /** Condições de uma forma de pagamento (D12), também as inativas. */
+  condicoesDaForma(formaExternalId: string): Promise<CondicaoPagamento[]>;
+  filhoPorExternalId(tabela: TabelaFilha, externalId: string): Promise<FilhoGravado | null>;
+  unidadePorChave(produtoId: string, unidade: string): Promise<FilhoGravado | null>;
+  reativarFilho(tabela: TabelaFilha, id: string): Promise<void>;
+  itemPrecoPorExternalId(externalId: string): Promise<ItemPrecoGravado | null>;
+  itemPrecoPorChave(tabelaId: string, filialId: string, produtoId: string): Promise<ItemPrecoGravado | null>;
+  /** Upsert por (tabela, filial, produto): o `external_id` é adotado e `inativo` marca `deleted_at`. */
+  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }): Promise<PrecoItem>;
+  /** SAVEPOINT por linha (D7): erro de banco na linha desfaz só ela. */
+  comSavepoint<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 export interface Repositorios {
@@ -121,6 +165,7 @@ export interface Repositorios {
   vendedores: RepoVendedores;
   consultaExterna: RepoConsultaExterna;
   oficiais: RepoOficiais;
+  carga: RepoCarga;
 }
 
 /** Fonte externa de consulta (BrasilAPI, ViaCEP, ...). `null` = não achou; lançar = falhou (tempo, rede, 5xx). */

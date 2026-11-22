@@ -10,7 +10,7 @@ import {
   criarEvento, paginar, type ConsumidorEvento, type ExecutorTrabalho, type FilaDeTrabalhos, type Outbox, type Transacao,
 } from '@macuxierp/platform-sdk';
 import {
-  ENTIDADES_CARGA, EVENTO_CARGA_INICIAL, PayloadCargaInicial, SolicitacaoCargaInicial, TRABALHO_CARGA_INICIAL, type EntidadeCarga,
+  ENTIDADES_CARGA_FDV, EVENTO_CARGA_INICIAL, PayloadCargaInicial, SolicitacaoCargaInicial, TRABALHO_CARGA_INICIAL, type EntidadeCargaFdv,
 } from '../contracts';
 import {
   eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto,
@@ -22,7 +22,7 @@ export const TAMANHO_PAGINA_CARGA = 200;
 const PAGINA_ITENS_PRECO = 1000;
 
 /** Nomes do Hub e do ERP que levam à mesma entidade; o resto é ignorado. */
-const APELIDOS: Record<string, EntidadeCarga> = {
+const APELIDOS: Record<string, EntidadeCargaFdv> = {
   filial: 'filial', vendedor: 'vendedor',
   condicao_pagamento: 'condicao_pagamento', forma_pagamento: 'condicao_pagamento', prazo_pagamento: 'condicao_pagamento',
   produto: 'produto', produto_unidade: 'produto',
@@ -30,10 +30,10 @@ const APELIDOS: Record<string, EntidadeCarga> = {
   cliente: 'cliente', cliente_endereco: 'cliente',
 };
 
-/** Entidades distintas, na ordem de `ENTIDADES_CARGA` (a do Hub: referências antes de quem as usa). */
-export function entidadesPedidas(nomes: readonly string[]): EntidadeCarga[] {
-  const pedidas = new Set(nomes.map((n) => APELIDOS[n]).filter((e): e is EntidadeCarga => e !== undefined));
-  return ENTIDADES_CARGA.filter((e) => pedidas.has(e));
+/** Entidades distintas, na ordem de `ENTIDADES_CARGA_FDV` (a do Hub: referências antes de quem as usa). */
+export function entidadesPedidas(nomes: readonly string[]): EntidadeCargaFdv[] {
+  const pedidas = new Set(nomes.map((n) => APELIDOS[n]).filter((e): e is EntidadeCargaFdv => e !== undefined));
+  return ENTIDADES_CARGA_FDV.filter((e) => pedidas.has(e));
 }
 
 /** UUID v5 da chave (solicitação, entidade, cursor, tabela, página): cabe no limite de 64 caracteres do `external_id` e é estável. */

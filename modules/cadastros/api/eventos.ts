@@ -2,6 +2,7 @@
  * Montagem dos payloads dos eventos `cadastros.*` (validados contra `EVENTOS`). Usada pelas rotas (que publicam pelo
  * `ContextoRota`) e pela carga inicial (que grava na outbox pelo worker): o mesmo evento nos dois caminhos.
  */
+import type { ContextoRota } from '@macuxierp/platform-sdk';
 import {
   EVENTOS, type Cliente, type Filial, type PrecoItem, type Produto, type TabelaPreco, type NomeEventoCadastros,
 } from '../contracts';
@@ -55,3 +56,19 @@ export const eventoSimples = (nome: NomeEventoCadastros, e: { id: string; inativ
 
 export const eventoEstoque = (agregado_id: string, s: { filial_id: string; produto_id: string; quantidade: number }): EventoPronto =>
   pronto('cadastros.estoque.alterado@1', agregado_id, s);
+
+/** Grava o evento pronto na outbox da transação (rotas e carga de CSV usam o mesmo caminho). */
+export async function publicarPronto(c: ContextoRota, e: EventoPronto): Promise<void> {
+  await c.publicar({ nome: e.nome, agregado_id: e.agregado_id, versao: 1, // @deprecated no SDK, ignorada (T-0034), mas ainda exigida pelo tipo
+    payload: e.payload });
+}
+
+/** O evento de preço é por item: mudou a vigência ou inativou a tabela, os itens vão de novo à outbox. */
+export async function republicarItensDaTabela(c: ContextoRota, r: Repositorios, t: TabelaPreco): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const pagina = await r.tabelasPreco.itens(t.id, { limite: 1000, cursor });
+    for (const i of pagina.itens) await publicarPronto(c, eventoPreco(i, t));
+    cursor = pagina.proximo_cursor ?? undefined;
+  } while (cursor);
+}
