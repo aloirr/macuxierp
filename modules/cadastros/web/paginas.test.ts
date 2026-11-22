@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PAGINAS, acoesDaPagina, consultaDaUrl, urlDaConsulta } from './paginas';
+import { PAGINAS, acoesDaPagina, consultaDaUrl, csvDaPagina } from './paginas';
+import { paraQuery } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
 
 describe('páginas do BKO', () => {
@@ -9,12 +10,22 @@ describe('páginas do BKO', () => {
     expect(new Set(PAGINAS.map((p) => p.rota)).size).toBe(PAGINAS.length);
     for (const m of menus) expect(PAGINAS.some((p) => p.menu === m), m).toBe(true);
   });
-  it('filtros vivem na URL: ida e volta preserva busca, página e filtros e ignora o que não é da página', () => {
+  it('filtros vivem na URL: ida e volta preserva busca, cursor e filtros e ignora o que não é da página', () => {
     const clientes = PAGINAS.find((p) => p.id === 'clientes')!;
-    const q = consultaDaUrl(clientes, new URLSearchParams('busca=acme&pagina=3&filial_id=f1&lixo=1&inativos=true'));
-    expect(q).toEqual({ busca: 'acme', pagina: 3, por_pagina: 50, filial_id: 'f1', inativos: true });
-    expect(urlDaConsulta(q)).toBe('busca=acme&pagina=3&filial_id=f1&inativos=true');
-    expect(consultaDaUrl(clientes, new URLSearchParams('pagina=-2')).pagina).toBe(1);
+    const cursor = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
+    const q = consultaDaUrl(clientes, new URLSearchParams(`busca=acme&cursor=${cursor}&filial_id=f1&lixo=1&inativos=true&pagina=3`));
+    expect(q).toEqual({ busca: 'acme', cursor, filial_id: 'f1', inativos: true });
+    expect(paraQuery(q)).toBe(`?busca=acme&cursor=${cursor}&filial_id=f1&inativos=true`);
+    expect(paraQuery(consultaDaUrl(clientes, new URLSearchParams('limite=999')))).toBe('');
+    expect(consultaDaUrl(clientes, new URLSearchParams('limite=100')).limite).toBe(100);
+  });
+  it('CSV da página: colunas formatadas, sem a coluna que o perfil não vê e com proteção contra fórmula', () => {
+    const produtos = PAGINAS.find((p) => p.id === 'produtos')!;
+    const linha = { codigo: 'P1', descricao: '=SOMA(A1)', ncm: '22021000', cest: null, unidade_comercial: 'UN', custo_centavos: 450, inativo: false };
+    const gerente = csvDaPagina(produtos, 'gerente', [linha]);
+    expect(gerente).toContain('Custo');
+    expect(gerente).toContain("'=SOMA(A1)");
+    expect(csvDaPagina(produtos, 'vendedor', [linha])).not.toContain('Custo');
   });
   it('permissões na UI espelham a API: faturista edita cliente mas não o limite; vendedor só vê e exporta', () => {
     const clientes = PAGINAS.find((p) => p.id === 'clientes')!;

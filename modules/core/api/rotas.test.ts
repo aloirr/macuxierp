@@ -18,7 +18,7 @@ import { AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxi
 import { beforeEach, describe, expect, it } from 'vitest';
 import { decifrarA1, lerChaveA1 } from './cifra';
 import { LeitorPfxTls } from './leitor-pfx';
-import { PfxInvalido, type DadosPfx, type LeitorPfx } from './portas';
+import { PfxInvalido, type DadosPfx, type LeitorPfx, type LinhaAmbiente } from './portas';
 import { RepositorioCoreMemoria } from './repositorio-memoria';
 import { criarPluginCore } from './rotas';
 
@@ -263,24 +263,61 @@ describe('RN-CORE-08: ambiente fiscal por filial', () => {
     expect(r.corpo).toEqual({ itens: [{ filial_id: FILIAL, ambiente: 'homologacao', recado_aprovacao: null }] });
   });
 
-  it('RN-CORE-08: produção sem recado válido é 422; com o recado grava, audita e publica', async () => {
+  const RECADO = 'R-20261121-153000-alexandre';
+  const corpos: [string, Record<string, unknown>][] = [
+    ['produção', { ambiente: 'producao' }],
+    ['produção com recado', { ambiente: 'producao', recado_aprovacao: RECADO }],
+    ['homologação', { ambiente: 'homologacao' }],
+    ['homologação com recado', { ambiente: 'homologacao', recado_aprovacao: RECADO }],
+  ];
+  const atuais: [string, LinhaAmbiente | null][] = [
+    ['sem linha', null],
+    ['homologação', { filial_id: FILIAL, ambiente: 'homologacao', recado_aprovacao: null }],
+    ['produção', { filial_id: FILIAL, ambiente: 'producao', recado_aprovacao: RECADO }],
+  ];
+
+  for (const [nomeAtual, atual] of atuais) {
+    for (const [nomeCorpo, corpo] of corpos) {
+      it(`RN-CORE-08: atual ${nomeAtual} x corpo ${nomeCorpo}`, async () => {
+        const t = montar();
+        if (atual) t.repo.ambientesLinhas.push({ ...atual });
+        const antes = JSON.parse(JSON.stringify(t.repo.ambientesLinhas));
+        const r = t.chamar('PUT', '/ambientes-fiscais/:filial_id', { params: { filial_id: FILIAL }, corpo });
+        const semEfeito = corpo.ambiente === 'producao' || atual?.ambiente === 'homologacao';
+        if (corpo.ambiente === 'producao') await regra(r, 'RN-CORE-08');
+        else expect((await r).corpo).toEqual({ filial_id: FILIAL, ambiente: 'homologacao', recado_aprovacao: null });
+        if (semEfeito) {
+          expect(JSON.parse(JSON.stringify(t.repo.ambientesLinhas))).toEqual(antes);
+          expect(t.auditoria.registros).toHaveLength(0);
+          expect(t.outbox.eventos).toHaveLength(0);
+          return;
+        }
+        expect(t.repo.ambientesLinhas).toHaveLength(1);
+        expect(t.repo.ambientesLinhas[0]).toMatchObject({ ambiente: 'homologacao', recado_aprovacao: null, alterado_por: ADM_ID });
+        expect(t.auditoria.registros).toHaveLength(1);
+        expect(t.auditoria.registros[0]).toMatchObject({
+          acao: 'core.ambiente.trocado',
+          entidade_id: FILIAL,
+          antes: { ambiente: atual?.ambiente ?? 'homologacao', recado_aprovacao: atual?.recado_aprovacao ?? null },
+          depois: { filial_id: FILIAL, ambiente: 'homologacao', recado_aprovacao: null, origem: 'api' },
+        });
+        expect(t.outbox.eventos).toHaveLength(1);
+        expect(t.outbox.eventos[0]).toMatchObject({ nome: 'core.ambiente_fiscal.alterado@1', agregado_id: FILIAL });
+      });
+    }
+  }
+
+  it('RN-CORE-08: o repositório em memória recusa produção, como a RLS (o core nunca tenta)', async () => {
     const t = montar();
-    const put = (corpo: unknown) => t.chamar('PUT', '/ambientes-fiscais/:filial_id', { params: { filial_id: FILIAL }, corpo });
-    await regra(put({ ambiente: 'producao' }), 'RN-CORE-08');
-    await regra(put({ ambiente: 'producao', recado_aprovacao: 'qualquer coisa' }), 'RN-CORE-08');
-    expect(t.repo.ambientesLinhas).toHaveLength(0);
-    const recado = 'R-20261121-153000-alexandre';
-    expect((await put({ ambiente: 'producao', recado_aprovacao: recado })).corpo).toEqual({ filial_id: FILIAL, ambiente: 'producao', recado_aprovacao: recado });
-    expect(t.repo.ambientesLinhas[0]).toMatchObject({ ambiente: 'producao', alterado_por: ADM_ID });
-    expect(t.auditoria.registros[0]).toMatchObject({ acao: 'core.ambiente.trocado', entidade_id: FILIAL, depois: { ambiente: 'producao', recado_aprovacao: recado }, antes: { ambiente: 'homologacao' } });
-    expect(t.outbox.eventos[0]).toMatchObject({ nome: 'core.ambiente_fiscal.alterado@1', agregado_id: FILIAL });
+    const tx = { consultar: async () => [] };
+    await expect(t.repo.gravarAmbiente(tx, { filial_id: FILIAL, ambiente: 'producao' as never, recado_aprovacao: RECADO, alterado_por: ADM_ID })).rejects.toThrow(/RLS/);
   });
 
-  it('RN-CORE-08: voltar à homologação não pede recado e limpa o registro', async () => {
+  it('RN-CORE-08: fiscal, faturista e gerente não trocam o ambiente (403)', async () => {
     const t = montar();
-    await t.chamar('PUT', '/ambientes-fiscais/:filial_id', { params: { filial_id: FILIAL }, corpo: { ambiente: 'producao', recado_aprovacao: 'R-20261121-153000-alexandre' } });
-    const r = await t.chamar('PUT', '/ambientes-fiscais/:filial_id', { params: { filial_id: FILIAL }, corpo: { ambiente: 'homologacao' } });
-    expect(r.corpo).toMatchObject({ ambiente: 'homologacao', recado_aprovacao: null });
+    for (const perfil of ['fiscal', 'faturista', 'gerente'] as const) {
+      await expect(t.chamar('PUT', '/ambientes-fiscais/:filial_id', { perfil, params: { filial_id: FILIAL }, corpo: { ambiente: 'homologacao' } })).rejects.toMatchObject({ status: 403 });
+    }
   });
 });
 

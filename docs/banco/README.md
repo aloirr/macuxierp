@@ -48,11 +48,22 @@ O banco não tem acesso ao FDV, e só os três papéis têm `CONNECT` (o `REVOKE
 - **Filiais do usuário (`filiaisPorIds`, T-0004):** `SELECT id, tenant_id, nome, cnpj FROM cadastros.filial_resumo WHERE id = ANY($1)`. A visão é `security_invoker` (a RLS da filial vale para quem consulta), tira a filial excluída e dá `nome` = nome fantasia ou, sem ele, a razão social. Só o app lê.
 - **Tabelas oficiais** (D9): `tenant_id` = `00000000-0000-0000-0000-000000000000`; todos leem, ninguém da aplicação grava.
 - **Só inserção:** `plataforma.auditoria` e `cadastros.estoque_movimento` (trigger recusa `UPDATE`, `DELETE` e `TRUNCATE`, até para o dono). `plataforma.arquivo` com `imutavel` não muda chave, hash, tamanho nem sai, e a guarda só aumenta (XML autorizado, regra 7).
+- **Produção fiscal só pelo operador** (regra 7, RN-CORE-08, ADR 0006, desde a 0008, T-0030): em `core.ambiente_fiscal`, as políticas restritivas `app_so_homologacao_ins` e `app_so_homologacao_upd` deixam o `macuxierp_app` gravar só `homologacao` (INSERT, UPDATE e o upsert da API; a volta de produção para homologação passa). Produção só pelo script do operador, como dono da tabela (sem `FORCE`, a RLS não vale para ele), e o CHECK `ambiente_producao_aprovada` (0003) ainda exige o id do recado de aprovação. O teste de banco confere que o dono e a falta de `FORCE` continuam assim.
 - **Exceção registrada:** `controle.migracao` (registro das migrações) não tem tenant nem RLS; o schema `controle` não é visível a nenhum papel da aplicação.
 - Dinheiro em `bigint` de centavos (`*_centavos`); quantidade em `bigint` com escala 4 (D11); percentual em pontos-base. O teste recusa `real`, `double`, `numeric` e `money`.
 
+## Alerta do A1 (T-0035, migração 0009)
+- `core.aviso_a1`: um aviso por certificado e por dia UTC (`UNIQUE (tenant_id, certificado_id, dia)`, constraint `aviso_a1_um_por_dia`), FK composta `(tenant_id, certificado_id)` para `core.certificado`. Só ids, validade e dias (sem dado pessoal). Worker: `SELECT` e `INSERT`; app e leitura: só `SELECT` (selo do BKO). Nenhum papel altera nem apaga.
+- `plataforma.tenants_ativos()` (`SECURITY DEFINER`, só para o worker): ids dos tenants com `situacao = 'ativo'` e sem `deleted_at`; o de referência fica de fora.
+- SQL dos adaptadores (worker, com `app.tenant_id` na sessão, salvo o primeiro):
+  - `FonteTenants.ativos` (em `semTenant`): `SELECT t AS id FROM plataforma.tenants_ativos() t`
+  - `FonteCertificados.vencendoAte`: `SELECT id, filial_id, valido_ate FROM core.certificado WHERE ativo AND deleted_at IS NULL AND valido_ate < $1 ORDER BY valido_ate, id` (usa o índice `certificado_vencimento_idx`)
+  - `DestinoAvisos.registrarA1`: `INSERT INTO core.aviso_a1 (tenant_id, certificado_id, filial_id, valido_ate, dias, dia) VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5::date) ON CONFLICT (tenant_id, certificado_id, dia) DO NOTHING RETURNING id` — sem linha devolvida = `false` (o aviso do dia já existia).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
+
+**Numeração reservada:** o gerente pode reservar números para tarefas em paralelo (ex.: 0007–0009 reservadas e a 0010 da T-0026 entrando antes). O `migrar` aplica as pendentes em ordem de nome e não exige sequência contínua: uma migração de número menor que chegue depois é aplicada na execução seguinte. Por isso, migrações com números reservados não podem depender umas das outras fora da ordem de merge.
 
 ## Teste de vazamento entre tenants
 `db/testes/vazamento.ts` varre **todas** as tabelas dos schemas pedidos (as novas entram sozinhas): para cada papel com leitura, no tenant A, lê só linhas de A (e alguma, para provar que a massa cobre a tabela), sem tenant não lê nada, e o app não altera, não apaga e não move linha para o tenant B. Um teste prova que ele acusa uma tabela sem RLS. Tabela nova precisa de linha na massa (`db/testes/fixture.ts`), senão o teste falha.
