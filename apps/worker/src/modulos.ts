@@ -4,6 +4,7 @@
  * - Rotina diária do alerta do A1 (RF-CORE-04, T-0035): adaptadores SQL do core.
  * - Exportação LGPD (RF-CORE-06, T-0040): registro SQL do core e um exportador por módulo (hoje só o core tem).
  *   O armazenamento vem do SDK.
+ * - Agendas por tenant (contrato C-9, T-0009 §6.1): `montarAgendas`, vazia até o `integracao-fdv` ligar a dele.
  */
 import {
   destinoAvisosSql,
@@ -12,7 +13,7 @@ import {
   fonteTenantsSql,
   registroExportacoesSql,
 } from '@macuxierp/core/api';
-import { PADRAO_TIPO_TRABALHO, type Armazenamento, type Banco, type CatalogoArquivos, type ExecutorTrabalho } from '@macuxierp/platform-sdk';
+import { PADRAO_TIPO_TRABALHO, type AgendaModulo, type Armazenamento, type Banco, type CatalogoArquivos, type ExecutorTrabalho } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
@@ -30,6 +31,19 @@ export function registrarExecutores(executores: readonly ExecutorTrabalho[]): re
     tipos.add(e.tipo);
   }
   return Object.freeze([...executores]);
+}
+
+/** Id `<modulo>.<agenda>` do próprio módulo (padrão do tipo de trabalho) e sem duplicidade. */
+export function registrarAgendas(agendas: readonly AgendaModulo[]): readonly AgendaModulo[] {
+  const ids = new Set<string>();
+  for (const a of agendas) {
+    if (!PADRAO_TIPO_TRABALHO.test(a.id) || !a.id.startsWith(`${a.modulo}.`)) {
+      throw new RegistroExecutoresInvalido(`agenda "${a.id}" fora de <modulo>.<agenda> do módulo ${a.modulo}`);
+    }
+    if (ids.has(a.id)) throw new RegistroExecutoresInvalido(`duas agendas "${a.id}"`);
+    ids.add(a.id);
+  }
+  return Object.freeze([...agendas]);
 }
 
 /** Um por módulo que guarda dado do tenant; cada módulo acrescenta o seu quando tiver o adaptador. */
@@ -53,4 +67,12 @@ export function montarExecutores(d: DependenciasModulosWorker): readonly Executo
 /** Rotinas diárias, com os adaptadores reais. */
 export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log'>): readonly RotinaDiaria[] {
   return Object.freeze([criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log })]);
+}
+
+/**
+ * Agendas por tenant (T-0009 §6.1). Vazia por ora: o `integracao-fdv` acrescenta a dele (envio, lote, sinal,
+ * reconciliação) na T-0011 L2, com os adaptadores SQL do módulo. Só roda com o cliente do Hub configurado (`main.ts`).
+ */
+export function montarAgendas(_d: Pick<DependenciasModulosWorker, 'banco' | 'log'>): readonly AgendaModulo[] {
+  return registrarAgendas([]);
 }
