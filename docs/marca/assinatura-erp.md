@@ -47,9 +47,9 @@ Guias de consulta (não aplicar): `guia-area-de-protecao-a.svg` e `guia-area-de-
 
 ## 4. Tamanho mínimo e área de proteção
 - **A:** no mínimo **20 px de altura** (a caixa do arquivo). Abaixo disso, só o símbolo.
-- **C:** no mínimo **62 px de altura** total (o bloco "Macuxi ERP" fica com os mesmos 20 px da A).
+- **C:** no mínimo **62 px de altura** total (o bloco "Macuxi ERP" fica com os mesmos 20 px da A). Esse é o mínimo para a C aparecer como marca. Para o "ERP" ser lido, veja a regra de leitura abaixo.
 - **Só o símbolo:** a partir de **16 px** (favicon).
-- **Leitura do "ERP":** como o "FORÇA DE VENDAS" no FDV, abaixo de cerca de 32 px de altura (A) o "ERP" vira letras soltas. Onde o nome do produto precisa ser lido (login, e-mail, rodapé do PDF), use a A com 32 px ou mais, ou a C. No menu do BKO, 20 a 32 px está liberado.
+- **Leitura do "ERP":** como o "FORÇA DE VENDAS" no FDV, abaixo de cerca de 32 px de altura (A) o "ERP" vira letras soltas. Onde o nome do produto precisa ser lido (login, e-mail, rodapé do PDF), use a A com 32 px ou mais, ou a C com **100 px ou mais** (é a mesma escala: 62 × 32 / 20 ≈ 99; na C de 62 px o "ERP" fica com cerca de 3,7 px e vira pontos, como se viu no login da T-0021). No menu do BKO, 20 a 32 px está liberado.
 - **Área de proteção:** em volta de toda a caixa do arquivo, um espaço livre igual à **altura do "M"** de "Macuxi" (68,7 em 110,85 da altura da A, ou seja, cerca de 62% da altura da A). Nada entra ali: texto, borda, outro logo ou a dobra do papel. As guias mostram o espaço.
 - A caixa (`viewBox`) dos arquivos é a mesma dos logos do FDV, horizontal e empilhado: trocar o arquivo do FDV pelo do ERP não muda o leiaute.
 
