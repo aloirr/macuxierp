@@ -257,10 +257,11 @@ async function forma(l: LinhaFormaPagamento, st: Estado): Promise<Saida> {
     l.avisos.push('Forma sem prazo no lote nem no banco: nada gravado');
     return { efeito: 'sem_mudanca' };
   }
-  if (d.forma_tpag !== undefined) {
+  if (d.forma_tpag !== undefined || l.ativo === true) {
     for (const c of conds) {
-      if (c.inativo) continue;
-      const vc = validarCondicaoPagamento({ forma_tpag: d.forma_tpag, prazos_dias: c.prazos_dias, parcelas_cartao: c.parcelas_cartao });
+      // Inativas só entram quando esta linha as reativa (a 0019 recusa cartão sem parcelas ativo, 23514).
+      if (c.inativo && l.ativo !== true) continue;
+      const vc = validarCondicaoPagamento({ forma_tpag: d.forma_tpag ?? c.forma_tpag, prazos_dias: c.prazos_dias, parcelas_cartao: c.parcelas_cartao });
       if (vc.length) return violacoes(l.linha, vc);
     }
   }
