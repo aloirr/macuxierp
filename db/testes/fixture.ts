@@ -291,3 +291,8 @@ INSERT INTO fiscal.carga_aproximada (tenant_id, ncm, uf, aliquota_federal_nacion
   VALUES (plataforma.tenant_referencia(), '22021000', 'AM', 130000, 160000, 200000, '2026-01-01', '26.1.A', 'IBPT');
 `;
 }
+
+/** INSERT de uma condição de pagamento com a forma e as parcelas do cartão dadas (`parcelas` em SQL: '3' ou 'NULL'; T-0015). */
+export const inserirCondicao = (tenant: string, codigo: string, forma: string, parcelas: string): string =>
+  `INSERT INTO cadastros.condicao_pagamento (tenant_id, codigo, descricao, forma_tpag, prazos_dias, parcelas_cartao)
+   VALUES ('${tenant}', '${codigo}', 'Condição ${codigo}', '${forma}', '{0}', ${parcelas});`;
