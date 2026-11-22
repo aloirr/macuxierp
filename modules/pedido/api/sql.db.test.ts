@@ -90,6 +90,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     const r = await lancar(A, pedidoManual({ observacao: 'obs', endereco_entrega_id: IDS.endereco }));
     expect(r.http).toBe(201);
     expect(r.pedido).toMatchObject({ numero: 1, status: 'aprovado', total_centavos: 1000, decisao: { automatica: true }, observacao: 'obs', pendencias: [] });
+    expect(await admin('SELECT automatica FROM pedido.aprovacao WHERE pedido_id = $1', [r.pedido.id])).toEqual([{ automatica: true }]);
     expect(r.pedido.cliente_retrato).toMatchObject({ razao_social: 'Maria da Silva Exemplo', endereco: { cep: '69000000' } });
     expect(r.pedido.itens[0]).toMatchObject({ sequencia: 1, quantidade: 10_000, preco_tabela_centavos: 1000, desconto_maximo_bp: 500, quantidade_faturada: 0 });
     expect(r.pedido.historico.map((h) => [h.de, h.para])).toEqual([[null, 'recebido'], ['recebido', 'aprovado']]);
@@ -296,7 +297,8 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     expect(linhas).toEqual([expect.objectContaining({ status: 'aprovado', origem: 'fdv', external_id: IDS.pedidoFdv, numero: 1 })]);
     expect(await admin('SELECT nome FROM plataforma.evento WHERE tenant_id = $1 ORDER BY versao', [T])).toEqual([{ nome: 'pedido.pedido.recebido@1' }, { nome: 'pedido.pedido.aprovado@1' }]);
     expect((await admin("SELECT ator, payload->>'request_id' AS rid FROM (SELECT payload->>'ator' AS ator, payload FROM plataforma.evento WHERE tenant_id = $1) x LIMIT 1", [T]))[0]).toMatchObject({ ator: 'sistema' });
-    expect((await admin('SELECT automatica, decidido_por FROM pedido.aprovacao WHERE tenant_id = $1', [T]))).toEqual([{ automatica: true, decidido_por: null }]);
+    // T-0013 §2 e §7, ADR 0007: pedido do FDV entra aprovado na origem, sem linha em pedido.aprovacao.
+    expect(await admin('SELECT 1 FROM pedido.aprovacao WHERE tenant_id = $1', [T])).toHaveLength(0);
     expect((await admin('SELECT acao, usuario_id FROM plataforma.auditoria WHERE tenant_id = $1', [T]))).toEqual([{ acao: 'pedido.receber', usuario_id: null }]);
     // o número do segundo pedido do FDV é 2: a repetição não gastou número
     const outro = await receber(T, pedidoFdv({ pedido_uuid: '12345678-1234-4234-8234-123456789099' }));
