@@ -1,6 +1,6 @@
 import type { Pendencia } from '../contracts';
 
-/** RN-PED-03: sem pendência aprova sozinho; com qualquer uma vai para análise. */
+/** RN-PED-03: só pedido manual: sem pendência aprova sozinho; com qualquer uma vai para análise. */
 export const decisaoAutomatica = (pendencias: readonly Pendencia[]): 'aprovado' | 'em_analise' => (pendencias.length === 0 ? 'aprovado' : 'em_analise');
 
 export type DecisaoAprovacao =
