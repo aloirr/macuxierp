@@ -10,13 +10,13 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
 
 ## 1. Logo do emitente (o do cliente)
 - O quadro do emitente é **da marca do cliente** (empresa do tenant). O logo da Macuxi **nunca** entra nesse quadro: nem como logo do emitente, nem quando o cliente não tem logo, nem como enfeite.
-- **Caixa do logo:** lado esquerdo do quadro do emitente, com no máximo **1/3 da largura do quadro**, contado a partir do eixo da linha esquerda (o recuo fica dentro desse terço); começa **1,5 mm para dentro** desse eixo e tem a **altura do quadro menos 1,5 mm de respiro em cima e 1,5 mm embaixo**. O quadro continua com o tamanho do MOC: o logo se ajusta à caixa, nunca o contrário.
+- **Caixa do logo:** lado esquerdo do quadro do emitente, com no máximo **1/3 da largura do quadro**, contado a partir do eixo da linha esquerda (o recuo fica dentro desse terço); começa **1,5 mm (4,25 pt) para dentro** desse eixo e tem a **altura do quadro menos 1,5 mm (4,25 pt) de margem em cima e embaixo**. O quadro continua com o tamanho do MOC: o logo se ajusta à caixa, nunca o contrário.
 - **Proporção:** escala uniforme até o primeiro lado da caixa bater ("caber inteiro"). Nunca esticar, achatar, recortar, girar nem pôr borda ou sombra.
 - **Alinhamento:** logo centrado na vertical e encostado à esquerda da caixa. Os dados do emitente (razão social, endereço, telefone) ficam centralizados no espaço que sobra à direita.
 - **Sem logo:** o quadro fica só com os dados do emitente, centralizados na largura toda do quadro. Não se deixa espaço vazio reservado.
 - **Folhas 2 em diante:** o logo se repete no cabeçalho, que é completo como no MOC, com as mesmas regras desta seção.
 - **Preto e branco:** se o arquivo do cliente for colorido, o PDF leva o logo em **tons de cinza pela luminância** (0,2126 R + 0,7152 G + 0,0722 B), sem virar preto chapado. Transparência compõe sobre branco. O cinza dentro do logo do cliente é permitido: é a marca dele.
-- **Nitidez:** no tamanho impresso, no mínimo **150 dpi** efetivos. Se o arquivo for pequeno, o logo sai menor, centrado na caixa; nunca ampliado além disso.
+- **Nitidez:** no tamanho impresso, no mínimo **150 dpi** efetivos. Se o arquivo for pequeno, o logo sai menor, com o alinhamento acima; nunca ampliado além disso.
 
 ## 2. Cores
 - **Preto `preto` #000000** em todo texto, linha, quadro, código de barras e na assinatura do rodapé.
@@ -30,13 +30,13 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
   - rótulos de campo e texto do canhoto ("RECEBEMOS DE … INDICADA AO LADO"): **6 pt**, regular, caixa alta. São os únicos textos em 6 pt;
   - conteúdo de campo, legendas e os demais textos fixos (por exemplo, "Documento Auxiliar da Nota Fiscal Eletrônica", "Consulta de autenticidade…", "Folha x/y"): **7 pt**, regular;
   - títulos de quadro: **7 pt**, negrito, caixa alta;
-  - destaques (número, série, chave de acesso e valor total da nota, `vNF`): **8 pt**, negrito. Os demais valores do quadro de cálculo do imposto, inclusive o valor total dos produtos (`vProd`), seguem o conteúdo de campo;
+  - destaques (número, série, chave de acesso e valor total da nota, `vNF`): **8 pt**, negrito. Todo outro valor, inclusive o `vProd`, é conteúdo de campo;
   - texto do rodapé "Emitido pelo": conforme §4.
 - **Texto que não cabe:**
   - nunca reduzir a fonte abaixo do mínimo nem cortar com reticências;
   - quebrar em quantas linhas precisar (descrição do item e valor alinhado à direita);
   - o rótulo pode usar a abreviação do MOC ou quebrar em 2 linhas;
-  - respiro mínimo de **1,5 pt** entre o texto e a linha do quadro, medido da caixa da fonte (FontBBox da Helvetica: regular +0,931 e −0,225 do corpo; negrito +0,962 e −0,228), que cobre descendentes e acentos (Ç, g, É), até o eixo da linha; o texto nunca cruza a linha;
+  - respiro mínimo de **1,5 pt** entre o texto e a linha do quadro, até o eixo da linha. Na vertical, conta a caixa da fonte (FontBBox da Helvetica: regular +0,931 e −0,225 do corpo; negrito +0,962 e −0,228), que cobre descendentes e acentos (Ç, g, É). Na horizontal, conta a soma das larguras de avanço dos glifos, sem kerning (é o que o `drawText` desenha). Isso vale para o texto alinhado à esquerda e para o valor alinhado à direita. O texto nunca cruza a linha;
   - o símbolo `R$` é uniforme em todos os campos de valor do mesmo quadro: ou todos têm, ou nenhum; nunca some só porque o número é grande;
   - o "item extremo" das amostras de teste é o máximo do leiaute: `qCom` com 11 inteiros e 4 decimais; `vProd` do item e os totais `vProd` e `vNF` com 13 inteiros e 2 decimais; descrição com exatamente 120 caracteres.
 - A Helvetica do `pdf-lib` só tem os caracteres do WinAnsi. Acentos do português funcionam; símbolos fora dele (por exemplo, o sinal de menos U+2212) saem trocados por equivalente simples ("-"), nunca por outra fonte.
