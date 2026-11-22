@@ -210,6 +210,12 @@ export const CondicaoPagamentoDados = z.object({
   external_id: IdExterno,
 });
 export type CondicaoPagamentoDados = z.infer<typeof CondicaoPagamentoDados>;
+/** RN-CAD-09: tPag da NF-e que são à vista (01 dinheiro, 04 cartão de débito, 17 PIX). */
+export const FORMAS_A_VISTA = ['01', '04', '17'] as const;
+/** Critério único de "à vista" (pedido, faturamento): forma à vista E todos os prazos iguais a 0. */
+export const ehFormaAVista = (tpag: string): boolean => (FORMAS_A_VISTA as readonly string[]).includes(tpag);
+export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag' | 'prazos_dias'>): boolean =>
+  ehFormaAVista(c.forma_tpag) && c.prazos_dias.every((p) => p === 0);
 export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
 export const CondicaoPagamento = CondicaoPagamentoDados.extend({ id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;

@@ -16,7 +16,7 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
+  validarCondicaoPagamento, validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga } from './carga';
@@ -419,6 +419,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   rotas.push(...rotasCrud(deps, {
     caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
+    validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[] }),
   }));
 
   // ---- Vendedores (RF-CAD-07) e transferência de carteira (D7) ----

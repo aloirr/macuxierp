@@ -14,7 +14,7 @@ import {
 } from '../contracts';
 import {
   ajusteDeCarga, bloqueiosDeInativacao, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
-  validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
+  validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
 } from '../domain';
 import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
 import type { AlvoExterno, Repositorios, RepoSimples } from './portas';
@@ -242,6 +242,12 @@ async function forma(l: LinhaFormaPagamento, st: Estado): Promise<Saida> {
     l.avisos.push('Forma sem prazo no lote nem no banco: nada gravado');
     return { efeito: 'sem_mudanca' };
   }
+  if (d.forma_tpag !== undefined) {
+    for (const c of conds) {
+      const vc = validarCondicaoPagamento({ forma_tpag: d.forma_tpag, prazos_dias: c.prazos_dias });
+      if (vc.length) return violacoes(l.linha, vc);
+    }
+  }
   const mudancas = conds.map((c) => camposAlterados({ ...d, ...ativoPatch(l.ativo) }, c as unknown as Dict).length > 0);
   if (!mudancas.some(Boolean)) return { efeito: 'sem_mudanca' };
   return {
@@ -275,6 +281,8 @@ async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
     const patch: Dict = { ...d, ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
+    const vc = validarCondicaoPagamento({ forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[] });
+    if (vc.length) return violacoes(l.linha, vc);
     if (camposAlterados(patch, ex as unknown as Dict).length === 0) return { efeito: 'sem_mudanca', alvo };
     return {
       efeito: 'atualizada', alvo,
@@ -291,6 +299,8 @@ async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
   if (!f) return mover(l.linha, 'forma_external_id', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
   const r = CondicaoPagamentoDados.safeParse({ ...p.linha.dados, forma_tpag: f.tpag ?? undefined, ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
+  const vc = validarCondicaoPagamento(r.data);
+  if (vc.length) return violacoes(l.linha, vc);
   return {
     efeito: 'inserida',
     async aplicar() {
