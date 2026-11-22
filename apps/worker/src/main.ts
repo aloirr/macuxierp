@@ -2,7 +2,9 @@
  * Entrada do worker: adaptadores PostgreSQL no papel `macuxierp_worker` (conferido na partida: sem superusuário nem
  * BYPASSRLS), laço da outbox e dos trabalhos e encerramento limpo no SIGTERM do deploy (ADR 0003).
  * Ambiente: conexão pelas variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_worker`, `PGPASSWORD`,
- * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000) e `MACUXIERP_PG_POOL` (padrão 5). Nada de segredo em código.
+ * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000), `MACUXIERP_PG_POOL` (padrão 5) e
+ * `MACUXIERP_OUTBOX_MAX_TENTATIVAS` (padrão 10; depois, evento `falhou` com alerta, T-0045). Na partida, a reentrega dos
+ * eventos já publicados aos consumidores que ainda não os aplicaram (`reentrega.ts`). Nada de segredo em código.
  * Consumidores, executores e rotinas: `modulos.ts` (carga inicial do cadastros, exportação LGPD de core e cadastros e alerta
  * do A1, com os adaptadores SQL dos módulos). O log leva só
  * contagens, ids e nomes de erro, nunca dado pessoal (regra 8).
@@ -20,8 +22,8 @@ import { configurarCredenciais } from './credencial';
 import { configurarEnvioFdv } from './envio-fdv';
 import { configurarHub, versaoDoErp } from './hub';
 import { montarAgendas, montarConsumidores, montarExecutores, montarRotinas } from './modulos';
-import { conferirRecebimentoFdv, configurarRecebimentoFdv, montarPedidosFdv, resolvedorChaveErpDeProducao } from './pedidos-fdv';
-import { FilaOutboxPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
+import { conferirRecebimentoFdv, configurarRecebimentoFdv, criarAlertaMonitor, montarPedidosFdv, resolvedorChaveErpDeProducao } from './pedidos-fdv';
+import { FilaOutboxPg, FonteReentregaPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
 function inteiro(nome: string, padrao: number, min: number, max: number): number {
@@ -59,6 +61,9 @@ const worker = iniciarWorker({
   relogio: relogioDoSistema,
   log,
   intervaloMs: inteiro('MACUXIERP_WORKER_INTERVALO_MS', 1_000, 100, 60_000),
+  maxTentativas: inteiro('MACUXIERP_OUTBOX_MAX_TENTATIVAS', 10, 1, 100),
+  alertar: criarAlertaMonitor(log, 'plataforma'),
+  reentrega: { fonte: new FonteReentregaPg() },
 });
 log.info('worker no ar');
 
