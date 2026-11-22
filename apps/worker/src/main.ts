@@ -2,7 +2,7 @@
  * Entrada do worker: adaptadores PostgreSQL no papel `macuxierp_worker` (conferido na partida: sem superusuário nem
  * BYPASSRLS), laço da outbox e dos trabalhos e encerramento limpo no SIGTERM do deploy (ADR 0003).
  * Ambiente: conexão pelas variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_worker`, `PGPASSWORD`,
- * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000), `MACUXIERP_PG_POOL` (padrão 5) e
+ * `PGDATABASE`); `MACUXIERP_WORKER_INTERVALO_MS` (padrão 1000), `MACUXIERP_PG_POOL` (padrão 5, mínimo 4: `config.ts`) e
  * `MACUXIERP_OUTBOX_MAX_TENTATIVAS` (padrão 10; depois, evento `falhou` com alerta, T-0045). Na partida, a reentrega dos
  * eventos já publicados aos consumidores que ainda não os aplicaram (`reentrega.ts`). Nada de segredo em código.
  * Consumidores, executores e rotinas: `modulos.ts` (carga inicial do cadastros, exportação LGPD de core e cadastros e alerta
@@ -16,11 +16,13 @@
  * `MACUXIERP_FDV_RECEBIMENTO` (pedidos do FDV, T-0016) e `MACUXIERP_FDV_ENVIO`: trava de 22/11/2026, ver envio-fdv.ts.
  * Faturamento (T-0045 lote A): `MACUXIERP_CHAVE_A1` (a mesma da API, ADR 0005) liga a assinatura e os trabalhos da SEFAZ, que vão SÓ ao
  * simulador (faturamento.ts; nenhuma variável liga a SEFAZ real). Sem ela, os trabalhos do faturamento ficam na fila, com um aviso no log.
+ * Purga da memória do simulador: purga-simulador.ts (T-0045 §9).
  */
 import { fonteTenantsSql, lerChaveA1 } from '@macuxierp/core/api';
 import { armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
+import { inteiroDoAmbiente, poolDoWorker } from './config';
 import { configurarCredenciais } from './credencial';
 import { configurarEnvioFdv } from './envio-fdv';
 import { montarFaturamentoWorker, TRANSPORTE_HOMOLOGACAO_DO_WORKER } from './faturamento';
@@ -30,15 +32,8 @@ import { conferirRecebimentoFdv, configurarRecebimentoFdv, criarAlertaMonitor, m
 import { FilaOutboxPg, FonteReentregaPg, RegistroConsumoPg, ReservaTrabalhosPg } from './pg';
 import { iniciarWorker } from './worker';
 
-function inteiro(nome: string, padrao: number, min: number, max: number): number {
-  const bruto = process.env[nome];
-  const n = bruto === undefined || bruto === '' ? padrao : Number(bruto);
-  if (!Number.isInteger(n) || n < min || n > max) throw new Error(`configuração inválida: ${nome} (inteiro de ${min} a ${max})`);
-  return n;
-}
-
 const log = pino({ level: 'info', base: { servico: 'macuxierp-worker' } });
-const pool = criarPool('macuxierp-worker', inteiro('MACUXIERP_PG_POOL', 5, 2, 50));
+const pool = criarPool('macuxierp-worker', poolDoWorker(process.env));
 const banco = new BancoPg(pool);
 await banco.conferirPapel('macuxierp_worker');
 
@@ -80,8 +75,8 @@ const worker = iniciarWorker({
   ...(hub && decifrarCredencial ? { agenda: { agendas, licencas: new LicencasPg(), hub, decifrarCredencial } } : {}),
   relogio: relogioDoSistema,
   log,
-  intervaloMs: inteiro('MACUXIERP_WORKER_INTERVALO_MS', 1_000, 100, 60_000),
-  maxTentativas: inteiro('MACUXIERP_OUTBOX_MAX_TENTATIVAS', 10, 1, 100),
+  intervaloMs: inteiroDoAmbiente(process.env, 'MACUXIERP_WORKER_INTERVALO_MS', 1_000, 100, 60_000),
+  maxTentativas: inteiroDoAmbiente(process.env, 'MACUXIERP_OUTBOX_MAX_TENTATIVAS', 10, 1, 100),
   alertar: criarAlertaMonitor(log, 'plataforma'),
   reentrega: { fonte: new FonteReentregaPg() },
 });

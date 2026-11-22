@@ -7,10 +7,7 @@ import { alertaVencimento, diasParaVencer } from '@macuxierp/core/api';
 import { DIAS_ALERTA_A1 } from '@macuxierp/core/contracts';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import type { Logger } from 'pino';
-import { nomeDoErro } from './backoff';
-import type { RotinaDiaria } from './rotinas';
-
-const DIA_MS = 86_400_000;
+import { DIA_MS, paraCadaTenant, type RotinaDiaria } from './rotinas';
 
 export interface CertificadoVencendo {
   id: string;
@@ -60,28 +57,20 @@ export function criarRotinaAlertaA1(d: DependenciasAlertaA1): RotinaDiaria {
     id: 'core.alerta_a1',
     horaUtc: d.horaUtc ?? 11,
     async executar(agora) {
-      const resumo = { tenants: 0, avisos: 0, repetidos: 0, falhas: 0 };
+      const resumo = { avisos: 0, repetidos: 0 };
       const dia = agora.toISOString().slice(0, 10);
       // Com o floor da RN-CORE-06, "30 dias ou menos" vale para tudo abaixo de 31 dias: limite exclusivo em agora + 31 d.
       const limite = new Date(agora.getTime() + (DIAS_ALERTA_A1 + 1) * DIA_MS);
-      for (const tenant of await d.banco.semTenant((tx) => d.tenants.ativos(tx))) {
-        resumo.tenants++;
-        try {
-          await d.banco.comTenant(tenant, async (tx) => {
-            for (const c of await d.certificados.vencendoAte(tx, limite)) {
-              if (!alertaVencimento(c.valido_ate, agora)) continue;
-              const novo = await d.avisos.registrarA1(tx, { certificado_id: c.id, filial_id: c.filial_id, valido_ate: c.valido_ate, dias: diasParaVencer(c.valido_ate, agora), dia });
-              if (novo) resumo.avisos++;
-              else resumo.repetidos++;
-            }
-          });
-        } catch (e) {
-          // Um tenant com problema não segura os outros; a rodada seguinte (ou o reinício) tenta de novo.
-          resumo.falhas++;
-          d.log.warn({ rotina: 'core.alerta_a1', tenant_id: tenant, erro: nomeDoErro(e) }, 'alerta do A1 falhou no tenant');
+      // Um tenant com problema não segura os outros; a rodada seguinte (ou o reinício) tenta de novo.
+      const { tenants, falhas } = await paraCadaTenant(d.banco, (tx) => d.tenants.ativos(tx), 'core.alerta_a1', d.log, async (tx) => {
+        for (const c of await d.certificados.vencendoAte(tx, limite)) {
+          if (!alertaVencimento(c.valido_ate, agora)) continue;
+          const novo = await d.avisos.registrarA1(tx, { certificado_id: c.id, filial_id: c.filial_id, valido_ate: c.valido_ate, dias: diasParaVencer(c.valido_ate, agora), dia });
+          if (novo) resumo.avisos++;
+          else resumo.repetidos++;
         }
-      }
-      return resumo;
+      });
+      return { tenants, ...resumo, falhas };
     },
   };
 }
