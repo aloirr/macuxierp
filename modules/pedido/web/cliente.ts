@@ -3,6 +3,7 @@
  * entram por injeção (mesmo molde do core). O corpo do erro (`codigo`, `mensagem`) nunca leva dado do pedido ao log.
  */
 import { paraQuery } from '@macuxierp/platform-sdk/listas';
+import type { DetalhesErro } from '@macuxierp/platform-sdk/erros';
 import { z } from 'zod';
 import { CatalogoMotivos, Pedido, type AprovarEntrada, type CancelarEntrada, type PedidoManualEntrada, type RecusarEntrada } from '../contracts';
 
@@ -12,6 +13,7 @@ export class ErroPedido extends Error {
     readonly status: number,
     readonly codigo: string,
     mensagem: string,
+    readonly detalhes?: DetalhesErro,
   ) {
     super(mensagem);
   }
@@ -19,7 +21,7 @@ export class ErroPedido extends Error {
 
 export type FetchPedido = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; ok: boolean; headers: { get(nome: string): string | null }; json(): Promise<unknown> }>;
 
-const Erro = z.object({ codigo: z.string(), mensagem: z.string() });
+const Erro = z.object({ codigo: z.string(), mensagem: z.string(), detalhes: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.union([z.string(), z.number()]))])).optional().catch(undefined) });
 
 export function criarClientePedido(cfg: { baseUrl: string; token: () => string; fetch: FetchPedido }) {
   async function chamar<T>(metodo: string, caminho: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, corpo?: unknown, cabecalhos: Record<string, string> = {}): Promise<T> {
@@ -32,7 +34,7 @@ export function criarClientePedido(cfg: { baseUrl: string; token: () => string; 
     if (!r.ok) {
       // 5xx de proxy ou balanceador costuma vir em HTML: não é JSON, vira ErroPedido sem tentar o parse.
       const e = ehJson ? Erro.safeParse(await r.json().catch(() => null)) : null;
-      throw new ErroPedido(r.status, e?.success ? e.data.codigo : 'ERRO', e?.success ? e.data.mensagem : 'Não foi possível concluir. Tente de novo.');
+      throw new ErroPedido(r.status, e?.success ? e.data.codigo : 'ERRO', e?.success ? e.data.mensagem : 'Não foi possível concluir. Tente de novo.', e?.success ? e.data.detalhes : undefined);
     }
     if (!ehJson) throw new ErroPedido(r.status, 'RESPOSTA_INVALIDA', 'Não foi possível concluir. Tente de novo.');
     return schema.parse(await r.json());

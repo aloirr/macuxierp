@@ -65,3 +65,55 @@ export const Cpf = z
   .string()
   .transform(normalizarDocumento)
   .refine(cpfValido, { message: 'RN-CAD-01: CPF inválido' });
+
+/**
+ * RN-CAD-02: dígito verificador da Inscrição Estadual pela regra da UF. Fonte única do DV da IE (RN-CAD-02). O
+ * cadastros passa a usar por recado (RD-0253); UF nova entra aqui.
+ * Porte da lógica do sped-common (`NFePHP\Common\Validator\IE`, opção MIT; atribuição: Copyright (c) NFePHP,
+ * https://github.com/nfephp-org/sped-common), por enquanto só de AM, PA e SP:
+ * - AM: 9 dígitos; pesos 9..2 nos 8 primeiros; soma < 11 dá DV 11 − soma; senão resto 0 ou 1 dá 0 e o resto, 11 − resto.
+ * - PA: 9 dígitos, começa com 15; pesos 9..2 nos 8 primeiros; resto 0 ou 1 dá 0, senão 11 − resto.
+ * - SP: 12 dígitos; 1º DV (9ª posição) com pesos 1,3,4,5,6,7,8,10 nos 8 primeiros e o 2º DV (12ª posição) com pesos
+ *   3,2,10..2 nos 11 primeiros; cada DV é a soma % 11 % 10.
+ * Devolve `null` para UF ainda sem regra no ERP (a conferir com o porte das demais UFs) e `true` para "ISENTO"
+ * (quem pode ser isento é decisão do cadastro, RN-CAD-02).
+ */
+export function ieComDvValido(uf: string, ie: string): boolean | null {
+  const v = normalizarDocumento(ie);
+  if (v === 'ISENTO') return true;
+  const regra = REGRAS_IE[uf.toUpperCase()];
+  if (!regra) return null;
+  return /^\d+$/.test(v) && regra(v);
+}
+
+function somaPesosDescendo(digitos: string): number {
+  let soma = 0;
+  for (let i = 0; i < digitos.length; i++) soma += Number(digitos[i]) * (digitos.length + 1 - i);
+  return soma;
+}
+
+/** DV de SP: soma dos dígitos pelos pesos, % 11 % 10. */
+function dvSp(digitos: string, pesos: readonly number[]): number {
+  let soma = 0;
+  for (let i = 0; i < digitos.length; i++) soma += Number(digitos[i]) * (pesos[i] ?? 0);
+  return (soma % 11) % 10;
+}
+
+const REGRAS_IE: Readonly<Record<string, (ie: string) => boolean>> = Object.freeze({
+  AM: (ie) => {
+    if (ie.length !== 9) return false;
+    const soma = somaPesosDescendo(ie.slice(0, 8));
+    const resto = soma % 11;
+    const dv = soma < 11 ? 11 - soma : resto < 2 ? 0 : 11 - resto;
+    return dv === Number(ie[8]);
+  },
+  PA: (ie) => {
+    if (ie.length !== 9 || !ie.startsWith('15')) return false;
+    const resto = somaPesosDescendo(ie.slice(0, 8)) % 11;
+    return (resto < 2 ? 0 : 11 - resto) === Number(ie[8]);
+  },
+  SP: (ie) =>
+    ie.length === 12 &&
+    dvSp(ie.slice(0, 8), [1, 3, 4, 5, 6, 7, 8, 10]) === Number(ie[8]) &&
+    dvSp(ie.slice(0, 11), [3, 2, 10, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(ie[11]),
+});

@@ -5,24 +5,26 @@
  * O `tpEvento` diferente da operação chamada é erro de quem chama (`SEFAZ_PEDIDO_INVALIDO`), não rejeição.
  */
 import {
-  ErroSefaz,
   NS_NFE,
   TIPO_EVENTO,
   chaveNFeComDvValido,
   dataHoraSefaz,
   filhoNfe,
+  garantirTipoEvento,
+  idEvento,
   lerXml,
   montarEnvEvento,
   semDeclaracaoXml,
+  textoNfe,
   validarXsd,
   verificarAssinaturaXml,
   type ProtocoloEvento,
   type RespostaEvento,
   type TipoEvento,
 } from '@macuxierp/nfe-sefaz';
-import { PRAZO_CANCELAMENTO_MS, TOLERANCIA_FUTURO_MS, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
+import { PRAZO_CANCELAMENTO_MS, TOLERANCIA_FUTURO_MS, consumirRejeicao, novoNumero, retornoBase, tagsRetorno, type CStatSimulador, type Contexto } from './contexto';
 import { refAutorizacao } from './estado';
-import { tag, texto } from './xml';
+import { tag } from './xml';
 
 const X_EVENTO: Record<TipoEvento, string> = {
   [TIPO_EVENTO.cancelamento]: 'Cancelamento registrado',
@@ -47,7 +49,7 @@ interface EventoLido {
 }
 
 /** Um evento (já passou no schema do lote). */
-function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido): ProtocoloEvento {
+function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido, forcado: CStatSimulador | null): ProtocoloEvento {
   const agora = ctx.agora();
   const dhRegEvento = dataHoraSefaz(agora);
   const inf = filhoNfe(ev.raiz, 'infEvento');
@@ -56,12 +58,13 @@ function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido): Prot
     return { ...p, xml: retEventoXml(p, ctx.d.cUF) };
   };
 
-  if (texto(inf, 'tpAmb') !== String(ctx.d.tpAmb)) return responder('252');
-  const cOrgao = texto(inf, 'cOrgao');
+  if (forcado) return responder(forcado);
+  if (textoNfe(inf, 'tpAmb') !== String(ctx.d.tpAmb)) return responder('252');
+  const cOrgao = textoNfe(inf, 'cOrgao');
   if (cOrgao !== String(ctx.d.cUF)) return responder('250');
   if (ev.chNFe.slice(0, 2) !== cOrgao) return responder('455');
-  if (inf?.getAttribute('Id') !== `ID${ev.tpEvento}${ev.chNFe}${String(ev.nSeqEvento).padStart(2, '0')}`) return responder('572');
-  const autor = texto(inf, 'CNPJ') || texto(inf, 'CPF');
+  if (inf?.getAttribute('Id') !== idEvento(ev.tpEvento, ev.chNFe, ev.nSeqEvento)) return responder('572');
+  const autor = textoNfe(inf, 'CNPJ') || textoNfe(inf, 'CPF');
   const assinatura = verificarAssinaturaXml(eventoXml, { elemento: 'infEvento', cnpjEsperado: autor, agora });
   if (!assinatura.ok) return responder(assinatura.cStat as CStatSimulador);
   if (!chaveNFeComDvValido(ev.chNFe)) return responder('236');
@@ -69,7 +72,7 @@ function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido): Prot
   const nota = ctx.estado.notas.get(ev.chNFe);
   if (!nota) return responder('494');
   if (autor !== nota.cnpj) return responder('574');
-  const dhEvento = new Date(texto(inf, 'dhEvento'));
+  const dhEvento = new Date(textoNfe(inf, 'dhEvento'));
   if (Number.isNaN(dhEvento.getTime()) || dhEvento.getTime() > agora.getTime() + TOLERANCIA_FUTURO_MS) return responder('578');
   if (dhEvento.getTime() < nota.dhEmi.getTime()) return responder('577');
   const ref = ` ${refAutorizacao(nota)}`;
@@ -77,7 +80,7 @@ function processarEvento(ctx: Contexto, eventoXml: string, ev: EventoLido): Prot
 
   if (ev.tpEvento === TIPO_EVENTO.cancelamento) {
     if (nota.situacao === 'cancelada') return responder('573');
-    if (texto(inf, 'detEvento', 'nProt') !== nota.protocolo.nProt) return responder('222');
+    if (textoNfe(inf, 'detEvento', 'nProt') !== nota.protocolo.nProt) return responder('222');
     if (agora.getTime() - nota.autorizadaEm.getTime() > PRAZO_CANCELAMENTO_MS) return responder('501');
   } else {
     if (nota.situacao === 'cancelada') return responder('218', null, ref);
@@ -94,15 +97,14 @@ export async function registrarEvento(ctx: Contexto, esperado: TipoEvento, idLot
   const eventoXml = semDeclaracaoXml(eventoAssinado);
   const raiz = lerXml(eventoXml)?.documentElement ?? null;
   const inf = filhoNfe(raiz, 'infEvento');
-  const tpEvento = texto(inf, 'tpEvento');
-  if (raiz && tpEvento && tpEvento !== esperado) {
-    throw new ErroSefaz('SEFAZ_PEDIDO_INVALIDO', `Evento ${tpEvento} enviado pela operação do evento ${esperado}`);
-  }
+  garantirTipoEvento(eventoXml, esperado);
   const esquema = esperado === TIPO_EVENTO.cancelamento ? 'envEventoCancNFe' : 'envCCe';
   const lote = montarEnvEvento(idLote, eventoXml);
   const valido = raiz !== null && (await validarXsd(lote, esquema)).valido;
 
-  const eventos = valido ? [processarEvento(ctx, eventoXml, { raiz: raiz!, chNFe: texto(inf, 'chNFe'), tpEvento: esperado, nSeqEvento: Number(texto(inf, 'nSeqEvento')) })] : [];
+  const forcado = valido ? consumirRejeicao(ctx, esperado === TIPO_EVENTO.cancelamento ? 'cancelar' : 'cartaCorrecao') : null;
+  const ev = { raiz: raiz!, chNFe: textoNfe(inf, 'chNFe'), tpEvento: esperado, nSeqEvento: Number(textoNfe(inf, 'nSeqEvento')) };
+  const eventos = valido ? [processarEvento(ctx, eventoXml, ev, forcado)] : [];
   const cStat: CStatSimulador = valido ? '128' : '215';
   const r = { ...retornoBase(ctx, cStat), cOrgao: ctx.d.cUF, idLote, eventos };
   const xml =

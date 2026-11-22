@@ -4,7 +4,7 @@
  * devolve) e a numeração de protocolo e recibo com o prefixo do simulador.
  */
 import { FalhaTransporteSefaz, aammSefaz, dataHoraSefaz, type DestinoSimulador } from '@macuxierp/nfe-sefaz';
-import type { EstadoDestino, RegistroSimulador } from './estado';
+import type { EstadoDestino, OperacaoRejeitavel, RegistroSimulador } from './estado';
 import { tag } from './xml';
 
 /** `verAplic` das respostas: identifica, em qualquer XML guardado, que veio do simulador e não da SEFAZ. */
@@ -96,7 +96,7 @@ export type CStatSimulador = keyof typeof MOTIVO;
 /** Todos os `cStat` que o simulador sabe devolver (o teste de cobertura confere que cada um é exercitado). */
 export const CSTAT_DO_SIMULADOR: readonly CStatSimulador[] = Object.freeze(Object.keys(MOTIVO) as CStatSimulador[]);
 
-export function motivo(cStat: CStatSimulador, complemento = ''): string {
+function motivo(cStat: CStatSimulador, complemento = ''): string {
   return `${MOTIVO[cStat]}${complemento}`.slice(0, 255);
 }
 
@@ -132,4 +132,16 @@ export async function conversa<T>(ctx: Contexto, servico: string, fn: () => Prom
   if (!c.falhas.aposProcessar) throw new FalhaTransporteSefaz(servico, true, 'falha de transporte simulada antes do processamento');
   await fn();
   throw new FalhaTransporteSefaz(servico, true, 'falha de transporte simulada depois do processamento (resposta perdida)');
+}
+
+/**
+ * A rejeição forçada pelo apoio de teste para esta operação, se houver: devolve o `cStat` e desfaz o controle (vale
+ * só para um envio). Chamada dentro da `conversa`, então a falha de transporte "antes de processar" não a consome.
+ */
+export function consumirRejeicao(ctx: Contexto, operacao: OperacaoRejeitavel): CStatSimulador | null {
+  const r = ctx.estado.controles.rejeicoes;
+  const cStat = r.get(operacao);
+  if (cStat === undefined) return null;
+  r.delete(operacao);
+  return cStat as CStatSimulador;
 }

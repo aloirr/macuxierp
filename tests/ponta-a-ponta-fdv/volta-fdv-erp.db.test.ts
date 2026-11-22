@@ -201,7 +201,8 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     aprovar('A', p);
     const { busca, envio } = await lado.ciclo(T.A, hub.A);
     expect(busca).toMatchObject({ buscados: 1, entregues: 1, rejeitados: 0, repetidos: 0, pendentes: 0 });
-    expect(envio).toMatchObject({ enviados: 1, falhou: 0, reagendados: 0, pausa: false });
+    expect(envio).toMatchObject({ enviados: 1, falhou: 0, reagendados: 0 });
+    expect(envio).not.toHaveProperty('motivoPausa'); // RD-0482: sem pausa, o campo opcional fica ausente
 
     const ped = await pedidoErp('A', p.pedido_uuid);
     expect(ped).toMatchObject({ origem: 'fdv', status: 'aprovado', external_id: p.pedido_uuid, cliente_id: massa.A.clienteKit, filial_id: massa.A.filial, observacao: OBSERVACAO });
@@ -486,7 +487,12 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(await lado.buscar(T.S, hub.S)).toMatchObject({ proxima: 'desligada', buscados: 1, entregues: 0, rejeitados: 0 });
     expect(await recebido('S', p.pedido_uuid)).toMatchObject({ estado: 'recebido', erro_codigo: null });
     expect(await retornos('S', p.pedido_uuid)).toEqual([]);
-    expect((await sinal('S')).proxima_busca_pedidos_em).toBeNull();
+    // decisão A4 (T-0011): sem a licença do pedido a busca segue agendada, adiada ~1 h a partir do relógio do arnês
+    const proximaBuscaS = (await sinal('S')).proxima_busca_pedidos_em;
+    expect(proximaBuscaS).not.toBeNull();
+    const adiadaMs = new Date(proximaBuscaS).getTime() - relogio.agora().getTime();
+    expect(adiadaMs).toBeGreaterThanOrEqual(55 * 60_000);
+    expect(adiadaMs).toBeLessThanOrEqual(65 * 60_000);
     expect(lado.lgpd.alertas.slice(alertasAntes)).toEqual(['recebimento_pedidos_desligado:{}']);
     expect(noHub('S', p.pedido_uuid)).toMatchObject({ estado: 'enviado', retornos: [] });
     const r = await api.chamar('S', 'GET', '/v1/pedido/pedidos');

@@ -1,0 +1,66 @@
+Avisos de licença de terceiros — @macuxierp/nfe-emissor
+========================================================
+
+Partes deste pacote são porte em TypeScript da lógica de dois projetos do NFePHP, que oferecem
+licença tripla (LGPL-3.0-or-later, GPL-3.0-or-later ou MIT). O Macuxi ERP usa a opção MIT
+(ADR 0002, opção A). O aviso de copyright e o texto da permissão seguem abaixo, como a MIT exige.
+
+O mesmo aviso do sped-common vale para o porte do DV da Inscrição Estadual em
+packages/platform-sdk/src/documentos.ts (ieComDvValido).
+
+
+1. sped-nfe
+-----------
+Origem: https://github.com/nfephp-org/sped-nfe (commit 4596b89, v5.2.11)
+Usado em: src/montar.ts, src/eventos.ts, src/chave.ts, src/soap.ts (mapa dos WSDL), src/emissor.ts
+Texto: seção "MIT LICENCE" do LICENSE.md do repositório, copiado sem alteração.
+
+ Copyright (c) 2016 NFePHP
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+
+
+2. sped-common
+--------------
+Origem: https://github.com/nfephp-org/sped-common (commit 39ca47c)
+Usado em: src/assinatura.ts (NFePHP\Common\Signer::sign), src/chave.ts (NFePHP\Common\Keys::cnfIsValid)
+Texto: o LICENSE.md do sped-common traz só os textos da LGPL e da GPL; a opção MIT está no composer.json
+("license": ["LGPL-3.0-or-later", "GPL-3.0-or-later", "MIT"]) e nos cabeçalhos dos fontes
+("@copyright NFePHP Copyright (c) 2016", "@license https://opensource.org/licenses/MIT MIT").
+Abaixo, o texto padrão da MIT com o titular dos cabeçalhos.
+
+ Copyright (c) 2016 NFePHP
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
