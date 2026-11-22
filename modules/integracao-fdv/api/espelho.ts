@@ -406,10 +406,13 @@ export async function removerReferencia(tx: Transacao, tenantId: string, tipo: '
 /** Cria a linha de `sinal` do tenant: sinal já, reconciliação no próximo 06h00 UTC (02h00 de Manaus). */
 async function garantirLinhaDoSinal(tx: Transacao, tenantId: string, agora: Date): Promise<void> {
   // A linha de `sinal` (uma por tenant) nasce aqui: sem ela a agenda nunca reserva o sinal de vida nem a reconciliação.
-  // Só as colunas do envio (T-0011); `proxima_busca_pedidos_em` e `proximo_retorno_em` são da T-0016. Já existe = nada muda.
+  // A busca de pedidos nasce ligada (`proxima_busca_pedidos_em = agora`); quem a mantém desligada até a T-0027 é o worker, pela
+  // `MACUXIERP_FDV_RECEBIMENTO`. Linha que já existe com a coluna nula (criada antes) é ligada; as demais colunas não mudam.
   await tx.consultar(
-    `INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em)
-     VALUES ($1, $2, $3) ON CONFLICT (tenant_id) DO NOTHING`,
+    `INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em)
+     VALUES ($1, $2, $3, $2)
+     ON CONFLICT (tenant_id) DO UPDATE SET proxima_busca_pedidos_em = coalesce(integracao_fdv.sinal.proxima_busca_pedidos_em, EXCLUDED.proxima_busca_pedidos_em), updated_at = now()
+      WHERE integracao_fdv.sinal.proxima_busca_pedidos_em IS NULL`,
     [tenantId, agora, proximaReconciliacaoEm(agora)],
   );
 }

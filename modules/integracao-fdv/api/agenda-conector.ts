@@ -10,7 +10,7 @@
  */
 import type { AgendaModulo, ItemAgenda, Transacao } from '@macuxierp/platform-sdk';
 import { proximaReconciliacaoEm, repartirLimiteAgenda } from '../domain';
-import { UMA_HORA_S, mais, type DepsAgendaConector } from './conector-comum';
+import { UMA_HORA_S, adiarSinalSemLicenca, mais, reservarSinal, type ColunaSinalAgenda, type DepsAgendaConector } from './conector-comum';
 import { executarEnvio } from './envio-lote';
 import { executarReconciliacao, executarSinal } from './sinal-conector';
 
@@ -31,14 +31,6 @@ async function reservarEnvios(tx: Transacao, limite: number, agora: Date, posseA
   return l.map((x) => ({ tenant_id: x.tenant_id, tarefa: 'envio', chave: x.entidade }));
 }
 
-async function reservarSinal(tx: Transacao, coluna: 'proximo_sinal_em' | 'proxima_reconciliacao_em', limite: number, agora: Date, posseAte: Date): Promise<ItemAgenda[]> {
-  const sql = `WITH v AS (
-       SELECT id FROM integracao_fdv.sinal WHERE ${coluna} <= $1 AND deleted_at IS NULL ORDER BY ${coluna} LIMIT $2 FOR NO KEY UPDATE SKIP LOCKED)
-     UPDATE integracao_fdv.sinal s SET ${coluna} = $3, updated_at = now() FROM v WHERE s.id = v.id RETURNING s.tenant_id`;
-  const l = await tx.consultar<{ tenant_id: string }>(sql, [agora, limite, posseAte]);
-  return l.map((x) => ({ tenant_id: x.tenant_id, tarefa: coluna === 'proximo_sinal_em' ? 'sinal' : 'reconciliacao', chave: null }));
-}
-
 export function criarAgendaConector(deps: DepsAgendaConector): AgendaModulo {
   return {
     id: AGENDA_CONECTOR_ID,
@@ -46,8 +38,8 @@ export function criarAgendaConector(deps: DepsAgendaConector): AgendaModulo {
     async reservar(tx, limite, agora, posseAte) {
       const cotas = repartirLimiteAgenda(limite);
       const itens: ItemAgenda[] = [];
-      if (cotas.sinal > 0) itens.push(...(await reservarSinal(tx, 'proximo_sinal_em', cotas.sinal, agora, posseAte)));
-      if (cotas.reconciliacao > 0) itens.push(...(await reservarSinal(tx, 'proxima_reconciliacao_em', cotas.reconciliacao, agora, posseAte)));
+      if (cotas.sinal > 0) itens.push(...(await reservarSinal(tx, 'proximo_sinal_em', 'sinal', cotas.sinal, agora, posseAte)));
+      if (cotas.reconciliacao > 0) itens.push(...(await reservarSinal(tx, 'proxima_reconciliacao_em', 'reconciliacao', cotas.reconciliacao, agora, posseAte)));
       const restante = limite - itens.length;
       if (restante > 0) itens.push(...(await reservarEnvios(tx, restante, agora, posseAte)));
       return itens;
@@ -67,8 +59,9 @@ export function criarAgendaConector(deps: DepsAgendaConector): AgendaModulo {
         return;
       }
       // sinal e reconciliação não têm pausa própria: voltam a olhar em 1 h (ou no dia seguinte)
-      const [coluna, para] = item.tarefa === 'sinal' ? (['proximo_sinal_em', mais(agora, UMA_HORA_S)] as const) : (['proxima_reconciliacao_em', proximaReconciliacaoEm(agora)] as const);
-      await tx.consultar(`UPDATE integracao_fdv.sinal SET ${coluna} = $2, updated_at = now() WHERE tenant_id = $1`, [item.tenant_id, para]);
+      const [coluna, para]: [Extract<ColunaSinalAgenda, 'proximo_sinal_em' | 'proxima_reconciliacao_em'>, Date] =
+        item.tarefa === 'sinal' ? ['proximo_sinal_em', mais(agora, UMA_HORA_S)] : ['proxima_reconciliacao_em', proximaReconciliacaoEm(agora)];
+      await adiarSinalSemLicenca(tx, item.tenant_id, coluna, para);
     },
   };
 }

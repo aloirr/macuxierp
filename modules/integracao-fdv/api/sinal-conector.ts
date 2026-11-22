@@ -6,7 +6,7 @@
  */
 import type { ContextoAgenda, ItemAgenda, Transacao } from '@macuxierp/platform-sdk';
 import { ENTIDADES_HUB_F2, type EntidadeHub, type MotivoPausa } from '../contracts';
-import { atrasoRetentativaSegundos, classificarResposta, dataReferenciaReconciliacao, montarCorpoReconciliacao, montarCorpoSinal, proximaReconciliacaoEm } from '../domain';
+import { atrasoRetentativaSegundos, classificarResposta, dataReferenciaReconciliacao, montarCorpoReconciliacao, montarCorpoSinal, proximaReconciliacaoEm, retryAfterSegundos } from '../domain';
 import {
   ESTADOS_EM_VOO,
   RespostaSinalLida,
@@ -18,12 +18,13 @@ import {
   mais,
   pausarEntidades,
   prepararCredencial,
+  type ColunaSinalAgenda,
 } from './conector-comum';
 
 const INTERVALO_SINAL_S = 60;
 const ESPERA_CREDENCIAL_RECUSADA_S = 300;
 
-type ColunaSinal = 'proximo_sinal_em' | 'proxima_reconciliacao_em';
+type ColunaSinal = Extract<ColunaSinalAgenda, 'proximo_sinal_em' | 'proxima_reconciliacao_em'>;
 const adiarSinal = (tx: Transacao, tenant: string, coluna: ColunaSinal, posseAte: Date, para: Date): Promise<void> => adiarPresoAPosse(tx, tenant, { sinal: coluna }, posseAte, para);
 
 // ---- sinal ----
@@ -145,7 +146,7 @@ export async function executarReconciliacao(item: ItemAgenda, ctx: ContextoAgend
       break;
     }
     if (resp.tipo === 'retentavel') {
-      proxima = mais(agora, atrasoRetentativaSegundos(1, resp.retryAfterMs == null ? null : Math.ceil(resp.retryAfterMs / 1000)) + 60);
+      proxima = mais(agora, atrasoRetentativaSegundos(1, retryAfterSegundos(resp.retryAfterMs)) + 60);
       break;
     }
     const acao = classificarResposta(resp);

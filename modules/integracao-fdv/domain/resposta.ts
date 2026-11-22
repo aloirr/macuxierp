@@ -13,12 +13,15 @@ export const ATRASO_MAXIMO_S = 15 * 60;
 export const RETRY_AFTER_MAXIMO_S = 60 * 60;
 
 /** `tentativa` conta a partir de 1 (a falha que acabou de acontecer): 5 s, 10 s, 20 s… até 15 min. */
-export function atrasoRetentativaSegundos(tentativa: number, retryAfterSegundos?: number | null): number {
+export function atrasoRetentativaSegundos(tentativa: number, retryAfterS?: number | null): number {
   const n = Math.max(1, Math.floor(tentativa));
   const curva = Math.min(ATRASO_INICIAL_S * 2 ** Math.min(n - 1, 20), ATRASO_MAXIMO_S);
-  if (retryAfterSegundos == null || !Number.isFinite(retryAfterSegundos) || retryAfterSegundos <= 0) return curva;
-  return Math.max(curva, Math.min(Math.ceil(retryAfterSegundos), RETRY_AFTER_MAXIMO_S));
+  if (retryAfterS == null || !Number.isFinite(retryAfterS) || retryAfterS <= 0) return curva;
+  return Math.max(curva, Math.min(Math.ceil(retryAfterS), RETRY_AFTER_MAXIMO_S));
 }
+
+/** `Retry-After` do SDK (ms) para segundos, arredondando para cima: o único ponto de conversão do módulo. */
+export const retryAfterSegundos = (ms: number | null | undefined): number | null => (ms == null ? null : Math.ceil(ms / 1000));
 
 export type AcaoResposta =
   | { acao: 'ok' }
@@ -58,7 +61,7 @@ export function classificarResposta(r: RespostaHub): AcaoResposta {
   if (r.tipo === 'retentavel') {
     return {
       acao: 'retentar',
-      retryAfterSegundos: r.retryAfterMs == null ? null : Math.ceil(r.retryAfterMs / 1000),
+      retryAfterSegundos: retryAfterSegundos(r.retryAfterMs),
       codigo: codigoSeguro(r.codigo, r.status),
     };
   }

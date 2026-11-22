@@ -3,11 +3,13 @@
  * retorno de forma idempotente (`retorno_enviado`); o envio roda pela agenda `sinal.proximo_retorno_em`, em ordem
  * por pedido. Sem XML e sem dado pessoal em log ou alerta (só código e uuid do pedido).
  */
-import type { Banco, ConsumidorEvento, EnvelopeEvento, Relogio } from '@macuxierp/platform-sdk';
-import type { RetornoErp, StatusRetornoHub } from '../contracts';
+import { MARGEM_POSSE_AGENDA_MS, type Banco, type ConsumidorEvento, type EnvelopeEvento, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
+import type { MotivoPausa, RetornoErp, StatusRetornoHub } from '../contracts';
+import { atrasoRetentativaSegundos } from '../domain';
 import { EVENTOS_DE_RETORNO, PayloadPedidoLido, retornoDoPedido } from '../domain/retorno-pedido';
 import type { Alertar, ClienteHubPedidos, LogPedidos } from './portas';
-import { codigoSeguro, credencialRecusada, gravarRetorno } from './util-pedidos';
+import { adiarPresoAPosse } from './conector-comum';
+import { codigoSeguro, gravarRetorno, motivoDaRecusa } from './util-pedidos';
 
 export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: Relogio }): ConsumidorEvento {
   return {
@@ -41,35 +43,53 @@ export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: R
 }
 
 export interface DepsEnvioRetorno {
-  banco: Banco;
+  /** Só o que o envio usa: o HTTP nunca roda dentro destas transações. */
+  banco: Pick<Banco, 'comTenant'>;
   hub: ClienteHubPedidos;
   relogio: Relogio;
   log: LogPedidos;
   alertar: Alertar;
+  /**
+   * Fim da posse da reserva da agenda (`ContextoAgenda.posseAte`). Com ele: o envio para quando falta menos que a
+   * `MARGEM_POSSE_AGENDA_MS` e toda regravação de `proximo_retorno_em` só vale se ele ainda for este valor. Sem ele
+   * (chamada fora da agenda) a regravação é incondicional.
+   */
+  posseAte?: Date;
 }
 export interface ResumoEnvio {
   enviados: number;
   falhou: number;
   reagendados: number;
-  /** 401/403/426: a credencial pausa o conector. */
-  pausa: boolean;
+  /** 401/403/426: a credencial pausa o conector, com o motivo (401: `credencial`; 403: `credencial` ou `licenca_fdv`; 426: `versao`). */
+  motivoPausa?: MotivoPausa;
+  /** O envio parou antes do fim da posse da reserva (o que sobrou volta já, se a posse ainda for desta reserva). */
+  posseCurta?: boolean;
+  /** A posse se perdeu (outra reserva ou um `agendarRetorno` mexeu em `proximo_retorno_em`): o envio parou sem regravar nada. */
+  possePerdida?: boolean;
 }
 
-/** Curva do Hub: 5 s, 10 s, 20 s... até 15 min; respeita `Retry-After` quando for maior. */
-export function esperaDoRetorno(tentativas: number, retryAfterS?: number): number {
-  const curva = Math.min(5_000 * 2 ** Math.max(0, tentativas - 1), 15 * 60_000);
-  return Math.max(curva, (retryAfterS ?? 0) * 1000);
+/** Regrava `sinal.proximo_retorno_em`: presa à posse (`adiarPresoAPosse`, o único caminho) quando há `posseAte`; sem ela, incondicional. */
+async function gravarProximoRetorno(tx: Transacao, tenantId: string, para: Date, posseAte?: Date): Promise<void> {
+  if (posseAte) return adiarPresoAPosse(tx, tenantId, { sinal: 'proximo_retorno_em' }, posseAte, para);
+  await tx.consultar(`UPDATE integracao_fdv.sinal SET proximo_retorno_em = $2, updated_at = now() WHERE tenant_id = $1 AND deleted_at IS NULL`, [tenantId, para]);
 }
 
 const RODADAS_MAX = 20;
 const LOTE = 50;
 
 export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: string): Promise<ResumoEnvio> {
-  const r: ResumoEnvio = { enviados: 0, falhou: 0, reagendados: 0, pausa: false };
+  const r: ResumoEnvio = { enviados: 0, falhou: 0, reagendados: 0 };
   for (let rodada = 0; rodada < RODADAS_MAX; rodada++) {
-    // A cabeça da fila de cada pedido: um retorno pendente antigo do mesmo pedido segura os seguintes.
-    const fila = await d.banco.comTenant(tenantId, (tx) =>
-      tx.consultar<{ id: string; pedido_uuid: string; corpo: RetornoErp; tentativas: number }>(
+    // Na mesma transação: a posse ainda é desta reserva? A cabeça da fila de cada pedido: um retorno pendente antigo segura os seguintes.
+    const lido = await d.banco.comTenant(tenantId, async (tx) => {
+      if (d.posseAte) {
+        const [p] = await tx.consultar<{ ok: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM integracao_fdv.sinal WHERE tenant_id = $1 AND proximo_retorno_em = $2) AS ok`,
+          [tenantId, d.posseAte],
+        );
+        if (!p?.ok) return 'posse_perdida' as const; // outro processo mexeu na coluna: a decisão é dele, não se regrava nada
+      }
+      const linhas = await tx.consultar<{ id: string; pedido_uuid: string; corpo: RetornoErp; tentativas: number }>(
         `SELECT r.id, r.pedido_uuid, r.corpo, r.tentativas FROM integracao_fdv.retorno_enviado r
           WHERE r.tenant_id = $1 AND r.estado = 'pendente' AND r.deleted_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM integracao_fdv.retorno_enviado a
@@ -77,60 +97,69 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
                                AND a.deleted_at IS NULL AND (a.created_at, a.id) < (r.created_at, r.id))
           ORDER BY r.created_at, r.id LIMIT $2`,
         [tenantId, LOTE],
-      ),
-    );
-    if (fila.length === 0) {
-      await d.banco.comTenant(tenantId, (tx) =>
-        // Só zera se nada ficou pendente: um retorno gravado depois da leitura da fila não perde o wakeup.
-        tx.consultar(
+      );
+      if (linhas.length === 0) {
+        // Só zera se nada ficou pendente e, com posse, só se ela ainda é desta reserva: um retorno gravado depois da leitura não perde o wakeup.
+        await tx.consultar(
           `UPDATE integracao_fdv.sinal SET proximo_retorno_em = NULL, updated_at = now()
             WHERE tenant_id = $1 AND deleted_at IS NULL
+              AND ($2::timestamptz IS NULL OR proximo_retorno_em = $2)
               AND NOT EXISTS (SELECT 1 FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND estado = 'pendente' AND deleted_at IS NULL)`,
-          [tenantId],
-        ),
-      );
-      return r;
-    }
+          [tenantId, d.posseAte ?? null],
+        );
+      }
+      return linhas;
+    });
+    if (lido === 'posse_perdida') return { ...r, possePerdida: true };
+    const fila = lido;
+    if (fila.length === 0) return r;
     let progresso = false;
     for (const item of fila) {
+      if (d.posseAte && d.relogio.agora().getTime() >= d.posseAte.getTime() - MARGEM_POSSE_AGENDA_MS) {
+        // falta pouco para a posse vencer: o que sobrou volta já (só se o `proximo_retorno_em` ainda for o desta reserva)
+        await d.banco.comTenant(tenantId, (tx) => gravarProximoRetorno(tx, tenantId, d.relogio.agora(), d.posseAte));
+        return { ...r, posseCurta: true };
+      }
       const resp = await d.hub.enviarRetorno(item.pedido_uuid, item.corpo);
       const agora = d.relogio.agora();
-      if (credencialRecusada(resp.status, resp.codigo)) return { ...r, pausa: true };
+      const motivoPausa = motivoDaRecusa(resp.status, resp.codigo);
+      if (motivoPausa) return { ...r, motivoPausa };
       if (resp.status >= 200 && resp.status < 300) {
         const descartados = resp.itens_descartados ?? [];
+        // Preso ao estado: zero linhas = outro worker já resolveu este retorno; o envio segue.
         await d.banco.comTenant(tenantId, (tx) =>
           tx.consultar(
             `UPDATE integracao_fdv.retorno_enviado SET estado = 'enviado', enviado_em = $3, resposta_http = $4,
                     itens_descartados = $5::jsonb, tentativas = tentativas + 1, updated_at = now()
-              WHERE tenant_id = $1 AND id = $2`,
+              WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, agora, resp.status, descartados.length ? JSON.stringify(descartados) : null],
           ),
         );
         if (descartados.length) d.alertar(tenantId, 'retorno_itens_descartados', { pedido_uuid: item.pedido_uuid });
         r.enviados++;
         progresso = true;
-      } else if (resp.status === 0 || resp.status === 429 || resp.status >= 500) {
-        const espera = esperaDoRetorno(item.tentativas + 1, resp.retryAfterS);
+      } else if (resp.status !== 400 && resp.status !== 422) {
+        // Rede (0), 429, 5xx e qualquer outro status que não seja 2xx nem 400/422 (3xx, 404, 409...): o Hub pode se corrigir, reagenda pela curva.
+        const inesperado = !(resp.status === 0 || resp.status === 429 || resp.status >= 500);
+        const espera = atrasoRetentativaSegundos(item.tentativas + 1, resp.retryAfterS) * 1000;
         await d.banco.comTenant(tenantId, async (tx) => {
           await tx.consultar(
             `UPDATE integracao_fdv.retorno_enviado SET tentativas = tentativas + 1, resposta_http = $3, updated_at = now()
-              WHERE tenant_id = $1 AND id = $2`,
+              WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, resp.status === 0 ? null : resp.status],
           );
-          await tx.consultar(
-            `UPDATE integracao_fdv.sinal SET proximo_retorno_em = $2, updated_at = now() WHERE tenant_id = $1 AND deleted_at IS NULL`,
-            [tenantId, new Date(agora.getTime() + espera)],
-          );
+          await gravarProximoRetorno(tx, tenantId, new Date(agora.getTime() + espera), d.posseAte);
         });
+        if (inesperado) d.alertar(tenantId, 'retorno_hub_status_inesperado', { pedido_uuid: item.pedido_uuid, codigo: codigoSeguro(resp.codigo, resp.status) });
         d.log.warn({ tenant_id: tenantId, modulo: 'integracao-fdv', pedido_uuid: item.pedido_uuid, http: resp.status, espera_ms: espera }, 'retorno ao Hub reagendado');
         r.reagendados++;
-        return r; // Hub fora do ar: não adianta insistir nos outros agora
+        return r; // Hub fora do ar ou resposta inesperada: não adianta insistir nos outros agora
       } else {
-        // 422 (e demais 4xx): definitivo. Só o código do Hub vai ao monitor.
+        // 400 e 422: definitivos (o Hub recusou o retorno). Só o código do Hub vai ao monitor.
         await d.banco.comTenant(tenantId, (tx) =>
           tx.consultar(
             `UPDATE integracao_fdv.retorno_enviado SET estado = 'falhou', resposta_http = $3, tentativas = tentativas + 1, updated_at = now()
-              WHERE tenant_id = $1 AND id = $2`,
+              WHERE tenant_id = $1 AND id = $2 AND estado = 'pendente'`,
             [tenantId, item.id, resp.status],
           ),
         );
@@ -141,5 +170,7 @@ export async function enviarRetornosPendentes(d: DepsEnvioRetorno, tenantId: str
     }
     if (!progresso) return r;
   }
+  // rodadas esgotadas com fila: volta já
+  await d.banco.comTenant(tenantId, (tx) => gravarProximoRetorno(tx, tenantId, d.relogio.agora(), d.posseAte));
   return r;
 }

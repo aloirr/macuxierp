@@ -47,7 +47,7 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     expect((await cursor(A, 'filial'))!.proximo_em.getTime()).toBe(AGORA.getTime());
   });
 
-  it('RF-INF-04: a linha do sinal nasce com o primeiro evento (sinal já, reconciliação no próximo 06h00 UTC), sem tocar nas colunas da T-0016, e não é refeita', async () => {
+  it('RF-INF-04: a linha do sinal nasce com o primeiro evento (sinal já, reconciliação no próximo 06h00 UTC), com a busca de pedidos ligada (A4) e o retorno desligado, e não é refeita', async () => {
     const t = await criarTenant(efemero.admin, 'cons-sinal', ['integracao-fdv']);
     const f = U();
     await tratar(t, evento(t, 'cadastros.filial.alterada@1', f, cadFilial(f, { external_id: 'FIL-S' }), '2026-11-22T09:00:00.000Z'));
@@ -55,7 +55,7 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     const [s1] = await linha();
     expect(s1!.proximo_sinal_em.getTime()).toBe(AGORA.getTime());
     expect(s1!.proxima_reconciliacao_em.toISOString()).toBe('2026-11-23T06:00:00.000Z');
-    expect(s1!.proxima_busca_pedidos_em).toBeNull();
+    expect(s1!.proxima_busca_pedidos_em.getTime()).toBe(AGORA.getTime()); // A4: nasce ligada; o worker desliga pela MACUXIERP_FDV_RECEBIMENTO
     expect(s1!.proximo_retorno_em).toBeNull();
     // a agenda já andou: um evento novo não a refaz
     await adm("UPDATE integracao_fdv.sinal SET proximo_sinal_em = '2026-11-22T10:01:00Z', proxima_busca_pedidos_em = '2026-11-22T10:00:30Z' WHERE tenant_id = $1", [t]);
