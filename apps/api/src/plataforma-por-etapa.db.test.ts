@@ -19,7 +19,8 @@ import { montarDependenciasProducao } from './modulos';
 const EMAIL_SA = 'sa-por-etapa@exemplo.invalid';
 const SENHA_SA = 'senha-do-superadmin-de-teste';
 const CSRF = { [CABECALHO_CSRF_CONFIG]: '1' };
-const CAMINHO = '/empresas/:id/cadastros/cargas/:cadastro/gravar';
+// Caminho só de teste: o `/gravar` de verdade é do plugin do cadastros, já montado pelo `montarDependenciasProducao`.
+const CAMINHO = '/empresas/:id/cadastros/cargas/:cadastro/etapa-de-teste';
 
 interface Leitura {
   papel_plataforma: string;
