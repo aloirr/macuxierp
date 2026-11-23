@@ -84,12 +84,15 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
     expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual([...esperadas].sort());
   });
 
-  it('T-0058/T-0060 (ADR 0013, adendo de 23/11/2026): as rotas da carga de cadastros do portal (validar e gravar) entram sozinhas na matriz, pelo plugin real', () => {
-    const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
-    const C = CAMINHOS_CARGAS_PLATAFORMA;
-    expect(declaradas.filter((d) => d.includes('/cadastros/cargas')).sort()).toEqual([`POST ${C.validar}`, `POST ${C.gravar}`].sort());
-    const naMatriz = rotasPortal.map((r) => `${r.metodo} ${r.url}`);
-    for (const sufixo of ['/validar', '/gravar']) expect(naMatriz.some((u) => u.startsWith('POST /v1/plataforma/empresas/') && u.endsWith(sufixo))).toBe(true);
+  it('T-0058/T-0060 (ADR 0013, adendo de 23/11/2026): as rotas da carga de cadastros do portal (CAMINHOS_CARGAS_PLATAFORMA) entram sozinhas na matriz, pelo plugin real', () => {
+    // Lidas do SDK, sem fixar o número: toda rota de CAMINHOS_CARGAS_PLATAFORMA sob /cadastros/cargas (situação, modelo,
+    // erros, validar, gravar...) tem de estar no plugin real e na matriz. A zeragem (/cadastros/zerar) fica de fora deste filtro.
+    const esperadas = Object.values(CAMINHOS_CARGAS_PLATAFORMA).filter((c) => c.includes('/cadastros/cargas')).sort();
+    expect(esperadas.length).toBeGreaterThan(0);
+    const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => r.caminho)).filter((c) => c.includes('/cadastros/cargas'));
+    expect([...new Set(declaradas)].sort()).toEqual(esperadas);
+    const padrao = (c: string) => new RegExp(`^${PREFIXO_PLATAFORMA}${c.replace(/:[A-Za-z_]+/g, '[0-9a-f-]{36}')}$`);
+    for (const c of esperadas) expect(rotasPortal.some((r) => padrao(c).test(r.url)), c).toBe(true);
   });
 
   it('ADR 0012 §2: o cookie macuxierp_config (sessão válida) é 401 em toda rota de /v1/<modulo>', async () => {
