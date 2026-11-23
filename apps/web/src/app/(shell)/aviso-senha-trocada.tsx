@@ -18,7 +18,7 @@ export function AvisoSenhaTrocada() {
   const q = resto.toString();
   return (
     <div ref={faixa} className="aviso-sucesso" role="status">
-      <span>Senha trocada. As outras sessões foram encerradas.</span>
+      <span>Senha trocada.</span>
       <button type="button" className="mx-botao-secundario" onClick={() => router.replace(q ? `${caminho}?${q}` : caminho)}>Fechar</button>
     </div>
   );

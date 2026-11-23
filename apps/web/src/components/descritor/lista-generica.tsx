@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { buscarPagina } from '@/lib/listas';
-import { NOTA_FUSO } from '@/lib/descritor/textos';
 import { RespostaFonte, opcoesDaResposta, caminhoDaFonte, type Opcao } from '@/lib/descritor/fontes';
 import { NaoAutenticado, ehFalhaDeSessao, getValidado } from '@/lib/api';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
@@ -96,7 +95,6 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
           };
         })}
       />
-      {tela.temHorario === true && <p className="apoio">{NOTA_FUSO}</p>}
       {pagina.itens.length === 0 && filtrada && <p><Link className="mx-botao-secundario" href={aoLimpar}>Limpar filtros</Link></p>}
       <nav className="paginacao" aria-label="Paginação">{proxima ? <Link className="mx-botao-secundario" href={proxima}>Próxima página</Link> : pagina.itens.length > 0 ? <span className="apoio">Fim da lista.</span> : null}</nav>
     </section>

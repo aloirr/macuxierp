@@ -1,6 +1,7 @@
 /** Regras puras da escrita pelo shell: que caminho de API uma tela pode chamar e como a resposta vira texto (sem dado pessoal). */
 import type { EuResposta, ManifestoModulo, ModuloId } from '@macuxierp/platform-sdk';
 import { ehRespostaDefinitiva } from './idempotencia';
+import { FALHA, SESSAO_EXPIRADA } from '../textos';
 
 const CAMINHO_ESCRITA = /^\/v1\/([a-z][a-z0-9-]*)\/[A-Za-z0-9/_-]*$/;
 const METODOS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -39,14 +40,14 @@ export interface ResultadoEscrita {
   definitivo?: boolean;
 }
 
-export const SESSAO_EXPIRADA = 'Sessão expirada: entre de novo.';
+export { SESSAO_EXPIRADA };
 
 const FIXAS: Readonly<Record<number, string>> = {
   403: 'Seu perfil não pode fazer esta ação.',
   404: 'Registro não encontrado.',
   409: 'O registro mudou ou a ação não vale mais neste estado. Atualize a página.',
   412: 'Outra pessoa alterou este registro. Atualize a página e tente de novo.',
-  422: 'A ação foi recusada pelas regras de negócio.',
+  422: 'Não foi possível concluir. Confira os dados e tente de novo.',
   429: 'Muitas tentativas. Aguarde um instante.',
 };
 
@@ -54,7 +55,7 @@ const FIXAS: Readonly<Record<number, string>> = {
 export function resultadoDaResposta(status: number, ok: boolean, corpo: unknown): ResultadoEscrita {
   const c = (corpo && typeof corpo === 'object' ? corpo : {}) as { id?: unknown; mensagem?: unknown; campos?: unknown };
   if (ok) return { ok: true, mensagem: 'Feito.', ...(typeof c.id === 'string' ? { id: c.id } : {}) };
-  const mensagem = typeof c.mensagem === 'string' && c.mensagem.trim() && status < 500 ? c.mensagem.trim() : (FIXAS[status] ?? 'Não foi possível concluir agora. Tente de novo em instantes.');
+  const mensagem = typeof c.mensagem === 'string' && c.mensagem.trim() && status < 500 ? c.mensagem.trim() : (FIXAS[status] ?? FALHA);
   const campos: Record<string, string> = {};
   if (c.campos && typeof c.campos === 'object') for (const [k, v] of Object.entries(c.campos)) if (typeof v === 'string') campos[k] = v;
   return { ok: false, mensagem, ...(Object.keys(campos).length ? { campos } : {}), ...(status === 409 || status === 412 ? { desatualizado: true } : {}), ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };

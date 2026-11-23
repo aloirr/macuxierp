@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { erroSenhaForaDaRegra } from '@macuxierp/platform-sdk';
 import { ApiIndisponivel, NaoAutenticado, renovar, trocarSenha } from '@/lib/api';
+import { SEM_RESPOSTA } from '@/lib/textos';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
 import type { EstadoTrocaSenha } from '@/components/formulario-troca-senha';
@@ -41,7 +42,7 @@ export async function trocarSenhaBkoAction(_: EstadoTrocaSenha, dados: FormData)
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
-    if (e instanceof ApiIndisponivel) return { erro: 'A API não respondeu. Tente de novo em instantes.' };
+    if (e instanceof ApiIndisponivel) return { erro: SEM_RESPOSTA };
     throw e;
   }
   if (!resultado.ok) return { ...(resultado.erro ? { erro: resultado.erro } : {}), campos: resultado.campos, ...(resultado.regras ? { regras: resultado.regras } : {}) };

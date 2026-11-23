@@ -5,8 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { NotaDetalhe } from '@macuxierp/faturamento/contracts';
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { formularioParcial } from '@macuxierp/faturamento/web';
-import { vistaDaNota, vistaDoTitulo } from '@/lib/telas/faturamento';
-import { NOTA_FUSO } from '@/lib/descritor/textos';
+import { vistaDaNota } from '@/lib/telas/faturamento';
 import { DetalheGenerico } from './detalhe-generico';
 import { DialogoEscrita, ItensDoDialogo } from './dialogo-escrita';
 import { TabelaVista } from './ui-cliente';
@@ -51,12 +50,11 @@ describe('render do detalhe da nota (T-0021)', () => {
     const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
     expect(css).toMatch(/\.dado-linha-inteira\s*\{\s*grid-column:\s*1 \/ -1/);
   });
-  it('o histórico da nota aparece com os eventos e a nota de horário; sem eventos, "Sem eventos."; sem a seção quando a API falha', () => {
+  it('o histórico da nota aparece com os eventos; sem eventos, "Sem eventos."; sem a seção quando a API falha', () => {
     const vista = vistaDaNota(nota('autorizada'), 'administrador', 'America/Manaus', AGORA, { itens: [{ id: ID, nota_id: ID, tipo: 'cancelamento', n_seq_evento: 1, texto: 'x'.repeat(20), status: 'registrado', protocolo: '1132', c_stat: 135, x_motivo: null, registrado_em: '2026-11-22T15:00:00.000Z', criado_em: '2026-11-22T14:50:00.000Z' }] });
     const h = renderToStaticMarkup(<DetalheGenerico vista={vista} rota="/x" rotaDaPagina="/faturamento/notas/:id" voltar="/faturamento/notas" />);
     expect(h).toContain('<h3>Histórico</h3>');
     expect(h).toContain('11:00</span> · Cancelamento · registrado · protocolo 1132');
-    expect(h).toContain(NOTA_FUSO);
     expect(html('administrador')).not.toContain('Histórico');
     expect(renderToStaticMarkup(<DetalheGenerico vista={vistaDaNota(nota('autorizada'), 'administrador', 'America/Manaus', AGORA, { itens: [] })} rota="/x" rotaDaPagina="/faturamento/notas/:id" voltar="/faturamento/notas" />)).toContain('Sem eventos.');
   });
@@ -176,22 +174,6 @@ describe('nota parcial e tabelas com ações (T-0021)', () => {
     expect(m).not.toBeNull();
     expect(m?.[1]).toBe(partes?.mensagem);
     expect(m?.[2]).toBe(r.erros[1]);
-  });
-  it('o detalhe da nota sem eventos mostra a nota de fuso (emitida e autorizada têm horário)', () => {
-    const v = vistaDaNota(nota('autorizada'), 'administrador', 'America/Manaus', AGORA);
-    expect(v.temHorario).toBe(true);
-    expect(renderToStaticMarkup(<DetalheGenerico vista={v} rota="/x" rotaDaPagina="/faturamento/notas/:id" voltar="/faturamento/notas" />)).toContain(NOTA_FUSO);
-  });
-  it('a nota de fuso aparece só onde há horário: título com baixas sim, sem baixas não', () => {
-    const render = (v: ReturnType<typeof vistaDoTitulo>) => renderToStaticMarkup(<DetalheGenerico vista={v} rota="/x" rotaDaPagina="/x/:id" voltar="/x" />);
-    const base = { id: ID, nota_id: ID, numero: 12, parcela: 1, total_parcelas: 2, vencimento: '2026-12-10', valor_centavos: 1000, saldo_centavos: 1000, ambiente: 'producao', cliente_razao_social: 'X' };
-    const baixa = { id: ID, valor_centavos: 400, forma: 'pix', baixado_em: '2026-11-22T15:00:00.000Z', estornada_em: null };
-    const nota = NOTA_FUSO;
-    const sem = vistaDoTitulo({ ...base, baixas: [] } as never, 'administrador', 'America/Manaus', AGORA);
-    expect(render(sem)).not.toContain(nota);
-    const com = vistaDoTitulo({ ...base, saldo_centavos: 600, baixas: [baixa] } as never, 'administrador', 'America/Manaus', AGORA);
-    expect(com.temHorario).toBe(true);
-    expect(render(com)).toContain(nota);
   });
   it('a coluna "Item" do diálogo da parcial tem largura fixa (a grade não muda com a descrição)', () => {
     expect(readFileSync(join(__dirname, '../../app/globals.css'), 'utf8')).toMatch(/\.itens-parcial thead th:first-child, \.itens-parcial tbody th \{ width: 28ch; \}/);

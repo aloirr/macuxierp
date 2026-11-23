@@ -1,4 +1,7 @@
 'use client';
+import { MensagemRecarregar } from '@/components/mensagem-recarregar';
+import { ehAcaoAusente, mensagemDaFalha } from '@/lib/sistema-atualizado';
+import { FALHA } from '@/lib/textos';
 import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DialogoMotivo, type ResultadoMotivo } from '@macuxierp/ui';
@@ -36,9 +39,16 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
     }
     const estado = chaveParaEnvio(atual, v.corpo ?? null, gerar);
     chaves.current[a.id] = estado;
-    const r = await escrever({ metodo: a.metodo, caminho: a.caminho, corpo: v.corpo, idempotencia: estado.chave, versao: a.versao, recarregar: rota });
-    setOcupado(false);
-    setAberta(null);
+    let r: Awaited<ReturnType<typeof escrever>>;
+    try {
+      r = await escrever({ metodo: a.metodo, caminho: a.caminho, corpo: v.corpo, idempotencia: estado.chave, versao: a.versao, recarregar: rota });
+    } catch (e) {
+      if (ehAcaoAusente(e)) return setErro(mensagemDaFalha(e));
+      throw e;
+    } finally {
+      setOcupado(false);
+      setAberta(null);
+    }
     if (r.ok) {
       delete chaves.current[a.id];
       router.refresh();
@@ -58,7 +68,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
     try {
       return { ok: true, itens: itensDe(r.dados) };
     } catch {
-      return { ok: false, erro: 'A API respondeu fora do contrato.' };
+      return { ok: false, erro: FALHA };
     }
   }, [executor, leituraItens]);
 
@@ -86,7 +96,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
         {acoes.map((x) => <button key={x.id} type="button" className={x.principal ? 'mx-botao' : 'mx-botao-secundario'} disabled={ocupado || Boolean(x.desabilitada)} title={x.desabilitada} aria-describedby={x.desabilitada ? `${x.id}-motivo` : undefined} onClick={() => abrir(x)}>{x.rotulo}</button>)}
       </div>
       {!compacta && acoes.filter((x) => x.desabilitada).map((x) => <p key={x.id} id={`${x.id}-motivo`} className="apoio">{x.rotulo}: {x.desabilitada}</p>)}
-      {!a && erro && <p className="erro" role="alert">{erro}</p>}
+      {!a && erro && <MensagemRecarregar texto={erro} />}
       {a && dialogoDoShell && (
         <DialogoEscrita
           titulo={a.tituloDialogo ?? a.rotulo}

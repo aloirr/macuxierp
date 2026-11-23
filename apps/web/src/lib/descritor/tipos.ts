@@ -83,8 +83,6 @@ export interface TelaLista {
   rotuloDaLinha?: (linha: Linha) => string;
   /** Rótulo do campo `busca` (a página aceita `busca`). */
   rotuloBusca?: string;
-  /** A lista tem coluna com data e hora: mostra a nota "Horários no fuso da empresa." (o tipo `data` da coluna não distingue data civil de data e hora). */
-  temHorario?: boolean;
   /** Selos por coluna (ex.: ambiente de homologação); a coluna sem selo mostra o texto de `linha`. */
   selos?: (item: Linha, fuso: string) => Readonly<Record<string, readonly SeloVista[]>>;
   /** Ação na barra da lista, ao lado do "Exportar CSV". */
@@ -184,8 +182,6 @@ export interface DetalheVista {
   pendencias: readonly PendenciaVista[];
   /** Ausente = a tela não mostra a seção (o módulo ainda não traz eventos). */
   historico?: readonly EventoVista[];
-  /** Declarado pelo montador: o detalhe mostra data e hora (ex.: baixas do título). Com eventos no histórico a nota de fuso aparece sempre. */
-  temHorario?: boolean;
   /** Faixa fixa no topo do detalhe (ex.: nota de homologação, sem valor fiscal). */
   faixa?: string;
   /** Arquivos do registro (XML e DANFE), pelo proxy do shell. */

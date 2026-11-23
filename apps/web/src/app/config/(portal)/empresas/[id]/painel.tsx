@@ -256,7 +256,7 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
   );
 }
 
-const AVISO_DADO_PESSOAL = 'Não escreva dado pessoal no motivo: ele fica registrado na auditoria.';
+const AVISO_DADO_PESSOAL = 'Não escreva dado pessoal no motivo.';
 
 function BlocoSituacao({ empresa, chave, aoErro }: Comum & { chave: string }) {
   const [aberto, setAberto] = useState(false);
@@ -268,7 +268,7 @@ function BlocoSituacao({ empresa, chave, aoErro }: Comum & { chave: string }) {
     return (
       <section className="bloco" aria-labelledby="h-situacao">
         <h2 id="h-situacao">Situação</h2>
-        <p>Empresa encerrada. O portal não altera empresas encerradas.</p>
+        <p>Empresa encerrada.</p>
       </section>
     );
   }

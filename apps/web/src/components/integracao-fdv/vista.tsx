@@ -1,3 +1,4 @@
+import { MensagemRecarregar } from '@/components/mensagem-recarregar';
 import { FaixaPendencias, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { ROTULO_AMBIENTE, type LinhaConflito, type LinhaErro, type LinhaMonitor } from '@macuxierp/integracao-fdv/web';
 import type { VistaIntegracaoFdv } from '@/lib/integracao-fdv';
@@ -63,11 +64,11 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
     <div>
       {/* faixa do sinal */}
       <p className={`faixa-sinal faixa-sinal-${vista.sinal.tom}`} role="status" data-testid="sinal">
-        <strong>Conexão com o FDV:</strong> {vista.sinal.texto}
-        {vista.sinal.politica && <span className="apoio"> ({vista.sinal.politica})</span>}
+        <strong>Conexão com o FDV:</strong> {vista.sinal.texto.replace(/\.$/, '')}.
+        {vista.sinal.politica && <span className="apoio"> {vista.sinal.politica.replace(/\.$/, '')}.</span>}
       </p>
       <FaixaPendencias itens={vista.pendencias} />
-      {estado.mensagem && <p className={estado.mensagem.ok ? 'faixa-aviso' : 'erro'} role={estado.mensagem.ok ? 'status' : 'alert'}>{estado.mensagem.texto}</p>}
+      {estado.mensagem && <MensagemRecarregar texto={estado.mensagem.texto} className={estado.mensagem.ok ? 'faixa-aviso' : 'erro'} role={estado.mensagem.ok ? 'status' : 'alert'} />}
 
       <section style={secao} aria-labelledby="h-cred">
         <h2 id="h-cred">Credencial do conector</h2>
@@ -93,7 +94,6 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
               <span>Chave do conector</span>
               <input name="chave" type="password" autoComplete="new-password" spellCheck={false} maxLength={512} required />
             </label>
-            <p className="apoio">A chave nunca volta para a tela: depois de salvar, só o começo dela aparece.</p>
             {e.chave && <p className="erro-campo" role="alert">{e.chave}</p>}
             <label className="campo">
               <span>Ambiente</span>
@@ -122,7 +122,7 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
         <h2 id="h-err">Erros por registro</h2>
         <div className="barra-acoes">
           <button type="button" className="mx-botao-secundario" disabled={vista.erros.length === 0} onClick={acoes.exportarErros}>Exportar CSV</button>
-          <a className="mx-botao-secundario" href={vista.rotaLotes}>Ver os envios (lotes)</a>
+          <a className="mx-botao-secundario" href={vista.rotaLotes}>Ver os envios</a>
         </div>
         <div className="tabela-rolavel">
           <TabelaDensa colunas={colunasErros} linhas={vista.erros} chaveLinha={(x) => `${x.cadastro}-${x.registro}-${x.campo}-${x.codigo}`} textoVazio="Nenhum erro aberto." legenda="Erros abertos por registro" />
@@ -131,7 +131,7 @@ export function VistaIntegracaoFdv({ vista, acoes, estado }: { vista: VistaInteg
 
       <section style={secao} aria-labelledby="h-conf">
         <h2 id="h-conf">Conflitos de chave</h2>
-        <p className="apoio">Registros que não foram ao FDV porque a chave mudou ou está repetida. Corrija no cadastro de origem.</p>
+        <p className="apoio">Corrija a chave no cadastro de origem.</p>
         <div className="tabela-rolavel">
           <TabelaDensa colunas={colunasConflitos} linhas={vista.conflitos} chaveLinha={(c) => `${c.cadastro}-${c.chave}-${c.detectadoEm}`} textoVazio="Nenhum conflito aberto." legenda="Conflitos de chave abertos" />
         </div>
