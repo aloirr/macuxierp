@@ -31,6 +31,8 @@ import { fixturePlataforma, novoTenant } from './fixture.ts';
 const MIGRACAO = fileURLToPath(new URL('../migrations/0038_integracao_fdv_portal.sql', import.meta.url));
 /** 0039 (T-0056). */
 const MIGRACAO_0039 = fileURLToPath(new URL('../migrations/0039_integracao_fdv_portal_mxi04.sql', import.meta.url));
+/** 0042 (T-0058): credencial nova vazia; portal_configurar com o evento de carga inicial. */
+const MIGRACAO_0042 = fileURLToPath(new URL('../migrations/0042_integracao_fdv_credencial_vazia.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
 const A = novoTenant('ifdv-0038-a');
@@ -53,7 +55,7 @@ const F2 = ['filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto
 const PORTAL = [
   'integracao_fdv.portal_ler(uuid)',
   'integracao_fdv.portal_credencial_definir(uuid, uuid, text, text, bytea, text, integer, boolean, jsonb, text, text[], integer)',
-  'integracao_fdv.portal_configurar(uuid, text[], integer, text)',
+  'integracao_fdv.portal_configurar(uuid, text[], integer, text, jsonb, text[])', // 0042: + p_evento_carga_inicial e p_antes DEFAULT NULL
   'integracao_fdv.portal_testar(uuid, text)',
   'integracao_fdv.portal_carga_completa(uuid, text, text)',
   'integracao_fdv.portal_retomar(uuid, text, text)',
@@ -63,6 +65,7 @@ const INTERNAS = [
   'integracao_fdv.portal_modulo_licenciado(uuid)',
   'integracao_fdv.portal_empresa(uuid, boolean)',
   'integracao_fdv.portal_conferir_config(text[], integer)',
+  'integracao_fdv.portal_conferir_evento(jsonb)',
   'integracao_fdv.portal_antecipar(uuid, text[])',
   'integracao_fdv.portal_credencial_ativa(uuid, boolean, boolean)',
   'integracao_fdv.portal_resumo(integracao_fdv.credencial)',
@@ -213,13 +216,14 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       }
     }
     recusaConfig('SELECT count(*) FROM integracao_fdv.credencial;', '42501', /permission denied/);
-    // a lista da F2 e o DEFAULT do definir são o espelho de ENTIDADES_ENVIO_FDV / LIMITE_REGISTROS_LOTE_FDV
+    // a lista da F2 é o espelho de ENTIDADES_ENVIO_FDV; o DEFAULT do definir: vazia desde a 0042 (R-20261123-150400) e
+    // o LIMITE_REGISTROS_LOTE_FDV
     expect(um(`SELECT integracao_fdv.portal_entidades_f2() AS f2`)).toEqual({ f2: F2 });
     expect(
       um<{ d: string }>(
         `SELECT pg_get_function_arguments('${PORTAL[1]}'::regprocedure) AS d`,
       ).d,
-    ).toContain(`p_entidades text[] DEFAULT ARRAY[${F2.map((e) => `'${e}'::text`).join(', ')}], p_limite integer DEFAULT 5000`);
+    ).toContain(`p_entidades text[] DEFAULT '{}'::text[], p_limite integer DEFAULT 5000`);
   });
 
   it('(b) sem sessão de superadmin = MXS01 em todas; empresa de referência, excluída ou inexistente = P0002', () => {
@@ -265,9 +269,10 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(nAuditoria(B.id)).toBe(0);
   });
 
-  it('(e) primeira credencial (anterior NULL, DEFAULT da F2): devolve o portal_ler, sinal criado, carga inicial na outbox e auditoria sem chave', () => {
+  it('(e) primeira credencial (anterior NULL, F2 explícita; o DEFAULT vazio é da 0042): devolve o portal_ler, sinal criado, carga inicial na outbox e auditoria sem chave', () => {
     const antesB = retrato(B.id);
-    const r = jsonConfig<Estado>(definir(A.id, null, { evento: true, req: 'req-criar' }));
+    const f2 = `, ARRAY[${F2.map((e) => `'${e}'`).join(', ')}]::text[]`;
+    const r = jsonConfig<Estado>(definir(A.id, null, { evento: true, req: 'req-criar', extra: f2 }));
     expect(Object.keys(r).sort()).toEqual(CHAVES_TOPO);
     expect(Object.keys(r.credencial!).sort()).toEqual(CHAVES_CREDENCIAL);
     expect(r.credencial).toMatchObject({ conector_id: 'conector-a', ambiente: 'teste', chave_prefixo: PREFIXO, ultimo_uso_em: null });
@@ -305,7 +310,8 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       },
     ]);
     expect(JSON.stringify(aud)).not.toMatch(new RegExp(`${PREFIXO}|chave|abab`));
-    // evento fora do formato; p_entidades e p_limite fora da F2, repetidos, nulos ou fora de 1..5000 = 23514
+    // evento fora do formato; p_entidades e p_limite (só conferidos na primeira, 0042: B ainda não tem credencial) fora
+    // da F2, repetidos, com nulo ou fora de 1..5000 = 23514
     recusaConfig(
       `SELECT integracao_fdv.portal_credencial_definir('${A.id}', '${c.id}', 'x', 'teste', ${CIFRADA}, 'p', 1, false, '{"entidades":[]}', 'r');`,
       '23514',
@@ -314,12 +320,12 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     for (const [extra, padrao] of [
       [`, ARRAY['titulo']`, /fora da F2 ou repetidas/],
       [`, ARRAY['filial','filial']`, /fora da F2 ou repetidas/],
-      [`, NULL`, /fora da F2 ou repetidas/],
+      [`, ARRAY[NULL]::text[]`, /fora da F2 ou repetidas/],
       [`, ARRAY['filial'], 0`, /fora de 1 a 5000/],
       [`, ARRAY['filial'], 5001`, /fora de 1 a 5000/],
       [`, ARRAY['filial'], NULL`, /fora de 1 a 5000/],
     ] as const) {
-      recusaConfig(definir(A.id, c.id, { extra }), '23514', padrao);
+      recusaConfig(definir(B.id, null, { extra }), '23514', padrao);
     }
     expect(retrato(B.id)).toEqual(antesB);
   });
@@ -572,8 +578,9 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     ler(A.id);
     expect(retrato(B.id)).toEqual(antesB);
     rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
-    // a 0039 vem depois da 0038 e volta o estado final (MXI04)
+    // a 0039 e a 0042 vêm depois da 0038 e voltam o estado final (MXI04; DEFAULT vazio e o configurar de 5 argumentos)
     rodarScript(banco.conexao, readFileSync(MIGRACAO_0039, 'utf8'), { transacao: true });
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0042, 'utf8'), { transacao: true });
     expect(retrato(A.id)).toEqual(antesA);
     expect(retrato(B.id)).toEqual(antesB);
     expect(

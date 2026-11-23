@@ -115,13 +115,13 @@ describe.skipIf(!PG_DISPONIVEL)(
       expect(fk?.n).toBe(0);
     });
 
-    it('credencial nova sem as colunas: todas as 12 entidades na ordem de carga e limite 5000', () => {
+    it('credencial nova sem as colunas: nasce vazia desde a 0042 (era as 12 entidades da 0015) e limite 5000', () => {
       const [c] = consultar<{ e: string[]; l: number }>(
         banco.conexao,
         'SELECT entidades_habilitadas AS e, limite_registros_lote AS l FROM integracao_fdv.credencial',
         APP_A,
       );
-      expect(c).toEqual({ e: ENTIDADES, l: 5000 });
+      expect(c).toEqual({ e: [], l: 5000 });
     });
 
     it('limite_registros_lote: 0, 5001 e nulo falham; 1 e 5000 passam', () => {
