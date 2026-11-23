@@ -150,6 +150,8 @@ export interface ItemPrecoGravado {
   external_id: string | null;
   preco_centavos: number;
   desconto_maximo_bp: number;
+  /** RN-CAD-11: true = o desconto veio do produto e acompanha o dele; false = próprio (PUT de itens). */
+  desconto_herdado: boolean;
   inativo: boolean;
 }
 
@@ -167,9 +169,13 @@ export interface RepoCarga {
   itemPrecoPorExternalId(externalId: string): Promise<ItemPrecoGravado | null>;
   itemPrecoPorChave(tabelaId: string, filialId: string, produtoId: string): Promise<ItemPrecoGravado | null>;
   /** Upsert por (tabela, filial, produto): o `external_id` é adotado e `inativo` marca `deleted_at`. */
-  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }): Promise<PrecoItemComChave>;
+  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; desconto_herdado: boolean; externalId: string; inativo: boolean }): Promise<PrecoItemComChave>;
   /** SAVEPOINT por linha (D7): erro de banco na linha desfaz só ela. */
   comSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+  /** RN-CAD-11: desconto máximo do produto (pontos-base); nulo = não informado. */
+  descontoDoProduto(produtoId: string): Promise<number | null>;
+  /** RN-CAD-11: grava o desconto no produto e atualiza os itens de preço ativos herdados; devolve os itens alterados (a carga os republica). */
+  gravarDescontoProduto(produtoId: string, bp: number): Promise<PrecoItemComChave[]>;
 }
 
 /** Tabelas que o "Substituir tudo" do /config inativa (RN-CAD-10): forma de pagamento e estoque não têm registro próprio com `external_id`. */

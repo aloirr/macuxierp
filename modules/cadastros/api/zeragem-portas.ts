@@ -1,20 +1,75 @@
 /**
- * Porta do "em uso" do /config (RN-CAD-10; T-0058 v0.3.5a e zerar da v0.3.5b). Combinado com a outra sessão do cadastros:
- * o arquivo, o nome e a assinatura são estes. O adaptador de produção (consulta aos módulos pedido, faturamento e fiscal)
- * é da v0.3.5b; aqui só o contrato, que o "Substituir tudo" usa para informar quantos inativados continuam no histórico.
- *
- * `CadastroZeravel` e `MotivoUso` ainda NÃO existem em `domain/zeragem.ts` no main: ficam definidos aqui, de forma
- * mínima, até a outra sessão entregar o domain (aí este arquivo passa a reexportar de lá, sem mudar a assinatura).
+ * Portas do plugin de plataforma "Zerar dados" (RN-CAD-10, T-0058). O cadastros não importa pedido, faturamento nem
+ * integracao-fdv: a apps/api implementa as portas chamando as funções `portal_*` desses módulos, na mesma transação.
  */
 import type { CadastroCargaPortal, Transacao } from '@macuxierp/platform-sdk';
+import type { MotivoUso, TabelaZeragem } from '../domain';
 
-/** Os cadastros que o portal sabe carregar, substituir e zerar. */
+/** `p_refs` das funções de uso (0043): ids por TABELA (não por cadastro). Chaves fora destas seis não existem. */
+export type RefsUso = Partial<Record<'filial' | 'vendedor' | 'condicao_pagamento' | 'tabela_preco' | 'produto' | 'cliente', string[]>>;
+
+/** Item de `em_uso` das funções de uso: `motivo` é `pedido` (pedido) ou `nota` | `titulo` (faturamento). */
+export interface UsoDaTabela {
+  tabela: TabelaZeragem;
+  ids: string[];
+  motivo: MotivoUso;
+}
+
+/**
+ * Usos e filiais com nota. A apps/api chama `pedido.portal_usos_cadastros(tenant, refs)` e
+ * `faturamento.portal_usos_cadastros(tenant, refs)` com o MESMO `refs` (serializado como jsonb, `p_refs`), na mesma
+ * transação, e junta: `emUso` = `em_uso` das duas concatenados (cada função devolve `{em_uso: [{tabela, ids, motivo}]}`);
+ * `filiaisComNota` = `filiais_com_nota` do faturamento (o pedido não devolve).
+ * RN-CAD-10 (v0.3.6): o motivo 'fiscal' (filial com A1 ou ambiente fiscal, de core.portal_usos_filiais) vem DENTRO de
+ * `emUso` como `{ tabela: 'filial', ids, motivo: 'fiscal' }`, preenchido pela apps/api.
+ */
+export interface UsosCadastroPlataforma {
+  usos(tx: Transacao, tenant: string, refs: RefsUso): Promise<{ emUso: UsoDaTabela[]; filiaisComNota: string[] }>;
+}
+
+/** Entidades do Hub (`EntidadeEnvioFdv` do SDK) como texto: forma_prazo mapeia para forma_pagamento e prazo_pagamento. */
+export interface EstadoEntidadeIntegracao {
+  entidade: string;
+  ligada: boolean;
+  lote_em_voo: boolean;
+}
+
+/**
+ * Estado e limpeza do espelho do FDV. A apps/api chama `integracao_fdv.portal_estado_entidades` e
+ * `integracao_fdv.portal_zerar_espelho(tenant, entidades, request_id)`; o `estado` devolve `entidades` do
+ * jsonb `{entidades: [{entidade, ligada, lote_em_voo}]}` e o `zerarEspelho`, o `entidades` de `{entidades: [{entidade, registros}]}`.
+ * Ambas só aceitam as 10 entidades da F2 (`check_violation` fora delas), sem repetição; MXI03 se ligada ou lote em voo.
+ */
+export interface EstadoIntegracaoPlataforma {
+  estado(tx: Transacao, tenant: string, entidades: readonly string[]): Promise<EstadoEntidadeIntegracao[]>;
+  zerarEspelho(tx: Transacao, tenant: string, entidades: readonly string[], request_id: string): Promise<{ entidade: string; registros: number }[]>;
+}
+
+/** Os cadastros que o portal sabe carregar, substituir e zerar (assinatura combinada com a outra sessão do cadastros). */
 export type CadastroZeravel = CadastroCargaPortal;
 
-/** Por que um cadastro está em uso (texto fixo, sem dado pessoal): `pedido`, `nota`, `titulo`, `saldo`... */
-export type MotivoUso = string;
+/** Motivo de uso: vem do domain (`'pedido' | 'titulo' | 'nota' | 'fiscal'`), reexportado aqui para a porta. */
+export type { MotivoUso };
 
+/**
+ * Consulta de "em uso" por cadastro (usada pelo carga-portal na substituição). No desenho do zerar o "em uso" vem pela
+ * `UsosCadastroPlataforma`; esta porta serve a quem consulta ids de um cadastro (id → motivo).
+ */
 export interface ConsultaUsoCadastros {
-  /** Dos `ids` do cadastro, os que estão em uso por outro módulo; o `Map` traz só os que estão (id → motivo). */
   emUso(tx: Transacao, cadastro: CadastroZeravel, ids: readonly string[]): Promise<Map<string, MotivoUso>>;
+}
+
+/**
+ * Usuários da empresa que guardam filial (`plataforma.usuario.filial_ids`, sem FK). A apps/api implementa com
+ * `plataforma.portal_tirar_filiais_dos_usuarios(tenant, ids uuid[])` (0043 v3): devolve quantos usuários mudaram.
+ * Só no efeito do zerar, com os ids de filial que o plano apaga (nunca chamada sem ids nem na prévia).
+ */
+export interface UsuariosFiliaisPlataforma {
+  tirarFiliais(tx: Transacao, tenant: string, ids: readonly string[]): Promise<number>;
+}
+
+export interface DependenciasZeragemPlataforma {
+  usos: UsosCadastroPlataforma;
+  integracao: EstadoIntegracaoPlataforma;
+  usuarios: UsuariosFiliaisPlataforma;
 }

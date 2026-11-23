@@ -316,10 +316,11 @@ export function repositoriosSql(tx: Transacao): Repositorios {
           `INSERT INTO cadastros.tabela_preco_item (tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos, desconto_maximo_bp)
            SELECT plataforma.tenant_atual(), $1, f, p, pr, d FROM unnest($2::uuid[], $3::uuid[], $4::bigint[], $5::int[]) AS t(f, p, pr, d)
            ON CONFLICT (tenant_id, tabela_preco_id, filial_id, produto_id) DO UPDATE
-             SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, deleted_at = NULL
+             SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, desconto_herdado = false, deleted_at = NULL
              WHERE cadastros.tabela_preco_item.preco_centavos IS DISTINCT FROM EXCLUDED.preco_centavos
                 OR cadastros.tabela_preco_item.desconto_maximo_bp IS DISTINCT FROM EXCLUDED.desconto_maximo_bp
                 OR cadastros.tabela_preco_item.deleted_at IS NOT NULL
+                OR cadastros.tabela_preco_item.desconto_herdado
            RETURNING tabela_preco_id, filial_id, produto_id, external_id, ${N('preco_centavos')}, desconto_maximo_bp`,
           [tabelaId, itens.map((i) => i.filial_id), itens.map((i) => i.produto_id), itens.map((i) => i.preco_centavos), itens.map((i) => i.desconto_maximo_bp)],
         ),
@@ -479,7 +480,7 @@ function cargaSql(tx: Transacao): RepoCarga {
     id: l.id as string, pai_id: l[f.pai] as string, external_id: (l.external_id as string | null) ?? null, inativo: l.inativo === true,
     atual: pegar(l, [...f.colunas, ...f.numericas]),
   });
-  const colunasItem = `id, external_id, ${N('preco_centavos')}, desconto_maximo_bp, (deleted_at IS NOT NULL) AS inativo`;
+  const colunasItem = `id, external_id, ${N('preco_centavos')}, desconto_maximo_bp, desconto_herdado, (deleted_at IS NOT NULL) AS inativo`;
   const item = async (onde: string, p: unknown[]) => (await executar<ItemPrecoGravado>(tx, `SELECT ${colunasItem} FROM cadastros.tabela_preco_item WHERE ${onde} LIMIT 1`, p))[0] ?? null;
   return {
     async condicoesDaForma(ext) {
@@ -513,13 +514,13 @@ function cargaSql(tx: Transacao): RepoCarga {
     async gravarItemPreco(p) {
       const r = await executar<PrecoItem>(
         tx,
-        `INSERT INTO cadastros.tabela_preco_item (tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos, desconto_maximo_bp, external_id, deleted_at)
-         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, CASE WHEN $7::boolean THEN now() END)
+        `INSERT INTO cadastros.tabela_preco_item (tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos, desconto_maximo_bp, desconto_herdado, external_id, deleted_at)
+         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $8, $6, CASE WHEN $7::boolean THEN now() END)
          ON CONFLICT (tenant_id, tabela_preco_id, filial_id, produto_id) DO UPDATE
-           SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, external_id = EXCLUDED.external_id,
+           SET preco_centavos = EXCLUDED.preco_centavos, desconto_maximo_bp = EXCLUDED.desconto_maximo_bp, desconto_herdado = EXCLUDED.desconto_herdado, external_id = EXCLUDED.external_id,
                deleted_at = CASE WHEN $7::boolean THEN COALESCE(cadastros.tabela_preco_item.deleted_at, now()) END
          RETURNING tabela_preco_id, filial_id, produto_id, external_id, ${N('preco_centavos')}, desconto_maximo_bp`,
-        [p.tabelaId, p.filialId, p.produtoId, p.preco_centavos, p.desconto_maximo_bp, p.externalId, p.inativo],
+        [p.tabelaId, p.filialId, p.produtoId, p.preco_centavos, p.desconto_maximo_bp, p.externalId, p.inativo, p.desconto_herdado],
       );
       return r[0] as PrecoItemComChave;
     },
@@ -533,6 +534,20 @@ function cargaSql(tx: Transacao): RepoCarga {
         await tx.consultar('ROLLBACK TO SAVEPOINT carga_linha');
         throw e;
       }
+    },
+    async descontoDoProduto(produtoId) {
+      const r = await executar<{ desconto_maximo_bp: number | null }>(tx, 'SELECT desconto_maximo_bp FROM cadastros.produto WHERE id = $1', [produtoId]);
+      return r[0]?.desconto_maximo_bp ?? null;
+    },
+    async gravarDescontoProduto(produtoId, bp) {
+      await executar(tx, 'UPDATE cadastros.produto SET desconto_maximo_bp = $2 WHERE id = $1 AND desconto_maximo_bp IS DISTINCT FROM $2', [produtoId, bp]);
+      return executar<PrecoItemComChave>(
+        tx,
+        `UPDATE cadastros.tabela_preco_item SET desconto_maximo_bp = $2
+         WHERE produto_id = $1 AND desconto_herdado AND deleted_at IS NULL AND desconto_maximo_bp IS DISTINCT FROM $2
+         RETURNING tabela_preco_id, filial_id, produto_id, external_id, ${N('preco_centavos')}, desconto_maximo_bp`,
+        [produtoId, bp],
+      );
     },
   };
 }
