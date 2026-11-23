@@ -8,8 +8,12 @@
 export const MODULOS = ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv'] as const;
 export type ModuloId = (typeof MODULOS)[number];
 
-/** Perfis do ERP (docs/produto/03, RN-CORE-01). */
-export const PERFIS = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'] as const;
+/**
+ * Perfis do ERP (docs/produto/03, RN-CORE-01). `analista_implantacao` (RN-CORE-09, v0.3.0): só a Carga de cadastros e a
+ * consulta dos cadastros. O CHECK de `plataforma.usuario.perfil` só aceita o valor depois da migração 0033 (ADR 0012).
+ */
+export const PERFIS_V1 = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'] as const;
+export const PERFIS = [...PERFIS_V1, 'analista_implantacao'] as const;
 export type Perfil = (typeof PERFIS)[number];
 
 /** Rótulo do perfil para pessoas (BKO, listas, exportação): uma fonte só. */
@@ -20,6 +24,7 @@ export const ROTULOS_PERFIL: Readonly<Record<Perfil, string>> = Object.freeze({
   fiscal: 'Fiscal',
   vendedor: 'Vendedor',
   leitura: 'Leitura',
+  analista_implantacao: 'Analista de implantação',
 });
 
 /** Nome de evento: `<modulo>.<entidade>.<fato>@vN` (regra inegociável 3). */

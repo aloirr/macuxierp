@@ -13,7 +13,12 @@ import type { Transacao } from './banco';
 import { erros } from './erros';
 import { PluginInvalido, type EntradaChamada, type MetodoHttp, type RespostaRota } from './rotas';
 
-/** Ações do portal (auditadas com o `superadmin_id`). Ação nova = linha aqui + ADR 0012 + função SQL na lista fechada. */
+/**
+ * Ações das rotas do portal e fonte dos nomes gravados na auditoria pelo portal e pelo operador (ADR 0012 §4): toda ação
+ * que muda estado é gravada com este nome. `plataforma.empresa.ver` é permissão de rota, sem auditoria;
+ * `plataforma.superadmin.*` são só de auditoria, sem rota, e ficam fora daqui. Ação nova = linha aqui + ADR 0012 + função
+ * SQL na lista fechada.
+ */
 export const ACOES_PLATAFORMA = [
   'plataforma.empresa.ver',
   'plataforma.empresa.criar',
