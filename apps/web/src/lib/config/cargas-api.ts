@@ -1,4 +1,4 @@
-import { CAMINHOS_CARGAS_PLATAFORMA, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, SituacaoCargasPlataforma, ValidarCargaPlataformaResposta, type CadastroCargaPortal, type ModoGravarCarga } from '@macuxierp/platform-sdk';
+import { type CadastroZerarPortal, CAMINHOS_CARGAS_PLATAFORMA, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, SituacaoCargasPlataforma, ValidarCargaPlataformaResposta, type CadastroCargaPortal, type ModoGravarCarga, ZeragemPlataformaResposta, type PreviaZerarPlataformaEntrada, type ZerarDadosPlataformaEntrada } from '@macuxierp/platform-sdk';
 import { chamar, idEmpresa, recusar, validado } from './api';
 
 /**
@@ -33,6 +33,18 @@ export async function validarCarga(token: string, id: string, cadastro: Cadastro
 export async function gravarCarga(token: string, id: string, cadastro: CadastroCargaPortal, arquivo: Blob, chave: string, modo: ModoGravarCarga, frase?: string): Promise<GravarCargaPlataformaResposta> {
   const f = formularioDe(arquivo, `${cadastro}.csv`, modo === 'substituir_tudo' ? frase ?? '' : undefined);
   return validado(await chamar('POST', `${caminho('gravar', id, cadastro)}?modo=${modo}`, { token, formulario: f, chave, timeoutMs: TIMEOUT_CARGA_MS }), GravarCargaPlataformaResposta);
+}
+
+/** Zerar (RN-CAD-10): `POST .../cadastros/zerar` com `{ cadastros, frase }` e `Idempotency-Key`; a resposta é a `ZeragemPlataformaResposta`. */
+export async function zerarCargas(token: string, id: string, cadastros: CadastroZerarPortal[], frase: string, chave: string): Promise<ZeragemPlataformaResposta> {
+  const corpo: ZerarDadosPlataformaEntrada = { cadastros, frase };
+  return validado(await chamar('POST', caminho('zerar', id), { token, corpo, chave }), ZeragemPlataformaResposta);
+}
+
+/** Prévia do zerar: `POST .../cadastros/zerar/previa` (só lê, sem `Idempotency-Key`) com os cadastros escolhidos. */
+export async function lerPreviaZerar(token: string, id: string, cadastros: CadastroZerarPortal[]): Promise<ZeragemPlataformaResposta> {
+  const corpo: PreviaZerarPlataformaEntrada = { cadastros };
+  return validado(await chamar('POST', caminho('previa', id), { token, corpo }), ZeragemPlataformaResposta);
 }
 
 export interface ArquivoBaixado {

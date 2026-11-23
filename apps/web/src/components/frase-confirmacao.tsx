@@ -2,7 +2,7 @@
 import { useId } from 'react';
 
 /**
- * Campo "digite a frase para confirmar". A comparação vem de `fraseConfere` do SDK (`portal-cargas`):
+ * Campo "digite a frase para confirmar" (Substituir tudo e Zerar dados). A comparação vem de `fraseConfere` do SDK (`portal-cargas`):
  * este componente não tem lógica própria. O botão de quem usa fica desligado até `fraseConfere(...)` valer.
  */
 export function FraseConfirmacao({ frase, valor, aoMudar, erro }: { frase: string; valor: string; aoMudar: (v: string) => void; erro?: boolean }) {

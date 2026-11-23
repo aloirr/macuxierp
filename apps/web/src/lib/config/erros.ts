@@ -14,10 +14,15 @@ export class ConfigIndisponivel extends Error {
 export class ConfigMuitasTentativas extends Error {
   override readonly name = 'ConfigMuitasTentativas' as const;
 }
+/** `detalhes` do corpo de erro da API, só o que a tela usa: o código e, no 422 do zerar, os bloqueios (`cadastro:motivo`). */
+export interface DetalhesErro {
+  codigo?: string;
+  bloqueios?: string[];
+}
 /** 400, 403 `TROCAR_SENHA`, 404, 409 e 422 da API, com o código e os campos (a mensagem da API não vai à tela, salvo o 409/422/503 da integracao_fdv, já filtrado). */
 export class ErroPlataforma extends Error {
   override readonly name = 'ErroPlataforma' as const;
-  constructor(readonly status: number, readonly codigo: string, readonly campos: Record<string, string> = {}, readonly mensagem = '') {
+  constructor(readonly status: number, readonly codigo: string, readonly campos: Record<string, string> = {}, readonly mensagem = '', readonly detalhes: DetalhesErro = {}) {
     super(`plataforma: HTTP ${status} ${codigo}`);
   }
 }

@@ -39,3 +39,6 @@
 2026-11-23 — T-0050 — portal /config: dados da empresa, e-mail do 1º admin mascarado com "Mostrar" auditado
 2026-11-23 — T-0050 — revisões RD-1025 e RD-1026: revelação pelo resultado do executarConfig, 404 próprio do e-mail, testes sem repetição
 2026-11-23 — T-0058 — aba Cargas no /config (Adicionar e Substituir tudo), carga fora do BKO (v0.3.5a); contrato provisório em lib/config/cargas-provisorio.ts
+2026-11-23 — T-0058 — Zerar dados no /config (botão, janela com frase, rota) e "Nenhum cadastro ligado" na Integração (v0.3.5b)
+2026-11-23 — T-0058 — Zerar com escolha de cadastros (RN-CAD-10: prévia por seleção, leva junto, mantidos, anulados, bloqueios, 422/409) e RDs 1206-1208 (ConfirmarComFrase comum) (v0.3.6)
+2026-11-23 — T-0058 — v0.3.7: Zerar dados com aviso fixo no rodapé do Dialogo, .mx-checkbox, 409 do zerar pelos 4 códigos

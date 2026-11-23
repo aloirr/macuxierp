@@ -1,5 +1,5 @@
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, FRASE_ZERAR_DADOS, MENSAGEM_MANTIDOS_ZERAR, MOTIVOS_USO, fraseConfere, type CadastroZerarPortal,
   plural, rotuloCadastroCarga, type CadastroCargaPortal, type EfeitoSubstituir, type LinhaErroValidacao, type ModoGravarCarga, type SituacaoCarga, type SituacaoCargasPlataforma,
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
@@ -18,9 +18,6 @@ export interface LinhaCarga {
   chip: { tom: 'sucesso' | 'aviso' | 'neutro'; texto: string };
   /** "23/11/2026 14:39 · 44 registros", ou null sem carga anterior. */
   ultima: string | null;
-  /** Rótulo do cadastro que falta carregar antes (Importar desligado), ou null. */
-  antes: string | null;
-  podeImportar: boolean;
 }
 
 /** Uma linha por cadastro, na ordem da carga. A API manda as 10 linhas (o SDK confere); sem dados, tudo vale "não carregado". */
@@ -35,8 +32,7 @@ export function linhasCargas(dados: SituacaoCargasPlataforma | null, fuso: strin
       : { tom: 'neutro', texto: 'Não carregado' };
     const u = l?.ultima_carga;
     const ultima = u ? `${formatarDataHora(u.em, fuso)} · ${plural(u.quantidade, 'registro', 'registros')}` : null;
-    const pendente = l?.depende_de ?? null;
-    return { cadastro: def.cadastro, numero: def.numero, rotulo: rotuloCadastroCarga(def.cadastro), situacao, chip, ultima, antes: pendente ? rotuloCadastroCarga(pendente) : null, podeImportar: dados ? (l?.liberado ?? false) : false };
+    return { cadastro: def.cadastro, numero: def.numero, rotulo: rotuloCadastroCarga(def.cadastro), situacao, chip, ultima };
   });
 }
 
@@ -90,13 +86,13 @@ export const baseCargas = (empresaId: string) => `/config/empresas/${encodeURICo
 export const enderecoModelo = (empresaId: string, c: CadastroCargaPortal) => `${baseCargas(empresaId)}/${c}/modelo`;
 
 export type Enviar = (url: string, init: RequestInit) => Promise<Response>;
-export type Retorno<T> = { ok: true; valor: T; } | { ok: false; erro: string; redirecionar?: string; chaveNova: boolean };
+export type Retorno<T> = { ok: true; valor: T; } | { ok: false; erro: string; redirecionar?: string; chaveNova: boolean; codigo?: string; bloqueios?: string[] };
 
 const FALHA_CARGA = 'A carga não pôde ser concluída agora. Tente de novo em instantes.';
 const SEM_CONEXAO = 'Sem conexão com o servidor. Tente de novo.';
 
-type CorpoPortal = Record<string, unknown> & { ok?: boolean; erro?: string; redirecionar?: string; chaveNova?: boolean };
-const falhaDe = (corpo: CorpoPortal | null): Retorno<never> => ({ ok: false, erro: corpo?.erro ?? FALHA_CARGA, ...(corpo?.redirecionar ? { redirecionar: corpo.redirecionar } : {}), chaveNova: corpo?.chaveNova === true });
+type CorpoPortal = Record<string, unknown> & { ok?: boolean; erro?: string; redirecionar?: string; chaveNova?: boolean; codigo?: string; bloqueios?: string[] };
+const falhaDe = (corpo: CorpoPortal | null): Retorno<never> => ({ ok: false, erro: corpo?.erro ?? FALHA_CARGA, ...(corpo?.redirecionar ? { redirecionar: corpo.redirecionar } : {}), chaveNova: corpo?.chaveNova === true, ...(typeof corpo?.codigo === 'string' ? { codigo: corpo.codigo } : {}), ...(Array.isArray(corpo?.bloqueios) ? { bloqueios: corpo.bloqueios.filter((b): b is string => typeof b === 'string') } : {}) });
 
 async function chamarPortal<T>(url: string, init: RequestInit, enviar: Enviar, extrair: (corpo: Record<string, unknown>) => T | null): Promise<Retorno<T>> {
   try {
@@ -152,3 +148,87 @@ export async function pedirErros(empresaId: string, cadastro: CadastroCargaPorta
     return { ok: false, erro: SEM_CONEXAO, chaveNova: false };
   }
 }
+
+// ---- Zerar dados (RN-CAD-10): o superadmin escolhe os cadastros ----
+
+/** Rótulos da lista de escolha: os da carga; `forma_prazo` junta forma e prazo de pagamento. */
+export const ROTULO_ZERAR: Readonly<Record<CadastroZerarPortal, string>> = {
+  filial: 'Filiais',
+  vendedor: 'Vendedores',
+  forma_prazo: 'Condições de pagamento',
+  produto: 'Produtos',
+  produto_unidade: 'Unidades',
+  preco: 'Preços',
+  estoque: 'Estoque',
+  cliente: 'Clientes',
+  cliente_endereco: 'Endereços de clientes',
+};
+
+const lista = (xs: readonly string[]): string => xs.join(', ');
+
+/** "Leva junto: Unidades, Estoque.": o que a prévia zera além do escolhido (efetivos menos escolhidos), na ordem da API. Vazio = sem linha. */
+export function textoLevaJunto(efetivos: readonly CadastroZerarPortal[], escolhidos: readonly CadastroZerarPortal[]): string | null {
+  const extra = efetivos.filter((c) => !escolhidos.includes(c)).map((c) => ROTULO_ZERAR[c]);
+  return extra.length > 0 ? `Leva junto: ${lista(extra)}.` : null;
+}
+
+type Mantido = ZeragemPlataformaResposta['mantidos'][number];
+const MOTIVO_EM_USO: Record<(typeof MOTIVOS_USO)[number], string> = { pedido: 'em pedidos', titulo: 'em títulos', nota: 'em notas', fiscal: 'em filial com dado fiscal' };
+
+/** "Mantidos: 5" (a soma) e uma linha por cadastro e motivo: "Produtos: 3 em pedidos." Sem mantidos = null. */
+export function textosMantidos(mantidos: readonly Mantido[]): { total: string; detalhes: string[] } | null {
+  const itens = mantidos.filter((m) => m.quantidade > 0);
+  if (itens.length === 0) return null;
+  const soma = itens.reduce((n, m) => n + m.quantidade, 0);
+  return { total: `Mantidos: ${soma}`, detalhes: itens.map((m) => `${ROTULO_ZERAR[m.cadastro]}: ${m.quantidade} ${MOTIVO_EM_USO[m.motivo]}.`) };
+}
+
+const TEXTO_ANULADO: Record<ZeragemPlataformaResposta['anulados'][number]['coluna'], [string, string]> = {
+  vendedor_id: ['cliente fica sem vendedor.', 'clientes ficam sem vendedor.'],
+  tabela_preco_id: ['cliente fica sem tabela de preço.', 'clientes ficam sem tabela de preço.'],
+  condicao_pagamento_id: ['cliente fica sem condição de pagamento.', 'clientes ficam sem condição de pagamento.'],
+};
+/** "12 clientes ficam sem vendedor." Uma frase por coluna com quantidade. */
+export const textosAnulados = (anulados: ZeragemPlataformaResposta['anulados']): string[] =>
+  anulados.filter((a) => a.quantidade > 0).map((a) => `${a.quantidade} ${TEXTO_ANULADO[a.coluna][a.quantidade === 1 ? 0 : 1]}`);
+
+const BLOQUEIO_LOTE = 'Há uma carga em andamento. Espere terminar para zerar.';
+/** Motivos legíveis dos bloqueios (`cadastro` + `motivo`, da prévia ou do 422 em strings 'cadastro:motivo'), sem repetir. */
+export function textosBloqueios(bloqueios: readonly { cadastro: string; motivo: string }[]): string[] {
+  const out = new Set<string>();
+  for (const b of bloqueios) {
+    if (b.motivo === 'lote_em_andamento') out.add(BLOQUEIO_LOTE);
+    else if (b.motivo === 'integracao_ligada') out.add(`Desligue o envio de ${(ROTULO_ZERAR as Record<string, string>)[b.cadastro] ?? b.cadastro} na aba Integração FDV antes de zerar.`);
+  }
+  return [...out];
+}
+/** Os bloqueios do 422 chegam como 'cadastro:motivo'. */
+export const bloqueiosDeTextos = (xs: readonly string[]): { cadastro: string; motivo: string }[] =>
+  xs.flatMap((x) => { const [cadastro, motivo] = x.split(':'); return cadastro && motivo ? [{ cadastro, motivo }] : []; });
+
+/** O confirmar do zerar liga só com seleção, prévia atual da seleção, nenhum bloqueio e a frase certa. */
+export const podeConfirmarZerar = (e: { selecionados: number; previa: Pick<ZeragemPlataformaResposta, 'bloqueios'> | null; carregando: boolean; frase: string; enviando: boolean }): boolean =>
+  e.selecionados > 0 && !!e.previa && e.previa.bloqueios.length === 0 && !e.carregando && !e.enviando && fraseConfere(e.frase, FRASE_ZERAR_DADOS);
+
+/** `AbortSignal` opcional: cada mudança da seleção cancela a prévia anterior. */
+export function pedirPreviaZerar(empresaId: string, cadastros: readonly CadastroZerarPortal[], enviar: Enviar = fetch, signal?: AbortSignal): Promise<Retorno<ZeragemPlataformaResposta>> {
+  return chamarPortal(`${baseCargas(empresaId)}/zerar/previa`, { method: 'POST', body: JSON.stringify({ cadastros }), headers: { 'content-type': 'application/json' }, signal }, enviar, (c) => {
+    const p = ZeragemPlataformaResposta.safeParse(c.previa);
+    return p.success ? p.data : null;
+  });
+}
+
+export function pedirZerar(empresaId: string, cadastros: readonly CadastroZerarPortal[], frase: string, chave: string, enviar: Enviar = fetch): Promise<Retorno<number>> {
+  return chamarPortal(`${baseCargas(empresaId)}/zerar`, { method: 'POST', body: JSON.stringify({ cadastros, frase: frase.trim() }), headers: { 'content-type': 'application/json', 'idempotency-key': chave } }, enviar, (c) => (typeof c.mantidos === 'number' && c.mantidos > 0 ? Math.floor(c.mantidos) : 0));
+}
+
+/** Aviso do zerar quando há registros enviados ao FDV sem código de origem (`sem_chave` > 0). */
+export function textoSemChave(n: number): string {
+  return `${plural(n, 'registro foi', 'registros foram')} ao FDV sem código de origem. Depois de zerar e carregar de novo, o FDV vai inativar ${n === 1 ? 'o antigo e criar o novo' : 'os antigos e criar novos'}.`;
+}
+
+export const TEXTO_ANTES_DE_ZERAR = 'Antes de zerar, exporte pelo BKO da empresa (Cadastros > Exportar).';
+export const AVISO_ZERAR = 'Apaga os cadastros escolhidos e não tem volta.';
+export const TEXTO_ZERADO = 'Dados zerados.';
+/** "Dados zerados." ou, com mantidos, "Dados zerados. Mantidos: N (em uso em pedido, título ou nota, ou filial com dado fiscal)." */
+export const textoZerado = (mantidos: number): string => (mantidos > 0 ? `${TEXTO_ZERADO} ${MENSAGEM_MANTIDOS_ZERAR(mantidos)}.` : TEXTO_ZERADO);

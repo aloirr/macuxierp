@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_BYTES_ARQUIVO_CARGA_PORTAL } from '@macuxierp/platform-sdk';
+import { CODIGO_ZERAGEM_BLOQUEADA, MAX_BYTES_ARQUIVO_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 
 const estado = vi.hoisted(() => ({ cookie: 'tok-config' as string | undefined }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: (n: string) => (n === 'mx_config' && estado.cookie ? { value: estado.cookie } : undefined), delete: vi.fn() }) }));
 vi.mock('next/navigation', () => ({ redirect: (d: string) => { throw new Error(`REDIRECT ${d}`); } }));
 
-import { tratarCarga } from './cargas-rotas';
+import { tratarCarga, tratarPreviaZerar, tratarZerar } from './cargas-rotas';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const CHAVE = '33333333-3333-4333-8333-333333333333';
@@ -13,6 +13,7 @@ const chamadas: { url: string; metodo: string; h: Record<string, string>; corpo:
 let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
 const conferencia = { cadastro: 'produto', modo: 'adicionar', prontas: 44, com_erro: 0, linhas: [], linhas_omitidas: 0 };
+const zeragem = (extra: Record<string, unknown> = {}) => ({ empresa_id: EMP, simulado: false, efetivos: ['produto'], apagados: [{ tabela: 'produto', quantidade: 3 }], anulados: [], mantidos: [], bloqueios: [], sem_chave: 5, ...extra });
 const gravada = { cadastro: 'produto', modo: 'adicionar', gravadas: 44, com_erro: 0 };
 const multipart = (extra: Record<string, string> = {}, tamanho = 30, headers: Record<string, string> = {}) => {
   const f = new FormData();
@@ -187,5 +188,61 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     expect((await tratarCarga(req, EMP, 'produto', 'validar')).status).toBe(413);
     expect(enviados).toBeLessThan(13);
     expect(chamadas).toHaveLength(0);
+  });
+  const reqZerar = (corpo: unknown, chave: string | null = CHAVE) => new Request('http://portal.invalid/x', { method: 'POST', body: JSON.stringify(corpo), headers: chave ? { 'idempotency-key': chave } : {} });
+  it('zerar: leva cadastros, frase, a Idempotency-Key e o CSRF', async () => {
+    resposta = () => json(zeragem());
+    const r = await tratarZerar(reqZerar({ cadastros: ['produto', 'cliente'], frase: 'AUTORIZO ZERAR OS DADOS.' }), EMP);
+    expect(await r.json()).toEqual({ ok: true, mantidos: 0 });
+    expect(chamadas[0]?.url).toContain(`/v1/plataforma/empresas/${EMP}/cadastros/zerar`);
+    expect(chamadas[0]?.h['x-macuxierp-config']).toBe('1');
+    expect(chamadas[0]?.h['idempotency-key']).toBe(CHAVE);
+    expect(JSON.parse(chamadas[0]?.corpo as string)).toEqual({ cadastros: ['produto', 'cliente'], frase: 'AUTORIZO ZERAR OS DADOS.' });
+  });
+  it('prévia do zerar: POST em zerar/previa com os cadastros escolhidos, sem chave, e devolve a prévia; outro método dá 405', async () => {
+    resposta = () => json(zeragem({ simulado: true }));
+    const r = await tratarPreviaZerar(reqZerar({ cadastros: ['produto'] }, null), EMP);
+    expect(await r.json()).toMatchObject({ ok: true, previa: { simulado: true, sem_chave: 5, efetivos: ['produto'] } });
+    expect(chamadas[0]?.h['x-macuxierp-config']).toBe('1');
+    expect(chamadas[0]?.h['idempotency-key']).toBeUndefined();
+    expect(chamadas[0]?.url).toContain(`/v1/plataforma/empresas/${EMP}/cadastros/zerar/previa`);
+    expect(JSON.parse(chamadas[0]?.corpo as string)).toEqual({ cadastros: ['produto'] });
+    expect((await tratarPreviaZerar(new Request('http://portal.invalid/x', { method: 'GET' }), EMP)).status).toBe(405);
+  });
+  it('seleção mínima: prévia e zerar sem cadastro, ou com cadastro desconhecido, são 400 e não chegam à API', async () => {
+    expect((await tratarPreviaZerar(reqZerar({ cadastros: [] }, null), EMP)).status).toBe(400);
+    expect((await tratarPreviaZerar(reqZerar({ cadastros: ['empresa'] }, null), EMP)).status).toBe(400);
+    expect((await tratarZerar(reqZerar({ cadastros: [], frase: 'autorizo zerar os dados' }), EMP)).status).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+  it('zerar sem frase ou sem chave: 400 e nada é apagado', async () => {
+    expect((await tratarZerar(reqZerar({ cadastros: ['produto'], frase: '' }), EMP)).status).toBe(400);
+    expect((await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'AUTORIZO ZERAR OS DADOS.' }, null), EMP)).status).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+  it('zerar: a mensagem da API volta; frase errada nem chega à API', async () => {
+    resposta = () => json({ codigo: 'VALIDACAO', mensagem: 'A frase não confere.' }, 400);
+    const r = await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'autorizo zerar os dados' }), EMP);
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ ok: false, erro: 'A frase não confere.' });
+    expect((await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'ERRADO' }), EMP)).status).toBe(400);
+    expect(chamadas).toHaveLength(1);
+  });
+  it('422 zeragem_bloqueada: devolve o código e os bloqueios (só strings cadastro:motivo)', async () => {
+    resposta = () => json({ codigo: 'RN-CAD-10', mensagem: 'x', detalhes: { codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento', 'lixo qualquer', 7], segredo: 'nao' } }, 422);
+    const r = await tratarZerar(reqZerar({ cadastros: ['preco'], frase: 'autorizo zerar os dados' }), EMP);
+    expect(r.status).toBe(422);
+    expect(await r.json()).toEqual({ ok: false, erro: 'Há integração ligada ou lote em andamento; resolva antes de zerar.', codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento'], chaveNova: true });
+  });
+  it.each(['em_uso', 'sumiu', 'anular_fora_do_plano', 'referencia'])('409 MXC03 no zerar (%s): "Os dados mudaram. Confira de novo." com o código para refazer a prévia', async (codigo) => {
+    resposta = () => json({ codigo: 'CONFLITO', mensagem: 'x', detalhes: { codigo } }, 409);
+    const r = await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'autorizo zerar os dados' }), EMP);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ ok: false, erro: 'Os dados mudaram. Confira de novo.', codigo: 'dados_mudaram', chaveNova: true });
+  });
+  it('409 com outro código no zerar não vira "dados mudaram"', async () => {
+    resposta = () => json({ codigo: 'CONFLITO', mensagem: 'x', detalhes: { codigo: 'dependencia_pendente' } }, 409);
+    const r = await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'autorizo zerar os dados' }), EMP);
+    expect((await r.json()).codigo).not.toBe('dados_mudaram');
   });
 });
