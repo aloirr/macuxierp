@@ -20,7 +20,7 @@ function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
   const tit = titulosFake();
   const cfg = configuracaoFake();
   const cont = contingenciaFake(epecDeTeste);
-  const deps = { ...f.deps, titulos: tit.repo, configuracao: cfg.repo, contingencia: cont.repo, epecLigada: true } as DepsRotas; // os testes da EPEC cobrem o caminho ligado; o teste da bandeira desliga
+  const deps = { ...f.deps, titulos: tit.repo, configuracao: cfg.repo, contingencia: cont.repo, epecLigada: true, svcDisponivel: () => true } as DepsRotas; // os testes da EPEC cobrem o caminho ligado; o teste da bandeira desliga
   if (danfe) deps.danfe = danfe;
   const plugin = criarPluginFaturamento(deps);
   const trabalhos: { tipo: string; payload: Record<string, unknown>; external_id?: string }[] = [];
@@ -575,6 +575,36 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
       await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-05', message: 'A EPEC ainda não está disponível. Use SVC.' });
       expect(a.cont.linhas).toHaveLength(0);
       expect((await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'svc_rs' }) })).status).toBe(201);
+    });
+
+    it('RN-FAT-10: SVC sem transporte capaz neste ambiente (svcDisponivel ausente ou false): abrir dá 422 RN-FAT-10 com mensagem curta e nada é gravado; a porta recebe o modo', async () => {
+      const a = ambiente('administrador');
+      const pedidos: unknown[] = [];
+      for (const porta of [undefined, (e: unknown) => { pedidos.push(e); return false; }]) {
+        if (porta) a.deps.svcDisponivel = porta as never; else delete a.deps.svcDisponivel;
+        await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-10', message: 'A contingência SVC não está disponível neste ambiente.' });
+      }
+      expect(pedidos[0]).toMatchObject({ filialId: IDS.filial, modo: 'svc-rs' });
+      expect(a.cont.linhas).toHaveLength(0);
+    });
+
+    it('RN-FAT-10: GET da contingência traz pode_abrir: true só para o administrador com SVC disponível e filial sem NF-e simulada; false sem a porta, com filial simulada ou para outro perfil', async () => {
+      const a = ambiente('administrador');
+      expect((await a.chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: true });
+      delete a.deps.svcDisponivel;
+      expect((await a.chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: false });
+      const s = ambiente('administrador');
+      s.cfg.linhas.set(IDS.filial, { ligada: true, alterado_por: 'teste' });
+      expect((await s.chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: false });
+      expect((await ambiente('faturista').chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: false });
+    });
+
+    it('RN-FAT-05: com a EPEC desligada, epec-pendentes (lista, alerta, transmitir, exportar) respondem 404', async () => {
+      const a = ambiente('administrador');
+      a.deps.epecLigada = false;
+      for (const [metodo, caminho] of [['GET', '/contingencia/epec-pendentes'], ['GET', '/contingencia/epec-pendentes/alerta'], ['POST', '/contingencia/epec-pendentes/transmitir'], ['GET', '/contingencia/epec-pendentes/exportar']] as const) {
+        await expect(a.chamar(metodo, caminho, metodo === 'POST' ? { corpo: {} } : {})).rejects.toMatchObject({ status: 404 });
+      }
     });
 
     it('RN-FAT-10: filial com NF-e simulada não entra em contingência (422)', async () => {

@@ -14,11 +14,11 @@ import type { AlertaPrazoEpec, ContingenciaDaFilialResposta, EpecPendente, Event
 import { montarDanfe } from '../domain/danfe';
 import { lerAssinaturaDaMarca, MENSAGEM_ATIVO_AUSENTE, type ResultadoAtivosDanfe } from './ativos-marca';
 import { renderizarDanfe } from './danfe-pdf';
-import { alertaPrazoEpec, podeBaixarTitulo, prazoEpec, situacaoPrazoEpec, validarEntradaContingencia } from '../domain';
+import { EPEC_LIGADA, modalidadeDaUf, alertaPrazoEpec, podeBaixarTitulo, prazoEpec, situacaoPrazoEpec, validarEntradaContingencia } from '../domain';
 import { paginaNoFuso, paginaEpecPendentes, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
 import type { ConfiguracaoFaturamento, EventoRegistro, RepositorioContingencia, PortaDanfe, RepositorioTitulos } from './portas';
 import { criarServicoTitulos } from './titulos';
-import { criarServicoEmissao, type DepsEmissao } from './emissao';
+import { criarServicoEmissao, MENSAGEM_SVC_INDISPONIVEL, type DepsEmissao } from './emissao';
 import { criarServicoEventos, type DepsEventos } from './eventos';
 import { traduzirErroBanco } from './sql';
 import { erroDeViolacoes, idDe } from './util';
@@ -61,7 +61,7 @@ const SOMENTE_ADMINISTRADOR = (c: ContextoRota): void => {
 };
 
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
-export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; /** Padrão `EPEC_LIGADA` (desligada na v0.3.0); os testes da EPEC ligam por aqui. */ epecLigada?: boolean; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
+export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
 
 /** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06). A rota usa `faturamento.ver` (licença e tenant) e confere o perfil aqui, até existir ação própria no platform-sdk. */
 const SO_QUEM_BAIXA = (c: ContextoRota): void => {
@@ -382,6 +382,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/contingencia/epec-pendentes', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
       async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
         SEM_VENDEDOR(c);
         return { corpo: await epecPendentes(c, e.consulta) };
       },
@@ -390,6 +391,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/contingencia/epec-pendentes/alerta', acao: 'faturamento.ver', consulta: FiltroEpecPendentes.pick({ filial_id: true }),
       async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
         SEM_VENDEDOR(c);
         const linhas = await contingencia().epecPendentes(c.tx, { filial_id: e.consulta.filial_id });
         const prazos = linhas.map((l) => prazoEpec({ epecAutorizadoEm: new Date(l.epec_autorizada_em) }));
@@ -401,6 +403,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     definirRota({
       metodo: 'POST', caminho: '/contingencia/epec-pendentes/transmitir', acao: 'faturamento.nota.emitir', corpo: TransmitirEpecPendentesEntrada, idempotencia: 'obrigatoria',
       async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
         SOMENTE_ADMINISTRADOR(c);
         const r = await enfileirarVolta(c, e.corpo.filial_id, undefined, c.request_id);
         await c.auditar({ acao: 'faturamento.epec.transmitir_pendentes', entidade: 'contingencia', entidade_id: e.corpo.filial_id ?? c.sessao.tenant_id, depois: { filial_id: e.corpo.filial_id ?? null, enfileiradas: r.enfileiradas, vencidas: r.vencidas } });
@@ -410,6 +413,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/contingencia/epec-pendentes/exportar', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
       async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
         SEM_VENDEDOR(c);
         return csvNoFuso(c, paginaEpecPendentes, () => todasAsLinhas((f) => epecPendentes(c, f), e.consulta));
       },
@@ -420,7 +424,14 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         SEM_VENDEDOR(c);
         const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
         const repo = contingencia();
-        const resposta: ContingenciaDaFilialResposta = { filial_id, ambiente, aberta: await repo.aberta(c.tx, filial_id, ambiente), historico: await repo.historico(c.tx, filial_id, ambiente, HISTORICO_CONTINGENCIA) };
+        // RN-FAT-10: só o administrador, sem NF-e simulada e com transporte SVC para a UF da filial (a API recusa a chamada direta com 422 de qualquer jeito).
+        let pode_abrir = false;
+        if (c.sessao.perfil === 'administrador' && !(await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id))) {
+          const uf = (await deps.cadastros.filial(c.tx, filial_id))?.endereco.uf ?? '';
+          const modalidade = modalidadeDaUf(uf);
+          pode_abrir = modalidade !== null && (await (deps.svcDisponivel?.({ filialId: filial_id, ambiente, uf, modo: modalidade === 'svc_an' ? 'svc-an' : 'svc-rs' }) ?? false));
+        }
+        const resposta: ContingenciaDaFilialResposta = { filial_id, ambiente, aberta: await repo.aberta(c.tx, filial_id, ambiente), historico: await repo.historico(c.tx, filial_id, ambiente, HISTORICO_CONTINGENCIA), pode_abrir };
         return { corpo: resposta };
       },
     }),
@@ -438,6 +449,11 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
           nfeSimulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id), modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicioEm, agora: c.agora, ...(deps.epecLigada !== undefined ? { epecLigada: deps.epecLigada } : {}),
         });
         if (v.length > 0) throw erroDeViolacoes(v);
+        // RN-FAT-10: SVC só abre onde há transporte capaz de enviar a nota (porta `svcDisponivel`; padrão: nenhum). Sem isso a emissão reservaria números que nunca saem.
+        if (e.corpo.modalidade !== 'epec') {
+          const uf = (await deps.cadastros.filial(c.tx, filial_id))?.endereco.uf ?? '';
+          if (!(await (deps.svcDisponivel?.({ filialId: filial_id, ambiente, uf, modo: e.corpo.modalidade === 'svc_an' ? 'svc-an' : 'svc-rs' }) ?? false))) throw erros.regra('RN-FAT-10', MENSAGEM_SVC_INDISPONIVEL, { modalidade: 'indisponível neste ambiente' });
+        }
         if (await repo.aberta(c.tx, filial_id, ambiente)) throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');
         const aberta = await repo.abrir(c.tx, { filial_id, ambiente, modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicio_em: inicioEm, ligada_por: c.sessao.usuario_id }).catch((err: unknown) => {
           if ((err as { code?: string } | null)?.code === '23505') throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');

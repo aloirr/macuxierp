@@ -123,7 +123,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     f.deps.pedidos = repos.pedidos;
     f.deps.ambiente = repos.ambiente;
     f.deps.contingencia = repos.contingencia;
-    const svc = criarServicoEmissao(f.deps);
+    const svc = criarServicoEmissao({ ...f.deps, svcDisponivel: () => true });
     const emitirCom = (idem: string) =>
       app.comTenant(A, async (tx) => {
         const pid = await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar);
@@ -153,7 +153,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     f.deps.pedidos = repos.pedidos;
     f.deps.ambiente = repos.ambiente;
     f.deps.contingencia = repos.contingencia;
-    const svc = criarServicoEmissao(f.deps);
+    const svc = criarServicoEmissao({ ...f.deps, svcDisponivel: () => true, epecLigada: true });
     await app.comTenant(A, (tx) => repos.contingencia.abrir(tx, { filial_id: IDS.filial, ambiente: 'homologacao', modalidade: 'epec', motivo: MOTIVO, inicio_em: new Date('2026-11-21T09:00:00Z'), ligada_por: uuid(5) }));
     const r = await app.comTenant(A, async (tx) => svc.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: 'idem-db-epec-1' }));
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));

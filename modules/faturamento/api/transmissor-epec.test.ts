@@ -42,7 +42,7 @@ async function montar(o: { epec?: 'aberta' | 'nenhuma'; guardaFalha?: boolean; s
     ...(o.semEpec ? {} : { epec: { seletor, guarda: g.guarda } }),
     agora: () => SIM,
   });
-  const svc = criarServicoEmissao({ ...f.deps, contingencia: c.repo });
+  const svc = criarServicoEmissao({ ...f.deps, contingencia: c.repo, svcDisponivel: () => true, epecLigada: true });
   const emitir = async (idem = 'idem-epec-0001') => {
     const r = await svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: idem });
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));

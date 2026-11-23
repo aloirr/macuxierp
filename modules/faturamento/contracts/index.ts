@@ -339,6 +339,8 @@ export const ContingenciaDaFilialResposta = z.object({
   ambiente: Ambiente,
   aberta: ContingenciaResumo.nullable(),
   historico: z.array(ContingenciaResumo),
+  /** RN-FAT-10: o administrador pode abrir contingência nesta filial e ambiente (perfil administrador, filial sem NF-e simulada e transporte SVC disponível para a UF). `false` = a tela não oferece o botão de abrir. */
+  pode_abrir: z.boolean(),
 });
 export type ContingenciaDaFilialResposta = z.infer<typeof ContingenciaDaFilialResposta>;
 

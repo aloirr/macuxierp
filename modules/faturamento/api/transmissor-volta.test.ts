@@ -37,7 +37,7 @@ async function montar(o: { seletorRecusa?: boolean; agoraVolta?: Date } = {}) {
     epec: { seletor: () => sim, guarda: g.guarda },
     agora: () => agora,
   });
-  const svc = criarServicoEmissao({ ...f.deps, contingencia: c.repo });
+  const svc = criarServicoEmissao({ ...f.deps, contingencia: c.repo, svcDisponivel: () => true, epecLigada: true });
   const emitirEEpec = async () => {
     const r = await svc.emitirNota(tx, TENANT, { pedido_id: IDS.pedido, idempotencia: 'idem-volta-0001' });
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));

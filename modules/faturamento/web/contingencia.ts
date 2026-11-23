@@ -52,9 +52,13 @@ export const faixaDoAlertaEpec = (a: AlertaPrazoEpec): { tom: 'erro' | 'alerta';
 
 const SEM_PERMISSAO = 'sem permissão para esta ação';
 /** Por que abrir/encerrar não está disponível (texto ao lado do botão desabilitado), ou `null` se está. Só o administrador liga e desliga (RN-FAT-05, decisão do Alexandre, 23/11); a API responde 403 aos demais. */
-export function acoesDaContingencia(perfil: Perfil, aberta: boolean): { abrir: string | null; encerrar: string | null } {
-  if (perfil !== 'administrador') return { abrir: SEM_PERMISSAO, encerrar: SEM_PERMISSAO };
-  return { abrir: aberta ? 'a filial já está em contingência.' : null, encerrar: aberta ? null : 'a filial não está em contingência.' };
+/**
+ * `contingenciaDisponivel` = `pode_abrir` da resposta do GET (RN-FAT-10: filial simulada ou sem transporte SVC): com `false` o botão de abrir NÃO é oferecido (`mostrarAbrir: false`: nem desabilitado, nem com dica);
+ * encerrar segue pelas regras de sempre (aparece com contingência aberta).
+ */
+export function acoesDaContingencia(perfil: Perfil, aberta: boolean, contingenciaDisponivel = true): { mostrarAbrir: boolean; abrir: string | null; encerrar: string | null } {
+  if (perfil !== 'administrador') return { mostrarAbrir: contingenciaDisponivel, abrir: SEM_PERMISSAO, encerrar: SEM_PERMISSAO };
+  return { mostrarAbrir: contingenciaDisponivel, abrir: aberta ? 'a filial já está em contingência.' : null, encerrar: aberta ? null : 'a filial não está em contingência.' };
 }
 
 export interface DialogoAbrirContingencia extends DialogoDeTexto {

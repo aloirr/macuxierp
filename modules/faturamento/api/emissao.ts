@@ -30,6 +30,8 @@ import {
   montarPagamento,
   contaComoReal,
   aplicarContingenciaAoConteudo,
+  EPEC_LIGADA,
+  MENSAGEM_EPEC_DESLIGADA,
   modalidadeDaUf,
   TP_EMIS_DA_MODALIDADE,
   type ContingenciaDaNota,
@@ -103,7 +105,18 @@ export interface DepsEmissao {
    * sem transporte real a nota de produção ficaria numerada e parada. Recusa ANTES de reservar o número (a série não anda).
    */
   emissaoProducaoHabilitada?: boolean;
+  /** EPEC ligada (padrão `EPEC_LIGADA`, false na v0.3.0). Com `epec` aberta e a bandeira desligada a emissão recusa (RN-FAT-05) antes de reservar o número. */
+  epecLigada?: boolean;
+  /**
+   * RN-FAT-10: existe transporte capaz de enviar a nota SVC (tpEmis 6/7) neste ambiente? Padrão (porta não injetada) = SEMPRE `false`: sem transporte a nota SVC ficaria numerada e parada
+   * (ex.: o simulador do worker recusa modo diferente de `normal`). Checada ANTES de reservar o número (emissão) e ao abrir a contingência (rota). O engenheiro liga a porta real em `apps/api/src/modulos.ts`.
+   */
+  svcDisponivel?: PortaSvcDisponivel;
 }
+
+/** `modo` é o da modalidade aberta: `svc_an` -> 'svc-an', `svc_rs` -> 'svc-rs'. */
+export type PortaSvcDisponivel = (e: { filialId: string; ambiente: 'homologacao' | 'producao'; uf: string; modo: 'svc-an' | 'svc-rs' }) => boolean | Promise<boolean>;
+export const MENSAGEM_SVC_INDISPONIVEL = 'A contingência SVC não está disponível neste ambiente.';
 
 interface Preparado {
   ok: true;
@@ -285,6 +298,12 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       if (aberta) {
         // A SVC é a da UF da filial (SVC_DA_UF do pacote): outra, o seletor recusaria depois de o número ser reservado. A EPEC (tpEmis 4) vale para a UF com EPEC no ERP (EPEC_DA_UF).
         const daUf = aberta.modalidade === 'epec' ? (EPEC_DA_UF[filial.endereco.uf as keyof typeof EPEC_DA_UF] ? 'epec' : null) : modalidadeDaUf(filial.endereco.uf);
+        if (aberta.modalidade === 'epec' && !(deps.epecLigada ?? EPEC_LIGADA)) {
+          return { ok: false, violacoes: [violacao('RN-FAT-05', 'contingencia', MENSAGEM_EPEC_DESLIGADA)] };
+        }
+        if (aberta.modalidade !== 'epec' && !(await (deps.svcDisponivel?.({ filialId: pedido.filial_id, ambiente, uf: filial.endereco.uf, modo: aberta.modalidade === 'svc_an' ? 'svc-an' : 'svc-rs' }) ?? false))) {
+          return { ok: false, violacoes: [violacao('RN-FAT-10', 'contingencia', MENSAGEM_SVC_INDISPONIVEL)] };
+        }
         if (daUf !== aberta.modalidade) {
           return { ok: false, violacoes: [violacao('RN-FAT-05', 'contingencia', `A contingência aberta (${aberta.modalidade}) não é a que atende a UF ${filial.endereco.uf}; encerre e abra a correta.`)] };
         }

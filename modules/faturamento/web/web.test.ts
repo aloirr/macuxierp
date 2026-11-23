@@ -504,9 +504,14 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, perto_do_fim: 0, sinal: 'verde' })).toBeNull();
   });
   it('RN-CORE-02: só o administrador abre e encerra; abrir fecha com a aberta e encerrar fecha sem ela', () => {
-    expect(publico.acoesDaContingencia('administrador', false)).toEqual({ abrir: null, encerrar: 'a filial não está em contingência.' });
-    expect(publico.acoesDaContingencia('administrador', true)).toEqual({ abrir: 'a filial já está em contingência.', encerrar: null });
-    for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true)).toEqual({ abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
+    expect(publico.acoesDaContingencia('administrador', false)).toEqual({ mostrarAbrir: true, abrir: null, encerrar: 'a filial não está em contingência.' });
+    expect(publico.acoesDaContingencia('administrador', true)).toEqual({ mostrarAbrir: true, abrir: 'a filial já está em contingência.', encerrar: null });
+    for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true)).toEqual({ mostrarAbrir: true, abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
+  });
+  it('RN-FAT-10: filial simulada ou sem transporte SVC (pode_abrir false): o botão de abrir não é oferecido; encerrar segue aparecendo com contingência aberta; administrador com SVC disponível vê o botão', () => {
+    expect(publico.acoesDaContingencia('administrador', false, false)).toMatchObject({ mostrarAbrir: false });
+    expect(publico.acoesDaContingencia('administrador', true, false)).toEqual({ mostrarAbrir: false, abrir: 'a filial já está em contingência.', encerrar: null });
+    expect(publico.acoesDaContingencia('administrador', false, true)).toMatchObject({ mostrarAbrir: true, abrir: null });
   });
   it('RN-FAT-09: a lista das EPEC pendentes mostra o prazo; vencido em tom de erro; CSV no fuso; página fora do menu até a EPEC ligar', () => {
     expect(publico.ROTULO_PRAZO_EPEC).toMatchObject({ no_prazo: { texto: 'No prazo', tom: 'ok' }, perto_do_fim: { tom: 'alerta' }, vencido: { texto: 'Vencido', tom: 'erro' } });

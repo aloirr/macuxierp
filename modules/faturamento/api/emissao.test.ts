@@ -395,7 +395,7 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     const abrir = async (modalidade: 'svc_an' | 'svc_rs' | 'epec', m: ReturnType<typeof montar>) => {
       const c = contingenciaFake();
       await c.repo.abrir(tx, { filial_id: IDS.filial, ambiente: 'producao', modalidade, motivo: 'SEFAZ-AM fora do ar desde as 9h', inicio_em: inicio, ligada_por: uuid(1) });
-      return { c, svc: criarServicoEmissao({ ...m.deps, contingencia: c.repo }) };
+      return { c, svc: criarServicoEmissao({ ...m.deps, contingencia: c.repo, svcDisponivel: () => true, epecLigada: true }) };
     };
 
     it('RN-FAT-08: com svc_rs aberta a nota nasce com tpEmis 7 (na chave, na coluna e no ide), dhCont = início UTC com Z e xJust = motivo, na mesma série e sequência', async () => {
@@ -437,6 +437,28 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
       expect(r.nota).toMatchObject({ tp_emis: 4, serie: 1, numero: 100, status: 'rascunho' });
       expect(r.nota.chave_acesso.slice(34, 35)).toBe('4');
       expect(m.conteudos.get(r.nota.id)?.contingencia).toEqual({ tpEmis: 4, dhCont: '2026-11-21T09:00:00.000Z', xJust: 'SEFAZ-AM fora do ar desde as 9h' });
+    });
+
+    it('RN-FAT-10: SVC aberta sem transporte capaz (svcDisponivel ausente ou false) recusa ANTES de reservar o número: a série não anda; a porta recebe filial, ambiente, UF e modo', async () => {
+      const m = montar();
+      const c = contingenciaFake();
+      await c.repo.abrir(tx, { filial_id: IDS.filial, ambiente: 'producao', modalidade: 'svc_rs', motivo: 'SEFAZ-AM fora do ar desde as 9h', inicio_em: inicio, ligada_por: uuid(1) });
+      const chamadas: unknown[] = [];
+      for (const svcDisponivel of [undefined, () => false, (e: unknown) => { chamadas.push(e); return false; }]) {
+        const r = await criarServicoEmissao({ ...m.deps, contingencia: c.repo, ...(svcDisponivel ? { svcDisponivel } : {}) }).emitirNota(tx, TENANT, entrada());
+        expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-FAT-10', campo: 'contingencia', mensagem: 'A contingência SVC não está disponível neste ambiente.' });
+      }
+      expect(chamadas[0]).toEqual({ filialId: IDS.filial, ambiente: 'producao', uf: 'AM', modo: 'svc-rs' });
+      expect(m.estado.reservas).toBe(0);
+    });
+
+    it('RN-FAT-05: contingência epec aberta com a EPEC desligada (padrão) recusa ANTES de reservar o número', async () => {
+      const m = montar();
+      const c = contingenciaFake();
+      await c.repo.abrir(tx, { filial_id: IDS.filial, ambiente: 'producao', modalidade: 'epec', motivo: 'SEFAZ-AM fora do ar desde as 9h', inicio_em: inicio, ligada_por: uuid(1) });
+      const r = await criarServicoEmissao({ ...m.deps, contingencia: c.repo, svcDisponivel: () => true }).emitirNota(tx, TENANT, entrada());
+      expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-FAT-05', campo: 'contingencia' });
+      expect(m.estado.reservas).toBe(0);
     });
 
     it('RN-FAT-07/08: o reenvio da rejeitada em SVC mantém o tpEmis, o dhCont e o xJust da nota (a chave leva o tpEmis), mesmo com a contingência já encerrada', async () => {

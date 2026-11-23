@@ -10,6 +10,7 @@ export type {
   ConfiguracaoFaturamento, EpecPendenteRegistro, GuardaEpec, RepositorioContingencia, RepositorioTitulos, ResultadoCalculoFiscal, SituacaoPedidoDoPedido,
 } from './portas';
 export { verificarAtivosDanfe, type ResultadoAtivosDanfe } from './ativos-marca';
+export type { PortaSvcDisponivel } from './emissao';
 export { repositoriosSql } from './sql';
 export { consultaTitulosPedido, criarServicoTitulos, criarVarreduraTitulos, gerarTitulosDaNota, gerarTitulosSeguro, cancelarTitulosDaNotaCancelada, type LogFaturamento } from './titulos';
 export { criarProcessadorEventos, type DepsProcessadorEventos, type ResultadoConsultaNota, type ResultadoEventoProcessado, type ResultadoInutilizacaoProcessada } from './processador-eventos';
