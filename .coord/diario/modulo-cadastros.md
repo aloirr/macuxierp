@@ -16,3 +16,7 @@
 2026-11-23 — T-0058 (WIP) — carga do portal no por_etapa: rotas validar/gravar (iniciar → comTenant → concluir), estoque 400 por substituirPermitido, testes unitários e de banco
 2026-11-23 — T-0058 — hotfix: situação, modelo e erros da carga no /config
 2026-11-23 — T-0058 — v0.3.7 item 1: nenhuma carga depende de outra
+2026-11-23 — T-0058 — carga: cliente.csv com endereços (tipo_endereco, seq) e condicoes_pagamento.csv (forma e prazo na mesma linha); 8 arquivos; cliente_endereco, forma_pagamento e prazo_pagamento ignorados com aviso
+2026-11-23 — T-0058 — Substituir tudo do cliente (endereços ausentes inativados junto) e da condição de pagamento (carga-substituir.ts, substituicao-cliente.ts); rebase sobre o #412
+2026-11-23 — T-0058 — Substituir tudo do portal liga cliente e condicao ao carga-substituir; mapa unico TABELA_SUBSTITUIVEL; DEPENDENCIAS do domain removido; testes ajustados ao modelo de condicao
+2026-11-23 — T-0058 — v0.3.6 item 2: rebase no 84da1f5 e achados RD-1203/1204/1205 (aplicarSubstituicao genérico em carga-substituir.ts, paiDe, comUso, dadosDaForma, seq único, testes enxutos, README)

@@ -1,4 +1,0 @@
-external_id;forma_external_id;codigo;parcelas_dias;alterado_em;ativo;descricao;prazo_medio_dias;percentual_ajuste;ordem
-PZ-EX-01;FP-EX-01;BOL30;30;;sim;Boleto 30 dias;30;0;1
-PZ-EX-02;FP-EX-01;BOL30-60;30/60;;sim;;45;0;2
-PZ-EX-03;FP-EX-02;PIXV;0;;sim;Pix à vista;0;0;3
