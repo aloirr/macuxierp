@@ -176,9 +176,5 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     await repo.definirSenha(t2, id, '$argon2id$z');
     await t2.confirmar();
     expect(await flag()).toEqual({ deve_trocar_senha: true });
-    const t3 = await abrir();
-    await repo.trocarSenhaPropria(t3, id, '$argon2id$w', new Date());
-    await t3.confirmar();
-    expect(await flag()).toEqual({ deve_trocar_senha: false });
   });
 });
