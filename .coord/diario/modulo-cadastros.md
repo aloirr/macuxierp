@@ -10,3 +10,4 @@
 2026-11-23 — T-0053 — textos da regra A0 no cadastros (RD-1064, 1066–1069, 1080)
 2026-11-23 — T-0058 — mensagens fiscais (RN-CAD-04) com o código e a ação na carga
 2026-11-23 — T-0058 — planoSubstituicao (substituir tudo inativa o que falta)
+2026-11-23 — T-0058 — carga no /config: adicionar e substituir tudo, menu fora do BKO

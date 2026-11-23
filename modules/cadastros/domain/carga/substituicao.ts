@@ -1,5 +1,4 @@
-/** Trocar pelo tipo do SDK (packages/platform-sdk/src/portal-cargas.ts) quando sair. */
-export type ModoPortalCarga = 'adicionar' | 'substituir_tudo';
+import type { ModoGravarCarga } from '@macuxierp/platform-sdk';
 
 export interface ExistenteSubstituicao {
   id: string;
@@ -23,7 +22,7 @@ export interface PlanoSubstituicao {
  * logo é inativado. No modo 'adicionar' o plano é vazio. `entidade` é informativa.
  */
 export function planoSubstituicao(p: {
-  modo: ModoPortalCarga;
+  modo: ModoGravarCarga;
   entidade: string;
   externos_do_arquivo: readonly string[];
   existentes: readonly ExistenteSubstituicao[];

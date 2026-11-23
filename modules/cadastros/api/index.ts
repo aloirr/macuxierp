@@ -18,6 +18,8 @@ export { criarResolvedorChaveErp, type ResolvedorChaveErp } from './resolvedor-c
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
 export type { Dependencias, FonteExterna, Fontes, PortaCertificados, RepoChaves, Repositorios, TabelaChave } from './portas';
+export { exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal, type EntradaCargaPortal } from './carga-portal';
+export type { CadastroZeravel, ConsultaUsoCadastros, MotivoUso } from './zeragem-portas';
 export { criarRotas } from './rotas';
 export { repositoriosSql } from './sql';
 
