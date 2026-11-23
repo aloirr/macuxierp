@@ -102,7 +102,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
           faixa={a.entrada === 'faixa' ? { filiais: a.filiais ?? [], rotuloTexto: a.rotuloTexto ?? 'Justificativa' } : undefined}
           itens={a.entrada === 'itens' ? { carregar: carregarItens } : undefined}
           carregarAmbiente={a.entrada === 'faixa' && a.ambientePorFilial ? carregarAmbiente : undefined}
-          validar={(r) => { const v = executor?.validarAcao(a, entradaDe(r)); return v && !v.ok ? (v.erros ? { erro: v.erro, erros: v.erros } : v.erro) : null; }}
+          validar={(r) => { const v = executor?.validarAcao(a, entradaDe(r)); return v && !v.ok ? (v.erros ? { erro: v.erro, erros: v.erros, errosPartes: v.errosPartes } : v.erro) : null; }}
           aoConfirmar={(r) => void enviar(a, entradaDe(r))}
           aoCancelar={aoCancelar}
         />

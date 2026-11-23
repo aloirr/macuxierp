@@ -143,6 +143,7 @@ describe.skipIf(!PG_DISPONIVEL)('simulador com estado no PostgreSQL (sefaz_simul
     registrarSuiteSimulador({
       nome: 'PostgreSQL',
       sequenciaGlobal: true,
+      guardaEpec: false,
       novoEstado: (): FonteEstadoSimulador => {
         // Um tenant novo por simulador (como um registro novo por cenário na memória), criado no primeiro uso.
         let tenant: Promise<string> | undefined;

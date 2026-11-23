@@ -444,6 +444,9 @@ export function montarNFe(entrada: NotaParaEmissaoEntrada, opcoes: OpcoesMontage
         ide.indIntermed !== undefined ? el('indIntermed', String(ide.indIntermed)) : undefined,
         el('procEmi', '0'),
         el('verProc', ide.verProc),
+        // Contingência (ADR 0011): na ordem do schema, depois do verProc; a entrada garante os dois juntos.
+        ide.dhCont !== undefined ? el('dhCont', dataHoraSefaz(new Date(ide.dhCont), ide.fusoMinutos)) : undefined,
+        opt('xJust', ide.xJust),
       ]),
       grupo('emit', [
         el('CNPJ', emit.CNPJ),

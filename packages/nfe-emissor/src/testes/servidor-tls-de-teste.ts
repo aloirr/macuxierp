@@ -4,6 +4,8 @@
  * testes do transporte SOAP com mTLS. Nada vai a disco, log ou snapshot.
  */
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { Agent } from 'node:https';
+import { connect, type TLSSocket } from 'node:tls';
 import forge from 'node-forge';
 import { VALIDADE_DE_TESTE } from '@macuxierp/nfe-sefaz/teste';
 
@@ -26,4 +28,15 @@ export function gerarServidorTlsDeTeste(host: string): { chavePem: string; certi
   ]);
   cert.sign(chave, forge.md.sha256.create());
   return { chavePem, certificadoPem: forge.pki.certificateToPem(cert) };
+}
+
+/**
+ * Agente HTTPS que leva TODA conexão a `127.0.0.1:porta`, sem rede real: a URL do destino, o SNI (`servername`, se
+ * dado) e a conferência do certificado continuam os do pedido.
+ */
+export function agenteParaLocal(porta: number, servername?: string): Agent {
+  const agente = new Agent({ keepAlive: false });
+  (agente as unknown as { createConnection: (o: object) => TLSSocket }).createConnection = (o) =>
+    connect({ ...o, host: '127.0.0.1', port: porta, ...(servername === undefined ? {} : { servername }) });
+  return agente;
 }

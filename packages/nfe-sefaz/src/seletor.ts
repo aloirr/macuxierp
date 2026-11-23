@@ -2,10 +2,10 @@
  * Seletor de transporte: o ÚNICO jeito de o faturamento (via worker) obter um `SefazTransporte` para uma filial.
  * O worker monta o seletor uma vez, com as fábricas, e pede o transporte por filial. Desenho T-0045, seção 3.1.
  */
-import type { DestinoSefazReal, DestinoSimulador, FilialEmissoraSefaz, TransporteHomologacao } from './destino';
-import { escolherDestinoSefaz, garantirDestinoSimulador } from './destino';
+import type { DestinoEpec, DestinoSefazReal, DestinoSimulador, FilialEmissoraEpec, FilialEmissoraSefaz, TransporteHomologacao } from './destino';
+import { escolherDestinoEpec, escolherDestinoSefaz, garantirDestinoSimulador } from './destino';
 import { ErroSefaz } from './erros';
-import type { SefazTransporte } from './porta';
+import type { SefazTransporte, SefazTransporteEpec } from './porta';
 
 /**
  * A1 decifrado na memória do worker (ADR 0005): usado na assinatura e no mTLS e descartado em seguida.
@@ -38,6 +38,29 @@ export function criarSeletorTransporte(o: OpcoesSeletorTransporte): SeletorTrans
       return o.simulador(garantirDestinoSimulador(destino));
     }
     if (!o.sefaz) throw new ErroSefaz('SEFAZ_TRANSPORTE_NAO_CONFIGURADO', 'Transporte real da SEFAZ não configurado no worker');
+    return o.sefaz(destino, credencial);
+  };
+}
+
+/** Fábrica do transporte SOAP real da EPEC (Ambiente Nacional, mTLS; `criarFabricaTransporteEpecSoap` do emissor). */
+export type FabricaTransporteEpec = (destino: DestinoEpec, credencial: CredencialA1EmMemoria) => SefazTransporteEpec;
+
+export interface OpcoesSeletorEpec {
+  /** O mesmo `transporte` da homologação do worker. Com `simulador`, a EPEC é recusada (RN-FAT-10). */
+  transporte: TransporteHomologacao;
+  sefaz?: FabricaTransporteEpec;
+}
+
+export type SeletorEpec = (filial: FilialEmissoraEpec, credencial: CredencialA1EmMemoria) => SefazTransporteEpec;
+
+/**
+ * Seletor da EPEC (ADR 0011): o ÚNICO jeito de o worker obter o transporte do evento 110140. Não há fábrica de
+ * simulador: filial simulada não entra em contingência (RN-FAT-10, `SEFAZ_CONTINGENCIA_SIMULADA`).
+ */
+export function criarSeletorEpec(o: OpcoesSeletorEpec): SeletorEpec {
+  return (filial, credencial) => {
+    const destino = escolherDestinoEpec(filial, { transporte: o.transporte });
+    if (!o.sefaz) throw new ErroSefaz('SEFAZ_TRANSPORTE_NAO_CONFIGURADO', 'Transporte da EPEC não configurado no worker');
     return o.sefaz(destino, credencial);
   };
 }

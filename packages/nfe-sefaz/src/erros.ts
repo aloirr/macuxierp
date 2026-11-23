@@ -10,8 +10,10 @@ export type CodigoErroSefaz =
   | 'SEFAZ_FILIAL_INVALIDA'
   /** UF sem autorizador mapeado em `AUTORIZADOR_DA_UF`. */
   | 'SEFAZ_UF_SEM_AUTORIZADOR'
-  /** Contingência que não é a SVC da UF (`SVC_DA_UF`). */
+  /** Contingência que a UF não admite (`SVC_DA_UF`, `EPEC_DA_UF`) ou `tpEmis` que o destino não aceita. */
   | 'SEFAZ_CONTINGENCIA_INVALIDA'
+  /** RN-FAT-10: filial com NF-e simulada não entra em contingência (o simulador não cai). */
+  | 'SEFAZ_CONTINGENCIA_SIMULADA'
   /** Produção pedida com endereço ainda "a conferir" (T-0046). */
   | 'SEFAZ_ENDERECO_NAO_CONFERIDO'
   /** O seletor escolheu um destino para o qual não recebeu fábrica de transporte. */

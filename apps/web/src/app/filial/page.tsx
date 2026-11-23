@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { formatarDocumento } from '@macuxierp/platform-sdk/formatar';
+import { BotaoSair } from '../(shell)/botao-sair';
 import { contexto, COOKIE_FILIAL, opcoesLongas } from '@/lib/sessao';
 
 export const metadata: Metadata = { title: 'Selecionar filial' };
@@ -22,6 +23,12 @@ export default async function SelecionarFilial() {
     <main className="cartao-central">
       <CabecalhoCartao titulo="Selecionar filial" />
       <p className="apoio">Empresa: {eu.empresa.razao_social}</p>
+      {eu.filiais.length === 0 ? (
+        <>
+          <p className="faixa-aviso" role="status">Nenhuma filial liberada para você. Peça ao administrador para cadastrar uma filial ou liberar o seu acesso.</p>
+          <BotaoSair />
+        </>
+      ) : (
       <form action={escolher}>
         <ul className="lista-escolha">
           {eu.filiais.map((f) => (
@@ -34,6 +41,7 @@ export default async function SelecionarFilial() {
         </ul>
         <button className="mx-botao" type="submit">Continuar</button>
       </form>
+      )}
     </main>
   );
 }

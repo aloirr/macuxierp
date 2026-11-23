@@ -4,8 +4,9 @@
  *
  * `rejeitarProximo` força o `cStat` do próximo envio de uma operação (N05 da T-0022). O controle mora no estado do
  * destino, dentro do `RegistroSimulador` (sem global): vale para todas as instâncias do mesmo registro e destino.
+ * `destinoDe` dá o destino do simulador de um modo (inclusive o de SVC, montado à mão) aos testes deste e de outros pacotes.
  */
-import type { DestinoSimulador } from '@macuxierp/nfe-sefaz';
+import { TP_EMIS, escolherDestinoSefaz, type DestinoSimulador, type ModoEmissao } from '@macuxierp/nfe-sefaz';
 import { MOTIVO, type CStatSimulador } from '../contexto';
 import { OPERACOES_REJEITAVEIS, criarRegistroSimulador, type OperacaoRejeitavel, type RegistroSimulador } from '../estado';
 import { criarSimuladorSefaz, type OpcoesSimulador, type SimuladorSefaz } from '../index';
@@ -51,4 +52,19 @@ export function criarSimuladorDeTeste(destino: DestinoSimulador, opcoes: OpcoesS
   const registro = opcoes.registro ?? criarRegistroSimulador();
   const s = criarSimuladorSefaz(destino, { ...opcoes, registro });
   return Object.freeze({ ...s, teste: apoioDeTesteSimulador(registro, s.destino) });
+}
+
+/** Filial fixa dos testes do simulador (padrão do `destinoDe`). */
+export const FILIAL_DE_TESTE = '7f1c2a50-3b8e-4c1d-9a2f-0e6b5d4c3a21';
+
+/**
+ * Destino do simulador para o teste (homologação, AM). O de SVC é montado À MÃO a partir do normal, SÓ AQUI: o seletor
+ * recusa contingência com o simulador (RN-FAT-10, `SEFAZ_CONTINGENCIA_SIMULADA`), e o worker nunca chega a este destino.
+ */
+export function destinoDe(modo: ModoEmissao = 'normal', filial: string = FILIAL_DE_TESTE): DestinoSimulador {
+  const normal = escolherDestinoSefaz(
+    { filial_id: filial, ambiente: 'homologacao', uf: 'AM' },
+    { transporte: 'simulador' },
+  ) as DestinoSimulador;
+  return modo === 'normal' ? normal : Object.freeze({ ...normal, modo, tpEmis: TP_EMIS[modo] });
 }

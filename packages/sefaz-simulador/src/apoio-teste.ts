@@ -3,8 +3,6 @@
  * na hora, NF-e/eventos/inutilização assinados e o registro dos `cStat` vistos (cobertura da tabela `MOTIVO`).
  */
 import {
-  escolherDestinoSefaz,
-  type DestinoSimulador,
   type ModoEmissao,
   type ProtocoloEvento,
   type ProtocoloNFe,
@@ -18,6 +16,7 @@ import {
   gerarA1DeTeste,
   montarCancelamentoDeTeste,
   montarCartaCorrecaoDeTeste,
+  montarEpecDeTeste,
   montarInutilizacaoDeTeste,
   montarNFeDeTeste,
   type A1DeTeste,
@@ -30,8 +29,10 @@ import {
   type OpcoesSimulador,
   type SimuladorSefaz,
 } from './index';
+import { destinoDe } from './teste';
 
-export const FILIAL = '7f1c2a50-3b8e-4c1d-9a2f-0e6b5d4c3a21';
+export { FILIAL_DE_TESTE as FILIAL, destinoDe } from './teste';
+
 /** 21/11/2026, 22h59 em Manaus (`INSTANTE_DE_TESTE`). */
 export const INICIO = INSTANTE_DE_TESTE;
 export const HORA = 3_600_000;
@@ -59,13 +60,6 @@ export function a1DeTeste(): { emitente: A1DeTeste; outro: A1DeTeste } {
     }),
   };
   return a1s;
-}
-
-export function destinoDe(modo: ModoEmissao = 'normal', filial = FILIAL): DestinoSimulador {
-  return escolherDestinoSefaz(
-    { filial_id: filial, ambiente: 'homologacao', uf: 'AM', modo },
-    { transporte: 'simulador' },
-  ) as DestinoSimulador;
 }
 
 export function novoSimulador(o: OpcoesSimulador & { modo?: ModoEmissao } = {}): {
@@ -106,6 +100,15 @@ export function cceAssinada(
   ajustar: (x: string) => string = (x) => x,
 ): string {
   return assinarXmlDeTeste(ajustar(montarCartaCorrecaoDeTeste(o)), { elemento: 'infEvento', a1 });
+}
+
+/** EPEC (110140) assinada, montada da NF-e (sem assinatura ou assinada). `ajustar` mexe nos dados do resumo. */
+export function epecAssinada(
+  nfeXml: string,
+  o: Parameters<typeof montarEpecDeTeste>[1] = { dhEvento: INICIO },
+  a1: A1DeTeste = a1DeTeste().emitente,
+): string {
+  return assinarXmlDeTeste(montarEpecDeTeste(nfeXml, o), { elemento: 'infEvento', a1 });
 }
 
 export function inutilizacaoAssinada(

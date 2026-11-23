@@ -1,6 +1,6 @@
 /**
- * Suíte do simulador da SEFAZ-AM (T-0045, etapas 2 a 4): serviços, rejeições, eventos, inutilização, contingência
- * SVC-RS, controles de teste e a trava da regra 7. Toda resposta é conferida no contrato (Zod) e no XSD PL_010g do
+ * Suíte do simulador da SEFAZ-AM (T-0045, etapas 2 a 4; contingência da T-0021, ADR 0011): serviços, rejeições,
+ * eventos, inutilização, contingência SVC-RS e EPEC, controles de teste e a trava da regra 7. Toda resposta é conferida no contrato (Zod) e no XSD PL_010g do
  * retorno. No fim, a cobertura: todo `cStat` da tabela `MOTIVO` apareceu em algum teste.
  * Roda nas DUAS portas de estado (lote B): em memória (`simulador.test.ts`) e no Postgres (`simulador.db.test.ts`).
  * Não é teste por si (sem `.test.` no nome): só as duas entradas a registram.
@@ -35,6 +35,7 @@ import {
   cancelamentoAssinado,
   cceAssinada,
   destinoDe,
+  epecAssinada,
   inutilizacaoAssinada,
   nfeAssinada,
   novoSimulador as novoSimuladorBase,
@@ -55,7 +56,15 @@ export interface PortaDeTeste {
   novoEstado(): EstadoSimuladorRepo | FonteEstadoSimulador;
   /** O sequencial do `nProt` vem de uma sequência que não volta ao início (Postgres): o XML só repete fora dele. */
   readonly sequenciaGlobal: boolean;
+  /**
+   * A porta guarda EPEC? Só a memória (testes). O Postgres é o simulador do worker, de filial simulada, que não entra
+   * em contingência (RN-FAT-10): lá a EPEC é recusada (ADR 0011).
+   */
+  readonly guardaEpec: boolean;
 }
+
+/** `cStat` que só a EPEC guardada produz (fora da cobertura da porta que não guarda EPEC). */
+const CSTAT_SO_COM_EPEC = new Set(['136', '467']);
 
 /** O sequencial (9 dígitos finais) do `nProt`/`nRec` do simulador, mascarado. */
 const semSequencial = (xml: string) => xml.replace(/(?<!\d)(9\d{5})\d{9}(?!\d)/g, '$1#########');
@@ -556,6 +565,86 @@ export function registrarSuiteSimulador(porta: PortaDeTeste): void {
       });
     });
 
+    describe('contingência: dhCont e xJust no ide (ADR 0011)', () => {
+      it('556 normal com justificativa, 557 contingência sem, 558 entrada depois do recebimento', async () => {
+        const { s } = novoSimulador();
+        const antes = new Date(INICIO.getTime() - 120_000);
+        expect(await autorizarUma(s, nfeAssinada({ nNF: 90, contingencia: { dhCont: antes } }).xml)).toMatchObject({ cStat: '556', nProt: null });
+        const svc = novoSimulador({ modo: 'svc-rs' }).s;
+        expect(await autorizarUma(svc, nfeAssinada({ nNF: 91, modo: 'svc-rs', contingencia: null }).xml)).toMatchObject({ cStat: '557' });
+        const depois = { dhCont: new Date(INICIO.getTime() + HORA) };
+        expect(await autorizarUma(svc, nfeAssinada({ nNF: 92, modo: 'svc-rs', contingencia: depois }).xml)).toMatchObject({ cStat: '558' });
+      });
+
+      it('nota EPEC (tpEmis 4): na SVC dá 570; no autorizador normal, sem EPEC registrada, 468', async () => {
+        expect(await autorizarUma(novoSimulador({ modo: 'svc-rs' }).s, nfeAssinada({ nNF: 93, tpEmis: 4 }).xml)).toMatchObject({ cStat: '570' });
+        expect(await autorizarUma(novoSimulador().s, nfeAssinada({ nNF: 94, tpEmis: 4 }).xml)).toMatchObject({ cStat: '468', nProt: null });
+      });
+    });
+
+    describe('EPEC (110140) no Ambiente Nacional e a volta à normal (ADR 0011)', () => {
+      it.runIf(porta.guardaEpec)('136 com a SEFAZ da UF paralisada; 573 na repetida; na volta a nota EPEC dá 100 com a EPEC vinculada', async () => {
+        const { s } = novoSimulador();
+        const n = nfeAssinada({ nNF: 100, tpEmis: 4 });
+        s.controles.paralisar('108');
+        const r = vistos(await s.epec({ idLote: '1', eventoAssinado: epecAssinada(n.xml) }));
+        expect(RespostaEvento.parse(r)).toMatchObject({ cStat: '128', cOrgao: 91, tpAmb: 2, idLote: '1' });
+        expect(vistos(r.eventos[0]!)).toMatchObject({ cStat: '136', tpEvento: '110140', chNFe: n.chave, nSeqEvento: 1, nProt: expect.stringMatching(/^9/) });
+        await xsdOk(r.xml, 'retEnvEPEC');
+        const repetida = await s.epec({ idLote: '2', eventoAssinado: epecAssinada(n.xml, { dhEvento: new Date(INICIO.getTime() + 60_000) }) });
+        expect(vistos(repetida.eventos[0]!)).toMatchObject({ cStat: '573', nProt: null });
+        await expect(autorizarUma(s, n.xml)).rejects.toBeInstanceOf(FalhaTransporteSefaz); // UF ainda paralisada
+        s.controles.paralisar(null);
+        const p = await autorizarUma(s, n.xml);
+        expect(p).toMatchObject({ cStat: '100', chNFe: n.chave });
+        const c = vistos(await s.consultarProtocolo({ chNFe: n.chave }));
+        expect(c.cStat).toBe('100');
+        expect(c.eventos.map((e) => [e.tpEvento, e.cStat])).toEqual([['110140', '136']]);
+        expect(c.xml).toContain('<procEventoNFe versao="1.00"><evento');
+        await xsdOk(c.xml, 'retConsSitNFe');
+        expect(await autorizarUma(s, n.xml, '3')).toMatchObject({ cStat: '204' }); // sem dobrar o número
+      });
+
+      it.runIf(porta.guardaEpec)('467: a NF-e transmitida na volta diverge da EPEC registrada', async () => {
+        const { s } = novoSimulador();
+        const n = nfeAssinada({ nNF: 101, tpEmis: 4 });
+        const r = await s.epec({ idLote: '1', eventoAssinado: epecAssinada(n.xml, { dhEvento: INICIO, ajustar: (d) => ({ ...d, vNF: '99.99' }) }) });
+        expect(r.eventos[0]?.cStat).toBe('136');
+        expect(await autorizarUma(s, n.xml)).toMatchObject({ cStat: '467', nProt: null });
+      });
+
+      it.runIf(porta.guardaEpec)('rejeições da EPEC: 252, 250, 574, 455, 578, 577 e 215 no lote', async () => {
+        const { s } = novoSimulador();
+        const n = nfeAssinada({ nNF: 102, tpEmis: 4 });
+        const cStat = async (o: Parameters<typeof epecAssinada>[1], a1?: Parameters<typeof epecAssinada>[2]) =>
+          vistos((await s.epec({ idLote: '1', eventoAssinado: epecAssinada(n.xml, o, a1) })).eventos[0]!).cStat;
+        expect(await cStat({ dhEvento: INICIO, tpAmb: 1 })).toBe('252');
+        expect(await cStat({ dhEvento: INICIO, cOrgao: 13 })).toBe('250');
+        expect(await cStat({ dhEvento: INICIO, cnpj: CNPJ_OUTRO_DE_TESTE }, a1DeTeste().outro)).toBe('574');
+        expect(await cStat({ dhEvento: INICIO, ajustar: (d) => ({ ...d, cOrgaoAutor: '14' }) })).toBe('455');
+        expect(await cStat({ dhEvento: new Date(INICIO.getTime() + HORA) })).toBe('578');
+        expect(await cStat({ dhEvento: new Date(INICIO.getTime() - HORA) })).toBe('577');
+        const lote = vistos(await s.epec({ idLote: '1', eventoAssinado: epecAssinada(n.xml, { dhEvento: INICIO, ajustar: (d) => ({ ...d, vNF: 'abc' }) }) }));
+        expect(lote).toMatchObject({ cStat: '215', eventos: [] });
+        await xsdOk(lote.xml, 'retEnvEPEC');
+      });
+
+      it.runIf(!porta.guardaEpec)('RN-FAT-10: a porta do simulador do worker não guarda EPEC (SEFAZ_CONTINGENCIA_SIMULADA)', async () => {
+        const { s } = novoSimulador();
+        const n = nfeAssinada({ nNF: 103, tpEmis: 4 });
+        await expect(s.epec({ idLote: '1', eventoAssinado: epecAssinada(n.xml) })).rejects.toMatchObject({ codigo: 'SEFAZ_CONTINGENCIA_SIMULADA' });
+      });
+
+      it('EPEC no destino de SVC e evento de outro tipo são erro de quem chama, nada é registrado', async () => {
+        const n = nfeAssinada({ nNF: 104, tpEmis: 4 });
+        await expect(novoSimulador({ modo: 'svc-rs' }).s.epec({ idLote: '1', eventoAssinado: epecAssinada(n.xml) })).rejects.toMatchObject({
+          codigo: 'SEFAZ_CONTINGENCIA_INVALIDA',
+        });
+        const cancelamento = cancelamentoAssinado({ ...ev(n.chave), nProt: '913260000000001' });
+        await expect(novoSimulador().s.epec({ idLote: '1', eventoAssinado: cancelamento })).rejects.toMatchObject({ codigo: 'SEFAZ_PEDIDO_INVALIDO' });
+      });
+    });
+
     describe('controles de teste', () => {
       it('paralisar: status 108/109 e as demais operações falham como rede (retentável)', async () => {
         const { s } = novoSimulador();
@@ -644,7 +733,8 @@ export function registrarSuiteSimulador(porta: PortaDeTeste): void {
       // certificado (298, 202, 290, 291, 292...) são provados no verificador (`packages/nfe-sefaz/src/xmldsig.test.ts`):
       // o simulador só repassa o `cStat` dele, e aqui fica um caso por caminho (NF-e, evento e inutilização).
       const doVerificador = new Set<string>(Object.values(CSTAT_FALHA_ASSINATURA));
-      expect(CSTAT_DO_SIMULADOR.filter((c) => !CSTAT_VISTOS.has(c) && !doVerificador.has(c))).toEqual([]);
+      const foraDaPorta = (c: string) => !porta.guardaEpec && CSTAT_SO_COM_EPEC.has(c);
+      expect(CSTAT_DO_SIMULADOR.filter((c) => !CSTAT_VISTOS.has(c) && !doVerificador.has(c) && !foraDaPorta(c))).toEqual([]);
     });
   });
 }

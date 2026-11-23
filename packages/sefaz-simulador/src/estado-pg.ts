@@ -22,7 +22,7 @@
  * do Postgres traz valores da linha, e o `<evento>` da CC-e tem o `xCorrecao`, texto livre).
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { filhoNfe, lerXml, textoNfe, type ProtocoloEvento, type ProtocoloNFe } from '@macuxierp/nfe-sefaz';
+import { ErroSefaz, filhoNfe, lerXml, textoNfe, type ProtocoloEvento, type ProtocoloNFe } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
 import {
   SequenciaSimuladorEsgotadaErro,
@@ -246,6 +246,17 @@ export function criarEstadoSimuladorPg(tx: Transacao): EstadoSimuladorRepo {
            evento_xml)
          VALUES (${TENANT}, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [...dst(d), chNFe, p.tpEvento, p.nSeqEvento, p.nProt, p.cStat, p.dhRegEvento, p.xml, e.eventoXml],
+      );
+    },
+    // RN-FAT-10 (ADR 0011): o simulador do worker atende filial simulada, que não entra em contingência. Sem EPEC no
+    // banco (nem tabela para ela): a leitura não acha nada (a nota com tpEmis 4 dá 468) e a gravação recusa.
+    async epecPorChave() {
+      return null;
+    },
+    async gravarEpec() {
+      throw new ErroSefaz(
+        'SEFAZ_CONTINGENCIA_SIMULADA',
+        'simulador da SEFAZ (Postgres): filial com NF-e simulada não entra em contingência, EPEC recusada (RN-FAT-10)',
       );
     },
     async numeroInutilizado(d, cnpj, serie, nNF) {

@@ -9,6 +9,7 @@
  * - `dhEmi` em UTC (ISO com Z) e o fuso da filial em minutos (Manaus = -240): o XML sai com o deslocamento.
  * Os nomes dos campos seguem as tags do leiaute 4.00 (MOC), para o mapeamento ser direto.
  */
+import { CUF, SVC_DA_UF, TP_EMIS_CONTINGENCIA, TpEmis, type Uf } from '@macuxierp/nfe-sefaz';
 import { cnpjValido, ieComDvValido } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { textoValidoXml } from './xml';
@@ -60,7 +61,8 @@ const Ide = z.object({
   cMunFG: Digitos(7),
   cMunFGIBS: Digitos(7).optional(),
   tpImp: z.union([z.literal(1), z.literal(2)]).default(1),
-  tpEmis: z.literal(1).default(1),
+  /** 1 normal; contingência: 4 EPEC, 6 SVC-AN, 7 SVC-RS (ADR 0011). Vai no `ide` e na chave. */
+  tpEmis: TpEmis.default(1),
   tpAmb: z.union([z.literal(1), z.literal(2)]),
   finNFe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),
   indFinal: z.union([z.literal(0), z.literal(1)]),
@@ -69,6 +71,42 @@ const Ide = z.object({
   verProc: Texto(1, 20),
   /** cNF já sorteado (retomada com os mesmos bytes). Sem ele, o emissor sorteia. */
   cNF: Digitos(8).optional(),
+  /**
+   * Entrada em contingência (`dhCont`, B28), em UTC (ISO com Z, milissegundos aceitos e descartados no XML): o instante
+   * em que o operador entrou (RN-FAT-05). Obrigatório com `tpEmis` ≠ 1 e proibido com 1; vai no XML com o deslocamento
+   * da filial, depois do `verProc` (ADR 0011).
+   */
+  dhCont: z.string().datetime().optional(),
+  /**
+   * Justificativa da entrada em contingência (`xJust`, B29: 15 a 256 caracteres; ADR 0011). Mesma regra do
+   * `dhCont`. Além do tamanho, o `Texto` recusa espaço nas pontas, espaço duplo e caractere de controle.
+   */
+  xJust: Texto(15, 256).optional(),
+});
+
+/** `cUF` → UF (para conferir a SVC da UF do emitente). */
+const UF_DO_CUF: ReadonlyMap<string, Uf> = new Map(Object.entries(CUF).map(([uf, c]) => [String(c), uf as Uf]));
+
+/**
+ * Contingência no `ide` (ADR 0011): com `tpEmis` ≠ 1, `dhCont` e `xJust` obrigatórios; com 1, proibidos; `dhCont` não
+ * pode ser depois da emissão; SVC só a da UF do emitente (`SVC_DA_UF`). O erro cita o campo e a regra.
+ */
+const IdeComContingencia = Ide.superRefine((ide, ctx) => {
+  const contingencia = ide.tpEmis !== 1;
+  for (const campo of ['dhCont', 'xJust'] as const) {
+    if (contingencia && ide[campo] === undefined)
+      ctx.addIssue({ code: 'custom', path: [campo], message: `RN-FAT-08: tpEmis ${ide.tpEmis} exige ${campo}` });
+    if (!contingencia && ide[campo] !== undefined)
+      ctx.addIssue({ code: 'custom', path: [campo], message: `${campo} só vai em nota de contingência (tpEmis ≠ 1)` });
+  }
+  if (ide.dhCont !== undefined && new Date(ide.dhCont).getTime() > new Date(ide.dhEmi).getTime())
+    ctx.addIssue({ code: 'custom', path: ['dhCont'], message: 'entrada em contingência depois da emissão' });
+  if (ide.tpEmis === TP_EMIS_CONTINGENCIA['svc-an'] || ide.tpEmis === TP_EMIS_CONTINGENCIA['svc-rs']) {
+    const uf = UF_DO_CUF.get(ide.cUF);
+    const svc = uf ? SVC_DA_UF[uf] : undefined;
+    if (!svc || TP_EMIS_CONTINGENCIA[svc] !== ide.tpEmis)
+      ctx.addIssue({ code: 'custom', path: ['tpEmis'], message: `tpEmis ${ide.tpEmis} não é a SVC da UF do emitente` });
+  }
 });
 
 /** RN-CAD-02: DV da IE pela UF do endereço (`false` reprova; UF ainda sem regra no ERP, `null`, passa). */
@@ -232,7 +270,7 @@ const Pagamento = z.object({
 });
 
 export const NotaParaEmissao = z.object({
-  ide: Ide,
+  ide: IdeComContingencia,
   emit: Emitente,
   dest: Destinatario.optional(),
   itens: z.array(Item).min(1).max(990),

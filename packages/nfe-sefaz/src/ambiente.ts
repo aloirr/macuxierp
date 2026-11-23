@@ -21,15 +21,67 @@ export const TP_AMB = Object.freeze({ producao: 1, homologacao: 2 } as const sat
 export const XNOME_HOMOLOGACAO = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
 
 /**
- * Modo de emissão que passa pelo transporte. `normal` vai ao autorizador da UF; `svc-an` e `svc-rs` são as
- * contingências on-line (SEFAZ Virtual). FS-DA (tpEmis 5) e EPEC (tpEmis 4) não entram aqui: a FS-DA não transmite
- * na hora (a nota segue depois pelo modo normal) e o EPEC é evento do Ambiente Nacional, fora da v1 (desenho §2.2).
+ * Modo de emissão que passa pelo transporte da AUTORIZAÇÃO. `normal` vai ao autorizador da UF; `svc-an` e `svc-rs` são
+ * as contingências on-line (SEFAZ Virtual). A EPEC (tpEmis 4) não é modo de transporte da autorização: o evento 110140
+ * vai ao Ambiente Nacional pelo `escolherDestinoEpec` e, na volta à normal, a NF-e com tpEmis 4 segue pelo modo
+ * `normal` (ADR 0011). FS-DA (tpEmis 5) fica fora da v1.
  */
 export const ModoEmissao = z.enum(['normal', 'svc-an', 'svc-rs']);
 export type ModoEmissao = z.infer<typeof ModoEmissao>;
 
 /** `tpEmis` do XML para cada modo. */
 export const TP_EMIS = Object.freeze({ normal: 1, 'svc-an': 6, 'svc-rs': 7 } as const satisfies Record<ModoEmissao, number>);
+
+/**
+ * Modalidades de contingência da v1 (ADR 0011; RN-FAT-05): a SVC da UF ou a EPEC. A decisão de entrar é do operador;
+ * o sistema só sugere. FS-DA fora da v1.
+ */
+export const ModalidadeContingencia = z.enum(['svc-an', 'svc-rs', 'epec']);
+export type ModalidadeContingencia = z.infer<typeof ModalidadeContingencia>;
+
+/** `tpEmis` da NF-e emitida em EPEC. */
+export const TP_EMIS_EPEC = 4;
+
+/**
+ * `tpEmis` de cada modalidade: 4 = EPEC, 6 = SVC-AN, 7 = SVC-RS. CERTO (conferência do modulo-fiscal, 22/11/2026, 07h12,
+ * pelo XSD do PL_010g); 2, 3, 5 e 9 ficam fora da v1 (ADR 0011).
+ */
+export const TP_EMIS_CONTINGENCIA = Object.freeze({
+  'svc-an': TP_EMIS['svc-an'],
+  'svc-rs': TP_EMIS['svc-rs'],
+  epec: TP_EMIS_EPEC,
+} as const satisfies Record<ModalidadeContingencia, number>);
+
+/** `tpEmis` que o ERP emite na v1: normal, EPEC, SVC-AN e SVC-RS (ADR 0011). */
+export const TpEmis = z.union([
+  z.literal(TP_EMIS.normal),
+  z.literal(TP_EMIS_EPEC),
+  z.literal(TP_EMIS['svc-an']),
+  z.literal(TP_EMIS['svc-rs']),
+]);
+export type TpEmis = z.infer<typeof TpEmis>;
+
+/**
+ * `tpEmis` que cada modo de transporte da autorização aceita. O autorizador normal recebe a nota normal e a nota
+ * EPEC transmitida na volta (RN-FAT-09); a SVC recebe só a própria (570 no resto). Fonte única para o transporte
+ * real (trava antes de sair) e para o simulador (570).
+ */
+export const TP_EMIS_ACEITOS = Object.freeze({
+  normal: Object.freeze([TP_EMIS.normal, TP_EMIS_EPEC]),
+  'svc-an': Object.freeze([TP_EMIS['svc-an']]),
+  'svc-rs': Object.freeze([TP_EMIS['svc-rs']]),
+} as const satisfies Record<ModoEmissao, readonly TpEmis[]>);
+
+/** `cOrgao` do Ambiente Nacional (RFB), destino do evento EPEC 110140. FORTE (fiscal, 22/11/2026): NT 2013.004. */
+export const C_ORGAO_AN = 91;
+
+/**
+ * Prazo para transmitir à SEFAZ normal a NF-e emitida em EPEC: 168 horas CONTADAS DA AUTORIZAÇÃO DO EPEC (não da
+ * emissão nem do encerramento da contingência). FORTE (fiscal, 22/11/2026, 07h12): Ajuste SINIEF 07/05. A nota da SVC
+ * não é retransmitida (FORTE, conferência do fiscal). Fonte única do número (ADR 0011): o faturamento usa esta constante pelo subcaminho
+ * puro `@macuxierp/nfe-sefaz/contingencia`.
+ */
+export const PRAZO_TRANSMISSAO_EPEC_HORAS = 168;
 
 export const Uf = z.enum([
   'RO', 'AC', 'AM', 'RR', 'PA', 'AP', 'TO', 'MA', 'PI', 'CE', 'RN', 'PB', 'PE', 'AL',

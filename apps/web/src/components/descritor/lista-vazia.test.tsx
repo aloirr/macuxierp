@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { TelaLista } from '@/lib/descritor/tipos';
-import { LISTA_TITULOS } from '@/lib/telas/faturamento';
+import { NOTA_FUSO } from '@/lib/descritor/textos';
+import { LISTA_NOTAS, LISTA_PEDIDOS_A_FATURAR, LISTA_REJEICOES, LISTA_TITULOS } from '@/lib/telas/faturamento';
 import { ListaGenerica } from './lista-generica';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -34,5 +35,10 @@ describe('lista vazia sem e com filtro (MC-0016)', () => {
     const t = { ...LISTA_TITULOS, pagina: semVazio } as TelaLista;
     expect(await render(t, '')).toContain('Nenhum registro com estes filtros.');
     expect(await render(t, 'status=aberto')).toContain('Nenhum registro com estes filtros.');
+  });
+  it('a nota de fuso aparece nas listas com data e hora e não em títulos (só datas)', async () => {
+    const nota = NOTA_FUSO;
+    for (const l of [LISTA_PEDIDOS_A_FATURAR, LISTA_NOTAS, LISTA_REJEICOES]) expect(await render(l, '')).toContain(nota);
+    expect(await render(LISTA_TITULOS, '')).not.toContain(nota);
   });
 });
