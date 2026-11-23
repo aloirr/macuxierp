@@ -9,8 +9,9 @@ export const MODULOS = ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 
 export type ModuloId = (typeof MODULOS)[number];
 
 /**
- * Perfis do ERP (docs/produto/03, RN-CORE-01). `analista_implantacao` (RN-CORE-09, v0.3.0): só a Carga de cadastros e a
- * consulta dos cadastros. O CHECK de `plataforma.usuario.perfil` só aceita o valor depois da migração 0033 (ADR 0012).
+ * Perfis do ERP (docs/produto/03, RN-CORE-01). `analista_implantacao` (RN-CORE-09, v0.3.0): só a consulta dos
+ * cadastros (a carga saiu na T-0058, decisão do PO). O CHECK de `plataforma.usuario.perfil` só aceita o valor depois
+ * da migração 0033 (ADR 0012).
  */
 export const PERFIS_V1 = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'] as const;
 export const PERFIS = [...PERFIS_V1, 'analista_implantacao'] as const;
