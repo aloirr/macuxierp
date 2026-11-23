@@ -7,3 +7,4 @@
 2026-11-23 — T-0051 — carga por entidade: modelo CSV, aviso de dependência e entidade única
 2026-11-23 — T-0051 — entidade_faltante no CARGA_DEPENDENCIA
 2026-11-23 — T-0051 — manifest do cadastros usa os PERFIS do SDK (RN-CORE-09)
+2026-11-23 — T-0053 — textos da regra A0 no cadastros (RD-1064, 1066–1069, 1080)
