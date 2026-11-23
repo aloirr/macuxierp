@@ -11,7 +11,7 @@ export interface DialogoProps {
   children: ReactNode;
   /** id do elemento que descreve o diálogo (aria-describedby). */
   descricaoId?: string;
-  /** Aviso fixo logo abaixo do título, fora da rolagem. */
+  /** Aviso fixo logo abaixo do título, fora da rolagem (15 px, peso 600). */
   aviso?: ReactNode;
   /** Tom do aviso: 'erro' para ação irreversível (ex.: Zerar). Padrão 'aviso'. */
   tomAviso?: 'aviso' | 'erro';
@@ -76,7 +76,7 @@ export function Dialogo({ titulo, aoFechar, rodape, children, descricaoId, aviso
       >
         <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0, flex: 'none' }}>{titulo}</h2>
         {aviso ? (
-          <div id={avisoId} data-aviso-dialogo="" style={{ ...texto('pequeno'), ...tons[tomAviso], padding: espaco.sm, borderRadius: canto, flex: 'none', marginBottom: espaco.sm }}>{aviso}</div>
+          <div id={avisoId} data-aviso-dialogo="" style={{ ...texto('base', 'rotulo-campo'), ...tons[tomAviso], padding: espaco.sm, borderRadius: canto, flex: 'none', marginBottom: espaco.sm }}>{aviso}</div>
         ) : null}
         <div data-corpo-dialogo="" style={{ padding: '4px', overflowY: 'auto', flex: '1 1 auto', minHeight: 0, display: 'grid', gap: espaco.md, alignContent: 'start' }}>{children}</div>
         {rodape ? <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end', flex: 'none' }}>{rodape}</div> : null}

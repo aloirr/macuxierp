@@ -27,3 +27,4 @@
 2026-11-23 — T-0058 — Dialogo: tomAviso (aviso|erro), corpo com padding 4px nos quatro lados, altura calc(100dvh - 48px) fixada; prints do Zerar em tom erro, rolagem no fim e foco no último botão
 2026-11-23 — T-0058 — Dialogo: fallback 100vh/dvh por estado, teste do aviso no DialogoMotivo, docs
 2026-11-23 — T-0058 — Dialogo: 8px entre aviso e corpo (marginBottom) e prints regenerados com botão da marca em foco
+2026-11-23 — T-0068 — aviso do Dialogo em 15 px/600 e AlertaBloqueante (ícone, barra 4 px, role=alert, foco) com doc em docs/design/alerta-bloqueante; RD-1262–1265; foco verificado no Chromium
