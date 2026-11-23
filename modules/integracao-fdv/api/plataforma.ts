@@ -8,7 +8,7 @@
  *   a função do banco só confere de novo a pré-condição mínima (`MXI03`).
  * - A chave do conector é só de escrita: cifrada aqui (AES-256-GCM, AAD = `:id` da empresa ALVO) e some. Nunca vai a log, resposta,
  *   auditoria, evento nem erro. O módulo não lê variável de ambiente: a apps/api injeta a chave mestra.
- * - Erros do banco: sobem crus para o `erroDaPlataforma` da apps/api (`P0002`→404, `23514`→422, `MXI*`→409). O plugin só devolve o 422
+ * - Erros do banco: sobem crus para o `erroDaPlataforma` da apps/api (`P0002`→404, `23514`/`MXI04`→422, demais `MXI*`→409). O plugin só devolve o 422
  *   `RN-CORE-02` da conferência prévia por `modulo_licenciado` do `portal_ler` (ADR 0013 seção 2).
  * - O `PUT /credencial` não tem `Idempotency-Key` (o hash do corpo levaria a chave); a troca é idempotente por si e o `p_anterior_id`
  *   recusa a troca baseada em leitura velha (`MXI02`).

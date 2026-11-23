@@ -171,8 +171,16 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
     expect(await credenciais(SEM)).toHaveLength(0);
   });
 
-  it('empresa suspensa: a função da 0038 recusa com 23514 e o erro sobe cru (a apps/api mapeia para 422)', async () => {
-    await expect(chamar('PUT', C.credencial, { params: { id: SUSPENSA }, corpo: ENTRADA })).rejects.toMatchObject({ code: '23514' });
+  it('empresa suspensa: recusa com 23514 (0038) ou MXI04 empresa_inativa (0039); o erro sobe cru (a apps/api mapeia para 422)', async () => {
+    const erro = await chamar('PUT', C.credencial, { params: { id: SUSPENSA }, corpo: ENTRADA }).then(
+      () => null,
+      (e: unknown) => e as { code?: string; detail?: string },
+    );
+    expect(erro).not.toBeNull();
+    expect(
+      erro?.code === '23514' || (erro?.code === 'MXI04' && erro?.detail === 'empresa_inativa'),
+      `código inesperado: ${erro?.code} / ${erro?.detail}`,
+    ).toBe(true);
     expect(await credenciais(SUSPENSA)).toHaveLength(0);
   });
 
