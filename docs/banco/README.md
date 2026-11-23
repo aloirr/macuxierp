@@ -236,6 +236,39 @@ Decisão R-20261123-150400. Aditiva e reexecutável; nenhuma linha de dado muda 
 - Interna `integracao_fdv.portal_conferir_evento(jsonb)` (IMMUTABLE, SECURITY DEFINER, `search_path` fixo, sem EXECUTE para ninguém): a conferência do `p_evento_carga_inicial` (NULL ou `{entidades: [texto, ...]}` não vazio, senão 23514), chamada pelo `portal_credencial_definir` e pelo `portal_configurar`.
 - Reexecutar a 0038 volta o DEFAULT antigo e o configurar de 4 argumentos: a 0042 precisa rodar depois (o teste da 0038 faz isso). Teste: `db/testes/integracao-fdv-credencial-vazia-0042.db.test.ts`.
 
+## Zerar dados por cadastro (0043, T-0058)
+Portal /config, RN-CAD-10. O banco só fornece os fatos e aplica o plano; a cascata, os "mantidos" e o que anular são do `planoZeragem` (função pura do domain do cadastros). Seis funções `SECURITY DEFINER`, `search_path = pg_catalog, pg_temp`, `REVOKE ALL FROM PUBLIC` e `EXECUTE` só do `macuxierp_config` (que ganhou `USAGE` em `cadastros`, `pedido` e `faturamento`, sem ler tabela). Cada uma fica no próprio schema e não lê tabela de outro schema de módulo (regra 1; só `plataforma.tenant`/`tenant_modulo` na conferência da empresa, como a 0038). A API chama as seis **na mesma transação** (as travas valem até o fim dela).
+
+| Função | Faz | Devolve |
+|---|---|---|
+| `cadastros.portal_zeragem_fatos(p_tenant uuid, p_cadastros text[])` | só lê, `FOR SHARE` nas linhas devolvidas | `{tabelas: [{tabela, linhas: [{id, refs: {produto?, filial?, cliente?, tabela_preco?, vendedor?, condicao_pagamento?}, com_chave}]}]}` |
+| `pedido.portal_usos_cadastros(p_tenant uuid, p_refs jsonb)` | só lê, `FOR SHARE` em `pedido.pedido` (e `pedido_item`, no produto) | `{em_uso: [{tabela, ids, motivo: 'pedido'}]}` |
+| `faturamento.portal_usos_cadastros(p_tenant uuid, p_refs jsonb)` | só lê, `FOR SHARE` em nota, item e título; `FOR KEY SHARE` em série, inutilização, contingência e configuração fiscal (não barra a reserva de número) | `{em_uso: [{tabela, ids, motivo: 'nota' \| 'titulo'}], filiais_com_nota: [uuid]}` |
+| `integracao_fdv.portal_estado_entidades(p_tenant uuid, p_entidades text[])` | só lê (`ligada` como o `portal_ler`; `lote_em_voo` pelo `portal_lote_em_voo`) | `{entidades: [{entidade, ligada, lote_em_voo}]}` |
+| `integracao_fdv.portal_zerar_espelho(p_tenant uuid, p_entidades text[], p_request_id text)` | travas sinal → credencial → cursor_entidade → registro_publicado; reconfere ligada e lote em voo; desliga o espelho do UUID antigo; audita `integracao-fdv.espelho.zerar` só com as contagens | `{entidades: [{entidade, registros}]}` |
+| `cadastros.portal_zerar(p_tenant uuid, p_plano jsonb, p_request_id text)` | `FOR UPDATE` nos registros, anula, apaga na ordem filho → pai; audita `cadastros.dados.zerar` só com as contagens | `{apagados: [{tabela, quantidade}], anulados: [{tabela, coluna, quantidade}]}` |
+
+**Listas fechadas** (fora delas = `check_violation`):
+- cadastros (`p_cadastros`, espelho de `CADASTROS_ZERAR_PORTAL`): `filial`, `vendedor`, `forma_prazo`, `produto`, `produto_unidade`, `preco`, `estoque`, `cliente`, `cliente_endereco` (sem nulo, repetição nem lista vazia);
+- tabelas do plano (`apagar` e `em_uso`), na ordem pai → filho: `filial`, `vendedor`, `condicao_pagamento`, `tabela_preco`, `produto`, `cliente`, `produto_unidade`, `tabela_preco_item`, `estoque_saldo`, `estoque_movimento`, `cliente_endereco`, `cliente_contato`;
+- colunas anuláveis (as FKs NULL-áveis do schema para uma tabela apagável): `cliente.vendedor_id`, `cliente.condicao_pagamento_id`, `cliente.tabela_preco_id`. `cliente.filial_id` e `vendedor.filial_id` são NOT NULL (a filial só sai com eles);
+- `p_refs`: `filial`, `vendedor`, `condicao_pagamento`, `tabela_preco`, `produto`, `cliente` (todas opcionais, listas de uuid; a mesma `p_refs` serve às duas funções de uso);
+- entidades do Hub: as 10 da F2 (`portal_entidades_f2`), sem nulo nem repetição.
+
+**Internas do `plataforma`** (sem `EXECUTE` para ninguém): `plataforma.portal_refs_uuid(jsonb, text[])` valida `p_refs` nas duas funções de uso e os `ids` do plano (único lugar da regex de uuid); `plataforma.empresa_alvo_leitura(uuid)` trava a empresa com `FOR KEY SHARE` (P0002) para as funções de uso e a conferência do `cadastros`, que usa a `plataforma.modulo_licenciado` (0040) para a licença.
+
+**Alcance dos fatos** (cadastro pedido = todas as linhas da empresa; dependência = só as linhas que apontam para as trazidas; linhas com `deleted_at` também vêm, porque seguram as FKs): `filial` traz filial, vendedor, cliente, tabela_preco_item, estoque_saldo, estoque_movimento e o endereço e o contato dos clientes dela; `vendedor`, `forma_prazo` e `preco` trazem os clientes que apontam para eles (para anular); `produto` traz produto_unidade, tabela_preco_item, estoque_saldo e estoque_movimento; `preco` traz tabela_preco e tabela_preco_item; `cliente` traz endereço e contato. Nenhum outro dado sai (nem código, nem nome, nem a origem do movimento).
+
+**Espelho:** em `registro_publicado`, `erp_id = NULL` em toda linha da entidade e `hash_confirmado`/`confirmado_em = NULL` onde há payload (como a troca de conector da 0038). O payload **não** vai a NULL: o CHECK `registro_publicado_payload_anulado` (0007) só aceita payload nulo com `hash_confirmado` preenchido (e inativo, não pendente); a linha já anulada fica como está, só sem o `erp_id`. A linha e o `registro_external_id` ficam; no `cursor_entidade`, `cursor_alterado_em`, `cursor_external_id` e `sessao_aberta_id = NULL`, e a agenda é antecipada. Assim a recarga religa a chave ao UUID novo (o `gravarRegistro` só recusa `erp_id` diferente quando não é nulo), sem inativar nem recriar no FDV.
+
+**Gatilho do `estoque_movimento`:** o `somente_insercao` é desligado (`ALTER TABLE ... DISABLE TRIGGER`) só em volta do DELETE e só quando o plano tem movimento a apagar. O `ALTER TABLE` é transacional (o erro o desfaz junto) e a função roda como dona da tabela; o gatilho volta ligado antes do fim. Custo: a trava `ACCESS EXCLUSIVE` na tabela até o commit (o zerar é raro e só do superadmin). Fora dessa transação, o gatilho continua barrando `UPDATE`, `DELETE` e `TRUNCATE` até para o dono.
+
+**SQLSTATEs:** `MXS01` sem sessão de superadmin; `P0002` empresa inexistente, de referência ou excluída; `MXC04` (só nas do schema `cadastros`) com DETAIL `empresa_inativa` ou `modulo_desligado` (licença do `cadastros`); `MXC03` "o estado mudou; recarregue" com DETAIL `em_uso` (id de `apagar` em `em_uso`), `sumiu` (id que não existe mais no tenant), `anular_fora_do_plano` (a coluna já não aponta para um registro que sai) ou `referencia` (FK do schema `cadastros` ainda segura o DELETE), e HINT = tabela; `MXI03` com DETAIL `entidade_ligada` ou `lote_em_voo` e HINT = entidade; `check_violation` para formato e listas. Nenhuma das seis escreve no faturamento nem no fiscal (regra 7).
+
+**Pendências conhecidas:** `core.certificado`, `core.ambiente_fiscal`, `core.aviso_a1` e `plataforma.usuario.filial_ids` também guardam `filial_id` e nenhuma das seis os lê (outros schemas); o domain ou uma função do core precisa cobri-los antes de apagar filial. Corrida com pedido ou nota **novos** entre os usos e o DELETE não é barrada pelo banco (não há FK entre schemas; as travas só seguram as linhas que já existem).
+
+Migração: `db/migrations/0043_cadastros_zerar.sql`; testes: `db/testes/cadastros-zerar-0043.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
