@@ -24,6 +24,7 @@ Espaçamentos: a marca ainda não tem tokens de espaço; os componentes usam mú
 ## FormularioItens<T extends ItemLinha>
 `itens: T[]` (mínimo `{ chave, produtoId, quantidade, precoUnitarioCentavos, descontoCentavos }`; o módulo pode estender), `aoMudar(itens)`, `novoItem(chave) => T` (linha vazia no formato do módulo), `renderSeletorProduto({ valor, aoEscolher, rotulo }) => ReactNode` (injetado), `formatarCentavos(c) => string`, `calcularTotal(item) => centavos` (**obrigatória**: a função do domínio do pedido; a API revalida), `desabilitado?`, `legenda?` (`<caption>` da tabela, ex.: "Itens do pedido"), `erros?: Record<chave, string | ErrosItem>`.
 Erros: `ErrosItem = { produtoId?, quantidade?, precoUnitarioCentavos?, descontoCentavos? }`. Erro de campo conforme MC-0015 (abaixo). A string simples continua valendo e aparece abaixo do seletor de produto. O seletor é injetado: ele recebe `idErro?` (id da mensagem do produto) para ligar ao seu `aria-describedby`. O texto inválido digitado tem prioridade sobre o erro de fora.
+`temErroExterno?`: o chamador soma erros de fora dos itens (cabeçalho) ao aviso único; não ponha outra RegiaoErros na tela.
 Colunas: Qtd. 88 px e Preço unit., Desconto e Total 120 px; "Produto" fica com o resto, para não cortar a descrição.
 Campos: quantidade em texto local (aceita "1,5", até 4 casas); preço e desconto digitados em reais ("1.234,56"), convertidos por string a centavos inteiros, sem ponto flutuante; texto inválido marca `aria-invalid` e não publica valor.
 

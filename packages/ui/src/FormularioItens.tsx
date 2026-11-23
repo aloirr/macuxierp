@@ -45,6 +45,8 @@ export interface FormularioItensProps<T extends ItemLinha = ItemLinha> {
   erros?: Record<string, string | ErrosItem>;
   /** Legenda da tabela (`<caption>`), ex.: "Itens do pedido". */
   legenda?: string;
+  /** Há erro fora dos itens (ex.: cabeçalho do pedido); soma-se ao aviso da RegiaoErros para haver uma região única na tela. */
+  temErroExterno?: boolean;
 }
 
 const campo = { ...campoBase, minWidth: 0, width: '100%', boxSizing: 'border-box' } as const;
@@ -110,7 +112,7 @@ function CampoNumerico(p: CampoProps) {
 const thNum = (largura: number, titulo: string) => <th style={{ ...tabela.cabecalho, ...numerico, width: largura }}>{titulo}</th>;
 
 export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioItensProps<T>) {
-  const { itens, aoMudar, novoItem, renderSeletorProduto, formatarCentavos, calcularTotal, desabilitado, erros = {}, legenda } = p;
+  const { itens, aoMudar, novoItem, renderSeletorProduto, formatarCentavos, calcularTotal, desabilitado, erros = {}, legenda, temErroExterno } = p;
   const base = useId();
   // Campos numéricos com texto inválido (estado local do CampoNumerico), por `chave:campo`.
   const [invalidos, setInvalidos] = useState<ReadonlySet<string>>(new Set());
@@ -126,7 +128,7 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
     [],
   );
   const comErro = (v: string | Record<string, string> | undefined) => (typeof v === 'string' ? v !== '' : v !== undefined && Object.values(v).some(Boolean));
-  const temErro = invalidos.size > 0 || itens.some((i) => comErro(erros[i.chave]));
+  const temErro = temErroExterno === true || invalidos.size > 0 || itens.some((i) => comErro(erros[i.chave]));
   const mudar = (chave: string, parte: Partial<ItemLinha>) =>
     aoMudar(itens.map((i) => (i.chave === chave ? ({ ...i, ...parte } as T) : i)));
   const adicionar = () => {
