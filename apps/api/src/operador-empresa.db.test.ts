@@ -6,7 +6,6 @@
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +13,7 @@ import { MODULOS } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { envPsqlAdmin, padraoDoFonte, senhaProvisoria } from './apoio-operador-teste';
 import { appPgDeTeste } from './apoio-teste';
 import { ARGON2_PADRAO, conferirSenha } from './auth/senha';
 
@@ -34,39 +34,14 @@ function listaDoEmpresa(nome: string): string[] {
   if (!m) throw new Error(`${nome} não encontrado em empresa.mjs`);
   return [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!);
 }
-/** `.source` da regex literal `const <nome> = /.../;` de um fonte .mjs. */
-function padrao(fonte: string, nome: string): string {
-  const m = new RegExp(`const ${nome}\\s*=\\s*/(.+?)/[a-z]*;`).exec(fonte);
-  if (!m) throw new Error(`${nome} não encontrado`);
-  return new RegExp(m[1]!).source;
-}
 const LIGADAS = listaDoEmpresa('MODULOS_LIGAR').sort();
-/** Alfabeto da senha provisória da API lido do fonte (as 4 constantes de modules/core/domain/usuarios.ts): a regra de
- *  fronteiras (app-importa-interno-de-modulo) não deixa apps/ importar `@macuxierp/core/domain`. */
-const FONTE_USUARIOS = readFileSync(resolve(RAIZ, 'modules', 'core', 'domain', 'usuarios.ts'), 'utf8');
-const ALFABETO = ['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS']
-  .map((nome) => {
-    const m = new RegExp(`const ${nome} = '([^']+)';`).exec(FONTE_USUARIOS);
-    if (!m) throw new Error(`${nome} não encontrado em usuarios.ts`);
-    return m[1]!;
-  })
-  .join('');
-if (ALFABETO.length !== 64) throw new Error('alfabeto da API deixou de ter 64 símbolos: revise senhaProvisoria()');
-
-/** 16 caracteres do alfabeto da API (64 símbolos: 1 byte = 1 caractere sem viés), com maiúscula, minúscula e dígito. */
-function senhaProvisoria(): string {
-  for (;;) {
-    const s = [...randomBytes(16)].map((b) => ALFABETO[b % 64]).join('');
-    if (/[A-Z]/.test(s) && /[a-z]/.test(s) && /[2-9]/.test(s)) return s;
-  }
-}
 
 describe('empresa.mjs: listas e padrões presos às fontes', () => {
   it('MODULOS_LIGAR ∪ MODULOS_INFORMAR = MODULOS do platform-sdk', () => {
     expect([...listaDoEmpresa('MODULOS_LIGAR'), ...listaDoEmpresa('MODULOS_INFORMAR')].sort()).toEqual([...MODULOS].sort());
   });
   it('PADRAO_SLUG e PADRAO_OPERADOR iguais aos de scripts/plataforma/comum.mjs', () => {
-    for (const nome of ['PADRAO_SLUG', 'PADRAO_OPERADOR']) expect(padrao(FONTE_EMPRESA, nome)).toBe(padrao(FONTE_COMUM, nome));
+    for (const nome of ['PADRAO_SLUG', 'PADRAO_OPERADOR']) expect(padraoDoFonte(FONTE_EMPRESA, nome)).toBe(padraoDoFonte(FONTE_COMUM, nome));
   });
 });
 
@@ -74,7 +49,6 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   let b: BancoEfemero;
   let app: FastifyInstance;
   const senha = senhaProvisoria();
-  const env = process.env;
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
@@ -90,14 +64,7 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     const nome = o.nome ?? EMPRESA_NOME;
     const r = spawnSync(process.execPath, [EMPRESA_MJS, '--slug', o.slug ?? 'thathyany', '--operador', 'alexandre', ...args], {
       env: {
-        PATH: env.PATH,
-        PGHOST: env.MACUXI_PG_HOST ?? '127.0.0.1',
-        PGPORT: env.MACUXI_PG_PORTA ?? '5432',
-        PGUSER: env.MACUXI_PG_ADMIN_USUARIO ?? 'postgres',
-        PGDATABASE: b.nome,
-        PGCONNECT_TIMEOUT: '5',
-        ...(env.MACUXI_PG_ADMIN_SENHA === undefined ? {} : { PGPASSWORD: env.MACUXI_PG_ADMIN_SENHA }),
-        ...(env.MACUXI_PSQL ? { MACUXIERP_PSQL: env.MACUXI_PSQL } : {}),
+        ...envPsqlAdmin(b.nome),
         MACUXIERP_EMPRESA_NOME: nome,
         MACUXIERP_ADMIN_EMAIL: o.email ?? EMAIL,
         MACUXIERP_ADMIN_NOME: ADMIN_NOME,
