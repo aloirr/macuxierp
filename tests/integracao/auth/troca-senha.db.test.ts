@@ -247,7 +247,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
   });
 
   describe.skipIf(!TEM_ARGON2_NATIVO)('operador.sh criar-empresa: a senha impressa cumpre a regra e cai em TROCAR_SENHA', () => {
-    const SLUG_OP = 't0052-operador';
+    const CODIGO_OP = 'AM0001'; // fictício, UF + 4 dígitos (RN-CORE-11)
+    const SLUG_OP = CODIGO_OP.toLowerCase(); // o operador grava o código em minúsculas em plataforma.tenant.slug
     const EMAIL_OP = 'adm-t0052-operador@exemplo.invalid';
     let pasta = '';
     let bin = '';
@@ -264,7 +265,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
     it('com --confirmar: imprime a senha uma vez; ela cumpre a regra, entra com deve_trocar_senha e a troca libera as rotas', async () => {
       const r = spawnSync(
         'bash',
-        [OPERADOR_SH, 'criar-empresa', '--slug', SLUG_OP, '--nome', 'Empresa Fictícia Operador T-0052', '--admin-email', EMAIL_OP, '--operador', 'alexandre', '--confirmar'],
+        [OPERADOR_SH, 'criar-empresa', '--codigo', CODIGO_OP, '--nome', 'Empresa Fictícia Operador T-0052', '--admin-email', EMAIL_OP, '--operador', 'alexandre', '--confirmar'],
         {
           env: { ...envPsqlAdmin(b.nome), PATH: `${bin}:${process.env.PATH ?? ''}`, HOME: pasta, MACUXIERP_DIR: erp, NODE_REAL: process.execPath },
           input: '',
