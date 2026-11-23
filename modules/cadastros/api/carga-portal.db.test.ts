@@ -154,8 +154,8 @@ describe.skipIf(!PG_DISPONIVEL)('carga no /config (substituir tudo) no PostgreSQ
     }, 120_000);
   });
 
-  describe('forma × prazo em condicao_pagamento (RN-CAD-10)', () => {
-    const rodar = (tenant: string, cadastro: 'forma_pagamento' | 'prazo_pagamento', conteudo: string) =>
+  describe('condição de pagamento (a forma vive nela, RN-CAD-09; RN-CAD-10)', () => {
+    const rodar = (tenant: string, cadastro: 'condicao_pagamento', conteudo: string) =>
       app.comTenant(tenant, async (tx: Transacao) => {
         const c = {
           sessao: sessaoDe('administrador'), tx, request_id: 'r', agora: new Date('2026-11-23T15:00:00Z'),
@@ -171,20 +171,11 @@ describe.skipIf(!PG_DISPONIVEL)('carga no /config (substituir tudo) no PostgreSQ
       return (n ? l.slice(0, n + 1) : l).join('\n');
     };
 
-    it('RN-CAD-10: substituir_tudo com forma_pagamento.csv não inativa nenhuma condição', async () => {
-      const T = await criarTenant(efemero.admin, 'portal-forma', ['cadastros']);
+    it('RN-CAD-10: substituir_tudo com condicoes_pagamento.csv inativa só as condições ausentes', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-condicao', ['cadastros']);
       await carregarTudo(T);
       const antes = await ativas(T);
-      expect(antes).toBeGreaterThan(1);
-      await rodar(T, 'forma_pagamento', arq('forma_pagamento.csv', 1));
-      expect(await ativas(T)).toBe(antes);
-    }, 120_000);
-
-    it('RN-CAD-10: substituir_tudo com prazo_pagamento.csv inativa só as condições ausentes', async () => {
-      const T = await criarTenant(efemero.admin, 'portal-prazo', ['cadastros']);
-      await carregarTudo(T);
-      const antes = await ativas(T);
-      await rodar(T, 'prazo_pagamento', arq('prazo_pagamento.csv', 1));
+      await rodar(T, 'condicao_pagamento', arq('condicoes_pagamento.csv', 1));
       expect(await ativas(T)).toBe(1);
       expect(antes).toBeGreaterThan(1);
     }, 120_000);

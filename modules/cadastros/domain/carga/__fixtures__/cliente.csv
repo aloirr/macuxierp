@@ -1,3 +1,4 @@
-external_id;razao_social;alterado_em;ativo;nome_fantasia;documento;vendedor_external_id;endereco.logradouro;endereco.numero;endereco.complemento;endereco.bairro;endereco.cidade;endereco.uf;endereco.cep;limite_credito_cents;inscricao_estadual;tabela_preco_external_id;filial_external_id;condicao_pagamento_external_id
-C-EX-01;Cliente Exemplo 01 Ltda;;sim;Cliente Exemplo 01;99.000.002/0001-48;V-EX-01;Rua Teste;;;Bairro Teste;Manaus;AM;69000-001;100000;;T-EX-01;F-EX-01;PZ-EX-01
-C-EX-02;Cliente Exemplo 02;;sim;;123.456.780-62;V-EX-01;Avenida Teste;25;;Centro;São Paulo;SP;01000-000;0;;T-EX-01;F-EX-01;
+external_id;razao_social;alterado_em;ativo;nome_fantasia;documento;vendedor_external_id;endereco.logradouro;endereco.numero;endereco.complemento;endereco.bairro;endereco.cidade;endereco.uf;endereco.cep;limite_credito_cents;inscricao_estadual;tabela_preco_external_id;filial_external_id;condicao_pagamento_external_id;tipo_endereco;seq
+C-EX-01;Cliente Exemplo 01 Ltda;;sim;Cliente Exemplo 01;99.000.002/0001-48;V-EX-01;Rua Teste;;;Bairro Teste;Manaus;AM;69000-001;100000;;T-EX-01;F-EX-01;PZ-EX-01;principal;
+C-EX-01;Cliente Exemplo 01 Ltda;;sim;Cliente Exemplo 01;99.000.002/0001-48;V-EX-01;Rua Entrega;50;;Distrito;Manaus;AM;69000-002;100000;;T-EX-01;F-EX-01;PZ-EX-01;entrega;1
+C-EX-02;Cliente Exemplo 02;;sim;;123.456.780-62;V-EX-01;Avenida Teste;25;;Centro;São Paulo;SP;01000-000;0;;T-EX-01;F-EX-01;;;

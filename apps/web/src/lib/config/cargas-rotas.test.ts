@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CODIGO_ZERAGEM_BLOQUEADA, MAX_BYTES_ARQUIVO_CARGA_PORTAL } from '@macuxierp/platform-sdk';
+import { CODIGO_ZERAGEM_BLOQUEADA, CODIGOS_ESTADO_MUDOU_ZERAR, MENSAGENS_CARGA_PORTAL, MAX_BYTES_ARQUIVO_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 
 const estado = vi.hoisted(() => ({ cookie: 'tok-config' as string | undefined }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: (n: string) => (n === 'mx_config' && estado.cookie ? { value: estado.cookie } : undefined), delete: vi.fn() }) }));
@@ -82,12 +82,6 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     expect((chamadas[0]?.corpo as FormData).get('frase')).toBe('  AUTORIZO  substituir TUDO. ');
     expect(chamadas[0]?.url).toContain('gravar?modo=substituir_tudo');
   });
-  it('gravar: 409 (dependência pendente ou carga em andamento) mantém o 409 e a mensagem da API', async () => {
-    resposta = () => json({ codigo: 'CONFLITO', mensagem: 'Já há uma carga em andamento nesta empresa; aguarde terminar.' }, 409);
-    const r = await tratarCarga(await comTamanho(multipart(), { 'idempotency-key': CHAVE }, '?modo=adicionar'), EMP, 'produto', 'gravar');
-    expect(r.status).toBe(409);
-    expect(await r.json()).toMatchObject({ ok: false, erro: 'Já há uma carga em andamento nesta empresa; aguarde terminar.' });
-  });
   it('sem sessão do /config: 401 com o destino do login e nenhuma chamada à API', async () => {
     estado.cookie = undefined;
     const r = await tratarCarga(await comTamanho(multipart()), EMP, 'produto', 'validar');
@@ -163,11 +157,11 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     expect(r.status).toBe(422);
     expect(await r.json()).toMatchObject({ ok: false, erro: 'A empresa não está ativa ou não tem o módulo Cadastros.' });
   });
-  it('409 por dependência pendente (MXC03) mantém o 409 e a mensagem da API', async () => {
-    resposta = () => json({ codigo: 'CONFLITO', mensagem: 'Carregue Produtos antes de Preços.' }, 409);
+  it('409 de carga em andamento (MXC01) mantém o 409 e a mensagem da API', async () => {
+    resposta = () => json({ codigo: 'CONFLITO', mensagem: MENSAGENS_CARGA_PORTAL.cargaEmAndamento }, 409);
     const r = await tratarCarga(await comTamanho(multipart(), { 'idempotency-key': CHAVE }, '?modo=adicionar'), EMP, 'preco', 'gravar');
     expect(r.status).toBe(409);
-    expect(await r.json()).toMatchObject({ erro: 'Carregue Produtos antes de Preços.' });
+    expect(await r.json()).toMatchObject({ erro: MENSAGENS_CARGA_PORTAL.cargaEmAndamento });
   });
   it('400 VALIDACAO da API continua 400 (o status não vira 422)', async () => {
     resposta = () => json({ codigo: 'VALIDACAO', mensagem: 'Modo inválido.' }, 400);
@@ -234,14 +228,14 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     expect(r.status).toBe(422);
     expect(await r.json()).toEqual({ ok: false, erro: 'Há integração ligada ou lote em andamento; resolva antes de zerar.', codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento'], chaveNova: true });
   });
-  it.each(['em_uso', 'sumiu', 'anular_fora_do_plano', 'referencia'])('409 MXC03 no zerar (%s): "Os dados mudaram. Confira de novo." com o código para refazer a prévia', async (codigo) => {
+  it.each(CODIGOS_ESTADO_MUDOU_ZERAR)('409 MXC03 no zerar (%s): "Os dados mudaram. Confira de novo." com o código para refazer a prévia', async (codigo) => {
     resposta = () => json({ codigo: 'CONFLITO', mensagem: 'x', detalhes: { codigo } }, 409);
     const r = await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'autorizo zerar os dados' }), EMP);
     expect(r.status).toBe(409);
     expect(await r.json()).toEqual({ ok: false, erro: 'Os dados mudaram. Confira de novo.', codigo: 'dados_mudaram', chaveNova: true });
   });
   it('409 com outro código no zerar não vira "dados mudaram"', async () => {
-    resposta = () => json({ codigo: 'CONFLITO', mensagem: 'x', detalhes: { codigo: 'dependencia_pendente' } }, 409);
+    resposta = () => json({ codigo: 'CONFLITO', mensagem: 'x', detalhes: { codigo: 'carga_em_andamento' } }, 409);
     const r = await tratarZerar(reqZerar({ cadastros: ['produto'], frase: 'autorizo zerar os dados' }), EMP);
     expect((await r.json()).codigo).not.toBe('dados_mudaram');
   });

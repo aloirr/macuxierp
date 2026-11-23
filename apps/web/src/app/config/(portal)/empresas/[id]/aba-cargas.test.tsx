@@ -1,11 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { CADASTROS_CARGA_PORTAL, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
+import { CADASTROS_CARGA_PORTAL, CADASTROS_ZERAR_PORTAL, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
 import { EMP, conferencia as conferenciaBruta, situacoes } from '@/lib/config/cargas-fixtures';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
-import { AVISO_ZERAR, textoSemChave } from '@/lib/config/cargas';
+import { AVISO_ZERAR, ROTULO_ZERAR, textoSemChave } from '@/lib/config/cargas';
 import { AbaCargas, EfeitoSubstituir, ImportarCarga, PainelConferencia, rotuloArquivo, AvisoSemChave, ZerarDados } from './aba-cargas';
 
 const dados = situacoes({ filial: { situacao: 'carregado', quantidade: 1 }, produto: { situacao: 'com_erro', erros: 2 } });
@@ -134,12 +134,11 @@ describe('janela Zerar dados', () => {
     expect(h).toContain('class="mx-checkbox"');
     expect(h).not.toContain('corpo-confirmar');
   });
-  it('lista os 9 cadastros com checkbox e rótulos legíveis; por padrão todos marcados', () => {
+  it('lista os cadastros do SDK com checkbox e rótulos legíveis; por padrão todos marcados', () => {
     const h = zerar();
-    expect(h.match(/type="checkbox"/g)).toHaveLength(9);
-    expect(h.match(/checked=""/g)).toHaveLength(9);
-    expect(h).toContain('<span>Condições de pagamento</span>');
-    expect(h).toContain('<span>Endereços de clientes</span>');
+    expect(h.match(/type="checkbox"/g)).toHaveLength(CADASTROS_ZERAR_PORTAL.length);
+    expect(h.match(/checked=""/g)).toHaveLength(CADASTROS_ZERAR_PORTAL.length);
+    CADASTROS_ZERAR_PORTAL.forEach((c) => expect(h).toContain(`<span>${ROTULO_ZERAR[c]}</span>`));
     expect(zerar({ selecaoInicial: ESCOLHA }).match(/checked=""/g)).toHaveLength(2);
   });
   it('seleção mínima: sem nenhum marcado pede um cadastro, não mostra prévia e o confirmar fica desligado', () => {
@@ -168,7 +167,7 @@ describe('janela Zerar dados', () => {
   });
   it('bloqueio: mostra o motivo legível e o confirmar fica desligado', () => {
     const h = zerar({ selecaoInicial: ['preco'], previaInicial: previa({ efetivos: ['preco'], bloqueios: [{ cadastro: 'preco', motivo: 'integracao_ligada' }, { cadastro: 'produto', motivo: 'lote_em_andamento' }] }) });
-    expect(h).toContain('Desligue o envio de Preços na aba Integração FDV antes de zerar.');
+    expect(h).toContain(`Desligue o envio de ${ROTULO_ZERAR.preco} na aba Integração FDV antes de zerar.`);
     expect(h).toContain('Há uma carga em andamento. Espere terminar para zerar.');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Zerar dados<\/button>/);
   });

@@ -2,14 +2,15 @@ import {
   celulaBooleana, celulaCentavos, celulaData, celulaDecimal, celulaInteiro, celulaLista, normalizarDocumento, type CelulaConvertida,
 } from '@macuxierp/platform-sdk';
 import {
-  LinhaCliente, LinhaClienteEndereco, LinhaEstoque, LinhaFilial, LinhaFormaPagamento, LinhaPrazoPagamento, LinhaPreco,
-  LinhaProduto, LinhaProdutoUnidade, LinhaVendedor, type EntidadeCarga, type LinhasCarga,
+  LinhaCliente, LinhaCondicaoPagamento, LinhaEstoque, LinhaFilial, LinhaPreco,
+  LinhaProduto, LinhaProdutoUnidade, LinhaVendedor, TipoEndereco, type EntidadeCarga, type LinhasCarga,
 } from '../../contracts';
 import { validarDocumentoCliente } from '../documento';
 import { sugerirIndIeDest, validarIe, validarIndIeDest, type IndIeDest } from '../ie';
 import { validarMunicipio } from '../municipio';
 import { validarVigenciaTabela } from '../preco';
-import { erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, type ErroLinha } from './erros';
+import { LIMITES_SEQ_ENDERECO, derivarExternalIdEndereco } from './cliente-grupo';
+import { erroDeViolacao, erroLinha, errosDeZod, type ErroLinha } from './erros';
 import { LIMITES, PADRAO_UF } from './layout';
 import { resolverMunicipio, type MunicipioOficial } from './municipio-por-nome';
 
@@ -191,19 +192,12 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
       refs: limparDados({ filial: l.id('filial_external_id') }),
     });
   },
-  forma_pagamento(l) {
-    const codigo = l.texto('codigo', LIMITES.codigo20, 'forma_codigo');
-    let tpag = l.cel('tpag');
-    if (tpag === undefined && codigo !== undefined) {
-      tpag = DICIONARIO_TPAG[codigo.toUpperCase()] ?? TPAG_RECUSADO;
+  condicao_pagamento(l) {
+    const codigoForma = l.texto('forma_codigo', LIMITES.codigo20);
+    let tpag = l.cel('forma_tpag');
+    if (tpag === undefined && codigoForma !== undefined) {
+      tpag = DICIONARIO_TPAG[codigoForma.toUpperCase()] ?? TPAG_RECUSADO;
     }
-    return fechar<'forma_pagamento'>(l, LinhaFormaPagamento, {
-      external_id: l.id('external_id'),
-      ativo: l.ativo(),
-      dados: limparDados({ forma_codigo: codigo, forma_nome: l.texto('nome', LIMITES.texto60, 'forma_nome'), forma_tpag: tpag }),
-    });
-  },
-  prazo_pagamento(l) {
     const bruto = l.cel('parcelas_dias');
     let prazos: number[] | undefined;
     let parcelas: number | undefined;
@@ -218,11 +212,13 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
       if (lista.ok && itens.every((i) => i.ok)) prazos = itens.flatMap((i) => (i.ok && i.valor !== undefined ? [i.valor] : []));
       else l.erro('parcelas_dias', 'CARGA_FORMATO', 'Parcelas: números inteiros de dias separados por /');
     }
-    return fechar<'prazo_pagamento'>(l, LinhaPrazoPagamento, {
+    return fechar<'condicao_pagamento'>(l, LinhaCondicaoPagamento, {
       external_id: l.id('external_id'),
       ativo: l.ativo(),
-      dados: limparDados({ codigo: l.texto('codigo', LIMITES.codigo20), descricao: l.texto('descricao', LIMITES.texto60), prazos_dias: prazos, parcelas_cartao: parcelas }),
-      refs: limparDados({ forma: l.id('forma_external_id') }),
+      dados: limparDados({
+        codigo: l.texto('codigo', LIMITES.codigo20), descricao: l.texto('descricao', LIMITES.texto60), prazos_dias: prazos, parcelas_cartao: parcelas,
+        forma_external_id: l.id('forma_external_id'), forma_codigo: codigoForma, forma_nome: l.texto('forma_nome', LIMITES.texto60), forma_tpag: tpag,
+      }),
     });
   },
   produto(l) {
@@ -298,6 +294,19 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
       else doc = documento(l, 'documento', tipo);
     }
     const end = l.endereco(ctx, 'endereco.');
+    // T-0058: cada linha traz um endereço (`tipo_endereco`, `seq`); sem a coluna, o endereço da linha é o principal.
+    let tipoEnd = l.cel('tipo_endereco')?.toLowerCase() as (typeof TipoEndereco)['options'][number] | undefined;
+    if (tipoEnd !== undefined && !TipoEndereco.options.includes(tipoEnd)) {
+      l.erro('tipo_endereco', 'CARGA_FORMATO', 'Tipo de endereço deve ser principal, entrega ou cobranca');
+      tipoEnd = undefined;
+    }
+    const seq = l.conv('seq', (c) => {
+      const r = celulaInteiro(c, LIMITES_SEQ_ENDERECO);
+      return r.ok ? r : { ok: false as const, motivo: 'seq: inteiro de 1 a 999' };
+    });
+    const tipoDaLinha = tipoEnd ?? 'principal';
+    // A UF do endereço principal é que vale para a IE (RN-CAD-02): em linha de entrega ou cobrança a IE só é normalizada na gravação.
+    const ufIe = tipoDaLinha === 'principal' ? end?.uf : undefined;
     const ieBruta = l.cel('inscricao_estadual');
     let ie: string | undefined;
     let ind = l.cel('ind_ie_dest') as IndIeDest | undefined;
@@ -305,21 +314,29 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
       l.erro('ind_ie_dest', 'CARGA_FORMATO', 'Indicador deve ser 1, 2 ou 9');
       ind = undefined;
     }
-    if (ieBruta !== undefined && end?.uf !== undefined) {
-      const r = validarIe(end.uf, ieBruta);
+    if (ieBruta !== undefined && ufIe !== undefined) {
+      const r = validarIe(ufIe, ieBruta);
       if (r.ok) ie = r.ie;
       else l.erros.push(erroDeViolacao(l.linha, r.violacao, 'inscricao_estadual'));
     } else if (ieBruta !== undefined) {
-      // Sem UF na linha (atualização): a API valida pela UF do endereço principal já gravado (RN-CAD-02).
+      // Sem UF do principal na linha: a API valida pela UF do endereço principal do grupo ou do já gravado (RN-CAD-02).
       ie = ieBruta.toUpperCase();
     }
     if (ie !== undefined || ind !== undefined) ind = ind ?? sugerirIndIeDest(ie ?? null);
-    if (ind !== undefined && end?.uf !== undefined && (ieBruta === undefined || ie !== undefined)) {
-      const v = validarIndIeDest({ ind_ie_dest: ind, ie: ie ?? null, uf: end.uf });
+    if (ind !== undefined && ufIe !== undefined && (ieBruta === undefined || ie !== undefined)) {
+      const v = validarIndIeDest({ ind_ie_dest: ind, ie: ie ?? null, uf: ufIe });
       if (!v.ok) l.erros.push(erroDeViolacao(l.linha, v.violacao, 'ind_ie_dest'));
     }
+    const externo = l.id('external_id');
+    const enderecos: Record<string, unknown>[] = [];
+    if (end !== undefined || tipoEnd !== undefined) {
+      const derivado = externo === undefined ? undefined : derivarExternalIdEndereco(externo, tipoDaLinha, seq);
+      if (derivado !== undefined && derivado.length > LIMITES.id_externo) {
+        l.erro('external_id', 'CARGA_TAMANHO', `external_id do endereço acima de ${LIMITES.id_externo} caracteres: use um external_id menor`);
+      } else if (derivado !== undefined) enderecos.push({ linha: l.linha, external_id: derivado, tipo: tipoDaLinha, seq, dados: end ?? {} });
+    }
     return fechar<'cliente'>(l, LinhaCliente, {
-      external_id: l.id('external_id'),
+      external_id: externo,
       ativo: l.ativo(),
       dados: limparDados({
         tipo_pessoa: tipo,
@@ -331,31 +348,13 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
         email_nfe: l.cel('email'),
         limite_credito_centavos: l.conv('limite_credito_cents', celulaCentavos),
       }),
-      endereco_principal: end,
+      enderecos,
       refs: limparDados({
         filial: l.id('filial_external_id'),
         vendedor: l.id('vendedor_external_id'),
         tabela_preco: l.id('tabela_preco_external_id'),
         condicao_pagamento: l.id('condicao_pagamento_external_id'),
       }),
-    });
-  },
-  cliente_endereco(l, ctx) {
-    let tipo = l.cel('tipo')?.toLowerCase();
-    if (tipo !== undefined && !['principal', 'entrega', 'cobranca'].includes(tipo)) {
-      l.erro('tipo', 'CARGA_FORMATO', 'Tipo deve ser principal, entrega ou cobranca');
-      tipo = undefined;
-    }
-    const principal = l.conv('principal', celulaBooleana);
-    if (tipo === 'principal' || principal === true) {
-      l.avisos.push(`${MOTIVO_PRINCIPAL_NO_CLIENTE}: gravado como entrega`);
-      tipo = 'entrega';
-    }
-    return fechar<'cliente_endereco'>(l, LinhaClienteEndereco, {
-      external_id: l.id('external_id'),
-      ativo: l.ativo(),
-      dados: limparDados({ ...(l.endereco(ctx, '') ?? {}), tipo }),
-      refs: limparDados({ cliente: l.id('cliente_external_id') }),
     });
   },
 };

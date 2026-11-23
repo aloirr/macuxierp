@@ -32,7 +32,7 @@ function montar(uso?: ConsultaUsoCadastros) {
     auditar: async (d: unknown) => void auditoria.push(d), enfileirar: async () => ({ id: 'x' }),
   } as unknown as ContextoRota;
   const deps = { ...m.deps, ...(uso ? { usoCadastros: uso } : {}) };
-  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto' | 'forma_pagamento', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
+  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto' | 'condicao_pagamento', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
     gravarCargaPortal(deps, c, { cadastro, modo, frase, arquivo: arq(conteudo) });
   return { ...m, c, deps, eventos, auditoria, gravar };
 }
@@ -163,10 +163,17 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     expect(ativos(t)).toBe(2);
   });
 
-  it('RN-CAD-10: forma de pagamento não tem o que inativar (inativadas 0)', async () => {
+  it('RN-CAD-10: Substituir tudo da condição inativa a que não veio, publica a alteração com inativo e a forma não é entidade', async () => {
     const t = montar();
-    const r = await t.gravar('forma_pagamento', csv('forma_pagamento'), 'substituir_tudo', FRASE);
-    expect(r).toMatchObject({ inativadas: 0, efeito: { total: 0, a_inativar: 0 } });
+    await t.gravar('condicao_pagamento', csv('condicoes_pagamento'));
+    const ativas = () => t.repos.condicoesPagamento.linhas.filter((l) => !l.inativo).length;
+    const antes = ativas();
+    expect(antes).toBeGreaterThan(1);
+    t.eventos.length = 0;
+    const r = await t.gravar('condicao_pagamento', csv('condicoes_pagamento', [0]), 'substituir_tudo', FRASE);
+    expect(r).toMatchObject({ gravadas: 1, inativadas: antes - 1 });
+    expect(ativas()).toBe(1);
+    expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.inativo === true)).toHaveLength(antes - 1);
   });
 
   it('RN-CAD-10: estoque só aceita o Adicionar: substituir_tudo é 400 VALIDACAO no campo modo (gravar e validar)', async () => {

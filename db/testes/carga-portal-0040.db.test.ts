@@ -1,9 +1,12 @@
 /**
  * T-0058 (v0.3.5a), migração 0040: carga de cadastros SÍNCRONA pelo portal /config (contrato
  * packages/platform-sdk/src/portal-cargas.ts). tx1 portal_carga_iniciar e tx3 portal_carga_concluir como
- * macuxierp_config (sessão de superadmin, auditoria com superadmin_id, MXC01/MXC03/MXC04 com DETAIL); a aba lê
+ * macuxierp_config (sessão de superadmin, auditoria com superadmin_id, MXC01/MXC04 com DETAIL); a aba lê
  * portal_carga_situacao. A inativação do Substituir tudo é do domain do cadastros (sem função no banco); a 0040 só dá
  * os índices parciais dos ativos, a lista dos cadastros num lugar só (CHECK) e a interna plataforma.modulo_licenciado.
+ * Estado final com a 0044 (T-0058, v0.3.6): nenhuma carga depende de outra (o MXC03 e a portal_carga_dependencias
+ * saíram) e a lista tem 8 cadastros; os nomes legados (forma_pagamento, prazo_pagamento, cliente_endereco) só valem
+ * para as execuções já gravadas e contam na última carga de condicao_pagamento e de cliente.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -28,6 +31,7 @@ import {
 import { fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0040_cadastros_carga_portal.sql', import.meta.url));
+const MIGRACAO_0044 = fileURLToPath(new URL('../migrations/0044_cadastros_carga_portal_sem_dependencia.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
 /** Com a massa completa de cadastros. */
@@ -37,26 +41,16 @@ const B = novoTenant('carga-0040-b');
 const C = novoTenant('carga-0040-c');
 /** Licenciada, mas suspensa. */
 const D = novoTenant('carga-0040-d');
-/** Licenciada, ativa e vazia (dependências). */
+/** Licenciada, ativa e vazia (sem dependência e legados). */
 const V = novoTenant('carga-0040-v');
 /** Para a concorrência (MXC01) e a abandonada. */
 const W = novoTenant('carga-0040-w');
 const SA = '5a000000-0000-4000-8000-000000000401';
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
-/** CADASTROS_CARGA_PORTAL do SDK, na ordem (o teste do db não importa o SDK: trava a cópia aqui). */
-const CADASTROS = ['filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente', 'cliente_endereco'];
-const DEPENDE_DE: Record<string, string[]> = {
-  filial: [],
-  vendedor: ['filial'],
-  forma_pagamento: [],
-  prazo_pagamento: ['forma_pagamento'],
-  produto: [],
-  produto_unidade: ['produto'],
-  preco: ['produto', 'filial'],
-  estoque: ['produto', 'filial'],
-  cliente: ['filial', 'vendedor', 'prazo_pagamento', 'preco'],
-  cliente_endereco: ['cliente'],
-};
+/** CADASTROS_CARGA_PORTAL do SDK, na ordem (o teste do db não importa o SDK: trava a cópia aqui). 0044: 8 cadastros. */
+const CADASTROS = ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente'];
+/** Nomes que saíram da lista na 0044: só nas execuções já gravadas. */
+const LEGADOS = ['forma_pagamento', 'prazo_pagamento', 'cliente_endereco'];
 
 const PORTAL = [
   'cadastros.portal_carga_iniciar(uuid, text, text, text)',
@@ -65,7 +59,7 @@ const PORTAL = [
 ] as const;
 const INTERNAS = [
   'cadastros.portal_carga_cadastros()',
-  'cadastros.portal_carga_dependencias(text)',
+  'cadastros.portal_carga_cadastros_legados()',
   'plataforma.modulo_licenciado(uuid, text)',
   'cadastros.portal_carga_ativos(uuid, text)',
   'cadastros.portal_carga_ultima(uuid, text)',
@@ -172,9 +166,10 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     }
     recusaConfig('SELECT count(*) FROM cadastros.carga_portal;', '42501', /permission denied/);
     recusaConfig('SELECT count(*) FROM cadastros.filial;', '42501', /permission denied/);
-    // a lista e as dependências são o espelho de CADASTROS_CARGA_PORTAL
+    // a lista é o espelho de CADASTROS_CARGA_PORTAL; os legados ficam à parte; as dependências saíram (0044)
     expect(um(`SELECT cadastros.portal_carga_cadastros() AS c`)).toEqual({ c: CADASTROS });
-    for (const c of CADASTROS) expect({ c, d: um<{ d: string[] }>(`SELECT cadastros.portal_carga_dependencias('${c}') AS d`).d }).toEqual({ c, d: DEPENDE_DE[c] });
+    expect(um(`SELECT cadastros.portal_carga_cadastros_legados() AS c`)).toEqual({ c: LEGADOS });
+    expect(um(`SELECT to_regprocedure('cadastros.portal_carga_dependencias(text)') IS NULL AS sem`)).toEqual({ sem: true });
     // nenhuma função da 0040 cita schema de outro módulo (plataforma é a base: sessão, empresa, licença e auditoria)
     const citam = consultar<{ f: string }>(
       banco.conexao,
@@ -208,30 +203,40 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(um(`SELECT count(*)::int AS n FROM cadastros.carga_portal WHERE tenant_id IN ('${C.id}', '${D.id}')`)).toEqual({ n: 0 });
   });
 
-  it('(d) cadastro ou modo fora do contrato = 23514', () => {
-    recusaConfig(iniciarSql(V.id, 'titulo'), '23514', /cadastro fora da carga/);
+  it('(d) cadastro (inclusive os legados da 0044) ou modo fora do contrato = 23514', () => {
+    for (const c of ['titulo', ...LEGADOS]) recusaConfig(iniciarSql(V.id, c), '23514', /cadastro fora da carga/);
     recusaConfig(`SELECT cadastros.portal_carga_iniciar('${V.id}', NULL, 'adicionar', 'r');`, '23514', /cadastro fora da carga/);
     recusaConfig(iniciarSql(V.id, 'filial', 'zerar'), '23514', /modo fora do contrato/);
     expect(nAuditoria(V.id)).toBe(0);
   });
 
-  it('(e) MXC03 com a dependência nao_carregado; libera com registro ativo ou com erro na última carga (o dependenciaPendente do SDK)', () => {
-    recusaDetalhe(iniciarSql(V.id, 'vendedor'), 'MXC03', 'dependencia_pendente');
-    recusaDetalhe(iniciarSql(V.id, 'cliente_endereco'), 'MXC03', 'dependencia_pendente');
-    // a forma de pagamento sem ativo, mas com erro na última carga concluída: o prazo fica liberado
-    const forma = iniciar(V.id, 'forma_pagamento');
-    concluir(V.id, forma, 'concluida', 0, 3, null);
-    const prazo = iniciar(V.id, 'prazo_pagamento');
-    concluir(V.id, prazo, 'falhou', 0, 0, null);
-    // a filial ativa (gravada como o BKO) libera o vendedor
-    recusaDetalhe(iniciarSql(V.id, 'vendedor'), 'MXC03', 'dependencia_pendente');
-    executar(
-      banco.conexao,
-      `INSERT INTO cadastros.filial (tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep)
-         VALUES ('${V.id}', '12345678000195', 'Filial V', '3', 'Rua A', '1', 'Centro', '1302603', 'AM', '69000000');`,
-    );
+  it('(e) sem dependência (0044): a empresa vazia carrega qualquer cadastro; os legados contam na última carga', () => {
+    // vazia: vendedor sem filial e cliente sem nada não são mais recusados (o MXC03 saiu)
     const vend = iniciar(V.id, 'vendedor');
-    concluir(V.id, vend, 'concluida', 1, 0, null);
+    concluir(V.id, vend, 'falhou', 0, 0, null);
+    const cli = iniciar(V.id, 'cliente');
+    concluir(V.id, cli, 'falhou', 0, 0, null);
+    // execuções antigas, gravadas pelo admin com os nomes legados (o CHECK as aceita; o iniciar, não)
+    const antiga = (cadastro: string, dias: number, g: number, e: number): string =>
+      `INSERT INTO cadastros.carga_portal (tenant_id, cadastro, modo, superadmin_id, iniciada_em, concluida_em, resultado, gravadas, com_erro)
+         VALUES ('${V.id}', '${cadastro}', 'adicionar', '${SA}', now() - interval '${dias} days', now() - interval '${dias} days', 'concluida', ${g}, ${e});`;
+    executar(banco.conexao, `${antiga('prazo_pagamento', 3, 9, 9)}${antiga('forma_pagamento', 2, 6, 2)}${antiga('cliente_endereco', 2, 4, 1)}`);
+    const emDe = (cadastro: string): string =>
+      linhas(rodarScript(banco.conexao, `SELECT plataforma.instante_iso(concluida_em) FROM cadastros.carga_portal WHERE tenant_id = '${V.id}' AND cadastro = '${cadastro}' AND resultado = 'concluida' ORDER BY concluida_em DESC LIMIT 1;`))[0] ?? '';
+    let s = situacao(V.id);
+    expect(s.cadastros.map((c) => c.cadastro)).toEqual(CADASTROS);
+    let por = Object.fromEntries(s.cadastros.map((c) => [c.cadastro, c]));
+    expect(por.condicao_pagamento).toEqual({ cadastro: 'condicao_pagamento', ativos: 0, erros: 2, ultima_carga: { em: emDe('forma_pagamento'), quantidade: 6 } });
+    expect(por.cliente).toEqual({ cadastro: 'cliente', ativos: 0, erros: 1, ultima_carga: { em: emDe('cliente_endereco'), quantidade: 4 } });
+    expect(por.vendedor).toEqual({ cadastro: 'vendedor', ativos: 0, erros: 0, ultima_carga: null });
+    // a carga nova de condicao_pagamento passa a ser a última
+    const cond = iniciar(V.id, 'condicao_pagamento');
+    concluir(V.id, cond, 'concluida', 3, 0, null);
+    s = situacao(V.id);
+    por = Object.fromEntries(s.cadastros.map((c) => [c.cadastro, c]));
+    expect(por.condicao_pagamento).toEqual({ cadastro: 'condicao_pagamento', ativos: 0, erros: 0, ultima_carga: { em: emDe('condicao_pagamento'), quantidade: 3 } });
+    // os legados não têm contagem
+    for (const c of LEGADOS) expect({ c, ...um<{ n: number | null }>(`SELECT cadastros.portal_carga_ativos('${V.id}', '${c}') AS n`) }).toEqual({ c, n: null });
   });
 
   it('(f) MXC01 com execução aberta há menos de 15 min (qualquer cadastro); a de 15 min ou mais vira abandonada e libera', () => {
@@ -304,7 +309,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     concluir(A.id, ad, 'concluida', 1, 0, null);
   });
 
-  it('(h) situação: os 10 cadastros na ordem, ativos do tenant, erros e última carga da última execução concluída', () => {
+  it('(h) situação: os 8 cadastros na ordem, ativos do tenant, erros e última carga da última execução concluída', () => {
     const p1 = iniciar(A.id, 'produto');
     concluir(A.id, p1, 'concluida', 7, 4, null);
     const p2 = iniciar(A.id, 'produto');
@@ -318,9 +323,9 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(s.cadastros.map((c) => c.cadastro)).toEqual(CADASTROS);
     for (const c of s.cadastros) expect(Object.keys(c).sort()).toEqual(['ativos', 'cadastro', 'erros', 'ultima_carga']);
     const por = Object.fromEntries(s.cadastros.map((c) => [c.cadastro, c]));
-    // a massa: um de cada; a condição da fixture não tem forma_external_id (forma = 0)
+    // a massa: um de cada
     expect(Object.fromEntries(s.cadastros.map((c) => [c.cadastro, c.ativos]))).toEqual({
-      filial: 1, vendedor: 1, forma_pagamento: 0, prazo_pagamento: 1, produto: 1, produto_unidade: 1, preco: 1, estoque: 1, cliente: 1, cliente_endereco: 1,
+      filial: 1, vendedor: 1, condicao_pagamento: 1, produto: 1, produto_unidade: 1, preco: 1, estoque: 1, cliente: 1,
     });
     // a última concluída do produto é a p2 (a p3 falhou): 3 gravadas, 0 erro
     const [p2em] = linhas(rodarScript(banco.conexao, `SELECT plataforma.instante_iso(concluida_em) FROM cadastros.carga_portal WHERE id = '${p2}';`));
@@ -337,22 +342,24 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
   });
 
   it('(i) a lista num lugar só (o CHECK usa portal_carga_cadastros), a licença genérica, os índices parciais e sem inativação no banco', () => {
-    // RD-1171: o CHECK da tabela é a interna IMMUTABLE; cadastro fora dela = 23514 até para a dona
+    // RD-1191: o CHECK da tabela são as internas IMMUTABLE (os 8 e os 3 legados); fora delas = 23514 até para a dona
     expect(
       consultar<{ d: string }>(
         banco.conexao,
         `SELECT pg_get_constraintdef(c.oid) AS d FROM pg_constraint c
           WHERE c.conrelid = 'cadastros.carga_portal'::regclass AND c.contype = 'c' AND pg_get_constraintdef(c.oid) LIKE '%cadastro %'`,
       ),
-    ).toEqual([{ d: 'CHECK ((cadastro = ANY (cadastros.portal_carga_cadastros())))' }]);
-    expect(um(`SELECT provolatile AS v FROM pg_proc WHERE oid = 'cadastros.portal_carga_cadastros()'::regprocedure`)).toEqual({ v: 'i' });
+    ).toEqual([{ d: 'CHECK ((cadastro = ANY ((cadastros.portal_carga_cadastros() || cadastros.portal_carga_cadastros_legados()))))' }]);
+    for (const f of ['cadastros.portal_carga_cadastros()', 'cadastros.portal_carga_cadastros_legados()']) {
+      expect({ f, ...um<{ v: string }>(`SELECT provolatile AS v FROM pg_proc WHERE oid = '${f}'::regprocedure`) }).toEqual({ f, v: 'i' });
+    }
     recusaDetalhada(
       banco.conexao,
       `INSERT INTO cadastros.carga_portal (tenant_id, cadastro, modo, superadmin_id) VALUES ('${A.id}', 'titulo', 'adicionar', '${SA}');`,
       '23514',
       /carga_portal_cadastro_check/,
     );
-    // RD-1172: a licença é a interna genérica de plataforma (a do cadastros foi embora); sem a inativação no banco (regra 2)
+    // RD-1192: a licença é a interna genérica de plataforma (a do cadastros foi embora); sem a inativação no banco (regra 2)
     expect(
       um(
         `SELECT plataforma.modulo_licenciado('${A.id}', 'cadastros') AS a, plataforma.modulo_licenciado('${C.id}', 'cadastros') AS c,
@@ -378,11 +385,13 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     }
   });
 
-  it('(j) reexecução da 0040 não muda dado', () => {
+  it('(j) reexecução da 0040 seguida da 0044, e da 0044 sozinha, não muda dado e volta ao estado final', () => {
     const antes = [A, B, V, W].map((t) => retrato(t.id));
-    rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
-    rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
+    rodarScript(banco.conexao, `${readFileSync(MIGRACAO, 'utf8')}\n${readFileSync(MIGRACAO_0044, 'utf8')}`, { transacao: true });
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0044, 'utf8'), { transacao: true });
     expect([A, B, V, W].map((t) => retrato(t.id))).toEqual(antes);
     expect(um(`SELECT cadastros.portal_carga_cadastros() AS c`)).toEqual({ c: CADASTROS });
+    expect(um(`SELECT to_regprocedure('cadastros.portal_carga_dependencias(text)') IS NULL AS sem`)).toEqual({ sem: true });
+    recusaConfig(iniciarSql(V.id, 'forma_pagamento'), '23514', /cadastro fora da carga/);
   });
 });

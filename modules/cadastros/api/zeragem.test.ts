@@ -105,10 +105,10 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(m.ordem).toEqual([]);
   });
 
-  it('RN-CAD-10: forma_prazo bloqueia por qualquer das duas entidades do Hub', async () => {
+  it('RN-CAD-10: condicao_pagamento bloqueia por qualquer das duas entidades do Hub', async () => {
     const m = montar({ ligadas: ['prazo_pagamento'] });
-    const { corpo } = await m.chamar(C.previa, { cadastros: ['forma_prazo'] });
-    expect(ZeragemPlataformaResposta.parse(corpo).bloqueios).toEqual([{ cadastro: 'forma_prazo', motivo: 'integracao_ligada' }]);
+    const { corpo } = await m.chamar(C.previa, { cadastros: ['condicao_pagamento'] });
+    expect(ZeragemPlataformaResposta.parse(corpo).bloqueios).toEqual([{ cadastro: 'condicao_pagamento', motivo: 'integracao_ligada' }]);
   });
 
   it('RN-CAD-10: a ordem é espelho das entidades dos efetivos e depois portal_zerar, sem c.auditar', async () => {

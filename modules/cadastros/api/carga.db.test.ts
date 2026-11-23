@@ -60,16 +60,18 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     const v = await carregar(A, 'validar');
     expect(v.status).toBe(200);
     expect(v.rel.erros).toEqual([]);
-    expect(v.rel.entidades.find((e) => e.entidade === 'cliente')).toMatchObject({ inseridas: 2 });
+    expect(v.rel.entidades.find((e) => e.entidade === 'cliente')).toMatchObject({ lidas: 3, inseridas: 3 });
     for (const t of TABELAS) expect(await contar(t, A), t).toBe(0);
     expect(v.eventos).toHaveLength(0);
   }, 120_000);
 
-  it('gravar cria os 10 arquivos; regravar não duplica, não publica e não mexe em updated_at', async () => {
+  it('gravar cria os 8 arquivos; regravar não duplica, não publica e não mexe em updated_at', async () => {
     const g = await carregar(A, 'gravar');
     expect(g.rel.erros).toEqual([]);
     expect(await contar('filial', A)).toBe(1);
     expect(await contar('cliente', A)).toBe(2);
+    expect(await contar('cliente_endereco', A)).toBe(3);
+    expect((await admin('SELECT external_id FROM cadastros.cliente_endereco WHERE tenant_id = $1 ORDER BY external_id', [A])).map((l) => l.external_id)).toEqual(['C-EX-01:entrega:1', 'C-EX-01:principal', 'C-EX-02:principal']);
     expect(await contar('condicao_pagamento', A)).toBe(3);
     expect(await contar('tabela_preco_item', A)).toBe(2);
     expect((await admin('SELECT quantidade::float8 AS q FROM cadastros.estoque_saldo WHERE tenant_id = $1', [A]))[0]!.q).toBe(147_500);
@@ -90,7 +92,7 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     const de = (n: string) => g.eventos.filter((e) => e.nome === n).map((e) => e.payload as Record<string, any>); // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(de('cadastros.preco.alterado@1').map((p) => p.external_id).sort()).toEqual(['PR-EX-01', 'PR-EX-02']);
     expect(de('cadastros.produto.alterado@1').flatMap((p) => p.unidades.map((u: { external_id: string }) => u.external_id))).toContain('PU-EX-01');
-    expect(de('cadastros.cliente.alterado@1').flatMap((p) => p.enderecos.map((e: { external_id: string }) => e.external_id))).toContain('CE-EX-01');
+    expect(de('cadastros.cliente.alterado@1').flatMap((p) => p.enderecos.map((e: { external_id: string }) => e.external_id))).toContain('C-EX-01:entrega:1');
     // adoção: zera a chave dos itens e recarrega
     await admin('UPDATE cadastros.tabela_preco_item SET external_id = NULL WHERE tenant_id = $1', [T]);
     const r = await carregar(T, 'gravar');
@@ -178,10 +180,10 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
        VALUES ($1, 'CC1', 'Cartão antigo', '03', '{30}', now(), 'PZ-CC1', 'FP-CC', 'CARTAO', 'Cartão')`,
       [T],
     );
-    const csv = 'external_id;codigo;nome;alterado_em;ativo;ordem\nFP-CC;CARTAO;Cartão;;sim;1\n';
-    const r = await carregar(T, 'gravar', [{ nome: 'forma_pagamento.csv', conteudo: csv }]);
+    const csv = 'external_id;codigo;parcelas_dias;forma_codigo;forma_nome;forma_external_id;ativo\nPZ-CC1;CC1;;CARTAO;Cartão;FP-CC;sim\n';
+    const r = await carregar(T, 'gravar', [{ nome: 'condicoes_pagamento.csv', conteudo: csv }]);
     expect(r.status).toBe(200);
-    expect(r.rel.erros).toEqual([expect.objectContaining({ arquivo: 'forma_pagamento.csv', linha: 2, codigo: 'RN-CAD-09' })]);
+    expect(r.rel.erros).toEqual([expect.objectContaining({ arquivo: 'condicoes_pagamento.csv', linha: 2, codigo: 'RN-CAD-09' })]);
     expect((await admin('SELECT deleted_at IS NOT NULL AS i FROM cadastros.condicao_pagamento WHERE tenant_id = $1', [T]))[0]!.i).toBe(true);
   }, 120_000);
   it('RN-CAD-09: o 23514 real dos CHECKs 0017/0019 (gravação que burla o domain) vira 422 RN-CAD-09 e a transação segue utilizável', async () => {

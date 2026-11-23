@@ -58,13 +58,12 @@ export function usosDeEmUso(emUso: readonly UsoDaTabela[]): FatosZeragem['usos']
 export const ENTIDADES_DO_CADASTRO: Partial<Record<CadastroZerarPortal, readonly (typeof ENTIDADES_ENVIO_FDV)[number][]>> = {
   filial: ['filial'],
   vendedor: ['vendedor'],
-  forma_prazo: ['forma_pagamento', 'prazo_pagamento'],
+  condicao_pagamento: ['forma_pagamento', 'prazo_pagamento'],
   produto: ['produto'],
   produto_unidade: ['produto_unidade'],
   preco: ['preco'],
   estoque: ['estoque'],
-  cliente: ['cliente'],
-  cliente_endereco: ['cliente_endereco'],
+  cliente: ['cliente', 'cliente_endereco'],
 };
 
 const entidadesDe = (cadastros: readonly CadastroZerarPortal[]): string[] => [...new Set(cadastros.flatMap((c) => ENTIDADES_DO_CADASTRO[c] ?? []))];

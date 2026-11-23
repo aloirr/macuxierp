@@ -214,12 +214,12 @@
     },
     {
       "metodo": "GET",
-      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/cliente_endereco/modelo",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/cliente/modelo",
       "area": "plataforma"
     },
     {
       "metodo": "GET",
-      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/cliente/modelo",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/condicao_pagamento/modelo",
       "area": "plataforma"
     },
     {
@@ -230,16 +230,6 @@
     {
       "metodo": "GET",
       "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/filial/modelo",
-      "area": "plataforma"
-    },
-    {
-      "metodo": "GET",
-      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/forma_pagamento/modelo",
-      "area": "plataforma"
-    },
-    {
-      "metodo": "GET",
-      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/prazo_pagamento/modelo",
       "area": "plataforma"
     },
     {

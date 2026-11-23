@@ -1,5 +1,5 @@
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, CODIGO_TROCAR_SENHA, CODIGO_ZERAGEM_BLOQUEADA, GravarCargaPlataformaEntrada, MENSAGENS_CARGA_PORTAL, PreviaZerarPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ModoCargaQuery, ZerarDadosPlataformaEntrada, PADRAO_UUID, nomeErrosCarga, nomeModeloCarga,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, CODIGO_TROCAR_SENHA, CODIGOS_ESTADO_MUDOU_ZERAR, CODIGO_ZERAGEM_BLOQUEADA, GravarCargaPlataformaEntrada, MENSAGENS_CARGA_PORTAL, PreviaZerarPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ModoCargaQuery, ZerarDadosPlataformaEntrada, PADRAO_UUID, nomeErrosCarga, nomeModeloCarga,
   type CadastroCargaPortal,
 } from '@macuxierp/platform-sdk';
 import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '../textos';
@@ -126,10 +126,7 @@ async function paginaDeErro(r: Response, req: Request): Promise<Response> {
   return new Response(html, { status: r.status, headers: { ...SEM_CACHE, 'content-type': 'text/html; charset=utf-8' } });
 }
 
-/** O 409 `MXC03` do zerar: os dados mudaram entre a prévia e o zerar. A API manda `detalhes.codigo` em um destes quatro. */
-// TODO trocar por CODIGOS_ESTADO_MUDOU_ZERAR do SDK (PR do engenheiro, v0.3.7)
-export const CODIGOS_ESTADO_MUDOU_ZERAR: readonly string[] = ['em_uso', 'sumiu', 'anular_fora_do_plano', 'referencia'];
-export const TEXTO_DADOS_MUDARAM = 'Os dados mudaram. Confira de novo.';
+/** O 409 `MXC03` do zerar: os dados mudaram entre a prévia e o zerar. A API manda `detalhes.codigo` em um dos `CODIGOS_ESTADO_MUDOU_ZERAR` do SDK. */
 export const CODIGO_DADOS_MUDARAM = 'dados_mudaram';
 
 /** `POST /config/empresas/:id/cargas/zerar`: corpo `{ cadastros, frase }`; a `Idempotency-Key` vai no cabeçalho. SDK confere a frase e a lista (a API revalida). */
@@ -148,7 +145,7 @@ export async function tratarZerar(req: Request, id: string): Promise<Response> {
       if (e instanceof ErroPlataforma && e.status === 422 && e.detalhes.codigo === CODIGO_ZERAGEM_BLOQUEADA) {
         return falha(MENSAGENS_CARGA_PORTAL.zeragemBloqueada, 422, { codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: e.detalhes.bloqueios ?? [], chaveNova: true });
       }
-      if (e instanceof ErroPlataforma && e.status === 409 && CODIGOS_ESTADO_MUDOU_ZERAR.includes(String(e.detalhes.codigo))) return falha(TEXTO_DADOS_MUDARAM, 409, { codigo: CODIGO_DADOS_MUDARAM, chaveNova: true });
+      if (e instanceof ErroPlataforma && e.status === 409 && (CODIGOS_ESTADO_MUDOU_ZERAR as readonly string[]).includes(String(e.detalhes.codigo))) return falha(MENSAGENS_CARGA_PORTAL.estadoMudouZerar, 409, { codigo: CODIGO_DADOS_MUDARAM, chaveNova: true });
       throw e;
     }
     return Response.json({ ok: true, mantidos: resultado.mantidos.reduce((n, m) => n + m.quantidade, 0) }, { headers: SEM_CACHE });
