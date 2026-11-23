@@ -30,6 +30,8 @@ export interface UsuarioAuth {
   ativo: boolean;
   falhas_login: number;
   bloqueado_ate: Date | null;
+  /** Senha provisória (portal `/config` ou operador): troca obrigatória antes de qualquer rota (T-0052, 0036). */
+  deve_trocar_senha: boolean;
 }
 
 export interface FilialAuth {
@@ -67,4 +69,8 @@ export interface RepositorioAuth {
   sessaoPorHash(tx: Transacao, refreshHash: string): Promise<SessaoRefresh | null>;
   revogarSessao(tx: Transacao, id: string, agora: Date): Promise<void>;
   revogarFamilia(tx: Transacao, familia: string, agora: Date): Promise<void>;
+  /** Grava o hash novo e zera `deve_trocar_senha` (troca pelo próprio usuário, T-0052). */
+  trocarSenha(tx: Transacao, usuarioId: string, senhaHash: string): Promise<void>;
+  /** Revoga as sessões abertas do usuário, menos as da família `exceto` (`null` = todas); devolve quantas caíram. */
+  revogarOutrasSessoes(tx: Transacao, usuarioId: string, exceto: string | null, agora: Date): Promise<number>;
 }

@@ -5,7 +5,7 @@
  *
  *  - argumento inválido: sai 2 e não chama o docker;
  *  - sem --confirmar: chama só a simulação (sem --confirmar no empresa.mjs), sem senha no ambiente e sem imprimir senha;
- *  - com --confirmar: a senha (16 caracteres do alfabeto da API, com maiúscula, minúscula e dígito) vai só por `-e` (o
+ *  - com --confirmar: a senha (16 caracteres do alfabeto da API, com maiúscula, minúscula, dígito e especial, T-0052) vai só por `-e` (o
  *    valor nunca no argv), e o terminal a mostra só quando o contêiner responde `estado: usuario-criado`;
  *  - nome da empresa (de MEI pode ser dado pessoal), e-mail e nome da pessoa também só pelo ambiente (-e), nunca no
  *    argv nem na saída; o script vai pelo stdin.
@@ -24,23 +24,25 @@ import { afterAll, describe, expect, it } from 'vitest';
 const PRODUCAO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'deploy', 'producao');
 const OPERADOR_SH = join(PRODUCAO, 'operador.sh');
 const EMAIL = 'admin@exemplo.invalid';
-/** Alfabeto da senha provisória da API, lido do fonte (as 4 constantes de modules/core/domain/usuarios.ts, que o
- *  turbo.json põe nos inputs do @macuxierp/config#test; molde do listaDoSdk de scripts/plataforma/licenca.test.mjs). */
-const ALFABETO_API = (() => {
-  const fonte = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'modules', 'core', 'domain', 'usuarios.ts'), 'utf8');
-  return ['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS']
-    .map((nome) => {
-      const m = new RegExp(`const ${nome} = '([^']+)';`).exec(fonte);
-      if (!m) throw new Error(`${nome} não encontrado em usuarios.ts`);
-      return m[1]!;
-    })
-    .join('');
-})();
+/** As 4 classes do gerador do operador.sh (iguais às da API: o apps/api/src/operador-senha.test.ts trava). */
+const FONTE_OPERADOR = readFileSync(OPERADOR_SH, 'utf8');
+const CLASSES_SH = ['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS'].map((nome) => {
+  const m = new RegExp(`^${nome}='([^']+)'$`, 'm').exec(FONTE_OPERADOR);
+  if (!m) throw new Error(`${nome} não encontrado em operador.sh`);
+  return m[1]!;
+});
+const ALFABETO_SH = CLASSES_SH.join('');
+
+/** Senha provisória (T-0052): 16 do alfabeto do operador.sh, com maiúscula, minúscula, dígito e especial. */
+function conferirSenhaProvisoria(senha: string): void {
+  expect(senha).toHaveLength(16);
+  expect([...senha].every((c) => ALFABETO_SH.includes(c))).toBe(true);
+  for (const classe of CLASSES_SH) expect([...senha].some((c) => classe.includes(c))).toBe(true);
+}
 
 describe('operador.sh: alfabeto da senha', () => {
-  it("ALFABETO='...' do operador.sh é o alfabeto da API (core/domain/usuarios.ts)", () => {
-    expect(ALFABETO_API).toHaveLength(64);
-    expect(/^ALFABETO='([^']+)'$/m.exec(readFileSync(OPERADOR_SH, 'utf8'))?.[1]).toBe(ALFABETO_API);
+  it('ALFABETO do operador.sh é a soma das 4 classes', () => {
+    expect(FONTE_OPERADOR).toMatch(/^ALFABETO="\$MAIUSCULAS\$MINUSCULAS\$DIGITOS\$SIMBOLOS"$/m);
   });
 });
 
@@ -138,11 +140,7 @@ describe('operador.sh criar-empresa com um docker falso', () => {
     expect(chamada).toContain('-e MACUXIERP_SENHA_INICIAL psql node --input-type=module - ');
     expect(chamada).toMatch(/--operador alexandre --confirmar$/);
     const senha = r.amb.SENHA!;
-    expect(senha).toHaveLength(16);
-    expect([...senha].every((c) => ALFABETO_API.includes(c))).toBe(true);
-    expect(senha).toMatch(/[A-Z]/);
-    expect(senha).toMatch(/[a-z]/);
-    expect(senha).toMatch(/[2-9]/);
+    conferirSenhaProvisoria(senha);
     // nem senha, nem e-mail, nem nome da pessoa no argv do docker
     expect(chamada).not.toContain(senha);
     expect(chamada).not.toContain(EMAIL);
@@ -267,11 +265,7 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     const chamada = r.chamadas.trim();
     expect(chamada).toContain('-e MACUXIERP_SENHA_INICIAL psql node --input-type=module - --acao criar --operador alexandre --confirmar');
     const senha = r.amb.SENHA!;
-    expect(senha).toHaveLength(16);
-    expect([...senha].every((c) => ALFABETO_API.includes(c))).toBe(true);
-    expect(senha).toMatch(/[A-Z]/);
-    expect(senha).toMatch(/[a-z]/);
-    expect(senha).toMatch(/[2-9]/);
+    conferirSenhaProvisoria(senha);
     for (const proibido of [senha, SA_EMAIL, 'Pessoa Fictícia']) expect(chamada).not.toContain(proibido);
     expect(r.amb).toMatchObject({ SA_EMAIL, SA_NOME: 'Pessoa Fictícia' });
     expect(r.stdout.split(senha)).toHaveLength(2);

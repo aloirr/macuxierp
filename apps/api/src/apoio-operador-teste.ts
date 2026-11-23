@@ -3,7 +3,7 @@
  * padrões dos fontes .mjs, o alfabeto da senha provisória da API e o ambiente do `psql` como no contêiner (PG* do admin).
  * Tudo lança erro quando não acha o que procura: um fonte mudado derruba o teste, nunca o deixa passar em branco.
  */
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,21 +29,28 @@ export function trechoDoFonte(fonte: string, inicio: string, fim: string): strin
 /** Alfabeto da senha provisória da API lido do fonte (as 4 constantes de modules/core/domain/usuarios.ts): a regra de
  *  fronteiras (app-importa-interno-de-modulo) não deixa apps/ importar `@macuxierp/core/domain`. */
 const FONTE_USUARIOS = readFileSync(resolve(RAIZ, 'modules', 'core', 'domain', 'usuarios.ts'), 'utf8');
-export const ALFABETO_API = ['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS']
-  .map((nome) => {
+export const CLASSES_API = Object.fromEntries(
+  (['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS'] as const).map((nome) => {
     const m = new RegExp(`const ${nome} = '([^']+)';`).exec(FONTE_USUARIOS);
     if (!m) throw new Error(`${nome} não encontrado em usuarios.ts`);
-    return m[1]!;
-  })
-  .join('');
+    return [nome, m[1]!];
+  }),
+) as Readonly<Record<'MAIUSCULAS' | 'MINUSCULAS' | 'DIGITOS' | 'SIMBOLOS', string>>;
+export const ALFABETO_API = Object.values(CLASSES_API).join('');
 if (ALFABETO_API.length !== 64) throw new Error('alfabeto da API deixou de ter 64 símbolos: revise senhaProvisoria()');
 
-/** 16 caracteres do alfabeto da API (64 símbolos: 1 byte = 1 caractere sem viés), com maiúscula, minúscula e dígito. */
+/**
+ * 16 caracteres do alfabeto da API como o `gerar_senha` do operador.sh (T-0052): um de cada classe (maiúscula, minúscula,
+ * dígito, especial), o resto do alfabeto inteiro e embaralhado; cumpre a regra única de senha por construção.
+ */
 export function senhaProvisoria(): string {
-  for (;;) {
-    const s = [...randomBytes(16)].map((b) => ALFABETO_API[b % 64]).join('');
-    if (/[A-Z]/.test(s) && /[a-z]/.test(s) && /[2-9]/.test(s)) return s;
+  const sortear = (alfabeto: string) => alfabeto[randomInt(alfabeto.length)]!;
+  const c = [...Object.values(CLASSES_API).map(sortear), ...Array.from({ length: 12 }, () => sortear(ALFABETO_API))];
+  for (let i = c.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [c[i], c[j]] = [c[j]!, c[i]!];
   }
+  return c.join('');
 }
 
 /** Ambiente do `psql` como no contêiner: PG* do admin local apontando para `nomeDoBanco` (o teste soma as MACUXIERP_*). */

@@ -26,6 +26,12 @@ const PADRAO_OPERADOR = /^[a-z][a-z0-9._-]{1,39}$/; // cópia de scripts/platafo
 const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACOES = ['criar', 'desativar', 'reativar', 'destravar'];
 const ARGON2 = { memoria: 19_456, passes: 2, paralelismo: 1, tamanho: 32 }; // ARGON2_PADRAO da API
+// Regra única de senha (packages/platform-sdk/src/senha.ts, T-0052): letra, número 0-9 e caractere especial, além do
+// tamanho. Cópia (o contêiner não tem node_modules); o teste apps/api/src/operador-senha.test.ts trava contra o SDK.
+const SENHA_LETRA = /\p{L}/u;
+const SENHA_NUMERO = /[0-9]/;
+const SENHA_ESPECIAL = /[^\p{L}0-9\s]/u;
+const cumpreRegraSenha = (s) => SENHA_LETRA.test(s) && SENHA_NUMERO.test(s) && SENHA_ESPECIAL.test(s);
 
 class ErroUso extends Error {}
 
@@ -53,6 +59,7 @@ function lerArgumentos(argv, env) {
     if (tam < 2 || tam > 80) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome): 2 a 80 caracteres');
     if (/\p{Cc}/u.test(op.nome)) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome): sem quebra de linha nem caractere de controle');
     if (op.confirmar && op.senha.length < 16) throw new ErroUso('MACUXIERP_SENHA_INICIAL ausente ou curta (o operador.sh gera 16 caracteres)');
+    if (op.confirmar && !cumpreRegraSenha(op.senha)) throw new ErroUso('MACUXIERP_SENHA_INICIAL fora da regra de senha (letra, número e caractere especial)');
     if (!op.confirmar && op.senha) throw new ErroUso('MACUXIERP_SENHA_INICIAL só com --confirmar');
   } else {
     if (op.nome) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome) só no criar');

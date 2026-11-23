@@ -52,6 +52,8 @@ export const ROTULOS_OLHO_SENHA = Object.freeze({ mostrar: 'Mostrar senha', ocul
 
 export const MENSAGEM_SENHA_FORA_DA_REGRA = 'A senha não atende às regras';
 export const MENSAGEM_SENHA_IGUAL = 'A senha nova precisa ser diferente da atual';
+/** Texto da marca para o 400 com `campos.senha_atual` (POST /v1/auth/senha e troca do superadmin). */
+export const MENSAGEM_SENHA_ATUAL_INCORRETA = 'Senha atual incorreta. Confira e digite de novo.';
 
 /** Ids das regras que a senha descumpre, na ordem de `REGRAS_SENHA` (vazio = senha válida). Função pura. */
 export function regrasDescumpridas(senha: string): RegraSenhaId[] {

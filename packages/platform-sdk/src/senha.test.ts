@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EXEMPLO_ESPECIAIS,
+  MENSAGEM_SENHA_ATUAL_INCORRETA,
   MENSAGEM_SENHA_FORA_DA_REGRA,
   MENSAGEM_SENHA_IGUAL,
   MENSAGEM_SENHA_OK,
@@ -28,6 +29,7 @@ describe('regra única de senha do ERP (RN-CORE-32 do FDV; T-0052, Alexandre 23/
     expect(SENHA_MAXIMA).toBe(200);
     expect(MENSAGEM_SENHA_FORA_DA_REGRA).toBe('A senha não atende às regras');
     expect(MENSAGEM_SENHA_IGUAL).toBe('A senha nova precisa ser diferente da atual');
+    expect(MENSAGEM_SENHA_ATUAL_INCORRETA).toBe('Senha atual incorreta. Confira e digite de novo.');
     expect(REGRAS_SENHA).toEqual([
       { id: 'caracteres', texto: '8 caracteres ou mais' },
       { id: 'letra', texto: 'Uma letra' },

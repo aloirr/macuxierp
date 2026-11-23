@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACOES_PLATAFORMA, MODULOS } from '@macuxierp/platform-sdk';
+import { ACOES_PLATAFORMA, CODIGO_TROCAR_SENHA, MODULOS } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -100,6 +100,15 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(empresa([], { senha }).status).toBe(2);
   });
 
+  it('T-0052: senha fora da regra única (sem especial) é recusada (saída 2), nada gravado', async () => {
+    const fora = 'abcdEFGH23456789';
+    const r = empresa(['--confirmar'], { senha: fora });
+    expect(r.status).toBe(2);
+    expect(r.saida).toContain('fora da regra de senha');
+    expect(r.saida).not.toContain(fora);
+    await expect(tenantId()).resolves.toBeUndefined();
+  });
+
   it('com --confirmar: cria empresa, administrador e as quatro licenças, auditado; o login real entra com a senha', async () => {
     const r = empresa(['--confirmar'], { senha });
     expect(r.saida).toContain('APLICADO');
@@ -112,11 +121,12 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(r.saida).toContain('licença faturamento: sem licença (não mexida)');
     expect(r.saida).toContain('licença fiscal: sem licença (não mexida)');
 
-    const [u] = await um<{ email: string; nome: string; perfil: string; ativo: boolean; senha_hash: string }>(
-      'SELECT email, nome, perfil, ativo, senha_hash FROM plataforma.usuario WHERE tenant_id = $1',
+    const [u] = await um<{ email: string; nome: string; perfil: string; ativo: boolean; senha_hash: string; deve_trocar_senha: boolean }>(
+      'SELECT email, nome, perfil, ativo, senha_hash, deve_trocar_senha FROM plataforma.usuario WHERE tenant_id = $1',
       [t],
     );
-    expect(u).toMatchObject({ email: EMAIL, nome: ADMIN_NOME, perfil: 'administrador', ativo: true });
+    // T-0052: senha provisória = troca obrigatória no 1º acesso
+    expect(u).toMatchObject({ email: EMAIL, nome: ADMIN_NOME, perfil: 'administrador', ativo: true, deve_trocar_senha: true });
     // mesmo formato e parâmetros da API (ARGON2_PADRAO: 19 MiB, t=2, p=1) e a verificação real confere
     const { memoria, passes, paralelismo } = ARGON2_PADRAO;
     expect(u!.senha_hash).toMatch(new RegExp(`^\\$argon2id\\$v=19\\$m=${memoria},t=${passes},p=${paralelismo}\\$[A-Za-z0-9+/]{22}\\$[A-Za-z0-9+/]{43}$`));
@@ -127,7 +137,10 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(login.statusCode).toBe(200);
     const token = login.json<{ token_acesso: string }>().token_acesso;
     const eu = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
-    expect(eu.json<{ usuario: { perfil: string; nome: string } }>().usuario).toMatchObject({ perfil: 'administrador', nome: ADMIN_NOME });
+    expect(eu.json<{ usuario: { perfil: string; nome: string } }>().usuario).toMatchObject({ perfil: 'administrador', nome: ADMIN_NOME, deve_trocar_senha: true });
+    const modulo = await app.inject({ url: '/v1/core/empresa', headers: { authorization: `Bearer ${token}` } });
+    expect(modulo.statusCode).toBe(403);
+    expect(modulo.json()).toMatchObject({ codigo: CODIGO_TROCAR_SENHA });
 
     const aud = await auditoria(t);
     expect(aud.map((a) => a.acao)).toEqual(['plataforma.admin.criar', 'plataforma.empresa.criar', ...Array(4).fill('plataforma.modulos.alterar')]);

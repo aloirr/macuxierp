@@ -1,6 +1,8 @@
 /**
  * API do Macuxi ERP (Fastify, monólito modular; desenho T-0002, seção 2).
- * - `/v1/saude` (pública), `/v1/auth/*` (login, refresh rotativo em cookie httpOnly, sair, eu);
+ * - `/v1/saude` (pública), `/v1/auth/*` (login, refresh rotativo em cookie httpOnly, sair, eu, troca da senha);
+ * - senha provisória (T-0052): com `deve_trocar_senha` no JWT, toda rota do tenant é 403 `TROCAR_SENHA`, menos
+ *   `GET /v1/auth/eu`, `POST /v1/auth/sair` e `POST /v1/auth/senha` (`auth/troca-senha.ts`);
  * - cada módulo em `/v1/<modulo>`, montado pelas rotas declaradas no plugin (`definirPlugin` do SDK), com a ordem
  *   sessão → perfil → tenant → licença (RN-CORE-02) em toda rota;
  * - rota multipart (upload do A1, carga de CSV) com limite por arquivo, quantidade e total declarados na rota; os bytes
@@ -41,21 +43,22 @@ import {
   type Relogio,
   type RepositorioIdempotencia,
   type RotaModulo,
-  type Sessao,
   TAMANHO_MAXIMO_ARQUIVO,
   TAMANHO_MAXIMO_MULTIPART,
   tamanhoMaximoTotal,
   transacaoComPrazo,
   type Transacao,
+  SenhaInformada,
   type ArquivoEsperado,
   type MultipartRota,
 } from '@macuxierp/platform-sdk';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
-import { lerTokenAcesso } from './auth/jwt';
+import { lerTokenAcesso, type SessaoAcesso } from './auth/jwt';
 import type { RepositorioAuth } from './auth/portas';
 import { ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
 import { opcoesCookieSessao } from './auth/apoio-login';
+import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, erroTrocarSenha } from './auth/troca-senha';
 import { entradaDaChamada, responder } from './execucao-rota';
 import { montarPlataforma, type DependenciasPlataformaApi } from './plataforma/rotas';
 
@@ -103,11 +106,11 @@ export type LeitorAvisosA1 = (tx: Transacao, agora: Date) => Promise<readonly { 
 
 const semAvisosA1: LeitorAvisosA1 = async () => [];
 
-const Login = z.object({ empresa: z.string().min(1).max(60), email: z.string().email().max(254), senha: z.string().min(1).max(256) });
+const Login = z.object({ empresa: z.string().min(1).max(60), email: z.string().email().max(254), senha: SenhaInformada });
 
 declare module 'fastify' {
   interface FastifyRequest {
-    sessao: Sessao | null;
+    sessao: SessaoAcesso | null;
   }
 }
 
@@ -152,6 +155,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     req.sessao = h?.startsWith('Bearer ') ? lerTokenAcesso(h.slice(7), d.auth.jwtSegredo, d.relogio.agora()) : null;
     // O log de "request completed" sai pelo reply.log: os dois recebem o tenant e o usuário.
     if (req.sessao) req.log = reply.log = req.log.child({ tenant_id: req.sessao.tenant_id, usuario_id: req.sessao.usuario_id });
+    if (bloqueiaPorTrocaDeSenha(req.method, req.routeOptions.url, req.sessao?.deve_trocar_senha === true)) throw erroTrocarSenha();
   });
 
   app.setErrorHandler((recebido, req, reply) => {
@@ -188,6 +192,20 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     return reply.clearCookie(COOKIE_REFRESH, { path: CAMINHO_COOKIE }).status(204).send();
   });
 
+  // Troca da própria senha (T-0052): 204 sem corpo. A sessão corrente (o refresh do cookie) continua; o BKO renova o
+  // acesso (`POST /v1/auth/refresh`) para sair do JWT com a senha provisória. Auditoria só com ids e contagem.
+  app.post('/v1/auth/senha', async (req, reply) => {
+    if (!req.sessao) throw erros.naoAutenticado();
+    const sessao = req.sessao;
+    const entrada = CorpoTrocaSenha.parse(req.body);
+    await servico.trocarSenha(sessao, req.cookies[COOKIE_REFRESH], entrada, async (tx, sessoesRevogadas) => {
+      const ctx = { tenant_id: sessao.tenant_id, usuario_id: sessao.usuario_id, request_id: req.id };
+      const dados = { acao: 'core.usuario.senha_trocada', entidade: 'usuario', entidade_id: sessao.usuario_id, depois: { sessoes_revogadas: sessoesRevogadas } };
+      await auditar(d.auditoria, tx, ctx, dados, d.relogio.agora());
+    });
+    return reply.header('cache-control', 'no-store').status(204).send();
+  });
+
   app.get('/v1/auth/eu', async (req) => {
     const agora = d.relogio.agora();
     return executarAutorizado({
@@ -205,7 +223,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
         // A saída passa pelo contrato: campo a mais (e-mail, tenant_id) não vaza, e dado fora dele é 500 (erro nosso),
         // nunca o 400 VALIDACAO do ZodError, que é do corpo do pedido.
         const eu = EuResposta.safeParse({
-          usuario: { id: usuario.id, nome: usuario.nome, perfil: usuario.perfil },
+          usuario: { id: usuario.id, nome: usuario.nome, perfil: usuario.perfil, deve_trocar_senha: usuario.deve_trocar_senha },
           empresa: { id: tenant.id, slug: tenant.slug, razao_social: tenant.razao_social, fuso: tenant.fuso },
           filiais,
           modulos: d.modulos.filter((m) => ativos.has(m.manifesto.id)).map((m) => ({ id: m.manifesto.id, menus: [...(m.manifesto.web?.menus ?? [])] })),

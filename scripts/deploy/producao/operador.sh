@@ -27,8 +27,8 @@
 #   e a trava da §6); uma ação por vez, auditada (plataforma.superadmin.<ação>). Nunca gera nem troca senha.
 #   Os dois rodam o superadmin.mjs.
 #
-# Senha provisória (criar-empresa e criar-superadmin): 16 caracteres do alfabeto da API, gerada AQUI a partir do
-# /dev/urandom, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a pessoa foi criada
+# Senha provisória (criar-empresa e criar-superadmin): 16 caracteres do alfabeto da API, com letra, número e caractere
+# especial por construção (regra única de senha, T-0052), gerada AQUI a partir do /dev/urandom, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a pessoa foi criada
 # agora. Entregue-a por um canal seguro (nunca em recado, chat ou e-mail aberto).
 #
 # O script do contêiner vai pelo stdin. Saída 0 = ok; 2 = uso; 1 = falha (nada gravado).
@@ -40,25 +40,63 @@ source "$ORIGEM/comum.sh"
 erro() { echo "[operador] ERRO: $2" >&2; exit "$1"; }
 uso() { sed -n '/^# Uso:$/,/^#$/p' "$0" | sed '1d;$d' | sed 's/^# \{0,3\}//' >&2; erro 2 "$1"; }
 
-# Mesmo alfabeto da senha provisória da API (modules/core/domain/usuarios.ts: sem 0/O, 1/l/I).
-ALFABETO='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%+=?'
-TAMANHO_SENHA=16
 PADRAO_EMAIL='^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
 PADRAO_OPERADOR='^[a-z][a-z0-9._-]{1,39}$'
 
 # Tamanho em caracteres (não bytes), qualquer que seja o locale da sessão SSH: o empresa.mjs e o superadmin.mjs contam igual.
 tamanho() { local LC_ALL=C.UTF-8; printf '%s' "${#1}"; }
 
-gerar_senha() { # amostragem por rejeição (tr -dc descarta o byte fora do alfabeto de 64): sem viés
-  local s=''
-  while :; do
-    s="$(head -c 1024 /dev/urandom | LC_ALL=C tr -dc "$ALFABETO")"
-    s="${s:0:$TAMANHO_SENHA}"
-    [ "${#s}" -eq "$TAMANHO_SENHA" ] || continue
-    [[ "$s" =~ [A-Z] && "$s" =~ [a-z] && "$s" =~ [2-9] ]] && break # maiúscula, minúscula e dígito, como a API
+# >>> gerador da senha provisória (o teste apps/api/src/operador-senha.test.ts roda este trecho e trava as classes)
+# Mesmas classes da senha provisória da API (modules/core/domain/usuarios.ts: sem 0/O, 1/l/I).
+MAIUSCULAS='ABCDEFGHJKLMNPQRSTUVWXYZ'
+MINUSCULAS='abcdefghijkmnopqrstuvwxyz'
+DIGITOS='23456789'
+SIMBOLOS='!@#%+=?'
+ALFABETO="$MAIUSCULAS$MINUSCULAS$DIGITOS$SIMBOLOS"
+TAMANHO_SENHA=16
+
+# Inteiros de 32 bits do /dev/urandom lidos de uma vez por senha (64; a senha usa 35, o resto cobre a rejeição).
+SORTEIO=()
+POSICAO=0
+R=0
+sortear() { # R = inteiro uniforme em [0, $1): rejeição acima do maior múltiplo de $1 (chance < 2^-26 por inteiro)
+  local limite=$((4294967296 - 4294967296 % $1))
+  while [ "$POSICAO" -lt "${#SORTEIO[@]}" ]; do # limitado aos 64 inteiros lidos: sem laço aberto
+    R="${SORTEIO[POSICAO]}"
+    POSICAO=$((POSICAO + 1))
+    if [ "$R" -lt "$limite" ]; then
+      R=$((R % $1))
+      return 0
+    fi
   done
-  printf '%s' "$s"
+  return 1
 }
+
+# Por construção, sem sorteio repetido: um caractere de cada classe (maiúscula, minúscula, dígito, especial), o resto do
+# alfabeto inteiro e embaralhamento de Fisher-Yates. Cumpre a regra única do SDK (letra, número e especial; 16 >= 8).
+gerar_senha() {
+  local -a c=()
+  local classe i t
+  read -r -a SORTEIO <<<"$(od -An -v -N256 -tu4 /dev/urandom | tr '\n' ' ')"
+  POSICAO=0
+  [ "${#SORTEIO[@]}" -eq 64 ] || return 1
+  for classe in "$MAIUSCULAS" "$MINUSCULAS" "$DIGITOS" "$SIMBOLOS"; do
+    sortear "${#classe}" || return 1
+    c+=("${classe:R:1}")
+  done
+  for ((t = ${#c[@]}; t < TAMANHO_SENHA; t++)); do
+    sortear "${#ALFABETO}" || return 1
+    c+=("${ALFABETO:R:1}")
+  done
+  for ((i = TAMANHO_SENHA - 1; i > 0; i--)); do
+    sortear "$((i + 1))" || return 1
+    t="${c[i]}"
+    c[i]="${c[R]}"
+    c[R]="$t"
+  done
+  printf '%s' "${c[@]}"
+}
+# <<< gerador da senha provisória
 
 # texto <opção> <valor> <mín> <máx>: tamanho em caracteres e sem caractere de controle (sem ecoar o valor)
 texto() {
@@ -117,7 +155,7 @@ criar_empresa() {
 
   local ARGS=(--slug "$SLUG" --operador "$OPERADOR") SENHA=''
   if [ "$CONFIRMAR" = 1 ]; then
-    SENHA="$(gerar_senha)"
+    SENHA="$(gerar_senha)" || erro 1 "não foi possível gerar a senha provisória (nada foi gravado)"
     ARGS+=(--confirmar)
   fi
   export MACUXIERP_EMPRESA_NOME="$NOME" MACUXIERP_ADMIN_EMAIL="$EMAIL" MACUXIERP_ADMIN_NOME="$ADMIN_NOME"
@@ -180,7 +218,7 @@ superadmin() {
   if [ "$CONFIRMAR" = 1 ]; then
     ARGS+=(--confirmar)
     if [ "$ACAO" = criar ]; then
-      SENHA="$(gerar_senha)"
+      SENHA="$(gerar_senha)" || erro 1 "não foi possível gerar a senha provisória (nada foi gravado)"
       export MACUXIERP_SENHA_INICIAL="$SENHA"
       ENVS+=(-e MACUXIERP_SENHA_INICIAL)
     fi

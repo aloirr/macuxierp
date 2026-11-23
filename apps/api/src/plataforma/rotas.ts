@@ -22,7 +22,6 @@ import {
   hashDoPedido,
   MENSAGENS_IDEMPOTENCIA,
   PREFIXO_PLATAFORMA,
-  TrocarSenhaPlataformaEntrada,
   type BancoPlataformaComLogin,
   type ContextoPlataforma,
   type PluginPlataforma,
@@ -34,6 +33,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ConfigAuth } from '../auth/servico';
 import { opcoesCookieSessao } from '../auth/apoio-login';
+import { CorpoTrocaSenha, erroTrocarSenha } from '../auth/troca-senha';
 import { entradaDaChamada, responder } from '../execucao-rota';
 import { erroDaPlataforma } from './erros';
 import { ipDoCliente } from './ip-cliente';
@@ -121,7 +121,8 @@ export function montarPlataforma(app: FastifyInstance, d: DependenciasPlataforma
       exigirCsrf(req);
       const s = await sessaoDoPedido(req, reply, c);
       if (!s) throw erros.naoAutenticado();
-      const { senha_atual, senha_nova } = TrocarSenhaPlataformaEntrada.parse(req.body);
+      // Mesmo corpo e mesmos 400 da troca do tenant (erroSenhaNova).
+      const { senha_atual, senha_nova } = CorpoTrocaSenha.parse(req.body);
       await c.servico.trocarSenha(s, senha_atual, senha_nova);
       return reply.status(204).send();
     }),
@@ -142,7 +143,7 @@ async function executarRotaPlataforma(req: FastifyRequest, reply: FastifyReply, 
   req.log = reply.log = req.log.child({ modulo: 'plataforma' });
   exigirCsrf(req);
   const lida = await sessaoDoPedido(req, reply, c);
-  if (lida?.deve_trocar_senha) throw new ErroApi(403, 'TROCAR_SENHA', 'Troque a senha provisória antes de continuar');
+  if (lida?.deve_trocar_senha) throw erroTrocarSenha();
   const agora = c.relogio.agora();
   const resultado = await executarPlataforma({
     sessao: lida && { superadmin_id: lida.superadmin_id, sessao_id: lida.sessao_id },

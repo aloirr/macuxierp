@@ -7,6 +7,7 @@ import { COOKIE_REFRESH, criarApp, type LeitorAvisosA1 } from './app';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { gerarHashSenha } from './auth/senha';
+import { MENSAGEM_TROCAR_SENHA } from './auth/troca-senha';
 import { ARGON2_RAPIDO, JWT_SEGREDO_DE_TESTE, modulosDeTeste, SENHA_DE_TESTE } from './apoio-teste';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
@@ -66,7 +67,7 @@ async function montar(opcoes: { licencas?: Licenca[]; fonteLicencas?: FonteLicen
     { id: FILIAL_2, tenant_id: TENANT, nome: 'Filial Parintins', cnpj: '11222333000262' },
     { id: FILIAL_OUTRO_TENANT, tenant_id: OUTRO_TENANT, nome: 'De outro tenant', cnpj: '11444777000161' },
   );
-  const usuario = { tenant_id: TENANT, nome: 'Pessoa', senha_hash: hash, ativo: true, falhas_login: 0, bloqueado_ate: null };
+  const usuario = { tenant_id: TENANT, nome: 'Pessoa', senha_hash: hash, ativo: true, falhas_login: 0, bloqueado_ate: null, deve_trocar_senha: false };
   repo.usuarios.push(
     { ...usuario, id: ADM, email: 'adm@exemplo.com', perfil: 'administrador', filial_ids: [MATRIZ] },
     { ...usuario, id: LEITOR, email: 'leitor@exemplo.com', perfil: 'leitura', filial_ids: [FILIAL_2, MATRIZ, FILIAL_OUTRO_TENANT] },
@@ -164,6 +165,15 @@ describe('POST /v1/auth/login', () => {
     expect(malformado.statusCode).toBe(400);
     expect(malformado.json().codigo).toBe('VALIDACAO');
   });
+
+  it('senha do login é SenhaInformada (1–200, sem a regra): 201 caracteres é 400 em senha, sem contar falha', async () => {
+    const { app, repo } = await montar();
+    const longa = await entrar(app, 'adm@exemplo.com', 'x'.repeat(201));
+    expect(longa.statusCode).toBe(400);
+    expect(longa.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { senha: expect.any(String) } });
+    expect((await entrar(app, 'adm@exemplo.com', 'x'.repeat(200))).statusCode).toBe(401);
+    expect(repo.usuarios.find((u) => u.id === ADM)).toMatchObject({ falhas_login: 1 });
+  });
 });
 
 describe('refresh rotativo e saída', () => {
@@ -218,7 +228,7 @@ describe('GET /v1/auth/eu', () => {
     const eu = r.json();
     expect(EuResposta.parse(eu)).toEqual(eu);
     expect(eu).toEqual({
-      usuario: { id: LEITOR, nome: 'Pessoa', perfil: 'leitura' },
+      usuario: { id: LEITOR, nome: 'Pessoa', perfil: 'leitura', deve_trocar_senha: false },
       empresa: { id: TENANT, slug: 'thathyany', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus' },
       // na ordem do cadastro do usuário; a filial de outro tenant não aparece (RLS)
       filiais: [
@@ -349,5 +359,88 @@ describe('logs (LGPD e segredos)', () => {
     expect(tudo).toContain(`"tenant_id":"${TENANT}"`);
     expect(tudo).toContain('"modulo":"cadastros"');
     for (const proibido of ['adm@exemplo.com', SENHA_DE_TESTE, token, refreshDe(login), '52998224725']) expect(tudo).not.toContain(proibido);
+  });
+});
+
+describe('T-0052 (RN-CORE-10): senha provisória e POST /v1/auth/senha (repositório em memória)', () => {
+  const SENHA_NOVA = 'Nova-senha-789';
+  const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+  const trocar = (app: App, token: string, refresh: string | null, corpo: unknown) =>
+    app.inject({ method: 'POST', url: '/v1/auth/senha', headers: bearer(token), payload: corpo as object, ...(refresh ? { cookies: { [COOKIE_REFRESH]: refresh } } : {}) });
+
+  async function comFlag() {
+    const m = await montar();
+    m.repo.usuarios.find((u) => u.id === ADM)!.deve_trocar_senha = true;
+    const login = await entrar(m.app);
+    return { ...m, token: login.json<{ token_acesso: string }>().token_acesso, refresh: refreshDe(login) };
+  }
+
+  it('com a flag: /eu mostra deve_trocar_senha, rota de módulo é 403 TROCAR_SENHA e sair responde', async () => {
+    const { app, token, refresh } = await comFlag();
+    const eu = await app.inject({ url: '/v1/auth/eu', headers: bearer(token) });
+    expect(eu.statusCode).toBe(200);
+    expect(eu.json().usuario).toEqual({ id: ADM, nome: 'Pessoa', perfil: 'administrador', deve_trocar_senha: true });
+    const bloqueada = await app.inject({ url: '/v1/cadastros/fuso', headers: bearer(token) });
+    expect(bloqueada.statusCode).toBe(403);
+    expect(bloqueada.json()).toEqual({ codigo: 'TROCAR_SENHA', mensagem: MENSAGEM_TROCAR_SENHA });
+    expect((await app.inject({ method: 'POST', url: '/v1/cadastros/precos', headers: bearer(token), payload: { preco_centavos: 1 } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/v1/auth/sair', headers: bearer(token), cookies: { [COOKIE_REFRESH]: refresh } })).statusCode).toBe(204);
+  });
+
+  it('troca certa: 204, flag zerada, outras sessões revogadas, a corrente renova sem a flag; auditoria sem senha nem hash', async () => {
+    const { app, repo, auditoria, token, refresh } = await comFlag();
+    const outra = refreshDe(await entrar(app));
+    const r = await trocar(app, token, refresh, { senha_atual: SENHA_DE_TESTE, senha_nova: SENHA_NOVA });
+    expect(r.statusCode).toBe(204);
+    expect(r.body).toBe('');
+    const u = repo.usuarios.find((x) => x.id === ADM)!;
+    expect(u.deve_trocar_senha).toBe(false);
+    expect(u.senha_hash).not.toBe(hash);
+    expect((await app.inject({ method: 'POST', url: '/v1/auth/refresh', cookies: { [COOKIE_REFRESH]: outra } })).statusCode).toBe(401);
+    const renovado = await app.inject({ method: 'POST', url: '/v1/auth/refresh', cookies: { [COOKIE_REFRESH]: refresh } });
+    expect(renovado.statusCode).toBe(200);
+    expect((await app.inject({ url: '/v1/cadastros/fuso', headers: bearer(renovado.json().token_acesso) })).statusCode).toBe(200);
+    expect((await entrar(app, 'adm@exemplo.com', SENHA_NOVA)).statusCode).toBe(200);
+    const aud = auditoria.registros.filter((a) => a.acao === 'core.usuario.senha_trocada');
+    expect(aud).toEqual([expect.objectContaining({ tenant_id: TENANT, usuario_id: ADM, entidade: 'usuario', entidade_id: ADM, antes: null, depois: { sessoes_revogadas: 1 } })]);
+    expect(JSON.stringify(aud)).not.toMatch(/argon2|Nova-senha|senha-de-teste/);
+  });
+
+  it('senha atual errada: 400 em senha_atual e não conta como falha de login', async () => {
+    const { app, repo, token, refresh } = await comFlag();
+    for (let i = 0; i < 6; i++) {
+      const r = await trocar(app, token, refresh, { senha_atual: 'errada-123!', senha_nova: SENHA_NOVA });
+      expect(r.statusCode).toBe(400);
+      expect(r.json()).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { senha_atual: 'Senha atual incorreta. Confira e digite de novo.' } });
+    }
+    expect(repo.usuarios.find((u) => u.id === ADM)).toMatchObject({ falhas_login: 0, bloqueado_ate: null, deve_trocar_senha: true });
+    expect((await entrar(app)).statusCode).toBe(200);
+  });
+
+  it('nova igual à atual: 400 em senha_nova com a MENSAGEM_SENHA_IGUAL', async () => {
+    const { app, token } = await comFlag();
+    const r = await trocar(app, token, null, { senha_atual: SENHA_DE_TESTE, senha_nova: SENHA_DE_TESTE });
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { senha_nova: 'A senha nova precisa ser diferente da atual' } });
+  });
+
+  it('nova fora da regra: 400 VALIDACAO com campos.senha_nova e detalhes.regras, antes de conferir a senha atual', async () => {
+    const { app, token } = await comFlag();
+    const r = await trocar(app, token, null, { senha_atual: 'qualquer', senha_nova: 'abcdefg' });
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toEqual({
+      codigo: 'VALIDACAO',
+      mensagem: 'A senha não atende às regras',
+      campos: { senha_nova: '8 caracteres ou mais; Um número; Um caractere especial' },
+      detalhes: { regras: ['caracteres', 'numero', 'especial'] },
+    });
+  });
+
+  it('sem sessão é 401; corpo sem os campos é 400 VALIDACAO', async () => {
+    const { app, token } = await comFlag();
+    expect((await app.inject({ method: 'POST', url: '/v1/auth/senha', payload: { senha_atual: 'a', senha_nova: SENHA_NOVA } })).statusCode).toBe(401);
+    const r = await trocar(app, token, null, { senha_nova: SENHA_NOVA });
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { senha_atual: expect.any(String) } });
   });
 });
