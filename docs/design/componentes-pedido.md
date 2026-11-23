@@ -85,3 +85,5 @@ Tamanho do rótulo do menu: `--mx-tamanho-rotulo-menu` (o `--mx-tamanho-titulo-g
 Cor por token (`cor()`), nunca hex. **Mapa de cores de estado:** sucesso = `verdeSucesso` sobre `ativoFundo`; aviso = `avisoTexto` sobre `avisoFundo`; erro = `erroTexto` sobre `erroFundo`; neutro = `textoSecundario` sobre `nevoa` (`inativoFundo`). **O laranja do sol não é cor de estado.** Bloqueadas: aviso; recusadas: erro; "Bloqueado" = Chip tom aviso. A `CaixaResumo` aceita os tons sucesso, aviso e erro. O `Dialogo` tem `tabIndex=-1` e, sem elemento focável, o foco inicial vai para ele (o Esc continua fechando).
 
 O `DialogoMotivo` usa o `Dialogo`.
+
+Altura até 90vh; título e rodapé fixos, corpo rola. (T-0058, v0.3.6; prints em `docs/design/dialogo-altura/`)
