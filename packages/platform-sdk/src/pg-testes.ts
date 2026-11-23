@@ -9,16 +9,20 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
-import { vi } from 'vitest';
 import { BancoPg } from './pg';
 
 /**
  * Prazo dos hooks do arquivo de teste que importa este apoio. O `beforeAll` lê o `hookTimeout` do runner no registro, que
  * vem depois das importações; o vitest volta a config ao fim de cada arquivo (`vi.resetConfig`). Os 10 s padrão não
  * bastam no CI, com o turbo rodando vários pacotes em paralelo: `CREATE DATABASE` + a CLI de migração passavam disso.
+ * O `vitest` entra por import dinâmico (top-level await) e só sob o vitest (`VITEST`): fora dele, o `vi` quebra ("Vitest
+ * failed to access its internal state") e o apoio também é usado fora do runner (`tests/e2e/api-real.ts`, vite-node).
  */
 export const PRAZO_HOOK_BANCO_MS = 120_000;
-vi.setConfig({ hookTimeout: PRAZO_HOOK_BANCO_MS });
+if (process.env.VITEST) {
+  const { vi } = await import('vitest');
+  vi.setConfig({ hookTimeout: PRAZO_HOOK_BANCO_MS });
+}
 
 const env = process.env;
 
