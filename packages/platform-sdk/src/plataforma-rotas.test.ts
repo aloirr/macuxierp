@@ -44,6 +44,10 @@ describe('rotas de plataforma (ADR 0012): superadmin no lugar de perfil + licen�
     for (const a of ACOES_PLATAFORMA) expect(a.startsWith('plataforma.')).toBe(true);
   });
 
+  it('revelar o e-mail do 1º admin é ação explícita e auditada (T-0050)', () => {
+    expect(ACOES_PLATAFORMA).toContain('plataforma.admin.revelar_email');
+  });
+
   it('o plugin recusa caminho sem "/", o login dentro do plugin (é da apps/api), rota repetida e idempotência em GET', () => {
     expect(() => definirPluginPlataforma([rota('GET', 'empresas', 'plataforma.empresa.ver')])).toThrow(PluginInvalido);
     expect(() => definirPluginPlataforma([rota('POST', '/auth/entrar', 'plataforma.empresa.ver')])).toThrow(PluginInvalido);

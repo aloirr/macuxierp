@@ -4,6 +4,7 @@ import {
   AlterarModulosEntrada,
   CABECALHOS_SENHA_PROVISORIA,
   CriarEmpresaEntrada,
+  EmailPrimeiroAdminResposta,
   EmailUsuario,
   EmpresaPlataforma,
   EntrarPlataformaEntrada,
@@ -72,6 +73,40 @@ describe('contratos do portal /config (ADR 0012)', () => {
     const comAdmin = EmpresaPlataforma.parse({ ...empresa, primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false, email: 'a@b.c' } });
     expect(comAdmin.primeiro_admin).toEqual({ id: ADMIN, ativo: true, bloqueado: false });
     expect(() => EmpresaPlataforma.parse({ ...empresa, modulos: [{ modulo: 'compras', ativo: true, valido_ate: null }] })).toThrow();
+  });
+
+  it('EmpresaPlataforma (T-0050): razão social, CNPJ, cidade/UF e e-mail mascarado do 1º admin são opcionais e anuláveis', () => {
+    // contrato antigo (sem os campos novos) continua válido
+    expect(EmpresaPlataforma.parse(empresa)).not.toHaveProperty('cnpj');
+    expect(EmpresaPlataforma.parse({ ...empresa, primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false } }).primeiro_admin).toEqual({ id: ADMIN, ativo: true, bloqueado: false });
+    // todos nulos
+    const nulos = { razao_social: null, cnpj: null, cidade: null, uf: null };
+    expect(EmpresaPlataforma.parse({ ...empresa, ...nulos, primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false, email_mascarado: null } })).toMatchObject(nulos);
+    // preenchidos: CNPJ numérico e alfanumérico, sem máscara (formato do domínio plataforma.cnpj)
+    const cheia = EmpresaPlataforma.parse({
+      ...empresa,
+      razao_social: 'ACME Comércio Ltda',
+      cnpj: '11222333000181',
+      cidade: 'Boa Vista',
+      uf: 'RR',
+      primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false, email_mascarado: 'ad****@acme.com.br' },
+    });
+    expect(cheia).toMatchObject({ razao_social: 'ACME Comércio Ltda', cnpj: '11222333000181', cidade: 'Boa Vista', uf: 'RR' });
+    expect(cheia.primeiro_admin?.email_mascarado).toBe('ad****@acme.com.br');
+    expect(EmpresaPlataforma.parse({ ...empresa, cnpj: '12ABC34501DE35' }).cnpj).toBe('12ABC34501DE35');
+    expect(EmpresaPlataforma.parse({ ...empresa, primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false, email_mascarado: '*****@a.co' } }).primeiro_admin?.email_mascarado).toBe('*****@a.co');
+    // inválidos
+    for (const uf of ['RRR', 'R', 'rr']) expect(() => EmpresaPlataforma.parse({ ...empresa, uf }), uf).toThrow();
+    // resposta: DV errado mas no formato passa (o DV é conferido no cadastro, RN-CAD-01)
+    expect(EmpresaPlataforma.parse({ ...empresa, cnpj: '11222333000182' }).cnpj).toBe('11222333000182');
+    // formato errado falha: 13 caracteres, minúscula, máscara, DV com letra
+    for (const cnpj of ['1122233300018', '12abc34501de35', '11.222.333/0001-81', '12ABC34501DEAB']) expect(() => EmpresaPlataforma.parse({ ...empresa, cnpj }), cnpj).toThrow();
+  });
+
+  it('EmailPrimeiroAdminResposta (revelação auditada): e-mail completo, aparado e minúsculo', () => {
+    expect(EmailPrimeiroAdminResposta.parse({ email: '  Admin@Acme.COM.br ' })).toEqual({ email: 'admin@acme.com.br' });
+    expect(() => EmailPrimeiroAdminResposta.parse({ email: 'sem-arroba' })).toThrow();
+    expect(() => EmailPrimeiroAdminResposta.parse({})).toThrow();
   });
 
   it('AlterarModulosEntrada: módulo conhecido, sem repetição e sem desligar o core (MODULOS_BASE)', () => {

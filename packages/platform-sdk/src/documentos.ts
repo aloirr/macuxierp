@@ -8,6 +8,11 @@
  */
 import { z } from 'zod';
 
+/** CNPJ sem máscara (numérico ou alfanumérico), igual ao domínio plataforma.cnpj. */
+export const PADRAO_CNPJ = /^[0-9A-Z]{12}[0-9]{2}$/;
+/** Sigla da UF: 2 letras maiúsculas. */
+export const PADRAO_UF = /^[A-Z]{2}$/;
+
 /** Tira pontuação (. / - e espaço) e passa para maiúsculas. Não valida. */
 export function normalizarDocumento(valor: string): string {
   return valor.replace(/[.\-/\s]/g, '').toUpperCase();
@@ -29,7 +34,7 @@ function dvModulo11(valores: readonly number[]): number {
 /** RN-CAD-01: CNPJ (numérico ou alfanumérico) válido pelo dígito verificador. Aceita com ou sem máscara. */
 export function cnpjValido(valor: string): boolean {
   const c = normalizarDocumento(valor);
-  if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(c) || todosIguais(c)) return false;
+  if (!PADRAO_CNPJ.test(c) || todosIguais(c)) return false;
   const valores = [...c.slice(0, 12)].map((ch) => ch.charCodeAt(0) - 48);
   const dv1 = dvModulo11(valores);
   const dv2 = dvModulo11([...valores, dv1]);
