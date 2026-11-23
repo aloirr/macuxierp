@@ -21,6 +21,7 @@ import {
   MAX_BYTES_LOTE,
   MAX_LINHAS_LOTE,
   montarLotes,
+  OBSOLETOS,
   ORDEM_CARGA,
   ROTA_CARGA,
 } from './carga-csv.mjs';
@@ -355,6 +356,10 @@ describe('carga-csv.mjs: sincronia com o SDK e o contrato de cadastros', () => {
     const maxArquivos = /arquivos:\s*z\.array\([\s\S]*?\)\.min\(1\)\.max\((\d+)\)/.exec(contrato);
     assert.ok(maxArquivos, 'CargaPedido.arquivos sem .min(1).max(N)');
     assert.equal(Number(maxArquivos[1]), MAX_ARQUIVOS_POR_POST);
-    assert.deepEqual(lista(contrato, 'ENTIDADES_IGNORADAS'), IGNORADAS);
+    assert.deepEqual(
+      [...lista(contrato, 'ENTIDADES_IGNORADAS')].sort(),
+      [...IGNORADAS, ...Object.keys(OBSOLETOS)].sort(),
+      'ENTIDADES_IGNORADAS do contrato = IGNORADAS + OBSOLETOS da CLI',
+    );
   });
 });
