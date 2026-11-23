@@ -17,6 +17,7 @@ Espaçamentos: a marca ainda não tem tokens de espaço; os componentes usam mú
 
 ## FaixaPendencias
 `itens: Pendencia[]`, com `Pendencia = { nivel: 'bloqueante' \| 'aceitavel'; codigoRn: string; texto: string }`. Bloqueante primeiro, fundo/texto de erro, `role="alert"`; aceitável em aviso, `role="status"`. Lista vazia não renderiza. O código da regra (`codigoRn`) vai só para o atributo `data-regra` (para teste e suporte); não aparece na tela (MC-0006).
+Sem rótulo de severidade visível (T-0056): o texto diz o problema e a ação; o leitor de tela ouve "Erro:" ou "Aviso:". 'bloqueante' só para falha que o usuário resolve na tela.
 
 ## DialogoMotivo
 `titulo`, `motivos?: { codigo, rotulo }[]` (se houver, escolher um é obrigatório), `textoObrigatorio?` (padrão opcional), `rotuloTexto?`, `rotuloConfirmar?`, `rotuloFechar?` (texto do botão que chama `aoCancelar`; padrão "Cancelar", ex.: "Manter a nota"), `destrutivo?` (só sinal: `data-destrutivo="true"` no botão de confirmar; nenhuma cor muda, o vermelho fica para a próxima versão), `aviso?: string | null` (texto fixo do módulo, ex.: `avisoDoMotivo(origem, codigo)`; sem aviso nada aparece e não há `aria-describedby`), `validar?(r) => string | null` (regra do módulo, roda depois da checagem básica de escolha e texto), `aoConfirmar(r: { motivo?, texto })`, `aoCancelar()`. Renderize só quando aberto. `role="dialog"`, `aria-modal`, foco preso, Esc e clique no fundo cancelam, foco volta ao elemento anterior. Erro de campo conforme MC-0015 (abaixo).

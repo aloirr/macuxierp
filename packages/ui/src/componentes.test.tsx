@@ -66,6 +66,20 @@ describe('FaixaPendencias', () => {
     expect(h).toContain('var(--mx-cor-aviso-fundo)');
     expect(h).toContain('RN-PED-004');
     expect(h.indexOf('RN-PED-004')).toBeLessThan(h.indexOf('RN-PED-002'));
+    const erro = renderToStaticMarkup(<FaixaPendencias itens={[itens[1]!]} />);
+    expect(erro).toContain('var(--mx-cor-erro-texto)');
+    expect(erro).not.toContain('var(--mx-cor-aviso-texto)');
+    const aviso = renderToStaticMarkup(<FaixaPendencias itens={[itens[0]!]} />);
+    expect(aviso).toContain('var(--mx-cor-aviso-texto)');
+    expect(aviso).not.toContain('var(--mx-cor-erro-texto)');
+  });
+  it('sem rótulo de severidade visível; prefixo só para leitor de tela (T-0056)', () => {
+    const h = renderToStaticMarkup(<FaixaPendencias itens={itens} />);
+    expect(h).not.toContain('Bloqueia');
+    expect(h).not.toContain('Atenção');
+    expect(h).toContain('Erro: </span>');
+    expect(h).toContain('Aviso: </span>');
+    expect(h).not.toContain('<strong');
   });
   it('só aceitável vira status; vazio não renderiza', () => {
     expect(renderToStaticMarkup(<FaixaPendencias itens={[itens[0]!]} />)).toContain('role="status"');
