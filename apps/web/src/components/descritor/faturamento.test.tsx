@@ -162,9 +162,9 @@ describe('nota parcial e tabelas com ações (T-0021)', () => {
     expect(campos[1]).not.toContain('aria-describedby');
     expect(h).toMatch(/<span id="d-item-erro-1" class="erro-campo">A quantidade passa do saldo\.<\/span>/);
     expect(h).not.toContain('d-item-erro-2');
-    expect(h).toMatch(/<p class="so-leitor" role="status" aria-live="polite">Há campos com erro/);
+    expect(h).toMatch(/<p role="status" aria-live="polite" style="[^"]*">Há campos com erro/);
     expect(h.match(/role="alert"/g)).toBeNull();
-    expect(renderToStaticMarkup(<ItensDoDialogo id="d-item" linhas={linhas} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toMatch(/aria-live="polite"><\/p>/);
+    expect(renderToStaticMarkup(<ItensDoDialogo id="d-item" linhas={linhas} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toMatch(/aria-live="polite" style="[^"]*"><\/p>/);
   });
   it('erro da parcial em partes: embaixo do campo só a mensagem; o leitor ouve o texto inteiro do módulo, sem nada concatenado', () => {
     const linhas = [{ sequencia: 1, descricao: 'Água', rotulo: '1 - Água', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }];

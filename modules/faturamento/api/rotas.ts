@@ -7,18 +7,18 @@
 import { csvDaLista, definirRota, ErroApi, erros, fusoDaRota, type ContextoRota, type RespostaRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import type { ColunaLista } from '@macuxierp/platform-sdk/listas';
 import {
-  BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, ConfiguracaoFilialResposta, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
+  AbrirContingenciaEntrada, BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, ConfiguracaoFilialResposta, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroEpecPendentes, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TransmitirEpecPendentesEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
-import type { EventoNotaResumo } from '../contracts';
+import type { AlertaPrazoEpec, ContingenciaDaFilialResposta, EpecPendente, EventoNotaResumo } from '../contracts';
 import { montarDanfe } from '../domain/danfe';
 import { lerAssinaturaDaMarca, MENSAGEM_ATIVO_AUSENTE, type ResultadoAtivosDanfe } from './ativos-marca';
 import { renderizarDanfe } from './danfe-pdf';
-import { podeBaixarTitulo } from '../domain';
-import { paginaNoFuso, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
-import type { ConfiguracaoFaturamento, EventoRegistro, PortaDanfe, RepositorioTitulos } from './portas';
+import { EPEC_LIGADA, modalidadeDaUf, alertaPrazoEpec, podeBaixarTitulo, prazoEpec, situacaoPrazoEpec, validarEntradaContingencia } from '../domain';
+import { paginaNoFuso, paginaEpecPendentes, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
+import type { ConfiguracaoFaturamento, EventoRegistro, RepositorioContingencia, PortaDanfe, RepositorioTitulos } from './portas';
 import { criarServicoTitulos } from './titulos';
-import { criarServicoEmissao, type DepsEmissao } from './emissao';
+import { criarServicoEmissao, MENSAGEM_SVC_INDISPONIVEL, type DepsEmissao } from './emissao';
 import { criarServicoEventos, type DepsEventos } from './eventos';
 import { traduzirErroBanco } from './sql';
 import { erroDeViolacoes, idDe } from './util';
@@ -55,15 +55,43 @@ const SEM_VENDEDOR = (c: ContextoRota): void => {
   if (c.sessao.perfil === 'vendedor') throw erros.perfilSemPermissao();
 };
 
+/** Abrir e encerrar contingência (RN-FAT-05): só o administrador; os demais perfis, inclusive faturista e fiscal, recebem 403. */
+const SOMENTE_ADMINISTRADOR = (c: ContextoRota): void => {
+  if (c.sessao.perfil !== 'administrador') throw erros.perfilSemPermissao();
+};
+
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
-export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
+export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
 
 /** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06). A rota usa `faturamento.ver` (licença e tenant) e confere o perfil aqui, até existir ação própria no platform-sdk. */
 const SO_QUEM_BAIXA = (c: ContextoRota): void => {
   if (!podeBaixarTitulo(c.sessao.perfil)) throw erros.perfilSemPermissao();
 };
 
+/** Histórico curto da contingência da filial (as últimas fechadas). */
+const HISTORICO_CONTINGENCIA = 10;
+/** Contingência sem o adaptador (`DepsRotas.contingencia` ausente): 503, nunca 500. */
+const SEM_CONTINGENCIA = 'Contingência';
+
 export function criarRotas(deps: DepsRotas): RotaModulo[] {
+  const contingencia = (): RepositorioContingencia => deps.contingencia ?? ((): never => { throw erros.indisponivel(SEM_CONTINGENCIA); })();
+  /** Filial emissora do tenant e o ambiente vigente dela (regra 7: contingência por filial E ambiente). */
+  const filialEAmbiente = async (c: ContextoRota, params: Readonly<Record<string, string>>) => {
+    const filial_id = idDe(params, 'id', 'Filial');
+    if (!(await deps.cadastros.filial(c.tx, filial_id))) throw erros.naoEncontrado('Filial');
+    return { filial_id, ambiente: await deps.ambiente.ambiente(c.tx, filial_id) };
+  };
+  /** Pendentes com o prazo e a situação calculados no domain (RN-FAT-09: 168 h da autorização do EPEC). Volume baixo: filtra e pagina em memória. */
+  const epecPendentes = async (c: ContextoRota, f: FiltroEpecPendentes): Promise<{ itens: EpecPendente[]; proximo_cursor: string | null }> => {
+    const linhas = await contingencia().epecPendentes(c.tx, { filial_id: f.filial_id });
+    const todas = linhas.map((l): EpecPendente => {
+      const prazo = prazoEpec({ epecAutorizadoEm: new Date(l.epec_autorizada_em) });
+      return { ...l, prazo_ate: prazo.toISOString(), situacao_prazo: situacaoPrazoEpec(c.agora, prazo) };
+    }).filter((l) => !f.situacao || l.situacao_prazo === f.situacao).sort((a, b) => a.prazo_ate.localeCompare(b.prazo_ate) || a.id.localeCompare(b.id));
+    const depois = f.cursor ? todas.findIndex((l) => l.id === f.cursor) + 1 : 0;
+    const itens = todas.slice(depois, depois + f.limite);
+    return { itens, proximo_cursor: depois + f.limite < todas.length ? (itens.at(-1)?.id ?? null) : null };
+  };
   const servico = criarServicoEmissao(deps);
   const eventosSvc = criarServicoEventos({ eventos: deps.eventos, cadastros: deps.cadastros, ambiente: deps.ambiente, certificado: deps.certificado, agora: deps.agora });
   const notas = deps.notas;
@@ -71,6 +99,17 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
 
   const enfileirar = (c: ContextoRota, nota_id: string, reenvio: boolean) =>
     c.enfileirar({ tipo: TRABALHO_TRANSMITIR_NOTA, payload: { nota_id }, external_id: reenvio ? `${nota_id}:${c.request_id}` : nota_id });
+
+  /** RN-FAT-09: enfileira a volta das EPEC `emitida_contingencia` (filial e ambiente); o external_id leva a origem (encerramento ou requisição) para não colidir com a emissão nem repetir. Devolve a contagem e o prazo. */
+  const enfileirarVolta = async (c: ContextoRota, filial_id: string | undefined, ambiente: string | undefined, origem: string): Promise<{ enfileiradas: number; vencidas: number }> => {
+    const linhas = (await contingencia().epecPendentes(c.tx, { filial_id })).filter((l) => l.status === 'emitida_contingencia' && (!ambiente || l.ambiente === ambiente));
+    let vencidas = 0;
+    for (const l of linhas) {
+      if (situacaoPrazoEpec(c.agora, prazoEpec({ epecAutorizadoEm: new Date(l.epec_autorizada_em) })) === 'vencido') vencidas++;
+      await c.enfileirar({ tipo: TRABALHO_TRANSMITIR_NOTA, payload: { nota_id: l.id }, external_id: `${l.id}:volta:${origem}` });
+    }
+    return { enfileiradas: linhas.length, vencidas };
+  };
 
   const enfileirarEvento = (c: ContextoRota, evento_id: string, dh_evento: string) =>
     c.enfileirar({ tipo: TRABALHO_PROCESSAR_EVENTO, payload: { evento_id }, external_id: `${evento_id}:${dh_evento}` });
@@ -166,16 +205,18 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         SEM_VENDEDOR(c);
         const nota = await notas.obter(c.tx, idDe(e.params));
         if (!nota) throw erros.naoEncontrado('Nota');
-        if (nota.status !== 'autorizada' && nota.status !== 'cancelada') {
-          throw erros.regra('RN-FAT-03', 'O DANFE só existe para nota autorizada ou cancelada.', { status: nota.status });
+        // RN-FAT-08: a EPEC com o evento registrado (emitida_contingencia, ou em_autorizacao/rejeitada na volta) imprime o DANFE da <NFe> assinada, com o protocolo do EVENTO; ainda sem protNFe.
+        const emEpec = nota.tp_emis === 4 && !!nota.epec_protocolo && !!nota.epec_autorizada_em && ['emitida_contingencia', 'em_autorizacao', 'rejeitada'].includes(nota.status);
+        if (nota.status !== 'autorizada' && nota.status !== 'cancelada' && !emEpec) {
+          throw erros.regra('RN-FAT-03', 'O DANFE só existe para nota autorizada, cancelada ou EPEC com o evento registrado.', { status: nota.status });
         }
-        const xml = await notas.lerXmlAutorizado(c.tx, nota.id);
-        if (!xml) throw erros.naoEncontrado('XML autorizado');
+        const xml = emEpec ? await notas.ultimoXmlAssinado(c.tx, nota.id) : await notas.lerXmlAutorizado(c.tx, nota.id);
+        if (!xml) throw erros.naoEncontrado(emEpec ? 'XML assinado' : 'XML autorizado');
         let modelo;
         try {
-          modelo = montarDanfe({ nfeProc: xml.xml, cancelada: nota.status === 'cancelada' });
+          modelo = montarDanfe({ nfeProc: xml.xml, cancelada: nota.status === 'cancelada', ...(emEpec ? { epec: { protocolo: nota.epec_protocolo as string, dhRegistro: nota.epec_autorizada_em as string } } : {}) });
         } catch (err) {
-          throw erros.regra('RN-FAT-03', 'O XML autorizado guardado não pôde ser lido para o DANFE.', { nota: err instanceof Error ? err.constructor.name : 'erro' });
+          throw erros.regra('RN-FAT-03', 'O XML guardado não pôde ser lido para o DANFE.', { nota: err instanceof Error ? err.constructor.name : 'erro' });
         }
         const assinaturaMarca = await (deps.danfe?.assinaturaMarca ?? lerAssinaturaDaMarca)();
         if ((deps.ativosDanfe && !deps.ativosDanfe.ok) || !assinaturaMarca) throw new ErroApi(503, 'ATIVO_MARCA_AUSENTE', MENSAGEM_ATIVO_AUSENTE); // nunca um DANFE sem o rodapé
@@ -186,7 +227,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         });
         return {
           corpo: Buffer.from(pdf),
-          cabecalhos: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="DANFE${xml.chave_acesso}.pdf"`, 'cache-control': 'no-store' },
+          cabecalhos: { 'content-type': 'application/pdf', 'content-disposition': `inline; filename="DANFE${nota.chave_acesso}.pdf"`, 'cache-control': 'no-store' },
         };
       },
     }),
@@ -334,6 +375,107 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         await deps.configuracao.definir(c.tx, filial_id, e.corpo.faturamento_real_nfe_simulada, c.sessao.usuario_id);
         await c.auditar({ acao: 'faturamento.filial.configurar', entidade: 'filial', entidade_id: filial_id, antes: { faturamento_real_nfe_simulada: antes }, depois: { faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } });
         return { corpo: { filial_id, faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } };
+      },
+    }),
+    // ---- Contingência por filial (T-0021, lote 4; RN-FAT-05, 09 e 10). Abrir e encerrar: SÓ o administrador (decisão do Alexandre, 23/11 07h40); não há ação própria no SDK, então a rota usa `faturamento.nota.emitir` (licença, tenant e perfil emissor) e confere o perfil `administrador` no corpo, como a bandeira da filial. Faturista e fiscal seguem emitindo, inclusive em contingência aberta. ----
+    // Caminho fixo antes de qualquer `:id`.
+    definirRota({
+      metodo: 'GET', caminho: '/contingencia/epec-pendentes', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
+      async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
+        SEM_VENDEDOR(c);
+        return { corpo: await epecPendentes(c, e.consulta) };
+      },
+    }),
+    // RN-FAT-09: sinal do prazo de 168 h para o painel do administrador: vermelho = alguma EPEC vencida; amarelo = alguma perto do fim; verde = nenhuma pendente em risco.
+    definirRota({
+      metodo: 'GET', caminho: '/contingencia/epec-pendentes/alerta', acao: 'faturamento.ver', consulta: FiltroEpecPendentes.pick({ filial_id: true }),
+      async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
+        SEM_VENDEDOR(c);
+        const linhas = await contingencia().epecPendentes(c.tx, { filial_id: e.consulta.filial_id });
+        const prazos = linhas.map((l) => prazoEpec({ epecAutorizadoEm: new Date(l.epec_autorizada_em) }));
+        const corpo: AlertaPrazoEpec = alertaPrazoEpec(c.agora, prazos);
+        return { corpo };
+      },
+    }),
+    // RN-FAT-09: o administrador manda transmitir as EPEC pendentes (emitida_contingencia) sem esperar o encerramento; o worker transmite a mesma nfe_assinada ao autorizador normal.
+    definirRota({
+      metodo: 'POST', caminho: '/contingencia/epec-pendentes/transmitir', acao: 'faturamento.nota.emitir', corpo: TransmitirEpecPendentesEntrada, idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
+        SOMENTE_ADMINISTRADOR(c);
+        const r = await enfileirarVolta(c, e.corpo.filial_id, undefined, c.request_id);
+        await c.auditar({ acao: 'faturamento.epec.transmitir_pendentes', entidade: 'contingencia', entidade_id: e.corpo.filial_id ?? c.sessao.tenant_id, depois: { filial_id: e.corpo.filial_id ?? null, enfileiradas: r.enfileiradas, vencidas: r.vencidas } });
+        return { status: 202, corpo: r };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/contingencia/epec-pendentes/exportar', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
+      async executar(c, e) {
+        if (!(deps.epecLigada ?? EPEC_LIGADA)) throw erros.naoEncontrado('Recurso');
+        SEM_VENDEDOR(c);
+        return csvNoFuso(c, paginaEpecPendentes, () => todasAsLinhas((f) => epecPendentes(c, f), e.consulta));
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/filiais/:id/contingencia', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
+        const repo = contingencia();
+        // RN-FAT-10: só o administrador, sem NF-e simulada e com transporte SVC para a UF da filial (a API recusa a chamada direta com 422 de qualquer jeito).
+        let pode_abrir = false;
+        if (c.sessao.perfil === 'administrador' && !(await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id))) {
+          const uf = (await deps.cadastros.filial(c.tx, filial_id))?.endereco.uf ?? '';
+          const modalidade = modalidadeDaUf(uf);
+          pode_abrir = modalidade !== null && (await (deps.svcDisponivel?.({ filialId: filial_id, ambiente, uf, modo: modalidade === 'svc_an' ? 'svc-an' : 'svc-rs' }) ?? false));
+        }
+        const resposta: ContingenciaDaFilialResposta = { filial_id, ambiente, aberta: await repo.aberta(c.tx, filial_id, ambiente), historico: await repo.historico(c.tx, filial_id, ambiente, HISTORICO_CONTINGENCIA), pode_abrir };
+        return { corpo: resposta };
+      },
+    }),
+    // RN-FAT-05: o operador decide a entrada; o domain valida a justificativa, o início e a modalidade. RN-FAT-10: filial com NF-e simulada não entra.
+    definirRota({
+      metodo: 'POST', caminho: '/filiais/:id/contingencia', acao: 'faturamento.nota.emitir', corpo: AbrirContingenciaEntrada, idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        SOMENTE_ADMINISTRADOR(c);
+        const repo = contingencia();
+        const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
+        if (e.corpo.filial_id !== filial_id) throw erros.validacao({ filial_id: 'A filial do corpo deve ser a da URL.' });
+        if (e.corpo.ambiente && e.corpo.ambiente !== ambiente) throw erros.regra('RN-FAT-04', `A filial emite em ${ambiente}; a contingência é aberta no ambiente da filial.`, { ambiente: 'diferente do ambiente da filial' });
+        const inicioEm = e.corpo.inicio_em ? new Date(e.corpo.inicio_em) : c.agora;
+        const v = validarEntradaContingencia({
+          nfeSimulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id), modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicioEm, agora: c.agora, ...(deps.epecLigada !== undefined ? { epecLigada: deps.epecLigada } : {}),
+        });
+        if (v.length > 0) throw erroDeViolacoes(v);
+        // RN-FAT-10: SVC só abre onde há transporte capaz de enviar a nota (porta `svcDisponivel`; padrão: nenhum). Sem isso a emissão reservaria números que nunca saem.
+        if (e.corpo.modalidade !== 'epec') {
+          const uf = (await deps.cadastros.filial(c.tx, filial_id))?.endereco.uf ?? '';
+          if (!(await (deps.svcDisponivel?.({ filialId: filial_id, ambiente, uf, modo: e.corpo.modalidade === 'svc_an' ? 'svc-an' : 'svc-rs' }) ?? false))) throw erros.regra('RN-FAT-10', MENSAGEM_SVC_INDISPONIVEL, { modalidade: 'indisponível neste ambiente' });
+        }
+        if (await repo.aberta(c.tx, filial_id, ambiente)) throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');
+        const aberta = await repo.abrir(c.tx, { filial_id, ambiente, modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicio_em: inicioEm, ligada_por: c.sessao.usuario_id }).catch((err: unknown) => {
+          if ((err as { code?: string } | null)?.code === '23505') throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');
+          return traduzirErroBanco(err);
+        });
+        await c.auditar({ acao: 'faturamento.contingencia.abrir', entidade: 'contingencia', entidade_id: aberta.id, depois: { filial_id, ambiente, modalidade: aberta.modalidade } });
+        return { status: 201, corpo: aberta };
+      },
+    }),
+    // RN-FAT-09: o operador encerra (nada de volta automática); as EPEC pendentes seguem pela fila da volta.
+    definirRota({
+      metodo: 'POST', caminho: '/filiais/:id/contingencia/encerrar', acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        SOMENTE_ADMINISTRADOR(c);
+        const repo = contingencia();
+        const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
+        const encerrada = await repo.encerrar(c.tx, filial_id, ambiente, c.agora, c.sessao.usuario_id).catch(traduzirErroBanco);
+        if (!encerrada) throw erros.naoEncontrado('Contingência aberta');
+        await c.auditar({ acao: 'faturamento.contingencia.encerrar', entidade: 'contingencia', entidade_id: encerrada.id, depois: { filial_id, ambiente, modalidade: encerrada.modalidade } });
+        // RN-FAT-09: ao encerrar a EPEC da filial e do ambiente, as notas pendentes entram na fila da volta (o worker transmite a mesma nfe_assinada ao autorizador normal).
+        if (encerrada.modalidade === 'epec') await enfileirarVolta(c, filial_id, ambiente, encerrada.id);
+        return { corpo: encerrada };
       },
     }),
     definirRota({

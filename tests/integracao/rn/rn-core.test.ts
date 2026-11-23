@@ -1,20 +1,32 @@
 /**
  * T-0008 (a): RN do core de ponta a ponta na API real (`criarApp` + plugins de core e cadastros, repositório em memória).
  * Só o que os testes do dono não cobrem pelo HTTP: o log da API sem dado pessoal (RN-CORE-07, inclusive na rota de
- * cadastros), o instante e o ETag em ISO-8601 UTC (RN-CORE-04) e a lista dos 6 perfis da v1 (RN-CORE-01).
+ * cadastros), o instante e o ETag em ISO-8601 UTC (RN-CORE-04) e a lista dos perfis (RN-CORE-01 e RN-CORE-09).
  * O resto das RN do core está em modules/core/api/rotas.test.ts e modules/core/domain/regras.test.ts; o dinheiro
  * (RN-CORE-03), em packages/platform-sdk/src/dinheiro.test.ts (ver docs/testes/T-0008.md).
  */
 import { describe, expect, it } from 'vitest';
+import { PERFIS } from '../../../packages/platform-sdk/src/index';
 import { FILIAL_A, usarApiMemoria } from '../../apoio/api-memoria';
 
 const api = usarApiMemoria();
+const SEIS = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'];
 
 describe('RN-CORE-01: perfis da v1', () => {
-  it('RN-CORE-01: GET /v1/core/perfis lista exatamente os 6 perfis, na ordem do doc 03', async () => {
+  const temAnalista = (PERFIS as readonly string[]).includes('analista_implantacao');
+  const listar = async () => {
     const a = await api();
-    const perfis = await a.app.inject({ method: 'GET', url: '/v1/core/perfis', headers: a.auth('leitura') });
-    expect(perfis.json().itens.map((p: { perfil: string }) => p.perfil)).toEqual(['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura']);
+    const r = await a.app.inject({ method: 'GET', url: '/v1/core/perfis', headers: a.auth('leitura') });
+    return r.json().itens.map((p: { perfil: string }) => p.perfil) as string[];
+  };
+  it('RN-CORE-01: GET /v1/core/perfis lista exatamente os PERFIS do SDK, com os 6 da v1 primeiro, na ordem do doc 03', async () => {
+    const perfis = await listar();
+    expect(perfis).toEqual([...PERFIS]);
+    expect(perfis.slice(0, 6)).toEqual(SEIS);
+  });
+  it.skipIf(!temAnalista)('RN-CORE-09: com o analista_implantacao, são 7 perfis e ele fica no fim', async () => {
+    const perfis = await listar();
+    expect(perfis).toEqual([...SEIS, 'analista_implantacao']);
   });
 });
 

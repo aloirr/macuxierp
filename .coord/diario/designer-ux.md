@@ -11,3 +11,4 @@
 2026-11-23 — T-0021 — regraCss com px, RegiaoErros, mensagemErro com display:block, testes enxutos (RD-a..g)
 2026-11-23 — T-0050 (E5, ressalvas da marca) — selo sem solClaro (borda azulClaro, texto branco), ativos A grafite e C positivo em marca.tsx com SHA, AssinaturaErp com fundo (união discriminada), doc ajustado
 2026-11-23 — T-0050 — correções da spec do portal /config após revisão do engenheiro
+2026-11-23 — T-0021 — temErroExterno no FormularioItens (região única na tela do pedido); RD-0960 (RD-0961 manter?)

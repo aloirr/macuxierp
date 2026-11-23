@@ -58,5 +58,7 @@ export interface ConteudoNota {
    */
   conta_como_real?: boolean;
   itens: NotaItemMontado[];
+  /** Contingência (RN-FAT-08): preenchida por `aplicarContingenciaAoConteudo`; ausente = emissão normal. */
+  contingencia?: { tpEmis: 4 | 6 | 7; dhCont: string; xJust: string } | null;
 }
 

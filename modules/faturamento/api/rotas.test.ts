@@ -4,18 +4,23 @@ import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { nfeProcDeTeste } from '../domain/fixtures-danfe';
 import { ConfiguracaoFilialResposta, PedidoAFaturarDetalhe, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO, TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA } from '../contracts';
-import { configuracaoFake, depsFake, titulosFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
+import { configuracaoFake, contingenciaFake, depsFake, titulosFake, NPROT, tx, TENANT, uuid } from './apoio-teste';
 import { criarConsumidorPedidoAprovado } from './consumidor';
 import { criarPluginFaturamento } from './index';
 import type { DepsRotas } from './rotas';
 
+/** Notas EPEC de teste: autorizadas há 2 h (no prazo), 165 h (perto do fim: faltam 3 h) e 170 h (vencida) em relação ao `agora` do ctx. */
+const AGORA_CTX = new Date('2026-11-21T14:30:00Z').getTime();
+const haHoras = (h: number): string => new Date(AGORA_CTX - h * 3_600_000).toISOString();
+const epecDeTeste = [[2, 1], [170, 2], [165, 3]].map(([h, n]) => ({ id: uuid(80_000 + n!), filial_id: IDS.filial, ambiente: 'homologacao' as const, serie: 1, numero: n!, chave_acesso: null, status: 'emitida_contingencia' as const, epec_protocolo: '113260000000001', epec_autorizada_em: haHoras(h!) }));
 const sessao = (perfil: Perfil): Sessao => ({ usuario_id: uuid(5), tenant_id: TENANT, perfil, filial_ids: [] });
 
 function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
   const f = depsFake();
   const tit = titulosFake();
   const cfg = configuracaoFake();
-  const deps = { ...f.deps, titulos: tit.repo, configuracao: cfg.repo } as DepsRotas;
+  const cont = contingenciaFake(epecDeTeste);
+  const deps = { ...f.deps, titulos: tit.repo, configuracao: cfg.repo, contingencia: cont.repo, epecLigada: true, svcDisponivel: () => true } as DepsRotas; // os testes da EPEC cobrem o caminho ligado; o teste da bandeira desliga
   if (danfe) deps.danfe = danfe;
   const plugin = criarPluginFaturamento(deps);
   const trabalhos: { tipo: string; payload: Record<string, unknown>; external_id?: string }[] = [];
@@ -38,7 +43,7 @@ function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
     const consulta = r.consulta ? r.consulta.parse(e.consulta ?? {}) : undefined;
     return r.executar(ctx, { corpo, consulta, params: e.params ?? {} } as never);
   };
-  return { ...f.r, ctx, tit, cfg, deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
+  return { ...f.r, ctx, tit, cfg, cont, deps, pedido: f.pedido, plugin, trabalhos, auditoria, chamar, rota };
 }
 const emitirCorpo = { pedido_id: IDS.pedido, idempotencia: 'idem-0000001' };
 
@@ -46,7 +51,11 @@ describe('rotas /v1/faturamento', () => {
   it('RN-CORE-02: toda rota declara ação do módulo; a emissão e o XML pedem faturista/fiscal/administrador; leitura é aberta aos perfis de leitura', () => {
     const a = ambiente();
     expect(a.plugin.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao}`).sort()).toEqual([
+      'GET /contingencia/epec-pendentes faturamento.ver',
+      'GET /contingencia/epec-pendentes/alerta faturamento.ver',
+      'GET /contingencia/epec-pendentes/exportar faturamento.ver',
       'GET /filiais/:id/configuracao faturamento.ver',
+      'GET /filiais/:id/contingencia faturamento.ver',
       'GET /notas faturamento.ver',
       'GET /notas/:id faturamento.ver',
       'GET /notas/:id/danfe faturamento.ver',
@@ -61,6 +70,9 @@ describe('rotas /v1/faturamento', () => {
       'GET /titulos faturamento.ver',
       'GET /titulos/:id faturamento.ver',
       'GET /titulos/exportar faturamento.ver',
+      'POST /contingencia/epec-pendentes/transmitir faturamento.nota.emitir',
+      'POST /filiais/:id/contingencia faturamento.nota.emitir',
+      'POST /filiais/:id/contingencia/encerrar faturamento.nota.emitir',
       'POST /inutilizacoes faturamento.nota.emitir',
       'POST /notas faturamento.nota.emitir',
       'POST /notas/:id/cancelar faturamento.nota.emitir',
@@ -157,6 +169,22 @@ describe('rotas /v1/faturamento', () => {
     a.notas.set(id, { ...a.notas.get(id)!, status: 'cancelada' });
     expect(((await a.chamar('GET', '/notas/:id/danfe', { params: { id } })).corpo as Buffer).length).toBeGreaterThan(1000);
     await expect(ambiente('vendedor').chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('RN-FAT-08: GET /notas/:id/danfe da EPEC com o evento registrado (emitida_contingencia) sai da <NFe> assinada, com o protocolo do evento; sem o evento, 422; SVC autorizada usa o nfeProc e leva o aviso', async () => {
+    const a = ambiente();
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    const proc = nfeProcDeTeste().replace('<tpAmb>2</tpAmb></ide>', '<tpEmis>4</tpEmis><dhCont>2026-11-21T09:00:00-04:00</dhCont><xJust>SEFAZ-AM fora do ar desde as 9h</xJust><tpAmb>2</tpAmb></ide>');
+    a.assinados.push({ id, versao: 1, xml: /<NFe>[\s\S]*<\/NFe>/.exec(proc)![0], sha256: 'x' });
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'emitida_contingencia', tp_emis: 4, epec_protocolo: null, epec_autorizada_em: null });
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 422 });
+    a.notas.set(id, { ...a.notas.get(id)!, epec_protocolo: '891260000000007', epec_autorizada_em: '2026-11-21T14:05:00.000Z' });
+    const r = await a.chamar('GET', '/notas/:id/danfe', { params: { id } });
+    expect(Buffer.from(r.corpo as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'em_autorizacao' });
+    expect((await a.chamar('GET', '/notas/:id/danfe', { params: { id } })).cabecalhos).toMatchObject({ 'content-type': 'application/pdf' });
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'rascunho' });
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 422 });
   });
 
   it('RN-FAT-03: GET /notas/:id/danfe com vDup ilegível vira 422 RN-FAT-03, sem dado do XML na resposta', async () => {
@@ -505,4 +533,182 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     expect(parcial.fila.get(IDS.pedido)).toBe('faturado_parcial');
   });
 });
+  describe('contingência por filial (T-0021, lote 4)', () => {
+    const MOTIVO = 'SEFAZ-AM sem resposta há 10 min';
+    const abrirCorpo = (extra: object = {}) => ({ filial_id: IDS.filial, modalidade: 'svc_rs', motivo: MOTIVO, ...extra });
+    const params = { id: IDS.filial };
+
+    it('RN-FAT-05 (decisão do Alexandre, 23/11 07h40): abrir e encerrar só pelo administrador; faturista, fiscal, gerente, leitura e vendedor recebem 403 e nada é gravado; os GETs seguem abertos a quem lê', async () => {
+      for (const perfil of ['faturista', 'fiscal', 'gerente', 'leitura', 'vendedor'] as const) {
+        const a = ambiente(perfil);
+        await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 403 });
+        await expect(a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params })).rejects.toMatchObject({ status: 403 });
+        expect(a.auditoria).toEqual([]);
+      }
+      for (const perfil of ['faturista', 'fiscal'] as const) {
+        expect((await ambiente(perfil).chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ aberta: null });
+      }
+      expect((await ambiente('administrador').chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).status).toBe(201);
+    });
+
+    it('RN-FAT-05: abre a contingência no ambiente da filial, com ligada_por da sessão e auditoria; a leitura devolve a aberta', async () => {
+      const a = ambiente('administrador');
+      const r = await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
+      expect(r.status).toBe(201);
+      expect(r.corpo).toMatchObject({ filial_id: IDS.filial, ambiente: 'producao', modalidade: 'svc_rs', motivo: MOTIVO, fim_em: null, ligada_por: uuid(5), desligada_por: null });
+      expect(a.auditoria).toContain('faturamento.contingencia.abrir');
+      const g = await a.chamar('GET', '/filiais/:id/contingencia', { params });
+      expect(g.corpo).toMatchObject({ filial_id: IDS.filial, ambiente: 'producao', aberta: { modalidade: 'svc_rs' }, historico: [] });
+    });
+
+    it('RN-FAT-05: justificativa curta, início no futuro e modalidade desconhecida são recusados (422 RN-FAT-05 ou 400 do contrato)', async () => {
+      const a = ambiente('administrador');
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ motivo: 'curto' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-05' });
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ inicio_em: '2026-11-21T14:31:00.000Z' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-05' });
+      expect(() => a.rota('POST', '/filiais/:id/contingencia').corpo!.parse(abrirCorpo({ modalidade: 'fs_da' }))).toThrow();
+      expect(a.cont.linhas).toHaveLength(0);
+    });
+
+    it('RN-FAT-05: EPEC desligada na v0.3.0: abrir com modalidade epec dá 422 RN-FAT-05 com mensagem curta e nada é gravado; SVC abre', async () => {
+      const a = ambiente('administrador');
+      a.deps.epecLigada = false; // o padrão do módulo (EPEC_LIGADA)
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-05', message: 'A EPEC ainda não está disponível. Use SVC.' });
+      expect(a.cont.linhas).toHaveLength(0);
+      expect((await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'svc_rs' }) })).status).toBe(201);
+    });
+
+    it('RN-FAT-10: SVC sem transporte capaz neste ambiente (svcDisponivel ausente ou false): abrir dá 422 RN-FAT-10 com mensagem curta e nada é gravado; a porta recebe o modo', async () => {
+      const a = ambiente('administrador');
+      const pedidos: unknown[] = [];
+      for (const porta of [undefined, (e: unknown) => { pedidos.push(e); return false; }]) {
+        if (porta) a.deps.svcDisponivel = porta as never; else delete a.deps.svcDisponivel;
+        await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-10', message: 'A contingência SVC não está disponível neste ambiente.' });
+      }
+      expect(pedidos[0]).toMatchObject({ filialId: IDS.filial, modo: 'svc-rs' });
+      expect(a.cont.linhas).toHaveLength(0);
+    });
+
+    it('RN-FAT-10: GET da contingência traz pode_abrir: true só para o administrador com SVC disponível e filial sem NF-e simulada; false sem a porta, com filial simulada ou para outro perfil', async () => {
+      const a = ambiente('administrador');
+      expect((await a.chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: true });
+      delete a.deps.svcDisponivel;
+      expect((await a.chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: false });
+      const s = ambiente('administrador');
+      s.cfg.linhas.set(IDS.filial, { ligada: true, alterado_por: 'teste' });
+      expect((await s.chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: false });
+      expect((await ambiente('faturista').chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ pode_abrir: false });
+    });
+
+    it('RN-FAT-05: com a EPEC desligada, epec-pendentes (lista, alerta, transmitir, exportar) respondem 404', async () => {
+      const a = ambiente('administrador');
+      a.deps.epecLigada = false;
+      for (const [metodo, caminho] of [['GET', '/contingencia/epec-pendentes'], ['GET', '/contingencia/epec-pendentes/alerta'], ['POST', '/contingencia/epec-pendentes/transmitir'], ['GET', '/contingencia/epec-pendentes/exportar']] as const) {
+        await expect(a.chamar(metodo, caminho, metodo === 'POST' ? { corpo: {} } : {})).rejects.toMatchObject({ status: 404 });
+      }
+    });
+
+    it('RN-FAT-10: filial com NF-e simulada não entra em contingência (422)', async () => {
+      const a = ambiente('administrador');
+      a.cfg.linhas.set(IDS.filial, { ligada: true, alterado_por: 'teste' });
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-10' });
+      expect(a.cont.linhas).toHaveLength(0);
+    });
+
+    it('RN-FAT-05: já havendo aberta na filial e no ambiente, a segunda abertura é 409', async () => {
+      const a = ambiente('administrador');
+      await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) })).rejects.toMatchObject({ status: 409 });
+      expect(a.cont.linhas).toHaveLength(1);
+    });
+
+    it('RN-FAT-04: o ambiente do corpo, se vier, tem de ser o da filial; filial de outra URL e filial desconhecida', async () => {
+      const a = ambiente('administrador');
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ ambiente: 'homologacao' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-04' });
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params: { id: uuid(99) }, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 400 });
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params: { id: 'x' }, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 404 });
+      expect((await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ ambiente: 'producao' }) })).status).toBe(201);
+    });
+
+    it('RN-FAT-09: encerra com fim_em agora e desligada_por da sessão; sem aberta, 404; o histórico mostra a encerrada e a filial pode abrir de novo', async () => {
+      const a = ambiente('administrador');
+      await expect(a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params })).rejects.toMatchObject({ status: 404 });
+      await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
+      const r = await a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params });
+      expect(r.corpo).toMatchObject({ fim_em: '2026-11-21T14:30:00.000Z', desligada_por: uuid(5), ligada_por: uuid(5) });
+      expect(a.auditoria).toContain('faturamento.contingencia.encerrar');
+      const g = await a.chamar('GET', '/filiais/:id/contingencia', { params });
+      expect(g.corpo).toMatchObject({ aberta: null, historico: [{ modalidade: 'svc_rs' }] });
+      expect((await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).status).toBe(201);
+    });
+
+    it('RN-FAT-09: encerrar a EPEC enfileira a volta de cada nota emitida_contingencia da filial e do ambiente (external_id com a contingência); encerrar SVC não enfileira nada', async () => {
+      const a = ambiente('administrador');
+      a.deps.ambiente = { ambiente: async () => 'homologacao' as const }; // as EPEC de teste são de homologação: a volta filtra por filial E ambiente
+      await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) });
+      const r = await a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params });
+      const id = (r.corpo as { id: string }).id;
+      expect(a.trabalhos.map((t) => t.tipo)).toEqual([TRABALHO_TRANSMITIR_NOTA, TRABALHO_TRANSMITIR_NOTA, TRABALHO_TRANSMITIR_NOTA]);
+      expect(a.trabalhos.map((t) => t.external_id).sort()).toEqual(epecDeTeste.map((n) => `${n.id}:volta:${id}`).sort());
+      const b = ambiente('administrador');
+      b.deps.ambiente = { ambiente: async () => 'homologacao' as const };
+      await b.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
+      await b.chamar('POST', '/filiais/:id/contingencia/encerrar', { params });
+      expect(b.trabalhos).toEqual([]);
+    });
+
+    it('RN-FAT-09: POST /contingencia/epec-pendentes/transmitir é só do administrador, exige Idempotency-Key, enfileira as pendentes (com a contagem das vencidas) e audita sem dado pessoal', async () => {
+      const a = ambiente('administrador');
+      expect(a.rota('POST', '/contingencia/epec-pendentes/transmitir')).toMatchObject({ acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria' });
+      const r = await a.chamar('POST', '/contingencia/epec-pendentes/transmitir', { corpo: {} });
+      expect(r).toMatchObject({ status: 202, corpo: { enfileiradas: 3, vencidas: 1 } });
+      expect(a.trabalhos.every((t) => t.tipo === TRABALHO_TRANSMITIR_NOTA && /:volta:req-1$/.test(t.external_id!))).toBe(true);
+      expect(a.auditoria).toContain('faturamento.epec.transmitir_pendentes');
+      for (const perfil of ['faturista', 'fiscal', 'gerente', 'vendedor'] as const) {
+        await expect(ambiente(perfil).chamar('POST', '/contingencia/epec-pendentes/transmitir', { corpo: {} })).rejects.toMatchObject({ status: 403 });
+      }
+      expect((await a.chamar('POST', '/contingencia/epec-pendentes/transmitir', { corpo: { filial_id: uuid(99) } })).corpo).toMatchObject({ enfileiradas: 0 });
+    });
+
+    it('RN-FAT-09: GET /contingencia/epec-pendentes/alerta: vencida acende o sinal vermelho (vendedor 403)', async () => {
+      const a = ambiente('administrador');
+      expect((await a.chamar('GET', '/contingencia/epec-pendentes/alerta')).corpo).toEqual({ sinal: 'vermelho', total: 3, no_prazo: 1, perto_do_fim: 1, vencidas: 1, prazo_mais_proximo: new Date(AGORA_CTX - 170 * 3_600_000 + 168 * 3_600_000).toISOString() });
+      expect((await a.chamar('GET', '/contingencia/epec-pendentes/alerta', { consulta: { filial_id: uuid(99) } })).corpo).toMatchObject({ sinal: 'verde', total: 0 });
+      await expect(ambiente('vendedor').chamar('GET', '/contingencia/epec-pendentes/alerta')).rejects.toMatchObject({ status: 403 });
+    });
+
+    it('RN-CORE-02: rotas pedem Idempotency-Key; vendedor não lê', async () => {
+      const a = ambiente();
+      expect(a.rota('POST', '/filiais/:id/contingencia')).toMatchObject({ acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria' });
+      expect(a.rota('POST', '/filiais/:id/contingencia/encerrar')).toMatchObject({ acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria' });
+      for (const perfil of ['gerente', 'leitura'] as const) expect(pode(perfil, 'faturamento.nota.emitir')).toBe(false);
+      for (const perfil of ['administrador', 'faturista', 'fiscal'] as const) expect(pode(perfil, 'faturamento.nota.emitir')).toBe(true);
+      const v = ambiente('vendedor');
+      await expect(v.chamar('GET', '/filiais/:id/contingencia', { params })).rejects.toMatchObject({ status: 403 });
+      await expect(v.chamar('GET', '/contingencia/epec-pendentes')).rejects.toMatchObject({ status: 403 });
+      await expect(v.chamar('GET', '/contingencia/epec-pendentes/exportar')).rejects.toMatchObject({ status: 403 });
+    });
+
+    it('sem o adaptador de contingência ligado, a rota responde 503 (nunca 500)', async () => {
+      const a = ambiente();
+      delete (a.deps as { contingencia?: unknown }).contingencia;
+      await expect(a.chamar('GET', '/filiais/:id/contingencia', { params })).rejects.toMatchObject({ status: 503 });
+    });
+
+    it('RN-FAT-09: as EPEC pendentes saem com o prazo de 168 h da autorização do EPEC e a situação (vencida, perto do fim, no prazo), da mais urgente à menos', async () => {
+      const a = ambiente('leitura');
+      const r = await a.chamar('GET', '/contingencia/epec-pendentes');
+      const itens = (r.corpo as { itens: { numero: number; prazo_ate: string; situacao_prazo: string }[] }).itens;
+      expect(itens.map((i) => [i.numero, i.situacao_prazo])).toEqual([[2, 'vencido'], [3, 'perto_do_fim'], [1, 'no_prazo']]);
+      expect(itens[0]!.prazo_ate).toBe(new Date(AGORA_CTX - 170 * 3_600_000 + 168 * 3_600_000).toISOString());
+      const so = await a.chamar('GET', '/contingencia/epec-pendentes', { consulta: { situacao: 'vencido' } });
+      expect((so.corpo as { itens: unknown[] }).itens).toHaveLength(1);
+      const p1 = await a.chamar('GET', '/contingencia/epec-pendentes', { consulta: { limite: 2 } });
+      const cursor = (p1.corpo as { proximo_cursor: string }).proximo_cursor;
+      expect(cursor).toBe(uuid(80_003));
+      const p2 = await a.chamar('GET', '/contingencia/epec-pendentes', { consulta: { limite: 2, cursor } });
+      expect((p2.corpo as { itens: { numero: number }[]; proximo_cursor: unknown })).toMatchObject({ itens: [{ numero: 1 }], proximo_cursor: null });
+      const csv = await a.chamar('GET', '/contingencia/epec-pendentes/exportar');
+      expect(String(csv.corpo)).toContain('Vencido');
+    });
+  });
 });

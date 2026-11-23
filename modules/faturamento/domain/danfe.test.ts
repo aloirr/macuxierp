@@ -177,3 +177,35 @@ describe('fixture base do DANFE (regressão das amostras)', () => {
     expect(nfeProcDeTeste({ duplicatas: true, transportador: true })).toContain('Galpão 3');
   });
 });
+
+describe('DANFE em contingência (RN-FAT-08, MOC Anexo II)', () => {
+  const comTpEmis = (proc: string, tp: string, extra = ''): string => proc.replace('<tpAmb>2</tpAmb></ide>', `<tpEmis>${tp}</tpEmis>${extra}<tpAmb>2</tpAmb></ide>`);
+  const DH = '<dhCont>2026-11-21T09:00:00-04:00</dhCont><xJust>SEFAZ-AM fora do ar desde as 9h</xJust>';
+  const soNFe = (proc: string): string => /<NFe>[\s\S]*<\/NFe>/.exec(proc)![0];
+
+  it('RN-FAT-08: nota normal (tpEmis 1 ou ausente) não leva o aviso de contingência', () => {
+    expect(montarDanfe({ nfeProc: nfeProcDeTeste() }).contingencia).toBeNull();
+    expect(montarDanfe({ nfeProc: comTpEmis(nfeProcDeTeste(), '1') }).contingencia).toBeNull();
+  });
+
+  it('RN-FAT-08: SVC-RS (tpEmis 7) e SVC-AN (6) levam o título, a modalidade e dhCont/xJust no fuso do tenant, nos dados adicionais', () => {
+    const m = montarDanfe({ nfeProc: comTpEmis(nfeProcDeTeste({ infCpl: 'Pedido 1' }), '7', DH) });
+    expect(m.contingencia).toEqual({ tpEmis: 7, titulo: 'DANFE EM CONTINGÊNCIA', linhas: ['Impresso em contingência — SVC-RS', 'Entrada em contingência em 21/11/2026 09:00:00. Justificativa: SEFAZ-AM fora do ar desde as 9h'] });
+    expect(m.operacao.protocolo).toBe('113260000000001 - 21/11/2026 10:31:02'); // SVC autoriza: o protocolo é o da NF-e
+    expect(m.dadosAdicionais.informacoesComplementares).toBe('Impresso em contingência — SVC-RS. Entrada em contingência em 21/11/2026 09:00:00. Justificativa: SEFAZ-AM fora do ar desde as 9h. Pedido 1');
+    expect(montarDanfe({ nfeProc: comTpEmis(nfeProcDeTeste(), '6', DH) }).contingencia?.linhas[0]).toBe('Impresso em contingência — SVC-AN');
+  });
+
+  it('RN-FAT-08: EPEC antes da autorização: a <NFe> assinada (sem protNFe) sai com o protocolo e a data do EVENTO no quadro do protocolo e o aviso "EPEC, protocolo nº ... de ..."', () => {
+    const nfe = soNFe(comTpEmis(nfeProcDeTeste(), '4', DH));
+    const m = montarDanfe({ nfeProc: nfe, epec: { protocolo: '891260000000007', dhRegistro: '2026-11-21T14:05:00.000Z' } });
+    expect(m.operacao.protocolo).toBe('891260000000007 - 21/11/2026 10:05:00');
+    expect(m.contingencia?.tpEmis).toBe(4);
+    expect(m.contingencia?.linhas[0]).toBe('Impresso em contingência — EPEC, protocolo nº 891260000000007 de 21/11/2026 10:05:00');
+    expect(m.contingencia?.linhas[1]).toContain('Justificativa: SEFAZ-AM fora do ar desde as 9h');
+  });
+
+  it('RN-FAT-08/03: sem o campo epec, só o nfeProc autorizado vira DANFE (a <NFe> sem protNFe continua recusada)', () => {
+    expect(() => montarDanfe({ nfeProc: soNFe(nfeProcDeTeste()) })).toThrow(ErroDanfe);
+  });
+});

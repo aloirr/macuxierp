@@ -11,6 +11,7 @@ import {
   erros,
   ErroApi,
   pode,
+  PERFIS,
   type ContextoRota,
   type Perfil,
   type RespostaRota,
@@ -116,7 +117,7 @@ describe('permissões por ação (RN-CORE-02, matriz do doc 03)', () => {
   it('RF-CORE-03: perfis só leitura devolve a matriz; leitura não tem ação de gestão', async () => {
     const t = montar();
     const r = (await t.chamar('GET', '/perfis', { perfil: 'leitura' })).corpo as { itens: { perfil: string; acoes: string[] }[] };
-    expect(r.itens.map((i) => i.perfil)).toHaveLength(6);
+    expect(r.itens.map((i) => i.perfil)).toHaveLength(PERFIS.length);
     expect(r.itens.find((i) => i.perfil === 'administrador')?.acoes).toContain('core.usuario.gerir');
     expect(r.itens.find((i) => i.perfil === 'leitura')?.acoes).not.toContain('core.usuario.gerir');
   });
@@ -156,7 +157,7 @@ describe('RF-CORE-02: usuários', () => {
     const r = await t.chamar('POST', '/usuarios', { corpo: novo });
     const c = r.corpo as { senha_provisoria: string; email: string; id: string };
     expect(r.status).toBe(201);
-    expect(r.cabecalhos).toMatchObject({ 'Cache-Control': 'no-store' }); // devolve senha_provisoria
+    expect(r.cabecalhos).toMatchObject({ 'cache-control': 'no-store' }); // devolve senha_provisoria
     expect(c.email).toBe('maria@piloto.test');
     expect(c.senha_provisoria).toHaveLength(16);
     const guardado = t.repo.usuarios.find((u) => u.id === c.id);
@@ -251,7 +252,7 @@ describe('RF-CORE-02: usuários', () => {
     const r = await t.chamar('POST', '/usuarios/:id/redefinir-senha', { params: { id: ADM_ID } });
     const { senha_provisoria } = r.corpo as { senha_provisoria: string };
     expect(senha_provisoria).toHaveLength(16);
-    expect(r.cabecalhos?.['Cache-Control']).toBe('no-store');
+    expect(r.cabecalhos?.['cache-control']).toBe('no-store');
     expect(t.repo.usuarios[0]?.senha_hash).not.toBe(antes);
     expect(JSON.stringify(t.auditoria.registros)).not.toContain(senha_provisoria);
     expect(t.auditoria.registros[0]).toMatchObject({ acao: 'core.usuario.senha_redefinida', entidade_id: ADM_ID });

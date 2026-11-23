@@ -390,4 +390,15 @@ describe('worker: assinar e transmitir a nota', () => {
     expect(m.t.chamadas).toEqual([]);
     expect([...m.a1.credencial.pfx].every((b) => b === 0)).toBe(true);
   });
+
+  it('RN-FAT-05/08: o modo do seletor vem do tpEmis da nota: SVC-RS (7) vai à SVC, a nota normal ao autorizador normal, mesmo depois de a contingência encerrar', async () => {
+    const m = montar();
+    const nota = await emitir(m, 'idem-0000001', true);
+    await m.transmissor.transmitirNota(TENANT, nota.id);
+    expect(m.filiaisPedidas.at(-1)).toMatchObject({ modo: 'normal' });
+    const n2 = await emitir(m, 'idem-0000002', true);
+    m.notas.set(n2.id, { ...m.notas.get(n2.id)!, tp_emis: 7 });
+    await m.transmissor.transmitirNota(TENANT, n2.id);
+    expect(m.filiaisPedidas.at(-1)).toMatchObject({ modo: 'svc-rs' });
+  });
 });

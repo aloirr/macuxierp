@@ -5,6 +5,7 @@
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
+  CABECALHOS_SENHA_PROVISORIA,
   definirPlugin,
   ErroCertificado,
   definirRota,
@@ -190,7 +191,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       acao: 'core.usuario.gerir',
       corpo: UsuarioCriar,
       async executar(c, { corpo }) {
-        const email = corpo.email.trim().toLowerCase();
+        const email = corpo.email;
         // RN-CORE-05: o reenvio com o mesmo external_id devolve o usuário já criado, sem senha nova.
         if (corpo.external_id) {
           const repetido = await repo.usuarioPorExternalId(c.tx, corpo.external_id);
@@ -206,7 +207,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         await c.auditar({ acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: criado.id, depois: usuarioSemPii(criado) });
         await publicar(c, EVENTO_USUARIO, criado.id, usuarioSemPii(criado));
         // A resposta carrega a senha provisória (exibida uma única vez): nunca pode ir a cache de proxy ou navegador.
-        return { status: 201, corpo: { ...usuarioDto(criado), senha_provisoria: senha }, cabecalhos: { 'Cache-Control': 'no-store' } };
+        return { status: 201, corpo: { ...usuarioDto(criado), senha_provisoria: senha }, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
       },
     }),
     definirRota({
@@ -247,7 +248,7 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         const senha = gerarSenhaProvisoria(aleatorios(256));
         await repo.definirSenha(c.tx, u.id, await deps.hashSenha(senha), c.agora);
         await c.auditar({ acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: u.id });
-        return { corpo: { senha_provisoria: senha }, cabecalhos: { 'Cache-Control': 'no-store' } };
+        return { corpo: { senha_provisoria: senha }, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
       },
     }),
 

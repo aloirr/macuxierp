@@ -13,9 +13,10 @@ import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
 import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
 import type {
-  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento,
+  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, RepositorioContingencia,
 } from './portas';
 import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { repositorioContingenciaSql } from './sql-contingencia';
 import { repositorioTitulosSql } from './sql-titulos';
 
 type Dict = Record<string, unknown>;
@@ -37,7 +38,8 @@ const COLUNAS_NOTA = `n.id, n.tenant_id, n.pedido_id, p.payload->>'pedido_uuid' 
   p.payload->>'vendedor_id' AS vendedor_id, n.ambiente, n.serie::int AS serie, n.numero, n.c_nf AS cnf, n.chave_acesso,
   n.tipo_emissao::int AS tp_emis, n.status, ${ISO('n.emitida_em')} AS emitida_em, n.total_nota_centavos::float8 AS total_centavos,
   n.protocolo, ${ISO('n.autorizada_em')} AS autorizada_em, n.recibo, n.idempotencia_chave AS idempotencia, n.transporte->'itens_solicitados' AS itens_solicitados,
-  COALESCE((n.transporte->>'revisao')::int, 1) AS revisao`;
+  COALESCE((n.transporte->>'revisao')::int, 1) AS revisao,
+  n.epec_protocolo, ${ISO('n.epec_autorizada_em')} AS epec_autorizada_em`;
 const DE_NOTA = `faturamento.nota n LEFT JOIN faturamento.pedido_a_faturar p ON p.tenant_id = n.tenant_id AND p.pedido_id = n.pedido_id AND p.deleted_at IS NULL`;
 
 /** Filial (fantasia, ou o nome do emitente retratado na nota) e número do pedido (retrato da fila): lista e detalhe da nota. Exige `DE_NOTA`. */
@@ -151,8 +153,9 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     },
 
     async lerConteudo(tx, nota_id) {
-      const [n] = await tx.consultar<{ natureza_operacao: string; emitente_retrato: ConteudoNota['emitente']; destinatario_retrato: ConteudoNota['destinatario']; transporte: Dict; pagamento: Dict }>(
-        'SELECT natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento FROM faturamento.nota WHERE id = $1 AND deleted_at IS NULL',
+      const [n] = await tx.consultar<{ tipo_emissao: number; cont_dh: string | null; cont_xjust: string | null; natureza_operacao: string; emitente_retrato: ConteudoNota['emitente']; destinatario_retrato: ConteudoNota['destinatario']; transporte: Dict; pagamento: Dict }>(
+        `SELECT tipo_emissao::int AS tipo_emissao, ${ISO('contingencia_em')} AS cont_dh, contingencia_justificativa AS cont_xjust,
+                natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento FROM faturamento.nota WHERE id = $1 AND deleted_at IS NULL`,
         [nota_id],
       );
       if (!n?.emitente_retrato || !n.destinatario_retrato) return null;
@@ -194,6 +197,8 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
         cobranca: (n.pagamento.cobranca as ConteudoNota['cobranca']) ?? null,
         prazos_dias: (n.pagamento.prazos_dias as number[] | null | undefined) ?? null,
         conta_como_real: n.pagamento.conta_como_real === true,
+        // RN-FAT-08: dhCont e xJust da nota em contingência (0013: contingencia_em e contingencia_justificativa); a nota normal volta sem o campo.
+        ...(n.tipo_emissao !== 1 && n.cont_dh && n.cont_xjust ? { contingencia: { tpEmis: n.tipo_emissao as 4 | 6 | 7, dhCont: n.cont_dh, xJust: n.cont_xjust } } : {}),
         itens,
       };
     },
@@ -207,11 +212,12 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     async gravarNota(tx, nota, conteudo) {
       const [criada] = await tx.consultar<{ id: string }>(
         `INSERT INTO faturamento.nota (tenant_id, filial_id, pedido_id, cliente_id, ambiente, serie, numero, chave_acesso, c_nf, tipo_emissao, emitida_em,
-            natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento, idempotencia_chave)
-         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16)
+            natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento, idempotencia_chave, contingencia_em, contingencia_justificativa)
+         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::timestamptz, $18)
          RETURNING id`,
         [nota.filial_id, nota.pedido_id, nota.cliente_id, nota.ambiente, nota.serie, nota.numero, nota.chave_acesso, nota.cnf, nota.tp_emis, nota.emitida_em,
-          conteudo.natOp, json(conteudo.emitente), json(conteudo.destinatario), json(transporteDe(conteudo)), json(pagamentoDe(conteudo)), nota.idempotencia],
+          conteudo.natOp, json(conteudo.emitente), json(conteudo.destinatario), json(transporteDe(conteudo)), json(pagamentoDe(conteudo)), nota.idempotencia,
+          conteudo.contingencia?.dhCont ?? null, conteudo.contingencia?.xJust ?? null],
       );
       if (!criada) throw new Error('RN-FAT-01: a nota não foi gravada');
       await tx.consultar(`UPDATE faturamento.nota SET ${COLUNAS_TOTAIS} WHERE id = $1`, [criada.id, ...paramsTotais(conteudo.itens)]);
@@ -243,9 +249,10 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     async mudarStatus(tx, nota_id, de, para, dados) {
       const r = await tx.consultar(
         `UPDATE faturamento.nota SET status = $3, c_stat = COALESCE($4::smallint, c_stat), x_motivo = COALESCE(left($5::text, 255), x_motivo),
-                recibo = COALESCE($6::text, recibo), protocolo = COALESCE($7::text, protocolo), autorizada_em = COALESCE($8::timestamptz, autorizada_em)
+                recibo = COALESCE($6::text, recibo), protocolo = COALESCE($7::text, protocolo), autorizada_em = COALESCE($8::timestamptz, autorizada_em),
+                epec_protocolo = COALESCE($10::text, epec_protocolo), epec_autorizada_em = COALESCE($11::timestamptz, epec_autorizada_em)
           WHERE id = $1 AND status = $2 AND deleted_at IS NULL AND ($9::int IS NULL OR COALESCE((transporte->>'revisao')::int, 1) = $9::int) RETURNING id`,
-        [nota_id, de, para, dados?.cStat ?? null, dados?.xMotivo ?? null, dados?.recibo ?? null, dados?.protocolo ?? null, dados?.autorizadaEm ?? null, dados?.revisao ?? null],
+        [nota_id, de, para, dados?.cStat ?? null, dados?.xMotivo ?? null, dados?.recibo ?? null, dados?.protocolo ?? null, dados?.autorizadaEm ?? null, dados?.revisao ?? null, dados?.epec?.protocolo ?? null, dados?.epec?.autorizadaEm ?? null],
       );
       if (r.length === 0) throw new Error(`RN-FAT-02: a nota não está em ${de}${dados?.revisao === undefined ? '' : ` na revisão ${dados.revisao}`}`);
     },
@@ -656,6 +663,6 @@ export const notaEmAbertoSql: NotaEmAberto = {
 };
 
 /** Repositórios de produção, ligados pelo apps/api e pelo apps/worker (a `Outbox` vem do SDK: `new OutboxPg()`). */
-export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
-  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
+export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia: RepositorioContingencia; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
+  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, contingencia: repositorioContingenciaSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
 }

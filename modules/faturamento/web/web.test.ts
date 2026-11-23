@@ -364,12 +364,12 @@ describe('MC-0016: vazio das listas e hora exportada', () => {
 describe('API pública do web', () => {
   it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
-      'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
-      'acaoPrincipalDaNota', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
-      'csvDaPagina', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaNota', 'faixaDoTitulo',
-      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
-      'perfilVeFaturamento', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEstornar', 'requisicaoInutilizar',
-      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDoDanfe', 'urlDoPedidoAFaturar', 'urlDoXml',
+      'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_MODALIDADE', 'ROTULO_PRAZO_EPEC', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
+      'acaoPrincipalDaNota', 'acoesDaContingencia', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
+      'csvDaPagina', 'dialogoAbrirContingencia', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEncerrarContingencia', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaContingencia', 'faixaDaNota', 'faixaDoAlertaEpec', 'faixaDoTitulo',
+      'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaEpecPendentes', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
+      'perfilVeFaturamento', 'requisicaoAbrirContingencia', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEncerrarContingencia', 'requisicaoEstornar', 'requisicaoInutilizar',
+      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDaContingencia', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDaContingencia', 'urlDasEpecPendentes', 'urlDoDanfe', 'urlDoEncerramentoDaContingencia', 'urlDoPedidoAFaturar', 'urlDoXml',
     ]);
   });
 });
@@ -458,5 +458,71 @@ describe('formularioParcial (RF-FAT-01, nota parcial)', () => {
     expect(f.emitirHabilitado({})).toBe(false);
     expect(f.emitirHabilitado({ 1: '' })).toBe(false);
     expect(f.emitirHabilitado({ 2: '1' })).toBe(true);
+  });
+});
+
+describe('contingência por filial (T-0021, lote 4)', () => {
+  const FILIAL = '9a1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c71';
+  const MOTIVO = 'SEFAZ-AM sem resposta há 10 min';
+  it('RN-FAT-05: abrir leva a Idempotency-Key, confere o tamanho do motivo (15 a 256, com trim) e monta o POST da filial', () => {
+    const ok = publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: `  ${MOTIVO} ` }, 'chave-cont-0001');
+    expect(ok).toEqual({ ok: true, requisicao: { metodo: 'POST', caminho: `/v1/faturamento/filiais/${FILIAL}/contingencia`, cabecalhos: { 'Idempotency-Key': 'chave-cont-0001' }, corpo: { filial_id: FILIAL, modalidade: 'epec', motivo: MOTIVO } } });
+    expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: 'curto' }, 'chave-cont-0001')).toEqual({ ok: false, erro: 'O motivo deve ter de 15 a 256 caracteres.' });
+    expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: 'x'.repeat(257) }, 'chave-cont-0001').ok).toBe(false);
+    expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'fs_da' as never, motivo: MOTIVO }, 'chave-cont-0001').ok).toBe(false);
+    expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: MOTIVO }, 'x').ok).toBe(false);
+  });
+  it('RN-FAT-09: encerrar é POST sem corpo, com a Idempotency-Key', () => {
+    expect(publico.requisicaoEncerrarContingencia(FILIAL, 'chave-cont-0002')).toEqual({ ok: true, requisicao: { metodo: 'POST', caminho: `/v1/faturamento/filiais/${FILIAL}/contingencia/encerrar`, cabecalhos: { 'Idempotency-Key': 'chave-cont-0002' } } });
+    expect(publico.requisicaoEncerrarContingencia(FILIAL, 'x').ok).toBe(false);
+  });
+  it('RN-FAT-05: o diálogo de abertura oferece só a SVC (EPEC desligada), o contador do motivo e o aviso', () => {
+    const d = publico.dialogoAbrirContingencia({ nome: 'Matriz' });
+    expect(d.titulo).toBe('Entrar em contingência: Matriz');
+    expect(d.modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs']); // EPEC desligada na v0.3.0
+    expect(publico.dialogoAbrirContingencia({}, true).modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs', 'epec']);
+    expect(d.validar({ texto: 'curto' })).toBe('O motivo deve ter de 15 a 256 caracteres.');
+    expect(d.validar({ texto: MOTIVO })).toBeNull();
+    expect(d.contador('curto')).toBe('faltam 10 caracteres');
+    expect(d.aviso).toMatch(/SEFAZ não responde/);
+    expect(publico.dialogoEncerrarContingencia({}, 'epec').aviso).toMatch(/168 h/);
+    expect(publico.dialogoEncerrarContingencia({}, 'svc_rs').aviso).toBe('As próximas notas saem pelo autorizador normal.');
+  });
+  it('selo e faixa de destaque só com contingência aberta, com a modalidade e o início no fuso do tenant', () => {
+    const c = { modalidade: 'svc_rs' as const, inicio_em: '2026-11-22T14:30:00.000Z', ambiente: 'producao' as const };
+    expect(publico.seloDaContingencia(null)).toBeNull();
+    expect(publico.seloDaContingencia(c)).toMatchObject({ texto: 'Em contingência (SVC-RS)', tom: 'alerta' });
+    expect(publico.seloDaContingencia(c)?.dica).toBe('A nota já sai autorizada');
+    expect(publico.faixaDaContingencia(c, 'America/Manaus')).toBe('FILIAL EM CONTINGÊNCIA — DESDE 22/11/2026 10:30');
+    expect(publico.faixaDaContingencia(null, 'America/Manaus')).toBeNull();
+  });
+
+  it('RN-FAT-09: o alerta do prazo de 168 h vira faixa vermelha (vencida) ou amarela (perto do fim); verde não mostra nada', () => {
+    const base = { total: 3, no_prazo: 1, perto_do_fim: 1, vencidas: 1, prazo_mais_proximo: null };
+    expect(publico.faixaDoAlertaEpec({ ...base, sinal: 'vermelho' })).toEqual({ tom: 'erro', texto: '1 nota(s) em EPEC com o prazo de 168 h vencido. Transmita agora e confira a SEFAZ.' });
+    expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, sinal: 'amarelo' })).toEqual({ tom: 'alerta', texto: '1 nota(s) em EPEC perto do fim do prazo de 168 h.' });
+    expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, perto_do_fim: 0, sinal: 'verde' })).toBeNull();
+  });
+  it('RN-CORE-02: só o administrador abre e encerra; abrir fecha com a aberta e encerrar fecha sem ela', () => {
+    expect(publico.acoesDaContingencia('administrador', false, true)).toEqual({ mostrarAbrir: true, abrir: null, encerrar: 'a filial não está em contingência.' });
+    expect(publico.acoesDaContingencia('administrador', true, true)).toEqual({ mostrarAbrir: true, abrir: 'a filial já está em contingência.', encerrar: null });
+    for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true, true)).toEqual({ mostrarAbrir: true, abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
+  });
+  it('RN-FAT-10: filial simulada ou sem transporte SVC (pode_abrir false): o botão de abrir não é oferecido; encerrar segue aparecendo com contingência aberta; administrador com SVC disponível vê o botão', () => {
+    expect(publico.acoesDaContingencia('administrador', false, false)).toMatchObject({ mostrarAbrir: false });
+    expect(publico.acoesDaContingencia('administrador', true, false)).toEqual({ mostrarAbrir: false, abrir: 'a filial já está em contingência.', encerrar: null });
+    expect(publico.acoesDaContingencia('administrador', false, true)).toMatchObject({ mostrarAbrir: true, abrir: null });
+  });
+  it('RN-FAT-09: a lista das EPEC pendentes mostra o prazo; vencido em tom de erro; CSV no fuso; página fora do menu até a EPEC ligar', () => {
+    expect(publico.ROTULO_PRAZO_EPEC).toMatchObject({ no_prazo: { texto: 'No prazo', tom: 'ok' }, perto_do_fim: { tom: 'alerta' }, vencido: { texto: 'Vencido', tom: 'erro' } });
+    const linha = { id: ID, filial_id: ID, ambiente: 'producao', serie: 1, numero: 7, chave_acesso: null, status: 'emitida_contingencia', epec_protocolo: '113260000000001', epec_autorizada_em: '2026-11-21T14:00:00.000Z', prazo_ate: '2026-11-28T14:00:00.000Z', situacao_prazo: 'vencido' };
+    const csv = publico.csvDaPagina(publico.paginaEpecPendentes, [linha], 'America/Manaus');
+    expect(csv).toContain('7/1');
+    expect(csv).toContain('21/11/2026 10:00');
+    expect(csv).toContain('28/11/2026 10:00');
+    expect(csv).toContain('Vencido');
+    expect(publico.paginaEpecPendentes.api).toBe(publico.urlDasEpecPendentes());
+    expect(publico.PAGINAS_FATURAMENTO.find((p) => p.id === 'epec-pendentes')).toBeUndefined(); // fora do registro e do menu na v0.3.0
+    expect(publico.ROTULO_LINHA['epec-pendentes'](linha as never)).toBe('Abrir a nota 7/1 em contingência');
   });
 });
