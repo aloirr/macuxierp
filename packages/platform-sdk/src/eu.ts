@@ -7,19 +7,39 @@
  * - `avisos_a1` (opcional, campo compatível acrescentado na T-0035): o selo do A1 no BKO, um por filial do tenant com
  *   certificado ativo a 30 dias ou menos de vencer, ou já vencido (RF-CORE-04, RN-CORE-06). `dias` negativo = vencido;
  *   `valido_ate` em ISO 8601 UTC. Sem titular nem CNPJ do certificado.
+ * - `usuario.deve_trocar_senha` (opcional, campo compatível acrescentado na T-0052; ausente = false): o usuário entrou
+ *   com a senha provisória e o BKO o leva à troca (`POST /v1/auth/senha`, `TrocarSenhaEntrada`) antes de qualquer tela.
  */
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
 import { Cnpj } from './documentos';
 import { MODULOS, PERFIS } from './modulo';
+import { SenhaInformada, SenhaNova } from './senha';
 
 const Id = z.string().regex(PADRAO_UUID);
 
 export const EuResposta = z.object({
-  usuario: z.object({ id: Id, nome: z.string().min(1), perfil: z.enum(PERFIS) }),
+  usuario: z.object({ id: Id, nome: z.string().min(1), perfil: z.enum(PERFIS), deve_trocar_senha: z.boolean().optional() }),
   empresa: z.object({ id: Id, slug: z.string().min(1), razao_social: z.string().min(1), fuso: z.string().min(1) }),
   filiais: z.array(z.object({ id: Id, nome: z.string().min(1), cnpj: Cnpj })),
   modulos: z.array(z.object({ id: z.enum(MODULOS), menus: z.array(z.string()) })),
   avisos_a1: z.array(z.object({ filial_id: Id, dias: z.number().int(), valido_ate: z.string().datetime() })).optional(),
 });
 export type EuResposta = z.infer<typeof EuResposta>;
+
+/**
+ * Código do 403 que a API devolve, em toda rota além de `GET /v1/auth/eu`, `POST /v1/auth/senha` e a saída, enquanto a
+ * senha provisória não for trocada (T-0052). O portal `/config` usa o mesmo código para o superadmin.
+ */
+export const CODIGO_TROCAR_SENHA = 'TROCAR_SENHA';
+
+/**
+ * Corpo do `POST /v1/auth/senha` (resposta 204, sem corpo) e da troca do superadmin (`TrocarSenhaPlataformaEntrada`).
+ * A senha nova segue `SenhaNova` (`senha.ts`); a atual só é limitada a 1–`SENHA_MAXIMA`, porque senhas já gravadas
+ * continuam valendo. A senha nunca vai para log nem auditoria.
+ */
+export const TrocarSenhaEntrada = z.object({
+  senha_atual: SenhaInformada,
+  senha_nova: SenhaNova,
+});
+export type TrocarSenhaEntrada = z.infer<typeof TrocarSenhaEntrada>;

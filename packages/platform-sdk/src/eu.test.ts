@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EuResposta } from './eu';
+import { CODIGO_TROCAR_SENHA, EuResposta, TrocarSenhaEntrada } from './eu';
 
 const eu = {
   usuario: { id: '22222222-2222-4222-8222-222222222222', nome: 'Pessoa', perfil: 'faturista' },
@@ -29,5 +29,30 @@ describe('EuResposta (contrato do GET /v1/auth/eu)', () => {
     expect(() => EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, dias: 1.5 }] })).toThrow();
     expect(() => EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, valido_ate: '19/11/2026' }] })).toThrow();
     expect(() => EuResposta.parse({ ...eu, avisos_a1: [{ ...aviso, filial_id: 'x' }] })).toThrow();
+  });
+
+  it('T-0052: deve_trocar_senha é opcional (eu antigo continua válido) e, quando vem, é booleano', () => {
+    expect(EuResposta.parse(eu).usuario).not.toHaveProperty('deve_trocar_senha');
+    expect(EuResposta.parse({ ...eu, usuario: { ...eu.usuario, deve_trocar_senha: true } }).usuario.deve_trocar_senha).toBe(true);
+    expect(EuResposta.parse({ ...eu, usuario: { ...eu.usuario, deve_trocar_senha: false } }).usuario.deve_trocar_senha).toBe(false);
+    expect(() => EuResposta.parse({ ...eu, usuario: { ...eu.usuario, deve_trocar_senha: 'sim' } })).toThrow();
+  });
+});
+
+describe('TrocarSenhaEntrada (contrato do POST /v1/auth/senha, T-0052)', () => {
+  it('exporta o código do 403', () => {
+    expect(CODIGO_TROCAR_SENHA).toBe('TROCAR_SENHA');
+  });
+
+  it('senha nova usa SenhaNova; senha atual 1–SENHA_MAXIMA', () => {
+    expect(TrocarSenhaEntrada.parse({ senha_atual: 'a', senha_nova: 'abcdef1!' }).senha_nova).toBe('abcdef1!');
+    expect(() => TrocarSenhaEntrada.parse({ senha_atual: '', senha_nova: 'abcdef1!' })).toThrow();
+    expect(() => TrocarSenhaEntrada.parse({ senha_atual: 'x'.repeat(201), senha_nova: 'abcdef1!' })).toThrow();
+  });
+
+  it('os issues da senha nova saem no caminho senha_nova, um por regra descumprida', () => {
+    const r = TrocarSenhaEntrada.safeParse({ senha_atual: 'a', senha_nova: 'abcdefg1' });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => [i.path.join('.'), i.message])).toEqual([['senha_nova', 'Um caractere especial']]);
   });
 });
