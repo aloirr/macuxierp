@@ -1,5 +1,6 @@
 export * from './carteira';
 export * from './condicao';
+export * from './desconto';
 export * from './consulta';
 export * from './documento';
 export * from './estoque';
@@ -11,3 +12,4 @@ export * from './preco';
 export * from './produto';
 export * from './violacao';
 export * from './carga';
+export * from './zeragem';

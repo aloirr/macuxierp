@@ -33,3 +33,6 @@ export function criarPluginCadastros(deps: Dependencias): PluginModulo {
 
 /** Plugin de produção: adaptador SQL na transação do tenant e fontes HTTP reais. A API monta este plugin em `/v1/cadastros`. */
 export const plugin: PluginModulo = criarPluginCadastros({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados: semCertificados });
+
+export { criarPluginPlataformaCadastrosZerar } from './zeragem';
+export type { DependenciasZeragemPlataforma, EstadoEntidadeIntegracao, EstadoIntegracaoPlataforma, RefsUso, UsoDaTabela, UsosCadastroPlataforma, UsuariosFiliaisPlataforma } from './zeragem-portas';

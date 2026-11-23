@@ -194,4 +194,20 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
       expect({ status: e.status, codigo: e.codigo }).toEqual({ status: 422, codigo: 'RN-CAD-09' });
     }
   }, 120_000);
+  it('RN-CAD-11: preço antes do produto, em lotes separados: o item herdado recebe o desconto do produto e o próprio fica', async () => {
+    const T = await criarTenant(efemero.admin, 'carga-desc', ['cadastros']);
+    const sem = fixture(['produto.csv', 'preco.csv']);
+    const prod = fixture().filter((a) => a.nome === 'produto.csv')[0]!;
+    const semDesconto = { nome: 'produto.csv', conteudo: prod.conteudo.toString().replace(';12,5;', ';;') };
+    const preco = fixture().filter((a) => a.nome === 'preco.csv')[0]!;
+    await carregar(T, 'gravar', sem.filter((a) => a.nome === 'filial.csv'));
+    await carregar(T, 'gravar', [semDesconto]);
+    await carregar(T, 'gravar', [preco]);
+    await admin("UPDATE cadastros.tabela_preco_item SET desconto_maximo_bp = 300, desconto_herdado = false WHERE tenant_id = $1 AND external_id = 'PR-EX-02'", [T]);
+    const r = await carregar(T, 'gravar', [prod]);
+    expect(r.rel.erros).toEqual([]);
+    const d = await admin('SELECT external_id, desconto_maximo_bp, desconto_herdado FROM cadastros.tabela_preco_item WHERE tenant_id = $1 ORDER BY external_id', [T]);
+    expect(d.map((l) => [l.external_id, l.desconto_maximo_bp, l.desconto_herdado])).toEqual([['PR-EX-01', 1250, true], ['PR-EX-02', 300, false]]);
+    expect(r.eventos.filter((e) => e.nome === 'cadastros.preco.alterado@1')).toHaveLength(1);
+  }, 120_000);
 });
