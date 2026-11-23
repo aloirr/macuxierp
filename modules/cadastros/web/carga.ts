@@ -34,7 +34,7 @@ export const ROTULOS_ENTIDADE: Readonly<Record<ResultadoEntidade['entidade'], st
   catalogo_no: 'Catálogo', tabela_escalonada: 'Tabela escalonada', transportadora: 'Transportadoras', rota: 'Rotas', titulo: 'Títulos', nota: 'Notas',
 };
 
-const SITUACOES: Readonly<Record<ResultadoEntidade['situacao'], string>> = { processado: 'Processado', recusado: 'Arquivo recusado', ignorado: 'Ignorado (fora da v1)' };
+const SITUACOES: Readonly<Record<ResultadoEntidade['situacao'], string>> = { processado: 'Processado', recusado: 'Arquivo recusado', ignorado: 'Ignorado' };
 
 export interface AcoesDaCarga {
   /** Vê a página e escolhe arquivos. */
@@ -50,7 +50,7 @@ export function acoesDaCarga(perfil: Perfil): AcoesDaCarga {
 }
 
 export const textoDeConfirmacao = (n: number): string =>
-  `Gravar ${n} arquivo${n === 1 ? '' : 's'} nos cadastros? Linhas iguais ao que já existe não mudam; o resto é criado ou atualizado. Use Validar antes para conferir.`;
+  `Gravar ${n} arquivo${n === 1 ? '' : 's'} nos cadastros? Valide antes para conferir.`;
 
 export interface ArquivoEscolhido {
   nome: string;
@@ -63,7 +63,7 @@ export function problemasDaSelecao(arquivos: readonly ArquivoEscolhido[]): strin
   if (arquivos.length === 0) p.push('Escolha ao menos um arquivo .csv');
   if (arquivos.length > PAGINA_CARGA.maxArquivos) p.push(`No máximo ${PAGINA_CARGA.maxArquivos} arquivos por envio`);
   if (arquivos.some((a) => !/\.csv$/i.test(a.nome))) p.push('Só arquivos .csv (no Excel: "Salvar como" > "CSV UTF-8")');
-  if (arquivos.reduce((t, a) => t + a.tamanho, 0) > PAGINA_CARGA.maxBytes) p.push(`O envio passa de ${Math.floor(PAGINA_CARGA.maxBytes / 1_048_576)} MB: mande poucos arquivos por vez ou use a linha de comando`);
+  if (arquivos.reduce((t, a) => t + a.tamanho, 0) > PAGINA_CARGA.maxBytes) p.push(`O envio passa de ${Math.floor(PAGINA_CARGA.maxBytes / 1_048_576)} MB: mande poucos arquivos por vez.`);
   return p;
 }
 
@@ -125,7 +125,7 @@ export function totaisDoRelatorio(r: RelatorioCarga): TotaisCarga {
 
 /** No modo `validar` os números são previsões: o rótulo muda, nunca a conta. */
 export const tituloDoRelatorio = (r: RelatorioCarga): string =>
-  r.modo === 'validar' ? 'Validação (nada foi gravado): números previstos' : 'Carga gravada';
+  r.modo === 'validar' ? 'Validação: números previstos' : 'Carga gravada';
 
 /** Erros por arquivo (linha, campo, motivo), na ordem do relatório; o motivo nunca traz o valor digitado. */
 export function errosPorArquivo(r: RelatorioCarga): { arquivo: string; erros: ErroCarga[] }[] {
@@ -154,7 +154,7 @@ export function csvDosErros(r: RelatorioCarga): string {
 export function csvDoResumo(r: RelatorioCarga): string {
   return paraCsv<LinhaResumo>(
     [
-      { titulo: 'Entidade', valor: (l) => l.entidade }, { titulo: 'Arquivo', valor: (l) => l.arquivo }, { titulo: 'Situação', valor: (l) => l.situacao },
+      { titulo: 'Cadastro', valor: (l) => l.entidade }, { titulo: 'Arquivo', valor: (l) => l.arquivo }, { titulo: 'Situação', valor: (l) => l.situacao },
       { titulo: 'Lidas', valor: (l) => l.lidas }, { titulo: 'Inseridas', valor: (l) => l.inseridas }, { titulo: 'Atualizadas', valor: (l) => l.atualizadas },
       { titulo: 'Sem mudança', valor: (l) => l.sem_mudanca }, { titulo: 'Recusadas', valor: (l) => l.recusadas }, { titulo: 'Avisos', valor: (l) => l.avisos },
       { titulo: 'Colunas ignoradas', valor: (l) => l.colunas_ignoradas },

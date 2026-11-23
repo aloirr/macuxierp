@@ -36,7 +36,7 @@ const REGIME_PIS_COFINS: ColunaPagina['formatar'] = (v) => (v === 'cumulativo' ?
 export const PAGINAS: readonly PaginaCadastros[] = [
   {
     id: 'clientes', menu: 'Clientes', titulo: 'Clientes', rota: '/cadastros/clientes', api: '/v1/cadastros/clientes', filtros: ['filial_id', 'vendedor_id'],
-    colunas: [{ chave: 'documento', rotulo: 'CNPJ/CPF', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'nome_fantasia', rotulo: 'Fantasia' }, { chave: 'ind_ie_dest', rotulo: 'Ind. IE' }, { chave: 'limite_credito_centavos', rotulo: 'Limite', formatar: (v) => formatarCentavos(Number(v ?? 0)) }, ATIVO],
+    colunas: [{ chave: 'documento', rotulo: 'CNPJ/CPF', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'nome_fantasia', rotulo: 'Fantasia' }, { chave: 'ind_ie_dest', rotulo: 'Contribuinte ICMS' }, { chave: 'limite_credito_centavos', rotulo: 'Limite', formatar: (v) => formatarCentavos(Number(v ?? 0)) }, ATIVO],
     editar: 'cadastros.cliente.editar', restritos: [{ campo: 'limite_credito_centavos', exige: 'cadastros.cliente.credito' }],
   },
   {
@@ -56,7 +56,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'condicoes-pagamento', menu: 'Condições de pagamento', titulo: 'Condições de pagamento', rota: '/cadastros/condicoes-pagamento', api: '/v1/cadastros/condicoes-pagamento', filtros: [],
-    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'tPag' }, { chave: 'prazos_dias', rotulo: 'Prazos (dias)', formatar: (v) => (Array.isArray(v) ? v.join('/') : '') }, { chave: 'parcelas_cartao', rotulo: 'Parcelas', formatar: (v) => (typeof v === 'number' ? `${v}x` : '') }, ATIVO],
+    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'Forma de pagamento' }, { chave: 'prazos_dias', rotulo: 'Prazos (dias)', formatar: (v) => (Array.isArray(v) ? v.join('/') : '') }, { chave: 'parcelas_cartao', rotulo: 'Parcelas', formatar: (v) => (typeof v === 'number' ? `${v}x` : '') }, ATIVO],
     editar: 'cadastros.condicao_pagamento.editar',
   },
   {
@@ -66,7 +66,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'filiais', menu: 'Filiais', titulo: 'Filiais', rota: '/cadastros/filiais', api: '/v1/cadastros/filiais', filtros: [],
-    colunas: [{ chave: 'cnpj', rotulo: 'CNPJ', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'ie', rotulo: 'IE' }, { chave: 'crt', rotulo: 'CRT' }, { chave: 'padrao', rotulo: 'Padrão', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'nfe_serie', rotulo: 'Série NF-e' }, { chave: 'industrial_ipi', rotulo: 'Industrial (IPI)', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'regime_pis_cofins', rotulo: 'Regime PIS/COFINS', formatar: REGIME_PIS_COFINS }, ATIVO],
+    colunas: [{ chave: 'cnpj', rotulo: 'CNPJ', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'ie', rotulo: 'IE' }, { chave: 'crt', rotulo: 'Regime tributário' }, { chave: 'padrao', rotulo: 'Padrão', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'nfe_serie', rotulo: 'Série NF-e' }, { chave: 'industrial_ipi', rotulo: 'Industrial (IPI)', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'regime_pis_cofins', rotulo: 'Regime PIS/COFINS', formatar: REGIME_PIS_COFINS }, ATIVO],
     editar: 'cadastros.filial.editar',
   },
   {
