@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { RelatorioCarga } from '@macuxierp/cadastros/contracts';
-import { PreviaDaCarga, TelaCarga } from './carga';
+import { PreviaDaCarga, TelaCarga, textoErrosOmitidos } from './carga';
 
 const ent = { entidade: 'preco', arquivo: 'preco.csv', situacao: 'processado', lidas: 5, inseridas: 1, atualizadas: 2, sem_mudanca: 0, recusadas: 2, colunas_ignoradas: [], avisos: ['Coluna extra ignorada.'] };
 const erro = (linha: number | null, campo: string | null, codigo: string, motivo: string) => ({ arquivo: 'preco.csv', linha, campo, codigo, motivo });
@@ -16,6 +16,9 @@ describe('TelaCarga', () => {
     expect(h).toContain('href="/baixar-modelo?caminho=%2Fv1%2Fcadastros%2Fcargas%2Fmodelos%2Fproduto_unidade"');
     expect(h).toContain('Enviar cliente_endereco.csv');
   });
+  it('Validar é secundário', () => {
+    expect(h.match(/<button class="mx-botao-secundario"[^>]*>Validar<\/button>/g)).toHaveLength(10);
+  });
   it('o Gravar nasce desligado em todos os cartões', () => {
     const gravar = [...h.matchAll(/<button[^>]*>Gravar<\/button>/g)];
     expect(gravar).toHaveLength(10);
@@ -24,13 +27,23 @@ describe('TelaCarga', () => {
 });
 
 describe('PreviaDaCarga', () => {
-  it('mostra o resumo e os erros por linha (arquivo, linha, campo, motivo) com "e mais N erros"', () => {
+  it('mostra o resumo e os erros por linha (linha, campo, motivo) com "e mais N erros"', () => {
     const h = renderToStaticMarkup(<PreviaDaCarga relatorio={r({ erros: [erro(3, 'preco_cents', 'CARGA_FORMATO', 'Valor inválido.'), erro(null, null, 'PERFIL_SEM_PERMISSAO', 'Só o administrador carrega filial e limite de crédito.')], erros_omitidos: 7 })} />);
     expect(h).toContain('Validação (nada foi gravado)');
-    expect(h).toMatch(/<td>Preços<\/td><td>Processado<\/td><td>5<\/td><td>1<\/td><td>2<\/td><td>0<\/td><td>2<\/td><td>Coluna extra ignorada\.<\/td>/);
-    expect(h).toMatch(/<td>preco\.csv<\/td><td>3<\/td><td>preco_cents<\/td><td>Valor inválido\.<\/td>/);
-    expect(h).toMatch(/<td>preco\.csv<\/td><td>—<\/td><td>—<\/td><td>Só o administrador carrega filial e limite de crédito\.<\/td>/);
-    expect(h).toContain('e mais 7 erros');
+    expect(h).toMatch(/<td[^>]*>Preços<\/td><td[^>]*>Processado<\/td><td[^>]*>5<\/td><td[^>]*>1<\/td><td[^>]*>2<\/td><td[^>]*>0<\/td><td[^>]*>2<\/td><td[^>]*>Coluna extra ignorada\.<\/td>/);
+    expect(h).toMatch(/<td[^>]*>3<\/td><td[^>]*>preco_cents<\/td><td[^>]*>Valor inválido\.<\/td>/);
+    expect(h).toMatch(/<td[^>]*>—<\/td><td[^>]*>—<\/td><td[^>]*>Só o administrador carrega filial e limite de crédito\.<\/td>/);
+    expect(h).toContain('Há mais 7 erros que não aparecem aqui. Corrija estes e valide de novo.');
+  });
+  it('as tabelas usam a TabelaDensa: números à direita e algarismos tabulares', () => {
+    const h = renderToStaticMarkup(<PreviaDaCarga relatorio={r({ erros: [erro(3, 'preco_cents', 'CARGA_FORMATO', 'Valor inválido.')] })} />);
+    expect(h).toMatch(/<td[^>]*text-align:right[^>]*tabular-nums[^>]*>5<\/td>|<td[^>]*tabular-nums[^>]*text-align:right[^>]*>5<\/td>/);
+    expect(h).toMatch(/<td[^>]*(text-align:right|tabular-nums)[^>]*>3<\/td>/);
+    expect(h).toContain('Erros de preco.csv');
+  });
+  it('a concordância dos omitidos: 1 erro no singular, N erros no plural', () => {
+    expect(textoErrosOmitidos(1)).toBe('Há mais 1 erro que não aparece aqui. Corrija estes e valide de novo.');
+    expect(textoErrosOmitidos(3)).toBe('Há mais 3 erros que não aparecem aqui. Corrija estes e valide de novo.');
   });
   it('agrupa a dependência por arquivo, com o motivo da API e o atalho para a entidade que falta', () => {
     const dep = (l: number) => ({ ...erro(l, 'produto_external_id', 'CARGA_DEPENDENCIA', 'Faltam produtos: carregue produto.csv antes.'), entidade_faltante: 'produto' });

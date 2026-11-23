@@ -67,3 +67,13 @@ Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a fat
 - A ação parcial ("Emitir nota parcial") fica no detalhe do pedido, porque é a exceção e exige escolher itens.
 - Sem menu na linha: o menu exige teclado e foco próprios, e a lista é densa.
 - **Rádio `.mx-radio`:** o shell importa `@macuxierp/ui/botoes.css` e põe `className="mx-radio"` no `input` radio (cartão de filial), tirando o `accent-color`. Desmarcado: borda `bordaCampo`, fundo branco; marcado (`:checked`): azul-noite com ponto branco; foco visível em azul-noite. Vem de `radioBase` e `radioMarcado` em `estilos.ts`, os mesmos do `DialogoMotivo`.
+
+## Portal /config (T-0050)
+
+**DialogoMotivo, `semTexto`**: sem campo de texto (ex.: redefinir senha, desligar módulo). Não renderiza textarea nem rótulo, ignora `textoObrigatorio` e `aoConfirmar` recebe `{ motivo, texto: '' }`. Com `motivos`, a escolha continua obrigatória; sem motivos vira confirmação simples (título, aviso opcional, botões). O `validar` segue rodando.
+
+**TabelaDensa, carregar mais**: props `temMais`, `carregandoMais` e `aoCarregarMais`. Com `temMais` e `aoCarregarMais`, aparece o botão secundário "Carregar mais" abaixo da tabela ("Carregando…" e desabilitado durante a busca). Um `role="status"` só para leitor de tela diz "{n} registros carregados." Mantenha `aoCarregarMais` fixo e controle o botão só por `temMais` (a região viva desmonta sem ele).
+
+**`acumularPagina(atuais, pagina, chave)`** (`@macuxierp/ui/paginacao`): soma sem duplicar pela chave, mantém a ordem e, em chave repetida, a versão nova substitui a antiga na mesma posição; não muta a entrada. Uso: com `proximo_cursor`, `setLinhas(acumularPagina(linhas, resp.itens, chave))` (a resposta vem de `paginaDe`, em `platform-sdk/listas.ts`) e `temMais = resp.proximo_cursor != null`; regra no JSDoc.
+
+Paginação: a lista genérica do shell usa "Próxima página"; a TabelaDensa oferece "Carregar mais". Padrão único a decidir (RD-0974).

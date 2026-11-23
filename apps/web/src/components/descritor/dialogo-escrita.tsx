@@ -1,5 +1,6 @@
 'use client';
 import { contadorDeCaracteres, formularioParcial } from '@macuxierp/faturamento/web';
+import { RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AmbienteVista, ErroEmPartes, ItemDoDialogo, ItemEscolhido } from '@/lib/descritor/tipos';
 
@@ -196,7 +197,7 @@ export function ItensDoDialogo({ id = 'itens', linhas, falha, quantidades, erros
     <div className="itens-parcial">
       {!linhas && !falha && <p className="apoio" role="status">Carregando os itens…</p>}
       {falha && <p className="erro" role="alert">{falha}</p>}
-      <p className="so-leitor" role="status" aria-live="polite">{Object.keys(erros).length > 0 ? 'Há campos com erro. Confira as mensagens abaixo de cada campo.' : ''}</p>
+      <RegiaoErros temErro={Object.keys(erros).length > 0} />
       {linhas && (
         <table>
           <thead><tr><th scope="col">Item</th><th scope="col">Saldo</th><th scope="col">Quantidade</th></tr></thead>

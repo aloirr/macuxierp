@@ -61,6 +61,9 @@ describe('assinatura C no login e na seleção de filial', () => {
   it('a faixa é azul-noite pelo token e o padding preserva a área de proteção da C', () => {
     expect(css).toMatch(/\.cartao-central header \{[^}]*background: var\(--mx-cor-azul-noite\)/);
     expect(css).toMatch(/\.cartao-central header \{[^}]*padding: 24px 32px/);
-    expect(css).toMatch(/\.cartao-central input\[type=radio\] \{ accent-color: var\(--mx-cor-azul-noite\)/);
+  });
+  it('cartão da carga segue o grupo-campos e o rádio usa .mx-radio', () => {
+    expect(css).not.toContain('accent-color');
+    expect(css).toMatch(/fieldset\.grupo-campos, fieldset\.carga-cartao \{[^}]*border-radius: 6px/);
   });
 });
