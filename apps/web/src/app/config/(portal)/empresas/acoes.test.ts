@@ -59,9 +59,9 @@ describe('ações do portal', () => {
     expect(await criarAdminAcao(ID, { email: 'sem-arroba', nome: 'Administrador' }, 'k')).toMatchObject({ ok: false, campos: { email: 'E-mail inválido. Confira o endereço.' } });
     expect(chamadas).toHaveLength(0);
   });
-  it('criar empresa: slug reservado e fora do padrão ficam junto do campo; sucesso redireciona à empresa', async () => {
-    expect(await criarEmpresaAcao({ slug: 'config', nome: 'Acme', fuso: 'America/Manaus' }, 'k')).toMatchObject({ campos: { slug: 'Slug reservado. Escolha outro.' } });
-    expect(await criarEmpresaAcao({ slug: 'Acme!', nome: 'Acme', fuso: '' }, 'k')).toMatchObject({ campos: { slug: 'Slug fora do padrão. Veja a regra acima.' } });
+  it('criar empresa: código reservado e fora do padrão ficam junto do campo; sucesso redireciona à empresa', async () => {
+    expect(await criarEmpresaAcao({ slug: 'config', nome: 'Acme', fuso: 'America/Manaus' }, 'k')).toMatchObject({ campos: { slug: 'Código reservado. Escolha outro.' } });
+    expect(await criarEmpresaAcao({ slug: 'Acme!', nome: 'Acme', fuso: '' }, 'k')).toMatchObject({ campos: { slug: 'Código fora do padrão. Veja a regra acima.' } });
     expect(await criarEmpresaAcao({ slug: 'acme', nome: ' ', fuso: '' }, 'k')).toMatchObject({ campos: { nome: 'Informe o nome da empresa (2 a 120 caracteres).' } });
     expect(chamadas).toHaveLength(0);
     resposta = () => json(empresa, 201);

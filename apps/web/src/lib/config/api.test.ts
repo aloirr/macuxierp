@@ -70,7 +70,7 @@ describe('cliente da plataforma', () => {
 
 describe('mensagens', () => {
   it('textos da spec por contexto', () => {
-    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'criar_empresa').campos.slug).toBe('Já existe uma empresa com esse slug. Escolha outro.');
+    expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'criar_empresa').campos.slug).toBe('Já existe uma empresa com esse código. Escolha outro.');
     expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'criar_admin').texto).toBe('Esta empresa já tem administrador. Redefina a senha dele.');
     expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'redefinir')).toMatchObject({ texto: 'A senha já foi exibida. Redefina para gerar outra.', chaveNova: true });
     expect(mensagemDoErro(new ConfigNaoAutenticado(), 'situacao').expirou).toBe(true);
