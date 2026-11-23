@@ -64,6 +64,14 @@ describe('empresa: módulos, 1º administrador e situação', () => {
     expect(h).toMatch(/Exige [^<]*Fiscal/);
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar módulos<\/button>/);
   });
+  it('todo checkbox de módulo, inclusive o Core desabilitado, usa .mx-checkbox (#311)', () => {
+    const h = renderToStaticMarkup(<PainelEmpresa empresa={beta} deps={deps} chaves={chaves} />);
+    const caixas = h.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
+    expect(caixas.length).toBeGreaterThan(1);
+    for (const c of caixas) expect(c).toContain('class="mx-checkbox"');
+    expect(caixas.some((c) => c.includes('disabled'))).toBe(true);
+  });
+
   it('com administrador: só o estado e "Redefinir senha"; nem e-mail nem nome; sem senha na tela', () => {
     const h = renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />);
     expect(h).toContain('Ativo');

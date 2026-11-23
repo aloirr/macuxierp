@@ -71,7 +71,7 @@ function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Depend
         {linhasModulos(marcados, deps).map((l) => (
           <li key={l.modulo}>
             <label>
-              <input type="checkbox" checked={l.marcado} disabled={l.desabilitado || !editavel || pendente} onChange={(e) => marcar(l.modulo, e.target.checked)} />
+              <input type="checkbox" className="mx-checkbox" checked={l.marcado} disabled={l.desabilitado || !editavel || pendente} onChange={(e) => marcar(l.modulo, e.target.checked)} />
               {nomeModulo(l.modulo)}
             </label>
             {l.motivo && <span className="apoio"> {l.motivo}</span>}
