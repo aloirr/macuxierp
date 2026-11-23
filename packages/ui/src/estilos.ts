@@ -46,6 +46,13 @@ export const botaoPrincipal = (desabilitado?: boolean): CSSProperties => ({
   border: `1px solid ${cor('azulNoite')}`,
 });
 
+/** Botão destrutivo: confirmar irreversível em erro-texto. */
+export const botaoDestrutivo = (desabilitado?: boolean): CSSProperties => ({
+  ...botaoPrincipal(desabilitado),
+  background: cor('erroTexto'),
+  border: `1px solid ${cor('erroTexto')}`,
+});
+
 /** Botão secundário (MC-0008): branco, borda de campo, peso médio. */
 export const botaoSecundario = (desabilitado?: boolean): CSSProperties => ({
   ...baseBotao('medio', desabilitado),
@@ -117,9 +124,10 @@ export function gerarCssBotoes(): string {
     '/* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */\n' +
     regraCss('.mx-botao', botaoPrincipal()) +
     regraCss('.mx-botao-secundario', botaoSecundario()) +
+    regraCss('.mx-botao-destrutivo', botaoDestrutivo()) +
     regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
     regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
-    regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible', focoVisivel) +
+    regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible', focoVisivel) +
     regraCss('.mx-radio', radioBase) +
     regraCss('.mx-radio:checked', radioMarcado) +
     regraCss('.mx-radio:focus-visible', focoVisivel) +
@@ -127,7 +135,7 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-checkbox:checked', checkboxMarcado) +
     regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
-    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true)) +
+    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled', desabilitadoEstilo(true)) +
     regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true))
   );
 }

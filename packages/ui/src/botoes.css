@@ -23,6 +23,18 @@
   background: var(--mx-cor-branco);
   border: 1px solid var(--mx-cor-borda-campo);
 }
+.mx-botao-destrutivo {
+  font-family: var(--mx-fonte-texto);
+  font-size: var(--mx-tamanho-base);
+  font-weight: var(--mx-peso-botao-principal);
+  color: var(--mx-cor-branco);
+  padding: 8px 16px;
+  border-radius: 6px;
+  line-height: 1.5;
+  cursor: pointer;
+  background: var(--mx-cor-erro-texto);
+  border: 1px solid var(--mx-cor-erro-texto);
+}
 .mx-botao:hover:not(:disabled) {
   background: var(--mx-cor-grafite);
   border: 1px solid var(--mx-cor-grafite);
@@ -30,7 +42,7 @@
 .mx-botao-secundario:hover:not(:disabled) {
   background: var(--mx-cor-nevoa);
 }
-.mx-botao:focus-visible, .mx-botao-secundario:focus-visible {
+.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible {
   outline: 2px solid var(--mx-cor-azul-noite);
   outline-offset: 2px;
 }
@@ -77,7 +89,7 @@
   outline: 2px solid var(--mx-cor-branco);
   outline-offset: 2px;
 }
-.mx-botao:disabled, .mx-botao-secundario:disabled {
+.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
