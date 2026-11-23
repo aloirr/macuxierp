@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, COOKIE_CONFIG, PREFIXO_PLATAFORMA, type PluginModulo } from '../../../packages/platform-sdk/src/index';
+import { CAMINHOS_CARGAS_PLATAFORMA, CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, COOKIE_CONFIG, PREFIXO_PLATAFORMA, type PluginModulo } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, inserirAdministradorDeTeste, SENHA_DE_TESTE } from '../../../apps/api/src/apoio-teste';
 import { COOKIE_REFRESH } from '../../../apps/api/src/app';
@@ -82,6 +82,14 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
     const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
     const esperadas = [`GET ${C.ler}`, `PUT ${C.credencial}`, `POST ${C.testar}`, `PUT ${C.configuracao}`, `POST ${C.cargaCompleta}`, `POST ${C.retomar}`];
     expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual([...esperadas].sort());
+  });
+
+  it('T-0058/T-0060 (ADR 0013, adendo de 23/11/2026): as rotas da carga de cadastros do portal (validar e gravar) entram sozinhas na matriz, pelo plugin real', () => {
+    const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
+    const C = CAMINHOS_CARGAS_PLATAFORMA;
+    expect(declaradas.filter((d) => d.includes('/cadastros/cargas')).sort()).toEqual([`POST ${C.validar}`, `POST ${C.gravar}`].sort());
+    const naMatriz = rotasPortal.map((r) => `${r.metodo} ${r.url}`);
+    for (const sufixo of ['/validar', '/gravar']) expect(naMatriz.some((u) => u.startsWith('POST /v1/plataforma/empresas/') && u.endsWith(sufixo))).toBe(true);
   });
 
   it('ADR 0012 §2: o cookie macuxierp_config (sessão válida) é 401 em toda rota de /v1/<modulo>', async () => {
