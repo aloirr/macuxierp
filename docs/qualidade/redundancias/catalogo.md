@@ -1,5 +1,13 @@
 # Catálogo de redundâncias
 
+> **Catálogo atrasado:** a tabela termina no RD-0716. Os RD-0717 a RD-1102 estão nos corpos dos PRs e no quadro (`.coord/quadro.md`, seção Reservas). A atualização completa fica para uma tarefa própria.
+
+## Regras de revisão
+
+- **A0. Na tela, só o que o usuário usa para agir.** Varredura RD-1048 a RD-1080; regra formal no PR de governança #332.
+- **Massa de revisão** (PO, 23/11/2026 11h00, a pedido do Alexandre): toda tela que junta nomes (empresa, filial, cliente, usuário) é revisada também com a massa "empresa = filial" (MEI), razão social longa (> 60 caracteres), acento e CNPJ de 14 dígitos. Sem esse caso no teste ou no print do dono, abre-se achado. Prints só com dados fictícios que reproduzem os casos reais; print com dado real de cliente só para a aprovação do Alexandre, nunca guardado em recado nem em repositório (LGPD).
+  - Origem: o topo do BKO mostrava "razão social · razão social" (`apps/web/src/app/(shell)/layout.tsx:20`, PR #8 de 21/11, antes do 1º relatório do corretor); as revisões #249, #257, #287 e #294 usaram massas com empresa ≠ filial.
+
 Os achados RD-0001 a RD-0019 foram registrados em rodadas anteriores (PRs #7, #14, #18, #19 e #20; ver diários e tarefas) e não constavam neste arquivo no `main` em 21/11/2026. RD-0020 a RD-0022 são da T-0033 (PR #22). O próximo número livre segue a última linha da tabela.
 
 | ID | Data | Tarefa | Onde | Tipo | Sev. | Dono | Status | Relatório |
