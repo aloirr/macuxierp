@@ -21,6 +21,8 @@ export interface DialogoMotivoProps {
   /** Exige texto livre (padrão: opcional). */
   textoObrigatorio?: boolean;
   rotuloTexto?: string;
+  /** Sem campo de texto (ex.: redefinir senha, desligar módulo). Ignora `textoObrigatorio`; `aoConfirmar` recebe `texto: ''`. */
+  semTexto?: boolean;
   rotuloConfirmar?: string;
   /** Texto do botão que chama `aoCancelar` (padrão: "Cancelar"). Ex.: "Manter a nota". */
   rotuloFechar?: string;
@@ -40,19 +42,21 @@ export interface ErroDialogo {
   mensagem: string;
 }
 
+type CfgEscolha = { motivos?: MotivoOpcao[]; textoObrigatorio?: boolean; semTexto?: boolean };
+
 export function exigeEscolha(
   r: ResultadoMotivo,
-  cfg: { motivos?: MotivoOpcao[]; textoObrigatorio?: boolean },
+  cfg: CfgEscolha,
 ): ErroDialogo | null {
   if (cfg.motivos && cfg.motivos.length > 0 && !r.motivo) return { campo: 'motivo', mensagem: 'Nenhum motivo escolhido. Escolha um da lista.' };
-  if (cfg.textoObrigatorio && r.texto.trim() === '') return { campo: 'texto', mensagem: 'O detalhe está vazio. Descreva o motivo.' };
+  if (!cfg.semTexto && cfg.textoObrigatorio && r.texto.trim() === '') return { campo: 'texto', mensagem: 'O detalhe está vazio. Descreva o motivo.' };
   return null;
 }
 
 /** Checagem do confirmar: a básica primeiro; o `validar` do módulo só roda se ela não achou erro. */
 export function avaliarConfirmacao(
   r: ResultadoMotivo,
-  cfg: { motivos?: MotivoOpcao[]; textoObrigatorio?: boolean; validar?: (r: ResultadoMotivo) => string | null },
+  cfg: CfgEscolha & { validar?: (r: ResultadoMotivo) => string | null },
 ): ErroDialogo | null {
   const basico = exigeEscolha(r, cfg);
   if (basico) return basico;
@@ -69,7 +73,7 @@ export function proximoFoco(atual: number, total: number, voltar: boolean): numb
 }
 
 export function DialogoMotivo(props: DialogoMotivoProps) {
-  const { titulo, motivos = [], textoObrigatorio = false, rotuloTexto = 'Detalhe', rotuloConfirmar = 'Confirmar', rotuloFechar = 'Cancelar', destrutivo = false, aviso = null, validar, aoConfirmar, aoCancelar } = props;
+  const { titulo, motivos = [], textoObrigatorio = false, rotuloTexto = 'Detalhe', semTexto = false, rotuloConfirmar = 'Confirmar', rotuloFechar = 'Cancelar', destrutivo = false, aviso = null, validar, aoConfirmar, aoCancelar } = props;
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [motivo, setMotivo] = useState<string | undefined>();
@@ -87,8 +91,8 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
   }, []);
 
   const confirmar = () => {
-    const r = { motivo, texto: textoLivre.trim() };
-    const e = avaliarConfirmacao(r, { motivos, textoObrigatorio, validar });
+    const r = { motivo, texto: semTexto ? '' : textoLivre.trim() };
+    const e = avaliarConfirmacao(r, { motivos, textoObrigatorio, semTexto, validar });
     setErro(e);
     if (!e) aoConfirmar(r);
   };
@@ -138,6 +142,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
           {erroMotivo ? <span id={`${id}-erro-motivo`} style={mensagemErro}>{erroMotivo}</span> : null}
           </>
         ) : null}
+        {semTexto ? null : (
         <div style={coluna}>
         <label style={coluna}>
           <span style={texto('pequeno', 'rotulo-campo')}>
@@ -157,6 +162,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         </label>
         {erroTexto ? <span id={`${id}-erro-texto`} style={mensagemErro}>{erroTexto}</span> : null}
         </div>
+        )}
         {aviso ? (
           <p id={`${id}-aviso`} style={{ ...texto('pequeno'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
             {aviso}
