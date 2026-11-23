@@ -72,7 +72,7 @@ describe('Dialogo', () => {
       </Dialogo>,
     );
     const painel = /role="dialog"[^>]*style="([^"]*)"/.exec(h)?.[1] ?? '';
-    expect(painel).toContain('max-height:90vh');
+    expect(painel).toContain('max-height:calc(100vh - 48px)');
     expect(painel).toContain('display:flex');
     expect(painel).toContain('flex-direction:column');
     expect(painel).toContain('overflow:hidden');
@@ -83,6 +83,40 @@ describe('Dialogo', () => {
     expect(corpo?.[2]).not.toContain('Ok');
     expect(h.indexOf('data-corpo-dialogo')).toBeGreaterThan(h.indexOf('<h2'));
     expect(h.indexOf('Ok')).toBeGreaterThan(h.lastIndexOf('</p></div>'));
+  });
+  it('aviso fixo fora do corpo, ligado ao aria-describedby; corpo com respiro de foco', () => {
+    const h = renderToStaticMarkup(
+      <Dialogo titulo="T" aoFechar={() => {}} descricaoId="desc" aviso="Sem volta">
+        <p id="desc">corpo</p>
+      </Dialogo>,
+    );
+    const av = /<div id="([^"]+)" data-aviso-dialogo="" style="([^"]*)">Sem volta<\/div>/.exec(h);
+    expect(av).not.toBeNull();
+    expect(h.indexOf('Sem volta')).toBeLessThan(h.indexOf('data-corpo-dialogo'));
+    expect(h.indexOf('Sem volta')).toBeGreaterThan(h.indexOf('<h2'));
+    expect(av?.[2]).toContain('flex:none');
+    expect(av?.[2]).toContain('border-radius:6px');
+    expect(h).toMatch(new RegExp(`aria-describedby="desc ${av?.[1]}"`));
+    const corpo = /<div data-corpo-dialogo="" style="([^"]*)">/.exec(h)?.[1] ?? '';
+    expect(corpo).toContain('padding:4px');
+    expect(corpo).not.toContain('padding-inline');
+    expect(av?.[2]).toContain('color:var(--mx-cor-aviso-texto)');
+    expect(av?.[2]).toContain('background:var(--mx-cor-aviso-fundo)');
+  });
+  it('tomAviso erro usa erroTexto sobre erroFundo', () => {
+    const h = renderToStaticMarkup(
+      <Dialogo titulo="T" aoFechar={() => {}} aviso="Sem volta" tomAviso="erro">
+        x
+      </Dialogo>,
+    );
+    const av = /data-aviso-dialogo="" style="([^"]*)"/.exec(h)?.[1] ?? '';
+    expect(av).toContain('color:var(--mx-cor-erro-texto)');
+    expect(av).toContain('background:var(--mx-cor-erro-fundo)');
+  });
+  it('sem aviso: só o descricaoId', () => {
+    const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}} descricaoId="d">x</Dialogo>);
+    expect(h).toContain('aria-describedby="d"');
+    expect(h).not.toContain('data-aviso-dialogo');
   });
   it('sem descricaoId nem rodapé', () => {
     const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}}>x</Dialogo>);

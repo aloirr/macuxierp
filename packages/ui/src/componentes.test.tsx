@@ -119,6 +119,15 @@ describe('DialogoMotivo', () => {
     expect(h).toContain('Sem dado pessoal.');
     expect(h).toContain('aria-describedby');
   });
+  it('aviso: aria-describedby contém o id do aviso, que vem antes do corpo', () => {
+    const h = renderToStaticMarkup(<DialogoMotivo titulo="T" aviso="Sem dado pessoal." aoConfirmar={() => {}} aoCancelar={() => {}} />);
+    const id = /<div id="([^"]+)" data-aviso-dialogo=""/.exec(h)?.[1] ?? '';
+    const desc = /role="dialog"[^>]*aria-describedby="([^"]*)"/.exec(h)?.[1] ?? /aria-describedby="([^"]*)"[^>]*role="dialog"/.exec(h)?.[1] ?? '';
+    expect(id).not.toBe('');
+    expect(desc.split(' ')).toContain(id);
+    expect(h.indexOf('data-aviso-dialogo')).toBeLessThan(h.indexOf('data-corpo-dialogo'));
+    expect(/data-aviso-dialogo=""[^>]*margin-bottom:8px/.test(h)).toBe(true);
+  });
   it('texto opcional é indicado', () => {
     const h = renderToStaticMarkup(<DialogoMotivo titulo="T" aoConfirmar={() => {}} aoCancelar={() => {}} />);
     expect(h).toContain('(opcional)');
