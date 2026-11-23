@@ -61,10 +61,12 @@ describe('carga no /config: adicionar (RN-CAD-10)', () => {
     expect(t.repos.produtos.linhas).toHaveLength(0);
   });
 
-  it('RF-CAD-11: cadastro cujo dependente não está carregado é 409 dependencia_pendente', async () => {
+  it('RF-CAD-11 (decisão de 23/11, v0.3.6): nenhuma carga depende de outra; o portal grava vendedor sem filial, sem o 409', async () => {
     const t = montar();
     const e = await falha(t.gravar('vendedor', csv('vendedor')));
-    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', detalhes: { codigo: 'dependencia_pendente' } });
+    // o arquivo foi processado: a filial ausente é erro da linha (nada_a_gravar), não bloqueio por dependência
+    expect(e).toMatchObject({ status: 409, detalhes: { codigo: 'nada_a_gravar' } });
+    expect(e.detalhes).not.toMatchObject({ codigo: 'dependencia_pendente' });
     await t.gravar('filial', csv('filial'));
     expect((await t.gravar('vendedor', csv('vendedor'))).gravadas).toBe(1);
   });
