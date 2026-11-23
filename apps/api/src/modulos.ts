@@ -33,7 +33,7 @@ import {
 } from '@macuxierp/faturamento/api';
 import { criarCalculoFiscal } from '@macuxierp/fiscal/api';
 import { manifest as fiscal } from '@macuxierp/fiscal/manifest';
-import { criarPluginIntegracaoFdv, type DependenciasRotas as DependenciasIntegracaoFdv } from '@macuxierp/integracao-fdv/api';
+import { criarPluginIntegracaoFdv, criarPluginPlataformaIntegracaoFdv } from '@macuxierp/integracao-fdv/api';
 import { criarEmissorNFe } from '@macuxierp/nfe-emissor';
 import {
   criarConsultaParaFaturar,
@@ -168,8 +168,6 @@ export interface DependenciasModulos {
    * do faturamento) sobre a `criarConsultaParaPedido` do cadastros com os mesmos repositórios do cadastros.
    */
   pedido?: Partial<DependenciasPedido>;
-  /** Rotas do BKO do conector (T-0011). Padrão: sem chave mestra (ver `EntradaProducao.chaveIntegracao`). */
-  integracaoFdv?: DependenciasIntegracaoFdv;
   /** Padrão: `dependenciasFaturamento` (SQL, cadastros, fiscal, emissor e o A1 pelo core). Os testes trocam o que precisarem. */
   faturamento?: Partial<DependenciasFaturamento>;
   /** Log dos módulos que recebem um (pedido e faturamento): o pino da API. Só ids e códigos (regra 8). Sem ele, o módulo não loga. */
@@ -196,8 +194,8 @@ export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
     }),
     ...d.pedido,
   });
-  const integracaoFdv = criarPluginIntegracaoFdv(d.integracaoFdv ?? { chaveMestra: null });
-  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, criarPluginFaturamento(faturamento), integracaoFdv, ...SEM_ROTAS]);
+  // Integração FDV no BKO do tenant: só leitura (ADR 0013 §6); a escrita é do portal `/config` (`pluginsPlataforma`).
+  return registrarModulos([criarPluginCore(d.core), cadastros, pedido, criarPluginFaturamento(faturamento), criarPluginIntegracaoFdv(), ...SEM_ROTAS]);
 }
 
 export interface EntradaProducao {
@@ -207,7 +205,7 @@ export interface EntradaProducao {
   chaveA1: Buffer;
   /**
    * Chave mestra das credenciais do conector (`MACUXIERP_CHAVE_INTEGRACAO`, versão 1), lida pelo `lerConfigApi`; nunca vai para
-   * log. `null` ou ausente = variável não configurada: só o `PUT /v1/integracao-fdv/credencial` fica indisponível (503).
+   * log. Serve só às rotas do portal (`pluginsPlataforma`, ADR 0013); ver `ConfigApi.chaveIntegracao`.
    */
   chaveIntegracao?: Buffer | null;
   config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro' | 'segredoBff'>;
@@ -223,14 +221,13 @@ export interface EntradaProducao {
 /**
  * Dependências de produção da API (T-0042, achado A-06 da T-0008): adaptadores PostgreSQL da plataforma, auth em SQL,
  * argon2id, relógio do sistema, selo do A1 do core e os módulos com os adaptadores reais (`RepositorioCoreSql`,
- * `LeitorPfxTls`, armazenamento indisponível até a T-0024; cadastros e pedido com os padrões do `montarModulos`; integração FDV
- * com a chave do conector, T-0011). O `main.ts` e
+ * `LeitorPfxTls`, armazenamento indisponível até a T-0024; cadastros e pedido com os padrões do `montarModulos`; a chave do
+ * conector vai só ao plugin de plataforma da integração FDV, T-0056). O `main.ts` e
  * os testes de ponta a ponta usam esta mesma função: o que muda num muda no outro.
  */
 export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp {
   const modulos = montarModulos({
     core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
-    integracaoFdv: { chaveMestra: e.chaveIntegracao ?? null },
     ...(e.log ? { log: e.log } : {}),
   });
   const bancoPlataforma = e.bancoPlataforma ?? (temPlataforma(e.banco) ? e.banco.plataforma() : undefined);
@@ -248,17 +245,31 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
     modulos,
-    ...(bancoPlataforma ? { plataforma: { banco: bancoPlataforma, plugins: pluginsPlataforma(modulos), segredoBff: e.config.segredoBff } } : {}),
+    ...(bancoPlataforma ? { plataforma: { banco: bancoPlataforma, plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null }), segredoBff: e.config.segredoBff } } : {}),
   };
 }
 
 const temPlataforma = (b: Banco): b is Banco & { plataforma(): BancoPlataformaComLogin } => typeof (b as { plataforma?: unknown }).plataforma === 'function';
 
+/** Dependências dos plugins de plataforma que vêm do processo (secrets do servidor), não do registro dos módulos. */
+interface DependenciasPlataformaModulos {
+  /** `MACUXIERP_CHAVE_INTEGRACAO` (versão 1), a mesma do `lerConfigApi`; nunca vai para log. Ver `ConfigApi.chaveIntegracao`. */
+  chaveIntegracao: Buffer | null;
+}
+
 /**
  * Plugins de plataforma do portal `/config` (ADR 0012): o do core, com o repositório que chama só as funções da 0033 e
- * os `depende` dos manifestos montados (RN-CORE-02), e a senha provisória do 1º admin com o argon2id de produção.
+ * os `depende` dos manifestos montados (RN-CORE-02), e a senha provisória do 1º admin com o argon2id de produção; e o da
+ * integração FDV (ADR 0013, T-0056), com a chave do conector (versão 1) e o repositório que chama só as `portal_*` da 0038.
+ * `dependencias`: padrão sem chave do conector (os testes de isolamento só listam as rotas).
  */
-export function pluginsPlataforma(modulos: readonly PluginModulo[]): readonly PluginPlataforma[] {
+export function pluginsPlataforma(
+  modulos: readonly PluginModulo[],
+  dependencias: DependenciasPlataformaModulos = { chaveIntegracao: null },
+): readonly PluginPlataforma[] {
   const manifestos = modulos.map((m) => ({ id: m.manifesto.id, depende: m.manifesto.depende }));
-  return [criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha) })];
+  return [
+    criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha) }),
+    criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: dependencias.chaveIntegracao }),
+  ];
 }

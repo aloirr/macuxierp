@@ -31,7 +31,8 @@ export interface ConfigApi {
   chaveA1: Buffer;
   /**
    * `MACUXIERP_CHAVE_INTEGRACAO` (T-0011), pela mesma regra do worker (`chaveIntegracaoDoAmbiente` do SDK). Opcional: ausente =
-   * `null` e a API sobe (o `PUT /v1/integracao-fdv/credencial` responde 503); presente e inválida derruba a partida.
+   * `null` e a API sobe (só o `PUT /v1/plataforma/empresas/:id/integracao-fdv/credencial` do portal responde 503); presente e
+   * inválida derruba a partida. Serve só às rotas do portal (ADR 0013); o BKO do tenant é só leitura.
    */
   chaveIntegracao: Buffer | null;
   /** `MACUXIERP_SEGREDO_BFF` (T-0050, ver `ipDoCliente`): ausente = `null`; presente e inválido derruba a partida. */

@@ -63,7 +63,7 @@ export const PERMISSOES = {
   'faturamento.titulo.baixar': CADASTRO, // doc 03, matriz: administrador, gerente e faturista (RN-FAT-06)
   'faturamento.configurar': ADM, // bandeira da filial "faturamento real com NF-e simulada" (PUT /filiais/:id/configuracao; titulos.md): só o administrador
   'integracao-fdv.ver': ['administrador', 'gerente', 'leitura'], // T-0011: os perfis do manifesto do módulo; o monitor não é "ver tudo"
-  'integracao-fdv.configurar': ADM,
+  'integracao-fdv.configurar': ADM, // Sem rota desde a T-0056 (ADR 0013); sai quando o BKO do módulo e do apps ficar só de leitura.
 } as const satisfies Record<string, readonly Perfil[]>;
 
 export type Acao = keyof typeof PERMISSOES;
