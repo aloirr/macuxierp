@@ -21,4 +21,10 @@ describe('dados fiscais do produto', () => {
     expect(validarFiscalProduto({ ...base, cest: '0300100', cestVigente: false })[0]?.campo).toBe('cest');
     expect(validarFiscalProduto({ ...base, cest: '0300100', cestCombinaComNcm: false })[0]?.campo).toBe('cest');
   });
+  it('RN-CAD-04: as 4 mensagens citam o código formatado e a ação (A0)', () => {
+    expect(validarFiscalProduto({ ...base, ncm: '42022210', ncmVigente: false })[0]?.mensagem).toBe('NCM 4202.22.10 não existe ou não está vigente: confira a coluna ncm.');
+    expect(validarFiscalProduto({ ...base, ncm: '42022210', ncmExigeCest: true })[0]?.mensagem).toBe('O NCM 4202.22.10 exige CEST: preencha a coluna cest.');
+    expect(validarFiscalProduto({ ...base, ncm: '42022210', cest: '0300100', cestVigente: false })[0]?.mensagem).toBe('CEST 0300100 não existe ou não está vigente: confira a coluna cest.');
+    expect(validarFiscalProduto({ ...base, ncm: '42022210', cest: '0300100', cestCombinaComNcm: false })[0]?.mensagem).toBe('O CEST 0300100 não pertence ao NCM 4202.22.10: confira as colunas ncm e cest.');
+  });
 });

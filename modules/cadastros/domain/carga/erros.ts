@@ -1,7 +1,7 @@
 import type { EntidadeCarga } from '../../contracts';
 import type { Violacao } from '../violacao';
 
-/** Erro de uma linha. Nunca leva o valor digitado (RN-CORE-07, D9): `motivo` sai de mensagens fixas. */
+/** Erro de uma linha. Nunca leva o valor digitado (RN-CORE-07, D9), salvo códigos fiscais (RN-CAD-04): `motivo` sai de mensagens fixas. */
 export interface ErroLinha {
   linha: number;
   campo: string | null;
@@ -11,12 +11,11 @@ export interface ErroLinha {
   entidade_faltante?: EntidadeCarga;
 }
 
-/** Mensagens fixas por regra: as do domain citam o valor (NCM, IBGE, UF), que não pode ir ao relatório. */
+/** Mensagens fixas por regra: as do domain citam o valor (IBGE, UF), que não pode ir ao relatório. Exceção à D9 só para códigos fiscais (decisão do PO, 23/11): RN-CAD-04 repassa a mensagem com NCM/CEST. */
 const MOTIVOS: Readonly<Record<string, string>> = {
   'RN-CAD-01': 'Documento inválido pelo dígito verificador',
   'RN-CAD-02': 'IE ou indicador de IE incompatível com a UF',
   'RN-CAD-03': 'Município ou endereço inválido',
-  'RN-CAD-04': 'NCM ou CEST inexistente, fora da vigência ou incoerente',
   'RN-CAD-06': 'Vigência ou preço inválido',
   'RN-CAD-07': 'Saldo de estoque inválido',
   'RN-CAD-08': 'Cadastro padrão não pode ser inativado',
@@ -24,8 +23,8 @@ const MOTIVOS: Readonly<Record<string, string>> = {
 };
 
 export function erroDeViolacao(linha: number, v: Violacao, campo?: string): ErroLinha {
-  // RN-CAD-09 e RN-FIS-02: as mensagens do domain são constantes curtas por classe, sem o valor digitado.
-  return { linha, campo: campo ?? v.campo, codigo: v.rn, motivo: v.rn === 'RN-CAD-09' || v.rn === 'RN-FIS-02' ? v.mensagem : (MOTIVOS[v.rn] ?? 'Regra de negócio violada') };
+  // RN-CAD-09, RN-FIS-02 e RN-CAD-04: as mensagens do domain são constantes curtas por classe, sem o valor digitado.
+  return { linha, campo: campo ?? v.campo, codigo: v.rn, motivo: v.rn === 'RN-CAD-09' || v.rn === 'RN-FIS-02' || v.rn === 'RN-CAD-04' ? v.mensagem : (MOTIVOS[v.rn] ?? 'Regra de negócio violada') };
 }
 
 export const erroLinha = (linha: number, campo: string | null, codigo: string, motivo: string): ErroLinha => ({ linha, campo, codigo, motivo });
