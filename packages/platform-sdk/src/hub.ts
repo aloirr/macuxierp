@@ -25,7 +25,7 @@
  */
 
 export type AmbienteHub = 'teste' | 'producao';
-export const AMBIENTES_HUB: readonly AmbienteHub[] = ['teste', 'producao'];
+export const AMBIENTES_HUB = ['teste', 'producao'] as const satisfies readonly AmbienteHub[];
 
 /** Credencial do conector, decifrada pelo worker só na hora da chamada (§6). */
 export interface CredencialHub {

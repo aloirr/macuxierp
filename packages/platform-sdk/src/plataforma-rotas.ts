@@ -17,8 +17,9 @@ import { PluginInvalido, type EntradaChamada, type MetodoHttp, type RespostaRota
  * Ações das rotas do portal e fonte dos nomes gravados na auditoria pelo portal e pelo operador (ADR 0012 §4): toda ação
  * que muda estado é gravada com este nome, e também a que expõe dado pessoal (`plataforma.admin.revelar_email`, T-0050).
  * `plataforma.empresa.ver` é permissão de rota, sem auditoria;
- * `plataforma.superadmin.*` são só de auditoria, sem rota, e ficam fora daqui. Ação nova = linha aqui + ADR 0012 + função
+ * `plataforma.superadmin.*` são só de auditoria, sem rota, e ficam fora daqui. Ação nova = linha aqui + ADR (0012 ou nova, como a 0013) + função
  * SQL na lista fechada.
+ * Integração FDV: `.ver`, `.configurar` e `.operar` são só permissão de rota (ADR 0013 §2 e §4).
  */
 export const ACOES_PLATAFORMA = [
   'plataforma.empresa.ver',
@@ -28,6 +29,9 @@ export const ACOES_PLATAFORMA = [
   'plataforma.admin.criar',
   'plataforma.admin.redefinir_senha',
   'plataforma.admin.revelar_email',
+  'plataforma.integracao_fdv.ver',
+  'plataforma.integracao_fdv.configurar',
+  'plataforma.integracao_fdv.operar',
 ] as const;
 export type AcaoPlataforma = (typeof ACOES_PLATAFORMA)[number];
 
