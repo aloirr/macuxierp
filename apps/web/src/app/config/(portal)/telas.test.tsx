@@ -36,6 +36,12 @@ describe('lista de empresas', () => {
     expect(h).toContain('Ativo');
     expect(h).toContain('Suspenso');
     expect(h).toContain('Cadastros, Fiscal');
+    expect(h).toContain('title="Cadastros, Fiscal"');
+    expect(h).toContain('aria-label="Cadastros, Fiscal"');
+    expect(h).toContain('>2 módulos<');
+    expect(renderToStaticMarkup(<ListaEmpresas empresas={[{ ...acme, modulos: lic('fiscal') }]} vazio="" />)).toContain('>1 módulo<');
+    expect(h).toMatch(/<td[^>]*><span>—<\/span><\/td>/);
+    expect(readFileSync(join(__dirname, '../../globals.css'), 'utf8')).toMatch(/@media \(max-width: 480px\) \{ \.modulos-lista \{ display: none; \} \.modulos-resumo \{ display: inline; \} \}/);
     expect(h).not.toContain('referencia');
   });
   it('vazio mostra o texto da spec', () => {
@@ -59,13 +65,15 @@ describe('topo do portal: sem menu de tenant', () => {
 });
 
 describe('empresa: módulos, 1º administrador e situação', () => {
-  it('módulos: core "Sempre ligado", dependência com motivo, salvar desabilitado sem mudança', () => {
+  it('módulos: sem a linha do Core nem "Sempre ligado", dependência com motivo, salvar desabilitado sem mudança', () => {
     const h = renderToStaticMarkup(<PainelEmpresa empresa={beta} deps={deps} chaves={chaves} />);
-    expect(h).toContain('Sempre ligado');
+    expect(beta.modulos.some((m) => m.modulo === 'core')).toBe(true); // a API devolve o core; a tela filtra
+    expect(h).not.toContain('Sempre ligado');
+    expect(h).not.toMatch(/<li[^>]*>(?:(?!<\/li>).)*>Core</);
     expect(h).toMatch(/Exige [^<]*Fiscal/);
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar módulos<\/button>/);
   });
-  it('todo checkbox de módulo, inclusive o Core desabilitado, usa .mx-checkbox (#311)', () => {
+  it('todo checkbox de módulo, inclusive o desabilitado por dependência, usa .mx-checkbox (#311)', () => {
     const h = renderToStaticMarkup(<PainelEmpresa empresa={beta} deps={deps} chaves={chaves} />);
     const caixas = h.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
     expect(caixas.length).toBeGreaterThan(1);

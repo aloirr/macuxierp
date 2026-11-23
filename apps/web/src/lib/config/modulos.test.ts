@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { LicencaModuloPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { MANIFESTOS } from '../manifestos';
-import { alternar, ativosDe, dependentesLigados, linhasModulos, modulosLigados, mudancasDe, pendenciasDe } from './modulos';
+import { resumoModulos, alternar, ativosDe, dependentesLigados, linhasModulos, modulosLigados, mudancasDe, pendenciasDe } from './modulos';
 
 const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
 const lic = (...ativos: ModuloId[]): LicencaModuloPlataforma[] => (['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv'] as const).map((modulo) => ({ modulo, ativo: modulo === 'core' || ativos.includes(modulo), valido_ate: null }));
 
 describe('módulos do portal (RN-CORE-02: o depende vem do manifesto)', () => {
-  it('o core fica marcado e desabilitado, "Sempre ligado"', () => {
-    const core = linhasModulos(ativosDe(lic()), deps)[0];
-    expect(core).toMatchObject({ modulo: 'core', marcado: true, desabilitado: true, motivo: 'Sempre ligado' });
+  it('o core não vira linha, mesmo vindo na lista da API', () => {
+    const l = linhasModulos(ativosDe(lic()), deps);
+    expect(l.map((x) => x.modulo)).not.toContain('core');
   });
   it('módulo com dependência desligada fica desabilitado, com o motivo', () => {
     const l = linhasModulos(ativosDe(lic()), deps);
@@ -30,6 +30,17 @@ describe('módulos do portal (RN-CORE-02: o depende vem do manifesto)', () => {
     expect(mudancasDe(atuais, ativosDe(atuais))).toEqual([]);
     const m = mudancasDe(atuais, new Set<ModuloId>(['core', 'cadastros', 'pedido']));
     expect(m).toEqual([{ modulo: 'pedido', ativo: true, valido_ate: null }]);
+  });
+  it('mudancasDe com marcados sem o core não leva o core no corpo', () => {
+    const atuais = lic('cadastros');
+    const m = mudancasDe(atuais, new Set<ModuloId>(['cadastros', 'pedido']));
+    expect(m.map((x) => x.modulo)).not.toContain('core');
+    expect(m).toEqual([{ modulo: 'pedido', ativo: true, valido_ate: null }]);
+    expect(mudancasDe(atuais, new Set<ModuloId>()).map((x) => x.modulo)).toEqual(['cadastros']);
+  });
+  it('resumo da célula: singular e plural', () => {
+    expect(resumoModulos(1)).toBe('1 módulo');
+    expect(resumoModulos(2)).toBe('2 módulos');
   });
   it('lista da tabela: ordem de MODULOS, sem o core', () => {
     expect(modulosLigados(lic('fiscal', 'cadastros'))).toEqual(['cadastros', 'fiscal']);

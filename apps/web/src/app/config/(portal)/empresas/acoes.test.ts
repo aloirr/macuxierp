@@ -91,6 +91,14 @@ describe('ações do portal', () => {
     const r = await alterarModulosAcao(ID, [{ modulo: 'faturamento', ativo: true, valido_ate: null }]);
     expect(r).toMatchObject({ ok: false, campos: { 'modulos.faturamento': 'exige fiscal' } });
   });
+  it('módulos: o corpo enviado traz só os módulos editáveis, nunca o core', async () => {
+    resposta = () => json(empresa);
+    const r = await alterarModulosAcao(ID, [{ modulo: 'pedido', ativo: true, valido_ate: null }]);
+    expect(r.ok).toBe(true);
+    const corpo = JSON.parse(chamadas[0]?.corpo ?? '{}') as { modulos: { modulo: string }[] };
+    expect(corpo.modulos.map((m) => m.modulo)).toEqual(['pedido']);
+    expect(chamadas[0]?.corpo).not.toContain('"core"');
+  });
   it('401 apaga o cookie do /config e volta ao login; sem cookie, vai direto ao login', async () => {
     resposta = () => json({}, 401);
     await expect(situacaoAcao(ID, 'ativo', 'volta', 'k')).rejects.toThrow('REDIRECT /config/entrar');
