@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Erro from '@/app/error';
 import { MensagemRecarregar } from '@/components/mensagem-recarregar';
-import { SISTEMA_ATUALIZADO, ehAcaoAusente } from './sistema-atualizado';
+import { SISTEMA_ATUALIZADO, ehAcaoAusente, mensagemDaFalha } from './sistema-atualizado';
 
 describe('sistema atualizado (server action que sumiu depois do deploy)', () => {
   it('reconhece as mensagens do Next e não confunde outros erros', () => {
@@ -10,6 +10,8 @@ describe('sistema atualizado (server action que sumiu depois do deploy)', () => 
     expect(ehAcaoAusente(new Error('Server Action "abc" was not found on the server.'))).toBe(true);
     expect(ehAcaoAusente(new Error('Server action not found.'))).toBe(true);
     expect(ehAcaoAusente(new Error('boom'))).toBe(false);
+    expect(ehAcaoAusente(new Error('An unexpected response was received from the server.'))).toBe(false);
+    expect(mensagemDaFalha(new Error('An unexpected response was received from the server.'))).not.toBe(SISTEMA_ATUALIZADO);
     expect(ehAcaoAusente(undefined)).toBe(false);
   });
   it('a página de erro mostra a mensagem com o botão Recarregar; outro erro segue a falha genérica', () => {
@@ -28,5 +30,17 @@ describe('sistema atualizado (server action que sumiu depois do deploy)', () => 
     expect(av).toContain('role="status"');
     expect(av).toContain('mx-botao-secundario');
     expect(av).not.toContain('class="erro"');
+  });
+});
+
+describe('detecção pelo Next (unstable_isUnrecognizedActionError)', () => {
+  it('reconhece o erro do Next mesmo com texto diferente', async () => {
+    const { vi } = await import('vitest');
+    vi.resetModules();
+    vi.doMock('next/navigation', () => ({ unstable_isUnrecognizedActionError: (e: unknown) => (e as { marca?: boolean }).marca === true }));
+    const m = await import('./sistema-atualizado');
+    expect(m.ehAcaoAusente(Object.assign(new Error('texto novo'), { marca: true }))).toBe(true);
+    expect(m.ehAcaoAusente(new Error('An unexpected response was received from the server.'))).toBe(false);
+    vi.doUnmock('next/navigation');
   });
 });

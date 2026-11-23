@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { ROTULOS_ENTIDADE, csvDosErros, csvDoResumo, resumoDoRelatorio, textoDeConfirmacao, tituloDoRelatorio, totaisDoRelatorio } from '@macuxierp/cadastros/web';
 import type { EntidadeCarga, ModoCarga, RelatorioCarga } from '@macuxierp/cadastros/contracts';
 import { TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
@@ -60,6 +60,7 @@ export function PreviaDaCarga({ relatorio }: { relatorio: RelatorioCarga }) {
 function CartaoEntidade({ entidade, api }: { entidade: EntidadeCarga; api: string }) {
   const rotulo = ROTULOS_ENTIDADE[entidade];
   const nomeArquivo = arquivoDaEntidade(entidade);
+  const idArquivo = useId();
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [problema, setProblema] = useState('');
   const [erro, setErro] = useState('');
@@ -100,10 +101,14 @@ function CartaoEntidade({ entidade, api }: { entidade: EntidadeCarga; api: strin
       <p>
         <a className="mx-botao-secundario" href={enderecoDoModelo(entidade)} download>Baixar modelo</a>
       </p>
-      <label className="campo">
+      <div className="campo">
         <span>Enviar {nomeArquivo}</span>
-        <input type="file" disabled={enviando} accept=".csv,text/csv" onChange={(e) => { setArquivo(e.target.files?.[0] ?? null); setProblema(''); setErro(''); setRelatorio(null); setValidado(null); }} />
-      </label>
+        <div className="arquivo-escolha">
+          <input id={idArquivo} type="file" disabled={enviando} accept=".csv,text/csv" aria-describedby={`${idArquivo}-nome`} onChange={(e) => { setArquivo(e.target.files?.[0] ?? null); setProblema(''); setErro(''); setRelatorio(null); setValidado(null); }} />
+          <label htmlFor={idArquivo} className={`mx-botao-secundario${enviando ? ' desabilitado' : ''}`} aria-disabled={enviando || undefined}>Escolher arquivo</label>
+          <span id={`${idArquivo}-nome`} className="arquivo-nome" aria-live="polite">{arquivo ? arquivo.name : 'Nenhum arquivo escolhido'}</span>
+        </div>
+      </div>
       {problema && <p className="erro" role="alert">{problema}</p>}
       {erro && <p className="erro" role="alert">{erro}</p>}
       <p>

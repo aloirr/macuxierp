@@ -57,3 +57,19 @@ describe('PreviaDaCarga', () => {
     expect(renderToStaticMarkup(<PreviaDaCarga relatorio={r()} />)).toContain('Nenhum erro.');
   });
 });
+
+describe('Escolher arquivo', () => {
+  const h = renderToStaticMarkup(<TelaCarga api="/envio-carga" />);
+  it('cada cartão tem label ligada ao input, botão secundário e o nome do arquivo ao lado', () => {
+    expect(h.match(/Escolher arquivo<\/label>/g)).toHaveLength(10);
+    expect(h.match(/<label for="([^"]+)" class="mx-botao-secundario">/g)).toHaveLength(10);
+    const ids = [...h.matchAll(/<input id="([^"]+)" type="file"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(10);
+    for (const id of ids) expect(h).toContain(`for="${id}"`);
+    expect(h.match(/Nenhum arquivo escolhido/g)).toHaveLength(10);
+  });
+  it('o foco do input escondido aparece no botão', async () => {
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync(`${__dirname}/../../../globals.css`, 'utf8')).toMatch(/input\[type='file'\]:focus-visible \+ \.mx-botao-secundario \{ outline/);
+  });
+});

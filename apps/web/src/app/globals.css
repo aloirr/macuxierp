@@ -15,6 +15,8 @@ a { color: var(--mx-cor-azul-noite); }
 .campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 .apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
+/* Dica sob o campo: 6 px de respiro, para o anel de foco do input não tocar no texto. */
+.campo .apoio { margin-top: 6px; }
 
 .cartao-central, .bloco { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 32px; }
 .cartao-central { max-width: 420px; margin: 8vh auto; }
@@ -143,7 +145,7 @@ fieldset.grupo-campos, fieldset.carga-cartao { min-width: 0; /* o fieldset não 
 .campo-senha-linha { display: flex; gap: 8px; align-items: stretch; }
 .campo-senha-linha input { flex: 1; min-width: 0; }
 .campo-senha .olho { flex: none; padding-left: 10px; padding-right: 10px; }
-.campo-senha .apoio, .campo-senha .erro-campo { display: block; margin-top: 4px; }
+.campo-senha .apoio, .campo-senha .erro-campo { display: block; margin-top: 6px; }
 .regras-senha { margin: 0 0 16px; }
 .regras-senha .regras-titulo { font-weight: var(--mx-peso-rotulo-campo); margin: 0 0 4px; }
 .regras-senha ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -165,12 +167,20 @@ fieldset.grupo-campos, fieldset.carga-cartao { min-width: 0; /* o fieldset não 
 /* /config: a coluna Ações (5ª) cabe numa linha só, sem empilhar os botões. */
 .tabela-fdv th:nth-child(5), .tabela-fdv td:nth-child(5) { min-width: 260px; }
 .tabela-fdv td:nth-child(5) .barra-acoes { flex-wrap: nowrap; }
+.tabela-fdv td:nth-child(5) button { white-space: nowrap; }
+/* Carga: o input nativo fica escondido (mostraria "Choose File"); o rótulo vira botão e o foco aparece nele. */
+.arquivo-escolha { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.arquivo-escolha input[type='file'] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.arquivo-escolha input[type='file']:focus-visible + .mx-botao-secundario { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
+.arquivo-escolha .arquivo-nome { font-weight: 400; color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); overflow-wrap: anywhere; }
+label.desabilitado { opacity: .5; cursor: not-allowed; }
+.codigo-maiusculo { text-transform: uppercase; }
 /* BKO: a falha sobe para uma linha sob o nome do cadastro em tela estreita; a coluna Falha some (sem leitura dupla: só um dos dois aparece). */
 .falha-sob-nome { display: none; }
 @media (max-width: 640px) {
   .tabela-fdv-bko table { min-width: 0; }
   .tabela-fdv-bko th:nth-child(4), .tabela-fdv-bko td:nth-child(4) { display: none; }
-  .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-grafite); font-weight: normal; }
+  .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-texto-secundario); font-weight: normal; }
 }
 /* Abas da ficha da empresa: texto sublinhado (molde do FDV), não botões. */
 .abas-texto { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--mx-cor-borda-cinza); }

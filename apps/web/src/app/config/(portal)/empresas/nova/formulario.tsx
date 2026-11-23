@@ -3,6 +3,7 @@ import { RegiaoErros } from '@macuxierp/ui';
 import { useState, useTransition, type FormEvent } from 'react';
 import { CriarEmpresaEntrada } from '@macuxierp/platform-sdk';
 import { traduzirCriarEmpresa } from '@/lib/config/formularios';
+import { FUSOS_BRASIL_LISTA, rotuloFuso } from '@/lib/config/fusos';
 import { criarEmpresaAcao } from '../acoes';
 
 export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
@@ -14,7 +15,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
   const enviar = (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault(); // sem o reset do <form action>: o que a pessoa digitou fica ao errar
     const f = new FormData(ev.currentTarget);
-    const entrada = { codigo: String(f.get('codigo') ?? ''), nome: String(f.get('nome') ?? ''), fuso: String(f.get('fuso') ?? '') };
+    const entrada = { codigo: String(f.get('codigo') ?? '').trim().toUpperCase(), nome: String(f.get('nome') ?? ''), fuso: String(f.get('fuso') ?? '') };
     const previa = CriarEmpresaEntrada.safeParse({ codigo: entrada.codigo.trim() || undefined, nome: entrada.nome, fuso: entrada.fuso.trim() || undefined });
     if (entrada.codigo.trim() === '' || !previa.success) {
       setCampos(traduzirCriarEmpresa(previa.success ? null : previa.error, entrada.codigo));
@@ -38,7 +39,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
       {erro && <p className="erro">{erro}</p>}
       <label className="campo">
         <span>Código do FDV</span>
-        <input name="codigo" autoCapitalize="characters" autoComplete="off" maxLength={6} required aria-invalid={campos.codigo ? true : undefined} aria-describedby="ajuda-codigo erro-codigo" />
+        <input name="codigo" className="codigo-maiusculo" onChange={(ev) => { ev.currentTarget.value = ev.currentTarget.value.toUpperCase(); }} autoCapitalize="characters" autoComplete="off" maxLength={6} required aria-invalid={campos.codigo ? true : undefined} aria-describedby="ajuda-codigo erro-codigo" />
         <span id="ajuda-codigo" className="apoio">UF e 4 dígitos, como no FDV, por exemplo AM2808.</span>
         {campos.codigo && <span id="erro-codigo" className="erro-campo">{campos.codigo}</span>}
       </label>
@@ -49,7 +50,9 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
       </label>
       <label className="campo">
         <span>Fuso</span>
-        <input name="fuso" defaultValue="America/Manaus" autoComplete="off" aria-invalid={campos.fuso ? true : undefined} aria-describedby="erro-fuso" />
+        <select name="fuso" defaultValue="America/Manaus" aria-invalid={campos.fuso ? true : undefined} aria-describedby="erro-fuso">
+          {FUSOS_BRASIL_LISTA.map((f) => <option key={f.id} value={f.id}>{rotuloFuso(f)}</option>)}
+        </select>
         {campos.fuso && <span id="erro-fuso" className="erro-campo">{campos.fuso}</span>}
       </label>
       <div className="barra-acoes">
