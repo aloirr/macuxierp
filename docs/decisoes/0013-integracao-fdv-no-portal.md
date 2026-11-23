@@ -126,3 +126,26 @@ Aceita pelo PO em 23/11/2026, 12h43 (Manaus): **até o TOTP do superadmin, troca
 - (d) Manter a credencial no BKO do tenant: contraria o pedido do Alexandre e o molde do FDV.
 - (e) Manter a carga completa e o retomar no BKO (versão anterior desta ADR): recusada pelo PO em 23/11, 12h43 (seção 2).
 - (f) Reusar `plataforma.integracao_fdv.configurar` na operação: misturaria dois riscos numa permissão (seção 2).
+
+## Adendo de 23/11/2026 — Carga pelo portal (T-0058, v0.3.5a)
+- **Base:** decisão do gerente-projetos (23/11, 15h10, Manaus), sobre o contrato `packages/platform-sdk/src/portal-cargas.ts`. A carga de cadastros (a da T-0026 no BKO) passa também ao portal `/config`, só do superadmin, na aba "Cargas" da ficha da empresa. É a segunda exceção da seção 1 (o portal grava em schema de módulo), agora para o `cadastros`, e só para a carga (v0.3.5a) e o zerar (v0.3.5b).
+
+### A1. Carga síncrona, em três transações na mesma requisição
+O `POST /v1/plataforma/empresas/:id/cadastros/cargas/:cadastro/gravar` (`CAMINHOS_CARGAS_PLATAFORMA.gravar`) recebe o arquivo em multipart (mesmo limite do BKO), sem S3, sem fila e sem worker, e roda:
+1. **tx1**, papel `macuxierp_config` com a sessão: `cadastros.portal_carga_iniciar(p_tenant, p_cadastro, p_modo, p_request_id)` confere a empresa `ativo` e o módulo `cadastros` licenciado (senão `MXC04`, DETAIL `empresa_inativa` ou `modulo_desligado`) e audita o início com o `superadmin_id`;
+2. **tx2**, papel `macuxierp_app` com `app.tenant_id` = `:id` da rota: o **mesmo** `executarCarga` do BKO (domain do cadastros), com o mesmo limite de arquivos, bytes e tempo, e a RLS valendo como no BKO;
+3. **tx3**, papel `macuxierp_config` com a sessão: `cadastros.portal_carga_concluir(p_tenant, p_cadastro, p_modo, p_request_id, p_resultado jsonb)` audita o resultado (só contagens e códigos; nada de valor de célula nem dado pessoal).
+
+- **Por quê:** o `macuxierp_config` não escreve nas tabelas do `cadastros` (alternativa (a) desta ADR continua recusada) e a regra da carga fica num lugar só, o `executarCarga` do domain, sem uma segunda cópia em SQL. A tx2 é a mesma transação que o BKO já abre para a carga; a tx1 e a tx3 são as funções da lista fechada (banco-dados), que revalidam a sessão.
+- **Plataforma (SDK e apps/api):** a rota é declarada com `transacoes: 'por_etapa'` e não roda dentro de uma transação de plataforma: o próprio `executar` abre as três transações acima, uma de cada vez, porque a tx1 aberta segurando a empresa e a tx2 esperando por ela seria um impasse que o banco não vê. A fonte da regra é `packages/platform-sdk/src/plataforma-rotas.ts`; o multipart segue o `validarMultipartDaRota` de `packages/platform-sdk/src/rotas.ts`.
+- **Custo:** a auditoria não é atômica com a carga. Uma tx1 sem tx3 (queda do processo ou erro entre as duas) deixa um "iniciada" órfão, que é só registro: a carga é tudo ou nada na tx2 (ou gravou inteira, ou nada). Uma tx2 confirmada com a tx3 falhando deixa a carga sem o "concluída" na auditoria; o plugin chama a tx3 também quando a tx2 falha, com o resultado da falha.
+- **Erros:** `MXC01` → 409 `CONFLITO`, `MXC03` → 409 `CONFLITO`, `MXC04` → 422 `RN-CORE-02` (mensagens de `MENSAGENS_CARGA_PORTAL`).
+- **Risco:** soma-se ao risco aberto da seção "Riscos": quem abrir uma sessão de superadmin passa a carregar (e, na 5b, zerar) cadastros de qualquer empresa. Mitigações: auditoria com `superadmin_id` na tx1 e na tx3, frase de confirmação no "Substituir tudo" (`FRASE_SUBSTITUIR_TUDO`) e no zerar (`FRASE_ZERAR_DADOS`), e a regra de operação até o TOTP (seção 9).
+- No "Adicionar", o registro que vem no arquivo é reativado (`deleted_at = NULL`), salvo `ativo = nao` explícito (decisão do PO, 23/11 15h49); a lógica é do cadastros. O estoque só aceita "Adicionar" (`substituir_permitido = false`).
+- **Privilégios:** o `macuxierp_config` ganha `USAGE` no schema `cadastros` (0040, v0.3.5) e, no zerar da v0.3.6, também em `pedido` e `faturamento`, só para executar as `portal_*` desses schemas, sem privilégio em tabela; a lista fechada da ADR 0012/0013 passa a incluir essas funções (o teste rls-superadmin, do `testes`, acompanha).
+
+### A2. Zerar dados por cadastro (v0.3.5b, RN-CAD-10)
+- **Fatos por schema:** cada módulo informa, pela função ou porta do próprio schema, só os fatos que lhe cabem (o cadastros, o que existe por cadastro; pedido, faturamento e fiscal, o que está "em uso"; a integração FDV, o espelho e o cursor). Ninguém lê tabela de outro schema (regra 1).
+- **Plano no domain:** o domain do cadastros monta o plano (o que sai, em que ordem, a cascata e os bloqueios da RN-CAD-10) a partir dos fatos. Bloqueado (algo em uso) = 422 com `detalhes.codigo` `zeragem_bloqueada`, sem tocar em nada.
+- **Efeito na mesma transação do config:** `integracao_fdv.portal_zerar_espelho` e `cadastros.portal_zerar`, nessa ordem, na mesma transação (rota comum, `transacoes` `'unica'`, com `Idempotency-Key` obrigatória): ou zera o espelho e os dados juntos, ou nada. Cada função confere de novo a pré-condição mínima e audita com o `superadmin_id`. Regra 7: nada fiscal é tocado.
+- **Erros:** `P0002` → 404 (empresa inexistente), `MXC03` → 409 (o estado de dependência mudou), `MXC04` → 422 `RN-CORE-02` (empresa ou licença, como na carga) e `MXI03` → 409 (o espelho mudou), com os mapas desta ADR. O código de erro da carga não vai em detalhe.

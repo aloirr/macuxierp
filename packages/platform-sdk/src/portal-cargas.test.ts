@@ -18,11 +18,13 @@ import {
   LIMITE_LINHAS_ERRO_VALIDACAO,
   MENSAGEM_FRASE_SUBSTITUIR,
   MENSAGEM_FRASE_ZERAR,
+  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO,
   ModoCargaQuery,
   PreviaZerarPlataformaEntrada,
   SQLSTATES_CARGA_PORTAL,
   SituacaoCargasPlataforma,
   TABELAS_ZERAGEM,
+  ValidarCargaPlataformaEntrada,
   ValidarCargaPlataformaResposta,
   ZerarDadosPlataformaEntrada,
   ZeragemPlataformaResposta,
@@ -31,6 +33,7 @@ import {
   normalizarFrase,
   rotuloCadastroCarga,
   situacaoCarga,
+  substituirPermitido,
   type CadastroCargaPortal,
   type SituacaoCarga,
 } from './portal-cargas';
@@ -202,26 +205,58 @@ describe('ValidarCargaPlataformaResposta', () => {
 
 describe('GravarCargaPlataformaEntrada', () => {
   it('adicionar sem frase', () => {
-    expect(GravarCargaPlataformaEntrada.safeParse({ modo: 'adicionar' }).success).toBe(true);
-    expect(GravarCargaPlataformaEntrada.safeParse({ modo: 'adicionar', frase: FRASE_SUBSTITUIR_TUDO }).success).toBe(false);
+    expect(GravarCargaPlataformaEntrada.safeParse({ cadastro: 'produto', modo: 'adicionar' }).success).toBe(true);
+    expect(GravarCargaPlataformaEntrada.safeParse({ cadastro: 'produto', modo: 'adicionar', frase: FRASE_SUBSTITUIR_TUDO }).success).toBe(false);
   });
 
   it('substituir_tudo com a frase, com e sem ponto, em maiúsculas e com espaços', () => {
     for (const frase of ['autorizo substituir tudo', 'autorizo substituir tudo.', 'AUTORIZO SUBSTITUIR TUDO.', '  autorizo  substituir tudo  ']) {
-      expect(GravarCargaPlataformaEntrada.safeParse({ modo: 'substituir_tudo', frase }).success).toBe(true);
+      expect(GravarCargaPlataformaEntrada.safeParse({ cadastro: 'produto', modo: 'substituir_tudo', frase }).success).toBe(true);
     }
   });
 
   it('substituir_tudo sem frase ou com frase errada: erro no campo frase (400 VALIDACAO)', () => {
     for (const frase of [undefined, '', 'autorizo substituir', FRASE_ZERAR_DADOS]) {
-      const r = GravarCargaPlataformaEntrada.safeParse({ modo: 'substituir_tudo', frase });
+      const r = GravarCargaPlataformaEntrada.safeParse({ cadastro: 'produto', modo: 'substituir_tudo', frase });
       expect(r.success).toBe(false);
       if (!r.success) expect(r.error.issues[0]).toMatchObject({ path: ['frase'], message: MENSAGEM_FRASE_SUBSTITUIR });
     }
   });
 
   it('recusa modo desconhecido', () => {
-    expect(GravarCargaPlataformaEntrada.safeParse({ modo: 'completo' }).success).toBe(false);
+    expect(GravarCargaPlataformaEntrada.safeParse({ cadastro: 'produto', modo: 'completo' }).success).toBe(false);
+  });
+});
+
+describe('estoque só aceita o Adicionar (decisão do PO, 23/11 15h49)', () => {
+  const recusaNoModo = (r: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) => {
+    expect(r.success).toBe(false);
+    expect(r.error?.issues).toContainEqual(expect.objectContaining({ path: ['modo'], message: MENSAGEM_SUBSTITUIR_NAO_PERMITIDO }));
+  };
+
+  it('substituir_permitido: false só no estoque', () => {
+    expect(CADASTROS_CARGA_PORTAL.filter((c) => !c.substituir_permitido).map((c) => c.cadastro)).toEqual(['estoque']);
+    expect(substituirPermitido('estoque')).toBe(false);
+    for (const c of ENTIDADES_CARGA_PORTAL.filter((x) => x !== 'estoque')) expect(substituirPermitido(c)).toBe(true);
+    expect(() => substituirPermitido('nada' as CadastroCargaPortal)).toThrow(RangeError);
+  });
+
+  it('validar: substituir_tudo no estoque = 400 VALIDACAO no campo modo; adicionar passa', () => {
+    recusaNoModo(ValidarCargaPlataformaEntrada.safeParse({ cadastro: 'estoque', modo: 'substituir_tudo' }));
+    expect(ValidarCargaPlataformaEntrada.safeParse({ cadastro: 'estoque', modo: 'adicionar' }).success).toBe(true);
+    expect(ValidarCargaPlataformaEntrada.safeParse({ cadastro: 'produto', modo: 'substituir_tudo' }).success).toBe(true);
+  });
+
+  it('gravar: substituir_tudo no estoque é recusado no campo modo, mesmo com a frase certa', () => {
+    recusaNoModo(GravarCargaPlataformaEntrada.safeParse({ cadastro: 'estoque', modo: 'substituir_tudo', frase: FRASE_SUBSTITUIR_TUDO }));
+    expect(GravarCargaPlataformaEntrada.safeParse({ cadastro: 'estoque', modo: 'adicionar' }).success).toBe(true);
+  });
+
+  it('respostas: estoque nunca volta em substituir_tudo', () => {
+    const efeito = efeitoSubstituir({ total: 10, a_inativar: 2 });
+    recusaNoModo(ValidarCargaPlataformaResposta.safeParse(validacao({ cadastro: 'estoque' })));
+    recusaNoModo(GravarCargaPlataformaResposta.safeParse({ cadastro: 'estoque', modo: 'substituir_tudo', gravadas: 8, com_erro: 0, inativadas: 2, efeito }));
+    expect(GravarCargaPlataformaResposta.safeParse({ cadastro: 'estoque', modo: 'adicionar', gravadas: 8, com_erro: 0 }).success).toBe(true);
   });
 });
 
