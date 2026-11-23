@@ -18,6 +18,7 @@ import {
   conferirModulosPlataforma,
   modulosAtivosApos,
 } from './portal-config';
+import { TrocarSenhaEntrada } from './eu';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const ADMIN = '22222222-2222-4222-8222-222222222222';
@@ -141,8 +142,7 @@ describe('contratos do portal /config (ADR 0012)', () => {
   it('login, troca de senha, sessão e "eu" do superadmin: sem token no corpo (o token vai só no cookie)', () => {
     expect(EntrarPlataformaEntrada.parse({ email: ' Ops@Macuxi.com.br ', senha: 'x' }).email).toBe('ops@macuxi.com.br');
     expect(() => EntrarPlataformaEntrada.parse({ email: 'ops@macuxi.com.br', senha: '' })).toThrow();
-    expect(() => TrocarSenhaPlataformaEntrada.parse({ senha_atual: 'a', senha_nova: 'curta' })).toThrow();
-    expect(TrocarSenhaPlataformaEntrada.parse({ senha_atual: 'a', senha_nova: 'x'.repeat(14) }).senha_nova).toHaveLength(14);
+    expect(TrocarSenhaPlataformaEntrada).toBe(TrocarSenhaEntrada);
     expect(SessaoPlataformaResposta.parse({ expira_em: AGORA, token: 'abc' })).toEqual({ expira_em: AGORA });
     const eu = EuPlataforma.parse({ superadmin: { id: ADMIN, nome: 'Operação' }, deve_trocar_senha: true, sessao_expira_em: AGORA });
     expect(eu.deve_trocar_senha).toBe(true);

@@ -14,6 +14,7 @@ export * from './rotas';
 export * from './idempotencia';
 export * from './trabalhos';
 export * from './eu';
+export * from './senha';
 export * from './listas';
 export * from './hub';
 export * from './agenda';

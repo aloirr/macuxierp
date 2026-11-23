@@ -15,7 +15,9 @@ import { moduloLicenciado, MODULOS_BASE, type Licenca } from './acesso';
 import { PADRAO_UUID } from './banco';
 import { PADRAO_CNPJ, PADRAO_UF } from './documentos';
 import { violacao, type Violacao } from './erros';
+import { TrocarSenhaEntrada } from './eu';
 import { MODULOS, type ModuloId } from './modulo';
+import { SenhaInformada } from './senha';
 
 const Id = z.string().regex(PADRAO_UUID);
 const Instante = z.string().datetime();
@@ -142,11 +144,15 @@ export const SituacaoEmpresaEntrada = z.object({
 });
 export type SituacaoEmpresaEntrada = z.infer<typeof SituacaoEmpresaEntrada>;
 
-export const EntrarPlataformaEntrada = z.object({ email: EmailUsuario, senha: z.string().min(1).max(200) });
+export const EntrarPlataformaEntrada = z.object({ email: EmailUsuario, senha: SenhaInformada });
 export type EntrarPlataformaEntrada = z.infer<typeof EntrarPlataformaEntrada>;
 
-export const TrocarSenhaPlataformaEntrada = z.object({ senha_atual: z.string().min(1).max(200), senha_nova: z.string().min(14).max(200) });
-export type TrocarSenhaPlataformaEntrada = z.infer<typeof TrocarSenhaPlataformaEntrada>;
+/**
+ * Troca de senha do superadmin: o mesmo contrato do tenant (`TrocarSenhaEntrada`), com a regra única de senha do ERP
+ * (T-0052; o mínimo de 14 da v0.3.1 saiu). Alias mantido para não quebrar a apps/api e a apps/web.
+ */
+export const TrocarSenhaPlataformaEntrada = TrocarSenhaEntrada;
+export type TrocarSenhaPlataformaEntrada = TrocarSenhaEntrada;
 
 /** Resposta do login do superadmin: só o vencimento; o token vai no cookie `COOKIE_CONFIG`. */
 export const SessaoPlataformaResposta = z.object({ expira_em: Instante });
