@@ -19,6 +19,7 @@ import {
   recusaDetalhada,
   rodarComo,
   rodarScript,
+  sessaoSql,
 } from './apoio.ts';
 import { fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
 
@@ -49,8 +50,6 @@ interface Empresa {
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — dados da empresa no portal /config (T-0050, 0035)', () => {
   let banco: BancoDeTeste;
 
-  const sessaoSql = (sessao: string | null): string =>
-    sessao === null ? '' : `SET LOCAL macuxierp.sessao_superadmin = '${sessao}';\n`;
   const comoConfig = (sessao: string | null, sql: string): string[] =>
     linhas(rodarComo(banco.conexao, `${sessaoSql(sessao)}${sql}`, { papel: CONFIG }));
   const empresa = (sessao: string, id: string): Empresa =>
