@@ -149,8 +149,17 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
   it('nenhuma rota escapa da checagem: o Fastify tem só /v1/saude, /v1/auth/* e as rotas declaradas nos plugins', async () => {
     const a = await api();
     const declaradas = a.modulos.flatMap((p) => p.rotas.map((r) => `${r.metodo} /v1/${p.manifesto.id}${r.caminho}`));
-    const fora = ['GET /v1/saude', 'POST /v1/auth/login', 'POST /v1/auth/refresh', 'POST /v1/auth/sair', 'GET /v1/auth/eu'];
-    expect(rotasRegistradas(a.app.printRoutes({ commonPrefix: false }))).toEqual([...declaradas, ...fora].sort());
+    const registradas = rotasRegistradas(a.app.printRoutes({ commonPrefix: false }));
+    const fora = [
+      'GET /v1/saude',
+      'POST /v1/auth/login',
+      'POST /v1/auth/refresh',
+      'POST /v1/auth/sair',
+      'GET /v1/auth/eu',
+      // T-0052: a troca de senha do tenant (RD-1041); vira fixa depois do PR da API
+      ...(registradas.includes('POST /v1/auth/senha') ? ['POST /v1/auth/senha'] : []),
+    ];
+    expect(registradas).toEqual([...declaradas, ...fora].sort());
     expect(declaradas.length).toBe(ROTAS.length);
   });
 
