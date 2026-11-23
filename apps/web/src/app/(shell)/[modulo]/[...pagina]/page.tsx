@@ -31,7 +31,6 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   // Páginas visíveis do mesmo item de menu (ex.: as telas da Empresa, no core): o menu leva à primeira; as demais abrem por estas seções.
   const secoes = declarada ? paginasDoMenu(declarada.modulo, declarada.menu, perfil) : [];
   const monitor = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor');
-  const lotes = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'lotes');
   const titulo = declarada?.titulo ?? resolvida.rotulo;
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value ?? '';
   return (
@@ -45,7 +44,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       )}
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {rota === PAGINA_CARGA.rota && <TelaCarga api="/envio-carga" />}
-      {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} rotaLotes={`${lotes?.rota ?? monitor.rota}?estado=concluido_com_erros`} />}
+      {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} />}
       {tela && declarada && (
         <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}

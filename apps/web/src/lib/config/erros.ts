@@ -14,15 +14,15 @@ export class ConfigIndisponivel extends Error {
 export class ConfigMuitasTentativas extends Error {
   override readonly name = 'ConfigMuitasTentativas' as const;
 }
-/** 400, 403 `TROCAR_SENHA`, 404, 409 e 422 da API, com o código e os campos (a mensagem da API não vai à tela). */
+/** 400, 403 `TROCAR_SENHA`, 404, 409 e 422 da API, com o código e os campos (a mensagem da API não vai à tela, salvo o 409/422/503 da integracao_fdv, já filtrado). */
 export class ErroPlataforma extends Error {
   override readonly name = 'ErroPlataforma' as const;
-  constructor(readonly status: number, readonly codigo: string, readonly campos: Record<string, string> = {}) {
+  constructor(readonly status: number, readonly codigo: string, readonly campos: Record<string, string> = {}, readonly mensagem = '') {
     super(`plataforma: HTTP ${status} ${codigo}`);
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv';
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
 export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
@@ -54,6 +54,7 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
       if (ctx === 'criar_admin') return { ...base, texto: ADMIN_JA_EXISTE, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'redefinir') return { ...base, texto: SENHA_JA_EXIBIDA, chaveNova: ehRespostaDefinitiva(e.status) };
     }
+    if (ctx === 'integracao_fdv' && (e.status === 409 || e.status === 422 || e.status === 503) && e.mensagem) return { ...base, texto: e.mensagem, campos: e.campos, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 422 && ctx === 'modulos') {
       const faltas = Object.entries(e.campos).map(([campo, t]) => ({ campo, t }));
       return { ...base, texto: 'Os módulos escolhidos não são permitidos. Revise as dependências.', campos: Object.fromEntries(faltas.map((f) => [f.campo, f.t])), chaveNova: ehRespostaDefinitiva(e.status) };
