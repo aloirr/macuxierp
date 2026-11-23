@@ -304,8 +304,9 @@ export const MENSAGEM_FRASE_SUBSTITUIR = `Digite "${FRASE_SUBSTITUIR_TUDO}" para
 export const MENSAGEM_FRASE_ZERAR = `Digite "${FRASE_ZERAR_DADOS}" para confirmar`;
 
 /**
- * `POST .../cargas/:cadastro/gravar?modo=...` (multipart: `arquivo` de novo e `frase?`; `Idempotency-Key` obrigatória):
- * o plugin monta esta entrada com o `:cadastro` da rota, o `modo` da query e a `frase` do multipart. `adicionar` = o delta de hoje (acrescenta
+ * `POST .../cargas/:cadastro/gravar?modo=...` (multipart: `arquivo` de novo e `frase?`; sem `Idempotency-Key` (rota por etapa,
+ * ADR 0013 A1): a concorrência é barrada pelo MXC01 e o reenvio não duplica dados (o `external_id` protege), mas grava uma
+ * execução e auditorias novas; deduplicar o reenvio fica para a versão seguinte). O plugin monta esta entrada com o `:cadastro` da rota, o `modo` da query e a `frase` do multipart. `adicionar` = o delta de hoje (acrescenta
  * e atualiza, sem tirar nada), sem frase. `substituir_tudo` = carga completa: exige `frase` = `FRASE_SUBSTITUIR_TUDO`
  * (pela `normalizarFrase`) e inativa o que não vem no arquivo, nunca apaga. Frase errada ou fora do modo = 400 `VALIDACAO`;
  * `substituir_tudo` em cadastro que não aceita (estoque) = 400 `VALIDACAO` no campo `modo`.

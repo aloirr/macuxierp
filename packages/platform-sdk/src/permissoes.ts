@@ -48,9 +48,8 @@ export const PERMISSOES = {
   // ADR 0010, item 3 (RN-CORE-05): troca controlada do external_id
   'cadastros.external_id.trocar': ADM,
   // T-0026 (D8): carga de CSV; cada arquivo ainda confere a ação de edição da entidade (filial só o administrador).
-  // RN-CORE-09: o analista de implantação carrega todas as entidades do RF-CAD-11 (inclusive preço) sem a edição de cada
-  // uma; filial e limite de crédito continuam só com o administrador. A exceção por linha é do domain do cadastros.
-  'cadastros.carga.executar': ['administrador', 'gerente', 'analista_implantacao'],
+  // T-0058 (decisão do PO): o analista de implantação não executa mais a carga no BKO.
+  'cadastros.carga.executar': ['administrador', 'gerente'],
   // pedido, fiscal, faturamento e integração (F2 a F4; a matriz do doc 03 já fixa)
   'pedido.ver': VER,
   'pedido.pedido.aprovar': ADM_GERENTE,

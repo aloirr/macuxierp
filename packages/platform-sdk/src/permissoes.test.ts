@@ -18,10 +18,10 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(quem('cadastros.cliente.credito')).toEqual(['administrador', 'gerente']);
   });
 
-  it('carga de CSV (T-0026, D8; RN-CORE-09): administrador, gerente e analista de implantação; o arquivo de filial ainda pede cadastros.filial.editar', () => {
-    expect(quem('cadastros.carga.executar')).toEqual(['administrador', 'gerente', 'analista_implantacao']);
+  it('carga de CSV (T-0026, D8; T-0058): administrador e gerente; o arquivo de filial ainda pede cadastros.filial.editar', () => {
+    expect(quem('cadastros.carga.executar')).toEqual(['administrador', 'gerente']);
     expect(pode('gerente', 'cadastros.carga.executar') && !pode('gerente', 'cadastros.filial.editar')).toBe(true);
-    for (const p of ['faturista', 'fiscal', 'vendedor', 'leitura'] as const) expect(pode(p, 'cadastros.carga.executar')).toBe(false);
+    for (const p of ['analista_implantacao', 'faturista', 'fiscal', 'vendedor', 'leitura'] as const) expect(pode(p, 'cadastros.carga.executar')).toBe(false);
   });
 
   it('RN-CAD-07: saldo negativo só administrador e gerente', () => {
@@ -60,10 +60,10 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(quem('cadastros.ver')).toEqual([...PERFIS]);
   });
 
-  it('RN-CORE-09: perfil fora dos 6 da v1 (hoje só o analista de implantação) só tem as ações listadas para ele: consulta dos cadastros e carga; nada herdado de "ver tudo"', () => {
+  it('RN-CORE-09: perfil fora dos 6 da v1 (hoje só o analista de implantação) só tem as ações listadas para ele: consulta dos cadastros (a carga saiu na T-0058); nada herdado de "ver tudo"', () => {
     const V1: readonly Perfil[] = PERFIS_V1;
     const EXPLICITAS: Partial<Record<Perfil, readonly Acao[]>> = {
-      analista_implantacao: ['cadastros.ver', 'cadastros.carga.executar'],
+      analista_implantacao: ['cadastros.ver'],
     };
     const fora = PERFIS.filter((p) => !V1.includes(p));
     expect(fora.length).toBeGreaterThan(0);
