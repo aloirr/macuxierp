@@ -4,8 +4,8 @@
  * e aditiva (a versão anterior da API roda sobre o esquema novo). Depois das migrações, a carga versionada das tabelas
  * oficiais (oficiais.ts). Roda como o admin do DBaaS, sem superusuário.
  */
-import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TRAVA_MIGRACAO, sha256Arquivo } from './comum.ts';
 import { carregarOficiais } from './oficiais.ts';
@@ -13,13 +13,28 @@ import { type Conexao, consultar, literal, rodarScript } from './psql.ts';
 
 const PASTA_MIGRACOES = fileURLToPath(new URL('../migrations/', import.meta.url));
 
+/**
+ * Pasta padrão das migrações: MACUXI_DB_MIGRACOES quando definida e não vazia (relativa = contra o cwd), senão a
+ * pasta do pacote. Lida a cada chamada (não no import), para o script antes do push e os testes trocarem a variável.
+ */
+function pastaPadrao(): string {
+  const env = process.env.MACUXI_DB_MIGRACOES?.trim();
+  if (!env) return PASTA_MIGRACOES;
+  const pasta = resolve(env);
+  if (!existsSync(pasta) || !statSync(pasta).isDirectory()) {
+    throw new Error(`MACUXI_DB_MIGRACOES aponta para uma pasta que não existe: ${pasta}`);
+  }
+  return pasta;
+}
+
 export interface Migracao {
   nome: string;
   caminho: string;
   sha256: string;
 }
 
-export function listarMigracoes(pasta = PASTA_MIGRACOES): Migracao[] {
+export function listarMigracoes(pastaExplicita?: string): Migracao[] {
+  const pasta = pastaExplicita ?? pastaPadrao();
   return readdirSync(pasta)
     .filter((f) => /^\d{4}_[a-z0-9_]+\.sql$/.test(f))
     .sort()
