@@ -101,10 +101,6 @@ export class RepositorioCoreSql implements RepositorioCore {
     await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL WHERE id = $1', [id, senhaHash]);
   }
 
-  async trocarSenhaPropria(tx: Transacao, id: string, senhaHash: string, _agora?: Date): Promise<void> {
-    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = false WHERE id = $1', [id, senhaHash]);
-  }
-
   async travarAdministradoresAtivos(tx: Transacao): Promise<void> {
     // RN-CORE-01: trava os administradores ativos antes de contar. Ordem por id: duas transações travam na mesma ordem
     // (sem deadlock) e a segunda espera a primeira confirmar, então duas inativações simultâneas se serializam.

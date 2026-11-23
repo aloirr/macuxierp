@@ -69,10 +69,6 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     const u = this.usuarios.find((x) => x.id === id);
     if (u) Object.assign(u, { senha_hash: senhaHash, deve_trocar_senha: true, updated_at: agora });
   }
-  async trocarSenhaPropria(_tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void> {
-    const u = this.usuarios.find((x) => x.id === id);
-    if (u) Object.assign(u, { senha_hash: senhaHash, deve_trocar_senha: false, updated_at: agora });
-  }
   /** Registra a ordem das chamadas para o teste de RN-CORE-01 (trava antes da contagem). */
   chamadasAdministradores: string[] = [];
   async travarAdministradoresAtivos(): Promise<void> {
