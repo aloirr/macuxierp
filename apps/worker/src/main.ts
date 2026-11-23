@@ -13,7 +13,7 @@
  * `MACUXIERP_CHAVE_INTEGRACAO` (`credencial.ts`). Sem essa configuração o laço de agenda fica desligado (nada sai para o
  * Hub e as agendas ficam paradas no banco), com um aviso só no log listando as variáveis que faltam. A versão do ERP
  * (User-Agent) vem de `MACUXIERP_VERSAO` (o compose entrega; padrão 'dev').
- * `MACUXIERP_FDV_RECEBIMENTO` (pedidos do FDV, T-0016) e `MACUXIERP_FDV_ENVIO`: trava de 22/11/2026, ver envio-fdv.ts.
+ * `MACUXIERP_FDV_RECEBIMENTO` (pedidos do FDV, T-0016) e `MACUXIERP_FDV_ENVIO`: interruptor, ver envio-fdv.ts.
  * Faturamento (T-0045 lote A): `MACUXIERP_CHAVE_A1` (a mesma da API, ADR 0005) liga a assinatura e os trabalhos da SEFAZ, que vão SÓ ao
  * simulador (faturamento.ts; nenhuma variável liga a SEFAZ real). Sem ela, os trabalhos do faturamento ficam na fila, com um aviso no log.
  * Purga da memória do simulador: purga-simulador.ts (T-0045 §9).

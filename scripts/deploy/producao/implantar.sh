@@ -80,7 +80,7 @@ chave_32_ok() { # nome
   return 1
 }
 chave_32_ok MACUXIERP_CHAVE_A1 || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_A1 válida (32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar)" >&2; exit 1; }
-chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_INTEGRACAO válida (32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar ou estiver vazia; obrigatória desde a v0.2.0, ver T-0002)" >&2; exit 1; }
+chave_32_ok MACUXIERP_CHAVE_INTEGRACAO || { echo "[implantar] $PASTA/.env sem MACUXIERP_CHAVE_INTEGRACAO válida (32 bytes em hex ou base64; o preparar-vm.sh gera só se faltar ou estiver vazia; obrigatória desde a v0.2.0; sem ela, o worker não sobe; ver T-0002)" >&2; exit 1; }
 for v in MACUXIERP_HUB_URL_PRODUCAO MACUXIERP_HUB_URL_TESTE; do
   [ -z "$(valor_env .env "$v")" ] || echo "::warning::$PASTA/.env com $v: ignorada (a URL do Hub é fixa no compose.yml); apague a linha"
 done

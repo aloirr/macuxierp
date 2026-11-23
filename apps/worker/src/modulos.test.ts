@@ -16,7 +16,7 @@ import { TRABALHO_EXPORTAR } from '@macuxierp/core/contracts';
 import { ArmazenamentoMemoria, relogioDoSistema, type Banco, type Transacao } from '@macuxierp/platform-sdk';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { pinoEmMemoria } from './apoio-teste';
+import { envComposeWorker, pinoEmMemoria } from './apoio-teste';
 import { configurarCredenciais } from './credencial';
 import { configurarEnvioFdv, type EstadoEnvioFdv } from './envio-fdv';
 import { configurarHub } from './hub';
@@ -92,7 +92,7 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     return montarAgendas({ log: pinoLog, relogio: relogioDoSistema, pedidosFdv, envio, outbox: { gravar: async () => 1 } }).map((a) => [a.id, a.modulo]);
   };
 
-  it('MACUXIERP_FDV_ENVIO=desligado (trava de 22/11): sem a agenda do conector, nenhuma escrita no Hub (lotes, sinal, reconciliação)', () => {
+  it('MACUXIERP_FDV_ENVIO=desligado: sem a agenda do conector, nenhuma escrita no Hub (lotes, sinal, reconciliação)', () => {
     expect(agendas('desligado', 'desligado')).toEqual([]);
     // o recebimento é outra chave: ligado, só as agendas de pedidos entram, sem o conector
     expect(agendas('ligado', 'desligado')).toEqual([
@@ -101,20 +101,14 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     ]);
   });
 
-  it('trava mantida na v0.2.0 (R-20261122-061838): o ambiente do compose.yml liga o laço de agenda (URLs e chave) e não registra nenhuma agenda', () => {
+  it('virada (T-0002): o ambiente do compose.yml liga o laço de agenda (URLs e chave) e os dois interruptores', () => {
     // espelho do serviço macuxierp-worker do compose.yml mais a chave do .env (a prova com o laço e o banco: worker.db.test.ts)
-    const env = {
-      MACUXIERP_HUB_URL_PRODUCAO: 'https://api.macuxifdv.com.br/integracao/v1',
-      MACUXIERP_HUB_URL_TESTE: 'https://hub-teste.invalid/integracao/v1',
-      MACUXIERP_FDV_RECEBIMENTO: 'desligado',
-      MACUXIERP_FDV_ENVIO: 'desligado',
-      MACUXIERP_CHAVE_INTEGRACAO: 'ab'.repeat(32),
-    };
+    const env = envComposeWorker('ab'.repeat(32));
     expect(configurarHub(env, '0.2.0')).not.toBeNull();
     expect(configurarCredenciais(env)).not.toBeNull();
     const recebimento = configurarRecebimentoFdv(env);
     expect(() => conferirRecebimentoFdv(recebimento, [])).not.toThrow();
-    expect(agendas(recebimento, configurarEnvioFdv(env))).toEqual([]);
+    expect([recebimento, configurarEnvioFdv(env)]).toEqual(['ligado', 'ligado']);
   });
 
   it('MACUXIERP_FDV_ENVIO=ligado: a agenda do conector entra', () => {

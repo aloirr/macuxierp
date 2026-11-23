@@ -5,6 +5,7 @@ import { MANIFESTOS } from '@/lib/manifestos';
 import { NaoAutenticado, baixarArquivo } from '@/lib/api';
 import { arquivoPermitido } from '@/lib/arquivos';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
+import { redirecionar } from '@/lib/redirecionar';
 
 const SEM_CACHE = { 'cache-control': 'no-store' } as const;
 const MENSAGENS: Readonly<Record<number, string>> = {
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
   const perfilOk = MANIFESTOS.some((m) => m.id === 'faturamento' && m.perfis.includes(eu.usuario.perfil));
   if (!licenciado || !perfilOk || !pode(eu.usuario.perfil, 'faturamento.nota.emitir')) return new NextResponse('Não encontrado.', { status: 404, headers: SEM_CACHE });
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
-  const renovar = () => NextResponse.redirect(new URL('/sessao/renovar', req.url));
+  const renovar = () => redirecionar('/sessao/renovar');
   if (!acesso) return renovar();
   try {
     const r = await baixarArquivo(caminho, acesso);
