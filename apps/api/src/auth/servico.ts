@@ -5,11 +5,12 @@
  * - refresh reutilizado (já revogado) revoga a família inteira.
  * Mensagem de falha única ("empresa, e-mail ou senha inválidos"), sem dizer qual campo errou.
  */
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { erros, PADRAO_UUID, type Banco, type Relogio, type Sessao, type Transacao } from '@macuxierp/platform-sdk';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { erros, PADRAO_UUID, sha256Hex, type Banco, type Relogio, type Sessao, type Transacao } from '@macuxierp/platform-sdk';
+import { ConferenciaCustoIgual, travaAposFalha } from './apoio-login';
 import { emitirTokenAcesso } from './jwt';
 import type { RepositorioAuth, SessaoRefresh, UsuarioAuth } from './portas';
-import { ARGON2_PADRAO, conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
+import { ARGON2_PADRAO, conferirSenha, type ParametrosArgon2 } from './senha';
 
 export interface ConfigAuth {
   jwtSegredo: string;
@@ -37,7 +38,7 @@ export interface ResultadoLogin {
 
 const FALHA_LOGIN = 'Empresa, e-mail ou senha inválidos';
 
-const hashRefresh = (refresh: string) => createHash('sha256').update(refresh).digest('hex');
+const hashRefresh = sha256Hex;
 
 /** O refresh carrega o tenant (`<tenant_id>.<aleatório>`) para a busca rodar dentro da RLS dele. */
 function tenantDoRefresh(refresh: string): string | null {
@@ -46,14 +47,16 @@ function tenantDoRefresh(refresh: string): string | null {
 }
 
 export class ServicoAuth {
-  private hashFalso: Promise<string> | undefined;
+  private readonly custoIgual: ConferenciaCustoIgual;
 
   constructor(
     private readonly banco: Banco,
     private readonly repo: RepositorioAuth,
     private readonly cfg: ConfigAuth,
     private readonly relogio: Relogio,
-  ) {}
+  ) {
+    this.custoIgual = new ConferenciaCustoIgual(cfg.argon2);
+  }
 
   async entrar(entrada: { empresa: string; email: string; senha: string }): Promise<ResultadoLogin> {
     const agora = this.relogio.agora();
@@ -135,14 +138,12 @@ export class ServicoAuth {
   private async registrarFalha(tx: Transacao, u: UsuarioAuth, agora: Date): Promise<void> {
     const travaVencida = u.bloqueado_ate !== null && u.bloqueado_ate.getTime() <= agora.getTime();
     const falhas = (travaVencida ? 0 : u.falhas_login) + 1;
-    const trava = falhas >= this.cfg.maxFalhas ? new Date(agora.getTime() + this.cfg.travaMinutos * 60_000) : null;
+    const trava = travaAposFalha(falhas, agora, this.cfg);
     await this.repo.registrarFalha(tx, u.id, trava ? 0 : falhas, trava);
   }
 
   /** Confere contra um hash falso para o tempo de resposta não revelar se a empresa ou o e-mail existem. */
-  private async falharSemUsuario(senha: string): Promise<never> {
-    this.hashFalso ??= gerarHashSenha(randomUUID(), this.cfg.argon2);
-    await conferirSenha(senha, await this.hashFalso);
-    throw erros.naoAutenticado(FALHA_LOGIN);
+  private falharSemUsuario(senha: string): Promise<never> {
+    return this.custoIgual.falhar(senha, () => erros.naoAutenticado(FALHA_LOGIN));
   }
 }

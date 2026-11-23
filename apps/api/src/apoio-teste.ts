@@ -5,6 +5,7 @@
  * o `tests/` passa a importar este arquivo por caminho relativo (recado ao testes).
  */
 import { randomBytes } from 'node:crypto';
+import { Writable } from 'node:stream';
 import type { Dependencias as DependenciasCadastros, Repositorios } from '@macuxierp/cadastros/api';
 import { RepositorioCoreSql, type DependenciasCore, type RepositorioCore } from '@macuxierp/core/api';
 import { ArmazenamentoMemoria, type PluginModulo, type Relogio } from '@macuxierp/platform-sdk';
@@ -119,4 +120,14 @@ export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstan
     logger: o.logger ?? false,
   });
   return { app, modulos };
+}
+
+/** Destino do logger do Fastify que guarda cada linha de log em `linhas` (para o teste conferir o que vai para log). */
+export function destinoDeLogs(linhas: string[]): Writable {
+  return new Writable({
+    write(pedaco, _cod, pronto) {
+      linhas.push(String(pedaco));
+      pronto();
+    },
+  });
 }

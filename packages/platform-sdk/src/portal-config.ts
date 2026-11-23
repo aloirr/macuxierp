@@ -31,6 +31,8 @@ export type EmailUsuario = z.infer<typeof EmailUsuario>;
 export const COOKIE_CONFIG = 'macuxierp_config';
 /** Prefixo das rotas de plataforma na API (fora do `/v1/<modulo>`). */
 export const PREFIXO_PLATAFORMA = '/v1/plataforma';
+/** Cabeçalho anti-CSRF das escritas do portal (o navegador não o manda em formulário de outro site). */
+export const CABECALHO_CSRF_CONFIG = 'x-macuxierp-config';
 
 /** CHECK de `plataforma.tenant.slug` (0002). `referencia` é o slug do tenant das tabelas oficiais: nunca se cria. */
 export const PADRAO_SLUG_EMPRESA = /^[a-z0-9][a-z0-9-]{1,39}$/;
