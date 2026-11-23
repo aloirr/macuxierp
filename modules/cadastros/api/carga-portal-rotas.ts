@@ -3,7 +3,7 @@
  * 'por_etapa'`, sem Idempotency-Key (a concorrência é o MXC01 do `portal_carga_iniciar`; a carga é tudo ou nada na tx do tenant).
  *
  * `gravar`, uma transação de cada vez:
- *  1. `comPlataforma`: `cadastros.portal_carga_iniciar` (sessão, empresa ativa, licença, MXC01, MXC03, auditoria do superadmin);
+ *  1. `comPlataforma`: `cadastros.portal_carga_iniciar` (sessão, empresa ativa, licença, MXC01, auditoria do superadmin);
  *  2. `comTenant(:id)`: `gravarCargaPortal` (executarCarga + planoSubstituicao + inativarEmLote + eventos na outbox);
  *  3. `comPlataforma`: `cadastros.portal_carga_concluir` com `concluida` ou `falhou` (também quando a etapa 2 falha: o
  *     erro original é o que sobe).
@@ -14,9 +14,9 @@
  * Nada de valor de célula nem dado pessoal em erro ou auditoria: só contagens.
  */
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, dependenciaPendente, situacaoCarga, type SituacaoCarga, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
-  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, SituacaoCargasPlataforma, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
-  definirRotaPlataforma, erros, nomeErrosCarga, nomeModeloCarga, paraCsv, respostaCsv, substituirPermitido, type ArquivoRecebido, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, situacaoCarga, dependenciaPendente, SituacaoCargasPlataforma, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
+  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
+  definirRotaPlataforma, erros, nomeErrosCarga, nomeModeloCarga, paraCsv, respostaCsv, substituirPermitido, type ArquivoRecebido, type SituacaoCarga, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
   type ModoGravarCarga, type Outbox, type PluginPlataforma, type Transacao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
@@ -72,15 +72,25 @@ const SituacaoCrua = z.object({
   empresa_id: z.string(), modulo_licenciado: z.boolean(),
   cadastros: z.array(z.object({ cadastro: CadastroCargaPortal, ativos: z.number().int().min(0), erros: z.number().int().min(0), ultima_carga: z.object({ em: z.string(), quantidade: z.number().int().min(0) }).nullable() })),
 });
+/**
+ * Resposta da aba, no cálculo do SDK: `situacaoCarga` e `dependenciaPendente` derivam situação, `depende_de` e `liberado`;
+ * o `SituacaoCargasPlataforma` do SDK valida a ordem, o número, o `opcional` e a dependência. A montagem é pelo nome do
+ * cadastro (o retorno do banco pode vir fora de ordem).
+ */
 export function situacaoDaAba(bruta: unknown): SituacaoCargasPlataforma {
   const r = SituacaoCrua.parse(bruta);
-  const situacoes = Object.fromEntries(r.cadastros.map((x) => [x.cadastro, situacaoCarga(x)])) as Record<CadastroCargaPortal, SituacaoCarga>;
+  const porNome = new Map(r.cadastros.map((x) => [x.cadastro, x]));
+  const linhas = CADASTROS_CARGA_PORTAL.map((def) => {
+    const x = porNome.get(def.cadastro);
+    if (!x) throw new RangeError(`situacaoDaAba: o banco não devolveu o cadastro "${def.cadastro}"`);
+    return { def, x, situacao: situacaoCarga(x) };
+  });
+  const situacoes = Object.fromEntries(linhas.map((l) => [l.def.cadastro, l.situacao])) as Partial<Record<CadastroCargaPortal, SituacaoCarga>>;
   return SituacaoCargasPlataforma.parse({
     empresa_id: r.empresa_id, modulo_licenciado: r.modulo_licenciado,
-    cadastros: r.cadastros.map((x, i) => {
-      const def = CADASTROS_CARGA_PORTAL[i]!;
-      const dep = dependenciaPendente(x.cadastro, situacoes);
-      return { numero: def.numero, cadastro: x.cadastro, situacao: situacoes[x.cadastro], erros: x.erros, ultima_carga: x.ultima_carga, depende_de: dep, liberado: dep === null, opcional: def.opcional };
+    cadastros: linhas.map(({ def, x, situacao }) => {
+      const depende_de = dependenciaPendente(def.cadastro, situacoes);
+      return { numero: def.numero, cadastro: def.cadastro, situacao, erros: x.erros, ultima_carga: x.ultima_carga, depende_de, liberado: depende_de === null, opcional: def.opcional };
     }),
   });
 }

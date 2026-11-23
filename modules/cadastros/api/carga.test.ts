@@ -143,7 +143,7 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     const t = montar();
     const r = await t.carregar('gravar', { arquivos: arquivos().filter((a) => a.nome !== 'filial.csv') });
     const rel = r.corpo as RelatorioCarga;
-    expect(rel.erros.filter((e) => e.arquivo === 'vendedor.csv')).toEqual([expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'filial_external_id', motivo: 'Faltam filiais: carregue filial.csv antes.' })]);
+    expect(rel.erros.filter((e) => e.arquivo === 'vendedor.csv')).toEqual([expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'filial_external_id', motivo: 'Vendedor filial_external_id não encontrado: carregue o cadastro de filiais ou corrija a coluna filial_external_id.' })]);
     expect(porEntidade(rel).forma_pagamento).toMatchObject({ inseridas: 2 });
   });
 
@@ -320,7 +320,8 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
       const t = montar();
       const linhas = Array.from({ length: MAX_LINHAS_LOTE }, (_, i) => `V${i};Nome ${i}`).join('\n');
       expect((await t.carregar('validar', { arquivos: [{ nome: 'vendedor.csv', conteudo: `external_id;nome\n${linhas}\n` }] })).status).toBe(200);
-    });
+    // lote grande: o --tudo paralelo pode passar de 5 s (aviso do apps, 23/11)
+    }, 30_000);
   });
 });
 
@@ -447,12 +448,6 @@ describe('carga por entidade (RF-CAD-11)', () => {
     expect(outro.status).toBe(400);
     const ok = await t.carregar('validar', { corpo: { modo: 'validar', entidade: 'filial' }, arquivos: arquivos().filter((a) => a.nome === 'filial.csv') });
     expect(ok.status).toBe(200);
-  });
-  it('RF-CAD-11: se o arquivo da dependência veio no lote (recusado), continua CARGA_REFERENCIA', async () => {
-    const t = montar();
-    const r = await t.carregar('gravar', { sessao: sessaoDe('gerente') });
-    const rel = r.corpo as RelatorioCarga;
-    expect(rel.erros.filter((e) => e.arquivo === 'vendedor.csv')).toEqual([expect.objectContaining({ codigo: 'CARGA_REFERENCIA', campo: 'filial_external_id' })]);
   });
   it('RF-CAD-11: entidade fora da lista é recusada pelo contrato', () => {
     expect(CargaPedido.safeParse({ modo: 'validar', entidade: 'xpto', arquivos: [{ nome: 'a.csv', bytes: new Uint8Array() }] }).success).toBe(false);

@@ -5,9 +5,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ENTIDADES_CARGA_PORTAL, ErroApi, SituacaoCargasPlataforma, TIPO_CSV, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
+import { ArquivoRecebido, dependenciaPendente, CAMINHOS_CARGAS_PLATAFORMA, ENTIDADES_CARGA_PORTAL, ErroApi, TIPO_CSV, type ContextoPlataformaPorEtapa, type SituacaoCargasPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { criarPluginPlataformaCadastros } from './carga-portal-rotas';
+import { criarPluginPlataformaCadastros, situacaoDaAba } from './carga-portal-rotas';
 import { dependenciasEmMemoria } from './memoria';
 
 const pasta = join(dirname(fileURLToPath(import.meta.url)), '..', 'domain', 'carga', '__fixtures__');
@@ -135,13 +135,24 @@ describe('rotas da carga no /config (por etapa)', () => {
     const r = await t.plugin.rotas.find((x) => x.caminho === CAMINHOS_CARGAS_PLATAFORMA.situacao)!.executar(
       { sessao: { superadmin_id: 's', sessao_id: 's' }, request_id: 'req-1', agora: new Date(), comPlataforma: async (f: (x: Transacao) => Promise<unknown>) => { t.passos.push('plataforma'); return f({ consultar: (async (sql: string, p: readonly unknown[] = []) => { t.sqls.push({ sql, p }); return [{ situacao: SITUACAO }]; }) as Transacao['consultar'] }); } } as unknown as ContextoPlataformaPorEtapa,
       { corpo: undefined, consulta: undefined, params: { id: TENANT } });
-    const s = SituacaoCargasPlataforma.parse(r.corpo);
+    const s = r.corpo as SituacaoCargasPlataforma;
     expect(s.cadastros).toHaveLength(10);
     expect(s.cadastros[0]).toMatchObject({ cadastro: 'filial', numero: 1, situacao: 'carregado', liberado: true, depende_de: null });
     expect(s.cadastros.find((x) => x.cadastro === 'vendedor')).toMatchObject({ situacao: 'nao_carregado' });
     expect(t.passos).toEqual(['plataforma']);
     expect(t.sqls[0]).toMatchObject({ p: [TENANT] });
     expect(t.sqls[0]!.sql).toContain('cadastros.portal_carga_situacao($1)');
+  });
+
+  it('RF-CAD-11: situacaoDaAba mapeia pelo nome do cadastro (retorno do banco fora de ordem) e deriva depende_de e liberado pelo SDK', () => {
+    const crua = ENTIDADES_CARGA_PORTAL.map((cadastro) => ({ cadastro, ativos: cadastro === 'produto' ? 3 : 0, erros: 0, ultima_carga: null }));
+    const s = situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: [...crua].reverse() });
+    expect(s.cadastros.map((x) => x.cadastro)).toEqual([...ENTIDADES_CARGA_PORTAL]);
+    expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ numero: 5, situacao: 'carregado' });
+    expect(s.cadastros.find((x) => x.cadastro === 'filial')).toMatchObject({ numero: 1, situacao: 'nao_carregado' });
+    const situacoes = Object.fromEntries(s.cadastros.map((x) => [x.cadastro, x.situacao]));
+    expect(s.cadastros.every((x) => x.depende_de === dependenciaPendente(x.cadastro, situacoes) && x.liberado === (x.depende_de === null))).toBe(true);
+    expect(() => situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: crua.slice(1) })).toThrow(/filial/);
   });
 
   it('RF-CAD-11: GET modelo devolve o CSV modelo do cadastro com o nome do SDK; cadastro desconhecido é 404', async () => {
