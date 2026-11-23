@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import { EuResposta } from '@macuxierp/platform-sdk';
 import { RelatorioCarga } from '@macuxierp/cadastros/contracts';
 import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
-import { CARGA_NAO_CONCLUIDA, SEM_PERMISSAO_CARGA } from './textos';
+import { CARGA_GRANDE_DEMAIS, CARGA_NAO_CONCLUIDA, CARGA_TEMPO_ESGOTADO, SEM_PERMISSAO_CARGA } from './textos';
 import { CREDENCIAL_FALSA, EU_FALSO, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
@@ -42,9 +42,13 @@ function base(): string {
   return URL_API.replace(/\/$/, '');
 }
 
-async function chamar(caminho: string, init: RequestInit): Promise<Response> {
+/** Tempo padrão de uma chamada à API; a carga (até 120 s no servidor) usa o próprio. */
+export const TIMEOUT_PADRAO_MS = 10_000;
+export const TIMEOUT_CARGA_MS = 130_000;
+
+async function chamar(caminho: string, init: RequestInit, timeoutMs = TIMEOUT_PADRAO_MS): Promise<Response> {
   try {
-    return await fetch(`${base()}${caminho}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+    return await fetch(`${base()}${caminho}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     throw new ApiIndisponivel('API não respondeu');
   }
@@ -63,6 +67,18 @@ async function mensagemDaApi(r: Response): Promise<string> {
     return typeof m === 'string' ? m.trim() : '';
   } catch {
     return '';
+  }
+}
+
+/** Corpo de erro da API (`{ codigo, mensagem, campos }`): o texto do campo, se vier (ex.: 400 da carga em `campos.arquivos`), senão a mensagem. */
+export async function textoDeErro(r: Response, campo?: string): Promise<{ codigo: string; texto: string }> {
+  try {
+    const j = (await r.json()) as { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown> };
+    const doCampo = campo ? j.campos?.[campo] : undefined;
+    const texto = typeof doCampo === 'string' && doCampo.trim() ? doCampo.trim() : typeof j.mensagem === 'string' ? j.mensagem.trim() : '';
+    return { codigo: typeof j.codigo === 'string' ? j.codigo : '', texto };
+  } catch {
+    return { codigo: '', texto: '' };
   }
 }
 
@@ -142,11 +158,12 @@ export type ResultadoCarga = { ok: true; relatorio: RelatorioCarga } | { ok: fal
  */
 export async function enviarCarga(acesso: string, formulario: FormData): Promise<ResultadoCarga> {
   if (usaApiFalsa) return { ok: false, erro: 'A carga precisa da API real: configure MACUXIERP_API_URL.' };
-  const r = await chamar(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario });
+  const r = await chamar(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario }, TIMEOUT_CARGA_MS);
   if (r.status === 401) throw new NaoAutenticado();
   if (r.status === 403) return { ok: false, erro: SEM_PERMISSAO_CARGA };
-  if (r.status === 413) return { ok: false, erro: 'O envio é grande demais. Mande menos arquivos por vez.' };
-  if (r.status === 400) return { ok: false, erro: (await mensagemDaApi(r)) || 'Envio inválido: confira os arquivos e o modo.' };
+  if (r.status === 413) return { ok: false, erro: CARGA_GRANDE_DEMAIS };
+  if (r.status === 400) return { ok: false, erro: (await textoDeErro(r, 'arquivos')).texto || 'Envio inválido: confira os arquivos e o modo.' };
+  if (r.status === 503 && (await textoDeErro(r)).codigo === 'TEMPO_ESGOTADO') return { ok: false, erro: CARGA_TEMPO_ESGOTADO };
   if (!r.ok) return { ok: false, erro: CARGA_NAO_CONCLUIDA };
   const dados = RelatorioCarga.safeParse(await r.json().catch(() => null));
   return dados.success ? { ok: true, relatorio: dados.data } : { ok: false, erro: 'A API respondeu fora do contrato.' };

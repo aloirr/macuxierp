@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { enviarCarga, NaoAutenticado } from '@/lib/api';
 import { COOKIE_ACESSO } from '@/lib/sessao';
-import { SESSAO_EXPIRADA } from '@/lib/textos';
+import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '@/lib/textos';
 
 /** Folga do multipart (fronteiras e cabeçalhos das partes) acima do total de bytes dos arquivos. */
 export const FOLGA_MULTIPART = 64 * 1024;
@@ -46,11 +46,11 @@ export async function POST(req: Request) {
   if (!acesso) return Response.json({ ok: false, erro: SESSAO_EXPIRADA }, { status: 401 });
   const tamanho = Number(req.headers.get('content-length'));
   if (!req.headers.get('content-length') || !Number.isFinite(tamanho) || tamanho > LIMITE) {
-    return Response.json({ ok: false, erro: 'O envio é grande demais. Mande menos arquivos por vez.' }, { status: 413 });
+    return Response.json({ ok: false, erro: CARGA_GRANDE_DEMAIS }, { status: 413 });
   }
   try {
     const formulario = await lerComCorte(req).catch(() => undefined);
-    if (formulario === null) return Response.json({ ok: false, erro: 'O envio é grande demais. Mande menos arquivos por vez.' }, { status: 413 });
+    if (formulario === null) return Response.json({ ok: false, erro: CARGA_GRANDE_DEMAIS }, { status: 413 });
     if (!formulario) return Response.json({ ok: false, erro: 'Envio inválido: confira os arquivos e o modo.' }, { status: 400 });
     const r = await enviarCarga(acesso, formulario);
     return Response.json(r, { status: r.ok ? 200 : 422 });

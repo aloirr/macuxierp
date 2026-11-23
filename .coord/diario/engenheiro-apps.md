@@ -22,3 +22,5 @@
 2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga
 2026-11-23 — T-0021 — #275: nota de fuso no detalhe da nota e nas listas com horário; coluna Item fixa na parcial
 2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga e tela de filial sem filiais
+2026-11-23 — T-0051 — shell: carga por entidade (botões na ordem do D13, modelo, prévia com erros por linha e dependência)
+2026-11-23 — T-0051 — rodada final F2: proxyDeDownload único, rótulos do cadastros, timeout de 130 s na carga, CARGA_GRANDE_DEMAIS, input desligado enviando.
