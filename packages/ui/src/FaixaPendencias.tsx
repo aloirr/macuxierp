@@ -1,8 +1,9 @@
-import { cor, espaco, texto } from './estilos.js';
+import { cor, espaco, soLeitor, texto } from './estilos.js';
 
 export type NivelPendencia = 'bloqueante' | 'aceitavel';
 
 export interface Pendencia {
+  /** 'bloqueante' (cor de erro) só para falha que o usuário resolve na própria tela; o resto é 'aceitavel' (aviso). */
   nivel: NivelPendencia;
   /** Código da regra, ex.: "RN-PED-004". Vai só para o atributo data-regra, não aparece na tela. */
   codigoRn: string;
@@ -41,8 +42,10 @@ export function FaixaPendencias({ itens }: FaixaPendenciasProps) {
               borderLeft: `4px solid ${cor(erro ? 'erroTexto' : 'avisoTexto')}`,
             }}
           >
-            <strong style={texto('pequeno', 'rotulo-pequeno')}>{erro ? 'Bloqueia' : 'Atenção'}</strong>
-            <span>{i.texto}</span>
+            <span>
+              <span style={soLeitor}>{erro ? 'Erro: ' : 'Aviso: '}</span>
+              {i.texto}
+            </span>
           </div>
         );
       })}

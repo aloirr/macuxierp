@@ -17,3 +17,4 @@
 2026-11-23 — T-0050 — `.mx-checkbox`; regra de paginação (RD-0974); RD-0982–0984
 2026-11-23 — T-0021 — token rotuloMenu (alias tituloGrupo por uma versão); login do portal no cartão branco
 2026-11-23 — T-0053 — prints A0 (390 px) e folha docs/design/a0-prints.md para aprovação do Alexandre
+2026-11-23 — T-0056 — FaixaPendencias sem o rótulo 'Bloqueia'/'Atenção' (prefixo só para leitor de tela); RD-1144–1146
