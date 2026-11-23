@@ -143,7 +143,7 @@ describe('carga inicial: trabalho paginado (C-4)', () => {
     const prod = await a.repos.produtos.inserir({ codigo: 'P1', descricao: 'X', ncm: '22021000', unidade_comercial: 'UN', unidade_tributavel: 'UN', grupo_tributacao: 'B' } as never);
     await a.repos.produtos.unidades.inserir(prod.id, { unidade: 'CX', fator: 120_000, ean: null, external_id: 'PU-1' } as never);
     const tab = await a.repos.tabelasPreco.inserir({ nome: 'T', padrao: true, vigencia_inicio: '2026-01-01', vigencia_fim: null } as never);
-    await a.repos.carga.gravarItemPreco({ tabelaId: tab.id, filialId: f.id, produtoId: prod.id, preco_centavos: 100, desconto_maximo_bp: 0, externalId: 'PR-1', inativo: false });
+    await a.repos.carga.gravarItemPreco({ tabelaId: tab.id, filialId: f.id, produtoId: prod.id, preco_centavos: 100, desconto_maximo_bp: 0, desconto_herdado: true, externalId: 'PR-1', inativo: false });
     await a.repos.clientes.inserir(clienteValido(f.id, { enderecos: [{ ...ENDERECO_AM, tipo: 'principal', external_id: 'CE-1' }] }) as never);
     await a.solicitar({ entidades: ['preco', 'produto', 'cliente'] });
     await a.drenar();

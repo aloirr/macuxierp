@@ -13,7 +13,7 @@ import {
   type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, descontoNaCargaDoPreco, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
   type FatosFilial,
 } from '../domain';
@@ -55,7 +55,8 @@ export interface Estado {
   formas: Map<string, { codigo: string | null; nome: string | null; tpag: string | null } | null>;
   prazosNoLote: Set<string>;
   descontos: Map<string, number>;
-  produtosNoPreco: Set<string>;
+  /** RN-CAD-11: itens de preço gravados sem desconto (nem no produto nem no preço), para o aviso do arquivo de preço. */
+  precosSemDesconto: number;
   unidadeDoProduto: Map<string, string>;
   tabelas: Map<string, TabelaDoLote>;
   filialPadrao: { carregada: boolean; id: string | null };
@@ -66,7 +67,7 @@ export interface Estado {
 export const estadoVazio = (p: Pick<Estado, 'c' | 'r' | 'gravar' | 'hoje' | 'loteId' | 'podeCredito' | 'podeNegativo' | 'conhecidos'>): Estado => ({
   ...p,
   ids: { filial: new Map(), vendedor: new Map(), condicao_pagamento: new Map(), produto: new Map(), tabela_preco: new Map(), cliente: new Map() },
-  formas: new Map(), prazosNoLote: new Set(), descontos: new Map(), produtosNoPreco: new Set(), unidadeDoProduto: new Map(),
+  formas: new Map(), prazosNoLote: new Set(), descontos: new Map(), precosSemDesconto: 0, unidadeDoProduto: new Map(),
   tabelas: new Map(), filialPadrao: { carregada: false, id: null }, fatos: new Map(),
 });
 
@@ -384,7 +385,8 @@ async function produto(l: LinhaProduto, st: Estado): Promise<Saida> {
     const alvo = { tipo: 'produto' as const, id: ex.id };
     st.unidadeDoProduto.set(l.external_id, d.unidade_comercial ?? ex.unidade_comercial);
     const patch: Dict = { ...d, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
-    if (camposAlterados(patch, ex as unknown as Dict).length === 0) return { efeito: 'sem_mudanca', alvo };
+    const descontoMudou = l.desconto_maximo_bp !== undefined && l.desconto_maximo_bp !== (await st.r.carga.descontoDoProduto(ex.id));
+    if (camposAlterados(patch, ex as unknown as Dict).length === 0 && !descontoMudou) return { efeito: 'sem_mudanca', alvo };
     if (d.ncm !== undefined || d.cest !== undefined) {
       const erros = await fiscal(d.ncm ?? ex.ncm, d.cest ?? ex.cest ?? null);
       if (erros.length > 0) return { erros };
@@ -396,6 +398,7 @@ async function produto(l: LinhaProduto, st: Estado): Promise<Saida> {
         if (Object.keys(parcial).length > 0) await repo.atualizar(ex.id, parcial as never);
         await aplicarAtivo(repo, ex.id, l.ativo, ex.inativo);
         await publicarProdutoPorId(st, ex.id, ex);
+        await propagarDesconto(st, ex.id, l.desconto_maximo_bp);
         return ex.id;
       },
     };
@@ -414,9 +417,22 @@ async function produto(l: LinhaProduto, st: Estado): Promise<Saida> {
       const criado = await repo.inserir(r.data);
       await aplicarAtivo(repo, criado.id, l.ativo, false);
       await publicarProdutoPorId(st, criado.id);
+      await propagarDesconto(st, criado.id, l.desconto_maximo_bp);
       return criado.id;
     },
   };
+}
+
+/** RN-CAD-11: grava o desconto no produto e republica ao FDV os itens de preço herdados que mudaram. */
+async function propagarDesconto(st: Estado, produtoId: string, bp: number | undefined): Promise<void> {
+  if (bp === undefined) return;
+  const itens = await st.r.carga.gravarDescontoProduto(produtoId, bp);
+  const tabelas = new Map<string, Awaited<ReturnType<Repositorios['tabelasPreco']['obter']>>>();
+  for (const item of itens) {
+    if (!tabelas.has(item.tabela_preco_id)) tabelas.set(item.tabela_preco_id, await st.r.tabelasPreco.obter(item.tabela_preco_id));
+    const tabela = tabelas.get(item.tabela_preco_id);
+    if (tabela) await publicarPronto(st.c, eventoPreco(item, { ...tabela, inativo: tabela.inativo }));
+  }
 }
 
 async function publicarProdutoPorId(st: Estado, id: string, antes?: unknown): Promise<void> {
@@ -473,7 +489,6 @@ async function unidade(l: LinhaProdutoUnidade, st: Estado): Promise<Saida> {
 async function preco(l: LinhaPreco, st: Estado): Promise<Saida> {
   const extTab = l.tabela.external_id;
   const extProd = l.refs.produto as string;
-  st.produtosNoPreco.add(extProd);
   let tab = st.tabelas.get(extTab);
   if (!tab) {
     const existente = (await st.r.tabelasPreco.porExternalId(extTab)) as unknown as Dict | null;
@@ -510,11 +525,14 @@ async function preco(l: LinhaPreco, st: Estado): Promise<Saida> {
       adotar = true;
     }
   }
-  const desconto = st.descontos.get(extProd);
+  // RN-CAD-11: o desconto do produto (deste lote ou já gravado) vale em qualquer ordem de carga; o item de desconto próprio não muda.
+  const descontoProduto = st.descontos.get(extProd) ?? (prodId ? await carga.descontoDoProduto(prodId) : null);
+  const desc = descontoNaCargaDoPreco(ex, descontoProduto);
+  if (desc.semDesconto) st.precosSemDesconto += 1;
   const patch: Dict = {
-    preco_centavos: l.preco_centavos, ...(desconto === undefined ? {} : { desconto_maximo_bp: desconto }), ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}),
+    preco_centavos: l.preco_centavos, desconto_maximo_bp: desc.desconto_maximo_bp, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}),
   };
-  const itemMuda = ex === null || camposAlterados(patch, ex as unknown as Dict).length > 0;
+  const itemMuda = ex === null || camposAlterados(patch, ex as unknown as Dict).length > 0 || ex.desconto_herdado !== desc.desconto_herdado;
   if (!itemMuda && !tabelaMudou) return { efeito: 'sem_mudanca' };
   const efeito: Efeito = ex === null ? 'inserida' : 'atualizada';
   return {
@@ -540,7 +558,7 @@ async function preco(l: LinhaPreco, st: Estado): Promise<Saida> {
         }
         const inativo = l.ativo === undefined ? (ex?.inativo ?? false) : !l.ativo;
         const item = await carga.gravarItemPreco({
-          tabelaId: t.id, filialId: fil.id, produtoId: prodId, preco_centavos: l.preco_centavos, desconto_maximo_bp: desconto ?? ex?.desconto_maximo_bp ?? 0,
+          tabelaId: t.id, filialId: fil.id, produtoId: prodId, preco_centavos: l.preco_centavos, desconto_maximo_bp: desc.desconto_maximo_bp, desconto_herdado: desc.desconto_herdado,
           externalId: l.external_id, inativo,
         });
         const tabela = await st.r.tabelasPreco.obter(t.id);

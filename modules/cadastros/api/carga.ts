@@ -209,9 +209,9 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     acrescentarIdsDoLote(st.conhecidos, entidade, boas as never[]);
     a.resultado.avisos = [...avisos].map((x) => x.slice(0, 200)).slice(0, 50);
   }
-  const produto = arquivos.find((x) => x.entidade === 'produto');
-  if (produto && [...st.descontos.keys()].some((p) => !st.produtosNoPreco.has(p))) {
-    produto.resultado.avisos.push('Desconto máximo de produto sem preço no lote: não foi aplicado');
+  const arquivoPreco = arquivos.find((x) => x.entidade === 'preco');
+  if (arquivoPreco && st.precosSemDesconto > 0) {
+    arquivoPreco.resultado.avisos.push(`${st.precosSemDesconto} item(ns) de preço sem desconto máximo (nem no produto nem no preço)`);
   }
   if (st.gravar) {
     // RN-CAD-09: nada fica "cartão sem parcelas" (preenche quando os prazos são 30×N; senão desativa).

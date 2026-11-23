@@ -450,7 +450,7 @@ describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
   it('ADR 0010: o PUT de itens ignora external_id no corpo e o evento preco.alterado mantém a chave gravada pela carga', async () => {
     const { t, f1, p, tab } = await cenario();
     await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens: [{ filial_id: f1, produto_id: p, preco_centavos: 1000 }] } });
-    await t.repos.carga.gravarItemPreco({ tabelaId: tab, filialId: f1, produtoId: p, preco_centavos: 1000, desconto_maximo_bp: 0, externalId: 'PR-1', inativo: false });
+    await t.repos.carga.gravarItemPreco({ tabelaId: tab, filialId: f1, produtoId: p, preco_centavos: 1000, desconto_maximo_bp: 0, desconto_herdado: true, externalId: 'PR-1', inativo: false });
     t.eventos.length = 0;
     const r = await t.chamar('PUT', `/tabelas-preco/${tab}/itens`, { sessao: gerente, corpo: { itens: [{ filial_id: f1, produto_id: p, preco_centavos: 1500, external_id: 'OUTRA' }] } });
     expect(r.corpo).toEqual({ recebidos: 1, alterados: 1 });
