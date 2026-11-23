@@ -80,25 +80,44 @@ export interface EntradaMontagem {
   sessaoParteInicial?: number;
   /** Só no modo completo: ainda há registros da sessão depois destes (a última parte montada não leva `ultimo: true`). */
   sessaoContinua?: boolean;
+  /**
+   * T-0061. Registro já aceito pelo Hub (o último enviado e aceito nesta sessão, com o payload e o hash que o Hub já tem), que
+   * fecha a sessão como parte final quando não há registros válidos (`precisaFechamento`), porque o Hub recusa parte vazia
+   * (`lote_vazio`). Como é de antes do cursor local, o reenvio não muda nada no Hub. Sem ele, devolve `[]` (o chamador fecha a
+   * sessão localmente). Linhas inválidas, se houver, vão junto.
+   */
+  registroDeFechamento?: RegistroLote;
+  /** T-0061. Cursor local da sessão: é o `cursor` do lote de fechamento (o cursor não recua para o do registro). */
+  cursorDeFechamento?: CursorHub;
   limiteRegistros?: number;
   limiteBytes?: number;
 }
 
 /**
+ * T-0061. A parte final precisa do registro de fechamento: carga completa com sessão em andamento (parte > 1), sem continuação e
+ * sem registros válidos (o Hub recusa parte vazia). Regra única, usada pelo `montarLotes` e pela API.
+ */
+export function precisaFechamento(e: { modo: ModoLote; sessaoParteInicial?: number; sessaoContinua?: boolean; registrosValidos: number }): boolean {
+  return e.modo === 'completo' && (e.sessaoParteInicial ?? 1) > 1 && !e.sessaoContinua && e.registrosValidos === 0;
+}
+
+/**
  * Monta os lotes da entidade. Delta: sem sessão. Completo: uma sessão com partes 1..n, a última com `ultimo: true`
- * (T-0009 seção 4). Sem registros e sem linhas inválidas devolve `[]` no delta e na carga completa que ainda não enviou parte (o Hub recusa `lote_vazio`); só a continuação de uma sessão em andamento (`sessaoParteInicial` > 1) monta a parte final vazia, para poder fechá-la. Linhas inválidas (M5) vão no primeiro lote: até 500 detalhadas, o resto só na contagem.
+ * (T-0009 seção 4). Sem registros e sem linhas inválidas devolve `[]` no delta e na carga completa que ainda não enviou parte (o Hub recusa `lote_vazio`); nunca monta parte final vazia com `ultimo: true`: numa sessão em andamento (`sessaoParteInicial` > 1) que ficou sem registros válidos (inativados ou apagados entre as partes), a parte final leva só o `registroDeFechamento` (T-0061); sem ele, `[]` (o chamador fecha a sessão localmente). Linhas inválidas (M5) vão no primeiro lote: até 500 detalhadas, o resto só na contagem.
  */
 export function montarLotes(e: EntradaMontagem): LoteMontado[] {
   if (e.modo === 'completo' && !e.sessaoId) throw new Error('carga completa exige o id da sessão');
   const geracao = e.geracao ?? 1;
   const maxReg = limiteRegistrosDoLote(e.limiteRegistros);
   const maxBytes = e.limiteBytes ?? LIMITE_BYTES_LOTE;
-  const ordenados = ordenarRegistros(e.registros);
+  // T-0061: parte final leva o último aceito (ver registroDeFechamento)
+  const fecho = precisaFechamento({ modo: e.modo, sessaoParteInicial: e.sessaoParteInicial, sessaoContinua: e.sessaoContinua, registrosValidos: e.registros.length }) ? e.registroDeFechamento : undefined;
+  const ordenados = ordenarRegistros(fecho ? [fecho] : e.registros);
   const invalidas = e.linhas_invalidas ?? [];
   const detalhadas = invalidas.slice(0, LIMITE_LINHAS_INVALIDAS_DETALHADAS).map(paraLinhaHub);
   const omitidas = invalidas.length - detalhadas.length;
 
-  if (ordenados.length === 0 && invalidas.length === 0 && (e.modo === 'delta' || (e.sessaoParteInicial ?? 1) <= 1)) return [];
+  if (ordenados.length === 0 && invalidas.length === 0) return [];
 
   const grupos: RegistroLote[][] = [];
   let atual: RegistroLote[] = [];
@@ -123,7 +142,7 @@ export function montarLotes(e: EntradaMontagem): LoteMontado[] {
       entidade: e.entidade,
       modo: e.modo,
       enviado_em: e.enviadoEm,
-      cursor: ultimo ? cursorDoRegistro(ultimo) : null,
+      cursor: fecho && e.cursorDeFechamento ? e.cursorDeFechamento : ultimo ? cursorDoRegistro(ultimo) : null,
       ...(e.modo === 'completo'
         ? { sessao: { id: e.sessaoId!, parte: (e.sessaoParteInicial ?? 1) + i, ultimo: i === grupos.length - 1 && !e.sessaoContinua } }
         : {}),
