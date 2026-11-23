@@ -3,6 +3,7 @@
  * RN-FAT-05 (o operador decide a entrada; o sistema sugere), RN-FAT-08 (mesma série e número; tpEmis e xJust no XML; EPEC conta como faturada desde o evento autorizado, ainda pendente de transmissão), RN-FAT-09 (o operador encerra; EPEC em fila na volta, dentro do prazo), RN-FAT-10 (filial com NF-e simulada não entra).
  * Modalidades v1 (coluna `modalidade`): svc_an (tpEmis 6), svc_rs (tpEmis 7) e epec (tpEmis 4, evento 110140); no XML ficam os nomes do Manual (tpEmis, dhCont, xJust). FS-DA fora da v1.
  */
+import { PRAZO_TRANSMISSAO_EPEC_HORAS, SVC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
 import type { StatusNota } from '../contracts';
 import type { ConteudoNota } from './tipos-nota';
 import { validarTransicao } from './estados';
@@ -16,8 +17,13 @@ export const TP_EMIS_DA_MODALIDADE: Readonly<Record<ModalidadeContingencia, TpEm
 /** Qual SVC atende cada UF (sigla -> 'svc_an' | 'svc_rs'). Vem por parâmetro: a fonte única é `SVC_DA_UF` de packages/nfe-sefaz (ADR 0011); o domain não guarda tabela. AM -> SVC-RS, a conferir (ADR 0011). */
 export type TabelaSvc = Readonly<Record<string, 'svc_an' | 'svc_rs'>>;
 
+/** Tabela padrão: a fonte única `SVC_DA_UF` do pacote (ADR 0011; hoje só AM -> SVC-RS, a conferir) com os nomes da coluna `modalidade` (`svc-rs` vira `svc_rs`). Outra UF fica sem SVC (só EPEC). */
+export const TABELA_SVC_PADRAO: TabelaSvc = Object.freeze(
+  Object.fromEntries(Object.entries(SVC_DA_UF).map(([uf, m]) => [uf, m === 'svc-an' ? 'svc_an' : 'svc_rs'])) as Record<string, 'svc_an' | 'svc_rs'>,
+);
+
 /** SVC que atende a UF do emitente; nulo quando a UF não consta na tabela (o chamador trata como violação). */
-export function modalidadeDaUf(uf: string, tabela: TabelaSvc): 'svc_an' | 'svc_rs' | null {
+export function modalidadeDaUf(uf: string, tabela: TabelaSvc = TABELA_SVC_PADRAO): 'svc_an' | 'svc_rs' | null {
   return tabela[uf.trim().toUpperCase()] ?? null;
 }
 
@@ -78,6 +84,14 @@ export function aplicarContingenciaAoConteudo(c: ConteudoNota, k: ContingenciaDa
   return { ...c, contingencia: { tpEmis: TP_EMIS_DA_MODALIDADE[k.modalidade], dhCont: k.inicioEm.toISOString(), xJust: k.motivo.trim() } };
 }
 
+/**
+ * RN-FAT-05/08 (ADR 0011): o `modo` do seletor de transporte da nota, pelo tpEmis que está na chave. SVC-AN (6) e SVC-RS (7) vão à SEFAZ Virtual; 1 e 4 vão ao autorizador normal
+ * (a EPEC volta ao normal com o mesmo XML). Vale pelo tpEmis da NOTA, não pela contingência aberta agora: a nota emitida em SVC segue na SVC mesmo depois do encerramento.
+ */
+export function modoDoTransporte(tpEmis: 1 | 4 | 6 | 7): 'normal' | 'svc-an' | 'svc-rs' {
+  return tpEmis === 6 ? 'svc-an' : tpEmis === 7 ? 'svc-rs' : 'normal';
+}
+
 export interface NotaNaVolta {
   status: StatusNota;
   tpEmis: 1 | 4 | 6 | 7;
@@ -108,8 +122,8 @@ export function contaComoFaturada(n: NotaNaVolta): boolean {
   return n.status === 'autorizada';
 }
 
-/** Trocar por PRAZO_TRANSMISSAO_EPEC_HORAS de @macuxierp/nfe-sefaz/contingencia quando o PR do engenheiro entrar. RN-FAT-09 (PO, PR #271): a transmissão posterior sai assim que a SEFAZ normal responder, no máximo 168 h depois da AUTORIZAÇÃO DO EPEC. */
-export const PRAZO_EPEC_HORAS = 168;
+/** Fonte única: `PRAZO_TRANSMISSAO_EPEC_HORAS` de @macuxierp/nfe-sefaz/contingencia (ADR 0011); o nome local é só um alias. RN-FAT-09 (PO, PR #271): a transmissão posterior sai assim que a SEFAZ normal responder, no máximo 168 h depois da AUTORIZAÇÃO DO EPEC. */
+export const PRAZO_EPEC_HORAS: number = PRAZO_TRANSMISSAO_EPEC_HORAS;
 /** RN-FAT-09: limite = autorização do EPEC (`epec_autorizada_em`) + `prazoHoras` (padrão 168 h). Não conta da emissão nem do encerramento da contingência. */
 export function prazoEpec(p: { epecAutorizadoEm: Date; prazoHoras?: number }): Date {
   return new Date(p.epecAutorizadoEm.getTime() + (p.prazoHoras ?? PRAZO_EPEC_HORAS) * 3_600_000);

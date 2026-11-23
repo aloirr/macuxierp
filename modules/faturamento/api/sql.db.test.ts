@@ -114,6 +114,37 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(cont?.cobranca?.parcelas).toHaveLength(2);
   });
 
+  it('RN-FAT-05/08: com a SVC-RS aberta da filial, a nota nasce com tipo_emissao 7, contingencia_em e a justificativa gravados (a constraint 0013 exige os três), na mesma sequência; encerrada, a nota volta ao normal e o conteúdo lido traz dhCont e xJust', async () => {
+    const MOTIVO = 'SEFAZ-AM fora do ar desde as 9h';
+    const INICIO = new Date('2026-11-21T09:00:00Z');
+    const f = depsFake({ ambiente: 'homologacao' });
+    f.deps.notas = repos.notas;
+    f.deps.pedidos = repos.pedidos;
+    f.deps.ambiente = repos.ambiente;
+    f.deps.contingencia = repos.contingencia;
+    const svc = criarServicoEmissao(f.deps);
+    const emitirCom = (idem: string) =>
+      app.comTenant(A, async (tx) => {
+        const pid = await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar);
+        return svc.emitirNota(tx, A, { pedido_id: pid, idempotencia: idem });
+      });
+    await app.comTenant(A, (tx) => repos.contingencia.abrir(tx, { filial_id: IDS.filial, ambiente: 'homologacao', modalidade: 'svc_rs', motivo: MOTIVO, inicio_em: INICIO, ligada_por: uuid(5) }));
+    const r = await emitirCom('idem-db-svc-1');
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    expect(r.nota.tp_emis).toBe(7);
+    expect(r.nota.chave_acesso.slice(34, 35)).toBe('7');
+    const [linha] = await admin("SELECT tipo_emissao, contingencia_em, contingencia_justificativa FROM faturamento.nota WHERE id = $1", [r.nota.id]);
+    expect(linha).toMatchObject({ tipo_emissao: 7, contingencia_justificativa: MOTIVO });
+    expect(new Date(linha!.contingencia_em as string).toISOString()).toBe(INICIO.toISOString());
+    const cont = await app.comTenant(A, (tx) => repos.notas.lerConteudo(tx, r.nota.id));
+    expect(cont?.contingencia).toEqual({ tpEmis: 7, dhCont: '2026-11-21T09:00:00.000Z', xJust: MOTIVO });
+    await app.comTenant(A, (tx) => repos.contingencia.encerrar(tx, IDS.filial, 'homologacao', new Date('2026-11-21T10:00:00Z'), uuid(5)));
+    const normal = await emitirCom('idem-db-svc-2');
+    if (!normal.ok) throw new Error(JSON.stringify(normal.violacoes));
+    expect(normal.nota).toMatchObject({ tp_emis: 1, numero: r.nota.numero + 1 });
+    expect((await app.comTenant(A, (tx) => repos.notas.lerConteudo(tx, normal.nota.id)))?.contingencia).toBeUndefined();
+  });
+
   it('RD-0772: o filtro de/até das notas e dos pedidos a faturar respeita o fuso pedido (Manaus UTC-4 x Sao_Paulo UTC-3)', async () => {
     const r = await emitir(A, 'idem-db-fuso-1');
     if (!r.ok) throw new Error(JSON.stringify(r.violacoes));

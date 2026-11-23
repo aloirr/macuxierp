@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarContingenciaAoConteudo, contaComoFaturada, modalidadeDaUf, prazoEpec, PRAZO_EPEC_HORAS, situacaoPrazoEpec, sugerirContingencia, podeTransmitirNaVolta, type TabelaSvc, transicaoEntradaContingencia, transicaoVoltaContingencia, validarEntradaContingencia } from './contingencia';
+import { PRAZO_TRANSMISSAO_EPEC_HORAS, SVC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
+import { aplicarContingenciaAoConteudo, modoDoTransporte, TABELA_SVC_PADRAO, contaComoFaturada, modalidadeDaUf, prazoEpec, PRAZO_EPEC_HORAS, situacaoPrazoEpec, sugerirContingencia, podeTransmitirNaVolta, type TabelaSvc, transicaoEntradaContingencia, transicaoVoltaContingencia, validarEntradaContingencia } from './contingencia';
 import type { ConteudoNota } from './tipos-nota';
 
 const agora = new Date('2026-11-22T14:00:00Z');
@@ -133,5 +134,14 @@ describe('contingência da NF-e (RN-FAT-05, 08, 09, 10)', () => {
   });
   it('RN-FAT-09: transição de volta (EPEC) mantém o número (a nota segue a máquina de estados, sem nova numeração)', () => {
     expect(transicaoVoltaContingencia({ status: 'emitida_contingencia', tpEmis: 4, epecAutorizado: true })).toEqual([]);
+  });
+  it('RN-FAT-05 (ADR 0011): a tabela padrão da UF vem do SVC_DA_UF do pacote (AM -> svc_rs) e o prazo da EPEC é o do pacote (168 h)', () => {
+    expect(modalidadeDaUf('AM')).toBe('svc_rs');
+    expect(Object.keys(TABELA_SVC_PADRAO)).toEqual(Object.keys(SVC_DA_UF));
+    expect(modalidadeDaUf('SP')).toBeNull();
+    expect(PRAZO_EPEC_HORAS).toBe(PRAZO_TRANSMISSAO_EPEC_HORAS);
+  });
+  it('RN-FAT-05/08: o modo do transporte vem do tpEmis da nota: 6 vai à SVC-AN, 7 à SVC-RS; 1 e 4 (EPEC volta pelo normal) ao autorizador normal', () => {
+    expect([1, 4, 6, 7].map((t) => modoDoTransporte(t as 1 | 4 | 6 | 7))).toEqual(['normal', 'normal', 'svc-an', 'svc-rs']);
   });
 });

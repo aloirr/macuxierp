@@ -152,8 +152,9 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     },
 
     async lerConteudo(tx, nota_id) {
-      const [n] = await tx.consultar<{ natureza_operacao: string; emitente_retrato: ConteudoNota['emitente']; destinatario_retrato: ConteudoNota['destinatario']; transporte: Dict; pagamento: Dict }>(
-        'SELECT natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento FROM faturamento.nota WHERE id = $1 AND deleted_at IS NULL',
+      const [n] = await tx.consultar<{ tipo_emissao: number; cont_dh: string | null; cont_xjust: string | null; natureza_operacao: string; emitente_retrato: ConteudoNota['emitente']; destinatario_retrato: ConteudoNota['destinatario']; transporte: Dict; pagamento: Dict }>(
+        `SELECT tipo_emissao::int AS tipo_emissao, ${ISO('contingencia_em')} AS cont_dh, contingencia_justificativa AS cont_xjust,
+                natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento FROM faturamento.nota WHERE id = $1 AND deleted_at IS NULL`,
         [nota_id],
       );
       if (!n?.emitente_retrato || !n.destinatario_retrato) return null;
@@ -195,6 +196,8 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
         cobranca: (n.pagamento.cobranca as ConteudoNota['cobranca']) ?? null,
         prazos_dias: (n.pagamento.prazos_dias as number[] | null | undefined) ?? null,
         conta_como_real: n.pagamento.conta_como_real === true,
+        // RN-FAT-08: dhCont e xJust da nota em contingência (0013: contingencia_em e contingencia_justificativa); a nota normal volta sem o campo.
+        ...(n.tipo_emissao !== 1 && n.cont_dh && n.cont_xjust ? { contingencia: { tpEmis: n.tipo_emissao as 4 | 6 | 7, dhCont: n.cont_dh, xJust: n.cont_xjust } } : {}),
         itens,
       };
     },
@@ -208,11 +211,12 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     async gravarNota(tx, nota, conteudo) {
       const [criada] = await tx.consultar<{ id: string }>(
         `INSERT INTO faturamento.nota (tenant_id, filial_id, pedido_id, cliente_id, ambiente, serie, numero, chave_acesso, c_nf, tipo_emissao, emitida_em,
-            natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento, idempotencia_chave)
-         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16)
+            natureza_operacao, emitente_retrato, destinatario_retrato, transporte, pagamento, idempotencia_chave, contingencia_em, contingencia_justificativa)
+         VALUES (plataforma.tenant_atual(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::timestamptz, $18)
          RETURNING id`,
         [nota.filial_id, nota.pedido_id, nota.cliente_id, nota.ambiente, nota.serie, nota.numero, nota.chave_acesso, nota.cnf, nota.tp_emis, nota.emitida_em,
-          conteudo.natOp, json(conteudo.emitente), json(conteudo.destinatario), json(transporteDe(conteudo)), json(pagamentoDe(conteudo)), nota.idempotencia],
+          conteudo.natOp, json(conteudo.emitente), json(conteudo.destinatario), json(transporteDe(conteudo)), json(pagamentoDe(conteudo)), nota.idempotencia,
+          conteudo.contingencia?.dhCont ?? null, conteudo.contingencia?.xJust ?? null],
       );
       if (!criada) throw new Error('RN-FAT-01: a nota não foi gravada');
       await tx.consultar(`UPDATE faturamento.nota SET ${COLUNAS_TOTAIS} WHERE id = $1`, [criada.id, ...paramsTotais(conteudo.itens)]);

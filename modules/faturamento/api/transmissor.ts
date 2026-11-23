@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import { ErroCertificadoA1, ErroMontagemNFe, type EmissorNFe } from '@macuxierp/nfe-emissor';
 import { Uf, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
-import { digestValueDoXml, emTransmissao, ErroViolacao, pedidoAceitaNota } from '../domain';
+import { digestValueDoXml, emTransmissao, ErroViolacao, modoDoTransporte, pedidoAceitaNota } from '../domain';
 import { criarProcessadorRetorno, mudarNota, xmlDaNota, type ResultadoRetorno } from './emissao';
 import type { A1DaFilial, AmbienteFiscalDaFilial, SituacaoPedidoDoPedido, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
 import type { LogFaturamento } from './titulos';
@@ -133,7 +133,7 @@ export function criarTransmissor(deps: DepsTransmissor) {
         // rascunho com o motivo, sem nfe_assinada e sem em_autorizacao; o número fica na nota e aparece em numeradasNaoEnviadas.
         let transporte: ReturnType<SeletorTransporte>;
         try {
-          transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: 'normal' }, a1.credencial);
+          transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: modoDoTransporte(nota.tp_emis) }, a1.credencial);
         } catch {
           await deps.notas.registrarMotivoEnvio(tx, nota.id, 'destino_indisponivel');
           return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'destino_indisponivel' } };
@@ -190,7 +190,7 @@ export function criarTransmissor(deps: DepsTransmissor) {
     if (p.tipo === 'fim') return p.resultado;
     const { nota, a1, xmlAssinado, digestValue } = p;
     try {
-      const transporte = p.transporte ?? deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
+      const transporte = p.transporte ?? deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: modoDoTransporte(nota.tp_emis) }, a1.credencial);
       const log: TransmissaoRegistrada[] = [];
       const medir = <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => medirChamada(agora, transporte, chamar, { nota_id, servico }, log);
       const descarregar = (t: Transacao): Promise<void> => descarregarLog(log, (reg) => deps.notas.registrarTransmissao(t, reg));

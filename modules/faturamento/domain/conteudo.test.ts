@@ -102,4 +102,18 @@ describe('NotaParaEmissao (entrada da porta EmissorNFe, em centavos, sem totais)
     const { id, c } = montar('101', 1);
     expect(violacoes(id, c)).toEqual([]);
   });
+
+  it('RN-FAT-08: nota em contingência leva tpEmis, dhCont e xJust ao ide; a normal não leva nenhum dos três', () => {
+    const { id, c } = montar();
+    expect(nota(id, c).ide).not.toHaveProperty('tpEmis');
+    const k = { tpEmis: 7 as const, dhCont: '2026-11-21T13:00:00.000Z', xJust: 'SEFAZ-AM fora do ar desde as 9h' };
+    expect(nota({ ...id, tpEmis: 7 }, { ...c, contingencia: k }).ide).toMatchObject({ tpEmis: 7, dhCont: k.dhCont, xJust: k.xJust });
+  });
+  it('RN-FAT-08: tpEmis da nota sem a contingência do conteúdo (ou o inverso, ou outro tpEmis) é violação e nada é montado', () => {
+    const { id, c } = montar();
+    const k = { tpEmis: 7 as const, dhCont: '2026-11-21T13:00:00.000Z', xJust: 'SEFAZ-AM fora do ar desde as 9h' };
+    expect(violacoes({ ...id, tpEmis: 7 }, c)[0]).toMatchObject({ rn: 'RN-FAT-08', campo: 'contingencia' });
+    expect(violacoes(id, { ...c, contingencia: k })[0]).toMatchObject({ rn: 'RN-FAT-08', campo: 'contingencia' });
+    expect(violacoes({ ...id, tpEmis: 6 }, { ...c, contingencia: k })[0]).toMatchObject({ rn: 'RN-FAT-08' });
+  });
 });

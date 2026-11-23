@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarProcessadorRetorno, criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA, xmlDaNota, type DepsEmissao } from './emissao';
-import { CNPJ_EMITENTE, depsFake, DIGVAL, NPROT, titulosFake, tx, TENANT, uuid } from './apoio-teste';
+import { CNPJ_EMITENTE, contingenciaFake, depsFake, DIGVAL, NPROT, titulosFake, tx, TENANT, uuid } from './apoio-teste';
 import type { NotaRegistro, RetornoSefaz } from './portas';
 
 const entrada = (idempotencia = 'idem-0000001') => ({ pedido_id: IDS.pedido, idempotencia });
@@ -388,5 +388,66 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     };
     const r = await criarServicoEmissao(m.deps).emitirNota(tx, TENANT, entrada());
     expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RF-FAT-01', campo: 'total' });
+  });
+
+  describe('contingência SVC aberta (RN-FAT-05, RN-FAT-08, ADR 0011)', () => {
+    const inicio = new Date('2026-11-21T09:00:00Z');
+    const abrir = async (modalidade: 'svc_an' | 'svc_rs' | 'epec', m: ReturnType<typeof montar>) => {
+      const c = contingenciaFake();
+      await c.repo.abrir(tx, { filial_id: IDS.filial, ambiente: 'producao', modalidade, motivo: 'SEFAZ-AM fora do ar desde as 9h', inicio_em: inicio, ligada_por: uuid(1) });
+      return { c, svc: criarServicoEmissao({ ...m.deps, contingencia: c.repo }) };
+    };
+
+    it('RN-FAT-08: com svc_rs aberta a nota nasce com tpEmis 7 (na chave, na coluna e no ide), dhCont = início UTC com Z e xJust = motivo, na mesma série e sequência', async () => {
+      const m = montar();
+      const { svc } = await abrir('svc_rs', m);
+      const r = await svc.emitirNota(tx, TENANT, entrada());
+      if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+      expect(r.nota).toMatchObject({ tp_emis: 7, serie: 1, numero: 100, status: 'rascunho' });
+      expect(r.nota.chave_acesso.slice(34, 35)).toBe('7');
+      expect(m.recebidas.at(-1)!.ide).toMatchObject({ tpEmis: 7, dhCont: '2026-11-21T09:00:00.000Z', xJust: 'SEFAZ-AM fora do ar desde as 9h' });
+      expect(m.conteudos.get(r.nota.id)?.contingencia).toEqual({ tpEmis: 7, dhCont: '2026-11-21T09:00:00.000Z', xJust: 'SEFAZ-AM fora do ar desde as 9h' });
+    });
+
+    it('RN-FAT-08: sem contingência aberta (ou só com a de outro ambiente) a nota segue inalterada: tpEmis 1, sem dhCont nem xJust', async () => {
+      const m = montar();
+      const c = contingenciaFake();
+      await c.repo.abrir(tx, { filial_id: IDS.filial, ambiente: 'homologacao', modalidade: 'svc_rs', motivo: 'SEFAZ-AM fora do ar desde as 9h', inicio_em: inicio, ligada_por: uuid(1) });
+      const r = await criarServicoEmissao({ ...m.deps, contingencia: c.repo }).emitirNota(tx, TENANT, entrada());
+      if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+      expect(r.nota.tp_emis).toBe(1);
+      expect(r.nota.chave_acesso.slice(34, 35)).toBe('1');
+      expect(m.recebidas.at(-1)!.ide).not.toHaveProperty('dhCont');
+      expect(m.conteudos.get(r.nota.id)?.contingencia).toBeUndefined();
+    });
+
+    it('RN-FAT-05: SVC que não é a da UF da filial (AM é SVC-RS) é violação ANTES de reservar o número: a série não anda', async () => {
+      const m = montar();
+      const { svc } = await abrir('svc_an', m);
+      const r = await svc.emitirNota(tx, TENANT, entrada());
+      expect(!r.ok && r.violacoes[0]).toMatchObject({ rn: 'RN-FAT-05', campo: 'contingencia' });
+      expect(m.estado.reservas).toBe(0);
+    });
+
+    it('RN-FAT-05: a EPEC aberta é da etapa 3 e não muda a emissão aqui (tpEmis 1)', async () => {
+      const m = montar();
+      const { svc } = await abrir('epec', m);
+      const r = await svc.emitirNota(tx, TENANT, entrada());
+      expect(r.ok && r.nota.tp_emis).toBe(1);
+    });
+
+    it('RN-FAT-07/08: o reenvio da rejeitada em SVC mantém o tpEmis, o dhCont e o xJust da nota (a chave leva o tpEmis), mesmo com a contingência já encerrada', async () => {
+      const m = montar();
+      const { c, svc } = await abrir('svc_rs', m);
+      const r = await svc.emitirNota(tx, TENANT, entrada());
+      if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+      await m.repo.mudarStatus(tx, r.nota.id, 'rascunho', 'em_autorizacao');
+      await m.svc.processarRetorno(tx, m.notas.get(r.nota.id)!, retorno('778', 'x'), opcoes);
+      await c.repo.encerrar(tx, IDS.filial, 'producao', new Date('2026-11-21T10:00:00Z'), uuid(1));
+      const re = await svc.reenviarNota(tx, m.notas.get(r.nota.id)!);
+      expect(re.ok && re.nota).toMatchObject({ status: 'rejeitada', numero: 100, revisao: 2 });
+      expect(m.recebidas.at(-1)!.ide).toMatchObject({ tpEmis: 7, dhCont: '2026-11-21T09:00:00.000Z' });
+      expect(m.conteudos.get(r.nota.id)?.contingencia?.tpEmis).toBe(7);
+    });
   });
 });
