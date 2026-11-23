@@ -223,6 +223,7 @@ describe('CNPJ alfanumérico (jul/2026) do emitente: da NotaParaEmissao ao 100 n
 });
 
 describe('C3, critério da F4 em miniatura: 20 notas autorizadas em sequência, sem buraco, com o nfeProc', () => {
+  // Limite próprio: 20 notas assinadas, transmitidas e com XSD em worker thread, sob a carga do turbo; sozinho, cerca de 10 s.
   it('nNF 1 a 20 da série 2: 20 × 100, nProt únicos e o nfeProc (NF-e + protNFe) válido no XSD', async () => {
     const autorizadas: Array<{ nNF: number; nProt: string; proc: string }> = [];
     for (let nNF = 1; nNF <= 20; nNF++) {
@@ -242,7 +243,7 @@ describe('C3, critério da F4 em miniatura: 20 notas autorizadas em sequência, 
     expect(new Set(autorizadas.map((a) => a.nProt)).size).toBe(20);
     const xsd = await Promise.all(autorizadas.map((a) => validarXsd(a.proc, 'procNFe')));
     expect(xsd.flatMap((v) => v.erros)).toEqual([]);
-  });
+  }, 90_000);
 });
 
 describe('a fiação do worker: seletor com as duas fábricas', () => {
