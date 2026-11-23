@@ -11,6 +11,12 @@ import { violacao, type Violacao } from './violacao';
 
 /** Valores da coluna `modalidade` de faturamento.contingencia (0013 + 0032 acrescenta 'epec'). A contingência é por filial E ambiente: a API filtra (tenant, filial, ambiente) e checa a uma-aberta-por-vez; o domínio não recebe o ambiente. */
 export type ModalidadeContingencia = 'svc_an' | 'svc_rs' | 'epec';
+/**
+ * Bandeira da EPEC (decisão do PO, 23/11): na v0.3.0 só a SVC entra; a EPEC está pronta e DESLIGADA, sem aparecer na tela e sem abrir pela API (422 RN-FAT-05).
+ * Liga na versão que trouxer a migração 0034 (guarda do XML do evento EPEC) e a consulta de evento no AN. Vira `true` só então.
+ */
+export const EPEC_LIGADA = false;
+export const MENSAGEM_EPEC_DESLIGADA = 'A EPEC ainda não está disponível. Use SVC.';
 export type TpEmisContingencia = 4 | 6 | 7;
 export const TP_EMIS_DA_MODALIDADE: Readonly<Record<ModalidadeContingencia, TpEmisContingencia>> = { 'svc_an': 6, 'svc_rs': 7, epec: 4 };
 
@@ -58,6 +64,8 @@ export interface EntradaContingencia {
   /** Coluna `inicio_em` (vira dhCont no XML). */
   inicioEm: Date;
   agora: Date;
+  /** Bandeira injetável (padrão `EPEC_LIGADA`): os testes da EPEC ligam por aqui. */
+  epecLigada?: boolean;
 }
 
 /** RN-FAT-10: recusa filial com NF-e simulada. RN-FAT-05: modalidade v1 (FS-DA fora), xJust de 15 a 256 caracteres pela regra do Texto do emissor (sem espaço nas pontas nem duplo, sem controle); dhCont válido e nunca depois de `agora` (sem tolerância: não passa do dhEmi). */
@@ -65,6 +73,7 @@ export function validarEntradaContingencia(e: EntradaContingencia): Violacao[] {
   const v: Violacao[] = [];
   if (e.nfeSimulada) v.push(violacao('RN-FAT-10', 'nfeSimulada', 'Filial com NF-e simulada não entra em contingência.'));
   if (!(e.modalidade in TP_EMIS_DA_MODALIDADE)) v.push(violacao('RN-FAT-05', 'modalidade', 'Modalidade de contingência desconhecida.'));
+  else if (e.modalidade === 'epec' && !(e.epecLigada ?? EPEC_LIGADA)) v.push(violacao('RN-FAT-05', 'modalidade', MENSAGEM_EPEC_DESLIGADA));
   if (!textoDoEmissorValido(e.motivo)) v.push(violacao('RN-FAT-05', 'motivo', 'A justificativa não pode ter espaços no início, no fim ou repetidos, nem tabulação, quebra de linha ou caractere de controle.'));
   const n = e.motivo.length;
   if (n < MOTIVO_MIN || n > MOTIVO_MAX) v.push(violacao('RN-FAT-05', 'motivo', `A justificativa deve ter de ${MOTIVO_MIN} a ${MOTIVO_MAX} caracteres (tem ${n}).`));

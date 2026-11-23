@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRAZO_TRANSMISSAO_EPEC_HORAS, SVC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
-import { alertaPrazoEpec, aplicarContingenciaAoConteudo, modoDoTransporte, TABELA_SVC_PADRAO, contaComoFaturada, modalidadeDaUf, prazoEpec, PRAZO_EPEC_HORAS, situacaoPrazoEpec, sugerirContingencia, podeTransmitirNaVolta, type TabelaSvc, transicaoEntradaContingencia, transicaoVoltaContingencia, validarEntradaContingencia } from './contingencia';
+import { EPEC_LIGADA, alertaPrazoEpec, aplicarContingenciaAoConteudo, modoDoTransporte, TABELA_SVC_PADRAO, contaComoFaturada, modalidadeDaUf, prazoEpec, PRAZO_EPEC_HORAS, situacaoPrazoEpec, sugerirContingencia, podeTransmitirNaVolta, type TabelaSvc, transicaoEntradaContingencia, transicaoVoltaContingencia, validarEntradaContingencia } from './contingencia';
 import type { ConteudoNota } from './tipos-nota';
 
 const agora = new Date('2026-11-22T14:00:00Z');
@@ -17,7 +17,7 @@ describe('contingência da NF-e (RN-FAT-05, 08, 09, 10)', () => {
     expect(validarEntradaContingencia({ nfeSimulada: false, modalidade: 'svc_rs', motivo, inicioEm: new Date('2026-11-22T13:00:00Z'), agora })).toEqual([]);
   });
   it('RN-FAT-05: o operador informa o motivo de 15 a 256 caracteres, sem espaços nas pontas', () => {
-    const base = { nfeSimulada: false, modalidade: 'epec' as const, inicioEm: agora, agora };
+    const base = { nfeSimulada: false, modalidade: 'epec' as const, inicioEm: agora, agora, epecLigada: true };
     expect(validarEntradaContingencia({ ...base, motivo: 'a'.repeat(14) })[0]).toMatchObject({ rn: 'RN-FAT-05', campo: 'motivo' });
     expect(validarEntradaContingencia({ ...base, motivo: 'a'.repeat(15) })).toEqual([]);
     expect(validarEntradaContingencia({ ...base, motivo: 'a'.repeat(256) })).toEqual([]);
@@ -33,7 +33,7 @@ describe('contingência da NF-e (RN-FAT-05, 08, 09, 10)', () => {
     expect(validarEntradaContingencia({ ...base, inicioEm: new Date('x') })[0]).toMatchObject({ campo: 'inicioEm' });
   });
   it('RN-FAT-05: o motivo (xJust) segue o Texto do emissor: sem espaço duplo, tab, quebra de linha ou caractere de controle', () => {
-    const base = { nfeSimulada: false, modalidade: 'epec' as const, inicioEm: agora, agora };
+    const base = { nfeSimulada: false, modalidade: 'epec' as const, inicioEm: agora, agora, epecLigada: true };
     for (const m of ['SEFAZ fora  do ar desde as 9h', 'SEFAZ fora\tdo ar desde as 9h', 'SEFAZ fora do ar\ndesde as 9h', 'SEFAZ fora do ar\u0000 desde 9h', 'SEFAZ fora do ar desde 9h\u007f', 'SEFAZ fora do ar desde 9h ', '\tSEFAZ fora do ar desde 9h']) {
       const r = validarEntradaContingencia({ ...base, motivo: m });
       expect(r.length, JSON.stringify(m)).toBeGreaterThan(0);
@@ -143,6 +143,18 @@ describe('contingência da NF-e (RN-FAT-05, 08, 09, 10)', () => {
   });
   it('RN-FAT-05/08: o modo do transporte vem do tpEmis da nota: 6 vai à SVC-AN, 7 à SVC-RS; 1 e 4 (EPEC volta pelo normal) ao autorizador normal', () => {
     expect([1, 4, 6, 7].map((t) => modoDoTransporte(t as 1 | 4 | 6 | 7))).toEqual(['normal', 'normal', 'svc-an', 'svc-rs']);
+  });
+});
+
+describe('EPEC desligada na v0.3.0 (RN-FAT-05, decisão do PO)', () => {
+  const base = { nfeSimulada: false, motivo, inicioEm: agora, agora };
+  it('RN-FAT-05: a bandeira EPEC_LIGADA vem desligada e a modalidade epec é recusada com mensagem curta; SVC passa', () => {
+    expect(EPEC_LIGADA).toBe(false);
+    expect(validarEntradaContingencia({ ...base, modalidade: 'epec' })).toEqual([expect.objectContaining({ rn: 'RN-FAT-05', campo: 'modalidade', mensagem: 'A EPEC ainda não está disponível. Use SVC.' })]);
+    expect(validarEntradaContingencia({ ...base, modalidade: 'svc_rs' })).toEqual([]);
+  });
+  it('RN-FAT-05: com a bandeira injetada ligada a EPEC passa (o caminho segue coberto)', () => {
+    expect(validarEntradaContingencia({ ...base, modalidade: 'epec', epecLigada: true })).toEqual([]);
   });
 });
 

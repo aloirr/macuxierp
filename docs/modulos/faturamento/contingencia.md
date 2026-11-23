@@ -2,6 +2,16 @@
 
 Desenho de 22/11/2026 (Manaus). Regras (doc 03 v0.2.1, PR #262): **RN-FAT-05** (o operador decide a entrada; o sistema sugere), **RN-FAT-08** (mesma série e número; tpEmis e xJust no XML; EPEC só conta como faturada após o evento registrado (cStat 136)), **RN-FAT-09** (o operador encerra; EPEC em fila na volta, dentro do prazo), **RN-FAT-10** (filial com NF-e simulada não entra); RF-FAT-05. Modalidades v1 a registrar em ADR. FS-DA fora.
 
+## v0.3.0: só SVC; EPEC desligada (decisão do PO, 23/11)
+
+Na v0.3.0 entra só a SVC. A EPEC (código, transmissor, volta, alerta de 168 h, DANFE) está pronta e testada, mas **desligada**:
+
+- **Bandeira** `EPEC_LIGADA = false` (`domain/contingencia.ts`). `validarEntradaContingencia` recusa a modalidade `epec` com `RN-FAT-05` ("A EPEC ainda não está disponível. Use SVC."); a rota `POST /filiais/:id/contingencia` responde 422. Sem EPEC aberta, a emissão com tpEmis 4 não é alcançável. A bandeira é injetável (`epecLigada` em `DepsRotas` e em `EntradaContingencia`; padrão `EPEC_LIGADA`), e os testes da EPEC ligam por aí.
+- **Tela:** o diálogo de abrir não oferece EPEC; a página `epec-pendentes` e a faixa do alerta de 168 h saem do registro e do menu (`PAGINAS_FATURAMENTO`). Os descritores seguem exportados.
+- **Evento** `faturamento.nota.emitida_contingencia@1`: fora do `manifest.ts` (o schema Zod fica em `contracts`, reservado).
+
+**Para ligar a EPEC:** (1) migração 0034 (guarda do XML do evento EPEC); (2) consulta de evento no Ambiente Nacional; (3) evento `emitida_contingencia@1` de volta ao manifest; (4) consumidores no `pedido` e no `integracao-fdv`; (5) página `epec-pendentes` de volta ao menu; (6) `EPEC_LIGADA = true`, com o ajuste do teste da lista travada de rotas do shell.
+
 ## Modalidades na v1
 - **SVC-AN (tpEmis 6)** e **SVC-RS (tpEmis 7)**: a nota é autorizada no ambiente SVC (autorização normal, com protocolo). SVC que atende cada UF vem por parâmetro (`modalidadeDaUf(uf, tabela)`). **ADR 0011:** a tabela UF -> SVC fica só em `packages/nfe-sefaz` (`SVC_DA_UF`); o domain não tem tabela (`TABELA_SVC_PADRAO` removida) e a api passa a do pacote quando o PR do engenheiro entrar. UF fora da tabela devolve nulo. **AM = SVC-RS, a conferir (ADR 0011).**
 - **EPEC (tpEmis 4, evento 110140)**: a SEFAZ autoriza só o evento (cStat 136); a NF-e é transmitida depois. Decisão do PO (07h05 de 22/11/2026 Manaus, PR #271, com a conferência do fiscal): a transmissão posterior sai assim que a SEFAZ normal responder, **no máximo 168 h depois da autorização do EPEC** (não da emissão nem do encerramento): `PRAZO_EPEC_HORAS = 168` (RN-FAT-09).

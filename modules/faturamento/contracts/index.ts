@@ -103,6 +103,7 @@ export const NotaAutorizadaPayload = BaseEventoNota.extend({
 export type NotaAutorizadaPayload = z.infer<typeof NotaAutorizadaPayload>;
 
 /**
+ * Reservado para a EPEC; entra no manifest quando a EPEC ligar (EPEC_LIGADA, v0.3.0 só com SVC; decisão do PO, 23/11).
  * `faturamento.nota.emitida_contingencia@1` (RN-FAT-07, RN-FAT-08): a EPEC foi REGISTRADA (evento 110140, cStat 136; `emitida_contingencia`), mas a NF-e ainda NÃO está autorizada.
  * Leva o mesmo que `nota.autorizada@1` leva ao pedido e ao retorno ao FDV (pedido_id, pedido_uuid, número, série, chave, itens e quantidades, `conta_como_real`), mais `tp_emis` 4 e o
  * protocolo e a data do EVENTO. `nota.protocolo` é nulo (a NF-e não tem protocolo de autorização). Publicado na MESMA transação do UPDATE para `emitida_contingencia`, depois da guarda do

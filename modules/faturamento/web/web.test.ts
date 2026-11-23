@@ -476,10 +476,11 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(publico.requisicaoEncerrarContingencia(FILIAL, 'chave-cont-0002')).toEqual({ ok: true, requisicao: { metodo: 'POST', caminho: `/v1/faturamento/filiais/${FILIAL}/contingencia/encerrar`, cabecalhos: { 'Idempotency-Key': 'chave-cont-0002' } } });
     expect(publico.requisicaoEncerrarContingencia(FILIAL, 'x').ok).toBe(false);
   });
-  it('RN-FAT-05: o diálogo de abertura tem as 3 modalidades, o contador do motivo e o aviso', () => {
+  it('RN-FAT-05: o diálogo de abertura oferece só a SVC (EPEC desligada), o contador do motivo e o aviso', () => {
     const d = publico.dialogoAbrirContingencia({ nome: 'Matriz' });
     expect(d.titulo).toBe('Entrar em contingência: Matriz');
-    expect(d.modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs', 'epec']);
+    expect(d.modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs']); // EPEC desligada na v0.3.0
+    expect(publico.dialogoAbrirContingencia({}, true).modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs', 'epec']);
     expect(d.validar({ texto: 'curto' })).toBe('O motivo deve ter de 15 a 256 caracteres.');
     expect(d.validar({ texto: MOTIVO })).toBeNull();
     expect(d.contador('curto')).toBe('faltam 10 caracteres');
@@ -506,7 +507,7 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(publico.acoesDaContingencia('administrador', true)).toEqual({ abrir: 'a filial já está em contingência.', encerrar: null });
     for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true)).toEqual({ abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
   });
-  it('RN-FAT-09: a lista das EPEC pendentes mostra o prazo; vencido em tom de erro; CSV no fuso; página no menu das notas', () => {
+  it('RN-FAT-09: a lista das EPEC pendentes mostra o prazo; vencido em tom de erro; CSV no fuso; página fora do menu até a EPEC ligar', () => {
     expect(publico.ROTULO_PRAZO_EPEC).toMatchObject({ no_prazo: { texto: 'No prazo', tom: 'ok' }, perto_do_fim: { tom: 'alerta' }, vencido: { texto: 'Vencido', tom: 'erro' } });
     const linha = { id: ID, filial_id: ID, ambiente: 'producao', serie: 1, numero: 7, chave_acesso: null, status: 'emitida_contingencia', epec_protocolo: '113260000000001', epec_autorizada_em: '2026-11-21T14:00:00.000Z', prazo_ate: '2026-11-28T14:00:00.000Z', situacao_prazo: 'vencido' };
     const csv = publico.csvDaPagina(publico.paginaEpecPendentes, [linha], 'America/Manaus');
@@ -515,7 +516,7 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(csv).toContain('28/11/2026 10:00');
     expect(csv).toContain('Vencido');
     expect(publico.paginaEpecPendentes.api).toBe(publico.urlDasEpecPendentes());
-    expect(publico.PAGINAS_FATURAMENTO.find((p) => p.id === 'epec-pendentes')).toMatchObject({ menu: 'Notas fiscais', rota: '/faturamento/epec-pendentes' });
+    expect(publico.PAGINAS_FATURAMENTO.find((p) => p.id === 'epec-pendentes')).toBeUndefined(); // fora do registro e do menu na v0.3.0
     expect(publico.ROTULO_LINHA['epec-pendentes'](linha as never)).toBe('Abrir a nota 7/1 em contingência');
   });
 });

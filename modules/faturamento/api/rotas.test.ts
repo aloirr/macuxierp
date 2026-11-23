@@ -20,7 +20,7 @@ function ambiente(perfil: Perfil = 'faturista', danfe?: DepsRotas['danfe']) {
   const tit = titulosFake();
   const cfg = configuracaoFake();
   const cont = contingenciaFake(epecDeTeste);
-  const deps = { ...f.deps, titulos: tit.repo, configuracao: cfg.repo, contingencia: cont.repo } as DepsRotas;
+  const deps = { ...f.deps, titulos: tit.repo, configuracao: cfg.repo, contingencia: cont.repo, epecLigada: true } as DepsRotas; // os testes da EPEC cobrem o caminho ligado; o teste da bandeira desliga
   if (danfe) deps.danfe = danfe;
   const plugin = criarPluginFaturamento(deps);
   const trabalhos: { tipo: string; payload: Record<string, unknown>; external_id?: string }[] = [];
@@ -567,6 +567,14 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
       await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ inicio_em: '2026-11-21T14:31:00.000Z' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-05' });
       expect(() => a.rota('POST', '/filiais/:id/contingencia').corpo!.parse(abrirCorpo({ modalidade: 'fs_da' }))).toThrow();
       expect(a.cont.linhas).toHaveLength(0);
+    });
+
+    it('RN-FAT-05: EPEC desligada na v0.3.0: abrir com modalidade epec dá 422 RN-FAT-05 com mensagem curta e nada é gravado; SVC abre', async () => {
+      const a = ambiente('administrador');
+      a.deps.epecLigada = false; // o padrão do módulo (EPEC_LIGADA)
+      await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-05', message: 'A EPEC ainda não está disponível. Use SVC.' });
+      expect(a.cont.linhas).toHaveLength(0);
+      expect((await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'svc_rs' }) })).status).toBe(201);
     });
 
     it('RN-FAT-10: filial com NF-e simulada não entra em contingência (422)', async () => {

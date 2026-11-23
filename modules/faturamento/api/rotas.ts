@@ -61,7 +61,7 @@ const SOMENTE_ADMINISTRADOR = (c: ContextoRota): void => {
 };
 
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
-export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
+export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; /** Padrão `EPEC_LIGADA` (desligada na v0.3.0); os testes da EPEC ligam por aqui. */ epecLigada?: boolean; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
 
 /** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06). A rota usa `faturamento.ver` (licença e tenant) e confere o perfil aqui, até existir ação própria no platform-sdk. */
 const SO_QUEM_BAIXA = (c: ContextoRota): void => {
@@ -435,7 +435,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         if (e.corpo.ambiente && e.corpo.ambiente !== ambiente) throw erros.regra('RN-FAT-04', `A filial emite em ${ambiente}; a contingência é aberta no ambiente da filial.`, { ambiente: 'diferente do ambiente da filial' });
         const inicioEm = e.corpo.inicio_em ? new Date(e.corpo.inicio_em) : c.agora;
         const v = validarEntradaContingencia({
-          nfeSimulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id), modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicioEm, agora: c.agora,
+          nfeSimulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id), modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicioEm, agora: c.agora, ...(deps.epecLigada !== undefined ? { epecLigada: deps.epecLigada } : {}),
         });
         if (v.length > 0) throw erroDeViolacoes(v);
         if (await repo.aberta(c.tx, filial_id, ambiente)) throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');

@@ -180,13 +180,15 @@ export interface PaginaFaturamento extends PaginaBase {
 
 const VER = 'faturamento.ver' as const;
 
-/** Ordem: o item de menu leva à primeira página visível do menu. `/notas/:id` abre pela lista e fica fora do menu. */
+/**
+ * EPEC desligada na v0.3.0 (`EPEC_LIGADA`): a página `epec-pendentes` (`paginaEpecPendentes`) fica fora desta lista, logo fora do registro e do menu; volta quando a EPEC ligar:
+ * `{ id: 'epec-pendentes', tipo: 'lista', menu: 'Notas fiscais', titulo: 'EPEC pendentes', rota: '/faturamento/epec-pendentes', api: paginaEpecPendentes.api, ver: VER }`.
+ * Ordem: o item de menu leva à primeira página visível do menu. `/notas/:id` abre pela lista e fica fora do menu. */
 export const PAGINAS_FATURAMENTO: readonly PaginaFaturamento[] = [
   { id: 'pedidos-a-faturar', tipo: 'lista', menu: 'Pedidos a faturar', titulo: 'Pedidos a faturar', rota: '/faturamento/pedidos-a-faturar', api: paginaPedidosAFaturar.api, ver: VER },
   { id: 'notas', tipo: 'lista', menu: 'Notas fiscais', titulo: 'Notas fiscais', rota: '/faturamento/notas', api: paginaNotas.api, ver: VER },
   { id: 'nota', tipo: 'detalhe', menu: 'Notas fiscais', titulo: 'Nota fiscal', rota: '/faturamento/notas/:id', ver: VER, ocultaNoMenu: true },
   { id: 'rejeicoes', tipo: 'lista', menu: 'Rejeições', titulo: 'Rejeições', rota: '/faturamento/rejeicoes', api: paginaRejeicoes.api, ver: VER },
-  { id: 'epec-pendentes', tipo: 'lista', menu: 'Notas fiscais', titulo: 'EPEC pendentes', rota: '/faturamento/epec-pendentes', api: paginaEpecPendentes.api, ver: VER },
   { id: 'titulos', tipo: 'lista', menu: 'Títulos a receber', titulo: 'Títulos a receber', rota: '/faturamento/titulos', api: paginaTitulos.api, ver: VER },
   /** Detalhe do título (baixa e estorno: `acoesDoTitulo`, `formularioBaixa`, `dialogoEstornar`, `situacaoDoTitulo`): abre pela lista. */
   { id: 'titulo', tipo: 'detalhe', menu: 'Títulos a receber', titulo: 'Título a receber', rota: '/faturamento/titulos/:id', ver: VER, ocultaNoMenu: true },

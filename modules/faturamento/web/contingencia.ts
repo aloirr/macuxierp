@@ -5,7 +5,7 @@
 import { type Perfil } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { AbrirContingenciaEntrada, type AlertaPrazoEpec, type Ambiente, type ModalidadeContingencia, type SituacaoPrazoEpec } from '../contracts';
-import { MOTIVO_MAX, MOTIVO_MIN, PRAZO_EPEC_HORAS } from '../domain/contingencia';
+import { EPEC_LIGADA, MOTIVO_MAX, MOTIVO_MIN, PRAZO_EPEC_HORAS } from '../domain/contingencia';
 import { BASE_API, comChave, dialogoDeTexto, exigirChave, falha, mensagemDeTamanho, postSemCorpo, type DialogoDeTexto, type Montagem, type Selo } from './notas';
 
 export const ROTULO_MODALIDADE: Readonly<Record<ModalidadeContingencia, { rotulo: string; dica: string }>> = {
@@ -61,7 +61,7 @@ export interface DialogoAbrirContingencia extends DialogoDeTexto {
 }
 
 /** Diálogo de abertura: a modalidade e o motivo (contador); o aviso diz o que muda. */
-export const dialogoAbrirContingencia = (filial: { nome?: string | null } = {}): DialogoAbrirContingencia => ({
+export const dialogoAbrirContingencia = (filial: { nome?: string | null } = {}, epecLigada: boolean = EPEC_LIGADA): DialogoAbrirContingencia => ({
   ...dialogoDeTexto({
     titulo: filial.nome ? `Entrar em contingência: ${filial.nome}` : 'Entrar em contingência?',
     aviso: 'Use quando a SEFAZ não responde. As notas emitidas daqui até você encerrar saem em contingência.',
@@ -69,7 +69,8 @@ export const dialogoAbrirContingencia = (filial: { nome?: string | null } = {}):
     minimo: MOTIVO_MIN, maximo: MOTIVO_MAX, mensagem: mensagemDeTamanho('O motivo', { min: MOTIVO_MIN, max: MOTIVO_MAX }),
   }),
   rotuloModalidade: 'Modalidade',
-  modalidades: (Object.keys(ROTULO_MODALIDADE) as ModalidadeContingencia[]).map((valor) => ({ valor, ...ROTULO_MODALIDADE[valor] })),
+  /** Sem a bandeira da EPEC (v0.3.0), a EPEC não é oferecida; a API recusa com 422 de qualquer jeito. */
+  modalidades: (Object.keys(ROTULO_MODALIDADE) as ModalidadeContingencia[]).filter((valor) => valor !== 'epec' || epecLigada).map((valor) => ({ valor, ...ROTULO_MODALIDADE[valor] })),
 });
 
 export const dialogoEncerrarContingencia = (filial: { nome?: string | null } = {}): { titulo: string; aviso: string; rotuloConfirmar: string; rotuloFechar: string; destrutivo: false } => ({
