@@ -81,6 +81,8 @@ export interface OpcoesAppPg {
   b: BancoEfemero;
   versao?: string;
   jwtSegredo?: string;
+  /** `MACUXIERP_SEGREDO_BFF` de teste (T-0050), gerado pelo próprio teste; padrão: ausente. */
+  segredoBff?: string;
   relogio?: Relogio;
   avisosA1?: DependenciasApp['avisosA1'];
   /**
@@ -104,7 +106,7 @@ export interface OpcoesAppPg {
  */
 export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstance; modulos: readonly PluginModulo[] }> {
   const jwtSegredo = o.jwtSegredo ?? JWT_SEGREDO_DE_TESTE;
-  const producao = montarDependenciasProducao({ banco: o.b.banco('macuxierp_app'), chaveA1: o.chaveA1 ?? randomBytes(32), chaveIntegracao: o.chaveIntegracao ?? null, config: { versao: o.versao ?? 'teste', jwtSegredo, cookieSeguro: true } });
+  const producao = montarDependenciasProducao({ banco: o.b.banco('macuxierp_app'), chaveA1: o.chaveA1 ?? randomBytes(32), chaveIntegracao: o.chaveIntegracao ?? null, config: { versao: o.versao ?? 'teste', jwtSegredo, cookieSeguro: true, segredoBff: o.segredoBff ?? null } });
   const modulos =
     o.modulos === undefined || o.modulos === 'teste'
       ? montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()) })

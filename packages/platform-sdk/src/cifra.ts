@@ -11,6 +11,9 @@ const NONCE = 12;
 const TAG = 16;
 const ALGORITMO = 'aes-256-gcm';
 
+/** 32 bytes em hex (64 caracteres). */
+export const PADRAO_HEX_32 = /^[0-9a-fA-F]{64}$/;
+
 /** Erro da cifra. A mensagem é fixa (ou cita só o nome da variável de ambiente). */
 export class ErroCifra extends Error {
   override readonly name = 'ErroCifra';
@@ -19,7 +22,7 @@ export class ErroCifra extends Error {
 /** Lê a chave mestra (32 bytes em hex de 64 caracteres ou base64). O erro cita só `nomeVar`, nunca o valor. */
 export function lerChaveMestra(nomeVar: string, valor: string | undefined): Buffer {
   const v = (valor ?? '').trim();
-  const bytes = /^[0-9a-fA-F]{64}$/.test(v) ? Buffer.from(v, 'hex') : /^[A-Za-z0-9+/]+={0,2}$/.test(v) ? Buffer.from(v, 'base64') : Buffer.alloc(0);
+  const bytes = PADRAO_HEX_32.test(v) ? Buffer.from(v, 'hex') : /^[A-Za-z0-9+/]+={0,2}$/.test(v) ? Buffer.from(v, 'base64') : Buffer.alloc(0);
   if (bytes.length !== 32) throw new ErroCifra(`${nomeVar} ausente ou inválida: precisa de 32 bytes (hex ou base64)`);
   return bytes;
 }

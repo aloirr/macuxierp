@@ -89,6 +89,7 @@ services:
       PGUSER: macuxierp_app
       PGPASSWORD: ${MACUXIERP_SENHA_APP:?gerados.env sem MACUXIERP_SENHA_APP (preparar-vm.sh)}
       MACUXIERP_JWT_SEGREDO: ${MACUXIERP_JWT_SEGREDO:?gerados.env sem MACUXIERP_JWT_SEGREDO (preparar-vm.sh)}
+      MACUXIERP_SEGREDO_BFF: ${MACUXIERP_SEGREDO_BFF:?gerados.env sem MACUXIERP_SEGREDO_BFF (preparar-vm.sh)}
       MACUXIERP_HOST: 0.0.0.0
       MACUXIERP_PORTA: '8100'
       MACUXIERP_COOKIE_SEGURO: '1'
@@ -159,6 +160,7 @@ services:
     image: ${MACUXIERP_IMAGEM_WEB:?rode o implantar.sh (grava imagens.env)}
     environment:
       MACUXIERP_API_URL: http://macuxierp-api:8100
+      MACUXIERP_SEGREDO_BFF: ${MACUXIERP_SEGREDO_BFF:?gerados.env sem MACUXIERP_SEGREDO_BFF (preparar-vm.sh)}
       NODE_OPTIONS: --max-old-space-size=256
     depends_on:
       macuxierp-api:
