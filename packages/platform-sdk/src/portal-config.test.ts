@@ -92,13 +92,17 @@ describe('contratos do portal /config (ADR 0012)', () => {
     expect(PADRAO_CODIGO_EMPRESA.test('am2808')).toBe(true);
   });
 
-  it('RN-CORE-11: CriarEmpresaEntrada (fase 1) com o código do FDV ou o slug legado; a saída mantém o slug', () => {
+  it('RN-CORE-11: CriarEmpresaEntrada (fase 2) com o código do FDV, o slug legado ou só a UF (sorteio, slug null)', () => {
     expect(CriarEmpresaEntrada.parse({ codigo: ' am2808 ', nome: 'ACME' })).toEqual({ slug: 'am2808', uf: null, nome: 'ACME', fuso: 'America/Manaus' });
     expect(CriarEmpresaEntrada.parse({ codigo: 'AM2808', uf: 'AM', nome: 'ACME' })).toEqual({ slug: 'am2808', uf: 'AM', nome: 'ACME', fuso: 'America/Manaus' });
     expect(CriarEmpresaEntrada.parse({ slug: 'acme-1', nome: 'ACME' })).toEqual({ slug: 'acme-1', uf: null, nome: 'ACME', fuso: 'America/Manaus' });
     // a saída reenviada (apps/web → API) continua válida e igual
     const saida = CriarEmpresaEntrada.parse({ codigo: 'RR0001', nome: 'ACME' });
     expect(CriarEmpresaEntrada.parse(saida)).toEqual(saida);
+    // só a UF: o core sorteia o código; a saída vem com slug null e também pode ser reenviada
+    const sorteio = CriarEmpresaEntrada.parse({ uf: 'RR', nome: 'ACME' });
+    expect(sorteio).toEqual({ slug: null, uf: 'RR', nome: 'ACME', fuso: 'America/Manaus' });
+    expect(CriarEmpresaEntrada.parse(sorteio)).toEqual(sorteio);
     expect(CriarEmpresaEntrada.safeParse({ codigo: 'XX1234', nome: 'ACME' }).success).toBe(false);
     expect(CriarEmpresaEntrada.safeParse({ codigo: 'AM2808', uf: 'XX', nome: 'ACME' }).success).toBe(false);
 
@@ -107,9 +111,8 @@ describe('contratos do portal /config (ADR 0012)', () => {
       expect(r.success).toBe(false);
       return r.error?.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message }));
     };
-    // só a UF (sorteio) fica para a fase 2: por ora é recusada
-    expect(problema({ uf: 'RR', nome: 'ACME' })).toEqual([{ campo: 'codigo', mensagem: 'Informe o código do FDV' }]);
-    expect(problema({ nome: 'ACME' })).toEqual([{ campo: 'codigo', mensagem: 'Informe o código do FDV' }]);
+    expect(problema({ nome: 'ACME' })).toEqual([{ campo: 'codigo', mensagem: 'Informe o código do FDV ou a UF para sortear' }]);
+    expect(problema({ slug: null, uf: null, nome: 'ACME' })).toEqual([{ campo: 'codigo', mensagem: 'Informe o código do FDV ou a UF para sortear' }]);
     expect(problema({ codigo: 'AM2808', uf: 'RR', nome: 'ACME' })).toEqual([{ campo: 'uf', mensagem: 'A UF precisa ser a do código' }]);
     expect(problema({ codigo: 'AM2808', slug: 'acme', nome: 'ACME' })?.map((p) => p.campo)).toEqual(['slug']);
     expect(problema({ slug: 'acme', uf: 'AM', nome: 'ACME' })).toEqual([{ campo: 'uf', mensagem: 'A UF precisa ser a do código' }]);
