@@ -47,6 +47,11 @@ describe('botões (MC-0008): um principal e um secundário', () => {
     expect(css).toContain('.mx-botao {');
     expect(css).toContain('.mx-botao-secundario {');
   });
+  it('.mx-checkbox e .mx-radio desabilitados não parecem editáveis', () => {
+    expect(gerarCssBotoes()).toContain(
+      '.mx-checkbox:disabled, .mx-radio:disabled {\n  opacity: 0.55;\n  cursor: not-allowed;\n}',
+    );
+  });
 });
 
 describe('DialogoMotivo: rotuloFechar e destrutivo', () => {

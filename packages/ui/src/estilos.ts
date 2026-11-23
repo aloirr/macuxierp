@@ -127,7 +127,8 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-checkbox:checked', checkboxMarcado) +
     regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
-    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true))
+    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true)) +
+    regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true))
   );
 }
 

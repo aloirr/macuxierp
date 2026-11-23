@@ -81,3 +81,7 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+.mx-checkbox:disabled, .mx-radio:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
