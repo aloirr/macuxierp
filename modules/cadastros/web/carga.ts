@@ -29,8 +29,9 @@ export const PAGINA_CARGA: PaginaCarga = {
 };
 
 export const ROTULOS_ENTIDADE: Readonly<Record<ResultadoEntidade['entidade'], string>> = {
-  filial: 'Filiais', vendedor: 'Vendedores', forma_pagamento: 'Formas de pagamento', prazo_pagamento: 'Prazos de pagamento', produto: 'Produtos',
-  produto_unidade: 'Unidades do produto', preco: 'Preços', estoque: 'Estoque', cliente: 'Clientes', cliente_endereco: 'Endereços de clientes',
+  filial: 'Filiais', vendedor: 'Vendedores', condicao_pagamento: 'Condições de pagamento', produto: 'Produtos',
+  produto_unidade: 'Unidades do produto', preco: 'Preços', estoque: 'Estoque', cliente: 'Clientes (com endereços)',
+  forma_pagamento: 'Formas de pagamento (agora em condições)', prazo_pagamento: 'Prazos de pagamento (agora em condições)', cliente_endereco: 'Endereços de clientes (agora em clientes)',
   catalogo_no: 'Catálogo', tabela_escalonada: 'Tabela escalonada', transportadora: 'Transportadoras', rota: 'Rotas', titulo: 'Títulos', nota: 'Notas',
 };
 

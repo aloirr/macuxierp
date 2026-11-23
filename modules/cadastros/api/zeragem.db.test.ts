@@ -116,8 +116,8 @@ INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_des
     expect(await n('vendedor')).toBe(1);
   });
 
-  it('RN-CAD-10: forma_prazo livre sai e anula condicao_pagamento_id dos clientes; o cliente fica', async () => {
-    const p = await plano(['forma_prazo']);
+  it('RN-CAD-10: condicao_pagamento livre sai e anula condicao_pagamento_id dos clientes; o cliente fica', async () => {
+    const p = await plano(['condicao_pagamento']);
     const r = await aplicar(p);
     expect(r.apagados).toEqual([{ tabela: 'condicao_pagamento', quantidade: 1 }]);
     expect(r.anulados).toEqual([{ tabela: 'cliente', coluna: 'condicao_pagamento_id', quantidade: 2 }]);

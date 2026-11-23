@@ -1,11 +1,6 @@
-import type { EntidadeCarga, LinhasCarga } from '../../contracts';
+import type { EnderecoDaLinha, EntidadeCarga, LinhasCarga } from '../../contracts';
 import { validarFiscalProduto, type FatosFiscaisProduto } from '../produto';
 import { erroDeViolacao, erroLinha, type ErroLinha } from './erros';
-
-export interface ExtrasCriacao {
-  /** Nome da forma de pagamento (do lote ou do banco), para a descrição padrão da condição. */
-  formaNome?: string | null;
-}
 
 export type ResultadoCriacao<E extends EntidadeCarga> = { ok: true; linha: LinhasCarga[E] } | { ok: false; erros: ErroLinha[] };
 
@@ -13,7 +8,7 @@ const falta = (linha: number, campo: string, rn = 'CARGA_OBRIGATORIO', motivo = 
   erroLinha(linha, campo, rn, motivo);
 
 /** D6: padrões que valem só na criação. Devolve a linha completada ou os campos que faltam para criar. */
-export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: LinhasCarga[E], extras: ExtrasCriacao = {}): ResultadoCriacao<E> {
+export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: LinhasCarga[E]): ResultadoCriacao<E> {
   const erros: ErroLinha[] = [];
   const avisos = [...linha.avisos];
   const n = linha.linha;
@@ -35,14 +30,17 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       if (v.refs.filial === undefined) avisos.push('Vendedor sem filial: informe filial_external_id');
       break;
     }
-    case 'prazo_pagamento': {
-      const p = l as LinhasCarga['prazo_pagamento'];
-      if (p.dados.descricao === undefined && extras.formaNome != null && p.dados.prazos_dias !== undefined) {
-        p.dados.descricao = `${extras.formaNome} ${p.dados.prazos_dias.join('/')}`.slice(0, 60);
-      } else if (p.dados.descricao === undefined && extras.formaNome != null && p.dados.parcelas_cartao != null) {
-        p.dados.descricao = `${extras.formaNome} ${p.dados.parcelas_cartao}x`.slice(0, 60);
+    case 'condicao_pagamento': {
+      const p = l as LinhasCarga['condicao_pagamento'];
+      const d = p.dados;
+      if (d.codigo === undefined) erros.push(falta(n, 'codigo'));
+      if (d.forma_tpag === undefined) erros.push(falta(n, 'forma_codigo'));
+      if (d.descricao === undefined && d.forma_nome !== undefined && d.prazos_dias !== undefined) {
+        d.descricao = `${d.forma_nome} ${d.prazos_dias.join('/')}`.slice(0, 60);
+      } else if (d.descricao === undefined && d.forma_nome !== undefined && d.parcelas_cartao != null) {
+        d.descricao = `${d.forma_nome} ${d.parcelas_cartao}x`.slice(0, 60);
       }
-      if (p.dados.descricao === undefined) erros.push(falta(n, 'descricao'));
+      if (d.descricao === undefined) erros.push(falta(n, 'descricao'));
       break;
     }
     case 'produto': {
@@ -58,21 +56,13 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       const c = l as LinhasCarga['cliente'];
       if (c.dados.documento === undefined) erros.push(falta(n, 'documento'));
       if (c.dados.razao_social === undefined) erros.push(falta(n, 'razao_social'));
-      const e = c.endereco_principal;
+      // T-0058: o endereço principal sai da linha `principal` do grupo (a carga promove a 1ª linha quando não há).
+      const e = c.enderecos.find((x) => x.tipo === 'principal')?.dados;
       for (const campo of ['logradouro', 'bairro', 'municipio_ibge', 'uf', 'cep'] as const) {
         if (e?.[campo] === undefined) erros.push(falta(n, `endereco.${campo}`, 'RN-CAD-03', 'Endereço principal obrigatório para criar o cliente'));
       }
       if (e && e.numero === undefined) e.numero = 'S/N';
       if (c.dados.ind_ie_dest === undefined) c.dados.ind_ie_dest = '9';
-      break;
-    }
-    case 'cliente_endereco': {
-      const e = l as LinhasCarga['cliente_endereco'];
-      for (const campo of ['logradouro', 'bairro', 'municipio_ibge', 'uf', 'cep'] as const) {
-        if (e.dados[campo] === undefined) erros.push(falta(n, campo, campo === 'municipio_ibge' || campo === 'uf' ? 'RN-CAD-03' : 'CARGA_OBRIGATORIO'));
-      }
-      if (e.dados.numero === undefined) e.dados.numero = 'S/N';
-      if (e.dados.tipo === undefined) e.dados.tipo = 'entrega';
       break;
     }
     case 'produto_unidade': {
@@ -91,4 +81,13 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
 /** RN-CAD-04: NCM e CEST do lote conferidos contra as tabelas oficiais (os fatos vêm da API, que os busca de uma vez). */
 export function validarFiscalLinhaProduto(linha: number, fatos: FatosFiscaisProduto): ErroLinha[] {
   return validarFiscalProduto(fatos).map((v) => erroDeViolacao(linha, v));
+}
+
+/** T-0058: endereço novo do cliente (entrega, cobrança ou o principal que o grupo promoveu): campos obrigatórios e `numero` padrão `S/N`. */
+export function prepararEnderecoNovo(e: EnderecoDaLinha): { ok: true; dados: EnderecoDaLinha['dados'] } | { ok: false; erros: ErroLinha[] } {
+  const erros: ErroLinha[] = [];
+  for (const campo of ['logradouro', 'bairro', 'municipio_ibge', 'uf', 'cep'] as const) {
+    if (e.dados[campo] === undefined) erros.push(falta(e.linha, `endereco.${campo}`, campo === 'municipio_ibge' || campo === 'uf' ? 'RN-CAD-03' : 'CARGA_OBRIGATORIO', 'Obrigatório para criar o endereço do cliente'));
+  }
+  return erros.length > 0 ? { ok: false, erros } : { ok: true, dados: { ...e.dados, numero: e.dados.numero ?? 'S/N' } };
 }

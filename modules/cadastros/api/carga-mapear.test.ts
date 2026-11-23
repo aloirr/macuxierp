@@ -4,13 +4,13 @@ import { fileURLToPath } from 'node:url';
 import { lerCsv } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import type { EntidadeCarga } from '../contracts';
-import { LAYOUT, mapearLinha, prepararCriacao, validarFiscalLinhaProduto, type ContextoMapeamento, type Registro } from '../domain';
+import { LAYOUT, nomeArquivoCarga, mapearLinha, prepararCriacao, prepararEnderecoNovo, validarFiscalLinhaProduto, type ContextoMapeamento, type Registro } from '../domain';
 
 const pasta = join(dirname(fileURLToPath(import.meta.url)), '..', 'domain', 'carga', '__fixtures__');
 /** A fixture é lida pelo `lerCsv` do SDK, como a API lê o arquivo do cliente. */
 function fixture(entidade: EntidadeCarga): Registro[] {
   const l = LAYOUT[entidade];
-  const r = lerCsv(readFileSync(join(pasta, `${entidade}.csv`)), { aceitas: [...l.usadas, ...l.ignoradas], obrigatorias: l.obrigatorias });
+  const r = lerCsv(readFileSync(join(pasta, nomeArquivoCarga(entidade))), { aceitas: [...l.usadas, ...l.ignoradas], obrigatorias: l.obrigatorias });
   if (!r.ok) throw new Error(`fixture ${entidade}: ${r.erro.motivo}`);
   return r.linhas.map((x) => x.celulas);
 }
@@ -24,13 +24,13 @@ const ctx: ContextoMapeamento = {
 const mapear = <E extends EntidadeCarga>(e: E, extra: Record<string, string>, base = 0) =>
   mapearLinha(e, { ...fixture(e)[base]!, ...extra }, 2, ctx);
 
-describe('mapeamento da fixture (os 10 arquivos)', () => {
+describe('mapeamento da fixture (os 8 arquivos)', () => {
   it('todas as linhas da fixture mapeiam sem erro', () => {
-    const ordem: EntidadeCarga[] = ['filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente', 'cliente_endereco'];
+    const ordem: EntidadeCarga[] = ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente'];
     for (const e of ordem) fixture(e).forEach((r, i) => expect(mapearLinha(e, r, i + 2, ctx), `${e}:${i + 2}`).toMatchObject({ ok: true }));
   });
   it('D6: célula vazia vira undefined (não altera) e o padrão só vale na criação', () => {
-    const r = mapear('cliente', { documento: '' }, 1);
+    const r = mapear('cliente', { documento: '' }, 2);
     expect(r).toMatchObject({ ok: true });
     if (r.ok) {
       expect(r.linha.dados.limite_credito_centavos).toBe(0);
@@ -40,18 +40,35 @@ describe('mapeamento da fixture (os 10 arquivos)', () => {
   });
   it('RN-CAD-03: cidade e UF resolvem o IBGE e o endereço principal sai do cliente', () => {
     const r = mapear('cliente', {});
-    expect(r.ok && r.linha.endereco_principal).toMatchObject({ municipio_ibge: '1302603', uf: 'AM', cep: '69000001' });
+    expect(r.ok && r.linha.enderecos[0]).toMatchObject({ tipo: 'principal', external_id: 'C-EX-01:principal', dados: { municipio_ibge: '1302603', uf: 'AM', cep: '69000001' } });
   });
   it('RN-CAD-03: município_ibge vence o nome e passa pela validação da UF', () => {
     expect(mapear('cliente', { 'endereco.municipio_ibge': '3550308' })).toMatchObject({ ok: false, erros: [{ codigo: 'RN-CAD-03', campo: 'endereco.municipio_ibge' }] });
     expect(mapear('cliente', { 'endereco.cidade': 'Atlantida', 'endereco.municipio_ibge': '1302603' })).toMatchObject({ ok: true });
   });
-  it('RN-CAD-03: o principal vem do cliente.csv; tipo principal no cliente_endereco vira entrega com aviso', () => {
-    for (const extra of [{ tipo: 'principal' }, { principal: 'sim' }] as Record<string, string>[]) {
-      const r = mapear('cliente_endereco', extra);
-      expect(r.ok && r.linha.dados.tipo).toBe('entrega');
-      expect(r.ok && r.linha.avisos).toHaveLength(1);
-    }
+  it('T-0058: cada linha do cliente.csv traz um endereço: tipo_endereco e seq geram o external_id <cliente>:<tipo>[:<seq>]', () => {
+    const entrega = mapear('cliente', { tipo_endereco: 'Entrega', seq: '2' }, 1);
+    expect(entrega.ok && entrega.linha.enderecos).toMatchObject([{ linha: 2, tipo: 'entrega', seq: 2, external_id: 'C-EX-01:entrega:2', dados: { cep: '69000002', bairro: 'Distrito' } }]);
+    const cobranca = mapear('cliente', { tipo_endereco: 'cobranca', seq: '' }, 1);
+    expect(cobranca.ok && cobranca.linha.enderecos[0]?.external_id).toBe('C-EX-01:cobranca');
+  });
+  it('T-0058: sem tipo_endereco o endereço da linha é o principal; sem coluna de endereço nem tipo a linha não leva endereço', () => {
+    const principal = mapear('cliente', { tipo_endereco: '' });
+    expect(principal.ok && principal.linha.enderecos[0]).toMatchObject({ tipo: 'principal', external_id: 'C-EX-01:principal' });
+    const vazio = mapear('cliente', { tipo_endereco: '', 'endereco.logradouro': '', 'endereco.numero': '', 'endereco.bairro': '', 'endereco.cidade': '', 'endereco.uf': '', 'endereco.cep': '' });
+    expect(vazio.ok && vazio.linha.enderecos).toEqual([]);
+  });
+  it('T-0058: tipo_endereco e seq fora do formato e external_id do endereço acima de 64 caracteres são recusados, sem o valor', () => {
+    expect(mapear('cliente', { tipo_endereco: 'casa' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'tipo_endereco' }] });
+    expect(mapear('cliente', { seq: '0' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'seq' }] });
+    expect(mapear('cliente', { seq: '1.5' }).ok).toBe(false);
+    const longo = mapear('cliente', { external_id: 'c'.repeat(60), tipo_endereco: 'entrega', seq: '1' });
+    expect(longo).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id', motivo: 'external_id do endereço acima de 64 caracteres: use um external_id menor' }] });
+    expect(mapear('cliente', { external_id: 'c'.repeat(54), tipo_endereco: 'principal' }).ok).toBe(true);
+  });
+  it('RN-CAD-02: em linha de entrega a IE não é validada pela UF dela (vale a UF do principal do grupo, na gravação)', () => {
+    const r = mapear('cliente', { tipo_endereco: 'entrega', 'endereco.uf': 'SP', 'endereco.cidade': 'São Paulo', inscricao_estadual: '012300004' }, 1);
+    expect(r.ok && r.linha.dados.ie).toBe('012300004');
   });
   it('RN-CAD-01: CPF e CNPJ são validados pelo dígito verificador e o tipo vem do tamanho', () => {
     const pf = mapear('cliente', { documento: '123.456.780-62' });
@@ -94,40 +111,40 @@ describe('mapeamento da fixture (os 10 arquivos)', () => {
     expect(mapear('vendedor', { external_id: '' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_OBRIGATORIO' }] });
   });
   it('RN-CAD-09: tPag pelo dicionário (dinheiro, PIX, cartão, débito, boleto); fora dele vira tPag recusado, sem aviso; a coluna tpag vence', () => {
-    const tpag = (codigo: string) => { const r = mapear('forma_pagamento', { codigo }); return r.ok && r.linha.dados.forma_tpag; };
+    const tpag = (codigo: string) => { const r = mapear('condicao_pagamento', { forma_codigo: codigo }); return r.ok && r.linha.dados.forma_tpag; };
     const esperado: Record<string, string> = { DINHEIRO: '01', PIX: '17', cartao: '03', CARTAO_CREDITO: '03', CARTAO_DEBITO: '04', BOLETO: '15', CHEQUE: '99', DEPOSITO: '99', TRANSFERENCIA: '99', FIADO: '99' };
     for (const [c, t] of Object.entries(esperado)) expect(tpag(c), c).toBe(t);
-    const boleto = mapear('forma_pagamento', {});
+    const boleto = mapear('condicao_pagamento', {});
     expect(boleto.ok && boleto.linha.dados.forma_tpag).toBe('15');
-    const explicito = mapear('forma_pagamento', { tpag: '05' });
+    const explicito = mapear('condicao_pagamento', { forma_tpag: '05' });
     expect(explicito.ok && explicito.linha.dados.forma_tpag).toBe('05');
-    const vence = mapear('forma_pagamento', { codigo: 'PIX', tpag: '03' });
+    const vence = mapear('condicao_pagamento', { forma_codigo: 'PIX', forma_tpag: '03' });
     expect(vence.ok && vence.linha.dados.forma_tpag).toBe('03');
   });
   it('RN-CAD-09: parcelas_dias "3x" vira parcelas_cartao; "13x" passa na linha (1 a 99; a faixa 1 a 12 é do domain); "3" segue como prazo e a gravação decide pela forma', () => {
-    const tres = mapear('prazo_pagamento', { parcelas_dias: '3x' });
+    const tres = mapear('condicao_pagamento', { parcelas_dias: '3x' });
     expect(tres.ok && tres.linha.dados).toMatchObject({ parcelas_cartao: 3 });
     expect(tres.ok && tres.linha.dados.prazos_dias).toBeUndefined();
-    const doze = mapear('prazo_pagamento', { parcelas_dias: '12X' });
+    const doze = mapear('condicao_pagamento', { parcelas_dias: '12X' });
     expect(doze.ok && doze.linha.dados.parcelas_cartao).toBe(12);
-    const treze = mapear('prazo_pagamento', { parcelas_dias: '13x' });
+    const treze = mapear('condicao_pagamento', { parcelas_dias: '13x' });
     expect(treze.ok && treze.linha.dados.parcelas_cartao).toBe(13);
-    expect(mapear('prazo_pagamento', { parcelas_dias: '100x' })).toMatchObject({ ok: false, erros: [{ campo: 'parcelas_cartao' }] });
-    expect(mapear('prazo_pagamento', { parcelas_dias: '0x' })).toMatchObject({ ok: false });
-    const simples = mapear('prazo_pagamento', { parcelas_dias: '3' });
+    expect(mapear('condicao_pagamento', { parcelas_dias: '100x' })).toMatchObject({ ok: false, erros: [{ campo: 'parcelas_cartao' }] });
+    expect(mapear('condicao_pagamento', { parcelas_dias: '0x' })).toMatchObject({ ok: false });
+    const simples = mapear('condicao_pagamento', { parcelas_dias: '3' });
     expect(simples.ok && simples.linha.dados.prazos_dias).toEqual([3]);
   });
   it('critério 4: parcelas_dias usa a regra do contrato (1 a 36 parcelas, 0 a 999 dias) e aceita qualquer ordem; fator inteiro de 1 a 9999', () => {
-    const r = mapear('prazo_pagamento', { parcelas_dias: '30/60/90' });
+    const r = mapear('condicao_pagamento', { parcelas_dias: '30/60/90' });
     expect(r.ok && r.linha.dados.prazos_dias).toEqual([30, 60, 90]);
-    const desordenada = mapear('prazo_pagamento', { parcelas_dias: '60/30/0' });
+    const desordenada = mapear('condicao_pagamento', { parcelas_dias: '60/30/0' });
     expect(desordenada.ok && desordenada.linha.dados.prazos_dias).toEqual([60, 30, 0]);
-    const mil = mapear('prazo_pagamento', { parcelas_dias: '999/400' });
+    const mil = mapear('condicao_pagamento', { parcelas_dias: '999/400' });
     expect(mil.ok && mil.linha.dados.prazos_dias).toEqual([999, 400]);
     const trinta = (n: number) => Array.from({ length: n }, (_, i) => i).join('/');
-    expect(mapear('prazo_pagamento', { parcelas_dias: trinta(36) })).toMatchObject({ ok: true });
+    expect(mapear('condicao_pagamento', { parcelas_dias: trinta(36) })).toMatchObject({ ok: true });
     for (const parcelas_dias of ['1000', trinta(37), '30//60', '1,5']) {
-      expect(mapear('prazo_pagamento', { parcelas_dias }), parcelas_dias).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: expect.stringMatching(/^(parcelas|prazos)_dias/) }] });
+      expect(mapear('condicao_pagamento', { parcelas_dias }), parcelas_dias).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: expect.stringMatching(/^(parcelas|prazos)_dias/) }] });
     }
     expect(mapear('produto_unidade', { fator: '0' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'fator' }] });
     expect(mapear('produto_unidade', { fator: '1,5' }).ok).toBe(false);
@@ -194,7 +211,7 @@ describe('padrões e obrigatórios na criação', () => {
     expect(c && !c.ok && c.erros.map((e) => e.campo)).toEqual(['documento', 'endereco.cep']);
     const ok = mapear('cliente', {});
     const p = ok.ok && prepararCriacao('cliente', ok.linha);
-    expect(p && p.ok && p.linha.endereco_principal?.numero).toBe('S/N');
+    expect(p && p.ok && p.linha.enderecos[0]?.dados.numero).toBe('S/N');
     expect(p && p.ok && p.linha.dados.ind_ie_dest).toBe('9');
   });
   it('D6: filial nova exige crt; vendedor novo usa o external_id como código se couber em 20', () => {
@@ -205,11 +222,20 @@ describe('padrões e obrigatórios na criação', () => {
     const longo = mapear('vendedor', { external_id: 'v'.repeat(30) });
     expect(longo.ok && prepararCriacao('vendedor', longo.linha)).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO' }] });
   });
-  it('D6: prazo novo sem descrição usa forma + parcelas; cliente_endereco novo vira entrega e exige bairro e cep', () => {
-    const p = mapear('prazo_pagamento', { descricao: '' }, 1);
-    expect(p.ok && prepararCriacao('prazo_pagamento', p.linha, { formaNome: 'Boleto Exemplo' })).toMatchObject({ ok: true, linha: { dados: { descricao: 'Boleto Exemplo 30/60' } } });
-    const e = mapear('cliente_endereco', { tipo: '', bairro: '' });
-    expect(e.ok && prepararCriacao('cliente_endereco', e.linha)).toMatchObject({ ok: false, erros: [{ campo: 'bairro' }] });
+  it('D6: condição nova sem descrição usa forma + parcelas e exige a forma (RN-CAD-09)', () => {
+    const p = mapear('condicao_pagamento', { descricao: '' }, 1);
+    expect(p.ok && prepararCriacao('condicao_pagamento', p.linha)).toMatchObject({ ok: true, linha: { dados: { descricao: 'Boleto Exemplo 30/60' } } });
+    const sem = mapear('condicao_pagamento', { descricao: '', forma_codigo: '', forma_nome: '', forma_tpag: '' }, 1);
+    expect(sem.ok && prepararCriacao('condicao_pagamento', sem.linha)).toMatchObject({ ok: false, erros: [{ campo: 'forma_codigo' }, { campo: 'descricao' }] });
+  });
+  it('T-0058: endereço novo do cliente exige logradouro, bairro, município, UF e CEP; numero vazio vira S/N', () => {
+    const e = mapear('cliente', { tipo_endereco: 'entrega', 'endereco.bairro': '', 'endereco.cep': '' }, 1);
+    const novo = e.ok ? e.linha.enderecos[0]! : (undefined as never);
+    expect(prepararEnderecoNovo(novo)).toMatchObject({ ok: false, erros: [{ campo: 'endereco.bairro', linha: 2 }, { campo: 'endereco.cep' }] });
+    const ok = mapear('cliente', { tipo_endereco: 'entrega' }, 1);
+    expect(ok.ok && prepararEnderecoNovo(ok.linha.enderecos[0]!)).toMatchObject({ ok: true, dados: { numero: '50' } });
+    const semNumero = mapear('cliente', { tipo_endereco: 'entrega', 'endereco.numero': '' }, 1);
+    expect(semNumero.ok && prepararEnderecoNovo(semNumero.linha.enderecos[0]!)).toMatchObject({ ok: true, dados: { numero: 'S/N' } });
   });
   it('RN-CAD-04: NCM não vigente e CEST fora do NCM voltam como erro da linha, sem o valor', () => {
     const erros = validarFiscalLinhaProduto(9, { ncm: '21069030', cest: '1234567', ncmVigente: false, ncmExigeCest: false, cestVigente: true, cestCombinaComNcm: false });
@@ -233,7 +259,10 @@ describe('relatório sem dado digitado (RN-CORE-07, D9)', () => {
       ['produto', { ean: SENT, desconto_maximo_pct: SENT }],
       ['estoque', { saldo: SENT }],
       ['preco', { vigencia_inicio: SENT, preco_cents: SENT }],
-      ['prazo_pagamento', { parcelas_dias: SENT }],
+      ['condicao_pagamento', { parcelas_dias: SENT }],
+      ['condicao_pagamento', { forma_tpag: SENT }],
+      ['cliente', { tipo_endereco: SENT }],
+      ['cliente', { seq: SENT }],
       ['vendedor', { external_id: SENT.repeat(10) }],
     ];
     for (const [e, extra] of casos) {
@@ -243,7 +272,7 @@ describe('relatório sem dado digitado (RN-CORE-07, D9)', () => {
     }
   });
   it('RN-CAD-02: inscricao_estadual sem endereco.uf na linha segue para a API (que valida pela UF do endereço gravado), em vez de sumir', () => {
-    const r = mapear('cliente', { 'endereco.logradouro': '', 'endereco.numero': '', 'endereco.bairro': '', 'endereco.cidade': '', 'endereco.uf': '', 'endereco.cep': '', inscricao_estadual: '012300004', documento: '' }, 1);
+    const r = mapear('cliente', { 'endereco.logradouro': '', 'endereco.numero': '', 'endereco.bairro': '', 'endereco.cidade': '', 'endereco.uf': '', 'endereco.cep': '', tipo_endereco: '', inscricao_estadual: '012300004', documento: '' }, 2);
     expect(r.ok && r.linha.dados.ie).toBe('012300004');
     expect(r.ok && r.linha.dados.ind_ie_dest).toBe('1');
   });

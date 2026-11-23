@@ -1,7 +1,7 @@
 import { ENTIDADES_CARGA, ENTIDADES_IGNORADAS, type EntidadeCarga } from '../../contracts';
 
 /**
- * Layout dos 10 arquivos do kit (docs/desenho/T-0026.md, seção 3; D1 e D2). `usadas` = colunas do kit lidas mais as
+ * Layout dos 8 arquivos da carga (T-0058: condições de pagamento e cliente com endereço são um arquivo cada) (docs/desenho/T-0026.md, seção 3; D1 e D2). `usadas` = colunas do kit lidas mais as
  * colunas do ERP (todas opcionais); `ignoradas` = colunas do kit sem destino no ERP (aviso, uma vez por arquivo).
  * Tamanhos máximos são os do contrato do ERP, em `LIMITES`: acima disso a linha é recusada, nunca cortada.
  */
@@ -24,14 +24,9 @@ export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
     usadas: ign('external_id nome ativo filial_external_id codigo'),
     ignoradas: ign('alterado_em email telefone'),
   },
-  forma_pagamento: {
-    obrigatorias: ign('external_id codigo nome'),
-    usadas: ign('external_id codigo nome ativo tpag'),
-    ignoradas: ign('alterado_em ordem'),
-  },
-  prazo_pagamento: {
-    obrigatorias: ign('external_id forma_external_id codigo parcelas_dias'),
-    usadas: ign('external_id forma_external_id codigo parcelas_dias ativo descricao'),
+  condicao_pagamento: {
+    obrigatorias: ign('external_id codigo parcelas_dias forma_codigo forma_nome'),
+    usadas: ign('external_id codigo parcelas_dias forma_codigo forma_nome ativo descricao forma_external_id forma_tpag'),
     ignoradas: ign('alterado_em prazo_medio_dias percentual_ajuste ordem'),
   },
   produto: {
@@ -63,14 +58,9 @@ export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
     usadas: ign(
       'external_id razao_social ativo nome_fantasia documento vendedor_external_id endereco.logradouro endereco.numero endereco.complemento ' +
         'endereco.bairro endereco.cidade endereco.uf endereco.cep email limite_credito_cents inscricao_estadual tabela_preco_external_id ' +
-        'filial_external_id ind_ie_dest endereco.municipio_ibge condicao_pagamento_external_id',
+        'filial_external_id ind_ie_dest endereco.municipio_ibge condicao_pagamento_external_id tipo_endereco seq',
     ),
     ignoradas: ign('alterado_em latitude longitude telefone observacao bloqueado canal prazo_medio_max_dias formas_pagamento'),
-  },
-  cliente_endereco: {
-    obrigatorias: ign('external_id cliente_external_id logradouro cidade uf'),
-    usadas: ign('external_id cliente_external_id logradouro cidade uf ativo tipo numero complemento bairro cep municipio_ibge'),
-    ignoradas: ign('alterado_em descricao latitude longitude principal'),
   },
 };
 
@@ -82,16 +72,29 @@ export const LIMITES = {
 /** UF: 2 letras maiúsculas (a coluna é normalizada antes). */
 export const PADRAO_UF = /^[A-Z]{2}$/;
 
+/** Nome do arquivo de cada carga: `<entidade>.csv`, exceto a condição de pagamento (`condicoes_pagamento.csv`, T-0058). */
+export const ARQUIVO_DA_ENTIDADE: Readonly<Partial<Record<EntidadeCarga, string>>> = { condicao_pagamento: 'condicoes_pagamento.csv' };
+export const nomeArquivoCarga = (entidade: EntidadeCarga): string => ARQUIVO_DA_ENTIDADE[entidade] ?? `${entidade}.csv`;
+/** O nome sem extensão que também vale para a entidade (`condicao_pagamento.csv` é aceito: é o que a tela do portal envia). */
+const APELIDO_DO_ARQUIVO: Readonly<Record<string, EntidadeCarga>> = { condicoes_pagamento: 'condicao_pagamento' };
+
+/** Aviso fixo dos arquivos que deixaram de ser carga (T-0058): ignorados, sem erro. */
+export const AVISO_ARQUIVO_IGNORADO: Readonly<Partial<Record<(typeof ENTIDADES_IGNORADAS)[number], string>>> = {
+  cliente_endereco: 'Os endereços agora vêm no cliente.csv',
+  forma_pagamento: 'A forma de pagamento agora vem no condicoes_pagamento.csv',
+  prazo_pagamento: 'O prazo de pagamento agora vem no condicoes_pagamento.csv',
+};
+
 export type ClasseArquivo =
   | { classe: 'carga'; entidade: EntidadeCarga }
   | { classe: 'ignorado'; entidade: (typeof ENTIDADES_IGNORADAS)[number] }
   | { classe: 'recusado' };
 
-/** D1: `<entidade>.csv`, sem diferença de maiúsculas; os 6 do kit fora da v1 são ignorados; outro nome é recusado. */
+/** D1: `<entidade>.csv`, sem diferença de maiúsculas; os do kit fora da v1 (e os 3 que deixaram de ser carga) são ignorados; outro nome é recusado. */
 export function classificarArquivo(nome: string): ClasseArquivo {
   const m = /^([a-z_]+)\.csv$/i.exec(nome.trim());
   const base = m?.[1]?.toLowerCase();
-  const entidade = (ENTIDADES_CARGA as readonly string[]).find((e) => e === base);
+  const entidade = (ENTIDADES_CARGA as readonly string[]).find((e) => e === base) ?? (base === undefined ? undefined : APELIDO_DO_ARQUIVO[base]);
   if (entidade) return { classe: 'carga', entidade: entidade as EntidadeCarga };
   const ignorada = (ENTIDADES_IGNORADAS as readonly string[]).find((e) => e === base);
   if (ignorada) return { classe: 'ignorado', entidade: ignorada as (typeof ENTIDADES_IGNORADAS)[number] };
