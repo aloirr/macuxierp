@@ -2,7 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DialogoMotivo } from './DialogoMotivo.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
-import { avisoErrosCampos, gerarCssBotoes, radioBase, radioMarcado } from './estilos.js';
+import { avisoErrosCampos, checkboxBase, checkboxMarcado, gerarCssBotoes, radioBase, radioMarcado } from './estilos.js';
+import { cores } from './tokens.js';
 
 const item: ItemLinha = { chave: 'item-1', produtoId: 'p', quantidade: 1, precoUnitarioCentavos: 100, descontoCentavos: 0 };
 const form = (erros?: Record<string, string | Record<string, string>>, temErroExterno?: boolean) =>
@@ -53,10 +54,27 @@ describe('.mx-radio (T-0021)', () => {
     expect(css).toMatch(/\.mx-radio \{[^}]*width: 16px;[^}]*height: 16px;/);
     expect(css).not.toMatch(/(width|height|padding|margin|top|left|right|bottom): [1-9]\d*;/);
   });
-  it('gerarCssBotoes gera .mx-radio, :checked e :focus-visible', () => {
+  it('gerarCssBotoes gera .mx-radio e :checked', () => {
     const css = gerarCssBotoes();
     expect(css).toMatch(/\.mx-radio \{[^}]*appearance: none;[^}]*border: 1px solid var\(--mx-cor-borda-campo\);/);
     expect(css).toMatch(/\.mx-radio:checked \{[^}]*background: var\(--mx-cor-azul-noite\);[^}]*box-shadow: inset 0 0 0 4px var\(--mx-cor-branco\);/);
-    expect(css).toMatch(/\.mx-radio:focus-visible \{\n {2}outline: 2px solid var\(--mx-cor-azul-noite\);/);
+  });
+  it.each(['.mx-radio', '.mx-checkbox'])('%s:focus-visible tem contorno azul-noite', (sel) => {
+    expect(gerarCssBotoes()).toContain(`${sel}:focus-visible {\n  outline: 2px solid var(--mx-cor-azul-noite);`);
+  });
+});
+
+describe('.mx-checkbox (T-0050)', () => {
+  it('checkboxBase: borda de campo; checkboxMarcado: azul-noite com visto branco dos tokens', () => {
+    expect(checkboxBase).toMatchObject({ appearance: 'none', width: 16, height: 16, margin: 0, borderRadius: '3px', border: '1px solid var(--mx-cor-borda-campo)', background: 'var(--mx-cor-branco)' });
+    expect(checkboxMarcado).toMatchObject({ background: 'var(--mx-cor-azul-noite)', border: '1px solid var(--mx-cor-azul-noite)', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', backgroundSize: '12px 12px' });
+    const img = String(checkboxMarcado.backgroundImage);
+    expect(img).toMatch(/^url\("data:image\/svg\+xml,/);
+    expect(img).toContain(encodeURIComponent(cores.branco));
+  });
+  it('o CSS gerado tem .mx-checkbox, :checked e 16px', () => {
+    const css = gerarCssBotoes();
+    expect(css).toMatch(/\.mx-checkbox \{[^}]*appearance: none;[^}]*width: 16px;[^}]*height: 16px;[^}]*border: 1px solid var\(--mx-cor-borda-campo\);/);
+    expect(css).toMatch(/\.mx-checkbox:checked \{[^}]*background: var\(--mx-cor-azul-noite\);[^}]*background-image: url\("data:image\/svg\+xml,/);
   });
 });
