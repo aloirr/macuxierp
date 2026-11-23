@@ -59,6 +59,8 @@ describe('cliente da plataforma', () => {
     expect(await quando(() => json({ codigo: 'SEM_PERMISSAO' }, 403))).toBeInstanceOf(ConfigSemPermissao);
     expect(await quando(() => json({}, 429))).toBeInstanceOf(ConfigMuitasTentativas);
     expect(await quando(() => json({ mensagem: 'segredo@x.co' }, 500))).toBeInstanceOf(ConfigIndisponivel);
+    expect(await quando(() => json({ codigo: 'CHAVE_INTEGRACAO_AUSENTE', mensagem: 'Chave ausente.' }, 503))).toMatchObject({ name: 'ErroPlataforma', status: 503, codigo: 'CHAVE_INTEGRACAO_AUSENTE' });
+    expect(await quando(() => json({}, 503))).toBeInstanceOf(ConfigIndisponivel);
     expect(await quando(() => json({ qualquer: 1 }, 200))).toBeInstanceOf(ConfigIndisponivel);
     const e = (await quando(() => json({ codigo: CODIGO_TROCAR_SENHA }, 403))) as ErroPlataforma;
     expect(e).toMatchObject({ status: 403, codigo: CODIGO_TROCAR_SENHA });
