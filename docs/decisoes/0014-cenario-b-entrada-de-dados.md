@@ -3,8 +3,8 @@
 - **Status:** Proposta (23/11/2026). Vira "Aceita" com a revisão do gerente e o PR de governança da seção 10.
 - **Data:** 23/11/2026 (Manaus)
 - **Dono:** engenheiro-software
-- **Tarefa:** T-0057 (v0.3.7). Roteiro da VM: `docs/banco/vm-cenario-b.md` (banco-dados, #387).
-- **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre, renumerada pelo PO em 23/11, 15h36: v0.3.5 carga no /config → v0.3.6 zerar, desconto e credencial um por um → **v0.3.7 cenário B** → v0.3.8 pré-cadastro → v0.3.9 cadastro bloqueado. Premissas respondidas pelo PO em 23/11, 15h29 (§3 e §7).
+- **Tarefa:** T-0057 (v0.3.8). Roteiro da VM: `docs/banco/vm-cenario-b.md` (banco-dados, #387).
+- **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre, renumerada pelo PO em 23/11, 15h36 e de novo às 17h25: o cenário B é a **v0.3.8**. Premissas respondidas pelo PO em 23/11, 15h29 (§3 e §7).
 - **Fontes copiadas (só consulta, nada muda no FDV):** `aloirr/macuxifdv@c460e92c4bf935c8096e6c67dd6b98a7929cf664` (FDV v1.0.28): `apps/conector` (versão **1.5.0**), `apps/conector/src/hub/cliente.ts` (rotas do Hub), `modules/integracao/kit-thathyany/conector/conector.json` (consultas das views), `docs/produto/03` (RN-INT-06 e a trava de 30%) e `.github/workflows/conector-publicar.yml`. O esquema do banco segue `aloirr/macuxifdv@0b79391`, `kit-thathyany/sql/criar-banco.sql`, com cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`.
 - **Amplia:** ADR 0010 (`external_id`), ADR 0012 (lista fechada de funções SECURITY DEFINER do portal) e ADR 0013 (o portal configura módulo; esta é a "ADR nova" que a §1 da 0013 exige para o segundo módulo).
 
@@ -21,7 +21,7 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
 ### 2. Contrato: o mesmo do Hub `/integracao/v1` do FDV
 - A `/entrada/v1` fala **o mesmo contrato** do Hub, para o Conector 1.5.0 funcionar sem mudar a montagem do lote: `LoteEnvelope` (`versao_contrato`, `entidade`, `conector_id`, sessão de carga completa com parte n e "último", registros), `LoteResultado` (contadores e erros por linha com `indice`, `external_id`, `campo` e `codigo`, **sem o dado**), `CursorEntidade` e a resposta do sinal. Os payloads são os 10 cadastros da F2 (`ENTIDADES_ENVIO_FDV`: filial, vendedor, forma e prazo de pagamento, produto, unidade do produto, preço, estoque, cliente e endereço do cliente), com dinheiro em centavos, datas UTC com `Z` e quantidades numéricas.
 - **Onde fica o tipo:** os payloads hoje estão em `modules/integracao-fdv/contracts/hub.ts`, mas o `cadastros` não pode importar o `integracao-fdv`, porque o `integracao-fdv` já depende do `cadastros` (ver `SolicitacaoCargaInicial`). Por isso o envelope e os 10 payloads sobem para o **SDK**, em `packages/platform-sdk/src/hub-v1.ts`, com teste e o commit do FDV citado no cabeçalho. O `cadastros` e o `apps/conector` importam de lá. O `hub.ts` do `integracao-fdv` passa a **reexportar** do SDK num PR do `modulo-integracao-fdv` (fora do caminho crítico), e um teste trava os dois iguais até a troca, como o `LIMITE_REGISTROS_LOTE_FDV`. Este é o contrato de payload, não o da carga inicial: o `integracao-fdv.carga_inicial.solicitada@1` não muda.
-- **Fora da v0.3.7:** os outros 6 do kit (`catalogo_no`, `transportadora`, `tabela_escalonada`, `rota`, `titulo` e `nota`). Um lote deles recebe 422 com `codigo` `entidade_fora_da_fase`, e o `conector.json` do kit do ERP não os lista. Também ficam fora a entrada de pedidos (`/pedidos/pendentes` e `/pedidos/{uuid}/retorno`; quem recebe pedido é o FDV) e a reconciliação diária (`/reconciliacoes`, RN-INT-07). As três rotas respondem 404 e o kit do ERP não tem `pedidos` nem `reconciliacao`.
+- **Fora da v0.3.8:** os outros 6 do kit (`catalogo_no`, `transportadora`, `tabela_escalonada`, `rota`, `titulo` e `nota`). Um lote deles recebe 422 com `codigo` `entidade_fora_da_fase`, e o `conector.json` do kit do ERP não os lista. Também ficam fora a entrada de pedidos (`/pedidos/pendentes` e `/pedidos/{uuid}/retorno`; quem recebe pedido é o FDV) e a reconciliação diária (`/reconciliacoes`, RN-INT-07). As três rotas respondem 404 e o kit do ERP não tem `pedidos` nem `reconciliacao`.
 
 ### 3. Rotas `/entrada/v1` (apps/api, plugin do `cadastros`)
 
@@ -30,7 +30,7 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
 | `POST /entrada/v1/lotes` | `LoteEnvelope` → 202 `{ lote_id, estado: 'recebido' }` | `Idempotency-Key` **obrigatória**. A mesma chave com o mesmo corpo devolve o mesmo `lote_id`; com outro corpo, 409. Até 5.000 registros (`LIMITE_REGISTROS_LOTE_FDV`) e o mesmo teto de bytes do Hub (o PR confere contra o FDV). 400/413/422 recusam o envelope inteiro, sem lote criado (RN-INT-01). |
 | `GET /entrada/v1/lotes/:id?limite_erros=n` | → `LoteResultado` | Só o lote do próprio conector. 404 para o lote de outro conector ou de outro tenant. |
 | `GET /entrada/v1/cursores/:entidade` | → `CursorEntidade` | `alterado_em` e `external_id` do último registro aplicado, por conector e entidade. |
-| `POST /entrada/v1/sinal` | `{ versao, ... }` do Conector → `RespostaSinal` | Grava o último sinal e a versão. A política de versão sai com a mínima e a recomendada do ERP. A **atualização automática fica desligada** na v0.3.7 (seção 6). |
+| `POST /entrada/v1/sinal` | `{ versao, ... }` do Conector → `RespostaSinal` | Grava o último sinal e a versão. A política de versão sai com a mínima e a recomendada do ERP. A **atualização automática fica desligada** na v0.3.8 (seção 6). |
 
 - **Autenticação de máquina, sem JWT nem sessão:** `Authorization: Bearer <chave>` e `X-Macuxi-Conector-Id`, como no FDV. A chave dá acesso **só** a `/entrada/v1`, e o JWT do BKO é recusado ali. Cabe na regra 6 como o "perfil" `conector_entrada`, uma identidade de máquina com escopo fixo e sem permissões do BKO.
 - **Processamento assíncrono:** o `POST` grava o lote e enfileira o trabalho `cadastros.entrada_lote` (apps/worker). O worker valida pelo Zod do SDK, adapta, grava por `gravarLinhas` e escreve o resultado. Um lote por entidade e por conector de cada vez, na ordem de chegada, para o cursor não pular.
@@ -52,7 +52,7 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
 - **O que muda na cópia (só isto):**
   1. **Prefixo configurável:** `hub.prefixo` no esquema da configuração, com o padrão `/entrada/v1` no ERP. No FDV o prefixo `/integracao/v1` é fixo no cliente. A URL continua só HTTPS (HTTP só para localhost nos testes).
   2. **Tipos do SDK:** o import de `@macuxi/integracao/contracts` troca por `@macuxierp/platform-sdk/hub-v1` (seção 2).
-  3. **Atualização automática desligada:** `atualizacao.ativa` fica falso e não há chave de assinatura nem bucket na v0.3.7. A troca de versão é manual. Ligar a atualização pede ADR nova, com a chave do ERP (nunca a do FDV).
+  3. **Atualização automática desligada:** `atualizacao.ativa` fica falso e não há chave de assinatura nem bucket na v0.3.8. A troca de versão é manual. Ligar a atualização pede ADR nova, com a chave do ERP (nunca a do FDV).
   4. **Linux oficial ao lado do Windows:** além do pacote Windows (WinSW, como no FDV), um pacote `tar.gz` com o `conector.mjs`, o exemplo e uma unidade **systemd**: usuário próprio `macuxi-conector` sem login, `ProtectSystem=strict`, `NoNewPrivileges=yes`, a pasta de dados em `/var/lib/macuxi-conector` e os segredos em `EnvironmentFile=/etc/macuxi-conector/segredos.env` (dono root, 0600, `MACUXI_CONECTOR_ERP_SENHA` e `MACUXI_CONECTOR_HUB_CHAVE`; o provedor `env` do FDV já lê). O Node 24.7+ vem do pacote da distribuição ou do NodeSource, conforme o roteiro.
   5. **Pedidos e reconciliação:** o código fica, sem uso. O esquema da configuração do ERP recusa `pedidos` e `reconciliacao` com uma mensagem clara.
 - **Kit do ERP:** `apps/conector/exemplos/conector.thathyany.exemplo.json`, copiado do `kit-thathyany/conector/conector.json` só com os 10 cadastros, apontando para a URL do ERP, com `conectorId` próprio (o do ERP, nunca o `thathyany-conector` do FDV) e sem `pedidos`. As consultas às views `dbo.vw_macuxi_*` são as do kit, sem mudança.
@@ -90,15 +90,15 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
 | 7 | Alexandre e banco-dados | a VM pelo roteiro, com o Conector instalado e a virada da seção 7 | 6 |
 
 ### 10. O que o PR de governança precisa (não faz parte deste PR)
-É um PR só, no início da v0.3.7, com `Agente: alexandre`. O merge sai com "autorizo o merge do PR #N no commit <sha>".
+É um PR só, no início da v0.3.8, com `Agente: alexandre`. O merge sai com "autorizo o merge do PR #N no commit <sha>".
 1. **`.coord/donos.json`:** `apps/conector/**` para o `engenheiro-software`; `modules/cadastros/**/entrada/**` continua no `modulo-cadastros` (já coberto por `modules/cadastros/**`, só conferir); `packages/platform-sdk/src/hub-v1*.ts` no `engenheiro-software` (já coberto, conferir).
-2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.7 (seção 6, item 3).
+2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.8 (seção 6, item 3).
 3. **`.github/workflows/ci.yml`:** o `apps/conector` entra no escopo, no lint, no typecheck e no build do PR, e os testes dele entram na suíte do `producao-liberar`.
-4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.7.
+4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.8.
 
 ### 11. Passo do Alexandre: criar o `MACUXIERP_PEPPER_ENTRADA`
 - **Onde:** no `.env` de produção da VM, `/opt/macuxierp/.env`, o mesmo arquivo da `MACUXIERP_CHAVE_A1` e da `MACUXIERP_CHAVE_INTEGRACAO`. Não é secret do GitHub.
-- **Quando:** antes da publicação da v0.3.7. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
+- **Quando:** antes da publicação da v0.3.8. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
 - **Como** (na VM, com o usuário de sudo; o valor não passa pela tela nem pelo histórico):
   ```bash
   if sudo grep -q '^MACUXIERP_PEPPER_ENTRADA=.' /opt/macuxierp/.env; then
@@ -110,7 +110,7 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
   sudo stat -c '%a %U' /opt/macuxierp/.env                         # 600 e o usuário de deploy
   ```
   Depois, guarde uma cópia do valor no cofre de senhas, lendo direto do arquivo, sem colar em chat ou recado.
-- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.7 ("aprovo deploy v0.3.7"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
+- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.8 ("aprovo deploy v0.3.8"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
 - **Nunca troque sem motivo:** um pepper novo invalida todas as chaves de entrada, e todos os conectores precisam de chave nova no `/config`. Se ele vazar, gere outro, publique e troque as chaves de todas as empresas.
 
 ## Consequências
