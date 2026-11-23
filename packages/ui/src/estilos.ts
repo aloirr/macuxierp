@@ -23,7 +23,7 @@ export const texto = (tamanho: TamanhoTexto, peso?: PesoTexto): CSSProperties =>
 export const tabular: CSSProperties = { fontVariantNumeric: 'tabular-nums' };
 export const numerico: CSSProperties = { ...tabular, textAlign: 'right' };
 /** Canto dos botões e do shell. */
-const canto = '6px';
+export const canto = '6px';
 
 /** Estado desabilitado único (MC-0014): esmaecido e sem cursor de ação. */
 export const desabilitadoEstilo = (desabilitado?: boolean): CSSProperties =>
@@ -171,3 +171,14 @@ export const tabela = {
   legenda: { ...texto('base', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
   vazio: { textAlign: 'center', color: cor('textoSecundario'), padding: espaco.xl } as CSSProperties,
 };
+
+/** Base do selo de situação (igual ao `.selo` do shell): 12 px, canto 10 px, sem quebra. */
+export const seloBase: CSSProperties = { ...texto('selo', 'rotulo-pequeno'), padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' };
+
+/** Mapa de cores de estado (T-0058). O laranja do sol não é cor de estado. */
+export const tons = {
+  sucesso: { color: cor('verdeSucesso'), background: cor('ativoFundo') },
+  aviso: { color: cor('avisoTexto'), background: cor('avisoFundo') },
+  erro: { color: cor('erroTexto'), background: cor('erroFundo') },
+  neutro: { color: cor('textoSecundario'), background: cor('inativoFundo') },
+} as const satisfies Record<string, { color: string; background: string }>;

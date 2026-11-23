@@ -5,6 +5,12 @@ export type { ColunaTabela, DirecaoOrdem, OrdemTabela, TabelaDensaProps, TipoCol
 export { FaixaPendencias } from './FaixaPendencias.js';
 export type { FaixaPendenciasProps, NivelPendencia, Pendencia } from './FaixaPendencias.js';
 export { RegiaoErros } from './RegiaoErros.js';
+export { Chip } from './Chip.js';
+export type { ChipProps } from './Chip.js';
+export { CaixaResumo } from './CaixaResumo.js';
+export type { CaixaResumoProps } from './CaixaResumo.js';
+export { Dialogo } from './Dialogo.js';
+export type { DialogoProps } from './Dialogo.js';
 export { DialogoMotivo } from './DialogoMotivo.js';
 export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
 export { FormularioItens } from './FormularioItens.js';
