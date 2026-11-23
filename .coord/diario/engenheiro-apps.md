@@ -23,3 +23,6 @@
 2026-11-23 — T-0021 — #275: nota de fuso no detalhe da nota e nas listas com horário; coluna Item fixa na parcial
 2026-11-23 — T-0021 — shell: topo e cabeçalho do cartão com .mx-fundo-escuro (regra .topo duplicada removida)
 2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga e tela de filial sem filiais
+2026-11-23 — T-0051 — shell: carga por entidade (botões na ordem do D13, modelo, prévia com erros por linha e dependência)
+2026-11-23 — T-0051 — rodada final F2: proxyDeDownload único, rótulos do cadastros, timeout de 130 s na carga, CARGA_GRANDE_DEMAIS, input desligado enviando.
+2026-11-23 — T-0051 — 2º push do PR #297: atalho da dependência pelo entidade_faltante do cadastros (#296); regex do nome do campo removida (cadastros sempre preenche); junta o main

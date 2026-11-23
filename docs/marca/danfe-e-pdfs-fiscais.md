@@ -2,7 +2,7 @@
 
 > **REGRA derivada** do manual da marca do FDV (`aloirr/macuxifdv`, `docs/marca/manual.md`) e da [assinatura-erp.md](assinatura-erp.md). Não é decisão nova do Alexandre: aplica ao DANFE o que já está aprovado. Origem do pedido: T-0021 (lote 3 do faturamento), com a nota simulada de R-20261122-022626-alexandre. Autor: design-de-marca · 22/11/2026 (Manaus).
 > Vale para o DANFE da NF-e 55 e para todo PDF fiscal impresso em preto (por exemplo, a impressão da CC-e). Dono da aplicação: `modulo-faturamento`.
-> Revisões 22/11/2026 (Manaus), T-0021: ajustes de redação e lacunas após a validação das amostras (fd5c177) e as revalidações (9f006ea e bcec8d3); sem mudança de marca.
+> Revisões 22/11/2026 (Manaus), T-0021: ajustes de redação e lacunas após a validação das amostras (fd5c177) e as revalidações (9f006ea e bcec8d3); sem mudança de marca; 23/11/2026 (Manaus), T-0021: §6 margem e aviso de topo, após as amostras de contingência do #269 (c740458).
 
 O leiaute é o do **Manual de Orientação do Contribuinte (MOC), Anexo II**. A marca não muda campo, ordem, tamanho de quadro nem texto legal do MOC. Quando o MOC pedir algo diferente do que está aqui (tamanho de fonte, aviso, posição), **vale o MOC**.
 
@@ -59,3 +59,12 @@ Premissas técnicas (do gerente, T-0021): PDF montado com `pdf-lib`, fonte Helve
 - **Folhas:** em **todas** as folhas do DANFE.
 - **Não substitui** nenhum aviso legal do MOC para homologação: os textos exigidos continuam nos campos próprios. A marca d'água é um reforço visual.
 - Se o DANFE precisar de outra marca d'água de texto (por exemplo, nota cancelada), ela segue o mesmo padrão visual: fonte, tom, ângulo e centro.
+
+## 6. Margem e aviso de topo
+- **Área de impressão:** nenhuma tinta a menos de **5 mm (14,2 pt)** da borda do papel, em todos os lados. Muitas impressoras não imprimem essa faixa.
+- **Quadros:** começam na margem de **10 mm (28,35 pt)**. Na faixa entre 5 e 10 mm só entram o aviso de topo (abaixo) e o rodapé "Emitido pelo" (§4).
+- **Aviso de topo:** **uma linha só**, Helvetica negrito, **8 pt**, centralizada na largura dos quadros, com a linha de base a **22 pt** do topo da folha. Medido pela FontBBox, ela fica entre 14,3 e 23,8 pt, com 4,5 pt de respiro até o primeiro quadro. Em todas as folhas.
+  - Homologação: "EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL".
+  - Contingência (tpEmis 6 ou 7): "DANFE EM CONTINGÊNCIA".
+  - Os dois juntos: "DANFE EM CONTINGÊNCIA – EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL", numa linha só. Nunca duas linhas empilhadas na margem.
+- **Detalhes da contingência** (modalidade, entrada e justificativa) vão nos dados adicionais, em 7 pt, uma frase por item, cada uma terminada em ponto.

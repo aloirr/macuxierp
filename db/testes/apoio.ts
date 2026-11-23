@@ -68,8 +68,9 @@ export function pastaComMigracoesAntesDe(prefixo: string): PastaDeMigracoes {
 }
 
 /**
- * O admin precisa ser membro dos papéis para o SET ROLE dos testes. O superusuário já pode; o admin sem superusuário
- * criou os papéis (tem ADMIN OPTION) e se concede. Concessão concorrente de outro arquivo de teste não é erro.
+ * O admin precisa ser membro dos papéis (e do macuxierp_config, 0033) para o SET ROLE dos testes. O superusuário já
+ * pode; o admin sem superusuário criou os papéis (tem ADMIN OPTION) e se concede. Concessão concorrente de outro arquivo
+ * de teste não é erro.
  */
 export function permitirSetRole(c: Conexao): void {
   rodarScript(
@@ -79,6 +80,14 @@ BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     BEGIN
       GRANT macuxierp_app, macuxierp_worker, macuxierp_leitura TO CURRENT_USER;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+    -- macuxierp_config (0033) só existe depois da migração: concessão à parte, para não derrubar as outras.
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'macuxierp_config') THEN
+        GRANT macuxierp_config TO CURRENT_USER;
+      END IF;
     EXCEPTION WHEN OTHERS THEN
       NULL;
     END;
