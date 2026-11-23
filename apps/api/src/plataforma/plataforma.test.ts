@@ -19,6 +19,52 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
     expect((e as ErroApi).message).not.toContain('Fulano');
   });
 
+  it.each([
+    ['MXI01', 'Cadastre a credencial do FDV antes'],
+    ['MXI02', 'A credencial mudou; recarregue a página.'],
+    ['MXI03', 'O estado mudou; recarregue a página.'],
+  ])('%s (0038, ADR 0013 §2) vira 409 CONFLITO com mensagem fixa', (code, mensagem) => {
+    const e = erroDaPlataforma(pg(code));
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: mensagem });
+    expect((e as ErroApi).detalhes).toBeUndefined();
+  });
+
+  it.each(['entidade_desabilitada', 'lote_em_voo', 'sem_pausa'])('MXI03 com DETAIL %s leva só o código do domain em detalhes.codigo', (detail) => {
+    const e = erroDaPlataforma(Object.assign(pg('MXI03'), { detail }));
+    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', detalhes: { codigo: detail } });
+  });
+
+  it('MXI03 com DETAIL fora da lista não ecoa o texto do banco', () => {
+    const e = erroDaPlataforma(Object.assign(pg('MXI03'), { detail: 'cliente Fulano de Tal' })) as ErroApi;
+    expect(e.detalhes).toBeUndefined();
+    expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
+  });
+
+  it.each(['empresa_inativa', 'modulo_desligado'])('MXI04 (0039) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo', (detail) => {
+    const e = erroDaPlataforma(Object.assign(pg('MXI04'), { detail }));
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({
+      status: 422,
+      codigo: 'RN-CORE-02',
+      message: 'A empresa precisa estar ativa e com o módulo Integração FDV licenciado.',
+      detalhes: { codigo: detail },
+    });
+  });
+
+  it('MXI04 com DETAIL fora da lista não ecoa o texto do banco', () => {
+    const e = erroDaPlataforma(Object.assign(pg('MXI04'), { detail: 'cliente Fulano de Tal' })) as ErroApi;
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
+    expect(e.detalhes).toBeUndefined();
+    expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
+  });
+
+  it('23514 da 0038 (empresa fora de ativo, módulo desligado) segue 422 REGRA_PLATAFORMA', () => {
+    for (const m of ['empresa fora de ativo', 'módulo integracao-fdv desligado na empresa']) {
+      expect(erroDaPlataforma(pg('23514', m))).toMatchObject({ status: 422, codigo: 'REGRA_PLATAFORMA', message: 'Pedido recusado pelas regras da plataforma' });
+    }
+  });
+
   it('o resto segue como está (ErroApi do plugin, erro de programação → 500)', () => {
     const api = new ErroApi(422, 'RN-CORE-02', 'x');
     expect(erroDaPlataforma(api)).toBe(api);

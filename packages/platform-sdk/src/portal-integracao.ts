@@ -45,6 +45,9 @@ export type EntidadeEnvioFdv = z.infer<typeof EntidadeEnvioFdv>;
 /** Teto de registros por lote do Hub (doc 06). O `LIMITE_REGISTROS_LOTE` do módulo passa a ser reexport deste valor. */
 export const LIMITE_REGISTROS_LOTE_FDV = 5000;
 
+/** Mensagem do 409 `MXI01` (ação que exige a credencial ativa): a API e o módulo usam a mesma (ADR 0013 §2). */
+export const MENSAGEM_SEM_CREDENCIAL_FDV = 'Cadastre a credencial do FDV antes';
+
 /** Ambiente do Hub do FDV (não é o ambiente fiscal da SEFAZ): `AMBIENTES_HUB` da porta do Hub. */
 export const AmbienteIntegracaoFdv = z.enum(AMBIENTES_HUB);
 export type AmbienteIntegracaoFdv = z.infer<typeof AmbienteIntegracaoFdv>;

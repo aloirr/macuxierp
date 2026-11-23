@@ -9,6 +9,7 @@
  * - Idempotency-Key pelas funções `idem_plataforma_reservar`/`concluir` (tenant de referência). Resposta `no-store`
  *   (senha provisória) conclui a chave sem corpo (SQL NULL) e o reenvio é 409: a senha nunca sai duas vezes.
  * - SQLSTATE → HTTP com mensagem fixa (`erroDaPlataforma`). Log com `superadmin_id`, nunca e-mail, senha, token ou nome.
+ * - Deadlock (`40P01`) no `comPlataforma`: a transação é refeita uma vez (`comRetentativaEmDeadlock`, T-0056).
  */
 import {
   CABECALHO_CSRF_CONFIG,
@@ -38,6 +39,7 @@ import { entradaDaChamada, responder } from '../execucao-rota';
 import { erroDaPlataforma } from './erros';
 import { ipDoCliente } from './ip-cliente';
 import { LimitePorIp } from './limite-ip';
+import { comRetentativaEmDeadlock } from './retentativa';
 import { ServicoPlataforma, type SessaoPlataformaLida } from './servico';
 
 const ESCRITAS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -80,7 +82,9 @@ async function sessaoDoPedido(req: FastifyRequest, reply: FastifyReply, c: Conte
 }
 
 export function montarPlataforma(app: FastifyInstance, d: DependenciasPlataformaApi, o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean }): void {
-  const c: Contexto = { servico: new ServicoPlataforma(d.banco, o.auth, o.relogio), banco: d.banco, relogio: o.relogio, cookieSeguro: o.cookieSeguro };
+  // O serviço (sair, troca de senha) loga pelo log da app; as rotas dos plugins, pelo do pedido (request_id, superadmin_id).
+  const servico = new ServicoPlataforma(comRetentativaEmDeadlock(d.banco, app.log), o.auth, o.relogio);
+  const c: Contexto = { servico, banco: d.banco, relogio: o.relogio, cookieSeguro: o.cookieSeguro };
   const limite = d.limiteLogin ?? new LimitePorIp();
   const caminhoCookie = PREFIXO_PLATAFORMA;
 
@@ -147,7 +151,7 @@ async function executarRotaPlataforma(req: FastifyRequest, reply: FastifyReply, 
   const agora = c.relogio.agora();
   const resultado = await executarPlataforma({
     sessao: lida && { superadmin_id: lida.superadmin_id, sessao_id: lida.sessao_id },
-    banco: c.banco,
+    banco: comRetentativaEmDeadlock(c.banco, req.log),
     executar: async (tx, sessao) => {
       const ctx: ContextoPlataforma = {
         sessao,
