@@ -17,15 +17,11 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { argumento, criarRoteiro, exigir } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
-function argumento(nome, padrao) {
-  const i = process.argv.indexOf(`--${nome}`);
-  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : padrao;
-}
 const BASE = argumento('base', 'http://localhost:3100');
 const SAIDA = argumento('saida', null);
 const DADOS = argumento('dados', null);
@@ -47,28 +43,7 @@ const MENU_CADASTROS = ['Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 
 // T-0026: o administrador vê também a carga (cadastros.carga.executar), que tem tela própria, fora do passo das listas.
 const MENU_CADASTROS_ADM = [...MENU_CADASTROS, 'Carga de cadastros'];
 
-const resultados = [];
-const prints = [];
-async function passo(nome, fn) {
-  const ini = Date.now();
-  try {
-    await fn();
-    resultados.push({ nome, ok: true });
-  } catch (e) {
-    resultados.push({ nome, ok: false, erro: String(e?.message ?? e).split('\n')[0] });
-  }
-  console.error(`[e2e] ${resultados.at(-1).ok ? 'ok   ' : 'FALHA'} ${nome} (${Date.now() - ini} ms)`);
-}
-function exigir(cond, msg) {
-  if (!cond) throw new Error(msg);
-}
-async function print(pagina, arquivo, recorte) {
-  // O selo "N" do next dev não é do produto: some do print para a revisão de marca.
-  await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
-  // Só o viewport (sem fullPage), escala 2; tela densa vai recortada: cada PNG fica abaixo de 250 KB (RD-0068).
-  await pagina.screenshot({ path: join(SAIDA, arquivo), fullPage: false, ...(recorte ? { clip: recorte } : {}) });
-  prints.push(arquivo);
-}
+const { resultados, prints, passo, print } = criarRoteiro(SAIDA);
 
 const navegador = await chromium.launch();
 const contexto = await navegador.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' });
