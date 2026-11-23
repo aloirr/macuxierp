@@ -66,11 +66,30 @@ export const focoVisivel: CSSProperties = contornoFoco('azulNoite');
 export const focoVisivelEscuro: CSSProperties = contornoFoco('branco');
 
 const kebabCss = (k: string) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+/** Propriedades numéricas sem unidade em CSS; uma nova (gridRow, columnCount…) precisa entrar nesta lista. */
+const semUnidade = new Set(['lineHeight', 'opacity', 'fontWeight', 'zIndex', 'flex', 'flexGrow', 'flexShrink', 'order']);
 const regraCss = (seletor: string, e: CSSProperties) =>
   `${seletor} {\n${Object.entries(e)
     .filter(([, v]) => v !== undefined)
-    .map(([k, v]) => `  ${kebabCss(k)}: ${String(v)};`)
+    .map(([k, v]) => `  ${kebabCss(k)}: ${typeof v === 'number' && v !== 0 && !semUnidade.has(k) ? `${v}px` : String(v)};`)
     .join('\n')}\n}\n`;
+
+/** Rádio sem o visual do navegador (desmarcado): borda de campo, fundo branco. */
+export const radioBase: CSSProperties = {
+  appearance: 'none',
+  width: 16,
+  height: 16,
+  margin: 0,
+  borderRadius: '50%',
+  border: `1px solid ${cor('bordaCampo')}`,
+  background: cor('branco'),
+};
+/** O que muda no rádio marcado: azul-noite com ponto branco interno. */
+export const radioMarcado: CSSProperties = {
+  border: `1px solid ${cor('azulNoite')}`,
+  background: cor('azulNoite'),
+  boxShadow: `inset 0 0 0 4px ${cor('branco')}`,
+};
 
 /** Conteúdo de `botoes.css` (classes `.mx-botao` e `.mx-botao-secundario` para o shell), dos mesmos objetos acima. */
 export function gerarCssBotoes(): string {
@@ -81,6 +100,9 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
     regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
     regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible', focoVisivel) +
+    regraCss('.mx-radio', radioBase) +
+    regraCss('.mx-radio:checked', radioMarcado) +
+    regraCss('.mx-radio:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true))
   );
@@ -95,7 +117,24 @@ export const campoBase: CSSProperties = {
 };
 
 /** Mensagem de erro de campo (MC-0015). */
-export const mensagemErro: CSSProperties = { ...texto('pequeno'), color: cor('erroTexto') };
+export const mensagemErro: CSSProperties = { ...texto('pequeno'), display: 'block', color: cor('erroTexto') };
+
+/** Visualmente oculto, lido por leitor de tela (região `role="status"` dos erros de campo). */
+export const soLeitor: CSSProperties = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+  margin: '-1px',
+  padding: 0,
+  border: 0,
+};
+
+/** Texto único da região de erros (igual ao do shell). */
+export const avisoErrosCampos = 'Há campos com erro. Confira as mensagens abaixo de cada campo.';
 
 /** Estilo único das duas tabelas (MC-0013). */
 export const tabela = {

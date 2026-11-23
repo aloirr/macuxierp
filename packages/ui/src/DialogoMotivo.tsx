@@ -1,8 +1,8 @@
 'use client';
 
-import type { CSSProperties } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, texto } from './estilos.js';
+import { botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, radioBase, radioMarcado, texto } from './estilos.js';
+import { RegiaoErros } from './RegiaoErros.js';
 
 export interface MotivoOpcao {
   codigo: string;
@@ -59,18 +59,6 @@ export function avaliarConfirmacao(
   const msg = cfg.validar?.(r) ?? null;
   return msg ? { campo: 'texto', mensagem: msg } : null;
 }
-
-/** Rádio sem o visual do navegador: borda de campo; marcado em azul-noite com ponto branco interno. */
-const radioEstilo = (marcado: boolean): CSSProperties => ({
-  appearance: 'none',
-  width: 16,
-  height: 16,
-  margin: 0,
-  borderRadius: '50%',
-  border: `1px solid ${marcado ? cor('azulNoite') : cor('bordaCampo')}`,
-  background: marcado ? cor('azulNoite') : cor('branco'),
-  boxShadow: marcado ? `inset 0 0 0 4px ${cor('branco')}` : undefined,
-});
 
 const FOCAVEIS = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
 
@@ -135,18 +123,19 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', display: 'grid', gap: espaco.md, position: 'relative' }}
       >
         <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0 }}>{titulo}</h2>
+        <RegiaoErros temErro={!!erro} />
         {motivos.length > 0 ? (
           <>
           <fieldset aria-describedby={erroMotivo ? `${id}-erro-motivo` : undefined} style={{ border: 0, padding: 0, margin: 0, ...coluna }}>
             <legend style={texto('pequeno', 'rotulo-campo')}>Motivo</legend>
             {motivos.map((m) => (
               <label key={m.codigo} style={{ display: 'flex', gap: espaco.sm, alignItems: 'center' }}>
-                <input type="radio" style={radioEstilo(motivo === m.codigo)} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
+                <input type="radio" style={motivo === m.codigo ? { ...radioBase, ...radioMarcado } : radioBase} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
                 {m.rotulo}
               </label>
             ))}
           </fieldset>
-          {erroMotivo ? <span id={`${id}-erro-motivo`} role="alert" style={mensagemErro}>{erroMotivo}</span> : null}
+          {erroMotivo ? <span id={`${id}-erro-motivo`} style={mensagemErro}>{erroMotivo}</span> : null}
           </>
         ) : null}
         <div style={coluna}>
@@ -166,7 +155,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
             style={{ ...campoBase, padding: espaco.sm, ...(erroTexto ? { borderColor: cor('erroTexto') } : {}) }}
           />
         </label>
-        {erroTexto ? <span id={`${id}-erro-texto`} role="alert" style={mensagemErro}>{erroTexto}</span> : null}
+        {erroTexto ? <span id={`${id}-erro-texto`} style={mensagemErro}>{erroTexto}</span> : null}
         </div>
         {aviso ? (
           <p id={`${id}-aviso`} style={{ ...texto('pequeno'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
