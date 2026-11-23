@@ -31,7 +31,7 @@
 | **design-de-marca** | Guardião da marca Macuxi (a mesma do FDV; o manual da marca do FDV é a fonte); valida toda mudança de cor ou layout; `docs/marca/` | Não aprova marca (só o Alexandre) |
 | **banco-dados** | Banco `macuxierp`, papéis, schemas, RLS, migrações, seeds e tabelas fiscais oficiais | Não escreve tela nem regra |
 | **testes** | Plano, `tests/`, multi-tenant, Hub do FDV, NF-e em homologação, valor × regra. Defeito funcional é dele | Não corrige código de produção |
-| **corretor-redundancias** | Excessos, duplicidades e redundâncias (texto, tela, código, testes, docs). Toda tarefa passa por ele, numa rodada só, antes do push | Não caça defeito funcional |
+| **corretor-redundancias** | Excessos, duplicidades e redundâncias (texto, tela, código, testes, docs). Toda tarefa passa por ele, numa rodada só, antes do push. Na tela fica só o que o usuário usa para decidir ou agir: explicação de funcionamento, texto de garantia e rótulo técnico ("Core", "slug", "tenant", "Sempre ligado") saem, e o achado segura o lote (R-20261123-103734-alexandre) | Não caça defeito funcional |
 | **modulo-core** | Empresa, usuários, perfis, licenças, auditoria, arquivos, A1, exportação LGPD | — |
 | **modulo-cadastros** | Clientes, produtos, preços, estoque, filiais, equipe e carteira, tabelas oficiais, CNPJ/CEP/IE | — |
 | **modulo-pedido** | Pedido do FDV e manual, validações, aprovação, status | — |

@@ -31,6 +31,15 @@ Você **não corrige** código, tela, schema, doc de produto ou quadro de outro 
 
 ## Checklist
 
+### A0. Só o que o usuário usa para agir (regra do Alexandre, 23/11/2026, R-20261123-103734-alexandre; a mesma do FDV, R-20261110-192153)
+Todo texto de tela, portal, PDF, e-mail ou mensagem que o usuário **não usa para decidir ou agir agora** é excesso e sai, mesmo certo e sem repetição. É texto de quem fez o sistema, não de quem usa. Exemplos:
+- o que o sistema faz por trás ("vai junto", "o sistema guarda…", "a equipe vê…", "é enviado automaticamente");
+- explicação de funcionamento e texto de garantia;
+- rótulo técnico ou de desenvolvedor: "Core", "slug", "tenant", "Sempre ligado", "payload", "id", nome de tabela, módulo interno ou código de erro sem a ação;
+- controle que o usuário não pode mudar (caixa travada, opção fixa): some da tela em vez de ganhar explicação.
+
+**Severidade alta, sempre: o achado segura o lote e o build**, como os outros. A exceção é só comentário ou título de teste. Na proposta, o "depois" é tirar o texto ou o controle, não reescrever a explicação.
+
 ### A. Texto e rótulos de tela (BKO, DANFE, PDFs e e-mails)
 - **Palavra de contexto repetida**: se o cabeçalho já fixa o contexto (data, "hoje", "mês", nome do cliente), os títulos e linhas abaixo não repetem. Limite: a mesma palavra de contexto aparece **no máximo 1 vez por cartão** e não repete o que o cabeçalho já disse.
 - **Unidade repetida na mesma frase**: "1 nota de 15 notas" → "1 de 15", com o rótulo dizendo a unidade.
