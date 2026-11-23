@@ -4,6 +4,7 @@
  * modules/integracao-fdv/api/rotas.ts (PUT /credencial, PUT /configuracao, POST /credencial/testar, POST
  * /entidades/:e/carga-completa e /retomar) para o macuxierp_config, com auditoria de superadmin e sem a chave, o prefixo
  * nem o cifrado na auditoria. O portal_ler devolve os insumos crus (a falha sai do falhaEnvioFdv do SDK, no módulo).
+ * A 0039 troca o 23514 de empresa fora de ativo e de módulo desligado por MXI04 (DETAIL empresa_inativa | modulo_desligado).
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -15,6 +16,7 @@ import {
   consultar,
   criarBancoDeTeste,
   executar,
+  falhaDetalhada,
   linhas,
   PG_DISPONIVEL,
   permitirSetRole,
@@ -22,10 +24,13 @@ import {
   rodarComo,
   rodarScript,
   sessaoSql,
+  verboso,
 } from './apoio.ts';
 import { fixturePlataforma, novoTenant } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0038_integracao_fdv_portal.sql', import.meta.url));
+/** 0039 (T-0056). */
+const MIGRACAO_0039 = fileURLToPath(new URL('../migrations/0039_integracao_fdv_portal_mxi04.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
 const A = novoTenant('ifdv-0038-a');
@@ -108,6 +113,16 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integração FDV pelo porta
   const ler = (t: string): Estado => jsonConfig<Estado>(`SELECT integracao_fdv.portal_ler('${t}');`);
   const recusaConfig = (sql: string, codigo: string, padrao: RegExp, s: string | null = sessao): void =>
     recusaDetalhada(banco.conexao, `${sessaoSql(s)}${sql}`, codigo, padrao, { papel: CONFIG });
+  /** MXI04 (0039) com o motivo exato no DETAIL e a mensagem curta. */
+  const recusaMxi04 = (sql: string, detalhe: 'empresa_inativa' | 'modulo_desligado'): void => {
+    const e = falhaDetalhada(() => executar(banco.conexao, verboso(`${sessaoSql(sessao)}${sql}`), { papel: CONFIG }));
+    expect({ sql, saida: e.saida }).toMatchObject({ sql, saida: expect.stringContaining('MXI04') });
+    expect({ sql, detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1] }).toEqual({ sql, detalhe });
+    expect({ sql, mensagem: e.mensagem }).toMatchObject({
+      sql,
+      mensagem: expect.stringMatching(detalhe === 'empresa_inativa' ? /empresa fora de ativo/ : /módulo integracao-fdv desligado/),
+    });
+  };
   const um = <T>(sql: string): T => consultar<T>(banco.conexao, sql)[0] as T;
   /** Linhas de auditoria da integração (a fixture já audita outras coisas). */
   const nAuditoria = (t: string): number => um<{ n: number }>(`SELECT count(*)::int AS n FROM plataforma.auditoria WHERE tenant_id = '${t}' AND acao LIKE 'integracao-fdv.%'`).n;
@@ -218,15 +233,15 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(nAuditoria(A.id)).toBe(0);
   });
 
-  it('(c) módulo desligado ou empresa suspensa = 23514 nas cinco escritas; a leitura segue (modulo_licenciado false)', () => {
-    for (const sql of escritas(C.id)) recusaConfig(sql, '23514', /módulo integracao-fdv desligado/);
-    for (const sql of escritas(D.id)) recusaConfig(sql, '23514', /empresa fora de ativo/);
+  it('(c) módulo desligado ou empresa suspensa = MXI04 (0039) com DETAIL modulo_desligado / empresa_inativa nas cinco escritas; a leitura segue (modulo_licenciado false)', () => {
+    for (const sql of escritas(C.id)) recusaMxi04(sql, 'modulo_desligado');
+    for (const sql of escritas(D.id)) recusaMxi04(sql, 'empresa_inativa');
     expect(ler(C.id).modulo_licenciado).toBe(false);
     // licença inativa ou vencida também é módulo desligado
     executar(banco.conexao, `INSERT INTO plataforma.tenant_modulo (tenant_id, modulo, ativo) VALUES ('${C.id}', 'integracao-fdv', false);`);
-    recusaConfig(definir(C.id, null), '23514', /módulo integracao-fdv desligado/);
+    recusaMxi04(definir(C.id, null), 'modulo_desligado');
     executar(banco.conexao, `UPDATE plataforma.tenant_modulo SET ativo = true, valido_ate = now() - interval '1 day' WHERE tenant_id = '${C.id}' AND modulo = 'integracao-fdv';`);
-    recusaConfig(definir(C.id, null), '23514', /módulo integracao-fdv desligado/);
+    recusaMxi04(definir(C.id, null), 'modulo_desligado');
     expect(ler(C.id).modulo_licenciado).toBe(false);
     expect(ler(D.id).modulo_licenciado).toBe(true);
     expect([nAuditoria(C.id), nAuditoria(D.id)]).toEqual([0, 0]);
@@ -557,6 +572,8 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     ler(A.id);
     expect(retrato(B.id)).toEqual(antesB);
     rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
+    // a 0039 vem depois da 0038 e volta o estado final (MXI04)
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0039, 'utf8'), { transacao: true });
     expect(retrato(A.id)).toEqual(antesA);
     expect(retrato(B.id)).toEqual(antesB);
     expect(
@@ -566,5 +583,28 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     for (const f of PORTAL) {
       expect({ f, ok: um<{ ok: boolean }>(`SELECT has_function_privilege('${CONFIG}', '${f}'::regprocedure, 'EXECUTE') AS ok`).ok }).toEqual({ f, ok: true });
     }
+  });
+  it('(n) reexecutar a 0039 não muda dado nem privilégio; portal_empresa segue interna, SECURITY DEFINER, search_path fixo; MXI04 com o DETAIL certo', () => {
+    const antes = [A.id, B.id, C.id, D.id].map(retrato);
+    const privilegios = (): unknown =>
+      consultar(
+        banco.conexao,
+        `SELECT p.proname, pg_get_userbyid(p.proowner) AS dono, p.prosecdef, p.proconfig, p.proacl::text AS acl
+           FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'integracao_fdv' AND p.proname LIKE 'portal\\_%' ORDER BY p.oid`,
+      );
+    const privAntes = privilegios();
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0039, 'utf8'), { transacao: true });
+    expect([A.id, B.id, C.id, D.id].map(retrato)).toEqual(antes);
+    expect(privilegios()).toEqual(privAntes);
+    // empresa suspensa E sem módulo: a empresa vem antes (ordem da 0038)
+    for (const situacao of ['encerrado']) {
+      executar(banco.conexao, `UPDATE plataforma.tenant SET situacao = '${situacao}' WHERE id = '${C.id}';`);
+      recusaMxi04(definir(C.id, null), 'empresa_inativa');
+    }
+    // os demais seguem como na 0038: P0002 para inexistente; 23514 para fora da F2
+    recusaConfig(`SELECT integracao_fdv.portal_testar('${randomUUID()}', 'r');`, 'P0002', /empresa não encontrada/);
+    recusaConfig(`SELECT integracao_fdv.portal_carga_completa('${A.id}', 'nota', 'r');`, '23514', /cadastro fora da F2/);
+    expect([nAuditoria(C.id), nAuditoria(D.id)]).toEqual([0, 0]);
   });
 });
