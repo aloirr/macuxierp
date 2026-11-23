@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { DialogoMotivo } from './DialogoMotivo.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { TabelaDensa, type ColunaTabela } from './TabelaDensa.js';
-import { botaoPrincipal, botaoSecundario, gerarCssBotoes } from './estilos.js';
+import { botaoDestrutivo, botaoPrincipal, botaoSecundario, gerarCssBotoes } from './estilos.js';
 import { AssinaturaErp, SHA256_ASSINATURA_A_NEGATIVO_AZUL_NOITE, SHA256_ASSINATURA_A_NEGATIVO_GRAFITE, SHA256_ASSINATURA_C_POSITIVO, assinaturaANegativoGrafite, assinaturaCPositivo, SHA256_SIMBOLO_NEGATIVO, alturaAssinatura, assinaturaANegativoAzulNoite, faviconDataUri, faviconSvg, paraDataUri, simboloNegativo } from './marca.js';
 
 const sha256 = (literal: string) => createHash('sha256').update(literal + '\n').digest('hex');
@@ -54,6 +54,35 @@ describe('botões (MC-0008): um principal e um secundário', () => {
   });
 });
 
+describe('botaoDestrutivo (T-0058, opção B)', () => {
+  it('mesma base do principal; fundo e borda erro-texto, texto branco', () => {
+    const p = botaoPrincipal();
+    const d = botaoDestrutivo();
+    for (const k of ['fontSize', 'fontWeight', 'borderRadius', 'padding', 'lineHeight'] as const) expect(d[k]).toBe(p[k]);
+    expect(d.background).toBe('var(--mx-cor-erro-texto)');
+    expect(d.border).toBe('1px solid var(--mx-cor-erro-texto)');
+    expect(d.color).toBe('var(--mx-cor-branco)');
+    expect(botaoDestrutivo(true).cursor).toBe('not-allowed');
+  });
+  it('contraste branco sobre #A8261B ≥ 4,5:1 (AA)', () => {
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+    };
+    const razao = (1.05) / (lum('#A8261B') + 0.05);
+    expect(razao).toBeGreaterThan(7.0);
+    expect(razao).toBeLessThan(7.2);
+  });
+  it('.mx-botao-destrutivo no botoes.css: base, foco e sem hover próprio', () => {
+    const css = gerarCssBotoes();
+    expect(css).toContain('.mx-botao-destrutivo {');
+    expect(css).toMatch(/\.mx-botao-destrutivo \{[^}]*background: var\(--mx-cor-erro-texto\)/);
+    expect(css).toContain('.mx-botao-destrutivo:focus-visible');
+    expect(css).toContain('.mx-botao-destrutivo:disabled');
+    expect(css).not.toContain('.mx-botao-destrutivo:hover');
+  });
+});
+
 describe('DialogoMotivo: rotuloFechar e destrutivo', () => {
   it('fecha com o rótulo do chamador; padrão "Cancelar"', () => {
     const d = dialogo({ titulo: 'Cancelar nota', rotuloFechar: 'Manter a nota' });
@@ -61,11 +90,12 @@ describe('DialogoMotivo: rotuloFechar e destrutivo', () => {
     expect(d).not.toContain('>Cancelar</button>');
     expect(dialogo()).toContain('>Cancelar</button>');
   });
-  it('destrutivo é só sinal (data-destrutivo), sem vermelho', () => {
+  it('destrutivo: confirmar em erro-texto (R-20261122-035525, opção B); sem destrutivo, azul-noite', () => {
     const d = dialogo({ destrutivo: true });
-    expect(d).toMatch(/<button[^>]*data-destrutivo="true"/);
-    expect(d).not.toContain('erro-texto');
+    expect(d).toMatch(/<button[^>]*data-destrutivo="true"[^>]*background:var\(--mx-cor-erro-texto\)/);
     expect(dialogo()).not.toContain('data-destrutivo');
+    expect(dialogo()).not.toContain('erro-texto');
+    expect(dialogo()).toMatch(/<button[^>]*background:var\(--mx-cor-azul-noite\)/);
   });
 });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, radioBase, radioMarcado, texto } from './estilos.js';
+import { botaoDestrutivo, botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, radioBase, radioMarcado, texto } from './estilos.js';
 import { Dialogo } from './Dialogo.js';
 import { RegiaoErros } from './RegiaoErros.js';
 
@@ -27,7 +27,7 @@ export interface DialogoMotivoProps {
   rotuloConfirmar?: string;
   /** Texto do botão que chama `aoCancelar` (padrão: "Cancelar"). Ex.: "Manter a nota". */
   rotuloFechar?: string;
-  /** Só sinal: marca o botão de confirmar com `data-destrutivo="true"`. Nenhuma cor muda nesta versão. */
+  /** Ação irreversível: confirmar em vermelho (erro-texto) e `data-destrutivo="true"`. */
   destrutivo?: boolean;
   /** Aviso fixo do módulo (ex.: sobre dado pessoal). Sem aviso, nada aparece. */
   aviso?: string | null;
@@ -92,7 +92,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
       rodape={
         <>
           <button type="button" onClick={aoCancelar} style={botaoSecundario()}>{rotuloFechar}</button>
-          <button type="button" onClick={confirmar} data-destrutivo={destrutivo ? 'true' : undefined} style={botaoPrincipal()}>{rotuloConfirmar}</button>
+          <button type="button" onClick={confirmar} data-destrutivo={destrutivo ? 'true' : undefined} style={destrutivo ? botaoDestrutivo() : botaoPrincipal()}>{rotuloConfirmar}</button>
         </>
       }
     >
