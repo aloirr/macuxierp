@@ -99,13 +99,21 @@ function roda(args: string[], resposta = '', saida = 0) {
   return { status: r.status, stdout: r.stdout, saida: `${r.stdout}${r.stderr}`, chamadas: readFileSync(registro, 'utf8'), amb, entrada: readFileSync(entrada, 'utf8') };
 }
 describe('operador.sh criar-empresa com um docker falso', () => {
-  const base = ['criar-empresa', '--slug', 'thathyany', '--nome', 'Empresa Fictícia Ltda', '--admin-email', EMAIL, '--operador', 'alexandre'];
+  const base = ['criar-empresa', '--codigo', 'am2808', '--nome', 'Empresa Fictícia Ltda', '--admin-email', EMAIL, '--operador', 'alexandre'];
   const criado = '[empresa] APLICADO\\n  administrador: criado (id 00000000-0000-4000-8000-000000000001)\\nestado: usuario-criado\\n';
+  const semCodigo = base.filter((a) => a !== '--codigo' && a !== 'am2808');
 
   it.each([
     ['sem comando', []],
-    ['comando desconhecido', ['apagar-empresa', '--slug', 'thathyany']],
-    ['slug inválido', base.map((a) => (a === 'thathyany' ? 'Thathyany' : a))],
+    ['comando desconhecido', ['apagar-empresa', '--codigo', 'AM2808']],
+    ['código com 3 dígitos', base.map((a) => (a === 'am2808' ? 'AM280' : a))],
+    ['código com 5 dígitos', base.map((a) => (a === 'am2808' ? 'AM28080' : a))],
+    ['código sem UF', base.map((a) => (a === 'am2808' ? '122808' : a))],
+    ['UF com 3 letras', ['criar-empresa', '--uf', 'AMZ', ...semCodigo.slice(1)]],
+    ['--codigo e --uf juntos', [...base, '--uf', 'AM']],
+    ['nem --codigo nem --uf', semCodigo],
+    ['--slug com --codigo', ['criar-empresa', '--slug', 'thathyany', ...base.slice(1)]],
+    ['--slug fora do CHECK', ['criar-empresa', '--slug', 'Thathyany', ...semCodigo.slice(1)]],
     ['e-mail inválido', base.map((a) => (a === EMAIL ? 'sem-arroba' : a))],
     ['sem --operador', base.slice(0, -2)],
     ['opção desconhecida', [...base, '--senha', 'x']],
@@ -116,12 +124,26 @@ describe('operador.sh criar-empresa com um docker falso', () => {
     expect(r.chamadas).toBe('');
   });
 
+  it('RN-CORE-11: --slug é LEGADO: vai ao empresa.mjs como antes, com um aviso de uma linha no stderr', () => {
+    const r = roda(['criar-empresa', '--slug', 'thathyany', ...semCodigo.slice(1)], '[empresa] SIMULAÇÃO: nada gravado.\\nestado: simulacao\\n');
+    expect(r.status).toBe(0);
+    expect(r.chamadas.trim()).toMatch(/ psql node --input-type=module - --slug thathyany --operador alexandre$/);
+    expect(r.saida).toContain('--slug é legado: use --codigo <código do FDV> (ex.: AM2808) ou --uf <UF>\n');
+    expect(r.stdout).not.toContain('--slug é legado');
+  });
+
+  it('RN-CORE-11: --uf vai ao empresa.mjs (o sorteio é lá)', () => {
+    const r = roda(['criar-empresa', '--uf', 'rr', ...semCodigo.slice(1)], '[empresa] SIMULAÇÃO: nada gravado.\\nestado: simulacao\\n');
+    expect(r.status).toBe(0);
+    expect(r.chamadas.trim()).toMatch(/ psql node --input-type=module - --uf rr --operador alexandre$/);
+  });
+
   it('sem --confirmar: só a simulação, sem senha no ambiente nem no terminal', () => {
     const r = roda(base, '[empresa] SIMULAÇÃO: nada gravado.\\nestado: simulacao\\n');
     expect(r.status).toBe(0);
     const chamadas = r.chamadas.trim().split('\n');
     expect(chamadas).toHaveLength(1);
-    expect(chamadas[0]).toMatch(/ --profile ferramentas run --rm --no-deps -T -e MACUXIERP_EMPRESA_NOME -e MACUXIERP_ADMIN_EMAIL -e MACUXIERP_ADMIN_NOME psql node --input-type=module - --slug thathyany --operador alexandre$/);
+    expect(chamadas[0]).toMatch(/ --profile ferramentas run --rm --no-deps -T -e MACUXIERP_EMPRESA_NOME -e MACUXIERP_ADMIN_EMAIL -e MACUXIERP_ADMIN_NOME psql node --input-type=module - --codigo am2808 --operador alexandre$/);
     expect(chamadas[0]).not.toContain('Fictícia');
     expect(r.amb.EMPRESA).toBe('Empresa Fictícia Ltda');
     expect(chamadas[0]).not.toContain('--confirmar');

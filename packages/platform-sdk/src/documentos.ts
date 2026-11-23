@@ -12,6 +12,11 @@ import { z } from 'zod';
 export const PADRAO_CNPJ = /^[0-9A-Z]{12}[0-9]{2}$/;
 /** Sigla da UF: 2 letras maiúsculas. */
 export const PADRAO_UF = /^[A-Z]{2}$/;
+/** As 27 UFs (26 estados e o DF), em maiúsculas. Prefixo do código da empresa (RN-CORE-11) e domínio de `uf`. */
+export const UFS = [
+  'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA',
+  'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO',
+] as const;
 
 /** Tira pontuação (. / - e espaço) e passa para maiúsculas. Não valida. */
 export function normalizarDocumento(valor: string): string {

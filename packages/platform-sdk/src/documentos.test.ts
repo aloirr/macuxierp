@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Cnpj, cnpjRaiz, cnpjValido, Cpf, cpfValido, ieComDvValido, normalizarDocumento } from './documentos';
+import { Cnpj, cnpjRaiz, cnpjValido, Cpf, cpfValido, ieComDvValido, normalizarDocumento, PADRAO_UF, UFS } from './documentos';
 
 describe('CNPJ e CPF (RN-CAD-01)', () => {
   it('RN-CAD-01: aceita CNPJ numérico válido, com ou sem máscara', () => {
@@ -69,5 +69,14 @@ describe('IE com DV pela regra da UF (RN-CAD-02), AM, PA e SP', () => {
   it('RN-CAD-02: ISENTO passa; UF sem regra no ERP dá null', () => {
     expect(ieComDvValido('AM', 'isento')).toBe(true);
     expect(ieComDvValido('RJ', '12345678')).toBeNull();
+  });
+});
+
+describe('UFS', () => {
+  it('as 27 siglas (26 estados e o DF), sem repetição, no formato PADRAO_UF', () => {
+    expect(UFS).toHaveLength(27);
+    expect(new Set(UFS).size).toBe(27);
+    for (const uf of UFS) expect(PADRAO_UF.test(uf), uf).toBe(true);
+    for (const uf of ['AM', 'RR', 'DF', 'SP']) expect(UFS).toContain(uf);
   });
 });

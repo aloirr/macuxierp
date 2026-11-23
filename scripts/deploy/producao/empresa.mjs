@@ -1,10 +1,16 @@
 /**
- * Primeiro acesso de uma empresa na produção (T-0024): cria (ou reconhece) o tenant pelo slug, o 1º administrador pelo
+ * Primeiro acesso de uma empresa na produção (T-0024): cria (ou reconhece) o tenant pelo código, o 1º administrador pelo
  * e-mail e as licenças core, cadastros, pedido e integracao-fdv, com auditoria — numa transação única e idempotente.
  * Quem chama é o operador.sh (ao lado), DENTRO do contêiner `psql` do compose.yml (imagem da API: node 24 e psql 16,
  * sem node_modules), como o admin do DBaaS (PG* do entrypoint):
  *
- *   node --input-type=module - --slug <slug> --operador <nome> [--confirmar]  < empresa.mjs
+ *   node --input-type=module - --codigo <UF+4 dígitos> | --uf <UF> | --slug <slug> --operador <nome> [--confirmar]  < empresa.mjs
+ *
+ * Código da empresa (RN-CORE-11, T-0053) = o código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808), sem
+ * diferenciar maiúsculas; no banco fica em `plataforma.tenant.slug`, em minúsculas. `--codigo` cria ou reconhece a
+ * empresa com esse código; `--uf` (empresa sem FDV) sorteia UF + 4 dígitos no próprio SQL, até 20 tentativas contra
+ * todos os slugs (os excluídos também contam). A simulação mostra um sorteio; o --confirmar sorteia de novo.
+ * `--slug` é LEGADO (o comportamento de antes, para os testes e roteiros antigos); o operador.sh avisa no stderr.
  *
  * Ambiente (nunca no argv): MACUXIERP_EMPRESA_NOME (nome legal da empresa: de MEI pode ser dado pessoal),
  * MACUXIERP_ADMIN_EMAIL, MACUXIERP_ADMIN_NOME e, só com --confirmar, MACUXIERP_SENHA_INICIAL (gerada no host pelo
@@ -15,8 +21,8 @@
  * (apps/api/src/auth/senha.ts: PHC, 19 MiB, t=2, p=1); o teste apps/api/src/operador-empresa.db.test.ts entra pela
  * rota de login real com a senha.
  *
- * Saída: só slug, ids e o que foi criado ou já existia; nunca nome da empresa, e-mail, nome da pessoa, senha nem hash
- * (nem nos erros do psql). A auditoria guarda o slug, nunca o nome da empresa. A última linha é o
+ * Saída: só o código (em maiúsculas), ids e o que foi criado ou já existia; nunca nome da empresa, e-mail, nome da pessoa, senha nem hash
+ * (nem nos erros do psql). A auditoria guarda o slug (o código em minúsculas), nunca o nome da empresa. A última linha é o
  * estado que o operador.sh lê: `estado: usuario-criado`, `estado: usuario-existia` ou `estado: simulacao`.
  * Saída 0 = ok; 2 = argumento inválido; 1 = falha (nada gravado: a transação é desfeita).
  */
@@ -24,7 +30,12 @@ import { spawnSync } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import { promisify } from 'node:util';
 
-const PADRAO_SLUG = /^[a-z0-9][a-z0-9-]{1,39}$/; // CHECK de plataforma.tenant.slug (0002)
+// Código da empresa (RN-CORE-11): cópia de PADRAO_CODIGO_EMPRESA e UFS do platform-sdk (o contêiner não tem
+// node_modules); o teste apps/api/src/operador-codigo.test.ts trava contra o SDK.
+const PADRAO_CODIGO = /^[A-Za-z]{2}[0-9]{4}$/;
+const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+const TENTATIVAS_SORTEIO = 20;
+const PADRAO_SLUG = /^[a-z0-9][a-z0-9-]{1,39}$/; // LEGADO (--slug): CHECK de plataforma.tenant.slug (0002)
 const PADRAO_OPERADOR = /^[a-z][a-z0-9._-]{1,39}$/; // cópia de scripts/plataforma/comum.mjs (o teste operador-empresa.db.test.ts trava)
 const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // cópia de MODULOS do SDK; o teste operador-empresa.db.test.ts trava
@@ -42,7 +53,7 @@ class ErroUso extends Error {}
 
 function lerArgumentos(argv, env) {
   const op = { confirmar: false };
-  const opcoes = { '--slug': 'slug', '--operador': 'operador' };
+  const opcoes = { '--codigo': 'codigo', '--uf': 'uf', '--slug': 'slug', '--operador': 'operador' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--confirmar') {
       op.confirmar = true;
@@ -57,7 +68,19 @@ function lerArgumentos(argv, env) {
   op.email = (env.MACUXIERP_ADMIN_EMAIL ?? '').trim().toLowerCase(); // mesma normalização da API (auth/servico.ts)
   op.adminNome = (env.MACUXIERP_ADMIN_NOME ?? '').trim();
   op.senha = env.MACUXIERP_SENHA_INICIAL ?? '';
-  if (!PADRAO_SLUG.test(op.slug ?? '')) throw new ErroUso('--slug: minúsculas, dígitos e hífen, 2 a 40 caracteres');
+  if ([op.codigo, op.uf, op.slug].filter((v) => v !== undefined).length !== 1) throw new ErroUso('informe --codigo <código do FDV, ex.: AM2808> ou --uf <UF> para sortear (um dos dois)');
+  op.legado = op.slug !== undefined;
+  if (op.legado) {
+    if (!PADRAO_SLUG.test(op.slug)) throw new ErroUso('--slug: minúsculas, dígitos e hífen, 2 a 40 caracteres');
+  } else if (op.codigo !== undefined) {
+    op.codigo = op.codigo.trim().toUpperCase();
+    if (!PADRAO_CODIGO.test(op.codigo) || !UFS.includes(op.codigo.slice(0, 2))) throw new ErroUso('--codigo: código do FDV, UF + 4 dígitos, ex.: AM2808');
+    op.slug = op.codigo.toLowerCase();
+  } else {
+    op.uf = op.uf.trim().toUpperCase();
+    if (!UFS.includes(op.uf)) throw new ErroUso('--uf: sigla de uma das 27 UFs, ex.: AM');
+    op.slug = '';
+  }
   const tamNome = [...op.nome].length; // caracteres, não unidades UTF-16 (o operador.sh conta igual)
   if (tamNome < 2 || tamNome > 120) throw new ErroUso('MACUXIERP_EMPRESA_NOME (--nome): 2 a 120 caracteres');
   if (/\p{Cc}/u.test(op.nome)) throw new ErroUso('MACUXIERP_EMPRESA_NOME (--nome): sem quebra de linha nem caractere de controle');
@@ -91,7 +114,7 @@ async function hashSenha(senha) {
  * item: `tipo|chave|situacao|id`.
  */
 function montarSql(simular) {
-  const vars = ['slug', 'nome', 'email', 'admin_nome', 'hash', 'operador', 'request_id', 'simular', 'modulos'];
+  const vars = ['slug', 'uf', 'nome', 'email', 'admin_nome', 'hash', 'operador', 'request_id', 'simular', 'modulos'];
   return `${vars.map((v) => `\\getenv ${v} MACUXIERP_OP_${v.toUpperCase()}`).join('\n')}
 BEGIN${simular ? ' READ ONLY' : ''};
 \\o /dev/null
@@ -100,6 +123,8 @@ SELECT ${vars.map((v) => `set_config('macuxierp_op.${v}', :'${v}', true)`).join(
 DO $$
 DECLARE
   v_slug text := current_setting('macuxierp_op.slug');
+  v_uf text := current_setting('macuxierp_op.uf');
+  v_cand text;
   v_nome text := current_setting('macuxierp_op.nome');
   v_email text := current_setting('macuxierp_op.email');
   v_admin_nome text := current_setting('macuxierp_op.admin_nome');
@@ -120,6 +145,20 @@ DECLARE
 BEGIN
   -- uma criação de empresa por vez no servidor (duas sessões do operador ao mesmo tempo)
   PERFORM pg_advisory_xact_lock(hashtext('macuxierp.operador.criar-empresa'));
+
+  -- --uf (empresa sem FDV, RN-CORE-11): sorteia UF + 4 dígitos livre entre TODOS os slugs (os excluídos também contam)
+  IF v_slug = '' THEN
+    FOR i IN 1..${TENTATIVAS_SORTEIO} LOOP
+      v_cand := lower(v_uf) || lpad(floor(random() * 10000)::int::text, 4, '0');
+      IF NOT EXISTS (SELECT 1 FROM plataforma.tenant WHERE slug = v_cand) THEN
+        v_slug := v_cand;
+        EXIT;
+      END IF;
+    END LOOP;
+    IF v_slug = '' THEN
+      RAISE EXCEPTION 'sorteio do código sem vaga livre em % tentativas; repita ou use --codigo', ${TENTATIVAS_SORTEIO} USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
 
   SELECT id, situacao, deleted_at INTO t FROM plataforma.tenant WHERE slug = v_slug;
   IF FOUND THEN
@@ -248,6 +287,7 @@ async function main(argv, env) {
   for (const k of ['MACUXIERP_SENHA_INICIAL', 'MACUXIERP_EMPRESA_NOME', 'MACUXIERP_ADMIN_EMAIL', 'MACUXIERP_ADMIN_NOME']) delete filho[k];
   Object.assign(filho, {
     MACUXIERP_OP_SLUG: op.slug,
+    MACUXIERP_OP_UF: op.uf ?? '',
     MACUXIERP_OP_NOME: op.nome,
     MACUXIERP_OP_EMAIL: op.email,
     MACUXIERP_OP_ADMIN_NOME: op.adminNome,
@@ -278,10 +318,12 @@ async function main(argv, env) {
     return 1;
   }
   console.log(op.confirmar ? '[empresa] APLICADO e auditado (plataforma.auditoria, motivo "primeiro acesso").' : '[empresa] SIMULAÇÃO: nada gravado.');
+  const [, slugFinal] = itens.find((c) => c[0] === 'empresa');
   for (const [tipo, chave, situacao, id] of itens) {
-    const rotulo = tipo === 'empresa' ? `empresa ${chave}` : tipo === 'usuario' ? 'administrador' : `licença ${chave}`;
+    const rotulo = tipo === 'empresa' ? `empresa ${op.legado ? chave : chave.toUpperCase()}` : tipo === 'usuario' ? 'administrador' : `licença ${chave}`;
     console.log(`  ${rotulo}: ${TEXTO[tipo][situacao] ?? situacao}${id !== '-' ? ` (id ${id})` : ''}`);
   }
+  if (!op.legado) console.log(`  código da empresa: ${slugFinal.toUpperCase()}${op.uf && !op.confirmar ? ' (sorteado só nesta simulação; o --confirmar sorteia de novo)' : ''}`);
   console.log(`estado: ${!op.confirmar ? 'simulacao' : usuario[2] === 'criado' ? 'usuario-criado' : 'usuario-existia'}`);
   return 0;
 }

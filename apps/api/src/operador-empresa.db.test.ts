@@ -40,7 +40,7 @@ describe('empresa.mjs: listas e padrões presos às fontes', () => {
   it('MODULOS_LIGAR ∪ MODULOS_INFORMAR = MODULOS do platform-sdk', () => {
     expect([...listaDoEmpresa('MODULOS_LIGAR'), ...listaDoEmpresa('MODULOS_INFORMAR')].sort()).toEqual([...MODULOS].sort());
   });
-  it('PADRAO_SLUG e PADRAO_OPERADOR iguais aos de scripts/plataforma/comum.mjs', () => {
+  it('PADRAO_SLUG (--slug legado) e PADRAO_OPERADOR iguais aos de scripts/plataforma/comum.mjs', () => {
     for (const nome of ['PADRAO_SLUG', 'PADRAO_OPERADOR']) expect(padraoDoFonte(FONTE_EMPRESA, nome)).toBe(padraoDoFonte(FONTE_COMUM, nome));
   });
 });
@@ -59,10 +59,14 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     await b?.remover();
   });
 
-  /** Como no contêiner: PG* do admin, nome da empresa, e-mail, nome e senha só no ambiente; o argv leva só slug e operador. */
-  function empresa(args: string[], o: { senha?: string; email?: string; slug?: string; nome?: string } = {}) {
+  /**
+   * Como no contêiner: PG* do admin, nome da empresa, e-mail, nome e senha só no ambiente; o argv leva só o código (ou a
+   * UF do sorteio) e o operador. `codigo: null` = sem `--codigo` (o teste passa `--uf` ou `--slug` em `args`).
+   */
+  function empresa(args: string[], o: { senha?: string; email?: string; codigo?: string | null; nome?: string } = {}) {
     const nome = o.nome ?? EMPRESA_NOME;
-    const r = spawnSync(process.execPath, [EMPRESA_MJS, '--slug', o.slug ?? 'thathyany', '--operador', 'alexandre', ...args], {
+    const codigo = o.codigo === undefined ? ['--codigo', 'AM2808'] : o.codigo === null ? [] : ['--codigo', o.codigo];
+    const r = spawnSync(process.execPath, [EMPRESA_MJS, ...codigo, '--operador', 'alexandre', ...args], {
       env: {
         ...envPsqlAdmin(b.nome),
         MACUXIERP_EMPRESA_NOME: nome,
@@ -80,18 +84,19 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   }
 
   const um = async <T>(sql: string, p: unknown[] = []) => (await b.admin.query(sql, p)).rows as T[];
-  const tenantId = async (slug = 'thathyany') => (await um<{ id: string }>('SELECT id FROM plataforma.tenant WHERE slug = $1', [slug]))[0]?.id;
+  const tenantId = async (slug = 'am2808') => (await um<{ id: string }>('SELECT id FROM plataforma.tenant WHERE slug = $1', [slug]))[0]?.id;
   const licencas = async (t: string) =>
     um<{ modulo: string; ativo: boolean }>('SELECT modulo, ativo FROM plataforma.tenant_modulo WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY modulo', [t]);
   const auditoria = async (t: string) => um<{ acao: string; usuario_id: string | null; depois: Record<string, unknown> }>('SELECT acao, usuario_id, depois FROM plataforma.auditoria WHERE tenant_id = $1 ORDER BY acao, entidade_id', [t]);
-  const entrar = (s: string) => app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'thathyany', email: 'ADMIN@exemplo.invalid', senha: s } });
+  const entrar = (s: string) => app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'AM2808', email: 'ADMIN@exemplo.invalid', senha: s } });
 
   it('sem --confirmar: simulação READ ONLY, nada gravado', () => {
     const r = empresa([]);
     expect(r.status).toBe(0);
     expect(r.estado).toBe('estado: simulacao');
-    expect(r.saida).toContain('empresa thathyany: seria criada');
+    expect(r.saida).toContain('empresa AM2808: seria criada');
     expect(r.saida).toContain('administrador: seria criado');
+    expect(r.saida).toContain('código da empresa: AM2808');
     for (const m of LIGADAS) expect(r.saida).toContain(`licença ${m}: seria ligada`);
     return expect(tenantId()).resolves.toBeUndefined();
   });
@@ -115,7 +120,7 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(r.status).toBe(0);
     expect(r.estado).toBe('estado: usuario-criado');
     const t = (await tenantId())!;
-    expect(r.saida).toContain(`empresa thathyany: criada (id ${t})`);
+    expect(r.saida).toContain(`empresa AM2808: criada (id ${t})`);
 
     expect(await licencas(t)).toEqual(LIGADAS.map((modulo) => ({ modulo, ativo: true })));
     expect(r.saida).toContain('licença faturamento: sem licença (não mexida)');
@@ -162,11 +167,11 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     const r = empresa(['--confirmar'], { senha: senhaProvisoria() });
     expect(r.status).toBe(0);
     expect(r.estado).toBe('estado: usuario-existia');
-    expect(r.saida).toContain(`empresa thathyany: já existia (id ${t})`);
+    expect(r.saida).toContain(`empresa AM2808: já existia (id ${t})`);
     expect(r.saida).toContain('administrador: já existia (senha NÃO alterada)');
     for (const m of LIGADAS) expect(r.saida).toContain(`licença ${m}: já ativa`);
 
-    expect(await um('SELECT 1 FROM plataforma.tenant WHERE slug = $1', ['thathyany'])).toHaveLength(1);
+    expect(await um('SELECT 1 FROM plataforma.tenant WHERE slug = $1', ['am2808'])).toHaveLength(1);
     const usuarios = await um<{ senha_hash: string; updated_at: Date }>('SELECT senha_hash, updated_at FROM plataforma.usuario WHERE tenant_id = $1', [t]);
     expect(usuarios).toEqual([antes]);
     expect(await licencas(t)).toEqual(LIGADAS.map((modulo) => ({ modulo, ativo: true })));
@@ -198,12 +203,12 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   });
 
   it('empresa suspensa: recusa sem gravar nada (saída 1)', async () => {
-    const r1 = empresa(['--confirmar'], { senha: senhaProvisoria(), slug: 'outra-loja' });
+    const r1 = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'rr0001' });
     expect(r1.status).toBe(0);
-    const t = (await tenantId('outra-loja'))!;
+    const t = (await tenantId('rr0001'))!;
     await b.admin.query("UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = $1", [t]);
     const total = (await auditoria(t)).length;
-    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), slug: 'outra-loja', email: 'outro@exemplo.invalid' });
+    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'rr0001', email: 'outro@exemplo.invalid' });
     expect(r.status).toBe(1);
     expect(r.saida).toContain('não está ativa');
     expect(r.saida).not.toContain('outro@exemplo.invalid');
@@ -212,25 +217,83 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
   });
 
   it('nome legal de MEI (acento e pontuação): gravado em plataforma.tenant.nome; fora da saída e da auditoria', async () => {
-    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), slug: 'jose-avila', nome: NOME_MEI });
+    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: 'SP1234', nome: NOME_MEI });
     expect(r.status).toBe(0);
     expect(r.estado).toBe('estado: usuario-criado');
     expect(r.saida).not.toMatch(/José|Ávila|ME\/EPP/); // nem pedaço do nome
-    const t = (await tenantId('jose-avila'))!;
+    const t = (await tenantId('sp1234'))!;
     expect(await um('SELECT nome FROM plataforma.tenant WHERE id = $1', [t])).toEqual([{ nome: NOME_MEI }]);
     const aud = await um<{ acao: string; antes: unknown; depois: unknown }>('SELECT acao, antes, depois FROM plataforma.auditoria WHERE tenant_id = $1', [t]);
     expect(aud).toHaveLength(6);
     for (const a of aud) expect(JSON.stringify(a)).not.toMatch(/José|Ávila|ME\/EPP/);
     const criar = aud.find((a) => a.acao === 'plataforma.empresa.criar')!;
     expect(Object.keys(criar.depois as object).sort()).toEqual(['motivo', 'operador', 'situacao', 'slug']);
-    expect(criar.depois).toMatchObject({ slug: 'jose-avila', situacao: 'ativo' });
+    expect(criar.depois).toMatchObject({ slug: 'sp1234', situacao: 'ativo' });
   });
 
   it('--nome no argv é recusado (o nome só vai pelo ambiente)', async () => {
-    const r = empresa(['--nome', 'Outra Fictícia'], { slug: 'argv-loja' });
+    const r = empresa(['--nome', 'Outra Fictícia'], { codigo: 'PA0001' });
     expect(r.status).toBe(2);
     expect(r.saida).toContain('opção desconhecida: --nome');
-    expect(await tenantId('argv-loja')).toBeUndefined();
+    expect(await tenantId('pa0001')).toBeUndefined();
+  });
+
+  it('RN-CORE-11: --codigo em minúsculas reconhece a empresa já criada (único sem diferenciar maiúsculas)', async () => {
+    const t = (await tenantId())!;
+    const r = empresa(['--confirmar'], { senha: senhaProvisoria(), codigo: ' am2808 ' });
+    expect(r.status).toBe(0);
+    expect(r.saida).toContain(`empresa AM2808: já existia (id ${t})`);
+    expect(await um('SELECT 1 FROM plataforma.tenant WHERE lower(slug) = $1', ['am2808'])).toHaveLength(1);
+  });
+
+  it('RN-CORE-11: --uf sorteia UF + 4 dígitos livre, gravado em minúsculas e mostrado em maiúsculas', async () => {
+    const r = empresa(['--uf', 'ro', '--confirmar'], { senha: senhaProvisoria(), codigo: null, email: 'sorteio@exemplo.invalid' });
+    expect(r.status).toBe(0);
+    expect(r.estado).toBe('estado: usuario-criado');
+    const codigo = /código da empresa: (RO[0-9]{4})\n/.exec(r.saida)?.[1];
+    expect(codigo, r.saida).toBeDefined();
+    expect(r.saida).toContain(`empresa ${codigo}: criada`);
+    expect(await tenantId(codigo!.toLowerCase())).toBeDefined();
+  });
+
+  it('RN-CORE-11: --uf sem código livre em 20 tentativas falha sem gravar (as excluídas também contam)', async () => {
+    // as 10 000 combinações de AP ocupadas, metade excluída: o sorteio nunca acha vaga
+    await b.admin.query(
+      `INSERT INTO plataforma.tenant (id, tenant_id, slug, nome, deleted_at)
+       SELECT g.id, g.id, 'ap' || lpad(g.n::text, 4, '0'), 'Ocupada', CASE WHEN g.n % 2 = 0 THEN now() END
+       FROM (SELECT n, gen_random_uuid() AS id FROM generate_series(0, 9999) n) g`,
+    );
+    const total = (await um('SELECT 1 FROM plataforma.tenant')).length;
+    const r = empresa(['--uf', 'AP', '--confirmar'], { senha: senhaProvisoria(), codigo: null, email: 'ap@exemplo.invalid' });
+    expect(r.status).toBe(1);
+    expect(r.saida).toContain('sem vaga livre em 20 tentativas');
+    expect(await um('SELECT 1 FROM plataforma.tenant')).toHaveLength(total);
+  });
+
+  it('--slug LEGADO: o comportamento de antes (slug como veio, sem a linha do código)', async () => {
+    const r = empresa(['--slug', 'loja-antiga', '--confirmar'], { senha: senhaProvisoria(), codigo: null, email: 'legado@exemplo.invalid' });
+    expect(r.status, r.saida).toBe(0);
+    expect(r.estado).toBe('estado: usuario-criado');
+    const t = (await tenantId('loja-antiga'))!;
+    expect(r.saida).toContain(`empresa loja-antiga: criada (id ${t})`);
+    expect(r.saida).not.toContain('código da empresa');
+  });
+
+  it.each([
+    ['--slug com --codigo', ['--slug', 'thathyany', '--codigo', 'AM2808'], 'um dos dois'],
+    ['--slug fora do CHECK', ['--slug', 'Thathyany'], '--slug: minúsculas'],
+    ['UF inexistente no código', ['--codigo', 'XX1234'], '--codigo: código do FDV'],
+    ['código com 3 dígitos', ['--codigo', 'AM123'], '--codigo: código do FDV'],
+    ['código com 5 dígitos', ['--codigo', 'AM12345'], '--codigo: código do FDV'],
+    ['UF inexistente no sorteio', ['--uf', 'XX'], '--uf: sigla'],
+    ['--codigo e --uf juntos', ['--codigo', 'AM2808', '--uf', 'AM'], 'um dos dois'],
+    ['nem --codigo nem --uf', [], 'um dos dois'],
+  ])('%s: saída 2, nada gravado', async (_n, args, mensagem) => {
+    const total = (await um('SELECT 1 FROM plataforma.tenant')).length;
+    const r = empresa(args, { codigo: null });
+    expect(r.status).toBe(2);
+    expect(r.saida).toContain(mensagem);
+    expect(await um('SELECT 1 FROM plataforma.tenant')).toHaveLength(total);
   });
 
   it.each([
@@ -239,8 +302,8 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     ['nome da empresa com 121 caracteres', { nome: 'Á'.repeat(121) }],
     ['nome da empresa com quebra de linha', { nome: 'Empresa\nFictícia' }],
   ])('%s: saída 2, nada gravado', async (_n, o) => {
-    const r = empresa(['--confirmar'], { slug: 'nova-loja', senha: senhaProvisoria(), ...o });
+    const r = empresa(['--confirmar'], { codigo: 'MT0001', senha: senhaProvisoria(), ...o });
     expect(r.status).toBe(2);
-    expect(await tenantId('nova-loja')).toBeUndefined();
+    expect(await tenantId('mt0001')).toBeUndefined();
   });
 });

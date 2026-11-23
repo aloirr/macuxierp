@@ -2,6 +2,7 @@
  * Ambiente, modo de emissão e UF da NF-e modelo 55, layout 4.00 (Manual de Orientação do Contribuinte).
  * Desenho: docs/desenho/T-0045.md, seção 2.
  */
+import { UFS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 /** Ambiente fiscal da filial emissora (o mesmo enum de `core.ambiente_fiscal`, RN-CORE-08). */
@@ -83,10 +84,8 @@ export const C_ORGAO_AN = 91;
  */
 export const PRAZO_TRANSMISSAO_EPEC_HORAS = 168;
 
-export const Uf = z.enum([
-  'RO', 'AC', 'AM', 'RR', 'PA', 'AP', 'TO', 'MA', 'PI', 'CE', 'RN', 'PB', 'PE', 'AL',
-  'SE', 'BA', 'MG', 'ES', 'RJ', 'SP', 'PR', 'SC', 'RS', 'MS', 'MT', 'GO', 'DF',
-]);
+/** As 27 UFs: a lista única do SDK (RD-1097). */
+export const Uf = z.enum(UFS);
 export type Uf = z.infer<typeof Uf>;
 
 /** `cUF` (código IBGE da UF) usado na chave de acesso e no `cUF`/`cOrgao` dos pedidos. */
