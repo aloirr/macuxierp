@@ -34,7 +34,7 @@ export default async function SelecionarFilial() {
           {eu.filiais.map((f) => (
             <li key={f.id}>
               <label>
-                <input type="radio" name="filial" value={f.id} defaultChecked={f.id === filial?.id} required /> {f.nome} (<span className="num">{formatarDocumento(f.cnpj)}</span>)
+                <input type="radio" className="mx-radio" name="filial" value={f.id} defaultChecked={f.id === filial?.id} required /> {f.nome} (<span className="num">{formatarDocumento(f.cnpj)}</span>)
               </label>
             </li>
           ))}
