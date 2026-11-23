@@ -4,6 +4,7 @@ export { TabelaDensa } from './TabelaDensa.js';
 export type { ColunaTabela, DirecaoOrdem, OrdemTabela, TabelaDensaProps, TipoColuna } from './TabelaDensa.js';
 export { FaixaPendencias } from './FaixaPendencias.js';
 export type { FaixaPendenciasProps, NivelPendencia, Pendencia } from './FaixaPendencias.js';
+export { RegiaoErros } from './RegiaoErros.js';
 export { DialogoMotivo } from './DialogoMotivo.js';
 export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
 export { FormularioItens } from './FormularioItens.js';

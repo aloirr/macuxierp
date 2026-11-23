@@ -67,14 +67,14 @@ describe('DialogoMotivo: rotuloFechar e destrutivo', () => {
 describe('FormularioItens: erro abaixo de cada campo', () => {
   it('cada mensagem fica abaixo do seu campo e é ligada a ele', () => {
     const h = form({ erros: { 'item-1': { produtoId: 'Produto inativo.', quantidade: 'Acima do estoque.', precoUnitarioCentavos: 'Abaixo da tabela.', descontoCentavos: 'Acima do limite.' } } });
-    for (const m of ['Produto inativo.', 'Acima do estoque.', 'Abaixo da tabela.', 'Acima do limite.']) expect(h).toContain(`>${m}</div>`);
+    for (const m of ['Produto inativo.', 'Acima do estoque.', 'Abaixo da tabela.', 'Acima do limite.']) expect(h).toContain(`>${m}</span>`);
     expect(h).toMatch(/aria-label="Quantidade do item 1" aria-invalid="true" aria-describedby="[^"]+"/);
     expect(h).toMatch(/<input[^>]*aria-label="Quantidade do item 1"[^>]*border-color:var\(--mx-cor-erro-texto\)/);
     const ordem = ['Produto inativo.', 'Quantidade do item 1', 'Acima do estoque.', 'Preço unitário do item 1', 'Abaixo da tabela.', 'Desconto do item 1', 'Acima do limite.'].map((t) => h.indexOf(t));
     expect([...ordem].sort((a, b) => a - b)).toEqual(ordem);
   });
   it('mensagem só de texto continua valendo para a linha', () => {
-    expect(form({ erros: { 'item-1': 'Linha com problema.' } })).toContain('>Linha com problema.</div>');
+    expect(form({ erros: { 'item-1': 'Linha com problema.' } })).toContain('>Linha com problema.</span>');
   });
 });
 

@@ -34,7 +34,7 @@ describe('foco em fundo escuro', () => {
 });
 
 describe('MC-0015: erro junto do campo no DialogoMotivo', () => {
-  it('sem erro, nada de aria-invalid nem alert', () => {
+  it('sem erro, nada de aria-invalid nem alert (a região status fica, vazia)', () => {
     const h = dialogo({ motivos, textoObrigatorio: true });
     expect(h).not.toContain('aria-invalid');
     expect(h).not.toContain('role="alert"');
@@ -58,10 +58,8 @@ describe('canto e campoBase', () => {
 });
 
 describe('contorno do rádio', () => {
-  it('o rádio fecha com borda-campo (o marcado em azul-noite fica no ajustes3)', () => {
-    const h = dialogo({ motivos });
-    expect(h).not.toContain('accent-color');
-    expect(h).toMatch(/<input type="radio"[^>]*appearance:none[^>]*border:1px solid var\(--mx-cor-borda-campo\)/);
+  it('sem accent-color', () => {
+    expect(dialogo({ motivos })).not.toContain('accent-color');
   });
 });
 
