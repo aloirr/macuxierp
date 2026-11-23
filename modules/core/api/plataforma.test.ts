@@ -26,7 +26,7 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}) {
   const repo: RepositorioPlataforma = {
     async listarEmpresas() { chamadas.push('listar'); return [empresa]; },
     async lerEmpresa(_tx, id) { return id === empresa.id ? empresa : null; },
-    async criarEmpresa(_tx, p) { chamadas.push('criar'); return p.slug === empresa.slug ? null : { ...empresa, slug: p.slug, nome: p.nome }; },
+    async criarEmpresa(_tx, p) { chamadas.push('criar'); if (p.slug === empresa.slug) return null; return { ...empresa, slug: p.slug ?? 'am0001', nome: p.nome }; },
     async alterarSituacao(_tx, p) { chamadas.push(`situacao:${p.situacao}`); empresa = { ...empresa, situacao: p.situacao }; return empresa; },
     async alterarModulos(_tx, p: { modulos: Licenca[] }) {
       chamadas.push(`modulos:${p.modulos.map((m) => `${m.modulo}=${m.ativo}`).join(',')}`);
@@ -101,11 +101,27 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
     ]);
   });
 
+  it('RN-CORE-11: cria pelo código do FDV', async () => {
+    const t = montar();
+    const r = await t.chamar('POST', '/empresas', { corpo: { codigo: 'am2808', nome: 'Xis' } });
+    expect(r).toMatchObject({ status: 201, corpo: { slug: 'am2808', codigo: 'AM2808' } });
+  });
+
+  it('a lista e o detalhe trazem o codigo derivado do slug', async () => {
+    const t = montar();
+    const l = (await t.chamar('GET', '/empresas')) as { corpo: { itens: unknown[] } };
+    expect(l.corpo.itens[0]).toMatchObject({ slug: 'cafe-macuxi', codigo: null });
+    const d = (await t.chamar('GET', '/empresas/:id', { params: { id: EMPRESA } })) as { corpo: { codigo: string | null } };
+    expect(d.corpo.codigo).toBeNull();
+  });
+
   it('cria a empresa (201) e recusa slug repetido (409)', async () => {
     const t = montar();
     const r = await t.chamar('POST', '/empresas', { corpo: { slug: 'nova-empresa', nome: 'Nova' } });
     expect(r).toMatchObject({ status: 201, corpo: { slug: 'nova-empresa' } });
-    expect((await t.erro(t.chamar('POST', '/empresas', { corpo: { slug: 'cafe-macuxi', nome: 'Outra' } }))).status).toBe(409);
+    const e = await t.erro(t.chamar('POST', '/empresas', { corpo: { slug: 'cafe-macuxi', nome: 'Outra' } }));
+    expect(e.status).toBe(409);
+    expect(e.message).toBe('Já existe empresa com este código');
   });
 
   it('lista com paginação e responde 404 para empresa que não existe', async () => {
