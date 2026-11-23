@@ -184,3 +184,5 @@ Nada disso entra na 0033 nem no código da v0.3.0:
   - toda sessão aberta deixa `plataforma.superadmin.entrar` na auditoria.
 - **Correção (obrigatória antes da 2ª empresa cliente no ERP):** separar a credencial e o papel do portal (login próprio, sem membership do `macuxierp_app`), junto com o TOTP (§7).
 - **Até lá:** o portal não cria uma 2ª empresa em produção sem o ok do PO (regra de operação, decisão do PO de 23/11 ~08h30; sem trava em código).
+
+Ampliada pela ADR 0013 (Integração FDV no portal, T-0056).
