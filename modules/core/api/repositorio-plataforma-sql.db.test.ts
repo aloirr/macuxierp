@@ -90,6 +90,16 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     expect((e as ErroApi).status).toBe(409);
   });
 
+  it('RN-CORE-11: cria a empresa pelo código do FDV (0037)', async () => {
+    const r = await chamar('POST', '/empresas', { corpo: { codigo: 'am2808', nome: 'Empresa AM' } }, true);
+    expect(r).toMatchObject({ status: 201, corpo: { slug: 'am2808', codigo: 'AM2808' } });
+    const e = await chamar('POST', '/empresas', { corpo: { codigo: 'am2808', nome: 'Empresa AM' } }).catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 409 });
+    expect((e as Error).message).toContain('Já existe empresa com este código');
+    const z = await chamar('POST', '/empresas', { corpo: { codigo: 'rr0001', uf: 'AM', nome: 'X y' } }).catch((x: unknown) => x);
+    expect(z).toBeInstanceOf(Error);
+  });
+
   it('RN-CORE-02: liga os módulos com as dependências e recusa o faturamento sem o fiscal', async () => {
     const id = await criarTenant(b.admin, `portal-core-${randomUUID().slice(0, 8)}`, ['core', 'cadastros', 'pedido']);
     const e = await chamar('PUT', '/empresas/:id/modulos', { params: { id }, corpo: { modulos: [{ modulo: 'faturamento', ativo: true }] } }).catch((x: unknown) => x);

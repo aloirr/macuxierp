@@ -24,7 +24,7 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
     expect(botoes).toHaveLength(1);
     expect(botoes[0]).toMatchObject({ id: 'voltar-homologacao', rotulo: 'Voltar para homologação', confirma: true });
     expect(botoes.map((b) => b.rotulo.toLowerCase()).join()).not.toContain('produ');
-    expect(TEXTO_AMBIENTE_HOMOLOGACAO).toContain('peça à Macuxi');
+    expect(TEXTO_AMBIENTE_HOMOLOGACAO).toContain('fale com a Macuxi');
   });
 
   it('T-0040: a página de exportação avisa que o armazenamento ainda não existe', () => {
