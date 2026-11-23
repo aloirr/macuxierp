@@ -3,7 +3,7 @@
 > Toda RN vira função pura no `domain` do módulo, com teste escrito antes, nomeado com a regra (`it('RN-...: ...')`). A API sempre revalida. Regra nova ou alterada passa pelo gerente-projetos e, se for do Alexandre, cita o recado.
 
 ## Plataforma e Core (RN-CORE)
-- **RN-CORE-01** Perfis da v1: administrador, gerente, faturista, fiscal, vendedor, leitura. Um perfil por usuário por empresa. A empresa nunca fica sem um administrador ativo: o último não pode ser desativado, excluído nem trocar de perfil.
+- **RN-CORE-01** Perfis da v1: administrador, gerente, faturista, fiscal, vendedor, leitura e analista de implantação (RN-CORE-09). Um perfil por usuário por empresa. A empresa nunca fica sem um administrador ativo: o último não pode ser desativado, excluído nem trocar de perfil.
 - **RN-CORE-02** Toda rota checa perfil, tenant e licença do módulo, nesta ordem. Sem licença: 403 `MODULO_INATIVO`. O tenant só lê as licenças; elas mudam pelo script do operador, com auditoria (D12 da T-0002).
 - **RN-CORE-03** Dinheiro em centavos (inteiro). Arredondamento meio para cima na 2ª casa, nas regras do Manual da NF-e, **salvo IBS, CBS e IS (RN-FIS-03)**; rateio sem perder centavo (a diferença vai para a primeira parcela).
 - **RN-CORE-04** Datas gravadas em UTC; exibidas no fuso do tenant (padrão Manaus, UTC−4).
@@ -11,6 +11,7 @@
 - **RN-CORE-06** Certificado A1: guardado criptografado; a senha nunca volta para a tela nem para log; certificado vencido bloqueia a emissão daquela filial com a mensagem "Certificado vencido em DD/MM/AAAA: envie o novo".
 - **RN-CORE-07** LGPD: sem dado pessoal em log; exportação a qualquer hora; exclusão do tenant respeita a guarda fiscal (XML e dados da nota por 5 anos, no mínimo).
 - **RN-CORE-08** Ambiente fiscal por filial emissora: começa em homologação. A troca para produção é feita só pela Macuxi, pelo script do operador, com o recado "aprovo produção fiscal <empresa>" do Alexandre conferido (autor, texto e empresa). O id do recado fica na filial e na auditoria (ADR 0006). O administrador do cliente só volta a filial para homologação, sem aprovação, e a volta também fica na auditoria.
+- **RN-CORE-09** Perfil "analista de implantação" (pedido do Alexandre, 22/11 ~08h55, Manaus; v0.3.0): acessa só a Carga de cadastros (RF-CAD-11) e a consulta dos cadastros, conforme a matriz abaixo. Na carga, ele grava todas as entidades do RF-CAD-11, inclusive preço, mesmo sem a edição de cada uma fora da carga. As exceções são a filial e o limite de crédito, que continuam só com o administrador: a linha com filial ou limite de crédito enviada pelo analista é recusada com "Só o administrador carrega filial e limite de crédito." O D8 do T-0026 passa a ter essa exceção do perfil. Fora da carga, o analista só consulta (decisão do PO, 23/11 05h47, Manaus).
 
 ## Cadastros (RN-CAD)
 - **RN-CAD-01** CNPJ e CPF validados pelo dígito verificador; CNPJ alfanumérico (a partir de 2026) aceito conforme a regra da Receita.
@@ -62,18 +63,19 @@
 - **RN-INF-05** Só o ERP é fonte da verdade do que publica: alteração no FDV de um cadastro vindo do ERP não volta para o ERP.
 
 ## Permissões (matriz da v1)
-| Ação | administrador | gerente | faturista | fiscal | vendedor | leitura |
-|---|---|---|---|---|---|---|
-| Empresa, filiais, usuários, ver licenças, A1 | ✔ | | | | | |
-| Clientes e produtos (editar) | ✔ | ✔ | ✔ | | | |
-| Preços e crédito | ✔ | ✔ | | | | |
-| Regras fiscais | ✔ | | | ✔ | | |
-| Lançar pedido manual (criar, editar, revalidar) | ✔ | ✔ | ✔ | | | |
-| Aprovar pedido | ✔ | ✔ | | | | |
-| Emitir, cancelar, CC-e, inutilizar | ✔ | | ✔ | ✔ | | |
-| Integração FDV: ver o monitor, os envios e os erros (`integracao-fdv.ver`) | ✔ | ✔ | | | | ✔ |
-| Integração FDV: chave do Conector, configuração, carga completa e retomar (`integracao-fdv.configurar`) | ✔ | | | | | |
-| Baixar título (`faturamento.titulo.baixar`) | ✔ | ✔ | ✔ | | | |
-| Faturamento real com NF-e simulada na filial (bandeira, com auditoria) | ✔ | | | | | |
-| Trocar ambiente fiscal | só com o "aprovo produção fiscal" do Alexandre | | | | | |
-| Ver tudo | ✔ | ✔ | ✔ | ✔ | própria carteira | ✔ |
+| Ação | administrador | gerente | faturista | fiscal | vendedor | leitura | analista de implantação |
+|---|---|---|---|---|---|---|---|
+| Empresa, filiais, usuários, ver licenças, A1 | ✔ | | | | | | |
+| Clientes e produtos (editar) | ✔ | ✔ | ✔ | | | | |
+| Preços e crédito | ✔ | ✔ | | | | | |
+| Carga de cadastros (`cadastros.carga.executar`; cada arquivo confere também a edição da entidade, D8 do T-0026, salvo o analista: RN-CORE-09) | ✔ | ✔ | | | | | ✔ |
+| Regras fiscais | ✔ | | | ✔ | | | |
+| Lançar pedido manual (criar, editar, revalidar) | ✔ | ✔ | ✔ | | | | |
+| Aprovar pedido | ✔ | ✔ | | | | | |
+| Emitir, cancelar, CC-e, inutilizar | ✔ | | ✔ | ✔ | | | |
+| Integração FDV: ver o monitor, os envios e os erros (`integracao-fdv.ver`) | ✔ | ✔ | | | | ✔ | |
+| Integração FDV: chave do Conector, configuração, carga completa e retomar (`integracao-fdv.configurar`) | ✔ | | | | | | |
+| Baixar título (`faturamento.titulo.baixar`) | ✔ | ✔ | ✔ | | | | |
+| Faturamento real com NF-e simulada na filial (bandeira, com auditoria) | ✔ | | | | | | |
+| Trocar ambiente fiscal | só com o "aprovo produção fiscal" do Alexandre | | | | | | |
+| Ver tudo | ✔ | ✔ | ✔ | ✔ | própria carteira | ✔ | só os cadastros |
