@@ -3,7 +3,14 @@
  * chega ao cliente nem ao log (pode trazer valor de coluna). O resto segue como está (ErroApi do plugin; erro de
  * programação vira 500 no handler global).
  */
-import { ErroApi, erros, MENSAGEM_SEM_CREDENCIAL_FDV, MENSAGENS_CARGA_PORTAL, SQLSTATES_CARGA_PORTAL } from '@macuxierp/platform-sdk';
+import {
+  CODIGOS_ESTADO_MUDOU_ZERAR,
+  ErroApi,
+  erros,
+  MENSAGEM_SEM_CREDENCIAL_FDV,
+  MENSAGENS_CARGA_PORTAL,
+  SQLSTATES_CARGA_PORTAL,
+} from '@macuxierp/platform-sdk';
 
 /** SQLSTATE próprio da 0033: sessão de superadmin inválida (revogada, vencida, ociosa, inativa ou troca pendente). */
 export const SQLSTATE_SESSAO_INVALIDA = 'MXS01';
@@ -19,15 +26,23 @@ const MENSAGEM_ESTADO_MUDOU = 'O estado mudou; recarregue a página.';
 const MENSAGEM_SEM_LICENCA_FDV = 'A empresa precisa estar ativa e com o módulo Integração FDV licenciado.';
 
 /**
- * O DETAIL do `MXI03` traz o código do domain (`portal_carga_completa` e `portal_retomar` da 0038). Só estes três passam a
- * `detalhes.codigo`; qualquer outro texto do banco fica de fora.
+ * O DETAIL do `MXI03` traz o código do domain (`portal_carga_completa` e `portal_retomar` da 0038; `portal_zerar_espelho`
+ * da 0043: `entidade_ligada` e `lote_em_voo`). Só estes passam a `detalhes.codigo`; qualquer outro texto do banco fica de fora.
  */
-const CODIGOS_ESTADO_MUDOU: ReadonlySet<string> = new Set(['entidade_desabilitada', 'lote_em_voo', 'sem_pausa']);
+const CODIGOS_ESTADO_MUDOU: ReadonlySet<string> = new Set(['entidade_desabilitada', 'lote_em_voo', 'sem_pausa', 'entidade_ligada']);
 /**
  * O DETAIL do `MXI04` (0039) e do `MXC04` (`cadastros.portal_carga_iniciar`, T-0058) traz o motivo; só estes dois passam
  * a `detalhes.codigo`.
  */
 const CODIGOS_SEM_LICENCA: ReadonlySet<string> = new Set(['empresa_inativa', 'modulo_desligado']);
+
+/**
+ * `MXC03` do "Zerar dados" (`cadastros.portal_zerar`, 0043, RN-CAD-10): o estado mudou entre o plano e o efeito. O DETAIL
+ * passa a `detalhes.codigo` só pela lista fechada do SDK (`CODIGOS_ESTADO_MUDOU_ZERAR`). O mesmo SQLSTATE ainda sai da `cadastros.portal_carga_iniciar` (0040,
+ * DETAIL `dependencia_pendente`) até a v0.3.6 tirá-lo da carga: o DETAIL separa os dois enquanto ambos existirem.
+ */
+const SQLSTATE_ZERAR_ESTADO_MUDOU = 'MXC03';
+const CODIGOS_ZERAR_ESTADO_MUDOU: ReadonlySet<string> = new Set(CODIGOS_ESTADO_MUDOU_ZERAR);
 
 function codigoDoDetalhe(e: unknown, permitidos: ReadonlySet<string>): { codigo: string } | undefined {
   const detalhe = (e as { detail?: unknown }).detail;
@@ -51,8 +66,12 @@ export function erroDaPlataforma(e: unknown): unknown {
     // (`CODIGOS_DETALHE_CARGA_PORTAL`), nunca o DETAIL do banco; MXC04: o DETAIL só pela lista fechada, como o MXI04.
     case SQLSTATES_CARGA_PORTAL.cargaEmAndamento:
       return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.cargaEmAndamento, undefined, { codigo: 'carga_em_andamento' });
-    case SQLSTATES_CARGA_PORTAL.dependenciaPendente:
+    case SQLSTATE_ZERAR_ESTADO_MUDOU: {
+      const zerar = codigoDoDetalhe(e, CODIGOS_ZERAR_ESTADO_MUDOU);
+      if (zerar) return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.estadoMudouZerar, undefined, zerar);
+      // carga (0040): sai na v0.3.6 com o `SQLSTATES_CARGA_PORTAL.dependenciaPendente`; aí o resto vira o 409 acima sem código.
       return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.dependenciaPendente, undefined, { codigo: 'dependencia_pendente' });
+    }
     case SQLSTATES_CARGA_PORTAL.semLicenca:
       return new ErroApi(422, 'RN-CORE-02', MENSAGENS_CARGA_PORTAL.semLicenca, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA));
     case 'P0002': // no_data_found: empresa ou administrador inexistente

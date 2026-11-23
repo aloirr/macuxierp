@@ -7,6 +7,7 @@ import {
   CODIGO_ZERAGEM_BLOQUEADA,
   CAMINHOS_CARGAS_PLATAFORMA,
   CODIGOS_DETALHE_CARGA_PORTAL,
+  CODIGOS_ESTADO_MUDOU_ZERAR,
   DEPENDENCIAS_CARGA_PORTAL,
   ENTIDADES_CARGA_PORTAL,
   EfeitoSubstituir,
@@ -21,6 +22,7 @@ import {
   MENSAGEM_MANTIDOS_ZERAR,
   MOTIVOS_USO,
   MENSAGEM_SUBSTITUIR_NAO_PERMITIDO,
+  MENSAGENS_CARGA_PORTAL,
   ModoCargaQuery,
   PreviaZerarPlataformaEntrada,
   SQLSTATES_CARGA_PORTAL,
@@ -391,6 +393,14 @@ describe('rotas, ações e erros', () => {
     expect(new Set(CODIGOS_DETALHE_CARGA_PORTAL).size).toBe(CODIGOS_DETALHE_CARGA_PORTAL.length);
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain('nada_a_gravar');
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain('carga_em_andamento');
+  });
+
+  it('MXC03 do zerar (0043, RN-CAD-10): lista fechada de DETAIL, sem repetição e fora dos códigos da carga; mensagem própria', () => {
+    expect(CODIGOS_ESTADO_MUDOU_ZERAR).toEqual(['em_uso', 'sumiu', 'anular_fora_do_plano', 'referencia']);
+    expect(new Set(CODIGOS_ESTADO_MUDOU_ZERAR).size).toBe(CODIGOS_ESTADO_MUDOU_ZERAR.length);
+    for (const c of CODIGOS_ESTADO_MUDOU_ZERAR) expect(CODIGOS_DETALHE_CARGA_PORTAL as readonly string[]).not.toContain(c);
+    expect(MENSAGENS_CARGA_PORTAL.estadoMudouZerar).toBe('Os dados mudaram. Confira de novo.');
+    expect(sdk.CODIGOS_ESTADO_MUDOU_ZERAR).toBe(CODIGOS_ESTADO_MUDOU_ZERAR);
   });
 
   it('o índice do SDK reexporta', () => {
