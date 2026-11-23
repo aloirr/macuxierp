@@ -8,12 +8,12 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, SituacaoCargasPlataforma, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
+import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
-import { criarPluginPlataformaCadastros } from './carga-portal-rotas';
+import { criarPluginPlataformaCadastros, situacaoDaAba } from './carga-portal-rotas';
 import { fontesHttp } from './fontes-http';
 import { criarPluginCadastros } from './index';
 import { repositoriosSql } from './sql';
@@ -110,9 +110,10 @@ describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', (
     const T = await novoTenant('rota-situacao-get');
     await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', produto().slice(0, 2).join('\n'));
     const r = await plugin().rotas.find((x) => x.caminho === CAMINHOS_CARGAS_PLATAFORMA.situacao)!.executar(contexto(), { corpo: undefined, consulta: undefined, params: { id: T } });
-    const s = SituacaoCargasPlataforma.parse(r.corpo);
+    const s = r.corpo as ReturnType<typeof situacaoDaAba>;
     expect(s).toMatchObject({ empresa_id: T, modulo_licenciado: true });
     expect(s.cadastros).toHaveLength(10);
+    expect(s.cadastros.every((x) => x.liberado && x.depende_de === null)).toBe(true);
     expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ situacao: 'carregado', ultima_carga: { quantidade: 1 } });
   }, 120_000);
 

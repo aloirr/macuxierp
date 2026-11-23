@@ -3,7 +3,7 @@
  * 'por_etapa'`, sem Idempotency-Key (a concorrência é o MXC01 do `portal_carga_iniciar`; a carga é tudo ou nada na tx do tenant).
  *
  * `gravar`, uma transação de cada vez:
- *  1. `comPlataforma`: `cadastros.portal_carga_iniciar` (sessão, empresa ativa, licença, MXC01, MXC03, auditoria do superadmin);
+ *  1. `comPlataforma`: `cadastros.portal_carga_iniciar` (sessão, empresa ativa, licença, MXC01, auditoria do superadmin);
  *  2. `comTenant(:id)`: `gravarCargaPortal` (executarCarga + planoSubstituicao + inativarEmLote + eventos na outbox);
  *  3. `comPlataforma`: `cadastros.portal_carga_concluir` com `concluida` ou `falhou` (também quando a etapa 2 falha: o
  *     erro original é o que sobe).
@@ -14,8 +14,8 @@
  * Nada de valor de célula nem dado pessoal em erro ou auditoria: só contagens.
  */
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, dependenciaPendente, situacaoCarga, type SituacaoCarga, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
-  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, SituacaoCargasPlataforma, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, situacaoCarga, LinhaSituacaoCarga, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
+  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
   definirRotaPlataforma, erros, nomeErrosCarga, nomeModeloCarga, paraCsv, respostaCsv, substituirPermitido, type ArquivoRecebido, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
   type ModoGravarCarga, type Outbox, type PluginPlataforma, type Transacao,
 } from '@macuxierp/platform-sdk';
@@ -72,15 +72,22 @@ const SituacaoCrua = z.object({
   empresa_id: z.string(), modulo_licenciado: z.boolean(),
   cadastros: z.array(z.object({ cadastro: CadastroCargaPortal, ativos: z.number().int().min(0), erros: z.number().int().min(0), ultima_carga: z.object({ em: z.string(), quantidade: z.number().int().min(0) }).nullable() })),
 });
-export function situacaoDaAba(bruta: unknown): SituacaoCargasPlataforma {
+/**
+ * Resposta da aba. Nenhuma carga depende de outra (T-0058, v0.3.6): `depende_de` é obrigatório (nullable) no Zod do SDK,
+ * então vai sempre `null` e `liberado` sempre `true`. Não usamos o `SituacaoCargasPlataforma` do SDK para validar porque o
+ * `superRefine` dele ainda deriva `depende_de` de `DEPENDENCIAS_CARGA_PORTAL` (pendência do engenheiro-software); aqui
+ * conferimos a ordem, o número e o `opcional` pelo `LinhaSituacaoCarga`.
+ */
+const RespostaSituacao = z.object({ empresa_id: z.string(), modulo_licenciado: z.boolean(), cadastros: z.array(LinhaSituacaoCarga) });
+export function situacaoDaAba(bruta: unknown): z.infer<typeof RespostaSituacao> {
   const r = SituacaoCrua.parse(bruta);
-  const situacoes = Object.fromEntries(r.cadastros.map((x) => [x.cadastro, situacaoCarga(x)])) as Record<CadastroCargaPortal, SituacaoCarga>;
-  return SituacaoCargasPlataforma.parse({
+  const porNome = new Map(r.cadastros.map((x) => [x.cadastro, x]));
+  return RespostaSituacao.parse({
     empresa_id: r.empresa_id, modulo_licenciado: r.modulo_licenciado,
-    cadastros: r.cadastros.map((x, i) => {
-      const def = CADASTROS_CARGA_PORTAL[i]!;
-      const dep = dependenciaPendente(x.cadastro, situacoes);
-      return { numero: def.numero, cadastro: x.cadastro, situacao: situacoes[x.cadastro], erros: x.erros, ultima_carga: x.ultima_carga, depende_de: dep, liberado: dep === null, opcional: def.opcional };
+    cadastros: CADASTROS_CARGA_PORTAL.map((def) => {
+      const x = porNome.get(def.cadastro);
+      if (!x) throw new RangeError(`situacaoDaAba: o banco não devolveu o cadastro "${def.cadastro}"`);
+      return { numero: def.numero, cadastro: def.cadastro, situacao: situacaoCarga(x), erros: x.erros, ultima_carga: x.ultima_carga, depende_de: null, liberado: true, opcional: def.opcional };
     }),
   });
 }

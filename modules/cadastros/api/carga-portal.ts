@@ -14,7 +14,7 @@
  * - Nada de valor de célula nem dado pessoal em erro, aviso ou auditoria: só contagens.
  */
 import {
-  ArquivoRecebido, CadastroCargaPortal, DEPENDENCIAS_CARGA_PORTAL, ErroApi, FRASE_SUBSTITUIR_TUDO, GravarCargaPlataformaResposta, LIMITE_LINHAS_ERRO_VALIDACAO,
+  ArquivoRecebido, CadastroCargaPortal, ErroApi, FRASE_SUBSTITUIR_TUDO, GravarCargaPlataformaResposta, LIMITE_LINHAS_ERRO_VALIDACAO,
   MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, normalizarFrase, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
@@ -55,15 +55,6 @@ export function exigirFraseSubstituir(frase: string | undefined): void {
 /** `substituir_tudo` só onde o SDK permite (o estoque só aceita o Adicionar): 400 `VALIDACAO` no campo `modo`. */
 function exigirModoPermitido(cadastro: CadastroCargaPortal, modo: ModoGravarCarga): void {
   if (modo === 'substituir_tudo' && !substituirPermitido(cadastro)) throw erros.validacao({ modo: MENSAGEM_SUBSTITUIR_NAO_PERMITIDO });
-}
-
-/** RF-CAD-11: 409 se algum cadastro de que este depende ainda não tem registro ativo (a forma vive na condição: fica de fora). */
-async function exigirDependencias(deps: Dependencias, c: ContextoRota, cadastro: CadastroCargaPortal): Promise<void> {
-  const r = deps.repositorios(c.tx);
-  for (const dep of DEPENDENCIAS_CARGA_PORTAL[cadastro]) {
-    const tabela = TABELA_SUBSTITUIVEL[dep];
-    if (tabela && !(await r.substituicao.temAtivos(tabela))) throw conflito(MENSAGENS_CARGA_PORTAL.dependenciaPendente, 'dependencia_pendente');
-  }
 }
 
 const arquivoDoCadastro = (e: EntradaCargaPortal): ArquivoRecebido => new ArquivoRecebido(e.arquivo.campo, `${e.cadastro}.csv`, e.arquivo.tipo, e.arquivo.conteudo());
@@ -134,7 +125,7 @@ function resultadoDoCadastro(rel: RelatorioCarga, cadastro: CadastroCargaPortal)
 }
 
 /**
- * `POST .../cargas/:cadastro/gravar` (RN-CAD-10). Erros: 422 `RN-CAD-10` (frase), 409 `dependencia_pendente`, 409 `nada_a_gravar`
+ * `POST .../cargas/:cadastro/gravar` (RN-CAD-10). Erros: 422 `RN-CAD-10` (frase), 409 `nada_a_gravar`
  * (nenhuma linha pronta: a transação desfaz tudo). O 409 `carga_em_andamento` (MXC01) é do `portal_carga_iniciar` do banco.
  */
 export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<GravarCargaPlataformaResposta> {
@@ -143,7 +134,6 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   const substituir = e.modo === 'substituir_tudo';
   if (substituir) exigirFraseSubstituir(e.frase);
   else if (e.frase !== undefined) throw erros.validacao({ frase: 'A frase é só do Substituir tudo' });
-  await exigirDependencias(deps, c, cadastro);
 
   const arquivo = arquivoDoCadastro(e);
   const previsto = substituir ? await planejar(deps, c, cadastro, arquivo) : null; // antes da gravação: sobre os existentes de agora
