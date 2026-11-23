@@ -51,3 +51,4 @@ Decisão R-20261122-022626: o faturamento real sai pelo ERP. O consumidor `criar
 - **Entidade que falta**: o `CARGA_DEPENDENCIA` leva `entidade_faltante` (`EntidadeCarga`, de `ARQUIVO_DO_ALVO` em `domain/carga/dependencias.ts`); nos demais códigos o campo fica ausente (RF-CAD-11).
 - **Entidade única**: campo opcional `entidade` no `POST /v1/cadastros/cargas`; com ele o lote é exatamente `<entidade>.csv`, senão 400 "Envie só o arquivo <entidade>.csv neste botão.". Sem o campo, nada muda.
 - **Perfil**: arquivo `filial` e coluna `limite_credito_cents` recusados trazem o motivo fixo "Só o administrador carrega filial e limite de crédito." (RN-CORE-09).
+- **Exceção à D9 (T-0058, decisão do PO, 23/11)**: exceção à D9 para códigos fiscais (NCM, CEST, CFOP e CST), decisão do PO de 23/11; no cadastros, só NCM e CEST aparecem nas mensagens (RN-CAD-04). RN-CAD-04 repassa a mensagem do domain; os demais campos seguem sem o valor da célula.
