@@ -15,3 +15,4 @@
 2026-11-23 — T-0058 (WIP) — reativação no ponto comum da carga (carga-reativar.ts, chamado no executarCarga) e testes forma × prazo
 2026-11-23 — T-0058 (WIP) — carga do portal no por_etapa: rotas validar/gravar (iniciar → comTenant → concluir), estoque 400 por substituirPermitido, testes unitários e de banco
 2026-11-23 — T-0058 — hotfix: situação, modelo e erros da carga no /config
+2026-11-23 — T-0058 — v0.3.6 item 1: nenhuma carga depende de outra

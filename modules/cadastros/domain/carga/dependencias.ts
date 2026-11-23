@@ -28,5 +28,6 @@ const PLURAL: Readonly<Record<EntidadeCarga, string>> = {
   cliente: 'clientes', cliente_endereco: 'endereços de cliente',
 };
 
-/** RF-CAD-11, D9: mensagem fixa, sem o valor da célula. */
-export const motivoDependencia = (arquivo: EntidadeCarga): string => `Faltam ${PLURAL[arquivo]}: carregue ${arquivo}.csv antes.`;
+/** RF-CAD-11 (decisão de 23/11, v0.3.6): nenhuma carga depende de outra. Formato A0, sem o valor da célula (D9). */
+export const motivoDependencia = (cadastro: string, coluna: string, arquivo: EntidadeCarga): string =>
+  `${cadastro} ${coluna} não encontrado: carregue o cadastro de ${PLURAL[arquivo]} ou corrija a coluna ${coluna}.`;

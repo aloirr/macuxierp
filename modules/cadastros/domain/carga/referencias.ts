@@ -42,8 +42,17 @@ export function acrescentarIdsDoLote<E extends EntidadeCarga>(conhecidos: IdsCon
   for (const l of linhas) for (const [alvo, id] of idsCriados(entidade, l)) conhecidos[alvo].add(id);
 }
 
-/** D13: referências conferidas contra o banco e o lote; sem destino, `CARGA_REFERENCIA` (sem o valor). Se o arquivo da dependência não está em `arquivosDoLote` (4º parâmetro), o erro é `CARGA_DEPENDENCIA`. */
-export function conferirReferencias<E extends EntidadeCarga>(entidade: E, linhas: readonly LinhasCarga[E][], conhecidos: IdsConhecidos, arquivosDoLote?: ReadonlySet<EntidadeCarga>): { validas: LinhasCarga[E][]; erros: ErroLinha[] } {
+/** Nome do cadastro da linha, no início da mensagem A0. */
+const CADASTRO_DA_LINHA: Readonly<Record<EntidadeCarga, string>> = {
+  filial: 'Filial', vendedor: 'Vendedor', forma_pagamento: 'Forma de pagamento', prazo_pagamento: 'Condição de pagamento', produto: 'Produto',
+  produto_unidade: 'Unidade do produto', preco: 'Preço', estoque: 'Estoque', cliente: 'Cliente', cliente_endereco: 'Endereço de cliente',
+};
+
+/**
+ * D13, RF-CAD-11 (decisão de 23/11): nenhuma carga depende de outra. O `*_external_id` que não está no banco nem no lote é ERRO DA LINHA
+ * (`CARGA_DEPENDENCIA`, com motivo e ação, sem o valor, e `entidade_faltante` para o atalho do shell); nunca bloqueia o arquivo.
+ */
+export function conferirReferencias<E extends EntidadeCarga>(entidade: E, linhas: readonly LinhasCarga[E][], conhecidos: IdsConhecidos): { validas: LinhasCarga[E][]; erros: ErroLinha[] } {
   const erros: ErroLinha[] = [];
   const validas: LinhasCarga[E][] = [];
   const mapa = REFS_CARGA[entidade];
@@ -52,9 +61,7 @@ export function conferirReferencias<E extends EntidadeCarga>(entidade: E, linhas
     const ruins = Object.entries(mapa).filter(([campo, alvo]) => refs[campo] !== undefined && !conhecidos[alvo].has(refs[campo] as string));
     for (const [campo, alvo] of ruins) {
       const arquivo = ARQUIVO_DO_ALVO[alvo];
-      // RF-CAD-11: sem o arquivo da dependência no lote, o aviso diz qual carregar antes; com ele, vale o erro de referência.
-      if (arquivosDoLote && !arquivosDoLote.has(arquivo)) erros.push({ ...erroLinha(l.linha, `${campo}_external_id`, 'CARGA_DEPENDENCIA', motivoDependencia(arquivo)), entidade_faltante: arquivo });
-      else erros.push(erroLinha(l.linha, `${campo}_external_id`, 'CARGA_REFERENCIA', 'Referência não encontrada no banco nem neste lote'));
+      erros.push({ ...erroLinha(l.linha, `${campo}_external_id`, 'CARGA_DEPENDENCIA', motivoDependencia(CADASTRO_DA_LINHA[entidade], `${campo}_external_id`, arquivo)), entidade_faltante: arquivo });
     }
     if (ruins.length === 0) validas.push(l);
   }
