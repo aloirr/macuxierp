@@ -1,10 +1,10 @@
 # Zerar dados por cadastro (v0.3.5) — desenho
 
-Status: desenho, domain e testes. Sem API, web ou contrato ainda. A RN é `RN-CAD-ZER` (placeholder até o PO numerar).
+Status: desenho, domain e testes. Sem API, web ou contrato ainda. A RN é `RN-CAD-10` (doc 03, PR #381).
 Código: `modules/cadastros/domain/zeragem.ts` (função pura `planoZeragem`) e `zeragem.test.ts`.
 
 ## Objetivo
-O administrador do tenant zera um cadastro (por exemplo, para recarregar a base na migração) sem quebrar pedido, título nem nota. O domain só **planeja**: recebe fatos injetados e devolve o que apagar, o que anular e o que fica. A API executa, na ordem do plano, numa transação, e revalida os fatos.
+O superadmin zera um cadastro (por exemplo, para recarregar a base na migração) sem quebrar pedido, título nem nota. O domain só **planeja**: recebe fatos injetados e devolve o que apagar, o que anular e o que fica. A API executa, na ordem do plano, numa transação, e revalida os fatos.
 
 ## Cadastros e cascata (ordem de DELETE, filhos antes do pai)
 Tabelas de `db/migrations/0004_cadastros.sql`. A carteira não tem tabela: é `cliente.vendedor_id` (D7).
@@ -40,9 +40,12 @@ Retorno: `{ apagar: {tabela, ids}[], anular: {tabela, coluna, ids}[], mantidos: 
 - Zerar filial F1 com nota: F1, seus clientes, vendedores, itens e estoque ficam; F2 inteira é apagada.
 - Zerar vendedor: apaga os vendedores livres e anula `cliente.vendedor_id` dos clientes deles.
 
-## Decisões pendentes
-a) **Estoque_movimento é só-inserção** (0004:257, `controle.somente_insercao`). Escolher entre (1) migração (pedido ao `banco-dados`) que libere DELETE pela zeragem, ou (2) manter o histórico e zerar só o saldo. A opção 2 impede apagar produto e filial que tenham movimento. O plano já assume a opção 1.
-b) **"Em uso"** vem por portas de consulta do pedido e do faturamento (contratos), pela fronteira: o cadastros não lê tabela de outro schema. Falta definir as portas e o desempenho para lotes grandes.
-c) **Evento para o FDV**: `alterado@1` com inativo antes do DELETE, ou `excluido@1` novo, que exige ADR (versão do contrato e consumo pelo Hub).
-d) **LGPD e prazo fiscal**: o que está ligado a nota fica mantido (guarda mínima de 5 anos). Auditoria por lote (quem, quando, cadastro, contagens por tabela e por motivo), sem dado pessoal e sem lista de ids com documento.
-e) **Ação `cadastros.zerar`**: só do administrador, com confirmação explícita (digitar o nome do cadastro e da empresa), prévia do plano (contagens) antes de executar, licença do módulo e idempotência por chave do lote.
+## Decisões pendentes e decididas
+Pendente:
+a) **Estoque_movimento é só-inserção** (0004:257, `controle.somente_insercao`). Duas opções, sem escolha ainda: (1) migração (pedido ao `banco-dados`) liberando DELETE só pela zeragem; (2) manter o histórico e zerar só o saldo (a opção 2 impede apagar produto e filial que tenham movimento). A decisão sai no adendo de ADR do engenheiro, com o `banco-dados`. O plano atual assume a opção 1.
+
+Decididas (decisões do gerente):
+b) **"Em uso"** vem por portas de contrato do pedido e do faturamento (o cadastros não lê tabela de outro schema); o engenheiro liga as portas.
+c) **FDV**: na mesma operação, o espelho órfão e o cursor da integração são zerados, e há o "inativar no FDV" explícito quando não houver recarga (dono: `integracao-fdv`). Evento novo só se o engenheiro achar necessário, com ADR.
+d) **LGPD e prazo fiscal**: o que está ligado a nota fica mantido; há auditoria por lote (quem, quando, cadastro, contagens por tabela e por motivo), sem dado pessoal.
+e) **Permissão**: só o SUPERADMIN, no `/config` (plugin de plataforma), e não o administrador da empresa (RN-CAD-10). A ação é da família `plataforma.*` (dono: engenheiro). Exige confirmação explícita (digitar o nome do cadastro e da empresa), prévia do plano (contagens) antes de executar, licença do módulo e idempotência por chave do lote.

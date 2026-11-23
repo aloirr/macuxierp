@@ -40,7 +40,7 @@ const base = (): FatosZeragem => ({
 const ids = (p: PlanoZeragem, tabela: string) => p.apagar.find((a) => a.tabela === tabela)?.ids ?? [];
 
 describe('zeragem: cascata', () => {
-  it('RN-CAD-ZER: produto apaga unidade, item de preço, saldo e movimento antes do produto', () => {
+  it('RN-CAD-10: produto apaga unidade, item de preço, saldo e movimento antes do produto', () => {
     const p = planoZeragem('produto', base());
     expect(p.apagar.map((a) => a.tabela)).toEqual([
       'estoque_movimento',
@@ -53,19 +53,19 @@ describe('zeragem: cascata', () => {
     expect(ids(p, 'produto')).toEqual(['p1', 'p2']);
   });
 
-  it('RN-CAD-ZER: cliente apaga contatos e endereços; a carteira é a coluna vendedor_id, que vai junto', () => {
+  it('RN-CAD-10: cliente apaga contatos e endereços; a carteira é a coluna vendedor_id, que vai junto', () => {
     const p = planoZeragem('cliente', base());
     expect(p.apagar.map((a) => a.tabela)).toEqual(['cliente_contato', 'cliente_endereco', 'cliente']);
     expect(p.anular).toEqual([]);
   });
 
-  it('RN-CAD-ZER: tabela de preço apaga os itens e anula cliente.tabela_preco_id', () => {
+  it('RN-CAD-10: tabela de preço apaga os itens e anula cliente.tabela_preco_id', () => {
     const p = planoZeragem('tabela_preco', base());
     expect(p.apagar.map((a) => a.tabela)).toEqual(['tabela_preco_item', 'tabela_preco']);
     expect(p.anular).toEqual([{ tabela: 'cliente', coluna: 'tabela_preco_id', ids: ['c1'] }]);
   });
 
-  it('RN-CAD-ZER: vendedor e condição de pagamento anulam a referência do cliente, sem apagar o cliente', () => {
+  it('RN-CAD-10: vendedor e condição de pagamento anulam a referência do cliente, sem apagar o cliente', () => {
     const v = planoZeragem('vendedor', base());
     expect(v.apagar.map((a) => a.tabela)).toEqual(['vendedor']);
     expect(v.anular).toEqual([{ tabela: 'cliente', coluna: 'vendedor_id', ids: ['c1'] }]);
@@ -73,7 +73,7 @@ describe('zeragem: cascata', () => {
     expect(c.anular).toEqual([{ tabela: 'cliente', coluna: 'condicao_pagamento_id', ids: ['c1'] }]);
   });
 
-  it('RN-CAD-ZER: filial apaga tudo o que depende dela, filhos antes do pai', () => {
+  it('RN-CAD-10: filial apaga tudo o que depende dela, filhos antes do pai', () => {
     const p = planoZeragem('filial', base());
     expect(p.apagar.map((a) => a.tabela)).toEqual([
       'estoque_movimento',
@@ -89,7 +89,7 @@ describe('zeragem: cascata', () => {
     expect(p.anular).toEqual([]);
   });
 
-  it('RN-CAD-ZER: CASCATA lista cada tabela depois de todas as que dependem dela', () => {
+  it('RN-CAD-10: CASCATA lista cada tabela depois de todas as que dependem dela', () => {
     for (const [cadastro, tabelas] of Object.entries(CASCATA)) {
       const posicoes = tabelas.map((t) => ORDEM_DELETE.indexOf(t));
       expect(posicoes.every((x) => x >= 0)).toBe(true);
@@ -100,7 +100,7 @@ describe('zeragem: cascata', () => {
 });
 
 describe('zeragem: em uso e bloqueios', () => {
-  it('RN-CAD-ZER: registro em uso fica mantido por motivo, com os filhos dele', () => {
+  it('RN-CAD-10: registro em uso fica mantido por motivo, com os filhos dele', () => {
     const f = base();
     f.usos = { cliente: { pedido: ['c1'], titulo: ['c2'] } };
     const p = planoZeragem('cliente', f);
@@ -111,7 +111,7 @@ describe('zeragem: em uso e bloqueios', () => {
     ]);
   });
 
-  it('RN-CAD-ZER: produto em uso por nota fica; o outro e os filhos só dele são apagados', () => {
+  it('RN-CAD-10: produto em uso por nota fica; o outro e os filhos só dele são apagados', () => {
     const f = base();
     f.usos = { produto: { nota: ['p1'] } };
     const p = planoZeragem('produto', f);
@@ -121,7 +121,7 @@ describe('zeragem: em uso e bloqueios', () => {
     expect(p.mantidos).toEqual([{ cadastro: 'produto', motivo: 'nota', quantidade: 1 }]);
   });
 
-  it('RN-CAD-ZER: com vários motivos vale o mais forte (pedido, titulo, nota) e conta uma vez', () => {
+  it('RN-CAD-10: com vários motivos vale o mais forte (pedido, titulo, nota) e conta uma vez', () => {
     const f = base();
     f.usos = { produto: { nota: ['p1'], pedido: ['p1'] } };
     expect(planoZeragem('produto', f).mantidos).toEqual([
@@ -129,7 +129,7 @@ describe('zeragem: em uso e bloqueios', () => {
     ]);
   });
 
-  it('RN-CAD-ZER: filial com nota bloqueia a filial inteira e o que depende dela', () => {
+  it('RN-CAD-10: filial com nota bloqueia a filial inteira e o que depende dela', () => {
     const f = base();
     f.filiaisComNota = [F1];
     const p = planoZeragem('filial', f);
@@ -141,7 +141,7 @@ describe('zeragem: em uso e bloqueios', () => {
     expect(p.mantidos).toEqual([{ cadastro: 'filial', motivo: 'nota', quantidade: 1 }]);
   });
 
-  it('RN-CAD-ZER: cliente ou vendedor da filial em uso mantém a filial', () => {
+  it('RN-CAD-10: cliente ou vendedor da filial em uso mantém a filial', () => {
     const f = base();
     f.usos = { vendedor: { pedido: ['v2'] } };
     const p = planoZeragem('filial', f);
@@ -150,7 +150,7 @@ describe('zeragem: em uso e bloqueios', () => {
     expect(p.mantidos).toEqual([{ cadastro: 'filial', motivo: 'pedido', quantidade: 1 }]);
   });
 
-  it('RN-CAD-ZER: vendedor apagado por filial anula a carteira de cliente de outra filial', () => {
+  it('RN-CAD-10: vendedor apagado por filial anula a carteira de cliente de outra filial', () => {
     const f = base();
     f.existentes.cliente = [{ id: 'c9', refs: { filial: F2, vendedor: 'v1' } }];
     f.filiaisComNota = [F2];
@@ -160,11 +160,11 @@ describe('zeragem: em uso e bloqueios', () => {
 });
 
 describe('zeragem: bordas', () => {
-  it('RN-CAD-ZER: cadastro vazio dá plano vazio', () => {
+  it('RN-CAD-10: cadastro vazio dá plano vazio', () => {
     expect(planoZeragem('produto', { existentes: {} })).toEqual({ apagar: [], anular: [], mantidos: [] });
   });
 
-  it('RN-CAD-ZER: ids repetidos entram uma vez só', () => {
+  it('RN-CAD-10: ids repetidos entram uma vez só', () => {
     const f = base();
     f.existentes.produto = [{ id: 'p1' }, { id: 'p1' }];
     f.existentes.produto_unidade = [
@@ -178,7 +178,7 @@ describe('zeragem: bordas', () => {
     expect(p.mantidos).toEqual([]);
   });
 
-  it('RN-CAD-ZER: idempotente, rodar de novo depois de apagar dá plano vazio', () => {
+  it('RN-CAD-10: idempotente, rodar de novo depois de apagar dá plano vazio', () => {
     const f = base();
     f.usos = { produto: { pedido: ['p2'] } };
     const p = planoZeragem('produto', f);

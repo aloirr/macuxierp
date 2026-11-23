@@ -1,5 +1,5 @@
 // Zerar dados por cadastro (v0.3.5). Plano puro: não toca no banco; quem executa é a API, com os fatos injetados.
-// RN-CAD-ZER (placeholder até o PO numerar). DELETE de verdade, não soft delete, por causa do índice único
+// RN-CAD-10. DELETE de verdade, não soft delete, por causa do índice único
 // (tenant_id, external_id). Registro em uso (pedido, título, nota) fica mantido, junto com os filhos dele.
 
 export type CadastroZeravel =
