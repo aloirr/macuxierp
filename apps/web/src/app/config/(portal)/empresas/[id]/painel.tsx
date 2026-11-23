@@ -2,10 +2,11 @@
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
+import { dadosDaEmpresa } from '@/lib/config/empresa';
 import type { Resultado } from '@/lib/config/executar';
 import { validarMotivo } from '@/lib/config/formularios';
 import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nomeModulo, pendenciasDe, type Dependencia } from '@/lib/config/modulos';
-import { alterarModulosAcao, criarAdminAcao, redefinirSenhaAcao, situacaoAcao } from '../acoes';
+import { alterarModulosAcao, criarAdminAcao, mostrarEmailAcao, redefinirSenhaAcao, situacaoAcao } from '../acoes';
 
 export interface ChavesPainel {
   admin: string;
@@ -24,10 +25,54 @@ export function PainelEmpresa({ empresa, deps, chaves }: { empresa: EmpresaPlata
   return (
     <>
       <RegiaoErros temErro={temErro} />
+      <BlocoDados empresa={empresa} />
       <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
       <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
       <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />
     </>
+  );
+}
+
+function BlocoDados({ empresa }: { empresa: EmpresaPlataforma }) {
+  return (
+    <section className="bloco" aria-labelledby="h-dados">
+      <h2 id="h-dados">Dados da empresa</h2>
+      <dl className="dados-empresa">
+        {dadosDaEmpresa(empresa).map((l) => (
+          <div key={l.rotulo}>
+            <dt className="apoio">{l.rotulo}</dt>
+            <dd>{l.valor}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function EmailAdmin({ empresaId, mascarado }: { empresaId: string; mascarado: string }) {
+  const [email, setEmail] = useState<string | null>(null); // só na memória desta tela: nunca em URL, armazenamento ou log
+  const [erro, setErro] = useState('');
+  const [pendente, iniciar] = useTransition();
+  const alternarEmail = () => {
+    if (email) {
+      setEmail(null);
+      return;
+    }
+    setErro('');
+    iniciar(async () => {
+      const r = await mostrarEmailAcao(empresaId);
+      if (r.ok) setEmail(r.valor.email);
+      else setErro(r.erro);
+    });
+  };
+  return (
+    <div className="email-admin">
+      <p>E-mail: <strong className="email-valor">{email ?? mascarado}</strong></p>
+      <button className="mx-botao-secundario" type="button" disabled={pendente} aria-pressed={email !== null} onClick={alternarEmail}>
+        {pendente ? 'Carregando…' : email ? 'Ocultar' : 'Mostrar'}
+      </button>
+      {erro && <p className="erro" role="alert">{erro}</p>}
+    </div>
   );
 }
 
@@ -159,6 +204,7 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
       {erro && <p className="erro">{erro}</p>}
       {admin ? (
         <>
+          {admin.email_mascarado && <EmailAdmin empresaId={empresa.id} mascarado={admin.email_mascarado} />}
           <p>Situação: <strong>{rotuloAdmin(admin)}</strong></p>
           <button ref={botaoRedefinir} className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={() => setConfirmar(true)}>Redefinir senha</button>
         </>

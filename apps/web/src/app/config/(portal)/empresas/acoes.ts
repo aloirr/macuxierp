@@ -2,7 +2,7 @@
 import { AlterarModulosEntrada, CriarEmpresaEntrada, PrimeiroAdminEntrada, SituacaoEmpresaEntrada } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { alterarModulos, alterarSituacao, criarEmpresa, criarPrimeiroAdmin, listarEmpresas, redefinirSenhaPrimeiroAdmin } from '@/lib/config/api';
+import { alterarModulos, alterarSituacao, criarEmpresa, criarPrimeiroAdmin, listarEmpresas, mostrarEmailPrimeiroAdmin, redefinirSenhaPrimeiroAdmin } from '@/lib/config/api';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 import { MOTIVO_INVALIDO, traduzirCriarEmpresa } from '@/lib/config/formularios';
 
@@ -47,6 +47,11 @@ export async function redefinirSenhaAcao(id: string, chave: string) {
   const r = await executarConfig('redefinir', (t) => redefinirSenhaPrimeiroAdmin(t, id, chave));
   if (r.ok) atualizar(id);
   return r.ok ? ({ ok: true, valor: { senha: r.valor.senha_provisoria } } as const) : r;
+}
+
+/** O e-mail inteiro do 1º admin vai só no `valor`: a API audita a leitura; nada de log, URL ou armazenamento. */
+export async function mostrarEmailAcao(id: string) {
+  return executarConfig('email', (t) => mostrarEmailPrimeiroAdmin(t, id));
 }
 
 export async function situacaoAcao(id: string, situacao: string, motivo: string, chave: string) {
