@@ -16,3 +16,9 @@
 2026-11-23 — T-0058 (WIP) — carga do portal no por_etapa: rotas validar/gravar (iniciar → comTenant → concluir), estoque 400 por substituirPermitido, testes unitários e de banco
 2026-11-23 — T-0058 — hotfix: situação, modelo e erros da carga no /config
 2026-11-23 — T-0058 — v0.3.7 item 1: nenhuma carga depende de outra
+2026-11-23 — T-0058 — v0.3.7 -5: cadastros nos 8 nomes do SDK (situação sem depende_de e liberada; carga com ponte condicao_pagamento→prazo_pagamento até a cadastros-c; zerar com cliente absorvendo o endereço); 6 testes de banco do zerar aguardam a lista de 8 nomes na 0043/0044 (banco-dados)
+2026-11-23 — T-0058 — carga: cliente.csv com endereços (tipo_endereco, seq) e condicoes_pagamento.csv (forma e prazo na mesma linha); 8 arquivos; cliente_endereco, forma_pagamento e prazo_pagamento ignorados com aviso
+2026-11-23 — T-0058 — Substituir tudo do cliente (endereços ausentes inativados junto) e da condição de pagamento (carga-substituir.ts, substituicao-cliente.ts); rebase sobre o #412
+2026-11-23 — T-0058 — Substituir tudo do portal liga cliente e condicao ao carga-substituir; mapa unico TABELA_SUBSTITUIVEL; DEPENDENCIAS do domain removido; testes ajustados ao modelo de condicao
+2026-11-23 — T-0058 — v0.3.6 item 2: rebase no 84da1f5 e achados RD-1203/1204/1205 (aplicarSubstituicao genérico em carga-substituir.ts, paiDe, comUso, dadosDaForma, seq único, testes enxutos, README)
+2026-11-23 — T-0058 — v0.3.7: o -5 (cadastros-a, 6497493) e a carga de cliente/condições (ee70d35) viraram um PR só, num commit; a ponte ENTIDADE_DO_PIPELINE saiu e o pipeline usa os 8 nomes pelo paraEntidadeCarga

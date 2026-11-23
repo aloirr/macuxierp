@@ -17,17 +17,16 @@ export type MotivoBloqueio = 'integracao_ligada' | 'lote_em_andamento';
 /** Do mais forte para o mais fraco: com vários motivos, o primeiro é o contado. */
 export const MOTIVOS: readonly MotivoUso[] = MOTIVOS_USO;
 
-/** Cadastro → tabelas dele (forma_prazo = condicao_pagamento; preco = tabela_preco + item; estoque = saldo + movimento). */
+/** Cadastro → tabelas dele (cliente = cliente + contato + endereço; preco = tabela_preco + item; estoque = saldo + movimento). */
 export const TABELAS_DO_CADASTRO: Record<CadastroZerarPortal, readonly TabelaZeragem[]> = {
   filial: ['filial'],
   vendedor: ['vendedor'],
-  forma_prazo: ['condicao_pagamento'],
+  condicao_pagamento: ['condicao_pagamento'],
   produto: ['produto'],
   produto_unidade: ['produto_unidade'],
   preco: ['tabela_preco', 'tabela_preco_item'],
   estoque: ['estoque_saldo', 'estoque_movimento'],
-  cliente: ['cliente', 'cliente_contato'],
-  cliente_endereco: ['cliente_endereco'],
+  cliente: ['cliente', 'cliente_contato', 'cliente_endereco'],
 };
 
 /** Inverso de TABELAS_DO_CADASTRO (cada tabela pertence a um só cadastro). */
@@ -38,11 +37,10 @@ export const CADASTRO_DA_TABELA = Object.fromEntries(
 /** Dependências automáticas: apagar o pai leva os cadastros listados junto (a carteira é cliente.vendedor_id, sem tabela). */
 const DEPENDENCIAS: Partial<Record<CadastroZerarPortal, readonly CadastroZerarPortal[]>> = {
   produto: ['produto_unidade', 'estoque'],
-  cliente: ['cliente_endereco'],
 };
 
 /** A filial segue a cascata por FK: vendedor, estoque, cliente (e endereço) e os itens de preço dela. */
-const DEPENDENTES_DA_FILIAL: readonly CadastroZerarPortal[] = ['vendedor', 'preco', 'estoque', 'cliente', 'cliente_endereco'];
+const DEPENDENTES_DA_FILIAL: readonly CadastroZerarPortal[] = ['vendedor', 'preco', 'estoque', 'cliente'];
 
 /** Ordem global de DELETE: toda tabela vem depois das que dependem dela. */
 export const ORDEM_DELETE: readonly TabelaZeragem[] = [

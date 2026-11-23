@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ArquivoRecebido, dependenciaPendente, CAMINHOS_CARGAS_PLATAFORMA, ENTIDADES_CARGA_PORTAL, ErroApi, TIPO_CSV, type ContextoPlataformaPorEtapa, type SituacaoCargasPlataforma, type Transacao } from '@macuxierp/platform-sdk';
+import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ENTIDADES_CARGA_PORTAL, ErroApi, TIPO_CSV, type ContextoPlataformaPorEtapa, type SituacaoCargasPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarPluginPlataformaCadastros, situacaoDaAba } from './carga-portal-rotas';
 import { dependenciasEmMemoria } from './memoria';
@@ -136,22 +136,21 @@ describe('rotas da carga no /config (por etapa)', () => {
       { sessao: { superadmin_id: 's', sessao_id: 's' }, request_id: 'req-1', agora: new Date(), comPlataforma: async (f: (x: Transacao) => Promise<unknown>) => { t.passos.push('plataforma'); return f({ consultar: (async (sql: string, p: readonly unknown[] = []) => { t.sqls.push({ sql, p }); return [{ situacao: SITUACAO }]; }) as Transacao['consultar'] }); } } as unknown as ContextoPlataformaPorEtapa,
       { corpo: undefined, consulta: undefined, params: { id: TENANT } });
     const s = r.corpo as SituacaoCargasPlataforma;
-    expect(s.cadastros).toHaveLength(10);
-    expect(s.cadastros[0]).toMatchObject({ cadastro: 'filial', numero: 1, situacao: 'carregado', liberado: true, depende_de: null });
+    expect(s.cadastros).toHaveLength(8);
+    expect(s.cadastros[0]).toMatchObject({ cadastro: 'filial', numero: 1, situacao: 'carregado', liberado: true });
     expect(s.cadastros.find((x) => x.cadastro === 'vendedor')).toMatchObject({ situacao: 'nao_carregado' });
     expect(t.passos).toEqual(['plataforma']);
     expect(t.sqls[0]).toMatchObject({ p: [TENANT] });
     expect(t.sqls[0]!.sql).toContain('cadastros.portal_carga_situacao($1)');
   });
 
-  it('RF-CAD-11: situacaoDaAba mapeia pelo nome do cadastro (retorno do banco fora de ordem) e deriva depende_de e liberado pelo SDK', () => {
+  it('RF-CAD-11: situacaoDaAba mapeia pelo nome do cadastro (retorno do banco fora de ordem) e devolve liberado true (sem depende_de)', () => {
     const crua = ENTIDADES_CARGA_PORTAL.map((cadastro) => ({ cadastro, ativos: cadastro === 'produto' ? 3 : 0, erros: 0, ultima_carga: null }));
     const s = situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: [...crua].reverse() });
     expect(s.cadastros.map((x) => x.cadastro)).toEqual([...ENTIDADES_CARGA_PORTAL]);
-    expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ numero: 5, situacao: 'carregado' });
+    expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ numero: 4, situacao: 'carregado' });
     expect(s.cadastros.find((x) => x.cadastro === 'filial')).toMatchObject({ numero: 1, situacao: 'nao_carregado' });
-    const situacoes = Object.fromEntries(s.cadastros.map((x) => [x.cadastro, x.situacao]));
-    expect(s.cadastros.every((x) => x.depende_de === dependenciaPendente(x.cadastro, situacoes) && x.liberado === (x.depende_de === null))).toBe(true);
+    expect(s.cadastros.every((x) => x.liberado && !('depende_de' in x))).toBe(true);
     expect(() => situacaoDaAba({ empresa_id: TENANT, modulo_licenciado: true, cadastros: crua.slice(1) })).toThrow(/filial/);
   });
 

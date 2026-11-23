@@ -39,7 +39,7 @@ describe('página de carga do BKO', () => {
     expect(textoDeConfirmacao(2)).toContain('2 arquivos');
   });
   it('o resumo segue a ordem de carga (D13), com os ignorados por último, e os totais somam as entidades', () => {
-    expect(resumoDoRelatorio(rel).map((l) => l.entidade)).toEqual(['Filiais', 'Clientes', 'Títulos']);
+    expect(resumoDoRelatorio(rel).map((l) => l.entidade)).toEqual(['Filiais', 'Clientes (com endereços)', 'Títulos']);
     expect(totaisDoRelatorio(rel)).toMatchObject({ lidas: 4, inseridas: 2, recusadas: 2, erros: 1 });
   });
   it('erros por arquivo e CSV de erros: linha, campo e motivo, sem valor digitado', () => {
