@@ -29,7 +29,7 @@ export default async function Empresas({ searchParams }: { searchParams: Promise
     );
   }
 
-  const vazio = busca ? 'Nenhuma empresa com esse slug. Limpe a busca.' : 'Nenhuma empresa ainda. Crie a primeira.';
+  const vazio = busca ? 'Nenhuma empresa com esse código. Limpe a busca.' : 'Nenhuma empresa ainda. Crie a primeira.';
   return (
     <>
       <div className="titulo-linha">
@@ -37,7 +37,7 @@ export default async function Empresas({ searchParams }: { searchParams: Promise
         <a className="mx-botao" href="/config/empresas/nova">Criar empresa</a>
       </div>
       <form method="get" action="/config" className="busca-slug" role="search">
-        <label className="campo"><span>Buscar por slug</span><input name="busca" defaultValue={busca} maxLength={80} autoComplete="off" /></label>
+        <label className="campo"><span>Buscar por código</span><input name="busca" defaultValue={busca} maxLength={80} autoComplete="off" /></label>
         <button className="mx-botao-secundario" type="submit">Buscar</button>
         {busca && <a href="/config">Limpar</a>}
       </form>

@@ -66,4 +66,10 @@ describe('assinatura C no login e na seleção de filial', () => {
     expect(css).not.toContain('accent-color');
     expect(css).toMatch(/fieldset\.grupo-campos, fieldset\.carga-cartao \{[^}]*border-radius: 6px/);
   });
+
+  it('o menu lateral usa o token de rótulo e o cartão de login tem 16 px de margem lateral em tela pequena (T-0051)', () => {
+    expect(css).toMatch(/\.lateral h2 \{[^}]*font-size: var\(--mx-tamanho-rotulo-menu\)/);
+    expect(css).not.toContain('--mx-tamanho-titulo-grupo');
+    expect(css).toMatch(/@media \(max-width: 480px\) \{[^}]*\.cartao-central \{[^}]*margin-left: 16px; margin-right: 16px/);
+  });
 });
