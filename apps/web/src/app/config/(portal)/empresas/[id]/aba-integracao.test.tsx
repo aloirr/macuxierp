@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { CADASTROS_CARGA_PORTAL, IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
+import { ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
@@ -10,7 +10,7 @@ import { habilitadasApos, linhasCadastros } from '@/lib/config/integracao-fdv';
 import { AbaIntegracao } from './aba-integracao';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const ENT = CADASTROS_CARGA_PORTAL.map((c) => c.cadastro);
+const ENT: readonly string[] = ENTIDADES_ENVIO_FDV;
 const dados = (extra: Record<string, unknown> = {}, com = true) =>
   IntegracaoFdvPlataforma.parse({
     empresa_id: ID, modulo_licenciado: true,
