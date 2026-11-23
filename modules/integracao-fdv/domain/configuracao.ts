@@ -3,7 +3,7 @@
  * (`api/rotas.ts`) revalida e grava.
  */
 import { violacao, type Violacao } from '@macuxierp/platform-sdk/erros';
-import { ENTIDADES_HUB_F2, LIMITE_REGISTROS_LOTE, type AmbienteHub, type MotivoPausa } from '../contracts';
+import { ENTIDADES_CARGA_INICIAL, ENTIDADES_HUB_F2, LIMITE_REGISTROS_LOTE, type AmbienteHub, type MotivoPausa } from '../contracts';
 
 /** Textos da validação da configuração (RN-INF-02): a API e a web usam estes, sem cópia. */
 export const MENSAGEM_LIMITE_LOTE = 'O limite por lote vai de 1 a 5.000 registros';
@@ -19,15 +19,40 @@ export interface PlanoTroca {
   primeira: boolean;
   /** Outro conector ou outro ambiente é outro tenant do FDV: o espelho esquece o que o Hub confirmou. */
   zerarEspelho: boolean;
-  /** Publica `integracao-fdv.carga_inicial.solicitada@1` (C-4). */
-  pedirCargaInicial: boolean;
 }
 
 /** Troca só da chave (mesmo `conector_id` e ambiente) não mexe no espelho nem pede carga: o FDV é o mesmo. */
 export function planejarTrocaCredencial(anterior: IdentidadeCredencial | null, nova: IdentidadeCredencial): PlanoTroca {
-  if (!anterior) return { primeira: true, zerarEspelho: false, pedirCargaInicial: true };
+  if (!anterior) return { primeira: true, zerarEspelho: false };
   const mudou = anterior.conector_id !== nova.conector_id || anterior.ambiente !== nova.ambiente;
-  return { primeira: false, zerarEspelho: mudou, pedirCargaInicial: mudou };
+  return { primeira: false, zerarEspelho: mudou };
+}
+
+/**
+ * Dependência da carga inicial (premissa, conferida no `cadastros`): o preço só vira linha do Hub com a `tabela_preco` já espelhada
+ * (`referencia_ausente` sem ela). Forma e prazo de pagamento não entram aqui: o `APELIDOS` do `cadastros`
+ * (`modules/cadastros/api/carga-inicial.ts`) já os mapeia para `condicao_pagamento`.
+ */
+const DEPENDENCIAS_CARGA: Readonly<Record<string, readonly string[]>> = {
+  preco: ['tabela_preco'],
+};
+
+/**
+ * Entidades do evento `integracao-fdv.carga_inicial.solicitada@1` (RN-INF-02; emenda §2 da ADR 0013): a carga inicial sai ao LIGAR
+ * um cadastro, não ao salvar a credencial. Vale para o `PUT /configuracao` (`antes` = ligadas hoje) e para a troca de conector ou
+ * ambiente (`antes` = `[]`, pede tudo o que está ligado; R-20261123-150400). Devolve as recém-ligadas (em `depois`, não em `antes`)
+ * mais as dependências, sem repetição, na ordem de `ENTIDADES_CARGA_INICIAL`; `null` = não publica evento (o contrato exige 1+).
+ */
+export function entidadesParaCargaInicial(antes: readonly string[], depois: readonly string[]): string[] | null {
+  const jaLigadas = new Set(antes);
+  const pedidas = new Set<string>();
+  for (const e of depois) {
+    if (jaLigadas.has(e)) continue;
+    pedidas.add(e);
+    for (const d of DEPENDENCIAS_CARGA[e] ?? []) pedidas.add(d);
+  }
+  const lista = ENTIDADES_CARGA_INICIAL.filter((e) => pedidas.has(e));
+  return lista.length > 0 ? lista : null;
 }
 
 export interface ConfiguracaoEnvio {

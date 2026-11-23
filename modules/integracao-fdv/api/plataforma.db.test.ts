@@ -8,13 +8,15 @@ import { randomUUID } from 'node:crypto';
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA as C, decifrarCampo, ErroApi, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { criarPluginPlataformaIntegracaoFdv } from './plataforma';
+import { criarPluginPlataformaIntegracaoFdv, repositorioPortalSql } from './plataforma';
+import { entidadesParaCargaInicial } from '../domain';
 
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const SA = '5a000000-0000-4000-8000-0000000000f1';
 const MESTRA = Buffer.alloc(32, 11);
 const CHAVE = 'chave-do-conector-portal-0123456789abcdef-NAO-VAZAR';
 const CHAVE_2 = 'segunda-chave-do-conector-0123456789abcdef-NAO-VAZAR';
+const CHAVE_3 = 'terceira-chave-do-conector-0123456789abcdef-NAO-VAZAR';
 const ENTRADA = { conector_id: 'erp-portal', chave: CHAVE, ambiente: 'teste' };
 
 describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no PostgreSQL real (0038)', () => {
@@ -108,7 +110,9 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
     const primeira = await chamar('PUT', C.credencial, { params: { id: A }, corpo: ENTRADA });
     expect(primeira.status).toBe(201);
     expect(primeira.corpo).toMatchObject({ conector_id: 'erp-portal', ambiente: 'teste', chave_prefixo: CHAVE.slice(0, 8), limite_registros_lote: 5000 });
-    expect((primeira.corpo as { entidades_habilitadas: string[] }).entidades_habilitadas).toHaveLength(10);
+    // a primeira credencial nasce sem cadastros ligados (R-20261123-150400): o operador liga um por um
+    expect((primeira.corpo as { entidades_habilitadas: string[]; cadastros: { ligada: boolean }[] }).entidades_habilitadas).toEqual([]);
+    expect((primeira.corpo as { cadastros: { ligada: boolean }[] }).cadastros.some((c) => c.ligada)).toBe(false);
     const segunda = await chamar('PUT', C.credencial, { params: { id: A }, corpo: { ...ENTRADA, chave: CHAVE_2 } });
     expect(segunda.status).toBe(200);
 
@@ -117,9 +121,9 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
     expect(linhas[0]!.substituida_em).not.toBeNull();
     expect(decifrarCampo({ chave: MESTRA, tenantId: A, cifrado: linhas[1]!.chave_cifrada }).toString('utf8')).toBe(CHAVE_2);
     expect(() => decifrarCampo({ chave: MESTRA, tenantId: B, cifrado: linhas[1]!.chave_cifrada })).toThrow();
-    // a primeira credencial pede a carga inicial uma vez; trocar só a chave não repete
+    // salvar a credencial (primeira ou troca da chave) não pede carga inicial: ela sai ao ligar o cadastro
     const ev = (await b.admin.query("SELECT nome FROM plataforma.evento WHERE tenant_id = $1 AND nome LIKE 'integracao-fdv.%'", [A])).rows;
-    expect(ev.map((e) => e.nome)).toEqual(['integracao-fdv.carga_inicial.solicitada@1']);
+    expect(ev).toEqual([]);
     const aud = (await b.admin.query("SELECT acao, superadmin_id, usuario_id FROM plataforma.auditoria WHERE tenant_id = $1 AND acao LIKE 'integracao-fdv.%' ORDER BY created_at, id", [A])).rows;
     expect(aud.map((x) => x.acao)).toEqual(['integracao-fdv.credencial.criar', 'integracao-fdv.credencial.trocar']);
     expect(aud.every((x) => x.superadmin_id === SA && x.usuario_id === null)).toBe(true);
@@ -140,6 +144,28 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
     expect(await credenciais(B)).toHaveLength(0);
   });
 
+  it('RF-INF-05: ligar um cadastro grava UM integracao-fdv.carga_inicial.solicitada@1, com as dependências; religar sem mudança não grava; a troca de chave copia a lista', async () => {
+    const eventos = async () =>
+      (await b.admin.query("SELECT payload FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'integracao-fdv.carga_inicial.solicitada@1' ORDER BY created_at, id", [A])).rows;
+    expect(await eventos()).toEqual([]);
+    const lig = await chamar('PUT', C.configuracao, { params: { id: A }, corpo: { entidades_habilitadas: ['preco'], limite_registros_lote: 5000 } });
+    expect((lig.corpo as { entidades_habilitadas: string[] }).entidades_habilitadas).toEqual(['preco']);
+    const ev = await eventos();
+    expect(ev).toHaveLength(1);
+    const ents = (ev[0]!.payload as { payload: { entidades: string[] } }).payload.entidades;
+    expect(ents).toEqual(entidadesParaCargaInicial([], ['preco']));
+    // religar sem mudança: nenhum evento novo
+    await chamar('PUT', C.configuracao, { params: { id: A }, corpo: { entidades_habilitadas: ['preco'], limite_registros_lote: 5000 } });
+    expect(await eventos()).toHaveLength(1);
+    // troca de chave (mesmo conector e ambiente): copia a lista ligada
+    const antes = (await chamar('GET', C.ler, { params: { id: A } })).corpo as { entidades_habilitadas: string[] };
+    await chamar('PUT', C.credencial, { params: { id: A }, corpo: { ...ENTRADA, chave: CHAVE_3 } });
+    const depois = (await chamar('GET', C.ler, { params: { id: A } })).corpo as { entidades_habilitadas: string[] };
+    expect([...depois.entidades_habilitadas].sort()).toEqual([...antes.entidades_habilitadas].sort());
+    expect(depois.entidades_habilitadas.length).toBeGreaterThan(0);
+    expect(await eventos()).toHaveLength(1);
+  });
+
   it('configuração, testar, carga completa e retomar: o ciclo do portal', async () => {
     const cfg = await chamar('PUT', C.configuracao, { params: { id: A }, corpo: { entidades_habilitadas: ['filial', 'produto'], limite_registros_lote: 250 } });
     expect(cfg.corpo).toMatchObject({ entidades_habilitadas: ['filial', 'produto'], limite_registros_lote: 250 });
@@ -155,6 +181,24 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
     expect(await chamar('POST', C.retomar, { params: { id: A, entidade: 'produto' } })).toEqual({ corpo: { retomada: true } });
     const acoes = (await b.admin.query("SELECT acao FROM plataforma.auditoria WHERE tenant_id = $1 AND acao LIKE 'integracao-fdv.%'", [A])).rows.map((x) => x.acao);
     expect(acoes).toEqual(expect.arrayContaining(['integracao-fdv.configuracao.alterar', 'integracao-fdv.credencial.testar', 'integracao-fdv.entidade.carga_completa', 'integracao-fdv.entidade.retomar']));
+  });
+
+  it('RF-INF-05: configurar com p_antes velho (outra mudança no meio) dá MXI02, nada é gravado e nenhum evento sai', async () => {
+    const ler = async () => (await chamar('GET', C.ler, { params: { id: A } })).corpo as { entidades_habilitadas: string[]; limite_registros_lote: number };
+    const eventos = async () => (await b.admin.query("SELECT 1 FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'integracao-fdv.carga_inicial.solicitada@1'", [A])).rowCount;
+    const velho = (await ler()).entidades_habilitadas;
+    await chamar('PUT', C.configuracao, { params: { id: A }, corpo: { entidades_habilitadas: [...velho, 'estoque'], limite_registros_lote: 300 } });
+    const atual = await ler();
+    const nEventos = await eventos();
+    const erro = await comPlataforma(sessao, (tx) =>
+      repositorioPortalSql.configurar(tx, {
+        tenant: A, entidades: ['filial', 'cliente'], limite: 100, antes: velho, request_id: randomUUID(),
+        evento_carga_inicial: { entidades: ['cliente'] },
+      }),
+    true).then(() => null, (e: unknown) => e as { code?: string });
+    expect(erro?.code).toBe('MXI02');
+    expect(await ler()).toEqual(atual);
+    expect(await eventos()).toBe(nEventos);
   });
 
   it('sessão inválida: a função recusa e nada é gravado', async () => {
