@@ -189,4 +189,21 @@ describe('formulário Criar empresa', () => {
     expect(h).toMatch(/<form [^>]*method="post"/);
     expect(h).not.toMatch(/method="get"/i);
   });
+  it('o fuso é um select com os 15 fusos do Brasil, padrão America/Manaus', () => {
+    expect(h).toMatch(/<select name="fuso"/);
+    expect(h.match(/<option /g)).toHaveLength(15);
+    expect(h).toContain('<option value="America/Noronha">');
+    expect(h).not.toMatch(/<input name="fuso"/);
+  });
+  it('o código vai para maiúsculas ao digitar (CSS e valor) e no envio', () => {
+    expect(h).toMatch(/<input class="codigo-maiusculo"[^>]*name="codigo"/);
+    const css = readFileSync(join(__dirname, '../../globals.css'), 'utf8');
+    expect(css).toMatch(/\.codigo-maiusculo \{ text-transform: uppercase/);
+    expect(readFileSync(join(__dirname, 'empresas/nova/formulario.tsx'), 'utf8')).toContain(".trim().toUpperCase()");
+  });
+  it('CSS: ações do /config sem quebrar por dentro; falha do BKO em texto secundário a 13 px', () => {
+    const css = readFileSync(join(__dirname, '../../globals.css'), 'utf8');
+    expect(css).toMatch(/td:nth-child\(5\) button \{ white-space: nowrap/);
+    expect(css).toMatch(/\.falha-sob-nome \{ display: block; font-size: 13px; color: var\(--mx-cor-texto-secundario\)/);
+  });
 });

@@ -165,12 +165,20 @@ fieldset.grupo-campos, fieldset.carga-cartao { min-width: 0; /* o fieldset não 
 /* /config: a coluna Ações (5ª) cabe numa linha só, sem empilhar os botões. */
 .tabela-fdv th:nth-child(5), .tabela-fdv td:nth-child(5) { min-width: 260px; }
 .tabela-fdv td:nth-child(5) .barra-acoes { flex-wrap: nowrap; }
+.tabela-fdv td:nth-child(5) button { white-space: nowrap; }
+/* Carga: o input nativo fica escondido (mostraria "Choose File"); o rótulo vira botão e o foco aparece nele. */
+.arquivo-escolha { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.arquivo-escolha input[type='file'] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.arquivo-escolha input[type='file']:focus-visible + .mx-botao-secundario { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
+.arquivo-escolha .arquivo-nome { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); overflow-wrap: anywhere; }
+label.desabilitado { opacity: .5; cursor: not-allowed; }
+.codigo-maiusculo { text-transform: uppercase; }
 /* BKO: a falha sobe para uma linha sob o nome do cadastro em tela estreita; a coluna Falha some (sem leitura dupla: só um dos dois aparece). */
 .falha-sob-nome { display: none; }
 @media (max-width: 640px) {
   .tabela-fdv-bko table { min-width: 0; }
   .tabela-fdv-bko th:nth-child(4), .tabela-fdv-bko td:nth-child(4) { display: none; }
-  .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-grafite); font-weight: normal; }
+  .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-texto-secundario); font-weight: normal; }
 }
 /* Abas da ficha da empresa: texto sublinhado (molde do FDV), não botões. */
 .abas-texto { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--mx-cor-borda-cinza); }

@@ -37,7 +37,7 @@ describe('topo do BKO (A0)', () => {
   it('MEI longo (> 60 caracteres, com acento): um nome, title completo e reticências no CSS', async () => {
     expect(RAZAO_MEI_FALSA.length).toBeGreaterThan(60);
     const h = await topo(EU_FALSO_MEI, EU_FALSO_MEI.filiais[0]!);
-    expect(h).toBe(`<span class="nome-topo" title="${RAZAO_MEI_FALSA}">${RAZAO_MEI_FALSA}</span>`);
+    expect(h).toBe(`<span class="nome-topo" title="${RAZAO_MEI_FALSA}" aria-label="${RAZAO_MEI_FALSA}">${RAZAO_MEI_FALSA}</span>`);
     const { readFileSync } = await import('node:fs');
     expect(readFileSync(`${__dirname}/globals.css`, 'utf8')).toMatch(/\.topo \.nome-topo \{[^}]*text-overflow: ellipsis/);
     expect(readFileSync(`${__dirname}/globals.css`, 'utf8')).toMatch(/max-width: 800px\) \{ \.casca \{ grid-template-columns: minmax\(0, 1fr\)/);

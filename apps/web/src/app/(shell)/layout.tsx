@@ -23,7 +23,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
       <a className="pular" href="#conteudo">Pular para o conteúdo</a>
       <header className="topo mx-fundo-escuro">
         <span className="marca"><AssinaturaErp /></span>
-        <span className="nome-topo" title={nome}>{nome}</span>
+        <span className="nome-topo" title={nome} aria-label={nome}>{nome}</span>
         {eu.filiais.length > 1 && <a href="/filial">Trocar filial</a>}
         <span className="espaco" />
         <span>{eu.usuario.nome} ({eu.usuario.perfil})</span>
