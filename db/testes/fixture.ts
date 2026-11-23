@@ -252,6 +252,22 @@ export function chaveAcesso(serie: number, numero: number, cnf = 1, tipoEmissao 
 /** cNF com 8 dígitos. */
 export const cnfDe = (cnf: number): string => String(cnf % 100000000).padStart(8, '0');
 
+/**
+ * Abre a contingência na filial (app, pela tela do operador; tenant da sessão). `por` = ligada_por (null = sem, para
+ * o teste da recusa); `ambiente` omitido = o da filial (0032).
+ */
+export function sqlAbrirContingencia(
+  filial: string,
+  modalidade = 'svc_an',
+  por: string | null,
+  ambiente?: string,
+): string {
+  const [colAmb, valAmb] = ambiente ? [', ambiente', `, '${ambiente}'`] : ['', ''];
+  return `INSERT INTO faturamento.contingencia (tenant_id, filial_id, modalidade, motivo, ligada_por${colAmb})
+   VALUES (plataforma.tenant_atual(), '${filial}', '${modalidade}', 'SEFAZ-AM sem resposta há 5 min',
+     ${por ? `'${por}'` : 'NULL'}${valAmb});`;
+}
+
 /** cNF da massa do tenant (derivado do id, para A e B não repetirem a chave). */
 export const cnfDoTenant = (t: Tenant): number => parseInt(t.id.slice(0, 7), 16);
 
@@ -265,11 +281,13 @@ export const hashSql = (texto: string): string => `encode(sha256(convert_to('${t
  * transmissão e pedido a faturar). Mais uma linha geral (tenant de referência) da carga aproximada, se `geral`.
  * Gravada pelo admin, que passa pelas mesmas travas (as triggers valem para o dono); precisa da filial no
  * core.ambiente_fiscal da fixtureModulos (homologação). `antes0026`: título sem conta_como_real, para os testes que
- * migram só até antes da 0026 (depois dela a coluna é obrigatória no INSERT).
+ * migram só até antes da 0026 (depois dela a coluna é obrigatória no INSERT). `antes0032`: contingência sem
+ * ligada_por e desligada_por (obrigatórias desde a 0032); antes da 0026 é também antes da 0032.
  */
-export function fixtureFaturamento(t: Tenant, antes0026 = false): string {
+export function fixtureFaturamento(t: Tenant, antes0026 = false, antes0032 = antes0026): string {
   const id = t.id;
   const [colReal, valReal] = antes0026 ? ['', ''] : [', conta_como_real', ', false'];
+  const [colPor, valPor] = antes0032 ? ['', ''] : [', ligada_por, desligada_por', `, '${t.usuario}', '${t.usuario}'`];
   const cnf = cnfDoTenant(t);
   const chave = chaveAcesso(1, 1, cnf);
   const xml = `<nfeProc><NFe>massa ${t.slug}</NFe></nfeProc>`;
@@ -287,9 +305,9 @@ INSERT INTO fiscal.carga_aproximada (tenant_id, ncm, uf, aliquota_federal_nacion
   VALUES ('${id}', '22021000', 'AM', 150000, 180000, '2026-01-01', '26.1.A', 'ajuste ${t.slug}');
 INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, cliente_id, payload)
   VALUES ('${id}', '${t.pedido}', '${t.filial}', '${t.cliente}', '{"itens": []}');
-INSERT INTO faturamento.contingencia (tenant_id, filial_id, modalidade, motivo, inicio_em, fim_em)
+INSERT INTO faturamento.contingencia (tenant_id, filial_id, modalidade, motivo, inicio_em, fim_em${colPor})
   VALUES ('${id}', '${t.filial}', 'svc_an', 'SEFAZ-AM fora do ar na massa', '2026-11-01T10:00:00Z',
-    '2026-11-01T11:00:00Z');
+    '2026-11-01T11:00:00Z'${valPor});
 INSERT INTO faturamento.nota (id, tenant_id, filial_id, serie, numero, idempotencia_chave, cliente_id,
   natureza_operacao, produtos_centavos, total_nota_centavos)
   VALUES ('${t.nota}', '${id}', '${t.filial}', 1,

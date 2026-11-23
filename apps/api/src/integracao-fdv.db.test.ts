@@ -88,7 +88,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV montada na API: PUT /credencia
     expect(linhas.join('')).not.toContain(chaveConector);
   });
 
-  it('trava mantida na v0.2.0 (R-20261122-061838): PUT /credencial e "Testar conexão" só gravam no banco, sem nenhum fetch (Hub ou outro)', async () => {
+  it('a API não chama o Hub: PUT /credencial e "Testar conexão" só gravam no banco, sem nenhum fetch (Hub ou outro)', async () => {
     const tenant = await criarTenant(b.admin, 'loja-trava', LICENCAS);
     await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@loja-trava.teste', nome: 'Administradora', filialIds: [] });
     const auth = await token(comChave, 'loja-trava');
@@ -102,7 +102,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV montada na API: PUT /credencia
       const testar = await comChave.inject({ method: 'POST', url: '/v1/integracao-fdv/credencial/testar', headers: { authorization: auth } });
       expect(testar.statusCode).toBe(202);
       const { pedido_em } = testar.json<{ aceito: boolean; pedido_em: string }>();
-      // "Testar conexão" só antecipa o sinal no banco: quem o manda é a agenda do conector do worker (desligada pela trava)
+      // "Testar conexão" só antecipa o sinal no banco: quem o manda é a agenda do conector do worker
       const depois = await b.admin.query('SELECT proximo_sinal_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [tenant]);
       expect(depois.rows).toHaveLength(1);
       expect(new Date(depois.rows[0].proximo_sinal_em).getTime()).toBeLessThanOrEqual(new Date(pedido_em).getTime());

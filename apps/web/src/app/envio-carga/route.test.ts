@@ -22,6 +22,14 @@ describe('POST /envio-carga', () => {
     expect(enviarCarga).not.toHaveBeenCalled();
   });
 
+  it('atrás do túnel: Origin pública com Host interno passa; Origin diferente do x-forwarded-host dá 403', async () => {
+    const tunel = { host: '0.0.0.0:3000', 'x-forwarded-host': 'erp.macuxifdv.com.br, interno' };
+    const ok = await POST(pedido('validar', { ...tunel, origin: 'https://erp.macuxifdv.com.br' }));
+    expect(ok.status).not.toBe(403);
+    expect((await POST(pedido('validar', { ...tunel, origin: 'https://evil.com' }))).status).toBe(403);
+    expect((await POST(pedido('validar', { ...tunel, origin: 'http://0.0.0.0:3000' }))).status).toBe(403);
+  });
+
   it('sem content-length devolve 413 antes de ler o corpo', async () => {
     const r = new Request('http://erp.local/envio-carga', { method: 'POST', body: 'x', headers: { host: 'erp.local' } });
     r.headers.delete('content-length');

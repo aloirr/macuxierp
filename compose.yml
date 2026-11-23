@@ -45,7 +45,7 @@ x-ambiente-app: &ambiente-app
   MACUXIERP_S3_REGIAO: ${MACUXIERP_S3_REGIAO:-}
   MACUXIERP_S3_BUCKET: ${MACUXIERP_S3_BUCKET:-}
   MACUXIERP_CHAVE_A1: ${MACUXIERP_CHAVE_A1:?.env sem MACUXIERP_CHAVE_A1 (preparar-vm.sh)}
-  # Chave do Conector do Hub (api e worker), obrigatória; ver T-0002 "Trava mantida na v0.2.0"
+  # Chave do Conector do Hub (api e worker), obrigatória; ver T-0002 "Virada"
   MACUXIERP_CHAVE_INTEGRACAO: ${MACUXIERP_CHAVE_INTEGRACAO:-}
 
 # Ferramentas (docker compose --profile ferramentas run --rm ...), como o admin do DBaaS. libpq: require ou verify-full.
@@ -129,13 +129,13 @@ services:
       PGPASSWORD: ${MACUXIERP_SENHA_WORKER:?gerados.env sem MACUXIERP_SENHA_WORKER (preparar-vm.sh)}
       MACUXIERP_PG_POOL: '5'
       MACUXIERP_WORKER_INTERVALO_MS: '1000'
-      # URLs do Hub do FDV: fixas, só por PR; ver T-0002 "Trava mantida na v0.2.0"
+      # URLs do Hub do FDV: fixas, só por PR; ver T-0002 "Virada"
       MACUXIERP_HUB_URL_PRODUCAO: https://api.macuxifdv.com.br/integracao/v1
       MACUXIERP_HUB_URL_TESTE: https://hub-teste.invalid/integracao/v1
-      # Recebimento e envio do FDV: trava de 22/11 mantida na v0.2.0 (decisão do PO, R-20261122-061838); virada por PR
-      # próprio. Fixos aqui, NÃO lidos do .env: desligados, nenhuma agenda chama o Hub (apps/worker/src/envio-fdv.ts).
-      MACUXIERP_FDV_RECEBIMENTO: desligado
-      MACUXIERP_FDV_ENVIO: desligado
+      # Recebimento e envio do FDV: ligados juntos na virada (decisão do PO; ver T-0002 "Virada"). Fixos aqui, só por PR,
+      # NÃO lidos do .env; desligar à mão segue T-0002 "Desligamento" (apps/worker/src/envio-fdv.ts).
+      MACUXIERP_FDV_RECEBIMENTO: ligado
+      MACUXIERP_FDV_ENVIO: ligado
       NODE_OPTIONS: --max-old-space-size=256
     networks: [padrao]
     # sem HTTP: saudável = o processo principal (PID 1, o node do worker) vivo; se ele cair, o restart sobe de novo
