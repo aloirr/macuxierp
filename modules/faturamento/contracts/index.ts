@@ -102,6 +102,24 @@ export const NotaAutorizadaPayload = BaseEventoNota.extend({
 });
 export type NotaAutorizadaPayload = z.infer<typeof NotaAutorizadaPayload>;
 
+/**
+ * `faturamento.nota.emitida_contingencia@1` (RN-FAT-07, RN-FAT-08): a EPEC foi REGISTRADA (evento 110140, cStat 136; `emitida_contingencia`), mas a NF-e ainda NÃO está autorizada.
+ * Leva o mesmo que `nota.autorizada@1` leva ao pedido e ao retorno ao FDV (pedido_id, pedido_uuid, número, série, chave, itens e quantidades, `conta_como_real`), mais `tp_emis` 4 e o
+ * protocolo e a data do EVENTO. `nota.protocolo` é nulo (a NF-e não tem protocolo de autorização). Publicado na MESMA transação do UPDATE para `emitida_contingencia`, depois da guarda do
+ * evento (regra 7). Na volta, `nota.autorizada@1` é publicado normalmente (RN-FAT-09): o consumidor trata a idempotência pela CHAVE da nota (a mesma chave nos dois eventos; a
+ * nota EPEC gera os dois, nesta ordem). EPEC rejeitada não publica este evento (só `nota.rejeitada@1`; o pedido não recua sozinho, RN-FAT-07).
+ */
+export const NotaEmitidaContingenciaPayload = BaseEventoNota.extend({
+  nota: NotaEvento.extend({ chave_acesso: ChaveAcesso, protocolo: z.null() }),
+  pedido_uuid: Uuid.nullable(),
+  tp_emis: z.literal(4),
+  /** `nProt` do evento EPEC (15 dígitos). */
+  epec_protocolo: z.string().regex(/^[0-9]{15}$/),
+  /** `dhRegEvento` do evento EPEC, UTC. */
+  epec_autorizada_em: z.string().datetime(),
+});
+export type NotaEmitidaContingenciaPayload = z.infer<typeof NotaEmitidaContingenciaPayload>;
+
 /** `faturamento.nota.cancelada@1`: o pedido devolve as quantidades (T-0013 §2, P-2). */
 export const NotaCanceladaPayload = BaseEventoNota.extend({
   nota: NotaEventoAutorizada,

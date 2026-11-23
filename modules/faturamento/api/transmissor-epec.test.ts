@@ -9,7 +9,8 @@ import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
 import { a1DeTeste, CNPJ_EMITENTE, contingenciaFake, depsFake, guardaEpecFake, situacaoAprovadaDeTeste, titulosFake, tx, TENANT, uuid } from './apoio-teste';
-import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA } from './emissao';
+import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_EMITIDA_CONTINGENCIA, EVENTO_NOTA_REJEITADA } from './emissao';
+import { NotaEmitidaContingenciaPayload } from '../contracts';
 import { criarTransmissor } from './transmissor';
 
 const banco: Banco = { comTenant: async (_id, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true };
@@ -61,7 +62,7 @@ describe('EPEC no worker: evento 110140 em vez da NF-e', { timeout: 60_000 }, ()
     const r = await m.transmissor.transmitirNota(TENANT, nota.id);
     expect(r).toMatchObject({ resultado: 'epec_registrada', protocolo: expect.stringMatching(/^\d{15}$/) });
     expect(m.chamadas).toEqual(['seletor:AM:homologacao']);
-    expect(m.log.slice(-4)).toEqual(['xml:assinado:1', 'status:em_autorizacao', 'xml:evento_epec', 'status:emitida_contingencia']); // regra 7: o evento guardado antes do status
+    expect(m.log.slice(-5)).toEqual(['xml:assinado:1', 'status:em_autorizacao', 'xml:evento_epec', 'status:emitida_contingencia', `evento:${EVENTO_NOTA_EMITIDA_CONTINGENCIA}`]); // regra 7: o evento guardado antes do status; o evento da nota depois, na mesma tx
     const final = m.notas.get(nota.id)!;
     expect(final).toMatchObject({ status: 'emitida_contingencia', tp_emis: 4, epec_protocolo: (r as { protocolo: string }).protocolo, epec_autorizada_em: SIM.toISOString() });
     expect(m.dadosStatus.at(-1)).toMatchObject({ para: 'emitida_contingencia', dados: { cStat: '136', epec: { protocolo: final.epec_protocolo, autorizadaEm: SIM.toISOString() } } });
@@ -75,8 +76,13 @@ describe('EPEC no worker: evento 110140 em vez da NF-e', { timeout: 60_000 }, ()
     expect(g.conteudo).toContain('<cStat>136</cStat>');
     const evento = /<evento\b[\s\S]*<\/evento>/.exec(g.conteudo)![0];
     expect(verificarAssinaturaXml(evento, { elemento: 'infEvento', cnpjEsperado: CNPJ_EMITENTE, agora: INSTANTE_DE_TESTE })).toMatchObject({ ok: true });
-    // EPEC registrada não é nota autorizada: nenhum evento de autorização nem título
-    expect(m.eventos.map((e) => e.nome)).toEqual([]);
+    // EPEC registrada não é nota autorizada: nenhum nota.autorizada@1 nem título; sai só nota.emitida_contingencia@1 (RN-FAT-08)
+    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_EMITIDA_CONTINGENCIA]);
+    const ev = NotaEmitidaContingenciaPayload.parse(m.eventos[0]!.payload);
+    expect(m.eventos[0]!.agregado_id).toBe(nota.id);
+    expect(ev).toMatchObject({ pedido_id: IDS.pedido, tp_emis: 4, epec_protocolo: final.epec_protocolo, epec_autorizada_em: SIM.toISOString(), nota: { id: nota.id, serie: 1, numero: 100, chave_acesso: nota.chave_acesso, protocolo: null } });
+    expect(ev.itens.length).toBeGreaterThan(0);
+    expect(ev.quantidade_itens).toBe(ev.itens.length);
     expect(m.transmissoes).toEqual([]);
     expect(m.lidos).toHaveLength(1);
     expect([...m.lidos[0]!.credencial.pfx].every((b) => b === 0)).toBe(true);
@@ -130,6 +136,7 @@ describe('EPEC no worker: evento 110140 em vez da NF-e', { timeout: 60_000 }, ()
     await expect(m.transmissor.transmitirNota(TENANT, nota.id)).rejects.toThrow('falha de armazenamento');
     expect(m.notas.get(nota.id)).toMatchObject({ status: 'em_autorizacao', epec_protocolo: null });
     expect(m.log).not.toContain('status:emitida_contingencia');
+    expect(m.eventos).toEqual([]); // sem a guarda do evento, nada é publicado
   });
 
   it('RN-FAT-10: seletor da EPEC que recusa (filial simulada, produção sem endereço conferido) deixa a nota em rascunho com o motivo, sem assinar e sem queimar número', async () => {

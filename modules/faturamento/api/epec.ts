@@ -2,17 +2,18 @@
  * Retorno do evento EPEC (110140) do Ambiente Nacional, aplicado à nota (RN-FAT-05, RN-FAT-08, regra 7).
  * Só o cStat 136 (evento registrado, NF-e ainda não transmitida) conta: com ele, o `procEventoNFe` (evento assinado + retEvento) é guardado ANTES de qualquer
  * outra coisa e a nota vai, num ÚNICO UPDATE, de `em_autorizacao` a `emitida_contingencia` com `epec_protocolo` e `epec_autorizada_em` (gatilho B da 0032).
- * Rejeição vira `rejeitada` (nota.rejeitada@1; o reenvio segue a RN-FAT-07). Duplicidade (573) e lote sem protocolo do evento não mudam nada: a consulta é da etapa 4.
- * A nota EPEC NÃO publica `nota.autorizada@1` aqui: ela só é autorizada quando a NF-e for transmitida na volta (RN-FAT-09).
+ * Registrada: publica `nota.emitida_contingencia@1` na mesma tx. Rejeição vira `rejeitada` (nota.rejeitada@1, o único evento; o pedido não recua sozinho; o reenvio segue a RN-FAT-07). Duplicidade (573) e lote sem protocolo do evento não mudam nada: a consulta é da etapa 4.
+ * A nota EPEC NÃO publica `nota.autorizada@1` aqui (só na volta): ela só é autorizada quando a NF-e for transmitida na volta (RN-FAT-09).
  */
 import type { RespostaEvento } from '@macuxierp/nfe-sefaz';
 import { TIPO_EVENTO } from '@macuxierp/nfe-sefaz';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { interpretarRetorno } from '../domain';
-import { NotaRejeitadaPayload } from '../contracts';
-import { EVENTO_NOTA_REJEITADA, mudarNota } from './emissao';
+import { NotaEmitidaContingenciaPayload, NotaRejeitadaPayload } from '../contracts';
+import { EVENTO_NOTA_EMITIDA_CONTINGENCIA, EVENTO_NOTA_REJEITADA, mudarNota } from './emissao';
 import { baseEventoDaNota } from './eventos';
 import type { GuardaEpec, NotaRegistro, RepositorioNotas } from './portas';
+import { contaComoRealDaNota } from './titulos';
 import { montarProcEvento } from './xml-proc-eventos';
 
 export type ResultadoEpec =
@@ -38,6 +39,12 @@ export function criarProcessadorEpec(notas: RepositorioNotas, guarda: GuardaEpec
       // Regra 7: o XML do evento é guardado ANTES de a nota mudar. Se a guarda lançar, a tx desfaz e a nota segue em_autorizacao (retry).
       await guarda.guardarXmlEpec(tx, nota, { conteudo: montarProcEvento(eventoAssinado, registro.xml), protocolo: registro.nProt, dhRegistro: autorizadaEm });
       const registrada = await mudarNota(notas, tx, nota, 'emitida_contingencia', { cStat, xMotivo, epec: { protocolo: registro.nProt, autorizadaEm } }, { epec_protocolo: registro.nProt, epec_autorizada_em: autorizadaEm });
+      // RN-FAT-08: o pedido e o retorno ao FDV sabem da EPEC registrada pelo evento da nota, na MESMA tx do UPDATE (depois da guarda). A NF-e ainda não tem protocolo.
+      const conteudo = await notas.lerConteudo(tx, registrada.id);
+      const payload = NotaEmitidaContingenciaPayload.parse({
+        ...baseEventoDaNota(registrada, null, contaComoRealDaNota(conteudo, registrada)), pedido_uuid: registrada.pedido_uuid, tp_emis: 4, epec_protocolo: registro.nProt, epec_autorizada_em: autorizadaEm,
+      });
+      await notas.publicarEvento(tx, { nome: EVENTO_NOTA_EMITIDA_CONTINGENCIA, agregado_id: registrada.id, payload });
       return { resultado: 'epec_registrada', nota: registrada, protocolo: registro.nProt };
     }
 

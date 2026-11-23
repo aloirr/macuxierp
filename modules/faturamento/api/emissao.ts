@@ -66,6 +66,8 @@ import type {
 import { contaComoRealDaNota, gerarTitulosSeguro, type LogFaturamento } from './titulos';
 
 export const EVENTO_NOTA_AUTORIZADA = 'faturamento.nota.autorizada@1' as const;
+/** RN-FAT-07/08: EPEC registrada (evento 110140, cStat 136), NF-e ainda não autorizada. */
+export const EVENTO_NOTA_EMITIDA_CONTINGENCIA = 'faturamento.nota.emitida_contingencia@1' as const;
 export const EVENTO_NOTA_REJEITADA = 'faturamento.nota.rejeitada@1' as const;
 
 /** Texto fiscal padrão até a configuração por filial existir (ver "Pendências" no README). */

@@ -70,7 +70,7 @@ const SO_QUEM_BAIXA = (c: ContextoRota): void => {
 
 /** Histórico curto da contingência da filial (as últimas fechadas). */
 const HISTORICO_CONTINGENCIA = 10;
-/** Contingência sem o adaptador ligado (apps/api ainda sem `repositoriosSql(...).contingencia`): 503, nunca 500. */
+/** Contingência sem o adaptador (`DepsRotas.contingencia` ausente): 503, nunca 500. */
 const SEM_CONTINGENCIA = 'Contingência';
 
 export function criarRotas(deps: DepsRotas): RotaModulo[] {

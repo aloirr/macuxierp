@@ -8,7 +8,7 @@ import type { Banco } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { IDS } from '../domain/fixtures';
 import { a1DeTeste, contingenciaFake, depsFake, guardaEpecFake, situacaoAprovadaDeTeste, titulosFake, tx, TENANT, uuid } from './apoio-teste';
-import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_REJEITADA } from './emissao';
+import { criarServicoEmissao, EVENTO_NOTA_AUTORIZADA, EVENTO_NOTA_EMITIDA_CONTINGENCIA, EVENTO_NOTA_REJEITADA } from './emissao';
 import { criarTransmissor } from './transmissor';
 
 const banco: Banco = { comTenant: async (_id, fn) => fn(tx), semTenant: async (fn) => fn(tx), ping: async () => true };
@@ -54,7 +54,7 @@ describe('volta da EPEC: transmissão posterior com a mesma nfe_assinada (RN-FAT
     expect(m.notas.get(nota.id)?.status).toBe('emitida_contingencia');
     const assinadoAntes = m.assinados.map((a) => a.versao);
     const eventosAntes = m.eventos.length;
-    expect(m.eventos).toEqual([]); // a EPEC registrada não publica nota.autorizada@1
+    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_EMITIDA_CONTINGENCIA]); // a EPEC registrada não publica nota.autorizada@1
 
     const r = await m.transmissor.transmitirNota(TENANT, nota.id);
     expect(r).toMatchObject({ resultado: 'autorizada' });
@@ -64,6 +64,8 @@ describe('volta da EPEC: transmissão posterior com a mesma nfe_assinada (RN-FAT
     expect(m.log.lastIndexOf('xml:autorizado')).toBeGreaterThan(m.log.lastIndexOf('status:em_autorizacao')); // regra 7: XML autorizado guardado antes de autorizar e publicar
     expect(m.log.indexOf('xml:autorizado')).toBeLessThan(m.log.indexOf('evento:faturamento.nota.autorizada@1'));
     expect(m.eventos.slice(eventosAntes).map((e) => e.nome)).toContain(EVENTO_NOTA_AUTORIZADA);
+    // RN-FAT-09: a chave é a mesma nos dois eventos (a idempotência é do consumidor, pela chave da nota)
+    expect(m.eventos.filter((e) => e.nome !== 'faturamento.titulo.gerado@1').map((e) => (e.payload as { nota: { chave_acesso: string } }).nota.chave_acesso)).toEqual([nota.chave_acesso, nota.chave_acesso]);
     expect(m.notas.get(nota.id)?.epec_protocolo).toMatch(/^\d{15}$/); // o protocolo do evento fica
   });
 
@@ -85,7 +87,7 @@ describe('volta da EPEC: transmissão posterior com a mesma nfe_assinada (RN-FAT
     expect(r).toMatchObject({ resultado: 'rejeitada', codigo: '252' });
     expect(m.notas.get(nota.id)).toMatchObject({ status: 'rejeitada', numero: 100, chave_acesso: nota.chave_acesso });
     expect(m.notas.get(nota.id)?.epec_protocolo).toMatch(/^\d{15}$/);
-    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_REJEITADA]);
+    expect(m.eventos.map((e) => e.nome)).toEqual([EVENTO_NOTA_EMITIDA_CONTINGENCIA, EVENTO_NOTA_REJEITADA]);
   });
 
   it('RN-FAT-09: seletor do autorizador normal indisponível: a nota segue emitida_contingencia (nada se perde) e nada é enviado', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHAVE_ACESSO_REGEX, NotaAutorizadaPayload, NotaCanceladaPayload, TituloBaixadoPayload, TituloGeradoPayload, ConfigurarFilialEntrada, TipoEmissao, AbrirContingenciaEntrada, ContingenciaResumo, EpecPendente, FiltroEpecPendentes } from './index';
+import { CHAVE_ACESSO_REGEX, NotaAutorizadaPayload, NotaCanceladaPayload, TituloBaixadoPayload, TituloGeradoPayload, ConfigurarFilialEntrada, TipoEmissao, AbrirContingenciaEntrada, ContingenciaResumo, EpecPendente, FiltroEpecPendentes, NotaEmitidaContingenciaPayload } from './index';
 
 const u = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const nota = { id: u(1), filial_id: u(2), cliente_id: u(3), serie: 1, numero: 5, chave_acesso: '13261112ABC34501DE35550010000001231876543214', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 100, protocolo: '113260000000001' };
@@ -81,5 +81,21 @@ describe('contratos da contingência por filial (T-0021, lote 4)', () => {
     expect(EpecPendente.safeParse(e).success).toBe(true);
     expect(EpecPendente.safeParse({ ...e, situacao_prazo: 'atrasado' }).success).toBe(false);
     expect(FiltroEpecPendentes.parse({ situacao: 'vencido' })).toEqual({ situacao: 'vencido', limite: 50 });
+  });
+});
+
+describe('faturamento.nota.emitida_contingencia@1 (EPEC registrada; RN-FAT-07, RN-FAT-08)', () => {
+  const emitida = { ...base, pedido_uuid: u(9), nota: { ...nota, protocolo: null }, tp_emis: 4, epec_protocolo: '891260000000007', epec_autorizada_em: '2026-11-21T14:05:00.000Z' };
+  it('RN-FAT-08: leva o mesmo que nota.autorizada@1 (pedido_id, pedido_uuid, número, série, chave, itens, quantidades) mais tp_emis 4, epec_protocolo e epec_autorizada_em; o protocolo da NF-e é nulo', () => {
+    expect(NotaEmitidaContingenciaPayload.safeParse(emitida).success).toBe(true);
+    const r = NotaEmitidaContingenciaPayload.parse({ ...emitida, conta_como_real: true });
+    expect(r).toMatchObject({ pedido_id: u(4), pedido_uuid: u(9), tp_emis: 4, epec_protocolo: '891260000000007', nota: { numero: 5, serie: 1, chave_acesso: nota.chave_acesso, protocolo: null } });
+    expect(r.itens).toEqual(base.itens);
+  });
+  it('RN-FAT-08: exige chave de acesso, tp_emis 4, protocolo EPEC de 15 dígitos, data UTC e pedido_uuid (nullable); recusa protocolo da NF-e preenchido', () => {
+    expect(NotaEmitidaContingenciaPayload.safeParse({ ...emitida, pedido_uuid: null }).success).toBe(true);
+    for (const ruim of [{ pedido_uuid: undefined }, { tp_emis: 6 }, { tp_emis: 1 }, { epec_protocolo: '123' }, { epec_autorizada_em: '21/11/2026' }, { nota: { ...nota, protocolo: null, chave_acesso: null } }, { nota: { ...nota, protocolo: '113260000000001' } }]) {
+      expect(NotaEmitidaContingenciaPayload.safeParse({ ...emitida, ...ruim }).success).toBe(false);
+    }
   });
 });
