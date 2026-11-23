@@ -33,7 +33,7 @@ describe('PreviaDaCarga', () => {
     expect(h).toContain('e mais 7 erros');
   });
   it('agrupa a dependência por arquivo, com o motivo da API e o atalho para a entidade que falta', () => {
-    const dep = (l: number) => erro(l, 'produto_external_id', 'CARGA_DEPENDENCIA', 'Faltam produtos: carregue produto.csv antes.');
+    const dep = (l: number) => ({ ...erro(l, 'produto_external_id', 'CARGA_DEPENDENCIA', 'Faltam produtos: carregue produto.csv antes.'), entidade_faltante: 'produto' });
     const h = renderToStaticMarkup(<PreviaDaCarga relatorio={r({ erros: [dep(5), dep(6)] })} />);
     expect(h.match(/Faltam produtos: carregue produto\.csv antes\./g)).toHaveLength(1);
     expect(h).toContain('preco.csv — Faltam produtos: carregue produto.csv antes.');

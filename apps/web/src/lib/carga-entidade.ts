@@ -29,12 +29,6 @@ export function problemaDoArquivo(entidade: EntidadeCarga, arquivo: { nome: stri
   return null;
 }
 
-/** Entidade que falta, tirada do campo da dependência (`produto_external_id` -> `produto`); null se o campo não apontar uma entidade da lista. */
-export function entidadeDaDependencia(campo: string | null): EntidadeCarga | null {
-  const e = /^([a-z_]+)_external_id$/.exec(campo ?? '')?.[1];
-  return e && (ENTIDADES_CARGA as readonly string[]).includes(e) ? (e as EntidadeCarga) : null;
-}
-
 export interface DependenciaDoArquivo {
   arquivo: string;
   /** Motivos como a API mandou, sem repetir. */
@@ -43,15 +37,15 @@ export interface DependenciaDoArquivo {
   faltam: EntidadeCarga[];
 }
 
-/** CARGA_DEPENDENCIA agrupado por arquivo. O texto é o motivo da API; só o atalho vem do campo. */
+/** CARGA_DEPENDENCIA agrupado por arquivo. O texto é o motivo da API; o atalho vem de `entidade_faltante` (ausente ou null = não sei, só o motivo). */
 export function dependenciasPorArquivo(r: RelatorioCarga): DependenciaDoArquivo[] {
   const mapa = new Map<string, { motivos: Set<string>; faltam: Set<EntidadeCarga> }>();
   for (const e of r.erros) {
     if (e.codigo !== 'CARGA_DEPENDENCIA') continue;
     const g = mapa.get(e.arquivo) ?? { motivos: new Set<string>(), faltam: new Set<EntidadeCarga>() };
     g.motivos.add(e.motivo);
-    const falta = entidadeDaDependencia(e.campo);
-    if (falta) g.faltam.add(falta);
+    const falta = e.entidade_faltante as EntidadeCarga | null | undefined;
+    if (falta && (ENTIDADES_CARGA as readonly string[]).includes(falta)) g.faltam.add(falta);
     mapa.set(e.arquivo, g);
   }
   return [...mapa].map(([arquivo, g]) => ({ arquivo, motivos: [...g.motivos], faltam: ENTIDADES_CARGA.filter((x) => g.faltam.has(x)) }));

@@ -3,7 +3,7 @@ import { ENTIDADES_CARGA, type RelatorioCarga } from '@macuxierp/cadastros/contr
 import { PERFIS, pode } from '@macuxierp/platform-sdk';
 import { acoesDaCarga } from '@macuxierp/cadastros/web';
 import {
-  BOTOES_CARGA, caminhoDoModelo, dependenciasPorArquivo, enderecoDoModelo, entidadeDaDependencia, entidadeDoModelo, errosDaTabela,
+  BOTOES_CARGA, caminhoDoModelo, dependenciasPorArquivo, enderecoDoModelo, entidadeDoModelo, errosDaTabela,
   formularioDaEntidade, modeloPermitido, podeGravar, problemaDoArquivo,
 } from './carga-entidade';
 import { MANIFESTOS } from './manifestos';
@@ -14,7 +14,7 @@ const relatorio = (extra: Partial<RelatorioCarga> = {}): RelatorioCarga => ({
   lote_id: '00000000-0000-4000-8000-000000000001', modo: 'validar', iniciado_em: '2026-11-23T12:00:00.000Z', concluido_em: '2026-11-23T12:00:01.000Z',
   entidades: [ent('preco')], erros: [], erros_omitidos: 0, ...extra,
 } as RelatorioCarga);
-const DEP = (linha: number, campo: string | null = 'produto_external_id') => ({ arquivo: 'preco.csv', linha, campo, codigo: 'CARGA_DEPENDENCIA', motivo: 'Faltam produtos: carregue produto.csv antes.' });
+const DEP = (linha: number, campo: string | null = 'produto_external_id', ...resto: [string | null | undefined] | []) => { const entidade_faltante = resto.length ? resto[0] : 'produto'; return ({ arquivo: 'preco.csv', linha, campo, codigo: 'CARGA_DEPENDENCIA', motivo: 'Faltam produtos: carregue produto.csv antes.', ...(entidade_faltante === undefined ? {} : { entidade_faltante }) }); };
 
 describe('botões da carga (T-0051)', () => {
   it('seguem a ordem do D13', () => {
@@ -57,15 +57,15 @@ describe('arquivo do botão', () => {
 });
 
 describe('CARGA_DEPENDENCIA', () => {
-  it('a entidade que falta vem do campo, só se estiver na lista', () => {
-    expect(entidadeDaDependencia('produto_external_id')).toBe('produto');
-    expect(entidadeDaDependencia('forma_pagamento_external_id')).toBe('forma_pagamento');
-    expect(entidadeDaDependencia('xis_external_id')).toBeNull();
-    expect(entidadeDaDependencia(null)).toBeNull();
+  it('forma_external_id com entidade_faltante forma_pagamento aponta Formas de pagamento; null ou ausente não aponta nada', () => {
+    const f = dependenciasPorArquivo(relatorio({ erros: [DEP(1, 'forma_external_id', 'forma_pagamento')] as RelatorioCarga['erros'] }));
+    expect(f[0]?.faltam).toEqual(['forma_pagamento']);
+    expect(dependenciasPorArquivo(relatorio({ erros: [DEP(1, 'forma_external_id', null)] as RelatorioCarga['erros'] }))[0]?.faltam).toEqual([]);
+    expect(dependenciasPorArquivo(relatorio({ erros: [DEP(1, 'forma_external_id', undefined)] as RelatorioCarga['erros'] }))[0]?.faltam).toEqual([]);
   });
   it('agrupa por arquivo, sem repetir motivo nem entidade, na ordem do D13; o resto fica na tabela', () => {
     const r = relatorio({
-      erros: [DEP(5), DEP(6), DEP(7, 'filial_external_id'), { arquivo: 'preco.csv', linha: 9, campo: 'preco_cents', codigo: 'CARGA_FORMATO', motivo: 'Valor inválido.' }, { ...DEP(2), arquivo: 'estoque.csv', campo: null }] as RelatorioCarga['erros'],
+      erros: [DEP(5), DEP(6), DEP(7, 'filial_external_id', 'filial'), { arquivo: 'preco.csv', linha: 9, campo: 'preco_cents', codigo: 'CARGA_FORMATO', motivo: 'Valor inválido.' }, { ...DEP(2, null, null), arquivo: 'estoque.csv' }] as RelatorioCarga['erros'],
     });
     const d = dependenciasPorArquivo(r);
     expect(d).toEqual([
