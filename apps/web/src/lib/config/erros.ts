@@ -21,7 +21,7 @@ export class ErroPlataforma extends Error {
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email';
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
 export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
@@ -59,6 +59,7 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
     }
     if (ctx === 'senha' && (e.status === 400 || e.status === 422)) return { ...base, texto: SENHA_ATUAL_INCORRETA, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 400 || e.status === 422) return { ...base, texto: 'Confira os dados e tente de novo.', campos: e.campos, chaveNova: ehRespostaDefinitiva(e.status) };
+    if (e.status === 404 && ctx === 'email') return { ...base, texto: 'A empresa ainda não tem 1º administrador.' };
     if (e.status === 404) return { ...base, texto: 'Empresa não encontrada. Volte à lista.' };
   }
   return { ...base, texto: FALHA_REDE };

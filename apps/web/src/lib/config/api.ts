@@ -1,5 +1,6 @@
 import {
   COOKIE_CONFIG,
+  EmailPrimeiroAdminResposta,
   EmpresaPlataforma,
   EuPlataforma,
   PADRAO_UUID,
@@ -14,7 +15,7 @@ import {
   type SituacaoEmpresaEntrada,
   type TrocarSenhaPlataformaEntrada,
 } from '@macuxierp/platform-sdk';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { buscarNaApi } from '../api';
 import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
 
@@ -138,4 +139,9 @@ export async function criarPrimeiroAdmin(token: string, id: string, corpo: Prime
 
 export async function redefinirSenhaPrimeiroAdmin(token: string, id: string, chave: string): Promise<PrimeiroAdminResposta> {
   return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/primeiro-admin/senha`, { token, chave }), PrimeiroAdminResposta);
+}
+
+/** `POST .../primeiro-admin/email` (no-store): o e-mail inteiro, só para a tela. Escrita auditada pela API: sem Idempotency-Key. */
+export async function mostrarEmailPrimeiroAdmin(token: string, id: string): Promise<EmailPrimeiroAdminResposta> {
+  return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/primeiro-admin/email`, { token }), EmailPrimeiroAdminResposta);
 }

@@ -12,7 +12,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { criarAdminAcao, criarEmpresaAcao, redefinirSenhaAcao, situacaoAcao, alterarModulosAcao, maisEmpresasAcao } from './acoes';
+import { mostrarEmailAcao, criarAdminAcao, criarEmpresaAcao, redefinirSenhaAcao, situacaoAcao, alterarModulosAcao, maisEmpresasAcao } from './acoes';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const SENHA = 'Zq7-secreta-XYZ99';
@@ -54,6 +54,24 @@ describe('ações do portal', () => {
     expect(chamadas[0]?.h['idempotency-key']).toBe('chave-senha');
     expect(chamadas[0]?.url).toMatch(/\/primeiro-admin\/senha$/);
     expect(JSON.stringify([log.mock.calls, erro.mock.calls])).not.toContain(SENHA);
+  });
+  it('mostrar e-mail: POST com x-macuxierp-config, sem Idempotency-Key, e o e-mail só no valor', async () => {
+    const log = vi.spyOn(console, 'log');
+    const erro = vi.spyOn(console, 'error');
+    resposta = () => json({ email: 'admin@exemplo.com.br' });
+    const r = await mostrarEmailAcao(ID);
+    expect(r).toEqual({ ok: true, valor: { email: 'admin@exemplo.com.br' } });
+    expect(chamadas[0]).toMatchObject({ metodo: 'POST' });
+    expect(chamadas[0]?.url).toMatch(/\/primeiro-admin\/email$/);
+    expect(chamadas[0]?.h['x-macuxierp-config']).toBe('1');
+    expect(chamadas[0]?.h['idempotency-key']).toBeUndefined();
+    expect(JSON.stringify([log.mock.calls, erro.mock.calls])).not.toContain('admin@exemplo');
+  });
+  it('mostrar e-mail: erro da API vira mensagem fixa, sem corpo', async () => {
+    resposta = () => json({ mensagem: 'admin@exemplo.com.br' }, 503);
+    const r = await mostrarEmailAcao(ID);
+    expect(r).toMatchObject({ ok: false, erro: 'Não foi possível concluir. Tente de novo.' });
+    expect(JSON.stringify(r)).not.toContain('admin@');
   });
   it('criar administrador: e-mail inválido fica junto do campo, antes da API', async () => {
     expect(await criarAdminAcao(ID, { email: 'sem-arroba', nome: 'Administrador' }, 'k')).toMatchObject({ ok: false, campos: { email: 'E-mail inválido. Confira o endereço.' } });

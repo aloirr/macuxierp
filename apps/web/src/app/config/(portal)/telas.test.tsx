@@ -9,6 +9,7 @@ vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { acumularPagina } from '@macuxierp/ui/paginacao';
+import { dadosDaEmpresa } from '@/lib/config/empresa';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { ListaEmpresas } from './lista-empresas';
 import { TopoPlataforma } from './topo-plataforma';
@@ -96,6 +97,26 @@ describe('empresa: módulos, 1º administrador e situação', () => {
       expect(fonte).toContain(t);
     }
     expect(fonte).not.toMatch(/localStorage|sessionStorage|console\./);
+  });
+});
+
+describe('empresa: dados e e-mail do 1º administrador', () => {
+  const completa = { ...acme, razao_social: 'Acme Comércio Ltda', cnpj: '12345678000195', cidade: 'Manaus', uf: 'AM', primeiro_admin: { ...acme.primeiro_admin!, email_mascarado: 'ad****@exemplo.com.br' } };
+  it('empresa completa: dados com o CNPJ formatado e o e-mail mascarado com o botão "Mostrar"', () => {
+    const h = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} />);
+    expect(h).toContain('<h2 id="h-dados">Dados da empresa</h2>');
+    expect(h).toContain('Acme Comércio Ltda');
+    expect(h).toContain('12.345.678/0001-95');
+    expect(h).toContain('Manaus/AM');
+    expect(h).toContain('23/11/2026 08:00');
+    expect(h).toContain('ad****@exemplo.com.br');
+    expect(h).toContain('Mostrar');
+    expect(h).not.toContain('admin@exemplo.com.br');
+  });
+  it('campos null mostram "—"; sem máscara, sem o cartão do e-mail', () => {
+    const vazios = dadosDaEmpresa({ ...acme, razao_social: null, cnpj: null, cidade: null, uf: null });
+    expect(vazios.filter((l) => l.valor === '—').map((l) => l.rotulo)).toEqual(['Razão social', 'CNPJ', 'Cidade/UF']);
+    expect(renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />)).not.toContain('Mostrar');
   });
 });
 
