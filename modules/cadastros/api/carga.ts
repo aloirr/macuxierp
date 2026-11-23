@@ -33,12 +33,12 @@ class Relatorio {
   readonly erros: ErroCarga[] = [];
   omitidos = 0;
   readonly entidades: ResultadoEntidade[] = [];
-  erro(arquivo: string, linha: number | null, campo: string | null, codigo: string, motivo: string): void {
+  erro(arquivo: string, linha: number | null, campo: string | null, codigo: string, motivo: string, entidadeFaltante?: EntidadeCarga): void {
     if (this.erros.length >= MAX_ERROS_RELATORIO) this.omitidos += 1;
-    else this.erros.push({ arquivo, linha, campo, codigo: codigo as ErroCarga['codigo'], motivo: motivo.slice(0, 200) });
+    else this.erros.push({ arquivo, linha, campo, codigo: codigo as ErroCarga['codigo'], motivo: motivo.slice(0, 200), ...(entidadeFaltante ? { entidade_faltante: entidadeFaltante } : {}) });
   }
   erroLinha(arquivo: string, e: ErroLinha): void {
-    this.erro(arquivo, e.linha, e.campo, e.codigo, e.motivo);
+    this.erro(arquivo, e.linha, e.campo, e.codigo, e.motivo, e.entidade_faltante);
   }
 }
 

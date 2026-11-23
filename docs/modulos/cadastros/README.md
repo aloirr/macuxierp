@@ -48,5 +48,6 @@ Decisão R-20261122-022626: o faturamento real sai pelo ERP. O consumidor `criar
 ## Carga por entidade (RF-CAD-11)
 - **Modelo CSV**: `GET /v1/cadastros/cargas/modelos/:entidade` (ação `cadastros.carga.executar`) devolve só o cabeçalho, UTF-8 com BOM e `;`: obrigatórias primeiro, depois as demais usadas, sem as ignoradas. Entidade desconhecida: 404. Função pura `modeloCsv` em `domain/carga/modelo.ts`, a partir de `LAYOUT`.
 - **Aviso de dependência**: `DEPENDENCIAS` (`domain/carga/dependencias.ts`, conferido contra `REFS_CARGA`). `*_external_id` que não está no banco nem no lote, com o arquivo da dependência fora do lote, vira `CARGA_DEPENDENCIA` ("Faltam produtos: carregue produto.csv antes."), sem o valor da célula. Com o arquivo no lote, segue `CARGA_REFERENCIA`.
+- **Entidade que falta**: o `CARGA_DEPENDENCIA` leva `entidade_faltante` (`EntidadeCarga`, de `ARQUIVO_DO_ALVO` em `domain/carga/dependencias.ts`); nos demais códigos o campo fica ausente (RF-CAD-11).
 - **Entidade única**: campo opcional `entidade` no `POST /v1/cadastros/cargas`; com ele o lote é exatamente `<entidade>.csv`, senão 400 "Envie só o arquivo <entidade>.csv neste botão.". Sem o campo, nada muda.
 - **Perfil**: arquivo `filial` e coluna `limite_credito_cents` recusados trazem o motivo fixo "Só o administrador carrega filial e limite de crédito." (RN-CORE-09).
