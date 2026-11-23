@@ -38,8 +38,7 @@ const CODIGOS_SEM_LICENCA: ReadonlySet<string> = new Set(['empresa_inativa', 'mo
 
 /**
  * `MXC03` do "Zerar dados" (`cadastros.portal_zerar`, 0043, RN-CAD-10): o estado mudou entre o plano e o efeito. O DETAIL
- * passa a `detalhes.codigo` só pela lista fechada do SDK (`CODIGOS_ESTADO_MUDOU_ZERAR`). O mesmo SQLSTATE ainda sai da `cadastros.portal_carga_iniciar` (0040,
- * DETAIL `dependencia_pendente`) até a v0.3.6 tirá-lo da carga: o DETAIL separa os dois enquanto ambos existirem.
+ * passa a `detalhes.codigo` só pela lista fechada do SDK (`CODIGOS_ESTADO_MUDOU_ZERAR`); outro texto do banco fica de fora.
  */
 const SQLSTATE_ZERAR_ESTADO_MUDOU = 'MXC03';
 const CODIGOS_ZERAR_ESTADO_MUDOU: ReadonlySet<string> = new Set(CODIGOS_ESTADO_MUDOU_ZERAR);
@@ -62,16 +61,12 @@ export function erroDaPlataforma(e: unknown): unknown {
       return new ErroApi(409, 'CONFLITO', MENSAGEM_ESTADO_MUDOU, undefined, codigoDoDetalhe(e, CODIGOS_ESTADO_MUDOU));
     case SQLSTATE_SEM_LICENCA_FDV:
       return new ErroApi(422, 'RN-CORE-02', MENSAGEM_SEM_LICENCA_FDV, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA));
-    // Cargas do portal (T-0058, ADR 0013, adendo de 23/11/2026). MXC01 e MXC03: código fixo do contrato
+    // Cargas do portal (T-0058, ADR 0013, adendo de 23/11/2026). MXC01: código fixo do contrato
     // (`CODIGOS_DETALHE_CARGA_PORTAL`), nunca o DETAIL do banco; MXC04: o DETAIL só pela lista fechada, como o MXI04.
     case SQLSTATES_CARGA_PORTAL.cargaEmAndamento:
       return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.cargaEmAndamento, undefined, { codigo: 'carga_em_andamento' });
-    case SQLSTATE_ZERAR_ESTADO_MUDOU: {
-      const zerar = codigoDoDetalhe(e, CODIGOS_ZERAR_ESTADO_MUDOU);
-      if (zerar) return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.estadoMudouZerar, undefined, zerar);
-      // carga (0040): sai na v0.3.6 com o `SQLSTATES_CARGA_PORTAL.dependenciaPendente`; aí o resto vira o 409 acima sem código.
-      return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.dependenciaPendente, undefined, { codigo: 'dependencia_pendente' });
-    }
+    case SQLSTATE_ZERAR_ESTADO_MUDOU:
+      return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.estadoMudouZerar, undefined, codigoDoDetalhe(e, CODIGOS_ZERAR_ESTADO_MUDOU));
     case SQLSTATES_CARGA_PORTAL.semLicenca:
       return new ErroApi(422, 'RN-CORE-02', MENSAGENS_CARGA_PORTAL.semLicenca, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA));
     case 'P0002': // no_data_found: empresa ou administrador inexistente
