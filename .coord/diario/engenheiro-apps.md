@@ -30,3 +30,7 @@
 2026-11-23 — T-0051 — shell: ajustes de marca na carga, RegiaoErros única e .mx-radio na filial
 2026-11-23 — T-0051 — revisões do shell: região de erros do cabeçalho com itens (paliativo), textarea com aria, coluna Arquivo fora da tabela de erros, concordância dos omitidos.
 2026-11-23 — T-0051 — região de erros única com temErroExterno do FormularioItens (#302); paliativo removido; errosIniciais mantida (único jeito de testar SSR sem DOM)
+2026-11-23 — T-0050 — shell do portal /config (E4): sessão de superadmin, empresas, módulos, 1º admin, suspender/reativar e redefinir senha Revisão final: cookie Strict, Sair por POST (GET encerrar só apaga com 401 confirmado), guarda em empresas/nova, buscarNaApi comum, CSS sobre .conteudo/.topo.
+2026-11-23 — T-0050 — 2º push do PR #310: linha da lista de empresas vira link para /config/empresas/:id (slug) e tabela com sombra de rolagem em 390 px.
+2026-11-23 — T-0050 — 3º push do #310: marca (C 24 px, senha 20 px/600, títulos de cartão, borda de tabela), DialogoMotivo semTexto, Carregar mais acumulado (#309); mx-checkbox ainda não existe no main
+2026-11-23 — T-0050 — 4º push: checkboxes de módulo do detalhe da empresa com .mx-checkbox (#311), teste de render
