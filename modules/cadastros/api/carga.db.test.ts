@@ -128,7 +128,8 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     expect(ok.rel.erros).toEqual([]);
     const T = await criarTenant(efemero.admin, 'carga-dep', ['cadastros']);
     const r = await carregar(T, 'validar', fixture().filter((a) => a.nome === 'produto_unidade.csv'));
-    expect(r.rel.erros).toContainEqual(expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'produto_external_id', motivo: 'Faltam produtos: carregue produto.csv antes.' }));
+    expect(r.rel.erros).toContainEqual(expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'produto_external_id', motivo: 'Faltam produtos: carregue produto.csv antes.', entidade_faltante: 'produto' }));
+    expect(r.rel.erros.filter((e) => e.codigo !== 'CARGA_DEPENDENCIA').every((e) => e.entidade_faltante === undefined)).toBe(true);
   }, 120_000);
 
   it('D4: adota pela chave natural o cadastro feito sem external_id, sem duplicar', async () => {

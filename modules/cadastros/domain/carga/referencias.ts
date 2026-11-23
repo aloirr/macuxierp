@@ -53,7 +53,7 @@ export function conferirReferencias<E extends EntidadeCarga>(entidade: E, linhas
     for (const [campo, alvo] of ruins) {
       const arquivo = ARQUIVO_DO_ALVO[alvo];
       // RF-CAD-11: sem o arquivo da dependência no lote, o aviso diz qual carregar antes; com ele, vale o erro de referência.
-      if (arquivosDoLote && !arquivosDoLote.has(arquivo)) erros.push(erroLinha(l.linha, `${campo}_external_id`, 'CARGA_DEPENDENCIA', motivoDependencia(arquivo)));
+      if (arquivosDoLote && !arquivosDoLote.has(arquivo)) erros.push({ ...erroLinha(l.linha, `${campo}_external_id`, 'CARGA_DEPENDENCIA', motivoDependencia(arquivo)), entidade_faltante: arquivo });
       else erros.push(erroLinha(l.linha, `${campo}_external_id`, 'CARGA_REFERENCIA', 'Referência não encontrada no banco nem neste lote'));
     }
     if (ruins.length === 0) validas.push(l);

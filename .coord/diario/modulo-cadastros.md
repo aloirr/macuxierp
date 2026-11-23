@@ -5,3 +5,4 @@
 2026-11-22 — T-0021 — campos fiscais da filial e do produto, consulta para o fiscal
 2026-11-22 — T-0021 — regime PIS/COFINS obrigatório na filial CRT 3
 2026-11-23 — T-0051 — carga por entidade: modelo CSV, aviso de dependência e entidade única
+2026-11-23 — T-0051 — entidade_faltante no CARGA_DEPENDENCIA

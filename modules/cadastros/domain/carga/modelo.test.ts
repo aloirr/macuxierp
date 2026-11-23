@@ -30,7 +30,7 @@ describe('dependência entre arquivos (RF-CAD-11)', () => {
   it('RF-CAD-11: sem o arquivo no lote é CARGA_DEPENDENCIA; com ele, CARGA_REFERENCIA', () => {
     const l = { linha: 2, external_id: 'U1', avisos: [], dados: { unidade: 'CX', fator: 120_000 }, refs: { produto: 'SUMIU' } };
     const sem = conferirReferencias('produto_unidade', [l], idsVazios(), new Set(['produto_unidade']));
-    expect(sem.erros).toEqual([{ linha: 2, campo: 'produto_external_id', codigo: 'CARGA_DEPENDENCIA', motivo: 'Faltam produtos: carregue produto.csv antes.' }]);
+    expect(sem.erros).toEqual([{ linha: 2, campo: 'produto_external_id', codigo: 'CARGA_DEPENDENCIA', motivo: 'Faltam produtos: carregue produto.csv antes.', entidade_faltante: 'produto' }]);
     const com = conferirReferencias('produto_unidade', [l], idsVazios(), new Set(['produto_unidade', 'produto']));
     expect(com.erros[0]?.codigo).toBe('CARGA_REFERENCIA');
   });

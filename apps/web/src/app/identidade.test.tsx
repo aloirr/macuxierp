@@ -25,9 +25,13 @@ describe('identidade do shell (T-0021, ajustes B)', () => {
     expect(css).toMatch(/\.campo input \{[^}]*borda-campo/);
     expect(css).toMatch(/\.entrada[^{]*\{[^}]*borda-campo/);
   });
-  it('o foco do Sair no topo é branco (WCAG 2.4.7)', () => {
-    expect(css).toMatch(/\.topo \.mx-botao-secundario:focus-visible \{ outline-color: var\(--mx-cor-branco\)/);
-    expect(css).not.toMatch(/\.mx-botao:hover/);
+  it('o foco no topo, no menu e no cartão é branco pela .mx-fundo-escuro do ui', () => {
+    expect(fonte('(shell)/layout.tsx')).toMatch(/<header className="topo mx-fundo-escuro">/);
+    expect(renderToStaticMarkup(<CabecalhoCartao titulo="X" />)).toContain('<header class="mx-fundo-escuro">');
+    expect(css).not.toMatch(/\.topo[^{]*:focus-visible/);
+    expect(css).not.toMatch(/\.lateral[^{]*:focus-visible/);
+    const botoes = readFileSync(require.resolve('@macuxierp/ui/botoes.css'), 'utf8');
+    expect(botoes).toMatch(/\.mx-fundo-escuro :focus-visible \{[^}]*var\(--mx-cor-branco\)/);
   });
   it('o diálogo de motivo recebe "Manter a nota" e o sinal destrutivo, sem cor nova', () => {
     const h = renderToStaticMarkup(<DialogoMotivo titulo="Cancelar" rotuloFechar="Manter a nota" destrutivo aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
