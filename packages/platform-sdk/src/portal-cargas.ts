@@ -387,8 +387,14 @@ export const TABELAS_ZERAGEM = [
 export const TabelaZeragem = z.enum(TABELAS_ZERAGEM);
 export type TabelaZeragem = z.infer<typeof TabelaZeragem>;
 
-/** Por que um registro ficou: está em uso por pedido, título ou nota. */
-const MOTIVOS_USO = ['pedido', 'titulo', 'nota'] as const;
+/**
+ * Por que um registro ficou no zerar: está em uso por pedido, título ou nota, ou
+ * `fiscal` = filial com A1 ou ambiente fiscal fica mantida (decisão do PO, 23/11 16h18).
+ */
+export const MOTIVOS_USO = ['pedido', 'titulo', 'nota', 'fiscal'] as const;
+
+/** Texto da linha de mantidos no resultado do zerar (RN-CAD-10). */
+export const MENSAGEM_MANTIDOS_ZERAR = (n: number) => `Mantidos: ${n} (em uso em pedido, título ou nota, ou filial com dado fiscal)`;
 
 /** `detalhes.codigo` do 422 do zerar quando `bloqueios` não está vazio (sem SQLSTATE: o plugin decide). */
 export const CODIGO_ZERAGEM_BLOQUEADA = 'zeragem_bloqueada';

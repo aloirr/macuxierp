@@ -18,6 +18,8 @@ import {
   LIMITE_LINHAS_ERRO_VALIDACAO,
   MENSAGEM_FRASE_SUBSTITUIR,
   MENSAGEM_FRASE_ZERAR,
+  MENSAGEM_MANTIDOS_ZERAR,
+  MOTIVOS_USO,
   MENSAGEM_SUBSTITUIR_NAO_PERMITIDO,
   ModoCargaQuery,
   PreviaZerarPlataformaEntrada,
@@ -343,6 +345,18 @@ describe('ZeragemPlataformaResposta (RN-CAD-10, v0.3.5b)', () => {
     expect(ZeragemPlataformaResposta.safeParse({ ...base, simulado: false, bloqueios }).success).toBe(false);
     expect(CODIGO_ZERAGEM_BLOQUEADA).toBe('zeragem_bloqueada');
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain(CODIGO_ZERAGEM_BLOQUEADA);
+  });
+
+  it('aceita o motivo fiscal em mantidos: filial com A1 ou ambiente fiscal fica (decisão do PO, 23/11 16h18)', () => {
+    expect(MOTIVOS_USO).toEqual(['pedido', 'titulo', 'nota', 'fiscal']);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, mantidos: [{ cadastro: 'filial', motivo: 'fiscal', quantidade: 1 }] }).success).toBe(true);
+    expect(sdk.MOTIVOS_USO).toBe(MOTIVOS_USO);
+  });
+
+  it('mensagem dos mantidos cita uso e dado fiscal', () => {
+    expect(MENSAGEM_MANTIDOS_ZERAR(3)).toBe('Mantidos: 3 (em uso em pedido, título ou nota, ou filial com dado fiscal)');
+    expect(MENSAGEM_MANTIDOS_ZERAR(0)).toBe('Mantidos: 0 (em uso em pedido, título ou nota, ou filial com dado fiscal)');
+    expect(sdk.MENSAGEM_MANTIDOS_ZERAR).toBe(MENSAGEM_MANTIDOS_ZERAR);
   });
 
   it('recusa tabela fora do enum, coluna anulada desconhecida, motivo livre e repetição', () => {
