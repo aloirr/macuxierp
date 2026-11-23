@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { DialogoMotivo, exigeEscolha, proximoFoco } from './DialogoMotivo.js';
+import { proximoFoco } from './Dialogo.js';
+import { DialogoMotivo, exigeEscolha } from './DialogoMotivo.js';
 import { FaixaPendencias, ordenarPendencias } from './FaixaPendencias.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { TabelaDensa, ordenarLinhas, proximaOrdem, type ColunaTabela } from './TabelaDensa.js';
@@ -208,8 +209,8 @@ describe('ajustes de marca (T-0015)', () => {
 describe('regra de cores', () => {
   it('nenhum componente tem cor literal (só var(--mx-...))', () => {
     const dir = new URL('./', import.meta.url);
-    const arqs = readdirSync(dir).filter((f) => /^(TabelaDensa|FaixaPendencias|DialogoMotivo|FormularioItens|SeloPlataforma|estilos)\.tsx?$/.test(f));
-    expect(arqs.length).toBe(6);
+    const arqs = readdirSync(dir).filter((f) => /^(TabelaDensa|FaixaPendencias|DialogoMotivo|FormularioItens|SeloPlataforma|Chip|CaixaResumo|Dialogo|estilos)\.tsx?$/.test(f));
+    expect(arqs.length).toBe(9);
     for (const a of arqs) expect(readFileSync(new URL(a, dir), 'utf8'), a).not.toMatch(/#[0-9A-Fa-f]{3,8}\b|rgba?\(/);
   });
 });
