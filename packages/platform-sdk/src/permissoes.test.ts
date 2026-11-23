@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MODULOS, PERFIS, type Perfil } from './modulo';
+import { MODULOS, PERFIS, ROTULOS_PERFIL, type Perfil } from './modulo';
 import { moduloDaAcao, pode, PERMISSOES, type Acao } from './permissoes';
 
 const quem = (acao: Acao) => PERFIS.filter((p) => pode(p, acao));
@@ -57,6 +57,10 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     for (const a of ['cadastros.ver', 'pedido.ver', 'fiscal.ver', 'faturamento.ver', 'core.empresa.ver'] as const) {
       expect(quem(a)).toEqual([...PERFIS]);
     }
+  });
+
+  it('RN-CORE-01: todo perfil tem rótulo para pessoas', () => {
+    for (const p of PERFIS) expect(ROTULOS_PERFIL[p].length).toBeGreaterThan(1);
   });
 
   it('integração FDV (T-0011): ver só administrador, gerente e leitura; configurar só o administrador', () => {
