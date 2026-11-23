@@ -57,11 +57,11 @@ export function Dialogo({ titulo, aoFechar, rodape, children, descricaoId }: Dia
         aria-labelledby={`${id}-t`}
         aria-describedby={descricaoId}
         onKeyDown={teclado}
-        style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', boxSizing: 'border-box', borderRadius: '8px', display: 'grid', gap: espaco.md, position: 'relative' }}
+        style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', boxSizing: 'border-box', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: espaco.md, maxHeight: '90vh', overflow: 'hidden', position: 'relative' }}
       >
-        <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0 }}>{titulo}</h2>
-        {children}
-        {rodape ? <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end' }}>{rodape}</div> : null}
+        <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0, flex: 'none' }}>{titulo}</h2>
+        <div data-corpo-dialogo="" style={{ overflowY: 'auto', flex: '1 1 auto', minHeight: 0, display: 'grid', gap: espaco.md, alignContent: 'start' }}>{children}</div>
+        {rodape ? <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end', flex: 'none' }}>{rodape}</div> : null}
       </div>
     </div>
   );

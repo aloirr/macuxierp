@@ -65,6 +65,25 @@ describe('Dialogo', () => {
     const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}}>x</Dialogo>);
     expect(h).toContain('border-radius:8px');
   });
+  it('altura até 90vh: título e rodapé fixos, corpo rola', () => {
+    const h = renderToStaticMarkup(
+      <Dialogo titulo="T" aoFechar={() => {}} rodape={<button type="button">Ok</button>}>
+        <p>corpo</p>
+      </Dialogo>,
+    );
+    const painel = /role="dialog"[^>]*style="([^"]*)"/.exec(h)?.[1] ?? '';
+    expect(painel).toContain('max-height:90vh');
+    expect(painel).toContain('display:flex');
+    expect(painel).toContain('flex-direction:column');
+    expect(painel).toContain('overflow:hidden');
+    const corpo = /<div data-corpo-dialogo="" style="([^"]*)">(.*?)<\/div>/.exec(h);
+    expect(corpo?.[1]).toContain('overflow-y:auto');
+    expect(corpo?.[1]).toContain('min-height:0');
+    expect(corpo?.[2]).toContain('corpo');
+    expect(corpo?.[2]).not.toContain('Ok');
+    expect(h.indexOf('data-corpo-dialogo')).toBeGreaterThan(h.indexOf('<h2'));
+    expect(h.indexOf('Ok')).toBeGreaterThan(h.lastIndexOf('</p></div>'));
+  });
   it('sem descricaoId nem rodapé', () => {
     const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}}>x</Dialogo>);
     expect(h).not.toContain('aria-describedby');
