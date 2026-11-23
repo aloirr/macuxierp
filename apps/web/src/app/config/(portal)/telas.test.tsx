@@ -8,6 +8,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), redire
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
+import { acumularPagina } from '@macuxierp/ui/paginacao';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { ListaEmpresas } from './lista-empresas';
 import { TopoPlataforma } from './topo-plataforma';
@@ -104,5 +105,34 @@ describe('CSS do portal: reaproveita .conteudo e .topo (1024 px e tela pequena)'
     const regras = css.split('\n').filter((l) => l.startsWith('.topo-plataforma'));
     expect(regras.join('\n')).toMatch(/background: var\(--mx-cor-grafite\)/);
     expect(regras.join('\n')).not.toMatch(/display: flex|padding:/);
+  });
+});
+
+describe('ajustes de marca e componentes do #309', () => {
+  const css = readFileSync(join(__dirname, '../../globals.css'), 'utf8');
+  const fonte = readFileSync(join(__dirname, 'empresas/[id]/painel.tsx'), 'utf8');
+  it('CSS: área de proteção da C (24 px), senha em 20 px/600 monoespaçada, títulos de cartão, borda de tabela e foco padrão', () => {
+    expect(css).toMatch(/\.cartao-plataforma \.marca-login \{ margin: 0 0 24px; \}/);
+    expect(css).toMatch(/\.senha-provisoria \{[^}]*font-size: var\(--mx-tamanho-grande\);[^}]*font-weight: 600/);
+    expect(css).toMatch(/\.codigo, \.senha-provisoria \{ font-family: var\(--mx-fonte-codigo\)/);
+    expect(css).toMatch(/\.bloco h2 \{ font-size: var\(--mx-tamanho-titulo-cartao\)/);
+    expect(css).toMatch(/\.painel-senha \{[^}]*border: 1px solid var\(--mx-cor-borda-tabela\)/);
+    expect(css).not.toMatch(/outline:\s*none/);
+  });
+  it('Desligar módulo e Redefinir senha usam DialogoMotivo semTexto (sem Observação)', () => {
+    expect(fonte.match(/semTexto/g)).toHaveLength(2);
+    expect(fonte).not.toContain('rotuloTexto="Observação"');
+  });
+  it('lista de empresas: "Carregar mais" só com próximo cursor, sem link ?cursor=', () => {
+    const com = renderToStaticMarkup(<ListaEmpresas empresas={[acme]} vazio="" proximo="33333333-3333-4333-8333-333333333333" />);
+    expect(com).toContain('Carregar mais');
+    expect(com).not.toContain('cursor=');
+    expect(renderToStaticMarkup(<ListaEmpresas empresas={[acme]} vazio="" />)).not.toContain('Carregar mais');
+    expect(readFileSync(join(__dirname, 'page.tsx'), 'utf8')).not.toContain('cursor=');
+  });
+  it('a página nova acumula sem duplicar', () => {
+    const r = acumularPagina([acme], [{ ...acme, nome: 'Acme 2' }, beta], (e) => e.id);
+    expect(r.map((e) => e.slug)).toEqual(['acme', 'beta']);
+    expect(r[0]?.nome).toBe('Acme 2');
   });
 });

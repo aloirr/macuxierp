@@ -12,7 +12,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { criarAdminAcao, criarEmpresaAcao, redefinirSenhaAcao, situacaoAcao, alterarModulosAcao } from './acoes';
+import { criarAdminAcao, criarEmpresaAcao, redefinirSenhaAcao, situacaoAcao, alterarModulosAcao, maisEmpresasAcao } from './acoes';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const SENHA = 'Zq7-secreta-XYZ99';
@@ -89,5 +89,18 @@ describe('ações do portal', () => {
     const r = await situacaoAcao(ID, 'ativo', 'volta', 'k');
     expect(r).toMatchObject({ ok: false, erro: 'Não foi possível concluir. Tente de novo.', chaveNova: false });
     expect(JSON.stringify(r)).not.toContain('dado@');
+  });
+});
+
+describe('maisEmpresasAcao', () => {
+  it('manda busca e cursor à API e devolve a página; cursor inválido nem chama', async () => {
+    resposta = () => json({ itens: [empresa], proximo_cursor: null });
+    const r = await maisEmpresasAcao('acme', ID);
+    expect(r.ok && r.valor.itens).toHaveLength(1);
+    expect(chamadas[0]?.url).toContain(`busca=acme&cursor=${ID}`);
+    chamadas.length = 0;
+    const ruim = await maisEmpresasAcao('', 'x');
+    expect(ruim.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
   });
 });

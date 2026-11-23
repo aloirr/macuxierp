@@ -2,7 +2,7 @@
 import { AlterarModulosEntrada, CriarEmpresaEntrada, PrimeiroAdminEntrada, SituacaoEmpresaEntrada } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { alterarModulos, alterarSituacao, criarEmpresa, criarPrimeiroAdmin, redefinirSenhaPrimeiroAdmin } from '@/lib/config/api';
+import { alterarModulos, alterarSituacao, criarEmpresa, criarPrimeiroAdmin, listarEmpresas, redefinirSenhaPrimeiroAdmin } from '@/lib/config/api';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 import { MOTIVO_INVALIDO, traduzirCriarEmpresa } from '@/lib/config/formularios';
 
@@ -55,4 +55,13 @@ export async function situacaoAcao(id: string, situacao: string, motivo: string,
   const r = await executarConfig('situacao', (t) => alterarSituacao(t, id, p.data, chave));
   if (r.ok) atualizar(id);
   return r.ok ? ({ ok: true, valor: null } as const) : r;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Próxima página da lista (botão "Carregar mais"). O cursor é validado aqui; a API revalida. */
+export async function maisEmpresasAcao(busca: string, cursor: string) {
+  if (!UUID.test(cursor)) return falha('Não foi possível carregar mais. Tente de novo.');
+  const b = busca.trim().slice(0, 80);
+  return executarConfig('carregar', (t) => listarEmpresas(t, { busca: b || undefined, cursor }));
 }

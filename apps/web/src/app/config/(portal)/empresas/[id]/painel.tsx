@@ -86,7 +86,7 @@ function BlocoModulos({ empresa, deps, aoErro, aoMudar }: Comum & { deps: Depend
         <DialogoMotivo
           titulo={`Desligar ${nomeModulo(desligar.modulo)}?`}
           aviso={`Também serão desligados: ${desligar.dependentes.map(nomeModulo).join(', ')}.`}
-          rotuloTexto="Observação"
+          semTexto
           rotuloConfirmar="Desligar"
           rotuloFechar="Manter ligado"
           destrutivo
@@ -199,7 +199,7 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
         <DialogoMotivo
           titulo="Redefinir a senha do administrador?"
           aviso="A trava é zerada e as sessões dele são encerradas."
-          rotuloTexto="Observação"
+          semTexto
           rotuloConfirmar="Redefinir"
           rotuloFechar="Cancelar"
           aoConfirmar={redefinir}
