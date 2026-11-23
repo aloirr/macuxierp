@@ -17,7 +17,7 @@ import { RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { pino } from 'pino';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rodarAgendas } from './agenda';
-import { pinoEmMemoria } from './apoio-teste';
+import { envComposeWorker, pinoEmMemoria } from './apoio-teste';
 import { configurarCredenciais, criarDecifradorCredencial } from './credencial';
 import { despacharOutbox } from './despachante';
 import { configurarEnvioFdv, type EstadoEnvioFdv } from './envio-fdv';
@@ -357,7 +357,7 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     expect(linhas.join('')).not.toContain(AGENDA_RETORNO_PEDIDOS_ID);
   });
 
-  it('MACUXIERP_FDV_ENVIO=desligado (trava de 22/11): com credencial gravada e tudo vencido, o Hub não recebe nenhuma chamada', async () => {
+  it('MACUXIERP_FDV_ENVIO=desligado: com credencial gravada e tudo vencido, o Hub não recebe nenhuma chamada', async () => {
     const { t } = await tenantComCredencial('worker-envio-desligado', ['integracao-fdv', 'pedido']);
     const vencida = new Date(AGORA.getTime() - 60_000);
     const payload = { ativo: true, external_id: 'P002', nome: 'Produto P002', sku: 'SKU-P002', unidade: 'UN' };
@@ -392,10 +392,13 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     expect(hub.chamadas.map((c) => `${c.pedido.metodo} ${c.pedido.caminho}`)).toEqual(['POST /sinal', 'GET /cursores/produto']);
   });
 
-  it('trava mantida na v0.2.0 (R-20261122-061838): com o ambiente do compose.yml, chave e credencial gravada, o laço inteiro não faz nenhum fetch', async () => {
-    const { t } = await tenantComCredencial('worker-trava-v020', ['integracao-fdv', 'pedido', 'cadastros'], 'producao');
+  // Espelho do serviço macuxierp-worker do compose.yml (os dois interruptores fixos em ligado desde a virada; URLs fixas) mais a chave do .env.
+  const ENV_COMPOSE = envComposeWorker(CHAVE_MESTRA.toString('hex'));
+
+  /** Tenant com credencial de produção e tudo vencido: envio (registro pendente e cursor), sinal, reconciliação, busca e retorno pendente. */
+  async function tenantTudoVencido(slug: string): Promise<{ t: string; vencida: Date }> {
+    const { t } = await tenantComCredencial(slug, ['integracao-fdv', 'pedido', 'cadastros'], 'producao');
     const vencida = new Date(AGORA.getTime() - 60_000);
-    // tudo vencido: envio (registro pendente e cursor), sinal, reconciliação, busca de pedidos e retorno pendente
     const payload = { ativo: true, external_id: 'P003', nome: 'Produto P003', sku: 'SKU-P003', unidade: 'UN' };
     await adm(
       `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, fonte_refs, ativo, pendente)
@@ -407,24 +410,21 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     const uuid = randomUUID();
     await adm(`INSERT INTO integracao_fdv.pedido_recebido (tenant_id, pedido_uuid, payload, hash, estado) VALUES ($1, $2, '{}', repeat('d', 64), 'entregue')`, [t, uuid]);
     await publicarRecebido(t, uuid); // o consumidor do laço grava o retorno pendente e vence o proximo_retorno_em
+    return { t, vencida };
+  }
 
-    // Espelho do serviço macuxierp-worker do compose.yml (os dois interruptores fixos em desligado; URLs fixas) mais a chave do .env.
-    const ENV_COMPOSE = {
-      MACUXIERP_HUB_URL_PRODUCAO: 'https://api.macuxifdv.com.br/integracao/v1',
-      MACUXIERP_HUB_URL_TESTE: 'https://hub-teste.invalid/integracao/v1',
-      MACUXIERP_FDV_RECEBIMENTO: 'desligado',
-      MACUXIERP_FDV_ENVIO: 'desligado',
-      MACUXIERP_CHAVE_INTEGRACAO: CHAVE_MESTRA.toString('hex'),
-    };
-    // Dublê na rede: todo fetch do cliente real do Hub cai aqui (qualquer método e caminho, leitura incluída), e o fetch global também é espionado.
+  /**
+   * Montagem do `main.ts` com o ambiente dado (hub, credenciais, interruptores, agendas, consumidores, executores e rotinas), `n`
+   * ciclos de 20 min. Todo fetch do cliente real do Hub cai no dublê (qualquer método e caminho, leitura incluída) e o fetch
+   * global derruba o teste: nada vai à rede.
+   */
+  async function ciclosDoMain(env: Record<string, string>, n: number): Promise<{ linhas: string[]; agendas: string[]; urls: string[] }> {
     const urls: string[] = [];
     const fetchDuble = (async (u: URL | string, init?: RequestInit) => (urls.push(`${init?.method ?? 'GET'} ${String(u)}`), new Response('{}', { status: 200 }))) as typeof fetch;
     const global = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       throw new Error('o worker não pode chamar a rede');
     });
-
-    /** Montagem do `main.ts` com o ambiente dado: hub, credenciais, interruptores, agendas, consumidores, executores e rotinas. */
-    async function ciclos(env: Record<string, string>, n: number): Promise<string[]> {
+    try {
       const { log: pinoLog, linhas } = pinoEmMemoria();
       const hub = configurarHub(env, '0.2.0', fetchDuble);
       const decifrar = configurarCredenciais(env);
@@ -432,6 +432,7 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
       const recebimento = configurarRecebimentoFdv(env);
       const envio = configurarEnvioFdv(env);
       conferirRecebimentoFdv(recebimento, []);
+      const agendas = montarAgendas({ log: pinoLog, relogio, pedidosFdv: pedidosFdv(recebimento, pinoLog), envio });
       const d = {
         banco: worker,
         outbox: new FilaOutboxPg(),
@@ -440,7 +441,7 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
         consumidores: montarConsumidores({ log: pinoLog, relogio }),
         executores: montarExecutores({ banco: worker, log: pinoLog, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogio.agora() }),
         rotinas: montarRotinas({ banco: worker, log: pinoLog }),
-        agenda: { agendas: montarAgendas({ log: pinoLog, relogio, pedidosFdv: pedidosFdv(recebimento, pinoLog), envio }), licencas: new LicencasPg(), hub: hub!, decifrarCredencial: decifrar! },
+        agenda: { agendas, licencas: new LicencasPg(), hub: hub!, decifrarCredencial: decifrar! },
         relogio,
         log: pinoLog,
       };
@@ -449,30 +450,34 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
         await ciclo(d, estado);
         relogio.avancar(20 * 60_000); // 20 min por ciclo: passa a curva de 5 s a 15 min e o intervalo do sinal
       }
-      return linhas;
-    }
-
-    try {
-      const linhas = await ciclos(ENV_COMPOSE, 6);
-      expect(urls).toEqual([]);
       expect(global).not.toHaveBeenCalled();
       expect(linhas.join('')).not.toContain(CHAVE_MESTRA.toString('hex'));
-      // o laço rodou de verdade: o consumidor gravou o retorno local; nada foi reservado nem montado para o Hub
-      expect(await adm('SELECT estado FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1', [t])).toEqual([{ estado: 'pendente' }]);
-      expect(await adm('SELECT id FROM integracao_fdv.lote_envio WHERE tenant_id = $1', [t])).toEqual([]);
-      expect((await adm('SELECT proximo_em FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1', [t]))[0]!.proximo_em.getTime()).toBe(vencida.getTime());
-      const [s] = await adm('SELECT proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [t]);
-      expect([s!.proximo_sinal_em, s!.proxima_reconciliacao_em, s!.proxima_busca_pedidos_em].map((x: Date) => x.getTime())).toEqual([vencida.getTime(), vencida.getTime(), vencida.getTime()]);
-
-      // contraprova: o mesmo laço com os dois ligados chama o Hub de produção (pelo dublê), então o zero acima vem da trava
-      await ciclos({ ...ENV_COMPOSE, MACUXIERP_FDV_RECEBIMENTO: 'ligado', MACUXIERP_FDV_ENVIO: 'ligado' }, 1);
-      expect(urls.length).toBeGreaterThan(0);
-      expect(urls.every((u) => u.includes(' https://api.macuxifdv.com.br/integracao/v1/'))).toBe(true);
-      expect(urls.some((u) => u.endsWith('/integracao/v1/sinal'))).toBe(true);
-      expect(urls.some((u) => u.includes('/integracao/v1/pedidos/pendentes'))).toBe(true);
-      expect(global).not.toHaveBeenCalled();
+      return { linhas, agendas: agendas.map((a) => a.id), urls };
     } finally {
       global.mockRestore();
     }
+  }
+
+  it('interruptores desligados (T-0002 "Desligamento"): com chave e credencial gravada, o laço inteiro não faz nenhum fetch', async () => {
+    const { t, vencida } = await tenantTudoVencido('worker-interruptor-desligado');
+    const { agendas, urls } = await ciclosDoMain({ ...ENV_COMPOSE, MACUXIERP_FDV_RECEBIMENTO: 'desligado', MACUXIERP_FDV_ENVIO: 'desligado' }, 6);
+    expect(agendas).toEqual([]);
+    expect(urls).toEqual([]);
+    // o laço rodou de verdade: o consumidor gravou o retorno local; nada foi reservado nem montado para o Hub
+    expect(await adm('SELECT estado FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1', [t])).toEqual([{ estado: 'pendente' }]);
+    expect(await adm('SELECT id FROM integracao_fdv.lote_envio WHERE tenant_id = $1', [t])).toEqual([]);
+    expect((await adm('SELECT proximo_em FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1', [t]))[0]!.proximo_em.getTime()).toBe(vencida.getTime());
+    const [s] = await adm('SELECT proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [t]);
+    expect([s!.proximo_sinal_em, s!.proxima_reconciliacao_em, s!.proxima_busca_pedidos_em].map((x: Date) => x.getTime())).toEqual([vencida.getTime(), vencida.getTime(), vencida.getTime()]);
+  });
+
+  it('virada (T-0002): com o ambiente do compose.yml, as agendas do conector, da busca e do retorno entram e um ciclo chama /sinal e /pedidos/pendentes do Hub de produção, só pelo dublê', async () => {
+    await tenantTudoVencido('worker-virada');
+    const { agendas, urls } = await ciclosDoMain(ENV_COMPOSE, 1);
+    expect(agendas).toEqual([AGENDA_CONECTOR_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_RETORNO_PEDIDOS_ID]);
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((u) => u.includes(' https://api.macuxifdv.com.br/integracao/v1/'))).toBe(true);
+    expect(urls).toContain('POST https://api.macuxifdv.com.br/integracao/v1/sinal'); // base do compose sem duplicar o /integracao/v1
+    expect(urls.some((u) => u.startsWith('GET https://api.macuxifdv.com.br/integracao/v1/pedidos/pendentes'))).toBe(true);
   });
 });

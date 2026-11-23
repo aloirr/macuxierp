@@ -10,11 +10,11 @@
  *   `cadastros/api` (#115), em `resolvedorChaveErpDeProducao`.
  * As agendas (busca e retorno) e o consumidor `integracao-fdv.retorno-pedido` são montados em `modulos.ts`.
  *
- * Desligamento (fonte: desenho T-0002 §2, "Ligações da F3"; até a virada, T-0027): `MACUXIERP_FDV_RECEBIMENTO` = `ligado` | `desligado` (padrão `desligado`; outro
+ * Desligamento (fonte: desenho T-0002 §2, "Ligações da F3"): `MACUXIERP_FDV_RECEBIMENTO` = `ligado` | `desligado` (padrão `desligado`; outro
  * valor derruba a partida). A BUSCA (`GET /pedidos/pendentes`) e o RETORNO (`POST /pedidos/{id}/retorno`) dependem dele:
  * desligado, nenhuma das duas agendas é registrada e `sinal.proxima_busca_pedidos_em`/`proximo_retorno_em` ficam paradas
- * no banco. Os consumidores entram sempre (o do retorno só grava a fila local, sem chamar o Hub); trava de 22/11/2026,
- * ver envio-fdv.ts. `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
+ * no banco. Os consumidores entram sempre (o do retorno só grava a fila local, sem chamar o Hub; ver
+ * envio-fdv.ts). `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
  */
 import { criarConsultaParaPedido, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
 import type { Alertar, DepsAgendasPedidosFdv, RecebedorPedidoFdv, ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';

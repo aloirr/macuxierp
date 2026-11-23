@@ -149,6 +149,26 @@ describe('nota parcial e tabelas com ações (T-0021)', () => {
     expect(renderToStaticMarkup(<ItensDoDialogo linhas={null} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toContain('Carregando os itens…');
     expect(renderToStaticMarkup(<ItensDoDialogo linhas={null} falha="Registro não encontrado." quantidades={{}} aoMudar={vi.fn()} />)).toContain('role="alert"');
   });
+  it('erro por campo (MC-0015): aria-invalid só no campo errado e aria-describedby ligado à mensagem dele', () => {
+    const linhas = [{ sequencia: 1, descricao: 'Água', rotulo: '1 - Água', saldo: 25000, saldoTexto: '2,5', saldoCampo: '2,5' }, { sequencia: 2, descricao: '', rotulo: 'Item 2', saldo: 10000, saldoTexto: '1', saldoCampo: '1' }];
+    const h = renderToStaticMarkup(<ItensDoDialogo id="d-item" linhas={linhas} falha={null} quantidades={{ 1: '9', 2: '1' }} erros={{ 1: 'A quantidade passa do saldo.' }} aoMudar={vi.fn()} />);
+    const campos = h.match(/<input[^>]*>/g) ?? [];
+    expect(campos).toHaveLength(2);
+    expect(campos[0]).toContain('aria-invalid="true"');
+    expect(campos[0]).toContain('aria-describedby="d-item-erro-1"');
+    expect(campos[1]).not.toContain('aria-invalid');
+    expect(campos[1]).not.toContain('aria-describedby');
+    expect(h).toMatch(/<span id="d-item-erro-1" class="erro-campo">A quantidade passa do saldo\.<\/span>/);
+    expect(h).not.toContain('d-item-erro-2');
+    expect(h).toMatch(/<p class="so-leitor" role="status" aria-live="polite">Há campos com erro/);
+    expect(h.match(/role="alert"/g)).toBeNull();
+    expect(renderToStaticMarkup(<ItensDoDialogo id="d-item" linhas={linhas} falha={null} quantidades={{}} aoMudar={vi.fn()} />)).toMatch(/aria-live="polite"><\/p>/);
+  });
+  it('a célula de ações que contém o diálogo sobe acima das demais fixas (a cortina cobre toda a coluna)', () => {
+    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
+    expect(css).toMatch(/\.tabela-rolavel\.com-acoes td:last-child:has\(\.dialogo-fundo\) \{ z-index: 20; \}/);
+    expect(css).toMatch(/\.dialogo-fundo \{[^}]*z-index: 10/);
+  });
   it('o diálogo de itens mostra a linha de ambiente e mantém o confirmar desligado até carregar', () => {
     const h = renderToStaticMarkup(<DialogoEscrita titulo="Emitir nota parcial do pedido 7" rotuloConfirmar="Emitir nota parcial" ocupado={false} ambiente={{ texto: 'Ambiente: Produção, com valor fiscal', tom: 'alerta' }} itens={{ carregar: vi.fn() }} validar={() => null} aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
     expect(h).toMatch(/<p data-ambiente="true" class="faixa-aviso">Ambiente: Produção/);

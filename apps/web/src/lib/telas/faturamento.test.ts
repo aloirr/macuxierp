@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NotaDetalhe, TituloDetalhe } from '@macuxierp/faturamento/contracts';
-import { MOTIVO_SEM_ITEM, formularioParcial, urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
+import { MOTIVO_SEM_ITEM, formularioParcial, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, urlDaConfiguracaoDaFilial } from '@macuxierp/faturamento/web';
 import { semEspacoDuro } from '@macuxierp/platform-sdk/testes';
 import { arquivoPermitido } from '../arquivos';
 import { EU_FALSO } from '../falso';
@@ -74,9 +74,16 @@ describe('listas do faturamento', () => {
     expect(LISTA_NOTAS.colunas('leitura', FUSO).find((c) => c.id === 'total')?.tipo).toBe('dinheiro');
     expect(LISTA_NOTAS.linha({ ...nota('autorizada') }, 'UTC').emitida_em).toBe('22/11/2026 14:00');
   });
-  it('textos de lista vazia vêm do módulo e o CSV vem da API (`/exportar`), sem contorno no shell', () => {
-    expect(LISTA_NOTAS.textoVazio).toMatch(/Limpe os filtros/);
-    expect(LISTA_REJEICOES.textoVazio).toMatch(/Nenhuma nota rejeitada/);
+  it('textos de lista vazia vêm de pagina.vazio (semFiltro/comFiltro) e o CSV vem da API (`/exportar`), sem contorno no shell', () => {
+    for (const l of [LISTA_PEDIDOS_A_FATURAR, LISTA_NOTAS, LISTA_REJEICOES, LISTA_TITULOS]) {
+      expect(l.pagina.vazio?.semFiltro, l.pagina.id).toBeTruthy();
+      expect(l.pagina.vazio?.comFiltro, l.pagina.id).toBeTruthy();
+      expect(l.pagina.vazio?.semFiltro).not.toBe(l.pagina.vazio?.comFiltro);
+    }
+    expect(LISTA_PEDIDOS_A_FATURAR.pagina.vazio).toBe(paginaPedidosAFaturar.vazio);
+    expect(LISTA_NOTAS.pagina.vazio).toBe(paginaNotas.vazio);
+    expect(LISTA_REJEICOES.pagina.vazio).toBe(paginaRejeicoes.vazio);
+    expect(LISTA_TITULOS.pagina.vazio).toBe(paginaTitulos.vazio);
     for (const l of [LISTA_PEDIDOS_A_FATURAR, LISTA_NOTAS, LISTA_REJEICOES, LISTA_TITULOS]) {
       expect(l.pagina.csv, l.pagina.id).toBeDefined();
       expect(l.pagina.api, l.pagina.id).toMatch(/^\/v1\/faturamento\/[a-z-]+$/);
@@ -403,7 +410,7 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: l.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao, saldo: i.saldo, quantidade: '25' })) });
     const esperado = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Café torrado 500 g', saldo: 240000 }] }).validar({ 1: '25' });
     expect(esperado.ok).toBe(false);
-    expect(r).toEqual({ ok: false, erro: Object.values((esperado as { erros: Record<number, string> }).erros)[0] });
+    expect(r).toEqual({ ok: false, erro: Object.values((esperado as { erros: Record<number, string> }).erros)[0], erros: (esperado as { erros: Record<number, string> }).erros });
     expect((r as { erro: string }).erro).toContain('1 - Café torrado 500 g');
     expect((r as { erro: string }).erro).not.toMatch(/(\d+ - )\1/);
   });
@@ -424,17 +431,18 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     };
     const acima = itens([1, '2,5001', 25000]);
     expect(doModulo(acima)).toBeTruthy();
-    expect(e(acima)).toEqual({ ok: false, erro: doModulo(acima) });
+    expect(e(acima)).toEqual({ ok: false, erro: doModulo(acima), erros: { 1: doModulo(acima) } });
     expect(doModulo(acima)).toContain('1 - Produto 1'); // rótulo montado uma vez só
     expect(String(doModulo(acima))).not.toMatch(/(\d+ - )\1/);
     expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('até 4 casas decimais') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
     const zero = itens([1, '0', 25000]);
-    expect(e(zero)).toEqual({ ok: false, erro: doModulo(zero) });
+    expect(e(zero)).toEqual({ ok: false, erro: doModulo(zero), erros: { 1: doModulo(zero) } });
     const vazios = itens([1, '', 25000], [2, ' ', 10000]);
     expect(doModulo(vazios)).toBe(MOTIVO_SEM_ITEM);
     expect(e(vazios)).toEqual({ ok: false, erro: MOTIVO_SEM_ITEM });
+    expect((e(vazios) as { erros?: unknown }).erros).toBeUndefined(); // erro geral: fica no pé, sem campo marcado
     expect(e([])).toMatchObject({ ok: false });
   });
   it('o milhar digitado ("1.500") vale: o módulo e o SDK o aceitam, sem contorno no shell', () => {

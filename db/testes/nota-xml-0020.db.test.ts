@@ -29,6 +29,7 @@ import {
   fixturePlataforma,
   hashSql,
   novoTenant,
+  sqlAbrirContingencia,
 } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0020_nota_xml_nfe_assinada.sql', import.meta.url));
@@ -281,8 +282,7 @@ COMMIT;`,
     // A contingência da massa está encerrada; abre uma na filial do A (RN-FAT-05).
     executar(
       banco.conexao,
-      `INSERT INTO faturamento.contingencia (tenant_id, filial_id, modalidade, motivo)
-         VALUES (plataforma.tenant_atual(), '${A.filial}', 'svc_an', 'SEFAZ-AM sem resposta há 5 min');`,
+      sqlAbrirContingencia(A.filial, 'svc_an', A.usuario),
       APP_A,
     );
     // Com a chave antiga, a assinada não entra nem antes nem depois da troca (em_autorizacao; chave diferente).
@@ -308,7 +308,8 @@ COMMIT;`,
     recusa(sqlXml({ nota: n.id, chave: n.chave, versao: 2 }), '23514', /chave do XML assinado/);
     executar(
       banco.conexao,
-      `UPDATE faturamento.contingencia SET fim_em = now() WHERE filial_id = '${A.filial}' AND fim_em IS NULL;`,
+      `UPDATE faturamento.contingencia SET fim_em = now(), desligada_por = '${A.usuario}'
+       WHERE filial_id = '${A.filial}' AND fim_em IS NULL;`,
       APP_A,
     );
   });

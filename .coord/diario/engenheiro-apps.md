@@ -17,3 +17,5 @@
 2026-11-22 — T-0021 — PR D, 2º commit: aviso da parcial sem "(ou 0)", lista só conta filtro real (limite preservado no Limpar filtros), RD do corretor (testes repetidos, FUSO, erro do item)
 2026-11-22 — T-0021 — 3º push do PR #265: junta o main (#264) e mostra o erro do item como vem do formularioParcial; testes comparam com a saída do módulo
 2026-11-22 — T-0021 — 4º push do PR #265: erro de saldo da nota parcial sem o número do item duplicado (descrição crua no ItemDoDialogo, rótulo separado)
+2026-11-22 — T-0021 — shell v0.2.1: vazio das páginas, hora do módulo, erro da parcial junto do campo e coluna de ações no diálogo
+2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga

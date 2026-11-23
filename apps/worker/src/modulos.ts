@@ -8,7 +8,7 @@
  * - Carga inicial do cadastros (C-4, desenho T-0009 §4; ligada na T-0042): o consumidor de
  *   `integracao-fdv.carga_inicial.solicitada@1` enfileira um trabalho por entidade e o executor republica página a página.
  * - Agendas por tenant (contrato C-9, T-0009 §6.1; T-0016): `montarAgendas`: conector (`MACUXIERP_FDV_ENVIO`) e pedidos
- *   (`MACUXIERP_FDV_RECEBIMENTO`); trava de 22/11/2026, ver envio-fdv.ts.
+ *   (`MACUXIERP_FDV_RECEBIMENTO`); interruptor, ver envio-fdv.ts.
  * - Consumidores do `integracao-fdv` (T-0016): `integracao-fdv.publicar-cadastros` (espelho do que vai ao Hub, com a
  *   licença PG) e `integracao-fdv.retorno-pedido` (grava o retorno do status do pedido para a agenda de retorno).
  * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
@@ -166,7 +166,7 @@ export interface DependenciasAgendasWorker {
   relogio: Relogio;
   /** As peças do `montarPedidosFdv`. */
   pedidosFdv: MontagemPedidosFdv;
-  /** `MACUXIERP_FDV_ENVIO`: trava de 22/11/2026, ver envio-fdv.ts. */
+  /** `MACUXIERP_FDV_ENVIO`: interruptor, ver envio-fdv.ts. */
   envio: EstadoEnvioFdv;
   /** Padrão: `plataforma.evento` (PG); a agenda do conector grava `lote.enviado@1`/`lote.falhou@1` na transação do lote. */
   outbox?: Outbox;
@@ -174,7 +174,7 @@ export interface DependenciasAgendasWorker {
 
 /**
  * Agendas por tenant (T-0009 §6.1), todas do `integracao-fdv`: o conector só com o envio ligado e a busca e o retorno de
- * pedidos só com o recebimento ligado (trava de 22/11/2026, ver envio-fdv.ts). A outbox vai pela fábrica
+ * pedidos só com o recebimento ligado (interruptor, ver envio-fdv.ts). A outbox vai pela fábrica
  * (`criarAgendaConector({ outbox })`).
  */
 export function montarAgendas(d: DependenciasAgendasWorker): readonly AgendaModulo[] {
