@@ -7,7 +7,7 @@ import { AssinaturaErp } from '@macuxierp/ui/marca';
 export function CabecalhoCartao({ titulo }: { titulo: string }) {
   return (
     <>
-      <header><AssinaturaErp variante="C" altura={100} /></header>
+      <header className="mx-fundo-escuro"><AssinaturaErp variante="C" altura={100} /></header>
       <h1>{titulo}</h1>
     </>
   );

@@ -15,7 +15,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
   return (
     <div className="casca">
       <a className="pular" href="#conteudo">Pular para o conteúdo</a>
-      <header className="topo">
+      <header className="topo mx-fundo-escuro">
         <span className="marca"><AssinaturaErp /></span>
         <span>{eu.empresa.razao_social} · {filial.nome}</span>
         {eu.filiais.length > 1 && <a href="/filial">Trocar filial</a>}

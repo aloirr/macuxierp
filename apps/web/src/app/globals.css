@@ -4,8 +4,6 @@ html, body { margin: 0; }
 body { font-family: var(--mx-fonte-texto); font-size: var(--mx-tamanho-base); background: var(--mx-cor-perola); color: var(--mx-cor-grafite); line-height: 1.5; }
 a { color: var(--mx-cor-azul-noite); }
 :focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
-.topo :focus-visible, .lateral :focus-visible { outline: 2px solid var(--mx-cor-branco); outline-offset: 2px; }
-.topo .mx-botao-secundario:focus-visible { outline-color: var(--mx-cor-branco); }
 .pular { position: absolute; left: -999px; top: 0; background: var(--mx-cor-branco); padding: 8px 12px; z-index: 10; }
 .pular:focus { left: 8px; top: 8px; }
 .num { font-variant-numeric: var(--mx-fonte-numeros); }
