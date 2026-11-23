@@ -2,7 +2,9 @@
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { ApiIndisponivel, NaoAutenticado, SemPermissao, buscarRegistro, escreverJson } from '@/lib/api';
+import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { SESSAO_EXPIRADA, escritaPermitida, leituraPermitida, resultadoDaResposta, type ResultadoEscrita } from '@/lib/descritor/escrita';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { recarregarValido } from '@/lib/recarregar';
@@ -32,6 +34,7 @@ async function barreira(permitido: (eu: Awaited<ReturnType<typeof contexto>>['eu
 
 /** Falhas de sessão e de rede da API viram texto para pessoas; outras ficam com quem chamou (`undefined`). */
 function falhaDaApi(e: unknown): { ok: false; mensagem: string } | undefined {
+  if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
   if (e instanceof NaoAutenticado) return { ok: false, mensagem: SESSAO_EXPIRADA };
   if (e instanceof ApiIndisponivel) return { ok: false, mensagem: 'A API não respondeu. Tente de novo em instantes.' };
   return undefined;

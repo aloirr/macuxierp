@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import type { Perfil } from '@macuxierp/platform-sdk';
-import { ApiIndisponivel, DadosInvalidos, NaoAutenticado, SemPermissao, buscarRegistro, getValidado } from '@/lib/api';
+import { ApiIndisponivel, DadosInvalidos, NaoAutenticado, SemPermissao, ehFalhaDeSessao, buscarRegistro, getValidado } from '@/lib/api';
+import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { RespostaFonte, caminhoDaFonte, opcoesDaResposta, type Opcao } from '@/lib/descritor/fontes';
 import { recomecarLista } from '@macuxierp/platform-sdk/listas';
 import type { TelaDescrita } from '@/lib/descritor/tipos';
@@ -19,7 +20,7 @@ async function opcoes(fonte: string, acesso: string, perfil: Perfil): Promise<re
   try {
     return opcoesDaResposta(fonte, await getValidado(`${caminhoDaFonte(fonte)}?limite=200`, RespostaFonte, acesso, 'fonte', true), perfil);
   } catch (e) {
-    if (e instanceof NaoAutenticado) throw e;
+    if (ehFalhaDeSessao(e)) throw e;
     return [];
   }
 }
@@ -34,9 +35,9 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       const [dados, motivos, eventos] = await Promise.all([
         buscarRegistro(tela.api(id), z.unknown(), acesso, 'detalhe'),
         // O catálogo é acessório: se falhar, o detalhe abre sem ele (as ações com motivo ficam desabilitadas).
-        tela.motivosApi ? buscarRegistro(tela.motivosApi, z.unknown(), acesso, 'motivos').catch((e: unknown) => { if (e instanceof NaoAutenticado) throw e; return null; }) : Promise.resolve(null),
+        tela.motivosApi ? buscarRegistro(tela.motivosApi, z.unknown(), acesso, 'motivos').catch((e: unknown) => { if (ehFalhaDeSessao(e)) throw e; return null; }) : Promise.resolve(null),
         // O histórico em endpoint próprio também é acessório: sem ele, a tela não mostra a seção "Histórico".
-        tela.eventosApi ? buscarRegistro(tela.eventosApi(id), z.unknown(), acesso, 'eventos').catch((e: unknown) => { if (e instanceof NaoAutenticado) throw e; return null; }) : Promise.resolve(null),
+        tela.eventosApi ? buscarRegistro(tela.eventosApi(id), z.unknown(), acesso, 'eventos').catch((e: unknown) => { if (ehFalhaDeSessao(e)) throw e; return null; }) : Promise.resolve(null),
       ]);
       if (dados === null) notFound();
       let vista;
@@ -61,6 +62,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
     return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
+    if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
     if (e instanceof SemPermissao) return <Falha texto="Seu perfil não pode ver esta tela." {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
     if (e instanceof DadosInvalidos && tela.tipo === 'lista') {
       // 400 da lista: recomeça na primeira página, sem cursor nem limite (contrato de listas).

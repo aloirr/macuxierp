@@ -3,9 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TelaLista } from '@/lib/descritor/tipos';
 import { NOTA_FUSO } from '@/lib/descritor/textos';
 import { LISTA_NOTAS, LISTA_PEDIDOS_A_FATURAR, LISTA_REJEICOES, LISTA_TITULOS } from '@/lib/telas/faturamento';
+import { NaoAutenticado } from '@/lib/api';
+import { TrocarSenhaPendente } from '@/lib/troca-pendente';
+import { buscarPagina } from '@/lib/listas';
 import { ListaGenerica } from './lista-generica';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), redirect: (d: string) => { throw new Error(`REDIRECT ${d}`); } }));
 vi.mock('@/app/(shell)/[modulo]/[...pagina]/acoes', () => ({ escrever: vi.fn() }));
 vi.mock('@/lib/listas', () => ({ buscarPagina: vi.fn(async () => ({ itens: [], proximo_cursor: null })) }));
 
@@ -40,5 +43,14 @@ describe('lista vazia sem e com filtro (MC-0016)', () => {
     const nota = NOTA_FUSO;
     for (const l of [LISTA_PEDIDOS_A_FATURAR, LISTA_NOTAS, LISTA_REJEICOES]) expect(await render(l, '')).toContain(nota);
     expect(await render(LISTA_TITULOS, '')).not.toContain(nota);
+  });
+});
+
+describe('falha de sessão na lista', () => {
+  it('401 vai a /sessao/renovar e senha provisória vai a /senha, sem cair no error.tsx', async () => {
+    vi.mocked(buscarPagina).mockRejectedValueOnce(new NaoAutenticado());
+    await expect(render(comVazio(VAZIO), '')).rejects.toThrow('REDIRECT /sessao/renovar');
+    vi.mocked(buscarPagina).mockRejectedValueOnce(new TrocarSenhaPendente());
+    await expect(render(comVazio(VAZIO), '')).rejects.toThrow('REDIRECT /senha');
   });
 });

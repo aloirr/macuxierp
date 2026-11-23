@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { enviarCarga, NaoAutenticado } from '@/lib/api';
+import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO } from '@/lib/sessao';
 import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '@/lib/textos';
 
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     return Response.json(r, { status: r.ok ? 200 : 422 });
   } catch (e) {
     if (e instanceof NaoAutenticado) return Response.json({ ok: false, erro: SESSAO_EXPIRADA }, { status: 401 });
+    if (e instanceof TrocarSenhaPendente) return Response.json({ ok: false, erro: 'Troque a senha provisória antes de continuar.', redirecionar: ROTA_SENHA }, { status: 403 });
     return Response.json({ ok: false, erro: 'A API não respondeu. Tente de novo em instantes.' }, { status: 503 });
   }
 }

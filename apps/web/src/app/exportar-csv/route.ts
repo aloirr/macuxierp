@@ -4,6 +4,7 @@ import { filtrosDaUrl, paraQuery } from '@macuxierp/platform-sdk/listas';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { montarMenu, resolverPagina } from '@/lib/menu';
 import { NaoAutenticado, baixarCsv } from '@/lib/api';
+import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { redirecionar } from '@/lib/redirecionar';
 import { telaDaRota } from '@/lib/telas';
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
     r = await baixarCsv(`${tela.pagina.api}/exportar${paraQuery(filtros)}`, acesso);
   } catch (e) {
     if (e instanceof NaoAutenticado) return renovar(); // acesso vencido: renova e volta ao início, sem 500
+    if (e instanceof TrocarSenhaPendente) return redirecionar(ROTA_SENHA);
     r = null;
   }
   if (!r) return new NextResponse('Não foi possível exportar agora. Tente de novo em instantes.', { status: 502 });

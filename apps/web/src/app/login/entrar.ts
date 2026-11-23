@@ -1,7 +1,8 @@
 'use server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ApiIndisponivel, DadosInvalidos, entrar, MuitasTentativas } from '@/lib/api';
+import { ApiIndisponivel, buscarEu, DadosInvalidos, entrar, MuitasTentativas } from '@/lib/api';
+import { ROTA_SENHA } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
 
 export interface EstadoLogin {
@@ -31,5 +32,8 @@ export async function entrarAction(_: EstadoLogin, dados: FormData): Promise<Est
   const jar = await cookies();
   jar.set(COOKIE_ACESSO, sessao.acesso, opcoesAcesso);
   jar.set(COOKIE_REFRESH, sessao.refresh, opcoesLongas);
+  // Senha provisória: vai direto à troca (o shell também bloquearia, mas assim não passa por redirect em cadeia).
+  const trocar = await buscarEu(sessao.acesso).then((eu) => eu.usuario.deve_trocar_senha === true).catch(() => false);
+  if (trocar) redirect(ROTA_SENHA);
   redirect(destinoSeguro(String(dados.get('destino') ?? '')));
 }

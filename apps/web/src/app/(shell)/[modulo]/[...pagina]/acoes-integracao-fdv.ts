@@ -1,9 +1,12 @@
 'use server';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { EntidadeHub } from '@macuxierp/integracao-fdv/contracts';
 import { ErroIntegracaoFdv, acoesDaTela, criarClienteIntegracaoFdv, validarFormularioConfiguracao, validarFormularioCredencial, type FetchIntegracaoFdv } from '@macuxierp/integracao-fdv/web';
 import { cabecalhosParaApi } from '@/lib/api';
+import { ROTA_SENHA } from '@/lib/troca-pendente';
+import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { contexto, COOKIE_ACESSO } from '@/lib/sessao';
 import { FALHA, SEM_PERMISSAO, SESSAO_EXPIRADA } from '@/lib/textos';
 
@@ -92,6 +95,7 @@ export async function agirIntegracaoFdv(p: PedidoIntegracaoFdv): Promise<Resulta
       }
     }
   } catch (e) {
+    if (e instanceof ErroIntegracaoFdv && e.status === 403 && e.codigo === CODIGO_TROCAR_SENHA) redirect(ROTA_SENHA);
     // só o tipo de erro e o status: nunca o pedido nem a chave
     console.error('integracao-fdv: falha inesperada na ação', p.tipo, e instanceof ErroIntegracaoFdv ? `status ${e.status} ${e.codigo}` : e instanceof Error ? e.name : 'erro');
     return { ok: false, mensagem: mensagemDoErro(e) };

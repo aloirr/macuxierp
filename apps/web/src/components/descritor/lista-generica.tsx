@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { buscarPagina } from '@/lib/listas';
 import { NOTA_FUSO } from '@/lib/descritor/textos';
 import { RespostaFonte, opcoesDaResposta, caminhoDaFonte, type Opcao } from '@/lib/descritor/fontes';
-import { getValidado } from '@/lib/api';
+import { NaoAutenticado, ehFalhaDeSessao, getValidado } from '@/lib/api';
+import { ROTA_SENHA } from '@/lib/troca-pendente';
 import { filtrosDaUrl } from '@macuxierp/platform-sdk/listas';
 import { rotuloDaCelula, textoTodos } from '@/lib/descritor/lista';
 import { urlDaLista, urlProxima } from '@/lib/listas-url';
@@ -25,10 +27,18 @@ async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Pr
 export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, acesso, fuso }: { tela: TelaLista; rota: string; rotaDaPagina: string; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   const filtros = filtrosDaUrl(tela.pagina, busca);
   const colunas = tela.colunas(perfil, fuso);
-  const [pagina, opcoes] = await Promise.all([
-    buscarPagina(tela.pagina.api, filtros, tela.pagina.item, acesso),
-    Promise.all(tela.filtrosTela.map((f) => opcoesDoFiltro(f, acesso, perfil))),
-  ]);
+  let resultado;
+  try {
+    resultado = await Promise.all([
+      buscarPagina(tela.pagina.api, filtros, tela.pagina.item, acesso),
+      Promise.all(tela.filtrosTela.map((f) => opcoesDoFiltro(f, acesso, perfil))),
+    ]);
+  } catch (e) {
+    // A lista renderiza fora do try da TelaGenerica: sessão vencida ou senha provisória resolvem aqui, como lá.
+    if (ehFalhaDeSessao(e)) redirect(e instanceof NaoAutenticado ? '/sessao/renovar' : ROTA_SENHA);
+    throw e;
+  }
+  const [pagina, opcoes] = resultado;
   const rotulos = new Map(tela.filtrosTela.flatMap((f, i) => (f.tipo === 'cadastro' ? [[f.chave, new Map((opcoes[i] ?? []).map((o) => [o.valor, o.rotulo] as const))] as const] : [])));
   /** Só filtro real acende o "Limpar filtros": cursor e limite são paginação. */
   const filtrada = Object.keys(filtros).some((k) => k !== 'cursor' && k !== 'limite');

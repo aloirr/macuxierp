@@ -6,6 +6,7 @@ import { TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { plural } from '@macuxierp/platform-sdk';
 import { baixarCsv } from '@/lib/baixar-csv';
 import { BOTOES_CARGA, arquivoDaEntidade, dependenciasPorArquivo, enderecoDoModelo, errosDaTabela, formularioDaEntidade, podeGravar, problemaDoArquivo } from '@/lib/carga-entidade';
+import { ROTA_SENHA } from '@/lib/troca-pendente';
 import { CARGA_NAO_CONCLUIDA } from '@/lib/textos';
 
 type LinhaResumo = ReturnType<typeof resumoDoRelatorio>[number];
@@ -76,7 +77,8 @@ function CartaoEntidade({ entidade, api }: { entidade: EntidadeCarga; api: strin
     setErro('');
     try {
       const r = await fetch(api, { method: 'POST', body: formularioDaEntidade(modo, entidade, arquivo) });
-      const corpo = (await r.json().catch(() => null)) as { ok?: boolean; relatorio?: RelatorioCarga; erro?: string } | null;
+      const corpo = (await r.json().catch(() => null)) as { ok?: boolean; relatorio?: RelatorioCarga; erro?: string; redirecionar?: string } | null;
+      if (r.status === 403 && corpo?.redirecionar === ROTA_SENHA) { window.location.assign(ROTA_SENHA); return; }
       if (corpo?.ok && corpo.relatorio) {
         setRelatorio(corpo.relatorio);
         setValidado(modo === 'validar' && podeGravar(corpo.relatorio, entidade) ? arquivo : null);
