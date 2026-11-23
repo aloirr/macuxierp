@@ -26,19 +26,21 @@ const Contagem = z.number().int().min(0);
 /**
  * Os cadastros da carga, na ordem do D13 da T-0026 (a mesma do Hub, doc 06). `numero` é a posição na aba; `depende_de`
  * são os cadastros que precisam estar carregados antes (RF-CAD-11, o `DEPENDENCIAS` do domain do cadastros passa a ser
- * derivado daqui); `opcional` só muda o rótulo ("Unidades (opcional)") e não libera dependência de ninguém.
+ * derivado daqui); `opcional` só muda o rótulo ("Unidades (opcional)") e não libera dependência de ninguém;
+ * `substituir_permitido` = o cadastro aceita o "Substituir tudo" (decisão do PO, 23/11 15h49: o estoque só aceita o
+ * "Adicionar", e a tela nem mostra o "Substituir tudo" nele).
  */
 export const CADASTROS_CARGA_PORTAL = Object.freeze([
-  { cadastro: 'filial', numero: 1, nome: 'Filiais', depende_de: [], opcional: false },
-  { cadastro: 'vendedor', numero: 2, nome: 'Vendedores', depende_de: ['filial'], opcional: false },
-  { cadastro: 'forma_pagamento', numero: 3, nome: 'Formas de pagamento', depende_de: [], opcional: false },
-  { cadastro: 'prazo_pagamento', numero: 4, nome: 'Prazos de pagamento', depende_de: ['forma_pagamento'], opcional: false },
-  { cadastro: 'produto', numero: 5, nome: 'Produtos', depende_de: [], opcional: false },
-  { cadastro: 'produto_unidade', numero: 6, nome: 'Unidades', depende_de: ['produto'], opcional: true },
-  { cadastro: 'preco', numero: 7, nome: 'Tabelas de preço', depende_de: ['produto', 'filial'], opcional: false },
-  { cadastro: 'estoque', numero: 8, nome: 'Estoque', depende_de: ['produto', 'filial'], opcional: false },
-  { cadastro: 'cliente', numero: 9, nome: 'Clientes', depende_de: ['filial', 'vendedor', 'prazo_pagamento', 'preco'], opcional: false },
-  { cadastro: 'cliente_endereco', numero: 10, nome: 'Endereços de cliente', depende_de: ['cliente'], opcional: false },
+  { cadastro: 'filial', numero: 1, nome: 'Filiais', depende_de: [], opcional: false, substituir_permitido: true },
+  { cadastro: 'vendedor', numero: 2, nome: 'Vendedores', depende_de: ['filial'], opcional: false, substituir_permitido: true },
+  { cadastro: 'forma_pagamento', numero: 3, nome: 'Formas de pagamento', depende_de: [], opcional: false, substituir_permitido: true },
+  { cadastro: 'prazo_pagamento', numero: 4, nome: 'Prazos de pagamento', depende_de: ['forma_pagamento'], opcional: false, substituir_permitido: true },
+  { cadastro: 'produto', numero: 5, nome: 'Produtos', depende_de: [], opcional: false, substituir_permitido: true },
+  { cadastro: 'produto_unidade', numero: 6, nome: 'Unidades', depende_de: ['produto'], opcional: true, substituir_permitido: true },
+  { cadastro: 'preco', numero: 7, nome: 'Tabelas de preço', depende_de: ['produto', 'filial'], opcional: false, substituir_permitido: true },
+  { cadastro: 'estoque', numero: 8, nome: 'Estoque', depende_de: ['produto', 'filial'], opcional: false, substituir_permitido: false },
+  { cadastro: 'cliente', numero: 9, nome: 'Clientes', depende_de: ['filial', 'vendedor', 'prazo_pagamento', 'preco'], opcional: false, substituir_permitido: true },
+  { cadastro: 'cliente_endereco', numero: 10, nome: 'Endereços de cliente', depende_de: ['cliente'], opcional: false, substituir_permitido: true },
 ] as const);
 
 /** A ordem (`ENTIDADES_CARGA` do cadastros passa a ser reexport desta lista). */
@@ -180,6 +182,31 @@ export type ModoGravarCarga = z.infer<typeof ModoGravarCarga>;
 export const ModoCargaQuery = z.object({ modo: ModoGravarCarga.default('adicionar') });
 export type ModoCargaQuery = z.infer<typeof ModoCargaQuery>;
 
+/** O cadastro aceita o "Substituir tudo" (`substituir_permitido` de `CADASTROS_CARGA_PORTAL`; o estoque não aceita). */
+export function substituirPermitido(cadastro: CadastroCargaPortal): boolean {
+  const c = CADASTROS_CARGA_PORTAL.find((x) => x.cadastro === cadastro);
+  if (!c) throw new RangeError(`substituirPermitido: cadastro desconhecido "${cadastro}"`);
+  return c.substituir_permitido;
+}
+
+export const MENSAGEM_SUBSTITUIR_NAO_PERMITIDO = 'Este cadastro só aceita o Adicionar';
+
+/** Recusa `substituir_tudo` em cadastro com `substituir_permitido = false`: 400 `VALIDACAO` no campo `modo`. */
+function conferirModoPermitido(r: { cadastro: CadastroCargaPortal; modo: ModoGravarCarga }, ctx: z.RefinementCtx): void {
+  if (r.modo === 'substituir_tudo' && !substituirPermitido(r.cadastro)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['modo'], message: MENSAGEM_SUBSTITUIR_NAO_PERMITIDO });
+  }
+}
+
+/**
+ * Entrada do validar: o plugin monta com o `:cadastro` da rota e o `modo` da query (`ModoCargaQuery`). `substituir_tudo`
+ * em cadastro que não aceita (estoque) = 400 `VALIDACAO` no campo `modo`.
+ */
+export const ValidarCargaPlataformaEntrada = z
+  .object({ cadastro: CadastroCargaPortal, modo: ModoGravarCarga })
+  .superRefine(conferirModoPermitido);
+export type ValidarCargaPlataformaEntrada = z.infer<typeof ValidarCargaPlataformaEntrada>;
+
 /** Limite do FDV para inativação, em % dos ativos (o Hub segura o lote acima disso); o ERP só avisa, não bloqueia. */
 export const LIMITE_INATIVACAO_FDV_PCT = 30;
 
@@ -264,6 +291,7 @@ export const ValidarCargaPlataformaResposta = z
     if ((r.com_erro === 0) !== (r.linhas.length === 0)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['linhas'], message: 'Lista de erros só com linhas com erro' });
     }
+    conferirModoPermitido(r, ctx);
     if ((r.modo === 'substituir_tudo') !== (r.efeito !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efeito'], message: 'Efeito só, e sempre, no Substituir tudo' });
     }
@@ -277,13 +305,15 @@ export const MENSAGEM_FRASE_ZERAR = `Digite "${FRASE_ZERAR_DADOS}" para confirma
 
 /**
  * `POST .../cargas/:cadastro/gravar?modo=...` (multipart: `arquivo` de novo e `frase?`; `Idempotency-Key` obrigatória):
- * o plugin monta esta entrada com o `modo` da query e a `frase` do multipart. `adicionar` = o delta de hoje (acrescenta
+ * o plugin monta esta entrada com o `:cadastro` da rota, o `modo` da query e a `frase` do multipart. `adicionar` = o delta de hoje (acrescenta
  * e atualiza, sem tirar nada), sem frase. `substituir_tudo` = carga completa: exige `frase` = `FRASE_SUBSTITUIR_TUDO`
- * (pela `normalizarFrase`) e inativa o que não vem no arquivo, nunca apaga. Frase errada ou fora do modo = 400 `VALIDACAO`.
+ * (pela `normalizarFrase`) e inativa o que não vem no arquivo, nunca apaga. Frase errada ou fora do modo = 400 `VALIDACAO`;
+ * `substituir_tudo` em cadastro que não aceita (estoque) = 400 `VALIDACAO` no campo `modo`.
  */
 export const GravarCargaPlataformaEntrada = z
-  .object({ modo: ModoGravarCarga, frase: Frase.optional() })
+  .object({ cadastro: CadastroCargaPortal, modo: ModoGravarCarga, frase: Frase.optional() })
   .superRefine((r, ctx) => {
+    conferirModoPermitido(r, ctx);
     if (r.modo === 'substituir_tudo' && (r.frase === undefined || !fraseConfere(r.frase, FRASE_SUBSTITUIR_TUDO))) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['frase'], message: MENSAGEM_FRASE_SUBSTITUIR });
     }
@@ -307,6 +337,7 @@ export const GravarCargaPlataformaResposta = z
     efeito: EfeitoSubstituir.optional(),
   })
   .superRefine((r, ctx) => {
+    conferirModoPermitido(r, ctx);
     const substituir = r.modo === 'substituir_tudo';
     if (substituir !== (r.inativadas !== undefined) || substituir !== (r.efeito !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['inativadas'], message: 'Inativadas e efeito só, e sempre, no Substituir tudo' });
@@ -428,8 +459,8 @@ export const SQLSTATES_CARGA_PORTAL = Object.freeze({
 });
 
 export const MENSAGENS_CARGA_PORTAL = Object.freeze({
-  cargaEmAndamento: 'Já há uma carga em andamento nesta empresa; aguarde terminar.',
-  dependenciaPendente: 'O estado mudou; recarregue a página.',
+  cargaEmAndamento: 'Já há uma carga em andamento nesta empresa.',
+  dependenciaPendente: 'Carregue antes o cadastro de que este depende.',
   semLicenca: 'A empresa precisa estar ativa e com o módulo Cadastros licenciado.',
   nadaAGravar: 'Nenhuma linha pronta para gravar.',
   zeragemBloqueada: 'Há integração ligada ou lote em andamento; resolva antes de zerar.',

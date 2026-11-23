@@ -245,7 +245,15 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
     modulos,
-    ...(bancoPlataforma ? { plataforma: { banco: bancoPlataforma, plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null }), segredoBff: e.config.segredoBff } } : {}),
+    ...(bancoPlataforma ? {
+          plataforma: {
+            banco: bancoPlataforma,
+            // Transação de tenant das rotas por etapa do portal (carga, T-0058): o mesmo `Banco` do BKO (papel `macuxierp_app`).
+            bancoTenant: e.banco,
+            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null }),
+            segredoBff: e.config.segredoBff,
+          },
+        } : {}),
   };
 }
 

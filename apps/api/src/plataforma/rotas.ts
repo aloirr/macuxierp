@@ -10,6 +10,8 @@
  *   (senha provisória) conclui a chave sem corpo (SQL NULL) e o reenvio é 409: a senha nunca sai duas vezes.
  * - SQLSTATE → HTTP com mensagem fixa (`erroDaPlataforma`). Log com `superadmin_id`, nunca e-mail, senha, token ou nome.
  * - Deadlock (`40P01`) no `comPlataforma`: a transação é refeita uma vez (`comRetentativaEmDeadlock`, T-0056).
+ * - Multipart (T-0058): lido depois da sessão e antes de qualquer transação, com os limites da rota (`lerMultipart`).
+ * - Rota `por_etapa` (só a carga do portal; ADR 0013, adendo A1): sem transação em volta; o `executar` abre as próprias.
  */
 import {
   CABECALHO_CSRF_CONFIG,
@@ -20,22 +22,27 @@ import {
   erros,
   EuPlataforma,
   executarPlataforma,
+  executarPlataformaPorEtapa,
   hashDoPedido,
   MENSAGENS_IDEMPOTENCIA,
   PREFIXO_PLATAFORMA,
+  type ArquivoRecebido,
   type BancoPlataformaComLogin,
+  type BancoTenantPlataforma,
   type ContextoPlataforma,
   type PluginPlataforma,
   type Relogio,
   type RespostaRota,
   type RotaPlataforma,
   type Transacao,
+  transacaoComPrazo,
 } from '@macuxierp/platform-sdk';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ConfigAuth } from '../auth/servico';
 import { opcoesCookieSessao } from '../auth/apoio-login';
 import { CorpoTrocaSenha, erroTrocarSenha } from '../auth/troca-senha';
 import { entradaDaChamada, responder } from '../execucao-rota';
+import { lerMultipart } from '../multipart';
 import { erroDaPlataforma } from './erros';
 import { ipDoCliente } from './ip-cliente';
 import { LimitePorIp } from './limite-ip';
@@ -46,6 +53,11 @@ const ESCRITAS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export interface DependenciasPlataformaApi {
   banco: BancoPlataformaComLogin;
+  /**
+   * Transação de tenant das rotas `por_etapa` (T-0058): o `Banco` da API (`BancoPg` no papel `macuxierp_app`). Só a
+   * apps/api injeta, e só aqui. Obrigatório se algum plugin declara rota por etapa.
+   */
+  bancoTenant?: BancoTenantPlataforma;
   plugins: readonly PluginPlataforma[];
   /** Padrão: `LIMITE_LOGIN_IP_PADRAO` (ADR 0012 §6). */
   limiteLogin?: LimitePorIp;
@@ -56,9 +68,13 @@ export interface DependenciasPlataformaApi {
 interface Contexto {
   servico: ServicoPlataforma;
   banco: BancoPlataformaComLogin;
+  bancoTenant: BancoTenantPlataforma | undefined;
   relogio: Relogio;
+  cronometro: () => number;
   cookieSeguro: boolean;
 }
+
+type Lido = { corpo: unknown; todosArquivos: Record<string, ArquivoRecebido[]> };
 
 /** Sem dado do banco no erro: a tradução vale para todas as rotas do prefixo. */
 async function traduzido<R>(fn: () => Promise<R>): Promise<R> {
@@ -81,10 +97,14 @@ async function sessaoDoPedido(req: FastifyRequest, reply: FastifyReply, c: Conte
   return s;
 }
 
-export function montarPlataforma(app: FastifyInstance, d: DependenciasPlataformaApi, o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean }): void {
+export function montarPlataforma(
+  app: FastifyInstance,
+  d: DependenciasPlataformaApi,
+  o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean; cronometro?: () => number },
+): void {
   // O serviço (sair, troca de senha) loga pelo log da app; as rotas dos plugins, pelo do pedido (request_id, superadmin_id).
   const servico = new ServicoPlataforma(comRetentativaEmDeadlock(d.banco, app.log), o.auth, o.relogio);
-  const c: Contexto = { servico, banco: d.banco, relogio: o.relogio, cookieSeguro: o.cookieSeguro };
+  const c: Contexto = { servico, banco: d.banco, bancoTenant: d.bancoTenant, relogio: o.relogio, cronometro: o.cronometro ?? (() => performance.now()), cookieSeguro: o.cookieSeguro };
   const limite = d.limiteLogin ?? new LimitePorIp();
   const caminhoCookie = PREFIXO_PLATAFORMA;
 
@@ -137,6 +157,7 @@ export function montarPlataforma(app: FastifyInstance, d: DependenciasPlataforma
     for (const rota of plugin.rotas) {
       const id = `${rota.metodo} ${rota.caminho}`;
       if (vistas.has(id)) throw new Error(`plataforma: rota ${id} montada por dois plugins`);
+      if (rota.transacoes === 'por_etapa' && !d.bancoTenant) throw new Error(`plataforma: rota por etapa ${id} sem o bancoTenant na API`);
       vistas.add(id);
       app.route({ method: rota.metodo, url: `${PREFIXO_PLATAFORMA}${rota.caminho}`, handler: (req, reply) => traduzido(() => executarRotaPlataforma(req, reply, rota, c)) });
     }
@@ -145,12 +166,19 @@ export function montarPlataforma(app: FastifyInstance, d: DependenciasPlataforma
 
 async function executarRotaPlataforma(req: FastifyRequest, reply: FastifyReply, rota: RotaPlataforma, c: Contexto) {
   req.log = reply.log = req.log.child({ modulo: 'plataforma' });
+  const inicio = c.cronometro();
   exigirCsrf(req);
   const lida = await sessaoDoPedido(req, reply, c);
   if (lida?.deve_trocar_senha) throw erroTrocarSenha();
+  const sessao = lida && { superadmin_id: lida.superadmin_id, sessao_id: lida.sessao_id };
+  // O multipart só é lido com sessão (não aceita bytes de quem não entrou) e antes de qualquer transação (não segura
+  // conexão enquanto o arquivo sobe), como no BKO.
+  if (rota.multipart && !sessao) throw erros.naoAutenticado();
+  const lido: Lido = rota.multipart ? await lerMultipart(req, rota.multipart) : { corpo: req.body, todosArquivos: {} };
   const agora = c.relogio.agora();
+  if (rota.transacoes === 'por_etapa') return executarPorEtapa(req, reply, rota, c, { sessao, lido, agora, inicio });
   const resultado = await executarPlataforma({
-    sessao: lida && { superadmin_id: lida.superadmin_id, sessao_id: lida.sessao_id },
+    sessao,
     banco: comRetentativaEmDeadlock(c.banco, req.log),
     executar: async (tx, sessao) => {
       const ctx: ContextoPlataforma = {
@@ -162,13 +190,44 @@ async function executarRotaPlataforma(req: FastifyRequest, reply: FastifyReply, 
         // tem INSERT em plataforma.auditoria. Rota que precisar auditar à parte pede função nova na lista fechada (ADR).
         auditar: () => Promise.reject(new Error('plataforma: a auditoria do portal é gravada pelas funções da 0033')),
       };
-      const e = entradaDaChamada(req, rota);
+      const e = entradaDaChamada(req, rota, lido);
       const chave = rota.idempotencia ? chaveDoPedido(e.cabecalhos, rota.idempotencia) : null;
       if (!chave) return { resposta: await rota.executar(ctx, e), repetida: false };
       return executarIdempotentePlataforma(tx, { chave, rota: `${rota.metodo} ${PREFIXO_PLATAFORMA}${rota.caminho}`, hash_corpo: hashDoPedido(e) }, () => rota.executar(ctx, e));
     },
   });
   return responder(reply, resultado.resposta, resultado.repetida);
+}
+
+/**
+ * Rota por etapa (carga do portal, T-0058): sem transação em volta e sem Idempotency-Key. O prazo (`tempoMaximoMs`)
+ * conta desde o pedido, como no BKO: estourado na leitura do arquivo é 503 antes de qualquer transação; depois, vale
+ * para a transação de tenant.
+ */
+async function executarPorEtapa(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  rota: RotaPlataforma,
+  c: Contexto,
+  p: { sessao: { superadmin_id: string; sessao_id: string } | null; lido: Lido; agora: Date; inicio: number },
+) {
+  const limite = rota.tempoMaximoMs;
+  if (p.sessao && limite !== undefined && c.cronometro() - p.inicio > limite) throw erros.tempoEsgotado(Math.round(limite / 1000));
+  const e = entradaDaChamada(req, rota, p.lido);
+  const resposta = await executarPlataformaPorEtapa({
+    sessao: p.sessao,
+    banco: comRetentativaEmDeadlock(c.banco, req.log),
+    // Montagem garante o bancoTenant quando há rota por etapa.
+    bancoTenant: c.bancoTenant!,
+    tenantDaRota: e.params.id ?? '',
+    request_id: req.id,
+    agora: p.agora,
+    ...(limite === undefined
+      ? {}
+      : { prazoTenant: (tx: Transacao) => transacaoComPrazo(tx, { restanteMs: limite - (c.cronometro() - p.inicio), limiteRotaMs: limite }, c.cronometro) }),
+    executar: (ctx) => rota.executar(ctx, e),
+  });
+  return responder(reply, resposta, false);
 }
 
 const semGuarda = (r: RespostaRota) => /no-store/i.test(r.cabecalhos?.['cache-control'] ?? '');

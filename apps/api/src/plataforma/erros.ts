@@ -1,9 +1,9 @@
 /**
- * SQLSTATE das funções da 0033 e da 0038 → erro HTTP do portal `/config` (ADR 0012 §4, ADR 0013 §2). Mensagens fixas: o texto do banco nunca
+ * SQLSTATE das funções da 0033, da 0038 e das cargas do portal (T-0058) → erro HTTP do portal `/config` (ADR 0012 §4, ADR 0013 §2). Mensagens fixas: o texto do banco nunca
  * chega ao cliente nem ao log (pode trazer valor de coluna). O resto segue como está (ErroApi do plugin; erro de
  * programação vira 500 no handler global).
  */
-import { ErroApi, erros, MENSAGEM_SEM_CREDENCIAL_FDV } from '@macuxierp/platform-sdk';
+import { ErroApi, erros, MENSAGEM_SEM_CREDENCIAL_FDV, MENSAGENS_CARGA_PORTAL, SQLSTATES_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 
 /** SQLSTATE próprio da 0033: sessão de superadmin inválida (revogada, vencida, ociosa, inativa ou troca pendente). */
 export const SQLSTATE_SESSAO_INVALIDA = 'MXS01';
@@ -23,8 +23,11 @@ const MENSAGEM_SEM_LICENCA_FDV = 'A empresa precisa estar ativa e com o módulo 
  * `detalhes.codigo`; qualquer outro texto do banco fica de fora.
  */
 const CODIGOS_ESTADO_MUDOU: ReadonlySet<string> = new Set(['entidade_desabilitada', 'lote_em_voo', 'sem_pausa']);
-/** O DETAIL do `MXI04` (0039) traz o motivo; só estes dois passam a `detalhes.codigo`. */
-const CODIGOS_SEM_LICENCA_FDV: ReadonlySet<string> = new Set(['empresa_inativa', 'modulo_desligado']);
+/**
+ * O DETAIL do `MXI04` (0039) e do `MXC04` (`cadastros.portal_carga_iniciar`, T-0058) traz o motivo; só estes dois passam
+ * a `detalhes.codigo`.
+ */
+const CODIGOS_SEM_LICENCA: ReadonlySet<string> = new Set(['empresa_inativa', 'modulo_desligado']);
 
 function codigoDoDetalhe(e: unknown, permitidos: ReadonlySet<string>): { codigo: string } | undefined {
   const detalhe = (e as { detail?: unknown }).detail;
@@ -43,7 +46,15 @@ export function erroDaPlataforma(e: unknown): unknown {
     case SQLSTATE_ESTADO_MUDOU:
       return new ErroApi(409, 'CONFLITO', MENSAGEM_ESTADO_MUDOU, undefined, codigoDoDetalhe(e, CODIGOS_ESTADO_MUDOU));
     case SQLSTATE_SEM_LICENCA_FDV:
-      return new ErroApi(422, 'RN-CORE-02', MENSAGEM_SEM_LICENCA_FDV, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA_FDV));
+      return new ErroApi(422, 'RN-CORE-02', MENSAGEM_SEM_LICENCA_FDV, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA));
+    // Cargas do portal (T-0058, ADR 0013, adendo de 23/11/2026). MXC01 e MXC03: código fixo do contrato
+    // (`CODIGOS_DETALHE_CARGA_PORTAL`), nunca o DETAIL do banco; MXC04: o DETAIL só pela lista fechada, como o MXI04.
+    case SQLSTATES_CARGA_PORTAL.cargaEmAndamento:
+      return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.cargaEmAndamento, undefined, { codigo: 'carga_em_andamento' });
+    case SQLSTATES_CARGA_PORTAL.dependenciaPendente:
+      return new ErroApi(409, 'CONFLITO', MENSAGENS_CARGA_PORTAL.dependenciaPendente, undefined, { codigo: 'dependencia_pendente' });
+    case SQLSTATES_CARGA_PORTAL.semLicenca:
+      return new ErroApi(422, 'RN-CORE-02', MENSAGENS_CARGA_PORTAL.semLicenca, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA));
     case 'P0002': // no_data_found: empresa ou administrador inexistente
       return erros.naoEncontrado('Registro');
     case '23505': // unique_violation: empresa que já tem administrador, slug ou e-mail em uso

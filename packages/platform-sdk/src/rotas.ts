@@ -197,7 +197,8 @@ export class PluginInvalido extends Error {
 
 const CAMPO_ARQUIVO = /^[a-z][a-z0-9_]{0,39}$/;
 
-function validarMultipart(modulo: string, id: string, r: RotaModulo): void {
+/** Regras do multipart da rota (de módulo e de plataforma): método de escrita, campos, limites e quantidade. */
+export function validarMultipartDaRota(modulo: string, id: string, r: Pick<RotaModulo, 'metodo' | 'multipart'>): void {
   if (!r.multipart) return;
   if (r.metodo === 'GET' || r.metodo === 'DELETE') throw new PluginInvalido(`${modulo}: multipart só em POST, PUT ou PATCH (${id})`);
   const campos = new Set<string>();
@@ -220,13 +221,18 @@ function validarMultipart(modulo: string, id: string, r: RotaModulo): void {
 
 const inteiroEntre = (n: number, min: number, max: number) => Number.isInteger(n) && n >= min && n <= max;
 
+/** Limite do `tempoMaximoMs` da rota (de módulo e de plataforma): inteiro de 1000 a `TEMPO_MAXIMO_ROTA_MS`, se houver. */
+export function validarTempoMaximoDaRota(modulo: string, id: string, r: Pick<RotaModulo, 'tempoMaximoMs'>): void {
+  if (r.tempoMaximoMs !== undefined && !inteiroEntre(r.tempoMaximoMs, 1_000, TEMPO_MAXIMO_ROTA_MS)) {
+    throw new PluginInvalido(`${modulo}: tempoMaximoMs fora de 1000 a ${TEMPO_MAXIMO_ROTA_MS} em ${id}`);
+  }
+}
+
 function validarExtras(modulo: string, id: string, r: RotaModulo): void {
   if (r.idempotencia && r.metodo !== 'POST' && r.metodo !== 'PUT' && r.metodo !== 'PATCH') {
     throw new PluginInvalido(`${modulo}: Idempotency-Key só em POST, PUT ou PATCH (${id})`);
   }
-  if (r.tempoMaximoMs !== undefined && !inteiroEntre(r.tempoMaximoMs, 1_000, TEMPO_MAXIMO_ROTA_MS)) {
-    throw new PluginInvalido(`${modulo}: tempoMaximoMs fora de 1000 a ${TEMPO_MAXIMO_ROTA_MS} em ${id}`);
-  }
+  validarTempoMaximoDaRota(modulo, id, r);
 }
 
 /**
@@ -239,7 +245,7 @@ export function definirPlugin(manifesto: ManifestoModulo, rotas: readonly RotaMo
     const id = `${r.metodo} ${r.caminho}`;
     if (!r.caminho.startsWith('/')) throw new PluginInvalido(`${manifesto.id}: caminho "${r.caminho}" sem "/" inicial`);
     if (moduloDaAcao(r.acao) !== manifesto.id) throw new PluginInvalido(`${manifesto.id}: ação "${r.acao}" de outro módulo em ${id}`);
-    validarMultipart(manifesto.id, id, r);
+    validarMultipartDaRota(manifesto.id, id, r);
     validarExtras(manifesto.id, id, r);
     if (vistas.has(id)) throw new PluginInvalido(`${manifesto.id}: rota repetida ${id}`);
     vistas.add(id);

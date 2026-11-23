@@ -15,7 +15,6 @@ import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import {
-  ArquivoRecebido,
   auditar,
   chaveDoPedido,
   corpoErroApi,
@@ -45,12 +44,9 @@ import {
   type RotaModulo,
   TAMANHO_MAXIMO_ARQUIVO,
   TAMANHO_MAXIMO_MULTIPART,
-  tamanhoMaximoTotal,
   transacaoComPrazo,
   type Transacao,
   SenhaInformada,
-  type ArquivoEsperado,
-  type MultipartRota,
 } from '@macuxierp/platform-sdk';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
@@ -61,6 +57,7 @@ import { opcoesCookieSessao } from './auth/apoio-login';
 import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, erroTrocarSenha } from './auth/troca-senha';
 import { diagnosticoBanco } from './erro-banco';
 import { entradaDaChamada, responder } from './execucao-rota';
+import { lerMultipart } from './multipart';
 import { montarPlataforma, type DependenciasPlataformaApi } from './plataforma/rotas';
 
 export const COOKIE_REFRESH = 'macuxierp_refresh';
@@ -238,7 +235,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   });
 
   // Portal /config (ADR 0012): fora do /v1/<modulo>, sem ContextoRota de tenant e sem licença.
-  if (d.plataforma) montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro });
+  if (d.plataforma) montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro, ...(d.cronometro ? { cronometro: d.cronometro } : {}) });
   for (const plugin of d.modulos) montarModulo(app, plugin, d);
   return app;
 }
@@ -331,59 +328,3 @@ function licencasComFuso(d: DependenciasApp): FonteLicencas & { fuso(tx: Transac
   };
 }
 
-/**
- * Lê o `multipart/form-data` da rota: campos de texto (validados depois pelo `corpo` da rota) e os arquivos declarados,
- * cada um com o próprio limite (413 `ARQUIVO_GRANDE`), a quantidade do campo e o total da rota (413 `ARQUIVO_GRANDE`
- * em `_`). Campo de texto repetido, arquivo não declarado ou acima da quantidade é 400 `VALIDACAO`. Limite da rota igual
- * ao teto global: o `@fastify/multipart` corta antes e o 413 dele vira `ARQUIVO_GRANDE` do campo.
- */
-async function lerMultipart(req: FastifyRequest, m: MultipartRota) {
-  if (!req.isMultipart()) throw erros.validacao({ _: 'envie multipart/form-data' });
-  const porCampo = new Map(m.arquivos.map((a) => [a.campo, a]));
-  const corpo: Record<string, unknown> = {};
-  const todosArquivos: Record<string, ArquivoRecebido[]> = {};
-  let lendo: ArquivoEsperado | undefined;
-  try {
-    await lerPartes(req, { porCampo, total: tamanhoMaximoTotal(m) }, corpo, todosArquivos, (a) => (lendo = a));
-  } catch (e) {
-    if (lendo && (e as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE') throw erros.arquivoGrande(lendo.campo, lendo.tamanhoMaximo);
-    throw e;
-  }
-  const faltando = m.arquivos.filter((a) => a.obrigatorio !== false && !todosArquivos[a.campo]);
-  if (faltando.length) throw erros.validacao(Object.fromEntries(faltando.map((a) => [a.campo, 'arquivo obrigatório'])));
-  return { corpo, todosArquivos };
-}
-
-async function lerPartes(
-  req: FastifyRequest,
-  limites: { porCampo: ReadonlyMap<string, ArquivoEsperado>; total: number },
-  corpo: Record<string, unknown>,
-  arquivos: Record<string, ArquivoRecebido[]>,
-  lendo: (a: ArquivoEsperado) => void,
-) {
-  let totalLote = 0;
-  for await (const parte of req.parts()) {
-    if (parte.type === 'field') {
-      if (parte.fieldname in corpo || limites.porCampo.has(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'campo repetido ou no lugar de arquivo' });
-      corpo[parte.fieldname] = parte.value;
-      continue;
-    }
-    const esperado = limites.porCampo.get(parte.fieldname);
-    const ja = arquivos[parte.fieldname] ?? [];
-    if (!esperado || parte.fieldname in corpo) throw erros.validacao({ [parte.fieldname]: 'arquivo não esperado' });
-    const maximo = esperado.quantidadeMaxima ?? 1;
-    if (ja.length >= maximo) throw erros.validacao({ [parte.fieldname]: maximo === 1 ? 'arquivo repetido' : `no máximo ${maximo} arquivos` });
-    lendo(esperado);
-    const pedacos: Buffer[] = [];
-    let total = 0;
-    for await (const p of parte.file as AsyncIterable<Buffer>) {
-      total += p.length;
-      totalLote += p.length;
-      if (total > esperado.tamanhoMaximo) throw erros.arquivoGrande(esperado.campo, esperado.tamanhoMaximo);
-      if (totalLote > limites.total) throw erros.arquivoGrande('_', limites.total);
-      pedacos.push(p);
-    }
-    if (total === 0) throw erros.validacao({ [esperado.campo]: 'arquivo vazio' });
-    arquivos[esperado.campo] = [...ja, new ArquivoRecebido(esperado.campo, parte.filename, parte.mimetype, Buffer.concat(pedacos))];
-  }
-}

@@ -1,4 +1,4 @@
-/** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6): SQLSTATE → HTTP e limite de login por IP. */
+/** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP e limite de login por IP. */
 import { ErroApi } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { erroDaPlataforma } from './erros';
@@ -62,6 +62,31 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
   it('23514 da 0038 (empresa fora de ativo, módulo desligado) segue 422 REGRA_PLATAFORMA', () => {
     for (const m of ['empresa fora de ativo', 'módulo integracao-fdv desligado na empresa']) {
       expect(erroDaPlataforma(pg('23514', m))).toMatchObject({ status: 422, codigo: 'REGRA_PLATAFORMA', message: 'Pedido recusado pelas regras da plataforma' });
+    }
+  });
+
+  it.each([
+    ['MXC01', 'Já há uma carga em andamento nesta empresa.', 'carga_em_andamento'],
+    ['MXC03', 'Carregue antes o cadastro de que este depende.', 'dependencia_pendente'],
+  ])('%s (carga do portal, T-0058) vira 409 CONFLITO com mensagem e código fixos, sem o DETAIL do banco', (code, mensagem, codigo) => {
+    const e = erroDaPlataforma(Object.assign(pg(code), { detail: 'cliente Fulano de Tal' })) as ErroApi;
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: mensagem, detalhes: { codigo } });
+    expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
+  });
+
+  it.each(['empresa_inativa', 'modulo_desligado'])('MXC04 (carga do portal) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo', (detail) => {
+    const e = erroDaPlataforma(Object.assign(pg('MXC04'), { detail }));
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'A empresa precisa estar ativa e com o módulo Cadastros licenciado.', detalhes: { codigo: detail } });
+  });
+
+  it('MXC04 com DETAIL fora da lista fechada não ecoa o texto do banco', () => {
+    for (const detail of ['cliente Fulano de Tal', 'carga_em_andamento', undefined]) {
+      const e = erroDaPlataforma(Object.assign(pg('MXC04'), { detail })) as ErroApi;
+      expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
+      expect(e.detalhes).toBeUndefined();
+      expect(e.message).not.toContain('Fulano');
     }
   });
 
