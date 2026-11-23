@@ -3,7 +3,7 @@
  * Mudança incompatível = nova versão do contrato (@2) + ADR + recado aos consumidores.
  * JSON em snake_case, igual às colunas (desenho T-0002, seção 3).
  */
-import { Cnpj, ConsultaLista, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
+import { Cnpj, ConsultaLista, EmailUsuario, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 export const MODULO = 'core' as const;
@@ -65,7 +65,7 @@ export type Usuario = z.infer<typeof Usuario>;
 
 export const UsuarioCriar = z.object({
   nome: z.string().trim().min(2).max(80),
-  email: z.string().trim().email().max(254),
+  email: EmailUsuario,
   perfil: Perfil,
   filial_ids: z.array(Id).min(1),
   external_id: z.string().max(64).optional(),

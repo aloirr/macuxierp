@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { PERFIS } from '@macuxierp/platform-sdk';
+import { PERFIS, type Perfil } from '@macuxierp/platform-sdk';
 import { criarClienteCore, ErroCliente, SenhaUmaVez, type Fetch } from './cliente';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
+
+const perfis = PERFIS as readonly string[];
 
 describe('BKO do core: permissões refletidas na UI (a proteção real é da API)', () => {
   it('RN-CORE-02: administrador vê tudo; leitura só a empresa e os perfis; fiscal e faturista veem o ambiente', () => {
@@ -32,7 +34,11 @@ describe('BKO do core: permissões refletidas na UI (a proteção real é da API
   });
 
   it('todo perfil conhecido tem ao menos a página da empresa', () => {
-    for (const p of PERFIS) expect(paginasVisiveis(p).map((x) => x.id)).toContain('empresa');
+    for (const p of perfis.filter((x) => x !== 'analista_implantacao')) expect(paginasVisiveis(p as Perfil).map((x) => x.id)).toContain('empresa');
+  });
+
+  it.skipIf(!perfis.includes('analista_implantacao'))('RN-CORE-09: o analista de implantação não vê a página da empresa', () => {
+    expect(paginasVisiveis('analista_implantacao' as Perfil).map((x) => x.id)).not.toContain('empresa');
   });
 });
 

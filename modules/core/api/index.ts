@@ -23,3 +23,6 @@ export {
 } from './adaptadores-worker';
 // A1 decifrado para o worker assinar a NF-e (ADR 0005).
 export { lerA1DecifradoDaFilial, type A1DecifradoDaFilial } from './leitura-a1';
+// Plugin de plataforma do portal /config (ADR 0012)
+export { criarPluginPlataformaCore, type DependenciasPlataformaCore, type RepositorioPlataforma } from './plataforma';
+export { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
