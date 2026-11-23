@@ -11,6 +11,7 @@ registrarSuiteSimulador({
   nome: 'memória',
   novoEstado: () => criarEstadoSimuladorMemoria(),
   sequenciaGlobal: false,
+  guardaEpec: true,
 });
 
 describe('porta em memória', () => {

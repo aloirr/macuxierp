@@ -15,6 +15,7 @@ export { assinarXmlDeTeste } from './assinar-de-teste';
 export {
   montarCancelamentoDeTeste,
   montarCartaCorrecaoDeTeste,
+  montarEpecDeTeste,
   montarInutilizacaoDeTeste,
   montarNFeDeTeste,
   type NFeDeTeste,

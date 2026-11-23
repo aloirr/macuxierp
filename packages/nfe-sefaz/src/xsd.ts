@@ -1,5 +1,5 @@
 /**
- * Validação XSD da NF-e 55 (layout 4.00), dos eventos 110110/110111, da inutilização e dos retornos da SEFAZ, nos
+ * Validação XSD da NF-e 55 (layout 4.00), dos eventos 110110/110111/110140 (EPEC), da inutilização e dos retornos da SEFAZ, nos
  * schemas **PL_010g** (grupos IBS, CBS e IS da NT 2025.002-RTC). Reutilizável: o simulador confere o que recebe e o
  * emissor (T-0018) confere o que monta. Desenho T-0045 §5, etapa 3; ADR 0008.
  *
@@ -29,6 +29,8 @@ export const ESQUEMAS_XSD = Object.freeze({
   envEventoCancNFe: 'envEventoCancNFe_v1.00.xsd',
   /** `<envEvento>` de carta de correção (110110). */
   envCCe: 'envCCe_v1.00.xsd',
+  /** `<envEvento>` da EPEC (110140, Ambiente Nacional; ADR 0011). */
+  envEPEC: 'envEPEC_v1.00.xsd',
   /** `<inutNFe>` assinada. */
   inutNFe: 'inutNFe_v4.00.xsd',
   retEnviNFe: 'retEnviNFe_v4.00.xsd',
@@ -38,6 +40,7 @@ export const ESQUEMAS_XSD = Object.freeze({
   retEnvEventoCancNFe: 'retEnvEventoCancNFe_v1.00.xsd',
   retEnvCCe: 'retEnvCCe_v1.00.xsd',
   retInutNFe: 'retInutNFe_v4.00.xsd',
+  retEnvEPEC: 'retEnvEPEC_v1.00.xsd',
 } as const);
 export type EsquemaXsd = keyof typeof ESQUEMAS_XSD;
 

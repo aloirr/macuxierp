@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { Agent, createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
-import { connect, type TLSSocket } from 'node:tls';
+import type { TLSSocket } from 'node:tls';
 import {
   ErroSefaz,
   NS_NFE,
@@ -29,7 +29,7 @@ import { montarCancelamento, montarInutilizacao } from './eventos';
 import { OPERACAO_SOAP, TAMANHO_MAXIMO_RESPOSTA_SOAP, tipoConteudo } from './soap';
 import { a1DeTesteAberto } from './testes/a1';
 import { vendaSimplesAm } from './testes/notas';
-import { gerarServidorTlsDeTeste } from './testes/servidor-tls-de-teste';
+import { agenteParaLocal, gerarServidorTlsDeTeste } from './testes/servidor-tls-de-teste';
 import { criarFabricaTransporteSoap, criarTransporteSoap } from './transporte';
 
 const FILIAL: FilialEmissoraSefaz = { filial_id: randomUUID(), ambiente: 'homologacao', uf: 'AM' };
@@ -123,8 +123,7 @@ beforeAll(async () => {
   await new Promise<void>((ok) => servidor.listen(0, '127.0.0.1', ok));
   const porta = (servidor.address() as AddressInfo).port;
   // Só a conexão vai para o servidor local; a URL, o SNI e a conferência do certificado continuam os do destino.
-  agente = new Agent({ keepAlive: false });
-  (agente as unknown as { createConnection: (o: object) => TLSSocket }).createConnection = (o) => connect({ ...o, host: '127.0.0.1', port: porta, servername: HOST });
+  agente = agenteParaLocal(porta, HOST);
 });
 
 afterAll(() => new Promise<void>((ok) => servidor.close(() => ok())));

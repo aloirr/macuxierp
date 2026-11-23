@@ -25,19 +25,30 @@ export const OPERACAO_SOAP: Readonly<Record<ServicoSefaz, { wsdl: string; operac
   inutilizacao: { wsdl: 'NFeInutilizacao4', operacao: 'nfeInutilizacaoNF' },
 });
 
+/**
+ * A recepção da EPEC no Ambiente Nacional: WSDL `RecepcaoEvento`, operação `nfeRecepcaoEvento` (ADR 0011). A URL fica
+ * só em `ENDERECOS_EPEC` do nfe-sefaz.
+ */
+export const OPERACAO_SOAP_EPEC = Object.freeze({ wsdl: 'RecepcaoEvento', operacao: 'nfeRecepcaoEvento' });
+
+/** Serviço da conversa SOAP: os da porta `SefazTransporte` e a recepção da EPEC. */
+export type ServicoSoap = ServicoSefaz | 'recepcaoEpec';
+
+const operacao = (servico: ServicoSoap) => (servico === 'recepcaoEpec' ? OPERACAO_SOAP_EPEC : OPERACAO_SOAP[servico]);
+
 /** Envelope SOAP 1.2 com o `nfeDadosMsg` do serviço. `corpo` é XML já pronto (assinado, se for o caso). */
-export function montarEnvelope(servico: ServicoSefaz, corpo: string): string {
+export function montarEnvelope(servico: ServicoSoap, corpo: string): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<soap12:Envelope xmlns:soap12="${NS_SOAP12}">` +
-    `<soap12:Body><nfeDadosMsg xmlns="${NS_WSDL}/${OPERACAO_SOAP[servico].wsdl}">${corpo}</nfeDadosMsg></soap12:Body>` +
+    `<soap12:Body><nfeDadosMsg xmlns="${NS_WSDL}/${operacao(servico).wsdl}">${corpo}</nfeDadosMsg></soap12:Body>` +
     `</soap12:Envelope>`
   );
 }
 
 /** `Content-Type` do SOAP 1.2 com a action do serviço. */
-export function tipoConteudo(servico: ServicoSefaz): string {
-  const s = OPERACAO_SOAP[servico];
+export function tipoConteudo(servico: ServicoSoap): string {
+  const s = operacao(servico);
   return `application/soap+xml; charset=utf-8; action="${NS_WSDL}/${s.wsdl}/${s.operacao}"`;
 }
 
@@ -61,7 +72,7 @@ export interface ConexaoSoap {
 export const TAMANHO_MAXIMO_RESPOSTA_SOAP = 2 * TAMANHO_MAXIMO_XML_SEFAZ;
 
 /** POST SOAP 1.2 com certificado de cliente. `rejectUnauthorized` é sempre true. Devolve o corpo da resposta. */
-export function postarSoap(c: ConexaoSoap, servico: ServicoSefaz, url: string, envelope: string): Promise<string> {
+export function postarSoap(c: ConexaoSoap, servico: ServicoSoap, url: string, envelope: string): Promise<string> {
   const alvo = new URL(url);
   if (alvo.protocol !== 'https:') return Promise.reject(new FalhaTransporteSefaz(servico, false, 'REDE: só https'));
   const corpo = Buffer.from(envelope, 'utf8');
