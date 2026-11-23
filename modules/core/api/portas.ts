@@ -100,6 +100,8 @@ export interface RepositorioCore {
   /** token: 0 linhas = null */
   atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
+  /** Troca feita pelo próprio usuário (T-0052): grava o hash e zera deve_trocar_senha. */
+  trocarSenhaPropria(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
   /** RN-CORE-01: chamar antes de contar. */
   travarAdministradoresAtivos(tx: Transacao): Promise<void>;
   contarAdministradoresAtivos(tx: Transacao, exceto: string): Promise<number>;

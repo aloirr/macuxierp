@@ -33,23 +33,30 @@ const SIMBOLOS = '!@#%+=?';
 const ALFABETO = MAIUSCULAS + MINUSCULAS + DIGITOS + SIMBOLOS;
 const TAMANHO_SENHA = 16;
 
+const CLASSES = [MAIUSCULAS, MINUSCULAS, DIGITOS, SIMBOLOS] as const;
+
 /**
- * Senha provisória de 16 caracteres sem ambíguos (0/O, 1/l/I), com maiúscula, minúscula e dígito. Recebe bytes
- * aleatórios (a API passa `randomBytes`) para a função seguir pura; amostragem por rejeição, sem viés.
+ * Senha provisória de 16 caracteres sem ambíguos (0/O, 1/l/I). Garante um de cada classe (maiúscula, minúscula, dígito e
+ * especial) mais 12 do alfabeto inteiro, embaralhados (Fisher–Yates) com os mesmos bytes. Recebe bytes aleatórios (a API
+ * passa `randomBytes`) para a função seguir pura; amostragem por rejeição, sem viés.
  */
 export function gerarSenhaProvisoria(aleatorios: Uint8Array): string {
   let i = 0;
-  const sortear = (alfabeto: string): string => {
-    const limite = 256 - (256 % alfabeto.length);
+  /** Índice uniforme em [0, n) por rejeição (sem viés); consome os bytes em ordem. */
+  const indice = (n: number): number => {
+    const limite = 256 - (256 % n);
     while (i < aleatorios.length) {
       const b = aleatorios[i++] ?? 0;
-      if (b < limite) return alfabeto[b % alfabeto.length] ?? '';
+      if (b < limite) return b % n;
     }
     throw new RangeError('gerarSenhaProvisoria: bytes aleatórios insuficientes');
   };
-  const chars = Array.from({ length: TAMANHO_SENHA }, () => sortear(ALFABETO));
-  [MAIUSCULAS, MINUSCULAS, DIGITOS].forEach((classe, k) => {
-    if (!chars.some((c) => classe.includes(c))) chars[k] = sortear(classe);
-  });
+  const sortear = (alfabeto: string): string => alfabeto[indice(alfabeto.length)] ?? '';
+  // Um de cada classe + o resto do alfabeto inteiro, embaralhados: nenhuma classe some (T-0052).
+  const chars = [...CLASSES.map(sortear), ...Array.from({ length: TAMANHO_SENHA - CLASSES.length }, () => sortear(ALFABETO))];
+  for (let j = chars.length - 1; j > 0; j--) {
+    const k = indice(j + 1);
+    [chars[j], chars[k]] = [chars[k] ?? '', chars[j] ?? ''];
+  }
   return chars.join('');
 }

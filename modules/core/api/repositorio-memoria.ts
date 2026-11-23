@@ -54,7 +54,7 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     return this.usuarios.find((u) => u.external_id === externalId) ?? null;
   }
   async criarUsuario(_tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario> {
-    const linha = { ...u, ultimo_acesso_em: null, updated_at: agora };
+    const linha = { ...u, ultimo_acesso_em: null, updated_at: agora, deve_trocar_senha: true };
     this.usuarios.push(linha);
     return linha;
   }
@@ -67,7 +67,11 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   }
   async definirSenha(_tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void> {
     const u = this.usuarios.find((x) => x.id === id);
-    if (u) Object.assign(u, { senha_hash: senhaHash, updated_at: agora });
+    if (u) Object.assign(u, { senha_hash: senhaHash, deve_trocar_senha: true, updated_at: agora });
+  }
+  async trocarSenhaPropria(_tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void> {
+    const u = this.usuarios.find((x) => x.id === id);
+    if (u) Object.assign(u, { senha_hash: senhaHash, deve_trocar_senha: false, updated_at: agora });
   }
   /** Registra a ordem das chamadas para o teste de RN-CORE-01 (trava antes da contagem). */
   chamadasAdministradores: string[] = [];

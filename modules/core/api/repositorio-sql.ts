@@ -75,8 +75,9 @@ export class RepositorioCoreSql implements RepositorioCore {
 
   async criarUsuario(tx: Transacao, u: NovoUsuario): Promise<LinhaUsuario> {
     const [linha] = await tx.consultar<LinhaUsuario>(
-      `INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, filial_ids, ativo, external_id)
-       VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6::uuid[], $7, $8) RETURNING ${COLUNAS_USUARIO}`,
+      // T-0052: a senha inicial é provisória, então o primeiro acesso exige a troca.
+      `INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, filial_ids, ativo, external_id, deve_trocar_senha)
+       VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6::uuid[], $7, $8, true) RETURNING ${COLUNAS_USUARIO}`,
       [u.id, u.email, u.nome, u.senha_hash, u.perfil, u.filial_ids, u.ativo, u.external_id],
     );
     if (!linha) throw new Error('plataforma.usuario: insert sem retorno');
@@ -96,8 +97,12 @@ export class RepositorioCoreSql implements RepositorioCore {
   }
 
   async definirSenha(tx: Transacao, id: string, senhaHash: string): Promise<void> {
-    // Nova senha provisória também zera a trava do login.
-    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, falhas_login = 0, bloqueado_ate = NULL WHERE id = $1', [id, senhaHash]);
+    // Nova senha provisória também zera a trava do login; T-0052: e exige a troca no próximo acesso.
+    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL WHERE id = $1', [id, senhaHash]);
+  }
+
+  async trocarSenhaPropria(tx: Transacao, id: string, senhaHash: string, _agora?: Date): Promise<void> {
+    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = false WHERE id = $1', [id, senhaHash]);
   }
 
   async travarAdministradoresAtivos(tx: Transacao): Promise<void> {
