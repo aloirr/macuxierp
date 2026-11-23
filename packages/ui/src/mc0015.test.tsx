@@ -5,9 +5,9 @@ import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { avisoErrosCampos, gerarCssBotoes, radioBase, radioMarcado } from './estilos.js';
 
 const item: ItemLinha = { chave: 'item-1', produtoId: 'p', quantidade: 1, precoUnitarioCentavos: 100, descontoCentavos: 0 };
-const form = (erros?: Record<string, string | Record<string, string>>) =>
+const form = (erros?: Record<string, string | Record<string, string>>, temErroExterno?: boolean) =>
   renderToStaticMarkup(
-    <FormularioItens itens={[item]} aoMudar={() => {}} novoItem={(chave) => ({ ...item, chave })} calcularTotal={() => 0} formatarCentavos={String} renderSeletorProduto={() => null} erros={erros} />,
+    <FormularioItens temErroExterno={temErroExterno} itens={[item]} aoMudar={() => {}} novoItem={(chave) => ({ ...item, chave })} calcularTotal={() => 0} formatarCentavos={String} renderSeletorProduto={() => null} erros={erros} />,
   );
 const dialogo = () => renderToStaticMarkup(<DialogoMotivo titulo="T" motivos={[{ codigo: 'a', rotulo: 'A' }]} aoConfirmar={() => {}} aoCancelar={() => {}} />);
 const regiao = /<p role="status" aria-live="polite" style="([^"]*)">([^<]*)<\/p>/;
@@ -19,6 +19,11 @@ describe('MC-0015: região única role=status (igual ao shell)', () => {
     expect(vazio[1]).toContain('clip:rect(0 0 0 0)');
     expect(regiao.exec(form({ 'item-1': { quantidade: 'Acima do estoque.' } }))![2]).toBe(avisoErrosCampos);
     expect(regiao.exec(form({ 'item-1': 'Linha ruim.' }))![2]).toBe(avisoErrosCampos);
+  });
+  it('temErroExterno soma ao aviso; false deixa a região vazia; região única', () => {
+    expect(regiao.exec(form(undefined, true))![2]).toBe(avisoErrosCampos);
+    expect(regiao.exec(form(undefined, false))![2]).toBe('');
+    expect(form(undefined, true).match(/role="status"/g)).toHaveLength(1);
   });
   it('erro de chave inexistente em itens não aciona o aviso', () => {
     expect(regiao.exec(form({ 'item-9': 'Linha fantasma.', 'item-1': { quantidade: '' } }))![2]).toBe('');

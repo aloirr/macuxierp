@@ -394,3 +394,28 @@ describe('DANFE: rótulos desenhados e respiro vertical ', { timeout: 30_000 }, 
     expect(c).not.toContain(hex('R$\u00a0'));
   });
 });
+
+describe('DANFE: linha única de aviso no topo (marca, opção 3)', { timeout: 30_000 }, () => {
+  const H = 'EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL';
+  const cont = (tpAmb: '1' | '2') =>
+    nfeProcDeTeste({ itens: 30, tpAmb }).replace(`<tpAmb>${tpAmb}</tpAmb></ide>`, `<tpEmis>7</tpEmis><dhCont>2026-11-21T09:00:00-04:00</dhCont><xJust>SEFAZ-AM fora do ar desde as 9h</xJust><tpAmb>${tpAmb}</tpAmb></ide>`);
+  const casos: { nome: string; proc: string; texto: string | null }[] = [
+    { nome: 'homologação + contingência', proc: cont('2'), texto: `DANFE EM CONTINGÊNCIA – ${H}` },
+    { nome: 'produção + contingência', proc: cont('1'), texto: 'DANFE EM CONTINGÊNCIA' },
+    { nome: 'homologação normal', proc: nfeProcDeTeste({ itens: 30, tpAmb: '2' }), texto: H },
+    { nome: 'produção normal', proc: nfeProcDeTeste({ itens: 30, tpAmb: '1' }), texto: null },
+  ];
+  for (const k of casos) {
+    it(`RN-FAT-08: ${k.nome}: ${k.texto ? 'uma linha só, 8 pt negrito, base em y 22 do topo, centralizada, em cada folha' : 'sem linha de aviso'}`, async () => {
+      const ts = await textos(await renderizarDanfe(montarDanfe({ nfeProc: k.proc })));
+      const marcas = ts.filter((x) => x.pt === 8 && x.y > A4.a - MARGEM); // y de baixo para cima: dentro da faixa da margem superior (0 a 28,35 pt do topo)
+      if (!k.texto) return expect(marcas).toEqual([]);
+      expect(marcas.map((x) => x.t.replace(/\u0096/g, '–'))).toEqual([k.texto, k.texto]); // 2 folhas, 1 linha cada; o en dash sai em WinAnsi (0x96), lido aqui como latin1
+      for (const t of marcas) {
+        expect(t.y).toBeCloseTo(A4.a - 22, 6); // base a 22 pt do topo, menor que a margem de 28,35 pt
+        const f = await PDFDocument.create().then((d) => d.embedFont(StandardFonts.HelveticaBold));
+        expect(t.x + larg(f, k.texto, 8) / 2).toBeCloseTo(A4.l / 2, 1); // centralizada
+      }
+    });
+  }
+});

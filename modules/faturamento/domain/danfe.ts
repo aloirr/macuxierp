@@ -324,7 +324,7 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
     ],
     transportador,
     itens: todos(inf, 'det').map(linhaProduto),
-    dadosAdicionais: { informacoesComplementares: [...(contingencia?.linhas ?? []), textoDe(inf, 'infAdic', 'infCpl')].filter(Boolean).join(' '), fisco: textoDe(inf, 'infAdic', 'infAdFisco') },
+    dadosAdicionais: { informacoesComplementares: [...(contingencia?.linhas ?? []).map((l) => (/\.\s*$/.test(l) ? l : `${l}.`)), textoDe(inf, 'infAdic', 'infCpl')].filter(Boolean).join(' '), fisco: textoDe(inf, 'infAdic', 'infAdFisco') },
     contingencia,
   };
 }
