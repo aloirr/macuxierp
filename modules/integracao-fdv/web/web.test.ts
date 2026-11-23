@@ -74,7 +74,7 @@ describe('monitor por entidade', () => {
     expect(entidadesParaRetomar(base())).toEqual([]);
   });
   it('a carga completa sempre pede confirmação em linguagem simples', () => {
-    expect(textoDeConfirmacaoCargaCompleta('produto')).toBe('Enviar produtos ao FDV de novo, tudo de uma vez? Pode demorar. O que já está igual no FDV não muda.');
+    expect(textoDeConfirmacaoCargaCompleta('produto')).toBe('Enviar produtos ao FDV de novo, tudo de uma vez? Pode demorar.');
     for (const e of ENTIDADES_HUB_F2) expect(textoDeConfirmacaoCargaCompleta(e)).not.toMatch(/hub|tenant|lote/i);
   });
 });
@@ -89,11 +89,14 @@ describe('sinal, credencial, erros e conflitos', () => {
     expect(JSON.stringify(r)).not.toMatch(/chave_cifrada/);
     expect(camposDaCredencial(base({ credencial: null }), 'America/Manaus')).toMatchObject({ tem: false, campos: [] });
   });
-  it('RF-INF-04: o sinal mostra o último aceito em Manaus e a política de versão; parado por versão vira aviso', () => {
-    expect(resumoDoSinal(base(), 'America/Manaus')).toMatchObject({ texto: 'Última resposta do FDV em 22/11/2026 10:05', tom: 'ok', politica: 'minima: 1.4.0' });
+  it('RF-INF-04, RD-1070, RD-1074: o sinal mostra o último aceito em Manaus e só a frase de versão não aceita; parado por versão vira aviso', () => {
+    expect(resumoDoSinal(base(), 'America/Manaus')).toMatchObject({ texto: 'Última resposta do FDV em 22/11/2026 10:05', tom: 'ok', politica: null });
     expect(resumoDoSinal(base({ sinal: null }), 'America/Manaus')).toMatchObject({ texto: 'Ainda não falou com o FDV', tom: 'neutro' });
     const parado = base({ sinal: { ...base().sinal!, parado_por_versao: true } });
-    expect(resumoDoSinal(parado, 'America/Manaus')).toMatchObject({ tom: 'aviso' });
+    expect(resumoDoSinal(parado, 'America/Manaus')).toMatchObject({ tom: 'aviso', politica: 'Versão do FDV não aceita. Atualize o Macuxi FDV.' });
+    // RD-1070: sem ultimo_aceito_em e parado por versão, a mesma frase
+    const paradoSemAceite = base({ sinal: { ...base().sinal!, ultimo_aceito_em: null, parado_por_versao: true } });
+    expect(resumoDoSinal(paradoSemAceite, 'America/Manaus')).toMatchObject({ tom: 'aviso', politica: 'Versão do FDV não aceita. Atualize o Macuxi FDV.' });
   });
   it('RN-INF-04: o erro por linha mostra código do cadastro, campo e a mensagem do catálogo, com CSV', () => {
     const m = base({ erros: [{ id: U(5), lote_envio_id: U(6), indice: 3, origem: 'hub', entidade: 'produto', registro_external_id: 'P1', codigo: 'campo_obrigatorio', campo: 'nome', reprocessavel: false, resolvido_em: null, mensagem: 'Campo obrigatório vazio no cadastro.' }] });
