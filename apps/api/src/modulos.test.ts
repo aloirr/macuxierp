@@ -395,9 +395,9 @@ describe('carga de cadastros no portal /config montada na API (T-0058, ADR 0013,
   const rotasCarga = (plugins: ReturnType<typeof pluginsPlataforma>) =>
     plugins.flatMap((p) => p.rotas).filter((r) => r.acao === 'plataforma.cadastros.carga');
 
-  it('pluginsPlataforma: validar e gravar da carga com multipart de um arquivo (10 MiB)', () => {
+  it('pluginsPlataforma: as rotas POST da carga com multipart de um arquivo (10 MiB)', () => {
     const rotas = rotasCarga(pluginsPlataforma(modulosDeTeste(), { chaveIntegracao: null, outbox: new OutboxMemoria() }));
-    for (const r of rotas) {
+    for (const r of rotas.filter((r) => r.metodo === 'POST')) {
       expect(r.multipart).toEqual({
         arquivos: [{ campo: CAMPO_ARQUIVO_CARGA_PORTAL, tamanhoMaximo: MAX_BYTES_ARQUIVO_CARGA_PORTAL, quantidadeMaxima: 1 }],
         tamanhoMaximoTotal: MAX_BYTES_ARQUIVO_CARGA_PORTAL,
@@ -407,15 +407,32 @@ describe('carga de cadastros no portal /config montada na API (T-0058, ADR 0013,
     expect(rotasCarga(pluginsPlataforma(modulosDeTeste())).map((r) => r.caminho).sort()).toEqual(rotas.map((r) => r.caminho).sort());
   });
 
-  it('montarDependenciasProducao: as rotas da carga sobem no portal, uma vez cada, ao lado das do core e da integração FDV', async () => {
+  /** Rotas da carga que o /config chama (método × chave do `CAMINHOS_CARGAS_PLATAFORMA`); `previa` e `zerar` entram na v0.3.6. */
+  const ROTAS_CARGA_PORTAL = [
+    { method: 'GET', chave: 'situacao' },
+    { method: 'GET', chave: 'modelo' },
+    { method: 'POST', chave: 'validar' },
+    { method: 'POST', chave: 'erros' },
+    { method: 'POST', chave: 'gravar' },
+  ] as const satisfies ReadonlyArray<{ method: 'GET' | 'POST'; chave: keyof typeof CAMINHOS_CARGAS_PLATAFORMA }>;
+
+  const appProducao = async () => {
     const producao = montarDependenciasProducao({
       banco: new BancoMemoria(),
       chaveA1: Buffer.alloc(32, 1),
       config: { versao: 'teste', jwtSegredo: SEGREDO, cookieSeguro: true, segredoBff: null },
       bancoPlataforma: {} as never,
     });
-    const app = await montar([], undefined, producao.modulos, { plataforma: producao.plataforma!, idempotencia: new IdempotenciaMemoria() });
-    for (const caminho of [C.validar, C.gravar]) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(true);
+    return montar([], undefined, producao.modulos, { plataforma: producao.plataforma!, idempotencia: new IdempotenciaMemoria() });
+  };
+
+  it.each(ROTAS_CARGA_PORTAL)('montarDependenciasProducao: $method $chave da carga sobe no portal', async ({ method, chave }) => {
+    const app = await appProducao();
+    expect(app.hasRoute({ method, url: `${PREFIXO_PLATAFORMA}${C[chave]}` })).toBe(true);
+  });
+
+  it('montarDependenciasProducao: a rota de teste da integração FDV sobe no portal ao lado da carga', async () => {
+    const app = await appProducao();
     expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.testar}` })).toBe(true);
   });
 });
