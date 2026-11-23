@@ -38,7 +38,8 @@ const COLUNAS_NOTA = `n.id, n.tenant_id, n.pedido_id, p.payload->>'pedido_uuid' 
   p.payload->>'vendedor_id' AS vendedor_id, n.ambiente, n.serie::int AS serie, n.numero, n.c_nf AS cnf, n.chave_acesso,
   n.tipo_emissao::int AS tp_emis, n.status, ${ISO('n.emitida_em')} AS emitida_em, n.total_nota_centavos::float8 AS total_centavos,
   n.protocolo, ${ISO('n.autorizada_em')} AS autorizada_em, n.recibo, n.idempotencia_chave AS idempotencia, n.transporte->'itens_solicitados' AS itens_solicitados,
-  COALESCE((n.transporte->>'revisao')::int, 1) AS revisao`;
+  COALESCE((n.transporte->>'revisao')::int, 1) AS revisao,
+  n.epec_protocolo, ${ISO('n.epec_autorizada_em')} AS epec_autorizada_em`;
 const DE_NOTA = `faturamento.nota n LEFT JOIN faturamento.pedido_a_faturar p ON p.tenant_id = n.tenant_id AND p.pedido_id = n.pedido_id AND p.deleted_at IS NULL`;
 
 /** Filial (fantasia, ou o nome do emitente retratado na nota) e número do pedido (retrato da fila): lista e detalhe da nota. Exige `DE_NOTA`. */
@@ -248,9 +249,10 @@ export function repositorioNotasSql(deps: DependenciasSql): RepositorioNotas {
     async mudarStatus(tx, nota_id, de, para, dados) {
       const r = await tx.consultar(
         `UPDATE faturamento.nota SET status = $3, c_stat = COALESCE($4::smallint, c_stat), x_motivo = COALESCE(left($5::text, 255), x_motivo),
-                recibo = COALESCE($6::text, recibo), protocolo = COALESCE($7::text, protocolo), autorizada_em = COALESCE($8::timestamptz, autorizada_em)
+                recibo = COALESCE($6::text, recibo), protocolo = COALESCE($7::text, protocolo), autorizada_em = COALESCE($8::timestamptz, autorizada_em),
+                epec_protocolo = COALESCE($10::text, epec_protocolo), epec_autorizada_em = COALESCE($11::timestamptz, epec_autorizada_em)
           WHERE id = $1 AND status = $2 AND deleted_at IS NULL AND ($9::int IS NULL OR COALESCE((transporte->>'revisao')::int, 1) = $9::int) RETURNING id`,
-        [nota_id, de, para, dados?.cStat ?? null, dados?.xMotivo ?? null, dados?.recibo ?? null, dados?.protocolo ?? null, dados?.autorizadaEm ?? null, dados?.revisao ?? null],
+        [nota_id, de, para, dados?.cStat ?? null, dados?.xMotivo ?? null, dados?.recibo ?? null, dados?.protocolo ?? null, dados?.autorizadaEm ?? null, dados?.revisao ?? null, dados?.epec?.protocolo ?? null, dados?.epec?.autorizadaEm ?? null],
       );
       if (r.length === 0) throw new Error(`RN-FAT-02: a nota não está em ${de}${dados?.revisao === undefined ? '' : ` na revisão ${dados.revisao}`}`);
     },

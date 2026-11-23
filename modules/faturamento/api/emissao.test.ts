@@ -429,11 +429,14 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
       expect(m.estado.reservas).toBe(0);
     });
 
-    it('RN-FAT-05: a EPEC aberta é da etapa 3 e não muda a emissão aqui (tpEmis 1)', async () => {
+    it('RN-FAT-05/08: com a EPEC aberta a nota nasce com tpEmis 4 (chave, coluna, ide), dhCont e xJust, na mesma série e sequência; o envio do evento 110140 é do worker', async () => {
       const m = montar();
       const { svc } = await abrir('epec', m);
       const r = await svc.emitirNota(tx, TENANT, entrada());
-      expect(r.ok && r.nota.tp_emis).toBe(1);
+      if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+      expect(r.nota).toMatchObject({ tp_emis: 4, serie: 1, numero: 100, status: 'rascunho' });
+      expect(r.nota.chave_acesso.slice(34, 35)).toBe('4');
+      expect(m.conteudos.get(r.nota.id)?.contingencia).toEqual({ tpEmis: 4, dhCont: '2026-11-21T09:00:00.000Z', xJust: 'SEFAZ-AM fora do ar desde as 9h' });
     });
 
     it('RN-FAT-07/08: o reenvio da rejeitada em SVC mantém o tpEmis, o dhCont e o xJust da nota (a chave leva o tpEmis), mesmo com a contingência já encerrada', async () => {

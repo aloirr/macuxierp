@@ -175,6 +175,10 @@ export interface NotaRegistro {
   idempotencia: string;
   /** Quantas vezes o conteúdo foi gravado (1 na emissão, +1 a cada reenvio da rejeitada): a `versao` da `nfe_assinada` que o cobre. */
   revisao: number;
+  /** RN-FAT-08 (0032): nProt (15 dígitos) do evento EPEC autorizado; só a nota tpEmis 4, e uma vez. Ausente/nulo = sem EPEC registrada. */
+  epec_protocolo?: string | null;
+  /** UTC ISO do `dhRegEvento` do EPEC (base do prazo de 168 h, RN-FAT-09). */
+  epec_autorizada_em?: string | null;
   /** Itens como o pedido os solicitou (nulo = nota total do saldo): o reenvio da rejeitada refaz a nota com os mesmos itens. */
   itens_solicitados: { sequencia: number; quantidade?: number }[] | null;
   itens: { sequencia: number; produto_id?: string; quantidade: number; valor_centavos: number }[];
@@ -190,6 +194,17 @@ export interface DadosMudancaStatus {
   autorizadaEm?: string;
   /** Revisão do conteúdo que o chamador leu: o UPDATE só vale se a nota ainda estiver nela (RN-FAT-07; o reenvio da API sobe a revisão). */
   revisao?: number;
+  /** RN-FAT-08: EPEC autorizada (cStat 136). Vai no MESMO UPDATE de `em_autorizacao` → `emitida_contingencia` (gatilho B da 0032). */
+  epec?: { protocolo: string; autorizadaEm: string };
+}
+
+/**
+ * Guarda do evento EPEC (110140) autorizado, ANTES de a nota ir a `emitida_contingencia` (regra 7, RN-FAT-03/08), na mesma tx.
+ * Ligar a `repositoriosSql(...)` depende de a migração aceitar o tipo (pedido ao banco-dados); até lá o worker não liga EPEC.
+ */
+export interface GuardaEpec {
+  /** INSERT-only do `procEventoNFe` (evento assinado + retEvento). Falha = nada muda de status (a tx desfaz). */
+  guardarXmlEpec(tx: Transacao, nota: Pick<NotaRegistro, 'id' | 'chave_acesso'>, xml: { conteudo: string; protocolo: string; dhRegistro: string }): Promise<void>;
 }
 
 export interface TransmissaoRegistrada {

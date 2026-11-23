@@ -115,7 +115,7 @@ export function transicaoVoltaContingencia(n: NotaNaVolta): Violacao[] {
 
 /**
  * RN-FAT-08: a nota conta como faturada para o pedido só se autorizada: SVC autorizada conta; EPEC só depois do evento 110140 registrado (cStat 136)
- * (nota `emitida_contingencia` com `epecAutorizado`), ou autorizada de fato na volta. Usado nas etapas 3/4 no saldo do pedido (`quantidadeFaturada`).
+ * (nota `emitida_contingencia` com `epecAutorizado`), ou autorizada de fato na volta. No saldo do pedido a reserva (RN-FAT-01, `quantidadesJaFaturadas`) já conta a EPEC `emitida_contingencia` e a solta se cancelada, inutilizada ou denegada.
  */
 export function contaComoFaturada(n: NotaNaVolta): boolean {
   if (n.tpEmis === 4) return n.epecAutorizado === true && !['cancelada', 'inutilizada', 'denegada'].includes(n.status);

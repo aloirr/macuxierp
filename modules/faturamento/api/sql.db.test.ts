@@ -3,6 +3,7 @@
  * gatilhos de numeração, de XML imutável e de status). Banco efêmero de `@macuxierp/platform-sdk/pg-testes`; sem Postgres o teste
  * pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
+import { createHash } from 'node:crypto';
 import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -143,6 +144,35 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     if (!normal.ok) throw new Error(JSON.stringify(normal.violacoes));
     expect(normal.nota).toMatchObject({ tp_emis: 1, numero: r.nota.numero + 1 });
     expect((await app.comTenant(A, (tx) => repos.notas.lerConteudo(tx, normal.nota.id)))?.contingencia).toBeUndefined();
+  });
+
+  it('RN-FAT-05/08/09: com a EPEC aberta a nota nasce tipo_emissao 4; o retorno 136 grava status, epec_protocolo e epec_autorizada_em num UPDATE só (gatilho B da 0032); a EPEC conta no saldo do pedido e some dele se a nota for cancelada; o EPEC gravado não muda', async () => {
+    const MOTIVO = 'SEFAZ-AM fora do ar desde as 9h';
+    const f = depsFake({ ambiente: 'homologacao' });
+    f.deps.notas = repos.notas;
+    f.deps.pedidos = repos.pedidos;
+    f.deps.ambiente = repos.ambiente;
+    f.deps.contingencia = repos.contingencia;
+    const svc = criarServicoEmissao(f.deps);
+    await app.comTenant(A, (tx) => repos.contingencia.abrir(tx, { filial_id: IDS.filial, ambiente: 'homologacao', modalidade: 'epec', motivo: MOTIVO, inicio_em: new Date('2026-11-21T09:00:00Z'), ligada_por: uuid(5) }));
+    const r = await app.comTenant(A, async (tx) => svc.emitirNota(tx, A, { pedido_id: await pedidoNovoNaFila(tx, pedidosAprovadosSql.gravar), idempotencia: 'idem-db-epec-1' }));
+    if (!r.ok) throw new Error(JSON.stringify(r.violacoes));
+    expect(r.nota.tp_emis).toBe(4);
+    const xml = `<NFe><infNFe Id="NFe${r.nota.chave_acesso}"/></NFe>`;
+    await app.comTenant(A, async (tx) => {
+      await repos.notas.gravarXmlAssinado(tx, r.nota.id, xml, createHash('sha256').update(xml, 'utf8').digest('hex'));
+      await repos.notas.mudarStatus(tx, r.nota.id, 'rascunho', 'em_autorizacao');
+    });
+    const epec = { protocolo: '913260000000777', autorizadaEm: '2026-11-21T14:30:01.000Z' };
+    await app.comTenant(A, (tx) => repos.notas.mudarStatus(tx, r.nota.id, 'em_autorizacao', 'emitida_contingencia', { cStat: '136', xMotivo: 'Evento registrado e vinculado a NF-e', epec }));
+    const lida = await app.comTenant(A, (tx) => repos.notas.obter(tx, r.nota.id));
+    expect(lida).toMatchObject({ status: 'emitida_contingencia', tp_emis: 4, protocolo: null, epec_protocolo: epec.protocolo, epec_autorizada_em: epec.autorizadaEm });
+    // RN-FAT-08: o EPEC gravado não muda (42501)
+    await expect(app.comTenant(A, (tx) => tx.consultar(`UPDATE faturamento.nota SET epec_protocolo = '913260000000778' WHERE id = $1`, [r.nota.id]))).rejects.toMatchObject({ code: '42501' });
+    // RN-FAT-08: a EPEC registrada conta no saldo do pedido (não deixa faturar de novo o que já tem evento)
+    expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, r.nota.pedido_id))).toEqual(new Map([[1, 20_000], [2, 10_000]]));
+    expect(await app.comTenant(A, (tx) => repos.notas.quantidadesJaFaturadas(tx, r.nota.pedido_id, r.nota.id))).toEqual(new Map());
+    await app.comTenant(A, (tx) => repos.contingencia.encerrar(tx, IDS.filial, 'homologacao', new Date('2026-11-21T15:00:00Z'), uuid(5)));
   });
 
   it('RD-0772: o filtro de/até das notas e dos pedidos a faturar respeita o fuso pedido (Manaus UTC-4 x Sao_Paulo UTC-3)', async () => {

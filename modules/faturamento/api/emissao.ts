@@ -8,6 +8,7 @@
  */
 import { ErroMontagemNFe, type EmissorNFe, type NotaParaEmissaoEntrada } from '@macuxierp/nfe-emissor';
 import { montarNfeProc } from '@macuxierp/nfe-sefaz';
+import { EPEC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
 import { violacao, type Transacao, type Violacao } from '@macuxierp/platform-sdk';
 import { baseEventoDaNota } from './eventos';
 import {
@@ -88,7 +89,7 @@ export interface DepsEmissao {
   tpEmis?: TipoEmissao;
   /**
    * RN-FAT-05/08 (ADR 0011): contingência por filial e ambiente. Havendo uma ABERTA svc_an/svc_rs no ambiente da filial, a nota nasce com tpEmis 6/7, `dhCont` (início, UTC) e `xJust` (motivo),
-   * na mesma série e sequência. Sem a porta, ou sem contingência aberta, a emissão é a de sempre. EPEC (tpEmis 4) é da etapa 3: aberta `epec` não muda a emissão aqui.
+   * na mesma série e sequência. Sem a porta, ou sem contingência aberta, a emissão é a de sempre. Aberta `epec`: tpEmis 4 (o worker envia o evento 110140 em vez da NF-e; RN-FAT-08).
    */
   contingencia?: Pick<RepositorioContingencia, 'aberta'>;
   /** Bandeira "faturamento real com NF-e simulada": lida na EMISSÃO e guardada no conteúdo da nota (`conta_como_real`); ausente = desligada. */
@@ -279,10 +280,11 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     let contingenciaAberta: ContingenciaDaNota | null = null;
     if (!daNota && deps.contingencia) {
       const aberta = await deps.contingencia.aberta(tx, pedido.filial_id, ambiente);
-      if (aberta && aberta.modalidade !== 'epec') {
-        // A SVC é a da UF da filial (SVC_DA_UF do pacote): outra, o seletor recusaria depois de o número ser reservado.
-        if (modalidadeDaUf(filial.endereco.uf) !== aberta.modalidade) {
-          return { ok: false, violacoes: [violacao('RN-FAT-05', 'contingencia', `A contingência aberta (${aberta.modalidade}) não é a SVC da UF ${filial.endereco.uf}; encerre e abra a correta.`)] };
+      if (aberta) {
+        // A SVC é a da UF da filial (SVC_DA_UF do pacote): outra, o seletor recusaria depois de o número ser reservado. A EPEC (tpEmis 4) vale para a UF com EPEC no ERP (EPEC_DA_UF).
+        const daUf = aberta.modalidade === 'epec' ? (EPEC_DA_UF[filial.endereco.uf as keyof typeof EPEC_DA_UF] ? 'epec' : null) : modalidadeDaUf(filial.endereco.uf);
+        if (daUf !== aberta.modalidade) {
+          return { ok: false, violacoes: [violacao('RN-FAT-05', 'contingencia', `A contingência aberta (${aberta.modalidade}) não é a que atende a UF ${filial.endereco.uf}; encerre e abra a correta.`)] };
         }
         contingenciaAberta = { modalidade: aberta.modalidade, motivo: aberta.motivo, inicioEm: new Date(aberta.inicio_em) };
       }

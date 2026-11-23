@@ -20,7 +20,7 @@ import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, nf
 import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import type { DepsEmissao } from './emissao';
 import type { DepsEventos } from './eventos';
-import type { A1DaFilial, EventoRegistro, InutilizacaoRegistro, NotaRegistro, EpecPendenteRegistro, RepositorioContingencia, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
+import type { A1DaFilial, EventoRegistro, GuardaEpec, InutilizacaoRegistro, NotaRegistro, EpecPendenteRegistro, RepositorioContingencia, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
 
 export const tx = {} as Transacao;
 export const TENANT = IDS.tenant;
@@ -118,7 +118,9 @@ export function repoFake() {
       if (para === 'autorizada') throw new Error('autorizada só por guardarXmlAutorizado (gatilho do banco)');
       if (n.status !== de) throw new Error(`status atual ${n.status}, esperado ${de}`);
       if (dados?.revisao !== undefined && n.revisao !== dados.revisao) throw new Error(`revisão atual ${n.revisao}, esperada ${dados.revisao}`);
-      notas.set(id, { ...n, status: para, protocolo: dados?.protocolo ?? n.protocolo, recibo: dados?.recibo ?? n.recibo, autorizada_em: dados?.autorizadaEm ?? n.autorizada_em });
+      // Gatilhos B e D da 0032: o EPEC entra só com tpEmis 4 e indo a emitida_contingencia (um único UPDATE); o gravado não muda.
+      if (dados?.epec && (n.tp_emis !== 4 || para !== 'emitida_contingencia' || n.epec_protocolo)) throw new Error('RN-FAT-08: o EPEC entra só na nota tpEmis 4, indo a emitida_contingencia, uma vez');
+      notas.set(id, { ...n, status: para, protocolo: dados?.protocolo ?? n.protocolo, recibo: dados?.recibo ?? n.recibo, autorizada_em: dados?.autorizadaEm ?? n.autorizada_em, epec_protocolo: dados?.epec?.protocolo ?? n.epec_protocolo ?? null, epec_autorizada_em: dados?.epec?.autorizadaEm ?? n.epec_autorizada_em ?? null });
       atualizadaEm.set(id, estado.relogio);
       dadosStatus.push({ para, dados });
       log.push(`status:${para}`);
@@ -649,6 +651,20 @@ export function contingenciaFake(epec: EpecPendenteRegistro[] = []) {
 
 let pedidoNovoSeq = 0;
 /** Grava na fila a faturar uma CÓPIA do pedido (id novo): várias notas totais no mesmo teste não passam do saldo de um pedido só (RN-FAT-01). */
+/** Guarda do evento EPEC em memória: INSERT-only por nota (uma vez), na ordem do log do repositório (`xml:evento_epec`). */
+export function guardaEpecFake(r: RepoFake, opc: { falhar?: boolean } = {}) {
+  const guardados: { nota_id: string; chave_acesso: string; conteudo: string; protocolo: string; dhRegistro: string }[] = [];
+  const guarda: GuardaEpec = {
+    async guardarXmlEpec(_t, nota, xml) {
+      if (opc.falhar) throw new Error('falha de armazenamento');
+      if (guardados.some((g) => g.nota_id === nota.id)) throw new Error('RN-FAT-03: o XML guardado é imutável');
+      guardados.push({ nota_id: nota.id, chave_acesso: nota.chave_acesso, ...xml });
+      r.log.push('xml:evento_epec');
+    },
+  };
+  return { guarda, guardados };
+}
+
 export async function pedidoNovoNaFila(tx: Transacao, gravar: (tx: Transacao, p: ReturnType<typeof pedidoAprovado>) => Promise<unknown>, modelo?: ReturnType<typeof pedidoAprovado>): Promise<string> {
   const base = modelo ?? pedidoAprovado([itemPedido(1, 20_000, 1000), itemPedido(2, 10_000, 2500)]);
   if (!modelo) base.pedido.condicao_pagamento_id = uuid(77);
