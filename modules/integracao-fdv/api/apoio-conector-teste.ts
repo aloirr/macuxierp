@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { cifrarCampo, decifrarCampo, ErroClienteHub, type AgendaModulo, type Banco, type ContextoAgenda, type ItemAgenda, type CredencialHub, type ClienteHub, type EnvelopeEvento, type FonteLicencas, type PedidoHub, type RespostaHub } from '@macuxierp/platform-sdk';
-import type { AmbienteHub } from '../contracts';
+import { ENTIDADES_HUB_F2, type AmbienteHub, type EntidadeHub } from '../contracts';
 import { hashRegistro } from '../domain';
 import type { Alertar, LogPedidos } from './portas';
 
@@ -63,9 +63,9 @@ export const cadCliente = (id: string, filialId: string, o: Record<string, unkno
   enderecos: [{ id: U(), tipo: 'principal', ...ENDERECO }], ...o,
 });
 
-export async function criarCredencial(admin: AdminSql, tenant: string, o: { conector?: string; ambiente?: AmbienteHub; chave?: string } = {}): Promise<string> {
+export async function criarCredencial(admin: AdminSql, tenant: string, o: { conector?: string; ambiente?: AmbienteHub; chave?: string; entidades?: readonly EntidadeHub[] } = {}): Promise<string> {
   const cifrada = cifrarCampo({ chave: CHAVE_MESTRA, tenantId: tenant, claro: o.chave ?? CHAVE_CLARA });
-  const r = await admin.query('INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo) VALUES ($1, $2, $3, $4, $5) RETURNING id', [tenant, o.conector ?? 'erp-teste', o.ambiente ?? 'teste', cifrada, 'chave-se']);
+  const r = await admin.query('INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo, entidades_habilitadas) VALUES ($1, $2, $3, $4, $5, $6::integracao_fdv.entidade_hub[]) RETURNING id', [tenant, o.conector ?? 'erp-teste', o.ambiente ?? 'teste', cifrada, 'chave-se', [...(o.entidades ?? ENTIDADES_HUB_F2)]]);
   return r.rows[0]!.id as string;
 }
 
