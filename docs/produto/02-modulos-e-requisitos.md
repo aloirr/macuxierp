@@ -31,7 +31,7 @@
 - **RF-CAD-08** Filiais: CNPJ, IE, regime tributário (CRT), endereço, série e número inicial da NF-e por série (o próximo número vem do faturamento, RN-FAT-01; D8 da T-0002).
 - **RF-CAD-09** Condições de pagamento (parcelas em dias).
 - **RF-CAD-10** Tabelas oficiais carregadas: NCM (Siscomex), CEST, CFOP, CST/CSOSN, municípios (IBGE), classificação tributária do IBS/CBS.
-- **RF-CAD-11** Carga por entidade (pedido do Alexandre, 22/11 ~08h55, Manaus; v0.3.0): na Carga de cadastros, um botão por cadastro (filial, vendedor, formas e prazos de pagamento, produto, preço, estoque, cliente), cada um com o modelo CSV para baixar, validar e gravar só aquela entidade. Quando faltar a dependência no banco (ex.: preço sem o produto), aviso claro dizendo qual cadastro subir antes. A carga de todos os arquivos de uma vez continua valendo.
+- **RF-CAD-11** Carga por entidade (pedido do Alexandre, 22/11 ~08h55, Manaus; v0.3.0): na Carga de cadastros, um botão por cadastro, na ordem do D13 do T-0026 (filial, vendedor, forma e prazo de pagamento, produto, unidade do produto, preço, estoque, cliente, endereço do cliente), cada um com o modelo CSV para baixar, validar e gravar só aquela entidade. Quando faltar a dependência no banco (`CARGA_REFERENCIA`), aviso claro dizendo qual cadastro subir antes. A carga de todos os arquivos de uma vez continua valendo.
 
 ## Pedido (RF-PED)
 - **RF-PED-01** Receber os pedidos aprovados no FDV (via integração), idempotente pelo UUID do FDV.
