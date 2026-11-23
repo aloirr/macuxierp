@@ -154,7 +154,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     const a = arquivos.find((x) => x.entidade === entidade);
     if (!a) continue;
     await carregarReferencias(st, entidade, a.linhas);
-    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos, vistas) as { validas: Linha[]; erros: ErroLinha[] };
+    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos) as { validas: Linha[]; erros: ErroLinha[] };
     ref.erros.forEach((e) => rel.erroLinha(a.nome, e));
     let linhas = ref.validas;
     if (entidade === 'preco') {

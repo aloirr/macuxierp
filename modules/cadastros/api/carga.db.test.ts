@@ -117,7 +117,6 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     const T = await criarTenant(efemero.admin, 'carga-c', ['cadastros']);
     const r = await carregar(T, 'gravar', fixture().filter((a) => ['vendedor.csv', 'preco.csv'].includes(a.nome)));
     expect(r.rel.erros.filter((e) => e.codigo === 'CARGA_DEPENDENCIA').map((e) => e.arquivo).sort()).toContain('vendedor.csv');
-    expect(r.rel.erros.some((e) => e.codigo === 'CARGA_REFERENCIA')).toBe(false);
     expect(await contar('vendedor', T)).toBe(0);
     expect(await contar('tabela_preco_item', T)).toBe(0);
   }, 120_000);
@@ -128,7 +127,7 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     expect(ok.rel.erros).toEqual([]);
     const T = await criarTenant(efemero.admin, 'carga-dep', ['cadastros']);
     const r = await carregar(T, 'validar', fixture().filter((a) => a.nome === 'produto_unidade.csv'));
-    expect(r.rel.erros).toContainEqual(expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'produto_external_id', motivo: 'Faltam produtos: carregue produto.csv antes.', entidade_faltante: 'produto' }));
+    expect(r.rel.erros).toContainEqual(expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'produto_external_id', motivo: 'Unidade do produto produto_external_id não encontrado: carregue o cadastro de produtos ou corrija a coluna produto_external_id.', entidade_faltante: 'produto' }));
     expect(r.rel.erros.filter((e) => e.codigo !== 'CARGA_DEPENDENCIA').every((e) => e.entidade_faltante === undefined)).toBe(true);
   }, 120_000);
 

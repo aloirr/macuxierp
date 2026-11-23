@@ -449,6 +449,7 @@ export interface LinhasCarga {
 export const CodigoErroCarga = z.union([
   z.string().regex(/^(RN-[A-Z]+-\d{2}|D\d{1,2})$/),
   z.enum([
+    // CARGA_REFERENCIA: não emitido desde a v0.3.7; mantido por compatibilidade de leitura
     'CARGA_FORMATO', 'CARGA_OBRIGATORIO', 'CARGA_TAMANHO', 'CARGA_REFERENCIA', 'CARGA_DUPLICADO',
     'CARGA_CONFLITO', 'CARGA_BANCO', 'CARGA_DEPENDENCIA', 'PERFIL_SEM_PERMISSAO',
   ]),
