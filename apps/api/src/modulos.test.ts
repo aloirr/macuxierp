@@ -317,10 +317,9 @@ describe('rota de lote: vários arquivos, total, Idempotency-Key e tempo por rot
 
 describe('integração FDV montada na API (T-0011, RN-CORE-02)', () => {
   const LICENCAS: Licenca[] = ['cadastros', 'pedido', 'integracao-fdv'].map((modulo) => ({ modulo: modulo as Licenca['modulo'], ativo: true, valido_ate: null }));
-  const montarIntegracao = (licencas: Licenca[], logs?: string[]) => montar(licencas, logs, modulosDeTeste(), { idempotencia: new IdempotenciaMemoria() });
-  const CORPO = { conector_id: 'conector-teste', chave: 'k'.repeat(40), ambiente: 'teste' };
-  const chamar = (app: Awaited<ReturnType<typeof montar>>, metodo: 'GET' | 'PUT', url: string, perfil: Perfil, payload?: object) =>
-    app.inject({ method: metodo, url, headers: { authorization: token(perfil) }, ...(payload ? { payload } : {}) });
+  const montarIntegracao = (licencas: Licenca[]) => montar(licencas, undefined, modulosDeTeste(), { idempotencia: new IdempotenciaMemoria() });
+  const chamar = (app: Awaited<ReturnType<typeof montar>>, metodo: 'GET', url: string, perfil: Perfil) =>
+    app.inject({ method: metodo, url, headers: { authorization: token(perfil) } });
 
   it('sem licença do módulo: 403 MODULO_INATIVO; vendedor e faturista não veem o monitor (PERFIL_SEM_PERMISSAO)', async () => {
     const sem = await chamar(await montarIntegracao([]), 'GET', '/v1/integracao-fdv/monitor', 'administrador');
@@ -330,18 +329,9 @@ describe('integração FDV montada na API (T-0011, RN-CORE-02)', () => {
       const r = await chamar(app, 'GET', '/v1/integracao-fdv/monitor', perfil);
       expect([perfil, r.statusCode, r.json().codigo]).toEqual([perfil, 403, 'PERFIL_SEM_PERMISSAO']);
     }
-    const gerente = await chamar(app, 'PUT', '/v1/integracao-fdv/credencial', 'gerente', CORPO);
-    expect([gerente.statusCode, gerente.json().codigo]).toEqual([403, 'PERFIL_SEM_PERMISSAO']);
   });
 
-  it('sem MACUXIERP_CHAVE_INTEGRACAO a API sobe e o PUT /credencial responde 503 CHAVE_INTEGRACAO_AUSENTE, sem ecoar a chave no log', async () => {
-    const logs: string[] = [];
-    const app = await montarIntegracao(LICENCAS, logs);
-    const r = await chamar(app, 'PUT', '/v1/integracao-fdv/credencial', 'administrador', CORPO);
-    expect([r.statusCode, r.json().codigo]).toEqual([503, 'CHAVE_INTEGRACAO_AUSENTE']);
-    expect(r.body).not.toContain(CORPO.chave);
-    expect(logs.join('\n')).not.toContain(CORPO.chave);
-  });
+  // O 503 sem a chave mestra é coberto pelas rotas do portal no PR casado da T-0056 (ADR 0013).
 });
 
 describe('faturamento na API: emissão em produção desligada até a T-0046 (RN-FAT-04, regra 7)', () => {
