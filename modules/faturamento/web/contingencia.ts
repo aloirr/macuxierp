@@ -84,7 +84,7 @@ export const dialogoEncerrarContingencia = (filial: { nome?: string | null }, mo
   titulo: filial.nome ? `Encerrar a contingência: ${filial.nome}?` : 'Encerrar a contingência?',
   aviso: modalidade === 'epec'
     ? `As notas EPEC pendentes continuam na lista e precisam ser enviadas em até ${PRAZO_EPEC_HORAS} h da autorização do EPEC.`
-    : 'As próximas notas saem pelo autorizador normal.',
+    : 'As próximas notas voltam a sair normalmente.',
   rotuloConfirmar: 'Encerrar contingência', rotuloFechar: 'Voltar', destrutivo: false,
 });
 

@@ -106,31 +106,31 @@ const SEM_CURSOR = { cursor: true, limite: true } as const;
 export const paginaPedidosAFaturar = definirPaginaLista({
   id: 'pedidos-a-faturar', api: `${BASE_API}/pedidos-a-faturar`, item: PedidoAFaturarResumo,
   filtros: FiltroPedidosAFaturar.omit(SEM_CURSOR).shape, colunas: colunasPedidos(FUSO_PADRAO), csv: { arquivo: 'pedidos-a-faturar.csv' },
-  vazio: { semFiltro: 'Nenhum pedido aprovado esperando nota. Os pedidos aparecem aqui quando são aprovados.', comFiltro: 'Nenhum pedido com estes filtros.' },
+  vazio: { semFiltro: 'Nenhum pedido aprovado esperando nota.', comFiltro: 'Nenhum pedido com estes filtros.' },
 });
 
 /** Filtros `serie`, `numero` e `pedido_id` permitem a busca por número (e por pedido) na URL. */
 export const paginaNotas = definirPaginaLista({
   id: 'notas', api: `${BASE_API}/notas`, item: NotaResumo,
   filtros: FiltroNotas.omit(SEM_CURSOR).shape, colunas: colunasNotas(FUSO_PADRAO), csv: { arquivo: 'notas-fiscais.csv' },
-  vazio: { semFiltro: 'Nenhuma nota emitida ainda. Emita a primeira em Pedidos a faturar.', comFiltro: 'Nenhuma nota com estes filtros.' },
+  vazio: { semFiltro: 'Nenhuma nota emitida ainda.', comFiltro: 'Nenhuma nota com estes filtros.' },
 });
 
 export const paginaRejeicoes = definirPaginaLista({
   id: 'rejeicoes', api: `${BASE_API}/rejeicoes`, item: RejeicaoNota, filtros: FiltroRejeicoes.omit(SEM_CURSOR).shape, colunas: colunasRejeicoes(FUSO_PADRAO), csv: { arquivo: 'rejeicoes.csv' },
-  vazio: { semFiltro: 'Nenhuma nota rejeitada. Está tudo certo.', comFiltro: 'Nenhuma rejeição com estes filtros.' },
+  vazio: { semFiltro: 'Nenhuma nota rejeitada.', comFiltro: 'Nenhuma rejeição com estes filtros.' },
 });
 
 export const paginaTitulos = definirPaginaLista({
   id: 'titulos', api: `${BASE_API}/titulos`, item: TituloResumo,
   filtros: FiltroTitulos.omit(SEM_CURSOR).shape, colunas: colunasTitulos(FUSO_PADRAO), csv: { arquivo: 'titulos-a-receber.csv' },
-  vazio: { semFiltro: 'Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', comFiltro: 'Nenhum título com estes filtros.' },
+  vazio: { semFiltro: 'Nenhum título ainda.', comFiltro: 'Nenhum título com estes filtros.' },
 });
 
 export const paginaEpecPendentes = definirPaginaLista({
   id: 'epec-pendentes', api: `${BASE_API}/contingencia/epec-pendentes`, item: EpecPendente,
   filtros: FiltroEpecPendentes.omit(SEM_CURSOR).shape, colunas: colunasEpecPendentes(FUSO_PADRAO), csv: { arquivo: 'epec-pendentes.csv' },
-  vazio: { semFiltro: 'Nenhuma nota EPEC esperando envio. Está tudo em dia.', comFiltro: 'Nenhuma nota EPEC com estes filtros.' },
+  vazio: { semFiltro: 'Nenhuma nota EPEC esperando envio.', comFiltro: 'Nenhuma nota EPEC com estes filtros.' },
 });
 
 const rotuloNota = (n: { numero: number | null; serie: number }): string => `Abrir nota ${numeroSerie(n) || 'sem número'}`;
