@@ -3,6 +3,9 @@ import { formatarDataHora, formatarDocumento, type EmpresaPlataforma } from '@ma
 const AUSENTE = '—';
 const ou = (v: string | null | undefined) => (v && v.trim() ? v : AUSENTE);
 
+/** Código da empresa em maiúsculas; slug antigo aparece em maiúsculas. */
+export const codigoExibido = (e: Pick<EmpresaPlataforma, 'slug' | 'codigo'>): string => (e.codigo ?? e.slug).toUpperCase() || AUSENTE;
+
 export interface LinhaDado {
   rotulo: string;
   valor: string;

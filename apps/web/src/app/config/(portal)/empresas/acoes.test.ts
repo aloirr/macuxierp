@@ -19,7 +19,7 @@ const SENHA = 'Zq7-secreta-XYZ99';
 const chamadas: { url: string; metodo: string; corpo: string; h: Record<string, string> }[] = [];
 let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
-const empresa = { id: ID, slug: 'acme', nome: 'Acme', fuso: 'America/Manaus', situacao: 'suspenso', modulos: [], primeiro_admin: null, created_at: '2026-11-23T12:00:00.000Z', updated_at: '2026-11-23T12:00:00.000Z' };
+const empresa = { id: ID, slug: 'acme', codigo: 'ACME', nome: 'Acme', fuso: 'America/Manaus', situacao: 'suspenso', modulos: [], primeiro_admin: null, created_at: '2026-11-23T12:00:00.000Z', updated_at: '2026-11-23T12:00:00.000Z' };
 
 beforeEach(() => {
   Object.assign(estado, { cookie: 'tok', apagados: [], redirecionou: [] });
@@ -77,14 +77,17 @@ describe('ações do portal', () => {
     expect(await criarAdminAcao(ID, { email: 'sem-arroba', nome: 'Administrador' }, 'k')).toMatchObject({ ok: false, campos: { email: 'E-mail inválido. Confira o endereço.' } });
     expect(chamadas).toHaveLength(0);
   });
-  it('criar empresa: código reservado e fora do padrão ficam junto do campo; sucesso redireciona à empresa', async () => {
-    expect(await criarEmpresaAcao({ slug: 'config', nome: 'Acme', fuso: 'America/Manaus' }, 'k')).toMatchObject({ campos: { slug: 'Código reservado. Escolha outro.' } });
-    expect(await criarEmpresaAcao({ slug: 'Acme!', nome: 'Acme', fuso: '' }, 'k')).toMatchObject({ campos: { slug: 'Código fora do padrão. Veja a regra acima.' } });
-    expect(await criarEmpresaAcao({ slug: 'acme', nome: ' ', fuso: '' }, 'k')).toMatchObject({ campos: { nome: 'Informe o nome da empresa (2 a 120 caracteres).' } });
+  it('criar empresa: sem código e código fora do padrão ficam junto do campo; nome vazio também; com código vai à API em maiúsculas', async () => {
+    const base = { codigo: '', nome: 'Acme', fuso: 'America/Manaus' };
+    const msg = 'Código fora do padrão. Veja a regra acima.';
+    expect(await criarEmpresaAcao(base, 'k')).toMatchObject({ campos: { codigo: 'Informe o código do FDV.' } });
+    for (const codigo of ['a!', 'ACME', 'XX0001', 'AM001']) expect(await criarEmpresaAcao({ ...base, codigo }, 'k'), codigo).toMatchObject({ campos: { codigo: msg } });
+    expect(await criarEmpresaAcao({ ...base, codigo: 'AM0001', nome: ' ' }, 'k')).toMatchObject({ campos: { nome: 'Informe o nome da empresa (2 a 120 caracteres).' } });
     expect(chamadas).toHaveLength(0);
     resposta = () => json(empresa, 201);
-    await expect(criarEmpresaAcao({ slug: 'acme', nome: 'Acme', fuso: '' }, 'chave-criar')).rejects.toThrow(`REDIRECT /config/empresas/${ID}?criada=1`);
+    await expect(criarEmpresaAcao({ ...base, codigo: 'am2808' }, 'chave-criar')).rejects.toThrow(`REDIRECT /config/empresas/${ID}?criada=1`);
     expect(chamadas[0]?.h['idempotency-key']).toBe('chave-criar');
+    expect(JSON.parse(chamadas[0]?.corpo ?? '{}')).toMatchObject({ slug: 'am2808', uf: null });
   });
   it('módulos: o 422 volta com os campos para a faixa de pendências', async () => {
     resposta = () => json({ codigo: 'RN-CORE-02', campos: { 'modulos.faturamento': 'exige fiscal' } }, 422);

@@ -5,6 +5,7 @@ import { acumularPagina } from '@macuxierp/ui/paginacao';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { codigoExibido } from '@/lib/config/empresa';
 import { modulosLigados, nomeModulo, resumoModulos } from '@/lib/config/modulos';
 import { maisEmpresasAcao } from './empresas/acoes';
 import { SeloSituacao } from './selo-situacao';
@@ -42,9 +43,9 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
     });
   };
   const colunas: ColunaTabela<EmpresaPlataforma>[] = [
-    { id: 'slug', titulo: 'Código', celula: (e) => (
+    { id: 'codigo', titulo: 'Código', celula: (e) => (
         <Link href={`/config/empresas/${e.id}`} className="codigo" onClick={(ev) => ev.stopPropagation()}>
-          {e.slug}
+          {codigoExibido(e)}
         </Link>
       ),
     },
@@ -60,7 +61,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
         linhas={linhas}
         chaveLinha={(e) => e.id}
         aoClicarLinha={(e) => router.push(`/config/empresas/${e.id}`)}
-        rotuloLinha={(e) => `Abrir empresa ${e.slug}`}
+        rotuloLinha={(e) => `Abrir empresa ${codigoExibido(e)}`}
         textoVazio={vazio}
         legenda="Empresas"
         temMais={cursor !== null}

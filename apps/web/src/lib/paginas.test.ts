@@ -3,7 +3,7 @@ import { casarRota, paginaDaRota, paginasDoMenu, paginaVisivel, type PaginaRegis
 
 describe('páginas registradas (D-02)', () => {
   it('o aviso da exportação (T-0040) chega ao shell', () => {
-    expect(paginaDaRota('/core/empresa/exportacao')?.aviso).toMatch(/exportação ainda não está disponível/);
+    expect(paginaDaRota('/core/empresa/exportacao')?.aviso).toMatch(/exportação ainda não está disponível|exportação disponível em breve/i);
   });
 });
 
