@@ -132,3 +132,11 @@ describe('S-01: assinatura e favicon', () => {
     expect(h).toContain(`src="${paraDataUri(assinaturaANegativoAzulNoite).replace(/&/g, '&amp;')}"`);
   });
 });
+
+describe('Dialogo: largura em tela estreita', () => {
+  it('painel usa box-sizing border-box (não passa de 390 px)', () => {
+    const h = renderToStaticMarkup(<DialogoMotivo titulo="t" aoConfirmar={() => {}} aoCancelar={() => {}} />);
+    const painel = h.slice(h.indexOf('role="dialog"'));
+    expect(painel.slice(0, painel.indexOf('>'))).toMatch(/box-sizing:border-box/);
+  });
+});

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { TIPO_CSV } from './listas';
 import { ACOES_PLATAFORMA } from './plataforma-rotas';
 import { ENTIDADES_ENVIO_FDV } from './portal-integracao';
 import {
   CADASTROS_CARGA_PORTAL,
+  CADASTROS_ZERAR_PORTAL,
+  CODIGO_ZERAGEM_BLOQUEADA,
   CAMINHOS_CARGAS_PLATAFORMA,
   CODIGOS_DETALHE_CARGA_PORTAL,
   DEPENDENCIAS_CARGA_PORTAL,
@@ -18,11 +19,13 @@ import {
   MENSAGEM_FRASE_SUBSTITUIR,
   MENSAGEM_FRASE_ZERAR,
   ModoCargaQuery,
+  PreviaZerarPlataformaEntrada,
   SQLSTATES_CARGA_PORTAL,
   SituacaoCargasPlataforma,
-  TIPO_DOWNLOAD_CARGA,
+  TABELAS_ZERAGEM,
   ValidarCargaPlataformaResposta,
   ZerarDadosPlataformaEntrada,
+  ZeragemPlataformaResposta,
   dependenciaPendente,
   efeitoSubstituir,
   normalizarFrase,
@@ -162,6 +165,16 @@ describe('modo e efeito do Substituir tudo', () => {
     expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 4, percentual: 25, acima_limite_fdv: false }).success).toBe(false);
     expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 11, percentual: 100, acima_limite_fdv: true }).success).toBe(false);
   });
+
+  it('sem_chave (registros do BKO sem external_id, fora da inativação) é opcional e repassado como veio', () => {
+    expect(efeitoSubstituir({ total: 10, a_inativar: 2, sem_chave: 5 })).toEqual({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, sem_chave: 5 });
+    expect(efeitoSubstituir({ total: 10, a_inativar: 2, sem_chave: 0 }).sem_chave).toBe(0);
+    expect('sem_chave' in efeitoSubstituir({ total: 10, a_inativar: 2 })).toBe(false);
+    expect(() => efeitoSubstituir({ total: 10, a_inativar: 2, sem_chave: -1 })).toThrow(RangeError);
+    expect(() => efeitoSubstituir({ total: 10, a_inativar: 2, sem_chave: 1.5 })).toThrow(RangeError);
+    expect(EfeitoSubstituir.safeParse(efeitoSubstituir({ total: 10, a_inativar: 4, sem_chave: 3 })).success).toBe(true);
+    expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, sem_chave: -1 }).success).toBe(false);
+  });
 });
 
 describe('ValidarCargaPlataformaResposta', () => {
@@ -227,20 +240,83 @@ describe('GravarCargaPlataformaResposta (carga síncrona)', () => {
   });
 });
 
-describe('ZerarDadosPlataformaEntrada (RN-CAD-10, v0.3.5b)', () => {
+describe('cadastros e tabelas do zerar (RN-CAD-10, v0.3.5b)', () => {
+  it('na ordem da carga; forma e prazo viram forma_prazo (a mesma tabela)', () => {
+    const daCarga = ENTIDADES_CARGA_PORTAL.filter((c) => c !== 'prazo_pagamento').map((c) => (c === 'forma_pagamento' ? 'forma_prazo' : c));
+    expect([...CADASTROS_ZERAR_PORTAL]).toEqual(daCarga);
+  });
+
+  it('as 12 tabelas do schema cadastros, sem repetição e sem as oficiais', () => {
+    expect(TABELAS_ZERAGEM).toHaveLength(12);
+    expect(new Set(TABELAS_ZERAGEM).size).toBe(12);
+    expect(TABELAS_ZERAGEM).toContain('estoque_movimento');
+    for (const t of ['ncm', 'cfop', 'municipio', 'consulta_externa']) expect(TABELAS_ZERAGEM).not.toContain(t);
+  });
+});
+
+describe('PreviaZerarPlataformaEntrada e ZerarDadosPlataformaEntrada (RN-CAD-10, v0.3.5b)', () => {
+  const cadastros = ['produto', 'preco'];
+
+  it('prévia: de 1 a todos os cadastros, sem repetir e sem cadastro desconhecido', () => {
+    expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros }).success).toBe(true);
+    expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: [...CADASTROS_ZERAR_PORTAL] }).success).toBe(true);
+    expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: [] }).success).toBe(false);
+    expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: ['produto', 'produto'] }).success).toBe(false);
+    expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: ['forma_pagamento'] }).success).toBe(false);
+  });
+
   it('aceita a frase com e sem ponto, em maiúsculas e com espaços', () => {
     for (const frase of ['autorizo zerar os dados', 'autorizo zerar os dados.', 'AUTORIZO ZERAR OS DADOS', ' autorizo   zerar os dados. ']) {
-      expect(ZerarDadosPlataformaEntrada.safeParse({ frase }).success).toBe(true);
+      expect(ZerarDadosPlataformaEntrada.safeParse({ cadastros, frase }).success).toBe(true);
     }
   });
 
-  it('recusa frase errada, o código da empresa (regra antiga) e a outra frase', () => {
+  it('recusa frase errada, o código da empresa (regra antiga), a outra frase e a falta de cadastros', () => {
     for (const frase of ['autorizo zerar', 'AM2808', FRASE_SUBSTITUIR_TUDO]) {
-      const r = ZerarDadosPlataformaEntrada.safeParse({ frase });
+      const r = ZerarDadosPlataformaEntrada.safeParse({ cadastros, frase });
       expect(r.success).toBe(false);
       if (!r.success) expect(r.error.issues[0]).toMatchObject({ path: ['frase'], message: MENSAGEM_FRASE_ZERAR });
     }
-    expect(ZerarDadosPlataformaEntrada.safeParse({}).success).toBe(false);
+    expect(ZerarDadosPlataformaEntrada.safeParse({ cadastros }).success).toBe(false);
+    expect(ZerarDadosPlataformaEntrada.safeParse({ frase: FRASE_ZERAR_DADOS }).success).toBe(false);
+  });
+});
+
+describe('ZeragemPlataformaResposta (RN-CAD-10, v0.3.5b)', () => {
+  const base = {
+    empresa_id: EMPRESA,
+    simulado: true,
+    efetivos: ['produto', 'preco'],
+    apagados: [
+      { tabela: 'produto', quantidade: 10 },
+      { tabela: 'tabela_preco_item', quantidade: 30 },
+    ],
+    anulados: [{ tabela: 'cliente', coluna: 'tabela_preco_id', quantidade: 4 }],
+    mantidos: [{ cadastro: 'produto', motivo: 'pedido', quantidade: 2 }],
+    bloqueios: [],
+    sem_chave: 0,
+  };
+
+  it('aceita a prévia e o zerar sem bloqueio', () => {
+    expect(ZeragemPlataformaResposta.safeParse(base).success).toBe(true);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, simulado: false }).success).toBe(true);
+  });
+
+  it('bloqueio só na prévia: no zerar é 422 zeragem_bloqueada', () => {
+    const bloqueios = [{ cadastro: 'produto', motivo: 'integracao_ligada' }];
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, bloqueios }).success).toBe(true);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, simulado: false, bloqueios }).success).toBe(false);
+    expect(CODIGO_ZERAGEM_BLOQUEADA).toBe('zeragem_bloqueada');
+    expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain(CODIGO_ZERAGEM_BLOQUEADA);
+  });
+
+  it('recusa tabela fora do enum, coluna anulada desconhecida, motivo livre e repetição', () => {
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, apagados: [{ tabela: 'ncm', quantidade: 1 }] }).success).toBe(false);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, anulados: [{ tabela: 'cliente', coluna: 'filial_id', quantidade: 1 }] }).success).toBe(false);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, mantidos: [{ cadastro: 'produto', motivo: 'outro', quantidade: 1 }] }).success).toBe(false);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, efetivos: ['produto', 'produto'] }).success).toBe(false);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, apagados: [base.apagados[0], base.apagados[0]] }).success).toBe(false);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, sem_chave: -1 }).success).toBe(false);
   });
 });
 
@@ -254,8 +330,9 @@ describe('rotas, ações e erros', () => {
     }
   });
 
-  it('downloads em CSV com o tipo do SDK; ações novas no ACOES_PLATAFORMA', () => {
-    expect(TIPO_DOWNLOAD_CARGA).toBe(TIPO_CSV);
+  it('prévia e zerar com caminhos próprios; ações novas no ACOES_PLATAFORMA', () => {
+    expect(CAMINHOS_CARGAS_PLATAFORMA.previa).toBe('/empresas/:id/cadastros/zerar/previa');
+    expect(CAMINHOS_CARGAS_PLATAFORMA.zerar).toBe('/empresas/:id/cadastros/zerar');
     expect(ACOES_PLATAFORMA).toContain('plataforma.cadastros.carga');
     expect(ACOES_PLATAFORMA).toContain('plataforma.cadastros.zerar');
   });

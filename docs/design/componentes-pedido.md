@@ -80,3 +80,8 @@ Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a fat
 Paginação: "Próxima página" (com a página na URL) nas listas de negócio grandes; "Carregar mais" (TabelaDensa + acumularPagina) só nas listas curtas do portal /config. (RD-0974)
 
 Tamanho do rótulo do menu: `--mx-tamanho-rotulo-menu` (o `--mx-tamanho-titulo-grupo` é alias e vai sair); não use em título de bloco.
+
+## Base da aba "Cargas" (T-0058)
+Cor por token (`cor()`), nunca hex. **Mapa de cores de estado:** sucesso = `verdeSucesso` sobre `ativoFundo`; aviso = `avisoTexto` sobre `avisoFundo`; erro = `erroTexto` sobre `erroFundo`; neutro = `textoSecundario` sobre `nevoa` (`inativoFundo`). **O laranja do sol não é cor de estado.** Bloqueadas: aviso; recusadas: erro; "Bloqueado" = Chip tom aviso. A `CaixaResumo` aceita os tons sucesso, aviso e erro. O `Dialogo` tem `tabIndex=-1` e, sem elemento focável, o foco inicial vai para ele (o Esc continua fechando).
+
+O `DialogoMotivo` usa o `Dialogo`.

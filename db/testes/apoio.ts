@@ -210,6 +210,19 @@ export function recusaDetalhada(
   expect({ sql, mensagem: e.mensagem }).toMatchObject({ sql, mensagem: expect.stringMatching(padrao) });
 }
 
+/** Recusa com o SQLSTATE e o DETAIL exatos (o primeiro token do DETAIL do psql verboso). */
+export function recusaComDetalhe(
+  conexao: Conexao,
+  sql: string,
+  codigo: string,
+  detalhe: string,
+  ctx?: Contexto,
+): void {
+  const e = falhaDetalhada(() => executar(conexao, verboso(sql), ctx));
+  expect({ sql, saida: e.saida }).toMatchObject({ sql, saida: expect.stringContaining(codigo) });
+  expect({ sql, detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1] }).toEqual({ sql, detalhe });
+}
+
 /** Linhas não vazias da saída do psql (valores de RETURNING e SELECT de uma coluna de texto). */
 export const linhas = (saida: string): string[] =>
   saida
