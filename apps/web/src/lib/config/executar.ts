@@ -1,3 +1,4 @@
+import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { redirect } from 'next/navigation';
 import { ErroPlataforma, mensagemDoErro, type ContextoErro } from './erros';
 import { ROTA_SENHA, encerrarEVoltar, exigirTokenConfig } from './sessao';
@@ -21,6 +22,6 @@ export async function executarConfig<T>(ctx: ContextoErro, fn: (token: string) =
   }
   const m = mensagemDoErro(falhou, ctx);
   if (m.expirou) return encerrarEVoltar();
-  if (falhou instanceof ErroPlataforma && falhou.status === 403 && falhou.codigo === 'TROCAR_SENHA') redirect(ROTA_SENHA);
+  if (falhou instanceof ErroPlataforma && falhou.status === 403 && falhou.codigo === CODIGO_TROCAR_SENHA) redirect(ROTA_SENHA);
   return { ok: false, erro: m.texto, campos: m.campos, chaveNova: m.chaveNova };
 }

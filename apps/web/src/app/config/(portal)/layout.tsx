@@ -1,3 +1,4 @@
+import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { euPlataforma } from '@/lib/config/api';
@@ -16,7 +17,7 @@ export default async function CascaPlataforma({ children }: { children: ReactNod
     eu = await euPlataforma(token);
   } catch (e) {
     if (e instanceof ConfigNaoAutenticado) redirect(ROTA_ENCERRAR);
-    if (e instanceof ErroPlataforma && e.codigo === 'TROCAR_SENHA') redirect(ROTA_SENHA);
+    if (e instanceof ErroPlataforma && e.codigo === CODIGO_TROCAR_SENHA) redirect(ROTA_SENHA);
     throw e;
   }
   if (eu.deve_trocar_senha) redirect(ROTA_SENHA);

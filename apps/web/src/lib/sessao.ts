@@ -16,7 +16,10 @@ export const opcoesLongas = { ...base, maxAge: DIAS_30 };
 
 /** Só caminhos internos: evita redirecionamento aberto pelo parâmetro "destino". */
 export function destinoSeguro(destino: string | null | undefined): string {
-  return destino && /^\/(?!\/|\\)/.test(destino) ? destino : '/';
+  // Navegadores removem TAB/LF/CR da URL ('/\t/x.com' viraria '//x.com'): recusa controle e barra invertida em qualquer posição.
+  // eslint-disable-next-line no-control-regex -- recusar caractere de controle é o objetivo
+  if (!destino || /[\x00-\x1f\x7f\\]/.test(destino)) return '/';
+  return /^\/(?!\/)/.test(destino) ? destino : '/';
 }
 
 export interface Contexto {

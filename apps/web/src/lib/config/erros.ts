@@ -57,7 +57,7 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
       const faltas = Object.entries(e.campos).map(([campo, t]) => ({ campo, t }));
       return { ...base, texto: 'Os módulos escolhidos não são permitidos. Revise as dependências.', campos: Object.fromEntries(faltas.map((f) => [f.campo, f.t])), chaveNova: ehRespostaDefinitiva(e.status) };
     }
-    if (ctx === 'senha' && (e.status === 400 || e.status === 422)) return { ...base, texto: SENHA_ATUAL_INCORRETA, chaveNova: ehRespostaDefinitiva(e.status) };
+    if (ctx === 'senha' && (e.status === 400 || e.status === 422)) return { ...base, texto: e.campos.senha_atual ?? e.campos.senha_nova ?? SENHA_ATUAL_INCORRETA, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 400 || e.status === 422) return { ...base, texto: 'Confira os dados e tente de novo.', campos: e.campos, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 404 && ctx === 'email') return { ...base, texto: 'A empresa ainda não tem 1º administrador.' };
     if (e.status === 404) return { ...base, texto: 'Empresa não encontrada. Volte à lista.' };

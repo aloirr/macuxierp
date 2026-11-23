@@ -1,3 +1,4 @@
+import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma, mensagemDoErro } from './erros';
 import { alterarSituacao, criarPrimeiroAdmin, entrarPlataforma, listarEmpresas, redefinirSenhaPrimeiroAdmin } from './api';
@@ -59,8 +60,8 @@ describe('cliente da plataforma', () => {
     expect(await quando(() => json({}, 429))).toBeInstanceOf(ConfigMuitasTentativas);
     expect(await quando(() => json({ mensagem: 'segredo@x.co' }, 500))).toBeInstanceOf(ConfigIndisponivel);
     expect(await quando(() => json({ qualquer: 1 }, 200))).toBeInstanceOf(ConfigIndisponivel);
-    const e = (await quando(() => json({ codigo: 'TROCAR_SENHA' }, 403))) as ErroPlataforma;
-    expect(e).toMatchObject({ status: 403, codigo: 'TROCAR_SENHA' });
+    const e = (await quando(() => json({ codigo: CODIGO_TROCAR_SENHA }, 403))) as ErroPlataforma;
+    expect(e).toMatchObject({ status: 403, codigo: CODIGO_TROCAR_SENHA });
     vi.stubGlobal('fetch', async () => {
       throw new Error('ECONNREFUSED');
     });

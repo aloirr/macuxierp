@@ -1,20 +1,19 @@
 'use server';
-import { erroSenhaForaDaRegra, TrocarSenhaPlataformaEntrada } from '@macuxierp/platform-sdk';
 import { redirect } from 'next/navigation';
 import { trocarSenhaPlataforma } from '@/lib/config/api';
 import { executarConfig } from '@/lib/config/executar';
+import { SenhaInformada, SenhaNova, erroSenhaForaDaRegra } from '@macuxierp/platform-sdk';
+import type { EstadoTrocaSenha } from '@/components/formulario-troca-senha';
+import { estadoDaTroca, SENHAS_NAO_CONFEREM } from '@/lib/troca-senha';
 
-export interface EstadoSenha {
-  erro?: string;
-}
-
-export async function trocarSenhaAcao(_: EstadoSenha, dados: FormData): Promise<EstadoSenha> {
+export async function trocarSenhaAcao(_: EstadoTrocaSenha, dados: FormData): Promise<EstadoTrocaSenha> {
   const nova = String(dados.get('senha_nova') ?? '');
-  const fora = erroSenhaForaDaRegra(nova);
-  if (fora) return { erro: `${fora.mensagem}: ${fora.texto}.` };
-  const p = TrocarSenhaPlataformaEntrada.safeParse({ senha_atual: String(dados.get('senha_atual') ?? ''), senha_nova: nova });
-  if (!p.success) return { erro: 'Confira a senha atual e a senha nova.' };
-  const r = await executarConfig('senha', (t) => trocarSenhaPlataforma(t, p.data));
+  const confirmacao = String(dados.get('confirmacao') ?? '');
+  const atual = SenhaInformada.safeParse(String(dados.get('senha_atual') ?? ''));
+  const novaOk = SenhaNova.safeParse(nova);
+  if (!atual.success || !novaOk.success) return { erro: erroSenhaForaDaRegra(nova)?.texto ?? 'Confira a senha atual e a senha nova.' };
+  if (estadoDaTroca(atual.data, nova, confirmacao).difere) return { campos: { confirmacao: SENHAS_NAO_CONFEREM } };
+  const r = await executarConfig('senha', (t) => trocarSenhaPlataforma(t, { senha_atual: atual.data, senha_nova: novaOk.data }));
   if (r.ok) redirect('/config');
   return { erro: r.erro };
 }

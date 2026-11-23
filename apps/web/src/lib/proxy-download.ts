@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { pode } from '@macuxierp/platform-sdk';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { NaoAutenticado, baixarArquivo } from '@/lib/api';
+import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { redirecionar } from '@/lib/redirecionar';
 
@@ -41,6 +42,7 @@ export async function proxyDeDownload({ permitido, caminho, modulo, acao, mensag
     return new NextResponse(r.corpo, { status: 200, headers: { 'content-type': r.tipo, 'content-disposition': `attachment; filename="${r.nome}"`, ...SEM_CACHE } });
   } catch (e) {
     if (e instanceof NaoAutenticado) return renovar();
+    if (e instanceof TrocarSenhaPendente) return redirecionar(ROTA_SENHA);
     return new NextResponse(FALHA_DOWNLOAD, { status: 502, headers: SEM_CACHE });
   }
 }

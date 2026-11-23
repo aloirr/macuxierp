@@ -8,6 +8,7 @@ import {
   PrimeiroAdminResposta,
   SessaoPlataformaResposta,
   paginaDe,
+  CODIGO_TROCAR_SENHA,
   type AlterarModulosEntrada,
   type CriarEmpresaEntrada,
   type EntrarPlataformaEntrada,
@@ -54,7 +55,7 @@ async function recusar(r: Response): Promise<never> {
     /* corpo fora do formato: segue só com o status */
   }
   const codigo = typeof corpo.codigo === 'string' ? corpo.codigo : '';
-  if (r.status === 403 && codigo !== 'TROCAR_SENHA') throw new ConfigSemPermissao();
+  if (r.status === 403 && codigo !== CODIGO_TROCAR_SENHA) throw new ConfigSemPermissao();
   if (r.status >= 400 && r.status < 500) {
     const campos = Object.fromEntries(Object.entries(corpo.campos ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     throw new ErroPlataforma(r.status, codigo, campos);

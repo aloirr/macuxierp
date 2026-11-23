@@ -1,10 +1,11 @@
 import { isIP } from 'node:net';
 import { headers as cabecalhosDoPedido } from 'next/headers';
 import type { z } from 'zod';
-import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, EuResposta } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIGO_TROCAR_SENHA, EuResposta, REGRAS_SENHA, type RegraSenhaId } from '@macuxierp/platform-sdk';
 import { RelatorioCarga } from '@macuxierp/cadastros/contracts';
 import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { CARGA_GRANDE_DEMAIS, CARGA_NAO_CONCLUIDA, CARGA_TEMPO_ESGOTADO, SEM_PERMISSAO_CARGA } from './textos';
+import { TrocarSenhaPendente } from './troca-pendente';
 import { CREDENCIAL_FALSA, EU_FALSO, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
@@ -29,8 +30,25 @@ export class DadosInvalidos extends Error {
 export class NaoAutenticado extends Error {
   override readonly name = 'NaoAutenticado' as const;
 }
+/** Falha que a tela resolve com redirect (renovar a sessão ou trocar a senha provisória): não vira mensagem nem valor de reserva. */
+export function ehFalhaDeSessao(e: unknown): boolean {
+  return e instanceof NaoAutenticado || e instanceof TrocarSenhaPendente;
+}
 export class SemPermissao extends Error {
   override readonly name = 'SemPermissao' as const;
+}
+
+/** Lança TrocarSenhaPendente se a resposta for o 403 `TROCAR_SENHA`; outros 403 (sem permissão) seguem como antes. */
+async function conferirTroca(r: Response): Promise<Response> {
+  if (r.status !== 403) return r;
+  const j = (await r.clone().json().catch(() => null)) as { codigo?: unknown } | null;
+  if (j?.codigo === CODIGO_TROCAR_SENHA) throw new TrocarSenhaPendente();
+  return r;
+}
+
+/** `chamar` das rotas autenticadas do BKO (com Bearer): o 403 `TROCAR_SENHA` vira TrocarSenhaPendente. */
+async function chamarAutenticado(url: string, init: RequestInit, timeoutMs = TIMEOUT_PADRAO_MS): Promise<Response> {
+  return conferirTroca(await buscarNaApi(url, init, timeoutMs));
 }
 
 export interface Sessao {
@@ -155,7 +173,7 @@ export async function getValidado<S extends z.ZodTypeAny>(
   rotulo: string,
   statusDistintos = false,
 ): Promise<z.infer<S>> {
-  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  const r = await chamarAutenticado(caminho, { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
   if (statusDistintos && r.status === 403) throw new SemPermissao();
   if (statusDistintos && r.status === 400) throw new DadosInvalidos(`${rotulo}: VALIDACAO`);
@@ -188,7 +206,7 @@ export type ResultadoCarga = { ok: true; relatorio: RelatorioCarga } | { ok: fal
  */
 export async function enviarCarga(acesso: string, formulario: FormData): Promise<ResultadoCarga> {
   if (usaApiFalsa) return { ok: false, erro: 'A carga precisa da API real: configure MACUXIERP_API_URL.' };
-  const r = await chamar(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario }, TIMEOUT_CARGA_MS);
+  const r = await chamarAutenticado(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario }, TIMEOUT_CARGA_MS);
   if (r.status === 401) throw new NaoAutenticado();
   if (r.status === 403) return { ok: false, erro: SEM_PERMISSAO_CARGA };
   if (r.status === 413) return { ok: false, erro: CARGA_GRANDE_DEMAIS };
@@ -202,7 +220,7 @@ export async function enviarCarga(acesso: string, formulario: FormData): Promise
 /** GET de um registro (detalhe, catálogo): como `getValidado` com status distintos; 404 vira `null`. Modo falso: `null`. */
 export async function buscarRegistro<S extends z.ZodTypeAny>(caminho: string, schema: S, acesso: string, rotulo: string): Promise<z.infer<S> | null> {
   if (usaApiFalsa) return null;
-  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  const r = await chamarAutenticado(caminho, { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
   if (r.status === 403) throw new SemPermissao();
   if (r.status === 404) return null;
@@ -226,13 +244,14 @@ export async function escreverJson(
   caminho: string,
   corpo: unknown,
   acesso: string,
-  opcoes: { idempotencia?: string; versao?: string } = {},
+  opcoes: { idempotencia?: string; versao?: string; cookie?: string } = {},
 ): Promise<RespostaEscrita> {
   if (usaApiFalsa) throw new ApiIndisponivel('a escrita precisa da API real: configure MACUXIERP_API_URL');
   const cabecalhos: Record<string, string> = { authorization: `Bearer ${acesso}`, 'content-type': 'application/json' };
   if (opcoes.idempotencia) cabecalhos['idempotency-key'] = opcoes.idempotencia;
   if (opcoes.versao) cabecalhos['if-match'] = opcoes.versao;
-  const r = await chamar(caminho, { method: metodo, headers: cabecalhos, body: corpo === undefined ? undefined : JSON.stringify(corpo) });
+  if (opcoes.cookie) cabecalhos.cookie = opcoes.cookie;
+  const r = await chamarAutenticado(caminho, { method: metodo, headers: cabecalhos, body: corpo === undefined ? undefined : JSON.stringify(corpo) });
   if (r.status === 401) throw new NaoAutenticado();
   return { ok: r.ok, status: r.status, corpo: await r.json().catch(() => null) };
 }
@@ -240,7 +259,7 @@ export async function escreverJson(
 /** GET de um CSV na API (exportação da lista), com o token. Devolve o corpo e o tipo, ou `null` se a API falhar. Modo falso: `null`. */
 export async function baixarCsv(caminho: string, acesso: string): Promise<{ corpo: ArrayBuffer; tipo: string } | null> {
   if (usaApiFalsa || !CAMINHO_CSV.test(caminho.split('?')[0] ?? '')) return null;
-  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  const r = await chamarAutenticado(caminho, { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
   if (!r.ok) return null;
   return { corpo: await r.arrayBuffer(), tipo: r.headers.get('content-type') ?? 'text/csv; charset=utf-8' };
@@ -252,9 +271,41 @@ export type ArquivoBaixado = { ok: true; corpo: ArrayBuffer; tipo: string; nome:
 /** GET de um arquivo (XML, DANFE) com o token: o corpo passa pela memória e volta ao navegador. 404 e demais falhas viram `{ ok: false }` (a tela mostra mensagem fixa). Modo falso: 404. */
 export async function baixarArquivo(caminho: string, acesso: string): Promise<ArquivoBaixado> {
   if (usaApiFalsa) return { ok: false, status: 404 };
-  const r = await chamar(caminho, { headers: { authorization: `Bearer ${acesso}` } });
+  const r = await chamarAutenticado(caminho, { headers: { authorization: `Bearer ${acesso}` } });
   if (r.status === 401) throw new NaoAutenticado();
   if (!r.ok) return { ok: false, status: r.status };
   const nome = /filename="([A-Za-z0-9._-]{1,80})"/.exec(r.headers.get('content-disposition') ?? '')?.[1] ?? 'arquivo';
   return { ok: true, corpo: await r.arrayBuffer(), tipo: r.headers.get('content-type') ?? 'application/octet-stream', nome };
+}
+
+/** `regras`: ids das regras que a API diz descumpridas (`detalhes.regras` do 400); o formulário marca ✗ nelas. */
+export type ResultadoTrocaSenha = { ok: true } | { ok: false; campos: { senha_atual?: string; senha_nova?: string }; erro?: string; regras?: RegraSenhaId[] };
+
+const SENHA_FALHA = 'Não foi possível trocar a senha agora. Tente de novo em instantes.';
+
+/** Resposta de `POST /v1/auth/senha` em mensagem por campo: 400 `VALIDACAO` com `campos.senha_atual` ou `campos.senha_nova`. Nunca devolve o corpo cru. */
+export function resultadoDaTrocaSenha(status: number, corpo: unknown): ResultadoTrocaSenha {
+  if (status >= 200 && status < 300) return { ok: true };
+  if (status === 400) {
+    const c = (corpo as { campos?: Record<string, unknown> } | null)?.campos;
+    const texto = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const atual = texto(c?.senha_atual);
+    const nova = texto(c?.senha_nova);
+    const ids = (corpo as { detalhes?: { regras?: unknown } } | null)?.detalhes?.regras;
+    const regras = Array.isArray(ids) ? REGRAS_SENHA.map((r) => r.id).filter((id) => ids.includes(id)) : [];
+    if (atual || nova) {
+      return { ok: false, campos: { ...(atual ? { senha_atual: atual } : {}), ...(nova ? { senha_nova: nova } : {}) }, ...(regras.length ? { regras } : {}) };
+    }
+  }
+  if (status === 429) return { ok: false, campos: {}, erro: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' };
+  return { ok: false, campos: {}, erro: SENHA_FALHA };
+}
+
+/**
+ * POST /v1/auth/senha (204). A API revoga as OUTRAS sessões e só poupa a do cookie de refresh enviado: por isso o `refresh`
+ * ("nome=valor") vai junto. Senhas só no corpo da chamada: nunca em log ou URL.
+ */
+export async function trocarSenha(acesso: string, refresh: string | undefined, corpo: { senha_atual: string; senha_nova: string }): Promise<ResultadoTrocaSenha> {
+  const r = await escreverJson('POST', '/v1/auth/senha', corpo, acesso, { ...(refresh ? { cookie: refresh } : {}) });
+  return resultadoDaTrocaSenha(r.status, r.corpo);
 }

@@ -1,3 +1,4 @@
+import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const estado = vi.hoisted(() => ({ jar: {} as Record<string, string>, eu: undefined as unknown, falha: undefined as unknown }));
@@ -43,7 +44,7 @@ describe('guarda do grupo /config (layout)', () => {
     estado.eu = { ...EU, deve_trocar_senha: true };
     await expect(abrir()).rejects.toThrow('REDIRECT /config/senha');
     estado.eu = EU;
-    estado.falha = new ErroPlataforma(403, 'TROCAR_SENHA');
+    estado.falha = new ErroPlataforma(403, CODIGO_TROCAR_SENHA);
     await expect(abrir()).rejects.toThrow('REDIRECT /config/senha');
   });
   it('com sessão válida abre o portal', async () => {
