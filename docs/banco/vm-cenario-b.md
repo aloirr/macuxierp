@@ -6,12 +6,12 @@
 
 ## 1. Objetivo, escopo e o que NÃO é
 
-**Objetivo:** subir uma VM Linux de teste com o banco `ERP_THATHYANY` (cliente thathyany, código FDV `am2808`) **criado do zero** com o esquema do kit do Macuxi FDV e populado com **dados fictícios**, para o conector ler as views e alimentar o Macuxi ERP em teste.
+**Objetivo:** subir uma VM Linux de teste com o banco `ERP_THATHYANY` (cliente thathyany, código FDV `am2808`) **criado do zero** com o esquema do kit do Macuxi FDV e populado com **dados fictícios**, para o conector, que roda na VM, ler as views e enviar ao Macuxi ERP de produção (`erp.macuxifdv.com.br`), na empresa AM2808 (ADR 0014).
 
 **Escopo:** uma VM, o Claude Code da própria VM controlado pelo Alexandre via Remote Control (seção 2A), um SQL Server 2022 Express, o banco criado pelo `criar-banco.sql` do kit (seção 5), a carga dos CSVs fictícios e do catálogo (seção 6), um login **só leitura** para o conector (seção 7), firewall fechado; a VM fica enquanto durarem os testes e é apagada no encerramento (seção 8).
 
 **O que NÃO é:**
-- Não é produção. Nada aqui vai para `erp.macuxifdv.com.br` nem para a VM de produção do FDV/ERP.
+- Não é dado de produção: o banco da VM é de teste, só com dados fictícios. O destino é o ERP de produção (`erp.macuxifdv.com.br`), na empresa AM2808 (ADR 0014); nada roda na VM de produção do FDV/ERP e nenhum outro tenant é tocado.
 - Não é cópia do banco real do cliente: **não há restore de `.bak`** nem dado de cliente real.
 - **Nada do Macuxi FDV muda**: nem código (`aloirr/macuxifdv` é só consulta), nem banco, nem configuração.
 - **O ERP nunca lê tabela do FDV.** O conector lê só as views deste banco de teste; o banco `macuxierp` não ganha acesso a ele nem ao banco do FDV.
@@ -126,7 +126,7 @@ sudo ufw enable
 ```
 No provedor: entrada só TCP 22 de `<IP_DO_ALEXANDRE>/32`; nenhuma outra regra de entrada.
 
-**O conector roda na própria VM** e chega ao SQL Server por `127.0.0.1,1433`: sem IP extra liberado e sem túnel SSH para o conector. A saída dele para o ERP de teste é tráfego de saída (já permitido), como a do Remote Control (seção 2A).
+**O conector roda na própria VM** e chega ao SQL Server por `127.0.0.1,1433`: sem IP extra liberado e sem túnel SSH para o conector. A saída dele para o ERP (`erp.macuxifdv.com.br`, HTTPS) é tráfego de saída (já permitido), como a do Remote Control (seção 2A).
 
 Como conferir:
 - `sudo ufw status verbose` → `Default: deny (incoming)`, uma regra só: `22/tcp ALLOW IN <IP_DO_ALEXANDRE>`.
