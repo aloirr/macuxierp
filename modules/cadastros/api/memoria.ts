@@ -5,7 +5,7 @@ import { classeForma, type EstoqueConsulta, type PrecoItem, type PrecoItemConsul
 import { tabelaVigente } from '../domain';
 import { agregadoPreco } from './uuid';
 import type {
-  ConsultaGravada, Dependencias, RepoChaves, TabelaChave, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
+  ConsultaGravada, Dependencias, RepoChaves, TabelaChave, TabelaSubstituivel, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 /** Ordem estável por `id` e `id > cursor`, como o adaptador SQL (`.coord/contratos/listas.md`); devolve `limite + 1` linhas no máximo para `paginar`. */
@@ -352,7 +352,32 @@ export function repositoriosEmMemoria() {
       return colecaoDe(t).some((l) => l.id === id);
     },
   };
-  const repos = { chaves, carga, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
+  const colecaoSubst = (t: TabelaSubstituivel): { l: Reg[]; pai: string | null } =>
+    ({
+      filial: { l: filiais.linhas, pai: null }, vendedor: { l: vendedores.linhas, pai: null }, condicao_pagamento: { l: condicoesPagamento.linhas, pai: null },
+      produto: { l: produtos.linhas, pai: null }, cliente: { l: baseCliente.linhas, pai: null },
+      produto_unidade: { l: unidades.linhas, pai: 'pai' }, cliente_endereco: { l: enderecos.linhas, pai: 'pai' },
+      tabela_preco_item: { l: itensPreco as unknown as Reg[], pai: 'tabela_preco_id' },
+    } as unknown as Record<TabelaSubstituivel, { l: Reg[]; pai: string | null }>)[t];
+  /** Dublê do "Substituir tudo": inativa marcando `inativo`, como o adaptador SQL marca `deleted_at`. */
+  const substituicao = {
+    async existentes(t: TabelaSubstituivel) {
+      const { l, pai } = colecaoSubst(t);
+      return l.map((x) => ({ id: x.id, external_id: x.external_id ?? null, inativo: x.inativo, pai_id: pai ? ((x[pai] as string | undefined) ?? null) : null }));
+    },
+    async temAtivos(t: TabelaSubstituivel) {
+      return colecaoSubst(t).l.some((x) => !x.inativo);
+    },
+    async inativarEmLote(t: TabelaSubstituivel, ids: readonly string[]) {
+      const feitos: string[] = [];
+      for (const x of colecaoSubst(t).l) if (ids.includes(x.id) && !x.inativo) { x.inativo = true; feitos.push(x.id); }
+      return feitos;
+    },
+    async itensPreco(ids: readonly string[]) {
+      return (itensPreco as Item[]).filter((i) => ids.includes(i.id)).map((i) => ({ tabela_preco_id: i.tabela_preco_id, filial_id: i.filial_id, produto_id: i.produto_id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp }));
+    },
+  };
+  const repos = { chaves, carga, substituicao, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
   return repos as unknown as Repositorios & typeof repos;
 }
 

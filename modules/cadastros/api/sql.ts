@@ -11,7 +11,7 @@ import type {
 import { CLASSE_FORMA } from '../contracts';
 import { MOTIVO_PARCELAS_FORMA } from '../domain/condicao';
 import type {
-  FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
+  FilhoGravado, RepoChaves, TabelaChave, ItemPrecoGravado, RepoCarga, RepoSubstituicao, TabelaSubstituivel, TabelaFilha, ConsultaGravada, FiltroLista, MovimentoGravado, RepoFilho, RepoOficiais, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 type Dict = Record<string, unknown>;
@@ -431,6 +431,7 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     consultaExterna,
     oficiais: oficiaisSql(tx),
     carga: cargaSql(tx),
+    substituicao: substituicaoSql(tx),
     chaves: chavesSql(tx),
   };
 }
@@ -532,6 +533,44 @@ function cargaSql(tx: Transacao): RepoCarga {
         await tx.consultar('ROLLBACK TO SAVEPOINT carga_linha');
         throw e;
       }
+    },
+  };
+}
+
+/** Tabela e coluna-pai de cada cadastro do "Substituir tudo" (RN-CAD-10). */
+const SUBSTITUIVEIS: Record<TabelaSubstituivel, { tabela: string; pai: string | null }> = {
+  filial: { tabela: 'cadastros.filial', pai: null }, vendedor: { tabela: 'cadastros.vendedor', pai: null },
+  condicao_pagamento: { tabela: 'cadastros.condicao_pagamento', pai: null }, produto: { tabela: 'cadastros.produto', pai: null },
+  produto_unidade: { tabela: 'cadastros.produto_unidade', pai: 'produto_id' }, cliente: { tabela: 'cadastros.cliente', pai: null },
+  cliente_endereco: { tabela: 'cadastros.cliente_endereco', pai: 'cliente_id' }, tabela_preco_item: { tabela: 'cadastros.tabela_preco_item', pai: 'tabela_preco_id' },
+};
+
+/** Substituir tudo (RN-CAD-10, T-0058): `tenant_id` explícito além da RLS; a inativação é `deleted_at`, como a D6, e nunca DELETE. */
+function substituicaoSql(tx: Transacao): RepoSubstituicao {
+  return {
+    async existentes(t) {
+      const { tabela, pai } = SUBSTITUIVEIS[t];
+      const l = await executar<{ id: string; external_id: string | null; inativo: boolean; pai_id: string | null }>(
+        tx, `SELECT id, external_id, (deleted_at IS NOT NULL) AS inativo, ${pai ? `${pai}::text` : 'NULL::text'} AS pai_id FROM ${tabela} WHERE tenant_id = plataforma.tenant_atual() ORDER BY id`, [],
+      );
+      return l.map((x) => ({ id: x.id, external_id: x.external_id ?? null, inativo: x.inativo === true, pai_id: x.pai_id ?? null }));
+    },
+    async temAtivos(t) {
+      const l = await executar(tx, `SELECT 1 FROM ${SUBSTITUIVEIS[t].tabela} WHERE tenant_id = plataforma.tenant_atual() AND deleted_at IS NULL LIMIT 1`, []);
+      return l.length > 0;
+    },
+    async inativarEmLote(t, ids) {
+      if (ids.length === 0) return [];
+      const l = await executar<{ id: string }>(
+        tx, `UPDATE ${SUBSTITUIVEIS[t].tabela} SET deleted_at = now() WHERE tenant_id = plataforma.tenant_atual() AND id = ANY($1::uuid[]) AND deleted_at IS NULL RETURNING id`, [[...ids]],
+      );
+      return l.map((x) => x.id);
+    },
+    async itensPreco(ids) {
+      if (ids.length === 0) return [];
+      return executar<PrecoItemComChave>(
+        tx, `SELECT tabela_preco_id, filial_id, produto_id, external_id, ${N('preco_centavos')}, desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE tenant_id = plataforma.tenant_atual() AND id = ANY($1::uuid[]) ORDER BY id`, [[...ids]],
+      );
     },
   };
 }

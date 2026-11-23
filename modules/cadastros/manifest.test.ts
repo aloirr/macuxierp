@@ -14,4 +14,8 @@ describe('manifesto do módulo cadastros', () => {
   it('RN-CORE-09: os perfis do manifesto são os do SDK', () => {
     expect(manifest.perfis).toEqual([...PERFIS]);
   });
+  it('RN-CAD-10 (T-0058): a carga saiu do BKO: o menu "Carga de cadastros" não está no manifesto (é do /config, só superadmin)', () => {
+    expect(manifest.web?.menus).not.toContain('Carga de cadastros');
+    expect(manifest.web?.menus).toContain('Clientes');
+  });
 });
