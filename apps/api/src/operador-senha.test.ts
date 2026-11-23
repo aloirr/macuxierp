@@ -24,6 +24,7 @@ describe('operador.sh: gerador da senha provisória (T-0052)', () => {
     expect(CLASSES_API.SIMBOLOS.length).toBeGreaterThan(0);
   });
 
+  // Limite próprio: 200 senhas num bash só; sob a carga do turbo passou de 5 s (sozinho, < 1 s).
   it(`${QUANTAS} senhas do bash: 16 caracteres do alfabeto, uma de cada classe e a regra única cumprida`, () => {
     const r = spawnSync('bash', ['-c', `set -euo pipefail\n${GERADOR}\nfor _ in $(seq ${QUANTAS}); do gerar_senha; echo; done`], { encoding: 'utf8', timeout: 60_000 });
     expect(r.stderr).toBe('');
@@ -39,7 +40,7 @@ describe('operador.sh: gerador da senha provisória (T-0052)', () => {
     // aleatória de fato: sem repetição e sem posição fixa para o especial
     expect(new Set(senhas).size).toBe(QUANTAS);
     expect(new Set(senhas.map((s) => [...s].findIndex((c) => CLASSES_API.SIMBOLOS.includes(c)))).size).toBeGreaterThan(3);
-  });
+  }, 30_000);
 
   it('o apoio dos testes (senhaProvisoria) também cumpre a regra', () => {
     for (let i = 0; i < 200; i++) expect(regrasDescumpridas(senhaProvisoria())).toEqual([]);

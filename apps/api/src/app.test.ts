@@ -362,6 +362,34 @@ describe('logs (LGPD e segredos)', () => {
   });
 });
 
+describe('T-0052: log do 500 com o diagnóstico do banco, sem valor de coluna', () => {
+  const VALOR_SENSIVEL = '52998224725';
+  const errosDoLog = (logs: string[]) => logs.map((l) => JSON.parse(l) as Record<string, unknown>).filter((l) => l.msg === 'erro interno');
+  async function falharNasLicencas(erro: Error) {
+    const logs: string[] = [];
+    const { app } = await montar({ logs, fonteLicencas: { ler: async () => { throw erro; } } });
+    const token: string = (await entrar(app)).json().token_acesso;
+    const r = await app.inject({ method: 'POST', url: '/v1/cadastros/precos', payload: { preco_centavos: 5 }, headers: { authorization: `Bearer ${token}` } });
+    expect(r.statusCode).toBe(500);
+    return logs;
+  }
+
+  it('erro do pg (23514): loga sqlstate, restricao e tabela; nunca message nem detail', async () => {
+    const erro = Object.assign(new Error(`viola a restrição: cpf ${VALOR_SENSIVEL}`), {
+      code: '23514',
+      constraint: 'credencial_fdv_chave_check',
+      table: 'credencial_fdv',
+      detail: `Failing row contains (${VALOR_SENSIVEL}).`,
+    });
+    const logs = await falharNasLicencas(erro);
+    const [log] = errosDoLog(logs);
+    expect(log).toMatchObject({ sqlstate: '23514', restricao: 'credencial_fdv_chave_check', tabela: 'credencial_fdv', tipo: 'Error' });
+    const tudo = logs.join('\n');
+    expect(tudo).not.toContain(VALOR_SENSIVEL);
+    expect(tudo).not.toContain('viola a restrição');
+  });
+});
+
 describe('T-0052 (RN-CORE-10): senha provisória e POST /v1/auth/senha (repositório em memória)', () => {
   const SENHA_NOVA = 'Nova-senha-789';
   const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
