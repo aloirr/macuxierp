@@ -62,9 +62,9 @@ describe('assinatura C no login e na seleção de filial', () => {
     expect(css).toMatch(/\.cartao-central header \{[^}]*background: var\(--mx-cor-azul-noite\)/);
     expect(css).toMatch(/\.cartao-central header \{[^}]*padding: 24px 32px/);
   });
-  it('cartão da carga segue o grupo-campos e o rádio usa .mx-radio', () => {
+  it('o grupo-campos segue o raio do tema e o rádio usa .mx-radio', () => {
     expect(css).not.toContain('accent-color');
-    expect(css).toMatch(/fieldset\.grupo-campos, fieldset\.carga-cartao \{[^}]*border-radius: 6px/);
+    expect(css).toMatch(/fieldset\.grupo-campos \{[^}]*border-radius: 6px/);
   });
 
   it('o menu lateral usa o token de rótulo e o cartão de login tem 16 px de margem lateral em tela pequena (T-0051)', () => {

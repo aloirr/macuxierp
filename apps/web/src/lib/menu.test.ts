@@ -93,10 +93,10 @@ describe('hrefAtivo (item marcado no menu lateral)', () => {
 });
 
 describe('o menu do analista de implantação (RN-CORE-09)', () => {
-  it('o analista vê Carga de cadastros e as consultas, e não vê o core', () => {
+  it('o analista vê as consultas e não vê o core', () => {
     const m = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'analista_implantacao');
     const rotulos = m.find((g) => g.modulo === 'cadastros')?.itens.map((i) => i.rotulo) ?? [];
-    expect(rotulos).toEqual(expect.arrayContaining(['Carga de cadastros', 'Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 'Filiais']));
+    expect(rotulos).toEqual(expect.arrayContaining(['Clientes', 'Produtos', 'Tabelas de preço', 'Estoque', 'Filiais']));
     expect(m.some((g) => g.modulo === 'core')).toBe(false);
   });
 });
