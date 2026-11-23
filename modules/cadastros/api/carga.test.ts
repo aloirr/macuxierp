@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { erros } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
+import { CargaPedido, MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
 import { MSG_REGIME_PIS_COFINS_CRT3, prazosDoCartao } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginCadastros } from './index';
@@ -134,16 +134,16 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     const r = await t.carregar('gravar', { sessao: sessaoDe('gerente') });
     const rel = r.corpo as RelatorioCarga;
     expect(porEntidade(rel).filial).toMatchObject({ situacao: 'recusado' });
-    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'filial.csv', linha: null, codigo: 'PERFIL_SEM_PERMISSAO' }));
+    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'filial.csv', linha: null, codigo: 'PERFIL_SEM_PERMISSAO', motivo: 'Só o administrador carrega filial e limite de crédito.' }));
     expect(porEntidade(rel).vendedor).toMatchObject({ situacao: 'processado', inseridas: 1 });
     expect(t.repos.vendedores.linhas).toHaveLength(1);
   });
 
-  it('D13: arquivo recusado não para os seguintes; a linha que dependia dele cai como CARGA_REFERENCIA', async () => {
+  it('D13: arquivo recusado não para os seguintes; a linha que dependia dele cai como CARGA_DEPENDENCIA (RF-CAD-11, arquivo ausente do lote)', async () => {
     const t = montar();
     const r = await t.carregar('gravar', { arquivos: arquivos().filter((a) => a.nome !== 'filial.csv') });
     const rel = r.corpo as RelatorioCarga;
-    expect(rel.erros.filter((e) => e.arquivo === 'vendedor.csv')).toEqual([expect.objectContaining({ codigo: 'CARGA_REFERENCIA', campo: 'filial_external_id' })]);
+    expect(rel.erros.filter((e) => e.arquivo === 'vendedor.csv')).toEqual([expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'filial_external_id', motivo: 'Faltam filiais: carregue filial.csv antes.' })]);
     expect(porEntidade(rel).forma_pagamento).toMatchObject({ inseridas: 2 });
   });
 
@@ -416,5 +416,39 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     t.repos.condicoesPagamento.inserir = async () => { throw erros.regra('RN-CAD-09', 'Condição de pagamento inválida: fixa', { parcelas_cartao: 'x' }); };
     const r = (await t.carregar('gravar', { arquivos: lote('FP-C;CARTAO;Cartão;;sim;1', 'Z-1;FP-C;C1;1x;;sim;;;;1') })).corpo as RelatorioCarga;
     expect(r.erros.filter((x) => x.codigo === 'RN-CAD-09')).toEqual([expect.objectContaining({ arquivo: 'prazo_pagamento.csv', campo: 'parcelas_cartao' })]);
+  });
+});
+
+describe('carga por entidade (RF-CAD-11)', () => {
+  it('RF-CAD-11: GET /cargas/modelos/:entidade devolve o CSV com BOM e o nome do arquivo', async () => {
+    const t = montar();
+    const r = await t.chamar('GET', '/cargas/modelos/vendedor', { sessao: adm });
+    expect(r.status).toBe(200);
+    expect(r.corpo).toBe('\uFEFFexternal_id;nome;ativo;filial_external_id;codigo\r\n');
+    expect(r.cabecalhos).toMatchObject({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="vendedor.csv"' });
+  });
+  it('RF-CAD-11: entidade desconhecida no modelo dá 404 e perfil sem a ação dá 403', async () => {
+    const t = montar();
+    expect((await t.chamar('GET', '/cargas/modelos/xpto', { sessao: adm })).status).toBe(404);
+    expect((await t.chamar('GET', '/cargas/modelos/vendedor', { sessao: sessaoDe('vendedor') })).status).toBe(403);
+  });
+  it('RF-CAD-11: com `entidade`, o lote precisa ser só <entidade>.csv; senão 400', async () => {
+    const t = montar();
+    const r = await t.carregar('validar', { corpo: { modo: 'validar', entidade: 'vendedor' } });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.corpo)).toContain('Envie só o arquivo vendedor.csv neste botão.');
+    const outro = await t.carregar('validar', { corpo: { modo: 'validar', entidade: 'vendedor' }, arquivos: arquivos().filter((a) => a.nome === 'produto.csv') });
+    expect(outro.status).toBe(400);
+    const ok = await t.carregar('validar', { corpo: { modo: 'validar', entidade: 'filial' }, arquivos: arquivos().filter((a) => a.nome === 'filial.csv') });
+    expect(ok.status).toBe(200);
+  });
+  it('RF-CAD-11: se o arquivo da dependência veio no lote (recusado), continua CARGA_REFERENCIA', async () => {
+    const t = montar();
+    const r = await t.carregar('gravar', { sessao: sessaoDe('gerente') });
+    const rel = r.corpo as RelatorioCarga;
+    expect(rel.erros.filter((e) => e.arquivo === 'vendedor.csv')).toEqual([expect.objectContaining({ codigo: 'CARGA_REFERENCIA', campo: 'filial_external_id' })]);
+  });
+  it('RF-CAD-11: entidade fora da lista é recusada pelo contrato', () => {
+    expect(CargaPedido.safeParse({ modo: 'validar', entidade: 'xpto', arquivos: [{ nome: 'a.csv', bytes: new Uint8Array() }] }).success).toBe(false);
   });
 });

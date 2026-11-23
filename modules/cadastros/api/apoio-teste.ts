@@ -17,6 +17,7 @@ export const sessaoDe = (perfil: Perfil, usuario_id = '22222222-2222-4222-8222-2
 export interface Resposta {
   status: number;
   corpo: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  cabecalhos?: Record<string, string>;
 }
 
 export function criarAmbiente(plugin: PluginModulo, agora = new Date('2026-11-21T15:00:00Z'), tx: Transacao = { consultar: async () => [] }) {
@@ -72,7 +73,7 @@ export function criarAmbiente(plugin: PluginModulo, agora = new Date('2026-11-21
         const r = chave
           ? (await executarIdempotente(idempotencia, tx, { tenant_id: TENANT, chave, rota: `${rota.metodo} /v1/${plugin.manifesto.id}${rota.caminho}`, hash_corpo: hashDoPedido(entrada), agora: relogio.agora }, () => rota.executar(ctx, entrada))).resposta
           : await rota.executar(ctx, entrada);
-        return { status: r.status ?? 200, corpo: r.corpo };
+        return { status: r.status ?? 200, corpo: r.corpo, cabecalhos: r.cabecalhos };
       } catch (e) {
         if (e instanceof ErroApi) return { status: e.status, corpo: { codigo: e.codigo, mensagem: e.message, campos: e.campos } };
         throw e;

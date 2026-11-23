@@ -1,10 +1,9 @@
 import type { EntidadeCarga, LinhasCarga } from '../../contracts';
+import { ARQUIVO_DO_ALVO, motivoDependencia, type AlvoReferencia } from './dependencias';
 import { erroLinha, type ErroLinha } from './erros';
 
 /** Ordem de carga (D13) e a dependência de cada arquivo. */
 export { ENTIDADES_CARGA as ORDEM_CARGA } from '../../contracts';
-
-export type AlvoReferencia = 'filial' | 'vendedor' | 'forma' | 'condicao_pagamento' | 'produto' | 'tabela_preco' | 'cliente';
 
 /** Campo `refs.<campo>` → entidade onde o `external_id` precisa existir. */
 export const REFS_CARGA: Readonly<Record<EntidadeCarga, Readonly<Record<string, AlvoReferencia>>>> = {
@@ -43,15 +42,20 @@ export function acrescentarIdsDoLote<E extends EntidadeCarga>(conhecidos: IdsCon
   for (const l of linhas) for (const [alvo, id] of idsCriados(entidade, l)) conhecidos[alvo].add(id);
 }
 
-/** D13: referências conferidas contra o banco e o lote; sem destino, `CARGA_REFERENCIA` (sem o valor). */
-export function conferirReferencias<E extends EntidadeCarga>(entidade: E, linhas: readonly LinhasCarga[E][], conhecidos: IdsConhecidos): { validas: LinhasCarga[E][]; erros: ErroLinha[] } {
+/** D13: referências conferidas contra o banco e o lote; sem destino, `CARGA_REFERENCIA` (sem o valor). Se o arquivo da dependência não está em `arquivosDoLote` (4º parâmetro), o erro é `CARGA_DEPENDENCIA`. */
+export function conferirReferencias<E extends EntidadeCarga>(entidade: E, linhas: readonly LinhasCarga[E][], conhecidos: IdsConhecidos, arquivosDoLote?: ReadonlySet<EntidadeCarga>): { validas: LinhasCarga[E][]; erros: ErroLinha[] } {
   const erros: ErroLinha[] = [];
   const validas: LinhasCarga[E][] = [];
   const mapa = REFS_CARGA[entidade];
   for (const l of linhas) {
     const refs = ('refs' in l ? l.refs : {}) as Record<string, string | undefined>;
     const ruins = Object.entries(mapa).filter(([campo, alvo]) => refs[campo] !== undefined && !conhecidos[alvo].has(refs[campo] as string));
-    for (const [campo] of ruins) erros.push(erroLinha(l.linha, `${campo}_external_id`, 'CARGA_REFERENCIA', 'Referência não encontrada no banco nem neste lote'));
+    for (const [campo, alvo] of ruins) {
+      const arquivo = ARQUIVO_DO_ALVO[alvo];
+      // RF-CAD-11: sem o arquivo da dependência no lote, o aviso diz qual carregar antes; com ele, vale o erro de referência.
+      if (arquivosDoLote && !arquivosDoLote.has(arquivo)) erros.push(erroLinha(l.linha, `${campo}_external_id`, 'CARGA_DEPENDENCIA', motivoDependencia(arquivo)));
+      else erros.push(erroLinha(l.linha, `${campo}_external_id`, 'CARGA_REFERENCIA', 'Referência não encontrada no banco nem neste lote'));
+    }
     if (ruins.length === 0) validas.push(l);
   }
   return { validas, erros };

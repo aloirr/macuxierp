@@ -13,7 +13,7 @@ import {
   type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
   type FatosFilial,
 } from '../domain';
@@ -612,7 +612,7 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
     ...(l.refs.condicao_pagamento === undefined ? {} : { condicao_pagamento_id: st.ids.condicao_pagamento.get(l.refs.condicao_pagamento) }),
   };
   const negaCredito = (atual: number | null) => d.limite_credito_centavos !== undefined && d.limite_credito_centavos !== (atual ?? 0) && !st.podeCredito;
-  const semCredito = mover(l.linha, 'limite_credito_cents', 'PERFIL_SEM_PERMISSAO', 'O perfil não pode alterar o limite de crédito');
+  const semCredito = mover(l.linha, 'limite_credito_cents', 'PERFIL_SEM_PERMISSAO', MOTIVO_SO_ADMINISTRADOR);
   if (ex) {
     if (negaCredito(ex.limite_credito_centavos)) return semCredito;
     const alvo = { tipo: 'cliente' as const, id: ex.id };
