@@ -83,6 +83,15 @@
         ]
       },
       {
+        "matcher": "Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/guarda-graphify.mjs"
+          }
+        ]
+      },
+      {
         "matcher": "mcp__.*([Mm]erge|MERGE).*",
         "hooks": [
           {
