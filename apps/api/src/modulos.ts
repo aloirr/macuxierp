@@ -141,6 +141,7 @@ function dependenciasFaturamento(o: {
     certificado: a1AtivoDoCore(o.repoCore),
     titulos: repos.titulos,
     configuracao: repos.configuracao,
+    contingencia: repos.contingencia,
     log: logFaturamentoDe(o.log),
     emissaoProducaoHabilitada: EMISSAO_PRODUCAO_HABILITADA,
   };
