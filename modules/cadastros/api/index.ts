@@ -19,6 +19,7 @@ export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
 export type { Dependencias, FonteExterna, Fontes, PortaCertificados, RepoChaves, Repositorios, TabelaChave } from './portas';
 export { exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal, type EntradaCargaPortal } from './carga-portal';
+export { criarPluginPlataformaCadastros, type DependenciasPlataformaCadastros } from './carga-portal-rotas';
 export type { CadastroZeravel, ConsultaUsoCadastros, MotivoUso } from './zeragem-portas';
 export { criarRotas } from './rotas';
 export { repositoriosSql } from './sql';

@@ -13,3 +13,4 @@
 2026-11-23 — T-0058 — carga no /config: adicionar e substituir tudo, menu fora do BKO
 2026-11-23 — T-0058 — substituir_tudo reativa na carga seguinte (ativo=sim por padrão) e não inativa existente sem external_id (sem_chave)
 2026-11-23 — T-0058 (WIP) — reativação no ponto comum da carga (carga-reativar.ts, chamado no executarCarga) e testes forma × prazo
+2026-11-23 — T-0058 (WIP) — carga do portal no por_etapa: rotas validar/gravar (iniciar → comTenant → concluir), estoque 400 por substituirPermitido, testes unitários e de banco

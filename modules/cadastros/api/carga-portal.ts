@@ -15,7 +15,7 @@
  */
 import {
   ArquivoRecebido, CadastroCargaPortal, DEPENDENCIAS_CARGA_PORTAL, ErroApi, FRASE_SUBSTITUIR_TUDO, GravarCargaPlataformaResposta, LIMITE_LINHAS_ERRO_VALIDACAO,
-  MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, lerCsv, normalizarFrase,
+  MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, lerCsv, normalizarFrase, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
 import type { RelatorioCarga, ResultadoEntidade } from '../contracts';
@@ -52,6 +52,11 @@ export function exigirFraseSubstituir(frase: string | undefined): void {
   if (frase === undefined || normalizarFrase(frase) !== FRASE_SUBSTITUIR_TUDO) {
     throw erros.regra('RN-CAD-10', MENSAGEM_FRASE_SUBSTITUIR, { frase: MENSAGEM_FRASE_SUBSTITUIR }, { codigo: 'frase_nao_confere' });
   }
+}
+
+/** `substituir_tudo` só onde o SDK permite (o estoque só aceita o Adicionar): 400 `VALIDACAO` no campo `modo`. */
+function exigirModoPermitido(cadastro: CadastroCargaPortal, modo: ModoGravarCarga): void {
+  if (modo === 'substituir_tudo' && !substituirPermitido(cadastro)) throw erros.validacao({ modo: MENSAGEM_SUBSTITUIR_NAO_PERMITIDO });
 }
 
 /** RF-CAD-11: 409 se algum cadastro de que este depende ainda não tem registro ativo (a forma vive na condição: fica de fora). */
@@ -137,6 +142,7 @@ function resultadoDoCadastro(rel: RelatorioCarga, cadastro: CadastroCargaPortal)
  */
 export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<GravarCargaPlataformaResposta> {
   const cadastro = CadastroCargaPortal.parse(e.cadastro);
+  exigirModoPermitido(cadastro, e.modo);
   const substituir = e.modo === 'substituir_tudo';
   if (substituir) exigirFraseSubstituir(e.frase);
   else if (e.frase !== undefined) throw erros.validacao({ frase: 'A frase é só do Substituir tudo' });
@@ -173,6 +179,7 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
 /** `POST .../cargas/:cadastro/validar`: só lê (modo `validar` do `executarCarga`), com o efeito previsto do Substituir tudo. */
 export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<ValidarCargaPlataformaResposta> {
   const cadastro = CadastroCargaPortal.parse(e.cadastro);
+  exigirModoPermitido(cadastro, e.modo);
   const arquivo = arquivoDoCadastro(e);
   const rel = await executarCarga(deps, c, 'validar', [arquivo], cadastro);
   const res = resultadoDoCadastro(rel, cadastro);

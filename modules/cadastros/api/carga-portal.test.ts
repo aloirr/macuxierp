@@ -32,7 +32,7 @@ function montar(uso?: ConsultaUsoCadastros) {
     auditar: async (d: unknown) => void auditoria.push(d), enfileirar: async () => ({ id: 'x' }),
   } as unknown as ContextoRota;
   const deps = { ...m.deps, ...(uso ? { usoCadastros: uso } : {}) };
-  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
+  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto' | 'forma_pagamento', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
     gravarCargaPortal(deps, c, { cadastro, modo, frase, arquivo: arq(conteudo) });
   return { ...m, c, deps, eventos, auditoria, gravar };
 }
@@ -149,13 +149,21 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     expect(ativos(t)).toBe(2);
   });
 
-  it('RN-CAD-10: forma de pagamento e estoque não têm o que inativar (inativadas 0)', async () => {
+  it('RN-CAD-10: forma de pagamento não tem o que inativar (inativadas 0)', async () => {
+    const t = montar();
+    const r = await t.gravar('forma_pagamento', csv('forma_pagamento'), 'substituir_tudo', FRASE);
+    expect(r).toMatchObject({ inativadas: 0, efeito: { total: 0, a_inativar: 0 } });
+  });
+
+  it('RN-CAD-10: estoque só aceita o Adicionar: substituir_tudo é 400 VALIDACAO no campo modo (gravar e validar)', async () => {
     const t = montar();
     await t.gravar('filial', csv('filial'));
     await t.gravar('produto', csv('produto'));
-    // estoque exige filial e produto carregados: o plano é vazio, o efeito zerado
-    const r = await gravarCargaPortal(t.deps, t.c, { cadastro: 'estoque', modo: 'substituir_tudo', frase: FRASE, arquivo: arq(csv('estoque')) });
-    expect(r).toMatchObject({ inativadas: 0, efeito: { total: 0, a_inativar: 0 } });
+    const g = await falha(gravarCargaPortal(t.deps, t.c, { cadastro: 'estoque', modo: 'substituir_tudo', frase: FRASE, arquivo: arq(csv('estoque')) }));
+    expect(g).toMatchObject({ status: 400, codigo: 'VALIDACAO' });
+    expect(JSON.stringify(g.campos)).toContain('modo');
+    expect((await falha(validarCargaPortal(t.deps, t.c, { cadastro: 'estoque', modo: 'substituir_tudo', arquivo: arq(csv('estoque')) }))).status).toBe(400);
+    expect((await gravarCargaPortal(t.deps, t.c, { cadastro: 'estoque', modo: 'adicionar', arquivo: arq(csv('estoque')) })).modo).toBe('adicionar');
   });
 
   it('RN-CAD-10: validar não grava nada e prevê o efeito do substituir tudo', async () => {
