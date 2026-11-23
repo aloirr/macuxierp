@@ -1,9 +1,11 @@
 /**
  * T-0056 (testes): integração FDV no portal `/config` (ADR 0013 §2, §3, §4 e §6) na API real (`appPgDeTeste`, plugins de
- * plataforma de produção com a chave do conector) sobre o PostgreSQL efêmero migrado até a 0039.
+ * plataforma de produção com a chave do conector) sobre o PostgreSQL efêmero migrado até a 0042.
  * - E1: as 6 rotas do plugin: sem sessão 401; empresa inexistente 404; empresa sem o módulo `integracao-fdv` 422 RN-CORE-02;
  *   entrada inválida 400. (Cookie do tenant, CSRF e TROCAR_SENHA ficam na matriz do isolamento.db.test.ts, que enumera o plugin.)
- * - E2: o superadmin grava a credencial pelo portal → o administrador do tenant lê `GET /v1/integracao-fdv/status`
+ * - E2: o superadmin grava a credencial pelo portal (nasce sem cadastro ligado e sem carga inicial, 0042) → liga o produto pela
+ *   configuração (1 `integracao-fdv.carga_inicial.solicitada@1` só com as recém-ligadas; `preco` traz `tabela_preco`)
+ *   → o administrador do tenant lê `GET /v1/integracao-fdv/status`
  *   (configurado, só o prefixo) e o tenant B não vê nada de A (RLS) → `POST carga-completa` abre a sessão e antecipa o cursor
  *   → um ciclo da agenda do worker (papel `macuxierp_worker`) leva a carga ao dublê HTTP do Hub com a chave gravada pelo portal.
  * A chave do conector nunca aparece em resposta, log pino nem auditoria. Dados fictícios (exemplo.invalid).
@@ -85,6 +87,11 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
       acao: string;
       linha: string;
     }[];
+  /** `payload.entidades` de cada `integracao-fdv.carga_inicial.solicitada@1` do tenant, na ordem de gravação. */
+  const cargasIniciais = async (t: string) =>
+    (
+      await b.admin.query("SELECT payload FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'integracao-fdv.carga_inicial.solicitada@1' ORDER BY created_at, id", [t])
+    ).rows.map((r) => (r.payload as { payload: { entidades: string[] } }).payload.entidades);
   const loginTenant = async (slug: string, email: string) => {
     const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: slug, email, senha: SENHA_DE_TESTE } });
     expect(r.statusCode).toBe(200);
@@ -186,12 +193,20 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
       expect(s.cadastros.map((c) => c.ligada)).toEqual(ENTIDADES_ENVIO_FDV.map(() => false));
     });
 
-    it('PUT /credencial (201) e PUT /configuracao só com o produto: cifra com a empresa alvo, auditoria sem a chave', async () => {
+    it('PUT /credencial (201): a primeira credencial nasce sem cadastro ligado e não pede carga inicial (ligar um por um, 0042)', async () => {
       const cred = await sa('PUT', urlDe('credencial', A), { corpo: CORPOS.credencial! });
       expect(cred.statusCode).toBe(201);
+      const c = cred.json<{ entidades_habilitadas: string[]; cadastros: { ligada: boolean }[] }>();
+      expect(c.entidades_habilitadas).toEqual([]);
+      expect(c.cadastros.some((x) => x.ligada)).toBe(false);
+      expect(await cargasIniciais(A)).toEqual([]);
+    });
+
+    it('PUT /configuracao ligando o produto (200): 1 carga_inicial.solicitada@1 só com o produto; cifra com a empresa alvo, auditoria sem a chave', async () => {
       const conf = await sa('PUT', urlDe('configuracao', A), { corpo: CORPOS.configuracao!, chave: randomUUID() });
       expect(conf.statusCode).toBe(200);
       expect(conf.json()).toMatchObject({ entidades_habilitadas: [ENTIDADE], limite_registros_lote: 100 });
+      expect(await cargasIniciais(A)).toEqual([[ENTIDADE]]);
       const { rows } = await b.admin.query('SELECT chave_cifrada, chave_prefixo FROM integracao_fdv.credencial WHERE tenant_id = $1 AND deleted_at IS NULL', [A]);
       expect(rows).toHaveLength(1);
       expect(decifrarCampo({ chave: MESTRA, tenantId: A, cifrado: rows[0].chave_cifrada }).toString('utf8')).toBe(CHAVE);
@@ -257,6 +272,20 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV no portal /config: borda das r
       expect(aud).not.toContain(CHAVE);
       expect(aud).not.toContain(CHAVE.slice(0, 8)); // nem o prefixo (ADR 0013 §4)
       expect(hub.log.join('\n')).not.toContain(CHAVE);
+    });
+
+    it('ligar o preço pede a carga do preço com a tabela de preço (dependência); religar igual não pede de novo', async () => {
+      const PRECO = await criarTenant(b.admin, 't0056-ifdv-preco', ['core', 'integracao-fdv']);
+      const cred = await p.pedir('PUT', urlDe('credencial', PRECO), { token, chave: randomUUID(), corpo: { conector_id: 'erp-t0056-preco', chave: gerarChaveConector(), ambiente: 'teste' } });
+      expect(cred.statusCode).toBe(201);
+      expect(await cargasIniciais(PRECO)).toEqual([]);
+      const corpo = { entidades_habilitadas: ['preco'], limite_registros_lote: 100 };
+      expect((await p.pedir('PUT', urlDe('configuracao', PRECO), { token, chave: randomUUID(), corpo })).statusCode).toBe(200);
+      const cargas = await cargasIniciais(PRECO);
+      expect(cargas).toHaveLength(1);
+      expect([...cargas[0]!].sort()).toEqual(['preco', 'tabela_preco']);
+      expect((await p.pedir('PUT', urlDe('configuracao', PRECO), { token, chave: randomUUID(), corpo })).statusCode).toBe(200);
+      expect(await cargasIniciais(PRECO)).toHaveLength(1);
     });
 
     it('espelho vazio: carga completa pelo portal e um ciclo do worker não mandam lote vazio ao Hub, não recusam nem pausam o cadastro', async () => {
