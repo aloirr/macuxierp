@@ -26,6 +26,7 @@ describe('tela Selecionar filial', () => {
     const h = renderToStaticMarkup(await SelecionarFilial());
     expect(h).toContain('Matriz');
     expect(h).toContain('Continuar');
+    expect(h).toContain('class="mx-radio"');
     expect(h).not.toContain('Nenhuma filial liberada');
   });
 });

@@ -2,9 +2,29 @@
 import { useState } from 'react';
 import { ROTULOS_ENTIDADE, csvDosErros, csvDoResumo, resumoDoRelatorio, textoDeConfirmacao, tituloDoRelatorio, totaisDoRelatorio } from '@macuxierp/cadastros/web';
 import type { EntidadeCarga, ModoCarga, RelatorioCarga } from '@macuxierp/cadastros/contracts';
+import { TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { plural } from '@macuxierp/platform-sdk';
 import { baixarCsv } from '@/lib/baixar-csv';
 import { BOTOES_CARGA, arquivoDaEntidade, dependenciasPorArquivo, enderecoDoModelo, errosDaTabela, formularioDaEntidade, podeGravar, problemaDoArquivo } from '@/lib/carga-entidade';
 import { CARGA_NAO_CONCLUIDA } from '@/lib/textos';
+
+type LinhaResumo = ReturnType<typeof resumoDoRelatorio>[number];
+type LinhaErro = RelatorioCarga['erros'][number];
+const COLUNAS_RESUMO: ColunaTabela<LinhaResumo>[] = [
+  { id: 'entidade', titulo: 'Entidade' }, { id: 'situacao', titulo: 'Situação' },
+  { id: 'lidas', titulo: 'Lidas', tipo: 'numero' }, { id: 'inseridas', titulo: 'Inseridas', tipo: 'numero' },
+  { id: 'atualizadas', titulo: 'Atualizadas', tipo: 'numero' }, { id: 'sem_mudanca', titulo: 'Sem mudança', tipo: 'numero' },
+  { id: 'recusadas', titulo: 'Recusadas', tipo: 'numero' }, { id: 'avisos', titulo: 'Avisos', celula: (l) => l.avisos || '—' },
+];
+const COLUNAS_ERROS: ColunaTabela<LinhaErro>[] = [
+  { id: 'linha', titulo: 'Linha', tipo: 'numero', celula: (e) => e.linha ?? '—' },
+  { id: 'campo', titulo: 'Campo', celula: (e) => e.campo ?? '—' }, { id: 'motivo', titulo: 'Motivo' },
+];
+
+/** Aviso dos erros que o relatório não traz (RF-CAD-11): diz quantos faltam e o que fazer. */
+export function textoErrosOmitidos(n: number): string {
+  return `Há mais ${plural(n, 'erro', 'erros')} que ${n === 1 ? 'não aparece' : 'não aparecem'} aqui. Corrija estes e valide de novo.`;
+}
 
 /** Prévia ou resultado de uma entidade: resumo, dependências agrupadas e erros por linha (o motivo vem da API, sem o valor digitado). */
 export function PreviaDaCarga({ relatorio }: { relatorio: RelatorioCarga }) {
@@ -14,14 +34,7 @@ export function PreviaDaCarga({ relatorio }: { relatorio: RelatorioCarga }) {
   return (
     <div role="status">
       <h3>{tituloDoRelatorio(relatorio)}</h3>
-      <table>
-        <thead><tr><th>Entidade</th><th>Situação</th><th>Lidas</th><th>Inseridas</th><th>Atualizadas</th><th>Sem mudança</th><th>Recusadas</th><th>Avisos</th></tr></thead>
-        <tbody>
-          {resumoDoRelatorio(relatorio).map((l) => (
-            <tr key={l.arquivo}><td>{l.entidade}</td><td>{l.situacao}</td><td>{l.lidas}</td><td>{l.inseridas}</td><td>{l.atualizadas}</td><td>{l.sem_mudanca}</td><td>{l.recusadas}</td><td>{l.avisos || '—'}</td></tr>
-          ))}
-        </tbody>
-      </table>
+      <TabelaDensa colunas={COLUNAS_RESUMO} linhas={resumoDoRelatorio(relatorio)} chaveLinha={(l) => l.arquivo} legenda="Resumo da carga por entidade" />
       {dependencias.map((d) => (
         <div key={d.arquivo} className="faixa-aviso" role="alert">
           <ul>{d.motivos.map((m) => <li key={m}>{d.arquivo} — {m}</li>)}</ul>
@@ -31,14 +44,10 @@ export function PreviaDaCarga({ relatorio }: { relatorio: RelatorioCarga }) {
         </div>
       ))}
       {tabelas.map((g) => (
-        <table key={g.arquivo}>
-          <caption>Erros de {g.arquivo}</caption>
-          <thead><tr><th>Arquivo</th><th>Linha</th><th>Campo</th><th>Motivo</th></tr></thead>
-          <tbody>{g.erros.map((e, i) => <tr key={`${e.linha}-${e.campo}-${i}`}><td>{e.arquivo}</td><td>{e.linha ?? '—'}</td><td>{e.campo ?? '—'}</td><td>{e.motivo}</td></tr>)}</tbody>
-        </table>
+        <TabelaDensa key={g.arquivo} colunas={COLUNAS_ERROS} linhas={g.erros} chaveLinha={(e) => `${e.arquivo}-${e.linha}-${e.campo}-${e.motivo}`} legenda={`Erros de ${g.arquivo}`} />
       ))}
       {totais.erros === 0 && <p className="apoio">Nenhum erro.</p>}
-      {relatorio.erros_omitidos > 0 && <p className="apoio">e mais {relatorio.erros_omitidos} erros. Corrija estes e valide de novo.</p>}
+      {relatorio.erros_omitidos > 0 && <p className="apoio">{textoErrosOmitidos(relatorio.erros_omitidos)}</p>}
       <p>
         <button className="mx-botao-secundario" type="button" onClick={() => baixarCsv('carga-resumo.csv', csvDoResumo(relatorio))}>Exportar resumo CSV</button>{' '}
         <button className="mx-botao-secundario" type="button" disabled={relatorio.erros.length === 0} onClick={() => baixarCsv('carga-erros.csv', csvDosErros(relatorio))}>Exportar erros CSV</button>
@@ -96,7 +105,7 @@ function CartaoEntidade({ entidade, api }: { entidade: EntidadeCarga; api: strin
       {problema && <p className="erro" role="alert">{problema}</p>}
       {erro && <p className="erro" role="alert">{erro}</p>}
       <p>
-        <button className="mx-botao" type="button" disabled={enviando} onClick={() => void enviar('validar')}>{enviando ? 'Enviando…' : 'Validar'}</button>{' '}
+        <button className="mx-botao-secundario" type="button" disabled={enviando} onClick={() => void enviar('validar')}>{enviando ? 'Enviando…' : 'Validar'}</button>{' '}
         <button className="mx-botao" type="button" disabled={enviando || !arquivo || validado !== arquivo} onClick={() => void enviar('gravar')}>Gravar</button>
       </p>
       {relatorio && <PreviaDaCarga relatorio={relatorio} />}
