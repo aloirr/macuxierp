@@ -4,7 +4,7 @@
  * a API revalida tudo (RN-CORE-02). Sem dado pessoal em log; horários no fuso do tenant.
  */
 import {
-  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
+  ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, type IdLista, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
   dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
   requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
@@ -51,9 +51,6 @@ const FILIAL: FiltroTela = { chave: 'filial_id', rotulo: 'Filial', tipo: 'cadast
 const DE: FiltroTela = { chave: 'de', rotulo: 'De', tipo: 'data' };
 const ATE: FiltroTela = { chave: 'ate', rotulo: 'Até', tipo: 'data' };
 const AMBIENTE: FiltroTela = { chave: 'ambiente', rotulo: 'Ambiente', tipo: 'selecao', opcoes: Ambiente.options.map((a) => ({ valor: a, rotulo: textoDoAmbiente(a) })) };
-
-/** Id da lista = id da página do módulo; `definirPaginaLista` tipa `id` como string, então a união literal vem das chaves de `ROTULO_LINHA` (as mesmas dos ids). */
-type IdLista = keyof typeof ROTULO_LINHA;
 
 function lista(id: IdLista, pagina: TelaLista['pagina'], filtrosTela: readonly FiltroTela[], extra: Partial<TelaLista> = {}): TelaLista {
   return {
@@ -125,7 +122,7 @@ function validarParcial(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   const r = formularioParcial({ itens }).validar(Object.fromEntries(itens.map((i) => [i.sequencia, i.quantidade])));
   if (!r.ok) {
     const [, erro] = Object.entries(r.erros)[0] ?? [];
-    return { ok: false, erro: r.geral ?? erro ?? '', ...(Object.keys(r.erros).length > 0 ? { erros: r.erros } : {}) };
+    return { ok: false, erro: r.geral ?? erro ?? '', ...(Object.keys(r.erros).length > 0 ? { erros: r.erros, errosPartes: r.errosPartes } : {}) };
   }
   return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO, ...(r.itens ? { itens: r.itens } : {}) }));
 }
@@ -181,7 +178,7 @@ export const LISTA_PEDIDOS_A_FATURAR: TelaLista = lista(
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: (['a_faturar', 'faturado_parcial', 'faturado', 'cancelado'] as const).map((s) => ({ valor: s, rotulo: rotuloDeStatusPedido(s) })) },
     FILIAL, DE, ATE,
   ],
-  { acaoDaLinha: { acao: acaoEmitir, maisAcoes: (l, p) => { const a = acaoEmitirParcial(l, p); return a ? [a] : []; }, validarAcao: validarEmitir, escritas: [POST(NOTAS)], novaChave, leituras: [LEITURA_PEDIDO], itensDaLeitura: itensDoPedido } },
+  { acaoDaLinha: { acao: acaoEmitir, maisAcoes: (l, p) => { const a = acaoEmitirParcial(l, p); return a ? [a] : []; }, validarAcao: validarEmitir, escritas: [POST(NOTAS)], novaChave, leituras: [LEITURA_PEDIDO], itensDaLeitura: itensDoPedido }, temHorario: true },
 );
 
 export const LISTA_NOTAS: TelaLista = lista(
@@ -191,10 +188,10 @@ export const LISTA_NOTAS: TelaLista = lista(
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: StatusNota.options.map((s) => ({ valor: s, rotulo: rotuloDeStatusNota(s) })) },
     AMBIENTE, FILIAL, { chave: 'serie', rotulo: 'Série', tipo: 'texto' }, { chave: 'numero', rotulo: 'Número', tipo: 'texto' }, DE, ATE,
   ],
-  { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR },
+  { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR, temHorario: true },
 );
 
-export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes') });
+export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes'), temHorario: true });
 
 export const LISTA_TITULOS: TelaLista = lista(
   'titulos',
@@ -288,6 +285,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     titulo: `Nota ${sigla}`,
     ...(seloStatus ? { selo: selo(seloStatus) } : {}),
     ...(faixaDaNota(n) ? { faixa: faixaDaNota(n) as string } : {}),
+    temHorario: true,
     cabecalho: [
       { rotulo: 'Filial', valor: n.filial_nome ?? '' }, { rotulo: 'Pedido', valor: n.pedido_numero === null || n.pedido_numero === undefined ? '' : String(n.pedido_numero) },
       { rotulo: 'Cliente', valor: n.cliente_razao_social ?? '' }, { rotulo: 'Ambiente', valor: textoDoAmbiente(n.ambiente) }, { rotulo: 'Natureza da operação', valor: n.natureza_operacao },
@@ -366,6 +364,7 @@ export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, ag
     ],
     pendencias: [],
     acoes,
+    ...(t.baixas.length > 0 ? { temHorario: true } : {}),
     tabelas: [{
       titulo: 'Baixas',
       colunas: [{ id: 'quando', rotulo: 'Baixada em' }, { id: 'valor', rotulo: 'Valor', numerica: true }, { id: 'forma', rotulo: 'Forma' }, { id: 'situacao', rotulo: 'Situação' }],
