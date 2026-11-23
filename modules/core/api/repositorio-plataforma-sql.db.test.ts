@@ -115,6 +115,14 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     expect((e as ErroApi).status).toBe(409);
     const s = await chamar('POST', '/empresas/:id/primeiro-admin/senha', { params: { id } });
     expect(s.corpo).toMatchObject({ usuario_id });
+    const m = await chamar('GET', '/empresas/:id', { params: { id } });
+    expect((m.corpo as { primeiro_admin: { email_mascarado: string } }).primeiro_admin.email_mascarado).toBe('ad****@exemplo.com.br');
+    const rev = await chamar('POST', '/empresas/:id/primeiro-admin/email', { params: { id } }, true);
+    expect(rev.corpo).toEqual({ email: 'admin@exemplo.com.br' });
+    const n = await b.admin.query(`SELECT count(*)::int n FROM plataforma.auditoria WHERE acao = 'plataforma.admin.revelar_email' AND tenant_id = $1`, [id]);
+    expect(n.rows[0].n).toBe(1);
+    const t = await b.admin.query(`SELECT coalesce(string_agg(coalesce(antes::text,'') || coalesce(depois::text,''), ''), '') t FROM plataforma.auditoria WHERE tenant_id = $1`, [id]);
+    expect(t.rows[0].t).not.toContain('admin@exemplo.com.br');
   });
 
   it('suspender revoga as sessões do tenant e lista/lê a empresa', async () => {
