@@ -40,8 +40,8 @@ describe('empresa.mjs: listas e padrões presos às fontes', () => {
   it('MODULOS_LIGAR ∪ MODULOS_INFORMAR = MODULOS do platform-sdk', () => {
     expect([...listaDoEmpresa('MODULOS_LIGAR'), ...listaDoEmpresa('MODULOS_INFORMAR')].sort()).toEqual([...MODULOS].sort());
   });
-  it('PADRAO_SLUG (--slug legado) e PADRAO_OPERADOR iguais aos de scripts/plataforma/comum.mjs', () => {
-    for (const nome of ['PADRAO_SLUG', 'PADRAO_OPERADOR']) expect(padraoDoFonte(FONTE_EMPRESA, nome)).toBe(padraoDoFonte(FONTE_COMUM, nome));
+  it('PADRAO_OPERADOR igual ao de scripts/plataforma/comum.mjs', () => {
+    expect(padraoDoFonte(FONTE_EMPRESA, 'PADRAO_OPERADOR')).toBe(padraoDoFonte(FONTE_COMUM, 'PADRAO_OPERADOR'));
   });
 });
 
@@ -61,7 +61,7 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
 
   /**
    * Como no contêiner: PG* do admin, nome da empresa, e-mail, nome e senha só no ambiente; o argv leva só o código (ou a
-   * UF do sorteio) e o operador. `codigo: null` = sem `--codigo` (o teste passa `--uf` ou `--slug` em `args`).
+   * UF do sorteio) e o operador. `codigo: null` = sem `--codigo` (o teste passa `--uf` em `args`).
    */
   function empresa(args: string[], o: { senha?: string; email?: string; codigo?: string | null; nome?: string } = {}) {
     const nome = o.nome ?? EMPRESA_NOME;
@@ -270,18 +270,8 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(await um('SELECT 1 FROM plataforma.tenant')).toHaveLength(total);
   });
 
-  it('--slug LEGADO: o comportamento de antes (slug como veio, sem a linha do código)', async () => {
-    const r = empresa(['--slug', 'loja-antiga', '--confirmar'], { senha: senhaProvisoria(), codigo: null, email: 'legado@exemplo.invalid' });
-    expect(r.status, r.saida).toBe(0);
-    expect(r.estado).toBe('estado: usuario-criado');
-    const t = (await tenantId('loja-antiga'))!;
-    expect(r.saida).toContain(`empresa loja-antiga: criada (id ${t})`);
-    expect(r.saida).not.toContain('código da empresa');
-  });
-
   it.each([
-    ['--slug com --codigo', ['--slug', 'thathyany', '--codigo', 'AM2808'], 'um dos dois'],
-    ['--slug fora do CHECK', ['--slug', 'Thathyany'], '--slug: minúsculas'],
+    ['--slug (saiu na fase 2)', ['--slug', 'loja-antiga'], '--slug saiu'],
     ['UF inexistente no código', ['--codigo', 'XX1234'], '--codigo: código do FDV'],
     ['código com 3 dígitos', ['--codigo', 'AM123'], '--codigo: código do FDV'],
     ['código com 5 dígitos', ['--codigo', 'AM12345'], '--codigo: código do FDV'],

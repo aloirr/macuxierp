@@ -132,19 +132,22 @@ export const EmailPrimeiroAdminResposta = z.object({ email: EmailUsuario });
 export type EmailPrimeiroAdminResposta = z.infer<typeof EmailPrimeiroAdminResposta>;
 
 /**
- * Criação da empresa (RN-CORE-11), fase 1: entrada com `codigo` (o código da licença do FDV) ou `slug` (legado), um dos
- * dois; `uf`, se vier, é o prefixo do código. A SAÍDA mantém `slug: string` (o código em minúsculas), como o core de hoje.
- * Fase 2 (PR curto do engenheiro, depois que o core aceitar `slug: string | null`): só `uf`, com o sorteio no core.
+ * Criação da empresa (RN-CORE-11), fase 2: entrada com exatamente um entre `codigo` (o código da licença do FDV) e
+ * `slug` (legado), ou então só a `uf`, para o core sortear UF + 4 dígitos. Com `codigo`, a `uf`, se vier, é o prefixo dele.
+ * Na SAÍDA, `slug` é o código em minúsculas (ou o slug legado) e fica `null` quando veio só a `uf` (o core sorteia).
  */
 export const CriarEmpresaEntrada = z
   .object({
     codigo: CodigoEmpresa.optional(),
-    /** LEGADO: até o /config do apps enviar `codigo`. Nunca junto com `codigo` nem com `uf`. */
+    /**
+     * LEGADO: até o /config do apps enviar `codigo`. Nunca junto com `codigo` nem com `uf`. `null` = ausente (a saída
+     * manda `slug: null` quando veio só a `uf`, e o apps reenvia a saída à API).
+     */
     slug: z
       .string()
       .regex(PADRAO_SLUG_EMPRESA, 'Use de 2 a 40 letras minúsculas, dígitos ou hífen, começando por letra ou dígito')
       .refine((s) => !(SLUGS_RESERVADOS as readonly string[]).includes(s), 'Slug reservado')
-      .optional(),
+      .nullish(),
     /** `null` = ausente (a saída manda `uf: null`, e o apps reenvia a saída à API). */
     uf: z.enum(UFS).nullish(),
     /** Nome legal (de MEI pode ser dado pessoal): nunca vai para log nem para a auditoria (ADR 0012). */
@@ -156,11 +159,13 @@ export const CriarEmpresaEntrada = z
   })
   .transform((e, ctx) => {
     const uf = e.uf ?? null;
-    if (e.codigo === undefined && e.slug === undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['codigo'], message: 'Informe o código do FDV' });
+    const slugLegado = e.slug ?? null;
+    if (e.codigo === undefined && slugLegado === null) {
+      if (uf !== null) return { slug: null, uf, nome: e.nome, fuso: e.fuso };
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['codigo'], message: 'Informe o código do FDV ou a UF para sortear' });
       return z.NEVER;
     }
-    if (e.codigo !== undefined && e.slug !== undefined) {
+    if (e.codigo !== undefined && slugLegado !== null) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['slug'], message: 'Informe o código do FDV, sem o slug' });
       return z.NEVER;
     }
@@ -168,10 +173,10 @@ export const CriarEmpresaEntrada = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['uf'], message: 'A UF precisa ser a do código' });
       return z.NEVER;
     }
-    const slug = e.codigo !== undefined ? codigoParaSlug(e.codigo) : (e.slug as string);
+    const slug: string | null = e.codigo !== undefined ? codigoParaSlug(e.codigo) : slugLegado;
     return { slug, uf, nome: e.nome, fuso: e.fuso };
   });
-/** Depois do parse: `slug` sempre preenchido (o código em minúsculas) e `uf` ou `null`. */
+/** Depois do parse: `slug` é o código em minúsculas (ou o legado), ou `null` quando veio só a `uf` (sorteio no core). */
 export type CriarEmpresaEntrada = z.infer<typeof CriarEmpresaEntrada>;
 
 /** Mudança de licenças: só os módulos citados mudam; o core (`MODULOS_BASE`) nunca é desligado. */

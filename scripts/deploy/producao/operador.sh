@@ -23,7 +23,7 @@
 #   são ligados (licenca.mjs). Roda o empresa.mjs.
 #   --codigo é o código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808; RN-CORE-11), sem diferenciar maiúsculas;
 #   empresa sem FDV: --uf <UF> sorteia UF + 4 dígitos livres. Um dos dois. A saída mostra o código final.
-#   --slug <slug> é LEGADO (o comportamento de antes), com um aviso no stderr.
+#   --slug (legado) saiu na fase 2 da T-0053: agora dá erro de uso (saída 2).
 # criar-superadmin (ADR 0012 §5): o superadmin do portal /config, com deve_trocar_senha (troca no 1º acesso), auditado
 #   no tenant de referência (plataforma.superadmin.criar). --nome é opcional (padrão "Superadmin"; 2 a 80 caracteres).
 # superadmin (ADR 0012 §5): --desativar (revoga as sessões abertas do portal), --reativar ou --destravar (zera as falhas
@@ -133,15 +133,15 @@ conteiner() {
 }
 
 criar_empresa() {
-  local CODIGO='' UF='' SLUG='' NOME='' EMAIL='' ADMIN_NOME='Administrador' OPERADOR='' CONFIRMAR=0
+  local CODIGO='' UF='' NOME='' EMAIL='' ADMIN_NOME='Administrador' OPERADOR='' CONFIRMAR=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --confirmar) CONFIRMAR=1; shift; continue ;;
-      --slug | --codigo | --uf | --nome | --admin-email | --admin-nome | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
+      --slug) uso "--slug saiu: use --codigo <código do FDV, ex.: AM2808> ou --uf <UF> para sortear" ;;
+      --codigo | --uf | --nome | --admin-email | --admin-nome | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
       *) uso "opção desconhecida: $1" ;;
     esac
     case "$1" in
-      --slug) SLUG="$2" ;;
       --codigo) CODIGO="$2" ;;
       --uf) UF="$2" ;;
       --nome) NOME="$2" ;;
@@ -153,14 +153,10 @@ criar_empresa() {
   done
   # formato aqui; a UF da lista oficial (UFS do SDK) o empresa.mjs confere
   local EMPRESA_ARGS=()
-  if [ -n "$SLUG" ] && [ -z "$CODIGO" ] && [ -z "$UF" ]; then
-    [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{1,39}$ ]] || uso "--slug: minúsculas, dígitos e hífen, 2 a 40 caracteres"
-    echo "--slug é legado: use --codigo <código do FDV> (ex.: AM2808) ou --uf <UF>" >&2
-    EMPRESA_ARGS=(--slug "$SLUG")
-  elif [ -n "$CODIGO" ] && [ -z "$UF" ] && [ -z "$SLUG" ]; then
+  if [ -n "$CODIGO" ] && [ -z "$UF" ]; then
     [[ "$CODIGO" =~ ^[A-Za-z]{2}[0-9]{4}$ ]] || uso "--codigo: código do FDV, UF + 4 dígitos, ex.: AM2808"
     EMPRESA_ARGS=(--codigo "$CODIGO")
-  elif [ -n "$UF" ] && [ -z "$CODIGO" ] && [ -z "$SLUG" ]; then
+  elif [ -n "$UF" ] && [ -z "$CODIGO" ]; then
     [[ "$UF" =~ ^[A-Za-z]{2}$ ]] || uso "--uf: sigla da UF, ex.: AM"
     EMPRESA_ARGS=(--uf "$UF")
   else

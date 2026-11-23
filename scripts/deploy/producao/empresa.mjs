@@ -4,13 +4,13 @@
  * Quem chama é o operador.sh (ao lado), DENTRO do contêiner `psql` do compose.yml (imagem da API: node 24 e psql 16,
  * sem node_modules), como o admin do DBaaS (PG* do entrypoint):
  *
- *   node --input-type=module - --codigo <UF+4 dígitos> | --uf <UF> | --slug <slug> --operador <nome> [--confirmar]  < empresa.mjs
+ *   node --input-type=module - --codigo <UF+4 dígitos> | --uf <UF> --operador <nome> [--confirmar]  < empresa.mjs
  *
  * Código da empresa (RN-CORE-11, T-0053) = o código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808), sem
  * diferenciar maiúsculas; no banco fica em `plataforma.tenant.slug`, em minúsculas. `--codigo` cria ou reconhece a
  * empresa com esse código; `--uf` (empresa sem FDV) sorteia UF + 4 dígitos no próprio SQL, até 20 tentativas contra
  * todos os slugs (os excluídos também contam). A simulação mostra um sorteio; o --confirmar sorteia de novo.
- * `--slug` é LEGADO (o comportamento de antes, para os testes e roteiros antigos); o operador.sh avisa no stderr.
+ * `--slug` (legado) saiu na fase 2 da T-0053: dá erro de uso (saída 2).
  *
  * Ambiente (nunca no argv): MACUXIERP_EMPRESA_NOME (nome legal da empresa: de MEI pode ser dado pessoal),
  * MACUXIERP_ADMIN_EMAIL, MACUXIERP_ADMIN_NOME e, só com --confirmar, MACUXIERP_SENHA_INICIAL (gerada no host pelo
@@ -35,7 +35,6 @@ import { promisify } from 'node:util';
 const PADRAO_CODIGO = /^[A-Za-z]{2}[0-9]{4}$/;
 const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 const TENTATIVAS_SORTEIO = 20;
-const PADRAO_SLUG = /^[a-z0-9][a-z0-9-]{1,39}$/; // LEGADO (--slug): CHECK de plataforma.tenant.slug (0002)
 const PADRAO_OPERADOR = /^[a-z][a-z0-9._-]{1,39}$/; // cópia de scripts/plataforma/comum.mjs (o teste operador-empresa.db.test.ts trava)
 const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // cópia de MODULOS do SDK; o teste operador-empresa.db.test.ts trava
@@ -53,8 +52,9 @@ class ErroUso extends Error {}
 
 function lerArgumentos(argv, env) {
   const op = { confirmar: false };
-  const opcoes = { '--codigo': 'codigo', '--uf': 'uf', '--slug': 'slug', '--operador': 'operador' };
+  const opcoes = { '--codigo': 'codigo', '--uf': 'uf', '--operador': 'operador' };
   for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--slug') throw new ErroUso('--slug saiu: use --codigo ou --uf (veja o operador.sh)');
     if (argv[i] === '--confirmar') {
       op.confirmar = true;
       continue;
@@ -68,11 +68,8 @@ function lerArgumentos(argv, env) {
   op.email = (env.MACUXIERP_ADMIN_EMAIL ?? '').trim().toLowerCase(); // mesma normalização da API (auth/servico.ts)
   op.adminNome = (env.MACUXIERP_ADMIN_NOME ?? '').trim();
   op.senha = env.MACUXIERP_SENHA_INICIAL ?? '';
-  if ([op.codigo, op.uf, op.slug].filter((v) => v !== undefined).length !== 1) throw new ErroUso('informe --codigo <código do FDV, ex.: AM2808> ou --uf <UF> para sortear (um dos dois)');
-  op.legado = op.slug !== undefined;
-  if (op.legado) {
-    if (!PADRAO_SLUG.test(op.slug)) throw new ErroUso('--slug: minúsculas, dígitos e hífen, 2 a 40 caracteres');
-  } else if (op.codigo !== undefined) {
+  if ([op.codigo, op.uf].filter((v) => v !== undefined).length !== 1) throw new ErroUso('informe --codigo <código do FDV, ex.: AM2808> ou --uf <UF> para sortear (um dos dois)');
+  if (op.codigo !== undefined) {
     op.codigo = op.codigo.trim().toUpperCase();
     if (!PADRAO_CODIGO.test(op.codigo) || !UFS.includes(op.codigo.slice(0, 2))) throw new ErroUso('--codigo: código do FDV, UF + 4 dígitos, ex.: AM2808');
     op.slug = op.codigo.toLowerCase();
@@ -320,10 +317,10 @@ async function main(argv, env) {
   console.log(op.confirmar ? '[empresa] APLICADO e auditado (plataforma.auditoria, motivo "primeiro acesso").' : '[empresa] SIMULAÇÃO: nada gravado.');
   const [, slugFinal] = itens.find((c) => c[0] === 'empresa');
   for (const [tipo, chave, situacao, id] of itens) {
-    const rotulo = tipo === 'empresa' ? `empresa ${op.legado ? chave : chave.toUpperCase()}` : tipo === 'usuario' ? 'administrador' : `licença ${chave}`;
+    const rotulo = tipo === 'empresa' ? `empresa ${chave.toUpperCase()}` : tipo === 'usuario' ? 'administrador' : `licença ${chave}`;
     console.log(`  ${rotulo}: ${TEXTO[tipo][situacao] ?? situacao}${id !== '-' ? ` (id ${id})` : ''}`);
   }
-  if (!op.legado) console.log(`  código da empresa: ${slugFinal.toUpperCase()}${op.uf && !op.confirmar ? ' (sorteado só nesta simulação; o --confirmar sorteia de novo)' : ''}`);
+  console.log(`  código da empresa: ${slugFinal.toUpperCase()}${op.uf && !op.confirmar ? ' (sorteado só nesta simulação; o --confirmar sorteia de novo)' : ''}`);
   console.log(`estado: ${!op.confirmar ? 'simulacao' : usuario[2] === 'criado' ? 'usuario-criado' : 'usuario-existia'}`);
   return 0;
 }
