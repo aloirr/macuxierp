@@ -5,9 +5,22 @@ import { acumularPagina } from '@macuxierp/ui/paginacao';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { modulosLigados, nomeModulo } from '@/lib/config/modulos';
+import { modulosLigados, nomeModulo, resumoModulos } from '@/lib/config/modulos';
 import { maisEmpresasAcao } from './empresas/acoes';
 import { SeloSituacao } from './selo-situacao';
+
+/** Acima de 480 px a lista completa; abaixo, "N módulos" (CSS em globals.css). A lista completa fica no title e no aria-label. */
+function CelulaModulos({ modulos }: { modulos: EmpresaPlataforma['modulos'] }) {
+  const ligados = modulosLigados(modulos);
+  if (ligados.length === 0) return <span>—</span>;
+  const lista = ligados.map(nomeModulo).join(', ');
+  return (
+    <span title={lista} aria-label={lista} className="modulos-celula">
+      <span className="modulos-lista">{lista}</span>
+      <span className="modulos-resumo" aria-hidden="true">{resumoModulos(ligados.length)}</span>
+    </span>
+  );
+}
 
 export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: { empresas: EmpresaPlataforma[]; vazio: string; proximo?: string | null; busca?: string }) {
   const router = useRouter();
@@ -37,7 +50,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
     },
     { id: 'nome', titulo: 'Nome', celula: (e) => e.nome },
     { id: 'situacao', titulo: 'Situação', celula: (e) => <SeloSituacao situacao={e.situacao} /> },
-    { id: 'modulos', titulo: 'Módulos', celula: (e) => modulosLigados(e.modulos).map(nomeModulo).join(', ') || 'Só o core' },
+    { id: 'modulos', titulo: 'Módulos', celula: (e) => <CelulaModulos modulos={e.modulos} /> },
   ];
   return (
     <>

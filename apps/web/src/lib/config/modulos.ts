@@ -8,8 +8,11 @@ export interface Dependencia {
   depende: readonly ModuloId[];
 }
 
-/** Nome do módulo no portal: o core não é "Plataforma" aqui (esse é o nome do portal). */
+/** Nome do módulo no portal: o core não é "Plataforma" aqui (esse é o nome do portal); o core só aparece em mensagem de dependência. */
 export const nomeModulo = (m: ModuloId): string => (m === 'core' ? 'Core' : NOMES_MODULOS[m]);
+
+/** Módulos que o usuário liga e desliga (o core, base, fica de fora). */
+const MODULOS_EDITAVEIS = MODULOS.filter((m) => !MODULOS_BASE.includes(m));
 
 const dependeDe = (deps: readonly Dependencia[], m: ModuloId): readonly ModuloId[] => deps.find((d) => d.id === m)?.depende ?? [];
 
@@ -38,13 +41,13 @@ export interface LinhaModulo {
   modulo: ModuloId;
   marcado: boolean;
   desabilitado: boolean;
-  /** Texto ao lado da caixa: "Sempre ligado" ou "Exige Cadastros". */
+  /** Texto ao lado da caixa: "Exige Cadastros". */
   motivo: string | null;
 }
 
 export function linhasModulos(marcados: ReadonlySet<ModuloId>, deps: readonly Dependencia[]): LinhaModulo[] {
-  return MODULOS.map((modulo) => {
-    if (MODULOS_BASE.includes(modulo)) return { modulo, marcado: true, desabilitado: true, motivo: 'Sempre ligado' };
+  // O core nunca aparece: o usuário não age sobre ele (a API garante que fica ligado).
+  return MODULOS_EDITAVEIS.map((modulo) => {
     const marcado = marcados.has(modulo);
     const faltam = dependeDe(deps, modulo).filter((d) => !marcados.has(d));
     if (!marcado && faltam.length > 0) return { modulo, marcado, desabilitado: true, motivo: `Exige ${lista(faltam.map(nomeModulo))}` };
@@ -69,7 +72,7 @@ export const ativosDe = (modulos: readonly LicencaModuloPlataforma[]): Set<Modul
 /** Só os módulos que mudaram (o core nunca): corpo de `AlterarModulosEntrada`. */
 export function mudancasDe(atuais: readonly LicencaModuloPlataforma[], marcados: ReadonlySet<ModuloId>): LicencaModuloPlataforma[] {
   const ativos = ativosDe(atuais);
-  return MODULOS.filter((m) => !MODULOS_BASE.includes(m) && ativos.has(m) !== marcados.has(m)).map((modulo) => ({
+  return MODULOS_EDITAVEIS.filter((m) => ativos.has(m) !== marcados.has(m)).map((modulo) => ({
     modulo,
     ativo: marcados.has(modulo),
     valido_ate: atuais.find((l) => l.modulo === modulo)?.valido_ate ?? null,
@@ -77,7 +80,7 @@ export function mudancasDe(atuais: readonly LicencaModuloPlataforma[], marcados:
 }
 
 /** Módulos ligados na lista, em ordem de `MODULOS`, sem o core (a lista da tela). */
-export const modulosLigados = (modulos: readonly LicencaModuloPlataforma[]): ModuloId[] => MODULOS.filter((m) => !MODULOS_BASE.includes(m) && ativosDe(modulos).has(m));
+export const modulosLigados = (modulos: readonly LicencaModuloPlataforma[]): ModuloId[] => MODULOS_EDITAVEIS.filter((m) => ativosDe(modulos).has(m));
 
 /** 422 `RN-CORE-02` por `modulos.<módulo>`: o problema e a ação, para a `FaixaPendencias` (a sigla só em `data-regra`). */
 export function pendenciasDe(campos: Record<string, string>, marcados: ReadonlySet<ModuloId>, deps: readonly Dependencia[]): Pendencia[] {
@@ -92,3 +95,6 @@ export function pendenciasDe(campos: Record<string, string>, marcados: ReadonlyS
   }
   return saida;
 }
+
+/** "1 módulo" / "N módulos" para a célula da lista em tela estreita. */
+export const resumoModulos = (n: number): string => `${n} ${n === 1 ? 'módulo' : 'módulos'}`;

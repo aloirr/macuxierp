@@ -51,6 +51,8 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .faixa-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); border: 1px solid var(--mx-cor-aviso-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 
 /* Telas genéricas de descritor (T-0015): os componentes visuais são do @macuxierp/ui; aqui só o que o shell desenha. */
+.modulos-resumo { display: none; }
+@media (max-width: 480px) { .modulos-lista { display: none; } .modulos-resumo { display: inline; } }
 .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tabela-rolavel { overflow-x: auto; max-width: 100%; }
 /* Sinal de rolagem horizontal (T-0050): sombra nas bordas que ainda têm conteúdo escondido; some quando a tabela cabe. */

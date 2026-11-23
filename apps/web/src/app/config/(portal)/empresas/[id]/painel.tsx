@@ -244,7 +244,7 @@ function BlocoAdmin({ empresa, chaves, aoErro, principal }: Comum & { chaves: Ch
       {confirmar && (
         <DialogoMotivo
           titulo="Redefinir a senha do administrador?"
-          aviso="A trava é zerada e as sessões dele são encerradas."
+          aviso="A senha atual deixa de valer, e ele precisa entrar de novo com a senha nova."
           semTexto
           rotuloConfirmar="Redefinir"
           rotuloFechar="Cancelar"
