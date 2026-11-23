@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import type { LinhaPrazoPagamento, LinhaProdutoUnidade } from '../../contracts';
+import type { EntidadeCarga, LinhaPrazoPagamento, LinhaProdutoUnidade } from '../../contracts';
 import { acrescentarIdsDoLote, conferirReferencias, idsVazios, separarDuplicados } from './referencias';
 
 const unidade = (linha: number, produto: string): LinhaProdutoUnidade => ({
   linha, external_id: `U${linha}`, avisos: [], dados: { unidade: 'CX', fator: 120_000 }, refs: { produto },
+});
+
+describe('RF-CAD-11: entidade_faltante no CARGA_DEPENDENCIA', () => {
+  const cliente = (refs: Record<string, string>) => ({ linha: 2, external_id: 'C1', avisos: [], dados: {}, refs }) as never;
+  const semArquivos = new Set<EntidadeCarga>(['cliente']);
+  it('RF-CAD-11: forma_external_id aponta para forma_pagamento (não "forma")', () => {
+    const l: LinhaPrazoPagamento = { linha: 2, external_id: 'PZ1', avisos: [], dados: {}, refs: { forma: 'F9' } };
+    expect(conferirReferencias('prazo_pagamento', [l], idsVazios(), new Set<EntidadeCarga>(['prazo_pagamento'])).erros[0]).toMatchObject({ campo: 'forma_external_id', codigo: 'CARGA_DEPENDENCIA', entidade_faltante: 'forma_pagamento' });
+  });
+  it('RF-CAD-11: tabela_preco_external_id aponta para preco (o arquivo da tabela)', () => {
+    expect(conferirReferencias('cliente', [cliente({ tabela_preco: 'T9' })], idsVazios(), semArquivos).erros[0]).toMatchObject({ campo: 'tabela_preco_external_id', entidade_faltante: 'preco' });
+  });
+  it('RF-CAD-11: condicao_pagamento_external_id aponta para prazo_pagamento', () => {
+    expect(conferirReferencias('cliente', [cliente({ condicao_pagamento: 'X9' })], idsVazios(), semArquivos).erros[0]).toMatchObject({ campo: 'condicao_pagamento_external_id', entidade_faltante: 'prazo_pagamento' });
+  });
+  it('RF-CAD-11: CARGA_REFERENCIA não leva entidade_faltante', () => {
+    expect(conferirReferencias('produto_unidade', [unidade(2, 'P9')], idsVazios()).erros[0]).not.toHaveProperty('entidade_faltante');
+  });
 });
 
 describe('referências e duplicados do lote', () => {

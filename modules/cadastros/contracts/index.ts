@@ -461,6 +461,8 @@ export const ErroCarga = z.object({
   campo: z.string().nullable(),
   codigo: CodigoErroCarga,
   motivo: z.string().max(200),
+  /** RF-CAD-11: no `CARGA_DEPENDENCIA`, o arquivo que falta carregar (o shell não deduz pelo nome do campo). Ausente = não é CARGA_DEPENDENCIA. */
+  entidade_faltante: EntidadeCarga.optional(),
 });
 export type ErroCarga = z.infer<typeof ErroCarga>;
 export const ResultadoEntidade = z.object({

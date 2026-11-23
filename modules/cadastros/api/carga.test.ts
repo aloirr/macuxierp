@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { erros } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { CargaPedido, MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
+import { CargaPedido, ErroCarga, MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
 import { MSG_REGIME_PIS_COFINS_CRT3, prazosDoCartao } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginCadastros } from './index';
@@ -420,6 +420,12 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
 });
 
 describe('carga por entidade (RF-CAD-11)', () => {
+  it('RF-CAD-11: ErroCarga aceita entidade_faltante ausente ou válida e recusa valor fora de EntidadeCarga', () => {
+    const base = { arquivo: 'a.csv', linha: 2, campo: 'x', codigo: 'CARGA_DEPENDENCIA', motivo: 'm' };
+    expect(ErroCarga.safeParse(base).success).toBe(true);
+    expect(ErroCarga.safeParse({ ...base, entidade_faltante: 'produto' }).success).toBe(true);
+    expect(ErroCarga.safeParse({ ...base, entidade_faltante: 'inexistente' }).success).toBe(false);
+  });
   it('RF-CAD-11: GET /cargas/modelos/:entidade devolve o CSV com BOM e o nome do arquivo', async () => {
     const t = montar();
     const r = await t.chamar('GET', '/cargas/modelos/vendedor', { sessao: adm });
