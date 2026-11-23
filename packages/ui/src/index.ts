@@ -11,6 +11,8 @@ export { CaixaResumo } from './CaixaResumo.js';
 export type { CaixaResumoProps } from './CaixaResumo.js';
 export { Dialogo } from './Dialogo.js';
 export type { DialogoProps } from './Dialogo.js';
+export { AlertaBloqueante } from './AlertaBloqueante.js';
+export type { AlertaBloqueanteProps } from './AlertaBloqueante.js';
 export { DialogoMotivo } from './DialogoMotivo.js';
 export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
 export { FormularioItens } from './FormularioItens.js';

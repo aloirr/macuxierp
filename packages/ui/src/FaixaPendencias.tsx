@@ -1,4 +1,4 @@
-import { cor, espaco, soLeitor, texto } from './estilos.js';
+import { cor, espaco, faixaLateral, soLeitor, texto, tons } from './estilos.js';
 
 export type NivelPendencia = 'bloqueante' | 'aceitavel';
 
@@ -37,9 +37,8 @@ export function FaixaPendencias({ itens }: FaixaPendenciasProps) {
               display: 'flex',
               gap: espaco.sm,
               padding: `${espaco.sm}px ${espaco.md}px`,
-              background: cor(erro ? 'erroFundo' : 'avisoFundo'),
+              ...faixaLateral(erro ? tons.erro : tons.aviso),
               color: cor(erro ? 'erroTexto' : 'avisoTexto'),
-              borderLeft: `4px solid ${cor(erro ? 'erroTexto' : 'avisoTexto')}`,
             }}
           >
             <span>
