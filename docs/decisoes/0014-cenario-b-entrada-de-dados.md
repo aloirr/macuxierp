@@ -4,7 +4,7 @@
 - **Data:** 23/11/2026 (Manaus)
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0057 (v0.3.6). Roteiro da VM: `docs/banco/vm-cenario-b.md` (banco-dados, #387).
-- **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre: v0.3.5 carga/zerar → **v0.3.6 cenário B** → v0.3.7 pré-cadastro. SQL Server **Express** na VM.
+- **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre: v0.3.5 carga/zerar → **v0.3.6 cenário B** → v0.3.7 pré-cadastro. Premissas respondidas pelo PO em 23/11, 15h29 (§3 e §7).
 - **Fontes copiadas (só consulta, nada muda no FDV):** `aloirr/macuxifdv@c460e92c4bf935c8096e6c67dd6b98a7929cf664` (FDV v1.0.28): `apps/conector` (versão **1.5.0**), `apps/conector/src/hub/cliente.ts` (rotas do Hub), `modules/integracao/kit-thathyany/conector/conector.json` (consultas das views), `docs/produto/03` (RN-INT-06 e a trava de 30%) e `.github/workflows/conector-publicar.yml`. O esquema do banco segue `aloirr/macuxifdv@0b79391`, `kit-thathyany/sql/criar-banco.sql`, com cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`.
 - **Amplia:** ADR 0010 (`external_id`), ADR 0012 (lista fechada de funções SECURITY DEFINER do portal) e ADR 0013 (o portal configura módulo; esta é a "ADR nova" que a §1 da 0013 exige para o segundo módulo).
 
@@ -34,7 +34,7 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
 
 - **Autenticação de máquina, sem JWT nem sessão:** `Authorization: Bearer <chave>` e `X-Macuxi-Conector-Id`, como no FDV. A chave dá acesso **só** a `/entrada/v1`, e o JWT do BKO é recusado ali. Cabe na regra 6 como o "perfil" `conector_entrada`, uma identidade de máquina com escopo fixo e sem permissões do BKO.
 - **Processamento assíncrono:** o `POST` grava o lote e enfileira o trabalho `cadastros.entrada_lote` (apps/worker). O worker valida pelo Zod do SDK, adapta, grava por `gravarLinhas` e escreve o resultado. Um lote por entidade e por conector de cada vez, na ordem de chegada, para o cursor não pular.
-- **Carga completa (RN-INT-06, copiada):** pode ocupar vários lotes da mesma sessão. Só ao concluir o último, os ativos da entidade **não vistos desde o início da sessão** são inativados (`deleted_at`, nunca apagados). Uma sessão incompleta não inativa nada, e o registro que veio inválido nunca é inativado. **A trava de 30%** (`limite_inativacao_pct`, padrão 30) também vale aqui: acima dela o lote fica `aguardando_confirmacao`, com as inativações paradas, e quem confirma é o **superadmin no `/config`** (como a carga completa da ADR 0013), com auditoria. A confirmação expira em 7 dias. Premissa a confirmar pelo PO: no FDV quem confirma é admin ou analista do BKO, mas aqui fica no portal, porque o BKO da integração é só leitura (decisão de 13h).
+- **Carga completa (RN-INT-06, copiada):** pode ocupar vários lotes da mesma sessão. Só ao concluir o último, os ativos da entidade **não vistos desde o início da sessão** são inativados (`deleted_at`, nunca apagados). Uma sessão incompleta não inativa nada, e o registro que veio inválido nunca é inativado. **A trava de 30%** (`limite_inativacao_pct`, padrão 30) também vale aqui: acima dela o lote fica `aguardando_confirmacao`, com as inativações paradas, e quem confirma é **só o superadmin, no `/config`**, com auditoria; a confirmação expira em 7 dias (PO, 23/11 15h29; no FDV quem confirma é admin ou analista do BKO). A trava vale só para a carga completa de **entrada**: o "Substituir tudo" manual da carga de CSV continua sem limite, com a frase de confirmação.
 - **LGPD:** o corpo do lote (que tem dado pessoal de cliente) fica no banco só até o processamento e é **zerado** quando o lote termina, ou em 24 h, o que vier antes. O resultado guarda só os contadores e os erros por linha sem o dado. Nenhum log leva o corpo, a chave ou o dado do registro, só `lote_id`, entidade, contagens e códigos.
 
 ### 4. Credencial do conector
@@ -56,14 +56,15 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
   4. **Linux oficial ao lado do Windows:** além do pacote Windows (WinSW, como no FDV), um pacote `tar.gz` com o `conector.mjs`, o exemplo e uma unidade **systemd**: usuário próprio `macuxi-conector` sem login, `ProtectSystem=strict`, `NoNewPrivileges=yes`, a pasta de dados em `/var/lib/macuxi-conector` e os segredos em `EnvironmentFile=/etc/macuxi-conector/segredos.env` (dono root, 0600, `MACUXI_CONECTOR_ERP_SENHA` e `MACUXI_CONECTOR_HUB_CHAVE`; o provedor `env` do FDV já lê). O Node 24.7+ vem do pacote da distribuição ou do NodeSource, conforme o roteiro.
   5. **Pedidos e reconciliação:** o código fica, sem uso. O esquema da configuração do ERP recusa `pedidos` e `reconciliacao` com uma mensagem clara.
 - **Kit do ERP:** `apps/conector/exemplos/conector.thathyany.exemplo.json`, copiado do `kit-thathyany/conector/conector.json` só com os 10 cadastros, apontando para a URL do ERP, com `conectorId` próprio (o do ERP, nunca o `thathyany-conector` do FDV) e sem `pedidos`. As consultas às views `dbo.vw_macuxi_*` são as do kit, sem mudança.
-- **Fronteiras:** o `apps/conector` importa só `packages/platform-sdk` (nada de `modules/*`), e o verificador de fronteiras passa a olhar a pasta (seção 10).
+- **Fronteiras:** o `apps/conector` importa só `packages/platform-sdk` (nada de `modules/*`), e o verificador de fronteiras passa a olhar a pasta (seção 9, linha 1).
 
 ### 7. VM de teste
-- É o roteiro `docs/banco/vm-cenario-b.md`: Ubuntu 22.04, SQL Server 2022 **Express**, só em localhost e com TLS, o banco `ERP_THATHYANY` criado pelo `criar-banco.sql` do kit (com o hash conferido), dados fictícios, o login `macuxi_conector` só de leitura nas views de cadastro, firewall só com a 22 para o IP do Alexandre, disco cifrado e **30 dias**.
+- É o roteiro `docs/banco/vm-cenario-b.md` (SQL Server 2022 **Express**, banco `ERP_THATHYANY` fictício, **30 dias**).
 - **O Conector roda na própria VM**, pela unidade systemd da seção 6, e lê `127.0.0.1,1433`. A saída é HTTPS para o ERP. O banco-dados acrescenta ao roteiro a seção "Instalar o Conector" (o pacote Linux, `segredos.env`, `systemctl enable --now`, `conector status`).
-- **ERP alvo (premissa, o gerente fixa):** a API de produção `erp.macuxifdv.com.br`, numa empresa de teste do thathyany. A Integração FDV dessa empresa fica no ambiente **teste** do Hub até o ok do Alexandre. A troca para produção segue a §9 da ADR 0013.
+- **ERP alvo (PO, 23/11 15h29):** a API de produção `erp.macuxifdv.com.br`, na empresa **AM2808** (thathyany), que já existe e só tem dados fictícios; não há empresa nova. Do lado do FDV vale a credencial da Integração FDV já salva na AM2808, no ambiente **Produção** do Hub, com a thathyany do FDV parada; não há Hub de teste novo.
+- **Carga dos CSVs:** na VM roda o Claude Code com Remote Control, e é por ele que o Alexandre carrega os CSVs fictícios nas tabelas `tha_*` (R-20261123-151313).
 - **Virada sem envio duplicado:** antes do primeiro lote do Conector do ERP, o Conector do kit do FDV (`thathyany-conector`) precisa estar **desligado**, e o Alexandre inativa no FDV os cadastros antigos (decisão de 14h19). A ordem fica no roteiro, com o "como conferir".
-- Nenhum agente recebe a senha do `sa`, a do `macuxi_conector` ou a chave do conector. Tudo vai do cofre para a VM pelas mãos do Alexandre.
+- **Senhas:** a do `macuxi_conector` fica só num arquivo local da VM, `/etc/macuxi-conector/segredos.env` (root, 0600), fora do repositório, junto com a chave do conector; a do `sa` fica no cofre. A sessão do Claude Code da VM não lê esses arquivos nem cita valor em recado, commit ou log.
 
 ### 8. Banco (banco-dados; migração a reservar no quadro)
 Todas as tabelas no schema `cadastros`, com as colunas da regra 5 e RLS:
@@ -79,9 +80,9 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
 ### 9. Quem faz o quê e ordem
 | # | Dono | O quê | Depende de |
 |---|---|---|---|
-| 0 | Alexandre (PR de governança, seção 10) | `donos.json`, workflow, CI e fronteiras para `apps/conector` | esta ADR |
-| 1 | engenheiro-software | `packages/platform-sdk/src/hub-v1.ts` (envelope e os 10 payloads, com teste); a autenticação de máquina e o plugin `/entrada/v1` na apps/api; o mapa de erros; a cópia do `apps/conector` (seção 6) | 0 para o `apps/conector`; o SDK sai antes |
-| 2 | banco-dados | a migração da seção 8 e os testes de banco; a seção "Instalar o Conector" no roteiro da VM | 1 (SDK) |
+| 0 | Alexandre (PR de governança, seção 10) | `donos.json`, workflow e CI para `apps/conector` | esta ADR |
+| 1 | engenheiro-software | `packages/platform-sdk/src/hub-v1.ts` (envelope e os 10 payloads, com teste); a autenticação de máquina e o plugin `/entrada/v1` na apps/api; o mapa de erros; a cópia do `apps/conector` (seção 6); o verificador de fronteiras (`scripts/fronteiras.mjs`) olhando o `apps/conector` | 0 para o `apps/conector`; o SDK sai antes |
+| 2 | banco-dados | a migração da seção 8 e os testes de banco; a seção "Instalar o Conector" no roteiro da VM; a §1 do roteiro deixa de dizer que nada vai para `erp.macuxifdv.com.br` e passa a dizer que o Conector da VM alimenta a AM2808 no ERP de produção (§7) | 1 (SDK) |
 | 3 | modulo-cadastros | `domain/entrada` (o adaptador e a sessão de carga completa, com a trava de 30%, puros e com teste antes), a extração de `gravarLinhas` de `api/carga.ts`, o trabalho do worker e as rotas do plugin | 1 e 2 |
 | 4 | modulo-integracao-fdv | `contracts/hub.ts` reexportando do SDK; o teste de que a gravação pela entrada publica como a do BKO | 1 |
 | 5 | engenheiro-apps · designer-ux · design-de-marca | as colunas do `/config` e o status no BKO (seção 5) | 3 (contrato) |
@@ -93,9 +94,24 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
 1. **`.coord/donos.json`:** `apps/conector/**` para o `engenheiro-software`; `modules/cadastros/**/entrada/**` continua no `modulo-cadastros` (já coberto por `modules/cadastros/**`, só conferir); `packages/platform-sdk/src/hub-v1*.ts` no `engenheiro-software` (já coberto, conferir).
 2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.6 (seção 6, item 3).
 3. **`.github/workflows/ci.yml`:** o `apps/conector` entra no escopo, no lint, no typecheck e no build do PR, e os testes dele entram na suíte do `producao-liberar`.
-4. **Verificador de fronteiras** (`scripts/fronteiras.mjs`; confira com `node scripts/coord.mjs dono scripts/fronteiras.mjs` se é governança): o `apps/conector` só importa `packages/*`. Dono hoje: `engenheiro-software` (fora da governança), então a mudança vai no PR do item 1 da seção 9, não neste.
-5. Guardião: nada a mudar (lê o `donos.json`).
-6. **Secret e `.env` (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA` no `.env` de produção da API (32 bytes aleatórios). Nenhum secret do GitHub novo na v0.3.6.
+4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.6.
+
+### 11. Passo do Alexandre: criar o `MACUXIERP_PEPPER_ENTRADA`
+- **Onde:** no `.env` de produção da VM, `/opt/macuxierp/.env`, o mesmo arquivo da `MACUXIERP_CHAVE_A1` e da `MACUXIERP_CHAVE_INTEGRACAO`. Não é secret do GitHub.
+- **Quando:** antes da publicação da v0.3.6. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
+- **Como** (na VM, com o usuário de sudo; o valor não passa pela tela nem pelo histórico):
+  ```bash
+  if sudo grep -q '^MACUXIERP_PEPPER_ENTRADA=.' /opt/macuxierp/.env; then
+    echo "já existe: não troque"
+  else
+    printf 'MACUXIERP_PEPPER_ENTRADA=%s\n' "$(openssl rand -hex 32)" | sudo tee -a /opt/macuxierp/.env >/dev/null
+  fi
+  sudo grep -c '^MACUXIERP_PEPPER_ENTRADA=' /opt/macuxierp/.env   # 1
+  sudo stat -c '%a %U' /opt/macuxierp/.env                         # 600 e o usuário de deploy
+  ```
+  Depois, guarde uma cópia do valor no cofre de senhas, lendo direto do arquivo, sem colar em chat ou recado.
+- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.6 ("aprovo deploy v0.3.6"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
+- **Nunca troque sem motivo:** um pepper novo invalida todas as chaves de entrada, e todos os conectores precisam de chave nova no `/config`. Se ele vazar, gere outro, publique e troque as chaves de todas as empresas.
 
 ## Consequências
 - O ERP passa a ter uma segunda porta de escrita de cadastro, por máquina, ao lado do BKO e da carga de CSV, com a mesma regra (seção 1).
