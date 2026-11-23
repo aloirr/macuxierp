@@ -21,6 +21,9 @@ import {
 import type { RelatorioCarga, ResultadoEntidade } from '../contracts';
 import { LAYOUT, planoSubstituicao } from '../domain';
 import { executarCarga } from './carga';
+import { reativarPorPadrao } from './carga-reativar';
+
+export { reativarPorPadrao };
 import { eventoCliente, eventoFilial, eventoPreco, eventoProduto, eventoSimples, publicarPronto } from './eventos';
 import type { Dependencias, TabelaSubstituivel } from './portas';
 
@@ -68,33 +71,6 @@ function externosDoArquivo(cadastro: CadastroCargaPortal, a: ArquivoRecebido): s
   const lido = lerCsv(a.conteudo(), { aceitas: [...layout.usadas, ...layout.ignoradas], obrigatorias: layout.obrigatorias });
   if (!lido.ok) return [];
   return lido.linhas.map((l) => (l.celulas.external_id ?? '').trim()).filter((x) => x !== '');
-}
-
-const aspar = (c: string, sep: string): string => (/["\r\n]/.test(c) || c.includes(sep) ? `"${c.replace(/"/g, '""')}"` : c);
-
-/**
- * Substituir tudo: o arquivo é a lista completa do que fica ATIVO. Linha com `ativo` vazio (ou arquivo sem a coluna) passa a
- * `ativo=sim`, para que um cadastro inativado por um Substituir tudo anterior volte a ser reativado (mesmo external_id, uma linha
- * só; RN-CAD-08/10, D6). `ativo` explícito (sim ou não) é respeitado. Preserva a numeração das linhas (erros citam a linha).
- * Layout sem `ativo` (estoque) e CSV ilegível ficam como vieram (o executarCarga recusa o ilegível).
- */
-export function reativarPorPadrao(cadastro: CadastroCargaPortal, a: ArquivoRecebido): ArquivoRecebido {
-  const layout = LAYOUT[cadastro];
-  if (!layout.usadas.includes('ativo')) return a;
-  const lido = lerCsv(a.conteudo(), { aceitas: [...layout.usadas, ...layout.ignoradas], obrigatorias: layout.obrigatorias });
-  if (!lido.ok) return a;
-  const sep = lido.separador;
-  const colunas = lido.colunas.includes('ativo') ? lido.colunas : [...lido.colunas, 'ativo'];
-  const saida: string[] = [colunas.map((c) => aspar(c, sep)).join(sep)];
-  let linhaAtual = 2;
-  for (const l of lido.linhas) {
-    while (linhaAtual < l.numero) { saida.push(''); linhaAtual += 1; }
-    const celulas = colunas.map((c) => (c === 'ativo' && (l.celulas.ativo ?? '') === '' ? 'sim' : (l.celulas[c] ?? '')));
-    const linha = celulas.map((c) => aspar(c, sep)).join(sep);
-    saida.push(linha);
-    linhaAtual += 1 + (linha.match(/\n/g)?.length ?? 0);
-  }
-  return new ArquivoRecebido(a.campo, a.nome, a.tipo, Buffer.from(`${saida.join('\n')}\n`, 'utf8'));
 }
 
 async function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroCargaPortal, a: ArquivoRecebido) {
@@ -167,7 +143,7 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   await exigirDependencias(deps, c, cadastro);
 
   const arquivo = arquivoDoCadastro(e);
-  const rel = await executarCarga(deps, c, 'gravar', [substituir ? reativarPorPadrao(cadastro, arquivo) : arquivo], cadastro);
+  const rel = await executarCarga(deps, c, 'gravar', [arquivo], cadastro);
   const res = resultadoDoCadastro(rel, cadastro);
   const gravadas = res.inseridas + res.atualizadas + res.sem_mudanca;
   if (res.situacao !== 'processado' || gravadas === 0) throw conflito(MENSAGENS_CARGA_PORTAL.nadaAGravar, 'nada_a_gravar');

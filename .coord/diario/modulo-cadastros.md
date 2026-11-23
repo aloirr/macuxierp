@@ -12,3 +12,4 @@
 2026-11-23 — T-0058 — planoSubstituicao (substituir tudo inativa o que falta)
 2026-11-23 — T-0058 — carga no /config: adicionar e substituir tudo, menu fora do BKO
 2026-11-23 — T-0058 — substituir_tudo reativa na carga seguinte (ativo=sim por padrão) e não inativa existente sem external_id (sem_chave)
+2026-11-23 — T-0058 (WIP) — reativação no ponto comum da carga (carga-reativar.ts, chamado no executarCarga) e testes forma × prazo

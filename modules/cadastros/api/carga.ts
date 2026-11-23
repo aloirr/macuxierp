@@ -19,6 +19,7 @@ import {
 import {
   TRATADORES, estadoVazio, novoLoteId, planejarEstoque, podeCarregar, type Estado, type Saida,
 } from './carga-entidades';
+import { reativarPorPadrao } from './carga-reativar';
 import { tratarCartaoSemParcelas } from './formas-recusadas';
 import type { Dependencias, Repositorios, TabelaChave } from './portas';
 import { ENTIDADES_RESOLVIDAS } from './resolvedor-chave';
@@ -79,8 +80,10 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   const arquivos: ArquivoCarga[] = [];
   const vistas = new Set<EntidadeCarga>();
   let total = 0;
-  for (const a of recebidos) {
-    const k = classificarArquivo(a.nome);
+  for (const bruto of recebidos) {
+    const k = classificarArquivo(bruto.nome);
+    // RN-CAD-08 e decisão do PO: `ativo` vazio ou ausente = sim, em toda rota de carga (ponto comum).
+    const a = k.classe === 'carga' ? reativarPorPadrao(k.entidade, bruto) : bruto;
     if (k.classe === 'ignorado') {
       rel.entidades.push(novoResultado(k.entidade, a.nome, 'ignorado'));
       continue;

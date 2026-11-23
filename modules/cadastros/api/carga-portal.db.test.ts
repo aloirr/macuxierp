@@ -117,14 +117,76 @@ describe.skipIf(!PG_DISPONIVEL)('carga no /config (substituir tudo) no PostgreSQ
       expect(l[0]?.deleted_at).toBeNull();
     }, 120_000);
 
-    it('modo adicionar: célula ativo vazia não altera (D6): o inativado continua inativo', async () => {
+    it('RN-CAD-08 (decisão do PO, 23/11): no adicionar, o inativado que volta no arquivo sem ativo é reativado, numa linha só', async () => {
       const T = await criarTenant(efemero.admin, 'portal-adicionar', ['cadastros']);
       await carregarTudo(T);
       await rodar(T, 'substituir_tudo', csv(1, false));
+      expect((await linhasDe(T))[0]?.deleted_at).not.toBeNull();
       await rodar(T, 'adicionar', csv(2, true));
       const l = await linhasDe(T);
       expect(l).toHaveLength(1);
+      expect(l[0]?.deleted_at).toBeNull();
+    }, 120_000);
+
+    it('RN-CAD-08 (decisão do PO): ativo=nao explícito continua inativo no adicionar', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-ativo-nao', ['cadastros']);
+      await carregarTudo(T);
+      await rodar(T, 'substituir_tudo', csv(1, false));
+      await rodar(T, 'adicionar', csv(2, false).replace(/^(P-EX-02;.*?);sim;/m, '$1;nao;'));
+      const l = await linhasDe(T);
+      expect(l).toHaveLength(1);
       expect(l[0]?.deleted_at).not.toBeNull();
+    }, 120_000);
+
+    it('RN-CAD-08 (decisão do PO): a rota do BKO (POST /cargas) também reativa o inativado que volta sem ativo', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-bko', ['cadastros']);
+      await carregarTudo(T);
+      await rodar(T, 'substituir_tudo', csv(1, false));
+      expect((await linhasDe(T))[0]?.deleted_at).not.toBeNull();
+      await app.comTenant(T, async (tx) => {
+        const amb = criarAmbiente(criarPluginCadastros({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados }), new Date('2026-11-23T15:00:00Z'), tx);
+        const r = await amb.chamar('POST', '/cargas', { sessao: sessaoDe('administrador'), corpo: { modo: 'gravar' }, arquivos: [{ nome: 'produto.csv', conteudo: csv(2, true) }] });
+        expect(r.status).toBe(200);
+      });
+      const l = await linhasDe(T);
+      expect(l).toHaveLength(1);
+      expect(l[0]?.deleted_at).toBeNull();
+    }, 120_000);
+  });
+
+  describe('forma × prazo em condicao_pagamento (RN-CAD-10)', () => {
+    const rodar = (tenant: string, cadastro: 'forma_pagamento' | 'prazo_pagamento', conteudo: string) =>
+      app.comTenant(tenant, async (tx: Transacao) => {
+        const c = {
+          sessao: sessaoDe('administrador'), tx, request_id: 'r', agora: new Date('2026-11-23T15:00:00Z'),
+          publicar: async () => undefined, auditar: async () => undefined, enfileirar: async () => ({ id: 'x' }),
+        } as unknown as ContextoRota;
+        return gravarCargaPortal({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados }, c, {
+          cadastro, modo: 'substituir_tudo', frase: FRASE, arquivo: new ArquivoRecebido('arquivo', 'x.csv', 'text/csv', Buffer.from(conteudo)),
+        });
+      });
+    const ativas = async (t: string) => (await admin('SELECT count(*)::int AS n FROM cadastros.condicao_pagamento WHERE tenant_id = $1 AND deleted_at IS NULL', [t]))[0]!.n as number;
+    const arq = (nome: string, n?: number) => {
+      const l = readFileSync(join(pasta, nome), 'utf8').trim().split('\n');
+      return (n ? l.slice(0, n + 1) : l).join('\n');
+    };
+
+    it('RN-CAD-10: substituir_tudo com forma_pagamento.csv não inativa nenhuma condição', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-forma', ['cadastros']);
+      await carregarTudo(T);
+      const antes = await ativas(T);
+      expect(antes).toBeGreaterThan(1);
+      await rodar(T, 'forma_pagamento', arq('forma_pagamento.csv', 1));
+      expect(await ativas(T)).toBe(antes);
+    }, 120_000);
+
+    it('RN-CAD-10: substituir_tudo com prazo_pagamento.csv inativa só as condições ausentes', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-prazo', ['cadastros']);
+      await carregarTudo(T);
+      const antes = await ativas(T);
+      await rodar(T, 'prazo_pagamento', arq('prazo_pagamento.csv', 1));
+      expect(await ativas(T)).toBe(1);
+      expect(antes).toBeGreaterThan(1);
     }, 120_000);
   });
 });
