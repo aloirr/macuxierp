@@ -8,14 +8,13 @@ import type { ContextoRota } from '@macuxierp/platform-sdk';
 import { pode } from '@macuxierp/platform-sdk';
 import {
   ClienteDados, CondicaoPagamentoDados, classeForma, MAX_PARCELAS_CARTAO, EnderecoCliente, FilialDados, ProdutoDados, TabelaPrecoDados, UnidadeDados, VendedorDados,
-  type CondicaoPagamento, type EntidadeCarga, type LinhaCliente, type LinhaClienteEndereco, type LinhaEstoque, type LinhaFilial,
-  type LinhaFormaPagamento, type LinhaPrazoPagamento, type LinhaPreco, type LinhaProduto, type LinhaProdutoUnidade, type LinhaVendedor,
-  type LinhasCarga,
+  type CondicaoPagamento, type EntidadeCarga, type LinhaCliente, type LinhaCondicaoPagamento, type LinhaEstoque, type LinhaFilial,
+  type LinhaPreco, type LinhaProduto, type LinhaProdutoUnidade, type LinhaVendedor, type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, MOTIVO_PRINCIPAL_NO_CLIENTE, prepararCriacao, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
-  type FatosFilial,
+  type FatosFilial, type FormaDoLote,
 } from '../domain';
 import { desativarCondicoesRecusadas } from './formas-recusadas';
 import { eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, comExternalIdAnterior, publicarPronto, republicarItensDaTabela, type EventoPronto } from './eventos';
@@ -29,7 +28,11 @@ export type Efeito = 'inserida' | 'atualizada' | 'sem_mudanca';
 /** Resultado do planejamento de uma linha. `aplicar` devolve o `id` do cadastro quando a linha cria ou resolve um. */
 export type Saida =
   | { erros: ErroLinha[] }
-  | { efeito: Efeito; alvo?: { tipo: AlvoExterno; id: string }; aplicar?: () => Promise<string | void> };
+  | {
+    efeito: Efeito; alvo?: { tipo: AlvoExterno; id: string }; aplicar?: () => Promise<string | void>;
+    /** T-0058: erros de linhas do grupo (endereços do cliente) que não derrubam o cliente; as linhas deles contam como recusadas. */
+    errosParciais?: ErroLinha[];
+  };
 
 /** UUID de enchimento: no modo `validar` o cadastro novo do lote ainda não tem id (marca `''`), e o Zod pede um UUID. */
 const PENDENTE = '00000000-0000-4000-8000-000000000000';
@@ -51,9 +54,8 @@ export interface Estado {
   podeNegativo: boolean;
   /** `external_id` → UUID por cadastro; `''` = vai ser criado neste lote (modo `validar`). */
   ids: Record<AlvoExterno, Map<string, string>>;
-  /** Forma de pagamento da carga: dados do lote (válidos) ou os que as condições gravadas já guardam. */
+  /** Dados gravados de cada forma (pelo `forma_external_id`), lidos das condições dela uma vez por lote. */
   formas: Map<string, { codigo: string | null; nome: string | null; tpag: string | null } | null>;
-  prazosNoLote: Set<string>;
   descontos: Map<string, number>;
   produtosNoPreco: Set<string>;
   unidadeDoProduto: Map<string, string>;
@@ -66,7 +68,7 @@ export interface Estado {
 export const estadoVazio = (p: Pick<Estado, 'c' | 'r' | 'gravar' | 'hoje' | 'loteId' | 'podeCredito' | 'podeNegativo' | 'conhecidos'>): Estado => ({
   ...p,
   ids: { filial: new Map(), vendedor: new Map(), condicao_pagamento: new Map(), produto: new Map(), tabela_preco: new Map(), cliente: new Map() },
-  formas: new Map(), prazosNoLote: new Set(), descontos: new Map(), produtosNoPreco: new Set(), unidadeDoProduto: new Map(),
+  formas: new Map(), descontos: new Map(), produtosNoPreco: new Set(), unidadeDoProduto: new Map(),
   tabelas: new Map(), filialPadrao: { carregada: false, id: null }, fatos: new Map(),
 });
 
@@ -230,58 +232,49 @@ async function vendedor(l: LinhaVendedor, st: Estado): Promise<Saida> {
   };
 }
 
-// ---- forma de pagamento (D12): atualiza as condições da forma; a criação acontece junto do prazo ----
+// ---- condição de pagamento (RF-CAD-09) e a forma dela (RN-CAD-09): na mesma linha, desde a T-0058 ----
 async function condicoesDaForma(st: Estado, ext: string): Promise<CondicaoPagamento[]> {
   return st.r.carga.condicoesDaForma(ext);
 }
 
-async function forma(l: LinhaFormaPagamento, st: Estado): Promise<Saida> {
+/**
+ * A forma é criada ou atualizada pela 1ª linha que a traz (`conferirFormasDoLote`); as condições dela que NÃO estão neste arquivo
+ * recebem os dados novos da forma (as do arquivo recebem pela própria linha). Forma recusada (RN-CAD-09) desativa as condições
+ * antigas ativas, com aviso. Sem `forma_external_id` não há irmãs a achar.
+ */
+export async function planejarIrmasDaForma(f: FormaDoLote, st: Estado): Promise<{ erros: ErroLinha[]; avisos: string[]; aplicar?: () => Promise<void> }> {
+  if (f.external_id === undefined) return { erros: [], avisos: [] };
+  const noArquivo = new Set(f.condicoes);
+  const ativas = (await condicoesDaForma(st, f.external_id)).filter((c) => !c.inativo && !noArquivo.has(c.external_id ?? ''));
+  if (ativas.length === 0) return { erros: [], avisos: [] };
   const repo = st.r.condicoesPagamento;
-  const conds = await condicoesDaForma(st, l.external_id);
-  const d = l.dados;
-  const primeira = conds[0];
-  st.formas.set(l.external_id, {
-    codigo: d.forma_codigo ?? primeira?.forma_codigo ?? null, nome: d.forma_nome ?? primeira?.forma_nome ?? null, tpag: d.forma_tpag ?? primeira?.forma_tpag ?? null,
-  });
-  if (d.forma_tpag !== undefined && classeForma(d.forma_tpag) === null) {
-    // RN-CAD-09: forma recusada. Sem condição gravada, a linha é erro; com condições antigas, elas são desativadas (RN-CAD-08) com aviso e auditoria.
-    if (conds.length === 0) return violacoes(l.linha, [violacao('RN-CAD-09', 'forma_tpag', MOTIVO_FORMA_NAO_ACEITA)]);
-    const ativas = conds.filter((c) => !c.inativo);
-    if (ativas.length === 0) {
-      l.avisos.push(`${MOTIVO_FORMA_NAO_ACEITA}: nenhuma condição ativa a desativar`);
-      return { efeito: 'sem_mudanca' };
-    }
-    l.avisos.push(`${MOTIVO_FORMA_NAO_ACEITA}: ${ativas.length} condição(ões) desativada(s)`);
-    return { efeito: 'atualizada', async aplicar() { await desativarCondicoesRecusadas(st.c, st.r, ativas); } };
+  if (f.tpag !== undefined && classeForma(f.tpag) === null) {
+    return {
+      erros: [], avisos: [`${MOTIVO_FORMA_NAO_ACEITA}: ${ativas.length} condição(ões) desativada(s)`],
+      async aplicar() { await desativarCondicoesRecusadas(st.c, st.r, ativas); },
+    };
   }
-  if (conds.length === 0) {
-    if (st.prazosNoLote.has(l.external_id)) return { efeito: 'inserida' };
-    l.avisos.push('Forma sem prazo no lote nem no banco: nada gravado');
-    return { efeito: 'sem_mudanca' };
+  const d: Dict = dadosFormaDoLote(f);
+  const erros: ErroLinha[] = [];
+  for (const c of ativas) {
+    if (f.tpag === undefined) break;
+    const vc = validarCondicaoPagamento({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias, parcelas_cartao: c.parcelas_cartao });
+    if (vc.length) erros.push(...vc.map((v) => erroDeViolacao(f.linha, v)));
   }
-  if (d.forma_tpag !== undefined || l.ativo === true) {
-    for (const c of conds) {
-      // Inativas só entram quando esta linha as reativa (a 0019 recusa cartão sem parcelas ativo, 23514).
-      if (c.inativo && l.ativo !== true) continue;
-      const vc = validarCondicaoPagamento({ forma_tpag: d.forma_tpag ?? c.forma_tpag, prazos_dias: c.prazos_dias, parcelas_cartao: c.parcelas_cartao });
-      if (vc.length) return violacoes(l.linha, vc);
-    }
-  }
-  const mudancas = conds.map((c) => camposAlterados({ ...d, ...ativoPatch(l.ativo) }, c as unknown as Dict).length > 0);
-  if (!mudancas.some(Boolean)) return { efeito: 'sem_mudanca' };
+  if (erros.length > 0) return { erros, avisos: [] };
+  const mudam = ativas.filter((c) => camposAlterados(d, c as unknown as Dict).length > 0);
+  if (mudam.length === 0) return { erros: [], avisos: [] };
   return {
-    efeito: 'atualizada',
+    erros: [], avisos: [`Forma atualizada em ${mudam.length} condição(ões) que não estão neste arquivo`],
     async aplicar() {
-      for (const [i, c] of conds.entries()) {
-        if (!mudancas[i]) continue;
-        if (Object.keys(d).length > 0) await repo.atualizar(c.id, d as never);
-        await concluirEscrita(st, repo, c.id, l.ativo, c.inativo, EVENTO_CONDICAO);
+      for (const c of mudam) {
+        await repo.atualizar(c.id, d as never);
+        await concluirEscrita(st, repo, c.id, undefined, c.inativo, EVENTO_CONDICAO);
       }
     },
   };
 }
 
-// ---- prazo de pagamento = condição de pagamento (RF-CAD-09) ----
 async function dadosDaForma(st: Estado, ext: string) {
   if (!st.formas.has(ext)) {
     const c = (await condicoesDaForma(st, ext))[0];
@@ -305,13 +298,20 @@ function normalizarPrazo(tpag: string, d: Dict): Dict {
   return c.prazos_dias === undefined ? x : { ...x, prazos_dias: c.prazos_dias };
 }
 
-async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
+async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   const repo = st.r.condicoesPagamento;
-  const d = l.dados;
+  const { forma_external_id: formaExt, forma_codigo: formaCodigo, forma_nome: formaNome, forma_tpag: formaTpag, ...d } = l.dados;
   const { ex, adotar, conflito: cf } = await casar(repo, l.external_id, 'codigo', d.codigo);
   if (cf) return conflito(l.linha, 'codigo');
-  const f = l.refs.forma === undefined ? null : await dadosDaForma(st, l.refs.forma);
-  const campoForma: Dict = l.refs.forma === undefined || !f ? {} : { forma_external_id: l.refs.forma, forma_codigo: f.codigo, forma_nome: f.nome, ...(f.tpag ? { forma_tpag: f.tpag } : {}) };
+  // Os dados da forma: os da linha (já completados com a 1ª linha da forma) sobre os que a forma já tem gravados.
+  const gravada = formaExt === undefined ? null : await dadosDaForma(st, formaExt);
+  const f = formaCodigo === undefined && formaNome === undefined && formaTpag === undefined && gravada === null
+    ? null
+    : { codigo: formaCodigo ?? gravada?.codigo ?? null, nome: formaNome ?? gravada?.nome ?? null, tpag: formaTpag ?? gravada?.tpag ?? null };
+  const campoForma: Dict = {
+    ...(formaExt === undefined ? {} : { forma_external_id: formaExt }),
+    ...(f === null ? {} : { forma_codigo: f.codigo, forma_nome: f.nome, ...(f.tpag ? { forma_tpag: f.tpag } : {}) }),
+  };
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
     const patch: Dict = { ...normalizarPrazo(((campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag), d), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
@@ -331,15 +331,16 @@ async function prazo(l: LinhaPrazoPagamento, st: Estado): Promise<Saida> {
       },
     };
   }
-  const p = prepararCriacao('prazo_pagamento', l, { formaNome: f?.nome ?? null });
+  const p = prepararCriacao('condicao_pagamento', { ...l, dados: { ...l.dados, ...(f?.nome ? { forma_nome: f.nome } : {}), ...(f?.tpag ? { forma_tpag: f.tpag } : {}) } });
   if (!p.ok) return { erros: p.erros };
-  if (!f) return mover(l.linha, 'forma_external_id', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
-  const pre = normalizarPrazo(f.tpag ?? '', p.linha.dados);
+  if (!f?.tpag) return mover(l.linha, 'forma_codigo', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
+  const pre = normalizarPrazo(f.tpag, d);
+  const comDescricao = { ...pre, ...(p.linha.dados.descricao === undefined ? {} : { descricao: p.linha.dados.descricao }) };
   // 13x ou mais: a linha aceita até 99; a faixa do cartão é do domain (RN-CAD-09, mensagem do cartão), antes do Zod da condição.
-  if (classeForma(f.tpag ?? '') === 'cartao' && typeof pre.parcelas_cartao === 'number' && pre.parcelas_cartao > MAX_PARCELAS_CARTAO) {
-    return violacoes(l.linha, validarCondicaoPagamento({ forma_tpag: f.tpag as string, parcelas_cartao: pre.parcelas_cartao }));
+  if (classeForma(f.tpag) === 'cartao' && typeof pre.parcelas_cartao === 'number' && pre.parcelas_cartao > MAX_PARCELAS_CARTAO) {
+    return violacoes(l.linha, validarCondicaoPagamento({ forma_tpag: f.tpag, parcelas_cartao: pre.parcelas_cartao }));
   }
-  const r = CondicaoPagamentoDados.safeParse({ ...pre, forma_tpag: f.tpag ?? undefined, ...campoForma, external_id: l.external_id });
+  const r = CondicaoPagamentoDados.safeParse({ ...comDescricao, forma_tpag: f.tpag, ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
   const vc = validarCondicaoPagamento(r.data);
   if (vc.length) return violacoes(l.linha, vc);
@@ -597,8 +598,60 @@ export async function planejarEstoque(linhas: readonly LinhaEstoque[], st: Estad
   return saidas;
 }
 
-// ---- cliente (RF-CAD-01) ----
-const flat = (e: Dict | undefined): Dict => ({ ...(e ?? {}) });
+// ---- cliente (RF-CAD-01) e os endereços dele (T-0058: vêm no mesmo cliente.csv) ----
+interface PlanoEnderecos {
+  /** Passos da gravação, na ordem das linhas. */
+  passos: (() => Promise<void>)[];
+  erros: ErroLinha[];
+}
+
+/**
+ * Planeja os endereços do cliente (um por linha do arquivo). `ex` = cliente gravado (ou nulo na criação). O endereço é achado pelo
+ * `external_id` derivado; o principal sem `external_id` do BKO é adotado. Linha com problema vira erro parcial: o cliente segue.
+ */
+async function planejarEnderecos(l: LinhaCliente, st: Estado, ex: { id: string; enderecos: readonly Dict[] } | null): Promise<PlanoEnderecos> {
+  const plano: PlanoEnderecos = { passos: [], erros: [] };
+  const principalGravado = ex?.enderecos.find((x) => x.tipo === 'principal') as (Dict & { id: string }) | undefined;
+  for (const e of l.enderecos) {
+    const gravado = ex ? await st.r.carga.filhoPorExternalId('cliente_endereco', e.external_id) : null;
+    if (gravado) {
+      if (ex && gravado.pai_id !== ex.id) {
+        plano.erros.push(erroLinha(e.linha, 'external_id', 'CARGA_CONFLITO', 'A chave natural já pertence a outro cadastro com outro external_id'));
+        continue;
+      }
+      if (gravado.atual.tipo !== e.tipo) {
+        plano.erros.push(erroLinha(e.linha, 'tipo_endereco', 'RN-CAD-03', 'O tipo do endereço não muda pela carga: use outra seq'));
+        continue;
+      }
+      const mudou = camposAlterados(e.dados as Dict, gravado.atual).length > 0;
+      if (mudou || gravado.inativo) {
+        plano.passos.push(async () => {
+          if (Object.keys(e.dados).length > 0) await st.r.clientes.enderecos.atualizar(gravado.pai_id, gravado.id, e.dados as never);
+          if (gravado.inativo) await st.r.carga.reativarFilho('cliente_endereco', gravado.id);
+        });
+      }
+      continue;
+    }
+    if (ex && e.tipo === 'principal' && principalGravado) {
+      // O principal gravado pelo BKO (sem external_id da carga) é adotado: recebe o external_id derivado e os campos da linha.
+      const patch = { ...e.dados, external_id: e.external_id };
+      if (camposAlterados(patch as Dict, principalGravado).length > 0) plano.passos.push(async () => { await st.r.clientes.enderecos.atualizar(ex.id, principalGravado.id, patch as never); });
+      continue;
+    }
+    const novo = prepararEnderecoNovo(e);
+    if (!novo.ok) {
+      plano.erros.push(...novo.erros);
+      continue;
+    }
+    const r = EnderecoCliente.safeParse({ ...novo.dados, complemento: novo.dados.complemento ?? null, tipo: e.tipo });
+    if (!r.success) {
+      plano.erros.push(...errosDeZod(e.linha, r.error.issues));
+      continue;
+    }
+    plano.passos.push(async () => { await st.r.clientes.enderecos.inserir(ex ? ex.id : (st.ids.cliente.get(l.external_id) as string), { ...r.data, external_id: e.external_id } as never); });
+  }
+  return plano;
+}
 
 async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
   const repo = st.r.clientes;
@@ -613,14 +666,14 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
   };
   const negaCredito = (atual: number | null) => d.limite_credito_centavos !== undefined && d.limite_credito_centavos !== (atual ?? 0) && !st.podeCredito;
   const semCredito = mover(l.linha, 'limite_credito_cents', 'PERFIL_SEM_PERMISSAO', MOTIVO_SO_ADMINISTRADOR);
+  const principalDaLinha = l.enderecos.find((e) => e.tipo === 'principal');
   if (ex) {
     if (negaCredito(ex.limite_credito_centavos)) return semCredito;
     const alvo = { tipo: 'cliente' as const, id: ex.id };
     const principal = ex.enderecos.find((x) => (x as Dict).tipo === 'principal') as (Dict & { id: string }) | undefined;
-    const endPatch: Dict = flat(l.endereco_principal as Dict | undefined);
-    const ufP = (endPatch.uf as string | undefined) ?? (principal?.uf as string | undefined) ?? '';
+    const ufP = principalDaLinha?.dados.uf ?? (principal?.uf as string | undefined) ?? '';
     const viol = [];
-    // RN-CAD-02: a IE vale pela UF da linha ou, sem ela, pela do endereço principal gravado; sem nenhuma, recusa.
+    // RN-CAD-02: a IE vale pela UF do endereço principal da linha ou, sem ela, pela do principal gravado; sem nenhuma, recusa.
     let ie = d.ie;
     if (d.ie !== undefined && d.ie !== null) {
       if (ufP === '') viol.push(violacao('RN-CAD-02', 'inscricao_estadual', 'IE sem UF: o cliente não tem endereço principal gravado'));
@@ -632,8 +685,8 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
     }
     const patch: Dict = { ...d, ...(ie === undefined ? {} : { ie }), ...refs, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
     const dadosMudam = camposAlterados(patch, ex as unknown as Dict).length > 0;
-    const endMuda = Object.keys(endPatch).length > 0 && principal !== undefined && camposAlterados(endPatch, principal).length > 0;
-    if (!dadosMudam && !endMuda && viol.length === 0) return { efeito: 'sem_mudanca', alvo };
+    const plano = await planejarEnderecos(l, st, { id: ex.id, enderecos: ex.enderecos as unknown as Dict[] });
+    if (!dadosMudam && plano.passos.length === 0 && viol.length === 0) return { efeito: 'sem_mudanca', alvo, ...(plano.erros.length > 0 ? { errosParciais: plano.erros } : {}) };
     const m = { ...ex, ...patch } as Dict;
     if (d.documento !== undefined || d.tipo_pessoa !== undefined) {
       const dc = validarDocumentoCliente(m.tipo_pessoa as 'PJ' | 'PF', m.documento as string);
@@ -646,11 +699,11 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
     if (l.ativo === false && !ex.inativo) viol.push(...bloqueiosDeInativacao('cliente', { padrao: false }));
     if (viol.length > 0) return violacoes(l.linha, viol);
     return {
-      efeito: 'atualizada', alvo,
+      efeito: 'atualizada', alvo, ...(plano.erros.length > 0 ? { errosParciais: plano.erros } : {}),
       async aplicar() {
         const { inativo: _i, ...parcial } = patch;
         if (Object.keys(parcial).length > 0) await repo.atualizar(ex.id, parcial as never);
-        if (endMuda && principal) await repo.enderecos.atualizar(ex.id, principal.id, endPatch as never);
+        for (const passo of plano.passos) await passo();
         await concluirEscrita(st, repo, ex.id, l.ativo, ex.inativo, eventoCliente, ex);
         if (d.limite_credito_centavos !== undefined && d.limite_credito_centavos !== ex.limite_credito_centavos) {
           await st.c.auditar({ acao: 'cliente.limite_credito_centavos.alterar', entidade: 'cliente', entidade_id: ex.id, antes: { limite_credito_centavos: ex.limite_credito_centavos }, depois: { limite_credito_centavos: d.limite_credito_centavos } });
@@ -665,9 +718,19 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
   const fil = l.refs.filial === undefined ? await filialDaLinha(st, undefined, l.linha) : { id: refs.filial_id as string };
   if ('erro' in fil) return fil.erro;
   const f = p.linha;
-  const enderecos = [{ ...f.endereco_principal, complemento: f.endereco_principal?.complemento ?? null, tipo: 'principal' as const }];
+  const principalNovo = f.enderecos.find((e) => e.tipo === 'principal') as NonNullable<typeof principalDaLinha>;
+  const enderecos = [{ ...principalNovo.dados, complemento: principalNovo.dados.complemento ?? null, tipo: 'principal' as const }];
+  // RN-CAD-02: sem a UF do principal na linha base, a IE só se valida aqui (a linha base pode ser entrega ou cobrança).
+  let ieNormalizada = f.dados.ie;
+  const vIe: ReturnType<typeof violacao>[] = [];
+  if (f.dados.ie !== undefined && f.dados.ie !== null && principalNovo.dados.uf !== undefined) {
+    const v = validarIe(principalNovo.dados.uf, f.dados.ie);
+    if (v.ok) ieNormalizada = v.ie ?? undefined;
+    else vIe.push(v.violacao);
+  }
+  if (vIe.length > 0) return violacoes(l.linha, vIe);
   const r = ClienteDados.safeParse({
-    ...f.dados, ie: f.dados.ie ?? null, nome_fantasia: f.dados.nome_fantasia ?? null, email_nfe: f.dados.email_nfe ?? null,
+    ...f.dados, ie: ieNormalizada ?? null, nome_fantasia: f.dados.nome_fantasia ?? null, email_nfe: f.dados.email_nfe ?? null,
     limite_credito_centavos: f.dados.limite_credito_centavos ?? 0, filial_id: ouPendente(fil.id),
     vendedor_id: ouPendente(refs.vendedor_id) ?? null, tabela_preco_id: ouPendente(refs.tabela_preco_id) ?? null,
     condicao_pagamento_id: ouPendente(refs.condicao_pagamento_id) ?? null, enderecos, external_id: l.external_id,
@@ -681,13 +744,17 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
   const ind = validarIndIeDest({ ind_ie_dest: r.data.ind_ie_dest, ie: r.data.ie, uf: r.data.enderecos[0]?.uf ?? '' });
   if (!ind.ok) viol.push(ind.violacao);
   if (viol.length > 0) return violacoes(l.linha, viol);
+  // Os endereços entram depois do cliente, cada um com o seu `external_id` derivado; o principal vai primeiro.
+  const plano = await planejarEnderecos(f, st, null);
   return {
-    efeito: 'inserida',
+    efeito: 'inserida', ...(plano.erros.length > 0 ? { errosParciais: plano.erros } : {}),
     async aplicar() {
       const criado = await repo.inserir({
-        ...r.data, filial_id: fil.id, vendedor_id: (refs.vendedor_id as string | undefined) ?? null, tabela_preco_id: (refs.tabela_preco_id as string | undefined) ?? null,
+        ...r.data, enderecos: [], filial_id: fil.id, vendedor_id: (refs.vendedor_id as string | undefined) ?? null, tabela_preco_id: (refs.tabela_preco_id as string | undefined) ?? null,
         condicao_pagamento_id: (refs.condicao_pagamento_id as string | undefined) ?? null,
       });
+      st.ids.cliente.set(l.external_id, criado.id);
+      for (const passo of plano.passos) await passo();
       await concluirEscrita(st, repo, criado.id, l.ativo, false, eventoCliente);
       if (r.data.limite_credito_centavos !== 0) {
         await st.c.auditar({ acao: 'cliente.limite_credito_centavos.alterar', entidade: 'cliente', entidade_id: criado.id, antes: { limite_credito_centavos: null }, depois: { limite_credito_centavos: r.data.limite_credito_centavos } });
@@ -697,55 +764,15 @@ async function cliente(l: LinhaCliente, st: Estado): Promise<Saida> {
   };
 }
 
-// ---- endereços do cliente ----
-async function clienteEndereco(l: LinhaClienteEndereco, st: Estado): Promise<Saida> {
-  const paiId = st.ids.cliente.get(l.refs.cliente as string) as string;
-  const d = l.dados;
-  const ex = await st.r.carga.filhoPorExternalId('cliente_endereco', l.external_id);
-  const publicarPai = async (id: string) => {
-    const c = await st.r.clientes.obter(id);
-    if (c) await publicarPronto(st.c, await eventoCliente(st.r, c));
-  };
-  if (ex) {
-    if (paiId && ex.pai_id !== paiId) return conflito(l.linha, 'cliente_external_id');
-    if (ex.atual.tipo === 'principal' && d.tipo !== undefined && d.tipo !== 'principal') {
-      return mover(l.linha, 'tipo', 'RN-CAD-03', MOTIVO_PRINCIPAL_NO_CLIENTE);
-    }
-    const patch: Dict = { ...d, ...ativoPatch(l.ativo) };
-    if (camposAlterados(patch, { ...ex.atual, inativo: ex.inativo }).length === 0) return { efeito: 'sem_mudanca' };
-    return {
-      efeito: 'atualizada',
-      async aplicar() {
-        if (Object.keys(d).length > 0) await st.r.clientes.enderecos.atualizar(ex.pai_id, ex.id, d as never);
-        if (l.ativo === false && !ex.inativo) await st.r.clientes.enderecos.inativar(ex.pai_id, ex.id);
-        else if (l.ativo === true && ex.inativo) await st.r.carga.reativarFilho('cliente_endereco', ex.id);
-        await publicarPai(ex.pai_id);
-      },
-    };
-  }
-  const p = prepararCriacao('cliente_endereco', l);
-  if (!p.ok) return { erros: p.erros };
-  const r = EnderecoCliente.safeParse({ ...p.linha.dados, complemento: p.linha.dados.complemento ?? null });
-  if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
-  return {
-    efeito: 'inserida',
-    async aplicar() {
-      const criado = await st.r.clientes.enderecos.inserir(paiId, { ...r.data, external_id: l.external_id } as never);
-      if (l.ativo === false) await st.r.clientes.enderecos.inativar(paiId, criado.id);
-      await publicarPai(paiId);
-    },
-  };
-}
-
 export const TRATADORES: { [E in Exclude<EntidadeCarga, 'estoque'>]: (l: LinhasCarga[E], st: Estado) => Promise<Saida> } = {
-  filial, vendedor, forma_pagamento: forma, prazo_pagamento: prazo, produto, produto_unidade: unidade, preco, cliente, cliente_endereco: clienteEndereco,
+  filial, vendedor, condicao_pagamento: condicao, produto, produto_unidade: unidade, preco, cliente,
 };
 
 /** Ação de edição que cada arquivo exige além de `cadastros.carga.executar` (D8). */
 export const ACAO_DA_ENTIDADE = {
-  filial: 'cadastros.filial.editar', vendedor: 'cadastros.vendedor.editar', forma_pagamento: 'cadastros.condicao_pagamento.editar',
-  prazo_pagamento: 'cadastros.condicao_pagamento.editar', produto: 'cadastros.produto.editar', produto_unidade: 'cadastros.produto.editar',
-  preco: 'cadastros.preco.editar', estoque: 'cadastros.estoque.movimentar', cliente: 'cadastros.cliente.editar', cliente_endereco: 'cadastros.cliente.editar',
+  filial: 'cadastros.filial.editar', vendedor: 'cadastros.vendedor.editar', condicao_pagamento: 'cadastros.condicao_pagamento.editar',
+  produto: 'cadastros.produto.editar', produto_unidade: 'cadastros.produto.editar',
+  preco: 'cadastros.preco.editar', estoque: 'cadastros.estoque.movimentar', cliente: 'cadastros.cliente.editar',
 } as const;
 
 export const podeCarregar = (perfil: Parameters<typeof pode>[0], e: EntidadeCarga): boolean => pode(perfil, ACAO_DA_ENTIDADE[e]);

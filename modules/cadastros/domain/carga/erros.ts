@@ -29,9 +29,6 @@ export function erroDeViolacao(linha: number, v: Violacao, campo?: string): Erro
 
 export const erroLinha = (linha: number, campo: string | null, codigo: string, motivo: string): ErroLinha => ({ linha, campo, codigo, motivo });
 
-/** Texto fixo de quem manda no endereço principal (mapeamento e gravação usam o mesmo). */
-export const MOTIVO_PRINCIPAL_NO_CLIENTE = 'O endereço principal vem do cliente.csv';
-
 /**
  * Único conversor de falha do Zod do contrato em `ErroLinha`: campo pelo caminho (sem `dados` e `linha`), nunca o valor.
  * Campo ausente na criação é `CARGA_OBRIGATORIO`; o resto, `CARGA_FORMATO`.

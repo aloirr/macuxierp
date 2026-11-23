@@ -21,6 +21,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { modeloCsv } from '../domain';
+import { paraEntidadeCarga } from './carga-substituir';
 import { errosCargaPortal, exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal } from './carga-portal';
 import type { Dependencias } from './portas';
 
@@ -106,7 +107,9 @@ export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastro
       async executar(_c, e) {
         const k = CadastroCargaPortal.safeParse(e.params.cadastro);
         if (!k.success) throw erros.naoEncontrado('Modelo');
-        return respostaCsv(nomeModeloCarga(k.data), modeloCsv(k.data));
+        const entidade = paraEntidadeCarga(k.data);
+        if (!entidade) throw erros.naoEncontrado('Modelo');
+        return respostaCsv(nomeModeloCarga(k.data), modeloCsv(entidade));
       },
     }),
     // RF-CAD-11: valida o mesmo arquivo (nada fica guardado) e devolve o CSV dos erros do relatório (com o teto MAX_ERROS_RELATORIO), sem o valor da célula (D9).

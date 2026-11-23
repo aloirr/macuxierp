@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EntidadeCarga, LinhaPrazoPagamento, LinhaProdutoUnidade } from '../../contracts';
+import type { EntidadeCarga, LinhaCondicaoPagamento, LinhaProdutoUnidade } from '../../contracts';
 import { acrescentarIdsDoLote, conferirReferencias, idsVazios, separarDuplicados } from './referencias';
 
 const unidade = (linha: number, produto: string): LinhaProdutoUnidade => ({
@@ -9,15 +9,11 @@ const unidade = (linha: number, produto: string): LinhaProdutoUnidade => ({
 describe('RF-CAD-11: entidade_faltante no CARGA_DEPENDENCIA', () => {
   const cliente = (refs: Record<string, string>) => ({ linha: 2, external_id: 'C1', avisos: [], dados: {}, refs }) as never;
   const semArquivos = new Set<EntidadeCarga>(['cliente']);
-  it('RF-CAD-11: forma_external_id aponta para forma_pagamento (não "forma")', () => {
-    const l: LinhaPrazoPagamento = { linha: 2, external_id: 'PZ1', avisos: [], dados: {}, refs: { forma: 'F9' } };
-    expect(conferirReferencias('prazo_pagamento', [l], idsVazios(), new Set<EntidadeCarga>(['prazo_pagamento'])).erros[0]).toMatchObject({ campo: 'forma_external_id', codigo: 'CARGA_DEPENDENCIA', entidade_faltante: 'forma_pagamento' });
-  });
   it('RF-CAD-11: tabela_preco_external_id aponta para preco (o arquivo da tabela)', () => {
     expect(conferirReferencias('cliente', [cliente({ tabela_preco: 'T9' })], idsVazios(), semArquivos).erros[0]).toMatchObject({ campo: 'tabela_preco_external_id', entidade_faltante: 'preco' });
   });
-  it('RF-CAD-11: condicao_pagamento_external_id aponta para prazo_pagamento', () => {
-    expect(conferirReferencias('cliente', [cliente({ condicao_pagamento: 'X9' })], idsVazios(), semArquivos).erros[0]).toMatchObject({ campo: 'condicao_pagamento_external_id', entidade_faltante: 'prazo_pagamento' });
+  it('T-0058: condicao_pagamento_external_id aponta para condicao_pagamento (a forma não é mais um arquivo)', () => {
+    expect(conferirReferencias('cliente', [cliente({ condicao_pagamento: 'X9' })], idsVazios(), semArquivos).erros[0]).toMatchObject({ campo: 'condicao_pagamento_external_id', entidade_faltante: 'condicao_pagamento', motivo: 'Faltam condições de pagamento: carregue condicoes_pagamento.csv antes.' });
   });
   it('RF-CAD-11: CARGA_REFERENCIA não leva entidade_faltante', () => {
     expect(conferirReferencias('produto_unidade', [unidade(2, 'P9')], idsVazios()).erros[0]).not.toHaveProperty('entidade_faltante');
@@ -39,12 +35,12 @@ describe('referências e duplicados do lote', () => {
     const r = conferirReferencias('produto_unidade', [unidade(2, 'P1')], idsVazios());
     expect(r.erros[0]?.codigo).toBe('CARGA_REFERENCIA');
   });
-  it('D13: a condição de pagamento do cliente aponta para o prazo do lote e a forma para a forma', () => {
+  it('T-0058: a condição de pagamento do cliente aponta para a condição do lote; a condição não tem referência de arquivo', () => {
     const ids = idsVazios();
-    const prazo: LinhaPrazoPagamento = { linha: 2, external_id: 'PZ1', avisos: [], dados: {}, refs: { forma: 'F1' } };
-    acrescentarIdsDoLote(ids, 'prazo_pagamento', [prazo]);
+    const cond: LinhaCondicaoPagamento = { linha: 2, external_id: 'PZ1', avisos: [], dados: { forma_external_id: 'F1' } };
+    acrescentarIdsDoLote(ids, 'condicao_pagamento', [cond]);
     expect(ids.condicao_pagamento.has('PZ1')).toBe(true);
-    expect(conferirReferencias('prazo_pagamento', [prazo], ids).erros).toHaveLength(1);
+    expect(conferirReferencias('condicao_pagamento', [cond], ids).erros).toEqual([]);
   });
   it('RN-CORE-05: external_id repetido no arquivo recusa a 2ª ocorrência', () => {
     const r = separarDuplicados([

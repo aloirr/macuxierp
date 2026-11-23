@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ENTIDADES_CARGA } from '../../contracts';
-import { ARQUIVO_DO_ALVO, DEPENDENCIAS, motivoDependencia } from './dependencias';
+import { motivoDependencia } from './dependencias';
 import { LAYOUT } from './layout';
 import { modeloCsv } from './modelo';
-import { REFS_CARGA, conferirReferencias, idsVazios } from './referencias';
+import { conferirReferencias, idsVazios } from './referencias';
 
 describe('modelo CSV por entidade (RF-CAD-11)', () => {
   it.each(ENTIDADES_CARGA)('RF-CAD-11: modelo de %s tem BOM, ";", uma linha e obrigatórias primeiro, sem ignoradas', (e) => {
@@ -20,10 +20,6 @@ describe('modelo CSV por entidade (RF-CAD-11)', () => {
 });
 
 describe('dependência entre arquivos (RF-CAD-11)', () => {
-  it.each(ENTIDADES_CARGA)('RF-CAD-11: DEPENDENCIAS de %s bate com o que REFS_CARGA usa', (e) => {
-    const usadas = new Set(Object.values(REFS_CARGA[e]).map((a) => ARQUIVO_DO_ALVO[a]));
-    expect(new Set(DEPENDENCIAS[e])).toEqual(usadas);
-  });
   it('RF-CAD-11: mensagem fixa no plural, sem valor de célula', () => {
     expect(motivoDependencia('produto')).toBe('Faltam produtos: carregue produto.csv antes.');
   });

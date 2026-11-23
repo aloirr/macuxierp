@@ -9,19 +9,17 @@ export { ENTIDADES_CARGA as ORDEM_CARGA } from '../../contracts';
 export const REFS_CARGA: Readonly<Record<EntidadeCarga, Readonly<Record<string, AlvoReferencia>>>> = {
   filial: {},
   vendedor: { filial: 'filial' },
-  forma_pagamento: {},
-  prazo_pagamento: { forma: 'forma' },
+  condicao_pagamento: {},
   produto: {},
   produto_unidade: { produto: 'produto' },
   preco: { produto: 'produto', filial: 'filial' },
   estoque: { produto: 'produto', filial: 'filial' },
   cliente: { filial: 'filial', vendedor: 'vendedor', tabela_preco: 'tabela_preco', condicao_pagamento: 'condicao_pagamento' },
-  cliente_endereco: { cliente: 'cliente' },
 };
 
 /** Cadastro que o `external_id` da linha identifica em cada arquivo (o preço cria a tabela pelo `tabela_external_id`). */
 const ALVO_CRIADO: Readonly<Partial<Record<EntidadeCarga, AlvoReferencia>>> = {
-  filial: 'filial', vendedor: 'vendedor', forma_pagamento: 'forma', prazo_pagamento: 'condicao_pagamento', produto: 'produto', cliente: 'cliente',
+  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'condicao_pagamento', produto: 'produto', cliente: 'cliente',
 };
 export const alvoCriado = (entidade: EntidadeCarga): AlvoReferencia | undefined => ALVO_CRIADO[entidade];
 
@@ -34,7 +32,7 @@ function idsCriados(entidade: EntidadeCarga, l: LinhasCarga[EntidadeCarga]): [Al
 
 export type IdsConhecidos = Record<AlvoReferencia, Set<string>>;
 export const idsVazios = (): IdsConhecidos => ({
-  filial: new Set(), vendedor: new Set(), forma: new Set(), condicao_pagamento: new Set(), produto: new Set(), tabela_preco: new Set(), cliente: new Set(),
+  filial: new Set(), vendedor: new Set(), condicao_pagamento: new Set(), produto: new Set(), tabela_preco: new Set(), cliente: new Set(),
 });
 
 /** Soma ao conjunto os `external_id` das linhas VÁLIDAS do lote (linha ou arquivo recusado não conta). */

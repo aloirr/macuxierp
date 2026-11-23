@@ -9,8 +9,8 @@
  * - `substituir_tudo` (RN-CAD-10): a API revalida a frase (`normalizarFrase`); grava o arquivo; depois, na MESMA transação,
  *   inativa (`deleted_at`, como a D6; nunca apaga) os ativos que não vieram no arquivo e publica `cadastros.*.alterado@1`
  *   com `inativo: true`, que é o que leva a inativação ao FDV. Em uso (`ConsultaUsoCadastros`) também é inativado e só
- *   conta em `mantidos_em_uso` (o histórico fica). Formas de pagamento (a forma vive na condição) e estoque (saldo, não
- *   cadastro) não têm o que inativar.
+ *   conta em `mantidos_em_uso` (o histórico fica). A inativação e os eventos ficam no
+ *   `carga-substituir.ts`; a forma vive na condição e o estoque é saldo, não cadastro: não têm o que inativar.
  * - Nada de valor de célula nem dado pessoal em erro, aviso ou auditoria: só contagens.
  */
 import {
@@ -18,18 +18,10 @@ import {
   MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, normalizarFrase, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
-import type { ErroCarga, RelatorioCarga, ResultadoEntidade } from '../contracts';
-import { planoSubstituicao } from '../domain';
+import type { EntidadeCarga, ErroCarga, RelatorioCarga, ResultadoEntidade } from '../contracts';
 import { executarCarga } from './carga';
-import { lerCsvDoLayout } from './carga-reativar';
-import { eventoCliente, eventoFilial, eventoPreco, eventoProduto, eventoSimples, publicarPronto } from './eventos';
-import type { Dependencias, TabelaSubstituivel } from './portas';
-
-/** Tabela que o "Substituir tudo" inativa em cada cadastro; `null` = nada a inativar (forma e estoque). */
-const TABELA_SUBSTITUIVEL: Record<CadastroCargaPortal, TabelaSubstituivel | null> = {
-  filial: 'filial', vendedor: 'vendedor', forma_pagamento: null, prazo_pagamento: 'condicao_pagamento', produto: 'produto',
-  produto_unidade: 'produto_unidade', preco: 'tabela_preco_item', estoque: null, cliente: 'cliente', cliente_endereco: 'cliente_endereco',
-};
+import { TABELA_SUBSTITUIVEL, aplicarSubstituicao, paraEntidadeCarga, planejarSubstituicao } from './carga-substituir';
+import type { Dependencias } from './portas';
 
 const ACAO_LINHA = 'Corrija a linha no arquivo e envie de novo.';
 const ACAO_ARQUIVO = 'Corrija o arquivo e envie de novo.';
@@ -66,69 +58,27 @@ async function exigirDependencias(deps: Dependencias, c: ContextoRota, cadastro:
   }
 }
 
-const arquivoDoCadastro = (e: EntradaCargaPortal): ArquivoRecebido => new ArquivoRecebido(e.arquivo.campo, `${e.cadastro}.csv`, e.arquivo.tipo, e.arquivo.conteudo());
+const arquivoDoCadastro = (e: EntradaCargaPortal, entidade: EntidadeCarga): ArquivoRecebido => new ArquivoRecebido(e.arquivo.campo, `${entidade}.csv`, e.arquivo.tipo, e.arquivo.conteudo());
 
-/** Os `external_id` do arquivo, de TODA linha lida (a recusada também protege o existente de ser inativado). */
-function externosDoArquivo(cadastro: CadastroCargaPortal, a: ArquivoRecebido): string[] {
-  const lido = lerCsvDoLayout(cadastro, a.conteudo());
-  if (!lido.ok) return [];
-  return lido.linhas.map((l) => (l.celulas.external_id ?? '').trim()).filter((x) => x !== '');
+/** A entidade da carga do cadastro do portal (400 `VALIDACAO` se o nome não é de nenhuma). */
+function entidadeDe(cadastro: string): EntidadeCarga {
+  const e = paraEntidadeCarga(cadastro);
+  if (!e) throw erros.validacao({ cadastro: 'Cadastro desconhecido' });
+  return e;
 }
 
 /**
- * O plano do Substituir tudo, calculado UMA vez, sobre os existentes de ANTES da gravação (os que voltam no arquivo têm o
- * external_id nele e não entram; os registros sem external_id só contam em `sem_chave`). O `emUso` só olha o que será inativado.
- * O total do percentual é o de ativos COM chave: o mesmo do validar e do gravar.
+ * O plano do Substituir tudo, calculado UMA vez, sobre os existentes de ANTES da gravação (`planejarSubstituicao`: os que voltam
+ * no arquivo têm o external_id nele e não entram; os sem external_id só contam em `sem_chave`). O "em uso" só olha o que será inativado.
  */
-async function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroCargaPortal, a: ArquivoRecebido) {
-  const tabela = TABELA_SUBSTITUIVEL[cadastro];
-  const r = deps.repositorios(c.tx);
-  const existentes = tabela ? await r.substituicao.existentes(tabela) : [];
-  const base = { modo: 'substituir_tudo', entidade: cadastro, externos_do_arquivo: externosDoArquivo(cadastro, a), existentes: existentes.map((e) => ({ id: e.id, external_id: e.external_id, inativo: e.inativo })) } as const;
-  const semUso = planoSubstituicao({ ...base, em_uso: new Set() });
-  const uso = deps.usoCadastros && semUso.inativar.length > 0 ? await deps.usoCadastros.emUso(c.tx, cadastro, semUso.inativar) : new Map<string, string>();
-  const plano = planoSubstituicao({ ...base, em_uso: new Set(uso.keys()) });
-  const total = existentes.filter((e) => !e.inativo && e.external_id !== null).length;
-  return { tabela, existentes, total, plano };
+function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroCargaPortal, entidade: EntidadeCarga, a: ArquivoRecebido) {
+  const emUso = async (ids: readonly string[]): Promise<ReadonlySet<string>> =>
+    deps.usoCadastros ? new Set((await deps.usoCadastros.emUso(c.tx, cadastro, ids)).keys()) : new Set<string>();
+  return planejarSubstituicao(deps, c, entidade, a, emUso);
 }
 
-/** Publica `cadastros.*.alterado@1` com `inativo: true` dos inativados (o que leva a inativação ao FDV). Filha: republica o pai. */
-async function publicarInativados(deps: Dependencias, c: ContextoRota, tabela: TabelaSubstituivel, ids: readonly string[], paiDe: ReadonlyMap<string, string | null>): Promise<void> {
-  const r = deps.repositorios(c.tx);
-  const paisUnicos = [...new Set(ids.map((id) => paiDe.get(id)).filter((x): x is string => !!x))];
-  switch (tabela) {
-    case 'filial':
-      for (const id of ids) { const f = await r.filiais.obter(id); if (f) await publicarPronto(c, await eventoFilial(r, f)); }
-      break;
-    case 'vendedor':
-      for (const id of ids) { const v = await r.vendedores.obter(id); if (v) await publicarPronto(c, eventoSimples('cadastros.vendedor.alterado@1', v as { id: string; inativo: boolean })); }
-      break;
-    case 'condicao_pagamento':
-      for (const id of ids) { const v = await r.condicoesPagamento.obter(id); if (v) await publicarPronto(c, eventoSimples('cadastros.condicao_pagamento.alterada@1', v)); }
-      break;
-    case 'produto':
-      for (const id of ids) { const p = await r.produtos.obter(id); if (p) await publicarPronto(c, await eventoProduto(r, p)); }
-      break;
-    case 'produto_unidade':
-      for (const id of paisUnicos) { const p = await r.produtos.obter(id); if (p) await publicarPronto(c, await eventoProduto(r, p)); }
-      break;
-    case 'cliente':
-      for (const id of ids) { const x = await r.clientes.obter(id); if (x) await publicarPronto(c, await eventoCliente(r, x)); }
-      break;
-    case 'cliente_endereco':
-      for (const id of paisUnicos) { const x = await r.clientes.obter(id); if (x) await publicarPronto(c, await eventoCliente(r, x)); }
-      break;
-    case 'tabela_preco_item':
-      for (const item of await r.substituicao.itensPreco(ids)) {
-        const t = await r.tabelasPreco.obter(item.tabela_preco_id);
-        if (t) await publicarPronto(c, eventoPreco(item, { ...t, inativo: true }));
-      }
-      break;
-  }
-}
-
-function resultadoDoCadastro(rel: RelatorioCarga, cadastro: CadastroCargaPortal): ResultadoEntidade {
-  const r = rel.entidades.find((e) => e.entidade === cadastro);
+function resultadoDoCadastro(rel: RelatorioCarga, entidade: EntidadeCarga): ResultadoEntidade {
+  const r = rel.entidades.find((e) => e.entidade === entidade);
   if (!r) throw new Error('carga do portal: o relatório não trouxe o cadastro enviado');
   return r;
 }
@@ -143,23 +93,19 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   const substituir = e.modo === 'substituir_tudo';
   if (substituir) exigirFraseSubstituir(e.frase);
   else if (e.frase !== undefined) throw erros.validacao({ frase: 'A frase é só do Substituir tudo' });
+  const entidade = entidadeDe(cadastro);
   await exigirDependencias(deps, c, cadastro);
 
-  const arquivo = arquivoDoCadastro(e);
-  const previsto = substituir ? await planejar(deps, c, cadastro, arquivo) : null; // antes da gravação: sobre os existentes de agora
-  const rel = await executarCarga(deps, c, 'gravar', [arquivo], cadastro);
-  const res = resultadoDoCadastro(rel, cadastro);
+  const arquivo = arquivoDoCadastro(e, entidade);
+  const previsto = substituir ? await planejar(deps, c, cadastro, entidade, arquivo) : null; // antes da gravação: sobre os existentes de agora
+  const rel = await executarCarga(deps, c, 'gravar', [arquivo], entidade);
+  const res = resultadoDoCadastro(rel, entidade);
   const gravadas = res.inseridas + res.atualizadas + res.sem_mudanca;
   if (res.situacao !== 'processado' || gravadas === 0) throw conflito(MENSAGENS_CARGA_PORTAL.nadaAGravar, 'nada_a_gravar');
   if (!substituir) return GravarCargaPlataformaResposta.parse({ cadastro, modo: e.modo, gravadas, com_erro: res.recusadas });
 
-  const { tabela, existentes, total, plano } = previsto!;
-  let inativados: string[] = [];
-  if (tabela) {
-    const r = deps.repositorios(c.tx);
-    inativados = await r.substituicao.inativarEmLote(tabela, plano.inativar);
-    await publicarInativados(deps, c, tabela, inativados, new Map(existentes.map((x) => [x.id, x.pai_id])));
-  }
+  const { plano, total } = previsto!;
+  const inativados = (await aplicarSubstituicao(deps, c, entidade, previsto!)).inativados;
   if (plano.sem_chave > 0) res.avisos.push(`${plano.sem_chave} ativo(s) sem external_id: não foram inativados`);
   if (plano.mantidos_em_uso > 0) res.avisos.push(`${plano.mantidos_em_uso} inativado(s) em uso: ficam no histórico`);
   res.inativadas = inativados.length;
@@ -178,16 +124,17 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
 export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<ValidarCargaPlataformaResposta> {
   const cadastro = CadastroCargaPortal.parse(e.cadastro);
   exigirModoPermitido(cadastro, e.modo);
-  const arquivo = arquivoDoCadastro(e);
-  const rel = await executarCarga(deps, c, 'validar', [arquivo], cadastro);
-  const res = resultadoDoCadastro(rel, cadastro);
+  const entidade = entidadeDe(cadastro);
+  const arquivo = arquivoDoCadastro(e, entidade);
+  const rel = await executarCarga(deps, c, 'validar', [arquivo], entidade);
+  const res = resultadoDoCadastro(rel, entidade);
   const prontas = res.inseridas + res.atualizadas + res.sem_mudanca;
   const lista = rel.erros.map((x) => ({ linha: x.linha, motivo: x.motivo, acao: x.linha === null ? ACAO_ARQUIVO : ACAO_LINHA }));
   const linhas = lista.slice(0, LIMITE_LINHAS_ERRO_VALIDACAO);
   const comErro = res.situacao === 'processado' ? res.recusadas : Math.max(1, res.lidas);
   let efeito: EfeitoSubstituir | undefined;
   if (e.modo === 'substituir_tudo') {
-    const p = await planejar(deps, c, cadastro, arquivo);
+    const p = await planejar(deps, c, cadastro, entidade, arquivo);
     efeito = efeitoSubstituir({ total: p.total, a_inativar: p.plano.inativar.length, sem_chave: p.plano.sem_chave });
   }
   return ValidarCargaPlataformaResposta.parse({
@@ -202,6 +149,7 @@ export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e:
  */
 export async function errosCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<ErroCarga[]> {
   const cadastro = CadastroCargaPortal.parse(e.cadastro);
-  const rel = await executarCarga(deps, c, 'validar', [arquivoDoCadastro(e)], cadastro);
+  const entidade = entidadeDe(cadastro);
+  const rel = await executarCarga(deps, c, 'validar', [arquivoDoCadastro(e, entidade)], entidade);
   return rel.erros;
 }
