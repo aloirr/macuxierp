@@ -66,7 +66,7 @@ Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a fat
 - Na linha, uma ação só: a principal ("Emitir nota").
 - A ação parcial ("Emitir nota parcial") fica no detalhe do pedido, porque é a exceção e exige escolher itens.
 - Sem menu na linha: o menu exige teclado e foco próprios, e a lista é densa.
-- **Rádio `.mx-radio`:** o shell importa `@macuxierp/ui/botoes.css` e põe `className="mx-radio"` no `input` radio (cartão de filial), tirando o `accent-color`. Desmarcado: borda `bordaCampo`, fundo branco; marcado (`:checked`): azul-noite com ponto branco; foco visível em azul-noite. Vem de `radioBase` e `radioMarcado` em `estilos.ts`, os mesmos do `DialogoMotivo`.
+- **Rádio `.mx-radio` e caixa `.mx-checkbox`:** o shell importa `@macuxierp/ui/botoes.css` e põe a classe no `input`; marcado em azul-noite (ponto ou visto branco); vêm de `radio*`/`checkbox*` em `estilos.ts`.
 
 ## Portal /config (T-0050)
 
@@ -76,4 +76,4 @@ Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a fat
 
 **`acumularPagina(atuais, pagina, chave)`** (`@macuxierp/ui/paginacao`): soma sem duplicar pela chave, mantém a ordem e, em chave repetida, a versão nova substitui a antiga na mesma posição; não muta a entrada. Uso: com `proximo_cursor`, `setLinhas(acumularPagina(linhas, resp.itens, chave))` (a resposta vem de `paginaDe`, em `platform-sdk/listas.ts`) e `temMais = resp.proximo_cursor != null`; regra no JSDoc.
 
-Paginação: a lista genérica do shell usa "Próxima página"; a TabelaDensa oferece "Carregar mais". Padrão único a decidir (RD-0974).
+Paginação: "Próxima página" (com a página na URL) nas listas de negócio grandes; "Carregar mais" (TabelaDensa + acumularPagina) só nas listas curtas do portal /config. (RD-0974)
