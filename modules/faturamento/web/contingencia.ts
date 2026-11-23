@@ -56,7 +56,7 @@ const SEM_PERMISSAO = 'sem permissão para esta ação';
  * `contingenciaDisponivel` = `pode_abrir` da resposta do GET (RN-FAT-10: filial simulada ou sem transporte SVC): com `false` o botão de abrir NÃO é oferecido (`mostrarAbrir: false`: nem desabilitado, nem com dica);
  * encerrar segue pelas regras de sempre (aparece com contingência aberta).
  */
-export function acoesDaContingencia(perfil: Perfil, aberta: boolean, contingenciaDisponivel = true): { mostrarAbrir: boolean; abrir: string | null; encerrar: string | null } {
+export function acoesDaContingencia(perfil: Perfil, aberta: boolean, contingenciaDisponivel: boolean): { mostrarAbrir: boolean; abrir: string | null; encerrar: string | null } {
   if (perfil !== 'administrador') return { mostrarAbrir: contingenciaDisponivel, abrir: SEM_PERMISSAO, encerrar: SEM_PERMISSAO };
   return { mostrarAbrir: contingenciaDisponivel, abrir: aberta ? 'a filial já está em contingência.' : null, encerrar: aberta ? null : 'a filial não está em contingência.' };
 }

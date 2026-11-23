@@ -504,9 +504,9 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, perto_do_fim: 0, sinal: 'verde' })).toBeNull();
   });
   it('RN-CORE-02: só o administrador abre e encerra; abrir fecha com a aberta e encerrar fecha sem ela', () => {
-    expect(publico.acoesDaContingencia('administrador', false)).toEqual({ mostrarAbrir: true, abrir: null, encerrar: 'a filial não está em contingência.' });
-    expect(publico.acoesDaContingencia('administrador', true)).toEqual({ mostrarAbrir: true, abrir: 'a filial já está em contingência.', encerrar: null });
-    for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true)).toEqual({ mostrarAbrir: true, abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
+    expect(publico.acoesDaContingencia('administrador', false, true)).toEqual({ mostrarAbrir: true, abrir: null, encerrar: 'a filial não está em contingência.' });
+    expect(publico.acoesDaContingencia('administrador', true, true)).toEqual({ mostrarAbrir: true, abrir: 'a filial já está em contingência.', encerrar: null });
+    for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true, true)).toEqual({ mostrarAbrir: true, abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
   });
   it('RN-FAT-10: filial simulada ou sem transporte SVC (pode_abrir false): o botão de abrir não é oferecido; encerrar segue aparecendo com contingência aberta; administrador com SVC disponível vê o botão', () => {
     expect(publico.acoesDaContingencia('administrador', false, false)).toMatchObject({ mostrarAbrir: false });
