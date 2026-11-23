@@ -90,15 +90,21 @@ describe('Gravar só depois de validação sem erro', () => {
 
 describe('perfis (RN-CORE-09)', () => {
   const eu = [{ id: 'cadastros' as const, menus: ['Carga de cadastros', 'Clientes'] }];
-  it('a ação e o menu seguem a matriz do SDK: administrador e gerente veem; faturista, fiscal, vendedor e leitura não', () => {
+  it('a ação e o menu seguem a matriz do SDK: abre se e só se pode(perfil, cadastros.carga.executar)', () => {
     for (const p of PERFIS) {
-      const vê = p === 'administrador' || p === 'gerente';
+      const vê = pode(p, 'cadastros.carga.executar');
       expect(acoesDaCarga(p).abrir).toBe(vê);
       expect(montarMenu(eu, MANIFESTOS, p).flatMap((g) => g.itens.map((i) => i.rotulo)).includes('Carga de cadastros')).toBe(vê);
     }
   });
-  // O perfil "analista de implantação" ainda não existe em PERFIS (SDK/core); quando entrar, tem de ver a carga.
-  it.skipIf(!(PERFIS as readonly string[]).includes('analista'))('o analista de implantação vê a carga', () => {
-    expect(pode('analista' as never, 'cadastros.carga.executar')).toBe(true);
+  it('leitura e vendedor não abrem a carga', () => {
+    for (const p of ['leitura', 'vendedor'] as const) {
+      expect(acoesDaCarga(p).abrir).toBe(false);
+      expect(montarMenu(eu, MANIFESTOS, p).flatMap((g) => g.itens.map((i) => i.rotulo))).not.toContain('Carga de cadastros');
+    }
+  });
+  it.skipIf(!(PERFIS as readonly string[]).includes('analista_implantacao'))('o analista de implantação vê a carga', () => {
+    expect(pode('analista_implantacao' as never, 'cadastros.carga.executar')).toBe(true);
+    expect(acoesDaCarga('analista_implantacao' as never).abrir).toBe(true);
   });
 });

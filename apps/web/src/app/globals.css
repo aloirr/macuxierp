@@ -16,7 +16,9 @@ a { color: var(--mx-cor-azul-noite); }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 .apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
 
-.cartao-central { max-width: 420px; margin: 8vh auto; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 32px; }
+.cartao-central, .bloco { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 32px; }
+.cartao-central { max-width: 420px; margin: 8vh auto; }
+.bloco { padding: 16px 20px; margin: 0 0 16px; }
 .cartao-central header { background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); margin: -32px -32px 24px; padding: 24px 32px; border-radius: 10px 10px 0 0; }
 .cartao-central h1 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 16px; }
 .lista-escolha { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
@@ -50,6 +52,8 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 /* Telas genéricas de descritor (T-0015): os componentes visuais são do @macuxierp/ui; aqui só o que o shell desenha. */
 .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tabela-rolavel { overflow-x: auto; max-width: 100%; }
+/* Sinal de rolagem horizontal (T-0050): sombra nas bordas que ainda têm conteúdo escondido; some quando a tabela cabe. */
+.tabela-rolavel.com-sinal-rolagem { background: linear-gradient(to right, var(--mx-cor-branco) 30%, transparent) left center / 24px 100% no-repeat local, linear-gradient(to left, var(--mx-cor-branco) 30%, transparent) right center / 24px 100% no-repeat local, radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left center / 10px 100% no-repeat scroll, radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right center / 10px 100% no-repeat scroll; }
 /* Se a tabela ainda não couber, a coluna de ações (ex.: "Emitir nota") fica fixa à direita, com fundo e divisória por token; nenhuma coluna é cortada. */
 .tabela-rolavel.com-acoes th:last-child, .tabela-rolavel.com-acoes td:last-child { position: sticky; right: 0; background: var(--mx-cor-branco); border-left: 1px solid var(--mx-cor-borda-tabela); }
 /* O diálogo nasce dentro da célula de ações (que é sticky e cria o próprio contexto de empilhamento): a célula que o contém sobe acima das demais, senão as células fixas das linhas seguintes ficam brancas por cima da cortina. */
@@ -105,3 +109,21 @@ fieldset.grupo-campos, fieldset.carga-cartao { margin: 0 0 16px; border: 1px sol
 .selos { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .campos-linha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .dados dd { overflow-wrap: anywhere; min-width: 0; }
+
+/* Portal /config (T-0050): topo em grafite (identidade de plataforma), só tokens. */
+.casca-plataforma { min-height: 100vh; }
+.topo-plataforma { background: var(--mx-cor-grafite); }
+.topo-plataforma a { color: var(--mx-cor-branco); }
+.topo-plataforma form { margin: 0; }
+.titulo-linha { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }
+.busca-slug { display: flex; gap: 8px; align-items: end; margin-bottom: 16px; }
+.busca-slug .campo { margin: 0; width: 280px; }
+.codigo, .senha-provisoria { font-family: var(--mx-fonte-codigo); }
+.cartao-plataforma .marca-login { margin: 0 0 24px; } /* área de proteção da C de 100 px */
+.cartao-plataforma .apoio { margin: 16px 0 0; }
+.bloco h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 12px; }
+.lista-modulos { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }
+.formulario-estreito { max-width: 420px; }
+.painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
+.senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }

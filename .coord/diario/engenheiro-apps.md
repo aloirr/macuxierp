@@ -26,6 +26,11 @@
 2026-11-23 — T-0051 — shell: carga por entidade (botões na ordem do D13, modelo, prévia com erros por linha e dependência)
 2026-11-23 — T-0051 — rodada final F2: proxyDeDownload único, rótulos do cadastros, timeout de 130 s na carga, CARGA_GRANDE_DEMAIS, input desligado enviando.
 2026-11-23 — T-0051 — 2º push do PR #297: atalho da dependência pelo entidade_faltante do cadastros (#296); regex do nome do campo removida (cadastros sempre preenche); junta o main
+2026-11-23 — T-0051 — shell: teste de perfis da carga lê a matriz (pronto para o analista)
 2026-11-23 — T-0051 — shell: ajustes de marca na carga, RegiaoErros única e .mx-radio na filial
 2026-11-23 — T-0051 — revisões do shell: região de erros do cabeçalho com itens (paliativo), textarea com aria, coluna Arquivo fora da tabela de erros, concordância dos omitidos.
 2026-11-23 — T-0051 — região de erros única com temErroExterno do FormularioItens (#302); paliativo removido; errosIniciais mantida (único jeito de testar SSR sem DOM)
+2026-11-23 — T-0050 — shell do portal /config (E4): sessão de superadmin, empresas, módulos, 1º admin, suspender/reativar e redefinir senha Revisão final: cookie Strict, Sair por POST (GET encerrar só apaga com 401 confirmado), guarda em empresas/nova, buscarNaApi comum, CSS sobre .conteudo/.topo.
+2026-11-23 — T-0050 — 2º push do PR #310: linha da lista de empresas vira link para /config/empresas/:id (slug) e tabela com sombra de rolagem em 390 px.
+2026-11-23 — T-0050 — 3º push do #310: marca (C 24 px, senha 20 px/600, títulos de cartão, borda de tabela), DialogoMotivo semTexto, Carregar mais acumulado (#309); mx-checkbox ainda não existe no main
+2026-11-23 — T-0050 — 4º push: checkboxes de módulo do detalhe da empresa com .mx-checkbox (#311), teste de render
