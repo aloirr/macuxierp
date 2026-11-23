@@ -343,10 +343,10 @@ describe('ajustes das revisões da T-0021 (item C)', () => {
 describe('MC-0016: vazio das listas e hora exportada', () => {
   it('as 4 páginas declaram vazio validado pelo SDK, com os textos exatos e sem "Limpe os filtros"', () => {
     const esperado = {
-      notas: ['Nenhuma nota emitida ainda. Emita a primeira em Pedidos a faturar.', 'Nenhuma nota com estes filtros.'],
-      'pedidos-a-faturar': ['Nenhum pedido aprovado esperando nota. Os pedidos aparecem aqui quando são aprovados.', 'Nenhum pedido com estes filtros.'],
-      rejeicoes: ['Nenhuma nota rejeitada. Está tudo certo.', 'Nenhuma rejeição com estes filtros.'],
-      titulos: ['Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', 'Nenhum título com estes filtros.'],
+      notas: ['Nenhuma nota emitida ainda.', 'Nenhuma nota com estes filtros.'],
+      'pedidos-a-faturar': ['Nenhum pedido aprovado esperando nota.', 'Nenhum pedido com estes filtros.'],
+      rejeicoes: ['Nenhuma nota rejeitada.', 'Nenhuma rejeição com estes filtros.'],
+      titulos: ['Nenhum título ainda.', 'Nenhum título com estes filtros.'],
     };
     for (const p of [paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos]) {
       const [sem, com] = esperado[p.id as keyof typeof esperado];
@@ -486,7 +486,7 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(d.contador('curto')).toBe('faltam 10 caracteres');
     expect(d.aviso).toMatch(/SEFAZ não responde/);
     expect(publico.dialogoEncerrarContingencia({}, 'epec').aviso).toMatch(/168 h/);
-    expect(publico.dialogoEncerrarContingencia({}, 'svc_rs').aviso).toBe('As próximas notas saem pelo autorizador normal.');
+    expect(publico.dialogoEncerrarContingencia({}, 'svc_rs').aviso).toBe('As próximas notas voltam a sair normalmente.');
   });
   it('selo e faixa de destaque só com contingência aberta, com a modalidade e o início no fuso do tenant', () => {
     const c = { modalidade: 'svc_rs' as const, inicio_em: '2026-11-22T14:30:00.000Z', ambiente: 'producao' as const };
