@@ -344,6 +344,9 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       `ARRAY['produto', 'produto']`,
       `ARRAY['nota']`,
       `ARRAY['preco', 'titulo']`,
+      // os nomes que saíram na 0044 (lista de 8)
+      `ARRAY['forma_prazo']`,
+      `ARRAY['cliente_endereco']`,
     ]) {
       recusaConfig(fatosSql(A.id, cad), '23514', /cadastros fora da lista/);
     }
@@ -452,7 +455,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(ordenar(ven.tabelas[1]!.linhas.map((l) => l.id))).toEqual(
       ordenar([A.cliente, X.cliente, X.cliente2]),
     );
-    const cli = json<Fatos>(fatosSql(A.id, `ARRAY['cliente', 'forma_prazo']`));
+    const cli = json<Fatos>(fatosSql(A.id, `ARRAY['cliente', 'condicao_pagamento']`));
     expect(cli.tabelas.map((t) => t.tabela)).toEqual([
       'condicao_pagamento',
       'cliente',
@@ -656,7 +659,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
   it('(i) zerar de fato: anula, apaga na ordem das FKs com o estoque_movimento, o gatilho volta, nada fiscal muda e B intacto', () => {
     const antesB = retrato(B.id);
     const fiscalA = retrato(A.id, FISCAIS);
-    // o plano que o domain montaria para produto + cliente + vendedor + forma_prazo (o em uso fica e é anulado)
+    // o plano que o domain montaria para produto + cliente + vendedor + condicao_pagamento (o em uso fica e é anulado)
     const plano = {
       apagar: [
         { tabela: 'produto', ids: [X.produto] },
