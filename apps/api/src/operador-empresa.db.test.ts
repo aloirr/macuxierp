@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MODULOS } from '@macuxierp/platform-sdk';
+import { ACOES_PLATAFORMA, MODULOS } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -163,7 +163,8 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(eu.json<{ usuario: { perfil: string; nome: string } }>().usuario).toMatchObject({ perfil: 'administrador', nome: ADMIN_NOME });
 
     const aud = await auditoria(t);
-    expect(aud.map((a) => a.acao)).toEqual(['plataforma.empresa.criar', ...Array(4).fill('plataforma.licenca.alterar'), 'plataforma.usuario.criar']);
+    expect(aud.map((a) => a.acao)).toEqual(['plataforma.admin.criar', 'plataforma.empresa.criar', ...Array(4).fill('plataforma.modulos.alterar')]);
+    for (const a of aud) expect(ACOES_PLATAFORMA).toContain(a.acao);
     for (const a of aud) {
       expect(a.usuario_id).toBeNull();
       expect(a.depois).toMatchObject({ operador: 'alexandre', motivo: 'primeiro acesso' });
@@ -210,7 +211,7 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
       { modulo: 'pedido', ativo: true },
     ]);
     const [ultima] = await um<{ antes: unknown; depois: unknown }>(
-      "SELECT antes, depois FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'plataforma.licenca.alterar' ORDER BY ocorrido_em DESC, created_at DESC LIMIT 1",
+      "SELECT antes, depois FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'plataforma.modulos.alterar' ORDER BY ocorrido_em DESC, created_at DESC LIMIT 1",
       [t],
     );
     expect(ultima).toMatchObject({ antes: { ativo: false }, depois: { ativo: true, modulo: 'pedido', operador: 'alexandre' } });
