@@ -53,6 +53,7 @@ const PORTAL = [
   'plataforma.empresa_modulos(uuid, jsonb, text)',
   'plataforma.empresa_primeiro_admin_criar(uuid, text, text, text, text)',
   'plataforma.empresa_primeiro_admin_senha(uuid, text, text)',
+  'plataforma.empresa_primeiro_admin_email(uuid, text)', // 0035
   'plataforma.idem_plataforma_reservar(text, text, plataforma.sha256_hex)',
   'plataforma.idem_plataforma_concluir(text, text, integer, jsonb)',
 ] as const;
@@ -68,6 +69,7 @@ const INTERNAS = [
   'plataforma.empresa_visivel(plataforma.tenant)',
   'plataforma.empresa_alvo(uuid, boolean)',
   'plataforma.exigir_rota_plataforma(text)',
+  'plataforma.mascarar_email(text)', // 0035
 ] as const;
 const TODAS = [...PORTAL, ...INTERNAS];
 const MODULOS = ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao_fdv', 'sefaz_simulador'];
@@ -80,7 +82,7 @@ interface Empresa {
   fuso: string;
   situacao: string;
   modulos: { modulo: string; ativo: boolean; valido_ate: string | null }[];
-  primeiro_admin: { id: string; ativo: boolean; bloqueado: boolean } | null;
+  primeiro_admin: { id: string; ativo: boolean; bloqueado: boolean; email_mascarado: string } | null;
   created_at: string;
   updated_at: string;
 }
@@ -258,14 +260,31 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
         /permission denied/,
       );
     }
-    // Nenhuma função da 0033 cita schema de módulo.
+    // Nenhuma função de plataforma cita schema de módulo, salvo empresa_json: emenda da ADR 0012 §4
+    // (engenheiro-software, T-0050; migração 0035), a única que lê core.empresa e cadastros.filial/municipio, só
+    // para exibição no portal.
     const citam = consultar<{ f: string }>(
       banco.conexao,
       `SELECT p.oid::regprocedure::text AS f FROM pg_proc p
-       WHERE p.oid = ANY (ARRAY[${TODAS.map((f) => `'${f}'::regprocedure`).join(', ')}]::oid[])
+       WHERE p.oid = ANY (ARRAY[${TODAS.filter((f) => f !== 'plataforma.empresa_json(uuid)')
+         .map((f) => `'${f}'::regprocedure`)
+         .join(', ')}]::oid[])
          AND p.prosrc ~ '(^|[^a-z_])(core|cadastros|pedido|faturamento|fiscal|integracao_fdv|sefaz_simulador)\\.'`,
     );
     expect(citam).toEqual([]);
+    // A exceção é estreita: empresa_json cita só core.empresa, cadastros.filial e cadastros.municipio.
+    const [fonte] = consultar<{ src: string }>(
+      banco.conexao,
+      `SELECT prosrc AS src FROM pg_proc WHERE oid = 'plataforma.empresa_json(uuid)'::regprocedure`,
+    );
+    const referencias = new Set(
+      [
+        ...(fonte?.src ?? '').matchAll(
+          /(?<![a-z_])(core|cadastros|pedido|faturamento|fiscal|integracao_fdv|sefaz_simulador)\.\w+/g,
+        ),
+      ].map((m) => m[0]),
+    );
+    expect([...referencias].sort()).toEqual(['cadastros.filial', 'cadastros.municipio', 'core.empresa']);
   });
 
   it('(d) exigir_superadmin: sem sessão, valor não uuid, revogada, vencida, ociosa, superadmin inativo ou troca pendente = MXS01', () => {
@@ -556,6 +575,7 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
       id: admin,
       ativo: true,
       bloqueado: false,
+      email_mascarado: 'do****@empresa-portal.teste', // 0035
     });
 
     // Senha do 1º admin: troca o hash, zera a trava e revoga as sessões dele.

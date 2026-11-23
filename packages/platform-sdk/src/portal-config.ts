@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import { moduloLicenciado, MODULOS_BASE, type Licenca } from './acesso';
 import { PADRAO_UUID } from './banco';
+import { PADRAO_CNPJ, PADRAO_UF } from './documentos';
 import { violacao, type Violacao } from './erros';
 import { MODULOS, type ModuloId } from './modulo';
 
@@ -51,7 +52,12 @@ export const SITUACOES_EMPRESA = ['ativo', 'suspenso', 'encerrado'] as const;
 export const LicencaModuloPlataforma = z.object({ modulo: z.enum(MODULOS), ativo: z.boolean(), valido_ate: Instante.nullable() });
 export type LicencaModuloPlataforma = z.infer<typeof LicencaModuloPlataforma>;
 
-/** A empresa (tenant) como o superadmin vê: cadastro de plataforma, licenças e o estado do 1º admin (sem e-mail nem nome). */
+/**
+ * A empresa (tenant) como o superadmin vê: cadastro de plataforma, licenças e o estado do 1º admin (sem e-mail completo
+ * nem nome). Detalhe da empresa (T-0050, decisão do Alexandre e do PO em 23/11/2026): razão social, CNPJ, cidade/UF e o
+ * e-mail do 1º admin mascarado; todos opcionais e anuláveis (contrato antigo continua válido; a lista pode omiti-los).
+ * O e-mail completo só por ação explícita e auditada (`plataforma.admin.revelar_email` → `EmailPrimeiroAdminResposta`).
+ */
 export const EmpresaPlataforma = z.object({
   id: Id,
   slug: z.string().regex(PADRAO_SLUG_EMPRESA),
@@ -59,11 +65,36 @@ export const EmpresaPlataforma = z.object({
   fuso: z.string().min(1),
   situacao: z.enum(SITUACOES_EMPRESA),
   modulos: z.array(LicencaModuloPlataforma),
-  primeiro_admin: z.object({ id: Id, ativo: z.boolean(), bloqueado: z.boolean() }).nullable(),
+  primeiro_admin: z
+    .object({
+      id: Id,
+      ativo: z.boolean(),
+      bloqueado: z.boolean(),
+      /**
+       * E-mail mascarado, gerado pelo banco (padrão do PO): as 2 primeiras letras do local + `****` + `@` + o domínio
+       * inteiro (`admin@acme.com.br` → `ad****@acme.com.br`); local com 1 ou 2 letras vira `*` + `****`
+       * (`ab@acme.com.br` → `*****@acme.com.br`). Só string: o formato é do banco, sem regex aqui.
+       */
+      email_mascarado: z.string().nullable().optional(),
+    })
+    .nullable(),
+  /** Razão social do cadastro da empresa (de MEI pode ser dado pessoal: nunca vai para log nem para a auditoria). */
+  razao_social: z.string().nullable().optional(),
+  /**
+   * CNPJ sem máscara, como no banco; numérico ou alfanumérico. Contrato de RESPOSTA (não derruba a resposta por DV):
+   * formato do domínio plataforma.cnpj; o DV é conferido no cadastro (RN-CAD-01).
+   */
+  cnpj: z.string().regex(PADRAO_CNPJ).nullable().optional(),
+  cidade: z.string().nullable().optional(),
+  uf: z.string().regex(PADRAO_UF, 'UF com 2 letras maiúsculas').nullable().optional(),
   created_at: Instante,
   updated_at: Instante,
 });
 export type EmpresaPlataforma = z.infer<typeof EmpresaPlataforma>;
+
+/** Resposta da revelação do e-mail completo do 1º admin (T-0050). */
+export const EmailPrimeiroAdminResposta = z.object({ email: EmailUsuario });
+export type EmailPrimeiroAdminResposta = z.infer<typeof EmailPrimeiroAdminResposta>;
 
 export const CriarEmpresaEntrada = z.object({
   slug: z

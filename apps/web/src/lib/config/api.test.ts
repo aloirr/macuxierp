@@ -76,5 +76,7 @@ describe('mensagens', () => {
     expect(mensagemDoErro(new ConfigNaoAutenticado(), 'situacao').expirou).toBe(true);
     expect(mensagemDoErro(new ConfigMuitasTentativas(), 'entrar').texto).toBe('Muitas tentativas. Aguarde 15 minutos e tente de novo.');
     expect(mensagemDoErro(new ConfigIndisponivel('x'), 'situacao')).toMatchObject({ texto: 'Não foi possível concluir. Tente de novo.', chaveNova: false });
+    expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'email').texto).toBe('A empresa ainda não tem 1º administrador.');
+    expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'carregar').texto).toBe('Empresa não encontrada. Volte à lista.');
   });
 });

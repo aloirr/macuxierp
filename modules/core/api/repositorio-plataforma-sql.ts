@@ -1,6 +1,6 @@
 /**
  * Adaptador SQL do `RepositorioPlataforma` (ADR 0012, seção 4): chama só as funções SECURITY DEFINER de lista fechada da
- * 0033, dentro da transação de plataforma (`BancoPlataforma.comPlataforma`: papel `macuxierp_config` e a sessão do
+ * 0033 e da 0035, dentro da transação de plataforma (`BancoPlataforma.comPlataforma`: papel `macuxierp_config` e a sessão do
  * superadmin na configuração local). Nenhum SELECT em tabela: o banco revalida a sessão e grava a auditoria.
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
@@ -73,5 +73,9 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
 
   redefinirSenhaPrimeiroAdmin(tx: Transacao, p: { id: string; senha_hash: string; request_id: string }): Promise<{ usuario_id: string }> {
     return primeiraLinha(tx, 'SELECT plataforma.empresa_primeiro_admin_senha($1::uuid, $2, $3) usuario_id', [p.id, p.senha_hash, p.request_id]);
+  }
+
+  async revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string> {
+    return (await primeiraLinha<{ email: string }>(tx, 'SELECT plataforma.empresa_primeiro_admin_email($1::uuid, $2) email', [p.id, p.request_id])).email;
   }
 }
