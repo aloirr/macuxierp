@@ -33,14 +33,16 @@ Campos: quantidade em texto local (aceita "1,5", até 4 casas); preço e descont
 ## Ajustes de marca (T-0015, MC-0006 a MC-0017)
 Valores em `packages/ui/src/estilos.ts` e `tokens.ts`; aqui só o que vale para quem usa.
 - **Desabilitado (MC-0014):** `renderSeletorProduto` recebe `desabilitado`; o seletor injetado deve respeitá-lo.
-- **Campo numérico inválido (MC-0015):** mensagem abaixo do campo (`role="alert"`, ligada por `aria-describedby`), com o problema e a ação.
+- **Campo numérico inválido (MC-0015):** no `FormularioItens` (`CampoNumerico`) e no `DialogoMotivo`, a mensagem fica num elemento abaixo do campo (`div`/`span` com `role="alert"`, estilo `mensagemErro`), ligada por `aria-describedby` (id de `useId`) e com `aria-invalid` no campo; o texto traz o problema e a ação. No shell (`ItensDoDialogo`, `dialogo-escrita.tsx`, #270) a mensagem é um `span.erro-campo` sem `role`, também ligado por `aria-describedby`, e uma região geral `p.so-leitor` com `role="status"` e `aria-live="polite"` avisa "Há campos com erro" uma vez. Os componentes do `packages/ui` não têm essa região geral.
 - **Foco visível (MC-0011):** regra global no `globals.css` (bloco abaixo); `botoes.css` traz a mesma regra para `.mx-botao*`, gerada de `focoVisivel`. Para o `engenheiro-apps`, o `globals.css` deve ter:
   ```css
   :focus-visible { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
   ```
-  Sem `outline: none` em outro lugar. Em fundo escuro (menu grafite) o shell usa `--mx-cor-branco` no mesmo seletor.
+  Sem `outline: none` em outro lugar.
 - **Densidade e canto (ressalvas do `design-de-marca` no #242, T-0021):** Campos do pacote em 13 px (tabela densa), botões em 15 px (MC-0008); canto de 6 px nos dois (`campoBase` e `botao*`).
-- **Foco e hover dos botões internos:** Os botões internos dos componentes (DialogoMotivo, FormularioItens) usam estilo inline; o foco visível vem da regra global `:focus-visible` do shell (globals.css), e o hover só existe nas classes do `botoes.css`.
+- **Foco e hover dos botões internos:** Os botões internos dos componentes (DialogoMotivo, FormularioItens) e os rádios usam estilo inline; o foco visível vem da regra global `:focus-visible` do shell (globals.css), e o hover só existe nas classes do `botoes.css`.
+- **Foco em fundo escuro:** o contêiner escuro (azul-noite, grafite) leva `.mx-fundo-escuro` e o foco sai branco (`focoVisivelEscuro`, gerado em `botoes.css`); só no contêiner escuro imediato: superfície clara dentro dele (diálogo, cartão) não fica sob a classe.
+- **Legenda:** a `<caption>` da tabela fica em 15 px, como os rótulos do formulário (`tabela.legenda`).
 - **Erro do `DialogoMotivo` (MC-0015):** o erro de motivo fica logo abaixo dos rádios (o `fieldset` aponta para ele por `aria-describedby`); o de texto, logo abaixo do campo (`aria-invalid`, `aria-describedby`, borda `erroTexto`). O erro do `validar` do módulo vai para o campo de texto.
 - **Dinheiro digitado (RD-0723):** o `FormularioItens` mostra "1.234,56" (formato do sdk, com milhar, igual ao do shell); aceita também "1234,5" e "R$ 12,50" ao colar.
 
@@ -51,9 +53,15 @@ Valores em `packages/ui/src/estilos.ts` e `tokens.ts`; aqui só o que vale para 
 - **nowrap:** células `td` de `numero` e `dinheiro` (e o total do item) usam `celulaNumerica`, sem quebra de linha. O `th` continua só alinhado à direita.
 
 ## S-01: assinatura e favicon (docs/marca/assinatura-erp.md)
-- **Subpath sem hook:** `@macuxierp/ui/marca` (`marca.tsx`) traz a assinatura, o favicon e o apple-touch-icon, para o Server Component do layout; o porquê está no cabeçalho de `marca.tsx`. A `AssinaturaErp` tem esse caminho só (fora do `index.ts`).
+- **Subpath sem hook:** `@macuxierp/ui/marca` (`marca.tsx`) traz a assinatura, o favicon e o apple-touch-icon, para o Server Component do layout; o porquê está no cabeçalho de `marca.tsx`. O `index.ts` não exporta a marca (a re-exportação de compatibilidade saiu na v0.2.1); `AssinaturaErp`, favicon e apple-touch-icon vêm só desse subpath.
 - **Topo azul-noite:** `<AssinaturaErp altura={24} />`; a altura fica entre 20 e 32 px; `alt="Macuxi ERP"`.
 - **Variante C** (`<AssinaturaErp variante="C" />`): cabeçalho do cartão de login e seleção de filial.
 - **Ícones:** `import { AssinaturaErp, faviconDataUri, appleTouchIconDataUri } from '@macuxierp/ui/marca'` e, no layout do Next: `export const metadata = { icons: { icon: faviconDataUri, apple: appleTouchIconDataUri } }`. PNG 180×180 do favicon (geração e SHA-256 em `marca.tsx`). O mesmo subpath tem `faviconSvg`, `paraDataUri`, `assinaturaANegativoAzulNoite` e `simboloNegativo`, cópia fiel dos ativos oficiais (o teste confere o SHA-256).
 - **Hover dos botões (`botoes.css`):** principal vira fundo e borda grafite; secundário vira fundo névoa. Só cor da paleta, nunca `filter: brightness`; não vale para `:disabled`.
 - **`'use client'`:** `TabelaDensa`, `DialogoMotivo` e `FormularioItens` usam hook e levam a diretiva; `FaixaPendencias` fica sem. Um Server Component não pode passar função (como `celula`) à `TabelaDensa`: a página que a usa vira cliente. O `package.json` declara `sideEffects: ["*.css"]` para o tree-shaking.
+
+## Ações na linha da lista
+Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a faturar); o engenheiro-apps só aplica depois dela.
+- Na linha, uma ação só: a principal ("Emitir nota").
+- A ação parcial ("Emitir nota parcial") fica no detalhe do pedido, porque é a exceção e exige escolher itens.
+- Sem menu na linha: o menu exige teclado e foco próprios, e a lista é densa.

@@ -127,8 +127,7 @@ describe('FormularioItens', () => {
     expect(textoParaQuantidade('-1')).toBeNull();
   });
   it('index exporta só componentes', () => {
-    // compat #249: faviconDataUri e appleTouchIconDataUri vêm da marca até o shell trocar o import
-    const permitidos = ['aliasCores', 'cores', 'escala', 'fontes', 'papeis', 'pesos', 'faviconDataUri', 'appleTouchIconDataUri'];
+    const permitidos = ['aliasCores', 'cores', 'escala', 'fontes', 'papeis', 'pesos'];
     expect(Object.keys(indice).filter((k) => /^[a-z]/.test(k) && !permitidos.includes(k))).toEqual([]);
   });
   it('renderiza linhas, seletor injetado, total formatado pelo chamador e ações', () => {

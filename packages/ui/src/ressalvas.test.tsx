@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DialogoMotivo, avaliarConfirmacao } from './DialogoMotivo.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { centavosParaReais, reaisParaCentavos } from './entradas.js';
-import { campoBase, focoVisivel, gerarCssBotoes } from './estilos.js';
+import { campoBase, focoVisivel, focoVisivelEscuro, gerarCssBotoes } from './estilos.js';
 
 const motivos = [{ codigo: 'a', rotulo: 'A' }];
 const item: ItemLinha = { chave: 'item-1', produtoId: 'p', quantidade: 1, precoUnitarioCentavos: 123456, descontoCentavos: 0 };
@@ -21,6 +21,15 @@ describe('MC-0011: foco visível', () => {
     expect(css).toContain('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible {');
     expect(css).toContain('outline: 2px solid var(--mx-cor-azul-noite);');
     expect(css).toContain('outline-offset: 2px;');
+  });
+});
+
+describe('foco em fundo escuro', () => {
+  it('focoVisivelEscuro é branco e gerarCssBotoes gera .mx-fundo-escuro :focus-visible dele', () => {
+    expect(focoVisivelEscuro.outline).toBe('2px solid var(--mx-cor-branco)');
+    expect(focoVisivelEscuro.outlineOffset).toBe('2px');
+    const css = gerarCssBotoes();
+    expect(css).toMatch(/\.mx-fundo-escuro :focus-visible \{\n {2}outline: 2px solid var\(--mx-cor-branco\);/);
   });
 });
 
