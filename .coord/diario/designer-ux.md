@@ -9,3 +9,5 @@
 2026-11-22 — T-0021 — v0.2.1: doc do erro de campo (#270), barrel sem a marca, legenda em 15 px, foco em fundo escuro, ação parcial só no detalhe (R-055226); corretor RD-0844–0848.
 2026-11-23 — T-0021 — MC-0015 na ui (span + região role=status única, soLeitor) e .mx-radio no botoes.css
 2026-11-23 — T-0021 — regraCss com px, RegiaoErros, mensagemErro com display:block, testes enxutos (RD-a..g)
+2026-11-23 — T-0050 (E5, ressalvas da marca) — selo sem solClaro (borda azulClaro, texto branco), ativos A grafite e C positivo em marca.tsx com SHA, AssinaturaErp com fundo (união discriminada), doc ajustado
+2026-11-23 — T-0050 — correções da spec do portal /config após revisão do engenheiro
