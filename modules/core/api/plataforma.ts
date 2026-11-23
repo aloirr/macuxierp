@@ -15,6 +15,7 @@ import {
   CABECALHOS_SENHA_PROVISORIA,
   ConsultaLista,
   conferirModulosPlataforma,
+  codigoDaEmpresa,
   CriarEmpresaEntrada,
   definirPluginPlataforma,
   definirRotaPlataforma,
@@ -41,8 +42,8 @@ type NovaSituacao = SituacaoEmpresaEntrada['situacao'];
 export interface RepositorioPlataforma {
   listarEmpresas(tx: Transacao, p: { busca?: string; cursor?: string; limite: number }): Promise<EmpresaPlataforma[]>;
   lerEmpresa(tx: Transacao, id: string): Promise<EmpresaPlataforma | null>;
-  /** `null` = slug já usado. */
-  criarEmpresa(tx: Transacao, p: { slug: string; nome: string; fuso: string; request_id: string }): Promise<EmpresaPlataforma | null>;
+  /** `null` = código/slug já usado. Slug nulo: o banco sorteia pela UF (0037). */
+  criarEmpresa(tx: Transacao, p: { slug: string | null; uf: string | null; nome: string; fuso: string; request_id: string }): Promise<EmpresaPlataforma | null>;
   alterarSituacao(tx: Transacao, p: { id: string; situacao: NovaSituacao; motivo: string; request_id: string }): Promise<EmpresaPlataforma>;
   alterarModulos(tx: Transacao, p: { id: string; modulos: Licenca[]; request_id: string }): Promise<EmpresaPlataforma>;
   /** `null` = a empresa ganhou administrador ou o e-mail já está em uso (corrida entre pedidos: unique_violation). */
@@ -78,13 +79,16 @@ function recusar(v: readonly Violacao[]): void {
 const paraLicencas = (ms: readonly LicencaModuloPlataforma[]): Licenca[] =>
   ms.map((m) => ({ modulo: m.modulo, ativo: m.ativo, valido_ate: m.valido_ate ? new Date(m.valido_ate) : null }));
 
+/** RN-CORE-11: o código do FDV vem do slug quando o banco não o devolve. */
+const comCodigo = (e: EmpresaPlataforma): EmpresaPlataforma => ({ ...e, codigo: e.codigo ?? codigoDaEmpresa(e.slug) });
+
 export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): PluginPlataforma {
   const { repo } = deps;
   const aleatorios = deps.aleatorios ?? ((n: number) => randomBytes(n));
   const empresaOuErro = async (tx: Transacao, params: Record<string, string>) => {
     const e = await repo.lerEmpresa(tx, idDoParam(params));
     if (!e) throw erros.naoEncontrado('Empresa');
-    return e;
+    return comCodigo(e);
   };
   const senhaProvisoria = async () => {
     const senha = gerarSenhaProvisoria(aleatorios(256));
@@ -99,7 +103,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       consulta: ConsultaLista,
       async executar(c, { consulta }) {
         const linhas = await repo.listarEmpresas(c.tx, { busca: consulta.busca, cursor: consulta.cursor, limite: consulta.limite + 1 });
-        return { corpo: paginar(linhas, consulta.limite) };
+        return { corpo: paginar(linhas.map(comCodigo), consulta.limite) };
       },
     }),
     definirRotaPlataforma({
@@ -117,9 +121,9 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       corpo: CriarEmpresaEntrada,
       idempotencia: 'obrigatoria',
       async executar(c, { corpo }) {
-        const criada = await repo.criarEmpresa(c.tx, { ...corpo, request_id: c.request_id });
-        if (!criada) throw erros.conflito('Já existe empresa com este slug');
-        return { status: 201, corpo: criada };
+        const criada = await repo.criarEmpresa(c.tx, { slug: corpo.slug, uf: corpo.uf, nome: corpo.nome, fuso: corpo.fuso, request_id: c.request_id });
+        if (!criada) throw erros.conflito(corpo.slug === null ? 'Não há código livre para esta UF' : 'Já existe empresa com este código');
+        return { status: 201, corpo: comCodigo(criada) };
       },
     }),
     definirRotaPlataforma({
@@ -132,7 +136,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         const mudancas = paraLicencas(corpo.modulos);
         // RN-CORE-02: o faturamento exige o fiscal, ao ligar e ao desligar (a API revalida antes da função gravar).
         recusar(conferirModulosPlataforma(paraLicencas(e.modulos), mudancas, deps.manifestos, c.agora));
-        return { corpo: await repo.alterarModulos(c.tx, { id: e.id, modulos: mudancas, request_id: c.request_id }) };
+        return { corpo: comCodigo(await repo.alterarModulos(c.tx, { id: e.id, modulos: mudancas, request_id: c.request_id })) };
       },
     }),
     definirRotaPlataforma({
@@ -145,7 +149,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         const r = avaliarSituacaoEmpresa({ atual: e.situacao, nova: corpo.situacao });
         recusar(r.violacoes);
         if (!r.mudou) return { corpo: e };
-        return { corpo: await repo.alterarSituacao(c.tx, { id: e.id, situacao: corpo.situacao, motivo: corpo.motivo, request_id: c.request_id }) };
+        return { corpo: comCodigo(await repo.alterarSituacao(c.tx, { id: e.id, situacao: corpo.situacao, motivo: corpo.motivo, request_id: c.request_id })) };
       },
     }),
     definirRotaPlataforma({

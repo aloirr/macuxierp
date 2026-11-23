@@ -4,10 +4,11 @@
  * superadmin na configuração local). Nenhum SELECT em tabela: o banco revalida a sessão e grava a auditoria.
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
-import type { EmpresaPlataforma, Licenca, SituacaoEmpresaEntrada, Transacao } from '@macuxierp/platform-sdk';
+import { erros, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
 import type { RepositorioPlataforma } from './plataforma';
 
-const repetido = (e: unknown): boolean => (e as { code?: unknown } | null)?.code === '23505';
+const sqlstate = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
+const repetido = (e: unknown): boolean => sqlstate(e) === '23505';
 
 async function semRepetido<R>(fn: () => Promise<R>): Promise<R | null> {
   try {
@@ -43,8 +44,26 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
     return l?.e ?? null;
   }
 
-  criarEmpresa(tx: Transacao, p: { slug: string; nome: string; fuso: string; request_id: string }): Promise<EmpresaPlataforma | null> {
-    return semRepetido(() => empresa(tx, 'SELECT plataforma.empresa_criar($1, $2, $3, $4) e', [p.slug, p.nome, p.fuso, p.request_id]));
+  criarEmpresa(tx: Transacao, p: { slug: string | null; uf: string | null; nome: string; fuso: string; request_id: string }): Promise<EmpresaPlataforma | null> {
+    // 0037: `p_uf` no fim; slug nulo = sorteio pela UF. 23514 (check) = código ou UF inválido (texto do RAISE, sem dado pessoal).
+    return semRepetido(async () => {
+      try {
+        return await empresa(tx, 'SELECT plataforma.empresa_criar($1, $2, $3, $4, $5) e', [p.slug, p.nome, p.fuso, p.request_id, p.uf]);
+      } catch (e) {
+        if (sqlstate(e) !== '23514') throw e;
+        // 0037: textos do RAISE 'uf invalida', 'uf difere do codigo', 'fuso desconhecido' e 'slug reservado'. O texto do
+        // banco não é repassado: cada caso vira mensagem fixa no campo (`uf`, `fuso` ou `codigo`). Sorteio sem vaga dá 23505.
+        const msg = String((e as { message?: unknown }).message ?? '');
+        const [campo, texto] = /\buf difere\b/i.test(msg)
+          ? ['uf', 'A UF precisa ser a do código']
+          : /\buf\b/i.test(msg)
+            ? ['uf', 'UF inválida']
+            : /\bfuso\b/i.test(msg)
+              ? ['fuso', 'Fuso desconhecido']
+              : ['codigo', 'Código inválido'];
+        throw erros.regra('RN-CORE-11', texto, { [campo]: texto });
+      }
+    });
   }
 
   alterarSituacao(tx: Transacao, p: { id: string; situacao: SituacaoEmpresaEntrada['situacao']; motivo: string; request_id: string }): Promise<EmpresaPlataforma> {
