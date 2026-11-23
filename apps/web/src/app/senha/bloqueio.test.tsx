@@ -22,7 +22,7 @@ vi.mock('@/lib/api', async (orig) => ({ ...(await orig<typeof import('@/lib/api'
 
 import Casca from '../(shell)/layout';
 import { entrarAction } from '../login/entrar';
-import { GET } from '../baixar-modelo/route';
+import { GET } from '../baixar-arquivo/route';
 import { TrocarSenhaPendente } from '@/lib/troca-pendente';
 
 describe('bloqueio do shell até a troca (T-0052)', () => {
@@ -52,15 +52,15 @@ describe('bloqueio do shell até a troca (T-0052)', () => {
   });
   it('download: o 403 TROCAR_SENHA vira redirect RELATIVO para /senha (sem ERR_FAILED)', async () => {
     baixarArquivo.mockRejectedValue(new TrocarSenhaPendente());
-    contexto.mockResolvedValue({ eu: { modulos: [{ id: 'cadastros', menus: [] }], usuario: { perfil: 'administrador' } } });
-    const r = await GET(new NextRequest('http://0.0.0.0:3000/baixar-modelo?caminho=%2Fv1%2Fcadastros%2Fcargas%2Fmodelos%2Fpreco'));
+    contexto.mockResolvedValue({ eu: { modulos: [{ id: 'faturamento', menus: [] }], usuario: { perfil: 'administrador' } } });
+    const r = await GET(new NextRequest('http://0.0.0.0:3000/baixar-arquivo?caminho=%2Fv1%2Ffaturamento%2Fnotas%2F3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70%2Fxml'));
     expect(r.status).toBe(307);
     expect(r.headers.get('location')).toBe('/senha');
   });
   it('download: 403 sem permissão continua 403', async () => {
     baixarArquivo.mockResolvedValue({ ok: false, status: 403 });
-    contexto.mockResolvedValue({ eu: { modulos: [{ id: 'cadastros', menus: [] }], usuario: { perfil: 'administrador' } } });
-    const r = await GET(new NextRequest('http://0.0.0.0:3000/baixar-modelo?caminho=%2Fv1%2Fcadastros%2Fcargas%2Fmodelos%2Fpreco'));
+    contexto.mockResolvedValue({ eu: { modulos: [{ id: 'faturamento', menus: [] }], usuario: { perfil: 'administrador' } } });
+    const r = await GET(new NextRequest('http://0.0.0.0:3000/baixar-arquivo?caminho=%2Fv1%2Ffaturamento%2Fnotas%2F3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70%2Fxml'));
     expect(r.status).toBe(403);
   });
 });

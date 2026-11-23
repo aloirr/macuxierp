@@ -2,9 +2,6 @@ import { isIP } from 'node:net';
 import { headers as cabecalhosDoPedido } from 'next/headers';
 import type { z } from 'zod';
 import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIGO_TROCAR_SENHA, EuResposta, REGRAS_SENHA, type RegraSenhaId } from '@macuxierp/platform-sdk';
-import { RelatorioCarga } from '@macuxierp/cadastros/contracts';
-import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
-import { CARGA_GRANDE_DEMAIS, CARGA_NAO_CONCLUIDA, FALHA, INDISPONIVEL, CARGA_TEMPO_ESGOTADO, SEM_PERMISSAO_CARGA } from './textos';
 import { TrocarSenhaPendente } from './troca-pendente';
 import { CREDENCIAL_FALSA, EU_FALSO, EU_FALSO_MEI, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
@@ -63,9 +60,8 @@ function base(): string {
   return url.replace(/\/$/, '');
 }
 
-/** Tempo padrão de uma chamada à API; a carga (até 120 s no servidor) usa o próprio. */
+/** Tempo padrão de uma chamada à API. */
 export const TIMEOUT_PADRAO_MS = 10_000;
-export const TIMEOUT_CARGA_MS = 130_000;
 
 /** IP do navegador (`cf-connecting-ip` do pedido que o Next recebeu), só se for um IP válido. Fora de um pedido, ou sem IP válido, `null`. Nunca vai a log. */
 async function ipDoPedido(): Promise<string | null> {
@@ -196,25 +192,6 @@ export async function buscarEu(acesso: string): Promise<EuResposta> {
     return process.env.MACUXIERP_FALSO_MEI === '1' ? EU_FALSO_MEI : EU_FALSO;
   }
   return getValidado('/v1/auth/eu', EuResposta, acesso, 'eu');
-}
-
-export type ResultadoCarga = { ok: true; relatorio: RelatorioCarga } | { ok: false; erro: string };
-
-/**
- * POST /v1/cadastros/cargas (multipart, T-0026). O arquivo só passa pela memória; nada do conteúdo vai a log.
- * Devolve o relatório validado pelo contrato ou uma mensagem fixa (nunca o corpo de erro cru).
- */
-export async function enviarCarga(acesso: string, formulario: FormData): Promise<ResultadoCarga> {
-  if (usaApiFalsa) return { ok: false, erro: INDISPONIVEL };
-  const r = await chamarAutenticado(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario }, TIMEOUT_CARGA_MS);
-  if (r.status === 401) throw new NaoAutenticado();
-  if (r.status === 403) return { ok: false, erro: SEM_PERMISSAO_CARGA };
-  if (r.status === 413) return { ok: false, erro: CARGA_GRANDE_DEMAIS };
-  if (r.status === 400) return { ok: false, erro: (await textoDeErro(r, 'arquivos')).texto || 'Envio inválido: confira os arquivos e o modo.' };
-  if (r.status === 503 && (await textoDeErro(r)).codigo === 'TEMPO_ESGOTADO') return { ok: false, erro: CARGA_TEMPO_ESGOTADO };
-  if (!r.ok) return { ok: false, erro: CARGA_NAO_CONCLUIDA };
-  const dados = RelatorioCarga.safeParse(await r.json().catch(() => null));
-  return dados.success ? { ok: true, relatorio: dados.data } : { ok: false, erro: FALHA };
 }
 
 /** GET de um registro (detalhe, catálogo): como `getValidado` com status distintos; 404 vira `null`. Modo falso: `null`. */

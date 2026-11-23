@@ -22,7 +22,7 @@ export class ErroPlataforma extends Error {
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga';
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
 export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
@@ -55,6 +55,8 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
       if (ctx === 'redefinir') return { ...base, texto: SENHA_JA_EXIBIDA, chaveNova: ehRespostaDefinitiva(e.status) };
     }
     if (ctx === 'integracao_fdv' && (e.status === 409 || e.status === 422 || e.status === 503) && e.mensagem) return { ...base, texto: e.mensagem, campos: e.campos, chaveNova: ehRespostaDefinitiva(e.status) };
+    // Carga (T-0058): a mensagem curta da API (arquivo recusado, código de confirmação errado) é o texto da tela.
+    if (ctx === 'carga' && (e.status === 400 || e.status === 409 || e.status === 422 || e.status === 503) && e.mensagem) return { ...base, texto: e.mensagem, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 422 && ctx === 'modulos') {
       const faltas = Object.entries(e.campos).map(([campo, t]) => ({ campo, t }));
       return { ...base, texto: 'Os módulos escolhidos não são permitidos. Revise as dependências.', campos: Object.fromEntries(faltas.map((f) => [f.campo, f.t])), chaveNova: ehRespostaDefinitiva(e.status) };

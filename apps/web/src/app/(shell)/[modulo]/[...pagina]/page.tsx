@@ -1,14 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
-import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { montarMenu, resolverPagina } from '@/lib/menu';
 import { paginasDoMenu } from '@/lib/paginas';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
-import { TelaCarga } from './carga';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 
@@ -43,12 +41,11 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
         </nav>
       )}
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
-      {rota === PAGINA_CARGA.rota && <TelaCarga api="/envio-carga" />}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} />}
       {tela && declarada && (
         <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
-      {!tela && !declarada?.aviso && rota !== PAGINA_CARGA.rota && declarada?.rota !== monitor?.rota && <p className="apoio">Disponível em breve.</p>}
+      {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && <p className="apoio">Disponível em breve.</p>}
     </>
   );
 }

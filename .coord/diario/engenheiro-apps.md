@@ -38,3 +38,4 @@
 2026-11-23 — T-0051 — corretor: RD-1007 (menu.test) e RD-1008 (regex do CSS em identidade.test); RD-1006 é do designer-ux
 2026-11-23 — T-0050 — portal /config: dados da empresa, e-mail do 1º admin mascarado com "Mostrar" auditado
 2026-11-23 — T-0050 — revisões RD-1025 e RD-1026: revelação pelo resultado do executarConfig, 404 próprio do e-mail, testes sem repetição
+2026-11-23 — T-0058 — aba Cargas no /config (Adicionar e Substituir tudo), carga fora do BKO (v0.3.5a); contrato provisório em lib/config/cargas-provisorio.ts

@@ -33,13 +33,16 @@ import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, Confi
 const ListaEmpresas = paginaDe(EmpresaPlataforma);
 export type ListaEmpresas = z.infer<typeof ListaEmpresas>;
 
-interface Pedido {
+export interface Pedido {
   token?: string;
   corpo?: unknown;
+  /** Multipart (carga, T-0058): vai como veio, sem `content-type` (o fetch põe a fronteira). */
+  formulario?: FormData;
   chave?: string;
+  timeoutMs?: number;
 }
 
-async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<Response> {
+export async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   if (p.token) headers.cookie = `${COOKIE_CONFIG}=${p.token}`;
   // CSRF (ADR 0012): toda escrita leva o cabeçalho.
@@ -47,14 +50,14 @@ async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<
   if (p.corpo !== undefined) headers['content-type'] = 'application/json';
   if (p.chave) headers['idempotency-key'] = p.chave;
   try {
-    return await buscarNaApi(`${PREFIXO_PLATAFORMA}${caminho}`, { method: metodo, headers, body: p.corpo === undefined ? undefined : JSON.stringify(p.corpo) });
+    return await buscarNaApi(`${PREFIXO_PLATAFORMA}${caminho}`, { method: metodo, headers, body: p.formulario ?? (p.corpo === undefined ? undefined : JSON.stringify(p.corpo)) }, p.timeoutMs);
   } catch {
     throw new ConfigIndisponivel('API não respondeu');
   }
 }
 
 /** Mapeia o status de erro; nunca repassa o corpo cru. */
-async function recusar(r: Response): Promise<never> {
+export async function recusar(r: Response): Promise<never> {
   if (r.status === 401) throw new ConfigNaoAutenticado();
   if (r.status === 429) throw new ConfigMuitasTentativas();
   let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown> } = {};
@@ -75,7 +78,7 @@ async function recusar(r: Response): Promise<never> {
   throw new ConfigIndisponivel(`HTTP ${r.status}`);
 }
 
-async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise<z.infer<S>> {
+export async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise<z.infer<S>> {
   if (!r.ok) return recusar(r);
   const dados = schema.safeParse(await r.json().catch(() => null));
   if (!dados.success) throw new ConfigIndisponivel('resposta fora do contrato');
@@ -83,7 +86,7 @@ async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise
 }
 
 /** Só UUID entra no caminho (nada de `../` vindo da URL). */
-function idEmpresa(id: string): string {
+export function idEmpresa(id: string): string {
   if (!PADRAO_UUID.test(id)) throw new ErroPlataforma(404, 'NAO_ENCONTRADO');
   return id;
 }

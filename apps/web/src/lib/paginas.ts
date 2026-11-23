@@ -1,4 +1,4 @@
-import { PAGINAS, PAGINA_CARGA } from '@macuxierp/cadastros/web';
+import { PAGINAS } from '@macuxierp/cadastros/web';
 import { PAGINAS_CORE } from '@macuxierp/core/web';
 import { PAGINAS_FATURAMENTO } from '@macuxierp/faturamento/web';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
@@ -21,8 +21,7 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
 export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   ...PAGINAS_CORE.map((p) => registrar('core', p)),
   ...PAGINAS.map((p) => registrar('cadastros', p)),
-  // Carga de cadastros (T-0026): fora de PAGINAS, entra pelo mesmo descritor.
-  registrar('cadastros', PAGINA_CARGA),
+  // Carga de cadastros (T-0058): saiu do BKO; é feita na aba Cargas do /config (superadmin). A API /v1/cadastros/cargas continua.
   // Pedido (T-0015): detalhe `/:id` e "novo" abrem pela URL sem item de menu; `/novo` vence `/:id` por ser rota exata (casarRota).
   // O módulo já marca `ocultaNoMenu` em novo e detalhe (#135), mas não no editar; até marcar, o shell aplica a ponte (o campo do módulo vence).
   ...PAGINAS_PEDIDO.map((p) => registrar('pedido', p, { ocultaNoMenu: p.ocultaNoMenu ?? p.tipo !== 'lista' })),
