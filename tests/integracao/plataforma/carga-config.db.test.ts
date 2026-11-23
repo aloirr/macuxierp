@@ -5,12 +5,13 @@
  * O 1º describe fica no NÍVEL DO BANCO só no que a rota não mostra: o Adicionar (tx1 `portal_carga_iniciar` como
  * `macuxierp_config`, tx2 pelo `POST /cargas` do BKO como `macuxierp_app`, tx3 `portal_carga_concluir`) reativa pelo
  * `external_id` sem duplicar; nenhum dos três papéis tem DELETE nas tabelas da carga; o `iniciar` não recebe a frase
- * (4 argumentos). MXS01, MXC01, MXC03, MXC04, privilégios, situação e auditoria da função ficam no
+ * (4 argumentos). MXS01, MXC01, MXC04, privilégios, situação e auditoria da função ficam no
  * db/testes/carga-portal-0040.db.test.ts (banco-dados); o `macuxierp_config` sem sessão no rls-superadmin.db.test.ts.
  *
  * O 2º describe sobe a API REAL (`criarApp` + `montarDependenciasProducao`) com as ROTAS DE PRODUÇÃO do `pluginsPlataforma`
  * (`criarPluginPlataformaCadastros`, #415), sem plugin de teste: 400 VALIDACAO e 422 RN-CAD-10 com o campo, tradução
- * MXS01/MXC01/MXC03/MXC04 em HTTP (erros.ts do #408), Substituir tudo (`inativarEmLote`, estoque intacto), reenvio sem
+ * MXS01/MXC01/MXC04 em HTTP (erros.ts do #408), nenhuma carga depende de outra (0044: sem o MXC03, a referência ausente
+ * é erro de linha e a carga fica 'falhou' com 2 auditorias), Substituir tudo (`inativarEmLote`, estoque intacto), reenvio sem
  * Idempotency-Key guardada e isolamento pela rota. 401 sem sessão e com o JWT do tenant, 403 ORIGEM_RECUSADA, 403
  * TROCAR_SENHA e os nomes das rotas de carga ficam na matriz do isolamento.db.test.ts. O único gancho de teste é o do
  * MXS01: o banco de plataforma revoga a sessão logo antes da transação do `portal_carga_iniciar`.
@@ -66,17 +67,16 @@ const PASTA = join(
   'carga',
   '__fixtures__',
 );
+/** Os 8 arquivos da carga (T-0058): a forma vem no condicoes_pagamento.csv e o endereço no cliente.csv. */
 const ARQUIVOS = [
   'filial',
   'vendedor',
-  'forma_pagamento',
-  'prazo_pagamento',
+  'condicoes_pagamento',
   'produto',
   'produto_unidade',
   'preco',
   'estoque',
   'cliente',
-  'cliente_endereco',
 ];
 /** Como no carga.db.test.ts do cadastros: o NCM da fixture exige CEST nas tabelas oficiais; troca por NCM + CEST oficiais. */
 const csv = (nome: string): string => {
@@ -112,10 +112,10 @@ const retrato = async (b: BancoEfemero, t: string) => {
     r[tab] = await linhas(
       `SELECT to_jsonb(x)::text AS l FROM cadastros.${tab} x WHERE tenant_id = $1 ORDER BY 1`,
     );
-  r.auditoria = await linhas(
+  const auditoria = await linhas(
     'SELECT to_jsonb(a)::text AS l FROM plataforma.auditoria a WHERE tenant_id = $1 ORDER BY 1',
   );
-  return r;
+  return Object.assign(r, { auditoria });
 };
 
 /** Abre (e confirma) uma sessão do superadmin `sa` pela função do banco, no papel do portal. Devolve o id da sessão. */
@@ -268,12 +268,19 @@ describe.skipIf(!PG_DISPONIVEL)(
 
     const admin = async (sql: string, prm: unknown[] = []) =>
       (await b.admin.query(sql, prm)).rows as Record<string, unknown>[];
-    const url = (t: string, cadastro: string, modo?: string) =>
-      `/v1/plataforma${CAMINHOS_CARGAS_PLATAFORMA.gravar.replace(':id', t).replace(':cadastro', cadastro)}${modo ? `?modo=${modo}` : ''}`;
+    const url = (t: string, cadastro: string, modo?: string, rota: 'gravar' | 'validar' = 'gravar') =>
+      `/v1/plataforma${CAMINHOS_CARGAS_PLATAFORMA[rota].replace(':id', t).replace(':cadastro', cadastro)}${modo ? `?modo=${modo}` : ''}`;
     const gravar = (
       t: string,
       cadastro: string,
-      o: { modo?: string; frase?: string; conteudo?: string; token?: string; chave?: string } = {},
+      o: {
+        modo?: string;
+        frase?: string;
+        conteudo?: string;
+        token?: string;
+        chave?: string;
+        rota?: 'gravar' | 'validar';
+      } = {},
     ): Promise<RespostaPortal> => {
       const f = formulario(o.frase === undefined ? {} : { frase: o.frase }, [
         {
@@ -285,7 +292,7 @@ describe.skipIf(!PG_DISPONIVEL)(
       ]);
       return app.inject({
         method: 'POST',
-        url: url(t, cadastro, o.modo),
+        url: url(t, cadastro, o.modo, o.rota),
         payload: f.payload,
         headers: {
           ...f.headers,
@@ -381,7 +388,7 @@ describe.skipIf(!PG_DISPONIVEL)(
       expect(await todos()).toEqual(antes);
     });
 
-    it('SQLSTATE → HTTP (erros.ts do #408): MXC04 = 422 RN-CORE-02 com detalhes.codigo; MXC03 e MXC01 = 409 CONFLITO com o código do contrato; MXS01 = 401', async () => {
+    it('SQLSTATE → HTTP (erros.ts do #408): MXC04 = 422 RN-CORE-02 com detalhes.codigo; MXC01 = 409 CONFLITO com o código do contrato; MXS01 = 401', async () => {
       const antes = await todos();
       const susp = await gravar(SUSP, 'filial');
       expect([susp.statusCode, erro(susp)]).toEqual([
@@ -399,15 +406,6 @@ describe.skipIf(!PG_DISPONIVEL)(
           codigo: 'RN-CORE-02',
           mensagem: MENSAGENS_CARGA_PORTAL.semLicenca,
           detalhes: { codigo: 'modulo_desligado' },
-        },
-      ]);
-      const dep = await gravar(V, 'vendedor');
-      expect([dep.statusCode, erro(dep)]).toEqual([
-        409,
-        {
-          codigo: 'CONFLITO',
-          mensagem: MENSAGENS_CARGA_PORTAL.dependenciaPendente,
-          detalhes: { codigo: 'dependencia_pendente' },
         },
       ]);
       const tokenRevoga = await p.sessao(EMAIL_REVOGA);
@@ -442,6 +440,64 @@ describe.skipIf(!PG_DISPONIVEL)(
       await comoPapel(b, CONFIG, { sessao: sessaoSql, confirmar: true }, (c) =>
         c.query(SQL_CONCLUIR, [A, aberta, 'falhou', 0, 0, null, 'req-t0060-aberta']),
       );
+    });
+
+    it('nenhuma carga depende de outra (0044, sem MXC03): vendedor sem filial em V = referência ausente como erro de linha; o gravar dá 409 nada_a_gravar, a carga fica falhou com 2 auditorias e nenhum cadastro muda', async () => {
+      const antes = await retrato(b, V);
+      const outras = await Promise.all([A, B, SUSP, SEMLIC].map((t) => retrato(b, t)));
+      // validar: a referência ausente sai como erro da linha (motivo e ação, sem o valor da célula), nunca como 409
+      const val = await gravar(V, 'vendedor', { rota: 'validar' });
+      expect(val.statusCode, val.body).toBe(200);
+      const v = val.json<{
+        prontas: number;
+        com_erro: number;
+        linhas: { linha: number | null; motivo: string; acao: string }[];
+        linhas_omitidas: number;
+      }>();
+      expect(v).toMatchObject({ prontas: 0, com_erro: 1, linhas_omitidas: 0 });
+      expect(v.linhas).toHaveLength(1);
+      expect(v.linhas[0]!.linha).toEqual(expect.any(Number));
+      expect(v.linhas[0]!.motivo).toMatch(
+        /filial_external_id não encontrado: carregue o cadastro de filiais/,
+      );
+      expect(val.body).not.toMatch(/F-EX-01|MXC03|dependencia_pendente/);
+      // gravar: o banco abre a execução (sem MXC03); nenhuma linha pronta = 409 nada_a_gravar e a execução fecha como falhou
+      const g = await gravar(V, 'vendedor');
+      expect([g.statusCode, erro(g)]).toEqual([
+        409,
+        {
+          codigo: 'CONFLITO',
+          mensagem: MENSAGENS_CARGA_PORTAL.nadaAGravar,
+          detalhes: { codigo: 'nada_a_gravar' },
+        },
+      ]);
+      expect(g.body).not.toMatch(/MXC03|dependencia_pendente/);
+      const execucoes = await admin(
+        'SELECT cadastro, modo, resultado, gravadas, com_erro, inativadas, concluida_em IS NOT NULL AS fechada FROM cadastros.carga_portal WHERE tenant_id = $1',
+        [V],
+      );
+      expect(execucoes).toEqual([
+        {
+          cadastro: 'vendedor',
+          modo: 'adicionar',
+          resultado: 'falhou',
+          gravadas: 0,
+          com_erro: 0,
+          inativadas: null,
+          fechada: true,
+        },
+      ]);
+      const depois = await retrato(b, V);
+      const acoes = (
+        await admin('SELECT acao FROM plataforma.auditoria WHERE tenant_id = $1 ORDER BY created_at, acao', [
+          V,
+        ])
+      ).map((x) => x.acao);
+      expect(depois.auditoria.length - antes.auditoria.length).toBe(2);
+      expect(acoes.slice(-2).sort()).toEqual(['cadastros.carga.concluir', 'cadastros.carga.iniciar']);
+      for (const tab of TABELAS.filter((x) => x !== 'carga_portal'))
+        expect(depois[tab], tab).toEqual(antes[tab]);
+      expect(await Promise.all([A, B, SUSP, SEMLIC].map((t) => retrato(b, t)))).toEqual(outras);
     });
 
     it('isolamento pela rota: o gravar em A (mesmos external_id de B) não muda nenhuma linha de B nem das outras empresas', async () => {

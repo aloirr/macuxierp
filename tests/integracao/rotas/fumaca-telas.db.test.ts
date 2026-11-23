@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   CAMINHOS_CARGAS_PLATAFORMA,
+  CADASTROS_CARGA_PORTAL,
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
   ENTIDADES_CARGA_PORTAL,
   ENTIDADES_ENVIO_FDV,
@@ -208,8 +209,10 @@ for (const g of [...VARREDURA.literais, ...GETS_ESTRUTURADOS()]) {
   if (!GETS.has(c)) GETS.set(c, g.origem);
 }
 const CASOS = [...GETS].sort(([a], [b]) => a.localeCompare(b)).map(([caminho, origem]) => ({ caminho, origem }));
-/** Piso medido em 2026-11-23 (T-0065): a lista nunca encolhe calada (extração quebrada = teste vazio). */
-const PISO_DE_ROTAS = 53;
+/** Rotas fixas medidas em 2026-11-23 (T-0065), fora os GET modelo da carga: a lista nunca encolhe calada. */
+const ROTAS_FIXAS = 43;
+/** Piso = 43 rotas fixas + 1 GET modelo por cadastro de CADASTROS_CARGA_PORTAL (8 na v0.3.7 = 51). */
+const PISO_DE_ROTAS = ROTAS_FIXAS + CADASTROS_CARGA_PORTAL.length;
 
 /**
  * Camada (b) do docs/testes/fumaca-publicar.md: a mesma lista, em JSON, para o passo de fumaça do producao-publicar.
