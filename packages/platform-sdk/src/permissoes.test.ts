@@ -79,9 +79,9 @@ describe('PERMISSOES (matriz do doc 03, D3)', () => {
     expect(ROTULOS_PERFIL.analista_implantacao).toBe('Analista de implantação');
   });
 
-  it('integração FDV (T-0011): ver só administrador, gerente e leitura; configurar só o administrador', () => {
+  it('integração FDV (T-0011, T-0056): no BKO só ver (administrador, gerente e leitura); a escrita é do portal (ADR 0013)', () => {
     expect(quem('integracao-fdv.ver')).toEqual(['administrador', 'gerente', 'leitura']);
-    expect(quem('integracao-fdv.configurar')).toEqual(['administrador']);
+    expect(Object.keys(PERMISSOES).filter((a) => a.startsWith('integracao-fdv.'))).toEqual(['integracao-fdv.ver']);
   });
 
   it('toda ação começa com um módulo conhecido e só lista perfis da RN-CORE-01', () => {
