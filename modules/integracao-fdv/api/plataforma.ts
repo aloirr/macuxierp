@@ -35,8 +35,8 @@ import {
   type Transacao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
-import { decidirCargaCompleta, decidirRetomar, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
+import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
+import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
 
 const Uuid = z.string().uuid();
 const Instante = z.string().datetime();
@@ -87,10 +87,15 @@ export interface RepositorioPortalIntegracaoFdv {
       chave_mestra_versao: number;
       zerar_espelho: boolean;
       evento_carga_inicial: Record<string, unknown> | null;
+      /** Primeira credencial: `[]` explícito (os cadastros são ligados um por um, no `PUT /configuracao`). Troca: a lista da ativa, explícita (a função copia da ativa; a 0038 recusa NULL). */
+      entidades: string[];
       request_id: string;
     },
   ): Promise<EstadoPortal>;
-  configurar(tx: Transacao, p: { tenant: string; entidades: string[]; limite: number; request_id: string }): Promise<EstadoPortal>;
+  configurar(
+    tx: Transacao,
+    p: { tenant: string; entidades: string[]; limite: number; evento_carga_inicial: Record<string, unknown> | null; antes: string[]; request_id: string },
+  ): Promise<EstadoPortal>;
   testar(tx: Transacao, p: { tenant: string; request_id: string }): Promise<Date | string>;
   cargaCompleta(tx: Transacao, p: { tenant: string; entidade: string; request_id: string }): Promise<void>;
   retomar(tx: Transacao, p: { tenant: string; entidade: string; request_id: string }): Promise<RespostaRetomadaFdv>;
@@ -108,20 +113,26 @@ export const repositorioPortalSql: RepositorioPortalIntegracaoFdv = {
     return EstadoPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_ler($1::uuid) AS r', [tenant]));
   },
   async definirCredencial(tx, p) {
-    // p_entidades e p_limite ficam no DEFAULT da função (as 10 da F2 e 5.000 na primeira; a troca copia da ativa)
+    // p_limite fica no DEFAULT (5.000 na primeira; a troca copia da ativa). p_entidades sempre explícito (`[]` na primeira: nada ligado)
     const r = await funcao(
       tx,
-      'SELECT integracao_fdv.portal_credencial_definir($1::uuid, $2::uuid, $3, $4, $5::bytea, $6, $7::int, $8::boolean, $9::jsonb, $10) AS r',
+      `SELECT integracao_fdv.portal_credencial_definir($1::uuid, $2::uuid, $3, $4, $5::bytea, $6, $7::int, $8::boolean, $9::jsonb, $10, $11::text[]) AS r`,
       [
         p.tenant, p.anterior_id, p.conector_id, p.ambiente, p.chave_cifrada, p.chave_prefixo, p.chave_mestra_versao, p.zerar_espelho,
         p.evento_carga_inicial === null ? null : JSON.stringify(p.evento_carga_inicial), p.request_id,
+        p.entidades,
       ],
     );
     return EstadoPortal.parse(r);
   },
   async configurar(tx, p) {
+    // 6 argumentos (0042): p_antes é a lista lida no portal_ler; se mudou (comparação por conjunto) a função dá MXI02 sem efeito (a apps/api mapeia para 409).
     return EstadoPortal.parse(
-      await funcao(tx, 'SELECT integracao_fdv.portal_configurar($1::uuid, $2::text[], $3::int, $4) AS r', [p.tenant, p.entidades, p.limite, p.request_id]),
+      await funcao(
+        tx,
+        'SELECT integracao_fdv.portal_configurar($1::uuid, $2::text[], $3::int, $4, $5::jsonb, $6::text[]) AS r',
+        [p.tenant, p.entidades, p.limite, p.request_id, p.evento_carga_inicial === null ? null : JSON.stringify(p.evento_carga_inicial), p.antes],
+      ),
     );
   },
   testar(tx, p) {
@@ -236,7 +247,8 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
         );
         // AAD = a empresa ALVO (`:id`), nunca o tenant de referência da sessão de plataforma
         const chave_cifrada = cifrarCampo({ chave: chaveIntegracao, tenantId: tenant, claro: corpo.chave });
-        const evento = plano.pedirCargaInicial ? EVENTOS[EVENTO_CARGA_INICIAL].parse({ entidades: [...ENTIDADES_CARGA_INICIAL] }) : null;
+        const ligadas = plano.zerarEspelho ? entidadesParaCargaInicial([], atual.entidades_habilitadas) : null;
+        const evento = ligadas ? EVENTOS[EVENTO_CARGA_INICIAL].parse({ entidades: ligadas }) : null;
         const estado = await repo.definirCredencial(c.tx, {
             tenant,
             anterior_id: atual.credencial?.id ?? null,
@@ -247,6 +259,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
             chave_mestra_versao: versaoDaChave,
             zerar_espelho: plano.zerarEspelho,
             evento_carga_inicial: evento,
+            entidades: plano.primeira ? [] : [...atual.entidades_habilitadas],
             request_id: c.request_id,
           });
         return { status: plano.primeira ? 201 : 200, corpo: paraPlataforma(estado) };
@@ -275,8 +288,11 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
         const tenant = idDaRota(params);
         const violacoes = validarConfiguracao(corpo); // a API revalida o que o Zod já barrou
         if (violacoes.length > 0) throw erros.regra(violacoes[0]!.rn, violacoes[0]!.mensagem, Object.fromEntries(violacoes.map((v) => [v.campo, v.mensagem])));
-        exigirCredencial(await lerLicenciado(c.tx, tenant));
-        const estado = await repo.configurar(c.tx, { tenant, entidades: corpo.entidades_habilitadas, limite: corpo.limite_registros_lote, request_id: c.request_id });
+        const antes = await lerLicenciado(c.tx, tenant);
+        exigirCredencial(antes);
+        const ligadas = entidadesParaCargaInicial(antes.entidades_habilitadas, corpo.entidades_habilitadas);
+        const evento = ligadas ? EVENTOS[EVENTO_CARGA_INICIAL].parse({ entidades: ligadas }) : null;
+        const estado = await repo.configurar(c.tx, { tenant, entidades: corpo.entidades_habilitadas, limite: corpo.limite_registros_lote, evento_carga_inicial: evento, antes: antes.entidades_habilitadas, request_id: c.request_id });
         return { corpo: paraPlataforma(estado) };
       },
     }),

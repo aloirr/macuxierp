@@ -1,20 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import { LIMITE_REGISTROS_LOTE } from '../contracts';
-import { MENSAGEM_ENTIDADES_HABILITADAS, MENSAGEM_LIMITE_LOTE, decidirCargaCompleta, decidirRetomar, planejarTrocaCredencial, validarConfiguracao } from './configuracao';
+import { MENSAGEM_ENTIDADES_HABILITADAS, MENSAGEM_LIMITE_LOTE, decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, planejarTrocaCredencial, validarConfiguracao } from './configuracao';
 
 const atual = { conector_id: 'erp-1', ambiente: 'producao' as const };
 
 describe('troca de credencial (RF-INF-05, T-0009 seção 6)', () => {
-  it('RF-INF-05: primeira credencial do tenant pede a carga inicial e não zera o espelho', () => {
-    expect(planejarTrocaCredencial(null, atual)).toEqual({ primeira: true, zerarEspelho: false, pedirCargaInicial: true });
+  it('RF-INF-05: primeira credencial do tenant não pede carga (cadastros ligados um por um) e não zera o espelho', () => {
+    expect(planejarTrocaCredencial(null, atual)).toEqual({ primeira: true, zerarEspelho: false });
   });
   it('RF-INF-05: rotação só da chave (mesmo conector e ambiente) não zera nem pede carga', () => {
-    expect(planejarTrocaCredencial(atual, { ...atual })).toEqual({ primeira: false, zerarEspelho: false, pedirCargaInicial: false });
+    expect(planejarTrocaCredencial(atual, { ...atual })).toEqual({ primeira: false, zerarEspelho: false });
   });
   it('RF-INF-05: outro conector_id ou outro ambiente = outro tenant do FDV: zera o espelho e pede a carga', () => {
     for (const nova of [{ ...atual, conector_id: 'erp-2' }, { ...atual, ambiente: 'teste' as const }]) {
-      expect(planejarTrocaCredencial(atual, nova)).toEqual({ primeira: false, zerarEspelho: true, pedirCargaInicial: true });
+      expect(planejarTrocaCredencial(atual, nova)).toEqual({ primeira: false, zerarEspelho: true });
     }
+  });
+});
+
+describe('carga inicial ao ligar o cadastro (RF-INF-05; R-20261123-150400)', () => {
+  it('RF-INF-05: só as recém-ligadas entram; as já ligadas e as desligadas ficam de fora (null = sem evento)', () => {
+    expect(entidadesParaCargaInicial(['filial'], ['filial', 'vendedor'])).toEqual(['vendedor']);
+    expect(entidadesParaCargaInicial(['filial', 'vendedor'], ['filial'])).toBeNull();
+    expect(entidadesParaCargaInicial(['filial'], ['filial'])).toBeNull();
+  });
+  it('RF-INF-05: lista vazia nas duas pontas não gera evento', () => {
+    expect(entidadesParaCargaInicial([], [])).toBeNull();
+  });
+  it('RF-INF-05: ligar preço leva a tabela_preco; forma e prazo de pagamento não levam dependência (o cadastros já mapeia)', () => {
+    expect(entidadesParaCargaInicial([], ['preco'])).toEqual(['preco', 'tabela_preco']);
+    expect(entidadesParaCargaInicial([], ['forma_pagamento', 'prazo_pagamento'])).toEqual(['forma_pagamento', 'prazo_pagamento']);
+  });
+  it('RF-INF-05: a ordem segue a da carga (referências antes de quem as usa)', () => {
+    expect(entidadesParaCargaInicial([], ['cliente', 'filial'])).toEqual(['filial', 'cliente']);
+  });
+  it('RF-INF-05: religar sem mudança não gera evento', () => {
+    expect(entidadesParaCargaInicial(['preco', 'filial'], ['filial', 'preco'])).toBeNull();
   });
 });
 
