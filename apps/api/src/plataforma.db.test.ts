@@ -216,11 +216,14 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     expect(rep.json()).toMatchObject({ codigo: 'CONFLITO' });
   });
 
-  it('regras: fuso desconhecido (23514 da função) é 422 com mensagem fixa; faturamento sem fiscal é 422 RN-CORE-02; core desligado é recusado', async () => {
+  it('regras: fuso desconhecido é 422 (RN-CORE-11 ou mensagem fixa); faturamento sem fiscal é 422 RN-CORE-02; core desligado é recusado', async () => {
     const token = await sessao();
     const fuso = await pedir(token, 'POST', '/v1/plataforma/empresas', { corpo: { slug: 'portal-api-fuso', nome: 'Empresa Fuso', fuso: 'America/Lugar_Nenhum' }, chave: randomUUID() });
     expect(fuso.statusCode).toBe(422);
-    expect(fuso.json()).toEqual({ codigo: 'REGRA_PLATAFORMA', mensagem: 'Pedido recusado pelas regras da plataforma' });
+    // Compatível com o core antes e depois da T-0053 (RN-CORE-11); o ramo antigo sai depois do merge do core.
+    const corpoFuso = fuso.json();
+    if (corpoFuso.codigo === 'RN-CORE-11') expect(corpoFuso).toMatchObject({ codigo: 'RN-CORE-11', campos: { fuso: 'Fuso desconhecido' } });
+    else expect(corpoFuso).toEqual({ codigo: 'REGRA_PLATAFORMA', mensagem: 'Pedido recusado pelas regras da plataforma' });
     const criada = await pedir(token, 'POST', '/v1/plataforma/empresas', { corpo: { slug: 'portal-api-mod', nome: 'Empresa Módulos' }, chave: randomUUID() });
     const id = criada.json<{ id: string }>().id;
     const fat = await pedir(token, 'PUT', `/v1/plataforma/empresas/${id}/modulos`, { corpo: { modulos: [{ modulo: 'faturamento', ativo: true }] } });
