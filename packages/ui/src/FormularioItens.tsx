@@ -1,7 +1,8 @@
 'use client';
 
-import { useId, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
 import { botaoSecundario, campoBase, cor, desabilitadoEstilo, espaco, mensagemErro, numerico, tabela } from './estilos.js';
+import { RegiaoErros } from './RegiaoErros.js';
 import { centavosParaReais, reaisParaCentavos, textoParaQuantidade } from './entradas.js';
 
 /** Linha mínima do formulário. Valores monetários em centavos (inteiros). O módulo pode estender com campos próprios. */
@@ -62,6 +63,10 @@ interface CampoProps {
   mensagemInvalido: string;
   /** Erro vindo de fora (domínio); o texto inválido local tem prioridade. */
   erro?: string;
+  /** Avisa o formulário quando o texto digitado passa a ser (ou deixa de ser) inválido. */
+  aoInvalido?: (chave: string, invalido: boolean) => void;
+  /** Chave deste campo no `aoInvalido` (ex.: `item-1:quantidade`). */
+  chaveInvalido?: string;
 }
 
 /** Mantém o texto digitado localmente ("1,5", "1." ) e só publica quando é válido. */
@@ -72,6 +77,12 @@ function CampoNumerico(p: CampoProps) {
   const atual = p.paraValor(t);
   if (!invalido && atual !== null && atual !== p.valor) setT(p.paraTexto(p.valor));
   const idErro = useId();
+  const { aoInvalido, chaveInvalido } = p;
+  useEffect(() => {
+    if (!aoInvalido || !chaveInvalido) return;
+    aoInvalido(chaveInvalido, invalido);
+    return () => aoInvalido(chaveInvalido, false);
+  }, [invalido, aoInvalido, chaveInvalido]);
   const mensagem = invalido ? p.mensagemInvalido : p.erro;
   return (
     <div>
@@ -91,7 +102,7 @@ function CampoNumerico(p: CampoProps) {
         }}
         style={{ ...campo, ...numerico, ...(p.desabilitado ? { ...desabilitadoEstilo(true), background: cor('nevoa') } : {}), ...(mensagem ? { borderColor: cor('erroTexto') } : {}) }}
       />
-      {mensagem ? <div id={idErro} role="alert" style={mensagemErro}>{mensagem}</div> : null}
+      {mensagem ? <span id={idErro} style={mensagemErro}>{mensagem}</span> : null}
     </div>
   );
 }
@@ -101,6 +112,21 @@ const thNum = (largura: number, titulo: string) => <th style={{ ...tabela.cabeca
 export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioItensProps<T>) {
   const { itens, aoMudar, novoItem, renderSeletorProduto, formatarCentavos, calcularTotal, desabilitado, erros = {}, legenda } = p;
   const base = useId();
+  // Campos numéricos com texto inválido (estado local do CampoNumerico), por `chave:campo`.
+  const [invalidos, setInvalidos] = useState<ReadonlySet<string>>(new Set());
+  const marcarInvalido = useCallback(
+    (k: string, inv: boolean) =>
+      setInvalidos((a) => {
+        if (a.has(k) === inv) return a;
+        const n = new Set(a);
+        if (inv) n.add(k);
+        else n.delete(k);
+        return n;
+      }),
+    [],
+  );
+  const comErro = (v: string | Record<string, string> | undefined) => (typeof v === 'string' ? v !== '' : v !== undefined && Object.values(v).some(Boolean));
+  const temErro = invalidos.size > 0 || itens.some((i) => comErro(erros[i.chave]));
   const mudar = (chave: string, parte: Partial<ItemLinha>) =>
     aoMudar(itens.map((i) => (i.chave === chave ? ({ ...i, ...parte } as T) : i)));
   const adicionar = () => {
@@ -111,6 +137,7 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
 
   return (
     <div style={{ display: 'grid', gap: espaco.sm }}>
+      <RegiaoErros temErro={temErro} />
       <table style={tabela.raiz}>
         {legenda ? <caption style={tabela.legenda}>{legenda}</caption> : null}
         <thead>
@@ -138,16 +165,16 @@ export function FormularioItens<T extends ItemLinha = ItemLinha>(p: FormularioIt
               <tr key={i.chave}>
                 <td style={tabela.celula}>
                   {renderSeletorProduto({ valor: i.produtoId, aoEscolher: (id) => mudar(i.chave, { produtoId: id }), rotulo: `Produto do ${item}`, desabilitado, idErro: e.produtoId ? idProduto : undefined })}
-                  {e.produtoId ? <div id={idProduto} role="alert" style={mensagemErro}>{e.produtoId}</div> : null}
+                  {e.produtoId ? <span id={idProduto} style={mensagemErro}>{e.produtoId}</span> : null}
                 </td>
                 <td style={tabela.celula}>
-                  <CampoNumerico rotulo={`Quantidade do ${item}`} inputMode="decimal" mensagemInvalido="Quantidade inválida. Use só números, até 4 casas, ex.: 1,5." desabilitado={desabilitado} erro={e.quantidade} valor={i.quantidade} paraTexto={String} paraValor={textoParaQuantidade} aoValor={(v) => mudar(i.chave, { quantidade: v })} />
+                  <CampoNumerico rotulo={`Quantidade do ${item}`} inputMode="decimal" mensagemInvalido="Quantidade inválida. Use só números, até 4 casas, ex.: 1,5." desabilitado={desabilitado} erro={e.quantidade} aoInvalido={marcarInvalido} chaveInvalido={`${i.chave}:quantidade`} valor={i.quantidade} paraTexto={String} paraValor={textoParaQuantidade} aoValor={(v) => mudar(i.chave, { quantidade: v })} />
                 </td>
                 <td style={tabela.celula}>
-                  <CampoNumerico rotulo={`Preço unitário do ${item}`} inputMode="decimal" mensagemInvalido="Preço inválido. Digite em reais, ex.: 12,50." desabilitado={desabilitado} erro={e.precoUnitarioCentavos} valor={i.precoUnitarioCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { precoUnitarioCentavos: v })} />
+                  <CampoNumerico rotulo={`Preço unitário do ${item}`} inputMode="decimal" mensagemInvalido="Preço inválido. Digite em reais, ex.: 12,50." desabilitado={desabilitado} erro={e.precoUnitarioCentavos} aoInvalido={marcarInvalido} chaveInvalido={`${i.chave}:precoUnitarioCentavos`} valor={i.precoUnitarioCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { precoUnitarioCentavos: v })} />
                 </td>
                 <td style={tabela.celula}>
-                  <CampoNumerico rotulo={`Desconto do ${item}`} inputMode="decimal" mensagemInvalido="Desconto inválido. Digite em reais, ex.: 5,00." desabilitado={desabilitado} erro={e.descontoCentavos} valor={i.descontoCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { descontoCentavos: v })} />
+                  <CampoNumerico rotulo={`Desconto do ${item}`} inputMode="decimal" mensagemInvalido="Desconto inválido. Digite em reais, ex.: 5,00." desabilitado={desabilitado} erro={e.descontoCentavos} aoInvalido={marcarInvalido} chaveInvalido={`${i.chave}:descontoCentavos`} valor={i.descontoCentavos} paraTexto={centavosParaReais} paraValor={reaisParaCentavos} aoValor={(v) => mudar(i.chave, { descontoCentavos: v })} />
                 </td>
                 <td style={{ ...tabela.celula, ...tabela.celulaNumerica }}>{formatarCentavos(calcularTotal(i))}</td>
                 <td style={tabela.celula}>

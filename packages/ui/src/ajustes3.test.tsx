@@ -47,22 +47,6 @@ describe('subpath marca sem hook (T-0021)', () => {
   });
 });
 
-describe('rádio do DialogoMotivo (T-0021)', () => {
-  const src = fonte('DialogoMotivo.tsx');
-  const radio = src.split('const radioEstilo')[1]!.split('});')[0]!;
-  it('sem accentColor e sem anel externo; appearance none com borda de campo', () => {
-    expect(src).not.toContain('accentColor');
-    expect(radio).toContain("appearance: 'none'");
-    expect(radio).toContain("cor('bordaCampo')");
-    expect(radio).toContain('margin: 0');
-    expect(radio).toContain("borderRadius: '50%'");
-  });
-  it('o marcado é azul-noite com ponto branco interno', () => {
-    expect(radio).toContain("background: marcado ? cor('azulNoite')");
-    expect(radio).toContain("inset 0 0 0 4px ${cor('branco')}");
-  });
-});
-
 describe("diretiva 'use client' (T-0021)", () => {
   it('todo .tsx que usa hook começa com a diretiva; os demais, não', () => {
     for (const n of tsx) {

@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.2.2 em produção** (publicada em 22/11, 09h41: virada do Hub com envio e recebimento ligados; a trava é a credencial mxc_, digitada só depois da carga conferida). **v0.3.0 em andamento** desde 23/11 07h08 (T-0050 e T-0051), previsão ~23h20 de 23/11. Time retomado em 23/11 05h37 ("Retome o trabalho"); parado de 05h42 a 07h00 pelo limite semanal de uso.
+> Fase atual: **v0.2.2 em produção** (publicada em 22/11, 09h41: virada do Hub com envio e recebimento ligados; a trava é a credencial mxc_, digitada só depois da carga conferida). **v0.3.0 em andamento** desde 23/11 07h08 (T-0050 e T-0051), previsão ~20h30 de 23/11. Time retomado em 23/11 05h37 ("Retome o trabalho"); parado de 05h42 a 07h00 pelo limite semanal de uso.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -55,7 +55,7 @@
 | [T-0048](tarefas/T-0048.md) | Atualizar o zod para >= 4.6.6 (GHSA-mrhx-c7xc-m3w5) | F4 | engenheiro-software | aberta | achado da revisão da T-0045 |
 | [T-0049](tarefas/T-0049.md) | Marca: ativos finais da assinatura Macuxi ERP (SVGs oficiais em docs/marca/ativos/, regra definitiva) | F1 | design-de-marca | concluida | #168 → 6f72cc6; parecer do corretor no #172; recados R-20261122-021618 e R-20261122-021622 |
 | [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | concluida | PR #22 → cba7f5f |
-| [T-0050](tarefas/T-0050.md) | Portal de configuração do ERP (superadmin) em /config | v0.3.0 | engenheiro-software | em_andamento | E1 (ADR 0012, contratos, PERFIS) desde 07h08, pronta ~08h35; depois E2 (0033), E3 (core), E4 (apps), E6 (testes); MFA na versão seguinte |
+| [T-0050](tarefas/T-0050.md) | Portal de configuração do ERP (superadmin) em /config | v0.3.0 | engenheiro-software | em_andamento | E1 (ADR 0012, contratos e portas no SDK, sem o perfil) pronta às 07h25, PR #291; perfil num PR casado com a 0033; depois E2 (0033), E3 (core), E4 (apps), E6 (testes); MFA na versão seguinte |
 | [T-0051](tarefas/T-0051.md) | Carga por entidade (RF-CAD-11) e perfil analista de implantação (RN-CORE-09) | v0.3.0 | modulo-cadastros | em_andamento | docs #279 → 818e4ad; cadastros F1 em nuvem/T-0051-cadastros desde 07h09 (1h51); F2 apps depois da filial vazia |
 
 ## Travado pela nuvem (21/11, 23h00)
@@ -112,8 +112,9 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 
 ## 23/11 (Manaus)
 - 05h37: "Retome o trabalho" (Alexandre, pelo PO). Prioridades: 1) apoio aos testes dele (carga, credencial mxc_, pedidos do FDV, 1ª NF-e simulada com o certificado de teste); 2) v0.3.0 (T-0050, T-0051); 3) o que estava pausado (#269, #275, designer-ux).
-- 05h47 (PO): RN-CORE-09. 05h53 (PO): /config no mesmo domínio, "acesso" sem impersonação. MFA do superadmin na versão seguinte (Alexandre, opção B).
+- 05h39 (PO): RN-CORE-09. 05h40 (PO): /config no mesmo domínio, "acesso" sem impersonação. MFA do superadmin na versão seguinte (Alexandre, opção B).
 - 05h42–07h00: o limite semanal de uso parou o time; a previsão da v0.3.0 escorregou ~1h20 (de ~22h00 para ~23h20).
+- 07h15–07h28: o gerente mandou horas adiantadas (até ~45 min) em mensagens e em textos; corrigidas por este PR (RN-CORE-09 05h39, RN-CORE-02 07h21, RN-FAT-05 ~07h18). Previsão da v0.3.0 refeita: E1 às 07h25, fechamento ~20h30.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
 
 ## Regras de operação (21/11, 21h51; atualizadas às 22h41)

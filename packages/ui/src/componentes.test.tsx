@@ -194,8 +194,8 @@ describe('ajustes de marca (T-0015)', () => {
 describe('regra de cores', () => {
   it('nenhum componente tem cor literal (só var(--mx-...))', () => {
     const dir = new URL('./', import.meta.url);
-    const arqs = readdirSync(dir).filter((f) => /^(TabelaDensa|FaixaPendencias|DialogoMotivo|FormularioItens|estilos)\.tsx?$/.test(f));
-    expect(arqs.length).toBe(5);
+    const arqs = readdirSync(dir).filter((f) => /^(TabelaDensa|FaixaPendencias|DialogoMotivo|FormularioItens|SeloPlataforma|estilos)\.tsx?$/.test(f));
+    expect(arqs.length).toBe(6);
     for (const a of arqs) expect(readFileSync(new URL(a, dir), 'utf8'), a).not.toMatch(/#[0-9A-Fa-f]{3,8}\b|rgba?\(/);
   });
 });

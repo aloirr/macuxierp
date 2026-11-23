@@ -22,3 +22,4 @@
 2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga
 2026-11-23 — T-0021 — #275: nota de fuso no detalhe da nota e nas listas com horário; coluna Item fixa na parcial
 2026-11-23 — T-0021 — shell: topo e cabeçalho do cartão com .mx-fundo-escuro (regra .topo duplicada removida)
+2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga e tela de filial sem filiais

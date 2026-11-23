@@ -5,15 +5,15 @@
  * requisição (D9): o relatório e a auditoria levam contagens e SHA-256, nunca o valor de uma célula.
  */
 import {
-  ErroApi, definirRota, erros, lerCsv, sha256Hex, pode,
+  ErroApi, definirRota, erros, lerCsv, respostaCsv, sha256Hex, pode,
   type ArquivoRecebido, type ContextoRota, type CsvLido, type RotaModulo, TEMPO_MAXIMO_ROTA_MS,
 } from '@macuxierp/platform-sdk';
 import {
-  CargaCampos, ENTIDADES_CARGA, MAX_ARQUIVOS_LOTE, MAX_BYTES_LOTE, MAX_ERROS_RELATORIO, MAX_LINHAS_LOTE, RelatorioCarga,
+  CargaCampos, ENTIDADES_CARGA, EntidadeCarga as EntidadeCargaZ, MAX_ARQUIVOS_LOTE, MAX_BYTES_LOTE, MAX_ERROS_RELATORIO, MAX_LINHAS_LOTE, RelatorioCarga,
   type EntidadeCarga, type ErroCarga, type LinhasCarga, type ModoCarga, type ResultadoEntidade,
 } from '../contracts';
 import {
-  LAYOUT, PADRAO_UF, REFS_CARGA, acrescentarIdsDoLote, alvoCriado, classificarArquivo, conferirReferencias, conferirVigenciaDaTabela, erroLinha, idsVazios, mapearLinha, separarDuplicados,
+  LAYOUT, MOTIVO_SO_ADMINISTRADOR, PADRAO_UF, modeloCsv, REFS_CARGA, acrescentarIdsDoLote, alvoCriado, classificarArquivo, conferirReferencias, conferirVigenciaDaTabela, erroLinha, idsVazios, mapearLinha, separarDuplicados,
   type ErroLinha, type MunicipioOficial,
 } from '../domain';
 import {
@@ -66,7 +66,10 @@ function erroDeExcecao(linha: number, e: unknown): ErroLinha {
   return erroLinha(linha, null, 'CARGA_BANCO', 'Erro do banco ao gravar a linha: nada foi gravado para ela');
 }
 
-export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: ModoCarga, recebidos: readonly ArquivoRecebido[]): Promise<RelatorioCarga> {
+export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: ModoCarga, recebidos: readonly ArquivoRecebido[], entidade?: EntidadeCarga): Promise<RelatorioCarga> {
+  if (entidade && (recebidos.length !== 1 || recebidos[0]?.nome.toLowerCase() !== `${entidade}.csv`)) {
+    throw erros.validacao({ arquivos: `Envie só o arquivo ${entidade}.csv neste botão.` });
+  }
   const r = deps.repositorios(c.tx);
   const loteId = novoLoteId();
   const rel = new Relatorio();
@@ -96,7 +99,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
       rel.erro(a.nome, linha, campo, codigo, motivo);
     };
     if (!podeCarregar(c.sessao.perfil, k.entidade)) {
-      recusar(null, null, 'PERFIL_SEM_PERMISSAO', 'O perfil não pode carregar esta entidade');
+      recusar(null, null, 'PERFIL_SEM_PERMISSAO', k.entidade === 'filial' ? MOTIVO_SO_ADMINISTRADOR : 'O perfil não pode carregar esta entidade');
       continue;
     }
     const layout = LAYOUT[k.entidade];
@@ -148,7 +151,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     const a = arquivos.find((x) => x.entidade === entidade);
     if (!a) continue;
     await carregarReferencias(st, entidade, a.linhas);
-    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos) as { validas: Linha[]; erros: ErroLinha[] };
+    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos, vistas) as { validas: Linha[]; erros: ErroLinha[] };
     ref.erros.forEach((e) => rel.erroLinha(a.nome, e));
     let linhas = ref.validas;
     if (entidade === 'preco') {
@@ -263,13 +266,25 @@ async function carregarReferencias(st: Estado, entidade: EntidadeCarga, linhas: 
   }
 }
 
+/** RF-CAD-11: modelo CSV da entidade (cabeçalho só), com a mesma ação da carga. */
+export function rotaModeloCarga(): RotaModulo {
+  return definirRota({
+    metodo: 'GET', caminho: '/cargas/modelos/:entidade', acao: 'cadastros.carga.executar',
+    async executar(_c, e) {
+      const k = EntidadeCargaZ.safeParse(e.params.entidade);
+      if (!k.success) throw erros.naoEncontrado('Modelo');
+      return respostaCsv(`${k.data}.csv`, modeloCsv(k.data));
+    },
+  });
+}
+
 export function rotaCarga(deps: Dependencias): RotaModulo {
   return definirRota({
     metodo: 'POST', caminho: '/cargas', acao: 'cadastros.carga.executar', corpo: CargaCampos,
     multipart: { arquivos: [{ campo: 'arquivos', tamanhoMaximo: MAX_BYTES_LOTE, quantidadeMaxima: MAX_ARQUIVOS_LOTE }], tamanhoMaximoTotal: MAX_BYTES_LOTE },
     idempotencia: 'opcional', tempoMaximoMs: TEMPO_MAXIMO_ROTA_MS,
     async executar(c, e) {
-      return { corpo: await executarCarga(deps, c, e.corpo.modo, e.todosArquivos.arquivos ?? []) };
+      return { corpo: await executarCarga(deps, c, e.corpo.modo, e.todosArquivos.arquivos ?? [], e.corpo.entidade) };
     },
   });
 }
