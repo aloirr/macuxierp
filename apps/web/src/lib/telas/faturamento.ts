@@ -178,7 +178,7 @@ export const LISTA_PEDIDOS_A_FATURAR: TelaLista = lista(
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: (['a_faturar', 'faturado_parcial', 'faturado', 'cancelado'] as const).map((s) => ({ valor: s, rotulo: rotuloDeStatusPedido(s) })) },
     FILIAL, DE, ATE,
   ],
-  { acaoDaLinha: { acao: acaoEmitir, maisAcoes: (l, p) => { const a = acaoEmitirParcial(l, p); return a ? [a] : []; }, validarAcao: validarEmitir, escritas: [POST(NOTAS)], novaChave, leituras: [LEITURA_PEDIDO], itensDaLeitura: itensDoPedido } },
+  { acaoDaLinha: { acao: acaoEmitir, maisAcoes: (l, p) => { const a = acaoEmitirParcial(l, p); return a ? [a] : []; }, validarAcao: validarEmitir, escritas: [POST(NOTAS)], novaChave, leituras: [LEITURA_PEDIDO], itensDaLeitura: itensDoPedido }, temHorario: true },
 );
 
 export const LISTA_NOTAS: TelaLista = lista(
@@ -188,10 +188,10 @@ export const LISTA_NOTAS: TelaLista = lista(
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: StatusNota.options.map((s) => ({ valor: s, rotulo: rotuloDeStatusNota(s) })) },
     AMBIENTE, FILIAL, { chave: 'serie', rotulo: 'Série', tipo: 'texto' }, { chave: 'numero', rotulo: 'Número', tipo: 'texto' }, DE, ATE,
   ],
-  { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR },
+  { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR, temHorario: true },
 );
 
-export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes') });
+export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes'), temHorario: true });
 
 export const LISTA_TITULOS: TelaLista = lista(
   'titulos',
@@ -285,6 +285,7 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     titulo: `Nota ${sigla}`,
     ...(seloStatus ? { selo: selo(seloStatus) } : {}),
     ...(faixaDaNota(n) ? { faixa: faixaDaNota(n) as string } : {}),
+    temHorario: true,
     cabecalho: [
       { rotulo: 'Filial', valor: n.filial_nome ?? '' }, { rotulo: 'Pedido', valor: n.pedido_numero === null || n.pedido_numero === undefined ? '' : String(n.pedido_numero) },
       { rotulo: 'Cliente', valor: n.cliente_razao_social ?? '' }, { rotulo: 'Ambiente', valor: textoDoAmbiente(n.ambiente) }, { rotulo: 'Natureza da operação', valor: n.natureza_operacao },

@@ -20,3 +20,4 @@
 2026-11-22 — T-0021 — shell v0.2.1: vazio das páginas, hora do módulo, erro da parcial junto do campo e coluna de ações no diálogo
 2026-11-22 — T-0021 — shell: nota de fuso onde há horário (inclusive nas baixas do título), erro da parcial sem o rótulo na tela (errosPartes) e IdLista do módulo
 2026-11-22 — T-0021 — shell: redirects com Location relativo (defeito do ERR_FAILED atrás do túnel) e origem do envio-carga
+2026-11-23 — T-0021 — #275: nota de fuso no detalhe da nota e nas listas com horário; coluna Item fixa na parcial

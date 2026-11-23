@@ -60,6 +60,8 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .entrada[aria-invalid="true"], .campo input[aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
 .itens-parcial .entrada { width: 7rem; text-align: right; }
 .itens-parcial td, .itens-parcial th { padding: 6px 8px; }
+/* Coluna "Item" de largura fixa no diálogo da parcial. */
+.itens-parcial thead th:first-child, .itens-parcial tbody th { width: 28ch; }
 /* Colunas de largura fixa: a grade não muda com o tamanho do rótulo; "Filtrar" e "Limpar" ficam juntos na última célula. */
 .filtros { display: grid; grid-template-columns: repeat(auto-fill, 220px); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
 .filtros .campo { margin: 0; min-width: 0; }
