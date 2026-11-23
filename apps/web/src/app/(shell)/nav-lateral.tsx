@@ -14,7 +14,7 @@ export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
     </li>
   );
   return (
-    <nav className="lateral" aria-label="Menu principal">
+    <nav className="lateral mx-fundo-escuro" aria-label="Menu principal">
       <ul>{item('/', 'Início')}</ul>
       {menu.map((g) => {
         const nome = NOMES_MODULOS[g.modulo];
