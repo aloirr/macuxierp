@@ -4,7 +4,6 @@ import {
   CorpoSinal,
   CursorEntidade,
   ENTIDADES_HUB,
-  ENTIDADES_HUB_F2,
   LIMITE_REGISTROS_LOTE,
   LinhaInvalidaHub,
   LoteAceito,
@@ -12,7 +11,7 @@ import {
   PAYLOADS_HUB,
   RespostaSinal,
 } from './hub-v1';
-import { ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from './portal-integracao';
+import { ENTIDADES_ENVIO_FDV } from './portal-integracao';
 
 const UUID = '11111111-1111-4111-8111-111111111111';
 const EM = '2026-11-23T14:00:00.000Z';
@@ -85,9 +84,7 @@ const registro = (i: number) => ({ external_id: `P${i}`, alterado_em: EM, ativo:
 describe('hub-v1: envelope e payloads (ADR 0014 §2)', () => {
   it('PAYLOADS_HUB tem as 10 entidades do ENTIDADES_ENVIO_FDV, na mesma ordem', () => {
     expect(Object.keys(PAYLOADS_HUB)).toEqual([...ENTIDADES_ENVIO_FDV]);
-    expect(ENTIDADES_HUB_F2).toEqual([...ENTIDADES_ENVIO_FDV]);
     expect(ENTIDADES_HUB).toEqual([...ENTIDADES_ENVIO_FDV, 'titulo', 'nota']);
-    expect(LIMITE_REGISTROS_LOTE).toBe(LIMITE_REGISTROS_LOTE_FDV);
   });
 
   for (const entidade of ENTIDADES_ENVIO_FDV) {

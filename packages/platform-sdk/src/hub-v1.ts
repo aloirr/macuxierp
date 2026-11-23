@@ -46,6 +46,10 @@ const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** Quantidade do Hub (`Quantidade` do `base.ts` do FDV): número finito, pode ser fracionário (P-1: não é texto). */
 const Quantidade = z.number().finite();
 const Centavos = z.number().int().min(0);
+const Instante = z.string().datetime();
+const InstanteNulo = Instante.nullable();
+const Uuid = z.string().uuid();
+const ConectorIdHub = z.string().min(1).max(100);
 
 /** Campos de todo registro, além dos da entidade. `alterado_em` fica fora do hash (RN-INF-03). */
 const Base = z.object({ external_id: ExternalId, ativo: z.boolean() });
@@ -177,14 +181,14 @@ export const PAYLOADS_HUB = {
 } as const;
 
 /** Registro como vai em `registros` do lote: o payload canônico + `alterado_em` (UTC, ms). */
-export const RegistroLote = z.object({ external_id: ExternalId, alterado_em: z.string().datetime(), ativo: z.boolean() }).passthrough();
+export const RegistroLote = z.object({ external_id: ExternalId, alterado_em: Instante, ativo: z.boolean() }).passthrough();
 export type RegistroLote = z.infer<typeof RegistroLote>;
 
 export const ModoLote = z.enum(['completo', 'delta']);
 export type ModoLote = z.infer<typeof ModoLote>;
-export const CursorHub = z.object({ alterado_em: z.string().datetime(), external_id: ExternalId });
+export const CursorHub = z.object({ alterado_em: Instante, external_id: ExternalId });
 export type CursorHub = z.infer<typeof CursorHub>;
-export const SessaoLote = z.object({ id: z.string().uuid(), parte: z.number().int().min(1), ultimo: z.boolean() });
+export const SessaoLote = z.object({ id: Uuid, parte: z.number().int().min(1), ultimo: z.boolean() });
 export type SessaoLote = z.infer<typeof SessaoLote>;
 /** Linha recusada no ERP antes do envio (M5), como o ERP a guarda: código do catálogo e campo, nunca o valor (RN-INF-04). */
 export const LinhaInvalida = z.object({
@@ -211,7 +215,7 @@ export const CorpoLote = z.object({
   versao_contrato: z.literal(VERSAO_CONTRATO_HUB),
   entidade: EntidadeHub,
   modo: ModoLote,
-  enviado_em: z.string().datetime(),
+  enviado_em: Instante,
   cursor: CursorHub.nullable(),
   sessao: SessaoLote.optional(),
   registros: z.array(RegistroLote).max(LIMITE_REGISTROS_LOTE),
@@ -228,9 +232,6 @@ export type CorpoLote = z.infer<typeof CorpoLote>;
 // `modules/integracao/contracts/{lote.ts,conector.ts}` do FDV; `entidade` usa `EntidadeHub` (as do ERP, subconjunto do `Entidade` do FDV).
 // ---------------------------------------------------------------------------------------------------------------------
 
-const Instante = z.string().datetime();
-const InstanteNulo = Instante.nullable();
-const Uuid = z.string().uuid();
 
 /** Estados que o Hub v1 expõe ao Conector (`ESTADOS_LOTE` do FDV). Nome com `Hub`: o `EstadoLote` do módulo é o estado local do envio. */
 export const ESTADOS_LOTE_HUB = ['recebido', 'processando', 'concluido', 'concluido_com_erros', 'falhou'] as const;
@@ -357,19 +358,19 @@ export const CursorEntidade = z.object({
 export type CursorEntidade = z.infer<typeof CursorEntidade>;
 
 /**
- * Corpo de `POST /integracao/v1/sinal`: o mesmo `CorpoSinal` de `modules/integracao-fdv/contracts/monitor.ts` (`SinalConector` do
- * FDV, conferido na L2a). Sem dado pessoal. O `atualizacao` do Conector 1.5.0 é opcional no FDV e aqui é descartado.
+ * Corpo de `POST /integracao/v1/sinal` (`SinalConector` do FDV, conferido na L2a); fonte do `CorpoSinal` que o
+ * `modules/integracao-fdv/contracts/monitor.ts` passa a reexportar (RD-1186). Sem dado pessoal. O `atualizacao` do Conector 1.5.0 é opcional no FDV e aqui é descartado.
  */
 export const CorpoSinal = z.object({
   versao_contrato: z.literal(VERSAO_CONTRATO_HUB),
-  conector_id: z.string().min(1).max(100),
+  conector_id: ConectorIdHub,
   versao_conector: z.string().regex(/^\d+\.\d+\.\d+$/),
-  em: z.string().datetime(),
+  em: Instante,
   fila: z.array(z.object({ estado: z.string(), lotes: z.number().int().min(0), linhas: z.number().int().min(0), maisAntigo: InstanteNulo })),
   entidades: z.array(
     z.object({
       entidade: EntidadeHub,
-      fase: z.enum(['completo', 'delta']),
+      fase: ModoLote,
       ultimo_sucesso: InstanteNulo,
       bloqueada: z.boolean(),
       lotes_na_fila: z.number().int().min(0),
@@ -405,7 +406,7 @@ export type PoliticaVersaoConector = z.infer<typeof PoliticaVersaoConector>;
 /** Resposta 200 de `POST /integracao/v1/sinal` (`RespostaSinal` do FDV). `politica_versao` ausente = sem restrição. */
 export const RespostaSinal = z.object({
   politica_versao: PoliticaVersaoConector.nullish(),
-  conector_id: z.string().min(1).max(100).nullish(),
+  conector_id: ConectorIdHub.nullish(),
   recebido_em: Instante.nullish(),
 });
 export type RespostaSinal = z.infer<typeof RespostaSinal>;
