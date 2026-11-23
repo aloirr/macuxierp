@@ -126,7 +126,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
   const COM_PEDIDO = ['cadastros', 'pedido', 'integracao-fdv'];
   /** Os módulos de produção do main, com o plugin do pedido no lugar do manifesto (o `montarModulos` ainda não o monta). */
   const modulosComPedido = (b: BancoEfemero): readonly PluginModulo[] => {
-    const producao = montarDependenciasProducao({ banco: b.banco('macuxierp_app'), chaveA1: randomBytes(32), config: { versao: 't0017', jwtSegredo: JWT_SEGREDO_DE_TESTE, cookieSeguro: true } });
+    const producao = montarDependenciasProducao({ banco: b.banco('macuxierp_app'), chaveA1: randomBytes(32), config: { versao: 't0017', jwtSegredo: JWT_SEGREDO_DE_TESTE, cookieSeguro: true, segredoBff: null } });
     const pedido = criarPluginPedido(dependenciasDeProducao(criarConsultaParaPedido(repositoriosSql)));
     return registrarModulos(producao.modulos.map((m) => (m.manifesto.id === 'pedido' ? pedido : m)));
   };
