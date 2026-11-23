@@ -4,8 +4,8 @@
  *
  * Por que aqui, e não em `modules/cadastros/contracts`: o SDK não importa módulo (fronteira), e a rota de plataforma é
  * consumida pela apps/web (portal), pelo plugin de plataforma do cadastros e pelo worker. O módulo passa a REEXPORTAR a
- * ordem (`ENTIDADES_CARGA` = `ENTIDADES_CARGA_PORTAL`) e a dependência (`DEPENDENCIAS` do domain = derivada de
- * `CADASTROS_CARGA_PORTAL`), como na T-0056. Regra 3: tipos só de Zod. Sem Node: serve à apps/web.
+ * ordem (`ENTIDADES_CARGA` = `ENTIDADES_CARGA_PORTAL`), como na T-0056. Desde a v0.3.6 (R-20261123-160749) nenhuma carga
+ * depende de outra e os cadastros são 8. Regra 3: tipos só de Zod. Sem Node: serve à apps/web.
  *
  * - O tenant vem do `:id` da rota (o superadmin não tem tenant na sessão); o D10 da T-0026 continua valendo no BKO.
  * - Carga SÍNCRONA, sem S3, sem fila e sem worker: o validar e o gravar recebem o arquivo (multipart, mesmo limite do
@@ -24,23 +24,21 @@ const Instante = z.string().datetime();
 const Contagem = z.number().int().min(0);
 
 /**
- * Os cadastros da carga, na ordem do D13 da T-0026 (a mesma do Hub, doc 06). `numero` é a posição na aba; `depende_de`
- * são os cadastros que precisam estar carregados antes (RF-CAD-11, o `DEPENDENCIAS` do domain do cadastros passa a ser
- * derivado daqui); `opcional` só muda o rótulo ("Unidades (opcional)") e não libera dependência de ninguém;
- * `substituir_permitido` = o cadastro aceita o "Substituir tudo" (decisão do PO, 23/11 15h49: o estoque só aceita o
- * "Adicionar", e a tela nem mostra o "Substituir tudo" nele).
+ * Os 8 cadastros da carga (v0.3.6, R-20261123-160749), na ordem do D13 da T-0026 (a mesma do Hub, doc 06). `numero` é a
+ * posição na aba; nenhuma carga depende de outra; `opcional` só muda o rótulo
+ * ("Unidades (opcional)"); `substituir_permitido` = o cadastro aceita o "Substituir tudo" (decisão do PO, 23/11 15h49: o
+ * estoque só aceita o "Adicionar", e a tela nem mostra o "Substituir tudo" nele). `condicao_pagamento` junta forma e
+ * prazo; `cliente` absorve o endereço (uma linha por endereço, chave (external_id, tipo_endereco, seq)).
  */
 export const CADASTROS_CARGA_PORTAL = Object.freeze([
-  { cadastro: 'filial', numero: 1, nome: 'Filiais', depende_de: [], opcional: false, substituir_permitido: true },
-  { cadastro: 'vendedor', numero: 2, nome: 'Vendedores', depende_de: ['filial'], opcional: false, substituir_permitido: true },
-  { cadastro: 'forma_pagamento', numero: 3, nome: 'Formas de pagamento', depende_de: [], opcional: false, substituir_permitido: true },
-  { cadastro: 'prazo_pagamento', numero: 4, nome: 'Prazos de pagamento', depende_de: ['forma_pagamento'], opcional: false, substituir_permitido: true },
-  { cadastro: 'produto', numero: 5, nome: 'Produtos', depende_de: [], opcional: false, substituir_permitido: true },
-  { cadastro: 'produto_unidade', numero: 6, nome: 'Unidades', depende_de: ['produto'], opcional: true, substituir_permitido: true },
-  { cadastro: 'preco', numero: 7, nome: 'Tabelas de preço', depende_de: ['produto', 'filial'], opcional: false, substituir_permitido: true },
-  { cadastro: 'estoque', numero: 8, nome: 'Estoque', depende_de: ['produto', 'filial'], opcional: false, substituir_permitido: false },
-  { cadastro: 'cliente', numero: 9, nome: 'Clientes', depende_de: ['filial', 'vendedor', 'prazo_pagamento', 'preco'], opcional: false, substituir_permitido: true },
-  { cadastro: 'cliente_endereco', numero: 10, nome: 'Endereços de cliente', depende_de: ['cliente'], opcional: false, substituir_permitido: true },
+  { cadastro: 'filial', numero: 1, nome: 'Filiais', opcional: false, substituir_permitido: true },
+  { cadastro: 'vendedor', numero: 2, nome: 'Vendedores', opcional: false, substituir_permitido: true },
+  { cadastro: 'condicao_pagamento', numero: 3, nome: 'Condições de pagamento', opcional: false, substituir_permitido: true },
+  { cadastro: 'produto', numero: 4, nome: 'Produtos', opcional: false, substituir_permitido: true },
+  { cadastro: 'produto_unidade', numero: 5, nome: 'Unidades', opcional: true, substituir_permitido: true },
+  { cadastro: 'preco', numero: 6, nome: 'Tabelas de preço', opcional: false, substituir_permitido: true },
+  { cadastro: 'estoque', numero: 7, nome: 'Estoque', opcional: false, substituir_permitido: false },
+  { cadastro: 'cliente', numero: 8, nome: 'Clientes', opcional: false, substituir_permitido: true },
 ] as const);
 
 /** A ordem (`ENTIDADES_CARGA` do cadastros passa a ser reexport desta lista). */
@@ -50,14 +48,6 @@ export const ENTIDADES_CARGA_PORTAL = Object.freeze(CADASTROS_CARGA_PORTAL.map((
 ];
 export const CadastroCargaPortal = z.enum(ENTIDADES_CARGA_PORTAL);
 export type CadastroCargaPortal = z.infer<typeof CadastroCargaPortal>;
-
-/** Dependências por cadastro (fonte do `DEPENDENCIAS` do domain do cadastros). */
-export const DEPENDENCIAS_CARGA_PORTAL: Readonly<Record<CadastroCargaPortal, readonly CadastroCargaPortal[]>> = Object.freeze(
-  Object.fromEntries(CADASTROS_CARGA_PORTAL.map((c): [CadastroCargaPortal, readonly CadastroCargaPortal[]] => [c.cadastro, c.depende_de])) as Record<
-    CadastroCargaPortal,
-    readonly CadastroCargaPortal[]
-  >,
-);
 
 /** Rótulo da linha na aba: "Unidades (opcional)". */
 export function rotuloCadastroCarga(cadastro: CadastroCargaPortal): string {
@@ -101,24 +91,11 @@ export function situacaoCarga(e: { ativos: number; erros: number }): SituacaoCar
   return e.ativos > 0 ? 'carregado' : 'nao_carregado';
 }
 
-/**
- * Dependência que bloqueia o "Importar" ("Carregue antes: X"): a primeira de `depende_de`, na ordem da carga, que está
- * `nao_carregado`. `null` = liberado. Pura: o plugin e a tela usam a mesma.
- */
-export function dependenciaPendente(
-  cadastro: CadastroCargaPortal,
-  situacoes: Readonly<Partial<Record<CadastroCargaPortal, SituacaoCarga>>>,
-): CadastroCargaPortal | null {
-  const deps = DEPENDENCIAS_CARGA_PORTAL[cadastro];
-  return ENTIDADES_CARGA_PORTAL.find((d) => deps.includes(d) && (situacoes[d] ?? 'nao_carregado') === 'nao_carregado') ?? null;
-}
-
 export const UltimaCarga = z.object({ em: Instante, quantidade: Contagem });
 export type UltimaCarga = z.infer<typeof UltimaCarga>;
 
 /**
- * Uma linha da aba. `liberado` = `depende_de === null` (o "Importar" fica ligado). Na carga síncrona não há estado de
- * "em andamento": a concorrência é o 409 `MXC01` na hora de gravar.
+ * Uma linha da aba. Na carga síncrona não há estado de "em andamento": a concorrência é o 409 `MXC01` na hora de gravar.
  */
 export const LinhaSituacaoCarga = z.object({
   numero: z.number().int().min(1).max(ENTIDADES_CARGA_PORTAL.length),
@@ -127,15 +104,15 @@ export const LinhaSituacaoCarga = z.object({
   /** Linhas recusadas na última carga (o chip "N com erro"); 0 fora do `com_erro`. */
   erros: Contagem,
   ultima_carga: UltimaCarga.nullable(),
-  depende_de: CadastroCargaPortal.nullable(),
+  /** Sempre true desde a v0.3.6 (nenhuma carga depende de outra); sai quando o apps parar de usar. */
   liberado: z.boolean(),
   opcional: z.boolean(),
 });
 export type LinhaSituacaoCarga = z.infer<typeof LinhaSituacaoCarga>;
 
 /**
- * `GET .../cadastros/cargas`: as 10 linhas, na ordem da carga (a tela não ordena nem completa). O Zod confere a ordem,
- * o número, o `opcional`, os erros, a dependência derivada e o `liberado`.
+ * `GET .../cadastros/cargas`: as 8 linhas, na ordem da carga (a tela não ordena nem completa). O Zod confere a ordem,
+ * o número, o `opcional` e os erros.
  */
 export const SituacaoCargasPlataforma = z
   .object({
@@ -149,21 +126,17 @@ export const SituacaoCargasPlataforma = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros'], message: 'Uma linha por cadastro, na ordem da carga' });
       return;
     }
-    const situacoes = Object.fromEntries(r.cadastros.map((c) => [c.cadastro, c.situacao])) as Record<CadastroCargaPortal, SituacaoCarga>;
     r.cadastros.forEach((c, i) => {
       const def = CADASTROS_CARGA_PORTAL[i];
       if (!def) return;
       if (c.numero !== def.numero || c.opcional !== def.opcional) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i], message: 'Número e opcional são os de CADASTROS_CARGA_PORTAL' });
       }
+      if (!c.liberado) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'liberado'], message: 'liberado é sempre true' });
+      }
       if ((c.erros > 0) !== (c.situacao === 'com_erro')) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'erros'], message: 'Erros só na situação com_erro' });
-      }
-      if (c.depende_de !== dependenciaPendente(c.cadastro, situacoes)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'depende_de'], message: 'depende_de é derivada das situações' });
-      }
-      if (c.liberado !== (c.depende_de === null)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['cadastros', i, 'liberado'], message: 'liberado = sem dependência pendente' });
       }
     });
   });
@@ -352,19 +325,19 @@ export type GravarCargaPlataformaResposta = z.infer<typeof GravarCargaPlataforma
 // ---- Zerar (v0.3.5b) ----
 
 /**
- * Os cadastros do "Zerar dados" (RN-CAD-10), na ordem da carga. Não deriva de `CADASTROS_CARGA_PORTAL`: forma e prazo
- * de pagamento moram na mesma tabela (`cadastros.condicao_pagamento`) e zeram juntos, como `forma_prazo`.
+ * Os cadastros do "Zerar dados" (RN-CAD-10): os mesmos 8 da carga, na mesma ordem (v0.3.6). Lista literal, e não
+ * derivada, para o enum ficar explícito; o teste trava a igualdade com `ENTIDADES_CARGA_PORTAL`. `condicao_pagamento`
+ * zera forma e prazo juntos; `cliente` zera o cliente com os endereços e os contatos.
  */
 export const CADASTROS_ZERAR_PORTAL = [
   'filial',
   'vendedor',
-  'forma_prazo',
+  'condicao_pagamento',
   'produto',
   'produto_unidade',
   'preco',
   'estoque',
   'cliente',
-  'cliente_endereco',
 ] as const;
 export const CadastroZerarPortal = z.enum(CADASTROS_ZERAR_PORTAL);
 export type CadastroZerarPortal = z.infer<typeof CadastroZerarPortal>;
@@ -388,13 +361,15 @@ export const TabelaZeragem = z.enum(TABELAS_ZERAGEM);
 export type TabelaZeragem = z.infer<typeof TabelaZeragem>;
 
 /**
- * Por que um registro ficou no zerar: está em uso por pedido, título ou nota, ou
- * `fiscal` = filial com A1 ou ambiente fiscal fica mantida (decisão do PO, 23/11 16h18).
+ * Por que um registro ficou: está em uso por pedido, título ou nota, ou é filial com dado fiscal (`fiscal`, decisão do
+ * PO, 23/11 16h18).
  */
 export const MOTIVOS_USO = ['pedido', 'titulo', 'nota', 'fiscal'] as const;
+export type MotivoUsoZerar = (typeof MOTIVOS_USO)[number];
 
-/** Texto da linha de mantidos no resultado do zerar (RN-CAD-10). */
-export const MENSAGEM_MANTIDOS_ZERAR = (n: number) => `Mantidos: ${n} (em uso em pedido, título ou nota, ou filial com dado fiscal)`;
+/** Texto da tela do zerar para os registros mantidos. */
+export const MENSAGEM_MANTIDOS_ZERAR = (n: number): string =>
+  `Mantidos: ${n} (em uso em pedido, título ou nota, ou filial com dado fiscal)`;
 
 /** `detalhes.codigo` do 422 do zerar quando `bloqueios` não está vazio (sem SQLSTATE: o plugin decide). */
 export const CODIGO_ZERAGEM_BLOQUEADA = 'zeragem_bloqueada';
@@ -459,15 +434,12 @@ export type ZeragemPlataformaResposta = z.infer<typeof ZeragemPlataformaResposta
 export const SQLSTATES_CARGA_PORTAL = Object.freeze({
   /** 409 `CONFLITO` "carga em andamento": já há carga rodando nesta empresa (uma por vez). */
   cargaEmAndamento: 'MXC01',
-  /** 409 `CONFLITO`: a dependência do cadastro não está carregada (mudou entre a leitura e a escrita). */
-  dependenciaPendente: 'MXC03',
   /** 422 `RN-CORE-02`: empresa fora de `ativo` ou sem o módulo `cadastros` (molde do `MXI04`). */
   semLicenca: 'MXC04',
 });
 
 export const MENSAGENS_CARGA_PORTAL = Object.freeze({
   cargaEmAndamento: 'Já há uma carga em andamento nesta empresa.',
-  dependenciaPendente: 'Carregue antes o cadastro de que este depende.',
   semLicenca: 'A empresa precisa estar ativa e com o módulo Cadastros licenciado.',
   nadaAGravar: 'Nenhuma linha pronta para gravar.',
   zeragemBloqueada: 'Há integração ligada ou lote em andamento; resolva antes de zerar.',
@@ -485,9 +457,30 @@ export const CODIGOS_ESTADO_MUDOU_ZERAR = ['em_uso', 'sumiu', 'anular_fora_do_pl
  * `detalhes.codigo` dos erros do portal de cargas (409 `CONFLITO` e 422): do DETAIL das funções e do plugin. Fora desta
  * lista, o texto do banco não passa.
  */
-export const CODIGOS_DETALHE_CARGA_PORTAL = ['carga_em_andamento', 'dependencia_pendente', 'empresa_inativa', 'modulo_desligado', 'nada_a_gravar', CODIGO_ZERAGEM_BLOQUEADA] as const;
+export const CODIGOS_DETALHE_CARGA_PORTAL = [
+  'carga_em_andamento',
+  'empresa_inativa',
+  'modulo_desligado',
+  'nada_a_gravar',
+  CODIGO_ZERAGEM_BLOQUEADA,
+] as const;
 export const CodigoDetalheCargaPortal = z.enum(CODIGOS_DETALHE_CARGA_PORTAL);
 export type CodigoDetalheCargaPortal = z.infer<typeof CodigoDetalheCargaPortal>;
+
+// ---- Carga do cliente (endereços) ----
+
+/** Tipos de endereço da carga do cliente (uma linha por endereço, chave (external_id, tipo_endereco, seq)). */
+export const TIPOS_ENDERECO_CLIENTE = ['principal', 'entrega', 'cobranca'] as const;
+export type TipoEnderecoCliente = (typeof TIPOS_ENDERECO_CLIENTE)[number];
+
+/**
+ * Erro da linha do cliente cujos dados do cliente (fora do endereço) diferem da primeira linha do mesmo cliente:
+ * `linha` = a linha do CSV de referência. Texto fixo, sem valor de célula.
+ */
+export function dadosClienteDiferentes(linha: number): string {
+  if (!Number.isInteger(linha) || linha < 1) throw new RangeError('dadosClienteDiferentes: linha inteira a partir de 1');
+  return `Dados do cliente diferentes da linha ${linha}: deixe iguais em todas as linhas do cliente`;
+}
 
 // ---- Rotas ----
 
