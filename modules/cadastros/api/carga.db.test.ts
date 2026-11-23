@@ -113,12 +113,22 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     expect((await admin('SELECT nome FROM cadastros.vendedor WHERE tenant_id = $1', [A]))[0]!.nome).toBe('Vendedor So Do A');
   }, 180_000);
 
-  it('multi-tenant: a carga não enxerga cadastros do outro tenant (a referência a ele cai como CARGA_REFERENCIA)', async () => {
+  it('multi-tenant: a carga não enxerga cadastros do outro tenant (RF-CAD-11: a referência a ele cai como CARGA_DEPENDENCIA, pois o arquivo da dependência não veio no lote)', async () => {
     const T = await criarTenant(efemero.admin, 'carga-c', ['cadastros']);
     const r = await carregar(T, 'gravar', fixture().filter((a) => ['vendedor.csv', 'preco.csv'].includes(a.nome)));
-    expect(r.rel.erros.filter((e) => e.codigo === 'CARGA_REFERENCIA').map((e) => e.arquivo).sort()).toContain('vendedor.csv');
+    expect(r.rel.erros.filter((e) => e.codigo === 'CARGA_DEPENDENCIA').map((e) => e.arquivo).sort()).toContain('vendedor.csv');
+    expect(r.rel.erros.some((e) => e.codigo === 'CARGA_REFERENCIA')).toBe(false);
     expect(await contar('vendedor', T)).toBe(0);
     expect(await contar('tabela_preco_item', T)).toBe(0);
+  }, 120_000);
+
+  it('RF-CAD-11: dependência já no banco não gera aviso; ausente do banco e do lote gera CARGA_DEPENDENCIA sem o valor', async () => {
+    await carregar(A, 'gravar');
+    const ok = await carregar(A, 'validar', fixture().filter((a) => a.nome === 'vendedor.csv'));
+    expect(ok.rel.erros).toEqual([]);
+    const T = await criarTenant(efemero.admin, 'carga-dep', ['cadastros']);
+    const r = await carregar(T, 'validar', fixture().filter((a) => a.nome === 'produto_unidade.csv'));
+    expect(r.rel.erros).toContainEqual(expect.objectContaining({ codigo: 'CARGA_DEPENDENCIA', campo: 'produto_external_id', motivo: 'Faltam produtos: carregue produto.csv antes.' }));
   }, 120_000);
 
   it('D4: adota pela chave natural o cadastro feito sem external_id, sem duplicar', async () => {

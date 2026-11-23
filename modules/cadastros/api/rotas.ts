@@ -19,7 +19,7 @@ import {
   validarCondicaoPagamento, completarPrazos, completarPrazosNoPatch, validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
-import { rotaCarga } from './carga';
+import { rotaCarga, rotaModeloCarga } from './carga';
 import { desativarCondicoesRecusadas, tratarCartaoSemParcelas } from './formas-recusadas';
 import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
@@ -575,7 +575,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     },
   }));
 
-  rotas.push(rotaCarga(deps));
+  rotas.push(rotaCarga(deps), rotaModeloCarga());
 
   return rotas;
 }

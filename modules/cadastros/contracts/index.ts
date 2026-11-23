@@ -346,11 +346,13 @@ export const MAX_ARQUIVOS_LOTE = 16;
 /** Pedido já lido do multipart: `modo` e um arquivo por entidade. O conteúdo não é guardado (D9). */
 export const CargaPedido = z.object({
   modo: ModoCarga,
+  /** RF-CAD-11: carga de uma entidade só (botão da tela); o lote tem de ser exatamente `<entidade>.csv`. */
+  entidade: EntidadeCarga.optional(),
   arquivos: z.array(z.object({ nome: z.string().regex(/^[a-z_]+\.csv$/i), bytes: z.instanceof(Uint8Array) })).min(1).max(16), // = MAX_ARQUIVOS_LOTE; o teste de sincronia da CLI lê este literal (ver contracts.test)
 });
 export type CargaPedido = z.infer<typeof CargaPedido>;
 /** Campos de texto do multipart `POST /v1/cadastros/cargas`; os arquivos vão no campo `arquivos`. */
-export const CargaCampos = CargaPedido.pick({ modo: true });
+export const CargaCampos = CargaPedido.pick({ modo: true, entidade: true });
 export type CargaCampos = z.infer<typeof CargaCampos>;
 
 const LinhaBase = { linha: z.number().int().min(2), external_id: IdExternoValor, ativo: z.boolean().optional() };
@@ -448,7 +450,7 @@ export const CodigoErroCarga = z.union([
   z.string().regex(/^(RN-[A-Z]+-\d{2}|D\d{1,2})$/),
   z.enum([
     'CARGA_FORMATO', 'CARGA_OBRIGATORIO', 'CARGA_TAMANHO', 'CARGA_REFERENCIA', 'CARGA_DUPLICADO',
-    'CARGA_CONFLITO', 'CARGA_BANCO', 'PERFIL_SEM_PERMISSAO',
+    'CARGA_CONFLITO', 'CARGA_BANCO', 'CARGA_DEPENDENCIA', 'PERFIL_SEM_PERMISSAO',
   ]),
 ]);
 /** Nunca leva o valor digitado (D9): `motivo` sai de mensagem fixa por código. */
