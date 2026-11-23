@@ -15,9 +15,9 @@ const atualizar = (id: string) => {
   revalidatePath(`/config/empresas/${id}`);
 };
 
-export async function criarEmpresaAcao(entrada: { slug: string; nome: string; fuso: string }, chave: string): Promise<Resultado<never>> {
-  const p = CriarEmpresaEntrada.safeParse({ slug: entrada.slug.trim(), nome: entrada.nome, fuso: entrada.fuso.trim() || undefined });
-  if (!p.success) return falha('', traduzirCriarEmpresa(p.error));
+export async function criarEmpresaAcao(entrada: { codigo: string; nome: string; fuso: string }, chave: string): Promise<Resultado<never>> {
+  const p = CriarEmpresaEntrada.safeParse({ codigo: entrada.codigo.trim() || undefined, nome: entrada.nome, fuso: entrada.fuso.trim() || undefined });
+  if (entrada.codigo.trim() === '' || !p.success) return falha('', traduzirCriarEmpresa(p.success ? null : p.error, entrada.codigo));
   const r = await executarConfig('criar_empresa', (t) => criarEmpresa(t, p.data, chave));
   if (!r.ok) return r;
   revalidatePath('/config');
