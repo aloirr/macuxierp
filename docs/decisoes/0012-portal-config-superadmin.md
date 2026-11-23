@@ -21,7 +21,7 @@ Junto, entra o perfil "analista de implantação" (RN-CORE-09), que muda a lista
 **Opção (b).**
 
 ### 1. Identidade e sessão de plataforma (desenho para o banco-dados, migração 0033)
-As duas tabelas seguem a regra 5. Como não pertencem a tenant, o `tenant_id` é sempre o **tenant de referência** (`plataforma.tenant_referencia()`, D9), com `CHECK (tenant_id = plataforma.tenant_referencia())`. RLS ligado e forçado, **sem nenhuma política nem GRANT para `macuxierp_app`, `macuxierp_worker` ou `macuxierp_leitura`**: só as funções da seção 4 (donas das tabelas) leem e escrevem.
+As duas tabelas seguem a regra 5. Como não pertencem a tenant, o `tenant_id` é sempre o **tenant de referência** (`plataforma.tenant_referencia()`, D9), com `CHECK (tenant_id = plataforma.tenant_referencia())`. RLS ligado, **sem GRANT para `macuxierp_app`, `macuxierp_worker`, `macuxierp_leitura` ou `macuxierp_config`**: só as funções da seção 4 (donas das tabelas) leem e escrevem. A 0033 deixou a RLS sem FORCE e com a política `isolamento_tenant` da regra 5 (o FORCE cegaria as funções donas no DBaaS sem superusuário); a proteção é a falta de privilégio.
 
 `plataforma.superadmin`
 
@@ -86,11 +86,48 @@ A sessão vencida ou revogada é apagada pela rotina de limpeza depois de 30 dia
 A identidade e as rotas de plataforma não são de módulo: ficam fora do `/v1/<modulo>`, sem licença e sem tenant, e são consumidas pela apps/api (login e montagem), pelo modulo-core (executar das rotas de empresa) e pela apps/web (portal). É o mesmo caso do `EuResposta` (decisão de 21/11): uma fonte só no SDK, sem Node. Ficam em `packages/platform-sdk/src/portal-config.ts` (Zod e a função pura `conferirModulosPlataforma`) e `plataforma-rotas.ts` (portas e tipos). `modules/core/contracts` (do modulo-core) não muda.
 
 ### 4. Acesso entre tenants: só funções SECURITY DEFINER de lista fechada (banco-dados, 0033)
-- Papel novo `macuxierp_config` (NOLOGIN, **sem BYPASSRLS**). A apps/api entra nele só dentro de `comPlataforma` (`SET LOCAL ROLE macuxierp_config`) e põe `set_config('macuxierp.sessao_superadmin', <sessao_id>, true)`. Só esse papel tem EXECUTE nas funções abaixo; `macuxierp_app` não.
+- Papel novo `macuxierp_config` (NOLOGIN, **sem BYPASSRLS**). A apps/api entra nele só dentro de `comPlataforma` (`SET LOCAL ROLE macuxierp_config`; membership e risco em "Risco aberto (decisão do PO, 23/11)") e põe `set_config('macuxierp.sessao_superadmin', <sessao_id>, true)`. Só esse papel tem EXECUTE nas funções abaixo; `macuxierp_app` não.
 - Toda função começa por `plataforma.exigir_superadmin()`: lê o `sessao_id` da configuração local, confere a sessão (não revogada, não vencida, ociosidade, superadmin ativo, `deve_trocar_senha` falso), atualiza `ultimo_uso_em` e devolve o `superadmin_id`, que a função usa na auditoria. Sessão inválida = exceção com SQLSTATE próprio, que a API traduz em 401.
-- Lista fechada (cada função `SET search_path = pg_catalog, pg_temp`, `REVOKE ALL ... FROM PUBLIC`): `superadmin_para_login(email)`, `superadmin_registrar_falha(id, falhas, trava)`, `superadmin_abrir_sessao(id, token_hash, expira_em)`, `superadmin_sessao_por_token(token_hash)`, `superadmin_sair(sessao_id)`, `superadmin_trocar_senha(...)` (as de login são executáveis pela API antes de haver sessão, como a `tenant_por_slug`); `empresas_listar(busca, cursor, limite)`, `empresa_ler(id)`, `empresa_criar(slug, nome, fuso, request_id)`, `empresa_situacao(id, situacao, motivo, request_id)`, `empresa_modulos(id, jsonb, request_id)`, `empresa_primeiro_admin_criar(id, email, nome, senha_hash, request_id)`, `empresa_primeiro_admin_senha(id, senha_hash, request_id)`; da 0035, `empresa_primeiro_admin_email(id, request_id)`. Cada uma grava a própria auditoria na mesma transação.
-- **Emenda do detalhe da empresa (decisão do Alexandre e do PO, 23/11, 0035):** o detalhe (`GET /empresas/:id`) mostra `razao_social`, `cnpj` (formato do domínio, sem máscara), `cidade` (nome do município pela tabela oficial) e `uf` da filial padrão, e o `primeiro_admin.email_mascarado` no padrão do PO "do****@gmail.com": as 2 primeiras letras do local + `****` + `@` + o domínio inteiro (local com 1 ou 2 letras vira `*` + `****`), gerado pela 0035. O e-mail completo só sai por `POST /v1/plataforma/empresas/:id/primeiro-admin/email` → `{ email }`, com o cabeçalho anti-CSRF (§2), `Cache-Control: no-store` e sem idempotência, pela função `plataforma.empresa_primeiro_admin_email(p_id, p_request_id)`, auditada como `plataforma.admin.revelar_email` (só o id do administrador e o `request_id`, **nunca o e-mail**). LGPD: o e-mail e a razão social e o CNPJ de MEI podem ser dado pessoal, então nunca entram em log, auditoria, lista ou busca; a busca segue só por slug e nome.
-- As funções só tocam `plataforma.tenant`, `plataforma.tenant_modulo`, `plataforma.usuario` (só a linha do administrador), `plataforma.sessao` (revogação) e `plataforma.auditoria`. **Nenhuma lê schema de módulo** (cadastros, pedido, fiscal, faturamento, integração): o superadmin não vê dado de negócio. O tenant de referência nunca aparece nem muda.
+- Lista fechada, como a 0033 criou (todas no schema `plataforma`, `SET search_path = pg_catalog, pg_temp`, `REVOKE ALL ... FROM PUBLIC`, EXECUTE só do `macuxierp_config`; as auxiliares internas, como `exigir_superadmin` e `auditar_superadmin`, sem EXECUTE de papel nenhum). Na coluna "Sessão", "não" é executável antes do login, como a `tenant_por_slug`; "troca" aceita a troca de senha pendente; "sim" exige a sessão completa. Cada função que muda estado grava a própria auditoria na mesma transação.
+
+| Função | Sessão | O que faz |
+|---|---|---|
+| `superadmin_para_login(email)` | não | o superadmin não excluído do e-mail normalizado (hash, trava, troca pendente), para a API conferir o argon2 |
+| `superadmin_registrar_falha(id, falhas, trava)` | não | soma a falha e só estende a trava (§6) |
+| `superadmin_abrir_sessao(id, token_hash, expira_em)` | não | depois do argon2 certo: zera falhas e trava, grava `ultimo_acesso_em`, abre a sessão (até 8 h) e limpa sessões antigas; superadmin inativo ou travado = `MXS01` |
+| `superadmin_sessao_por_token(token_hash)` | troca | a sessão válida do hash, renovando `ultimo_uso_em`; vazio se inválida |
+| `superadmin_sair(sessao_id)` | troca | revoga só a sessão corrente |
+| `superadmin_senha_atual()` | troca | o hash da senha do superadmin da sessão corrente, e só dele (a sessão não leva o e-mail) |
+| `superadmin_trocar_senha(hash_atual, hash_nova)` | troca | trava otimista: troca só se o hash ainda é o conferido; tira a troca pendente, zera a trava e revoga as outras sessões. Recebe só hashes, nunca a senha em claro |
+| `empresas_listar(busca, cursor uuid, limite)` | sim | sem a empresa de referência e sem as excluídas |
+| `empresa_ler(id)` | sim | sem a empresa de referência e sem as excluídas; da 0035, o detalhe ampliado: `razao_social`, `cnpj`, `cidade`, `uf` e `primeiro_admin.email_mascarado` (emenda abaixo) |
+| `empresa_criar(slug, nome, fuso, request_id)` | sim | ativa, só com o core |
+| `empresa_situacao(id, situacao, motivo, request_id)` | sim | §2, "Suspender" |
+| `empresa_modulos(id, jsonb, request_id)` | sim | `[{modulo, ativo, valido_ate}]`; o core nunca desliga |
+| `empresa_primeiro_admin_criar(id, email, nome, senha_hash, request_id)` | sim | só se a empresa não tem administrador ativo |
+| `empresa_primeiro_admin_senha(id, senha_hash, request_id)` | sim | zera falhas e trava e revoga as sessões do administrador |
+| `empresa_primeiro_admin_email(id, request_id)` (0035) | sim | devolve o e-mail completo do 1º admin e audita `plataforma.admin.revelar_email` só com o id do administrador e o `request_id` |
+| `idem_plataforma_reservar(chave, rota, hash_corpo)`, `idem_plataforma_concluir(chave, rota, status, resposta)` | sim | Idempotency-Key de `/v1/plataforma/*` no tenant de referência (24 h); nas rotas de senha a resposta fica nula (§2) |
+
+- **Erros:** a API traduz o SQLSTATE: `MXS01` → 401; `P0002` (empresa ou administrador inexistente) → 404; `23505` (empresa que já tem administrador) → 409; `23514` (slug reservado, fuso desconhecido, situação, motivo, módulos inválidos, core desligado, senha que mudou durante a troca) → 422.
+- **Autor único:** o CHECK `auditoria_um_autor` (`usuario_id IS NULL OR superadmin_id IS NULL`) e o `INSERT` por coluna do app e do worker, sem `superadmin_id`, garantem que só as funções acima gravam o autor de plataforma.
+- **Ações de auditoria** (nomes canônicos: o mesmo fato tem o mesmo nome, venha do portal ou do operador; RD-0899). As linhas antigas com `plataforma.usuario.criar` e `plataforma.licenca.alterar` ficam como estão, porque auditoria não se edita.
+
+| Ação | Quem grava |
+|---|---|
+| `plataforma.superadmin.entrar`, `.falha`, `.sair`, `.senha` | funções de login e sessão |
+| `plataforma.empresa.criar` | `empresa_criar`; `scripts/deploy/producao/empresa.mjs` |
+| `plataforma.empresa.situacao` | `empresa_situacao` |
+| `plataforma.modulos.alterar` | `empresa_modulos` (entidade `tenant`, uma linha por chamada); `empresa.mjs` e `scripts/plataforma/licenca.mjs` (entidade `tenant_modulo`, uma linha por módulo, com o módulo no `depois`) |
+| `plataforma.admin.criar` | `empresa_primeiro_admin_criar`; `empresa.mjs` |
+| `plataforma.admin.redefinir_senha` | `empresa_primeiro_admin_senha` |
+| `plataforma.admin.revelar_email` | `empresa_primeiro_admin_email` (0035) |
+| `plataforma.superadmin.criar`, `.desativar`, `.reativar`, `.destravar` | operador (`scripts/deploy/producao/superadmin.mjs`); detalhes no §5 |
+
+- **Emenda do detalhe da empresa (decisão do Alexandre e do PO, 23/11, 0035):** o detalhe (`GET /empresas/:id`) mostra `razao_social`, `cnpj` (formato do domínio, sem máscara), `cidade` (nome do município pela tabela oficial) e `uf` da filial padrão, e o `primeiro_admin.email_mascarado` no padrão do PO "do****@gmail.com": as 2 primeiras letras do local + `****` + `@` + o domínio inteiro (local com 1 ou 2 letras vira `*` + `****`), gerado pela 0035. O e-mail completo só sai por `POST /v1/plataforma/empresas/:id/primeiro-admin/email` → `{ email }`, com o cabeçalho anti-CSRF (§2), `Cache-Control: no-store` e sem idempotência, pela função `plataforma.empresa_primeiro_admin_email(p_id, p_request_id)`, auditada como `plataforma.admin.revelar_email` (só o id do administrador e o `request_id`, **nunca o e-mail**). LGPD: o e-mail e a razão social e o CNPJ de MEI podem ser dado pessoal, então nunca entram em log, auditoria, lista ou busca; a busca segue só por slug e nome. O `nome` do `EmpresaPlataforma` (de `plataforma.tenant`, título no portal) e a `razao_social` (de `core.empresa`, cadastro fiscal) são campos **distintos**: um não substitui nem preenche o outro.
+
+- Fonte dos nomes gravados pelo portal: `ACOES_PLATAFORMA` do SDK; `superadmin.*` são só de auditoria, sem rota; `empresa.ver` é permissão de rota, sem auditoria.
+- As funções só tocam `plataforma.tenant`, `plataforma.tenant_modulo`, `plataforma.usuario` (só a linha do administrador), `plataforma.sessao` (revogação) e `plataforma.auditoria`. **Nenhuma lê schema de módulo** (cadastros, pedido, fiscal, faturamento, integração), com uma exceção só de leitura, da emenda acima: `empresa_ler` e `empresa_primeiro_admin_email` leem `core.empresa` (razão social e CNPJ) e a filial padrão em `cadastros.filial`, com o nome do município na tabela oficial. Nenhuma lê dado de negócio (pedido, nota, cliente, título): o superadmin não vê dado de negócio. O tenant de referência nunca aparece nem muda.
 - A dependência entre módulos é conferida na API (`conferirModulosPlataforma` com os `depende` dos manifestos) e a função grava; o `licenca.mjs` do operador passa a chamar a mesma regra na versão seguinte (hoje ele não confere).
 
 ### 5. Quem pode ser superadmin e `operador.sh criar-superadmin` (depois da 0033)
@@ -109,7 +146,7 @@ Nada disso entra na 0033 nem no código da v0.3.0:
 - **Colunas** (migração da versão seguinte) em `plataforma.superadmin`: `totp_segredo_cifrado bytea` (AES-256-GCM pelo `cifra.ts` do SDK, com chave própria `MACUXIERP_CHAVE_TOTP` no secret do servidor, nunca a do A1), `totp_ativado_em timestamptz`, `totp_ultimo_passo bigint` (anti-reuso do mesmo código) e `recuperacao_hashes text[]` (10 códigos de uso único, argon2id). Em `plataforma.sessao_superadmin`: `segundo_fator_em timestamptz`.
 - **Login em dois passos:** `entrar` com senha certa e TOTP ativo abre a sessão com `segundo_fator_em` nulo; só `POST /v1/plataforma/auth/segundo-fator` (código de 6 dígitos ou de recuperação) e `sair` respondem até ele ser preenchido. O `exigir_superadmin()` passa a exigir `segundo_fator_em` quando `totp_ativado_em` não é nulo. As falhas do segundo fator contam na mesma trava da seção 6.
 - **Recuperação:** código de recuperação (uso único) ou `operador.sh superadmin --zerar-totp` (auditado). O segredo nunca volta para a tela depois do cadastro e nunca vai para recado ou log.
-- A versão seguinte pode tornar o TOTP obrigatório para entrar no portal.
+- A versão seguinte pode tornar o TOTP obrigatório para entrar no portal. Prazo e escopo dessa versão: "Risco aberto (decisão do PO, 23/11)".
 
 ### 8. Quem faz o quê
 | Etapa | Dono | Entrega |
@@ -135,3 +172,15 @@ Nada disso entra na 0033 nem no código da v0.3.0:
 - A RN-CORE-02 do doc 03 diz que as licenças "mudam pelo script do operador": o PO acrescenta "ou pelo portal `/config`, com a mesma auditoria" (recado ao agente PO).
 - O `main` nunca fica com o `analista_implantacao` no SDK sem o CHECK da 0033 (§1).
 - Risco: as funções SECURITY DEFINER são a fronteira; toda função nova entra na lista fechada só por ADR e com teste de banco.
+- Risco da membership do `macuxierp_app` no `macuxierp_config`: ver "Risco aberto (decisão do PO, 23/11)".
+
+## Risco aberto (decisão do PO, 23/11)
+- **Risco:** a credencial do `macuxierp_app` consegue `SET ROLE macuxierp_config`. É assim que a API entra no papel: a 0033 faz `GRANT macuxierp_config TO macuxierp_app WITH INHERIT FALSE, SET TRUE`, e o teste (a) de `db/testes/superadmin-0033.db.test.ts` fixa essa membership. Quem tiver a credencial (vazamento ou SQL injetado) chama as funções de sessão "não" do §4, inclusive `superadmin_abrir_sessao`, que não confere a senha (o argon2 é conferido na API), e abre uma sessão de superadmin sem a senha.
+- **Mitigações atuais:**
+  - a credencial do `macuxierp_app` fica só no secret do servidor;
+  - o SQL da API é só parametrizado;
+  - o `SET LOCAL ROLE macuxierp_config` existe só dentro de `comPlataforma`;
+  - nenhuma função da lista fechada lê dado de negócio (schema de módulo), então o papel não dá ao invasor dado de negócio que a credencial do app, que já escolhe o `app.tenant_id` da transação, não desse;
+  - toda sessão aberta deixa `plataforma.superadmin.entrar` na auditoria.
+- **Correção (obrigatória antes da 2ª empresa cliente no ERP):** separar a credencial e o papel do portal (login próprio, sem membership do `macuxierp_app`), junto com o TOTP (§7).
+- **Até lá:** o portal não cria uma 2ª empresa em produção sem o ok do PO (regra de operação, decisão do PO de 23/11 ~08h30; sem trava em código).

@@ -23,8 +23,8 @@ const chaves = { admin: 'k1', senha: 'k2', situacao: 'k3' };
 
 describe('lista de empresas', () => {
   const h = renderToStaticMarkup(<ListaEmpresas empresas={[acme, beta]} vazio="Nenhuma empresa ainda. Crie a primeira." />);
-  it('colunas Slug, Nome, Situação e Módulos, linha com rótulo "Abrir empresa <slug>"', () => {
-    for (const t of ['Slug', 'Nome', 'Situação', 'Módulos']) expect(h).toContain(t);
+  it('colunas Código, Nome, Situação e Módulos, linha com rótulo "Abrir empresa <código>"', () => {
+    for (const t of ['Código', 'Nome', 'Situação', 'Módulos']) expect(h).toContain(t);
     expect(h).toContain('Abrir empresa acme');
     expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>acme<\/a>/);
     expect(h).toContain('tabela-rolavel com-sinal-rolagem');
@@ -38,7 +38,7 @@ describe('lista de empresas', () => {
     expect(h).not.toContain('referencia');
   });
   it('vazio mostra o texto da spec', () => {
-    expect(renderToStaticMarkup(<ListaEmpresas empresas={[]} vazio="Nenhuma empresa com esse slug. Limpe a busca." />)).toContain('Nenhuma empresa com esse slug. Limpe a busca.');
+    expect(renderToStaticMarkup(<ListaEmpresas empresas={[]} vazio="Nenhuma empresa com esse código. Limpe a busca." />)).toContain('Nenhuma empresa com esse código. Limpe a busca.');
   });
 });
 

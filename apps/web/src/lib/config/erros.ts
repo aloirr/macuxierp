@@ -49,7 +49,7 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   if (e instanceof ConfigSemPermissao) return { ...base, texto: SEM_PERMISSAO };
   if (e instanceof ErroPlataforma) {
     if (e.status === 409) {
-      if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { slug: 'Já existe uma empresa com esse slug. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
+      if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { slug: 'Já existe uma empresa com esse código. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'criar_admin') return { ...base, texto: ADMIN_JA_EXISTE, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'redefinir') return { ...base, texto: SENHA_JA_EXIBIDA, chaveNova: ehRespostaDefinitiva(e.status) };
     }

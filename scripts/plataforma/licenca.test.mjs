@@ -61,6 +61,7 @@ describe('licenca.mjs: plano e execução', () => {
     assert.deepEqual(seq, ['begin', 'select id, slug,', "select set_config('app.tenant_id', $1,", 'select id, ativo,', 'insert into plataforma.tenant_modulo', 'insert into plataforma.auditoria', 'commit']);
     assert.deepEqual(c.sqls[2].params, [TENANT.id]);
     const auditoria = c.sqls[5];
+    assert.match(auditoria.sql, /null, 'plataforma\.modulos\.alterar', 'tenant_modulo'/); // ADR 0012, RD-0899
     assert.equal(auditoria.params[1], TENANT.id);
     assert.deepEqual(JSON.parse(auditoria.params[4]), { ativo: true, valido_ate: null, modulo: 'pedido', operador: 'alexandre', motivo: 'contrato assinado' });
     assert.equal(auditoria.params[3], 'null');

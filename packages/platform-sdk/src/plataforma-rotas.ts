@@ -13,7 +13,12 @@ import type { Transacao } from './banco';
 import { erros } from './erros';
 import { PluginInvalido, type EntradaChamada, type MetodoHttp, type RespostaRota } from './rotas';
 
-/** Ações do portal (auditadas com o `superadmin_id`). Ação nova = linha aqui + ADR 0012 + função SQL na lista fechada. */
+/**
+ * Ações das rotas do portal e fonte dos nomes gravados na auditoria pelo portal e pelo operador (ADR 0012 §4): toda ação
+ * que muda estado é gravada com este nome. `plataforma.empresa.ver` é permissão de rota, sem auditoria;
+ * `plataforma.superadmin.*` são só de auditoria, sem rota, e ficam fora daqui. Ação nova = linha aqui + ADR 0012 + função
+ * SQL na lista fechada.
+ */
 export const ACOES_PLATAFORMA = [
   'plataforma.empresa.ver',
   'plataforma.empresa.criar',
@@ -41,6 +46,14 @@ export interface DadosAuditoriaPlataforma extends DadosAuditoria {
  */
 export interface BancoPlataforma {
   comPlataforma<R>(sessao: SessaoPlataforma, fn: (tx: Transacao) => Promise<R>): Promise<R>;
+}
+
+/**
+ * Porta do login do superadmin (só a apps/api): além da transação com sessão, uma transação no papel de plataforma SEM
+ * sessão, para as funções "não" e "troca" da lista fechada (login, falha, abrir sessão, sessão pelo hash do token).
+ */
+export interface BancoPlataformaComLogin extends BancoPlataforma {
+  antesDaSessao<R>(fn: (tx: Transacao) => Promise<R>): Promise<R>;
 }
 
 export interface ContextoPlataforma {
@@ -96,8 +109,8 @@ export interface PedidoPlataforma<R> {
 
 /**
  * Ordem de checagem da rota de plataforma: sessão de superadmin (401) → transação de plataforma. Sem perfil e sem licença
- * de tenant: o superadmin não tem perfil de empresa. O token do tenant (JWT) nunca vale aqui, e o cookie de plataforma
- * nunca vale em `/v1/<modulo>` (a apps/api lê cada um só no seu prefixo).
+ * de tenant: o superadmin não tem perfil de empresa. Separação das credenciais de tenant e de plataforma: ver
+ * apps/api/src/plataforma/rotas.ts.
  */
 export async function executarPlataforma<R>(p: PedidoPlataforma<R>): Promise<R> {
   const { sessao } = p;

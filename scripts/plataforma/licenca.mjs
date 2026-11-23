@@ -2,7 +2,7 @@
 /**
  * Licença de módulo por tenant — script do operador (desenho T-0002, D12; RN-CORE-02). O tenant só LÊ a licença
  * (`GET /v1/core/licencas`); ligar, desligar ou mudar o prazo é só por aqui, sempre com auditoria
- * (`plataforma.auditoria`, usuario_id nulo, acao `plataforma.licenca.alterar`, com operador e motivo).
+ * (`plataforma.auditoria`, usuario_id nulo, ação de licença da ADR 0012 §4, com operador e motivo).
  *
  * Uso (sem --confirmar só mostra o plano; nada muda):
  *   node scripts/plataforma/licenca.mjs listar  --empresa <slug>
@@ -87,7 +87,7 @@ export async function executar(cliente, op, agora) {
       );
       await cliente.query(
         `insert into plataforma.auditoria (id, tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id, ocorrido_em, created_at, updated_at)
-         values ($1, $2, null, 'plataforma.licenca.alterar', 'tenant_modulo', $3, $4, $5, $6, $7, $7, $7)`,
+         values ($1, $2, null, 'plataforma.modulos.alterar', 'tenant_modulo', $3, $4, $5, $6, $7, $7, $7)`,
         [randomUUID(), tenant.id, gravada.rows[0].id, JSON.stringify(plano.antes), JSON.stringify({ ...plano.depois, modulo: op.modulo, operador: op.operador, motivo: op.motivo }), `operador-${randomUUID()}`, agora.toISOString()],
       );
     }

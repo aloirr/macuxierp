@@ -183,6 +183,25 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores PostgreSQL da plataforma', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('BancoPlataformaPg (ADR 0012): papel macuxierp_config e sessão só dentro da transação, nunca na conexão do pool', async () => {
+    const plataforma = app.plataforma();
+    const sessao = { superadmin_id: randomUUID(), sessao_id: randomUUID() };
+    const quem = "SELECT current_user AS papel, current_setting('macuxierp.sessao_superadmin', true) AS sessao";
+    expect(await plataforma.comPlataforma(sessao, (tx) => tx.consultar(quem))).toEqual([{ papel: 'macuxierp_config', sessao: sessao.sessao_id }]);
+    // GUC customizado já usado na conexão volta como '' (não NULL) depois da transação
+    const [antes] = await plataforma.antesDaSessao((tx) => tx.consultar<{ papel: string; sessao: string | null }>(quem));
+    expect({ papel: antes?.papel, sessao: antes?.sessao ?? '' }).toEqual({ papel: 'macuxierp_config', sessao: '' });
+    // pool de 1 conexão: depois do COMMIT (e do ROLLBACK) a mesma conexão volta ao papel da aplicação, sem a sessão
+    const [depois] = await app.semTenant((tx) => tx.consultar<{ papel: string; sessao: string | null }>(quem));
+    expect({ papel: depois?.papel, sessao: depois?.sessao ?? '' }).toEqual({ papel: 'macuxierp_app', sessao: '' });
+    await expect(plataforma.comPlataforma(sessao, async () => Promise.reject(new Error('falhou')))).rejects.toThrow('falhou');
+    const [aposErro] = await app.semTenant((tx) => tx.consultar<{ papel: string }>(quem));
+    expect(aposErro?.papel).toBe('macuxierp_app');
+    await expect(plataforma.comPlataforma({ ...sessao, sessao_id: 'nao-e-uuid' }, async () => 1)).rejects.toThrow(RangeError);
+    // sem sessão, a função da lista fechada recusa com o SQLSTATE próprio (MXS01)
+    await expect(plataforma.antesDaSessao((tx) => tx.consultar('SELECT * FROM plataforma.empresa_ler($1::uuid)', [t1]))).rejects.toMatchObject({ code: 'MXS01' });
+  });
+
   it('conferirPapel aceita o papel da aplicação e recusa outro', async () => {
     await expect(app.conferirPapel('macuxierp_app')).resolves.toBeUndefined();
     await expect(app.conferirPapel('macuxierp_worker')).rejects.toThrow(/esperado macuxierp_worker/);

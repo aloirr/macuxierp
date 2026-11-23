@@ -1,7 +1,7 @@
 /**
  * Plugin de plataforma do core: rotas de empresa do portal `/config` (`/v1/plataforma/empresas*`, ADR 0012, seção 2).
- * Ordem: sessão de superadmin (apps/api, `executarPlataforma`) → transação de plataforma → função SECURITY DEFINER da
- * 0033, que revalida a sessão e grava a própria auditoria com o `superadmin_id` (por isso nenhuma rota chama `auditar`).
+ * Ordem de checagem: ver apps/api/src/plataforma/rotas.ts. As funções da 0033 gravam a auditoria com o
+ * `superadmin_id` (por isso nenhuma rota chama `auditar`).
  * Sem perfil e sem licença de tenant; nada de dado de negócio. Logs nunca recebem corpo, e-mail, nome nem senha.
  *
  * Senha provisória (1º admin e redefinição): só na resposta, uma vez, com `CABECALHOS_SENHA_PROVISORIA`. As duas rotas

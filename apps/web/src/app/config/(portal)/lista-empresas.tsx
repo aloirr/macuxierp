@@ -29,7 +29,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
     });
   };
   const colunas: ColunaTabela<EmpresaPlataforma>[] = [
-    { id: 'slug', titulo: 'Slug', celula: (e) => (
+    { id: 'slug', titulo: 'Código', celula: (e) => (
         <Link href={`/config/empresas/${e.id}`} className="codigo" onClick={(ev) => ev.stopPropagation()}>
           {e.slug}
         </Link>

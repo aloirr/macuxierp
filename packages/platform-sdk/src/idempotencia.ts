@@ -15,6 +15,11 @@ export const CABECALHO_REPETIDA = 'idempotency-replayed';
 export const VALIDADE_IDEMPOTENCIA_MS = 24 * 60 * 60 * 1000;
 /** 8 a 128 caracteres (CHECK da `plataforma.idempotencia`), sem espaço: UUID, hex de SHA-256 e afins. */
 export const PADRAO_CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_.:-]{8,128}$/;
+/** Mensagens fixas do 409 de `Idempotency-Key` (tenant e portal `/config` usam as mesmas). */
+export const MENSAGENS_IDEMPOTENCIA = {
+  outroPedido: 'Idempotency-Key já usada com outro pedido',
+  emAndamento: 'Pedido com esta Idempotency-Key ainda em andamento',
+} as const;
 
 /** Registro guardado. `status` nulo = reserva de um pedido ainda em andamento. */
 export interface RegistroIdempotencia {
@@ -107,8 +112,8 @@ export async function executarIdempotente(
   });
   if (existente) {
     if (existente.hash_corpo !== p.hash_corpo)
-      throw erros.conflito('Idempotency-Key já usada com outro pedido');
-    if (existente.status === null) throw erros.conflito('Pedido com esta Idempotency-Key ainda em andamento');
+      throw erros.conflito(MENSAGENS_IDEMPOTENCIA.outroPedido);
+    if (existente.status === null) throw erros.conflito(MENSAGENS_IDEMPOTENCIA.emAndamento);
     return { resposta: { status: existente.status, corpo: existente.resposta }, repetida: true };
   }
   const resposta = await executar();

@@ -36,7 +36,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
         <h1>{empresa.nome}</h1>
         <SeloSituacao situacao={empresa.situacao} />
       </div>
-      <p className="apoio">Slug: <span className="codigo">{empresa.slug}</span></p>
+      <p className="apoio">Código: <span className="codigo">{empresa.slug}</span></p>
       {criada === '1' && <p className="faixa-aviso" role="status">Empresa criada com o core ligado. Ligue os módulos e crie o 1º administrador.</p>}
       <PainelEmpresa
         empresa={empresa}

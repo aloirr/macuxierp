@@ -3,14 +3,20 @@
  * Cada rota declara a `acao`; a API confere aqui antes do tenant e da licença (RN-CORE-02).
  * Ação nova = linha aqui + teste da matriz, pedida por recado ao engenheiro-software.
  */
-import { PERFIS, type ModuloId, type Perfil } from './modulo';
+import { PERFIS, PERFIS_V1, type ModuloId, type Perfil } from './modulo';
 
-const TODOS = PERFIS;
+/**
+ * Os 6 perfis da empresa na v1, em lista EXPLÍCITA (RN-CORE-09): um perfil novo em `PERFIS` não herda nenhum `.ver`
+ * por padrão; cada ação dele entra aqui linha a linha. O analista de implantação fica fora (só consulta os cadastros).
+ */
+const TODOS = PERFIS_V1;
 const ADM = ['administrador'] as const;
 const ADM_GERENTE = ['administrador', 'gerente'] as const;
 const CADASTRO = ['administrador', 'gerente', 'faturista'] as const;
 /** "Ver tudo" do doc 03: o vendedor vê só a própria carteira (filtro no módulo, testado lá). */
 const VER = TODOS;
+/** Consulta dos cadastros: "ver tudo" mais o analista de implantação (RN-CORE-09, "só os cadastros"). */
+const VER_CADASTROS = PERFIS;
 
 export const PERMISSOES = {
   // core (T-0006)
@@ -26,7 +32,7 @@ export const PERMISSOES = {
   'core.exportacao.pedir': ADM,
   'core.parametro.gerir': ADM,
   // cadastros (T-0007)
-  'cadastros.ver': VER,
+  'cadastros.ver': VER_CADASTROS,
   'cadastros.filial.editar': ADM,
   'cadastros.cliente.editar': CADASTRO,
   'cadastros.cliente.credito': ADM_GERENTE,
@@ -41,8 +47,10 @@ export const PERMISSOES = {
   'cadastros.consulta.externa': CADASTRO,
   // ADR 0010, item 3 (RN-CORE-05): troca controlada do external_id
   'cadastros.external_id.trocar': ADM,
-  // T-0026 (D8): carga de CSV; cada arquivo ainda confere a ação de edição da entidade (filial só o administrador)
-  'cadastros.carga.executar': ADM_GERENTE,
+  // T-0026 (D8): carga de CSV; cada arquivo ainda confere a ação de edição da entidade (filial só o administrador).
+  // RN-CORE-09: o analista de implantação carrega todas as entidades do RF-CAD-11 (inclusive preço) sem a edição de cada
+  // uma; filial e limite de crédito continuam só com o administrador. A exceção por linha é do domain do cadastros.
+  'cadastros.carga.executar': ['administrador', 'gerente', 'analista_implantacao'],
   // pedido, fiscal, faturamento e integração (F2 a F4; a matriz do doc 03 já fixa)
   'pedido.ver': VER,
   'pedido.pedido.aprovar': ADM_GERENTE,
