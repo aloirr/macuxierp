@@ -22,3 +22,4 @@
 2026-11-23 — T-0058 — RD-1176/1177/1178: seloBase e tons em estilos.ts, teste de hex sem duplicidade, proximoFoco só em Dialogo, doc enxuto
 2026-11-23 — T-0058 — Chip, CaixaResumo e Dialogo base (border-box, canto 8); prints da marca em docs/design/cargas/; RD-1176–1178
 2026-11-23 — T-0058 — Dialogo com altura máxima 90vh e corpo rolável (v0.3.6); RD-1215–1217
+2026-11-23 — T-0058 — botão destrutivo em vermelho (opção B) no DialogoMotivo e .mx-botao-destrutivo; RD-1217–1218
