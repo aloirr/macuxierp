@@ -31,7 +31,7 @@ describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
   it('nenhum botão, formulário, campo nem texto de escrita', () => {
     const h = html();
     expect(h).not.toMatch(/<button|<form|<input|<select/);
-    for (const t of ['Salvar', 'Testar conexão', 'Tentar de novo', 'Carga completa', 'password']) expect(h, t).not.toContain(t);
+    for (const t of ['Salvar', 'Testar conexão', 'Tentar de novo', 'Reenviar tudo', 'password']) expect(h, t).not.toContain(t);
   });
   it('Ligada e Desligada por cadastro, com o último envio no fuso da empresa (10:05 em Manaus)', () => {
     const h = html();

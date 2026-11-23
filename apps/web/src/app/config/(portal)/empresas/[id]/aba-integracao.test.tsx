@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
+import { CADASTROS_CARGA_PORTAL, IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
@@ -10,7 +10,7 @@ import { habilitadasApos, linhasCadastros } from '@/lib/config/integracao-fdv';
 import { AbaIntegracao } from './aba-integracao';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const ENT = ['filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente', 'cliente_endereco'] as const;
+const ENT = CADASTROS_CARGA_PORTAL.map((c) => c.cadastro);
 const dados = (extra: Record<string, unknown> = {}, com = true) =>
   IntegracaoFdvPlataforma.parse({
     empresa_id: ID, modulo_licenciado: true,
@@ -25,7 +25,7 @@ describe('aba Integração do /config (T-0056)', () => {
   it('bloco "Macuxi FDV" com credencial, chave só de escrita (senha, sem valor) e só o prefixo', () => {
     const h = render();
     expect(h).toContain('Macuxi FDV');
-    expect(h).toContain('Credencial do conector');
+    expect(h).toContain('Conexão com o Macuxi FDV');
     expect(h).toContain('Cadastros enviados ao FDV');
     expect(h).not.toContain('Saída do ERP');
     expect(h).not.toContain('(resposta');
@@ -39,19 +39,19 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(h).toContain('Teste');
     expect(h).toContain('Produção');
   });
-  it('um botão Ligar ou Desligar por cadastro, mais carga completa e tentar de novo quando cabem', () => {
+  it('um botão Ligar ou Desligar por cadastro, mais reenviar tudo e tentar de novo quando cabem', () => {
     const h = render();
     expect(h).toContain('aria-label="Desligar: Produtos"');
     expect(h).toContain('aria-label="Ligar: Estoque"');
-    expect(h).toContain('aria-label="Carga completa: Produtos"');
-    expect(h).not.toContain('aria-label="Carga completa: Estoque"');
+    expect(h).toContain('aria-label="Reenviar tudo: Produtos"');
+    expect(h).not.toContain('aria-label="Reenviar tudo: Estoque"');
     expect(h).toContain('aria-label="Tentar de novo: Clientes"');
     expect(h).not.toContain('aria-label="Tentar de novo: Produtos"');
     expect(h).toContain('Corrija a credencial do conector.');
   });
   it('coluna Ações: botões sem quebra, largura mínima 360 e legenda só para leitor de tela', () => {
     const h = render();
-    const botoes = h.match(/<button[^>]*aria-label="(?:Desligar|Ligar|Carga completa|Tentar de novo): [^"]*"[^>]*>/g) ?? [];
+    const botoes = h.match(/<button[^>]*aria-label="(?:Desligar|Ligar|Reenviar tudo|Tentar de novo): [^"]*"[^>]*>/g) ?? [];
     expect(botoes.length).toBeGreaterThan(0);
     for (const b of botoes) expect(b).toMatch(/white-space:\s*nowrap/);
     expect(h).toMatch(/min-width:\s*360px/);
@@ -71,15 +71,21 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Testar conexão/);
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Ligar: Produtos"|aria-label="Ligar: Produtos"[^>]*disabled=""/);
   });
+  it('"Nenhum cadastro ligado" só quando nenhum está ligado (a credencial nasce sem cadastros)', () => {
+    const nova = render(dados({}, false));
+    expect(nova).toContain('Nenhum cadastro ligado.');
+    expect(nova.indexOf('Nenhum cadastro ligado.')).toBeLessThan(nova.indexOf('<table'));
+    expect(render()).not.toContain('Nenhum cadastro ligado');
+  });
   it('sem a licença do módulo: aviso e escritas desabilitadas', () => {
     const h = render(dados({ modulo_licenciado: false }));
     expect(h).toContain('não está licenciado');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Trocar credencial/);
   });
-  it('carga completa some com lote em voo', () => {
+  it('reenviar tudo some com lote em voo', () => {
     const d = dados();
     d.cadastros[4]!.lote_em_voo = true;
-    expect(render(d)).not.toContain('aria-label="Carga completa: Produtos"');
+    expect(render(d)).not.toContain('aria-label="Reenviar tudo: Produtos"');
   });
   it('a confirmação existe para ligar, desligar, carga e retomar (DialogoMotivo no componente)', () => {
     const h = render();

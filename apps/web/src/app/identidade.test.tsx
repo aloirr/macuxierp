@@ -33,7 +33,7 @@ describe('identidade do shell (T-0021, ajustes B)', () => {
     const botoes = readFileSync(require.resolve('@macuxierp/ui/botoes.css'), 'utf8');
     expect(botoes).toMatch(/\.mx-fundo-escuro :focus-visible \{[^}]*var\(--mx-cor-branco\)/);
   });
-  it('o diálogo de motivo recebe "Manter a nota" e o sinal destrutivo, sem cor nova', () => {
+  it('o diálogo de motivo recebe "Manter a nota" e o sinal destrutivo, sem cor nova além do vermelho do destrutivo (opção B)', () => {
     const h = renderToStaticMarkup(<DialogoMotivo titulo="Cancelar" rotuloFechar="Manter a nota" destrutivo aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
     expect(h).toContain('>Manter a nota<');
     expect(h).toContain('data-destrutivo="true"');
