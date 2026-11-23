@@ -15,12 +15,12 @@ import {
 import { CNPJ_EMITENTE_DE_TESTE, INSTANTE_DE_TESTE, VALIDADE_DE_TESTE, gerarA1DeTeste } from '@macuxierp/nfe-sefaz/teste';
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { paginar } from '@macuxierp/platform-sdk';
-import type { Ambiente, BaixaTituloResumo, StatusNota, TituloResumo } from '../contracts';
+import type { Ambiente, BaixaTituloResumo, ContingenciaResumo, StatusNota, TituloResumo } from '../contracts';
 import { digestValueDoXml, emTransmissao, calcularTotais, interpretarRetorno, nfeVaiAoFdv, resumoDoItem, type ConteudoNota } from '../domain';
 import { calc, IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import type { DepsEmissao } from './emissao';
 import type { DepsEventos } from './eventos';
-import type { A1DaFilial, EventoRegistro, InutilizacaoRegistro, NotaRegistro, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
+import type { A1DaFilial, EventoRegistro, InutilizacaoRegistro, NotaRegistro, EpecPendenteRegistro, RepositorioContingencia, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, TransmissaoDeEvento, TransmissaoRegistrada } from './portas';
 
 export const tx = {} as Transacao;
 export const TENANT = IDS.tenant;
@@ -619,6 +619,30 @@ export function configuracaoFake(inicial: Record<string, boolean> = {}) {
     async lerBandeiraSegura(_t, filial_id, avisar) {
       try { return await repo.faturamentoRealComNfeSimulada(_t, filial_id); } catch { avisar('falha ao ler a bandeira (fake)'); return false; }
     },
+  };
+  return { repo, linhas };
+}
+
+/** Contingência em memória: uma aberta por (filial, ambiente), como o índice `contingencia_uma_aberta` (23505 ao repetir). `epec` alimenta a lista das pendentes. */
+export function contingenciaFake(epec: EpecPendenteRegistro[] = []) {
+  const linhas: ContingenciaResumo[] = [];
+  let seq = 0;
+  const repo: RepositorioContingencia = {
+    async abrir(_t, c) {
+      if (linhas.some((l) => l.filial_id === c.filial_id && l.ambiente === c.ambiente && l.fim_em === null)) throw Object.assign(new Error('duplicate key'), { code: '23505' });
+      const l: ContingenciaResumo = { id: uuid(70_000 + ++seq), filial_id: c.filial_id, ambiente: c.ambiente, modalidade: c.modalidade, motivo: c.motivo, inicio_em: c.inicio_em.toISOString(), fim_em: null, ligada_por: c.ligada_por, desligada_por: null };
+      linhas.push(l);
+      return { ...l };
+    },
+    async encerrar(_t, filial_id, ambiente, fim_em, por) {
+      const i = linhas.findIndex((l) => l.filial_id === filial_id && l.ambiente === ambiente && l.fim_em === null);
+      if (i < 0) return null;
+      linhas[i] = { ...linhas[i]!, fim_em: fim_em.toISOString(), desligada_por: por };
+      return { ...linhas[i]! };
+    },
+    async aberta(_t, filial_id, ambiente) { return linhas.find((l) => l.filial_id === filial_id && l.ambiente === ambiente && l.fim_em === null) ?? null; },
+    async historico(_t, filial_id, ambiente, limite) { return linhas.filter((l) => l.filial_id === filial_id && l.ambiente === ambiente && l.fim_em !== null).reverse().slice(0, limite); },
+    async epecPendentes(_t, f) { return epec.filter((n) => !f.filial_id || n.filial_id === f.filial_id); },
   };
   return { repo, linhas };
 }

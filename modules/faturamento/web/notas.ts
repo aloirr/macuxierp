@@ -171,7 +171,7 @@ export interface DialogoDeTexto {
   contador: (texto: string) => string;
 }
 
-function dialogoDeTexto(d: { titulo: string; aviso: string | null; rotuloTexto: string; rotuloConfirmar: string; rotuloFechar: string; destrutivo: boolean; minimo: number; maximo: number; mensagem: string }): DialogoDeTexto {
+export function dialogoDeTexto(d: { titulo: string; aviso: string | null; rotuloTexto: string; rotuloConfirmar: string; rotuloFechar: string; destrutivo: boolean; minimo: number; maximo: number; mensagem: string }): DialogoDeTexto {
   const { mensagem, ...resto } = d;
   return {
     ...resto,

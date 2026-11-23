@@ -7,16 +7,16 @@
 import { csvDaLista, definirRota, ErroApi, erros, fusoDaRota, type ContextoRota, type RespostaRota, type RotaModulo } from '@macuxierp/platform-sdk';
 import type { ColunaLista } from '@macuxierp/platform-sdk/listas';
 import {
-  BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, ConfiguracaoFilialResposta, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
+  AbrirContingenciaEntrada, BaixarTituloEntrada, CancelarNotaEntrada, ConfigurarFilialEntrada, ConfiguracaoFilialResposta, CartaCorrecaoEntrada, EmitirNotaEntrada, FiltroEpecPendentes, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, InutilizarEntrada, TRABALHO_CONSULTAR_NOTA, TRABALHO_PROCESSAR_EVENTO,
   TRABALHO_PROCESSAR_INUTILIZACAO, TRABALHO_TRANSMITIR_NOTA,
 } from '../contracts';
-import type { EventoNotaResumo } from '../contracts';
+import type { ContingenciaDaFilialResposta, EpecPendente, EventoNotaResumo } from '../contracts';
 import { montarDanfe } from '../domain/danfe';
 import { lerAssinaturaDaMarca, MENSAGEM_ATIVO_AUSENTE, type ResultadoAtivosDanfe } from './ativos-marca';
 import { renderizarDanfe } from './danfe-pdf';
-import { podeBaixarTitulo } from '../domain';
-import { paginaNoFuso, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
-import type { ConfiguracaoFaturamento, EventoRegistro, PortaDanfe, RepositorioTitulos } from './portas';
+import { podeBaixarTitulo, prazoEpec, situacaoPrazoEpec, validarEntradaContingencia } from '../domain';
+import { paginaNoFuso, paginaEpecPendentes, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos } from '../web/paginas';
+import type { ConfiguracaoFaturamento, EventoRegistro, RepositorioContingencia, PortaDanfe, RepositorioTitulos } from './portas';
 import { criarServicoTitulos } from './titulos';
 import { criarServicoEmissao, type DepsEmissao } from './emissao';
 import { criarServicoEventos, type DepsEventos } from './eventos';
@@ -56,14 +56,37 @@ const SEM_VENDEDOR = (c: ContextoRota): void => {
 };
 
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
-export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
+export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
 
 /** Baixa e estorno só para administrador, gerente e faturista (RN-FAT-06). A rota usa `faturamento.ver` (licença e tenant) e confere o perfil aqui, até existir ação própria no platform-sdk. */
 const SO_QUEM_BAIXA = (c: ContextoRota): void => {
   if (!podeBaixarTitulo(c.sessao.perfil)) throw erros.perfilSemPermissao();
 };
 
+/** Histórico curto da contingência da filial (as últimas fechadas). */
+const HISTORICO_CONTINGENCIA = 10;
+/** Contingência sem o adaptador ligado (apps/api ainda sem `repositoriosSql(...).contingencia`): 503, nunca 500. */
+const SEM_CONTINGENCIA = 'Contingência';
+
 export function criarRotas(deps: DepsRotas): RotaModulo[] {
+  const contingencia = (): RepositorioContingencia => deps.contingencia ?? ((): never => { throw erros.indisponivel(SEM_CONTINGENCIA); })();
+  /** Filial emissora do tenant e o ambiente vigente dela (regra 7: contingência por filial E ambiente). */
+  const filialEAmbiente = async (c: ContextoRota, params: Readonly<Record<string, string>>) => {
+    const filial_id = idDe(params, 'id', 'Filial');
+    if (!(await deps.cadastros.filial(c.tx, filial_id))) throw erros.naoEncontrado('Filial');
+    return { filial_id, ambiente: await deps.ambiente.ambiente(c.tx, filial_id) };
+  };
+  /** Pendentes com o prazo e a situação calculados no domain (RN-FAT-09: 168 h da autorização do EPEC). Volume baixo: filtra e pagina em memória. */
+  const epecPendentes = async (c: ContextoRota, f: FiltroEpecPendentes): Promise<{ itens: EpecPendente[]; proximo_cursor: string | null }> => {
+    const linhas = await contingencia().epecPendentes(c.tx, { filial_id: f.filial_id });
+    const todas = linhas.map((l): EpecPendente => {
+      const prazo = prazoEpec({ epecAutorizadoEm: new Date(l.epec_autorizada_em) });
+      return { ...l, prazo_ate: prazo.toISOString(), situacao_prazo: situacaoPrazoEpec(c.agora, prazo) };
+    }).filter((l) => !f.situacao || l.situacao_prazo === f.situacao).sort((a, b) => a.prazo_ate.localeCompare(b.prazo_ate) || a.id.localeCompare(b.id));
+    const depois = f.cursor ? todas.findIndex((l) => l.id === f.cursor) + 1 : 0;
+    const itens = todas.slice(depois, depois + f.limite);
+    return { itens, proximo_cursor: depois + f.limite < todas.length ? (itens.at(-1)?.id ?? null) : null };
+  };
   const servico = criarServicoEmissao(deps);
   const eventosSvc = criarServicoEventos({ eventos: deps.eventos, cadastros: deps.cadastros, ambiente: deps.ambiente, certificado: deps.certificado, agora: deps.agora });
   const notas = deps.notas;
@@ -334,6 +357,68 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         await deps.configuracao.definir(c.tx, filial_id, e.corpo.faturamento_real_nfe_simulada, c.sessao.usuario_id);
         await c.auditar({ acao: 'faturamento.filial.configurar', entidade: 'filial', entidade_id: filial_id, antes: { faturamento_real_nfe_simulada: antes }, depois: { faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } });
         return { corpo: { filial_id, faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } };
+      },
+    }),
+    // ---- Contingência por filial (T-0021, lote 4; RN-FAT-05, 09 e 10). Escrita: `faturamento.nota.emitir` (administrador, faturista, fiscal), a ação fiscal que já cobre inutilizar; não há ação própria no SDK. ----
+    // Caminho fixo antes de qualquer `:id`.
+    definirRota({
+      metodo: 'GET', caminho: '/contingencia/epec-pendentes', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return { corpo: await epecPendentes(c, e.consulta) };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/contingencia/epec-pendentes/exportar', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        return csvNoFuso(c, paginaEpecPendentes, () => todasAsLinhas((f) => epecPendentes(c, f), e.consulta));
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/filiais/:id/contingencia', acao: 'faturamento.ver',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
+        const repo = contingencia();
+        const resposta: ContingenciaDaFilialResposta = { filial_id, ambiente, aberta: await repo.aberta(c.tx, filial_id, ambiente), historico: await repo.historico(c.tx, filial_id, ambiente, HISTORICO_CONTINGENCIA) };
+        return { corpo: resposta };
+      },
+    }),
+    // RN-FAT-05: o operador decide a entrada; o domain valida a justificativa, o início e a modalidade. RN-FAT-10: filial com NF-e simulada não entra.
+    definirRota({
+      metodo: 'POST', caminho: '/filiais/:id/contingencia', acao: 'faturamento.nota.emitir', corpo: AbrirContingenciaEntrada, idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const repo = contingencia();
+        const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
+        if (e.corpo.filial_id !== filial_id) throw erros.validacao({ filial_id: 'A filial do corpo deve ser a da URL.' });
+        if (e.corpo.ambiente && e.corpo.ambiente !== ambiente) throw erros.regra('RN-FAT-04', `A filial emite em ${ambiente}; a contingência é aberta no ambiente da filial.`, { ambiente: 'diferente do ambiente da filial' });
+        const inicioEm = e.corpo.inicio_em ? new Date(e.corpo.inicio_em) : c.agora;
+        const v = validarEntradaContingencia({
+          nfeSimulada: await deps.configuracao.faturamentoRealComNfeSimulada(c.tx, filial_id), modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicioEm, agora: c.agora,
+        });
+        if (v.length > 0) throw erroDeViolacoes(v);
+        if (await repo.aberta(c.tx, filial_id, ambiente)) throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');
+        const aberta = await repo.abrir(c.tx, { filial_id, ambiente, modalidade: e.corpo.modalidade, motivo: e.corpo.motivo, inicio_em: inicioEm, ligada_por: c.sessao.usuario_id }).catch((err: unknown) => {
+          if ((err as { code?: string } | null)?.code === '23505') throw erros.conflito('A filial já está em contingência neste ambiente. Encerre a atual antes de abrir outra.');
+          return traduzirErroBanco(err);
+        });
+        await c.auditar({ acao: 'faturamento.contingencia.abrir', entidade: 'contingencia', entidade_id: aberta.id, depois: { filial_id, ambiente, modalidade: aberta.modalidade } });
+        return { status: 201, corpo: aberta };
+      },
+    }),
+    // RN-FAT-09: o operador encerra (nada de volta automática); as EPEC pendentes seguem pela fila da volta.
+    definirRota({
+      metodo: 'POST', caminho: '/filiais/:id/contingencia/encerrar', acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria',
+      async executar(c, e) {
+        SEM_VENDEDOR(c);
+        const repo = contingencia();
+        const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
+        const encerrada = await repo.encerrar(c.tx, filial_id, ambiente, c.agora, c.sessao.usuario_id).catch(traduzirErroBanco);
+        if (!encerrada) throw erros.naoEncontrado('Contingência aberta');
+        await c.auditar({ acao: 'faturamento.contingencia.encerrar', entidade: 'contingencia', entidade_id: encerrada.id, depois: { filial_id, ambiente, modalidade: encerrada.modalidade } });
+        return { corpo: encerrada };
       },
     }),
     definirRota({

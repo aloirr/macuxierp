@@ -46,3 +46,13 @@ Tabela existente **`faturamento.contingencia`** (0013, RLS padrão), estendida p
 - **Marca:** validar o aviso do DANFE.
 
 **Sugestão de entrada (RN-FAT-05):** `sugerirContingencia({ cStatServico, tentativasComTempoLimite, limite })`: o motivo `consulta_indisponivel` só quando o statusServico responde cStat 108 ou 109; `PRAZO_EPEC_HORAS` é provisório até o `PRAZO_TRANSMISSAO_EPEC_HORAS` de `@macuxierp/nfe-sefaz/contingencia` (ainda inexistente no main).
+
+## Etapa 5: abrir e encerrar por filial, lista das EPEC pendentes (T-0021, lote 4)
+Rotas em `/v1/faturamento` (perfil, tenant e licença do módulo como as demais; `vendedor` recebe 403; sem dado pessoal em log ou auditoria; o motivo não vai à auditoria):
+- `POST /filiais/:id/contingencia` (`AbrirContingenciaEntrada`; `Idempotency-Key` obrigatória; 201): valida com `validarEntradaContingencia` (RN-FAT-05; filial com NF-e simulada, lida da `configuracao_filial`, é recusada com RN-FAT-10), grava no **ambiente vigente da filial** (`ambiente` do corpo, se vier, tem de ser esse: RN-FAT-04) com `ligada_por` = usuário da sessão. Já havendo aberta na filial e no ambiente: 409 (checagem e índice `contingencia_uma_aberta`, 23505).
+- `POST /filiais/:id/contingencia/encerrar` (`Idempotency-Key` obrigatória): `fim_em` = agora e `desligada_por` = usuário (RN-FAT-09); sem aberta, 404.
+- `GET /filiais/:id/contingencia` (`ContingenciaDaFilialResposta`): a aberta (ou nulo) e as 10 últimas fechadas.
+- `GET /contingencia/epec-pendentes` e `/exportar` (CSV): `EpecPendente` com `prazo_ate` (`prazoEpec`, 168 h do `epec_autorizada_em`) e `situacao_prazo` (`situacaoPrazoEpec`), da mais urgente à menos; filtros `filial_id`, `situacao`, `limite`, `cursor`. Entram notas tpEmis 4 com `epec_protocolo`, em `emitida_contingencia` ou `rejeitada`.
+- **Ação de permissão:** escrita usa `faturamento.nota.emitir` (administrador, faturista, fiscal), a mesma que cobre inutilizar; o SDK não tem ação própria de contingência nem o perfil "faturista-chefe". Leitura: `faturamento.ver`. (O PUT da configuração da filial só aceita administrador pela regra da rota; se o PO quiser a contingência só para administrador, é uma linha na rota.)
+- **Ligação:** `repositoriosSql(...).contingencia` (`RepositorioContingencia`, `api/sql-contingencia.ts`) entra em `DepsRotas.contingencia`, opcional até o `apps/api` ligar (sem ele as rotas respondem 503).
+- **Web:** `requisicaoAbrirContingencia`/`requisicaoEncerrarContingencia`, `dialogoAbrirContingencia`/`dialogoEncerrarContingencia`, `seloDaContingencia`/`faixaDaContingencia` (destaque da filial), `acoesDaContingencia`, `paginaEpecPendentes` (menu "Notas fiscais", rota `/faturamento/epec-pendentes`) e `ROTULO_PRAZO_EPEC` (vencido em tom de erro). Textos para a marca validar.

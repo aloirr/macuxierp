@@ -282,6 +282,70 @@ export type ConfigurarFilialEntrada = z.infer<typeof ConfigurarFilialEntrada>;
 export const ConfiguracaoFilialResposta = z.object({ filial_id: Uuid, faturamento_real_nfe_simulada: z.boolean(), ambiente: Ambiente });
 export type ConfiguracaoFilialResposta = z.infer<typeof ConfiguracaoFilialResposta>;
 
+// ---- Contingência por filial (T-0021, lote 4; RN-FAT-05, RN-FAT-09, RN-FAT-10) ----
+/** Espelha o CHECK de `faturamento.contingencia.modalidade` (0013 + 0032): SVC-AN (tpEmis 6), SVC-RS (7) e EPEC (4). */
+export const ModalidadeContingencia = z.enum(['svc_an', 'svc_rs', 'epec']);
+export type ModalidadeContingencia = z.infer<typeof ModalidadeContingencia>;
+
+/**
+ * `POST /v1/faturamento/filiais/:id/contingencia` (`Idempotency-Key` obrigatória). `filial_id` repete o da URL (a URL manda; divergência é 400). `ambiente` é opcional e,
+ * se vier, tem de ser o vigente da filial (a contingência é da filial no ambiente dela, regra 7). `motivo` vira xJust (15 a 256 caracteres, validado no domain, RN-FAT-05);
+ * `inicio_em` vira dhCont (UTC, nunca no futuro); sem ele, agora.
+ */
+export const AbrirContingenciaEntrada = z.object({
+  filial_id: Uuid,
+  ambiente: Ambiente.optional(),
+  modalidade: ModalidadeContingencia,
+  motivo: z.string().max(1000),
+  inicio_em: z.string().datetime().optional(),
+});
+export type AbrirContingenciaEntrada = z.infer<typeof AbrirContingenciaEntrada>;
+
+export const ContingenciaResumo = z.object({
+  id: Uuid,
+  filial_id: Uuid,
+  ambiente: Ambiente,
+  modalidade: ModalidadeContingencia,
+  motivo: z.string(),
+  inicio_em: z.string().datetime(),
+  fim_em: z.string().datetime().nullable(),
+  ligada_por: Uuid.nullable(),
+  desligada_por: Uuid.nullable(),
+});
+export type ContingenciaResumo = z.infer<typeof ContingenciaResumo>;
+
+/** `GET /v1/faturamento/filiais/:id/contingencia`: a aberta no ambiente vigente da filial (ou nulo) e o histórico curto (as últimas fechadas). */
+export const ContingenciaDaFilialResposta = z.object({
+  filial_id: Uuid,
+  ambiente: Ambiente,
+  aberta: ContingenciaResumo.nullable(),
+  historico: z.array(ContingenciaResumo),
+});
+export type ContingenciaDaFilialResposta = z.infer<typeof ContingenciaDaFilialResposta>;
+
+export const SituacaoPrazoEpec = z.enum(['no_prazo', 'perto_do_fim', 'vencido']);
+export type SituacaoPrazoEpec = z.infer<typeof SituacaoPrazoEpec>;
+
+/** `GET /v1/faturamento/contingencia/epec-pendentes` (RN-FAT-09): filtros na URL. */
+export const FiltroEpecPendentes = ConsultaPaginada.extend({ filial_id: Uuid.optional(), situacao: SituacaoPrazoEpec.optional() });
+export type FiltroEpecPendentes = z.infer<typeof FiltroEpecPendentes>;
+
+/** Nota EPEC (tpEmis 4) com o evento autorizado e ainda sem a transmissão posterior autorizada; o prazo (168 h da autorização do EPEC) é calculado, não gravado. */
+export const EpecPendente = z.object({
+  id: Uuid,
+  filial_id: Uuid,
+  ambiente: Ambiente,
+  serie: z.number().int(),
+  numero: z.number().int().nullable(),
+  chave_acesso: z.string().nullable(),
+  status: StatusNota,
+  epec_protocolo: z.string(),
+  epec_autorizada_em: z.string().datetime(),
+  prazo_ate: z.string().datetime(),
+  situacao_prazo: SituacaoPrazoEpec,
+});
+export type EpecPendente = z.infer<typeof EpecPendente>;
+
 // ---- Títulos a receber (RF-FAT-07, RN-FAT-06) ----
 export const StatusTitulo = z.enum(['aberto', 'baixado', 'cancelado']);
 export type StatusTitulo = z.infer<typeof StatusTitulo>;

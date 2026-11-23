@@ -13,9 +13,10 @@ import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
 import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
 import type {
-  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento,
+  AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, RepositorioContingencia,
 } from './portas';
 import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { repositorioContingenciaSql } from './sql-contingencia';
 import { repositorioTitulosSql } from './sql-titulos';
 
 type Dict = Record<string, unknown>;
@@ -656,6 +657,6 @@ export const notaEmAbertoSql: NotaEmAberto = {
 };
 
 /** Repositórios de produção, ligados pelo apps/api e pelo apps/worker (a `Outbox` vem do SDK: `new OutboxPg()`). */
-export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
-  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
+export function repositoriosSql(deps: DependenciasSql): { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia: RepositorioContingencia; notas: RepositorioNotas; eventos: RepositorioEventos; pedidos: PedidosAprovados; ambiente: AmbienteFiscalDaFilial; notaEmAberto: NotaEmAberto } {
+  return { titulos: repositorioTitulosSql, configuracao: configuracaoFaturamentoSql, contingencia: repositorioContingenciaSql, notas: repositorioNotasSql(deps), eventos: repositorioEventosSql(), pedidos: pedidosAprovadosSql, ambiente: ambienteFiscalSql, notaEmAberto: notaEmAbertoSql };
 }

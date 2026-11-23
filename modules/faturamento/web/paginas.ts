@@ -6,9 +6,10 @@ import { FUSO_PADRAO, pode, type Perfil, type PaginaBase } from '@macuxierp/plat
 import { definirPaginaLista, filtrosDaUrl, paraCsv, urlDaLista, type ColunaLista } from '@macuxierp/platform-sdk/listas';
 import { formatarCentavos, formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import {
-  DataCivil, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, NotaResumo, PedidoAFaturarResumo, RejeicaoNota, TituloResumo,
+  DataCivil, EpecPendente, FiltroEpecPendentes, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, FiltroTitulos, NotaResumo, PedidoAFaturarResumo, RejeicaoNota, TituloResumo,
 } from '../contracts';
 import { BASE_API, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, numeroSerie, seloDoAmbiente, seloDoPedido, textoDoAmbiente, type Selo } from './notas';
+import { ROTULO_PRAZO_EPEC } from './contingencia';
 import { hojeCivil, situacaoDoTitulo } from './titulos';
 
 /** Local até o sdk ter `formatarDataCivil` (RD-0590): AAAA-MM-DD vira DD/MM/AAAA. */
@@ -81,11 +82,22 @@ const colunasTitulos: Fabrica<TituloResumo> = () => {
   ];
 };
 
+const colunasEpecPendentes: Fabrica<EpecPendente> = (fuso) => [
+  colunaNumeracao(),
+  { id: 'status', titulo: 'Situação da nota', tipo: 'status', valor: (n) => ROTULO_STATUS_NOTA[n.status].texto, selos: (n) => [ROTULO_STATUS_NOTA[n.status]] },
+  { id: 'epec_protocolo', titulo: 'Protocolo do EPEC', valor: (n) => n.epec_protocolo },
+  { id: 'epec_autorizada_em', titulo: 'EPEC autorizado em', tipo: 'data', valor: (n) => hora(fuso)(n.epec_autorizada_em) },
+  { id: 'prazo_ate', titulo: 'Enviar até', tipo: 'data', valor: (n) => hora(fuso)(n.prazo_ate) },
+  { id: 'situacao_prazo', titulo: 'Prazo', tipo: 'status', valor: (n) => ROTULO_PRAZO_EPEC[n.situacao_prazo].texto, selos: (n) => [ROTULO_PRAZO_EPEC[n.situacao_prazo]] },
+  colunaAmbiente(),
+];
+
 interface LinhaDa {
   'pedidos-a-faturar': PedidoAFaturarResumo;
   notas: NotaResumo;
   rejeicoes: RejeicaoNota;
   titulos: TituloResumo;
+  'epec-pendentes': EpecPendente;
 }
 export type IdLista = keyof LinhaDa;
 
@@ -115,6 +127,12 @@ export const paginaTitulos = definirPaginaLista({
   vazio: { semFiltro: 'Nenhum título ainda. Os títulos aparecem quando uma nota a prazo é autorizada.', comFiltro: 'Nenhum título com estes filtros.' },
 });
 
+export const paginaEpecPendentes = definirPaginaLista({
+  id: 'epec-pendentes', api: `${BASE_API}/contingencia/epec-pendentes`, item: EpecPendente,
+  filtros: FiltroEpecPendentes.omit(SEM_CURSOR).shape, colunas: colunasEpecPendentes(FUSO_PADRAO), csv: { arquivo: 'epec-pendentes.csv' },
+  vazio: { semFiltro: 'Nenhuma nota EPEC esperando envio. Está tudo em dia.', comFiltro: 'Nenhuma nota EPEC com estes filtros.' },
+});
+
 const rotuloNota = (n: { numero: number | null; serie: number }): string => `Abrir nota ${numeroSerie(n) || 'sem número'}`;
 
 /** `rotuloLinha` (aria-label da linha clicável) de cada lista, tipado pela linha da própria lista. */
@@ -122,10 +140,11 @@ export const ROTULO_LINHA: { readonly [K in IdLista]: (linha: LinhaDa[K]) => str
   'pedidos-a-faturar': (p) => `Emitir nota do pedido ${p.numero ?? ''}`.trim(),
   notas: rotuloNota,
   rejeicoes: rotuloNota,
+  'epec-pendentes': (n) => `Abrir a nota ${numeroSerie(n) || 'sem número'} em contingência`,
   titulos: (t) => `Abrir o título ${t.numero} (parcela ${t.parcela}/${t.total_parcelas})`,
 };
 
-const FABRICAS: { readonly [K in IdLista]: Fabrica<LinhaDa[K]> } = { 'pedidos-a-faturar': colunasPedidos, notas: colunasNotas, rejeicoes: colunasRejeicoes, titulos: colunasTitulos };
+const FABRICAS: { readonly [K in IdLista]: Fabrica<LinhaDa[K]> } = { 'pedidos-a-faturar': colunasPedidos, notas: colunasNotas, rejeicoes: colunasRejeicoes, titulos: colunasTitulos, 'epec-pendentes': colunasEpecPendentes };
 
 /** O id vem de fora (rota da tela): o único ponto que perde o tipo da linha. */
 const fabricaDe = (id: string): Fabrica<unknown> | undefined => (Object.hasOwn(FABRICAS, id) ? (FABRICAS[id as IdLista] as unknown as Fabrica<unknown>) : undefined);
@@ -167,6 +186,7 @@ export const PAGINAS_FATURAMENTO: readonly PaginaFaturamento[] = [
   { id: 'notas', tipo: 'lista', menu: 'Notas fiscais', titulo: 'Notas fiscais', rota: '/faturamento/notas', api: paginaNotas.api, ver: VER },
   { id: 'nota', tipo: 'detalhe', menu: 'Notas fiscais', titulo: 'Nota fiscal', rota: '/faturamento/notas/:id', ver: VER, ocultaNoMenu: true },
   { id: 'rejeicoes', tipo: 'lista', menu: 'Rejeições', titulo: 'Rejeições', rota: '/faturamento/rejeicoes', api: paginaRejeicoes.api, ver: VER },
+  { id: 'epec-pendentes', tipo: 'lista', menu: 'Notas fiscais', titulo: 'EPEC pendentes', rota: '/faturamento/epec-pendentes', api: paginaEpecPendentes.api, ver: VER },
   { id: 'titulos', tipo: 'lista', menu: 'Títulos a receber', titulo: 'Títulos a receber', rota: '/faturamento/titulos', api: paginaTitulos.api, ver: VER },
   /** Detalhe do título (baixa e estorno: `acoesDoTitulo`, `formularioBaixa`, `dialogoEstornar`, `situacaoDoTitulo`): abre pela lista. */
   { id: 'titulo', tipo: 'detalhe', menu: 'Títulos a receber', titulo: 'Título a receber', rota: '/faturamento/titulos/:id', ver: VER, ocultaNoMenu: true },

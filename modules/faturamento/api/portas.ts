@@ -9,7 +9,7 @@ import type { CredencialA1EmMemoria } from '@macuxierp/nfe-sefaz';
 import type { A1ValidoDaFilial } from '@macuxierp/core/contracts';
 import type { SituacaoPedidoParaFaturar } from '@macuxierp/pedido/contracts';
 import type { Pagina, Transacao } from '@macuxierp/platform-sdk';
-import type { Ambiente, PedidoAFaturarDetalhe, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, FiltroPedidosAFaturar, PedidoAFaturarResumo, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
+import type { Ambiente, ContingenciaResumo, ModalidadeContingencia, PedidoAFaturarDetalhe, BaixaTituloResumo, FiltroTitulos, TituloDetalhe, TituloResumo, EventoNotaResumo, FiltroNotas, FiltroPedidosAFaturar, PedidoAFaturarResumo, InutilizacaoResumo, FiltroRejeicoes, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota, TipoEmissao } from '../contracts';
 import type { StatusFilaFaturar, ParcelaGerada, ConteudoNota, Crt, EnderecoNota, IndIeDest, NotaNaFaixa, PedidoFaturavel } from '../domain';
 
 /** Implementada pelo `criarConsultaParaFaturar` de `@macuxierp/pedido/api` (liga o apps/api e o apps/worker). Lê com `FOR SHARE`. */
@@ -410,6 +410,34 @@ export interface ConfiguracaoFaturamento {
   definir(tx: Transacao, filial_id: string, ligada: boolean, usuario_id: string): Promise<void>;
   /** Leitura que NUNCA lança (tabela ainda inexistente, por exemplo): vale false e chama `avisar(motivo)`. O adaptador SQL usa SAVEPOINT para não abortar a transação. */
   lerBandeiraSegura(tx: Transacao, filial_id: string, avisar: (motivo: string) => void): Promise<boolean>;
+}
+
+/**
+ * Contingência por filial e ambiente (`faturamento.contingencia`, 0013 + 0032; RN-FAT-05, RN-FAT-09). Roda na `tx` do chamador. O banco garante uma aberta por
+ * (tenant, filial, ambiente) e que só o fim é gravado, uma vez. Opcional nos deps da API até o apps/api ligar `repositoriosSql(...).contingencia`.
+ */
+export interface RepositorioContingencia {
+  /** INSERT da aberta; `ligada_por` obrigatório (0032). Já havendo aberta, lança o erro 23505 do índice `contingencia_uma_aberta` (a rota traduz em 409). */
+  abrir(tx: Transacao, c: { filial_id: string; ambiente: Ambiente; modalidade: ModalidadeContingencia; motivo: string; inicio_em: Date; ligada_por: string }): Promise<ContingenciaResumo>;
+  /** Grava `fim_em` e `desligada_por` na aberta; nulo quando não há aberta. */
+  encerrar(tx: Transacao, filial_id: string, ambiente: Ambiente, fim_em: Date, desligada_por: string): Promise<ContingenciaResumo | null>;
+  aberta(tx: Transacao, filial_id: string, ambiente: Ambiente): Promise<ContingenciaResumo | null>;
+  /** As últimas fechadas (mais recente primeiro) da filial no ambiente. */
+  historico(tx: Transacao, filial_id: string, ambiente: Ambiente, limite: number): Promise<ContingenciaResumo[]>;
+  /** Notas EPEC (tpEmis 4) com o evento autorizado, em `emitida_contingencia` ou `rejeitada`, da mais antiga autorização para a mais nova; o prazo é do domain. */
+  epecPendentes(tx: Transacao, f: { filial_id?: string | undefined }): Promise<EpecPendenteRegistro[]>;
+}
+export interface EpecPendenteRegistro {
+  id: string;
+  filial_id: string;
+  ambiente: Ambiente;
+  serie: number;
+  numero: number | null;
+  chave_acesso: string | null;
+  status: StatusNota;
+  epec_protocolo: string;
+  /** UTC ISO. */
+  epec_autorizada_em: string;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHAVE_ACESSO_REGEX, NotaAutorizadaPayload, NotaCanceladaPayload, TituloBaixadoPayload, TituloGeradoPayload, ConfigurarFilialEntrada, TipoEmissao } from './index';
+import { CHAVE_ACESSO_REGEX, NotaAutorizadaPayload, NotaCanceladaPayload, TituloBaixadoPayload, TituloGeradoPayload, ConfigurarFilialEntrada, TipoEmissao, AbrirContingenciaEntrada, ContingenciaResumo, EpecPendente, FiltroEpecPendentes } from './index';
 
 const u = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const nota = { id: u(1), filial_id: u(2), cliente_id: u(3), serie: 1, numero: 5, chave_acesso: '13261112ABC34501DE35550010000001231876543214', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 100, protocolo: '113260000000001' };
@@ -61,5 +61,25 @@ describe('contratos de eventos do faturamento', () => {
   });
   it('T-0021: conta_como_real não booleano é recusado', () => {
     expect(NotaAutorizadaPayload.safeParse({ ...base, pedido_uuid: null, conta_como_real: 'sim' }).success).toBe(false);
+  });
+});
+
+describe('contratos da contingência por filial (T-0021, lote 4)', () => {
+  const abrir = { filial_id: u(2), modalidade: 'epec', motivo: 'SEFAZ-AM sem resposta há 10 min' };
+  it('RN-FAT-05: a abertura aceita svc_an, svc_rs e epec; ambiente e inicio_em são opcionais; recusa modalidade fora da v1 (FS-DA)', () => {
+    for (const modalidade of ['svc_an', 'svc_rs', 'epec']) expect(AbrirContingenciaEntrada.safeParse({ ...abrir, modalidade }).success).toBe(true);
+    expect(AbrirContingenciaEntrada.safeParse({ ...abrir, ambiente: 'producao', inicio_em: '2026-11-21T14:00:00.000Z' }).success).toBe(true);
+    expect(AbrirContingenciaEntrada.safeParse({ ...abrir, modalidade: 'fs_da' }).success).toBe(false);
+    expect(AbrirContingenciaEntrada.safeParse({ ...abrir, ambiente: 'teste' }).success).toBe(false);
+    expect(AbrirContingenciaEntrada.safeParse({ modalidade: 'epec', motivo: abrir.motivo }).success).toBe(false);
+  });
+  it('RN-FAT-09: o resumo leva ligada_por e desligada_por (nulos na aberta) e a EPEC pendente leva o prazo e a situação', () => {
+    const r = { id: u(1), filial_id: u(2), ambiente: 'producao', modalidade: 'svc_rs', motivo: abrir.motivo, inicio_em: '2026-11-21T14:00:00.000Z', fim_em: null, ligada_por: u(5), desligada_por: null };
+    expect(ContingenciaResumo.safeParse(r).success).toBe(true);
+    expect(ContingenciaResumo.safeParse({ ...r, ligada_por: undefined }).success).toBe(false);
+    const e = { id: u(1), filial_id: u(2), ambiente: 'producao', serie: 1, numero: 7, chave_acesso: null, status: 'emitida_contingencia', epec_protocolo: '113260000000001', epec_autorizada_em: '2026-11-21T14:00:00.000Z', prazo_ate: '2026-11-28T14:00:00.000Z', situacao_prazo: 'no_prazo' };
+    expect(EpecPendente.safeParse(e).success).toBe(true);
+    expect(EpecPendente.safeParse({ ...e, situacao_prazo: 'atrasado' }).success).toBe(false);
+    expect(FiltroEpecPendentes.parse({ situacao: 'vencido' })).toEqual({ situacao: 'vencido', limite: 50 });
   });
 });
