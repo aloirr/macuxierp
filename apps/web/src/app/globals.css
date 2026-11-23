@@ -52,6 +52,8 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 /* Telas genéricas de descritor (T-0015): os componentes visuais são do @macuxierp/ui; aqui só o que o shell desenha. */
 .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tabela-rolavel { overflow-x: auto; max-width: 100%; }
+/* Sinal de rolagem horizontal (T-0050): sombra nas bordas que ainda têm conteúdo escondido; some quando a tabela cabe. */
+.tabela-rolavel.com-sinal-rolagem { background: linear-gradient(to right, var(--mx-cor-branco) 30%, transparent) left center / 24px 100% no-repeat local, linear-gradient(to left, var(--mx-cor-branco) 30%, transparent) right center / 24px 100% no-repeat local, radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left center / 10px 100% no-repeat scroll, radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right center / 10px 100% no-repeat scroll; }
 /* Se a tabela ainda não couber, a coluna de ações (ex.: "Emitir nota") fica fixa à direita, com fundo e divisória por token; nenhuma coluna é cortada. */
 .tabela-rolavel.com-acoes th:last-child, .tabela-rolavel.com-acoes td:last-child { position: sticky; right: 0; background: var(--mx-cor-branco); border-left: 1px solid var(--mx-cor-borda-tabela); }
 /* O diálogo nasce dentro da célula de ações (que é sticky e cria o próprio contexto de empilhamento): a célula que o contém sobe acima das demais, senão as células fixas das linhas seguintes ficam brancas por cima da cortina. */

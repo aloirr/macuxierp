@@ -1,6 +1,7 @@
 'use client';
 import type { EmpresaPlataforma } from '@macuxierp/platform-sdk';
 import { TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { modulosLigados, nomeModulo } from '@/lib/config/modulos';
 import { SeloSituacao } from './selo-situacao';
@@ -8,13 +9,18 @@ import { SeloSituacao } from './selo-situacao';
 export function ListaEmpresas({ empresas, vazio }: { empresas: EmpresaPlataforma[]; vazio: string }) {
   const router = useRouter();
   const colunas: ColunaTabela<EmpresaPlataforma>[] = [
-    { id: 'slug', titulo: 'Slug', celula: (e) => <span className="codigo">{e.slug}</span> },
+    { id: 'slug', titulo: 'Slug', celula: (e) => (
+        <Link href={`/config/empresas/${e.id}`} className="codigo" onClick={(ev) => ev.stopPropagation()}>
+          {e.slug}
+        </Link>
+      ),
+    },
     { id: 'nome', titulo: 'Nome', celula: (e) => e.nome },
     { id: 'situacao', titulo: 'Situação', celula: (e) => <SeloSituacao situacao={e.situacao} /> },
     { id: 'modulos', titulo: 'Módulos', celula: (e) => modulosLigados(e.modulos).map(nomeModulo).join(', ') || 'Só o core' },
   ];
   return (
-    <div className="tabela-rolavel">
+    <div className="tabela-rolavel com-sinal-rolagem">
       <TabelaDensa
         colunas={colunas}
         linhas={empresas}

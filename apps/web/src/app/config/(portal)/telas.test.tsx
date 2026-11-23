@@ -25,6 +25,9 @@ describe('lista de empresas', () => {
   it('colunas Slug, Nome, Situação e Módulos, linha com rótulo "Abrir empresa <slug>"', () => {
     for (const t of ['Slug', 'Nome', 'Situação', 'Módulos']) expect(h).toContain(t);
     expect(h).toContain('Abrir empresa acme');
+    expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>acme<\/a>/);
+    expect(h).toContain('tabela-rolavel com-sinal-rolagem');
+    expect(readFileSync(join(__dirname, '../../globals.css'), 'utf8')).toMatch(/\.tabela-rolavel\.com-sinal-rolagem \{[^}]*local/);
     expect(h).toContain('Abrir empresa beta');
   });
   it('situação em texto (não só cor) e módulos ligados sem o core', () => {
