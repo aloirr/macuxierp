@@ -1,5 +1,7 @@
+import { isIP } from 'node:net';
+import { headers as cabecalhosDoPedido } from 'next/headers';
 import type { z } from 'zod';
-import { EuResposta } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, EuResposta } from '@macuxierp/platform-sdk';
 import { RelatorioCarga } from '@macuxierp/cadastros/contracts';
 import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { CARGA_GRANDE_DEMAIS, CARGA_NAO_CONCLUIDA, CARGA_TEMPO_ESGOTADO, SEM_PERMISSAO_CARGA } from './textos';
@@ -47,10 +49,34 @@ function base(): string {
 export const TIMEOUT_PADRAO_MS = 10_000;
 export const TIMEOUT_CARGA_MS = 130_000;
 
-/** `fetch` à API com a base, o timeout e o erro de indisponível. Comum ao BKO e ao portal /config (`lib/config/api.ts`). */
+/** IP do navegador (`cf-connecting-ip` do pedido que o Next recebeu), só se for um IP válido. Fora de um pedido, ou sem IP válido, `null`. Nunca vai a log. */
+async function ipDoPedido(): Promise<string | null> {
+  try {
+    const ip = (await cabecalhosDoPedido()).get('cf-connecting-ip')?.trim();
+    return ip && isIP(ip) !== 0 ? ip : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Cabeçalhos do init sem nenhum `x-macuxierp-*` (nada forjado passa), salvo o CSRF do portal, que o próprio BFF põe; depois, a prova do BFF e o IP do cliente (T-0050). */
+export async function cabecalhosParaApi(doInit: HeadersInit | undefined): Promise<Record<string, string>> {
+  const saida: Record<string, string> = {};
+  new Headers(doInit).forEach((valor, nome) => {
+    if (!nome.startsWith('x-macuxierp-') || nome === CABECALHO_CSRF_CONFIG) saida[nome] = valor;
+  });
+  const segredo = process.env.MACUXIERP_SEGREDO_BFF;
+  if (segredo) saida[CABECALHO_PROVA_BFF] = segredo;
+  const ip = await ipDoPedido();
+  if (ip) saida[CABECALHO_IP_CLIENTE] = ip;
+  return saida;
+}
+
+/** `fetch` à API com a base, o timeout, a prova do BFF e o IP do cliente, e o erro de indisponível. Comum ao BKO e ao portal /config (`lib/config/api.ts`). */
 export async function buscarNaApi(url: string, init: RequestInit, timeoutMs = TIMEOUT_PADRAO_MS): Promise<Response> {
   try {
-    return await fetch(`${base()}${url}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+    const headers = await cabecalhosParaApi(init.headers);
+    return await fetch(`${base()}${url}`, { ...init, headers, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     throw new ApiIndisponivel('API não respondeu');
   }

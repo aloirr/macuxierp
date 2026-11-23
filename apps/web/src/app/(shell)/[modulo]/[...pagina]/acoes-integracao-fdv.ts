@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { EntidadeHub } from '@macuxierp/integracao-fdv/contracts';
 import { ErroIntegracaoFdv, acoesDaTela, criarClienteIntegracaoFdv, validarFormularioConfiguracao, validarFormularioCredencial, type FetchIntegracaoFdv } from '@macuxierp/integracao-fdv/web';
+import { cabecalhosParaApi } from '@/lib/api';
 import { contexto, COOKIE_ACESSO } from '@/lib/sessao';
 import { FALHA, SEM_PERMISSAO, SESSAO_EXPIRADA } from '@/lib/textos';
 
@@ -45,7 +46,7 @@ export async function agirIntegracaoFdv(p: PedidoIntegracaoFdv): Promise<Resulta
   const url = process.env.MACUXIERP_API_URL;
   if (!acesso) return { ok: false, mensagem: SESSAO_EXPIRADA };
   if (!url) return { ok: false, mensagem: 'A API não está configurada neste ambiente.' };
-  const api = criarClienteIntegracaoFdv({ baseUrl: url.replace(/\/$/, ''), token: () => acesso, fetch: ((u, i) => fetch(u, { ...i, cache: 'no-store', signal: AbortSignal.timeout(15_000) })) as FetchIntegracaoFdv });
+  const api = criarClienteIntegracaoFdv({ baseUrl: url.replace(/\/$/, ''), token: () => acesso, fetch: (async (u, i) => fetch(u, { ...i, headers: await cabecalhosParaApi(i?.headers), cache: 'no-store', signal: AbortSignal.timeout(15_000) })) as FetchIntegracaoFdv });
   try {
     switch (p.tipo) {
       case 'credencial': {
