@@ -241,6 +241,121 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect(c.cursor_external_id).toBe('P003');
     });
 
+    it('T-0061: sessão completa em andamento cujo restante foi inativado fecha com o último ativo reenviado e ultimo: true (sem parte vazia, sem 422, sem pausa)', async () => {
+      const { t } = await cenario('env-fecho', { completo: true });
+      await adm('UPDATE integracao_fdv.credencial SET limite_registros_lote = 2 WHERE tenant_id = $1', [t]);
+      // dublê do Hub: parte sem registros é 422 lote_vazio, como o Hub de verdade
+      let n = 0;
+      const hub = hubDuble({
+        'GET /cursores/produto': [ok({ entidade: 'produto', cursor: null, atualizado_em: null })],
+        'POST /lotes': [(p) => {
+          const c = p.corpo as { registros: unknown[] };
+          if (c.registros.length === 0) return recusa(422, 'lote_vazio');
+          n += 1;
+          return ok(aceito(`5b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f${n}`));
+        }],
+        'GET /lotes/{id}': [(p) => ok(resultado('concluido', { modo: 'completo', lote_id: p.caminho.split('/').pop() }))],
+      });
+      let agora = AGORA;
+      const avancar = async (): Promise<void> => {
+        agora = mais(agora, 10);
+        await ciclo(banco, agenda, hub, agora, [t]);
+      };
+      for (let i = 0; i < 6 && (await lotes(t)).every((l) => l.estado !== 'concluido'); i++) await avancar();
+      expect((await lotes(t))[0]).toMatchObject({ estado: 'concluido', sessao_parte: 1, sessao_ultimo: false });
+      const hashAntes = (await reg(t, 'P002')).hash;
+      await inativarNoEspelho(t, 'P003'); // o restante da sessão some entre a parte 1 e a 2
+      for (let i = 0; i < 8 && (await cur(t)).sessao_aberta_id !== null; i++) await avancar();
+      const ls = await lotes(t);
+      expect(ls).toHaveLength(2);
+      expect(ls[1]).toMatchObject({ estado: 'concluido', sessao_parte: 2, sessao_ultimo: true });
+      const regs = ls[1]!.corpo.registros as Array<{ external_id: string }>;
+      expect(regs.map((r) => r.external_id)).toEqual(['P002']);
+      expect(ls[1]!.corpo.sessao).toMatchObject({ parte: 2, ultimo: true });
+      expect(hub.chamadas.filter((c) => c.pedido.metodo === 'POST').every((c) => (c.pedido.corpo as { registros: unknown[] }).registros.length > 0)).toBe(true);
+      const c = await cur(t);
+      expect(c.sessao_aberta_id).toBeNull();
+      expect(c.pausada_motivo).toBeNull();
+      expect(c.cursor_external_id).toBe('P002'); // o cursor não recuou nem pulou
+      expect((await reg(t, 'P002')).hash).toBe(hashAntes);
+      expect((await reg(t, 'P002')).hash_confirmado).toBe(hashAntes);
+    });
+
+    /** Sessão completa de 3 produtos em partes de 2: devolve o tenant com a parte 1 concluída (P001 e P002 aceitos) e o relógio. */
+    async function sessaoComParte1(slug: string) {
+      const { t } = await cenario(slug, { completo: true });
+      await adm('UPDATE integracao_fdv.credencial SET limite_registros_lote = 2 WHERE tenant_id = $1', [t]);
+      let n = 0;
+      const hub = hubDuble({
+        'GET /cursores/produto': [ok({ entidade: 'produto', cursor: null, atualizado_em: null })],
+        'POST /lotes': [(p) => {
+          if ((p.corpo as { registros: unknown[] }).registros.length === 0) return recusa(422, 'lote_vazio');
+          n += 1;
+          return ok(aceito(`5b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f${n}`));
+        }],
+        'GET /lotes/{id}': [(p) => ok(resultado('concluido', { modo: 'completo', lote_id: p.caminho.split('/').pop() }))],
+      });
+      let agora = AGORA;
+      const avancar = async (): Promise<void> => {
+        agora = mais(agora, 10);
+        await ciclo(banco, agenda, hub, agora, [t]);
+      };
+      for (let i = 0; i < 6 && (await lotes(t)).every((l) => l.estado !== 'concluido'); i++) await avancar();
+      expect((await lotes(t))[0]).toMatchObject({ estado: 'concluido', sessao_parte: 1, sessao_ultimo: false });
+      return { t, hub, avancar };
+    }
+
+    it('T-0061: fecho abaixo do cursor local (o último do cursor foi inativado): leva o último aceito, e o cursor local e o enviado ao Hub não recuam', async () => {
+      const { t, hub, avancar } = await sessaoComParte1('env-fecho-abaixo');
+      const cursorLocal = await cur(t);
+      expect(cursorLocal.cursor_external_id).toBe('P002');
+      const hashP001 = (await reg(t, 'P001')).hash;
+      await inativarNoEspelho(t, 'P002'); // o último da parte 1 sai; o anterior (P001) foi aceito
+      await inativarNoEspelho(t, 'P003');
+      for (let i = 0; i < 8 && (await cur(t)).sessao_aberta_id !== null; i++) await avancar();
+      const ls = await lotes(t);
+      expect(ls).toHaveLength(2);
+      expect(ls[1]).toMatchObject({ estado: 'concluido', sessao_parte: 2, sessao_ultimo: true });
+      const corpo = ls[1]!.corpo as { registros: Array<{ external_id: string }>; cursor: { alterado_em: string; external_id: string } };
+      expect(corpo.registros.map((r) => r.external_id)).toEqual(['P001']);
+      expect(corpo.cursor).toEqual({ alterado_em: (cursorLocal.cursor_alterado_em as Date).toISOString(), external_id: 'P002' });
+      const posts = hub.chamadas.filter((c) => c.pedido.metodo === 'POST').map((c) => c.pedido.corpo as { cursor: { external_id: string } });
+      expect(posts[posts.length - 1]!.cursor.external_id).toBe('P002');
+      const c = await cur(t);
+      expect(c.sessao_aberta_id).toBeNull();
+      expect(c.cursor_external_id).toBe('P002');
+      expect(c.cursor_alterado_em).toEqual(cursorLocal.cursor_alterado_em);
+      expect((await reg(t, 'P001')).hash).toBe(hashP001);
+    });
+
+    it('T-0061: sem registros válidos e com linha inválida, o fecho entra junto da linha inválida na parte final', async () => {
+      const { t, avancar } = await sessaoComParte1('env-fecho-invalida');
+      await inativarNoEspelho(t, 'P003');
+      await espelho(efemero.admin, t, 'produto', payloadProduto('P004', { sku: '' }), { alterado: new Date(AGORA.getTime() - 3_600_000 + 5000) });
+      for (let i = 0; i < 8 && (await cur(t)).sessao_aberta_id !== null; i++) await avancar();
+      const ls = await lotes(t);
+      expect(ls).toHaveLength(2);
+      expect(ls[1]).toMatchObject({ sessao_parte: 2, sessao_ultimo: true });
+      const corpo = ls[1]!.corpo as { registros: Array<{ external_id: string }>; linhas_invalidas: Array<{ external_id: string }> };
+      expect(corpo.registros.map((r) => r.external_id)).toEqual(['P002']);
+      expect(corpo.linhas_invalidas.map((l) => l.external_id)).toEqual(['P004']);
+      expect((await cur(t)).cursor_external_id).toBe('P002');
+    });
+
+    it('T-0061: sessão em andamento sem nenhum ativo fecha localmente, sem lote', async () => {
+      const { t } = await cenario('env-fecho0', { completo: true, produtos: 0 });
+      const sessao = U();
+      await adm("UPDATE integracao_fdv.cursor_entidade SET sessao_aberta_id = $2 WHERE tenant_id = $1 AND entidade = 'produto'", [t, sessao]);
+      await adm(`INSERT INTO integracao_fdv.lote_envio (tenant_id, entidade, credencial_id, modo, sessao_id, sessao_parte, sessao_ultimo, geracao, chave_idempotencia, corpo, estado, hub_lote_id, concluido_em)
+                 SELECT $1, 'produto', id, 'completo', $2, 1, false, 1, repeat('a', 64), '{}'::jsonb, 'concluido', $3, $4 FROM integracao_fdv.credencial WHERE tenant_id = $1`, [t, sessao, LOTE_ID, AGORA]);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      expect(hub.chamadas.filter((c) => c.pedido.metodo === 'POST')).toHaveLength(0);
+      const c = await cur(t);
+      expect(c.sessao_aberta_id).toBeNull();
+      expect(c.pausada_motivo).toBeNull();
+    });
+
     it('carga completa pedida com o espelho vazio: nenhum POST /lotes, sessão fechada, sem pausa; depois um registro novo vai normalmente', async () => {
       const { t } = await cenario('env-b4', { completo: true, produtos: 0 });
       await adm("UPDATE integracao_fdv.cursor_entidade SET sessao_aberta_id = $2 WHERE tenant_id = $1 AND entidade = 'produto'", [t, U()]);
