@@ -431,6 +431,14 @@ function tabelaProdutos(c: Ctx, topo: number, ws: number[], cab: { linhas: strin
   }
 }
 
+/** Base (de cima para baixo, em pt) da linha única de aviso: dentro da margem superior (MARGEM = 28,35 pt), acima do cabeçalho que começa em 28. */
+export const BASE_AVISO_TOPO = 22;
+/** Texto da linha de aviso do topo: contingência (RN-FAT-08) e/ou homologação (RF-FAT-03); produção normal, nenhum. */
+export function textoAvisoTopo(m: Pick<ModeloDanfe, 'avisoHomologacao' | 'contingencia'>): string | null {
+  if (m.contingencia) return m.avisoHomologacao ? `${m.contingencia.titulo} – ${m.avisoHomologacao}` : m.contingencia.titulo;
+  return m.avisoHomologacao;
+}
+
 /** RF-FAT-03: renderiza o DANFE. Folha A4 retrato, Helvetica embutida; devolve os bytes do PDF. */
 export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe): Promise<Uint8Array> {
   if (!opcoes?.assinaturaMarca || opcoes.assinaturaMarca.length === 0) throw new Error('assinaturaMarca obrigatória: DANFE nunca sai sem o rodapé');
@@ -460,8 +468,8 @@ export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe): P
     const c: Ctx = { pagina: doc.addPage([A4.l, A4.a]), reg, neg, y: (topo) => A4.a - topo };
     if (m.marcaDagua) marcaDagua(c, m.marcaDagua, 1);
     if (m.tarjaCancelada) marcaDagua(c, m.tarjaCancelada, -1);
-    if (m.avisoHomologacao) texto(c, m.avisoHomologacao, MARGEM, 18, DESTAQUE, true, 'c', LARG);
-    if (m.contingencia) texto(c, m.contingencia.titulo, MARGEM, m.avisoHomologacao ? 9 : 18, DESTAQUE, true, 'c', LARG); // RN-FAT-08: em todas as folhas; os detalhes abrem os dados adicionais
+    const aviso = textoAvisoTopo(m);
+    if (aviso) texto(c, aviso, MARGEM, BASE_AVISO_TOPO, DESTAQUE, true, 'c', LARG); // linha única na margem superior, em todas as folhas (RN-FAT-08; marca, opção 3)
     const r = cabecalhoCompleto(c, m, logo, primeira);
     folhas.push({ c, folha: r.folha });
     return { c, topo: r.fim };

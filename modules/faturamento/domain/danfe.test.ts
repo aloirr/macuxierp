@@ -192,7 +192,7 @@ describe('DANFE em contingência (RN-FAT-08, MOC Anexo II)', () => {
     const m = montarDanfe({ nfeProc: comTpEmis(nfeProcDeTeste({ infCpl: 'Pedido 1' }), '7', DH) });
     expect(m.contingencia).toEqual({ tpEmis: 7, titulo: 'DANFE EM CONTINGÊNCIA', linhas: ['Impresso em contingência — SVC-RS', 'Entrada em contingência em 21/11/2026 09:00:00. Justificativa: SEFAZ-AM fora do ar desde as 9h'] });
     expect(m.operacao.protocolo).toBe('113260000000001 - 21/11/2026 10:31:02'); // SVC autoriza: o protocolo é o da NF-e
-    expect(m.dadosAdicionais.informacoesComplementares).toBe('Impresso em contingência — SVC-RS Entrada em contingência em 21/11/2026 09:00:00. Justificativa: SEFAZ-AM fora do ar desde as 9h Pedido 1');
+    expect(m.dadosAdicionais.informacoesComplementares).toBe('Impresso em contingência — SVC-RS. Entrada em contingência em 21/11/2026 09:00:00. Justificativa: SEFAZ-AM fora do ar desde as 9h. Pedido 1');
     expect(montarDanfe({ nfeProc: comTpEmis(nfeProcDeTeste(), '6', DH) }).contingencia?.linhas[0]).toBe('Impresso em contingência — SVC-AN');
   });
 
