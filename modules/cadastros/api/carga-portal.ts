@@ -18,17 +18,25 @@ import {
   MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, normalizarFrase, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
-import type { ErroCarga, RelatorioCarga, ResultadoEntidade } from '../contracts';
+import type { EntidadeCarga, ErroCarga, RelatorioCarga, ResultadoEntidade } from '../contracts';
 import { planoSubstituicao } from '../domain';
 import { executarCarga } from './carga';
 import { lerCsvDoLayout } from './carga-reativar';
 import { eventoCliente, eventoFilial, eventoPreco, eventoProduto, eventoSimples, publicarPronto } from './eventos';
 import type { Dependencias, TabelaSubstituivel } from './portas';
 
-/** Tabela que o "Substituir tudo" inativa em cada cadastro; `null` = nada a inativar (forma e estoque). */
+/** Tabela que o "Substituir tudo" inativa em cada cadastro; `null` = nada a inativar (estoque). */
 const TABELA_SUBSTITUIVEL: Record<CadastroCargaPortal, TabelaSubstituivel | null> = {
-  filial: 'filial', vendedor: 'vendedor', forma_pagamento: null, prazo_pagamento: 'condicao_pagamento', produto: 'produto',
-  produto_unidade: 'produto_unidade', preco: 'tabela_preco_item', estoque: null, cliente: 'cliente', cliente_endereco: 'cliente_endereco',
+  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'condicao_pagamento', produto: 'produto',
+  produto_unidade: 'produto_unidade', preco: 'tabela_preco_item', estoque: null, cliente: 'cliente',
+};
+/**
+ * Ponte de nomes até o pipeline de carga adotar os 8 do SDK (cadastros-c): o `executarCarga` ainda fala as 10 entidades
+ * do kit. `condicao_pagamento` segue como `prazo_pagamento` e `cliente` como `cliente` (o endereço acompanha o cliente).
+ */
+export const ENTIDADE_DO_PIPELINE: Record<CadastroCargaPortal, EntidadeCarga> = {
+  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'prazo_pagamento', produto: 'produto',
+  produto_unidade: 'produto_unidade', preco: 'preco', estoque: 'estoque', cliente: 'cliente',
 };
 
 const ACAO_LINHA = 'Corrija a linha no arquivo e envie de novo.';
@@ -57,11 +65,11 @@ function exigirModoPermitido(cadastro: CadastroCargaPortal, modo: ModoGravarCarg
   if (modo === 'substituir_tudo' && !substituirPermitido(cadastro)) throw erros.validacao({ modo: MENSAGEM_SUBSTITUIR_NAO_PERMITIDO });
 }
 
-const arquivoDoCadastro = (e: EntradaCargaPortal): ArquivoRecebido => new ArquivoRecebido(e.arquivo.campo, `${e.cadastro}.csv`, e.arquivo.tipo, e.arquivo.conteudo());
+const arquivoDoCadastro = (e: EntradaCargaPortal): ArquivoRecebido => new ArquivoRecebido(e.arquivo.campo, `${ENTIDADE_DO_PIPELINE[e.cadastro]}.csv`, e.arquivo.tipo, e.arquivo.conteudo());
 
 /** Os `external_id` do arquivo, de TODA linha lida (a recusada também protege o existente de ser inativado). */
 function externosDoArquivo(cadastro: CadastroCargaPortal, a: ArquivoRecebido): string[] {
-  const lido = lerCsvDoLayout(cadastro, a.conteudo());
+  const lido = lerCsvDoLayout(ENTIDADE_DO_PIPELINE[cadastro], a.conteudo());
   if (!lido.ok) return [];
   return lido.linhas.map((l) => (l.celulas.external_id ?? '').trim()).filter((x) => x !== '');
 }
@@ -75,7 +83,7 @@ async function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroC
   const tabela = TABELA_SUBSTITUIVEL[cadastro];
   const r = deps.repositorios(c.tx);
   const existentes = tabela ? await r.substituicao.existentes(tabela) : [];
-  const base = { modo: 'substituir_tudo', entidade: cadastro, externos_do_arquivo: externosDoArquivo(cadastro, a), existentes: existentes.map((e) => ({ id: e.id, external_id: e.external_id, inativo: e.inativo })) } as const;
+  const base = { modo: 'substituir_tudo', entidade: ENTIDADE_DO_PIPELINE[cadastro], externos_do_arquivo: externosDoArquivo(cadastro, a), existentes: existentes.map((e) => ({ id: e.id, external_id: e.external_id, inativo: e.inativo })) } as const;
   const semUso = planoSubstituicao({ ...base, em_uso: new Set() });
   const uso = deps.usoCadastros && semUso.inativar.length > 0 ? await deps.usoCadastros.emUso(c.tx, cadastro, semUso.inativar) : new Map<string, string>();
   const plano = planoSubstituicao({ ...base, em_uso: new Set(uso.keys()) });
@@ -106,9 +114,6 @@ async function publicarInativados(deps: Dependencias, c: ContextoRota, tabela: T
     case 'cliente':
       for (const id of ids) { const x = await r.clientes.obter(id); if (x) await publicarPronto(c, await eventoCliente(r, x)); }
       break;
-    case 'cliente_endereco':
-      for (const id of paisUnicos) { const x = await r.clientes.obter(id); if (x) await publicarPronto(c, await eventoCliente(r, x)); }
-      break;
     case 'tabela_preco_item':
       for (const item of await r.substituicao.itensPreco(ids)) {
         const t = await r.tabelasPreco.obter(item.tabela_preco_id);
@@ -119,7 +124,7 @@ async function publicarInativados(deps: Dependencias, c: ContextoRota, tabela: T
 }
 
 function resultadoDoCadastro(rel: RelatorioCarga, cadastro: CadastroCargaPortal): ResultadoEntidade {
-  const r = rel.entidades.find((e) => e.entidade === cadastro);
+  const r = rel.entidades.find((e) => e.entidade === ENTIDADE_DO_PIPELINE[cadastro]);
   if (!r) throw new Error('carga do portal: o relatório não trouxe o cadastro enviado');
   return r;
 }
@@ -137,7 +142,7 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
 
   const arquivo = arquivoDoCadastro(e);
   const previsto = substituir ? await planejar(deps, c, cadastro, arquivo) : null; // antes da gravação: sobre os existentes de agora
-  const rel = await executarCarga(deps, c, 'gravar', [arquivo], cadastro);
+  const rel = await executarCarga(deps, c, 'gravar', [arquivo], ENTIDADE_DO_PIPELINE[cadastro]);
   const res = resultadoDoCadastro(rel, cadastro);
   const gravadas = res.inseridas + res.atualizadas + res.sem_mudanca;
   if (res.situacao !== 'processado' || gravadas === 0) throw conflito(MENSAGENS_CARGA_PORTAL.nadaAGravar, 'nada_a_gravar');
@@ -169,7 +174,7 @@ export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e:
   const cadastro = CadastroCargaPortal.parse(e.cadastro);
   exigirModoPermitido(cadastro, e.modo);
   const arquivo = arquivoDoCadastro(e);
-  const rel = await executarCarga(deps, c, 'validar', [arquivo], cadastro);
+  const rel = await executarCarga(deps, c, 'validar', [arquivo], ENTIDADE_DO_PIPELINE[cadastro]);
   const res = resultadoDoCadastro(rel, cadastro);
   const prontas = res.inseridas + res.atualizadas + res.sem_mudanca;
   const lista = rel.erros.map((x) => ({ linha: x.linha, motivo: x.motivo, acao: x.linha === null ? ACAO_ARQUIVO : ACAO_LINHA }));
@@ -192,6 +197,6 @@ export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e:
  */
 export async function errosCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<ErroCarga[]> {
   const cadastro = CadastroCargaPortal.parse(e.cadastro);
-  const rel = await executarCarga(deps, c, 'validar', [arquivoDoCadastro(e)], cadastro);
+  const rel = await executarCarga(deps, c, 'validar', [arquivoDoCadastro(e)], ENTIDADE_DO_PIPELINE[cadastro]);
   return rel.erros;
 }

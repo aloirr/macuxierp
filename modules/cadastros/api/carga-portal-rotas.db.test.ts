@@ -106,13 +106,13 @@ describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', (
     expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ ativos: 2, ultima_carga: { quantidade: 1 } });
   }, 120_000);
 
-  it('RF-CAD-11: GET situacao devolve as 10 linhas no formato do SDK, com a carga concluída e a 0040', async () => {
+  it('RF-CAD-11: GET situacao devolve as 8 linhas no formato do SDK, com a carga concluída e a 0040', async () => {
     const T = await novoTenant('rota-situacao-get');
     await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', produto().slice(0, 2).join('\n'));
     const r = await plugin().rotas.find((x) => x.caminho === CAMINHOS_CARGAS_PLATAFORMA.situacao)!.executar(contexto(), { corpo: undefined, consulta: undefined, params: { id: T } });
     const s = r.corpo as SituacaoCargasPlataforma;
     expect(s).toMatchObject({ empresa_id: T, modulo_licenciado: true });
-    expect(s.cadastros).toHaveLength(10);
+    expect(s.cadastros).toHaveLength(8);
     expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ situacao: 'carregado', ultima_carga: { quantidade: 1 } });
   }, 120_000);
 

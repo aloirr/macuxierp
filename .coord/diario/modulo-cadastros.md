@@ -16,3 +16,4 @@
 2026-11-23 — T-0058 (WIP) — carga do portal no por_etapa: rotas validar/gravar (iniciar → comTenant → concluir), estoque 400 por substituirPermitido, testes unitários e de banco
 2026-11-23 — T-0058 — hotfix: situação, modelo e erros da carga no /config
 2026-11-23 — T-0058 — v0.3.7 item 1: nenhuma carga depende de outra
+2026-11-23 — T-0058 — v0.3.7 -5: cadastros nos 8 nomes do SDK (situação sem depende_de e liberada; carga com ponte condicao_pagamento→prazo_pagamento até a cadastros-c; zerar com cliente absorvendo o endereço); 6 testes de banco do zerar aguardam a lista de 8 nomes na 0043/0044 (banco-dados)

@@ -14,14 +14,14 @@
  * Nada de valor de célula nem dado pessoal em erro ou auditoria: só contagens.
  */
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, situacaoCarga, dependenciaPendente, SituacaoCargasPlataforma, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, situacaoCarga, SituacaoCargasPlataforma, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
   MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
-  definirRotaPlataforma, erros, nomeErrosCarga, nomeModeloCarga, paraCsv, respostaCsv, substituirPermitido, type ArquivoRecebido, type SituacaoCarga, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
+  definirRotaPlataforma, erros, nomeErrosCarga, nomeModeloCarga, paraCsv, respostaCsv, substituirPermitido, type ArquivoRecebido, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
   type ModoGravarCarga, type Outbox, type PluginPlataforma, type Transacao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { modeloCsv } from '../domain';
-import { errosCargaPortal, exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal } from './carga-portal';
+import { ENTIDADE_DO_PIPELINE, errosCargaPortal, exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal } from './carga-portal';
 import type { Dependencias } from './portas';
 
 export interface DependenciasPlataformaCadastros {
@@ -37,7 +37,7 @@ const MULTIPART = {
   tamanhoMaximoTotal: MAX_BYTES_ARQUIVO_CARGA_PORTAL,
 };
 
-/** `:cadastro` da rota (400 `VALIDACAO` fora dos 10) e `substituir_tudo` só onde o SDK permite (400 no campo `modo`). */
+/** `:cadastro` da rota (400 `VALIDACAO` fora dos 8) e `substituir_tudo` só onde o SDK permite (400 no campo `modo`). */
 function cadastroEModo(params: Record<string, string>, modo: ModoGravarCarga): CadastroCargaPortal {
   const c = CadastroCargaPortal.safeParse(params.cadastro);
   if (!c.success) throw erros.validacao({ cadastro: 'Cadastro desconhecido' });
@@ -73,8 +73,8 @@ const SituacaoCrua = z.object({
   cadastros: z.array(z.object({ cadastro: CadastroCargaPortal, ativos: z.number().int().min(0), erros: z.number().int().min(0), ultima_carga: z.object({ em: z.string(), quantidade: z.number().int().min(0) }).nullable() })),
 });
 /**
- * Resposta da aba, no cálculo do SDK: `situacaoCarga` e `dependenciaPendente` derivam situação, `depende_de` e `liberado`;
- * o `SituacaoCargasPlataforma` do SDK valida a ordem, o número, o `opcional` e a dependência. A montagem é pelo nome do
+ * Resposta da aba, no cálculo do SDK: `situacaoCarga` deriva a situação (`liberado` é sempre true desde a v0.3.6);
+ * o `SituacaoCargasPlataforma` do SDK valida a ordem, o número, e o `opcional`. A montagem é pelo nome do
  * cadastro (o retorno do banco pode vir fora de ordem).
  */
 export function situacaoDaAba(bruta: unknown): SituacaoCargasPlataforma {
@@ -85,13 +85,11 @@ export function situacaoDaAba(bruta: unknown): SituacaoCargasPlataforma {
     if (!x) throw new RangeError(`situacaoDaAba: o banco não devolveu o cadastro "${def.cadastro}"`);
     return { def, x, situacao: situacaoCarga(x) };
   });
-  const situacoes = Object.fromEntries(linhas.map((l) => [l.def.cadastro, l.situacao])) as Partial<Record<CadastroCargaPortal, SituacaoCarga>>;
   return SituacaoCargasPlataforma.parse({
     empresa_id: r.empresa_id, modulo_licenciado: r.modulo_licenciado,
-    cadastros: linhas.map(({ def, x, situacao }) => {
-      const depende_de = dependenciaPendente(def.cadastro, situacoes);
-      return { numero: def.numero, cadastro: def.cadastro, situacao, erros: x.erros, ultima_carga: x.ultima_carga, depende_de, liberado: depende_de === null, opcional: def.opcional };
-    }),
+    cadastros: linhas.map(({ def, x, situacao }) => ({
+      numero: def.numero, cadastro: def.cadastro, situacao, erros: x.erros, ultima_carga: x.ultima_carga, liberado: true, opcional: def.opcional,
+    })),
   });
 }
 
@@ -102,7 +100,7 @@ export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastro
     c.comPlataforma((tx) => tx.consultar('SELECT cadastros.portal_carga_concluir($1, $2, $3, $4, $5, $6, $7)', [tenant, execucao, r, n.gravadas, n.com_erro, n.inativadas, c.request_id]));
 
   return definirPluginPlataforma([
-    // RF-CAD-11: as 10 linhas da aba Cargas (a função do banco confere sessão, empresa e licença); o Zod do SDK fecha o formato.
+    // RF-CAD-11: as 8 linhas da aba Cargas (a função do banco confere sessão, empresa e licença); o Zod do SDK fecha o formato.
     definirRotaPlataforma({
       transacoes: 'por_etapa', metodo: 'GET', caminho: CAMINHOS_CARGAS_PLATAFORMA.situacao, acao: 'plataforma.cadastros.carga',
       async executar(c, e) {
@@ -116,7 +114,7 @@ export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastro
       async executar(_c, e) {
         const k = CadastroCargaPortal.safeParse(e.params.cadastro);
         if (!k.success) throw erros.naoEncontrado('Modelo');
-        return respostaCsv(nomeModeloCarga(k.data), modeloCsv(k.data));
+        return respostaCsv(nomeModeloCarga(k.data), modeloCsv(ENTIDADE_DO_PIPELINE[k.data]));
       },
     }),
     // RF-CAD-11: valida o mesmo arquivo (nada fica guardado) e devolve o CSV dos erros do relatório (com o teto MAX_ERROS_RELATORIO), sem o valor da célula (D9).

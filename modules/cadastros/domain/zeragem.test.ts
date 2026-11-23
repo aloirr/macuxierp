@@ -55,7 +55,7 @@ describe('zeragem: cada cadastro sozinho', () => {
     expect(tabelas(p)).toEqual([
       'estoque_movimento', 'estoque_saldo', 'tabela_preco_item', 'cliente_contato', 'cliente_endereco', 'cliente', 'vendedor', 'filial',
     ]);
-    expect(p.efetivos).toEqual(['filial', 'vendedor', 'preco', 'estoque', 'cliente', 'cliente_endereco']);
+    expect(p.efetivos).toEqual(['filial', 'vendedor', 'preco', 'estoque', 'cliente']);
   });
 
   it('RN-CAD-10: vendedor sozinho apaga só vendedor e anula a carteira (cliente.vendedor_id)', () => {
@@ -65,8 +65,8 @@ describe('zeragem: cada cadastro sozinho', () => {
     expect(p.efetivos).toEqual(['vendedor']);
   });
 
-  it('RN-CAD-10: forma_prazo apaga condicao_pagamento e anula cliente.condicao_pagamento_id', () => {
-    const p = planoZeragem(['forma_prazo'], base());
+  it('RN-CAD-10: condicao_pagamento apaga condicao_pagamento e anula cliente.condicao_pagamento_id', () => {
+    const p = planoZeragem(['condicao_pagamento'], base());
     expect(tabelas(p)).toEqual(['condicao_pagamento']);
     expect(p.anular).toEqual([{ tabela: 'cliente', coluna: 'condicao_pagamento_id', ids: ['c1'] }]);
   });
@@ -103,16 +103,12 @@ describe('zeragem: cada cadastro sozinho', () => {
     expect(ids(p, 'estoque_movimento')).toEqual(['m1', 'm2']);
   });
 
-  it('RN-CAD-10: cliente_endereco sozinho não apaga o cliente nem o contato', () => {
-    const p = planoZeragem(['cliente_endereco'], base());
-    expect(tabelas(p)).toEqual(['cliente_endereco']);
-  });
 });
 
 describe('zeragem: dependências automáticas', () => {
   it('RN-CAD-10: efetivos = escolhidos + dependências, na ordem da carga', () => {
     expect(planoZeragem(['cliente', 'produto'], base()).efetivos).toEqual([
-      'produto', 'produto_unidade', 'estoque', 'cliente', 'cliente_endereco',
+      'produto', 'produto_unidade', 'estoque', 'cliente',
     ]);
   });
 
@@ -120,7 +116,7 @@ describe('zeragem: dependências automáticas', () => {
     const p = planoZeragem(['cliente'], base());
     expect(tabelas(p)).toEqual(['cliente_contato', 'cliente_endereco', 'cliente']);
     expect(p.anular).toEqual([]);
-    expect(p.efetivos).toEqual(['cliente', 'cliente_endereco']);
+    expect(p.efetivos).toEqual(['cliente']);
   });
 });
 
@@ -167,7 +163,7 @@ describe('zeragem: anulados', () => {
 
   it('RN-CAD-10: cliente em uso fica e tem as referências anuladas', () => {
     const f = { ...base(), usos: { cliente: { pedido: ['c1'] } } };
-    const p = planoZeragem(['vendedor', 'preco', 'forma_prazo'], f);
+    const p = planoZeragem(['vendedor', 'preco', 'condicao_pagamento'], f);
     expect(p.anular.map((a) => a.coluna)).toEqual(['vendedor_id', 'tabela_preco_id', 'condicao_pagamento_id']);
   });
 });

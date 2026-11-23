@@ -32,7 +32,7 @@ function montar(uso?: ConsultaUsoCadastros) {
     auditar: async (d: unknown) => void auditoria.push(d), enfileirar: async () => ({ id: 'x' }),
   } as unknown as ContextoRota;
   const deps = { ...m.deps, ...(uso ? { usoCadastros: uso } : {}) };
-  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto' | 'forma_pagamento', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
+  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto' | 'condicao_pagamento', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
     gravarCargaPortal(deps, c, { cadastro, modo, frase, arquivo: arq(conteudo) });
   return { ...m, c, deps, eventos, auditoria, gravar };
 }
@@ -161,12 +161,6 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     await t.gravar('produto', csv('produto'));
     expect(await falha(t.gravar('produto', Buffer.from('coluna_errada\nx\n'), 'substituir_tudo', FRASE))).toMatchObject({ status: 409, detalhes: { codigo: 'nada_a_gravar' } });
     expect(ativos(t)).toBe(2);
-  });
-
-  it('RN-CAD-10: forma de pagamento não tem o que inativar (inativadas 0)', async () => {
-    const t = montar();
-    const r = await t.gravar('forma_pagamento', csv('forma_pagamento'), 'substituir_tudo', FRASE);
-    expect(r).toMatchObject({ inativadas: 0, efeito: { total: 0, a_inativar: 0 } });
   });
 
   it('RN-CAD-10: estoque só aceita o Adicionar: substituir_tudo é 400 VALIDACAO no campo modo (gravar e validar)', async () => {
