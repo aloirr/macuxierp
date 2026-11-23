@@ -5,8 +5,8 @@
  * SQLSTATE → HTTP) e a regressão das rotas de tenant. Superadmins criados pelo admin do banco de teste. Dados fictícios.
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
-import { randomUUID } from 'node:crypto';
-import { CABECALHO_CSRF_CONFIG, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,6 +21,8 @@ const EMAIL_SA = 'sa-portal@exemplo.invalid';
 const EMAIL_TRAVA = 'sa-trava@exemplo.invalid';
 const EMAIL_TROCA = 'sa-troca@exemplo.invalid';
 const CSRF = { [CABECALHO_CSRF_CONFIG]: '1' };
+/** `MACUXIERP_SEGREDO_BFF` gerado a cada execução (T-0050): nenhum segredo fixo no teste. */
+const SEGREDO_BFF = randomBytes(32).toString('hex');
 
 /** Cada teste de login sai de um IP próprio: o limite por IP (`LIMITE_LOGIN_IP_PADRAO`) não vaza entre os testes. */
 let ipSeq = 10;
@@ -67,7 +69,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     await inserirSuperadmin(EMAIL_SA, false);
     await inserirSuperadmin(EMAIL_TRAVA, false);
     await inserirSuperadmin(EMAIL_TROCA, true);
-    ({ app } = await appPgDeTeste({ b, modulos: 'producao', logger: { level: 'info', stream: destinoDeLogs(logs) } }));
+    ({ app } = await appPgDeTeste({ b, modulos: 'producao', segredoBff: SEGREDO_BFF, logger: { level: 'info', stream: destinoDeLogs(logs) } }));
   }, 120_000);
   afterAll(async () => {
     await app?.close();
@@ -117,6 +119,19 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     expect(r.statusCode).toBe(429);
     expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
     expect((await entrar(EMAIL_SA, SENHA_SA)).statusCode).toBe(200); // outro IP segue
+  });
+
+  it('limite por IP atrás do BFF (T-0050): mesmo contêiner, o 11º login do MESMO IP de cliente é 429 e outro IP de cliente passa', async () => {
+    const conteiner = novoIp();
+    const viaBff = (ipCliente: string) => ({ ...CSRF, [CABECALHO_PROVA_BFF]: SEGREDO_BFF, [CABECALHO_IP_CLIENTE]: ipCliente });
+    for (let i = 0; i < LIMITE_LOGIN_IP_PADRAO.maximo; i++) expect((await entrar('outro@exemplo.invalid', 'x', conteiner, viaBff('203.0.113.50'))).statusCode).toBe(401);
+    const r = await entrar(EMAIL_SA, SENHA_SA, conteiner, viaBff('203.0.113.50'));
+    expect(r.statusCode).toBe(429);
+    expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
+    expect((await entrar(EMAIL_SA, SENHA_SA, conteiner, viaBff('203.0.113.51'))).statusCode).toBe(200); // outro cliente, mesmo contêiner
+    // prova errada: o IP informado não vale e a conta cai no IP do contêiner (ainda abaixo do limite)
+    const forjado = { ...viaBff('203.0.113.50'), [CABECALHO_PROVA_BFF]: randomBytes(32).toString('hex') };
+    expect((await entrar(EMAIL_SA, SENHA_SA, conteiner, forjado)).statusCode).toBe(200);
   });
 
   it('anti-CSRF: escrita sem o cabeçalho x-macuxierp-config é 403, inclusive o login; leitura não exige', async () => {
@@ -263,6 +278,6 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
   it('logs sem e-mail, senha, token nem nome de empresa (regra 8)', () => {
     const tudo = logs.join('\n');
     expect(tudo).toContain('superadmin_id');
-    for (const proibido of [EMAIL_SA, EMAIL_TROCA, SENHA_SA, SENHA_NOVA, 'primeiro@exemplo.invalid', 'Empresa Portal API', COOKIE_CONFIG]) expect(tudo).not.toContain(proibido);
+    for (const proibido of [SEGREDO_BFF, '203.0.113.50', '198.51.100.60', EMAIL_SA, EMAIL_TROCA, SENHA_SA, SENHA_NOVA, 'primeiro@exemplo.invalid', 'Empresa Portal API', COOKIE_CONFIG]) expect(tudo).not.toContain(proibido);
   });
 });

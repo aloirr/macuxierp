@@ -36,6 +36,7 @@ import type { ConfigAuth } from '../auth/servico';
 import { opcoesCookieSessao } from '../auth/apoio-login';
 import { entradaDaChamada, responder } from '../execucao-rota';
 import { erroDaPlataforma } from './erros';
+import { ipDoCliente } from './ip-cliente';
 import { LimitePorIp } from './limite-ip';
 import { ServicoPlataforma, type SessaoPlataformaLida } from './servico';
 
@@ -46,6 +47,8 @@ export interface DependenciasPlataformaApi {
   plugins: readonly PluginPlataforma[];
   /** Padrão: `LIMITE_LOGIN_IP_PADRAO` (ADR 0012 §6). */
   limiteLogin?: LimitePorIp;
+  /** `MACUXIERP_SEGREDO_BFF` (T-0050); ausente = a prova do BFF nunca vale (`ipDoCliente`). */
+  segredoBff: string | null;
 }
 
 interface Contexto {
@@ -84,7 +87,7 @@ export function montarPlataforma(app: FastifyInstance, d: DependenciasPlataforma
   app.post(`${PREFIXO_PLATAFORMA}/auth/entrar`, async (req, reply) =>
     traduzido(async () => {
       exigirCsrf(req);
-      if (!limite.contar(req.ip, o.relogio.agora().getTime())) throw erros.muitasTentativas('Muitas tentativas de acesso: tente de novo em alguns minutos');
+      if (!limite.contar(ipDoCliente(req, d.segredoBff), o.relogio.agora().getTime())) throw erros.muitasTentativas('Muitas tentativas de acesso: tente de novo em alguns minutos');
       const { email, senha } = EntrarPlataformaEntrada.parse(req.body);
       const r = await c.servico.entrar(email, senha);
       req.log = reply.log = req.log.child({ superadmin_id: r.superadmin_id });
