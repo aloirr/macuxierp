@@ -1,5 +1,5 @@
 /** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP e limite de login por IP. */
-import { ErroApi } from '@macuxierp/platform-sdk';
+import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { erroDaPlataforma } from './erros';
 import { LimitePorIp } from './limite-ip';
@@ -73,6 +73,15 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
     expect(e).toBeInstanceOf(ErroApi);
     expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: mensagem, detalhes: { codigo } });
     expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
+  });
+
+  it.each(CODIGOS_ESTADO_MUDOU_ZERAR)('MXC03 do zerar (0043, RN-CAD-10) com DETAIL %s vira 409 "os dados mudaram" com o DETAIL em detalhes.codigo', (detail) => {
+    const e = erroDaPlataforma(Object.assign(pg('MXC03'), { detail, hint: 'cliente' })) as ErroApi;
+    expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: MENSAGENS_CARGA_PORTAL.estadoMudouZerar, detalhes: { codigo: detail } });
+  });
+
+  it('MXI03 do zerar_espelho (0043) com DETAIL entidade_ligada leva o código em detalhes.codigo', () => {
+    expect(erroDaPlataforma(Object.assign(pg('MXI03'), { detail: 'entidade_ligada' }))).toMatchObject({ status: 409, detalhes: { codigo: 'entidade_ligada' } });
   });
 
   it.each(['empresa_inativa', 'modulo_desligado'])('MXC04 (carga do portal) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo', (detail) => {

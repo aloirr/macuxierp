@@ -471,7 +471,15 @@ export const MENSAGENS_CARGA_PORTAL = Object.freeze({
   semLicenca: 'A empresa precisa estar ativa e com o módulo Cadastros licenciado.',
   nadaAGravar: 'Nenhuma linha pronta para gravar.',
   zeragemBloqueada: 'Há integração ligada ou lote em andamento; resolva antes de zerar.',
+  /** 409 `CONFLITO` do `MXC03` do zerar (`CODIGOS_ESTADO_MUDOU_ZERAR`): o estado mudou entre o plano e o efeito. */
+  estadoMudouZerar: 'Os dados mudaram. Confira de novo.',
 });
+
+/**
+ * DETAIL do `MXC03` da `cadastros.portal_zerar` (0043, RN-CAD-10): o estado mudou entre o plano e o efeito. A API repassa
+ * em `detalhes.codigo` do 409 `CONFLITO` só estes; fora da lista, o texto do banco não passa.
+ */
+export const CODIGOS_ESTADO_MUDOU_ZERAR = ['em_uso', 'sumiu', 'anular_fora_do_plano', 'referencia'] as const;
 
 /**
  * `detalhes.codigo` dos erros do portal de cargas (409 `CONFLITO` e 422): do DETAIL das funções e do plugin. Fora desta

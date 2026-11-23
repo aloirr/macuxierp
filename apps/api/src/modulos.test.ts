@@ -435,4 +435,15 @@ describe('carga de cadastros no portal /config montada na API (T-0058, ADR 0013,
     const app = await appProducao();
     expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.testar}` })).toBe(true);
   });
+
+  it('montarDependenciasProducao: as rotas do "Zerar dados" (RN-CAD-10) sobem no portal, previa e zerar por POST', async () => {
+    const producao = montarDependenciasProducao({
+      banco: new BancoMemoria(),
+      chaveA1: Buffer.alloc(32, 1),
+      config: { versao: 'teste', jwtSegredo: SEGREDO, cookieSeguro: true, segredoBff: null },
+      bancoPlataforma: {} as never,
+    });
+    const app = await montar([], undefined, producao.modulos, { plataforma: producao.plataforma!, idempotencia: new IdempotenciaMemoria() });
+    for (const caminho of [C.previa, C.zerar]) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(true);
+  });
 });

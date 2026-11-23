@@ -8,9 +8,11 @@ import {
   criarConsultaParaPedido,
   criarPluginCadastros,
   criarPluginPlataformaCadastros,
+  criarPluginPlataformaCadastrosZerar,
   fontesHttp,
   repositoriosSql,
   type Dependencias as DependenciasCadastros,
+  type DependenciasZeragemPlataforma,
   type PortaCertificados,
 } from '@macuxierp/cadastros/api';
 import {
@@ -61,6 +63,7 @@ import { RepositorioAuthPg } from './auth/repositorio-pg';
 import { gerarHashSenha } from './auth/senha';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import type { ConfigApi } from './config';
+import { dependenciasZeragemProducao } from './plataforma/portas-zeragem';
 
 /** @deprecated use o de @macuxierp/platform-sdk */
 export { armazenamentoIndisponivel } from '@macuxierp/platform-sdk';
@@ -284,13 +287,16 @@ interface DependenciasPlataformaModulos {
   outbox?: Outbox;
   /** Padrão: dependenciasCadastros(new RepositorioCoreSql()). */
   cadastros?: DependenciasCadastros;
+  /** Portas do "Zerar dados" (RN-CAD-10, T-0058). Padrão: `dependenciasZeragemProducao()` (só as `portal_*` da 0043). */
+  zeragem?: DependenciasZeragemPlataforma;
 }
 
 /**
  * Plugins de plataforma do portal `/config` (ADR 0012): o do core, com o repositório que chama só as funções da 0033 e
  * os `depende` dos manifestos montados (RN-CORE-02), e a senha provisória do 1º admin com o argon2id de produção; e o da
  * integração FDV (ADR 0013, T-0056), com a chave do conector (versão 1) e o repositório que chama só as `portal_*` da 0038;
- * e o da carga de cadastros (T-0058, ADR 0013, adendo de 23/11/2026), com as dependências do cadastros do BKO e a outbox da API.
+ * e o da carga de cadastros (T-0058, ADR 0013, adendo de 23/11/2026), com as dependências do cadastros do BKO e a outbox da API;
+ * e o do "Zerar dados" (RN-CAD-10, T-0058, v0.3.6), com as portas que chamam só as `portal_*` da 0043 (`plataforma/portas-zeragem.ts`).
  * `dependencias`: padrão sem chave do conector, com a `OutboxPg` e o cadastros de produção (os testes de isolamento só listam as rotas).
  */
 export function pluginsPlataforma(
@@ -305,5 +311,6 @@ export function pluginsPlataforma(
       deps: dependencias.cadastros ?? dependenciasCadastros(new RepositorioCoreSql()),
       outbox: dependencias.outbox ?? new OutboxPg(),
     }),
+    criarPluginPlataformaCadastrosZerar(dependencias.zeragem ?? dependenciasZeragemProducao()),
   ];
 }
