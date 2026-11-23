@@ -1,3 +1,4 @@
+import type { EntidadeCarga } from '../../contracts';
 import type { Violacao } from '../violacao';
 
 /** Erro de uma linha. Nunca leva o valor digitado (RN-CORE-07, D9): `motivo` sai de mensagens fixas. */
@@ -6,6 +7,8 @@ export interface ErroLinha {
   campo: string | null;
   codigo: string;
   motivo: string;
+  /** Só no `CARGA_DEPENDENCIA` (RF-CAD-11): arquivo que falta carregar. Ausente nos demais códigos. */
+  entidade_faltante?: EntidadeCarga;
 }
 
 /** Mensagens fixas por regra: as do domain citam o valor (NCM, IBGE, UF), que não pode ir ao relatório. */
