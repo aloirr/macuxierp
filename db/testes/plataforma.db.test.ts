@@ -243,6 +243,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
       { c: 'plataforma.arquivo.sha256', d: 'sha256_hex' },
       { c: 'plataforma.idempotencia.hash_corpo', d: 'sha256_hex' },
       { c: 'plataforma.sessao.refresh_hash', d: 'sha256_hex' },
+      // T-0050 (0033): token da sessão do superadmin (portal /config), só o SHA-256.
+      { c: 'plataforma.sessao_superadmin.token_hash', d: 'sha256_hex' },
     ]);
     expect(
       falha(() =>
