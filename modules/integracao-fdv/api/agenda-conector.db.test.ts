@@ -20,7 +20,7 @@ const LOTE_ID = '5b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f1';
 const aceito = (id = LOTE_ID, repetido = false) => ({ lote_id: id, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 3, repetido, consulta: `/integracao/v1/lotes/${id}` });
 const resultado = (status: string, extra: Record<string, unknown> = {}) => ({ lote_id: LOTE_ID, entidade: 'produto', modo: 'delta', status, contagens: { recebidas: 3, com_erro: 0, novas: 3 }, erros: [], ...extra });
 
-describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', () => {
+describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeout: 20_000 }, () => {
   let efemero: BancoEfemero;
   let banco: BancoPg;
   let adm: ReturnType<typeof admSql>;

@@ -70,19 +70,21 @@ export function entidadesParaRetomar(m: MonitorResposta): EntidadeHub[] {
 
 /** A carga completa sempre pede confirmação. */
 export const textoDeConfirmacaoCargaCompleta = (entidade: EntidadeHub): string =>
-  `Enviar ${ROTULO_ENTIDADE[entidade].toLowerCase()} ao FDV de novo, tudo de uma vez? Pode demorar. O que já está igual no FDV não muda.`;
+  `Enviar ${ROTULO_ENTIDADE[entidade].toLowerCase()} ao FDV de novo, tudo de uma vez? Pode demorar.`;
+
+const FRASE_VERSAO_NAO_ACEITA = 'Versão do FDV não aceita. Atualize o Macuxi FDV.';
 
 export interface ResumoSinal {
   texto: string;
   tom: 'ok' | 'aviso' | 'neutro';
-  /** Política de versão do FDV, em texto curto, quando houver. */
+  /** RD-1070: só a frase de versão não aceita, quando o conector está parado por versão; senão null. */
   politica: string | null;
 }
 
 export function resumoDoSinal(m: MonitorResposta, fuso: string = FUSO_PADRAO): ResumoSinal {
   const s = m.sinal;
-  if (!s?.ultimo_aceito_em) return { texto: 'Ainda não falou com o FDV', tom: s?.parado_por_versao ? 'aviso' : 'neutro', politica: null };
-  const politica = s.politica_versao ? Object.entries(s.politica_versao).map(([k, v]) => `${k}: ${String(v)}`).join('; ') : null;
+  const politica = s?.parado_por_versao ? FRASE_VERSAO_NAO_ACEITA : null;
+  if (!s?.ultimo_aceito_em) return { texto: 'Ainda não falou com o FDV', tom: s?.parado_por_versao ? 'aviso' : 'neutro', politica };
   return {
     texto: `Última resposta do FDV em ${formatarDataHora(s.ultimo_aceito_em, fuso)}`,
     tom: s.parado_por_versao ? 'aviso' : 'ok',
