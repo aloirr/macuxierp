@@ -23,3 +23,7 @@
 2026-11-23 — T-0058 — Chip, CaixaResumo e Dialogo base (border-box, canto 8); prints da marca em docs/design/cargas/; RD-1176–1178
 2026-11-23 — T-0058 — Dialogo com altura máxima 90vh e corpo rolável (v0.3.6); RD-1215–1217
 2026-11-23 — T-0058 — botão destrutivo em vermelho (opção B) no DialogoMotivo e .mx-botao-destrutivo; RD-1217–1218
+2026-11-23 — T-0058 — Dialogo com aviso fixo, respiro de foco e altura 100dvh−48 (v0.3.7)
+2026-11-23 — T-0058 — Dialogo: tomAviso (aviso|erro), corpo com padding 4px nos quatro lados, altura calc(100dvh - 48px) fixada; prints do Zerar em tom erro, rolagem no fim e foco no último botão
+2026-11-23 — T-0058 — Dialogo: fallback 100vh/dvh por estado, teste do aviso no DialogoMotivo, docs
+2026-11-23 — T-0058 — Dialogo: 8px entre aviso e corpo (marginBottom) e prints regenerados com botão da marca em foco

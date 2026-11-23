@@ -65,7 +65,7 @@ export function avaliarConfirmacao(
   return msg ? { campo: 'texto', mensagem: msg } : null;
 }
 
-
+/** O aviso dele é âmbar mesmo com `destrutivo` (é aviso de dado pessoal, não de irreversível). */
 export function DialogoMotivo(props: DialogoMotivoProps) {
   const { titulo, motivos = [], textoObrigatorio = false, rotuloTexto = 'Detalhe', semTexto = false, rotuloConfirmar = 'Confirmar', rotuloFechar = 'Cancelar', destrutivo = false, aviso = null, validar, aoConfirmar, aoCancelar } = props;
   const id = useId();
@@ -88,7 +88,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
     <Dialogo
       titulo={titulo}
       aoFechar={aoCancelar}
-      descricaoId={aviso ? `${id}-aviso` : undefined}
+      aviso={aviso}
       rodape={
         <>
           <button type="button" onClick={aoCancelar} style={botaoSecundario()}>{rotuloFechar}</button>
@@ -132,11 +132,6 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         {erroTexto ? <span id={`${id}-erro-texto`} style={mensagemErro}>{erroTexto}</span> : null}
         </div>
         )}
-        {aviso ? (
-          <p id={`${id}-aviso`} style={{ ...texto('pequeno'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
-            {aviso}
-          </p>
-        ) : null}
     </Dialogo>
   );
 }

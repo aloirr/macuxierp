@@ -86,4 +86,4 @@ Cor por token (`cor()`), nunca hex. **Mapa de cores de estado:** sucesso = `verd
 
 O `DialogoMotivo` usa o `Dialogo`.
 
-Altura até 90vh; título e rodapé fixos, corpo rola. (T-0058, v0.3.6; prints em `docs/design/dialogo-altura/`)
+Altura até calc(100dvh − 48px) (100vh no navegador sem dvh); título e rodapé fixos, corpo rola. **Dialogo:** aviso fixo abaixo do título (fora da rolagem); `tomAviso` 'erro' para ação irreversível; corpo com 4 px de respiro nos quatro lados para o foco. (T-0058, v0.3.6–v0.3.7; prints em `docs/design/dialogo-altura/` e `docs/design/dialogo-aviso/`)
