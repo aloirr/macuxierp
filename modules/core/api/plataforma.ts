@@ -1,12 +1,13 @@
 /**
  * Plugin de plataforma do core: rotas de empresa do portal `/config` (`/v1/plataforma/empresas*`, ADR 0012, seção 2).
- * Ordem de checagem: ver apps/api/src/plataforma/rotas.ts. As funções da 0033 gravam a auditoria com o
+ * Ordem de checagem: ver apps/api/src/plataforma/rotas.ts. As funções da 0033 e da 0035 gravam a auditoria com o
  * `superadmin_id` (por isso nenhuma rota chama `auditar`).
  * Sem perfil e sem licença de tenant; nada de dado de negócio. Logs nunca recebem corpo, e-mail, nome nem senha.
  *
  * Senha provisória (1º admin e redefinição): só na resposta, uma vez, com `CABECALHOS_SENHA_PROVISORIA`. As duas rotas
  * exigem Idempotency-Key; a apps/api conclui a chave sem guardar o corpo quando a resposta traz `no-store`
  * (`idem_plataforma_concluir` com resposta NULL) e o reenvio da mesma chave volta 409 (clique duplo não gera duas senhas).
+ * E-mail do 1º admin: mascarado no GET (pelo banco); o completo só no POST .../primeiro-admin/email, com no-store e sem idempotência (nada a guardar).
  */
 import { randomBytes } from 'node:crypto';
 import {
@@ -22,6 +23,7 @@ import {
   PrimeiroAdminEntrada,
   SituacaoEmpresaEntrada,
   type DependenciasModulo,
+  type EmailPrimeiroAdminResposta,
   type EmpresaPlataforma,
   type Licenca,
   type LicencaModuloPlataforma,
@@ -35,7 +37,7 @@ import { avaliarPrimeiroAdmin, avaliarRedefinirSenhaPrimeiroAdmin, avaliarSituac
 
 type NovaSituacao = SituacaoEmpresaEntrada['situacao'];
 
-/** Porta das funções da 0033 (lista fechada). O adaptador SQL chama só `plataforma.empresa_*` e `empresas_listar`. */
+/** Porta das funções da 0033 e 0035 (lista fechada). O adaptador SQL chama só `plataforma.empresa_*` e `empresas_listar`. */
 export interface RepositorioPlataforma {
   listarEmpresas(tx: Transacao, p: { busca?: string; cursor?: string; limite: number }): Promise<EmpresaPlataforma[]>;
   lerEmpresa(tx: Transacao, id: string): Promise<EmpresaPlataforma | null>;
@@ -46,6 +48,8 @@ export interface RepositorioPlataforma {
   /** `null` = a empresa ganhou administrador ou o e-mail já está em uso (corrida entre pedidos: unique_violation). */
   criarPrimeiroAdmin(tx: Transacao, p: { id: string; email: string; nome: string; senha_hash: string; request_id: string }): Promise<{ usuario_id: string } | null>;
   redefinirSenhaPrimeiroAdmin(tx: Transacao, p: { id: string; senha_hash: string; request_id: string }): Promise<{ usuario_id: string }>;
+  /** E-mail completo do 1º admin; a função da 0035 audita só a ação (sem o e-mail). */
+  revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string>;
 }
 
 export interface DependenciasPlataformaCore {
@@ -174,6 +178,17 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         const { senha, senha_hash } = await senhaProvisoria();
         const { usuario_id } = await repo.redefinirSenhaPrimeiroAdmin(c.tx, { id: e.id, senha_hash, request_id: c.request_id });
         const resposta: PrimeiroAdminResposta = { usuario_id, senha_provisoria: senha };
+        return { corpo: resposta, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: '/empresas/:id/primeiro-admin/email',
+      acao: 'plataforma.admin.revelar_email',
+      async executar(c, { params }) {
+        const e = await empresaOuErro(c.tx, params);
+        if (!e.primeiro_admin) throw erros.naoEncontrado('Administrador');
+        const resposta: EmailPrimeiroAdminResposta = { email: await repo.revelarEmailPrimeiroAdmin(c.tx, { id: e.id, request_id: c.request_id }) };
         return { corpo: resposta, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
       },
     }),

@@ -40,6 +40,7 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}) {
       empresa = { ...empresa, primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false } };
       return { usuario_id: ADMIN };
     },
+    async revelarEmailPrimeiroAdmin() { chamadas.push('email'); return 'admin@cafe.com.br'; },
     async redefinirSenhaPrimeiroAdmin(_tx, p) { chamadas.push('senha'); hashes.push(p.senha_hash); return { usuario_id: ADMIN }; },
   };
   return { repo, chamadas, hashes };
@@ -86,13 +87,14 @@ const LIGADOS_ATE_PEDIDO = [
 ] as const;
 
 describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
-  it('monta as 7 rotas de empresa, nenhuma em /auth', () => {
+  it('monta as 8 rotas de empresa, nenhuma em /auth', () => {
     const { plugin } = montar();
     expect(plugin.rotas.map((r) => `${r.metodo} ${r.caminho}`).sort()).toEqual([
       'GET /empresas',
       'GET /empresas/:id',
       'POST /empresas',
       'POST /empresas/:id/primeiro-admin',
+      'POST /empresas/:id/primeiro-admin/email',
       'POST /empresas/:id/primeiro-admin/senha',
       'PUT /empresas/:id/modulos',
       'PUT /empresas/:id/situacao',
@@ -153,9 +155,9 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
       expect(e.status).toBe(409);
       expect(t.chamadas).toEqual(['admin']);
     });
-    it('as rotas de senha provisória exigem Idempotency-Key e respondem com no-store (a apps/api não guarda o corpo)', () => {
+    it('as rotas de senha provisória exigem Idempotency-Key e respondem com no-store (a apps/api não guarda o corpo; a rota /email, sem senha, fica de fora: no-store sem chave)', () => {
       const { plugin } = montar();
-      const comSenha = plugin.rotas.filter((r) => r.caminho.startsWith('/empresas/:id/primeiro-admin'));
+      const comSenha = plugin.rotas.filter((r) => r.caminho.startsWith('/empresas/:id/primeiro-admin') && !r.caminho.endsWith('/email'));
       expect(comSenha.map((r) => r.idempotencia)).toEqual(['obrigatoria', 'obrigatoria']);
       expect(CABECALHOS_SENHA_PROVISORIA['cache-control']).toBe('no-store');
     });
@@ -166,6 +168,16 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
       const r = await t.chamar('POST', '/empresas/:id/primeiro-admin/senha');
       expect(r).toMatchObject({ corpo: { usuario_id: ADMIN }, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } });
       expect(t.chamadas).toEqual(['senha']);
+    });
+    it('revela o e-mail do 1º admin com no-store, sem idempotência, e responde 404 sem admin', async () => {
+      const sem = montar();
+      expect((await sem.erro(sem.chamar('POST', '/empresas/:id/primeiro-admin/email'))).status).toBe(404);
+      expect(sem.chamadas).toEqual([]);
+      const t = montar({ primeiro_admin: { id: ADMIN, ativo: true, bloqueado: false } });
+      const r = await t.chamar('POST', '/empresas/:id/primeiro-admin/email');
+      expect(r).toEqual({ corpo: { email: 'admin@cafe.com.br' }, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } });
+      expect(t.chamadas).toEqual(['email']);
+      expect(t.plugin.rotas.find((x) => x.caminho === '/empresas/:id/primeiro-admin/email')?.idempotencia).toBeUndefined();
     });
   });
 
@@ -187,7 +199,7 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
     });
   });
 
-  it('nenhuma rota chama auditar: as funções da 0033 auditam com o superadmin_id na mesma transação', async () => {
+  it('nenhuma rota chama auditar: as funções da 0033 e da 0035 auditam com o superadmin_id na mesma transação', async () => {
     const t = montar();
     await t.chamar('POST', '/empresas', { corpo: { slug: 'outra', nome: 'Outra' } });
     await t.chamar('PUT', '/empresas/:id/situacao', { corpo: { situacao: 'suspenso', motivo: 'teste' } });
