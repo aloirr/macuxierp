@@ -6,7 +6,7 @@
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
 
-const USUARIO = 'id, tenant_id, nome, email, senha_hash, perfil, filial_ids, ativo, falhas_login, bloqueado_ate';
+const USUARIO = 'id, tenant_id, nome, email, senha_hash, perfil, filial_ids, ativo, falhas_login, bloqueado_ate, deve_trocar_senha';
 const SESSAO = 'id, tenant_id, usuario_id, familia, refresh_hash, expira_em, revogada_em';
 
 const primeira = async <L>(linhas: Promise<L[]>): Promise<L | null> => (await linhas)[0] ?? null;
@@ -64,5 +64,18 @@ export class RepositorioAuthPg implements RepositorioAuth {
 
   async revogarFamilia(tx: Transacao, familia: string, agora: Date) {
     await tx.consultar('UPDATE plataforma.sessao SET revogada_em = $2 WHERE familia = $1 AND revogada_em IS NULL', [familia, agora]);
+  }
+
+  async trocarSenha(tx: Transacao, usuarioId: string, senhaHash: string) {
+    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = false WHERE id = $1', [usuarioId, senhaHash]);
+  }
+
+  async revogarOutrasSessoes(tx: Transacao, usuarioId: string, exceto: string | null, agora: Date) {
+    const linhas = await tx.consultar<{ id: string }>(
+      `UPDATE plataforma.sessao SET revogada_em = $3
+       WHERE usuario_id = $1 AND revogada_em IS NULL AND ($2::uuid IS NULL OR familia <> $2::uuid) RETURNING id`,
+      [usuarioId, exceto, agora],
+    );
+    return linhas.length;
   }
 }

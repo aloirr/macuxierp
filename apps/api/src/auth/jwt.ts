@@ -15,19 +15,24 @@ const Claims = z.object({
   fil: z.array(z.string().uuid()),
   iat: z.number().int(),
   exp: z.number().int(),
+  /** Senha provisória (T-0052): só presente quando ligada; o guard da troca de senha lê daqui. */
+  dts: z.literal(true).optional(),
 });
+
+/** Sessão do JWT de acesso do tenant: a `Sessao` do SDK e, só quando ligada, a troca obrigatória da senha (T-0052). */
+export type SessaoAcesso = Sessao & { deve_trocar_senha?: true };
 
 const assinar = (dados: string, segredo: string) => createHmac('sha256', segredo).update(dados).digest('base64url');
 
-export function emitirTokenAcesso(sessao: Sessao, segredo: string, agora: Date, segundos: number): { token: string; expira_em: Date } {
+export function emitirTokenAcesso(sessao: SessaoAcesso, segredo: string, agora: Date, segundos: number): { token: string; expira_em: Date } {
   const iat = Math.floor(agora.getTime() / 1000);
-  const claims = { sub: sessao.usuario_id, tid: sessao.tenant_id, perfil: sessao.perfil, fil: [...sessao.filial_ids], iat, exp: iat + segundos };
+  const claims = { sub: sessao.usuario_id, tid: sessao.tenant_id, perfil: sessao.perfil, fil: [...sessao.filial_ids], iat, exp: iat + segundos, ...(sessao.deve_trocar_senha ? { dts: true } : {}) };
   const corpo = `${CABECALHO}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
   return { token: `${corpo}.${assinar(corpo, segredo)}`, expira_em: new Date(claims.exp * 1000) };
 }
 
 /** Sessão do token, ou `null` se ausente, malformado, adulterado ou vencido. */
-export function lerTokenAcesso(token: string, segredo: string, agora: Date): Sessao | null {
+export function lerTokenAcesso(token: string, segredo: string, agora: Date): SessaoAcesso | null {
   const partes = token.split('.');
   if (partes.length !== 3 || partes[0] !== CABECALHO) return null;
   const esperada = Buffer.from(assinar(`${partes[0]}.${partes[1]}`, segredo));
@@ -41,5 +46,6 @@ export function lerTokenAcesso(token: string, segredo: string, agora: Date): Ses
   }
   const c = Claims.safeParse(bruto);
   if (!c.success || c.data.exp * 1000 <= agora.getTime()) return null;
-  return { usuario_id: c.data.sub, tenant_id: c.data.tid, perfil: c.data.perfil, filial_ids: c.data.fil };
+  const sessao: Sessao = { usuario_id: c.data.sub, tenant_id: c.data.tid, perfil: c.data.perfil, filial_ids: c.data.fil };
+  return c.data.dts ? { ...sessao, deve_trocar_senha: true } : sessao;
 }

@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
 import { ConferenciaCustoIgual, travaAposFalha } from '../auth/apoio-login';
 import { conferirSenha, gerarHashSenha } from '../auth/senha';
-import type { ConfigAuth } from '../auth/servico';
+import { erroSenhaAtualIncorreta, erroSenhaIgual, erroSenhaNova, type ConfigAuth } from '../auth/servico';
 
 export const FALHA_LOGIN_PLATAFORMA = 'E-mail ou senha inválidos';
 /** Validade absoluta da sessão do superadmin (a ociosidade de 30 min é do banco). */
@@ -95,11 +95,14 @@ export class ServicoPlataforma {
     await this.banco.comPlataforma(sessao, (tx) => tx.consultar('SELECT plataforma.superadmin_sair($1::uuid)', [sessao.sessao_id]));
   }
 
-  /** Troca a senha (só hashes vão ao banco); senha atual errada = 400 no campo, sem contar falha de login. */
+  /** Troca a senha (só hashes vão ao banco), na mesma ordem e com os mesmos 400 do ServicoAuth.trocarSenha. */
   async trocarSenha(sessao: SessaoPlataforma, senhaAtual: string, senhaNova: string): Promise<void> {
+    const foraDaRegra = erroSenhaNova(senhaNova);
+    if (foraDaRegra) throw foraDaRegra;
     await this.banco.comPlataforma(sessao, async (tx) => {
       const [l] = await tx.consultar<{ h: string | null }>('SELECT plataforma.superadmin_senha_atual() AS h');
-      if (!l?.h || !(await conferirSenha(senhaAtual, l.h))) throw erros.validacao({ senha_atual: 'Senha atual inválida' });
+      if (!l?.h || !(await conferirSenha(senhaAtual, l.h))) throw erroSenhaAtualIncorreta();
+      if (senhaNova === senhaAtual) throw erroSenhaIgual();
       const nova = await gerarHashSenha(senhaNova, this.cfg.argon2);
       await tx.consultar('SELECT plataforma.superadmin_trocar_senha($1, $2)', [l.h, nova]);
     });

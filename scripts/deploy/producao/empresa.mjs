@@ -31,6 +31,12 @@ const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MODULOS_LIGAR = ['core', 'cadastros', 'pedido', 'integracao-fdv'];
 const MODULOS_INFORMAR = ['faturamento', 'fiscal'];
 const ARGON2 = { memoria: 19_456, passes: 2, paralelismo: 1, tamanho: 32 }; // ARGON2_PADRAO da API
+// Regra única de senha (packages/platform-sdk/src/senha.ts, T-0052): letra, número 0-9 e caractere especial, além do
+// tamanho. Cópia (o contêiner não tem node_modules); o teste apps/api/src/operador-senha.test.ts trava contra o SDK.
+const SENHA_LETRA = /\p{L}/u;
+const SENHA_NUMERO = /[0-9]/;
+const SENHA_ESPECIAL = /[^\p{L}0-9\s]/u;
+const cumpreRegraSenha = (s) => SENHA_LETRA.test(s) && SENHA_NUMERO.test(s) && SENHA_ESPECIAL.test(s);
 
 class ErroUso extends Error {}
 
@@ -59,6 +65,7 @@ function lerArgumentos(argv, env) {
   if (op.email.length > 254 || !PADRAO_EMAIL.test(op.email)) throw new ErroUso('MACUXIERP_ADMIN_EMAIL ausente ou fora do formato');
   if (op.adminNome.length < 2 || op.adminNome.length > 80) throw new ErroUso('MACUXIERP_ADMIN_NOME: 2 a 80 caracteres');
   if (op.confirmar && op.senha.length < 16) throw new ErroUso('MACUXIERP_SENHA_INICIAL ausente ou curta (o operador.sh gera 16 caracteres)');
+  if (op.confirmar && !cumpreRegraSenha(op.senha)) throw new ErroUso('MACUXIERP_SENHA_INICIAL fora da regra de senha (letra, número e caractere especial)');
   if (!op.confirmar && op.senha) throw new ErroUso('MACUXIERP_SENHA_INICIAL só com --confirmar');
   return op;
 }
@@ -149,8 +156,9 @@ BEGIN
       RAISE EXCEPTION 'hash da senha fora do formato argon2id' USING ERRCODE = 'P0001';
     END IF;
     v_usuario := gen_random_uuid();
-    INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil)
-    VALUES (v_usuario, v_tenant, v_email, v_admin_nome, v_hash, 'administrador');
+    -- senha provisória: troca obrigatória no 1º acesso (T-0052, 0036)
+    INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, deve_trocar_senha)
+    VALUES (v_usuario, v_tenant, v_email, v_admin_nome, v_hash, 'administrador', true);
     INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
     VALUES (v_tenant, NULL, 'plataforma.admin.criar', 'usuario', v_usuario, NULL,
       jsonb_build_object('perfil', 'administrador', 'ativo', true, 'operador', v_operador, 'motivo', 'primeiro acesso'), v_req);

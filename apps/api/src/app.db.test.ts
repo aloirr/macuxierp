@@ -55,7 +55,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     const eu = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
     expect(eu.statusCode).toBe(200);
     expect(eu.json()).toEqual({
-      usuario: { id: usuario, nome: 'Administradora', perfil: 'administrador' },
+      usuario: { id: usuario, nome: 'Administradora', perfil: 'administrador', deve_trocar_senha: false },
       empresa: { id: tenant, slug: 'loja-um', razao_social: 'Empresa loja-um', fuso: 'America/Manaus' },
       // só a filial do próprio tenant (RLS), embora o filial_ids cite a do outro
       filiais: [{ id: matriz, nome: 'Matriz Manaus', cnpj: '11222333000181' }],

@@ -57,4 +57,16 @@ export class RepositorioAuthMemoria implements RepositorioAuth {
   async revogarFamilia(tx: Transacao, familia: string, agora: Date) {
     for (const s of this.visivel(tx, this.sessoes)) if (s.familia === familia && !s.revogada_em) s.revogada_em = agora;
   }
+  async trocarSenha(tx: Transacao, usuarioId: string, senhaHash: string) {
+    Object.assign(this.usuario(tx, usuarioId), { senha_hash: senhaHash, deve_trocar_senha: false });
+  }
+  async revogarOutrasSessoes(tx: Transacao, usuarioId: string, exceto: string | null, agora: Date) {
+    let n = 0;
+    for (const s of this.visivel(tx, this.sessoes)) {
+      if (s.usuario_id !== usuarioId || s.revogada_em || s.familia === exceto) continue;
+      s.revogada_em = agora;
+      n++;
+    }
+    return n;
+  }
 }

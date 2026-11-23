@@ -246,8 +246,22 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     expect(bloqueada.json()).toMatchObject({ codigo: 'TROCAR_SENHA' });
     const errada = await pedir(t1, 'POST', '/v1/plataforma/auth/senha', { corpo: { senha_atual: 'nao-e-esta', senha_nova: SENHA_NOVA } });
     expect(errada.statusCode).toBe(400);
+    expect(errada.json()).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { senha_atual: 'Senha atual incorreta. Confira e digite de novo.' } });
+    // senha nova fora da regra: o mesmo 400 da troca do tenant, antes de conferir a senha atual
+    const fora = await pedir(t1, 'POST', '/v1/plataforma/auth/senha', { corpo: { senha_atual: 'nao-e-esta', senha_nova: 'abcdefg' } });
+    expect(fora.statusCode).toBe(400);
+    expect(fora.json()).toEqual({
+      codigo: 'VALIDACAO',
+      mensagem: 'A senha não atende às regras',
+      campos: { senha_nova: '8 caracteres ou mais; Um número; Um caractere especial' },
+      detalhes: { regras: ['caracteres', 'numero', 'especial'] },
+    });
     expect((await pedir(t1, 'POST', '/v1/plataforma/auth/senha', { corpo: { senha_atual: SENHA_SA, senha_nova: SENHA_NOVA }, csrf: false })).statusCode).toBe(403);
     expect((await pedir(t1, 'POST', '/v1/plataforma/auth/senha', { corpo: { senha_atual: SENHA_SA, senha_nova: SENHA_NOVA } })).statusCode).toBe(204);
+    // nova igual à atual (a atual agora cumpre a regra): MENSAGEM_SENHA_IGUAL, como no tenant
+    const igual = await pedir(t1, 'POST', '/v1/plataforma/auth/senha', { corpo: { senha_atual: SENHA_NOVA, senha_nova: SENHA_NOVA } });
+    expect(igual.statusCode).toBe(400);
+    expect(igual.json()).toEqual({ codigo: 'VALIDACAO', mensagem: 'Dados inválidos', campos: { senha_nova: 'A senha nova precisa ser diferente da atual' } });
     expect((await pedir(t1, 'GET', '/v1/plataforma/empresas')).statusCode).toBe(200);
     expect((await pedir(t2, 'GET', '/v1/plataforma/auth/eu')).statusCode).toBe(401); // a outra sessão caiu
     expect((await entrar(EMAIL_TROCA, SENHA_SA)).statusCode).toBe(401);
