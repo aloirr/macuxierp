@@ -59,6 +59,7 @@ import type { RepositorioAuth } from './auth/portas';
 import { ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
 import { opcoesCookieSessao } from './auth/apoio-login';
 import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, erroTrocarSenha } from './auth/troca-senha';
+import { diagnosticoBanco } from './erro-banco';
 import { entradaDaChamada, responder } from './execucao-rota';
 import { montarPlataforma, type DependenciasPlataformaApi } from './plataforma/rotas';
 
@@ -167,8 +168,9 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     if (status && status >= 400 && status < 500) {
       return reply.status(status).send({ codigo: status === 413 ? 'CORPO_GRANDE' : 'VALIDACAO', mensagem: 'Requisição inválida' });
     }
-    // Só o tipo e a pilha: a mensagem de erro de banco pode trazer valor de coluna (dado pessoal).
-    req.log.error({ tipo: (erro as Error).name, pilha: (erro as Error).stack?.split('\n').slice(1, 6).join('\n') }, 'erro interno');
+    // Sem a message do erro (LGPD); campos do banco: ver erro-banco.ts.
+    const pilha = (erro as Error).stack?.split('\n').slice(1, 6).join('\n');
+    req.log.error({ tipo: (erro as Error).name, pilha, ...diagnosticoBanco(erro) }, 'erro interno');
     return reply.status(500).send({ codigo: 'ERRO_INTERNO', mensagem: 'Erro interno', request_id: req.id });
   });
   app.setNotFoundHandler((_req, reply) => reply.status(404).send({ codigo: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada' }));
