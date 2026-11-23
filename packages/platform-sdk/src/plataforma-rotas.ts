@@ -20,6 +20,8 @@ import { PluginInvalido, type EntradaChamada, type MetodoHttp, type RespostaRota
  * `plataforma.superadmin.*` são só de auditoria, sem rota, e ficam fora daqui. Ação nova = linha aqui + ADR (0012 ou nova, como a 0013) + função
  * SQL na lista fechada.
  * Integração FDV: `.ver`, `.configurar` e `.operar` são só permissão de rota (ADR 0013 §2 e §4).
+ * Cargas e zerar (T-0058; o zerar é v0.3.5b): `plataforma.cadastros.carga` (situação, modelo, validar, erros e
+ * gravar) e `plataforma.cadastros.zerar` são só permissão de rota; a auditoria usa os nomes do módulo.
  */
 export const ACOES_PLATAFORMA = [
   'plataforma.empresa.ver',
@@ -32,6 +34,8 @@ export const ACOES_PLATAFORMA = [
   'plataforma.integracao_fdv.ver',
   'plataforma.integracao_fdv.configurar',
   'plataforma.integracao_fdv.operar',
+  'plataforma.cadastros.carga',
+  'plataforma.cadastros.zerar',
 ] as const;
 export type AcaoPlataforma = (typeof ACOES_PLATAFORMA)[number];
 
