@@ -20,6 +20,7 @@ import {
   EntidadeEnvioFdv,
   ErroApi,
   IntegracaoFdvPlataforma,
+  MENSAGEM_SEM_CREDENCIAL_FDV,
   UltimoSinalFdv,
   cifrarCampo,
   definirPluginPlataforma,
@@ -191,7 +192,7 @@ const entidadeDaRota = (params: Record<string, string>): EntidadeEnvioFdv => {
 };
 
 const MSG_MODULO_DESLIGADO = 'Ligue o módulo Integração FDV na empresa antes de configurar';
-const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO);
+const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO, undefined, { codigo: 'modulo_desligado' });
 
 export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaIntegracaoFdv): PluginPlataforma {
   const chaveIntegracao = copiarChaveIntegracao(deps.chaveIntegracao);
@@ -205,7 +206,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
     return estado;
   };
   const exigirCredencial = (e: EstadoPortal) => {
-    if (!e.credencial) throw erros.conflito('Cadastre a credencial do FDV antes');
+    if (!e.credencial) throw erros.conflito(MENSAGEM_SEM_CREDENCIAL_FDV);
     return e.credencial;
   };
   const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;

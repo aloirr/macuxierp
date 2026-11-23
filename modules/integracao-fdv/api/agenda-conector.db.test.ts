@@ -241,6 +241,23 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect(c.cursor_external_id).toBe('P003');
     });
 
+    it('carga completa pedida com o espelho vazio: nenhum POST /lotes, sessão fechada, sem pausa; depois um registro novo vai normalmente', async () => {
+      const { t } = await cenario('env-b4', { completo: true, produtos: 0 });
+      await adm("UPDATE integracao_fdv.cursor_entidade SET sessao_aberta_id = $2 WHERE tenant_id = $1 AND entidade = 'produto'", [t, U()]);
+      const hub = hubDuble({ 'GET /cursores/produto': [ok({ entidade: 'produto', cursor: null, atualizado_em: null })], 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido', { modo: 'completo' }))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      expect(hub.chamadas.filter((c) => c.pedido.metodo === 'POST')).toHaveLength(0);
+      const c = await cur(t);
+      expect(c.sessao_aberta_id).toBeNull();
+      expect(c.pausada_motivo).toBeNull();
+      expect(await lotes(t)).toHaveLength(0);
+      await espelho(efemero.admin, t, 'produto', payloadProduto('N001'), { alterado: new Date(AGORA.getTime() - 1000) });
+      await ciclo(banco, agenda, hub, depois(3700), [t]); // passa a espera ociosa de 1 h
+      const [l] = await lotes(t);
+      expect(l).toMatchObject({ modo: 'completo', sessao_parte: 1, sessao_ultimo: true });
+      expect(l!.corpo.registros).toHaveLength(1);
+    });
+
     it('cursor do Hub não nulo com cursor local nulo: segue em delta a partir do cursor do Hub', async () => {
       const { t } = await cenario('env-b2', { completo: true });
       const hub = hubDuble({ 'GET /cursores/produto': [ok({ cursor: { alterado_em: '2026-11-22T08:00:00.000Z', external_id: 'P000' } })], 'POST /lotes': [ok(aceito())] });
