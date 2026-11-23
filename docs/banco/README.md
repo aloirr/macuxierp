@@ -222,6 +222,18 @@ Memória do simulador da SEFAZ-AM (`packages/sefaz-simulador`), que antes ficava
 
 Migração: `db/migrations/0025_sefaz_simulador.sql`; testes: `db/testes/sefaz-simulador-0025.db.test.ts` (massa em `fixtureSefazSimulador`, `db/testes/fixture.ts`; o schema entra em `SCHEMAS`, `db/src/index.ts`, que o `plataforma.db.test.ts` usa).
 
+## Desconto máximo do produto e desconto herdado no item (T-0058, migração 0041)
+- `cadastros.produto.desconto_maximo_bp integer NULL`, em pontos-base (0 a 10.000 = 0% a 100%; NULL = não informado), com o CHECK nomeado `produto_desconto_maximo_bp_ck` (23514). É a base do preço mínimo da **RN-CAD-11** = preço de venda × (1 − desconto máximo), arredondado para cima ao centavo (a conta fica no `domain` do cadastros).
+- `cadastros.tabela_preco_item.desconto_herdado boolean NOT NULL DEFAULT false`: true = o `desconto_maximo_bp` do item veio da carga ou da integração, não foi digitado no ERP. Backfill `true` onde `external_id IS NOT NULL`, só quando a coluna é criada (a reexecução não desfaz o que o app gravou depois) e com o gatilho `tocar_updated_at` desligado na mesma transação (o `updated_at` não muda).
+- Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECK e coluna nova conferidos em `pg_constraint`/`pg_attribute`, `lock_timeout` de 5 s). Grants por tabela (0004). Teste: `db/testes/cadastros-desconto-0041.db.test.ts`.
+
+## Credencial nova vazia e cadastro ligado um por um (T-0058, migração 0042)
+Decisão R-20261123-150400. Aditiva e reexecutável; nenhuma linha de dado muda (a credencial já gravada segue com as entidades que tem).
+- `integracao_fdv.credencial.entidades_habilitadas`: DEFAULT `'{}'` (era as 12 do domínio, 0015).
+- `integracao_fdv.portal_credencial_definir` (mesma assinatura): DEFAULT de `p_entidades` = `'{}'::text[]`; a conferência (`portal_conferir_config`) vale só na **primeira** credencial (NULL = `'{}'`); na **troca** de chave a configuração vem da ativa e `p_entidades`/`p_limite` são ignorados (o plugin pode mandar NULL).
+- `integracao_fdv.portal_configurar(p_tenant uuid, p_entidades text[], p_limite integer, p_request_id text, p_evento_carga_inicial jsonb DEFAULT NULL)`: a assinatura de 4 argumentos sai (`DROP FUNCTION IF EXISTS`, para não haver sobrecarga ambígua) e a chamada de 4 argumentos segue igual. Com o jsonb não nulo: formato `{entidades: [texto, ...]}` não vazio (senão 23514) e grava só `integracao-fdv.carga_inicial.solicitada@1` em `plataforma.evento` (envelope `{ator: 'sistema', request_id, payload}`), agregado = credencial ativa, `versao` = a próxima livre de (tenant, nome, agregado) — o UNIQUE da 0002; a criação já usou a 1. A credencial ativa travada serializa a conta.
+- Reexecutar a 0038 volta o DEFAULT antigo e o configurar de 4 argumentos: a 0042 precisa rodar depois (o teste da 0038 faz isso). Teste: `db/testes/integracao-fdv-credencial-vazia-0042.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
