@@ -5,7 +5,7 @@
  */
 import {
   ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, type IdLista, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
-  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
+  dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaEpecPendentes, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
   requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
   type AcaoDaNota, type Montagem, type Selo as SeloModulo,
 } from '@macuxierp/faturamento/web';
@@ -23,6 +23,7 @@ export const ROTA_PEDIDOS = rotaDe('pedidos-a-faturar');
 export const ROTA_NOTAS = rotaDe('notas');
 export const ROTA_NOTA = rotaDe('nota');
 export const ROTA_REJEICOES = rotaDe('rejeicoes');
+export const ROTA_EPEC_PENDENTES = rotaDe('epec-pendentes');
 export const ROTA_TITULOS = rotaDe('titulos');
 export const ROTA_TITULO = rotaDe('titulo');
 
@@ -192,6 +193,8 @@ export const LISTA_NOTAS: TelaLista = lista(
 );
 
 export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes'), temHorario: true });
+
+export const LISTA_EPEC_PENDENTES: TelaLista = lista('epec-pendentes', paginaEpecPendentes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('epec-pendentes'), temHorario: true });
 
 export const LISTA_TITULOS: TelaLista = lista(
   'titulos',
@@ -396,5 +399,5 @@ export const DETALHE_TITULO: TelaDetalhe = {
 };
 
 export const TELAS_FATURAMENTO: Readonly<Record<string, TelaDescrita>> = {
-  [ROTA_PEDIDOS]: LISTA_PEDIDOS_A_FATURAR, [ROTA_NOTAS]: LISTA_NOTAS, [ROTA_NOTA]: DETALHE_NOTA, [ROTA_REJEICOES]: LISTA_REJEICOES, [ROTA_TITULOS]: LISTA_TITULOS, [ROTA_TITULO]: DETALHE_TITULO,
+  [ROTA_PEDIDOS]: LISTA_PEDIDOS_A_FATURAR, [ROTA_NOTAS]: LISTA_NOTAS, [ROTA_NOTA]: DETALHE_NOTA, [ROTA_REJEICOES]: LISTA_REJEICOES, [ROTA_EPEC_PENDENTES]: LISTA_EPEC_PENDENTES, [ROTA_TITULOS]: LISTA_TITULOS, [ROTA_TITULO]: DETALHE_TITULO,
 };
