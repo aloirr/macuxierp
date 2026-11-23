@@ -1,5 +1,5 @@
 /**
- * Identificadores e textos fixos dos eventos (110110, 110111) e da inutilização (Manual de Orientação do
+ * Identificadores e textos fixos dos eventos (110110, 110111, 110140) e da inutilização (Manual de Orientação do
  * Contribuinte; leiaute dos eventos 1.00 e da inutilização 4.00). Fonte única para quem monta (emissor, T-0018),
  * para quem confere (simulador) e para os documentos de teste: ninguém refaz o `Id`.
  */
@@ -11,6 +11,7 @@ import { filhoNfe, lerXml, textoNfe } from './xmldsig';
 export const DESC_EVENTO = Object.freeze({
   [TIPO_EVENTO.cancelamento]: 'Cancelamento',
   [TIPO_EVENTO.cartaCorrecao]: 'Carta de Correcao',
+  [TIPO_EVENTO.epec]: 'EPEC',
 } as const satisfies Record<TipoEvento, string>);
 
 /** `xCondUso` da CC-e: texto fixo do leiaute (o schema só aceita este, sem acento). */
@@ -42,7 +43,7 @@ export function idInutilizacao(c: CamposIdInutilizacao): string {
 }
 
 /**
- * O `tpEvento` do `<evento>` é o da operação chamada (`cancelar` → 110111, `cartaCorrecao` → 110110)? Senão, é erro de
+ * O `tpEvento` do `<evento>` é o da operação chamada (`cancelar` → 110111, `cartaCorrecao` → 110110, `epec` → 110140)? Senão, é erro de
  * quem chama (`SEFAZ_PEDIDO_INVALIDO`), não rejeição. XML ilegível ou sem `tpEvento` passa: o schema decide (215).
  */
 export function garantirTipoEvento(eventoXml: string, esperado: TipoEvento): void {

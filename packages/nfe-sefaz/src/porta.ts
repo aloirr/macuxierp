@@ -13,7 +13,7 @@
 import { z } from 'zod';
 import { TpAmb } from './ambiente';
 import { ehDataHoraSefaz } from './datas';
-import type { DestinoSefaz } from './destino';
+import type { DestinoEpec, DestinoSefaz, DestinoSimulador } from './destino';
 import { ErroSefaz } from './erros';
 
 const digitos = (n: number) => z.string().regex(new RegExp(`^\\d{${n}}$`), `${n} dígitos`);
@@ -42,9 +42,9 @@ export const TAMANHO_MAXIMO_XML_SEFAZ = 500_000;
 /** XML como texto (UTF-8). No pedido: o documento JÁ ASSINADO; na resposta: o retorno da SEFAZ, sem alteração. */
 export const XmlTexto = z.string().min(1).max(TAMANHO_MAXIMO_XML_SEFAZ);
 
-/** Códigos dos eventos da NF-e que a v1 usa. */
-export const TIPO_EVENTO = Object.freeze({ cartaCorrecao: '110110', cancelamento: '110111' } as const);
-export const TipoEvento = z.enum([TIPO_EVENTO.cartaCorrecao, TIPO_EVENTO.cancelamento]);
+/** Códigos dos eventos da NF-e que a v1 usa (110140: EPEC, ADR 0011). */
+export const TIPO_EVENTO = Object.freeze({ cartaCorrecao: '110110', cancelamento: '110111', epec: '110140' } as const);
+export const TipoEvento = z.enum([TIPO_EVENTO.cartaCorrecao, TIPO_EVENTO.cancelamento, TIPO_EVENTO.epec]);
 export type TipoEvento = z.infer<typeof TipoEvento>;
 
 const RetornoBase = z.object({
@@ -65,7 +65,7 @@ export const ProtocoloNFe = RetornoBase.extend({
 });
 export type ProtocoloNFe = z.infer<typeof ProtocoloNFe>;
 
-/** `retEvento`: o protocolo de um evento (cancelamento, CC-e). */
+/** `retEvento`: o protocolo de um evento (cancelamento, CC-e, EPEC). */
 export const ProtocoloEvento = RetornoBase.extend({
   chNFe: ChaveNFe,
   tpEvento: TipoEvento,
@@ -155,7 +155,11 @@ export type RespostaStatusServico = z.infer<typeof RespostaStatusServico>;
 export const PedidoEvento = z.object({ idLote: IdLote, eventoAssinado: XmlTexto }).strict();
 export type PedidoEvento = z.infer<typeof PedidoEvento>;
 
-/** `retEnvEvento`: 128 lote processado, com um `ProtocoloEvento` por evento (135/136 registrado). */
+/**
+ * `retEnvEvento`: 128 lote processado, com um `ProtocoloEvento` por evento (135/136 registrado). Na EPEC, `cOrgao` é
+ * o do Ambiente Nacional (ver `C_ORGAO_AN`) e o evento registrado volta com 136 (registrado, ainda sem a NF-e;
+ * ADR 0011).
+ */
 export const RespostaEvento = RetornoBase.extend({
   cOrgao: z.number().int(),
   idLote: IdLote,
@@ -203,6 +207,17 @@ export interface SefazTransporte {
   /** Evento 110110 (CC-e). */
   cartaCorrecao(pedido: PedidoEvento): Promise<RespostaEvento>;
   inutilizar(pedido: PedidoInutilizacao): Promise<RespostaInutilizacao>;
+}
+
+/**
+ * Porta da EPEC (ADR 0011): o evento 110140 JÁ ASSINADO (`PedidoEvento`) vai ao Ambiente Nacional. Fica fora do
+ * `SefazTransporte` porque o destino é outro (AN, não o autorizador da UF). Obtida só pelo `criarSeletorEpec` (real)
+ * ou, nos testes, pelo próprio simulador (`criarSimuladorSefaz(...).epec`). O transporte confere que o `tpEvento` é
+ * 110140 e que o `tpAmb` é o do destino; rejeição volta no `cStat`, como nos outros eventos.
+ */
+export interface SefazTransporteEpec {
+  readonly destino: DestinoEpec | DestinoSimulador;
+  epec(pedido: PedidoEvento): Promise<RespostaEvento>;
 }
 
 /**

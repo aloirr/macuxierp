@@ -45,7 +45,10 @@ export async function novoNumero(
   return `${PREFIXO_NUMERO_SIMULADOR}${ctx.d.tpEmis}${String(ctx.d.cUF).padStart(2, '0')}${anoSefaz(ctx.agora())}${seq}`;
 }
 
-/** `xMotivo` por `cStat` (Manual de Orientação do Contribuinte, tabela de códigos). */
+/**
+ * `xMotivo` por `cStat` (Manual de Orientação do Contribuinte, tabela de códigos). Os da contingência (136, 467, 468,
+ * 556, 557, 558) seguem "a conferir (fiscal)" na ADR 0011: a conferência de 22/11/2026 não chegou às tabelas oficiais.
+ */
 export const MOTIVO = Object.freeze({
   '100': 'Autorizado o uso da NF-e',
   '101': 'Cancelamento de NF-e homologado',
@@ -60,6 +63,7 @@ export const MOTIVO = Object.freeze({
   '110': 'Uso Denegado',
   '128': 'Lote de Evento Processado',
   '135': 'Evento registrado e vinculado a NF-e',
+  '136': 'Evento registrado, mas nao vinculado a NF-e',
   '202': 'Rejeicao: Falha no reconhecimento da autoria ou integridade do arquivo digital',
   '204': 'Duplicidade de NF-e',
   '205': 'NF-e esta denegada na base de dados da SEFAZ',
@@ -91,11 +95,16 @@ export const MOTIVO = Object.freeze({
   '453': 'Rejeicao: Ano de inutilizacao nao pode ser superior ao Ano atual',
   '454': 'Rejeicao: Ano de inutilizacao nao pode ser inferior a 2006',
   '455': 'Rejeicao: Orgao Autor do evento diferente da UF da Chave de Acesso',
+  '467': 'Rejeicao: Dados da NF-e divergentes do EPEC',
+  '468': 'Rejeicao: NF-e com Tipo Emissao = 4, sem EPEC correspondente',
   '494': 'Rejeicao: Chave de Acesso inexistente',
   '501': 'Rejeicao: Prazo de Cancelamento superior ao previsto na Legislacao',
   '502':
     'Rejeicao: Erro na Chave de Acesso - Campo Id nao corresponde a concatenacao dos campos correspondentes',
   '539': 'Duplicidade de NF-e com diferenca na Chave de Acesso',
+  '556': 'Rejeicao: Justificativa de entrada em contingencia nao deve ser informada para tipo de emissao normal',
+  '557': 'Rejeicao: A Justificativa de entrada em contingencia deve ser informada',
+  '558': 'Rejeicao: Data de entrada em contingencia posterior a data de recebimento',
   '563': 'Rejeicao: Ja existe pedido de Inutilizacao com a mesma faixa de inutilizacao',
   '570': 'Rejeicao: Tipo de Emissao 3, 6 ou 7 so e valido nas contingencias SCAN/SVC',
   '572':
@@ -144,9 +153,15 @@ export const PRAZO_CANCELAMENTO_MS = 24 * 3_600_000;
  * resto falha como rede (o worker aciona a contingência, desenho §3.4). `falharTransporte`: falha antes de processar
  * ou depois (a resposta "se perde": a nota fica autorizada e o worker precisa consultar o protocolo, desenho §3.3).
  */
-export async function conversa<T>(ctx: Contexto, servico: string, fn: () => Promise<T>): Promise<T> {
+export async function conversa<T>(
+  ctx: Contexto,
+  servico: string,
+  fn: () => Promise<T>,
+  o: { semParalisacao?: boolean } = {},
+): Promise<T> {
   const c = ctx.estado.controles;
-  if (c.paralisacao)
+  // `semParalisacao`: a EPEC vai ao Ambiente Nacional, que não cai junto com a SEFAZ da UF (ADR 0011).
+  if (c.paralisacao && !o.semParalisacao)
     throw new FalhaTransporteSefaz(servico, true, `servico paralisado no simulador (${c.paralisacao})`);
   if (c.falhas.restantes <= 0) return fn();
   c.falhas.restantes -= 1;

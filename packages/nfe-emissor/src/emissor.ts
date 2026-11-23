@@ -5,13 +5,13 @@
 import type { PedidoEvento, RespostaEvento } from '@macuxierp/nfe-sefaz';
 import { assinarDocumento, assinarNFe, type DocumentoAssinado } from './assinatura';
 import type { CertificadoA1EmMemoria } from './certificado';
-import { loteDoEvento, montarCancelamento, montarCartaCorrecao, montarInutilizacao, type PedidoCancelamento, type PedidoCartaCorrecao } from './eventos';
+import { loteDoEvento, montarCancelamento, montarCartaCorrecao, montarEpec, montarInutilizacao, type PedidoCancelamento, type PedidoCartaCorrecao, type PedidoEpec } from './eventos';
 import { montarNFe } from './montar';
 import type { EmissorNFe } from './porta';
 
-/** Cancelamento e CC-e: assina o `<evento>` montado e envia no `envEvento` pelo serviço do transporte. */
+/** Cancelamento, CC-e e EPEC: assina o `<evento>` montado e envia no `envEvento` pelo serviço do transporte. */
 async function enviarEvento(
-  pedido: PedidoCancelamento | PedidoCartaCorrecao,
+  pedido: PedidoCancelamento | PedidoCartaCorrecao | PedidoEpec,
   xml: string,
   a1: CertificadoA1EmMemoria,
   enviar: (p: PedidoEvento) => Promise<RespostaEvento>,
@@ -27,6 +27,7 @@ export function criarEmissorNFe(): EmissorNFe {
     transmitir: (xmlAssinado, idLote, transporte) => transporte.autorizar({ idLote, sincrono: true, nfes: [xmlAssinado] }),
     cancelar: async (pedido, a1, transporte) => enviarEvento(pedido, montarCancelamento(pedido), a1, (p) => transporte.cancelar(p)),
     cartaCorrecao: async (pedido, a1, transporte) => enviarEvento(pedido, montarCartaCorrecao(pedido), a1, (p) => transporte.cartaCorrecao(p)),
+    epec: async (pedido, a1, transporte) => enviarEvento(pedido, montarEpec(pedido), a1, (p) => transporte.epec(p)),
     async inutilizar(pedido, a1, transporte) {
       const assinado = assinarDocumento(montarInutilizacao(pedido), a1, 'infInut');
       return { ...(await transporte.inutilizar({ inutilizacaoAssinada: assinado.xml })), assinado };

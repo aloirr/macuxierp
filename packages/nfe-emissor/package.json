@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Spike da T-0018 (ADR 0002, opção A): porta EmissorNFe com montagem do XML da NF-e 55 (layout 4.00 + IBS/CBS/IS), dos eventos 110110/110111 e da inutilização, assinatura XMLDSig com o A1 em memória e o transporte SOAP 1.2 com mTLS que implementa a porta SefazTransporte de @macuxierp/nfe-sefaz. Porte em TS da lógica do sped-nfe (opção MIT).",
+  "description": "Spike da T-0018 (ADR 0002, opção A): porta EmissorNFe com montagem do XML da NF-e 55 (layout 4.00 + IBS/CBS/IS), dos eventos 110110/110111/110140 (EPEC) e da inutilização, assinatura XMLDSig com o A1 em memória e o transporte SOAP 1.2 com mTLS que implementa as portas SefazTransporte e SefazTransporteEpec de @macuxierp/nfe-sefaz. Porte em TS da lógica do sped-nfe (opção MIT).",
   "exports": {
     ".": "./src/index.ts"
   },

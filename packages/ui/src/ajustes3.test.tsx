@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { gerarCssBotoes } from './estilos.js';
+import * as indice from './index.js';
 import { SHA256_APPLE_TOUCH_ICON, appleTouchIconPngBase64 } from './marca.js';
 
 const fonte = (nome: string) => readFileSync(new URL(`./${nome}`, import.meta.url), 'utf8');
@@ -39,8 +40,9 @@ describe('subpath marca sem hook (T-0021)', () => {
     for (const h of ['useState', 'useEffect', 'useId', 'useRef']) expect(marca).not.toContain(h);
     expect(marca).not.toContain("from './index");
   });
-  it('o barrel re-exporta a marca só por compatibilidade', () => {
-    expect(fonte('index.ts')).toMatch(/from '\.\/marca\.js'/);
+  it('o index não exporta a marca (só @macuxierp/ui/marca)', () => {
+    expect(fonte('index.ts')).not.toMatch(/from '\.\/marca/);
+    for (const n of ['AssinaturaErp', 'faviconDataUri', 'appleTouchIconDataUri']) expect(Object.keys(indice)).not.toContain(n);
     expect(fonte('marca.tsx')).not.toMatch(/from '\.\/index/);
   });
 });

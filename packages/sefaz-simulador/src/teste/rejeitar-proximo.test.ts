@@ -4,7 +4,7 @@
  */
 import { RespostaAutorizacao, RespostaConsultaRecibo, RespostaEvento, RespostaInutilizacao } from '@macuxierp/nfe-sefaz';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { INICIO, a1DeTeste, autorizarUma, cancelamentoAssinado, cceAssinada, criarRelogio, destinoDe, inutilizacaoAssinada, nfeAssinada } from '../apoio-teste';
+import { INICIO, a1DeTeste, autorizarUma, cancelamentoAssinado, cceAssinada, criarRelogio, destinoDe, epecAssinada, inutilizacaoAssinada, nfeAssinada } from '../apoio-teste';
 import { criarFabricaSimulador, criarRegistroSimulador } from '../index';
 import { CSTAT_DE_SUCESSO, apoioDeTesteSimulador, criarSimuladorDeTeste } from './index';
 
@@ -64,6 +64,14 @@ describe('rejeitarProximo (apoio de teste)', () => {
     s.teste.rejeitarProximo({ cStat: '241', operacao: 'inutilizar' });
     expect(RespostaInutilizacao.parse(await s.inutilizar(inut))).toMatchObject({ cStat: '241', nProt: null });
     expect((await s.inutilizar(inut)).cStat).toBe('102');
+  });
+
+  it('epec (ADR 0011): o retEvento sai rejeitado e a EPEC não é registrada; a próxima registra (136)', async () => {
+    const { s } = novo();
+    const epec = { idLote: '1', eventoAssinado: epecAssinada(nfeAssinada({ nNF: 13, tpEmis: 4 }).xml) };
+    s.teste.rejeitarProximo({ cStat: '573', operacao: 'epec' });
+    expect(RespostaEvento.parse(await s.epec(epec))).toMatchObject({ cStat: '128', cOrgao: 91, eventos: [{ cStat: '573', nProt: null }] });
+    expect((await s.epec(epec)).eventos[0]?.cStat).toBe('136');
   });
 
   it('vale por operação: a rejeição de outra operação não afeta a autorização', async () => {

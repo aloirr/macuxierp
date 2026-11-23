@@ -410,7 +410,7 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     const r = exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: l.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao, saldo: i.saldo, quantidade: '25' })) });
     const esperado = formularioParcial({ itens: [{ sequencia: 1, descricao: 'Café torrado 500 g', saldo: 240000 }] }).validar({ 1: '25' });
     expect(esperado.ok).toBe(false);
-    expect(r).toEqual({ ok: false, erro: Object.values((esperado as { erros: Record<number, string> }).erros)[0], erros: (esperado as { erros: Record<number, string> }).erros });
+    expect(r).toEqual({ ok: false, erro: Object.values((esperado as { erros: Record<number, string> }).erros)[0], erros: (esperado as { erros: Record<number, string> }).erros, errosPartes: (esperado as { errosPartes: unknown }).errosPartes });
     expect((r as { erro: string }).erro).toContain('1 - Café torrado 500 g');
     expect((r as { erro: string }).erro).not.toMatch(/(\d+ - )\1/);
   });
@@ -425,22 +425,24 @@ describe('pedido a faturar: emitir nota parcial (RF-FAT-01)', () => {
     const a = mais('administrador')[0]!;
     const e = (i: ReturnType<typeof itens>) => exec.validarAcao(a, { texto: '', chave: 'chave-parcial-1', itens: i });
     // o texto vem do próprio módulo (formularioParcial), para a mesma entrada: o shell não o copia
-    const doModulo = (i: ReturnType<typeof itens>) => {
-      const r = formularioParcial({ itens: i }).validar(Object.fromEntries(i.map((x) => [x.sequencia, x.quantidade])));
-      return r.ok ? undefined : (r.geral ?? Object.values(r.erros)[0]);
-    };
+    const resultadoDoModulo = (i: ReturnType<typeof itens>) => formularioParcial({ itens: i }).validar(Object.fromEntries(i.map((x) => [x.sequencia, x.quantidade])));
     const acima = itens([1, '2,5001', 25000]);
-    expect(doModulo(acima)).toBeTruthy();
-    expect(e(acima)).toEqual({ ok: false, erro: doModulo(acima), erros: { 1: doModulo(acima) } });
-    expect(doModulo(acima)).toContain('1 - Produto 1'); // rótulo montado uma vez só
-    expect(String(doModulo(acima))).not.toMatch(/(\d+ - )\1/);
+    const ra = resultadoDoModulo(acima);
+    if (ra.ok) throw new Error('esperava erro do módulo');
+    expect(ra.erros[1]).toBeTruthy();
+    expect(e(acima)).toEqual({ ok: false, erro: ra.erros[1], erros: ra.erros, errosPartes: ra.errosPartes });
+    expect(ra.erros[1]).toContain('1 - Produto 1'); // rótulo montado uma vez só
+    expect(String(ra.erros[1])).not.toMatch(/(\d+ - )\1/);
     expect(e(itens([1, 'abc', 25000]))).toMatchObject({ ok: false, erro: expect.stringContaining('até 4 casas decimais') });
     expect(e(itens([1, '1,23456', 25000]))).toMatchObject({ ok: false });
     expect(e(itens([1, '-1', 25000]))).toMatchObject({ ok: false });
     const zero = itens([1, '0', 25000]);
-    expect(e(zero)).toEqual({ ok: false, erro: doModulo(zero), erros: { 1: doModulo(zero) } });
+    const rz = resultadoDoModulo(zero);
+    if (rz.ok) throw new Error('esperava erro do módulo');
+    expect(e(zero)).toEqual({ ok: false, erro: rz.erros[1], erros: rz.erros, errosPartes: rz.errosPartes });
     const vazios = itens([1, '', 25000], [2, ' ', 10000]);
-    expect(doModulo(vazios)).toBe(MOTIVO_SEM_ITEM);
+    const rv = resultadoDoModulo(vazios);
+    expect(rv.ok ? undefined : rv.geral).toBe(MOTIVO_SEM_ITEM);
     expect(e(vazios)).toEqual({ ok: false, erro: MOTIVO_SEM_ITEM });
     expect((e(vazios) as { erros?: unknown }).erros).toBeUndefined(); // erro geral: fica no pé, sem campo marcado
     expect(e([])).toMatchObject({ ok: false });

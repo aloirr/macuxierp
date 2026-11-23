@@ -6,6 +6,7 @@
   "description": "Contrato de uso da SEFAZ (NF-e 55, layout 4.00): porta SefazTransporte, tipos Zod, ambientes, endereços e o seletor de destino com a trava do simulador (T-0045, regra 7).",
   "exports": {
     ".": "./src/index.ts",
+    "./contingencia": "./src/contingencia.ts",
     "./teste": "./src/teste/index.ts"
   },
   "scripts": {

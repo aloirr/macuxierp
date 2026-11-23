@@ -59,8 +59,11 @@ const botaoPrincipalHover: CSSProperties = { background: cor('grafite'), border:
 /** Hover do botão secundário: fundo névoa. */
 const botaoSecundarioHover: CSSProperties = { background: cor('nevoa') };
 
+const contornoFoco = (c: Cor): CSSProperties => ({ outline: `2px solid ${cor(c)}`, outlineOffset: '2px' });
 /** Foco visível dos botões (MC-0011): contorno de 2 px em azul-noite. */
-export const focoVisivel: CSSProperties = { outline: `2px solid ${cor('azulNoite')}`, outlineOffset: '2px' };
+export const focoVisivel: CSSProperties = contornoFoco('azulNoite');
+/** Foco em fundo escuro (azul-noite, grafite): branco, mesmo traço. Vale dentro de `.mx-fundo-escuro`. */
+export const focoVisivelEscuro: CSSProperties = contornoFoco('branco');
 
 const kebabCss = (k: string) => k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const regraCss = (seletor: string, e: CSSProperties) =>
@@ -78,6 +81,7 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
     regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
     regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible', focoVisivel) +
+    regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true))
   );
 }
@@ -100,7 +104,7 @@ export const tabela = {
   celula: { padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}`, verticalAlign: 'top' } as CSSProperties,
   /** Célula numérica ou de dinheiro: sem quebra de linha (o `th` continua só com `numerico`). */
   celulaNumerica: { ...numerico, whiteSpace: 'nowrap' } as CSSProperties,
-  /** Legenda de tabela: pequeno, peso 600, à esquerda. */
-  legenda: { ...texto('pequeno', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
+  /** Legenda de tabela: 15 px (base), peso 600, à esquerda. */
+  legenda: { ...texto('base', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
   vazio: { textAlign: 'center', color: cor('textoSecundario'), padding: espaco.xl } as CSSProperties,
 };

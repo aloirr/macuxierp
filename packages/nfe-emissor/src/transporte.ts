@@ -20,15 +20,20 @@ import {
   PedidoInutilizacao,
   TIPO_EVENTO,
   garantirTipoEvento,
+  garantirTpEmisDoDestino,
   lerXml,
   montarEnvEvento,
   montarEnviNFe,
   semDeclaracaoXml,
   textoNfe,
+  tpEmisDaNFe,
   validarPedidoSefaz,
+  type DestinoEpec,
   type DestinoSefazReal,
+  type FabricaTransporteEpec,
   type FabricaTransporteSefaz,
   type SefazTransporte,
+  type SefazTransporteEpec,
   type ServicoSefaz,
   type TipoEvento,
 } from '@macuxierp/nfe-sefaz';
@@ -66,6 +71,24 @@ function garantirTpAmb(xml: string, caminho: readonly string[], tpAmb: string, d
   throw new ErroSefaz('SEFAZ_PEDIDO_INVALIDO', `${documento}: tpAmb ${lido || '(ausente)'} difere do destino (${tpAmb})`);
 }
 
+/**
+ * As travas de todo evento antes de sair: o pedido no contrato, o `tpEvento` da operação (`esperado`) e o `tpAmb` do
+ * destino (`obrigatorio` como no `garantirTpAmb`). Devolve o `idLote` e o evento sem a declaração XML.
+ */
+function prepararEvento(
+  pedido: PedidoEvento,
+  esperado: TipoEvento,
+  tpAmb: string,
+  rotulo: string,
+  obrigatorio: boolean,
+): { idLote: string; xml: string } {
+  const p = validarPedidoSefaz(PedidoEvento, pedido);
+  const xml = semDeclaracaoXml(p.eventoAssinado);
+  garantirTipoEvento(xml, esperado);
+  garantirTpAmb(xml, ['infEvento', 'tpAmb'], tpAmb, rotulo, obrigatorio);
+  return { idLote: p.idLote, xml };
+}
+
 /** O transporte de UM destino real (autorizador da UF ou SVC), com o A1 já aberto. */
 export function criarTransporteSoap(destino: DestinoSefazReal, a1: CertificadoA1EmMemoria, o: OpcoesTransporteSoap = {}): SefazTransporte {
   if (destino?.tipo !== 'sefaz') throw new ErroSefaz('SEFAZ_TRANSPORTE_NAO_CONFIGURADO', 'O transporte SOAP só atende destino real da SEFAZ');
@@ -80,18 +103,19 @@ export function criarTransporteSoap(destino: DestinoSefazReal, a1: CertificadoA1
   }
 
   async function evento(esperado: TipoEvento, pedido: PedidoEvento) {
-    const p = validarPedidoSefaz(PedidoEvento, pedido);
-    const xml = semDeclaracaoXml(p.eventoAssinado);
-    garantirTipoEvento(xml, esperado);
-    garantirTpAmb(xml, ['infEvento', 'tpAmb'], tpAmb, 'evento', false);
-    return lerRetornoEvento(await conversar('recepcaoEvento', montarEnvEvento(p.idLote, xml)));
+    const { idLote, xml } = prepararEvento(pedido, esperado, tpAmb, 'evento', false);
+    return lerRetornoEvento(await conversar('recepcaoEvento', montarEnvEvento(idLote, xml)));
   }
 
   return Object.freeze({
     destino,
     async autorizar(pedido: PedidoAutorizacao) {
       const p = validarPedidoSefaz(PedidoAutorizacao, pedido);
-      p.nfes.forEach((nfe, i) => garantirTpAmb(nfe, ['infNFe', 'ide', 'tpAmb'], tpAmb, `NF-e ${i + 1} do lote`, true));
+      p.nfes.forEach((nfe, i) => {
+        garantirTpAmb(nfe, ['infNFe', 'ide', 'tpAmb'], tpAmb, `NF-e ${i + 1} do lote`, true);
+        // ADR 0011: nota de SVC no autorizador normal (ou o contrário) não sai; a EPEC (4) vai ao normal na volta.
+        garantirTpEmisDoDestino(destino.modo, tpEmisDaNFe(nfe), `NF-e ${i + 1} do lote`);
+      });
       return lerRetornoAutorizacao(await conversar('autorizacao', montarEnviNFe(p)));
     },
     async consultarRecibo(pedido: PedidoConsultaRecibo) {
@@ -116,6 +140,32 @@ export function criarTransporteSoap(destino: DestinoSefazReal, a1: CertificadoA1
       return lerRetornoInutilizacao(await conversar('inutilizacao', xml));
     },
   });
+}
+
+/**
+ * O transporte da EPEC (ADR 0011): o evento 110140 assinado vai ao Ambiente Nacional (`destino.url`, "a conferir"),
+ * no `envEvento`, pelo serviço de recepção da EPEC. Mesmas travas dos outros eventos (tpEvento da operação e tpAmb do
+ * destino) e mais o `cOrgao` 91. Rejeição volta no `cStat`; rede/TLS/tempo é `FalhaTransporteSefaz`.
+ */
+export function criarTransporteEpecSoap(destino: DestinoEpec, a1: CertificadoA1EmMemoria, o: OpcoesTransporteSoap = {}): SefazTransporteEpec {
+  if (destino?.tipo !== 'epec') throw new ErroSefaz('SEFAZ_TRANSPORTE_NAO_CONFIGURADO', 'O transporte da EPEC só atende o destino do Ambiente Nacional');
+  const { agora: _agora, ...opcoesConexao } = o;
+  const conexao: ConexaoSoap = { ...opcoesConexao, a1 };
+  return Object.freeze({
+    destino,
+    async epec(pedido: PedidoEvento) {
+      const { idLote, xml } = prepararEvento(pedido, TIPO_EVENTO.epec, String(destino.tpAmb), 'EPEC', true);
+      const cOrgao = textoNfe(lerXml(xml)?.documentElement, 'infEvento', 'cOrgao');
+      if (cOrgao !== String(destino.cOrgao)) throw new ErroSefaz('SEFAZ_PEDIDO_INVALIDO', `EPEC: cOrgao ${cOrgao || '(ausente)'} difere do Ambiente Nacional (${destino.cOrgao})`);
+      const envelope = montarEnvelope('recepcaoEpec', montarEnvEvento(idLote, xml));
+      return lerRetornoEvento(await postarSoap(conexao, 'recepcaoEpec', destino.url, envelope));
+    },
+  });
+}
+
+/** A `FabricaTransporteEpec` do `criarSeletorEpec`: abre o A1 em memória e devolve o transporte da EPEC. */
+export function criarFabricaTransporteEpecSoap(o: OpcoesTransporteSoap = {}): FabricaTransporteEpec {
+  return (destino, credencial) => criarTransporteEpecSoap(destino, abrirA1(credencial.pfx, credencial.senha, o.agora?.()), o);
 }
 
 /** A `FabricaTransporteSefaz` do seletor: abre o A1 da credencial em memória e devolve o transporte do destino. */
