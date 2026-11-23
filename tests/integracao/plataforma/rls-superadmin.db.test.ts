@@ -135,11 +135,15 @@ describe.skipIf(!PG_DISPONIVEL)('superadmin no banco: papéis, RLS e lista fecha
     }
     expect(tabelas.length).toBeGreaterThan(50);
     expect(fora).toEqual([]);
-    // fora o schema plataforma (USAGE para chamar as funções), o config não usa nenhum schema
+    // o config só usa os schemas plataforma e, desde a 0038 (ADR 0013), integracao_fdv; nenhum outro
+    const usados: string[] = [];
     for (const s of schemas) {
       const { rows } = await b.admin.query("SELECT has_schema_privilege($1, $2, 'USAGE') AS usa", [CONFIG, s]);
-      expect(rows[0].usa, s).toBe(s === 'plataforma');
+      if (rows[0].usa) usados.push(s);
     }
+    usados.sort();
+    expect(usados).toContain('plataforma');
+    expect(usados.every((s) => ['plataforma', 'integracao_fdv'].includes(s)), usados.join()).toBe(true);
   });
 
   it('ADR 0012 §1 e §4: a auditoria do portal grava superadmin_id, o tenant alvo e usuario_id nulo, sem nome nem e-mail', async () => {
