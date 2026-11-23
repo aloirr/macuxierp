@@ -14,3 +14,4 @@
 2026-11-23 — T-0021 — temErroExterno no FormularioItens (região única na tela do pedido); RD-0960 (RD-0961 manter?)
 2026-11-23 — T-0050 — DialogoMotivo semTexto e TabelaDensa com carregar mais (acumularPagina) para o portal /config; RD-0970–0974
 2026-11-23 — T-0050 — TabelaDensa: região viva sempre montada; AnuncioLeitor; CfgEscolha; doc
+2026-11-23 — T-0050 — `.mx-checkbox`; regra de paginação (RD-0974); RD-0982–0984

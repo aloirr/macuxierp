@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Cor, escala, papeis, pesos } from './tokens.js';
+import { cores } from './tokens.js';
 
 /** Cor do token da marca como `var()`; nunca literal (T-0028). */
 export const cor = (nome: Cor | 'ativoTexto' | 'inativoFundo' | 'linhaSuave'): string =>
@@ -74,21 +75,40 @@ const regraCss = (seletor: string, e: CSSProperties) =>
     .map(([k, v]) => `  ${kebabCss(k)}: ${typeof v === 'number' && v !== 0 && !semUnidade.has(k) ? `${v}px` : String(v)};`)
     .join('\n')}\n}\n`;
 
-/** Rádio sem o visual do navegador (desmarcado): borda de campo, fundo branco. */
-export const radioBase: CSSProperties = {
+/** Base comum do rádio e da caixa: sem o visual do navegador, borda de campo, fundo branco. */
+const selecaoBase: CSSProperties = {
   appearance: 'none',
   width: 16,
   height: 16,
   margin: 0,
-  borderRadius: '50%',
+  borderRadius: undefined, // reserva a posição; rádio e caixa preenchem (ordem do CSS gerado)
   border: `1px solid ${cor('bordaCampo')}`,
   background: cor('branco'),
 };
-/** O que muda no rádio marcado: azul-noite com ponto branco interno. */
-export const radioMarcado: CSSProperties = {
+/** O que muda ao marcar (rádio e caixa): azul-noite. */
+const selecaoMarcada: CSSProperties = {
   border: `1px solid ${cor('azulNoite')}`,
   background: cor('azulNoite'),
+};
+
+/** Rádio desmarcado: borda de campo, fundo branco. */
+export const radioBase: CSSProperties = { ...selecaoBase, borderRadius: '50%' };
+/** O que muda no rádio marcado: azul-noite com ponto branco interno. */
+export const radioMarcado: CSSProperties = {
+  ...selecaoMarcada,
   boxShadow: `inset 0 0 0 4px ${cor('branco')}`,
+};
+
+/** Caixa de seleção desmarcada: borda de campo, fundo branco. */
+export const checkboxBase: CSSProperties = { ...selecaoBase, borderRadius: '3px' };
+const vistoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="${cores.branco}" stroke-width="2"/></svg>`;
+/** O que muda na caixa marcada: azul-noite com visto branco (cor dos tokens). */
+export const checkboxMarcado: CSSProperties = {
+  ...selecaoMarcada,
+  backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(vistoSvg)}")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+  backgroundSize: '12px 12px',
 };
 
 /** Conteúdo de `botoes.css` (classes `.mx-botao` e `.mx-botao-secundario` para o shell), dos mesmos objetos acima. */
@@ -103,6 +123,9 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-radio', radioBase) +
     regraCss('.mx-radio:checked', radioMarcado) +
     regraCss('.mx-radio:focus-visible', focoVisivel) +
+    regraCss('.mx-checkbox', checkboxBase) +
+    regraCss('.mx-checkbox:checked', checkboxMarcado) +
+    regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true))
   );
