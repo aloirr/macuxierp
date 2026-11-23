@@ -225,4 +225,8 @@ export const numeros = (saida: string): number[] =>
     .filter((l) => /^-?\d+$/.test(l))
     .map(Number);
 
+/** Prefixo SQL que liga a sessão de superadmin do portal /config na transação (null = sem sessão). */
+export const sessaoSql = (sessao: string | null): string =>
+  sessao === null ? '' : `SET LOCAL macuxierp.sessao_superadmin = '${sessao}';\n`;
+
 export { consultar, executar, rodarComo, rodarScript };

@@ -20,6 +20,7 @@ import {
   recusaDetalhada,
   rodarComo,
   rodarScript,
+  sessaoSql,
   tabelasDos,
 } from './apoio.ts';
 import { fixturePlataforma, novoTenant } from './fixture.ts';
@@ -90,8 +91,6 @@ interface Empresa {
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — superadmin e portal /config (T-0050, 0033)', () => {
   let banco: BancoDeTeste;
 
-  const sessaoSql = (sessao: string | null): string =>
-    sessao === null ? '' : `SET LOCAL macuxierp.sessao_superadmin = '${sessao}';\n`;
   /** Roda como macuxierp_config, com a sessão de superadmin na transação; devolve as linhas da saída. */
   const comoConfig = (sessao: string | null, sql: string): string[] =>
     linhas(rodarComo(banco.conexao, `${sessaoSql(sessao)}${sql}`, { papel: CONFIG }));
