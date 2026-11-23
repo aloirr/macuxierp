@@ -11,16 +11,20 @@ export interface FatosFiscaisProduto {
   cestCombinaComNcm: boolean;
 }
 
-/** RN-CAD-04: NCM existente e vigente; CEST obrigatório quando o NCM tem ST; CEST informado vigente e do NCM. */
+/** NCM no formato 0000.00.00 (só formata quando tem 8 dígitos). */
+export const formatarNcm = (ncm: string): string => (/^\d{8}$/.test(ncm) ? `${ncm.slice(0, 4)}.${ncm.slice(4, 6)}.${ncm.slice(6)}` : ncm);
+
+/** RN-CAD-04: NCM existente e vigente; CEST obrigatório quando o NCM tem ST; CEST informado vigente e do NCM. Formato A0: o código e a ação. */
 export function validarFiscalProduto(f: FatosFiscaisProduto): Violacao[] {
   const v: Violacao[] = [];
-  if (!f.ncmVigente) v.push(violacao('RN-CAD-04', 'ncm', `NCM ${f.ncm} não existe ou não está vigente na tabela carregada`));
+  const ncm = formatarNcm(f.ncm);
+  if (!f.ncmVigente) v.push(violacao('RN-CAD-04', 'ncm', `NCM ${ncm} não existe ou não está vigente: confira a coluna ncm.`));
   if (f.cest === null) {
-    if (f.ncmVigente && f.ncmExigeCest) v.push(violacao('RN-CAD-04', 'cest', 'CEST obrigatório: o NCM está em segmento com substituição tributária'));
+    if (f.ncmVigente && f.ncmExigeCest) v.push(violacao('RN-CAD-04', 'cest', `O NCM ${ncm} exige CEST: preencha a coluna cest.`));
   } else if (!f.cestVigente) {
-    v.push(violacao('RN-CAD-04', 'cest', `CEST ${f.cest} não existe ou não está vigente`));
+    v.push(violacao('RN-CAD-04', 'cest', `CEST ${f.cest} não existe ou não está vigente: confira a coluna cest.`));
   } else if (!f.cestCombinaComNcm) {
-    v.push(violacao('RN-CAD-04', 'cest', `CEST ${f.cest} não pertence ao NCM ${f.ncm}`));
+    v.push(violacao('RN-CAD-04', 'cest', `O CEST ${f.cest} não pertence ao NCM ${ncm}: confira as colunas ncm e cest.`));
   }
   return v;
 }

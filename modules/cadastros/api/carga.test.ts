@@ -457,4 +457,19 @@ describe('carga por entidade (RF-CAD-11)', () => {
   it('RF-CAD-11: entidade fora da lista é recusada pelo contrato', () => {
     expect(CargaPedido.safeParse({ modo: 'validar', entidade: 'xpto', arquivos: [{ nome: 'a.csv', bytes: new Uint8Array() }] }).success).toBe(false);
   });
+
+  describe('RN-CAD-04: mensagens fiscais com o código e a ação (exceção à D9 só para NCM/CEST)', () => {
+    const CAB = 'external_id;sku;nome;unidade;alterado_em;ativo;ean;marca;custo_cents;preco_venda_cents;desconto_maximo_pct;ncm;cest;origem;grupo_tributacao\n';
+    const motivoDe = async (ncm: string, cest: string, ajusta: (t: ReturnType<typeof montar>) => void) => {
+      const t = montar();
+      ajusta(t);
+      const arqs = [...arquivos(['produto.csv']), { nome: 'produto.csv', conteudo: `${CAB}P-F1;SKU-F1;Produto F1;UN;;sim;;M;500;1000;0;${ncm};${cest};0;BEBIDAS` }];
+      const rel = (await t.carregar('validar', { arquivos: arqs })).corpo as RelatorioCarga;
+      return rel.erros.filter((e) => e.arquivo === 'produto.csv' && e.codigo === 'RN-CAD-04').map((e) => e.motivo);
+    };
+    it('AM2808: NCM que exige CEST, linha sem CEST', async () => {
+      const m = await motivoDe('42022210', '', (t) => { t.repos.oficiais.ncms.add('42022210'); t.repos.oficiais.cests.set('42022210', ['0100100']); t.repos.oficiais.todosCests.add('0100100'); });
+      expect(m).toEqual(['O NCM 4202.22.10 exige CEST: preencha a coluna cest.']);
+    });
+  });
 });
