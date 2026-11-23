@@ -70,6 +70,33 @@ function externosDoArquivo(cadastro: CadastroCargaPortal, a: ArquivoRecebido): s
   return lido.linhas.map((l) => (l.celulas.external_id ?? '').trim()).filter((x) => x !== '');
 }
 
+const aspar = (c: string, sep: string): string => (/["\r\n]/.test(c) || c.includes(sep) ? `"${c.replace(/"/g, '""')}"` : c);
+
+/**
+ * Substituir tudo: o arquivo é a lista completa do que fica ATIVO. Linha com `ativo` vazio (ou arquivo sem a coluna) passa a
+ * `ativo=sim`, para que um cadastro inativado por um Substituir tudo anterior volte a ser reativado (mesmo external_id, uma linha
+ * só; RN-CAD-08/10, D6). `ativo` explícito (sim ou não) é respeitado. Preserva a numeração das linhas (erros citam a linha).
+ * Layout sem `ativo` (estoque) e CSV ilegível ficam como vieram (o executarCarga recusa o ilegível).
+ */
+export function reativarPorPadrao(cadastro: CadastroCargaPortal, a: ArquivoRecebido): ArquivoRecebido {
+  const layout = LAYOUT[cadastro];
+  if (!layout.usadas.includes('ativo')) return a;
+  const lido = lerCsv(a.conteudo(), { aceitas: [...layout.usadas, ...layout.ignoradas], obrigatorias: layout.obrigatorias });
+  if (!lido.ok) return a;
+  const sep = lido.separador;
+  const colunas = lido.colunas.includes('ativo') ? lido.colunas : [...lido.colunas, 'ativo'];
+  const saida: string[] = [colunas.map((c) => aspar(c, sep)).join(sep)];
+  let linhaAtual = 2;
+  for (const l of lido.linhas) {
+    while (linhaAtual < l.numero) { saida.push(''); linhaAtual += 1; }
+    const celulas = colunas.map((c) => (c === 'ativo' && (l.celulas.ativo ?? '') === '' ? 'sim' : (l.celulas[c] ?? '')));
+    const linha = celulas.map((c) => aspar(c, sep)).join(sep);
+    saida.push(linha);
+    linhaAtual += 1 + (linha.match(/\n/g)?.length ?? 0);
+  }
+  return new ArquivoRecebido(a.campo, a.nome, a.tipo, Buffer.from(`${saida.join('\n')}\n`, 'utf8'));
+}
+
 async function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroCargaPortal, a: ArquivoRecebido) {
   const tabela = TABELA_SUBSTITUIVEL[cadastro];
   const r = deps.repositorios(c.tx);
@@ -84,7 +111,7 @@ async function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroC
     modo: 'substituir_tudo', entidade: cadastro, externos_do_arquivo: externos,
     existentes: existentes.map((e) => ({ id: e.id, external_id: e.external_id, inativo: e.inativo })), em_uso: new Set(uso.keys()),
   });
-  return { tabela, existentes, total: ativos.length, plano };
+  return { tabela, existentes, total: ativos.filter((e) => e.external_id !== null).length, plano };
 }
 
 /** Publica `cadastros.*.alterado@1` com `inativo: true` dos inativados (o que leva a inativação ao FDV). Filha: republica o pai. */
@@ -140,7 +167,7 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   await exigirDependencias(deps, c, cadastro);
 
   const arquivo = arquivoDoCadastro(e);
-  const rel = await executarCarga(deps, c, 'gravar', [arquivo], cadastro);
+  const rel = await executarCarga(deps, c, 'gravar', [substituir ? reativarPorPadrao(cadastro, arquivo) : arquivo], cadastro);
   const res = resultadoDoCadastro(rel, cadastro);
   const gravadas = res.inseridas + res.atualizadas + res.sem_mudanca;
   if (res.situacao !== 'processado' || gravadas === 0) throw conflito(MENSAGENS_CARGA_PORTAL.nadaAGravar, 'nada_a_gravar');
@@ -153,8 +180,10 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
     inativados = await r.substituicao.inativarEmLote(tabela, plano.inativar);
     await publicarInativados(deps, c, tabela, inativados, new Map(existentes.map((x) => [x.id, x.pai_id])));
   }
+  if (plano.sem_chave > 0) res.avisos.push(`${plano.sem_chave} ativo(s) sem external_id: não foram inativados`);
   if (plano.mantidos_em_uso > 0) res.avisos.push(`${plano.mantidos_em_uso} inativado(s) em uso: ficam no histórico`);
   res.inativadas = inativados.length;
+  res.sem_chave = plano.sem_chave;
   await c.auditar({
     acao: 'cadastros.carga.substituir_tudo', entidade: 'carga', entidade_id: rel.lote_id, antes: null,
     depois: { cadastro, inativadas: inativados.length, mantidos_em_uso: plano.mantidos_em_uso, total_ativos: total },

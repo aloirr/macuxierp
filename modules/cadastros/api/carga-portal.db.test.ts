@@ -88,4 +88,43 @@ describe.skipIf(!PG_DISPONIVEL)('carga no /config (substituir tudo) no PostgreSQ
     expect(ev).toHaveLength(1);
     expect(ev[0]?.payload.inativo).toBe(true);
   }, 120_000);
+
+  describe('reativação na carga seguinte (RN-CAD-08/10, D6)', () => {
+    const csv = (n: number, ativoVazio: boolean) => {
+      const l = (oficial('produto.csv', readFileSync(join(pasta, 'produto.csv'))) as string | Buffer).toString().trim().split('\n');
+      return l.slice(0, n + 1).map((x, i) => (ativoVazio && i > 0 ? x.replace(';sim;', ';;') : x)).join('\n');
+    };
+    const rodar = (tenant: string, modo: 'adicionar' | 'substituir_tudo', conteudo: string) =>
+      app.comTenant(tenant, async (tx: Transacao) => {
+        const c = {
+          sessao: sessaoDe('administrador'), tx, request_id: 'r', agora: new Date('2026-11-23T15:00:00Z'),
+          publicar: async () => undefined, auditar: async () => undefined, enfileirar: async () => ({ id: 'x' }),
+        } as unknown as ContextoRota;
+        return gravarCargaPortal({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados }, c, {
+          cadastro: 'produto', modo, ...(modo === 'substituir_tudo' ? { frase: FRASE } : {}), arquivo: new ArquivoRecebido('arquivo', 'x.csv', 'text/csv', Buffer.from(conteudo)),
+        });
+      });
+    const linhasDe = async (t: string) => (await admin("SELECT deleted_at FROM cadastros.produto WHERE tenant_id = $1 AND external_id = 'P-EX-02'", [t]));
+
+    it('RN-CAD-10: substituir_tudo reativa na carga seguinte o inativado que volta SEM a coluna ativo, com uma linha só', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-reativa', ['cadastros']);
+      await carregarTudo(T);
+      await rodar(T, 'substituir_tudo', csv(1, false));
+      expect((await linhasDe(T))[0]?.deleted_at).not.toBeNull();
+      await rodar(T, 'substituir_tudo', csv(2, true));
+      const l = await linhasDe(T);
+      expect(l).toHaveLength(1);
+      expect(l[0]?.deleted_at).toBeNull();
+    }, 120_000);
+
+    it('modo adicionar: célula ativo vazia não altera (D6): o inativado continua inativo', async () => {
+      const T = await criarTenant(efemero.admin, 'portal-adicionar', ['cadastros']);
+      await carregarTudo(T);
+      await rodar(T, 'substituir_tudo', csv(1, false));
+      await rodar(T, 'adicionar', csv(2, true));
+      const l = await linhasDe(T);
+      expect(l).toHaveLength(1);
+      expect(l[0]?.deleted_at).not.toBeNull();
+    }, 120_000);
+  });
 });
