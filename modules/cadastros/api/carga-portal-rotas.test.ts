@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
+import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ENTIDADES_CARGA_PORTAL, ErroApi, SituacaoCargasPlataforma, TIPO_CSV, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarPluginPlataformaCadastros } from './carga-portal-rotas';
 import { dependenciasEmMemoria } from './memoria';
@@ -15,6 +15,10 @@ const csv = (nome: string) => readFileSync(join(pasta, `${nome}.csv`));
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const EXEC = '33333333-3333-4333-8333-333333333333';
 const FRASE = 'autorizo substituir tudo';
+const SITUACAO = {
+  empresa_id: TENANT, modulo_licenciado: true,
+  cadastros: ENTIDADES_CARGA_PORTAL.map((cadastro) => ({ cadastro, ativos: cadastro === 'filial' ? 2 : 0, erros: 0, ultima_carga: null })),
+};
 
 function montar() {
   const m = dependenciasEmMemoria();
@@ -27,7 +31,7 @@ function montar() {
     consultar: (async (sql: string, p: readonly unknown[] = []) => {
       sqls.push({ sql, p });
       if (sql.includes('portal_carga_iniciar')) return [{ id: EXEC }];
-      if (sql.includes('portal_carga_situacao')) return [{ ok: true }];
+      if (sql.includes('portal_carga_situacao')) return [{ ok: true, situacao: SITUACAO }];
       return [];
     }) as Transacao['consultar'],
   });
@@ -58,6 +62,9 @@ describe('rotas da carga no /config (por etapa)', () => {
   it('RN-CAD-10: as duas rotas são por_etapa, sem idempotência, na ação plataforma.cadastros.carga', () => {
     const { plugin } = montar();
     expect(plugin.rotas.map((r) => [r.caminho, r.transacoes, r.idempotencia, r.acao])).toEqual([
+      [CAMINHOS_CARGAS_PLATAFORMA.situacao, 'por_etapa', undefined, 'plataforma.cadastros.carga'],
+      [CAMINHOS_CARGAS_PLATAFORMA.modelo, 'por_etapa', undefined, 'plataforma.cadastros.carga'],
+      [CAMINHOS_CARGAS_PLATAFORMA.erros, 'por_etapa', undefined, 'plataforma.cadastros.carga'],
       [CAMINHOS_CARGAS_PLATAFORMA.validar, 'por_etapa', undefined, 'plataforma.cadastros.carga'],
       [CAMINHOS_CARGAS_PLATAFORMA.gravar, 'por_etapa', undefined, 'plataforma.cadastros.carga'],
     ]);
@@ -121,5 +128,44 @@ describe('rotas da carga no /config (por etapa)', () => {
     expect(t.passos).toEqual(['plataforma', `tenant:${TENANT}`]);
     expect(t.sqls.some((s) => s.sql.includes('portal_carga_iniciar'))).toBe(false);
     expect(t.eventos).toHaveLength(0);
+  });
+
+  it('RF-CAD-11: GET situacao roda uma só transação de plataforma, com o id da empresa, e responde no formato do SDK', async () => {
+    const t = montar();
+    const r = await t.plugin.rotas.find((x) => x.caminho === CAMINHOS_CARGAS_PLATAFORMA.situacao)!.executar(
+      { sessao: { superadmin_id: 's', sessao_id: 's' }, request_id: 'req-1', agora: new Date(), comPlataforma: async (f: (x: Transacao) => Promise<unknown>) => { t.passos.push('plataforma'); return f({ consultar: (async (sql: string, p: readonly unknown[] = []) => { t.sqls.push({ sql, p }); return [{ situacao: SITUACAO }]; }) as Transacao['consultar'] }); } } as unknown as ContextoPlataformaPorEtapa,
+      { corpo: undefined, consulta: undefined, params: { id: TENANT } });
+    const s = SituacaoCargasPlataforma.parse(r.corpo);
+    expect(s.cadastros).toHaveLength(10);
+    expect(s.cadastros[0]).toMatchObject({ cadastro: 'filial', numero: 1, situacao: 'carregado', liberado: true, depende_de: null });
+    expect(s.cadastros.find((x) => x.cadastro === 'vendedor')).toMatchObject({ situacao: 'nao_carregado' });
+    expect(t.passos).toEqual(['plataforma']);
+    expect(t.sqls[0]).toMatchObject({ p: [TENANT] });
+    expect(t.sqls[0]!.sql).toContain('cadastros.portal_carga_situacao($1)');
+  });
+
+  it('RF-CAD-11: GET modelo devolve o CSV modelo do cadastro com o nome do SDK; cadastro desconhecido é 404', async () => {
+    const t = montar();
+    const r = await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.modelo, 'filial', {});
+    expect(r.cabecalhos).toMatchObject({ 'content-type': TIPO_CSV, 'content-disposition': 'attachment; filename="modelo-filial.csv"' });
+    expect(String(r.corpo).startsWith('\uFEFF')).toBe(true);
+    expect(String(r.corpo).split('\r\n')[0]).toContain(';');
+    expect((await falha(t.chamar(CAMINHOS_CARGAS_PLATAFORMA.modelo, 'titulo', {}))).status).toBe(404);
+  });
+
+  it('RF-CAD-11: POST erros devolve o CSV com linha, campo, codigo e motivo, sem o valor da célula', async () => {
+    const t = montar();
+    const base = csv('filial').toString('utf8').trim().split(/\r?\n/);
+    const ruim = [base[0], base[1]!.replace(/[^;]+/, 'VALOR-SECRETO-123')].join('\n') + '\n';
+    const r = await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.erros, 'filial', { arquivo: Buffer.from('coluna_errada\nx\n') });
+    const linhas = String(r.corpo).replace('\uFEFF', '').trim().split('\r\n');
+    expect(linhas[0]).toBe('linha;campo;codigo;motivo');
+    expect(linhas.length).toBeGreaterThan(1);
+    expect(r.cabecalhos).toMatchObject({ 'content-type': TIPO_CSV, 'content-disposition': 'attachment; filename="erros-filial.csv"' });
+    expect(t.passos).toEqual(['plataforma', `tenant:${TENANT}`]);
+    expect(t.eventos).toHaveLength(0);
+    const r2 = await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.erros, 'filial', { arquivo: Buffer.from(ruim) });
+    expect(String(r2.corpo)).not.toContain('VALOR-SECRETO-123');
+    expect((await falha(t.chamar(CAMINHOS_CARGAS_PLATAFORMA.erros, 'titulo', { arquivo: csv('filial') }))).status).toBe(400);
   });
 });

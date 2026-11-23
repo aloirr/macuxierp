@@ -14,13 +14,14 @@
  * Nada de valor de célula nem dado pessoal em erro ou auditoria: só contagens.
  */
 import {
-  CAMPO_ARQUIVO_CARGA_PORTAL, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
-  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
-  definirRotaPlataforma, erros, substituirPermitido, type ArquivoRecebido, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, dependenciaPendente, situacaoCarga, type SituacaoCarga, CadastroCargaPortal, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, MENSAGENS_CARGA_PORTAL,
+  MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ModoCargaQuery, SituacaoCargasPlataforma, TEMPO_MAXIMO_ROTA_MS, CAMINHOS_CARGAS_PLATAFORMA, criarEvento, definirPluginPlataforma,
+  definirRotaPlataforma, erros, nomeErrosCarga, nomeModeloCarga, paraCsv, respostaCsv, substituirPermitido, type ArquivoRecebido, type ContextoPlataformaPorEtapa, type ContextoRota, type EntradaChamada,
   type ModoGravarCarga, type Outbox, type PluginPlataforma, type Transacao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal } from './carga-portal';
+import { modeloCsv } from '../domain';
+import { errosCargaPortal, exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal } from './carga-portal';
 import type { Dependencias } from './portas';
 
 export interface DependenciasPlataformaCadastros {
@@ -66,6 +67,24 @@ function contextoDoPortal(c: ContextoPlataformaPorEtapa, tenant: string, tx: Tra
   };
 }
 
+/** O banco devolve a situação crua (`ativos`, `erros`, `ultima_carga`); número, situação, dependência e `liberado` saem das funções puras do SDK. */
+const SituacaoCrua = z.object({
+  empresa_id: z.string(), modulo_licenciado: z.boolean(),
+  cadastros: z.array(z.object({ cadastro: CadastroCargaPortal, ativos: z.number().int().min(0), erros: z.number().int().min(0), ultima_carga: z.object({ em: z.string(), quantidade: z.number().int().min(0) }).nullable() })),
+});
+export function situacaoDaAba(bruta: unknown): SituacaoCargasPlataforma {
+  const r = SituacaoCrua.parse(bruta);
+  const situacoes = Object.fromEntries(r.cadastros.map((x) => [x.cadastro, situacaoCarga(x)])) as Record<CadastroCargaPortal, SituacaoCarga>;
+  return SituacaoCargasPlataforma.parse({
+    empresa_id: r.empresa_id, modulo_licenciado: r.modulo_licenciado,
+    cadastros: r.cadastros.map((x, i) => {
+      const def = CADASTROS_CARGA_PORTAL[i]!;
+      const dep = dependenciaPendente(x.cadastro, situacoes);
+      return { numero: def.numero, cadastro: x.cadastro, situacao: situacoes[x.cadastro], erros: x.erros, ultima_carga: x.ultima_carga, depende_de: dep, liberado: dep === null, opcional: def.opcional };
+    }),
+  });
+}
+
 type Resultado = 'concluida' | 'falhou';
 
 export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastros): PluginPlataforma {
@@ -73,6 +92,44 @@ export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastro
     c.comPlataforma((tx) => tx.consultar('SELECT cadastros.portal_carga_concluir($1, $2, $3, $4, $5, $6, $7)', [tenant, execucao, r, n.gravadas, n.com_erro, n.inativadas, c.request_id]));
 
   return definirPluginPlataforma([
+    // RF-CAD-11: as 10 linhas da aba Cargas (a função do banco confere sessão, empresa e licença); o Zod do SDK fecha o formato.
+    definirRotaPlataforma({
+      transacoes: 'por_etapa', metodo: 'GET', caminho: CAMINHOS_CARGAS_PLATAFORMA.situacao, acao: 'plataforma.cadastros.carga',
+      async executar(c, e) {
+        const [linha] = await c.comPlataforma((tx) => tx.consultar<{ situacao: unknown }>('SELECT cadastros.portal_carga_situacao($1) AS situacao', [e.params.id]));
+        return { corpo: situacaoDaAba(linha?.situacao) };
+      },
+    }),
+    // RF-CAD-11: o CSV modelo (só o cabeçalho), o mesmo do BKO. Cadastro fora dos 10 é 404.
+    definirRotaPlataforma({
+      transacoes: 'por_etapa', metodo: 'GET', caminho: CAMINHOS_CARGAS_PLATAFORMA.modelo, acao: 'plataforma.cadastros.carga',
+      async executar(_c, e) {
+        const k = CadastroCargaPortal.safeParse(e.params.cadastro);
+        if (!k.success) throw erros.naoEncontrado('Modelo');
+        return respostaCsv(nomeModeloCarga(k.data), modeloCsv(k.data));
+      },
+    }),
+    // RF-CAD-11: valida o mesmo arquivo (nada fica guardado) e devolve o CSV dos erros do relatório (com o teto MAX_ERROS_RELATORIO), sem o valor da célula (D9).
+    definirRotaPlataforma({
+      transacoes: 'por_etapa', metodo: 'POST', caminho: CAMINHOS_CARGAS_PLATAFORMA.erros, acao: 'plataforma.cadastros.carga',
+      corpo: CamposCarga, consulta: ModoCargaQuery, multipart: MULTIPART, tempoMaximoMs: TEMPO_MAXIMO_ROTA_MS,
+      async executar(c, e) {
+        const tenant = e.params.id!;
+        const cadastro = cadastroEModo(e.params, e.consulta.modo);
+        const arquivo = arquivoDaEntrada(e);
+        const [situacao] = await c.comPlataforma((tx) => tx.consultar<{ ok: boolean }>('SELECT (cadastros.portal_carga_situacao($1)->>\'modulo_licenciado\')::boolean AS ok', [tenant]));
+        if (!situacao?.ok) throw erros.regra('RN-CORE-02', MENSAGENS_CARGA_PORTAL.semLicenca, undefined, { codigo: 'modulo_desligado' });
+        const lista = await c.comTenant(tenant, (tx) => errosCargaPortal(d.deps, contextoDoPortal(c, tenant, tx, d.outbox), { cadastro, modo: e.consulta.modo, arquivo }));
+        const csv = paraCsv(
+          [
+            { titulo: 'linha', valor: (x: (typeof lista)[number]) => x.linha ?? '' }, { titulo: 'campo', valor: (x) => x.campo ?? '' },
+            { titulo: 'codigo', valor: (x) => x.codigo }, { titulo: 'motivo', valor: (x) => x.motivo },
+          ],
+          lista,
+        );
+        return respostaCsv(nomeErrosCarga(cadastro), csv);
+      },
+    }),
     definirRotaPlataforma({
       transacoes: 'por_etapa', metodo: 'POST', caminho: CAMINHOS_CARGAS_PLATAFORMA.validar, acao: 'plataforma.cadastros.carga',
       corpo: CamposCarga, consulta: ModoCargaQuery, multipart: MULTIPART, tempoMaximoMs: TEMPO_MAXIMO_ROTA_MS,
