@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { TelaLista } from '@/lib/descritor/tipos';
-import { NOTA_FUSO } from '@/lib/descritor/textos';
 import { LISTA_NOTAS, LISTA_PEDIDOS_A_FATURAR, LISTA_REJEICOES, LISTA_TITULOS } from '@/lib/telas/faturamento';
 import { NaoAutenticado } from '@/lib/api';
 import { TrocarSenhaPendente } from '@/lib/troca-pendente';
@@ -39,9 +38,9 @@ describe('lista vazia sem e com filtro (MC-0016)', () => {
     expect(await render(t, '')).toContain('Nenhum registro com estes filtros.');
     expect(await render(t, 'status=aberto')).toContain('Nenhum registro com estes filtros.');
   });
-  it('a nota de fuso aparece nas listas com data e hora e não em títulos (só datas)', async () => {
-    const nota = NOTA_FUSO;
-    for (const l of [LISTA_PEDIDOS_A_FATURAR, LISTA_NOTAS, LISTA_REJEICOES]) expect(await render(l, '')).toContain(nota);
+  it('a nota de fuso saiu das listas (RD-1062)', async () => {
+    const nota = 'Horários no fuso da empresa.';
+    for (const l of [LISTA_PEDIDOS_A_FATURAR, LISTA_NOTAS, LISTA_REJEICOES]) expect(await render(l, '')).not.toContain(nota);
     expect(await render(LISTA_TITULOS, '')).not.toContain(nota);
   });
 });

@@ -7,7 +7,7 @@ import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import type { VistaIntegracaoFdv as Vista } from '@/lib/integracao-fdv';
 import { agirIntegracaoFdv, type PedidoIntegracaoFdv, type ResultadoIntegracaoFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-integracao-fdv';
 import { baixarCsv } from '@/lib/baixar-csv';
-import { FALHA } from '@/lib/textos';
+import { mensagemDaFalha } from '@/lib/sistema-atualizado';
 import { VistaIntegracaoFdv } from './vista';
 
 /** Estado e chamadas da tela. A chave do conector fica só no campo do formulário até o envio: sem estado, URL ou armazenamento. */
@@ -27,8 +27,8 @@ export function TelaIntegracaoFdvCliente({ vista }: { vista: Vista }) {
       setErros(r.erros ?? {});
       if (r.ok || r.recarregar) iniciar(() => router.refresh()); // recarrega o monitor
       return r;
-    } catch {
-      setMensagem({ ok: false, texto: FALHA });
+    } catch (e) {
+      setMensagem({ ok: false, texto: mensagemDaFalha(e) });
       return { ok: false, mensagem: '' };
     } finally {
       setOcupado(false);

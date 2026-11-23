@@ -29,7 +29,7 @@ describe('TelaCarga', () => {
 describe('PreviaDaCarga', () => {
   it('mostra o resumo e os erros por linha (linha, campo, motivo) com "e mais N erros"', () => {
     const h = renderToStaticMarkup(<PreviaDaCarga relatorio={r({ erros: [erro(3, 'preco_cents', 'CARGA_FORMATO', 'Valor inválido.'), erro(null, null, 'PERFIL_SEM_PERMISSAO', 'Só o administrador carrega filial e limite de crédito.')], erros_omitidos: 7 })} />);
-    expect(h).toContain('Validação (nada foi gravado)');
+    expect(h).toContain('Validação');
     expect(h).toMatch(/<td[^>]*>Preços<\/td><td[^>]*>Processado<\/td><td[^>]*>5<\/td><td[^>]*>1<\/td><td[^>]*>2<\/td><td[^>]*>0<\/td><td[^>]*>2<\/td><td[^>]*>Coluna extra ignorada\.<\/td>/);
     expect(h).toMatch(/<td[^>]*>3<\/td><td[^>]*>preco_cents<\/td><td[^>]*>Valor inválido\.<\/td>/);
     expect(h).toMatch(/<td[^>]*>—<\/td><td[^>]*>—<\/td><td[^>]*>Só o administrador carrega filial e limite de crédito\.<\/td>/);

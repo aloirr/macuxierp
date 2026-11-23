@@ -12,7 +12,7 @@ import { CARGA_NAO_CONCLUIDA } from '@/lib/textos';
 type LinhaResumo = ReturnType<typeof resumoDoRelatorio>[number];
 type LinhaErro = RelatorioCarga['erros'][number];
 const COLUNAS_RESUMO: ColunaTabela<LinhaResumo>[] = [
-  { id: 'entidade', titulo: 'Entidade' }, { id: 'situacao', titulo: 'Situação' },
+  { id: 'entidade', titulo: 'Cadastro' }, { id: 'situacao', titulo: 'Situação' },
   { id: 'lidas', titulo: 'Lidas', tipo: 'numero' }, { id: 'inseridas', titulo: 'Inseridas', tipo: 'numero' },
   { id: 'atualizadas', titulo: 'Atualizadas', tipo: 'numero' }, { id: 'sem_mudanca', titulo: 'Sem mudança', tipo: 'numero' },
   { id: 'recusadas', titulo: 'Recusadas', tipo: 'numero' }, { id: 'avisos', titulo: 'Avisos', celula: (l) => l.avisos || '—' },
@@ -35,7 +35,7 @@ export function PreviaDaCarga({ relatorio }: { relatorio: RelatorioCarga }) {
   return (
     <div role="status">
       <h3>{tituloDoRelatorio(relatorio)}</h3>
-      <TabelaDensa colunas={COLUNAS_RESUMO} linhas={resumoDoRelatorio(relatorio)} chaveLinha={(l) => l.arquivo} legenda="Resumo da carga por entidade" />
+      <div className="tabela-rolavel"><TabelaDensa colunas={COLUNAS_RESUMO} linhas={resumoDoRelatorio(relatorio)} chaveLinha={(l) => l.arquivo} legenda="Resumo da carga por cadastro" /></div>
       {dependencias.map((d) => (
         <div key={d.arquivo} className="faixa-aviso" role="alert">
           <ul>{d.motivos.map((m) => <li key={m}>{d.arquivo} — {m}</li>)}</ul>
@@ -45,7 +45,7 @@ export function PreviaDaCarga({ relatorio }: { relatorio: RelatorioCarga }) {
         </div>
       ))}
       {tabelas.map((g) => (
-        <TabelaDensa key={g.arquivo} colunas={COLUNAS_ERROS} linhas={g.erros} chaveLinha={(e) => `${e.arquivo}-${e.linha}-${e.campo}-${e.motivo}`} legenda={`Erros de ${g.arquivo}`} />
+        <div key={g.arquivo} className="tabela-rolavel"><TabelaDensa colunas={COLUNAS_ERROS} linhas={g.erros} chaveLinha={(e) => `${e.arquivo}-${e.linha}-${e.campo}-${e.motivo}`} legenda={`Erros de ${g.arquivo}`} /></div>
       ))}
       {totais.erros === 0 && <p className="apoio">Nenhum erro.</p>}
       {relatorio.erros_omitidos > 0 && <p className="apoio">{textoErrosOmitidos(relatorio.erros_omitidos)}</p>}
@@ -119,7 +119,7 @@ function CartaoEntidade({ entidade, api }: { entidade: EntidadeCarga; api: strin
 export function TelaCarga({ api }: { api: string }) {
   return (
     <section>
-      <p className="apoio">Carregue na ordem abaixo: cada arquivo depende dos de cima. Em cada entidade, baixe o modelo, preencha, escolha o arquivo e use Validar; o Gravar só liga depois de uma validação sem erro.</p>
+      <p className="apoio">Carregue na ordem abaixo. Em cada cadastro: baixe o modelo, preencha, escolha o arquivo, valide e grave.</p>
       {BOTOES_CARGA.map((b) => <CartaoEntidade key={b.entidade} entidade={b.entidade} api={api} />)}
     </section>
   );

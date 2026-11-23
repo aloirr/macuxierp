@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { NOTA_FUSO } from '@/lib/descritor/textos';
 import type { DetalheVista } from '@/lib/descritor/tipos';
 import { AcoesDetalhe } from './acoes-detalhe';
 import { FaixaPendencias, Selo, TabelaVista } from './ui-cliente';
@@ -39,7 +38,6 @@ export function DetalheGenerico({ vista, rota, rotaDaPagina, voltar }: { vista: 
         {vista.historico.length === 0 ? <p className="apoio">Sem eventos.</p> : <ol>{vista.historico.map((e, i) => <li key={i}><span className="num">{e.quando}</span> · {e.texto}</li>)}</ol>}
       </section>
       )}
-      {((vista.historico?.length ?? 0) > 0 || vista.temHorario === true) && <p className="apoio">{NOTA_FUSO}</p>}
     </article>
   );
 }

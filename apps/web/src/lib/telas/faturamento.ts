@@ -178,7 +178,7 @@ export const LISTA_PEDIDOS_A_FATURAR: TelaLista = lista(
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: (['a_faturar', 'faturado_parcial', 'faturado', 'cancelado'] as const).map((s) => ({ valor: s, rotulo: rotuloDeStatusPedido(s) })) },
     FILIAL, DE, ATE,
   ],
-  { acaoDaLinha: { acao: acaoEmitir, maisAcoes: (l, p) => { const a = acaoEmitirParcial(l, p); return a ? [a] : []; }, validarAcao: validarEmitir, escritas: [POST(NOTAS)], novaChave, leituras: [LEITURA_PEDIDO], itensDaLeitura: itensDoPedido }, temHorario: true },
+  { acaoDaLinha: { acao: acaoEmitir, maisAcoes: (l, p) => { const a = acaoEmitirParcial(l, p); return a ? [a] : []; }, validarAcao: validarEmitir, escritas: [POST(NOTAS)], novaChave, leituras: [LEITURA_PEDIDO], itensDaLeitura: itensDoPedido } },
 );
 
 export const LISTA_NOTAS: TelaLista = lista(
@@ -188,10 +188,10 @@ export const LISTA_NOTAS: TelaLista = lista(
     { chave: 'status', rotulo: 'Situação', tipo: 'selecao', opcoes: StatusNota.options.map((s) => ({ valor: s, rotulo: rotuloDeStatusNota(s) })) },
     AMBIENTE, FILIAL, { chave: 'serie', rotulo: 'Série', tipo: 'texto' }, { chave: 'numero', rotulo: 'Número', tipo: 'texto' }, DE, ATE,
   ],
-  { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR, temHorario: true },
+  { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('notas'), acaoDaBarra: ACAO_INUTILIZAR },
 );
 
-export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes'), temHorario: true });
+export const LISTA_REJEICOES: TelaLista = lista('rejeicoes', paginaRejeicoes as unknown as TelaLista['pagina'], [FILIAL], { rotaDaLinha: (l) => `${ROTA_NOTAS}/${String(l.id)}`, rotuloDaLinha: rotuloDaLinha('rejeicoes') });
 
 export const LISTA_TITULOS: TelaLista = lista(
   'titulos',
@@ -279,13 +279,12 @@ export function vistaDaNota(n: NotaDetalhe, perfil: Perfil, fuso: string, agora:
     const codigo = n.c_stat === null ? '' : `${n.c_stat}: `;
     pendencias.push({ texto: `Rejeitada pela SEFAZ. ${codigo}${semPonto(n.x_motivo ?? 'sem mensagem')}. O que fazer: ${minuscula(semPonto(n.acao_sugerida ?? 'confira os dados e reenvie'))}.`, bloqueante: true, codigoRn: 'RN-FAT-07' });
   }
-  if (n.status === 'autorizada_guarda_pendente') pendencias.push({ texto: 'Autorizada pela SEFAZ. O XML ainda está sendo guardado; nada mais anda até guardar.', bloqueante: true, codigoRn: 'RN-FAT-03' });
+  if (n.status === 'autorizada_guarda_pendente') pendencias.push({ texto: 'Autorizada pela SEFAZ. Aguarde alguns instantes para seguir.', bloqueante: true, codigoRn: 'RN-FAT-03' });
 
   return {
     titulo: `Nota ${sigla}`,
     ...(seloStatus ? { selo: selo(seloStatus) } : {}),
     ...(faixaDaNota(n) ? { faixa: faixaDaNota(n) as string } : {}),
-    temHorario: true,
     cabecalho: [
       { rotulo: 'Filial', valor: n.filial_nome ?? '' }, { rotulo: 'Pedido', valor: n.pedido_numero === null || n.pedido_numero === undefined ? '' : String(n.pedido_numero) },
       { rotulo: 'Cliente', valor: n.cliente_razao_social ?? '' }, { rotulo: 'Ambiente', valor: textoDoAmbiente(n.ambiente) }, { rotulo: 'Natureza da operação', valor: n.natureza_operacao },
@@ -364,7 +363,6 @@ export function vistaDoTitulo(t: TituloDetalhe, perfil: Perfil, fuso: string, ag
     ],
     pendencias: [],
     acoes,
-    ...(t.baixas.length > 0 ? { temHorario: true } : {}),
     tabelas: [{
       titulo: 'Baixas',
       colunas: [{ id: 'quando', rotulo: 'Baixada em' }, { id: 'valor', rotulo: 'Valor', numerica: true }, { id: 'forma', rotulo: 'Forma' }, { id: 'situacao', rotulo: 'Situação' }],

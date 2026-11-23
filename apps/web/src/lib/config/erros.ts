@@ -1,4 +1,5 @@
 import { ehRespostaDefinitiva } from '../descritor/idempotencia';
+import { SESSAO_EXPIRADA } from '../textos';
 
 /** Erros do portal /config. Mensagens fixas: nada de corpo de erro cru, e-mail, nome de empresa ou senha (LGPD, ADR 0012). */
 export class ConfigNaoAutenticado extends Error {
@@ -44,7 +45,7 @@ export interface MensagemErro {
 /** Traduz o erro da API na mensagem da tela (o problema e a ação). Pura: testada sem rede. */
 export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   const base = { campos: {}, expirou: false, chaveNova: false };
-  if (e instanceof ConfigNaoAutenticado) return { ...base, texto: 'Sua sessão terminou. Entre de novo.', expirou: true };
+  if (e instanceof ConfigNaoAutenticado) return { ...base, texto: SESSAO_EXPIRADA, expirou: true };
   if (e instanceof ConfigMuitasTentativas) return { ...base, texto: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.' };
   if (e instanceof ConfigSemPermissao) return { ...base, texto: SEM_PERMISSAO };
   if (e instanceof ErroPlataforma) {
