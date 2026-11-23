@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
     "./botoes.css": "./src/botoes.css",
-    "./marca": "./src/marca.tsx"
+    "./marca": "./src/marca.tsx",
+    "./paginacao": "./src/paginacao.ts"
   },
   "scripts": {
     "lint": "eslint .",

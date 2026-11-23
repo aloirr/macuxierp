@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { numerico, tabela, tabular, texto } from './estilos.js';
+import { AnuncioLeitor } from './AnuncioLeitor.js';
+import { botaoSecundario, numerico, tabela, tabular, texto } from './estilos.js';
 
 export type DirecaoOrdem = 'asc' | 'desc';
 export type TipoColuna = 'texto' | 'numero' | 'dinheiro' | 'data' | 'status';
@@ -39,6 +40,11 @@ export interface TabelaDensaProps<T> {
   /** Texto do estado vazio: o problema e a ação. */
   textoVazio?: string;
   legenda?: string;
+  /** Há mais páginas no servidor. O botão só aparece junto de `aoCarregarMais`. */
+  temMais?: boolean;
+  carregandoMais?: boolean;
+  /** O chamador busca a próxima página e acumula as linhas (ver `acumularPagina`). */
+  aoCarregarMais?: () => void;
 }
 
 /** Ordena sem mutar; números por valor, textos em pt-BR. Estável. */
@@ -63,7 +69,7 @@ export function proximaOrdem(atual: OrdemTabela | null | undefined, colunaId: st
 }
 
 export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
-  const { colunas, linhas, chaveLinha, aoClicarLinha, rotuloLinha, aoOrdenar, textoVazio = 'Nenhum registro. Ajuste os filtros ou crie o primeiro.', legenda } = props;
+  const { colunas, linhas, chaveLinha, aoClicarLinha, rotuloLinha, aoOrdenar, temMais, carregandoMais, aoCarregarMais, textoVazio = 'Nenhum registro. Ajuste os filtros ou crie o primeiro.', legenda } = props;
   const [ordemInterna, setOrdemInterna] = useState<OrdemTabela | null>(null);
   const ordem = props.ordem !== undefined ? props.ordem : ordemInterna;
   const visiveis = ordenarLinhas(linhas, colunas.find((c) => c.id === ordem?.colunaId), ordem?.direcao ?? 'asc');
@@ -77,6 +83,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
   };
 
   return (
+    <>
     <table style={tabela.raiz}>
       {legenda ? <caption style={tabela.legenda}>{legenda}</caption> : null}
       <thead>
@@ -144,5 +151,12 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
         )}
       </tbody>
     </table>
+    {aoCarregarMais ? <AnuncioLeitor texto={linhas.length > 0 ? `${linhas.length} registros carregados.` : ''} /> : null}
+    {temMais && aoCarregarMais ? (
+      <button type="button" onClick={aoCarregarMais} disabled={carregandoMais} style={botaoSecundario(carregandoMais)}>
+        {carregandoMais ? 'Carregando…' : 'Carregar mais'}
+      </button>
+    ) : null}
+    </>
   );
 }
