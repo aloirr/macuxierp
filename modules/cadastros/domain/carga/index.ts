@@ -8,3 +8,4 @@ export * from './mapear';
 export * from './modelo';
 export * from './municipio-por-nome';
 export * from './referencias';
+export * from './substituicao';
