@@ -77,3 +77,5 @@ Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a fat
 **`acumularPagina(atuais, pagina, chave)`** (`@macuxierp/ui/paginacao`): soma sem duplicar pela chave, mantém a ordem e, em chave repetida, a versão nova substitui a antiga na mesma posição; não muta a entrada. Uso: com `proximo_cursor`, `setLinhas(acumularPagina(linhas, resp.itens, chave))` (a resposta vem de `paginaDe`, em `platform-sdk/listas.ts`) e `temMais = resp.proximo_cursor != null`; regra no JSDoc.
 
 Paginação: "Próxima página" (com a página na URL) nas listas de negócio grandes; "Carregar mais" (TabelaDensa + acumularPagina) só nas listas curtas do portal /config. (RD-0974)
+
+Tamanho do rótulo do menu: `--mx-tamanho-rotulo-menu` (o `--mx-tamanho-titulo-grupo` é alias e vai sair); não use em título de bloco.
