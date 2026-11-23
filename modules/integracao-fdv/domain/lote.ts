@@ -86,7 +86,7 @@ export interface EntradaMontagem {
 
 /**
  * Monta os lotes da entidade. Delta: sem sessão. Completo: uma sessão com partes 1..n, a última com `ultimo: true`
- * (T-0009 seção 4). Delta sem registros e sem linhas inválidas devolve `[]` (lote vazio só na sessão completa). Linhas inválidas (M5) vão no primeiro lote: até 500 detalhadas, o resto só na contagem.
+ * (T-0009 seção 4). Sem registros e sem linhas inválidas devolve `[]` no delta e na carga completa que ainda não enviou parte (o Hub recusa `lote_vazio`); só a continuação de uma sessão em andamento (`sessaoParteInicial` > 1) monta a parte final vazia, para poder fechá-la. Linhas inválidas (M5) vão no primeiro lote: até 500 detalhadas, o resto só na contagem.
  */
 export function montarLotes(e: EntradaMontagem): LoteMontado[] {
   if (e.modo === 'completo' && !e.sessaoId) throw new Error('carga completa exige o id da sessão');
@@ -98,7 +98,7 @@ export function montarLotes(e: EntradaMontagem): LoteMontado[] {
   const detalhadas = invalidas.slice(0, LIMITE_LINHAS_INVALIDAS_DETALHADAS).map(paraLinhaHub);
   const omitidas = invalidas.length - detalhadas.length;
 
-  if (e.modo === 'delta' && ordenados.length === 0 && invalidas.length === 0) return [];
+  if (ordenados.length === 0 && invalidas.length === 0 && (e.modo === 'delta' || (e.sessaoParteInicial ?? 1) <= 1)) return [];
 
   const grupos: RegistroLote[][] = [];
   let atual: RegistroLote[] = [];

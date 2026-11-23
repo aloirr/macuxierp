@@ -16,12 +16,6 @@ import { paginaLotes } from '../web/paginas';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
 
-/** Rotas de leitura: o BKO do tenant não recebe mais a chave mestra nem escreve configuração (T-0056). */
-export type DependenciasRotas = {
-  /** @deprecated ADR 0013: ignorado; sai no PR casado do engenheiro */
-  chaveMestra?: Buffer | null;
-};
-
 /** Máximo de linhas do CSV dos lotes. */
 const MAXIMO_LINHAS_CSV = 10_000;
 const Uuid = z.string().uuid();
@@ -32,7 +26,7 @@ const ParamUuid = (valor: string | undefined, campo: string): string => {
   return u.data;
 };
 
-export function criarRotas(_deps: DependenciasRotas = {}): RotaModulo[] {
+export function criarRotas(): RotaModulo[] {
   const tenant = (c: { sessao: { tenant_id: string } }): string => c.sessao.tenant_id;
 
   return [

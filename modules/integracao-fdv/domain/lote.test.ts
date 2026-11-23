@@ -45,10 +45,18 @@ describe('montagem de lote', () => {
     expect(l!.corpo.linhas_invalidas_omitidas).toBe(20);
   });
 
-  it('carga completa exige sessão e entidade sem registros gera sessão de 1 parte', () => {
+  it('carga completa exige sessão', () => {
     expect(() => montarLotes({ ...base, modo: 'completo', registros: [] })).toThrow();
-    const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, registros: [] });
-    expect(l!.corpo.sessao).toEqual({ id: SESSAO, parte: 1, ultimo: true });
+  });
+
+  it('completo sem registros = [] (o Hub recusaria lote_vazio)', () => {
+    expect(montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, registros: [] })).toEqual([]);
+    expect(montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 1, registros: [], linhas_invalidas: [] })).toEqual([]);
+  });
+
+  it('completo sem registros mas com partes já enviadas fecha a sessão com parte vazia ultimo', () => {
+    const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 3, registros: [] });
+    expect(l!.corpo.sessao).toEqual({ id: SESSAO, parte: 3, ultimo: true });
     expect(l!.cursor_declarado).toBeNull();
   });
 });

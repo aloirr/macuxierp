@@ -347,8 +347,10 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   });
   const montado = lotes[0];
   if (!montado) {
-    // nada a enviar agora. Carga completa sem registro ativo não abre sessão (o Hub recusaria lote vazio).
-    await gravarCursor(tx, e, { proximoEm: mais(agora, ESPERA_OCIOSA_S) });
+    // nada a enviar agora. Carga completa sem registro ativo não abre sessão (o Hub recusaria lote vazio): a sessão já aberta
+    // no cursor (pedida pelo BKO) e sem nenhuma parte enviada é fechada, para não pausar o cadastro.
+    const fecha = modo === 'completo' && cursor.sessao_aberta_id ? { sessaoAberta: { id: null }, sessaoLida: cursor.sessao_aberta_id } : {};
+    await gravarCursor(tx, e, { proximoEm: mais(agora, ESPERA_OCIOSA_S), ...fecha });
     return { tipo: 'nada' };
   }
   // delta só de linhas inválidas: se todas já estão declaradas (erro do ERP ainda não resolvido), não repete
