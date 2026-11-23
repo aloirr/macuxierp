@@ -29,3 +29,4 @@
 2026-11-23 — T-0051 — shell: ajustes de marca na carga, RegiaoErros única e .mx-radio na filial
 2026-11-23 — T-0051 — revisões do shell: região de erros do cabeçalho com itens (paliativo), textarea com aria, coluna Arquivo fora da tabela de erros, concordância dos omitidos.
 2026-11-23 — T-0051 — região de erros única com temErroExterno do FormularioItens (#302); paliativo removido; errosIniciais mantida (único jeito de testar SSR sem DOM)
+2026-11-23 — T-0050 — shell do portal /config (E4): sessão de superadmin, empresas, módulos, 1º admin, suspender/reativar e redefinir senha Revisão final: cookie Strict, Sair por POST (GET encerrar só apaga com 401 confirmado), guarda em empresas/nova, buscarNaApi comum, CSS sobre .conteudo/.topo.
