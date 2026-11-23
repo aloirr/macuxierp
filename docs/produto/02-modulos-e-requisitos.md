@@ -61,4 +61,6 @@
 - **RF-INF-02** Carga inicial completa por entidade e depois delta por cursor.
 - **RF-INF-03** Buscar os pedidos pendentes do FDV e devolver o retorno (número no ERP, status, nota).
 - **RF-INF-04** Monitor no BKO: último envio por entidade, erros por linha, fila, sinal de vida.
-- **RF-INF-05** Credencial do conector do FDV guardada criptografada por tenant.
+- **RF-INF-05** Integração FDV — configuração e acompanhamento. A configuração fica no portal /config, ficha da empresa, só com o superadmin: código e chave do conector, ambiente, testar conexão, ligar e desligar cada cadastro enviado, carga completa e retomar. O BKO da empresa mostra, só para leitura, por cadastro: Ligada ou Desligada, último envio e envio com falha (motivo e ação). 'Ligada' = credencial ativa e o cadastro habilitado. Molde: o portal config e o monitor de integração do Macuxi FDV. *(Texto do PO, 23/11 12h43, T-0056/v0.3.4.)*
+  - Continua valendo o texto anterior: a credencial do conector do FDV fica guardada criptografada por tenant.
+  - Regra de operação até o TOTP do superadmin: trocar conector ou ambiente de empresa em produção pelo /config só com o ok escrito do PO, registrado em recado (ADR 0013).
