@@ -12,7 +12,7 @@ import { itemParaEmissao, textoNfe } from './itens-emissao';
 import { FUSO_MANAUS_MINUTOS } from './fuso';
 import type { ConteudoNota } from './tipos-nota';
 import { validarNotaParaEmissao } from './validacao-emissao';
-import type { Violacao } from './violacao';
+import { violacao, type Violacao } from './violacao';
 
 /** Código da UF da filial emissora (AM). */
 const CUF_AM = '13';
@@ -47,6 +47,11 @@ export type ResultadoNotaParaEmissao = { ok: true; nota: NotaParaEmissaoEntrada 
  */
 export function notaParaEmissaoDe(id: IdentidadeNota, c: ConteudoNota): ResultadoNotaParaEmissao {
   const v = validarNotaParaEmissao(c);
+  // RN-FAT-08: o tpEmis da identidade (que está na chave) e o da contingência do conteúdo andam juntos; com 1 não há dhCont nem xJust.
+  const k = c.contingencia ?? null;
+  if (id.tpEmis === 1 ? k !== null : k === null || k.tpEmis !== id.tpEmis) {
+    v.push(violacao('RN-FAT-08', 'contingencia', `A contingência do conteúdo não confere com o tpEmis ${id.tpEmis} da nota.`));
+  }
   const itens: NotaParaEmissaoEntrada['itens'] = [];
   for (const i of c.itens) {
     const r = itemParaEmissao(i);
@@ -73,6 +78,8 @@ export function notaParaEmissaoDe(id: IdentidadeNota, c: ConteudoNota): Resultad
         indFinal: c.destinatario.ind_ie_dest === 1 ? 0 : 1,
         indPres: 9,
         verProc: VER_PROC,
+        ...(id.tpEmis !== 1 ? { tpEmis: id.tpEmis } : {}),
+        ...(k ? { dhCont: k.dhCont, xJust: k.xJust } : {}),
         ...(id.cnf ? { cNF: id.cnf } : {}),
       },
       emit: {

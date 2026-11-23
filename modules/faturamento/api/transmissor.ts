@@ -14,11 +14,12 @@
  */
 import { createHash } from 'node:crypto';
 import { ErroCertificadoA1, ErroMontagemNFe, type EmissorNFe } from '@macuxierp/nfe-emissor';
-import { Uf, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
+import { Uf, type SefazTransporteEpec, type SeletorEpec, type SeletorTransporte } from '@macuxierp/nfe-sefaz';
 import type { Banco, Transacao } from '@macuxierp/platform-sdk';
-import { digestValueDoXml, emTransmissao, ErroViolacao, pedidoAceitaNota } from '../domain';
+import { digestValueDoXml, emTransmissao, ErroViolacao, FUSO_MANAUS_MINUTOS, modoDoTransporte, pedidoAceitaNota, prazoEpec, situacaoPrazoEpec, transicaoVoltaContingencia } from '../domain';
 import { criarProcessadorRetorno, mudarNota, xmlDaNota, type ResultadoRetorno } from './emissao';
-import type { A1DaFilial, AmbienteFiscalDaFilial, SituacaoPedidoDoPedido, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
+import { criarProcessadorEpec, type ResultadoEpec } from './epec';
+import type { A1DaFilial, AmbienteFiscalDaFilial, GuardaEpec, SituacaoPedidoDoPedido, NotaRegistro, RepositorioNotas, RepositorioTitulos, RetornoSefaz, TransmissaoRegistrada } from './portas';
 import type { LogFaturamento } from './titulos';
 import { comA1, descarregar as descarregarLog, medir as medirChamada } from './sefaz-comum';
 import { retornoDaAutorizacao, retornoDaConsulta, retornoDoRecibo } from './retorno-sefaz';
@@ -45,11 +46,17 @@ export interface DepsTransmissor {
   emissor: EmissorNFe;
   /** Fábrica INJETADA: `criarSeletorTransporte(...)` no worker de produção; o simulador direto no arnês da T-0022. */
   sefaz: SeletorTransporte;
+  /**
+   * EPEC (tpEmis 4, RN-FAT-08): o seletor do Ambiente Nacional (`criarSeletorEpec`, que recusa filial simulada, RN-FAT-10) e a guarda do evento autorizado.
+   * Ausente = o worker não transmite nota EPEC (fica em rascunho com o motivo `destino_indisponivel`, sem queimar número).
+   */
+  epec?: { seletor: SeletorEpec; guarda: GuardaEpec };
   agora?: () => Date;
 }
 
 export type ResultadoTransmissao =
   | ResultadoRetorno
+  | ResultadoEpec
   | { resultado: 'ignorada'; motivo: 'nota_inexistente' | 'status_nao_transmissivel' | 'em_transmissao' }
   /** A filial não tem A1 ativo: nada foi enviado; a nota continua como estava (com o motivo, se ainda não assinada). */
   | { resultado: 'sem_certificado' }
@@ -61,7 +68,7 @@ export type ResultadoTransmissao =
 
 type Preparo =
   | { tipo: 'fim'; resultado: ResultadoTransmissao; a1?: undefined }
-  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null; transporte?: ReturnType<SeletorTransporte> };
+  | { tipo: 'enviar'; nota: NotaRegistro; uf: Uf; a1: A1DaFilial; xmlAssinado: string; digestValue: string | null; transporte?: ReturnType<SeletorTransporte>; epec?: SefazTransporteEpec };
 
 /** Só estes status são assinados pelo worker (0020: a `nfe_assinada` não entra em `em_autorizacao`). Contingência é do lote 4. */
 const precisaAssinar = (status: NotaRegistro['status']): boolean => status === 'rascunho' || status === 'rejeitada';
@@ -69,6 +76,17 @@ const precisaAssinar = (status: NotaRegistro['status']): boolean => status === '
 export function criarTransmissor(deps: DepsTransmissor) {
   const agora = deps.agora ?? ((): Date => new Date());
   const processar = criarProcessadorRetorno(deps.notas, deps.titulos, deps.log);
+  const processarEpec = deps.epec ? criarProcessadorEpec(deps.notas, deps.epec.guarda) : null;
+  /** RN-FAT-08: nota tpEmis 4 ainda sem o evento EPEC registrado: o envio é o do EVENTO 110140 ao Ambiente Nacional, não o da NF-e. */
+  const ehEnvioEpec = (n: NotaRegistro): boolean => n.tp_emis === 4 && !n.epec_protocolo;
+  const destinoEpec = (n: NotaRegistro, uf: Uf, a1: A1DaFilial): SefazTransporteEpec | null => {
+    if (!deps.epec) return null;
+    try {
+      return deps.epec.seletor({ filial_id: n.filial_id, ambiente: n.ambiente, uf }, a1.credencial);
+    } catch {
+      return null;
+    }
+  };
 
   /** Motivo curto e sem dado pessoal: só rótulos de regra e de campo. */
   const motivoDe = (e: unknown): string | null => {
@@ -87,7 +105,10 @@ export function criarTransmissor(deps: DepsTransmissor) {
         let nota = await deps.notas.obter(tx, nota_id);
         if (!nota) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'nota_inexistente' } };
         const assinar = precisaAssinar(nota.status);
-        if (!assinar && !emTransmissao(nota.status)) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
+        // RN-FAT-09: a volta da EPEC (emitida_contingencia -> em_autorizacao) transmite a MESMA nfe_assinada ao autorizador normal; SVC nunca volta (violação).
+        const volta = nota.status === 'emitida_contingencia';
+        if (volta && transicaoVoltaContingencia({ status: nota.status, tpEmis: nota.tp_emis, epecAutorizado: !!nota.epec_protocolo }).length > 0) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
+        if (!assinar && !volta && !emTransmissao(nota.status)) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
         // RN-FAT-07 e RN-FAT-03: quem assina trava a linha (FOR UPDATE) e relê: o reenvio da API (que também trava) não troca a revisão no meio.
         if (assinar) {
           nota = await deps.notas.obter(tx, nota_id, { travar: true });
@@ -124,16 +145,28 @@ export function criarTransmissor(deps: DepsTransmissor) {
         const conteudo = await deps.notas.lerConteudo(tx, nota_id);
         if (!conteudo) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'nota_inexistente' } };
         const uf = Uf.parse(conteudo.emitente.endereco.uf);
-        if (!assinar) return { tipo: 'enviar', nota, uf, a1, ...(await xmlAssinadoDaNota(tx, nota)) };
+        if (volta) return voltaDaEpec(tx, nota, uf, a1);
+        if (!assinar) {
+          const xml = await xmlAssinadoDaNota(tx, nota);
+          if (!ehEnvioEpec(nota)) return { tipo: 'enviar', nota, uf, a1, ...xml };
+          const epec = destinoEpec(nota, uf, a1);
+          return epec ? { tipo: 'enviar', nota, uf, a1, ...xml, epec } : { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'destino_indisponivel' } };
+        }
 
         const ultimo = await deps.notas.ultimoXmlAssinado(tx, nota.id);
         // Rejeitada já assinada para o conteúdo atual (revisão) e sem reenvio novo: trabalho velho, nada a fazer.
         if (ultimo && ultimo.versao >= nota.revisao) return { tipo: 'fim', resultado: { resultado: 'ignorada', motivo: 'status_nao_transmissivel' } };
         // RN-FAT-04/RN-FAT-07: o destino é resolvido ANTES de assinar. Se o seletor recusar (produção sem transporte real, endereço não conferido), a nota fica em
         // rascunho com o motivo, sem nfe_assinada e sem em_autorizacao; o número fica na nota e aparece em numeradasNaoEnviadas.
-        let transporte: ReturnType<SeletorTransporte>;
+        let transporte: ReturnType<SeletorTransporte> | undefined;
+        let epec: SefazTransporteEpec | undefined;
         try {
-          transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: 'normal' }, a1.credencial);
+          if (ehEnvioEpec(nota)) {
+            epec = destinoEpec(nota, uf, a1) ?? undefined;
+            if (!epec) throw new Error('destino_epec_indisponivel');
+          } else {
+            transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: modoDoTransporte(nota.tp_emis) }, a1.credencial);
+          }
         } catch {
           await deps.notas.registrarMotivoEnvio(tx, nota.id, 'destino_indisponivel');
           return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'destino_indisponivel' } };
@@ -152,9 +185,29 @@ export function criarTransmissor(deps: DepsTransmissor) {
         await deps.notas.gravarXmlAssinado(tx, nota.id, assinado.xml, createHash('sha256').update(assinado.xml, 'utf8').digest('hex'));
         // A revisão lida vai no UPDATE: se a API gravou outra no meio, o UPDATE não pega, a tx desfaz e a próxima volta usa a revisão nova.
         const enviada = await mudarNota(deps.notas, tx, nota, 'em_autorizacao', { revisao: nota.revisao });
-        return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml), transporte };
+        return { tipo: 'enviar', nota: enviada, uf, a1, xmlAssinado: assinado.xml, digestValue: digestValueDoXml(assinado.xml), ...(transporte ? { transporte } : {}), ...(epec ? { epec } : {}) };
       });
     }
+  }
+
+  /**
+   * RN-FAT-09 (ADR 0011): volta da EPEC. A nota `emitida_contingencia` com `epec_protocolo` vai a `em_autorizacao` e a MESMA `nfe_assinada` (sem remontar nem reassinar; mesma chave)
+   * é transmitida no modo `normal`. O destino é resolvido ANTES de mudar o status: se o seletor recusar, a nota segue em `emitida_contingencia` (nada se perde). Prazo vencido (168 h do
+   * evento) não impede o envio, só deixa o sinal no log (sem dado pessoal); quem decide é a SEFAZ. Rejeição segue a RN-FAT-07 (nota rejeitada mantém o número).
+   */
+  async function voltaDaEpec(tx: Transacao, nota: NotaRegistro, uf: Uf, a1: A1DaFilial): Promise<Preparo> {
+    let transporte: ReturnType<SeletorTransporte>;
+    try {
+      transporte = deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf, modo: modoDoTransporte(nota.tp_emis) }, a1.credencial);
+    } catch {
+      return { tipo: 'fim', resultado: { resultado: 'nao_assinada', motivo: 'destino_indisponivel' } };
+    }
+    const xml = await xmlAssinadoDaNota(tx, nota);
+    if (nota.epec_autorizada_em && situacaoPrazoEpec(agora(), prazoEpec({ epecAutorizadoEm: new Date(nota.epec_autorizada_em) })) === 'vencido') {
+      deps.log({ evento: 'faturamento.epec.prazo_vencido', tenant_id: nota.tenant_id, nota_id: nota.id, motivo: 'RN-FAT-09: transmissão posterior depois de 168 h do evento EPEC' });
+    }
+    const enviada = await mudarNota(deps.notas, tx, nota, 'em_autorizacao', { revisao: nota.revisao });
+    return { tipo: 'enviar', nota: enviada, uf, a1, ...xml, transporte };
   }
 
   /**
@@ -190,7 +243,8 @@ export function criarTransmissor(deps: DepsTransmissor) {
     if (p.tipo === 'fim') return p.resultado;
     const { nota, a1, xmlAssinado, digestValue } = p;
     try {
-      const transporte = p.transporte ?? deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: 'normal' }, a1.credencial);
+      if (p.epec) return await transmitirEpec(tenant_id, nota, a1, xmlAssinado, p.epec);
+      const transporte = p.transporte ?? deps.sefaz({ filial_id: nota.filial_id, ambiente: nota.ambiente, uf: p.uf, modo: modoDoTransporte(nota.tp_emis) }, a1.credencial);
       const log: TransmissaoRegistrada[] = [];
       const medir = <T extends { cStat: string; xMotivo: string }>(servico: TransmissaoRegistrada['servico'], chamar: () => Promise<T>): Promise<T> => medirChamada(agora, transporte, chamar, { nota_id, servico }, log);
       const descarregar = (t: Transacao): Promise<void> => descarregarLog(log, (reg) => deps.notas.registrarTransmissao(t, reg));
@@ -224,6 +278,24 @@ export function criarTransmissor(deps: DepsTransmissor) {
     } finally {
       a1.credencial.pfx.fill(0);
     }
+  }
+
+  /**
+   * EPEC (RN-FAT-08): a nota tpEmis 4 já assinada e em `em_autorizacao` envia o evento 110140 (o emissor monta, assina e transmite) FORA de transação; o retorno é aplicado
+   * numa tx própria (`criarProcessadorEpec`: guarda do evento antes do status). Retry com a nota ainda em `em_autorizacao` reenvia o evento com `dhEvento` novo; um 573 fica
+   * sem mudança (a consulta do evento é da etapa 4). Não registra `nota_transmissao` (o serviço 'epec' não existe na 0013).
+   */
+  async function transmitirEpec(tenant_id: string, nota: NotaRegistro, a1: A1DaFilial, xmlAssinado: string, transporte: SefazTransporteEpec): Promise<ResultadoTransmissao> {
+    if (!processarEpec) throw new Error('RN-FAT-08: EPEC sem a guarda ligada');
+    const resposta = await deps.emissor.epec({ nfe: xmlAssinado, dhEvento: agora(), fusoMinutos: FUSO_MANAUS_MINUTOS }, a1.certificado, transporte);
+    const r = await deps.banco.comTenant(tenant_id, async (tx) => {
+      const atual = await deps.notas.obter(tx, nota.id, { travar: true });
+      if (!atual) return { resultado: 'ignorada', motivo: 'nota_inexistente' } as const;
+      return processarEpec(tx, atual, resposta, resposta.assinado.xml);
+    });
+    // 573 ou lote sem retEvento: a nota segue em em_autorizacao. O pacote não tem consulta de evento (ver docs, etapa 4); o motivo vai ao log para o engenheiro/administrador conferir.
+    if (r.resultado === 'aguardando') deps.log({ evento: 'faturamento.epec.evento_sem_retorno', tenant_id, nota_id: nota.id, motivo: `cStat ${r.codigo}: aguardando a consulta do evento (pendente do engenheiro)` });
+    return r;
   }
 
   /**

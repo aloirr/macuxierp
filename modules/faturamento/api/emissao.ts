@@ -8,6 +8,7 @@
  */
 import { ErroMontagemNFe, type EmissorNFe, type NotaParaEmissaoEntrada } from '@macuxierp/nfe-emissor';
 import { montarNfeProc } from '@macuxierp/nfe-sefaz';
+import { EPEC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
 import { violacao, type Transacao, type Violacao } from '@macuxierp/platform-sdk';
 import { baseEventoDaNota } from './eventos';
 import {
@@ -28,6 +29,12 @@ import {
   montarNota,
   montarPagamento,
   contaComoReal,
+  aplicarContingenciaAoConteudo,
+  EPEC_LIGADA,
+  MENSAGEM_EPEC_DESLIGADA,
+  modalidadeDaUf,
+  TP_EMIS_DA_MODALIDADE,
+  type ContingenciaDaNota,
   validarTitulosDoBoleto,
   notaParaEmissaoDe,
   podeEditar,
@@ -51,6 +58,7 @@ import type {
   FilialEmissora,
   NotaRegistro,
   PedidosAprovados,
+  RepositorioContingencia,
   RepositorioNotas,
   ConfiguracaoFaturamento,
   RepositorioTitulos,
@@ -60,6 +68,8 @@ import type {
 import { contaComoRealDaNota, gerarTitulosSeguro, type LogFaturamento } from './titulos';
 
 export const EVENTO_NOTA_AUTORIZADA = 'faturamento.nota.autorizada@1' as const;
+/** RN-FAT-07/08: EPEC registrada (evento 110140, cStat 136), NF-e ainda não autorizada. */
+export const EVENTO_NOTA_EMITIDA_CONTINGENCIA = 'faturamento.nota.emitida_contingencia@1' as const;
 export const EVENTO_NOTA_REJEITADA = 'faturamento.nota.rejeitada@1' as const;
 
 /** Texto fiscal padrão até a configuração por filial existir (ver "Pendências" no README). */
@@ -81,6 +91,11 @@ export interface DepsEmissao {
   /** Sorteio do cNF (inteiro em [0, 100000000), injetável em teste); sem ele, o emissor sorteia. */
   sorteio?: () => number;
   tpEmis?: TipoEmissao;
+  /**
+   * RN-FAT-05/08 (ADR 0011): contingência por filial e ambiente. Havendo uma ABERTA svc_an/svc_rs no ambiente da filial, a nota nasce com tpEmis 6/7, `dhCont` (início, UTC) e `xJust` (motivo),
+   * na mesma série e sequência. Sem a porta, ou sem contingência aberta, a emissão é a de sempre. Aberta `epec`: tpEmis 4 (o worker envia o evento 110140 em vez da NF-e; RN-FAT-08).
+   */
+  contingencia?: Pick<RepositorioContingencia, 'aberta'>;
   /** Bandeira "faturamento real com NF-e simulada": lida na EMISSÃO e guardada no conteúdo da nota (`conta_como_real`); ausente = desligada. */
   configuracao?: ConfiguracaoFaturamento;
   /** Log sem dado pessoal, OBRIGATÓRIO (falha ao ler a bandeira; pendência de título). */
@@ -90,7 +105,18 @@ export interface DepsEmissao {
    * sem transporte real a nota de produção ficaria numerada e parada. Recusa ANTES de reservar o número (a série não anda).
    */
   emissaoProducaoHabilitada?: boolean;
+  /** EPEC ligada (padrão `EPEC_LIGADA`, false na v0.3.0). Com `epec` aberta e a bandeira desligada a emissão recusa (RN-FAT-05) antes de reservar o número. */
+  epecLigada?: boolean;
+  /**
+   * RN-FAT-10: existe transporte capaz de enviar a nota SVC (tpEmis 6/7) neste ambiente? Padrão (porta não injetada) = SEMPRE `false`: sem transporte a nota SVC ficaria numerada e parada
+   * (ex.: o simulador do worker recusa modo diferente de `normal`). Checada ANTES de reservar o número (emissão) e ao abrir a contingência (rota). O engenheiro liga a porta real em `apps/api/src/modulos.ts`.
+   */
+  svcDisponivel?: PortaSvcDisponivel;
 }
+
+/** `modo` é o da modalidade aberta: `svc_an` -> 'svc-an', `svc_rs` -> 'svc-rs'. */
+export type PortaSvcDisponivel = (e: { filialId: string; ambiente: 'homologacao' | 'producao'; uf: string; modo: 'svc-an' | 'svc-rs' }) => boolean | Promise<boolean>;
+export const MENSAGEM_SVC_INDISPONIVEL = 'A contingência SVC não está disponível neste ambiente.';
 
 interface Preparado {
   ok: true;
@@ -103,6 +129,12 @@ interface Preparado {
   prazos_dias: number[] | null;
   /** RN-FAT-04: bandeira da filial E homologação, calculada agora e guardada no conteúdo. */
   conta_como_real: boolean;
+  /** tpEmis da nota: o da contingência aberta (6/7), o da própria nota no reenvio ou o padrão. */
+  tpEmis: TipoEmissao;
+  /** Contingência SVC aberta na emissão nova (vira dhCont e xJust no conteúdo). */
+  contingenciaAberta: ContingenciaDaNota | null;
+  /** Reenvio: a contingência já gravada no conteúdo da nota (tpEmis, dhCont e xJust não mudam; a chave os leva). */
+  contingenciaDaNota: ConteudoNota['contingencia'];
 }
 
 export type ResultadoEmissao = { ok: true; nota: NotaRegistro; repetida: boolean } | { ok: false; violacoes: Violacao[] };
@@ -188,7 +220,7 @@ export async function mudarNota(notas: RepositorioNotas, tx: Transacao, nota: No
 
 export function criarServicoEmissao(deps: DepsEmissao) {
   const agora = deps.agora ?? ((): Date => new Date());
-  const tpEmis: TipoEmissao = deps.tpEmis ?? 1;
+  const tpEmisPadrao: TipoEmissao = deps.tpEmis ?? 1;
 
   /** Tudo que independe do número: situação com FOR SHARE, ambiente, cálculo fiscal, nota montada, destinatário e pagamento. */
   async function preparar(
@@ -197,6 +229,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     itens: EmitirNotaEntrada['itens'],
     emitidaEm: Date,
     exceto_nota_id?: string,
+    daNota?: { tpEmis: TipoEmissao; contingencia: ConteudoNota['contingencia'] },
   ): Promise<Preparado | { ok: false; violacoes: Violacao[] }> {
     const pedido = await deps.pedidos.obter(tx, pedido_id);
     if (!pedido) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
@@ -258,6 +291,26 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       prazos = condicao.prazos_dias;
       forma = forma ?? condicao.forma_tpag;
     }
+    // RN-FAT-05/08: contingência SVC aberta da filial no ambiente vigente (só na emissão nova; o reenvio mantém o tpEmis, o dhCont e o xJust da nota, que estão na chave).
+    let contingenciaAberta: ContingenciaDaNota | null = null;
+    if (!daNota && deps.contingencia) {
+      const aberta = await deps.contingencia.aberta(tx, pedido.filial_id, ambiente);
+      if (aberta) {
+        // A SVC é a da UF da filial (SVC_DA_UF do pacote): outra, o seletor recusaria depois de o número ser reservado. A EPEC (tpEmis 4) vale para a UF com EPEC no ERP (EPEC_DA_UF).
+        const daUf = aberta.modalidade === 'epec' ? (EPEC_DA_UF[filial.endereco.uf as keyof typeof EPEC_DA_UF] ? 'epec' : null) : modalidadeDaUf(filial.endereco.uf);
+        if (aberta.modalidade === 'epec' && !(deps.epecLigada ?? EPEC_LIGADA)) {
+          return { ok: false, violacoes: [violacao('RN-FAT-05', 'contingencia', MENSAGEM_EPEC_DESLIGADA)] };
+        }
+        if (aberta.modalidade !== 'epec' && !(await (deps.svcDisponivel?.({ filialId: pedido.filial_id, ambiente, uf: filial.endereco.uf, modo: aberta.modalidade === 'svc_an' ? 'svc-an' : 'svc-rs' }) ?? false))) {
+          return { ok: false, violacoes: [violacao('RN-FAT-10', 'contingencia', MENSAGEM_SVC_INDISPONIVEL)] };
+        }
+        if (daUf !== aberta.modalidade) {
+          return { ok: false, violacoes: [violacao('RN-FAT-05', 'contingencia', `A contingência aberta (${aberta.modalidade}) não é a que atende a UF ${filial.endereco.uf}; encerre e abra a correta.`)] };
+        }
+        contingenciaAberta = { modalidade: aberta.modalidade, motivo: aberta.motivo, inicioEm: new Date(aberta.inicio_em) };
+      }
+    }
+    const tpEmis: TipoEmissao = daNota ? daNota.tpEmis : contingenciaAberta ? TP_EMIS_DA_MODALIDADE[contingenciaAberta.modalidade] : tpEmisPadrao;
     // RN-FAT-06, ANTES de reservar o número: boleto sem prazos ou com total menor que as parcelas não gera título; a nota não nasce assim.
     const semTitulos = validarTitulosDoBoleto({ forma_tpag: forma, prazos_dias: prazos, total_centavos: montada.nota.totais.vNF });
     if (semTitulos.length > 0) return { ok: false, violacoes: semTitulos };
@@ -265,12 +318,12 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     const bandeira = deps.configuracao
       ? await deps.configuracao.lerBandeiraSegura(tx, pedido.filial_id, (motivo) => deps.log({ evento: 'faturamento.bandeira.leitura_falhou', motivo }))
       : false;
-    return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos, conta_como_real: contaComoReal(ambiente, bandeira) };
+    return { ok: true, pedido, nota: montada.nota, filial, destinatario: dest.destinatario, forma_tpag: forma, prazos_dias: prazos, conta_como_real: contaComoReal(ambiente, bandeira), tpEmis, contingenciaAberta, contingenciaDaNota: daNota?.contingencia ?? null };
   }
 
   function montarConteudo(p: Preparado, numero: number, emitida_em: Date, itensSolicitados: EmitirNotaEntrada['itens']): ConteudoNota {
     const pag = montarPagamento({ forma_tpag: p.forma_tpag, prazos_dias: p.prazos_dias, total_centavos: p.nota.totais.vNF, emissao: emitida_em, numero });
-    return {
+    const conteudo: ConteudoNota = {
       natOp: NAT_OP_PADRAO,
       emitente: { cnpj: p.filial.cnpj, nome: p.filial.razao_social, fantasia: p.filial.nome_fantasia, ie: p.filial.ie, crt: p.filial.crt, endereco: p.filial.endereco },
       destinatario: p.destinatario,
@@ -283,10 +336,13 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       conta_como_real: p.conta_como_real,
       itens: p.nota.itens,
     };
+    // RN-FAT-08: tpEmis 6/7, dhCont (ISO UTC com Z) e xJust só nas notas em contingência; as normais ficam sem o campo.
+    if (p.contingenciaAberta) return aplicarContingenciaAoConteudo(conteudo, p.contingenciaAberta);
+    return p.contingenciaDaNota ? { ...conteudo, contingencia: p.contingenciaDaNota } : conteudo;
   }
 
   const identidade = (p: Preparado, fixo: Pick<IdentidadeNota, 'numero' | 'cnf' | 'emitida_em'>): IdentidadeNota =>
-    identidadeNota({ ...p.nota, tpEmis, serie: p.filial.nfe_serie as number }, fixo);
+    identidadeNota({ ...p.nota, tpEmis: p.tpEmis, serie: p.filial.nfe_serie as number }, fixo);
 
   const opcoesMontagem = deps.sorteio ? { aleatorio: (max: number): number => (deps.sorteio as () => number)() % max } : undefined;
 
@@ -373,7 +429,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
         numero,
         cnf: montada.cNF,
         chave_acesso: montada.chave,
-        tp_emis: tpEmis,
+        tp_emis: p.tpEmis,
         emitida_em: id.emitida_em.toISOString(),
         total_centavos: p.nota.totais.vNF,
         idempotencia: entrada.idempotencia,
@@ -396,7 +452,9 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       return { ok: false, violacoes: [violacao('RN-FAT-07', 'status', `Só a nota rejeitada ou em rascunho é reenviada (status "${nota.status}").`)] };
     }
     const emitida_em = new Date(nota.emitida_em);
-    const p = await preparar(tx, nota.pedido_id, nota.itens_solicitados ?? undefined, emitida_em, nota.id);
+    // O conteúdo gravado guarda dhCont e xJust da nota em contingência: o reenvio mantém o tpEmis e os dois (a chave leva o tpEmis).
+    const gravado = await deps.notas.lerConteudo(tx, nota.id);
+    const p = await preparar(tx, nota.pedido_id, nota.itens_solicitados ?? undefined, emitida_em, nota.id, { tpEmis: nota.tp_emis, contingencia: gravado?.contingencia ?? null });
     if (!p.ok) return p;
     const id = identidade(p, { numero: nota.numero, cnf: nota.cnf, emitida_em });
     const conteudo = montarConteudo(p, nota.numero, emitida_em, nota.itens_solicitados ?? undefined);
