@@ -1,0 +1,323 @@
+/**
+ * Plugin de plataforma da Integração FDV (portal `/config`, ADR 0013 seções 2 a 5; T-0056): a credencial do conector, a configuração
+ * do envio e a operação (carga completa e retomar) saem do BKO do tenant e passam a ser só do superadmin, em `/v1/plataforma`.
+ *
+ * - Banco: o repositório chama SÓ as funções `integracao_fdv.portal_*` (0038, SECURITY DEFINER; o papel `macuxierp_config` não lê
+ *   tabela do módulo). Elas revalidam a sessão do superadmin, travam a empresa alvo e gravam a auditoria na mesma transação.
+ * - Regras no domain (`planejarTrocaCredencial`, `validarConfiguracao`, `decidirCargaCompleta`, `decidirRetomar`, `prefixoExibido`);
+ *   a função do banco só confere de novo a pré-condição mínima (`MXI03`).
+ * - A chave do conector é só de escrita: cifrada aqui (AES-256-GCM, AAD = `:id` da empresa ALVO) e some. Nunca vai a log, resposta,
+ *   auditoria, evento nem erro. O módulo não lê variável de ambiente: a apps/api injeta a chave mestra.
+ * - Erros do banco: sobem crus para o `erroDaPlataforma` da apps/api (`P0002`→404, `23514`→422, `MXI*`→409). O plugin só devolve o 422
+ *   `RN-CORE-02` da conferência prévia por `modulo_licenciado` do `portal_ler` (ADR 0013 seção 2).
+ * - O `PUT /credencial` não tem `Idempotency-Key` (o hash do corpo levaria a chave); a troca é idempotente por si e o `p_anterior_id`
+ *   recusa a troca baseada em leitura velha (`MXI02`).
+ */
+import {
+  CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
+  ConfigurarIntegracaoPlataformaEntrada,
+  DefinirCredencialPlataformaEntrada,
+  EntidadeEnvioFdv,
+  ErroApi,
+  IntegracaoFdvPlataforma,
+  UltimoSinalFdv,
+  cifrarCampo,
+  definirPluginPlataforma,
+  definirRotaPlataforma,
+  erros,
+  falhaEnvioFdv,
+  integracaoFdvLigada,
+  type PluginPlataforma,
+  type RespostaAceitoFdv,
+  type RespostaRetomadaFdv,
+  type RespostaTestarPlataforma,
+  type Transacao,
+} from '@macuxierp/platform-sdk';
+import { z } from 'zod';
+import { ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
+import { decidirCargaCompleta, decidirRetomar, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
+
+const Uuid = z.string().uuid();
+const Instante = z.string().datetime();
+
+/** O jsonb do `portal_ler` (0038): os insumos crus. A falha do cadastro sai do `falhaEnvioFdv` do SDK, aqui. */
+const EstadoPortal = z.object({
+  empresa_id: Uuid,
+  modulo_licenciado: z.boolean(),
+  credencial: z
+    .object({
+      id: Uuid,
+      conector_id: z.string(),
+      ambiente: DefinirCredencialPlataformaEntrada.shape.ambiente,
+      chave_prefixo: z.string().min(1).max(8),
+      criada_em: Instante,
+      ultimo_uso_em: Instante.nullable(),
+    })
+    .nullable(),
+  entidades_habilitadas: z.array(EntidadeEnvioFdv),
+  limite_registros_lote: z.number().int().nullable(),
+  /** Chave de topo do banco: `sinal` (no contrato do portal vira `ultimo_sinal`). */
+  sinal: UltimoSinalFdv.nullable(),
+  cadastros: z.array(
+    z.object({
+      entidade: EntidadeEnvioFdv,
+      pausada_motivo: MotivoPausa.nullable(),
+      lote_em_voo: z.boolean(),
+      ultimo_envio_em: Instante.nullable(),
+      ultimo_lote: z.object({ estado: z.string(), erro_codigo: z.string().nullable(), em: Instante }).nullable(),
+      erros_abertos: z.number().int().min(0),
+    }),
+  ),
+});
+export type EstadoPortal = z.infer<typeof EstadoPortal>;
+
+/** Porta do banco do portal: uma função SQL por método. O dublê dos testes unitários implementa esta interface. */
+export interface RepositorioPortalIntegracaoFdv {
+  ler(tx: Transacao, tenant: string): Promise<EstadoPortal>;
+  definirCredencial(
+    tx: Transacao,
+    p: {
+      tenant: string;
+      anterior_id: string | null;
+      conector_id: string;
+      ambiente: string;
+      chave_cifrada: Buffer;
+      chave_prefixo: string;
+      chave_mestra_versao: number;
+      zerar_espelho: boolean;
+      evento_carga_inicial: Record<string, unknown> | null;
+      request_id: string;
+    },
+  ): Promise<EstadoPortal>;
+  configurar(tx: Transacao, p: { tenant: string; entidades: string[]; limite: number; request_id: string }): Promise<EstadoPortal>;
+  testar(tx: Transacao, p: { tenant: string; request_id: string }): Promise<Date | string>;
+  cargaCompleta(tx: Transacao, p: { tenant: string; entidade: string; request_id: string }): Promise<void>;
+  retomar(tx: Transacao, p: { tenant: string; entidade: string; request_id: string }): Promise<RespostaRetomadaFdv>;
+}
+
+async function funcao<L>(tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<L> {
+  const [l] = await tx.consultar<{ r: L }>(sql, parametros);
+  if (!l) throw new Error('função do portal sem retorno');
+  return l.r;
+}
+
+/** Adaptador SQL: chama só `integracao_fdv.portal_*`, nunca tabela. */
+export const repositorioPortalSql: RepositorioPortalIntegracaoFdv = {
+  async ler(tx, tenant) {
+    return EstadoPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_ler($1::uuid) AS r', [tenant]));
+  },
+  async definirCredencial(tx, p) {
+    // p_entidades e p_limite ficam no DEFAULT da função (as 10 da F2 e 5.000 na primeira; a troca copia da ativa)
+    const r = await funcao(
+      tx,
+      'SELECT integracao_fdv.portal_credencial_definir($1::uuid, $2::uuid, $3, $4, $5::bytea, $6, $7::int, $8::boolean, $9::jsonb, $10) AS r',
+      [
+        p.tenant, p.anterior_id, p.conector_id, p.ambiente, p.chave_cifrada, p.chave_prefixo, p.chave_mestra_versao, p.zerar_espelho,
+        p.evento_carga_inicial === null ? null : JSON.stringify(p.evento_carga_inicial), p.request_id,
+      ],
+    );
+    return EstadoPortal.parse(r);
+  },
+  async configurar(tx, p) {
+    return EstadoPortal.parse(
+      await funcao(tx, 'SELECT integracao_fdv.portal_configurar($1::uuid, $2::text[], $3::int, $4) AS r', [p.tenant, p.entidades, p.limite, p.request_id]),
+    );
+  },
+  testar(tx, p) {
+    return funcao<Date | string>(tx, 'SELECT integracao_fdv.portal_testar($1::uuid, $2) AS r', [p.tenant, p.request_id]);
+  },
+  async cargaCompleta(tx, p) {
+    await funcao(tx, 'SELECT integracao_fdv.portal_carga_completa($1::uuid, $2, $3) AS r', [p.tenant, p.entidade, p.request_id]);
+  },
+  async retomar(tx, p) {
+    const r = await funcao<{ retomada: boolean }>(tx, 'SELECT integracao_fdv.portal_retomar($1::uuid, $2, $3) AS r', [p.tenant, p.entidade, p.request_id]);
+    return { retomada: r.retomada === true };
+  },
+};
+
+/** O jsonb do banco no formato público do portal (`IntegracaoFdvPlataforma`): a validação do Zod confere a derivação de `ligada`. */
+export function paraPlataforma(e: EstadoPortal): IntegracaoFdvPlataforma {
+  const c = e.credencial;
+  return IntegracaoFdvPlataforma.parse({
+    empresa_id: e.empresa_id,
+    modulo_licenciado: e.modulo_licenciado,
+    credencial_id: c?.id ?? null,
+    conector_id: c?.conector_id ?? null,
+    ambiente: c?.ambiente ?? null,
+    chave_prefixo: c?.chave_prefixo ?? null,
+    criada_em: c?.criada_em ?? null,
+    ultimo_uso_em: c?.ultimo_uso_em ?? null,
+    entidades_habilitadas: e.entidades_habilitadas,
+    limite_registros_lote: e.limite_registros_lote,
+    cadastros: e.cadastros.map((k) => ({
+      entidade: k.entidade,
+      ligada: integracaoFdvLigada({ credencial_id: c?.id ?? null, entidades_habilitadas: e.entidades_habilitadas }, k.entidade),
+      ultimo_envio_em: k.ultimo_envio_em,
+      falha: falhaEnvioFdv({ pausada_motivo: k.pausada_motivo, ultimo_lote_estado: k.ultimo_lote?.estado ?? null, erros_abertos: k.erros_abertos }),
+      lote_em_voo: k.lote_em_voo,
+    })),
+    ultimo_sinal: e.sinal,
+  });
+}
+
+export interface DependenciasPlataformaIntegracaoFdv {
+  /** `MACUXIERP_CHAVE_INTEGRACAO` já lida pela apps/api (32 bytes). `null` = ausente: só o `PUT /credencial` responde 503. */
+  chaveIntegracao: Buffer | null;
+  /** Versão gravada em `credencial.chave_mestra_versao` (o worker abre pela versão). Padrão 1. */
+  chaveVersao?: number;
+  /** Só para teste: o padrão é o adaptador SQL (`portal_*`). */
+  repo?: RepositorioPortalIntegracaoFdv;
+}
+
+const CHAVE_AUSENTE = (): ErroApi =>
+  new ErroApi(503, 'CHAVE_INTEGRACAO_AUSENTE', 'O cadastro da credencial está indisponível: a chave de criptografia do servidor não foi configurada. Fale com o suporte.');
+
+function copiarChaveIntegracao(chave: Buffer | null): Buffer | null {
+  if (chave === null) return null;
+  if (!Buffer.isBuffer(chave) || chave.length !== 32) throw new Error('chaveIntegracao da integração-fdv deve ter 32 bytes');
+  return Buffer.from(chave);
+}
+
+const idDaRota = (params: Record<string, string>): string => {
+  const r = Uuid.safeParse(params.id);
+  if (!r.success) throw erros.validacao({ id: 'UUID inválido' });
+  return r.data;
+};
+
+const entidadeDaRota = (params: Record<string, string>): EntidadeEnvioFdv => {
+  const r = EntidadeEnvioFdv.safeParse(params.entidade);
+  if (!r.success) throw erros.validacao({ entidade: 'Cadastro desconhecido' });
+  return r.data;
+};
+
+const MSG_MODULO_DESLIGADO = 'Ligue o módulo Integração FDV na empresa antes de configurar';
+const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO);
+
+export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaIntegracaoFdv): PluginPlataforma {
+  const chaveIntegracao = copiarChaveIntegracao(deps.chaveIntegracao);
+  const versaoDaChave = deps.chaveVersao ?? 1;
+  const repo = deps.repo ?? repositorioPortalSql;
+
+  /** Lê o estado e recusa (422 `RN-CORE-02`) a escrita em empresa sem o módulo licenciado. */
+  const lerLicenciado = async (tx: Transacao, tenant: string): Promise<EstadoPortal> => {
+    const estado = await repo.ler(tx, tenant);
+    if (!estado.modulo_licenciado) throw semModulo();
+    return estado;
+  };
+  const exigirCredencial = (e: EstadoPortal) => {
+    if (!e.credencial) throw erros.conflito('Cadastre a credencial do FDV antes');
+    return e.credencial;
+  };
+  const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
+
+  return definirPluginPlataforma([
+    definirRotaPlataforma({
+      metodo: 'GET',
+      caminho: C.ler,
+      acao: 'plataforma.integracao_fdv.ver',
+      async executar(c, { params }) {
+        const estado = await repo.ler(c.tx, idDaRota(params));
+        return { corpo: paraPlataforma(estado) };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'PUT',
+      caminho: C.credencial,
+      acao: 'plataforma.integracao_fdv.configurar',
+      corpo: DefinirCredencialPlataformaEntrada,
+      async executar(c, { corpo, params }) {
+        const tenant = idDaRota(params);
+        if (!chaveIntegracao) throw CHAVE_AUSENTE();
+        const atual = await lerLicenciado(c.tx, tenant);
+        const plano = planejarTrocaCredencial(
+          atual.credencial ? { conector_id: atual.credencial.conector_id, ambiente: atual.credencial.ambiente } : null,
+          { conector_id: corpo.conector_id, ambiente: corpo.ambiente },
+        );
+        // AAD = a empresa ALVO (`:id`), nunca o tenant de referência da sessão de plataforma
+        const chave_cifrada = cifrarCampo({ chave: chaveIntegracao, tenantId: tenant, claro: corpo.chave });
+        const evento = plano.pedirCargaInicial ? EVENTOS[EVENTO_CARGA_INICIAL].parse({ entidades: [...ENTIDADES_CARGA_INICIAL] }) : null;
+        const estado = await repo.definirCredencial(c.tx, {
+            tenant,
+            anterior_id: atual.credencial?.id ?? null,
+            conector_id: corpo.conector_id,
+            ambiente: corpo.ambiente,
+            chave_cifrada,
+            chave_prefixo: prefixoExibido(corpo.chave),
+            chave_mestra_versao: versaoDaChave,
+            zerar_espelho: plano.zerarEspelho,
+            evento_carga_inicial: evento,
+            request_id: c.request_id,
+          });
+        return { status: plano.primeira ? 201 : 200, corpo: paraPlataforma(estado) };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: C.testar,
+      acao: 'plataforma.integracao_fdv.configurar',
+      idempotencia: 'opcional',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        exigirCredencial(await lerLicenciado(c.tx, tenant));
+        const pedido = await repo.testar(c.tx, { tenant, request_id: c.request_id });
+        const corpo: RespostaTestarPlataforma = { aceito: true, pedido_em: new Date(pedido).toISOString() };
+        return { status: 202, corpo };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'PUT',
+      caminho: C.configuracao,
+      acao: 'plataforma.integracao_fdv.configurar',
+      corpo: ConfigurarIntegracaoPlataformaEntrada,
+      idempotencia: 'opcional',
+      async executar(c, { corpo, params }) {
+        const tenant = idDaRota(params);
+        const violacoes = validarConfiguracao(corpo); // a API revalida o que o Zod já barrou
+        if (violacoes.length > 0) throw erros.regra(violacoes[0]!.rn, violacoes[0]!.mensagem, Object.fromEntries(violacoes.map((v) => [v.campo, v.mensagem])));
+        exigirCredencial(await lerLicenciado(c.tx, tenant));
+        const estado = await repo.configurar(c.tx, { tenant, entidades: corpo.entidades_habilitadas, limite: corpo.limite_registros_lote, request_id: c.request_id });
+        return { corpo: paraPlataforma(estado) };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: C.cargaCompleta,
+      acao: 'plataforma.integracao_fdv.operar',
+      idempotencia: 'obrigatoria',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        const entidade = entidadeDaRota(params);
+        const atual = await lerLicenciado(c.tx, tenant);
+        exigirCredencial(atual);
+        const decisao = decidirCargaCompleta({
+          habilitada: atual.entidades_habilitadas.includes(entidade),
+          loteEmVoo: atual.cadastros.find((k) => k.entidade === entidade)?.lote_em_voo ?? false,
+        });
+        if (!decisao.ok) {
+          if (decisao.codigo === 'lote_em_voo') throw erros.conflito(decisao.mensagem);
+          throw erros.regra('RN-INF-02', decisao.mensagem, { entidade: decisao.mensagem }, { codigo: decisao.codigo });
+        }
+        await repo.cargaCompleta(c.tx, { tenant, entidade, request_id: c.request_id });
+        const corpo: RespostaAceitoFdv = { aceito: true };
+        return { status: 202, corpo };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: C.retomar,
+      acao: 'plataforma.integracao_fdv.operar',
+      idempotencia: 'opcional',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        const entidade = entidadeDaRota(params);
+        const atual = await lerLicenciado(c.tx, tenant);
+        const pausa = atual.cadastros.find((k) => k.entidade === entidade)?.pausada_motivo ?? null;
+        if (decidirRetomar(pausa).acao === 'nada') {
+          const nada: RespostaRetomadaFdv = { retomada: false };
+          return { corpo: nada };
+        }
+        return { corpo: await repo.retomar(c.tx, { tenant, entidade, request_id: c.request_id }) };
+      },
+    }),
+  ]);
+}

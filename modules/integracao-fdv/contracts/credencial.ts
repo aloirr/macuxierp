@@ -1,16 +1,22 @@
 /** C-6: credencial do conector (RF-INF-05). A chave nunca volta em resposta, log, evento nem trabalho. */
 import { z } from 'zod';
-import { ENTIDADES_HUB_F2, EntidadeHub, LIMITE_REGISTROS_LOTE } from './hub';
+import {
+  AmbienteIntegracaoFdv,
+  ConfigurarIntegracaoPlataformaEntrada,
+  DefinirCredencialPlataformaEntrada,
+  LIMITE_REGISTROS_LOTE_FDV,
+  RespostaAceitoFdv,
+  RespostaRetomadaFdv,
+  RespostaTestarPlataforma,
+} from '@macuxierp/platform-sdk';
+import { EntidadeHub } from './hub';
 
-export const AmbienteHub = z.enum(['teste', 'producao']);
-export type AmbienteHub = z.infer<typeof AmbienteHub>;
+/** Formatos da credencial e da operação vêm do SDK (ADR 0013, `portal-integracao.ts`): a mesma validação no portal e no módulo. */
+export const AmbienteHub = AmbienteIntegracaoFdv;
+export type AmbienteHub = AmbienteIntegracaoFdv;
 
-export const CredencialEntrada = z.object({
-  conector_id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
-  chave: z.string().regex(/^\S+$/).min(32).max(512),
-  ambiente: AmbienteHub,
-});
-export type CredencialEntrada = z.infer<typeof CredencialEntrada>;
+export const CredencialEntrada = DefinirCredencialPlataformaEntrada;
+export type CredencialEntrada = DefinirCredencialPlataformaEntrada;
 
 /** Só o prefixo (até 8 caracteres) fica visível. */
 export const CredencialResumo = z.object({
@@ -23,27 +29,22 @@ export const CredencialResumo = z.object({
 });
 export type CredencialResumo = z.infer<typeof CredencialResumo>;
 
-const EntidadeHabilitavel = z.enum(ENTIDADES_HUB_F2 as unknown as [string, ...string[]]);
-
-/** Configuração do envio na credencial ativa (RN-INF-02): entidades que o conector envia e o teto de registros por lote. */
-export const ConfiguracaoEntrada = z.object({
-  entidades_habilitadas: z.array(EntidadeHabilitavel).max(ENTIDADES_HUB_F2.length),
-  limite_registros_lote: z.number().int().min(1).max(LIMITE_REGISTROS_LOTE),
-});
-export type ConfiguracaoEntrada = z.infer<typeof ConfiguracaoEntrada>;
+/** Configuração do envio na credencial ativa (RN-INF-02): entidades que o conector envia e o teto por lote. Igual ao do SDK (recusa cadastro repetido). */
+export const ConfiguracaoEntrada = ConfigurarIntegracaoPlataformaEntrada;
+export type ConfiguracaoEntrada = ConfigurarIntegracaoPlataformaEntrada;
 
 /** Configuração como o monitor e `PUT /configuracao` devolvem: as entidades já tipadas. */
-export const ConfiguracaoResumo = ConfiguracaoEntrada.extend({ entidades_habilitadas: z.array(EntidadeHub) });
+export const ConfiguracaoResumo = z.object({ entidades_habilitadas: z.array(EntidadeHub), limite_registros_lote: z.number().int().min(1).max(LIMITE_REGISTROS_LOTE_FDV) });
 export type ConfiguracaoResumo = z.infer<typeof ConfiguracaoResumo>;
 
 /** `202` de `POST /entidades/:entidade/carga-completa`. */
-export const RespostaAceito = z.object({ aceito: z.literal(true) });
-export type RespostaAceito = z.infer<typeof RespostaAceito>;
+export const RespostaAceito = RespostaAceitoFdv;
+export type RespostaAceito = RespostaAceitoFdv;
 
 /** `202` de `POST /credencial/testar`: `pedido_em` (ISO UTC) é o instante do pedido; o monitor mostra o sinal aceito a partir dele. */
-export const RespostaTestar = RespostaAceito.extend({ pedido_em: z.string().datetime() });
-export type RespostaTestar = z.infer<typeof RespostaTestar>;
+export const RespostaTestar = RespostaTestarPlataforma;
+export type RespostaTestar = RespostaTestarPlataforma;
 
 /** `200` de `POST /entidades/:entidade/retomar`: `false` quando a entidade não estava pausada. */
-export const RespostaRetomada = z.object({ retomada: z.boolean() });
-export type RespostaRetomada = z.infer<typeof RespostaRetomada>;
+export const RespostaRetomada = RespostaRetomadaFdv;
+export type RespostaRetomada = RespostaRetomadaFdv;

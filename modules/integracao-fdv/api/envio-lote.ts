@@ -88,7 +88,7 @@ interface LinhaCursor {
   sessao_aberta_id: string | null;
   pausada_motivo: MotivoPausa | null;
 }
-interface LinhaLote {
+export interface LinhaLote {
   id: string;
   estado: EstadoEmVoo;
   modo: ModoLote;
@@ -106,7 +106,7 @@ interface LinhaLote {
 const COLUNAS_LOTE = `id, estado, modo, sessao_id, sessao_parte, sessao_ultimo, geracao, chave_idempotencia, corpo, hub_lote_id, tentativas, enviado_em, contagens`;
 
 /** Tudo de uma execução: o item, o contexto da agenda e a credencial já aberta (só em memória). */
-interface Exec {
+export interface Exec {
   tenant: string;
   entidade: Entidade;
   ctx: ContextoAgenda;
@@ -450,7 +450,7 @@ async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Enti
 
 // ---- envio ----
 
-async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
+export async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
   e.loteAtual = lote;
   const tentativas = await e.ctx.emTransacao(async (tx) => {
     const [l] = await tx.consultar<{ tentativas: number }>(
@@ -459,8 +459,9 @@ async function enviarLote(e: Exec, lote: LinhaLote): Promise<void> {
       [e.tenant, lote.id, e.agora],
     );
     if (!l) return null;
-    await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, envioEm: e.agora });
+    // ordem dos bloqueios do módulo (e do `portal_credencial_definir`, 0038): sinal -> credencial -> cursor_entidade (evita 40P01)
     await tx.consultar('UPDATE integracao_fdv.sinal SET ultimo_envio_em = $2 WHERE tenant_id = $1', [e.tenant, e.agora]);
+    await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, envioEm: e.agora });
     return l.tentativas;
   });
   if (tentativas === null) return; // outro processo já avançou este lote
@@ -607,7 +608,7 @@ async function consultarLote(e: Exec, lote: LinhaLote): Promise<void> {
 const NUMERICOS = new Set(['recebidas', 'duplicadas_no_lote', 'com_erro', 'novas', 'atualizadas', 'inalteradas', 'obsoletas']);
 
 /** Estado final do lote no Hub: erro por linha, confirmação dos aceitos, cursor e evento. Só uma execução finaliza (guarda `aceito`). */
-async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concluido' | 'concluido_com_erros' | 'falhou', r: LoteResultadoLido): Promise<void> {
+export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concluido' | 'concluido_com_erros' | 'falhou', r: LoteResultadoLido): Promise<void> {
   const hub = Object.fromEntries(Object.entries(r.contagens ?? {}).filter(([k, v]) => NUMERICOS.has(k) && typeof v === 'number'));
   const fechado = await tx.consultar<{ id: string }>(
     `UPDATE integracao_fdv.lote_envio
@@ -618,6 +619,12 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
   );
   if (fechado.length === 0) return;
   const { tenant, entidade, agora } = e;
+  // ordem de bloqueios da 0038: credencial -> cursor_entidade -> registro_publicado (a troca de credencial do portal segue a mesma)
+  await marcarUsoDaCredencial(tx, tenant, e.credId, agora);
+  await tx.consultar(
+    `SELECT 1 FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1 AND entidade = $2 AND deleted_at IS NULL FOR NO KEY UPDATE`,
+    [tenant, entidade],
+  );
 
   // erro por linha do Hub (a origem "conector" é a linha inválida que o ERP mesmo mandou: já está gravada como "erp")
   const doHub = (r.erros ?? []).filter((x) => x.origem !== 'conector');
@@ -693,7 +700,6 @@ async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status: 'concl
     ...(final && lote.sessao_ultimo === true ? { sessaoAberta: { id: null } } : {}),
   });
   if (final) await acordarDependentes(tx, tenant, entidade, agora);
-  await marcarUsoDaCredencial(tx, tenant, e.credId, agora);
 
   if (final) {
     await publicar(tx, e, EVENTO_LOTE_ENVIADO, lote.id, { lote_envio_id: lote.id, entidade, modo: lote.modo, geracao: lote.geracao, registros: lote.corpo.registros.length, aceitos, com_erro: Math.max(comErro.size, comErroNoHub), concluido_em: agora.toISOString() });

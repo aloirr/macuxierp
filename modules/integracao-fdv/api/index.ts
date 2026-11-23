@@ -4,3 +4,7 @@ export { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_RETORNO_PEDIDOS_ID, criarAgendasPedidos
 export { criarConsumidorRetornoPedido } from './retorno-pedidos';
 export { criarPluginIntegracaoFdv, type DependenciasRotas } from './plugin';
 export type { ResolvedorChaveErp, RecebedorPedidoFdv, Alertar } from './portas';
+export {
+  criarPluginPlataformaIntegracaoFdv, paraPlataforma, repositorioPortalSql,
+  type DependenciasPlataformaIntegracaoFdv, type EstadoPortal, type RepositorioPortalIntegracaoFdv,
+} from './plataforma';

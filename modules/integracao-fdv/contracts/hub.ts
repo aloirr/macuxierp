@@ -5,29 +5,17 @@
  * `titulo` e `nota` são da F4 (T-0016) e ainda não têm contrato aqui.
  */
 import { z } from 'zod';
+import { ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
 
-/** As 12 entidades do Hub que o ERP alimenta, na ordem de carga (RN-INF-02). Igual ao domínio `entidade_hub` do banco. */
-export const ENTIDADES_HUB = [
-  'filial',
-  'vendedor',
-  'forma_pagamento',
-  'prazo_pagamento',
-  'produto',
-  'produto_unidade',
-  'preco',
-  'estoque',
-  'cliente',
-  'cliente_endereco',
-  'titulo',
-  'nota',
-] as const;
+/** As 12 entidades do Hub que o ERP alimenta, na ordem de carga (RN-INF-02): as 10 da F2 vêm do SDK (ADR 0013), título e nota são da F4. */
+export const ENTIDADES_HUB = [...ENTIDADES_ENVIO_FDV, 'titulo', 'nota'] as const;
 export const EntidadeHub = z.enum(ENTIDADES_HUB);
 export type EntidadeHub = z.infer<typeof EntidadeHub>;
 /** Entidades com contrato nesta fase (F2). */
 export const ENTIDADES_HUB_F2 = ENTIDADES_HUB.slice(0, 10) as readonly EntidadeHub[];
 
 /** Registros por lote do Hub (limite do contrato, doc 06): `CorpoLote`, a credencial (`ConfiguracaoEntrada`) e o `domain/lote` usam só esta constante. */
-export const LIMITE_REGISTROS_LOTE = 5000;
+export const LIMITE_REGISTROS_LOTE = LIMITE_REGISTROS_LOTE_FDV;
 
 /** Versão do contrato do Hub que o ERP fala. */
 export const VERSAO_CONTRATO_HUB = 'v1' as const;
