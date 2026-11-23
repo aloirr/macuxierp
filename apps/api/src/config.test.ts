@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { lerConfigApi } from './config';
 
@@ -7,7 +8,7 @@ const BASE = { MACUXIERP_JWT_SEGREDO: SEGREDO, MACUXIERP_CHAVE_A1: CHAVE_HEX };
 
 describe('configuração da API pelo ambiente', () => {
   it('aplica os padrões (cookie Secure ligado, porta 3000)', () => {
-    expect(lerConfigApi(BASE)).toEqual({ jwtSegredo: SEGREDO, porta: 3000, host: '0.0.0.0', versao: 'dev', cookieSeguro: true, poolMax: 10, chaveA1: Buffer.from(CHAVE_HEX, 'hex'), chaveIntegracao: null });
+    expect(lerConfigApi(BASE)).toEqual({ jwtSegredo: SEGREDO, porta: 3000, host: '0.0.0.0', versao: 'dev', cookieSeguro: true, poolMax: 10, chaveA1: Buffer.from(CHAVE_HEX, 'hex'), chaveIntegracao: null, segredoBff: null });
     expect(lerConfigApi({ ...BASE, MACUXIERP_COOKIE_SEGURO: '0', MACUXIERP_PORTA: '8080' })).toMatchObject({ cookieSeguro: false, porta: 8080 });
   });
 
@@ -40,5 +41,22 @@ describe('configuração da API pelo ambiente', () => {
   it('T-0011: liga MACUXIERP_CHAVE_INTEGRACAO ao chaveIntegracao (ausente = null; formatos e erros no cifra.test.ts)', () => {
     expect(lerConfigApi(BASE).chaveIntegracao).toBeNull();
     expect(lerConfigApi({ ...BASE, MACUXIERP_CHAVE_INTEGRACAO: 'cd'.repeat(32) }).chaveIntegracao).toEqual(Buffer.from('cd'.repeat(32), 'hex'));
+  });
+
+  it('T-0050: MACUXIERP_SEGREDO_BFF opcional (ausente ou vazio = null); fora de 64 hex recusa a partida, sem o valor na mensagem', () => {
+    const segredo = randomBytes(32).toString('hex');
+    expect(lerConfigApi(BASE).segredoBff).toBeNull();
+    expect(lerConfigApi({ ...BASE, MACUXIERP_SEGREDO_BFF: '' }).segredoBff).toBeNull();
+    expect(lerConfigApi({ ...BASE, MACUXIERP_SEGREDO_BFF: segredo }).segredoBff).toBe(segredo);
+    for (const invalido of [segredo.slice(2), `${segredo.slice(2)}zz`, 'prova-curta-sigilosa']) {
+      let mensagem = '';
+      try {
+        lerConfigApi({ ...BASE, MACUXIERP_SEGREDO_BFF: invalido });
+      } catch (e) {
+        mensagem = (e as Error).message;
+      }
+      expect(mensagem).toContain('MACUXIERP_SEGREDO_BFF');
+      expect(mensagem).not.toContain(invalido);
+    }
   });
 });

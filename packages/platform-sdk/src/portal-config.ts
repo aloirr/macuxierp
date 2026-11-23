@@ -36,6 +36,13 @@ export const COOKIE_CONFIG = 'macuxierp_config';
 export const PREFIXO_PLATAFORMA = '/v1/plataforma';
 /** Cabeçalho anti-CSRF das escritas do portal (o navegador não o manda em formulário de outro site). */
 export const CABECALHO_CSRF_CONFIG = 'x-macuxierp-config';
+/**
+ * Prova do BFF da apps/web (T-0050): o valor de `MACUXIERP_SEGREDO_BFF`, que só a api e o web recebem (gerado na VM).
+ * Com a prova certa, a API usa `CABECALHO_IP_CLIENTE` no limite de login por IP; sem ela, o cabeçalho é ignorado.
+ */
+export const CABECALHO_PROVA_BFF = 'x-macuxierp-bff';
+/** IP do navegador que o BFF viu (o `cf-connecting-ip` que chegou a ele); só vale junto com `CABECALHO_PROVA_BFF`. */
+export const CABECALHO_IP_CLIENTE = 'x-macuxierp-ip-cliente';
 
 /** CHECK de `plataforma.tenant.slug` (0002). `referencia` é o slug do tenant das tabelas oficiais: nunca se cria. */
 export const PADRAO_SLUG_EMPRESA = /^[a-z0-9][a-z0-9-]{1,39}$/;

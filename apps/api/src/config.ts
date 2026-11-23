@@ -3,7 +3,7 @@
  * banco usa as variáveis do libpq (`PGHOST`, `PGPORT`, `PGUSER=macuxierp_app`, `PGPASSWORD`, `PGDATABASE`).
  */
 import { lerChaveA1 } from '@macuxierp/core/api';
-import { chaveIntegracaoDoAmbiente } from '@macuxierp/platform-sdk';
+import { chaveIntegracaoDoAmbiente, PADRAO_HEX_32 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 const Ambiente = z.object({
@@ -16,6 +16,8 @@ const Ambiente = z.object({
   MACUXIERP_PG_POOL: z.coerce.number().int().min(1).max(100).default(10),
   /** Chave mestra do A1 (ADR 0005): 32 bytes em hex (64 caracteres) ou base64. */
   MACUXIERP_CHAVE_A1: z.string({ required_error: 'obrigatória' }),
+  /** Prova do BFF da apps/web (T-0050): 32 bytes em hex (`openssl rand -hex 32` no preparar-vm.sh). Vazia = ausente. */
+  MACUXIERP_SEGREDO_BFF: z.preprocess((v) => (v === '' ? undefined : v), z.string().regex(PADRAO_HEX_32, 'precisa de 64 caracteres hex').optional()),
 });
 
 export interface ConfigApi {
@@ -32,6 +34,8 @@ export interface ConfigApi {
    * `null` e a API sobe (o `PUT /v1/integracao-fdv/credencial` responde 503); presente e inválida derruba a partida.
    */
   chaveIntegracao: Buffer | null;
+  /** `MACUXIERP_SEGREDO_BFF` (T-0050, ver `ipDoCliente`): ausente = `null`; presente e inválido derruba a partida. */
+  segredoBff: string | null;
 }
 
 /** Lê e valida o ambiente; o erro cita só o nome da variável, nunca o valor. */
@@ -55,5 +59,6 @@ export function lerConfigApi(env: NodeJS.ProcessEnv): ConfigApi {
     poolMax: e.MACUXIERP_PG_POOL,
     chaveA1,
     chaveIntegracao: chaveIntegracaoDoAmbiente(env), // inválida: ErroCifra que cita só o nome da variável
+    segredoBff: e.MACUXIERP_SEGREDO_BFF ?? null,
   };
 }
