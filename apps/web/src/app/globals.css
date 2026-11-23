@@ -18,6 +18,7 @@ a { color: var(--mx-cor-azul-noite); }
 
 .cartao-central, .bloco { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 32px; }
 .cartao-central { max-width: 420px; margin: 8vh auto; }
+@media (max-width: 480px) { .cartao-central { margin-left: 16px; margin-right: 16px; } } /* login (BKO e /config): o cartão não encosta nas bordas em 390 px */
 .bloco { padding: 16px 20px; margin: 0 0 16px; }
 .cartao-central header { background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); margin: -32px -32px 24px; padding: 24px 32px; border-radius: 10px 10px 0 0; }
 .cartao-central h1 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 16px; }
@@ -28,7 +29,7 @@ a { color: var(--mx-cor-azul-noite); }
 .topo .espaco { flex: 1; }
 .topo a { color: var(--mx-cor-borda-cinza); text-decoration: underline; }
 .lateral { background: var(--mx-cor-grafite); color: var(--mx-cor-branco); padding: 16px 0; }
-.lateral h2 { font-size: var(--mx-tamanho-titulo-grupo); font-weight: var(--mx-peso-rotulo-pequeno); text-transform: uppercase; letter-spacing: .06em; color: var(--mx-cor-sol-claro); margin: 0 20px 4px; }
+.lateral h2 { font-size: var(--mx-tamanho-rotulo-menu); font-weight: var(--mx-peso-rotulo-pequeno); text-transform: uppercase; letter-spacing: .06em; color: var(--mx-cor-sol-claro); margin: 0 20px 4px; }
 .lateral ul { list-style: none; margin: 0; padding: 0; }
 .lateral a { display: block; padding: 8px 20px; color: var(--mx-cor-branco); font-weight: var(--mx-peso-medio); text-decoration: none; }
 .lateral a:hover { background: var(--mx-cor-grafite-menu); }

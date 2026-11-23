@@ -25,7 +25,7 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
       <RegiaoErros temErro={Object.keys(campos).length > 0 || erro !== ''} />
       {erro && <p className="erro">{erro}</p>}
       <label className="campo">
-        <span>Slug</span>
+        <span>Código</span>
         <input name="slug" required autoCapitalize="none" autoComplete="off" aria-invalid={campos.slug ? true : undefined} aria-describedby="ajuda-slug erro-slug" />
         <span id="ajuda-slug" className="apoio">2 a 40 letras minúsculas, dígitos ou hífen, começando por letra ou dígito. Vira o endereço da empresa.</span>
         {campos.slug && <span id="erro-slug" className="erro-campo">{campos.slug}</span>}

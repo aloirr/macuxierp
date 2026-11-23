@@ -34,3 +34,5 @@
 2026-11-23 — T-0050 — 2º push do PR #310: linha da lista de empresas vira link para /config/empresas/:id (slug) e tabela com sombra de rolagem em 390 px.
 2026-11-23 — T-0050 — 3º push do #310: marca (C 24 px, senha 20 px/600, títulos de cartão, borda de tabela), DialogoMotivo semTexto, Carregar mais acumulado (#309); mx-checkbox ainda não existe no main
 2026-11-23 — T-0050 — 4º push: checkboxes de módulo do detalhe da empresa com .mx-checkbox (#311), teste de render
+2026-11-23 — T-0051 — shell: teste do menu do analista, margem do login em 390 px e token do menu lateral, e Código no lugar de slug no portal
+2026-11-23 — T-0051 — corretor: RD-1007 (menu.test) e RD-1008 (regex do CSS em identidade.test); RD-1006 é do designer-ux

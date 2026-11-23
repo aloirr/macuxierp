@@ -6,7 +6,7 @@ export function traduzirCriarEmpresa(e: ZodError): Record<string, string> {
   for (const i of e.issues) {
     const campo = String(i.path[0] ?? '');
     if (campos[campo]) continue;
-    if (campo === 'slug') campos.slug = i.message === 'Slug reservado' ? 'Slug reservado. Escolha outro.' : 'Slug fora do padrão. Veja a regra acima.';
+    if (campo === 'slug') campos.slug = i.message === 'Slug reservado' ? 'Código reservado. Escolha outro.' : 'Código fora do padrão. Veja a regra acima.';
     else if (campo === 'nome') campos.nome = 'Informe o nome da empresa (2 a 120 caracteres).';
     else if (campo === 'fuso') campos.fuso = 'Fuso inválido. Use o formato America/Manaus.';
   }
