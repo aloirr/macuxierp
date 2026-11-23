@@ -27,7 +27,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
-import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
+import { type DetalhesErro, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
 
 /** Cliente das rotas `/v1/plataforma/*` (ADR 0012). Só no servidor: o token da sessão nunca chega ao navegador. */
 const ListaEmpresas = paginaDe(EmpresaPlataforma);
@@ -60,7 +60,7 @@ export async function chamar(metodo: string, caminho: string, p: Pedido = {}): P
 export async function recusar(r: Response): Promise<never> {
   if (r.status === 401) throw new ConfigNaoAutenticado();
   if (r.status === 429) throw new ConfigMuitasTentativas();
-  let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown> } = {};
+  let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown>; detalhes?: { codigo?: unknown; bloqueios?: unknown } } = {};
   try {
     corpo = (await r.json()) as typeof corpo;
   } catch {
@@ -73,7 +73,12 @@ export async function recusar(r: Response): Promise<never> {
     const campos = Object.fromEntries(Object.entries(corpo.campos ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     // a mensagem da API (409 MXI01/MXI02 etc.) só passa se for curta e de uma linha; nunca o corpo cru
     const m = typeof corpo.mensagem === 'string' && corpo.mensagem.length <= 200 && !/[\r\n]/.test(corpo.mensagem) ? corpo.mensagem : '';
-    throw new ErroPlataforma(r.status, codigo, campos, m);
+    // só o código e os bloqueios curtos ('cadastro:motivo') passam dos detalhes; o resto da API fica de fora
+    const d = corpo.detalhes;
+    const detalhes: DetalhesErro = {};
+    if (typeof d?.codigo === 'string' && d.codigo.length <= 60) detalhes.codigo = d.codigo;
+    if (Array.isArray(d?.bloqueios)) detalhes.bloqueios = d.bloqueios.filter((b): b is string => typeof b === 'string' && /^[a-z_]{1,40}:[a-z_]{1,40}$/.test(b));
+    throw new ErroPlataforma(r.status, codigo, campos, m, detalhes);
   }
   throw new ConfigIndisponivel(`HTTP ${r.status}`);
 }

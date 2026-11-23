@@ -1,11 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ValidarCargaPlataformaResposta } from '@macuxierp/platform-sdk';
+import { CADASTROS_CARGA_PORTAL, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
 import { EMP, conferencia as conferenciaBruta, situacoes } from '@/lib/config/cargas-fixtures';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
-import { AbaCargas, EfeitoSubstituir, ImportarCarga, PainelConferencia, rotuloArquivo } from './aba-cargas';
+import { AVISO_ZERAR, textoSemChave } from '@/lib/config/cargas';
+import { AbaCargas, EfeitoSubstituir, ImportarCarga, PainelConferencia, rotuloArquivo, AvisoSemChave, ZerarDados } from './aba-cargas';
 
 const dados = situacoes({ filial: { situacao: 'carregado', quantidade: 1 }, produto: { situacao: 'com_erro', erros: 2 } });
 const aba = (d: typeof dados | null = dados) => renderToStaticMarkup(<AbaCargas empresaId={EMP} dados={d} fuso="America/Manaus" />);
@@ -17,7 +18,7 @@ const conf = ValidarCargaPlataformaResposta.parse(conferenciaBruta({ com_erro: 2
 describe('aba Cargas (T-0058)', () => {
   it('uma linha por cadastro: número, nome, chip, data e quantidade, Modelo e Importar', () => {
     const h = aba();
-    expect(h.match(/class="linha-carga"/g)).toHaveLength(10);
+    expect(h.match(/class="linha-carga"/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
     expect(h).toContain('<span class="carga-nome">Filiais</span>');
     expect(h).toMatch(/color:var\(--mx-cor-verde-sucesso\)[^"]*"[^>]*>Carregado<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-aviso-texto\)[^"]*"[^>]*>2 com erro<\/span>/);
@@ -27,18 +28,19 @@ describe('aba Cargas (T-0058)', () => {
     expect(h).toContain('aria-label="Importar Produtos"');
     expect(h.indexOf('Filiais')).toBeLessThan(h.indexOf('Produtos'));
   });
-  it('dependente bloqueado mostra "Carregue antes" (com ponto) e o Importar desligado; "Unidades (opcional)" sem ponto', () => {
+  it('sem "Carregue antes": o Importar fica sempre ligado; "Unidades (opcional)" sem ponto', () => {
     const h = aba();
-    const endereco = h.slice(h.indexOf('data-cadastro="cliente_endereco"'));
-    expect(endereco).toContain('Carregue antes: Clientes.');
-    expect(endereco).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Importar Endereços de cliente"/);
+    expect(h).not.toContain('Carregue antes');
+    expect(h).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="Importar /);
     expect(h).toContain('<span class="carga-nome">Unidades (opcional)</span>');
     expect(h).not.toContain('(opcional).');
     expect(h).not.toContain('Modo completo');
     expect(h).not.toContain('Exportar resumo');
   });
-  it('a janela de importar fica fechada por padrão', () => {
-    expect(aba()).not.toContain('role="dialog"');
+  it('"Zerar dados" no alto da aba e a janela fechada por padrão', () => {
+    const h = aba();
+    expect(h.indexOf('Zerar dados')).toBeLessThan(h.indexOf('class="lista-cargas"'));
+    expect(h).not.toContain('role="dialog"');
   });
   it('sem dados da API: erro com "Tentar de novo"', () => {
     const h = aba(null);
@@ -99,5 +101,69 @@ describe('janela Importar', () => {
     expect(p).toMatch(/>0<\/span><span>com erro \(ficam de fora\)<\/span>/);
     expect(p).not.toContain('lista-problemas');
     expect(p).not.toContain('Baixar erros');
+  });
+});
+
+describe('janela Zerar dados', () => {
+  const zerar = (props: Partial<React.ComponentProps<typeof ZerarDados>> = {}) => renderToStaticMarkup(<ZerarDados empresaId={EMP} aoFechar={() => undefined} aoZerar={() => undefined} {...props} />);
+  const previa = (extra: Record<string, unknown> = {}) => ZeragemPlataformaResposta.parse({
+    empresa_id: EMP, simulado: true, efetivos: ['produto', 'produto_unidade', 'estoque', 'cliente'], apagados: [],
+    anulados: [{ tabela: 'cliente', coluna: 'vendedor_id', quantidade: 12 }, { tabela: 'cliente', coluna: 'condicao_pagamento_id', quantidade: 1 }],
+    mantidos: [{ cadastro: 'produto', motivo: 'pedido', quantidade: 3 }, { cadastro: 'cliente', motivo: 'nota', quantidade: 2 }],
+    bloqueios: [], sem_chave: 12, ...extra,
+  });
+  const ESCOLHA = ['produto', 'cliente'] as const;
+  it('avisa que apaga e não tem volta, orienta exportar, pede a frase e começa com o botão desligado', () => {
+    const h = zerar();
+    expect(h).toContain(`<p class="faixa-erro sem-margem" role="alert">${AVISO_ZERAR}</p>`);
+    expect(h).toContain('Antes de zerar, exporte pelo BKO da empresa (Cadastros &gt; Exportar).');
+    expect(h).not.toMatch(/<(a|button)[^>]*>[^<]*(Baixar|Exportar)/);
+    expect(h).toContain('autorizo zerar os dados');
+    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Zerar dados<\/button>/);
+    expect(h).toContain('role="dialog"');
+  });
+  it('lista os 9 cadastros com checkbox e rótulos legíveis; por padrão todos marcados', () => {
+    const h = zerar();
+    expect(h.match(/type="checkbox"/g)).toHaveLength(9);
+    expect(h.match(/checked=""/g)).toHaveLength(9);
+    expect(h).toContain('<span>Condições de pagamento</span>');
+    expect(h).toContain('<span>Endereços de clientes</span>');
+    expect(zerar({ selecaoInicial: ESCOLHA }).match(/checked=""/g)).toHaveLength(2);
+  });
+  it('seleção mínima: sem nenhum marcado pede um cadastro, não mostra prévia e o confirmar fica desligado', () => {
+    const h = zerar({ selecaoInicial: [], previaInicial: previa() });
+    expect(h).not.toContain('checked=""');
+    expect(h).toContain('Escolha ao menos um cadastro.');
+    expect(h).not.toContain('Leva junto');
+    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Zerar dados<\/button>/);
+  });
+  it('prévia: leva junto, mantidos com o detalhe, anulados e o aviso do sem_chave', () => {
+    const h = zerar({ selecaoInicial: ESCOLHA, previaInicial: previa() });
+    expect(h).toContain('Leva junto: Unidades, Estoque.');
+    expect(h).toContain('Mantidos: 5');
+    expect(h).toContain('Produtos: 3 em pedidos.');
+    expect(h).toContain('Clientes: 2 em notas.');
+    expect(h).toContain('12 clientes ficam sem vendedor.');
+    expect(h).toContain('1 cliente fica sem condição de pagamento.');
+    expect(h).toContain(textoSemChave(12));
+  });
+  it('sem mantidos, anulados nem sem_chave, a prévia não mostra essas linhas', () => {
+    const h = zerar({ selecaoInicial: ['produto'], previaInicial: previa({ efetivos: ['produto'], anulados: [], mantidos: [], sem_chave: 0 }) });
+    expect(h).not.toContain('Leva junto');
+    expect(h).not.toContain('Mantidos');
+    expect(h).not.toContain('ficam sem');
+    expect(h).not.toContain('sem código de origem');
+  });
+  it('bloqueio: mostra o motivo legível e o confirmar fica desligado', () => {
+    const h = zerar({ selecaoInicial: ['preco'], previaInicial: previa({ efetivos: ['preco'], bloqueios: [{ cadastro: 'preco', motivo: 'integracao_ligada' }, { cadastro: 'produto', motivo: 'lote_em_andamento' }] }) });
+    expect(h).toContain('Desligue o envio de Preços na aba Integração FDV antes de zerar.');
+    expect(h).toContain('Há uma carga em andamento. Espere terminar para zerar.');
+    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Zerar dados<\/button>/);
+  });
+  it('o aviso do FDV sem código de origem só aparece com sem_chave > 0', () => {
+    expect(renderToStaticMarkup(<AvisoSemChave semChave={0} />)).toBe('');
+    const p = renderToStaticMarkup(<AvisoSemChave semChave={12} />);
+    expect(p).toContain('faixa-aviso');
+    expect(p).toContain(textoSemChave(12));
   });
 });

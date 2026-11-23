@@ -1,9 +1,9 @@
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, CODIGO_TROCAR_SENHA, GravarCargaPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ModoCargaQuery, PADRAO_UUID, nomeErrosCarga, nomeModeloCarga,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, CODIGO_TROCAR_SENHA, CODIGO_ZERAGEM_BLOQUEADA, GravarCargaPlataformaEntrada, MENSAGENS_CARGA_PORTAL, PreviaZerarPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ModoCargaQuery, ZerarDadosPlataformaEntrada, PADRAO_UUID, nomeErrosCarga, nomeModeloCarga,
   type CadastroCargaPortal,
 } from '@macuxierp/platform-sdk';
 import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '../textos';
-import { baixarErros, baixarModelo, gravarCarga, validarCarga } from './cargas-api';
+import { baixarErros, baixarModelo, gravarCarga, lerPreviaZerar, validarCarga, zerarCargas } from './cargas-api';
 import { ErroPlataforma, FALHA_REDE, mensagemDoErro } from './erros';
 import { ROTA_ENTRAR, ROTA_SENHA } from './constantes';
 import { tokenConfig } from './sessao';
@@ -124,4 +124,43 @@ async function paginaDeErro(r: Response, req: Request): Promise<Response> {
   if (corpo.redirecionar) return new Response(null, { status: 303, headers: { ...SEM_CACHE, location: new URL(corpo.redirecionar, req.url).toString() } });
   const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Modelo indisponível</title><body><p role="alert">${escapar(corpo.erro ?? FALHA_REDE)}</p></body></html>`;
   return new Response(html, { status: r.status, headers: { ...SEM_CACHE, 'content-type': 'text/html; charset=utf-8' } });
+}
+
+/** O 409 `MXC03` do zerar (a API manda `detalhes.codigo` `dependencia_pendente`): os dados mudaram entre a prévia e o zerar. */
+export const TEXTO_DADOS_MUDARAM = 'Os dados mudaram. Confira de novo.';
+export const CODIGO_DADOS_MUDARAM = 'dados_mudaram';
+
+/** `POST /config/empresas/:id/cargas/zerar`: corpo `{ cadastros, frase }`; a `Idempotency-Key` vai no cabeçalho. SDK confere a frase e a lista (a API revalida). */
+export async function tratarZerar(req: Request, id: string): Promise<Response> {
+  if (!idValido(id)) return falha('Não encontrado.', 404);
+  if (req.method !== 'POST') return falha('Método não permitido.', 405);
+  return comSessao(req, async (token) => {
+    const bruto = (await req.json().catch(() => null)) as { cadastros?: unknown; frase?: unknown } | null;
+    const chave = req.headers.get('idempotency-key') ?? '';
+    const entrada = ZerarDadosPlataformaEntrada.safeParse({ cadastros: bruto?.cadastros, frase: typeof bruto?.frase === 'string' ? bruto.frase : '' });
+    if (!entrada.success || !PADRAO_UUID.test(chave)) return falha('Escolha ao menos um cadastro e digite a frase para confirmar.', 400);
+    let resultado;
+    try {
+      resultado = await zerarCargas(token, id, entrada.data.cadastros, entrada.data.frase, chave);
+    } catch (e) {
+      if (e instanceof ErroPlataforma && e.status === 422 && e.detalhes.codigo === CODIGO_ZERAGEM_BLOQUEADA) {
+        return falha(MENSAGENS_CARGA_PORTAL.zeragemBloqueada, 422, { codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: e.detalhes.bloqueios ?? [], chaveNova: true });
+      }
+      if (e instanceof ErroPlataforma && e.status === 409 && e.detalhes.codigo === 'dependencia_pendente') return falha(TEXTO_DADOS_MUDARAM, 409, { codigo: CODIGO_DADOS_MUDARAM, chaveNova: true });
+      throw e;
+    }
+    return Response.json({ ok: true, mantidos: resultado.mantidos.reduce((n, m) => n + m.quantidade, 0) }, { headers: SEM_CACHE });
+  });
+}
+
+/** `POST /config/empresas/:id/cargas/zerar/previa`: corpo `{ cadastros }`; devolve a `ZeragemPlataformaResposta` da API (só leitura, sem chave nem frase). */
+export async function tratarPreviaZerar(req: Request, id: string): Promise<Response> {
+  if (!idValido(id)) return falha('Não encontrado.', 404);
+  if (req.method !== 'POST') return falha('Método não permitido.', 405);
+  return comSessao(req, async (token) => {
+    const bruto = (await req.json().catch(() => null)) as { cadastros?: unknown } | null;
+    const entrada = PreviaZerarPlataformaEntrada.safeParse({ cadastros: bruto?.cadastros });
+    if (!entrada.success) return falha('Escolha ao menos um cadastro.', 400);
+    return Response.json({ ok: true, previa: await lerPreviaZerar(token, id, entrada.data.cadastros) }, { headers: SEM_CACHE });
+  });
 }

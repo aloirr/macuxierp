@@ -1,15 +1,15 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CaixaResumo, Chip, Dialogo } from '@macuxierp/ui';
-import { FraseConfirmacao } from '@/components/frase-confirmacao';
+import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import {
-  AVISO_LIMITE_FDV, ROTULO_MODO, TEXTO_SUBSTITUIR, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao, podeGravar,
-  rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
+  AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_MODO, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_SUBSTITUIR, textoZerado, bloqueiosDeTextos, podeConfirmarZerar, textoLevaJunto, textosAnulados, textosBloqueios, textosMantidos, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao, pedirPreviaZerar, pedirZerar, podeGravar,
+  rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoSemChave, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
 } from '@/lib/config/cargas';
 import {
-  FRASE_SUBSTITUIR_TUDO, fraseConfere, nomeErrosCarga, plural, substituirPermitido, type CadastroCargaPortal, type EfeitoSubstituir as Efeito, type ModoGravarCarga, type SituacaoCargasPlataforma,
+  CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, nomeErrosCarga, plural, substituirPermitido, type CadastroCargaPortal, type EfeitoSubstituir as Efeito, type CadastroZerarPortal, type ModoGravarCarga, type SituacaoCargasPlataforma, type ZeragemPlataformaResposta,
   type ValidarCargaPlataformaResposta as Conferencia,
 } from '@macuxierp/platform-sdk';
 
@@ -27,6 +27,7 @@ function seguir(r: Retorno<unknown>): void {
 export function AbaCargas({ empresaId, dados, fuso }: { empresaId: string; dados: SituacaoCargasPlataforma | null; fuso: string }) {
   const router = useRouter();
   const [importar, setImportar] = useState<CadastroCargaPortal | null>(null);
+  const [zerar, setZerar] = useState(false);
   const [aviso, setAviso] = useState('');
   const linhas = linhasCargas(dados, fuso);
 
@@ -42,6 +43,7 @@ export function AbaCargas({ empresaId, dados, fuso }: { empresaId: string; dados
     <section aria-labelledby="h-cargas">
       <div className="cabeca-cargas">
         <h2 id="h-cargas">Cargas</h2>
+        <button type="button" className="mx-botao-secundario botao-perigo-contorno" onClick={() => setZerar(true)}>Zerar dados</button>
       </div>
       {aviso && <p className="faixa-aviso" role="status">{aviso}</p>}
       <ul className="lista-cargas">
@@ -55,6 +57,17 @@ export function AbaCargas({ empresaId, dados, fuso }: { empresaId: string; dados
           aoGravar={(n) => {
             setImportar(null);
             setAviso(`${plural(n, 'registro gravado', 'registros gravados')}.`);
+            router.refresh();
+          }}
+        />
+      )}
+      {zerar && (
+        <ZerarDados
+          empresaId={empresaId}
+          aoFechar={() => setZerar(false)}
+          aoZerar={(mantidos) => {
+            setZerar(false);
+            setAviso(textoZerado(mantidos));
             router.refresh();
           }}
         />
@@ -118,17 +131,11 @@ function LinhaDaCarga({ linha: l, empresaId, aoImportar }: { linha: LinhaCarga; 
       <span className="carga-numero" aria-hidden="true">{l.numero}</span>
       <span className="carga-nome">{l.rotulo}</span>
       <span className="carga-situacao">
-        {l.podeImportar ? (
-          <>
-            <Chip tom={l.chip.tom}>{l.chip.texto}</Chip>
-            {l.ultima && <span className="apoio"> {l.ultima}</span>}
-          </>
-        ) : (
-          <span className="carga-antes">Carregue antes: {l.antes}.</span>
-        )}
+        <Chip tom={l.chip.tom}>{l.chip.texto}</Chip>
+        {l.ultima && <span className="apoio"> {l.ultima}</span>}
       </span>
       <a className="carga-modelo" href={enderecoModelo(empresaId, l.cadastro)}>Modelo</a>
-      <button type="button" className="mx-botao-secundario" disabled={!l.podeImportar} aria-label={`Importar ${l.rotulo}`} onClick={aoImportar}>Importar</button>
+      <button type="button" className="mx-botao-secundario" aria-label={`Importar ${l.rotulo}`} onClick={aoImportar}>Importar</button>
     </li>
   );
 }
@@ -141,7 +148,6 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
   /** O efeito vem do validar em modo `substituir_tudo`, pedido só ao abrir a confirmação. */
   const [efeito, setEfeito] = useState<Efeito | null>(null);
   const [confirmando, setConfirmando] = useState(false);
-  const [frase, setFrase] = useState('');
   const [erro, setErro] = useState('');
   const pedido = useRef(0);
   const chaves = useRef(new ChavesIdempotencia());
@@ -173,18 +179,19 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
     seguir(r);
     if (r.ok && r.valor.efeito) {
       setEfeito(r.valor.efeito);
-      setFrase('');
       setConfirmando(true);
     } else setErro(r.ok ? 'Não foi possível calcular o efeito. Tente de novo.' : r.erro);
   };
 
-  const gravar = async (modo: ModoGravarCarga) => {
+  const idGravar = (modo: ModoGravarCarga) => `gravar:${modo}:${arquivo?.name}:${arquivo?.size}:${arquivo?.lastModified}`;
+
+  /** Adicionar: a chave da ação se repete em falha de rede. O Substituir tudo usa o `ConfirmarComFrase`, que cuida da chave. */
+  const gravarAdicionando = async () => {
     if (!arquivo || !conferencia || !podeGravar(conferencia)) return;
-    if (modo === 'substituir_tudo' && !fraseConfere(frase, FRASE_SUBSTITUIR_TUDO)) return;
-    const id = `gravar:${modo}:${arquivo.name}:${arquivo.size}:${arquivo.lastModified}`;
+    const id = idGravar('adicionar');
     setGravando(true);
     setErro('');
-    const r = await pedirGravacao(empresaId, cadastro, arquivo, chaves.current.de(id), modo, frase);
+    const r = await pedirGravacao(empresaId, cadastro, arquivo, chaves.current.de(id), 'adicionar');
     chaves.current.aposResposta(id, { ok: r.ok, chaveNova: !r.ok && r.chaveNova });
     setGravando(false);
     seguir(r);
@@ -201,25 +208,22 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
   };
 
   const ocupado = conferindo || gravando;
-  if (confirmando && efeito) {
+  if (confirmando && efeito && arquivo) {
     return (
-      <Dialogo
+      <ConfirmarComFrase
         titulo={`Substituir tudo em ${tituloImportar(cadastro).replace('Importar ', '')}?`}
+        frase={FRASE_SUBSTITUIR_TUDO}
+        rotulo={ROTULO_MODO.substituir_tudo}
+        rotuloEnviando="Substituindo…"
+        idEnvio={idGravar('substituir_tudo')}
+        podeEnviar={podeGravar(conferencia)}
+        enviar={(chave, frase) => pedirGravacao(empresaId, cadastro, arquivo, chave, 'substituir_tudo', frase)}
+        aoSucesso={(g) => aoGravar(g.gravadas)}
         aoFechar={() => setConfirmando(false)}
-        rodape={
-          <>
-            <button type="button" className="mx-botao-secundario" onClick={() => { setConfirmando(false); setFrase(''); setErro(''); }}>Cancelar</button>
-            <button type="button" className="mx-botao botao-perigo-cheio" data-destrutivo="true" disabled={gravando || !fraseConfere(frase, FRASE_SUBSTITUIR_TUDO)} onClick={() => void gravar('substituir_tudo')}>
-              {gravando ? 'Substituindo…' : ROTULO_MODO.substituir_tudo}
-            </button>
-          </>
-        }
       >
         <p>{TEXTO_SUBSTITUIR}</p>
         <EfeitoSubstituir cadastro={cadastro} efeito={efeito} />
-        <FraseConfirmacao frase={FRASE_SUBSTITUIR_TUDO} valor={frase} aoMudar={setFrase} erro={!!erro} />
-        {erro && <p className="erro" role="alert">{erro}</p>}
-      </Dialogo>
+      </ConfirmarComFrase>
     );
   }
   const pronto = !ocupado && podeGravar(conferencia);
@@ -231,7 +235,7 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
         <>
           <button type="button" className="mx-botao-secundario" onClick={aoFechar}>Cancelar</button>
           {substituirPermitido(cadastro) && <button type="button" className="mx-botao-secundario botao-perigo-contorno" disabled={!pronto} onClick={() => void pedirSubstituir()}>{ROTULO_MODO.substituir_tudo}</button>}
-          <button type="button" className="mx-botao" disabled={!pronto} onClick={() => void gravar('adicionar')}>{gravando ? 'Gravando…' : rotuloAdicionar(conferencia?.prontas ?? 0)}</button>
+          <button type="button" className="mx-botao" disabled={!pronto} onClick={() => void gravarAdicionando()}>{gravando ? 'Gravando…' : rotuloAdicionar(conferencia?.prontas ?? 0)}</button>
         </>
       }
     >
@@ -245,5 +249,102 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
       {erro && <p className="erro" role="alert">{erro}</p>}
       {conferencia && <PainelConferencia conferencia={conferencia} aoBaixar={() => void baixarErros()} />}
     </Dialogo>
+  );
+}
+
+/** Faixa de aviso do zerar: registros que foram ao FDV sem código de origem; some quando não há nenhum. */
+export function AvisoSemChave({ semChave }: { semChave: number }) {
+  return semChave > 0 ? <p className="faixa-aviso" role="status">{textoSemChave(semChave)}</p> : null;
+}
+
+/** Uma linha por motivo, só quando há conteúdo: "Leva junto", "Mantidos" (com o detalhe), anulados e bloqueios. Pura sobre a prévia. */
+export function ResumoPrevia({ previa, escolhidos }: { previa: ZeragemPlataformaResposta; escolhidos: readonly CadastroZerarPortal[] }) {
+  const junto = textoLevaJunto(previa.efetivos, escolhidos);
+  const mantidos = textosMantidos(previa.mantidos);
+  const anulados = textosAnulados(previa.anulados);
+  const bloqueios = textosBloqueios(previa.bloqueios);
+  return (
+    <div className="previa-zerar" aria-live="polite">
+      {bloqueios.length > 0 && (
+        <ul className="faixa-erro lista-simples" role="alert" aria-label="Zerar bloqueado">{bloqueios.map((t) => <li key={t}>{t}</li>)}</ul>
+      )}
+      {junto && <p>{junto}</p>}
+      {mantidos && (
+        <div>
+          <p>{mantidos.total}</p>
+          <ul className="lista-simples apoio">{mantidos.detalhes.map((t) => <li key={t}>{t}</li>)}</ul>
+        </div>
+      )}
+      {anulados.length > 0 && <ul className="lista-simples">{anulados.map((t) => <li key={t}>{t}</li>)}</ul>}
+      <AvisoSemChave semChave={previa.sem_chave} />
+    </div>
+  );
+}
+
+/** "Zerar dados": escolhe os cadastros (ao menos um), vê a prévia (que refaz a cada mudança) e confirma com a frase. */
+export function ZerarDados({ empresaId, aoFechar, aoZerar, selecaoInicial = [...CADASTROS_ZERAR_PORTAL], previaInicial = null }: { empresaId: string; aoFechar: () => void; aoZerar: (mantidos: number) => void; selecaoInicial?: readonly CadastroZerarPortal[]; previaInicial?: ZeragemPlataformaResposta | null }) {
+  const [selecao, setSelecao] = useState<readonly CadastroZerarPortal[]>(selecaoInicial);
+  const [previa, setPrevia] = useState<ZeragemPlataformaResposta | null>(previaInicial);
+  const [carregando, setCarregando] = useState(false);
+  const [erroPrevia, setErroPrevia] = useState('');
+  const [bloqueiosApi, setBloqueiosApi] = useState<string[]>([]);
+  const [recontar, setRecontar] = useState(0);
+  // Seleção na ordem do contrato (a chave de idempotência e a prévia não dependem da ordem dos cliques).
+  const escolhidos = CADASTROS_ZERAR_PORTAL.filter((c) => selecao.includes(c));
+
+  useEffect(() => {
+    if (escolhidos.length === 0) { setPrevia(null); setCarregando(false); return; }
+    const ctl = new AbortController();
+    setCarregando(true);
+    setErroPrevia('');
+    const t = setTimeout(() => {
+      void pedirPreviaZerar(empresaId, escolhidos, fetch, ctl.signal).then((r) => {
+        if (ctl.signal.aborted) return;
+        setCarregando(false);
+        seguir(r);
+        if (r.ok) { setPrevia(r.valor); setBloqueiosApi([]); } else { setPrevia(null); setErroPrevia(r.erro); }
+      });
+    }, 250);
+    return () => { clearTimeout(t); ctl.abort(); };
+  }, [empresaId, escolhidos.join(','), recontar]);
+
+  const alternar = (c: CadastroZerarPortal) => { setBloqueiosApi([]); setSelecao((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c])); };
+  const bloqueiosTela = bloqueiosApi.length > 0 ? textosBloqueios(bloqueiosDeTextos(bloqueiosApi)) : [];
+
+  return (
+    <ConfirmarComFrase
+      titulo="Zerar dados da empresa?"
+      frase={FRASE_ZERAR_DADOS}
+      rotulo="Zerar dados"
+      rotuloEnviando="Zerando…"
+      idEnvio={`zerar:${escolhidos.join(',')}`}
+      podeEnviar={podeConfirmarZerar({ selecionados: escolhidos.length, previa, carregando, frase: FRASE_ZERAR_DADOS, enviando: false })}
+      enviar={(chave, frase) => pedirZerar(empresaId, escolhidos, frase, chave)}
+      aoSucesso={aoZerar}
+      aoFalha={(r) => {
+        if (r.codigo === CODIGO_ZERAGEM_BLOQUEADA) { setBloqueiosApi(r.bloqueios ?? []); return r.erro; }
+        if (r.codigo === 'dados_mudaram') setRecontar((n) => n + 1);
+        return undefined;
+      }}
+      aoFechar={aoFechar}
+    >
+      <p className="faixa-erro sem-margem" role="alert">{AVISO_ZERAR}</p>
+      <p className="sem-margem">{TEXTO_ANTES_DE_ZERAR}</p>
+      <fieldset className="escolha-zerar">
+        <legend>O que zerar</legend>
+        <div className="grade-zerar">
+          {CADASTROS_ZERAR_PORTAL.map((c) => (
+            <label key={c} className="opcao-zerar">
+              <input type="checkbox" checked={selecao.includes(c)} onChange={() => alternar(c)} />
+              <span>{ROTULO_ZERAR[c]}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {escolhidos.length === 0 && <p className="apoio">Escolha ao menos um cadastro.</p>}
+      {erroPrevia && <p className="erro" role="alert">{erroPrevia}</p>}
+      {bloqueiosTela.length > 0 && <ul className="faixa-erro lista-simples" role="alert" aria-label="Zerar bloqueado">{bloqueiosTela.map((t) => <li key={t}>{t}</li>)}</ul>}
+      {previa && escolhidos.length > 0 && <ResumoPrevia previa={previa} escolhidos={escolhidos} />}
+    </ConfirmarComFrase>
   );
 }
