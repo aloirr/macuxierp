@@ -1,16 +1,15 @@
 import { redirect } from 'next/navigation';
-import { MonitorResposta } from '@macuxierp/integracao-fdv/contracts';
-import type { Perfil } from '@macuxierp/platform-sdk';
+import { StatusIntegracaoFdvTenant } from '@macuxierp/platform-sdk';
 import { ApiIndisponivel, NaoAutenticado, SemPermissao, getValidado } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
-import { montarVista } from '@/lib/integracao-fdv';
-import { TelaIntegracaoFdvCliente } from '@/components/integracao-fdv/cliente';
+import { montarVistaStatus } from '@/lib/integracao-fdv';
+import { VistaIntegracaoFdv } from '@/components/integracao-fdv/vista';
 
-/** Carrega o monitor (`GET /v1/integracao-fdv/monitor`) e entrega a vista pronta ao componente. Erro da API vira mensagem fixa. */
-export async function TelaIntegracaoFdv({ perfil, acesso, fuso, rotaLotes }: { perfil: Perfil; acesso: string; fuso: string; rotaLotes: string }) {
+/** Carrega o status (`GET /v1/integracao-fdv/status`, ADR 0013) e mostra só leitura. Erro da API vira mensagem fixa. */
+export async function TelaIntegracaoFdv({ acesso, fuso }: { acesso: string; fuso: string }) {
   try {
-    const m = await getValidado('/v1/integracao-fdv/monitor', MonitorResposta, acesso, 'monitor', true);
-    return <TelaIntegracaoFdvCliente vista={montarVista(m, perfil, fuso, rotaLotes)} />;
+    const s = await getValidado('/v1/integracao-fdv/status', StatusIntegracaoFdvTenant, acesso, 'status', true);
+    return <VistaIntegracaoFdv vista={montarVistaStatus(s, fuso)} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
