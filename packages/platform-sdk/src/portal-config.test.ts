@@ -3,18 +3,22 @@ import { describe, expect, it } from 'vitest';
 import {
   AlterarModulosEntrada,
   CABECALHOS_SENHA_PROVISORIA,
+  CodigoEmpresa,
   CriarEmpresaEntrada,
   EmailPrimeiroAdminResposta,
   EmailUsuario,
   EmpresaPlataforma,
   EntrarPlataformaEntrada,
   EuPlataforma,
+  PADRAO_CODIGO_EMPRESA,
   PADRAO_SLUG_EMPRESA,
   PrimeiroAdminEntrada,
   PrimeiroAdminResposta,
   SessaoPlataformaResposta,
   SituacaoEmpresaEntrada,
   TrocarSenhaPlataformaEntrada,
+  codigoDaEmpresa,
+  codigoParaSlug,
   conferirModulosPlataforma,
   modulosAtivosApos,
 } from './portal-config';
@@ -61,11 +65,60 @@ describe('contratos do portal /config (ADR 0012)', () => {
   });
 
   it('CriarEmpresaEntrada: slug no CHECK de plataforma.tenant (0002), nome de 2 a 120 aparado, fuso padrão Manaus', () => {
-    expect(CriarEmpresaEntrada.parse({ slug: 'acme-1', nome: '  ACME Ltda ' })).toEqual({ slug: 'acme-1', nome: 'ACME Ltda', fuso: 'America/Manaus' });
+    expect(CriarEmpresaEntrada.parse({ slug: 'acme-1', nome: '  ACME Ltda ' })).toEqual({ slug: 'acme-1', uf: null, nome: 'ACME Ltda', fuso: 'America/Manaus' });
     for (const slug of ['A', 'acme_1', '-acme', 'a', 'x'.repeat(41), 'Acme']) expect(() => CriarEmpresaEntrada.parse({ slug, nome: 'ACME' }), slug).toThrow();
     expect(() => CriarEmpresaEntrada.parse({ slug: 'referencia', nome: 'ACME' })).toThrow();
     expect(() => CriarEmpresaEntrada.parse({ slug: 'acme', nome: 'A' })).toThrow();
     expect(() => CriarEmpresaEntrada.parse({ slug: 'acme', nome: 'ACME', fuso: 'Manaus' })).toThrow();
+  });
+
+  it('RN-CORE-11: CodigoEmpresa = UF + 4 dígitos do FDV, aparado e em maiúsculas', () => {
+    for (const c of ['AM2808', 'am2808', ' Am2808 ']) expect(CodigoEmpresa.parse(c), c).toBe('AM2808');
+    for (const c of ['XX1234', 'AM123', 'AM12345', 'A12808', 'AM28O8', '']) {
+      const r = CodigoEmpresa.safeParse(c);
+      expect(r.success, c).toBe(false);
+      expect(r.error?.issues[0]?.message).toBe('Código do FDV: UF + 4 dígitos, ex.: AM2808');
+    }
+  });
+
+  it('RN-CORE-11: o código cabe no CHECK do slug (0002) e volta em maiúsculas', () => {
+    expect(codigoParaSlug('AM2808')).toBe('am2808');
+    expect(PADRAO_SLUG_EMPRESA.test(codigoParaSlug('AM2808'))).toBe(true);
+    expect(codigoDaEmpresa('am2808')).toBe('AM2808');
+    expect(codigoDaEmpresa('demo')).toBeNull();
+    expect(codigoDaEmpresa('thathyany')).toBeNull();
+    expect(codigoDaEmpresa('xx1234')).toBeNull();
+    expect(codigoDaEmpresa('am28080')).toBeNull();
+    expect(PADRAO_CODIGO_EMPRESA.test('am2808')).toBe(true);
+  });
+
+  it('RN-CORE-11: CriarEmpresaEntrada (fase 1) com o código do FDV ou o slug legado; a saída mantém o slug', () => {
+    expect(CriarEmpresaEntrada.parse({ codigo: ' am2808 ', nome: 'ACME' })).toEqual({ slug: 'am2808', uf: null, nome: 'ACME', fuso: 'America/Manaus' });
+    expect(CriarEmpresaEntrada.parse({ codigo: 'AM2808', uf: 'AM', nome: 'ACME' })).toEqual({ slug: 'am2808', uf: 'AM', nome: 'ACME', fuso: 'America/Manaus' });
+    expect(CriarEmpresaEntrada.parse({ slug: 'acme-1', nome: 'ACME' })).toEqual({ slug: 'acme-1', uf: null, nome: 'ACME', fuso: 'America/Manaus' });
+    // a saída reenviada (apps/web → API) continua válida e igual
+    const saida = CriarEmpresaEntrada.parse({ codigo: 'RR0001', nome: 'ACME' });
+    expect(CriarEmpresaEntrada.parse(saida)).toEqual(saida);
+    expect(CriarEmpresaEntrada.safeParse({ codigo: 'XX1234', nome: 'ACME' }).success).toBe(false);
+    expect(CriarEmpresaEntrada.safeParse({ codigo: 'AM2808', uf: 'XX', nome: 'ACME' }).success).toBe(false);
+
+    const problema = (e: unknown) => {
+      const r = CriarEmpresaEntrada.safeParse(e);
+      expect(r.success).toBe(false);
+      return r.error?.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message }));
+    };
+    // só a UF (sorteio) fica para a fase 2: por ora é recusada
+    expect(problema({ uf: 'RR', nome: 'ACME' })).toEqual([{ campo: 'codigo', mensagem: 'Informe o código do FDV' }]);
+    expect(problema({ nome: 'ACME' })).toEqual([{ campo: 'codigo', mensagem: 'Informe o código do FDV' }]);
+    expect(problema({ codigo: 'AM2808', uf: 'RR', nome: 'ACME' })).toEqual([{ campo: 'uf', mensagem: 'A UF precisa ser a do código' }]);
+    expect(problema({ codigo: 'AM2808', slug: 'acme', nome: 'ACME' })?.map((p) => p.campo)).toEqual(['slug']);
+    expect(problema({ slug: 'acme', uf: 'AM', nome: 'ACME' })).toEqual([{ campo: 'uf', mensagem: 'A UF precisa ser a do código' }]);
+  });
+
+  it('EmpresaPlataforma: código opcional e anulável (contrato antigo continua válido)', () => {
+    expect(EmpresaPlataforma.parse({ ...empresa, slug: 'am2808', codigo: 'AM2808' }).codigo).toBe('AM2808');
+    expect(EmpresaPlataforma.parse({ ...empresa, codigo: null }).codigo).toBeNull();
+    expect(EmpresaPlataforma.parse(empresa).codigo).toBeUndefined();
   });
 
   it('EmpresaPlataforma: só ativo, suspenso ou encerrado (o tenant de referência nunca aparece); 1º admin sem e-mail nem nome', () => {

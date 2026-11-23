@@ -4,7 +4,7 @@
 # ferramenta `psql` do compose.yml (imagem da API, admin do DBaaS). Nenhum segredo novo no .env.
 #
 # Uso:
-#   bash ~/macuxierp-deploy/operador.sh criar-empresa --slug <slug> --nome "<nome da empresa>" \
+#   bash ~/macuxierp-deploy/operador.sh criar-empresa --codigo <código do FDV> | --uf <UF> --nome "<nome da empresa>" \
 #        --admin-email "<e-mail do administrador>" [--admin-nome "<nome>"] --operador <seu nome> [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "<e-mail>" [--nome "<nome>"] --operador <seu nome> [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar \
@@ -15,12 +15,15 @@
 #   - com --confirmar: aplica numa transação única e auditada. IDEMPOTENTE: repetir não duplica nada, NÃO troca a senha
 #     de quem já existe e não audita de novo o que já estava no estado pedido;
 #   - nome da empresa, e-mails e nomes de pessoa vão ao contêiner só pelo ambiente (-e NOME, sem valor no argv) e nunca
-#     aparecem no argv, na saída, nos erros nem na auditoria (que guarda slug, ids e números).
+#     aparecem no argv, na saída, nos erros nem na auditoria (que guarda código, ids e números).
 #
 # criar-empresa: primeiro acesso de uma empresa (tenant, 1º administrador e as licenças core, cadastros, pedido e
 #   integracao-fdv; motivo "primeiro acesso"). --nome é o nome legal (de MEI pode ser dado pessoal): 2 a 120 caracteres,
 #   com acento e pontuação, entre aspas. --admin-nome é opcional (padrão "Administrador"); o faturamento e o fiscal NÃO
 #   são ligados (licenca.mjs). Roda o empresa.mjs.
+#   --codigo é o código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808; RN-CORE-11), sem diferenciar maiúsculas;
+#   empresa sem FDV: --uf <UF> sorteia UF + 4 dígitos livres. Um dos dois. A saída mostra o código final.
+#   --slug <slug> é LEGADO (o comportamento de antes), com um aviso no stderr.
 # criar-superadmin (ADR 0012 §5): o superadmin do portal /config, com deve_trocar_senha (troca no 1º acesso), auditado
 #   no tenant de referência (plataforma.superadmin.criar). --nome é opcional (padrão "Superadmin"; 2 a 80 caracteres).
 # superadmin (ADR 0012 §5): --desativar (revoga as sessões abertas do portal), --reativar ou --destravar (zera as falhas
@@ -130,15 +133,17 @@ conteiner() {
 }
 
 criar_empresa() {
-  local SLUG='' NOME='' EMAIL='' ADMIN_NOME='Administrador' OPERADOR='' CONFIRMAR=0
+  local CODIGO='' UF='' SLUG='' NOME='' EMAIL='' ADMIN_NOME='Administrador' OPERADOR='' CONFIRMAR=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --confirmar) CONFIRMAR=1; shift; continue ;;
-      --slug | --nome | --admin-email | --admin-nome | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
+      --slug | --codigo | --uf | --nome | --admin-email | --admin-nome | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
       *) uso "opção desconhecida: $1" ;;
     esac
     case "$1" in
       --slug) SLUG="$2" ;;
+      --codigo) CODIGO="$2" ;;
+      --uf) UF="$2" ;;
       --nome) NOME="$2" ;;
       --admin-email) EMAIL="$2" ;;
       --admin-nome) ADMIN_NOME="$2" ;;
@@ -146,14 +151,28 @@ criar_empresa() {
     esac
     shift 2
   done
-  [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{1,39}$ ]] || uso "--slug: minúsculas, dígitos e hífen, 2 a 40 caracteres"
+  # formato aqui; a UF da lista oficial (UFS do SDK) o empresa.mjs confere
+  local EMPRESA_ARGS=()
+  if [ -n "$SLUG" ] && [ -z "$CODIGO" ] && [ -z "$UF" ]; then
+    [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{1,39}$ ]] || uso "--slug: minúsculas, dígitos e hífen, 2 a 40 caracteres"
+    echo "--slug é legado: use --codigo <código do FDV> (ex.: AM2808) ou --uf <UF>" >&2
+    EMPRESA_ARGS=(--slug "$SLUG")
+  elif [ -n "$CODIGO" ] && [ -z "$UF" ] && [ -z "$SLUG" ]; then
+    [[ "$CODIGO" =~ ^[A-Za-z]{2}[0-9]{4}$ ]] || uso "--codigo: código do FDV, UF + 4 dígitos, ex.: AM2808"
+    EMPRESA_ARGS=(--codigo "$CODIGO")
+  elif [ -n "$UF" ] && [ -z "$CODIGO" ] && [ -z "$SLUG" ]; then
+    [[ "$UF" =~ ^[A-Za-z]{2}$ ]] || uso "--uf: sigla da UF, ex.: AM"
+    EMPRESA_ARGS=(--uf "$UF")
+  else
+    uso "informe --codigo <código do FDV, ex.: AM2808> ou --uf <UF> para sortear (um dos dois)"
+  fi
   texto --nome "$NOME" 2 120
   [[ "$EMAIL" =~ $PADRAO_EMAIL ]] || uso "--admin-email fora do formato"
   texto --admin-nome "$ADMIN_NOME" 2 80
   [[ "$OPERADOR" =~ $PADRAO_OPERADOR ]] || uso "--operador exige o nome de quem executa (ex.: alexandre)"
   preparar empresa.mjs
 
-  local ARGS=(--slug "$SLUG" --operador "$OPERADOR") SENHA=''
+  local ARGS=("${EMPRESA_ARGS[@]}" --operador "$OPERADOR") SENHA=''
   if [ "$CONFIRMAR" = 1 ]; then
     SENHA="$(gerar_senha)" || erro 1 "não foi possível gerar a senha provisória (nada foi gravado)"
     ARGS+=(--confirmar)

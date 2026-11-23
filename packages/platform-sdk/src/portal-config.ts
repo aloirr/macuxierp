@@ -13,7 +13,7 @@
 import { z } from 'zod';
 import { moduloLicenciado, MODULOS_BASE, type Licenca } from './acesso';
 import { PADRAO_UUID } from './banco';
-import { PADRAO_CNPJ, PADRAO_UF } from './documentos';
+import { PADRAO_CNPJ, PADRAO_UF, UFS } from './documentos';
 import { violacao, type Violacao } from './erros';
 import { TrocarSenhaEntrada } from './eu';
 import { MODULOS, type ModuloId } from './modulo';
@@ -47,6 +47,37 @@ export const CABECALHO_IP_CLIENTE = 'x-macuxierp-ip-cliente';
 /** CHECK de `plataforma.tenant.slug` (0002). `referencia` é o slug do tenant das tabelas oficiais: nunca se cria. */
 export const PADRAO_SLUG_EMPRESA = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const SLUGS_RESERVADOS = ['referencia', 'config', 'plataforma'] as const;
+
+/**
+ * Código da empresa (RN-CORE-11, T-0053): o MESMO código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808). Único
+ * sem diferenciar maiúsculas; o login também não diferencia. Empresa sem FDV recebe UF + 4 dígitos sorteados. No banco
+ * fica em `plataforma.tenant.slug`, em minúsculas (cabe no CHECK de 0002, que não muda); na tela, em maiúsculas.
+ * O scripts/deploy/producao/empresa.mjs tem cópia de `UFS` e deste padrão (o teste apps/api/src/operador-codigo.test.ts trava).
+ */
+export const PADRAO_CODIGO_EMPRESA = /^[A-Za-z]{2}[0-9]{4}$/;
+const MENSAGEM_CODIGO = 'Código do FDV: UF + 4 dígitos, ex.: AM2808';
+const ufValida = (uf: string): boolean => (UFS as readonly string[]).includes(uf);
+
+/** Código do FDV informado: aparado, em maiúsculas, UF + 4 dígitos com UF existente. */
+export const CodigoEmpresa = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(PADRAO_CODIGO_EMPRESA, MENSAGEM_CODIGO)
+  .refine((c) => ufValida(c.slice(0, 2)), MENSAGEM_CODIGO);
+export type CodigoEmpresa = z.infer<typeof CodigoEmpresa>;
+
+/** Código → `plataforma.tenant.slug` (minúsculas). Não valida: passe antes por `CodigoEmpresa`. */
+export function codigoParaSlug(codigo: string): string {
+  return codigo.trim().toLowerCase();
+}
+
+/** `plataforma.tenant.slug` → código em maiúsculas; `null` quando o slug não é UF válida + 4 dígitos (ex.: slug antigo). */
+export function codigoDaEmpresa(slug: string): string | null {
+  if (!PADRAO_CODIGO_EMPRESA.test(slug)) return null;
+  const codigo = slug.toUpperCase();
+  return ufValida(codigo.slice(0, 2)) ? codigo : null;
+}
 
 /** Situações visíveis no portal. `referencia` (tabelas oficiais) nunca é listada. */
 export const SITUACOES_EMPRESA = ['ativo', 'suspenso', 'encerrado'] as const;
@@ -89,6 +120,8 @@ export const EmpresaPlataforma = z.object({
   cnpj: z.string().regex(PADRAO_CNPJ).nullable().optional(),
   cidade: z.string().nullable().optional(),
   uf: z.string().regex(PADRAO_UF, 'UF com 2 letras maiúsculas').nullable().optional(),
+  /** Código da empresa (RN-CORE-11) em maiúsculas, preenchido pelo core (`codigoDaEmpresa(slug)`); null em slug antigo. */
+  codigo: z.string().nullable().optional(),
   created_at: Instante,
   updated_at: Instante,
 });
@@ -98,18 +131,47 @@ export type EmpresaPlataforma = z.infer<typeof EmpresaPlataforma>;
 export const EmailPrimeiroAdminResposta = z.object({ email: EmailUsuario });
 export type EmailPrimeiroAdminResposta = z.infer<typeof EmailPrimeiroAdminResposta>;
 
-export const CriarEmpresaEntrada = z.object({
-  slug: z
-    .string()
-    .regex(PADRAO_SLUG_EMPRESA, 'Use de 2 a 40 letras minúsculas, dígitos ou hífen, começando por letra ou dígito')
-    .refine((s) => !(SLUGS_RESERVADOS as readonly string[]).includes(s), 'Slug reservado'),
-  /** Nome legal (de MEI pode ser dado pessoal): nunca vai para log nem para a auditoria (ADR 0012). */
-  nome: z.string().trim().min(2).max(120),
-  fuso: z
-    .string()
-    .regex(/^[A-Za-z_]+\/[A-Za-z_]+(\/[A-Za-z_]+)?$/, 'Fuso IANA, ex.: America/Manaus')
-    .default('America/Manaus'),
-});
+/**
+ * Criação da empresa (RN-CORE-11), fase 1: entrada com `codigo` (o código da licença do FDV) ou `slug` (legado), um dos
+ * dois; `uf`, se vier, é o prefixo do código. A SAÍDA mantém `slug: string` (o código em minúsculas), como o core de hoje.
+ * Fase 2 (PR curto do engenheiro, depois que o core aceitar `slug: string | null`): só `uf`, com o sorteio no core.
+ */
+export const CriarEmpresaEntrada = z
+  .object({
+    codigo: CodigoEmpresa.optional(),
+    /** LEGADO: até o /config do apps enviar `codigo`. Nunca junto com `codigo` nem com `uf`. */
+    slug: z
+      .string()
+      .regex(PADRAO_SLUG_EMPRESA, 'Use de 2 a 40 letras minúsculas, dígitos ou hífen, começando por letra ou dígito')
+      .refine((s) => !(SLUGS_RESERVADOS as readonly string[]).includes(s), 'Slug reservado')
+      .optional(),
+    /** `null` = ausente (a saída manda `uf: null`, e o apps reenvia a saída à API). */
+    uf: z.enum(UFS).nullish(),
+    /** Nome legal (de MEI pode ser dado pessoal): nunca vai para log nem para a auditoria (ADR 0012). */
+    nome: z.string().trim().min(2).max(120),
+    fuso: z
+      .string()
+      .regex(/^[A-Za-z_]+\/[A-Za-z_]+(\/[A-Za-z_]+)?$/, 'Fuso IANA, ex.: America/Manaus')
+      .default('America/Manaus'),
+  })
+  .transform((e, ctx) => {
+    const uf = e.uf ?? null;
+    if (e.codigo === undefined && e.slug === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['codigo'], message: 'Informe o código do FDV' });
+      return z.NEVER;
+    }
+    if (e.codigo !== undefined && e.slug !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['slug'], message: 'Informe o código do FDV, sem o slug' });
+      return z.NEVER;
+    }
+    if (uf !== null && (e.codigo === undefined || !e.codigo.startsWith(uf))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['uf'], message: 'A UF precisa ser a do código' });
+      return z.NEVER;
+    }
+    const slug = e.codigo !== undefined ? codigoParaSlug(e.codigo) : (e.slug as string);
+    return { slug, uf, nome: e.nome, fuso: e.fuso };
+  });
+/** Depois do parse: `slug` sempre preenchido (o código em minúsculas) e `uf` ou `null`. */
 export type CriarEmpresaEntrada = z.infer<typeof CriarEmpresaEntrada>;
 
 /** Mudança de licenças: só os módulos citados mudam; o core (`MODULOS_BASE`) nunca é desligado. */
