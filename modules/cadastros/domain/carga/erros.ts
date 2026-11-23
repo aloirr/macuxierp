@@ -41,3 +41,6 @@ export function errosDeZod(linha: number, issues: readonly { path: readonly Prop
     return erroLinha(linha, campo, falta ? 'CARGA_OBRIGATORIO' : 'CARGA_FORMATO', falta ? 'Obrigatório para criar o cadastro' : 'Valor fora do formato do contrato');
   });
 }
+
+/** RN-CORE-09: motivo fixo do arquivo filial e da coluna limite_credito_cents recusados por perfil. */
+export const MOTIVO_SO_ADMINISTRADOR = 'Só o administrador carrega filial e limite de crédito.';

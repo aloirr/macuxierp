@@ -6,7 +6,7 @@ import { DialogoMotivo } from './DialogoMotivo.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { TabelaDensa, type ColunaTabela } from './TabelaDensa.js';
 import { botaoPrincipal, botaoSecundario, gerarCssBotoes } from './estilos.js';
-import { AssinaturaErp, SHA256_ASSINATURA_A_NEGATIVO_AZUL_NOITE, SHA256_SIMBOLO_NEGATIVO, alturaAssinatura, assinaturaANegativoAzulNoite, faviconDataUri, faviconSvg, paraDataUri, simboloNegativo } from './marca.js';
+import { AssinaturaErp, SHA256_ASSINATURA_A_NEGATIVO_AZUL_NOITE, SHA256_ASSINATURA_A_NEGATIVO_GRAFITE, SHA256_ASSINATURA_C_POSITIVO, assinaturaANegativoGrafite, assinaturaCPositivo, SHA256_SIMBOLO_NEGATIVO, alturaAssinatura, assinaturaANegativoAzulNoite, faviconDataUri, faviconSvg, paraDataUri, simboloNegativo } from './marca.js';
 
 const sha256 = (literal: string) => createHash('sha256').update(literal + '\n').digest('hex');
 const novoItem = (chave: string): ItemLinha => ({ chave, produtoId: null, quantidade: 1, precoUnitarioCentavos: 0, descontoCentavos: 0 });
@@ -67,14 +67,14 @@ describe('DialogoMotivo: rotuloFechar e destrutivo', () => {
 describe('FormularioItens: erro abaixo de cada campo', () => {
   it('cada mensagem fica abaixo do seu campo e é ligada a ele', () => {
     const h = form({ erros: { 'item-1': { produtoId: 'Produto inativo.', quantidade: 'Acima do estoque.', precoUnitarioCentavos: 'Abaixo da tabela.', descontoCentavos: 'Acima do limite.' } } });
-    for (const m of ['Produto inativo.', 'Acima do estoque.', 'Abaixo da tabela.', 'Acima do limite.']) expect(h).toContain(`>${m}</div>`);
+    for (const m of ['Produto inativo.', 'Acima do estoque.', 'Abaixo da tabela.', 'Acima do limite.']) expect(h).toContain(`>${m}</span>`);
     expect(h).toMatch(/aria-label="Quantidade do item 1" aria-invalid="true" aria-describedby="[^"]+"/);
     expect(h).toMatch(/<input[^>]*aria-label="Quantidade do item 1"[^>]*border-color:var\(--mx-cor-erro-texto\)/);
     const ordem = ['Produto inativo.', 'Quantidade do item 1', 'Acima do estoque.', 'Preço unitário do item 1', 'Abaixo da tabela.', 'Desconto do item 1', 'Acima do limite.'].map((t) => h.indexOf(t));
     expect([...ordem].sort((a, b) => a - b)).toEqual(ordem);
   });
   it('mensagem só de texto continua valendo para a linha', () => {
-    expect(form({ erros: { 'item-1': 'Linha com problema.' } })).toContain('>Linha com problema.</div>');
+    expect(form({ erros: { 'item-1': 'Linha com problema.' } })).toContain('>Linha com problema.</span>');
   });
 });
 
@@ -106,6 +106,10 @@ describe('S-01: assinatura e favicon', () => {
   it('assinatura e símbolo batem com o SHA-256 dos arquivos oficiais', () => {
     expect(sha256(assinaturaANegativoAzulNoite)).toBe(SHA256_ASSINATURA_A_NEGATIVO_AZUL_NOITE);
     expect(sha256(simboloNegativo)).toBe(SHA256_SIMBOLO_NEGATIVO);
+  });
+  it('ativos novos (A grafite e C positivo) batem com o SHA-256 oficial', () => {
+    expect(sha256(assinaturaANegativoGrafite)).toBe(SHA256_ASSINATURA_A_NEGATIVO_GRAFITE);
+    expect(sha256(assinaturaCPositivo)).toBe(SHA256_ASSINATURA_C_POSITIVO);
   });
   it('favicon: o símbolo negativo inteiro sobre azul-noite', () => {
     expect(faviconSvg).toContain('fill="#1E3350"');

@@ -12,6 +12,16 @@ export type ModuloId = (typeof MODULOS)[number];
 export const PERFIS = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'] as const;
 export type Perfil = (typeof PERFIS)[number];
 
+/** Rótulo do perfil para pessoas (BKO, listas, exportação): uma fonte só. */
+export const ROTULOS_PERFIL: Readonly<Record<Perfil, string>> = Object.freeze({
+  administrador: 'Administrador',
+  gerente: 'Gerente',
+  faturista: 'Faturista',
+  fiscal: 'Fiscal',
+  vendedor: 'Vendedor',
+  leitura: 'Leitura',
+});
+
 /** Nome de evento: `<modulo>.<entidade>.<fato>@vN` (regra inegociável 3). */
 export const PADRAO_EVENTO = new RegExp(`^(${MODULOS.join('|')})\\.[a-z_]+\\.[a-z_]+@[1-9][0-9]*$`);
 
