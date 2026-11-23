@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.2.2 em produção** (publicada em 22/11, 09h41: virada do Hub com envio e recebimento ligados; a trava é a credencial mxc_, digitada só depois da carga conferida). **v0.3.0 em andamento** desde 23/11 07h08 (T-0050 e T-0051), previsão ~20h30 de 23/11. Time retomado em 23/11 05h37 ("Retome o trabalho"); parado de 05h42 a 07h00 pelo limite semanal de uso.
+> Fase atual: **v0.2.2 em produção** (publicada em 22/11, 09h41: virada do Hub com envio e recebimento ligados; a trava é a credencial mxc_, digitada só depois da carga conferida). **v0.3.0 em andamento** desde 23/11 07h08 (T-0050 e T-0051), previsão de fechamento ~13h50 de 23/11 (refeita às 08h40). Time retomado em 23/11 05h37 ("Retome o trabalho"); parado de 05h42 a 07h00 pelo limite semanal de uso.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -26,7 +26,7 @@
 | [T-0018](tarefas/T-0018.md) | Spike da biblioteca NF-e (ADR 0002), contra o simulador | F4 | engenheiro-software | concluida | #151 → f8d70e9 (nfe-emissor atrás da porta EmissorNFe, MEI, eventos; 20 notas sem buraco e nota MEI no simulador); corretor #152; decisão RD-0254: fica o nfe-emissor |
 | [T-0019](tarefas/T-0019.md) | Banco: fiscal, faturamento, numeração sem buraco e XML imutável | F4 | banco-dados | em_andamento | 0013 #121 → 49d92de; fixture #143; 0020 (nfe_assinada, 🔴 da T-0021) e 0021 (p_dif, p_icms_efet) em curso; 0014 sem uso |
 | [T-0020](tarefas/T-0020.md) | Fiscal: motor ICMS, ST, IPI, PIS, COFINS, IBS, CBS e IS | F4 | modulo-fiscal | concluida | #83, #91, #139 → 7d8de46, #144 → 137f0b4 (ST retido, CST 51, MEI); total 21h51; pendências da homologação na T-0046 |
-| [T-0021](tarefas/T-0021.md) | Faturamento: NF-e 55, eventos, DANFE, contingência, títulos | F4 | modulo-faturamento | em_andamento | #275, #287 (filial vazia), #290 e #285 (ui), #294 (foco); pacotes da contingência #284 → 2047e0b; #269 (SVC, contingência FECHADA no piloto pela RN-FAT-10, EPEC desligada) aguarda a correção do DANFE (linha única de aviso de topo em y 22) e o reteste da marca; #300 (API liga a contingência) depois do #269; manual do DANFE §6 #299 → 48c7481 |
+| [T-0021](tarefas/T-0021.md) | Faturamento: NF-e 55, eventos, DANFE, contingência, títulos | F4 | modulo-faturamento | em_andamento | #275, #287 (filial vazia), #290 e #285 (ui), #294 (foco); pacotes da contingência #284 → 2047e0b; #269 → 1c50730 (SVC, contingência FECHADA no piloto pela RN-FAT-10, EPEC desligada, DANFE com linha única de aviso em y 22); #306 → e6d2903 (API liga a contingência; substitui o #300, fechado por "agente ambíguo" depois do squash do #269); EPEC guardada em nuvem/T-0021-shell-epec e -b, sem PR; próximo lote: 2 🟡 de voz no diálogo; manual do DANFE §6 #299 → 48c7481 |
 | [T-0022](tarefas/T-0022.md) | 20 notas no simulador da SEFAZ-AM com o XML guardado | F4 | testes | em_andamento | #86, #125, #146 (MEI), #148 (catálogo), #153 (it do SAN); N01–N20 pelo produto depois da T-0021; total 13h31 |
 | [T-0023](tarefas/T-0023.md) | Assinatura "Macuxi ERP" da marca (proposta ao Alexandre) | F1 | design-de-marca | concluida | #5 → 3308e05 (A principal, C vertical, ponta a ponta em todo o ERP); ativos finais na T-0049 |
 | [T-0024](tarefas/T-0024.md) | Deploy do ERP na VM do FDV com trava compartilhada (ADR 0003) | F1 | engenheiro-software | em_andamento | v0.2.0 (22/11 08h23), v0.2.1 (09h22, #280 operador.sh criar-empresa) e v0.2.2 (09h41, #282 virada do Hub, envio e recebimento ligados) publicadas; banco preservado (última migração 0032); falta a CA do DBaaS (PROD_PG_CA_CERT) |
@@ -55,8 +55,8 @@
 | [T-0048](tarefas/T-0048.md) | Atualizar o zod para >= 4.6.6 (GHSA-mrhx-c7xc-m3w5) | F4 | engenheiro-software | aberta | achado da revisão da T-0045 |
 | [T-0049](tarefas/T-0049.md) | Marca: ativos finais da assinatura Macuxi ERP (SVGs oficiais em docs/marca/ativos/, regra definitiva) | F1 | design-de-marca | concluida | #168 → 6f72cc6; parecer do corretor no #172; recados R-20261122-021618 e R-20261122-021622 |
 | [T-0033](tarefas/T-0033.md) | Core: expor lerChaveA1 e as funções de validade do A1 pela api (destrava o PR #19) | F1 | modulo-core | concluida | PR #22 → cba7f5f |
-| [T-0050](tarefas/T-0050.md) | Portal de configuração do ERP (superadmin) em /config | v0.3.0 | engenheiro-software | em_andamento | E1 #291 → b1d8b80 (07h28), E2 0033 #298 → eafde36 (08h06), E5 spec do portal #295 → 8becfbf; E3 core em curso (~10h30); PR do perfil analista depois dos testes casados compatíveis; E4 apps (~15h05); E6 testes (~16h50); fechamento ~18h00 |
-| [T-0051](tarefas/T-0051.md) | Carga por entidade (RF-CAD-11) e perfil analista de implantação (RN-CORE-09) | v0.3.0 | modulo-cadastros | em_andamento | docs #279; cadastros #293 → bc3b133 e #296 (entidade_faltante) → 4e518f5; tela F2 #297 → cd03e18 (4 🟡 da marca num PR curto); falta a etapa 4 do cadastros e o perfil (depois do PR do perfil) |
+| [T-0050](tarefas/T-0050.md) | Portal de configuração do ERP (superadmin) em /config | v0.3.0 | engenheiro-software | em_andamento | E1 #291 → b1d8b80, E2 0033 #298 → eafde36, E3 #303 → 98f306e, E5 #295 → 8becfbf; ui #302, #309 → ae55aa9 e #311 → 1b1587e; testes casados #304 e #307 → 7aec401; perfil analista #308 depois do casado de 1 linha do cadastros (manifest com PERFIS); E4 shell #310 no 3º push (marca + componentes do #309); plugin na apps/api ~10h55; E6 testes ~12h40; fechamento ~13h50 |
+| [T-0051](tarefas/T-0051.md) | Carga por entidade (RF-CAD-11) e perfil analista de implantação (RN-CORE-09) | v0.3.0 | modulo-cadastros | em_andamento | docs #279; cadastros #293 → bc3b133 e #296 → 4e518f5; tela F2 #297 → cd03e18; ajustes de marca #305 → b696132; casado do manifest (perfis: [...PERFIS]) antes do #308; depois, PR B da etapa 4 (RD-0942–0944) |
 
 ## Travado pela nuvem (21/11, 23h00)
 Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS4zYxV.
@@ -118,6 +118,10 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - 07h45 (PO): EPEC desligada na v0.3.0 (opção b); 0034, consulta no AN e consumidores do pedido e do integracao-fdv ficam para a versão em que ela ligar.
 - 07h58 (PO): contingência fechada no piloto (opção a, RN-FAT-10 sem mudança); o botão de abrir não aparece na filial com simulador.
 - 08h08 (gerente): o 🔴 do DANFE em contingência (título fora da área de impressão) entra nesta versão.
+- 08h25 e 08h30 (PO): **risco aberto** da ADR 0012 — o papel macuxierp_app consegue fazer SET ROLE macuxierp_config. A separação dos papéis sai na versão do TOTP, que é **obrigatória antes da 2ª empresa cliente**. Regra de operação até lá: **nenhuma 2ª empresa em produção sem o ok do PO**; o único superadmin é o Alexandre, pelo operador.sh. A seção "Risco aberto" da ADR 0012 entra no #308.
+- 08h30: o #300 (vermelho na governança, "agente ambíguo" depois do squash do #269) foi fechado e trocado pelo #306, com commit único.
+- 08h40: previsão da v0.3.0 refeita: plugin ~10h55, E6 ~12h40, fechamento ~13h50.
+- Entraram depois do #301: #302 → a902d3b, #303 → 98f306e, #304 → c547f5d, #305 → b696132, #306 → e6d2903, #307 → 7aec401, #309 → ae55aa9 e #311 → 1b1587e (08h55).
 - Entraram depois do #286: #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298 e #299.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
 
