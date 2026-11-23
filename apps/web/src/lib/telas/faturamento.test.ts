@@ -9,7 +9,7 @@ import { montarMenu, resolverPagina } from '../menu';
 import { PAGINAS_REGISTRADAS, casarRota, paginasDoMenu } from '../paginas';
 import { escritaDeclarada, executorDaTela, executorDeAcoes, leituraDeclarada, telaDaRota } from '../telas';
 import { aposResposta, chaveParaEnvio, ehRespostaDefinitiva, estadoDoClique } from '../descritor/idempotencia';
-import { DETALHE_NOTA, DETALHE_TITULO, LISTA_NOTAS, LISTA_PEDIDOS_A_FATURAR, LISTA_REJEICOES, LISTA_TITULOS, validarAcaoDaNota, validarAcaoDoTitulo, vistaDaNota, vistaDoTitulo } from './faturamento';
+import { DETALHE_NOTA, DETALHE_TITULO, LISTA_EPEC_PENDENTES, LISTA_NOTAS, LISTA_PEDIDOS_A_FATURAR, LISTA_REJEICOES, LISTA_TITULOS, validarAcaoDaNota, validarAcaoDoTitulo, vistaDaNota, vistaDoTitulo } from './faturamento';
 
 const ID = '3f1d5a07-7b0e-4a52-9d3c-4a6b8e2f1c70';
 const F = '8a2b6c10-1d3e-4f5a-8b7c-9d0e1f2a3b4c';
@@ -35,17 +35,18 @@ const titulo = (extra: Partial<TituloDetalhe> = {}): TituloDetalhe => ({
 const ids = (v: { acoes: readonly { id: string }[] }) => v.acoes.map((a) => a.id);
 
 describe('rotas e menu do faturamento no shell (T-0021)', () => {
+  const rotasFaturamento = PAGINAS_REGISTRADAS.filter((p) => p.modulo === 'faturamento').map((p) => [p.rota, Boolean(p.ocultaNoMenu)] as const);
   it('registra as páginas do módulo; o detalhe da nota e do título ficam fora do menu', () => {
-    const rotas = PAGINAS_REGISTRADAS.filter((p) => p.modulo === 'faturamento').map((p) => [p.rota, Boolean(p.ocultaNoMenu)]);
-    expect(rotas).toEqual([
-      ['/faturamento/pedidos-a-faturar', false], ['/faturamento/notas', false], ['/faturamento/notas/:id', true], ['/faturamento/rejeicoes', false], ['/faturamento/titulos', false], ['/faturamento/titulos/:id', true],
+    expect(rotasFaturamento).toEqual([
+      ['/faturamento/pedidos-a-faturar', false], ['/faturamento/notas', false], ['/faturamento/notas/:id', true], ['/faturamento/rejeicoes', false], ['/faturamento/epec-pendentes', false], ['/faturamento/titulos', false], ['/faturamento/titulos/:id', true],
     ]);
-    expect(paginasDoMenu('faturamento', 'Notas fiscais').map((p) => p.rota)).toEqual(['/faturamento/notas']);
+    expect(paginasDoMenu('faturamento', 'Notas fiscais').map((p) => p.rota)).toEqual(['/faturamento/notas', '/faturamento/epec-pendentes']);
     expect(paginasDoMenu('faturamento', 'Rejeições').map((p) => p.rota)).toEqual(['/faturamento/rejeicoes']);
     expect(casarRota(`/faturamento/notas/${ID}`)?.params).toEqual({ id: ID });
   });
   it('toda página com tela tem descritor pela rota', () => {
-    for (const r of ['/faturamento/pedidos-a-faturar', '/faturamento/notas', '/faturamento/notas/:id', '/faturamento/rejeicoes', '/faturamento/titulos', '/faturamento/titulos/:id']) expect(telaDaRota(r)).toBeDefined();
+    for (const [r] of rotasFaturamento) expect(telaDaRota(r), r).toBeDefined();
+    expect(telaDaRota('/faturamento/epec-pendentes')).toBe(LISTA_EPEC_PENDENTES);
     expect(telaDaRota('/faturamento/notas')).toBe(LISTA_NOTAS);
     expect(telaDaRota('/faturamento/notas/:id')).toBe(DETALHE_NOTA);
     expect(telaDaRota('/faturamento/titulos/:id')).toBe(DETALHE_TITULO);
@@ -61,6 +62,7 @@ describe('rotas e menu do faturamento no shell (T-0021)', () => {
     const adm = montarMenu(EU_FALSO.modulos, MANIFESTOS, 'administrador');
     expect(resolverPagina(adm, `/faturamento/notas/${ID}`, 'administrador')?.params).toEqual({ id: ID });
     expect(resolverPagina(adm, '/faturamento/rejeicoes', 'administrador')?.rotulo).toBe('Rejeições');
+    expect(resolverPagina(adm, '/faturamento/epec-pendentes', 'administrador')?.pagina?.titulo).toBe('EPEC pendentes');
     expect(resolverPagina(adm, `/faturamento/titulos/${ID}`, 'administrador')?.pagina?.titulo).toBe('Título a receber');
     expect(resolverPagina(montarMenu(EU_FALSO.modulos, MANIFESTOS, 'vendedor'), '/faturamento/notas', 'vendedor')).toBeUndefined();
   });
