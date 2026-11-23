@@ -20,3 +20,5 @@ export * from './agenda';
 export * from './cifra';
 export * from './certificado-icp';
 export * from './paginas';
+export * from './portal-config';
+export * from './plataforma-rotas';
