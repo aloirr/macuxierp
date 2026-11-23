@@ -26,6 +26,7 @@ import {
 import { fixturePlataforma, novoTenant } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0033_plataforma_superadmin.sql', import.meta.url));
+const MIGRACAO_0037 = fileURLToPath(new URL('../migrations/0037_plataforma_slug_codigo_fdv.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const PAPEIS = ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura'] as const;
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
@@ -49,7 +50,7 @@ const PORTAL = [
   'plataforma.superadmin_trocar_senha(text, text)',
   'plataforma.empresas_listar(text, uuid, integer)',
   'plataforma.empresa_ler(uuid)',
-  'plataforma.empresa_criar(text, text, text, text)',
+  'plataforma.empresa_criar(text, text, text, text, text)', // 0037: + p_uf DEFAULT NULL
   'plataforma.empresa_situacao(uuid, text, text, text)',
   'plataforma.empresa_modulos(uuid, jsonb, text)',
   'plataforma.empresa_primeiro_admin_criar(uuid, text, text, text, text)',
@@ -886,6 +887,15 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
     );
     rodarScript(banco.conexao, sql, { transacao: true });
     rodarScript(banco.conexao, sql, { transacao: true });
+    // A 0033 recria a empresa_criar de 4 argumentos; reaplicar a 0037 (a ordem do deploy) a tira e fica uma só.
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0037, 'utf8'), { transacao: true });
+    expect(
+      um(
+        `SELECT (SELECT count(*)::int FROM pg_proc WHERE pronamespace = 'plataforma'::regnamespace
+           AND proname = 'empresa_criar') AS n,
+           to_regprocedure('plataforma.empresa_criar(text, text, text, text, text)') IS NOT NULL AS cinco`,
+      ),
+    ).toEqual({ n: 1, cinco: true });
     expect(
       um(
         `SELECT pg_has_role('macuxierp_app', '${CONFIG}', 'USAGE') AS u, pg_has_role('macuxierp_app', '${CONFIG}', 'SET') AS s`,
