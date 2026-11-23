@@ -201,14 +201,13 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
 });
 
 describe('perfis da matriz (RN-CORE-01 e RN-CORE-02)', () => {
-  const temAnalista = (PERFIS as readonly string[]).includes('analista_implantacao');
   const livres = [...new Set(ROTAS.filter((x) => semPermissao(x.r) === undefined).map((x) => x.r.acao))].sort();
 
-  it.skipIf(temAnalista)('RN-CORE-01: sem o analista_implantacao, as ações livres são as 5 de leitura', () => {
-    expect(livres).toEqual(['cadastros.ver', 'core.empresa.ver', 'core.perfil.ver', 'faturamento.ver', 'pedido.ver']);
+  it('RN-CORE-09: o PERFIS do SDK tem o analista_implantacao', () => {
+    expect(PERFIS).toContain('analista_implantacao');
   });
 
-  it.skipIf(!temAnalista)('RN-CORE-09: com o analista_implantacao, só cadastros.ver fica liberado a todos', () => {
+  it('RN-CORE-09: com o analista_implantacao, só cadastros.ver fica liberado a todos', () => {
     expect(livres).toEqual(['cadastros.ver']);
   });
 });

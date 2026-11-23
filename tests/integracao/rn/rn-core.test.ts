@@ -13,7 +13,6 @@ const api = usarApiMemoria();
 const SEIS = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'];
 
 describe('RN-CORE-01: perfis da v1', () => {
-  const temAnalista = (PERFIS as readonly string[]).includes('analista_implantacao');
   const listar = async () => {
     const a = await api();
     const r = await a.app.inject({ method: 'GET', url: '/v1/core/perfis', headers: a.auth('leitura') });
@@ -24,7 +23,7 @@ describe('RN-CORE-01: perfis da v1', () => {
     expect(perfis).toEqual([...PERFIS]);
     expect(perfis.slice(0, 6)).toEqual(SEIS);
   });
-  it.skipIf(!temAnalista)('RN-CORE-09: com o analista_implantacao, são 7 perfis e ele fica no fim', async () => {
+  it('RN-CORE-09: com o analista_implantacao, são 7 perfis e ele fica no fim', async () => {
     const perfis = await listar();
     expect(perfis).toEqual([...SEIS, 'analista_implantacao']);
   });
