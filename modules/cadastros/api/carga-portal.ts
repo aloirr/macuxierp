@@ -18,7 +18,7 @@ import {
   MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, normalizarFrase, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
-import type { RelatorioCarga, ResultadoEntidade } from '../contracts';
+import type { ErroCarga, RelatorioCarga, ResultadoEntidade } from '../contracts';
 import { planoSubstituicao } from '../domain';
 import { executarCarga } from './carga';
 import { lerCsvDoLayout } from './carga-reativar';
@@ -194,4 +194,14 @@ export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e:
     cadastro, modo: e.modo, prontas, com_erro: Math.max(comErro, linhas.length > 0 ? 1 : 0),
     linhas, linhas_omitidas: Math.max(0, lista.length + rel.erros_omitidos - linhas.length), ...(efeito ? { efeito } : {}),
   });
+}
+
+/**
+ * RF-CAD-11: os erros do arquivo para o CSV do `erros` (linha, campo, código e motivo; nunca o valor da célula, D9). Roda o
+ * mesmo `executarCarga` em `validar` do `validarCargaPortal`, sem gravar nada; os erros vêm do relatório (até o teto dele).
+ */
+export async function errosCargaPortal(deps: Dependencias, c: ContextoRota, e: EntradaCargaPortal): Promise<ErroCarga[]> {
+  const cadastro = CadastroCargaPortal.parse(e.cadastro);
+  const rel = await executarCarga(deps, c, 'validar', [arquivoDoCadastro(e)], cadastro);
+  return rel.erros;
 }

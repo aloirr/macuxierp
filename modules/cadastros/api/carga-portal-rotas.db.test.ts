@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
+import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, SituacaoCargasPlataforma, type ContextoPlataformaPorEtapa, type Transacao } from '@macuxierp/platform-sdk';
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -104,6 +104,16 @@ describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', (
     await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', produto().slice(0, 2).join('\n'));
     const s = (await contexto().comPlataforma((tx) => tx.consultar<{ s: { cadastros: { cadastro: string; ativos: number; ultima_carga: { quantidade: number } | null }[] } }>('SELECT cadastros.portal_carga_situacao($1) AS s', [T])))[0]!.s;
     expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ ativos: 2, ultima_carga: { quantidade: 1 } });
+  }, 120_000);
+
+  it('RF-CAD-11: GET situacao devolve as 10 linhas no formato do SDK, com a carga concluída e a 0040', async () => {
+    const T = await novoTenant('rota-situacao-get');
+    await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', produto().slice(0, 2).join('\n'));
+    const r = await plugin().rotas.find((x) => x.caminho === CAMINHOS_CARGAS_PLATAFORMA.situacao)!.executar(contexto(), { corpo: undefined, consulta: undefined, params: { id: T } });
+    const s = SituacaoCargasPlataforma.parse(r.corpo);
+    expect(s).toMatchObject({ empresa_id: T, modulo_licenciado: true });
+    expect(s.cadastros).toHaveLength(10);
+    expect(s.cadastros.find((x) => x.cadastro === 'produto')).toMatchObject({ situacao: 'carregado', ultima_carga: { quantidade: 1 } });
   }, 120_000);
 
   it('RN-CAD-10: falha na etapa do tenant desfaz o tenant e conclui a execução como falhou (o erro original sobe)', async () => {
