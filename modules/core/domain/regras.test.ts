@@ -1,3 +1,4 @@
+import { regrasDescumpridas } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { avaliarTrocaAmbienteTenant, MENSAGEM_PRODUCAO_DO_OPERADOR } from './ambiente';
 import { alertaVencimento, avaliarA1Valido, avaliarCertificado, diasParaVencer } from './certificado';
@@ -90,13 +91,26 @@ describe('RN-CORE-01: usuário, perfil e último administrador', () => {
     expect(avaliarAlteracaoUsuario({ atual: g, alteracao: { ativo: false }, outrosAdministradoresAtivos: 0 })).toEqual({ ok: true });
   });
 
-  it('RF-CORE-02: senha provisória tem 16 caracteres sem ambíguos, varia por bytes e cobre todas as classes', () => {
-    const s = gerarSenhaProvisoria(bytes(256, 1));
-    expect(s).toMatch(/^[A-HJ-NP-Za-km-z2-9!@#%+=?]{16}$/);
-    expect(s).toMatch(/[A-Z]/);
-    expect(s).toMatch(/[a-z]/);
-    expect(s).toMatch(/[0-9]/);
-    expect(gerarSenhaProvisoria(bytes(256, 2))).not.toBe(s);
+  it('RF-CORE-02 e T-0052: senha provisória de 16 caracteres, sem ambíguos, com maiúscula, minúscula, número e especial', () => {
+    for (let semente = 0; semente < 200; semente++) {
+      const senha = gerarSenhaProvisoria(bytes(256, semente));
+      expect(senha).toMatch(/^[A-HJ-NP-Za-km-z2-9!@#%+=?]{16}$/);
+      expect(senha).toMatch(/[A-Z]/);
+      expect(senha).toMatch(/[a-z]/);
+      expect(regrasDescumpridas(senha)).toEqual([]);
+    }
+  });
+
+  it('RF-CORE-02: a senha varia com os bytes', () => {
+    expect(gerarSenhaProvisoria(bytes(256, 2))).not.toBe(gerarSenhaProvisoria(bytes(256, 1)));
+  });
+
+  it('T-0052: bytes que no gerador antigo apagavam o único dígito ainda dão senha com todas as classes', () => {
+    const b = Uint8Array.from({ length: 256 }, (_, i) => (i === 3 ? 49 : i < 16 ? i % 24 : (i * 37 + 5) % 256));
+    const senha = gerarSenhaProvisoria(b);
+    expect(regrasDescumpridas(senha)).toEqual([]);
+    expect(senha).toMatch(/[A-Z]/);
+    expect(senha).toMatch(/[a-z]/);
   });
 
   it('RF-CORE-02: senha provisória recusa bytes insuficientes', () => {
