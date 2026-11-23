@@ -1,5 +1,5 @@
 /**
- * Contratos do portal `/config` para as cargas de cadastros (T-0058, v0.3.5a; o zerar fica para a v0.3.5b): a aba
+ * Contratos do portal `/config` para as cargas de cadastros (T-0058: cargas na v0.3.5a, zerar na v0.3.5b): a aba
  * "Cargas" da ficha da empresa, só do superadmin. Molde: `portal-integracao.ts`.
  *
  * Por que aqui, e não em `modules/cadastros/contracts`: o SDK não importa módulo (fronteira), e a rota de plataforma é
@@ -18,7 +18,6 @@
  */
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
-import { TIPO_CSV } from './listas';
 
 const Id = z.string().regex(PADRAO_UUID);
 const Instante = z.string().datetime();
@@ -69,7 +68,7 @@ export function rotuloCadastroCarga(cadastro: CadastroCargaPortal): string {
 
 /** Confirmação do "Substituir tudo" (Alexandre, R-20261123-145123). */
 export const FRASE_SUBSTITUIR_TUDO = 'autorizo substituir tudo';
-/** Confirmação do "Zerar dados" (RN-CAD-10 ajustada: no lugar do código da empresa). Zerar: v0.3.5b. */
+/** Confirmação do "Zerar dados" (RN-CAD-10 ajustada: no lugar do código da empresa). */
 export const FRASE_ZERAR_DADOS = 'autorizo zerar os dados';
 
 /**
@@ -77,7 +76,7 @@ export const FRASE_ZERAR_DADOS = 'autorizo zerar os dados';
  * (um ou mais). A tela liga o botão só quando `normalizarFrase(digitado) === FRASE_*`, e a API revalida pelo Zod.
  */
 export function normalizarFrase(frase: string): string {
-  return frase.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\s*\.+$/, '').trim();
+  return frase.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\s*\.+$/, '');
 }
 
 /** A frase confere com a esperada (pela normalização acima). */
@@ -187,16 +186,23 @@ export const LIMITE_INATIVACAO_FDV_PCT = 30;
 /**
  * Efeito do "Substituir tudo" num cadastro: `total` = ativos de hoje no tenant; `a_inativar` = os que não vêm no arquivo;
  * `percentual` = `a_inativar * 100 / total` (0 sem ativos, sem arredondar: a tela formata); `acima_limite_fdv` =
- * `percentual > LIMITE_INATIVACAO_FDV_PCT`.
+ * `percentual > LIMITE_INATIVACAO_FDV_PCT`; `sem_chave` (opcional) = registros sem `external_id`, criados no BKO, que
+ * ficam fora da inativação (o banco devolve pela `carga_inativar_ausentes`).
  */
 export const EfeitoSubstituir = z
-  .object({ total: Contagem, a_inativar: Contagem, percentual: z.number().min(0).max(100), acima_limite_fdv: z.boolean() })
+  .object({
+    total: Contagem,
+    a_inativar: Contagem,
+    percentual: z.number().min(0).max(100),
+    acima_limite_fdv: z.boolean(),
+    sem_chave: Contagem.optional(),
+  })
   .superRefine((e, ctx) => {
     if (e.a_inativar > e.total) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['a_inativar'], message: 'Não inativa mais que os ativos' });
       return;
     }
-    const esperado = efeitoSubstituir(e);
+    const esperado = efeitoSubstituir({ total: e.total, a_inativar: e.a_inativar });
     if (e.percentual !== esperado.percentual || e.acima_limite_fdv !== esperado.acima_limite_fdv) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['percentual'], message: 'Percentual e limite derivados de efeitoSubstituir' });
     }
@@ -204,12 +210,16 @@ export const EfeitoSubstituir = z
 export type EfeitoSubstituir = z.infer<typeof EfeitoSubstituir>;
 
 /** Calcula o efeito (pura; o plugin e a tela usam a mesma). */
-export function efeitoSubstituir(e: { total: number; a_inativar: number }): EfeitoSubstituir {
+export function efeitoSubstituir(e: { total: number; a_inativar: number; sem_chave?: number }): EfeitoSubstituir {
   if (!Number.isInteger(e.total) || !Number.isInteger(e.a_inativar) || e.total < 0 || e.a_inativar < 0 || e.a_inativar > e.total) {
     throw new RangeError('efeitoSubstituir: contagens inteiras, com a_inativar entre 0 e total');
   }
+  if (e.sem_chave !== undefined && (!Number.isInteger(e.sem_chave) || e.sem_chave < 0)) {
+    throw new RangeError('efeitoSubstituir: sem_chave é contagem inteira e não negativa');
+  }
   const percentual = e.total === 0 ? 0 : (e.a_inativar * 100) / e.total;
-  return { total: e.total, a_inativar: e.a_inativar, percentual, acima_limite_fdv: percentual > LIMITE_INATIVACAO_FDV_PCT };
+  const efeito: EfeitoSubstituir = { total: e.total, a_inativar: e.a_inativar, percentual, acima_limite_fdv: percentual > LIMITE_INATIVACAO_FDV_PCT };
+  return e.sem_chave === undefined ? efeito : { ...efeito, sem_chave: e.sem_chave };
 }
 
 // ---- Validar ----
@@ -307,13 +317,100 @@ export const GravarCargaPlataformaResposta = z
   });
 export type GravarCargaPlataformaResposta = z.infer<typeof GravarCargaPlataformaResposta>;
 
-// ---- Zerar (v0.3.5b: só o contrato da entrada; a rota e a função entram na 5b) ----
+// ---- Zerar (v0.3.5b) ----
 
-/** `POST .../cadastros/zerar` (v0.3.5b, `Idempotency-Key` obrigatória): RN-CAD-10, confirmado por `FRASE_ZERAR_DADOS`. */
-export const ZerarDadosPlataformaEntrada = z
-  .object({ frase: Frase })
-  .refine((r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS), { path: ['frase'], message: MENSAGEM_FRASE_ZERAR });
+/**
+ * Os cadastros do "Zerar dados" (RN-CAD-10), na ordem da carga. Não deriva de `CADASTROS_CARGA_PORTAL`: forma e prazo
+ * de pagamento moram na mesma tabela (`cadastros.condicao_pagamento`) e zeram juntos, como `forma_prazo`.
+ */
+export const CADASTROS_ZERAR_PORTAL = [
+  'filial',
+  'vendedor',
+  'forma_prazo',
+  'produto',
+  'produto_unidade',
+  'preco',
+  'estoque',
+  'cliente',
+  'cliente_endereco',
+] as const;
+export const CadastroZerarPortal = z.enum(CADASTROS_ZERAR_PORTAL);
+export type CadastroZerarPortal = z.infer<typeof CadastroZerarPortal>;
+
+/** As tabelas do schema `cadastros` que o zerar apaga (as tabelas oficiais e a `consulta_externa` ficam). */
+export const TABELAS_ZERAGEM = [
+  'filial',
+  'vendedor',
+  'condicao_pagamento',
+  'produto',
+  'produto_unidade',
+  'tabela_preco',
+  'tabela_preco_item',
+  'estoque_saldo',
+  'estoque_movimento',
+  'cliente',
+  'cliente_contato',
+  'cliente_endereco',
+] as const;
+export const TabelaZeragem = z.enum(TABELAS_ZERAGEM);
+export type TabelaZeragem = z.infer<typeof TabelaZeragem>;
+
+/** Por que um registro ficou: está em uso por pedido, título ou nota. */
+const MOTIVOS_USO = ['pedido', 'titulo', 'nota'] as const;
+
+/** `detalhes.codigo` do 422 do zerar quando `bloqueios` não está vazio (sem SQLSTATE: o plugin decide). */
+export const CODIGO_ZERAGEM_BLOQUEADA = 'zeragem_bloqueada';
+
+const semRepetir = <T>(xs: readonly T[]): boolean => new Set(xs).size === xs.length;
+
+/** `POST .../cadastros/zerar/previa` (só lê, sem `Idempotency-Key`): o que o zerar faria com estes cadastros. */
+export const PreviaZerarPlataformaEntrada = z.object({
+  cadastros: z
+    .array(CadastroZerarPortal)
+    .min(1)
+    .max(CADASTROS_ZERAR_PORTAL.length)
+    .refine(semRepetir, { message: 'Cadastro repetido' }),
+});
+export type PreviaZerarPlataformaEntrada = z.infer<typeof PreviaZerarPlataformaEntrada>;
+
+/** `POST .../cadastros/zerar` (`Idempotency-Key` obrigatória): RN-CAD-10, confirmado por `FRASE_ZERAR_DADOS`. */
+export const ZerarDadosPlataformaEntrada = PreviaZerarPlataformaEntrada.extend({ frase: Frase }).refine(
+  (r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS),
+  { path: ['frase'], message: MENSAGEM_FRASE_ZERAR },
+);
 export type ZerarDadosPlataformaEntrada = z.infer<typeof ZerarDadosPlataformaEntrada>;
+
+/**
+ * Resposta da prévia (`simulado` true) e do zerar (`simulado` false). `efetivos` = cadastros zerados (ou que seriam);
+ * `apagados` por tabela; `anulados` = referências do cliente que viram `null`; `mantidos` = registros em uso que ficam;
+ * `bloqueios` = cadastros que impedem o zerar (só na prévia: no zerar, bloqueio é 422 `CODIGO_ZERAGEM_BLOQUEADA`);
+ * `sem_chave` = registros sem `external_id`.
+ */
+export const ZeragemPlataformaResposta = z
+  .object({
+    empresa_id: Id,
+    simulado: z.boolean(),
+    efetivos: z.array(CadastroZerarPortal),
+    apagados: z.array(z.object({ tabela: TabelaZeragem, quantidade: Contagem })),
+    anulados: z.array(
+      z.object({
+        tabela: z.literal('cliente'),
+        coluna: z.enum(['vendedor_id', 'tabela_preco_id', 'condicao_pagamento_id']),
+        quantidade: Contagem,
+      }),
+    ),
+    mantidos: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(MOTIVOS_USO), quantidade: Contagem })),
+    bloqueios: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(['integracao_ligada', 'lote_em_andamento']) })),
+    sem_chave: Contagem,
+  })
+  .superRefine((r, ctx) => {
+    if (!semRepetir(r.efetivos)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efetivos'], message: 'Cadastro repetido' });
+    if (!semRepetir(r.apagados.map((a) => a.tabela))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apagados'], message: 'Tabela repetida' });
+    if (!r.simulado && r.bloqueios.length > 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['bloqueios'], message: `Zerar com bloqueio é 422 ${CODIGO_ZERAGEM_BLOQUEADA}` });
+    }
+  });
+export type ZeragemPlataformaResposta = z.infer<typeof ZeragemPlataformaResposta>;
 
 // ---- Erros ----
 
@@ -335,24 +432,23 @@ export const MENSAGENS_CARGA_PORTAL = Object.freeze({
   dependenciaPendente: 'O estado mudou; recarregue a página.',
   semLicenca: 'A empresa precisa estar ativa e com o módulo Cadastros licenciado.',
   nadaAGravar: 'Nenhuma linha pronta para gravar.',
+  zeragemBloqueada: 'Há integração ligada ou lote em andamento; resolva antes de zerar.',
 });
 
 /**
  * `detalhes.codigo` dos erros do portal de cargas (409 `CONFLITO` e 422): do DETAIL das funções e do plugin. Fora desta
  * lista, o texto do banco não passa.
  */
-export const CODIGOS_DETALHE_CARGA_PORTAL = ['carga_em_andamento', 'dependencia_pendente', 'empresa_inativa', 'modulo_desligado', 'nada_a_gravar'] as const;
+export const CODIGOS_DETALHE_CARGA_PORTAL = ['carga_em_andamento', 'dependencia_pendente', 'empresa_inativa', 'modulo_desligado', 'nada_a_gravar', CODIGO_ZERAGEM_BLOQUEADA] as const;
 export const CodigoDetalheCargaPortal = z.enum(CODIGOS_DETALHE_CARGA_PORTAL);
 export type CodigoDetalheCargaPortal = z.infer<typeof CodigoDetalheCargaPortal>;
 
 // ---- Rotas ----
 
-/** Content-type dos downloads (modelo e CSV de erros): o `TIPO_CSV` do SDK (`respostaCsv`; UTF-8 com BOM e `;` do `paraCsv`). */
-export const TIPO_DOWNLOAD_CARGA = TIPO_CSV;
-
 /**
  * Caminhos relativos a `/v1/plataforma` (fonte única para o plugin do cadastros, a apps/web e os testes de isolamento).
- * `erros`: `POST` com o mesmo arquivo do validar (nada fica guardado) e resposta em CSV com todas as linhas com erro.
+ * `erros`: `POST` com o mesmo arquivo do validar (nada fica guardado) e resposta em CSV com todas as linhas com erro
+ * (`TIPO_CSV` do SDK, como o `modelo`).
  */
 export const CAMINHOS_CARGAS_PLATAFORMA = Object.freeze({
   situacao: '/empresas/:id/cadastros/cargas',
@@ -360,7 +456,7 @@ export const CAMINHOS_CARGAS_PLATAFORMA = Object.freeze({
   validar: '/empresas/:id/cadastros/cargas/:cadastro/validar',
   erros: '/empresas/:id/cadastros/cargas/:cadastro/erros',
   gravar: '/empresas/:id/cadastros/cargas/:cadastro/gravar',
-  /** v0.3.5b: a rota do zerar entra na 5b; o caminho fica reservado. */
+  previa: '/empresas/:id/cadastros/zerar/previa',
   zerar: '/empresas/:id/cadastros/zerar',
 });
 
