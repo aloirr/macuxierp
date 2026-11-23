@@ -57,6 +57,8 @@ describe('tokens da marca', () => {
     expect(v['--mx-tamanho-titulo-cartao']).toBe('var(--mx-tamanho-grande)');
     expect(v['--mx-tamanho-titulo-dialogo']).toBe('var(--mx-tamanho-grande)');
     expect(v['--mx-tamanho-h1']).toBe('var(--mx-tamanho-titulo)');
+    expect(v['--mx-tamanho-rotulo-menu']).toBe('var(--mx-tamanho-micro)');
+    expect(v['--mx-tamanho-titulo-grupo']).toBe(v['--mx-tamanho-rotulo-menu']);
     expect(v['--mx-tamanho-selo']).toBe('var(--mx-tamanho-micro)');
   });
   it('tokens.css é exatamente o gerado do TS', () => {

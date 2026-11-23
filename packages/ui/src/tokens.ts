@@ -76,6 +76,9 @@ export const papeis = {
   tituloCartao: 'grande',
   tituloDialogo: 'grande',
   h1: 'titulo',
+  /** Só o rótulo de grupo do menu lateral (caixa alta). Título usa tituloCartao/tituloDialogo ou h1. */
+  rotuloMenu: 'micro',
+  /** @deprecated Use rotuloMenu. Alias por uma versão (sai depois que o shell trocar `--mx-tamanho-titulo-grupo` em globals.css). */
   tituloGrupo: 'micro',
   selo: 'micro',
 } as const satisfies Record<string, keyof typeof escala>;

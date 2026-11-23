@@ -152,7 +152,7 @@ BEGIN
     INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil)
     VALUES (v_usuario, v_tenant, v_email, v_admin_nome, v_hash, 'administrador');
     INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
-    VALUES (v_tenant, NULL, 'plataforma.usuario.criar', 'usuario', v_usuario, NULL,
+    VALUES (v_tenant, NULL, 'plataforma.admin.criar', 'usuario', v_usuario, NULL,
       jsonb_build_object('perfil', 'administrador', 'ativo', true, 'operador', v_operador, 'motivo', 'primeiro acesso'), v_req);
     saida := saida || format('usuario|administrador|criado|%s', v_usuario);
   END IF;
@@ -177,7 +177,7 @@ BEGIN
       INSERT INTO plataforma.tenant_modulo (id, tenant_id, modulo, ativo) VALUES (v_lic, v_tenant, m, true);
     END IF;
     INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
-    VALUES (v_tenant, NULL, 'plataforma.licenca.alterar', 'tenant_modulo', v_lic,
+    VALUES (v_tenant, NULL, 'plataforma.modulos.alterar', 'tenant_modulo', v_lic,
       CASE WHEN v_existia THEN jsonb_build_object('ativo', l.ativo, 'valido_ate', l.valido_ate, 'excluida', l.deleted_at IS NOT NULL) END,
       jsonb_build_object('ativo', true, 'valido_ate', NULL, 'modulo', m, 'operador', v_operador, 'motivo', 'primeiro acesso'), v_req);
     saida := saida || format('licenca|%s|ligada|%s', m, v_lic);
