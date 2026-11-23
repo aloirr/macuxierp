@@ -42,7 +42,7 @@ describe('lista de empresas', () => {
     expect(h).toContain('aria-label="Cadastros, Fiscal"');
     expect(h).toContain('>2 módulos<');
     expect(renderToStaticMarkup(<ListaEmpresas empresas={[{ ...acme, modulos: lic('fiscal') }]} vazio="" />)).toContain('>1 módulo<');
-    expect(h).toMatch(/<td[^>]*><span>—<\/span><\/td>/);
+    expect(h).toMatch(/<td[^>]*><span>0 módulos<\/span><\/td>/);
     expect(readFileSync(join(__dirname, '../../globals.css'), 'utf8')).toMatch(/@media \(max-width: 480px\) \{ \.modulos-lista \{ display: none; \} \.modulos-resumo \{ display: inline; \} \}/);
     expect(h).not.toContain('referencia');
   });

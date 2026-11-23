@@ -23,3 +23,16 @@ export const EU_FALSO: EuResposta = {
   // Fiscal e integração FDV ficam sem licença de propósito: o menu precisa esconder o que não foi contratado.
   modulos: MODULOS_FALSOS,
 };
+
+/** Razão social fictícia com mais de 60 caracteres e acento, para a massa MEI (empresa = filial). */
+export const RAZAO_MEI_FALSA = 'Comércio de Açaí e Cupuaçu da Família Conceição Ribeiro MEI Ltda';
+
+/**
+ * Massa MEI fictícia (A0, regra do catálogo do corretor): empresa e filial com o mesmo nome, razão social longa e com acento.
+ * CNPJ do padrão de teste já usado nesta massa (o contrato exige dígito válido): não é de empresa real. Ligada por MACUXIERP_FALSO_MEI=1.
+ */
+export const EU_FALSO_MEI: EuResposta = {
+  ...EU_FALSO,
+  empresa: { ...EU_FALSO.empresa, razao_social: RAZAO_MEI_FALSA },
+  filiais: [{ id: '00000000-0000-4000-8000-0000000000f3', nome: RAZAO_MEI_FALSA, cnpj: '11222333000181' }],
+};

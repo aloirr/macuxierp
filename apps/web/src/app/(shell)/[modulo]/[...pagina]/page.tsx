@@ -49,7 +49,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {tela && declarada && (
         <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
-      {!tela && !declarada?.aviso && rota !== PAGINA_CARGA.rota && declarada?.rota !== monitor?.rota && <p className="apoio">Esta tela ainda não foi construída.</p>}
+      {!tela && !declarada?.aviso && rota !== PAGINA_CARGA.rota && declarada?.rota !== monitor?.rota && <p className="apoio">Disponível em breve.</p>}
     </>
   );
 }

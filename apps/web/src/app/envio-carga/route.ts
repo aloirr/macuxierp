@@ -3,7 +3,7 @@ import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
 import { enviarCarga, NaoAutenticado } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO } from '@/lib/sessao';
-import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '@/lib/textos';
+import { CARGA_GRANDE_DEMAIS, SEM_RESPOSTA, SESSAO_EXPIRADA } from '@/lib/textos';
 
 /** Folga do multipart (fronteiras e cabeçalhos das partes) acima do total de bytes dos arquivos. */
 export const FOLGA_MULTIPART = 64 * 1024;
@@ -58,6 +58,6 @@ export async function POST(req: Request) {
   } catch (e) {
     if (e instanceof NaoAutenticado) return Response.json({ ok: false, erro: SESSAO_EXPIRADA }, { status: 401 });
     if (e instanceof TrocarSenhaPendente) return Response.json({ ok: false, erro: 'Troque a senha provisória antes de continuar.', redirecionar: ROTA_SENHA }, { status: 403 });
-    return Response.json({ ok: false, erro: 'A API não respondeu. Tente de novo em instantes.' }, { status: 503 });
+    return Response.json({ ok: false, erro: SEM_RESPOSTA }, { status: 503 });
   }
 }

@@ -28,7 +28,7 @@ describe('enviarCarga: erros da API (T-0051)', () => {
     expect((await (await carregar()).enviarCarga('T', form())).ok).toBe(false);
     expect(((await (await carregar()).enviarCarga('T', form())) as { erro: string }).erro).toContain('10 MB');
     vi.stubGlobal('fetch', resposta(503, { codigo: 'TEMPO_ESGOTADO', mensagem: 'A operação passou de 30 s' }));
-    expect(((await (await carregar()).enviarCarga('T', form())) as { erro: string }).erro).toContain('nada foi gravado');
+    expect(((await (await carregar()).enviarCarga('T', form())) as { erro: string }).erro).toContain('A carga passou do tempo');
     vi.stubGlobal('fetch', resposta(503, { codigo: 'INDISPONIVEL' }));
     expect(((await (await carregar()).enviarCarga('T', form())) as { erro: string }).erro).toContain('não pôde ser concluída');
   });

@@ -8,7 +8,7 @@ import { cabecalhosParaApi } from '@/lib/api';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
 import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { contexto, COOKIE_ACESSO } from '@/lib/sessao';
-import { FALHA, SEM_PERMISSAO, SESSAO_EXPIRADA } from '@/lib/textos';
+import { FALHA, INDISPONIVEL, SEM_PERMISSAO, SESSAO_EXPIRADA } from '@/lib/textos';
 
 export type PedidoIntegracaoFdv =
   | { tipo: 'credencial'; conector_id: string; chave: string; ambiente: string }
@@ -49,7 +49,7 @@ export async function agirIntegracaoFdv(p: PedidoIntegracaoFdv): Promise<Resulta
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
   const url = process.env.MACUXIERP_API_URL;
   if (!acesso) return { ok: false, mensagem: SESSAO_EXPIRADA };
-  if (!url) return { ok: false, mensagem: 'A API não está configurada neste ambiente.' };
+  if (!url) return { ok: false, mensagem: INDISPONIVEL };
   const api = criarClienteIntegracaoFdv({ baseUrl: url.replace(/\/$/, ''), token: () => acesso, fetch: (async (u, i) => fetch(u, { ...i, headers: await cabecalhosParaApi(i?.headers), cache: 'no-store', signal: AbortSignal.timeout(15_000) })) as FetchIntegracaoFdv });
   try {
     switch (p.tipo) {

@@ -13,7 +13,7 @@ import { SeloSituacao } from './selo-situacao';
 /** Acima de 480 px a lista completa; abaixo, "N módulos" (CSS em globals.css). A lista completa fica no title e no aria-label. */
 function CelulaModulos({ modulos }: { modulos: EmpresaPlataforma['modulos'] }) {
   const ligados = modulosLigados(modulos);
-  if (ligados.length === 0) return <span>—</span>;
+  if (ligados.length === 0) return <span>{resumoModulos(0)}</span>;
   const lista = ligados.map(nomeModulo).join(', ');
   return (
     <span title={lista} aria-label={lista} className="modulos-celula">
@@ -55,7 +55,7 @@ export function ListaEmpresas({ empresas, vazio, proximo = null, busca = '' }: {
   ];
   return (
     <>
-    <div className="tabela-rolavel com-sinal-rolagem">
+    <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor">
       <TabelaDensa
         colunas={colunas}
         linhas={linhas}
