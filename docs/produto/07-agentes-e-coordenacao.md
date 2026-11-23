@@ -127,6 +127,7 @@ A troca de uma empresa de homologação para produção fiscal exige o recado do
 1–4. Ver "Git só por PR" e "CI e economia do Actions" (testes na sessão, suíte no SHA final, corretor numa rodada só, um commit e um push, job acima de 2× e rerun único).
 5. A previsão é montada etapa por etapa, com o tempo do **dono** mais 15%, e muda só por motivo novo, escrito (doc 05).
 6. Decisão nova com a versão em fechamento vai ao Alexandre, com o impacto em minutos e as opções "entra nesta" ou "vai para a seguinte".
+7. **Massa de teste e prints** (pedido do Alexandre e decisão do PO, 23/11 11h00): toda tela que junta nomes (empresa, filial, cliente, usuário) é testada e revisada pelo corretor também com a massa "empresa = filial" (MEI), razão social longa (mais de 60 caracteres), acento e CNPJ de 14 dígitos; sem esse caso no teste ou no print do dono, o corretor abre achado. Os prints de teste e de revisão usam só dados fictícios que reproduzem os casos reais; print com dado real de cliente sai só para a aprovação do Alexandre e não é guardado em recado nem em repositório (LGPD, regra 8). Origem: o topo "empresa · filial" repetido na thathyany (PR #8, massas sempre com empresa ≠ filial).
 
 ## Esteira e backlog
 - Tudo o que o Alexandre pede, e o que é preciso para entregar, entra na esteira. **Backlog só com a palavra "backlog"** dele, num recado ou no chat.
