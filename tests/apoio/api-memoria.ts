@@ -103,7 +103,7 @@ export async function montarApiMemoria(o: OpcoesApi = {}) {
     return { authorization: `Bearer ${emitirTokenAcesso(s, SEGREDO_JWT, relogio.agora(), 900).token}` };
   };
 
-  return { app, banco, relogio, outbox, auditoria, trabalhos, repoCore, leitorPfx, cad, modulos, plugins: { core, cadastros }, auth };
+  return { app, banco, relogio, outbox, auditoria, trabalhos, repoAuth, repoCore, leitorPfx, cad, modulos, plugins: { core, cadastros }, auth };
 }
 
 export type ApiMemoria = Awaited<ReturnType<typeof montarApiMemoria>>;

@@ -18,7 +18,7 @@
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,7 @@ import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../pa
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
 import { ARGON2_PADRAO, conferirSenha } from '../../../apps/api/src/auth/senha';
+import { criarDockerFalso } from '../../apoio/operador-falso';
 import { atalhosPortal, type AppPortal } from '../../apoio/portal-pg';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -58,7 +59,7 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
   let senhaImpressa = '';
   let sessaoAberta = '';
 
-  // VM falsa: pasta do compose, docker falso (roda o node do contêiner) e psql de passagem (guarda SQL, argv e ambiente).
+  // VM falsa (tests/apoio/operador-falso.ts) e psql de passagem (guarda SQL, argv e ambiente).
   let pasta = '';
   let bin = '';
   let erp = '';
@@ -68,36 +69,9 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
   beforeAll(async () => {
     if (!TEM_ARGON2_NATIVO) throw new Error(`Node ${process.versions.node} sem crypto.argon2: rode com o Node >= 24.7 (engines da raiz)`);
     pasta = mkdtempSync(join(tmpdir(), 'macuxierp-e6-operador-'));
-    bin = join(pasta, 'bin');
-    erp = join(pasta, 'macuxierp');
+    ({ bin, erp } = criarDockerFalso(pasta, { repassar: ['PSQL_REAL', 'SQL_LOG', 'PSQL_LOG'] }));
     sqlLog = join(pasta, 'sql.txt');
     psqlLog = join(pasta, 'psql-argv.txt');
-    for (const d of [bin, erp]) mkdirSync(d, { recursive: true });
-    for (const f of ['.env', 'gerados.env', 'banco.env', 'admin.env', 'imagens.env']) writeFileSync(join(erp, f), 'MACUXIERP_FALSO=1\n');
-    // `docker compose ... run ... psql node <args>`: só as variáveis pedidas (-e/--env, com ou sem =valor), as PG* e o psql de passagem.
-    writeFileSync(
-      join(bin, 'docker'),
-      [
-        '#!/usr/bin/env bash',
-        'nomes=()',
-        'while [ $# -gt 0 ] && [ "$1" != node ]; do',
-        '  case "$1" in',
-        '    -e|--env) nomes+=("$2"); shift 2; continue ;;',
-        '    --env=*) nomes+=("${1#--env=}") ;;',
-        '    -e?*) nomes+=("${1#-e}") ;;',
-        '  esac',
-        '  shift',
-        'done',
-        '[ "${1:-}" = node ] || { echo "docker falso: sem o comando node" >&2; exit 97; }',
-        'shift',
-        'amb=(PATH="$PATH" PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGUSER" PGDATABASE="$PGDATABASE" PGCONNECT_TIMEOUT=5',
-        '  MACUXIERP_PSQL="$PSQL_PASSAGEM" PSQL_REAL="$PSQL_REAL" SQL_LOG="$SQL_LOG" PSQL_LOG="$PSQL_LOG")',
-        '[ -z "${PGPASSWORD+x}" ] || amb+=(PGPASSWORD="$PGPASSWORD")',
-        'for n in "${nomes[@]}"; do case "$n" in *=*) amb+=("$n") ;; *) amb+=("$n=${!n-}") ;; esac; done',
-        'exec env -i "${amb[@]}" "$NODE_REAL" "$@"',
-        '',
-      ].join('\n'),
-    );
     writeFileSync(
       join(bin, 'psql-passagem'),
       [
@@ -110,7 +84,6 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
         '',
       ].join('\n'),
     );
-    chmodSync(join(bin, 'docker'), 0o755);
     chmodSync(join(bin, 'psql-passagem'), 0o755);
 
     b = await criarBancoEfemero();
@@ -136,7 +109,7 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
         HOME: pasta,
         MACUXIERP_DIR: erp,
         NODE_REAL: process.execPath,
-        PSQL_PASSAGEM: join(bin, 'psql-passagem'),
+        MACUXIERP_PSQL: join(bin, 'psql-passagem'),
         PSQL_REAL: process.env.MACUXI_PSQL ?? 'psql',
         SQL_LOG: sqlLog,
         PSQL_LOG: psqlLog,
