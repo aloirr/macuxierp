@@ -210,7 +210,7 @@ export interface EntradaProducao {
    * log. `null` ou ausente = variável não configurada: só o `PUT /v1/integracao-fdv/credencial` fica indisponível (503).
    */
   chaveIntegracao?: Buffer | null;
-  config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro'> & Partial<Pick<ConfigApi, 'segredoBff'>>;
+  config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro' | 'segredoBff'>;
   /** Pino da API para o log dos módulos (o `main.ts` cria; os testes passam um com destino em memória). */
   log?: LogPedido;
   /**
@@ -248,7 +248,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
     modulos,
-    ...(bancoPlataforma ? { plataforma: { banco: bancoPlataforma, plugins: pluginsPlataforma(modulos), segredoBff: e.config.segredoBff ?? null } } : {}),
+    ...(bancoPlataforma ? { plataforma: { banco: bancoPlataforma, plugins: pluginsPlataforma(modulos), segredoBff: e.config.segredoBff } } : {}),
   };
 }
 
