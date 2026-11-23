@@ -163,4 +163,22 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     await meu.confirmar();
     await doOutro.confirmar();
   });
+
+  it('T-0052: criar usuário e redefinir senha exigem a troca da senha provisória', async () => {
+    const id = randomUUID();
+    const flag = async () => (await b.admin.query('SELECT deve_trocar_senha FROM plataforma.usuario WHERE id = $1', [id])).rows[0] as { deve_trocar_senha: boolean };
+    const t1 = await abrir();
+    await repo.criarUsuario(t1, { id, email: 'novo@piloto.test', nome: 'Novo Usuário', senha_hash: '$argon2id$y', perfil: 'administrador', filial_ids: [], ativo: true, external_id: null } as never);
+    await t1.confirmar();
+    expect(await flag()).toEqual({ deve_trocar_senha: true });
+    await b.admin.query('UPDATE plataforma.usuario SET deve_trocar_senha = false WHERE id = $1', [id]);
+    const t2 = await abrir();
+    await repo.definirSenha(t2, id, '$argon2id$z');
+    await t2.confirmar();
+    expect(await flag()).toEqual({ deve_trocar_senha: true });
+    const t3 = await abrir();
+    await repo.trocarSenhaPropria(t3, id, '$argon2id$w', new Date());
+    await t3.confirmar();
+    expect(await flag()).toEqual({ deve_trocar_senha: false });
+  });
 });
