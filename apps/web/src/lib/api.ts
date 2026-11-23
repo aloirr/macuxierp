@@ -38,21 +38,25 @@ export interface Sessao {
 }
 
 function base(): string {
-  if (!URL_API) throw new ApiIndisponivel('MACUXIERP_API_URL não configurada');
-  return URL_API.replace(/\/$/, '');
+  const url = process.env.MACUXIERP_API_URL; // lido na chamada (o portal /config e os testes ajustam a variável)
+  if (!url) throw new ApiIndisponivel('MACUXIERP_API_URL não configurada');
+  return url.replace(/\/$/, '');
 }
 
 /** Tempo padrão de uma chamada à API; a carga (até 120 s no servidor) usa o próprio. */
 export const TIMEOUT_PADRAO_MS = 10_000;
 export const TIMEOUT_CARGA_MS = 130_000;
 
-async function chamar(caminho: string, init: RequestInit, timeoutMs = TIMEOUT_PADRAO_MS): Promise<Response> {
+/** `fetch` à API com a base, o timeout e o erro de indisponível. Comum ao BKO e ao portal /config (`lib/config/api.ts`). */
+export async function buscarNaApi(url: string, init: RequestInit, timeoutMs = TIMEOUT_PADRAO_MS): Promise<Response> {
   try {
-    return await fetch(`${base()}${caminho}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+    return await fetch(`${base()}${url}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     throw new ApiIndisponivel('API não respondeu');
   }
 }
+
+const chamar = buscarNaApi;
 
 function lerSessao(r: Response, corpo: { token_acesso?: unknown }): Sessao {
   const cookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).find((c) => c?.includes('=')) ?? '';
