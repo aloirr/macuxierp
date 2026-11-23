@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ACOES_PLATAFORMA } from './plataforma-rotas';
-import { ENTIDADES_ENVIO_FDV } from './portal-integracao';
 import {
   CADASTROS_CARGA_PORTAL,
   CADASTROS_ZERAR_PORTAL,
@@ -8,8 +7,8 @@ import {
   CAMINHOS_CARGAS_PLATAFORMA,
   CODIGOS_DETALHE_CARGA_PORTAL,
   CODIGOS_ESTADO_MUDOU_ZERAR,
-  DEPENDENCIAS_CARGA_PORTAL,
   ENTIDADES_CARGA_PORTAL,
+  LinhaSituacaoCarga,
   EfeitoSubstituir,
   FRASE_SUBSTITUIR_TUDO,
   FRASE_ZERAR_DADOS,
@@ -32,7 +31,8 @@ import {
   ValidarCargaPlataformaResposta,
   ZerarDadosPlataformaEntrada,
   ZeragemPlataformaResposta,
-  dependenciaPendente,
+  TIPOS_ENDERECO_CLIENTE,
+  dadosClienteDiferentes,
   efeitoSubstituir,
   normalizarFrase,
   rotuloCadastroCarga,
@@ -46,19 +46,17 @@ import * as sdk from './index';
 const EMPRESA = '11111111-1111-4111-8111-111111111111';
 const AGORA = '2026-11-23T19:00:00.000Z';
 
-/** Linhas da aba a partir das situações (o resto não carregado), com a dependência e o liberado derivados. */
+/** Linhas da aba a partir das situações (o resto não carregado); `liberado` sempre true (v0.3.6). */
 function linhas(situacoes: Partial<Record<CadastroCargaPortal, SituacaoCarga>> = {}) {
   return CADASTROS_CARGA_PORTAL.map((c) => {
     const situacao = situacoes[c.cadastro] ?? 'nao_carregado';
-    const depende_de = dependenciaPendente(c.cadastro, situacoes);
     return {
       numero: c.numero,
       cadastro: c.cadastro,
       situacao,
       erros: situacao === 'com_erro' ? 3 : 0,
       ultima_carga: situacao === 'nao_carregado' ? null : { em: AGORA, quantidade: 10 },
-      depende_de,
-      liberado: depende_de === null,
+      liberado: true as const,
       opcional: c.opcional,
     };
   });
@@ -77,18 +75,16 @@ const validacao = (o: Record<string, unknown> = {}) => ({
 });
 
 describe('CADASTROS_CARGA_PORTAL (RF-CAD-11, D13 da T-0026)', () => {
-  it('ordem do D13, a mesma do Hub, numerada de 1 a 10', () => {
-    expect(ENTIDADES_CARGA_PORTAL).toEqual(ENTIDADES_ENVIO_FDV);
-    expect(CADASTROS_CARGA_PORTAL.map((c) => c.numero)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  it('os 8 cadastros da v0.3.6 (R-20261123-160749), numerados de 1 a 8', () => {
+    expect(ENTIDADES_CARGA_PORTAL).toEqual(['filial', 'vendedor', 'condicao_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente']);
+    expect(CADASTROS_CARGA_PORTAL.map((c) => c.numero)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(rotuloCadastroCarga('condicao_pagamento')).toBe('Condições de pagamento');
   });
 
-  it('cada dependência vem antes na ordem; só as unidades são opcionais e ninguém depende delas', () => {
-    for (const [i, c] of CADASTROS_CARGA_PORTAL.entries()) {
-      for (const d of c.depende_de) expect(ENTIDADES_CARGA_PORTAL.indexOf(d)).toBeLessThan(i);
-    }
+  it('sem dependência entre cargas; só as unidades são opcionais; só o estoque recusa o Substituir tudo', () => {
+    for (const c of CADASTROS_CARGA_PORTAL) expect('depende_de' in c).toBe(false);
     expect(CADASTROS_CARGA_PORTAL.filter((c) => c.opcional).map((c) => c.cadastro)).toEqual(['produto_unidade']);
-    expect(Object.values(DEPENDENCIAS_CARGA_PORTAL).flat()).not.toContain('produto_unidade');
-    expect(DEPENDENCIAS_CARGA_PORTAL.cliente).toEqual(['filial', 'vendedor', 'prazo_pagamento', 'preco']);
+    expect(CADASTROS_CARGA_PORTAL.filter((c) => !c.substituir_permitido).map((c) => c.cadastro)).toEqual(['estoque']);
   });
 
   it('rótulo: "Unidades (opcional)"', () => {
@@ -119,23 +115,20 @@ describe('SituacaoCargasPlataforma', () => {
     expect(situacaoCarga({ ativos: 0, erros: 0 })).toBe('nao_carregado');
   });
 
-  it('dependenciaPendente: a primeira não carregada, na ordem da carga; com erro não bloqueia', () => {
-    expect(dependenciaPendente('cliente', { filial: 'carregado' })).toBe('vendedor');
-    expect(dependenciaPendente('cliente', { filial: 'carregado', vendedor: 'com_erro', prazo_pagamento: 'carregado', preco: 'carregado' })).toBeNull();
-    expect(dependenciaPendente('filial', {})).toBeNull();
-  });
-
-  it('aceita as 10 linhas com a dependência e o liberado derivados', () => {
+  it('aceita as 8 linhas, todas liberadas, em qualquer combinação de situações', () => {
     expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: linhas({ filial: 'carregado', produto: 'com_erro' }) }).success).toBe(true);
+    expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: linhas({ cliente: 'carregado' }) }).success).toBe(true);
   });
 
-  it('recusa ordem trocada, linha faltando, dependência inventada, liberado incoerente e erros fora do com_erro', () => {
+  it('a linha não tem mais depende_de (v0.3.6): o campo não faz parte do contrato', () => {
+    expect('depende_de' in LinhaSituacaoCarga.shape).toBe(false);
+  });
+
+  it('recusa ordem trocada, linha faltando, liberado false e erros fora do com_erro', () => {
     const l = linhas();
     expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: [l[1], l[0], ...l.slice(2)] }).success).toBe(false);
     expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: l.slice(1) }).success).toBe(false);
-    const semDep = linhas().map((x) => (x.cadastro === 'vendedor' ? { ...x, depende_de: null } : x));
-    expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: semDep }).success).toBe(false);
-    const liberadoErrado = linhas().map((x) => (x.cadastro === 'vendedor' ? { ...x, liberado: true } : x));
+    const liberadoErrado = linhas().map((x) => (x.cadastro === 'vendedor' ? { ...x, liberado: false } : x));
     expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: liberadoErrado }).success).toBe(false);
     const errosSemSituacao = linhas().map((x) => (x.cadastro === 'filial' ? { ...x, erros: 2 } : x));
     expect(SituacaoCargasPlataforma.safeParse({ ...situacaoBase, cadastros: errosSemSituacao }).success).toBe(false);
@@ -280,9 +273,8 @@ describe('GravarCargaPlataformaResposta (carga síncrona)', () => {
 });
 
 describe('cadastros e tabelas do zerar (RN-CAD-10, v0.3.5b)', () => {
-  it('na ordem da carga; forma e prazo viram forma_prazo (a mesma tabela)', () => {
-    const daCarga = ENTIDADES_CARGA_PORTAL.filter((c) => c !== 'prazo_pagamento').map((c) => (c === 'forma_pagamento' ? 'forma_prazo' : c));
-    expect([...CADASTROS_ZERAR_PORTAL]).toEqual(daCarga);
+  it('os mesmos 8 cadastros da carga, na mesma ordem (trava entre as listas)', () => {
+    expect([...CADASTROS_ZERAR_PORTAL]).toEqual([...ENTIDADES_CARGA_PORTAL]);
   });
 
   it('as 12 tabelas do schema cadastros, sem repetição e sem as oficiais', () => {
@@ -301,7 +293,9 @@ describe('PreviaZerarPlataformaEntrada e ZerarDadosPlataformaEntrada (RN-CAD-10,
     expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: [...CADASTROS_ZERAR_PORTAL] }).success).toBe(true);
     expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: [] }).success).toBe(false);
     expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: ['produto', 'produto'] }).success).toBe(false);
-    expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: ['forma_pagamento'] }).success).toBe(false);
+    for (const antigo of ['forma_pagamento', 'forma_prazo', 'cliente_endereco']) {
+      expect(PreviaZerarPlataformaEntrada.safeParse({ cadastros: [antigo] }).success).toBe(false);
+    }
   });
 
   it('aceita a frase com e sem ponto, em maiúsculas e com espaços', () => {
@@ -388,8 +382,9 @@ describe('rotas, ações e erros', () => {
     expect(ACOES_PLATAFORMA).toContain('plataforma.cadastros.zerar');
   });
 
-  it('SQLSTATE próprios: MXC01, MXC03 e MXC04 (o MXC02 saiu); nada_a_gravar fica', () => {
-    expect(Object.values(SQLSTATES_CARGA_PORTAL)).toEqual(['MXC01', 'MXC03', 'MXC04']);
+  it('SQLSTATE próprios: MXC01 e MXC04 (o MXC02 e o MXC03 saíram); nada_a_gravar fica', () => {
+    expect(Object.values(SQLSTATES_CARGA_PORTAL)).toEqual(['MXC01', 'MXC04']);
+    expect(CODIGOS_DETALHE_CARGA_PORTAL).not.toContain('dependencia_pendente');
     expect(new Set(CODIGOS_DETALHE_CARGA_PORTAL).size).toBe(CODIGOS_DETALHE_CARGA_PORTAL.length);
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain('nada_a_gravar');
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain('carga_em_andamento');
@@ -401,6 +396,14 @@ describe('rotas, ações e erros', () => {
     for (const c of CODIGOS_ESTADO_MUDOU_ZERAR) expect(CODIGOS_DETALHE_CARGA_PORTAL as readonly string[]).not.toContain(c);
     expect(MENSAGENS_CARGA_PORTAL.estadoMudouZerar).toBe('Os dados mudaram. Confira de novo.');
     expect(sdk.CODIGOS_ESTADO_MUDOU_ZERAR).toBe(CODIGOS_ESTADO_MUDOU_ZERAR);
+  });
+
+  it('carga do cliente: tipos de endereço e a mensagem de dados diferentes', () => {
+    expect(TIPOS_ENDERECO_CLIENTE).toEqual(['principal', 'entrega', 'cobranca']);
+    expect(dadosClienteDiferentes(3)).toBe('Dados do cliente diferentes da linha 3: deixe iguais em todas as linhas do cliente');
+    expect(() => dadosClienteDiferentes(0)).toThrow(RangeError);
+    expect(sdk.dadosClienteDiferentes).toBe(dadosClienteDiferentes);
+    expect(sdk.TIPOS_ENDERECO_CLIENTE).toBe(TIPOS_ENDERECO_CLIENTE);
   });
 
   it('o índice do SDK reexporta', () => {

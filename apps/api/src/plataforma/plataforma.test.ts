@@ -67,7 +67,6 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
 
   it.each([
     ['MXC01', 'Já há uma carga em andamento nesta empresa.', 'carga_em_andamento'],
-    ['MXC03', 'Carregue antes o cadastro de que este depende.', 'dependencia_pendente'],
   ])('%s (carga do portal, T-0058) vira 409 CONFLITO com mensagem e código fixos, sem o DETAIL do banco', (code, mensagem, codigo) => {
     const e = erroDaPlataforma(Object.assign(pg(code), { detail: 'cliente Fulano de Tal' })) as ErroApi;
     expect(e).toBeInstanceOf(ErroApi);
@@ -78,6 +77,14 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
   it.each(CODIGOS_ESTADO_MUDOU_ZERAR)('MXC03 do zerar (0043, RN-CAD-10) com DETAIL %s vira 409 "os dados mudaram" com o DETAIL em detalhes.codigo', (detail) => {
     const e = erroDaPlataforma(Object.assign(pg('MXC03'), { detail, hint: 'cliente' })) as ErroApi;
     expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: MENSAGENS_CARGA_PORTAL.estadoMudouZerar, detalhes: { codigo: detail } });
+  });
+
+  it('MXC03 com DETAIL fora da lista fechada (inclusive o antigo dependencia_pendente da carga) vira 409 sem código e sem o texto do banco', () => {
+    for (const detail of ['dependencia_pendente', 'cliente Fulano de Tal', undefined]) {
+      const e = erroDaPlataforma(Object.assign(pg('MXC03'), { detail })) as ErroApi;
+      expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: MENSAGENS_CARGA_PORTAL.estadoMudouZerar });
+      expect(e.detalhes).toBeUndefined();
+    }
   });
 
   it('MXI03 do zerar_espelho (0043) com DETAIL entidade_ligada leva o código em detalhes.codigo', () => {

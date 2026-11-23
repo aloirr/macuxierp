@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  avisosObsoletos,
   CAMPO_ARQUIVOS,
   IGNORADAS,
   chaveIdempotencia,
@@ -20,7 +21,6 @@ import {
   MAX_BYTES_LOTE,
   MAX_LINHAS_LOTE,
   montarLotes,
-  ORDEM_CARGA,
   ROTA_CARGA,
 } from './carga-csv.mjs';
 
@@ -146,6 +146,61 @@ describe('carga-csv.mjs: pasta e arquivos', () => {
     );
   });
 
+  it('v0.3.6: condicoes_pagamento.csv vale condicao_pagamento; forma, prazo e cliente_endereco ficam de fora com aviso', async () => {
+    const p = mkdtempSync(join(tmpdir(), 'carga-csv-v036-'));
+    try {
+      for (const n of [
+        'cliente.csv',
+        'Condicoes_Pagamento.csv',
+        'forma_pagamento.csv',
+        'prazo_pagamento.csv',
+        'cliente_endereco.csv',
+        'filial.csv',
+      ])
+        writeFileSync(join(p, n), 'external_id\nx1\n');
+      assert.deepEqual(
+        listarArquivos(p).map((a) => a.nome),
+        ['filial.csv', 'Condicoes_Pagamento.csv', 'cliente.csv'],
+      );
+      assert.deepEqual(
+        listarArquivos(p, ['condicao_pagamento']).map((a) => a.nome),
+        ['Condicoes_Pagamento.csv'],
+      );
+      assert.deepEqual(avisosObsoletos(p), [
+        'cliente_endereco.csv: desde a v0.3.6 vai em cliente.csv',
+        'forma_pagamento.csv: desde a v0.3.6 vai em condicao_pagamento.csv',
+        'prazo_pagamento.csv: desde a v0.3.6 vai em condicao_pagamento.csv',
+      ]);
+      assert.throws(() => lerArgumentos([...base, '--entidade', 'forma_pagamento']), ErroUso);
+      const { f, pedidos } = fetchFalso();
+      const saida = [];
+      await executar(
+        [
+          '--api',
+          'https://erp.exemplo.test',
+          '--empresa',
+          'empresa-teste',
+          '--email',
+          'adm@exemplo.test',
+          '--pasta',
+          p,
+        ],
+        {
+          fetch: f,
+          senha: async () => 's',
+          escrever: (t) => saida.push(t),
+        },
+      );
+      assert.deepEqual(
+        pedidos[1].init.body.getAll(CAMPO_ARQUIVOS).map((a) => a.name),
+        ['filial.csv', 'Condicoes_Pagamento.csv', 'cliente.csv'],
+      );
+      assert.equal(saida.filter((t) => /desde a v0\.3\.6/.test(t)).length, 3);
+    } finally {
+      rmSync(p, { recursive: true, force: true });
+    }
+  });
+
   it('conta linhas sem ler o conteúdo e divide o lote acima de D7 em um POST por arquivo', () => {
     assert.equal(contarLinhas(Buffer.from('a\nb\n')), 2);
     assert.equal(contarLinhas(Buffer.from('a\nb')), 2);
@@ -263,11 +318,10 @@ describe('carga-csv.mjs: sincronia com o SDK e o contrato de cadastros', () => {
     assert.match(fonte, /headers\.get\('idempotency-replayed'\)/);
   });
 
-  it('contrato de cadastros: limites, máximo de arquivos e entidades', (t) => {
+  it('contrato de cadastros: limites, máximo de arquivos e entidades ignoradas', (t) => {
     const nomes = [
       'MAX_BYTES_LOTE',
       'MAX_LINHAS_LOTE',
-      'ENTIDADES_CARGA',
       'ENTIDADES_IGNORADAS',
       'CargaPedido',
     ];
@@ -291,7 +345,6 @@ describe('carga-csv.mjs: sincronia com o SDK e o contrato de cadastros', () => {
     const maxArquivos = /arquivos:\s*z\.array\([\s\S]*?\)\.min\(1\)\.max\((\d+)\)/.exec(contrato);
     assert.ok(maxArquivos, 'CargaPedido.arquivos sem .min(1).max(N)');
     assert.equal(Number(maxArquivos[1]), MAX_ARQUIVOS_POR_POST);
-    assert.deepEqual(lista(contrato, 'ENTIDADES_CARGA'), ORDEM_CARGA);
     assert.deepEqual(lista(contrato, 'ENTIDADES_IGNORADAS'), IGNORADAS);
   });
 });
