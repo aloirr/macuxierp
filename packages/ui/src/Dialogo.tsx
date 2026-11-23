@@ -57,7 +57,7 @@ export function Dialogo({ titulo, aoFechar, rodape, children, descricaoId }: Dia
         aria-labelledby={`${id}-t`}
         aria-describedby={descricaoId}
         onKeyDown={teclado}
-        style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', display: 'grid', gap: espaco.md, position: 'relative' }}
+        style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', boxSizing: 'border-box', display: 'grid', gap: espaco.md, position: 'relative' }}
       >
         <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0 }}>{titulo}</h2>
         {children}
