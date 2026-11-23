@@ -520,8 +520,21 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     const abrirCorpo = (extra: object = {}) => ({ filial_id: IDS.filial, modalidade: 'svc_rs', motivo: MOTIVO, ...extra });
     const params = { id: IDS.filial };
 
+    it('RN-FAT-05 (decisão do Alexandre, 23/11 07h40): abrir e encerrar só pelo administrador; faturista, fiscal, gerente, leitura e vendedor recebem 403 e nada é gravado; os GETs seguem abertos a quem lê', async () => {
+      for (const perfil of ['faturista', 'fiscal', 'gerente', 'leitura', 'vendedor'] as const) {
+        const a = ambiente(perfil);
+        await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 403 });
+        await expect(a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params })).rejects.toMatchObject({ status: 403 });
+        expect(a.auditoria).toEqual([]);
+      }
+      for (const perfil of ['faturista', 'fiscal'] as const) {
+        expect((await ambiente(perfil).chamar('GET', '/filiais/:id/contingencia', { params })).corpo).toMatchObject({ aberta: null });
+      }
+      expect((await ambiente('administrador').chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).status).toBe(201);
+    });
+
     it('RN-FAT-05: abre a contingência no ambiente da filial, com ligada_por da sessão e auditoria; a leitura devolve a aberta', async () => {
-      const a = ambiente('faturista');
+      const a = ambiente('administrador');
       const r = await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
       expect(r.status).toBe(201);
       expect(r.corpo).toMatchObject({ filial_id: IDS.filial, ambiente: 'producao', modalidade: 'svc_rs', motivo: MOTIVO, fim_em: null, ligada_por: uuid(5), desligada_por: null });
@@ -546,14 +559,14 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     });
 
     it('RN-FAT-05: já havendo aberta na filial e no ambiente, a segunda abertura é 409', async () => {
-      const a = ambiente('faturista');
+      const a = ambiente('administrador');
       await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
       await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) })).rejects.toMatchObject({ status: 409 });
       expect(a.cont.linhas).toHaveLength(1);
     });
 
     it('RN-FAT-04: o ambiente do corpo, se vier, tem de ser o da filial; filial de outra URL e filial desconhecida', async () => {
-      const a = ambiente('faturista');
+      const a = ambiente('administrador');
       await expect(a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ ambiente: 'homologacao' }) })).rejects.toMatchObject({ status: 422, codigo: 'RN-FAT-04' });
       await expect(a.chamar('POST', '/filiais/:id/contingencia', { params: { id: uuid(99) }, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 400 });
       await expect(a.chamar('POST', '/filiais/:id/contingencia', { params: { id: 'x' }, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 404 });
@@ -561,7 +574,7 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
     });
 
     it('RN-FAT-09: encerra com fim_em agora e desligada_por da sessão; sem aberta, 404; o histórico mostra a encerrada e a filial pode abrir de novo', async () => {
-      const a = ambiente('fiscal');
+      const a = ambiente('administrador');
       await expect(a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params })).rejects.toMatchObject({ status: 404 });
       await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
       const r = await a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params });

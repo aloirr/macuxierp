@@ -2,7 +2,7 @@
  * Regras de tela da contingência por filial (T-0021, lote 4; RN-FAT-05, RN-FAT-09, RN-FAT-10): selo e faixa "em contingência", diálogos de
  * abrir e encerrar, requisições e o selo do prazo das EPEC pendentes. Só descreve e monta: a API revalida tudo (403, 409, 422).
  */
-import { pode, type Perfil } from '@macuxierp/platform-sdk';
+import { type Perfil } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { AbrirContingenciaEntrada, type Ambiente, type ModalidadeContingencia, type SituacaoPrazoEpec } from '../contracts';
 import { MOTIVO_MAX, MOTIVO_MIN, PRAZO_EPEC_HORAS } from '../domain/contingencia';
@@ -43,9 +43,9 @@ export const faixaDaContingencia = (c: ContingenciaAberta | null, fuso: string):
   c ? `FILIAL EM CONTINGÊNCIA — ${ROTULO_MODALIDADE[c.modalidade].rotulo}, DESDE ${formatarDataHora(c.inicio_em, fuso)}` : null;
 
 const SEM_PERMISSAO = 'sem permissão para esta ação';
-/** Por que abrir/encerrar não está disponível (texto ao lado do botão desabilitado), ou `null` se está. Quem liga e desliga é quem emite nota (`faturamento.nota.emitir`). */
+/** Por que abrir/encerrar não está disponível (texto ao lado do botão desabilitado), ou `null` se está. Só o administrador liga e desliga (RN-FAT-05, decisão do Alexandre, 23/11); a API responde 403 aos demais. */
 export function acoesDaContingencia(perfil: Perfil, aberta: boolean): { abrir: string | null; encerrar: string | null } {
-  if (!pode(perfil, 'faturamento.nota.emitir')) return { abrir: SEM_PERMISSAO, encerrar: SEM_PERMISSAO };
+  if (perfil !== 'administrador') return { abrir: SEM_PERMISSAO, encerrar: SEM_PERMISSAO };
   return { abrir: aberta ? 'a filial já está em contingência.' : null, encerrar: aberta ? null : 'a filial não está em contingência.' };
 }
 

@@ -55,6 +55,11 @@ const SEM_VENDEDOR = (c: ContextoRota): void => {
   if (c.sessao.perfil === 'vendedor') throw erros.perfilSemPermissao();
 };
 
+/** Abrir e encerrar contingência (RN-FAT-05): só o administrador; os demais perfis, inclusive faturista e fiscal, recebem 403. */
+const SOMENTE_ADMINISTRADOR = (c: ContextoRota): void => {
+  if (c.sessao.perfil !== 'administrador') throw erros.perfilSemPermissao();
+};
+
 /** Emissão mais os eventos: a API só grava o pedido e confere o A1 pelos metadados (`temA1Ativo`); nunca lê o A1 decifrado nos eventos (ADR 0005 item 4). */
 export type DepsRotas = DepsEmissao & Pick<DepsEventos, 'eventos'> & { titulos: RepositorioTitulos; configuracao: ConfiguracaoFaturamento; contingencia?: RepositorioContingencia; danfe?: PortaDanfe; ativosDanfe?: ResultadoAtivosDanfe };
 
@@ -359,7 +364,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
         return { corpo: { filial_id, faturamento_real_nfe_simulada: e.corpo.faturamento_real_nfe_simulada } };
       },
     }),
-    // ---- Contingência por filial (T-0021, lote 4; RN-FAT-05, 09 e 10). Escrita: `faturamento.nota.emitir` (administrador, faturista, fiscal), a ação fiscal que já cobre inutilizar; não há ação própria no SDK. ----
+    // ---- Contingência por filial (T-0021, lote 4; RN-FAT-05, 09 e 10). Abrir e encerrar: SÓ o administrador (decisão do Alexandre, 23/11 07h40); não há ação própria no SDK, então a rota usa `faturamento.nota.emitir` (licença, tenant e perfil emissor) e confere o perfil `administrador` no corpo, como a bandeira da filial. Faturista e fiscal seguem emitindo, inclusive em contingência aberta. ----
     // Caminho fixo antes de qualquer `:id`.
     definirRota({
       metodo: 'GET', caminho: '/contingencia/epec-pendentes', acao: 'faturamento.ver', consulta: FiltroEpecPendentes,
@@ -389,7 +394,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     definirRota({
       metodo: 'POST', caminho: '/filiais/:id/contingencia', acao: 'faturamento.nota.emitir', corpo: AbrirContingenciaEntrada, idempotencia: 'obrigatoria',
       async executar(c, e) {
-        SEM_VENDEDOR(c);
+        SOMENTE_ADMINISTRADOR(c);
         const repo = contingencia();
         const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
         if (e.corpo.filial_id !== filial_id) throw erros.validacao({ filial_id: 'A filial do corpo deve ser a da URL.' });
@@ -412,7 +417,7 @@ export function criarRotas(deps: DepsRotas): RotaModulo[] {
     definirRota({
       metodo: 'POST', caminho: '/filiais/:id/contingencia/encerrar', acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria',
       async executar(c, e) {
-        SEM_VENDEDOR(c);
+        SOMENTE_ADMINISTRADOR(c);
         const repo = contingencia();
         const { filial_id, ambiente } = await filialEAmbiente(c, e.params);
         const encerrada = await repo.encerrar(c.tx, filial_id, ambiente, c.agora, c.sessao.usuario_id).catch(traduzirErroBanco);
