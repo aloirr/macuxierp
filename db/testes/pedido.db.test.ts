@@ -167,12 +167,13 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
       "SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'pedido' AND policyname <> 'isolamento_tenant'",
     );
     expect(p?.n).toBe(0);
-    const [d] = consultar<{ n: number }>(
+    // a única SECURITY DEFINER do schema é a leitura de usos do zerar (0043, RN-CAD-10)
+    const definer = consultar<{ f: string }>(
       banco.conexao,
-      `SELECT count(*)::int AS n FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace
-       WHERE n.nspname = 'pedido' AND f.prosecdef`,
+      `SELECT f.oid::regprocedure::text AS f FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace
+       WHERE n.nspname = 'pedido' AND f.prosecdef ORDER BY 1`,
     );
-    expect(d?.n).toBe(0);
+    expect(definer.map((x) => x.f)).toEqual(['pedido.portal_usos_cadastros(uuid,jsonb)']);
   });
 
   it('privilégios por tabela: o esperado e nenhum DELETE nem TRUNCATE para ninguém', () => {
