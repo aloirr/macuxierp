@@ -10,6 +10,7 @@ vi.mock('@/lib/sessao', () => ({
   contexto: async () => ({ eu: { usuario: { perfil: estado.perfil }, modulos: estado.licenciado ? [{ id: 'integracao-fdv', menus: [] }] : [] } }),
 }));
 
+import { FALHA } from '@/lib/textos';
 import { agirIntegracaoFdv } from './acoes-integracao-fdv';
 
 const CHAVE = 'k'.repeat(40);
@@ -29,6 +30,33 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('ações da tela Integração FDV', () => {
+  describe('mensagem de erro da API (T-0052)', () => {
+    const erroApi = (status: number, mensagem?: string) =>
+      vi.stubGlobal('fetch', async () => new Response(JSON.stringify(mensagem === undefined ? { x: 1 } : { codigo: 'E', mensagem }), { status, headers: { 'content-type': 'application/json' } }));
+    const cred = { tipo: 'credencial', conector_id: 'erp-1', chave: CHAVE, ambiente: 'teste' } as const;
+    it('409 e 503 mostram a mensagem da API', async () => {
+      erroApi(409, 'Chave do conector inválida');
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe('Chave do conector inválida');
+      erroApi(503, 'Hub indisponível no momento');
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe('Hub indisponível no momento');
+    });
+    it('503 sem mensagem, 500, mensagem longa ou com quebra de linha caem no genérico', async () => {
+      erroApi(503);
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe(FALHA);
+      erroApi(500, 'detalhe interno');
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe(FALHA);
+      erroApi(409, 'a'.repeat(201));
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe(FALHA);
+      erroApi(409, 'linha1\nlinha2');
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe(FALHA);
+    });
+    it('timeout e TypeError caem no genérico', async () => {
+      vi.stubGlobal('fetch', async () => { throw new TypeError('fetch failed'); });
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe(FALHA);
+      vi.stubGlobal('fetch', async () => { throw new DOMException('timeout', 'TimeoutError'); });
+      expect((await agirIntegracaoFdv(cred)).mensagem).toBe(FALHA);
+    });
+  });
   it('só o administrador com a licença chama a API', async () => {
     for (const perfil of ['gerente', 'leitura'] as Perfil[]) {
       estado.perfil = perfil;

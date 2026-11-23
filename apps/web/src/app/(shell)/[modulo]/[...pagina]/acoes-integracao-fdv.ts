@@ -29,6 +29,7 @@ function mensagemDoErro(e: unknown): string {
     if (e.status === 401) return SESSAO_EXPIRADA;
     if (e.status === 403) return SEM_PERMISSAO;
     if (e.status === 400 || e.status === 422) return 'Confira os dados informados.';
+    if ((e.status === 409 || e.status === 503) && e.codigo !== 'ERRO' && e.codigo !== 'RESPOSTA_INVALIDA' && e.message.trim() !== '' && e.message.length <= 200 && !/[\r\n]/.test(e.message)) return e.message;
   }
   return FALHA;
 }
