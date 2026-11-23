@@ -151,18 +151,8 @@ export async function pedirErros(empresaId: string, cadastro: CadastroCargaPorta
 
 // ---- Zerar dados (RN-CAD-10): o superadmin escolhe os cadastros ----
 
-/** Rótulos da lista de escolha: os da carga; `forma_prazo` junta forma e prazo de pagamento. */
-export const ROTULO_ZERAR: Readonly<Record<CadastroZerarPortal, string>> = {
-  filial: 'Filiais',
-  vendedor: 'Vendedores',
-  forma_prazo: 'Condições de pagamento',
-  produto: 'Produtos',
-  produto_unidade: 'Unidades',
-  preco: 'Preços',
-  estoque: 'Estoque',
-  cliente: 'Clientes',
-  cliente_endereco: 'Endereços de clientes',
-};
+/** Rótulos da lista de escolha: o `nome` da carga no SDK (`condicao_pagamento` vale para forma e prazo juntos). */
+export const ROTULO_ZERAR = Object.freeze(Object.fromEntries(CADASTROS_CARGA_PORTAL.map((c) => [c.cadastro, c.nome]))) as Readonly<Record<CadastroZerarPortal, string>>;
 
 const lista = (xs: readonly string[]): string => xs.join(', ');
 
