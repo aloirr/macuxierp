@@ -9,6 +9,7 @@ import { CODIGO_TROCAR_SENHA, PERFIS, type Licenca, type Perfil, type RotaModulo
 import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 import { MENSAGEM_TROCAR_SENHA } from '../../../apps/api/src/auth/troca-senha';
 import { ADM_A, type ApiMemoria, FILIAL_A, INICIO, montarApiMemoria, SEGREDO_JWT, TENANT_A, usarApiMemoria } from '../../apoio/api-memoria';
+import { preencherCaminho } from '../../apoio/caminhos';
 
 const montar = usarApiMemoria();
 
@@ -23,7 +24,7 @@ const TODAS: Licenca[] = COM_ROTAS.filter((m) => m !== 'core').map((modulo) => (
 
 const VALOR_PARAM: Record<string, string> = { tabela: 'ncm', cnpj: '11222333000181', cep: '69050010', chave: 'fuso', entidade: 'cliente' };
 const url = (modulo: string, r: RotaModulo) =>
-  `/v1/${modulo}${r.caminho.replace(/:([a-z_]+)/g, (_, p: string) => VALOR_PARAM[p] ?? '9f000000-0000-4000-8000-000000000001')}`;
+  `/v1/${modulo}${preencherCaminho(r.caminho, VALOR_PARAM)}`;
 
 /** Authorization com o JWT de acesso real (`emitirTokenAcesso`), com ou sem a senha provisória. */
 const token = (o: { deveTrocar: boolean; perfil?: Perfil }) => {

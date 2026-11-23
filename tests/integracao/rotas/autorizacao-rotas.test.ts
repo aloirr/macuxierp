@@ -9,6 +9,7 @@
 import { MODULOS_BASE, PERFIS, PERMISSOES, type Licenca, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { describe, expect, it } from 'vitest';
 import { CNPJ_EMPRESA, FILIAL_A, montarApiMemoria, SEGREDO_JWT, TENANT_A, TENANT_B, usarApiMemoria } from '../../apoio/api-memoria';
+import { preencherCaminho } from '../../apoio/caminhos';
 import { formulario } from '../../apoio/multipart';
 import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
 
@@ -24,7 +25,7 @@ const TODAS = LICENCIADOS.map(ativa);
 
 const VALOR_PARAM: Record<string, string> = { tabela: 'ncm', cnpj: '11222333000181', cep: '69050010', chave: 'fuso', entidade: 'cliente' };
 const url = (modulo: string, r: RotaModulo) =>
-  `/v1/${modulo}${r.caminho.replace(/:([a-z_]+)/g, (_, p: string) => VALOR_PARAM[p] ?? '9f000000-0000-4000-8000-000000000001')}`;
+  `/v1/${modulo}${preencherCaminho(r.caminho, VALOR_PARAM)}`;
 
 /** As rotas reais dos plugins (montados uma vez só para listar). */
 const referencia = await montarApiMemoria();
