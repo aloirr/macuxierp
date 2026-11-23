@@ -5,7 +5,7 @@
  * requisição (D9): o relatório e a auditoria levam contagens e SHA-256, nunca o valor de uma célula.
  */
 import {
-  ErroApi, definirRota, erros, lerCsv, respostaCsv, sha256Hex, pode,
+  ErroApi, definirRota, erros, respostaCsv, sha256Hex, pode,
   type ArquivoRecebido, type ContextoRota, type CsvLido, type RotaModulo, TEMPO_MAXIMO_ROTA_MS,
 } from '@macuxierp/platform-sdk';
 import {
@@ -19,6 +19,7 @@ import {
 import {
   TRATADORES, estadoVazio, novoLoteId, planejarEstoque, podeCarregar, type Estado, type Saida,
 } from './carga-entidades';
+import { lerCsvDoLayout, reativarPorPadrao } from './carga-reativar';
 import { tratarCartaoSemParcelas } from './formas-recusadas';
 import type { Dependencias, Repositorios, TabelaChave } from './portas';
 import { ENTIDADES_RESOLVIDAS } from './resolvedor-chave';
@@ -79,8 +80,10 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   const arquivos: ArquivoCarga[] = [];
   const vistas = new Set<EntidadeCarga>();
   let total = 0;
-  for (const a of recebidos) {
-    const k = classificarArquivo(a.nome);
+  for (const bruto of recebidos) {
+    const k = classificarArquivo(bruto.nome);
+    // RN-CAD-08 e decisão do PO: `ativo` vazio ou ausente = sim, em toda rota de carga (ponto comum).
+    const a = k.classe === 'carga' ? reativarPorPadrao(k.entidade, bruto) : bruto;
     if (k.classe === 'ignorado') {
       rel.entidades.push(novoResultado(k.entidade, a.nome, 'ignorado'));
       continue;
@@ -103,7 +106,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
       continue;
     }
     const layout = LAYOUT[k.entidade];
-    const lido = lerCsv(a.conteudo(), { aceitas: [...layout.usadas, ...layout.ignoradas], obrigatorias: layout.obrigatorias });
+    const lido = lerCsvDoLayout(k.entidade, a.conteudo());
     if (!lido.ok) {
       recusar(lido.erro.linha, lido.erro.coluna, CODIGO_CSV[lido.erro.codigo as keyof typeof CODIGO_CSV] ?? 'CARGA_FORMATO', lido.erro.motivo);
       continue;
