@@ -461,6 +461,7 @@ export async function renderizarDanfe(m: ModeloDanfe, opcoes: OpcoesPdfDanfe): P
     if (m.marcaDagua) marcaDagua(c, m.marcaDagua, 1);
     if (m.tarjaCancelada) marcaDagua(c, m.tarjaCancelada, -1);
     if (m.avisoHomologacao) texto(c, m.avisoHomologacao, MARGEM, 18, DESTAQUE, true, 'c', LARG);
+    if (m.contingencia) texto(c, m.contingencia.titulo, MARGEM, m.avisoHomologacao ? 9 : 18, DESTAQUE, true, 'c', LARG); // RN-FAT-08: em todas as folhas; os detalhes abrem os dados adicionais
     const r = cabecalhoCompleto(c, m, logo, primeira);
     folhas.push({ c, folha: r.folha });
     return { c, topo: r.fim };

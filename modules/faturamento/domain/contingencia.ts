@@ -137,3 +137,18 @@ export function situacaoPrazoEpec(agora: Date, prazo: Date, janelaHoras: number 
   if (restante < 0) return 'vencido';
   return restante <= janelaHoras * 3_600_000 ? 'perto_do_fim' : 'no_prazo';
 }
+
+/**
+ * RN-FAT-09: sinal do painel do administrador. Qualquer EPEC vencida (168 h do evento) = `vermelho`; senão, alguma perto do fim = `amarelo`; senão `verde`.
+ * `prazos` são os `prazoEpec` das notas ainda não autorizadas. Sem dado pessoal.
+ */
+export function alertaPrazoEpec(agora: Date, prazos: readonly Date[], janelaHoras: number = JANELA_PERTO_DO_FIM_HORAS) {
+  const sit = prazos.map((p) => situacaoPrazoEpec(agora, p, janelaHoras));
+  const vencidas = sit.filter((s) => s === 'vencido').length;
+  const perto_do_fim = sit.filter((s) => s === 'perto_do_fim').length;
+  const mais = prazos.length > 0 ? new Date(Math.min(...prazos.map((p) => p.getTime()))).toISOString() : null;
+  return {
+    sinal: (vencidas > 0 ? 'vermelho' : perto_do_fim > 0 ? 'amarelo' : 'verde') as 'verde' | 'amarelo' | 'vermelho',
+    total: prazos.length, no_prazo: prazos.length - vencidas - perto_do_fim, perto_do_fim, vencidas, prazo_mais_proximo: mais,
+  };
+}

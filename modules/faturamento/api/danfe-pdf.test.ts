@@ -24,6 +24,15 @@ describe('DANFE em PDF (RF-FAT-03)', { timeout: 30_000 }, () => {
     expect(await paginas(pdf)).toBe(1);
   });
 
+  it('RN-FAT-08: DANFE em contingência leva "DANFE EM CONTINGÊNCIA" em todas as folhas, junto do aviso de homologação; nota normal, nenhuma', async () => {
+    const proc = nfeProcDeTeste({ itens: 30, tpAmb: '2' }).replace('<tpAmb>2</tpAmb></ide>', '<tpEmis>7</tpEmis><dhCont>2026-11-21T09:00:00-04:00</dhCont><xJust>SEFAZ-AM fora do ar desde as 9h</xJust><tpAmb>2</tpAmb></ide>');
+    const c = await latin1Hex(await renderizarDanfe(montarDanfe({ nfeProc: proc })));
+    expect(c.split(hex('DANFE EM CONTINGÊNCIA')).length - 1).toBe(2); // 2 folhas
+    expect(c).toContain(hex('Impresso em contingência'));
+    const n = await latin1Hex(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 30 }) })));
+    expect(n).not.toContain(hex('EM CONTINGÊNCIA'));
+  });
+
   it('RF-FAT-03: nota de homologação contém "SEM VALOR FISCAL" (marca d\'água) e o aviso do MOC em todas as folhas; produção, nenhum dos dois', async () => {
     const h = await latin1Hex(await renderizarDanfe(montarDanfe({ nfeProc: nfeProcDeTeste({ itens: 30, tpAmb: '2' }) })));
     expect(h.split(hex('SEM VALOR FISCAL')).length - 1).toBe(2 * 2); // marca + aviso, em cada uma das 2 folhas

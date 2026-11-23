@@ -33,6 +33,7 @@ exports[`DANFE: modelo em blocos (RF-FAT-03, MOC Anexo II) > RF-FAT-03: monta ca
   "canhoto": {
     "texto": "RECEBEMOS DE EMITENTE LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA AO LADO",
   },
+  "contingencia": null,
   "dadosAdicionais": {
     "fisco": "",
     "informacoesComplementares": "Pedido 1 <obs>",

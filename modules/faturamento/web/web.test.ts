@@ -366,7 +366,7 @@ describe('API pública do web', () => {
     expect(Object.keys(publico).sort()).toEqual([
       'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_MODALIDADE', 'ROTULO_PRAZO_EPEC', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
       'acaoPrincipalDaNota', 'acoesDaContingencia', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
-      'csvDaPagina', 'dialogoAbrirContingencia', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEncerrarContingencia', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaContingencia', 'faixaDaNota', 'faixaDoTitulo',
+      'csvDaPagina', 'dialogoAbrirContingencia', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEncerrarContingencia', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaContingencia', 'faixaDaNota', 'faixaDoAlertaEpec', 'faixaDoTitulo',
       'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaEpecPendentes', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
       'perfilVeFaturamento', 'requisicaoAbrirContingencia', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEncerrarContingencia', 'requisicaoEstornar', 'requisicaoInutilizar',
       'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDaContingencia', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDaContingencia', 'urlDasEpecPendentes', 'urlDoDanfe', 'urlDoEncerramentoDaContingencia', 'urlDoPedidoAFaturar', 'urlDoXml',
@@ -493,6 +493,13 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(publico.seloDaContingencia(c, 'America/Manaus')?.dica).toContain('22/11/2026 10:30');
     expect(publico.faixaDaContingencia(c, 'America/Manaus')).toBe('FILIAL EM CONTINGÊNCIA — SVC-RS, DESDE 22/11/2026 10:30');
     expect(publico.faixaDaContingencia(null, 'America/Manaus')).toBeNull();
+  });
+
+  it('RN-FAT-09: o alerta do prazo de 168 h vira faixa vermelha (vencida) ou amarela (perto do fim); verde não mostra nada', () => {
+    const base = { total: 3, no_prazo: 1, perto_do_fim: 1, vencidas: 1, prazo_mais_proximo: null };
+    expect(publico.faixaDoAlertaEpec({ ...base, sinal: 'vermelho' })).toEqual({ tom: 'erro', texto: '1 nota(s) em EPEC com o prazo de 168 h vencido. Transmita agora e confira a SEFAZ.' });
+    expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, sinal: 'amarelo' })).toEqual({ tom: 'alerta', texto: '1 nota(s) em EPEC perto do fim do prazo de 168 h.' });
+    expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, perto_do_fim: 0, sinal: 'verde' })).toBeNull();
   });
   it('RN-CORE-02: só quem emite abre e encerra; abrir fecha com a aberta e encerrar fecha sem ela', () => {
     expect(publico.acoesDaContingencia('administrador', false)).toEqual({ abrir: null, encerrar: 'a filial não está em contingência.' });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRAZO_TRANSMISSAO_EPEC_HORAS, SVC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
-import { aplicarContingenciaAoConteudo, modoDoTransporte, TABELA_SVC_PADRAO, contaComoFaturada, modalidadeDaUf, prazoEpec, PRAZO_EPEC_HORAS, situacaoPrazoEpec, sugerirContingencia, podeTransmitirNaVolta, type TabelaSvc, transicaoEntradaContingencia, transicaoVoltaContingencia, validarEntradaContingencia } from './contingencia';
+import { alertaPrazoEpec, aplicarContingenciaAoConteudo, modoDoTransporte, TABELA_SVC_PADRAO, contaComoFaturada, modalidadeDaUf, prazoEpec, PRAZO_EPEC_HORAS, situacaoPrazoEpec, sugerirContingencia, podeTransmitirNaVolta, type TabelaSvc, transicaoEntradaContingencia, transicaoVoltaContingencia, validarEntradaContingencia } from './contingencia';
 import type { ConteudoNota } from './tipos-nota';
 
 const agora = new Date('2026-11-22T14:00:00Z');
@@ -143,5 +143,18 @@ describe('contingência da NF-e (RN-FAT-05, 08, 09, 10)', () => {
   });
   it('RN-FAT-05/08: o modo do transporte vem do tpEmis da nota: 6 vai à SVC-AN, 7 à SVC-RS; 1 e 4 (EPEC volta pelo normal) ao autorizador normal', () => {
     expect([1, 4, 6, 7].map((t) => modoDoTransporte(t as 1 | 4 | 6 | 7))).toEqual(['normal', 'normal', 'svc-an', 'svc-rs']);
+  });
+});
+
+describe('alerta do prazo da EPEC (RN-FAT-09)', () => {
+  const agora = new Date('2026-11-23T12:00:00Z');
+  const em = (h: number): Date => new Date(agora.getTime() + h * 3_600_000);
+  it('RN-FAT-09: qualquer EPEC vencida acende o sinal vermelho ao administrador, com a contagem', () => {
+    expect(alertaPrazoEpec(agora, [em(100), em(-1), em(3)])).toEqual({ sinal: 'vermelho', total: 3, no_prazo: 1, perto_do_fim: 1, vencidas: 1, prazo_mais_proximo: em(-1).toISOString() });
+  });
+  it('RN-FAT-09: sem vencida, perto do fim (6 h) é amarelo; só no prazo ou nenhuma pendente é verde', () => {
+    expect(alertaPrazoEpec(agora, [em(100), em(5)]).sinal).toBe('amarelo');
+    expect(alertaPrazoEpec(agora, [em(100)]).sinal).toBe('verde');
+    expect(alertaPrazoEpec(agora, [])).toEqual({ sinal: 'verde', total: 0, no_prazo: 0, perto_do_fim: 0, vencidas: 0, prazo_mais_proximo: null });
   });
 });

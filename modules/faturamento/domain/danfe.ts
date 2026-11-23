@@ -43,6 +43,13 @@ export function caixaDoLogo(quadro: { largura: number; altura: number }, imagem:
 export const AVISO_HOMOLOGACAO = 'EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL';
 export const MARCA_DAGUA_HOMOLOGACAO = 'SEM VALOR FISCAL';
 export const TARJA_CANCELADA = 'CANCELADA';
+/** RN-FAT-08 (MOC Anexo II): textos do DANFE impresso em contingência (tpEmis 4, 6 ou 7). Curtos, pt-BR; a marca valida o layout. */
+export const TITULO_DANFE_CONTINGENCIA = 'DANFE EM CONTINGÊNCIA';
+export const NOME_CONTINGENCIA: Readonly<Record<'4' | '6' | '7', string>> = { '4': 'EPEC', '6': 'SVC-AN', '7': 'SVC-RS' };
+/** EPEC: o protocolo e a data do evento 110140 (não o da NF-e, que ainda não foi autorizada). */
+export const textoEpecDanfe = (protocolo: string, dataHora: string): string => `Impresso em contingência — EPEC, protocolo nº ${protocolo} de ${dataHora}`;
+export const textoSvcDanfe = (modalidade: string): string => `Impresso em contingência — ${modalidade}`;
+export const textoEntradaContingenciaDanfe = (dhCont: string, xJust: string): string => `Entrada em contingência em ${dhCont}. Justificativa: ${xJust}`;
 
 export class ErroDanfe extends Error {}
 
@@ -94,6 +101,8 @@ export interface ModeloDanfe {
   /** Todas as linhas de produto; a paginação (por altura) é do renderizador do PDF. */
   itens: LinhaProduto[];
   dadosAdicionais: { informacoesComplementares: string; fisco: string };
+  /** RN-FAT-08: só nas notas tpEmis 4, 6 e 7. `titulo` vai no topo de todas as folhas; `linhas` (modalidade e dhCont/xJust) abrem os dados adicionais. */
+  contingencia: { tpEmis: 4 | 6 | 7; titulo: string; linhas: string[] } | null;
 }
 
 // ---------- formatação pt-BR ----------
@@ -175,10 +184,26 @@ export interface EntradaDanfe {
   cancelada?: boolean;
   /** Deslocamento do fuso de exibição em minutos (padrão Manaus, −240). */
   fusoMinutos?: number;
+  /**
+   * RN-FAT-08: DANFE da EPEC ANTES da autorização da NF-e. `nfeProc` é então a `<NFe>` assinada (`nfe_assinada`, sem protNFe) e o protocolo impresso é o do evento
+   * EPEC (`epec_protocolo`, `dhRegistro` = `epec_autorizada_em`, ISO UTC). Sem este campo o XML precisa ser o nfeProc autorizado.
+   */
+  epec?: { protocolo: string; dhRegistro: string };
 }
 
 /** RF-FAT-03: monta o DANFE do `nfeProc`. Lança `ErroDanfe` se o XML não for um `nfeProc` autorizado (sem `protNFe`/`infNFe`). */
 const valorDuplicata = (v: string): string => (v === '' ? '' : formatarReaisDecimal(v, 2));
+
+/** RN-FAT-08: aviso do DANFE em contingência. EPEC leva o protocolo do evento (quando o chamador o informa); SVC, a modalidade; dhCont e xJust vêm do ide da própria NF-e. */
+function avisoContingencia(tpEmis: '4' | '6' | '7', ide: NoXml | undefined, epec: EntradaDanfe['epec'], fuso: number): NonNullable<ModeloDanfe['contingencia']> {
+  const linhas: string[] = [];
+  if (tpEmis === '4') linhas.push(epec ? textoEpecDanfe(epec.protocolo, formatarDataHoraXml(epec.dhRegistro, fuso)) : textoSvcDanfe(NOME_CONTINGENCIA['4']));
+  else linhas.push(textoSvcDanfe(NOME_CONTINGENCIA[tpEmis]));
+  const dhCont = textoDe(ide, 'dhCont');
+  const xJust = textoDe(ide, 'xJust');
+  if (dhCont && xJust) linhas.push(textoEntradaContingenciaDanfe(formatarDataHoraXml(dhCont, fuso), xJust));
+  return { tpEmis: Number(tpEmis) as 4 | 6 | 7, titulo: TITULO_DANFE_CONTINGENCIA, linhas };
+}
 
 export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
   const fuso = entrada.fusoMinutos ?? FUSO_MANAUS_MINUTOS;
@@ -188,10 +213,12 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
   } catch (e) {
     throw new ErroDanfe(`nfeProc ilegível: ${(e as Error).message}`);
   }
-  const nfe = achar(proc, 'NFe');
+  const soEpec = entrada.epec !== undefined && proc.nome === 'NFe';
+  const nfe = soEpec ? proc : achar(proc, 'NFe');
   const inf = achar(nfe, 'infNFe');
   const prot = achar(proc, 'protNFe', 'infProt');
-  if (proc.nome !== 'nfeProc' || !inf || !prot) throw new ErroDanfe('o XML não é um nfeProc autorizado (faltam infNFe ou protNFe)');
+  if (!soEpec && (proc.nome !== 'nfeProc' || !inf || !prot)) throw new ErroDanfe('o XML não é um nfeProc autorizado (faltam infNFe ou protNFe)');
+  if (!inf) throw new ErroDanfe('o XML não tem infNFe');
   const ide = achar(inf, 'ide');
   const emit = achar(inf, 'emit');
   const dest = achar(inf, 'dest');
@@ -200,7 +227,11 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
   const numero = textoDe(ide, 'nNF').padStart(9, '0').replace(/(\d{3})(?=\d)/g, '$1.');
   const serie = textoDe(ide, 'serie');
   const tpNF = textoDe(ide, 'tpNF');
-  const protocolo = `${textoDe(prot, 'nProt')} - ${formatarDataHoraXml(textoDe(prot, 'dhRecbto'), fuso)}`;
+  const protocolo = soEpec && entrada.epec
+    ? `${entrada.epec.protocolo} - ${formatarDataHoraXml(entrada.epec.dhRegistro, fuso)}`
+    : `${textoDe(prot, 'nProt')} - ${formatarDataHoraXml(textoDe(prot, 'dhRecbto'), fuso)}`;
+  const tpEmis = textoDe(ide, 'tpEmis');
+  const contingencia = tpEmis === '4' || tpEmis === '6' || tpEmis === '7' ? avisoContingencia(tpEmis, ide, entrada.epec, fuso) : null;
   const end = (n: NoXml | undefined) => [textoDe(n, 'xLgr'), textoDe(n, 'nro'), textoDe(n, 'xCpl')].filter(Boolean).join(', ');
   const ee = achar(emit, 'enderEmit');
   const ed = achar(dest, 'enderDest');
@@ -293,6 +324,7 @@ export function montarDanfe(entrada: EntradaDanfe): ModeloDanfe {
     ],
     transportador,
     itens: todos(inf, 'det').map(linhaProduto),
-    dadosAdicionais: { informacoesComplementares: textoDe(inf, 'infAdic', 'infCpl'), fisco: textoDe(inf, 'infAdic', 'infAdFisco') },
+    dadosAdicionais: { informacoesComplementares: [...(contingencia?.linhas ?? []), textoDe(inf, 'infAdic', 'infCpl')].filter(Boolean).join(' '), fisco: textoDe(inf, 'infAdic', 'infAdFisco') },
+    contingencia,
   };
 }

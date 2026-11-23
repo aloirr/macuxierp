@@ -8,6 +8,6 @@ export {
 } from './notas';
 export { ROTULO_STATUS_TITULO, acoesDoTitulo, dialogoEstornar, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, MOTIVO_SEM_ITEM, requisicaoBaixa, requisicaoEstornar, rotuloDaForma, situacaoDoTitulo, type CampoParcial, type ErroParcialPartes, type FormularioParcial, type ResultadoBaixa, type ResultadoParcial } from './titulos';
 export {
-  ROTULO_MODALIDADE, ROTULO_PRAZO_EPEC, acoesDaContingencia, dialogoAbrirContingencia, dialogoEncerrarContingencia, faixaDaContingencia, requisicaoAbrirContingencia, requisicaoEncerrarContingencia,
+  ROTULO_MODALIDADE, ROTULO_PRAZO_EPEC, acoesDaContingencia, dialogoAbrirContingencia, dialogoEncerrarContingencia, faixaDaContingencia, faixaDoAlertaEpec, requisicaoAbrirContingencia, requisicaoEncerrarContingencia,
   seloDaContingencia, urlDaContingencia, urlDasEpecPendentes, urlDoEncerramentoDaContingencia, type ContingenciaAberta, type DialogoAbrirContingencia,
 } from './contingencia';

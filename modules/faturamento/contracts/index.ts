@@ -330,6 +330,22 @@ export type SituacaoPrazoEpec = z.infer<typeof SituacaoPrazoEpec>;
 export const FiltroEpecPendentes = ConsultaPaginada.extend({ filial_id: Uuid.optional(), situacao: SituacaoPrazoEpec.optional() });
 export type FiltroEpecPendentes = z.infer<typeof FiltroEpecPendentes>;
 
+/** `POST /v1/faturamento/contingencia/epec-pendentes/transmitir` (só administrador): sem `filial_id`, todas as filiais do tenant. */
+export const TransmitirEpecPendentesEntrada = z.object({ filial_id: Uuid.optional() }).strict();
+export type TransmitirEpecPendentesEntrada = z.infer<typeof TransmitirEpecPendentesEntrada>;
+
+/** `GET /v1/faturamento/contingencia/epec-pendentes/alerta` (RN-FAT-09): `vermelho` = há EPEC com o prazo de 168 h vencido (alerta ao administrador); `amarelo` = alguma perto do fim; `verde` = nenhuma em risco. */
+export const AlertaPrazoEpec = z.object({
+  sinal: z.enum(['verde', 'amarelo', 'vermelho']),
+  total: z.number().int().nonnegative(),
+  no_prazo: z.number().int().nonnegative(),
+  perto_do_fim: z.number().int().nonnegative(),
+  vencidas: z.number().int().nonnegative(),
+  /** Prazo mais próximo (UTC ISO); nulo sem pendentes. */
+  prazo_mais_proximo: z.string().nullable(),
+});
+export type AlertaPrazoEpec = z.infer<typeof AlertaPrazoEpec>;
+
 /** Nota EPEC (tpEmis 4) com o evento autorizado e ainda sem a transmissão posterior autorizada; o prazo (168 h da autorização do EPEC) é calculado, não gravado. */
 export const EpecPendente = z.object({
   id: Uuid,

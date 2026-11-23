@@ -82,11 +82,12 @@ describe('EPEC no worker: evento 110140 em vez da NF-e', { timeout: 60_000 }, ()
     expect([...m.lidos[0]!.credencial.pfx].every((b) => b === 0)).toBe(true);
   });
 
-  it('RN-FAT-08: a EPEC registrada não é reenviada pelo worker (emitida_contingencia é da volta, etapa 4): ignorada', async () => {
+  it('RN-FAT-08/09: a EPEC registrada não reenvia o evento: o trabalho da nota emitida_contingencia é a volta (etapa 4); com o autorizador normal indisponível, nada muda', async () => {
     const m = await montar();
     const nota = await m.emitir();
     await m.transmissor.transmitirNota(TENANT, nota.id);
-    expect(await m.transmissor.transmitirNota(TENANT, nota.id)).toEqual({ resultado: 'ignorada', motivo: 'status_nao_transmissivel' });
+    expect(await m.transmissor.transmitirNota(TENANT, nota.id)).toEqual({ resultado: 'nao_assinada', motivo: 'destino_indisponivel' });
+    expect(m.notas.get(nota.id)?.status).toBe('emitida_contingencia');
     expect(m.g.guardados).toHaveLength(1);
   });
 

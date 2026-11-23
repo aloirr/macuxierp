@@ -52,6 +52,7 @@ describe('rotas /v1/faturamento', () => {
     const a = ambiente();
     expect(a.plugin.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao}`).sort()).toEqual([
       'GET /contingencia/epec-pendentes faturamento.ver',
+      'GET /contingencia/epec-pendentes/alerta faturamento.ver',
       'GET /contingencia/epec-pendentes/exportar faturamento.ver',
       'GET /filiais/:id/configuracao faturamento.ver',
       'GET /filiais/:id/contingencia faturamento.ver',
@@ -69,6 +70,7 @@ describe('rotas /v1/faturamento', () => {
       'GET /titulos faturamento.ver',
       'GET /titulos/:id faturamento.ver',
       'GET /titulos/exportar faturamento.ver',
+      'POST /contingencia/epec-pendentes/transmitir faturamento.nota.emitir',
       'POST /filiais/:id/contingencia faturamento.nota.emitir',
       'POST /filiais/:id/contingencia/encerrar faturamento.nota.emitir',
       'POST /inutilizacoes faturamento.nota.emitir',
@@ -167,6 +169,22 @@ describe('rotas /v1/faturamento', () => {
     a.notas.set(id, { ...a.notas.get(id)!, status: 'cancelada' });
     expect(((await a.chamar('GET', '/notas/:id/danfe', { params: { id } })).corpo as Buffer).length).toBeGreaterThan(1000);
     await expect(ambiente('vendedor').chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('RN-FAT-08: GET /notas/:id/danfe da EPEC com o evento registrado (emitida_contingencia) sai da <NFe> assinada, com o protocolo do evento; sem o evento, 422; SVC autorizada usa o nfeProc e leva o aviso', async () => {
+    const a = ambiente();
+    const id = ((await a.chamar('POST', '/notas', { corpo: emitirCorpo })).corpo as { id: string }).id;
+    const proc = nfeProcDeTeste().replace('<tpAmb>2</tpAmb></ide>', '<tpEmis>4</tpEmis><dhCont>2026-11-21T09:00:00-04:00</dhCont><xJust>SEFAZ-AM fora do ar desde as 9h</xJust><tpAmb>2</tpAmb></ide>');
+    a.assinados.push({ id, versao: 1, xml: /<NFe>[\s\S]*<\/NFe>/.exec(proc)![0], sha256: 'x' });
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'emitida_contingencia', tp_emis: 4, epec_protocolo: null, epec_autorizada_em: null });
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 422 });
+    a.notas.set(id, { ...a.notas.get(id)!, epec_protocolo: '891260000000007', epec_autorizada_em: '2026-11-21T14:05:00.000Z' });
+    const r = await a.chamar('GET', '/notas/:id/danfe', { params: { id } });
+    expect(Buffer.from(r.corpo as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'em_autorizacao' });
+    expect((await a.chamar('GET', '/notas/:id/danfe', { params: { id } })).cabecalhos).toMatchObject({ 'content-type': 'application/pdf' });
+    a.notas.set(id, { ...a.notas.get(id)!, status: 'rascunho' });
+    await expect(a.chamar('GET', '/notas/:id/danfe', { params: { id } })).rejects.toMatchObject({ status: 422 });
   });
 
   it('RN-FAT-03: GET /notas/:id/danfe com vDup ilegível vira 422 RN-FAT-03, sem dado do XML na resposta', async () => {
@@ -583,6 +601,41 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
       const g = await a.chamar('GET', '/filiais/:id/contingencia', { params });
       expect(g.corpo).toMatchObject({ aberta: null, historico: [{ modalidade: 'svc_rs' }] });
       expect((await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).status).toBe(201);
+    });
+
+    it('RN-FAT-09: encerrar a EPEC enfileira a volta de cada nota emitida_contingencia da filial e do ambiente (external_id com a contingência); encerrar SVC não enfileira nada', async () => {
+      const a = ambiente('administrador');
+      a.deps.ambiente = { ambiente: async () => 'homologacao' as const }; // as EPEC de teste são de homologação: a volta filtra por filial E ambiente
+      await a.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo({ modalidade: 'epec' }) });
+      const r = await a.chamar('POST', '/filiais/:id/contingencia/encerrar', { params });
+      const id = (r.corpo as { id: string }).id;
+      expect(a.trabalhos.map((t) => t.tipo)).toEqual([TRABALHO_TRANSMITIR_NOTA, TRABALHO_TRANSMITIR_NOTA, TRABALHO_TRANSMITIR_NOTA]);
+      expect(a.trabalhos.map((t) => t.external_id).sort()).toEqual(epecDeTeste.map((n) => `${n.id}:volta:${id}`).sort());
+      const b = ambiente('administrador');
+      b.deps.ambiente = { ambiente: async () => 'homologacao' as const };
+      await b.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() });
+      await b.chamar('POST', '/filiais/:id/contingencia/encerrar', { params });
+      expect(b.trabalhos).toEqual([]);
+    });
+
+    it('RN-FAT-09: POST /contingencia/epec-pendentes/transmitir é só do administrador, exige Idempotency-Key, enfileira as pendentes (com a contagem das vencidas) e audita sem dado pessoal', async () => {
+      const a = ambiente('administrador');
+      expect(a.rota('POST', '/contingencia/epec-pendentes/transmitir')).toMatchObject({ acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria' });
+      const r = await a.chamar('POST', '/contingencia/epec-pendentes/transmitir', { corpo: {} });
+      expect(r).toMatchObject({ status: 202, corpo: { enfileiradas: 3, vencidas: 1 } });
+      expect(a.trabalhos.every((t) => t.tipo === TRABALHO_TRANSMITIR_NOTA && /:volta:req-1$/.test(t.external_id!))).toBe(true);
+      expect(a.auditoria).toContain('faturamento.epec.transmitir_pendentes');
+      for (const perfil of ['faturista', 'fiscal', 'gerente', 'vendedor'] as const) {
+        await expect(ambiente(perfil).chamar('POST', '/contingencia/epec-pendentes/transmitir', { corpo: {} })).rejects.toMatchObject({ status: 403 });
+      }
+      expect((await a.chamar('POST', '/contingencia/epec-pendentes/transmitir', { corpo: { filial_id: uuid(99) } })).corpo).toMatchObject({ enfileiradas: 0 });
+    });
+
+    it('RN-FAT-09: GET /contingencia/epec-pendentes/alerta: vencida acende o sinal vermelho (vendedor 403)', async () => {
+      const a = ambiente('administrador');
+      expect((await a.chamar('GET', '/contingencia/epec-pendentes/alerta')).corpo).toEqual({ sinal: 'vermelho', total: 3, no_prazo: 1, perto_do_fim: 1, vencidas: 1, prazo_mais_proximo: new Date(AGORA_CTX - 170 * 3_600_000 + 168 * 3_600_000).toISOString() });
+      expect((await a.chamar('GET', '/contingencia/epec-pendentes/alerta', { consulta: { filial_id: uuid(99) } })).corpo).toMatchObject({ sinal: 'verde', total: 0 });
+      await expect(ambiente('vendedor').chamar('GET', '/contingencia/epec-pendentes/alerta')).rejects.toMatchObject({ status: 403 });
     });
 
     it('RN-CORE-02: abrir e encerrar pedem a ação faturamento.nota.emitir e exigem Idempotency-Key; vendedor recebe 403 em tudo; gerente e leitura não escrevem', async () => {

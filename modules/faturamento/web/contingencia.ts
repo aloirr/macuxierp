@@ -4,7 +4,7 @@
  */
 import { type Perfil } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
-import { AbrirContingenciaEntrada, type Ambiente, type ModalidadeContingencia, type SituacaoPrazoEpec } from '../contracts';
+import { AbrirContingenciaEntrada, type AlertaPrazoEpec, type Ambiente, type ModalidadeContingencia, type SituacaoPrazoEpec } from '../contracts';
 import { MOTIVO_MAX, MOTIVO_MIN, PRAZO_EPEC_HORAS } from '../domain/contingencia';
 import { BASE_API, comChave, dialogoDeTexto, exigirChave, falha, mensagemDeTamanho, postSemCorpo, type DialogoDeTexto, type Montagem, type Selo } from './notas';
 
@@ -41,6 +41,12 @@ export function seloDaContingencia(c: ContingenciaAberta | null, fuso: string): 
 /** Faixa fixa da filial em contingência, no topo das telas do faturamento (o shell usa o tom `alerta`). */
 export const faixaDaContingencia = (c: ContingenciaAberta | null, fuso: string): string | null =>
   c ? `FILIAL EM CONTINGÊNCIA — ${ROTULO_MODALIDADE[c.modalidade].rotulo}, DESDE ${formatarDataHora(c.inicio_em, fuso)}` : null;
+
+/** RN-FAT-09: faixa do alerta do prazo de 168 h (sinal do `GET .../epec-pendentes/alerta`), no tom `erro` (vermelho) ou `alerta` (amarelo); `null` quando verde. Sem dado pessoal. */
+export const faixaDoAlertaEpec = (a: AlertaPrazoEpec): { tom: 'erro' | 'alerta'; texto: string } | null =>
+  a.sinal === 'vermelho'
+    ? { tom: 'erro', texto: `${a.vencidas} nota(s) em EPEC com o prazo de 168 h vencido. Transmita agora e confira a SEFAZ.` }
+    : a.sinal === 'amarelo' ? { tom: 'alerta', texto: `${a.perto_do_fim} nota(s) em EPEC perto do fim do prazo de 168 h.` } : null;
 
 const SEM_PERMISSAO = 'sem permissão para esta ação';
 /** Por que abrir/encerrar não está disponível (texto ao lado do botão desabilitado), ou `null` se está. Só o administrador liga e desliga (RN-FAT-05, decisão do Alexandre, 23/11); a API responde 403 aos demais. */
