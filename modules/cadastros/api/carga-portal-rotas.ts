@@ -3,7 +3,7 @@
  * 'por_etapa'`, sem Idempotency-Key (a concorrência é o MXC01 do `portal_carga_iniciar`; a carga é tudo ou nada na tx do tenant).
  *
  * `gravar`, uma transação de cada vez:
- *  1. `comPlataforma`: `cadastros.portal_carga_iniciar` (sessão, empresa ativa, licença, MXC01, MXC03, auditoria do superadmin);
+ *  1. `comPlataforma`: `cadastros.portal_carga_iniciar` (sessão, empresa ativa, licença, MXC01, auditoria do superadmin);
  *  2. `comTenant(:id)`: `gravarCargaPortal` (executarCarga + planoSubstituicao + inativarEmLote + eventos na outbox);
  *  3. `comPlataforma`: `cadastros.portal_carga_concluir` com `concluida` ou `falhou` (também quando a etapa 2 falha: o
  *     erro original é o que sobe).
