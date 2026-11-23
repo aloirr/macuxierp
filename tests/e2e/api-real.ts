@@ -15,11 +15,8 @@ import { randomUUID } from 'node:crypto';
 import { filialValida } from '../../modules/cadastros/api/fixtures-teste';
 import { gerarHashSenha } from '../../apps/api/src/auth/senha';
 import { montarApiPg } from '../apoio/api-pg';
+import { argumento as arg } from './apoio-e2e.mjs';
 
-const arg = (nome: string, padrao: string) => {
-  const i = process.argv.indexOf(`--${nome}`);
-  return i > 0 && process.argv[i + 1] ? process.argv[i + 1]! : padrao;
-};
 const PORTA = Number(arg('porta', '3200'));
 const PRONTO = arg('pronto', '');
 
