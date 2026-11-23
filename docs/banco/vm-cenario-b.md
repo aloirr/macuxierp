@@ -1,29 +1,27 @@
 # Roteiro da VM de teste do cenário B (v0.3.6)
 
-> T-0057 · autor: `banco-dados` · criado em 2026-11-23, 14h10 (Manaus).
+> T-0057 · autor: `banco-dados` · criado em 2026-11-23, 14h10 (Manaus); revisto em 2026-11-23, 14h20 (Manaus), com a decisão do Alexandre (via PO, 23/11, 14h19): "banco está vazio. vamos começar a thathyany do zero." Vale o banco **fictício**.
 > Cenário B da v0.3.6, aprovado pelo Alexandre. **Só teste, temporário.**
 > Sem segredo neste texto: tudo o que é sensível aparece como marcador (`<IP_DO_ALEXANDRE>`, `<SENHA_NO_COFRE>`, `<HOST_DA_VM>`...). O valor real fica no cofre de senhas, nunca em doc, recado, commit ou log.
 
 ## 1. Objetivo, escopo e o que NÃO é
 
-**Objetivo:** subir uma VM Linux de teste com uma **cópia** do banco do ERP legado do cliente thathyany (código FDV `am2808`), banco `ERP_THATHYANY`, para o conector ler esses dados e alimentar o Macuxi ERP em teste.
+**Objetivo:** subir uma VM Linux de teste com o banco `ERP_THATHYANY` (cliente thathyany, código FDV `am2808`) **criado do zero** com o esquema do kit do Macuxi FDV e populado com **dados fictícios**, para o conector ler as views e alimentar o Macuxi ERP em teste.
 
-**Escopo:** uma VM, um SQL Server 2022 Express, um banco restaurado de um `.bak`, um login **só leitura** para o conector, firewall fechado e encerramento com destruição dos dados.
+**Escopo:** uma VM, um SQL Server 2022, o banco criado pelo `criar-banco.sql` do kit (seção 5), a carga dos CSVs fictícios e do catálogo (seção 6), um login **só leitura** para o conector (seção 7), firewall fechado e encerramento com a VM apagada (seção 8).
 
 **O que NÃO é:**
 - Não é produção. Nada aqui vai para `erp.macuxifdv.com.br` nem para a VM de produção do FDV/ERP.
+- Não é cópia do banco real do cliente: **não há restore de `.bak`** nem dado de cliente real.
 - **Nada do Macuxi FDV muda**: nem código (`aloirr/macuxifdv` é só consulta), nem banco, nem configuração.
-- **O ERP nunca lê tabela do FDV.** O conector lê só a cópia do ERP legado nesta VM; o banco `macuxierp` não ganha acesso a ela nem ao banco do FDV.
-- Não é cópia permanente: tem data para acabar (seção 7).
+- **O ERP nunca lê tabela do FDV.** O conector lê só as views deste banco de teste; o banco `macuxierp` não ganha acesso a ele nem ao banco do FDV.
+- Não é permanente: tem data para acabar (seção 8).
 
 ## 2. VM
 
 - **Sistema:** Ubuntu Server 22.04 LTS (é a versão suportada pelo SQL Server 2022 no Linux).
-- **Tamanho sugerido:** 2 vCPU, 4 GB de RAM (o SQL Server exige no mínimo 2 GB; o Express usa no máximo ~1,4 GB de buffer), disco de dados de **3× o tamanho do `.bak`** (no mínimo 40 GB): cabe o `.bak`, o banco restaurado e o log.
-- **Disco cifrado** (é dado pessoal de cliente):
-  - **Opção A — LUKS na instalação:** no instalador do Ubuntu, "Use LVM with encryption". A senha de desbloqueio é pedida a cada boot (no console do provedor). Protege mesmo que o provedor ou um snapshot vaze, mas complica reinício remoto.
-  - **Opção B — volume cifrado do provedor** (criptografia em repouso do disco, com chave gerenciada pelo provedor ou pelo cliente): ligada na criação do disco, transparente para o sistema, sem senha no boot.
-  - **Recomendação:** **Opção B** para este teste curto, com o disco de dados num **volume separado** do disco do sistema (destruir o volume no fim apaga tudo). Se o provedor não oferecer criptografia em repouso, usar a Opção A.
+- **Tamanho sugerido:** 2 vCPU, 4 GB de RAM (o SQL Server exige no mínimo 2 GB), disco de dados de 40 GB (sobra para os dados fictícios, o catálogo e o log).
+- **Disco:** **volume cifrado do provedor** (criptografia em repouso, ligada na criação do disco), com os dados num **volume separado** do disco do sistema. (Se o provedor não oferecer, LUKS na instalação, com o ok do Alexandre.) **Snapshot automático do provedor desligado**, para nada sobreviver ao encerramento (seção 8).
 - **Atualizações:**
   ```bash
   sudo apt update && sudo apt full-upgrade -y
@@ -50,7 +48,7 @@
   `sudo sshd -t && sudo systemctl restart ssh` — **antes de fechar a sessão atual**, abra outra e confira que entra.
 
 Como conferir:
-- `lsblk -f` (Opção A: aparece `crypto_LUKS`) ou o painel do provedor mostra o disco "encrypted" (Opção B).
+- O painel do provedor mostra o volume de dados "encrypted".
 - `sudo sshd -T | grep -Ei 'passwordauth|permitroot'` → `no` / `no`.
 - De fora: `ssh -o PubkeyAuthentication=no <USUARIO_ADMIN>@<HOST_DA_VM>` deve falhar com `Permission denied (publickey)`.
 
@@ -67,12 +65,7 @@ sudo ufw enable
 ```
 No provedor: entrada só TCP 22 de `<IP_DO_ALEXANDRE>/32`; nenhuma outra regra de entrada.
 
-O SQL Server escuta **só em localhost** (seção 4). O conector chega nele por **túnel SSH**, da máquina onde roda:
-```bash
-ssh -N -L 127.0.0.1:14330:127.0.0.1:1433 <USUARIO_ADMIN>@<HOST_DA_VM>
-# o conector aponta para 127.0.0.1,14330 (porta local livre à escolha)
-```
-O túnel sai de uma máquina cujo IP está liberado na porta 22. Se o conector rodar em outro IP, liberar esse IP também na 22 (com o OK do Alexandre), nunca a 1433.
+**O conector roda na própria VM** e chega ao SQL Server por `127.0.0.1,1433`: sem IP extra liberado e sem túnel SSH para o conector. A saída dele para o ERP de teste é tráfego de saída (já permitido).
 
 Como conferir:
 - `sudo ufw status verbose` → `Default: deny (incoming)`, uma regra só: `22/tcp ALLOW IN <IP_DO_ALEXANDRE>`.
@@ -80,16 +73,18 @@ Como conferir:
 - De fora (outro IP qualquer): `nc -vz -w 5 <HOST_DA_VM> 1433` e `nc -vz -w 5 <HOST_DA_VM> 22` → ambos falham (timeout).
 - Do IP do Alexandre: `nc -vz -w 5 <HOST_DA_VM> 22` → abre; `1433` → falha.
 
-## 4. SQL Server 2022 Express no Ubuntu 22.04
+## 4. SQL Server 2022 no Ubuntu 22.04
+
+**Edição** (decisão do PO, **pendente do ok do Alexandre**): Express ou Developer servem (dados fictícios, bem abaixo de 10 GB). Developer só no teste de 30 dias, sem uso produtivo; uso contínuo = Standard ou Express com ≤10 GB.
 
 ```bash
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
 curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/mssql-server-2022.list | sudo tee /etc/apt/sources.list.d/mssql-server-2022.list
 sudo apt update && sudo apt install -y mssql-server
-sudo /opt/mssql/bin/mssql-conf setup     # escolher "Express"; senha do sa = <SENHA_SA_NO_COFRE>
+sudo /opt/mssql/bin/mssql-conf setup     # escolher "Express" (ou "Developer", ver acima); senha do sa = <SENHA_SA_NO_COFRE>
 ```
 - A senha do `sa` é gerada e guardada **no cofre** antes do setup e digitada só no prompt (nunca em variável de ambiente persistida, histórico ou doc). Depois: `history -c`.
-- Ferramentas de linha de comando:
+- Ferramentas de linha de comando (`sqlcmd` e `bcp`):
   ```bash
   curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
   sudo apt update && sudo ACCEPT_EULA=Y apt install -y mssql-tools18 unixodbc-dev
@@ -98,7 +93,7 @@ sudo /opt/mssql/bin/mssql-conf setup     # escolher "Express"; senha do sa = <SE
 - **Só localhost e TLS:**
   ```bash
   sudo /opt/mssql/bin/mssql-conf set network.ipaddress 127.0.0.1
-  # certificado (autoassinado serve para o teste; vale só pelo túnel)
+  # certificado (autoassinado serve para o teste; o acesso é só local)
   sudo /opt/mssql/bin/mssql-conf set network.tlscert /etc/ssl/mssql/mssql.pem
   sudo /opt/mssql/bin/mssql-conf set network.tlskey  /etc/ssl/mssql/mssql.key
   sudo /opt/mssql/bin/mssql-conf set network.tlsprotocols 1.2
@@ -106,7 +101,6 @@ sudo /opt/mssql/bin/mssql-conf setup     # escolher "Express"; senha do sa = <SE
   sudo systemctl restart mssql-server
   ```
   (os arquivos do certificado pertencem a `mssql:mssql`, permissão 600 na chave.)
-- **Limites do Express 2022:** limite de tamanho por banco (ver seção 5, passo 4), o menor entre **1 socket ou 4 núcleos**, **~1,4 GB (1410 MB) de buffer pool** por instância. Sem SQL Agent.
 
 Como conferir:
 ```bash
@@ -115,75 +109,95 @@ sqlcmd -S 127.0.0.1 -U sa -C -Q "SELECT SERVERPROPERTY('Edition'), SERVERPROPERT
 sqlcmd -S 127.0.0.1 -U sa -C -Q "SELECT encrypt_option FROM sys.dm_exec_connections WHERE session_id=@@SPID;"   # TRUE
 sudo ss -tlnp | grep 1433   # só 127.0.0.1
 ```
-Edição esperada: `Express Edition (64-bit)`, versão `16.x`.
+Versão `16.x`.
 
-## 5. Restore do `.bak` do `ERP_THATHYANY`
+## 5. Criar o banco com o esquema do kit do FDV
 
-1. **Hash na origem** (quem gera o `.bak`): `sha256sum ERP_THATHYANY.bak` (no Windows: `Get-FileHash -Algorithm SHA256`). Anotar o hash no cofre/recado **sem** o arquivo.
-2. **Transferência cifrada** (só scp/sftp pelo SSH; nunca e-mail, chat, link público ou drive compartilhado):
+**Fonte (só cópia, sem editar):** kit do Macuxi FDV, `aloirr/macuxifdv@0b79391`, `modules/integracao/kit-thathyany/sql/criar-banco.sql` (gerado por `kit-thathyany/scripts/gerar.ts`). Cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`. O arquivo **não** entra no repositório do ERP.
+
+**O que ele cria** (idempotente: roda quantas vezes precisar; sem segredo e sem dado):
+- o banco `ERP_THATHYANY` (`IF DB_ID(...) IS NULL CREATE DATABASE`);
+- **16 tabelas `dbo.tha_*`**: `filial`, `vendedor`, `catalogo_no`, `forma_pagamento`, `prazo_pagamento`, `produto`, `produto_unidade`, `preco`, `tabela_escalonada`, `estoque`, `cliente`, `cliente_endereco`, `transportadora`, `rota`, `titulo`, `nota` (chave `external_id`, coluna `alterado_em` em UTC, índice `(alterado_em, external_id)`);
+- as **views `dbo.vw_macuxi_*`** que o conector lê: uma por tabela `tha_*` (16), mais `vw_macuxi_pedido_status` e `vw_macuxi_pedido_nota_item` (retorno do pedido);
+- a **entrada de pedidos** (`macuxi_pedido_entrada`, `macuxi_pedido_entrada_item`, `macuxi_pedido_nota_item`, `sp_macuxi_pedido_inserir`, `sp_macuxi_pedido_item_inserir`, gatilho e `vw_thathyany_pedidos`).
+
+Passos:
+1. Levar o arquivo à VM, só por `scp`:
    ```bash
-   scp ERP_THATHYANY.bak <USUARIO_ADMIN>@<HOST_DA_VM>:/var/opt/mssql/backup/
+   scp criar-banco.sql <USUARIO_ADMIN>@<HOST_DA_VM>:~/
    ```
+2. Conferir o hash contra a cópia de consulta (a mesma conta na cópia de `macuxierp-recados` dá `eecca1aaa144ce46c5fee3bc8259bb3cd0e693e3496ce80df3ec4a6a506fd935`):
    ```bash
-   sudo mkdir -p /var/opt/mssql/backup && sudo chown mssql:mssql /var/opt/mssql/backup
-   sudo chown mssql:mssql /var/opt/mssql/backup/ERP_THATHYANY.bak && sudo chmod 600 /var/opt/mssql/backup/ERP_THATHYANY.bak
-   sha256sum /var/opt/mssql/backup/ERP_THATHYANY.bak   # igual ao da origem
+   sha256sum ~/criar-banco.sql
    ```
-3. **Versão de origem:**
-   ```sql
-   RESTORE HEADERONLY FROM DISK = N'/var/opt/mssql/backup/ERP_THATHYANY.bak';
-   ```
-   Olhar `SoftwareVersionMajor` (e `DatabaseVersion`). `.bak` de versão **mais nova** que 2022 (16) **não restaura**; de versões antigas (2008 R2 em diante) sobe com upgrade automático do banco (o nível de compatibilidade fica o antigo, e está bom para leitura).
-4. **Tamanho dos arquivos:**
-   ```sql
-   RESTORE FILELISTONLY FROM DISK = N'/var/opt/mssql/backup/ERP_THATHYANY.bak';
-   ```
-   Somar `Size` das linhas `Type = 'D'` (dados). **Se passar de 10 GB, o Express não restaura.** A edição Developer não serve para dado real de produção (licença só para desenvolvimento e teste sem dado de produção). **Parar e registrar a decisão com o Alexandre** (por exemplo: licença Standard, ou cópia reduzida feita pelo cliente).
-5. **Restore** (nomes lógicos vêm do passo 4):
-   ```sql
-   RESTORE DATABASE ERP_THATHYANY
-     FROM DISK = N'/var/opt/mssql/backup/ERP_THATHYANY.bak'
-     WITH MOVE N'<NOME_LOGICO_DADOS>' TO N'/var/opt/mssql/data/ERP_THATHYANY.mdf',
-          MOVE N'<NOME_LOGICO_LOG>'   TO N'/var/opt/mssql/data/ERP_THATHYANY_log.ldf',
-          RECOVERY, STATS = 10;
-   ```
-6. **Integridade:**
-   ```sql
-   DBCC CHECKDB (ERP_THATHYANY) WITH NO_INFOMSGS, ALL_ERRORMSGS;
-   ```
-7. **Apagar o `.bak`** depois do restore e do CHECKDB:
+   Diferente: **parar** e falar com o Alexandre; não rodar.
+3. Rodar como `sa`:
    ```bash
-   sudo shred -u /var/opt/mssql/backup/ERP_THATHYANY.bak   # em volume cifrado/SSD o shred é só reforço; vale o rm
+   read -rs -p "Senha do sa: " SQLCMDPASSWORD; echo; export SQLCMDPASSWORD
+   sqlcmd -S 127.0.0.1 -U sa -C -b -i ~/criar-banco.sql
+   unset SQLCMDPASSWORD
    ```
 
-Como conferir: hash igual nos dois lados; `CHECKDB` sem erro; `SELECT name, state_desc FROM sys.databases WHERE name='ERP_THATHYANY';` → `ONLINE`; `ls /var/opt/mssql/backup/` vazio.
-
-## 6. Usuário só leitura do conector
-
-**Fonte:** kit do Macuxi FDV, `aloirr/macuxifdv@0b79391`, `modules/integracao/kit-thathyany/sql/usuario-conector.sql`, só consulta. Este roteiro segue o **mesmo modelo do kit** (mesmos nomes, mesmo escopo), adaptado ao Linux/`sqlcmd`. Se houver diferença, vale o arquivo do kit.
-
-**O que o kit faz** (SQL Server no Windows, pelo `Instalar-Thathyany.ps1`; idempotente):
-- login `macuxi_conector` com `CHECK_POLICY = OFF` e `DEFAULT_DATABASE = ERP_THATHYANY`; se já existir, `ALTER LOGIN ... WITH PASSWORD` e `ALTER LOGIN ... ENABLE`; a senha vem pela variável `sqlcmd` `$(SENHA)`, nunca no texto;
-- usuário `macuxi_conector` no `ERP_THATHYANY` (`CREATE USER ... FOR LOGIN`, se não existir);
-- `GRANT SELECT` em **todas as views `dbo.vw_macuxi_*`** (lista gerada de `sys.views` com `sp_executesql`);
-- entrada de pedidos: `GRANT EXECUTE` em `dbo.sp_macuxi_pedido_inserir` e `dbo.sp_macuxi_pedido_item_inserir` e `GRANT SELECT` em `dbo.macuxi_pedido_entrada`;
-- **não** é dono, **não** lê as tabelas `tha_*` direto, sem `DENY` e sem papéis (roles).
-
-**Por que não `db_datareader`:** o kit dá `SELECT` só nas views `vw_macuxi_*`, o que é **menor** que `db_datareader` (que lê todas as tabelas, inclusive as `tha_*`, com dado pessoal). Também não há `DENY` genérico: sem papel nem `GRANT` extra, o usuário já não escreve nada, e o `DENY` só afastaria o roteiro do kit.
-
-**Diferenças do cenário B em relação ao kit (recomendação):**
-1. **Sem os `GRANT` de entrada de pedidos** (os dois `EXECUTE` e o `SELECT` em `macuxi_pedido_entrada`): o teste é só leitura. Se o Alexandre quiser testar a volta do pedido, ele decide e aplica à parte, com registro.
-2. **`CHECK_POLICY = ON`** (o kit usa `OFF` no Windows): no Linux vale a política de senha do SQL Server, com senha forte.
-
-### 6.1 Pré-requisito: as views vieram no `.bak`
-As views `vw_macuxi_*` foram instaladas pelo kit no cliente e precisam vir no `.bak`. Conferir (como `sa`):
+Como conferir:
 ```sql
 USE ERP_THATHYANY;
-SELECT name FROM sys.views WHERE name LIKE 'vw[_]macuxi[_]%' ORDER BY name;
+SELECT COUNT(*) FROM sys.tables WHERE name LIKE 'tha[_]%';        -- 16
+SELECT COUNT(*) FROM sys.views  WHERE name LIKE 'vw[_]macuxi[_]%'; -- 18 (16 de cadastro + 2 do retorno do pedido)
 ```
-**Se não vier nenhuma, parar e falar com o Alexandre.** Não criar views na cópia sem decisão.
+Rodar o script de novo não dá erro nem muda as contagens.
 
-### 6.2 Script (Linux, `sqlcmd`)
+## 6. Popular
+
+O time carrega nas tabelas `tha_*`:
+- os **CSVs fictícios do PO** (ele passa quando a VM existir);
+- o **catálogo real exportado do FDV** (produtos, sem dado pessoal).
+
+Os arquivos vão à VM só por `scp`, numa pasta de carga (`/var/opt/mssql/carga`, dono `mssql:mssql`, permissão 700), e **não** vão ao repositório nem a recado. Regras da carga:
+- **Ordem:** a mesma das tabelas na seção 5 (filial primeiro; título e nota por último).
+- **Colunas** na ordem da tabela: `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tha_produto') ORDER BY column_id;`. Campo vazio = nulo; `linha_hash` pode ficar vazia.
+- **`external_id`** é a chave: único e estável por linha; recarregar a mesma linha usa o mesmo `external_id`.
+- **`alterado_em`** em **UTC** (`AAAA-MM-DD HH:MM:SS.mmm`); quem altera uma linha avança o `alterado_em` (é por ele que o conector lê a mudança).
+
+Exemplo com `bcp` (UTF-8, separador `;`, primeira linha de cabeçalho; senha pedida no prompt):
+```bash
+bcp dbo.tha_produto in /var/opt/mssql/carga/<ARQUIVO_PRODUTO>.csv \
+  -S 127.0.0.1 -U sa -u -d ERP_THATHYANY -c -C 65001 -t ';' -F 2 \
+  -e /var/opt/mssql/carga/<ARQUIVO_PRODUTO>.erros
+```
+Ou com `BULK INSERT` (o arquivo precisa ser legível pelo usuário `mssql`):
+```sql
+BULK INSERT dbo.tha_produto FROM N'/var/opt/mssql/carga/<ARQUIVO_PRODUTO>.csv'
+  WITH (FORMAT = 'CSV', FIRSTROW = 2, FIELDTERMINATOR = ';', ROWTERMINATOR = '0x0a', TABLOCK);
+```
+Depois da carga, apagar os arquivos da pasta de carga.
+
+Como conferir:
+```sql
+USE ERP_THATHYANY;
+SELECT t.name, SUM(p.rows) AS linhas
+FROM sys.tables t JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
+WHERE t.name LIKE 'tha[_]%' GROUP BY t.name ORDER BY t.name;   -- bate com as linhas de cada arquivo
+SELECT TOP 5 * FROM dbo.vw_macuxi_produto ORDER BY alterado_em DESC;
+SELECT TOP 5 * FROM dbo.vw_macuxi_cliente ORDER BY alterado_em DESC;
+```
+Arquivo `.erros` vazio; nenhum `external_id` repetido.
+
+## 7. Usuário só leitura do conector
+
+**Fonte:** kit do Macuxi FDV, `aloirr/macuxifdv@0b79391`, `modules/integracao/kit-thathyany/sql/usuario-conector.sql`, só consulta. Este roteiro segue o **mesmo modelo do kit** (mesmos nomes), adaptado ao Linux/`sqlcmd`, com as diferenças abaixo.
+
+**O que o kit faz** (SQL Server no Windows; idempotente):
+- login `macuxi_conector` com `CHECK_POLICY = OFF` e `DEFAULT_DATABASE = ERP_THATHYANY`; se já existir, `ALTER LOGIN ... WITH PASSWORD` e `ENABLE`; a senha vem pela variável `sqlcmd` `$(SENHA)`, nunca no texto;
+- usuário `macuxi_conector` no `ERP_THATHYANY`;
+- `GRANT SELECT` em todas as views `dbo.vw_macuxi_*`;
+- entrada de pedidos: `GRANT EXECUTE` nas duas `sp_macuxi_pedido_*` e `GRANT SELECT` em `dbo.macuxi_pedido_entrada`;
+- **não** é dono, **não** lê as tabelas `tha_*` direto, sem papéis (roles). Por isso não usamos `db_datareader` (leria as `tha_*` todas).
+
+**Diferenças do cenário B (v0.3.6 é só cadastros):**
+1. **Sem a entrada de pedidos:** nenhum `GRANT` nas procedures `sp_macuxi_pedido_*` nem em `macuxi_pedido_entrada`, e sem `SELECT` nas views do retorno do pedido (`vw_macuxi_pedido_*`).
+2. **`CHECK_POLICY = ON`**: no Linux vale a política de senha do SQL Server, com senha forte.
+
+### 7.1 Script (Linux, `sqlcmd`)
 Salvar como `~/usuario-conector-cenario-b.sql` na VM (o arquivo não tem senha):
 ```sql
 SET NOCOUNT ON;
@@ -198,17 +212,15 @@ USE ERP_THATHYANY;
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'macuxi_conector')
     CREATE USER macuxi_conector FOR LOGIN macuxi_conector;
 GO
--- SELECT só nas views do kit (mesmo escopo do usuario-conector.sql)
+-- SELECT só nas views de cadastro do kit (sem as vw_macuxi_pedido_*)
 DECLARE @sql nvarchar(max) = N'';
 SELECT @sql = @sql + N'GRANT SELECT ON ' + QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name)
             + N' TO macuxi_conector;' + CHAR(10)
 FROM sys.views
-WHERE name LIKE 'vw[_]macuxi[_]%' AND SCHEMA_NAME(schema_id) = N'dbo';
+WHERE name LIKE 'vw[_]macuxi[_]%' AND name NOT LIKE 'vw[_]macuxi[_]pedido[_]%'
+  AND SCHEMA_NAME(schema_id) = N'dbo';
 EXEC sp_executesql @sql;
 GO
--- Cenário B: SEM os GRANT de entrada de pedidos
--- (EXECUTE em dbo.sp_macuxi_pedido_inserir e dbo.sp_macuxi_pedido_item_inserir; SELECT em dbo.macuxi_pedido_entrada).
--- Só com decisão do Alexandre, aplicada à parte.
 ```
 Rodar com a senha lida do cofre para uma variável, sem passar pelo histórico do shell:
 ```bash
@@ -218,62 +230,41 @@ export SQLCMDPASSWORD
 sqlcmd -S 127.0.0.1 -U sa -C -b -i ~/usuario-conector-cenario-b.sql -v SENHA="$SENHA_CONECTOR"
 unset SENHA_CONECTOR SQLCMDPASSWORD
 ```
-- O script é idempotente: pode rodar de novo (troca a senha e regrava os `GRANT`).
+- Idempotente: pode rodar de novo (troca a senha e regrava os `GRANT`).
 - Sem `VIEW SERVER STATE`, `sysadmin`, `db_owner`, `db_datareader` ou papel de servidor.
-- Se o restore trouxe usuários órfãos do ambiente do cliente, **não** reaproveitar: o conector usa só `macuxi_conector`.
 
-### 6.3 Como conferir
-Pelo túnel, logado como `macuxi_conector` (`sqlcmd -S 127.0.0.1,14330 -U macuxi_conector -C -d ERP_THATHYANY`, senha no prompt):
+### 7.2 Como conferir
+Na VM, logado como `macuxi_conector` (`sqlcmd -S 127.0.0.1 -U macuxi_conector -C -d ERP_THATHYANY`, senha no prompt):
 ```sql
-SELECT TOP 1 * FROM dbo.<UMA_VIEW_vw_macuxi>;          -- funciona
-SELECT TOP 1 * FROM dbo.<UMA_TABELA_tha>;              -- erro 229: permissão SELECT negada
-INSERT INTO dbo.<UMA_VIEW_vw_macuxi> DEFAULT VALUES;   -- erro 229: permissão INSERT negada
-INSERT INTO dbo.<UMA_TABELA_tha> DEFAULT VALUES;       -- erro 229: permissão INSERT negada
-EXEC dbo.sp_macuxi_pedido_inserir;                     -- erro 229: permissão EXECUTE negada (cenário B)
-SELECT * FROM fn_my_permissions(NULL, 'DATABASE');     -- só CONNECT
+SELECT TOP 1 * FROM dbo.vw_macuxi_produto;              -- funciona
+SELECT TOP 1 * FROM dbo.tha_produto;                    -- erro 229: permissão SELECT negada
+SELECT TOP 1 * FROM dbo.vw_macuxi_pedido_status;        -- erro 229 (cenário B)
+INSERT INTO dbo.tha_produto DEFAULT VALUES;             -- erro 229: permissão INSERT negada
+EXEC dbo.sp_macuxi_pedido_inserir;                      -- erro 229: permissão EXECUTE negada (cenário B)
+SELECT * FROM fn_my_permissions(NULL, 'DATABASE');      -- só CONNECT
 ```
 
-## 7. LGPD e encerramento
+## 8. LGPD e encerramento
 
-A base contém **dado pessoal de clientes da thathyany**. A Macuxi é **operadora**: trata só para o teste combinado, pelo tempo combinado.
+- **Quem acessa:** só o Alexandre (SSH/`sa`) e o time na carga da seção 6, pelo acesso do Alexandre; o conector, só como `macuxi_conector`, local. Nenhum agente recebe credencial.
+- **Nada de dado pessoal real na VM.** Se aparecer (num CSV, no catálogo ou num log), **parar**, apagar o arquivo e avisar o Alexandre por recado, sem copiar o dado.
+- **Prazo:** **30 dias** a partir da criação do banco, renovável só por recado do Alexandre. Passou do prazo sem renovação, encerra.
 
-- **Quem acessa:** só o Alexandre (SSH/sa) e o conector (`macuxi_conector`, pelo túnel). Nenhum agente recebe credencial; nada de dado copiado para fora da VM além do que o conector envia ao ERP de teste.
-- **Sem dado pessoal em log:** o conector loga contagem, tempos e IDs técnicos, nunca nome, CPF/CNPJ de pessoa física, e-mail, telefone ou endereço. Nada de amostra de linha em recado, PR ou chat.
-- **Prazo máximo sugerido:** **30 dias** a partir do restore (data no checklist). Passou do prazo sem nova decisão do Alexandre, encerra.
+**Encerramento:** apagar a **VM inteira** no painel do provedor, com volumes, snapshots, imagens e backups; remover a regra do firewall do provedor; apagar a senha do `sa` e do conector do cofre.
 
-**Encerramento** (nesta ordem):
-```sql
-ALTER DATABASE ERP_THATHYANY SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-DROP DATABASE ERP_THATHYANY;
-DROP LOGIN macuxi_conector;
-```
-```bash
-sudo rm -f /var/opt/mssql/backup/*            # backups
-sudo rm -f /var/opt/mssql/log/*               # logs e errorlog do SQL Server
-sudo systemctl stop mssql-server
-```
-Depois: **destruir o volume cifrado de dados** (ou a VM inteira, com snapshots e imagens) no painel do provedor; remover a regra do firewall do provedor; apagar a senha do `sa` e do conector do cofre.
+**Registro:** recado `aviso` ao `gerente-projetos` com a data e a hora de Manaus (`TZ=America/Manaus date`), quem fez e a confirmação de cada item acima (sem dado nem segredo).
 
-**Registro:** recado `aviso` ao `gerente-projetos` com a data e a hora de Manaus (`TZ=America/Manaus date`), quem executou e a confirmação de cada item acima (sem dado nem segredo).
+Como conferir: o painel do provedor não lista a VM, volumes, snapshots nem backups dela.
 
-Como conferir: o painel do provedor não lista a VM/volume nem snapshots; `sqlcmd ... -Q "SELECT name FROM sys.databases"` (se a VM ainda existir) não mostra `ERP_THATHYANY`.
-
-## 8. Checklist final e riscos
+## 9. Checklist final e riscos
 
 ### Checklist
-- [ ] Conferidos os blocos "Como conferir" das seções 2 a 7
-- [ ] Opção de disco cifrado escolhida: A ou B (seção 2)
-- [ ] Data de início do teste: ____ (Manaus) · prazo final: ____ (seção 7)
+- [ ] Conferidos os blocos "Como conferir" das seções 2 a 8
+- [ ] Edição do SQL Server com o ok do Alexandre (seção 4)
+- [ ] Data de início do teste: ____ (Manaus) · prazo final: ____ (seção 8)
 - [ ] Encerramento: data e hora (Manaus) ____ · quem fez ____
 
 ### Riscos
 | Risco | Mitigação |
 |---|---|
-| Banco grande demais para o Express | Ver seção 5, passo 4 |
-| `.bak` de versão mais nova que 2022 | Ver seção 5, passo 3 |
-| 1433 exposta por engano | `network.ipaddress 127.0.0.1` + ufw + firewall do provedor; teste `nc` de fora |
-| Vazamento de dado pessoal (log, print, recado) | Logs só técnicos; nada de amostra fora da VM; disco cifrado |
-| Teste esquecido além do prazo | Ver seção 7 (prazo); o gerente cobra na ronda |
-| Usuário do conector com permissão demais | Ver seção 6 e 6.3 |
-| `.bak` sem as views `vw_macuxi_*` | Ver 6.1 |
-| Snapshot/backup do provedor sobrevive à destruição | Desligar snapshot automático; conferir no painel no encerramento |
+| Teste esquecido além do prazo | Seção 8 (prazo); o gerente cobra na ronda |
