@@ -5,6 +5,8 @@
  * - `BancoPg`: uma transação por chamada; `comTenant` põe o tenant com `set_config('app.tenant_id', ..., true)` (o
  *   equivalente a `SET LOCAL`: vale só na transação, nunca na conexão do pool). `papel` faz `SET LOCAL ROLE` (testes e
  *   admin); em produção a conexão já é do papel (`macuxierp_app` na API, `macuxierp_worker` no worker).
+ * - `BancoPlataformaPg` (`BancoPg.plataforma()`, ADR 0012): portal `/config`, com `SET LOCAL ROLE macuxierp_config` só
+ *   dentro da transação.
  * - Outbox, auditoria, fila de trabalho, catálogo de arquivos, licenças e `Idempotency-Key` sobre `plataforma.*`
  *   (migração 0002).
  * Conexão pelas variáveis padrão do libpq (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`): nada de senha em
@@ -15,12 +17,23 @@ import type { Licenca, FonteLicencasComFuso, FonteTodosTenants } from './acesso'
 import type { CatalogoArquivos, RegistroArquivo } from './arquivos';
 import type { DestinoAuditoria, RegistroAuditoria } from './auditoria';
 import { PADRAO_UUID, type Banco, type Transacao } from './banco';
+import type { BancoPlataformaComLogin, SessaoPlataforma } from './plataforma-rotas';
 import { erros } from './erros';
 import type { EnvelopeEvento, Outbox } from './eventos';
 import type { ConclusaoIdempotencia, RegistroIdempotencia, RepositorioIdempotencia, ReservaIdempotencia } from './idempotencia';
 import type { FilaDeTrabalhos, PedidoTrabalho } from './trabalhos';
 
 const PAPEL = /^[a-z_][a-z0-9_]*$/;
+/** Papel de plataforma da 0033 (ADR 0012 §4): NOLOGIN, sem BYPASSRLS; só ele executa as funções do portal `/config`. */
+export const PAPEL_PLATAFORMA = 'macuxierp_config';
+
+/** Prepara a transação já aberta (papel, configurações locais) antes do `fn`. */
+type Preparo = (cliente: pg.PoolClient) => Promise<void>;
+
+/** Preparo comum do portal `/config`: o papel de plataforma só nesta transação. */
+const papelPlataforma: Preparo = async (c) => {
+  await c.query(`SET LOCAL ROLE ${PAPEL_PLATAFORMA}`);
+};
 
 export interface OpcoesBancoPg {
   /** `SET LOCAL ROLE` em toda transação (conexão de admin nos testes). Sem ele, vale o usuário da conexão. */
@@ -42,11 +55,18 @@ export class BancoPg implements Banco {
 
   async comTenant<R>(tenantId: string, fn: (tx: Transacao) => Promise<R>): Promise<R> {
     if (!PADRAO_UUID.test(tenantId)) throw new RangeError('BancoPg.comTenant: tenant não é UUID');
-    return this.transacao(tenantId, fn);
+    return transacaoPg(this.pool, this.opcoes.papel, async (c) => {
+      await c.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    }, fn);
   }
 
   semTenant<R>(fn: (tx: Transacao) => Promise<R>): Promise<R> {
-    return this.transacao(null, fn);
+    return transacaoPg(this.pool, this.opcoes.papel, async () => undefined, fn);
+  }
+
+  /** Banco do portal `/config` (ADR 0012) no mesmo pool e no mesmo papel base: o papel de plataforma entra só na transação. */
+  plataforma(): BancoPlataformaPg {
+    return new BancoPlataformaPg(this.pool, this.opcoes);
   }
 
   async ping(): Promise<boolean> {
@@ -68,37 +88,69 @@ export class BancoPg implements Banco {
       throw new Error(`conexão no papel ${r?.papel ?? '?'} (esperado ${esperado}, sem superusuário nem BYPASSRLS)`);
     }
   }
+}
 
-  private async transacao<R>(tenantId: string | null, fn: (tx: Transacao) => Promise<R>): Promise<R> {
-    const cliente = await this.pool.connect();
-    let quebrada: Error | undefined;
-    let fila: Promise<unknown> = Promise.resolve();
-    try {
-      await cliente.query('BEGIN');
-      if (this.opcoes.papel) await cliente.query(`SET LOCAL ROLE ${this.opcoes.papel}`);
-      if (tenantId) await cliente.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
-      // Uma conexão roda um comando por vez: consultas em paralelo (Promise.all) entram em fila, e o COMMIT ou o
-      // ROLLBACK só sai depois da última.
-      const tx: Transacao = {
-        consultar: <L>(sql: string, parametros: readonly unknown[] = []) => {
-          const r = fila.then(() => cliente.query(sql, parametros as unknown[]));
-          fila = r.catch(() => undefined);
-          return r.then((x) => x.rows as L[]);
-        },
-      };
-      const r = await fn(tx);
-      await fila;
-      await cliente.query('COMMIT');
-      return r;
-    } catch (e) {
-      await fila;
-      await cliente.query('ROLLBACK').catch((erro: Error) => {
-        quebrada = erro; // conexão quebrada não volta ao pool
-      });
-      throw e;
-    } finally {
-      cliente.release(quebrada);
-    }
+/**
+ * Uma transação por chamada: `BEGIN` → `SET LOCAL ROLE <papel base>` (testes) → preparo → `fn` → `COMMIT`. Tudo o que o
+ * preparo põe (`SET LOCAL ROLE`, `set_config(..., true)`) some no `COMMIT` ou no `ROLLBACK`; a conexão cujo `ROLLBACK`
+ * falha não volta ao pool (poderia voltar ainda no papel ou com a configuração da transação).
+ */
+async function transacaoPg<R>(pool: pg.Pool, papel: string | undefined, preparar: Preparo, fn: (tx: Transacao) => Promise<R>): Promise<R> {
+  const cliente = await pool.connect();
+  let quebrada: Error | undefined;
+  let fila: Promise<unknown> = Promise.resolve();
+  try {
+    await cliente.query('BEGIN');
+    if (papel) await cliente.query(`SET LOCAL ROLE ${papel}`);
+    await preparar(cliente);
+    // Uma conexão roda um comando por vez: consultas em paralelo (Promise.all) entram em fila, e o COMMIT ou o
+    // ROLLBACK só sai depois da última.
+    const tx: Transacao = {
+      consultar: <L>(sql: string, parametros: readonly unknown[] = []) => {
+        const r = fila.then(() => cliente.query(sql, parametros as unknown[]));
+        fila = r.catch(() => undefined);
+        return r.then((x) => x.rows as L[]);
+      },
+    };
+    const r = await fn(tx);
+    await fila;
+    await cliente.query('COMMIT');
+    return r;
+  } catch (e) {
+    await fila;
+    await cliente.query('ROLLBACK').catch((erro: Error) => {
+      quebrada = erro; // conexão quebrada não volta ao pool
+    });
+    throw e;
+  } finally {
+    cliente.release(quebrada);
+  }
+}
+
+/**
+ * Banco do portal `/config` (ADR 0012 §4): `SET LOCAL ROLE macuxierp_config` SÓ dentro da transação (nunca na conexão
+ * do pool; a API segue no `macuxierp_app` fora dela) e, em `comPlataforma`, a sessão do superadmin em
+ * `macuxierp.sessao_superadmin` (`set_config(..., true)`), que as funções SECURITY DEFINER revalidam. `antesDaSessao`
+ * serve só ao login (funções "não" e "troca" da lista fechada). Nenhum SQL de tabela aqui: quem chama usa só funções.
+ */
+export class BancoPlataformaPg implements BancoPlataformaComLogin {
+  constructor(
+    private readonly pool: pg.Pool,
+    private readonly opcoes: OpcoesBancoPg = {},
+  ) {
+    if (opcoes.papel !== undefined && !PAPEL.test(opcoes.papel)) throw new RangeError('BancoPlataformaPg: papel inválido');
+  }
+
+  comPlataforma<R>(sessao: SessaoPlataforma, fn: (tx: Transacao) => Promise<R>): Promise<R> {
+    if (!PADRAO_UUID.test(sessao.sessao_id)) return Promise.reject(new RangeError('BancoPlataformaPg.comPlataforma: sessão não é UUID'));
+    return transacaoPg(this.pool, this.opcoes.papel, async (c) => {
+      await papelPlataforma(c);
+      await c.query("SELECT set_config('macuxierp.sessao_superadmin', $1, true)", [sessao.sessao_id]);
+    }, fn);
+  }
+
+  antesDaSessao<R>(fn: (tx: Transacao) => Promise<R>): Promise<R> {
+    return transacaoPg(this.pool, this.opcoes.papel, papelPlataforma, fn);
   }
 }
 

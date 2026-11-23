@@ -6,7 +6,8 @@
  * - rota multipart (upload do A1, carga de CSV) com limite por arquivo, quantidade e total declarados na rota; os bytes
  *   e os nomes dos arquivos nunca vão para log;
  * - `Idempotency-Key` (`idempotencia` da rota, RN-CORE-05) e tempo máximo por rota (`tempoMaximoMs`, T-0026 D7);
- * - logs pino com `request_id`, `tenant_id`, `usuario_id` e `modulo`; sem corpo, cookie, token nem query string.
+ * - logs pino com `request_id`, `tenant_id`, `usuario_id` e `modulo`; sem corpo, cookie, token nem query string;
+ * - portal `/config` em `/v1/plataforma/*` (ADR 0012, `plataforma/rotas.ts`): cookie e sessão próprios, fora do tenant.
  */
 import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
@@ -14,8 +15,6 @@ import multipart from '@fastify/multipart';
 import {
   ArquivoRecebido,
   auditar,
-  CABECALHO_REPETIDA,
-  cabecalhosDaRota,
   chaveDoPedido,
   corpoErroApi,
   criarEvento,
@@ -41,7 +40,6 @@ import {
   type PluginModulo,
   type Relogio,
   type RepositorioIdempotencia,
-  type RespostaRota,
   type RotaModulo,
   type Sessao,
   TAMANHO_MAXIMO_ARQUIVO,
@@ -57,6 +55,9 @@ import { z, ZodError } from 'zod';
 import { lerTokenAcesso } from './auth/jwt';
 import type { RepositorioAuth } from './auth/portas';
 import { ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
+import { opcoesCookieSessao } from './auth/apoio-login';
+import { entradaDaChamada, responder } from './execucao-rota';
+import { montarPlataforma, type DependenciasPlataformaApi } from './plataforma/rotas';
 
 export const COOKIE_REFRESH = 'macuxierp_refresh';
 const CAMINHO_COOKIE = '/v1/auth';
@@ -84,6 +85,11 @@ export interface DependenciasApp {
   modulos: readonly PluginModulo[];
   /** Selo do A1 no `/v1/auth/eu`; padrão sem avisos (`async () => []`). O `main.ts` passa o leitor real do core. */
   avisosA1?: LeitorAvisosA1;
+  /**
+   * Portal `/config` (ADR 0012): `/v1/plataforma/*` com o banco de plataforma e os plugins de plataforma (o do core).
+   * Ausente = o prefixo não é montado (404). Produção: `montarDependenciasProducao`.
+   */
+  plataforma?: DependenciasPlataformaApi;
   /** Opções do pino; `false` desliga (testes). */
   logger?: boolean | Record<string, unknown>;
 }
@@ -164,7 +170,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   app.setNotFoundHandler((_req, reply) => reply.status(404).send({ codigo: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada' }));
 
   const porCookie = (reply: FastifyReply, r: ResultadoLogin) =>
-    reply.setCookie(COOKIE_REFRESH, r.refresh, { httpOnly: true, secure: d.cookieSeguro, sameSite: 'strict', path: CAMINHO_COOKIE, expires: r.refresh_expira_em });
+    reply.setCookie(COOKIE_REFRESH, r.refresh, opcoesCookieSessao(CAMINHO_COOKIE, d.cookieSeguro, r.refresh_expira_em));
   const respostaLogin = (reply: FastifyReply, r: ResultadoLogin) =>
     porCookie(reply, r).header('cache-control', 'no-store').send({ token_acesso: r.token_acesso, expira_em: r.expira_em.toISOString() });
 
@@ -211,6 +217,8 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     });
   });
 
+  // Portal /config (ADR 0012): fora do /v1/<modulo>, sem ContextoRota de tenant e sem licença.
+  if (d.plataforma) montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro });
   for (const plugin of d.modulos) montarModulo(app, plugin, d);
   return app;
 }
@@ -271,15 +279,7 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
           return d.trabalhos.enfileirar(tx, { ...pedido, tenant_id: sessao.tenant_id });
         },
       };
-      const todosArquivos = entrada.todosArquivos;
-      const e = {
-        corpo: rota.corpo ? rota.corpo.parse(entrada.corpo) : undefined,
-        consulta: rota.consulta ? rota.consulta.parse(req.query) : undefined,
-        params: req.params as Record<string, string>,
-        cabecalhos: cabecalhosDaRota(req.headers),
-        arquivos: Object.fromEntries(Object.entries(todosArquivos).map(([k, v]) => [k, v[0]!])),
-        todosArquivos,
-      };
+      const e = entradaDaChamada(req, rota, entrada);
       const chave = rota.idempotencia ? chaveDoPedido(e.cabecalhos, rota.idempotencia) : null;
       if (!chave) return { resposta: await rota.executar(ctx, e), repetida: false };
       const pedido = { tenant_id: sessao.tenant_id, chave, rota: `${rota.metodo} /v1/${modulo}${rota.caminho}`, hash_corpo: hashDoPedido(e), agora };
@@ -309,12 +309,6 @@ function licencasComFuso(d: DependenciasApp): FonteLicencas & { fuso(tx: Transac
     // A rota de módulo sempre checa a licença antes; o fallback só cobre ação sem módulo.
     fuso: async (tx, t) => (lido?.tenantId === t ? lido.fuso : (await base.lerComFuso(tx, t)).fuso),
   };
-}
-
-function responder(reply: FastifyReply, resposta: RespostaRota, repetida: boolean) {
-  if (repetida) reply.header(CABECALHO_REPETIDA, 'true');
-  else if (resposta.cabecalhos) reply.headers(resposta.cabecalhos);
-  return reply.status(resposta.status ?? 200).send(resposta.corpo ?? null);
 }
 
 /**

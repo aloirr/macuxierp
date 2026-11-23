@@ -15,9 +15,11 @@ import {
 import {
   avisosA1MaisRecentes,
   criarPluginCore,
+  criarPluginPlataformaCore,
   criarPortaA1,
   LeitorPfxTls,
   RepositorioCoreSql,
+  RepositorioPlataformaSql,
   type DependenciasCore,
   type RepositorioCore,
 } from '@macuxierp/core/api';
@@ -40,7 +42,17 @@ import {
   type Dependencias as DependenciasPedido,
   type LogPedido,
 } from '@macuxierp/pedido/api';
-import { armazenamentoIndisponivel, definirPlugin, MODULOS, relogioDoSistema, type Banco, type ManifestoModulo, type PluginModulo } from '@macuxierp/platform-sdk';
+import {
+  armazenamentoIndisponivel,
+  definirPlugin,
+  MODULOS,
+  relogioDoSistema,
+  type Banco,
+  type BancoPlataformaComLogin,
+  type ManifestoModulo,
+  type PluginModulo,
+  type PluginPlataforma,
+} from '@macuxierp/platform-sdk';
 import { AuditoriaPg, FilaDeTrabalhosPg, IdempotenciaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
 import type { DependenciasApp } from './app';
 import { RepositorioAuthPg } from './auth/repositorio-pg';
@@ -201,6 +213,11 @@ export interface EntradaProducao {
   config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro'>;
   /** Pino da API para o log dos módulos (o `main.ts` cria; os testes passam um com destino em memória). */
   log?: LogPedido;
+  /**
+   * Banco do portal `/config` (ADR 0012). Padrão: `banco.plataforma()` quando o `banco` é um `BancoPg` (mesmo pool, papel
+   * de plataforma só na transação). Sem nenhum dos dois, `/v1/plataforma/*` não é montado.
+   */
+  bancoPlataforma?: BancoPlataformaComLogin;
 }
 
 /**
@@ -211,6 +228,12 @@ export interface EntradaProducao {
  * os testes de ponta a ponta usam esta mesma função: o que muda num muda no outro.
  */
 export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp {
+  const modulos = montarModulos({
+    core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
+    integracaoFdv: { chaveMestra: e.chaveIntegracao ?? null },
+    ...(e.log ? { log: e.log } : {}),
+  });
+  const bancoPlataforma = e.bancoPlataforma ?? (temPlataforma(e.banco) ? e.banco.plataforma() : undefined);
   return {
     versao: e.config.versao,
     auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: e.config.jwtSegredo },
@@ -224,10 +247,18 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     idempotencia: new IdempotenciaPg(),
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
-    modulos: montarModulos({
-      core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
-      integracaoFdv: { chaveMestra: e.chaveIntegracao ?? null },
-      ...(e.log ? { log: e.log } : {}),
-    }),
+    modulos,
+    ...(bancoPlataforma ? { plataforma: { banco: bancoPlataforma, plugins: pluginsPlataforma(modulos) } } : {}),
   };
+}
+
+const temPlataforma = (b: Banco): b is Banco & { plataforma(): BancoPlataformaComLogin } => typeof (b as { plataforma?: unknown }).plataforma === 'function';
+
+/**
+ * Plugins de plataforma do portal `/config` (ADR 0012): o do core, com o repositório que chama só as funções da 0033 e
+ * os `depende` dos manifestos montados (RN-CORE-02), e a senha provisória do 1º admin com o argon2id de produção.
+ */
+export function pluginsPlataforma(modulos: readonly PluginModulo[]): readonly PluginPlataforma[] {
+  const manifestos = modulos.map((m) => ({ id: m.manifesto.id, depende: m.manifesto.depende }));
+  return [criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha) })];
 }
