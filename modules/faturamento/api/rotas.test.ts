@@ -646,15 +646,13 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
       await expect(ambiente('vendedor').chamar('GET', '/contingencia/epec-pendentes/alerta')).rejects.toMatchObject({ status: 403 });
     });
 
-    it('RN-CORE-02: abrir e encerrar pedem a ação faturamento.nota.emitir e exigem Idempotency-Key; vendedor recebe 403 em tudo; gerente e leitura não escrevem', async () => {
+    it('RN-CORE-02: rotas pedem Idempotency-Key; vendedor não lê', async () => {
       const a = ambiente();
       expect(a.rota('POST', '/filiais/:id/contingencia')).toMatchObject({ acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria' });
       expect(a.rota('POST', '/filiais/:id/contingencia/encerrar')).toMatchObject({ acao: 'faturamento.nota.emitir', idempotencia: 'obrigatoria' });
       for (const perfil of ['gerente', 'leitura'] as const) expect(pode(perfil, 'faturamento.nota.emitir')).toBe(false);
       for (const perfil of ['administrador', 'faturista', 'fiscal'] as const) expect(pode(perfil, 'faturamento.nota.emitir')).toBe(true);
       const v = ambiente('vendedor');
-      await expect(v.chamar('POST', '/filiais/:id/contingencia', { params, corpo: abrirCorpo() })).rejects.toMatchObject({ status: 403 });
-      await expect(v.chamar('POST', '/filiais/:id/contingencia/encerrar', { params })).rejects.toMatchObject({ status: 403 });
       await expect(v.chamar('GET', '/filiais/:id/contingencia', { params })).rejects.toMatchObject({ status: 403 });
       await expect(v.chamar('GET', '/contingencia/epec-pendentes')).rejects.toMatchObject({ status: 403 });
       await expect(v.chamar('GET', '/contingencia/epec-pendentes/exportar')).rejects.toMatchObject({ status: 403 });

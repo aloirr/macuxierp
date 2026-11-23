@@ -9,8 +9,8 @@ import { EPEC_LIGADA, MOTIVO_MAX, MOTIVO_MIN, PRAZO_EPEC_HORAS } from '../domain
 import { BASE_API, comChave, dialogoDeTexto, exigirChave, falha, mensagemDeTamanho, postSemCorpo, type DialogoDeTexto, type Montagem, type Selo } from './notas';
 
 export const ROTULO_MODALIDADE: Readonly<Record<ModalidadeContingencia, { rotulo: string; dica: string }>> = {
-  svc_an: { rotulo: 'SVC-AN', dica: 'Autorização pelo ambiente SVC-AN. A nota já sai autorizada' },
-  svc_rs: { rotulo: 'SVC-RS', dica: 'Autorização pelo ambiente SVC-RS. A nota já sai autorizada' },
+  svc_an: { rotulo: 'SVC-AN', dica: 'A nota já sai autorizada' },
+  svc_rs: { rotulo: 'SVC-RS', dica: 'A nota já sai autorizada' },
   epec: { rotulo: 'EPEC', dica: `Só o evento é autorizado agora. A nota precisa ser enviada em até ${PRAZO_EPEC_HORAS} h` },
 };
 
@@ -20,6 +20,8 @@ export const ROTULO_PRAZO_EPEC: Readonly<Record<SituacaoPrazoEpec, Selo>> = {
   perto_do_fim: { texto: 'Perto do fim', tom: 'alerta', dica: 'Envie a nota assim que a SEFAZ responder' },
   vencido: { texto: 'Vencido', tom: 'erro', dica: 'O prazo acabou. Fale com o fiscal agora' },
 };
+
+const MENSAGEM_MOTIVO = mensagemDeTamanho('O motivo', { min: MOTIVO_MIN, max: MOTIVO_MAX });
 
 export const urlDaContingencia = (filialId: string): string => `${BASE_API}/filiais/${filialId}/contingencia`;
 export const urlDoEncerramentoDaContingencia = (filialId: string): string => `${urlDaContingencia(filialId)}/encerrar`;
@@ -33,20 +35,20 @@ export interface ContingenciaAberta {
 }
 
 /** Selo de destaque da filial em contingência (aparece em todas as telas do faturamento da filial); sem contingência aberta não há selo. */
-export function seloDaContingencia(c: ContingenciaAberta | null, fuso: string): Selo | null {
+export function seloDaContingencia(c: ContingenciaAberta | null): Selo | null {
   if (!c) return null;
-  return { texto: `Em contingência (${ROTULO_MODALIDADE[c.modalidade].rotulo})`, tom: 'alerta', dica: `Desde ${formatarDataHora(c.inicio_em, fuso)}. ${ROTULO_MODALIDADE[c.modalidade].dica}` };
+  return { texto: `Em contingência (${ROTULO_MODALIDADE[c.modalidade].rotulo})`, tom: 'alerta', dica: ROTULO_MODALIDADE[c.modalidade].dica };
 }
 
 /** Faixa fixa da filial em contingência, no topo das telas do faturamento (o shell usa o tom `alerta`). */
 export const faixaDaContingencia = (c: ContingenciaAberta | null, fuso: string): string | null =>
-  c ? `FILIAL EM CONTINGÊNCIA — ${ROTULO_MODALIDADE[c.modalidade].rotulo}, DESDE ${formatarDataHora(c.inicio_em, fuso)}` : null;
+  c ? `FILIAL EM CONTINGÊNCIA — DESDE ${formatarDataHora(c.inicio_em, fuso)}` : null;
 
-/** RN-FAT-09: faixa do alerta do prazo de 168 h (sinal do `GET .../epec-pendentes/alerta`), no tom `erro` (vermelho) ou `alerta` (amarelo); `null` quando verde. Sem dado pessoal. */
+/** RN-FAT-09: faixa do alerta do prazo da EPEC (sinal do `GET .../epec-pendentes/alerta`), no tom `erro` (vermelho) ou `alerta` (amarelo); `null` quando verde. Sem dado pessoal. */
 export const faixaDoAlertaEpec = (a: AlertaPrazoEpec): { tom: 'erro' | 'alerta'; texto: string } | null =>
   a.sinal === 'vermelho'
-    ? { tom: 'erro', texto: `${a.vencidas} nota(s) em EPEC com o prazo de 168 h vencido. Transmita agora e confira a SEFAZ.` }
-    : a.sinal === 'amarelo' ? { tom: 'alerta', texto: `${a.perto_do_fim} nota(s) em EPEC perto do fim do prazo de 168 h.` } : null;
+    ? { tom: 'erro', texto: `${a.vencidas} nota(s) em EPEC com o prazo de ${PRAZO_EPEC_HORAS} h vencido. Transmita agora e confira a SEFAZ.` }
+    : a.sinal === 'amarelo' ? { tom: 'alerta', texto: `${a.perto_do_fim} nota(s) em EPEC perto do fim do prazo de ${PRAZO_EPEC_HORAS} h.` } : null;
 
 const SEM_PERMISSAO = 'sem permissão para esta ação';
 /** Por que abrir/encerrar não está disponível (texto ao lado do botão desabilitado), ou `null` se está. Só o administrador liga e desliga (RN-FAT-05, decisão do Alexandre, 23/11); a API responde 403 aos demais. */
@@ -66,16 +68,19 @@ export const dialogoAbrirContingencia = (filial: { nome?: string | null } = {}, 
     titulo: filial.nome ? `Entrar em contingência: ${filial.nome}` : 'Entrar em contingência?',
     aviso: 'Use quando a SEFAZ não responde. As notas emitidas daqui até você encerrar saem em contingência.',
     rotuloTexto: 'Motivo', rotuloConfirmar: 'Entrar em contingência', rotuloFechar: 'Voltar', destrutivo: false,
-    minimo: MOTIVO_MIN, maximo: MOTIVO_MAX, mensagem: mensagemDeTamanho('O motivo', { min: MOTIVO_MIN, max: MOTIVO_MAX }),
+    minimo: MOTIVO_MIN, maximo: MOTIVO_MAX, mensagem: MENSAGEM_MOTIVO,
   }),
   rotuloModalidade: 'Modalidade',
   /** Sem a bandeira da EPEC (v0.3.0), a EPEC não é oferecida; a API recusa com 422 de qualquer jeito. */
   modalidades: (Object.keys(ROTULO_MODALIDADE) as ModalidadeContingencia[]).filter((valor) => valor !== 'epec' || epecLigada).map((valor) => ({ valor, ...ROTULO_MODALIDADE[valor] })),
 });
 
-export const dialogoEncerrarContingencia = (filial: { nome?: string | null } = {}): { titulo: string; aviso: string; rotuloConfirmar: string; rotuloFechar: string; destrutivo: false } => ({
+/** O aviso depende da modalidade aberta: a EPEC deixa notas pendentes de envio; a SVC já autoriza no ato. */
+export const dialogoEncerrarContingencia = (filial: { nome?: string | null }, modalidade: ModalidadeContingencia): { titulo: string; aviso: string; rotuloConfirmar: string; rotuloFechar: string; destrutivo: false } => ({
   titulo: filial.nome ? `Encerrar a contingência: ${filial.nome}?` : 'Encerrar a contingência?',
-  aviso: `As notas EPEC pendentes continuam na lista e precisam ser enviadas em até ${PRAZO_EPEC_HORAS} h da autorização do EPEC.`,
+  aviso: modalidade === 'epec'
+    ? `As notas EPEC pendentes continuam na lista e precisam ser enviadas em até ${PRAZO_EPEC_HORAS} h da autorização do EPEC.`
+    : 'As próximas notas saem pelo autorizador normal.',
   rotuloConfirmar: 'Encerrar contingência', rotuloFechar: 'Voltar', destrutivo: false,
 });
 
@@ -84,7 +89,7 @@ export function requisicaoAbrirContingencia(e: { filial_id: string; modalidade: 
   const semChave = exigirChave(chave);
   if (semChave) return semChave;
   const motivo = e.motivo.trim();
-  if (motivo.length < MOTIVO_MIN || motivo.length > MOTIVO_MAX) return falha(mensagemDeTamanho('O motivo', { min: MOTIVO_MIN, max: MOTIVO_MAX }));
+  if (motivo.length < MOTIVO_MIN || motivo.length > MOTIVO_MAX) return falha(MENSAGEM_MOTIVO);
   const v = AbrirContingenciaEntrada.safeParse({ ...e, motivo });
   if (!v.success) return falha('Confira a modalidade e a filial.');
   return { ok: true, requisicao: { metodo: 'POST', caminho: urlDaContingencia(e.filial_id), cabecalhos: comChave(chave), corpo: v.data } };

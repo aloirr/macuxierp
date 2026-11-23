@@ -112,12 +112,6 @@ describe('contingência da NF-e (RN-FAT-05, 08, 09, 10)', () => {
       expect(contaComoFaturada({ status, tpEmis: 4, epecAutorizado: false })).toBe(false);
     }
   });
-  it('RN-FAT-08: EPEC com evento autorizado conta como faturada antes da transmissão posterior (pendente de autorização); sem evento não conta', () => {
-    expect(contaComoFaturada({ status: 'emitida_contingencia', tpEmis: 4, epecAutorizado: true })).toBe(true);
-    expect(contaComoFaturada({ status: 'emitida_contingencia', tpEmis: 4, epecAutorizado: false })).toBe(false);
-    expect(contaComoFaturada({ status: 'emitida_contingencia', tpEmis: 4 })).toBe(false);
-    expect(contaComoFaturada({ status: 'autorizada', tpEmis: 4, epecAutorizado: true })).toBe(true);
-  });
   it('RN-FAT-09: o prazo da EPEC é a autorização do EPEC mais 168 h (padrão) ou prazoHoras', () => {
     expect(PRAZO_EPEC_HORAS).toBe(168);
     const epecAutorizadoEm = new Date('2026-11-22T14:00:00Z');

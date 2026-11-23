@@ -3,7 +3,7 @@
  * RN-FAT-05 (o operador decide a entrada; o sistema sugere), RN-FAT-08 (mesma série e número; tpEmis e xJust no XML; EPEC conta como faturada desde o evento autorizado, ainda pendente de transmissão), RN-FAT-09 (o operador encerra; EPEC em fila na volta, dentro do prazo), RN-FAT-10 (filial com NF-e simulada não entra).
  * Modalidades v1 (coluna `modalidade`): svc_an (tpEmis 6), svc_rs (tpEmis 7) e epec (tpEmis 4, evento 110140); no XML ficam os nomes do Manual (tpEmis, dhCont, xJust). FS-DA fora da v1.
  */
-import { PRAZO_TRANSMISSAO_EPEC_HORAS, SVC_DA_UF } from '@macuxierp/nfe-sefaz/contingencia';
+import { PRAZO_TRANSMISSAO_EPEC_HORAS, SVC_DA_UF, TP_EMIS_CONTINGENCIA } from '@macuxierp/nfe-sefaz/contingencia';
 import type { StatusNota } from '../contracts';
 import type { ConteudoNota } from './tipos-nota';
 import { validarTransicao } from './estados';
@@ -18,7 +18,8 @@ export type ModalidadeContingencia = 'svc_an' | 'svc_rs' | 'epec';
 export const EPEC_LIGADA = false;
 export const MENSAGEM_EPEC_DESLIGADA = 'A EPEC ainda não está disponível. Use SVC.';
 export type TpEmisContingencia = 4 | 6 | 7;
-export const TP_EMIS_DA_MODALIDADE: Readonly<Record<ModalidadeContingencia, TpEmisContingencia>> = { 'svc_an': 6, 'svc_rs': 7, epec: 4 };
+export const TP_EMIS_DA_MODALIDADE: Readonly<Record<ModalidadeContingencia, TpEmisContingencia>> =
+  Object.freeze(Object.fromEntries(Object.entries(TP_EMIS_CONTINGENCIA).map(([m, tp]) => [m.replace('-', '_'), tp])) as Record<ModalidadeContingencia, TpEmisContingencia>);
 
 /** Qual SVC atende cada UF (sigla -> 'svc_an' | 'svc_rs'). Vem por parâmetro: a fonte única é `SVC_DA_UF` de packages/nfe-sefaz (ADR 0011); o domain não guarda tabela. AM -> SVC-RS, a conferir (ADR 0011). */
 export type TabelaSvc = Readonly<Record<string, 'svc_an' | 'svc_rs'>>;

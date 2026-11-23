@@ -485,14 +485,15 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(d.validar({ texto: MOTIVO })).toBeNull();
     expect(d.contador('curto')).toBe('faltam 10 caracteres');
     expect(d.aviso).toMatch(/SEFAZ não responde/);
-    expect(publico.dialogoEncerrarContingencia().aviso).toMatch(/168 h/);
+    expect(publico.dialogoEncerrarContingencia({}, 'epec').aviso).toMatch(/168 h/);
+    expect(publico.dialogoEncerrarContingencia({}, 'svc_rs').aviso).toBe('As próximas notas saem pelo autorizador normal.');
   });
   it('selo e faixa de destaque só com contingência aberta, com a modalidade e o início no fuso do tenant', () => {
     const c = { modalidade: 'svc_rs' as const, inicio_em: '2026-11-22T14:30:00.000Z', ambiente: 'producao' as const };
-    expect(publico.seloDaContingencia(null, 'America/Manaus')).toBeNull();
-    expect(publico.seloDaContingencia(c, 'America/Manaus')).toMatchObject({ texto: 'Em contingência (SVC-RS)', tom: 'alerta' });
-    expect(publico.seloDaContingencia(c, 'America/Manaus')?.dica).toContain('22/11/2026 10:30');
-    expect(publico.faixaDaContingencia(c, 'America/Manaus')).toBe('FILIAL EM CONTINGÊNCIA — SVC-RS, DESDE 22/11/2026 10:30');
+    expect(publico.seloDaContingencia(null)).toBeNull();
+    expect(publico.seloDaContingencia(c)).toMatchObject({ texto: 'Em contingência (SVC-RS)', tom: 'alerta' });
+    expect(publico.seloDaContingencia(c)?.dica).toBe('A nota já sai autorizada');
+    expect(publico.faixaDaContingencia(c, 'America/Manaus')).toBe('FILIAL EM CONTINGÊNCIA — DESDE 22/11/2026 10:30');
     expect(publico.faixaDaContingencia(null, 'America/Manaus')).toBeNull();
   });
 
@@ -502,7 +503,7 @@ describe('contingência por filial (T-0021, lote 4)', () => {
     expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, sinal: 'amarelo' })).toEqual({ tom: 'alerta', texto: '1 nota(s) em EPEC perto do fim do prazo de 168 h.' });
     expect(publico.faixaDoAlertaEpec({ ...base, vencidas: 0, perto_do_fim: 0, sinal: 'verde' })).toBeNull();
   });
-  it('RN-CORE-02: só quem emite abre e encerra; abrir fecha com a aberta e encerrar fecha sem ela', () => {
+  it('RN-CORE-02: só o administrador abre e encerra; abrir fecha com a aberta e encerrar fecha sem ela', () => {
     expect(publico.acoesDaContingencia('administrador', false)).toEqual({ abrir: null, encerrar: 'a filial não está em contingência.' });
     expect(publico.acoesDaContingencia('administrador', true)).toEqual({ abrir: 'a filial já está em contingência.', encerrar: null });
     for (const perfil of ['faturista', 'fiscal', 'leitura', 'gerente', 'vendedor'] as const) expect(publico.acoesDaContingencia(perfil, true)).toEqual({ abrir: 'sem permissão para esta ação', encerrar: 'sem permissão para esta ação' });
