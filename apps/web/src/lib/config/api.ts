@@ -1,4 +1,5 @@
 import {
+  CABECALHO_CSRF_CONFIG,
   COOKIE_CONFIG,
   EmailPrimeiroAdminResposta,
   EmpresaPlataforma,
@@ -9,6 +10,14 @@ import {
   SessaoPlataformaResposta,
   paginaDe,
   CODIGO_TROCAR_SENHA,
+  CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
+  IntegracaoFdvPlataforma,
+  RespostaAceitoFdv,
+  RespostaRetomadaFdv,
+  RespostaTestarPlataforma,
+  EntidadeEnvioFdv,
+  type ConfigurarIntegracaoPlataformaEntrada,
+  type DefinirCredencialPlataformaEntrada,
   type AlterarModulosEntrada,
   type CriarEmpresaEntrada,
   type EntrarPlataformaEntrada,
@@ -33,8 +42,8 @@ interface Pedido {
 async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   if (p.token) headers.cookie = `${COOKIE_CONFIG}=${p.token}`;
-  // CSRF (ADR 0012): toda escrita leva o cabeçalho. Literal até o SDK exportar a constante (trocar depois).
-  if (metodo !== 'GET') headers['x-macuxierp-config'] = '1';
+  // CSRF (ADR 0012): toda escrita leva o cabeçalho.
+  if (metodo !== 'GET') headers[CABECALHO_CSRF_CONFIG] = '1';
   if (p.corpo !== undefined) headers['content-type'] = 'application/json';
   if (p.chave) headers['idempotency-key'] = p.chave;
   try {
@@ -48,7 +57,7 @@ async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<
 async function recusar(r: Response): Promise<never> {
   if (r.status === 401) throw new ConfigNaoAutenticado();
   if (r.status === 429) throw new ConfigMuitasTentativas();
-  let corpo: { codigo?: unknown; campos?: Record<string, unknown> } = {};
+  let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown> } = {};
   try {
     corpo = (await r.json()) as typeof corpo;
   } catch {
@@ -56,9 +65,12 @@ async function recusar(r: Response): Promise<never> {
   }
   const codigo = typeof corpo.codigo === 'string' ? corpo.codigo : '';
   if (r.status === 403 && codigo !== CODIGO_TROCAR_SENHA) throw new ConfigSemPermissao();
-  if (r.status >= 400 && r.status < 500) {
+  // 503 com código (ex.: CHAVE_INTEGRACAO_AUSENTE, ADR 0013 §3) é erro da plataforma, com mensagem própria; 5xx sem código segue indisponível.
+  if ((r.status >= 400 && r.status < 500) || (r.status === 503 && codigo)) {
     const campos = Object.fromEntries(Object.entries(corpo.campos ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
-    throw new ErroPlataforma(r.status, codigo, campos);
+    // a mensagem da API (409 MXI01/MXI02 etc.) só passa se for curta e de uma linha; nunca o corpo cru
+    const m = typeof corpo.mensagem === 'string' && corpo.mensagem.length <= 200 && !/[\r\n]/.test(corpo.mensagem) ? corpo.mensagem : '';
+    throw new ErroPlataforma(r.status, codigo, campos, m);
   }
   throw new ConfigIndisponivel(`HTTP ${r.status}`);
 }
@@ -145,4 +157,36 @@ export async function redefinirSenhaPrimeiroAdmin(token: string, id: string, cha
 /** `POST .../primeiro-admin/email` (no-store): o e-mail inteiro, só para a tela. Escrita auditada pela API: sem Idempotency-Key. */
 export async function mostrarEmailPrimeiroAdmin(token: string, id: string): Promise<EmailPrimeiroAdminResposta> {
   return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/primeiro-admin/email`, { token }), EmailPrimeiroAdminResposta);
+}
+
+/** Integração FDV (ADR 0013): rotas de `CAMINHOS_INTEGRACAO_FDV_PLATAFORMA`; a chave do conector só vai no corpo e nunca volta. */
+const rotaFdv = (modelo: string, id: string, entidade?: string) => {
+  const e = entidade === undefined ? undefined : EntidadeEnvioFdv.safeParse(entidade);
+  if (e && !e.success) throw new ErroPlataforma(400, 'VALIDACAO');
+  return modelo.replace(':id', idEmpresa(id)).replace(':entidade', e?.success ? e.data : '');
+};
+
+export async function lerIntegracaoFdv(token: string, id: string): Promise<IntegracaoFdvPlataforma> {
+  return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ler, id), { token }), IntegracaoFdvPlataforma);
+}
+
+export async function definirCredencialFdv(token: string, id: string, corpo: DefinirCredencialPlataformaEntrada): Promise<IntegracaoFdvPlataforma> {
+  return validado(await chamar('PUT', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.credencial, id), { token, corpo }), IntegracaoFdvPlataforma);
+}
+
+export async function testarConexaoFdv(token: string, id: string, chave: string): Promise<RespostaTestarPlataforma> {
+  return validado(await chamar('POST', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.testar, id), { token, chave }), RespostaTestarPlataforma);
+}
+
+export async function configurarIntegracaoFdv(token: string, id: string, corpo: ConfigurarIntegracaoPlataformaEntrada, chave: string): Promise<IntegracaoFdvPlataforma> {
+  return validado(await chamar('PUT', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.configuracao, id), { token, corpo, chave }), IntegracaoFdvPlataforma);
+}
+
+/** `Idempotency-Key` obrigatória (ADR 0013, seção 5). */
+export async function cargaCompletaFdv(token: string, id: string, entidade: string, chave: string): Promise<RespostaAceitoFdv> {
+  return validado(await chamar('POST', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.cargaCompleta, id, entidade), { token, chave }), RespostaAceitoFdv);
+}
+
+export async function retomarFdv(token: string, id: string, entidade: string, chave: string): Promise<RespostaRetomadaFdv> {
+  return validado(await chamar('POST', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.retomar, id, entidade), { token, chave }), RespostaRetomadaFdv);
 }

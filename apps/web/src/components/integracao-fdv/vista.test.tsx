@@ -1,45 +1,89 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
-import { ENTIDADES_HUB_F2, MonitorResposta } from '@macuxierp/integracao-fdv/contracts';
-import type { Perfil } from '@macuxierp/platform-sdk';
-import { montarVista } from '@/lib/integracao-fdv';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ENTIDADES_ENVIO_FDV, StatusIntegracaoFdvTenant, type CadastroIntegracaoFdv } from '@macuxierp/platform-sdk';
+import { montarMenu } from '@/lib/menu';
+import { MANIFESTOS } from '@/lib/manifestos';
+import { montarVistaStatus, textoAlertaFalha } from '@/lib/integracao-fdv';
 import { VistaIntegracaoFdv } from './vista';
 
-const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const monitor: MonitorResposta = {
-  credencial: { id: U(1), conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'abcd1234', criada_em: '2026-11-22T14:00:00.000Z', ultimo_uso_em: null },
-  configuracao: { entidades_habilitadas: ['produto', 'cliente'], limite_registros_lote: 500 },
-  sinal: { ultimo_envio_em: '2026-11-22T14:05:00.000Z', ultimo_aceito_em: '2026-11-22T14:05:00.000Z', ultimo_http: 200, parado_por_versao: false, politica_versao: null },
-  entidades: ENTIDADES_HUB_F2.map((entidade) => ({
-    entidade, ultimo_envio_em: null, ultimo_sucesso_em: null, pendentes: 3, situacao: entidade === 'produto' ? ('pausada' as const) : ('ok' as const),
-    pausada_motivo: entidade === 'produto' ? ('credencial' as const) : null, pausada_mensagem: entidade === 'produto' ? 'Credencial recusada pelo FDV.' : null, habilitada: entidade === 'produto' || entidade === 'cliente', erros_abertos: 0,
-  })),
-  erros: [{ id: U(2), lote_envio_id: U(3), indice: 0, origem: 'hub', entidade: 'cliente', registro_external_id: 'C-1', codigo: 'CAMPO_INVALIDO' as never, campo: null as never, reprocessavel: false, resolvido_em: null, mensagem: 'Campo inválido.' }],
-  conflitos: [],
-};
+const estado = vi.hoisted(() => ({ falha: null as unknown, status: null as unknown }));
+vi.mock('next/navigation', () => ({ redirect: (d: string) => { throw new Error(`REDIRECT ${d}`); } }));
+vi.mock('@/lib/api', async () => {
+  class NaoAutenticado extends Error {}
+  class SemPermissao extends Error {}
+  class ApiIndisponivel extends Error {}
+  return { NaoAutenticado, SemPermissao, ApiIndisponivel, getValidado: async () => { if (estado.falha) throw estado.falha; return estado.status; } };
+});
 
-const render = (perfil: Perfil) =>
-  renderToStaticMarkup(
-    <VistaIntegracaoFdv
-      vista={montarVista(monitor, perfil, 'America/Manaus', '/integracao-fdv/integracao-fdv/lotes')}
-      acoes={{ testar: vi.fn(), tentarDeNovo: vi.fn(), cargaCompleta: vi.fn(), exportarErros: vi.fn(), salvarCredencial: async () => true, salvarConfiguracao: vi.fn() }}
-      estado={{ ocupado: false, mensagem: null, erros: {} }}
-    />,
-  );
+const cadastros: CadastroIntegracaoFdv[] = ENTIDADES_ENVIO_FDV.map((entidade) => ({
+  entidade,
+  ligada: entidade === 'produto' || entidade === 'cliente',
+  ultimo_envio_em: entidade === 'produto' ? '2026-11-22T14:05:00.000Z' : null,
+  falha: entidade === 'cliente' ? { motivo: 'credencial', acao: 'corrigir_credencial' } : entidade === 'produto' ? { motivo: 'erros_por_linha', acao: 'corrigir_cadastros' } : null,
+}));
+const status = StatusIntegracaoFdvTenant.parse({
+  conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'abcd1234', cadastros,
+  ultimo_sinal: { ultimo_envio_em: '2026-11-22T14:05:00.000Z', ultimo_aceito_em: null, ultimo_http: 200, parado_por_versao: false },
+});
+const html = () => renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(status, 'America/Manaus')} />);
 
-describe('tela Integração FDV (T-0011)', () => {
-  it('administrador vê os botões de mudança e a chave em campo de senha, sem valor', () => {
-    const h = render('administrador');
-    for (const t of ['Salvar credencial', 'Testar conexão', 'Tentar de novo', 'Carga completa', 'Salvar configuração', 'Exportar CSV']) expect(h, t).toContain(t);
-    expect(h).toMatch(/<input[^>]*name="chave"[^>]*type="password"|<input[^>]*type="password"[^>]*name="chave"/);
-    expect(h).not.toMatch(/name="chave"[^>]*value=/);
-    expect(h).toContain('abcd1234…');
-    expect(h).toContain('/integracao-fdv/integracao-fdv/lotes');
+describe('BKO: status da Integração FDV (T-0056), só leitura', () => {
+  it('nenhum botão, formulário, campo nem texto de escrita', () => {
+    const h = html();
+    expect(h).not.toMatch(/<button|<form|<input|<select/);
+    for (const t of ['Salvar', 'Testar conexão', 'Tentar de novo', 'Carga completa', 'password']) expect(h, t).not.toContain(t);
   });
-  it.each<Perfil>(['gerente', 'leitura'])('%s só consulta: sem botões de mudança nem campo de chave', (perfil) => {
-    const h = render(perfil);
-    for (const t of ['Salvar credencial', 'Testar conexão', 'Tentar de novo', 'Carga completa', 'Salvar configuração', 'type="password"']) expect(h, t).not.toContain(t);
-    expect(h).toContain('Credencial recusada pelo FDV.');
-    expect(h).toContain('Conexão com o FDV');
+  it('Ligada e Desligada por cadastro, com o último envio no fuso da empresa (10:05 em Manaus)', () => {
+    const h = html();
+    expect(h).toContain('Ligada');
+    expect(h).toContain('Desligada');
+    expect(h).toContain('Produtos');
+    expect(h).toMatch(/22\/11\/2026,? 10:05/);
+  });
+  it('falha com o motivo e a ação; o que só o portal resolve vira "Fale com a Macuxi"', () => {
+    const h = html();
+    expect(h).toContain('Há registros com erro neste cadastro.');
+    expect(h).toContain('Corrija os registros com erro no cadastro de origem.');
+    expect(h).toContain('O FDV recusou a credencial do conector.');
+    expect(h).toContain('Fale com a Macuxi.');
+    expect(h.match(/class="falha-sob-nome"/g)).toHaveLength(2); // linha sob o nome, só em tela estreita (CSS)
+    expect(h).not.toContain('cadastro(s)');
+    expect(h).not.toContain('Bloqueia');
+    expect(h).toMatch(/<p class="faixa-aviso" role="status"/);
+    expect(h).toContain('2 cadastros não chegaram ao FDV. Veja o motivo na tabela.');
+  });
+  it('mostra só o conector e o ambiente, sem o começo da chave; sinal em minúscula; plural do alerta', () => {
+    const h = html();
+    expect(h).toContain('Conector erp-1');
+    expect(h).not.toContain('abcd1234');
+    expect(h).not.toContain('chave');
+    expect(h).toContain('Conexão com o FDV:</strong> último sinal');
+    expect(textoAlertaFalha(1)).toBe('1 cadastro não chegou ao FDV. Veja o motivo na tabela.');
+  });
+  it('sem credencial: tudo desligado e aviso para falar com a Macuxi', () => {
+    const vazio = StatusIntegracaoFdvTenant.parse({ conector_id: null, ambiente: null, chave_prefixo: null, ultimo_sinal: null, cadastros: cadastros.map((c) => ({ ...c, ligada: false, falha: null })) });
+    const h = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(vazio, 'America/Manaus')} />);
+    expect(h).not.toContain('>Ligada<');
+    expect(h).toContain('sem conector configurado');
+  });
+});
+
+describe('BKO: perfil e licença', () => {
+  beforeEach(() => { estado.falha = null; estado.status = status; });
+  it('menu: só perfis com integracao-fdv.ver e só com o módulo licenciado', () => {
+    const com = [{ id: 'integracao-fdv' as const, menus: ['Integração FDV'] }];
+    expect(montarMenu(com, MANIFESTOS, 'administrador').map((g) => g.modulo)).toContain('integracao-fdv');
+    expect(montarMenu(com, MANIFESTOS, 'faturista').map((g) => g.modulo)).not.toContain('integracao-fdv');
+    expect(montarMenu([{ id: 'core' as const, menus: [] }], MANIFESTOS, 'administrador').map((g) => g.modulo)).not.toContain('integracao-fdv');
+  });
+  it('a API recusa o perfil (403): mensagem fixa, sem dado', async () => {
+    const { SemPermissao } = await import('@/lib/api');
+    estado.falha = new SemPermissao();
+    const { TelaIntegracaoFdv } = await import('@/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv');
+    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus' }))).toContain('Seu perfil não pode ver esta tela.');
+  });
+  it('com acesso: renderiza o status', async () => {
+    const { TelaIntegracaoFdv } = await import('@/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv');
+    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus' }))).toContain('Cadastros enviados ao FDV');
   });
 });
