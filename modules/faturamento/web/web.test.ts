@@ -467,7 +467,7 @@ describe('contingência por filial (T-0021, lote 4)', () => {
   it('RN-FAT-05: abrir leva a Idempotency-Key, confere o tamanho do motivo (15 a 256, com trim) e monta o POST da filial', () => {
     const ok = publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: `  ${MOTIVO} ` }, 'chave-cont-0001');
     expect(ok).toEqual({ ok: true, requisicao: { metodo: 'POST', caminho: `/v1/faturamento/filiais/${FILIAL}/contingencia`, cabecalhos: { 'Idempotency-Key': 'chave-cont-0001' }, corpo: { filial_id: FILIAL, modalidade: 'epec', motivo: MOTIVO } } });
-    expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: 'curto' }, 'chave-cont-0001')).toEqual({ ok: false, erro: 'O motivo deve ter de 15 a 256 caracteres.' });
+    expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: 'curto' }, 'chave-cont-0001')).toEqual({ ok: false, erro: 'A justificativa deve ter de 15 a 256 caracteres.' });
     expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: 'x'.repeat(257) }, 'chave-cont-0001').ok).toBe(false);
     expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'fs_da' as never, motivo: MOTIVO }, 'chave-cont-0001').ok).toBe(false);
     expect(publico.requisicaoAbrirContingencia({ filial_id: FILIAL, modalidade: 'epec', motivo: MOTIVO }, 'x').ok).toBe(false);
@@ -478,10 +478,10 @@ describe('contingência por filial (T-0021, lote 4)', () => {
   });
   it('RN-FAT-05: o diálogo de abertura oferece só a SVC (EPEC desligada), o contador do motivo e o aviso', () => {
     const d = publico.dialogoAbrirContingencia({ nome: 'Matriz' });
-    expect(d.titulo).toBe('Entrar em contingência: Matriz');
+    expect(d.titulo).toBe('Entrar em contingência: Matriz?');
     expect(d.modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs']); // EPEC desligada na v0.3.0
     expect(publico.dialogoAbrirContingencia({}, true).modalidades.map((m) => m.valor)).toEqual(['svc_an', 'svc_rs', 'epec']);
-    expect(d.validar({ texto: 'curto' })).toBe('O motivo deve ter de 15 a 256 caracteres.');
+    expect(d.validar({ texto: 'curto' })).toBe('A justificativa deve ter de 15 a 256 caracteres.');
     expect(d.validar({ texto: MOTIVO })).toBeNull();
     expect(d.contador('curto')).toBe('faltam 10 caracteres');
     expect(d.aviso).toMatch(/SEFAZ não responde/);

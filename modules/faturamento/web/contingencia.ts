@@ -21,7 +21,7 @@ export const ROTULO_PRAZO_EPEC: Readonly<Record<SituacaoPrazoEpec, Selo>> = {
   vencido: { texto: 'Vencido', tom: 'erro', dica: 'O prazo acabou. Fale com o fiscal agora' },
 };
 
-const MENSAGEM_MOTIVO = mensagemDeTamanho('O motivo', { min: MOTIVO_MIN, max: MOTIVO_MAX });
+const MENSAGEM_JUSTIFICATIVA = mensagemDeTamanho('A justificativa', { min: MOTIVO_MIN, max: MOTIVO_MAX });
 
 export const urlDaContingencia = (filialId: string): string => `${BASE_API}/filiais/${filialId}/contingencia`;
 export const urlDoEncerramentoDaContingencia = (filialId: string): string => `${urlDaContingencia(filialId)}/encerrar`;
@@ -69,10 +69,10 @@ export interface DialogoAbrirContingencia extends DialogoDeTexto {
 /** Diálogo de abertura: a modalidade e o motivo (contador); o aviso diz o que muda. */
 export const dialogoAbrirContingencia = (filial: { nome?: string | null } = {}, epecLigada: boolean = EPEC_LIGADA): DialogoAbrirContingencia => ({
   ...dialogoDeTexto({
-    titulo: filial.nome ? `Entrar em contingência: ${filial.nome}` : 'Entrar em contingência?',
+    titulo: filial.nome ? `Entrar em contingência: ${filial.nome}?` : 'Entrar em contingência?',
     aviso: 'Use quando a SEFAZ não responde. As notas emitidas daqui até você encerrar saem em contingência.',
-    rotuloTexto: 'Motivo', rotuloConfirmar: 'Entrar em contingência', rotuloFechar: 'Voltar', destrutivo: false,
-    minimo: MOTIVO_MIN, maximo: MOTIVO_MAX, mensagem: MENSAGEM_MOTIVO,
+    rotuloTexto: 'Justificativa', rotuloConfirmar: 'Entrar em contingência', rotuloFechar: 'Voltar', destrutivo: false,
+    minimo: MOTIVO_MIN, maximo: MOTIVO_MAX, mensagem: MENSAGEM_JUSTIFICATIVA,
   }),
   rotuloModalidade: 'Modalidade',
   /** Sem a bandeira da EPEC (v0.3.0), a EPEC não é oferecida; a API recusa com 422 de qualquer jeito. */
@@ -93,7 +93,7 @@ export function requisicaoAbrirContingencia(e: { filial_id: string; modalidade: 
   const semChave = exigirChave(chave);
   if (semChave) return semChave;
   const motivo = e.motivo.trim();
-  if (motivo.length < MOTIVO_MIN || motivo.length > MOTIVO_MAX) return falha(MENSAGEM_MOTIVO);
+  if (motivo.length < MOTIVO_MIN || motivo.length > MOTIVO_MAX) return falha(MENSAGEM_JUSTIFICATIVA);
   const v = AbrirContingenciaEntrada.safeParse({ ...e, motivo });
   if (!v.success) return falha('Confira a modalidade e a filial.');
   return { ok: true, requisicao: { metodo: 'POST', caminho: urlDaContingencia(e.filial_id), cabecalhos: comChave(chave), corpo: v.data } };
