@@ -80,3 +80,17 @@ describe('mensagens', () => {
     expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'carregar').texto).toBe('Empresa não encontrada. Volte à lista.');
   });
 });
+
+describe('entrar no portal leva a prova do BFF e o IP (T-0050)', () => {
+  it('entrarPlataforma passa pelo buscarNaApi, levando a prova e o IP', async () => {
+    vi.resetModules();
+    vi.stubEnv('MACUXIERP_SEGREDO_BFF', 'segredo-de-teste-bff');
+    vi.doMock('next/headers', () => ({ headers: async () => new Headers({ 'cf-connecting-ip': '203.0.113.9' }) }));
+    const { entrarPlataforma: entrarNovo } = await import('./api');
+    resposta = () => json({ expira_em: '2026-11-23T20:00:00.000Z' }, 200, { 'set-cookie': 'macuxierp_config=tok; Path=/v1/plataforma; HttpOnly' });
+    await entrarNovo({ email: 'a@b.co', senha: 'x' });
+    expect(chamadas[0]?.init.headers).toMatchObject({ 'x-macuxierp-bff': 'segredo-de-teste-bff', 'x-macuxierp-ip-cliente': '203.0.113.9' });
+    vi.unstubAllEnvs();
+    vi.doUnmock('next/headers');
+  });
+});

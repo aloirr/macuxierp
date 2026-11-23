@@ -43,6 +43,18 @@ describe('ações da tela Integração FDV', () => {
     expect((await agirIntegracaoFdv({ tipo: 'testar' })).ok).toBe(true);
     expect(estado.chamadas[0]).toMatchObject({ url: 'https://api.exemplo.invalid/v1/integracao-fdv/credencial/testar', metodo: 'POST' });
   });
+  it('a chamada sai com a prova do BFF e sem x-macuxierp-* forjado (T-0050)', async () => {
+    vi.stubEnv('MACUXIERP_SEGREDO_BFF', 'segredo-de-teste-bff');
+    let enviados: Record<string, string> = {};
+    vi.stubGlobal('fetch', async (_u: string, init: { headers: Record<string, string> }) => {
+      enviados = init.headers;
+      return new Response(JSON.stringify({ aceito: true, pedido_em: '2026-11-22T14:00:00.000Z' }), { status: 202, headers: { 'content-type': 'application/json' } });
+    });
+    expect((await agirIntegracaoFdv({ tipo: 'testar' })).ok).toBe(true);
+    expect(enviados['x-macuxierp-bff']).toBe('segredo-de-teste-bff');
+    expect(enviados.authorization).toBe('Bearer tok');
+    vi.unstubAllEnvs();
+  });
   it('chave inválida não chega à API e a resposta nunca repete a chave', async () => {
     const r = await agirIntegracaoFdv({ tipo: 'credencial', conector_id: 'erp 1', chave: 'curta', ambiente: 'teste' });
     expect(r.ok).toBe(false);
