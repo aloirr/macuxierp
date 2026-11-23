@@ -61,6 +61,10 @@ describe('Dialogo', () => {
     expect(h).toContain('justify-content:flex-end');
     expect(h).toContain('Fechar');
   });
+  it('painel com canto de 8 px', () => {
+    const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}}>x</Dialogo>);
+    expect(h).toContain('border-radius:8px');
+  });
   it('sem descricaoId nem rodapé', () => {
     const h = renderToStaticMarkup(<Dialogo titulo="T" aoFechar={() => {}}>x</Dialogo>);
     expect(h).not.toContain('aria-describedby');
