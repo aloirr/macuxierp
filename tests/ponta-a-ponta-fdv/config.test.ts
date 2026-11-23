@@ -145,6 +145,19 @@ describe('T-0012 — configuração do alvo e trava do tenant real', () => {
     }
   });
 
+  it.each(['am2808', 'AM2808', 'Am2808'])(
+    'T-0053: perfil tenant-teste: o código %s da thathyany (0037) é barrado no tenant, no Conector e na URL',
+    (codigo) => {
+      for (const env of [
+        { ...REAL, MACUXI_HUB_TENANT: codigo },
+        { ...REAL, MACUXI_HUB_CONECTOR_ID_TENANT_TESTE: `erp-${codigo}` },
+        { ...REAL, MACUXI_HUB_URL: `https://${codigo}.macuxifdv.com.br/integracao/v1` },
+      ]) {
+        expect(recusa(env)).toMatch(/tenant-teste nunca vai ao tenant da thathyany/);
+      }
+    },
+  );
+
   it('perfil tenant-teste: recusa a chave com o mesmo valor da chave da thathyany (quem decide o tenant é a chave)', () => {
     expect(recusa({ ...REAL, MACUXI_HUB_CHAVE_THATHYANY: CHAVE })).toMatch(
       /chave do tenant-teste é a mesma da thathyany/,
@@ -243,6 +256,16 @@ describe('T-0012 — perfis do alvo real: tenant-teste e thathyany-seguro (decis
     ).toMatchObject({ limiteLote: 100 });
     expect(lerConfigHub({ ...SEGURO(), MACUXI_HUB_LIMITE_LOTE: '1' })).toMatchObject({ limiteLote: 1 });
   });
+
+  it.each(['am2808', 'AM2808', 'Am2808'])(
+    'T-0053: thathyany-seguro aceita o tenant %s (o código da thathyany, 0037)',
+    (codigo) => {
+      expect(lerConfigHub({ ...SEGURO(), MACUXI_HUB_TENANT: codigo })).toMatchObject({
+        perfil: 'thathyany-seguro',
+        tenant: codigo,
+      });
+    },
+  );
 
   it('thathyany-seguro: a configuração impressa traz a massa do kit só como contagem', () => {
     const json = JSON.stringify(lerConfigHub(SEGURO()));

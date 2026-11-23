@@ -27,8 +27,8 @@
  * Trava: com o alvo real, recusa sem o perfil, sem https, com a chave ou o Conector genéricos, sem a chave do perfil,
  * com a chave fora do formato ou sem o Conector do perfil. No perfil tenant-teste, recusa sem a confirmação de tenant
  * de teste, com qualquer variável `MACUXI_HUB_*THATHYANY*` no ambiente, com a chave ou o Conector iguais aos da
- * thathyany e com qualquer sinal da thathyany no texto (tenant, Conector, URL). No perfil thathyany-seguro, só aceita a
- * thathyany, com o lado conector, o Conector sem pedidos, a massa do kit, o delta, lotes pequenos e só os cenários
+ * thathyany e com qualquer sinal da thathyany no texto (tenant, Conector, URL; slug 'thathyany' ou o código 'am2808',
+ * 0037). No perfil thathyany-seguro, só aceita a thathyany, com o lado conector, o Conector sem pedidos, a massa do kit, o delta, lotes pequenos e só os cenários
  * "carga idêntica" e "reenvio idempotente". A mensagem de recusa nunca cita o valor da chave.
  *
  * Trava de escrita no real: `travaEscrita` e `exigirCenario` (regras em `trava-escrita.ts`).
@@ -208,8 +208,9 @@ type Ambiente = Record<string, string | undefined>;
 
 /** Sem acento e em minúsculas, para a trava não ser contornada por grafia. */
 const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const THATHYANY = 'thathyany';
-const citaThathyany = (s: string) => normal(s).includes(THATHYANY);
+/** Sinais da thathyany: o slug antigo e o código 'am2808' que a migração 0037 põe no lugar (deploy da v0.3.3). */
+const SINAIS_THATHYANY = ['thathyany', 'am2808'] as const;
+const citaThathyany = (s: string) => SINAIS_THATHYANY.some((x) => normal(s).includes(x));
 
 /**
  * O cenário cabe no perfil, sem olhar a trava de escrita? Dublê: todos; tenant de teste: os sintéticos e os de pedidos;
