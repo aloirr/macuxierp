@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
+import { codigoExibido } from '@/lib/config/empresa';
 import { lerEmpresa } from '@/lib/config/api';
 import { ConfigNaoAutenticado, ErroPlataforma } from '@/lib/config/erros';
 import { exigirTokenConfig, ROTA_ENCERRAR } from '@/lib/config/sessao';
@@ -36,7 +37,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
         <h1>{empresa.nome}</h1>
         <SeloSituacao situacao={empresa.situacao} />
       </div>
-      <p className="apoio">Código: <span className="codigo">{empresa.slug}</span></p>
+      <p className="apoio">Código: <span className="codigo">{codigoExibido(empresa)}</span></p>
       {criada === '1' && <p className="faixa-aviso" role="status">Empresa criada com o core ligado. Ligue os módulos e crie o 1º administrador.</p>}
       <PainelEmpresa
         empresa={empresa}

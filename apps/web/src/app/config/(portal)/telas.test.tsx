@@ -11,14 +11,15 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 import { acumularPagina } from '@macuxierp/ui/paginacao';
 import { dadosDaEmpresa } from '@/lib/config/empresa';
 import { MANIFESTOS } from '@/lib/manifestos';
+import { FormularioEmpresa } from './empresas/nova/formulario';
 import { ListaEmpresas } from './lista-empresas';
 import { TopoPlataforma } from './topo-plataforma';
 import { PainelEmpresa } from './empresas/[id]/painel';
 
 const base = { fuso: 'America/Manaus', created_at: '2026-11-23T12:00:00.000Z', updated_at: '2026-11-23T12:00:00.000Z' };
 const lic = (...a: string[]) => ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao-fdv'].map((modulo) => ({ modulo, ativo: modulo === 'core' || a.includes(modulo), valido_ate: null })) as EmpresaPlataforma['modulos'];
-const acme: EmpresaPlataforma = { ...base, id: '11111111-1111-4111-8111-111111111111', slug: 'acme', nome: 'Acme Ltda', situacao: 'ativo', modulos: lic('cadastros', 'fiscal'), primeiro_admin: { id: '22222222-2222-4222-8222-222222222222', ativo: true, bloqueado: false } };
-const beta: EmpresaPlataforma = { ...acme, id: '33333333-3333-4333-8333-333333333333', slug: 'beta', nome: 'Beta SA', situacao: 'suspenso', modulos: lic(), primeiro_admin: null };
+const acme: EmpresaPlataforma = { ...base, codigo: 'AM2808', id: '11111111-1111-4111-8111-111111111111', slug: 'acme', nome: 'Acme Ltda', situacao: 'ativo', modulos: lic('cadastros', 'fiscal'), primeiro_admin: { id: '22222222-2222-4222-8222-222222222222', ativo: true, bloqueado: false } };
+const beta: EmpresaPlataforma = { ...acme, codigo: null, id: '33333333-3333-4333-8333-333333333333', slug: 'beta', nome: 'Beta SA', situacao: 'suspenso', modulos: lic(), primeiro_admin: null };
 const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
 const chaves = { admin: 'k1', senha: 'k2', situacao: 'k3' };
 
@@ -26,11 +27,12 @@ describe('lista de empresas', () => {
   const h = renderToStaticMarkup(<ListaEmpresas empresas={[acme, beta]} vazio="Nenhuma empresa ainda. Crie a primeira." />);
   it('colunas Código, Nome, Situação e Módulos, linha com rótulo "Abrir empresa <código>"', () => {
     for (const t of ['Código', 'Nome', 'Situação', 'Módulos']) expect(h).toContain(t);
-    expect(h).toContain('Abrir empresa acme');
-    expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>acme<\/a>/);
+    expect(h).toContain('Abrir empresa AM2808');
+    expect(h).toMatch(/<a [^>]*href="\/config\/empresas\/11111111-1111-4111-8111-111111111111"[^>]*>AM2808<\/a>/);
     expect(h).toContain('tabela-rolavel com-sinal-rolagem');
+    expect(h).not.toContain('>acme<');
     expect(readFileSync(join(__dirname, '../../globals.css'), 'utf8')).toMatch(/\.tabela-rolavel\.com-sinal-rolagem \{[^}]*local/);
-    expect(h).toContain('Abrir empresa beta');
+    expect(h).toContain('Abrir empresa BETA');
   });
   it('situação em texto (não só cor) e módulos ligados sem o core', () => {
     expect(h).toContain('Ativo');
@@ -171,5 +173,20 @@ describe('ajustes de marca e componentes do #309', () => {
     const r = acumularPagina([acme], [{ ...acme, nome: 'Acme 2' }, beta], (e) => e.id);
     expect(r.map((e) => e.slug)).toEqual(['acme', 'beta']);
     expect(r[0]?.nome).toBe('Acme 2');
+  });
+});
+
+describe('formulário Criar empresa', () => {
+  const h = renderToStaticMarkup(<FormularioEmpresa chaveInicial="k" />);
+  it('sem slug e sem UF; com código do FDV obrigatório', () => {
+    expect(h).not.toContain('name="slug"');
+    expect(h).toContain('Código do FDV');
+    expect(h).not.toContain('(opcional)');
+    expect(h).toContain('name="codigo"');
+    expect(h).not.toContain('name="uf"');
+  });
+  it('o form nunca é GET, nem antes da hidratação (nada de dado na URL)', () => {
+    expect(h).toMatch(/<form [^>]*method="post"/);
+    expect(h).not.toMatch(/method="get"/i);
   });
 });

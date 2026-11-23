@@ -1,6 +1,8 @@
 'use client';
 import { RegiaoErros } from '@macuxierp/ui';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type FormEvent } from 'react';
+import { CriarEmpresaEntrada } from '@macuxierp/platform-sdk';
+import { traduzirCriarEmpresa } from '@/lib/config/formularios';
 import { criarEmpresaAcao } from '../acoes';
 
 export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
@@ -9,8 +11,18 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
   const [erro, setErro] = useState('');
   const [pendente, iniciar] = useTransition();
 
-  const enviar = (f: FormData) => {
-    const entrada = { slug: String(f.get('slug') ?? ''), nome: String(f.get('nome') ?? ''), fuso: String(f.get('fuso') ?? '') };
+  const enviar = (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault(); // sem o reset do <form action>: o que a pessoa digitou fica ao errar
+    const f = new FormData(ev.currentTarget);
+    const entrada = { codigo: String(f.get('codigo') ?? ''), nome: String(f.get('nome') ?? ''), fuso: String(f.get('fuso') ?? '') };
+    const previa = CriarEmpresaEntrada.safeParse({ codigo: entrada.codigo.trim() || undefined, nome: entrada.nome, fuso: entrada.fuso.trim() || undefined });
+    if (entrada.codigo.trim() === '' || !previa.success) {
+      setCampos(traduzirCriarEmpresa(previa.success ? null : previa.error, entrada.codigo));
+      setErro('');
+      return;
+    }
+    setCampos({});
+    setErro('');
     iniciar(async () => {
       const r = await criarEmpresaAcao(entrada, chave); // sucesso redireciona para a empresa
       if (r.ok) return;
@@ -21,14 +33,14 @@ export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
   };
 
   return (
-    <form action={enviar} className="formulario formulario-estreito" noValidate>
+    <form method="post" onSubmit={enviar} className="formulario formulario-estreito" noValidate>
       <RegiaoErros temErro={Object.keys(campos).length > 0 || erro !== ''} />
       {erro && <p className="erro">{erro}</p>}
       <label className="campo">
-        <span>Código</span>
-        <input name="slug" required autoCapitalize="none" autoComplete="off" aria-invalid={campos.slug ? true : undefined} aria-describedby="ajuda-slug erro-slug" />
-        <span id="ajuda-slug" className="apoio">2 a 40 letras minúsculas, dígitos ou hífen, começando por letra ou dígito. Vira o endereço da empresa.</span>
-        {campos.slug && <span id="erro-slug" className="erro-campo">{campos.slug}</span>}
+        <span>Código do FDV</span>
+        <input name="codigo" autoCapitalize="characters" autoComplete="off" maxLength={6} required aria-invalid={campos.codigo ? true : undefined} aria-describedby="ajuda-codigo erro-codigo" />
+        <span id="ajuda-codigo" className="apoio">UF e 4 dígitos, como no FDV, por exemplo AM2808.</span>
+        {campos.codigo && <span id="erro-codigo" className="erro-campo">{campos.codigo}</span>}
       </label>
       <label className="campo">
         <span>Nome</span>
