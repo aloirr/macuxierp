@@ -10,4 +10,5 @@ export * from './mapeamento';
 export * from './mensagens';
 export * from './recomposicao';
 export * from './resposta';
+export * from './status';
 export * from './troca-chave';

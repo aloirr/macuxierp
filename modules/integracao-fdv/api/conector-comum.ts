@@ -172,13 +172,10 @@ export async function anteciparEntidades(tx: Transacao, tenantId: string, entida
   );
 }
 
-/** Antecipa o próximo sinal de vida para já (`least`), irmã de `agendarRetorno`. Sem linha de `sinal` não faz nada (ver `garantirLinhaDoSinal`). */
-export async function anteciparSinal(tx: Transacao, tenantId: string, agora: Date): Promise<void> {
-  await tx.consultar(`UPDATE integracao_fdv.sinal SET proximo_sinal_em = least(proximo_sinal_em, $2) WHERE tenant_id = $1 AND deleted_at IS NULL`, [tenantId, agora]);
-}
-
 /** Pausa a(s) entidade(s) do tenant. `entidade = null` = todas as linhas ainda não pausadas. Idempotente. */
 export async function pausarEntidades(tx: Transacao, tenantId: string, entidade: string | null, motivo: MotivoPausa, credencialId: string | null, agora: Date): Promise<void> {
+  // ordem de bloqueios da 0038: credencial antes do cursor (o `credencial_id` do cursor aponta para a linha travada aqui)
+  if (credencialId) await tx.consultar(`SELECT 1 FROM integracao_fdv.credencial WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE`, [tenantId, credencialId]);
   await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade
         SET pausada_motivo = $3, pausada_em = $4, credencial_id = coalesce($5::uuid, credencial_id)

@@ -54,6 +54,12 @@ export function resumoDaCredencial(c: CredencialAtivaLida): CredencialResumo {
   return { id: c.id, conector_id: c.conector_id, ambiente: c.ambiente, chave_prefixo: c.chave_prefixo, criada_em: c.criada_em, ultimo_uso_em: c.ultimo_uso_em };
 }
 
+/** O último sinal como o status do BKO mostra: sem `politica_versao` (ADR 0013). */
+export async function lerSinalPublico(tx: Transacao, tenantId: string): Promise<{ ultimo_envio_em: string | null; ultimo_aceito_em: string | null; ultimo_http: number | null; parado_por_versao: boolean } | null> {
+  const s = await lerSinal(tx, tenantId);
+  return s && { ultimo_envio_em: s.ultimo_envio_em, ultimo_aceito_em: s.ultimo_aceito_em, ultimo_http: s.ultimo_http, parado_por_versao: s.parado_por_versao };
+}
+
 async function lerSinal(tx: Transacao, tenantId: string): Promise<SinalResumo | null> {
   const [s] = await tx.consultar<{ ultimo_envio_em: Date | null; ultimo_aceito_em: Date | null; ultimo_http: number | null; parado_por_versao: boolean; politica_versao: Record<string, unknown> | null }>(
     `SELECT ultimo_envio_em, ultimo_aceito_em, ultimo_http, parado_por_versao, politica_versao

@@ -2,6 +2,7 @@
  * Cliente tipado da API `/v1/integracao-fdv` para o BKO: a resposta é validada pelo Zod de `contracts`; o token e o `fetch`
  * entram por injeção (mesmo molde do pedido). A chave do conector só existe no corpo do `PUT /credencial`; o erro nunca a leva.
  */
+import { StatusIntegracaoFdvTenant } from '@macuxierp/platform-sdk';
 import { paraQuery } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
 import { ConfiguracaoResumo, CredencialResumo, LoteEnvioResumo, LoteErroLinha, MonitorResposta, RespostaAceito, RespostaRetomada, RespostaTestar, type ConfiguracaoEntrada, type CredencialEntrada, type EntidadeHub } from '../contracts';
@@ -41,6 +42,8 @@ export function criarClienteIntegracaoFdv(cfg: { baseUrl: string; token: () => s
 
   return {
     monitor: () => chamar('GET', '/monitor', MonitorResposta),
+    /** Vista só de leitura (ADR 0013 seção 6): ligada ou desligada por cadastro, último envio e falha. */
+    status: () => chamar('GET', '/status', StatusIntegracaoFdvTenant),
     lotes: (filtros: Record<string, string> = {}) => chamar('GET', `/lotes${paraQuery(filtros)}`, Pagina(LoteEnvioResumo)),
     errosDoLote: (id: string, filtros: Record<string, string> = {}) => chamar('GET', `/lotes/${encodeURIComponent(id)}/erros${paraQuery(filtros)}`, Pagina(LoteErroLinha)),
     /** Só o prefixo volta. */
