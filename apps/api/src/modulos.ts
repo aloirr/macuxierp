@@ -7,6 +7,7 @@ import {
   criarConsultaParaFiscal,
   criarConsultaParaPedido,
   criarPluginCadastros,
+  criarPluginPlataformaCadastros,
   fontesHttp,
   repositoriosSql,
   type Dependencias as DependenciasCadastros,
@@ -50,6 +51,7 @@ import {
   type Banco,
   type BancoPlataformaComLogin,
   type ManifestoModulo,
+  type Outbox,
   type PluginModulo,
   type PluginPlataforma,
 } from '@macuxierp/platform-sdk';
@@ -174,13 +176,24 @@ export interface DependenciasModulos {
   log?: LogPedido;
 }
 
+/**
+ * Dependências do cadastros com os padrões de produção (adaptador SQL, fontes HTTP reais e o A1 pela porta do core), sobre
+ * o que o chamador trocar. O `montarDependenciasProducao` monta uma vez e entrega o mesmo objeto ao plugin do BKO e ao de
+ * plataforma (carga do portal `/config`, T-0058): o que vale num vale no outro.
+ */
+export function dependenciasCadastros(repoCore: RepositorioCore, parcial: Partial<DependenciasCadastros> = {}): DependenciasCadastros {
+  return {
+    repositorios: parcial.repositorios ?? repositoriosSql,
+    fontes: parcial.fontes ?? fontesHttp(),
+    certificados: parcial.certificados ?? certificadosDoCore(repoCore),
+    ...(parcial.usoCadastros ? { usoCadastros: parcial.usoCadastros } : {}),
+  };
+}
+
 export function montarModulos(d: DependenciasModulos): readonly PluginModulo[] {
-  const repositoriosCadastros = d.cadastros?.repositorios ?? repositoriosSql;
-  const cadastros = criarPluginCadastros({
-    repositorios: repositoriosCadastros,
-    fontes: d.cadastros?.fontes ?? fontesHttp(),
-    certificados: d.cadastros?.certificados ?? certificadosDoCore(d.core.repo),
-  });
+  const depsCadastros = dependenciasCadastros(d.core.repo, d.cadastros);
+  const repositoriosCadastros = depsCadastros.repositorios;
+  const cadastros = criarPluginCadastros(depsCadastros);
   const reposFaturamento = repositoriosFaturamento({ outbox: new OutboxPg() });
   const faturamento = { ...dependenciasFaturamento({ repos: reposFaturamento, repoCore: d.core.repo, repositoriosCadastros, ...(d.log ? { log: d.log } : {}) }), ...d.faturamento };
   // P-2: nota em aberto bloqueia o cancelamento do pedido (a porta inversa vem do faturamento, `notaEmAbertoSql`). RN-PED-04: o saldo
@@ -226,8 +239,12 @@ export interface EntradaProducao {
  * os testes de ponta a ponta usam esta mesma função: o que muda num muda no outro.
  */
 export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp {
+  const repoCore = new RepositorioCoreSql();
+  const cadastros = dependenciasCadastros(repoCore);
+  const outbox = new OutboxPg();
   const modulos = montarModulos({
-    core: { repo: new RepositorioCoreSql(), hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
+    core: { repo: repoCore, hashSenha: (senha) => gerarHashSenha(senha), leitorPfx: new LeitorPfxTls(), chaveA1: e.chaveA1, armazenamento: armazenamentoIndisponivel },
+    cadastros,
     ...(e.log ? { log: e.log } : {}),
   });
   const bancoPlataforma = e.bancoPlataforma ?? (temPlataforma(e.banco) ? e.banco.plataforma() : undefined);
@@ -238,7 +255,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     banco: e.banco,
     repoAuth: new RepositorioAuthPg(),
     licencas: new LicencasPg(),
-    outbox: new OutboxPg(),
+    outbox,
     auditoria: new AuditoriaPg(),
     trabalhos: new FilaDeTrabalhosPg(),
     idempotencia: new IdempotenciaPg(),
@@ -250,7 +267,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
             banco: bancoPlataforma,
             // Transação de tenant das rotas por etapa do portal (carga, T-0058): o mesmo `Banco` do BKO (papel `macuxierp_app`).
             bancoTenant: e.banco,
-            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null }),
+            plugins: pluginsPlataforma(modulos, { chaveIntegracao: e.chaveIntegracao ?? null, outbox, cadastros }),
             segredoBff: e.config.segredoBff,
           },
         } : {}),
@@ -263,13 +280,18 @@ const temPlataforma = (b: Banco): b is Banco & { plataforma(): BancoPlataformaCo
 interface DependenciasPlataformaModulos {
   /** `MACUXIERP_CHAVE_INTEGRACAO` (versão 1), a mesma do `lerConfigApi`; nunca vai para log. Ver `ConfigApi.chaveIntegracao`. */
   chaveIntegracao: Buffer | null;
+  /** Outbox da API (a mesma do `DependenciasApp`): os eventos da carga do portal saem na transação do tenant. Padrão: `OutboxPg`. */
+  outbox?: Outbox;
+  /** Padrão: dependenciasCadastros(new RepositorioCoreSql()). */
+  cadastros?: DependenciasCadastros;
 }
 
 /**
  * Plugins de plataforma do portal `/config` (ADR 0012): o do core, com o repositório que chama só as funções da 0033 e
  * os `depende` dos manifestos montados (RN-CORE-02), e a senha provisória do 1º admin com o argon2id de produção; e o da
- * integração FDV (ADR 0013, T-0056), com a chave do conector (versão 1) e o repositório que chama só as `portal_*` da 0038.
- * `dependencias`: padrão sem chave do conector (os testes de isolamento só listam as rotas).
+ * integração FDV (ADR 0013, T-0056), com a chave do conector (versão 1) e o repositório que chama só as `portal_*` da 0038;
+ * e o da carga de cadastros (T-0058, ADR 0013, adendo de 23/11/2026), com as dependências do cadastros do BKO e a outbox da API.
+ * `dependencias`: padrão sem chave do conector, com a `OutboxPg` e o cadastros de produção (os testes de isolamento só listam as rotas).
  */
 export function pluginsPlataforma(
   modulos: readonly PluginModulo[],
@@ -279,5 +301,9 @@ export function pluginsPlataforma(
   return [
     criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha) }),
     criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: dependencias.chaveIntegracao }),
+    criarPluginPlataformaCadastros({
+      deps: dependencias.cadastros ?? dependenciasCadastros(new RepositorioCoreSql()),
+      outbox: dependencias.outbox ?? new OutboxPg(),
+    }),
   ];
 }
