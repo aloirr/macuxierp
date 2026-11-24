@@ -146,14 +146,6 @@ function rotasRegistradas(arvore: string): string[] {
   return saida.sort();
 }
 
-/** Rotas que chegam com um PR da API ainda não juntado: entram todas no `fora` ou nenhuma (o par nunca pela metade). */
-function opcionaisJuntas(registradas: string[], grupo: string[]): string[] {
-  const presentes = grupo.filter((r) => registradas.includes(r));
-  expect(presentes.length === 0 || presentes.length === grupo.length,
-    `só ${presentes.join(', ')} registrada(s) de ${grupo.join(' + ')}: as rotas do grupo entram juntas na API`).toBe(true);
-  return presentes;
-}
-
 describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na API real (RN-CORE-02)', () => {
   it('nenhuma rota escapa da checagem: o Fastify tem só /v1/saude, /v1/auth/* e as rotas declaradas nos plugins', async () => {
     const a = await api();
@@ -165,10 +157,11 @@ describe('montarModulos de produção (apps/api/src/modulos.ts, o do main.ts) na
       'POST /v1/auth/refresh',
       'POST /v1/auth/sair',
       'GET /v1/auth/eu',
-      // T-0052: a troca de senha do tenant (RD-1041); vira fixa depois do PR da API
-      ...opcionaisJuntas(registradas, ['POST /v1/auth/senha']),
-      // T-0076: o esqueci a senha (rotas públicas); viram fixas depois do PR da API
-      ...opcionaisJuntas(registradas, ['GET /v1/auth/esqueci/situacao', 'POST /v1/auth/esqueci']),
+      // T-0052: a troca de senha do tenant (RD-1041), fixa
+      'POST /v1/auth/senha',
+      // T-0076: o esqueci a senha (rotas públicas), fixas
+      'GET /v1/auth/esqueci/situacao',
+      'POST /v1/auth/esqueci',
     ];
     expect(registradas).toEqual([...declaradas, ...fora].sort());
     expect(declaradas.length).toBe(ROTAS.length);
