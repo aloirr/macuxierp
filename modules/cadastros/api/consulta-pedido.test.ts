@@ -33,7 +33,7 @@ describe('consulta de cadastros para o pedido (memória)', () => {
     };
     ids.filialPadrao = (await post('/filiais', filialValida())).id;
     ids.filialOutra = (await post('/filiais', filialValida({ cnpj: CNPJ_B, padrao: false, emissora: false }))).id;
-    ids.cliente = (await post('/clientes', clienteValido(ids.filialPadrao, { limite_credito_centavos: 500_000 }))).id;
+    ids.cliente = (await post('/clientes', clienteValido(ids.filialPadrao, { limite_credito_centavos: 500_000, prazo_medio_dias: 45 }))).id;
     ids.p1 = (await post('/produtos', produtoValido({ cest: '0300700', ean: '7891000100103' }))).id;
     ids.p2 = (await post('/produtos', produtoValido({ codigo: 'P002', cest: '0300700', ncm: '22021000' }))).id;
     ids.p3 = (await post('/produtos', produtoValido({ codigo: 'P003', cest: '0300700' }))).id;
@@ -92,13 +92,19 @@ describe('consulta de cadastros para o pedido (memória)', () => {
 
   it('cliente e filial: só os campos do pick; filialPadrao', async () => {
     const c = await consulta.cliente(tx, ids.cliente as string);
-    expect(c).toMatchObject({ id: ids.cliente, limite_credito_centavos: 500_000, inativo: false });
+    expect(c).toMatchObject({ id: ids.cliente, limite_credito_centavos: 500_000, prazo_medio_dias: 45, inativo: false });
     expect(c).not.toHaveProperty('email');
     expect(c?.enderecos).toHaveLength(1);
     expect(c?.enderecos[0]).toMatchObject({ id: expect.any(String), tipo: 'principal', municipio_ibge: '1302603', municipio_nome: 'Manaus' });
     expect(await consulta.filial(tx, ids.filialOutra as string)).toEqual({ id: ids.filialOutra, emissora: false, padrao: false, inativo: false });
     expect(await consulta.filialPadrao(tx)).toBe(ids.filialPadrao);
     expect(await consulta.cliente(tx, randomUUID())).toBeNull();
+  });
+
+  it('RN-CAD-16: cliente sem prazo médio volta com prazo_medio_dias null', async () => {
+    const n = await criarAmbiente(criarPluginCadastros(m.deps)).chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(ids.filialPadrao as string, { documento: '11222333000262', prazo_medio_dias: null }) });
+    expect(n.status).toBe(201);
+    expect((await consulta.cliente(tx, (n.corpo as { id: string }).id))?.prazo_medio_dias ?? null).toBeNull(); // sem prazo médio = sem limite
   });
 
   it('cliente: código IBGE fora da tabela dá municipio_nome null; 2+ endereços no mesmo município resolvem o nome sem repetir', async () => {
