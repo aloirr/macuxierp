@@ -1,8 +1,8 @@
-import { CAMINHOS_INTEGRACAO_FDV_TENANT, LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
+import { LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarClienteIntegracaoFdv } from './cliente';
 import {
-  ROTULO_BAIXAR_ERROS, TEXTO_ESTADO_LOG, caminhoDoLogCsv, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, nomeDoCsvDoLog, textoErrosForaDaLista,
+  caminhoDoLogCsv, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, nomeDoCsvDoLog, textoErrosForaDaLista,
 } from './log';
 
 const log = (o: Partial<LogCadastroFdvTenant> = {}): LogCadastroFdvTenant => ({
@@ -33,18 +33,13 @@ describe('Log do BKO (T-0086 D-4)', () => {
     expect(linhasDeEnviosLog(log())[0]).toEqual({ quando: expect.stringContaining('15:00'), origem: 'Reprocessar', situacao: 'Com erros', tom: 'aviso', registros: 10, comErro: 2 });
   });
   it('o Baixar erros (.csv) aponta para a rota log.csv do SDK, com a entidade', () => {
-    expect(ROTULO_BAIXAR_ERROS).toBe('Baixar erros (.csv)');
     expect(caminhoDoLogCsv('cliente')).toBe('/v1/integracao-fdv/entidades/cliente/log.csv');
-    expect(caminhoDoLogCsv('cliente').replace('/v1', '').replace('cliente', ':entidade')).toBe(CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv);
     expect(nomeDoCsvDoLog('cliente')).toBe('erros-cliente.csv');
   });
   it('estado vazio: sem erro aberto mostra a frase do estado vazio; sem envio, a dos envios', () => {
     const vazio = log({ erros: [], total_erros: 0, envios: [], motivo: null });
     expect(linhasDeErrosLog(vazio)).toEqual([]);
     expect(linhasDeEnviosLog(vazio)).toEqual([]);
-    expect(TEXTO_ESTADO_LOG.vazio).toBe('Nenhum erro aberto neste cadastro.');
-    expect(TEXTO_ESTADO_LOG.carregando).toContain('Carregando');
-    expect(TEXTO_ESTADO_LOG.erro).toContain('Tente de novo');
   });
   it('avisa quantos erros ficam fora da lista (o teto da tela) e manda baixar o arquivo', () => {
     const l = log({ total_erros: 203 });

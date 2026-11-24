@@ -4,7 +4,7 @@
  * colunas (registro, nome curto, campo, motivo, ação e "Corrigir"), os textos dos estados e o caminho do CSV. Motivo e ação
  * vêm do catálogo da API (voz A0), nunca da mensagem do Hub. A permissão só esconde botão: a proteção real é a da API.
  */
-import type { EnvioLogFdv, EntidadeEnvioFdv, LogCadastroFdvTenant, OrigemEnvioFdv } from '@macuxierp/platform-sdk';
+import { CAMINHOS_INTEGRACAO_FDV_TENANT, type EnvioLogFdv, type EntidadeEnvioFdv, type LogCadastroFdvTenant, type OrigemEnvioFdv } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { FUSO_PADRAO } from './monitor';
 
@@ -14,18 +14,19 @@ export const TEXTO_ESTADO_LOG = Object.freeze({
   vazio: 'Nenhum erro aberto neste cadastro.',
   vazioEnvios: 'Nenhum envio ainda.',
   erro: 'Não foi possível carregar o Log. Tente de novo.',
-  semPermissao: 'Você não tem permissão para ver o Log.',
 });
 
 export const ROTULO_BAIXAR_ERROS = 'Baixar erros (.csv)';
 export const ROTULO_CORRIGIR = 'Corrigir';
 
+/* TODO: fonte única dos rótulos e cores de origem e situação no packages/platform-sdk (pedido ao engenheiro-software);
+   até lá estas cópias seguem as cores de apps/web/src/lib/config/operacao-fdv.ts (ROTULO_ORIGEM_ENVIO e ROTULO_SITUACAO_ENVIO). */
 export const ROTULO_ORIGEM_LOG: Readonly<Record<OrigemEnvioFdv, string>> = { ciclo: 'Ciclo normal', reprocessar: 'Reprocessar', zerar: 'Zerar (inativação)' };
-export const ROTULO_SITUACAO_LOG: Readonly<Record<EnvioLogFdv['situacao'], { texto: string; tom: 'ok' | 'aviso' | 'neutro' }>> = {
+export const ROTULO_SITUACAO_LOG: Readonly<Record<EnvioLogFdv['situacao'], { texto: string; tom: 'sucesso' | 'aviso' | 'erro' | 'neutro' }>> = {
   enviando: { texto: 'Enviando…', tom: 'neutro' },
-  concluido: { texto: 'Concluído', tom: 'ok' },
+  concluido: { texto: 'Concluído', tom: 'sucesso' },
   com_erros: { texto: 'Com erros', tom: 'aviso' },
-  falhou: { texto: 'Falhou', tom: 'aviso' },
+  falhou: { texto: 'Falhou', tom: 'erro' },
 };
 
 export interface LinhaErroLog {
@@ -42,7 +43,7 @@ export interface LinhaEnvioLog {
   quando: string;
   origem: string;
   situacao: string;
-  tom: 'ok' | 'aviso' | 'neutro';
+  tom: 'sucesso' | 'aviso' | 'erro' | 'neutro';
   registros: number;
   comErro: number;
 }
@@ -75,6 +76,6 @@ export const textoErrosForaDaLista = (n: number): string => (n === 1 ? 'Mais 1 e
 
 /** Caminho do CSV do cadastro (relativo à origem da API, com `/v1`); o navegador baixa direto e a API aplica o perfil. */
 export const caminhoDoLogCsv = (entidade: EntidadeEnvioFdv): string =>
-  `/v1/integracao-fdv/entidades/${encodeURIComponent(entidade)}/log.csv`;
+  `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv.replace(':entidade', encodeURIComponent(entidade))}`;
 
 export const nomeDoCsvDoLog = (entidade: EntidadeEnvioFdv): string => `erros-${entidade}.csv`;
