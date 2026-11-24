@@ -170,6 +170,15 @@ describe('modo e efeito do Substituir tudo', () => {
     expect(EfeitoSubstituir.safeParse(efeitoSubstituir({ total: 10, a_inativar: 4, sem_chave: 3 })).success).toBe(true);
     expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, sem_chave: -1 }).success).toBe(false);
   });
+
+  it('enderecos_a_inativar (T-0070) é opcional, repassado como veio e não quebra a conferência do percentual', () => {
+    expect(efeitoSubstituir({ total: 10, a_inativar: 2, enderecos_a_inativar: 7 })).toEqual({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, enderecos_a_inativar: 7 });
+    expect(efeitoSubstituir({ total: 10, a_inativar: 2, enderecos_a_inativar: 0 }).enderecos_a_inativar).toBe(0);
+    expect('enderecos_a_inativar' in efeitoSubstituir({ total: 10, a_inativar: 2 })).toBe(false);
+    expect(() => efeitoSubstituir({ total: 10, a_inativar: 2, enderecos_a_inativar: -1 })).toThrow(RangeError);
+    expect(() => efeitoSubstituir({ total: 10, a_inativar: 2, enderecos_a_inativar: 1.5 })).toThrow(RangeError);
+    expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, enderecos_a_inativar: -1 }).success).toBe(false);
+  });
 });
 
 describe('ValidarCargaPlataformaResposta', () => {
@@ -264,6 +273,38 @@ describe('GravarCargaPlataformaResposta (carga síncrona)', () => {
     expect(GravarCargaPlataformaResposta.safeParse({ cadastro: 'produto', modo: 'substituir_tudo', gravadas: 8, com_erro: 0, inativadas: 2 }).success).toBe(false);
     expect(GravarCargaPlataformaResposta.safeParse({ cadastro: 'produto', modo: 'substituir_tudo', gravadas: 8, com_erro: 0, efeito }).success).toBe(false);
     expect(GravarCargaPlataformaResposta.safeParse({ cadastro: 'produto', modo: 'adicionar', gravadas: 0, com_erro: 3 }).success).toBe(false);
+  });
+
+  describe('enderecos_inativados (T-0070): só no substituir_tudo do cliente', () => {
+    const efeitoCliente = efeitoSubstituir({ total: 10, a_inativar: 2, enderecos_a_inativar: 5 });
+    const cliente = { cadastro: 'cliente', modo: 'substituir_tudo', gravadas: 8, com_erro: 0, inativadas: 2 };
+    const caminhoRecusado = (r: { success: boolean; error?: { issues: { path: PropertyKey[] }[] } }, campo: string) => {
+      expect(r.success).toBe(false);
+      expect(r.error?.issues.some((i) => i.path.join('.') === campo)).toBe(true);
+    };
+
+    it('aceita o cliente com o campo (e com enderecos_a_inativar no efeito)', () => {
+      expect(GravarCargaPlataformaResposta.safeParse({ ...cliente, efeito: efeitoCliente, enderecos_inativados: 5 }).success).toBe(true);
+      expect(ValidarCargaPlataformaResposta.safeParse(validacao({ cadastro: 'cliente', efeito: efeitoCliente })).success).toBe(true);
+    });
+
+    it('aceita sem o campo (a API de hoje ainda não manda)', () => {
+      expect(GravarCargaPlataformaResposta.safeParse({ ...cliente, efeito }).success).toBe(true);
+      expect(ValidarCargaPlataformaResposta.safeParse(validacao({ cadastro: 'cliente' })).success).toBe(true);
+    });
+
+    it('recusa o produto com o campo', () => {
+      caminhoRecusado(GravarCargaPlataformaResposta.safeParse({ ...cliente, cadastro: 'produto', efeito, enderecos_inativados: 5 }), 'enderecos_inativados');
+      caminhoRecusado(GravarCargaPlataformaResposta.safeParse({ ...cliente, cadastro: 'produto', efeito: efeitoCliente }), 'efeito.enderecos_a_inativar');
+      caminhoRecusado(ValidarCargaPlataformaResposta.safeParse(validacao({ efeito: efeitoCliente })), 'efeito.enderecos_a_inativar');
+    });
+
+    it('recusa o adicionar com o campo', () => {
+      caminhoRecusado(
+        GravarCargaPlataformaResposta.safeParse({ cadastro: 'cliente', modo: 'adicionar', gravadas: 8, com_erro: 0, enderecos_inativados: 5 }),
+        'enderecos_inativados',
+      );
+    });
   });
 });
 
