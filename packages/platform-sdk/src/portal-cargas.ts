@@ -18,9 +18,9 @@
  */
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
+import { Instante } from './portal-config';
 
 const Id = z.string().regex(PADRAO_UUID);
-const Instante = z.string().datetime();
 const Contagem = z.number().int().min(0);
 
 /**

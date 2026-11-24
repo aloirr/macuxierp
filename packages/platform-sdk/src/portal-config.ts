@@ -20,7 +20,8 @@ import { MODULOS, type ModuloId } from './modulo';
 import { SenhaInformada } from './senha';
 
 const Id = z.string().regex(PADRAO_UUID);
-const Instante = z.string().datetime();
+/** Instante ISO 8601 UTC (como sai do `toISOString`). */
+export const Instante = z.string().datetime();
 /** E-mail de usuário (superadmin e usuário do tenant): sem espaços nas pontas, minúsculo, até 254 (RFC 5321). */
 export const EmailUsuario = z
   .string()
