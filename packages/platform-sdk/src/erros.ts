@@ -2,6 +2,7 @@
  * Erros da API (desenho T-0002, seção 2). A API traduz cada um no status e no corpo `{ codigo, mensagem, campos?, detalhes? }`
  * (`corpoErroApi`). Regra de negócio: 422 com `codigo` = a RN (`RN-CAD-01`). A mensagem nunca leva dado pessoal nem segredo.
  */
+import { CODIGO_DONO_CLIENTE, MENSAGEM_DONO_CLIENTE } from './entrada-dono';
 
 export type CamposErro = Record<string, string>;
 
@@ -45,6 +46,8 @@ export const erros = {
   naoEncontrado: (objeto: string) => new ErroApi(404, 'NAO_ENCONTRADO', `${objeto} não encontrado`),
   validacao: (campos: CamposErro) => new ErroApi(400, 'VALIDACAO', 'Dados inválidos', campos),
   conflito: (mensagem: string) => new ErroApi(409, 'CONFLITO', mensagem),
+  /** Escrita do BKO numa entidade com dono `cliente` (ADR 0014 §14): 409 com `detalhes.codigo` = `dono_cliente`. */
+  donoCliente: () => new ErroApi(409, 'CONFLITO', MENSAGEM_DONO_CLIENTE, undefined, { codigo: CODIGO_DONO_CLIENTE }),
   /** Corpo ou arquivo acima do limite declarado pela rota (multipart). */
   arquivoGrande: (campo: string, limiteBytes: number) =>
     new ErroApi(413, 'ARQUIVO_GRANDE', 'Arquivo acima do limite', { [campo]: `até ${Math.floor(limiteBytes / 1024)} KB` }),
