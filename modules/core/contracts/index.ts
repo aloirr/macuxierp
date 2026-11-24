@@ -5,7 +5,7 @@
  */
 import { Cnpj, ConsultaLista, EmailUsuario, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { OrigemCertificado } from './certificado-origem-provisorio';
+import { OrigemCertificado } from '@macuxierp/platform-sdk/certificado-origem';
 
 export const MODULO = 'core' as const;
 

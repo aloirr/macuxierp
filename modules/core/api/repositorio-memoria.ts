@@ -1,6 +1,6 @@
 /** Repositório em memória para os testes de rota (o `BancoMemoria` do SDK não executa SQL). Não entra em produção. */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import { ORIGEM_CERTIFICADO_PADRAO } from '../contracts/certificado-origem-provisorio';
+import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,
