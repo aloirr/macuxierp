@@ -205,12 +205,18 @@ jobs:
           done
 
       # T-0024: o .env do ERP e as cópias de banco.env, admin.env, segredos.env e da CA do FDV nascem NA VM (preparar-vm.sh →
-      # ambiente-vm.sh); o GitHub só guarda o acesso SSH
+      # ambiente-vm.sh); o GitHub guarda o acesso SSH e o SMTP do "esqueci a senha" (T-0076: email.env, só na api)
       - name: secrets do environment presentes (só os nomes)
         env:
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
+          PROD_SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
+          PROD_SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
+          PROD_SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
+          PROD_SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
+          PROD_SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
         run: |
           falta=()
           for n in PROD_SSH_KEY PROD_HOST PROD_USER; do
@@ -223,6 +229,8 @@ jobs:
             case "$v" in *$'\n'*) echo "::error::$n tem quebra de linha"; exit 1;; esac
           done
           [[ "$PROD_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::PROD_USER inválido"; exit 1; }
+          # os 6 PROD_SMTP_*: falta, quebra de linha, porta e TLS (erro só com os nomes)
+          bash scripts/deploy/producao/email-env.sh conferir
           echo "secrets obrigatórios presentes"
 
       # known_hosts do runner guardado no cache do Actions (chave fixa; o cache usa o token do runtime, não o GITHUB_TOKEN,
@@ -304,10 +312,18 @@ jobs:
       - name: copiar scripts e preparar a VM (idempotente; gera o ambiente do ERP na VM)
         env:
           USUARIO: ${{ secrets.PROD_USER }}
+          PROD_SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
+          PROD_SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
+          PROD_SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
+          PROD_SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
+          PROD_SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
+          PROD_SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
         run: |
           ssh -l "$USUARIO" prod 'rm -rf ~/macuxierp-deploy && mkdir -p ~/macuxierp-deploy'
           scp -q -o User="$USUARIO" scripts/deploy/producao/* compose.yml prod:macuxierp-deploy/
           ssh -l "$USUARIO" prod 'sudo bash ~/macuxierp-deploy/preparar-vm.sh "$USER"'
+          # T-0076: /opt/macuxierp/email.env (só a api) pelo stdin do ssh, antes do implantar.sh (como: email-env.sh)
+          bash scripts/deploy/producao/email-env.sh enviar "$USUARIO"
 
       # TOFU: grava a chave no cache só depois do primeiro SSH que deu certo (a VM aceitou a chave do deploy)
       - name: chave do host no cache do runner (TOFU)
