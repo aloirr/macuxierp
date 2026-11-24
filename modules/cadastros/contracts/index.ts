@@ -5,6 +5,7 @@
  * Dinheiro em centavos; quantidade e fator × 10^4 (D11); desconto em pontos-base (10_000 = 100%).
  */
 import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento } from '@macuxierp/platform-sdk';
+import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 
 export const MODULO = 'cadastros' as const;
@@ -20,10 +21,10 @@ export const Cep = z.string().regex(/^\d{8}$/);
 /** Quantidade × 10^4 (D11). */
 export const Qtd4 = z.number().int();
 export const Centavos = z.number().int().min(0);
-const Ean = z.string().regex(/^(\d{8}|\d{12,14}|SEM GTIN)$/);
+export const Ean = z.string().regex(/^(\d{8}|\d{12,14}|SEM GTIN)$/);
 const Texto = (max: number) => z.string().trim().min(1).max(max);
-/** RD-0029: `external_id` com 1 a 64 caracteres (o `CHECK` do banco); a carga e o estoque usam o valor obrigatório. */
-export const IdExternoValor = z.string().trim().min(1).max(64);
+/** RD-0029: `external_id` com 1 a `EXTERNAL_ID_MAX` caracteres (ADR 0019); a carga e o estoque usam o valor obrigatório. */
+export const IdExternoValor = z.string().trim().min(1).max(EXTERNAL_ID_MAX);
 export const IdExterno = IdExternoValor.nullable().optional();
 
 export const Endereco = z.object({
@@ -77,6 +78,12 @@ export const Contato = z.object({
 });
 export type Contato = z.infer<typeof Contato>;
 
+/** RN-CAD-09: limites das condições de pagamento (parcelas do cartão, parcelas do boleto, dias por parcela). */
+export const MAX_PARCELAS_CARTAO = 12;
+export const MAX_PARCELAS = 36;
+export const MAX_DIAS = 999;
+/** RN-CAD-15 e RN-CAD-16: prazo médio em dias, digitado (0 a MAX_DIAS). */
+export const PrazoMedioDias = z.number().int().min(0).max(MAX_DIAS);
 export const IndIeDest = z.enum(['1', '2', '9']);
 export const ClienteDados = z.object({
   tipo_pessoa: z.enum(['PJ', 'PF']),
@@ -93,6 +100,8 @@ export const ClienteDados = z.object({
   tabela_preco_id: Uuid.nullable().default(null),
   filial_id: Uuid,
   vendedor_id: Uuid.nullable().default(null),
+  /** RN-CAD-16: prazo médio máximo do cliente (0 a 999), opcional; nulo = sem restrição de prazo. */
+  prazo_medio_dias: PrazoMedioDias.nullish(),
   enderecos: z.array(EnderecoCliente).min(1).max(10),
   external_id: IdExterno,
 });
@@ -209,26 +218,25 @@ export const SaldoEstoque = z.object({ filial_id: Uuid, produto_id: Uuid, quanti
 export type SaldoEstoque = z.infer<typeof SaldoEstoque>;
 
 // ---- Condição de pagamento (RF-CAD-09) ----
-/** RN-CAD-09: limites das condições de pagamento (parcelas do cartão, parcelas do boleto, dias por parcela). */
-export const MAX_PARCELAS_CARTAO = 12;
-export const MAX_PARCELAS = 36;
-export const MAX_DIAS = 999;
 export const CondicaoPagamentoDados = z.object({
   codigo: Texto(20),
   descricao: Texto(60),
   /** tPag da NF-e */
   forma_tpag: z.string().regex(/^\d{2}$/),
   prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS)).min(1).max(MAX_PARCELAS),
-  /** RN-CAD-09: parcelas do cartão de crédito (tPag 03), 1 a 12; nulo ou ausente nas demais formas (opcional para não quebrar quem monta a condição à mão). Aditivo, `@1` continua valendo. */
+  /** RN-CAD-15: prazo médio em dias, digitado; obrigatório na entrada. Na entidade e no evento `@1` o legado tem nulo. */
+  prazo_medio_dias: PrazoMedioDias,
+  /** Legado (RN-CAD-09 emendada pela RN-CAD-15): nº de parcelas do cartão (tPag 03), 1 a 12, derivado dos prazos; nulo nas demais formas. Aditivo, @1 continua valendo. */
   parcelas_cartao: z.number().int().min(1).max(MAX_PARCELAS_CARTAO).nullable().optional(),
   /** D12 (T-0026): a forma de pagamento da carga viaja junto da condição; aditivo e opcional, `@1` continua valendo. */
   forma_external_id: IdExterno,
-  forma_codigo: z.string().max(20).nullable().default(null),
+  forma_codigo: z.string().max(LIMITE_CODIGO_FORMA_PAGAMENTO).nullable().default(null),
   forma_nome: z.string().max(60).nullable().default(null),
   external_id: IdExterno,
 });
 export type CondicaoPagamentoDados = z.infer<typeof CondicaoPagamentoDados>;
 /** RN-CAD-09: classe da forma de pagamento, derivada do tPag da NF-e (nunca gravada). */
+export const NOME_FORMA = { '01': 'Dinheiro', '17': 'PIX', '04': 'Cartão de débito', '03': 'Cartão de crédito', '15': 'Boleto' } as const;
 export const CLASSE_FORMA = { '01': 'a_vista', '17': 'a_vista', '04': 'a_vista', '03': 'cartao', '15': 'boleto' } as const;
 export type ClasseForma = (typeof CLASSE_FORMA)[keyof typeof CLASSE_FORMA];
 /** Classe do tPag, ou `null` quando a forma não é aceita (só Dinheiro, PIX, Cartão e Boleto). */
@@ -238,8 +246,24 @@ export const FORMAS_A_VISTA = (Object.keys(CLASSE_FORMA) as (keyof typeof CLASSE
 /** Critério único de "à vista" (pedido, faturamento): só a forma de pagamento (RN-CAD-09 garante o prazo 0). */
 export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag'>): boolean => classeForma(c.forma_tpag) === 'a_vista';
 export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
-export const CondicaoPagamento = CondicaoPagamentoDados.extend({ id: Uuid, inativo: z.boolean().default(false) });
+export const CondicaoPagamento = CondicaoPagamentoDados.extend({ /** Aditivo também no tipo: ausente ou nulo = prazo incompleto (legado). */ prazo_medio_dias: PrazoMedioDias.nullish(), id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;
+
+type PrazoParaConferir = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'prazos_dias'> & { prazo_medio_dias?: number | null; forma_tpag?: string };
+/** RN-CAD-15: prazo completo = código, descrição, ao menos uma parcela e prazo médio não nulo (ausente ou nulo = "Incompleto"). */
+export function prazoCompleto(c: PrazoParaConferir): boolean {
+  return c.codigo.trim() !== '' && c.descricao.trim() !== '' && c.prazos_dias.length >= 1 && c.prazo_medio_dias !== null && c.prazo_medio_dias !== undefined;
+}
+/**
+ * RN-CAD-16: o prazo é permitido ao cliente quando está completo e o cliente não tem prazo médio (nulo ou ausente) ou tem prazo médio >= o do prazo.
+ * Exceção (decisão do Alexandre, 24/11): a forma Cartão de crédito (tPag 03) fica fora do limite; o prazo completo do cartão é permitido
+ * a qualquer cliente. O prazo incompleto do cartão continua não permitido.
+ */
+export function prazoPermitidoAoCliente(prazo: PrazoParaConferir, cliente: { prazo_medio_dias?: number | null }): boolean {
+  if (!prazoCompleto(prazo)) return false;
+  if (prazo.forma_tpag !== undefined && classeForma(prazo.forma_tpag) === 'cartao') return true;
+  return cliente.prazo_medio_dias === null || cliente.prazo_medio_dias === undefined || cliente.prazo_medio_dias >= (prazo.prazo_medio_dias as number);
+}
 
 // ---- Vendedor e carteira (RF-CAD-07, D7) ----
 export const VendedorDados = z.object({
@@ -383,8 +407,8 @@ export const LinhaCondicaoPagamento = z.object({
   ...LinhaBase, ...AvisosLinha,
   dados: z.object({
     codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias,
-    parcelas_cartao: z.number().int().min(1).max(99).nullable().optional(), // 1..99 aqui; a faixa 1..MAX_PARCELAS_CARTAO é do domain (RN-CAD-09 com a mensagem do cartão)
-    forma_external_id: IdExternoValor, forma_codigo: Texto(20), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/),
+    prazo_medio_dias: PrazoMedioDias, // RN-CAD-15
+    forma_external_id: IdExternoValor, forma_codigo: Texto(LIMITE_CODIGO_FORMA_PAGAMENTO), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/),
   }).partial(),
 });
 export const LinhaProduto = z.object({
@@ -565,3 +589,4 @@ export const PayloadCargaInicial = z.object({
   cursor_itens: z.string().nullable().default(null),
 });
 export type PayloadCargaInicial = z.infer<typeof PayloadCargaInicial>;
+

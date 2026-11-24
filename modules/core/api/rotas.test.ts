@@ -10,13 +10,14 @@ import {
   criarEvento,
   erros,
   ErroApi,
+  executarAutorizado,
   pode,
   PERFIS,
   type ContextoRota,
   type Perfil,
   type RespostaRota,
 } from '@macuxierp/platform-sdk';
-import { AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxierp/platform-sdk/testes';
+import { BancoMemoria, AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxierp/platform-sdk/testes';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { abrirColunasA1 } from './colunas-a1';
 import { lerChaveA1 } from './index';
@@ -114,9 +115,21 @@ describe('permissões por ação (RN-CORE-02, matriz do doc 03)', () => {
     await expect(t.chamar('GET', '/certificados', { perfil: 'faturista' })).rejects.toMatchObject({ status: 403 });
   });
 
+  it('T-0088, RN-CORE-02: a tela de empresa e ambiente fiscal lê só pelas rotas GET; ambiente é de administrador, fiscal e faturista', async () => {
+    const t = montar();
+    for (const perfil of ['administrador', 'faturista'] as const) await expect(t.chamar('GET', '/ambientes-fiscais', { perfil })).resolves.toBeTruthy();
+    for (const perfil of ['gerente', 'vendedor', 'leitura'] as const) await expect(t.chamar('GET', '/ambientes-fiscais', { perfil })).rejects.toMatchObject({ status: 403 });
+    // a empresa (cabeçalho da tela) todos leem, e a leitura devolve só o tenant da sessão
+    const r = (await t.chamar('GET', '/empresa', { perfil: 'fiscal' })).corpo as { id: string; cnpj: string };
+    expect(r).toMatchObject({ id: TENANT, cnpj: CNPJ_EMPRESA });
+    // o quadro não ganha rota de escrita: a única do ambiente continua sendo a da troca da T-0030
+    const escritas = t.plugin.rotas.filter((x) => x.caminho.startsWith('/ambientes-fiscais') && x.metodo !== 'GET');
+    expect(escritas.map((x) => `${x.metodo} ${x.caminho}`)).toEqual(['PUT /ambientes-fiscais/:filial_id']);
+  });
+
   it('RF-CORE-03: perfis só leitura devolve a matriz; leitura não tem ação de gestão', async () => {
     const t = montar();
-    const r = (await t.chamar('GET', '/perfis', { perfil: 'leitura' })).corpo as { itens: { perfil: string; acoes: string[] }[] };
+    const r = (await t.chamar('GET', '/perfis')).corpo as { itens: { perfil: string; acoes: string[] }[] };
     expect(r.itens.map((i) => i.perfil)).toHaveLength(PERFIS.length);
     expect(r.itens.find((i) => i.perfil === 'administrador')?.acoes).toContain('core.usuario.gerir');
     expect(r.itens.find((i) => i.perfil === 'leitura')?.acoes).not.toContain('core.usuario.gerir');
@@ -125,7 +138,7 @@ describe('permissões por ação (RN-CORE-02, matriz do doc 03)', () => {
   it('RF-CORE-03 (D12): o tenant só lê as licenças; não há rota de escrita', async () => {
     const t = montar();
     t.repo.licencasLinhas = [{ modulo: 'cadastros', ativo: true, valido_ate: null }];
-    expect((await t.chamar('GET', '/licencas')).corpo).toEqual({ itens: [{ modulo: 'cadastros', ativo: true, valido_ate: null }] });
+    expect((await t.chamar('GET', '/licencas')).corpo).toEqual({ itens: [{ modulo: 'cadastros', ativo: true, valido_ate: null }], proximo_cursor: null });
     expect(t.plugin.rotas.filter((r) => r.caminho.startsWith('/licencas') && r.metodo !== 'GET')).toHaveLength(0);
   });
 });
@@ -539,5 +552,62 @@ describe('RD-0005: parâmetros de rota', () => {
     await expect(t.chamar('GET', '/usuarios/:id', { params: { id: 'x' } })).rejects.toMatchObject({ status: 400 });
     await expect(t.chamar('PUT', '/ambientes-fiscais/:filial_id', { params: { filial_id: 'x' }, corpo: { ambiente: 'homologacao' } })).rejects.toMatchObject({ status: 400 });
     await expect(t.chamar('GET', '/exportacoes/:id', { params: { id: 'x' } })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('T-0087 (RF-CORE-02/03/05): telas de usuários, perfis, licenças e auditoria', () => {
+  const ROTAS_DA_TELA = [
+    ['GET', '/usuarios'], ['GET', '/usuarios/exportar'], ['POST', '/usuarios'], ['PATCH', '/usuarios/:id'], ['DELETE', '/usuarios/:id'],
+    ['POST', '/usuarios/:id/redefinir-senha'], ['GET', '/perfis'], ['GET', '/licencas'], ['GET', '/licencas/exportar'],
+    ['GET', '/auditoria'], ['GET', '/auditoria/exportar'],
+  ] as const;
+  const SESSAO = (perfil: Perfil, tenant = TENANT) => ({ usuario_id: ADM_ID, tenant_id: tenant, perfil, filial_ids: [FILIAL] });
+
+  it('RN-CORE-09: sessão, perfil, tenant e licença do core em toda rota da tela: sem sessão 401, fora do administrador 403, o core é módulo base e a transação abre no tenant da sessão', async () => {
+    const t = montar();
+    const licencas = (ativas: boolean) => ({ ler: async () => [{ modulo: 'core' as const, ativo: ativas, valido_ate: null }] });
+    for (const [metodo, caminho] of ROTAS_DA_TELA) {
+      const rota = t.plugin.rotas.find((r) => r.metodo === metodo && r.caminho === caminho);
+      if (!rota) throw new Error(`rota inexistente ${metodo} ${caminho}`);
+      const rodar = (sessao: ReturnType<typeof SESSAO> | null, ativa = true, banco = new BancoMemoria()) =>
+        executarAutorizado({ sessao, acao: rota.acao, agora: AGORA, banco, licencas: licencas(ativa), executar: async () => 'ok' });
+      await expect(rodar(null)).rejects.toMatchObject({ status: 401 });
+      for (const perfil of PERFIS.filter((p) => p !== 'administrador')) await expect(rodar(SESSAO(perfil))).rejects.toMatchObject({ status: 403, codigo: 'PERFIL_SEM_PERMISSAO' });
+      // O core é o módulo base (MODULOS_BASE): sem linha de licença ativa o administrador ainda entra, para ver as licenças e pedir a regularização.
+      await expect(rodar(SESSAO('administrador'), false)).resolves.toBe('ok');
+      const banco = new BancoMemoria();
+      await expect(rodar(SESSAO('administrador'), true, banco)).resolves.toBe('ok');
+      expect(banco.aberturas).toEqual([TENANT]); // a transação abre no tenant da sessão, não em outro
+    }
+  });
+
+  it('RF-CORE-05: a auditoria filtra pelo usuário, não leva antes/depois na lista nem no CSV e o CSV segue os mesmos filtros', async () => {
+    const t = montar();
+    const OUTRO = '99999999-9999-4999-8999-999999999999';
+    t.repo.auditoriaLinhas = [
+      { id: '00000000-0000-4000-8000-000000000001', usuario_id: ADM_ID, acao: 'core.usuario.criado', entidade: 'usuario', entidade_id: null, antes: { nome: 'Fulano Real' }, depois: { nome: 'Fulano Real' }, ocorrido_em: new Date('2026-11-10T00:00:00Z') },
+      { id: '00000000-0000-4000-8000-000000000002', usuario_id: OUTRO, acao: 'core.empresa.alterada', entidade: 'empresa', entidade_id: null, antes: null, depois: null, ocorrido_em: new Date('2026-11-11T00:00:00Z') },
+    ];
+    const lista = (await t.chamar('GET', '/auditoria', { consulta: { usuario_id: OUTRO } })).corpo as { itens: Record<string, unknown>[] };
+    expect(lista.itens.map((i) => i.acao)).toEqual(['core.empresa.alterada']);
+    const todos = (await t.chamar('GET', '/auditoria')).corpo as { itens: Record<string, unknown>[] };
+    expect(todos.itens.every((i) => !('antes' in i) && !('depois' in i))).toBe(true);
+    const csv = await t.chamar('GET', '/auditoria/exportar', { consulta: { usuario_id: ADM_ID, de: '2026-11-01T00:00:00Z', ate: '2026-11-30T00:00:00Z' } });
+    expect(String(csv.corpo)).toContain('Usuário criado');
+    expect(String(csv.corpo)).not.toContain('Empresa alterada');
+    expect(String(csv.corpo)).not.toContain('Fulano Real');
+    await expect(t.chamar('GET', '/auditoria', { consulta: { usuario_id: 'nao-uuid' } })).rejects.toThrow();
+  });
+
+  it('RF-CORE-02: o CSV de usuários e o de licenças saem só para o administrador, com cabeçalho e respeitando a busca', async () => {
+    const t = montar();
+    t.repo.licencasLinhas = [{ modulo: 'cadastros', ativo: true, valido_ate: null }];
+    await t.chamar('POST', '/usuarios', { corpo: { nome: 'Maria Teste', email: 'maria@piloto.test', perfil: 'leitura', filial_ids: [FILIAL] } });
+    const csv = String((await t.chamar('GET', '/usuarios/exportar', { consulta: { busca: 'maria' } })).corpo);
+    expect(csv).toContain('Maria Teste');
+    expect(csv).not.toContain('admin@piloto.test');
+    expect(csv).not.toContain('senha');
+    expect(csv).toContain(';Leitura;sim;');
+    expect(String((await t.chamar('GET', '/licencas/exportar')).corpo)).toContain('Cadastros;sim;Sem prazo');
   });
 });

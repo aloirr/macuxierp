@@ -44,3 +44,4 @@
 2026-11-23 — T-0058 — v0.3.7: Zerar dados com aviso fixo no rodapé do Dialogo, .mx-checkbox, 409 do zerar pelos 4 códigos
 2026-11-23 — T-0058 — v0.3.7: web com a lista de 8 cadastros do SDK (sem dependência entre cargas, ROTULO_ZERAR do nome do SDK, CODIGOS_ESTADO_MUDOU_ZERAR do SDK) e RDs 1255-1257
 2026-11-23 — T-0070 — v0.3.8: endereços inativados no Substituir tudo de clientes (confirmação, "e nenhum cliente" e resultado; tipos do SDK) e RDs 1278-1280
+2026-11-24 — T-0086 — /config: Monitor, Reprocessar, Zerar por cadastro, Log, Atualizar e aba Dados (apps/web)

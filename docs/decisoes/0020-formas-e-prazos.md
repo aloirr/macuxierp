@@ -24,12 +24,15 @@ O Hub (`/integracao/v1`) recusou 95 prazos (`tipo_invalido`, `regra_invalida`) p
    - O prazo médio é um inteiro de 0 a 999 e é digitado. O ERP **não** o calcula nem confere contra a média das parcelas.
    - Na forma à vista (tPag 01, 04 e 17), o prazo médio é 0.
    - O cartão de crédito passa a ter os dias das parcelas, como as outras formas. A notação "Nx" sai da carga.
-   - Regra: **RN-CAD-12**.
+   - Regra: **RN-CAD-15**.
 3. **O cliente tem só `prazo_medio_dias`** (inteiro de 0 a 999, opcional). Sem lista de prazos liberados.
    - O cliente usa os prazos completos com prazo médio menor ou igual ao dele.
    - Cliente sem prazo médio não tem limite.
-   - Regra: **RN-CAD-13**. A função pura `prazoPermitidoAoCliente` fica em `modules/cadastros/contracts`.
-4. **O pedido revalida o prazo** (**RN-PED-07**), no pedido manual e no pedido recebido do FDV. A recusa é 422 com o código `RN-PED-07` e o campo `condicao_pagamento_id`. No FDV, o pedido fica `rejeitado_erp`.
+   - Exceção do cartão de crédito: emenda de 24/11, abaixo.
+   - Regra: **RN-CAD-16**. A função pura `prazoPermitidoAoCliente` fica em `modules/cadastros/contracts`.
+4. **O pedido revalida o prazo** (**RN-PED-07**), no pedido manual e no pedido recebido do FDV.
+   - Pedido manual: a recusa é 422 com o código `RN-PED-07` e o campo `condicao_pagamento_id`.
+   - Pedido recebido do FDV: emenda de 24/11, abaixo.
 5. **Os eventos seguem `@1`** (mudança aditiva): `prazo_medio_dias` entra, anulável, em `cadastros.condicao_pagamento.alterada@1` e em `cadastros.cliente.alterado@1`. Ver `.coord/contratos/eventos.md`, "Aditivo T-0085".
 6. **O legado fica "incompleto", sem backfill.** As condições gravadas antes da 0052 ficam com `prazo_medio_dias` nulo.
    - Prazo incompleto não sai ao FDV.
@@ -42,6 +45,12 @@ O Hub (`/integracao/v1`) recusou 95 prazos (`tipo_invalido`, `regra_invalida`) p
    - `formas_pagamento` deixa de sair no cliente e sai do M10.
 8. **Limites:** os da ADR 0019, sem mudança.
 
+## Emenda de 24/11/2026, ~18h14 (Alexandre, via PO; doc 03 no #524)
+1. **Cartão de crédito (tPag 03) fora do limite do prazo médio:** exceção na RN-CAD-16 e na RN-PED-07. `prazoPermitidoAoCliente` devolve `true` para todo prazo **completo** do cartão, qualquer que seja o prazo médio do cliente. O prazo incompleto do cartão continua recusado (RN-CAD-15).
+2. **Pedido do FDV com prazo incompleto ou não permitido entra em análise** (`em_analise`), com a pendência e o motivo visíveis no BKO. Não vai a `rejeitado_erp`: o retorno ao FDV segue o fluxo da análise, aprovado ou recusado (RN-PED-02 e RN-PED-05). O pedido manual continua com o 422.
+
+Detalhe em `docs/desenho/T-0085.md` §2.2, §5 e §6.
+
 ## Consequências
 - Nenhuma tabela nova. A migração 0052 é aditiva e reexecutável: duas colunas anuláveis, um CHECK `NOT VALID` e um índice (`docs/desenho/T-0085.md` §3).
 - Quem consome `@1` e não conhece o campo novo continua igual.
@@ -50,7 +59,7 @@ O Hub (`/integracao/v1`) recusou 95 prazos (`tipo_invalido`, `regra_invalida`) p
 
 ## Riscos
 - **Prazo médio digitado diferente da média real** (por exemplo, 30/60/90 com prazo médio 45). É decisão do Alexandre. A tela mostra as parcelas ao lado do prazo médio.
-- **Legado incompleto trava o pedido** de quem usava esses prazos. Mitigação: a tela de prazos destaca os incompletos, e o pedido recusado diz o motivo.
+- **Legado incompleto trava o pedido** de quem usava esses prazos. Mitigação: a tela de prazos destaca os incompletos, o pedido manual recusado (422) e o pedido do FDV em análise mostram o motivo.
 - **Formato final do FDV ainda aberto.** O `PrazoPagamentoHub` muda num lote só, quando a ADR do FDV sair.
 
 ## Alternativas descartadas
@@ -60,4 +69,4 @@ O Hub (`/integracao/v1`) recusou 95 prazos (`tipo_invalido`, `regra_invalida`) p
 - **Tabela própria de forma:** muda o schema e a carga sem ganho para a v1. A forma já viaja na condição (D12).
 
 ## Referências
-`modules/cadastros/contracts/index.ts` (`CondicaoPagamentoDados`, `ClienteDados`) · `modules/integracao-fdv/contracts/hub.ts` (`PrazoPagamentoHub`, `ClienteHub`) · `docs/desenho/T-0085.md` · `.coord/contratos/eventos.md` · `docs/produto/03` (RN-CAD-12, RN-CAD-13 e RN-PED-07, a cargo do gerente).
+`modules/cadastros/contracts/index.ts` (`CondicaoPagamentoDados`, `ClienteDados`) · `modules/integracao-fdv/contracts/hub.ts` (`PrazoPagamentoHub`, `ClienteHub`) · `docs/desenho/T-0085.md` · `.coord/contratos/eventos.md` · `docs/produto/03` (RN-CAD-15, RN-CAD-16 e RN-PED-07, a cargo do gerente).

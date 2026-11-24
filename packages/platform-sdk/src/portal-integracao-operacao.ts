@@ -11,6 +11,7 @@
  * empresa corrigir. Nenhum dos dois leva a mensagem crua do Hub: o texto sai do catálogo pelo código.
  */
 import { z } from 'zod';
+import { ExternalId } from './hub-v1';
 import { Instante } from './portal-config';
 import { ConectorIdFdv, EntidadeEnvioFdv, MotivoFalhaEnvioFdv } from './portal-integracao';
 
@@ -168,7 +169,7 @@ export const LogCadastroFdvTenant = LogCadastroFdvBase.extend({
   erros: z
     .array(
       z.object({
-        registro_external_id: z.string().min(1).max(200),
+        registro_external_id: ExternalId,
         nome_curto: z.string().max(120).nullable(),
         campo: CampoErroFdv,
         codigo: CodigoErroFdv,
@@ -187,6 +188,8 @@ export const CAMINHOS_INTEGRACAO_FDV_TENANT = Object.freeze({
   log: '/integracao-fdv/entidades/:entidade/log',
   /** "Baixar erros (.csv)": todos os erros abertos do cadastro, com as colunas do `LogCadastroFdvTenant.erros`. */
   logCsv: '/integracao-fdv/entidades/:entidade/log.csv',
+  /** T-0059: seção "Clientes recebidos do FDV" (`PaginaClientesRecebidosFdv` de `cliente-fdv.ts`). */
+  clientesRecebidos: '/integracao-fdv/clientes-recebidos',
 });
 
 // ---- Zerar por cadastro na aba Integração (R-20261124-170915-alexandre) ----

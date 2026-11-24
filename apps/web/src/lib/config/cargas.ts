@@ -1,5 +1,5 @@
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, FRASE_ZERAR_DADOS, MENSAGEM_MANTIDOS_ZERAR, MOTIVOS_USO, fraseConfere, type CadastroZerarPortal,
+  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, MENSAGEM_MANTIDOS_ZERAR, MOTIVOS_USO, type CadastroZerarPortal,
   plural, rotuloCadastroCarga, type CadastroCargaPortal, type EfeitoSubstituir, type LinhaErroValidacao, type ModoGravarCarga, type SituacaoCarga, type SituacaoCargasPlataforma,
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
@@ -198,17 +198,12 @@ export function textosBloqueios(bloqueios: readonly { cadastro: string; motivo: 
   const out = new Set<string>();
   for (const b of bloqueios) {
     if (b.motivo === 'lote_em_andamento') out.add(BLOQUEIO_LOTE);
-    else if (b.motivo === 'integracao_ligada') out.add(`Desligue o envio de ${(ROTULO_ZERAR as Record<string, string>)[b.cadastro] ?? b.cadastro} na aba Integração FDV antes de zerar.`);
   }
   return [...out];
 }
 /** Os bloqueios do 422 chegam como 'cadastro:motivo'. */
 export const bloqueiosDeTextos = (xs: readonly string[]): { cadastro: string; motivo: string }[] =>
   xs.flatMap((x) => { const [cadastro, motivo] = x.split(':'); return cadastro && motivo ? [{ cadastro, motivo }] : []; });
-
-/** O confirmar do zerar liga só com seleção, prévia atual da seleção, nenhum bloqueio e a frase certa. */
-export const podeConfirmarZerar = (e: { selecionados: number; previa: Pick<ZeragemPlataformaResposta, 'bloqueios'> | null; carregando: boolean; frase: string; enviando: boolean }): boolean =>
-  e.selecionados > 0 && !!e.previa && e.previa.bloqueios.length === 0 && !e.carregando && !e.enviando && fraseConfere(e.frase, FRASE_ZERAR_DADOS);
 
 /** `AbortSignal` opcional: cada mudança da seleção cancela a prévia anterior. */
 export function pedirPreviaZerar(empresaId: string, cadastros: readonly CadastroZerarPortal[], enviar: Enviar = fetch, signal?: AbortSignal): Promise<Retorno<ZeragemPlataformaResposta>> {
@@ -228,7 +223,7 @@ export function textoSemChave(n: number): string {
 }
 
 export const TEXTO_ANTES_DE_ZERAR = 'Antes de zerar, exporte pelo BKO da empresa (Cadastros > Exportar).';
-export const AVISO_ZERAR = 'Apaga os cadastros escolhidos e não tem volta.';
+export const AVISO_ZERAR = 'Apaga os registros e não tem volta.';
 export const TEXTO_ZERADO = 'Dados zerados.';
 /** "Dados zerados." ou, com mantidos, "Dados zerados. Mantidos: N (em uso em pedido, título ou nota, ou filial com dado fiscal)." */
 export const textoZerado = (mantidos: number): string => (mantidos > 0 ? `${TEXTO_ZERADO} ${MENSAGEM_MANTIDOS_ZERAR(mantidos)}.` : TEXTO_ZERADO);

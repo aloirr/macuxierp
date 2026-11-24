@@ -23,6 +23,7 @@ import {
   EVENTO_LOTE_ENVIADO,
   EVENTO_LOTE_FALHOU,
   ENTIDADES_HUB_F2,
+  PRAZO_CONTRATO_V2_LIGADO,
   EntidadeHub,
   type CorpoLote,
   type CursorHub,
@@ -312,7 +313,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   const chunk = continua ? candidatos.slice(0, e.limiteRegistros) : candidatos;
 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
-  const confirmados = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
+  const { confirmados, emFila } = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
   const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
   const espelhos: RegistroEspelho[] = chunk.map(paraRegistro);
   let repetidas = new Map<string, LinhaInvalida>();
@@ -330,7 +331,10 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   const hashDasFirmes = new Map<string, string>();
   for (const r of espelhos) {
     const repetida = repetidas.get(r.external_id);
-    const linha = repetida ?? validarRegistro(r, confirmado);
+    const linha = repetida ?? validarRegistro(r, confirmado, { prazoV2: PRAZO_CONTRATO_V2_LIGADO });
+    // T-0085 (diagnóstico dos regra_invalida da AM2808): a referência que ainda está na fila de envio (ordem de carga, não erro de cadastro)
+    // fica retida em silêncio: o lote não a declara ao Hub, o registro segue pendente e o `acordarDependentes` o avalia de novo.
+    if (!repetida && linha?.codigo === 'referencia_ausente' && referenciaNaFila(r, emFila)) continue;
     if (!linha) {
       validos.push(paraRegistroLote(r));
       continue;
@@ -362,7 +366,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   }
 
   const lotes = montarLotes({
-    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
+    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, contratoPrazoV2: PRAZO_CONTRATO_V2_LIGADO, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
     ...(sessaoId ? { sessaoId, sessaoParteInicial: parteInicial, sessaoContinua: continua } : {}),
     ...(registroDeFechamento && localCursor ? { registroDeFechamento, cursorDeFechamento: localCursor } : {}),
   });
@@ -459,21 +463,34 @@ async function gravarErroDeLinha(
   );
 }
 
-/** Pares (entidade alvo, chave) das referências dos registros que já estão confirmados no Hub. */
-async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<Set<string>> {
+/** A referência (campo de `REFERENCIAS_HUB`) ainda não confirmada de `r` existe no espelho e está pendente de envio? */
+function referenciaNaFila(r: RegistroEspelho, emFila: ReadonlySet<string>): boolean {
+  return (REFERENCIAS_HUB[r.entidade] ?? []).some(([campo, alvo]) => {
+    const v = r.payload[campo];
+    return typeof v === 'string' && emFila.has(`${alvo}\u0000${v}`);
+  });
+}
+
+/** Pares (entidade alvo, chave) das referências dos registros: `confirmados` no Hub e `emFila` (existem no espelho, ainda pendentes de envio). */
+async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<{ confirmados: Set<string>; emFila: Set<string> }> {
   const refs = REFERENCIAS_HUB[entidade] ?? [];
   const confirmados = new Set<string>();
+  const emFila = new Set<string>();
   for (const [campo, alvo] of refs) {
     const valores = [...new Set(payloads.map((p) => p[campo]).filter((v): v is string => typeof v === 'string'))];
     if (valores.length === 0) continue;
-    const linhas = await tx.consultar<{ chave: string }>(
-      `SELECT registro_external_id AS chave FROM integracao_fdv.registro_publicado
-        WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = ANY($3::text[]) AND hash_confirmado IS NOT NULL AND deleted_at IS NULL`,
+    const linhas = await tx.consultar<{ chave: string; confirmado: boolean; na_fila: boolean }>(
+      `SELECT registro_external_id AS chave, hash_confirmado IS NOT NULL AS confirmado, (pendente AND payload IS NOT NULL) AS na_fila
+         FROM integracao_fdv.registro_publicado
+        WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = ANY($3::text[]) AND deleted_at IS NULL`,
       [tenant, alvo, valores],
     );
-    for (const l of linhas) confirmados.add(`${alvo}\u0000${l.chave}`);
+    for (const l of linhas) {
+      if (l.confirmado) confirmados.add(`${alvo}\u0000${l.chave}`);
+      else if (l.na_fila) emFila.add(`${alvo}\u0000${l.chave}`);
+    }
   }
-  return confirmados;
+  return { confirmados, emFila };
 }
 
 // ---- envio ----

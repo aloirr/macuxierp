@@ -38,8 +38,8 @@ describe.skipIf(!PG_DISPONIVEL)('consulta de cadastros para o pedido (PostgreSQL
     ids.filialPadrao = (await post('/filiais', filialValida())).id;
     ids.filialOutra = (await post('/filiais', filialValida({ cnpj: CNPJ_B, padrao: false, emissora: false }))).id;
     ids.vendedor = (await post('/vendedores', { codigo: 'V1', nome: 'Ana', filial_id: ids.filialPadrao, usuario_id: adm.usuario_id }, gerente)).id;
-    ids.condicao = (await post('/condicoes-pagamento', { codigo: '30D', descricao: '30 dias', forma_tpag: '15', prazos_dias: [30] }, gerente)).id;
-    ids.cliente = (await post('/clientes', clienteValido(ids.filialPadrao, { limite_credito_centavos: 500_000, vendedor_id: ids.vendedor, condicao_pagamento_id: ids.condicao }))).id;
+    ids.condicao = (await post('/condicoes-pagamento', { codigo: '30D', descricao: '30 dias', forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30 }, gerente)).id;
+    ids.cliente = (await post('/clientes', clienteValido(ids.filialPadrao, { limite_credito_centavos: 500_000, vendedor_id: ids.vendedor, condicao_pagamento_id: ids.condicao, prazo_medio_dias: 30 }))).id;
     ids.p1 = (await post('/produtos', produtoValido({ cest: '0300700', ean: '7891000100103' }))).id;
     ids.p2 = (await post('/produtos', produtoValido({ codigo: 'P002', cest: '0300700', ncm: '22021000' }))).id;
     ids.p3 = (await post('/produtos', produtoValido({ codigo: 'P003', cest: '0300700' }))).id;
@@ -69,12 +69,12 @@ describe.skipIf(!PG_DISPONIVEL)('consulta de cadastros para o pedido (PostgreSQL
 
   it('cliente: campos do pick com o endereço principal e sem e-mail ou contatos; inativo volta marcado', async () => {
     const c = await consulta.cliente(txA(), ids.cliente as string);
-    expect(c).toMatchObject({ id: ids.cliente, tipo_pessoa: 'PJ', documento: CNPJ_B, ind_ie_dest: '1', limite_credito_centavos: 500_000, condicao_pagamento_id: ids.condicao, filial_id: ids.filialPadrao, vendedor_id: ids.vendedor, inativo: false });
+    expect(c).toMatchObject({ id: ids.cliente, tipo_pessoa: 'PJ', documento: CNPJ_B, ind_ie_dest: '1', limite_credito_centavos: 500_000, condicao_pagamento_id: ids.condicao, filial_id: ids.filialPadrao, vendedor_id: ids.vendedor, inativo: false, prazo_medio_dias: 30 });
     expect(c?.enderecos).toHaveLength(1);
     expect(c?.enderecos[0]).toMatchObject({ tipo: 'principal', municipio_ibge: '1302603', municipio_nome: 'Manaus' });
     const [linha] = await admin('SELECT id FROM cadastros.cliente_endereco WHERE cliente_id = $1', [ids.cliente]);
     expect(c?.enderecos[0]?.id).toBe(linha.id);
-    expect(Object.keys(c as object).sort()).toEqual(['condicao_pagamento_id', 'documento', 'enderecos', 'filial_id', 'id', 'ie', 'inativo', 'ind_ie_dest', 'limite_credito_centavos', 'nome_fantasia', 'razao_social', 'tabela_preco_id', 'tipo_pessoa', 'vendedor_id']);
+    expect(Object.keys(c as object).sort()).toEqual(['condicao_pagamento_id', 'documento', 'enderecos', 'filial_id', 'id', 'ie', 'inativo', 'ind_ie_dest', 'limite_credito_centavos', 'nome_fantasia', 'prazo_medio_dias', 'razao_social', 'tabela_preco_id', 'tipo_pessoa', 'vendedor_id']);
     expect(await consulta.cliente(txA(), randomUUID())).toBeNull();
   });
 

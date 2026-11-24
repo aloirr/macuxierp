@@ -80,7 +80,7 @@ function cenario() {
   mkdirSync(join(repo, 'scripts'));
   mkdirSync(join(repo, '.claude', 'hooks'), { recursive: true });
   copyFileSync(join(RAIZ_REAL, 'scripts', 'coord-lib.mjs'), join(repo, 'scripts', 'coord-lib.mjs'));
-  for (const f of ['guarda-bash.mjs', 'guarda-bash-lib.mjs', 'guarda-merge-lib.mjs', 'guarda-donos.mjs', 'guarda-graphify-lib.mjs']) copyFileSync(join(AQUI, f), join(repo, '.claude', 'hooks', f));
+  for (const f of ['guarda-bash.mjs', 'guarda-bash-lib.mjs', 'guarda-interpretador-lib.mjs', 'guarda-merge-lib.mjs', 'guarda-donos.mjs', 'guarda-graphify-lib.mjs']) copyFileSync(join(AQUI, f), join(repo, '.claude', 'hooks', f));
   git(repo, 'add', '-A');
   git(repo, 'commit', '-q', '-m', 'inicial');
   symlinkSync(join(clone, 'recados'), join(repo, '.coord', 'recados'), 'junction');

@@ -44,7 +44,7 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
     ids.produto = (await post('/v1/cadastros/produtos', produtoValido({ cest: '0300700', custo_centavos: 450 }))).id;
     ids.tabela = (await post('/v1/cadastros/tabelas-preco', { nome: 'Varejo', vigencia_inicio: '2026-01-01' })).id;
     await post('/v1/cadastros/estoque/movimentos', { filial_id: ids.filial, produto_id: ids.produto, tipo: 'entrada', quantidade: 10_0000, motivo: 'Inventário' });
-    ids.condicao = (await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60] })).id;
+    ids.condicao = (await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 })).id;
     ids.vendedor = (await post('/v1/cadastros/vendedores', { codigo: 'V1', nome: 'Vendedor Um', filial_id: ids.filial })).id;
   });
   afterAll(async () => {

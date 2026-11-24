@@ -138,7 +138,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
       return (r.json() as { id: string }).id;
     };
     const filial = await post('/v1/cadastros/filiais', filialValida());
-    await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], external_id: KIT.prazo });
+    await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45, external_id: KIT.prazo });
     await post('/v1/cadastros/vendedores', { codigo: 'V1', nome: 'Vendedor Um', filial_id: filial, external_id: KIT.vendedor });
     const clienteKit = await post('/v1/cadastros/clientes', clienteValido(filial, { external_id: KIT.cliente, enderecos: [{ ...ENDERECO_AM, tipo: 'principal' }, ENTREGA_ERP] }));
     const pf = { tipo_pessoa: 'PF', ie: null, ind_ie_dest: '9' };
@@ -407,7 +407,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(ped.endereco_entrega.endereco_id).toBe(massa.A.enderecoEntrega);
   });
 
-  /** A F4 ainda não publica `pedido.pedido.faturado@1` (o pedido não consome `nota.autorizada@1`): o evento entra pela outbox. */
+  /** O evento entra direto pela outbox; o consumidor real (modules/pedido/api/consumidor-nota.ts) fica para o lote seguinte. */
   const faturar = async (pedidoId: string, payload: Record<string, unknown>) =>
     worker.comTenant(T.A, (tx) =>
       new OutboxPg().gravar(tx, criarEvento({ nome: 'pedido.pedido.faturado@1', tenant_id: T.A, agregado_id: pedidoId, ator: 'sistema', request_id: 't0017', payload }, relogio.agora())),
@@ -445,6 +445,33 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado', 'faturado_parcial', 'faturado_total']);
     expect(noHub('A', p.pedido_uuid).retornos.map((r) => r.nota)).toEqual([null, '1/1', '2/1']);
     expect((await retornos('A', p.pedido_uuid))[1]!.corpo.itens_faturados).toEqual([{ sequencia: 2, produto_external_id: massa.A.produtoErp, quantidade: 1, valor_cents: 250 }]);
+    expect(lado.lgpd.alertas.slice(alertasAntes)).toEqual([]);
+  });
+
+  // T-0089, D3 do FDV: nota simulada com conta_como_real (RN-FAT-04) volta com a chave de acesso.
+  it('pedido-faturado (T-0089, D3): nota simulada com conta_como_real volta faturado_total com a chave de acesso', async () => {
+    exigir('pedido-faturado');
+    await noEspelho('A', massa.A.produtoErp, massa.A.produtoErp);
+    const p = pedidoFdv(massa.A);
+    aprovar('A', p);
+    expect((await lado.ciclo(T.A, hub.A)).busca).toMatchObject({ entregues: 1 });
+    const ped = await pedidoErp('A', p.pedido_uuid);
+    const numero = Number(ped.numero);
+    const notaSimulada = nota(12, 750);
+    expect(notaSimulada.chave).toMatch(/^\d{44}$/);
+    await faturar(ped.id, { pedido_id: ped.id, numero, origem: 'fdv', pedido_uuid: p.pedido_uuid, status: 'faturado', ambiente: 'homologacao', conta_como_real: true, nota: notaSimulada, itens_faturados: [{ sequencia: 2, produto_id: massa.A.produtoErp, quantidade: 30_000, valor_centavos: 750 }] });
+    await lado.despachar();
+    const alertasAntes = lado.lgpd.alertas.length;
+    expect(await lado.enviar(T.A, hub.A)).toMatchObject({ enviados: 1, falhou: 0 });
+    expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado', 'faturado_total']);
+    const [, fat] = await retornos('A', p.pedido_uuid);
+    expect(fat).toMatchObject({ status: 'faturado_total', estado: 'enviado', numero_erp: String(numero), resposta_http: 200 });
+    expect(RetornoErp.safeParse(fat!.corpo).success).toBe(true);
+    expect(fat!.corpo.nota).toEqual({ numero: 12, serie: 1, chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
+    expect(noHub('A', p.pedido_uuid).retornos.map((r) => [r.status, r.nota, r.chave_acesso])).toEqual([
+      ['integrado', null, null],
+      ['faturado_total', '12/1', notaSimulada.chave],
+    ]);
     expect(lado.lgpd.alertas.slice(alertasAntes)).toEqual([]);
   });
 

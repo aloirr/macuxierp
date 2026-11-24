@@ -1,7 +1,7 @@
 import * as sdk from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import * as c from './index';
-import { CorpoLote, CredencialEntrada, CredencialResumo, MonitorResposta, ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, EVENTO_LOTE_FALHOU, LinhaInvalida, LinhaInvalidaHub, ProdutoUnidadeHub, EstoqueHub } from './index';
+import { CorpoLote, CredencialEntrada, CredencialResumo, MonitorResposta, ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, EVENTO_LOTE_FALHOU, LinhaInvalida, LinhaInvalidaHub, ProdutoUnidadeHub, EstoqueHub, PrazoPagamentoHub, PrazoPagamentoHubV2, PRAZO_CONTRATO_V2_LIGADO, ClienteHub } from './index';
 
 const corpo = { versao_contrato: 'v1', entidade: 'produto', enviado_em: '2026-11-21T20:00:00.000Z', cursor: null, registros: [], linhas_invalidas: [], linhas_invalidas_omitidas: 0 };
 
@@ -70,5 +70,70 @@ describe('T-0086: tipos do SDK reexportados sem duplicar', () => {
     expect(c.CodigoErro).toBe(sdk.CodigoErroFdv);
     expect(c.CampoErro).toBe(sdk.CampoErroFdv);
     expect(c.CorpoSinal.shape.versao_conector).toBe(sdk.VersaoConectorFdv);
+  });
+});
+
+
+/** Fixture do contrato do Hub v2 do prazo (ADR 0072 do FDV): os limites são os do contrato, um a um. */
+const PRAZO_V2 = { external_id: 'PZ-1', alterado_em: '2026-11-24T20:00:00.000Z', codigo: '28-56', forma_external_id: 'FP-1', descricao: '28 e 56 dias', parcelas_dias: [28, 56], prazo_medio_dias: 42 };
+const PRAZO_V1 = { external_id: 'PZ-1', ativo: true, codigo: '28-56', forma_external_id: 'FP-1', descricao: '28 e 56 dias', parcelas_dias: [28, 56], prazo_medio_dias: 42 };
+
+describe('T-0085 lote 2: prazo no Hub', () => {
+  it('v1 é o padrão: a opção da v2 está desligada', () => {
+    expect(PRAZO_CONTRATO_V2_LIGADO).toBe(false);
+  });
+
+  it('v1: descricao (1 a 60) e prazo_medio_dias (0 a 999) são obrigatórios', () => {
+    const v1 = (o: Record<string, unknown>) => PrazoPagamentoHub.safeParse({ ...PRAZO_V1, ...o }).success;
+    expect(v1({})).toBe(true);
+    expect(PrazoPagamentoHub.safeParse({ ...PRAZO_V1, descricao: undefined }).success).toBe(false);
+    expect(PrazoPagamentoHub.safeParse({ ...PRAZO_V1, prazo_medio_dias: undefined }).success).toBe(false);
+    expect(v1({ descricao: 'x'.repeat(61) })).toBe(false);
+    expect(v1({ prazo_medio_dias: 1000 })).toBe(false);
+  });
+
+  it('v2 válida: obrigatórios; ativo, ordem e percentual_ajuste opcionais', () => {
+    expect(PrazoPagamentoHubV2.safeParse(PRAZO_V2).success).toBe(true);
+    expect(PrazoPagamentoHubV2.safeParse({ ...PRAZO_V2, ativo: false, ordem: 3, percentual_ajuste: -2.5 }).success).toBe(true);
+    expect(PrazoPagamentoHubV2.safeParse({ ...PRAZO_V2, parcelas_dias: [0], prazo_medio_dias: 0 }).success).toBe(true); // à vista
+  });
+
+  it('v2 inválida em cada limite', () => {
+    const v2 = (o: Record<string, unknown>) => PrazoPagamentoHubV2.safeParse({ ...PRAZO_V2, ...o }).success;
+    for (const campo of ['external_id', 'alterado_em', 'codigo', 'forma_external_id', 'descricao', 'parcelas_dias', 'prazo_medio_dias']) {
+      expect(PrazoPagamentoHubV2.safeParse({ ...PRAZO_V2, [campo]: undefined }).success, `${campo} é obrigatório`).toBe(false);
+    }
+    expect(v2({ codigo: '' })).toBe(false);
+    expect(v2({ codigo: 'x'.repeat(20) })).toBe(true);
+    expect(v2({ codigo: 'x'.repeat(21) })).toBe(false);
+    expect(v2({ descricao: 'x'.repeat(60) })).toBe(true);
+    expect(v2({ descricao: 'x'.repeat(61) })).toBe(false);
+    expect(v2({ parcelas_dias: [] })).toBe(false);
+    expect(v2({ parcelas_dias: Array.from({ length: 24 }, (_, i) => i), prazo_medio_dias: 12 })).toBe(true);
+    expect(v2({ parcelas_dias: Array.from({ length: 25 }, (_, i) => i), prazo_medio_dias: 12 })).toBe(false);
+    expect(v2({ parcelas_dias: [365], prazo_medio_dias: 365 })).toBe(true);
+    expect(v2({ parcelas_dias: [366], prazo_medio_dias: 366 })).toBe(false);
+    expect(v2({ parcelas_dias: [-1], prazo_medio_dias: 0 })).toBe(false);
+    expect(v2({ parcelas_dias: [28.5], prazo_medio_dias: 28 })).toBe(false);
+    expect(v2({ parcelas_dias: [56, 28] })).toBe(false); // decrescente
+    expect(v2({ parcelas_dias: [28, 28, 56] })).toBe(true); // iguais não decrescem
+    expect(v2({ prazo_medio_dias: 27 })).toBe(false); // abaixo da menor parcela
+    expect(v2({ prazo_medio_dias: 57 })).toBe(false); // acima da maior
+    expect(v2({ prazo_medio_dias: 28 })).toBe(true);
+    expect(v2({ prazo_medio_dias: 56 })).toBe(true);
+    expect(v2({ alterado_em: '24/11/2026' })).toBe(false);
+  });
+
+  it('envelope v2 só para prazo_pagamento', () => {
+    const c = { ...corpo, modo: 'delta' };
+    expect(CorpoLote.safeParse({ ...c, versao_contrato: 'v2', entidade: 'prazo_pagamento' }).success).toBe(true);
+    expect(CorpoLote.safeParse({ ...c, versao_contrato: 'v2', entidade: 'produto' }).success).toBe(false);
+    expect(CorpoLote.safeParse({ ...c, versao_contrato: 'v3', entidade: 'prazo_pagamento' }).success).toBe(false);
+  });
+
+  it('RN-CAD-16: o cliente leva prazo_medio_max_dias e não leva mais formas_pagamento', () => {
+    const cli = { external_id: 'C1', ativo: true, razao_social: 'X', filial_external_id: 'F1', limite_credito_cents: 0, prazo_medio_max_dias: 30 };
+    expect(ClienteHub.strict().safeParse(cli).success).toBe(true);
+    expect(ClienteHub.strict().safeParse({ ...cli, formas_pagamento: ['BOLETO'] }).success).toBe(false);
   });
 });

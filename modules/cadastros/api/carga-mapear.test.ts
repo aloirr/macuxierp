@@ -58,13 +58,13 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
     const vazio = mapear('cliente', { tipo_endereco: '', 'endereco.logradouro': '', 'endereco.numero': '', 'endereco.bairro': '', 'endereco.cidade': '', 'endereco.uf': '', 'endereco.cep': '' });
     expect(vazio.ok && vazio.linha.enderecos).toEqual([]);
   });
-  it('T-0058: tipo_endereco e seq fora do formato e external_id do endereço acima de 64 caracteres são recusados, sem o valor', () => {
+  it('T-0058: tipo_endereco e seq fora do formato e external_id do endereço acima de 200 caracteres são recusados, sem o valor', () => {
     expect(mapear('cliente', { tipo_endereco: 'casa' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'tipo_endereco' }] });
     expect(mapear('cliente', { seq: '0' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'seq' }] });
     expect(mapear('cliente', { seq: '1.5' }).ok).toBe(false);
-    const longo = mapear('cliente', { external_id: 'c'.repeat(60), tipo_endereco: 'entrega', seq: '1' });
-    expect(longo).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id', motivo: 'external_id do endereço acima de 64 caracteres: use um external_id menor' }] });
-    expect(mapear('cliente', { external_id: 'c'.repeat(54), tipo_endereco: 'principal' }).ok).toBe(true);
+    const longo = mapear('cliente', { external_id: 'c'.repeat(196), tipo_endereco: 'entrega', seq: '1' });
+    expect(longo).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id', motivo: 'external_id do endereço acima de 200 caracteres: use um external_id menor' }] });
+    expect(mapear('cliente', { external_id: 'c'.repeat(190), tipo_endereco: 'principal' }).ok).toBe(true);
   });
   it('RN-CAD-02: em linha de entrega a IE não é validada pela UF dela (vale a UF do principal do grupo, na gravação)', () => {
     const r = mapear('cliente', { tipo_endereco: 'entrega', 'endereco.uf': 'SP', 'endereco.cidade': 'São Paulo', inscricao_estadual: '012300004' }, 1);
@@ -99,9 +99,9 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
   it('RN-CAD-02: a IE da filial passa pela regra da UF', () => {
     expect(mapear('filial', { ie: '012300005' })).toMatchObject({ ok: false, erros: [{ codigo: 'RN-CAD-02', campo: 'ie' }] });
   });
-  it('D3: external_id de 65 caracteres é recusado, 64 passa', () => {
-    expect(mapear('vendedor', { external_id: 'x'.repeat(65) })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id' }] });
-    expect(mapear('vendedor', { external_id: 'x'.repeat(64) })).toMatchObject({ ok: true });
+  it('ADR 0019: external_id de 201 caracteres é recusado, 200 passa', () => {
+    expect(mapear('vendedor', { external_id: 'x'.repeat(201) })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id' }] });
+    expect(mapear('vendedor', { external_id: 'x'.repeat(200) })).toMatchObject({ ok: true });
   });
   it('D3: texto acima do limite da NF-e (60) é recusado, nunca cortado', () => {
     expect(mapear('cliente', { razao_social: 'A'.repeat(61) })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'razao_social' }] });
@@ -121,18 +121,26 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
     const vence = mapear('condicao_pagamento', { forma_codigo: 'PIX', forma_tpag: '03' });
     expect(vence.ok && vence.linha.dados.forma_tpag).toBe('03');
   });
-  it('RN-CAD-09: parcelas_dias "3x" vira parcelas_cartao; "13x" passa na linha (1 a 99; a faixa 1 a 12 é do domain); "3" segue como prazo e a gravação decide pela forma', () => {
-    const tres = mapear('condicao_pagamento', { parcelas_dias: '3x' });
-    expect(tres.ok && tres.linha.dados).toMatchObject({ parcelas_cartao: 3 });
-    expect(tres.ok && tres.linha.dados.prazos_dias).toBeUndefined();
-    const doze = mapear('condicao_pagamento', { parcelas_dias: '12X' });
-    expect(doze.ok && doze.linha.dados.parcelas_cartao).toBe(12);
-    const treze = mapear('condicao_pagamento', { parcelas_dias: '13x' });
-    expect(treze.ok && treze.linha.dados.parcelas_cartao).toBe(13);
-    expect(mapear('condicao_pagamento', { parcelas_dias: '100x' })).toMatchObject({ ok: false, erros: [{ campo: 'parcelas_cartao' }] });
-    expect(mapear('condicao_pagamento', { parcelas_dias: '0x' })).toMatchObject({ ok: false });
+  it('RN-CAD-15: parcelas_dias sem a notação "Nx": "3x" é formato inválido; "3" é um prazo de 3 dias; à vista "0"', () => {
+    for (const x of ['3x', '12X', '13x', '0x']) expect(mapear('condicao_pagamento', { parcelas_dias: x }), x).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'parcelas_dias' }] });
     const simples = mapear('condicao_pagamento', { parcelas_dias: '3' });
     expect(simples.ok && simples.linha.dados.prazos_dias).toEqual([3]);
+    const avista = mapear('condicao_pagamento', { parcelas_dias: '0' });
+    expect(avista.ok && avista.linha.dados.prazos_dias).toEqual([0]);
+  });
+  it('RN-CAD-15: prazo_medio_dias do prazo é inteiro de 0 a 999; fora disso, CARGA_FORMATO no campo', () => {
+    const ok = mapear('condicao_pagamento', { prazo_medio_dias: '45' });
+    expect(ok.ok && ok.linha.dados.prazo_medio_dias).toBe(45);
+    const zero = mapear('condicao_pagamento', { prazo_medio_dias: '0' });
+    expect(zero.ok && zero.linha.dados.prazo_medio_dias).toBe(0);
+    for (const x of ['1000', '-1', '1,5', 'abc']) expect(mapear('condicao_pagamento', { prazo_medio_dias: x }), x).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'prazo_medio_dias' }] });
+  });
+  it('RN-CAD-16: prazo_medio_dias do cliente é opcional, inteiro de 0 a 999', () => {
+    const c = mapear('cliente', { prazo_medio_dias: '30' });
+    expect(c.ok && c.linha.dados.prazo_medio_dias).toBe(30);
+    const sem = mapear('cliente', {});
+    expect(sem.ok && sem.linha.dados.prazo_medio_dias).toBeUndefined();
+    expect(mapear('cliente', { prazo_medio_dias: '1000' })).toMatchObject({ ok: false, erros: [{ campo: 'prazo_medio_dias' }] });
   });
   it('critério 4: parcelas_dias usa a regra do contrato (1 a 36 parcelas, 0 a 999 dias) e aceita qualquer ordem; fator inteiro de 1 a 9999', () => {
     const r = mapear('condicao_pagamento', { parcelas_dias: '30/60/90' });
@@ -263,7 +271,7 @@ describe('relatório sem dado digitado (RN-CORE-07, D9)', () => {
       ['condicao_pagamento', { forma_tpag: SENT }],
       ['cliente', { tipo_endereco: SENT }],
       ['cliente', { seq: SENT }],
-      ['vendedor', { external_id: SENT.repeat(10) }],
+      ['vendedor', { external_id: SENT.repeat(15) }],
     ];
     for (const [e, extra] of casos) {
       const r = mapear(e, extra);

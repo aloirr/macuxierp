@@ -1,7 +1,7 @@
 'use server';
-import { ConfigurarIntegracaoPlataformaEntrada, DefinirCredencialPlataformaEntrada, EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
+import { ConfigurarIntegracaoPlataformaEntrada, DefinirCredencialPlataformaEntrada, EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type LogCadastroFdvPlataforma, type MonitorConectorFdv, type RespostaReprocessarFdv } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
-import { cargaCompletaFdv, configurarIntegracaoFdv, definirCredencialFdv, retomarFdv, testarConexaoFdv } from '@/lib/config/api';
+import { cargaCompletaFdv, configurarIntegracaoFdv,definirCredencialFdv, lerLogFdv, lerMonitorFdv, reprocessarFdv, retomarFdv, testarConexaoFdv } from '@/lib/config/api';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 
 /**
@@ -42,11 +42,31 @@ export async function configurarFdvAcao(id: string, entrada: { entidades_habilit
   return r;
 }
 
+/** Carga completa (aba Dados, decisão do PO em 24/11): reenvia tudo do cadastro; o domain recusa cadastro desligado ou com lote em voo. */
 export async function cargaCompletaFdvAcao(id: string, entidade: string, chave: string): Promise<Resultado<null>> {
   if (!EntidadeEnvioFdv.safeParse(entidade).success) return falha('Cadastro desconhecido.');
   const r = await executarConfig('integracao_fdv', (t) => cargaCompletaFdv(t, id, entidade, chave));
   if (r.ok) atualizar(id);
   return r.ok ? { ok: true, valor: null } : r;
+}
+
+/** Reprocessar (T-0086): só falhas e pendentes. Com lote em voo a API responde 409 `CONFLITO` e a tela mostra a mensagem. */
+export async function reprocessarFdvAcao(id: string, entidade: string, chave: string): Promise<Resultado<RespostaReprocessarFdv>> {
+  if (!EntidadeEnvioFdv.safeParse(entidade).success) return falha('Cadastro desconhecido.');
+  const r = await executarConfig('integracao_fdv', (t) => reprocessarFdv(t, id, entidade, chave));
+  if (r.ok) atualizar(id);
+  return r;
+}
+
+/** Atualizar (T-0086): relê o Monitor; a tela mostra `lido_em` em "Atualizado às hh:mm". Só leitura. */
+export async function lerMonitorFdvAcao(id: string): Promise<Resultado<MonitorConectorFdv>> {
+  return executarConfig('integracao_fdv', (t) => lerMonitorFdv(t, id));
+}
+
+/** Log do cadastro (T-0086): só códigos, campos e contagens. */
+export async function lerLogFdvAcao(id: string, entidade: string): Promise<Resultado<LogCadastroFdvPlataforma>> {
+  if (!EntidadeEnvioFdv.safeParse(entidade).success) return falha('Cadastro desconhecido.');
+  return executarConfig('integracao_fdv', (t) => lerLogFdv(t, id, entidade));
 }
 
 export async function retomarFdvAcao(id: string, entidade: string, chave: string): Promise<Resultado<{ retomada: boolean }>> {

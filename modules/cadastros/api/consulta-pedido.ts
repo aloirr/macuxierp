@@ -11,7 +11,7 @@ import { precosVigentesDe, unicos } from './precos-vigentes';
 import type { Repositorios } from './portas';
 import { escolher } from './util';
 
-const CAMPOS_CLIENTE = ['id', 'tipo_pessoa', 'documento', 'razao_social', 'nome_fantasia', 'ind_ie_dest', 'ie', 'limite_credito_centavos', 'condicao_pagamento_id', 'tabela_preco_id', 'filial_id', 'vendedor_id', 'enderecos', 'inativo'] as const;
+const CAMPOS_CLIENTE = ['id', 'tipo_pessoa', 'documento', 'razao_social', 'nome_fantasia', 'ind_ie_dest', 'ie', 'limite_credito_centavos', 'prazo_medio_dias', 'condicao_pagamento_id', 'tabela_preco_id', 'filial_id', 'vendedor_id', 'enderecos', 'inativo'] as const;
 const CAMPOS_FILIAL = ['id', 'emissora', 'padrao', 'inativo'] as const;
 const CAMPOS_ENDERECO = Object.keys(EnderecoClienteItem.shape) as (keyof EnderecoClienteItem)[];
 const CAMPOS_PRODUTO = ['id', 'codigo', 'descricao', 'unidade_comercial', 'ean', 'ncm', 'origem', 'inativo'] as const;
