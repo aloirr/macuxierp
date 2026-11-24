@@ -53,6 +53,8 @@ export interface RepoClientes extends RepoSimples<Cliente, ClienteDados> {
   enderecos: RepoFilho<EnderecoClienteItem, EnderecoCliente>;
   contatos: RepoFilho<ContatoItem, Contato>;
   idsDaCarteira(vendedorId: string): Promise<string[]>;
+  /** Endereço principal do cliente para a nota, inclusive o inativado (Substituir tudo, RN-CAD-10): o ativo, ou o mais recente. `null` sem principal. */
+  principalParaNota(clienteId: string): Promise<EnderecoClienteItem | null>;
   /** Move os clientes para o vendedor de destino (D7). */
   transferir(para: string, clienteIds: readonly string[]): Promise<void>;
 }

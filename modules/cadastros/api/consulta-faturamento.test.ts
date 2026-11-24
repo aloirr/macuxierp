@@ -68,20 +68,39 @@ describe('consulta de cadastros para o faturamento (memória)', () => {
     expect(await consulta.cliente(tx, randomUUID())).toBeNull();
   });
 
-  const post2 = async (): Promise<string> => {
-    const r = await a.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(ids.filial as string, { documento: '44555666000181', ind_ie_dest: '2', ie: null }) });
+  const post2 = async (documento = '44555666000181', email_nfe: string | null = null): Promise<string> => {
+    const r = await a.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(ids.filial as string, { documento, email_nfe, ind_ie_dest: '2', ie: null }) });
     expect(r.status).toBe(201);
     return (r.corpo as { id: string }).id;
   };
 
-  it('cliente sem nenhum endereço ativo dá null; indIEDest 2 e CRT 3 saem como número', async () => {
+  it('cliente sem endereço principal dá null; indIEDest 2 e CRT 3 saem como número', async () => {
     const c2 = await post2();
     expect(await consulta.cliente(tx, c2)).toMatchObject({ ind_ie_dest: 2 });
-    for (const e of m.repos.clientes.enderecos.linhas) if (e.pai === c2) e.inativo = true;
+    for (const e of m.repos.clientes.enderecos.linhas) if (e.pai === c2) e.tipo = 'entrega';
     expect(await consulta.cliente(tx, c2)).toBeNull();
     const f3 = await a.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ cnpj: '44555666000181', padrao: false, emissora: false, crt: '3', regime_pis_cofins: 'cumulativo' }) });
     expect(f3.status).toBe(201);
     expect((await consulta.filial(tx, (f3.corpo as { id: string }).id))?.crt).toBe(3);
+  });
+
+  it('RN-CAD-10: principal inativado pelo Substituir tudo com a entrega ativa devolve o principal e o email_nfe, nunca a entrega', async () => {
+    const c = await post2('44555666000262', 'x@c.com.br');
+    const ends = m.repos.clientes.enderecos.linhas.filter((e) => e.pai === c);
+    m.repos.clientes.enderecos.linhas.push({ ...ends[0]!, id: randomUUID(), tipo: 'entrega', numero: '99', inativo: false });
+    ends[0]!.inativo = true;
+    const r = await consulta.cliente(tx, c);
+    expect(r?.endereco).toMatchObject({ numero: ends[0]!.numero });
+    expect(r?.email).toBe('x@c.com.br');
+  });
+
+  it('RN-CAD-10: cliente inativado com todos os endereços devolve o principal e o email_nfe', async () => {
+    const c = await post2('44555666000343', 'y@c.com.br');
+    for (const e of m.repos.clientes.enderecos.linhas) if (e.pai === c) e.inativo = true;
+    expect((await a.chamar('DELETE', `/clientes/${c}`, { sessao: adm })).status).toBeLessThan(300);
+    const r = await consulta.cliente(tx, c);
+    expect(r).toMatchObject({ id: c, email: 'y@c.com.br' });
+    expect(r?.endereco.logradouro).toBe(ENDERECO_AM.logradouro);
   });
 
   it('cliente inativo também volta', async () => {

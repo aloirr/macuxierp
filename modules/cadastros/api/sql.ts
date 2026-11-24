@@ -243,6 +243,14 @@ class RepoClientesSql extends RepoTabela<Cliente, ClienteDados> {
   protected override async aposInserir(id: string, dados: ClienteDados): Promise<void> {
     for (const e of dados.enderecos) await this.enderecos.inserir(id, e);
   }
+  async principalParaNota(clienteId: string) {
+    const l = await executar(
+      this.tx,
+      `SELECT ${selecionar(mapaEndereco)} FROM cadastros.cliente_endereco WHERE cliente_id = $1 AND tipo = 'principal' ORDER BY (deleted_at IS NULL) DESC, created_at DESC, id DESC LIMIT 1`,
+      [clienteId],
+    );
+    return l.length ? mapaEndereco.deLinha(l[0]!) : null;
+  }
   async idsDaCarteira(vendedorId: string) {
     return (await executar<{ id: string }>(this.tx, 'SELECT id FROM cadastros.cliente WHERE vendedor_id = $1 AND deleted_at IS NULL', [vendedorId])).map((r) => r.id);
   }

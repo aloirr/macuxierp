@@ -10,6 +10,7 @@ import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
+import { criarConsultaParaFaturamento } from './consulta-faturamento';
 import { aplicarSubstituicao, planejarSubstituicao } from './carga-substituir';
 import { fontesHttp } from './fontes-http';
 import { criarPluginCadastros } from './index';
@@ -91,4 +92,28 @@ describe.skipIf(!PG_DISPONIVEL)('Substituir tudo: cliente e condição no Postgr
     expect(ev).toHaveLength(2);
     expect(ev.filter((e) => e.payload.inativo === true)).toHaveLength(1);
   }, 120_000);
+
+  it('RN-CAD-10: depois do Substituir tudo, a consulta do faturamento devolve o endereço principal e o email_nfe, mesmo inativados', async () => {
+    const C = await criarTenant(efemero.admin, 'subst-c', ['cadastros']);
+    await carregarTudo(C);
+    await admin("UPDATE cadastros.cliente SET email_nfe = 'nfe@' || lower(external_id) || '.com.br' WHERE tenant_id = $1", [C]);
+    const consulta = criarConsultaParaFaturamento(repositoriosSql);
+    const doCliente = async (ext: string) => (await admin('SELECT id, email_nfe FROM cadastros.cliente WHERE tenant_id = $1 AND external_id = $2', [C, ext]))[0]!;
+    const principalGravado = async (id: string) => (await admin("SELECT logradouro, cep FROM cadastros.cliente_endereco WHERE tenant_id = $1 AND cliente_id = $2 AND tipo = 'principal'", [C, id]))[0]!;
+    const ex01 = await doCliente('C-EX-01');
+    const ex02 = await doCliente('C-EX-02');
+    const [cab, l1] = ler('cliente');
+    // o arquivo só com o C-EX-01: o C-EX-02 inteiro (cliente e endereço) é inativado pelo Substituir tudo
+    await (await substituir(C, 'cliente', [cab!, l1!, ler('cliente')[2]!])).run;
+    // principal do C-EX-01 inativado com a entrega ativa (estado que o faturamento não pode confundir com o endereço de entrega)
+    await admin("UPDATE cadastros.cliente_endereco SET deleted_at = now() WHERE tenant_id = $1 AND cliente_id = $2 AND tipo = 'principal'", [C, ex01.id]);
+    expect(await admin("SELECT 1 FROM cadastros.cliente_endereco WHERE tenant_id = $1 AND cliente_id = $2 AND tipo = 'entrega' AND deleted_at IS NULL", [C, ex01.id])).toHaveLength(1);
+    const c1 = await app.comTenant(C, (tx) => consulta.cliente(tx, ex01.id as string));
+    expect(c1).toMatchObject({ id: ex01.id, email: ex01.email_nfe });
+    expect(c1?.endereco).toMatchObject({ logradouro: 'Rua Teste', cep: '69000001' });
+    expect(await admin('SELECT 1 FROM cadastros.cliente WHERE id = $1 AND deleted_at IS NOT NULL', [ex02.id])).toHaveLength(1);
+    const c2 = await app.comTenant(C, (tx) => consulta.cliente(tx, ex02.id as string));
+    expect(c2).toMatchObject({ id: ex02.id, email: ex02.email_nfe });
+    expect(c2?.endereco).toMatchObject({ logradouro: (await principalGravado(ex02.id as string)).logradouro, cep: '01000000' });
+  }, 180_000);
 });
