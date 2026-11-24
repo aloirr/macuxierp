@@ -13,9 +13,13 @@ const api = usarApiMemoria();
 const SEIS = ['administrador', 'gerente', 'faturista', 'fiscal', 'vendedor', 'leitura'];
 
 describe('RN-CORE-01: perfis da v1', () => {
+  /** GET /v1/core/perfis é da ação core.usuario.gerir (RN-CORE-09): só o administrador lê; o leitura recebe 403. */
   const listar = async () => {
     const a = await api();
-    const r = await a.app.inject({ method: 'GET', url: '/v1/core/perfis', headers: a.auth('leitura') });
+    const negado = await a.app.inject({ method: 'GET', url: '/v1/core/perfis', headers: a.auth('leitura') });
+    expect(negado.statusCode).toBe(403);
+    const r = await a.app.inject({ method: 'GET', url: '/v1/core/perfis', headers: a.auth('administrador') });
+    expect(r.statusCode).toBe(200);
     return r.json().itens.map((p: { perfil: string }) => p.perfil) as string[];
   };
   it('RN-CORE-01: GET /v1/core/perfis lista exatamente os PERFIS do SDK, com os 6 da v1 primeiro, na ordem do doc 03', async () => {

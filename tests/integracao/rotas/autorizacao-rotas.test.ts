@@ -127,7 +127,9 @@ describe.each(ROTAS)('$nome', ({ modulo, r }) => {
     it('RN-CORE-02: core é módulo base (sempre licenciado): sem nenhuma licença não dá MODULO_INATIVO', async () => {
       const a = await api([]);
       const res = await a.app.inject({ method: r.metodo, url: url(modulo, r), headers: a.auth(comPermissao(r)) });
-      expect(res.json()?.codigo).not.toBe('MODULO_INATIVO');
+      // As rotas /exportar respondem CSV com BOM: só o corpo JSON tem `codigo`.
+      expect(res.statusCode).not.toBe(403);
+      if (String(res.headers['content-type'] ?? '').includes('application/json')) expect(res.json()?.codigo).not.toBe('MODULO_INATIVO');
     });
   }
 });
