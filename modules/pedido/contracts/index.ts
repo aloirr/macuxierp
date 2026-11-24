@@ -25,6 +25,8 @@ export const CodigoPendencia = z.enum([
   'filial_nao_emissora',
   'condicao_ausente',
   'condicao_inativa',
+  'prazo_incompleto',
+  'prazo_acima_do_cliente',
   'preco_sem_tabela',
   'desconto_acima_maximo',
   'credito_sem_limite',
@@ -49,6 +51,7 @@ export type Pendencia = z.infer<typeof Pendencia>;
  * - `credito_sem_limite`: centavos (esperado = limite do cliente, 0; informado = total do pedido);
  * - `credito_excedido`: centavos (esperado = limite do cliente; informado = títulos abertos + compromisso + este pedido);
  * - `estoque_insuficiente`: Qtd4 (esperado = saldo livre, já descontado o compromisso, mínimo 0; informado = quantidade pedida do produto);
+ * - `prazo_acima_do_cliente`: dias (esperado = prazo médio do cliente; informado = prazo médio do prazo; RN-PED-07);
  * - demais códigos: nulos.
  */
 export const PendenciaDetalhada = Pendencia.extend({
@@ -176,8 +179,8 @@ export const CodigoRecusaRecebimento = z.enum([
 export type CodigoRecusaRecebimento = z.infer<typeof CodigoRecusaRecebimento>;
 
 export const ResultadoRecebimentoFdv = z.discriminatedUnion('resultado', [
-  // Criado: o pedido do FDV entra sempre `aprovado`. Repetido: devolve o status atual do pedido já existente.
-  z.object({ resultado: z.literal('criado'), pedido_id: Uuid, numero: z.number().int().positive(), status: z.literal('aprovado') }),
+  // Criado: o pedido do FDV entra `aprovado`, ou `em_analise` com prazo incompleto ou não permitido ao cliente (RN-PED-07, emenda de 24/11). Repetido: devolve o status atual do pedido já existente.
+  z.object({ resultado: z.literal('criado'), pedido_id: Uuid, numero: z.number().int().positive(), status: z.enum(['aprovado', 'em_analise']) }),
   z.object({ resultado: z.literal('repetido'), pedido_id: Uuid, numero: z.number().int().positive(), status: StatusPedido }),
   // `item_incoerente`: desconto maior que o valor do item (`verificarItens`).
   z.object({ resultado: z.literal('recusado'), codigo: CodigoRecusaRecebimento }),
@@ -201,6 +204,7 @@ export const ClienteParaPedido = ClienteSchema.pick({
   ind_ie_dest: true,
   ie: true,
   limite_credito_centavos: true,
+  prazo_medio_dias: true,
   condicao_pagamento_id: true,
   tabela_preco_id: true,
   filial_id: true,

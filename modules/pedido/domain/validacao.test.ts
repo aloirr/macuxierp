@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { avaliarPedido, avaliarCredito, foraDoCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
 import { FORMAS_A_VISTA } from '@macuxierp/cadastros/contracts';
+import { avaliarPrazo } from './validacao';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -29,7 +30,7 @@ function base(o: Partial<EntradaAvaliacao> = {}): EntradaAvaliacao {
     ...o,
   };
 }
-const PRAZO = { forma_tpag: '15', inativo: false };
+const PRAZO = { codigo: 'B30', descricao: 'Boleto 30 dias', forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30, inativo: false };
 const codigos = (e: EntradaAvaliacao) => avaliarPedido(e).map((p) => p.codigo);
 
 describe('avaliação do pedido', () => {
@@ -106,13 +107,13 @@ describe('avaliação do pedido', () => {
 
   it('RN-PED-04: à vista e cartão (03) com limite 0 passam, sem pendência de crédito (decisões de 22/11, 01h10 e 01h12)', () => {
     for (const forma_tpag of [...FORMAS_A_VISTA, '03']) {
-      expect(codigos(base({ condicao: { forma_tpag, inativo: false }, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual([]);
+      expect(codigos(base({ condicao: { ...PRAZO, forma_tpag }, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual([]);
     }
   });
 
   it('RN-PED-04: à vista e cartão (03) acima do limite passam, mas preço e estoque continuam validados', () => {
     for (const forma_tpag of [...FORMAS_A_VISTA, '03']) {
-      const condicao = { forma_tpag, inativo: false };
+      const condicao = { ...PRAZO, forma_tpag };
       expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 1 }, titulos_abertos_centavos: 99_999, compromisso_credito_centavos: 99_999 }))).toEqual([]);
       expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 }, precos: [], saldos: [] }))).toEqual(['preco_sem_tabela', 'estoque_insuficiente']);
     }
@@ -129,7 +130,7 @@ describe('avaliação do pedido', () => {
   });
 
   it('RN-PED-04: boleto (15) não é fora do crédito e dá credito_sem_limite com limite 0', () => {
-    const condicao = { forma_tpag: '15', inativo: false };
+    const condicao = PRAZO;
     expect(foraDoCredito(condicao)).toBe(false);
     expect(codigos(base({ condicao, cliente: { inativo: false, limite_credito_centavos: 0 } }))).toEqual(['credito_sem_limite']);
   });
@@ -175,7 +176,7 @@ describe('avaliação do pedido', () => {
   it('RF-PED-03: sem condição ou condição inativa são pendências', () => {
     expect(codigos(base({ condicao_pagamento_id: null, condicao: null }))).toEqual(['condicao_ausente']);
     expect(codigos(base({ condicao: null }))).toEqual(['condicao_ausente']);
-    expect(codigos(base({ condicao: { forma_tpag: '15', inativo: true } }))).toEqual(['condicao_inativa']);
+    expect(codigos(base({ condicao: { ...PRAZO, inativo: true } }))).toEqual(['condicao_inativa']);
   });
 
   it('RN-PED-03: o total do pedido para o crédito é a soma dos itens com arredondamento por item', () => {
@@ -254,5 +255,43 @@ describe('recebimento do pedido do FDV', () => {
     expect(codigo({ cliente: { inativo: true }, filial: null })).toMatchObject({ codigo: 'cliente_inativo' });
     expect(codigo({ filial: null, produtos: [] })).toMatchObject({ codigo: 'filial_inexistente' });
     expect(codigo({ produtos: [{ id: P1, inativo: true }], itens: [item({ desconto_centavos: 2001 })] })).toMatchObject({ codigo: 'produto_inativo' });
+  });
+});
+
+describe('RN-PED-07: prazo completo e permitido ao cliente', () => {
+  const cliente = (prazo_medio_dias?: number | null) => ({ inativo: false, limite_credito_centavos: 100_000, ...(prazo_medio_dias === undefined ? {} : { prazo_medio_dias }) });
+  const pendencias = (e: EntradaAvaliacao) => avaliarPedidoDetalhado(e).filter((p) => p.codigo === 'prazo_incompleto' || p.codigo === 'prazo_acima_do_cliente');
+
+  it('RN-PED-07: prazo incompleto (sem prazo médio) é recusado, bloqueante', () => {
+    const e = base({ condicao: { ...PRAZO, prazo_medio_dias: null } });
+    expect(avaliarPrazo(e.condicao, cliente(60))).toBe('prazo_incompleto');
+    expect(pendencias(e)).toEqual([{ codigo: 'prazo_incompleto', bloqueante: true, sequencia: null, produto_id: null, esperado: null, informado: null }]);
+  });
+  it('RN-PED-07: prazo médio acima do prazo médio do cliente é recusado, com esperado e informado', () => {
+    const e = base({ cliente: cliente(20) });
+    expect(avaliarPrazo(e.condicao, e.cliente)).toBe('prazo_acima_do_cliente');
+    expect(pendencias(e)).toEqual([{ codigo: 'prazo_acima_do_cliente', bloqueante: true, sequencia: null, produto_id: null, esperado: 20, informado: 30 }]);
+  });
+  it('RN-PED-07: cliente sem prazo médio não tem limite', () => {
+    expect(avaliarPrazo(PRAZO, cliente(null))).toBeNull();
+    expect(avaliarPrazo(PRAZO, cliente())).toBeNull();
+    expect(pendencias(base({ cliente: cliente(null) }))).toEqual([]);
+  });
+  it('RN-PED-07: prazo médio igual ao do cliente é aceito', () => {
+    expect(avaliarPrazo(PRAZO, cliente(30))).toBeNull();
+    expect(pendencias(base({ cliente: cliente(30) }))).toEqual([]);
+  });
+  it('RN-PED-07: cartão de crédito (03) completo com prazo médio acima do cliente é aceito', () => {
+    const cartao = { ...PRAZO, forma_tpag: '03', prazo_medio_dias: 90 };
+    expect(avaliarPrazo(cartao, cliente(10))).toBeNull();
+    expect(pendencias(base({ condicao: cartao, cliente: cliente(10) }))).toEqual([]);
+  });
+  it('RN-PED-07: cartão de crédito (03) incompleto é recusado', () => {
+    const cartao = { ...PRAZO, forma_tpag: '03', prazo_medio_dias: null };
+    expect(avaliarPrazo(cartao, cliente(10))).toBe('prazo_incompleto');
+    expect(pendencias(base({ condicao: cartao }))).toHaveLength(1);
+  });
+  it('RN-PED-07: sem condição não há pendência de prazo (a ausência é condicao_ausente)', () => {
+    expect(avaliarPrazo(null, cliente(1))).toBeNull();
   });
 });

@@ -323,6 +323,25 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     expect((await admin('SELECT count(*)::int AS n FROM pedido.numeracao WHERE tenant_id = $1', [T]))[0]?.n).toBe(0);
   });
 
+  // PENDENTE (banco-dados): a migração 0016 tem os CHECKs pedido_fdv_sem_analise e pedido_fdv_sem_pendencia, que barram o FDV em em_analise
+  // e com pendência. Tirar o `.skip` quando a migração que os relaxa entrar (RN-PED-07, emenda de 24/11).
+  it.skip('RN-PED-07: o pedido do FDV com prazo acima do cliente entra em análise no SQL real, com a pendência gravada e só recebido@1 na outbox; a aprovação revalida e é 422', async () => {
+    const T = await criarTenant(efemero.admin, 'fdv-prazo', ['pedido']);
+    const cliente = cad.clientes.get(IDS.cliente)!;
+    cad.clientes.set(IDS.cliente, { ...cliente, prazo_medio_dias: 10 });
+    try {
+      const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+      const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, pedidoFdv()));
+      expect(r).toMatchObject({ resultado: 'criado', status: 'em_analise' });
+      const id = (r as { pedido_id: string }).pedido_id;
+      expect((await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0]).toMatchObject({ status: 'em_analise', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
+      expect((await admin("SELECT nome FROM core.outbox WHERE tenant_id = $1 ORDER BY criado_em", [T])).map((l) => l.nome)).toEqual(['pedido.pedido.recebido@1']);
+      await expect(app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, {}))).rejects.toMatchObject({ status: 422, codigo: 'RN-PED-03', detalhes: { bloqueantes: ['prazo_acima_do_cliente'] } });
+    } finally {
+      cad.clientes.set(IDS.cliente, cliente);
+    }
+  });
+
   it('criarConsultaParaFaturar: situação com os itens, FOR SHARE segura a transição concorrente, e outro tenant não enxerga', async () => {
     const T = await criarTenant(efemero.admin, 'faturar', ['pedido']);
     const p = (await lancar(T, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 30_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] }))).pedido;

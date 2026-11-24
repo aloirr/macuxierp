@@ -37,8 +37,8 @@ describe('contratos do pedido', () => {
 
 describe('ResultadoRecebimentoFdv', () => {
   const id = '11111111-1111-4111-8111-111111111111';
-  it('rejeita criado com status em_analise', () => {
-    expect(ResultadoRecebimentoFdv.safeParse({ resultado: 'criado', pedido_id: id, numero: 1, status: 'em_analise' }).success).toBe(false);
+  it('aceita criado com status em_analise (RN-PED-07)', () => {
+    expect(ResultadoRecebimentoFdv.safeParse({ resultado: 'criado', pedido_id: id, numero: 1, status: 'em_analise' }).success).toBe(true);
   });
   it('aceita repetido com qualquer StatusPedido', () => {
     for (const status of StatusPedido.options) expect(ResultadoRecebimentoFdv.safeParse({ resultado: 'repetido', pedido_id: id, numero: 1, status }).success).toBe(true);

@@ -13,6 +13,8 @@ export const ROTULO_PENDENCIA: Readonly<Record<CodigoPendencia, string>> = {
   filial_nao_emissora: 'Filial não emissora de nota',
   condicao_ausente: 'Sem condição de pagamento',
   condicao_inativa: 'Condição de pagamento inativa',
+  prazo_incompleto: 'Prazo de pagamento incompleto (RN-PED-07)',
+  prazo_acima_do_cliente: 'Prazo acima do prazo médio do cliente (RN-PED-07)',
   preco_sem_tabela: 'Produto sem preço na tabela',
   desconto_acima_maximo: 'Desconto acima do máximo',
   credito_sem_limite: 'Cliente sem limite de crédito',

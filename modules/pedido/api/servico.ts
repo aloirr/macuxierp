@@ -14,7 +14,7 @@ import {
   type StatusPedido,
 } from '../contracts';
 import {
-  avaliarPedidoDetalhado, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, travaCliente,
+  avaliarPedidoDetalhado, avaliarPrazo, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, travaCliente,
   validarTransicao, verificarItens, violacao, type Violacao,
 } from '../domain';
 import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, notasAplicadas, type CondicaoDoEvento, type EventoPronto } from './eventos';
@@ -96,6 +96,21 @@ export function criarServico(deps: Dependencias) {
     return v;
   };
 
+  /** RN-PED-07: 422 `RN-PED-07` no campo `condicao_pagamento_id` (pedido manual, lançamento e edição). */
+  const violacoesDePrazo = (condicao: Cadastros['condicao'], cliente: ClienteParaPedido): Violacao[] => {
+    const falha = avaliarPrazo(condicao, cliente);
+    if (falha === null) return [];
+    const mensagem = falha === 'prazo_incompleto' ? 'O prazo de pagamento está incompleto' : 'O prazo de pagamento passa do prazo médio permitido ao cliente';
+    return [violacao('RN-PED-07', 'condicao_pagamento_id', mensagem)];
+  };
+
+  /** RN-PED-07: o pedido do FDV entra aprovado, ou em análise com a pendência bloqueante do prazo. */
+  const decidirPrazoFdv = (condicao: Cadastros['condicao'], cliente: ClienteParaPedido): { status: 'aprovado' | 'em_analise'; pendencias: Pendencia[] } => {
+    const falha = avaliarPrazo(condicao, cliente);
+    if (falha === null) return { status: 'aprovado', pendencias: [] };
+    return { status: 'em_analise', pendencias: [{ codigo: falha, bloqueante: true, sequencia: null, produto_id: null }] };
+  };
+
   const avaliar = async (
     tx: Transacao,
     repo: RepoPedidos,
@@ -113,7 +128,7 @@ export function criarServico(deps: Dependencias) {
       titulos.saldoAbertoCliente(tx, d.cliente_id),
     ]);
     const detalhadas = avaliarPedidoDetalhado({
-      cliente: { inativo: cad.cliente.inativo, limite_credito_centavos: cad.cliente.limite_credito_centavos },
+      cliente: { inativo: cad.cliente.inativo, limite_credito_centavos: cad.cliente.limite_credito_centavos, prazo_medio_dias: cad.cliente.prazo_medio_dias },
       filial: cad.filial,
       condicao_pagamento_id: d.condicao_pagamento_id,
       condicao: cad.condicao,
@@ -272,6 +287,8 @@ export function criarServico(deps: Dependencias) {
     exigir(violacoesDeReferencia(carregado, { condicao_pagamento_id: entrada.condicao_pagamento_id, itens }));
     const cad = carregado as Cadastros & { cliente: ClienteParaPedido; filial: NonNullable<Cadastros['filial']> };
     exigir(verificarItens(itens));
+    // RN-PED-07: o pedido manual não grava com prazo incompleto ou não permitido ao cliente (422, sem pendência de análise).
+    exigir(violacoesDePrazo(cad.condicao, cad.cliente));
     const entrega = enderecoDeEntrega(cad.cliente, entrada.endereco_entrega_id);
     exigir(entrega.v);
     return { itens, cad, entrega: entrega.entrega };
@@ -543,11 +560,13 @@ export function criarServico(deps: Dependencias) {
       throw erros.conflito('Não foi possível receber o pedido: tente de novo');
     }
     const criado = await obterOu404(repo, id);
-    await registrarCriacao(repo, fx, criado, { status: 'aprovado', pendencias: [], validado: false }, cad.condicao);
+    // RN-PED-07 (emenda de 24/11): prazo incompleto ou não permitido não recusa o recebimento; o pedido entra em análise com a pendência.
+    const decisaoCriacao = decidirPrazoFdv(cad.condicao, cliente);
+    await registrarCriacao(repo, fx, criado, { ...decisaoCriacao, validado: false }, cad.condicao);
     const final = await obterOu404(repo, id);
     await fx.auditar({ acao: 'pedido.receber', entidade: 'pedido', entidade_id: id, antes: null, depois: resumo(final) });
-    log(fx, { pedido_id: id, acao: 'receber_fdv', status: 'aprovado' }, 'pedido do FDV recebido');
-    return { resultado: 'criado', pedido_id: id, numero, status: 'aprovado' };
+    log(fx, { pedido_id: id, acao: 'receber_fdv', status: decisaoCriacao.status, pendencias: decisaoCriacao.pendencias.map((x) => x.codigo) }, 'pedido do FDV recebido');
+    return { resultado: 'criado', pedido_id: id, numero, status: decisaoCriacao.status };
   }
 
   return { lancar, editar, revalidar, aprovar, recusar, cancelar, receberFdv, detalhar };

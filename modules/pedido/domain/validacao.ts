@@ -1,4 +1,4 @@
-import { classeForma, type CondicaoPagamento } from '@macuxierp/cadastros/contracts';
+import { classeForma, prazoCompleto, prazoPermitidoAoCliente, type CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import { CodigoPendencia, type CodigoRecusaRecebimento, type Pendencia, type PendenciaDetalhada } from '../contracts';
 import { totalItem, valorItem, verificarItens, type ItemValor } from './valores';
 
@@ -10,12 +10,15 @@ export interface ItemAvaliacao extends ItemValor {
  * Retrato lido pelas portas na transação do chamador (T-0013 §3.1). Só inteiros: centavos, Qtd4 e pontos-base.
  * O preço entra já resolvido (`PrecoVigente`, com o recuo à filial padrão em `origem_filial_id`).
  */
+/** A condição inteira: a RN-PED-07 precisa do código, da descrição, das parcelas, do prazo médio e da forma (exceção do cartão). */
+export type CondicaoParaAvaliar = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'prazos_dias' | 'prazo_medio_dias' | 'forma_tpag' | 'inativo'>;
+
 export interface EntradaAvaliacao {
-  cliente: { inativo: boolean; limite_credito_centavos: number };
+  cliente: { inativo: boolean; limite_credito_centavos: number; /** RN-CAD-16: nulo ou ausente = sem limite de prazo. */ prazo_medio_dias?: number | null };
   filial: { emissora: boolean; inativo: boolean };
   condicao_pagamento_id: string | null;
   /** Nulo = não encontrada (ou não informada). `forma_tpag` define se está fora do crédito (`foraDoCredito`). */
-  condicao: Pick<CondicaoPagamento, 'forma_tpag' | 'inativo'> | null;
+  condicao: CondicaoParaAvaliar | null;
   itens: readonly ItemAvaliacao[];
   produtos: readonly { id: string; inativo: boolean }[];
   /** Preço de tabela vigente por produto; produto ausente = sem preço na tabela. */
@@ -27,6 +30,19 @@ export interface EntradaAvaliacao {
   titulos_abertos_centavos: number;
   /** Total não faturado dos outros pedidos aprovados do cliente (P5). Sem o próprio pedido. */
   compromisso_credito_centavos: number;
+}
+
+/**
+ * RN-PED-07: o pedido só usa prazo completo (RN-CAD-15) e permitido ao cliente (RN-CAD-16). A regra do limite é a do cadastros
+ * (`prazoPermitidoAoCliente`, com a exceção do cartão 03 completo); aqui só se diz qual das duas falhou. Sem condição, nulo.
+ */
+export function avaliarPrazo(
+  condicao: CondicaoParaAvaliar | null,
+  cliente: { prazo_medio_dias?: number | null },
+): 'prazo_incompleto' | 'prazo_acima_do_cliente' | null {
+  if (condicao === null) return null;
+  if (!prazoCompleto(condicao)) return 'prazo_incompleto';
+  return prazoPermitidoAoCliente(condicao, cliente) ? null : 'prazo_acima_do_cliente';
 }
 
 /** Status cujos pedidos comprometem estoque e crédito (RN-PED-04, P5): aprovado e ainda não faturado por inteiro. */
@@ -112,6 +128,10 @@ export function avaliarPedidoDetalhado(e: EntradaAvaliacao): PendenciaDetalhada[
 
   if (e.condicao_pagamento_id === null || e.condicao === null) r.push(pend('condicao_ausente', false));
   else if (e.condicao.inativo) r.push(pend('condicao_inativa', false));
+  // RN-PED-07: bloqueante; o analista troca o prazo (o pedido manual nem chega aqui: a API recusa com 422).
+  const prazo = avaliarPrazo(e.condicao, e.cliente);
+  if (prazo === 'prazo_incompleto') r.push(pend('prazo_incompleto', true));
+  else if (prazo === 'prazo_acima_do_cliente') r.push(pend('prazo_acima_do_cliente', true, null, null, e.cliente.prazo_medio_dias ?? null, e.condicao?.prazo_medio_dias ?? null));
 
   const credito = avaliarCredito({
     condicao: e.condicao,

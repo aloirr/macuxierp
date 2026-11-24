@@ -49,7 +49,7 @@ export function prepararCadastros(c: CadastrosMemoria, o: { limite?: number; sal
   }
   // RN-CAD-09: à vista (01, 17, 04) só com prazo 0; a prazo usa boleto (15).
   const condicao = (id: string, prazos: number[], forma: { tpag: string; codigo: string; nome: string }, inativo = false) =>
-    c.condicoes.set(id, { id, codigo: id.slice(-1), descricao: 'Condição', forma_tpag: forma.tpag, prazos_dias: prazos, forma_external_id: null, forma_codigo: forma.codigo, forma_nome: forma.nome, external_id: null, inativo });
+    c.condicoes.set(id, { id, codigo: id.slice(-1), descricao: 'Condição', forma_tpag: forma.tpag, prazos_dias: prazos, prazo_medio_dias: Math.round(prazos.reduce((a, b) => a + b, 0) / prazos.length), forma_external_id: null, forma_codigo: forma.codigo, forma_nome: forma.nome, external_id: null, inativo });
   const DINHEIRO = { tpag: '01', codigo: 'DIN', nome: 'Dinheiro' };
   const BOLETO = { tpag: '15', codigo: 'BOL', nome: 'Boleto' };
   condicao(IDS.condicao30, [30], BOLETO);

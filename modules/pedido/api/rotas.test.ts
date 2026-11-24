@@ -171,6 +171,45 @@ describe('lançamento manual (RF-PED-02, RN-PED-03)', () => {
     expect(t.armazem.pedidos).toHaveLength(1);
     expect(t.eventos).toHaveLength(2);
   });
+  it('RN-PED-07: prazo médio da condição acima do prazo médio do cliente é 422 RN-PED-07 no condicao_pagamento_id, e nada é gravado', async () => {
+    const t = montar();
+    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 20 });
+    const r = await lancar(t);
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-07', campos: { condicao_pagamento_id: expect.any(String) } } });
+    expect(t.armazem.pedidos).toHaveLength(0);
+    expect(t.eventos).toHaveLength(0);
+  });
+  it('RN-PED-07: prazo incompleto é 422 RN-PED-07; o cartão (03) completo fica fora do limite e o cliente sem prazo médio não tem limite', async () => {
+    const t = montar();
+    t.cadastros.condicoes.set(IDS.condicao30, { ...t.cadastros.condicoes.get(IDS.condicao30)!, prazo_medio_dias: null });
+    expect(await lancar(t)).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-07', campos: { condicao_pagamento_id: expect.any(String) } } });
+    expect(t.armazem.pedidos).toHaveLength(0);
+    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 5 });
+    expect((await lancar(t, pedidoManual({ condicao_pagamento_id: IDS.condicaoCartao }))).status).toBe(201);
+    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: null });
+    t.cadastros.condicoes.set(IDS.condicao30, { ...t.cadastros.condicoes.get(IDS.condicao30)!, prazo_medio_dias: 30 });
+    expect((await lancar(t)).status).toBe(201);
+  });
+  it('RN-PED-07: a edição também recusa o prazo acima do cliente (422) e mantém o pedido como estava', async () => {
+    const t = montar();
+    const p = await emAnalise(t);
+    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 10 });
+    const r = await t.chamar('PUT', `/pedidos/${p.id}`, { sessao: adm, corpo: pedidoManual(), cabecalhos: { 'if-match': p.updated_at } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-07' } });
+    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'em_analise', condicao_pagamento_id: null });
+  });
+  it('RN-PED-07: a aprovação de pedido em análise revalida; cliente com prazo médio menor bloqueia (422 RN-PED-03 com prazo_acima_do_cliente) e, voltando ao normal, aprova', async () => {
+    const t = montar();
+    t.cadastros.saldosPor.set(`${IDS.filial}:${IDS.produto1}`, 0);
+    const p = (await lancar(t)).corpo;
+    expect(p.status).toBe('em_analise');
+    t.cadastros.saldosPor.set(`${IDS.filial}:${IDS.produto1}`, 1_000_000);
+    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 10 });
+    const r = await t.chamar('POST', `/pedidos/${p.id}/aprovar`, { sessao: gerente, corpo: { justificativa: 'ok' } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-03', detalhes: { bloqueantes: ['prazo_acima_do_cliente'] } } });
+    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 30 });
+    expect((await t.chamar('POST', `/pedidos/${p.id}/aprovar`, { sessao: gerente })).status).toBe(200);
+  });
   it('RN-PED-03: desconto maior que o valor do item é 422 RN-PED-03 e nada é gravado', async () => {
     const t = montar();
     const r = await lancar(t, pedidoManual({ itens: [{ ...unidades(1), desconto_centavos: 1001 }] }));
