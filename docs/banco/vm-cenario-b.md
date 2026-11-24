@@ -1,19 +1,19 @@
-# Roteiro da VM de teste do cenário B (v0.3.6)
+# Roteiro da VM de teste do cenário B (v0.3.11)
 
-> T-0057 · autor: `banco-dados` · criado em 2026-11-23, 14h10 (Manaus); revisto em 2026-11-23, 14h20 (Manaus), com a decisão do Alexandre (via PO, 23/11, 14h19): "banco está vazio. vamos começar a thathyany do zero." Vale o banco **fictício**. Revisto em 2026-11-23, 15h15 (Manaus), com a decisão R-20261123-151313-alexandre (banco controlado pelo Claude Code da VM, via Remote Control; SQL Server Express). Revisto em 2026-11-23, 15h23 (Manaus): alinhado ao prompt de arranque do PO (segredos em ~/thathyany/.segredos.env, carga por MERGE, sem 2A.1).
-> Cenário B da v0.3.6, aprovado pelo Alexandre. **Só teste, temporário.** Numeração: a seção nova do Claude Code na VM é a **2A**; as demais mantêm o número.
+> T-0057 · autor: `banco-dados` · criado em 2026-11-23, 14h10 (Manaus); revisto em 2026-11-23, 14h20 (Manaus), com a decisão do Alexandre (via PO, 23/11, 14h19): "banco está vazio. vamos começar a thathyany do zero." Vale o banco **fictício**. Revisto em 2026-11-23, 15h15 (Manaus), com a decisão R-20261123-151313-alexandre (banco controlado pelo Claude Code da VM, via Remote Control; SQL Server Express). Revisto em 2026-11-23, 15h23 (Manaus): alinhado ao prompt de arranque do PO (segredos em ~/thathyany/.segredos.env, carga por MERGE, sem 2A.1). Revisto em 2026-11-24, 05h51 (Manaus), para a v0.3.11 (ADR 0014 §6, §7 e §13): o banco passa a ser criado pelo **kit do ERP** (`docs/banco/kit-erp/criar-banco.sql`, seção 5), com a mão dupla (pedido, nota e pré-cadastro descendo); o `macuxi_conector` ganha EXECUTE nas `sp_macuxi_*` (seção 7); entram as seções **7A** (instalar o Conector) e **7B** (virada sem envio duplicado).
+> Cenário B (ADR 0014; numerado como v0.3.11 desde 23/11, 23h00), aprovado pelo Alexandre. **Só teste, temporário.** Numeração: as seções novas são a **2A** (Claude Code na VM), a **7A** e a **7B**; as demais mantêm o número.
 > Sem segredo neste texto: tudo o que é sensível aparece como marcador (`<IP_DO_ALEXANDRE>`, `<HOST_DA_VM>`...). As senhas do `sa` e do conector são geradas pela própria sessão da VM em `~/thathyany/.segredos.env` (seção 2A) e nunca aparecem em doc, chat, recado, commit ou log.
 
 ## 1. Objetivo, escopo e o que NÃO é
 
-**Objetivo:** subir uma VM Linux de teste com o banco `ERP_THATHYANY` (cliente thathyany, código FDV `am2808`) **criado do zero** com o esquema do kit do Macuxi FDV e populado com **dados fictícios**, para o conector, que roda na VM, ler as views e enviar ao Macuxi ERP de produção (`erp.macuxifdv.com.br`), na empresa AM2808 (ADR 0014).
+**Objetivo:** subir uma VM Linux de teste com o banco `ERP_THATHYANY` (cliente thathyany, código FDV `am2808`) **criado do zero** pelo kit do ERP (no molde do kit do Macuxi FDV) e populado com **dados fictícios**, para o Conector do ERP, que roda na VM, ler as views e enviar ao Macuxi ERP de **produção** (`erp.macuxifdv.com.br`), na empresa **AM2808** (ADR 0014 §7), e gravar no banco o que desce do ERP (pedido, nota e pré-cadastro de cliente, §13).
 
-**Escopo:** uma VM, o Claude Code da própria VM controlado pelo Alexandre via Remote Control (seção 2A), um SQL Server 2022 Express, o banco criado pelo `criar-banco.sql` do kit (seção 5), a carga dos CSVs fictícios e do catálogo (seção 6), um login **só leitura** para o conector (seção 7), firewall fechado; a VM fica enquanto durarem os testes e é apagada no encerramento (seção 8).
+**Escopo:** uma VM, o Claude Code da própria VM controlado pelo Alexandre via Remote Control (seção 2A), um SQL Server 2022 Express, o banco criado pelo `criar-banco.sql` do kit do ERP (seção 5), a carga dos CSVs fictícios e do catálogo (seção 6), o login `macuxi_conector` com o mínimo (SELECT nas views e EXECUTE nas `sp_macuxi_*`, seção 7), o Conector do ERP como serviço systemd (seção 7A), a virada sem envio duplicado ao FDV (seção 7B), firewall fechado; a VM fica enquanto durarem os testes e é apagada no encerramento (seção 8).
 
 **O que NÃO é:**
 - Não é dado de produção: o banco da VM é de teste, só com dados fictícios. O destino é o ERP de produção (`erp.macuxifdv.com.br`), na empresa AM2808 (ADR 0014); nada roda na VM de produção do FDV/ERP e nenhum outro tenant é tocado.
 - Não é cópia do banco real do cliente: **não há restore de `.bak`** nem dado de cliente real.
-- **Nada do Macuxi FDV muda**: nem código (`aloirr/macuxifdv` é só consulta), nem banco, nem configuração.
+- **Nada do código nem do banco do Macuxi FDV muda** (`aloirr/macuxifdv` é só consulta). A única ação no FDV é a da virada (seção 7B), feita pelo Alexandre por decisão de 23/11, 14h19: desligar o `thathyany-conector` e inativar os cadastros antigos da AM2808.
 - **O ERP nunca lê tabela do FDV.** O conector lê só as views deste banco de teste; o banco `macuxierp` não ganha acesso a ele nem ao banco do FDV.
 - Não é permanente: acaba quando o Alexandre encerrar os testes por recado (seção 8).
 - Nenhum agente do time recebe acesso: quem opera o banco é a sessão do Claude Code **da VM**, na conta do Alexandre, com os CSVs que ele manda no prompt.
@@ -175,43 +175,54 @@ ss -tln | grep 1433   # só 127.0.0.1
 ```
 Edição `Express Edition (64-bit)`, versão `16.x`.
 
-## 5. Criar o banco com o esquema do kit do FDV
+## 5. Criar o banco com o kit do ERP
 
-**Fonte (só cópia, sem editar):** kit do Macuxi FDV, `aloirr/macuxifdv@0b79391`, `modules/integracao/kit-thathyany/sql/criar-banco.sql` (gerado por `kit-thathyany/scripts/gerar.ts`). Cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`. O arquivo **não** entra no repositório do ERP.
+**Fonte:** `docs/banco/kit-erp/criar-banco.sql`, no repositório do ERP (dono: `banco-dados`; T-0057). É o kit do ERP, no molde do `kit-thathyany/sql/criar-banco.sql` do FDV (`aloirr/macuxifdv@0b79391`, só consulta), com as colunas derivadas dos payloads do contrato do Hub v1 (`modules/integracao-fdv/contracts/hub.ts`) e a descida da ADR 0014 §13. O kit do FDV **não** entra no repositório do ERP.
 
-**O que ele cria** (idempotente: roda quantas vezes precisar; sem segredo e sem dado):
-- o banco `ERP_THATHYANY` (`IF DB_ID(...) IS NULL CREATE DATABASE`);
-- **16 tabelas `dbo.tha_*`**: `filial`, `vendedor`, `catalogo_no`, `forma_pagamento`, `prazo_pagamento`, `produto`, `produto_unidade`, `preco`, `tabela_escalonada`, `estoque`, `cliente`, `cliente_endereco`, `transportadora`, `rota`, `titulo`, `nota` (chave `external_id`, coluna `alterado_em` em UTC, índice `(alterado_em, external_id)`);
-- as **views `dbo.vw_macuxi_*`** que o conector lê: uma por tabela `tha_*` (16), mais `vw_macuxi_pedido_status` e `vw_macuxi_pedido_nota_item` (retorno do pedido);
-- a **entrada de pedidos** (`macuxi_pedido_entrada`, `macuxi_pedido_entrada_item`, `macuxi_pedido_nota_item`, `sp_macuxi_pedido_inserir`, `sp_macuxi_pedido_item_inserir`, gatilho e `vw_thathyany_pedidos`).
+**O que ele cria** (reexecutável: `IF NOT EXISTS` e `CREATE OR ALTER`; sem dado e sem segredo no arquivo):
+- o banco `ERP_THATHYANY` (colação `Latin1_General_100_CI_AI_SC_UTF8`);
+- **10 tabelas `dbo.tha_*`**, uma por cadastro da F2: `filial`, `vendedor`, `forma_pagamento`, `prazo_pagamento`, `produto`, `produto_unidade`, `preco`, `estoque`, `cliente`, `cliente_endereco` (chave `external_id` com colação binária, coluna `alterado_em` em UTC, índice `(alterado_em, external_id)`, dinheiro em centavos). Os outros 6 do kit do FDV (`catalogo_no`, `transportadora`, `tabela_escalonada`, `rota`, `titulo` e `nota`) ficam fora da fase (ADR 0014 §2);
+- **13 views `dbo.vw_macuxi_*`**: as 10 de cadastro (sobem) e as 3 do retorno, `vw_macuxi_pedido_status`, `vw_macuxi_pedido_nota_item` e `vw_macuxi_cliente_retorno`;
+- **6 tabelas de entrada** do que desce do ERP: `macuxi_pedido_entrada`, `macuxi_pedido_entrada_item`, `macuxi_pedido_nota_item`, `macuxi_nota_entrada`, `macuxi_nota_entrada_item` e `macuxi_cliente_entrada`;
+- **5 procedures de descida `dbo.sp_macuxi_*`** (o Conector executa): `sp_macuxi_pedido_inserir`, `sp_macuxi_pedido_item_inserir`, `sp_macuxi_nota_inserir`, `sp_macuxi_nota_item_inserir` e `sp_macuxi_cliente_inserir`. Todas idempotentes pela chave do que desce (`pedido_uuid`, a chave da nota, `cliente_uuid`): repetir a chamada não muda nada; a mesma chave com outro conteúdo é recusada. Validam a entrada e gravam numa transação;
+- **3 procedures `dbo.sp_tha_*` que simulam o ERP do cliente** no teste (o `sa` roda; o Conector não tem acesso): `sp_tha_pedido_status_definir` (integrar, rejeitar, faturar, cancelar), `sp_tha_pedido_nota_item_gravar` (itens faturados) e `sp_tha_cliente_pre_cadastro_resolver` (vincular o pré-cadastro a um `tha_cliente` ou rejeitá-lo);
+- o login e o usuário **`macuxi_conector`** (seção 7). A senha vem da variável `SENHA_CONECTOR` do `~/thathyany/.segredos.env`, que o `sqlcmd` lê como `$(SENHA_CONECTOR)`; ela nunca é escrita no arquivo.
+
+**Layout dos CSVs:** as colunas das `tha_*` do kit do ERP seguem o contrato do Hub v1 e **não foram conferidas coluna a coluna** contra o kit do FDV (cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`). Se os CSVs do PO seguirem o kit do FDV, a validação do cabeçalho da seção 6 (passo 2) mostra a diferença e a sessão **para** antes de carregar.
 
 Passos:
-1. O arquivo chega a `~/thathyany/criar-banco.sql` na VM como diz o prompt de arranque do PO (nunca pelo repositório do ERP).
-2. Conferir o hash contra a cópia de consulta (a mesma conta na cópia de `macuxierp-recados` dá `eecca1aaa144ce46c5fee3bc8259bb3cd0e693e3496ce80df3ec4a6a506fd935`):
+1. O arquivo chega a `~/thathyany/criar-banco.sql` na VM como diz o prompt de arranque do PO: o conteúdo do arquivo no commit do `main` indicado pelo PO, nunca editado na VM.
+2. Conferir o hash contra o do commit (quem manda o arquivo calcula com `git show <sha>:docs/banco/kit-erp/criar-banco.sql | sha256sum` e põe o valor no prompt):
    ```bash
    sha256sum ~/thathyany/criar-banco.sql
    ```
    Diferente: **parar** e falar com o Alexandre; não rodar.
-3. Rodar como `sa`:
+3. Rodar como `sa`. O `set -a` exporta a `SENHA_CONECTOR` do arquivo, e o `sqlcmd` a usa como variável de script (sem `-v`, a senha não aparece na lista de processos). Sem ela, o `sqlcmd` para com "scripting variable not defined":
    ```bash
-   ( set -a; . ~/thathyany/.segredos.env; set +a; SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" sqlcmd -S 127.0.0.1 -U sa -C -b -i ~/thathyany/criar-banco.sql )
+   ( set -a; . ~/thathyany/.segredos.env; set +a; SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" \
+     sqlcmd -S 127.0.0.1 -U sa -C -b -i ~/thathyany/criar-banco.sql )
    ```
+   A última consulta do script lista só os objetos e as permissões do `macuxi_conector` (sem dado). A senha do conector não pode ter apóstrofo (`'`); a gerada na seção 2A não tem.
 
 Como conferir:
 ```sql
 USE ERP_THATHYANY;
-SELECT COUNT(*) FROM sys.tables WHERE name LIKE 'tha[_]%';        -- 16
-SELECT COUNT(*) FROM sys.views  WHERE name LIKE 'vw[_]macuxi[_]%'; -- 18 (16 de cadastro + 2 do retorno do pedido)
+SELECT COUNT(*) FROM sys.tables     WHERE name LIKE 'tha[_]%';           -- 10
+SELECT COUNT(*) FROM sys.tables     WHERE name LIKE 'macuxi[_]%';        -- 6
+SELECT COUNT(*) FROM sys.views      WHERE name LIKE 'vw[_]macuxi[_]%';   -- 13 (10 de cadastro + 3 do retorno)
+SELECT COUNT(*) FROM sys.procedures WHERE name LIKE 'sp[_]macuxi[_]%';   -- 5
+SELECT COUNT(*) FROM sys.procedures WHERE name LIKE 'sp[_]tha[_]%';      -- 3
 ```
-Rodar o script de novo não dá erro nem muda as contagens.
+Rodar o script de novo não dá erro nem muda as contagens (troca só a senha do conector, pela mesma do arquivo).
 
 ## 6. Popular
 
 Executada pela **sessão do Claude Code da VM** (seção 2A), sem sudo. O Alexandre cola no prompt o CSV **fictício** (do PO, ou o catálogo exportado do FDV, que não tem dado pessoal) e diz a tabela `tha_*` de destino. Nada vai por `scp`, ao repositório nem a recado.
 
 Regras da carga:
-- **Ordem:** a mesma das tabelas na seção 5 (filial primeiro; título e nota por último).
-- **Formato:** UTF-8, separador `;`, primeira linha de cabeçalho; campo vazio = nulo; `linha_hash` pode ficar vazia.
+- **Ordem:** a mesma das tabelas na seção 5: `tha_filial`, `tha_vendedor`, `tha_forma_pagamento`, `tha_prazo_pagamento`, `tha_produto`, `tha_produto_unidade`, `tha_preco`, `tha_estoque`, `tha_cliente` e `tha_cliente_endereco`.
+- **Formato:** UTF-8, separador `;`, primeira linha de cabeçalho; campo vazio = nulo; `ativo` como `1` ou `0`; dinheiro nas colunas `*_cents` em centavos inteiros; datas civis `AAAA-MM-DD`.
+- **As tabelas `macuxi_*` não recebem CSV:** quem grava nelas é o Conector (pelas `sp_macuxi_*`) e a simulação do ERP do cliente (pelas `sp_tha_*`, seção 7.3).
 - **`external_id`** é a chave: único e estável por linha; recarregar a mesma linha usa o mesmo `external_id`.
 - **`alterado_em`** em **UTC** (`AAAA-MM-DD HH:MM:SS.mmm`); a carga o avança para `SYSUTCDATETIME()` (é por ele que o conector lê a mudança).
 - **Carga por `MERGE` pelo `external_id`, que nunca apaga linha:** linha do arquivo com `external_id` já na tabela é atualizada; a que não existe é inserida; linha da tabela que não está no arquivo fica como está. Carregar o mesmo arquivo duas vezes dá o mesmo resultado; se a carga cair no meio, basta repetir com o mesmo arquivo. Se o `MERGE` esbarrar em chave estrangeira, a sessão **para** e responde ao Alexandre.
@@ -228,7 +239,7 @@ Passos da sessão, para cada CSV (`<tabela>` = a `tha_*` dita pelo Alexandre; `s
      | diff - ~/thathyany/carga/<tabela>.cab
    ```
    Diferente: **parar** e responder ao Alexandre o que difere (coluna faltando, sobrando ou fora de ordem), sem carregar.
-3. **Criar a staging vazia**, com a mesma estrutura e um nome que **não** casa com `tha[_]%` (a contagem de 16 da seção 5 continua valendo):
+3. **Criar a staging vazia**, com a mesma estrutura e um nome que **não** casa com `tha[_]%` (a contagem de 10 da seção 5 continua valendo):
    ```sql
    DROP TABLE IF EXISTS dbo.carga_<tabela>;
    SELECT TOP 0 * INTO dbo.carga_<tabela> FROM dbo.<tabela>;
@@ -267,73 +278,181 @@ SELECT external_id, COUNT(*) FROM dbo.tha_produto GROUP BY external_id HAVING CO
 ```
 Arquivo `.erros` vazio antes de ser apagado; nenhum `external_id` repetido; `ls ~/thathyany/carga` vazio depois de cada carga.
 
-## 7. Usuário só leitura do conector
+## 7. Usuário do Conector (`macuxi_conector`)
 
-**Fonte:** kit do Macuxi FDV, `aloirr/macuxifdv@0b79391`, `modules/integracao/kit-thathyany/sql/usuario-conector.sql`, só consulta. Este roteiro segue o **mesmo modelo do kit** (mesmos nomes), adaptado ao Linux/`sqlcmd`, com as diferenças abaixo.
+**Fonte:** a seção 7 do `docs/banco/kit-erp/criar-banco.sql` (seção 5), no modelo do `usuario-conector.sql` do kit do FDV (`aloirr/macuxifdv@0b79391`, só consulta), com os mesmos nomes. O login é criado pelo próprio `criar-banco.sql`; não há script separado.
 
-**O que o kit faz** (SQL Server no Windows; idempotente):
-- login `macuxi_conector` com `CHECK_POLICY = OFF` e `DEFAULT_DATABASE = ERP_THATHYANY`; se já existir, `ALTER LOGIN ... WITH PASSWORD` e `ENABLE`; a senha vem pela variável `sqlcmd` `$(SENHA)`, nunca no texto;
-- usuário `macuxi_conector` no `ERP_THATHYANY`;
-- `GRANT SELECT` em todas as views `dbo.vw_macuxi_*`;
-- entrada de pedidos: `GRANT EXECUTE` nas duas `sp_macuxi_pedido_*` e `GRANT SELECT` em `dbo.macuxi_pedido_entrada`;
-- **não** é dono, **não** lê as tabelas `tha_*` direto, sem papéis (roles). Por isso não usamos `db_datareader` (leria as `tha_*` todas).
+**O que o kit faz** (reexecutável):
+- login `macuxi_conector` com `CHECK_POLICY = ON` (no Linux vale a política de senha do SQL Server), `CHECK_EXPIRATION = OFF` e `DEFAULT_DATABASE = ERP_THATHYANY`; se já existir, troca a senha e o habilita. A senha vem de `$(SENHA_CONECTOR)`, nunca do texto;
+- usuário `macuxi_conector` no `ERP_THATHYANY`, sem papel de banco nem de servidor (tira o que sobrar de execução anterior, como `db_datareader`, que leria as `tha_*`);
+- `GRANT SELECT` só nas 13 views `dbo.vw_macuxi_*` (cadastros e retorno do pedido e do pré-cadastro);
+- `GRANT EXECUTE` só nas 5 procedures `dbo.sp_macuxi_*` (a descida de pedido, nota e pré-cadastro, ADR 0014 §13; a v0.3.6 deixava a entrada de pedidos de fora, a v0.3.11 não);
+- **nenhuma permissão nas tabelas** (`tha_*` e `macuxi_*`): o acesso vem só pelas views e procedures, que são do `dbo` (encadeamento de dono). Qualquer outra permissão de objeto, de schema ou de banco (além de `CONNECT`) dada antes ao `macuxi_conector` é revogada a cada execução;
+- **sem** EXECUTE nas `sp_tha_*` (simulação do ERP do cliente), sem `VIEW SERVER STATE`, `sysadmin`, `db_owner` ou `db_datareader`.
 
-**Diferenças do cenário B (v0.3.6 é só cadastros):**
-1. **Sem a entrada de pedidos:** nenhum `GRANT` nas procedures `sp_macuxi_pedido_*` nem em `macuxi_pedido_entrada`, e sem `SELECT` nas views do retorno do pedido (`vw_macuxi_pedido_*`).
-2. **`CHECK_POLICY = ON`**: no Linux vale a política de senha do SQL Server, com senha forte.
-
-### 7.1 Script (Linux, `sqlcmd`)
-Salvar como `~/thathyany/usuario-conector-cenario-b.sql` na VM (o arquivo não tem senha):
-```sql
-SET NOCOUNT ON;
-USE master;
-IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'macuxi_conector')
-    CREATE LOGIN macuxi_conector WITH PASSWORD = N'$(SENHA)', CHECK_POLICY = ON, DEFAULT_DATABASE = ERP_THATHYANY;
-ELSE
-    ALTER LOGIN macuxi_conector WITH PASSWORD = N'$(SENHA)', CHECK_POLICY = ON;
-ALTER LOGIN macuxi_conector ENABLE;
-GO
-USE ERP_THATHYANY;
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'macuxi_conector')
-    CREATE USER macuxi_conector FOR LOGIN macuxi_conector;
-GO
--- SELECT só nas views de cadastro do kit (sem as vw_macuxi_pedido_*)
-DECLARE @sql nvarchar(max) = N'';
-SELECT @sql = @sql + N'GRANT SELECT ON ' + QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name)
-            + N' TO macuxi_conector;' + CHAR(10)
-FROM sys.views
-WHERE name LIKE 'vw[_]macuxi[_]%' AND name NOT LIKE 'vw[_]macuxi[_]pedido[_]%'
-  AND SCHEMA_NAME(schema_id) = N'dbo';
-EXEC sp_executesql @sql;
-GO
-```
-Rodar com as senhas de `~/thathyany/.segredos.env` (seção 2A), carregadas num subshell só; o `sqlcmd` resolve `$(SENHA)` pela variável de ambiente, sem `-v`, e a senha não aparece na lista de processos:
-```bash
-( set -a; . ~/thathyany/.segredos.env; set +a; SENHA="$SENHA_CONECTOR" SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" \
-  sqlcmd -S 127.0.0.1 -U sa -C -b -i ~/thathyany/usuario-conector-cenario-b.sql )
-```
-- Idempotente: pode rodar de novo (troca a senha e regrava os `GRANT`).
-- Sem `VIEW SERVER STATE`, `sysadmin`, `db_owner`, `db_datareader` ou papel de servidor.
+### 7.1 Trocar a senha do conector
+Rodar o `criar-banco.sql` de novo (seção 5, passo 3) com a `SENHA_CONECTOR` nova no `~/thathyany/.segredos.env`, depois atualizar a `MACUXI_CONECTOR_ERP_SENHA` do `/etc/macuxi-conector/segredos.env` (seção 7A, passo 4) e reiniciar o serviço (`sudo systemctl restart macuxi-conector`).
 
 ### 7.2 Como conferir
 Na VM, logado como `macuxi_conector` (`( set -a; . ~/thathyany/.segredos.env; set +a; SQLCMDPASSWORD="$SENHA_CONECTOR" sqlcmd -S 127.0.0.1 -U macuxi_conector -C -d ERP_THATHYANY -Q "<consulta>" )`, sem `-b`, uma consulta por vez):
 ```sql
 SELECT TOP 1 * FROM dbo.vw_macuxi_produto;              -- funciona
+SELECT TOP 1 * FROM dbo.vw_macuxi_pedido_status;        -- funciona (ciclo de status)
 SELECT TOP 1 * FROM dbo.tha_produto;                    -- erro 229: permissão SELECT negada
-SELECT TOP 1 * FROM dbo.vw_macuxi_pedido_status;        -- erro 229 (cenário B)
+SELECT TOP 1 * FROM dbo.macuxi_pedido_entrada;          -- erro 229
 INSERT INTO dbo.tha_produto DEFAULT VALUES;             -- erro 229: permissão INSERT negada
-EXEC dbo.sp_macuxi_pedido_inserir;                      -- erro 229: permissão EXECUTE negada (cenário B)
+EXEC dbo.sp_macuxi_pedido_inserir;                      -- erro 201 (falta parâmetro): o EXECUTE é permitido
+EXEC dbo.sp_tha_pedido_status_definir;                  -- erro 229: permissão EXECUTE negada
 SELECT * FROM fn_my_permissions(NULL, 'DATABASE');      -- só CONNECT
+SELECT COUNT(*) FROM sys.database_role_members WHERE member_principal_id = DATABASE_PRINCIPAL_ID();  -- 0
 ```
 Último passo do arranque (prompt de arranque do PO): `sudo rm -f /etc/sudoers.d/90-arranque`; depois disso `sudo -n true` falha.
 
+### 7.3 Simular o ERP do cliente (teste da mão dupla)
+Como `sa`, pela sessão da VM, depois que o Conector gravar um pedido ou um pré-cadastro. Os UUIDs saem de `SELECT pedido_uuid, status FROM dbo.macuxi_pedido_entrada` e de `SELECT cliente_uuid, status FROM dbo.macuxi_cliente_entrada`; a sessão responde só as contagens e os UUIDs, nunca nome, documento ou contato:
+```sql
+EXEC dbo.sp_tha_pedido_status_definir @pedido_uuid = '<uuid>', @status = 'integrado';
+EXEC dbo.sp_tha_pedido_nota_item_gravar @pedido_uuid = '<uuid>', @sequencia = 1, @quantidade = 2, @valor_cents = 1990;
+EXEC dbo.sp_tha_pedido_status_definir @pedido_uuid = '<uuid>', @status = 'faturado_total', @nota_numero = 1, @nota_serie = 1,
+     @nota_chave = '<44 dígitos fictícios>', @nota_emitida_em = '2026-11-24T16:00:00Z', @nota_total_cents = 1990;
+-- pré-cadastro: carregar o cliente fictício em tha_cliente (seção 6) e vincular, ou rejeitar com motivo
+EXEC dbo.sp_tha_cliente_pre_cadastro_resolver @cliente_uuid = '<uuid>', @external_id = '<external_id do tha_cliente>';
+EXEC dbo.sp_tha_cliente_pre_cadastro_resolver @cliente_uuid = '<uuid>', @motivo = N'documento já cadastrado';
+```
+O ciclo é `recebido → integrado | rejeitado_erp | cancelado`, `integrado → faturado_parcial | faturado_total | cancelado` e `faturado_parcial → faturado_total | cancelado`; repetir o mesmo status não muda nada. O Conector lê a mudança pela `vw_macuxi_pedido_status` e pela `vw_macuxi_cliente_retorno` e a devolve ao ERP.
+
+## 7A. Instalar o Conector
+
+ADR 0014 §6 e §7. O Conector do ERP (`@macuxierp/conector` 1.0.0, base FDV 1.5.0 @c460e92) roda **na própria VM**, como serviço systemd, lê `127.0.0.1,1433` com o `macuxi_conector` e fala só por **HTTPS de saída** com `https://erp.macuxifdv.com.br` (prefixo `/entrada/v1`), na empresa **AM2808** do ERP de **produção** (só dados fictícios; não há empresa nova nem Hub de teste). Do lado do FDV vale a credencial da Integração FDV já salva na AM2808, no ambiente **Produção** do Hub. O firewall de entrada não muda (seção 3).
+
+**Quem faz:** o Alexandre, pelo SSH. Os passos com `sudo` e a chave do conector **não passam pela sessão do Claude Code da VM**, que já não tem sudo depois do arranque e nunca vê a chave. Os nomes de arquivo e os campos do `conector.json` são os do `LEIA-ME` e do `conector.thathyany.exemplo.json` do pacote; onde divergirem deste roteiro, vale o pacote, e o `banco-dados` corrige o roteiro.
+
+1. **Node 24.7 ou mais novo** (pacote da distribuição, se tiver a versão, ou NodeSource):
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_24.x -o /tmp/nodesource_setup.sh   # ler antes de rodar
+   sudo bash /tmp/nodesource_setup.sh && sudo apt install -y nodejs
+   node --version   # v24.7 ou mais
+   ```
+2. **Pacote Linux** `tar.gz` do Conector: o artefato do workflow `conector-montar` (ADR 0014 §10, item 2), baixado pelo Alexandre do GitHub com o `.sha256` e copiado para a VM (`scp` para `/tmp`; o pacote não tem segredo). Conferir e instalar em `/opt/macuxi-conector/<versão>`, com o link `atual`, tudo do root:
+   ```bash
+   cd /tmp && sha256sum -c macuxierp-conector-<versão>-linux.tar.gz.sha256   # OK; diferente = parar
+   sudo install -d -m 755 -o root -g root /opt/macuxi-conector/<versão>
+   sudo tar -xzf macuxierp-conector-<versão>-linux.tar.gz -C /opt/macuxi-conector/<versão> --no-same-owner
+   sudo ln -sfn /opt/macuxi-conector/<versão> /opt/macuxi-conector/atual
+   ```
+3. **Usuário próprio, sem login**, e as pastas:
+   ```bash
+   sudo useradd --system --no-create-home --home-dir /var/lib/macuxi-conector --shell /usr/sbin/nologin macuxi-conector
+   sudo install -d -m 750 -o macuxi-conector -g macuxi-conector /var/lib/macuxi-conector   # dados locais (fila de descida, cursores)
+   sudo install -d -m 750 -o root -g macuxi-conector /etc/macuxi-conector
+   ```
+4. **Segredos** em `/etc/macuxi-conector/segredos.env`, **dono root, 0600**, só com as duas variáveis (o systemd lê o arquivo como root e as passa ao serviço; o provedor `env` do Conector as lê):
+   - `MACUXI_CONECTOR_ERP_SENHA`: a senha do `macuxi_conector` (a `SENHA_CONECTOR` do `~/thathyany/.segredos.env`);
+   - `MACUXI_CONECTOR_HUB_CHAVE`: a chave "via Conector" gerada no `/config` do ERP, aba "Integração" da AM2808 (mostrada uma vez; seção 7B, passo 3).
+
+   Sem valor neste roteiro, na tela ou no histórico (`read -s` não ecoa):
+   ```bash
+   sudo install -m 600 -o root -g root /dev/null /etc/macuxi-conector/segredos.env
+   ( set -a; . ~/thathyany/.segredos.env; set +a
+     read -rsp 'Chave do conector (não aparece): ' CHAVE; echo
+     printf 'MACUXI_CONECTOR_ERP_SENHA=%s\nMACUXI_CONECTOR_HUB_CHAVE=%s\n' "$SENHA_CONECTOR" "$CHAVE" \
+       | sudo tee /etc/macuxi-conector/segredos.env >/dev/null )
+   sudo stat -c '%a %U %G' /etc/macuxi-conector/segredos.env          # 600 root root
+   sudo grep -c '^MACUXI_CONECTOR_' /etc/macuxi-conector/segredos.env   # 2 (só conta, sem mostrar)
+   ```
+   Guarde a chave no cofre de senhas, sem colar em chat ou recado.
+5. **Configuração** `/etc/macuxi-conector/conector.json` (dono root, grupo `macuxi-conector`, 0640; sem segredo), a partir do exemplo do pacote:
+   ```bash
+   sudo install -m 640 -o root -g macuxi-conector /opt/macuxi-conector/atual/exemplos/conector.thathyany.exemplo.json /etc/macuxi-conector/conector.json
+   sudo nano /etc/macuxi-conector/conector.json
+   ```
+   Ajustar só: a URL do Hub `https://erp.macuxifdv.com.br` com o prefixo `/entrada/v1`; o `conectorId` da credencial "via Conector" da AM2808 (o do ERP, **nunca** o `thathyany-conector` do FDV); o banco `sqlserver` em `127.0.0.1`, porta `1433`, banco `ERP_THATHYANY`, usuário `macuxi_conector`, com TLS (certificado autoassinado da seção 4, só local); os segredos pelo provedor `env`; a atualização automática **desligada**; os 10 cadastros, `pedidos`, `clientes` e `notas` como vêm no exemplo (sem `reconciliacao`).
+6. **Unidade systemd** `/etc/systemd/system/macuxi-conector.service` (se o pacote trouxer a unidade, use a dele; esta é a referência da ADR 0014 §6):
+   ```ini
+   [Unit]
+   Description=Macuxi ERP - Conector (thathyany, cenario B)
+   Wants=network-online.target
+   After=network-online.target mssql-server.service
+
+   [Service]
+   Type=simple
+   User=macuxi-conector
+   Group=macuxi-conector
+   EnvironmentFile=/etc/macuxi-conector/segredos.env
+   WorkingDirectory=/var/lib/macuxi-conector
+   ExecStart=/usr/bin/node /opt/macuxi-conector/atual/conector.mjs --config /etc/macuxi-conector/conector.json
+   Restart=on-failure
+   RestartSec=30
+   NoNewPrivileges=yes
+   ProtectSystem=strict
+   ProtectHome=yes
+   PrivateTmp=yes
+   ReadWritePaths=/var/lib/macuxi-conector
+   CapabilityBoundingSet=
+   UMask=0077
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   ```bash
+   sudo systemctl daemon-reload
+   ```
+   **Ainda não ligue o serviço:** o `systemctl enable --now` é o passo 5 da seção 7B, depois da virada.
+7. **`conector status`** (só confere; não envia lote), com o usuário e os segredos do serviço:
+   ```bash
+   sudo systemd-run --pipe --wait --quiet -p User=macuxi-conector -p EnvironmentFile=/etc/macuxi-conector/segredos.env \
+     -p WorkingDirectory=/var/lib/macuxi-conector \
+     /usr/bin/node /opt/macuxi-conector/atual/conector.mjs status --config /etc/macuxi-conector/conector.json
+   ```
+
+Como conferir:
+- `node --version` → 24.7 ou mais; `getent passwd macuxi-conector` termina em `/usr/sbin/nologin`.
+- `sudo stat -c '%a %U %G' /etc/macuxi-conector/segredos.env` → `600 root root`; `/etc/macuxi-conector/conector.json` → `640 root macuxi-conector`.
+- `systemd-analyze security macuxi-conector` não marca `NoNewPrivileges` nem `ProtectSystem` como inseguros.
+- O `conector status` mostra a versão (1.0.0, base FDV 1.5.0), o banco **conectado** (SQL Server, `ERP_THATHYANY`), o ERP **alcançado** (`erp.macuxifdv.com.br`, `/entrada/v1`, credencial aceita) e as entidades configuradas, sem erro. Nenhuma linha mostra senha, chave ou dado de cadastro.
+- `sudo ss -tlnp` igual ao da seção 3 (o Conector não abre porta).
+
+## 7B. Virada para o Conector do ERP, sem envio duplicado
+
+ADR 0014 §7 e Riscos (decisão do Alexandre de 23/11, 14h19). Até aqui o FDV pode estar recebendo a thathyany pelo Conector do kit do FDV (`thathyany-conector`). Com os dois conectores ligados, o FDV recebe o mesmo cadastro por dois caminhos. A ordem abaixo é obrigatória, e cada passo só começa com o "como conferir" do anterior feito. O Alexandre anota a data e a hora de cada passo no horário de Manaus (`TZ=America/Manaus date`).
+
+1. **Desligar o `thathyany-conector` do FDV** (Alexandre, no servidor onde ele roda; é operação, nada do código do FDV muda): parar o serviço e deixá-lo desabilitado (no Windows, `sc stop <serviço>` e `sc config <serviço> start= disabled`, ou o painel de serviços), e inativar a credencial dele no portal do FDV, para que um religamento por engano seja recusado.
+   Como conferir: o serviço aparece "parado" e "desabilitado"; no portal do FDV, a credencial do `thathyany-conector` está inativa e o último sinal dele não avança por 15 minutos.
+2. **Inativar no FDV os cadastros antigos** que vieram do `thathyany-conector` (Alexandre, no FDV, AM2808), nos 10 cadastros da F2.
+   Como conferir: no FDV, a AM2808 mostra 0 cadastro ativo de origem `thathyany-conector` em cada uma das 10 entidades.
+3. **Preparar o ERP** (Alexandre, superadmin, no `/config` do ERP de produção, AM2808, aba "Integração"):
+   - gerar a chave "via Conector" (mostrada uma vez) e gravá-la no `segredos.env` (seção 7A, passo 4);
+   - definir o **dono** de cada cadastro que a VM alimenta como `cliente` (ADR 0014 §14; o `cliente_endereco` segue o `cliente`, e o `produto_unidade` segue o `produto`);
+   - confirmar que a Integração FDV da AM2808 está no ambiente **Produção** do Hub.
+
+   Como conferir: a coluna "via Conector" mostra o `conector_id` e o prefixo da chave; o dono aparece `cliente` nos cadastros escolhidos; o bloco "Macuxi FDV" mostra Produção.
+4. **Conferir antes do 1º lote:** o `conector status` (seção 7A, passo 7) sem erro, as views com as contagens da seção 6 e o `thathyany-conector` ainda parado (passo 1).
+5. **Ligar o Conector do ERP** (Alexandre, SSH):
+   ```bash
+   sudo systemctl enable --now macuxi-conector
+   systemctl is-active macuxi-conector          # active
+   sudo journalctl -u macuxi-conector -n 50 --no-pager
+   ```
+   O 1º lote de cada entidade é a **carga completa**. Se ela fosse inativar mais de 30% dos ativos de uma entidade na AM2808 do ERP, o lote fica `aguardando_confirmacao`, e só o superadmin confirma no `/config` (ADR 0014 §3).
+
+   Como conferir:
+   - o `journalctl` mostra os lotes aceitos (`lote_id`, entidade e contagens; nunca o corpo, a chave ou o dado);
+   - no `/config` da AM2808, cada cadastro mostra o último lote `concluido` (ou `concluido_com_erros`, com os erros por linha sem o dado) e o último sinal recente;
+   - no FDV, cada uma das 10 entidades da AM2808 tem os ativos **iguais** às linhas ativas da view correspondente (`SELECT COUNT(*) FROM dbo.vw_macuxi_<entidade> WHERE ativo = 1`), sem `external_id` repetido, e nada novo chegou pelo `thathyany-conector`.
+6. **Testar a descida** (mão dupla, ADR 0014 §13): um pedido fictício aprovado no ERP aparece em `macuxi_pedido_entrada`; com a simulação da seção 7.3, o status volta ao ERP e ao FDV; com o faturamento ligado, a nota emitida aparece em `macuxi_nota_entrada`; um pré-cadastro do FDV aparece em `macuxi_cliente_entrada` e, vinculado, volta pela `vw_macuxi_cliente_retorno`. Repetir o mesmo envio (reiniciar o serviço no meio) não cria linha nova.
+
+**Volta atrás:** `sudo systemctl disable --now macuxi-conector`. O `thathyany-conector` do FDV só volta com a decisão do Alexandre por recado, e antes dele os cadastros enviados pelo ERP são tratados no FDV (o mesmo cuidado dos passos 1 e 2, ao contrário).
+
+**Registro:** recado `aviso` ao `gerente-projetos` com a data e a hora de Manaus de cada passo (1 a 6), quem fez e as contagens conferidas (sem dado nem segredo).
+
 ## 8. LGPD e encerramento
 
-- **Quem acessa:** o Alexandre (SSH/`sa`); a sessão do Claude Code **da VM**, na conta do Alexandre, via Remote Control (arranque e carga da seção 6), com o `sa` só pelo arquivo `~/thathyany/.segredos.env` (600, gerado por ela, nunca impresso); o conector, só como `macuxi_conector`, local. Nenhum agente do time recebe credencial nem acesso à VM.
+- **Quem acessa:** o Alexandre (SSH/`sa`); a sessão do Claude Code **da VM**, na conta do Alexandre, via Remote Control (arranque e carga da seção 6), com o `sa` só pelo arquivo `~/thathyany/.segredos.env` (600, gerado por ela, nunca impresso); o Conector, só como `macuxi_conector`, local, com os segredos em `/etc/macuxi-conector/segredos.env` (root, 0600), que a sessão da VM não lê. Nenhum agente do time recebe credencial nem acesso à VM.
+- **O que desce do ERP é fictício no teste** (a `macuxi_cliente_entrada` tem o contato do pré-cadastro); o log do Conector e o chat da sessão da VM levam só contagens, UUIDs e códigos.
 - **Nada de dado pessoal real na VM.** Se aparecer (num CSV, no catálogo ou num log), **parar**, apagar o arquivo e avisar o Alexandre por recado, sem copiar o dado.
 - **Prazo:** a VM **fica enquanto durarem os testes**, até o Alexandre encerrá-los **por recado**. O `gerente-projetos` confere na ronda semanal se o teste segue.
 
-**Encerramento** (só disparado pelo recado do Alexandre): parar e desabilitar o Remote Control (`systemctl --user disable --now claude-remote` e `sudo loginctl disable-linger <USUARIO_ADMIN>`, ou `tmux kill-session -t thathyany`); `claude` → `/logout`; apagar `~/thathyany/.segredos.env` (`shred -u ~/thathyany/.segredos.env`); depois, apagar a **VM inteira** no painel do provedor, com volumes, snapshots, imagens e backups; remover a regra do firewall do provedor.
+**Encerramento** (só disparado pelo recado do Alexandre): parar e desabilitar o Conector (`sudo systemctl disable --now macuxi-conector`), apagar `/etc/macuxi-conector/segredos.env` (`sudo shred -u`) e trocar ou revogar a chave "via Conector" no `/config` do ERP; parar e desabilitar o Remote Control (`systemctl --user disable --now claude-remote` e `sudo loginctl disable-linger <USUARIO_ADMIN>`, ou `tmux kill-session -t thathyany`); `claude` → `/logout`; apagar `~/thathyany/.segredos.env` (`shred -u ~/thathyany/.segredos.env`); depois, apagar a **VM inteira** no painel do provedor, com volumes, snapshots, imagens e backups; remover a regra do firewall do provedor.
 
 **Registro:** recado `aviso` ao `gerente-projetos` com a data e a hora de Manaus (`TZ=America/Manaus date`), quem fez e a confirmação de cada item acima (sem dado nem segredo).
 
@@ -349,6 +468,9 @@ Como conferir: a sessão da VM não aparece mais no claude.ai/code do Alexandre;
 - [ ] `~/thathyany/CLAUDE.md` da VM com as regras da carga (seção 6)
 - [ ] Carga por `MERGE`: nenhuma `carga_*` sobrando e `~/thathyany/carga` vazia (seção 6)
 - [ ] Sudoers do arranque removido: `sudo -n true` falha (seções 2A e 7)
+- [ ] Kit do ERP com o hash conferido e as contagens 10 / 6 / 13 / 5 / 3 (seção 5); permissões do `macuxi_conector` conferidas (seção 7.2)
+- [ ] Conector instalado: `segredos.env` 600 root, `conector status` sem erro, serviço ainda parado antes da virada (seção 7A)
+- [ ] Virada na ordem, com data e hora (Manaus) de cada passo: `thathyany-conector` parado e com a credencial inativa → cadastros antigos inativos no FDV → `/config` da AM2808 pronto → 1º lote → descida testada (seção 7B)
 - [ ] Data de início do teste: ____ (Manaus) · testes encerrados por recado do Alexandre em ____ (seção 8)
 - [ ] Encerramento: data e hora (Manaus) ____ · quem fez ____
 
@@ -359,3 +481,6 @@ Como conferir: a sessão da VM não aparece mais no claude.ai/code do Alexandre;
 | Sessão da VM com acesso ao `sa` | Senhas geradas pela sessão em `~/thathyany/.segredos.env` (600), carregadas só num subshell, nunca impressas no chat, recado ou log (o Alexandre lê pelo SSH, se precisar); o arquivo é apagado no encerramento; firewall de entrada fechado (o Remote Control só sai por HTTPS); login Claude só do Alexandre; sem sudo depois do arranque |
 | Carga perder ou duplicar linha | Seção 6: `MERGE` por `external_id` sem `WHEN NOT MATCHED BY SOURCE` (nunca apaga), cabeçalho validado, staging `carga_*` removida; regras em `~/thathyany/CLAUDE.md` da VM |
 | CSV com dado pessoal real | Seção 6: parar antes de carregar, apagar o arquivo e avisar o Alexandre, sem copiar o dado |
+| Envio duplicado ao FDV (dois conectores ligados) | Seção 7B: o `thathyany-conector` parado e com a credencial inativa e os cadastros antigos inativos **antes** do `enable --now`; conferência por contagem no FDV |
+| Layout dos CSVs × colunas do kit do ERP | Seção 5: a validação do cabeçalho da seção 6 para a carga na 1ª diferença; a conferência contra o kit do FDV fica pendente |
+| Chave ou senha do Conector exposta | Seção 7A: `segredos.env` root 0600, escrito pelo Alexandre por SSH com `read -s`; a sessão da VM não o lê; o log do Conector não leva segredo |
