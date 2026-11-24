@@ -253,7 +253,7 @@ describe.each(LADOS_SINTETICOS)(
           external_id: crypto.randomUUID(),
           alterado_em: depois(32).toISOString(),
           codigo: `35-${massa.execucao}`,
-          parcelas_dias: '35',
+          parcelas_dias: [35],
           descricao: 'Boleto 35',
         };
         const casos: [EntidadeHub, RegistroHub, 'atualizadas' | 'novas'][] = [
