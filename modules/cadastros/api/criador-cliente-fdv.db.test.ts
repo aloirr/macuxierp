@@ -60,9 +60,7 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     expect(JSON.stringify(aud)).not.toMatch(/11444777|Mercadinho/); // LGPD: sem documento nem nome na auditoria
     const [end] = await admin<Record<string, unknown>>('SELECT municipio_ibge, uf, cep, tipo FROM cadastros.cliente_endereco WHERE cliente_id = $1', [d.cliente_id]);
     expect(end).toMatchObject({ municipio_ibge: '1302603', uf: 'AM', cep: '69050010', tipo: 'principal' });
-  });
-
-  it('o cliente criado é o mesmo que o POST do BKO criaria (aparece na lista e a filial padrão vale sem filial_external_id)', async () => {
+    // o mesmo cliente que o POST do BKO criaria: aparece na lista e a filial padrão vale sem filial_external_id
     const r = await amb(A).chamar('GET', '/clientes', { sessao: adm, consulta: {} });
     expect((r.corpo as { itens: { documento: string; filial_id: string }[] }).itens).toEqual([expect.objectContaining({ documento: '11444777000161', filial_id: filialA })]);
   });
@@ -80,13 +78,14 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
   });
 
   it('recusado junta todas as recusas e não grava cliente, evento nem auditoria', async () => {
-    const d = await decidir(A, pre({ documento: '123', cidade: 'Atlantida', cep: '1', filial_external_id: 'F99', razao_social: 'X'.repeat(61) }));
+    const conta = async () => (await admin<{ n: string }>("SELECT (SELECT count(*) FROM cadastros.cliente WHERE tenant_id = $1)::text || '/' || (SELECT count(*) FROM plataforma.evento WHERE tenant_id = $1) || '/' || (SELECT count(*) FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'cliente.criar') AS n", [A]))[0]?.n;
+    const antes = await conta();
+    const d = await decidir(A, pre({ documento: '123', cidade: 'Atlantida', cep: '1', filial_external_id: 'F99', razao_social: 'X'.repeat(61), numero: '9'.repeat(61) }));
     expect(d.status).toBe('rejeitado_erp');
     if (d.status !== 'rejeitado_erp') return;
-    expect(d.erros.map((e) => e.codigo)).toEqual(['documento_invalido', 'municipio_nao_encontrado', 'cep_invalido', 'tamanho_maximo', 'filial_nao_encontrada']);
+    expect(d.erros.map((e) => e.codigo)).toEqual(['documento_invalido', 'municipio_nao_encontrado', 'cep_invalido', 'tamanho_maximo', 'tamanho_maximo', 'filial_nao_encontrada']);
     expect(d.motivo.length).toBeLessThanOrEqual(300);
-    expect((await admin<{ n: string }>('SELECT count(*)::text AS n FROM cadastros.cliente WHERE tenant_id = $1', [A]))[0]?.n).toBe('1');
-    expect((await admin<{ n: string }>("SELECT count(*)::text AS n FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'cliente.criar'", [A]))[0]?.n).toBe('1');
+    expect(await conta()).toBe(antes);
   });
 
   it('cliente inativo com o mesmo documento não bloqueia: o pré-cadastro cria um novo (índice único só nos ativos)', async () => {
@@ -109,12 +108,12 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     expect(doB[0]?.tenant_id).toBe(B);
   });
 
-  it('filial_external_id existente no tenant usa essa filial; IE vazia vira ind_ie_dest 9 e ISENTO vira 2', async () => {
+  it('RN-CAD-02: IE vazia vira ind_ie_dest 9 e ISENTO vira 2; filial_external_id F01 resolve para a filial do tenant', async () => {
     const a = await decidir(A, pre({ documento: '529.982.247-25', inscricao_estadual: '', filial_external_id: 'F01', cliente_uuid: '88888888-8888-4888-8888-888888888888' }));
     const b = await decidir(A, pre({ documento: '12.ABC.345/01DE-35', inscricao_estadual: 'ISENTO', cliente_uuid: '99999999-9999-4999-8999-999999999999' }));
     expect(a).toMatchObject({ status: 'vinculado' });
     expect(b).toMatchObject({ status: 'vinculado' });
-    const l = await admin<{ documento: string; ind_ie_dest: string; tipo_pessoa: string }>("SELECT documento, ind_ie_dest, tipo_pessoa FROM cadastros.cliente WHERE tenant_id = $1 AND documento IN ('52998224725','12ABC34501DE35') ORDER BY documento", [A]);
-    expect(l).toEqual([{ documento: '12ABC34501DE35', ind_ie_dest: '2', tipo_pessoa: 'PJ' }, { documento: '52998224725', ind_ie_dest: '9', tipo_pessoa: 'PF' }]);
+    const l = await admin<{ documento: string; ind_ie_dest: string; tipo_pessoa: string; filial_id: string }>("SELECT documento, ind_ie_dest, tipo_pessoa, filial_id FROM cadastros.cliente WHERE tenant_id = $1 AND documento IN ('52998224725','12ABC34501DE35') ORDER BY documento", [A]);
+    expect(l).toEqual([{ documento: '12ABC34501DE35', ind_ie_dest: '2', tipo_pessoa: 'PJ', filial_id: filialA }, { documento: '52998224725', ind_ie_dest: '9', tipo_pessoa: 'PF', filial_id: filialA }]);
   });
 });

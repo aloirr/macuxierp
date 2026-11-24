@@ -10,7 +10,7 @@ const pre = (o: Partial<ClienteParaErpFdv> = {}): ClienteParaErpFdv => ({
   cidade: 'Manaus', uf: 'AM', cep: '69050-010', ...o,
 });
 const ctx = (o: Partial<ContextoPreCadastroFdv> = {}): ContextoPreCadastroFdv => ({
-  documentoJaCadastrado: false, filialId: FILIAL, municipiosDaUf: (uf) => (uf === 'AM' ? [{ ibge: '1302603', nome: 'Manaus' }, { ibge: '1301902', nome: 'Itacoatiara' }] : []), ...o,
+  documentoJaCadastrado: false, filialId: FILIAL, municipiosDaUf: [{ ibge: '1302603', nome: 'Manaus' }, { ibge: '1301902', nome: 'Itacoatiara' }], ...o,
 });
 const codigos = (r: ReturnType<typeof validarPreCadastroFdv>) => (r.ok ? [] : r.erros.map((e) => `${e.campo}:${e.codigo}`));
 
@@ -70,7 +70,7 @@ describe('pré-cadastro do FDV (RN-CAD-01/02/03)', () => {
   });
 
   it('RN-CAD-03: cidade ambígua na UF recusa com o código municipio_nao_encontrado', () => {
-    const dup = ctx({ municipiosDaUf: () => [{ ibge: '1302603', nome: 'Manaus' }, { ibge: '1302604', nome: 'MANAUS' }] });
+    const dup = ctx({ municipiosDaUf: [{ ibge: '1302603', nome: 'Manaus' }, { ibge: '1302604', nome: 'MANAUS' }] });
     expect(codigos(validarPreCadastroFdv(pre(), dup))).toEqual(['cidade:municipio_nao_encontrado']);
   });
 
@@ -79,6 +79,13 @@ describe('pré-cadastro do FDV (RN-CAD-01/02/03)', () => {
     expect(codigos(validarPreCadastroFdv(pre({ cep: null, logradouro: '', bairro: null }), ctx()))).toEqual(['cep:cep_invalido', 'logradouro:campo_obrigatorio', 'bairro:campo_obrigatorio']);
     const r = validarPreCadastroFdv(pre({ numero: null }), ctx());
     expect(r.ok && r.dados.enderecos[0]?.numero).toBe('S/N');
+  });
+
+  it('RN-CAD-03: número e complemento acima de 60 recusam com tamanho_maximo (sem cortar em silêncio); sem número vira S/N', () => {
+    expect(codigos(validarPreCadastroFdv(pre({ numero: '9'.repeat(61) }), ctx()))).toEqual(['numero:tamanho_maximo']);
+    expect(codigos(validarPreCadastroFdv(pre({ complemento: 'C'.repeat(61) }), ctx()))).toEqual(['complemento:tamanho_maximo']);
+    const r = validarPreCadastroFdv(pre({ numero: '', complemento: 'Sala 2' }), ctx());
+    expect(r.ok && r.dados.enderecos[0]).toMatchObject({ numero: 'S/N', complemento: 'Sala 2' });
   });
 
   it('razão social acima de 60 recusa com tamanho_maximo', () => {
