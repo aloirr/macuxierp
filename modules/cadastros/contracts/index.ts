@@ -96,7 +96,7 @@ export const ClienteDados = z.object({
   filial_id: Uuid,
   vendedor_id: Uuid.nullable().default(null),
   /** RN-CAD-16: prazo médio máximo do cliente (0 a 999), opcional; nulo = sem restrição de prazo. */
-  prazo_medio_dias: PrazoMedioDias.nullable().default(null),
+  prazo_medio_dias: PrazoMedioDias.nullish(),
   enderecos: z.array(EnderecoCliente).min(1).max(10),
   external_id: IdExterno,
 });
@@ -244,17 +244,22 @@ export const FORMAS_A_VISTA = (Object.keys(CLASSE_FORMA) as (keyof typeof CLASSE
 /** Critério único de "à vista" (pedido, faturamento): só a forma de pagamento (RN-CAD-09 garante o prazo 0). */
 export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag'>): boolean => classeForma(c.forma_tpag) === 'a_vista';
 export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
-export const CondicaoPagamento = CondicaoPagamentoDados.extend({ prazo_medio_dias: PrazoMedioDias.nullable().default(null), id: Uuid, inativo: z.boolean().default(false) });
+export const CondicaoPagamento = CondicaoPagamentoDados.extend({ /** Aditivo também no tipo: ausente ou nulo = prazo incompleto (legado). */ prazo_medio_dias: PrazoMedioDias.nullish(), id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;
 
-type PrazoParaConferir = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'prazos_dias' | 'prazo_medio_dias'>;
-/** RN-CAD-15: prazo completo = código, descrição, ao menos uma parcela e prazo médio não nulo (o legado sem prazo médio é "Incompleto"). */
+type PrazoParaConferir = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'prazos_dias'> & { prazo_medio_dias?: number | null; forma_tpag?: string };
+/** RN-CAD-15: prazo completo = código, descrição, ao menos uma parcela e prazo médio não nulo (ausente ou nulo = "Incompleto"). */
 export function prazoCompleto(c: PrazoParaConferir): boolean {
   return c.codigo.trim() !== '' && c.descricao.trim() !== '' && c.prazos_dias.length >= 1 && c.prazo_medio_dias !== null && c.prazo_medio_dias !== undefined;
 }
-/** RN-CAD-16: o prazo é permitido ao cliente quando está completo e o cliente não tem prazo médio ou tem prazo médio >= o do prazo. */
-export function prazoPermitidoAoCliente(prazo: PrazoParaConferir, cliente: { prazo_medio_dias: number | null }): boolean {
+/**
+ * RN-CAD-16: o prazo é permitido ao cliente quando está completo e o cliente não tem prazo médio (nulo ou ausente) ou tem prazo médio >= o do prazo.
+ * Exceção (decisão do Alexandre, 24/11): a forma Cartão de crédito (tPag 03) fica fora do limite; o prazo completo do cartão é permitido
+ * a qualquer cliente. O prazo incompleto do cartão continua não permitido.
+ */
+export function prazoPermitidoAoCliente(prazo: PrazoParaConferir, cliente: { prazo_medio_dias?: number | null }): boolean {
   if (!prazoCompleto(prazo)) return false;
+  if (prazo.forma_tpag !== undefined && classeForma(prazo.forma_tpag) === 'cartao') return true;
   return cliente.prazo_medio_dias === null || cliente.prazo_medio_dias === undefined || cliente.prazo_medio_dias >= (prazo.prazo_medio_dias as number);
 }
 
