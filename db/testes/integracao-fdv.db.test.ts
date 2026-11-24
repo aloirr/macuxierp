@@ -31,6 +31,8 @@ const WORKER_B = { papel: 'macuxierp_worker', tenant: B.id };
 const LEITURA_A = { papel: 'macuxierp_leitura', tenant: A.id };
 
 const TABELAS = [
+  'cliente_recebido',
+  'cliente_retorno',
   'conflito_chave',
   'credencial',
   'cursor_entidade',
@@ -47,6 +49,9 @@ type TabelaIntegracao = (typeof TABELAS)[number];
 
 /** Privilégios de tabela esperados (S, I, U, D, T; "-" = nenhum). Os de coluna têm teste próprio. */
 const PRIVILEGIOS: Record<TabelaIntegracao, Record<(typeof PAPEIS_APP)[number], string>> = {
+  // 0057 (T-0059): o app e a leitura leem por coluna (sem o payload); o worker grava por coluna (matriz COLUNAS).
+  cliente_recebido: { macuxierp_app: '-', macuxierp_worker: 'SI', macuxierp_leitura: '-' },
+  cliente_retorno: { macuxierp_app: 'S', macuxierp_worker: 'SIU', macuxierp_leitura: 'S' },
   conflito_chave: { macuxierp_app: 'S', macuxierp_worker: 'SI', macuxierp_leitura: 'S' },
   credencial: { macuxierp_app: 'I', macuxierp_worker: 'S', macuxierp_leitura: '-' },
   cursor_entidade: { macuxierp_app: 'SI', macuxierp_worker: 'SIU', macuxierp_leitura: 'S' },
@@ -69,7 +74,54 @@ const AGENDA_SINAL = [
 ];
 
 /** Colunas com privilégio só de coluna (sem o de tabela): o que cada papel pode além da matriz acima. */
+/** cliente_recebido (0057): o que o app e a leitura leem; tudo menos o payload (LGPD, T-0059). */
+const LEITURA_CLIENTE_RECEBIDO = [
+  'chegou_em',
+  'cliente_id',
+  'cliente_uuid',
+  'codigo_fdv',
+  'created_at',
+  'decidido_em',
+  'deleted_at',
+  'documento_mascarado',
+  'erros',
+  'external_id',
+  'hash',
+  'id',
+  'motivo',
+  'payload_expurgado_em',
+  'razao_social',
+  'recebido_em',
+  'revisao',
+  'situacao',
+  'tenant_id',
+  'tentativas_fdv',
+  'ultima_recusa_em',
+  'updated_at',
+  'vendedor_external_id',
+];
+
 const COLUNAS: { papel: string; tabela: TabelaIntegracao; acao: string; colunas: string[] }[] = [
+  { papel: 'macuxierp_app', tabela: 'cliente_recebido', acao: 'SELECT', colunas: LEITURA_CLIENTE_RECEBIDO },
+  { papel: 'macuxierp_leitura', tabela: 'cliente_recebido', acao: 'SELECT', colunas: LEITURA_CLIENTE_RECEBIDO },
+  {
+    papel: 'macuxierp_worker',
+    tabela: 'cliente_recebido',
+    acao: 'UPDATE',
+    colunas: [
+      'cliente_id',
+      'codigo_fdv',
+      'decidido_em',
+      'deleted_at',
+      'erros',
+      'motivo',
+      'payload',
+      'situacao',
+      'tentativas_fdv',
+      'ultima_recusa_em',
+      'vendedor_external_id',
+    ],
+  },
   { papel: 'macuxierp_app', tabela: 'conflito_chave', acao: 'UPDATE', colunas: ['resolvido_em'] },
   {
     papel: 'macuxierp_app',
@@ -169,7 +221,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
 
   afterAll(() => banco?.remover());
 
-  it('tem exatamente as onze tabelas da seção 8 (dez da 0007 e conflito_chave da 0015)', () => {
+  it('tem exatamente as treze tabelas (dez da 0007, conflito_chave da 0015, cliente_recebido e cliente_retorno da 0057)', () => {
     const linhas = consultar<{ t: string }>(
       banco.conexao,
       `SELECT k.relname AS t FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace
@@ -265,7 +317,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv (T-0010)', (
     expect(obtido).toEqual(PRIVILEGIOS);
   });
 
-  it('privilégios por coluna: o app só nas ações do BKO; o worker na credencial só uso e anulação', () => {
+  it('privilégios por coluna: o app só nas ações do BKO; app e leitura sem o payload do pré-cadastro; o worker na credencial só uso e anulação', () => {
     for (const { papel, tabela, acao, colunas } of COLUNAS) {
       const obtidas = consultar<{ c: string }>(
         banco.conexao,
