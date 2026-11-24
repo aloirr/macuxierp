@@ -15,12 +15,13 @@ import {
   ENTIDADES_F2,
   FORMATO_IDEMPOTENCIA,
   LIMITE_REGISTROS_LOTE,
+  MAX_BYTES_LOTE_ENTRADA,
   caminho,
   criarConectorSimulado,
   type ConectorSimulado,
 } from './apoio/conector-simulado';
 import { criarEntradaFalsa } from './apoio/entrada-falsa';
-import { montarMassaCenarioB } from './apoio/massa-cenario-b';
+import { cargaSemParte, montarMassaCenarioB } from './apoio/massa-cenario-b';
 
 // chave fictícia gerada na hora (nunca fixa no código, nunca real)
 const CHAVE = `cb_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')}`;
@@ -114,7 +115,7 @@ describe('conector simulado: envelope do Hub v1 (ADR 0014 §2)', () => {
 });
 
 describe('conector simulado: cabeçalhos e idempotência (ADR 0014 §3)', () => {
-  it('manda Authorization, X-Macuxi-Conector-Id, a versão e a Idempotency-Key no formato do Hub', async () => {
+  it('manda Authorization, X-Macuxi-Conector-Id e a Idempotency-Key no formato do Hub; a versão não vai em cabeçalho (P-1, P-3, P-4)', async () => {
     const vistos: Headers[] = [];
     const { falsa } = montar();
     const { conector } = montar({
@@ -129,7 +130,7 @@ describe('conector simulado: cabeçalhos e idempotência (ADR 0014 §3)', () => 
     const h = vistos[0]!;
     expect(h.get('authorization')).toBe(`Bearer ${CHAVE}`);
     expect(h.get('x-macuxi-conector-id')).toBe(CONECTOR);
-    expect(h.get('x-macuxi-conector-versao')).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(h.get('x-macuxi-conector-versao')).toBeNull();
     expect(h.get('content-type')).toBe('application/json');
     expect(h.get('idempotency-key')).toBe(lote!.chave);
     expect(lote!.chave).toMatch(FORMATO_IDEMPOTENCIA);
@@ -143,7 +144,9 @@ describe('conector simulado: cabeçalhos e idempotência (ADR 0014 §3)', () => 
     expect(a.status).toBe(202);
     expect(b.status).toBe(202);
     expect((b.corpo as { lote_id: string }).lote_id).toBe((a.corpo as { lote_id: string }).lote_id);
-    expect(b.corpo).toMatchObject({ repetido: true });
+    expect(b.corpo).toEqual({ ...(a.corpo as object), repetido: true });
+    expect(b.cabecalhos['idempotency-replayed']).toBe('true');
+    expect(a.cabecalhos['idempotency-replayed']).toBeUndefined();
     expect(falsa.lotes.size).toBe(1);
     expect(conector.requisicoes.map((x) => x.chaveIdempotencia)).toEqual([lote!.chave, lote!.chave]);
   });
@@ -158,7 +161,18 @@ describe('conector simulado: cabeçalhos e idempotência (ADR 0014 §3)', () => 
     expect(b!.corpo).toBe(a!.corpo);
     expect(c!.chave).not.toBe(a!.chave);
     expect((await conector.enviar(a!)).status).toBe(202);
-    expect((await conector.enviarComChave(a!.chave, c!.envelope)).status).toBe(409);
+    const conflito = await conector.enviarComChave(a!.chave, c!.envelope);
+    expect(conflito.status).toBe(409);
+    expect(conflito.corpo).toMatchObject({ codigo: 'CONFLITO', detalhes: { codigo: 'idempotencia_conflito' } });
+  });
+
+  it('o sinal leva a versao_conector no corpo, no molde do CorpoSinal (P-3)', () => {
+    const { conector } = montar();
+    const s = conector.montarSinal(['produto']);
+    expect(s).toMatchObject({ versao_contrato: 'v1', conector_id: CONECTOR, versao_conector: '1.0.0' });
+    expect(s.entidades).toEqual([
+      { entidade: 'produto', fase: 'delta', ultimo_sucesso: null, bloqueada: false, lotes_na_fila: 0 },
+    ]);
   });
 
   it('chave errada leva 401 (o arnês não "acerta" a credencial por conta própria)', async () => {
@@ -207,5 +221,48 @@ describe('conector simulado: segredo e URL (ADR 0014 §3 e §6)', () => {
     for (const c of Object.values(CAMINHOS_ENTRADA_V1)) expect(c.startsWith('/')).toBe(true);
     expect(caminho(CAMINHOS_ENTRADA_V1.notaRetorno, { chave: 'a/b c' })).toBe('/notas/a%2Fb%20c/retorno');
     expect(() => caminho(CAMINHOS_ENTRADA_V1.lote)).toThrow(/falta o parâmetro id/);
+  });
+});
+
+describe('entrada falsa: trava de 30%, dono e teto (P-9, P-10, P-11)', () => {
+  async function cargaEmDuasVezes(faltando: number) {
+    const { falsa, conector } = montar();
+    const produtos = montarMassaCenarioB({ produtos: 10 }).registros.produto;
+    for (const l of conector.montarCargaCompleta('produto', produtos)) await conector.enviar(l);
+    falsa.processar();
+    const sem = cargaSemParte(produtos, faltando);
+    const [lote] = conector.montarCargaCompleta('produto', sem.registros);
+    const r = await conector.enviar(lote!);
+    falsa.processar();
+    const res = await conector.consultarLote((r.corpo as { lote_id: string }).lote_id);
+    return { falsa, res: res.corpo as { inativacao: Record<string, unknown>; inativadas: number } };
+  }
+
+  it('acima de 30% (40%) fica aguardando_confirmacao e nada é inativado', async () => {
+    const { falsa, res } = await cargaEmDuasVezes(4);
+    expect(res.inativacao).toEqual({ situacao: 'aguardando_confirmacao', candidatos: 4, percentual: 40 });
+    expect(res.inativadas).toBe(0);
+    expect(falsa.ativos('padrao', 'produto')).toHaveLength(10);
+  });
+
+  it('30% exato aplica a inativação', async () => {
+    const { falsa, res } = await cargaEmDuasVezes(3);
+    expect(res.inativacao).toEqual({ situacao: 'aplicada', candidatos: 3, percentual: 30 });
+    expect(res.inativadas).toBe(3);
+    expect(falsa.ativos('padrao', 'produto')).toHaveLength(7);
+  });
+
+  it('entidade de dono erp = 422 entidade_dono_erp; fora da F2 = 422 entidade_fora_da_fase; acima de 8 MiB = 413', async () => {
+    const falsa = criarEntradaFalsa({ chave: CHAVE, conectorId: CONECTOR, donoErp: ['cliente'] });
+    const conector = criarConectorSimulado({ url: 'https://erp.exemplo.invalid', conectorId: CONECTOR, chave: CHAVE, agora, fetch: falsa.fetch });
+    const [cli] = conector.montarDelta('cliente', [], null);
+    expect((await conector.enviar(cli!)).corpo).toMatchObject({ detalhes: { codigo: 'entidade_dono_erp' } });
+    const r = await conector.enviarComChave('cb:titulo:0001', { ...cli!.envelope, entidade: 'titulo' });
+    expect([r.status, r.corpo]).toMatchObject([422, { detalhes: { codigo: 'entidade_fora_da_fase' } }]);
+    const grande = await conector.requisitar('POST', CAMINHOS_ENTRADA_V1.lotes, 'x'.repeat(MAX_BYTES_LOTE_ENTRADA + 1), {
+      'Idempotency-Key': 'cb:grande:0001',
+    });
+    expect(grande.status).toBe(413);
+    expect(falsa.lotes.size).toBe(0);
   });
 });

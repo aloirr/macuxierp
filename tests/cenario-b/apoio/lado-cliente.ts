@@ -10,8 +10,8 @@
  * retorno; o retorno que o ERP não aceitou fica na fila e se repete no ciclo seguinte (§13, "o retorno se repete até o ERP
  * aceitar"). Nada aqui fala com o FDV nem com o banco do ERP.
  *
- * Premissas (plano T-0057, P-5 a P-8): a forma da lista de pendentes, o corpo do retorno da nota e o do pré-cadastro
- * ainda não existem no SDK; o ciclo lê a lista de forma tolerante e os corpos ficam marcados com TODO.
+ * Premissas (plano T-0057): a forma da lista de pendentes (P-5) segue em aberto e é lida de forma tolerante num ponto só
+ * (`listaDePendentes`); o retorno da nota segue a P-6 (respondida); o do pré-cadastro (P-7, v0.3.12) fica com TODO.
  */
 import type { ConectorSimulado, RegistroLocal } from './conector-simulado';
 
@@ -281,13 +281,8 @@ export async function cicloMaoDupla(
     for (const n of listaDePendentes<NotaDescida>(notas.corpo, 'notas')) {
       lado.spNotaInserir(n);
       r.notasGravadas.push(n.chave);
-      // TODO(T-0057, P-6): corpo do retorno da nota conforme o contrato novo do hub-v1
-      const resp = await conector.retorno('notas', n.chave, {
-        versao_contrato: 'v1',
-        chave: n.chave,
-        status: 'gravada',
-        ocorrido_em: ocorrido_em(),
-      });
+      // P-6 (respondida): `POST /notas/:chave/retorno` com `{ situacao: 'gravada'|'rejeitada', codigo? }`, idempotente pela chave
+      const resp = await conector.retorno('notas', n.chave, { situacao: 'gravada' });
       if (aceito(resp.status)) r.retornosAceitos.push({ recurso: 'notas', id: n.chave, status: 'gravada' });
       else r.retornosPendentes++;
     }
