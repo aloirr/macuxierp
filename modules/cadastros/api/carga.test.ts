@@ -530,9 +530,9 @@ describe('T-0058: cliente e endereço numa carga só (cliente.csv)', () => {
     expect(porEntidade(rel).cliente).toMatchObject({ lidas: 2, inseridas: 1, recusadas: 1 });
   });
 
-  it('T-0058: external_id do endereço acima de 64 caracteres: a linha não valida (CARGA_TAMANHO)', async () => {
+  it('T-0058: external_id do endereço acima de 200 caracteres: a linha não valida (CARGA_TAMANHO)', async () => {
     const t = montar();
-    const longo = 'C'.repeat(54);
+    const longo = 'C'.repeat(190);
     const rel = (await t.carregar('validar', { arquivos: cli([L(longo, 'Rua A', 'principal'), L(longo, 'Rua BB', 'entrega', '12')]) })).corpo as RelatorioCarga;
     expect(rel.erros.map((e) => [e.linha, e.campo, e.codigo])).toEqual([[3, 'external_id', 'CARGA_TAMANHO']]);
   });

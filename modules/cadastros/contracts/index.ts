@@ -5,6 +5,7 @@
  * Dinheiro em centavos; quantidade e fator × 10^4 (D11); desconto em pontos-base (10_000 = 100%).
  */
 import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento } from '@macuxierp/platform-sdk';
+import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 
 export const MODULO = 'cadastros' as const;
@@ -23,7 +24,7 @@ export const Centavos = z.number().int().min(0);
 const Ean = z.string().regex(/^(\d{8}|\d{12,14}|SEM GTIN)$/);
 const Texto = (max: number) => z.string().trim().min(1).max(max);
 /** RD-0029: `external_id` com 1 a 64 caracteres (o `CHECK` do banco); a carga e o estoque usam o valor obrigatório. */
-export const IdExternoValor = z.string().trim().min(1).max(64);
+export const IdExternoValor = z.string().trim().min(1).max(EXTERNAL_ID_MAX);
 export const IdExterno = IdExternoValor.nullable().optional();
 
 export const Endereco = z.object({
@@ -223,7 +224,7 @@ export const CondicaoPagamentoDados = z.object({
   parcelas_cartao: z.number().int().min(1).max(MAX_PARCELAS_CARTAO).nullable().optional(),
   /** D12 (T-0026): a forma de pagamento da carga viaja junto da condição; aditivo e opcional, `@1` continua valendo. */
   forma_external_id: IdExterno,
-  forma_codigo: z.string().max(20).nullable().default(null),
+  forma_codigo: z.string().max(LIMITE_CODIGO_FORMA_PAGAMENTO).nullable().default(null),
   forma_nome: z.string().max(60).nullable().default(null),
   external_id: IdExterno,
 });
@@ -384,7 +385,7 @@ export const LinhaCondicaoPagamento = z.object({
   dados: z.object({
     codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias,
     parcelas_cartao: z.number().int().min(1).max(99).nullable().optional(), // 1..99 aqui; a faixa 1..MAX_PARCELAS_CARTAO é do domain (RN-CAD-09 com a mensagem do cartão)
-    forma_external_id: IdExternoValor, forma_codigo: Texto(20), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/),
+    forma_external_id: IdExternoValor, forma_codigo: Texto(LIMITE_CODIGO_FORMA_PAGAMENTO), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/),
   }).partial(),
 });
 export const LinhaProduto = z.object({
@@ -565,3 +566,5 @@ export const PayloadCargaInicial = z.object({
   cursor_itens: z.string().nullable().default(null),
 });
 export type PayloadCargaInicial = z.infer<typeof PayloadCargaInicial>;
+
+export { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO };

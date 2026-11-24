@@ -1,4 +1,4 @@
-import { ENTIDADES_CARGA, ENTIDADES_IGNORADAS, type EntidadeCarga } from '../../contracts';
+import { ENTIDADES_CARGA, ENTIDADES_IGNORADAS, EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO, type EntidadeCarga } from '../../contracts';
 
 /**
  * Layout dos 8 arquivos da carga (T-0058: condições de pagamento e cliente com endereço são um arquivo cada) (docs/desenho/T-0026.md, seção 3; D1 e D2). `usadas` = colunas do kit lidas mais as
@@ -64,9 +64,9 @@ export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
   },
 };
 
-/** Tamanhos do contrato do ERP (limite da NF-e): excedeu, `CARGA_TAMANHO`. `external_id` e `*_external_id`: 64 (D3). */
+/** Tamanhos do contrato do ERP (limite da NF-e): excedeu, `CARGA_TAMANHO`. `external_id` e `*_external_id`: `EXTERNAL_ID_MAX` (ADR 0019). */
 export const LIMITES = {
-  id_externo: 64, texto60: 60, codigo20: 20, nome80: 80, descricao120: 120, unidade6: 6, grupo30: 30,
+  id_externo: EXTERNAL_ID_MAX, texto60: 60, codigo20: 20, codigo_forma: LIMITE_CODIGO_FORMA_PAGAMENTO, nome80: 80, descricao120: 120, unidade6: 6, grupo30: 30,
 } as const;
 
 /** UF: 2 letras maiúsculas (a coluna é normalizada antes). */

@@ -58,13 +58,13 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
     const vazio = mapear('cliente', { tipo_endereco: '', 'endereco.logradouro': '', 'endereco.numero': '', 'endereco.bairro': '', 'endereco.cidade': '', 'endereco.uf': '', 'endereco.cep': '' });
     expect(vazio.ok && vazio.linha.enderecos).toEqual([]);
   });
-  it('T-0058: tipo_endereco e seq fora do formato e external_id do endereço acima de 64 caracteres são recusados, sem o valor', () => {
+  it('T-0058: tipo_endereco e seq fora do formato e external_id do endereço acima de 200 caracteres são recusados, sem o valor', () => {
     expect(mapear('cliente', { tipo_endereco: 'casa' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'tipo_endereco' }] });
     expect(mapear('cliente', { seq: '0' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'seq' }] });
     expect(mapear('cliente', { seq: '1.5' }).ok).toBe(false);
-    const longo = mapear('cliente', { external_id: 'c'.repeat(60), tipo_endereco: 'entrega', seq: '1' });
-    expect(longo).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id', motivo: 'external_id do endereço acima de 64 caracteres: use um external_id menor' }] });
-    expect(mapear('cliente', { external_id: 'c'.repeat(54), tipo_endereco: 'principal' }).ok).toBe(true);
+    const longo = mapear('cliente', { external_id: 'c'.repeat(196), tipo_endereco: 'entrega', seq: '1' });
+    expect(longo).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id', motivo: 'external_id do endereço acima de 200 caracteres: use um external_id menor' }] });
+    expect(mapear('cliente', { external_id: 'c'.repeat(190), tipo_endereco: 'principal' }).ok).toBe(true);
   });
   it('RN-CAD-02: em linha de entrega a IE não é validada pela UF dela (vale a UF do principal do grupo, na gravação)', () => {
     const r = mapear('cliente', { tipo_endereco: 'entrega', 'endereco.uf': 'SP', 'endereco.cidade': 'São Paulo', inscricao_estadual: '012300004' }, 1);
@@ -99,9 +99,9 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
   it('RN-CAD-02: a IE da filial passa pela regra da UF', () => {
     expect(mapear('filial', { ie: '012300005' })).toMatchObject({ ok: false, erros: [{ codigo: 'RN-CAD-02', campo: 'ie' }] });
   });
-  it('D3: external_id de 65 caracteres é recusado, 64 passa', () => {
-    expect(mapear('vendedor', { external_id: 'x'.repeat(65) })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id' }] });
-    expect(mapear('vendedor', { external_id: 'x'.repeat(64) })).toMatchObject({ ok: true });
+  it('D3: external_id de 201 caracteres é recusado, 200 passa', () => {
+    expect(mapear('vendedor', { external_id: 'x'.repeat(201) })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'external_id' }] });
+    expect(mapear('vendedor', { external_id: 'x'.repeat(200) })).toMatchObject({ ok: true });
   });
   it('D3: texto acima do limite da NF-e (60) é recusado, nunca cortado', () => {
     expect(mapear('cliente', { razao_social: 'A'.repeat(61) })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_TAMANHO', campo: 'razao_social' }] });
@@ -263,7 +263,7 @@ describe('relatório sem dado digitado (RN-CORE-07, D9)', () => {
       ['condicao_pagamento', { forma_tpag: SENT }],
       ['cliente', { tipo_endereco: SENT }],
       ['cliente', { seq: SENT }],
-      ['vendedor', { external_id: SENT.repeat(10) }],
+      ['vendedor', { external_id: SENT.repeat(15) }],
     ];
     for (const [e, extra] of casos) {
       const r = mapear(e, extra);

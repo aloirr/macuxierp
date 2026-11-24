@@ -36,7 +36,7 @@ export function entidadesPedidas(nomes: readonly string[]): EntidadeCargaFdv[] {
   return ENTIDADES_CARGA_FDV.filter((e) => pedidas.has(e));
 }
 
-/** UUID v5 da chave (solicitação, entidade, cursor, tabela, página): cabe no limite de 64 caracteres do `external_id` e é estável. */
+/** UUID v5 da chave (solicitação, entidade, cursor, tabela, página): cabe no limite de 200 caracteres do `external_id` e é estável. */
 const NS_CARGA = '7d0c6a52-2f1e-5b8a-9c47-1e3a5b7d9f21';
 export const externalDoTrabalho = (p: PayloadCargaInicial): string =>
   uuidV5(`carga:${p.origem}:${p.entidade}:${p.apos ?? 'inicio'}:${p.tabela_id ?? '-'}:${p.cursor_itens ?? '-'}`, NS_CARGA);
