@@ -129,7 +129,7 @@ Colunas, chaves, índices, CHECKs e privilégios: `docs/desenho/T-0013.md` §7 e
 - **Massa comum:** o aviso do A1 continua em `fixtureModulos` (`db/testes/fixture.ts`) porque `db/testes/vazamento.ts` e `tests/integracao/banco/rls-core-cadastros.db.test.ts` exigem linha de cada tenant em toda tabela de `core`.
 
 ## Forma de pagamento na condição (T-0026, migração 0010)
-- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64), `forma_codigo` (≤ 20) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
+- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64; ≤ 200 desde a 0051), `forma_codigo` (≤ 20; ≤ 30 desde a 0051) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
 - Índice parcial `condicao_pagamento_forma_external_id_ix` em `(tenant_id, forma_external_id) where forma_external_id is not null`: a carga do `forma_pagamento.csv` atualiza todas as condições da forma por ele. RLS, política, trigger e grants da 0004 não mudam.
 - **Parcelas do cartão (T-0015, 0017; decisões do Alexandre de 22/11, horário de Manaus):** `parcelas_cartao smallint` anulável. A regra sai em **duas migrações**, para o `main` nunca ficar num estado em que a rota e a carga de cartão do cadastros falham:
   - **0017 (permissiva, validada):** `condicao_parcelas_cartao_ck` = `parcelas_cartao IS NULL OR (forma_tpag = '03' AND parcelas_cartao BETWEEN 1 AND 12)` (SQLSTATE 23514). Nenhuma linha atual a viola, por isso nasce validada (sem `NOT VALID`). Cartão sem parcelas continua aceito, inclusive em UPDATE de linha antiga; a API e a carga atuais, que não gravam a coluna, seguem funcionando. Grants da 0004 por tabela (sem grant por coluna) cobrem a coluna.
@@ -300,6 +300,14 @@ Migração: `db/migrations/0048_senha_temporaria.sql`; testes: `db/testes/senha-
 - Pendência fora do banco: `SLUGS_RESERVADOS` (`packages/platform-sdk/src/portal-config.ts`, engenheiro-software) ganhar `macuxi`.
 
 Migração: `db/migrations/0049_plataforma_codigo_macuxi_reservado.sql`; testes: `db/testes/codigo-macuxi-reservado-0049.db.test.ts`.
+
+## Limites do Hub no cadastros (T-0057, migração 0051)
+- Decisão do Alexandre para a v0.3.11 ("entra nesta"): os limites da carga seguem os do Hub (`/integracao/v1`). No schema `cadastros`, o `external_id` das 23 tabelas (0004, 0005 e 0040) e o `forma_external_id` da `condicao_pagamento` vão de 64 para **200**; o `forma_codigo` vai de 20 para **30** (RN-CAD-08, RN-CORE-05).
+- Os CHECKs sem nome (`<tabela>_<coluna>_check`) saem, achados pelo `pg_get_constraintdef` (`CHECK ((length(<coluna>) <= 64))` ou `<= 20`), e entram CHECKs com nome: `<tabela>_<coluna>_tamanho`. Um `DO` reexecutável: reaplicar não muda nada. Só alarga: a versão anterior da API roda igual.
+- Fora do escopo, ainda em 64: `plataforma`, `core`, `pedido`, `faturamento`, `fiscal`, `integracao_fdv` e `sefaz_simulador`. Nenhuma função do banco tem o limite fixo (a carga do portal, 0040/0044/0046, só registra a execução; quem grava é o módulo, como `macuxierp_app`).
+- Fora do banco: `IdExternoValor` (`max(64)`) e `forma_codigo` (`max(20)`) em `modules/cadastros/contracts` e o `CARGA_TAMANHO` da carga são do `modulo-cadastros`; até mudarem, a API recusa antes do banco.
+
+Migração: `db/migrations/0051_cadastros_limites_hub.sql`; testes: `db/testes/limites-hub-0051.db.test.ts` e `db/testes/condicao-forma.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.

@@ -1,4 +1,7 @@
-/** T-0026 (D12): colunas forma_* em cadastros.condicao_pagamento (0010) e o índice (tenant_id, forma_external_id). */
+/**
+ * T-0026 (D12): colunas forma_* em cadastros.condicao_pagamento (0010) e o índice (tenant_id, forma_external_id).
+ * Limites do Hub (0051, T-0057): forma_external_id 200 e forma_codigo 30.
+ */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrar } from '../src/migrar.ts';
 import {
@@ -38,7 +41,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — forma de pagamento na condi
 
   afterAll(() => banco?.remover());
 
-  it('as colunas forma_* existem, são texto anulável sem padrão e respeitam os tamanhos da D12 (64, 20, 60)', () => {
+  it('as colunas forma_* existem, são texto anulável sem padrão e respeitam os tamanhos (D12: nome 60; 0051, T-0057: forma_external_id 200 e código 30)', () => {
     const colunas = consultar<{ c: string; tipo: string; nula: string; padrao: string | null }>(
       banco.conexao,
       `SELECT column_name AS c, data_type AS tipo, is_nullable AS nula, column_default AS padrao
@@ -59,8 +62,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — forma de pagamento na condi
     const atualizar = (coluna: string, tamanho: number): string =>
       `UPDATE cadastros.condicao_pagamento SET ${coluna} = repeat('x', ${tamanho}) WHERE codigo = 'SEMFORMA';`;
     for (const [coluna, limite] of [
-      ['forma_external_id', 64],
-      ['forma_codigo', 20],
+      ['forma_external_id', 200],
+      ['forma_codigo', 30],
       ['forma_nome', 60],
     ] as const) {
       executar(banco.conexao, atualizar(coluna, limite), APP_A);
