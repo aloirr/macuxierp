@@ -212,7 +212,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — zerar inativa o espelho do 
     um<Record<string, unknown>>(
       `SELECT ativo, pendente, erp_id, deleted_at IS NOT NULL AS saiu, payload, hash = integracao_fdv.hash_registro(payload) AS hash_novo,
               hash_confirmado = '${CONFIRMADO}' AS confirmado, alterado_em > '2026-11-21T12:00:00.123Z' AS alterado,
-              fonte_ocorrido_em > '2026-11-21T12:00:00.123Z' AS fonte_avancou
+              fonte_ocorrido_em > '2026-11-21T12:00:00.123Z' AS fonte_avancou, fonte_refs
          FROM integracao_fdv.registro_publicado WHERE tenant_id = '${A.id}' AND registro_external_id = '${chave}'`,
     );
   const ERP = (): Record<string, number> =>
@@ -436,7 +436,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     // espelho: inativo e pendente, com o payload de sempre (ativo = false) e o hash novo; sem o UUID antigo
     for (const chave of ['F2', 'V2', 'PX', 'FX', 'P2', 'U2', 'PR2', 'E2', 'C2', 'CE2']) {
       const l = linhaEspelho(chave);
-      expect({ chave, ...l, payload: undefined }).toEqual({
+      expect({ chave, ...l, payload: undefined, fonte_refs: undefined }).toEqual({
         chave,
         ativo: false,
         pendente: true,
@@ -447,8 +447,14 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         confirmado: true,
         alterado: true,
         fonte_avancou: true,
+        fonte_refs: undefined,
       });
       expect({ chave, ativo: (l.payload as { ativo: boolean }).ativo }).toEqual({ chave, ativo: false });
+      // a origem zerar no Log do conector (registro_publicado.fonte_refs.inativado_por, R-20261124-181938)
+      expect({ chave, por: (l.fonte_refs as Record<string, unknown>).inativado_por }).toEqual({
+        chave,
+        por: 'zerar',
+      });
     }
     expect(linhaEspelho('P2').payload as Record<string, unknown>).toEqual({
       external_id: 'P2',
@@ -457,8 +463,20 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       nome: 'Suco 1 L',
       unidade: 'UN',
     });
-    // nunca publicado: sai do espelho, sem inativação
-    expect(linhaEspelho('V3')).toMatchObject({ saiu: true, erp_id: null, ativo: true });
+    // a marca soma às refs, sem perder as chaves de busca
+    expect(linhaEspelho('PR2').fonte_refs).toEqual({
+      tabela_preco_id: X.tabela,
+      produto_id: X.produto,
+      filial_id: A.filial,
+      inativado_por: 'zerar',
+    });
+    // nunca publicado: sai do espelho, sem inativação nem marca
+    expect(linhaEspelho('V3')).toMatchObject({
+      saiu: true,
+      erp_id: null,
+      ativo: true,
+      fonte_refs: { filial_id: A.filial },
+    });
     // mantidos (em pedido), a forma ainda usada e o outro estoque não mudam
     expect(mantidos()).toEqual(mantidosAntes);
     // o espelho não foi limpo e o cursor não voltou ao início; a agenda foi antecipada

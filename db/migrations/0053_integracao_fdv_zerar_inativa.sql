@@ -129,7 +129,7 @@ BEGIN
   RETURN jsonb_build_object('inativacao_fdv', v_out);
 END $$;
 COMMENT ON FUNCTION integracao_fdv.portal_inativar_espelho(uuid, text[], jsonb) IS
-  'Interna (0053, RN-CAD-10 emendada): chamada pelo cadastros.portal_zerar antes do DELETE, na mesma transação. p_entidades da F2 (portal_conferir_entidades); p_ids = {entidade de p_entidades: [uuid do erp_id | {filial_id?, produto_id?, tabela_preco_id?, condicao_pagamento_id?: uuid} contido no fonte_refs]} (fora do formato = check_violation). Travas sinal -> cursor_entidade -> registro_publicado; lote em voo numa entidade = MXI03 (DETAIL lote_em_voo, HINT = entidade). Linha ativa com payload do alvo: nunca publicada (sem hash_confirmado nem ultimo_lote_envio_id) sai do espelho (deleted_at); a publicada fica ativo = false, payload com ativo = false, hash novo (hash_registro), pendente se o hash difere do confirmado. erp_id = NULL nas duas (a recarga religa a chave ao UUID novo) e alterado_em/fonte_ocorrido_em >= agora (evento velho do registro apagado não o reativa, M3). Forma de pagamento só sem prazo ativo com ela. Antecipa a agenda; o cursor não volta ao início. Não audita (a auditoria é a do zerar). Devolve {inativacao_fdv: [{entidade, quantidade >= 1}]} na ordem de carga. P0002. T-0086.';
+  'Interna (0053, RN-CAD-10 emendada): chamada pelo cadastros.portal_zerar antes do DELETE, na mesma transação. p_entidades da F2 (portal_conferir_entidades); p_ids = {entidade de p_entidades: [uuid do erp_id | {filial_id?, produto_id?, tabela_preco_id?, condicao_pagamento_id?: uuid} contido no fonte_refs]} (fora do formato = check_violation). Travas sinal -> cursor_entidade -> registro_publicado; lote em voo numa entidade = MXI03 (DETAIL lote_em_voo, HINT = entidade). Linha ativa com payload do alvo: nunca publicada (sem hash_confirmado nem ultimo_lote_envio_id) sai do espelho (deleted_at); a publicada fica ativo = false, payload com ativo = false, hash novo (hash_registro), pendente se o hash difere do confirmado, fonte_refs com inativado_por = zerar (origem no Log do conector, R-20261124-181938). erp_id = NULL nas duas (a recarga religa a chave ao UUID novo) e alterado_em/fonte_ocorrido_em >= agora (evento velho do registro apagado não o reativa, M3). Forma de pagamento só sem prazo ativo com ela. Antecipa a agenda; o cursor não volta ao início. Não audita (a auditoria é a do zerar). Devolve {inativacao_fdv: [{entidade, quantidade >= 1}]} na ordem de carga. P0002. T-0086.';
 
 -- Aplica a inativação às linhas dadas (já travadas por quem chama); devolve a entidade de cada linha que ficou pendente.
 CREATE OR REPLACE FUNCTION integracao_fdv.portal_inativar_linhas(p_tenant uuid, p_ids uuid[]) RETURNS text[]
@@ -150,7 +150,7 @@ BEGIN
   u AS (
     UPDATE integracao_fdv.registro_publicado r
        SET payload = n.payload, hash = n.hash, ativo = false, pendente = r.hash_confirmado IS DISTINCT FROM n.hash,
-           erp_id = NULL, alterado_em = greatest(r.alterado_em, now()), fonte_ocorrido_em = greatest(r.fonte_ocorrido_em, now())
+           fonte_refs = r.fonte_refs || '{"inativado_por": "zerar"}'::jsonb, erp_id = NULL, alterado_em = greatest(r.alterado_em, now()), fonte_ocorrido_em = greatest(r.fonte_ocorrido_em, now())
       FROM n
      WHERE r.tenant_id = p_tenant AND r.id = n.id
     RETURNING r.entidade::text AS entidade, r.pendente)
@@ -158,7 +158,7 @@ BEGIN
   RETURN v_out;
 END $$;
 COMMENT ON FUNCTION integracao_fdv.portal_inativar_linhas(uuid, uuid[]) IS
-  'Interna (0053): o efeito do portal_inativar_espelho nas linhas p_ids do tenant (a nunca publicada sai com deleted_at; a publicada fica inativa, com payload ativo = false, hash novo e pendente se difere do confirmado; erp_id = NULL). Devolve a entidade de cada linha pendente. T-0086.';
+  'Interna (0053): o efeito do portal_inativar_espelho nas linhas p_ids do tenant (a nunca publicada sai com deleted_at; a publicada fica inativa, com payload ativo = false, hash novo, pendente se difere do confirmado e fonte_refs com inativado_por = zerar, que o Log do conector lê; erp_id = NULL). Devolve a entidade de cada linha pendente. T-0086.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- cadastros.portal_zerar: a inativação no espelho entra antes do DELETE (passo 4), na mesma transação.
