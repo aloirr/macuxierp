@@ -12,6 +12,9 @@ import {
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
   IntegracaoFdvPlataforma,
   RespostaAceitoFdv,
+  MonitorConectorFdv,
+  RespostaReprocessarFdv,
+  LogCadastroFdvPlataforma,
   RespostaRetomadaFdv,
   RespostaTestarPlataforma,
   EntidadeEnvioFdv,
@@ -175,4 +178,19 @@ export async function cargaCompletaFdv(token: string, id: string, entidade: stri
 
 export async function retomarFdv(token: string, id: string, entidade: string, chave: string): Promise<RespostaRetomadaFdv> {
   return validado(await chamar('POST', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.retomar, id, entidade), { token, chave }), RespostaRetomadaFdv);
+}
+
+/** Monitor do conector (T-0086): `GET .../integracao-fdv/monitor`, só leitura. */
+export async function lerMonitorFdv(token: string, id: string): Promise<MonitorConectorFdv> {
+  return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.monitor, id), { token }), MonitorConectorFdv);
+}
+
+/** Reprocessar só falhas e pendentes (T-0086): `Idempotency-Key` obrigatória; com lote em voo a API responde 409 `CONFLITO`. */
+export async function reprocessarFdv(token: string, id: string, entidade: string, chave: string): Promise<RespostaReprocessarFdv> {
+  return validado(await chamar('POST', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.reprocessar, id, entidade), { token, chave }), RespostaReprocessarFdv);
+}
+
+/** Log do cadastro (T-0086): só códigos, campos e contagens (ADR 0013); sem dado de negócio. */
+export async function lerLogFdv(token: string, id: string, entidade: string): Promise<LogCadastroFdvPlataforma> {
+  return validado(await chamar('GET', rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log, id, entidade), { token }), LogCadastroFdvPlataforma);
 }
