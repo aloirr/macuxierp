@@ -5,7 +5,7 @@
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0057 (v0.3.8). Roteiro da VM: `docs/banco/vm-cenario-b.md` (banco-dados, #387).
 - **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre, renumerada pelo PO em 23/11, 15h36 e de novo às 17h25: o cenário B é a **v0.3.8**. Premissas respondidas pelo PO em 23/11, 15h29 (§3 e §7).
-- **Numeração nova (23/11/2026, 23h00, T-0076):** cenário B = v0.3.12 (o PO separou as versões em 24/11/2026).
+- **Numeração nova (23/11/2026, 23h00, T-0076):** cenário B = v0.3.11 (o Alexandre juntou o cenário B à v0.3.11 em 24/11/2026).
 - **Fontes copiadas (só consulta, nada muda no FDV):** `aloirr/macuxifdv@c460e92c4bf935c8096e6c67dd6b98a7929cf664` (FDV v1.0.28): `apps/conector` (versão **1.5.0**), `apps/conector/src/hub/cliente.ts` (rotas do Hub), `modules/integracao/kit-thathyany/conector/conector.json` (consultas das views), `docs/produto/03` (RN-INT-06 e a trava de 30%) e `.github/workflows/conector-publicar.yml`. O esquema do banco segue `aloirr/macuxifdv@0b79391`, `kit-thathyany/sql/criar-banco.sql`, com cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`.
 - **Amplia:** ADR 0010 (`external_id`), ADR 0012 (lista fechada de funções SECURITY DEFINER do portal) e ADR 0013 (o portal configura módulo; esta é a "ADR nova" que a §1 da 0013 exige para o segundo módulo).
 
@@ -94,15 +94,15 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
 | 7 | Alexandre e banco-dados | a VM pelo roteiro, com o Conector instalado e a virada da seção 7 | 6 |
 
 ### 10. O que o PR de governança precisa (não faz parte deste PR)
-É um PR só, no início da v0.3.12, com `Agente: alexandre`. O merge sai com "autorizo o merge do PR #N no commit <sha>".
+É um PR só, no início da v0.3.11, com `Agente: alexandre`. O merge sai com "autorizo o merge do PR #N no commit <sha>".
 1. **`.coord/donos.json`:** `apps/conector/**` para o `engenheiro-software`; `modules/cadastros/**/entrada/**` continua no `modulo-cadastros` (já coberto por `modules/cadastros/**`, só conferir); `packages/platform-sdk/src/hub-v1*.ts` no `engenheiro-software` (já coberto, conferir).
-2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.12 (seção 6, item 3).
+2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.11 (seção 6, item 3).
 3. **`.github/workflows/ci.yml`:** o `apps/conector` entra no escopo, no lint, no typecheck e no build do PR, e os testes dele entram na suíte do `producao-liberar`.
-4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.12.
+4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.11.
 
 ### 11. Passo do Alexandre: criar o `MACUXIERP_PEPPER_ENTRADA`
 - **Onde:** no `.env` de produção da VM, `/opt/macuxierp/.env`, o mesmo arquivo da `MACUXIERP_CHAVE_A1` e da `MACUXIERP_CHAVE_INTEGRACAO`. Não é secret do GitHub.
-- **Quando:** antes da publicação da v0.3.12. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
+- **Quando:** antes da publicação da v0.3.11. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
 - **Como** (na VM, com o usuário de sudo; o valor não passa pela tela nem pelo histórico):
   ```bash
   if sudo grep -q '^MACUXIERP_PEPPER_ENTRADA=.' /opt/macuxierp/.env; then
@@ -114,7 +114,7 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
   sudo stat -c '%a %U' /opt/macuxierp/.env                         # 600 e o usuário de deploy
   ```
   Depois, guarde uma cópia do valor no cofre de senhas, lendo direto do arquivo, sem colar em chat ou recado.
-- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.12 ("aprovo deploy v0.3.12"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
+- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.11 ("aprovo deploy v0.3.11"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
 - **Nunca troque sem motivo:** um pepper novo invalida todas as chaves de entrada, e todos os conectores precisam de chave nova no `/config`. Se ele vazar, gere outro, publique e troque as chaves de todas as empresas.
 
 ## Emenda (23/11/2026, 17h34): mão dupla, dono por entidade, faturamento por empresa
