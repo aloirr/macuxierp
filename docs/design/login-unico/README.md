@@ -6,7 +6,6 @@ Uma tela só de entrada, no molde do login do Macuxi FDV, para empresa e superad
 
 ## O que sai (o código é do `engenheiro-apps`)
 - O link "Sou de uma empresa" e a rota `/config/entrar` (`apps/web/src/app/config/entrar/`). O superadmin entra aqui, com o código de empresa **MACUXI**. O código MACUXI não aparece em ajuda, placeholder nem texto da tela.
-- O texto de `portal-config.md` §1 ("Sem esqueci a senha", "Sou de uma empresa") fica superado por este documento (atualização do `portal-config.md` a pedido do gerente).
 
 ## Anatomia (de cima para baixo)
 1. Faixa de marca (C negativa, azul-noite) e título **Acesse sua conta**.
@@ -59,7 +58,7 @@ Senha temporária entra normalmente e a API responde 403 `SENHA_A_TROCAR`; a web
 1. O título da tela é "Trocar senha" (`senha/page.tsx:16`), não "Crie sua senha". Sugestão: manter; o aviso já explica.
 2. O rótulo do primeiro campo é "Senha atual" (`formulario-troca-senha.tsx:15`); após o "Esqueci a senha" o melhor seria "Senha temporária" (o componente já aceita `rotuloAtual`).
 3. O login atual (`app/login/formulario.tsx`) usa o rótulo "Empresa", sem ajuda nem memória do código, e junta tudo no texto "Dados inválidos. Confira empresa, e-mail e senha." para erro de campo; passa a seguir esta especificação.
-4. Conferir `/config/senha`: o portal pede 14 caracteres (`portal-config.md` §1); o superadmin com o login único e a temporária continua nessa regra (não é a de 8).
+4. `/config/senha` segue `packages/platform-sdk/src/senha.ts`.
 
 ## IDs reservados
 RD-1311 a RD-1313.
