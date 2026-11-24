@@ -17,7 +17,7 @@ import {
   PG_DISPONIVEL,
   PAPEIS_APP,
   permitirSetRole,
-  recusaComDetalhe,
+  recusaCompleta,
   recusaDetalhada,
   rodarComo,
   rodarScript,
@@ -89,8 +89,12 @@ describe.skipIf(!PG_DISPONIVEL)(
       const s = novaSessao();
       for (const slug of ['MACUXI', 'macuxi', ' Macuxi ']) {
         const sql = `${sessaoSql(s)}SELECT plataforma.empresa_criar('${slug}', 'Reservada', NULL, 'r');`;
-        recusaComDetalhe(banco.conexao, sql, '23514', 'codigo_reservado_superadmin', { papel: CONFIG });
-        recusaDetalhada(banco.conexao, sql, '23514', /slug reservado/, { papel: CONFIG });
+        recusaCompleta(
+          banco.conexao,
+          sql,
+          { codigo: '23514', detalhe: 'codigo_reservado_superadmin', mensagem: /slug reservado/ },
+          { papel: CONFIG },
+        );
       }
       expect(empresasMacuxi()).toBe(0);
       expect(

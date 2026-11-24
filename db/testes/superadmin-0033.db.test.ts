@@ -28,6 +28,9 @@ import { fixturePlataforma, novoTenant } from './fixture.ts';
 const MIGRACAO = fileURLToPath(new URL('../migrations/0033_plataforma_superadmin.sql', import.meta.url));
 const MIGRACAO_0037 = fileURLToPath(new URL('../migrations/0037_plataforma_slug_codigo_fdv.sql', import.meta.url));
 const MIGRACAO_0048 = fileURLToPath(new URL('../migrations/0048_senha_temporaria.sql', import.meta.url));
+const MIGRACAO_0050 = fileURLToPath(
+  new URL('../migrations/0050_superadmin_cancelar_temporaria.sql', import.meta.url),
+);
 const CONFIG = 'macuxierp_config';
 const PAPEIS = ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura'] as const;
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
@@ -887,19 +890,22 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
        CREATE FUNCTION plataforma.empresa_alvo(uuid) RETURNS plataforma.tenant LANGUAGE sql AS 'SELECT NULL::plataforma.tenant';`,
     );
     // A 0048 mudou o retorno de superadmin_para_login (DROP + CREATE): o CREATE OR REPLACE da 0033 não troca o tipo de
-    // retorno, então a reexecução parte da versão da 0033 e a 0048 reaplicada (a ordem do deploy) devolve a dela.
+    // retorno, então a reexecução parte da versão da 0033 e a 0048 e a 0050 reaplicadas (a ordem do deploy) devolvem a
+    // da 0050 (a 0048 mais o email).
     executar(banco.conexao, 'DROP FUNCTION plataforma.superadmin_para_login(text);');
     rodarScript(banco.conexao, sql, { transacao: true });
     rodarScript(banco.conexao, sql, { transacao: true });
     // A 0033 recria a empresa_criar de 4 argumentos; reaplicar a 0037 (a ordem do deploy) a tira e fica uma só.
     rodarScript(banco.conexao, readFileSync(MIGRACAO_0037, 'utf8'), { transacao: true });
     rodarScript(banco.conexao, readFileSync(MIGRACAO_0048, 'utf8'), { transacao: true });
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0050, 'utf8'), { transacao: true });
     expect(
       um(
         `SELECT pg_get_function_result('plataforma.superadmin_para_login(text)'::regprocedure) LIKE
-           '%senha_temporaria_expira_em%' AS da_0048`,
+           '%senha_temporaria_expira_em timestamp with time zone, email text)' AS da_0050,
+           has_function_privilege('${CONFIG}', 'plataforma.superadmin_para_login(text)', 'EXECUTE') AS config`,
       ),
-    ).toEqual({ da_0048: true });
+    ).toEqual({ da_0050: true, config: true });
     expect(
       um(
         `SELECT (SELECT count(*)::int FROM pg_proc WHERE pronamespace = 'plataforma'::regnamespace

@@ -2,8 +2,8 @@
  * T-0080 (v0.3.10), migração 0047 (RN-CORE-08, ADR 0006; RN-CORE-06, ADR 0005): core.certificado.origem ('upload' ou
  * 'teste', padrão 'upload') e o gatilho core.ambiente_fiscal_a1_real: a filial não vai para produção com o A1 vigente
  * de origem 'teste' (MXA01, DETAIL a1_de_teste), para todos os papéis e para o dono (o operador). A volta para
- * homologação nunca é barrada. O mesmo gatilho, em core.certificado (certificado_a1_real), recusa o A1 de teste
- * vigente numa filial já em produção (MXA01, DETAIL a1_de_teste_em_producao).
+ * homologação nunca é barrada. A mesma função, no gatilho certificado_a1_real de core.certificado, recusa o A1 de
+ * teste vigente numa filial já em produção (MXA01, DETAIL a1_de_teste_em_producao).
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -170,7 +170,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — origem do A1 e produção f
 
     const g = randomUUID();
     executar(banco.conexao, sqlCertificado(A.id, g, 'teste') + homologacao(A.id, g));
-    recusaDetalhada(banco.conexao, paraProducao(A.id, g), 'MXA01', MXA01);
     executar(
       banco.conexao,
       `UPDATE core.certificado SET ativo = false, substituido_em = now()
@@ -325,15 +324,12 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — origem do A1 e produção f
       definer: boolean;
       config: string[];
       publico: boolean;
-      gatilho: number;
       gatilhos: string;
       comentario: boolean;
     }>(
       banco.conexao,
       `SELECT p.prosecdef AS definer, p.proconfig AS config,
               has_function_privilege('public', p.oid, 'EXECUTE') AS publico,
-              (SELECT count(*)::int FROM pg_trigger t WHERE t.tgrelid = 'core.ambiente_fiscal'::regclass
-                 AND t.tgname = 'ambiente_fiscal_a1_real' AND NOT t.tgisinternal) AS gatilho,
               (SELECT string_agg(t.tgrelid::regclass || '.' || t.tgname, ' ' ORDER BY t.tgname) FROM pg_trigger t
                  WHERE t.tgfoid = p.oid AND NOT t.tgisinternal) AS gatilhos,
               obj_description(p.oid, 'pg_proc') IS NOT NULL AS comentario
@@ -343,7 +339,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — origem do A1 e produção f
       definer: true,
       config: ['search_path=pg_catalog, pg_temp'],
       publico: false,
-      gatilho: 1,
       gatilhos: 'core.ambiente_fiscal.ambiente_fiscal_a1_real core.certificado.certificado_a1_real',
       comentario: true,
     });
