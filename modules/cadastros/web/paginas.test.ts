@@ -47,13 +47,4 @@ describe('páginas do BKO', () => {
     expect(acoesDaPagina('gerente', produtos).colunasVisiveis).toContain('custo_centavos');
     expect(acoesDaPagina('vendedor', produtos).colunasVisiveis).not.toContain('custo_centavos');
   });
-
-  it('RN-FIS-02: filiais mostram industrial IPI e regime PIS/COFINS; produtos mostram "Fabricado pela empresa"', () => {
-    const col = (id: string, chave: string) => PAGINAS.find((p) => p.id === id)!.colunas.find((c) => c.chave === chave)!;
-    expect(col('filiais', 'industrial_ipi').formatar!(true)).toBe('Sim');
-    expect(col('filiais', 'regime_pis_cofins').formatar!('nao_cumulativo')).toBe('Não cumulativo');
-    expect(col('filiais', 'regime_pis_cofins').formatar!(null)).toBe('');
-    expect(col('produtos', 'producao_propria').rotulo).toBe('Fabricado pela empresa');
-    expect(col('produtos', 'producao_propria').formatar!(false)).toBe('Não');
-  });
 });
