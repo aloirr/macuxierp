@@ -18,9 +18,9 @@ import {
   MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, normalizarFrase, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
-import type { EntidadeCarga, ErroCarga, RelatorioCarga, ResultadoEntidade } from '../contracts';
+import { EntidadeCarga, type ErroCarga, type RelatorioCarga, type ResultadoEntidade } from '../contracts';
 import { executarCarga } from './carga';
-import { aplicarSubstituicao, paraEntidadeCarga, planejarSubstituicao } from './carga-substituir';
+import { aplicarSubstituicao, planejarSubstituicao } from './carga-substituir';
 import type { Dependencias } from './portas';
 
 const ACAO_LINHA = 'Corrija a linha no arquivo e envie de novo.';
@@ -53,9 +53,9 @@ const arquivoDoCadastro = (e: EntradaCargaPortal, entidade: EntidadeCarga): Arqu
 
 /** A entidade da carga do cadastro do portal (400 `VALIDACAO` se o nome não é de nenhuma). */
 function entidadeDe(cadastro: string): EntidadeCarga {
-  const e = paraEntidadeCarga(cadastro);
-  if (!e) throw erros.validacao({ cadastro: 'Cadastro desconhecido' });
-  return e;
+  const e = EntidadeCarga.safeParse(cadastro);
+  if (!e.success) throw erros.validacao({ cadastro: 'Cadastro desconhecido' });
+  return e.data;
 }
 
 /**
@@ -95,14 +95,16 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   if (!substituir) return GravarCargaPlataformaResposta.parse({ cadastro, modo: e.modo, gravadas, com_erro: res.recusadas });
 
   const { plano, total } = previsto!;
-  const inativados = (await aplicarSubstituicao(deps, c, entidade, previsto!)).inativados;
+  const { inativados, enderecos_inativados: enderecos } = await aplicarSubstituicao(deps, c, entidade, previsto!);
   if (plano.sem_chave > 0) res.avisos.push(`${plano.sem_chave} ativo(s) sem external_id: não foram inativados`);
   if (plano.mantidos_em_uso > 0) res.avisos.push(`${plano.mantidos_em_uso} inativado(s) em uso: ficam no histórico`);
   res.inativadas = inativados.length;
+  const doCliente = entidade === 'cliente' ? { enderecos_inativados: enderecos.length } : {};
+  Object.assign(res, doCliente);
   res.sem_chave = plano.sem_chave;
   await c.auditar({
     acao: 'cadastros.carga.substituir_tudo', entidade: 'carga', entidade_id: rel.lote_id, antes: null,
-    depois: { cadastro, inativadas: inativados.length, mantidos_em_uso: plano.mantidos_em_uso, total_ativos: total },
+    depois: { cadastro, inativadas: inativados.length, ...doCliente, mantidos_em_uso: plano.mantidos_em_uso, total_ativos: total },
   });
   return GravarCargaPlataformaResposta.parse({
     cadastro, modo: e.modo, gravadas, com_erro: res.recusadas, inativadas: inativados.length,
