@@ -114,6 +114,18 @@ describe('permissões por ação (RN-CORE-02, matriz do doc 03)', () => {
     await expect(t.chamar('GET', '/certificados', { perfil: 'faturista' })).rejects.toMatchObject({ status: 403 });
   });
 
+  it('T-0088, RN-CORE-02: a tela de empresa e ambiente fiscal lê só pelas rotas GET; ambiente é de administrador, fiscal e faturista', async () => {
+    const t = montar();
+    for (const perfil of ['administrador', 'faturista'] as const) await expect(t.chamar('GET', '/ambientes-fiscais', { perfil })).resolves.toBeTruthy();
+    for (const perfil of ['gerente', 'vendedor', 'leitura'] as const) await expect(t.chamar('GET', '/ambientes-fiscais', { perfil })).rejects.toMatchObject({ status: 403 });
+    // a empresa (cabeçalho da tela) todos leem, e a leitura devolve só o tenant da sessão
+    const r = (await t.chamar('GET', '/empresa', { perfil: 'fiscal' })).corpo as { id: string; cnpj: string };
+    expect(r).toMatchObject({ id: TENANT, cnpj: CNPJ_EMPRESA });
+    // o quadro não ganha rota de escrita: a única do ambiente continua sendo a da troca da T-0030
+    const escritas = t.plugin.rotas.filter((x) => x.caminho.startsWith('/ambientes-fiscais') && x.metodo !== 'GET');
+    expect(escritas.map((x) => `${x.metodo} ${x.caminho}`)).toEqual(['PUT /ambientes-fiscais/:filial_id']);
+  });
+
   it('RF-CORE-03: perfis só leitura devolve a matriz; leitura não tem ação de gestão', async () => {
     const t = montar();
     const r = (await t.chamar('GET', '/perfis', { perfil: 'leitura' })).corpo as { itens: { perfil: string; acoes: string[] }[] };
