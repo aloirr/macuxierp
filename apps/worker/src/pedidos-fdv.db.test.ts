@@ -34,7 +34,7 @@ async function inserirMassaPedido(admin: BancoEfemero['admin'], tenant: string, 
      VALUES ($1, $2, '11222333000181', 'Filial Teste', '3', 'Rua A', '1', 'Centro', '1302603', 'AM', '69000000', true, true, 1, 1)`,
     [ids.filial, tenant],
   );
-  await q(`INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias) VALUES ($1, $2, 'AV', 'À vista', '01', '{0}')`, [ids.condicao, tenant]);
+  await q(`INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias, prazo_medio_dias) VALUES ($1, $2, 'AV', 'À vista', '01', '{0}', 0)`, [ids.condicao, tenant]);
   await q(`INSERT INTO cadastros.tabela_preco (id, tenant_id, nome, vigencia_inicio, padrao) VALUES ($1, $2, 'Padrão', '2026-01-01', true)`, [ids.tabela, tenant]);
   await q(
     `INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id, tabela_preco_id, filial_id, limite_credito_centavos)
