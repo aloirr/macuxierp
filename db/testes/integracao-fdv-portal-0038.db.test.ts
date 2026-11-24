@@ -78,6 +78,8 @@ const DA_0043 = [
   'integracao_fdv.portal_estado_entidades(uuid, text[])',
   'integracao_fdv.portal_zerar_espelho(uuid, text[], text)',
 ] as const;
+/** Da 0055 (T-0086): Monitor, Log e Reprocessar do /config; teste próprio em integracao-fdv-portal-operacao-0055.db.test.ts. */
+const DA_0055 = ['integracao_fdv.portal_monitor(uuid)', 'integracao_fdv.portal_log(uuid, text)', 'integracao_fdv.portal_reprocessar(uuid, text, text)'] as const;
 const CHAVES_TOPO = ['cadastros', 'credencial', 'empresa_id', 'entidades_habilitadas', 'limite_registros_lote', 'modulo_licenciado', 'sinal'];
 const CHAVES_CREDENCIAL = ['ambiente', 'chave_prefixo', 'conector_id', 'criada_em', 'id', 'ultimo_uso_em'];
 const CHAVES_CADASTRO = ['entidade', 'erros_abertos', 'habilitada', 'ligada', 'lote_em_voo', 'pausada_motivo', 'ultimo_envio_em', 'ultimo_lote'];
@@ -592,7 +594,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(
       um(`SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname = 'integracao_fdv' AND p.proname LIKE 'portal\\_%'`),
-    ).toEqual({ n: PORTAL.length + INTERNAS.length + DA_0043.length });
+    ).toEqual({ n: PORTAL.length + INTERNAS.length + DA_0043.length + DA_0055.length });
     for (const f of PORTAL) {
       expect({ f, ok: um<{ ok: boolean }>(`SELECT has_function_privilege('${CONFIG}', '${f}'::regprocedure, 'EXECUTE') AS ok`).ok }).toEqual({ f, ok: true });
     }
