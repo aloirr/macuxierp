@@ -5,7 +5,8 @@
  * mensagem de falha.
  */
 import { randomUUID } from 'node:crypto';
-import type { ErroApi } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, type ErroApi } from '@macuxierp/platform-sdk';
+import type { FastifyRequest } from 'fastify';
 import { conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
 
 /** Trava a partir da `maxFalhas`-ésima falha seguida, por `travaMinutos`; `null` = ainda não trava. */
@@ -29,3 +30,6 @@ export class ConferenciaCustoIgual {
 /** Opções do cookie de sessão (refresh do tenant e sessão do portal `/config`): httpOnly e SameSite=Strict. */
 export const opcoesCookieSessao = (path: string, seguro: boolean, expira: Date) =>
   ({ httpOnly: true, secure: seguro, sameSite: 'strict', path, expires: expira }) as const;
+
+/** O pedido traz o `CABECALHO_CSRF_CONFIG: 1` (anti-CSRF do `/config` e do código MACUXI na tela única, ADR 0018). */
+export const temCsrfConfig = (req: FastifyRequest): boolean => req.headers[CABECALHO_CSRF_CONFIG] === '1';

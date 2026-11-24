@@ -273,6 +273,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
     modulos,
+    cancelarTemporaria: repoCore,
     ...(email && emailDisponivel(email) ? { esqueci: { envio: criarEnvioEmail(email, e.log ? { log: e.log } : {}), repoCore } } : {}),
     ...(bancoPlataforma ? {
           plataforma: {

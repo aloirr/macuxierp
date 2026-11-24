@@ -1,8 +1,9 @@
-/** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP e limite de login por IP. */
+/** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP, limite de login por IP e o texto do 401. */
 import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { erroDaPlataforma } from './erros';
 import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci } from './limite-ip';
+import { FALHA_LOGIN_PLATAFORMA } from './servico';
 
 const pg = (code: string, message = 'empresa "Fulano de Tal" não encontrada') => Object.assign(new Error(message), { code });
 
@@ -174,5 +175,11 @@ describe('LimitePorChave do pedido de senha temporária (T-0076)', () => {
     l.registrar('1.1.1.1', t0 + 1000);
     expect(l.excedido('1.1.1.1', t0 + 2000)).toEqual({ permitido: false, retry_after_s: 58 });
     expect(l.excedido('1.1.1.1', t0 + 60_000).permitido).toBe(true);
+  });
+});
+
+describe('401 da rota antiga `/v1/plataforma/auth/entrar` (T-0083)', () => {
+  it('o texto por extenso, alinhado ao "incorretos" do login único (a rota o devolve: plataforma.db.test.ts)', () => {
+    expect(FALHA_LOGIN_PLATAFORMA).toBe('E-mail ou senha incorretos.');
   });
 });

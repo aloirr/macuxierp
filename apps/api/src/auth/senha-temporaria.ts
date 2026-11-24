@@ -5,7 +5,7 @@
  * - vale por `VALIDADE_SENHA_TEMPORARIA_HORAS` (72 h, contrato `esqueci-senha.ts` do SDK), com o `expiraEm` e o `temporariaValida`
  *   do core (RN-CORE-13, `@macuxierp/core/api`), é de uso único (o consumo zera as duas colunas) e corre em paralelo à senha
  *   atual, que vale até a troca; um pedido novo substitui o anterior;
- * - a entrega é pela porta de e-mail (`email/porta.ts`), agendada só depois da resposta neutra (`agendarEnvioEmail`);
+ * - a entrega é pela porta de e-mail (`email/porta.ts`), enviada só depois da resposta neutra (`enviarComTentativas`);
  * - a sessão aberta por ela leva a marca `t<segundos UTC do fim>` num segmento do refresh do tenant e do token do `/config`.
  */
 import { randomInt } from 'node:crypto';

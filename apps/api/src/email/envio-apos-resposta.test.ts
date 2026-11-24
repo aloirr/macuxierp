@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { agendarEnvioEmail } from './envio-apos-resposta';
+import { enviarComTentativas } from './envio-apos-resposta';
 import { type EnvioEmail, ErroEmailDesligado, ErroEnvioEmail, type MensagemEmail } from './porta';
 
 const MENSAGEM: MensagemEmail = { para: 'destinatario@exemplo.test', assunto: 'Assunto fictício', texto: 'Texto fictício com link-ficticio' };
@@ -28,22 +28,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('agendarEnvioEmail (T-0076)', () => {
-  it('não bloqueia: retorna antes de enviar e não devolve promessa', async () => {
-    vi.useFakeTimers();
-    const { envio, chamadas } = envioFalso([null]);
-    const r = agendarEnvioEmail(envio, MENSAGEM);
-    expect(r).toBeUndefined();
-    expect(chamadas).toHaveLength(0);
-    await vi.runAllTimersAsync();
-    expect(chamadas).toHaveLength(1);
-  });
-
+describe('enviarComTentativas (T-0076)', () => {
   it('a 2ª tentativa acontece depois da 1ª falha, após a espera; com sucesso, sem warn', async () => {
     vi.useFakeTimers();
     const { envio, chamadas } = envioFalso([new ErroEnvioEmail('ECONNECTION'), null]);
     const { warns, log } = logFalso();
-    agendarEnvioEmail(envio, MENSAGEM, { log, esperaMs: 50 });
+    void enviarComTentativas(envio, MENSAGEM, { log, esperaMs: 50 });
     await vi.advanceTimersByTimeAsync(0);
     expect(chamadas).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(49);
@@ -59,7 +49,7 @@ describe('agendarEnvioEmail (T-0076)', () => {
   it('espera padrão de 2000 ms entre as tentativas', async () => {
     vi.useFakeTimers();
     const { envio, chamadas } = envioFalso([new Error('x'), null]);
-    agendarEnvioEmail(envio, MENSAGEM);
+    void enviarComTentativas(envio, MENSAGEM);
     await vi.advanceTimersByTimeAsync(1999);
     expect(chamadas).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -71,7 +61,7 @@ describe('agendarEnvioEmail (T-0076)', () => {
     const erro = new Error('falhou para destinatario@exemplo.test');
     const { envio, chamadas } = envioFalso([erro, new ErroEnvioEmail('EAUTH')]);
     const { warns, log } = logFalso();
-    agendarEnvioEmail(envio, MENSAGEM, { log, esperaMs: 10 });
+    void enviarComTentativas(envio, MENSAGEM, { log, esperaMs: 10 });
     await vi.runAllTimersAsync();
     expect(chamadas).toHaveLength(2);
     expect(warns).toHaveLength(1);
@@ -89,13 +79,13 @@ describe('agendarEnvioEmail (T-0076)', () => {
     vi.useFakeTimers();
     const { envio, chamadas } = envioFalso([new ErroEmailDesligado(), new ErroEmailDesligado()]);
     const { warns, log } = logFalso();
-    agendarEnvioEmail(envio, MENSAGEM, { log, esperaMs: 10 });
+    void enviarComTentativas(envio, MENSAGEM, { log, esperaMs: 10 });
     await vi.runAllTimersAsync();
     expect(chamadas).toHaveLength(1);
     expect(warns).toHaveLength(0);
   });
 
-  it('nunca lança: envio que lança síncrono e log que lança não geram rejeição não tratada', async () => {
+  it('nunca rejeita: envio que lança síncrono e log que lança não geram rejeição', async () => {
     vi.useFakeTimers();
     const rejeicoes: unknown[] = [];
     const ouvir = (r: unknown) => void rejeicoes.push(r);
@@ -111,8 +101,9 @@ describe('agendarEnvioEmail (T-0076)', () => {
           throw new Error('log quebrado');
         },
       } as unknown as Pick<FastifyBaseLogger, 'warn'>;
-      expect(() => agendarEnvioEmail(envio, MENSAGEM, { log, esperaMs: 1 })).not.toThrow();
+      const feito = enviarComTentativas(envio, MENSAGEM, { log, esperaMs: 1 });
       await vi.runAllTimersAsync();
+      await expect(feito).resolves.toBeUndefined();
       vi.useRealTimers();
       await new Promise((r) => setTimeout(r, 10));
       expect(rejeicoes).toHaveLength(0);

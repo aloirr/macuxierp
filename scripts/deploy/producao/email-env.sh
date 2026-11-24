@@ -18,6 +18,11 @@ set -euo pipefail
 set +x
 log() { echo "[email-env] $*"; }
 erro() { echo "::error::$*" >&2; exit 1; }
+uma_vez() { # contagem nome: só 1 passa; 0 é "sem", 2 ou mais é "repetida" (a mensagem diz quantas)
+  [ "$1" -eq 1 ] && return 0
+  [ "$1" -eq 0 ] && erro "email.env recebido sem $2: nada foi trocado"
+  erro "email.env recebido com $2 repetida ($1 vezes): nada foi trocado"
+}
 
 # a lista única: secret PROD_SMTP_<n> → MACUXI_SMTP_<n> no email.env (o resto é derivado dela)
 NOMES=(HOST PORTA TLS USUARIO SENHA REMETENTE)
@@ -86,9 +91,9 @@ gravar() {
   # só as 7 chaves conhecidas, uma vez cada; nada é trocado se faltar ou sobrar linha
   [ "$(grep -cvE "$CHAVES" "$TMP" || :)" -eq 0 ] || erro "email.env recebido com linha fora das 7 chaves: nada foi trocado"
   for n in "${NOMES[@]}"; do
-    [ "$(grep -c "^MACUXI_SMTP_$n=" "$TMP" || :)" -eq 1 ] || erro "email.env recebido sem MACUXI_SMTP_$n: nada foi trocado"
+    uma_vez "$(grep -c "^MACUXI_SMTP_$n=" "$TMP" || :)" "MACUXI_SMTP_$n"
   done
-  [ "$(grep -cx "MACUXI_EMAIL_TRANSPORTE='smtp'" "$TMP" || :)" -eq 1 ] || erro "email.env recebido sem MACUXI_EMAIL_TRANSPORTE: nada foi trocado"
+  uma_vez "$(grep -cx "MACUXI_EMAIL_TRANSPORTE='smtp'" "$TMP" || :)" MACUXI_EMAIL_TRANSPORTE
   chmod 600 "$TMP"
   if cmp -s "$TMP" "$pasta/email.env"; then
     chmod 600 "$pasta/email.env"

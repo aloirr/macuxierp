@@ -1,7 +1,8 @@
 /**
  * Envio de e-mail depois da resposta HTTP (T-0076, "esqueci a senha"): quem chama não espera nem vê a falha, para a resposta
- * ser igual com ou sem e-mail (sem enumerar usuário) e não atrasar.
- * - roda no `setImmediate`; nunca lança nem deixa rejeição sem tratamento;
+ * ser igual com ou sem e-mail (sem enumerar usuário) e não atrasar. Quem solta o envio depois da resposta é o
+ * `segundoPlanoAposResposta` (`auth/esqueci.ts`).
+ * - nunca lança nem rejeita;
  * - 2 tentativas, com 2000 ms entre elas;
  * - `ErroEmailDesligado` não é falha: não tenta de novo e não loga;
  * - na falha final, um `warn` só com `evento` e `tentativas` (LGPD: sem destinatário, assunto, texto nem mensagem do erro). O código
@@ -13,21 +14,14 @@ import { type EnvioEmail, ErroEmailDesligado, type MensagemEmail } from './porta
 const TENTATIVAS = 2;
 const ESPERA_PADRAO_MS = 2000;
 
-export function agendarEnvioEmail(
+/** Envia com as tentativas; resolve sempre (a falha final vira só o `warn`). */
+export async function enviarComTentativas(
   envio: EnvioEmail,
   m: MensagemEmail,
   opcoes?: { log?: Pick<FastifyBaseLogger, 'warn'>; esperaMs?: number },
-): void {
-  const log = opcoes?.log;
-  const esperaMs = opcoes?.esperaMs ?? ESPERA_PADRAO_MS;
-  setImmediate(() => {
-    void tentar(envio, m, esperaMs).then(
-      (falhou) => {
-        if (falhou) registrarFalha(log);
-      },
-      () => registrarFalha(log),
-    );
-  });
+): Promise<void> {
+  const falhou = await tentar(envio, m, opcoes?.esperaMs ?? ESPERA_PADRAO_MS);
+  if (falhou) logSemFalhar(opcoes?.log, 'warn', { evento: 'email.falha', tentativas: TENTATIVAS }, 'e-mail não enviado após as tentativas');
 }
 
 /** Resolve `true` se todas as tentativas falharam; `false` se enviou ou se o e-mail está desligado. Nunca rejeita. */
@@ -48,9 +42,15 @@ function esperar(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function registrarFalha(log: Pick<FastifyBaseLogger, 'warn'> | undefined): void {
+/** Escreve no log sem nunca lançar: o log nunca derruba o processo. */
+export function logSemFalhar<N extends 'warn' | 'error'>(
+  log: Pick<FastifyBaseLogger, N> | undefined,
+  nivel: N,
+  objeto: Record<string, unknown>,
+  texto: string,
+): void {
   try {
-    log?.warn({ evento: 'email.falha', tentativas: TENTATIVAS }, 'e-mail não enviado após as tentativas');
+    (log?.[nivel] as ((o: Record<string, unknown>, t: string) => void) | undefined)?.call(log, objeto, texto);
   } catch {
     // o log nunca derruba o processo
   }

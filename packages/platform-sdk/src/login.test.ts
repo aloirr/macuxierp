@@ -8,7 +8,9 @@ import {
   destinoDoCodigo,
   LoginEntrada,
   LoginResposta,
+  MENSAGEM_FALHA_LOGIN,
 } from './login';
+import * as sdk from './index';
 import { CODIGO_SUPERADMIN_LOGIN, EntrarPlataformaEntrada, EuPlataforma } from './portal-config';
 import { SENHA_MAXIMA } from './senha';
 
@@ -137,5 +139,12 @@ describe('RN-CORE-12/13: motivo da troca e destino, campos opcionais e compatív
       EuPlataforma.parse({ ...eu, deve_trocar_senha: true, motivo_troca: 'provisoria' }).motivo_troca,
     ).toBe('provisoria');
     expect(() => EuPlataforma.parse({ ...eu, motivo_troca: 'x' })).toThrow();
+  });
+});
+
+describe('T-0083: texto único do 401 do login', () => {
+  it('MENSAGEM_FALHA_LOGIN é "Empresa, e-mail ou senha incorretos." e sai pelo index do SDK', () => {
+    expect(MENSAGEM_FALHA_LOGIN).toBe('Empresa, e-mail ou senha incorretos.');
+    expect(sdk.MENSAGEM_FALHA_LOGIN).toBe(MENSAGEM_FALHA_LOGIN);
   });
 });

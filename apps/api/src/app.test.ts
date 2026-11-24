@@ -135,7 +135,7 @@ describe('POST /v1/auth/login', () => {
     const respostas = await Promise.all([entrar(app, 'adm@exemplo.com', 'errada'), entrar(app, 'ninguem@exemplo.com'), entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am9999')]);
     for (const r of respostas) {
       expect(r.statusCode).toBe(401);
-      expect(r.json()).toEqual({ codigo: 'NAO_AUTENTICADO', mensagem: 'Empresa, e-mail ou senha inválidos' });
+      expect(r.json()).toEqual({ codigo: 'NAO_AUTENTICADO', mensagem: 'Empresa, e-mail ou senha incorretos.' });
     }
   });
 

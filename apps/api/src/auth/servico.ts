@@ -13,14 +13,17 @@
  *   (`marcaTemporaria`, coberta pelo hash gravado no banco: adulterar = refresh inexistente) e somem com a troca, que o
  *   dispensa de informar a senha atual. A troca zera as duas colunas da temporária no mesmo UPDATE. Estas regras valem
  *   também para o superadmin (`plataforma/servico.ts`).
- * - pedido (`esqueci`): ordem e regras em `auth/esqueci.ts`.
- * Mensagem de falha única ("empresa, e-mail ou senha inválidos"), sem dizer qual campo errou.
+ * - login certo com a senha atual e temporária pendente (T-0083, RN-CORE-13): cancela a temporária na mesma transação
+ *   (`cancelarSenhaTemporaria` do core) e audita `core.usuario.senha_temporaria_cancelada` (`aoCancelar`), sem senha nem e-mail.
+ * - pedido (`esqueci`): ordem e regras em `auth/esqueci.ts`; o e-mail vai para o endereço da conta lido do banco.
+ * Mensagem de falha única (`MENSAGEM_FALHA_LOGIN` do SDK), sem dizer qual campo errou.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   ErroApi,
   erroSenhaForaDaRegra,
   erros,
+  MENSAGEM_FALHA_LOGIN,
   MENSAGEM_SENHA_ATUAL_INCORRETA,
   MENSAGEM_SENHA_IGUAL,
   PADRAO_UUID,
@@ -62,8 +65,17 @@ export interface ResultadoLogin {
   refresh_expira_em: Date;
 }
 
-/** Mensagem única do 401 do login (tenant e, pela tela única, o superadmin): não diz qual campo errou. */
-export const FALHA_LOGIN = 'Empresa, e-mail ou senha inválidos';
+/**
+ * O que a API usa do `RepositorioCore` no "esqueci" (`emitirSenhaTemporaria`) e no login certo com a temporária pendente
+ * (`cancelarSenhaTemporaria`: UPDATE ... WHERE id AND senha_temporaria_hash IS NOT NULL RETURNING id; true = cancelou).
+ */
+export type RepoCoreAuth = Pick<RepositorioCore, 'emitirSenhaTemporaria' | 'cancelarSenhaTemporaria'>;
+
+/** O cancelamento da temporária no login certo (T-0083): o repositório e a auditoria, na transação do login. */
+export interface CancelamentoTemporaria {
+  repoCore: Pick<RepoCoreAuth, 'cancelarSenhaTemporaria'>;
+  aoCancelar: (tx: Transacao, conta: { tenant_id: string; usuario_id: string }) => Promise<void>;
+}
 
 /** 400 `VALIDACAO` da senha atual errada na troca (tenant e superadmin): `campos.senha_atual` com o texto da marca. */
 export const erroSenhaAtualIncorreta = (): ErroApi => erros.validacao({ senha_atual: MENSAGEM_SENHA_ATUAL_INCORRETA });
@@ -110,7 +122,7 @@ export class ServicoAuth {
     this.custoIgual = new ConferenciaCustoIgual(cfg.argon2);
   }
 
-  async entrar(entrada: { empresa: string; email: string; senha: string }): Promise<ResultadoLogin> {
+  async entrar(entrada: { empresa: string; email: string; senha: string }, cancelamento?: CancelamentoTemporaria): Promise<ResultadoLogin> {
     const agora = this.relogio.agora();
     const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
     if (!tenantId) return this.falharSemUsuario(entrada.senha);
@@ -120,6 +132,9 @@ export class ServicoAuth {
       if (!usuario || !usuario.ativo) return 'sem_usuario' as const;
       if (usuario.bloqueado_ate && usuario.bloqueado_ate.getTime() > agora.getTime()) return 'travado' as const;
       if (await conferirSenha(entrada.senha, usuario.senha_hash)) {
+        if (usuario.senha_temporaria_hash && cancelamento && (await cancelamento.repoCore.cancelarSenhaTemporaria(tx, usuario.id))) {
+          await cancelamento.aoCancelar(tx, { tenant_id: tenantId, usuario_id: usuario.id });
+        }
         await this.repo.registrarAcesso(tx, usuario.id, agora);
         return this.abrirSessao(tx, usuario, randomUUID(), agora);
       }
@@ -138,19 +153,20 @@ export class ServicoAuth {
     if (r === 'travado') {
       throw erros.muitasTentativas(`Acesso travado por ${this.cfg.travaMinutos} minutos após ${this.cfg.maxFalhas} tentativas`);
     }
-    if (r === 'senha' || r === 'corrida') throw erros.naoAutenticado(FALHA_LOGIN);
+    if (r === 'senha' || r === 'corrida') throw erros.naoAutenticado(MENSAGEM_FALHA_LOGIN);
     return r;
   }
 
   /**
    * Pedido de senha temporária (T-0076). O argon2 roda antes de saber se a conta existe. Quem decide se grava é o
    * `avaliarPedidoSenhaEsquecida` do core (RN-CORE-13) e quem grava é o `emitirSenhaTemporaria` do `RepositorioCore`, na
-   * transação do tenant. Devolve a mensagem de e-mail (só se gravou) para a rota agendar depois da resposta; `aoGravar`
-   * roda na mesma transação (a auditoria).
+   * transação do tenant. Devolve a mensagem de e-mail (só se gravou), para o endereço da conta lido do banco (T-0083: o
+   * `usuario.email`, não o digitado); `aoGravar` roda na mesma transação (a auditoria). Roda em segundo plano, depois do
+   * 202 (`auth/esqueci.ts`).
    */
   async esqueci(
     entrada: { empresa: string; email: string },
-    repoCore: Pick<RepositorioCore, 'emitirSenhaTemporaria'>,
+    repoCore: Pick<RepoCoreAuth, 'emitirSenhaTemporaria'>,
     aoGravar: (tx: Transacao, conta: { tenant_id: string; usuario_id: string }) => Promise<void>,
   ): Promise<MensagemEmail | null> {
     const temporaria = await emitirTemporaria(this.cfg.argon2, this.relogio.agora());
@@ -158,16 +174,16 @@ export class ServicoAuth {
     // `tenant_por_slug` só devolve o tenant ativo: empresa suspensa, encerrada ou inexistente = nada a avaliar nem gravar.
     const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
     if (!tenantId) return null;
-    const gravou = await this.banco.comTenant(tenantId, async (tx) => {
+    const para = await this.banco.comTenant(tenantId, async (tx) => {
       const usuario = await this.repo.usuarioPorEmail(tx, email);
       // `usuarioPorEmail` já exclui `deleted_at`; o tenant achado pelo slug está ativo.
       const avaliacao = avaliarPedidoSenhaEsquecida(usuario && { ativo: usuario.ativo, excluido: false }, { situacao: 'ativo' });
-      if (!usuario || !avaliacao.enviar) return false;
+      if (!usuario || !avaliacao.enviar) return null;
       await repoCore.emitirSenhaTemporaria(tx, usuario.id, temporaria.hash, temporaria.expira_em);
       await aoGravar(tx, { tenant_id: tenantId, usuario_id: usuario.id });
-      return true;
+      return usuario.email;
     });
-    return gravou ? mensagemSenhaTemporaria(email, temporaria.senha) : null;
+    return para ? mensagemSenhaTemporaria(para, temporaria.senha) : null;
   }
 
   /** Pedido com o e-mail desligado (T-0076): o mesmo custo de argon2 do `esqueci`, sem banco, sem temporária e sem envio. */
@@ -273,6 +289,6 @@ export class ServicoAuth {
 
   /** Confere contra um hash falso para o tempo de resposta não revelar se a empresa ou o e-mail existem. */
   private falharSemUsuario(senha: string): Promise<never> {
-    return this.custoIgual.falhar(senha, () => erros.naoAutenticado(FALHA_LOGIN));
+    return this.custoIgual.falhar(senha, () => erros.naoAutenticado(MENSAGEM_FALHA_LOGIN));
   }
 }

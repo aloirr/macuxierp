@@ -5,12 +5,14 @@
  *
  *  - falta de cada secret: erro com o NOME e sem valor; quebra de linha, porta e TLS fora do formato: erro sem ssh;
  *  - gravação: as 7 chaves, modo 600, idempotente, nenhum valor no stdout/stderr (fora das linhas ::add-mask::), nada no
- *    argv do ssh; o "gravar" recusa entrada fora das 7 chaves sem trocar o arquivo;
+ *    argv do ssh; o "gravar" recusa entrada fora das 7 chaves sem trocar o arquivo, com a mensagem certa para chave
+ *    ausente ("sem ...") e repetida ("... repetida (N vezes)");
  *  - formato do env_file: senha com $, #, aspas, espaço e barra invertida preservada (lida como o dotenv do Compose; com
  *    o `docker compose` instalado, conferida também pelo próprio `docker compose config`);
  *  - compose.yml: email.env só na macuxierp-api (texto do arquivo e, com o Compose instalado, o modelo resolvido).
  */
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -255,10 +257,7 @@ describe('email-env.sh gravar (lado da VM)', () => {
 
   it.each([
     ['vazio', () => ''],
-    ['sem a senha', (t: string) => t.replace(/^MACUXI_SMTP_SENHA=.*\n/m, '')],
-    ['sem o transporte', (t: string) => t.replace(/^MACUXI_EMAIL_TRANSPORTE=.*\n/m, '')],
     ['transporte diferente de smtp', (t: string) => t.replace("MACUXI_EMAIL_TRANSPORTE='smtp'", "MACUXI_EMAIL_TRANSPORTE='log'")],
-    ['chave repetida', (t: string) => `${t}MACUXI_SMTP_HOST='outro.exemplo.invalid'\n`],
     ['chave estranha', (t: string) => `${t}OUTRA=1\n`],
   ])('entrada %s: erro e o email.env anterior fica', (_nome, mudar) => {
     const antes = valido();
@@ -266,6 +265,36 @@ describe('email-env.sh gravar (lado da VM)', () => {
     expect(r.status).toBe(1);
     expect(r.saida).toContain('nada foi trocado');
     expect(readFileSync(ARQUIVO, 'utf8')).toBe(antes);
+    expect(readdirSync(erp)).toEqual(['email.env']);
+  });
+
+  const hash = () => createHash('sha256').update(readFileSync(ARQUIVO)).digest('hex');
+
+  it.each([
+    ['MACUXI_SMTP_SENHA ausente', (t: string) => t.replace(/^MACUXI_SMTP_SENHA=.*\n/m, ''), 'email.env recebido sem MACUXI_SMTP_SENHA: nada foi trocado'],
+    ['MACUXI_SMTP_HOST 2 vezes', (t: string) => `${t}MACUXI_SMTP_HOST='outro.exemplo.invalid'\n`, 'email.env recebido com MACUXI_SMTP_HOST repetida (2 vezes): nada foi trocado'],
+    ['MACUXI_SMTP_PORTA 3 vezes', (t: string) => `${t}MACUXI_SMTP_PORTA='25'\nMACUXI_SMTP_PORTA='465'\n`, 'email.env recebido com MACUXI_SMTP_PORTA repetida (3 vezes): nada foi trocado'],
+    ['MACUXI_EMAIL_TRANSPORTE ausente', (t: string) => t.replace(/^MACUXI_EMAIL_TRANSPORTE=.*\n/m, ''), 'email.env recebido sem MACUXI_EMAIL_TRANSPORTE: nada foi trocado'],
+    ['MACUXI_EMAIL_TRANSPORTE 2 vezes', (t: string) => `${t}MACUXI_EMAIL_TRANSPORTE='smtp'\n`, 'email.env recebido com MACUXI_EMAIL_TRANSPORTE repetida (2 vezes): nada foi trocado'],
+  ])('%s: mensagem certa e o email.env anterior com o mesmo hash', (_nome, mudar, mensagem) => {
+    const antes = valido();
+    const hashAntes = hash();
+    const r = roda(['gravar'], {}, mudar(antes));
+    expect(r.status).toBe(1);
+    expect(r.saida.split('\n')).toContain(`::error::${mensagem}`);
+    expect(r.saida).not.toMatch(mensagem.includes('repetida') ? /recebido sem / : /repetida/);
+    expect(hash()).toBe(hashAntes);
+    expect(statSync(ARQUIVO).mode & 0o777).toBe(0o600);
+    expect(readdirSync(erp)).toEqual(['email.env']);
+  });
+
+  it('entrada válida direto no gravar: grava com 600, sem temporário na pasta', () => {
+    const texto = valido();
+    rmSync(ARQUIVO);
+    const r = roda(['gravar'], {}, texto);
+    expect(r.status, r.saida).toBe(0);
+    expect(readFileSync(ARQUIVO, 'utf8')).toBe(texto);
+    expect(statSync(ARQUIVO).mode & 0o777).toBe(0o600);
     expect(readdirSync(erp)).toEqual(['email.env']);
   });
 

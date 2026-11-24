@@ -10,6 +10,9 @@
  *   funções da 0048, `superadmin_emitir_temporaria(p_id, p_hash, p_expira_em)` (pedido; substitui a anterior) e
  *   `superadmin_consumir_temporaria(p_id) → boolean` (login; atômica, de uso único, zera as duas colunas e liga a troca).
  *   A marca da temporária (`marcaTemporaria`) vai no começo do próprio token; `superadmin_trocar_senha` zera a temporária.
+ * - T-0083: o cancelamento da temporária no login certo é o do `auth/servico.ts`; aqui, pela
+ *   `superadmin_cancelar_temporaria(p_id) → boolean` (zera hash e validade; não mexe em `deve_trocar_senha`). O e-mail da
+ *   temporária vai para a coluna `email` do `superadmin_para_login`.
  */
 import { randomBytes } from 'node:crypto';
 import { erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
@@ -20,7 +23,8 @@ import { ConferenciaCustoIgual, travaAposFalha } from '../auth/apoio-login';
 import { conferirSenha, gerarHashSenha } from '../auth/senha';
 import { erroSenhaAtualIncorreta, erroSenhaNova, exigirSenhaAtual, type ConfigAuth } from '../auth/servico';
 
-export const FALHA_LOGIN_PLATAFORMA = 'E-mail ou senha inválidos';
+/** 401 da rota antiga `/v1/plataforma/auth/entrar` (o login único usa o `MENSAGEM_FALHA_LOGIN` do SDK). */
+export const FALHA_LOGIN_PLATAFORMA = 'E-mail ou senha incorretos.';
 /** Validade absoluta da sessão do superadmin (a ociosidade de 30 min é do banco). */
 export const VALIDADE_SESSAO_PLATAFORMA_MS = 8 * 60 * 60 * 1000;
 /** 32 bytes em base64url, sem preenchimento; com `<marcaTemporaria>.` na frente = sessão aberta pela temporária (T-0076). */
@@ -53,6 +57,8 @@ interface LinhaLogin {
 
 const SQL_PARA_LOGIN =
   'SELECT id, senha_hash, ativo, falhas_login, bloqueado_ate, senha_temporaria_hash, senha_temporaria_expira_em FROM plataforma.superadmin_para_login($1)';
+/** O pedido do "esqueci" (T-0083): o e-mail da conta vem do banco. Depende da coluna `email` no retorno da função (banco-dados). */
+const SQL_PARA_ESQUECI = 'SELECT id, ativo, email FROM plataforma.superadmin_para_login($1)';
 
 export class ServicoPlataforma {
   private readonly custoIgual: ConferenciaCustoIgual;
@@ -72,6 +78,7 @@ export class ServicoPlataforma {
       const [sa] = await tx.consultar<LinhaLogin>(SQL_PARA_LOGIN, [email]);
       if (!sa || !sa.ativo || (sa.bloqueado_ate && sa.bloqueado_ate.getTime() > agora.getTime())) return null;
       const atual = await conferirSenha(senha, sa.senha_hash);
+      if (atual && sa.senha_temporaria_hash) await tx.consultar<{ ok: boolean | null }>('SELECT plataforma.superadmin_cancelar_temporaria($1::uuid) AS ok', [sa.id]);
       const fimTemporaria = atual ? null : await conferirTemporaria(senha, sa.senha_temporaria_hash, sa.senha_temporaria_expira_em, agora);
       if (fimTemporaria) {
         // 0048: atômica e de uso único; só abre a sessão com true (quem perde a corrida recebe a falha neutra).
@@ -98,15 +105,15 @@ export class ServicoPlataforma {
 
   /** Pedido de senha temporária (T-0076), pela `superadmin_emitir_temporaria`. Ordem e regras: auth/esqueci.ts. */
   async esqueci(email: string): Promise<MensagemEmail | null> {
-    const para = email.trim().toLowerCase();
+    const busca = email.trim().toLowerCase();
     const temporaria = await emitirTemporaria(this.cfg.argon2, this.relogio.agora());
-    const gravou = await this.banco.antesDaSessao(async (tx) => {
-      const [sa] = await tx.consultar<LinhaLogin>(SQL_PARA_LOGIN, [para]);
-      if (!sa || !sa.ativo) return false;
+    const daConta = await this.banco.antesDaSessao(async (tx) => {
+      const [sa] = await tx.consultar<{ id: string; ativo: boolean; email: string | null }>(SQL_PARA_ESQUECI, [busca]);
+      if (!sa || !sa.ativo || !sa.email) return null;
       await tx.consultar('SELECT plataforma.superadmin_emitir_temporaria($1::uuid, $2, $3)', [sa.id, temporaria.hash, temporaria.expira_em]);
-      return true;
+      return sa.email;
     });
-    return gravou ? mensagemSenhaTemporaria(para, temporaria.senha) : null;
+    return daConta ? mensagemSenhaTemporaria(daConta, temporaria.senha) : null;
   }
 
   /** Pedido com o e-mail desligado (T-0076): o mesmo custo de argon2 do `esqueci`, sem banco, sem temporária e sem envio. */

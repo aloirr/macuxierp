@@ -20,6 +20,12 @@ import { SenhaInformada } from './senha';
 export const CAMINHO_LOGIN = '/v1/auth/login';
 
 /**
+ * Texto único do 401 `NAO_AUTENTICADO` do login único (T-0083), o mesmo para o tenant e para o código MACUXI: não diz
+ * qual campo errou. A API responde com ele e a web mostra o mesmo texto (fonte única, sem "inválidos" × "incorretos").
+ */
+export const MENSAGEM_FALHA_LOGIN = 'Empresa, e-mail ou senha incorretos.';
+
+/**
  * Código digitado no campo "empresa" do login e do "esqueci": qualquer slug no formato do CHECK de
  * `plataforma.tenant.slug` (0002, `PADRAO_SLUG_EMPRESA`), sem diferenciar maiúsculas. Cobre o código da empresa
  * (RN-CORE-11: UF + 4 dígitos), o slug antigo das empresas criadas antes da T-0053 e `CODIGO_SUPERADMIN_LOGIN`.

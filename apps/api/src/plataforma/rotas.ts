@@ -13,10 +13,10 @@
  * - Multipart (T-0058): lido depois da sessão e antes de qualquer transação, com os limites da rota (`lerMultipart`).
  * - Rota `por_etapa` (só a carga do portal; ADR 0013, adendo A1): sem transação em volta; o `executar` abre as próprias.
  * - "Esqueci a senha" (T-0076): `POST /v1/plataforma/auth/esqueci`, pública (com o anti-CSRF), com os limites por IP e
- *   por conta (empresa = `EMPRESA_PLATAFORMA`) antes do banco e SEMPRE o mesmo 202 neutro; o e-mail sai só depois da
- *   resposta (`auth/esqueci.ts`). Sem a porta de e-mail, o mesmo 202 (sem banco e sem envio). Login com a temporária = 200 com a
- *   sessão e o cookie (`responderLoginPlataforma`, o mesmo da tela única com o código MACUXI); as outras rotas dão o 403
- *   `TROCAR_SENHA` do bloqueio (`SenhaATrocarResposta`, motivo 'temporaria', `expira_em` = o fim da temporária).
+ *   por conta (empresa = `EMPRESA_PLATAFORMA`) antes do banco e SEMPRE o mesmo 202 neutro (ordem em `auth/esqueci.ts`).
+ *   Sem a porta de e-mail, o mesmo 202 (sem banco e sem envio). Login com a temporária = 200 com a sessão e o cookie
+ *   (`responderLoginPlataforma`, o mesmo da tela única com o código MACUXI); as outras rotas dão o 403 `TROCAR_SENHA` do
+ *   bloqueio (`SenhaATrocarResposta`, motivo 'temporaria', `expira_em` = o fim da temporária).
  */
 import {
   CABECALHO_CSRF_CONFIG,
@@ -46,8 +46,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ConfigAuth } from '../auth/servico';
-import { opcoesCookieSessao } from '../auth/apoio-login';
-import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from '../auth/esqueci';
+import { opcoesCookieSessao, temCsrfConfig } from '../auth/apoio-login';
+import { erroMuitasTentativas, segundoPlanoAposResposta, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from '../auth/esqueci';
 import { CorpoTrocaSenha, corpoTrocarSenha } from '../auth/troca-senha';
 import { entradaDaChamada, responder } from '../execucao-rota';
 import { lerMultipart } from '../multipart';
@@ -94,7 +94,7 @@ export async function traduzido<R>(fn: () => Promise<R>): Promise<R> {
 }
 
 function exigirCsrf(req: FastifyRequest): void {
-  if (ESCRITAS.has(req.method) && req.headers[CABECALHO_CSRF_CONFIG] !== '1') {
+  if (ESCRITAS.has(req.method) && !temCsrfConfig(req)) {
     throw new ErroApi(403, 'ORIGEM_RECUSADA', `Escrita do portal sem o cabeçalho ${CABECALHO_CSRF_CONFIG}`);
   }
 }
@@ -194,7 +194,7 @@ export function montarPlataforma(
 
 // `POST /v1/plataforma/auth/esqueci` (T-0076), com o anti-CSRF antes de tudo. Ordem e regras: auth/esqueci.ts.
 function montarEsqueciPlataforma(app: FastifyInstance, d: DependenciasPlataformaApi, e: EsqueciMontado, servico: ServicoPlataforma, relogio: Relogio): void {
-  const apos = envioAposResposta(e.envio);
+  const apos = segundoPlanoAposResposta(e.envio);
   app.post(CAMINHOS_ESQUECI_SENHA.plataforma, apos.opcoes, async (req, reply) =>
     traduzido(async () => {
       exigirCsrf(req);
@@ -202,7 +202,7 @@ function montarEsqueciPlataforma(app: FastifyInstance, d: DependenciasPlataforma
       limitarEsqueciPorIp(e.limites, ipDoCliente(req, d.segredoBff), agoraMs);
       const { email } = PedirSenhaTemporariaPlataformaEntrada.parse(req.body);
       limitarEsqueciPorConta(e.limites, EMPRESA_PLATAFORMA, email, agoraMs);
-      return apos.responder(req, reply, e.envio ? await servico.esqueci(email) : await servico.esqueciSemEnvio());
+      return apos.responder(req, reply, () => (e.envio ? servico.esqueci(email) : servico.esqueciSemEnvio()));
     }),
   );
 }
