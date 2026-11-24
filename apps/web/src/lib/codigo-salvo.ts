@@ -6,7 +6,7 @@ import { CodigoEmpresaLogin } from '@macuxierp/platform-sdk';
  */
 export const CHAVE_CODIGO_EMPRESA = 'mx.codigo_empresa';
 
-type Armazem = Pick<Storage, 'getItem' | 'setItem'>;
+type Armazem = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 function padrao(): Armazem | undefined {
   try {
@@ -36,10 +36,21 @@ function gravarCodigoSalvo(codigo: string, armazem: Armazem | undefined = padrao
   }
 }
 
+/** Apaga o código lembrado. */
+function apagarCodigoSalvo(armazem: Armazem | undefined = padrao()): void {
+  try {
+    armazem?.removeItem(CHAVE_CODIGO_EMPRESA);
+  } catch {
+    /* sem armazenamento: nada a apagar */
+  }
+}
+
 /**
- * Grava o código só quando o login abriu o BKO de uma empresa. Com destino `config` (acesso reservado da plataforma)
- * não grava nada e preserva o que já estava salvo. O web decide só pelo `destino` da resposta, sem conhecer o código.
+ * Única porta de gravação. Com destino `bko` grava o código; com destino `config` (acesso reservado da plataforma)
+ * apaga o que estava salvo, para a próxima visita não sugerir empresa. O web decide só pelo `destino` da resposta
+ * da API.
  */
 export function gravarCodigoDoLogin(destino: 'bko' | 'config', codigo: string, armazem: Armazem | undefined = padrao()): void {
   if (destino === 'bko') gravarCodigoSalvo(codigo, armazem);
+  else apagarCodigoSalvo(armazem);
 }

@@ -1,12 +1,12 @@
-import { CABECALHO_CSRF_CONFIG, CAMINHO_LOGIN, COOKIE_CONFIG, LoginResposta, type LoginEntrada } from '@macuxierp/platform-sdk';
-import { buscarNaApi, usaApiFalsaAgora } from './api';
+import { CAMINHO_LOGIN, COOKIE_CONFIG, LoginResposta, type LoginEntrada } from '@macuxierp/platform-sdk';
+import { buscarNaApi, CABECALHOS_JSON_COM_CSRF, usaApiFalsaAgora } from './api';
 import { CREDENCIAL_FALSA, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 import { erroDaApi, type ErrosLogin } from './login-regras';
 
 /**
  * Login único (RN-CORE-12, ADR 0018): `POST /v1/auth/login` (`CAMINHO_LOGIN`), uma rota só para empresa e superadmin. O web
  * navega só pelo `destino` da resposta (`LoginResposta`): `bko` traz `token_acesso` no corpo e o refresh em cookie;
- * `config` traz só `expira_em` e o cookie `COOKIE_CONFIG`. Todo login leva o `CABECALHO_CSRF_CONFIG` (ADR 0018).
+ * `config` traz só `expira_em` e o cookie `COOKIE_CONFIG`. Todo login leva o `CABECALHO_CSRF_CONFIG` (ADR 0018, via `CABECALHOS_JSON_COM_CSRF`).
  * A troca obrigatória não vem do login (200 com a sessão aberta): quem chama lê `deve_trocar_senha` no `eu` do destino.
  */
 export type SessaoAberta = { destino: 'bko'; acesso: string; refresh: string } | { destino: 'config'; token: string; expira_em: string };
@@ -43,7 +43,7 @@ export async function loginUnico(entrada: LoginEntrada): Promise<ResultadoLogin>
   try {
     r = await buscarNaApi(CAMINHO_LOGIN, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', [CABECALHO_CSRF_CONFIG]: '1' },
+      headers: CABECALHOS_JSON_COM_CSRF,
       body: JSON.stringify(entrada),
     });
   } catch {

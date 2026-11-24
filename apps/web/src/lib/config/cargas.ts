@@ -1,5 +1,5 @@
 import {
-  CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, FRASE_ZERAR_DADOS, MENSAGEM_MANTIDOS_ZERAR, MOTIVOS_USO, fraseConfere, type CadastroZerarPortal,
+  AVISOS_CARGA_PORTAL, CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, GravarCargaPlataformaResposta, MAX_BYTES_ARQUIVO_CARGA_PORTAL, LIMITE_INATIVACAO_FDV_PCT, ValidarCargaPlataformaResposta, ZeragemPlataformaResposta, FRASE_ZERAR_DADOS, MENSAGEM_MANTIDOS_ZERAR, MOTIVOS_USO, fraseConfere, type CadastroZerarPortal,
   plural, rotuloCadastroCarga, type CadastroCargaPortal, type EfeitoSubstituir, type LinhaErroValidacao, type ModoGravarCarga, type SituacaoCarga, type SituacaoCargasPlataforma,
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
@@ -53,10 +53,21 @@ export function textoEfeito(cadastro: CadastroCargaPortal, e: Pick<EfeitoSubstit
   const enderecos = nEnd > 0 ? ` e ${plural(nEnd, 'endereço', 'endereços')}` : '';
   return `Vai inativar ${e.a_inativar} de ${e.total} ${nome} (${Math.round(e.percentual)}%)${enderecos}.`;
 }
-/** Aviso depois de gravar: "44 registros gravados." e, quando houver, "5 endereços inativados.". */
-export function textoGravado(g: Pick<GravarCargaPlataformaResposta, 'gravadas' | 'enderecos_inativados'>): string {
+/** Avisos do Substituir tudo (T-0075), com os textos do SDK, na ordem: inativados (com os em uso), registros sem código e, só no cliente,
+ *  endereços sem código. Cada um some com 0 ou sem o campo. Sem ponto final (quem junta frases põe). */
+export function avisosEfeito(cadastro: CadastroCargaPortal, e: Pick<EfeitoSubstituir, 'a_inativar' | 'inativados_em_uso' | 'sem_chave' | 'enderecos_sem_chave'>): string[] {
+  const frases = [
+    AVISOS_CARGA_PORTAL.inativados(e.a_inativar, e.inativados_em_uso ?? 0),
+    AVISOS_CARGA_PORTAL.semChave(e.sem_chave ?? 0),
+    cadastro === 'cliente' ? AVISOS_CARGA_PORTAL.enderecosSemChave(e.enderecos_sem_chave ?? 0) : null,
+  ];
+  return frases.filter((f): f is string => f !== null);
+}
+/** Aviso depois de gravar: "44 registros gravados." e, quando houver, "5 endereços inativados." e os avisos do efeito (Substituir tudo), cada um com ponto final. */
+export function textoGravado(g: Pick<GravarCargaPlataformaResposta, 'gravadas' | 'enderecos_inativados'> & Partial<Pick<GravarCargaPlataformaResposta, 'cadastro' | 'efeito'>>): string {
   const n = g.enderecos_inativados;
-  return `${plural(g.gravadas, 'registro gravado', 'registros gravados')}.${n && n > 0 ? ` ${plural(n, 'endereço inativado', 'endereços inativados')}.` : ''}`;
+  const base = `${plural(g.gravadas, 'registro gravado', 'registros gravados')}.${n && n > 0 ? ` ${plural(n, 'endereço inativado', 'endereços inativados')}.` : ''}`;
+  return [base, ...(g.efeito && g.cadastro ? avisosEfeito(g.cadastro, g.efeito).map((f) => `${f}.`) : [])].join(' ');
 }
 export const AVISO_LIMITE_FDV = `Acima de ${LIMITE_INATIVACAO_FDV_PCT}%, o FDV pede confirmação no monitor de integração dele antes de aplicar.`;
 export const TEXTO_SUBSTITUIR = 'O que não vier no arquivo fica inativo; nada é apagado.';

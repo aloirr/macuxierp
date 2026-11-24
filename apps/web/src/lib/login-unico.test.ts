@@ -1,18 +1,24 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let resposta: () => Response;
 const chamadas: { url: string; init: RequestInit }[] = [];
-async function carregar() {
-  vi.resetModules();
-  vi.stubEnv('MACUXIERP_API_URL', 'https://api.exemplo.invalid');
-  vi.doMock('next/headers', () => ({ headers: async () => new Headers() }));
-  return (await import('./login-unico')).loginUnico;
+// O módulo (e o SDK/zod por trás) é importado uma só vez: com `vi.resetModules` por teste, cada import frio custava
+// segundos sob carga e estourava o limite de 5 s. A API vem por env lida na carga; `fetch` é trocado a cada teste.
+let loginCarregado: Promise<(e: typeof entrada) => Promise<unknown>> | undefined;
+function carregar() {
+  loginCarregado ??= (async () => {
+    vi.stubEnv('MACUXIERP_API_URL', 'https://api.exemplo.invalid');
+    vi.doMock('next/headers', () => ({ headers: async () => new Headers() }));
+    return (await import('./login-unico')).loginUnico;
+  })();
+  return loginCarregado;
 }
 beforeEach(() => {
   chamadas.length = 0;
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => { chamadas.push({ url, init }); return resposta(); });
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.doUnmock('next/headers'); });
+afterEach(() => { vi.unstubAllGlobals(); });
+afterAll(() => { vi.unstubAllEnvs(); vi.doUnmock('next/headers'); });
 const json = (c: unknown, s = 200, cookie?: string) => new Response(JSON.stringify(c), { status: s, headers: cookie ? { 'set-cookie': cookie } : {} });
 const entrada = { empresa: 'AM2808', email: 'a@b.co', senha: 'x' };
 

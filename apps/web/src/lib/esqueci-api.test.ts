@@ -1,4 +1,4 @@
-import { CAMINHOS_ESQUECI_SENHA, MENSAGEM_ESQUECI_NEUTRA } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, CAMINHOS_ESQUECI_SENHA, MENSAGEM_ESQUECI_NEUTRA } from '@macuxierp/platform-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const chamadas: { url: string; init: RequestInit }[] = [];
@@ -24,6 +24,12 @@ describe('esqueci: chamadas à API (CAMINHOS_ESQUECI_SENHA)', () => {
     expect(chamadas[0]?.url).toBe(`https://api.exemplo.invalid${CAMINHOS_ESQUECI_SENHA.tenant}`);
     expect(chamadas[0]?.url).not.toContain('plataforma');
     expect(JSON.parse(String(chamadas[0]?.init.body))).toEqual({ empresa: 'AM2808', email: 'a@b.co' });
+  });
+  it('o esqueci leva sempre o CSRF do SDK (sem ele o código reservado responde 401 neutro)', async () => {
+    const { pedirSenhaTemporaria } = await carregar();
+    resposta = () => json({ mensagem: MENSAGEM_ESQUECI_NEUTRA }, 202);
+    await pedirSenhaTemporaria({ empresa: 'AM2808', email: 'a@b.co' });
+    expect(chamadas[0]?.init.headers).toMatchObject({ [CABECALHO_CSRF_CONFIG]: '1', 'content-type': 'application/json' });
   });
   it('429 com retry_after_s e 400 VALIDACAO', async () => {
     const { pedirSenhaTemporaria } = await carregar();

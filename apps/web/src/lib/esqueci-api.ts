@@ -1,5 +1,5 @@
 import { CAMINHOS_ESQUECI_SENHA, PedirSenhaTemporariaEntrada, SituacaoEsqueciResposta } from '@macuxierp/platform-sdk';
-import { buscarNaApi, usaApiFalsaAgora } from './api';
+import { buscarNaApi, CABECALHOS_JSON_COM_CSRF, usaApiFalsaAgora } from './api';
 import { interpretarEsqueci, TEXTOS_ESQUECI, type ResultadoEsqueci } from './esqueci-resultado';
 import { validarComSdk } from './login-regras';
 
@@ -18,13 +18,13 @@ export async function lerSituacaoEsqueci(): Promise<boolean> {
   }
 }
 
-/** `POST /v1/auth/esqueci`: para todos; a API desvia o código reservado por dentro. */
+/** `POST /v1/auth/esqueci`: para todos; a API desvia o código reservado por dentro e sem o CSRF do SDK ele responde 401 neutro. */
 export async function pedirSenhaTemporaria(entrada: { empresa: string; email: string }): Promise<ResultadoEsqueci> {
   const v = validarComSdk(PedirSenhaTemporariaEntrada, ['empresa', 'email'], entrada);
   if (!v.ok) return { tipo: 'campos', erros: v.erros };
   if (usaApiFalsaAgora()) return { tipo: 'ok' };
   try {
-    const r = await buscarNaApi(CAMINHOS_ESQUECI_SENHA.tenant, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(v.dados) });
+    const r = await buscarNaApi(CAMINHOS_ESQUECI_SENHA.tenant, { method: 'POST', headers: CABECALHOS_JSON_COM_CSRF, body: JSON.stringify(v.dados) });
     return interpretarEsqueci(r.status, await r.json().catch(() => null));
   } catch {
     return { tipo: 'erro', texto: TEXTOS_ESQUECI.erroGenerico };

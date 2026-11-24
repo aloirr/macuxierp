@@ -4,7 +4,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import {
   AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, podeConfirmarZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
-  podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar,
+  avisosEfeito, podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar,
 } from './cargas';
 
 const CHAVE = '33333333-3333-4333-8333-333333333333';
@@ -283,5 +283,36 @@ describe('endereços inativados no Substituir tudo de clientes (T-0070)', () => 
     expect(textoGravado({ gravadas: 8, enderecos_inativados: 5 })).toBe('8 registros gravados. 5 endereços inativados.');
     expect(textoGravado({ gravadas: 8, enderecos_inativados: undefined })).toBe('8 registros gravados.');
     expect(textoGravado({ gravadas: 8, enderecos_inativados: 1 })).toBe('8 registros gravados. 1 endereço inativado.');
+  });
+
+  describe('avisos do Substituir tudo (T-0075)', () => {
+    const e = { total: 40, a_inativar: 12, percentual: 30, acima_limite_fdv: false };
+    it('com 0 ou sem os campos, nenhum aviso', () => {
+      expect(avisosEfeito('cliente', { ...e, a_inativar: 0 })).toEqual([]);
+      expect(avisosEfeito('cliente', { ...e, a_inativar: 0, inativados_em_uso: 0, sem_chave: 0, enderecos_sem_chave: 0 })).toEqual([]);
+    });
+    it('inativados: N=1 e N>1, com e sem em uso', () => {
+      expect(avisosEfeito('produto', { ...e, a_inativar: 1 })).toEqual(['Inativados: 1']);
+      expect(avisosEfeito('produto', e)).toEqual(['Inativados: 12']);
+      expect(avisosEfeito('produto', { ...e, inativados_em_uso: 3 })).toEqual(['Inativados: 12 (3 em uso: continuam nos pedidos, títulos e notas)']);
+      expect(avisosEfeito('produto', { ...e, a_inativar: 1, inativados_em_uso: 1 })).toEqual(['Inativados: 1 (1 em uso: continuam nos pedidos, títulos e notas)']);
+    });
+    it('sem código: N=1 e N>1', () => {
+      expect(avisosEfeito('produto', { ...e, a_inativar: 0, sem_chave: 1 })).toEqual(['1 registro sem código ficou fora da substituição: dê um código a ele para entrar na próxima']);
+      expect(avisosEfeito('produto', { ...e, a_inativar: 0, sem_chave: 3 })).toEqual(['3 registros sem código ficaram fora da substituição: dê um código a eles para entrarem na próxima']);
+    });
+    it('endereços sem código só no cliente', () => {
+      expect(avisosEfeito('cliente', { ...e, a_inativar: 0, enderecos_sem_chave: 1 })).toEqual(['1 endereço sem código ficou fora da substituição']);
+      expect(avisosEfeito('cliente', { ...e, a_inativar: 0, enderecos_sem_chave: 2 })).toEqual(['2 endereços sem código ficaram fora da substituição']);
+      expect(avisosEfeito('produto', { ...e, a_inativar: 0, enderecos_sem_chave: 2 })).toEqual([]);
+    });
+    it('ordem: inativados, sem código, endereços; o resultado do gravar os junta com ponto final', () => {
+      const cheio = { ...e, inativados_em_uso: 2, sem_chave: 2, enderecos_sem_chave: 1 };
+      expect(avisosEfeito('cliente', cheio)).toHaveLength(3);
+      expect(textoGravado({ gravadas: 8, enderecos_inativados: 5, cadastro: 'cliente', efeito: cheio })).toBe(
+        '8 registros gravados. 5 endereços inativados. Inativados: 12 (2 em uso: continuam nos pedidos, títulos e notas). 2 registros sem código ficaram fora da substituição: dê um código a eles para entrarem na próxima. 1 endereço sem código ficou fora da substituição.',
+      );
+      expect(textoGravado({ gravadas: 8, cadastro: 'produto', efeito: { ...cheio, enderecos_sem_chave: undefined } })).not.toContain('endereço sem');
+    });
   });
 });

@@ -5,6 +5,9 @@ import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIG
 import { TrocarSenhaPendente } from './troca-pendente';
 import { EU_FALSO, EU_FALSO_MEI, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
+/** Cabeçalhos do POST JSON de entrada sem sessão (login e esqueci): o `CABECALHO_CSRF_CONFIG` do SDK vai sempre (ADR 0018). */
+export const CABECALHOS_JSON_COM_CSRF: Readonly<Record<string, string>> = { 'content-type': 'application/json', [CABECALHO_CSRF_CONFIG]: '1' };
+
 const URL_API = process.env.MACUXIERP_API_URL;
 
 /** Modo falso só fora de produção e sem MACUXIERP_API_URL (nenhuma variável liga o falso em produção). */

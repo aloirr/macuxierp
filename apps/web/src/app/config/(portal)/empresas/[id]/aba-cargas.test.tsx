@@ -184,5 +184,16 @@ describe('endereços inativados (T-0070)', () => {
   it('a confirmação do Substituir tudo de clientes mostra "e 5 endereços"', () => {
     expect(renderToStaticMarkup(<EfeitoSubstituir cadastro="cliente" efeito={efeito} />)).toContain('Vai inativar 12 de 40 clientes (30%) e 5 endereços.');
   });
+
+  it('T-0075: a confirmação mostra os avisos na faixa, depois da frase do efeito, e só os endereços no cliente', () => {
+    const cheio: SdkEfeito = { ...efeito, inativados_em_uso: 2, sem_chave: 1, enderecos_sem_chave: 3 };
+    const c = renderToStaticMarkup(<EfeitoSubstituir cadastro="cliente" efeito={cheio} />);
+    expect(c).toContain('Vai inativar 12 de 40 clientes (30%) e 5 endereços.');
+    expect(c).toContain('Inativados: 12 (2 em uso: continuam nos pedidos, títulos e notas). 1 registro sem código ficou fora da substituição: dê um código a ele para entrar na próxima. 3 endereços sem código ficaram fora da substituição.');
+    expect(c.indexOf('Vai inativar')).toBeLessThan(c.indexOf('Inativados:'));
+    expect(renderToStaticMarkup(<EfeitoSubstituir cadastro="produto" efeito={cheio} />)).not.toContain('endereços sem código');
+    const nada = renderToStaticMarkup(<EfeitoSubstituir cadastro="cliente" efeito={{ ...efeito, a_inativar: 0, percentual: 0 }} />);
+    expect(nada).not.toContain('faixa-aviso');
+  });
 });
 

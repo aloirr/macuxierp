@@ -5,7 +5,7 @@ import { CaixaResumo, Chip, Dialogo } from '@macuxierp/ui';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import {
-  AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_MODO, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_SUBSTITUIR, textoZerado, bloqueiosDeTextos, podeConfirmarZerar, textoLevaJunto, textosAnulados, textosBloqueios, textosMantidos, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao, pedirPreviaZerar, pedirZerar, podeGravar,
+  AVISO_LIMITE_FDV, AVISO_ZERAR, avisosEfeito, ROTULO_MODO, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_SUBSTITUIR, textoZerado, bloqueiosDeTextos, podeConfirmarZerar, textoLevaJunto, textosAnulados, textosBloqueios, textosMantidos, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao, pedirPreviaZerar, pedirZerar, podeGravar,
   rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoSemChave, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
 } from '@/lib/config/cargas';
 import {
@@ -86,6 +86,7 @@ export function EfeitoSubstituir({ cadastro, efeito }: { cadastro: CadastroCarga
   return (
     <div className="efeito-substituir">
       <p>{textoEfeito(cadastro, efeito)}</p>
+      {avisosEfeito(cadastro, efeito).length > 0 && <p className="faixa-aviso" role="status">{avisosEfeito(cadastro, efeito).map((f) => `${f}.`).join(' ')}</p>}
       {efeito.acima_limite_fdv && <p className="faixa-aviso" role="status">{AVISO_LIMITE_FDV}</p>}
     </div>
   );
@@ -140,7 +141,7 @@ function LinhaDaCarga({ linha: l, empresaId, aoImportar }: { linha: LinhaCarga; 
   );
 }
 
-export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { empresaId: string; cadastro: CadastroCargaPortal; aoFechar: () => void; aoGravar: (g: Pick<GravarCargaPlataformaResposta, 'gravadas' | 'enderecos_inativados'>) => void }) {
+export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { empresaId: string; cadastro: CadastroCargaPortal; aoFechar: () => void; aoGravar: (g: Pick<GravarCargaPlataformaResposta, 'gravadas' | 'enderecos_inativados'> & Partial<Pick<GravarCargaPlataformaResposta, 'cadastro' | 'efeito'>>) => void }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [conferindo, setConferindo] = useState(false);
   const [gravando, setGravando] = useState(false);
