@@ -212,15 +212,29 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido do FDV em análise, 
       new RegExp(`"${CK_PENDENCIA}"`),
       WORKER_A,
     );
-    // Aprovado com a pendência aceita não leva a pendência a cancelado (nenhum caso novo além de em_analise, recusado e aprovado).
-    const id = passa('fdv', 'aprovado', ACIMA_ACEITA);
-    recusaDetalhada(
-      banco.conexao,
-      `UPDATE pedido.pedido SET status = 'cancelado' WHERE id = '${id}';`,
-      '23514',
-      new RegExp(`"${CK_PENDENCIA}"`),
-      WORKER_A,
-    );
+  });
+
+  it('FDV em cancelado passa com pendência de prazo (P) e cai com pendência fora de P (pedido_fdv_sem_pendencia)', () => {
+    const cancelar = (pendencias: string | null): string => {
+      const id = passa('fdv', 'aprovado', ACIMA_ACEITA);
+      const comPendencias = pendencias === null ? '' : `, pendencias = '${pendencias}'`;
+      return `UPDATE pedido.pedido SET status = 'cancelado'${comPendencias} WHERE id = '${id}';`;
+    };
+    // A pendência aceita do aprovado fica no cancelado; P aceita bloqueante true ou false.
+    executar(banco.conexao, cancelar(null), WORKER_A);
+    executar(banco.conexao, cancelar(AS_DUAS), WORKER_A);
+    executar(banco.conexao, cancelar(INCOMPLETO_ACEITA), WORKER_A);
+    executar(banco.conexao, cancelar(`[${pend('prazo_incompleto')}, ${pend('prazo_acima_do_cliente', false)}]`), WORKER_A);
+    executar(banco.conexao, cancelar('[]'), WORKER_A);
+    for (const fora of [
+      CREDITO,
+      `[${pend('prazo_incompleto', false)}, ${pend('credito_excedido', false)}]`,
+      '[{"codigo": "prazo_incompleto"}]',
+      '[{"codigo": "prazo_incompleto", "bloqueante": "sim"}]',
+      '["prazo_incompleto"]',
+    ]) {
+      recusaDetalhada(banco.conexao, cancelar(fora), '23514', new RegExp(`"${CK_PENDENCIA}"`), WORKER_A);
+    }
   });
 
   it('o pedido manual segue como antes: em_analise com qualquer pendência, recusado e aprovado com pendência', () => {

@@ -16,6 +16,8 @@ SET LOCAL lock_timeout = '5s';
 --   PB (em_analise): bloqueante = true (como o receberFdv grava).
 --   P  (recusado):   bloqueante true ou false (o recusar guarda as pendências de em_analise; o motivo fica na aprovação).
 --   PA (aprovado):   bloqueante = false (a pendência de prazo aceita; a aceitação fica em pedido.aprovacao).
+--   P também em cancelado (opção (ii) do gerente), só no pedido_fdv_sem_pendencia (o sem_analise não cobre cancelado).
+-- Os três saem de um modelo só (format), sem função auxiliar: o CHECK não passa a depender de outro objeto.
 DO $$
 DECLARE
   modelo constant text := $sql$CASE
@@ -41,16 +43,19 @@ BEGIN
       pb, p);
   END IF;
 
+  -- Marca: o caso de 'cancelado' (a 0016 e as versões anteriores desta não o têm).
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conrelid = 'pedido.pedido'::regclass AND conname = 'pedido_fdv_sem_pendencia'
-                   AND pg_get_constraintdef(oid) LIKE '%"bloqueante" == false%') THEN
+                   AND pg_get_constraintdef(oid) LIKE '%''cancelado''%') THEN
     ALTER TABLE pedido.pedido DROP CONSTRAINT IF EXISTS pedido_fdv_sem_pendencia;
-    -- Nos outros status, '[]' como na 0016.
+    -- Nos outros status, '[]' como na 0016. Cancelado aceita P (opção (ii) do gerente): guarda a razão sem depender de
+    -- o servico limpar as pendências ao cancelar.
     EXECUTE format(
       'ALTER TABLE pedido.pedido ADD CONSTRAINT pedido_fdv_sem_pendencia CHECK ('
       'origem <> ''fdv'' OR pendencias = ''[]''::jsonb '
-      'OR (status = ''em_analise'' AND (%s)) OR (status = ''recusado'' AND (%s)) OR (status = ''aprovado'' AND (%s)))',
-      pb, p, pa);
+      'OR (status = ''em_analise'' AND (%s)) OR (status = ''recusado'' AND (%s)) OR (status = ''aprovado'' AND (%s)) '
+      'OR (status = ''cancelado'' AND (%s)))',
+      pb, p, pa, p);
   END IF;
 END $$;
 
@@ -59,4 +64,4 @@ COMMENT ON CONSTRAINT pedido_fdv_sem_analise ON pedido.pedido IS
   'prazo_incompleto e/ou prazo_acima_do_cliente, e a recusado só com pendências de prazo (T-0085)';
 COMMENT ON CONSTRAINT pedido_fdv_sem_pendencia ON pedido.pedido IS
   'D-A (0016) emendada pela RN-PED-07 (0056): o pedido do FDV tem pendencias = [] salvo em em_analise (só prazo, '
-  'bloqueante), recusado (só prazo) e aprovado (só prazo não bloqueante, aceita) (T-0085)';
+  'bloqueante), recusado e cancelado (só prazo) e aprovado (só prazo não bloqueante, aceita) (T-0085)';
