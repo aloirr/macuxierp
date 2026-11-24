@@ -12,7 +12,7 @@ import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { exportadorPedido, TABELAS_EXPORTADAS } from './exportador';
 import { SituacaoPedidoParaFaturar } from '../contracts';
 import { criarConsultaParaFaturar } from './faturar';
-import { IDS, pedidoFdv, pedidoManual, prepararCadastros } from './fixtures-teste';
+import { IDS, pedidoFdv, pedidoManual, prazoDoCliente, prepararCadastros } from './fixtures-teste';
 import { criarPluginPedido, dependenciasDeProducao } from './index';
 import { CadastrosMemoria } from './memoria';
 import type { Dependencias } from './portas';
@@ -327,8 +327,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
   // e com pendência. Tirar o `.skip` quando a migração que os relaxa entrar (RN-PED-07, emenda de 24/11).
   it.skip('RN-PED-07: o pedido do FDV com prazo acima do cliente entra em análise no SQL real, com a pendência gravada e só recebido@1 na outbox; a aprovação revalida e é 422', async () => {
     const T = await criarTenant(efemero.admin, 'fdv-prazo', ['pedido']);
-    const cliente = cad.clientes.get(IDS.cliente)!;
-    cad.clientes.set(IDS.cliente, { ...cliente, prazo_medio_dias: 10 });
+    prazoDoCliente(cad, 10);
     try {
       const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
       const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, pedidoFdv()));
@@ -338,7 +337,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
       expect((await admin("SELECT nome FROM core.outbox WHERE tenant_id = $1 ORDER BY criado_em", [T])).map((l) => l.nome)).toEqual(['pedido.pedido.recebido@1']);
       await expect(app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, {}))).rejects.toMatchObject({ status: 422, codigo: 'RN-PED-03', detalhes: { bloqueantes: ['prazo_acima_do_cliente'] } });
     } finally {
-      cad.clientes.set(IDS.cliente, cliente);
+      prazoDoCliente(cad, null);
     }
   });
 

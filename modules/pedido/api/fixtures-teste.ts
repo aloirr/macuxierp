@@ -87,3 +87,13 @@ export const pedidoFdv = (sobre: Partial<PedidoFdvEntrada> = {}): PedidoFdvEntra
   itens: [{ sequencia: 1, produto_id: IDS.produto1, quantidade: 20_000, unidade_venda: 'UN', fator_venda: 10_000, quantidade_venda: 20_000, preco_unitario_centavos: 1000, desconto_centavos: 0, total_informado_centavos: 2000, aplicacao: null }],
   ...sobre,
 });
+
+/** Define o prazo médio permitido ao cliente (RN-CAD-16); `null` = sem limite. */
+export function prazoDoCliente(c: CadastrosMemoria, dias: number | null): void {
+  c.clientes.set(IDS.cliente, { ...c.clientes.get(IDS.cliente)!, prazo_medio_dias: dias });
+}
+
+/** Define o prazo médio da condição (RN-CAD-15); `null` = prazo incompleto. */
+export function prazoMedioDaCondicao(c: CadastrosMemoria, id: string, dias: number | null): void {
+  c.condicoes.set(id, { ...c.condicoes.get(id)!, prazo_medio_dias: dias });
+}

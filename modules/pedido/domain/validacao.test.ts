@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { avaliarPedido, avaliarCredito, foraDoCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
+import { avaliarPedido, avaliarPrazo, decidirPrazoRecebimentoFdv, avaliarCredito, foraDoCredito, avaliarPedidoDetalhado, decidirRecebimentoFdv, type RetratoRecebimentoFdv, type EntradaAvaliacao, type ItemAvaliacao } from './validacao';
 import { FORMAS_A_VISTA } from '@macuxierp/cadastros/contracts';
-import { avaliarPrazo } from './validacao';
 
 const F1 = '00000000-0000-4000-8000-000000000001'; // padrão
 const F2 = '00000000-0000-4000-8000-000000000002';
@@ -258,16 +257,35 @@ describe('recebimento do pedido do FDV', () => {
   });
 });
 
+describe('RN-PED-07: decisão do recebimento do FDV por prazo', () => {
+  it('RN-PED-07: prazo completo e permitido entra aprovado, sem pendência', () => {
+    expect(decidirPrazoRecebimentoFdv(PRAZO, { prazo_medio_dias: 30 })).toEqual({ status: 'aprovado', pendencias: [] });
+    expect(decidirPrazoRecebimentoFdv(null, { prazo_medio_dias: 1 })).toEqual({ status: 'aprovado', pendencias: [] });
+  });
+  it('RN-PED-07: prazo incompleto entra em análise com prazo_incompleto bloqueante', () => {
+    expect(decidirPrazoRecebimentoFdv({ ...PRAZO, prazo_medio_dias: null }, { prazo_medio_dias: 60 })).toEqual({
+      status: 'em_analise',
+      pendencias: [{ codigo: 'prazo_incompleto', bloqueante: true, sequencia: null, produto_id: null, esperado: null, informado: null }],
+    });
+  });
+  it('RN-PED-07: prazo acima do cliente entra em análise com esperado e informado', () => {
+    expect(decidirPrazoRecebimentoFdv(PRAZO, { prazo_medio_dias: 20 })).toEqual({
+      status: 'em_analise',
+      pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true, sequencia: null, produto_id: null, esperado: 20, informado: 30 }],
+    });
+  });
+});
+
 describe('RN-PED-07: prazo completo e permitido ao cliente', () => {
   const cliente = (prazo_medio_dias?: number | null) => ({ inativo: false, limite_credito_centavos: 100_000, ...(prazo_medio_dias === undefined ? {} : { prazo_medio_dias }) });
   const pendencias = (e: EntradaAvaliacao) => avaliarPedidoDetalhado(e).filter((p) => p.codigo === 'prazo_incompleto' || p.codigo === 'prazo_acima_do_cliente');
 
-  it('RN-PED-07: prazo incompleto (sem prazo médio) é recusado, bloqueante', () => {
+  it('RN-PED-07: gera a pendência bloqueante prazo_incompleto', () => {
     const e = base({ condicao: { ...PRAZO, prazo_medio_dias: null } });
     expect(avaliarPrazo(e.condicao, cliente(60))).toBe('prazo_incompleto');
     expect(pendencias(e)).toEqual([{ codigo: 'prazo_incompleto', bloqueante: true, sequencia: null, produto_id: null, esperado: null, informado: null }]);
   });
-  it('RN-PED-07: prazo médio acima do prazo médio do cliente é recusado, com esperado e informado', () => {
+  it('RN-PED-07: gera prazo_acima_do_cliente, com esperado e informado', () => {
     const e = base({ cliente: cliente(20) });
     expect(avaliarPrazo(e.condicao, e.cliente)).toBe('prazo_acima_do_cliente');
     expect(pendencias(e)).toEqual([{ codigo: 'prazo_acima_do_cliente', bloqueante: true, sequencia: null, produto_id: null, esperado: 20, informado: 30 }]);
@@ -286,7 +304,7 @@ describe('RN-PED-07: prazo completo e permitido ao cliente', () => {
     expect(avaliarPrazo(cartao, cliente(10))).toBeNull();
     expect(pendencias(base({ condicao: cartao, cliente: cliente(10) }))).toEqual([]);
   });
-  it('RN-PED-07: cartão de crédito (03) incompleto é recusado', () => {
+  it('RN-PED-07: cartão de crédito (03) incompleto gera prazo_incompleto', () => {
     const cartao = { ...PRAZO, forma_tpag: '03', prazo_medio_dias: null };
     expect(avaliarPrazo(cartao, cliente(10))).toBe('prazo_incompleto');
     expect(pendencias(base({ condicao: cartao }))).toHaveLength(1);

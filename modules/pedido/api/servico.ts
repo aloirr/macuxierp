@@ -14,7 +14,7 @@ import {
   type StatusPedido,
 } from '../contracts';
 import {
-  avaliarPedidoDetalhado, avaliarPrazo, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, travaCliente,
+  avaliarPedidoDetalhado, avaliarPrazo, decidirAprovacao, decidirPrazoRecebimentoFdv, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, TEXTO_PRAZO, travaCliente,
   validarTransicao, verificarItens, violacao, type Violacao,
 } from '../domain';
 import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, notasAplicadas, type CondicaoDoEvento, type EventoPronto } from './eventos';
@@ -100,15 +100,7 @@ export function criarServico(deps: Dependencias) {
   const violacoesDePrazo = (condicao: Cadastros['condicao'], cliente: ClienteParaPedido): Violacao[] => {
     const falha = avaliarPrazo(condicao, cliente);
     if (falha === null) return [];
-    const mensagem = falha === 'prazo_incompleto' ? 'O prazo de pagamento está incompleto' : 'O prazo de pagamento passa do prazo médio permitido ao cliente';
-    return [violacao('RN-PED-07', 'condicao_pagamento_id', mensagem)];
-  };
-
-  /** RN-PED-07: o pedido do FDV entra aprovado, ou em análise com a pendência bloqueante do prazo. */
-  const decidirPrazoFdv = (condicao: Cadastros['condicao'], cliente: ClienteParaPedido): { status: 'aprovado' | 'em_analise'; pendencias: Pendencia[] } => {
-    const falha = avaliarPrazo(condicao, cliente);
-    if (falha === null) return { status: 'aprovado', pendencias: [] };
-    return { status: 'em_analise', pendencias: [{ codigo: falha, bloqueante: true, sequencia: null, produto_id: null }] };
+    return [violacao('RN-PED-07', 'condicao_pagamento_id', TEXTO_PRAZO[falha])];
   };
 
   const avaliar = async (
@@ -561,8 +553,8 @@ export function criarServico(deps: Dependencias) {
     }
     const criado = await obterOu404(repo, id);
     // RN-PED-07 (emenda de 24/11): prazo incompleto ou não permitido não recusa o recebimento; o pedido entra em análise com a pendência.
-    const decisaoCriacao = decidirPrazoFdv(cad.condicao, cliente);
-    await registrarCriacao(repo, fx, criado, { ...decisaoCriacao, validado: false }, cad.condicao);
+    const decisaoCriacao = decidirPrazoRecebimentoFdv(cad.condicao, cliente);
+    await registrarCriacao(repo, fx, criado, { status: decisaoCriacao.status, pendencias: semValores(decisaoCriacao.pendencias), validado: false }, cad.condicao);
     const final = await obterOu404(repo, id);
     await fx.auditar({ acao: 'pedido.receber', entidade: 'pedido', entidade_id: id, antes: null, depois: resumo(final) });
     log(fx, { pedido_id: id, acao: 'receber_fdv', status: decisaoCriacao.status, pendencias: decisaoCriacao.pendencias.map((x) => x.codigo) }, 'pedido do FDV recebido');

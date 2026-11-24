@@ -1,7 +1,7 @@
 import type { FonteLicencas, Licenca } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { describe, expect, it } from 'vitest';
-import { CPF_DO_CLIENTE, IDS, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, prepararCadastros } from './fixtures-teste';
+import { CPF_DO_CLIENTE, IDS, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros } from './fixtures-teste';
 import { dependenciasEmMemoria, TENANT_MEMORIA } from './memoria';
 import { criarRecebedorFdv } from './recebedor';
 
@@ -116,7 +116,7 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
   });
   it('RN-PED-07: o pedido do FDV com prazo médio acima do cliente não é recusado: entra em análise com a pendência bloqueante, recebido@1 sem aprovado@1', async () => {
     const t = montar();
-    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 10 });
+    prazoDoCliente(t.cadastros, 10);
     const r = await t.recebedor.receber(tx, pedidoFdv());
     expect(r).toMatchObject({ resultado: 'criado', numero: 1, status: 'em_analise' });
     expect(t.armazem.pedidos[0]).toMatchObject({ status: 'em_analise', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
@@ -126,16 +126,11 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
     expect(await t.deps.repositorios(tx).compromissoCredito(IDS.cliente, null)).toBe(0); // em análise não compromete
     expect(await t.recebedor.receber(tx, pedidoFdv())).toMatchObject({ resultado: 'repetido', status: 'em_analise' });
   });
-  it('RN-PED-07: o pedido do FDV com prazo incompleto entra em análise com prazo_incompleto; o cartão (03) completo e o cliente sem prazo médio seguem aprovados', async () => {
+  it('RN-PED-07: o pedido do FDV com prazo incompleto entra em análise com prazo_incompleto', async () => {
     const t = montar();
-    t.cadastros.condicoes.set(IDS.condicao30, { ...t.cadastros.condicoes.get(IDS.condicao30)!, prazo_medio_dias: null });
+    prazoMedioDaCondicao(t.cadastros, IDS.condicao30, null);
     expect(await t.recebedor.receber(tx, pedidoFdv())).toMatchObject({ resultado: 'criado', status: 'em_analise' });
     expect(t.armazem.pedidos[0]?.pendencias.map((p) => p.codigo)).toEqual(['prazo_incompleto']);
-    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: 5 });
-    expect(await t.recebedor.receber(tx, pedidoFdv({ pedido_uuid: '12345678-1234-4234-8234-123456789013', condicao_pagamento_id: IDS.condicaoCartao }))).toMatchObject({ status: 'aprovado' });
-    t.cadastros.clientes.set(IDS.cliente, { ...t.cadastros.clientes.get(IDS.cliente)!, prazo_medio_dias: null });
-    t.cadastros.condicoes.set(IDS.condicao30, { ...t.cadastros.condicoes.get(IDS.condicao30)!, prazo_medio_dias: 30 });
-    expect(await t.recebedor.receber(tx, pedidoFdv({ pedido_uuid: '12345678-1234-4234-8234-123456789014' }))).toMatchObject({ status: 'aprovado' });
   });
   it('RN-PED-04: o pedido do FDV sem condição de pagamento é recusado por condicao_ausente (lote 1c)', async () => {
     const t = montar();
