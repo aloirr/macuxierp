@@ -260,3 +260,32 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* "Esqueci a senha": link em botão, sem aparência de botão */
 button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* Monitor da aba Integração no 390 (marca): "Atualizado às hh:mm" desce para baixo do título; o botão Atualizar fica na linha do título. */
+@media (max-width: 640px) {
+  .cabeca-monitor { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; }
+  .cabeca-monitor > .barra-acoes { display: contents; }
+  .cabeca-monitor h2 { grid-row: 1; grid-column: 1; }
+  .cabeca-monitor .atualizado-monitor { grid-row: 2; grid-column: 1 / -1; }
+  .cabeca-monitor .barra-acoes > button { grid-row: 1; grid-column: 2; }
+}
+
+/* Telas do core e da bandeira (T-0087, T-0088): só tokens. */
+.segredo { display: block; padding: 12px; font-family: ui-monospace, monospace; font-size: var(--mx-tamanho-titulo-dialogo); letter-spacing: .04em; background: var(--mx-cor-perola); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; overflow-wrap: anywhere; user-select: all; }
+/* Perfis e permissões: uma coluna por perfil; a primeira coluna fica à vista ao rolar na horizontal. */
+.matriz-perfis { min-width: 720px; }
+.matriz-perfis td { text-align: center; }
+.matriz-perfis tbody th[scope="row"] { position: sticky; left: 0; background: var(--mx-cor-branco); font-weight: normal; white-space: nowrap; }
+.matriz-perfis .matriz-grupo th { background: var(--mx-cor-perola); font-weight: var(--mx-peso-titulo); }
+/* Bandeira por filial: um cartão por filial; Ligar e Desligar têm a mesma largura mínima. */
+.cartoes-bandeira { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cartao-bandeira { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 16px; min-width: 0; }
+.cartao-bandeira h2 { margin: 0 0 8px; font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); overflow-wrap: anywhere; }
+.cartao-bandeira .selos { margin: 0; }
+.bandeira-acoes { margin-top: 16px; }
+.bandeira-acoes > .barra-acoes { margin: 0; }
+.bandeira-acoes > .barra-acoes > button { min-width: 7.5rem; }
+@media (max-width: 640px) {
+  .cartoes-bandeira { grid-template-columns: minmax(0, 1fr); }
+  .bandeira-acoes > .barra-acoes > button { width: 100%; min-height: 44px; }
+}

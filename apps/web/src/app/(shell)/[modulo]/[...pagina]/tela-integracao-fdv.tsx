@@ -4,6 +4,7 @@ import { ApiIndisponivel, NaoAutenticado, SemPermissao, getValidado } from '@/li
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { montarVistaStatus } from '@/lib/integracao-fdv';
 import { caminhoApiClientesRecebidos, lerConsultaUrl, montarVistaClientesRecebidos } from '@/lib/clientes-recebidos';
+import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 import { VistaIntegracaoFdv } from '@/components/integracao-fdv/vista';
 import { SecaoClientesRecebidos } from '@/components/integracao-fdv/clientes-recebidos';
 
@@ -23,7 +24,7 @@ export async function TelaIntegracaoFdv({ acesso, fuso, rota = '/integracao-fdv/
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
-    if (e instanceof SemPermissao) return <p className="erro" role="alert">Seu perfil não pode ver esta tela.</p>;
+    if (e instanceof SemPermissao) return <p className="erro" role="alert">{TEXTO_SEM_PERMISSAO}</p>;
     if (e instanceof ApiIndisponivel) return <p className="erro" role="alert">Não foi possível carregar agora. Tente de novo em instantes.</p>;
     throw e;
   }

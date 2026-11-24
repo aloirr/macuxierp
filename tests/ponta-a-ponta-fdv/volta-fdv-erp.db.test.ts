@@ -467,7 +467,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     const [, fat] = await retornos('A', p.pedido_uuid);
     expect(fat).toMatchObject({ status: 'faturado_total', estado: 'enviado', numero_erp: String(numero), resposta_http: 200 });
     expect(RetornoErp.safeParse(fat!.corpo).success).toBe(true);
-    expect(fat!.corpo.nota).toEqual({ numero: 12, serie: 1, chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
+    expect(fat!.corpo.nota).toEqual({ numero: '12', serie: '1', chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
     expect(noHub('A', p.pedido_uuid).retornos.map((r) => [r.status, r.nota, r.chave_acesso])).toEqual([
       ['integrado', null, null],
       ['faturado_total', '12/1', notaSimulada.chave],
