@@ -25,7 +25,7 @@ erro() {
 uso() {
   cat <<'USO'
 Uso (raiz do repositório): bash tests/scripts/rodar-antes-do-push.sh [opções]   (detalhes: docs/testes/antes-do-push.md)
-  (nenhuma)              afetados contra origin/main (o que vai no PR)
+  (nenhuma)              afetados contra origin/main e, com código, os testes de scripts/ (o que vai no PR)
   --tudo                 todos os pacotes, o passo sem superusuário, tests/ e os testes de scripts/
   --pacote <nome>        só esses pacotes, mais tests/ (repetível)
   --so-tests             só pnpm test:tests
@@ -132,7 +132,7 @@ FILTRO=""          # filtro do turbo (vazio + RODAR_PACOTES=1 = todos)
 RODAR_PACOTES=0
 DB_SEM_SUPER=0
 RODAR_TESTS=1
-RODAR_SCRIPTS=0    # testes node --test de scripts/ (CLI e coord): só no --tudo
+RODAR_SCRIPTS=0    # testes node --test de scripts/ (CLI e coord): no --tudo e no ensaio com código (regra 6, T-0066)
 PARCIAL=""
 case "${MODO}" in
   afetados)
@@ -147,6 +147,7 @@ case "${MODO}" in
           todos) RODAR_PACOTES=1 ;;
         esac
         [[ "$(campo db_sem_super)" == true ]] && DB_SEM_SUPER=1
+        RODAR_SCRIPTS=1
         ;;
     esac
     ;;
