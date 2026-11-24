@@ -2,7 +2,7 @@
 # Teste local do scripts/deploy/producao/ambiente-vm.sh (T-0024, deploy automatizado): simula /opt/macuxi (FDV) e
 # /opt/macuxierp numa pasta temporária, roda duas vezes e confere que a 2ª não regera chaves, que os modos são 600 (CA 644),
 # que só as variáveis conhecidas do FDV são copiadas, que nada é gravado na pasta do FDV e que a falta de um arquivo do FDV
-# falha citando o caminho. Precisa de root (chown). Uso: sudo bash scripts/deploy/teste-ambiente-vm.sh [usuario, com grupo de mesmo nome; padrão root]
+# falha citando o caminho; e que o email.env do workflow (T-0076) é instalado filtrado, 600, e nasce desligado sem ele. Precisa de root (chown). Uso: sudo bash scripts/deploy/teste-ambiente-vm.sh [usuario, com grupo de mesmo nome; padrão root]
 set -euo pipefail
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/producao/ambiente-vm.sh"
 USUARIO="${1:-root}"
@@ -22,7 +22,8 @@ antes_fdv="$(cd "$FDV" && find . -type f -exec sha256sum {} + | sort; stat -c '%
 falhou=0
 ok() { echo "ok   $*"; }
 nao() { echo "FALHA $*"; falhou=1; }
-roda() { MACUXIERP_DIR="$ERP" MACUXI_FDV_DIR="$FDV" bash "$SCRIPT" "$USUARIO"; }
+EMAIL_WF="$T/deploy/email.env"; mkdir -p "$T/deploy"
+roda() { MACUXIERP_DIR="$ERP" MACUXI_FDV_DIR="$FDV" MACUXIERP_EMAIL_ORIGEM="$EMAIL_WF" bash "$SCRIPT" "$USUARIO"; }
 # shellcheck source-path=SCRIPTDIR source=producao/comum.sh
 source "$(dirname "$SCRIPT")/comum.sh"
 
@@ -49,7 +50,10 @@ for f in .env gerados.env banco.env admin.env segredos.env; do
   m="$(stat -c '%a %U' "$ERP/$f")"; [ "$m" = "600 $USUARIO" ] && ok "$f: $m" || nao "$f: $m"
 done
 m="$(stat -c '%a %U' "$ERP/certs/dbaas-ca.pem")"; [ "$m" = "644 $USUARIO" ] && ok "certs/dbaas-ca.pem: $m" || nao "CA: $m"
-[ -e "$ERP/email.env" ] || [ -e "$ERP/alerta.env" ] && nao "email.env/alerta.env criados" || ok "email.env e alerta.env não criados"
+[ -e "$ERP/alerta.env" ] && nao "alerta.env criado" || ok "alerta.env não criado"
+# email.env sem o arquivo do workflow: nasce desligado, 600
+[ "$(cat "$ERP/email.env")" = 'MACUXI_EMAIL_TRANSPORTE=desligado' ] && ok "email.env sem o workflow: desligado" || nao "email.env padrão"
+m="$(stat -c '%a %U' "$ERP/email.env")"; [ "$m" = "600 $USUARIO" ] && ok "email.env: $m" || nao "email.env: $m"
 ls "$ERP"/*.tmp >/dev/null 2>&1 && nao "sobrou .tmp" || ok "sem .tmp"
 depois_fdv="$(cd "$FDV" && find . -type f -exec sha256sum {} + | sort; stat -c '%n %a' ./*.env)"
 [ "$antes_fdv" = "$depois_fdv" ] && [ "$(find "$FDV" -type f | wc -l)" = 4 ] && ok "pasta do FDV intacta" || nao "pasta do FDV mudou"
@@ -60,6 +64,19 @@ roda > "$T/saida3"
 novo_bff="$(valor_env "$ERP/gerados.env" MACUXIERP_SEGREDO_BFF)"
 [[ "$novo_bff" =~ ^[0-9a-f]{64}$ ]] && [ "$(grep -v '^MACUXIERP_SEGREDO_BFF=' "$ERP/gerados.env")" = "$(cat "$T/gerados-antigo")" ] && ok "gerados.env antigo: prova do BFF acrescentada, o resto igual" || nao "gerados.env antigo"
 grep -q "$novo_bff" "$T/saida3" && nao "prova do BFF na saída" || ok "prova do BFF fora da saída"
+
+# email.env do workflow (T-0076): instalado só com os nomes conhecidos, sem \r, 600; o original some; sem valor na saída
+printf "# cabeçalho\nMACUXI_EMAIL_TRANSPORTE=smtp\r\nMACUXI_SMTP_HOST='smtp.exemplo'\nMACUXI_SMTP_SENHA='senha-smtp-falsa'\nOUTRA=nao-copiar\n" > "$EMAIL_WF"
+roda > "$T/saida-email"
+[ "$(cat "$ERP/email.env")" = $'MACUXI_EMAIL_TRANSPORTE=smtp\nMACUXI_SMTP_HOST=\'smtp.exemplo\'\nMACUXI_SMTP_SENHA=\'senha-smtp-falsa\'' ] && ok "email.env do workflow: só os nomes do SMTP" || nao "email.env do workflow"
+m="$(stat -c '%a %U' "$ERP/email.env")"; [ "$m" = "600 $USUARIO" ] && ok "email.env do workflow: $m" || nao "email.env do workflow: $m"
+[ -e "$EMAIL_WF" ] && nao "email.env do workflow ficou na pasta do deploy" || ok "email.env do workflow apagado depois de instalado"
+grep -q 'senha-smtp-falsa\|smtp.exemplo' "$T/saida-email" && nao "valor do SMTP na saída" || ok "nenhum valor do SMTP na saída"
+roda > /dev/null
+[ "$(valor_env "$ERP/email.env" MACUXI_EMAIL_TRANSPORTE)" = smtp ] && ok "sem o arquivo do workflow: email.env existente preservado" || nao "email.env existente trocado"
+printf 'MACUXI_SMTP_HOST=x\n' > "$EMAIL_WF"
+if roda > "$T/saida-email2" 2>&1; then nao "email.env sem MACUXI_EMAIL_TRANSPORTE não falhou"; else ok "email.env do workflow sem MACUXI_EMAIL_TRANSPORTE: falha"; fi
+[ "$(valor_env "$ERP/email.env" MACUXI_EMAIL_TRANSPORTE)" = smtp ] && ! ls "$ERP"/*.tmp >/dev/null 2>&1 && ok "falha do email.env: o anterior fica, sem .tmp" || nao "falha do email.env mexeu no anterior"
 
 # chave do A1 já existente e válida, em base64: nunca trocada
 printf 'MACUXIERP_CHAVE_A1=%s\n' "$(openssl rand -base64 32)" > "$ERP/.env"; b64="$(valor_env "$ERP/.env" MACUXIERP_CHAVE_A1)"

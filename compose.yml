@@ -23,7 +23,8 @@ x-servico: &servico
 x-app: &app
   <<: [*servico, *imagem-api]
   env_file:
-    # S3 e SMTP: contrato para o core e o faturamento; o código ainda não lê. quem grava: env.modelo; required: false = Compose 2.24+
+    # S3 (segredos.env) e SMTP (email.env, T-0076: só api e worker, gravado pelo workflow a partir dos PROD_SMTP_*).
+    # Quem grava: env.modelo; required: false = Compose 2.24+ (a VM sem o arquivo sobe com o e-mail desligado)
     - path: segredos.env
       required: false
     - path: email.env

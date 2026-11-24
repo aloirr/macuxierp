@@ -6,10 +6,11 @@ name: producao — publicar
 #      ghcr.io/<dono>/macuxierp-api:<sha> existe (montada pelo "producao — liberar versão"). Fixa o DIGEST;
 #   2. bko (sem segredo): monta o BKO de produção do mesmo commit
 #      → ghcr.io/<dono>/macuxierp-web-prod:<sha>, por digest;
-#   3. deploy (environment PRODUCAO, só PROD_SSH_KEY, PROD_HOST e PROD_USER, mais os FUMACA_* opcionais da fumaça): SSH da
-#      VM, copia scripts/deploy/producao e o
-#      compose.yml, preparar-vm.sh (gera o .env do ERP e copia banco.env, admin.env, segredos.env e a CA do FDV NA VM,
-#      pelo ambiente-vm.sh; nenhum segredo do banco sai do GitHub), login no GHCR na VM, implantar.sh (que pega a TRAVA
+#   3. deploy (environment PRODUCAO: PROD_SSH_KEY, PROD_HOST e PROD_USER, mais os PROD_SMTP_* opcionais do e-mail e os
+#      FUMACA_* opcionais da fumaça): SSH da VM, copia scripts/deploy/producao, o compose.yml e o email.env (montado no
+#      runner pelo email-env.sh, pelo stdin do ssh), preparar-vm.sh (gera o .env do ERP, instala o email.env e copia
+#      banco.env, admin.env, segredos.env e a CA do FDV NA VM, pelo ambiente-vm.sh; nenhum segredo do banco sai do
+#      GitHub), login no GHCR na VM, implantar.sh (que pega a TRAVA
 #      DA VM compartilhada com o FDV antes de qualquer compose; ADR 0003), confere e volta atrás se falhar; confere pelo domínio;
 #      fumaça em produção (T-0065 b: só GET do BKO com o usuário de leitura; na falha, comenta na issue da tag, sem rollback).
 # Chave do host (known_hosts), sempre com StrictHostKeyChecking yes, nesta ordem: secret PROD_SSH_KNOWN_HOSTS (se existir) →
@@ -205,7 +206,7 @@ jobs:
           done
 
       # T-0024: o .env do ERP e as cópias de banco.env, admin.env, segredos.env e da CA do FDV nascem NA VM (preparar-vm.sh →
-      # ambiente-vm.sh); o GitHub só guarda o acesso SSH
+      # ambiente-vm.sh); o GitHub só guarda o acesso SSH e o SMTP (PROD_SMTP_*, opcional, T-0076)
       - name: secrets do environment presentes (só os nomes)
         env:
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
@@ -224,6 +225,19 @@ jobs:
           done
           [[ "$PROD_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::PROD_USER inválido"; exit 1; }
           echo "secrets obrigatórios presentes"
+
+      # T-0076: SMTP pelos 6 secrets com os nomes do FDV. Sem PROD_SMTP_HOST o e-mail fica desligado; com ele, USUARIO e
+      # SENHA são obrigatórios. Falta ou formato errado desliga o e-mail com aviso, sem falhar o job. O resumo traz só os
+      # NOMES que faltam; o arquivo fica no RUNNER_TEMP (600) até ir à VM pelo stdin do ssh (passo seguinte).
+      - name: secrets do SMTP (só os nomes; monta o email.env)
+        env:
+          PROD_SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
+          PROD_SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
+          PROD_SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
+          PROD_SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
+          PROD_SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
+          PROD_SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
+        run: bash scripts/deploy/producao/email-env.sh "$RUNNER_TEMP/email.env"
 
       # known_hosts do runner guardado no cache do Actions (chave fixa; o cache usa o token do runtime, não o GITHUB_TOKEN,
       # e funciona com as permissões mínimas do job). Fica no workspace, fora do ~/.ssh.
@@ -307,6 +321,9 @@ jobs:
         run: |
           ssh -l "$USUARIO" prod 'rm -rf ~/macuxierp-deploy && mkdir -p ~/macuxierp-deploy'
           scp -q -o User="$USUARIO" scripts/deploy/producao/* compose.yml prod:macuxierp-deploy/
+          # email.env pelo stdin (nunca no argv), 600 desde a criação; o ambiente-vm.sh instala em /opt/macuxierp e apaga este
+          ssh -l "$USUARIO" prod 'umask 077 && cat > ~/macuxierp-deploy/email.env' < "$RUNNER_TEMP/email.env"
+          rm -f "$RUNNER_TEMP/email.env"
           ssh -l "$USUARIO" prod 'sudo bash ~/macuxierp-deploy/preparar-vm.sh "$USER"'
 
       # TOFU: grava a chave no cache só depois do primeiro SSH que deu certo (a VM aceitou a chave do deploy)
@@ -388,4 +405,4 @@ jobs:
 
       - name: limpar a chave do runner
         if: ${{ always() }}
-        run: rm -rf ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts .producao-ssh
+        run: rm -rf ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts .producao-ssh "$RUNNER_TEMP/email.env"

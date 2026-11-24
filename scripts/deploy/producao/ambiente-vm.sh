@@ -11,10 +11,14 @@
 #   3. banco.env, admin.env e segredos.env: copiados a cada publicação da configuração de produção do FDV, na mesma VM
 #      (/opt/macuxi/{banco,admin,segredos}.env), SÓ com as variáveis de nome conhecido; a CA do DBaaS
 #      (/opt/macuxi/certs/dbaas-ca.pem, opcional) vai para certs/ com 644. /opt/macuxi é SÓ LIDO (ADR 0003, item 3);
-#   4. todos os *.env da pasta: dono o usuário de deploy, modo 600.
-# email.env e alerta.env não são gravados: SMTP e alerta por webhook desligados (o compose e o alerta-saude.sh aceitam
-# a falta deles). Lista dos arquivos e das variáveis: env.modelo.
-# MACUXIERP_DIR e MACUXI_FDV_DIR trocam as pastas SÓ para teste (o sudo do workflow não os repassa).
+#   4. email.env (T-0076): o producao-publicar.yml monta o arquivo no runner (email-env.sh, a partir dos secrets
+#      PROD_SMTP_*) e o deixa ao lado deste script; aqui ele é instalado SÓ com as variáveis de nome conhecido e o
+#      original é apagado. Sem o arquivo do workflow (preparar-vm.sh rodado à mão), o email.env da pasta fica como está;
+#      se não existir, nasce com MACUXI_EMAIL_TRANSPORTE=desligado. Lido só pela api e pelo worker (compose.yml);
+#   5. todos os *.env da pasta: dono o usuário de deploy, modo 600.
+# alerta.env não é gravado: alerta por webhook desligado (o alerta-saude.sh aceita a falta dele). Lista dos arquivos e
+# das variáveis: env.modelo.
+# MACUXIERP_DIR, MACUXI_FDV_DIR e MACUXIERP_EMAIL_ORIGEM trocam as pastas SÓ para teste (o sudo do workflow não os repassa).
 set -euo pipefail
 set +x
 ORIGEM="$(cd "$(dirname "$0")" && pwd)"
@@ -103,7 +107,25 @@ else
   echo "::warning::$FDV/certs/dbaas-ca.pem ausente: TLS com o DBaaS sem conferir o certificado"
 fi
 
-# ---------- 4. demais *.env (imagens.env...): dono o usuário de deploy, 600 ----------
+# ---------- 4. email.env (SMTP; montado pelo workflow a partir dos secrets PROD_SMTP_*) ----------
+EMAIL="$PASTA/email.env"
+EMAIL_WORKFLOW="${MACUXIERP_EMAIL_ORIGEM:-$ORIGEM/email.env}"
+if [ -f "$EMAIL_WORKFLOW" ]; then
+  grep -E '^(MACUXI_EMAIL_TRANSPORTE|MACUXI_SMTP_(HOST|PORTA|TLS|USUARIO|SENHA|REMETENTE))=' "$EMAIL_WORKFLOW" | tr -d '\r' > "$EMAIL.tmp" || :
+  case "$(valor_env "$EMAIL.tmp" MACUXI_EMAIL_TRANSPORTE)" in
+    smtp | desligado) ;;
+    *) rm -f "$EMAIL.tmp" "$EMAIL_WORKFLOW"; erro "email.env do workflow sem MACUXI_EMAIL_TRANSPORTE=smtp|desligado: nada foi publicado" ;;
+  esac
+  dono_600 "$EMAIL.tmp"
+  mv -f "$EMAIL.tmp" "$EMAIL"
+  rm -f "$EMAIL_WORKFLOW"
+  log "email.env gravado (MACUXI_EMAIL_TRANSPORTE=$(valor_env "$EMAIL" MACUXI_EMAIL_TRANSPORTE))"
+elif [ ! -f "$EMAIL" ]; then
+  printf 'MACUXI_EMAIL_TRANSPORTE=desligado\n' > "$EMAIL"
+  log "email.env criado com o e-mail desligado (sem o arquivo do workflow)"
+fi
+
+# ---------- 5. demais *.env (imagens.env...): dono o usuário de deploy, 600 ----------
 for f in "$PASTA"/.env "$PASTA"/*.env; do
   if [ -f "$f" ]; then dono_600 "$f"; fi
 done
