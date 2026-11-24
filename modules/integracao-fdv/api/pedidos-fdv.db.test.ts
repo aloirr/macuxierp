@@ -448,6 +448,26 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect((await retornos(C, uuid)).map((x) => x.estado)).toEqual(['enviado', 'enviado']);
     });
 
+    it('RN-PED-05 / T-0057: faturado_cliente@1 grava um retorno por status e nota, repetido não duplica, e o envio vai ao Hub com a nota do cliente; pedido manual é ignorado', async () => {
+      const uuid = await pedidoEntregue(A);
+      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
+      const notaCli = { numero: 77, serie: 2, chave: '2'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 9000 };
+      const fc = (status: string, nota = notaCli) => evento(A, 'pedido.pedido.faturado_cliente@1', uuid, { status, nota_cliente: nota });
+      await aplicar(A, fc('faturado_parcial'));
+      await aplicar(A, fc('faturado_parcial'));
+      await aplicar(A, fc('faturado'));
+      await aplicar(A, fc('faturado'));
+      await aplicar(A, evento(A, 'pedido.pedido.faturado_cliente@1', null, { status: 'faturado', nota_cliente: notaCli }));
+      expect((await retornos(A, uuid)).map((r) => r.status)).toEqual(['integrado', 'faturado_parcial', 'faturado_total']);
+      const hub = hubCom([]);
+      const dd = dublê();
+      await enviarRetornosPendentes({ banco, hub, relogio, log: dd.log, alertar: dd.alertar }, A);
+      const total = hub.enviados.find((e) => e.uuid === uuid && e.corpo.status === 'faturado_total');
+      expect(total?.corpo).toMatchObject({ nota: { numero: 77, serie: 2, total_cents: 9000 }, numero_erp: '42' });
+      await aplicar(A, fc('faturado'));
+      expect((await retornos(A, uuid)).map((r) => r.estado)).toEqual(['enviado', 'enviado', 'enviado']);
+    });
+
     it('RN-PED-05: 422 do Hub vira falhou com alerta só com o código; 401 pausa sem contar tentativa', async () => {
       const uuid = await pedidoEntregue(A);
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));

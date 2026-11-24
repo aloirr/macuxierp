@@ -57,3 +57,22 @@ export interface LogPedidos {
 
 /** Alerta do monitor (T-0013 §5.1 e §6.3): só código e identificadores. Sem tabela própria na v1: o worker liga ao monitor. */
 export type Alertar = (tenantId: string, codigo: string, contexto?: Record<string, string>) => void;
+
+/**
+ * Payload de `pedido.pedido.faturado_cliente@1` (T-0057, modo ponte). O consumidor valida com o leitor tolerante `PayloadPedidoLido`
+ * (domain/retorno-pedido.ts); este tipo documenta o formato esperado.
+ */
+// espelha PedidoFaturadoClienteV1 de modules/pedido/contracts (T-0057); trocar por import quando o PR do pedido entrar
+export interface PedidoFaturadoClienteV1 {
+  pedido_id: string;
+  numero: number;
+  origem: 'fdv' | 'bko';
+  pedido_uuid: string | null;
+  status: 'faturado_parcial' | 'faturado';
+  status_anterior: string;
+  filial_id: string;
+  cliente_id: string;
+  vendedor_id: string | null;
+  total_centavos: number;
+  nota_cliente: { numero: number; serie: number; chave?: string; emitida_em: string; total_centavos: number } | null;
+}

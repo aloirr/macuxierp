@@ -63,6 +63,11 @@ export const PayloadPedidoLido = z
     nota: z
       .object({ id: Uuid.optional(), numero: z.number().int(), serie: z.number().int(), chave: z.string(), emitida_em: z.string(), total_centavos: z.number().int() })
       .optional(),
+    /** `pedido.pedido.faturado_cliente@1` (T-0057, modo ponte): nota do cliente; `chave` opcional no evento (44 dígitos quando existe). */
+    nota_cliente: z
+      .object({ numero: z.number().int(), serie: z.number().int(), chave: z.string().length(44).optional(), emitida_em: z.string(), total_centavos: z.number().int() })
+      .nullable()
+      .optional(),
     itens_faturados: z
       .array(z.object({ sequencia: z.number().int().min(1), produto_id: Uuid, quantidade: z.number().int(), valor_centavos: z.number().int() }))
       .optional(),
@@ -74,6 +79,7 @@ export const EVENTOS_DE_RETORNO = [
   'pedido.pedido.recebido@1',
   'pedido.pedido.cancelado@1',
   'pedido.pedido.faturado@1',
+  'pedido.pedido.faturado_cliente@1',
 ] as const;
 
 export interface EventoPedido {
@@ -96,7 +102,7 @@ type DecisaoRetorno =
   | { acao: 'aguardar_chave'; produtos: string[] }
   /** Prazo vencido sem a chave: o retorno não vai ao Hub. `corpo` é o que seria enviado, sem itens (só para o registro `falhou`); `produtos` são UUIDs do ERP. */
   | { acao: 'descartar_sem_chave'; produtos: string[]; corpo: RetornoErp }
-  | { acao: 'ignorar'; motivo: 'origem_nao_fdv' | 'homologacao' | 'status_sem_retorno' | 'evento_sem_retorno' | 'hub_ja_terminal' | 'hub_ja_adiante' };
+  | { acao: 'ignorar'; motivo: 'nota_cliente_incompleta' | 'origem_nao_fdv' | 'homologacao' | 'status_sem_retorno' | 'evento_sem_retorno' | 'hub_ja_terminal' | 'hub_ja_adiante' };
 
 /**
  * Ordem do avanço no Hub (RN-PED-05): integrado < faturado_parcial < faturado_total; os terminais ficam no degrau do total.
@@ -106,6 +112,11 @@ export const ORDEM_HUB = { integrado: 1, faturado_parcial: 2, faturado_total: 3,
 
 /** Terminais no Hub (degrau 3 de `ORDEM_HUB`): nada mais é enviado depois deles, salvo `cancelado@1` depois de `faturado_total` (o Hub aceita). */
 const TERMINAIS: ReadonlySet<StatusRetornoHub> = new Set(['rejeitado_erp', 'cancelado', 'faturado_total']);
+
+/** T-0057: `faturado_parcial` -> `faturado_parcial`; `faturado` -> `faturado_total`; qualquer outro status não gera retorno. */
+export function statusDoFaturadoCliente(status: string): StatusRetornoHub | null {
+  return status === 'faturado_parcial' ? 'faturado_parcial' : status === 'faturado' ? 'faturado_total' : null;
+}
 
 function motivoDe(p: PayloadPedidoLido): string | undefined {
   const codigo = p.motivo_codigo ?? undefined;
@@ -162,6 +173,20 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
           })),
         },
       };
+    }
+    case 'pedido.pedido.faturado_cliente@1': {
+      // T-0057 (ADR 0014 §13, modo ponte): a nota é a do cliente; sem itens no evento, o corpo leva só status e nota.
+      const novo = statusDoFaturadoCliente(p.status);
+      if (!novo) return { acao: 'ignorar', motivo: 'status_sem_retorno' };
+      // O Hub exige `nota.chave`: sem a nota ou sem a chave não há como montar o corpo (e a idempotência por série e número ficaria cega).
+      const chave = p.nota_cliente?.chave;
+      if (!p.nota_cliente || !chave) return { acao: 'ignorar', motivo: 'nota_cliente_incompleta' };
+      const n = p.nota_cliente;
+      if (ultimoStatusHub && ORDEM_HUB[novo] <= ORDEM_HUB[ultimoStatusHub]) {
+        const novoParcial = novo === 'faturado_parcial' && ultimoStatusHub === 'faturado_parcial' && chaveNotaUltimoAceito !== chave;
+        if (!novoParcial) return { acao: 'ignorar', motivo: 'hub_ja_adiante' };
+      }
+      return { acao: 'enviar', corpo: { ...comum, status: novo, nota: { numero: n.numero, serie: n.serie, chave, emitida_em: n.emitida_em, total_cents: n.total_centavos } } };
     }
     default:
       return { acao: 'ignorar', motivo: 'evento_sem_retorno' };

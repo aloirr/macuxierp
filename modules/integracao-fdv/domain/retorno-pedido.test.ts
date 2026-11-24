@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RetornoErp } from '../contracts';
-import { corpoCanonicoDoRetorno, ORDEM_HUB, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, type EventoPedido } from './retorno-pedido';
+import { corpoCanonicoDoRetorno, ORDEM_HUB, PayloadPedidoLido, PRAZO_AGUARDAR_CHAVE_MS, retornoDoPedido, retornoRejeitadoErp, statusDoFaturadoCliente, type EventoPedido } from './retorno-pedido';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ev = (nome: string, extra: Record<string, unknown> = {}): EventoPedido => ({
@@ -131,5 +131,42 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     if (a.acao !== 'enviar' || b.acao !== 'enviar') throw new Error('esperava enviar');
     expect(corpoCanonicoDoRetorno(a.corpo)).toBe(corpoCanonicoDoRetorno(b.corpo));
     expect(corpoCanonicoDoRetorno(a.corpo)).not.toContain('ocorrido_em');
+  });
+
+  describe('T-0057: faturado_cliente@1 (modo ponte)', () => {
+    const notaCliente = { numero: 77, serie: 2, chave: '2'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 9000 };
+    const fc = (extra: Record<string, unknown> = {}) => ev('pedido.pedido.faturado_cliente@1', { status: 'faturado', nota_cliente: notaCliente, ...extra });
+    it('RN-PED-05: faturado_cliente faturado_parcial vira faturado_parcial e faturado vira faturado_total, com a nota do cliente e o ocorrido_em do envelope', () => {
+      expect(statusDoFaturadoCliente('faturado_parcial')).toBe('faturado_parcial');
+      expect(statusDoFaturadoCliente('faturado')).toBe('faturado_total');
+      expect(statusDoFaturadoCliente('cancelado')).toBeNull();
+      const d = retornoDoPedido(fc({ status: 'faturado_parcial' }), 'integrado');
+      expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', numero_erp: '42', ocorrido_em: '2026-11-21T18:00:00.000Z', nota: { numero: 77, serie: 2, chave: '2'.repeat(44), total_cents: 9000 } } });
+      if (d.acao === 'enviar') {
+        expect(d.corpo.itens_faturados).toBeUndefined();
+        expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
+      }
+      expect(retornoDoPedido(fc(), 'faturado_parcial')).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total' } });
+    });
+    it('RN-PED-05: pedido manual (pedido_uuid nulo) e origem bko são ignorados', () => {
+      expect(retornoDoPedido(fc({ pedido_uuid: null }), null)).toEqual({ acao: 'ignorar', motivo: 'origem_nao_fdv' });
+      expect(retornoDoPedido(fc({ origem: 'bko' }), null)).toEqual({ acao: 'ignorar', motivo: 'origem_nao_fdv' });
+    });
+    it('RN-PED-05: sem nota_cliente ou sem chave da nota não gera retorno (o Hub exige a chave)', () => {
+      expect(retornoDoPedido(fc({ nota_cliente: null }), null)).toEqual({ acao: 'ignorar', motivo: 'nota_cliente_incompleta' });
+      expect(retornoDoPedido(fc({ nota_cliente: { ...notaCliente, chave: undefined } }), null)).toEqual({ acao: 'ignorar', motivo: 'nota_cliente_incompleta' });
+    });
+    it('RN-PED-05: não retrocede; parcial depois de parcial só com nota diferente; o mesmo corpo repetido tem o mesmo hash (idempotência por status, série e número)', () => {
+      expect(retornoDoPedido(fc(), 'faturado_total')).toEqual({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
+      expect(retornoDoPedido(fc({ status: 'faturado_parcial' }), 'faturado_parcial', new Map(), undefined, '2'.repeat(44))).toEqual({ acao: 'ignorar', motivo: 'hub_ja_adiante' });
+      expect(retornoDoPedido(fc({ status: 'faturado_parcial' }), 'faturado_parcial', new Map(), undefined, '3'.repeat(44))).toMatchObject({ acao: 'enviar' });
+      const a = retornoDoPedido(fc(), null);
+      const b = retornoDoPedido({ ...fc(), ocorrido_em: '2026-11-22T00:00:00.000Z' }, null);
+      if (a.acao !== 'enviar' || b.acao !== 'enviar') throw new Error('esperado enviar');
+      expect(corpoCanonicoDoRetorno(a.corpo)).toBe(corpoCanonicoDoRetorno(b.corpo));
+      const outra = retornoDoPedido(fc({ nota_cliente: { ...notaCliente, numero: 78 } }), null);
+      if (outra.acao !== 'enviar') throw new Error('esperado enviar');
+      expect(corpoCanonicoDoRetorno(outra.corpo)).not.toBe(corpoCanonicoDoRetorno(a.corpo));
+    });
   });
 });
