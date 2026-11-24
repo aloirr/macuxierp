@@ -190,3 +190,9 @@ export const tons = {
   erro: { color: cor('erroTexto'), background: cor('erroFundo') },
   neutro: { color: cor('textoSecundario'), background: cor('inativoFundo') },
 } as const satisfies Record<string, { color: string; background: string }>;
+
+/** Faixa lateral de 4 px do tom (fundo + barra na cor do texto), usada por alertas e pendências bloqueantes. */
+export const faixaLateral = (tom: { color: string; background: string }): CSSProperties => ({
+  background: tom.background,
+  borderLeft: `4px solid ${tom.color}`,
+});
