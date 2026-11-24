@@ -6,7 +6,6 @@
 import type { ContextoRota } from '@macuxierp/platform-sdk';
 import type { CondicaoPagamento } from '../contracts';
 import { MAX_PARCELAS_CARTAO } from '../contracts';
-import { prazosDoCartao } from '../domain';
 import { eventoSimples, publicarPronto } from './eventos';
 import type { Repositorios } from './portas';
 
@@ -41,7 +40,7 @@ export async function tratarCartaoSemParcelas(c: ContextoRota, r: Repositorios, 
   const paraDesativar: CondicaoPagamento[] = [];
   for (const cond of condicoes) {
     const n = cond.prazos_dias.length;
-    const ok = n >= 1 && n <= MAX_PARCELAS_CARTAO && prazosDoCartao(n).every((p, i) => p === cond.prazos_dias[i]);
+    const ok = n >= 1 && n <= MAX_PARCELAS_CARTAO && cond.prazos_dias.every((p, i) => p === 30 * (i + 1));
     if (!ok) { paraDesativar.push(cond); continue; }
     const depois = await r.condicoesPagamento.atualizar(cond.id, { parcelas_cartao: n });
     if (!depois) continue;

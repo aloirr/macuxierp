@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { erros } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { CargaPedido, ErroCarga, MAX_LINHAS_LOTE, type RelatorioCarga } from '../contracts';
-import { MSG_REGIME_PIS_COFINS_CRT3, prazosDoCartao } from '../domain';
+import { MSG_REGIME_PIS_COFINS_CRT3 } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginCadastros } from './index';
 import { dependenciasEmMemoria } from './memoria';
@@ -83,22 +83,22 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     expect(aud?.depois).toMatchObject({ modo: 'gravar', arquivos: expect.arrayContaining([{ entidade: 'filial', sha256: expect.stringMatching(/^[0-9a-f]{64}$/), bytes: expect.any(Number) }]) });
   });
 
-  it('RN-CAD-09: linha de condição com forma à vista e prazo maior que 0 vira erro da linha; as demais seguem', async () => {
+  it('RN-CAD-15: linha de condição com forma à vista e prazo maior que 0 vira erro da linha; as demais seguem', async () => {
     const t = montar();
     const cond = readFileSync(join(pasta, 'condicoes_pagamento.csv'), 'utf8').replace('PZ-EX-03;PIXV;0;', 'PZ-EX-03;PIXV;0/30;');
     const rel = (await t.carregar('gravar', { arquivos: [...arquivos(['condicoes_pagamento.csv']), { nome: 'condicoes_pagamento.csv', conteudo: cond }] })).corpo as RelatorioCarga;
-    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'condicoes_pagamento.csv', codigo: 'RN-CAD-09', campo: 'prazos_dias' }));
+    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'condicoes_pagamento.csv', codigo: 'RN-CAD-15', campo: 'prazos_dias' }));
     expect(JSON.stringify(rel.erros)).not.toContain('0/30');
     expect(t.repos.condicoesPagamento.linhas).toHaveLength(2);
   });
 
-  it('RN-CAD-09: a forma que passa a à vista numa condição a prazo gravada vira erro da linha e não atualiza nenhuma condição', async () => {
+  it('RN-CAD-15: a forma que passa a à vista numa condição a prazo gravada vira erro da linha e não atualiza nenhuma condição', async () => {
     const t = montar();
     await t.carregar('gravar');
     const antes = JSON.stringify(t.repos.condicoesPagamento.linhas);
     const cond = readFileSync(join(pasta, 'condicoes_pagamento.csv'), 'utf8').replaceAll(';BOLETO;Boleto Exemplo;', ';PIX;Pix Exemplo;');
     const rel = (await t.carregar('gravar', { arquivos: [...arquivos(['condicoes_pagamento.csv']), { nome: 'condicoes_pagamento.csv', conteudo: cond }] })).corpo as RelatorioCarga;
-    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'condicoes_pagamento.csv', codigo: 'RN-CAD-09', campo: 'prazos_dias' }));
+    expect(rel.erros).toContainEqual(expect.objectContaining({ arquivo: 'condicoes_pagamento.csv', codigo: 'RN-CAD-15', campo: 'prazos_dias' }));
     expect(JSON.stringify(t.repos.condicoesPagamento.linhas)).toBe(antes);
   });
 
@@ -327,40 +327,43 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
 });
 
 describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma recusada)', () => {
-  const CAB = 'external_id;codigo;parcelas_dias;forma_codigo;forma_nome;forma_external_id;ativo;descricao\n';
+  const CAB = 'external_id;codigo;parcelas_dias;prazo_medio_dias;forma_codigo;forma_nome;forma_external_id;ativo;descricao\n';
   const lote = (linhas: string) => [...arquivos(['condicoes_pagamento.csv']), { nome: 'condicoes_pagamento.csv', conteudo: CAB + linhas }];
   const conds = (t: ReturnType<typeof montar>) => t.repos.condicoesPagamento.linhas.filter((c) => String(c.external_id).startsWith('Z-'));
   const ARQ = 'condicoes_pagamento.csv';
 
-  it('RN-CAD-09: cartão aceita "3x" e "3" (1 a 12): grava parcelas_cartao e os prazos 30×N; 1x e 12x passam, 13x recusa', async () => {
+  it('RN-CAD-15: cartão tem os dias digitados (1 a 12 parcelas): grava os prazos, o prazo médio e parcelas_cartao derivada; 13 parcelas recusa; "3x" é formato inválido', async () => {
     const t = montar();
-    const l = (id: string, parcelas: string) => `Z-${id};C${id};${parcelas};CARTAO_CREDITO;Cartão;FP-C;sim;`;
-    const rel = (await t.carregar('gravar', { arquivos: lote([l('1', '1x'), l('3', '3x'), l('4', '4'), l('12', '12x'), l('13', '13x')].join('\n')) })).corpo as RelatorioCarga;
+    const l = (id: string, parcelas: string, medio = '30') => `Z-${id};C${id};${parcelas};${medio};CARTAO_CREDITO;Cartão;FP-C;sim;Cartão ${id}`;
+    const treze = Array.from({ length: 13 }, () => '30').join('/');
+    const rel = (await t.carregar('gravar', { arquivos: lote([l('1', '30'), l('3', '7/21/45', '24'), l('12', Array.from({ length: 12 }, () => '30').join('/')), l('13', treze), l('X', '3x')].join('\n')) })).corpo as RelatorioCarga;
     const porExt = Object.fromEntries(conds(t).map((c) => [c.external_id, c]));
-    expect(porExt['Z-1']).toMatchObject({ forma_tpag: '03', parcelas_cartao: 1, prazos_dias: [30], forma_external_id: 'FP-C', forma_nome: 'Cartão', descricao: 'Cartão 1x' });
-    expect(porExt['Z-3']).toMatchObject({ parcelas_cartao: 3, prazos_dias: [30, 60, 90] });
-    expect(porExt['Z-4']).toMatchObject({ parcelas_cartao: 4, prazos_dias: [30, 60, 90, 120] });
-    expect(porExt['Z-12']).toMatchObject({ parcelas_cartao: 12, prazos_dias: prazosDoCartao(12) });
+    expect(porExt['Z-1']).toMatchObject({ forma_tpag: '03', parcelas_cartao: 1, prazos_dias: [30], prazo_medio_dias: 30, forma_external_id: 'FP-C', forma_nome: 'Cartão' });
+    expect(porExt['Z-3']).toMatchObject({ parcelas_cartao: 3, prazos_dias: [7, 21, 45], prazo_medio_dias: 24 });
+    expect(porExt['Z-12']).toMatchObject({ parcelas_cartao: 12 });
     expect(porExt['Z-13']).toBeUndefined();
+    expect(porExt['Z-X']).toBeUndefined();
     const erros = rel.erros.filter((e) => e.arquivo === ARQ);
-    expect(erros).toHaveLength(1);
-    expect(erros[0]).toMatchObject({ codigo: 'RN-CAD-09', motivo: expect.stringContaining('cartão: informe de 1 a 12 parcelas') });
-    expect(JSON.stringify(rel.erros)).not.toContain('13x');
+    expect(erros).toHaveLength(2);
+    expect(erros.find((e) => e.codigo === 'RN-CAD-09')).toMatchObject({ motivo: expect.stringContaining('cartão: 1 a 12 parcelas') });
+    expect(erros.find((e) => e.codigo === 'CARGA_FORMATO')).toMatchObject({ campo: 'parcelas_dias' });
   });
 
-  it('RN-CAD-09: cartão com prazos soltos ("30/60") vira erro de linha RN-CAD-09', async () => {
+  it('RN-CAD-15: prazo médio ausente na criação é erro da linha no campo prazo_medio_dias; na atualização, vazio mantém o gravado', async () => {
     const t = montar();
-    const rel = (await t.carregar('gravar', { arquivos: lote('Z-CS;CS;30/60;CARTAO;Cartão;FP-C;sim;Cartão') })).corpo as RelatorioCarga;
+    const sem = (await t.carregar('gravar', { arquivos: lote('Z-S;CS;30;;BOLETO;Boleto;FP-B;sim;Boleto 30') })).corpo as RelatorioCarga;
+    expect(sem.erros.filter((e) => e.arquivo === ARQ)).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias' })]);
     expect(conds(t)).toHaveLength(0);
-    const erros = rel.erros.filter((e) => e.arquivo === ARQ);
-    expect(erros).toHaveLength(1);
-    expect(erros[0]?.codigo).toBe('RN-CAD-09');
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30;30;BOLETO;Boleto;FP-B;sim;Boleto 30') });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 30 });
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 30, descricao: 'Boleto 30 dias' });
   });
 
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {
     const t = montar();
     const rel = (await t.carregar('gravar', {
-      arquivos: lote('Z-X1;X1;30;CHEQUE;Cheque;FP-X1;sim;Cheque 30\nZ-X2;X2;30;DEPOSITO;Dep;FP-X2;sim;Dep 30\nZ-X3;X3;30;TRANSFERENCIA;Tr;FP-X3;sim;Tr 30\nZ-X4;X4;30;QUALQUER;Q;FP-X4;sim;Q 30'),
+      arquivos: lote('Z-X1;X1;30;30;CHEQUE;Cheque;FP-X1;sim;Cheque 30\nZ-X2;X2;30;30;DEPOSITO;Dep;FP-X2;sim;Dep 30\nZ-X3;X3;30;30;TRANSFERENCIA;Tr;FP-X3;sim;Tr 30\nZ-X4;X4;30;30;QUALQUER;Q;FP-X4;sim;Q 30'),
     })).corpo as RelatorioCarga;
     const doDominio = rel.erros.filter((e) => e.codigo === 'RN-CAD-09');
     expect(doDominio).toHaveLength(4);
@@ -377,7 +380,7 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     t.eventos.length = 0;
     t.auditoria.length = 0;
     // só a PZ-EX-01 vem, trocando a forma para cheque: ela mesma é recusada; a PZ-EX-02 (fora do arquivo) é desativada
-    const soUma = [{ nome: ARQ, conteudo: CAB + 'PZ-EX-01;BOL30;30;CHEQUE;Cheque;FP-EX-01;sim;Boleto 30 dias' }];
+    const soUma = [{ nome: ARQ, conteudo: CAB + 'PZ-EX-01;BOL30;30;30;CHEQUE;Cheque;FP-EX-01;sim;Boleto 30 dias' }];
     const rel = (await t.carregar('gravar', { arquivos: soUma })).corpo as RelatorioCarga;
     expect(rel.erros).toEqual([expect.objectContaining({ linha: 2, codigo: 'RN-CAD-09' })]);
     expect(porEntidade(rel).condicao_pagamento!.avisos.join(' ')).toContain('1 condição(ões) desativada(s)');
@@ -396,7 +399,7 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     const t = montar();
     await t.carregar('gravar');
     t.eventos.length = 0;
-    const soUma = [{ nome: ARQ, conteudo: CAB + 'PZ-EX-01;BOL30;30;BOLETO;Boleto Renomeado;FP-EX-01;sim;Boleto 30 dias' }];
+    const soUma = [{ nome: ARQ, conteudo: CAB + 'PZ-EX-01;BOL30;30;30;BOLETO;Boleto Renomeado;FP-EX-01;sim;Boleto 30 dias' }];
     const rel = (await t.carregar('gravar', { arquivos: soUma })).corpo as RelatorioCarga;
     expect(rel.erros).toEqual([]);
     expect(t.repos.condicoesPagamento.linhas.filter((c) => c.forma_external_id === 'FP-EX-01').map((c) => c.forma_nome)).toEqual(['Boleto Renomeado', 'Boleto Renomeado']);
@@ -405,11 +408,11 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
 
   it('RN-CAD-09: a carga limpa cartão sem parcelas: prazos 30×N preenchem parcelas_cartao; o resto é desativado (auditoria e evento)', async () => {
     const t = montar();
-    const ok = (await t.repos.condicoesPagamento.inserir({ codigo: 'K3', descricao: 'K', forma_tpag: '03', prazos_dias: prazosDoCartao(3), parcelas_cartao: null } as never)) as { id: string };
+    const ok = (await t.repos.condicoesPagamento.inserir({ codigo: 'K3', descricao: 'K', forma_tpag: '03', prazos_dias: [30, 60, 90], parcelas_cartao: null } as never)) as { id: string };
     const ruim = (await t.repos.condicoesPagamento.inserir({ codigo: 'K7', descricao: 'K', forma_tpag: '03', prazos_dias: [7, 14], parcelas_cartao: null } as never)) as { id: string };
     t.eventos.length = 0;
     t.auditoria.length = 0;
-    await t.carregar('gravar', { arquivos: lote('Z-1;C1;1x;CARTAO;Cartão;FP-C;sim;') });
+    await t.carregar('gravar', { arquivos: lote('Z-1;C1;30;30;CARTAO;Cartão;FP-C;sim;Cartão 1') });
     const por = (id: string) => t.repos.condicoesPagamento.linhas.find((c) => c.id === id);
     expect(por(ok.id)).toMatchObject({ parcelas_cartao: 3, inativo: false });
     expect(por(ruim.id)?.inativo).toBe(true);
@@ -422,18 +425,18 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
   it('RN-CAD-09: um aplicar que lança RN-CAD-09 (ex.: 23514 traduzido) vira erro de linha RN-CAD-09 com a mensagem do erro', async () => {
     const t = montar();
     t.repos.condicoesPagamento.inserir = async () => { throw erros.regra('RN-CAD-09', 'Condição de pagamento inválida: fixa', { parcelas_cartao: 'x' }); };
-    const r = (await t.carregar('gravar', { arquivos: lote('Z-1;C1;1x;CARTAO;Cartão;FP-C;sim;') })).corpo as RelatorioCarga;
+    const r = (await t.carregar('gravar', { arquivos: lote('Z-1;C1;30;30;CARTAO;Cartão;FP-C;sim;Cartão 1') })).corpo as RelatorioCarga;
     expect(r.erros.filter((x) => x.codigo === 'RN-CAD-09')).toEqual([expect.objectContaining({ arquivo: ARQ, campo: 'parcelas_cartao' })]);
   });
 });
 
 describe('T-0058: condições de pagamento (forma e prazo na mesma linha)', () => {
-  const CAB = 'external_id;codigo;parcelas_dias;forma_codigo;forma_nome;forma_external_id;forma_tpag\n';
+  const CAB = 'external_id;codigo;parcelas_dias;prazo_medio_dias;forma_codigo;forma_nome;forma_external_id;forma_tpag\n';
   const so = (linhas: string, nome = 'condicoes_pagamento.csv') => [{ nome, conteudo: CAB + linhas }];
 
   it('T-0058: forma conflitante entre linhas: a linha não grava, a condição dela é recusada e as demais gravam', async () => {
     const t = montar();
-    const rel = (await t.carregar('gravar', { arquivos: so('K1;A1;30;BOLETO;Boleto;F1;\nK2;A2;30;BOLETO;Boleto SEGREDO;F1;\nK3;A3;0;PIX;Pix;F2;\nK4;A4;30;PIX;Pix;F2;03') })).corpo as RelatorioCarga;
+    const rel = (await t.carregar('gravar', { arquivos: so('K1;A1;30;30;BOLETO;Boleto;F1;\nK2;A2;30;30;BOLETO;Boleto SEGREDO;F1;\nK3;A3;0;0;PIX;Pix;F2;\nK4;A4;30;30;PIX;Pix;F2;03') })).corpo as RelatorioCarga;
     expect(rel.erros.map((e) => [e.linha, e.campo, e.codigo])).toEqual([[3, 'forma_nome', 'CARGA_CONFLITO'], [5, 'forma_tpag', 'CARGA_CONFLITO']]);
     expect(JSON.stringify(rel)).not.toContain('SEGREDO');
     expect(porEntidade(rel).condicao_pagamento).toMatchObject({ lidas: 4, inseridas: 2, recusadas: 2 });
@@ -442,7 +445,7 @@ describe('T-0058: condições de pagamento (forma e prazo na mesma linha)', () =
 
   it('T-0058: a forma sem forma_external_id vale pelo forma_codigo, e as linhas seguintes herdam o nome e o tPag da 1ª', async () => {
     const t = montar();
-    const rel = (await t.carregar('gravar', { arquivos: so('K1;A1;30;BOLETO;Boleto;;\nK2;A2;30/60;BOLETO;;;') })).corpo as RelatorioCarga;
+    const rel = (await t.carregar('gravar', { arquivos: so('K1;A1;30;30;BOLETO;Boleto;;\nK2;A2;30/60;45;BOLETO;;;') })).corpo as RelatorioCarga;
     expect(rel.erros).toEqual([]);
     expect(t.repos.condicoesPagamento.linhas).toHaveLength(2);
     expect(t.repos.condicoesPagamento.linhas.every((c) => c.forma_tpag === '15' && c.forma_nome === 'Boleto' && !c.forma_external_id)).toBe(true);
@@ -450,13 +453,13 @@ describe('T-0058: condições de pagamento (forma e prazo na mesma linha)', () =
 
   it('T-0058: condicao_pagamento.csv (nome do portal) também vale e o modelo se chama condicoes_pagamento.csv', async () => {
     const t = montar();
-    const rel = (await t.carregar('validar', { arquivos: so('K1;A1;30;BOLETO;Boleto;F1;', 'condicao_pagamento.csv') })).corpo as RelatorioCarga;
+    const rel = (await t.carregar('validar', { arquivos: so('K1;A1;30;30;BOLETO;Boleto;F1;', 'condicao_pagamento.csv') })).corpo as RelatorioCarga;
     expect(rel.erros).toEqual([]);
     expect(porEntidade(rel).condicao_pagamento).toMatchObject({ situacao: 'processado', inseridas: 1 });
     const m = await t.chamar('GET', '/cargas/modelos/condicao_pagamento', { sessao: adm });
-    expect(m.corpo).toBe('﻿external_id;codigo;parcelas_dias;forma_codigo;forma_nome;ativo;descricao;forma_external_id;forma_tpag\r\n');
+    expect(m.corpo).toBe('﻿external_id;codigo;parcelas_dias;prazo_medio_dias;forma_codigo;forma_nome;ativo;descricao;forma_external_id;forma_tpag\r\n');
     expect(m.cabecalhos).toMatchObject({ 'content-disposition': 'attachment; filename="condicoes_pagamento.csv"' });
-    const unico = await t.carregar('validar', { corpo: { modo: 'validar', entidade: 'condicao_pagamento' }, arquivos: so('K1;A1;30;BOLETO;Boleto;F1;') });
+    const unico = await t.carregar('validar', { corpo: { modo: 'validar', entidade: 'condicao_pagamento' }, arquivos: so('K1;A1;30;30;BOLETO;Boleto;F1;') });
     expect(unico.status).toBe(200);
   });
 

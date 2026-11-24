@@ -37,10 +37,10 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       if (d.forma_tpag === undefined) erros.push(falta(n, 'forma_codigo'));
       if (d.descricao === undefined && d.forma_nome !== undefined && d.prazos_dias !== undefined) {
         d.descricao = `${d.forma_nome} ${d.prazos_dias.join('/')}`.slice(0, 60);
-      } else if (d.descricao === undefined && d.forma_nome !== undefined && d.parcelas_cartao != null) {
-        d.descricao = `${d.forma_nome} ${d.parcelas_cartao}x`.slice(0, 60);
       }
       if (d.descricao === undefined) erros.push(falta(n, 'descricao'));
+      if (d.prazos_dias === undefined) erros.push(falta(n, 'parcelas_dias', 'RN-CAD-15', 'Parcelas obrigatórias: dias separados por /, à vista 0'));
+      if (d.prazo_medio_dias === undefined) erros.push(falta(n, 'prazo_medio_dias', 'RN-CAD-15', 'Prazo médio (dias) obrigatório para criar o prazo'));
       break;
     }
     case 'produto': {

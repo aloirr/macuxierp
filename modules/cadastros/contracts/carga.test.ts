@@ -29,12 +29,15 @@ describe('critério único de à vista e classe da forma (RN-CAD-09)', () => {
     expect(l(100)).toBe(false);
     expect(l(0)).toBe(false);
   });
-  it('RN-CAD-09: parcelas_cartao é aditivo (1 a 12, ausente = nulo) e opcional na atualização', () => {
-    const base = { codigo: 'C', descricao: 'D', forma_tpag: '03', prazos_dias: [30], forma_external_id: 'f1', external_id: 'c1' };
+  it('RN-CAD-09/RN-CAD-15: parcelas_cartao é legado opcional (1 a 12, ausente = nulo); prazo_medio_dias é obrigatório na entrada e opcional na atualização', () => {
+    const base = { codigo: 'C', descricao: 'D', forma_tpag: '03', prazos_dias: [30], prazo_medio_dias: 30, forma_external_id: 'f1', external_id: 'c1' };
     expect(CondicaoPagamentoDados.parse(base).parcelas_cartao ?? null).toBeNull();
     expect(CondicaoPagamentoDados.safeParse({ ...base, parcelas_cartao: 12 }).success).toBe(true);
     expect(CondicaoPagamentoDados.safeParse({ ...base, parcelas_cartao: 13 }).success).toBe(false);
     expect(CondicaoPagamentoDados.safeParse({ ...base, parcelas_cartao: 0 }).success).toBe(false);
+    expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: undefined }).success).toBe(false);
+    expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: 1000 }).success).toBe(false);
+    expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: null }).success).toBe(false);
     expect(CondicaoPagamentoAtualizacao.parse({ descricao: 'X' })).toEqual({ descricao: 'X' });
   });
 });

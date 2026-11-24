@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { prazosDoCartao } from '../domain';
 import { criarPluginCadastros } from './index';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { CNPJ_A, CNPJ_B, ENDERECO_AM, clienteValido, filialValida, produtoValido } from './fixtures-teste';
@@ -581,73 +580,88 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
 describe('condições de pagamento (RF-CAD-09)', () => {
   it('cria, valida prazos e publica o evento; gerente edita, faturista não', async () => {
     const t = montar();
-    const corpo = { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60] };
+    const corpo = { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 };
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: faturista, corpo })).status).toBe(403);
     const r = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo });
     expect(r.status).toBe(201);
-    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { prazos_dias: [30, 60], inativo: false } });
+    expect(t.eventos[0]).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { prazos_dias: [30, 60], prazo_medio_dias: 45, inativo: false } });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'X', prazos_dias: [] } })).status).toBe(400);
     expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.itens).toHaveLength(1);
   });
 
-  it('RN-CAD-09: forma à vista com prazo maior que 0 é 422 na criação e na alteração (resultado mesclado)', async () => {
+  it('RN-CAD-15: prazo médio obrigatório na criação (400 com o campo) e entre 0 e 999; PATCH sem o campo mantém o valor', async () => {
     const t = montar();
-    const base = { codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0] };
-    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'AV2', prazos_dias: [0, 30] } }))).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    const corpo = { codigo: 'P1', descricao: 'Prazo 1', forma_tpag: '15', prazos_dias: [30] };
+    const sem = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo });
+    expect(sem.status).toBe(400);
+    expect(JSON.stringify(sem.corpo)).toContain('prazo_medio_dias');
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 1000 } })).status).toBe(400);
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: -1 } })).status).toBe(400);
+    const id = ((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 30 } })).corpo as { id: string }).id;
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { descricao: 'Prazo um' } })).corpo).toMatchObject({ prazo_medio_dias: 30, descricao: 'Prazo um' });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazo_medio_dias: 45 } })).corpo).toMatchObject({ prazo_medio_dias: 45 });
+  });
+
+  it('RN-CAD-15: descrição em branco é 422 no campo descricao', async () => {
+    const t = montar();
+    const r = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'P1', descricao: '   ', forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30 } });
+    expect([400, 422]).toContain(r.status);
+    expect(JSON.stringify(r.corpo)).toContain('descricao');
+  });
+
+  it('RN-CAD-15: legado sem prazo médio aceita PATCH que não toca no prazo médio e o completa quando o campo vem', async () => {
+    const t = montar();
+    const velho = (await t.repos.condicoesPagamento.inserir({ codigo: 'L1', descricao: 'Legado', forma_tpag: '15', prazos_dias: [30], parcelas_cartao: null, prazo_medio_dias: null } as never)) as { id: string };
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${velho.id}`, { sessao: gerente, corpo: { descricao: 'Legado 30' } })).corpo).toMatchObject({ prazo_medio_dias: null });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${velho.id}`, { sessao: gerente, corpo: { prazo_medio_dias: 30 } })).corpo).toMatchObject({ prazo_medio_dias: 30 });
+  });
+
+  it('RN-CAD-15: forma à vista com parcela maior que 0 ou prazo médio diferente de 0 é 422 na criação e na alteração (resultado mesclado)', async () => {
+    const t = montar();
+    const base = { codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0 };
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'AV2', prazos_dias: [0, 30] } }))).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-15' } });
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'AV3', prazo_medio_dias: 5 } }))).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-15' } });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo: 'BO', forma_tpag: '15', prazos_dias: [0] } })).status).toBe(201);
     const criada = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: base });
     expect(criada.status).toBe(201);
     const id = (criada.corpo as { id: string }).id;
-    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30] } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
-    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '15', prazos_dias: [30] } })).status).toBe(200);
-    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '17' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30] } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-15' } });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30 } })).status).toBe(200);
+    expect(await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '17' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-15' } });
   });
 });
 
 describe('RN-CAD-09 nas rotas: classe da forma', () => {
-  const post = (t: ReturnType<typeof montar>, corpo: Record<string, unknown>) => t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { descricao: 'D', ...corpo } });
+  const post = (t: ReturnType<typeof montar>, corpo: Record<string, unknown>) => t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { descricao: 'D', prazo_medio_dias: 30, ...corpo } });
   const forma = { forma_external_id: 'f1' };
 
-  it('RN-CAD-09: cartão sem prazos_dias gera 30×N; 1x e 12x passam; 13x e parcelas ausentes são 422', async () => {
+  it('RN-CAD-09 (emenda RN-CAD-15): cartão tem os dias digitados; 1 e 12 parcelas passam; 13 e parcelas vazias são recusadas; parcelas_cartao é derivada', async () => {
     const t = montar();
-    expect((await post(t, { codigo: 'C3', forma_tpag: '03', parcelas_cartao: 3, ...forma })).corpo).toMatchObject({ prazos_dias: [30, 60, 90], parcelas_cartao: 3 });
-    expect((await post(t, { codigo: 'C1', forma_tpag: '03', parcelas_cartao: 1 })).corpo.prazos_dias).toEqual([30]);
-    expect((await post(t, { codigo: 'C12', forma_tpag: '03', parcelas_cartao: 12 })).status).toBe(201);
-    expect((await post(t, { codigo: 'C13', forma_tpag: '03', parcelas_cartao: 13 })).status).toBe(400);
-    expect(await post(t, { codigo: 'CS', forma_tpag: '03', prazos_dias: [30] })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
-    expect(await post(t, { codigo: 'CP', forma_tpag: '03', parcelas_cartao: 3, prazos_dias: [0, 30, 60] })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect((await post(t, { codigo: 'C3', forma_tpag: '03', prazos_dias: [7, 21, 45], ...forma })).corpo).toMatchObject({ prazos_dias: [7, 21, 45], parcelas_cartao: 3 });
+    expect((await post(t, { codigo: 'C1', forma_tpag: '03', prazos_dias: [30] })).corpo).toMatchObject({ prazos_dias: [30], parcelas_cartao: 1 });
+    expect((await post(t, { codigo: 'C12', forma_tpag: '03', prazos_dias: Array(12).fill(30) })).status).toBe(201);
+    expect(await post(t, { codigo: 'C13', forma_tpag: '03', prazos_dias: Array(13).fill(30) })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
+    expect((await post(t, { codigo: 'CS', forma_tpag: '03', parcelas_cartao: 3 })).status).toBe(400);
   });
 
-  it('RN-CAD-09: débito [0] passa; parcelas_cartao fora do cartão é 422; cheque e tPag 99 são recusados', async () => {
+  it('RN-CAD-09: débito [0] passa; parcelas_cartao fora do cartão é ignorada (derivada nula); cheque e tPag 99 são recusados', async () => {
     const t = montar();
-    expect((await post(t, { codigo: 'D0', forma_tpag: '04', prazos_dias: [0] })).status).toBe(201);
-    expect((await post(t, { codigo: 'B3', forma_tpag: '15', prazos_dias: [30], parcelas_cartao: 3 })).status).toBe(422);
+    expect((await post(t, { codigo: 'D0', forma_tpag: '04', prazos_dias: [0], prazo_medio_dias: 0 })).status).toBe(201);
+    expect((await post(t, { codigo: 'B3', forma_tpag: '15', prazos_dias: [30], parcelas_cartao: 3 })).corpo).toMatchObject({ parcelas_cartao: null });
     const ch = await post(t, { codigo: 'CH', forma_tpag: '02', prazos_dias: [0] });
     expect(ch).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
     expect(JSON.stringify(ch.corpo)).toContain('forma não aceita: use Dinheiro, PIX, Cartão ou Boleto');
     expect((await post(t, { codigo: 'N', forma_tpag: '99', prazos_dias: [0] })).status).toBe(422);
   });
 
-  it('RN-CAD-09: PATCH valida o MESCLADO: trocar 03 para 15 sem limpar parcelas_cartao dá 422; limpando passa; no cartão os prazos têm de ser os gerados', async () => {
+  it('RN-CAD-09: PATCH valida o MESCLADO e deriva parcelas_cartao: trocar 03 para 15 zera; mudar os dias do cartão muda as parcelas', async () => {
     const t = montar();
-    const id = (await post(t, { codigo: 'C3', forma_tpag: '03', parcelas_cartao: 3 })).corpo.id as string;
+    const id = (await post(t, { codigo: 'C3', forma_tpag: '03', prazos_dias: [30, 60, 90] })).corpo.id as string;
     const patch = (corpo: Record<string, unknown>) => t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo });
-    expect(await patch({ forma_tpag: '15' })).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-09' } });
-    expect(await patch({ forma_tpag: '15', prazos_dias: [30, 60] })).toMatchObject({ status: 422 });
-    expect(await patch({ prazos_dias: [7, 14, 21] })).toMatchObject({ status: 422 });
-    expect((await patch({ parcelas_cartao: 2, prazos_dias: [30, 60] })).status).toBe(200);
-    expect((await patch({ parcelas_cartao: 2, prazos_dias: [30, 61] })).status).toBe(422);
-    expect((await patch({ forma_tpag: '15', parcelas_cartao: null, prazos_dias: [30, 60] })).corpo).toMatchObject({ forma_tpag: '15', parcelas_cartao: null });
+    expect((await patch({ prazos_dias: [7, 14] })).corpo).toMatchObject({ prazos_dias: [7, 14], parcelas_cartao: 2 });
+    expect((await patch({ prazos_dias: Array(13).fill(30) })).status).toBe(422);
+    expect((await patch({ forma_tpag: '15' })).corpo).toMatchObject({ forma_tpag: '15', parcelas_cartao: null });
     expect(t.eventos.at(-1)).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { parcelas_cartao: null } });
-  });
-
-  it('RN-CAD-09: PATCH do cartão com parcelas_cartao novo e sem prazos_dias regera os prazos 30×N; com prazos_dias no corpo vale a validação', async () => {
-    const t = montar();
-    const id = (await post(t, { codigo: 'C3', forma_tpag: '03', parcelas_cartao: 3 })).corpo.id as string;
-    const patch = (corpo: Record<string, unknown>) => t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo });
-    expect((await patch({ parcelas_cartao: 6 })).corpo).toMatchObject({ parcelas_cartao: 6, prazos_dias: prazosDoCartao(6) });
-    expect((await patch({ parcelas_cartao: 13 })).status).toBe(400);
-    expect((await patch({ parcelas_cartao: 2, prazos_dias: [7, 14] })).status).toBe(422);
   });
 
   it('RN-CAD-09: POST /condicoes-pagamento/desativar-formas-recusadas: administrador 200 com contagem e ids, gerente 403, idempotente, só as recusadas e o cartão sem parcelas', async () => {
@@ -656,7 +670,7 @@ describe('RN-CAD-09 nas rotas: classe da forma', () => {
     // condições antigas (anteriores à regra) gravadas direto no repositório
     const velhas = await Promise.all(['02', '16', '99'].map((f, i) => t.repos.condicoesPagamento.inserir({ codigo: `V${i}`, descricao: 'Velha', forma_tpag: f, prazos_dias: [0], parcelas_cartao: null } as never)));
     // cartão ativo sem parcelas: 30×N preenche; o resto desativa
-    const preencher = (await t.repos.condicoesPagamento.inserir({ codigo: 'K3', descricao: 'K', forma_tpag: '03', prazos_dias: prazosDoCartao(3), parcelas_cartao: null } as never)) as { id: string };
+    const preencher = (await t.repos.condicoesPagamento.inserir({ codigo: 'K3', descricao: 'K', forma_tpag: '03', prazos_dias: [30, 60, 90], parcelas_cartao: null } as never)) as { id: string };
     const cartaoRuim = (await t.repos.condicoesPagamento.inserir({ codigo: 'K7', descricao: 'K', forma_tpag: '03', prazos_dias: [7], parcelas_cartao: null } as never)) as { id: string };
     t.eventos.length = 0;
     t.auditoria.length = 0;
