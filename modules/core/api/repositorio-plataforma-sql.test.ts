@@ -1,4 +1,4 @@
-import { ErroApi, type Transacao } from '@macuxierp/platform-sdk';
+import { DETALHE_CODIGO_RESERVADO, ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
 
@@ -20,6 +20,17 @@ describe('adaptador SQL da plataforma: empresa_criar (0037)', () => {
     expect(e).toBeInstanceOf(ErroApi);
     expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-11' });
     expect((e as ErroApi).campos).toEqual({ [campo]: texto });
+  });
+
+  it('RN-CORE-11: 23514 com DETAIL codigo_reservado_superadmin (0049) vira a mensagem do SDK no campo codigo', async () => {
+    const tx: Transacao = {
+      consultar: async () => {
+        throw Object.assign(new Error('check violation'), { code: '23514', detail: DETALHE_CODIGO_RESERVADO });
+      },
+    };
+    const e = await criar(tx).catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-11' });
+    expect((e as ErroApi).campos).toEqual({ codigo: MENSAGEM_CODIGO_RESERVADO });
   });
 
   it('RN-CORE-11: 23505 (repetido ou sorteio sem vaga) vira null', async () => {
