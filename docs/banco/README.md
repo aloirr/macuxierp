@@ -129,7 +129,7 @@ Colunas, chaves, índices, CHECKs e privilégios: `docs/desenho/T-0013.md` §7 e
 - **Massa comum:** o aviso do A1 continua em `fixtureModulos` (`db/testes/fixture.ts`) porque `db/testes/vazamento.ts` e `tests/integracao/banco/rls-core-cadastros.db.test.ts` exigem linha de cada tenant em toda tabela de `core`.
 
 ## Forma de pagamento na condição (T-0026, migração 0010)
-- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64), `forma_codigo` (≤ 20) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
+- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64; 200 desde a 0054), `forma_codigo` (≤ 20; 30 desde a 0054) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
 - Índice parcial `condicao_pagamento_forma_external_id_ix` em `(tenant_id, forma_external_id) where forma_external_id is not null`: a carga do `forma_pagamento.csv` atualiza todas as condições da forma por ele. RLS, política, trigger e grants da 0004 não mudam.
 - **Parcelas do cartão (T-0015, 0017; decisões do Alexandre de 22/11, horário de Manaus):** `parcelas_cartao smallint` anulável. A regra sai em **duas migrações**, para o `main` nunca ficar num estado em que a rota e a carga de cartão do cadastros falham:
   - **0017 (permissiva, validada):** `condicao_parcelas_cartao_ck` = `parcelas_cartao IS NULL OR (forma_tpag = '03' AND parcelas_cartao BETWEEN 1 AND 12)` (SQLSTATE 23514). Nenhuma linha atual a viola, por isso nasce validada (sem `NOT VALID`). Cartão sem parcelas continua aceito, inclusive em UPDATE de linha antiga; a API e a carga atuais, que não gravam a coluna, seguem funcionando. Grants da 0004 por tabela (sem grant por coluna) cobrem a coluna.
@@ -271,6 +271,16 @@ Portal /config, RN-CAD-10. O banco só fornece os fatos e aplica o plano; a casc
 
 Migração: `db/migrations/0043_cadastros_zerar.sql`; testes: `db/testes/cadastros-zerar-0043.db.test.ts`.
 
+## Monitor, Log e Reprocessar da Integração FDV no /config (T-0086, migração 0055)
+Desenho `docs/desenho/T-0086.md` §2 a §4; ADR 0013 (o superadmin não lê tabela do módulo). Três funções `SECURITY DEFINER`, `search_path` fixo, `EXECUTE` só do `macuxierp_config` (molde da 0038), que fazem a mesma consulta de `lerInsumosMonitor`, `lerInsumosLog` e `reprocessarCadastro` (`modules/integracao-fdv/api/operacao.ts`) e devolvem o jsonb que o `repositorioPortalSql` valida:
+- `integracao_fdv.portal_monitor(p_tenant uuid)` → `{credencial_ativa, conector_id, habilitadas, ultimo_sinal_aceito_em, fila: {lotes, linhas}}`: lotes em voo e registros pendentes do tenant. Só leitura, qualquer empresa visível.
+- `integracao_fdv.portal_log(p_tenant uuid, p_entidade text)` → `{envios, erros, total_erros, pausada_motivo}`: os 20 lotes mais recentes do cadastro (`em`, `estado`, `registros`, `com_erro`, `origem` ciclo, reprocessar ou zerar; a desconhecida sai como ciclo) e os erros abertos **agrupados por (código, campo)** com a quantidade de registros (até 200 grupos, maior primeiro). **Nunca** `registro_external_id`, nome, documento, payload nem `fonte_refs`. Só leitura.
+- `integracao_fdv.portal_reprocessar(p_tenant uuid, p_entidade text, p_request_id text)` → `{falhas, pendentes, pedido_em}`: trava o cursor; com o mesmo `request_id` no mesmo cadastro devolve o resultado gravado na auditoria (idempotente, sem efeito novo, mesmo com lote em voo); senão, lote em voo = `MXI03` com DETAIL `lote_em_voo`; marca só falha (erro aberto) e pendente (`pendente` ou `hash_confirmado` diferente do `hash`), com payload e não excluído, que é a regra do `planejarReprocessar` (RN-INF-03), com `pendente = true` e `fonte_refs || {"reenvio": "reprocessar"}`. Nunca o integrado; sem carga completa (o cursor só é antecipado) e sem inativação nova (payload, hash e ativo não mudam). Audita `integracao-fdv.entidade.reprocessar` (`depois` = contagens, `pedido_em` e o cadastro).
+- **SQLSTATEs:** `MXS01` sem sessão; `P0002` empresa não visível; `23514` cadastro fora da F2; no reprocessar, `MXI04` (empresa fora de ativo ou módulo desligado) e `MXI01` (sem credencial).
+- RLS, tabelas e grants de tabela intactos. A paridade com o domain é uma tabela de casos no teste; a importação direta do `domain/operacao.ts` fica para depois do merge do #527, se a fronteira do `db/testes` permitir.
+
+Migração: `db/migrations/0055_integracao_fdv_portal_operacao.sql`; testes: `db/testes/integracao-fdv-portal-operacao-0055.db.test.ts`.
+
 ## Endereços inativados na auditoria da carga (T-0072, migração 0046)
 - `cadastros.portal_carga_concluir(p_tenant uuid, p_execucao_id uuid, p_resultado text, p_gravadas integer, p_com_erro integer, p_inativadas integer, p_request_id text, p_enderecos_inativados integer DEFAULT NULL)` (RN-CAD-10): substitui a de 7 argumentos da 0040; a chamada de 7 argumentos da API segue igual. Não nulo, o `depois` da auditoria `cadastros.carga.concluir` ganha `enderecos_inativados` (os endereços inativados pelo "Substituir tudo" do cliente); nulo ou omitido, o `depois` fica igual ao de antes. Negativo = 23514, DETAIL `execucao_invalida`. Não vai para `cadastros.carga_portal` (só auditoria).
 
@@ -325,6 +335,15 @@ Emenda da RN-CAD-10 de 24/11/2026 (desenho em `docs/desenho/T-0086.md` §5). O `
 - **Compatibilidade:** a `portal_zerar_espelho` (0043) fica para a versão anterior da API, que ainda a chama antes do `portal_zerar`; nesse caminho o `erp_id` já foi limpo e a inativação pega só os alvos por `fonte_refs` (preço, estoque e forma). Sai quando nenhuma versão a chamar (lote 2 do `modulo-cadastros`).
 
 Migração: `db/migrations/0053_integracao_fdv_zerar_inativa.sql`; testes: `db/testes/integracao-fdv-zerar-inativa-0053.db.test.ts`.
+
+## Limites do Hub no cadastros (T-0092, migração 0054)
+ADR 0019, opção A: o banco aceita os limites do `hub-v1` do SDK (`EXTERNAL_ID_MAX` = 200 e `LIMITE_CODIGO_FORMA_PAGAMENTO` = 30).
+- **O que muda:** em todas as tabelas do schema `cadastros` com `external_id` (inclusive as oficiais e a `carga_portal`), `CHECK (length(external_id) <= 200)` no lugar do `<= 64`; em `cadastros.condicao_pagamento`, `forma_external_id` também vai a 200 e `forma_codigo` a 30 (era 20). Os outros schemas seguem em 64: não recebem chave do Hub.
+- **Como:** o CHECK antigo é achado pela definição (não pelo nome) e sai; o novo entra com o nome de sempre (`<tabela>_<coluna>_check`, que é o que a API e os testes veem no 23514), `NOT VALID`, e é validado logo depois. Como o `migrar` roda a migração numa transação só, a trava do `ADD` vai até o COMMIT (como na 0028); o `VALIDATE` só lê o `length()` de cada linha, que já cabe no limite menor. Sem reescrita de dado nem troca de tipo (as colunas são `text`).
+- **Compatibilidade:** só alarga; a versão anterior da API grava até 64/20 e continua passando. Reexecutável (CHECK novo conferido em `pg_constraint`), `lock_timeout` de 5 s.
+- Os contracts e a carga do `cadastros` (64/20 hoje) ficam com o `modulo-cadastros` (T-0092, passo 2).
+
+Migração: `db/migrations/0054_cadastros_limites_hub.sql`; testes: `db/testes/cadastros-limites-0054.db.test.ts` (banco até a 0053 com o legado em 64/20, depois a 0054; limite passa e um a mais cai em 23514 em cada tabela tocada) e `db/testes/condicao-forma.db.test.ts` (200/30).
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.

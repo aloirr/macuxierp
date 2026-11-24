@@ -30,13 +30,17 @@ interface Ambiente {
   ambiente: string;
   recado_aprovacao: string | null;
 }
+/** Item da lista GET /v1/core/auditoria (AuditoriaItemLista: sem antes nem depois, minimização LGPD). */
 interface ItemAuditoria {
   usuario_id: string | null;
   acao: string;
   entidade: string;
   entidade_id: string | null;
-  antes: { ambiente: string; recado_aprovacao: string | null };
-  depois: { filial_id: string; ambiente: string; recado_aprovacao: string | null; origem: string };
+}
+/** Linha de plataforma.auditoria, com antes e depois. */
+interface LinhaAuditoria extends ItemAuditoria {
+  antes: { ambiente: string; recado_aprovacao: string | null } | null;
+  depois: { filial_id: string; ambiente: string; recado_aprovacao: string | null; origem: string } | null;
 }
 
 describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL (RN-CORE-08, ADR 0006)', () => {
@@ -79,6 +83,13 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
     expect(r.statusCode).toBe(200);
     return r.json<{ itens: ItemAuditoria[] }>().itens;
   };
+  const auditoriaNoBanco = async (): Promise<LinhaAuditoria[]> =>
+    (
+      await b.admin.query<LinhaAuditoria>(
+        "SELECT usuario_id, acao, entidade, entidade_id, antes, depois FROM plataforma.auditoria WHERE tenant_id = $1 AND entidade = 'ambiente_fiscal' ORDER BY ocorrido_em, created_at",
+        [tenant],
+      )
+    ).rows;
   const eventos = async (): Promise<number> =>
     (await b.admin.query<{ n: number }>('SELECT count(*)::int AS n FROM plataforma.evento WHERE tenant_id = $1 AND nome = $2', [tenant, EVENTO])).rows[0]!.n;
   const linhaNoBanco = async () =>
@@ -120,7 +131,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
     expect(await ambientes()).toEqual(emProducao);
     const auditoriaDoOperador = await auditoria();
     expect(auditoriaDoOperador).toHaveLength(1);
-    expect(auditoriaDoOperador[0]).toMatchObject({ usuario_id: null, acao: 'core.ambiente.trocado', depois: { ambiente: 'producao', origem: 'script' } });
+    const [doOperador] = await auditoriaNoBanco();
+    expect(doOperador).toMatchObject({ usuario_id: null, acao: 'core.ambiente.trocado', depois: { ambiente: 'producao', origem: 'script' } });
     expect(await eventos()).toBe(1);
 
     // O tenant não regrava produção, nem com recado válido: 422 e a linha fica como está.
@@ -138,7 +150,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
     expect(await ambientes()).toEqual(HOMOLOGACAO);
     const itens = await auditoria();
     expect(itens).toHaveLength(2);
-    const daApi = itens.filter((i) => i.depois.origem === 'api');
+    const daApi = (await auditoriaNoBanco()).filter((i) => i.depois?.origem === 'api');
     expect(daApi).toEqual([
       expect.objectContaining({
         usuario_id: usuario,

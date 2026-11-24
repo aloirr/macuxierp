@@ -2,7 +2,7 @@
  * Campos compostos de outro registro (M10, T-0009 seção 1) e chaves cruzadas (decisão de 21/11/2026, 23h22). Funções puras.
  * O mapeamento entrega o registro com os UUIDs do ERP nos campos que apontam para outro cadastro e guarda esses UUIDs em
  * `fonte_refs`; aqui eles viram a chave do Hub (`chaveHub`: `external_id` da carga quando existe, senão o UUID) e os campos
- * derivados (nome e vigência da tabela, nome do depósito, forma e prazo médio da condição, filial padrão do preço).
+ * derivados (nome e vigência da tabela, nome do depósito, filial padrão do preço).
  * Idempotente: recompor o que já está composto devolve o mesmo hash.
  *
  * Premissa: referência ainda ausente do espelho (a filial do vendedor que não chegou) usa o UUID do ERP; quando o registro
@@ -11,7 +11,7 @@
 import type { EntidadeHub } from '../contracts';
 import { hashRegistro } from './canonico';
 import { lerParcelasDias } from './parcelas';
-import { prazoMedioMaxDias, type RegistroEspelho } from './mapeamento';
+import { type RegistroEspelho } from './mapeamento';
 
 export interface TabelaReferencia {
   /** Chave da tabela no Hub (`chaveHub` do evento `tabela_preco.alterada`). */
@@ -28,7 +28,6 @@ export interface FontesRecomposicao {
   tabela(erpId: string): TabelaReferencia | null;
   filialPadraoId: string | null;
   nomeFilial(erpId: string): string | null;
-  condicao(erpId: string): { forma_codigo: string; prazos_dias: readonly number[] } | null;
 }
 
 function limpo(o: Record<string, unknown>): Record<string, unknown> {
@@ -88,14 +87,6 @@ export function recomporRegistro(r: RegistroEspelho, f: FontesRecomposicao): Reg
     case 'cliente': {
       poe('filial_external_id', chave('filial', refs.filial_id));
       poe('vendedor_external_id', chave('vendedor', refs.vendedor_id));
-      const c = refs.condicao_pagamento_id ? f.condicao(refs.condicao_pagamento_id) : null;
-      if (c) {
-        p.formas_pagamento = [c.forma_codigo];
-        p.prazo_medio_max_dias = prazoMedioMaxDias(c.prazos_dias);
-      } else {
-        delete p.formas_pagamento;
-        delete p.prazo_medio_max_dias;
-      }
       break;
     }
     default:

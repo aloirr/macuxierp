@@ -141,6 +141,8 @@ const NAO_EXTRAIVEIS: Readonly<Record<string, string>> = {
   'apps/web/src/lib/proxy-download.ts :: caminho': 'XML e DANFE da nota (urlDoXml/urlDoDanfe, lista fechada de lib/arquivos.ts)',
   'apps/web/src/lib/listas.ts :: urlDaLista(caminhoApi, filtros)': 'miolo do buscarPagina (mesma lista de TelaLista.pagina.api)',
   'apps/web/src/lib/config/api.ts :: rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ler, id)': 'aba Integração do /config (CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ler)',
+  'apps/web/src/lib/config/api.ts :: rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.monitor, id)': 'monitor do conector na aba Integração (CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.monitor)',
+  'apps/web/src/lib/config/api.ts :: rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log, id, entidade)': 'log da carga por cadastro na aba Integração (CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log)',
   "apps/web/src/lib/config/cargas-api.ts :: caminho('situacao', id)": 'aba Cargas do /config (CAMINHOS_CARGAS_PLATAFORMA.situacao)',
   "apps/web/src/lib/config/cargas-api.ts :: caminho('modelo', id, cadastro)": 'modelo da carga (CAMINHOS_CARGAS_PLATAFORMA.modelo, por cadastro)',
 };

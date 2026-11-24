@@ -6,7 +6,7 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { CodigoConflitoChave, EntidadeHub } from '../contracts';
-import { ALVO_DA_CHAVE_REFS, inativarRegistro, lerParcelasDias, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
+import { ALVO_DA_CHAVE_REFS, inativarRegistro, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
 import { anteciparEntidades, garantirLinhaDoSinal } from './conector-comum';
 
 export interface LinhaRegistro {
@@ -116,12 +116,10 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
   }
   const chaves = new Map<string, string>();
   const nomes = new Map<string, string>();
-  const prazos = new Map<string, { forma: string | null; parcelas: unknown }>();
   for (const [alvo, ids] of porEntidade) {
     if (alvo === 'tabela') continue;
-    const linhas = await tx.consultar<{ erp_id: string; chave: string; nome: string | null; forma: string | null; parcelas: unknown }>(
-      `SELECT b.erp_id, r.registro_external_id AS chave, r.payload ->> 'nome' AS nome,
-              r.payload ->> 'forma_external_id' AS forma, r.payload -> 'parcelas_dias' AS parcelas
+    const linhas = await tx.consultar<{ erp_id: string; chave: string; nome: string | null }>(
+      `SELECT b.erp_id, r.registro_external_id AS chave, r.payload ->> 'nome' AS nome
          FROM unnest($3::uuid[]) AS b(erp_id)
          JOIN integracao_fdv.registro_publicado r
            ON r.tenant_id = $1 AND r.entidade = $2 AND r.erp_id = b.erp_id AND r.deleted_at IS NULL
@@ -133,19 +131,7 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
       if (chaves.has(k)) continue; // a primeira é a ativa mais recente
       chaves.set(k, l.chave);
       if (l.nome) nomes.set(k, l.nome);
-      if (alvo === 'prazo_pagamento') prazos.set(l.erp_id, { forma: l.forma, parcelas: l.parcelas });
     }
-  }
-  const formas = new Map<string, string>();
-  const idsForma = [...new Set([...prazos.values()].map((p) => p.forma).filter((f): f is string => f !== null))];
-  if (idsForma.length > 0) {
-    const linhas = await tx.consultar<{ chave: string; codigo: string | null }>(
-      `SELECT registro_external_id AS chave, payload ->> 'codigo' AS codigo
-         FROM integracao_fdv.registro_publicado
-        WHERE tenant_id = $1 AND entidade = 'forma_pagamento' AND registro_external_id = ANY($2::text[]) AND deleted_at IS NULL AND payload IS NOT NULL`,
-      [tenantId, idsForma],
-    );
-    for (const l of linhas) if (l.codigo) formas.set(l.chave, l.codigo);
   }
   const tabelas = new Map<string, TabelaReferencia>();
   const idsTabela = [...(porEntidade.get('tabela') ?? [])];
@@ -171,13 +157,6 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
     tabela: (erpId) => tabelas.get(erpId) ?? null,
     filialPadraoId: padrao[0]?.erp_id ?? null,
     nomeFilial: (erpId) => nomes.get(`filial:${erpId}`) ?? null,
-    condicao: (erpId) => {
-      const p = prazos.get(erpId);
-      const codigo = p?.forma ? formas.get(p.forma) : undefined;
-      const lista = lerParcelasDias(p?.parcelas);
-      if (!lista || !codigo) return null;
-      return { forma_codigo: codigo, prazos_dias: lista };
-    },
   };
 }
 

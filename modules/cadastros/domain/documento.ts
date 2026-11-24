@@ -11,3 +11,7 @@ export function validarDocumentoCliente(tipo: 'PJ' | 'PF', valor: string): Resul
     ? { ok: true, documento }
     : { ok: false, violacao: violacao('RN-CAD-01', 'documento', tipo === 'PJ' ? 'CNPJ inválido' : 'CPF inválido') };
 }
+
+/** RN-CAD-01: 11 dígitos = CPF (PF), 14 caracteres = CNPJ (PJ); o resto não tem tipo. Recebe o documento já normalizado. */
+export const tipoPessoaDoDocumento = (documento: string): 'PF' | 'PJ' | null =>
+  documento.length === 11 ? 'PF' : documento.length === 14 ? 'PJ' : null;

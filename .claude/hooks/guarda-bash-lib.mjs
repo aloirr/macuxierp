@@ -8,6 +8,12 @@
 // unzip -d, patch, rsync, git checkout/restore de arquivo, git rm/mv, git apply/am, git reset
 // --hard, git stash, git clean -f). Em dúvida ($VAR, $(...), glob, ~, xargs, scripts), não bloqueia.
 // Os alvos evidentes vão na foto para o PostToolUse.
+// Exceções (R-20261124-181828, opção A do Alexandre): (a) CÓDIGO INLINE de interpretador (python3 - <<EOF, python -c,
+// node -e, perl -e, ruby -e, deno eval, bun -e, também por npx/pnpm exec e em $(...)) tem as chamadas que gravam
+// conferidas (guarda-interpretador-lib.mjs): caminho resolvido segue as regras de donos; caminho que não dá para
+// determinar ou execução de outro processo é BLOQUEADO ("use Edit/Write"). Script em arquivo continua opaco.
+// (b) caminho em .claude/worktrees/<nome>/... (worktree da ferramenta Agent) vale a partir do topo do worktree
+// (relativoNoWorktree; também no guarda-donos.mjs e no guarda-mcp.mjs).
 // Depois do comando (PostToolUse): compara o git status (+ data e tamanho de cada arquivo) de
 // antes × depois. Só bloqueia e manda desfazer ALVO EVIDENTE do comando que estava limpo antes;
 // o resto (outro agente em paralelo na mesma árvore) vira aviso não bloqueante. Não desfaz nada.
@@ -23,6 +29,7 @@ import {
   PESSOAS, podeAlterar, classificarMudancas, remetenteDoRecado, remetenteDoConteudo, ehAnexoDeRecado,
   relativoPorJuncao, MOTIVO_CLONE_DE_RECADOS,
 } from '../../scripts/coord-lib.mjs';
+import { escritasDoInterpretador, linguagemDe } from './guarda-interpretador-lib.mjs';
 
 // ───────────────────────────── caminhos ─────────────────────────────
 
@@ -59,6 +66,42 @@ export function relativoDaRaiz(abs, raiz) {
   return null;
 }
 
+/** .claude/worktrees/<nome>/<resto>: worktree criado pela ferramenta Agent (com .git dentro). */
+const RE_WORKTREE = /^\.claude\/worktrees\/([^/]+)\/(.+)$/;
+
+/** O worktree .claude/worktrees/<nome> existe de verdade (.git como pasta ou arquivo "gitdir: ...")? */
+export function ehWorktreeReal(raiz, nome) {
+  const arq = join(raiz, '.claude', 'worktrees', nome, '.git');
+  try {
+    if (statSync(arq).isDirectory()) return true;
+    return /^gitdir:/i.test(readFileSync(arq, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Caminho para a regra de donos: dentro de um worktree da ferramenta Agent (.claude/worktrees/<nome>/...), vale o
+ * caminho a partir do TOPO do worktree (.claude/worktrees/agent-x/apps/web/a.ts → apps/web/a.ts;
+ * .claude/worktrees/agent-x/.claude/hooks/y.mjs → .claude/hooks/y.mjs). A pasta do worktree em si
+ * (.claude/worktrees/agent-x) e pasta sem .git (worktree que não existe) continuam .claude/** (dono alexandre).
+ * @param {string|null} rel  relativo à raiz do principal
+ * @param {string} raiz
+ * @param {(raiz: string, nome: string) => boolean} [ehWorktree]
+ */
+export function relativoNoWorktree(rel, raiz, ehWorktree = ehWorktreeReal) {
+  if (rel == null) return rel;
+  const m = barras(rel).match(RE_WORKTREE);
+  if (!m || !ehWorktree(raiz, m[1])) return rel;
+  return m[2];
+}
+
+/** Motivo do bloqueio da escrita por interpretador sem caminho determinável. */
+export function mensagemIndeterminado(interpretador, motivo) {
+  return `escrita por interpretador (${interpretador}, código inline) que o guardião não consegue conferir: ${motivo}. ` +
+    'Use Edit/Write para alterar arquivos (com o caminho literal o guardião confere os donos)';
+}
+
 // ───────────────────────────── analisador de shell ─────────────────────────────
 
 const OPERADORES = ['&>>', '&>', '>>', '>|', '>&', '<<<', '<<-', '<<', '<&', '<>', '&&', '||', ';;', '|&', '>', '<', '|', '&', ';', '(', ')'];
@@ -90,23 +133,28 @@ function fimSubstituicao(s, i) {
 /**
  * Quebra o comando em tokens: {tipo:'palavra', valor, incerto} · {tipo:'op', valor} ·
  * {tipo:'redir', valor, fd}. "incerto" = depende de expansão ($VAR, $(...), glob, ~).
- * O corpo de here-doc é descartado.
+ * O corpo de here-doc não vira token: fica no próprio redir "<<"/"<<-" (corpo, incerto) para quem precisa dele
+ * (código de interpretador: python3 - <<EOF ... EOF). Com delimitador sem aspas, corpo com $ ou ` é incerto.
  */
 export function tokenizar(cmd) {
   const s = String(cmd);
   const tokens = [];
   const heredocs = [];
   let esperaDelim = null;
+  let redirHeredoc = null;
   let cur = null;
   let incerto = false;
+  let comAspas = false; // a palavra atual teve aspas ou barra invertida (delimitador de here-doc literal)
   let soDigitos = true; // palavra atual só com dígitos sem aspas (ex.: "2" de 2>arq)
   const flush = () => {
     if (cur === null) return;
-    if (esperaDelim) heredocs.push({ delim: cur, tabs: esperaDelim === '<<-' });
+    if (esperaDelim) heredocs.push({ delim: cur, tabs: esperaDelim === '<<-', literal: comAspas, redir: redirHeredoc });
     else tokens.push({ tipo: 'palavra', valor: cur, incerto });
     esperaDelim = null;
+    redirHeredoc = null;
     cur = null;
     incerto = false;
+    comAspas = false;
     soDigitos = true;
   };
   const add = (txt, literal = true) => {
@@ -121,7 +169,8 @@ export function tokenizar(cmd) {
       tokens.push({ tipo: 'op', valor: '\n' });
       i++;
       while (heredocs.length) {
-        const { delim, tabs } = heredocs.shift();
+        const { delim, tabs, literal, redir } = heredocs.shift();
+        const corpo = [];
         while (i < s.length) {
           let fim = s.indexOf('\n', i);
           if (fim < 0) fim = s.length;
@@ -129,6 +178,11 @@ export function tokenizar(cmd) {
           if (tabs) linha = linha.replace(/^\t+/, '');
           i = fim + 1;
           if (linha === delim) break;
+          corpo.push(linha);
+        }
+        if (redir) {
+          redir.corpo = corpo.join('\n');
+          redir.incerto = !literal && /[$`]/.test(redir.corpo);
         }
       }
       continue;
@@ -139,12 +193,14 @@ export function tokenizar(cmd) {
       continue;
     }
     if (c === "'") {
+      comAspas = true;
       const j = s.indexOf("'", i + 1);
       add(j < 0 ? s.slice(i + 1) : s.slice(i + 1, j), false);
       i = j < 0 ? s.length : j + 1;
       continue;
     }
     if (c === '"') {
+      comAspas = true;
       add('', false);
       i++;
       while (i < s.length && s[i] !== '"') {
@@ -162,7 +218,7 @@ export function tokenizar(cmd) {
     if (c === '\\') {
       const prox = s[i + 1];
       if (prox === '\n') { i += 2; continue; }
-      if (prox !== undefined && ESCAPAVEIS_FORA.includes(prox)) { add(prox, false); i += 2; continue; }
+      if (prox !== undefined && ESCAPAVEIS_FORA.includes(prox)) { comAspas = true; add(prox, false); i += 2; continue; }
       add('\\', false); // barra invertida do Windows (C:\pasta\arq) fica como está
       i++;
       continue;
@@ -194,8 +250,9 @@ export function tokenizar(cmd) {
       const op = OPERADORES.find((o) => s.startsWith(o, i));
       i += op.length;
       if (REDIRECOES.has(op)) {
-        tokens.push({ tipo: 'redir', valor: op, fd });
-        if (op === '<<' || op === '<<-') esperaDelim = op;
+        const redir = { tipo: 'redir', valor: op, fd };
+        tokens.push(redir);
+        if (op === '<<' || op === '<<-') { esperaDelim = op; redirHeredoc = redir; }
       } else tokens.push({ tipo: 'op', valor: op });
       continue;
     }
@@ -206,19 +263,48 @@ export function tokenizar(cmd) {
   return tokens;
 }
 
-/** Agrupa os tokens em comandos simples: {palavras, redirs:[{op, fd, alvo}]} ou {grupo:'('|')'}. */
+/** Conteúdos de $(...), `...`, <(...) e >(...) dentro de uma palavra (para analisar como comandos). */
+export function substituicoes(valor) {
+  const s = String(valor);
+  const res = [];
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '`') {
+      const j = s.indexOf('`', i + 1);
+      res.push(s.slice(i + 1, j < 0 ? s.length : j));
+      i = j < 0 ? s.length : j;
+    } else if ((s[i] === '$' || s[i] === '<' || s[i] === '>') && s[i + 1] === '(') {
+      let nivel = 0;
+      let j = i + 1;
+      for (; j < s.length; j++) {
+        if (s[j] === '(') nivel++;
+        else if (s[j] === ')' && --nivel === 0) break;
+      }
+      res.push(s.slice(i + 2, j).replace(/^\(/, '').replace(/\)$/, '')); // $((...)) aritmético vira texto inofensivo
+      i = j;
+    }
+  }
+  return res;
+}
+
+/**
+ * Agrupa os tokens em comandos simples: {palavras, redirs:[{op, fd, alvo}], heredocs:[{corpo, incerto}]} ou
+ * {grupo:'('|')'}. heredocs: corpos dos "<<"/"<<-" do comando (a entrada padrão dele); pipe: a entrada padrão
+ * vem de um "|" (echo "..." | python3).
+ */
 export function comandosSimples(tokens) {
   const lista = [];
-  let atual = { palavras: [], redirs: [] };
+  let atual = { palavras: [], redirs: [], heredocs: [] };
   const fechar = (sep) => {
-    if (atual.palavras.length || atual.redirs.length) lista.push(atual);
-    atual = { palavras: [], redirs: [] };
+    if (atual.palavras.length || atual.redirs.length || atual.heredocs.length) lista.push(atual);
+    atual = { palavras: [], redirs: [], heredocs: [] };
+    if (sep === '|' || sep === '|&') atual.pipe = true;
     if (sep === '(' || sep === ')') lista.push({ grupo: sep });
   };
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (t.tipo === 'op') { fechar(t.valor); continue; }
     if (t.tipo === 'redir') {
+      if ((t.valor === '<<' || t.valor === '<<-') && t.corpo !== undefined) atual.heredocs.push({ corpo: t.corpo, incerto: !!t.incerto });
       const prox = tokens[i + 1];
       if (t.valor !== '<<' && t.valor !== '<<-' && prox?.tipo === 'palavra') {
         atual.redirs.push({ op: t.valor, fd: t.fd, alvo: prox });
@@ -517,10 +603,25 @@ export function alvosDoComando(cmd, ctx) {
   if (soLeituraPorArgumentos(nome, args)) return res;
   res.soLeitura = false;
   const escrever = (lista, recursivo = false) => { for (const a of lista) res.alvos.push({ alvo: a, acao: 'escrever', recursivo }); };
+  // R-20261124-181828: código inline de interpretador (python3 - <<EOF, node -e, perl -e...) — alvos das chamadas
+  // que gravam; caminho que não dá para determinar vira "indeterminado" (bloqueado no analisarComando).
+  const interp = interpretadorDe(p[0].valor, args, cmd, ctx);
+  if (interp) {
+    res.interpretador = interp.nome;
+    for (const a of interp.alvos) {
+      res.alvos.push({ alvo: { valor: a.valor, incerto: false }, acao: a.apaga ? 'apagar' : 'escrever', recursivo: a.recursivo, interpretador: interp.nome, baseIncerta: interp.baseIncerta });
+    }
+    if (interp.indeterminados.length) res.indeterminados = interp.indeterminados;
+  }
   switch (nome) {
     case 'bash': case 'sh': case 'zsh': case 'dash': {
       const i = args.findIndex((a) => /^-[a-z]*c$/.test(a.valor));
       if (i >= 0 && args[i + 1] && !args[i + 1].incerto) res.subcomando = args[i + 1].valor;
+      // bash <<EOF / bash -s <<EOF / sh <<< '...': o script vem da entrada padrão e é analisado como comando
+      else if (i < 0 && !args.some((a) => !a.valor.startsWith('-'))) {
+        const corpos = [...(cmd.heredocs || []).map((h) => h.corpo), ...cmd.redirs.filter((r) => r.op === '<<<' && !r.alvo.incerto).map((r) => r.alvo.valor)];
+        if (corpos.length) res.subcomando = corpos.join('\n');
+      }
       break;
     }
     case 'tee': escrever(opcoes(args).pos); break;
@@ -642,6 +743,53 @@ export function alvosDoComando(cmd, ctx) {
   return res;
 }
 
+/** Opções que levam argumento nos embrulhos (pnpm --filter x exec, npx -p pacote...). */
+const EMBRULHO_COM_ARG = new Set(['--filter', '-F', '-C', '--dir', '--prefix', '--workspace', '-w', '-p', '--package', '--cwd', '--with', '--python', '--project', '--directory']);
+/** Opções de embrulho que mudam a pasta de trabalho (o caminho relativo do código fica incerto). */
+const EMBRULHO_MUDA_PASTA = new Set(['--filter', '-F', '-C', '--dir', '--prefix', '--workspace', '-w', '--cwd', '--project', '--directory']);
+
+/**
+ * Comando de interpretador, direto (python3 -c, node -e...) ou embrulhado (npx tsx -e, pnpm exec node -e,
+ * pnpm --filter api exec node -e, uv run python -c). null se não for interpretador.
+ */
+function interpretadorDe(nomeCru, args, cmd, ctx) {
+  let palavras = [{ valor: nomeCru, incerto: false }, ...args];
+  let baseIncerta = false;
+  for (let volta = 0; volta < 3; volta++) {
+    const n = nomeBase(palavras[0].valor).replace(/\.exe$/i, '').toLowerCase();
+    if (linguagemDe(n)) break;
+    const resto = palavras.slice(1);
+    let i = 0;
+    const pular = () => {
+      while (i < resto.length && resto[i].valor.startsWith('-')) {
+        const v = resto[i].valor;
+        if (EMBRULHO_MUDA_PASTA.has(v) || /^--(filter|dir|prefix|cwd|workspace|project|directory)=/.test(v)) baseIncerta = true;
+        i += EMBRULHO_COM_ARG.has(v) ? 2 : 1;
+      }
+    };
+    pular();
+    if (['npx', 'pnpx', 'bunx'].includes(n)) { /* o próximo é o comando */ }
+    else if (['pnpm', 'npm', 'yarn', 'bun'].includes(n)) {
+      if (['exec', 'dlx', 'x'].includes(resto[i]?.valor)) { i++; pular(); }
+      else if (!resto[i] || !linguagemDe(resto[i].valor)) return null;
+    } else if (['uv', 'poetry', 'pipenv', 'rye', 'pdm'].includes(n)) {
+      if (resto[i]?.valor !== 'run') return null;
+      i++;
+      pular();
+    } else return null;
+    if (!resto[i] || resto[i].incerto) return null;
+    palavras = resto.slice(i);
+  }
+  const nome = nomeBase(palavras[0].valor);
+  const r = escritasDoInterpretador({
+    nome, args: palavras.slice(1), heredocs: cmd.heredocs || [],
+    herestrings: cmd.redirs.filter((x) => x.op === '<<<').map((x) => x.alvo),
+    entradaArquivo: cmd.redirs.some((x) => x.op === '<' && (x.fd == null || x.fd === '0')),
+    pipe: !!cmd.pipe, texto: ctx.texto || '', existe: (v) => (ctx.existe ? ctx.existe(v) : false),
+  });
+  return r && { nome, baseIncerta, alvos: r.alvos, indeterminados: r.indeterminados };
+}
+
 /** rsync: "host:caminho" ou "rsync://..." (Windows "C:/x" não é remoto). */
 const remoto = (v) => /^[^/\\]{2,}:/.test(v) || v.startsWith('rsync://');
 
@@ -682,6 +830,7 @@ function soLeituraPorArgumentos(nome, args) {
  *   instala: pnpm/npm/yarn install/add/remove/update (pode reescrever o pnpm-lock.yaml).
  */
 export function analisarComando({ comando, agente, cwd, raiz, regras, somenteLeitura = [], permitidos = new Set(), amb, juncoes = { mapas: [], clone: null } }) {
+  const ehWorktree = (r, nome) => amb.existe(`${barras(r).replace(/\/+$/, '')}/.claude/worktrees/${nome}/.git`);
   const violacoes = [];
   const vistos = new Set();
   const alvos = new Map(); // rel → sub
@@ -720,12 +869,21 @@ export function analisarComando({ comando, agente, cwd, raiz, regras, somenteLei
         existe: (v) => { const a = abs(v); return a ? amb.existe(a) : false; },
         ehDiretorio: (v) => { const a = abs(v); return a ? amb.ehDiretorio(a) : false; },
         ler: (v) => { const a = abs(v); return a && amb.ler ? amb.ler(a) : null; },
+        texto,
       };
+      // $(...), `...`, <(...): os comandos de dentro também escrevem (X=$(python3 -c "...open(p,'w')..."))
+      if (profundidade < 3) {
+        for (const w of [...cmd.palavras, ...cmd.redirs.map((x) => x.alvo)]) {
+          if (w.incerto) for (const sub of substituicoes(w.valor)) analisar(sub, cwdAtual, profundidade + 1);
+        }
+      }
       const r = alvosDoComando(cmd, ctx);
       if (!r.soLeitura) soLeitura = false;
       if (r.instala) instala = true;
       if ('cd' in r) { cwdAtual = r.cd == null ? null : abs(r.cd); continue; }
       if (r.subcomando && profundidade < 3) analisar(r.subcomando, cwdAtual, profundidade + 1);
+      // R-20261124-181828 (opção A): escrita por interpretador com caminho que não dá para determinar → bloqueia.
+      for (const motivo of r.indeterminados || []) acusar(`${r.interpretador}: ${motivo}`, mensagemIndeterminado(r.interpretador, motivo));
       const cwdCmd = r.cwdGit === undefined ? cwdAtual : r.cwdGit === null ? null : abs(r.cwdGit);
       // ADR 0035: git que grava dentro do clone de recados (commit, pull, push, reset...) é só do sincronizar-recados.ps1.
       if (r.gitSub && !GIT_LEITURA_NO_CLONE.has(r.gitSub) && cwdCmd && dentroDoClone(cwdCmd)) {
@@ -738,6 +896,12 @@ export function analisarComando({ comando, agente, cwd, raiz, regras, somenteLei
       }
       for (const t of r.alvos) {
         if (t.alvo.incerto) continue; // em dúvida, não bloqueia (o PostToolUse confere)
+        const relativo = !/^([A-Za-z]:)?[\\/]/.test(t.alvo.valor) && !t.alvo.raiz;
+        if (t.interpretador && relativo && (t.baseIncerta || !cwdCmd)) {
+          // código inline com caminho relativo e pasta de trabalho incerta (cd $X, pnpm --filter): não dá para saber
+          acusar(`${t.interpretador}: ${t.alvo.valor}`, mensagemIndeterminado(t.interpretador, `"${t.alvo.valor}" relativo a uma pasta incerta`));
+          continue;
+        }
         const a = t.alvo.raiz ? barras(raiz).replace(/\/+$/, '') : abs(t.alvo.valor, cwdCmd);
         if (!a) continue;
         let rel = relativoDaRaiz(a, raiz);
@@ -752,6 +916,8 @@ export function analisarComando({ comando, agente, cwd, raiz, regras, somenteLei
           if (pasta) acusar(a, `"${t.alvo.valor}" está numa pasta somente leitura (${pasta}). Copie o que precisar para dentro do repositório.`);
           continue;
         }
+        // .claude/worktrees/<nome>/... (worktree da ferramenta Agent) vale como o caminho no topo do worktree
+        const relDono = ['escrever', 'apagar'].includes(t.acao) ? relativoNoWorktree(rel, raiz, ehWorktree) : rel;
         const sob = (x) => rel === '' || x === rel || x.startsWith(rel + '/');
         // Alvos evidentes: restaurar/sujos/nao-rastreados mexem só nos arquivos sujos de agora
         // (lista exata); o resto vale para o caminho e, se recursivo, para a pasta inteira.
@@ -767,12 +933,13 @@ export function analisarComando({ comando, agente, cwd, raiz, regras, somenteLei
           for (const f of amb.rastreadosSob(rel)) conferir(f, 'restaurar');
         } else if (!(t.recursivo && amb.ehDiretorio(a))) {
           evidente(rel, !!t.recursivo);
-          if (rel !== '') conferir(rel, t.acao);
+          if (rel !== '') conferir(relDono, t.acao);
         } else {
           evidente(rel, true);
           const arquivos = [...amb.rastreadosSob(rel), ...amb.sujos().filter((s) => s.xy === '??' && sob(s.rel)).map((s) => s.rel)];
           for (const f of arquivos) conferir(f, t.acao);
-          if (t.acao === 'escrever' && !arquivos.length && rel !== '') conferir(`${rel}/<novo-arquivo>`, t.acao);
+          if (relDono !== rel) conferir(`${relDono}/<arquivo>`, t.acao); // pasta dentro de um worktree (arquivos fora do índice do principal)
+          else if (t.acao === 'escrever' && !arquivos.length && rel !== '') conferir(`${rel}/<novo-arquivo>`, t.acao);
         }
       }
     }

@@ -55,7 +55,7 @@ export const cadPreco = (tabela: string, filial: string, produto: string, o: Rec
   tabela_preco_id: tabela, filial_id: filial, produto_id: produto, preco_centavos: 1990, desconto_maximo_bp: 0, inativo: false, vigencia_inicio: '2026-01-01', vigencia_fim: null, ...o,
 });
 export const cadCondicao = (id: string, o: Record<string, unknown> = {}) => ({
-  id, codigo: '28-56', descricao: '28 e 56', forma_tpag: '15', prazos_dias: [28, 56], forma_external_id: null, forma_codigo: null, forma_nome: null, external_id: null, inativo: false, ...o,
+  id, codigo: '28-56', descricao: '28 e 56', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42, forma_external_id: null, forma_codigo: null, forma_nome: null, external_id: null, inativo: false, ...o,
 });
 export const cadCliente = (id: string, filialId: string, o: Record<string, unknown> = {}) => ({
   id, tipo_pessoa: 'PJ', documento: CNPJ_FILIAL_1, ie: null, ind_ie_dest: '1', razao_social: 'Mercado LTDA', nome_fantasia: null, email_nfe: 'sigiloso@exemplo.com', limite_credito_centavos: 500_000,

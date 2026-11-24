@@ -45,6 +45,7 @@ try {
   const {
     RAIZ, agenteDaSessao, podeAlterar, caminhoRelativo, carregarDonos, juncoesDeRecados, relativoPorJuncao, MOTIVO_CLONE_DE_RECADOS,
   } = await import('../../scripts/coord-lib.mjs');
+  const { relativoNoWorktree } = await import('./guarda-bash-lib.mjs');
   const { agente, origem } = agenteDaSessao({ argumento: process.argv[2], entrada });
   const regras = carregarDonos(RAIZ); // donos.json ilegível = erro = bloqueado (falha fechada)
   let somenteLeitura = [];
@@ -61,7 +62,8 @@ try {
     subagente: Boolean(String(entrada.agent_id || '').trim()),
     podeAlterar: (p) => podeAlterar({ ...p, raiz: RAIZ, regras }),
     // relativo = a partir do cwd da sessão (como o Bash); absoluto fora do repositório → null
-    caminhoRelativo: (c) => caminhoRelativo(abs(c), RAIZ),
+    // worktree da ferramenta Agent (.claude/worktrees/<nome>/...): vale o caminho a partir do topo dele
+    caminhoRelativo: (c) => relativoNoWorktree(caminhoRelativo(abs(c), RAIZ), RAIZ),
     somenteLeitura, porJuncao,
   });
   if (!r.ok) bloquear(r.mensagem);
