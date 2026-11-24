@@ -12,7 +12,8 @@
  *
  * O mesmo vale para `criar-superadmin` e `superadmin --desativar|--reativar|--destravar` (T-0050, ADR 0012 §5), que
  * mandam o superadmin.mjs (o de verdade no PG fica no apps/api/src/operador-superadmin.db.test.ts); a senha só aparece
- * com `estado: superadmin-criado`, e o `superadmin` nunca gera senha.
+ * com `estado: superadmin-criado`, e o `superadmin` só gera senha no `--redefinir-senha --confirmar` (T-0077), que a
+ * mostra só com `estado: alterado`.
  */
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -252,6 +253,10 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     ['criar com nome com quebra de linha', [...criar, '--nome', 'Pessoa\nFictícia']],
     ['criar com --senha', [...criar, '--senha', 'x']],
     ['criar com --desativar', [...criar, '--desativar']],
+    ['criar com --redefinir-senha', [...criar, '--redefinir-senha']],
+    ['superadmin com --redefinir-senha e --destravar', ['superadmin', '--email', SA_EMAIL, '--redefinir-senha', '--destravar', '--operador', 'alexandre']],
+    ['superadmin --redefinir-senha com --senha', ['superadmin', '--email', SA_EMAIL, '--redefinir-senha', '--senha', 'x', '--operador', 'alexandre']],
+    ['superadmin --redefinir-senha sem e-mail', ['superadmin', '--redefinir-senha', '--operador', 'alexandre', '--confirmar']],
     ['superadmin sem ação', ['superadmin', '--email', SA_EMAIL, '--operador', 'alexandre']],
     ['superadmin com duas ações', ['superadmin', '--email', SA_EMAIL, '--desativar', '--destravar', '--operador', 'alexandre']],
     ['superadmin com --nome', ['superadmin', '--email', SA_EMAIL, '--nome', 'Pessoa', '--desativar', '--operador', 'alexandre']],
@@ -334,5 +339,51 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     const r = roda(['superadmin', '--email', SA_EMAIL, '--desativar', '--operador', 'alexandre', '--confirmar'], resposta, saida);
     expect(r.status).toBe(esperado);
     expect(r.saida).not.toMatch(/Senha provisória/);
+  });
+
+  // T-0077: a redefinição da senha do superadmin (o de verdade no PG: apps/api/src/operador-superadmin.db.test.ts)
+  const redefinir = ['superadmin', '--email', SA_EMAIL, '--redefinir-senha', '--operador', 'alexandre'];
+
+  it('superadmin --redefinir-senha sem --confirmar: só a simulação, só o e-mail por -e, sem gerar nem mostrar senha', () => {
+    const r = roda(redefinir, '[superadmin] SIMULAÇÃO: nada gravado.\\nestado: simulacao\\n');
+    expect(r.status).toBe(0);
+    const chamada = r.chamadas.trim();
+    expect(chamada).toMatch(/ -T -e MACUXIERP_SUPERADMIN_EMAIL psql node --input-type=module - --acao redefinir-senha --operador alexandre$/);
+    expect(r.amb).toMatchObject({ SA_EMAIL, SA_NOME: '<ausente>', SENHA: '<ausente>' });
+    expect(r.saida).toContain('SIMULAÇÃO');
+    expect(r.saida).not.toMatch(/[Ss]enha provisória/);
+    expect(r.saida).not.toContain(SA_EMAIL);
+    expect(r.entrada).toBe(readFileSync(join(PRODUCAO, 'superadmin.mjs'), 'utf8'));
+  });
+
+  it('superadmin --redefinir-senha --confirmar e estado alterado: senha forte só por -e, impressa uma vez, troca no 1º acesso', () => {
+    const r = roda([...redefinir, '--confirmar'], '[superadmin] APLICADO\\n  superadmin: senha redefinida\\nestado: alterado\\n');
+    expect(r.status).toBe(0);
+    const chamada = r.chamadas.trim();
+    expect(chamada).toContain('-e MACUXIERP_SUPERADMIN_EMAIL -e MACUXIERP_SENHA_INICIAL psql node --input-type=module - --acao redefinir-senha --operador alexandre --confirmar');
+    const senha = r.amb.SENHA!;
+    conferirSenhaProvisoria(senha);
+    for (const proibido of [senha, SA_EMAIL]) expect(chamada).not.toContain(proibido);
+    expect(r.amb).toMatchObject({ SA_EMAIL, SA_NOME: '<ausente>' });
+    expect(r.stdout.split(senha)).toHaveLength(2);
+    expect(r.stdout).toContain('Nova senha provisória do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso)');
+    expect(r.saida).not.toContain(SA_EMAIL);
+    expect(roda([...redefinir, '--confirmar'], '[superadmin] APLICADO\\nestado: alterado\\n').amb.SENHA).not.toBe(senha);
+  });
+
+  it.each([
+    ['contêiner falhou (inexistente ou desativado)', '[superadmin] falhou; nada foi gravado\\n', 1, 1],
+    ['sem linha de estado', '[superadmin] algo\\n', 0, 1],
+    ['estado sem-mudanca', 'estado: sem-mudanca\\n', 0, 1],
+    ['estado simulacao com --confirmar', 'estado: simulacao\\n', 0, 1],
+    ['estado de criação', 'estado: superadmin-criado\\n', 0, 1],
+    ['estado alterado com saída != 0', 'estado: alterado\\n', 1, 1],
+  ])('superadmin --redefinir-senha --confirmar e %s: sai 1 e descarta a senha sem mostrá-la', (_n, resposta, saida, esperado) => {
+    const r = roda([...redefinir, '--confirmar'], resposta, saida);
+    expect(r.status).toBe(esperado);
+    const senha = r.amb.SENHA!;
+    expect(senha).toHaveLength(16);
+    expect(r.saida).not.toContain(senha);
+    expect(r.saida).not.toMatch(/[Ss]enha provisória/);
   });
 });
