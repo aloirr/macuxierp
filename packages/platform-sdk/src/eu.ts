@@ -9,6 +9,8 @@
  *   `valido_ate` em ISO 8601 UTC. Sem titular nem CNPJ do certificado.
  * - `usuario.deve_trocar_senha` (opcional, campo compatível acrescentado na T-0052; ausente = false): o usuário entrou
  *   com a senha provisória e o BKO o leva à troca (`POST /v1/auth/senha`, `TrocarSenhaEntrada`) antes de qualquer tela.
+ * - `usuario.motivo_troca` (opcional, T-0076, RN-CORE-13): por que a troca é obrigatória (`MOTIVOS_TROCA_SENHA`); com
+ *   `temporaria` o 1º campo da troca leva o `ROTULO_SENHA_TEMPORARIA`.
  */
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
@@ -18,8 +20,21 @@ import { SenhaInformada, SenhaNova } from './senha';
 
 const Id = z.string().regex(PADRAO_UUID);
 
+/**
+ * Motivo da troca obrigatória de senha (RN-CORE-13), fonte única do `SenhaATrocarResposta`, do `EuResposta` e do
+ * `EuPlataforma`: `provisoria` (criada pelo admin ou pelo superadmin) ou `temporaria` (do "esqueci").
+ */
+export const MOTIVOS_TROCA_SENHA = ['provisoria', 'temporaria'] as const;
+export type MotivoTrocaSenha = (typeof MOTIVOS_TROCA_SENHA)[number];
+
 export const EuResposta = z.object({
-  usuario: z.object({ id: Id, nome: z.string().min(1), perfil: z.enum(PERFIS), deve_trocar_senha: z.boolean().optional() }),
+  usuario: z.object({
+    id: Id,
+    nome: z.string().min(1),
+    perfil: z.enum(PERFIS),
+    deve_trocar_senha: z.boolean().optional(),
+    motivo_troca: z.enum(MOTIVOS_TROCA_SENHA).optional(),
+  }),
   empresa: z.object({ id: Id, slug: z.string().min(1), razao_social: z.string().min(1), fuso: z.string().min(1) }),
   filiais: z.array(z.object({ id: Id, nome: z.string().min(1), cnpj: Cnpj })),
   modulos: z.array(z.object({ id: z.enum(MODULOS), menus: z.array(z.string()) })),
