@@ -5,6 +5,7 @@
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
 import type { EntidadeChaveErp, RetornoErp } from '../contracts';
+import type { PreCadastroEntrada, ResultadoPreCadastro } from '../domain';
 
 export type { ResultadoRecebimentoFdv };
 
@@ -57,3 +58,15 @@ export interface LogPedidos {
 
 /** Alerta do monitor (T-0013 §5.1 e §6.3): só código e identificadores. Sem tabela própria na v1: o worker liga ao monitor. */
 export type Alertar = (tenantId: string, codigo: string, contexto?: Record<string, string>) => void;
+
+// ---- Pré-cadastro de cliente do FDV (T-0059, RN-INT-22) ----
+// a entrada e o resultado ficam no domain (uma união só); a porta é a combinada com o modulo-cadastros
+export type { PreCadastroEntrada, ResultadoPreCadastro };
+
+/** Implementação no `cadastros/api`, ligada pelo `apps/worker`: a regra do pré-cadastro é do cadastros. Roda na transação do chamador. */
+export interface ValidacaoPreCadastro {
+  /** Só valida: aceito ou erros por campo. */
+  validar(tx: Transacao, entrada: PreCadastroEntrada): Promise<ResultadoPreCadastro>;
+  /** Cria/atualiza o cliente (idempotente) e devolve o id e o `external_id`. */
+  aceitar(tx: Transacao, entrada: PreCadastroEntrada): Promise<{ cliente_id: string; external_id: string }>;
+}
