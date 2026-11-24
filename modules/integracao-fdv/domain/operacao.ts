@@ -16,11 +16,13 @@ import {
   VERSAO_CONECTOR_HUB,
   situacaoConectorFdv,
   type EntidadeEnvioFdv,
+  type EnvioLogFdv,
   type MotivoFalhaEnvioFdv,
   type OrigemEnvioFdv,
   type SituacaoRegistroFdv,
 } from '@macuxierp/platform-sdk';
-import { acaoDoErro, mensagemDoErro } from './mensagens';
+import type { EstadoLote } from '../contracts';
+import { acaoDoErro, motivoDoErro } from './mensagens';
 
 // ---- situação do registro e Reprocessar ----
 
@@ -84,11 +86,12 @@ export function origemDoLote(refs: readonly Refs[]): OrigemEnvioFdv {
 
 // ---- Log ----
 
-const EM_VOO = new Set(['montado', 'enviando', 'aceito']);
+/** Estados do lote que ainda não chegaram ao fim: no máximo um por entidade (RN-INF-03). */
+export const ESTADOS_EM_VOO = ['montado', 'enviando', 'aceito'] as const satisfies readonly EstadoLote[];
 
 /** Situação do envio na tela: estados em voo = `enviando`; `concluido_com_erros` = `com_erros`; `falhou` e `recusado` = `falhou`. */
-export function situacaoDoEnvio(estado: string): 'enviando' | 'concluido' | 'com_erros' | 'falhou' {
-  if (EM_VOO.has(estado)) return 'enviando';
+export function situacaoDoEnvio(estado: string): EnvioLogFdv['situacao'] {
+  if ((ESTADOS_EM_VOO as readonly string[]).includes(estado)) return 'enviando';
   if (estado === 'concluido') return 'concluido';
   if (estado === 'concluido_com_erros') return 'com_erros';
   return 'falhou';
@@ -199,7 +202,7 @@ export function itemDoLogTenant(x: ErroBruto) {
     nome_curto: nomeCurto(x.payload),
     campo: x.campo,
     codigo: x.codigo,
-    motivo_texto: mensagemDoErro(x.codigo),
+    motivo_texto: motivoDoErro(x.codigo),
     acao_texto: acaoDoErro(x.codigo),
     corrigir_href: corrigirHref(x.entidade, x.registro_external_id, x.fonte_refs),
   };

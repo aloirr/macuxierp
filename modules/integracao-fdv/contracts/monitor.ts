@@ -1,8 +1,8 @@
 /** C-6: leituras do monitor do BKO (RF-INF-04). Sem mensagem livre nem valor de campo: a mensagem sai do catálogo pelo código. */
 import { z } from 'zod';
-import { MOTIVOS_PAUSA_FDV } from '@macuxierp/platform-sdk';
+import { MOTIVOS_PAUSA_FDV, VersaoConectorFdv } from '@macuxierp/platform-sdk';
 import { ConfiguracaoResumo, CredencialResumo } from './credencial';
-import { CampoErro, CodigoErro, EntidadeHub, ModoLote, SituacaoEntidade, VERSAO_CONTRATO_HUB, VersaoConectorFdv } from './hub';
+import { CampoErro, CodigoErro, EntidadeHub, ModoLote, SituacaoEntidade, VERSAO_CONTRATO_HUB } from './hub';
 
 export const MotivoPausa = z.enum(MOTIVOS_PAUSA_FDV);
 export type MotivoPausa = z.infer<typeof MotivoPausa>;

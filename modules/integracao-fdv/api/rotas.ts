@@ -9,12 +9,12 @@
  *
  * Regra da agenda (vale para o portal, via funções `portal_*`): o app só ADIANTA `proximo*_em`; quem adia é o worker.
  */
-import { CAMINHOS_INTEGRACAO_FDV_TENANT, EntidadeEnvioFdv, LIMITE_ERROS_LOG_FDV, csvDaLista, definirRota, erros, type RotaModulo } from '@macuxierp/platform-sdk';
+import { LIMITE_ERROS_LOG_FDV, csvDaLista, definirRota, erros, type RotaModulo } from '@macuxierp/platform-sdk';
 import { ConsultaPaginada, paraCsv, respostaCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
 import { itemDoLogTenant, montarLogTenant } from '../domain';
 import { paginaLotes } from '../web/paginas';
-import { lerInsumosLog } from './operacao';
+import { entidadeDaRota, lerInsumosLog } from './operacao';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
 
@@ -28,11 +28,12 @@ const ParamUuid = (valor: string | undefined, campo: string): string => {
   return u.data;
 };
 
-const EntidadeDaRota = (valor: string | undefined): EntidadeEnvioFdv => {
-  const e = EntidadeEnvioFdv.safeParse(valor);
-  if (!e.success) throw erros.validacao({ entidade: 'Cadastro desconhecido' });
-  return e.data;
-};
+/** Caminhos do Log, relativos ao prefixo `/v1/integracao-fdv`; o teste prova que batem com `CAMINHOS_INTEGRACAO_FDV_TENANT` do SDK. */
+export const CAMINHO_LOG = '/entidades/:entidade/log';
+export const CAMINHO_LOG_CSV = '/entidades/:entidade/log.csv';
+
+/** Teto de linhas do `log.csv`: acima disso o arquivo é cortado e leva um aviso na última linha (e no cabeçalho `x-linhas-cortadas`). */
+export const MAXIMO_LINHAS_CSV_LOG = 10_000;
 
 /** "Baixar erros (.csv)": as colunas do `LogCadastroFdvTenant.erros`, na ordem da tela. */
 const COLUNAS_CSV_LOG: readonly ColunaCsv<ReturnType<typeof itemDoLogTenant>>[] = [
@@ -63,19 +64,22 @@ export function criarRotas(): RotaModulo[] {
     }),
     // Log por cadastro do BKO (T-0086 §4): completo (registro, nome curto, motivo e ação do catálogo). O `/config` tem o seu, só com códigos.
     definirRota({
-      metodo: 'GET', caminho: CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace('/integracao-fdv', ''), acao: 'integracao-fdv.ver',
+      metodo: 'GET', caminho: CAMINHO_LOG, acao: 'integracao-fdv.ver',
       async executar(c, e) {
-        const entidade = EntidadeDaRota(e.params.entidade);
+        const entidade = entidadeDaRota(e.params.entidade);
         const i = await lerInsumosLog(c.tx, tenant(c), entidade, LIMITE_ERROS_LOG_FDV);
         return { corpo: montarLogTenant({ entidade, lidoEm: c.agora, envios: i.envios, erros: i.erros, totalErros: i.total_erros, motivo: i.motivo?.motivo ?? null }) };
       },
     }),
     definirRota({
-      metodo: 'GET', caminho: CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv.replace('/integracao-fdv', ''), acao: 'integracao-fdv.ver',
+      metodo: 'GET', caminho: CAMINHO_LOG_CSV, acao: 'integracao-fdv.ver',
       async executar(c, e) {
-        const entidade = EntidadeDaRota(e.params.entidade);
-        const i = await lerInsumosLog(c.tx, tenant(c), entidade, null);
-        return respostaCsv(`erros-${entidade}.csv`, paraCsv(COLUNAS_CSV_LOG, i.erros.map(itemDoLogTenant)));
+        const entidade = entidadeDaRota(e.params.entidade);
+        const i = await lerInsumosLog(c.tx, tenant(c), entidade, MAXIMO_LINHAS_CSV_LOG);
+        const csv = paraCsv(COLUNAS_CSV_LOG, i.erros.map(itemDoLogTenant));
+        if (i.total_erros <= i.erros.length) return respostaCsv(`erros-${entidade}.csv`, csv);
+        const r = respostaCsv(`erros-${entidade}.csv`, `${csv}Aviso: arquivo cortado em ${i.erros.length} de ${i.total_erros} erros abertos. Corrija estes e baixe de novo.\r\n`);
+        return { ...r, cabecalhos: { ...r.cabecalhos, 'x-linhas-cortadas': String(i.total_erros - i.erros.length) } };
       },
     }),
     definirRota({

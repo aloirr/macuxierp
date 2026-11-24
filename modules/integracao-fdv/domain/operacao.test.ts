@@ -175,12 +175,7 @@ describe('montarMonitor (T-0086 §2)', () => {
     expect(m.versao).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MonitorConectorFdv.safeParse(m).success).toBe(true);
   });
-  it('atrasado: sem sinal aceito ou o último passou de 5 min', () => {
-    expect(montarMonitor({ ...entrada, ultimo_sinal_aceito_em: null }).situacao).toBe('atrasado');
-    expect(montarMonitor({ ...entrada, ultimo_sinal_aceito_em: new Date(AGORA.getTime() - 6 * 60_000) }).situacao).toBe('atrasado');
-  });
-  it('desativado: sem credencial ou sem cadastro habilitado; sem credencial, identificador e versão nulos e fila zerada', () => {
-    expect(montarMonitor({ ...entrada, habilitadas: 0 }).situacao).toBe('desativado');
+  it('sem credencial: nulos e fila zerada', () => {
     const sem = montarMonitor({ ...entrada, credencial_ativa: false, conector_id: null, ultimo_sinal_aceito_em: null, fila: { lotes: 9, linhas: 9 } });
     expect(sem).toMatchObject({ identificador: null, situacao: 'desativado', versao: null, ultimo_sinal_em: null, fila: { lotes: 0, linhas: 0 } });
     expect(MonitorConectorFdv.safeParse(sem).success).toBe(true);

@@ -39,6 +39,7 @@ import {
   type Transacao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
+import { entidadeDaRota } from './operacao';
 import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
 import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
 
@@ -242,12 +243,6 @@ const idDaRota = (params: Record<string, string>): string => {
   return r.data;
 };
 
-const entidadeDaRota = (params: Record<string, string>): EntidadeEnvioFdv => {
-  const r = EntidadeEnvioFdv.safeParse(params.entidade);
-  if (!r.success) throw erros.validacao({ entidade: 'Cadastro desconhecido' });
-  return r.data;
-};
-
 const MSG_LOTE_EM_VOO = 'Este cadastro está enviando agora. Aguarde o envio terminar.';
 const MSG_MODULO_DESLIGADO = 'Ligue o módulo Integração FDV na empresa antes de configurar';
 const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO, undefined, { codigo: 'modulo_desligado' });
@@ -350,7 +345,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
       idempotencia: 'obrigatoria',
       async executar(c, { params }) {
         const tenant = idDaRota(params);
-        const entidade = entidadeDaRota(params);
+        const entidade = entidadeDaRota(params.entidade);
         const atual = await lerLicenciado(c.tx, tenant);
         exigirCredencial(atual);
         const decisao = decidirCargaCompleta({
@@ -373,7 +368,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
       idempotencia: 'opcional',
       async executar(c, { params }) {
         const tenant = idDaRota(params);
-        const entidade = entidadeDaRota(params);
+        const entidade = entidadeDaRota(params.entidade);
         const atual = await lerLicenciado(c.tx, tenant);
         const pausa = atual.cadastros.find((k) => k.entidade === entidade)?.pausada_motivo ?? null;
         if (decidirRetomar(pausa).acao === 'nada') {
@@ -406,7 +401,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
       acao: 'plataforma.integracao_fdv.ver',
       async executar(c, { params }) {
         const tenant = idDaRota(params);
-        const entidade = entidadeDaRota(params);
+        const entidade = entidadeDaRota(params.entidade);
         await lerLicenciado(c.tx, tenant);
         const i = await repo.log(c.tx, { tenant, entidade });
         // ADR 0013: só código, campo e contagem; `montarLogPlataforma` passa pelo Zod do SDK, que descarta o resto
@@ -428,7 +423,7 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
       idempotencia: 'obrigatoria',
       async executar(c, { params }) {
         const tenant = idDaRota(params);
-        const entidade = entidadeDaRota(params);
+        const entidade = entidadeDaRota(params.entidade);
         const atual = await lerLicenciado(c.tx, tenant);
         exigirCredencial(atual);
         // dois envios do mesmo cadastro nunca andam juntos: com lote em voo a tela mostra "Enviando…" e não chama

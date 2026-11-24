@@ -69,7 +69,6 @@ describe('T-0086: tipos do SDK reexportados sem duplicar', () => {
   it('CodigoErro, CampoErro e a versão do conector são os do SDK (uma só fonte)', () => {
     expect(c.CodigoErro).toBe(sdk.CodigoErroFdv);
     expect(c.CampoErro).toBe(sdk.CampoErroFdv);
-    expect(c.VersaoConectorFdv).toBe(sdk.VersaoConectorFdv);
     expect(c.CorpoSinal.shape.versao_conector).toBe(sdk.VersaoConectorFdv);
   });
 });

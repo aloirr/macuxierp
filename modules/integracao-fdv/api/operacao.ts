@@ -8,20 +8,20 @@
  *   (`planejarReprocessar`), nunca decidida em SQL.
  * - Reprocessar não faz carga completa, não reenvia o integrado e não gera inativação nova.
  */
-import { falhaEnvioFdv, type EntidadeEnvioFdv, type OrigemEnvioFdv, type Transacao } from '@macuxierp/platform-sdk';
+import { EntidadeEnvioFdv, erros as errosApi, falhaEnvioFdv, type OrigemEnvioFdv, type Transacao } from '@macuxierp/platform-sdk';
 import type { MotivoPausa } from '../contracts';
-import { MARCA_REENVIO, planejarReprocessar, type EnvioBruto, type ErroBruto, type PlanoReprocessar } from '../domain';
-import { ESTADOS_EM_VOO } from './conector-comum';
+import { ESTADOS_EM_VOO, MARCA_REENVIO, planejarReprocessar, type EntradaMonitor, type EnvioBruto, type ErroBruto, type PlanoReprocessar } from '../domain';
+
+/** `:entidade` da rota (BKO e `/config`): o mesmo parse e a mesma mensagem. */
+export function entidadeDaRota(valor: string | undefined): EntidadeEnvioFdv {
+  const e = EntidadeEnvioFdv.safeParse(valor);
+  if (!e.success) throw errosApi.validacao({ entidade: 'Cadastro desconhecido' });
+  return e.data;
+}
 
 // ---- Monitor ----
 
-export interface InsumosMonitor {
-  credencial_ativa: boolean;
-  conector_id: string | null;
-  habilitadas: number;
-  ultimo_sinal_aceito_em: Date | null;
-  fila: { lotes: number; linhas: number };
-}
+export type InsumosMonitor = Omit<EntradaMonitor, 'agora'>;
 
 /** Credencial ativa, sinal aceito e fila (lotes em voo e registros pendentes), como o `CorpoSinal.fila`, somados. */
 export async function lerInsumosMonitor(tx: Transacao, tenant: string): Promise<InsumosMonitor> {
@@ -59,8 +59,8 @@ export interface InsumosLog {
 
 /**
  * Envios recentes (20 lotes do cadastro) e erros por linha abertos, um por (registro, código, campo), do mais novo ao mais
- * antigo. `limiteErros` nulo traz todos (CSV). O `payload` e as marcas do espelho entram só para o nome curto e o
- * `corrigir_href` do BKO; o domain os descarta no Log do `/config`.
+ * antigo. `limiteErros` nulo traz todos. Do espelho entram só o nome curto (nome, razão social ou descrição, cortado em 120, lido
+ * no banco: o payload inteiro não sai de lá) e as marcas do `corrigir_href`; o domain os descarta no Log do `/config`.
  */
 export async function lerInsumosLog(tx: Transacao, tenant: string, entidade: EntidadeEnvioFdv, limiteErros: number | null): Promise<InsumosLog> {
   const lotes = await tx.consultar<{ em: Date; estado: string; registros: number; com_erro: number; origem: OrigemEnvioFdv }>(
@@ -73,8 +73,9 @@ export async function lerInsumosLog(tx: Transacao, tenant: string, entidade: Ent
       ORDER BY l.created_at DESC, l.id DESC LIMIT 20`,
     [tenant, entidade],
   );
-  const erros = await tx.consultar<{ registro_external_id: string; codigo: string; campo: string | null; payload: Record<string, unknown> | null; fonte_refs: Record<string, string> | null }>(
-    `SELECT a.registro_external_id, a.codigo, a.campo, r.payload, r.fonte_refs
+  const erros = await tx.consultar<{ registro_external_id: string; codigo: string; campo: string | null; nome: string | null; fonte_refs: Record<string, string> | null }>(
+    `SELECT a.registro_external_id, a.codigo, a.campo, r.fonte_refs,
+            left(coalesce(nullif(btrim(r.payload ->> 'nome'), ''), nullif(btrim(r.payload ->> 'razao_social'), ''), nullif(btrim(r.payload ->> 'descricao'), '')), 120) AS nome
        FROM (SELECT DISTINCT ON (registro_external_id, codigo, campo) registro_external_id, codigo::text AS codigo, campo, created_at, id
                FROM integracao_fdv.lote_erro
               WHERE tenant_id = $1 AND entidade = $2::integracao_fdv.entidade_hub AND resolvido_em IS NULL AND deleted_at IS NULL AND registro_external_id IS NOT NULL
@@ -96,7 +97,7 @@ export async function lerInsumosLog(tx: Transacao, tenant: string, entidade: Ent
   const total_erros = total?.n ?? 0;
   return {
     envios: lotes.map((l) => ({ em: l.em, estado: l.estado, registros: l.registros, com_erro: l.com_erro, origem: l.origem })),
-    erros: erros.map((e) => ({ ...e, entidade, fonte_refs: e.fonte_refs ?? {} })),
+    erros: erros.map(({ nome, ...e }) => ({ ...e, entidade, payload: nome === null ? null : { nome }, fonte_refs: e.fonte_refs ?? {} })),
     total_erros,
     motivo: falhaEnvioFdv({ pausada_motivo: cursor?.pausada_motivo ?? null, ultimo_lote_estado: lotes[0]?.estado ?? null, erros_abertos: total_erros }),
   };

@@ -7,12 +7,11 @@
  */
 import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type ItemAgenda, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { AmbienteHub, CursorHub, type EstadoLote, type MotivoPausa } from '../contracts';
-import { proximaReconciliacaoEm } from '../domain';
+import { AmbienteHub, CursorHub, type MotivoPausa } from '../contracts';
+import { ESTADOS_EM_VOO, proximaReconciliacaoEm } from '../domain';
 
 export const UMA_HORA_S = 3600;
-/** Estados do lote que ainda não chegaram ao fim: no máximo um por entidade (RN-INF-03). */
-export const ESTADOS_EM_VOO = ['montado', 'enviando', 'aceito'] as const satisfies readonly EstadoLote[];
+export { ESTADOS_EM_VOO };
 
 export const mais = (d: Date, segundos: number): Date => new Date(d.getTime() + segundos * 1000);
 
