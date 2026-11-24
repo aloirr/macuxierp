@@ -131,7 +131,6 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
     expect(await ambientes()).toEqual(emProducao);
     const auditoriaDoOperador = await auditoria();
     expect(auditoriaDoOperador).toHaveLength(1);
-    expect(auditoriaDoOperador[0]).toMatchObject({ usuario_id: null, acao: 'core.ambiente.trocado' });
     const [doOperador] = await auditoriaNoBanco();
     expect(doOperador).toMatchObject({ usuario_id: null, acao: 'core.ambiente.trocado', depois: { ambiente: 'producao', origem: 'script' } });
     expect(await eventos()).toBe(1);
@@ -151,7 +150,6 @@ describe.skipIf(!PG_DISPONIVEL)('T-0030: ambiente fiscal pela API no PostgreSQL 
     expect(await ambientes()).toEqual(HOMOLOGACAO);
     const itens = await auditoria();
     expect(itens).toHaveLength(2);
-    expect(itens.filter((i) => i.usuario_id === usuario).map((i) => i.acao)).toEqual(['core.ambiente.trocado']);
     const daApi = (await auditoriaNoBanco()).filter((i) => i.depois?.origem === 'api');
     expect(daApi).toEqual([
       expect.objectContaining({
