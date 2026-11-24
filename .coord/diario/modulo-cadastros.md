@@ -22,4 +22,6 @@
 2026-11-23 — T-0058 — Substituir tudo do portal liga cliente e condicao ao carga-substituir; mapa unico TABELA_SUBSTITUIVEL; DEPENDENCIAS do domain removido; testes ajustados ao modelo de condicao
 2026-11-23 — T-0058 — v0.3.6 item 2: rebase no 84da1f5 e achados RD-1203/1204/1205 (aplicarSubstituicao genérico em carga-substituir.ts, paiDe, comUso, dadosDaForma, seq único, testes enxutos, README)
 2026-11-23 — T-0058 — v0.3.7: o -5 (cadastros-a, 6497493) e a carga de cliente/condições (ee70d35) viraram um PR só, num commit; a ponte ENTIDADE_DO_PIPELINE saiu e o pipeline usa os 8 nomes pelo paraEntidadeCarga
+2026-11-24 — T-0088 — lote C: lista única de clientes e produtos no PAGINAS (parecer do corretor), edição de preços e filiais
 2026-11-24 — T-0085 — lote A: correções do parecer do corretor RD-1530 a RD-1545
+2026-11-24 — T-0088 — lote C: limite de crédito fora do corpo do faturista (criação e PATCH); merge do main preservando prazos (#538)
