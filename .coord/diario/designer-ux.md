@@ -32,3 +32,4 @@
 2026-11-23 — T-0076 — correção: senha do superadmin na regra única de 8; portal-config §1 remete ao login-unico
 2026-11-23 — T-0076 — correção: olho = botão de texto do CampoSenha na v0.3.10 (ícone na versão seguinte); título trocado no painel do esqueci
 2026-11-24 — T-0076 — correção: README do login-unico cita TROCAR_SENHA (código do SDK), não SENHA_A_TROCAR
+2026-11-24 — v0.3.12 — desenho da entrada do cenário B (config via Conector/via API, chave uma vez, dono por cadastro, trava 30%, BKO 'Vem do servidor do cliente'); RD-1460–1462 reservados
