@@ -5,6 +5,7 @@
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0057 (v0.3.8). Roteiro da VM: `docs/banco/vm-cenario-b.md` (banco-dados, #387).
 - **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre, renumerada pelo PO em 23/11, 15h36 e de novo às 17h25: o cenário B é a **v0.3.8**. Premissas respondidas pelo PO em 23/11, 15h29 (§3 e §7).
+- **Numeração nova (23/11/2026, 23h00, T-0076):** cenário B = v0.3.11.
 - **Fontes copiadas (só consulta, nada muda no FDV):** `aloirr/macuxifdv@c460e92c4bf935c8096e6c67dd6b98a7929cf664` (FDV v1.0.28): `apps/conector` (versão **1.5.0**), `apps/conector/src/hub/cliente.ts` (rotas do Hub), `modules/integracao/kit-thathyany/conector/conector.json` (consultas das views), `docs/produto/03` (RN-INT-06 e a trava de 30%) e `.github/workflows/conector-publicar.yml`. O esquema do banco segue `aloirr/macuxifdv@0b79391`, `kit-thathyany/sql/criar-banco.sql`, com cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`.
 - **Amplia:** ADR 0010 (`external_id`), ADR 0012 (lista fechada de funções SECURITY DEFINER do portal) e ADR 0013 (o portal configura módulo; esta é a "ADR nova" que a §1 da 0013 exige para o segundo módulo).
 

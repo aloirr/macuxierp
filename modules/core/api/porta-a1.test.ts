@@ -19,6 +19,7 @@ function montar(validoAte: string | null, ativo = true) {
       valido_ate: new Date(validoAte),
       impressao_digital: 'ab',
       ativo,
+      origem: 'upload',
     });
   }
   return criarPortaA1({ repo, agora: () => AGORA, noTenant: (fn) => fn({ consultar: async () => [] }) });

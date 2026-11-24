@@ -5,6 +5,7 @@
  */
 import { Cnpj, ConsultaLista, EmailUsuario, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
+import { OrigemCertificado } from './certificado-origem-provisorio';
 
 export const MODULO = 'core' as const;
 
@@ -120,6 +121,8 @@ export const CertificadoResumo = z.object({
   /** RF-CORE-04: vence em 30 dias ou menos (ou já venceu). */
   alerta_vencimento: z.boolean(),
   ativo: z.boolean(),
+  /** T-0080: 'teste' só vale em homologação. */
+  origem: OrigemCertificado,
 });
 export type CertificadoResumo = z.infer<typeof CertificadoResumo>;
 

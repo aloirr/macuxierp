@@ -5,6 +5,7 @@
 # A MESMA imagem roda os três papéis do compose.yml da raiz (por isso não há apps/worker/Dockerfile):
 #   api     → node dist/api.mjs                 (padrão; porta MACUXIERP_PORTA, 8100 no compose)
 #   worker  → node dist/worker.mjs
+#   (no contêiner api, pelo operador.sh a1-teste) → node dist/a1-teste.mjs   (A1 de teste da filial em homologação, T-0080)
 #   migrar  → node db/src/cli/migrar.ts         (node 24 roda o .ts direto: imports com extensão, só módulos node:)
 #   psql    → psql 16 (passo do banco do implantar.sh: banco, senhas dos papéis e conferências)
 # apps/api e apps/worker usam imports sem extensão (moduleResolution Bundler): o esbuild do pnpm-lock (0.28.2, já no
@@ -40,11 +41,11 @@ ARG ESBUILD_VERSAO=0.28.2
 RUN set -eu; \
     ESBUILD="node_modules/.pnpm/esbuild@${ESBUILD_VERSAO}/node_modules/esbuild/bin/esbuild"; \
     test -x "$ESBUILD" || { echo "esbuild ${ESBUILD_VERSAO} não está no node_modules (pnpm-lock mudou?)" >&2; exit 1; }; \
-    for x in api worker; do \
-      "$ESBUILD" "apps/$x/src/main.ts" --bundle --platform=node --target=node24 --format=esm \
+    for x in api:apps/api/src/main.ts worker:apps/worker/src/main.ts a1-teste:apps/api/src/a1-teste-main.ts; do \
+      "$ESBUILD" "${x#*:}" --bundle --platform=node --target=node24 --format=esm \
         --external:pg-native --log-level=warning \
         --banner:js="import{createRequire as __cr}from'node:module';import{fileURLToPath as __fu}from'node:url';import{dirname as __dn}from'node:path';const require=__cr(import.meta.url);const __filename=__fu(import.meta.url);const __dirname=__dn(__filename);" \
-        --outfile="dist/$x.mjs"; \
+        --outfile="dist/${x%%:*}.mjs"; \
     done; \
     # T-0045 lote A: o que o código empacotado lê do disco em tempo de execução. O xmllint-wasm (XSD do simulador e do
     # nfe-sefaz) abre `xmllint-node.js` e `xmllint.wasm` ao lado do bundle (__dirname = dist/, pelo banner acima); o
@@ -82,7 +83,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org
     rm -rf /var/lib/apt/lists/* && \
     psql --version
 WORKDIR /app
-COPY --from=build /app/dist/api.mjs /app/dist/worker.mjs /app/dist/xmllint-node.js /app/dist/xmllint.wasm ./dist/
+COPY --from=build /app/dist/api.mjs /app/dist/worker.mjs /app/dist/a1-teste.mjs /app/dist/xmllint-node.js /app/dist/xmllint.wasm ./dist/
 # XSD do layout 4.00 (PL_010g) para o validarXsd do bundle (dist/../schemas/PL_010g/), T-0045 lote A
 COPY --from=build /app/schemas ./schemas
 # Ativos da marca para o DANFE (T-0049, regra de marca do DANFE, #180): a pasta versionada inteira, lida pelo caminho de
