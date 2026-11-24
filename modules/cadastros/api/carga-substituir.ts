@@ -2,32 +2,21 @@
  * Substituir tudo do cliente (com endereços) e da condição (RN-CAD-10). Regras: docs/modulos/cadastros/README.md, seção 'Carga: 8 arquivos'.
  */
 import type { ArquivoRecebido, CadastroCargaPortal, ContextoRota } from '@macuxierp/platform-sdk';
-import { EntidadeCarga } from '../contracts';
+import type { EntidadeCarga } from '../contracts';
 import { externosEnderecoDoArquivo, planoSubstituicao, planoSubstituicaoCliente, type PlanoSubstituicao, type PlanoSubstituicaoCliente } from '../domain';
 import { lerCsvDoLayout } from './carga-reativar';
 import { eventoCliente, eventoFilial, eventoPreco, eventoProduto, eventoSimples, publicarPronto } from './eventos';
 import type { Dependencias, TabelaSubstituivel } from './portas';
 
-/** Nome de cadastro do portal: o do SDK (hoje 10, na v0.3.6 8) mais os nomes da carga de 8 arquivos, para compilar com os dois. */
-type NomeCadastroPortal = CadastroCargaPortal | 'condicao_pagamento' | 'forma_pagamento' | 'prazo_pagamento' | 'cliente_endereco';
-
 /**
  * Tabela que o "Substituir tudo" inativa em cada cadastro do portal (a ÚNICA fonte; o `carga-portal.ts` importa daqui).
  * Sem chave = nada a inativar (estoque é saldo, não cadastro; a forma vive na condição, RN-CAD-09). O cliente leva os endereços
- * juntos (o plano trata `cliente_endereco`); `prazo_pagamento` é o nome antigo da condição.
+ * juntos (o plano trata `cliente_endereco`). As chaves são os 8 cadastros do SDK, os mesmos do `ENTIDADES_CARGA`.
  */
-export const TABELA_SUBSTITUIVEL: Readonly<Partial<Record<NomeCadastroPortal, TabelaSubstituivel>>> = {
-  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'condicao_pagamento', prazo_pagamento: 'condicao_pagamento',
+export const TABELA_SUBSTITUIVEL: Readonly<Partial<Record<CadastroCargaPortal, TabelaSubstituivel>>> = {
+  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'condicao_pagamento',
   produto: 'produto', produto_unidade: 'produto_unidade', preco: 'tabela_preco_item', cliente: 'cliente',
 };
-
-/** Nome do portal -> `EntidadeCarga` (forma/prazo = a condição; endereço = o cliente, que vem no mesmo arquivo); `null` se não é da carga. */
-export function paraEntidadeCarga(cadastro: string): EntidadeCarga | null {
-  if (cadastro === 'forma_pagamento' || cadastro === 'prazo_pagamento') return 'condicao_pagamento';
-  if (cadastro === 'cliente_endereco') return 'cliente';
-  const e = EntidadeCarga.safeParse(cadastro);
-  return e.success ? e.data : null;
-}
 
 /** Dos ids, os que estão em uso por outro módulo (continuam no histórico). Sem a consulta ligada, ninguém está. */
 export type ConsultaEmUso = (ids: readonly string[]) => Promise<ReadonlySet<string>>;

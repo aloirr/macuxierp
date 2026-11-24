@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ArquivoRecebido, ErroApi, type ContextoRota } from '@macuxierp/platform-sdk';
+import { ArquivoRecebido, ErroApi, type CadastroCargaPortal, type ContextoRota } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { sessaoDe } from './apoio-teste';
 import { gravarCargaPortal, validarCargaPortal } from './carga-portal';
@@ -24,6 +24,7 @@ function montar(uso?: ConsultaUsoCadastros) {
   const m = dependenciasEmMemoria();
   m.repos.oficiais.ncms.add('21069030');
   m.repos.oficiais.municipiosPorUf.set('AM', [{ ibge: '1302603', nome: 'Manaus' }]);
+  m.repos.oficiais.municipiosPorUf.set('SP', [{ ibge: '3550308', nome: 'São Paulo' }]);
   const eventos: { nome: string; agregado_id: string; payload: Record<string, unknown> }[] = [];
   const auditoria: unknown[] = [];
   const c = {
@@ -32,7 +33,7 @@ function montar(uso?: ConsultaUsoCadastros) {
     auditar: async (d: unknown) => void auditoria.push(d), enfileirar: async () => ({ id: 'x' }),
   } as unknown as ContextoRota;
   const deps = { ...m.deps, ...(uso ? { usoCadastros: uso } : {}) };
-  const gravar = (cadastro: 'filial' | 'vendedor' | 'produto' | 'condicao_pagamento', conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
+  const gravar = (cadastro: CadastroCargaPortal, conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
     gravarCargaPortal(deps, c, { cadastro, modo, frase, arquivo: arq(conteudo) });
   return { ...m, c, deps, eventos, auditoria, gravar };
 }
@@ -105,6 +106,17 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     expect(ev).toHaveLength(1);
     expect(ev[0]?.payload.inativo).toBe(true);
     expect(t.auditoria).toContainEqual(expect.objectContaining({ acao: 'cadastros.carga.substituir_tudo', depois: expect.objectContaining({ inativadas: 1 }) }));
+  });
+
+  it('RN-CAD-10: no cliente, a auditoria conta os endereços inativados (o do cliente ausente e a entrega do que ficou)', async () => {
+    const t = montar();
+    for (const dep of ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'preco', 'cliente'] as const) await t.gravar(dep, csv(dep === 'condicao_pagamento' ? 'condicoes_pagamento' : dep));
+    t.auditoria.length = 0;
+    const r = await t.gravar('cliente', csv('cliente', [0]), 'substituir_tudo', FRASE); // só a linha principal do C-EX-01
+    expect(r).toMatchObject({ modo: 'substituir_tudo', gravadas: 1, inativadas: 1 });
+    expect(t.auditoria).toContainEqual(expect.objectContaining({
+      acao: 'cadastros.carga.substituir_tudo', depois: expect.objectContaining({ cadastro: 'cliente', inativadas: 1, enderecos_inativados: 2 }),
+    }));
   });
 
   it('RN-CAD-10: o percentual do gravar é o do validar; registro sem chave não é inativado nem conta no total', async () => {

@@ -512,6 +512,15 @@ describe('T-0058: cliente e endereço numa carga só (cliente.csv)', () => {
     expect(porEntidade(rel).cliente).toMatchObject({ lidas: 3, inseridas: 2, recusadas: 1 });
   });
 
+  it('T-0058 (RF-CAD-11): cliente com erro (filial inexistente): o erro sai só na 1ª linha dele e as outras linhas do cliente entram em recusadas', async () => {
+    const t = montar();
+    const rel = (await t.carregar('gravar', { arquivos: [{ nome: 'cliente.csv', conteudo: CAB + [L('C1', 'Rua A', 'principal'), L('C1', 'Rua BB', 'entrega', '1'), L('C1', 'Rua CCC', 'entrega', '2')].join('\n') }] })).corpo as RelatorioCarga;
+    expect(rel.erros.map((e) => e.linha)).toEqual([2]);
+    expect(porEntidade(rel).cliente).toMatchObject({ lidas: 3, inseridas: 0, recusadas: 3 });
+    expect(t.repos.clientes.linhas).toHaveLength(0);
+    expect(ends(t)).toEqual([]);
+  });
+
   it('T-0058: endereço novo com campo faltando vira erro da linha dele; o cliente e os outros endereços gravam', async () => {
     const t = montar();
     const sem = `C1;Cliente T;99.000.002/0001-48;F-EX-01;Rua BB;10;;Manaus;AM;69000-002;entrega;1`;
