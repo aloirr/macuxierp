@@ -70,11 +70,11 @@ describe.skipIf(!PG_DISPONIVEL)('pedido montado na API com o pino real (PostgreS
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    tenant = await criarTenant(b.admin, 'loja-pedido', ['cadastros', 'pedido']);
-    semPedido = await criarTenant(b.admin, 'loja-sem-pedido', ['cadastros']);
+    tenant = await criarTenant(b.admin, 'am0011', ['cadastros', 'pedido']);
+    semPedido = await criarTenant(b.admin, 'am0012', ['cadastros']);
     await inserirMassaPedido(b.admin, tenant, ids, { estoque: 1_000_000 });
-    await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@loja-pedido.teste', nome: 'Administradora', filialIds: [ids.filial] });
-    await inserirAdministradorDeTeste(b.admin, semPedido, { id: randomUUID(), email: 'adm@loja-sem-pedido.teste', nome: 'Administradora', filialIds: [] });
+    await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@am0011.teste', nome: 'Administradora', filialIds: [ids.filial] });
+    await inserirAdministradorDeTeste(b.admin, semPedido, { id: randomUUID(), email: 'adm@am0012.teste', nome: 'Administradora', filialIds: [] });
     // Um pino só, de verdade, para a API (Fastify) e para o módulo (LogPedido): o mesmo formato de produção.
     const log = pino({ level: 'info', base: { servico: 'macuxierp-api' } }, destino);
     const modulos = montarModulos({ core: dependenciasCoreDeTeste(new RepositorioCoreSql()), log });
@@ -100,13 +100,13 @@ describe.skipIf(!PG_DISPONIVEL)('pedido montado na API com o pino real (PostgreS
   });
 
   it('RN-CORE-02: sem a licença do pedido, /v1/pedido dá 403 MODULO_INATIVO', async () => {
-    const r = await app.inject({ method: 'GET', url: '/v1/pedido/pedidos', headers: { authorization: await token('loja-sem-pedido') } });
+    const r = await app.inject({ method: 'GET', url: '/v1/pedido/pedidos', headers: { authorization: await token('am0012') } });
     expect(r.statusCode).toBe(403);
     expect(r.json()).toMatchObject({ codigo: 'MODULO_INATIVO' });
   });
 
   it('RN-CORE-05 e RN-PED-02: lança com Idempotency-Key (a repetição devolve o mesmo), aprovar de novo dá 422 e o pino não leva dado pessoal', async () => {
-    const auth = await token('loja-pedido');
+    const auth = await token('am0011');
     const chave = randomUUID();
     const lancar = () => app.inject({ method: 'POST', url: '/v1/pedido/pedidos', headers: { authorization: auth, 'idempotency-key': chave }, payload: corpo() });
     const r = await lancar();

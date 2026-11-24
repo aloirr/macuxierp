@@ -22,7 +22,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052: senha provisória do usuário do tenant
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    tenant = await criarTenant(b.admin, 'loja-senha', ['cadastros']);
+    tenant = await criarTenant(b.admin, 'am0031', ['cadastros']);
     await inserirAdministradorDeTeste(b.admin, tenant, { id: usuario, email: 'adm@loja-senha.teste', nome: 'Administradora', filialIds: [] });
     ({ app } = await appPgDeTeste({ b }));
   });
@@ -40,7 +40,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052: senha provisória do usuário do tenant
   });
 
   const entrar = async (senha = SENHA_DE_TESTE) => {
-    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'loja-senha', email: 'adm@loja-senha.teste', senha } });
+    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'am0031', email: 'adm@loja-senha.teste', senha } });
     expect(r.statusCode).toBe(200);
     return { token: r.json<{ token_acesso: string }>().token_acesso, refresh: r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value };
   };
@@ -58,7 +58,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052: senha provisória do usuário do tenant
     expect(eu.json().usuario).toEqual({ id: usuario, nome: 'Administradora', perfil: 'administrador', deve_trocar_senha: true });
     const modulo = await app.inject({ url: '/v1/core/empresa', headers: bearer(s.token) });
     expect(modulo.statusCode).toBe(403);
-    expect(modulo.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA });
+    expect(modulo.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA, motivo: 'provisoria' });
   });
 
   it('troca certa: 204, flag zerada, a outra sessão revogada e a corrente segue (refresh sem a flag); auditoria só com ids', async () => {
@@ -79,7 +79,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052: senha provisória do usuário do tenant
 
     // a senha nova vale no login; a antiga não
     await entrar(SENHA_NOVA);
-    const antiga = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'loja-senha', email: 'adm@loja-senha.teste', senha: SENHA_DE_TESTE } });
+    const antiga = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'am0031', email: 'adm@loja-senha.teste', senha: SENHA_DE_TESTE } });
     expect(antiga.statusCode).toBe(401);
 
     const { rows } = await b.admin.query<{ usuario_id: string; entidade: string; entidade_id: string; antes: unknown; depois: unknown }>(

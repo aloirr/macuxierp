@@ -2,7 +2,7 @@
 import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { erroDaPlataforma } from './erros';
-import { LimitePorIp } from './limite-ip';
+import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci } from './limite-ip';
 
 const pg = (code: string, message = 'empresa "Fulano de Tal" não encontrada') => Object.assign(new Error(message), { code });
 
@@ -117,20 +117,62 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
   });
 });
 
-describe('LimitePorIp (ADR 0012 §6)', () => {
+describe('LimitePorChave do login por IP (ADR 0012 §6)', () => {
   it('10 tentativas por IP em 15 min; a 11ª é recusada; a janela vence; IPs são independentes', () => {
-    const l = new LimitePorIp(10, 15 * 60_000);
+    const l = new LimitePorChave(10, 15 * 60_000);
     const t0 = 1_000_000;
-    for (let i = 0; i < 10; i++) expect(l.contar('1.1.1.1', t0 + i)).toBe(true);
-    expect(l.contar('1.1.1.1', t0 + 11)).toBe(false);
-    expect(l.contar('2.2.2.2', t0 + 11)).toBe(true);
-    expect(l.contar('1.1.1.1', t0 + 15 * 60_000)).toBe(true);
+    for (let i = 0; i < 10; i++) expect(l.registrar('1.1.1.1', t0 + i).permitido).toBe(true);
+    expect(l.registrar('1.1.1.1', t0 + 11).permitido).toBe(false);
+    expect(l.registrar('2.2.2.2', t0 + 11).permitido).toBe(true);
+    expect(l.registrar('1.1.1.1', t0 + 15 * 60_000).permitido).toBe(true);
   });
 
   it('não cresce sem fim: a limpeza tira as janelas vencidas', () => {
-    const l = new LimitePorIp(10, 1000, 100);
-    for (let i = 0; i < 150; i++) l.contar(`ip-${i}`, 0);
-    l.contar('novo', 5000);
+    const l = new LimitePorChave(10, 1000, 100);
+    for (let i = 0; i < 150; i++) l.registrar(`ip-${i}`, 0);
+    l.registrar('novo', 5000);
     expect(l.tamanho).toBeLessThanOrEqual(51);
+  });
+});
+
+describe('LimitePorChave do pedido de senha temporária (T-0076)', () => {
+  const t0 = 5_000_000;
+
+  it('5 pedidos por IP a cada 15 min: o 6º é recusado com retry_after_s até a janela vencer', () => {
+    const l = novosLimitesEsqueci().ip;
+    for (let i = 0; i < 5; i++) expect(l.registrar('10.0.0.1', t0 + i * 1000).permitido).toBe(true);
+    expect(l.registrar('10.0.0.1', t0 + 60_000)).toEqual({ permitido: false, retry_after_s: 14 * 60 });
+    expect(l.registrar('10.0.0.1', t0 + 15 * 60_000 - 1500)).toEqual({ permitido: false, retry_after_s: 2 });
+    expect(l.registrar('10.0.0.2', t0 + 60_000).permitido).toBe(true);
+    expect(l.registrar('10.0.0.1', t0 + 15 * 60_000).permitido).toBe(true);
+  });
+
+  it('3 pedidos por empresa + e-mail por hora; o e-mail é normalizado (trim e minúsculas)', () => {
+    const l = novosLimitesEsqueci().conta;
+    const variantes = ['pessoa@exemplo.com', '  Pessoa@Exemplo.COM ', 'PESSOA@exemplo.com'];
+    for (const [i, e] of variantes.entries()) expect(l.registrar(chaveEmpresaEmail('thathyany', e), t0 + i).permitido).toBe(true);
+    expect(l.registrar(chaveEmpresaEmail('thathyany', 'pessoa@exemplo.com'), t0 + 10)).toEqual({ permitido: false, retry_after_s: 3600 });
+    // outra empresa, mesmo e-mail: outra chave
+    expect(l.registrar(chaveEmpresaEmail('outra', 'pessoa@exemplo.com'), t0 + 10).permitido).toBe(true);
+    expect(l.registrar(chaveEmpresaEmail('thathyany', 'pessoa@exemplo.com'), t0 + 60 * 60_000).permitido).toBe(true);
+  });
+
+  it('a chave é o SHA-256 (hex): o e-mail em claro nunca fica no Map', () => {
+    const l = new LimitePorChave(3, 60_000);
+    l.registrar(chaveEmpresaEmail(EMPRESA_PLATAFORMA, 'Pessoa@Exemplo.com'), t0);
+    const [chave] = l.chaves();
+    expect(chave).toMatch(/^[0-9a-f]{64}$/);
+    expect(l.chaves().join()).not.toMatch(/exemplo|pessoa|@/i);
+    expect(chaveEmpresaEmail(EMPRESA_PLATAFORMA, ' pessoa@exemplo.com')).toBe(chave);
+  });
+
+  it('excedido consulta sem contar (o login da tela única conta só as falhas)', () => {
+    const l = new LimitePorChave(2, 60_000);
+    expect(l.excedido('1.1.1.1', t0)).toEqual({ permitido: true, retry_after_s: 0 });
+    l.registrar('1.1.1.1', t0);
+    expect(l.excedido('1.1.1.1', t0 + 1000).permitido).toBe(true);
+    l.registrar('1.1.1.1', t0 + 1000);
+    expect(l.excedido('1.1.1.1', t0 + 2000)).toEqual({ permitido: false, retry_after_s: 58 });
+    expect(l.excedido('1.1.1.1', t0 + 60_000).permitido).toBe(true);
   });
 });

@@ -149,9 +149,9 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     expect((await app.inject({ method: 'GET', url: '/v1/plataforma/empresas' })).statusCode).toBe(401);
     expect((await pedir('A'.repeat(43), 'GET', '/v1/plataforma/empresas')).statusCode).toBe(401);
     expect((await pedir('curto', 'GET', '/v1/plataforma/auth/eu')).statusCode).toBe(401);
-    const t = await criarTenant(b.admin, 'portal-jwt', ['core']);
+    const t = await criarTenant(b.admin, 'am0021', ['core']);
     await inserirAdministradorDeTeste(b.admin, t, { id: randomUUID(), email: 'adm@exemplo.invalid', nome: 'Pessoa Fictícia', filialIds: [] });
-    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'portal-jwt', email: 'adm@exemplo.invalid', senha: SENHA_DE_TESTE } });
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'am0021', email: 'adm@exemplo.invalid', senha: SENHA_DE_TESTE } });
     expect(login.statusCode).toBe(200);
     const jwt = login.json<{ token_acesso: string }>().token_acesso;
     const r = await app.inject({ method: 'GET', url: '/v1/plataforma/empresas', headers: { authorization: `Bearer ${jwt}` } });
@@ -280,13 +280,13 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
   it('regressão das rotas de tenant: saúde, login e /v1/<modulo> seguem iguais', async () => {
     expect((await app.inject({ method: 'GET', url: '/v1/saude' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/v1/core/usuarios' })).statusCode).toBe(401);
-    const t = await criarTenant(b.admin, 'portal-regressao', ['core']);
+    const t = await criarTenant(b.admin, 'am0022', ['core']);
     await inserirAdministradorDeTeste(b.admin, t, { id: randomUUID(), email: 'reg@exemplo.invalid', nome: 'Pessoa Fictícia', filialIds: [] });
-    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'portal-regressao', email: 'reg@exemplo.invalid', senha: SENHA_DE_TESTE } });
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'am0022', email: 'reg@exemplo.invalid', senha: SENHA_DE_TESTE } });
     expect(login.statusCode).toBe(200);
     const eu = await app.inject({ method: 'GET', url: '/v1/auth/eu', headers: { authorization: `Bearer ${login.json<{ token_acesso: string }>().token_acesso}` } });
     expect(eu.statusCode).toBe(200);
-    expect(eu.json()).toMatchObject({ empresa: { slug: 'portal-regressao' } });
+    expect(eu.json()).toMatchObject({ empresa: { slug: 'am0022' } });
   });
 
   it('logs sem e-mail, senha, token nem nome de empresa (regra 8)', () => {
