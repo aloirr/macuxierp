@@ -3,6 +3,7 @@
  * Mudança incompatível = nova versão do contrato (@2) + ADR + recado aos consumidores.
  */
 import { z } from 'zod';
+import { EXTERNAL_ID_MAX } from '@macuxierp/platform-sdk/hub-v1';
 import type { EntidadeHub } from './hub';
 
 export const MODULO = 'integracao-fdv' as const;
@@ -20,8 +21,8 @@ export * from './monitor';
  * `passthrough`: campo novo do Hub não derruba o pedido. Item fora do contrato = `rejeitado` com `pedido_fora_do_contrato`.
  */
 const UuidLido = z.string().uuid();
-/** Chave do Hub (`external_id`, 1 a 200 caracteres, comparada por bytes): a do kit (ex.: `C000123`) ou o UUID do ERP (ADR 0010). */
-const ChaveHubLida = z.string().min(1).max(200);
+/** Chave do Hub (`external_id`, 1 a `EXTERNAL_ID_MAX` caracteres, comparada por bytes): a do kit (ex.: `C000123`) ou o UUID do ERP (ADR 0010). */
+const ChaveHubLida = z.string().min(1).max(EXTERNAL_ID_MAX);
 const DecimalLido = z.union([z.number(), z.string().regex(/^-?\d+(\.\d+)?$/)]);
 const CentavosLido = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const ItemPedidoParaErpLido = z

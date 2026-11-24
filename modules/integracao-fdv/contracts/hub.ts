@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { CampoErroFdv, CodigoErroFdv, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
-import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
+import { ExternalId, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 
 /** As 12 entidades do Hub que o ERP alimenta, na ordem de carga (RN-INF-02): as 10 da F2 vêm do SDK (ADR 0013), título e nota são da F4. */
 export const ENTIDADES_HUB = [...ENTIDADES_ENVIO_FDV, 'titulo', 'nota'] as const;
@@ -42,8 +42,7 @@ export type SituacaoEntidade = z.infer<typeof SituacaoEntidade>;
 /** A-04 (RN-CORE-19 do FDV): sigla de medida = 1 a 4 letras maiúsculas (`SIGLA_MEDIDA_FORMATO`); o Hub ainda confere se ela existe nas medidas do tenant. */
 const SiglaMedida = z.string().regex(/^[A-Z]{1,4}$/);
 const Texto = (max: number) => z.string().min(1).max(max);
-const ExternalId = z.string().min(1).max(EXTERNAL_ID_MAX);
-/** Limites do prazo no Hub (v1 e v2): até 24 parcelas e 365 dias, tanto nas parcelas quanto no prazo médio. */
+/** Limites do prazo no Hub (v1 e v2): até `MAX_PARCELAS_HUB` parcelas e `MAX_DIAS_HUB` dias, tanto nas parcelas quanto no prazo médio. */
 const MAX_DIAS_HUB = 365;
 const MAX_PARCELAS_HUB = 24;
 const PrazoMedioDiasHub = z.number().int().min(0).max(MAX_DIAS_HUB);
@@ -93,7 +92,7 @@ export type PrazoPagamentoHub = z.infer<typeof PrazoPagamentoHub>;
 
 /**
  * Prazo no contrato v2 do Hub (ADR 0072 do FDV): obrigatórios `external_id`, `alterado_em`, `codigo` (1 a 20), `forma_external_id`,
- * `descricao` (1 a 60), `parcelas_dias` (1 a 24 inteiros de 0 a 365, sem decrescer; à vista `[0]`) e `prazo_medio_dias` (0 a 365,
+ * `descricao` (1 a 60), `parcelas_dias` (1 a `MAX_PARCELAS_HUB` inteiros de 0 a `MAX_DIAS_HUB`, sem decrescer; à vista `[0]`) e `prazo_medio_dias` (0 a `MAX_DIAS_HUB`,
  * entre a menor e a maior parcela); opcionais `ativo`, `ordem` e `percentual_ajuste`. `alterado_em` entra na montagem do lote.
  */
 export const PrazoPagamentoHubV2 = z
