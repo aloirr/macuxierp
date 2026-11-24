@@ -24,6 +24,7 @@ function montar() {
   const m = dependenciasEmMemoria();
   m.repos.oficiais.ncms.add('21069030');
   m.repos.oficiais.municipiosPorUf.set('AM', [{ ibge: '1302603', nome: 'Manaus' }]);
+  m.repos.oficiais.municipiosPorUf.set('SP', [{ ibge: '3550308', nome: 'São Paulo' }]);
   const passos: string[] = [];
   const sqls: { sql: string; p: readonly unknown[] }[] = [];
   const eventos: string[] = [];
@@ -76,7 +77,7 @@ describe('rotas da carga no /config (por etapa)', () => {
     expect(r.corpo).toEqual({ cadastro: 'filial', modo: 'adicionar', gravadas: 1, com_erro: 0 });
     expect(t.passos).toEqual(['plataforma', `tenant:${TENANT}`, 'plataforma']);
     expect(t.sqls[0]!.p).toEqual([TENANT, 'filial', 'adicionar', 'req-1']);
-    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'concluida', 1, 0, null, 'req-1']);
+    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'concluida', 1, 0, null, 'req-1', null]);
     expect(t.eventos).toContain('cadastros.filial.alterada@1');
   });
 
@@ -85,14 +86,27 @@ describe('rotas da carga no /config (por etapa)', () => {
     const e = await falha(t.chamar(CAMINHOS_CARGAS_PLATAFORMA.gravar, 'filial', { arquivo: Buffer.from('coluna_errada\nx\n') }));
     expect(e).toMatchObject({ status: 409, detalhes: { codigo: 'nada_a_gravar' } });
     expect(t.passos).toEqual(['plataforma', `tenant:${TENANT}`, 'plataforma']);
-    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'falhou', 0, 0, null, 'req-1']);
+    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'falhou', 0, 0, null, 'req-1', null]);
   });
 
   it('RN-CAD-10: substituir_tudo concluído leva as inativadas ao concluir', async () => {
     const t = montar();
     const r = await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.gravar, 'filial', { modo: 'substituir_tudo', frase: FRASE, arquivo: csv('filial') });
     expect(r.corpo).toMatchObject({ modo: 'substituir_tudo', inativadas: 0 });
-    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'concluida', 1, 0, 0, 'req-1']);
+    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'concluida', 1, 0, 0, 'req-1', null]);
+  });
+
+  it('RN-CAD-10: a auditoria do gravar é a do concluir: o cliente leva o 8º argumento com os endereços inativados e os outros cadastros, null', async () => {
+    const t = montar();
+    for (const dep of ['filial', 'vendedor', 'condicoes_pagamento', 'produto', 'preco', 'cliente'] as const) {
+      await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.gravar, dep === 'condicoes_pagamento' ? 'condicao_pagamento' : dep, { arquivo: csv(dep) });
+    }
+    t.sqls.length = 0;
+    const so1 = Buffer.from(csv('cliente').toString().split('\n').slice(0, 2).join('\n')); // só a linha principal do C-EX-01
+    await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.gravar, 'cliente', { modo: 'substituir_tudo', frase: FRASE, arquivo: so1 });
+    expect(concluirDe(t)[0]!.p).toEqual([TENANT, EXEC, 'concluida', 1, 0, 1, 'req-1', 2]);
+    await t.chamar(CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', { modo: 'substituir_tudo', frase: FRASE, arquivo: csv('produto') });
+    expect(concluirDe(t)[1]!.p.at(-1)).toBeNull();
   });
 
   it('RN-CAD-10: estoque com substituir_tudo é 400 VALIDACAO no campo modo, sem abrir execução (gravar e validar)', async () => {
