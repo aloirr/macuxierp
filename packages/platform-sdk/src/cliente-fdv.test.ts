@@ -48,6 +48,14 @@ describe('pendentes (v1.0.28 e aditivos da ADR 0069 do FDV)', () => {
     expect(ClienteParaErpFdv.safeParse({ ...v1028, codigo_fdv: '12' }).success).toBe(false);
     expect(ClientesPendentesFdv.safeParse({ clientes: Array(101).fill(v1028) }).success).toBe(false);
   });
+
+  it('vendedor_external_id (FDV v1.0.34) é opcional: presente, nulo e ausente passam; acima de 200 cai', () => {
+    expect(ClienteParaErpFdv.parse({ ...v1028, vendedor_external_id: 'V-001' }).vendedor_external_id).toBe('V-001');
+    expect(ClienteParaErpFdv.parse({ ...v1028, vendedor_external_id: null }).vendedor_external_id).toBeNull();
+    expect(ClienteParaErpFdv.parse(v1028).vendedor_external_id).toBeUndefined();
+    expect(ClienteParaErpFdv.safeParse({ ...v1028, vendedor_external_id: 'x'.repeat(200) }).success).toBe(true);
+    expect(ClienteParaErpFdv.safeParse({ ...v1028, vendedor_external_id: 'x'.repeat(201) }).success).toBe(false);
+  });
 });
 
 describe('opção MACUXIERP_FDV_CLIENTE_REVISAO', () => {

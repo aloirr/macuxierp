@@ -16,7 +16,7 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarEnderecoPrincipal, validarFilial, validarFiscalProduto, validarIndIeDest, validarLotePreco, validarMunicipio, validarVigenciaTabela,
+  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
@@ -26,6 +26,7 @@ import { agregadoEstoque } from './uuid';
 import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
+import { validarCliente, verificarMunicipioEndereco } from './validar-cliente';
 import { dataIso, erroDeViolacoes, exigir, idDe, violacaoExternalId } from './util';
 
 type Dict = Record<string, unknown>;
@@ -267,11 +268,6 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
   ];
 }
 
-const verificarMunicipioEndereco = (e: { municipio_ibge: string; uf: string }, campo: string): Violacao[] => {
-  const m = validarMunicipio(e.municipio_ibge, e.uf);
-  return m.ok ? [] : [{ ...m.violacao, campo }];
-};
-
 export function criarRotas(deps: Dependencias): RotaModulo[] {
   const R = (c: ContextoRota) => deps.repositorios(c.tx);
   const rotas: RotaModulo[] = [];
@@ -309,28 +305,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
       return esc.todos ? {} : { vendedor_ids: esc.vendedor_ids };
     },
     visivel: clienteVisivel,
-    async validar(r, cli, parcial) {
-      const v: Violacao[] = [];
-      const doc = validarDocumentoCliente(cli.tipo_pessoa as 'PJ' | 'PF', cli.documento as string);
-      if (!doc.ok) v.push(doc.violacao);
-      const novos = (cli.enderecos as EnderecoCliente[] | undefined) ?? [];
-      if (parcial === null) {
-        const principal1 = validarEnderecoPrincipal(novos);
-        if (!principal1.ok) v.push(principal1.violacao);
-        novos.forEach((x, i) => v.push(...verificarMunicipioEndereco(x, `enderecos.${i}`)));
-      }
-      const gravados = typeof cli.id === 'string' ? await r.clientes.enderecos.listar(cli.id) : [];
-      const principal = [...novos, ...gravados].find((x) => x.tipo === 'principal');
-      const ie = validarIndIeDest({ ind_ie_dest: cli.ind_ie_dest as '1' | '2' | '9', ie: (cli.ie as string | null) ?? null, uf: principal?.uf ?? '' });
-      if (!ie.ok) v.push(ie.violacao);
-      const refs: [string, string | null, { obter(id: string): Promise<unknown> }][] = [
-        ['filial_id', cli.filial_id as string, r.filiais], ['vendedor_id', (cli.vendedor_id as string | null) ?? null, r.vendedores],
-        ['condicao_pagamento_id', (cli.condicao_pagamento_id as string | null) ?? null, r.condicoesPagamento],
-        ['tabela_preco_id', (cli.tabela_preco_id as string | null) ?? null, r.tabelasPreco],
-      ];
-      for (const [campo, id, repo] of refs) if (id !== null && !(await repo.obter(id))) v.push(violacao('REF', campo, 'Cadastro inexistente'));
-      return v;
-    },
+    validar: (r, cli, parcial) => validarCliente(r, cli, parcial),
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/clientes/:id/enderecos', editar: 'cadastros.cliente.editar', dados: EnderecoCliente, atualizacao: EnderecoCliente.partial(),

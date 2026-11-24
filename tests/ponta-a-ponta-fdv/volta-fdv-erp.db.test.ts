@@ -138,7 +138,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
       return (r.json() as { id: string }).id;
     };
     const filial = await post('/v1/cadastros/filiais', filialValida());
-    await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], external_id: KIT.prazo });
+    await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45, external_id: KIT.prazo });
     await post('/v1/cadastros/vendedores', { codigo: 'V1', nome: 'Vendedor Um', filial_id: filial, external_id: KIT.vendedor });
     const clienteKit = await post('/v1/cadastros/clientes', clienteValido(filial, { external_id: KIT.cliente, enderecos: [{ ...ENDERECO_AM, tipo: 'principal' }, ENTREGA_ERP] }));
     const pf = { tipo_pessoa: 'PF', ie: null, ind_ie_dest: '9' };

@@ -180,6 +180,8 @@ describe('clientes (RF-CAD-01)', () => {
     expect(ok.status).toBe(201);
     expect((await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: faturista, corpo: { limite_credito_centavos: 5 } })).status).toBe(403);
     expect((await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: faturista, corpo: { nome_fantasia: 'Novo' } })).status).toBe(200);
+    // PATCH do faturista sem a chave mantém o limite gravado pelo gerente.
+    expect((await t.chamar('GET', `/clientes/${ok.corpo.id}`, { sessao: gerente })).corpo.limite_credito_centavos).toBe(100_000);
     expect((await t.chamar('PATCH', `/clientes/${ok.corpo.id}`, { sessao: gerente, corpo: { limite_credito_centavos: 5 } })).corpo.limite_credito_centavos).toBe(5);
   });
   it('limite de crédito (A): a troca do limite é auditada, com só o campo; outra alteração do cliente não', async () => {

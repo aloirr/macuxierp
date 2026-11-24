@@ -20,7 +20,7 @@ export const Cep = z.string().regex(/^\d{8}$/);
 /** Quantidade × 10^4 (D11). */
 export const Qtd4 = z.number().int();
 export const Centavos = z.number().int().min(0);
-const Ean = z.string().regex(/^(\d{8}|\d{12,14}|SEM GTIN)$/);
+export const Ean = z.string().regex(/^(\d{8}|\d{12,14}|SEM GTIN)$/);
 const Texto = (max: number) => z.string().trim().min(1).max(max);
 /** RD-0029: `external_id` com 1 a 64 caracteres (o `CHECK` do banco); a carga e o estoque usam o valor obrigatório. */
 export const IdExternoValor = z.string().trim().min(1).max(64);
