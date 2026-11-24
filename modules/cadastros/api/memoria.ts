@@ -140,6 +140,11 @@ export function repositoriosEmMemoria() {
   const clientesRepo = Object.assign(baseCliente, {
     enderecos,
     contatos,
+    async principalParaNota(clienteId: string) {
+      const p = enderecos.linhas.filter((e) => e.pai === clienteId && e.tipo === 'principal');
+      const e = p.find((x) => !x.inativo) ?? p[p.length - 1];
+      return e ? (structuredClone(e) as never) : null;
+    },
     async idsDaCarteira(vendedorId: string) {
       return baseCliente.linhas.filter((l) => l.vendedor_id === vendedorId && !l.inativo).map((l) => l.id);
     },

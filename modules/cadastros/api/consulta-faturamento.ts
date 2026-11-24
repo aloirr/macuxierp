@@ -72,8 +72,7 @@ export function criarConsultaParaFaturamento(repositorios: (tx: Transacao) => Re
       const r = repositorios(tx);
       const c = await r.clientes.obter(id);
       if (!c) return null;
-      const enderecos = (c.enderecos ?? []) as EnderecoClienteItem[];
-      const principal = enderecos.find((e) => e.tipo === 'principal') ?? enderecos[0];
+      const principal = await r.clientes.principalParaNota(id);
       if (!principal) return null;
       return {
         id: c.id, documento: c.documento, nome: c.razao_social, ind_ie_dest: IND_IE_DEST[c.ind_ie_dest], ie: c.ie,
