@@ -8,6 +8,7 @@ export * from './linhas';
 export * from './lote';
 export * from './mapeamento';
 export * from './mensagens';
+export * from './parcelas';
 export * from './recomposicao';
 export * from './resposta';
 export * from './status';

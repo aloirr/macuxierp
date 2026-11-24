@@ -69,8 +69,8 @@ export type FormaPagamentoHub = z.infer<typeof FormaPagamentoHub>;
 export const PrazoPagamentoHub = Base.extend({
   forma_external_id: ExternalId,
   codigo: Texto(20),
-  /** `"28/56"`; à vista = `"0"`. */
-  parcelas_dias: z.string().regex(/^\d{1,3}(\/\d{1,3})*$/),
+  /** Lista de inteiros, ex.: `[28, 56]`; à vista = `[0]` (T-0085). */
+  parcelas_dias: z.array(z.number().int().min(0).max(999)).min(1),
   descricao: Texto(60).optional(),
 });
 export type PrazoPagamentoHub = z.infer<typeof PrazoPagamentoHub>;
