@@ -8,9 +8,9 @@
  * Por que no SDK: o `integracao-fdv` (Hub e rota do BKO), o `cadastros` (porta que valida e cria o cliente e devolve os
  * erros por campo) e a apps/web (seção "Clientes recebidos do FDV") usam os mesmos Zod; o SDK não importa módulo.
  *
- * Versões do FDV: a v1.0.28 entrega o básico. Os aditivos da ADR 0069 do FDV (`revisao`, `hash`, `codigo_fdv` e
- * `tentativa` no pendente; `revisao` e `erros` por campo no retorno; reenvio na mesma linha) são OPCIONAIS aqui: o ERP lê
- * os dois formatos e só manda `revisao` e `erros` com a opção ligada (`montarRetornoClienteFdv`). Regra 3: tipos só de Zod.
+ * Contrato de produção: FDV v1.0.32 (tag), com a ADR 0069 do FDV desde a v1.0.30: reenvio na mesma linha com `revisao`
+ * e `hash` novos, `erros` por campo na recusa e `codigo_fdv`. O ERP manda sempre a `revisao` que recebeu. Os campos da
+ * ADR 0069 seguem opcionais na LEITURA (tolerância a pendente antigo, sem `revisao` = revisão 1). Regra 3: tipos só de Zod.
  */
 import { z } from 'zod';
 import { cnpjRaiz, normalizarDocumento } from './documentos';
@@ -26,15 +26,9 @@ const TextoLido = z.string().max(200).nullish();
 export const LIMITE_CLIENTES_PENDENTES_FDV = Object.freeze({ padrao: 50, max: 100 });
 
 /**
- * Variável do worker que liga os aditivos da ADR 0069 do FDV no retorno (`revisao` e `erros`). Valores `ligado` e
- * `desligado` (padrão `desligado`, para funcionar já com a v1.0.28). A busca e o retorno continuam sob o
- * `MACUXIERP_FDV_RECEBIMENTO` dos pedidos (mesma credencial, permissão "Recebe pedidos").
- */
-export const OPCAO_ADITIVOS_CLIENTE_FDV = 'MACUXIERP_FDV_CLIENTE_REVISAO';
-
-/**
  * Cópia tolerante do `ClienteParaErp` do Hub (`passthrough`: campo novo não derruba a leitura). Os campos da ADR 0069
- * (`codigo_fdv`, `revisao`, `hash`, `tentativa`) são opcionais: a v1.0.28 não os manda. Sem revisão = revisão 1.
+ * (`codigo_fdv`, `revisao`, `hash`, `tentativa`) são opcionais na leitura: o `hash` é nulo nos pré-cadastros de antes da
+ * v1.0.30 do FDV. Sem revisão = revisão 1.
  */
 export const ClienteParaErpFdv = z
   .object({
@@ -68,7 +62,7 @@ export type ClienteParaErpFdv = z.infer<typeof ClienteParaErpFdv>;
 export const ClientesPendentesFdv = z.object({ clientes: z.array(ClienteParaErpFdv).max(LIMITE_CLIENTES_PENDENTES_FDV.max) }).passthrough();
 export type ClientesPendentesFdv = z.infer<typeof ClientesPendentesFdv>;
 
-/** Revisão efetiva do pré-cadastro: a do Hub ou 1 (v1.0.28). */
+/** Revisão efetiva do pré-cadastro: a do Hub ou 1 (pendente sem revisão). */
 export const revisaoDoPreCadastro = (c: Pick<ClienteParaErpFdv, 'revisao'>): number => c.revisao ?? 1;
 
 /** Limites do erro por campo (os do FDV: `ERROS_RECUSA_MAX` e `ERRO_CAMPO_LIMITES` do core do FDV). */
@@ -118,23 +112,22 @@ export type DecisaoPreCadastroFdv =
   | { status: 'rejeitado_erp'; motivo: string; erros: readonly ErroCampoClienteFdv[] };
 
 /**
- * Corpo do retorno (pura). Com `aditivos` desligado (FDV v1.0.28), sai sem `revisao` nem `erros`; ligado, `revisao` só
- * quando o pendente a trouxe, e `erros` só quando há algum. O mesmo pré-cadastro com a mesma decisão gera o mesmo corpo
+ * Corpo do retorno (pura): leva a `revisao` que o pendente trouxe e, na recusa, os `erros` por campo quando há algum. O mesmo pré-cadastro com a mesma decisão gera o mesmo corpo
  * (o hash do corpo, sem `ocorrido_em`, é a chave de idempotência do retorno no ERP).
  */
 export function montarRetornoClienteFdv(
   pendente: Pick<ClienteParaErpFdv, 'cliente_uuid' | 'revisao'>,
   decisao: DecisaoPreCadastroFdv,
-  opcoes: { aditivos: boolean; ocorrido_em: string },
+  opcoes: { ocorrido_em: string },
 ): RetornoClienteFdv {
   const base = { versao_contrato: 'v1' as const, cliente_uuid: pendente.cliente_uuid, ocorrido_em: opcoes.ocorrido_em };
-  const revisao = opcoes.aditivos && pendente.revisao !== undefined ? { revisao: pendente.revisao } : {};
+  const revisao = pendente.revisao !== undefined ? { revisao: pendente.revisao } : {};
   if (decisao.status === 'vinculado') return RetornoClienteFdv.parse({ ...base, ...revisao, status: 'vinculado', external_id: decisao.external_id });
-  const erros = opcoes.aditivos && decisao.erros.length > 0 ? { erros: decisao.erros.slice(0, ERROS_RECUSA_CLIENTE_MAX_FDV) } : {};
+  const erros = decisao.erros.length > 0 ? { erros: decisao.erros.slice(0, ERROS_RECUSA_CLIENTE_MAX_FDV) } : {};
   return RetornoClienteFdv.parse({ ...base, ...revisao, ...erros, status: 'rejeitado_erp', motivo: decisao.motivo.slice(0, MAX_MOTIVO_RETORNO_CLIENTE_FDV) });
 }
 
-/** `200` do retorno, tolerante: a v1.0.28 pode não mandar `revisao`; `obsoleto` só em recusa de revisão anterior. */
+/** `200` do retorno (tolerante): `revisao` atual da linha; `obsoleto` só em recusa de revisão anterior. */
 export const RetornoClienteAceitoFdv = z
   .object({
     cliente_uuid: Uuid,

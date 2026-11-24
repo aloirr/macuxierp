@@ -16,8 +16,8 @@ import * as sdk from './index';
 const UUID = '33333333-3333-4333-8333-333333333333';
 const AGORA = '2026-11-24T22:30:00.000Z';
 
-/** Pendente como a v1.0.28 manda (sem os aditivos da ADR 0069 do FDV). */
-const v1028 = {
+/** Pendente antigo, sem os campos da ADR 0069 do FDV (entrou antes da v1.0.30). */
+const antigo = {
   cliente_uuid: UUID,
   recebido_em: '2026-11-24T18:00:00.000-04:00',
   razao_social: 'Mercado Exemplo',
@@ -38,14 +38,14 @@ const v1028 = {
   filial_external_id: null,
 };
 
-describe('pendentes (v1.0.28 e aditivos da ADR 0069 do FDV)', () => {
-  it('lê a v1.0.28 (revisão 1) e a nova, e tolera campo novo', () => {
-    expect(revisaoDoPreCadastro(ClienteParaErpFdv.parse(v1028))).toBe(1);
-    const novo = ClienteParaErpFdv.parse({ ...v1028, revisao: 2, hash: 'a'.repeat(64), codigo_fdv: '00123', tentativa: 1, campo_futuro: 'x' });
+describe('pendentes (v1.0.32 do FDV e pendente antigo)', () => {
+  it('lê o antigo (revisão 1) e o da v1.0.32, e tolera campo novo', () => {
+    expect(revisaoDoPreCadastro(ClienteParaErpFdv.parse(antigo))).toBe(1);
+    const novo = ClienteParaErpFdv.parse({ ...antigo, revisao: 2, hash: 'a'.repeat(64), codigo_fdv: '00123', tentativa: 1, campo_futuro: 'x' });
     expect(revisaoDoPreCadastro(novo)).toBe(2);
-    expect(ClientesPendentesFdv.parse({ clientes: [v1028] }).clientes).toHaveLength(1);
-    expect(ClienteParaErpFdv.safeParse({ ...v1028, codigo_fdv: '12' }).success).toBe(false);
-    expect(ClientesPendentesFdv.safeParse({ clientes: Array(101).fill(v1028) }).success).toBe(false);
+    expect(ClientesPendentesFdv.parse({ clientes: [antigo] }).clientes).toHaveLength(1);
+    expect(ClienteParaErpFdv.safeParse({ ...antigo, codigo_fdv: '12' }).success).toBe(false);
+    expect(ClientesPendentesFdv.safeParse({ clientes: Array(101).fill(antigo) }).success).toBe(false);
   });
 });
 
@@ -53,23 +53,18 @@ describe('montarRetornoClienteFdv', () => {
   const erros = [{ campo: 'documento', codigo: 'documento_invalido', mensagem: 'CNPJ com dígito verificador inválido' }];
   const recusa = { status: 'rejeitado_erp', motivo: 'Documento inválido', erros } as const;
 
-  it('aditivos desligados (v1.0.28): sem revisão nem erros', () => {
-    const r = montarRetornoClienteFdv({ cliente_uuid: UUID, revisao: 3 }, recusa, { aditivos: false, ocorrido_em: AGORA });
-    expect(r).toEqual({ versao_contrato: 'v1', cliente_uuid: UUID, status: 'rejeitado_erp', motivo: 'Documento inválido', ocorrido_em: AGORA });
-  });
-
-  it('aditivos ligados: revisão só se o pendente a trouxe; erros só se houver', () => {
-    expect(montarRetornoClienteFdv({ cliente_uuid: UUID, revisao: 3 }, recusa, { aditivos: true, ocorrido_em: AGORA })).toMatchObject({ revisao: 3, erros });
-    const semRevisao = montarRetornoClienteFdv({ cliente_uuid: UUID }, { ...recusa, erros: [] }, { aditivos: true, ocorrido_em: AGORA });
+  it('leva a revisão que o pendente trouxe e os erros quando há algum', () => {
+    expect(montarRetornoClienteFdv({ cliente_uuid: UUID, revisao: 3 }, recusa, { ocorrido_em: AGORA })).toMatchObject({ revisao: 3, erros });
+    const semRevisao = montarRetornoClienteFdv({ cliente_uuid: UUID }, { ...recusa, erros: [] }, { ocorrido_em: AGORA });
     expect(semRevisao).not.toHaveProperty('revisao');
     expect(semRevisao).not.toHaveProperty('erros');
   });
 
   it('vinculado leva o código e nunca motivo; corta motivo e erros nos limites', () => {
-    expect(montarRetornoClienteFdv({ cliente_uuid: UUID }, { status: 'vinculado', external_id: 'C000123' }, { aditivos: true, ocorrido_em: AGORA })).toEqual({
+    expect(montarRetornoClienteFdv({ cliente_uuid: UUID }, { status: 'vinculado', external_id: 'C000123' }, { ocorrido_em: AGORA })).toEqual({
       versao_contrato: 'v1', cliente_uuid: UUID, status: 'vinculado', external_id: 'C000123', ocorrido_em: AGORA,
     });
-    const longo = montarRetornoClienteFdv({ cliente_uuid: UUID }, { ...recusa, motivo: 'x'.repeat(500), erros: Array(60).fill(erros[0]) }, { aditivos: true, ocorrido_em: AGORA });
+    const longo = montarRetornoClienteFdv({ cliente_uuid: UUID }, { ...recusa, motivo: 'x'.repeat(500), erros: Array(60).fill(erros[0]) }, { ocorrido_em: AGORA });
     expect(longo.motivo).toHaveLength(300);
     expect(longo.erros).toHaveLength(ERROS_RECUSA_CLIENTE_MAX_FDV);
   });
@@ -82,7 +77,7 @@ describe('montarRetornoClienteFdv', () => {
     expect(RetornoClienteFdv.safeParse({ ...base, status: 'rejeitado_erp', motivo: 'x', external_id: 'C1' }).success).toBe(false);
   });
 
-  it('o 200 da v1.0.28 (sem revisão) e o obsoleto', () => {
+  it('o 200 sem revisão e o obsoleto', () => {
     expect(RetornoClienteAceitoFdv.safeParse({ cliente_uuid: UUID, estado: 'vinculado', repetido: false }).success).toBe(true);
     expect(RetornoClienteAceitoFdv.parse({ cliente_uuid: UUID, estado: 'rejeitado', repetido: false, revisao: 2, obsoleto: true }).obsoleto).toBe(true);
   });
