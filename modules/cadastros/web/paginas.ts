@@ -130,3 +130,14 @@ function colunasCsv(p: PaginaCadastros, visiveis: readonly string[]): ColunaCsv<
 export function csvDaPagina(p: PaginaCadastros, perfil: Perfil, linhas: readonly Record<string, unknown>[]): string {
   return paraCsv(colunasCsv(p, acoesDaPagina(perfil, p).colunasVisiveis), linhas);
 }
+
+/**
+ * Páginas de formulário e detalhe (T-0088), fora do menu: abrem pela lista e pelo botão "Novo". O shell soma estas às
+ * de `PAGINAS`. O `ver` esconde a página de quem não pode; quem protege a escrita é a API (RN-CORE-02).
+ */
+export const PAGINAS_EDICAO: readonly PaginaBase[] = [
+  { id: 'cliente-novo', menu: 'Clientes', titulo: 'Novo cliente', rota: '/cadastros/clientes/novo', ver: 'cadastros.cliente.editar', ocultaNoMenu: true },
+  { id: 'cliente', menu: 'Clientes', titulo: 'Cliente', rota: '/cadastros/clientes/:id', ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'produto-novo', menu: 'Produtos', titulo: 'Novo produto', rota: '/cadastros/produtos/novo', ver: 'cadastros.produto.editar', ocultaNoMenu: true },
+  { id: 'produto', menu: 'Produtos', titulo: 'Produto', rota: '/cadastros/produtos/:id', ver: 'cadastros.ver', ocultaNoMenu: true },
+];
