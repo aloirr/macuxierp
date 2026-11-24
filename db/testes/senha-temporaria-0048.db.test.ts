@@ -272,11 +272,11 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
         `SELECT count(*)::int AS n, max(pg_get_function_result(oid)) AS saida FROM pg_proc
        WHERE pronamespace = 'plataforma'::regnamespace AND proname = 'superadmin_para_login'`,
       );
-      expect(r).toEqual({
-        n: 1,
-        saida:
-          'TABLE(id uuid, senha_hash text, nome text, ativo boolean, falhas_login integer, bloqueado_ate timestamp with time zone, deve_trocar_senha boolean, senha_temporaria_hash text, senha_temporaria_expira_em timestamp with time zone)',
-      });
+      // As colunas da 0048 ficam no começo; a 0050 acrescenta o email no fim.
+      expect(r?.n).toBe(1);
+      expect(r?.saida).toMatch(
+        /^TABLE\(id uuid, senha_hash text, nome text, ativo boolean, falhas_login integer, bloqueado_ate timestamp with time zone, deve_trocar_senha boolean, senha_temporaria_hash text, senha_temporaria_expira_em timestamp with time zone[,)]/,
+      );
     });
 
     it('(i) superadmin_trocar_senha zera as duas colunas', () => {

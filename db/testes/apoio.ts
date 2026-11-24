@@ -223,6 +223,27 @@ export function recusaComDetalhe(
   expect({ sql, detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1] }).toEqual({ sql, detalhe });
 }
 
+/** Recusa conferida numa chamada só: o SQLSTATE na saída, o DETAIL exato (primeiro token) e a mensagem. */
+export function recusaCompleta(
+  conexao: Conexao,
+  sql: string,
+  esperado: { codigo: string; detalhe: string | undefined; mensagem: RegExp },
+  ctx?: Contexto,
+): void {
+  const e = falhaDetalhada(() => executar(conexao, verboso(sql), ctx));
+  expect({
+    sql,
+    codigo: e.saida.includes(esperado.codigo),
+    detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1],
+    mensagem: e.mensagem,
+  }).toEqual({
+    sql,
+    codigo: true,
+    detalhe: esperado.detalhe,
+    mensagem: expect.stringMatching(esperado.mensagem),
+  });
+}
+
 /** Linhas não vazias da saída do psql (valores de RETURNING e SELECT de uma coluna de texto). */
 export const linhas = (saida: string): string[] =>
   saida
