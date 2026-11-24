@@ -3,6 +3,7 @@
  * formatados para a tela (R$, quantidade, data no fuso do tenant, português). Funções puras sobre o contrato `Pedido`.
  */
 import { textoMotivo, textoMotivoSistema } from '../domain/motivos';
+import { TEXTO_PRAZO } from '../domain/validacao';
 import { MotivoCodigo, type CodigoPendencia, type HistoricoPedido, Pedido, PendenciaDetalhada } from '../contracts';
 import { formatarCentavos, formatarDataHora, formatarDocumento, formatarPontosBase, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { ROTULO_ORIGEM, ROTULO_STATUS } from './lista';
@@ -13,6 +14,8 @@ export const ROTULO_PENDENCIA: Readonly<Record<CodigoPendencia, string>> = {
   filial_nao_emissora: 'Filial não emissora de nota',
   condicao_ausente: 'Sem condição de pagamento',
   condicao_inativa: 'Condição de pagamento inativa',
+  prazo_incompleto: TEXTO_PRAZO.prazo_incompleto,
+  prazo_acima_do_cliente: TEXTO_PRAZO.prazo_acima_do_cliente,
   preco_sem_tabela: 'Produto sem preço na tabela',
   desconto_acima_maximo: 'Desconto acima do máximo',
   credito_sem_limite: 'Cliente sem limite de crédito',
@@ -36,6 +39,7 @@ function valorDaPendencia(codigo: CodigoPendencia, v: number | null): string {
   if (codigo === 'desconto_acima_maximo') return formatarPontosBase(v);
   if (codigo === 'credito_sem_limite' || codigo === 'credito_excedido') return formatarCentavos(v);
   if (codigo === 'estoque_insuficiente') return formatarQuantidade(v);
+  if (codigo === 'prazo_acima_do_cliente') return `${v} dias`;
   return String(v);
 }
 

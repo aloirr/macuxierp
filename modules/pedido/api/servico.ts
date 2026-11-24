@@ -14,7 +14,7 @@ import {
   type StatusPedido,
 } from '../contracts';
 import {
-  avaliarPedidoDetalhado, decidirAprovacao, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, travaCliente,
+  avaliarPedidoDetalhado, avaliarPrazo, decidirAprovacao, decidirPrazoRecebimentoFdv, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, TEXTO_PRAZO, travaCliente,
   validarTransicao, verificarItens, violacao, type Violacao,
 } from '../domain';
 import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, notasAplicadas, type CondicaoDoEvento, type EventoPronto } from './eventos';
@@ -96,6 +96,13 @@ export function criarServico(deps: Dependencias) {
     return v;
   };
 
+  /** RN-PED-07: 422 `RN-PED-07` no campo `condicao_pagamento_id` (pedido manual, lançamento e edição). */
+  const violacoesDePrazo = (condicao: Cadastros['condicao'], cliente: ClienteParaPedido): Violacao[] => {
+    const falha = avaliarPrazo(condicao, cliente);
+    if (falha === null) return [];
+    return [violacao('RN-PED-07', 'condicao_pagamento_id', TEXTO_PRAZO[falha])];
+  };
+
   const avaliar = async (
     tx: Transacao,
     repo: RepoPedidos,
@@ -113,7 +120,7 @@ export function criarServico(deps: Dependencias) {
       titulos.saldoAbertoCliente(tx, d.cliente_id),
     ]);
     const detalhadas = avaliarPedidoDetalhado({
-      cliente: { inativo: cad.cliente.inativo, limite_credito_centavos: cad.cliente.limite_credito_centavos },
+      cliente: { inativo: cad.cliente.inativo, limite_credito_centavos: cad.cliente.limite_credito_centavos, prazo_medio_dias: cad.cliente.prazo_medio_dias },
       filial: cad.filial,
       condicao_pagamento_id: d.condicao_pagamento_id,
       condicao: cad.condicao,
@@ -272,6 +279,8 @@ export function criarServico(deps: Dependencias) {
     exigir(violacoesDeReferencia(carregado, { condicao_pagamento_id: entrada.condicao_pagamento_id, itens }));
     const cad = carregado as Cadastros & { cliente: ClienteParaPedido; filial: NonNullable<Cadastros['filial']> };
     exigir(verificarItens(itens));
+    // RN-PED-07: o pedido manual não grava com prazo incompleto ou não permitido ao cliente (422, sem pendência de análise).
+    exigir(violacoesDePrazo(cad.condicao, cad.cliente));
     const entrega = enderecoDeEntrega(cad.cliente, entrada.endereco_entrega_id);
     exigir(entrega.v);
     return { itens, cad, entrega: entrega.entrega };
@@ -411,18 +420,18 @@ export function criarServico(deps: Dependencias) {
     const av = await reavaliar(tx, repo, p);
     if (!av) throw erros.validacao({ cliente_id: 'Cadastro do pedido não encontrado' });
     const pendencias = semValores(av.detalhadas);
-    const d = decidirAprovacao(pendencias, entrada.justificativa);
+    const d = decidirAprovacao(pendencias, entrada.justificativa, p.origem === 'fdv' ? 'fdv' : 'manual');
     if (!d.ok) {
       if (d.tipo === 'regra') throw erros.regra(d.rn, d.mensagem, undefined, { bloqueantes: d.bloqueantes.map((b) => b.codigo) });
       throw erros.validacao({ [d.campo]: d.mensagem });
     }
     await gravarPrecosDeTabela(repo, p, av.precos);
     await repo.atualizarAVista(id, foraDoCredito(av.condicao));
-    await repo.atualizarStatus(id, 'aprovado', pendencias, fx.agora);
+    await repo.atualizarStatus(id, 'aprovado', d.pendencias_gravar, fx.agora);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoAprovado(final, p.status, false, av.condicao));
     await repo.registrarAprovacao({ pedido_id: id, decisao: 'aprovado', automatica: false, decidido_por: fx.ator.id, perfil: fx.ator.perfil, pendencias_aceitas: d.pendencias_aceitas, justificativa: d.justificativa, motivo_codigo: null, motivo_texto: null, decidido_em: fx.agora });
-    await repo.registrarEvento({ pedido_id: id, de: p.status, para: 'aprovado', ...rotuloAtor(fx), motivo_codigo: null, motivo_texto: null, pendencias, evento_id: idEvento, ocorrido_em: fx.agora });
+    await repo.registrarEvento({ pedido_id: id, de: p.status, para: 'aprovado', ...rotuloAtor(fx), motivo_codigo: null, motivo_texto: null, pendencias: d.pendencias_gravar, evento_id: idEvento, ocorrido_em: fx.agora });
     await fx.auditar({ acao: 'pedido.aprovar', entidade: 'pedido', entidade_id: id, antes: { status: p.status }, depois: { status: 'aprovado', pendencias_aceitas: d.pendencias_aceitas.map((x) => x.codigo), com_justificativa: d.justificativa !== null } });
     log(fx, { pedido_id: id, acao: 'aprovar', status: 'aprovado', pendencias_aceitas: d.pendencias_aceitas.map((x) => x.codigo) }, 'pedido aprovado');
     return detalhar(tx, repo, final);
@@ -455,6 +464,7 @@ export function criarServico(deps: Dependencias) {
     const aplicadas = await notasAplicadas(repo, id, autorizadas);
     const pendentes = autorizadas.filter((n) => !aplicadas.has(n));
     if (pendentes.length > 0) throw erros.regra('RN-PED-02', 'O pedido tem nota autorizada ainda não registrada: aguarde alguns segundos e tente de novo', undefined, { notas_pendentes: pendentes });
+    // Mantém as pendências, também no pedido do FDV (0056: pedido_fdv_sem_pendencia aceita cancelado com pendência de prazo), para guardar o motivo como no recusado.
     await repo.atualizarStatus(id, 'cancelado', p.pendencias, null);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoCancelado(final, p.status, entrada.motivo_codigo, entrada.motivo_texto));
@@ -543,11 +553,13 @@ export function criarServico(deps: Dependencias) {
       throw erros.conflito('Não foi possível receber o pedido: tente de novo');
     }
     const criado = await obterOu404(repo, id);
-    await registrarCriacao(repo, fx, criado, { status: 'aprovado', pendencias: [], validado: false }, cad.condicao);
+    // RN-PED-07 (emenda de 24/11): prazo incompleto ou não permitido não recusa o recebimento; o pedido entra em análise com a pendência.
+    const decisaoCriacao = decidirPrazoRecebimentoFdv(cad.condicao, cliente);
+    await registrarCriacao(repo, fx, criado, { status: decisaoCriacao.status, pendencias: semValores(decisaoCriacao.pendencias), validado: false }, cad.condicao);
     const final = await obterOu404(repo, id);
     await fx.auditar({ acao: 'pedido.receber', entidade: 'pedido', entidade_id: id, antes: null, depois: resumo(final) });
-    log(fx, { pedido_id: id, acao: 'receber_fdv', status: 'aprovado' }, 'pedido do FDV recebido');
-    return { resultado: 'criado', pedido_id: id, numero, status: 'aprovado' };
+    log(fx, { pedido_id: id, acao: 'receber_fdv', status: decisaoCriacao.status, pendencias: decisaoCriacao.pendencias.map((x) => x.codigo) }, 'pedido do FDV recebido');
+    return { resultado: 'criado', pedido_id: id, numero, status: decisaoCriacao.status };
   }
 
   return { lancar, editar, revalidar, aprovar, recusar, cancelar, receberFdv, detalhar };
