@@ -111,6 +111,40 @@ INSERT INTO cadastros.estoque_movimento (tenant_id, filial_id, produto_id, tipo,
   VALUES ('${id}', '${t.filial}', '${t.produto}', 'entrada', 100000, 'carga inicial');
 INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte)
   VALUES ('${id}', 'cep', '69000000', '{}', 'viacep');
+${fixtureEntrada(t)}`;
+}
+
+/**
+ * Massa da entrada do cenário B (0045, T-0057): uma linha em cada tabela entrada_*. HMAC fictício (32 bytes sem
+ * segredo); o conector_id leva o slug (é único na plataforma). Só roda com a 0045 aplicada (os testes que migram até
+ * uma migração anterior usam a mesma fixtureModulos).
+ */
+export function fixtureEntrada(t: Tenant): string {
+  const id = t.id;
+  return `
+DO $fixture_entrada$ BEGIN IF to_regclass('cadastros.entrada_descida') IS NOT NULL THEN EXECUTE $q$
+WITH c AS (
+  INSERT INTO cadastros.entrada_credencial (tenant_id, tipo, conector_id, chave_hmac, chave_prefixo)
+  VALUES ('${id}', 'conector', 'conector-${t.slug}', decode(repeat('ab', 32), 'hex'), 'AbCd_-12') RETURNING id
+), l AS (
+  INSERT INTO cadastros.entrada_lote (tenant_id, credencial_id, entidade, modo, idempotency_key, hash_corpo, corpo,
+    registros)
+  SELECT '${id}', c.id, 'cliente', 'delta', 'massa-0045-${t.slug}', repeat('d', 64), '{"registros": []}', 0 FROM c
+  RETURNING id, credencial_id
+), e AS (
+  INSERT INTO cadastros.entrada_lote_erro (tenant_id, lote_id, indice, registro_external_id, campo, codigo)
+  SELECT '${id}', l.id, 0, 'CLI-1', 'documento', 'formato_invalido' FROM l RETURNING lote_id
+), k AS (
+  INSERT INTO cadastros.entrada_cursor (tenant_id, conector_id, entidade, cursor_alterado_em, cursor_external_id, lote_id)
+  SELECT '${id}', 'conector-${t.slug}', 'cliente', '2026-11-24T12:00:00Z', 'CLI-1', l.id FROM l RETURNING id
+)
+INSERT INTO cadastros.entrada_sinal (tenant_id, conector_id, credencial_id, versao, ip_prefixo)
+  SELECT '${id}', 'conector-${t.slug}', c.id, '1.5.0', '203.0.113.0/24' FROM c, e, k
+$q$;
+EXECUTE $q$ INSERT INTO cadastros.entrada_dono (tenant_id, entidade, dono) VALUES ('${id}', 'cliente', 'erp') $q$;
+EXECUTE $q$ INSERT INTO cadastros.entrada_descida (tenant_id, tipo, referencia, payload)
+  VALUES ('${id}', 'pedido', '${t.pedidoFdv}', '{"pedido_uuid": "${t.pedidoFdv}"}')
+$q$; END IF; END $fixture_entrada$;
 `;
 }
 
