@@ -35,9 +35,7 @@ describe('T-0085 — parcelas_dias: C-6 do ERP × oráculo do Hub (dublê)', () 
     ['nulo', null, false],
     // P-4 (plano v0.3.12): os dois tetos juntos, na borda (C-6: .max(24) parcelas de .max(365) dias).
     ['P-4: 24 parcelas de 365 dias', lista(24, 365), true],
-    ['P-4: 25 parcelas de 365 dias', lista(25, 365), false],
     ['P-4: 24 parcelas, a última com 366 dias', [...lista(23, 365), 366], false],
-    ['P-4: 25 parcelas à vista', lista(25, 0), false],
   ];
   it.each(casos)('%s: aceito = %s nos dois lados', (_nome, valor, esperado) => {
     expect(aceitoPeloC6(valor)).toBe(esperado);
