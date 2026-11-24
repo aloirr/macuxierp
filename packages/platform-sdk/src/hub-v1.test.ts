@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   CorpoLote,
+  EXTERNAL_ID_MAX,
+  ExternalId,
+  FormaPagamentoHub,
+  LIMITE_CODIGO_FORMA_PAGAMENTO,
   CorpoSinal,
   CursorEntidade,
   ENTIDADES_HUB,
@@ -174,5 +178,18 @@ describe('hub-v1: respostas no formato do FDV (Conector 1.5.0)', () => {
     expect(RespostaSinal.safeParse({}).success).toBe(true);
     expect(RespostaSinal.safeParse({ politica_versao: { ...politica, versao_minima: '1.4' } }).success).toBe(false);
     expect(RespostaSinal.safeParse({ politica_versao: { ...politica, pacote: { ...politica.pacote, sha256: 'A'.repeat(64) } } }).success).toBe(false);
+  });
+});
+
+describe('limites do Hub exportados (ADR 0019 §2)', () => {
+  it('external_id até 200 e código da forma até 30, usados no próprio contrato', () => {
+    expect(EXTERNAL_ID_MAX).toBe(200);
+    expect(LIMITE_CODIGO_FORMA_PAGAMENTO).toBe(30);
+    expect(ExternalId.safeParse('x'.repeat(EXTERNAL_ID_MAX)).success).toBe(true);
+    expect(ExternalId.safeParse('x'.repeat(EXTERNAL_ID_MAX + 1)).success).toBe(false);
+    expect(ExternalId.safeParse('').success).toBe(false);
+    const forma = { external_id: 'F1', ativo: true, nome: 'Boleto' };
+    expect(FormaPagamentoHub.safeParse({ ...forma, codigo: 'c'.repeat(LIMITE_CODIGO_FORMA_PAGAMENTO) }).success).toBe(true);
+    expect(FormaPagamentoHub.safeParse({ ...forma, codigo: 'c'.repeat(LIMITE_CODIGO_FORMA_PAGAMENTO + 1) }).success).toBe(false);
   });
 });
