@@ -276,6 +276,15 @@ Migração: `db/migrations/0043_cadastros_zerar.sql`; testes: `db/testes/cadastr
 
 Migração: `db/migrations/0046_cadastros_carga_portal_auditoria_enderecos.sql`; testes: `db/testes/carga-portal-0040.db.test.ts` (k) e (j).
 
+## Senha temporária do "esqueci a senha" (T-0076, migração 0048)
+- `plataforma.usuario` e `plataforma.superadmin` ganham `senha_temporaria_hash text NULL` (argon2id, CHECK `<tabela>_senha_temporaria_formato`) e `senha_temporaria_expira_em timestamptz NULL`, com o CHECK `<tabela>_senha_temporaria_par` (as duas nulas ou as duas preenchidas). A temporária vale **em paralelo** à senha atual (`senha_hash` não muda), é de **uso único** e a validade (72 h) vem da API; o banco só recusa a validade passada.
+- **Usuário da empresa:** a API grava e consome por `UPDATE` direto do `macuxierp_app` no próprio tenant (RLS da 0002; o GRANT de tabela da 0002 cobre as colunas). Consumo de uso único: `UPDATE ... SET senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL, deve_trocar_senha = true WHERE id = $1 AND senha_temporaria_hash IS NOT NULL AND senha_temporaria_expira_em > now() RETURNING id` (sem `SELECT FOR UPDATE`). Worker e leitura **não** leem as colunas novas.
+- **Superadmin** (só `macuxierp_config`, SECURITY DEFINER, sem sessão): `superadmin_emitir_temporaria(p_id uuid, p_hash text, p_expira_em timestamptz) RETURNS void` (validade nula ou `<= now()` = 23514; superadmin inexistente ou excluído = P0002; audita `plataforma.superadmin.senha_esquecida` só com a validade); `superadmin_consumir_temporaria(p_id uuid) RETURNS boolean` (um `UPDATE` atômico: zera as duas, liga `deve_trocar_senha`; exige ativo e não excluído; audita `plataforma.superadmin.senha_temporaria_usada` só quando consome; a API confere o argon2 antes). `superadmin_para_login(text)` passa a devolver também as duas colunas (DROP + CREATE) e `superadmin_trocar_senha(text, text)` as zera.
+- `plataforma.auditoria.acao` é texto livre: as ações `core.usuario.*` da API não pedem migração. O limite de tentativas fica em memória na API.
+- Reexecutar a 0033 depois da 0048 exige reaplicar a 0048 (o `CREATE OR REPLACE` da 0033 não troca o tipo de retorno): o teste (g) da 0033 faz isso.
+
+Migração: `db/migrations/0048_senha_temporaria.sql`; testes: `db/testes/senha-temporaria-0048.db.test.ts` e `db/testes/superadmin-0033.db.test.ts` (g).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
