@@ -19,7 +19,7 @@ export function lerSeqEndereco(bruto: string | undefined): number | undefined {
   return r.ok ? r.valor : undefined;
 }
 
-/** `<cliente>` + `:<tipo>` e, havendo `seq`, `:<seq>`. O limite de 64 caracteres (D3) é conferido por quem chama. */
+/** `<cliente>` + `:<tipo>` e, havendo `seq`, `:<seq>`. O limite (`LIMITES.id_externo`) é conferido por quem chama. */
 export const derivarExternalIdEndereco = (cliente: string, tipo: TipoEnd, seq: number | undefined): string =>
   seq === undefined ? `${cliente}:${tipo}` : `${cliente}:${tipo}:${seq}`;
 
