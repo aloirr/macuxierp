@@ -5,7 +5,7 @@
  * genérico do `setNotFoundHandler` (apps/api/src/app.ts: `{ codigo: 'NAO_ENCONTRADO', mensagem: 'Rota não encontrada' }`)
  * nem dar 5xx. 200 e 4xx de regra (inclusive 404 de registro inexistente, que traz outra mensagem) são aceitos.
  *
- * Parâmetros: empresa = o tenant de teste; filial = filial real criada pela API; cadastro e entidade = valores válidos do
+ * Parâmetros (camada a; a camada b segue o campo `origem` do JSON): empresa = o tenant de teste; filial = filial real criada pela API; cadastro e entidade = valores válidos do
  * SDK; demais `:id` = UUID fictício (404 de regra aceito). Dados fictícios. Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,7 +27,7 @@ import { PAGINAS_REGISTRADAS } from '../../../apps/web/src/lib/paginas';
 import { telaDaRota } from '../../../apps/web/src/lib/telas';
 import type { ExecutorDeAcoes, TelaDescrita } from '../../../apps/web/src/lib/descritor/tipos';
 import { montarApiPg } from '../../apoio/api-pg';
-import { preencherCaminho } from '../../apoio/caminhos';
+import { preencherCaminho, UUID_FICTICIO } from '../../apoio/caminhos';
 import { atalhosPortal, inserirSuperadmin } from '../../apoio/portal-pg';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -216,18 +216,44 @@ const PISO_DE_ROTAS = ROTAS_FIXAS + CADASTROS_CARGA_PORTAL.length;
 
 /**
  * Camada (b) do docs/testes/fumaca-publicar.md: a mesma lista, em JSON, para o passo de fumaça do producao-publicar.
- * Sem a origem (que traz número de linha e mudaria a cada edição do web). Regenerar: campo `regenerar` do JSON.
+ * Sem o arquivo de onde a chamada saiu (traz número de linha e mudaria a cada edição do web); o campo `origem` do JSON é
+ * outra coisa: de onde vem o parâmetro. Regenerar: campo `regenerar` do JSON.
  */
 const ARQUIVO_JSON = join(RAIZ, 'tests', 'integracao', 'rotas', 'fumaca-rotas.json');
+
+/** Pendência 4: ver docs/testes/fumaca-publicar.md, seção Parâmetros. */
+type Origem =
+  | { tipo: 'lista'; de: string; campo: 'itens[0].id' }
+  | { tipo: 'ficticio' }
+  | { tipo: 'contexto'; nome: 'empresa' | 'filial' };
+const PARAMETRO = /:[a-z_]+/g;
+const CAMINHOS = new Set(CASOS.map((c) => c.caminho));
+function origemDe(caminho: string): Origem | undefined {
+  const i = caminho.search(PARAMETRO);
+  if (i < 0) return undefined;
+  const antes = caminho.slice(0, i);
+  if (antes === `${PREFIXO_PLATAFORMA}/empresas/`) return { tipo: 'contexto', nome: 'empresa' };
+  if (antes.endsWith('/filiais/')) return { tipo: 'contexto', nome: 'filial' };
+  const lista = antes.slice(0, -1);
+  if (CAMINHOS.has(lista)) return { tipo: 'lista', de: `GET ${lista}`, campo: 'itens[0].id' };
+  return { tipo: 'ficticio' };
+}
+const ROTAS_DO_JSON = CASOS.map(({ caminho }) => {
+  const origem = origemDe(caminho);
+  return {
+    metodo: 'GET',
+    caminho,
+    area: caminho.startsWith(`${PREFIXO_PLATAFORMA}/`) ? 'plataforma' : 'bko',
+    ...(origem ? { origem } : {}),
+  };
+});
 const JSON_DA_EXTRACAO = `${JSON.stringify(
   {
+    formato: 1,
     gerado_por: 'tests/integracao/rotas/fumaca-telas.db.test.ts (T-0065)',
     regenerar: 'MACUXI_FUMACA_GERAR=1 pnpm exec vitest run --config tests/vitest.config.ts tests/integracao/rotas/fumaca-telas.db.test.ts',
-    rotas: CASOS.map(({ caminho }) => ({
-      metodo: 'GET',
-      caminho,
-      area: caminho.startsWith(`${PREFIXO_PLATAFORMA}/`) ? 'plataforma' : 'bko',
-    })),
+    uuid_ficticio: UUID_FICTICIO,
+    rotas: ROTAS_DO_JSON,
   },
   null,
   2,
@@ -244,6 +270,18 @@ describe('fumaça das telas: a lista de GETs do web (T-0065)', () => {
   it(`a lista tem pelo menos ${PISO_DE_ROTAS} rotas, todas /v1/...`, () => {
     expect(CASOS.length).toBeGreaterThanOrEqual(PISO_DE_ROTAS);
     for (const { caminho } of CASOS) expect(caminho).toMatch(/^\/v1\/[a-z-]+\//);
+  });
+  it('formato 1: no máximo um parâmetro por rota', () => {
+    for (const r of ROTAS_DO_JSON) expect(r.caminho.match(PARAMETRO)?.length ?? 0, r.caminho).toBeLessThanOrEqual(1);
+  });
+  it('pendência 4 (LGPD): o JSON não traz id real (UUID além do fictício), CNPJ, CPF nem e-mail', () => {
+    const texto = readFileSync(ARQUIVO_JSON, 'utf8');
+    const uuids = texto.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    expect(uuids.filter((u) => u !== UUID_FICTICIO)).toEqual([]);
+    const semUuid = texto.split(UUID_FICTICIO).join('');
+    expect(semUuid).not.toMatch(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/); // CNPJ
+    expect(semUuid).not.toMatch(/\d{3}\.?\d{3}\.?\d{3}-?\d{2}/); // CPF
+    expect(semUuid).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/); // e-mail
   });
 });
 
@@ -285,6 +323,13 @@ describe.skipIf(!PG_DISPONIVEL)('fumaça das telas: todo GET do web existe na AP
     expect(ehRotaInexistente(bko.statusCode, bko.body), bko.body).toBe(true);
     const cfg = await get(`${PREFIXO_PLATAFORMA}/empresas/${api.t.E}/rota-que-nao-existe-t0065`);
     expect(ehRotaInexistente(cfg.statusCode, cfg.body), cfg.body).toBe(true);
+  });
+
+  const LISTAS_DE_ORIGEM = [...new Set(ROTAS_DO_JSON.flatMap((r) => (r.origem?.tipo === 'lista' ? [r.origem.de.slice('GET '.length)] : [])))];
+  it.each(LISTAS_DE_ORIGEM)('pendência 4: a lista de origem GET %s devolve `itens[]`', async (lista) => {
+    const r = await get(lista);
+    expect(r.statusCode, r.body).toBe(200);
+    expect(Array.isArray(r.json<{ itens: unknown }>().itens), r.body).toBe(true);
   });
 
   it.each(CASOS)('GET $caminho ($origem)', async ({ caminho }) => {
