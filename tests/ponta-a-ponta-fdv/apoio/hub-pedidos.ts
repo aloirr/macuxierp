@@ -41,7 +41,7 @@ export interface RetornoAplicado {
   motivo: string | null;
   nota: string | null;
   /** Chave de acesso da nota como chegou no retorno faturado (o FDV a guarda no pedido; T-0089, defeito D3); fora do faturado, nulo. */
-  chave_nota: string | null;
+  chave_acesso: string | null;
   em: string;
 }
 
@@ -108,15 +108,18 @@ function pendentes(ctx: ContextoRota): RespostaRota {
   return { status: 200, corpo: { pedidos: saida.map((p) => ({ ...p.pedido, tentativa: p.tentativas })) } };
 }
 
-function chaveDeAcesso(nota: unknown): string | null {
-  const chave = nota && typeof nota === 'object' ? (nota as { chave?: unknown }).chave : undefined;
+function comoNota(nota: unknown): { numero?: unknown; serie?: unknown; chave?: unknown } | null {
+  return nota && typeof nota === 'object' ? (nota as { numero?: unknown; serie?: unknown; chave?: unknown }) : null;
+}
+
+function chaveAcesso(nota: unknown): string | null {
+  const chave = comoNota(nota)?.chave;
   return typeof chave === 'string' ? chave : null;
 }
 
 function chaveNota(nota: unknown): string | null {
-  if (!nota || typeof nota !== 'object') return null;
-  const n = nota as { numero?: unknown; serie?: unknown };
-  return `${String(n.numero)}/${String(n.serie)}`;
+  const n = comoNota(nota);
+  return n ? `${String(n.numero)}/${String(n.serie)}` : null;
 }
 
 function itensDescartados(item: PedidoNaFila, itens: unknown): Record<string, unknown>[] {
@@ -182,7 +185,7 @@ function retorno(ctx: ContextoRota): RespostaRota {
   item.estado = status;
   item.numeroErp ??= numeroErp;
   if (typeof c.motivo === 'string') item.motivo = c.motivo;
-  item.retornos.push({ status, numero_erp: numeroErp, motivo: typeof c.motivo === 'string' ? c.motivo : null, nota, chave_nota: chaveDeAcesso(c.nota), em: ctx.agora.toISOString() });
+  item.retornos.push({ status, numero_erp: numeroErp, motivo: typeof c.motivo === 'string' ? c.motivo : null, nota, chave_acesso: chaveAcesso(c.nota), em: ctx.agora.toISOString() });
   const perder = fila.perderResposta.get(uuid.toLowerCase()) ?? 0;
   if (perder > 0) {
     fila.perderResposta.set(uuid.toLowerCase(), perder - 1);

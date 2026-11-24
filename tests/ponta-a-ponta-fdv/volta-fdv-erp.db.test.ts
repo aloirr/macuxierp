@@ -407,7 +407,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(ped.endereco_entrega.endereco_id).toBe(massa.A.enderecoEntrega);
   });
 
-  /** A F4 ainda não publica `pedido.pedido.faturado@1` (o pedido não consome `nota.autorizada@1`): o evento entra pela outbox. */
+  /** O evento entra direto pela outbox; o consumidor real (modules/pedido/api/consumidor-nota.ts) fica para o lote seguinte. */
   const faturar = async (pedidoId: string, payload: Record<string, unknown>) =>
     worker.comTenant(T.A, (tx) =>
       new OutboxPg().gravar(tx, criarEvento({ nome: 'pedido.pedido.faturado@1', tenant_id: T.A, agregado_id: pedidoId, ator: 'sistema', request_id: 't0017', payload }, relogio.agora())),
@@ -448,42 +448,27 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(lado.lgpd.alertas.slice(alertasAntes)).toEqual([]);
   });
 
-  // T-0089 (jornada AM2808, defeito D3 do FDV: "a chave da NF não volta ao pedido"). A filial de teste emite pelo simulador
-  // (ambiente homologação): pela RN-FAT-04 a nota simulada só volta ao FDV como faturado com a bandeira "faturamento real com
-  // NF-e simulada" ligada (`conta_como_real`, fixada na emissão). Sem a bandeira o retorno é ignorado de propósito; com ela, o
-  // corpo que chega ao Hub leva a chave de acesso de 44 dígitos da nota. O faturamento entra pela outbox, como no caso acima.
-  it('pedido-faturado (T-0089, D3): nota simulada sem a bandeira não volta (RN-FAT-04); com conta_como_real volta faturado_total com a chave de acesso', async () => {
+  // T-0089, D3 do FDV: nota simulada com conta_como_real (RN-FAT-04) volta com a chave de acesso.
+  it('pedido-faturado (T-0089, D3): nota simulada com conta_como_real volta faturado_total com a chave de acesso', async () => {
     exigir('pedido-faturado');
     await noEspelho('A', massa.A.produtoErp, massa.A.produtoErp);
-    const item = { sequencia: 2, produto_id: massa.A.produtoErp, quantidade: 30_000, valor_centavos: 750 };
-    const integrar = async () => {
-      const p = pedidoFdv(massa.A);
-      aprovar('A', p);
-      expect((await lado.ciclo(T.A, hub.A)).busca).toMatchObject({ entregues: 1 });
-      const ped = await pedidoErp('A', p.pedido_uuid);
-      return { p, base: { pedido_id: ped.id, numero: Number(ped.numero), origem: 'fdv', pedido_uuid: p.pedido_uuid, status: 'faturado', ambiente: 'homologacao', itens_faturados: [item] } };
-    };
-
-    const sem = await integrar();
-    await faturar(sem.base.pedido_id, { ...sem.base, nota: nota(11, 750) });
-    await lado.despachar();
-    expect(await lado.enviar(T.A, hub.A)).toMatchObject({ enviados: 0, falhou: 0 });
-    expect(statusNoHub('A', sem.p.pedido_uuid)).toEqual(['integrado']);
-    expect((await retornos('A', sem.p.pedido_uuid)).map((r) => r.status)).toEqual(['integrado']);
-
-    const com = await integrar();
+    const p = pedidoFdv(massa.A);
+    aprovar('A', p);
+    expect((await lado.ciclo(T.A, hub.A)).busca).toMatchObject({ entregues: 1 });
+    const ped = await pedidoErp('A', p.pedido_uuid);
+    const numero = Number(ped.numero);
     const notaSimulada = nota(12, 750);
     expect(notaSimulada.chave).toMatch(/^\d{44}$/);
-    await faturar(com.base.pedido_id, { ...com.base, conta_como_real: true, nota: notaSimulada });
+    await faturar(ped.id, { pedido_id: ped.id, numero, origem: 'fdv', pedido_uuid: p.pedido_uuid, status: 'faturado', ambiente: 'homologacao', conta_como_real: true, nota: notaSimulada, itens_faturados: [{ sequencia: 2, produto_id: massa.A.produtoErp, quantidade: 30_000, valor_centavos: 750 }] });
     await lado.despachar();
     const alertasAntes = lado.lgpd.alertas.length;
     expect(await lado.enviar(T.A, hub.A)).toMatchObject({ enviados: 1, falhou: 0 });
-    expect(statusNoHub('A', com.p.pedido_uuid)).toEqual(['integrado', 'faturado_total']);
-    const [, fat] = await retornos('A', com.p.pedido_uuid);
-    expect(fat).toMatchObject({ status: 'faturado_total', estado: 'enviado', numero_erp: String(com.base.numero), resposta_http: 200 });
+    expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado', 'faturado_total']);
+    const [, fat] = await retornos('A', p.pedido_uuid);
+    expect(fat).toMatchObject({ status: 'faturado_total', estado: 'enviado', numero_erp: String(numero), resposta_http: 200 });
     expect(RetornoErp.safeParse(fat!.corpo).success).toBe(true);
     expect(fat!.corpo.nota).toEqual({ numero: 12, serie: 1, chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
-    expect(noHub('A', com.p.pedido_uuid).retornos.map((r) => [r.status, r.nota, r.chave_nota])).toEqual([
+    expect(noHub('A', p.pedido_uuid).retornos.map((r) => [r.status, r.nota, r.chave_acesso])).toEqual([
       ['integrado', null, null],
       ['faturado_total', '12/1', notaSimulada.chave],
     ]);
