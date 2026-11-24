@@ -116,7 +116,7 @@ const LIMITE_INATIVACAO = 0.3;
  * `parcelas_dias` do prazo é lista de inteiros de 0 a 999, com ao menos um item (`[28, 56]`; à vista `[0]`),
  * como o Hub real exige (T-0085, `PrazoPagamentoHub` em modules/integracao-fdv/contracts/hub.ts). O texto "28/56" é recusado.
  */
-const parcelasDiasValidas = (v: unknown): boolean =>
+export const parcelasDiasValidas = (v: unknown): boolean =>
   Array.isArray(v) && v.length > 0 && v.every((d) => Number.isInteger(d) && d >= 0 && d <= 999);
 
 // ---------------------------------------------------------------- tipos públicos ---------------------------------------

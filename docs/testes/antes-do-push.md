@@ -25,7 +25,7 @@ O comando:
    `docs/banco/README.md`, seção "Testes de banco na sessão da nuvem");
 5. `pnpm test:tests` inteiro, sempre que há código (como o CI). Se só `docs/**`, `.coord/**` ou `*.md` da raiz mudaram,
    não roda nada (escopo `documentacao`);
-6. só no `--tudo`: os testes `node --test` de `scripts/` e `.github/scripts/`; a linha `scripts` da tabela fica VERMELHA se algum falhar;
+6. sempre que há código (escopo `codigo`, como no passo 5) e no `--tudo`: os testes `node --test` de `scripts/` e `.github/scripts/` (regra 6 das rotas de tela, T-0066); a linha `scripts` da tabela fica VERMELHA se algum falhar;
 7. imprime o bloco Markdown "Testes na sessão (antes do push)" entre as linhas `----- cole no corpo do PR -----`.
 
 Código de saída: 0 = tudo verde; 1 = alguma etapa vermelha; 2 = erro de preparação (sem `pg-local.sh`, Node < 24.7, sem
@@ -35,7 +35,7 @@ Código de saída: 0 = tudo verde; 1 = alguma etapa vermelha; 2 = erro de prepar
 
 | Opção | Para quê |
 |---|---|
-| (nenhuma) | afetados contra `origin/main`: é o que vai no PR |
+| (nenhuma) | afetados contra `origin/main`, mais os testes de `scripts/` quando há código: é o que vai no PR |
 | `--tudo` | todos os pacotes, o passo sem superusuário, `tests/` e os testes `node --test` de `scripts/` e `.github/scripts/` (o que o push ao `main` roda) |
 | `--pacote <nome>` (repetível) | só esses pacotes (`@macuxierp/db`, `api`...), mais `tests/`; com `@macuxierp/db`, também o passo sem superusuário |
 | `--so-tests` | só `pnpm test:tests` |
