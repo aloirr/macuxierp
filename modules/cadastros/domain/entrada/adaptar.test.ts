@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClienteEnderecoHub, ClienteHub, FormaPagamentoHub } from '@macuxierp/platform-sdk/hub-v1';
-import { adaptarLote, indexarFormas, type ContextoAdaptacao } from './adaptar';
+import { adaptarLote, erroDeGravacaoParaHub, indexarFormas, type ContextoAdaptacao } from './adaptar';
 
 const forma = (o: Partial<FormaPagamentoHub> = {}): FormaPagamentoHub => ({ external_id: 'F1', ativo: true, codigo: 'BOLETO', nome: 'Boleto bancário', ...o });
 const ctx: ContextoAdaptacao = {
@@ -181,16 +181,19 @@ describe('adaptador do registro do Hub para a linha da carga', () => {
     expect(r.avisos).toEqual([{ indice: 0, external_id: 'E1', codigo: 'endereco_inativo_ignorado' }]);
   });
 
-  it('RN-INT-03: endereço com município inexistente na UF é recusado (RN-CAD-03) sem o nome da cidade', () => {
+  it('RN-INT-03: endereço com município inexistente na UF é recusado (RN-CAD-03) sem o nome da cidade e protege o external_id do cliente', () => {
     const r = adaptarLote('cliente_endereco', [end({ cidade: 'Cidade Fantasma' })], ctx);
     if (!r.ok) throw new Error('esperava ok');
     expect(r.erros).toEqual([{ indice: 0, external_id: 'E1', campo: 'cidade', codigo: 'regra_invalida', regra: 'RN-CAD-03' }]);
     expect(JSON.stringify(r.erros)).not.toContain('Fantasma');
+    expect(r.protegidos).toEqual(['C1']);
   });
 
-  it('RN-INT-03: o erro de endereço protege o external_id do cliente (a chave que a sessão de carga usa)', () => {
-    const r = adaptarLote('cliente_endereco', [end({ cidade: 'Cidade Fantasma' })], ctx);
-    if (!r.ok) throw new Error('esperava ok');
-    expect(r.protegidos).toEqual(['C1']);
+  // ADR 0014 (filial pela entrada) + RN-CAD-01: filial NOVA sem crt é erro por registro; a existente só se atualiza.
+  it('ADR 0014 / RN-CAD-01: filial nova sem crt sai campo_obrigatorio no crt com a mensagem fixa; o cnpj ausente sai campo_obrigatorio sem mensagem', () => {
+    const crt = erroDeGravacaoParaHub('filial', 3, 'X1', { linha: 5, campo: 'crt', codigo: 'CARGA_OBRIGATORIO', motivo: 'Acrescente a coluna crt para criar a filial' });
+    expect(crt).toEqual({ indice: 3, external_id: 'X1', campo: 'crt', codigo: 'campo_obrigatorio', mensagem: 'Filial nova sem CRT: cadastre no BKO ou pela carga', regra: 'CARGA_OBRIGATORIO' });
+    const cnpj = erroDeGravacaoParaHub('filial', 0, 'X1', { linha: 2, campo: 'cnpj', codigo: 'CARGA_OBRIGATORIO', motivo: 'Obrigatório para criar o cadastro' });
+    expect(cnpj).toEqual({ indice: 0, external_id: 'X1', campo: 'cnpj', codigo: 'campo_obrigatorio', regra: 'CARGA_OBRIGATORIO' });
   });
 });

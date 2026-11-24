@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { donoDaCarga, donoEfetivo, donoPermiteEscrita, type MapaDono } from './dono';
 
-// ADR 0014 §14 (RN-CAD a numerar): dono por entidade da F2, no config da empresa.
 describe('dono por entidade (ADR 0014 §14, RN-CAD a numerar)', () => {
   it('dono cliente: a entrada aceita; o BKO e a carga de CSV são recusados com dono_cliente', () => {
     expect(donoPermiteEscrita('cliente', 'entrada')).toEqual({ ok: true });

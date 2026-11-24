@@ -46,6 +46,8 @@ export interface ErroAdaptacao {
   /** Nome do campo no payload do Hub; nunca o valor. */
   campo: string | null;
   codigo: CodigoErroAdaptacao;
+  /** Mensagem fixa, sem valor do registro; só onde o código sozinho não orienta (filial nova sem CRT, ADR 0014). */
+  mensagem?: string;
   /** Código original da regra da carga (`RN-CAD-01`, `CARGA_FORMATO`...), quando o erro veio dela. */
   regra?: string;
 }
@@ -103,19 +105,18 @@ const enderecoCelulas = (e: Payload | undefined, prefixo: string): Celulas => {
 /** Um registro validado do Hub → as células da carga. `null` = não gera linha. */
 const CELULAS: { [E in EntidadeEntrada]: (x: Payload, ctx: ContextoAdaptacao, extra: { seq?: number }) => Celulas | null | { referencia_ausente: string } } = {
   filial: (x) => ({
-    external_id: p(x, 'external_id'), ativo: bool(x.ativo as boolean), codigo: p(x, 'codigo'), nome: p(x, 'nome'), cidade: p(x, 'cidade'), uf: p(x, 'uf'), cnpj: p(x, 'cnpj'),
-    logradouro: p(x, 'logradouro'), numero: p(x, 'numero'), complemento: p(x, 'complemento'), bairro: p(x, 'bairro'), cep: p(x, 'cep'),
+    external_id: p(x, 'external_id'), ativo: bool(x.ativo as boolean), codigo: p(x, 'codigo'), nome: p(x, 'nome'), cnpj: p(x, 'cnpj'),
+    ...enderecoCelulas(x, ''),
   }),
   vendedor: (x) => ({ external_id: p(x, 'external_id'), ativo: bool(x.ativo as boolean), nome: p(x, 'nome'), filial_external_id: p(x, 'filial_external_id') }),
   forma_pagamento: () => null,
-  prazo_pagamento: (x, ctx) => {
+  prazo_pagamento: (x, ctx): Celulas | { referencia_ausente: string } => {
     const forma = ctx.formas.get(p(x, 'forma_external_id'));
-    if (!forma) return { referencia_ausente: 'forma_external_id' } as { referencia_ausente: string };
-    const c: Celulas = {
+    if (!forma) return { referencia_ausente: 'forma_external_id' };
+    return {
       external_id: p(x, 'external_id'), ativo: bool(x.ativo as boolean), codigo: p(x, 'codigo'), parcelas_dias: p(x, 'parcelas_dias'), descricao: p(x, 'descricao'),
       forma_external_id: p(x, 'forma_external_id'), forma_codigo: forma.codigo, forma_nome: forma.nome,
     };
-    return c;
   },
   produto: (x) => ({ external_id: p(x, 'external_id'), ativo: bool(x.ativo as boolean), sku: p(x, 'sku'), nome: p(x, 'nome'), unidade: p(x, 'unidade'), ean: p(x, 'ean'), marca: p(x, 'marca') }),
   produto_unidade: (x) => ({
@@ -191,9 +192,14 @@ function errosDoPayload(indice: number, externalId: string | null, issues: reado
   return erros;
 }
 
-const doErroLinha = (entidade: EntidadeEntrada, indice: number, externalId: string | null, e: ErroLinha): ErroAdaptacao => ({
-  indice, external_id: externalId, campo: campoDoHub(entidade, e.campo), codigo: codigoDoHub(e.codigo), regra: e.codigo,
-});
+const MENSAGEM_FILIAL_SEM_CRT = 'Filial nova sem CRT: cadastre no BKO ou pela carga';
+
+/** Erro da gravação (`prepararCriacao` etc.) ou da carga → erro por registro do Hub; filial nova sem `crt` sai `campo_obrigatorio` com mensagem fixa (ADR 0014). */
+export const erroDeGravacaoParaHub = (entidade: EntidadeEntrada, indice: number, externalId: string | null, e: ErroLinha): ErroAdaptacao => {
+  const campo = campoDoHub(entidade, e.campo);
+  const filialSemCrt = e.codigo === 'CARGA_OBRIGATORIO' && entidade === 'filial' && campo === 'crt';
+  return { indice, external_id: externalId, campo, codigo: codigoDoHub(e.codigo), ...(filialSemCrt ? { mensagem: MENSAGEM_FILIAL_SEM_CRT } : {}), regra: e.codigo };
+};
 
 /**
  * Adapta os registros de um lote do Hub. `entidade` é o texto do envelope: fora das 10 da fase devolve `entidade_fora_da_fase`
@@ -242,7 +248,7 @@ export function adaptarLote(entidade: string, registros: readonly unknown[], ctx
     const r = mapearLinha(destino, celulas as Registro, indice + 2, ctx);
     if (r.ok) linhas.push(r.linha);
     else {
-      erros.push(...r.erros.map((er) => doErroLinha(e, indice, externalId, er)));
+      erros.push(...r.erros.map((er) => erroDeGravacaoParaHub(e, indice, externalId, er)));
       proteger(registro);
     }
   });

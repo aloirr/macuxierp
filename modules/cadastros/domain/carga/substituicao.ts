@@ -15,6 +15,8 @@ export interface PlanoSubstituicao {
   sem_chave: number;
   /** inativar / ativos COM chave, 2 casas (0 a 1); 0 sem ativos com chave. Só informativo. */
   percentual_inativado: number;
+  /** ativos com external_id; base do percentual e da trava. */
+  com_chave: number;
 }
 
 /**
@@ -30,7 +32,7 @@ export function planoSubstituicao(p: {
   existentes: readonly ExistenteSubstituicao[];
   em_uso: ReadonlySet<string>;
 }): PlanoSubstituicao {
-  if (p.modo !== 'substituir_tudo') return { inativar: [], mantidos_em_uso: 0, sem_chave: 0, percentual_inativado: 0 };
+  if (p.modo !== 'substituir_tudo') return { inativar: [], mantidos_em_uso: 0, sem_chave: 0, percentual_inativado: 0, com_chave: 0 };
   const vindos = new Set(p.externos_do_arquivo);
   const ativos = p.existentes.filter((e) => !e.inativo);
   const comChave = ativos.filter((e) => e.external_id !== null);
@@ -40,5 +42,6 @@ export function planoSubstituicao(p: {
     mantidos_em_uso: inativar.filter((e) => p.em_uso.has(e.id)).length,
     sem_chave: ativos.length - comChave.length,
     percentual_inativado: comChave.length === 0 ? 0 : Math.round((inativar.length / comChave.length) * 100) / 100,
+    com_chave: comChave.length,
   };
 }

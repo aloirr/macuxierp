@@ -6,7 +6,7 @@
  * código e motivo, nunca o valor do dado (LGPD).
  */
 import { ErroApi, pode, type ContextoRota } from '@macuxierp/platform-sdk';
-import { ENTIDADES_CARGA, type EntidadeCarga, type LinhasCarga, type ModoCarga } from '../contracts';
+import { ENTIDADES_CARGA, type EntidadeCarga, type LinhasCarga, type ModoCarga, type ResultadoEntidade } from '../contracts';
 import {
   REFS_CARGA, acrescentarIdsDoLote, agruparClientes, alvoCriado, conferirFormasDoLote, conferirReferencias, conferirVigenciaDaTabela,
   erroLinha, idsVazios, separarDuplicados, type ErroLinha, type FormaDoLote,
@@ -24,12 +24,7 @@ export interface EntradaGravacao {
   linhas: readonly Linha[];
 }
 
-export interface ResultadoGravacao {
-  inseridas: number;
-  atualizadas: number;
-  sem_mudanca: number;
-  avisos: string[];
-}
+export type ResultadoGravacao = Pick<ResultadoEntidade, 'inseridas' | 'atualizadas' | 'sem_mudanca' | 'avisos'>;
 
 export interface ErroGravacao {
   entidade: EntidadeCarga;

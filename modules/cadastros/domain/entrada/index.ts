@@ -1,4 +1,4 @@
-export { ENTIDADES_ENTRADA, ENTIDADE_DA_CARGA, adaptarLote, indexarFormas } from './adaptar';
+export { ENTIDADES_ENTRADA, ENTIDADE_DA_CARGA, adaptarLote, erroDeGravacaoParaHub, indexarFormas } from './adaptar';
 export type { AvisoAdaptacao, CodigoErroAdaptacao, ContextoAdaptacao, EntidadeEntrada, ErroAdaptacao, ResultadoAdaptacao } from './adaptar';
 export { donoDaCarga, donoEfetivo, donoPermiteEscrita } from './dono';
 export type { Dono, MapaDono, OrigemEscrita, ResultadoDono } from './dono';

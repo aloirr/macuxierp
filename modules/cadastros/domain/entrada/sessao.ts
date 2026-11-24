@@ -6,11 +6,13 @@
  * `aguardando_confirmacao` e a confirmação vale 7 dias (quem confirma é o superadmin no /config; fora do domain).
  * O plano (quem sai, quantos em uso, ativos sem chave) é o `planoSubstituicao` da carga (RN-CAD-10), sem repetir o cálculo.
  */
+import { LIMITE_INATIVACAO_FDV_PCT } from '@macuxierp/platform-sdk';
 import type { EntidadeCarga } from '../../contracts';
 import { planoSubstituicao, type ExistenteSubstituicao } from '../carga/substituicao';
 import { ENTIDADE_DA_CARGA, type EntidadeEntrada } from './adaptar';
 
-export const LIMITE_INATIVACAO_PCT_PADRAO = 30;
+/** Padrão da trava = o limite do FDV (RN-INT-06); o /config pode mudar por empresa. */
+export const LIMITE_INATIVACAO_PCT_PADRAO = LIMITE_INATIVACAO_FDV_PCT;
 export const VALIDADE_CONFIRMACAO_DIAS = 7;
 
 export interface SessaoCarga {
@@ -72,7 +74,7 @@ export function concluirSessao(p: {
   if (!p.sessao.ultimo_recebido) return { estado: 'incompleta', inativar: [] };
   const plano = planoSubstituicao({ modo: 'substituir_tudo', entidade: p.sessao.entidade, externos_do_arquivo: p.sessao.vistos, existentes: p.existentes, em_uso: p.em_uso });
   const base = { inativar: plano.inativar, mantidos_em_uso: plano.mantidos_em_uso, sem_chave: plano.sem_chave };
-  const ativosComChave = p.existentes.filter((e) => !e.inativo && e.external_id !== null).length;
+  const ativosComChave = plano.com_chave;
   if (plano.inativar.length * 100 <= limite * ativosComChave) return { estado: 'concluida', ...base };
   return {
     estado: 'aguardando_confirmacao', ...base,

@@ -143,10 +143,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   for (const a of arquivos) {
     const g = saida.resultados[a.entidade];
     if (!g) continue;
-    a.resultado.inseridas = g.inseridas;
-    a.resultado.atualizadas = g.atualizadas;
-    a.resultado.sem_mudanca = g.sem_mudanca;
-    a.resultado.avisos = g.avisos;
+    Object.assign(a.resultado, g);
   }
   for (const a of arquivos) a.resultado.recusadas = Math.max(0, a.resultado.lidas - a.resultado.inseridas - a.resultado.atualizadas - a.resultado.sem_mudanca);
 

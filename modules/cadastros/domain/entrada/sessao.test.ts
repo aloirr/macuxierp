@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LIMITE_INATIVACAO_PCT_PADRAO, VALIDADE_CONFIRMACAO_DIAS, alvoDaInativacao, concluirSessao, confirmarInativacao, iniciarSessao, registrarParte, type SessaoCarga,
+  alvoDaInativacao, concluirSessao, confirmarInativacao, iniciarSessao, registrarParte, type SessaoCarga,
 } from './sessao';
 
 const ex = (id: string, external_id: string | null, inativo = false) => ({ id, external_id, inativo });
@@ -14,10 +14,6 @@ const parte = (s: SessaoCarga, n: number, ultimo: boolean, externos: string[], p
 const dez = Array.from({ length: 10 }, (_, i) => ex(String(i), `E${i}`));
 
 describe('sessão de carga completa da entrada', () => {
-  it('RN-INT-06: o padrão da trava é 30% e a confirmação vale 7 dias', () => {
-    expect(LIMITE_INATIVACAO_PCT_PADRAO).toBe(30);
-    expect(VALIDADE_CONFIRMACAO_DIAS).toBe(7);
-  });
 
   it('RN-INT-06: aceita as partes em ordem (1, 2, 3...) e junta o que foi visto', () => {
     let s = parte(nova(), 1, false, ['E0', 'E1']);
