@@ -166,6 +166,24 @@ test('decidir: PR, ensaio e push = pacotes afetados com o tests/ da raiz; build 
   assert.deepEqual([t.filtro_lint, t.filtro_typecheck, t.build], ['--filter=//', '--filter=//', 'false']);
 });
 
+test('decidir: build do Conector só com a pasta apps/conector no workspace e afetada (T-0057)', () => {
+  // Sem a pasta: nunca, nem com todos os pacotes (o pnpm --filter falharia sem pacote).
+  for (const arquivos of [null, ['packages/sdk/a.ts'], ['apps/web/a.ts']])
+    assert.equal(decidir({ evento: 'pull_request', arquivos, workspace: WS }).build_conector, 'false');
+  const ws = {
+    ...WS,
+    pacotes: [...WS.pacotes, { nome: '@macuxierp/conector', dir: 'apps/conector', deps: ['@macuxierp/sdk'] }],
+  };
+  const c = decidir({ evento: 'pull_request', arquivos: ['apps/conector/src/a.ts'], workspace: ws });
+  assert.deepEqual([c.build_conector, c.build], ['true', 'false']);
+  assert.ok(c.filtro_lint.split(' ').includes('--filter=@macuxierp/conector'));
+  assert.ok(c.filtro_typecheck.split(' ').includes('--filter=@macuxierp/conector'));
+  assert.equal(decidir({ evento: 'pull_request', arquivos: ['packages/sdk/a.ts'], workspace: ws }).build_conector, 'true');
+  assert.equal(decidir({ evento: 'pull_request', arquivos: null, workspace: ws }).build_conector, 'true');
+  assert.equal(decidir({ evento: 'pull_request', arquivos: ['modules/core/a.ts'], workspace: ws }).build_conector, 'false');
+  assert.equal(decidir({ evento: 'pull_request', arquivos: ['docs/a.md'], workspace: ws }).build_conector, 'false');
+});
+
 test('decidir: lista vazia ou sem lista = todos os pacotes', () => {
   for (const arquivos of [null, []]) {
     const d = decidir({ evento: 'push', arquivos, workspace: WS });

@@ -1,0 +1,149 @@
+name: conector — montar pacotes
+
+# T-0057 (ADR 0014 do cenário B, seções 6 e 10): monta os pacotes do Conector do ERP (apps/conector) e os sobe como
+# artefato do GitHub por 30 dias. Só manual (workflow_dispatch), com o input "versao" (X.Y.Z, igual ao "version" do
+# apps/conector/package.json) e, opcional, o "sha" (SHA completo; vazio = o commit do branch escolhido).
+#   1. conferir (falha fechada): sha vazio ou com 40 caracteres hexadecimais; a pasta apps/conector e o package.json
+#      dela existem; a versao tem o formato X.Y.Z e é IGUAL ao "version" do package.json. Qualquer dúvida = vermelho,
+#      antes do pnpm install;
+#   2. build: pnpm --filter ./apps/conector build (o pacote nasce como @macuxierp/conector, no molde do FDV; o filtro
+#      pela pasta não depende do nome). O build entrega apps/conector/dist/conector.mjs (arquivo único, como no FDV);
+#      sem ele, vermelho;
+#   3. pacotes (nomes com a versão):
+#        macuxi-conector-<versao>-windows.zip   conector.mjs, exemplos/, windows/ (WinSW, se existir) e o LEIAME.md
+#        macuxi-conector-<versao>-linux.tar.gz  conector.mjs, exemplos/, linux/ (unidade systemd, se existir) e o LEIAME.md
+#      Cada pacote leva um SHA256SUMS dos próprios arquivos; ao lado dos dois, um SHA256SUMS dos pacotes
+#      (sha256sum -c SHA256SUMS confere);
+#   4. artefato: conector-<versao>-<sha>, retention-days 30.
+# Os testes do apps/conector rodam na suíte do producao-liberar.yml (ci.yml com todos os pacotes), não aqui.
+# SEM assinatura, SEM bucket e SEM secret na v0.3.12 (ADR 0014, seção 6, item 3: atualização automática desligada; ligar
+# pede ADR nova). Só o GITHUB_TOKEN de leitura; entradas só por variável de ambiente, nunca interpoladas no shell.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: 'Versão do Conector (X.Y.Z, igual ao "version" do apps/conector/package.json)'
+        required: true
+        type: string
+      sha:
+        description: 'Commit a montar (SHA completo, 40 caracteres; vazio = o do branch escolhido)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Uma montagem por versão de cada vez; a segunda espera (não cancela a que está subindo o artefato).
+concurrency:
+  group: conector-montar-${{ inputs.versao }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  montar:
+    name: montar os pacotes Windows e Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # Antes do checkout: o sha do input só entra no ref depois de conferido.
+      - name: sha completo (ou vazio)
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if [ -n "$SHA" ] && ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha inválido: use o SHA completo (40 caracteres hexadecimais) ou deixe vazio"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      # Falha fechada: sem a pasta, sem o package.json ou com a versão diferente, nada é montado.
+      - name: pasta apps/conector e versão igual à do package.json
+        env:
+          VERSAO: ${{ inputs.versao }}
+        run: |
+          if [ ! -d apps/conector ] || [ ! -f apps/conector/package.json ]; then
+            echo "::error::apps/conector (ou o package.json dele) não existe neste commit: nada a montar"
+            exit 1
+          fi
+          if ! [[ "$VERSAO" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::versao \"$VERSAO\" fora do formato X.Y.Z"
+            exit 1
+          fi
+          DO_PACOTE=$(node -e 'const v = require("./apps/conector/package.json").version; process.stdout.write(typeof v === "string" ? v : "")')
+          if [ "$VERSAO" != "$DO_PACOTE" ]; then
+            echo "::error::versao \"$VERSAO\" diferente do version \"${DO_PACOTE:-(vazio)}\" do apps/conector/package.json"
+            exit 1
+          fi
+          echo "Conector $VERSAO no commit $(git rev-parse HEAD)"
+
+      # Node 24 (.nvmrc) e pnpm com o store em cache, como nos outros workflows. Sem cache do turbo.
+      - uses: ./.github/actions/preparar
+
+      - name: build do Conector
+        run: |
+          pnpm --filter ./apps/conector build
+          if [ ! -s apps/conector/dist/conector.mjs ]; then
+            echo "::error::o build não gerou apps/conector/dist/conector.mjs"
+            exit 1
+          fi
+
+      - name: pacotes Windows (zip) e Linux (tar.gz) com SHA256SUMS
+        id: pacotes
+        env:
+          VERSAO: ${{ inputs.versao }}
+        run: |
+          set -euo pipefail
+          SHA_COMMIT=$(git rev-parse HEAD)
+          # Data do commit em todos os arquivos: o mesmo commit gera o mesmo conteúdo.
+          DATA=$(git log -1 --format=%cI HEAD)
+          SAIDA="$RUNNER_TEMP/conector-saida"
+          rm -rf "$SAIDA" && mkdir -p "$SAIDA"
+
+          preparar_pasta() { # $1 = pasta de destino, $2 = subpasta da plataforma (windows | linux)
+            local destino="$1" plataforma="$2"
+            mkdir -p "$destino"
+            cp apps/conector/dist/conector.mjs "$destino/"
+            if [ -d apps/conector/exemplos ]; then cp -R apps/conector/exemplos "$destino/"; fi
+            if [ -d "apps/conector/$plataforma" ]; then cp -R "apps/conector/$plataforma" "$destino/"; fi
+            if [ -f apps/conector/LEIAME.md ]; then cp apps/conector/LEIAME.md "$destino/"; fi
+            printf '%s\n' "versao=$VERSAO" "commit=$SHA_COMMIT" > "$destino/VERSAO.txt"
+            (cd "$destino" && find . -type f ! -name SHA256SUMS -printf '%P\n' | LC_ALL=C sort | xargs -d '\n' sha256sum > SHA256SUMS)
+            find "$destino" -exec touch -h -d "$DATA" {} +
+          }
+
+          WIN="macuxi-conector-$VERSAO-windows"
+          LIN="macuxi-conector-$VERSAO-linux"
+          TMP="$RUNNER_TEMP/conector-pastas"
+          rm -rf "$TMP" && mkdir -p "$TMP"
+          preparar_pasta "$TMP/$WIN" windows
+          preparar_pasta "$TMP/$LIN" linux
+
+          (cd "$TMP" && find "$WIN" -print | LC_ALL=C sort | zip -X -q "$SAIDA/$WIN.zip" -@)
+          tar -C "$TMP" --sort=name --owner=0 --group=0 --numeric-owner --mtime="$DATA" -cf - "$LIN" \
+            | gzip -n -9 > "$SAIDA/$LIN.tar.gz"
+
+          (cd "$SAIDA" && sha256sum "$WIN.zip" "$LIN.tar.gz" > SHA256SUMS && sha256sum -c SHA256SUMS)
+          echo "saida=$SAIDA" >> "$GITHUB_OUTPUT"
+          echo "nome=conector-$VERSAO-$SHA_COMMIT" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Conector $VERSAO (commit \`$SHA_COMMIT\`)"
+            echo '```'
+            cat "$SAIDA/SHA256SUMS"
+            echo '```'
+            echo "Sem assinatura (ADR 0014, seção 6, item 3). Confira com \`sha256sum -c SHA256SUMS\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pacotes.outputs.nome }}
+          path: ${{ steps.pacotes.outputs.saida }}
+          if-no-files-found: error
+          retention-days: 30
