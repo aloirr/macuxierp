@@ -5,7 +5,14 @@
  * Fora do guard: as rotas que não leem a sessão do tenant (saúde, login, refresh), o portal `/v1/plataforma` (credencial
  * própria, com o mesmo código para o superadmin) e a rota inexistente (segue 404). Funções puras.
  */
-import { CODIGO_TROCAR_SENHA, ErroApi, PREFIXO_PLATAFORMA, SENHA_MAXIMA, TrocarSenhaEntrada } from '@macuxierp/platform-sdk';
+import {
+  CODIGO_TROCAR_SENHA,
+  ErroApi,
+  PREFIXO_PLATAFORMA,
+  SENHA_MAXIMA,
+  SenhaInformada,
+  TrocarSenhaEntrada,
+} from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 export const MENSAGEM_TROCAR_SENHA = 'Troque a senha provisória antes de continuar';
@@ -13,8 +20,10 @@ export const MENSAGEM_TROCAR_SENHA = 'Troque a senha provisória antes de contin
 /**
  * Corpo da troca de senha na API (`POST /v1/auth/senha` e `/v1/plataforma/auth/senha`): a forma do contrato
  * (`TrocarSenhaEntrada`), com a senha nova só limitada no tamanho; a regra sai no 400 do serviço (`erroSenhaNova`).
+ * `senha_atual` segue obrigatória aqui (400 VALIDACAO no path senha_atual) até a API ler o `motivo_troca` 'temporaria'
+ * gravado no servidor (T-0076): só nesse caso a falta será aceita.
  */
-export const CorpoTrocaSenha = TrocarSenhaEntrada.extend({ senha_nova: z.string().max(SENHA_MAXIMA) });
+export const CorpoTrocaSenha = TrocarSenhaEntrada.extend({ senha_atual: SenhaInformada, senha_nova: z.string().max(SENHA_MAXIMA) });
 
 /** Rotas do tenant liberadas com a senha provisória (o BKO mostra a tela de troca e deixa sair). */
 const LIVRES = new Set(['GET /v1/auth/eu', 'POST /v1/auth/sair', 'POST /v1/auth/senha']);
