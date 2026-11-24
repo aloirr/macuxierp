@@ -259,7 +259,7 @@ export async function planejarIrmasDaForma(f: FormaDoLote, st: Estado): Promise<
   const erros: ErroLinha[] = [];
   for (const c of ativas) {
     if (f.tpag === undefined) break;
-    const vc = validarCondicaoPagamento({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias, parcelas_cartao: derivarParcelasCartao({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias }), prazo_medio_dias: c.prazo_medio_dias ?? null });
+    const vc = validarCondicaoPagamento({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias, prazo_medio_dias: c.prazo_medio_dias ?? null });
     if (vc.length) erros.push(...vc.map((v) => erroDeViolacao(f.linha, v)));
   }
   if (erros.length > 0) return { erros, avisos: [] };

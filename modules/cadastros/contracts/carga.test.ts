@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LinhaCondicaoPagamento, CargaPedido, CLASSE_FORMA, CondicaoPagamentoDados, CondicaoPagamentoAtualizacao, classeForma, ehAVista, FORMAS_A_VISTA, MAX_ARQUIVOS_LOTE } from './index';
+import { CargaPedido, CLASSE_FORMA, CondicaoPagamentoDados, CondicaoPagamentoAtualizacao, classeForma, ehAVista, FORMAS_A_VISTA, MAX_ARQUIVOS_LOTE } from './index';
 
 describe('contrato da carga de CSV', () => {
   it('CargaPedido aceita até MAX_ARQUIVOS_LOTE arquivos (o literal do .max() é lido pelo teste de sincronia da CLI)', () => {
@@ -21,13 +21,6 @@ describe('critério único de à vista e classe da forma (RN-CAD-09)', () => {
   it('RN-CAD-09: ehAVista olha só a forma (tPag 01, 17 e 04)', () => {
     for (const f of FORMAS_A_VISTA) expect(ehAVista({ forma_tpag: f })).toBe(true);
     for (const f of ['03', '15', '02', '99']) expect(ehAVista({ forma_tpag: f })).toBe(false);
-  });
-  it('RN-CAD-09: a linha de condição aceita 1 a 99 parcelas; a faixa 1 a 12 do cartão é do domain', () => {
-    const l = (parcelas_cartao: number) => LinhaCondicaoPagamento.safeParse({ linha: 2, external_id: 'z', avisos: [], dados: { parcelas_cartao } }).success;
-    expect(l(13)).toBe(true);
-    expect(l(99)).toBe(true);
-    expect(l(100)).toBe(false);
-    expect(l(0)).toBe(false);
   });
   it('RN-CAD-09/RN-CAD-15: parcelas_cartao é legado opcional (1 a 12, ausente = nulo); prazo_medio_dias é obrigatório na entrada e opcional na atualização', () => {
     const base = { codigo: 'C', descricao: 'D', forma_tpag: '03', prazos_dias: [30], prazo_medio_dias: 30, forma_external_id: 'f1', external_id: 'c1' };

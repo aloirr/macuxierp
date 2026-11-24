@@ -5,7 +5,7 @@
  */
 import type { ContextoRota } from '@macuxierp/platform-sdk';
 import type { CondicaoPagamento } from '../contracts';
-import { MAX_PARCELAS_CARTAO } from '../contracts';
+import { derivarParcelasCartao } from '../domain/condicao';
 import { eventoSimples, publicarPronto } from './eventos';
 import type { Repositorios } from './portas';
 
@@ -32,16 +32,15 @@ export interface ResultadoLimpeza {
 
 /**
  * RN-CAD-09 (antes da migração estrita): condição ATIVA de cartão (tPag 03) sem `parcelas_cartao`.
- * Se os prazos são exatamente 30×N com N de 1 a 12, preenche `parcelas_cartao = N` no mesmo UPDATE (auditoria e evento alterada@1);
- * senão desativa (RN-CAD-08, com auditoria e evento). Nada fica "03 sem parcelas".
+ * Se os prazos são válidos (1 a 12 parcelas de 0 a 999 dias, RN-CAD-09 emendada pela RN-CAD-15), preenche `parcelas_cartao = N` derivada
+ * (`derivarParcelasCartao`) no mesmo UPDATE (auditoria e evento alterada@1); senão desativa (RN-CAD-08, com auditoria e evento). Nada fica "03 sem parcelas".
  */
 export async function tratarCartaoSemParcelas(c: ContextoRota, r: Repositorios, condicoes: readonly CondicaoPagamento[]): Promise<ResultadoLimpeza> {
   const preenchidas: string[] = [];
   const paraDesativar: CondicaoPagamento[] = [];
   for (const cond of condicoes) {
-    const n = cond.prazos_dias.length;
-    const ok = n >= 1 && n <= MAX_PARCELAS_CARTAO && cond.prazos_dias.every((p, i) => p === 30 * (i + 1));
-    if (!ok) { paraDesativar.push(cond); continue; }
+    const n = derivarParcelasCartao(cond);
+    if (n === null) { paraDesativar.push(cond); continue; }
     const depois = await r.condicoesPagamento.atualizar(cond.id, { parcelas_cartao: n });
     if (!depois) continue;
     await publicarPronto(c, eventoSimples('cadastros.condicao_pagamento.alterada@1', depois));

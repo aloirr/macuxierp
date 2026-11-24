@@ -127,7 +127,6 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
     expect(simples.ok && simples.linha.dados.prazos_dias).toEqual([3]);
     const avista = mapear('condicao_pagamento', { parcelas_dias: '0' });
     expect(avista.ok && avista.linha.dados.prazos_dias).toEqual([0]);
-    expect(avista.ok && avista.linha.dados.parcelas_cartao).toBeUndefined();
   });
   it('RN-CAD-15: prazo_medio_dias do prazo é inteiro de 0 a 999; fora disso, CARGA_FORMATO no campo', () => {
     const ok = mapear('condicao_pagamento', { prazo_medio_dias: '45' });

@@ -77,8 +77,12 @@ export const Contato = z.object({
 });
 export type Contato = z.infer<typeof Contato>;
 
-/** RN-CAD-15 e RN-CAD-16: prazo médio em dias, digitado (0 a 999). */
-export const PrazoMedioDias = z.number().int().min(0).max(999);
+/** RN-CAD-09: limites das condições de pagamento (parcelas do cartão, parcelas do boleto, dias por parcela). */
+export const MAX_PARCELAS_CARTAO = 12;
+export const MAX_PARCELAS = 36;
+export const MAX_DIAS = 999;
+/** RN-CAD-15 e RN-CAD-16: prazo médio em dias, digitado (0 a MAX_DIAS). */
+export const PrazoMedioDias = z.number().int().min(0).max(MAX_DIAS);
 export const IndIeDest = z.enum(['1', '2', '9']);
 export const ClienteDados = z.object({
   tipo_pessoa: z.enum(['PJ', 'PF']),
@@ -213,10 +217,6 @@ export const SaldoEstoque = z.object({ filial_id: Uuid, produto_id: Uuid, quanti
 export type SaldoEstoque = z.infer<typeof SaldoEstoque>;
 
 // ---- Condição de pagamento (RF-CAD-09) ----
-/** RN-CAD-09: limites das condições de pagamento (parcelas do cartão, parcelas do boleto, dias por parcela). */
-export const MAX_PARCELAS_CARTAO = 12;
-export const MAX_PARCELAS = 36;
-export const MAX_DIAS = 999;
 export const CondicaoPagamentoDados = z.object({
   codigo: Texto(20),
   descricao: Texto(60),
@@ -225,7 +225,7 @@ export const CondicaoPagamentoDados = z.object({
   prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS)).min(1).max(MAX_PARCELAS),
   /** RN-CAD-15: prazo médio em dias, digitado; obrigatório na entrada. Na entidade e no evento `@1` o legado tem nulo. */
   prazo_medio_dias: PrazoMedioDias,
-  /** Legado (RN-CAD-09 emendada pela RN-CAD-15): o cartão tem os dias digitados como as outras formas; as parcelas do cartão ficam só como legado opcional. Parcelas do cartão de crédito (tPag 03), 1 a 12; nulo ou ausente nas demais formas (opcional para não quebrar quem monta a condição à mão). Aditivo, `@1` continua valendo. */
+  /** Legado (RN-CAD-09 emendada pela RN-CAD-15): nº de parcelas do cartão (tPag 03), 1 a 12, derivado dos prazos; nulo nas demais formas. Aditivo, @1 continua valendo. */
   parcelas_cartao: z.number().int().min(1).max(MAX_PARCELAS_CARTAO).nullable().optional(),
   /** D12 (T-0026): a forma de pagamento da carga viaja junto da condição; aditivo e opcional, `@1` continua valendo. */
   forma_external_id: IdExterno,
@@ -235,6 +235,7 @@ export const CondicaoPagamentoDados = z.object({
 });
 export type CondicaoPagamentoDados = z.infer<typeof CondicaoPagamentoDados>;
 /** RN-CAD-09: classe da forma de pagamento, derivada do tPag da NF-e (nunca gravada). */
+export const NOME_FORMA = { '01': 'Dinheiro', '17': 'PIX', '04': 'Cartão de débito', '03': 'Cartão de crédito', '15': 'Boleto' } as const;
 export const CLASSE_FORMA = { '01': 'a_vista', '17': 'a_vista', '04': 'a_vista', '03': 'cartao', '15': 'boleto' } as const;
 export type ClasseForma = (typeof CLASSE_FORMA)[keyof typeof CLASSE_FORMA];
 /** Classe do tPag, ou `null` quando a forma não é aceita (só Dinheiro, PIX, Cartão e Boleto). */
@@ -406,7 +407,6 @@ export const LinhaCondicaoPagamento = z.object({
   dados: z.object({
     codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias,
     prazo_medio_dias: PrazoMedioDias, // RN-CAD-15
-    parcelas_cartao: z.number().int().min(1).max(99).nullable().optional(), // 1..99 aqui; a faixa 1..MAX_PARCELAS_CARTAO é do domain (RN-CAD-09 com a mensagem do cartão)
     forma_external_id: IdExternoValor, forma_codigo: Texto(20), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/),
   }).partial(),
 });

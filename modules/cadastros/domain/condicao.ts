@@ -1,4 +1,4 @@
-import { MAX_DIAS, MAX_PARCELAS, MAX_PARCELAS_CARTAO, classeForma } from '../contracts';
+import { MAX_DIAS, MAX_PARCELAS, MAX_PARCELAS_CARTAO, classeForma, type ClasseForma } from '../contracts';
 import { violacao, type Violacao } from './violacao';
 
 /**
@@ -6,14 +6,17 @@ import { violacao, type Violacao } from './violacao';
  * nunca ecoam o valor digitado, por isso a API e a carga usam estas mesmas constantes.
  */
 export const MOTIVO_FORMA_NAO_ACEITA = 'forma não aceita: use Dinheiro, PIX, Cartão ou Boleto';
-export const MOTIVO_A_VISTA = 'à vista: uma única parcela com 0 dia e sem parcelas de cartão';
+export const MOTIVO_A_VISTA = 'à vista: uma única parcela com 0 dia';
 export const MOTIVO_CARTAO_PRAZOS = `cartão: 1 a ${MAX_PARCELAS_CARTAO} parcelas de 0 a ${MAX_DIAS} dias`;
 export const MOTIVO_PARCELAS_FORMA = 'cartão exige parcelas e as demais formas não as têm';
-export const MOTIVO_BOLETO = `boleto: 1 a ${MAX_PARCELAS} parcelas de 0 a ${MAX_DIAS} dias e sem parcelas de cartão`;
+export const MOTIVO_BOLETO = `boleto: 1 a ${MAX_PARCELAS} parcelas de 0 a ${MAX_DIAS} dias`;
 /** RN-CAD-15 */
-export const MOTIVO_PRAZO_MEDIO = `prazo médio obrigatório: número inteiro de 0 a ${MAX_DIAS} dias`;
+export const MOTIVO_PRAZO_MEDIO = `Prazo médio: inteiro de 0 a ${MAX_DIAS} dias`;
 export const MOTIVO_PRAZO_MEDIO_A_VISTA = 'à vista: prazo médio igual a 0';
 export const MOTIVO_DESCRICAO = 'descrição obrigatória';
+
+/** RN-CAD-09: máximo de parcelas por classe da forma (à vista 1, cartão 12, boleto 36). */
+export const MAX_PARCELAS_DA_CLASSE: Record<ClasseForma, number> = { a_vista: 1, cartao: MAX_PARCELAS_CARTAO, boleto: MAX_PARCELAS };
 
 export interface EntradaCondicao {
   forma_tpag: string;
@@ -51,12 +54,12 @@ export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
       if (parcelas !== null || prazos.length !== 1 || prazos[0] !== 0) erros.push(violacao('RN-CAD-15', 'prazos_dias', MOTIVO_A_VISTA));
       break;
     case 'cartao':
-      if (prazos.length < 1 || prazos.length > MAX_PARCELAS_CARTAO || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_CARTAO_PRAZOS));
+      if (prazos.length < 1 || prazos.length > MAX_PARCELAS_DA_CLASSE.cartao || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_CARTAO_PRAZOS));
       else if (parcelas !== null && parcelas !== prazos.length) erros.push(violacao('RN-CAD-09', 'parcelas_cartao', MOTIVO_CARTAO_PRAZOS));
       break;
     case 'boleto':
       if (parcelas !== null) erros.push(violacao('RN-CAD-09', 'parcelas_cartao', MOTIVO_BOLETO));
-      else if (prazos.length < 1 || prazos.length > MAX_PARCELAS || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_BOLETO));
+      else if (prazos.length < 1 || prazos.length > MAX_PARCELAS_DA_CLASSE.boleto || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_BOLETO));
       break;
   }
   return erros;

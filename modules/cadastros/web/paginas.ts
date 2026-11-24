@@ -4,7 +4,7 @@
  * só esconde o botão: a proteção real é a da API (RN-CORE-02).
  */
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
-import { diasDoPrazo, prazoMedioNaLista, rotuloDaForma } from './prazos';
+import { AGRUPAR_PRAZOS_POR, ROTULO_PRAZO_MEDIO, diasDoPrazo, prazoMedioNaLista, rotuloDaForma } from './prazos';
 import { formatarCentavos, formatarDocumento, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 
 export interface ColunaPagina {
@@ -39,7 +39,7 @@ const REGIME_PIS_COFINS: ColunaPagina['formatar'] = (v) => (v === 'cumulativo' ?
 export const PAGINAS: readonly PaginaCadastros[] = [
   {
     id: 'clientes', menu: 'Clientes', titulo: 'Clientes', rota: '/cadastros/clientes', api: '/v1/cadastros/clientes', filtros: ['filial_id', 'vendedor_id'],
-    colunas: [{ chave: 'documento', rotulo: 'CNPJ/CPF', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'nome_fantasia', rotulo: 'Fantasia' }, { chave: 'ind_ie_dest', rotulo: 'Contribuinte ICMS' }, { chave: 'prazo_medio_dias', rotulo: 'Prazo médio (dias)', formatar: (v) => (typeof v === 'number' ? `${v}` : '') }, { chave: 'limite_credito_centavos', rotulo: 'Limite', formatar: (v) => formatarCentavos(Number(v ?? 0)) }, ATIVO],
+    colunas: [{ chave: 'documento', rotulo: 'CNPJ/CPF', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'nome_fantasia', rotulo: 'Fantasia' }, { chave: 'ind_ie_dest', rotulo: 'Contribuinte ICMS' }, { chave: 'prazo_medio_dias', rotulo: ROTULO_PRAZO_MEDIO, formatar: (v) => (typeof v === 'number' ? `${v}` : '') }, { chave: 'limite_credito_centavos', rotulo: 'Limite', formatar: (v) => formatarCentavos(Number(v ?? 0)) }, ATIVO],
     editar: 'cadastros.cliente.editar', restritos: [{ campo: 'limite_credito_centavos', exige: 'cadastros.cliente.credito' }],
   },
   {
@@ -59,8 +59,8 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'condicoes-pagamento', menu: 'Condições de pagamento', titulo: 'Condições de pagamento', rota: '/cadastros/condicoes-pagamento', api: '/v1/cadastros/condicoes-pagamento', filtros: [],
-    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'Forma de pagamento', formatar: (v) => rotuloDaForma(String(v ?? '')) }, { chave: 'prazos_dias', rotulo: 'Dias das parcelas', formatar: (v) => (Array.isArray(v) ? diasDoPrazo(v as number[]) : '') }, { chave: 'prazo_medio_dias', rotulo: 'Prazo médio (dias)', formatar: prazoMedioNaLista }, ATIVO],
-    editar: 'cadastros.condicao_pagamento.editar', agruparPor: 'forma_tpag',
+    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'Forma de pagamento', formatar: (v) => rotuloDaForma(String(v ?? '')) }, { chave: 'prazos_dias', rotulo: 'Dias das parcelas', formatar: (v) => (Array.isArray(v) ? diasDoPrazo(v as number[]) : '') }, { chave: 'prazo_medio_dias', rotulo: ROTULO_PRAZO_MEDIO, formatar: prazoMedioNaLista }, ATIVO],
+    editar: 'cadastros.condicao_pagamento.editar', agruparPor: AGRUPAR_PRAZOS_POR,
   },
   {
     id: 'vendedores', menu: 'Equipe e carteira', titulo: 'Equipe e carteira', rota: '/cadastros/equipe', api: '/v1/cadastros/vendedores', filtros: ['filial_id'],

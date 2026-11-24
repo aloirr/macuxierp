@@ -5,6 +5,8 @@ import {
   LinhaCliente, LinhaCondicaoPagamento, LinhaEstoque, LinhaFilial, LinhaPreco,
   LinhaProduto, LinhaProdutoUnidade, LinhaVendedor, TipoEndereco, type EntidadeCarga, type LinhasCarga,
 } from '../../contracts';
+import { MAX_DIAS } from '../../contracts';
+import { MOTIVO_PRAZO_MEDIO } from '../condicao';
 import { validarDocumentoCliente } from '../documento';
 import { sugerirIndIeDest, validarIe, validarIndIeDest, type IndIeDest } from '../ie';
 import { validarMunicipio } from '../municipio';
@@ -163,10 +165,10 @@ function documento(l: Leitor, nome: string, tipo: 'PJ' | 'PF'): string | undefin
   return r.documento;
 }
 
-/** RN-CAD-15 e RN-CAD-16: prazo médio em dias, inteiro de 0 a 999. */
+/** RN-CAD-15 e RN-CAD-16: prazo médio em dias, inteiro de 0 a MAX_DIAS. */
 const celulaPrazoMedio = (c: string): CelulaConvertida<number> => {
-  const r = celulaInteiro(c, { min: 0, max: 999 });
-  return r.ok ? r : { ok: false as const, motivo: 'Prazo médio: inteiro de 0 a 999 dias' };
+  const r = celulaInteiro(c, { min: 0, max: MAX_DIAS });
+  return r.ok ? r : { ok: false as const, motivo: MOTIVO_PRAZO_MEDIO };
 };
 
 const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) => ResultadoMapeamento<E> } = {

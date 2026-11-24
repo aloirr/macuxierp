@@ -664,14 +664,15 @@ describe('RN-CAD-09 nas rotas: classe da forma', () => {
     expect(t.eventos.at(-1)).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { parcelas_cartao: null } });
   });
 
-  it('RN-CAD-09: POST /condicoes-pagamento/desativar-formas-recusadas: administrador 200 com contagem e ids, gerente 403, idempotente, só as recusadas e o cartão sem parcelas', async () => {
+  it('RN-CAD-09: POST /condicoes-pagamento/desativar-formas-recusadas: administrador 200 com contagem e ids, gerente 403, idempotente, só as recusadas e o cartão sem parcelas (RN-CAD-09 emendada pela RN-CAD-15: dias digitados como [7,21,45] preenchem, não desativam)', async () => {
     const t = montar();
     const ok = (await post(t, { codigo: 'OK', forma_tpag: '15', prazos_dias: [30] })).corpo.id as string;
     // condições antigas (anteriores à regra) gravadas direto no repositório
     const velhas = await Promise.all(['02', '16', '99'].map((f, i) => t.repos.condicoesPagamento.inserir({ codigo: `V${i}`, descricao: 'Velha', forma_tpag: f, prazos_dias: [0], parcelas_cartao: null } as never)));
-    // cartão ativo sem parcelas: 30×N preenche; o resto desativa
+    // cartão ativo sem parcelas: prazos válidos (1 a 12 parcelas, dias digitados, RN-CAD-09 emendada pela RN-CAD-15) preenchem; fora disso desativa
     const preencher = (await t.repos.condicoesPagamento.inserir({ codigo: 'K3', descricao: 'K', forma_tpag: '03', prazos_dias: [30, 60, 90], parcelas_cartao: null } as never)) as { id: string };
-    const cartaoRuim = (await t.repos.condicoesPagamento.inserir({ codigo: 'K7', descricao: 'K', forma_tpag: '03', prazos_dias: [7], parcelas_cartao: null } as never)) as { id: string };
+    const cartaoRuim = (await t.repos.condicoesPagamento.inserir({ codigo: 'K7', descricao: 'K', forma_tpag: '03', prazos_dias: Array(13).fill(30), parcelas_cartao: null } as never)) as { id: string };
+    const preencherDias = (await t.repos.condicoesPagamento.inserir({ codigo: 'K8', descricao: 'K', forma_tpag: '03', prazos_dias: [7, 21, 45], parcelas_cartao: null } as never)) as { id: string };
     t.eventos.length = 0;
     t.auditoria.length = 0;
     const rota = '/condicoes-pagamento/desativar-formas-recusadas';
@@ -681,11 +682,13 @@ describe('RN-CAD-09 nas rotas: classe da forma', () => {
     expect(r.status).toBe(200);
     expect(r.corpo.desativadas.total).toBe(4);
     expect([...r.corpo.desativadas.ids].sort()).toEqual([...velhas.map((v) => (v as { id: string }).id), cartaoRuim.id].sort());
-    expect(r.corpo.preenchidas).toEqual({ total: 1, ids: [preencher.id] });
+    expect(r.corpo.preenchidas).toEqual({ total: 2, ids: [preencher.id, preencherDias.id] });
+    expect(r.corpo.desativadas.ids).not.toContain(preencherDias.id);
     expect(t.auditoria.filter((a) => a.acao === 'condicao_pagamento.inativar')).toHaveLength(4);
-    expect(t.auditoria.filter((a) => a.acao === 'condicao_pagamento.preencher_parcelas')).toHaveLength(1);
+    expect(t.auditoria.filter((a) => a.acao === 'condicao_pagamento.preencher_parcelas')).toHaveLength(2);
     expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.inativo === true)).toHaveLength(4);
     expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.id === preencher.id && e.payload.parcelas_cartao === 3)).toHaveLength(1);
+    expect(t.eventos.filter((e) => e.nome === 'cadastros.condicao_pagamento.alterada@1' && e.payload.id === preencherDias.id && e.payload.parcelas_cartao === 3)).toHaveLength(1);
     expect((await t.chamar('GET', `/condicoes-pagamento/${ok}`, { sessao: adm })).corpo.inativo).toBe(false);
     expect((await t.chamar('POST', rota, { sessao: adm })).corpo).toEqual({ desativadas: { total: 0, ids: [] }, preenchidas: { total: 0, ids: [] } });
   });

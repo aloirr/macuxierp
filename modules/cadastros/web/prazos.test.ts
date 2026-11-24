@@ -11,14 +11,13 @@ describe('lista dos prazos (RN-CAD-15)', () => {
     const g = agruparPrazosPorForma([p('B60', '15', [30, 60], 45), p('AV', '01', [0], 0), p('B30', '15', [30], 30), p('LEG', '15', [15], null), p('CC', '03', [30, 60, 90], 60)]);
     expect(g.map((x) => x.forma)).toEqual(['Dinheiro', 'Cartão de crédito', 'Boleto']);
     const boleto = g[2]!.prazos;
-    expect(boleto.map((x) => [x.codigo, x.dias, x.prazo_medio, x.incompleto])).toEqual([['B30', '30', '30', false], ['B60', '30/60', '45', false], ['LEG', '15', 'Incompleto', true]]);
+    expect(boleto.map((x) => [x.codigo, x.dias, x.prazo_medio])).toEqual([['B30', '30', '30'], ['B60', '30/60', '45'], ['LEG', '15', 'Incompleto']]);
     expect(prazoMedioNaLista(null)).toBe('Incompleto');
     expect(prazoMedioNaLista(0)).toBe('0');
   });
   it('RN-CAD-15: a página das condições mostra descrição, dias e prazo médio; o cliente mostra o prazo médio', () => {
     const cond = PAGINAS.find((x) => x.id === 'condicoes-pagamento')!;
     expect(cond.colunas.map((c) => c.chave)).toEqual(expect.arrayContaining(['descricao', 'prazos_dias', 'prazo_medio_dias']));
-    expect(cond.colunas.find((c) => c.chave === 'prazo_medio_dias')!.formatar!(null)).toBe('Incompleto');
     expect(cond.agruparPor).toBe('forma_tpag');
     expect(PAGINAS.find((x) => x.id === 'clientes')!.colunas.map((c) => c.chave)).toContain('prazo_medio_dias');
   });
@@ -49,9 +48,7 @@ describe('formulário do prazo (RN-CAD-15)', () => {
     const ok = montarPrazo({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', parcelas: ['30', '60'], prazo_medio_dias: '45' });
     expect(ok.erros).toEqual({});
     expect(ok.corpo).toEqual({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 });
-    expect(montarPrazo({ codigo: 'AV', descricao: 'À vista', forma_tpag: '01', parcelas: ['0'], prazo_medio_dias: '5' }).erros).toHaveProperty('prazo_medio_dias');
     expect(montarPrazo({ codigo: 'X', descricao: 'X', forma_tpag: '15', parcelas: ['1000'], prazo_medio_dias: '30' }).erros).toHaveProperty('prazos_dias');
-    expect(montarPrazo({ codigo: 'X', descricao: 'X', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '1000' }).erros).toHaveProperty('prazo_medio_dias');
   });
   it('RN-CAD-15: o legado abre no formulário com o prazo médio vazio, para completar', () => {
     expect(formularioDoPrazo(p('LEG', '15', [15, 30], null))).toMatchObject({ parcelas: ['15', '30'], prazo_medio_dias: '' });

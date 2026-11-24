@@ -3,14 +3,15 @@
  * o shell (apps/web) desenha a lista agrupada por forma e o formulário com "+ Parcela". A permissão e as regras aqui só
  * orientam a digitação; a API revalida tudo (RN-CORE-02).
  */
-import { MAX_DIAS, MAX_PARCELAS, MAX_PARCELAS_CARTAO, classeForma, prazoCompleto, type CondicaoPagamento } from '../contracts';
-import { validarCondicaoPagamento } from '../domain/condicao';
+import { MAX_DIAS, NOME_FORMA, classeForma, type CondicaoPagamento } from '../contracts';
+import { MAX_PARCELAS_DA_CLASSE, MOTIVO_PRAZO_MEDIO, validarCondicaoPagamento } from '../domain/condicao';
 
 /** Formas aceitas (RN-CAD-09), na ordem do seletor "Forma". */
-export const FORMAS_DO_PRAZO: readonly { tpag: string; rotulo: string }[] = [
-  { tpag: '01', rotulo: 'Dinheiro' }, { tpag: '17', rotulo: 'PIX' }, { tpag: '04', rotulo: 'Cartão de débito' },
-  { tpag: '03', rotulo: 'Cartão de crédito' }, { tpag: '15', rotulo: 'Boleto' },
-];
+export const FORMAS_DO_PRAZO: readonly { tpag: string; rotulo: string }[] = (['01', '17', '04', '03', '15'] as const).map((tpag) => ({ tpag, rotulo: NOME_FORMA[tpag] }));
+
+export const ROTULO_PRAZO_MEDIO = 'Prazo médio (dias)';
+/** A lista dos prazos se agrupa por este campo (o `agruparPor` da página das condições, em `paginas.ts`). */
+export const AGRUPAR_PRAZOS_POR = 'forma_tpag';
 
 export const rotuloDaForma = (tpag: string): string => FORMAS_DO_PRAZO.find((f) => f.tpag === tpag)?.rotulo ?? 'Outra forma';
 /** "30/60/90" (à vista "0"). */
@@ -20,7 +21,7 @@ export const prazoMedioNaLista = (v: unknown): string => (typeof v === 'number' 
 
 type LinhaPrazo = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'forma_tpag' | 'prazos_dias' | 'prazo_medio_dias'> & { id?: string; inativo?: boolean };
 
-export interface PrazoNaLista { id: string | undefined; codigo: string; descricao: string; dias: string; prazo_medio: string; incompleto: boolean; inativo: boolean }
+export interface PrazoNaLista { id: string | undefined; codigo: string; descricao: string; dias: string; prazo_medio: string; inativo: boolean }
 export interface GrupoDePrazos { forma_tpag: string; forma: string; prazos: PrazoNaLista[] }
 
 /** Lista agrupada por forma (a ordem das formas é a do seletor; dentro da forma, por prazo médio e código). Legado sem prazo médio vai ao fim com a marca "Incompleto". */
@@ -28,12 +29,11 @@ export function agruparPrazosPorForma(linhas: readonly LinhaPrazo[]): GrupoDePra
   const ordemForma = (t: string): number => { const i = FORMAS_DO_PRAZO.findIndex((f) => f.tpag === t); return i < 0 ? FORMAS_DO_PRAZO.length : i; };
   const grupos = new Map<string, GrupoDePrazos>();
   for (const l of [...linhas].sort((a, b) => ordemForma(a.forma_tpag) - ordemForma(b.forma_tpag) || (a.prazo_medio_dias ?? 1e6) - (b.prazo_medio_dias ?? 1e6) || a.codigo.localeCompare(b.codigo))) {
-    const g = grupos.get(l.forma_tpag) ?? { forma_tpag: l.forma_tpag, forma: rotuloDaForma(l.forma_tpag), prazos: [] };
+    const g = grupos.get(l[AGRUPAR_PRAZOS_POR]) ?? { forma_tpag: l[AGRUPAR_PRAZOS_POR], forma: rotuloDaForma(l[AGRUPAR_PRAZOS_POR]), prazos: [] };
     g.prazos.push({
-      id: l.id, codigo: l.codigo, descricao: l.descricao, dias: diasDoPrazo(l.prazos_dias), prazo_medio: prazoMedioNaLista(l.prazo_medio_dias),
-      incompleto: !prazoCompleto(l), inativo: l.inativo === true,
+      id: l.id, codigo: l.codigo, descricao: l.descricao, dias: diasDoPrazo(l.prazos_dias), prazo_medio: prazoMedioNaLista(l.prazo_medio_dias), inativo: l.inativo === true,
     });
-    grupos.set(l.forma_tpag, g);
+    grupos.set(l[AGRUPAR_PRAZOS_POR], g);
   }
   return [...grupos.values()];
 }
@@ -45,7 +45,7 @@ export const formularioPrazoVazio = (): FormularioPrazo => ({ codigo: '', descri
 /** Rótulos "Parcela 1", "Parcela 2"… */
 export const rotulosDasParcelas = (n: number): string[] => Array.from({ length: n }, (_, i) => `Parcela ${i + 1}`);
 /** Máximo de parcelas da forma (à vista 1, cartão 12, boleto 36). */
-export const maxParcelasDaForma = (tpag: string): number => (classeForma(tpag) === 'a_vista' ? 1 : classeForma(tpag) === 'cartao' ? MAX_PARCELAS_CARTAO : MAX_PARCELAS);
+export const maxParcelasDaForma = (tpag: string): number => MAX_PARCELAS_DA_CLASSE[classeForma(tpag) ?? 'boleto'];
 export const podeAdicionarParcela = (f: FormularioPrazo): boolean => f.parcelas.length < maxParcelasDaForma(f.forma_tpag);
 export const podeRemoverParcela = (f: FormularioPrazo): boolean => f.parcelas.length > 1;
 export const adicionarParcela = (f: FormularioPrazo): FormularioPrazo => (podeAdicionarParcela(f) ? { ...f, parcelas: [...f.parcelas, ''] } : f);
@@ -68,8 +68,8 @@ export function montarPrazo(f: FormularioPrazo): { corpo?: { codigo: string; des
   if (f.descricao.trim() === '') erros.descricao = 'Informe a descrição';
   const dias = f.parcelas.map(inteiro);
   const medio = inteiro(f.prazo_medio_dias);
-  if (dias.some((d) => d === null || d > MAX_DIAS)) erros.prazos_dias = `Informe os dias de cada parcela (0 a ${MAX_DIAS})`;
-  if (medio === null || medio > MAX_DIAS) erros.prazo_medio_dias = `Informe o prazo médio (0 a ${MAX_DIAS} dias)`;
+  if (dias.some((d) => d === null)) erros.prazos_dias = `Informe os dias de cada parcela (0 a ${MAX_DIAS})`;
+  if (medio === null) erros.prazo_medio_dias = MOTIVO_PRAZO_MEDIO;
   if (Object.keys(erros).length === 0) {
     const prazos = dias as number[];
     for (const v of validarCondicaoPagamento({ forma_tpag: f.forma_tpag, prazos_dias: prazos, prazo_medio_dias: medio })) erros[v.campo as keyof ErrosDoPrazo] = v.mensagem;
@@ -84,9 +84,9 @@ export const formularioDoPrazo = (c: LinhaPrazo): FormularioPrazo => ({
 });
 
 /** Cliente (RN-CAD-16): só o campo "Prazo médio (dias)", opcional; sem lista de prazos liberados. Vazio = sem restrição (nulo). */
-export const CAMPO_PRAZO_MEDIO_DO_CLIENTE = { campo: 'prazo_medio_dias', rotulo: 'Prazo médio (dias)', opcional: true, min: 0, max: MAX_DIAS } as const;
+export const CAMPO_PRAZO_MEDIO_DO_CLIENTE = { campo: 'prazo_medio_dias', rotulo: ROTULO_PRAZO_MEDIO, opcional: true, min: 0, max: MAX_DIAS } as const;
 export function prazoMedioDoCliente(texto: string): { valor: number | null; erro?: string } {
   if (texto.trim() === '') return { valor: null };
   const n = inteiro(texto);
-  return n === null || n > MAX_DIAS ? { valor: null, erro: `Prazo médio: inteiro de 0 a ${MAX_DIAS} dias` } : { valor: n };
+  return n === null ? { valor: null, erro: MOTIVO_PRAZO_MEDIO } : { valor: n };
 }
