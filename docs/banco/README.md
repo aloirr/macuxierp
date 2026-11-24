@@ -314,6 +314,14 @@ Migração: `db/migrations/0050_superadmin_cancelar_temporaria.sql`; testes: `db
 - RLS, grants (por tabela, 0004: as colunas novas entram sozinhas) e gatilhos não mudam. **Funções do portal (0040 a 0046) sem mudança:** nenhuma lista colunas de dado dessas tabelas (só `id`, referências e `external_id`); quem grava na carga é a tx2 do app (`modules/cadastros/api`).
 - Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `CREATE INDEX IF NOT EXISTS`, `lock_timeout` de 5 s). Teste: `db/testes/prazo-medio-0052.db.test.ts` (banco até a 0051 com a massa como legado, depois a 0052; a carga do portal em três transações grava o prazo médio do prazo e do cliente).
 
+## Pedido do FDV em análise com pendência de prazo (T-0085, migração 0057)
+- RN-PED-07 emendada (decisão do Alexandre de 24/11, 18h14 em Manaus): o pedido do FDV com prazo incompleto ou acima do prazo médio do cliente **entra em `em_analise`** com a pendência bloqueante `prazo_incompleto` e/ou `prazo_acima_do_cliente`, em vez de ir a `rejeitado_erp`.
+- Os CHECKs da D-A (0016) mudam de definição **com o mesmo nome** (a 0016 reexecutada encontra o nome e não recria a regra antiga). "Só prazo" (P) = array não vazio em que todo elemento é objeto com `codigo` `prazo_incompleto` ou `prazo_acima_do_cliente` e `bloqueante = true` (contagem pelo `jsonb_path_query_array`, num `CASE` que protege o não-array).
+  - `pedido_fdv_sem_analise`: `origem <> 'fdv' OR status NOT IN ('em_analise', 'recusado') OR (status = 'em_analise' AND P)`. O FDV segue fora de `recusado`.
+  - `pedido_fdv_sem_pendencia`: `origem <> 'fdv' OR pendencias = '[]' OR (status = 'em_analise' AND P)`. Fora de `em_analise` o FDV tem `[]`; a saída do FDV em análise é `aprovado` com `[]`.
+  - O pedido manual (`bko`) não muda. O gatilho `validar_status` já aceita `recebido → em_analise` (0012).
+- Sem `NOT VALID`: a regra nova só afrouxa a antiga, então toda linha existente passa; o `ADD` valida na mesma transação do `DROP` (o `NOT VALID` seguido de `VALIDATE` na mesma transação não reduz a trava). `lock_timeout` de 5 s. Reexecutável (só troca se a definição não citar `prazo_acima_do_cliente`). Teste: `db/testes/pedido-fdv-analise-0057.db.test.ts` (banco até a 0056 com um pedido do FDV aprovado como legado, depois a 0057).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 

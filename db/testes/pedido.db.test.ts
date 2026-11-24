@@ -660,7 +660,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
       executar(banco.conexao, pedidoSql({ retrato: RETRATO }), APP_A);
     });
 
-    it('CHECK pedido_fdv_sem_analise (D-A): o FDV recebido vai a aprovado e não a em_analise', () => {
+    it('CHECK pedido_fdv_sem_analise (D-A; 0057): o FDV sem pendência de prazo vai a aprovado e não a em_analise', () => {
       const fdv = randomUUID();
       violaCheck(
         `${pedidoSql({ id: fdv, origem: 'fdv', externalId: randomUUID() })}
@@ -682,7 +682,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
       expect(r?.s).toBe('aprovado');
     });
 
-    it('CHECK pedido_fdv_sem_pendencia (D-A): o FDV só com pendencias vazia; o BKO aceita pendências', () => {
+    it('CHECK pedido_fdv_sem_pendencia (D-A; 0057): o FDV fora de em_analise só com pendencias vazia; o BKO aceita pendências', () => {
       const pend = '[{"codigo": "credito_excedido", "bloqueante": false}]';
       violaCheck(
         pedidoSql({ origem: 'fdv', externalId: randomUUID(), pendencias: pend }),
