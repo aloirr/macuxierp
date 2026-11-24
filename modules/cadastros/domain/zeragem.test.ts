@@ -39,12 +39,12 @@ const base = (): FatosZeragem => ({
     cliente_endereco: [{ id: 'e1', refs: { cliente: 'c1' }, com_chave: true }],
     cliente_contato: [{ id: 'k1', refs: { cliente: 'c1' }, com_chave: true }],
   },
-  integracao: CADASTROS_ZERAR.map((cadastro) => ({ cadastro, ligada: false, lote_em_voo: false })),
+  integracao: CADASTROS_ZERAR.map((cadastro) => ({ cadastro, lote_em_voo: false })),
 });
 
 const tabelas = (p: PlanoZeragem) => p.apagar.map((a) => a.tabela);
 const ids = (p: PlanoZeragem, t: string) => p.apagar.find((a) => a.tabela === t)?.ids ?? [];
-const com = (f: FatosZeragem, c: CadastroZerarPortal, o: { ligada?: boolean; lote_em_voo?: boolean }): FatosZeragem => ({
+const com = (f: FatosZeragem, c: CadastroZerarPortal, o: { lote_em_voo?: boolean }): FatosZeragem => ({
   ...f,
   integracao: f.integracao.map((i) => (i.cadastro === c ? { ...i, ...o } : i)),
 });
@@ -77,6 +77,7 @@ describe('zeragem: cada cadastro sozinho', () => {
       'estoque_movimento', 'estoque_saldo', 'tabela_preco_item', 'produto_unidade', 'produto',
     ]);
     expect(ids(p, 'tabela_preco_item')).toEqual(['i1', 'i2']);
+    expect(p.bloqueios).toEqual([]);
   });
 
   it('RN-CAD-10: zerar produto mantém a tabela de preço e o vínculo do cliente', () => {
@@ -169,32 +170,19 @@ describe('zeragem: anulados', () => {
 });
 
 describe('zeragem: bloqueios', () => {
-  it('RN-CAD-10: cadastro efetivo com integração ligada bloqueia e esvazia o plano', () => {
-    const p = planoZeragem(['produto'], com(base(), 'estoque', { ligada: true }));
-    expect(p.bloqueios).toEqual([{ cadastro: 'estoque', motivo: 'integracao_ligada' }]);
-    expect(p.apagar).toEqual([]);
-    expect(p.anular).toEqual([]);
-    expect(p.efetivos).toContain('estoque');
-  });
-
-  it('RN-CAD-10: preço ligado na integração bloqueia o zerar do produto', () => {
-    const p = planoZeragem(['produto'], com(base(), 'preco', { ligada: true }));
-    expect(p.bloqueios).toEqual([{ cadastro: 'preco', motivo: 'integracao_ligada' }]);
+  it('RN-CAD-10: lote em voo em cadastro tocado só pela cascata (preço) bloqueia o zerar do produto', () => {
+    const p = planoZeragem(['produto'], com(base(), 'preco', { lote_em_voo: true }));
+    expect(p.bloqueios).toEqual([{ cadastro: 'preco', motivo: 'lote_em_andamento' }]);
     expect(p.apagar).toEqual([]);
     expect(p.efetivos).not.toContain('preco');
   });
 
   it('RN-CAD-10: lote em voo bloqueia com lote_em_andamento, e cadastro fora dos efetivos não bloqueia', () => {
-    const f = com(com(base(), 'cliente', { lote_em_voo: true }), 'vendedor', { ligada: true });
+    const f = com(base(), 'cliente', { lote_em_voo: true });
     const p = planoZeragem(['cliente'], f);
     expect(p.bloqueios).toEqual([{ cadastro: 'cliente', motivo: 'lote_em_andamento' }]);
     expect(p.apagar).toEqual([]);
     expect(planoZeragem(['preco'], f).bloqueios).toEqual([]);
-  });
-
-  it('RN-CAD-10: ligada e lote em voo no mesmo cadastro listam os dois motivos', () => {
-    const p = planoZeragem(['preco'], com(base(), 'preco', { ligada: true, lote_em_voo: true }));
-    expect(p.bloqueios.map((b) => b.motivo)).toEqual(['integracao_ligada', 'lote_em_andamento']);
   });
 });
 
