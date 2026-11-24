@@ -2,7 +2,8 @@
  * "Zerar dados" do portal `/config` na API de produção (RN-CAD-10, T-0058, v0.3.6): o `montarDependenciasProducao` monta o
  * plugin do cadastros com as portas da apps/api (`plataforma/portas-zeragem.ts`), que só chamam as `portal_*` da 0043.
  * Ponta a ponta no PostgreSQL migrado: sessão de superadmin, CSRF, prévia, frase, efeito, mantidos (pedido e fiscal) e o
- * bloqueio pela integração FDV ligada. Dados fictícios. Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
+ * zerar com a integração FDV ligada (expansão T-0086: aceita o bloqueio antigo ou o fluxo novo da 0053, espelho inativo e
+ * pendente). Dados fictícios. Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -133,7 +134,20 @@ INSERT INTO core.certificado (tenant_id, filial_id, titular, cnpj, valido_de, va
     expect(await n('produto')).toBe(0);
   });
 
-  it('RN-CAD-10: com a integração FDV ligada no cadastro, o zerar é 422 zeragem_bloqueada e nada muda', async () => {
+  it('RN-CAD-10 (T-0086, 0053): com a integração FDV ligada o zerar não bloqueia, apaga no ERP e deixa o espelho inativo e pendente', async () => {
+    const publicado = randomUUID();
+    await b.admin.query(
+      `INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id, filial_id, vendedor_id, limite_credito_centavos, external_id)
+       VALUES ($1, $2, 'PJ', '11222333000181', '9', 'Cliente publicado', $3, $4, $5, 0, 'C86')`,
+      [publicado, T, id.cond, id.filialPedido, id.vendedor],
+    );
+    const payload = JSON.stringify({ external_id: 'C86', ativo: true, razao_social: 'Cliente publicado' });
+    await b.admin.query(
+      `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em,
+         fonte_refs, ativo, pendente, hash_confirmado, confirmado_em, erp_id)
+       VALUES ($1, 'cliente', 'C86', $2::jsonb, $3, '2026-11-21T12:00:00Z', '2026-11-21T12:00:00Z', '{}'::jsonb, true, false, $3, now(), $4)`,
+      [T, payload, 'b'.repeat(64), publicado],
+    );
     await b.admin.query(
       `INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo, entidades_habilitadas)
        VALUES ($1, 'conector-zerar', 'teste', decode(repeat('aa', 40), 'hex'), 'mxf_abcd', ARRAY['cliente']::integracao_fdv.entidade_hub[])`,
@@ -141,10 +155,27 @@ INSERT INTO core.certificado (tenant_id, filial_id, titular, cnpj, valido_de, va
     );
     const p = await previa(['cliente']);
     expect(p.statusCode, p.body).toBe(200);
-    expect(p.json<Resposta>().bloqueios).toEqual([{ cadastro: 'cliente', motivo: 'integracao_ligada' }]);
+    const bloqueios = p.json<Resposta>().bloqueios;
     const r = await zerar(FRASE_ZERAR_DADOS, ['cliente']);
-    expect(r.statusCode, r.body).toBe(422);
-    expect(r.json()).toMatchObject({ codigo: 'RN-CAD-10', detalhes: { codigo: CODIGO_ZERAGEM_BLOQUEADA } });
-    expect(await n('cliente')).toBe(1);
+    const clientes = await b.admin.query<{ id: string }>('SELECT id FROM cadastros.cliente WHERE tenant_id = $1 ORDER BY id', [T]);
+    const espelho = await b.admin.query(
+      `SELECT ativo, pendente, payload->>'ativo' AS pa, hash <> hash_confirmado AS hash_novo, erp_id
+         FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND entidade = 'cliente' AND registro_external_id = 'C86'`,
+      [T],
+    );
+    if (bloqueios.length > 0) {
+      // Expansão (T-0086): comportamento antigo, até o lote F do cadastros entrar; a contração tira este ramo.
+      expect(bloqueios).toEqual([{ cadastro: 'cliente', motivo: 'integracao_ligada' }]);
+      expect(r.statusCode, r.body).toBe(422);
+      expect(r.json()).toMatchObject({ codigo: 'RN-CAD-10', detalhes: { codigo: CODIGO_ZERAGEM_BLOQUEADA } });
+      expect(clientes.rows.map((c) => c.id)).toEqual([id.clientePedido, publicado].sort());
+      expect(espelho.rows).toEqual([{ ativo: true, pendente: false, pa: 'true', hash_novo: false, erp_id: publicado }]);
+      return;
+    }
+    // Fluxo novo (0053, RN-CAD-10 emendada): a integração ligada não bloqueia.
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ simulado: false, bloqueios: [], apagados: [{ tabela: 'cliente', quantidade: 1 }] });
+    expect(clientes.rows.map((c) => c.id)).toEqual([id.clientePedido]);
+    expect(espelho.rows).toEqual([{ ativo: false, pendente: true, pa: 'false', hash_novo: true, erp_id: null }]);
   });
 });
