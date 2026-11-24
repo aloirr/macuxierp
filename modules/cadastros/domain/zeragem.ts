@@ -12,7 +12,8 @@ export type { TabelaZeragem };
 
 /** 'fiscal' = filial com certificado A1 ou ambiente fiscal configurado (RN-CAD-10, v0.3.6). */
 export type MotivoUso = (typeof MOTIVOS_USO)[number];
-export type MotivoBloqueio = 'integracao_ligada' | 'lote_em_andamento';
+/** Só o lote em andamento bloqueia: a integração ligada deixou de bloquear (RN-CAD-10 emendada, T-0086; a 0053 inativa no FDV). */
+export type MotivoBloqueio = 'lote_em_andamento';
 
 /** Do mais forte para o mais fraco: com vários motivos, o primeiro é o contado. */
 export const MOTIVOS: readonly MotivoUso[] = MOTIVOS_USO;
@@ -87,7 +88,6 @@ export interface LinhaZeragem {
 
 export interface IntegracaoZeragem {
   cadastro: CadastroZerarPortal;
-  ligada: boolean;
   lote_em_voo: boolean;
 }
 
@@ -222,13 +222,12 @@ export function planoZeragem(escolhidos: readonly CadastroZerarPortal[], fatos: 
   });
 
   // Bloqueios: além dos efetivos, valem os cadastros "tocados" pela cascata (ex.: zerar produto apaga itens de
-  // preço sem tornar 'preco' efetivo). O FDV recebe esses dados, então a integração ligada deve barrar também.
+  // preço sem tornar 'preco' efetivo). O lote em voo de qualquer um deles barra (a integração ligada não barra: o espelho vira inativo pendente).
   const tocados = new Set<CadastroZerarPortal>(efetivos);
   for (const a of apagar) tocados.add(CADASTRO_DA_TABELA[a.tabela]);
   const bloqueios: BloqueioZeragem[] = naOrdem(tocados).flatMap((cadastro) => {
     const i = fatos.integracao.find((x) => x.cadastro === cadastro);
     const l: BloqueioZeragem[] = [];
-    if (i?.ligada) l.push({ cadastro, motivo: 'integracao_ligada' });
     if (i?.lote_em_voo) l.push({ cadastro, motivo: 'lote_em_andamento' });
     return l;
   });

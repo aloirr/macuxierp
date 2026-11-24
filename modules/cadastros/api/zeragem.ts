@@ -1,7 +1,8 @@
 /**
  * Plugin de plataforma "Zerar dados" do portal `/config` (RN-CAD-10, T-0058, ADR 0012 §4 e 0013). Só superadmin.
  * Decisão no domain (`planoZeragem`), efeito nas funções do banco, tudo na mesma transação do `comPlataforma`:
- *   fatos (`cadastros.portal_zeragem_fatos`) + usos (porta) + estado da integração (porta) → plano → espelho → `cadastros.portal_zerar`.
+ *   fatos (`cadastros.portal_zeragem_fatos`) + usos (porta) + lote em voo (porta) → plano → `cadastros.portal_zerar`, que já
+ * deixa inativo e pendente no espelho do FDV o que sai e foi publicado (0053; a integração ligada não bloqueia).
  * A auditoria (só contagens e superadmin_id) é gravada pela função do banco, então a rota não chama `c.auditar`.
  * O erro `MXC03` (o estado mudou entre o plano e o efeito) sobe cru para o mapa de erros da apps/api.
  */
@@ -80,7 +81,7 @@ const lerEstado = (c: ContextoPlataforma, tenant: string, deps: DependenciasZera
 const integracaoDe = (estado: readonly EstadoEntidadeIntegracao[]) =>
   CADASTROS_ZERAR_PORTAL.map((cadastro) => {
     const es = estado.filter((e) => (ENTIDADES_DO_CADASTRO[cadastro] ?? []).some((x) => x === e.entidade));
-    return { cadastro, ligada: es.some((e) => e.ligada), lote_em_voo: es.some((e) => e.lote_em_voo) };
+    return { cadastro, lote_em_voo: es.some((e) => e.lote_em_voo) };
   });
 
 /** Fatos do banco + usos + integração, no formato do domain. Os fatos sempre cobrem todos os cadastros (a cascata precisa). */
@@ -146,20 +147,19 @@ export function criarPluginPlataformaCadastrosZerar(deps: DependenciasZeragemPla
         const escolhidos = corpo.cadastros as CadastroZerarPortal[];
         const bloqueado = (plano: PlanoZeragem) => {
           if (plano.bloqueios.length === 0) return;
-          throw erros.regra('RN-CAD-10', 'Há cadastros com a integração FDV ligada ou com lote em andamento', undefined, {
+          throw erros.regra('RN-CAD-10', 'Há cadastros com lote de integração em andamento', undefined, {
             codigo: CODIGO_ZERAGEM_BLOQUEADA,
             bloqueios: plano.bloqueios.map((b) => `${b.cadastro}:${b.motivo}`),
           });
         };
-        // Ordem do efeito (README do banco, T-0058): 1) integracao_fdv (estado e espelho das entidades dos efetivos, que só
-        // dependem do pedido); 2) fatos do cadastros; 3) usos (pedido, faturamento, core); 4) tirar as filiais dos usuários;
-        // 5) cadastros.portal_zerar (revalida com FOR UPDATE; MXC03 se mudou). Tudo na mesma transação: erro desfaz o espelho.
+        // Ordem do efeito (README do banco, T-0058, 0053): 1) estado da integração (lote em voo); 2) fatos do cadastros;
+        // 3) usos (pedido, faturamento, core); 4) tirar as filiais dos usuários; 5) cadastros.portal_zerar (revalida com
+        // FOR UPDATE; MXC03 se mudou; inativa o espelho antes do DELETE). Tudo na mesma transação: erro desfaz tudo.
         const estado = await lerEstado(c, tenant, deps);
         const previo = planoZeragem(escolhidos, { existentes: {}, integracao: integracaoDe(estado) });
         bloqueado(previo);
-        await deps.integracao.zerarEspelho(c.tx, tenant, entidadesDe(previo.efetivos), c.request_id);
         const plano = planoZeragem(escolhidos, await montarFatos(c, tenant, deps, estado));
-        bloqueado(plano); // bloqueio só pela cascata (cadastro tocado): o erro desfaz o espelho na mesma transação
+        bloqueado(plano); // bloqueio só pela cascata (cadastro tocado)
         const filiaisApagadas = plano.apagar.filter((a) => a.tabela === 'filial').flatMap((a) => a.ids);
         if (filiaisApagadas.length > 0) await deps.usuarios.tirarFiliais(c.tx, tenant, filiaisApagadas);
         const [l] = await c.tx.consultar<{ r: unknown }>('SELECT cadastros.portal_zerar($1::uuid, $2::jsonb, $3) AS r', [

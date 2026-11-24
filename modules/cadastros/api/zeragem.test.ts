@@ -46,7 +46,6 @@ function montar(o: Opcoes = {}) {
       async estado(_tx, _t, entidades): Promise<EstadoEntidadeIntegracao[]> {
         return entidades.map((entidade) => ({ entidade, ligada: o.ligadas?.includes(entidade) ?? false, lote_em_voo: o.emVoo?.includes(entidade) ?? false }));
       },
-      async zerarEspelho(_tx, _t, entidades) { todas.push('espelho'); ordem.push(`espelho:${[...entidades].join(',')}`); return entidades.map((entidade) => ({ entidade, registros: 3 })); },
     },
     usuarios: { async tirarFiliais(_tx, _t, ids) { todas.push('tirarFiliais'); ordem.push('tirar'); tirados.push([...ids]); return 2; } },
   });
@@ -74,12 +73,12 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(m.refsUsos).toEqual([{ filial: ['f1'], vendedor: ['v1'], condicao_pagamento: ['cp1'], cliente: ['c1'] }]);
   });
 
-  it('RN-CAD-10: a prévia é simulado=true, não chama o efeito e lista os bloqueios', async () => {
-    const m = montar({ ligadas: ['vendedor'] });
+  it('RN-CAD-10: a prévia é simulado=true, não chama o efeito e lista o lote em andamento como bloqueio', async () => {
+    const m = montar({ emVoo: ['vendedor'] });
     const { corpo } = await m.chamar(C.previa, { cadastros: ['vendedor'] });
     const r = ZeragemPlataformaResposta.parse(corpo);
     expect(r.simulado).toBe(true);
-    expect(r.bloqueios).toEqual([{ cadastro: 'vendedor', motivo: 'integracao_ligada' }]);
+    expect(r.bloqueios).toEqual([{ cadastro: 'vendedor', motivo: 'lote_em_andamento' }]);
     expect(m.ordem).toEqual([]);
   });
 
@@ -96,7 +95,7 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(rota.corpo!.safeParse({ cadastros: ['vendedor'], frase: `  ${FRASE.toUpperCase()} ` }).success).toBe(true);
   });
 
-  it('RN-CAD-10: com bloqueio o zerar é 422 zeragem_bloqueada e não chama espelho nem portal_zerar', async () => {
+  it('RN-CAD-10: com bloqueio o zerar é 422 zeragem_bloqueada e não chama portal_zerar', async () => {
     const m = montar({ emVoo: ['vendedor'] });
     const e = await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE }).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(ErroApi);
@@ -105,37 +104,37 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(m.ordem).toEqual([]);
   });
 
-  it('RN-CAD-10: condicao_pagamento bloqueia por qualquer das duas entidades do Hub', async () => {
-    const m = montar({ ligadas: ['prazo_pagamento'] });
+  it('RN-CAD-10: condicao_pagamento bloqueia o lote em voo de qualquer das duas entidades do Hub', async () => {
+    const m = montar({ emVoo: ['prazo_pagamento'] });
     const { corpo } = await m.chamar(C.previa, { cadastros: ['condicao_pagamento'] });
-    expect(ZeragemPlataformaResposta.parse(corpo).bloqueios).toEqual([{ cadastro: 'condicao_pagamento', motivo: 'integracao_ligada' }]);
+    expect(ZeragemPlataformaResposta.parse(corpo).bloqueios).toEqual([{ cadastro: 'condicao_pagamento', motivo: 'lote_em_andamento' }]);
   });
 
-  it('RN-CAD-10: a ordem é espelho das entidades dos efetivos e depois portal_zerar, sem c.auditar', async () => {
-    const m = montar();
+  it('RN-CAD-10 (T-0086): com a integração ligada o zerar não bloqueia e só chama o portal_zerar (a 0053 inativa o espelho), sem c.auditar', async () => {
+    const m = montar({ ligadas: ['vendedor'] });
     const { corpo } = await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE });
-    expect(m.ordem).toEqual(['espelho:vendedor', 'portal_zerar']);
+    expect(m.ordem).toEqual(['portal_zerar']);
     const r = ZeragemPlataformaResposta.parse(corpo);
     expect(r.simulado).toBe(false);
     expect(r.efetivos).toEqual(['vendedor']);
     expect(r.apagados).toEqual([{ tabela: 'vendedor', quantidade: 1 }]);
   });
 
-  it('RN-CAD-10: zerar filial chama espelho, fatos, usos, tirarFiliais (só ids apagados) e portal_zerar, nessa ordem', async () => {
+  it('RN-CAD-10: zerar filial chama fatos, usos, tirarFiliais (só ids apagados) e portal_zerar, nessa ordem', async () => {
     const m = montar();
     await m.chamar(C.zerar, { cadastros: ['filial'], frase: FRASE });
-    expect(m.todas).toEqual(['espelho', 'fatos', 'usos', 'tirarFiliais', 'portal_zerar']);
+    expect(m.todas).toEqual(['fatos', 'usos', 'tirarFiliais', 'portal_zerar']);
     expect(m.tirados).toEqual([['f1']]);
   });
 
   it('RN-CAD-10: sem filial no plano o tirarFiliais não é chamado', async () => {
     const m = montar();
     await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE });
-    expect(m.todas).toEqual(['espelho', 'fatos', 'usos', 'portal_zerar']);
+    expect(m.todas).toEqual(['fatos', 'usos', 'portal_zerar']);
     expect(m.tirados).toEqual([]);
   });
 
-  it('RN-CAD-10: a prévia não chama tirarFiliais nem zerarEspelho', async () => {
+  it('RN-CAD-10: a prévia não chama tirarFiliais nem portal_zerar', async () => {
     const m = montar();
     await m.chamar(C.previa, { cadastros: ['filial'] });
     expect(m.todas).toEqual(['fatos', 'usos']);
