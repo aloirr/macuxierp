@@ -103,7 +103,10 @@ export interface RepositorioCore {
   criarUsuario(tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario>;
   /** token: 0 linhas = null */
   atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
+  /** Zera também `senha_temporaria_hash` e `senha_temporaria_expira_em` (RN-CORE-13). */
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
+  /** RN-CORE-13: grava a temporária (hash argon2id) e a expiração, em paralelo à senha atual, que não muda; um pedido novo substitui a temporária anterior. */
+  emitirSenhaTemporaria(tx: Transacao, usuarioId: string, hash: string, expiraEm: Date): Promise<void>;
   /** RN-CORE-01: chamar antes de contar. */
   travarAdministradoresAtivos(tx: Transacao): Promise<void>;
   contarAdministradoresAtivos(tx: Transacao, exceto: string): Promise<number>;

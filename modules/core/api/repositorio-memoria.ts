@@ -17,7 +17,7 @@ import type {
 
 export class RepositorioCoreMemoria implements RepositorioCore {
   empresaLinha: LinhaEmpresa | null = null;
-  usuarios: (LinhaUsuario & { senha_hash: string })[] = [];
+  usuarios: (LinhaUsuario & { senha_hash: string; senha_temporaria_hash?: string | null; senha_temporaria_expira_em?: Date | null })[] = [];
   licencasLinhas: LinhaLicenca[] = [];
   certificadosLinhas: (LinhaCertificado & Partial<NovoCertificado>)[] = [];
   ambientesLinhas: (LinhaAmbiente & { alterado_por?: string })[] = [];
@@ -68,7 +68,12 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   }
   async definirSenha(_tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void> {
     const u = this.usuarios.find((x) => x.id === id);
-    if (u) Object.assign(u, { senha_hash: senhaHash, deve_trocar_senha: true, updated_at: agora });
+    if (u) Object.assign(u, { senha_hash: senhaHash, deve_trocar_senha: true, senha_temporaria_hash: null, senha_temporaria_expira_em: null, updated_at: agora });
+  }
+  async emitirSenhaTemporaria(_tx: Transacao, usuarioId: string, hash: string, expiraEm: Date): Promise<void> {
+    const u = this.usuarios.find((x) => x.id === usuarioId);
+    if (!u) throw new Error('sem usuário');
+    Object.assign(u, { senha_temporaria_hash: hash, senha_temporaria_expira_em: expiraEm });
   }
   /** Registra a ordem das chamadas para o teste de RN-CORE-01 (trava antes da contagem). */
   chamadasAdministradores: string[] = [];

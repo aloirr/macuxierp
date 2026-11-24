@@ -124,6 +124,12 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
     expect(e.message).toBe('Já existe empresa com este código');
   });
 
+  it("RN-CORE-11: o Zod do SDK recusa criar empresa com o código reservado 'macuxi' (e 'MACUXI') antes do banco", async () => {
+    const t = montar();
+    await expect(t.chamar('POST', '/empresas', { corpo: { slug: 'macuxi', nome: 'Nova' } })).rejects.toThrow('Slug reservado');
+    await expect(t.chamar('POST', '/empresas', { corpo: { slug: 'MACUXI', nome: 'Nova' } })).rejects.toThrow();
+  });
+
   it('lista com paginação e responde 404 para empresa que não existe', async () => {
     const t = montar();
     expect(await t.chamar('GET', '/empresas', { consulta: { limite: '10' } })).toMatchObject({ corpo: { itens: [{ id: EMPRESA }], proximo_cursor: null } });
