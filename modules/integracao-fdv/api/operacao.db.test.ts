@@ -164,6 +164,7 @@ describe.skipIf(!PG_DISPONIVEL)('operação da Integração FDV no PostgreSQL re
       expect(corpos).toEqual([['Z1', 'Z2'], ['Z1']]);
       expect(await reg(t, 'Z1')).toMatchObject({ pendente: false });
       expect((await reg(t, 'Z1')).hash_confirmado).toBe((await reg(t, 'Z1')).hash);
+      expect((await reg(t, 'Z1')).fonte_refs).toEqual(ZERAR); // confirmado pelo Hub: a marca de reenvio sai; a origem zerar fica (o registro já foi apagado do ERP)
       const [, segundo] = await lotes(t);
       expect(segundo!.contagens).toMatchObject({ origem: 'zerar' }); // o reenvio de uma inativação do Zerar segue zerar
       const depoisLog = await banco.comTenant(t, (tx) => lerInsumosLog(tx, t, 'produto', 200));

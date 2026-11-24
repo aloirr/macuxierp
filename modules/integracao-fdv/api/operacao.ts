@@ -128,9 +128,13 @@ export async function reprocessarCadastro(tx: Transacao, tenant: string, entidad
             EXISTS (SELECT 1 FROM integracao_fdv.lote_erro e WHERE e.tenant_id = r.tenant_id AND e.entidade = r.entidade
                      AND e.registro_external_id = r.registro_external_id AND e.resolvido_em IS NULL AND e.deleted_at IS NULL) AS erro_aberto
        FROM integracao_fdv.registro_publicado r
-      WHERE r.tenant_id = $1 AND r.entidade = $2::integracao_fdv.entidade_hub AND r.deleted_at IS NULL AND r.payload IS NOT NULL`,
+      WHERE r.tenant_id = $1 AND r.entidade = $2::integracao_fdv.entidade_hub AND r.deleted_at IS NULL AND r.payload IS NOT NULL
+        AND (r.pendente OR r.hash_confirmado IS DISTINCT FROM r.hash
+             OR EXISTS (SELECT 1 FROM integracao_fdv.lote_erro e WHERE e.tenant_id = r.tenant_id AND e.entidade = r.entidade
+                         AND e.registro_external_id = r.registro_external_id AND e.resolvido_em IS NULL AND e.deleted_at IS NULL))`,
     [tenant, entidade],
   );
+  // o SQL já tira o integrado; a decisão e as contagens continuam sendo da função pura do domain
   const plano = planejarReprocessar(registros);
   if (plano.ids.length > 0) {
     await tx.consultar(

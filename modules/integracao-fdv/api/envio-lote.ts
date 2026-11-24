@@ -677,7 +677,8 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
     if (aceitosOk.length > 0) {
       await tx.consultar(
         `UPDATE integracao_fdv.registro_publicado r
-            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4
+            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4,
+                fonte_refs = r.fonte_refs - 'reenvio' -- a marca do Reprocessar vale até o Hub confirmar
            FROM unnest($5::text[], $6::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
         [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash)],
