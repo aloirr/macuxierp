@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACOES_PLATAFORMA } from './plataforma-rotas';
 import {
+  AVISOS_CARGA_PORTAL,
   CADASTROS_CARGA_PORTAL,
   CADASTROS_ZERAR_PORTAL,
   CODIGO_ZERAGEM_BLOQUEADA,
@@ -179,6 +180,26 @@ describe('modo e efeito do Substituir tudo', () => {
     expect(() => efeitoSubstituir({ total: 10, a_inativar: 2, enderecos_a_inativar: 1.5 })).toThrow(RangeError);
     expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, enderecos_a_inativar: -1 }).success).toBe(false);
   });
+
+  it('mantidos_em_uso e enderecos_sem_chave (T-0075) são opcionais, repassados como vieram e só contagem inteira', () => {
+    const base = { total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false };
+    expect(efeitoSubstituir({ total: 10, a_inativar: 2, mantidos_em_uso: 3, enderecos_sem_chave: 4 })).toEqual({ ...base, mantidos_em_uso: 3, enderecos_sem_chave: 4 });
+    expect(efeitoSubstituir({ total: 10, a_inativar: 2, mantidos_em_uso: 0 }).mantidos_em_uso).toBe(0);
+    const semCampos = efeitoSubstituir({ total: 10, a_inativar: 2 });
+    expect('mantidos_em_uso' in semCampos).toBe(false);
+    expect('enderecos_sem_chave' in semCampos).toBe(false);
+    for (const campo of ['mantidos_em_uso', 'enderecos_sem_chave'] as const) {
+      for (const v of [-1, 1.5]) {
+        expect(() => efeitoSubstituir({ total: 10, a_inativar: 2, [campo]: v })).toThrow(RangeError);
+        expect(EfeitoSubstituir.safeParse({ ...base, [campo]: v }).success).toBe(false);
+      }
+      expect(EfeitoSubstituir.safeParse({ ...base, [campo]: 2 }).success).toBe(true);
+    }
+  });
+
+  it('compatibilidade: o efeito de hoje, sem os campos da T-0075, continua passando', () => {
+    expect(EfeitoSubstituir.safeParse({ total: 10, a_inativar: 2, percentual: 20, acima_limite_fdv: false, sem_chave: 1 }).success).toBe(true);
+  });
 });
 
 describe('ValidarCargaPlataformaResposta', () => {
@@ -297,6 +318,17 @@ describe('GravarCargaPlataformaResposta (carga síncrona)', () => {
       caminhoRecusado(GravarCargaPlataformaResposta.safeParse({ ...cliente, cadastro: 'produto', efeito, enderecos_inativados: 5 }), 'enderecos_inativados');
       caminhoRecusado(GravarCargaPlataformaResposta.safeParse({ ...cliente, cadastro: 'produto', efeito: efeitoCliente }), 'efeito.enderecos_a_inativar');
       caminhoRecusado(ValidarCargaPlataformaResposta.safeParse(validacao({ efeito: efeitoCliente })), 'efeito.enderecos_a_inativar');
+    });
+
+    it('enderecos_sem_chave (T-0075): aceito no cliente, recusado fora dele no validar e no gravar', () => {
+      const comSemChave = efeitoSubstituir({ total: 10, a_inativar: 2, sem_chave: 1, mantidos_em_uso: 2, enderecos_sem_chave: 3 });
+      expect(GravarCargaPlataformaResposta.safeParse({ ...cliente, efeito: comSemChave }).success).toBe(true);
+      expect(ValidarCargaPlataformaResposta.safeParse(validacao({ cadastro: 'cliente', efeito: comSemChave })).success).toBe(true);
+      caminhoRecusado(GravarCargaPlataformaResposta.safeParse({ ...cliente, cadastro: 'produto', efeito: comSemChave }), 'efeito.enderecos_sem_chave');
+      caminhoRecusado(ValidarCargaPlataformaResposta.safeParse(validacao({ efeito: comSemChave })), 'efeito.enderecos_sem_chave');
+      const semEnderecos = efeitoSubstituir({ total: 10, a_inativar: 2, sem_chave: 1, mantidos_em_uso: 2 });
+      expect(GravarCargaPlataformaResposta.safeParse({ ...cliente, cadastro: 'produto', efeito: semEnderecos }).success).toBe(true);
+      expect(ValidarCargaPlataformaResposta.safeParse(validacao({ efeito: semEnderecos })).success).toBe(true);
     });
 
     it('recusa o adicionar com o campo', () => {
@@ -439,6 +471,22 @@ describe('rotas, ações e erros', () => {
     expect(() => dadosClienteDiferentes(0)).toThrow(RangeError);
     expect(sdk.dadosClienteDiferentes).toBe(dadosClienteDiferentes);
     expect(sdk.TIPOS_ENDERECO_CLIENTE).toBe(TIPOS_ENDERECO_CLIENTE);
+  });
+
+  it('AVISOS_CARGA_PORTAL (T-0075): singular, plural, 0 → null e RangeError fora de inteiro ≥ 0', () => {
+    expect(Object.isFrozen(AVISOS_CARGA_PORTAL)).toBe(true);
+    expect(AVISOS_CARGA_PORTAL.mantidosEmUso(1)).toBe('Mantidos: 1 (em uso em pedido, título ou nota)');
+    expect(AVISOS_CARGA_PORTAL.mantidosEmUso(4)).toBe('Mantidos: 4 (em uso em pedido, título ou nota)');
+    expect(AVISOS_CARGA_PORTAL.semChave(1)).toBe('1 registro sem código ficou fora da substituição: dê um código a ele para entrar na próxima');
+    expect(AVISOS_CARGA_PORTAL.semChave(3)).toBe('3 registros sem código ficaram fora da substituição: dê um código a eles para entrarem na próxima');
+    expect(AVISOS_CARGA_PORTAL.enderecosSemChave(1)).toBe('1 endereço sem código ficou fora da substituição');
+    expect(AVISOS_CARGA_PORTAL.enderecosSemChave(2)).toBe('2 endereços sem código ficaram fora da substituição');
+    for (const f of Object.values(AVISOS_CARGA_PORTAL)) {
+      expect(f(0)).toBeNull();
+      expect(() => f(-1)).toThrow(RangeError);
+      expect(() => f(1.5)).toThrow(RangeError);
+    }
+    expect(sdk.AVISOS_CARGA_PORTAL).toBe(AVISOS_CARGA_PORTAL);
   });
 
   it('o índice do SDK reexporta', () => {

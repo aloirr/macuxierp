@@ -18,6 +18,7 @@
  */
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
+import { plural } from './texto';
 
 const Id = z.string().regex(PADRAO_UUID);
 const Instante = z.string().datetime();
@@ -187,8 +188,11 @@ export const LIMITE_INATIVACAO_FDV_PCT = 30;
  * Efeito do "Substituir tudo" num cadastro: `total` = ativos de hoje no tenant; `a_inativar` = os que não vêm no arquivo;
  * `percentual` = `a_inativar * 100 / total` (0 sem ativos, sem arredondar: a tela formata); `acima_limite_fdv` =
  * `percentual > LIMITE_INATIVACAO_FDV_PCT`; `sem_chave` (opcional) = registros sem `external_id`, criados no BKO, que
- * ficam fora da inativação (o banco devolve pela `carga_inativar_ausentes`); `enderecos_a_inativar` (opcional, só no
- * cadastro `cliente`) = endereços de cliente que o Substituir tudo inativa junto.
+ * ficam fora da inativação (o banco devolve pela `carga_inativar_ausentes`); `mantidos_em_uso` (opcional) = registros
+ * do Substituir tudo que ficam ativos por estarem em uso em pedido, título ou nota; `enderecos_a_inativar` (opcional,
+ * só no cadastro `cliente`) = endereços de cliente que o Substituir tudo inativa junto; `enderecos_sem_chave`
+ * (opcional, só no cadastro `cliente`) = endereços sem `external_id` que ficam fora da substituição. Textos de
+ * exibição dos opcionais em `AVISOS_CARGA_PORTAL`.
  */
 export const EfeitoSubstituir = z
   .object({
@@ -198,6 +202,8 @@ export const EfeitoSubstituir = z
     acima_limite_fdv: z.boolean(),
     sem_chave: Contagem.optional(),
     enderecos_a_inativar: Contagem.optional(),
+    mantidos_em_uso: Contagem.optional(),
+    enderecos_sem_chave: Contagem.optional(),
   })
   .superRefine((e, ctx) => {
     if (e.a_inativar > e.total) {
@@ -213,13 +219,16 @@ export type EfeitoSubstituir = z.infer<typeof EfeitoSubstituir>;
 
 const MENSAGEM_ENDERECOS_SO_CLIENTE = 'Endereços inativados só no Substituir tudo do cadastro cliente';
 
-/** Recusa `efeito.enderecos_a_inativar` fora do cadastro `cliente` (validar e gravar). */
+/** Recusa `efeito.enderecos_a_inativar` e `efeito.enderecos_sem_chave` fora do cadastro `cliente` (validar e gravar). */
 function conferirEnderecosEfeito(
   r: { cadastro: CadastroCargaPortal; efeito?: EfeitoSubstituir | undefined },
   ctx: z.RefinementCtx,
 ): void {
-  if (r.efeito?.enderecos_a_inativar !== undefined && r.cadastro !== 'cliente') {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efeito', 'enderecos_a_inativar'], message: MENSAGEM_ENDERECOS_SO_CLIENTE });
+  if (r.cadastro === 'cliente' || r.efeito === undefined) return;
+  for (const campo of ['enderecos_a_inativar', 'enderecos_sem_chave'] as const) {
+    if (r.efeito[campo] !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efeito', campo], message: MENSAGEM_ENDERECOS_SO_CLIENTE });
+    }
   }
 }
 
@@ -229,6 +238,8 @@ export function efeitoSubstituir(e: {
   a_inativar: number;
   sem_chave?: number;
   enderecos_a_inativar?: number;
+  mantidos_em_uso?: number;
+  enderecos_sem_chave?: number;
 }): EfeitoSubstituir {
   if (!Number.isInteger(e.total) || !Number.isInteger(e.a_inativar) || e.total < 0 || e.a_inativar < 0 || e.a_inativar > e.total) {
     throw new RangeError('efeitoSubstituir: contagens inteiras, com a_inativar entre 0 e total');
@@ -238,12 +249,14 @@ export function efeitoSubstituir(e: {
       throw new RangeError(`efeitoSubstituir: ${nome} é contagem inteira e não negativa`);
     }
   };
-  conferirContagemOpcional('sem_chave', e.sem_chave);
-  conferirContagemOpcional('enderecos_a_inativar', e.enderecos_a_inativar);
+  const opcionais = ['sem_chave', 'enderecos_a_inativar', 'mantidos_em_uso', 'enderecos_sem_chave'] as const;
+  for (const nome of opcionais) conferirContagemOpcional(nome, e[nome]);
   const percentual = e.total === 0 ? 0 : (e.a_inativar * 100) / e.total;
   const efeito: EfeitoSubstituir = { total: e.total, a_inativar: e.a_inativar, percentual, acima_limite_fdv: percentual > LIMITE_INATIVACAO_FDV_PCT };
-  if (e.sem_chave !== undefined) efeito.sem_chave = e.sem_chave;
-  if (e.enderecos_a_inativar !== undefined) efeito.enderecos_a_inativar = e.enderecos_a_inativar;
+  for (const nome of opcionais) {
+    const v = e[nome];
+    if (v !== undefined) efeito[nome] = v;
+  }
   return efeito;
 }
 
@@ -477,6 +490,34 @@ export const MENSAGENS_CARGA_PORTAL = Object.freeze({
   zeragemBloqueada: 'Há integração ligada ou lote em andamento; resolva antes de zerar.',
   /** 409 `CONFLITO` do `MXC03` do zerar (`CODIGOS_ESTADO_MUDOU_ZERAR`): o estado mudou entre o plano e o efeito. */
   estadoMudouZerar: 'Os dados mudaram. Confira de novo.',
+});
+
+/** `n` do aviso: contagem inteira e não negativa; fora disso, RangeError. */
+function contagemAviso(nome: string, n: number): number {
+  if (!Number.isInteger(n) || n < 0) throw new RangeError(`AVISOS_CARGA_PORTAL.${nome}: contagem inteira e não negativa`);
+  return n;
+}
+
+/**
+ * Avisos do Substituir tudo (T-0075), a partir dos opcionais do `EfeitoSubstituir`, para a prévia e o resultado do
+ * BKO: `null` com 0 (nada a avisar); RangeError fora de inteiro ≥ 0.
+ */
+export const AVISOS_CARGA_PORTAL = Object.freeze({
+  /** `efeito.mantidos_em_uso`. */
+  mantidosEmUso(n: number): string | null {
+    return contagemAviso('mantidosEmUso', n) === 0 ? null : `Mantidos: ${n} (em uso em pedido, título ou nota)`;
+  },
+  /** `efeito.sem_chave`. */
+  semChave(n: number): string | null {
+    if (contagemAviso('semChave', n) === 0) return null;
+    const [ficou, ele, entrar] = n === 1 ? ['ficou', 'ele', 'entrar'] : ['ficaram', 'eles', 'entrarem'];
+    return `${plural(n, 'registro', 'registros')} sem código ${ficou} fora da substituição: dê um código a ${ele} para ${entrar} na próxima`;
+  },
+  /** `efeito.enderecos_sem_chave` (só no cliente). */
+  enderecosSemChave(n: number): string | null {
+    if (contagemAviso('enderecosSemChave', n) === 0) return null;
+    return `${plural(n, 'endereço', 'endereços')} sem código ${n === 1 ? 'ficou' : 'ficaram'} fora da substituição`;
+  },
 });
 
 /**
