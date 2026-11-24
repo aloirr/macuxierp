@@ -158,6 +158,16 @@ INSERT INTO integracao_fdv.sinal (tenant_id, ultimo_envio_em, ultimo_aceito_em, 
   VALUES ('${id}', now(), now(), 200);
 INSERT INTO integracao_fdv.reconciliacao (tenant_id, entidade, data_referencia, contagem)
   VALUES ('${id}', 'cliente', '2026-11-21', 1);
+WITH pre AS (
+  INSERT INTO integracao_fdv.cliente_recebido (tenant_id, cliente_uuid, hash, codigo_fdv, razao_social, documento_mascarado,
+    payload, recebido_em, situacao, motivo, erros, decidido_em, ultima_recusa_em)
+  VALUES ('${id}', gen_random_uuid(), repeat('c', 64), '00001', 'Pré-cadastro ${t.slug}', '11.444.777/****-**',
+    '{"razao_social": "Pré-cadastro ${t.slug}"}', '2026-11-21T12:00:00.123Z', 'recusado', 'Documento inválido.',
+    '[{"campo": "documento", "codigo": "documento_invalido", "mensagem": "Documento inválido."}]', now(), now())
+  RETURNING cliente_uuid, revisao
+)
+INSERT INTO integracao_fdv.cliente_retorno (tenant_id, cliente_uuid, revisao, status, corpo, hash)
+  SELECT '${id}', pre.cliente_uuid, pre.revisao, 'rejeitado_erp', '{"status": "rejeitado_erp"}', repeat('b', 64) FROM pre;
 `;
 }
 
