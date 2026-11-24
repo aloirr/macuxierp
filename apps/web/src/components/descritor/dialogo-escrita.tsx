@@ -2,14 +2,14 @@
 import { contadorDeCaracteres, formularioParcial } from '@macuxierp/faturamento/web';
 import { RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useId, useRef, useState } from 'react';
-import type { AmbienteVista, ErroEmPartes, ItemDoDialogo, ItemEscolhido } from '@/lib/descritor/tipos';
+import type { AmbienteVista, CampoDialogo, ErroEmPartes, ItemDoDialogo, ItemEscolhido } from '@/lib/descritor/tipos';
 
 /**
  * Diálogo simples do shell para as ações que não são "motivo/justificativa" (o `DialogoMotivo` é do packages/ui): confirmação com
  * aviso, a baixa de título (valor em reais e data) e a inutilização (filial, faixa de números e justificativa). Foco preso, Esc
  * cancela, erro em `role="alert"`. Padrão de erro dos diálogos: caixa `.erro` e o aviso com borda (`.faixa-aviso`), como aqui. Só dados serializáveis; a regra (limites, saldo, data futura, faixa) é do módulo, via `validar`.
  */
-export interface EntradaDialogo { valor: string; data: string; filial: string; inicial: string; final: string; texto: string; itens?: ItemEscolhido[] }
+export interface EntradaDialogo { valor: string; data: string; filial: string; inicial: string; final: string; texto: string; itens?: ItemEscolhido[]; campos?: Record<string, string> }
 
 /** Itens do pedido (nota parcial): `carregar` busca no servidor; o campo de cada item começa no saldo. */
 export type CarregarItens = () => Promise<{ ok: true; itens: readonly ItemDoDialogo[] } | { ok: false; erro: string }>;
@@ -32,6 +32,8 @@ export interface DialogoEscritaProps {
   texto?: { rotulo: string; obrigatorio: boolean };
   /** Presente = pede filial, número inicial e final e justificativa (inutilizar). */
   faixa?: { filiais: readonly { valor: string; rotulo: string }[]; rotuloTexto: string };
+  /** Presente = formulário curto de edição (texto e seleção), com o valor atual de cada campo. */
+  campos?: readonly CampoDialogo[] | undefined;
   /** Presente = pede uma quantidade por item, carregados por `carregar` (nota parcial). */
   itens?: { carregar: CarregarItens };
   /** Em `faixa`: busca o ambiente da filial escolhida; `null` = sem leitura (vale o texto de `ambiente`). */
@@ -44,7 +46,7 @@ export interface DialogoEscritaProps {
 
 const FOCAVEIS = 'button:not([disabled]), input, select, textarea, [href]';
 
-export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, rotuloConfirmar, rotuloFechar = 'Cancelar', textoCarregando = 'Enviando…', ocupado, baixa, texto: pedeTexto, faixa, itens: pedeItens, carregarAmbiente, validar, aoConfirmar, aoCancelar }: DialogoEscritaProps) {
+export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, rotuloConfirmar, rotuloFechar = 'Cancelar', textoCarregando = 'Enviando…', ocupado, baixa, texto: pedeTexto, faixa, campos: pedeCampos, itens: pedeItens, carregarAmbiente, validar, aoConfirmar, aoCancelar }: DialogoEscritaProps) {
   const id = useId();
   const raiz = useRef<HTMLDivElement>(null);
   const [valor, setValor] = useState(baixa?.valorInicial ?? '');
@@ -53,6 +55,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
   const [inicial, setInicial] = useState('');
   const [final, setFinal] = useState('');
   const [texto, setTexto] = useState('');
+  const [campos, setCampos] = useState<Record<string, string>>(() => Object.fromEntries((pedeCampos ?? []).map((c) => [c.nome, c.valor])));
   const [erro, setErro] = useState<string | null>(null);
   const [itensComErro, setItensComErro] = useState<{ erros: Readonly<Record<number, string>>; errosPartes: Readonly<Record<number, ErroEmPartes>> }>({ erros: {}, errosPartes: {} });
   const [linhas, setLinhas] = useState<readonly ItemDoDialogo[] | null>(null);
@@ -88,7 +91,7 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
   }, []);
 
   function confirmar() {
-    const r: EntradaDialogo = { valor, data, filial, inicial, final, texto: texto.trim(), ...(linhas ? { itens: linhas.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao, saldo: i.saldo, quantidade: quantidades[i.sequencia] ?? '' })) } : {}) };
+    const r: EntradaDialogo = { valor, data, filial, inicial, final, texto: texto.trim(), ...(pedeCampos ? { campos } : {}), ...(linhas ? { itens: linhas.map((i) => ({ sequencia: i.sequencia, descricao: i.descricao, saldo: i.saldo, quantidade: quantidades[i.sequencia] ?? '' })) } : {}) };
     const v = validar(r);
     const porCampo = v !== null && typeof v === 'object' && v.erros && Object.keys(v.erros).length > 0 ? v.erros : {};
     const geral = v === null ? null : typeof v === 'string' ? v : Object.keys(porCampo).length > 0 ? null : v.erro;
@@ -143,6 +146,18 @@ export function DialogoEscrita({ titulo, aviso = null, ambiente, limitesTexto, r
             </label>
           </>
         )}
+        {pedeCampos?.map((c) => (
+          <label key={c.nome} className="campo">
+            <span>{c.rotulo}</span>
+            {c.tipo === 'selecao' ? (
+              <select className="entrada" value={campos[c.nome] ?? ''} onChange={(e) => { setCampos({ ...campos, [c.nome]: e.target.value }); setErro(null); }} aria-invalid={invalido} aria-describedby={descreve}>
+                {(c.opcoes ?? []).map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+              </select>
+            ) : (
+              <input className="entrada" value={campos[c.nome] ?? ''} onChange={(e) => { setCampos({ ...campos, [c.nome]: e.target.value }); setErro(null); }} aria-invalid={invalido} aria-describedby={descreve} />
+            )}
+          </label>
+        ))}
         {pedeItens && <ItensDoDialogo id={`${id}-item`} linhas={linhas} falha={falhaItens} quantidades={quantidades} erros={itensComErro.erros} errosPartes={itensComErro.errosPartes} aoMudar={(sequencia, v) => { setQuantidades({ ...quantidades, [sequencia]: v }); setErro(null); setItensComErro({ erros: {}, errosPartes: {} }); }} />}
         {pedeTexto && (
           <label className="campo">

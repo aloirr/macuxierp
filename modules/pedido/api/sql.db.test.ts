@@ -12,7 +12,7 @@ import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { exportadorPedido, TABELAS_EXPORTADAS } from './exportador';
 import { SituacaoPedidoParaFaturar } from '../contracts';
 import { criarConsultaParaFaturar } from './faturar';
-import { IDS, pedidoFdv, pedidoManual, prepararCadastros } from './fixtures-teste';
+import { IDS, pedidoFdv, pedidoManual, prazoDoCliente, prepararCadastros } from './fixtures-teste';
 import { criarPluginPedido, dependenciasDeProducao } from './index';
 import { CadastrosMemoria } from './memoria';
 import type { Dependencias } from './portas';
@@ -321,6 +321,73 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, pedidoFdv({ cliente_id: IDS.desconhecido })));
     expect(r).toEqual({ resultado: 'recusado', codigo: 'cliente_inexistente' });
     expect((await admin('SELECT count(*)::int AS n FROM pedido.numeracao WHERE tenant_id = $1', [T]))[0]?.n).toBe(0);
+  });
+
+  const fdvPorPrazo = async (nome: string) => {
+    const T = await criarTenant(efemero.admin, nome, ['pedido']);
+    const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+    const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, pedidoFdv()));
+    expect(r).toMatchObject({ resultado: 'criado', status: 'em_analise' });
+    return { T, id: (r as { pedido_id: string }).pedido_id };
+  };
+  const lerPedido = async (id: string) => (await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0];
+
+  it('RN-PED-07 e RN-PED-03: FDV em análise por prazo aprovado no SQL real: a pendência de prazo fica bloqueante=false e a aceitação (justificativa) em pedido.aprovacao', async () => {
+    prazoDoCliente(cad, 10);
+    try {
+      const { T, id } = await fdvPorPrazo('fdv-prazo-aprova');
+      await expect(app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, {}))).rejects.toMatchObject({ status: 400 });
+      await app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, { justificativa: 'Prazo combinado com o comercial' }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'aprovado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+      expect((await admin('SELECT decisao, automatica, justificativa, pendencias_aceitas FROM pedido.aprovacao WHERE pedido_id = $1', [id]))[0])
+        .toMatchObject({ decisao: 'aprovado', automatica: false, justificativa: 'Prazo combinado com o comercial', pendencias_aceitas: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+      expect((await admin('SELECT nome FROM plataforma.evento WHERE tenant_id = $1 ORDER BY ocorrido_em, versao', [T])).map((l) => l.nome).sort()).toEqual(['pedido.pedido.aprovado@1', 'pedido.pedido.recebido@1']);
+      // aprovado com a pendência aceita cancela (RN-PED-02): o cancelado do FDV guarda as pendências
+      await app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'cancelado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+    } finally {
+      prazoDoCliente(cad, null);
+    }
+  });
+
+  it('RN-PED-07: FDV em análise por prazo recusado no SQL real: a pendência de prazo segue gravada e o motivo fica em pedido.aprovacao', async () => {
+    prazoDoCliente(cad, 10);
+    try {
+      const { T, id } = await fdvPorPrazo('fdv-prazo-recusa');
+      await app.comTenant(T, (tx) => servico.recusar(tx, efeitos(tx, T), id, { motivo_codigo: 'cliente_bloqueado', motivo_texto: null }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'recusado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
+      expect((await admin('SELECT decisao, motivo_codigo FROM pedido.aprovacao WHERE pedido_id = $1', [id]))[0]).toMatchObject({ decisao: 'recusado', motivo_codigo: 'cliente_bloqueado' });
+    } finally {
+      prazoDoCliente(cad, null);
+    }
+  });
+
+  it('RN-PED-07 e RN-PED-02: FDV em análise por prazo não cancela direto (422); aprovado com a pendência aceita cancela no SQL real, guardando as pendências', async () => {
+    prazoDoCliente(cad, 10);
+    try {
+      const { T, id } = await fdvPorPrazo('fdv-prazo-cancela');
+      await expect(app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }))).rejects.toMatchObject({ status: 422, codigo: 'RN-PED-02' });
+      await app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, { justificativa: 'ok' }));
+      await app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'cancelado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+    } finally {
+      prazoDoCliente(cad, null);
+    }
+  });
+
+  it('RN-PED-07: o pedido do FDV com prazo acima do cliente entra em análise no SQL real, com a pendência gravada e só recebido@1 na outbox', async () => {
+    const T = await criarTenant(efemero.admin, 'fdv-prazo', ['pedido']);
+    prazoDoCliente(cad, 10);
+    try {
+      const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+      const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, pedidoFdv()));
+      expect(r).toMatchObject({ resultado: 'criado', status: 'em_analise' });
+      const id = (r as { pedido_id: string }).pedido_id;
+      expect((await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0]).toMatchObject({ status: 'em_analise', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
+      expect((await admin("SELECT nome FROM plataforma.evento WHERE tenant_id = $1 ORDER BY ocorrido_em, versao", [T])).map((l) => l.nome)).toEqual(['pedido.pedido.recebido@1']);
+    } finally {
+      prazoDoCliente(cad, null);
+    }
   });
 
   it('criarConsultaParaFaturar: situação com os itens, FOR SHARE segura a transição concorrente, e outro tenant não enxerga', async () => {

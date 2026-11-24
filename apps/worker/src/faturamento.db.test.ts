@@ -62,7 +62,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
         [filiais[f], tenant, CNPJ[f], `Filial ${f} (teste)`, IE[f], CRT[f], f === 'matriz'],
       );
     }
-    await admin(`INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias) VALUES ($1, $2, 'AV', 'À vista', '01', '{0}')`, [ids.condicao, tenant]);
+    await admin(`INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias, prazo_medio_dias) VALUES ($1, $2, 'AV', 'À vista', '01', '{0}', 0)`, [ids.condicao, tenant]);
     await admin(`INSERT INTO cadastros.tabela_preco (id, tenant_id, nome, vigencia_inicio, padrao) VALUES ($1, $2, 'Padrão', '2026-01-01', true)`, [ids.tabela, tenant]);
     await admin(
       `INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id, tabela_preco_id, filial_id, limite_credito_centavos)

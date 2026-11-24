@@ -12,7 +12,7 @@ vi.mock('@/lib/api', async () => {
   class NaoAutenticado extends Error {}
   class SemPermissao extends Error {}
   class ApiIndisponivel extends Error {}
-  return { NaoAutenticado, SemPermissao, ApiIndisponivel, getValidado: async () => { if (estado.falha) throw estado.falha; return estado.status; } };
+  return { NaoAutenticado, SemPermissao, ApiIndisponivel, getValidado: async (caminho: string) => { if (estado.falha) throw estado.falha; return caminho.includes('clientes-recebidos') ? { itens: [], proximo_cursor: null } : estado.status; } };
 });
 
 const cadastros: CadastroIntegracaoFdv[] = ENTIDADES_ENVIO_FDV.map((entidade) => ({

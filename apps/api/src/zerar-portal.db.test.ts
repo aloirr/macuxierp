@@ -64,7 +64,7 @@ INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, crt, logradouro
   ('${id.filialPedido}', '${T}', '99000001000101', 'Filial com pedido', '3', 'Rua C', '3', 'Centro', '1302603', 'AM', '69000002', 'F2'),
   ('${id.filialLivre}', '${T}', '11222333000181', 'Filial livre', '3', 'Rua B', '2', 'Centro', '1302603', 'AM', '69000001', 'F3');
 INSERT INTO cadastros.vendedor (id, tenant_id, codigo, nome, filial_id, external_id) VALUES ('${id.vendedor}', '${T}', 'V1', 'Vendedor', '${id.filialPedido}', 'V1');
-INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias) VALUES ('${id.cond}', '${T}', 'AV', 'À vista', '01', '{0}');
+INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias, prazo_medio_dias) VALUES ('${id.cond}', '${T}', 'AV', 'À vista', '01', '{0}', 0);
 INSERT INTO cadastros.produto (id, tenant_id, codigo, descricao, ncm, unidade_comercial, unidade_tributavel, grupo_tributacao, custo_centavos, external_id)
   VALUES ('${id.produto}', '${T}', 'P1', 'Refrigerante 2 L', '22021000', 'UN', 'UN', 'padrao', 499, 'P1');
 INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id, filial_id, vendedor_id, limite_credito_centavos) VALUES
