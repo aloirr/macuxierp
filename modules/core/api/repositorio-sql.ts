@@ -5,7 +5,7 @@
  * SELECT de resumo lista as colunas uma a uma.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
-import { ORIGEM_CERTIFICADO_PADRAO } from '../contracts/certificado-origem-provisorio';
+import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,

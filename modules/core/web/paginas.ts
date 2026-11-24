@@ -4,7 +4,7 @@
  */
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import type { AuditoriaItem, CertificadoResumo, Licenca, Usuario } from '../contracts';
-import { AVISO_CERTIFICADO_DE_TESTE } from '../contracts/certificado-origem-provisorio';
+import { AVISO_CERTIFICADO_DE_TESTE } from '@macuxierp/platform-sdk/certificado-origem';
 import type { ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { paginaVisivel, type PaginaBase } from '@macuxierp/platform-sdk/paginas';
 

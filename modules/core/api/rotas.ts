@@ -41,7 +41,7 @@ import {
   type Exportacao,
   type Usuario,
 } from '../contracts';
-import { ORIGEM_CERTIFICADO_PADRAO } from '../contracts/certificado-origem-provisorio';
+import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria } from '../domain';
 import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';

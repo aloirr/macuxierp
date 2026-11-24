@@ -3,7 +3,7 @@
  * `criarPluginCore`; os testes usam `RepositorioCoreMemoria`. Linhas com `Date`: a serialização para o contrato é das rotas.
  */
 import type { Armazenamento, Perfil, Transacao } from '@macuxierp/platform-sdk';
-import type { OrigemCertificado } from '../contracts/certificado-origem-provisorio';
+import type { OrigemCertificado } from '@macuxierp/platform-sdk/certificado-origem';
 
 /** Colunas cifradas do A1 em `core.certificado`; o formato (cifrado, tag, nonce) está em `colunas-a1.ts`. */
 export interface A1Cifrado {
