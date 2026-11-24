@@ -11,7 +11,7 @@
  *   com `inativo: true`, que é o que leva a inativação ao FDV. Em uso (`ConsultaUsoCadastros`) também é inativado e só
  *   conta em `mantidos_em_uso` (o histórico fica). A inativação e os eventos ficam no
  *   `carga-substituir.ts`; a forma vive na condição e o estoque é saldo, não cadastro: não têm o que inativar.
- * - Nada de valor de célula nem dado pessoal em erro, aviso ou auditoria: só contagens.
+ * - Nada de valor de célula nem dado pessoal em erro ou aviso: só contagens.
  */
 import {
   ArquivoRecebido, CadastroCargaPortal, ErroApi, FRASE_SUBSTITUIR_TUDO, GravarCargaPlataformaResposta, LIMITE_LINHAS_ERRO_VALIDACAO,
@@ -102,13 +102,6 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   const doCliente = entidade === 'cliente' ? { enderecos_inativados: enderecos.length } : undefined; // só o cliente tem endereços: nos demais cadastros as chaves nem existem
   if (doCliente) res.enderecos_inativados = doCliente.enderecos_inativados;
   res.sem_chave = plano.sem_chave;
-  await c.auditar({
-    acao: 'cadastros.carga.substituir_tudo', entidade: 'carga', entidade_id: rel.lote_id, antes: null,
-    depois: {
-      cadastro, inativadas: inativados.length, ...doCliente,
-      mantidos_em_uso: plano.mantidos_em_uso, total_ativos: total,
-    },
-  });
   return GravarCargaPlataformaResposta.parse({
     cadastro, modo: e.modo, gravadas, com_erro: res.recusadas, inativadas: inativados.length,
     ...doCliente,

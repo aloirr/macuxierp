@@ -99,6 +99,16 @@ describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', (
     expect(aud.every((a) => a.superadmin_id === SA)).toBe(true);
   }, 120_000);
 
+  it('RN-CAD-10: a auditoria do concluir leva enderecos_inativados no depois só no Substituir tudo do cliente (o do produto não grava a chave)', async () => {
+    const T = await novoTenant('rota-aud-end');
+    const depoisDe = async () => (await admin("SELECT depois FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'cadastros.carga.concluir' ORDER BY ocorrido_em DESC LIMIT 1", [T]))[0]!.depois as Record<string, unknown>;
+    const cliente = (oficial('cliente.csv', readFileSync(join(pasta, 'cliente.csv'))) as string | Buffer).toString().trim().split('\n');
+    await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'cliente', cliente.slice(0, 2).join('\n'), { modo: 'substituir_tudo', frase: FRASE });
+    expect(await depoisDe()).toMatchObject({ inativadas: 1, enderecos_inativados: 2 });
+    await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', produto().slice(0, 2).join('\n'), { modo: 'substituir_tudo', frase: FRASE });
+    expect(await depoisDe()).not.toHaveProperty('enderecos_inativados');
+  }, 120_000);
+
   it('RN-CAD-10: a situação reflete a carga concluída (portal_carga_situacao)', async () => {
     const T = await novoTenant('rota-situacao');
     await chamar(T, CAMINHOS_CARGAS_PLATAFORMA.gravar, 'produto', produto().slice(0, 2).join('\n'));

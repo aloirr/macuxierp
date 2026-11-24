@@ -26,16 +26,15 @@ function montar(uso?: ConsultaUsoCadastros) {
   m.repos.oficiais.municipiosPorUf.set('AM', [{ ibge: '1302603', nome: 'Manaus' }]);
   m.repos.oficiais.municipiosPorUf.set('SP', [{ ibge: '3550308', nome: 'São Paulo' }]);
   const eventos: { nome: string; agregado_id: string; payload: Record<string, unknown> }[] = [];
-  const auditoria: unknown[] = [];
   const c = {
     sessao: sessaoDe('administrador'), tx: { consultar: async () => [] }, request_id: 'r', agora: new Date('2026-11-23T15:00:00Z'),
     publicar: async (e: { nome: string; agregado_id: string; payload: Record<string, unknown> }) => void eventos.push(e),
-    auditar: async (d: unknown) => void auditoria.push(d), enfileirar: async () => ({ id: 'x' }),
+    auditar: async () => undefined, enfileirar: async () => ({ id: 'x' }),
   } as unknown as ContextoRota;
   const deps = { ...m.deps, ...(uso ? { usoCadastros: uso } : {}) };
   const gravar = (cadastro: CadastroCargaPortal, conteudo: Buffer, modo: 'adicionar' | 'substituir_tudo' = 'adicionar', frase?: string) =>
     gravarCargaPortal(deps, c, { cadastro, modo, frase, arquivo: arq(conteudo) });
-  return { ...m, c, deps, eventos, auditoria, gravar };
+  return { ...m, c, deps, eventos, gravar };
 }
 const falha = async (p: Promise<unknown>): Promise<ErroApi> => {
   try { await p; } catch (e) { if (e instanceof ErroApi) return e; throw e; }
@@ -105,22 +104,17 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     const ev = t.eventos.filter((e) => e.nome === 'cadastros.produto.alterado@1' && e.agregado_id === inativado.id);
     expect(ev).toHaveLength(1);
     expect(ev[0]?.payload.inativo).toBe(true);
-    expect(t.auditoria).toContainEqual(expect.objectContaining({ acao: 'cadastros.carga.substituir_tudo', depois: expect.objectContaining({ inativadas: 1 }) }));
   });
 
-  it('RN-CAD-10: no cliente, a prévia, o gravar e a auditoria contam os endereços inativados (o do cliente ausente e a entrega do que ficou)', async () => {
+  it('RN-CAD-10: no cliente, a prévia e o gravar contam os endereços inativados (o do cliente ausente e a entrega do que ficou)', async () => {
     const t = montar();
     for (const dep of ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'preco', 'cliente'] as const) await t.gravar(dep, csv(dep === 'condicao_pagamento' ? 'condicoes_pagamento' : dep));
     const entrada = { cadastro: 'cliente', modo: 'substituir_tudo', arquivo: arq(csv('cliente', [0])) } as const; // só a linha principal do C-EX-01
     const v = await validarCargaPortal(t.deps, t.c, entrada);
     expect(v.efeito).toMatchObject({ a_inativar: 1, enderecos_a_inativar: 2 });
-    t.auditoria.length = 0;
     const r = await gravarCargaPortal(t.deps, t.c, { ...entrada, frase: FRASE });
     expect(r).toMatchObject({ modo: 'substituir_tudo', gravadas: 1, inativadas: 1, enderecos_inativados: 2 });
     expect(r.efeito).toEqual(v.efeito); // a prévia e o gravar contam o mesmo
-    expect(t.auditoria).toContainEqual(expect.objectContaining({
-      acao: 'cadastros.carga.substituir_tudo', depois: expect.objectContaining({ cadastro: 'cliente', inativadas: 1, enderecos_inativados: 2 }),
-    }));
   });
 
   it('RN-CAD-10: o percentual do gravar é o do validar; registro sem chave não é inativado nem conta no total', async () => {

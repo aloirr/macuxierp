@@ -63,7 +63,7 @@ function contextoDoPortal(c: ContextoPlataformaPorEtapa, tenant: string, tx: Tra
       const evento = criarEvento({ ...dados, tenant_id: tenant, ator: c.sessao.superadmin_id, request_id: c.request_id }, c.agora);
       return { ...evento, versao: await outbox.gravar(tx, evento) };
     },
-    auditar: async () => undefined,
+    auditar: async () => undefined, // exigido pelo ContextoRota; a auditoria da carga é a do portal_carga_concluir (o gravarCargaPortal não audita)
     enfileirar: async () => { throw new Error('carga do portal: sem trabalho em fila'); },
   };
 }
@@ -97,8 +97,8 @@ export function situacaoDaAba(bruta: unknown): SituacaoCargasPlataforma {
 type Resultado = 'concluida' | 'falhou';
 
 export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastros): PluginPlataforma {
-  const concluir = (c: ContextoPlataformaPorEtapa, tenant: string, execucao: string, r: Resultado, n: { gravadas: number; com_erro: number; inativadas: number | null }) =>
-    c.comPlataforma((tx) => tx.consultar('SELECT cadastros.portal_carga_concluir($1, $2, $3, $4, $5, $6, $7)', [tenant, execucao, r, n.gravadas, n.com_erro, n.inativadas, c.request_id]));
+  const concluir = (c: ContextoPlataformaPorEtapa, tenant: string, execucao: string, r: Resultado, n: { gravadas: number; com_erro: number; inativadas: number | null; enderecos_inativados: number | null }) =>
+    c.comPlataforma((tx) => tx.consultar('SELECT cadastros.portal_carga_concluir($1, $2, $3, $4, $5, $6, $7, $8)', [tenant, execucao, r, n.gravadas, n.com_erro, n.inativadas, c.request_id, n.enderecos_inativados]));
 
   return definirPluginPlataforma([
     // RF-CAD-11: as 8 linhas da aba Cargas (a função do banco confere sessão, empresa e licença); o Zod do SDK fecha o formato.
@@ -176,11 +176,11 @@ export function criarPluginPlataformaCadastros(d: DependenciasPlataformaCadastro
             gravarCargaPortal(d.deps, contextoDoPortal(c, tenant, tx, d.outbox), { cadastro: entrada.cadastro, modo: entrada.modo, frase: entrada.frase, arquivo }));
         } catch (erro) {
           // A execução não pode ficar aberta: o erro da etapa do tenant é o que sobe (se o concluir também falhar, ela vira abandonada em 15 min).
-          await concluir(c, tenant, aberta.id, 'falhou', { gravadas: 0, com_erro: 0, inativadas: null }).catch(() => undefined);
+          await concluir(c, tenant, aberta.id, 'falhou', { gravadas: 0, com_erro: 0, inativadas: null, enderecos_inativados: null }).catch(() => undefined);
           throw erro;
         }
         try {
-          await concluir(c, tenant, aberta.id, 'concluida', { gravadas: resposta.gravadas, com_erro: resposta.com_erro, inativadas: resposta.inativadas ?? null });
+          await concluir(c, tenant, aberta.id, 'concluida', { gravadas: resposta.gravadas, com_erro: resposta.com_erro, inativadas: resposta.inativadas ?? null, enderecos_inativados: resposta.enderecos_inativados ?? null });
         } catch (erro) {
           // A carga do tenant JÁ foi commitada: o registro técnico (sem dado pessoal) diz qual execução ficou aberta (vira abandonada em 15 min).
           console.error(JSON.stringify({ nivel: 'error', evento: 'cadastros.portal_carga.concluir_falhou', request_id: c.request_id, execucao: aberta.id }));
