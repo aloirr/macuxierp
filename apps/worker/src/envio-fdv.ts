@@ -8,11 +8,11 @@
  * (`cursor_entidade.proximo_em`, `sinal.proximo_sinal_em`, `sinal.proxima_reconciliacao_em`) ficam paradas no banco; o
  * consumidor `integracao-fdv.publicar-cadastros` segue gravando só o espelho local (não chama o Hub).
  */
-import { chaveLigadoDesligado, type EstadoChaveFdv } from './chaves-fdv';
+import { chaveLigadoDesligado, type EstadoChaveFdv } from '@macuxierp/platform-sdk';
 
 export type EstadoEnvioFdv = EstadoChaveFdv;
 
-/** `MACUXIERP_FDV_ENVIO` (chaves-fdv.ts). */
+/** `MACUXIERP_FDV_ENVIO` (`chaveLigadoDesligado` do SDK). */
 export function configurarEnvioFdv(env: Readonly<Record<string, string | undefined>>): EstadoEnvioFdv {
   return chaveLigadoDesligado(env, 'MACUXIERP_FDV_ENVIO');
 }

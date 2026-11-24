@@ -180,6 +180,23 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .titulo-selo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
 .titulo-selo h1 { margin: 0; }
 
+/* Diálogo do Log: mais largo (a base do Dialogo é 480 px) e sem estourar a tela; só as tabelas rolam na horizontal, o rodapé quebra linha. */
+[role="dialog"]:has(.corpo-log) { width: min(760px, 94vw) !important; }
+[data-corpo-dialogo] > .corpo-log { min-width: 0; }
+.corpo-log { display: grid; gap: 12px; }
+.corpo-log h3, .corpo-log p { margin: 0; }
+@media (max-width: 640px) {
+  [role="dialog"]:has(.corpo-log) { padding: 16px !important; width: 96vw !important; }
+  .corpo-log th, .corpo-log td { padding: 6px 3px !important; font-size: var(--mx-tamanho-micro) !important; white-space: normal !important; }
+  .corpo-log .selo { padding-inline: 6px; }
+  /* Aba Dados no celular: Última carga e Origem saem para as Ações (Modelo, Importar, Carga completa) ficarem à vista. */
+  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4) { display: none; }
+  .tabela-dados .barra-acoes { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
+  .corpo-log .selo, .corpo-log td span { white-space: normal; }
+}
+.rodape-log { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 0; }
+
 /* Aba Cargas do /config (T-0058): só tokens. Linha = número, nome, situação, Modelo, Importar. */
 .cabeca-cargas { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 0 0 12px; }
 .cabeca-cargas h2 { margin: 0; font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); }

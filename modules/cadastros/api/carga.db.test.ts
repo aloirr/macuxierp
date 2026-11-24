@@ -173,18 +173,33 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     await carregar(T, 'gravar', [{ nome: 'vendedor.csv', conteudo: vend('sim') }]);
     expect((await admin('SELECT deleted_at IS NOT NULL AS i FROM cadastros.vendedor WHERE tenant_id = $1', [T]))[0]!.i).toBe(false);
   }, 120_000);
-  it('RN-CAD-09: reativar pela carga um cartão sem parcelas (desativado pela limpeza) é erro de linha, sem 23514 nem 500', async () => {
+  it('RN-CAD-09/RN-CAD-15: reativar pela carga um cartão legado sem parcelas deriva parcelas_cartao dos prazos gravados e mantém o prazo médio nulo (Incompleto)', async () => {
     const T = await criarTenant(efemero.admin, 'carga-g', ['cadastros']);
     await admin(
       `INSERT INTO cadastros.condicao_pagamento (tenant_id, codigo, descricao, forma_tpag, prazos_dias, deleted_at, external_id, forma_external_id, forma_codigo, forma_nome)
-       VALUES ($1, 'CC1', 'Cartão antigo', '03', '{30}', now(), 'PZ-CC1', 'FP-CC', 'CARTAO', 'Cartão')`,
+       VALUES ($1, 'CC1', 'Cartão antigo', '03', '{30,60}', now(), 'PZ-CC1', 'FP-CC', 'CARTAO', 'Cartão')`,
       [T],
     );
-    const csv = 'external_id;codigo;parcelas_dias;forma_codigo;forma_nome;forma_external_id;ativo\nPZ-CC1;CC1;;CARTAO;Cartão;FP-CC;sim\n';
+    const csv = 'external_id;codigo;parcelas_dias;prazo_medio_dias;forma_codigo;forma_nome;forma_external_id;ativo\nPZ-CC1;CC1;;;CARTAO;Cartão;FP-CC;sim\n';
     const r = await carregar(T, 'gravar', [{ nome: 'condicoes_pagamento.csv', conteudo: csv }]);
     expect(r.status).toBe(200);
-    expect(r.rel.erros).toEqual([expect.objectContaining({ arquivo: 'condicoes_pagamento.csv', linha: 2, codigo: 'RN-CAD-09' })]);
-    expect((await admin('SELECT deleted_at IS NOT NULL AS i FROM cadastros.condicao_pagamento WHERE tenant_id = $1', [T]))[0]!.i).toBe(true);
+    expect(r.rel.erros).toEqual([]);
+    expect((await admin('SELECT deleted_at IS NOT NULL AS i, parcelas_cartao, prazo_medio_dias FROM cadastros.condicao_pagamento WHERE tenant_id = $1', [T]))[0]).toEqual({ i: false, parcelas_cartao: 2, prazo_medio_dias: null });
+  }, 120_000);
+  it('RN-CAD-15/RN-CAD-16: a carga grava o prazo médio do prazo e do cliente no PostgreSQL real; à vista com prazo médio 5 vira erro de linha', async () => {
+    const T = await criarTenant(efemero.admin, 'carga-pm', ['cadastros']);
+    await carregar(T, 'gravar');
+    const cond = await admin('SELECT external_id, prazo_medio_dias FROM cadastros.condicao_pagamento WHERE tenant_id = $1 ORDER BY external_id', [T]);
+    expect(cond.map((c) => [c.external_id, c.prazo_medio_dias])).toEqual([['PZ-EX-01', 30], ['PZ-EX-02', 45], ['PZ-EX-03', 0]]);
+    const cli = readFileSync(join(pasta, 'cliente.csv'), 'utf8').split('\n');
+    const cab = `${cli[0]};prazo_medio_dias`;
+    const com = [cab, ...cli.slice(1).filter((l) => l.trim() !== '').map((l) => `${l};60`)].join('\n');
+    const r = await carregar(T, 'gravar', [{ nome: 'cliente.csv', conteudo: com }]);
+    expect(r.rel.erros).toEqual([]);
+    expect((await admin('SELECT DISTINCT prazo_medio_dias FROM cadastros.cliente WHERE tenant_id = $1', [T])).map((c) => c.prazo_medio_dias)).toEqual([60]);
+    const ruim = 'external_id;codigo;parcelas_dias;prazo_medio_dias;forma_codigo;forma_nome;forma_external_id\nPZ-AV;AV9;0;5;PIX;Pix Exemplo;FP-EX-02\n';
+    const e = await carregar(T, 'gravar', [{ nome: 'condicoes_pagamento.csv', conteudo: ruim }]);
+    expect(e.rel.erros).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias' })]);
   }, 120_000);
   it('RN-CAD-09: o 23514 real dos CHECKs 0017/0019 (gravação que burla o domain) vira 422 RN-CAD-09 e a transação segue utilizável', async () => {
     const T = await criarTenant(efemero.admin, 'carga-h', ['cadastros']);
