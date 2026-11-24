@@ -178,3 +178,11 @@ describe('janela Zerar dados', () => {
     expect(p).toContain(textoSemChave(12));
   });
 });
+
+describe('endereços inativados (T-0070)', () => {
+  const efeito = { total: 40, a_inativar: 12, percentual: 30, acima_limite_fdv: false, enderecos_a_inativar: 5 };
+  it('a confirmação do Substituir tudo de clientes mostra "e 5 endereços"', () => {
+    expect(renderToStaticMarkup(<EfeitoSubstituir cadastro="cliente" efeito={efeito} />)).toContain('Vai inativar 12 de 40 clientes (30%) e 5 endereços.');
+  });
+});
+

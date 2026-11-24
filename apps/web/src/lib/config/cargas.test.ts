@@ -4,7 +4,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import {
   AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, podeConfirmarZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
-  podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoErrosOmitidos, textoLinhaErro, tituloImportar,
+  podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar,
 } from './cargas';
 
 const CHAVE = '33333333-3333-4333-8333-333333333333';
@@ -260,5 +260,23 @@ describe('zerar dados', () => {
     expect(TEXTO_ZERADO).toBe('Dados zerados.');
     expect(textoZerado(0)).toBe('Dados zerados.');
     expect(textoZerado(5)).toBe('Dados zerados. Mantidos: 5 (em uso em pedido, título ou nota, ou filial com dado fiscal).');
+  });
+});
+
+describe('endereços inativados no Substituir tudo de clientes (T-0070)', () => {
+  const base = { total: 40, a_inativar: 12, percentual: 30 };
+  it('confirmação: soma "e N endereços" só com N > 0; sem o campo ou com 0, a frase não muda', () => {
+    expect(textoEfeito('cliente', base)).toBe('Vai inativar 12 de 40 clientes (30%).');
+    expect(textoEfeito('cliente', { ...base, enderecos_a_inativar: 0 })).toBe('Vai inativar 12 de 40 clientes (30%).');
+    expect(textoEfeito('cliente', { ...base, enderecos_a_inativar: 1 })).toBe('Vai inativar 12 de 40 clientes (30%) e 1 endereço.');
+    expect(textoEfeito('cliente', { ...base, enderecos_a_inativar: 5 })).toBe('Vai inativar 12 de 40 clientes (30%) e 5 endereços.');
+    expect(textoEfeito('cliente', { total: 40, a_inativar: 0, percentual: 0, enderecos_a_inativar: 5 })).toBe('Não há clientes para inativar.');
+  });
+  it('resultado: "5 endereços inativados", "1 endereço inativado"; nada com 0 ou sem o campo', () => {
+    expect(textoGravado({ gravadas: 44 })).toBe('44 registros gravados.');
+    expect(textoGravado({ gravadas: 1, enderecos_inativados: 0 })).toBe('1 registro gravado.');
+    expect(textoGravado({ gravadas: 8, enderecos_inativados: 5 })).toBe('8 registros gravados. 5 endereços inativados.');
+    expect(textoGravado({ gravadas: 8, enderecos_inativados: undefined })).toBe('8 registros gravados.');
+    expect(textoGravado({ gravadas: 8, enderecos_inativados: 1 })).toBe('8 registros gravados. 1 endereço inativado.');
   });
 });
