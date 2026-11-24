@@ -19,7 +19,9 @@ name: CI
 #                       do guardião v5 (T-0049), guardião ligado, agente do branch da nuvem e economia do Actions (ADR 0045).
 #                       No push, calcula a base sozinha (o mesmo escopo.mjs, segundos) para os donos por commit e o trailer.
 #   estatico            matriz parte: verificar (lint, fronteiras, typecheck) | build (se o web foi
-#                       afetado: build do BKO, com cache do .next; senão termina em segundos)
+#                       afetado: build do BKO, com cache do .next; se o apps/conector existe e foi afetado: build do
+#                       Conector, T-0057 / ADR 0014 do cenário B; senão termina em segundos). O lint, o typecheck e os
+#                       testes do apps/conector entram pelo turbo e pelo escopo.mjs (apps/*), como os outros apps.
 #   testes-pacotes      só no manual e no liberar. Matriz shard 1..3 (scripts/ci/shards.mjs, divisão por peso dos pacotes
 #                       afetados): testes (Postgres) e, no shard que recebe o item, a suíte do @macuxierp/db com admin sem
 #                       superusuário (simula o DBaaS, T-0075) num segundo Postgres do mesmo job
@@ -104,6 +106,7 @@ jobs:
       filtro_typecheck: ${{ steps.escopo.outputs.filtro_typecheck }}
       filtro_test: ${{ steps.escopo.outputs.filtro_test }}
       build: ${{ steps.escopo.outputs.build }}
+      build_conector: ${{ steps.escopo.outputs.build_conector }}
       db_sem_super: ${{ steps.escopo.outputs.db_sem_super }}
     steps:
       # Histórico completo: o escopo precisa de origin/main, do merge-base e da base do push. ref: o "sha" do manual ou do
@@ -248,21 +251,22 @@ jobs:
     if: ${{ !cancelled() && contains(needs.escopo.outputs.jobs, '"estatico"') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # verificar = lint, fronteiras e typecheck; build = BKO, só se o web foi afetado
-    # (senão nenhum passo roda e a parte termina verde em segundos). Em paralelo: o relógio é o da parte mais lenta.
+    # verificar = lint, fronteiras e typecheck; build = BKO, só se o web foi afetado, e Conector, só se o apps/conector
+    # existe e foi afetado (senão nenhum passo roda e a parte termina verde em segundos). Em paralelo: o relógio é o da
+    # parte mais lenta.
     strategy:
       fail-fast: false
       matrix:
         parte: [verificar, build]
     steps:
       - uses: actions/checkout@v4
-        if: ${{ matrix.parte == 'verificar' || needs.escopo.outputs.build == 'true' }}
+        if: ${{ matrix.parte == 'verificar' || needs.escopo.outputs.build == 'true' || needs.escopo.outputs.build_conector == 'true' }}
         with:
           ref: ${{ inputs.sha }}
 
       # Cache do turbo só na parte verificar (o build chama o next e o expo direto, fora do turbo).
       - uses: ./.github/actions/preparar
-        if: ${{ matrix.parte == 'verificar' || needs.escopo.outputs.build == 'true' }}
+        if: ${{ matrix.parte == 'verificar' || needs.escopo.outputs.build == 'true' || needs.escopo.outputs.build_conector == 'true' }}
         with:
           cache-turbo: ${{ matrix.parte == 'verificar' && 'estatico' || '' }}
 
@@ -304,6 +308,12 @@ jobs:
       - name: build do Backoffice Web (next build)
         if: ${{ !cancelled() && matrix.parte == 'build' && needs.escopo.outputs.build == 'true' }}
         run: pnpm --filter web build
+
+      # T-0057 (ADR 0014 do cenário B): o mesmo build do conector-montar.yml, pela pasta (o nome do pacote não importa).
+      # Sem o apps/conector no workspace o escopo devolve build_conector=false e o passo pula.
+      - name: build do Conector (apps/conector)
+        if: ${{ !cancelled() && matrix.parte == 'build' && needs.escopo.outputs.build_conector == 'true' }}
+        run: pnpm --filter ./apps/conector build
 
   testes-pacotes:
     name: testes dos pacotes (${{ matrix.shard }}/3)

@@ -174,6 +174,7 @@ export function decidir({
     filtro_typecheck: '',
     filtro_test: '',
     build: 'false',
+    build_conector: 'false',
     db_sem_super: 'false',
     reaproveitado_de: '',
   };
@@ -191,6 +192,7 @@ export function decidir({
   const sel = (t) => (af.todos ? todosOsPacotes : af.porTarefa[t]);
   const testes = sel('test');
   const estatico = new Set([...sel('lint'), ...sel('typecheck')]);
+  const conector = workspace.pacotes.find((p) => p.dir === 'apps/conector');
   // Suítes só no manual e na chamada do liberar; PR e push só com o estático (cabeçalho).
   const comTestes = evento === 'workflow_dispatch';
   return {
@@ -205,6 +207,9 @@ export function decidir({
     filtro_typecheck: af.todos ? '' : filtro(sel('typecheck'), true),
     filtro_test: af.todos ? '' : filtro(testes, false),
     build: String(af.todos || estatico.has('web') || estatico.has('mobile')),
+    // ADR 0014 do cenário B (T-0057): o build do Conector (apps/conector) só se a pasta existe e foi afetada. Pela pasta,
+    // não pelo nome: sem o apps/conector no workspace, sempre 'false' (o pnpm --filter falharia sem pacote).
+    build_conector: String(Boolean(conector) && (af.todos || estatico.has(conector.nome))),
     db_sem_super: String(af.todos || testes.has('@macuxierp/db')),
   };
 }
@@ -323,6 +328,7 @@ async function principal(env) {
     `filtro_typecheck=${d.filtro_typecheck}`,
     `filtro_test=${d.filtro_test}`,
     `build=${d.build}`,
+    `build_conector=${d.build_conector}`,
     `db_sem_super=${d.db_sem_super}`,
     `reaproveitado_de=${d.reaproveitado_de}`,
   ];
