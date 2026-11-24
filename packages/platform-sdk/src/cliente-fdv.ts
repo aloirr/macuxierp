@@ -67,6 +67,8 @@ export const ClienteParaErpFdv = z
     revisao: z.number().int().positive().optional(),
     hash: z.string().regex(/^[0-9a-f]{64}$/).nullish(),
     tentativa: z.number().int().positive().optional(),
+    /** Aditivo do FDV v1.0.34 (R-20261124-182351): nulo ou ausente = vendedor sem código no ERP; a tela mostra "—". */
+    vendedor_external_id: z.string().max(200).nullish(),
   })
   .passthrough();
 export type ClienteParaErpFdv = z.infer<typeof ClienteParaErpFdv>;
