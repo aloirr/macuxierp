@@ -101,6 +101,15 @@ describe('consulta de cadastros para o pedido (memória)', () => {
     expect(await consulta.cliente(tx, randomUUID())).toBeNull();
   });
 
+  it('RN-CAD-16: o retrato do cliente traz o prazo médio em dias (valor) para a RN-PED-07 do pedido', async () => {
+    const r = await criarAmbiente(criarPluginCadastros(m.deps)).chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(ids.filialPadrao as string, { documento: '00000000000191', prazo_medio_dias: 45 }) });
+    expect(r.status).toBe(201);
+    expect(await consulta.cliente(tx, (r.corpo as { id: string }).id)).toMatchObject({ prazo_medio_dias: 45 });
+    const n = await criarAmbiente(criarPluginCadastros(m.deps)).chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(ids.filialPadrao as string, { documento: '11222333000262', prazo_medio_dias: null }) });
+    expect(n.status).toBe(201);
+    expect((await consulta.cliente(tx, (n.corpo as { id: string }).id))?.prazo_medio_dias ?? null).toBeNull(); // sem prazo médio = sem limite
+  });
+
   it('cliente: código IBGE fora da tabela dá municipio_nome null; 2+ endereços no mesmo município resolvem o nome sem repetir', async () => {
     m.repos.oficiais.municipios.set('1300029', 'Alvarães');
     const a = criarAmbiente(criarPluginCadastros(m.deps));
