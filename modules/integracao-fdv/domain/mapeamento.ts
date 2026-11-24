@@ -12,6 +12,7 @@ import type { EVENTOS } from '@macuxierp/cadastros/contracts';
 import { PAYLOADS_HUB, type EntidadeHub, type LinhaInvalida } from '../contracts';
 import { externalIdForma, hashRegistro } from './canonico';
 import { chaveHub } from './chave';
+import { parcelasDiasParaHub } from './parcelas';
 import { cnpjValido } from '@macuxierp/platform-sdk';
 
 type Evento<N extends keyof typeof EVENTOS> = z.infer<(typeof EVENTOS)[N]>;
@@ -174,7 +175,7 @@ export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { te
       ativo: !ev.inativo,
       forma_external_id: formaId,
       codigo: ev.codigo,
-      parcelas_dias: ev.prazos_dias.join('/'),
+      parcelas_dias: parcelasDiasParaHub(ev.prazos_dias),
       descricao: ev.descricao,
     },
     ev.id,

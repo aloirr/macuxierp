@@ -10,6 +10,7 @@
  */
 import type { EntidadeHub } from '../contracts';
 import { hashRegistro } from './canonico';
+import { lerParcelasDias } from './parcelas';
 import { prazoMedioMaxDias, type RegistroEspelho } from './mapeamento';
 
 export interface TabelaReferencia {
@@ -120,7 +121,7 @@ export function assinaturaDeDerivados(r: Pick<RegistroEspelho, 'entidade' | 'pay
     case 'forma_pagamento':
       return JSON.stringify([p.external_id, p.codigo]);
     case 'prazo_pagamento':
-      return JSON.stringify([p.external_id, p.forma_external_id, p.parcelas_dias]);
+      return JSON.stringify([p.external_id, p.forma_external_id, lerParcelasDias(p.parcelas_dias)?.join('/') ?? null]);
     default:
       return null;
   }

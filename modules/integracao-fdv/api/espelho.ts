@@ -6,7 +6,7 @@
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { CodigoConflitoChave, EntidadeHub } from '../contracts';
-import { ALVO_DA_CHAVE_REFS, inativarRegistro, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
+import { ALVO_DA_CHAVE_REFS, inativarRegistro, lerParcelasDias, recomporRegistro, tabelaDaReferencia, type FontesRecomposicao, type RegistroEspelho, type TabelaReferencia } from '../domain';
 import { anteciparEntidades, garantirLinhaDoSinal } from './conector-comum';
 
 export interface LinhaRegistro {
@@ -116,12 +116,12 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
   }
   const chaves = new Map<string, string>();
   const nomes = new Map<string, string>();
-  const prazos = new Map<string, { forma: string | null; parcelas: string | null }>();
+  const prazos = new Map<string, { forma: string | null; parcelas: unknown }>();
   for (const [alvo, ids] of porEntidade) {
     if (alvo === 'tabela') continue;
-    const linhas = await tx.consultar<{ erp_id: string; chave: string; nome: string | null; forma: string | null; parcelas: string | null }>(
+    const linhas = await tx.consultar<{ erp_id: string; chave: string; nome: string | null; forma: string | null; parcelas: unknown }>(
       `SELECT b.erp_id, r.registro_external_id AS chave, r.payload ->> 'nome' AS nome,
-              r.payload ->> 'forma_external_id' AS forma, r.payload ->> 'parcelas_dias' AS parcelas
+              r.payload ->> 'forma_external_id' AS forma, r.payload -> 'parcelas_dias' AS parcelas
          FROM unnest($3::uuid[]) AS b(erp_id)
          JOIN integracao_fdv.registro_publicado r
            ON r.tenant_id = $1 AND r.entidade = $2 AND r.erp_id = b.erp_id AND r.deleted_at IS NULL
@@ -174,8 +174,9 @@ async function carregarFontes(tx: Transacao, tenantId: string, regs: readonly Re
     condicao: (erpId) => {
       const p = prazos.get(erpId);
       const codigo = p?.forma ? formas.get(p.forma) : undefined;
-      if (!p?.parcelas || !codigo) return null;
-      return { forma_codigo: codigo, prazos_dias: p.parcelas.split('/').map(Number) };
+      const lista = lerParcelasDias(p?.parcelas);
+      if (!lista || !codigo) return null;
+      return { forma_codigo: codigo, prazos_dias: lista };
     },
   };
 }
