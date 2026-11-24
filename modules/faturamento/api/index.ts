@@ -4,6 +4,7 @@ import { criarRotas, type DepsRotas } from './rotas';
 
 /** Só o que o README liga no apps/api e no apps/worker; o resto é interno do módulo. */
 export { criarConsumidorPedidoAprovado } from './consumidor';
+export { criarServicoDescidaNotas, exigirFaturamentoLigado, type FilaNotasParaDescer, type NotaPendenteDeDescida, type LicencaFaturamento } from './cenario-b';
 export type {
   A1DaFilial, AmbienteFiscalDaFilial, CalculoFiscal, ClienteDestinatario, CondicaoDoPedido, ConsultaA1Ativo, ConsultaCadastrosFaturamento,
   EntradaCalculoFiscal, EventoRegistro, FilialEmissora, PortaDanfe, InutilizacaoRegistro, NotaEmAberto, PedidosAprovados, RepositorioEventos, RepositorioNotas, ResultadoA1Ativo,

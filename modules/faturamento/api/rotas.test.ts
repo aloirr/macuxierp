@@ -505,6 +505,20 @@ describe('consumidor de pedido.pedido.aprovado@1', () => {
   };
   const evento = () => ({ id: uuid(1), nome: EVENTO_PEDIDO_APROVADO, tenant_id: TENANT, agregado_id: IDS.pedido, versao: 1, ocorrido_em: '2026-11-21T14:00:00.000Z', ator: 'sistema' as const, request_id: 'r', payload: pedidoAprovado([itemPedido(1, 10_000, 1000)]) as unknown as Record<string, unknown> });
 
+  it('RN-FAT-11: faturamento desligado (licença inativa, RN-CORE-02): o consumidor não grava na fila e só registra log sem dado pessoal', async () => {
+    const logs: Record<string, unknown>[] = [];
+    const fila: string[] = [];
+    const c = criarConsumidorPedidoAprovado({
+      situacao: { situacao: async () => ({ status: 'aprovado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 0 }] }) },
+      pedidos: { ...depsFake().deps.pedidos, gravar: async (_t, p) => { fila.push(p.pedido_id); return 'novo'; }, marcarCancelado: async () => {} },
+      licenca: { ativa: async () => false },
+      log: (e) => logs.push(e),
+    });
+    await c.tratar({ id: uuid(1), nome: EVENTO_PEDIDO_APROVADO, tenant_id: TENANT, agregado_id: IDS.pedido, versao: 1, ocorrido_em: '2026-11-21T14:00:00.000Z', ator: 'sistema' as const, request_id: 'r', payload: pedidoAprovado([itemPedido(1, 10_000, 1000)]) as unknown as Record<string, unknown> }, tx);
+    expect(fila).toEqual([]);
+    expect(logs).toEqual([{ evento: 'faturamento.pedido.ignorado_faturamento_desligado', pedido_id: IDS.pedido, motivo: 'faturamento_desligado' }]);
+  });
+
   it('RF-FAT-01: grava o pedido aprovado na fila a faturar, idempotente', async () => {
     const { c, fila } = montarC({ status: 'aprovado', itens: [{ sequencia: 1, quantidade: 10_000, quantidade_faturada: 0 }] });
     expect(c.eventos).toEqual([EVENTO_PEDIDO_APROVADO]);

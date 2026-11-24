@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHAVE_ACESSO_REGEX, NotaAutorizadaPayload, NotaCanceladaPayload, TituloBaixadoPayload, TituloGeradoPayload, ConfigurarFilialEntrada, TipoEmissao, AbrirContingenciaEntrada, ContingenciaResumo, EpecPendente, FiltroEpecPendentes, NotaEmitidaContingenciaPayload } from './index';
+import { CHAVE_ACESSO_REGEX, NotaAutorizadaPayload, NotaCanceladaPayload, TituloBaixadoPayload, TituloGeradoPayload, ConfigurarFilialEntrada, TipoEmissao, AbrirContingenciaEntrada, ContingenciaResumo, EpecPendente, FiltroEpecPendentes, NotaEmitidaContingenciaPayload, NotaParaCliente } from './index';
 
 const u = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const nota = { id: u(1), filial_id: u(2), cliente_id: u(3), serie: 1, numero: 5, chave_acesso: '13261112ABC34501DE35550010000001231876543214', emitida_em: '2026-11-21T14:00:00.000Z', total_centavos: 100, protocolo: '113260000000001' };
@@ -97,5 +97,15 @@ describe('faturamento.nota.emitida_contingencia@1 (EPEC registrada; RN-FAT-07, R
     for (const ruim of [{ pedido_uuid: undefined }, { tp_emis: 6 }, { tp_emis: 1 }, { epec_protocolo: '123' }, { epec_autorizada_em: '21/11/2026' }, { nota: { ...nota, protocolo: null, chave_acesso: null } }, { nota: { ...nota, protocolo: '113260000000001' } }]) {
       expect(NotaEmitidaContingenciaPayload.safeParse({ ...emitida, ...ruim }).success).toBe(false);
     }
+  });
+});
+
+describe('cenário B (ADR 0014)', () => {
+  const chave = '13261112345678000195550010000012341000012345';
+  const item = { sequencia: 1, produto_id: null, codigo: 'P1', descricao: 'Item', unidade: 'UN', quantidade: 10_000, valor_unitario_centavos: 100, total_centavos: 100 };
+  it('RN-FAT-04: NotaParaCliente não carrega XML (campo extra é recusado)', () => {
+    const base = { chave_acesso: chave, pedido_id: '11111111-1111-4111-8111-111111111111', numero: 1, serie: 1, emitida_em: '2026-11-24T14:00:00.000Z', protocolo: '1', total_produtos_centavos: 100, total_desconto_centavos: 0, total_centavos: 100, itens: [item] };
+    expect(NotaParaCliente.safeParse(base).success).toBe(true);
+    expect(NotaParaCliente.safeParse({ ...base, xml: '<NFe/>' }).success).toBe(false);
   });
 });

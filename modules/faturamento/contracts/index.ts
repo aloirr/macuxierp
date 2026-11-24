@@ -538,3 +538,37 @@ export type ProcessarInutilizacaoPayload = z.infer<typeof ProcessarInutilizacaoP
 export const TRABALHO_CONSULTAR_NOTA = 'faturamento.consultar_nota' as const;
 export const ConsultarNotaPayload = z.object({ nota_id: Uuid });
 export type ConsultarNotaPayload = z.infer<typeof ConsultarNotaPayload>;
+
+// ---- Cenário B (ADR 0014 §13 e §15, T-0057) ----
+
+/**
+ * Item da nota que desce ao banco do cliente.
+ * TODO(T-0057): contrato LOCAL. O oficial (`NotaParaCliente`) virá no `packages/platform-sdk/src/hub-v1.ts` do engenheiro-software;
+ * trocar este schema pelo do SDK (reexportar) quando entrar no main.
+ */
+export const ItemNotaParaCliente = z.object({
+  sequencia: z.number().int().min(1),
+  produto_id: Uuid.nullable(),
+  codigo: z.string().nullable(),
+  descricao: z.string(),
+  unidade: z.string(),
+  quantidade: Qtd4,
+  valor_unitario_centavos: Centavos,
+  total_centavos: Centavos,
+});
+export type ItemNotaParaCliente = z.infer<typeof ItemNotaParaCliente>;
+
+/** Nota autorizada que desce (ADR 0014 §13): chave, número, série, emissão, totais e itens. SEM XML. TODO(T-0057): trocar pelo do SDK (ver acima). */
+export const NotaParaCliente = z.object({
+  chave_acesso: ChaveAcesso,
+  pedido_id: Uuid,
+  numero: z.number().int().min(1).max(999_999_999),
+  serie: z.number().int().min(0).max(999),
+  emitida_em: z.string().datetime(),
+  protocolo: Protocolo,
+  total_produtos_centavos: Centavos,
+  total_desconto_centavos: Centavos,
+  total_centavos: Centavos,
+  itens: z.array(ItemNotaParaCliente).min(1),
+}).strict();
+export type NotaParaCliente = z.infer<typeof NotaParaCliente>;
