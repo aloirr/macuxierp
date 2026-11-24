@@ -92,6 +92,10 @@ async function hashSenha(senha) {
   return `$argon2id$v=19$m=${ARGON2.memoria},t=${ARGON2.passes},p=${ARGON2.paralelismo}$${b64(sal)}$${b64(h)}`;
 }
 
+/** Sessões abertas do portal do superadmin `s` (RD-1329): o mesmo filtro na contagem e na revogação do desativar e do
+ *  redefinir-senha. Texto fixo do SQL, sem valor. */
+const SESSOES_ABERTAS = 'superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL';
+
 /**
  * SQL fixo (nenhum valor colado), como no empresa.mjs: os valores chegam por `\getenv`, viram GUCs locais (sem eco) e o
  * bloco PL/pgSQL os lê. O resultado volta numa GUC numa linha só: `superadmin|<situacao>|<id ou ->|<detalhe>`.
@@ -152,16 +156,14 @@ BEGIN
       RAISE EXCEPTION 'superadmin não encontrado para o e-mail informado; nada foi alterado' USING ERRCODE = 'P0001';
     END IF;
     IF v_acao = 'desativar' THEN
-      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin
-      WHERE superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL;
+      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin WHERE ${SESSOES_ABERTAS};
       IF NOT s.ativo AND v_abertas = 0 THEN
         v_saida := format('superadmin|ja-desativado|%s|0', s.id);
       ELSIF v_simular THEN
         v_saida := format('superadmin|desativar|%s|%s', s.id, v_abertas);
       ELSE
         UPDATE plataforma.superadmin SET ativo = false WHERE id = s.id;
-        UPDATE plataforma.sessao_superadmin SET revogada_em = now()
-        WHERE superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL;
+        UPDATE plataforma.sessao_superadmin SET revogada_em = now() WHERE ${SESSOES_ABERTAS};
         INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
         VALUES (v_ref, NULL, 'plataforma.superadmin.desativar', 'superadmin', s.id, jsonb_build_object('ativo', s.ativo),
           jsonb_build_object('ativo', false, 'sessoes_revogadas', v_abertas, 'operador', v_operador, 'motivo', 'operador.sh'), v_req);
@@ -185,16 +187,14 @@ BEGIN
           USING ERRCODE = 'P0001';
       END IF;
       v_travado := s.bloqueado_ate IS NOT NULL;
-      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin
-      WHERE superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL;
+      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin WHERE ${SESSOES_ABERTAS};
       IF v_simular THEN
         v_saida := format('superadmin|redefinir-senha|%s|%s', s.id,
           v_abertas || ':' || s.falhas_login || CASE WHEN v_travado THEN ':travado' ELSE '' END);
       ELSE
         UPDATE plataforma.superadmin SET senha_hash = v_hash, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL
         WHERE id = s.id;
-        UPDATE plataforma.sessao_superadmin SET revogada_em = now()
-        WHERE superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL;
+        UPDATE plataforma.sessao_superadmin SET revogada_em = now() WHERE ${SESSOES_ABERTAS};
         INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
         VALUES (v_ref, NULL, 'plataforma.superadmin.redefinir_senha', 'superadmin', s.id,
           jsonb_build_object('deve_trocar_senha', s.deve_trocar_senha, 'falhas', s.falhas_login, 'travado', v_travado),

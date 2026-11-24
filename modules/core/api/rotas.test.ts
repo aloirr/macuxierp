@@ -17,7 +17,7 @@ import {
   type RespostaRota,
 } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxierp/platform-sdk/testes';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { abrirColunasA1 } from './colunas-a1';
 import { lerChaveA1 } from './index';
 import { LeitorPfxTls } from './leitor-pfx';
@@ -343,7 +343,7 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     const pfx = randomBytes(900);
     const r = await t.chamar('POST', '/certificados', envio(pfx));
     expect(r.status).toBe(201);
-    expect(r.corpo).toMatchObject({ filial_id: FILIAL, cnpj: '11222333000262', dias_para_vencer: 49, alerta_vencimento: false, ativo: true });
+    expect(r.corpo).toMatchObject({ filial_id: FILIAL, cnpj: '11222333000262', dias_para_vencer: 49, alerta_vencimento: false, ativo: true, origem: 'upload' });
     const guardado = t.repo.certificadosLinhas[0];
     expect(guardado?.pfx_cifrado?.includes(pfx.subarray(0, 32))).toBe(false);
     const volta = abrirColunasA1({ chave: lerChaveA1(CHAVE_HEX), tenantId: TENANT, pfx_cifrado: guardado?.pfx_cifrado as Buffer, pfx_nonce: guardado?.pfx_nonce as Buffer, senha_cifrada: guardado?.senha_cifrada as Buffer, senha_nonce: guardado?.senha_nonce as Buffer });
@@ -356,6 +356,9 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     expect(t.outbox.eventos[0]).toMatchObject({ nome: 'core.certificado.alterado@1' });
     const lista = JSON.stringify((await t.chamar('GET', '/certificados', { consulta: { filial_id: FILIAL } })).corpo);
     expect(lista).not.toMatch(/pfx|senha|cifrad|nonce/i);
+    expect(lista).toContain('"origem":"upload"');
+    t.repo.certificadosLinhas[0]!.origem = 'teste';
+    expect(JSON.stringify((await t.chamar('GET', '/certificados', {})).corpo)).toContain('"origem":"teste"');
   });
 
   it('RN-CORE-06: vencido é 422 com "Certificado vencido em DD/MM/AAAA: envie o novo"', async () => {
@@ -406,6 +409,19 @@ describe('RF-CORE-04: certificado A1 (ADR 0005)', () => {
     const r = await t.chamar('POST', '/certificados', envio(randomBytes(100)));
     expect(r.corpo).toMatchObject({ dias_para_vencer: 18, alerta_vencimento: true });
   });
+  it('RN-CORE-08: erro MXA01 do banco no envio do A1 vira 422 com o detalhe; outro erro pg continua subindo', async () => {
+    const leitor = new LeitorFalso();
+    leitor.dados = dados();
+    const t = montar(leitor);
+    const falha = (e: object) => vi.spyOn(t.repo, 'substituirCertificado').mockRejectedValueOnce(e);
+    falha({ code: 'MXA01', detail: 'a1_de_teste_em_producao', message: 'certificado A1 de teste não pode ser usado em filial em produção; envie o certificado real' });
+    const e = (await regra(t.chamar('POST', '/certificados', envio(randomBytes(100))), 'RN-CORE-08')) as ErroApi;
+    expect(e.detalhes).toEqual({ motivo: 'a1_de_teste_em_producao' });
+    expect(e.message).toContain('envie o certificado real');
+    falha({ code: '23505', message: 'x' });
+    await expect(t.chamar('POST', '/certificados', envio(randomBytes(100)))).rejects.toMatchObject({ code: '23505' });
+  });
+
 });
 
 describe('RF-CORE-04: leitura real do .pfx (certificado de teste gerado no próprio teste)', () => {

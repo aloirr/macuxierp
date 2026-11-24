@@ -5,9 +5,9 @@
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
 import { erros, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
+import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
 
-const sqlstate = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
 const repetido = (e: unknown): boolean => sqlstate(e) === '23505';
 
 async function semRepetido<R>(fn: () => Promise<R>): Promise<R | null> {

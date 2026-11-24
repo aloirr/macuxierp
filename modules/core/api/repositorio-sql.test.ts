@@ -79,4 +79,16 @@ describe('repositório SQL do core', () => {
     await new RepositorioCoreSql().listarUsuarios(tx, { limite: 10, busca: '50%_a', inativos: false });
     expect(chamadas[0]?.params[2]).toBe('50\\%\\_a');
   });
+
+  it('origem do certificado: sem origem grava o padrão upload; com origem teste grava teste', async () => {
+    const base = { id: 'c', filial_id: 'f', titular: 't', cnpj: '1', valido_de: new Date(), valido_ate: new Date(), impressao_digital: 'a', pfx_cifrado: Buffer.alloc(1), pfx_nonce: Buffer.alloc(12), senha_cifrada: Buffer.alloc(1), senha_nonce: Buffer.alloc(12), chave_versao: 1 };
+    const g1 = gravador();
+    await new RepositorioCoreSql().substituirCertificado(g1.tx, base, new Date());
+    const g2 = gravador();
+    await new RepositorioCoreSql().substituirCertificado(g2.tx, { ...base, origem: 'teste' }, new Date());
+    const ins = (g: ReturnType<typeof gravador>) => g.chamadas.find((c) => /INSERT INTO core\.certificado/.test(c.sql))!;
+    expect(ins(g1).sql).toMatch(/origem\)/);
+    expect(ins(g1).params.at(-1)).toBe('upload');
+    expect(ins(g2).params.at(-1)).toBe('teste');
+  });
 });

@@ -22,7 +22,7 @@ const argsProducao = ['--empresa', 'thathyany', '--filial', FILIAL, '--recado', 
 const argsHomologacao = ['--empresa', 'thathyany', '--filial', FILIAL, '--operador', 'alexandre', '--motivo', 'teste de rejeição'];
 
 /** Cliente pg falso: responde por trecho do SQL e grava a sequência. */
-function clienteFalso({ atual, filiais = [FILIAL], certificado = { valido_ate: '2027-06-30T00:00:00Z' } } = {}) {
+function clienteFalso({ atual, filiais = [FILIAL], certificado = { valido_ate: '2027-06-30T00:00:00Z' }, falhaUpsert } = {}) {
   const sqls = [];
   return {
     sqls,
@@ -34,6 +34,7 @@ function clienteFalso({ atual, filiais = [FILIAL], certificado = { valido_ate: '
       if (sql.includes('from cadastros.filial_resumo')) return { rows: params[0] === TENANT.id && filiais.includes(params[1]) ? [{ id: params[1], nome: 'Matriz' }] : [] };
       if (sql.includes('from core.certificado')) return { rows: certificado ? [certificado] : [] };
       if (sql.includes('for update')) return { rows: atual ? [atual] : [] };
+      if (falhaUpsert && sql.includes('insert into core.ambiente_fiscal')) throw falhaUpsert;
       return { rows: [] };
     },
   };
@@ -268,5 +269,18 @@ describe('ambiente-fiscal.mjs: plano e execução (RN-CORE-08)', () => {
     const r = await executar(c, lerArgumentos(['listar', '--empresa', 'thathyany']), INSTANTE);
     assert.deepEqual(r.filiais, [{ filial_id: FILIAL, nome: 'Matriz', ambiente: 'homologacao', recado_aprovacao: null }]);
     assert.equal(c.sqls.at(-1).sql, 'rollback');
+  });
+
+  it('A1 de teste ativo: o MXA01 da 0047 vira a mensagem curta, sem SQL nem detalhe do banco, e desfaz (T-0080)', async () => {
+    const erroBanco = Object.assign(new Error('mensagem interna do gatilho'), { code: 'MXA01', detail: 'a1_de_teste' });
+    const c = clienteFalso({ falhaUpsert: erroBanco });
+    await assert.rejects(executar(c, opProducao(['--confirmar']), INSTANTE), (e) => {
+      assert.ok(e instanceof ErroUso);
+      assert.equal(e.message, 'certificado A1 de teste não pode ir para produção; envie o certificado real');
+      return true;
+    });
+    assert.equal(c.sqls.at(-1).sql, 'rollback');
+    const outro = Object.assign(new Error('x'), { code: '23505' });
+    await assert.rejects(executar(clienteFalso({ falhaUpsert: outro }), opProducao(['--confirmar']), INSTANTE), (e) => e === outro);
   });
 });

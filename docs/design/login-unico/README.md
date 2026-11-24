@@ -12,7 +12,7 @@ Uma tela só de entrada, no molde do login do Macuxi FDV, para empresa e superad
 2. Região de erro de login (`.erro`), só quando há erro.
 3. **Código da empresa**. Aceita só letras, números e hífen; sem diferença de maiúscula.
 4. **E-mail** (`type="email"`, `autocomplete="username"`).
-5. **Senha**, com o botão do olho (ícone de olho, como no FDV; `aria-label` "Mostrar senha" / "Ocultar senha", `aria-pressed`; não é botão de texto). O olho existe só aqui.
+5. **Senha**, com o olho. Nesta versão (v0.3.10), o olho é o botão de texto do `CampoSenha` atual (`apps/web/src/components/campo-senha.tsx`) (rótulos em `ROTULOS_OLHO_SENHA` do `platform-sdk`, `aria-pressed`). O ícone de olho, como no FDV, fica para um ajuste do designer-ux no `packages/ui` numa versão seguinte.
 6. Botão principal **Entrar**.
 7. Link **Esqueci a senha**, abaixo do botão.
 
@@ -42,7 +42,7 @@ Prints: erro de login `login-erro-1280x800.png`; 429 `login-429-1280x800.png`.
 - Erro de login e 429 na região `.erro` com `role="alert"` (anunciada uma vez). Carregando: `aria-busy` no formulário.
 
 ## Esqueci a senha (mesma tela)
-O link troca o conteúdo do cartão (sem nova rota de redefinição; não existe tela por link). Título **Esqueci a senha**; campos **Código da empresa** (preenchido se lembrado) e **E-mail**; botão **Enviar senha temporária**; link **Voltar ao login** (devolve o foco ao link "Esqueci a senha").
+O link troca o conteúdo do cartão (sem nova rota de redefinição; não existe tela por link). Título **Esqueci a senha**, que TROCA o "Acesse sua conta" enquanto o painel está aberto (volta ao fechar), para nunca haver dois títulos; campos **Código da empresa** (preenchido se lembrado) e **E-mail**; botão **Enviar senha temporária**; link **Voltar ao login** (devolve o foco ao link "Esqueci a senha").
 - **Confirmação, sempre igual e neutra** (`role="status"`, o formulário some, fica "Voltar ao login"): "Se o e-mail estiver cadastrado nesta empresa, você vai receber uma senha temporária em alguns minutos. Ela vale por 72 horas." Vale também para empresa ou e-mail inexistente.
 - **429:** como no login, formulário mantido.
 - Erros de campo, como no login.
