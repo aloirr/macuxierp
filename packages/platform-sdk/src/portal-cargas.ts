@@ -187,7 +187,8 @@ export const LIMITE_INATIVACAO_FDV_PCT = 30;
  * Efeito do "Substituir tudo" num cadastro: `total` = ativos de hoje no tenant; `a_inativar` = os que não vêm no arquivo;
  * `percentual` = `a_inativar * 100 / total` (0 sem ativos, sem arredondar: a tela formata); `acima_limite_fdv` =
  * `percentual > LIMITE_INATIVACAO_FDV_PCT`; `sem_chave` (opcional) = registros sem `external_id`, criados no BKO, que
- * ficam fora da inativação (o banco devolve pela `carga_inativar_ausentes`).
+ * ficam fora da inativação (o banco devolve pela `carga_inativar_ausentes`); `enderecos_a_inativar` (opcional, só no
+ * cadastro `cliente`) = endereços de cliente que o Substituir tudo inativa junto.
  */
 export const EfeitoSubstituir = z
   .object({
@@ -196,6 +197,7 @@ export const EfeitoSubstituir = z
     percentual: z.number().min(0).max(100),
     acima_limite_fdv: z.boolean(),
     sem_chave: Contagem.optional(),
+    enderecos_a_inativar: Contagem.optional(),
   })
   .superRefine((e, ctx) => {
     if (e.a_inativar > e.total) {
@@ -209,17 +211,40 @@ export const EfeitoSubstituir = z
   });
 export type EfeitoSubstituir = z.infer<typeof EfeitoSubstituir>;
 
+const MENSAGEM_ENDERECOS_SO_CLIENTE = 'Endereços inativados só no Substituir tudo do cadastro cliente';
+
+/** Recusa `efeito.enderecos_a_inativar` fora do cadastro `cliente` (validar e gravar). */
+function conferirEnderecosEfeito(
+  r: { cadastro: CadastroCargaPortal; efeito?: EfeitoSubstituir | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (r.efeito?.enderecos_a_inativar !== undefined && r.cadastro !== 'cliente') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efeito', 'enderecos_a_inativar'], message: MENSAGEM_ENDERECOS_SO_CLIENTE });
+  }
+}
+
 /** Calcula o efeito (pura; o plugin e a tela usam a mesma). */
-export function efeitoSubstituir(e: { total: number; a_inativar: number; sem_chave?: number }): EfeitoSubstituir {
+export function efeitoSubstituir(e: {
+  total: number;
+  a_inativar: number;
+  sem_chave?: number;
+  enderecos_a_inativar?: number;
+}): EfeitoSubstituir {
   if (!Number.isInteger(e.total) || !Number.isInteger(e.a_inativar) || e.total < 0 || e.a_inativar < 0 || e.a_inativar > e.total) {
     throw new RangeError('efeitoSubstituir: contagens inteiras, com a_inativar entre 0 e total');
   }
-  if (e.sem_chave !== undefined && (!Number.isInteger(e.sem_chave) || e.sem_chave < 0)) {
-    throw new RangeError('efeitoSubstituir: sem_chave é contagem inteira e não negativa');
-  }
+  const conferirContagemOpcional = (nome: string, v: number | undefined): void => {
+    if (v !== undefined && (!Number.isInteger(v) || v < 0)) {
+      throw new RangeError(`efeitoSubstituir: ${nome} é contagem inteira e não negativa`);
+    }
+  };
+  conferirContagemOpcional('sem_chave', e.sem_chave);
+  conferirContagemOpcional('enderecos_a_inativar', e.enderecos_a_inativar);
   const percentual = e.total === 0 ? 0 : (e.a_inativar * 100) / e.total;
   const efeito: EfeitoSubstituir = { total: e.total, a_inativar: e.a_inativar, percentual, acima_limite_fdv: percentual > LIMITE_INATIVACAO_FDV_PCT };
-  return e.sem_chave === undefined ? efeito : { ...efeito, sem_chave: e.sem_chave };
+  if (e.sem_chave !== undefined) efeito.sem_chave = e.sem_chave;
+  if (e.enderecos_a_inativar !== undefined) efeito.enderecos_a_inativar = e.enderecos_a_inativar;
+  return efeito;
 }
 
 // ---- Validar ----
@@ -268,6 +293,7 @@ export const ValidarCargaPlataformaResposta = z
     if ((r.modo === 'substituir_tudo') !== (r.efeito !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efeito'], message: 'Efeito só, e sempre, no Substituir tudo' });
     }
+    conferirEnderecosEfeito(r, ctx);
   });
 export type ValidarCargaPlataformaResposta = z.infer<typeof ValidarCargaPlataformaResposta>;
 
@@ -299,7 +325,8 @@ export type GravarCargaPlataformaEntrada = z.infer<typeof GravarCargaPlataformaE
 
 /**
  * `200`: a carga terminou na própria requisição. `gravadas` = linhas aceitas; `com_erro` = recusadas; `inativadas` e
- * `efeito` só no `substituir_tudo`. Nenhuma linha pronta = 409 `nada_a_gravar` (nada roda).
+ * `efeito` só no `substituir_tudo`; `enderecos_inativados` (opcional) = endereços de cliente inativados, só no
+ * `substituir_tudo` do cadastro `cliente`. Nenhuma linha pronta = 409 `nada_a_gravar` (nada roda).
  */
 export const GravarCargaPlataformaResposta = z
   .object({
@@ -309,9 +336,14 @@ export const GravarCargaPlataformaResposta = z
     com_erro: Contagem,
     inativadas: Contagem.optional(),
     efeito: EfeitoSubstituir.optional(),
+    enderecos_inativados: Contagem.optional(),
   })
   .superRefine((r, ctx) => {
     conferirModoPermitido(r, ctx);
+    if (r.enderecos_inativados !== undefined && (r.modo !== 'substituir_tudo' || r.cadastro !== 'cliente')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['enderecos_inativados'], message: MENSAGEM_ENDERECOS_SO_CLIENTE });
+    }
+    conferirEnderecosEfeito(r, ctx);
     const substituir = r.modo === 'substituir_tudo';
     if (substituir !== (r.inativadas !== undefined) || substituir !== (r.efeito !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['inativadas'], message: 'Inativadas e efeito só, e sempre, no Substituir tudo' });
