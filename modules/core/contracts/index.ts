@@ -147,13 +147,6 @@ export type AmbienteTrocar = z.infer<typeof AmbienteTrocar>;
 export const ListaAmbientes = z.object({ itens: z.array(AmbienteFiscal) });
 
 // Auditoria (RF-CORE-05)
-export const AuditoriaConsulta = ListaConsulta.pick({ limite: true, cursor: true }).extend({
-  entidade: z.string().max(60).optional(),
-  de: Instante.optional(),
-  ate: Instante.optional(),
-});
-export type AuditoriaConsulta = z.infer<typeof AuditoriaConsulta>;
-
 export const AuditoriaItem = z.object({
   id: Id,
   usuario_id: Id.nullable(),
@@ -165,7 +158,10 @@ export const AuditoriaItem = z.object({
   ocorrido_em: Instante,
 });
 export type AuditoriaItem = z.infer<typeof AuditoriaItem>;
-export const ListaAuditoria = paginaDe(AuditoriaItem);
+/** O item da auditoria na lista e no CSV não leva `antes`/`depois` (podem trazer dado do cadastro): só quem, o quê e quando. */
+export const AuditoriaItemLista = AuditoriaItem.omit({ antes: true, depois: true });
+export type AuditoriaItemLista = z.infer<typeof AuditoriaItemLista>;
+export const ListaAuditoria = paginaDe(AuditoriaItemLista);
 
 // Exportação LGPD (RF-CORE-06): a API responde 202 e o worker gera o .zip
 export const ExportacaoEstado = z.enum(['pendente', 'gerando', 'pronta', 'falhou', 'expirada']);

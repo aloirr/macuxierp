@@ -8,6 +8,7 @@ import {
   CABECALHOS_SENHA_PROVISORIA,
   definirPlugin,
   ErroCertificado,
+  csvDaLista,
   definirRota,
   erros,
   paginar,
@@ -17,10 +18,10 @@ import {
   type PluginModulo,
 } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
+import { paginaAuditoria, paginaLicencas, paginaUsuarios } from '../web/listas';
 import {
   AmbienteConsulta,
   AmbienteTrocar,
-  AuditoriaConsulta,
   CertificadoEnviar,
   CertificadosConsulta,
   EmpresaEditar,
@@ -29,13 +30,13 @@ import {
   EVENTO_EMPRESA,
   EVENTO_USUARIO,
   Id,
-  ListaConsulta,
   ParametroChave,
   ParametroGravar,
   PFX_TAMANHO_MAXIMO,
   TRABALHO_EXPORTAR,
   UsuarioCriar,
   UsuarioEditar,
+  type AuditoriaItemLista,
   type CertificadoResumo,
   type Empresa,
   type Exportacao,
@@ -50,12 +51,17 @@ import {
   PfxInvalido,
   type DependenciasCore,
   type LinhaAmbiente,
+  type LinhaAuditoria,
   type LinhaCertificado,
   type LinhaEmpresa,
   type LinhaExportacao,
+  type LinhaLicenca,
   type LinhaUsuario,
   type PatchUsuario,
 } from './portas';
+
+/** Teto de linhas de um CSV de lista (igual ao dos outros módulos). */
+const MAXIMO_LINHAS_CSV = 10_000;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 /** Valida o parâmetro de rota com o `Id` dos contracts; 400 VALIDACAO se não for UUID. */
@@ -81,6 +87,25 @@ function usuarioDto(u: LinhaUsuario): Usuario {
     external_id: u.external_id,
     ultimo_acesso_em: iso(u.ultimo_acesso_em),
     updated_at: u.updated_at.toISOString(),
+  };
+}
+
+function licencaDto(l: LinhaLicenca) {
+  return { modulo: l.modulo, ativo: l.ativo, valido_ate: iso(l.valido_ate) };
+}
+
+/** Minimização (LGPD): a lista e o CSV levam quem, o quê e quando; `antes`/`depois` ficam no banco. */
+function auditoriaDto({ antes: _a, depois: _d, ...a }: LinhaAuditoria): AuditoriaItemLista {
+  return { ...a, ocorrido_em: a.ocorrido_em.toISOString() };
+}
+
+/** Filtros da auditoria (lista e CSV): o período chega em texto e vai ao repositório como `Date`. */
+function filtroAuditoria(consulta: { entidade?: string; usuario_id?: string; de?: string; ate?: string }) {
+  return {
+    entidade: consulta.entidade,
+    usuario_id: consulta.usuario_id,
+    de: consulta.de ? new Date(consulta.de) : undefined,
+    ate: consulta.ate ? new Date(consulta.ate) : undefined,
   };
 }
 
@@ -189,14 +214,24 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       },
     }),
 
-    // Usuários (RF-CORE-02, RN-CORE-01)
+    // Usuários (RF-CORE-02, RN-CORE-01). `/exportar` vem antes de `/:id`: o caminho fixo vence o parâmetro.
+    definirRota({
+      metodo: 'GET',
+      caminho: '/usuarios/exportar',
+      acao: 'core.usuario.gerir',
+      consulta: paginaUsuarios.consulta,
+      async executar(c, { consulta }) {
+        const linhas = await repo.listarUsuarios(c.tx, { ...consulta, inativos: consulta.inativos ?? false, cursor: undefined, limite: MAXIMO_LINHAS_CSV });
+        return csvDaLista(paginaUsuarios, c.sessao.perfil, linhas.map(usuarioDto), c.fuso);
+      },
+    }),
     definirRota({
       metodo: 'GET',
       caminho: '/usuarios',
       acao: 'core.usuario.gerir',
-      consulta: ListaConsulta,
+      consulta: paginaUsuarios.consulta,
       async executar(c, { consulta }) {
-        const linhas = await repo.listarUsuarios(c.tx, { ...consulta, limite: consulta.limite + 1 });
+        const linhas = await repo.listarUsuarios(c.tx, { ...consulta, inativos: consulta.inativos ?? false, limite: consulta.limite + 1 });
         const p = paginar(linhas, consulta.limite);
         return { corpo: { itens: p.itens.map(usuarioDto), proximo_cursor: p.proximo_cursor } };
       },
@@ -272,7 +307,8 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
     definirRota({
       metodo: 'GET',
       caminho: '/perfis',
-      acao: 'core.perfil.ver',
+      // T-0087 (RN-CORE-09): perfis e permissões são só do administrador da empresa, como os usuários.
+      acao: 'core.usuario.gerir',
       async executar() {
         const itens = PERFIS.map((perfil) => ({
           perfil,
@@ -288,8 +324,17 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       caminho: '/licencas',
       acao: 'core.licenca.ver',
       async executar(c) {
-        const itens = (await repo.licencas(c.tx)).map((l) => ({ modulo: l.modulo, ativo: l.ativo, valido_ate: iso(l.valido_ate) }));
-        return { corpo: { itens } };
+        const itens = (await repo.licencas(c.tx)).map(licencaDto);
+        return { corpo: { itens, proximo_cursor: null } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET',
+      caminho: '/licencas/exportar',
+      acao: 'core.licenca.ver',
+      async executar(c) {
+        const itens = (await repo.licencas(c.tx)).map(licencaDto);
+        return csvDaLista(paginaLicencas, c.sessao.perfil, itens, c.fuso);
       },
     }),
 
@@ -386,17 +431,21 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
       metodo: 'GET',
       caminho: '/auditoria',
       acao: 'core.auditoria.ver',
-      consulta: AuditoriaConsulta,
+      consulta: paginaAuditoria.consulta,
       async executar(c, { consulta }) {
-        const linhas = await repo.auditoria(c.tx, {
-          entidade: consulta.entidade,
-          de: consulta.de ? new Date(consulta.de) : undefined,
-          ate: consulta.ate ? new Date(consulta.ate) : undefined,
-          limite: consulta.limite + 1,
-          cursor: consulta.cursor,
-        });
+        const linhas = await repo.auditoria(c.tx, { ...filtroAuditoria(consulta), limite: consulta.limite + 1, cursor: consulta.cursor });
         const p = paginar(linhas, consulta.limite);
-        return { corpo: { itens: p.itens.map((a) => ({ ...a, ocorrido_em: a.ocorrido_em.toISOString() })), proximo_cursor: p.proximo_cursor } };
+        return { corpo: { itens: p.itens.map(auditoriaDto), proximo_cursor: p.proximo_cursor } };
+      },
+    }),
+    definirRota({
+      metodo: 'GET',
+      caminho: '/auditoria/exportar',
+      acao: 'core.auditoria.ver',
+      consulta: paginaAuditoria.consulta,
+      async executar(c, { consulta }) {
+        const linhas = await repo.auditoria(c.tx, { ...filtroAuditoria(consulta), limite: MAXIMO_LINHAS_CSV });
+        return csvDaLista(paginaAuditoria, c.sessao.perfil, linhas.map(auditoriaDto), c.fuso);
       },
     }),
 
