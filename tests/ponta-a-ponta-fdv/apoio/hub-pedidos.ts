@@ -40,6 +40,8 @@ export interface RetornoAplicado {
   numero_erp: string | null;
   motivo: string | null;
   nota: string | null;
+  /** Chave de acesso da nota como chegou no retorno faturado (o FDV a guarda no pedido; T-0089, defeito D3); fora do faturado, nulo. */
+  chave_nota: string | null;
   em: string;
 }
 
@@ -104,6 +106,11 @@ function pendentes(ctx: ContextoRota): RespostaRota {
     p.enviadoEm = agora;
   }
   return { status: 200, corpo: { pedidos: saida.map((p) => ({ ...p.pedido, tentativa: p.tentativas })) } };
+}
+
+function chaveDeAcesso(nota: unknown): string | null {
+  const chave = nota && typeof nota === 'object' ? (nota as { chave?: unknown }).chave : undefined;
+  return typeof chave === 'string' ? chave : null;
 }
 
 function chaveNota(nota: unknown): string | null {
@@ -175,7 +182,7 @@ function retorno(ctx: ContextoRota): RespostaRota {
   item.estado = status;
   item.numeroErp ??= numeroErp;
   if (typeof c.motivo === 'string') item.motivo = c.motivo;
-  item.retornos.push({ status, numero_erp: numeroErp, motivo: typeof c.motivo === 'string' ? c.motivo : null, nota, em: ctx.agora.toISOString() });
+  item.retornos.push({ status, numero_erp: numeroErp, motivo: typeof c.motivo === 'string' ? c.motivo : null, nota, chave_nota: chaveDeAcesso(c.nota), em: ctx.agora.toISOString() });
   const perder = fila.perderResposta.get(uuid.toLowerCase()) ?? 0;
   if (perder > 0) {
     fila.perderResposta.set(uuid.toLowerCase(), perder - 1);
