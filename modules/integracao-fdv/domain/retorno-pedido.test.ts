@@ -41,13 +41,15 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total' } });
     expect(JSON.stringify([p, t])).not.toContain(U(3)); // ADR 0010 item 1: a chave do Hub, nunca o UUID do ERP
   });
-  it('D3 (T-0085): a nota do retorno vai com numero e serie em TEXTO (NotaRetorno do Hub) e o corpo passa no contrato; inteiro é recusado', () => {
+  it('D3 (T-0085): a nota do retorno vai com numero e serie em TEXTO (NotaRetorno do Hub) e o corpo passa no contrato; a entrada aceita inteiro ou texto (temporário, expande/contrai)', () => {
     const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
     if (d.acao !== 'enviar') throw new Error('esperava enviar');
     expect(d.corpo.nota).toMatchObject({ numero: '10', serie: '1' });
     expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
-    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: 10 } }).success).toBe(false);
-    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, serie: 1 } }).success).toBe(false);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: 10 } }).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, serie: 1 } }).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: '10', serie: '1' } }).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: 1.5 } }).success).toBe(false);
   });
   it('RN-PED-07 (emenda de 24/11): pedido do FDV em análise por prazo incompleto ou não permitido volta como integrado, nunca rejeitado_erp', () => {
     const d = retornoDoPedido(ev('pedido.pedido.recebido@1', { status: 'em_analise', motivo_codigo: null }), null);

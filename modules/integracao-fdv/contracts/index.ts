@@ -78,8 +78,9 @@ export const RetornoErp = z.object({
   nota: z
     .object({
       /** `NotaRetorno` do Hub (OpenAPI real, 24/11): `numero` é TEXTO (1 a 40) e `serie` texto (até 10) ou nulo; inteiro dá 400 `requisicao_invalida` (D3). */
-      numero: z.string().min(1).max(40),
-      serie: z.string().max(10).nullable(),
+      /** temporário (expande/contrai, T-0085): volta a só string depois do #556. O envio ao Hub é sempre texto. */
+      numero: z.union([z.number().int(), z.string().min(1).max(40)]),
+      serie: z.union([z.number().int(), z.string().max(10)]).nullable(),
       /** O `NotaRetorno` do Hub ainda não tem a chave de acesso: o ERP a manda assim mesmo (pedido ao FDV, D3); o Hub a ignora até ter o campo. */
       chave: z.string(),
       emitida_em: z.string(),

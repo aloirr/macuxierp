@@ -22,7 +22,7 @@ import {
   ehConflitoDeChave,
   instanteUtc,
   mapearCliente,
-  mapearCondicao,
+  mapearCondicaoOpcional as mapearCondicao,
   mapearEstoque,
   mapearFilial,
   mapearPreco,

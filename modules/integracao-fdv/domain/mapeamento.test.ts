@@ -4,7 +4,8 @@ import {
   filiaisComCodigoRepetido,
   inativarRegistro,
   mapearCliente,
-  mapearCondicao,
+  mapearCondicaoOpcional as mapearCondicao,
+  mapearCondicao as mapearCondicaoEstrita,
   mapearEstoque,
   mapearFilial,
   mapearPreco,
@@ -129,6 +130,12 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
       expect(r.forma.payload).toMatchObject({ ativo: true });
     }
     expect(mapearCondicao(base, EM, { tenantId: U(100), formaAtiva: true }).prazo).not.toBeNull();
+  });
+
+  it('RN-CAD-15: a assinatura antiga (temporária, T-0085) devolve o prazo e lança com prazo incompleto', () => {
+    const base = { id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42 as number | null, inativo: false, forma_codigo: null, forma_nome: null };
+    expect(mapearCondicaoEstrita(base, EM, { tenantId: U(100), formaAtiva: true }).prazo.payload.parcelas_dias).toEqual([28, 56]);
+    expect(() => mapearCondicaoEstrita({ ...base, prazo_medio_dias: null }, EM, { tenantId: U(100), formaAtiva: true })).toThrow(/RN-CAD-15/);
   });
 
   it('contrato v2 do prazo (opção): valida os limites da v2 e aponta o campo, sem o valor', () => {

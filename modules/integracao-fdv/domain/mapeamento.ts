@@ -156,7 +156,7 @@ export function mapearVendedor(ev: EventoVendedor, ocorridoEm: string): Registro
 
 // ---- 2.3 forma_pagamento e prazo_pagamento ----
 /** `formaAtiva`: o consumidor calcula (há prazo ativo no espelho com a mesma forma, incluindo este). */
-export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho | null } {
+export function mapearCondicaoOpcional(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho | null } {
   // D12 (T-0026): a forma da carga viaja na condição; sem ela, UUID v5 do tPag (M2) e o nome do tPag do MOC.
   const formaId = chaveHub({ id: externalIdForma(ctx.tenantId, ev.forma_tpag), external_id: ev.forma_external_id });
   const f = formaDoTpag(ev.forma_tpag);
@@ -185,6 +185,13 @@ export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { te
     { condicao_pagamento_id: ev.id },
   );
   return { forma, prazo };
+}
+
+/** temporário (expande/contrai, T-0085): assinatura antiga (`prazo` sempre presente) para o `tests/` do main compilar; lança se o prazo for incompleto. Some depois do #556. */
+export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho } {
+  const r = mapearCondicaoOpcional(ev, ocorridoEm, ctx);
+  if (!r.prazo) throw new Error('RN-CAD-15: prazo incompleto não sai; use mapearCondicaoOpcional');
+  return { forma: r.forma, prazo: r.prazo };
 }
 
 // ---- 2.4 produto e produto_unidade ----
