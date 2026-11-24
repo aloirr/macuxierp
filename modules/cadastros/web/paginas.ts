@@ -5,6 +5,8 @@
  */
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDocumento, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO } from './clientes';
+import { ROTA_PRODUTO, ROTA_PRODUTO_NOVO } from './produtos';
 
 export interface ColunaPagina {
   chave: string;
@@ -136,8 +138,8 @@ export function csvDaPagina(p: PaginaCadastros, perfil: Perfil, linhas: readonly
  * de `PAGINAS`. O `ver` esconde a página de quem não pode; quem protege a escrita é a API (RN-CORE-02).
  */
 export const PAGINAS_EDICAO: readonly PaginaBase[] = [
-  { id: 'cliente-novo', menu: 'Clientes', titulo: 'Novo cliente', rota: '/cadastros/clientes/novo', ver: 'cadastros.cliente.editar', ocultaNoMenu: true },
-  { id: 'cliente', menu: 'Clientes', titulo: 'Cliente', rota: '/cadastros/clientes/:id', ver: 'cadastros.ver', ocultaNoMenu: true },
-  { id: 'produto-novo', menu: 'Produtos', titulo: 'Novo produto', rota: '/cadastros/produtos/novo', ver: 'cadastros.produto.editar', ocultaNoMenu: true },
-  { id: 'produto', menu: 'Produtos', titulo: 'Produto', rota: '/cadastros/produtos/:id', ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'cliente-novo', menu: 'Clientes', titulo: 'Novo cliente', rota: ROTA_CLIENTE_NOVO, ver: 'cadastros.cliente.editar', ocultaNoMenu: true },
+  { id: 'cliente', menu: 'Clientes', titulo: 'Cliente', rota: ROTA_CLIENTE, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'produto-novo', menu: 'Produtos', titulo: 'Novo produto', rota: ROTA_PRODUTO_NOVO, ver: 'cadastros.produto.editar', ocultaNoMenu: true },
+  { id: 'produto', menu: 'Produtos', titulo: 'Produto', rota: ROTA_PRODUTO, ver: 'cadastros.ver', ocultaNoMenu: true },
 ];

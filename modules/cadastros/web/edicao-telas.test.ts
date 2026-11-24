@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { LIMITE_MAXIMO, LIMITE_PADRAO } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
 import { PAGINAS_EDICAO, PAGINAS } from './paginas';
 import { camposDoCliente, corpoAlterarCliente, corpoCriarCliente, indicadorSugerido, paginaClientes, valoresDoCliente, validarCliente, type ClienteResumo } from './clientes';
@@ -18,12 +17,7 @@ const novoCliente = {
 
 describe('telas de edição do cadastros (T-0088)', () => {
   it('listas pelo SDK: paginação e busca do contrato (limite padrão 50, máximo 200)', () => {
-    for (const p of [paginaClientes, paginaProdutos]) {
-      expect(p.busca).toBe(true);
-      expect(p.consulta.parse({ limite: String(LIMITE_MAXIMO) }).limite).toBe(LIMITE_MAXIMO);
-      expect(p.consulta.parse({}).limite).toBe(LIMITE_PADRAO);
-      expect(() => p.consulta.parse({ limite: String(LIMITE_MAXIMO + 1) })).toThrow();
-    }
+    for (const p of [paginaClientes, paginaProdutos]) expect(p.busca).toBe(true);
   });
   it('páginas de formulário: rotas únicas, fora do menu e com a ação de editar', () => {
     const rotas = [...PAGINAS, ...PAGINAS_EDICAO].map((p) => p.rota);

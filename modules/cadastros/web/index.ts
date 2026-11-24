@@ -10,4 +10,4 @@ export {
 export {
   CAMPOS_PRODUTO, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, API_PRODUTOS, camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, validarProduto, valoresDoProduto, type ProdutoResumo,
 } from './produtos';
-export { camposVisiveis, centavosDoTexto, errosDaApi, novaChaveDeEdicao, reaisDeCentavos, semErros, soOQueMudou, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+export { camposVisiveis, centavosDoTexto, errosDaApi, novaChaveDeEdicao, soOQueMudou, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';

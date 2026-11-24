@@ -4,11 +4,11 @@
  * O custo só vai a quem edita produto e nunca ao FDV.
  */
 import type { Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos } from '@macuxierp/platform-sdk/formatar';
+import { formatarCentavos, formatarValorCentavos } from '@macuxierp/platform-sdk/formatar';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
-import { Produto, ProdutoAtualizacao, ProdutoDados } from '../contracts';
+import { Ean, Produto, ProdutoAtualizacao, ProdutoDados } from '../contracts';
 import { formatarNcm } from '../domain';
-import { camposVisiveis, centavosDoTexto, reaisDeCentavos, soDigitos, soOQueMudou, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { camposVisiveis, centavosDoTexto, soDigitos, soOQueMudou, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_PRODUTOS = '/cadastros/produtos';
 export const ROTA_PRODUTO_NOVO = '/cadastros/produtos/novo';
@@ -54,7 +54,7 @@ export const camposDoProduto = (perfil: Perfil, modo: Modo) => camposVisiveis(CA
 export function valoresDoProduto(p: ProdutoResumo): Valores {
   return {
     codigo: p.codigo, descricao: p.descricao, ncm: p.ncm, cest: p.cest ?? '', unidade_comercial: p.unidade_comercial, ean: p.ean ?? '', marca: p.marca ?? '', origem: p.origem,
-    grupo_tributacao: p.grupo_tributacao, producao_propria: p.producao_propria ? 'true' : 'false', custo_centavos: reaisDeCentavos(p.custo_centavos),
+    grupo_tributacao: p.grupo_tributacao, producao_propria: p.producao_propria ? 'true' : 'false', custo_centavos: p.custo_centavos == null ? '' : formatarValorCentavos(p.custo_centavos),
   };
 }
 
@@ -62,10 +62,10 @@ export function validarProduto(v: Valores, modo: Modo, perfil: Perfil): Erros {
   const e: Erros = {};
   const campos = camposDoProduto(perfil, modo);
   for (const c of campos) if (c.obrigatorio && (v[c.nome] ?? '').trim() === '') e[c.nome] = 'Preencha este campo';
-  if (!e.ncm && !/^\d{8}$/.test(soDigitos(v.ncm))) e.ncm = 'O NCM tem 8 números';
-  if (vazioParaNulo(v.cest) !== null && !/^\d{7}$/.test(soDigitos(v.cest))) e.cest = 'O CEST tem 7 números';
+  if (!e.ncm && !ProdutoDados.shape.ncm.safeParse(soDigitos(v.ncm)).success) e.ncm = 'O NCM tem 8 números';
+  if (vazioParaNulo(v.cest) !== null && !ProdutoDados.shape.cest.safeParse(soDigitos(v.cest)).success) e.cest = 'O CEST tem 7 números';
   const ean = vazioParaNulo(v.ean);
-  if (ean !== null && !/^(\d{8}|\d{12,14}|SEM GTIN)$/.test(ean)) e.ean = 'EAN com 8, 12, 13 ou 14 números, ou "SEM GTIN"';
+  if (ean !== null && !Ean.safeParse(ean).success) e.ean = 'EAN com 8, 12, 13 ou 14 números, ou "SEM GTIN"';
   if (campos.some((c) => c.nome === 'custo_centavos') && centavosDoTexto(v.custo_centavos) === null) e.custo_centavos = 'Informe o custo em reais, como 12,50';
   return e;
 }

@@ -4,11 +4,11 @@
  * a quem tem `cadastros.cliente.credito`. O endereço principal entra na criação; depois, endereços e contatos têm rota própria.
  */
 import type { Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos, formatarDocumento } from '@macuxierp/platform-sdk/formatar';
+import { formatarCentavos, formatarDocumento, formatarValorCentavos } from '@macuxierp/platform-sdk/formatar';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
-import { Cliente, ClienteAtualizacao, ClienteDados, Uuid, type EnderecoCliente } from '../contracts';
+import { Cep, Cliente, ClienteAtualizacao, ClienteDados, Ibge, Uf, Uuid, type EnderecoCliente } from '../contracts';
 import { sugerirIndIeDest, validarDocumentoCliente, validarIndIeDest, type IndIeDest } from '../domain';
-import { camposVisiveis, centavosDoTexto, reaisDeCentavos, soDigitos, soOQueMudou, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { camposVisiveis, centavosDoTexto, soDigitos, soOQueMudou, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_CLIENTES = '/cadastros/clientes';
 export const ROTA_CLIENTE_NOVO = '/cadastros/clientes/novo';
@@ -66,7 +66,7 @@ export function valoresDoCliente(c: ClienteResumo): Valores {
   return {
     tipo_pessoa: c.tipo_pessoa, documento: formatarDocumento(c.documento), razao_social: c.razao_social, nome_fantasia: c.nome_fantasia ?? '', ind_ie_dest: c.ind_ie_dest,
     ie: c.ie ?? '', email_nfe: c.email_nfe ?? '', filial_id: c.filial_id, vendedor_id: c.vendedor_id ?? '', condicao_pagamento_id: c.condicao_pagamento_id ?? '',
-    tabela_preco_id: c.tabela_preco_id ?? '', limite_credito_centavos: reaisDeCentavos(c.limite_credito_centavos),
+    tabela_preco_id: c.tabela_preco_id ?? '', limite_credito_centavos: c.limite_credito_centavos == null ? '' : formatarValorCentavos(c.limite_credito_centavos),
   };
 }
 
@@ -93,9 +93,9 @@ export function validarCliente(v: Valores, modo: Modo, perfil: Perfil, ufPrincip
   }
   if (campos.some((c) => c.nome === 'limite_credito_centavos') && centavosDoTexto(v.limite_credito_centavos) === null) e.limite_credito_centavos = 'Informe o limite em reais, como 1.500,00';
   if (modo === 'criar') {
-    if (!e.end_cep && soDigitos(v.end_cep).length !== 8) e.end_cep = 'O CEP tem 8 números';
-    if (!e.end_municipio_ibge && !/^\d{7}$/.test((v.end_municipio_ibge ?? '').trim())) e.end_municipio_ibge = 'O código IBGE tem 7 números';
-    if (!e.end_uf && !/^[A-Za-z]{2}$/.test((v.end_uf ?? '').trim())) e.end_uf = 'Informe a UF com 2 letras';
+    if (!e.end_cep && !Cep.safeParse(soDigitos(v.end_cep)).success) e.end_cep = 'O CEP tem 8 números';
+    if (!e.end_municipio_ibge && !Ibge.safeParse((v.end_municipio_ibge ?? '').trim()).success) e.end_municipio_ibge = 'O código IBGE tem 7 números';
+    if (!e.end_uf && !Uf.safeParse((v.end_uf ?? '').trim().toUpperCase()).success) e.end_uf = 'Informe a UF com 2 letras';
   }
   return e;
 }

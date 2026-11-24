@@ -45,9 +45,6 @@ export function centavosDoTexto(t: string | undefined): number | null | undefine
   return s === '' ? undefined : interpretarCentavos(s);
 }
 
-export const reaisDeCentavos = (c: number | null | undefined): string =>
-  c === null || c === undefined ? '' : `${Math.trunc(c / 100)},${String(c % 100).padStart(2, '0')}`;
-
 /** Diferença para o PATCH: só as chaves cujo valor mudou em relação ao registro aberto (JSON igual = igual). */
 export function soOQueMudou(novo: Corpo, original: Readonly<Record<string, unknown>>): Corpo {
   const mudou: Corpo = {};
@@ -67,8 +64,3 @@ export function errosDaApi(violacoes: readonly { campo: string; mensagem: string
 
 /** Idempotency-Key da tentativa: gerada ao abrir o formulário e reusada no reenvio (RN-CORE-05). */
 export const novaChaveDeEdicao = (): string => globalThis.crypto.randomUUID();
-
-/** Erros vazios = pode enviar. */
-export const semErros = (e: Erros): boolean => Object.keys(e).length === 0;
-
-export type { Perfil };
