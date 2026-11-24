@@ -186,7 +186,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.condicao_pagamento.alterada@1'].safeParse(evento.payload);
       if (!p.success) return;
       const previa = mapearCondicao(p.data, emIso, { tenantId: t, formaAtiva: !p.data.inativo });
-      // RN-CAD-15: prazo incompleto não sai (`prazo` nulo); a forma sai assim mesmo, porque é compartilhada
+      // RN-CAD-15: prazo incompleto não sai (`prazo` nulo)
       const prazoChave = chaveHub(p.data);
       const formaAtiva = !p.data.inativo || (await outroPrazoAtivoDaForma(tx, t, previa.forma.external_id, prazoChave));
       const { forma, prazo } = mapearCondicao(p.data, emIso, { tenantId: t, formaAtiva });

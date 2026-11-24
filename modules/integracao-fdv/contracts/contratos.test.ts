@@ -83,13 +83,13 @@ describe('T-0085 lote 2: prazo no Hub', () => {
     expect(PRAZO_CONTRATO_V2_LIGADO).toBe(false);
   });
 
-  it('v1: descricao (1 a 60) e prazo_medio_dias (0 a 999) são obrigatórios', () => {
+  it('v1: descricao (1 a 60) e prazo_medio_dias (0 a 365) são obrigatórios', () => {
     const v1 = (o: Record<string, unknown>) => PrazoPagamentoHub.safeParse({ ...PRAZO_V1, ...o }).success;
     expect(v1({})).toBe(true);
     expect(PrazoPagamentoHub.safeParse({ ...PRAZO_V1, descricao: undefined }).success).toBe(false);
     expect(PrazoPagamentoHub.safeParse({ ...PRAZO_V1, prazo_medio_dias: undefined }).success).toBe(false);
     expect(v1({ descricao: 'x'.repeat(61) })).toBe(false);
-    expect(v1({ prazo_medio_dias: 1000 })).toBe(false);
+    expect(v1({ prazo_medio_dias: 366 })).toBe(false);
   });
 
   it('v2 válida: obrigatórios; ativo, ordem e percentual_ajuste opcionais', () => {

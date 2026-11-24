@@ -10,7 +10,6 @@
  */
 import type { EntidadeHub } from '../contracts';
 import { hashRegistro } from './canonico';
-import { lerParcelasDias } from './parcelas';
 import { type RegistroEspelho } from './mapeamento';
 
 export interface TabelaReferencia {
@@ -111,8 +110,6 @@ export function assinaturaDeDerivados(r: Pick<RegistroEspelho, 'entidade' | 'pay
       return JSON.stringify([p.external_id]);
     case 'forma_pagamento':
       return JSON.stringify([p.external_id, p.codigo]);
-    case 'prazo_pagamento':
-      return JSON.stringify([p.external_id, p.forma_external_id, lerParcelasDias(p.parcelas_dias)?.join('/') ?? null]);
     default:
       return null;
   }
@@ -135,7 +132,6 @@ export const CHAVE_FONTE_REFS: Readonly<Partial<Record<EntidadeHub, string>>> = 
   vendedor: 'vendedor_id',
   produto: 'produto_id',
   cliente: 'cliente_id',
-  prazo_pagamento: 'condicao_pagamento_id',
 };
 
 /** Alvo de cada chave de `fonte_refs`: a entidade do Hub do registro apontado, ou `tabela` (referência da tabela de preço). */

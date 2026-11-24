@@ -5,7 +5,7 @@
  * referências do ERP de que depende (M10).
  *
  * Premissas do P-1 (a conferir contra o contrato do FDV): quantidades como número (P-1 conferido); preço da filial padrão sai sem
- * `filial_external_id` (= todas as filiais); o cliente leva `prazo_medio_max_dias` (RN-CAD-16) e não leva mais `formas_pagamento`.
+ * `filial_external_id` (= todas as filiais); o cliente leva `prazo_medio_max_dias` (RN-CAD-16).
  */
 import type { z } from 'zod';
 import { prazoCompleto, type EVENTOS } from '@macuxierp/cadastros/contracts';
@@ -165,7 +165,7 @@ export function mapearCondicaoOpcional(ev: EventoCondicao, ocorridoEm: string, c
     ocorridoEm,
     { external_id: formaId, ativo: ctx.formaAtiva, codigo: ev.forma_codigo ?? f.codigo, nome: ev.forma_nome ?? f.nome },
     null,
-    { condicao_pagamento_id: ev.id },
+    {},
   );
   // RN-CAD-15 (T-0085 lote 2): o prazo incompleto NÃO sai; a forma sai assim mesmo, porque é compartilhada. A regra é a do `cadastros`.
   if (!prazoCompleto(ev)) return { forma, prazo: null };
@@ -182,12 +182,11 @@ export function mapearCondicaoOpcional(ev: EventoCondicao, ocorridoEm: string, c
       prazo_medio_dias: ev.prazo_medio_dias as number,
     },
     ev.id,
-    { condicao_pagamento_id: ev.id },
   );
   return { forma, prazo };
 }
 
-/** temporário (expande/contrai, T-0085): assinatura antiga (`prazo` sempre presente) para o `tests/` do main compilar; lança se o prazo for incompleto. Some depois do #556. */
+/** Variante estrita (`prazo` sempre presente), usada por `tests/`: lança se o prazo for incompleto (RN-CAD-15). */
 export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho } {
   const r = mapearCondicaoOpcional(ev, ocorridoEm, ctx);
   if (!r.prazo) throw new Error('RN-CAD-15: prazo incompleto não sai; use mapearCondicaoOpcional');
@@ -329,7 +328,7 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string): { cliente:
       filial_external_id: ev.filial_id,
       endereco,
       limite_credito_cents: ev.limite_credito_centavos,
-      // RN-CAD-16: o prazo médio máximo é o do cliente; nulo = sem limite (o campo sai omitido). `formas_pagamento` deixou de sair.
+      // RN-CAD-16: o prazo médio máximo é o do cliente; nulo = sem limite (o campo sai omitido).
       prazo_medio_max_dias: ev.prazo_medio_dias ?? undefined,
     },
     ev.id,
