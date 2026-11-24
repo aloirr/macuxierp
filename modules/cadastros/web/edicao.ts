@@ -45,10 +45,13 @@ export function centavosDoTexto(t: string | undefined): number | null | undefine
   return s === '' ? undefined : interpretarCentavos(s);
 }
 
+/** JSON com as chaves em ordem (a API pode devolver o objeto aninhado, como o endereço, em outra ordem). */
+const estavel = (v: unknown): string => JSON.stringify(v ?? null, (_k, x: unknown) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
+
 /** Diferença para o PATCH: só as chaves cujo valor mudou em relação ao registro aberto (JSON igual = igual). */
 export function soOQueMudou(novo: Corpo, original: Readonly<Record<string, unknown>>): Corpo {
   const mudou: Corpo = {};
-  for (const [k, v] of Object.entries(novo)) if (JSON.stringify(v ?? null) !== JSON.stringify(original[k] ?? null)) mudou[k] = v;
+  for (const [k, v] of Object.entries(novo)) if (estavel(v) !== estavel(original[k])) mudou[k] = v;
   return mudou;
 }
 
@@ -56,7 +59,7 @@ export function soOQueMudou(novo: Corpo, original: Readonly<Record<string, unkno
 export function errosDaApi(violacoes: readonly { campo: string; mensagem: string }[]): Erros {
   const e: Erros = {};
   for (const v of violacoes) {
-    const campo = v.campo.replace(/^enderecos\.0\./, 'end_');
+    const campo = v.campo.replace(/^(?:enderecos\.0|endereco)\./, 'end_');
     e[campo] ??= v.mensagem;
   }
   return e;

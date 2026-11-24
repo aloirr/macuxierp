@@ -11,3 +11,9 @@ export {
   CAMPOS_PRODUTO, ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, API_PRODUTOS, camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, validarProduto, valoresDoProduto, type ProdutoResumo,
 } from './produtos';
 export { camposVisiveis, centavosDoTexto, errosDaApi, novaChaveDeEdicao, soOQueMudou, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+export {
+  CAMPOS_FILIAL, ROTA_FILIAL, ROTA_FILIAL_NOVA, ROTA_FILIAIS, ROTULO_CRT, ROTULO_REGIME_PIS_COFINS, API_FILIAIS, camposDaFilial, corpoAlterarFilial, corpoCriarFilial, paginaFiliais, validarFilialTela, valoresDaFilial, type FilialResumo,
+} from './filiais';
+export {
+  CAMPOS_TABELA_PRECO, ROTA_TABELA_PRECO, ROTA_TABELA_PRECO_NOVA, ROTA_TABELAS_PRECO, API_TABELAS_PRECO, camposDaTabelaPreco, corpoAlterarTabelaPreco, corpoCriarTabelaPreco, paginaTabelasPreco, validarTabelaPreco, valoresDaTabelaPreco, type TabelaPrecoResumo,
+} from './precos';

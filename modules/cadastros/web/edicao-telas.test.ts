@@ -3,6 +3,8 @@ import { manifest } from '../manifest';
 import { PAGINAS_EDICAO, PAGINAS } from './paginas';
 import { camposDoCliente, corpoAlterarCliente, corpoCriarCliente, indicadorSugerido, paginaClientes, valoresDoCliente, validarCliente, type ClienteResumo } from './clientes';
 import { camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, valoresDoProduto, validarProduto } from './produtos';
+import { corpoAlterarTabelaPreco, corpoCriarTabelaPreco, paginaTabelasPreco, validarTabelaPreco, valoresDaTabelaPreco, type TabelaPrecoResumo } from './precos';
+import { camposDaFilial, corpoAlterarFilial, corpoCriarFilial, paginaFiliais, validarFilialTela, valoresDaFilial, type FilialResumo } from './filiais';
 import { errosDaApi, soOQueMudou } from './edicao';
 
 const UUID = (n: number) => `3f1d5a07-7b0e-4a52-9d3c-${String(n).padStart(12, '0')}`;
@@ -17,7 +19,7 @@ const novoCliente = {
 
 describe('telas de edição do cadastros (T-0088)', () => {
   it('listas pelo SDK: paginação e busca do contrato (limite padrão 50, máximo 200)', () => {
-    for (const p of [paginaClientes, paginaProdutos]) expect(p.busca).toBe(true);
+    for (const p of [paginaClientes, paginaProdutos, paginaTabelasPreco, paginaFiliais]) expect(p.busca).toBe(true);
   });
   it('páginas de formulário: rotas únicas, fora do menu e com a ação de editar', () => {
     const rotas = [...PAGINAS, ...PAGINAS_EDICAO].map((p) => p.rota);
@@ -84,5 +86,65 @@ describe('telas de edição do cadastros (T-0088)', () => {
   it('422 da API vira erro de campo (endereço principal vira end_*) e soOQueMudou ignora diferença só de null/ausente', () => {
     expect(errosDaApi([{ campo: 'enderecos.0.uf', mensagem: 'UF inválida' }, { campo: 'ncm', mensagem: 'NCM vencido' }])).toEqual({ end_uf: 'UF inválida', ncm: 'NCM vencido' });
     expect(soOQueMudou({ a: null, b: 1 }, { b: 1 })).toEqual({});
+  });
+  it('lista única: o PAGINAS do shell vem do descritor do SDK (api, filtros, títulos e formatação iguais)', () => {
+    for (const [id, d] of [['clientes', paginaClientes], ['produtos', paginaProdutos], ['tabelas-preco', paginaTabelasPreco], ['filiais', paginaFiliais]] as const) {
+      const p = PAGINAS.find((x) => x.id === id)!;
+      expect(p.api, id).toBe(d.api);
+      expect(p.filtros, id).toEqual(Object.keys(d.filtros));
+      expect(p.colunas.map((c) => [c.chave, c.rotulo]), id).toEqual(d.colunas.map((c) => [c.id, c.titulo]));
+    }
+    const col = (id: string, chave: string) => PAGINAS.find((p) => p.id === id)!.colunas.find((c) => c.chave === chave)!;
+    expect(col('clientes', 'ind_ie_dest').formatar!('9')).toBe('Não contribuinte');
+    expect(col('produtos', 'ncm').formatar!('09012100')).toBe(paginaProdutos.colunas.find((c) => c.id === 'ncm')!.valor({ ncm: '09012100' } as never));
+  });
+
+  const tabela: TabelaPrecoResumo = { id: UUID(5), nome: 'Atacado', vigencia_inicio: '2026-01-01', vigencia_fim: null, padrao: false, external_id: null, inativo: false };
+  it('RN-CAD-06: o fim da vigência da tabela não pode ser anterior ao início', () => {
+    const v = valoresDaTabelaPreco(tabela);
+    expect(validarTabelaPreco(v, 'editar', 'gerente')).toEqual({});
+    expect(validarTabelaPreco({ ...v, vigencia_fim: '2025-12-31' }, 'editar', 'gerente').vigencia_fim).toBeTruthy();
+    expect(validarTabelaPreco({ ...v, vigencia_inicio: '01/01/2026' }, 'criar', 'gerente').vigencia_inicio).toBeTruthy();
+    expect(validarTabelaPreco({ ...v, nome: ' ' }, 'criar', 'gerente').nome).toBeTruthy();
+  });
+  it('tabela de preço: criação pelo contrato e PATCH só com o que mudou', () => {
+    const v = valoresDaTabelaPreco(tabela);
+    expect(corpoCriarTabelaPreco(v)).toMatchObject({ nome: 'Atacado', vigencia_fim: null, padrao: false });
+    expect(corpoAlterarTabelaPreco(v, tabela)).toBeNull();
+    expect(corpoAlterarTabelaPreco({ ...v, padrao: 'true', vigencia_fim: '2026-12-31' }, tabela)).toEqual({ padrao: true, vigencia_fim: '2026-12-31' });
+  });
+
+  const filial: FilialResumo = {
+    id: UUID(7), cnpj: '11222333000181', ie: null, razao_social: 'Matriz Manaus Ltda', nome_fantasia: null, crt: '1', padrao: true, emissora: false, nfe_serie: null, nfe_numero_inicial: null,
+    industrial_ipi: false, regime_pis_cofins: null, external_id: null, inativo: false,
+    endereco: { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058' },
+  };
+  it('RN-FIS-02: CRT 3 pede o regime de PIS/COFINS e os demais CRT recusam o regime', () => {
+    const v = valoresDaFilial(filial);
+    expect(validarFilialTela(v, 'editar', 'administrador')).toEqual({});
+    expect(validarFilialTela({ ...v, crt: '3' }, 'editar', 'administrador').regime_pis_cofins).toBeTruthy();
+    expect(validarFilialTela({ ...v, crt: '3', regime_pis_cofins: 'cumulativo' }, 'editar', 'administrador')).toEqual({});
+    expect(validarFilialTela({ ...v, regime_pis_cofins: 'cumulativo' }, 'editar', 'administrador').regime_pis_cofins).toBeTruthy();
+  });
+  it('D8: filial emissora precisa de série e número inicial; RN-CAD-03: município coerente com a UF', () => {
+    const v = valoresDaFilial(filial);
+    expect(validarFilialTela({ ...v, emissora: 'true' }, 'editar', 'administrador').nfe_serie).toBeTruthy();
+    expect(validarFilialTela({ ...v, emissora: 'true', nfe_serie: '1', nfe_numero_inicial: '1' }, 'editar', 'administrador')).toEqual({});
+    expect(validarFilialTela({ ...v, nfe_serie: '1' }, 'editar', 'administrador').nfe_numero_inicial).toBeTruthy();
+    expect(validarFilialTela({ ...v, nfe_serie: '1000', nfe_numero_inicial: '1' }, 'editar', 'administrador').nfe_serie).toBeTruthy();
+    expect(validarFilialTela({ ...v, end_uf: 'SP' }, 'editar', 'administrador').end_municipio_ibge).toBeTruthy();
+  });
+  it('filial: CNPJ só na criação (conferido pelo contrato); PATCH só com o que mudou, endereço inteiro quando muda', () => {
+    const v = valoresDaFilial(filial);
+    expect(camposDaFilial('administrador', 'editar').some((c) => c.nome === 'cnpj')).toBe(false);
+    expect(validarFilialTela({ ...v, cnpj: '11.222.333/0001-82' }, 'criar', 'administrador').cnpj).toBeTruthy();
+    expect(corpoCriarFilial(v)).toMatchObject({ cnpj: '11222333000181', crt: '1', endereco: { uf: 'AM', cep: '69000000' } });
+    expect(corpoAlterarFilial(v, filial)).toBeNull();
+    expect(corpoAlterarFilial({ ...v, razao_social: 'Outra Ltda', industrial_ipi: 'true' }, filial)).toEqual({ razao_social: 'Outra Ltda', industrial_ipi: true });
+    expect(corpoAlterarFilial({ ...v, end_numero: '20' }, filial)).toEqual({ endereco: { ...filial.endereco, numero: '20' } });
+  });
+  it('422 do endereço da filial vira end_* e as páginas de preços e filiais estão no mapa de edição', () => {
+    expect(errosDaApi([{ campo: 'endereco.uf', mensagem: 'UF inválida' }])).toEqual({ end_uf: 'UF inválida' });
+    expect(PAGINAS_EDICAO.map((p) => p.id)).toEqual(expect.arrayContaining(['tabela-preco-nova', 'tabela-preco', 'filial-nova', 'filial']));
   });
 });

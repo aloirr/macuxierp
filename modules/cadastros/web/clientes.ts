@@ -21,7 +21,7 @@ export const ROTULO_IND_IE: Readonly<Record<IndIeDest, string>> = { '1': 'Contri
 export const ClienteResumo = Cliente.omit({ enderecos: true });
 export type ClienteResumo = typeof ClienteResumo._output;
 
-/** Lista pelo SDK (T-0041): limites 200/30 e cursor vêm do contrato de listas (ADR 0019). */
+/** Lista pelo SDK (T-0041): paginação padrão e cursor vêm do contrato de listas (ADR 0019). */
 export const paginaClientes = definirPaginaLista({
   id: 'clientes', api: API_CLIENTES, item: ClienteResumo, busca: true, inativos: true,
   filtros: { filial_id: Uuid.optional(), vendedor_id: Uuid.optional() },
@@ -39,7 +39,7 @@ export const paginaClientes = definirPaginaLista({
 
 export const CAMPOS_CLIENTE: readonly CampoEdicao[] = [
   { nome: 'tipo_pessoa', rotulo: 'Tipo de pessoa', tipo: 'selecao', obrigatorio: true, opcoes: [{ valor: 'PJ', rotulo: 'Pessoa jurídica' }, { valor: 'PF', rotulo: 'Pessoa física' }] },
-  { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true, ajuda: 'Com ou sem pontuação; os dígitos verificadores são conferidos.' },
+  { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true, ajuda: 'Com ou sem pontuação.' },
   { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true },
   { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto' },
   { nome: 'ind_ie_dest', rotulo: 'Contribuinte ICMS', tipo: 'selecao', obrigatorio: true, opcoes: Object.entries(ROTULO_IND_IE).map(([valor, rotulo]) => ({ valor, rotulo })) },

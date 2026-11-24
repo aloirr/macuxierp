@@ -45,7 +45,7 @@ export const CAMPOS_PRODUTO: readonly CampoEdicao[] = [
   { nome: 'marca', rotulo: 'Marca', tipo: 'texto' },
   { nome: 'origem', rotulo: 'Origem da mercadoria', tipo: 'selecao', obrigatorio: true, opcoes: ORIGENS.map((o) => ({ valor: o, rotulo: o })) },
   { nome: 'grupo_tributacao', rotulo: 'Grupo de tributação', tipo: 'texto', obrigatorio: true },
-  { nome: 'producao_propria', rotulo: 'Fabricado pela empresa', tipo: 'booleano', ajuda: 'Fabricado = CFOP 5101/6101; revendido = 5102/6102.' },
+  { nome: 'producao_propria', rotulo: 'Fabricado pela empresa', tipo: 'booleano' },
   { nome: 'custo_centavos', rotulo: 'Custo (R$)', tipo: 'dinheiro', exige: 'cadastros.produto.editar' },
 ];
 

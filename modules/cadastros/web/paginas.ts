@@ -3,10 +3,12 @@
  * (apps/web, Next.js) desenha tabela densa, filtros na URL e botão "Exportar CSV" a partir daqui. A permissão na tela
  * só esconde o botão: a proteção real é a da API (RN-CORE-02).
  */
-import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
-import { formatarCentavos, formatarDocumento, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
-import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO } from './clientes';
-import { ROTA_PRODUTO, ROTA_PRODUTO_NOVO } from './produtos';
+import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil, type ValorCsv } from '@macuxierp/platform-sdk';
+import { formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES, paginaClientes } from './clientes';
+import { ROTA_FILIAL, ROTA_FILIAIS, ROTA_FILIAL_NOVA, paginaFiliais } from './filiais';
+import { ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, paginaProdutos } from './produtos';
+import { ROTA_TABELA_PRECO, ROTA_TABELA_PRECO_NOVA, ROTA_TABELAS_PRECO, paginaTabelasPreco } from './precos';
 
 export interface ColunaPagina {
   chave: string;
@@ -30,25 +32,40 @@ export interface PaginaCadastros extends PaginaBase {
 }
 
 const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', formatar: (v) => (v ? 'Inativo' : 'Ativo') };
-const DOC: ColunaPagina['formatar'] = (v) => formatarDocumento(String(v ?? ''));
 
-/** RN-FIS-02: só a filial de CRT 3 tem regime; nos demais a API recusa o valor, então a célula vem vazia. */
-const REGIME_PIS_COFINS: ColunaPagina['formatar'] = (v) => (v === 'cumulativo' ? 'Cumulativo' : v === 'nao_cumulativo' ? 'Não cumulativo' : '');
+/** O que a lista declarada pelo SDK (`definirPaginaLista`) dá ao descritor do shell: API, filtros e colunas. */
+interface ListaDoSdk {
+  readonly api: string;
+  readonly filtros: Readonly<Record<string, unknown>>;
+  readonly colunas: readonly { id: string; titulo: string; valor: (linha: never) => ValorCsv; exige?: Acao }[];
+}
+
+/**
+ * Lista única (T-0088): API, filtros, colunas, títulos e formatação vêm do descritor da lista do SDK, o mesmo que a API usa no
+ * CSV. Cada coluna lê só o próprio campo da linha, então `formatar(valor)` monta uma linha de um campo só.
+ */
+function daLista(l: ListaDoSdk): Pick<PaginaCadastros, 'api' | 'filtros' | 'colunas'> {
+  return {
+    api: l.api,
+    filtros: Object.keys(l.filtros),
+    colunas: l.colunas.map((c) => ({
+      chave: c.id, rotulo: c.titulo, ...(c.exige ? { exige: c.exige } : {}),
+      formatar: (v: unknown) => String((c.valor as (linha: unknown) => ValorCsv)({ [c.id]: v }) ?? ''),
+    })),
+  };
+}
 
 export const PAGINAS: readonly PaginaCadastros[] = [
   {
-    id: 'clientes', menu: 'Clientes', titulo: 'Clientes', rota: '/cadastros/clientes', api: '/v1/cadastros/clientes', filtros: ['filial_id', 'vendedor_id'],
-    colunas: [{ chave: 'documento', rotulo: 'CNPJ/CPF', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'nome_fantasia', rotulo: 'Fantasia' }, { chave: 'ind_ie_dest', rotulo: 'Contribuinte ICMS' }, { chave: 'limite_credito_centavos', rotulo: 'Limite', formatar: (v) => formatarCentavos(Number(v ?? 0)) }, ATIVO],
+    id: 'clientes', menu: 'Clientes', titulo: 'Clientes', rota: ROTA_CLIENTES, ...daLista(paginaClientes),
     editar: 'cadastros.cliente.editar', restritos: [{ campo: 'limite_credito_centavos', exige: 'cadastros.cliente.credito' }],
   },
   {
-    id: 'produtos', menu: 'Produtos', titulo: 'Produtos', rota: '/cadastros/produtos', api: '/v1/cadastros/produtos', filtros: [],
-    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'ncm', rotulo: 'NCM' }, { chave: 'cest', rotulo: 'CEST' }, { chave: 'unidade_comercial', rotulo: 'Un.' }, { chave: 'producao_propria', rotulo: 'Fabricado pela empresa', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'custo_centavos', rotulo: 'Custo', formatar: (v) => (v === null || v === undefined ? '' : formatarCentavos(Number(v))), exige: 'cadastros.produto.editar' }, ATIVO],
+    id: 'produtos', menu: 'Produtos', titulo: 'Produtos', rota: ROTA_PRODUTOS, ...daLista(paginaProdutos),
     editar: 'cadastros.produto.editar',
   },
   {
-    id: 'tabelas-preco', menu: 'Tabelas de preço', titulo: 'Tabelas de preço', rota: '/cadastros/tabelas-preco', api: '/v1/cadastros/tabelas-preco', filtros: [],
-    colunas: [{ chave: 'nome', rotulo: 'Nome' }, { chave: 'vigencia_inicio', rotulo: 'Início' }, { chave: 'vigencia_fim', rotulo: 'Fim' }, { chave: 'padrao', rotulo: 'Padrão', formatar: (v) => (v ? 'Sim' : 'Não') }, ATIVO],
+    id: 'tabelas-preco', menu: 'Tabelas de preço', titulo: 'Tabelas de preço', rota: ROTA_TABELAS_PRECO, ...daLista(paginaTabelasPreco),
     editar: 'cadastros.preco.editar',
   },
   {
@@ -67,8 +84,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
     editar: 'cadastros.vendedor.editar', restritos: [{ campo: 'carteira', exige: 'cadastros.carteira.transferir' }],
   },
   {
-    id: 'filiais', menu: 'Filiais', titulo: 'Filiais', rota: '/cadastros/filiais', api: '/v1/cadastros/filiais', filtros: [],
-    colunas: [{ chave: 'cnpj', rotulo: 'CNPJ', formatar: DOC }, { chave: 'razao_social', rotulo: 'Razão social' }, { chave: 'ie', rotulo: 'IE' }, { chave: 'crt', rotulo: 'Regime tributário' }, { chave: 'padrao', rotulo: 'Padrão', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'nfe_serie', rotulo: 'Série NF-e' }, { chave: 'industrial_ipi', rotulo: 'Industrial (IPI)', formatar: (v) => (v ? 'Sim' : 'Não') }, { chave: 'regime_pis_cofins', rotulo: 'Regime PIS/COFINS', formatar: REGIME_PIS_COFINS }, ATIVO],
+    id: 'filiais', menu: 'Filiais', titulo: 'Filiais', rota: ROTA_FILIAIS, ...daLista(paginaFiliais),
     editar: 'cadastros.filial.editar',
   },
   {
@@ -142,4 +158,8 @@ export const PAGINAS_EDICAO: readonly PaginaBase[] = [
   { id: 'cliente', menu: 'Clientes', titulo: 'Cliente', rota: ROTA_CLIENTE, ver: 'cadastros.ver', ocultaNoMenu: true },
   { id: 'produto-novo', menu: 'Produtos', titulo: 'Novo produto', rota: ROTA_PRODUTO_NOVO, ver: 'cadastros.produto.editar', ocultaNoMenu: true },
   { id: 'produto', menu: 'Produtos', titulo: 'Produto', rota: ROTA_PRODUTO, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'tabela-preco-nova', menu: 'Tabelas de preço', titulo: 'Nova tabela de preço', rota: ROTA_TABELA_PRECO_NOVA, ver: 'cadastros.preco.editar', ocultaNoMenu: true },
+  { id: 'tabela-preco', menu: 'Tabelas de preço', titulo: 'Tabela de preço', rota: ROTA_TABELA_PRECO, ver: 'cadastros.ver', ocultaNoMenu: true },
+  { id: 'filial-nova', menu: 'Filiais', titulo: 'Nova filial', rota: ROTA_FILIAL_NOVA, ver: 'cadastros.filial.editar', ocultaNoMenu: true },
+  { id: 'filial', menu: 'Filiais', titulo: 'Filial', rota: ROTA_FILIAL, ver: 'cadastros.ver', ocultaNoMenu: true },
 ];
