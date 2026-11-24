@@ -230,7 +230,7 @@ export function acoesDoPedidoAFaturar(perfil: Perfil, status: StatusPedidoAFatur
 // ---- Requisições: o shell executa com o fetch dele (sessão, tenant); aqui só o contrato ----
 
 export interface Requisicao {
-  metodo: 'POST';
+  metodo: 'POST' | 'PUT';
   caminho: string;
   cabecalhos?: { 'Idempotency-Key': string };
   corpo?: unknown;
