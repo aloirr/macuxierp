@@ -60,11 +60,13 @@ export interface LogPedidos {
 export type Alertar = (tenantId: string, codigo: string, contexto?: Record<string, string>) => void;
 
 // ---- Pré-cadastro de cliente do FDV (T-0059, RN-INT-22) ----
-// tipos espelham o contrato do cadastros até o PR dele entrar; a entrada e a decisão ficam no domain
+// a entrada e o resultado ficam no domain (uma união só); a porta é a combinada com o modulo-cadastros
 export type { PreCadastroEntrada, ResultadoPreCadastro };
 
 /** Implementação no `cadastros/api`, ligada pelo `apps/worker`: a regra do pré-cadastro é do cadastros. Roda na transação do chamador. */
 export interface ValidacaoPreCadastro {
-  /** Valida e, se aceito, cria/atualiza o cliente e devolve o `external_id`; recusado devolve erros por campo. */
-  registrar(tx: Transacao, entrada: PreCadastroEntrada): Promise<ResultadoPreCadastro>;
+  /** Só valida: aceito ou erros por campo. */
+  validar(tx: Transacao, entrada: PreCadastroEntrada): Promise<ResultadoPreCadastro>;
+  /** Cria/atualiza o cliente (idempotente) e devolve o id e o `external_id`. */
+  aceitar(tx: Transacao, entrada: PreCadastroEntrada): Promise<{ cliente_id: string; external_id: string }>;
 }
