@@ -1,4 +1,6 @@
+import * as sdk from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
+import * as c from './index';
 import { CorpoLote, CredencialEntrada, CredencialResumo, MonitorResposta, ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, EVENTO_LOTE_FALHOU, LinhaInvalida, LinhaInvalidaHub, ProdutoUnidadeHub, EstoqueHub } from './index';
 
 const corpo = { versao_contrato: 'v1', entidade: 'produto', enviado_em: '2026-11-21T20:00:00.000Z', cursor: null, registros: [], linhas_invalidas: [], linhas_invalidas_omitidas: 0 };
@@ -60,5 +62,14 @@ describe('contratos do módulo', () => {
   it('RF-INF-04: a resposta do monitor não tem campo de mensagem crua nem de chave', () => {
     const ch = Object.keys(MonitorResposta.shape);
     expect(ch).toEqual(['credencial', 'configuracao', 'sinal', 'entidades', 'erros', 'conflitos']);
+  });
+});
+
+describe('T-0086: tipos do SDK reexportados sem duplicar', () => {
+  it('CodigoErro, CampoErro e a versão do conector são os do SDK (uma só fonte)', () => {
+    expect(c.CodigoErro).toBe(sdk.CodigoErroFdv);
+    expect(c.CampoErro).toBe(sdk.CampoErroFdv);
+    expect(c.VersaoConectorFdv).toBe(sdk.VersaoConectorFdv);
+    expect(c.CorpoSinal.shape.versao_conector).toBe(sdk.VersaoConectorFdv);
   });
 });

@@ -13,6 +13,9 @@ describe('plugin de rotas do integracao-fdv (BKO só leitura, ADR 0013 seção 6
         'GET /lotes integracao-fdv.ver',
         'GET /lotes/exportar integracao-fdv.ver',
         'GET /lotes/:id/erros integracao-fdv.ver',
+        // T-0086: Log por cadastro (completo, do administrador da empresa) e o CSV dos erros
+        'GET /entidades/:entidade/log integracao-fdv.ver',
+        'GET /entidades/:entidade/log.csv integracao-fdv.ver',
       ].sort(),
     );
   });

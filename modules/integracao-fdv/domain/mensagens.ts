@@ -58,3 +58,25 @@ export function mensagemDaPausa(motivo: string | null | undefined): string {
   if (!motivo) return '';
   return MENSAGENS_PAUSA[motivo] ?? GENERICA;
 }
+
+const ACAO_GENERICA = 'Fale com o suporte informando o código.';
+
+/** O que a pessoa faz para resolver o erro por linha, por código (Log do BKO). Nunca texto do Hub. */
+export const ACOES_ERRO: Readonly<Record<string, string>> = {
+  chave_alterada: 'Faça a troca controlada do código ou volte ao código anterior.',
+  chave_duplicada: 'Corrija o código repetido no cadastro.',
+  campo_obrigatorio: 'Complete o campo indicado e salve de novo.',
+  campo_invalido: 'Corrija o campo indicado no cadastro.',
+  referencia_ausente: 'Aguarde: o envio repete sozinho quando o cadastro de que ele depende chegar ao FDV.',
+  filial_codigo_repetido: 'Revise as filiais com a mesma ordem de CNPJ.',
+  falha_processamento: 'Use Reprocessar; se persistir, fale com o suporte.',
+  acima_do_limite: 'Aguarde: o ERP divide o lote e reenvia.',
+  rede: 'Aguarde: o envio repete sozinho.',
+  limite_de_taxa: 'Aguarde: o envio repete sozinho.',
+  resposta_grande: 'Aguarde a repetição; se persistir, fale com o suporte.',
+  pedido_invalido: ACAO_GENERICA,
+};
+
+export function acaoDoErro(codigo: string | null | undefined): string {
+  return (codigo ? ACOES_ERRO[codigo] : undefined) ?? ACAO_GENERICA;
+}

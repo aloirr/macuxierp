@@ -6,5 +6,5 @@ export { criarPluginIntegracaoFdv } from './plugin';
 export type { ResolvedorChaveErp, RecebedorPedidoFdv, Alertar } from './portas';
 export {
   criarPluginPlataformaIntegracaoFdv, paraPlataforma, repositorioPortalSql,
-  type DependenciasPlataformaIntegracaoFdv, type EstadoPortal, type RepositorioPortalIntegracaoFdv,
+  type DependenciasPlataformaIntegracaoFdv, type EstadoPortal, type InsumosLogPortal, type InsumosMonitorPortal, type RepositorioPortalIntegracaoFdv,
 } from './plataforma';

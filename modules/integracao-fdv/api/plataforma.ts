@@ -20,7 +20,11 @@ import {
   EntidadeEnvioFdv,
   ErroApi,
   IntegracaoFdvPlataforma,
+  LogCadastroFdvPlataforma,
   MENSAGEM_SEM_CREDENCIAL_FDV,
+  MonitorConectorFdv,
+  OrigemEnvioFdv,
+  RespostaReprocessarFdv,
   UltimoSinalFdv,
   cifrarCampo,
   definirPluginPlataforma,
@@ -36,7 +40,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { EVENTOS, EVENTO_CARGA_INICIAL, MotivoPausa } from '../contracts';
-import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
+import { decidirCargaCompleta, decidirRetomar, entidadesParaCargaInicial, montarLogPlataforma, montarMonitor, planejarTrocaCredencial, prefixoExibido, validarConfiguracao } from '../domain';
 
 const Uuid = z.string().uuid();
 const Instante = z.string().datetime();
@@ -72,6 +76,33 @@ const EstadoPortal = z.object({
 });
 export type EstadoPortal = z.infer<typeof EstadoPortal>;
 
+/**
+ * Insumos crus do Monitor (`portal_monitor`, banco-dados): credencial ativa, sinal aceito e fila. Sem dado de negócio.
+ * O `pausada_motivo` e o estado do último lote vêm no Log; o texto e a falha saem do SDK e do catálogo.
+ */
+const InsumosMonitorPortal = z.object({
+  credencial_ativa: z.boolean(),
+  conector_id: z.string().nullable(),
+  habilitadas: z.number().int().min(0),
+  ultimo_sinal_aceito_em: Instante.nullable(),
+  fila: z.object({ lotes: z.number().int().min(0), linhas: z.number().int().min(0) }),
+});
+export type InsumosMonitorPortal = z.infer<typeof InsumosMonitorPortal>;
+
+/**
+ * Insumos crus do Log (`portal_log`): os envios recentes e os erros JÁ AGRUPADOS por código e campo, com a contagem. A função do
+ * banco não devolve `external_id`, nome nem payload (ADR 0013); este `parse` descarta qualquer chave a mais.
+ */
+const InsumosLogPortal = z.object({
+  envios: z.array(z.object({ em: Instante, estado: z.string(), registros: z.number().int().min(0), com_erro: z.number().int().min(0), origem: OrigemEnvioFdv })),
+  erros: z.array(z.object({ codigo: z.string(), campo: z.string().nullable(), quantidade: z.number().int().min(1) })),
+  total_erros: z.number().int().min(0),
+  pausada_motivo: MotivoPausa.nullable(),
+});
+export type InsumosLogPortal = z.infer<typeof InsumosLogPortal>;
+
+const ResultadoReprocessarPortal = z.object({ falhas: z.number().int().min(0), pendentes: z.number().int().min(0), pedido_em: z.union([Instante, z.date()]) });
+
 /** Porta do banco do portal: uma função SQL por método. O dublê dos testes unitários implementa esta interface. */
 export interface RepositorioPortalIntegracaoFdv {
   ler(tx: Transacao, tenant: string): Promise<EstadoPortal>;
@@ -99,6 +130,12 @@ export interface RepositorioPortalIntegracaoFdv {
   testar(tx: Transacao, p: { tenant: string; request_id: string }): Promise<Date | string>;
   cargaCompleta(tx: Transacao, p: { tenant: string; entidade: string; request_id: string }): Promise<void>;
   retomar(tx: Transacao, p: { tenant: string; entidade: string; request_id: string }): Promise<RespostaRetomadaFdv>;
+  /** T-0086 §2: só leitura, sem auditoria. */
+  monitor(tx: Transacao, tenant: string): Promise<InsumosMonitorPortal>;
+  /** T-0086 §4: só leitura, sem auditoria; só códigos, campos e contagens. */
+  log(tx: Transacao, p: { tenant: string; entidade: EntidadeEnvioFdv }): Promise<InsumosLogPortal>;
+  /** T-0086 §3: marca para envio só falha e pendente; com lote em voo a função recusa (`MXI03`, 409). Audita. */
+  reprocessar(tx: Transacao, p: { tenant: string; entidade: EntidadeEnvioFdv; request_id: string }): Promise<{ falhas: number; pendentes: number; pedido_em: Date | string }>;
 }
 
 async function funcao<L>(tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<L> {
@@ -144,6 +181,15 @@ export const repositorioPortalSql: RepositorioPortalIntegracaoFdv = {
   async retomar(tx, p) {
     const r = await funcao<{ retomada: boolean }>(tx, 'SELECT integracao_fdv.portal_retomar($1::uuid, $2, $3) AS r', [p.tenant, p.entidade, p.request_id]);
     return { retomada: r.retomada === true };
+  },
+  async monitor(tx, tenant) {
+    return InsumosMonitorPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_monitor($1::uuid) AS r', [tenant]));
+  },
+  async log(tx, p) {
+    return InsumosLogPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_log($1::uuid, $2) AS r', [p.tenant, p.entidade]));
+  },
+  async reprocessar(tx, p) {
+    return ResultadoReprocessarPortal.parse(await funcao(tx, 'SELECT integracao_fdv.portal_reprocessar($1::uuid, $2, $3) AS r', [p.tenant, p.entidade, p.request_id]));
   },
 };
 
@@ -202,6 +248,7 @@ const entidadeDaRota = (params: Record<string, string>): EntidadeEnvioFdv => {
   return r.data;
 };
 
+const MSG_LOTE_EM_VOO = 'Este cadastro está enviando agora. Aguarde o envio terminar.';
 const MSG_MODULO_DESLIGADO = 'Ligue o módulo Integração FDV na empresa antes de configurar';
 const semModulo = () => erros.regra('RN-CORE-02', MSG_MODULO_DESLIGADO, undefined, { codigo: 'modulo_desligado' });
 
@@ -334,6 +381,61 @@ export function criarPluginPlataformaIntegracaoFdv(deps: DependenciasPlataformaI
           return { corpo: nada };
         }
         return { corpo: await repo.retomar(c.tx, { tenant, entidade, request_id: c.request_id }) };
+      },
+    }),
+    // ---- T-0086: operação nas telas (Monitor, Log, Reprocessar) ----
+    definirRotaPlataforma({
+      metodo: 'GET',
+      caminho: C.monitor,
+      acao: 'plataforma.integracao_fdv.ver',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        await lerLicenciado(c.tx, tenant);
+        const i = await repo.monitor(c.tx, tenant);
+        const corpo: MonitorConectorFdv = montarMonitor({
+          ...i,
+          ultimo_sinal_aceito_em: i.ultimo_sinal_aceito_em ? new Date(i.ultimo_sinal_aceito_em) : null,
+          agora: c.agora,
+        });
+        return { corpo };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'GET',
+      caminho: C.log,
+      acao: 'plataforma.integracao_fdv.ver',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        const entidade = entidadeDaRota(params);
+        await lerLicenciado(c.tx, tenant);
+        const i = await repo.log(c.tx, { tenant, entidade });
+        // ADR 0013: só código, campo e contagem; `montarLogPlataforma` passa pelo Zod do SDK, que descarta o resto
+        const corpo: LogCadastroFdvPlataforma = montarLogPlataforma({
+          entidade,
+          lidoEm: c.agora,
+          envios: i.envios.map((e) => ({ ...e, em: new Date(e.em) })),
+          erros: i.erros,
+          totalErros: i.total_erros,
+          motivo: falhaEnvioFdv({ pausada_motivo: i.pausada_motivo, ultimo_lote_estado: i.envios[0]?.estado ?? null, erros_abertos: i.total_erros })?.motivo ?? null,
+        });
+        return { corpo };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: C.reprocessar,
+      acao: 'plataforma.integracao_fdv.operar',
+      idempotencia: 'obrigatoria',
+      async executar(c, { params }) {
+        const tenant = idDaRota(params);
+        const entidade = entidadeDaRota(params);
+        const atual = await lerLicenciado(c.tx, tenant);
+        exigirCredencial(atual);
+        // dois envios do mesmo cadastro nunca andam juntos: com lote em voo a tela mostra "Enviando…" e não chama
+        if (atual.cadastros.find((k) => k.entidade === entidade)?.lote_em_voo) throw erros.conflito(MSG_LOTE_EM_VOO);
+        const r = await repo.reprocessar(c.tx, { tenant, entidade, request_id: c.request_id });
+        const corpo: RespostaReprocessarFdv = RespostaReprocessarFdv.parse({ entidade, falhas: r.falhas, pendentes: r.pendentes, pedido_em: new Date(r.pedido_em).toISOString() });
+        return { corpo };
       },
     }),
   ]);

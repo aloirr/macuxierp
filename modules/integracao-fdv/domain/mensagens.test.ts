@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mensagemDaPausa, mensagemDoErro } from './mensagens';
+import { ACOES_ERRO, MENSAGENS_ERRO, acaoDoErro, mensagemDaPausa, mensagemDoErro } from './mensagens';
 
 describe('catálogo de mensagens', () => {
   it('RN-INF-04: mensagem vem do catálogo pelo código; código desconhecido nunca ecoa texto', () => {
@@ -25,5 +25,14 @@ describe('catálogo de mensagens', () => {
     expect(mensagemDoErro('versao_conector_nao_suportada')).toBe(mensagemDaPausa('versao'));
     expect(mensagemDoErro('chave_idempotencia_reutilizada')).toBe(mensagemDaPausa('idempotencia'));
     expect(mensagemDoErro('entidade_de_outro_conector')).toBe(mensagemDaPausa('topologia'));
+  });
+});
+
+describe('acaoDoErro (T-0086, Log do BKO)', () => {
+  it('RN-INF-04: todo código com mensagem tem ação do catálogo; código desconhecido cai na ação genérica, nunca em texto do Hub', () => {
+    for (const codigo of Object.keys(MENSAGENS_ERRO)) expect(ACOES_ERRO[codigo], codigo).toBeTruthy();
+    expect(acaoDoErro('campo_invalido')).toContain('Corrija');
+    expect(acaoDoErro('codigo_novo_do_hub')).toContain('suporte');
+    expect(acaoDoErro(null)).toContain('suporte');
   });
 });

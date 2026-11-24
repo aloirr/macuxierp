@@ -9,10 +9,12 @@
  *
  * Regra da agenda (vale para o portal, via funções `portal_*`): o app só ADIANTA `proximo*_em`; quem adia é o worker.
  */
-import { csvDaLista, definirRota, erros, type RotaModulo } from '@macuxierp/platform-sdk';
-import { ConsultaPaginada } from '@macuxierp/platform-sdk/listas';
+import { CAMINHOS_INTEGRACAO_FDV_TENANT, EntidadeEnvioFdv, LIMITE_ERROS_LOG_FDV, csvDaLista, definirRota, erros, type RotaModulo } from '@macuxierp/platform-sdk';
+import { ConsultaPaginada, paraCsv, respostaCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
+import { itemDoLogTenant, montarLogTenant } from '../domain';
 import { paginaLotes } from '../web/paginas';
+import { lerInsumosLog } from './operacao';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
 
@@ -25,6 +27,23 @@ const ParamUuid = (valor: string | undefined, campo: string): string => {
   if (!u.success) throw erros.validacao({ [campo]: 'Identificador inválido' });
   return u.data;
 };
+
+const EntidadeDaRota = (valor: string | undefined): EntidadeEnvioFdv => {
+  const e = EntidadeEnvioFdv.safeParse(valor);
+  if (!e.success) throw erros.validacao({ entidade: 'Cadastro desconhecido' });
+  return e.data;
+};
+
+/** "Baixar erros (.csv)": as colunas do `LogCadastroFdvTenant.erros`, na ordem da tela. */
+const COLUNAS_CSV_LOG: readonly ColunaCsv<ReturnType<typeof itemDoLogTenant>>[] = [
+  { titulo: 'Registro', valor: (l) => l.registro_external_id },
+  { titulo: 'Nome', valor: (l) => l.nome_curto },
+  { titulo: 'Campo', valor: (l) => l.campo },
+  { titulo: 'Código do erro', valor: (l) => l.codigo },
+  { titulo: 'Motivo', valor: (l) => l.motivo_texto },
+  { titulo: 'O que fazer', valor: (l) => l.acao_texto },
+  { titulo: 'Corrigir em', valor: (l) => l.corrigir_href },
+];
 
 export function criarRotas(): RotaModulo[] {
   const tenant = (c: { sessao: { tenant_id: string } }): string => c.sessao.tenant_id;
@@ -40,6 +59,23 @@ export function criarRotas(): RotaModulo[] {
       metodo: 'GET', caminho: '/status', acao: 'integracao-fdv.ver',
       async executar(c) {
         return { corpo: await lerStatus(c.tx, tenant(c)) };
+      },
+    }),
+    // Log por cadastro do BKO (T-0086 §4): completo (registro, nome curto, motivo e ação do catálogo). O `/config` tem o seu, só com códigos.
+    definirRota({
+      metodo: 'GET', caminho: CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace('/integracao-fdv', ''), acao: 'integracao-fdv.ver',
+      async executar(c, e) {
+        const entidade = EntidadeDaRota(e.params.entidade);
+        const i = await lerInsumosLog(c.tx, tenant(c), entidade, LIMITE_ERROS_LOG_FDV);
+        return { corpo: montarLogTenant({ entidade, lidoEm: c.agora, envios: i.envios, erros: i.erros, totalErros: i.total_erros, motivo: i.motivo?.motivo ?? null }) };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv.replace('/integracao-fdv', ''), acao: 'integracao-fdv.ver',
+      async executar(c, e) {
+        const entidade = EntidadeDaRota(e.params.entidade);
+        const i = await lerInsumosLog(c.tx, tenant(c), entidade, null);
+        return respostaCsv(`erros-${entidade}.csv`, paraCsv(COLUNAS_CSV_LOG, i.erros.map(itemDoLogTenant)));
       },
     }),
     definirRota({
