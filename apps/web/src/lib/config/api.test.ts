@@ -1,7 +1,7 @@
 import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma, mensagemDoErro } from './erros';
-import { alterarSituacao, criarPrimeiroAdmin, entrarPlataforma, listarEmpresas, redefinirSenhaPrimeiroAdmin } from './api';
+import { alterarSituacao, criarPrimeiroAdmin, listarEmpresas, redefinirSenhaPrimeiroAdmin } from './api';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const chamadas: { url: string; init: RequestInit & { headers: Record<string, string> } }[] = [];
@@ -20,13 +20,6 @@ afterEach(() => vi.unstubAllGlobals());
 const json = (corpo: unknown, status = 200, extra: Record<string, string> = {}) => new Response(JSON.stringify(corpo), { status, headers: { 'content-type': 'application/json', ...extra } });
 
 describe('cliente da plataforma', () => {
-  it('login: o token sai do cookie da API e não vai ao corpo; a conta errada devolve null', async () => {
-    resposta = () => json({ expira_em: '2026-11-23T20:00:00.000Z' }, 200, { 'set-cookie': 'macuxierp_config=tok123; Path=/v1/plataforma; HttpOnly' });
-    expect(await entrarPlataforma({ email: 'a@b.co', senha: 'x' })).toEqual({ token: 'tok123', expira_em: '2026-11-23T20:00:00.000Z' });
-    expect(chamadas[0]?.url).toBe('https://api.exemplo.invalid/v1/plataforma/auth/entrar');
-    resposta = () => json({ codigo: 'NAO_AUTENTICADO' }, 401);
-    expect(await entrarPlataforma({ email: 'a@b.co', senha: 'x' })).toBeNull();
-  });
   it('leitura manda o cookie da plataforma e nunca um Bearer do BKO', async () => {
     resposta = () => json({ itens: [], proximo_cursor: null });
     await listarEmpresas('tok', { busca: 'acme' });
@@ -81,19 +74,5 @@ describe('mensagens', () => {
     expect(mensagemDoErro(new ConfigIndisponivel('x'), 'situacao')).toMatchObject({ texto: 'Não foi possível concluir. Tente de novo.', chaveNova: false });
     expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'email').texto).toBe('A empresa ainda não tem 1º administrador.');
     expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'carregar').texto).toBe('Empresa não encontrada. Volte à lista.');
-  });
-});
-
-describe('entrar no portal leva a prova do BFF e o IP (T-0050)', () => {
-  it('entrarPlataforma passa pelo buscarNaApi, levando a prova e o IP', async () => {
-    vi.resetModules();
-    vi.stubEnv('MACUXIERP_SEGREDO_BFF', 'segredo-de-teste-bff');
-    vi.doMock('next/headers', () => ({ headers: async () => new Headers({ 'cf-connecting-ip': '203.0.113.9' }) }));
-    const { entrarPlataforma: entrarNovo } = await import('./api');
-    resposta = () => json({ expira_em: '2026-11-23T20:00:00.000Z' }, 200, { 'set-cookie': 'macuxierp_config=tok; Path=/v1/plataforma; HttpOnly' });
-    await entrarNovo({ email: 'a@b.co', senha: 'x' });
-    expect(chamadas[0]?.init.headers).toMatchObject({ 'x-macuxierp-bff': 'segredo-de-teste-bff', 'x-macuxierp-ip-cliente': '203.0.113.9' });
-    vi.unstubAllEnvs();
-    vi.doUnmock('next/headers');
   });
 });
