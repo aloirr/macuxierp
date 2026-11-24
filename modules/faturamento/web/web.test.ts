@@ -364,12 +364,12 @@ describe('MC-0016: vazio das listas e hora exportada', () => {
 describe('API pública do web', () => {
   it('o index exporta o que o shell importa: páginas, rótulos de status, ambiente, BASE_API e as funções de ação (RD-0679/0680)', () => {
     expect(Object.keys(publico).sort()).toEqual([
-      'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_LINHA', 'ROTULO_MODALIDADE', 'ROTULO_PRAZO_EPEC', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
+      'ACOES_DA_NOTA', 'BASE_API', 'MOTIVO_SEM_ITEM', 'PAGINAS_FATURAMENTO', 'ROTULO_ACAO_NOTA', 'ROTULO_BANDEIRA', 'ROTULO_LINHA', 'ROTULO_MODALIDADE', 'ROTULO_PRAZO_EPEC', 'ROTULO_STATUS_NOTA', 'ROTULO_STATUS_PEDIDO', 'ROTULO_STATUS_TITULO',
       'acaoPrincipalDaNota', 'acoesDaContingencia', 'acoesDoPedidoAFaturar', 'acoesDoTitulo', 'ambienteDaConfirmacao', 'badgesDaNota', 'colunasDaPagina', 'confirmacaoReenviar', 'contadorDeCaracteres',
-      'csvDaPagina', 'dialogoAbrirContingencia', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoEncerrarContingencia', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaContingencia', 'faixaDaNota', 'faixaDoAlertaEpec', 'faixaDoTitulo',
+      'csvDaPagina', 'dialogoAbrirContingencia', 'dialogoCancelar', 'dialogoCartaCorrecao', 'dialogoDaBandeira', 'dialogoEncerrarContingencia', 'dialogoEstornar', 'dialogoInutilizar', 'enderecoDaConsulta', 'faixaDaContingencia', 'faixaDaNota', 'faixaDoAlertaEpec', 'faixaDoTitulo',
       'formularioBaixa', 'formularioParcial', 'hojeCivil', 'hora', 'motivosDasAcoes', 'numeroSerie', 'paginaEpecPendentes', 'paginaNoFuso', 'paginaNotas', 'paginaPedidosAFaturar', 'paginaRejeicoes', 'paginaTitulos',
-      'perfilVeFaturamento', 'requisicaoAbrirContingencia', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEncerrarContingencia', 'requisicaoEstornar', 'requisicaoInutilizar',
-      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDaContingencia', 'seloDoPedido', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDaContingencia', 'urlDasEpecPendentes', 'urlDoDanfe', 'urlDoEncerramentoDaContingencia', 'urlDoPedidoAFaturar', 'urlDoXml',
+      'perfilVeFaturamento', 'requisicaoAbrirContingencia', 'requisicaoBaixa', 'requisicaoCancelar', 'requisicaoCartaCorrecao', 'requisicaoConfigurarBandeira', 'requisicaoConsultar', 'requisicaoEmitir', 'requisicaoEncerrarContingencia', 'requisicaoEstornar', 'requisicaoInutilizar',
+      'requisicaoReenviar', 'rotuloDaForma', 'rotuloReenviar', 'seloDaContingencia', 'seloDoPedido', 'situacaoDaBandeira', 'situacaoDoTitulo', 'textoDoAmbiente', 'urlDaConfiguracaoDaFilial', 'urlDaContingencia', 'urlDasEpecPendentes', 'urlDoDanfe', 'urlDoEncerramentoDaContingencia', 'urlDoPedidoAFaturar', 'urlDoXml',
     ]);
   });
 });

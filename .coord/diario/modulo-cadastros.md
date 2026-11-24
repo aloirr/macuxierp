@@ -24,4 +24,6 @@
 2026-11-23 — T-0058 — v0.3.7: o -5 (cadastros-a, 6497493) e a carga de cliente/condições (ee70d35) viraram um PR só, num commit; a ponte ENTIDADE_DO_PIPELINE saiu e o pipeline usa os 8 nomes pelo paraEntidadeCarga
 2026-11-24 — T-0059 lote E — validação do pré-cadastro do FDV (domain/pre-cadastro-fdv) e porta CriadorClienteFdv (api/criador-cliente-fdv), com testes de domínio e de banco
 2026-11-24 — T-0059 — lote E: parecer do corretor RD-1625 a RD-1632 (validarClienteNovo compartilhado POST/criador, chaves do pré-cadastro, códigos de município, limites pelos schemas)
+2026-11-24 — T-0088 — lote C: lista única de clientes e produtos no PAGINAS (parecer do corretor), edição de preços e filiais
 2026-11-24 — T-0085 — lote A: correções do parecer do corretor RD-1530 a RD-1545
+2026-11-24 — T-0088 — lote C: limite de crédito fora do corpo do faturista (criação e PATCH); merge do main preservando prazos (#538)

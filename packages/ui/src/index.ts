@@ -17,4 +17,6 @@ export { DialogoMotivo } from './DialogoMotivo.js';
 export type { DialogoMotivoProps, MotivoOpcao, ResultadoMotivo } from './DialogoMotivo.js';
 export { FormularioItens } from './FormularioItens.js';
 export type { ErrosItem, FormularioItensProps, ItemLinha, SeletorProdutoProps } from './FormularioItens.js';
+export { CampoSenha } from './CampoSenha.js';
+export type { CampoSenhaProps } from './CampoSenha.js';
 export { SeloPlataforma } from './SeloPlataforma.js';
