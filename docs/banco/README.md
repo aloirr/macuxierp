@@ -292,6 +292,15 @@ Migração: `db/migrations/0047_core_certificado_origem.sql`; testes: `db/testes
 
 Migração: `db/migrations/0048_senha_temporaria.sql`; testes: `db/testes/senha-temporaria-0048.db.test.ts` e `db/testes/superadmin-0033.db.test.ts` (g).
 
+## Código MACUXI reservado ao superadmin (T-0076, migração 0049)
+- No login único, a empresa "MACUXI" leva o superadmin ao /config; por isso nenhuma empresa tem o código (slug) `macuxi`, em nenhuma grafia (a comparação é `lower(btrim(slug))`, a mesma de `plataforma.tenant_por_slug`; RN-CORE-11). `macuxi2`, `macuxifdv` e afins continuam livres.
+- `plataforma.tenant` ganha o CHECK validado `tenant_slug_macuxi_reservado` (`lower(btrim(slug)) <> 'macuxi'`): INSERT ou UPDATE direto = 23514.
+- `plataforma.empresa_criar(...)` (mesma assinatura, corpo, `SECURITY DEFINER`, `search_path`, COMMENT e privilégios da 0037) recusa o código com 23514, mensagem `slug reservado`, DETAIL `codigo_reservado_superadmin`.
+- A migração começa conferindo `plataforma.tenant` (inclusive linhas com `deleted_at`): se alguma tiver o código, ela aborta (23514, DETAIL `codigo_reservado_em_uso`, só com o id da empresa) e nada é aplicado. É reexecutável.
+- Pendência fora do banco: `SLUGS_RESERVADOS` (`packages/platform-sdk/src/portal-config.ts`, engenheiro-software) ganhar `macuxi`.
+
+Migração: `db/migrations/0049_plataforma_codigo_macuxi_reservado.sql`; testes: `db/testes/codigo-macuxi-reservado-0049.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
