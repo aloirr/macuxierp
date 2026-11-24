@@ -194,6 +194,22 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     expect(await ler()).toMatchObject({ senha_hash: '$argon2id$atual', h: '$argon2id$temp2', e: validade2 });
   });
 
+  it('RN-CORE-13: cancelarSenhaTemporaria zera as duas colunas só se havia pendente, sem tocar em senha_hash nem deve_trocar_senha; sem pendente ou na repetição devolve false', async () => {
+    const id = randomUUID();
+    const semPendente = randomUUID();
+    await b.admin.query("INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, deve_trocar_senha, senha_temporaria_hash, senha_temporaria_expira_em) VALUES ($1, $2, 'cancela@piloto.test', 'Usuário Cancela', '$argon2id$atual', 'administrador', false, '$argon2id$t', '2030-01-01T12:00:00Z')", [id, T]);
+    await b.admin.query("INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil) VALUES ($1, $2, 'sem-pend@piloto.test', 'Usuário Sem', '$argon2id$atual', 'administrador')", [semPendente, T]);
+    const ler = async () => (await b.admin.query('SELECT senha_hash, deve_trocar_senha d, senha_temporaria_hash h, senha_temporaria_expira_em e FROM plataforma.usuario WHERE id = $1', [id])).rows[0];
+    const t1 = await abrir();
+    expect(await repo.cancelarSenhaTemporaria(t1, id)).toBe(true);
+    await t1.confirmar();
+    expect(await ler()).toEqual({ senha_hash: '$argon2id$atual', d: false, h: null, e: null });
+    const t2 = await abrir();
+    expect(await repo.cancelarSenhaTemporaria(t2, id)).toBe(false);
+    expect(await repo.cancelarSenhaTemporaria(t2, semPendente)).toBe(false);
+    await t2.confirmar();
+  });
+
   it('RN-CORE-13: definirSenha zera a senha temporária (as duas colunas)', async () => {
     const id = randomUUID();
     await b.admin.query("INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, senha_temporaria_hash, senha_temporaria_expira_em) VALUES ($1, $2, 'zera@piloto.test', 'Usuário Zera', '$argon2id$atual', 'administrador', '$argon2id$t', '2030-01-01T12:00:00Z')", [id, T]);
