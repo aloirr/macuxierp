@@ -5,6 +5,7 @@
  */
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil, type ValorCsv } from '@macuxierp/platform-sdk';
 import { formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { AGRUPAR_PRAZOS_POR, ROTULO_PRAZO_MEDIO, diasDoPrazo, prazoMedioNaLista, rotuloDaForma } from './prazos';
 import { situacao } from './edicao';
 import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES, paginaClientes } from './clientes';
 import { ROTA_FILIAL, ROTA_FILIAIS, ROTA_FILIAL_NOVA, paginaFiliais } from './filiais';
@@ -28,6 +29,8 @@ export interface PaginaCadastros extends PaginaBase {
   /** Filtros aceitos na URL, além de `busca`, `cursor`, `limite` e `inativos`. */
   filtros: readonly string[];
   editar?: Acao;
+  /** T-0085: a lista se agrupa por este campo (condições: `forma_tpag`); o agrupamento é de `prazos.ts`. */
+  agruparPor?: string;
   /** Campos que pedem permissão a mais além de `editar`. */
   restritos?: readonly { campo: string; exige: Acao }[];
 }
@@ -78,8 +81,8 @@ export const PAGINAS: readonly PaginaCadastros[] = [
   },
   {
     id: 'condicoes-pagamento', menu: 'Condições de pagamento', titulo: 'Condições de pagamento', rota: '/cadastros/condicoes-pagamento', api: '/v1/cadastros/condicoes-pagamento', filtros: [],
-    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'Forma de pagamento' }, { chave: 'prazos_dias', rotulo: 'Prazos (dias)', formatar: (v) => (Array.isArray(v) ? v.join('/') : '') }, { chave: 'parcelas_cartao', rotulo: 'Parcelas', formatar: (v) => (typeof v === 'number' ? `${v}x` : '') }, ATIVO],
-    editar: 'cadastros.condicao_pagamento.editar',
+    colunas: [{ chave: 'codigo', rotulo: 'Código' }, { chave: 'descricao', rotulo: 'Descrição' }, { chave: 'forma_tpag', rotulo: 'Forma de pagamento', formatar: (v) => rotuloDaForma(String(v ?? '')) }, { chave: 'prazos_dias', rotulo: 'Dias das parcelas', formatar: (v) => (Array.isArray(v) ? diasDoPrazo(v as number[]) : '') }, { chave: 'prazo_medio_dias', rotulo: ROTULO_PRAZO_MEDIO, formatar: prazoMedioNaLista }, ATIVO],
+    editar: 'cadastros.condicao_pagamento.editar', agruparPor: AGRUPAR_PRAZOS_POR,
   },
   {
     id: 'vendedores', menu: 'Equipe e carteira', titulo: 'Equipe e carteira', rota: '/cadastros/equipe', api: '/v1/cadastros/vendedores', filtros: ['filial_id'],

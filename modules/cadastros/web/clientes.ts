@@ -6,6 +6,7 @@
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDocumento, formatarValorCentavos } from '@macuxierp/platform-sdk/formatar';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
+import { ROTULO_PRAZO_MEDIO } from './prazos';
 import { Cliente, ClienteAtualizacao, ClienteDados, Uuid } from '../contracts';
 import { sugerirIndIeDest, validarDocumentoCliente, validarIndIeDest, type IndIeDest } from '../domain';
 import { CAMPOS_ENDERECO, camposVisiveis, centavosDoTexto, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, opcoes, situacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
@@ -30,6 +31,7 @@ export const paginaClientes = definirPaginaLista({
     { id: 'razao_social', titulo: 'Razão social', valor: (c) => c.razao_social },
     { id: 'nome_fantasia', titulo: 'Fantasia', valor: (c) => c.nome_fantasia ?? '' },
     { id: 'ind_ie_dest', titulo: 'Contribuinte ICMS', valor: (c) => ROTULO_IND_IE[c.ind_ie_dest] },
+    { id: 'prazo_medio_dias', titulo: ROTULO_PRAZO_MEDIO, valor: (c) => (typeof c.prazo_medio_dias === 'number' ? `${c.prazo_medio_dias}` : '') },
     { id: 'limite_credito_centavos', titulo: 'Limite', valor: (c) => formatarCentavos(c.limite_credito_centavos), exige: 'cadastros.cliente.credito' },
     { id: 'inativo', titulo: 'Situação', valor: (c) => situacao(c.inativo) },
   ],
@@ -104,7 +106,11 @@ function corpoComum(v: Valores, perfil: Perfil, modo: Modo): Corpo {
 export function corpoCriarCliente(v: Valores, perfil: Perfil): ClienteDados | null {
   const endereco = { tipo: 'principal', ...enderecoDoFormulario(v) };
   const r = ClienteDados.safeParse({ ...corpoComum(v, perfil, 'criar'), enderecos: [endereco] });
-  return r.success ? r.data : null;
+  if (!r.success) return null;
+  // O contrato devolve limite 0 por padrão; sem a permissão do crédito a chave não vai no corpo (a API aplica o padrão).
+  const dados: Record<string, unknown> = { ...r.data };
+  if (!camposDoCliente(perfil, 'criar').some((x) => x.nome === 'limite_credito_centavos')) delete dados.limite_credito_centavos;
+  return dados as ClienteDados;
 }
 
 /** Corpo do PATCH: só o que mudou em relação ao cliente aberto (sem mudança = `null`, nada a enviar). */

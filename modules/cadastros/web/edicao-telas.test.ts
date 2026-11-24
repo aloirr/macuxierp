@@ -46,9 +46,15 @@ describe('telas de edição do cadastros (T-0088)', () => {
   it('limite de crédito: só o perfil com cadastros.cliente.credito vê o campo e o envia', () => {
     expect(camposDoCliente('gerente', 'editar').some((c) => c.nome === 'limite_credito_centavos')).toBe(true);
     expect(camposDoCliente('faturista', 'editar').some((c) => c.nome === 'limite_credito_centavos')).toBe(false);
-    // Sem a permissão a tela não envia o valor; o 0 vem do default do contrato e a API o aceita (igual ao padrão).
-    expect(corpoCriarCliente(novoCliente, 'faturista')?.limite_credito_centavos).toBe(0);
-    expect(corpoCriarCliente({ ...novoCliente, limite_credito_centavos: '9,00' }, 'faturista')?.limite_credito_centavos).toBe(0);
+    // Sem a permissão a chave nem vai no corpo (a API aplica o padrão 0 na criação).
+    expect(corpoCriarCliente(novoCliente, 'faturista')).not.toHaveProperty('limite_credito_centavos');
+    expect(corpoCriarCliente({ ...novoCliente, limite_credito_centavos: '9,00' }, 'faturista')).not.toHaveProperty('limite_credito_centavos');
+    expect(corpoCriarCliente({ ...novoCliente, limite_credito_centavos: '9,00' }, 'gerente')).toHaveProperty('limite_credito_centavos', 900);
+    // No PATCH, mandar 0 zeraria o limite gravado por outro perfil: o faturista nunca envia a chave.
+    const comLimite = { ...cliente, limite_credito_centavos: 500_000 };
+    const editado = { ...valoresDoCliente(comLimite), razao_social: 'Outra', limite_credito_centavos: '1,00' };
+    expect(corpoAlterarCliente(editado, comLimite, 'faturista')).toEqual({ razao_social: 'Outra' });
+    expect(corpoAlterarCliente(editado, comLimite, 'faturista')).not.toHaveProperty('limite_credito_centavos');
     const v = { ...valoresDoCliente(cliente), limite_credito_centavos: '2.000,00' };
     expect(corpoAlterarCliente(v, cliente, 'gerente')).toEqual({ limite_credito_centavos: 200000 });
     expect(corpoAlterarCliente(v, cliente, 'faturista')).toBeNull();

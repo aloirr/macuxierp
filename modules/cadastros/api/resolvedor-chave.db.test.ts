@@ -55,7 +55,7 @@ describe.skipIf(!PG_DISPONIVEL)('resolvedor de chave do Hub e guarda do external
     const v2 = await v('V3', { external_id: inativoKit.vendedor });
     await inativar(`/vendedores/${v2.id}`);
     ids.vendedor = { kit: v0.id, erp: v1.id, inativo: v2.id };
-    const c = (codigo: string, extra: object) => criar('/condicoes-pagamento', { codigo, descricao: codigo, forma_tpag: '15', prazos_dias: [30], ...extra }, gerente);
+    const c = (codigo: string, extra: object) => criar('/condicoes-pagamento', { codigo, descricao: codigo, forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30, ...extra }, gerente);
     const c0 = await c('C1', { external_id: kit.prazo_pagamento });
     const c1 = await c('C2', {});
     const c2 = await c('C3', { external_id: inativoKit.prazo_pagamento });
