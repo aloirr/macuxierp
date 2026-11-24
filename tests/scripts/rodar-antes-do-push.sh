@@ -26,7 +26,7 @@ uso() {
   cat <<'USO'
 Uso (raiz do repositório): bash tests/scripts/rodar-antes-do-push.sh [opções]   (detalhes: docs/testes/antes-do-push.md)
   (nenhuma)              afetados contra origin/main (o que vai no PR)
-  --tudo                 todos os pacotes, o passo sem superusuário e tests/
+  --tudo                 todos os pacotes, o passo sem superusuário, tests/ e os testes de scripts/
   --pacote <nome>        só esses pacotes, mais tests/ (repetível)
   --so-tests             só pnpm test:tests
   --arquivo <caminho>    só esses arquivos de tests/ (repetível)
@@ -132,6 +132,7 @@ FILTRO=""          # filtro do turbo (vazio + RODAR_PACOTES=1 = todos)
 RODAR_PACOTES=0
 DB_SEM_SUPER=0
 RODAR_TESTS=1
+RODAR_SCRIPTS=0    # testes node --test de scripts/ (CLI e coord): só no --tudo
 PARCIAL=""
 case "${MODO}" in
   afetados)
@@ -152,6 +153,7 @@ case "${MODO}" in
   tudo)
     RODAR_PACOTES=1
     DB_SEM_SUPER=1
+    RODAR_SCRIPTS=1
     ;;
   pacotes)
     RODAR_PACOTES=1
@@ -170,7 +172,7 @@ if [[ "${SEM_TESTS}" -eq 1 && "${RODAR_TESTS}" -eq 1 ]]; then
   PARCIAL="${PARCIAL:+${PARCIAL}; }sem tests/ (--sem-tests)"
 fi
 if [[ "${RODAR_PACOTES}" -eq 1 ]]; then SEL="${FILTRO:-todos}"; else SEL=nenhum; fi
-msg "modo=${MODO} escopo=${ESCOPO} arquivos=${N_ARQUIVOS} pacotes=${SEL} sem-super=${DB_SEM_SUPER} tests=${RODAR_TESTS}"
+msg "modo=${MODO} escopo=${ESCOPO} arquivos=${N_ARQUIVOS} pacotes=${SEL} sem-super=${DB_SEM_SUPER} tests=${RODAR_TESTS} scripts=${RODAR_SCRIPTS}"
 
 # ---------- etapas ----------
 
@@ -180,8 +182,17 @@ LINHAS=()   # linhas da tabela Markdown
 FALHOU=0
 N_ETAPA=0
 
-# Soma as linhas "Tests  N passed | M failed | K skipped (T)" do vitest (uma por pacote no turbo).
+# contar <log> [vitest|node]: soma as linhas "Tests  N passed | M failed | K skipped (T)" do vitest (uma por pacote
+# no turbo) ou lê o resumo do node --test ("# pass N", "# fail N", "# skipped N", "# todo N" do repórter tap).
 contar() {
+  if [[ "${2:-vitest}" == node ]]; then
+    sed 's/\x1b\[[0-9;]*m//g' "$1" | awk '
+      /^# (pass|fail|skipped|todo) [0-9]+$/ {
+        if ($2 == "pass") p += $3; else if ($2 == "fail") f += $3; else s += $3
+      }
+      END { printf "%d %d %d", p, f, s }'
+    return
+  fi
   sed 's/\x1b\[[0-9;]*m//g' "$1" | awk '
     /(^|[: ])[ ]*Tests[ ]{2,}[0-9]/ {
       for (i = 1; i <= NF; i++) {
@@ -192,9 +203,9 @@ contar() {
     END { printf "%d %d %d", p, f, s + t }'
 }
 
-# etapa <nome> <comando> [env...]: roda, mede, conta e guarda a linha da tabela.
+# etapa <nome> <comando> [vitest|node]: roda, mede, conta (pelo formato do resumo) e guarda a linha da tabela.
 etapa() {
-  local nome="$1" cmd="$2" log ini fim seg codigo p f s res
+  local nome="$1" cmd="$2" formato="${3:-vitest}" log ini fim seg codigo p f s res
   N_ETAPA=$((N_ETAPA + 1))
   log="${LOGS}/$(printf '%02d' "${N_ETAPA}")-$(printf '%s' "${nome}" | tr -c 'a-zA-Z0-9' '-').log"
   msg "▶ ${nome}: ${cmd}"
@@ -203,7 +214,7 @@ etapa() {
   codigo="${PIPESTATUS[0]}"
   fim="$(date +%s)"
   seg=$((fim - ini))
-  read -r p f s <<<"$(contar "${log}")"
+  read -r p f s <<<"$(contar "${log}" "${formato}")"
   if [[ "${codigo}" -eq 0 ]]; then res="verde"; else res="**VERMELHO** (saída ${codigo})"; FALHOU=1; fi
   LINHAS+=("| ${nome} | \`${cmd}\` | $((seg / 60))min$(printf '%02d' $((seg % 60)))s | ${p} | ${f} | ${s} | ${res} |")
   msg "■ ${nome}: ${res} em ${seg}s (${p} passados, ${f} falhos, ${s} pulados; log ${log})"
@@ -228,6 +239,18 @@ if [[ "${DB_SEM_SUPER}" -eq 1 ]] && grep -q '"admin-sem-superusuario"' db/packag
 fi
 if [[ "${RODAR_TESTS}" -eq 1 ]]; then
   etapa "tests/" "pnpm test:tests${ARQUIVOS[*]:+ ${ARQUIVOS[*]}}"
+fi
+# Testes de scripts/ (CLI e coord), que antes ficavam só no CI (a v0.3.7 parou no main por scripts/cadastros).
+# node --test recebe arquivos, não a pasta.
+if [[ "${RODAR_SCRIPTS}" -eq 1 ]]; then
+  shopt -s nullglob
+  TESTES_SCRIPTS=(scripts/*.test.mjs scripts/*/*.test.mjs .github/scripts/*.test.mjs)
+  shopt -u nullglob
+  if [[ ${#TESTES_SCRIPTS[@]} -gt 0 ]]; then
+    etapa "scripts" "node --test --test-reporter=tap ${TESTES_SCRIPTS[*]}" node
+  else
+    LINHAS+=("| scripts | \`node --test\` | 0min00s | 0 | 0 | 0 | sem testes (nenhum *.test.mjs em scripts/) |")
+  fi
 fi
 TOTAL=$(($(date +%s) - INICIO))
 
