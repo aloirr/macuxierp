@@ -5,6 +5,7 @@
  */
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import { interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
+import { Cep, Ibge, Uf } from '../contracts';
 
 export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano';
 
@@ -21,6 +22,11 @@ export interface CampoEdicao {
   exige?: Acao;
   /** Só na criação (o endereço principal do cliente; depois, a tela de endereços cuida deles). */
   soCriacao?: boolean;
+  /**
+   * Condição para o campo aparecer, a partir dos valores digitados (ex.: o regime de PIS/COFINS só com CRT 3). O shell chama a
+   * cada digitação e esconde o campo quando devolve `false`; campo escondido não pede preenchimento e a tela o envia vazio.
+   */
+  mostrarSe?: (v: Valores) => boolean;
 }
 
 export type Modo = 'criar' | 'editar';
@@ -54,6 +60,53 @@ export function soOQueMudou(novo: Corpo, original: Readonly<Record<string, unkno
   for (const [k, v] of Object.entries(novo)) if (estavel(v) !== estavel(original[k])) mudou[k] = v;
   return mudou;
 }
+
+/** Corpo do PATCH: só o que mudou em relação ao registro aberto, conferido pelo schema; sem mudança ou contrato recusando, `null`. */
+export function corpoDoPatch(novo: Corpo, original: Readonly<Record<string, unknown>>, schema: { safeParse(x: unknown): { success: boolean; data?: unknown } }): Corpo | null {
+  const mudou = soOQueMudou(novo, original);
+  if (Object.keys(mudou).length === 0) return null;
+  const r = schema.safeParse(mudou);
+  if (!r.success) return null;
+  const dados = r.data as Record<string, unknown>;
+  return Object.fromEntries(Object.keys(mudou).map((k) => [k, dados[k]]));
+}
+
+/** Campos obrigatórios em branco (ignora os que a tela não mostra), com a mensagem única da tela. */
+export function faltandoObrigatorios(campos: readonly CampoEdicao[], v: Valores): Erros {
+  const e: Erros = {};
+  for (const c of campos) if (c.obrigatorio && (!c.mostrarSe || c.mostrarSe(v)) && (v[c.nome] ?? '').trim() === '') e[c.nome] = 'Preencha este campo';
+  return e;
+}
+
+/** Opções de seleção a partir de um mapa valor para rótulo. */
+export const opcoes = (r: Readonly<Record<string, string>>) => Object.entries(r).map(([valor, rotulo]) => ({ valor, rotulo }));
+
+export const simNao = (v: unknown): string => (v ? 'Sim' : 'Não');
+export const situacao = (inativo: unknown): string => (inativo ? 'Inativo' : 'Ativo');
+
+/** Endereço do formulário (cliente na criação e filial): campos `end_*`. */
+export const CAMPOS_ENDERECO: readonly CampoEdicao[] = [
+  { nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', obrigatorio: true },
+  { nome: 'end_logradouro', rotulo: 'Logradouro', tipo: 'texto', obrigatorio: true },
+  { nome: 'end_numero', rotulo: 'Número', tipo: 'texto', obrigatorio: true },
+  { nome: 'end_complemento', rotulo: 'Complemento', tipo: 'texto' },
+  { nome: 'end_bairro', rotulo: 'Bairro', tipo: 'texto', obrigatorio: true },
+  { nome: 'end_municipio_ibge', rotulo: 'Município (código IBGE)', tipo: 'texto', obrigatorio: true },
+  { nome: 'end_uf', rotulo: 'UF', tipo: 'texto', obrigatorio: true },
+];
+
+/** Formato do CEP, do código IBGE e da UF; só preenche `e` onde o campo ainda não tem erro. */
+export function validarEnderecoTela(v: Valores, e: Erros): void {
+  if (!e.end_cep && !Cep.safeParse(soDigitos(v.end_cep)).success) e.end_cep = 'O CEP tem 8 números';
+  if (!e.end_municipio_ibge && !Ibge.safeParse((v.end_municipio_ibge ?? '').trim()).success) e.end_municipio_ibge = 'O código IBGE tem 7 números';
+  if (!e.end_uf && !Uf.safeParse((v.end_uf ?? '').trim().toUpperCase()).success) e.end_uf = 'Informe a UF com 2 letras';
+}
+
+/** Endereço normalizado para o corpo (CEP em números, UF maiúscula, Brasil). */
+export const enderecoDoFormulario = (v: Valores) => ({
+  logradouro: (v.end_logradouro ?? '').trim(), numero: (v.end_numero ?? '').trim(), complemento: vazioParaNulo(v.end_complemento), bairro: (v.end_bairro ?? '').trim(),
+  municipio_ibge: (v.end_municipio_ibge ?? '').trim(), uf: (v.end_uf ?? '').trim().toUpperCase(), cep: soDigitos(v.end_cep), pais_bacen: '1058',
+});
 
 /** Erro de campo de um 422 da API (`campo` e `mensagem`) para o mesmo mapa da validação local. */
 export function errosDaApi(violacoes: readonly { campo: string; mensagem: string }[]): Erros {

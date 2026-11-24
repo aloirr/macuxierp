@@ -5,6 +5,7 @@
  */
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil, type ValorCsv } from '@macuxierp/platform-sdk';
 import { formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
+import { situacao } from './edicao';
 import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES, paginaClientes } from './clientes';
 import { ROTA_FILIAL, ROTA_FILIAIS, ROTA_FILIAL_NOVA, paginaFiliais } from './filiais';
 import { ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, paginaProdutos } from './produtos';
@@ -31,10 +32,11 @@ export interface PaginaCadastros extends PaginaBase {
   restritos?: readonly { campo: string; exige: Acao }[];
 }
 
-const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', formatar: (v) => (v ? 'Inativo' : 'Ativo') };
+const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', formatar: situacao };
 
 /** O que a lista declarada pelo SDK (`definirPaginaLista`) dá ao descritor do shell: API, filtros e colunas. */
 interface ListaDoSdk {
+  readonly id: string;
   readonly api: string;
   readonly filtros: Readonly<Record<string, unknown>>;
   readonly colunas: readonly { id: string; titulo: string; valor: (linha: never) => ValorCsv; exige?: Acao }[];
@@ -44,8 +46,9 @@ interface ListaDoSdk {
  * Lista única (T-0088): API, filtros, colunas, títulos e formatação vêm do descritor da lista do SDK, o mesmo que a API usa no
  * CSV. Cada coluna lê só o próprio campo da linha, então `formatar(valor)` monta uma linha de um campo só.
  */
-function daLista(l: ListaDoSdk): Pick<PaginaCadastros, 'api' | 'filtros' | 'colunas'> {
+function daLista(l: ListaDoSdk): Pick<PaginaCadastros, 'id' | 'api' | 'filtros' | 'colunas'> {
   return {
+    id: l.id,
     api: l.api,
     filtros: Object.keys(l.filtros),
     colunas: l.colunas.map((c) => ({
@@ -57,15 +60,15 @@ function daLista(l: ListaDoSdk): Pick<PaginaCadastros, 'api' | 'filtros' | 'colu
 
 export const PAGINAS: readonly PaginaCadastros[] = [
   {
-    id: 'clientes', menu: 'Clientes', titulo: 'Clientes', rota: ROTA_CLIENTES, ...daLista(paginaClientes),
+    menu: 'Clientes', titulo: 'Clientes', rota: ROTA_CLIENTES, ...daLista(paginaClientes),
     editar: 'cadastros.cliente.editar', restritos: [{ campo: 'limite_credito_centavos', exige: 'cadastros.cliente.credito' }],
   },
   {
-    id: 'produtos', menu: 'Produtos', titulo: 'Produtos', rota: ROTA_PRODUTOS, ...daLista(paginaProdutos),
+    menu: 'Produtos', titulo: 'Produtos', rota: ROTA_PRODUTOS, ...daLista(paginaProdutos),
     editar: 'cadastros.produto.editar',
   },
   {
-    id: 'tabelas-preco', menu: 'Tabelas de preço', titulo: 'Tabelas de preço', rota: ROTA_TABELAS_PRECO, ...daLista(paginaTabelasPreco),
+    menu: 'Tabelas de preço', titulo: 'Tabelas de preço', rota: ROTA_TABELAS_PRECO, ...daLista(paginaTabelasPreco),
     editar: 'cadastros.preco.editar',
   },
   {
@@ -84,7 +87,7 @@ export const PAGINAS: readonly PaginaCadastros[] = [
     editar: 'cadastros.vendedor.editar', restritos: [{ campo: 'carteira', exige: 'cadastros.carteira.transferir' }],
   },
   {
-    id: 'filiais', menu: 'Filiais', titulo: 'Filiais', rota: ROTA_FILIAIS, ...daLista(paginaFiliais),
+    menu: 'Filiais', titulo: 'Filiais', rota: ROTA_FILIAIS, ...daLista(paginaFiliais),
     editar: 'cadastros.filial.editar',
   },
   {

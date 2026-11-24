@@ -7,7 +7,7 @@ import type { Perfil } from '@macuxierp/platform-sdk';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { TabelaPreco, TabelaPrecoAtualizacao, TabelaPrecoDados } from '../contracts';
 import { validarVigenciaTabela } from '../domain';
-import { camposVisiveis, soOQueMudou, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { camposVisiveis, corpoDoPatch, faltandoObrigatorios, simNao, situacao, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_TABELAS_PRECO = '/cadastros/tabelas-preco';
 export const ROTA_TABELA_PRECO_NOVA = '/cadastros/tabelas-preco/novo';
@@ -16,14 +16,16 @@ export const API_TABELAS_PRECO = '/v1/cadastros/tabelas-preco';
 
 export type TabelaPrecoResumo = TabelaPreco;
 
+const MSG_DATA = 'Use a data no formato AAAA-MM-DD';
+
 export const paginaTabelasPreco = definirPaginaLista({
   id: 'tabelas-preco', api: API_TABELAS_PRECO, item: TabelaPreco, busca: true, inativos: true,
   colunas: [
     { id: 'nome', titulo: 'Nome', valor: (t) => t.nome },
     { id: 'vigencia_inicio', titulo: 'Início', valor: (t) => t.vigencia_inicio },
     { id: 'vigencia_fim', titulo: 'Fim', valor: (t) => t.vigencia_fim ?? '' },
-    { id: 'padrao', titulo: 'Padrão', valor: (t) => (t.padrao ? 'Sim' : 'Não') },
-    { id: 'inativo', titulo: 'Situação', valor: (t) => (t.inativo ? 'Inativo' : 'Ativo') },
+    { id: 'padrao', titulo: 'Padrão', valor: (t) => simNao(t.padrao) },
+    { id: 'inativo', titulo: 'Situação', valor: (t) => situacao(t.inativo) },
   ],
   csv: { arquivo: 'tabelas-preco.csv' },
   vazio: { semFiltro: 'Nenhuma tabela de preço cadastrada.', comFiltro: 'Nenhuma tabela de preço com estes filtros.' },
@@ -31,7 +33,7 @@ export const paginaTabelasPreco = definirPaginaLista({
 
 export const CAMPOS_TABELA_PRECO: readonly CampoEdicao[] = [
   { nome: 'nome', rotulo: 'Nome', tipo: 'texto', obrigatorio: true },
-  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'texto', obrigatorio: true, ajuda: 'Data no formato AAAA-MM-DD.' },
+  { nome: 'vigencia_inicio', rotulo: 'Início da vigência', tipo: 'texto', obrigatorio: true, ajuda: 'AAAA-MM-DD.' },
   { nome: 'vigencia_fim', rotulo: 'Fim da vigência', tipo: 'texto', ajuda: 'AAAA-MM-DD; vazio = sem fim.' },
   { nome: 'padrao', rotulo: 'Tabela padrão', tipo: 'booleano', ajuda: 'A padrão vale para o cliente sem tabela.' },
 ];
@@ -43,12 +45,11 @@ export function valoresDaTabelaPreco(t: TabelaPrecoResumo): Valores {
 }
 
 export function validarTabelaPreco(v: Valores, modo: Modo, perfil: Perfil): Erros {
-  const e: Erros = {};
-  for (const c of camposDaTabelaPreco(perfil, modo)) if (c.obrigatorio && (v[c.nome] ?? '').trim() === '') e[c.nome] = 'Preencha este campo';
+  const e = faltandoObrigatorios(camposDaTabelaPreco(perfil, modo), v);
   const inicio = (v.vigencia_inicio ?? '').trim();
   const fim = vazioParaNulo(v.vigencia_fim);
-  if (!e.vigencia_inicio && !TabelaPrecoDados.shape.vigencia_inicio.safeParse(inicio).success) e.vigencia_inicio = 'Use a data no formato AAAA-MM-DD';
-  if (fim !== null && !TabelaPrecoDados.shape.vigencia_fim.safeParse(fim).success) e.vigencia_fim = 'Use a data no formato AAAA-MM-DD';
+  if (!e.vigencia_inicio && !TabelaPrecoDados.shape.vigencia_inicio.safeParse(inicio).success) e.vigencia_inicio = MSG_DATA;
+  if (fim !== null && !TabelaPrecoDados.shape.vigencia_fim.safeParse(fim).success) e.vigencia_fim = MSG_DATA;
   if (!e.vigencia_inicio && !e.vigencia_fim) {
     const r = validarVigenciaTabela(inicio, fim);
     if (!r.ok) e.vigencia_fim = r.violacao.mensagem;
@@ -68,10 +69,5 @@ export function corpoCriarTabelaPreco(v: Valores): TabelaPrecoDados | null {
 
 /** Corpo do PATCH com o que mudou; sem mudança, `null`. */
 export function corpoAlterarTabelaPreco(v: Valores, original: TabelaPrecoResumo): Corpo | null {
-  const novo = soOQueMudou(corpoComum(v), original);
-  if (Object.keys(novo).length === 0) return null;
-  const r = TabelaPrecoAtualizacao.safeParse(novo);
-  if (!r.success) return null;
-  const dados = r.data as Record<string, unknown>;
-  return Object.fromEntries(Object.keys(novo).map((k) => [k, dados[k]]));
+  return corpoDoPatch(corpoComum(v), original, TabelaPrecoAtualizacao);
 }

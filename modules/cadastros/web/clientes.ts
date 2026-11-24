@@ -6,9 +6,9 @@
 import type { Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarDocumento, formatarValorCentavos } from '@macuxierp/platform-sdk/formatar';
 import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
-import { Cep, Cliente, ClienteAtualizacao, ClienteDados, Ibge, Uf, Uuid, type EnderecoCliente } from '../contracts';
+import { Cliente, ClienteAtualizacao, ClienteDados, Uuid } from '../contracts';
 import { sugerirIndIeDest, validarDocumentoCliente, validarIndIeDest, type IndIeDest } from '../domain';
-import { camposVisiveis, centavosDoTexto, soDigitos, soOQueMudou, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { CAMPOS_ENDERECO, camposVisiveis, centavosDoTexto, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, opcoes, situacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_CLIENTES = '/cadastros/clientes';
 export const ROTA_CLIENTE_NOVO = '/cadastros/clientes/novo';
@@ -31,7 +31,7 @@ export const paginaClientes = definirPaginaLista({
     { id: 'nome_fantasia', titulo: 'Fantasia', valor: (c) => c.nome_fantasia ?? '' },
     { id: 'ind_ie_dest', titulo: 'Contribuinte ICMS', valor: (c) => ROTULO_IND_IE[c.ind_ie_dest] },
     { id: 'limite_credito_centavos', titulo: 'Limite', valor: (c) => formatarCentavos(c.limite_credito_centavos), exige: 'cadastros.cliente.credito' },
-    { id: 'inativo', titulo: 'Situação', valor: (c) => (c.inativo ? 'Inativo' : 'Ativo') },
+    { id: 'inativo', titulo: 'Situação', valor: (c) => situacao(c.inativo) },
   ],
   csv: { arquivo: 'clientes.csv' },
   vazio: { semFiltro: 'Nenhum cliente cadastrado.', comFiltro: 'Nenhum cliente com estes filtros.' },
@@ -42,7 +42,7 @@ export const CAMPOS_CLIENTE: readonly CampoEdicao[] = [
   { nome: 'documento', rotulo: 'CNPJ/CPF', tipo: 'texto', obrigatorio: true, ajuda: 'Com ou sem pontuação.' },
   { nome: 'razao_social', rotulo: 'Razão social', tipo: 'texto', obrigatorio: true },
   { nome: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto' },
-  { nome: 'ind_ie_dest', rotulo: 'Contribuinte ICMS', tipo: 'selecao', obrigatorio: true, opcoes: Object.entries(ROTULO_IND_IE).map(([valor, rotulo]) => ({ valor, rotulo })) },
+  { nome: 'ind_ie_dest', rotulo: 'Contribuinte ICMS', tipo: 'selecao', obrigatorio: true, opcoes: opcoes(ROTULO_IND_IE) },
   { nome: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', ajuda: 'Contribuinte: número válido para a UF. Isento: "ISENTO" ou vazio. Não contribuinte: vazio.' },
   { nome: 'email_nfe', rotulo: 'E-mail da NF-e', tipo: 'texto' },
   { nome: 'filial_id', rotulo: 'Filial', tipo: 'cadastro', obrigatorio: true, fonte: '/v1/cadastros/filiais' },
@@ -50,13 +50,7 @@ export const CAMPOS_CLIENTE: readonly CampoEdicao[] = [
   { nome: 'condicao_pagamento_id', rotulo: 'Condição de pagamento', tipo: 'cadastro', fonte: '/v1/cadastros/condicoes-pagamento' },
   { nome: 'tabela_preco_id', rotulo: 'Tabela de preço', tipo: 'cadastro', fonte: '/v1/cadastros/tabelas-preco' },
   { nome: 'limite_credito_centavos', rotulo: 'Limite de crédito (R$)', tipo: 'dinheiro', exige: 'cadastros.cliente.credito' },
-  { nome: 'end_cep', rotulo: 'CEP', tipo: 'texto', obrigatorio: true, soCriacao: true },
-  { nome: 'end_logradouro', rotulo: 'Logradouro', tipo: 'texto', obrigatorio: true, soCriacao: true },
-  { nome: 'end_numero', rotulo: 'Número', tipo: 'texto', obrigatorio: true, soCriacao: true },
-  { nome: 'end_complemento', rotulo: 'Complemento', tipo: 'texto', soCriacao: true },
-  { nome: 'end_bairro', rotulo: 'Bairro', tipo: 'texto', obrigatorio: true, soCriacao: true },
-  { nome: 'end_municipio_ibge', rotulo: 'Município (código IBGE)', tipo: 'texto', obrigatorio: true, soCriacao: true },
-  { nome: 'end_uf', rotulo: 'UF', tipo: 'texto', obrigatorio: true, soCriacao: true },
+  ...CAMPOS_ENDERECO.map((c) => ({ ...c, soCriacao: true })),
 ];
 
 export const camposDoCliente = (perfil: Perfil, modo: Modo) => camposVisiveis(CAMPOS_CLIENTE, perfil, modo);
@@ -78,9 +72,8 @@ export const indicadorSugerido = (ie: string): IndIeDest => sugerirIndIeDest(vaz
  * (sem ela a IE de contribuinte não pode ser conferida aqui, e a API decide).
  */
 export function validarCliente(v: Valores, modo: Modo, perfil: Perfil, ufPrincipal?: string): Erros {
-  const e: Erros = {};
   const campos = camposDoCliente(perfil, modo);
-  for (const c of campos) if (c.obrigatorio && (v[c.nome] ?? '').trim() === '') e[c.nome] = 'Preencha este campo';
+  const e = faltandoObrigatorios(campos, v);
   if (!e.tipo_pessoa && !e.documento && (v.tipo_pessoa === 'PJ' || v.tipo_pessoa === 'PF')) {
     const d = validarDocumentoCliente(v.tipo_pessoa, v.documento ?? '');
     if (!d.ok) e.documento = d.violacao.mensagem;
@@ -92,11 +85,7 @@ export function validarCliente(v: Valores, modo: Modo, perfil: Perfil, ufPrincip
     if (!ie.ok) e.ie = ie.violacao.mensagem;
   }
   if (campos.some((c) => c.nome === 'limite_credito_centavos') && centavosDoTexto(v.limite_credito_centavos) === null) e.limite_credito_centavos = 'Informe o limite em reais, como 1.500,00';
-  if (modo === 'criar') {
-    if (!e.end_cep && !Cep.safeParse(soDigitos(v.end_cep)).success) e.end_cep = 'O CEP tem 8 números';
-    if (!e.end_municipio_ibge && !Ibge.safeParse((v.end_municipio_ibge ?? '').trim()).success) e.end_municipio_ibge = 'O código IBGE tem 7 números';
-    if (!e.end_uf && !Uf.safeParse((v.end_uf ?? '').trim().toUpperCase()).success) e.end_uf = 'Informe a UF com 2 letras';
-  }
+  if (modo === 'criar') validarEnderecoTela(v, e);
   return e;
 }
 
@@ -113,20 +102,12 @@ function corpoComum(v: Valores, perfil: Perfil, modo: Modo): Corpo {
 
 /** Corpo do POST (cliente com o endereço principal); `null` se o contrato recusar (a tela mostra os erros de `validarCliente`). */
 export function corpoCriarCliente(v: Valores, perfil: Perfil): ClienteDados | null {
-  const endereco: EnderecoCliente = {
-    tipo: 'principal', logradouro: (v.end_logradouro ?? '').trim(), numero: (v.end_numero ?? '').trim(), complemento: vazioParaNulo(v.end_complemento), bairro: (v.end_bairro ?? '').trim(),
-    municipio_ibge: (v.end_municipio_ibge ?? '').trim(), uf: (v.end_uf ?? '').trim().toUpperCase(), cep: soDigitos(v.end_cep), pais_bacen: '1058',
-  };
+  const endereco = { tipo: 'principal', ...enderecoDoFormulario(v) };
   const r = ClienteDados.safeParse({ ...corpoComum(v, perfil, 'criar'), enderecos: [endereco] });
   return r.success ? r.data : null;
 }
 
 /** Corpo do PATCH: só o que mudou em relação ao cliente aberto (sem mudança = `null`, nada a enviar). */
 export function corpoAlterarCliente(v: Valores, original: ClienteResumo, perfil: Perfil): Corpo | null {
-  const novo = soOQueMudou(corpoComum(v, perfil, 'editar'), original as unknown as Record<string, unknown>);
-  if (Object.keys(novo).length === 0) return null;
-  const r = ClienteAtualizacao.safeParse(novo);
-  if (!r.success) return null;
-  const dados = r.data as Record<string, unknown>;
-  return Object.fromEntries(Object.keys(novo).map((k) => [k, dados[k]]));
+  return corpoDoPatch(corpoComum(v, perfil, 'editar'), original as unknown as Record<string, unknown>, ClienteAtualizacao);
 }

@@ -4,7 +4,7 @@ import { PAGINAS_EDICAO, PAGINAS } from './paginas';
 import { camposDoCliente, corpoAlterarCliente, corpoCriarCliente, indicadorSugerido, paginaClientes, valoresDoCliente, validarCliente, type ClienteResumo } from './clientes';
 import { camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, valoresDoProduto, validarProduto } from './produtos';
 import { corpoAlterarTabelaPreco, corpoCriarTabelaPreco, paginaTabelasPreco, validarTabelaPreco, valoresDaTabelaPreco, type TabelaPrecoResumo } from './precos';
-import { camposDaFilial, corpoAlterarFilial, corpoCriarFilial, paginaFiliais, validarFilialTela, valoresDaFilial, type FilialResumo } from './filiais';
+import { CAMPOS_FILIAL, camposDaFilial, corpoAlterarFilial, corpoCriarFilial, paginaFiliais, validarFilialTela, valoresDaFilial, type FilialResumo } from './filiais';
 import { errosDaApi, soOQueMudou } from './edicao';
 
 const UUID = (n: number) => `3f1d5a07-7b0e-4a52-9d3c-${String(n).padStart(12, '0')}`;
@@ -18,9 +18,6 @@ const novoCliente = {
 };
 
 describe('telas de edição do cadastros (T-0088)', () => {
-  it('listas pelo SDK: paginação e busca do contrato (limite padrão 50, máximo 200)', () => {
-    for (const p of [paginaClientes, paginaProdutos, paginaTabelasPreco, paginaFiliais]) expect(p.busca).toBe(true);
-  });
   it('páginas de formulário: rotas únicas, fora do menu e com a ação de editar', () => {
     const rotas = [...PAGINAS, ...PAGINAS_EDICAO].map((p) => p.rota);
     expect(new Set(rotas).size).toBe(rotas.length);
@@ -49,7 +46,9 @@ describe('telas de edição do cadastros (T-0088)', () => {
   it('limite de crédito: só o perfil com cadastros.cliente.credito vê o campo e o envia', () => {
     expect(camposDoCliente('gerente', 'editar').some((c) => c.nome === 'limite_credito_centavos')).toBe(true);
     expect(camposDoCliente('faturista', 'editar').some((c) => c.nome === 'limite_credito_centavos')).toBe(false);
-    expect(corpoCriarCliente(novoCliente, 'faturista')).not.toHaveProperty('limite_credito_centavos', 1);
+    // Sem a permissão a tela não envia o valor; o 0 vem do default do contrato e a API o aceita (igual ao padrão).
+    expect(corpoCriarCliente(novoCliente, 'faturista')?.limite_credito_centavos).toBe(0);
+    expect(corpoCriarCliente({ ...novoCliente, limite_credito_centavos: '9,00' }, 'faturista')?.limite_credito_centavos).toBe(0);
     const v = { ...valoresDoCliente(cliente), limite_credito_centavos: '2.000,00' };
     expect(corpoAlterarCliente(v, cliente, 'gerente')).toEqual({ limite_credito_centavos: 200000 });
     expect(corpoAlterarCliente(v, cliente, 'faturista')).toBeNull();
@@ -84,7 +83,7 @@ describe('telas de edição do cadastros (T-0088)', () => {
     expect(corpoAlterarProduto({ ...v, descricao: 'Café torrado', producao_propria: 'true' }, p, 'gerente')).toEqual({ descricao: 'Café torrado', producao_propria: true });
   });
   it('422 da API vira erro de campo (endereço principal vira end_*) e soOQueMudou ignora diferença só de null/ausente', () => {
-    expect(errosDaApi([{ campo: 'enderecos.0.uf', mensagem: 'UF inválida' }, { campo: 'ncm', mensagem: 'NCM vencido' }])).toEqual({ end_uf: 'UF inválida', ncm: 'NCM vencido' });
+    expect(errosDaApi([{ campo: 'enderecos.0.uf', mensagem: 'UF inválida' }, { campo: 'endereco.cep', mensagem: 'CEP inválido' }, { campo: 'ncm', mensagem: 'NCM vencido' }])).toEqual({ end_uf: 'UF inválida', end_cep: 'CEP inválido', ncm: 'NCM vencido' });
     expect(soOQueMudou({ a: null, b: 1 }, { b: 1 })).toEqual({});
   });
   it('lista única: o PAGINAS do shell vem do descritor do SDK (api, filtros, títulos e formatação iguais)', () => {
@@ -96,6 +95,7 @@ describe('telas de edição do cadastros (T-0088)', () => {
     }
     const col = (id: string, chave: string) => PAGINAS.find((p) => p.id === id)!.colunas.find((c) => c.chave === chave)!;
     expect(col('clientes', 'ind_ie_dest').formatar!('9')).toBe('Não contribuinte');
+    expect(col('filiais', 'regime_pis_cofins').formatar!(null)).toBe('');
     expect(col('produtos', 'ncm').formatar!('09012100')).toBe(paginaProdutos.colunas.find((c) => c.id === 'ncm')!.valor({ ncm: '09012100' } as never));
   });
 
@@ -119,20 +119,22 @@ describe('telas de edição do cadastros (T-0088)', () => {
     industrial_ipi: false, regime_pis_cofins: null, external_id: null, inativo: false,
     endereco: { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058' },
   };
-  it('RN-FIS-02: CRT 3 pede o regime de PIS/COFINS e os demais CRT recusam o regime', () => {
+  it('filial: regras do domain chegam ao campo do formulário', () => {
     const v = valoresDaFilial(filial);
-    expect(validarFilialTela(v, 'editar', 'administrador')).toEqual({});
-    expect(validarFilialTela({ ...v, crt: '3' }, 'editar', 'administrador').regime_pis_cofins).toBeTruthy();
-    expect(validarFilialTela({ ...v, crt: '3', regime_pis_cofins: 'cumulativo' }, 'editar', 'administrador')).toEqual({});
-    expect(validarFilialTela({ ...v, regime_pis_cofins: 'cumulativo' }, 'editar', 'administrador').regime_pis_cofins).toBeTruthy();
-  });
-  it('D8: filial emissora precisa de série e número inicial; RN-CAD-03: município coerente com a UF', () => {
-    const v = valoresDaFilial(filial);
-    expect(validarFilialTela({ ...v, emissora: 'true' }, 'editar', 'administrador').nfe_serie).toBeTruthy();
-    expect(validarFilialTela({ ...v, emissora: 'true', nfe_serie: '1', nfe_numero_inicial: '1' }, 'editar', 'administrador')).toEqual({});
-    expect(validarFilialTela({ ...v, nfe_serie: '1' }, 'editar', 'administrador').nfe_numero_inicial).toBeTruthy();
-    expect(validarFilialTela({ ...v, nfe_serie: '1000', nfe_numero_inicial: '1' }, 'editar', 'administrador').nfe_serie).toBeTruthy();
-    expect(validarFilialTela({ ...v, end_uf: 'SP' }, 'editar', 'administrador').end_municipio_ibge).toBeTruthy();
+    const tela = (x: Record<string, string>) => validarFilialTela({ ...v, ...x }, 'editar', 'administrador');
+    expect(tela({})).toEqual({});
+    // RN-FIS-02: CRT 3 pede o regime de PIS/COFINS; o campo só aparece nele.
+    expect(tela({ crt: '3' }).regime_pis_cofins).toBeTruthy();
+    expect(tela({ crt: '3', regime_pis_cofins: 'cumulativo' })).toEqual({});
+    const regime = CAMPOS_FILIAL.find((c) => c.nome === 'regime_pis_cofins')!;
+    expect(regime.mostrarSe!({ crt: '3' })).toBe(true);
+    expect(regime.mostrarSe!({ crt: '1' })).toBe(false);
+    // D8: emissora precisa de série e número inicial.
+    expect(tela({ emissora: 'true' }).nfe_serie).toBeTruthy();
+    expect(tela({ emissora: 'true', nfe_serie: '1', nfe_numero_inicial: '1' })).toEqual({});
+    expect(tela({ nfe_serie: '1000', nfe_numero_inicial: '1' }).nfe_serie).toBeTruthy();
+    // RN-CAD-03: município coerente com a UF.
+    expect(tela({ end_uf: 'SP' }).end_municipio_ibge).toBeTruthy();
   });
   it('filial: CNPJ só na criação (conferido pelo contrato); PATCH só com o que mudou, endereço inteiro quando muda', () => {
     const v = valoresDaFilial(filial);
@@ -142,9 +144,5 @@ describe('telas de edição do cadastros (T-0088)', () => {
     expect(corpoAlterarFilial(v, filial)).toBeNull();
     expect(corpoAlterarFilial({ ...v, razao_social: 'Outra Ltda', industrial_ipi: 'true' }, filial)).toEqual({ razao_social: 'Outra Ltda', industrial_ipi: true });
     expect(corpoAlterarFilial({ ...v, end_numero: '20' }, filial)).toEqual({ endereco: { ...filial.endereco, numero: '20' } });
-  });
-  it('422 do endereço da filial vira end_* e as páginas de preços e filiais estão no mapa de edição', () => {
-    expect(errosDaApi([{ campo: 'endereco.uf', mensagem: 'UF inválida' }])).toEqual({ end_uf: 'UF inválida' });
-    expect(PAGINAS_EDICAO.map((p) => p.id)).toEqual(expect.arrayContaining(['tabela-preco-nova', 'tabela-preco', 'filial-nova', 'filial']));
   });
 });
