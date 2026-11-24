@@ -171,13 +171,14 @@ export class RepositorioCoreSql implements RepositorioCore {
     );
   }
 
-  async auditoria(tx: Transacao, f: { entidade?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]> {
+  async auditoria(tx: Transacao, f: { entidade?: string; usuario_id?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]> {
     return tx.consultar<LinhaAuditoria>(
       `SELECT id, usuario_id, acao, entidade, entidade_id::text AS entidade_id, antes, depois, ocorrido_em FROM plataforma.auditoria
         WHERE ($1::text IS NULL OR entidade = $1) AND ($2::timestamptz IS NULL OR ocorrido_em >= $2)
           AND ($3::timestamptz IS NULL OR ocorrido_em <= $3) AND ($4::uuid IS NULL OR id > $4::uuid)
+          AND ($6::uuid IS NULL OR usuario_id = $6::uuid)
         ORDER BY id LIMIT $5`,
-      [f.entidade ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite],
+      [f.entidade ?? null, f.de ?? null, f.ate ?? null, f.cursor ?? null, f.limite, f.usuario_id ?? null],
     );
   }
 

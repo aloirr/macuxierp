@@ -1,65 +1,78 @@
-import { MAX_DIAS, MAX_PARCELAS, MAX_PARCELAS_CARTAO, classeForma } from '../contracts';
+import { MAX_DIAS, MAX_PARCELAS, MAX_PARCELAS_CARTAO, classeForma, type ClasseForma } from '../contracts';
 import { violacao, type Violacao } from './violacao';
 
 /**
- * RN-CAD-09 (decisão de 22/11): a classe da forma sai do tPag (`classeForma`, contracts). Mensagens curtas e fixas:
+ * RN-CAD-09 (decisão de 22/11, emendada pela RN-CAD-15): a classe da forma sai do tPag (`classeForma`, contracts). Mensagens curtas e fixas:
  * nunca ecoam o valor digitado, por isso a API e a carga usam estas mesmas constantes.
  */
 export const MOTIVO_FORMA_NAO_ACEITA = 'forma não aceita: use Dinheiro, PIX, Cartão ou Boleto';
-export const MOTIVO_A_VISTA = 'à vista: prazo único igual a 0 e sem parcelas de cartão';
-export const MOTIVO_CARTAO_PARCELAS = `cartão: informe de 1 a ${MAX_PARCELAS_CARTAO} parcelas`;
-export const MOTIVO_CARTAO_PRAZOS = 'cartão: prazos de 30 em 30 dias, um por parcela';
+export const MOTIVO_A_VISTA = 'à vista: uma única parcela com 0 dia';
+export const MOTIVO_CARTAO_PRAZOS = `cartão: 1 a ${MAX_PARCELAS_CARTAO} parcelas de 0 a ${MAX_DIAS} dias`;
 export const MOTIVO_PARCELAS_FORMA = 'cartão exige parcelas e as demais formas não as têm';
-export const MOTIVO_BOLETO = `boleto: 1 a ${MAX_PARCELAS} parcelas de 0 a ${MAX_DIAS} dias e sem parcelas de cartão`;
+export const MOTIVO_BOLETO = `boleto: 1 a ${MAX_PARCELAS} parcelas de 0 a ${MAX_DIAS} dias`;
+/** RN-CAD-15 */
+export const MOTIVO_PRAZO_MEDIO = `Prazo médio: inteiro de 0 a ${MAX_DIAS} dias`;
+export const MOTIVO_PRAZO_MEDIO_A_VISTA = 'à vista: prazo médio igual a 0';
+export const MOTIVO_DESCRICAO = 'descrição obrigatória';
 
-/** Prazos do cartão de crédito em N parcelas: 30, 60, …, 30×N. */
-export const prazosDoCartao = (parcelas: number): number[] => Array.from({ length: parcelas }, (_, i) => 30 * (i + 1));
-
-const parcelasValidas = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= MAX_PARCELAS_CARTAO;
+/** RN-CAD-09: máximo de parcelas por classe da forma (à vista 1, cartão 12, boleto 36). */
+export const MAX_PARCELAS_DA_CLASSE: Record<ClasseForma, number> = { a_vista: 1, cartao: MAX_PARCELAS_CARTAO, boleto: MAX_PARCELAS };
 
 export interface EntradaCondicao {
   forma_tpag: string;
   prazos_dias?: readonly number[] | null;
+  /** Legado: o domain deriva das parcelas do cartão (`derivarParcelasCartao`). */
   parcelas_cartao?: number | null;
+  /** RN-CAD-15: ausente (`undefined`) recusa; `null` é o legado anterior à 0052 (o PATCH que não traz o campo mantém o valor). */
+  prazo_medio_dias?: number | null;
+  /** Só confere quando vem (o PATCH parcial pode não trazer). */
+  descricao?: string | null;
 }
 
-/** Cartão sem prazos: o domain gera os prazos das parcelas. Qualquer outro caso volta como veio. */
-export function completarPrazos<T extends EntradaCondicao>(c: T): T & { prazos_dias?: readonly number[] | null } {
-  if (classeForma(c.forma_tpag) === 'cartao' && parcelasValidas(c.parcelas_cartao) && (c.prazos_dias === undefined || c.prazos_dias === null || c.prazos_dias.length === 0)) {
-    return { ...c, prazos_dias: prazosDoCartao(c.parcelas_cartao) };
-  }
-  return c;
-}
+/** `parcelas_cartao` gravado: o número de parcelas no cartão (tPag 03) e nulo nas demais formas (CHECK 0019 do banco). */
+export const derivarParcelasCartao = (c: { forma_tpag: string; prazos_dias?: readonly number[] | null }): number | null => {
+  const n = (c.prazos_dias ?? []).length;
+  // fora de 1..12 fica nulo: quem recusa é `validarCondicaoPagamento`, no campo `prazos_dias`
+  return classeForma(c.forma_tpag) === 'cartao' && n >= 1 && n <= MAX_PARCELAS_CARTAO ? n : null;
+};
 
-/**
- * PATCH do cartão: se `parcelas_cartao` muda e `prazos_dias` não veio no corpo, os prazos são regerados (30×N).
- * `antes` é o cadastro gravado; o resto volta como veio.
- */
-export function completarPrazosNoPatch<T extends Partial<EntradaCondicao>>(parcial: T, antes: { forma_tpag: string; parcelas_cartao?: number | null }): T & { prazos_dias?: readonly number[] | null } {
-  const forma = parcial.forma_tpag ?? antes.forma_tpag;
-  const n = parcial.parcelas_cartao;
-  if (classeForma(forma) === 'cartao' && parcial.prazos_dias === undefined && parcelasValidas(n) && n !== (antes.parcelas_cartao ?? null)) {
-    return { ...parcial, prazos_dias: prazosDoCartao(n) };
-  }
-  return parcial;
-}
+const diasValidos = (p: unknown): boolean => typeof p === 'number' && Number.isInteger(p) && p >= 0 && p <= MAX_DIAS;
 
+/** RN-CAD-15 (completa a RN-CAD-09): código, descrição, parcelas uma a uma e prazo médio digitado; à vista = parcelas [0] e prazo médio 0. */
 export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
   const prazos = c.prazos_dias ?? [];
   const parcelas = c.parcelas_cartao ?? null;
-  switch (classeForma(c.forma_tpag)) {
+  const classe = classeForma(c.forma_tpag);
+  if (classe === null) return [violacao('RN-CAD-09', 'forma_tpag', MOTIVO_FORMA_NAO_ACEITA)];
+  const erros: Violacao[] = [];
+  if (c.descricao !== undefined && (c.descricao === null || c.descricao.trim() === '')) erros.push(violacao('RN-CAD-15', 'descricao', MOTIVO_DESCRICAO));
+  const medio = c.prazo_medio_dias;
+  if (medio === undefined || (medio !== null && !diasValidos(medio))) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO));
+  else if (classe === 'a_vista' && medio !== null && medio !== 0) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_A_VISTA));
+  switch (classe) {
     case 'a_vista':
-      return parcelas !== null || prazos.length !== 1 || prazos[0] !== 0 ? [violacao('RN-CAD-09', 'prazos_dias', MOTIVO_A_VISTA)] : [];
-    case 'cartao': {
-      if (!parcelasValidas(parcelas)) return [violacao('RN-CAD-09', 'parcelas_cartao', MOTIVO_CARTAO_PARCELAS)];
-      const gerado = prazosDoCartao(parcelas);
-      return prazos.length !== gerado.length || prazos.some((p, i) => p !== gerado[i]) ? [violacao('RN-CAD-09', 'prazos_dias', MOTIVO_CARTAO_PRAZOS)] : [];
-    }
-    case 'boleto': {
-      const ok = parcelas === null && prazos.length >= 1 && prazos.length <= MAX_PARCELAS && prazos.every((p) => Number.isInteger(p) && p >= 0 && p <= MAX_DIAS);
-      return ok ? [] : [violacao('RN-CAD-09', parcelas !== null ? 'parcelas_cartao' : 'prazos_dias', MOTIVO_BOLETO)];
-    }
-    default:
-      return [violacao('RN-CAD-09', 'forma_tpag', MOTIVO_FORMA_NAO_ACEITA)];
+      if (parcelas !== null || prazos.length !== 1 || prazos[0] !== 0) erros.push(violacao('RN-CAD-15', 'prazos_dias', MOTIVO_A_VISTA));
+      break;
+    case 'cartao':
+      if (prazos.length < 1 || prazos.length > MAX_PARCELAS_DA_CLASSE.cartao || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_CARTAO_PRAZOS));
+      else if (parcelas !== null && parcelas !== prazos.length) erros.push(violacao('RN-CAD-09', 'parcelas_cartao', MOTIVO_CARTAO_PRAZOS));
+      break;
+    case 'boleto':
+      if (parcelas !== null) erros.push(violacao('RN-CAD-09', 'parcelas_cartao', MOTIVO_BOLETO));
+      else if (prazos.length < 1 || prazos.length > MAX_PARCELAS_DA_CLASSE.boleto || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_BOLETO));
+      break;
   }
+  return erros;
+}
+
+/**
+ * Grava `parcelas_cartao` derivada dos prazos na criação e no PATCH que muda a forma ou os prazos (o legado `parcelas_cartao` do corpo é
+ * ignorado). `antes` é o cadastro gravado, no PATCH; sem mudança de forma nem de prazos o corpo volta como veio.
+ */
+export function completarParcelasCartao<T extends { forma_tpag?: string; prazos_dias?: readonly number[] | null }>(
+  corpo: T, antes?: { forma_tpag: string; prazos_dias: readonly number[] },
+): T & { parcelas_cartao?: number | null } {
+  if (antes && corpo.forma_tpag === undefined && corpo.prazos_dias === undefined) return corpo;
+  const mesclado = { forma_tpag: corpo.forma_tpag ?? antes?.forma_tpag ?? '', prazos_dias: corpo.prazos_dias ?? antes?.prazos_dias ?? [] };
+  return { ...corpo, parcelas_cartao: derivarParcelasCartao(mesclado) };
 }

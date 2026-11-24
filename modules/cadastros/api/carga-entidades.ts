@@ -7,12 +7,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ContextoRota } from '@macuxierp/platform-sdk';
 import { pode } from '@macuxierp/platform-sdk';
 import {
-  ClienteDados, CondicaoPagamentoDados, classeForma, MAX_PARCELAS_CARTAO, EnderecoCliente, FilialDados, ProdutoDados, TabelaPrecoDados, UnidadeDados, VendedorDados,
+  ClienteDados, CondicaoPagamentoDados, classeForma, EnderecoCliente, FilialDados, ProdutoDados, TabelaPrecoDados, UnidadeDados, VendedorDados,
   type CondicaoPagamento, type EntidadeCarga, type LinhaCliente, type LinhaCondicaoPagamento, type LinhaEstoque, type LinhaFilial,
   type LinhaPreco, type LinhaProduto, type LinhaProdutoUnidade, type LinhaVendedor, type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarPrazos, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
   type FatosFilial, type FormaDoLote,
 } from '../domain';
@@ -259,17 +259,19 @@ export async function planejarIrmasDaForma(f: FormaDoLote, st: Estado): Promise<
   const erros: ErroLinha[] = [];
   for (const c of ativas) {
     if (f.tpag === undefined) break;
-    const vc = validarCondicaoPagamento({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias, parcelas_cartao: c.parcelas_cartao });
+    const vc = validarCondicaoPagamento({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias, prazo_medio_dias: c.prazo_medio_dias ?? null });
     if (vc.length) erros.push(...vc.map((v) => erroDeViolacao(f.linha, v)));
   }
   if (erros.length > 0) return { erros, avisos: [] };
-  const mudam = ativas.filter((c) => camposAlterados(d, c as unknown as Dict).length > 0);
+  // `parcelas_cartao` (legado) acompanha a forma: o cartão tem tantas parcelas quantos os prazos; nas outras formas é nulo.
+  const dadosDe = (c: CondicaoPagamento): Dict => ({ ...d, parcelas_cartao: f.tpag === undefined ? c.parcelas_cartao ?? null : derivarParcelasCartao({ forma_tpag: f.tpag, prazos_dias: c.prazos_dias }) });
+  const mudam = ativas.filter((c) => camposAlterados(dadosDe(c), c as unknown as Dict).length > 0);
   if (mudam.length === 0) return { erros: [], avisos: [] };
   return {
     erros: [], avisos: [`Forma atualizada em ${mudam.length} condição(ões) que não estão neste arquivo`],
     async aplicar() {
       for (const c of mudam) {
-        await repo.atualizar(c.id, d as never);
+        await repo.atualizar(c.id, dadosDe(c) as never);
         await concluirEscrita(st, repo, c.id, undefined, c.inativo, EVENTO_CONDICAO);
       }
     },
@@ -282,21 +284,6 @@ async function dadosDaForma(st: Estado, ext: string) {
     st.formas.set(ext, c ? { codigo: c.forma_codigo, nome: c.forma_nome, tpag: c.forma_tpag } : null);
   }
   return st.formas.get(ext) ?? null;
-}
-
-/**
- * Cartão (RN-CAD-09): a célula "3" (sem o x) chega como prazos [3] e vale 3 parcelas; "3x" já chega em `parcelas_cartao`.
- * Com as parcelas, o domain gera os prazos (30×N). Fora do cartão a linha segue como veio.
- */
-function normalizarPrazo(tpag: string, d: Dict): Dict {
-  let x: Dict = { ...d };
-  const prazos = x.prazos_dias as number[] | undefined;
-  if (classeForma(tpag) === 'cartao' && x.parcelas_cartao === undefined && prazos?.length === 1) {
-    x = { ...x, parcelas_cartao: prazos[0] };
-    delete x.prazos_dias;
-  }
-  const c = completarPrazos({ forma_tpag: tpag, prazos_dias: x.prazos_dias as number[] | undefined, parcelas_cartao: x.parcelas_cartao as number | undefined });
-  return c.prazos_dias === undefined ? x : { ...x, prazos_dias: c.prazos_dias };
 }
 
 async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
@@ -315,10 +302,12 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   };
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
-    const patch: Dict = { ...normalizarPrazo(((campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag), d), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
+    const tpagFinal = (campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag;
+    const patch: Dict = { ...completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
     const vc = validarCondicaoPagamento({
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
+      prazo_medio_dias: (patch.prazo_medio_dias === undefined ? ex.prazo_medio_dias ?? null : patch.prazo_medio_dias) as number | null,
     });
     if (vc.length) return violacoes(l.linha, vc);
     if (camposAlterados(patch, ex as unknown as Dict).length === 0) return { efeito: 'sem_mudanca', alvo };
@@ -335,13 +324,9 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   const p = prepararCriacao('condicao_pagamento', { ...l, dados: { ...l.dados, ...(f?.nome ? { forma_nome: f.nome } : {}), ...(f?.tpag ? { forma_tpag: f.tpag } : {}) } });
   if (!p.ok) return { erros: p.erros };
   if (!f?.tpag) return mover(l.linha, 'forma_codigo', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
-  const pre = normalizarPrazo(f.tpag, d);
-  const comDescricao = { ...pre, ...(p.linha.dados.descricao === undefined ? {} : { descricao: p.linha.dados.descricao }) };
-  // 13x ou mais: a linha aceita até 99; a faixa do cartão é do domain (RN-CAD-09, mensagem do cartão), antes do Zod da condição.
-  if (classeForma(f.tpag) === 'cartao' && typeof pre.parcelas_cartao === 'number' && pre.parcelas_cartao > MAX_PARCELAS_CARTAO) {
-    return violacoes(l.linha, validarCondicaoPagamento({ forma_tpag: f.tpag, parcelas_cartao: pre.parcelas_cartao }));
-  }
-  const r = CondicaoPagamentoDados.safeParse({ ...comDescricao, forma_tpag: f.tpag, ...campoForma, external_id: l.external_id });
+  const comDescricao = { ...d, ...(p.linha.dados.descricao === undefined ? {} : { descricao: p.linha.dados.descricao }) };
+  // RN-CAD-15: os dias são os digitados; `parcelas_cartao` (legado) é derivada dos prazos.
+  const r = CondicaoPagamentoDados.safeParse({ ...completarParcelasCartao({ ...comDescricao, forma_tpag: f.tpag }), ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
   const vc = validarCondicaoPagamento(r.data);
   if (vc.length) return violacoes(l.linha, vc);

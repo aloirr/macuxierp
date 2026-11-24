@@ -86,6 +86,7 @@
 | [T-0092](tarefas/T-0092.md) | Limites 200/30 em todo o caminho (ADR 0019, opção A): external_id 200, código da forma 30 | v0.3.12 | modulo-cadastros | aberta | contracts ainda em 64/20; migração 0054 |
 | [T-0093](tarefas/T-0093.md) | Zerar pedidos não faturados por cadastro (/config) | v0.3.13 (a confirmar) | modulo-pedido | aberta | R-20261123-125140 |
 | [T-0094](tarefas/T-0094.md) | Login: ícone de mostrar e ocultar a senha (olho) | v0.3.12 | designer-ux | aberta | molde do FDV |
+| [T-0095](tarefas/T-0095.md) | E-mail de acesso: senha temporária em campo próprio para copiar, sem caractere especial | depois da v0.3.12 | engenheiro-software | aberta | padrão do FDV (R-20261124-181547) |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 
@@ -106,6 +107,7 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 | T-0023 (session_019xHEXsi68pkRSBNcRmrmW9) | `docs/marca/` (PR #5) |
 
 ## Reservas
+- **24/11, 18h25 (Manaus):** T-0095 criada (copiar a senha); próxima livre **T-0096**. Migrações: **0055** = funções do portal portal_monitor, portal_log e portal_reprocessar (T-0086, libera o #527); **0056** = T-0059 (§3 do desenho); a 0054 segue na T-0092; próxima livre 0057. A T-0093 foi para a v0.3.13 (R-20261124-181533) e não tem migração reservada. RD por sessão: apps+core RD-1500–1529; cadastros+pedido RD-1530–1559; banco+integração RD-1560–1589; engenheiro-software RD-1590–1599; testes RD-1600–1609. Os RD-1463 a 1469 do testes (#516, #518, #525) ficam como estão. RN-INF-06 (guarda do pré-cadastro recusado, 180 dias). Conector MySQL no backlog. D3 da AM2808 é regra (RN-FAT-04); a bandeira é religada pela tela depois do deploy (decisão A).
 - **24/11, 18h20 (Manaus):** T-0090 a T-0094 criadas (auditoria do PO dos pedidos de 21/11 a 24/11); próxima livre **T-0095**. Migração **0053** (T-0086, inativar espelho) e **0054** (T-0092, limites 200/30) reservadas; próxima livre 0055. RN-CAD-12, 13 e 14 escritas no doc 03. T-0059 na v0.3.12 (Alexandre, 18h11).
 - **24/11, 17h50 (Manaus):** T-0089 criada (jornada AM2808, testes); próxima livre **T-0090**. ADR 0020 usada (#517). RN novas da T-0085: **RN-CAD-15** (prazo completo) e **RN-CAD-16** (prazo médio do cliente), porque a RN-CAD-12 (embalagem, T-0060), a RN-CAD-13 (cadastro bloqueado, T-0062) e a RN-CAD-14 (obrigatoriedade, T-0060) já estavam reservadas; **RN-PED-07** (uso do prazo). Migração 0052 no #514; próxima livre 0053.
 - **24/11, 16h30 (Manaus):** T-0085 a T-0088 criadas (v0.3.12); próxima livre **T-0089**. Migração **0052** reservada à T-0085 (banco-dados); próxima livre 0053. ADR livre: **0020**.

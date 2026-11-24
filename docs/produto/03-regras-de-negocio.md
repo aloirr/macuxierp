@@ -80,6 +80,7 @@
 - **RN-INF-03** Idempotência por `external_id` + hash do registro; reenvio com o mesmo conteúdo não muda nada.
 - **RN-INF-04** Falha do Hub vai para a fila com retentativa e backoff; erro por linha aparece no monitor sem o valor do dado pessoal.
 - **RN-INF-05** Só o ERP é fonte da verdade do que publica: alteração no FDV de um cadastro vindo do ERP não volta para o ERP.
+- **RN-INF-06** Guarda do pré-cadastro recusado (LGPD; Alexandre, 24/11 ~18h23, via PO; T-0059). O payload do pré-cadastro de cliente recebido do FDV e recusado pelo ERP é apagado 180 dias depois da última recusa; ficam só os códigos (external_id, cliente_uuid, revisão), os códigos de erro e as contagens. A rotina diária do worker (modulo-integracao-fdv) faz a limpeza e audita só as contagens. O pré-cadastro aceito vira cliente e segue as regras de guarda do cadastro.
 
 ## Permissões (matriz da v1)
 | Ação | administrador | gerente | faturista | fiscal | vendedor | leitura | analista de implantação |

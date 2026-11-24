@@ -16,7 +16,7 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, completarPrazos, completarPrazosNoPatch, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
+  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
   violacao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
@@ -28,9 +28,6 @@ import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, T
 import { precosVigentesDe } from './precos-vigentes';
 import { validarCliente, verificarMunicipioEndereco } from './validar-cliente';
 import { dataIso, erroDeViolacoes, exigir, idDe, violacaoExternalId } from './util';
-
-/** Criação da condição: no cartão (tPag 03) o `prazos_dias` é opcional, o domain gera 30×N (RN-CAD-09). */
-const CondicaoPagamentoCriacao = CondicaoPagamentoDados.extend({ prazos_dias: CondicaoPagamentoDados.shape.prazos_dias.optional() });
 
 type Dict = Record<string, unknown>;
 /** `external_id` de um cadastro (`null` se ausente). */
@@ -436,11 +433,14 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
 
   // ---- Condições de pagamento (RF-CAD-09) ----
   rotas.push(...rotasCrud(deps, {
-    tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoCriacao, atualizacao: CondicaoPagamentoAtualizacao,
+    tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
-    // RN-CAD-09: cartão sem prazos_dias → o domain gera 30×N; o PATCH valida o cadastro MESCLADO.
-    completar: (corpo, antes) => (antes ? completarPrazosNoPatch(corpo as never, antes as never) : completarPrazos(corpo as never)) as Dict,
-    validar: async (_r, c) => validarCondicaoPagamento({ forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[], parcelas_cartao: (c.parcelas_cartao ?? null) as number | null }),
+    // RN-CAD-15: os dias são sempre digitados; `parcelas_cartao` (legado) é derivada dos prazos. O PATCH valida o cadastro MESCLADO (prazo médio ausente no PATCH mantém o gravado).
+    completar: (corpo, antes) => completarParcelasCartao(corpo as never, antes as never) as Dict,
+    validar: async (_r, c) => validarCondicaoPagamento({
+      forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[], parcelas_cartao: (c.parcelas_cartao ?? null) as number | null,
+      prazo_medio_dias: (c.prazo_medio_dias ?? null) as number | null, descricao: c.descricao as string,
+    }),
   }));
   // RN-CAD-09: comando do administrador (por tenant): desativa as condições ligadas a forma recusada e trata o cartão sem parcelas (preenche ou desativa). Idempotente.
   rotas.push(definirRota({

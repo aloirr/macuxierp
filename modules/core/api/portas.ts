@@ -127,7 +127,7 @@ export interface RepositorioCore {
   ambientes(tx: Transacao, filialId?: string): Promise<LinhaAmbiente[]>;
   gravarAmbiente(tx: Transacao, a: LinhaAmbiente & { ambiente: 'homologacao'; alterado_por: string }, agora: Date): Promise<void>;
 
-  auditoria(tx: Transacao, f: { entidade?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]>;
+  auditoria(tx: Transacao, f: { entidade?: string; usuario_id?: string; de?: Date; ate?: Date; limite: number; cursor?: string }): Promise<LinhaAuditoria[]>;
 
   criarExportacao(tx: Transacao, id: string, pedidoPor: string, agora: Date): Promise<LinhaExportacao>;
   exportacao(tx: Transacao, id: string): Promise<LinhaExportacao | null>;
