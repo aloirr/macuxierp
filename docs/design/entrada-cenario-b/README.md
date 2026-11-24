@@ -1,4 +1,4 @@
-# Entrada do cenário B no /config e no BKO (v0.3.12, ADR 0014 §3 a §5 e §14)
+# Entrada do cenário B no /config e no BKO (v0.3.11, ADR 0014 §3 a §5 e §14)
 
 Desenho das telas, textos e estados. O código é do `engenheiro-apps`; sem componente novo em `packages/ui` (só `Dialogo`, `TabelaDensa`, `Chip`, `AlertaBloqueante`, `.mx-botao*`; `FaixaPendencias` e `CaixaResumo` não entram). Padrões: `docs/design/portal-config.md` (senha mostrada uma vez, estados comuns), `docs/design/alerta-bloqueante/README.md`, `docs/design/componentes-pedido.md`. Cores só por token; sem cor nova. Prints (escala 2x, dados fictícios): `config-integracao-1280x900.png`, `config-integracao-390x1600.png` (a tabela em 390 px, rolagem horizontal), `chave-uma-vez-1280x800.png`, `fechar-sem-copiar-1280x800.png`, `trava-30-1280x800.png`, `bko-cadastro-cliente-1280x800.png`, `bko-integracao-1280x800.png`.
 
