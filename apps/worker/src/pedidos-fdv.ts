@@ -19,9 +19,8 @@
 import { criarConsultaParaPedido, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
 import type { Alertar, DepsAgendasPedidosFdv, RecebedorPedidoFdv, ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
 import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido } from '@macuxierp/pedido/api';
-import type { DestinoAuditoria, FonteLicencas, Outbox, Relogio } from '@macuxierp/platform-sdk';
+import { chaveLigadoDesligado, type DestinoAuditoria, type EstadoChaveFdv, type FonteLicencas, type Outbox, type Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
-import { chaveLigadoDesligado, type EstadoChaveFdv } from './chaves-fdv';
 
 /**
  * As portas são as do `integracao-fdv` (`ResolvedorChaveErp`, `RecebedorPedidoFdv`, `Alertar`; ADR 0010, item 2),
@@ -37,7 +36,7 @@ export function resolvedorChaveErpDeProducao(): ResolvedorChaveErp {
 
 export type EstadoRecebimentoFdv = EstadoChaveFdv;
 
-/** `MACUXIERP_FDV_RECEBIMENTO` (chaves-fdv.ts). */
+/** `MACUXIERP_FDV_RECEBIMENTO` (`chaveLigadoDesligado` do SDK). */
 export function configurarRecebimentoFdv(env: Readonly<Record<string, string | undefined>>): EstadoRecebimentoFdv {
   return chaveLigadoDesligado(env, 'MACUXIERP_FDV_RECEBIMENTO');
 }
