@@ -19,6 +19,7 @@
 import { z } from 'zod';
 import { PADRAO_UUID } from './banco';
 import { Instante } from './portal-config';
+import { InativacaoZerarFdv } from './portal-integracao-operacao';
 import { plural } from './texto';
 
 const Id = z.string().regex(PADRAO_UUID);
@@ -448,7 +449,8 @@ export type ZerarDadosPlataformaEntrada = z.infer<typeof ZerarDadosPlataformaEnt
  * Resposta da prévia (`simulado` true) e do zerar (`simulado` false). `efetivos` = cadastros zerados (ou que seriam);
  * `apagados` por tabela; `anulados` = referências do cliente que viram `null`; `mantidos` = registros em uso que ficam;
  * `bloqueios` = cadastros que impedem o zerar (só na prévia: no zerar, bloqueio é 422 `CODIGO_ZERAGEM_BLOQUEADA`);
- * `sem_chave` = registros sem `external_id`.
+ * `sem_chave` = registros sem `external_id`; `inativacao_fdv` (T-0086, emenda da RN-CAD-10 de 24/11/2026) = registros
+ * já publicados no FDV que o zerar deixa com a inativação pendente (ausente = nada a inativar).
  */
 export const ZeragemPlataformaResposta = z
   .object({
@@ -466,6 +468,7 @@ export const ZeragemPlataformaResposta = z
     mantidos: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(MOTIVOS_USO), quantidade: Contagem })),
     bloqueios: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(['integracao_ligada', 'lote_em_andamento']) })),
     sem_chave: Contagem,
+    inativacao_fdv: InativacaoZerarFdv.optional(),
   })
   .superRefine((r, ctx) => {
     if (!semRepetir(r.efetivos)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['efetivos'], message: 'Cadastro repetido' });
