@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { RegistroLote } from '../contracts';
-import { chaveIdempotencia, conteudoCanonicoLote, dividirAoMeio, geracaoDoReenvio, limiteRegistrosDoLote, montarLotes, ordenarRegistros, precisaFechamento } from './lote';
+import { chaveIdempotencia, conteudoCanonicoLote, dividirAoMeio, geracaoDoReenvio, limiteRegistrosDoLote, montarLotes, ordenarRegistros, precisaFechamento, versaoContratoDoLote } from './lote';
 
 const reg = (id: string, em: string, extra: Record<string, unknown> = {}): RegistroLote => ({ external_id: id, alterado_em: em, ativo: true, ...extra });
 const SESSAO = '11111111-1111-4111-8111-111111111111';
 const base = { entidade: 'produto' as const, modo: 'delta' as const, enviadoEm: '2026-11-21T20:00:00.000Z' };
+
+describe('T-0085 lote 2: versão do envelope do prazo', () => {
+  const prazo = { ...base, entidade: 'prazo_pagamento' as const, registros: [reg('PZ-1', '2026-01-01T00:00:00.000Z')] };
+  it('v1 é o padrão: sem a opção, o prazo vai em v1', () => {
+    expect(montarLotes(prazo)[0]!.corpo.versao_contrato).toBe('v1');
+    expect(versaoContratoDoLote('prazo_pagamento', false)).toBe('v1');
+  });
+  it('com a opção ligada só o prazo vai em v2; as demais entidades seguem em v1', () => {
+    expect(montarLotes({ ...prazo, contratoPrazoV2: true })[0]!.corpo.versao_contrato).toBe('v2');
+    expect(montarLotes({ ...base, contratoPrazoV2: true, registros: [reg('P1', '2026-01-01T00:00:00.000Z')] })[0]!.corpo.versao_contrato).toBe('v1');
+  });
+});
 
 describe('montagem de lote', () => {
   it('RN-INF-02: ordena por alterado_em e external_id em ordem binária C', () => {

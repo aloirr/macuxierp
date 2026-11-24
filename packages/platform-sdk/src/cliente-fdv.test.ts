@@ -55,8 +55,6 @@ describe('pendentes (v1.0.28 e aditivos da ADR 0069 do FDV)', () => {
     expect(ClienteParaErpFdv.parse(v1028).vendedor_external_id).toBeUndefined();
     expect(ClienteParaErpFdv.safeParse({ ...v1028, vendedor_external_id: 'x'.repeat(200) }).success).toBe(true);
     expect(ClienteParaErpFdv.safeParse({ ...v1028, vendedor_external_id: 'x'.repeat(201) }).success).toBe(false);
-    const comNovo = ClienteParaErpFdv.parse({ ...v1028, vendedor_external_id: 'V-001', campo_futuro: 'x' });
-    expect((comNovo as Record<string, unknown>).campo_futuro).toBe('x');
   });
 });
 

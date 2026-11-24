@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { CabecalhoCartao } from '../cabecalho-cartao';
 import { ComEsqueciSenha } from '@/components/esqueci-senha';
-import { CampoSenha } from '@/components/campo-senha';
+import { CampoSenha } from '@macuxierp/ui';
 import { TEXTOS_ESQUECI } from '@/lib/esqueci-resultado';
 import { gravarCodigoDoLogin, lerCodigoSalvo } from '@/lib/codigo-salvo';
 import { primeiroVazio, TEXTOS_LOGIN as T, validarCampos, type CampoLogin, type ErrosLogin } from '@/lib/login-regras';
@@ -13,17 +13,19 @@ export interface ValoresLogin { empresa: string; email: string; senha: string }
 const CAMPOS: readonly CampoLogin[] = ['empresa', 'email', 'senha'];
 
 /** Parte visual pura (testável sem DOM). Código, e-mail e senha só no estado do formulário: nunca em URL nem storage (o código, só pelo `codigo-salvo`). */
-export function VisaoLogin({ destino, valores, erros = {}, erroLogin, pendente = false, aoMudar, aoEnviar }: {
+export function VisaoLogin({ destino, valores, erros = {}, erroLogin, pendente = false, senhaVisivel = false, aoAlternarSenha = () => undefined, aoMudar, aoEnviar }: {
   destino: string;
   valores: ValoresLogin;
   erros?: ErrosLogin;
   erroLogin?: string | undefined;
   pendente?: boolean;
+  senhaVisivel?: boolean;
+  aoAlternarSenha?: () => void;
   aoMudar?: (campo: CampoLogin, valor: string) => void;
   aoEnviar?: (f: HTMLFormElement) => void;
 }) {
   const campo = (c: 'empresa' | 'email', tipo: 'text' | 'email', auto: string) => (
-    <label className="campo">
+    <label className="campo campo-login">
       <span>{T.rotulos[c]}</span>
       <input
         name={c}
@@ -45,7 +47,7 @@ export function VisaoLogin({ destino, valores, erros = {}, erroLogin, pendente =
       <input type="hidden" name="destino" value={destino} />
       {campo('empresa', 'text', 'organization')}
       {campo('email', 'email', 'username')}
-      <CampoSenha rotulo={T.rotulos.senha} nome="senha" valor={valores.senha} aoMudar={(v) => aoMudar?.('senha', v)} autoComplete="current-password" erro={erros.senha} />
+      <div className="campo-senha-bloco"><CampoSenha id="login-senha" rotulo={T.rotulos.senha} nome="senha" valor={valores.senha} aoMudar={(v) => aoMudar?.('senha', v)} visivel={senhaVisivel} aoAlternar={aoAlternarSenha} erro={erros.senha} /></div>
       <button className="mx-botao" type="submit" disabled={pendente}>{pendente ? T.botaoEnviando : T.botao}</button>
     </form>
   );
@@ -56,6 +58,7 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
   const [erros, setErros] = useState<ErrosLogin>({});
   const [erroLogin, setErroLogin] = useState<string | undefined>();
   const [pendente, comecar] = useTransition();
+  const [senhaVisivel, setSenhaVisivel] = useState(false);
   const raiz = useRef<HTMLDivElement | null>(null);
 
   function focar(nome: CampoLogin | undefined) {
@@ -95,7 +98,7 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
   return (
     <div ref={raiz}>
       <ComEsqueciSenha disponivel={esqueciDisponivel} empresaInicial={valores.empresa} cabecalho={(aberto) => <CabecalhoCartao titulo={aberto ? TEXTOS_ESQUECI.titulo : TEXTOS_LOGIN_TITULO} />}>
-        <VisaoLogin destino={destino} valores={valores} erros={erros} erroLogin={erroLogin} pendente={pendente} aoMudar={(c, v) => setValores((x) => ({ ...x, [c]: v }))} aoEnviar={enviar} />
+        <VisaoLogin destino={destino} valores={valores} erros={erros} erroLogin={erroLogin} pendente={pendente} senhaVisivel={senhaVisivel} aoAlternarSenha={() => setSenhaVisivel((v) => !v)} aoMudar={(c, v) => setValores((x) => ({ ...x, [c]: v }))} aoEnviar={enviar} />
       </ComEsqueciSenha>
     </div>
   );

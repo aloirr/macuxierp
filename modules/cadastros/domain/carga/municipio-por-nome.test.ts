@@ -19,9 +19,9 @@ describe('município por nome', () => {
     expect(normalizarNome("d'Oeste")).toBe('D OESTE');
   });
   it('RN-CAD-03: cidade inexistente na UF é recusada', () => {
-    expect(resolverMunicipio('Atlantida', SP)).toEqual({ ok: false, motivo: 'município não encontrado na UF' });
+    expect(resolverMunicipio('Atlantida', SP)).toEqual({ ok: false, codigo: 'nao_encontrado', motivo: 'município não encontrado na UF' });
   });
   it('RN-CAD-03: nome ambíguo é recusado e pede o municipio_ibge', () => {
-    expect(resolverMunicipio('duplicada', SP)).toEqual({ ok: false, motivo: 'município ambíguo: informe municipio_ibge' });
+    expect(resolverMunicipio('duplicada', SP)).toEqual({ ok: false, codigo: 'ambiguo', motivo: 'município ambíguo: informe municipio_ibge' });
   });
 });

@@ -11,7 +11,7 @@ export function RegrasSenha({ senha, faltamNaApi = [] }: { senha: string; faltam
   return (
     <div className="regras-senha">
       <p className="regras-titulo" id="regras-titulo">{TITULO_REGRAS_SENHA}</p>
-      <ul aria-labelledby="regras-titulo">
+      <ul id="regras-lista" aria-labelledby="regras-titulo">
         {REGRAS_SENHA.map((r) => {
           const ok = !faltam.includes(r.id);
           return (
