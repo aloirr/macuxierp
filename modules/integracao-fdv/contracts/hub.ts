@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 import { CampoErroFdv, CodigoErroFdv, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
+import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 
 /** As 12 entidades do Hub que o ERP alimenta, na ordem de carga (RN-INF-02): as 10 da F2 vêm do SDK (ADR 0013), título e nota são da F4. */
 export const ENTIDADES_HUB = [...ENTIDADES_ENVIO_FDV, 'titulo', 'nota'] as const;
@@ -41,7 +42,12 @@ export type SituacaoEntidade = z.infer<typeof SituacaoEntidade>;
 /** A-04 (RN-CORE-19 do FDV): sigla de medida = 1 a 4 letras maiúsculas (`SIGLA_MEDIDA_FORMATO`); o Hub ainda confere se ela existe nas medidas do tenant. */
 const SiglaMedida = z.string().regex(/^[A-Z]{1,4}$/);
 const Texto = (max: number) => z.string().min(1).max(max);
-const ExternalId = z.string().min(1).max(200);
+const ExternalId = z.string().min(1).max(EXTERNAL_ID_MAX);
+/** Limites do prazo no Hub (v1 e v2): até 24 parcelas e 365 dias, tanto nas parcelas quanto no prazo médio. */
+const MAX_DIAS_HUB = 365;
+const MAX_PARCELAS_HUB = 24;
+const PrazoMedioDiasHub = z.number().int().min(0).max(MAX_DIAS_HUB);
+const ParcelasDiasHub = z.array(z.number().int().min(0).max(MAX_DIAS_HUB)).min(1).max(MAX_PARCELAS_HUB);
 const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** Quantidade do Hub (`Quantidade` do `base.ts` do FDV): número finito, pode ser fracionário (P-1: não é texto). */
 const Quantidade = z.number().finite();
@@ -71,17 +77,17 @@ export type FilialHub = z.infer<typeof FilialHub>;
 export const VendedorHub = Base.extend({ nome: Texto(80), filial_external_id: ExternalId.optional() });
 export type VendedorHub = z.infer<typeof VendedorHub>;
 
-export const FormaPagamentoHub = Base.extend({ codigo: Texto(30), nome: Texto(60) });
+export const FormaPagamentoHub = Base.extend({ codigo: Texto(LIMITE_CODIGO_FORMA_PAGAMENTO), nome: Texto(60) });
 export type FormaPagamentoHub = z.infer<typeof FormaPagamentoHub>;
 
 export const PrazoPagamentoHub = Base.extend({
   forma_external_id: ExternalId,
   codigo: Texto(20),
   /** Lista de inteiros, ex.: `[28, 56]`; à vista = `[0]` (T-0085). */
-  parcelas_dias: z.array(z.number().int().min(0).max(365)).min(1).max(24),
+  parcelas_dias: ParcelasDiasHub,
   /** T-0085 lote 2: o prazo só sai completo (RN-CAD-15): descrição e prazo médio são obrigatórios. */
   descricao: Texto(60),
-  prazo_medio_dias: z.number().int().min(0).max(365),
+  prazo_medio_dias: PrazoMedioDiasHub,
 });
 export type PrazoPagamentoHub = z.infer<typeof PrazoPagamentoHub>;
 
@@ -97,8 +103,8 @@ export const PrazoPagamentoHubV2 = z
     codigo: Texto(20),
     forma_external_id: ExternalId,
     descricao: Texto(60),
-    parcelas_dias: z.array(z.number().int().min(0).max(365)).min(1).max(24),
-    prazo_medio_dias: z.number().int().min(0).max(365),
+    parcelas_dias: ParcelasDiasHub,
+    prazo_medio_dias: PrazoMedioDiasHub,
     ativo: z.boolean().optional(),
     ordem: z.number().int().min(0).optional(),
     percentual_ajuste: z.number().finite().optional(),
@@ -173,7 +179,7 @@ export const ClienteHub = Base.extend({
   endereco: EnderecoClienteHub.optional(),
   limite_credito_cents: Centavos,
   /** RN-CAD-16: prazo médio máximo do cliente; ausente = sem limite. `formas_pagamento` deixou de sair (T-0085 lote 2). */
-  prazo_medio_max_dias: z.number().int().min(0).max(365).optional(),
+  prazo_medio_max_dias: PrazoMedioDiasHub.optional(),
 });
 export type ClienteHub = z.infer<typeof ClienteHub>;
 
