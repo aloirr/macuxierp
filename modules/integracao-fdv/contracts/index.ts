@@ -84,3 +84,4 @@ export const RetornoErp = z.object({
   ocorrido_em: z.string().datetime(),
 });
 export type RetornoErp = z.infer<typeof RetornoErp>;
+export * from './pre-cadastro';
