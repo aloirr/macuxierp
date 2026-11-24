@@ -1,7 +1,7 @@
 'use client';
 import { useActionState, useState } from 'react';
 import { MENSAGEM_SENHA_IGUAL, type RegraSenhaId } from '@macuxierp/platform-sdk';
-import { CampoSenha } from '@/components/campo-senha';
+import { CampoSenha } from '@macuxierp/ui';
 import { RegrasSenha } from '@/components/regras-senha';
 import { estadoDaTroca, SENHAS_NAO_CONFEREM } from '@/lib/troca-senha';
 
@@ -24,16 +24,17 @@ export function FormularioTrocaSenha({ acao: acaoServidor, destino, rotuloAtual 
   const [atual, setAtual] = useState('');
   const [nova, setNova] = useState('');
   const [confirmacao, setConfirmacao] = useState('');
+  const [visivel, setVisivel] = useState(false);
   const [enviada, setEnviada] = useState<string | null>(null);
   const { difere, igualAtual, podeEnviar } = estadoDaTroca(atual, nova, confirmacao, !semSenhaAtual);
   return (
     <form action={(dados) => { setEnviada(nova); acao(dados); }}>
       <div aria-live="polite">{estado.erro && <p className="erro" role="alert">{estado.erro}</p>}</div>
       {destino !== undefined && <input type="hidden" name="destino" value={destino} />}
-      {!semSenhaAtual && <CampoSenha rotulo={rotuloAtual} nome="senha_atual" valor={atual} aoMudar={setAtual} autoComplete="current-password" erro={estado.campos?.senha_atual} />}
-      <CampoSenha rotulo="Senha nova" nome="senha_nova" valor={nova} aoMudar={setNova} autoComplete="new-password" erro={igualAtual ? MENSAGEM_SENHA_IGUAL : estado.campos?.senha_nova} />
+      {!semSenhaAtual && <div className="campo-senha-bloco"><CampoSenha id="troca-atual" rotulo={rotuloAtual} nome="senha_atual" valor={atual} aoMudar={setAtual} visivel={false} erro={estado.campos?.senha_atual} /></div>}
+      <div className="campo-senha-bloco"><CampoSenha id="troca-nova" rotulo="Senha nova" nome="senha_nova" valor={nova} aoMudar={setNova} visivel={visivel} aoAlternar={() => setVisivel((v) => !v)} finalidade="criacao" descrito="regras-lista" erro={igualAtual ? MENSAGEM_SENHA_IGUAL : estado.campos?.senha_nova} /></div>
       <RegrasSenha senha={nova} faltamNaApi={nova === enviada ? estado.regras : undefined} />
-      <CampoSenha rotulo="Confirme a senha nova" nome="confirmacao" valor={confirmacao} aoMudar={setConfirmacao} autoComplete="new-password" erro={confirmacao.length > 0 && difere ? SENHAS_NAO_CONFEREM : estado.campos?.confirmacao} />
+      <div className="campo-senha-bloco"><CampoSenha id="troca-confirmacao" rotulo="Confirme a senha nova" nome="confirmacao" valor={confirmacao} aoMudar={setConfirmacao} visivel={visivel} finalidade="criacao" erro={confirmacao.length > 0 && difere ? SENHAS_NAO_CONFEREM : estado.campos?.confirmacao} /></div>
       <button className="mx-botao" type="submit" disabled={!podeEnviar || pendente}>{pendente ? 'Salvando…' : rotuloBotao}</button>
     </form>
   );
