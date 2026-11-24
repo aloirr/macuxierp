@@ -20,12 +20,16 @@
 //  - Junções de recados (ADR 0035, T-0139): o caminho por .coord/recados/... fica dentro da raiz (nada aqui usa
 //    realpath). O caminho de verdade no clone (C:/macuxierp-recados/recados/...) volta a ser .coord/recados/...
 //    (mesmas regras) e o resto do clone (.git, .github, README) é bloqueado.
+//  - Worktree da ferramenta Agent (R-20261124-181828, b): .claude/worktrees/<nome>/... vale como o caminho a partir do
+//    topo do worktree (relativoNoWorktree em guarda-bash-lib.mjs): .claude/worktrees/agent-x/apps/web/a.ts = apps/web/a.ts;
+//    .claude/worktrees/agent-x/.claude/hooks/y.mjs continua .claude/** (só alexandre).
 //  - sessão manual local (sem agente) → liberado. Desligar tudo: variável MACUXI_GUARDA=off.
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   PESSOAS, RAIZ, caminhoRelativo, podeAlterar, agenteDaSessao, juncoesDeRecados, relativoPorJuncao, MOTIVO_CLONE_DE_RECADOS,
 } from '../../scripts/coord-lib.mjs';
+import { relativoNoWorktree } from './guarda-bash-lib.mjs';
 
 function lerEntrada() {
   return new Promise((ok) => {
@@ -54,7 +58,7 @@ const alvo = ti.file_path || ti.notebook_path || ti.path;
 if (!agente) process.exit(0); // sessão manual, sem agente
 if (!alvo) process.exit(0);
 
-let rel = caminhoRelativo(alvo, RAIZ);
+let rel = relativoNoWorktree(caminhoRelativo(alvo, RAIZ), RAIZ);
 if (rel === null) {
   // ADR 0035: escrita direta no clone de recados (por fora da junção) segue as regras de .coord/recados.
   const j = relativoPorJuncao(resolve(RAIZ, alvo), juncoesDeRecados(RAIZ));

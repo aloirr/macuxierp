@@ -67,6 +67,11 @@ const botaoPrincipalHover: CSSProperties = { background: cor('grafite'), border:
 /** Hover do botão secundário: fundo névoa. */
 const botaoSecundarioHover: CSSProperties = { background: cor('nevoa') };
 
+/** Hover do olho do campo de senha: só o ícone escurece (grafite), sem fundo nem borda. */
+const olhoHover: CSSProperties = { color: cor('grafite') };
+/** Foco do olho: contorno de 2 px em azul-noite por dentro do botão (offset −2 px), pois ele fica colado na borda do campo. */
+const focoOlho: CSSProperties = { outline: `2px solid ${cor('azulNoite')}`, outlineOffset: '-2px' };
+
 const contornoFoco = (c: Cor): CSSProperties => ({ outline: `2px solid ${cor(c)}`, outlineOffset: '2px' });
 /** Foco visível dos botões (MC-0011): contorno de 2 px em azul-noite. */
 export const focoVisivel: CSSProperties = contornoFoco('azulNoite');
@@ -127,7 +132,9 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-botao-destrutivo', botaoDestrutivo()) +
     regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
     regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
+    regraCss('.mx-olho:hover:not(:disabled)', olhoHover) +
     regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible', focoVisivel) +
+    regraCss('.mx-olho:focus-visible', focoOlho) +
     regraCss('.mx-radio', radioBase) +
     regraCss('.mx-radio:checked', radioMarcado) +
     regraCss('.mx-radio:focus-visible', focoVisivel) +

@@ -42,9 +42,16 @@
 .mx-botao-secundario:hover:not(:disabled) {
   background: var(--mx-cor-nevoa);
 }
+.mx-olho:hover:not(:disabled) {
+  color: var(--mx-cor-grafite);
+}
 .mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible {
   outline: 2px solid var(--mx-cor-azul-noite);
   outline-offset: 2px;
+}
+.mx-olho:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: -2px;
 }
 .mx-radio {
   appearance: none;

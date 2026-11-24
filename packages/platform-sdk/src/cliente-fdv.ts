@@ -67,8 +67,8 @@ export const ClienteParaErpFdv = z
     revisao: z.number().int().positive().optional(),
     hash: z.string().regex(/^[0-9a-f]{64}$/).nullish(),
     tentativa: z.number().int().positive().optional(),
-    /** Aditivo do FDV v1.0.34 (R-20261124-182351): nulo ou ausente = vendedor sem código no ERP; a tela mostra "—". */
-    vendedor_external_id: z.string().max(200).nullish(),
+    /** Aditivo do FDV v1.0.34 (R-20261124-182351). */
+    vendedor_external_id: TextoLido,
   })
   .passthrough();
 export type ClienteParaErpFdv = z.infer<typeof ClienteParaErpFdv>;
@@ -197,8 +197,7 @@ export const DocumentoMascaradoFdv = z.string().regex(/^(\*\*\*\.\d{3}\.\d{3}-\*
 
 /**
  * Uma linha da seção (`GET /v1/integracao-fdv/clientes-recebidos`, ação `integracao-fdv.ver`). Sem e-mail, telefone,
- * endereço nem coordenadas; o documento só mascarado. `vendedor_external_id` fica nulo até o FDV mandar o vendedor no
- * pendente (pedido aditivo ao FDV, desenho §8). `erros` são os da última recusa.
+ * endereço nem coordenadas; o documento só mascarado. `vendedor_external_id` é nulo quando o FDV não manda o vendedor. `erros` são os da última recusa.
  */
 export const ClienteRecebidoFdv = z
   .object({

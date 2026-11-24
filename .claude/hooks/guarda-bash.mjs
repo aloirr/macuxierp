@@ -55,6 +55,9 @@
 //    opção desconhecida e gh api escondido em bash -c/node -e são bloqueados (conferirGhApi em guarda-merge-lib.mjs;
 //    casos em guarda-gh-api.test.mjs). As ferramentas MCP têm hook próprio: .claude/hooks/guarda-mcp.mjs.
 //  - Trava do graphify (T-0064), antes do MACUXI_GUARDA=off: ver guarda-graphify-lib.mjs.
+//  - Escrita por interpretador (R-20261124-181828, opção A): código inline (python3 - <<EOF, node -e, perl -e...) com
+//    caminho fora dos donos ou que não dá para determinar é bloqueado no PreToolUse ("use Edit/Write"); worktree em
+//    .claude/worktrees/<nome>/... vale a partir do topo dele. Casos: guarda-interpretador.test.mjs.
 // Detalhes e casos: .claude/hooks/guarda-bash-lib.mjs e .claude/hooks/guarda-bash.test.mjs.
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

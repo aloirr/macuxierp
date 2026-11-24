@@ -285,7 +285,7 @@ function criarRepo(respostas = { ...respostasDoPr(), ...respostasDoPr({ pr: 41, 
   mkdirSync(join(dir, 'scripts'), { recursive: true });
   copyFileSync(join(RAIZ_REAL, 'scripts', 'coord-lib.mjs'), join(dir, 'scripts', 'coord-lib.mjs'));
   mkdirSync(join(dir, '.claude', 'hooks'), { recursive: true });
-  for (const f of ['guarda-merge-mcp.mjs', 'guarda-merge-lib.mjs', 'guarda-bash-lib.mjs']) copyFileSync(join(AQUI, f), join(dir, '.claude', 'hooks', f));
+  for (const f of ['guarda-merge-mcp.mjs', 'guarda-merge-lib.mjs', 'guarda-bash-lib.mjs', 'guarda-interpretador-lib.mjs']) copyFileSync(join(AQUI, f), join(dir, '.claude', 'hooks', f));
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'inicial\n\nAgente: gerente-projetos');
   git(dir, 'checkout', '-q', '-b', 'nuvem/T-0099-x');

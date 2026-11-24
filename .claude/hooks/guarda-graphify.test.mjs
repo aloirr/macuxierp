@@ -227,7 +227,7 @@ function criarAmbiente() {
   mkdirSync(join(erp, 'scripts'), { recursive: true });
   for (const f of ['coord-lib.mjs', 'coord.mjs']) copyFileSync(join(RAIZ_REAL, 'scripts', f), join(erp, 'scripts', f));
   mkdirSync(join(erp, '.claude', 'hooks'), { recursive: true });
-  for (const f of ['guarda-graphify.mjs', 'guarda-graphify-lib.mjs', 'guarda-bash.mjs', 'guarda-bash-lib.mjs', 'guarda-merge-lib.mjs']) {
+  for (const f of ['guarda-graphify.mjs', 'guarda-graphify-lib.mjs', 'guarda-bash.mjs', 'guarda-bash-lib.mjs', 'guarda-interpretador-lib.mjs', 'guarda-merge-lib.mjs']) {
     copyFileSync(join(AQUI, f), join(erp, '.claude', 'hooks', f));
   }
   commitar(erp);
