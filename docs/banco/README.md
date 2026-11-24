@@ -306,6 +306,14 @@ Migração: `db/migrations/0050_superadmin_cancelar_temporaria.sql`; testes: `db
 ## Temporária destrava o superadmin (hotfix, migração 0051)
 - `plataforma.superadmin_consumir_temporaria(uuid)` (mesma assinatura, retorno e privilégios; RN-CORE-10) zera também `falhas_login` e `bloqueado_ate` no mesmo `UPDATE` atômico da temporária; sem temporária válida nada muda e a `superadmin_abrir_sessao` (0033) segue recusando o travado. Migração: `db/migrations/0051_superadmin_temporaria_destrava.sql`; testes: `db/testes/senha-temporaria-0051.db.test.ts`.
 
+## Prazo médio no prazo e no cliente (T-0085, migração 0052)
+- `cadastros.condicao_pagamento.prazo_medio_dias` e `cadastros.cliente.prazo_medio_dias`, `integer NULL`, 0 a 999 dias (CHECKs validados `condicao_prazo_medio_dias_ck` e `cliente_prazo_medio_dias_ck`, SQLSTATE 23514). O prazo médio é **digitado** (ADR 0020); o cliente usa os prazos com prazo médio menor ou igual ao dele (a regra é do `domain` do pedido, revalidada na API).
+- **Sem NOT NULL e sem backfill:** o legado fica nulo, "incompleto" (o prazo nulo não sai ao FDV; quem decide é o módulo `integracao-fdv`).
+- **À vista** (tPag 01, 04 e 17, `FORMAS_A_VISTA` do cadastros): `condicao_prazo_medio_a_vista_ck` = `deleted_at IS NOT NULL OR forma_tpag NOT IN ('01', '04', '17') OR coalesce(prazo_medio_dias, 0) = 0`, criada `NOT VALID` no padrão da 0019 (linha inativa fora; reativar volta a exigir). Hoje todo legado é nulo e já passa; a validação (`VALIDATE CONSTRAINT`) pode vir em migração futura.
+- Índice `condicao_pagamento_prazo_medio_ix` (tenant_id, prazo_medio_dias) `WHERE deleted_at IS NULL`: os prazos ativos que o cliente pode usar.
+- RLS, grants (por tabela, 0004: as colunas novas entram sozinhas) e gatilhos não mudam. **Funções do portal (0040 a 0046) sem mudança:** nenhuma lista colunas de dado dessas tabelas (só `id`, referências e `external_id`); quem grava na carga é a tx2 do app (`modules/cadastros/api`).
+- Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `CREATE INDEX IF NOT EXISTS`, `lock_timeout` de 5 s). Teste: `db/testes/prazo-medio-0052.db.test.ts` (banco até a 0051 com a massa como legado, depois a 0052; a carga do portal em três transações grava o prazo médio do prazo e do cliente).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
