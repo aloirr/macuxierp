@@ -7,13 +7,14 @@
 #   bash ~/macuxierp-deploy/operador.sh criar-empresa --codigo <código do FDV> | --uf <UF> --nome "<nome da empresa>" \
 #        --admin-email "<e-mail do administrador>" [--admin-nome "<nome>"] --operador <seu nome> [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "<e-mail>" [--nome "<nome>"] --operador <seu nome> [--confirmar]
-#   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar \
+#   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar|--redefinir-senha \
 #        --operador <seu nome> [--confirmar]
 #
 # Comum aos três:
 #   - sem --confirmar: só mostra o plano (transação READ ONLY no banco); nada muda e nenhuma senha é gerada;
 #   - com --confirmar: aplica numa transação única e auditada. IDEMPOTENTE: repetir não duplica nada, NÃO troca a senha
-#     de quem já existe e não audita de novo o que já estava no estado pedido;
+#     de quem já existe e não audita de novo o que já estava no estado pedido (a exceção é o --redefinir-senha, que
+#     existe para trocar a senha: cada execução confirmada grava uma senha nova e audita de novo);
 #   - nome da empresa, e-mails e nomes de pessoa vão ao contêiner só pelo ambiente (-e NOME, sem valor no argv) e nunca
 #     aparecem no argv, na saída, nos erros nem na auditoria (que guarda código, ids e números).
 #
@@ -26,13 +27,16 @@
 #   --slug (legado) saiu na fase 2 da T-0053: agora dá erro de uso (saída 2).
 # criar-superadmin (ADR 0012 §5): o superadmin do portal /config, com deve_trocar_senha (troca no 1º acesso), auditado
 #   no tenant de referência (plataforma.superadmin.criar). --nome é opcional (padrão "Superadmin"; 2 a 80 caracteres).
-# superadmin (ADR 0012 §5): --desativar (revoga as sessões abertas do portal), --reativar ou --destravar (zera as falhas
-#   e a trava da §6); uma ação por vez, auditada (plataforma.superadmin.<ação>). Nunca gera nem troca senha.
-#   Os dois rodam o superadmin.mjs.
+# superadmin (ADR 0012 §5): --desativar (revoga as sessões abertas do portal), --reativar, --destravar (zera as falhas
+#   e a trava da §6) ou --redefinir-senha (T-0077: senha provisória nova com troca no 1º acesso, zera falhas e trava e
+#   revoga as sessões abertas; superadmin desativado é recusado, reative antes); uma ação por vez, auditada
+#   (plataforma.superadmin.<ação>). Os dois rodam o superadmin.mjs.
 #
-# Senha provisória (criar-empresa e criar-superadmin): 16 caracteres do alfabeto da API, com letra, número e caractere
-# especial por construção (regra única de senha, T-0052), gerada AQUI a partir do /dev/urandom, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a pessoa foi criada
-# agora. Entregue-a por um canal seguro (nunca em recado, chat ou e-mail aberto).
+# Senha provisória (criar-empresa, criar-superadmin e superadmin --redefinir-senha): 16 caracteres do alfabeto da API,
+# com letra, número e caractere especial por construção (regra única de senha, T-0052), gerada AQUI a partir do
+# /dev/urandom só com --confirmar, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a
+# pessoa foi criada ou a senha redefinida agora; em falha, é descartada sem aparecer. Entregue-a por um canal seguro
+# (nunca em recado, chat ou e-mail aberto).
 #
 # O script do contêiner vai pelo stdin. Saída 0 = ok; 2 = uso; 1 = falha (nada gravado).
 set -euo pipefail
@@ -202,9 +206,9 @@ superadmin() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --confirmar) CONFIRMAR=1; shift; continue ;;
-      --desativar | --reativar | --destravar)
+      --desativar | --reativar | --destravar | --redefinir-senha)
         [ "$COMANDO" = superadmin ] || uso "$1 só no comando superadmin"
-        [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar ou --destravar"
+        [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar, --destravar ou --redefinir-senha"
         ACAO="${1#--}"; shift; continue ;;
       --nome) [ "$COMANDO" = criar-superadmin ] || uso "--nome só no criar-superadmin"; [ $# -ge 2 ] || uso "$1 exige um valor" ;;
       --email | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
@@ -217,7 +221,7 @@ superadmin() {
     esac
     shift 2
   done
-  [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar ou --destravar"
+  [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar, --destravar ou --redefinir-senha"
   [[ "$EMAIL" =~ $PADRAO_EMAIL ]] && [ "${#EMAIL}" -le 254 ] || uso "--email fora do formato"
   [ "$ACAO" != criar ] || texto --nome "$NOME" 2 80
   [[ "$OPERADOR" =~ $PADRAO_OPERADOR ]] || uso "--operador exige o nome de quem executa (ex.: alexandre)"
@@ -232,7 +236,7 @@ superadmin() {
   fi
   if [ "$CONFIRMAR" = 1 ]; then
     ARGS+=(--confirmar)
-    if [ "$ACAO" = criar ]; then
+    if [ "$ACAO" = criar ] || [ "$ACAO" = redefinir-senha ]; then
       SENHA="$(gerar_senha)" || erro 1 "não foi possível gerar a senha provisória (nada foi gravado)"
       export MACUXIERP_SENHA_INICIAL="$SENHA"
       ENVS+=(-e MACUXIERP_SENHA_INICIAL)
@@ -243,11 +247,22 @@ superadmin() {
     erro 1 "$COMANDO falhou (código $STATUS; veja a linha [superadmin] acima). Nada foi gravado${SENHA:+; a senha gerada foi descartada}"
   fi
   local TIPO=alteracao
-  [ "$ACAO" != criar ] || TIPO=criacao
+  case "$ACAO" in
+    criar) TIPO=criacao ;;
+    redefinir-senha) TIPO=redefinicao ;;
+  esac
   case "$TIPO:$ESTADO" in
     'criacao:estado: superadmin-criado')
       [ "$CONFIRMAR" = 1 ] || erro 1 "estado inesperado numa simulação"
       printf '\nSenha provisória do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$SENHA"
+      ;;
+    'redefinicao:estado: alterado')
+      [ "$CONFIRMAR" = 1 ] || erro 1 "estado inesperado numa simulação"
+      printf '\nNova senha provisória do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$SENHA"
+      ;;
+    'redefinicao:estado: simulacao')
+      [ "$CONFIRMAR" = 0 ] || erro 1 "estado de simulação com --confirmar; a senha gerada foi descartada. Rode sem --confirmar para conferir antes de repetir"
+      echo "[operador] SIMULAÇÃO: nada gravado. Repita com --confirmar para aplicar."
       ;;
     'criacao:estado: superadmin-existia') echo "[operador] o superadmin já existia: a senha dele NÃO foi alterada (nenhuma senha nova)." ;;
     *':estado: simulacao') echo "[operador] SIMULAÇÃO: nada gravado. Repita com --confirmar para aplicar." ;;
