@@ -1,0 +1,40 @@
+# Macuxi Conector (ERP) — unidade systemd oficial do pacote Linux.
+# ADR 0014, seção 6 item 4. Sem dado sensível neste arquivo: os segredos
+# ficam em /etc/macuxi-conector/segredos.env (root:root, 0600), fora do pacote.
+
+[Unit]
+Description=Macuxi Conector (entrada de dados do Macuxi ERP)
+Documentation=file:///opt/macuxi-conector/LEIAME-LINUX.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=macuxi-conector
+Group=macuxi-conector
+WorkingDirectory=/var/lib/macuxi-conector
+StateDirectory=macuxi-conector
+StateDirectoryMode=0750
+EnvironmentFile=/etc/macuxi-conector/segredos.env
+Environment=NODE_ENV=production
+# CLI do Conector (src/cli.ts, src/comandos.ts): `rodar` é o laço do serviço e
+# `--config` aponta o arquivo de configuração.
+ExecStart=/usr/bin/node /opt/macuxi-conector/conector.mjs rodar --config /etc/macuxi-conector/conector.json
+Restart=on-failure
+RestartSec=30
+
+# Endurecimento
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/macuxi-conector
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

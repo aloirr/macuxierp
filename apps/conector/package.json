@@ -1,0 +1,35 @@
+{
+  "name": "@macuxierp/conector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.7" },
+  "description": "Conector on-premise do Macuxi ERP: lê o banco do cliente e empurra os cadastros à /entrada/v1 do ERP por delta (ADR 0014 §6; base FDV 1.5.0 @c460e92).",
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "build": "node scripts/empacotar.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@macuxierp/platform-sdk": "workspace:*",
+    "mssql": "^12.7.13",
+    "oracledb": "^26.0.0",
+    "pg": "8.23.1",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@macuxierp/config": "workspace:*",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^22.18.0",
+    "@types/oracledb": "^26.0.1",
+    "@types/pg": "8.23.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Gerado por "conector instalar-servico". Pode ser editado; reinstale o serviço depois de mudar. Sem segredos neste arquivo. -->
+<service>
+  <id>MacuxiConector</id>
+  <name>Macuxi Conector</name>
+  <description>Conector do Macuxi ERP: lê o banco do ERP do cliente e envia os dados à /entrada/v1 (somente conexões de saída, HTTPS).</description>
+  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <arguments>C:\ProgramData\Macuxi\Conector\conector.mjs rodar --config C:\ProgramData\Macuxi\Conector\conector.json</arguments>
+  <workingdirectory>C:\ProgramData\Macuxi\Conector\servico</workingdirectory>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <priority>BelowNormal</priority>
+  <stoptimeout>30 sec</stoptimeout>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <logpath>C:\ProgramData\Macuxi\Conector\dados\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>
