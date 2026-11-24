@@ -5,6 +5,7 @@ export * from './texto';
 export * from './documentos';
 export * from './permissoes';
 export * from './erros';
+export * from './entrada-dono';
 export * from './banco';
 export * from './acesso';
 export * from './eventos';
