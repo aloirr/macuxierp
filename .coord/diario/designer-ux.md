@@ -28,3 +28,4 @@
 2026-11-23 — T-0058 — Dialogo: fallback 100vh/dvh por estado, teste do aviso no DialogoMotivo, docs
 2026-11-23 — T-0058 — Dialogo: 8px entre aviso e corpo (marginBottom) e prints regenerados com botão da marca em foco
 2026-11-23 — T-0068 — aviso do Dialogo em 15 px/600 e AlertaBloqueante (ícone, barra 4 px, role=alert, foco) com doc em docs/design/alerta-bloqueante; RD-1262–1265; foco verificado no Chromium
+2026-11-23 — T-0076 — desenho do login único (molde FDV), esqueci a senha com temporária; RD-1311–1313 reservados
