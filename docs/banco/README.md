@@ -129,7 +129,7 @@ Colunas, chaves, índices, CHECKs e privilégios: `docs/desenho/T-0013.md` §7 e
 - **Massa comum:** o aviso do A1 continua em `fixtureModulos` (`db/testes/fixture.ts`) porque `db/testes/vazamento.ts` e `tests/integracao/banco/rls-core-cadastros.db.test.ts` exigem linha de cada tenant em toda tabela de `core`.
 
 ## Forma de pagamento na condição (T-0026, migração 0010)
-- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64), `forma_codigo` (≤ 20) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
+- `cadastros.condicao_pagamento` ganha `forma_external_id` (≤ 64; 200 desde a 0054), `forma_codigo` (≤ 20; 30 desde a 0054) e `forma_nome` (≤ 60), anuláveis e sem padrão: cada linha do `prazo_pagamento.csv` do kit do FDV vira uma condição, com a forma nela (o `forma_tpag` já vem da 0004). Fonte: `docs/desenho/T-0026.md` (D12 e seção 6).
 - Índice parcial `condicao_pagamento_forma_external_id_ix` em `(tenant_id, forma_external_id) where forma_external_id is not null`: a carga do `forma_pagamento.csv` atualiza todas as condições da forma por ele. RLS, política, trigger e grants da 0004 não mudam.
 - **Parcelas do cartão (T-0015, 0017; decisões do Alexandre de 22/11, horário de Manaus):** `parcelas_cartao smallint` anulável. A regra sai em **duas migrações**, para o `main` nunca ficar num estado em que a rota e a carga de cartão do cadastros falham:
   - **0017 (permissiva, validada):** `condicao_parcelas_cartao_ck` = `parcelas_cartao IS NULL OR (forma_tpag = '03' AND parcelas_cartao BETWEEN 1 AND 12)` (SQLSTATE 23514). Nenhuma linha atual a viola, por isso nasce validada (sem `NOT VALID`). Cartão sem parcelas continua aceito, inclusive em UPDATE de linha antiga; a API e a carga atuais, que não gravam a coluna, seguem funcionando. Grants da 0004 por tabela (sem grant por coluna) cobrem a coluna.
@@ -325,6 +325,15 @@ Emenda da RN-CAD-10 de 24/11/2026 (desenho em `docs/desenho/T-0086.md` §5). O `
 - **Compatibilidade:** a `portal_zerar_espelho` (0043) fica para a versão anterior da API, que ainda a chama antes do `portal_zerar`; nesse caminho o `erp_id` já foi limpo e a inativação pega só os alvos por `fonte_refs` (preço, estoque e forma). Sai quando nenhuma versão a chamar (lote 2 do `modulo-cadastros`).
 
 Migração: `db/migrations/0053_integracao_fdv_zerar_inativa.sql`; testes: `db/testes/integracao-fdv-zerar-inativa-0053.db.test.ts`.
+
+## Limites do Hub no cadastros (T-0092, migração 0054)
+ADR 0019, opção A: o banco aceita os limites do `hub-v1` do SDK (`EXTERNAL_ID_MAX` = 200 e `LIMITE_CODIGO_FORMA_PAGAMENTO` = 30).
+- **O que muda:** em todas as tabelas do schema `cadastros` com `external_id` (inclusive as oficiais e a `carga_portal`), `CHECK (length(external_id) <= 200)` no lugar do `<= 64`; em `cadastros.condicao_pagamento`, `forma_external_id` também vai a 200 e `forma_codigo` a 30 (era 20). Os outros schemas seguem em 64: não recebem chave do Hub.
+- **Como:** o CHECK antigo é achado pela definição (não pelo nome) e sai; o novo entra com o nome de sempre (`<tabela>_<coluna>_check`, que é o que a API e os testes veem no 23514), `NOT VALID`, e é validado logo depois. Como o `migrar` roda a migração numa transação só, a trava do `ADD` vai até o COMMIT (como na 0028); o `VALIDATE` só lê o `length()` de cada linha, que já cabe no limite menor. Sem reescrita de dado nem troca de tipo (as colunas são `text`).
+- **Compatibilidade:** só alarga; a versão anterior da API grava até 64/20 e continua passando. Reexecutável (CHECK novo conferido em `pg_constraint`), `lock_timeout` de 5 s.
+- Os contracts e a carga do `cadastros` (64/20 hoje) ficam com o `modulo-cadastros` (T-0092, passo 2).
+
+Migração: `db/migrations/0054_cadastros_limites_hub.sql`; testes: `db/testes/cadastros-limites-0054.db.test.ts` (banco até a 0053 com o legado em 64/20, depois a 0054; limite passa e um a mais cai em 23514 em cada tabela tocada) e `db/testes/condicao-forma.db.test.ts` (200/30).
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
