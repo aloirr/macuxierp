@@ -57,7 +57,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
         </nav>
       )}
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
-      {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} />}
+      {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} perfil={perfil} />}
       {tela && declarada && (
         <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
