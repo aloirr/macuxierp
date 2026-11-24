@@ -14,8 +14,10 @@ const tx = { consultar: async () => [] };
 const AGORA = new Date('2026-11-24T14:00:00Z');
 const RETORNO_EM = '2026-11-24T15:00:00.000Z';
 // Entrada do Hub (texto) e a referência gravada (inteiros).
-const NOTA = { numero: '1234', serie: '1', emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
-const NOTA_2 = { numero: '1240', serie: '1', emitida_em: '2026-11-24T13:45:00.000Z', total_centavos: 3500 };
+const CHAVE = '13261112345678000195550010000012341000000014';
+const CHAVE_2 = '13261112345678000195550010000012401000000020';
+const NOTA = { numero: '1234', serie: '1', chave: CHAVE, emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
+const NOTA_2 = { numero: '1240', serie: '1', chave: CHAVE_2, emitida_em: '2026-11-24T13:45:00.000Z', total_centavos: 3500 };
 const REF = { numero: 1234, serie: 1, emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
 const REF_2 = { numero: 1240, serie: 1, emitida_em: '2026-11-24T13:45:00.000Z', total_centavos: 3500 };
 
@@ -144,14 +146,18 @@ describe('referência da nota do cliente no pedido (T-0057)', () => {
   it('RN-PED-02: a chave de 44 dígitos vai só no evento; a referência gravada não a tem', async () => {
     const t = montar();
     const id = await pedidoAprovadoNaFila(t);
-    const c43 = '1326111234567800019555001000001234100000001';
-    let soma = 0;
-    let peso = 2;
-    for (let i = 42; i >= 0; i--) { soma += Number(c43[i]) * peso; peso = peso === 9 ? 2 : peso + 1; }
-    const chave = `${c43}${soma % 11 < 2 ? 0 : 11 - (soma % 11)}`;
-    await t.servico.aplicarRetorno(tx, t.fx, retorno('faturado_total', { ...NOTA, chave } as typeof NOTA));
-    expect(t.outbox.eventos.at(-1)?.payload).toMatchObject({ nota_cliente: { ...NOTA, chave } });
+    await t.servico.aplicarRetorno(tx, t.fx, retorno('faturado_total', NOTA));
+    expect(t.outbox.eventos.at(-1)?.payload).toMatchObject({ nota_cliente: { ...NOTA, chave: CHAVE } });
     expect(t.fila.notas.get(id)).toEqual(REF);
+  });
+  it('RN-PED-02: retorno faturado com nota sem chave ou com chave de DV inválido é 422 nota_cliente_invalida no campo chave e não grava', async () => {
+    const t = montar();
+    const id = await pedidoAprovadoNaFila(t);
+    const { chave: _sem, ...semChave } = NOTA;
+    await expect(t.servico.aplicarRetorno(tx, t.fx, retorno('faturado_total', semChave as typeof NOTA))).rejects.toMatchObject({ status: 422, detalhes: { codigo: 'nota_cliente_invalida', campo: 'chave' } });
+    const ruim = `${CHAVE.slice(0, 43)}${(Number(CHAVE[43]) + 1) % 10}`;
+    await expect(t.servico.aplicarRetorno(tx, t.fx, retorno('faturado_total', { ...NOTA, chave: ruim }))).rejects.toMatchObject({ status: 422, detalhes: { codigo: 'nota_cliente_invalida', campo: 'chave' } });
+    expect(t.fila.notas.get(id) ?? null).toBeNull();
   });
   it('RN-PED-02: nota inválida (data no futuro, número com zero à esquerda) é 422 e não grava', async () => {
     const t = montar();

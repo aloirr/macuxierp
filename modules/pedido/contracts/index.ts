@@ -417,13 +417,13 @@ export type PedidoFaturadoV1 = z.infer<typeof PedidoFaturadoV1>;
 
 /**
  * Nota do cliente como o Hub e o evento a entregam (ADR 0014 §13 e §15): `numero` e `serie` em TEXTO sem zero à esquerda
- * (número de "1" a "999999999"; série de "0" a "999"), total inteiro em centavos, data UTC e `chave` opcional de 44 dígitos
+ * (número de "1" a "999999999"; série de "0" a "999"), total inteiro em centavos, data UTC e `chave` obrigatória de 44 dígitos
  * (o DV módulo 11 e o "no máximo agora + 5 min" são conferidos no domain, que recebe o "agora"). Sem XML e sem emissão.
  */
 export const NotaClienteTexto = z.object({
   numero: z.string().regex(/^[1-9]\d{0,8}$/),
   serie: z.string().regex(/^(0|[1-9]\d{0,2})$/),
-  chave: z.string().regex(/^\d{44}$/).optional(),
+  chave: z.string().regex(/^\d{44}$/),
   emitida_em: z.string().datetime(),
   total_centavos: Centavos,
 });

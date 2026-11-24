@@ -106,7 +106,7 @@ describe('retorno vindo do cliente (modo ponte)', () => {
 
 describe('nota do cliente na entrada: texto do Hub para a referência (T-0057)', () => {
   const AGORA = new Date('2026-11-24T14:00:00.000Z');
-  const texto = { numero: '1234', serie: '1', emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
+  const texto = { numero: '1234', serie: '1', chave: '13261112345678000195550010000012341000000014', emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
   const chaveDe = (c43: string) => {
     let soma = 0;
     let peso = 2;
@@ -119,10 +119,11 @@ describe('nota do cliente na entrada: texto do Hub para a referência (T-0057)',
   };
   const CHAVE = chaveDe('1326111234567800019555001000001234100000001');
   it('RN-PED-02: numero e serie em texto viram inteiros; a chave sai fora da referência e vai só para o evento', () => {
-    expect(converterNotaCliente({ ...texto, chave: CHAVE }, AGORA)).toEqual({
+    expect(converterNotaCliente(texto, AGORA)).toEqual({
       ok: true, referencia: { numero: 1234, serie: 1, emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 }, chave: CHAVE,
     });
-    expect(converterNotaCliente(texto, AGORA)).toMatchObject({ ok: true, chave: null });
+    // @ts-expect-error a chave é obrigatória
+    expect(converterNotaCliente({ ...texto, chave: undefined }, AGORA)).toMatchObject({ ok: false, campo: 'chave' });
   });
   it.each(['1', '999999999'])('RN-PED-02: numero %s é aceito', (numero) => {
     expect(converterNotaCliente({ ...texto, numero }, AGORA).ok).toBe(true);

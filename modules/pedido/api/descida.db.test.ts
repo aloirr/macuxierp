@@ -91,8 +91,8 @@ describe.skipIf(!PG_DISPONIVEL)('fila de descida do pedido (PostgreSQL real, mig
 
   it('RN-PED-02: a referência da nota do cliente grava as quatro colunas, troca no parcial, recusa a divergente (409) e o cancelado não a toca', async (ctx) => {
     if (!temTabela || !(await admin("SELECT 1 FROM information_schema.columns WHERE table_schema = 'pedido' AND table_name = 'pedido' AND column_name = 'nota_cliente_numero'")).length) return ctx.skip();
-    const A = { numero: '1234', serie: '1', emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
-    const B = { numero: '1240', serie: '2', emitida_em: '2026-11-24T13:45:00.000Z', total_centavos: 3500 };
+    const A = { numero: '1234', serie: '1', chave: '13261112345678000195550010000012341000000014', emitida_em: '2026-11-24T13:30:00.000Z', total_centavos: 2000 };
+    const B = { numero: '1240', serie: '2', chave: '13261112345678000195550010000012401000000020', emitida_em: '2026-11-24T13:45:00.000Z', total_centavos: 3500 };
     const refA = { numero: 1234, serie: 1, emitida_em: A.emitida_em, total_centavos: 2000 };
     const id = await novoAprovado(ponte);
     const aplicar = (status: 'faturado_parcial' | 'faturado_total' | 'cancelado', nota?: typeof A) =>

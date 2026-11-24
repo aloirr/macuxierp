@@ -47,9 +47,9 @@ export interface DependenciasDescida extends Dependencias {
 }
 
 export const LIMITE_PENDENTES = 100;
-/** Referência (inteiros) → nota do evento (texto, com a chave só se o cliente a mandou). */
-const notaDoEvento = (n: NotaReferenciaCliente, chave: string | null): NotaClienteTexto => ({
-  numero: String(n.numero), serie: String(n.serie), ...(chave ? { chave } : {}), emitida_em: n.emitida_em, total_centavos: n.total_centavos,
+/** Referência (inteiros) → nota do evento (texto, com a chave obrigatória). */
+const notaDoEvento = (n: NotaReferenciaCliente, chave: string): NotaClienteTexto => ({
+  numero: String(n.numero), serie: String(n.serie), chave, emitida_em: n.emitida_em, total_centavos: n.total_centavos,
 });
 const MOTIVO_CANCELADO_NO_CLIENTE = 'Cancelado no sistema do cliente';
 
@@ -141,7 +141,7 @@ export function criarServicoDescida(d: DependenciasDescida) {
       if (r.acao === 'atualizar_nota') {
         // Um evento por mudança aplicada: o FDV precisa receber a nota nova (status e status_anterior iguais).
         await fila.gravarNotaCliente(p.id, r.nota);
-        const idNota = await fx.publicar(eventoFaturadoCliente((await repo.obter(p.id)) as PedidoGravado, p.status, notaDoEvento(r.nota, chave)));
+        const idNota = await fx.publicar(eventoFaturadoCliente((await repo.obter(p.id)) as PedidoGravado, p.status, notaDoEvento(r.nota, chave as string)));
         await repo.registrarEvento({
           pedido_id: p.id, de: p.status, para: p.status, ator_tipo: 'sistema', ator_id: null, motivo_codigo: null,
           motivo_texto: null, pendencias: null, evento_id: idNota, ocorrido_em: fx.agora,
@@ -157,7 +157,7 @@ export function criarServicoDescida(d: DependenciasDescida) {
       const nota = r.nota;
       const cancelando = r.para === 'cancelado';
       const motivoTexto = cancelando ? (retorno.motivo ?? MOTIVO_CANCELADO_NO_CLIENTE) : null;
-      const idEvento = await fx.publicar(cancelando ? eventoCancelado(final, p.status, 'outro', motivoTexto) : eventoFaturadoCliente(final, p.status, nota ? notaDoEvento(nota, chave) : null));
+      const idEvento = await fx.publicar(cancelando ? eventoCancelado(final, p.status, 'outro', motivoTexto) : eventoFaturadoCliente(final, p.status, nota && chave ? notaDoEvento(nota, chave) : null));
       await repo.registrarEvento({
         pedido_id: p.id, de: p.status, para: r.para, ator_tipo: 'sistema', ator_id: null, motivo_codigo: cancelando ? 'outro' : null,
         motivo_texto: motivoTexto, pendencias: null, evento_id: idEvento, ocorrido_em: fx.agora,

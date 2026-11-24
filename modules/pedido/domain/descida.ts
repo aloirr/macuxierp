@@ -47,7 +47,7 @@ export function mesmaNotaCliente(a: NotaReferenciaCliente, b: NotaReferenciaClie
 }
 
 export type ResultadoNotaCliente =
-  | { ok: true; referencia: NotaReferenciaCliente; chave: string | null }
+  | { ok: true; referencia: NotaReferenciaCliente; chave: string }
   | { ok: false; rn: 'RN-PED-02'; codigo: 'nota_cliente_invalida'; campo: 'numero' | 'serie' | 'total_centavos' | 'emitida_em' | 'chave'; mensagem: string };
 
 const TOLERANCIA_RELOGIO_MS = 5 * 60 * 1000;
@@ -55,7 +55,7 @@ const TOLERANCIA_RELOGIO_MS = 5 * 60 * 1000;
 /**
  * RN-PED-02: confere a nota do Hub (texto) e a converte na referência gravável (inteiros das colunas da 0045).
  * `numero` de "1" a "999999999" e `serie` de "0" a "999", sem zero à esquerda; total inteiro ≥ 0; data até `agora` + 5 min
- * (`agora` por parâmetro, a função é pura); `chave` opcional de 44 dígitos com DV módulo 11. A chave não entra na referência.
+ * (`agora` por parâmetro, a função é pura); `chave` obrigatória de 44 dígitos com DV módulo 11. A chave não entra na referência.
  */
 export function converterNotaCliente(n: NotaClienteTexto, agora: Date): ResultadoNotaCliente {
   const inv = (campo: 'numero' | 'serie' | 'total_centavos' | 'emitida_em' | 'chave', mensagem: string) => ({ ok: false, rn: 'RN-PED-02', codigo: 'nota_cliente_invalida', campo, mensagem }) as const;
@@ -65,11 +65,11 @@ export function converterNotaCliente(n: NotaClienteTexto, agora: Date): Resultad
   const emitida = Date.parse(n.emitida_em);
   if (Number.isNaN(emitida)) return inv('emitida_em', 'Data de emissão da nota do cliente inválida');
   if (emitida > agora.getTime() + TOLERANCIA_RELOGIO_MS) return inv('emitida_em', 'Data de emissão da nota do cliente está no futuro (tolerância de 5 minutos)');
-  if (n.chave !== undefined && !chaveAcessoValida(n.chave)) return inv('chave', 'Chave de acesso da nota do cliente deve ter 44 dígitos e o DV módulo 11 correto');
+  if (typeof n.chave !== 'string' || !chaveAcessoValida(n.chave)) return inv('chave', 'Chave de acesso da nota do cliente deve ter 44 dígitos e o DV módulo 11 correto');
   return {
     ok: true,
     referencia: { numero: Number(n.numero), serie: Number(n.serie), emitida_em: new Date(emitida).toISOString(), total_centavos: n.total_centavos },
-    chave: n.chave ?? null,
+    chave: n.chave,
   };
 }
 
