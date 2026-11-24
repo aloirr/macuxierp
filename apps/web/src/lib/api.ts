@@ -193,7 +193,8 @@ export async function escreverJson(
   opcoes: { idempotencia?: string; versao?: string; cookie?: string } = {},
 ): Promise<RespostaEscrita> {
   if (usaApiFalsa) throw new ApiIndisponivel('a escrita precisa da API real: configure MACUXIERP_API_URL');
-  const cabecalhos: Record<string, string> = { authorization: `Bearer ${acesso}`, 'content-type': 'application/json' };
+  // Sem corpo, sem `content-type`: o Fastify recusa JSON vazio (DELETE e ações sem corpo, como inativar usuário).
+  const cabecalhos: Record<string, string> = { authorization: `Bearer ${acesso}`, ...(corpo === undefined ? {} : { 'content-type': 'application/json' }) };
   if (opcoes.idempotencia) cabecalhos['idempotency-key'] = opcoes.idempotencia;
   if (opcoes.versao) cabecalhos['if-match'] = opcoes.versao;
   if (opcoes.cookie) cabecalhos.cookie = opcoes.cookie;

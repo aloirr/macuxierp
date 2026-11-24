@@ -10,7 +10,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 
-type Tom = 'sucesso' | 'aviso' | 'neutro';
+/** `erro` (marca, R-20261124-183313): selo "Falhou" e o alerta do último envio que falhou; o `Chip` da ui ainda não tem o tom, então a tela usa `SeloTom`. */
+export type Tom = 'sucesso' | 'aviso' | 'neutro' | 'erro';
 
 /** Situação do conector como no Monitor do FDV. O estado nunca vai só por cor: o texto vai junto. */
 const SITUACAO_CONECTOR: Readonly<Record<SituacaoConectorFdv, { texto: string; tom: Tom }>> = {
@@ -55,8 +56,21 @@ export const ROTULO_SITUACAO_ENVIO: Readonly<Record<EnvioLogFdv['situacao'], { t
   enviando: { texto: 'Enviando…', tom: 'neutro' },
   concluido: { texto: 'Concluído', tom: 'sucesso' },
   com_erros: { texto: 'Com erros', tom: 'aviso' },
-  falhou: { texto: 'Falhou', tom: 'aviso' },
+  falhou: { texto: 'Falhou', tom: 'erro' },
 };
+
+/** Faixa do motivo no topo do Log: o último envio que falhou é erro (vermelho do sistema); os demais motivos seguem em aviso. */
+export const tomDoMotivoDoLog = (motivo: LogCadastroFdvPlataforma['motivo']): 'erro' | 'aviso' => (motivo === 'lote_falhou' ? 'erro' : 'aviso');
+
+// ---- Rótulos em português dos erros por linha (o CSV leva os códigos crus: `csvErrosLog`) ----
+
+/** Código e campo humanizados de forma genérica (sublinhado vira espaço, inicial maiúscula), sem dicionário: o rótulo curto por código virá dos contracts. */
+const legivel = (t: string): string => {
+  const x = t.replace(/[_.[\]]+/g, ' ').trim();
+  return x === '' ? t : x.charAt(0).toUpperCase() + x.slice(1);
+};
+export const rotuloDoCodigoErro = (codigo: string): string => legivel(codigo);
+export const rotuloDoCampoErro = (campo: string | null): string => (campo === null ? '—' : legivel(campo));
 
 export const textoReprocessarOk = (falhas: number, pendentes: number): string =>
   falhas + pendentes === 0 ? 'Nada a reprocessar neste cadastro.' : `Reprocessar pedido: ${plural(falhas, 'falha', 'falhas')} e ${plural(pendentes, 'pendente', 'pendentes')}.`;

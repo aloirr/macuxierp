@@ -38,6 +38,8 @@ export interface ResultadoEscrita {
   desatualizado?: boolean;
   /** 4xx definitivo (a API guardou a resposta da Idempotency-Key): corpo novo pede chave nova. */
   definitivo?: boolean;
+  /** Valor que vale uma vez (senha provisória, RN-CORE-10): vai só à tela que o mostra e some ao fechar; nunca a log. */
+  segredo?: string;
 }
 
 export { SESSAO_EXPIRADA };
@@ -52,9 +54,12 @@ const FIXAS: Readonly<Record<number, string>> = {
 };
 
 /** Lê `mensagem` e `campos` do corpo de erro da API, sem repassar nada fora do esperado. */
-export function resultadoDaResposta(status: number, ok: boolean, corpo: unknown): ResultadoEscrita {
-  const c = (corpo && typeof corpo === 'object' ? corpo : {}) as { id?: unknown; mensagem?: unknown; campos?: unknown };
-  if (ok) return { ok: true, mensagem: 'Feito.', ...(typeof c.id === 'string' ? { id: c.id } : {}) };
+export function resultadoDaResposta(status: number, ok: boolean, corpo: unknown, campoSegredo?: string): ResultadoEscrita {
+  const c = (corpo && typeof corpo === 'object' ? corpo : {}) as { id?: unknown; mensagem?: unknown; campos?: unknown } & Record<string, unknown>;
+  if (ok) {
+    const segredo = campoSegredo ? c[campoSegredo] : undefined;
+    return { ok: true, mensagem: 'Feito.', ...(typeof c.id === 'string' ? { id: c.id } : {}), ...(typeof segredo === 'string' && segredo !== '' ? { segredo } : {}) };
+  }
   const mensagem = typeof c.mensagem === 'string' && c.mensagem.trim() && status < 500 ? c.mensagem.trim() : (FIXAS[status] ?? FALHA);
   const campos: Record<string, string> = {};
   if (c.campos && typeof c.campos === 'object') for (const [k, v] of Object.entries(c.campos)) if (typeof v === 'string') campos[k] = v;

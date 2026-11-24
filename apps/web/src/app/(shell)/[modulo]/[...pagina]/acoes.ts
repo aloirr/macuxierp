@@ -9,7 +9,7 @@ import { SEM_RESPOSTA } from '@/lib/textos';
 import { SESSAO_EXPIRADA, escritaPermitida, leituraPermitida, resultadoDaResposta, type ResultadoEscrita } from '@/lib/descritor/escrita';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { recarregarValido } from '@/lib/recarregar';
-import { escritaDeclarada, leituraDeclarada } from '@/lib/telas';
+import { escritaDeclarada, leituraDeclarada, segredoDeclarado } from '@/lib/telas';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 
 export interface PedidoEscrita {
@@ -56,7 +56,7 @@ export async function escrever(p: PedidoEscrita): Promise<ResultadoEscrita> {
   try {
     const r = await escreverJson(p.metodo, p.caminho, p.corpo, acesso, { idempotencia: p.idempotencia, versao: p.versao });
     if (r.ok && p.recarregar && recarregarValido(p.recarregar)) revalidatePath(p.recarregar);
-    return resultadoDaResposta(r.status, r.ok, r.corpo);
+    return resultadoDaResposta(r.status, r.ok, r.corpo, segredoDeclarado(p.metodo, p.caminho));
   } catch (e) {
     return falhaDaApi(e) ?? rethrow(e);
   }

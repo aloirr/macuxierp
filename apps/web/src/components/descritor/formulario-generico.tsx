@@ -8,6 +8,7 @@ import { temErros } from '@/lib/descritor/formulario';
 import { aposResposta, chaveParaEnvio, novoEstado, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { telaFormulario } from '@/lib/telas';
 import type { ErrosFormulario, TelaFormulario, ValoresFormulario } from '@/lib/descritor/tipos';
+import { PainelSegredo } from './painel-segredo';
 import { escrever } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
 
 /** Seletor de opções (cadastro ou lista fixa) com o estilo de campo. */
@@ -37,6 +38,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
   const [erros, setErros] = useState<ErrosFormulario>(errosIniciais ?? {});
   const [geral, setGeral] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [segredo, setSegredo] = useState<{ valor: string; destino: string } | null>(null);
   const chave = useRef<EstadoChave | null>(null); // uma Idempotency-Key por formulário aberto: reenvio do mesmo corpo não duplica
 
   const foraDosItens = Object.keys(erros).some((k) => !k.startsWith('itens.'));
@@ -56,6 +58,8 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
     const r = await escrever({ metodo: 'POST', caminho: tela.api, corpo, idempotencia: estado.chave });
     chave.current = aposResposta(estado, Boolean(r.definitivo));
     setOcupado(false);
+    // Senha provisória (RN-CORE-10): aparece uma vez; a tela só segue depois que a pessoa a anotar.
+    if (r.ok && r.segredo) return setSegredo({ valor: r.segredo, destino: r.id ? tela.depois(r.id) : tela.voltar });
     if (r.ok && r.id) return router.push(tela.depois(r.id));
     if (r.ok) return router.push(tela.voltar);
     setErros(r.campos ?? {});
@@ -87,6 +91,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
         <button className="mx-botao" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>
         <Link className="mx-botao-secundario" href={tela.voltar}>Cancelar</Link>
       </div>
+      {segredo && <PainelSegredo titulo="Senha provisória" rotulo="Entregue esta senha à pessoa:" valor={segredo.valor} aviso={tela.avisoSegredo ?? ''} aoFechar={() => { const d = segredo.destino; setSegredo(null); router.push(d); }} />}
     </form>
   );
 }

@@ -3,14 +3,15 @@ import { redirect } from 'next/navigation';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { buscarPagina } from '@/lib/listas';
 import { RespostaFonte, opcoesDaResposta, caminhoDaFonte, type Opcao } from '@/lib/descritor/fontes';
-import { NaoAutenticado, ehFalhaDeSessao, getValidado } from '@/lib/api';
+import { NaoAutenticado, SemPermissao, ehFalhaDeSessao, getValidado } from '@/lib/api';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
 import { filtrosDaUrl } from '@macuxierp/platform-sdk/listas';
-import { rotuloDaCelula, textoTodos } from '@/lib/descritor/lista';
+import { filtrosParaApi, rotuloDaCelula, textoTodos } from '@/lib/descritor/lista';
 import { urlDaLista, urlProxima } from '@/lib/listas-url';
 import type { FiltroTela, TelaLista } from '@/lib/descritor/tipos';
 import { AcoesDetalhe } from './acoes-detalhe';
 import { TabelaVista } from './ui-cliente';
+import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 
 async function opcoesDoFiltro(f: FiltroTela, acesso: string, perfil: Perfil): Promise<readonly Opcao[]> {
   if (f.tipo === 'selecao') return f.opcoes ?? [];
@@ -29,12 +30,14 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
   let resultado;
   try {
     resultado = await Promise.all([
-      buscarPagina(tela.pagina.api, filtros, tela.pagina.item, acesso),
+      buscarPagina(tela.pagina.api, filtrosParaApi(tela.filtrosTela, filtros, fuso), tela.pagina.item, acesso),
       Promise.all(tela.filtrosTela.map((f) => opcoesDoFiltro(f, acesso, perfil))),
     ]);
   } catch (e) {
     // A lista renderiza fora do try da TelaGenerica: sessão vencida ou senha provisória resolvem aqui, como lá.
     if (ehFalhaDeSessao(e)) redirect(e instanceof NaoAutenticado ? '/sessao/renovar' : ROTA_SENHA);
+    // 403 da API (ex.: usuários e auditoria só do administrador, RN-CORE-09): mensagem fixa em vez da tela de erro.
+    if (e instanceof SemPermissao) return <p className="erro" role="alert">{TEXTO_SEM_PERMISSAO}</p>;
     throw e;
   }
   const [pagina, opcoes] = resultado;
@@ -62,7 +65,7 @@ export async function ListaGenerica({ tela, rota, rotaDaPagina, busca, perfil, a
             {f.tipo === 'data' && <input type="date" lang="pt-BR" name={f.chave} defaultValue={filtros[f.chave] ?? ''} />}
             {(f.tipo === 'selecao' || f.tipo === 'cadastro') && (
               <select name={f.chave} defaultValue={filtros[f.chave] ?? ''}>
-                <option value="">{textoTodos(f.rotulo)}</option>
+                <option value="">{f.vazio ?? textoTodos(f.rotulo)}</option>
                 {(opcoes[i] ?? []).map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
               </select>
             )}
