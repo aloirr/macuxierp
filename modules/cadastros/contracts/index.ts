@@ -7,6 +7,10 @@
 import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
+import { IndIeDest } from './precadastro';
+
+export * from './precadastro';
+
 export const MODULO = 'cadastros' as const;
 
 /** Identificador do tenant (UUID). Repetido por módulo de propósito: o tipo vem sempre de contracts. */
@@ -77,7 +81,6 @@ export const Contato = z.object({
 });
 export type Contato = z.infer<typeof Contato>;
 
-export const IndIeDest = z.enum(['1', '2', '9']);
 export const ClienteDados = z.object({
   tipo_pessoa: z.enum(['PJ', 'PF']),
   /** CNPJ ou CPF; a API normaliza e valida pelo `tipo_pessoa` (RN-CAD-01). */

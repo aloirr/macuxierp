@@ -27,6 +27,12 @@ export function validarMunicipio(ibge: string, uf: string): { ok: true } | { ok:
   return { ok: true };
 }
 
+/** RN-CAD-03: CEP só com os 8 dígitos; `null` quando não tem 8 dígitos. */
+export function normalizarCep(valor: string): string | null {
+  const d = valor.replace(/\D/g, '');
+  return d.length === 8 ? d : null;
+}
+
 /** RN-CAD-03: o cliente tem exatamente um endereço principal. */
 export function validarEnderecoPrincipal(enderecos: readonly { tipo: string }[]): { ok: true } | { ok: false; violacao: Violacao } {
   return enderecos.filter((x) => x.tipo === 'principal').length === 1

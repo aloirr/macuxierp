@@ -7,7 +7,7 @@ import {
 } from '../../contracts';
 import { validarDocumentoCliente } from '../documento';
 import { sugerirIndIeDest, validarIe, validarIndIeDest, type IndIeDest } from '../ie';
-import { validarMunicipio } from '../municipio';
+import { normalizarCep, validarMunicipio } from '../municipio';
 import { validarVigenciaTabela } from '../preco';
 import { LIMITES_SEQ_ENDERECO, derivarExternalIdEndereco } from './cliente-grupo';
 import { erroDeViolacao, erroLinha, errosDeZod, type ErroLinha } from './erros';
@@ -75,8 +75,8 @@ class Leitor {
   cep(nome: string): string | undefined {
     const v = this.cel(nome);
     if (v === undefined) return undefined;
-    const d = v.replace(/\D/g, '');
-    if (d.length !== 8) {
+    const d = normalizarCep(v);
+    if (d === null) {
       this.erro(nome, 'CARGA_FORMATO', 'CEP deve ter 8 dígitos');
       return undefined;
     }

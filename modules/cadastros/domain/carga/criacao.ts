@@ -1,4 +1,4 @@
-import type { EnderecoDaLinha, EntidadeCarga, LinhasCarga } from '../../contracts';
+import { NUMERO_SEM_NUMERO, type EnderecoDaLinha, type EntidadeCarga, type LinhasCarga } from '../../contracts';
 import { validarFiscalProduto, type FatosFiscaisProduto } from '../produto';
 import { erroDeViolacao, erroLinha, type ErroLinha } from './erros';
 
@@ -61,7 +61,7 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       for (const campo of ['logradouro', 'bairro', 'municipio_ibge', 'uf', 'cep'] as const) {
         if (e?.[campo] === undefined) erros.push(falta(n, `endereco.${campo}`, 'RN-CAD-03', 'Endereço principal obrigatório para criar o cliente'));
       }
-      if (e && e.numero === undefined) e.numero = 'S/N';
+      if (e && e.numero === undefined) e.numero = NUMERO_SEM_NUMERO;
       if (c.dados.ind_ie_dest === undefined) c.dados.ind_ie_dest = '9';
       break;
     }
@@ -89,5 +89,5 @@ export function prepararEnderecoNovo(e: EnderecoDaLinha): { ok: true; dados: End
   for (const campo of ['logradouro', 'bairro', 'municipio_ibge', 'uf', 'cep'] as const) {
     if (e.dados[campo] === undefined) erros.push(falta(e.linha, `endereco.${campo}`, campo === 'municipio_ibge' || campo === 'uf' ? 'RN-CAD-03' : 'CARGA_OBRIGATORIO', 'Obrigatório para criar o endereço do cliente'));
   }
-  return erros.length > 0 ? { ok: false, erros } : { ok: true, dados: { ...e.dados, numero: e.dados.numero ?? 'S/N' } };
+  return erros.length > 0 ? { ok: false, erros } : { ok: true, dados: { ...e.dados, numero: e.dados.numero ?? NUMERO_SEM_NUMERO } };
 }
