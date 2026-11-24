@@ -69,11 +69,12 @@ export class RepositorioAuthPg implements RepositorioAuth {
 
   /**
    * Consumo atômico e de uso único (T-0076): no READ COMMITTED, quem perde a corrida espera o lock, reavalia o WHERE
-   * na linha nova, vê o hash nulo e sai sem linha.
+   * na linha nova, vê o hash nulo e sai sem linha. Zera também a trava (hotfix).
    */
   async consumirTemporaria(tx: Transacao, usuarioId: string) {
     const linhas = await tx.consultar<{ id: string }>(
-      `UPDATE plataforma.usuario SET senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL, deve_trocar_senha = true
+      `UPDATE plataforma.usuario SET senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL, deve_trocar_senha = true,
+          falhas_login = 0, bloqueado_ate = NULL
         WHERE id = $1 AND senha_temporaria_hash IS NOT NULL AND senha_temporaria_expira_em > now()
         RETURNING id`,
       [usuarioId],

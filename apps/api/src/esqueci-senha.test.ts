@@ -107,16 +107,21 @@ class BancoSuperadminDuble implements BancoPlataformaComLogin {
         case 'superadmin_consumir_temporaria': {
           const sa = this.conta(p[0]);
           const ok = !this.perderCorrida && !!sa.senha_temporaria_hash && !!sa.senha_temporaria_expira_em && sa.senha_temporaria_expira_em > this.relogio.agora();
-          if (ok) Object.assign(sa, { senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
+          // 0051: o consumo zera também a trava.
+          if (ok) Object.assign(sa, { senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true, falhas_login: 0, bloqueado_ate: null });
           return [{ ok }] as L[];
         }
         case 'superadmin_emitir_temporaria':
           Object.assign(this.conta(p[0]), { senha_temporaria_hash: p[1], senha_temporaria_expira_em: p[2] });
           return [];
-        case 'superadmin_abrir_sessao':
-          this.conta(p[0]).falhas_login = 0;
+        case 'superadmin_abrir_sessao': {
+          // 0033: a conta travada dá MXS01; senão zera a contagem e a trava.
+          const sa = this.conta(p[0]);
+          if (sa.bloqueado_ate && sa.bloqueado_ate > this.relogio.agora()) throw Object.assign(new Error('sessão de superadmin inválida'), { code: 'MXS01' });
+          Object.assign(sa, { falhas_login: 0, bloqueado_ate: null });
           this.sessoes.push({ superadmin_id: p[0] as string, token_hash: p[1] as string, expira_em: p[2] as Date, sessao_id: `9${String(this.sessoes.length).padStart(7, '0')}-0000-4000-8000-000000000000` });
           return [];
+        }
         case 'superadmin_sessao_por_token': {
           const s = this.sessoes.find((x) => x.token_hash === p[0]);
           if (!s) return [];
@@ -297,9 +302,6 @@ describe('T-0076: login do tenant com a temporária', () => {
     await comTemporaria(m.adm);
     for (let i = 0; i < 5; i++) expect((await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!')).statusCode).toBe(401);
     expect(m.adm.bloqueado_ate).not.toBeNull();
-    // travada: nem a temporária certa entra
-    expect((await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA)).statusCode).toBe(429);
-    expect(m.adm.senha_temporaria_hash).toBeTruthy();
   });
 
   it('corrida do consumo: quem perde recebe 401 neutro e nenhuma sessão abre', async () => {
@@ -676,5 +678,86 @@ describe('T-0076: tela única com o código MACUXI', () => {
     const r = await esqueciConfig(m, EMAIL_SA);
     expect(r.statusCode).toBe(202);
     expect(r.json()).toEqual({ mensagem: MENSAGEM_ESQUECI_NEUTRA });
+  });
+});
+
+/**
+ * Hotfix (regra do Alexandre: "Quando eu clicar em esqueci a senha, é para desbloquear o usuario. para eu tentar com a
+ * senha temporaria"); regras: `auth/servico.ts`; dublê do superadmin segue a 0051 e a 0033.
+ */
+describe('hotfix: a temporária entra com a conta travada e zera a trava', () => {
+  const TRAVA_MS = 15 * 60_000;
+  let ipN = 0;
+  const ip = () => `198.18.0.${++ipN}`;
+  const travar = (conta: { falhas_login: number; bloqueado_ate: Date | null }) => {
+    conta.falhas_login = 5;
+    conta.bloqueado_ate = new Date(INICIO.getTime() + TRAVA_MS);
+    return conta.bloqueado_ate;
+  };
+
+  it('tenant travado com a temporária vigente: 200 bko com a troca de motivo temporaria; a trava e a temporária zeram', async () => {
+    const m = await montar();
+    await comTemporaria(m.adm);
+    travar(m.adm);
+    const fim = m.adm.senha_temporaria_expira_em!.toISOString();
+    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
+    expect(r.statusCode).toBe(200);
+    expect(LoginResposta.parse(r.json())).toMatchObject({ destino: 'bko' });
+    expect(m.adm).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
+    const token = r.json<{ token_acesso: string }>().token_acesso;
+    expect((await m.app.inject({ url: ROTA_TENANT, headers: bearer(token) })).json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'temporaria', expira_em: fim });
+  });
+
+  it('tenant travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 429 de sempre, sem somar falha nem estender a trava', async () => {
+    const m = await montar();
+    const ate = travar(m.adm);
+    const semTemporaria = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
+    expect(semTemporaria.statusCode).toBe(429);
+    expect(semTemporaria.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
+    await comTemporaria(m.adm, 60_000);
+    const atual = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE, ip());
+    const errada = await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!', ip());
+    m.relogio.avancar(60_000);
+    const vencida = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
+    for (const r of [atual, errada, vencida]) {
+      expect(r.statusCode).toBe(429);
+      expect(r.body).toBe(semTemporaria.body);
+    }
+    expect(m.adm).toMatchObject({ falhas_login: 5, bloqueado_ate: ate, deve_trocar_senha: false });
+    expect(m.adm.senha_temporaria_hash).toBeTruthy();
+    expect(m.repo.sessoes).toHaveLength(0);
+  });
+
+  it('superadmin travado com a temporária vigente: 200 config com a troca de motivo temporaria; a trava e a temporária zeram', async () => {
+    const m = await montar();
+    await comTemporaria(m.sa);
+    travar(m.sa);
+    const fim = m.sa.senha_temporaria_expira_em!.toISOString();
+    const r = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String) });
+    expect(m.sa).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
+    const bloqueada = await m.app.inject({ url: ROTA_PORTAL, cookies: { [COOKIE_CONFIG]: cookie(r, COOKIE_CONFIG)! } });
+    expect(bloqueada.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'temporaria', expira_em: fim });
+  });
+
+  it('superadmin travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 401 neutro, sem somar falha nem estender a trava', async () => {
+    const m = await montar();
+    const ate = travar(m.sa);
+    const semTemporaria = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    await comTemporaria(m.sa, 60_000);
+    const atual = await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE, ip());
+    const errada = await login(m, 'MACUXI', EMAIL_SA, 'Temp-errada-9!', ip());
+    m.relogio.avancar(60_000);
+    const vencida = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    for (const r of [semTemporaria, atual, errada, vencida]) {
+      expect(r.statusCode).toBe(401);
+      expect(r.body).toBe(JSON.stringify(NEUTRO_401));
+      expect(cookie(r, COOKIE_CONFIG)).toBeUndefined();
+    }
+    expect(m.sa).toMatchObject({ falhas_login: 5, bloqueado_ate: ate, deve_trocar_senha: false });
+    expect(m.plataforma.chamadas).not.toContain('superadmin_registrar_falha');
+    expect(m.plataforma.chamadas).not.toContain('superadmin_consumir_temporaria');
+    expect(m.plataforma.sessoes).toHaveLength(0);
   });
 });

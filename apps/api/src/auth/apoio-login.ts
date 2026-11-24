@@ -13,6 +13,11 @@ export function travaAposFalha(falhas: number, agora: Date, cfg: { maxFalhas: nu
   return falhas >= cfg.maxFalhas ? new Date(agora.getTime() + cfg.travaMinutos * 60_000) : null;
 }
 
+/** A conta está travada agora (`bloqueado_ate` no futuro). */
+export function contaTravada(bloqueadoAte: Date | null, agora: Date): boolean {
+  return !!bloqueadoAte && bloqueadoAte.getTime() > agora.getTime();
+}
+
 /** Mesmo custo de argon2 do caminho certo: confere a senha contra um hash falso (gerado uma vez) e lança o erro dado. */
 export class ConferenciaCustoIgual {
   private hashFalso: Promise<string> | undefined;
