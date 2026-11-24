@@ -1,4 +1,5 @@
 export * from './aprovacao';
+export * from './descida';
 export * from './faturamento';
 export * from './motivos';
 export * from './transicao';

@@ -5,7 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import {
-  EVENTOS, PedidoAprovado, type MotivoCancelamento, type MotivoRecusa, type NomeEventoPedido, type PedidoEventoBase, type PedidoFaturadoV1, type StatusPedido,
+  EVENTOS, PedidoAprovado, type MotivoCancelamento, type MotivoRecusa, type NomeEventoPedido, type PedidoEventoBase, type NotaClienteTexto, type PedidoFaturadoV1, type StatusPedido,
 } from '../contracts';
 import type { CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import type { PedidoGravado, RepoPedidos } from './portas';
@@ -40,7 +40,7 @@ const pronto = (nome: NomeEventoPedido, p: PedidoGravado, payload: unknown): Eve
 });
 
 /** O pedido inteiro, para o faturamento montar a fila "a faturar" (T-0013 §8.1). */
-const pedidoAprovado = (p: PedidoGravado, condicao: CondicaoDoEvento = null): PedidoAprovado =>
+export const pedidoAprovado = (p: PedidoGravado, condicao: CondicaoDoEvento = null): PedidoAprovado =>
   PedidoAprovado.parse({
     condicao_pagamento_id: p.condicao_pagamento_id,
     forma_tpag: condicao?.forma_tpag ?? null,
@@ -77,6 +77,10 @@ export const eventoRecusado = (p: PedidoGravado, anterior: StatusPedido, codigo:
 
 export const eventoCancelado = (p: PedidoGravado, anterior: StatusPedido, codigo: MotivoCancelamento, texto: string | null): EventoPronto =>
   pronto('pedido.pedido.cancelado@1', p, { ...base(p, anterior), motivo_codigo: codigo, motivo_texto: textoDoMotivo(codigo, texto) });
+
+/** ADR 0014 §15: o cliente faturou no sistema dele; o ERP (só ponte) repassa. `p.status` já é `faturado_parcial` ou `faturado`. */
+export const eventoFaturadoCliente = (p: PedidoGravado, anterior: StatusPedido, nota: NotaClienteTexto | null): EventoPronto =>
+  pronto('pedido.pedido.faturado_cliente@1', p, { ...base(p, anterior), nota_cliente: nota });
 
 /** Payload do faturado@1 a partir da nota autorizada lida (T-0015). Pura. */
 export function faturadoDaNota(nota: NotaAutorizadaLida, p: PedidoGravado, status: StatusPedido, anterior: StatusPedido | null): PedidoFaturadoV1 {

@@ -5,6 +5,9 @@ import { criarRotas } from './rotas';
 import { repositorioSql } from './sql';
 
 export { exportadorPedido, TABELAS_EXPORTADAS } from './exportador';
+export { criarServicoDescida, LIMITE_PENDENTES, type DependenciasDescida, type FilaDescida, type LinhaDescida, type ServicoDescida } from './descida';
+export { criarConsumidorDescida, ID_CONSUMIDOR_DESCIDA } from './consumidor-descida';
+export { filaDescidaSql } from './descida-sql';
 export { consumidoresDoPedido, type DependenciasConsumidoresPedido } from './consumidor-nota';
 export { criarConsultaParaFaturar, type ConsultaParaFaturar } from './faturar';
 export type {

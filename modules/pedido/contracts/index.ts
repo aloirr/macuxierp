@@ -363,6 +363,7 @@ export const EVENTO_PEDIDO_APROVADO = 'pedido.pedido.aprovado@1' as const;
 export const EVENTO_PEDIDO_RECUSADO = 'pedido.pedido.recusado@1' as const;
 export const EVENTO_PEDIDO_CANCELADO = 'pedido.pedido.cancelado@1' as const;
 export const EVENTO_PEDIDO_FATURADO = 'pedido.pedido.faturado@1' as const;
+export const EVENTO_PEDIDO_FATURADO_CLIENTE = 'pedido.pedido.faturado_cliente@1' as const;
 
 export const PedidoEventoBase = z.object({
   pedido_id: Uuid,
@@ -414,6 +415,44 @@ export const PedidoFaturadoV1 = PedidoEventoBase.extend({
 });
 export type PedidoFaturadoV1 = z.infer<typeof PedidoFaturadoV1>;
 
+/**
+ * Nota do cliente como o Hub e o evento a entregam (ADR 0014 §13 e §15): `numero` e `serie` em TEXTO sem zero à esquerda
+ * (número de "1" a "999999999"; série de "0" a "999"), total inteiro em centavos, data UTC e `chave` opcional de 44 dígitos
+ * (o DV módulo 11 e o "no máximo agora + 5 min" são conferidos no domain, que recebe o "agora"). Sem XML e sem emissão.
+ */
+export const NotaClienteTexto = z.object({
+  numero: z.string().regex(/^[1-9]\d{0,8}$/),
+  serie: z.string().regex(/^(0|[1-9]\d{0,2})$/),
+  chave: z.string().regex(/^\d{44}$/).optional(),
+  emitida_em: z.string().datetime(),
+  total_centavos: Centavos,
+});
+export type NotaClienteTexto = z.infer<typeof NotaClienteTexto>;
+
+/**
+ * Referência gravada em `pedido.pedido` (`nota_cliente_*`, migração 0045): `numero` e `serie` INTEIROS (colunas integer), data
+ * UTC e total. Sem `chave`: não há coluna nesta versão; ela vai só no evento.
+ */
+export const NotaReferenciaCliente = z.object({
+  numero: z.number().int().min(1).max(999999999),
+  serie: z.number().int().min(0).max(999),
+  emitida_em: z.string().datetime(),
+  total_centavos: Centavos,
+});
+export type NotaReferenciaCliente = z.infer<typeof NotaReferenciaCliente>;
+
+/**
+ * `pedido.pedido.faturado_cliente@1` (ADR 0014 §15): o cliente faturou o pedido no sistema dele e o ERP, só ponte (faturamento
+ * desligado), repassa o status. `status` é `faturado_parcial` ou `faturado`; `status_anterior` igual a `status` quando só a nota
+ * muda (parcial → parcial com outra nota): um evento por mudança aplicada. O FDV recebe o retorno `faturado_*` por este fato.
+ * Não é o `faturado@1`: não há nota do ERP, itens por produto nem ambiente fiscal.
+ */
+export const PedidoFaturadoClienteV1 = PedidoEventoBase.extend({
+  status: z.enum(['faturado_parcial', 'faturado']),
+  nota_cliente: NotaClienteTexto.nullable(),
+});
+export type PedidoFaturadoClienteV1 = z.infer<typeof PedidoFaturadoClienteV1>;
+
 /** Nome do evento → schema do payload (mesmo formato do cadastros). */
 export const EVENTOS = {
   [EVENTO_PEDIDO_RECEBIDO]: PedidoRecebidoV1,
@@ -421,6 +460,7 @@ export const EVENTOS = {
   [EVENTO_PEDIDO_RECUSADO]: PedidoRecusadoV1,
   [EVENTO_PEDIDO_CANCELADO]: PedidoCanceladoV1,
   [EVENTO_PEDIDO_FATURADO]: PedidoFaturadoV1,
+  [EVENTO_PEDIDO_FATURADO_CLIENTE]: PedidoFaturadoClienteV1,
 } as const;
 export type NomeEventoPedido = keyof typeof EVENTOS;
 
@@ -430,3 +470,48 @@ export const SituacaoPedidoParaFaturar = z.object({
   itens: z.array(z.object({ sequencia: z.number().int().min(1), quantidade: Qtd4, quantidade_faturada: Qtd4 })),
 });
 export type SituacaoPedidoParaFaturar = z.infer<typeof SituacaoPedidoParaFaturar>;
+
+// ---- Fila de descida e retorno do cliente (ADR 0014 §13; rotas `/entrada/v1/pedidos/*` são do engenheiro-software) ----
+/**
+ * Item da fila `GET /pedidos/pendentes`, do ponto de vista do pedido: ids do ERP (UUID), sem as chaves do cliente. Quem monta o
+ * `PedidoParaErp` do Hub (SDK `hub-v1`) resolve `*_external_id` pelos cadastros; o schema do Hub não se duplica aqui.
+ * `pedido_uuid` é o do FDV (`external_id`) ou, no pedido manual, o próprio `pedido_id` (ADR 0010).
+ */
+export const ItemFilaDescida = z.object({
+  pedido_id: Uuid,
+  pedido_uuid: Uuid,
+  numero: z.number().int().positive(),
+  origem: OrigemPedido,
+  filial_id: Uuid,
+  cliente_id: Uuid,
+  vendedor_id: Uuid.nullable(),
+  aprovado_em: z.string().datetime(),
+  pedido: PedidoAprovado,
+});
+export type ItemFilaDescida = z.infer<typeof ItemFilaDescida>;
+
+/** Estados do `RetornoErp` do Hub que o cliente devolve ao ERP. */
+export const StatusRetornoCliente = z.enum(['faturado_parcial', 'faturado_total', 'cancelado']);
+export type StatusRetornoCliente = z.infer<typeof StatusRetornoCliente>;
+
+/**
+ * Subconjunto do `RetornoErp` (`POST /pedidos/{uuid}/retorno`) que o pedido entende: o engenheiro-software valida o corpo com o
+ * schema do Hub e passa estes campos. Tolerante a campo novo. A nota chega como `NotaClienteTexto` e o domain a converte em `NotaReferenciaCliente`.
+ */
+export const RetornoClientePedido = z
+  .object({
+    pedido_uuid: Uuid,
+    status: StatusRetornoCliente,
+    motivo: z.string().max(300).optional(),
+    nota: NotaClienteTexto.optional(),
+    ocorrido_em: z.string().datetime(),
+  })
+  .passthrough();
+export type RetornoClientePedido = z.infer<typeof RetornoClientePedido>;
+
+export const ResultadoRetornoCliente = z.object({
+  resultado: z.enum(['aplicado', 'repetido', 'obsoleto']),
+  pedido_id: Uuid,
+  status: StatusPedido,
+});
+export type ResultadoRetornoCliente = z.infer<typeof ResultadoRetornoCliente>;

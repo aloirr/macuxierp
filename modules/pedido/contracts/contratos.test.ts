@@ -98,3 +98,12 @@ describe('ResultadoRecebimentoFdv', () => {
     });
   });
 });
+
+describe('fila de descida e retorno do cliente (ADR 0014 §13 e §15)', () => {
+  it('RN-PED-02: o retorno do cliente aceita só faturado_parcial, faturado_total e cancelado, tolera campo novo e rejeita integrado', async () => {
+    const { RetornoClientePedido } = await import('./index');
+    const base = { pedido_uuid: '12345678-1234-4234-8234-123456789012', ocorrido_em: '2026-11-24T15:00:00.000Z' };
+    expect(RetornoClientePedido.safeParse({ ...base, status: 'faturado_total', campo_novo: 1 }).success).toBe(true);
+    expect(RetornoClientePedido.safeParse({ ...base, status: 'integrado' }).success).toBe(false);
+  });
+});
