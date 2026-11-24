@@ -448,6 +448,26 @@ describe('T-0012 — dublê do Hub: erro por linha e upsert', () => {
     expect(JSON.stringify(t.erros)).not.toContain('Empresa Ficticia');
   });
 
+  it('T-0085: parcelas_dias do prazo recusado sai na linha com codigo e campo certos (a tabela completa fica em prazo-contrato.test.ts)', async () => {
+    const prazo = (id: string, parcelas_dias: unknown) => ({
+      external_id: id,
+      alterado_em: T(0),
+      forma_external_id: 'f1',
+      codigo: id,
+      parcelas_dias,
+    });
+    await enviarEConcluir(
+      env('forma_pagamento', [{ external_id: 'f1', alterado_em: T(0), codigo: 'BOL', nome: 'Boleto' }]),
+    );
+    const r = await enviarEConcluir(
+      env('prazo_pagamento', [prazo('lista', [28, 56]), prazo('texto', '28/56')]),
+    );
+    expect(r.contagens).toMatchObject({ novas: 1, com_erro: 1 });
+    expect(r.erros.map((e) => [e.external_id, e.codigo, e.campo])).toEqual([
+      ['texto', 'registro_invalido', 'parcelas_dias'],
+    ]);
+  });
+
   it('upsert monotônico: inalterada (mesmo conteúdo), atualizada (mais nova), obsoleta (mais velha); duplicada no lote conta uma vez', async () => {
     await enviarEConcluir(env('forma_pagamento', [forma('f1', 10)]));
     const r = await enviarEConcluir(
@@ -595,7 +615,7 @@ describe('T-0012 — dublê do Hub: um Conector por entidade (RN-INT-13 do FDV)'
               alterado_em: T(0),
               forma_external_id: 'f1',
               codigo: '28',
-              parcelas_dias: '28',
+              parcelas_dias: [28],
             },
           ]),
           conector: erp,

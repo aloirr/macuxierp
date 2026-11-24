@@ -164,7 +164,7 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     expect((await reg(A, 'forma_pagamento', 'FP-BOL'))!.payload).toMatchObject({ codigo: 'BOLETO', ativo: true });
     expect((await reg(A, 'forma_pagamento', 'FP-BOL'))!.erp_id).toBeNull();
     expect((await reg(A, 'prazo_pagamento', 'PZ-C'))!.erp_id).toBe(c);
-    expect((await reg(A, 'prazo_pagamento', 'PZ-C'))!.payload).toMatchObject({ forma_external_id: 'FP-BOL', parcelas_dias: '28/56' });
+    expect((await reg(A, 'prazo_pagamento', 'PZ-C'))!.payload).toMatchObject({ forma_external_id: 'FP-BOL', parcelas_dias: [28, 56] });
     cl = await reg(A, 'cliente', 'CLI-C');
     expect(cl!.payload).toMatchObject({ formas_pagamento: ['BOLETO'], prazo_medio_max_dias: 42 });
 

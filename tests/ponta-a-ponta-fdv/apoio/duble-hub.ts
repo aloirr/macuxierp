@@ -112,6 +112,12 @@ const SITUACOES_TITULO = ['aberto', 'baixado', 'cancelado'];
 const DECIMAL = /^-?\d+(\.\d{1,4})?$/;
 /** Trava de inativação em massa na carga completa (RN-INT-06 do FDV). */
 const LIMITE_INATIVACAO = 0.3;
+/**
+ * `parcelas_dias` do prazo é lista de inteiros de 0 a 999, com ao menos um item (`[28, 56]`; à vista `[0]`),
+ * como o Hub real exige (T-0085, `PrazoPagamentoHub` em modules/integracao-fdv/contracts/hub.ts). O texto "28/56" é recusado.
+ */
+export const parcelasDiasValidas = (v: unknown): boolean =>
+  Array.isArray(v) && v.length > 0 && v.every((d) => Number.isInteger(d) && d >= 0 && d <= 999);
 
 // ---------------------------------------------------------------- tipos públicos ---------------------------------------
 
@@ -415,11 +421,11 @@ function validarLinha(
     return falha('registro_invalido', 'fator', 'O fator deve ser decimal com até 4 casas.');
   if (entidade === 'estoque' && !DECIMAL.test(String(r.saldo)))
     return falha('registro_invalido', 'saldo', 'O saldo deve ser decimal com até 4 casas.');
-  if (entidade === 'prazo_pagamento' && !/^\d{1,3}(\/\d{1,3})*$/.test(String(r.parcelas_dias))) {
+  if (entidade === 'prazo_pagamento' && !parcelasDiasValidas(r.parcelas_dias)) {
     return falha(
       'registro_invalido',
       'parcelas_dias',
-      'Os dias das parcelas vão separados por barra (ex.: 28/56).',
+      'Os dias das parcelas vão como lista de inteiros (ex.: [28, 56]; à vista [0]).',
     );
   }
   if (entidade === 'titulo' && !SITUACOES_TITULO.includes(String(r.situacao)))

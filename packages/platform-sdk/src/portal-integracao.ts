@@ -283,4 +283,8 @@ export const CAMINHOS_INTEGRACAO_FDV_PLATAFORMA = Object.freeze({
   configuracao: '/empresas/:id/integracao-fdv/configuracao',
   cargaCompleta: '/empresas/:id/integracao-fdv/entidades/:entidade/carga-completa',
   retomar: '/empresas/:id/integracao-fdv/entidades/:entidade/retomar',
+  /** T-0086 (`portal-integracao-operacao.ts`): Monitor, Reprocessar (só falhas e pendentes) e Log por cadastro. */
+  monitor: '/empresas/:id/integracao-fdv/monitor',
+  reprocessar: '/empresas/:id/integracao-fdv/entidades/:entidade/reprocessar',
+  log: '/empresas/:id/integracao-fdv/entidades/:entidade/log',
 });

@@ -114,12 +114,12 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
     expect(r.fonte_refs).toEqual({ filial_id: U(1) });
   });
 
-  it('M2: a condição vira forma (UUID v5 do tPag) e prazo (id do ERP), prazos "28/56"', () => {
+  it('M2: a condição vira forma (UUID v5 do tPag) e prazo (id do ERP), parcelas_dias [28, 56]', () => {
     const { forma, prazo } = mapearCondicao({ id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: true });
     expect(forma.external_id).toBe(externalIdForma(U(100), '15'));
     expect(forma.payload).toMatchObject({ codigo: 'BOLETO', nome: 'Boleto bancário', ativo: true });
-    expect(prazo.payload).toMatchObject({ external_id: U(6), forma_external_id: forma.external_id, parcelas_dias: '28/56', descricao: '28 e 56 dias' });
-    expect(mapearCondicao({ id: U(7), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: false }).prazo.payload.parcelas_dias).toBe('0');
+    expect(prazo.payload).toMatchObject({ external_id: U(6), forma_external_id: forma.external_id, parcelas_dias: [28, 56], descricao: '28 e 56 dias' });
+    expect(mapearCondicao({ id: U(7), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: false }).prazo.payload.parcelas_dias).toEqual([0]);
   });
 
   it('D11: estoque com saldo numérico, um depósito por filial, negativo como está', () => {
