@@ -5,7 +5,7 @@ import { MANIFESTOS } from './manifestos';
  * /v1/auth/eu e login falsos, até a T-0004 entrar (docs/desenho/T-0002.md, seção 7). Só funciona sem
  * MACUXIERP_API_URL e fora de produção. Dados fictícios, sem pessoa real.
  */
-export const CREDENCIAL_FALSA = { empresa: 'demo', email: 'demo@exemplo.invalid', senha: 'demo' } as const;
+export const CREDENCIAL_FALSA = { empresa: 'AM0001', email: 'demo@exemplo.invalid', senha: 'demo' } as const;
 export const TOKEN_FALSO = 'token-falso';
 /** Cookie de refresh da API falsa. */
 export const REFRESH_FALSO = 'mx=falso';

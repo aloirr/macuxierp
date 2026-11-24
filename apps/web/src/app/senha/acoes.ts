@@ -24,11 +24,13 @@ async function renovarSemFalhar(refresh: string | undefined) {
  * nada vai a log, URL ou estado devolvido. Obrigatória (sem `destino`): vai ao início; voluntária: volta ao destino com aviso.
  */
 export async function trocarSenhaBkoAction(_: EstadoTrocaSenha, dados: FormData): Promise<EstadoTrocaSenha> {
+  // Troca da senha temporária (RN-CORE-13): o formulário não tem o campo, então `senha_atual` não vai (a API revalida o motivo).
+  const informouAtual = dados.has('senha_atual');
   const atual = String(dados.get('senha_atual') ?? '');
   const nova = String(dados.get('senha_nova') ?? '');
   const confirmacao = String(dados.get('confirmacao') ?? '');
-  if (!atual) return { campos: { senha_atual: 'Informe a senha atual.' } };
-  const { regrasOk, difere } = estadoDaTroca(atual, nova, confirmacao);
+  if (informouAtual && !atual) return { campos: { senha_atual: 'Informe a senha atual.' } };
+  const { regrasOk, difere } = estadoDaTroca(atual, nova, confirmacao, informouAtual);
   if (!regrasOk) return { campos: { senha_nova: erroSenhaForaDaRegra(nova)?.texto ?? '' } };
   if (difere) return { campos: { confirmacao: SENHAS_NAO_CONFEREM } };
   const jar = await cookies();
@@ -38,7 +40,7 @@ export async function trocarSenhaBkoAction(_: EstadoTrocaSenha, dados: FormData)
 
   let resultado;
   try {
-    resultado = await trocarSenha(acesso, refresh, { senha_atual: atual, senha_nova: nova });
+    resultado = await trocarSenha(acesso, refresh, { ...(informouAtual ? { senha_atual: atual } : {}), senha_nova: nova });
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);

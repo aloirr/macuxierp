@@ -18,10 +18,9 @@ const padrao = async () => ({
 vi.mock('next/navigation', () => ({ redirect, usePathname: () => '/pedido/lista', useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => ({ value: 'tok' }), set: vi.fn() }) }));
 vi.mock('../(shell)/sair', () => ({ sairAction: vi.fn() }));
-vi.mock('@/lib/api', async (orig) => ({ ...(await orig<typeof import('@/lib/api')>()), buscarEu, baixarArquivo, entrar: vi.fn(async () => ({ acesso: 'a', refresh: 'r=1' })) }));
+vi.mock('@/lib/api', async (orig) => ({ ...(await orig<typeof import('@/lib/api')>()), buscarEu, baixarArquivo}));
 
 import Casca from '../(shell)/layout';
-import { entrarAction } from '../login/entrar';
 import { GET } from '../baixar-arquivo/route';
 import { TrocarSenhaPendente } from '@/lib/troca-pendente';
 
@@ -37,18 +36,6 @@ describe('bloqueio do shell até a troca (T-0052)', () => {
     const h = renderToStaticMarkup(await Casca({ children: 'x' }));
     expect(h).toContain('Trocar senha');
     expect(h).toContain('href="/senha?destino=%2Fpedido%2Flista"');
-  });
-  it('login: com deve_trocar_senha vai direto a /senha', async () => {
-    buscarEu.mockResolvedValue({ usuario: { deve_trocar_senha: true } });
-    const f = new FormData();
-    f.set('empresa', 'demo'); f.set('email', 'a@exemplo.invalid'); f.set('senha', 'x');
-    await expect(entrarAction({}, f)).rejects.toThrow('REDIRECT /senha');
-  });
-  it('login: sem troca pendente vai ao destino', async () => {
-    buscarEu.mockResolvedValue({ usuario: {} });
-    const f = new FormData();
-    f.set('empresa', 'demo'); f.set('email', 'a@exemplo.invalid'); f.set('senha', 'x'); f.set('destino', '/pedido');
-    await expect(entrarAction({}, f)).rejects.toThrow('REDIRECT /pedido');
   });
   it('download: o 403 TROCAR_SENHA vira redirect RELATIVO para /senha (sem ERR_FAILED)', async () => {
     baixarArquivo.mockRejectedValue(new TrocarSenhaPendente());

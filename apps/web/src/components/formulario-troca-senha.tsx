@@ -12,23 +12,25 @@ export interface EstadoTrocaSenha {
 }
 
 /** Formulário único de troca de senha (BKO `/senha` e portal `/config/senha`): atual, nova e confirmação, regras e envio bloqueado até tudo conferir. */
-export function FormularioTrocaSenha({ acao: acaoServidor, destino, rotuloAtual = 'Senha atual', rotuloBotao = 'Trocar senha' }: {
+export function FormularioTrocaSenha({ acao: acaoServidor, destino, rotuloAtual = 'Senha atual', rotuloBotao = 'Trocar senha', semSenhaAtual = false }: {
   acao: (estado: EstadoTrocaSenha, dados: FormData) => Promise<EstadoTrocaSenha>;
   destino?: string;
   rotuloAtual?: string;
   rotuloBotao?: string;
+  /** Troca da senha temporária (RN-CORE-13, `motivo_troca: 'temporaria'`): sem o campo da senha atual. */
+  semSenhaAtual?: boolean;
 }) {
   const [estado, acao, pendente] = useActionState<EstadoTrocaSenha, FormData>(acaoServidor, {});
   const [atual, setAtual] = useState('');
   const [nova, setNova] = useState('');
   const [confirmacao, setConfirmacao] = useState('');
   const [enviada, setEnviada] = useState<string | null>(null);
-  const { difere, igualAtual, podeEnviar } = estadoDaTroca(atual, nova, confirmacao);
+  const { difere, igualAtual, podeEnviar } = estadoDaTroca(atual, nova, confirmacao, !semSenhaAtual);
   return (
     <form action={(dados) => { setEnviada(nova); acao(dados); }}>
       <div aria-live="polite">{estado.erro && <p className="erro" role="alert">{estado.erro}</p>}</div>
       {destino !== undefined && <input type="hidden" name="destino" value={destino} />}
-      <CampoSenha rotulo={rotuloAtual} nome="senha_atual" valor={atual} aoMudar={setAtual} autoComplete="current-password" erro={estado.campos?.senha_atual} />
+      {!semSenhaAtual && <CampoSenha rotulo={rotuloAtual} nome="senha_atual" valor={atual} aoMudar={setAtual} autoComplete="current-password" erro={estado.campos?.senha_atual} />}
       <CampoSenha rotulo="Senha nova" nome="senha_nova" valor={nova} aoMudar={setNova} autoComplete="new-password" erro={igualAtual ? MENSAGEM_SENHA_IGUAL : estado.campos?.senha_nova} />
       <RegrasSenha senha={nova} faltamNaApi={nova === enviada ? estado.regras : undefined} />
       <CampoSenha rotulo="Confirme a senha nova" nome="confirmacao" valor={confirmacao} aoMudar={setConfirmacao} autoComplete="new-password" erro={confirmacao.length > 0 && difere ? SENHAS_NAO_CONFEREM : estado.campos?.confirmacao} />

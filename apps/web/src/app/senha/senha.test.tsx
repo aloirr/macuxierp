@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const eu = vi.hoisted(() => ({ troca: false }));
+const eu = vi.hoisted(() => ({ troca: false, motivo: undefined as string | undefined }));
 const redirect = vi.hoisted(() => vi.fn((c: string) => { throw new Error(`REDIRECT ${c}`); }));
 const trocarSenha = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/sessao', async (orig) => ({ ...(await orig<typeof import('@/lib/sessao')>()), contexto: async () => ({ eu: { usuario: { deve_trocar_senha: eu.troca } }, filial: null }) }));
+vi.mock('@/lib/sessao', async (orig) => ({ ...(await orig<typeof import('@/lib/sessao')>()), contexto: async () => ({ eu: { usuario: { deve_trocar_senha: eu.troca, ...(eu.motivo ? { motivo_troca: eu.motivo } : {}) } }, filial: null }) }));
 vi.mock('../(shell)/sair', () => ({ sairAction: vi.fn() }));
 const jar = vi.hoisted(() => ({ get: vi.fn((n: string) => (n === 'mx_acesso' ? { value: 'tok' } : n === 'mx_refresh' ? { value: 'macuxierp_refresh=r1' } : undefined)), set: vi.fn(), delete: vi.fn() }));
 const renovar = vi.hoisted(() => vi.fn());
@@ -18,6 +18,25 @@ import { resultadoDaTrocaSenha } from '@/lib/api';
 
 const form = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
 const ok = { senha_atual: 'Provisoria1!', senha_nova: 'Nova-senha-1', confirmacao: 'Nova-senha-1' };
+
+describe('tela /senha do BKO: troca da senha temporária (RN-CORE-13)', () => {
+  it('motivo_troca temporaria no eu: sem o campo da senha atual; a ação não manda senha_atual', async () => {
+    eu.troca = true; eu.motivo = 'temporaria';
+    const h = renderToStaticMarkup(await Senha({ searchParams: Promise.resolve({}) }));
+    expect(h).not.toContain('name="senha_atual"');
+    expect(h).toContain('name="senha_nova"');
+    trocarSenha.mockResolvedValue({ ok: true });
+    renovar.mockResolvedValue({ acesso: 'a2', refresh: 'macuxierp_refresh=r2' });
+    await expect(trocarSenhaBkoAction({}, form({ senha_nova: 'Nova-senha-1', confirmacao: 'Nova-senha-1', destino: '' }))).rejects.toThrow('REDIRECT /');
+    expect(trocarSenha).toHaveBeenLastCalledWith('tok', 'macuxierp_refresh=r1', { senha_nova: 'Nova-senha-1' });
+    eu.motivo = undefined;
+  });
+  it('motivo provisoria: o campo da senha atual continua', async () => {
+    eu.troca = true; eu.motivo = 'provisoria';
+    expect(renderToStaticMarkup(await Senha({ searchParams: Promise.resolve({}) }))).toContain('name="senha_atual"');
+    eu.motivo = undefined;
+  });
+});
 
 describe('tela /senha do BKO', () => {
   it('obrigatória: texto da senha provisória, destino vazio, Sair, sem menu e envio bloqueado', async () => {
