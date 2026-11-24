@@ -9,34 +9,21 @@
  * rota ausente cai no 404 genérico do `setNotFoundHandler` (`"mensagem":"Rota não encontrada"`). Os controles provam que
  * a falta de sessão não mascara o 404. Dados fictícios. Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as sdk from '../../../packages/platform-sdk/src/index';
 import { PG_DISPONIVEL } from '../../../packages/platform-sdk/src/pg-testes';
 import { montarApiPg, type Metodo } from '../../apoio/api-pg';
-import { preencherCaminho } from '../../apoio/caminhos';
+import { arquivosDoWeb, ehRotaInexistente, preencherCaminho } from '../../apoio/caminhos';
 import { CSRF } from '../../apoio/portal-pg';
 
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const METODOS: readonly Metodo[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 /** Nomes `CAMINHOS_*` citados no fonte de produção do web (BKO, portal /config e web dos módulos). */
 function constantesDoWeb(): string[] {
-  const pastas = [join(RAIZ, 'apps', 'web', 'src'), ...readdirSync(join(RAIZ, 'modules')).map((m) => join(RAIZ, 'modules', m, 'web'))];
   const nomes = new Set<string>();
-  for (const p of pastas) {
-    let arquivos: string[];
-    try {
-      arquivos = readdirSync(p, { recursive: true }) as string[];
-    } catch {
-      continue; // módulo sem web
-    }
-    for (const f of arquivos) {
-      if (!/\.tsx?$/.test(f) || /\.test\.tsx?$|apoio-teste\.ts$/.test(f)) continue;
-      for (const m of readFileSync(join(p, f), 'utf8').matchAll(/\bCAMINHOS_[A-Z0-9_]+\b/g)) nomes.add(m[0]);
-    }
+  for (const f of arquivosDoWeb()) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/\bCAMINHOS_[A-Z0-9_]+\b/g)) nomes.add(m[0]);
   }
   return [...nomes].sort();
 }
@@ -69,7 +56,6 @@ function casos(): { casos: Caso[]; semClasse: string[] } {
 }
 
 const LISTA = casos();
-const ehRotaInexistente = (status: number, corpo: string): boolean => status === 404 && /"mensagem":"Rota não encontrada"/.test(corpo);
 
 describe('contrato das rotas de tela: a lista vem do SDK e do import do web (T-0066)', () => {
   it('toda constante CAMINHOS_* usada pelo web é objeto de textos com prefixo conhecido', () => {

@@ -8,9 +8,8 @@
  * Parâmetros (camada a; a camada b segue o campo `origem` do JSON): empresa = o tenant de teste; filial = filial real criada pela API; cadastro e entidade = valores válidos do
  * SDK; demais `:id` = UUID fictício (404 de regra aceito). Dados fictícios. Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   CAMINHOS_CARGAS_PLATAFORMA,
@@ -27,28 +26,14 @@ import { PAGINAS_REGISTRADAS } from '../../../apps/web/src/lib/paginas';
 import { telaDaRota } from '../../../apps/web/src/lib/telas';
 import type { ExecutorDeAcoes, TelaDescrita } from '../../../apps/web/src/lib/descritor/tipos';
 import { montarApiPg } from '../../apoio/api-pg';
-import { preencherCaminho, UUID_FICTICIO } from '../../apoio/caminhos';
+import { arquivosDoWeb, ehRotaInexistente, preencherCaminho, RAIZ, UUID_FICTICIO } from '../../apoio/caminhos';
 import { atalhosPortal, inserirSuperadmin } from '../../apoio/portal-pg';
 
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const ID = ':id';
 /** Id passado às funções de caminho das telas (`api(id)`, `eventosApi(id)`): sem caracteres que o `encodeURIComponent` troque. */
 const ID_DA_TELA = 'IDDATELAT0065';
 
 // ---------------------------------------------------------------- 1. varredura do fonte
-
-/** Fontes do web: apps/web/src e modules/<m>/web, só .ts/.tsx de produção. */
-function arquivosDoWeb(): string[] {
-  const pastas = [join(RAIZ, 'apps', 'web', 'src'), ...readdirSync(join(RAIZ, 'modules')).map((m) => join(RAIZ, 'modules', m, 'web'))];
-  const fora = /\.test\.tsx?$|apoio-teste\.ts$/;
-  return pastas.flatMap((p) => {
-    try {
-      return (readdirSync(p, { recursive: true }) as string[]).map((f) => join(p, f)).filter((f) => /\.tsx?$/.test(f) && !fora.test(f));
-    } catch {
-      return []; // módulo sem web (ex.: fiscal)
-    }
-  });
-}
 
 /**
  * Início de uma chamada GET do web. Os wrappers são os de apps/web/src/lib/api.ts, lib/listas.ts e lib/config/api.ts e o
@@ -286,8 +271,6 @@ describe('fumaça das telas: a lista de GETs do web (T-0065)', () => {
 });
 
 // ---------------------------------------------------------------- 4. a API real
-
-const ehRotaInexistente = (status: number, corpo: string): boolean => status === 404 && /"mensagem":"Rota não encontrada"/.test(corpo);
 
 describe.skipIf(!PG_DISPONIVEL)('fumaça das telas: todo GET do web existe na API de produção (T-0065, Postgres)', () => {
   let api: Awaited<ReturnType<typeof montarApiPg<'E'>>>;

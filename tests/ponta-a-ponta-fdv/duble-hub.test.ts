@@ -448,7 +448,7 @@ describe('T-0012 — dublê do Hub: erro por linha e upsert', () => {
     expect(JSON.stringify(t.erros)).not.toContain('Empresa Ficticia');
   });
 
-  it('T-0085: parcelas_dias do prazo só como lista de inteiros; o texto "28/56" é recusado, como no Hub real', async () => {
+  it('T-0085: parcelas_dias do prazo recusado sai na linha com codigo e campo certos (a tabela completa fica em prazo-contrato.test.ts)', async () => {
     const prazo = (id: string, parcelas_dias: unknown) => ({
       external_id: id,
       alterado_em: T(0),
@@ -460,25 +460,12 @@ describe('T-0012 — dublê do Hub: erro por linha e upsert', () => {
       env('forma_pagamento', [{ external_id: 'f1', alterado_em: T(0), codigo: 'BOL', nome: 'Boleto' }]),
     );
     const r = await enviarEConcluir(
-      env('prazo_pagamento', [
-        prazo('lista', [28, 56]),
-        prazo('a-vista', [0]),
-        prazo('texto', '28/56'),
-        prazo('texto-um', '28'),
-        prazo('numero-solto', 28),
-        prazo('lista-vazia', []),
-        prazo('fracao', [28.5]),
-        prazo('negativo', [-1]),
-        prazo('acima', [1000]),
-        prazo('texto-na-lista', ['28']),
-      ]),
+      env('prazo_pagamento', [prazo('lista', [28, 56]), prazo('texto', '28/56')]),
     );
-    expect(r.contagens).toMatchObject({ novas: 2, com_erro: 8 });
-    expect(r.erros.map((e) => [e.external_id, e.codigo, e.campo])).toEqual(
-      ['texto', 'texto-um', 'numero-solto', 'lista-vazia', 'fracao', 'negativo', 'acima', 'texto-na-lista'].map(
-        (id) => [id, 'registro_invalido', 'parcelas_dias'],
-      ),
-    );
+    expect(r.contagens).toMatchObject({ novas: 1, com_erro: 1 });
+    expect(r.erros.map((e) => [e.external_id, e.codigo, e.campo])).toEqual([
+      ['texto', 'registro_invalido', 'parcelas_dias'],
+    ]);
   });
 
   it('upsert monotônico: inalterada (mesmo conteúdo), atualizada (mais nova), obsoleta (mais velha); duplicada no lote conta uma vez', async () => {
