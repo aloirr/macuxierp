@@ -1,10 +1,12 @@
 import { PERFIS, pode, type Perfil } from '@macuxierp/platform-sdk';
+import { AuditoriaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { describe, expect, it } from 'vitest';
 import { TRANSICOES } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
-import { CPF_DO_CLIENTE, IDS, MOTIVO_LIVRE, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoManual, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros } from './fixtures-teste';
+import { CPF_DO_CLIENTE, IDS, MOTIVO_LIVRE, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, pedidoManual, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros } from './fixtures-teste';
 import { idFaturadoDaNota } from './eventos';
 import { criarPluginPedido } from './index';
+import { criarRecebedorFdv } from './recebedor';
 import { dependenciasEmMemoria } from './memoria';
 
 type Montagem = ReturnType<typeof montar>;
@@ -301,6 +303,51 @@ describe('transições (RN-PED-02)', () => {
     const r = await t.chamar('POST', `/pedidos/${p.id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } });
     expect(r).toMatchObject({ status: 422, corpo: { detalhes: { possiveis: [] } } });
     expect(t.eventos).toHaveLength(antes);
+  });
+});
+
+/** Pedido do FDV em análise por prazo acima do cliente (RN-PED-07, emenda de 24/11), recebido pelo recebedor como o Hub faz. */
+const fdvEmAnalise = async (t: Montagem) => {
+  prazoDoCliente(t.cadastros, 10);
+  const recebedor = criarRecebedorFdv({
+    ...t.deps, outbox: new OutboxMemoria(), auditoria: new AuditoriaMemoria(), relogio: new RelogioFixo(new Date('2026-11-21T15:00:00Z')),
+    licencas: { ler: async () => [{ modulo: 'pedido', ativo: true, valido_ate: null }] },
+  });
+  const r = await recebedor.receber({ consultar: async () => [] }, pedidoFdv());
+  expect(r).toMatchObject({ resultado: 'criado', status: 'em_analise' });
+  return (r as { pedido_id: string }).pedido_id;
+};
+
+describe('pedido do FDV em análise por prazo (RN-PED-07, 0056)', () => {
+  it('RN-PED-07 e RN-PED-03: aprovar aceita a pendência de prazo: bloqueante=false, justificativa obrigatória e a aceitação em aprovacao', async () => {
+    const t = montar();
+    const id = await fdvEmAnalise(t);
+    expect(await t.chamar('POST', `/pedidos/${id}/aprovar`, { sessao: gerente })).toMatchObject({ status: 400, corpo: { campos: { justificativa: expect.any(String) } } });
+    expect(await t.chamar('POST', `/pedidos/${id}/aprovar`, { sessao: faturista, corpo: { justificativa: 'ok' } })).toMatchObject({ status: 403 });
+    const r = await t.chamar('POST', `/pedidos/${id}/aprovar`, { sessao: gerente, corpo: { justificativa: 'Cliente novo, prazo combinado com o comercial' } });
+    expect(r).toMatchObject({ status: 200, corpo: { status: 'aprovado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] } });
+    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'aprovado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+    expect(t.armazem.aprovacoes.at(-1)).toMatchObject({ decisao: 'aprovado', automatica: false, justificativa: 'Cliente novo, prazo combinado com o comercial', pendencias_aceitas: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+    expect(t.eventos.at(-1)?.nome).toBe('pedido.pedido.aprovado@1');
+  });
+  it('RN-PED-07: o pedido do FDV em análise por prazo pode ser recusado, com a pendência de prazo mantida', async () => {
+    const t = montar();
+    const id = await fdvEmAnalise(t);
+    const r = await t.chamar('POST', `/pedidos/${id}/recusar`, { sessao: gerente, corpo: { motivo_codigo: 'cliente_bloqueado' } });
+    expect(r).toMatchObject({ status: 200, corpo: { status: 'recusado' } });
+    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'recusado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
+    expect(t.eventos.at(-1)?.nome).toBe('pedido.pedido.recusado@1');
+  });
+  it('RN-PED-07: o pedido do FDV aprovado com a pendência de prazo aceita pode ser cancelado (em_analise não cancela direto, RN-PED-02); o cancelado fica sem pendências', async () => {
+    const t = montar();
+    const id = await fdvEmAnalise(t);
+    expect(await t.chamar('POST', `/pedidos/${id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02' } });
+    expect((await t.chamar('POST', `/pedidos/${id}/aprovar`, { sessao: gerente, corpo: { justificativa: 'ok' } })).status).toBe(200);
+    const r = await t.chamar('POST', `/pedidos/${id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } });
+    expect(r).toMatchObject({ status: 200, corpo: { status: 'cancelado', pendencias: [] } });
+    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'cancelado', pendencias: [] });
+    expect(t.armazem.aprovacoes.at(-1)).toMatchObject({ pendencias_aceitas: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+    expect(t.eventos.at(-1)?.nome).toBe('pedido.pedido.cancelado@1');
   });
 });
 

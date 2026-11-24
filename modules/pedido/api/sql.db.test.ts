@@ -323,9 +323,65 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     expect((await admin('SELECT count(*)::int AS n FROM pedido.numeracao WHERE tenant_id = $1', [T]))[0]?.n).toBe(0);
   });
 
-  // PENDENTE (banco-dados): a migração 0016 tem os CHECKs pedido_fdv_sem_analise e pedido_fdv_sem_pendencia, que barram o FDV em em_analise
-  // e com pendência. Tirar o `.skip` quando a migração que os relaxa entrar (RN-PED-07, emenda de 24/11).
-  it.skip('RN-PED-07: o pedido do FDV com prazo acima do cliente entra em análise no SQL real, com a pendência gravada e só recebido@1 na outbox; a aprovação revalida e é 422', async () => {
+  // Os quatro testes abaixo aguardam a 0056 (#558): a 0016 tem os CHECKs pedido_fdv_sem_analise e pedido_fdv_sem_pendencia, que barram o
+  // FDV em em_analise e com pendência. Tirar os `.skip` na rodada à parte, depois do merge da 0056 (RN-PED-07, emenda de 24/11).
+  const fdvPorPrazo = async (nome: string) => {
+    const T = await criarTenant(efemero.admin, nome, ['pedido']);
+    const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+    const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, pedidoFdv()));
+    expect(r).toMatchObject({ resultado: 'criado', status: 'em_analise' });
+    return { T, id: (r as { pedido_id: string }).pedido_id };
+  };
+  const lerPedido = async (id: string) => (await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0];
+
+  // aguarda a 0056 (#558)
+  it.skip('RN-PED-07 e RN-PED-03: FDV em análise por prazo aprovado no SQL real: a pendência de prazo fica bloqueante=false e a aceitação (justificativa) em pedido.aprovacao', async () => {
+    prazoDoCliente(cad, 10);
+    try {
+      const { T, id } = await fdvPorPrazo('fdv-prazo-aprova');
+      await expect(app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, {}))).rejects.toMatchObject({ status: 400 });
+      await app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, { justificativa: 'Prazo combinado com o comercial' }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'aprovado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+      expect((await admin('SELECT decisao, automatica, justificativa, pendencias_aceitas FROM pedido.aprovacao WHERE pedido_id = $1', [id]))[0])
+        .toMatchObject({ decisao: 'aprovado', automatica: false, justificativa: 'Prazo combinado com o comercial', pendencias_aceitas: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
+      expect((await admin('SELECT nome FROM plataforma.evento WHERE tenant_id = $1 ORDER BY ocorrido_em, versao', [T])).map((l) => l.nome).sort()).toEqual(['pedido.pedido.aprovado@1', 'pedido.pedido.recebido@1']);
+      // aprovado com a pendência aceita cancela (RN-PED-02): o cancelado do FDV volta a pendencias = []
+      await app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'cancelado', pendencias: [] });
+    } finally {
+      prazoDoCliente(cad, null);
+    }
+  });
+
+  // aguarda a 0056 (#558)
+  it.skip('RN-PED-07: FDV em análise por prazo recusado no SQL real: a pendência de prazo segue gravada e o motivo fica em pedido.aprovacao', async () => {
+    prazoDoCliente(cad, 10);
+    try {
+      const { T, id } = await fdvPorPrazo('fdv-prazo-recusa');
+      await app.comTenant(T, (tx) => servico.recusar(tx, efeitos(tx, T), id, { motivo_codigo: 'cliente_bloqueado', motivo_texto: null }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'recusado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
+      expect((await admin('SELECT decisao, motivo_codigo FROM pedido.aprovacao WHERE pedido_id = $1', [id]))[0]).toMatchObject({ decisao: 'recusado', motivo_codigo: 'cliente_bloqueado' });
+    } finally {
+      prazoDoCliente(cad, null);
+    }
+  });
+
+  // aguarda a 0056 (#558)
+  it.skip('RN-PED-07 e RN-PED-02: FDV em análise por prazo não cancela direto (422); aprovado com a pendência aceita cancela no SQL real, sem pendências', async () => {
+    prazoDoCliente(cad, 10);
+    try {
+      const { T, id } = await fdvPorPrazo('fdv-prazo-cancela');
+      await expect(app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }))).rejects.toMatchObject({ status: 422, codigo: 'RN-PED-02' });
+      await app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, { justificativa: 'ok' }));
+      await app.comTenant(T, (tx) => servico.cancelar(tx, efeitos(tx, T), id, { motivo_codigo: 'erro_lancamento', motivo_texto: null }));
+      expect(await lerPedido(id)).toMatchObject({ status: 'cancelado', pendencias: [] });
+    } finally {
+      prazoDoCliente(cad, null);
+    }
+  });
+
+  // aguarda a 0056 (#558)
+  it.skip('RN-PED-07: o pedido do FDV com prazo acima do cliente entra em análise no SQL real, com a pendência gravada e só recebido@1 na outbox', async () => {
     const T = await criarTenant(efemero.admin, 'fdv-prazo', ['pedido']);
     prazoDoCliente(cad, 10);
     try {
@@ -334,8 +390,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
       expect(r).toMatchObject({ resultado: 'criado', status: 'em_analise' });
       const id = (r as { pedido_id: string }).pedido_id;
       expect((await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0]).toMatchObject({ status: 'em_analise', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
-      expect((await admin("SELECT nome FROM core.outbox WHERE tenant_id = $1 ORDER BY criado_em", [T])).map((l) => l.nome)).toEqual(['pedido.pedido.recebido@1']);
-      await expect(app.comTenant(T, (tx) => servico.aprovar(tx, efeitos(tx, T), id, {}))).rejects.toMatchObject({ status: 422, codigo: 'RN-PED-03', detalhes: { bloqueantes: ['prazo_acima_do_cliente'] } });
+      expect((await admin("SELECT nome FROM plataforma.evento WHERE tenant_id = $1 ORDER BY ocorrido_em, versao", [T])).map((l) => l.nome)).toEqual(['pedido.pedido.recebido@1']);
     } finally {
       prazoDoCliente(cad, null);
     }

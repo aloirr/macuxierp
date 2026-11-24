@@ -420,18 +420,18 @@ export function criarServico(deps: Dependencias) {
     const av = await reavaliar(tx, repo, p);
     if (!av) throw erros.validacao({ cliente_id: 'Cadastro do pedido não encontrado' });
     const pendencias = semValores(av.detalhadas);
-    const d = decidirAprovacao(pendencias, entrada.justificativa);
+    const d = decidirAprovacao(pendencias, entrada.justificativa, p.origem === 'fdv' ? 'fdv' : 'manual');
     if (!d.ok) {
       if (d.tipo === 'regra') throw erros.regra(d.rn, d.mensagem, undefined, { bloqueantes: d.bloqueantes.map((b) => b.codigo) });
       throw erros.validacao({ [d.campo]: d.mensagem });
     }
     await gravarPrecosDeTabela(repo, p, av.precos);
     await repo.atualizarAVista(id, foraDoCredito(av.condicao));
-    await repo.atualizarStatus(id, 'aprovado', pendencias, fx.agora);
+    await repo.atualizarStatus(id, 'aprovado', d.pendencias_gravar, fx.agora);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoAprovado(final, p.status, false, av.condicao));
     await repo.registrarAprovacao({ pedido_id: id, decisao: 'aprovado', automatica: false, decidido_por: fx.ator.id, perfil: fx.ator.perfil, pendencias_aceitas: d.pendencias_aceitas, justificativa: d.justificativa, motivo_codigo: null, motivo_texto: null, decidido_em: fx.agora });
-    await repo.registrarEvento({ pedido_id: id, de: p.status, para: 'aprovado', ...rotuloAtor(fx), motivo_codigo: null, motivo_texto: null, pendencias, evento_id: idEvento, ocorrido_em: fx.agora });
+    await repo.registrarEvento({ pedido_id: id, de: p.status, para: 'aprovado', ...rotuloAtor(fx), motivo_codigo: null, motivo_texto: null, pendencias: d.pendencias_gravar, evento_id: idEvento, ocorrido_em: fx.agora });
     await fx.auditar({ acao: 'pedido.aprovar', entidade: 'pedido', entidade_id: id, antes: { status: p.status }, depois: { status: 'aprovado', pendencias_aceitas: d.pendencias_aceitas.map((x) => x.codigo), com_justificativa: d.justificativa !== null } });
     log(fx, { pedido_id: id, acao: 'aprovar', status: 'aprovado', pendencias_aceitas: d.pendencias_aceitas.map((x) => x.codigo) }, 'pedido aprovado');
     return detalhar(tx, repo, final);
@@ -464,7 +464,8 @@ export function criarServico(deps: Dependencias) {
     const aplicadas = await notasAplicadas(repo, id, autorizadas);
     const pendentes = autorizadas.filter((n) => !aplicadas.has(n));
     if (pendentes.length > 0) throw erros.regra('RN-PED-02', 'O pedido tem nota autorizada ainda não registrada: aguarde alguns segundos e tente de novo', undefined, { notas_pendentes: pendentes });
-    await repo.atualizarStatus(id, 'cancelado', p.pendencias, null);
+    // Pedido do FDV cancelado volta a pendencias = [] (CHECK pedido_fdv_sem_pendencia, 0056: só em_analise, recusado e aprovado levam prazo); a aceitação fica em `aprovacao`.
+    await repo.atualizarStatus(id, 'cancelado', p.origem === 'fdv' ? [] : p.pendencias, null);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoCancelado(final, p.status, entrada.motivo_codigo, entrada.motivo_texto));
     await repo.registrarEvento({ pedido_id: id, de: p.status, para: 'cancelado', ...rotuloAtor(fx), motivo_codigo: entrada.motivo_codigo as MotivoCodigo, motivo_texto: entrada.motivo_texto, pendencias: null, evento_id: idEvento, ocorrido_em: fx.agora });
