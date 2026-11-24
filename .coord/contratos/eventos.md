@@ -64,8 +64,8 @@ Formas e prazos com prazo médio digitado (`docs/desenho/T-0085.md`). Publica: `
 
 | Evento | Campo aditivo (opcional, anulável) |
 |---|---|
-| `cadastros.condicao_pagamento.alterada@1` | `prazo_medio_dias`: inteiro de 0 a 999, digitado (RN-CAD-12). Nulo = legado "incompleto", que não vai ao FDV nem entra em pedido |
-| `cadastros.cliente.alterado@1` | `prazo_medio_dias`: inteiro de 0 a 999 (RN-CAD-13). Nulo = sem limite de prazo |
+| `cadastros.condicao_pagamento.alterada@1` | `prazo_medio_dias`: inteiro de 0 a 999, digitado (RN-CAD-15). Nulo = legado "incompleto", que não vai ao FDV nem entra em pedido |
+| `cadastros.cliente.alterado@1` | `prazo_medio_dias`: inteiro de 0 a 999 (RN-CAD-16). Nulo = sem limite de prazo |
 
 O `prazos_dias` continua a lista de parcelas em dias (à vista `[0]`). O `parcelas_cartao` fica como legado. Envio ao Hub: ADR 0020, item 7.
 
