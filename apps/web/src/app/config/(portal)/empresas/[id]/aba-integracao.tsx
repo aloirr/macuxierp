@@ -8,6 +8,8 @@ import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import type { Resultado } from '@/lib/config/executar';
 import { cargaCompletaFdvAcao, configurarFdvAcao, retomarFdvAcao, salvarCredencialFdvAcao, testarConexaoFdvAcao } from '../acoes-integracao-fdv';
+import { ColunasEntrada } from './colunas-entrada';
+import type { EntradaPortal, Enviar } from '@/lib/config/entrada-provisorio';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 
 type Pedido = { tipo: 'ligar' | 'desligar' | 'carga' | 'retomar'; linha: LinhaCadastroFdv };
@@ -17,13 +19,13 @@ type Mensagem = { ok: boolean; texto: string } | null;
  * Aba "Integração" da ficha da empresa (T-0056, ADR 0013, molde: aba Integração do portal do FDV). Só o superadmin chega aqui
  * (todo o /config é do superadmin). v0.3.4: só o grupo 'Macuxi FDV' (cartões 'Conexão com o Macuxi FDV' e 'Cadastros enviados ao FDV').
  *
- * LUGAR RESERVADO (cenário B, depois): duas colunas de ENTRADA, "Integração via Conector" e "Integração via API", ao lado deste grupo
- * no desktop e empilhadas abaixo de 768 px (`.integracao-colunas`). Sem tela para elas agora.
+ * Cenário B (v0.3.11): acima deste grupo, `ColunasEntrada` (via Conector, via API, dono por cadastro e trava de 30%), com contrato provisório
+ * em `lib/config/entrada-provisorio.ts` (a página ainda não lê a entrada: `entrada` nulo mostra o estado vazio).
  *
  * A chave do conector fica só no campo até o envio: sem estado, URL, armazenamento nem log; depois de salvar, o campo é limpo e a
  * tela mostra só o prefixo e as datas que a API devolve.
  */
-export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string }) {
+export function AbaIntegracao({ empresaId, dados, fuso, entrada = null, enviar }: { empresaId: string; dados: IntegracaoFdvPlataforma; fuso: string; entrada?: EntradaPortal | null; enviar?: Enviar }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<Mensagem>(null);
@@ -91,7 +93,7 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
   const u = dados.ultimo_sinal;
   return (
     <div className="integracao-colunas">
-      {/* Cenário B (depois): colunas "Integração via Conector" e "Integração via API" entram aqui, ao lado deste grupo. */}
+      <ColunasEntrada empresaId={empresaId} entrada={entrada} fuso={fuso} enviar={enviar} />
       <div aria-label="Macuxi FDV" role="group">
         {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">O módulo Integração FDV não está licenciado nesta empresa. Ligue-o na aba Empresa para configurar.</p>}
         {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
