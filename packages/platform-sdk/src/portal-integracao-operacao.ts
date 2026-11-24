@@ -187,6 +187,8 @@ export const CAMINHOS_INTEGRACAO_FDV_TENANT = Object.freeze({
   log: '/integracao-fdv/entidades/:entidade/log',
   /** "Baixar erros (.csv)": todos os erros abertos do cadastro, com as colunas do `LogCadastroFdvTenant.erros`. */
   logCsv: '/integracao-fdv/entidades/:entidade/log.csv',
+  /** T-0059: seção "Clientes recebidos do FDV" (`PaginaClientesRecebidosFdv` de `cliente-fdv.ts`). */
+  clientesRecebidos: '/integracao-fdv/clientes-recebidos',
 });
 
 // ---- Zerar por cadastro na aba Integração (R-20261124-170915-alexandre) ----
