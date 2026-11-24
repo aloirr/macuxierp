@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { buscarEu, NaoAutenticado } from './api';
@@ -29,7 +30,7 @@ export interface Contexto {
 }
 
 /** Lê a sessão do usuário; sem sessão válida, manda para o login. A filial vem do cookie, validada contra /eu. */
-export async function contexto(): Promise<Contexto> {
+export const contexto = cache(async (): Promise<Contexto> => {
   const jar = await cookies();
   const acesso = jar.get(COOKIE_ACESSO)?.value;
   if (!acesso) redirect('/sessao/renovar');
@@ -42,4 +43,4 @@ export async function contexto(): Promise<Contexto> {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     throw e;
   }
-}
+});

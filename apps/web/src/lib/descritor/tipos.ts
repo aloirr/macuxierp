@@ -19,6 +19,10 @@ export interface FiltroTela {
   opcoes?: readonly { valor: string; rotulo: string }[];
   /** `cadastro`: de onde ler as opções (cadastros). */
   fonte?: FonteOpcoes;
+  /** `data` que a API recebe como instante (ISO completo): o dia civil vira o início ou o fim do dia no fuso do tenant (ex.: `de` e `ate` da auditoria). */
+  instante?: 'inicio' | 'fim';
+  /** `selecao`: texto da opção em branco, quando "Todos" não serve (ex.: "Só ativos"). */
+  vazio?: string;
 }
 
 export type Linha = Readonly<Record<string, unknown>>;
@@ -26,7 +30,12 @@ export type Linha = Readonly<Record<string, unknown>>;
 /** Selo de célula ou de título (tom do módulo já mapeado para as classes do shell); `dica` vira o tooltip. */
 export interface SeloVista { texto: string; tom: 'ok' | 'aviso' | 'erro' | 'neutro'; dica?: string }
 /** Escrita que a tela pode fazer: método e caminho (com `:id` onde o UUID do registro entra). O servidor só aceita as declaradas. */
-export type Escrita = { metodo: AcaoVista['metodo']; caminho: string };
+export type Escrita = {
+  metodo: AcaoVista['metodo'];
+  caminho: string;
+  /** Campo da resposta que vale uma vez só (senha provisória, RN-CORE-10): o shell o mostra uma única vez e não o guarda. */
+  segredo?: string;
+};
 
 /** Leitura (GET) que o diálogo de uma ação pode pedir ao servidor: `caminho` com `:id` (UUID) e o schema que valida a resposta (fica no servidor). */
 export interface Leitura { caminho: string; schema: ZodTypeAny }
@@ -99,6 +108,9 @@ export interface TabelaVista { titulo: string; colunas: readonly ColunaVista[]; 
 export interface PendenciaVista { texto: string; bloqueante: boolean; codigoRn: string }
 export interface EventoVista { quando: string; texto: string }
 
+/** Campo do diálogo de edição (`entrada: 'campos'`): `valor` é o valor atual do registro. */
+export interface CampoDialogo { nome: string; rotulo: string; tipo: 'texto' | 'selecao'; valor: string; opcoes?: readonly { valor: string; rotulo: string }[] }
+
 /** Ação do detalhe, já filtrada por perfil e status pelo módulo. Só dados: a validação do diálogo é `TelaDetalhe.validarAcao`. */
 export interface AcaoVista {
   id: string;
@@ -110,9 +122,14 @@ export interface AcaoVista {
    * `justificativa`: texto livre (aprovar com pendência não bloqueante); `motivo`: diálogo com catálogo; `nenhum`: envia direto;
    * `confirmar`: diálogo só de confirmação (título e aviso do módulo); `baixa`: valor em reais e data (baixa de título);
    * `faixa`: filial, número inicial, número final e justificativa (inutilizar números);
-   * `itens`: carrega os itens de `leitura` e pede uma quantidade por item (nota parcial).
+   * `itens`: carrega os itens de `leitura` e pede uma quantidade por item (nota parcial);
+   * `campos`: formulário curto de edição com os `campos` do módulo (texto e seleção), já com o valor atual.
    */
-  entrada: 'nenhum' | 'justificativa' | 'motivo' | 'confirmar' | 'baixa' | 'faixa' | 'itens';
+  entrada: 'nenhum' | 'justificativa' | 'motivo' | 'confirmar' | 'baixa' | 'faixa' | 'itens' | 'campos';
+  /** Em `campos`: o que a pessoa edita no diálogo. */
+  campos?: readonly CampoDialogo[];
+  /** Aviso que acompanha o valor de uso único da resposta (a escrita declara `segredo`): ex.: "Anote esta senha agora". */
+  avisoSegredo?: string;
   /** Em `itens`: caminho GET (UUID já preenchido) dos itens do registro. */
   leitura?: string;
   /** Em `faixa`: modelo GET com `:id` = filial escolhida (ex.: `/v1/faturamento/filiais/:id/configuracao`) para a linha de ambiente. */
@@ -164,6 +181,8 @@ export interface EntradaAcao {
   filial?: string;
   inicial?: string;
   final?: string;
+  /** Em `campos`: valor digitado por nome de campo. */
+  campos?: Readonly<Record<string, string>>;
   /** Em `itens`: quantidade digitada por item (texto pt-BR) e o saldo (qtd4) que o diálogo mostrou. */
   itens?: readonly ItemEscolhido[];
   /** Idempotency-Key da tentativa, para o módulo montar corpos que a levam (ex.: emitir). Na validação do diálogo pode faltar. */
@@ -249,6 +268,10 @@ export interface TelaFormulario {
   montar: (valores: ValoresFormulario, itens: readonly ItemFormulario[]) => unknown;
   /** POST de criação. */
   api: string;
+  /** Campo da resposta do POST que vale uma vez só (senha provisória): a tela o mostra antes de seguir. */
+  segredo?: string;
+  /** Aviso mostrado junto do `segredo` (RN-CORE-10). */
+  avisoSegredo?: string;
   /** Rota do detalhe, a partir do `id` devolvido pela API. */
   depois: (id: string) => string;
   voltar: string;
@@ -257,4 +280,12 @@ export interface TelaFormulario {
   novaChave: () => string;
 }
 
-export type TelaDescrita = TelaLista | TelaDetalhe | TelaFormulario;
+/**
+ * Página com componente próprio (quadro de perfis, ambiente fiscal, bandeira por filial): não é lista, detalhe nem formulário, mas
+ * pode ter ações (a bandeira liga e desliga) que passam pelo mesmo executor, com validação do módulo e Idempotency-Key.
+ */
+export interface TelaQuadro extends ExecutorDeAcoes {
+  tipo: 'quadro';
+}
+
+export type TelaDescrita = TelaLista | TelaDetalhe | TelaFormulario | TelaQuadro;

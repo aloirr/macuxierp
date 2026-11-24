@@ -8,6 +8,7 @@ import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { redirecionar } from '@/lib/redirecionar';
 import { telaDaRota } from '@/lib/telas';
+import { filtrosParaApi } from '@/lib/descritor/lista';
 
 /**
  * Exporta o CSV de uma lista de descritor: o shell só repassa o pedido com o token do cookie httpOnly para
@@ -22,7 +23,8 @@ export async function GET(req: NextRequest) {
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
   const renovar = () => redirecionar('/sessao/renovar');
   if (!acesso) return renovar();
-  const { cursor: _c, limite: _l, ...filtros } = filtrosDaUrl(tela.pagina, req.nextUrl.searchParams);
+  const { cursor: _c, limite: _l, ...daUrl } = filtrosDaUrl(tela.pagina, req.nextUrl.searchParams);
+  const filtros = filtrosParaApi(tela.filtrosTela, daUrl, eu.empresa.fuso); // `de`/`ate` da auditoria: dia civil -> datetime ISO completo
   let r;
   try {
     r = await baixarCsv(`${tela.pagina.api}/exportar${paraQuery(filtros)}`, acesso);
