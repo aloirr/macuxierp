@@ -3,7 +3,7 @@ import {
   CADASTROS_CARGA_PORTAL, CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, ZeragemPlataformaResposta, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ValidarCargaPlataformaResposta, fraseConfere, situacaoCarga, type EfeitoSubstituir,
 } from '@macuxierp/platform-sdk';
 import {
-  AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, podeConfirmarZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
+  AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
   podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar,
 } from './cargas';
 
@@ -213,7 +213,7 @@ describe('zerar dados', () => {
   it('422 zeragem_bloqueada: o código e os bloqueios chegam à tela; o 409 dados_mudaram traz o código para refazer a prévia', async () => {
     const bloqueado = await pedirZerar(EMP, ['preco'], FRASE_ZERAR_DADOS, CHAVE, async () => json({ ok: false, erro: 'Há integração ligada.', codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento'], chaveNova: true }, 422));
     expect(!bloqueado.ok && bloqueado.codigo).toBe(CODIGO_ZERAGEM_BLOQUEADA);
-    expect(!bloqueado.ok && textosBloqueios(bloqueiosDeTextos(bloqueado.bloqueios ?? []))).toEqual([`Desligue o envio de ${ROTULO_ZERAR.preco} na aba Integração FDV antes de zerar.`, 'Há uma carga em andamento. Espere terminar para zerar.']);
+    expect(!bloqueado.ok && textosBloqueios(bloqueiosDeTextos(bloqueado.bloqueios ?? []))).toEqual(['Há uma carga em andamento. Espere terminar para zerar.']);
     const mudou = await pedirZerar(EMP, ['preco'], FRASE_ZERAR_DADOS, CHAVE, async () => json({ ok: false, erro: 'Os dados mudaram. Confira de novo.', codigo: 'dados_mudaram', chaveNova: true }, 409));
     expect(!mudou.ok && mudou.codigo).toBe('dados_mudaram');
     expect(!mudou.ok && mudou.erro).toBe('Os dados mudaram. Confira de novo.');
@@ -238,25 +238,15 @@ describe('zerar dados', () => {
       { tabela: 'cliente', coluna: 'condicao_pagamento_id', quantidade: 0 },
     ])).toEqual(['12 clientes ficam sem vendedor.', '1 cliente fica sem tabela de preço.']);
   });
-  it('bloqueios: a integração ligada nomeia o cadastro; a carga em andamento aparece uma vez', () => {
-    expect(textosBloqueios([{ cadastro: 'preco', motivo: 'integracao_ligada' }, { cadastro: 'produto', motivo: 'lote_em_andamento' }, { cadastro: 'cliente', motivo: 'lote_em_andamento' }])).toEqual([`Desligue o envio de ${ROTULO_ZERAR.preco} na aba Integração FDV antes de zerar.`, 'Há uma carga em andamento. Espere terminar para zerar.']);
-  });
-  it('confirmar: precisa de seleção, prévia atual, nenhum bloqueio e a frase', () => {
-    const ok = { selecionados: 1, previa: zer(), carregando: false, frase: 'AUTORIZO ZERAR OS DADOS.', enviando: false };
-    expect(podeConfirmarZerar(ok)).toBe(true);
-    expect(podeConfirmarZerar({ ...ok, selecionados: 0 })).toBe(false);
-    expect(podeConfirmarZerar({ ...ok, previa: null })).toBe(false);
-    expect(podeConfirmarZerar({ ...ok, carregando: true })).toBe(false);
-    expect(podeConfirmarZerar({ ...ok, previa: zer({ bloqueios: [{ cadastro: 'preco', motivo: 'integracao_ligada' }] }) })).toBe(false);
-    expect(podeConfirmarZerar({ ...ok, frase: 'autorizo zerar' })).toBe(false);
-    expect(podeConfirmarZerar({ ...ok, enviando: true })).toBe(false);
+  it('bloqueios: só a carga em andamento vale e aparece uma vez; a integração ligada não bloqueia mais', () => {
+    expect(textosBloqueios([{ cadastro: 'preco', motivo: 'integracao_ligada' }, { cadastro: 'produto', motivo: 'lote_em_andamento' }, { cadastro: 'cliente', motivo: 'lote_em_andamento' }])).toEqual(['Há uma carga em andamento. Espere terminar para zerar.']);
   });
   it('a frase do zerar ignora maiúsculas, espaços e ponto final; os textos da janela são os aprovados', () => {
     expect(fraseConfere('AUTORIZO ZERAR OS DADOS.', FRASE_ZERAR_DADOS)).toBe(true);
     expect(fraseConfere('autorizo zerar os dados', FRASE_SUBSTITUIR_TUDO)).toBe(false);
     expect(fraseConfere('', FRASE_ZERAR_DADOS)).toBe(false);
     expect(TEXTO_ANTES_DE_ZERAR).toBe('Antes de zerar, exporte pelo BKO da empresa (Cadastros > Exportar).');
-    expect(AVISO_ZERAR).toBe('Apaga os cadastros escolhidos e não tem volta.');
+    expect(AVISO_ZERAR).toBe('Apaga os registros e não tem volta.');
     expect(TEXTO_ZERADO).toBe('Dados zerados.');
     expect(textoZerado(0)).toBe('Dados zerados.');
     expect(textoZerado(5)).toBe('Dados zerados. Mantidos: 5 (em uso em pedido, título ou nota, ou filial com dado fiscal).');
