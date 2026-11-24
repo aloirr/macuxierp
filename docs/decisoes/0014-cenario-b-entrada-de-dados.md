@@ -5,7 +5,7 @@
 - **Dono:** engenheiro-software
 - **Tarefa:** T-0057 (v0.3.8). Roteiro da VM: `docs/banco/vm-cenario-b.md` (banco-dados, #387).
 - **Base:** pedido do Alexandre (pelo PO, 23/11 ~12h47 e 14h08): entrada de dados no molde do FDV, com uma API REST de entrada e um Conector on-premise, e uma VM Linux de teste com o banco `ERP_THATHYANY`. Decisão de 14h19: "banco está vazio. vamos começar a thathyany do zero." O banco é fictício e não há restore de `.bak`. Ordem da R-20261123-150400-alexandre, renumerada pelo PO em 23/11, 15h36 e de novo às 17h25: o cenário B é a **v0.3.8**. Premissas respondidas pelo PO em 23/11, 15h29 (§3 e §7).
-- **Numeração nova (23/11/2026, 23h00, T-0076):** cenário B = v0.3.11.
+- **Numeração nova (23/11/2026, 23h00, T-0076):** cenário B = v0.3.12 (o PO separou as versões em 24/11/2026).
 - **Fontes copiadas (só consulta, nada muda no FDV):** `aloirr/macuxifdv@c460e92c4bf935c8096e6c67dd6b98a7929cf664` (FDV v1.0.28): `apps/conector` (versão **1.5.0**), `apps/conector/src/hub/cliente.ts` (rotas do Hub), `modules/integracao/kit-thathyany/conector/conector.json` (consultas das views), `docs/produto/03` (RN-INT-06 e a trava de 30%) e `.github/workflows/conector-publicar.yml`. O esquema do banco segue `aloirr/macuxifdv@0b79391`, `kit-thathyany/sql/criar-banco.sql`, com cópia de consulta em `aloirr/macuxierp-recados@8eef2ae`, `recados/anexos/T-0057/criar-banco-fdv-0b79391.sql`.
 - **Amplia:** ADR 0010 (`external_id`), ADR 0012 (lista fechada de funções SECURITY DEFINER do portal) e ADR 0013 (o portal configura módulo; esta é a "ADR nova" que a §1 da 0013 exige para o segundo módulo).
 
@@ -67,7 +67,7 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
 - **Virada sem envio duplicado:** antes do primeiro lote do Conector do ERP, o Conector do kit do FDV (`thathyany-conector`) precisa estar **desligado**, e o Alexandre inativa no FDV os cadastros antigos (decisão de 14h19). A ordem fica no roteiro, com o "como conferir".
 - **Senhas:** a do `macuxi_conector` fica só num arquivo local da VM, `/etc/macuxi-conector/segredos.env` (root, 0600), fora do repositório, junto com a chave do conector; a do `sa` fica no cofre. A sessão do Claude Code da VM não lê esses arquivos nem cita valor em recado, commit ou log.
 
-### 8. Banco (banco-dados; migração 0044)
+### 8. Banco (banco-dados; migração 0045)
 Todas as tabelas no schema `cadastros`, com as colunas da regra 5 e RLS:
 - `entrada_credencial` (`conector_id` único global, `tipo` `conector|api`, `chave_hmac bytea`, `chave_prefixo`, `criada_em`, `substituida_em`, `ultimo_uso_em`; no máximo uma ativa por tenant e tipo);
 - `entrada_lote` (`credencial_id`, `entidade`, `idempotency_key`, `hash_corpo`, `corpo jsonb` que pode ser nulo e é zerado ao terminar, `estado` `recebido|processando|concluido|concluido_com_erros|falhou|aguardando_confirmacao`, os contadores e a sessão de carga completa com a parte e o "último");
@@ -94,15 +94,15 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
 | 7 | Alexandre e banco-dados | a VM pelo roteiro, com o Conector instalado e a virada da seção 7 | 6 |
 
 ### 10. O que o PR de governança precisa (não faz parte deste PR)
-É um PR só, no início da v0.3.8, com `Agente: alexandre`. O merge sai com "autorizo o merge do PR #N no commit <sha>".
+É um PR só, no início da v0.3.12, com `Agente: alexandre`. O merge sai com "autorizo o merge do PR #N no commit <sha>".
 1. **`.coord/donos.json`:** `apps/conector/**` para o `engenheiro-software`; `modules/cadastros/**/entrada/**` continua no `modulo-cadastros` (já coberto por `modules/cadastros/**`, só conferir); `packages/platform-sdk/src/hub-v1*.ts` no `engenheiro-software` (já coberto, conferir).
-2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.8 (seção 6, item 3).
+2. **`.github/workflows/conector-montar.yml`** (novo, só `workflow_dispatch`): monta o pacote Windows (zip) e o Linux (`tar.gz`) do `apps/conector`, com o SHA-256 de cada arquivo, e os sobe como **artefato do GitHub** (30 dias). Falha fechada se a versão do input for diferente da do `package.json`. **Sem assinatura, sem bucket e sem secret** na v0.3.12 (seção 6, item 3).
 3. **`.github/workflows/ci.yml`:** o `apps/conector` entra no escopo, no lint, no typecheck e no build do PR, e os testes dele entram na suíte do `producao-liberar`.
-4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.8.
+4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.12.
 
 ### 11. Passo do Alexandre: criar o `MACUXIERP_PEPPER_ENTRADA`
 - **Onde:** no `.env` de produção da VM, `/opt/macuxierp/.env`, o mesmo arquivo da `MACUXIERP_CHAVE_A1` e da `MACUXIERP_CHAVE_INTEGRACAO`. Não é secret do GitHub.
-- **Quando:** antes da publicação da v0.3.8. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
+- **Quando:** antes da publicação da v0.3.12. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
 - **Como** (na VM, com o usuário de sudo; o valor não passa pela tela nem pelo histórico):
   ```bash
   if sudo grep -q '^MACUXIERP_PEPPER_ENTRADA=.' /opt/macuxierp/.env; then
@@ -114,7 +114,7 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
   sudo stat -c '%a %U' /opt/macuxierp/.env                         # 600 e o usuário de deploy
   ```
   Depois, guarde uma cópia do valor no cofre de senhas, lendo direto do arquivo, sem colar em chat ou recado.
-- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.8 ("aprovo deploy v0.3.8"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
+- **O que reiniciar:** nada à mão. A `macuxierp-api` lê a variável na publicação da v0.3.12 ("aprovo deploy v0.3.12"), quando o `implantar.sh` recria os contêineres. É uma publicação por vez na VM (ADR 0003). O worker não usa o pepper.
 - **Nunca troque sem motivo:** um pepper novo invalida todas as chaves de entrada, e todos os conectores precisam de chave nova no `/config`. Se ele vazar, gere outro, publique e troque as chaves de todas as empresas.
 
 ## Emenda (23/11/2026, 17h34): mão dupla, dono por entidade, faturamento por empresa
@@ -195,7 +195,7 @@ O `hub-v1` do SDK (#405) já está feito e fica fora da conta.
 | Dono | O quê | Min | +15% |
 |---|---|---|---|
 | engenheiro-software | cópia do `apps/conector` (seção 6), descida de `clientes` e `notas` (seção 13), plugin da `/entrada/v1` com a autenticação de máquina e as rotas de descida, `NotaParaCliente` no SDK, revisões | 750 | **863** |
-| banco-dados | migração 0044 (seção 8), kit do ERP (`criar-banco` com `sp_macuxi_cliente_inserir`, `sp_macuxi_nota_*` e as permissões), roteiro da VM com o Conector, testes de banco | 480 | **552** |
+| banco-dados | migração 0045 (seção 8), kit do ERP (`criar-banco` com `sp_macuxi_cliente_inserir`, `sp_macuxi_nota_*` e as permissões), roteiro da VM com o Conector, testes de banco | 480 | **552** |
 | modulo-cadastros | `domain/entrada` (adaptador, sessão de carga completa, trava de 30%), extração de `gravarLinhas`, trabalho do worker, dono por entidade (seção 14), pré-cadastro aguardando vínculo | 420 | **483** |
 | modulo-integracao-fdv | reexport do `hub.ts` e do `CorpoSinal`, publicação igual pela entrada, pré-cadastro com dono no cliente (vínculo e retorno ao FDV), retorno `faturado_*` vindo da ponte | 165 | **190** |
 | engenheiro-apps (com designer-ux e design-de-marca) | `/config`: colunas "via Conector" e "via API" (chave mostrada uma vez, lista por cadastro, confirmação da trava), dono por entidade; BKO: "Vem do servidor do cliente" nos cadastros e o status da entrada | 450 | **518** |
@@ -205,8 +205,8 @@ O `hub-v1` do SDK (#405) já está feito e fica fora da conta.
 | **Soma** | | 2.925 | **3.365 (≈ 56 h)** |
 
 ### 18. Previsão da v0.3.8
-- **Ordem:** a da seção 9; o `engenheiro-software` em duas sessões (Conector e API), a da API em paralelo à 0044.
-- **Caminho crítico:** 0044 (~180 min) → `modulo-cadastros` (483) → `testes` (414) → liberar e deploy (~60) ≈ **1.137 min, cerca de 19 h de relógio** com os donos em paralelo.
+- **Ordem:** a da seção 9; o `engenheiro-software` em duas sessões (Conector e API), a da API em paralelo à 0045.
+- **Caminho crítico:** 0045 (~180 min) → `modulo-cadastros` (483) → `testes` (414) → liberar e deploy (~60) ≈ **1.137 min, cerca de 19 h de relógio** com os donos em paralelo.
 - **Data:** se a v0.3.8 começar logo depois da v0.3.7, ficam dois dias de trabalho do time, mais a VM pelo roteiro (seção 7), que é do Alexandre e do `banco-dados`.
 - **Risco do prazo:** a descida de `clientes` e `notas` no Conector é código novo, e não cópia do FDV. É o item com mais incerteza, porque o pré-cadastro depende da T-0059.
 
