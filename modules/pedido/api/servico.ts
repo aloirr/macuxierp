@@ -464,8 +464,8 @@ export function criarServico(deps: Dependencias) {
     const aplicadas = await notasAplicadas(repo, id, autorizadas);
     const pendentes = autorizadas.filter((n) => !aplicadas.has(n));
     if (pendentes.length > 0) throw erros.regra('RN-PED-02', 'O pedido tem nota autorizada ainda não registrada: aguarde alguns segundos e tente de novo', undefined, { notas_pendentes: pendentes });
-    // Pedido do FDV cancelado volta a pendencias = [] (CHECK pedido_fdv_sem_pendencia, 0056: só em_analise, recusado e aprovado levam prazo); a aceitação fica em `aprovacao`.
-    await repo.atualizarStatus(id, 'cancelado', p.origem === 'fdv' ? [] : p.pendencias, null);
+    // Mantém as pendências, também no pedido do FDV (0056: pedido_fdv_sem_pendencia aceita cancelado com pendência de prazo), para guardar o motivo como no recusado.
+    await repo.atualizarStatus(id, 'cancelado', p.pendencias, null);
     const final = await obterOu404(repo, id);
     const idEvento = await fx.publicar(eventoCancelado(final, p.status, entrada.motivo_codigo, entrada.motivo_texto));
     await repo.registrarEvento({ pedido_id: id, de: p.status, para: 'cancelado', ...rotuloAtor(fx), motivo_codigo: entrada.motivo_codigo as MotivoCodigo, motivo_texto: entrada.motivo_texto, pendencias: null, evento_id: idEvento, ocorrido_em: fx.agora });

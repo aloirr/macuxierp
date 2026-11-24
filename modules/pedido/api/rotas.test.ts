@@ -338,14 +338,14 @@ describe('pedido do FDV em análise por prazo (RN-PED-07, 0056)', () => {
     expect(t.armazem.pedidos[0]).toMatchObject({ status: 'recusado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: true }] });
     expect(t.eventos.at(-1)?.nome).toBe('pedido.pedido.recusado@1');
   });
-  it('RN-PED-07: o pedido do FDV aprovado com a pendência de prazo aceita pode ser cancelado (em_analise não cancela direto, RN-PED-02); o cancelado fica sem pendências', async () => {
+  it('RN-PED-07: o pedido do FDV aprovado com a pendência de prazo aceita pode ser cancelado (em_analise não cancela direto, RN-PED-02); o cancelado guarda as pendências', async () => {
     const t = montar();
     const id = await fdvEmAnalise(t);
     expect(await t.chamar('POST', `/pedidos/${id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } })).toMatchObject({ status: 422, corpo: { codigo: 'RN-PED-02' } });
     expect((await t.chamar('POST', `/pedidos/${id}/aprovar`, { sessao: gerente, corpo: { justificativa: 'ok' } })).status).toBe(200);
     const r = await t.chamar('POST', `/pedidos/${id}/cancelar`, { sessao: gerente, corpo: { motivo_codigo: 'erro_lancamento' } });
-    expect(r).toMatchObject({ status: 200, corpo: { status: 'cancelado', pendencias: [] } });
-    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'cancelado', pendencias: [] });
+    expect(r).toMatchObject({ status: 200, corpo: { status: 'cancelado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] } });
+    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'cancelado', pendencias: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
     expect(t.armazem.aprovacoes.at(-1)).toMatchObject({ pendencias_aceitas: [{ codigo: 'prazo_acima_do_cliente', bloqueante: false }] });
     expect(t.eventos.at(-1)?.nome).toBe('pedido.pedido.cancelado@1');
   });
