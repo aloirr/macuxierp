@@ -5,11 +5,11 @@
  * referências do ERP de que depende (M10).
  *
  * Premissas do P-1 (a conferir contra o contrato do FDV): quantidades como número (P-1 conferido); preço da filial padrão sai sem
- * `filial_external_id` (= todas as filiais); `formas_pagamento` do cliente é lista de códigos de forma do Hub.
+ * `filial_external_id` (= todas as filiais); o cliente leva `prazo_medio_max_dias` (RN-CAD-16) e não leva mais `formas_pagamento`.
  */
 import type { z } from 'zod';
-import type { EVENTOS } from '@macuxierp/cadastros/contracts';
-import { PAYLOADS_HUB, type EntidadeHub, type LinhaInvalida } from '../contracts';
+import { prazoCompleto, type EVENTOS } from '@macuxierp/cadastros/contracts';
+import { PAYLOADS_HUB, PrazoPagamentoHubV2, type EntidadeHub, type LinhaInvalida } from '../contracts';
 import { externalIdForma, hashRegistro } from './canonico';
 import { chaveHub } from './chave';
 import { parcelasDiasParaHub } from './parcelas';
@@ -156,7 +156,7 @@ export function mapearVendedor(ev: EventoVendedor, ocorridoEm: string): Registro
 
 // ---- 2.3 forma_pagamento e prazo_pagamento ----
 /** `formaAtiva`: o consumidor calcula (há prazo ativo no espelho com a mesma forma, incluindo este). */
-export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho } {
+export function mapearCondicaoOpcional(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho | null } {
   // D12 (T-0026): a forma da carga viaja na condição; sem ela, UUID v5 do tPag (M2) e o nome do tPag do MOC.
   const formaId = chaveHub({ id: externalIdForma(ctx.tenantId, ev.forma_tpag), external_id: ev.forma_external_id });
   const f = formaDoTpag(ev.forma_tpag);
@@ -167,6 +167,8 @@ export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { te
     null,
     { condicao_pagamento_id: ev.id },
   );
+  // RN-CAD-15 (T-0085 lote 2): o prazo incompleto NÃO sai; a forma sai assim mesmo, porque é compartilhada. A regra é a do `cadastros`.
+  if (!prazoCompleto(ev)) return { forma, prazo: null };
   const prazo = registro(
     'prazo_pagamento',
     ocorridoEm,
@@ -177,11 +179,19 @@ export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { te
       codigo: ev.codigo,
       parcelas_dias: parcelasDiasParaHub(ev.prazos_dias),
       descricao: ev.descricao,
+      prazo_medio_dias: ev.prazo_medio_dias as number,
     },
     ev.id,
     { condicao_pagamento_id: ev.id },
   );
   return { forma, prazo };
+}
+
+/** temporário (expande/contrai, T-0085): assinatura antiga (`prazo` sempre presente) para o `tests/` do main compilar; lança se o prazo for incompleto. Some depois do #556. */
+export function mapearCondicao(ev: EventoCondicao, ocorridoEm: string, ctx: { tenantId: string; formaAtiva: boolean }): { forma: RegistroEspelho; prazo: RegistroEspelho } {
+  const r = mapearCondicaoOpcional(ev, ocorridoEm, ctx);
+  if (!r.prazo) throw new Error('RN-CAD-15: prazo incompleto não sai; use mapearCondicaoOpcional');
+  return { forma: r.forma, prazo: r.prazo };
 }
 
 // ---- 2.4 produto e produto_unidade ----
@@ -286,23 +296,13 @@ export function mapearEstoque(agregadoId: string, ev: EventoEstoque, ocorridoEm:
 }
 
 // ---- 2.7 cliente e 2.8 cliente_endereco ----
-export interface ContextoCliente {
-  /** Condição do cliente já no espelho (M10); `null` = sem condição, `formas_pagamento` e prazo não vão. */
-  condicao: { forma_tpag: string; forma_codigo?: string | null; prazos_dias: readonly number[] } | null;
-}
-
-/** Média simples dos prazos, arredondada para cima. */
-export function prazoMedioMaxDias(prazos: readonly number[]): number {
-  if (prazos.length === 0) return 0;
-  return Math.ceil(prazos.reduce((s, d) => s + d, 0) / prazos.length);
-}
 
 /**
- * Minimização (M9, RN-CAD LGPD): só documento, nome, IE, carteira, filial, endereço principal, limite e condição. Sem
+ * Minimização (M9, RN-CAD LGPD): só documento, nome, IE, carteira, filial, endereço principal, limite e prazo médio máximo. Sem
  * e-mail, contato, coordenada nem observação. A carteira (D7) é `vendedor_external_id`. Endereço sem `id` (evento antigo,
  * C-3 opcional) não gera `cliente_endereco`; com `id` e sem `municipio_nome` gera o registro e `validarRegistro` aponta `cidade`.
  */
-export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: ContextoCliente): { cliente: RegistroEspelho; enderecos: RegistroEspelho[] } {
+export function mapearCliente(ev: EventoCliente, ocorridoEm: string): { cliente: RegistroEspelho; enderecos: RegistroEspelho[] } {
   const principal = ev.enderecos.find((e) => e.tipo === 'principal');
   const endereco = principal
     ? limpar({
@@ -329,11 +329,11 @@ export function mapearCliente(ev: EventoCliente, ocorridoEm: string, ctx: Contex
       filial_external_id: ev.filial_id,
       endereco,
       limite_credito_cents: ev.limite_credito_centavos,
-      formas_pagamento: ctx.condicao ? [ctx.condicao.forma_codigo ?? formaDoTpag(ctx.condicao.forma_tpag).codigo] : undefined,
-      prazo_medio_max_dias: ctx.condicao ? prazoMedioMaxDias(ctx.condicao.prazos_dias) : undefined,
+      // RN-CAD-16: o prazo médio máximo é o do cliente; nulo = sem limite (o campo sai omitido). `formas_pagamento` deixou de sair.
+      prazo_medio_max_dias: ev.prazo_medio_dias ?? undefined,
     },
     ev.id,
-    { vendedor_id: ev.vendedor_id, filial_id: ev.filial_id, condicao_pagamento_id: ev.condicao_pagamento_id },
+    { vendedor_id: ev.vendedor_id, filial_id: ev.filial_id },
   );
   const enderecos = ev.enderecos.flatMap((e) =>
     e.id
@@ -375,7 +375,7 @@ const OBRIGATORIOS: Record<string, readonly string[]> = {
   filial: ['codigo', 'nome', 'cnpj', 'logradouro', 'numero', 'bairro', 'cep', 'cidade', 'uf'],
   vendedor: ['nome'],
   forma_pagamento: ['codigo', 'nome'],
-  prazo_pagamento: ['forma_external_id', 'codigo', 'parcelas_dias'],
+  prazo_pagamento: ['forma_external_id', 'codigo', 'parcelas_dias', 'descricao', 'prazo_medio_dias'],
   produto: ['sku', 'nome', 'unidade'],
   produto_unidade: ['produto_external_id', 'unidade', 'fator'],
   preco: ['tabela_external_id', 'tabela_nome', 'vigencia_inicio', 'produto_external_id', 'preco_cents'],
@@ -403,7 +403,7 @@ export const REFERENCIAS_HUB: Record<string, ReadonlyArray<readonly [string, Ent
  * inválida (código e campo, nunca o valor — RN-INF-04) ou `null` se pode ir em `registros`.
  * `confirmado(entidade, external_id)`: o registro alvo já foi confirmado no Hub.
  */
-export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: EntidadeHub, externalId: string) => boolean): LinhaInvalida | null {
+export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: EntidadeHub, externalId: string) => boolean, opcoes: { prazoV2?: boolean } = {}): LinhaInvalida | null {
   const falta = (OBRIGATORIOS[r.entidade] ?? []).find((c) => {
     const v = r.payload[c];
     return v === undefined || v === null || v === '';
@@ -411,7 +411,14 @@ export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: Entid
   // Campo composto de outra referência (C-2): ausente = a referência ainda não chegou (reprocessável), não erro do cadastro.
   if (falta) return { external_id: r.external_id, codigo: (CAMPOS_DE_REFERENCIA[r.entidade] ?? []).includes(falta) ? 'referencia_ausente' : 'campo_obrigatorio', campo: falta };
   const schema = PAYLOADS_HUB[r.entidade as keyof typeof PAYLOADS_HUB];
-  if (schema) {
+  if (r.entidade === 'prazo_pagamento' && opcoes.prazoV2) {
+    // contrato v2 do prazo (ADR 0072 do FDV): limites próprios; `alterado_em` entra no registro do lote, não no payload do espelho
+    const res = PrazoPagamentoHubV2.safeParse({ ...r.payload, alterado_em: r.alterado_em });
+    if (!res.success) {
+      const issue = res.error.issues[0];
+      return { external_id: r.external_id, codigo: 'campo_invalido', campo: String(issue?.path[0] ?? '') || null };
+    }
+  } else if (schema) {
     // `strict`: chave a mais no payload também é `campo_invalido`.
     const res = schema.strict().safeParse(r.payload);
     if (!res.success) {

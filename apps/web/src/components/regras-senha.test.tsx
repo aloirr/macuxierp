@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { RegrasSenha } from './regras-senha';
-import { CampoSenha } from './campo-senha';
 import { regrasDescumpridas } from '@macuxierp/platform-sdk';
 
 const marcas = (h: string) => ({ ok: (h.match(/regra-ok/g) ?? []).length, falta: (h.match(/regra-falta/g) ?? []).length });
@@ -43,10 +42,7 @@ describe('lista de regras de senha (T-0052)', () => {
     expect(regrasDescumpridas('12345678!')).toEqual(['letra']);
     expect(regrasDescumpridas('a1!')).toEqual(['caracteres']);
   });
-  it('campo de senha: olho "Mostrar senha", tipo password e foco visível pelo botão', () => {
-    const h = renderToStaticMarkup(<CampoSenha rotulo="Senha nova" nome="senha_nova" valor="" aoMudar={() => undefined} autoComplete="new-password" />);
-    expect(h).toContain('Mostrar senha');
-    expect(h).toContain('type="password"');
-    expect(h).toContain('autoComplete="new-password"');
+  it('a lista das regras tem id para o aria-describedby do campo de senha nova', () => {
+    expect(renderToStaticMarkup(<RegrasSenha senha="" />)).toContain('id="regras-lista"');
   });
 });

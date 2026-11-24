@@ -2,7 +2,7 @@
  * Montagem de lote, Idempotency-Key e regra de geração (RN-INF-03, T-0009 seções 3 e 4).
  * Funções puras: o relógio (`enviado_em`) e o id da sessão chegam por parâmetro.
  */
-import { LIMITE_REGISTROS_LOTE, VERSAO_CONTRATO_HUB, type CorpoLote, type CursorHub, type EntidadeHub, type EstadoLote, type LinhaInvalida, type ModoLote, type RegistroLote } from '../contracts';
+import { LIMITE_REGISTROS_LOTE, VERSAO_CONTRATO_HUB, VERSAO_CONTRATO_PRAZO_V2, type CorpoLote, type CursorHub, type EntidadeHub, type EstadoLote, type LinhaInvalida, type ModoLote, type RegistroLote } from '../contracts';
 import { utf8 } from './hash';
 import { paraLinhaHub } from './linhas';
 import { compararBinario, jsonCanonico, sha256HexTexto } from './canonico';
@@ -91,6 +91,13 @@ export interface EntradaMontagem {
   cursorDeFechamento?: CursorHub;
   limiteRegistros?: number;
   limiteBytes?: number;
+  /** T-0085 lote 2: manda o `prazo_pagamento` no envelope v2 (`PRAZO_CONTRATO_V2_LIGADO`). Padrão: v1. */
+  contratoPrazoV2?: boolean;
+}
+
+/** Versão do envelope: v2 só para `prazo_pagamento` e só com a opção ligada; todo o resto é v1. */
+export function versaoContratoDoLote(entidade: EntidadeHub, contratoPrazoV2: boolean | undefined): CorpoLote['versao_contrato'] {
+  return entidade === 'prazo_pagamento' && contratoPrazoV2 === true ? VERSAO_CONTRATO_PRAZO_V2 : VERSAO_CONTRATO_HUB;
 }
 
 /**
@@ -138,7 +145,7 @@ export function montarLotes(e: EntradaMontagem): LoteMontado[] {
   return grupos.map((registros, i) => {
     const ultimo = registros[registros.length - 1];
     const corpo: CorpoLote = {
-      versao_contrato: VERSAO_CONTRATO_HUB,
+      versao_contrato: versaoContratoDoLote(e.entidade, e.contratoPrazoV2),
       entidade: e.entidade,
       modo: e.modo,
       enviado_em: e.enviadoEm,

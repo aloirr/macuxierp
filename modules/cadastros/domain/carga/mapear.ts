@@ -201,7 +201,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     });
   },
   condicao_pagamento(l) {
-    const codigoForma = l.texto('forma_codigo', LIMITES.codigo20);
+    const codigoForma = l.texto('forma_codigo', LIMITES.codigo_forma);
     let tpag = l.cel('forma_tpag');
     if (tpag === undefined && codigoForma !== undefined) {
       tpag = DICIONARIO_TPAG[codigoForma.toUpperCase()] ?? TPAG_RECUSADO;

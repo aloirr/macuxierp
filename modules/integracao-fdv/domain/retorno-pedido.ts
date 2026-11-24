@@ -143,7 +143,7 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
         if (!novoParcial) return { acao: 'ignorar', motivo: 'hub_ja_adiante' };
       }
       const faltam = [...new Set(p.itens_faturados.filter((i) => !chavesProduto.has(i.produto_id)).map((i) => i.produto_id))];
-      const notaHub = { numero: p.nota.numero, serie: p.nota.serie, chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
+      const notaHub = { numero: String(p.nota.numero), serie: String(p.nota.serie), chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
       if (faltam.length > 0) {
         const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
         return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub, itens_faturados: [] } } : { acao: 'aguardar_chave', produtos: faltam };

@@ -42,7 +42,8 @@ const ret = (uuid: string, status: RetornoErp['status'], o: Partial<RetornoErp> 
   ...(status === 'rejeitado_erp' ? { motivo: 'Cliente não cadastrado no ERP' } : {}),
   ...o,
 });
-const nota = (numero: number) => ({ numero, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T16:00:00Z', total_cents: 1000 });
+// `NotaRetorno` do OpenAPI real do Hub (T-0085): `numero` e `serie` em texto; `chave` o ERP manda, mas o Hub não exige.
+const nota = (numero: number) => ({ numero: String(numero), serie: '1', chave: '1'.repeat(44), emitida_em: '2026-11-21T16:00:00Z', total_cents: 1000 });
 
 describe('T-0017 — dublê do Hub: pedidos pendentes e retorno', () => {
   let relogio: RelogioDeTeste;
@@ -188,6 +189,21 @@ describe('T-0017 — dublê do Hub: pedidos pendentes e retorno', () => {
     expect(pedidoNoHub(duble, T, p.pedido_uuid)?.retornos.map((x) => `${x.status}:${x.nota ?? '-'}`)).toEqual([
       'integrado:-', 'faturado_parcial:1/1', 'faturado_parcial:2/1', 'faturado_total:3/1',
     ]);
+  });
+
+  it('NotaRetorno (OpenAPI real, T-0085): numero e serie inteiros = 400 requisicao_invalida; sem chave e com serie nula vale', async () => {
+    const p = pedido();
+    aprovarNoFdv(duble, T, p);
+    await erp.pendentes(50);
+    await erp.enviarRetorno(p.pedido_uuid, ret(p.pedido_uuid, 'integrado'));
+    const comNota = (n: Record<string, unknown>) => ret(p.pedido_uuid, 'faturado_parcial', { nota: n as RetornoErp['nota'] });
+    expect(await erp.enviarRetorno(p.pedido_uuid, comNota({ ...nota(1), numero: 1 }))).toMatchObject({ status: 400, codigo: 'requisicao_invalida' });
+    expect(await erp.enviarRetorno(p.pedido_uuid, comNota({ ...nota(1), serie: 1 }))).toMatchObject({ status: 400, codigo: 'requisicao_invalida' });
+    expect(await erp.enviarRetorno(p.pedido_uuid, comNota({ ...nota(1), numero: '' }))).toMatchObject({ status: 400, codigo: 'requisicao_invalida' });
+    expect(await erp.enviarRetorno(p.pedido_uuid, comNota({ ...nota(1), serie: '12345678901' }))).toMatchObject({ status: 400, codigo: 'requisicao_invalida' });
+    const { chave: _chave, ...semChave } = nota(4);
+    expect(await erp.enviarRetorno(p.pedido_uuid, comNota({ ...semChave, serie: null }))).toEqual({ status: 200, repetido: false });
+    expect(pedidoNoHub(duble, T, p.pedido_uuid)?.retornos.at(-1)).toMatchObject({ status: 'faturado_parcial', nota: '4/-', chave_acesso: null });
   });
 
   it('pedido removido no FDV: o retorno seguinte é 422 pedido_desconhecido; a fila de um tenant não aparece no outro', async () => {
