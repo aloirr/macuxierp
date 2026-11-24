@@ -97,9 +97,16 @@ export class RepositorioCoreSql implements RepositorioCore {
     return linha ?? null;
   }
 
+  /** RN-CORE-13 (0048). */
+  async emitirSenhaTemporaria(tx: Transacao, usuarioId: string, hash: string, expiraEm: Date): Promise<void> {
+    await tx.consultar('UPDATE plataforma.usuario SET senha_temporaria_hash = $2, senha_temporaria_expira_em = $3 WHERE id = $1', [usuarioId, hash, expiraEm]);
+  }
   async definirSenha(tx: Transacao, id: string, senhaHash: string): Promise<void> {
-    // Nova senha provisória também zera a trava do login; T-0052: e exige a troca no próximo acesso.
-    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL WHERE id = $1', [id, senhaHash]);
+    // Nova senha provisória também zera a trava do login; T-0052: e exige a troca no próximo acesso; 0048: e descarta a temporária.
+    await tx.consultar(
+      'UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL, senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL WHERE id = $1',
+      [id, senhaHash],
+    );
   }
 
   async travarAdministradoresAtivos(tx: Transacao): Promise<void> {

@@ -177,4 +177,36 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     await t2.confirmar();
     expect(await flag()).toEqual({ deve_trocar_senha: true });
   });
+
+  it('RN-CORE-13: emitir grava hash e validade sem mudar senha_hash; o segundo pedido substitui o anterior', async () => {
+    const id = randomUUID();
+    const ler = async () => (await b.admin.query('SELECT senha_hash, senha_temporaria_hash h, senha_temporaria_expira_em e FROM plataforma.usuario WHERE id = $1', [id])).rows[0] as { senha_hash: string; h: string | null; e: Date | null };
+    await b.admin.query("INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil) VALUES ($1, $2, 'temp@piloto.test', 'Usuário Temp', '$argon2id$atual', 'administrador')", [id, T]);
+    const validade1 = new Date('2030-01-01T12:00:00Z');
+    const validade2 = new Date('2030-02-01T12:00:00Z');
+    const t1 = await abrir();
+    await repo.emitirSenhaTemporaria(t1, id, '$argon2id$temp1', validade1);
+    await t1.confirmar();
+    expect(await ler()).toMatchObject({ senha_hash: '$argon2id$atual', h: '$argon2id$temp1', e: validade1 });
+    const t2 = await abrir();
+    await repo.emitirSenhaTemporaria(t2, id, '$argon2id$temp2', validade2);
+    await t2.confirmar();
+    expect(await ler()).toMatchObject({ senha_hash: '$argon2id$atual', h: '$argon2id$temp2', e: validade2 });
+  });
+
+  it('RN-CORE-13: definirSenha zera a senha temporária (as duas colunas)', async () => {
+    const id = randomUUID();
+    await b.admin.query("INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, senha_temporaria_hash, senha_temporaria_expira_em) VALUES ($1, $2, 'zera@piloto.test', 'Usuário Zera', '$argon2id$atual', 'administrador', '$argon2id$t', '2030-01-01T12:00:00Z')", [id, T]);
+    const t = await abrir();
+    await repo.definirSenha(t, id, '$argon2id$nova');
+    await t.confirmar();
+    const { rows } = await b.admin.query('SELECT senha_hash, senha_temporaria_hash h, senha_temporaria_expira_em e FROM plataforma.usuario WHERE id = $1', [id]);
+    expect(rows[0]).toEqual({ senha_hash: '$argon2id$nova', h: null, e: null });
+  });
+
+  it('RN-CORE-13: o CHECK da 0048 recusa só uma das duas colunas da temporária preenchida (23514)', async () => {
+    const t = await abrir();
+    await expect(t.consultar("UPDATE plataforma.usuario SET senha_temporaria_hash = '$argon2id$so' WHERE id = $1", [U1])).rejects.toMatchObject({ code: '23514' });
+    await t.descartar();
+  });
 });
