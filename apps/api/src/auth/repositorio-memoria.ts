@@ -60,11 +60,11 @@ export class RepositorioAuthMemoria implements RepositorioAuth {
   async revogarFamilia(tx: Transacao, familia: string, agora: Date) {
     for (const s of this.visivel(tx, this.sessoes)) if (s.familia === familia && !s.revogada_em) s.revogada_em = agora;
   }
-  /** Como o UPDATE do Pg (T-0076): zera as duas colunas e liga a troca obrigatória, só com a temporária vigente. */
+  /** Como o UPDATE do Pg (T-0076 e hotfix): zera as duas colunas e a trava e liga a troca obrigatória, só com a temporária vigente. */
   async consumirTemporaria(tx: Transacao, usuarioId: string) {
     const u = this.usuario(tx, usuarioId);
     if (!u.senha_temporaria_hash || !u.senha_temporaria_expira_em || u.senha_temporaria_expira_em.getTime() <= this.agora().getTime()) return false;
-    Object.assign(u, { senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
+    Object.assign(u, { senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true, falhas_login: 0, bloqueado_ate: null });
     return true;
   }
   async trocarSenha(tx: Transacao, usuarioId: string, senhaHash: string) {

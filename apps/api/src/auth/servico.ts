@@ -9,7 +9,9 @@
  *   vigente bate = consumo atômico de uso único (zera as duas colunas) e, só se ele devolver true, sessão com a troca
  *   obrigatória de motivo 'temporaria' (o login responde 200 com a sessão; as outras rotas, o 403 `TROCAR_SENHA` do
  *   bloqueio, `SenhaATrocarResposta`); temporária errada ou vencida conta em `falhas_login` como a senha errada; corrida
- *   perdida = a mesma falha neutra. O motivo e o fim da temporária vão no JWT (`mtv`, `tex`) e no refresh
+ *   perdida = a mesma falha neutra. Com a conta travada (hotfix "esqueci a senha desbloqueia"), só a temporária é
+ *   conferida: vigente = o mesmo consumo, que também zera `falhas_login` e `bloqueado_ate`, e a mesma sessão; errada,
+ *   vencida ou ausente = o 429 da trava de sempre, sem somar falha nem estender a trava; a senha atual segue barrada. O motivo e o fim da temporária vão no JWT (`mtv`, `tex`) e no refresh
  *   (`marcaTemporaria`, coberta pelo hash gravado no banco: adulterar = refresh inexistente) e somem com a troca, que o
  *   dispensa de informar a senha atual. A troca zera as duas colunas da temporária no mesmo UPDATE. Estas regras valem
  *   também para o superadmin (`plataforma/servico.ts`).
@@ -30,7 +32,7 @@ import {
   type Transacao,
 } from '@macuxierp/platform-sdk';
 import { avaliarPedidoSenhaEsquecida, type RepositorioCore } from '@macuxierp/core/api';
-import { ConferenciaCustoIgual, travaAposFalha } from './apoio-login';
+import { ConferenciaCustoIgual, contaTravada, travaAposFalha } from './apoio-login';
 import { emitirTokenAcesso, type SessaoAcesso } from './jwt';
 import type { RepositorioAuth, SessaoRefresh, UsuarioAuth } from './portas';
 import { ARGON2_PADRAO, conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
@@ -118,8 +120,8 @@ export class ServicoAuth {
     const r = await this.banco.comTenant(tenantId, async (tx) => {
       const usuario = await this.repo.usuarioPorEmail(tx, entrada.email.trim().toLowerCase());
       if (!usuario || !usuario.ativo) return 'sem_usuario' as const;
-      if (usuario.bloqueado_ate && usuario.bloqueado_ate.getTime() > agora.getTime()) return 'travado' as const;
-      if (await conferirSenha(entrada.senha, usuario.senha_hash)) {
+      const travado = contaTravada(usuario.bloqueado_ate, agora);
+      if (!travado && (await conferirSenha(entrada.senha, usuario.senha_hash))) {
         await this.repo.registrarAcesso(tx, usuario.id, agora);
         return this.abrirSessao(tx, usuario, randomUUID(), agora);
       }
@@ -130,6 +132,7 @@ export class ServicoAuth {
         await this.repo.registrarAcesso(tx, usuario.id, agora);
         return this.abrirSessao(tx, { ...usuario, deve_trocar_senha: true }, randomUUID(), agora, { motivo_troca: 'temporaria', temporaria_expira_em: fimTemporaria });
       }
+      if (travado) return 'travado' as const;
       // Senha errada, temporária errada ou vencida: a mesma falha, na mesma trava.
       await this.registrarFalha(tx, usuario, agora);
       return 'senha' as const;

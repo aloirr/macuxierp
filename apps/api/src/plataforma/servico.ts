@@ -8,7 +8,8 @@
  * - nada de e-mail, senha, token ou nome em log ou erro;
  * - senha temporária do "Esqueci a senha" (T-0076): as regras do login e da troca são as do `auth/servico.ts`; aqui, pelas
  *   funções da 0048, `superadmin_emitir_temporaria(p_id, p_hash, p_expira_em)` (pedido; substitui a anterior) e
- *   `superadmin_consumir_temporaria(p_id) → boolean` (login; atômica, de uso único, zera as duas colunas e liga a troca).
+ *   `superadmin_consumir_temporaria(p_id) → boolean` (login; atômica, de uso único, zera as duas colunas e liga a troca;
+ *   desde a 0051, zera também a trava, que a `superadmin_abrir_sessao` da 0033 exige zerada).
  *   A marca da temporária (`marcaTemporaria`) vai no começo do próprio token; `superadmin_trocar_senha` zera a temporária.
  */
 import { randomBytes } from 'node:crypto';
@@ -16,7 +17,7 @@ import { erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type Sess
 import { conferirTemporaria, custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
 import type { TrocaPendente } from '../auth/troca-senha';
 import type { MensagemEmail } from '../email/porta';
-import { ConferenciaCustoIgual, travaAposFalha } from '../auth/apoio-login';
+import { ConferenciaCustoIgual, contaTravada, travaAposFalha } from '../auth/apoio-login';
 import { conferirSenha, gerarHashSenha } from '../auth/senha';
 import { erroSenhaAtualIncorreta, erroSenhaNova, exigirSenhaAtual, type ConfigAuth } from '../auth/servico';
 
@@ -70,13 +71,16 @@ export class ServicoPlataforma {
     // A falha é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
     const r = await this.banco.antesDaSessao(async (tx) => {
       const [sa] = await tx.consultar<LinhaLogin>(SQL_PARA_LOGIN, [email]);
-      if (!sa || !sa.ativo || (sa.bloqueado_ate && sa.bloqueado_ate.getTime() > agora.getTime())) return null;
-      const atual = await conferirSenha(senha, sa.senha_hash);
+      if (!sa || !sa.ativo) return null;
+      const travado = contaTravada(sa.bloqueado_ate, agora);
+      const atual = !travado && (await conferirSenha(senha, sa.senha_hash));
       const fimTemporaria = atual ? null : await conferirTemporaria(senha, sa.senha_temporaria_hash, sa.senha_temporaria_expira_em, agora);
       if (fimTemporaria) {
-        // 0048: atômica e de uso único; só abre a sessão com true (quem perde a corrida recebe a falha neutra).
+        // 0048/0051: atômica e de uso único, zera a trava; só abre a sessão com true (quem perde a corrida recebe a falha neutra).
         const [c] = await tx.consultar<{ ok: boolean | null }>('SELECT plataforma.superadmin_consumir_temporaria($1::uuid) AS ok', [sa.id]);
         if (c?.ok !== true) return 'corrida' as const;
+      } else if (travado) {
+        return null;
       } else if (!atual) {
         // Senha errada, temporária errada ou vencida: a 0033 só sobe a contagem (zera no login certo); a partir da
         // `maxFalhas`-ésima falha seguida, cada falha trava por `travaMinutos`.
