@@ -9,6 +9,7 @@
     "./dinheiro": "./src/dinheiro.ts",
     "./erros": "./src/erros.ts",
     "./formatar": "./src/formatar.ts",
+    "./hub-v1": "./src/hub-v1.ts",
     "./listas": "./src/listas.ts",
     "./paginas": "./src/paginas.ts",
     "./pg": "./src/pg.ts",

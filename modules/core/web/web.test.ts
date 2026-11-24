@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { PERFIS, type Perfil } from '@macuxierp/platform-sdk';
 import { criarClienteCore, ErroCliente, SenhaUmaVez, type Fetch } from './cliente';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
-import { avisoCertificado, seloOrigemCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
+import { COLUNAS_USUARIOS } from './listas';
+import { avisoCertificado, seloOrigemCertificado, botoesVisiveis, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
 
 const perfis = PERFIS as readonly string[];
 
 describe('BKO do core: permissões refletidas na UI (a proteção real é da API)', () => {
-  it('RN-CORE-02: administrador vê tudo; leitura só a empresa e os perfis; fiscal e faturista veem o ambiente', () => {
+  it('RN-CORE-02: administrador vê tudo; leitura só a empresa (perfis e permissões são do administrador, T-0087); fiscal e faturista veem o ambiente', () => {
     expect(paginasVisiveis('administrador')).toHaveLength(PAGINAS_CORE.length);
-    expect(paginasVisiveis('leitura').map((p) => p.id)).toEqual(['empresa', 'perfis']);
+    expect(paginasVisiveis('leitura').map((p) => p.id)).toEqual(['empresa']);
     expect(paginasVisiveis('fiscal').map((p) => p.id)).toContain('ambiente');
     expect(paginasVisiveis('faturista').map((p) => p.id)).not.toContain('usuarios');
   });
@@ -49,8 +50,8 @@ describe('BKO do core: CSV das colunas do core', () => {
       { id: 'b', nome: 'Maria "M"', email: 'm@x.test', perfil: 'gerente', filial_ids: [], ativo: false, external_id: null, ultimo_acesso_em: '2026-11-20T10:00:00.000Z', updated_at: '2026-11-21T15:00:00.000Z' },
     ]);
     expect(csv.startsWith('﻿Nome;E-mail;Perfil;Ativo;Último acesso\r\n')).toBe(true);
-    expect(csv).toContain(';leitura;sim;');
-    expect(csv).toContain(';gerente;não;');
+    expect(csv).toContain(';Leitura;sim;');
+    expect(csv).toContain(';Gerente;não;');
   });
 
   it('RF-CORE-04: o aviso do A1 aparece a 30 dias ou menos e muda quando vence', () => {

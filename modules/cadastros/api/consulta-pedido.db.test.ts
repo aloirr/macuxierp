@@ -38,7 +38,7 @@ describe.skipIf(!PG_DISPONIVEL)('consulta de cadastros para o pedido (PostgreSQL
     ids.filialPadrao = (await post('/filiais', filialValida())).id;
     ids.filialOutra = (await post('/filiais', filialValida({ cnpj: CNPJ_B, padrao: false, emissora: false }))).id;
     ids.vendedor = (await post('/vendedores', { codigo: 'V1', nome: 'Ana', filial_id: ids.filialPadrao, usuario_id: adm.usuario_id }, gerente)).id;
-    ids.condicao = (await post('/condicoes-pagamento', { codigo: '30D', descricao: '30 dias', forma_tpag: '15', prazos_dias: [30] }, gerente)).id;
+    ids.condicao = (await post('/condicoes-pagamento', { codigo: '30D', descricao: '30 dias', forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30 }, gerente)).id;
     ids.cliente = (await post('/clientes', clienteValido(ids.filialPadrao, { limite_credito_centavos: 500_000, vendedor_id: ids.vendedor, condicao_pagamento_id: ids.condicao }))).id;
     ids.p1 = (await post('/produtos', produtoValido({ cest: '0300700', ean: '7891000100103' }))).id;
     ids.p2 = (await post('/produtos', produtoValido({ codigo: 'P002', cest: '0300700', ncm: '22021000' }))).id;

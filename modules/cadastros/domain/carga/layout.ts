@@ -25,9 +25,9 @@ export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
     ignoradas: ign('alterado_em email telefone'),
   },
   condicao_pagamento: {
-    obrigatorias: ign('external_id codigo parcelas_dias forma_codigo forma_nome'),
-    usadas: ign('external_id codigo parcelas_dias forma_codigo forma_nome ativo descricao forma_external_id forma_tpag'),
-    ignoradas: ign('alterado_em prazo_medio_dias percentual_ajuste ordem'),
+    obrigatorias: ign('external_id codigo parcelas_dias prazo_medio_dias forma_codigo forma_nome'),
+    usadas: ign('external_id codigo parcelas_dias prazo_medio_dias forma_codigo forma_nome ativo descricao forma_external_id forma_tpag'),
+    ignoradas: ign('alterado_em percentual_ajuste ordem'),
   },
   produto: {
     obrigatorias: ign('external_id sku nome unidade'),
@@ -58,7 +58,7 @@ export const LAYOUT: Readonly<Record<EntidadeCarga, LayoutArquivo>> = {
     usadas: ign(
       'external_id razao_social ativo nome_fantasia documento vendedor_external_id endereco.logradouro endereco.numero endereco.complemento ' +
         'endereco.bairro endereco.cidade endereco.uf endereco.cep email limite_credito_cents inscricao_estadual tabela_preco_external_id ' +
-        'filial_external_id ind_ie_dest endereco.municipio_ibge condicao_pagamento_external_id tipo_endereco seq',
+        'filial_external_id ind_ie_dest endereco.municipio_ibge condicao_pagamento_external_id tipo_endereco seq prazo_medio_dias',
     ),
     ignoradas: ign('alterado_em latitude longitude telefone observacao bloqueado canal prazo_medio_max_dias formas_pagamento'),
   },
