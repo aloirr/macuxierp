@@ -75,6 +75,12 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     if (!u) throw new Error('sem usuário');
     Object.assign(u, { senha_temporaria_hash: hash, senha_temporaria_expira_em: expiraEm });
   }
+  async cancelarSenhaTemporaria(_tx: Transacao, usuarioId: string): Promise<boolean> {
+    const u = this.usuarios.find((x) => x.id === usuarioId);
+    if (!u || u.senha_temporaria_hash == null) return false;
+    Object.assign(u, { senha_temporaria_hash: null, senha_temporaria_expira_em: null });
+    return true;
+  }
   /** Registra a ordem das chamadas para o teste de RN-CORE-01 (trava antes da contagem). */
   chamadasAdministradores: string[] = [];
   async travarAdministradoresAtivos(): Promise<void> {

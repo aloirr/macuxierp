@@ -105,6 +105,13 @@ export interface RepositorioCore {
   atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
   /** Zera também `senha_temporaria_hash` e `senha_temporaria_expira_em` (RN-CORE-13). */
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
+  /**
+   * RN-CORE-13: o primeiro login certo com a senha atual cancela a temporária pendente. Zera `senha_temporaria_hash` e
+   * `senha_temporaria_expira_em` só se havia hash (vencida também é limpa: não há motivo para guardar hash morto).
+   * Devolve true se cancelou (a API audita `core.usuario.senha_temporaria_cancelada`, sem a senha), false se não havia.
+   * Nunca toca em `senha_hash` nem em `deve_trocar_senha`.
+   */
+  cancelarSenhaTemporaria(tx: Transacao, usuarioId: string): Promise<boolean>;
   /** RN-CORE-13: grava a temporária (hash argon2id) e a expiração, em paralelo à senha atual, que não muda; um pedido novo substitui a temporária anterior. */
   emitirSenhaTemporaria(tx: Transacao, usuarioId: string, hash: string, expiraEm: Date): Promise<void>;
   /** RN-CORE-01: chamar antes de contar. */
