@@ -25,6 +25,7 @@ export * from './paginas';
 export * from './portal-config';
 export * from './portal-integracao';
 export * from './portal-integracao-operacao';
+export * from './cliente-fdv';
 export * from './portal-cargas';
 export * from './plataforma-rotas';
 export * from './esqueci-senha';
