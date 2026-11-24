@@ -7,7 +7,7 @@ import {
 } from '../../contracts';
 import { MAX_DIAS } from '../../contracts';
 import { MOTIVO_PRAZO_MEDIO } from '../condicao';
-import { validarDocumentoCliente } from '../documento';
+import { tipoPessoaDoDocumento, validarDocumentoCliente } from '../documento';
 import { sugerirIndIeDest, validarIe, validarIndIeDest, type IndIeDest } from '../ie';
 import { validarMunicipio } from '../municipio';
 import { validarVigenciaTabela } from '../preco';
@@ -292,7 +292,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     let doc: string | undefined;
     if (bruto !== undefined) {
       const n = normalizarDocumento(bruto);
-      tipo = n.length === 11 ? 'PF' : n.length === 14 ? 'PJ' : undefined;
+      tipo = tipoPessoaDoDocumento(n) ?? undefined;
       if (tipo === undefined) l.erro('documento', 'RN-CAD-01', 'Documento deve ter 11 (CPF) ou 14 caracteres (CNPJ)');
       else doc = documento(l, 'documento', tipo);
     }

@@ -25,12 +25,15 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, win32, posix } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
-  tokenizar, comandosSimples, alvosDoComando, SO_LEITURA, COORD_SO_LEITURA, PACOTES_SO_LEITURA, DESCARTE,
+  tokenizar, comandosSimples, alvosDoComando, substituicoes, SO_LEITURA, COORD_SO_LEITURA, PACOTES_SO_LEITURA, DESCARTE,
 } from './guarda-bash-lib.mjs';
 import {
   AGENTES, PESSOAS, CAMINHOS_DE_GOVERNANCA, mudancasDeGovernanca, remetenteDoRecado, modoDosRecados, conexaoDeRecados,
   recadosDaPastaNoGitHub,
 } from '../../scripts/coord-lib.mjs';
+
+// substituicoes mora em guarda-bash-lib.mjs (o analisador de donos também entra em $(...)); reexportada aqui.
+export { substituicoes };
 
 export const REPO_OFICIAL = 'aloirr/macuxierp';
 export const AGENTE_DO_MERGE = 'gerente-projetos';
@@ -73,29 +76,6 @@ export function mencionaMerge(comando) {
   // Perto um do outro (até 40 caracteres entre as palavras): pega 'gh','pr','merge' de um script
   // sem acusar um script longo que só cita as palavras em lugares diferentes.
   return /\bgh\b.{0,40}?\bpr\b.{0,40}?merge/.test(t) || /\bgh\b.{0,40}?\bapi\b.{0,200}?merge/.test(t) || /\bmergepullrequest\b/.test(t);
-}
-
-/** Conteúdos de $(...), `...`, <(...) e >(...) dentro de uma palavra (para analisar como comandos). */
-export function substituicoes(valor) {
-  const s = String(valor);
-  const res = [];
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '`') {
-      const j = s.indexOf('`', i + 1);
-      res.push(s.slice(i + 1, j < 0 ? s.length : j));
-      i = j < 0 ? s.length : j;
-    } else if ((s[i] === '$' || s[i] === '<' || s[i] === '>') && s[i + 1] === '(') {
-      let nivel = 0;
-      let j = i + 1;
-      for (; j < s.length; j++) {
-        if (s[j] === '(') nivel++;
-        else if (s[j] === ')' && --nivel === 0) break;
-      }
-      res.push(s.slice(i + 2, j).replace(/^\(/, '').replace(/\)$/, '')); // $((...)) aritmético vira texto inofensivo
-      i = j;
-    }
-  }
-  return res;
 }
 
 /** Tira prefixos (VAR=..., env, sudo, timeout, palavras-chave). Retorna o nome, os argumentos e o que foi tirado. */

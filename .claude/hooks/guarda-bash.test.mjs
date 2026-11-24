@@ -194,7 +194,7 @@ test('em dúvida não bloqueia: variável, $(...), crase, glob, ~, xargs, find, 
   libera('rm `cat lista.txt`');
   libera('git ls-files apps | xargs rm');
   libera('find apps -name "*.ts" -delete');
-  libera('node -e "require(\'fs\').writeFileSync(\'apps/api/x.ts\', \'\')"');
+  libera('node scripts/gera.mjs apps/api/x.ts'); // script em arquivo: opaco (o código inline é conferido: guarda-interpretador.test.mjs)
   libera('pnpm lint --fix');
   libera('echo x > ~/notas.txt');
   libera('cd "$PASTA" && echo x > apps/api/x.ts');
@@ -289,7 +289,7 @@ function criarRepo({ comHook = false, extras = [] } = {}) {
     mkdirSync(join(dir, 'scripts'), { recursive: true });
     mkdirSync(join(dir, '.claude', 'hooks'), { recursive: true });
     copyFileSync(join(RAIZ_REAL, 'scripts', 'coord-lib.mjs'), join(dir, 'scripts', 'coord-lib.mjs'));
-    for (const f of ['guarda-bash.mjs', 'guarda-bash-lib.mjs', 'guarda-merge-lib.mjs', 'guarda-graphify-lib.mjs']) copyFileSync(join(AQUI, f), join(dir, '.claude', 'hooks', f));
+    for (const f of ['guarda-bash.mjs', 'guarda-bash-lib.mjs', 'guarda-interpretador-lib.mjs', 'guarda-merge-lib.mjs', 'guarda-graphify-lib.mjs']) copyFileSync(join(AQUI, f), join(dir, '.claude', 'hooks', f));
   }
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'inicial');
@@ -439,7 +439,11 @@ const SUGERE_DESFAZER = /git restore|git checkout|rm -- /;
 test('hook: Pre + Post de ponta a ponta (escrita alheia que não é alvo evidente vira aviso, sem mandar desfazer)', () => {
   const dir = criarRepo({ comHook: true });
   appendFileSync(join(dir, 'apps/api/x.ts'), 'engenheiro trabalhando\n'); // outro agente
-  const cmd = `node -e "require('fs').appendFileSync('docs/meu doc.md','x')" && echo ok >> modules/core/a.ts`;
+  // Escrita opaca (script em arquivo, fora do repositório): o guardião não vê o alvo. Desde R-20261124-181828 o
+  // código inline (node -e "...appendFileSync(...)") é conferido no PreToolUse; script em arquivo continua opaco.
+  const script = join(mkdtempSync(join(tmpdir(), 'guarda-script-')), 'escreve.mjs');
+  writeFileSync(script, "import { appendFileSync } from 'node:fs'; appendFileSync('docs/meu doc.md', 'x');\n");
+  const cmd = `node "${script}" && echo ok >> modules/core/a.ts`;
   const pre = rodarHook(dir, 'PreToolUse', cmd, { agente: 'modulo-core' });
   assert.equal(pre.codigo, 0, pre.erro);
   rodarBash(dir, cmd);
