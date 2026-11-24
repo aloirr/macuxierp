@@ -50,6 +50,14 @@ describe('TrocarSenhaEntrada (contrato do POST /v1/auth/senha, T-0052)', () => {
     expect(() => TrocarSenhaEntrada.parse({ senha_atual: 'x'.repeat(201), senha_nova: 'abcdef1!' })).toThrow();
   });
 
+  it('senha_atual opcional (troca da senha temporária, RN-CORE-13); quando vem, segue SenhaInformada', () => {
+    expect(TrocarSenhaEntrada.parse({ senha_atual: 'a', senha_nova: 'abcdef1!' })).toEqual({ senha_atual: 'a', senha_nova: 'abcdef1!' });
+    expect(TrocarSenhaEntrada.parse({ senha_nova: 'abcdef1!' })).toEqual({ senha_nova: 'abcdef1!' });
+    const vazia = TrocarSenhaEntrada.safeParse({ senha_atual: '', senha_nova: 'abcdef1!' });
+    expect(vazia.success).toBe(false);
+    expect(vazia.error?.issues.map((i) => i.path.join('.'))).toEqual(['senha_atual']);
+  });
+
   it('os issues da senha nova saem no caminho senha_nova, um por regra descumprida', () => {
     const r = TrocarSenhaEntrada.safeParse({ senha_atual: 'a', senha_nova: 'abcdefg1' });
     expect(r.success).toBe(false);

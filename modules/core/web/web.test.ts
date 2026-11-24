@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERFIS, type Perfil } from '@macuxierp/platform-sdk';
 import { criarClienteCore, ErroCliente, SenhaUmaVez, type Fetch } from './cliente';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
-import { avisoCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
+import { avisoCertificado, seloOrigemCertificado, botoesVisiveis, COLUNAS_USUARIOS, PAGINAS_CORE, paginasVisiveis, TEXTO_AMBIENTE_HOMOLOGACAO, TEXTO_EXPORTACAO_INDISPONIVEL } from './paginas';
 
 const perfis = PERFIS as readonly string[];
 
@@ -58,6 +58,11 @@ describe('BKO do core: CSV das colunas do core', () => {
     expect(avisoCertificado({ dias_para_vencer: 12, alerta_vencimento: true })).toBe('O certificado vence em 12 dias');
     expect(avisoCertificado({ dias_para_vencer: 1, alerta_vencimento: true })).toBe('O certificado vence em 1 dia');
     expect(avisoCertificado({ dias_para_vencer: -2, alerta_vencimento: true })).toMatch(/vencido/);
+  });
+
+  it('RF-CORE-04 (T-0080): A1 de teste leva o selo "só homologação"; o de produção não leva selo', () => {
+    expect(seloOrigemCertificado({ origem: 'teste' })).toBe('Certificado de teste: só homologação');
+    expect(seloOrigemCertificado({ origem: 'upload' })).toBeNull();
   });
 });
 

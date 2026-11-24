@@ -19,15 +19,12 @@ x-servico: &servico
   cap_drop: [ALL]
   logging: *log
 
-# api e worker: a mesma imagem, segredos e e-mail, a CA do DBaaS (o papel, a senha e os limites ficam em cada serviço)
+# api e worker: a mesma imagem, os segredos do S3 e a CA do DBaaS (o papel, a senha e os limites ficam em cada serviço)
 x-app: &app
   <<: [*servico, *imagem-api]
   env_file:
-    # S3 e SMTP: contrato para o core e o faturamento; o código ainda não lê. quem grava: env.modelo; required: false = Compose 2.24+
-    - path: segredos.env
-      required: false
-    - path: email.env
-      required: false
+    # S3: contrato para o core e o faturamento; o código ainda não lê. quem grava: env.modelo; required: false = Compose 2.24+
+    - &segredos-env {path: segredos.env, required: false}
   volumes:
     - ./certs:/certs:ro
 
@@ -84,6 +81,10 @@ x-ambiente-ferramenta: &ambiente-ferramenta
 services:
   macuxierp-api:
     <<: *app
+    # email.env (SMTP, T-0076) SÓ na api; required: true (sem ele a api não sobe)
+    env_file:
+      - *segredos-env
+      - {path: email.env, required: true}
     environment:
       <<: *ambiente-app
       PGUSER: macuxierp_app

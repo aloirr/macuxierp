@@ -27,6 +27,9 @@ const PADRAO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const COMANDOS = ['listar', 'producao', 'homologacao'];
 const OPCOES = ['--empresa', '--filial', '--recado', '--arquivo-recado', '--operador', '--motivo'];
 const EVENTO = 'core.ambiente_fiscal.alterado@1';
+/** Recusa do gatilho `ambiente_fiscal_a1_real` (db/migrations/0047): filial com A1 de teste ativo indo para produção. */
+const SQLSTATE_A1_TESTE = 'MXA01';
+const MENSAGEM_A1_TESTE = 'certificado A1 de teste não pode ir para produção; envie o certificado real';
 
 /** Lê e valida os argumentos. Lança ErroUso com a explicação. */
 export function lerArgumentos(argv) {
@@ -175,6 +178,8 @@ export async function executar(cliente, op, agora) {
     return { tenant, ...plano, avisos, recado_sha256: conferido?.recado_sha256, aplicado: op.confirmar && plano.muda };
   } catch (e) {
     await cliente.query('rollback').catch(() => undefined);
+    // Mascarado como os demais: só a mensagem curta vai ao terminal (o main sai com 1, sem stack nem texto do banco).
+    if (e?.code === SQLSTATE_A1_TESTE) throw new ErroUso(MENSAGEM_A1_TESTE);
     throw e;
   }
 }

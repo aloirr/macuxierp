@@ -41,9 +41,11 @@ import {
   type Exportacao,
   type Usuario,
 } from '../contracts';
+import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import { alertaVencimento, avaliarCertificado, avaliarTrocaAmbienteTenant, diasParaVencer, gerarSenhaProvisoria } from '../domain';
 import { alterarUsuarioComTrava, type OpcoesAlterarUsuario } from './alterar-usuario';
 import { cifrarColunasA1 } from './colunas-a1';
+import { sqlstate } from './erro-pg';
 import {
   PfxInvalido,
   type DependenciasCore,
@@ -97,6 +99,7 @@ function certificadoDto(c: LinhaCertificado, agora: Date): CertificadoResumo {
     dias_para_vencer: diasParaVencer(c.valido_ate, agora),
     alerta_vencimento: alertaVencimento(c.valido_ate, agora),
     ativo: c.ativo,
+    origem: c.origem,
   };
 }
 
@@ -111,6 +114,19 @@ function ou409<T>(linha: T | null): T {
 async function publicar(c: ContextoRota, nome: string, agregado_id: string, payload: Record<string, unknown>): Promise<void> {
   // `versao` do envelope = versão do agregado (o consumidor descarta a menor já aplicada): ms UTC da alteração.
   await c.publicar({ nome, agregado_id, versao: c.agora.getTime(), payload });
+}
+
+/**
+ * Gatilhos da 0047 (SQLSTATE MXA01): A1 de teste em filial em produção ou ida para produção com A1 de teste vira 422
+ * RN-CORE-08, com o DETAIL do banco (`a1_de_teste` ou `a1_de_teste_em_producao`) em `detalhes.motivo`. Outro erro segue como está.
+ */
+const MOTIVOS_A1 = ['a1_de_teste', 'a1_de_teste_em_producao'] as const;
+export function traduzirA1DeTeste(e: unknown): unknown {
+  if (sqlstate(e) !== 'MXA01') return e;
+  const pg = e as { detail?: unknown; message?: unknown };
+  const motivo = MOTIVOS_A1.find((m) => m === pg.detail) ?? MOTIVOS_A1[0];
+  const mensagem = typeof pg.message === 'string' && pg.message ? pg.message : 'certificado A1 de teste não pode ser usado em produção; envie o certificado real';
+  return erros.regra('RN-CORE-08', mensagem, undefined, { motivo });
 }
 
 export function criarPluginCore(deps: DependenciasCore): PluginModulo {
@@ -313,8 +329,12 @@ export function criarPluginCore(deps: DependenciasCore): PluginModulo {
         if (!av.ok) throw erros.regra('RN-CORE-06', av.mensagem);
         const id = novoId();
         const cifrado = cifrarColunasA1({ chave: deps.chaveA1, tenantId: c.sessao.tenant_id, pfx, senha: corpo.senha });
-        await repo.substituirCertificado(c.tx, { id, filial_id: corpo.filial_id, ...dados, ...cifrado, chave_versao: deps.chaveVersao ?? 1 }, c.agora);
-        const resumo = certificadoDto({ id, filial_id: corpo.filial_id, ...dados, ativo: true }, c.agora);
+        try {
+          await repo.substituirCertificado(c.tx, { id, filial_id: corpo.filial_id, ...dados, ...cifrado, chave_versao: deps.chaveVersao ?? 1 }, c.agora);
+        } catch (e) {
+          throw traduzirA1DeTeste(e);
+        }
+        const resumo = certificadoDto({ id, filial_id: corpo.filial_id, ...dados, ativo: true, origem: ORIGEM_CERTIFICADO_PADRAO }, c.agora);
         await c.auditar({ acao: 'core.certificado.enviado', entidade: 'certificado', entidade_id: id, depois: { filial_id: resumo.filial_id, cnpj: resumo.cnpj, valido_ate: resumo.valido_ate, impressao_digital: resumo.impressao_digital } });
         await publicar(c, EVENTO_CERTIFICADO, id, { id, filial_id: resumo.filial_id, cnpj: resumo.cnpj, valido_ate: resumo.valido_ate, impressao_digital: resumo.impressao_digital, ativo: true });
         return { status: 201, corpo: resumo };

@@ -12,8 +12,9 @@
 #      (/opt/macuxi/{banco,admin,segredos}.env), SÓ com as variáveis de nome conhecido; a CA do DBaaS
 #      (/opt/macuxi/certs/dbaas-ca.pem, opcional) vai para certs/ com 644. /opt/macuxi é SÓ LIDO (ADR 0003, item 3);
 #   4. todos os *.env da pasta: dono o usuário de deploy, modo 600.
-# email.env e alerta.env não são gravados: SMTP e alerta por webhook desligados (o compose e o alerta-saude.sh aceitam
-# a falta deles). Lista dos arquivos e das variáveis: env.modelo.
+# email.env não é gravado aqui: vem dos secrets PROD_SMTP_* pelo producao-publicar.yml (email-env.sh, T-0076), logo depois
+# deste script; o passo 4 o deixa 600 nas publicações seguintes. alerta.env não é gravado (webhook desligado; o
+# alerta-saude.sh aceita a falta). Lista dos arquivos e das variáveis: env.modelo.
 # MACUXIERP_DIR e MACUXI_FDV_DIR trocam as pastas SÓ para teste (o sudo do workflow não os repassa).
 set -euo pipefail
 set +x

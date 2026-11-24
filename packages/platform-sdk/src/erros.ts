@@ -51,7 +51,15 @@ export const erros = {
   /** A rota passou do `tempoMaximoMs`: a transação foi desfeita (nada gravado). */
   tempoEsgotado: (segundos: number) =>
     new ErroApi(503, 'TEMPO_ESGOTADO', `A operação passou de ${segundos} s e foi desfeita: divida o envio ou tente de novo`),
-  muitasTentativas: (mensagem: string) => new ErroApi(429, 'MUITAS_TENTATIVAS', mensagem),
+  /**
+   * 429 do limite de tentativas. `retryAfterS` (RN-CORE-13, "esqueci a senha"): segundos até a janela abrir, em
+   * `detalhes.retry_after_s` (`MuitasTentativasResposta`); ausente = corpo de antes (login travado).
+   */
+  muitasTentativas: (mensagem: string, retryAfterS?: number) => {
+    if (retryAfterS === undefined) return new ErroApi(429, 'MUITAS_TENTATIVAS', mensagem);
+    if (!Number.isInteger(retryAfterS) || retryAfterS < 1) throw new RangeError('erros.muitasTentativas: retry_after_s precisa ser inteiro ≥ 1');
+    return new ErroApi(429, 'MUITAS_TENTATIVAS', mensagem, undefined, { retry_after_s: retryAfterS });
+  },
   /** Dependência externa fora do ar (SEFAZ, BrasilAPI, Hub do FDV): 503, o cliente tenta de novo mais tarde. */
   indisponivel: (servico: string) => new ErroApi(503, 'INDISPONIVEL', `${servico} indisponível no momento: tente de novo em instantes`),
   /** Regra de negócio violada: 422 com o código da RN (ex.: `RN-CAD-01`); `detalhes` estruturados opcionais (`DetalhesErro`). */

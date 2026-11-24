@@ -5,6 +5,7 @@
  * SELECT de resumo lista as colunas uma a uma.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
+import { ORIGEM_CERTIFICADO_PADRAO } from '@macuxierp/platform-sdk/certificado-origem';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,
@@ -20,7 +21,7 @@ import type {
 } from './portas';
 
 const COLUNAS_USUARIO = 'id, nome, email::text AS email, perfil, filial_ids, ativo, external_id, ultimo_acesso_em, updated_at';
-const COLUNAS_CERTIFICADO = 'id, filial_id, titular, cnpj::text AS cnpj, valido_de, valido_ate, impressao_digital::text AS impressao_digital, ativo';
+const COLUNAS_CERTIFICADO = 'id, filial_id, titular, cnpj::text AS cnpj, valido_de, valido_ate, impressao_digital::text AS impressao_digital, ativo, origem';
 const COLUNAS_EMPRESA = 'id, razao_social, nome_fantasia, cnpj::text AS cnpj, ie, fuso, updated_at';
 
 /**
@@ -96,9 +97,16 @@ export class RepositorioCoreSql implements RepositorioCore {
     return linha ?? null;
   }
 
+  /** RN-CORE-13 (0048). */
+  async emitirSenhaTemporaria(tx: Transacao, usuarioId: string, hash: string, expiraEm: Date): Promise<void> {
+    await tx.consultar('UPDATE plataforma.usuario SET senha_temporaria_hash = $2, senha_temporaria_expira_em = $3 WHERE id = $1', [usuarioId, hash, expiraEm]);
+  }
   async definirSenha(tx: Transacao, id: string, senhaHash: string): Promise<void> {
-    // Nova senha provisória também zera a trava do login; T-0052: e exige a troca no próximo acesso.
-    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL WHERE id = $1', [id, senhaHash]);
+    // Nova senha provisória também zera a trava do login; T-0052: e exige a troca no próximo acesso; 0048: e descarta a temporária.
+    await tx.consultar(
+      'UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL, senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL WHERE id = $1',
+      [id, senhaHash],
+    );
   }
 
   async travarAdministradoresAtivos(tx: Transacao): Promise<void> {
@@ -131,9 +139,9 @@ export class RepositorioCoreSql implements RepositorioCore {
     await tx.consultar('UPDATE core.certificado SET ativo = false, substituido_em = $2 WHERE filial_id = $1 AND ativo AND deleted_at IS NULL', [n.filial_id, agora]);
     await tx.consultar(
       `INSERT INTO core.certificado (id, tenant_id, filial_id, titular, cnpj, valido_de, valido_ate, impressao_digital,
-         pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce, chave_versao)
-       VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [n.id, n.filial_id, n.titular, n.cnpj, n.valido_de, n.valido_ate, n.impressao_digital, n.pfx_cifrado, n.pfx_nonce, n.senha_cifrada, n.senha_nonce, n.chave_versao],
+         pfx_cifrado, pfx_nonce, senha_cifrada, senha_nonce, chave_versao, origem)
+       VALUES ($1, plataforma.tenant_atual(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [n.id, n.filial_id, n.titular, n.cnpj, n.valido_de, n.valido_ate, n.impressao_digital, n.pfx_cifrado, n.pfx_nonce, n.senha_cifrada, n.senha_nonce, n.chave_versao, n.origem ?? ORIGEM_CERTIFICADO_PADRAO],
     );
   }
 

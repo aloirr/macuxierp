@@ -199,6 +199,7 @@ describe('contratos do portal /config (ADR 0012)', () => {
     expect(EntrarPlataformaEntrada.parse({ email: ' Ops@Macuxi.com.br ', senha: 'x' }).email).toBe('ops@macuxi.com.br');
     expect(() => EntrarPlataformaEntrada.parse({ email: 'ops@macuxi.com.br', senha: '' })).toThrow();
     expect(TrocarSenhaPlataformaEntrada).toBe(TrocarSenhaEntrada);
+    expect(TrocarSenhaPlataformaEntrada.parse({ senha_nova: 'abcdef1!' })).toEqual({ senha_nova: 'abcdef1!' });
     expect(SessaoPlataformaResposta.parse({ expira_em: AGORA, token: 'abc' })).toEqual({ expira_em: AGORA });
     const eu = EuPlataforma.parse({ superadmin: { id: ADMIN, nome: 'Operação' }, deve_trocar_senha: true, sessao_expira_em: AGORA });
     expect(eu.deve_trocar_senha).toBe(true);
