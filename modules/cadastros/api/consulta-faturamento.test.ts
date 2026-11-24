@@ -30,8 +30,8 @@ describe('consulta de cadastros para o faturamento (memória)', () => {
     };
     ids.filial = (await post('/filiais', filialValida({ nfe_serie: 2, nfe_numero_inicial: 150 }))).id;
     ids.filialSemSerie = (await post('/filiais', filialValida({ cnpj: CNPJ_B, padrao: false, emissora: false, nfe_serie: null, nfe_numero_inicial: null, ie: null }))).id;
-    ids.condicao = (await post('/condicoes-pagamento', { codigo: '30D', descricao: '30 dias', forma_tpag: '15', prazos_dias: [30, 60] }, gerente)).id;
-    ids.cartao = (await post('/condicoes-pagamento', { codigo: 'CC3', descricao: 'Cartão 3x', forma_tpag: '03', prazos_dias: [30, 60, 90], parcelas_cartao: 3 }, gerente)).id;
+    ids.condicao = (await post('/condicoes-pagamento', { codigo: '30D', descricao: '30 dias', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 }, gerente)).id;
+    ids.cartao = (await post('/condicoes-pagamento', { codigo: 'CC3', descricao: 'Cartão 3x', forma_tpag: '03', prazos_dias: [30, 60, 90], prazo_medio_dias: 60 }, gerente)).id;
     ids.cliente = (await post('/clientes', clienteValido(ids.filial, {
       email_nfe: 'nfe@cliente.com.br', ind_ie_dest: '9', ie: null,
       enderecos: [{ ...ENDERECO_AM, tipo: 'entrega', numero: '1' }, { ...ENDERECO_AM, tipo: 'principal', numero: '2', municipio_ibge: '1301902' }],

@@ -8,11 +8,12 @@
  * Por que no SDK: o `integracao-fdv` (Hub e rota do BKO), o `cadastros` (porta que valida e cria o cliente e devolve os
  * erros por campo) e a apps/web (seção "Clientes recebidos do FDV") usam os mesmos Zod; o SDK não importa módulo.
  *
- * Versões do FDV: a v1.0.28 entrega o básico. Os aditivos da ADR 0069 do FDV (`revisao`, `hash`, `codigo_fdv` e
- * `tentativa` no pendente; `revisao` e `erros` por campo no retorno; reenvio na mesma linha) são OPCIONAIS aqui: o ERP lê
- * os dois formatos e só manda `revisao` e `erros` com a opção ligada (`montarRetornoClienteFdv`). Regra 3: tipos só de Zod.
+ * Versões do FDV: a produção roda a v1.0.32, com a ADR 0069 do FDV desde a v1.0.30 (`revisao`, `hash`, `codigo_fdv` e
+ * `tentativa` no pendente; `revisao` e `erros` por campo no retorno; reenvio na mesma linha). O ERP lê também o pendente
+ * antigo e manda `revisao` e `erros` com a opção ligada (`montarRetornoClienteFdv`). Regra 3: tipos só de Zod.
  */
 import { z } from 'zod';
+import { chaveLigadoDesligado } from './chave-ligado';
 import { cnpjRaiz, normalizarDocumento } from './documentos';
 import { ConsultaPaginada, paginaDe } from './listas';
 import { CodigoErroFdv } from './portal-integracao-operacao';
@@ -27,10 +28,16 @@ export const LIMITE_CLIENTES_PENDENTES_FDV = Object.freeze({ padrao: 50, max: 10
 
 /**
  * Variável do worker que liga os aditivos da ADR 0069 do FDV no retorno (`revisao` e `erros`). Valores `ligado` e
- * `desligado` (padrão `desligado`, para funcionar já com a v1.0.28). A busca e o retorno continuam sob o
+ * `desligado`; **padrão `ligado`**, porque o FDV de produção (v1.0.32) já os tem. O `desligado` fica só para os testes
+ * contra o dublê da v1.0.28; não vai ao `.env` de produção. A busca e o retorno continuam sob o
  * `MACUXIERP_FDV_RECEBIMENTO` dos pedidos (mesma credencial, permissão "Recebe pedidos").
  */
 export const OPCAO_ADITIVOS_CLIENTE_FDV = 'MACUXIERP_FDV_CLIENTE_REVISAO';
+
+/** Ausente = ligado; outro valor derruba a partida. */
+export function aditivosClienteFdvLigados(env: Readonly<Record<string, string | undefined>>): boolean {
+  return chaveLigadoDesligado(env, OPCAO_ADITIVOS_CLIENTE_FDV, 'ligado') === 'ligado';
+}
 
 /**
  * Cópia tolerante do `ClienteParaErp` do Hub (`passthrough`: campo novo não derruba a leitura). Os campos da ADR 0069

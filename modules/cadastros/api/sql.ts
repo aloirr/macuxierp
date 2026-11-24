@@ -16,7 +16,7 @@ import type {
 
 type Dict = Record<string, unknown>;
 /** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
-const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
+const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'prazo_medio_dias', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
 
@@ -203,7 +203,7 @@ const mapaFilial: Mapa<Filial, FilialDados> = {
 
 const mapaCliente: Mapa<Cliente, ClienteDados> = {
   tabela: 'cadastros.cliente',
-  colunas: ['tipo_pessoa', 'documento', 'ie', 'ind_ie_dest', 'razao_social', 'nome_fantasia', 'email_nfe', 'condicao_pagamento_id', 'tabela_preco_id', 'filial_id', 'vendedor_id'],
+  colunas: ['tipo_pessoa', 'documento', 'ie', 'ind_ie_dest', 'razao_social', 'nome_fantasia', 'email_nfe', 'condicao_pagamento_id', 'tabela_preco_id', 'filial_id', 'vendedor_id', 'prazo_medio_dias'],
   expressoes: [N('limite_credito_centavos')],
   busca: ['razao_social', 'nome_fantasia', 'documento'],
   filtros: { filial: true, vendedor: true },

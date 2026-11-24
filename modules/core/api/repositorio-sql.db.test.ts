@@ -164,6 +164,37 @@ describe.skipIf(!PG_DISPONIVEL)('concorrência do adaptador SQL do core (Postgre
     await doOutro.confirmar();
   });
 
+  it('T-0087 (RLS): usuários, licenças e auditoria de um tenant não aparecem no outro; o filtro por usuário e por período vale só dentro do tenant', async () => {
+    await b.admin.query("INSERT INTO plataforma.tenant_modulo (tenant_id, modulo) VALUES ($1, 'cadastros'), ($2, 'pedido')", [T, T2]);
+    const aud = (tenant: string, usuario: string, acao: string, em: string) =>
+      b.admin.query("INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, ocorrido_em) VALUES ($1, $2, $3, 'usuario', $4)", [tenant, usuario, acao, em]);
+    await aud(T, U1, 'core.usuario.criado', '2026-11-10T12:00:00Z');
+    await aud(T, U2, 'core.usuario.alterado', '2026-11-20T12:00:00Z');
+    await aud(T2, V1, 'core.usuario.criado', '2026-11-10T12:00:00Z');
+
+    const meu = await abrir(T);
+    const usuarios = await repo.listarUsuarios(meu, { limite: 50, inativos: true });
+    expect(usuarios.map((u) => u.id).sort()).toEqual([U1, U2].sort());
+    expect((await repo.licencas(meu)).map((l) => l.modulo)).toEqual(['cadastros']);
+    const todas = await repo.auditoria(meu, { limite: 50 });
+    expect(todas).toHaveLength(2);
+    expect(todas.some((a) => a.usuario_id === V1)).toBe(false);
+    expect((await repo.auditoria(meu, { limite: 50, usuario_id: U2 })).map((a) => a.acao)).toEqual(['core.usuario.alterado']);
+    expect(await repo.auditoria(meu, { limite: 50, usuario_id: V1 })).toEqual([]); // usuário de outro tenant: nada, nem por filtro
+    expect((await repo.auditoria(meu, { limite: 50, de: new Date('2026-11-15T00:00:00Z') })).map((a) => a.usuario_id)).toEqual([U2]);
+    // o cursor pagina por id dentro do tenant
+    const p1 = await repo.auditoria(meu, { limite: 1 });
+    const p2 = await repo.auditoria(meu, { limite: 5, cursor: p1[0]?.id });
+    expect(p2).toHaveLength(1);
+    expect(p2[0]?.id).not.toBe(p1[0]?.id);
+    await meu.confirmar();
+
+    const outro = await abrir(T2);
+    expect((await repo.licencas(outro)).map((l) => l.modulo)).toEqual(['pedido']);
+    expect((await repo.auditoria(outro, { limite: 50 })).map((a) => a.usuario_id)).toEqual([V1]);
+    await outro.confirmar();
+  });
+
   it('T-0052: criar usuário e redefinir senha exigem a troca da senha provisória', async () => {
     const id = randomUUID();
     const flag = async () => (await b.admin.query('SELECT deve_trocar_senha FROM plataforma.usuario WHERE id = $1', [id])).rows[0] as { deve_trocar_senha: boolean };

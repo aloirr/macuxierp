@@ -5,6 +5,8 @@ import {
   LinhaCliente, LinhaCondicaoPagamento, LinhaEstoque, LinhaFilial, LinhaPreco,
   LinhaProduto, LinhaProdutoUnidade, LinhaVendedor, TipoEndereco, type EntidadeCarga, type LinhasCarga,
 } from '../../contracts';
+import { MAX_DIAS } from '../../contracts';
+import { MOTIVO_PRAZO_MEDIO } from '../condicao';
 import { validarDocumentoCliente } from '../documento';
 import { sugerirIndIeDest, validarIe, validarIndIeDest, type IndIeDest } from '../ie';
 import { validarMunicipio } from '../municipio';
@@ -163,6 +165,12 @@ function documento(l: Leitor, nome: string, tipo: 'PJ' | 'PF'): string | undefin
   return r.documento;
 }
 
+/** RN-CAD-15 e RN-CAD-16: prazo médio em dias, inteiro de 0 a MAX_DIAS. */
+const celulaPrazoMedio = (c: string): CelulaConvertida<number> => {
+  const r = celulaInteiro(c, { min: 0, max: MAX_DIAS });
+  return r.ok ? r : { ok: false as const, motivo: MOTIVO_PRAZO_MEDIO };
+};
+
 const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) => ResultadoMapeamento<E> } = {
   filial(l, ctx) {
     const cnpj = documento(l, 'cnpj', 'PJ');
@@ -198,25 +206,20 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     if (tpag === undefined && codigoForma !== undefined) {
       tpag = DICIONARIO_TPAG[codigoForma.toUpperCase()] ?? TPAG_RECUSADO;
     }
+    // RN-CAD-15: as parcelas são os dias digitados (`30/60/90`; à vista `0`), sem a notação "Nx". A regra (1 a 36 parcelas, 0 a 999 dias) é do domain e do contrato.
     const bruto = l.cel('parcelas_dias');
     let prazos: number[] | undefined;
-    let parcelas: number | undefined;
-    const cartao = bruto === undefined ? null : /^(\d{1,3})\s*x$/i.exec(bruto);
-    if (cartao) {
-      // "3x" é cartão: a regra (1 a 12) é do domain/RN-CAD-09; aqui só a leitura. "3" puro chega em `prazos` e a gravação decide pela forma.
-      parcelas = Number(cartao[1]);
-    } else if (bruto !== undefined) {
-      // Só a leitura da célula; 1 a 36 parcelas de 0 a 999 dias, em qualquer ordem, é a regra do contrato (a mesma da rota manual).
+    if (bruto !== undefined) {
       const lista = celulaLista(bruto);
       const itens = lista.ok ? (lista.valor ?? []).map((x) => celulaInteiro(x)) : [];
       if (lista.ok && itens.every((i) => i.ok)) prazos = itens.flatMap((i) => (i.ok && i.valor !== undefined ? [i.valor] : []));
-      else l.erro('parcelas_dias', 'CARGA_FORMATO', 'Parcelas: números inteiros de dias separados por /');
+      else l.erro('parcelas_dias', 'CARGA_FORMATO', 'Parcelas: números inteiros de dias separados por /, por exemplo 30/60/90 (à vista 0)');
     }
     return fechar<'condicao_pagamento'>(l, LinhaCondicaoPagamento, {
       external_id: l.id('external_id'),
       ativo: l.ativo(),
       dados: limparDados({
-        codigo: l.texto('codigo', LIMITES.codigo20), descricao: l.texto('descricao', LIMITES.texto60), prazos_dias: prazos, parcelas_cartao: parcelas,
+        codigo: l.texto('codigo', LIMITES.codigo20), descricao: l.texto('descricao', LIMITES.texto60), prazos_dias: prazos, prazo_medio_dias: l.conv('prazo_medio_dias', celulaPrazoMedio),
         forma_external_id: l.id('forma_external_id'), forma_codigo: codigoForma, forma_nome: l.texto('forma_nome', LIMITES.texto60), forma_tpag: tpag,
       }),
     });
@@ -347,6 +350,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
         nome_fantasia: l.texto('nome_fantasia', LIMITES.texto60),
         email_nfe: l.cel('email'),
         limite_credito_centavos: l.conv('limite_credito_cents', celulaCentavos),
+        prazo_medio_dias: l.conv('prazo_medio_dias', celulaPrazoMedio),
       }),
       enderecos,
       refs: limparDados({
