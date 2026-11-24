@@ -120,7 +120,10 @@ describe('registrarModulos', () => {
     expect(m.map((p) => p.rotas.length > 0)).toEqual([true, true, true, true, false, true]);
     const integracao = m.find((p) => p.manifesto.id === 'integracao-fdv')!;
     // BKO do tenant só de leitura (ADR 0013 §6, T-0056): a credencial, a configuração e a operação são do portal `/config`.
-    expect(integracao.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toEqual(['GET /monitor', 'GET /status', 'GET /lotes', 'GET /lotes/exportar', 'GET /lotes/:id/erros']);
+    // T-0086 §4: o Log por cadastro e o "Baixar erros (.csv)" do BKO, também só de leitura.
+    expect(integracao.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toEqual([
+      'GET /monitor', 'GET /status', 'GET /entidades/:entidade/log', 'GET /entidades/:entidade/log.csv', 'GET /lotes', 'GET /lotes/exportar', 'GET /lotes/:id/erros',
+    ]);
     expect(integracao.rotas.every((r) => r.acao === 'integracao-fdv.ver')).toBe(true);
     const pedido = m.find((p) => p.manifesto.id === 'pedido')!;
     expect(pedido.rotas.map((r) => `${r.metodo} ${r.caminho}`)).toContain('POST /pedidos');
