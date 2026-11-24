@@ -129,7 +129,7 @@ export function montarMassa(base: Date, rodada: Rodada): Massa {
         ativo: true,
         forma_external_id: formas[0],
         codigo: `28-56-${execucao}`,
-        parcelas_dias: '28/56',
+        parcelas_dias: [28, 56],
         descricao: 'Boleto 28/56',
       },
       {
@@ -138,7 +138,7 @@ export function montarMassa(base: Date, rodada: Rodada): Massa {
         ativo: true,
         forma_external_id: formas[0],
         codigo: `28-${execucao}`,
-        parcelas_dias: '28',
+        parcelas_dias: [28],
         descricao: 'Boleto 28',
       },
       {
@@ -147,7 +147,7 @@ export function montarMassa(base: Date, rodada: Rodada): Massa {
         ativo: true,
         forma_external_id: formas[1],
         codigo: `AV-${execucao}`,
-        parcelas_dias: '0',
+        parcelas_dias: [0],
         descricao: 'Pix a vista',
       },
     ],
@@ -418,7 +418,7 @@ export function massaKitFicticia(base: Date, formas: number): { fonte: 'kit'; re
       ativo: true,
       forma_external_id: f.external_id,
       codigo: `28-${i}-${execucao}`,
-      parcelas_dias: '28',
+      parcelas_dias: [28],
       descricao: 'Prazo Ficticio 28',
     },
     {
@@ -427,7 +427,7 @@ export function massaKitFicticia(base: Date, formas: number): { fonte: 'kit'; re
       ativo: true,
       forma_external_id: f.external_id,
       codigo: `28-56-${i}-${execucao}`,
-      parcelas_dias: '28/56',
+      parcelas_dias: [28, 56],
       descricao: 'Prazo Ficticio 28/56',
     },
   ]);
