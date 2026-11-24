@@ -20,3 +20,9 @@ Fontes: `docs/desenho/T-0002.md` (seção 3), ADR 0002, ADR 0005, RN-CORE-01..08
 - O core publica os quatro eventos do catálogo (`empresa`, `usuario`, `certificado`, `ambiente_fiscal`); `versao` do envelope = ms UTC da alteração.
 - A auditoria do usuário não leva nome nem e-mail; a do certificado, só CNPJ, validade e impressão digital.
 - A filial é um UUID opaco (D4): o core não confere se ela existe em `cadastros`.
+
+## T-0087 — telas de Usuários, Perfis e permissões, Licenças e Auditoria (RF-CORE-02/03/05)
+- Só o administrador da empresa (RN-CORE-09): `GET /v1/core/perfis` passou a exigir `core.usuario.gerir` (os outros perfis recebem 403) e a página "Perfis e permissões" some do menu dos demais. O `core` é módulo base: sem linha de licença o administrador ainda entra.
+- Listas por descritor do SDK em `modules/core/web/listas.ts` (`paginaUsuarios`, `paginaLicencas`, `paginaAuditoria`): filtros na URL, cursor por id, limite até 200, CSV em `/usuarios/exportar`, `/licencas/exportar` e `/auditoria/exportar`.
+- Auditoria: novo filtro `usuario_id`; a lista e o CSV não levam `antes`/`depois` (minimização LGPD); mostra só o id do autor.
+- Prints de conferência (1280 e 390, dados fictícios) em `docs/modulos/core/prints/T-0087/`: pré-visualização montada a partir dos descritores e das linhas do módulo; o renderizador do BKO (`apps/web`) é do `engenheiro-apps`, que registra as telas em `apps/web/src/lib/telas/`.
