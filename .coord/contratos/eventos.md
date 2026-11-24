@@ -59,6 +59,16 @@ Chave do Hub e regras de troca e conflito: ADR 0010. Publica: `cadastros`. Conso
 
 Trocar um `external_id` preenchido só pela ação `cadastros.external_id.trocar` (ADR 0010, item 3).
 
+### Aditivo T-0085 (ADR 0020)
+Formas e prazos com prazo médio digitado (`docs/desenho/T-0085.md`). Publica: `cadastros`. Consomem: `integracao-fdv` e `pedido`. Mudança aditiva: segue `@1`.
+
+| Evento | Campo aditivo (opcional, anulável) |
+|---|---|
+| `cadastros.condicao_pagamento.alterada@1` | `prazo_medio_dias`: inteiro de 0 a 999, digitado (RN-CAD-12). Nulo = legado "incompleto", que não vai ao FDV nem entra em pedido |
+| `cadastros.cliente.alterado@1` | `prazo_medio_dias`: inteiro de 0 a 999 (RN-CAD-13). Nulo = sem limite de prazo |
+
+O `prazos_dias` continua a lista de parcelas em dias (à vista `[0]`). O `parcelas_cartao` fica como legado. Envio ao Hub: ADR 0020, item 7.
+
 ## Payloads de faturamento (v1)
 Zod em `modules/faturamento/contracts/index.ts` (fonte da verdade); regras em `docs/modulos/faturamento/README.md`, "Eventos publicados".
 
