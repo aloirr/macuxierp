@@ -3,3 +3,4 @@
 2026-11-23 — T-0069 — rodar-antes-do-push --tudo ganha a etapa scripts (node --test de scripts/ e .github/scripts/), na tabela e no status geral
 2026-11-23 — T-0076 — tests/apoio/troca-senha.ts: conferir403TrocarSenha (sem motivo, exatamente {codigo, mensagem}; com motivo, SenhaATrocarResposta.strict() do SDK, código, mensagem e motivo exatos, expira_em só na temporária) no lugar dos toEqual do 403 TROCAR_SENHA em troca-senha-rotas.test.ts e troca-senha.db.test.ts (provisoria); helper testado em tests/apoio/troca-senha.test.ts
 2026-11-24 — T-0089 — roteiro da jornada AM2808 (passos 4 e 5) em docs/testes/T-0089.md, com a árvore do D3; caso D3 no volta-fdv-erp.db.test.ts (homologação sem conta_como_real não volta; com a bandeira volta faturado_total com a chave) e chave_nota no dublê; e2e e PDF depois do deploy da v0.3.12
+2026-11-24 — T-0059 — plano: 10 casos do §7 do desenho (#526) + tela, com tipo, arquivo e dono; previsão 132 min

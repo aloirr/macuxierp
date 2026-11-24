@@ -75,12 +75,38 @@ só aqui, sem `it.skip` nem `it.todo` para ficar verde. Cada caso vira teste no 
 
 ## T-0059 — pré-cadastro de cliente FDV → ERP
 
-| # | Caso | Situação |
-|---|---|---|
-| F-1 | `GET /integracao/v1/clientes/pendentes` no dublê com o payload do FDV v1.0.27 (hub-api §6.6b, RN-INT-22); o ERP valida e responde `vinculado` ou `rejeitado_erp` com motivo por campo. | pendente (respostas do FDV às 6 perguntas) |
-| F-2 | Reenvio depois de `rejeitado_erp` atualiza a mesma linha em "Clientes recebidos do FDV" (sem duplicar). | pendente |
-| F-3 | Tela do BKO: documento mascarado; sem CPF/CNPJ inteiro na resposta nem no log (LGPD). | pendente |
-| F-4 | Aceito vira cliente no ERP com o `external_id` do FDV e volta como `vinculado`; perfil, tenant e licença (X-5). | pendente |
+Base: desenho `docs/desenho/T-0059.md` e `packages/platform-sdk/src/cliente-fdv.ts` do PR #526 (head 5c65566, ainda fora
+do main), conferidos em 24/11/2026, ~18h20 (Manaus). Os 10 casos são os do §7 do desenho; substituem os F-1 a F-4 da
+primeira versão deste plano (o antigo F-2 está no F-4, o antigo F-3 no F-9 e o antigo F-4 no F-1 e no F-8). O dublê do
+Hub responde nos dois formatos do §2 (v1.0.28 e aditivos da ADR 0069 do FDV), com a opção `OPCAO_ADITIVOS_CLIENTE_FDV`
+ligada e desligada.
+
+Tipos: **unitário** (sem banco), **banco** (Postgres local), **pa-p** (ponta a ponta com o dublê do Hub, worker real e
+Postgres local), **tela** (fumaça, e2e do BKO ou ensaio com API real e print).
+
+| # | Critério verificável (desenho) | Tipo | Onde (previsto) | Dono do código validado | Situação |
+|---|---|---|---|---|---|
+| F-1 | Pendente válido da v1.0.28 (sem `revisao`): o cliente é criado uma vez; o dublê recebe o `vinculado` antes de qualquer `POST /lotes` com o cliente; o lote só sai depois do 200; o `external_id` do lote é igual ao do retorno e é a `chaveHub` do cliente, nunca o `codigo_fdv` (§4 "Aceito", §5.4, §3.3). | pa-p | `tests/ponta-a-ponta-fdv/cliente-fdv-erp.db.test.ts` | integracao-fdv (+ cadastros na criação, banco no `aguarda_vinculo`) | pendente |
+| F-2 | Pendente com CNPJ de DV errado e município inexistente: `cliente_recebido` em `recusado` com exatamente 2 erros (`documento_invalido`, `municipio_nao_encontrado`), sem cliente criado. Opção desligada: o corpo no dublê tem só `motivo` (sem `revisao` nem `erros`); ligada: leva `revisao` (quando o pendente trouxe) e `erros` (§2, §4, §7 caso 2). Também no domínio: todas as recusas saem juntas, mensagem do catálogo sem o valor recusado. | unitário + pa-p | `tests/integracao/rn/rn-cadastros.test.ts` (domínio `pre-cadastro-fdv`) + `cliente-fdv-erp.db.test.ts` | cadastros (validação) + integracao-fdv (retorno) | pendente |
+| F-3 | Mesmo pendente de novo (`tentativa` 2, mesma revisão): não chama `decidir` de novo, `tentativas_fdv` = 2, um único cliente, o retorno volta a `pendente` e sai de novo; o dublê responde `repetido: true` e a linha de retorno fica `enviado`, sem segunda linha em `cliente_retorno` (§5.1 passo 1, §3.2 `UNIQUE`). | pa-p | `cliente-fdv-erp.db.test.ts` | integracao-fdv (+ banco no `UNIQUE`) | pendente |
+| F-4 | Reenvio corrigido (revisão 2) de um recusado: linha nova em `reenviado` e depois `aceito`; a revisão 1 continua `recusado` (histórico); a rota do BKO mostra uma linha por `cliente_uuid`, a da revisão 2, com Revisão "2" (§5.1, §5.5, §6). | pa-p + banco | `cliente-fdv-erp.db.test.ts` | integracao-fdv (+ banco) | pendente |
+| F-5 | 422 `external_id_divergente` no retorno: `cliente_retorno` em `falhou`, `conflito_chave` aberto com `vinculo_divergente`, o cliente segue com `aguarda_vinculo = true` (cliente e endereços) e nenhum lote do dublê o traz; aparece no Monitor e no Log (§5.3, §5.4 passo 3). | pa-p | `cliente-fdv-erp.db.test.ts` | integracao-fdv (+ banco) | pendente |
+| F-6 | 5xx (e 429 com `Retry-After`) e depois 200: o retorno continua `pendente`, há nova tentativa no prazo do relógio de teste, o dublê recebe o mesmo corpo e grava um único retorno; 401/403 pausam por `credencial` (§5.3). | pa-p | `cliente-fdv-erp.db.test.ts` | integracao-fdv | pendente |
+| F-7 | Documento já cadastrado (cliente ativo no tenant): recusa com `documento_ja_cadastrado`, a mensagem não contém o documento e a contagem de clientes não muda (§4 tabela). | unitário + pa-p | `rn-cadastros.test.ts` + `cliente-fdv-erp.db.test.ts` | cadastros | pendente |
+| F-8 | Multi-tenant e autorização da rota `clientesRecebidos`: o tenant B não lê os recebidos do A (RLS em `cliente_recebido` e `cliente_retorno`, e pela rota); sem a licença do módulo 403; sem `integracao-fdv.ver` 403 (§5.5, X-5). | banco + rota | `tests/integracao/plataforma/isolamento.db.test.ts`, `tests/integracao/rotas/autorizacao-rotas.test.ts` | banco (RLS) + integracao-fdv (rota) | pendente |
+| F-9 | LGPD: a resposta da rota, com massa fictícia de CPF, CNPJ, e-mail e telefone, não contém nenhum deles inteiro (só `DocumentoMascaradoFdv`); o log capturado do worker não leva o payload; `payload` nulo no `aceito`; o `CHECK` recusa `recusado` sem payload dentro do prazo (§3.1, §5.5, §6). | banco + pa-p | `cliente-fdv-erp.db.test.ts` + `tests/integracao/banco/` | integracao-fdv (rota e log) + banco (`CHECK`) | pendente |
+| F-10 | Contrato: as fixtures do `cliente-erp.ts` do FDV (v1.0.28 e v1.0.30), copiadas para `tests/` (o FDV é só leitura), passam em `ClientesPendentesFdv`; o corpo que o ERP monta passa no `RetornoClienteFdv` e no oráculo do Hub no dublê, nos dois estados da opção; os 200 (`repetido`, `obsoleto`) passam em `RetornoClienteAceitoFdv` (§2, §7 caso 10). | unitário | `tests/ponta-a-ponta-fdv/cliente-fdv-contrato.test.ts` | engenheiro-software (SDK) + integracao-fdv | pendente |
+| F-11 | Tela: a seção "Clientes recebidos do FDV" entra na fumaça (X-1, X-2) pelo `CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos`; filtro por situação e cursor; recusado abre os erros por campo; aceito leva "Abrir cliente"; ensaio com API real e prints 1280/390 (§6, X-4). | tela | `tests/integracao/rotas/fumaca-telas.db.test.ts`, `tests/e2e/`, `docs/testes/prints/` | apps/web (+ integracao-fdv na rota) | pendente |
+
+Notas:
+- Apoio de teste (dono `testes`): o dublê ganha `GET /clientes/pendentes` (marca `enviado`, volta à fila em 10 min com
+  `tentativa + 1`) e `POST /clientes/{uuid}/retorno` (200, `repetido`, `obsoleto`, os 422 de
+  `CODIGOS_RECUSA_RETORNO_CLIENTE_FDV`, falha injetável 5xx/429); a trava de escrita passa a contar o GET de pendentes
+  de clientes como escrita, como o de pedidos.
+- O que dá para escrever só contra o SDK do #526 (sem código de módulo): F-10 e a parte do dublê acima. Fica para
+  depois do merge do #526 no main, no PR do `testes` que antecede o de validação.
+- Previsão do `testes` (dono + 15%), contada da entrada do último PR (integracao-fdv e apps): 132 min, com o dublê e o
+  F-10 prontos antes (~40 min fora do caminho crítico); sem isso, 172 min.
 
 ## Comandos da sessão
 
