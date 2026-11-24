@@ -271,6 +271,11 @@ Portal /config, RN-CAD-10. O banco só fornece os fatos e aplica o plano; a casc
 
 Migração: `db/migrations/0043_cadastros_zerar.sql`; testes: `db/testes/cadastros-zerar-0043.db.test.ts`.
 
+## Endereços inativados na auditoria da carga (T-0072, migração 0046)
+- `cadastros.portal_carga_concluir(p_tenant uuid, p_execucao_id uuid, p_resultado text, p_gravadas integer, p_com_erro integer, p_inativadas integer, p_request_id text, p_enderecos_inativados integer DEFAULT NULL)` (RN-CAD-10): substitui a de 7 argumentos da 0040; a chamada de 7 argumentos da API segue igual. Não nulo, o `depois` da auditoria `cadastros.carga.concluir` ganha `enderecos_inativados` (os endereços inativados pelo "Substituir tudo" do cliente); nulo ou omitido, o `depois` fica igual ao de antes. Negativo = 23514, DETAIL `execucao_invalida`. Não vai para `cadastros.carga_portal` (só auditoria).
+
+Migração: `db/migrations/0046_cadastros_carga_portal_auditoria_enderecos.sql`; testes: `db/testes/carga-portal-0040.db.test.ts` (k) e (j).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 

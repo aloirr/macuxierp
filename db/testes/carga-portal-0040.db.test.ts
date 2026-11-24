@@ -7,6 +7,8 @@
  * Estado final com a 0044 (T-0058, v0.3.6): nenhuma carga depende de outra (o MXC03 e a portal_carga_dependencias
  * saíram) e a lista tem 8 cadastros; os nomes legados (forma_pagamento, prazo_pagamento, cliente_endereco) só valem
  * para as execuções já gravadas e contam na última carga de condicao_pagamento e de cliente.
+ * 0046 (T-0072, v0.3.8, RN-CAD-10): portal_carga_concluir ganha p_enderecos_inativados integer DEFAULT NULL (8º e
+ * último); a chamada de 7 argumentos segue igual e a chave enderecos_inativados só entra no `depois` quando não é nula.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -32,6 +34,7 @@ import { fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
 
 const MIGRACAO = fileURLToPath(new URL('../migrations/0040_cadastros_carga_portal.sql', import.meta.url));
 const MIGRACAO_0044 = fileURLToPath(new URL('../migrations/0044_cadastros_carga_portal_sem_dependencia.sql', import.meta.url));
+const MIGRACAO_0046 = fileURLToPath(new URL('../migrations/0046_cadastros_carga_portal_auditoria_enderecos.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const REFERENCIA = '00000000-0000-0000-0000-000000000000';
 /** Com a massa completa de cadastros. */
@@ -54,7 +57,7 @@ const LEGADOS = ['forma_pagamento', 'prazo_pagamento', 'cliente_endereco'];
 
 const PORTAL = [
   'cadastros.portal_carga_iniciar(uuid, text, text, text)',
-  'cadastros.portal_carga_concluir(uuid, uuid, text, integer, integer, integer, text)',
+  'cadastros.portal_carga_concluir(uuid, uuid, text, integer, integer, integer, text, integer)',
   'cadastros.portal_carga_situacao(uuid)',
 ] as const;
 const INTERNAS = [
@@ -385,13 +388,52 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     }
   });
 
-  it('(j) reexecução da 0040 seguida da 0044, e da 0044 sozinha, não muda dado e volta ao estado final', () => {
+  it('(j) reexecução da 0040 seguida da 0044 e da 0046, e da 0044 e da 0046 sozinhas, não muda dado e volta ao estado final', () => {
     const antes = [A, B, V, W].map((t) => retrato(t.id));
-    rodarScript(banco.conexao, `${readFileSync(MIGRACAO, 'utf8')}\n${readFileSync(MIGRACAO_0044, 'utf8')}`, { transacao: true });
+    rodarScript(
+      banco.conexao,
+      `${readFileSync(MIGRACAO, 'utf8')}\n${readFileSync(MIGRACAO_0044, 'utf8')}\n${readFileSync(MIGRACAO_0046, 'utf8')}`,
+      { transacao: true },
+    );
     rodarScript(banco.conexao, readFileSync(MIGRACAO_0044, 'utf8'), { transacao: true });
+    rodarScript(banco.conexao, readFileSync(MIGRACAO_0046, 'utf8'), { transacao: true });
     expect([A, B, V, W].map((t) => retrato(t.id))).toEqual(antes);
+    // a 0040 reexecutada recria a de 7 argumentos; a 0046 a tira de novo: fica uma só portal_carga_concluir
+    expect(um(`SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'portal_carga_concluir' AND pronamespace = 'cadastros'::regnamespace`)).toEqual({ n: 1 });
     expect(um(`SELECT cadastros.portal_carga_cadastros() AS c`)).toEqual({ c: CADASTROS });
     expect(um(`SELECT to_regprocedure('cadastros.portal_carga_dependencias(text)') IS NULL AS sem`)).toEqual({ sem: true });
     recusaConfig(iniciarSql(V.id, 'forma_pagamento'), '23514', /cadastro fora da carga/);
+  });
+
+  it('(k) RN-CAD-10 (0046): endereços inativados do Substituir tudo do cliente na auditoria; a chamada de 7 argumentos segue igual', () => {
+    const depoisDe = (id: string): Record<string, unknown> =>
+      um<{ d: Record<string, unknown> }>(
+        `SELECT depois AS d FROM plataforma.auditoria WHERE tenant_id = '${V.id}' AND entidade_id = '${id}' AND acao = 'cadastros.carga.concluir'`,
+      ).d;
+    const base = { cadastro: 'cliente', modo: 'substituir_tudo', resultado: 'concluida', gravadas: 3, com_erro: 0, inativadas: 2 };
+    // (a) a chamada de hoje (7 argumentos, como a API): mesmo `depois` de antes, sem a chave nova
+    const a = iniciar(V.id, 'cliente', 'substituir_tudo', 'req-k1');
+    concluir(V.id, a, 'concluida', 3, 0, 2, 'req-k1');
+    expect(depoisDe(a)).toEqual(base);
+    // (b) com p_enderecos_inativados => N, por nome e por posição: a chave entra com N (0 também conta)
+    const b = iniciar(V.id, 'cliente', 'substituir_tudo', 'req-k2');
+    comoConfig(`SELECT cadastros.portal_carga_concluir('${V.id}', '${b}', 'concluida', 3, 0, 2, 'req-k2', p_enderecos_inativados => 4);`);
+    expect(depoisDe(b)).toEqual({ ...base, enderecos_inativados: 4 });
+    const b0 = iniciar(V.id, 'cliente', 'substituir_tudo', 'req-k3');
+    comoConfig(`SELECT cadastros.portal_carga_concluir('${V.id}', '${b0}', 'concluida', 3, 0, 2, 'req-k3', 0);`);
+    expect(depoisDe(b0)).toEqual({ ...base, enderecos_inativados: 0 });
+    // (c) NULL explícito: a chave não aparece
+    const c = iniciar(V.id, 'cliente', 'substituir_tudo', 'req-k4');
+    comoConfig(`SELECT cadastros.portal_carga_concluir('${V.id}', '${c}', 'concluida', 3, 0, 2, 'req-k4', p_enderecos_inativados => NULL);`);
+    expect(depoisDe(c)).toEqual(base);
+    // negativo = 23514 execucao_invalida, sem fechar a execução
+    const n = iniciar(V.id, 'cliente', 'substituir_tudo', 'req-k5');
+    recusaDetalhe(`SELECT cadastros.portal_carga_concluir('${V.id}', '${n}', 'concluida', 3, 0, 2, 'r', -1);`, '23514', 'execucao_invalida');
+    concluir(V.id, n, 'falhou', 0, 0, null, 'req-k5');
+    // (d) uma assinatura só, de 8 argumentos, com o 8º opcional (os privilégios ficam no (a); a de 7 saiu, ver o (j))
+    expect(um(`SELECT pg_get_function_arguments('${PORTAL[1]}'::regprocedure) AS args`)).toEqual({
+      args:
+        'p_tenant uuid, p_execucao_id uuid, p_resultado text, p_gravadas integer, p_com_erro integer, p_inativadas integer, p_request_id text, p_enderecos_inativados integer DEFAULT NULL::integer',
+    });
   });
 });
