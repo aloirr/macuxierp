@@ -95,7 +95,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045 lote A: API → fila → worker → simu
   beforeAll(async () => {
     b = await criarBancoEfemero();
     worker = b.banco('macuxierp_worker');
-    tenant = await criarTenant(b.admin, `fat-e2e-${randomUUID().slice(0, 8)}`, ['cadastros', 'pedido', 'faturamento', 'fiscal']);
+    tenant = await criarTenant(b.admin, 'am0098', ['cadastros', 'pedido', 'faturamento', 'fiscal']);
     await inserirMassa();
     await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@fat-e2e.teste', nome: 'Administração', filialIds: Object.values(filiais) });
     ({ app } = await appPgDeTeste({ b, modulos: 'producao', chaveA1 }));

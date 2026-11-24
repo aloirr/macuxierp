@@ -6,7 +6,8 @@
 import type { Transacao } from '@macuxierp/platform-sdk';
 import type { FilialAuth, RepositorioAuth, SessaoRefresh, TenantAuth, UsuarioAuth } from './portas';
 
-const USUARIO = 'id, tenant_id, nome, email, senha_hash, perfil, filial_ids, ativo, falhas_login, bloqueado_ate, deve_trocar_senha';
+const USUARIO = `id, tenant_id, nome, email, senha_hash, perfil, filial_ids, ativo, falhas_login, bloqueado_ate, deve_trocar_senha,
+  senha_temporaria_hash, senha_temporaria_expira_em`;
 const SESSAO = 'id, tenant_id, usuario_id, familia, refresh_hash, expira_em, revogada_em';
 
 const primeira = async <L>(linhas: Promise<L[]>): Promise<L | null> => (await linhas)[0] ?? null;
@@ -66,8 +67,25 @@ export class RepositorioAuthPg implements RepositorioAuth {
     await tx.consultar('UPDATE plataforma.sessao SET revogada_em = $2 WHERE familia = $1 AND revogada_em IS NULL', [familia, agora]);
   }
 
+  /**
+   * Consumo atômico e de uso único (T-0076): no READ COMMITTED, quem perde a corrida espera o lock, reavalia o WHERE
+   * na linha nova, vê o hash nulo e sai sem linha.
+   */
+  async consumirTemporaria(tx: Transacao, usuarioId: string) {
+    const linhas = await tx.consultar<{ id: string }>(
+      `UPDATE plataforma.usuario SET senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL, deve_trocar_senha = true
+        WHERE id = $1 AND senha_temporaria_hash IS NOT NULL AND senha_temporaria_expira_em > now()
+        RETURNING id`,
+      [usuarioId],
+    );
+    return linhas.length === 1;
+  }
+
   async trocarSenha(tx: Transacao, usuarioId: string, senhaHash: string) {
-    await tx.consultar('UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = false WHERE id = $1', [usuarioId, senhaHash]);
+    await tx.consultar(
+      'UPDATE plataforma.usuario SET senha_hash = $2, deve_trocar_senha = false, senha_temporaria_hash = NULL, senha_temporaria_expira_em = NULL WHERE id = $1',
+      [usuarioId, senhaHash],
+    );
   }
 
   async revogarOutrasSessoes(tx: Transacao, usuarioId: string, exceto: string | null, agora: Date) {

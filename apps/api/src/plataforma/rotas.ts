@@ -12,6 +12,11 @@
  * - Deadlock (`40P01`) no `comPlataforma`: a transação é refeita uma vez (`comRetentativaEmDeadlock`, T-0056).
  * - Multipart (T-0058): lido depois da sessão e antes de qualquer transação, com os limites da rota (`lerMultipart`).
  * - Rota `por_etapa` (só a carga do portal; ADR 0013, adendo A1): sem transação em volta; o `executar` abre as próprias.
+ * - "Esqueci a senha" (T-0076): `POST /v1/plataforma/auth/esqueci`, pública (com o anti-CSRF), com os limites por IP e
+ *   por conta (empresa = `EMPRESA_PLATAFORMA`) antes do banco e SEMPRE o mesmo 202 neutro; o e-mail sai só depois da
+ *   resposta (`auth/esqueci.ts`). Sem a porta de e-mail, o mesmo 202 (sem banco e sem envio). Login com a temporária = 200 com a
+ *   sessão e o cookie (`responderLoginPlataforma`, o mesmo da tela única com o código MACUXI); as outras rotas dão o 403
+ *   `TROCAR_SENHA` do bloqueio (`SenhaATrocarResposta`, motivo 'temporaria', `expira_em` = o fim da temporária).
  */
 import {
   CABECALHO_CSRF_CONFIG,
@@ -23,6 +28,8 @@ import {
   EuPlataforma,
   executarPlataforma,
   executarPlataformaPorEtapa,
+  CAMINHOS_ESQUECI_SENHA,
+  PedirSenhaTemporariaPlataformaEntrada,
   hashDoPedido,
   MENSAGENS_IDEMPOTENCIA,
   PREFIXO_PLATAFORMA,
@@ -40,14 +47,15 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ConfigAuth } from '../auth/servico';
 import { opcoesCookieSessao } from '../auth/apoio-login';
-import { CorpoTrocaSenha, erroTrocarSenha } from '../auth/troca-senha';
+import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from '../auth/esqueci';
+import { CorpoTrocaSenha, corpoTrocarSenha } from '../auth/troca-senha';
 import { entradaDaChamada, responder } from '../execucao-rota';
 import { lerMultipart } from '../multipart';
 import { erroDaPlataforma } from './erros';
 import { ipDoCliente } from './ip-cliente';
-import { LimitePorIp } from './limite-ip';
+import { EMPRESA_PLATAFORMA, LimitePorChave } from './limite-ip';
 import { comRetentativaEmDeadlock } from './retentativa';
-import { ServicoPlataforma, type SessaoPlataformaLida } from './servico';
+import { ServicoPlataforma, type LoginPlataforma, type SessaoPlataformaLida } from './servico';
 
 const ESCRITAS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -60,7 +68,7 @@ export interface DependenciasPlataformaApi {
   bancoTenant?: BancoTenantPlataforma;
   plugins: readonly PluginPlataforma[];
   /** Padrão: `LIMITE_LOGIN_IP_PADRAO` (ADR 0012 §6). */
-  limiteLogin?: LimitePorIp;
+  limiteLogin?: LimitePorChave;
   /** `MACUXIERP_SEGREDO_BFF` (T-0050); ausente = a prova do BFF nunca vale (`ipDoCliente`). */
   segredoBff: string | null;
 }
@@ -77,7 +85,7 @@ interface Contexto {
 type Lido = { corpo: unknown; todosArquivos: Record<string, ArquivoRecebido[]> };
 
 /** Sem dado do banco no erro: a tradução vale para todas as rotas do prefixo. */
-async function traduzido<R>(fn: () => Promise<R>): Promise<R> {
+export async function traduzido<R>(fn: () => Promise<R>): Promise<R> {
   try {
     return await fn();
   } catch (e) {
@@ -97,30 +105,44 @@ async function sessaoDoPedido(req: FastifyRequest, reply: FastifyReply, c: Conte
   return s;
 }
 
+/**
+ * Resposta do login do superadmin (`/v1/plataforma/auth/entrar` e, pela tela única, `/v1/auth/login` com MACUXI): o
+ * cookie `COOKIE_CONFIG` (Path=/v1/plataforma) e 200 `{ expira_em }` (a sessão), também com a senha temporária ou a
+ * provisória (a troca pendente sai no `GET /v1/plataforma/auth/eu` e no 403 das outras rotas). `extra` entra no corpo
+ * (o `destino` da tela única, `LoginResposta`).
+ */
+export function responderLoginPlataforma(reply: FastifyReply, r: LoginPlataforma, cookieSeguro: boolean, extra: Record<string, string> = {}) {
+  return reply
+    .setCookie(COOKIE_CONFIG, r.token, opcoesCookieSessao(PREFIXO_PLATAFORMA, cookieSeguro, r.expira_em))
+    .header('cache-control', 'no-store')
+    .send({ expira_em: r.expira_em.toISOString(), ...extra });
+}
+
+/** Monta `/v1/plataforma/*` e devolve o serviço do superadmin (a tela única do `/v1/auth/login` e do esqueci usa o mesmo). */
 export function montarPlataforma(
   app: FastifyInstance,
   d: DependenciasPlataformaApi,
-  o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean; cronometro?: () => number },
-): void {
+  o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean; cronometro?: () => number; esqueci: EsqueciMontado },
+): ServicoPlataforma {
   // O serviço (sair, troca de senha) loga pelo log da app; as rotas dos plugins, pelo do pedido (request_id, superadmin_id).
   const servico = new ServicoPlataforma(comRetentativaEmDeadlock(d.banco, app.log), o.auth, o.relogio);
   const c: Contexto = { servico, banco: d.banco, bancoTenant: d.bancoTenant, relogio: o.relogio, cronometro: o.cronometro ?? (() => performance.now()), cookieSeguro: o.cookieSeguro };
-  const limite = d.limiteLogin ?? new LimitePorIp();
+  const limite = d.limiteLogin ?? new LimitePorChave();
   const caminhoCookie = PREFIXO_PLATAFORMA;
 
   app.post(`${PREFIXO_PLATAFORMA}/auth/entrar`, async (req, reply) =>
     traduzido(async () => {
       exigirCsrf(req);
-      if (!limite.contar(ipDoCliente(req, d.segredoBff), o.relogio.agora().getTime())) throw erros.muitasTentativas('Muitas tentativas de acesso: tente de novo em alguns minutos');
+      const porIp = limite.registrar(ipDoCliente(req, d.segredoBff), o.relogio.agora().getTime());
+      if (!porIp.permitido) throw erroMuitasTentativas(porIp.retry_after_s);
       const { email, senha } = EntrarPlataformaEntrada.parse(req.body);
       const r = await c.servico.entrar(email, senha);
       req.log = reply.log = req.log.child({ superadmin_id: r.superadmin_id });
-      return reply
-        .setCookie(COOKIE_CONFIG, r.token, opcoesCookieSessao(caminhoCookie, c.cookieSeguro, r.expira_em))
-        .header('cache-control', 'no-store')
-        .send({ expira_em: r.expira_em.toISOString() });
+      return responderLoginPlataforma(reply, r, c.cookieSeguro);
     }),
   );
+
+  montarEsqueciPlataforma(app, d, o.esqueci, servico, o.relogio);
 
   app.post(`${PREFIXO_PLATAFORMA}/auth/sair`, async (req, reply) =>
     traduzido(async () => {
@@ -135,7 +157,12 @@ export function montarPlataforma(
     traduzido(async () => {
       const s = await sessaoDoPedido(req, reply, c);
       if (!s) throw erros.naoAutenticado();
-      const eu: EuPlataforma = { superadmin: { id: s.superadmin_id, nome: s.nome }, deve_trocar_senha: s.deve_trocar_senha, sessao_expira_em: s.expira_em.toISOString() };
+      const eu: EuPlataforma = {
+        superadmin: { id: s.superadmin_id, nome: s.nome },
+        deve_trocar_senha: s.deve_trocar_senha,
+        ...(s.motivo_troca ? { motivo_troca: s.motivo_troca } : {}),
+        sessao_expira_em: s.expira_em.toISOString(),
+      };
       return reply.header('cache-control', 'no-store').send(EuPlataforma.parse(eu));
     }),
   );
@@ -145,7 +172,7 @@ export function montarPlataforma(
       exigirCsrf(req);
       const s = await sessaoDoPedido(req, reply, c);
       if (!s) throw erros.naoAutenticado();
-      // Mesmo corpo e mesmos 400 da troca do tenant (erroSenhaNova).
+      // Mesmo corpo e mesmos 400 da troca do tenant (erroSenhaNova); senha atual dispensada no motivo 'temporaria'.
       const { senha_atual, senha_nova } = CorpoTrocaSenha.parse(req.body);
       await c.servico.trocarSenha(s, senha_atual, senha_nova);
       return reply.status(204).send();
@@ -162,6 +189,22 @@ export function montarPlataforma(
       app.route({ method: rota.metodo, url: `${PREFIXO_PLATAFORMA}${rota.caminho}`, handler: (req, reply) => traduzido(() => executarRotaPlataforma(req, reply, rota, c)) });
     }
   }
+  return servico;
+}
+
+// `POST /v1/plataforma/auth/esqueci` (T-0076), com o anti-CSRF antes de tudo. Ordem e regras: auth/esqueci.ts.
+function montarEsqueciPlataforma(app: FastifyInstance, d: DependenciasPlataformaApi, e: EsqueciMontado, servico: ServicoPlataforma, relogio: Relogio): void {
+  const apos = envioAposResposta(e.envio);
+  app.post(CAMINHOS_ESQUECI_SENHA.plataforma, apos.opcoes, async (req, reply) =>
+    traduzido(async () => {
+      exigirCsrf(req);
+      const agoraMs = relogio.agora().getTime();
+      limitarEsqueciPorIp(e.limites, ipDoCliente(req, d.segredoBff), agoraMs);
+      const { email } = PedirSenhaTemporariaPlataformaEntrada.parse(req.body);
+      limitarEsqueciPorConta(e.limites, EMPRESA_PLATAFORMA, email, agoraMs);
+      return apos.responder(req, reply, e.envio ? await servico.esqueci(email) : await servico.esqueciSemEnvio());
+    }),
+  );
 }
 
 async function executarRotaPlataforma(req: FastifyRequest, reply: FastifyReply, rota: RotaPlataforma, c: Contexto) {
@@ -169,7 +212,7 @@ async function executarRotaPlataforma(req: FastifyRequest, reply: FastifyReply, 
   const inicio = c.cronometro();
   exigirCsrf(req);
   const lida = await sessaoDoPedido(req, reply, c);
-  if (lida?.deve_trocar_senha) throw erroTrocarSenha();
+  if (lida?.deve_trocar_senha) return reply.status(403).send(corpoTrocarSenha(lida));
   const sessao = lida && { superadmin_id: lida.superadmin_id, sessao_id: lida.sessao_id };
   // O multipart só é lido com sessão (não aceita bytes de quem não entrou) e antes de qualquer transação (não segura
   // conexão enquanto o arquivo sobe), como no BKO.

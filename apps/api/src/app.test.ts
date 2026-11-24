@@ -59,8 +59,8 @@ async function montar(opcoes: { licencas?: Licenca[]; fonteLicencas?: FonteLicen
   const auditoria = new AuditoriaMemoria();
   const trabalhos = new FilaDeTrabalhosMemoria();
   repo.tenants.push(
-    { id: TENANT, slug: 'thathyany', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus', situacao: 'ativo' },
-    { id: OUTRO_TENANT, slug: 'outra', razao_social: 'Outra Ltda', fuso: 'America/Manaus', situacao: 'ativo' },
+    { id: TENANT, slug: 'am2808', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus', situacao: 'ativo' },
+    { id: OUTRO_TENANT, slug: 'am0002', razao_social: 'Outra Ltda', fuso: 'America/Manaus', situacao: 'ativo' },
   );
   repo.filiais.push(
     { id: MATRIZ, tenant_id: TENANT, nome: 'Matriz Manaus', cnpj: '11222333000181' },
@@ -98,7 +98,7 @@ async function montar(opcoes: { licencas?: Licenca[]; fonteLicencas?: FonteLicen
 
 type App = Awaited<ReturnType<typeof montar>>['app'];
 
-const entrar = (app: App, email = 'adm@exemplo.com', senha = SENHA_DE_TESTE, empresa = 'thathyany') =>
+const entrar = (app: App, email = 'adm@exemplo.com', senha = SENHA_DE_TESTE, empresa = 'am2808') =>
   app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa, email, senha } });
 
 function refreshDe(r: { cookies: { name: string; value: string }[] }): string {
@@ -123,7 +123,7 @@ describe('POST /v1/auth/login', () => {
     const { app } = await montar();
     const r = await entrar(app);
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ token_acesso: expect.any(String), expira_em: '2026-11-21T15:15:00.000Z' });
+    expect(r.json()).toEqual({ token_acesso: expect.any(String), expira_em: '2026-11-21T15:15:00.000Z', destino: 'bko' });
     const c = r.cookies.find((x) => x.name === COOKIE_REFRESH)!;
     expect(c).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Strict', path: '/v1/auth' });
     expect(c.value.startsWith(`${TENANT}.`)).toBe(true);
@@ -132,7 +132,7 @@ describe('POST /v1/auth/login', () => {
 
   it('mesma resposta para empresa, e-mail ou senha errados (sem dizer qual)', async () => {
     const { app } = await montar();
-    const respostas = await Promise.all([entrar(app, 'adm@exemplo.com', 'errada'), entrar(app, 'ninguem@exemplo.com'), entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'nao-existe')]);
+    const respostas = await Promise.all([entrar(app, 'adm@exemplo.com', 'errada'), entrar(app, 'ninguem@exemplo.com'), entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am9999')]);
     for (const r of respostas) {
       expect(r.statusCode).toBe(401);
       expect(r.json()).toEqual({ codigo: 'NAO_AUTENTICADO', mensagem: 'Empresa, e-mail ou senha inválidos' });
@@ -141,7 +141,7 @@ describe('POST /v1/auth/login', () => {
 
   it('o e-mail de um tenant não entra em outro (D2)', async () => {
     const { app } = await montar();
-    expect((await entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'outra')).statusCode).toBe(401);
+    expect((await entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am0002')).statusCode).toBe(401);
   });
 
   it('trava após 5 falhas por 15 minutos e solta depois', async () => {
@@ -157,7 +157,7 @@ describe('POST /v1/auth/login', () => {
 
   it('corpo inválido é 400 VALIDACAO com os campos (também sem corpo ou JSON malformado)', async () => {
     const { app } = await montar();
-    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'thathyany', email: 'x' } });
+    const r = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'am2808', email: 'x' } });
     expect(r.statusCode).toBe(400);
     expect(r.json()).toMatchObject({ codigo: 'VALIDACAO', campos: { email: expect.any(String), senha: expect.any(String) } });
     expect((await app.inject({ method: 'POST', url: '/v1/auth/login' })).json()).toMatchObject({ codigo: 'VALIDACAO' });
@@ -182,7 +182,7 @@ describe('refresh rotativo e saída', () => {
     const r1 = refreshDe(await entrar(app));
     const renovado = await app.inject({ method: 'POST', url: '/v1/auth/refresh', cookies: { [COOKIE_REFRESH]: r1 } });
     expect(renovado.statusCode).toBe(200);
-    expect(renovado.json()).toEqual({ token_acesso: expect.any(String), expira_em: expect.any(String) });
+    expect(renovado.json()).toEqual({ token_acesso: expect.any(String), expira_em: expect.any(String), destino: 'bko' });
     const r2 = refreshDe(renovado);
     expect(r2).not.toBe(r1);
     // reuso do r1 (roubado): 401 e o r2 também morre
@@ -229,7 +229,7 @@ describe('GET /v1/auth/eu', () => {
     expect(EuResposta.parse(eu)).toEqual(eu);
     expect(eu).toEqual({
       usuario: { id: LEITOR, nome: 'Pessoa', perfil: 'leitura', deve_trocar_senha: false },
-      empresa: { id: TENANT, slug: 'thathyany', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus' },
+      empresa: { id: TENANT, slug: 'am2808', razao_social: 'Thathyany Comércio Ltda', fuso: 'America/Manaus' },
       // na ordem do cadastro do usuário; a filial de outro tenant não aparece (RLS)
       filiais: [
         { id: FILIAL_2, nome: 'Filial Parintins', cnpj: '11222333000262' },
@@ -410,7 +410,7 @@ describe('T-0052 (RN-CORE-10): senha provisória e POST /v1/auth/senha (reposit�
     expect(eu.json().usuario).toEqual({ id: ADM, nome: 'Pessoa', perfil: 'administrador', deve_trocar_senha: true });
     const bloqueada = await app.inject({ url: '/v1/cadastros/fuso', headers: bearer(token) });
     expect(bloqueada.statusCode).toBe(403);
-    expect(bloqueada.json()).toEqual({ codigo: 'TROCAR_SENHA', mensagem: MENSAGEM_TROCAR_SENHA });
+    expect(bloqueada.json()).toEqual({ codigo: 'TROCAR_SENHA', mensagem: MENSAGEM_TROCAR_SENHA, motivo: 'provisoria' });
     expect((await app.inject({ method: 'POST', url: '/v1/cadastros/precos', headers: bearer(token), payload: { preco_centavos: 1 } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: '/v1/auth/sair', headers: bearer(token), cookies: { [COOKIE_REFRESH]: refresh } })).statusCode).toBe(204);
   });

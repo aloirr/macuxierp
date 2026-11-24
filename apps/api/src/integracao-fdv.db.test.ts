@@ -18,7 +18,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV montada na API: sem a chave me
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    const tenant = await criarTenant(b.admin, 'loja-sem-chave', LICENCAS);
+    const tenant = await criarTenant(b.admin, 'am0003', LICENCAS);
     await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@loja-sem-chave.teste', nome: 'Administradora', filialIds: [] });
     ({ app: semChave } = await appPgDeTeste({ b, modulos: 'producao' }));
   });
@@ -31,7 +31,7 @@ describe.skipIf(!PG_DISPONIVEL)('integração FDV montada na API: sem a chave me
     const login = await semChave.inject({
       method: 'POST',
       url: '/v1/auth/login',
-      payload: { empresa: 'loja-sem-chave', email: 'adm@loja-sem-chave.teste', senha: SENHA_DE_TESTE },
+      payload: { empresa: 'am0003', email: 'adm@loja-sem-chave.teste', senha: SENHA_DE_TESTE },
     });
     expect(login.statusCode).toBe(200);
     const auth = `Bearer ${login.json<{ token_acesso: string }>().token_acesso}`;

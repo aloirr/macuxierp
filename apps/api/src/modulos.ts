@@ -63,6 +63,7 @@ import { RepositorioAuthPg } from './auth/repositorio-pg';
 import { gerarHashSenha } from './auth/senha';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import type { ConfigApi } from './config';
+import { criarEnvioEmail, emailDisponivel } from './email/porta';
 import { dependenciasZeragemProducao } from './plataforma/portas-zeragem';
 
 /** @deprecated use o de @macuxierp/platform-sdk */
@@ -224,7 +225,11 @@ export interface EntradaProducao {
    * log. Serve só às rotas do portal (`pluginsPlataforma`, ADR 0013); ver `ConfigApi.chaveIntegracao`.
    */
   chaveIntegracao?: Buffer | null;
-  config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro' | 'segredoBff'>;
+  /**
+   * `email` (T-0076): sem ele, ou `desligado`, o "Esqueci a senha" segue montado com o 202 neutro, sem gravar nem enviar
+   * (a situação diz indisponível).
+   */
+  config: Pick<ConfigApi, 'versao' | 'jwtSegredo' | 'cookieSeguro' | 'segredoBff'> & Partial<Pick<ConfigApi, 'email'>>;
   /** Pino da API para o log dos módulos (o `main.ts` cria; os testes passam um com destino em memória). */
   log?: LogPedido;
   /**
@@ -251,6 +256,9 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     ...(e.log ? { log: e.log } : {}),
   });
   const bancoPlataforma = e.bancoPlataforma ?? (temPlataforma(e.banco) ? e.banco.plataforma() : undefined);
+  // "Esqueci a senha" (T-0076): a porta só com o e-mail ligado (`smtp` ou `arquivo`), que loga pelo pino da API sem dado
+  // pessoal; sem ela, as rotas respondem o 202 neutro sem gravar nem enviar.
+  const email = e.config.email;
   return {
     versao: e.config.versao,
     auth: { ...CONFIG_AUTH_PADRAO, jwtSegredo: e.config.jwtSegredo },
@@ -265,6 +273,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
     relogio: relogioDoSistema,
     avisosA1: avisosA1MaisRecentes,
     modulos,
+    ...(email && emailDisponivel(email) ? { esqueci: { envio: criarEnvioEmail(email, e.log ? { log: e.log } : {}), repoCore } } : {}),
     ...(bancoPlataforma ? {
           plataforma: {
             banco: bancoPlataforma,
