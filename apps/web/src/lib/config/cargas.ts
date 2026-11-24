@@ -42,11 +42,21 @@ export const tituloImportar = (c: CadastroCargaPortal) => `Importar ${CADASTROS_
 export const ROTULO_MODO: Readonly<Record<ModoGravarCarga, string>> = { adicionar: 'Adicionar', substituir_tudo: 'Substituir tudo' };
 export const rotuloAdicionar = (prontas: number): string => (prontas > 0 ? `Adicionar ${prontas}` : 'Adicionar');
 
-/** "Vai inativar 120 de 266 produtos (45%)." O que não vem no arquivo é inativado, nunca apagado. Só na confirmação do Substituir tudo. */
-export function textoEfeito(cadastro: CadastroCargaPortal, e: Pick<EfeitoSubstituir, 'a_inativar' | 'total' | 'percentual'>): string {
+/** "Vai inativar 120 de 266 produtos (45%)." O que não vem no arquivo é inativado, nunca apagado. Só na confirmação do Substituir tudo.
+ *  Com `enderecos_a_inativar` > 0 (só o cliente, T-0070): "Vai inativar 12 de 40 clientes (30%) e 5 endereços." Sem o campo ou com 0, a frase não muda.
+ *  Com 0 a inativar e endereços > 0: "Vai inativar 5 endereços e nenhum cliente." (singular: "1 endereço"). */
+export function textoEfeito(cadastro: CadastroCargaPortal, e: Pick<EfeitoSubstituir, 'a_inativar' | 'total' | 'percentual' | 'enderecos_a_inativar'>): string {
   const nome = (CADASTROS_CARGA_PORTAL.find((x) => x.cadastro === cadastro)?.nome ?? cadastro).toLowerCase();
-  if (e.a_inativar === 0) return `Não há ${nome} para inativar.`;
-  return `Vai inativar ${e.a_inativar} de ${e.total} ${nome} (${Math.round(e.percentual)}%).`;
+  const nEnd = e.enderecos_a_inativar && e.enderecos_a_inativar > 0 ? e.enderecos_a_inativar : 0;
+  // Só o cadastro cliente tem endereços; por isso o "nenhum cliente" é literal.
+  if (e.a_inativar === 0) return nEnd > 0 ? `Vai inativar ${plural(nEnd, 'endereço', 'endereços')} e nenhum cliente.` : `Não há ${nome} para inativar.`;
+  const enderecos = nEnd > 0 ? ` e ${plural(nEnd, 'endereço', 'endereços')}` : '';
+  return `Vai inativar ${e.a_inativar} de ${e.total} ${nome} (${Math.round(e.percentual)}%)${enderecos}.`;
+}
+/** Aviso depois de gravar: "44 registros gravados." e, quando houver, "5 endereços inativados.". */
+export function textoGravado(g: Pick<GravarCargaPlataformaResposta, 'gravadas' | 'enderecos_inativados'>): string {
+  const n = g.enderecos_inativados;
+  return `${plural(g.gravadas, 'registro gravado', 'registros gravados')}.${n && n > 0 ? ` ${plural(n, 'endereço inativado', 'endereços inativados')}.` : ''}`;
 }
 export const AVISO_LIMITE_FDV = `Acima de ${LIMITE_INATIVACAO_FDV_PCT}%, o FDV pede confirmação no monitor de integração dele antes de aplicar.`;
 export const TEXTO_SUBSTITUIR = 'O que não vier no arquivo fica inativo; nada é apagado.';
