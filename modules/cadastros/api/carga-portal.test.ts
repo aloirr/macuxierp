@@ -108,12 +108,16 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     expect(t.auditoria).toContainEqual(expect.objectContaining({ acao: 'cadastros.carga.substituir_tudo', depois: expect.objectContaining({ inativadas: 1 }) }));
   });
 
-  it('RN-CAD-10: no cliente, a auditoria conta os endereços inativados (o do cliente ausente e a entrega do que ficou)', async () => {
+  it('RN-CAD-10: no cliente, a prévia, o gravar e a auditoria contam os endereços inativados (o do cliente ausente e a entrega do que ficou)', async () => {
     const t = montar();
     for (const dep of ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'preco', 'cliente'] as const) await t.gravar(dep, csv(dep === 'condicao_pagamento' ? 'condicoes_pagamento' : dep));
+    const entrada = { cadastro: 'cliente', modo: 'substituir_tudo', arquivo: arq(csv('cliente', [0])) } as const; // só a linha principal do C-EX-01
+    const v = await validarCargaPortal(t.deps, t.c, entrada);
+    expect(v.efeito).toMatchObject({ a_inativar: 1, enderecos_a_inativar: 2 });
     t.auditoria.length = 0;
-    const r = await t.gravar('cliente', csv('cliente', [0]), 'substituir_tudo', FRASE); // só a linha principal do C-EX-01
-    expect(r).toMatchObject({ modo: 'substituir_tudo', gravadas: 1, inativadas: 1 });
+    const r = await gravarCargaPortal(t.deps, t.c, { ...entrada, frase: FRASE });
+    expect(r).toMatchObject({ modo: 'substituir_tudo', gravadas: 1, inativadas: 1, enderecos_inativados: 2 });
+    expect(r.efeito).toEqual(v.efeito); // a prévia e o gravar contam o mesmo
     expect(t.auditoria).toContainEqual(expect.objectContaining({
       acao: 'cadastros.carga.substituir_tudo', depois: expect.objectContaining({ cadastro: 'cliente', inativadas: 1, enderecos_inativados: 2 }),
     }));
@@ -130,6 +134,17 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     expect(v.efeito).toMatchObject({ total: 2, a_inativar: 1, percentual: 50, sem_chave: 1 });
     expect(g.efeito).toEqual(v.efeito);
     expect(t.repos.produtos.linhas.find((l) => (l as { id: string }).id === 'sem-chave')).toMatchObject({ inativo: false });
+  });
+
+  it('RN-CAD-10: fora do cliente, nem o validar nem o gravar trazem as contagens de endereço', async () => {
+    const t = montar();
+    await t.gravar('produto', csv('produto'));
+    const entrada = { cadastro: 'produto', modo: 'substituir_tudo', arquivo: arq(csv('produto', [0])) } as const;
+    const v = await validarCargaPortal(t.deps, t.c, entrada);
+    const g = await gravarCargaPortal(t.deps, t.c, { ...entrada, frase: FRASE });
+    expect(v.efeito).not.toHaveProperty('enderecos_a_inativar');
+    expect(g.efeito).not.toHaveProperty('enderecos_a_inativar');
+    expect(g).not.toHaveProperty('enderecos_inativados');
   });
 
   it('RN-CAD-10: arquivo com todos os existentes não inativa ninguém', async () => {

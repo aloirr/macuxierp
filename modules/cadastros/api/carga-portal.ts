@@ -99,16 +99,23 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   if (plano.sem_chave > 0) res.avisos.push(`${plano.sem_chave} ativo(s) sem external_id: não foram inativados`);
   if (plano.mantidos_em_uso > 0) res.avisos.push(`${plano.mantidos_em_uso} inativado(s) em uso: ficam no histórico`);
   res.inativadas = inativados.length;
-  const doCliente = entidade === 'cliente' ? { enderecos_inativados: enderecos.length } : {};
-  Object.assign(res, doCliente);
+  const doCliente = entidade === 'cliente' ? { enderecos_inativados: enderecos.length } : undefined; // só o cliente tem endereços: nos demais cadastros as chaves nem existem
+  if (doCliente) res.enderecos_inativados = doCliente.enderecos_inativados;
   res.sem_chave = plano.sem_chave;
   await c.auditar({
     acao: 'cadastros.carga.substituir_tudo', entidade: 'carga', entidade_id: rel.lote_id, antes: null,
-    depois: { cadastro, inativadas: inativados.length, ...doCliente, mantidos_em_uso: plano.mantidos_em_uso, total_ativos: total },
+    depois: {
+      cadastro, inativadas: inativados.length, ...doCliente,
+      mantidos_em_uso: plano.mantidos_em_uso, total_ativos: total,
+    },
   });
   return GravarCargaPlataformaResposta.parse({
     cadastro, modo: e.modo, gravadas, com_erro: res.recusadas, inativadas: inativados.length,
-    efeito: efeitoSubstituir({ total, a_inativar: inativados.length, sem_chave: plano.sem_chave }),
+    ...doCliente,
+    efeito: efeitoSubstituir({
+      total, a_inativar: inativados.length, sem_chave: plano.sem_chave,
+      ...(doCliente && { enderecos_a_inativar: plano.enderecos_inativar.length }),
+    }),
   });
 }
 
@@ -127,7 +134,10 @@ export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e:
   let efeito: EfeitoSubstituir | undefined;
   if (e.modo === 'substituir_tudo') {
     const p = await planejar(deps, c, cadastro, entidade, arquivo);
-    efeito = efeitoSubstituir({ total: p.total, a_inativar: p.plano.inativar.length, sem_chave: p.plano.sem_chave });
+    efeito = efeitoSubstituir({
+      total: p.total, a_inativar: p.plano.inativar.length, sem_chave: p.plano.sem_chave,
+      ...(entidade === 'cliente' ? { enderecos_a_inativar: p.plano.enderecos_inativar.length } : {}),
+    });
   }
   return ValidarCargaPlataformaResposta.parse({
     cadastro, modo: e.modo, prontas, com_erro: Math.max(comErro, linhas.length > 0 ? 1 : 0),
