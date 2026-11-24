@@ -573,6 +573,23 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect((await lotes(t, 'vendedor'))[0]!.corpo.registros[0]).toMatchObject({ external_id: 'V1', filial_external_id: 'FIL-1' });
     });
 
+    it('T-0085 (AM2808): lote misto: a referência que ainda está na fila não é declarada como regra_invalida; a que não existe no espelho é', async () => {
+      const t = await criarTenant(efemero.admin, 'env-ord', ['integracao-fdv']);
+      const cred = await criarCredencial(efemero.admin, t);
+      await espelho(efemero.admin, t, 'filial', { external_id: 'FIL-OK', ativo: true, codigo: '0001', nome: 'Matriz' }, { confirmado: true });
+      await espelho(efemero.admin, t, 'filial', { external_id: 'FIL-FILA', ativo: true, codigo: '0002', nome: 'Filial 2' }); // pendente: ainda vai ao Hub
+      await espelho(efemero.admin, t, 'vendedor', { external_id: 'V-OK', ativo: true, nome: 'A', filial_external_id: 'FIL-OK' }, { alterado: new Date('2026-11-22T09:00:00.000Z') });
+      await espelho(efemero.admin, t, 'vendedor', { external_id: 'V-FILA', ativo: true, nome: 'B', filial_external_id: 'FIL-FILA' }, { alterado: new Date('2026-11-22T09:00:01.000Z') });
+      await espelho(efemero.admin, t, 'vendedor', { external_id: 'V-SEM', ativo: true, nome: 'C', filial_external_id: 'FIL-NAO-EXISTE' }, { alterado: new Date('2026-11-22T09:00:02.000Z') });
+      await cursorEntidade(efemero.admin, t, 'vendedor', { credencialId: cred, cursor: { em: new Date(AGORA.getTime() - 86_400_000), id: 'ANT' } });
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      const corpo = hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }>; linhas_invalidas: Array<{ external_id: string; codigo: string; campo: string }> };
+      expect(corpo.registros.map((r) => r.external_id)).toEqual(['V-OK']);
+      expect(corpo.linhas_invalidas).toEqual([expect.objectContaining({ external_id: 'V-SEM', codigo: 'regra_invalida', campo: 'filial_external_id' })]);
+      expect(await reg(t, 'V-FILA', 'vendedor')).toMatchObject({ pendente: true }); // retido, sai quando a filial for confirmada
+    });
+
     it('M5: linha inválida firme vai em linhas_invalidas (mensagem do catálogo, código do Hub) e só uma vez', async () => {
       const t = await criarTenant(efemero.admin, 'env-l', ['integracao-fdv']);
       const cred = await criarCredencial(efemero.admin, t);

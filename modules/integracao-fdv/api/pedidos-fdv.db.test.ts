@@ -316,7 +316,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', simulado));
       await aplicar(A, faturadoDe(simulado, produtoErp, { ambiente: 'homologacao', conta_como_real: true }));
       const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, simulado]);
-      expect(f!.corpo.nota).toMatchObject({ numero: NOTA.numero, serie: NOTA.serie });
+      expect(f!.corpo.nota).toMatchObject({ numero: String(NOTA.numero), serie: String(NOTA.serie) });
     });
 
     it('A-02: produto inativo no espelho também tem chave: o faturado@1 passa (a linha ativa vem primeiro quando há duas)', async () => {

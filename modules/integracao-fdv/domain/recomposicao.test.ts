@@ -6,7 +6,7 @@ const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}
 const EM = '2026-11-21T20:00:00.123Z';
 const end = { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058', municipio_nome: 'Manaus' };
 
-const semFontes: FontesRecomposicao = { chave: () => null, tabela: () => null, filialPadraoId: null, nomeFilial: () => null, condicao: () => null };
+const semFontes: FontesRecomposicao = { chave: () => null, tabela: () => null, filialPadraoId: null, nomeFilial: () => null };
 const comFontes = (o: Partial<FontesRecomposicao>): FontesRecomposicao => ({ ...semFontes, ...o });
 
 describe('RN-INF-02: chaves cruzadas pelo external_id da carga (23h22)', () => {
@@ -27,23 +27,22 @@ describe('RN-INF-02: chaves cruzadas pelo external_id da carga (23h22)', () => {
     expect(a.payload).toMatchObject({ deposito_external_id: 'X-1', filial_external_id: 'X-1', produto_external_id: 'X-1', deposito_nome: 'Matriz' });
   });
 
-  it('cliente: filial, carteira, forma e prazo médio da condição (M10) e cliente_endereco aponta para a chave do cliente', () => {
+  it('cliente: filial e carteira (M10; RN-CAD-16: o prazo médio é do cliente, sem forma) e cliente_endereco aponta para a chave do cliente', () => {
     const ev: EventoCliente = {
       id: U(20), tipo_pessoa: 'PJ', documento: '12345678000195', ie: null, ind_ie_dest: '1', razao_social: 'Mercado', nome_fantasia: null, email_nfe: null,
-      limite_credito_centavos: 0, condicao_pagamento_id: U(6), tabela_preco_id: null, filial_id: U(1), vendedor_id: U(5), external_id: 'CLI-20', inativo: false,
+      limite_credito_centavos: 0, condicao_pagamento_id: U(6), prazo_medio_dias: 30, tabela_preco_id: null, filial_id: U(1), vendedor_id: U(5), external_id: 'CLI-20', inativo: false,
       enderecos: [{ id: U(21), tipo: 'principal', ...end }],
     };
-    const { cliente, enderecos } = mapearCliente(ev, EM, { condicao: null });
+    const { cliente, enderecos } = mapearCliente(ev, EM);
     const f = comFontes({
       chave: (e, id) => ({ filial: 'FIL-01', vendedor: 'VEN-5', cliente: 'CLI-20' } as Record<string, string>)[e] ?? id,
-      condicao: () => ({ forma_codigo: 'BOLETO', prazos_dias: [28, 56, 85] }),
     });
-    expect(cliente.payload.formas_pagamento).toBeUndefined();
     const c = recomporRegistro(cliente, f);
-    expect(c.payload).toMatchObject({ external_id: 'CLI-20', filial_external_id: 'FIL-01', vendedor_external_id: 'VEN-5', formas_pagamento: ['BOLETO'], prazo_medio_max_dias: 57 });
+    expect(c.payload).toMatchObject({ external_id: 'CLI-20', filial_external_id: 'FIL-01', vendedor_external_id: 'VEN-5', prazo_medio_max_dias: 30 });
+    expect(c.payload).not.toHaveProperty('formas_pagamento');
     expect(recomporRegistro(enderecos[0]!, f).payload.cliente_external_id).toBe('CLI-20');
-    // condição que sumiu: o cliente deixa de levar forma e prazo
-    expect(recomporRegistro(c, semFontes).payload.formas_pagamento).toBeUndefined();
+    // o prazo médio não depende das fontes: recompor sem elas o mantém
+    expect(recomporRegistro(c, semFontes).payload.prazo_medio_max_dias).toBe(30);
   });
 });
 
