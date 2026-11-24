@@ -86,14 +86,14 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     estado.cookie = undefined;
     const r = await tratarCarga(await comTamanho(multipart()), EMP, 'produto', 'validar');
     expect(r.status).toBe(401);
-    expect(await r.json()).toMatchObject({ ok: false, redirecionar: '/config/entrar' });
+    expect(await r.json()).toMatchObject({ ok: false, redirecionar: '/login' });
     expect(chamadas).toHaveLength(0);
   });
   it('API devolve 401: a resposta pede novo login', async () => {
     resposta = () => json({ codigo: 'NAO_AUTENTICADO', mensagem: 'x' }, 401);
     const r = await tratarCarga(await comTamanho(multipart()), EMP, 'produto', 'validar');
     expect(r.status).toBe(401);
-    expect(await r.json()).toMatchObject({ redirecionar: '/config/entrar' });
+    expect(await r.json()).toMatchObject({ redirecionar: '/login' });
   });
   it('arquivo recusado pela API: a mensagem curta da API chega à tela; corpo cru e conteúdo do arquivo nunca', async () => {
     resposta = () => json({ codigo: 'VALIDACAO', mensagem: 'Cabeçalho inválido: falta a coluna codigo.', detalhe: 'SEGREDO-DO-CORPO' }, 422);
@@ -148,7 +148,7 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     estado.cookie = undefined;
     const r = await tratarCarga(new Request('http://portal.invalid/x'), EMP, 'preco', 'modelo');
     expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toContain('/config/entrar');
+    expect(r.headers.get('location')).toContain('/login');
     expect(r.headers.get('content-disposition')).toBeNull();
   });
   it('422 RN-CORE-02 (MXC04, empresa sem licença): mantém o 422 e a mensagem da API', async () => {

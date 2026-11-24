@@ -1,39 +1,60 @@
 'use server';
+import { LoginEntrada, textoMuitasTentativas } from '@macuxierp/platform-sdk';
+import { buscarEu } from '@/lib/api';
+import { euPlataforma } from '@/lib/config/api';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { ApiIndisponivel, buscarEu, DadosInvalidos, entrar, MuitasTentativas } from '@/lib/api';
-import { ROTA_SENHA } from '@/lib/troca-pendente';
+import { COOKIE_CONFIG_WEB, opcoesConfig, ROTA_SENHA as ROTA_SENHA_CONFIG } from '@/lib/config/sessao';
+import { loginUnico, type SessaoAberta } from '@/lib/login-unico';
+import { TEXTOS_LOGIN, validarComSdk, type ErrosLogin } from '@/lib/login-regras';
 import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
+import { ROTA_SENHA } from '@/lib/troca-pendente';
 
+/** Volta sempre com algo a mostrar ou, entrando, com o `entrou` (destino e rota). A senha nunca volta. */
 export interface EstadoLogin {
   erro?: string;
-  /** Devolvidos para o formulário não se esvaziar após o erro (a senha nunca volta). */
-  empresa?: string;
-  email?: string;
+  campos?: ErrosLogin;
+  /** Login aceito: o cliente grava a preferência (só com `bko`) e navega para `para`. Nunca carrega senha nem token. */
+  entrou?: { destino: 'bko' | 'config'; para: string };
 }
 
-export async function entrarAction(_: EstadoLogin, dados: FormData): Promise<EstadoLogin> {
-  const empresa = String(dados.get('empresa') ?? '').trim().toLowerCase();
-  const email = String(dados.get('email') ?? '').trim();
-  const senha = String(dados.get('senha') ?? '');
-  if (!empresa || !email || !senha) return { erro: 'Preencha empresa, e-mail e senha.', empresa, email };
-
-  let sessao;
-  try {
-    sessao = await entrar(empresa, email, senha);
-  } catch (e) {
-    if (e instanceof MuitasTentativas) return { erro: e.message || 'Muitas tentativas. Tente novamente mais tarde.', empresa, email };
-    if (e instanceof DadosInvalidos) return { erro: 'Dados inválidos. Confira empresa, e-mail e senha.', empresa, email };
-    if (e instanceof ApiIndisponivel) return { erro: 'Serviço indisponível no momento. Tente novamente em instantes.', empresa, email };
-    throw e;
-  }
-  if (!sessao) return { erro: 'Empresa, e-mail ou senha incorretos.', empresa, email };
-
+async function gravarSessao(s: SessaoAberta): Promise<void> {
   const jar = await cookies();
-  jar.set(COOKIE_ACESSO, sessao.acesso, opcoesAcesso);
-  jar.set(COOKIE_REFRESH, sessao.refresh, opcoesLongas);
-  // Senha provisória: vai direto à troca (o shell também bloquearia, mas assim não passa por redirect em cadeia).
-  const trocar = await buscarEu(sessao.acesso).then((eu) => eu.usuario.deve_trocar_senha === true).catch(() => false);
-  if (trocar) redirect(ROTA_SENHA);
-  redirect(destinoSeguro(String(dados.get('destino') ?? '')));
+  if (s.destino === 'config') jar.set(COOKIE_CONFIG_WEB, s.token, opcoesConfig(s.expira_em));
+  else {
+    jar.set(COOKIE_ACESSO, s.acesso, opcoesAcesso);
+    jar.set(COOKIE_REFRESH, s.refresh, opcoesLongas);
+  }
+}
+
+/**
+ * Troca obrigatória pendente (RN-CORE-13): o login responde 200 com a sessão aberta e a marca vem no `eu` do destino
+ * (`deve_trocar_senha`; o `motivo_troca` é lido pela própria tela de troca). Falha ao ler o `eu` segue o fluxo normal:
+ * a guarda de cada destino cuida da sessão, e o 403 TROCAR_SENHA das outras rotas continua levando à troca.
+ */
+async function trocaPendente(s: SessaoAberta): Promise<boolean> {
+  try {
+    return s.destino === 'config' ? (await euPlataforma(s.token)).deve_trocar_senha : (await buscarEu(s.acesso)).usuario.deve_trocar_senha === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Login único (T-0076): uma ação para empresa e superadmin. Quem decide o destino é a API (`bko` ou `config`); o web só navega.
+ * Troca pendente (lida no `eu` do destino) leva a `/senha` no BKO ou `/config/senha` no config. Nada de senha em log.
+ */
+export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
+  const bruto = { empresa: String(dados.get('empresa') ?? ''), email: String(dados.get('email') ?? ''), senha: String(dados.get('senha') ?? '') };
+  const v = validarComSdk(LoginEntrada, ['empresa', 'email', 'senha'], bruto);
+  if (!v.ok) return { campos: v.erros };
+  const r = await loginUnico(v.dados);
+
+  if (r.tipo === 'campos') return { campos: r.erros };
+  if (r.tipo === 'limite') return { erro: textoMuitasTentativas(r.retry_after_s) };
+  if (r.tipo === 'indisponivel') return { erro: TEXTOS_LOGIN.indisponivel };
+  if (r.tipo === 'credencial') return { erro: TEXTOS_LOGIN.credencial };
+  await gravarSessao(r.sessao);
+  const destino = r.sessao.destino;
+  if (await trocaPendente(r.sessao)) return { entrou: { destino, para: destino === 'config' ? ROTA_SENHA_CONFIG : ROTA_SENHA } };
+  return { entrou: { destino, para: destino === 'config' ? '/config' : destinoSeguro(String(dados.get('destino') ?? '')) } };
 }

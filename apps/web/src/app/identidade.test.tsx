@@ -55,7 +55,7 @@ describe('assinatura C no login e na seleção de filial', () => {
     expect(h).toContain('height="100"');
     expect(h).not.toMatch(/>Macuxi ERP</);
     expect(fonte('cabecalho-cartao.tsx')).toContain('<AssinaturaErp variante="C" altura={100} />');
-    expect(fonte('login/page.tsx')).toContain('CabecalhoCartao');
+    expect(fonte('login/formulario.tsx')).toContain('CabecalhoCartao');
     expect(fonte('filial/page.tsx')).toContain('CabecalhoCartao');
   });
   it('a faixa é azul-noite pelo token e o padding preserva a área de proteção da C', () => {

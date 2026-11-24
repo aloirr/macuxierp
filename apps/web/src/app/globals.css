@@ -230,3 +230,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .rodape-confirmar { flex: 1; display: grid; gap: 8px; min-width: 0; }
 .rodape-confirmar > * { margin: 0; }
 .acoes-confirmar { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* "Esqueci a senha": link em botão, sem aparência de botão */
+button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }

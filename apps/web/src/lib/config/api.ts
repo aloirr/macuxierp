@@ -7,7 +7,6 @@ import {
   PADRAO_UUID,
   PREFIXO_PLATAFORMA,
   PrimeiroAdminResposta,
-  SessaoPlataformaResposta,
   paginaDe,
   CODIGO_TROCAR_SENHA,
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
@@ -20,10 +19,9 @@ import {
   type DefinirCredencialPlataformaEntrada,
   type AlterarModulosEntrada,
   type CriarEmpresaEntrada,
-  type EntrarPlataformaEntrada,
   type PrimeiroAdminEntrada,
   type SituacaoEmpresaEntrada,
-  type TrocarSenhaPlataformaEntrada,
+  type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
@@ -96,26 +94,6 @@ export function idEmpresa(id: string): string {
   return id;
 }
 
-export interface SessaoAberta {
-  /** Token opaco do cookie da API; vai só ao cookie httpOnly do shell. */
-  token: string;
-  expira_em: string;
-}
-
-/** `POST /auth/entrar`. Null: e-mail ou senha inválidos (a API não diz qual, nem se a conta está travada). */
-export async function entrarPlataforma(corpo: EntrarPlataformaEntrada): Promise<SessaoAberta | null> {
-  const r = await chamar('POST', '/auth/entrar', { corpo });
-  if (r.status === 401 || r.status === 403) return null;
-  const dados = await validado(r, SessaoPlataformaResposta);
-  const token = r.headers
-    .getSetCookie()
-    .map((c) => c.split(';')[0] ?? '')
-    .find((c) => c.startsWith(`${COOKIE_CONFIG}=`))
-    ?.slice(COOKIE_CONFIG.length + 1);
-  if (!token) throw new ConfigIndisponivel('sessão sem cookie');
-  return { token, expira_em: dados.expira_em };
-}
-
 export async function euPlataforma(token: string): Promise<EuPlataforma> {
   return validado(await chamar('GET', '/auth/eu', { token }), EuPlataforma);
 }
@@ -124,7 +102,7 @@ export async function sairPlataforma(token: string): Promise<void> {
   await chamar('POST', '/auth/sair', { token }).catch(() => undefined);
 }
 
-export async function trocarSenhaPlataforma(token: string, corpo: TrocarSenhaPlataformaEntrada): Promise<void> {
+export async function trocarSenhaPlataforma(token: string, corpo: TrocarSenhaEntrada): Promise<void> {
   const r = await chamar('POST', '/auth/senha', { token, corpo });
   if (!r.ok) await recusar(r);
 }
