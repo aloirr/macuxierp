@@ -23,9 +23,9 @@ import { appPgDeTeste, ARGON2_RAPIDO } from '../../../apps/api/src/apoio-teste';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
 import { COOKIE_REFRESH } from '../../../apps/api/src/app';
 import { gerarHashSenha } from '../../../apps/api/src/auth/senha';
-import { MENSAGEM_TROCAR_SENHA } from '../../../apps/api/src/auth/troca-senha';
 import { criarDockerFalso } from '../../apoio/operador-falso';
 import { atalhosPortal, inserirSuperadmin, novoIp, type AppPortal, type RespostaPortal } from '../../apoio/portal-pg';
+import { conferir403TrocarSenha } from '../../apoio/troca-senha';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const OPERADOR_SH = resolve(RAIZ, 'scripts', 'deploy', 'producao', 'operador.sh');
@@ -70,7 +70,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
   const flag = async (id: string) => (await b.admin.query('SELECT deve_trocar_senha FROM plataforma.usuario WHERE id = $1', [id])).rows[0].deve_trocar_senha as boolean;
   const bloqueada = (r: RespostaPortal) => {
     expect(r.statusCode).toBe(403);
-    expect(r.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA });
+    conferir403TrocarSenha(r.json(), 'provisoria');
   };
 
   beforeAll(async () => {
