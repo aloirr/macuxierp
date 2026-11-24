@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { PrazoPagamentoHub } from '../../modules/integracao-fdv/contracts/index';
-import { mapearCondicao } from '../../modules/integracao-fdv/domain/mapeamento';
+import { mapearCondicao, mapearCondicaoOpcional } from '../../modules/integracao-fdv/domain/mapeamento';
 import { parcelasDiasValidas } from './apoio/duble-hub';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -84,8 +84,10 @@ describe('T-0085 — o prazo mapeado pelo ERP passa no C-6 e no oráculo do Hub'
     ['sem prazo médio (RN-CAD-15)', [28, 56], null],
     ['legado sem parcela', [], 0],
   ] as const)('prazo incompleto %s não sai; a forma sai', (_nome, prazos, medio) => {
-    const { forma, prazo } = mapearCondicao(condicao([...prazos], '15', medio), EM, { tenantId: U(100), formaAtiva: true });
+    const { forma, prazo } = mapearCondicaoOpcional(condicao([...prazos], '15', medio), EM, { tenantId: U(100), formaAtiva: true });
     expect(prazo).toBeNull();
     expect(forma.entidade).toBe('forma_pagamento');
+    // A assinatura antiga (#550, expande e contrai) lança erro no prazo incompleto em vez de devolver nulo.
+    expect(() => mapearCondicao(condicao([...prazos], '15', medio), EM, { tenantId: U(100), formaAtiva: true })).toThrow(/RN-CAD-15/);
   });
 });
