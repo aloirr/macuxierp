@@ -8,3 +8,7 @@ export * from './mapear';
 export * from './modelo';
 export * from './municipio-por-nome';
 export * from './referencias';
+export * from './substituicao';
+export * from './substituicao-cliente';
+export * from './cliente-grupo';
+export * from './condicao-forma';

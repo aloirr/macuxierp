@@ -16,7 +16,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0021: contingência do faturamento ligada na 
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    const tenant = await criarTenant(b.admin, `t0021c-${randomUUID().slice(0, 8)}`, ['faturamento', 'fiscal']);
+    const tenant = await criarTenant(b.admin, 'am0021', ['faturamento', 'fiscal']);
     await inserirFilialDeTeste(b.admin, tenant, { id: filial, cnpj: '11222333000181', nome: 'Matriz Manaus (teste)' });
     await inserirAdministradorDeTeste(b.admin, tenant, { id: randomUUID(), email: 'adm@t0021c.teste', nome: 'Administração', filialIds: [filial] });
     ({ app } = await appPgDeTeste({ b, modulos: 'producao' }));

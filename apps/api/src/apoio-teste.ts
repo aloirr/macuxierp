@@ -13,6 +13,7 @@ import type { BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { criarApp, type DependenciasApp } from './app';
 import { gerarHashSenha, type ParametrosArgon2 } from './auth/senha';
+import type { EnvioEmail, MensagemEmail } from './email/porta';
 import { montarDependenciasProducao, montarModulos } from './modulos';
 
 function duble<T extends object>(nome: string, preparado: Partial<T>): T {
@@ -97,6 +98,8 @@ export interface OpcoesAppPg {
   chaveIntegracao?: Buffer | null;
   /** Logger da API (padrão desligado). Os testes de vazamento passam um `stream` em memória. */
   logger?: DependenciasApp['logger'];
+  /** "Esqueci a senha" (T-0076); padrão: sem porta de e-mail. */
+  esqueci?: DependenciasApp['esqueci'];
 }
 
 /**
@@ -119,6 +122,7 @@ export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstan
     ...(o.relogio ? { relogio: o.relogio } : {}),
     ...(o.avisosA1 ? { avisosA1: o.avisosA1 } : {}),
     modulos,
+    ...(o.esqueci ? { esqueci: o.esqueci } : {}),
     logger: o.logger ?? false,
   });
   return { app, modulos };
@@ -132,4 +136,22 @@ export function destinoDeLogs(linhas: string[]): Writable {
       pronto();
     },
   });
+}
+
+/**
+ * Porta de e-mail em memória (T-0076): guarda as mensagens e, em cada uma, se a resposta do pedido já tinha saído
+ * (`respondido()`, que o teste liga a um hook `onResponse`). `esperar(n)` aguarda o envio agendado.
+ */
+export class EnvioEmailMemoria implements EnvioEmail {
+  readonly enviados: (MensagemEmail & { depoisDaResposta: boolean })[] = [];
+  falhar = false;
+  constructor(private readonly respondido: () => boolean = () => true) {}
+  async enviar(m: MensagemEmail): Promise<void> {
+    if (this.falhar) throw new Error(`falha ao enviar para ${m.para}`);
+    this.enviados.push({ ...m, depoisDaResposta: this.respondido() });
+  }
+  /** Deixa os `setImmediate` do agendamento rodarem. */
+  async esperar(): Promise<void> {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  }
 }

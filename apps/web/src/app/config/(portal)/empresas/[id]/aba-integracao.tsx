@@ -15,7 +15,7 @@ type Mensagem = { ok: boolean; texto: string } | null;
 
 /**
  * Aba "Integração" da ficha da empresa (T-0056, ADR 0013, molde: aba Integração do portal do FDV). Só o superadmin chega aqui
- * (todo o /config é do superadmin). v0.3.4: só o grupo 'Macuxi FDV' (cartões 'Credencial do conector' e 'Cadastros enviados ao FDV').
+ * (todo o /config é do superadmin). v0.3.4: só o grupo 'Macuxi FDV' (cartões 'Conexão com o Macuxi FDV' e 'Cadastros enviados ao FDV').
  *
  * LUGAR RESERVADO (cenário B, depois): duas colunas de ENTRADA, "Integração via Conector" e "Integração via API", ao lado deste grupo
  * no desktop e empilhadas abaixo de 768 px (`.integracao-colunas`). Sem tela para elas agora.
@@ -62,7 +62,7 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
     setPedido(null);
     const e: EntidadeEnvioFdv = p.linha.entidade;
     iniciar(async () => {
-      if (p.tipo === 'carga') return concluir(`carga:${e}`, await cargaCompletaFdvAcao(empresaId, e, chaveDe(`carga:${e}`)), 'Carga completa pedida. O envio começa em instantes.');
+      if (p.tipo === 'carga') return concluir(`carga:${e}`, await cargaCompletaFdvAcao(empresaId, e, chaveDe(`carga:${e}`)), 'Reenvio de tudo pedido. O envio começa em instantes.');
       if (p.tipo === 'retomar') {
         const r = await retomarFdvAcao(empresaId, e, chaveDe(`retomar:${e}`));
         return concluir(`retomar:${e}`, r, r.ok && !r.valor.retomada ? 'Este cadastro não estava pausado.' : 'Pedido para tentar de novo registrado.');
@@ -82,7 +82,7 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
         <span className="barra-acoes" style={{ margin: 0, minWidth: 360 }}>
           <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado || semCredencial} onClick={() => setPedido({ tipo: l.ligada ? 'desligar' : 'ligar', linha: l })} aria-label={`${l.ligada ? 'Desligar' : 'Ligar'}: ${l.rotulo}`}>{l.ligada ? 'Desligar' : 'Ligar'}</button>
           {l.pausada && <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setPedido({ tipo: 'retomar', linha: l })} aria-label={`Tentar de novo: ${l.rotulo}`}>Tentar de novo</button>}
-          {l.podeCarga && <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setPedido({ tipo: 'carga', linha: l })} aria-label={`Carga completa: ${l.rotulo}`}>Carga completa</button>}
+          {l.podeCarga && <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setPedido({ tipo: 'carga', linha: l })} aria-label={`Reenviar tudo: ${l.rotulo}`}>Reenviar tudo</button>}
         </span>
       ),
     },
@@ -96,7 +96,7 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
         {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">O módulo Integração FDV não está licenciado nesta empresa. Ligue-o na aba Empresa para configurar.</p>}
         {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
       <section className="bloco" aria-labelledby="h-cred">
-        <h2 id="h-cred">Credencial do conector</h2>
+        <h2 id="h-cred">Conexão com o Macuxi FDV</h2>
         {dados.credencial_id ? (
           <dl className="ficha">
             <div><dt>Chave</dt><dd>{dados.chave_prefixo}…</dd></div>
@@ -106,7 +106,7 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
         ) : (
           <p className="apoio">Nenhuma credencial cadastrada. Informe o código e a chave do conector abaixo.</p>
         )}
-        <form aria-label="Credencial do conector" onSubmit={(ev) => { ev.preventDefault(); salvarCredencial(ev.currentTarget); }}>
+        <form aria-label="Conexão com o Macuxi FDV" onSubmit={(ev) => { ev.preventDefault(); salvarCredencial(ev.currentTarget); }}>
           <label className="campo"><span>Código do conector</span><input name="conector_id" defaultValue={dados.conector_id ?? ''} maxLength={64} autoComplete="off" required /></label>
           {campos.conector_id && <p className="erro-campo" role="alert">{campos.conector_id}</p>}
           <label className="campo"><span>Nova chave do conector</span><input name="chave" type="password" autoComplete="new-password" spellCheck={false} maxLength={512} required /></label>
@@ -132,6 +132,7 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
           {campos.limite_registros_lote && <p className="erro-campo" role="alert">{campos.limite_registros_lote}</p>}
           <div className="barra-acoes"><button className="mx-botao-secundario" type="submit" disabled={bloqueado || semCredencial}>Salvar</button></div>
         </form>
+        {!linhas.some((l) => l.ligada) && <p className="apoio" data-testid="nenhum-ligado">Nenhum cadastro ligado.</p>}
         <div className="tabela-rolavel com-sinal-rolagem tabela-fdv legenda-so-leitor">
           <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda="Envio por cadastro" />
         </div>
@@ -139,12 +140,12 @@ export function AbaIntegracao({ empresaId, dados, fuso }: { empresaId: string; d
       </div>
       {pedido && (
         <DialogoMotivo
-          titulo={pedido.tipo === 'ligar' ? `Ligar ${pedido.linha.rotulo}?` : pedido.tipo === 'desligar' ? `Desligar ${pedido.linha.rotulo}?` : pedido.tipo === 'carga' ? `Carga completa de ${pedido.linha.rotulo}?` : `Tentar de novo ${pedido.linha.rotulo}?`}
+          titulo={pedido.tipo === 'ligar' ? `Ligar ${pedido.linha.rotulo}?` : pedido.tipo === 'desligar' ? `Desligar ${pedido.linha.rotulo}?` : pedido.tipo === 'carga' ? `Reenviar tudo de ${pedido.linha.rotulo}?` : `Tentar de novo ${pedido.linha.rotulo}?`}
           aviso={pedido.tipo === 'carga' ? avisoCarga : pedido.tipo === 'retomar' ? undefined : avisoLigar(pedido.tipo === 'ligar')}
           semTexto
-          rotuloConfirmar={pedido.tipo === 'ligar' ? 'Ligar' : pedido.tipo === 'desligar' ? 'Desligar' : pedido.tipo === 'carga' ? 'Pedir carga completa' : 'Tentar de novo'}
+          rotuloConfirmar={pedido.tipo === 'ligar' ? 'Ligar' : pedido.tipo === 'desligar' ? 'Desligar' : pedido.tipo === 'carga' ? 'Reenviar tudo' : 'Tentar de novo'}
           rotuloFechar="Cancelar"
-          destrutivo={pedido.tipo !== 'ligar'}
+          destrutivo={pedido.tipo === 'desligar'}
           aoConfirmar={() => confirmar(pedido)}
           aoCancelar={() => setPedido(null)}
         />

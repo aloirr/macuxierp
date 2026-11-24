@@ -1,12 +1,9 @@
 import { isIP } from 'node:net';
 import { headers as cabecalhosDoPedido } from 'next/headers';
 import type { z } from 'zod';
-import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIGO_TROCAR_SENHA, EuResposta, REGRAS_SENHA, type RegraSenhaId } from '@macuxierp/platform-sdk';
-import { RelatorioCarga } from '@macuxierp/cadastros/contracts';
-import { PAGINA_CARGA } from '@macuxierp/cadastros/web';
-import { CARGA_GRANDE_DEMAIS, CARGA_NAO_CONCLUIDA, FALHA, INDISPONIVEL, CARGA_TEMPO_ESGOTADO, SEM_PERMISSAO_CARGA } from './textos';
+import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIGO_TROCAR_SENHA, EuResposta, REGRAS_SENHA, type RegraSenhaId, type TrocarSenhaEntrada } from '@macuxierp/platform-sdk';
 import { TrocarSenhaPendente } from './troca-pendente';
-import { CREDENCIAL_FALSA, EU_FALSO, EU_FALSO_MEI, REFRESH_FALSO, TOKEN_FALSO } from './falso';
+import { EU_FALSO, EU_FALSO_MEI, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
 
@@ -20,9 +17,6 @@ export function usaApiFalsaAgora(): boolean {
 
 export class ApiIndisponivel extends Error {
   override readonly name = 'ApiIndisponivel' as const;
-}
-export class MuitasTentativas extends Error {
-  override readonly name = 'MuitasTentativas' as const;
 }
 export class DadosInvalidos extends Error {
   override readonly name = 'DadosInvalidos' as const;
@@ -63,9 +57,8 @@ function base(): string {
   return url.replace(/\/$/, '');
 }
 
-/** Tempo padrão de uma chamada à API; a carga (até 120 s no servidor) usa o próprio. */
+/** Tempo padrão de uma chamada à API. */
 export const TIMEOUT_PADRAO_MS = 10_000;
-export const TIMEOUT_CARGA_MS = 130_000;
 
 /** IP do navegador (`cf-connecting-ip` do pedido que o Next recebeu), só se for um IP válido. Fora de um pedido, ou sem IP válido, `null`. Nunca vai a log. */
 async function ipDoPedido(): Promise<string | null> {
@@ -108,16 +101,6 @@ function lerSessao(r: Response, corpo: { token_acesso?: unknown }): Sessao {
   return { acesso: corpo.token_acesso, refresh: cookie };
 }
 
-/** `mensagem` do corpo de erro da API (ou vazio, se o corpo não for o esperado). */
-async function mensagemDaApi(r: Response): Promise<string> {
-  try {
-    const m = ((await r.json()) as { mensagem?: unknown }).mensagem;
-    return typeof m === 'string' ? m.trim() : '';
-  } catch {
-    return '';
-  }
-}
-
 /** Corpo de erro da API (`{ codigo, mensagem, campos }`): o texto do campo, se vier (ex.: 400 da carga em `campos.arquivos`), senão a mensagem. */
 export async function textoDeErro(r: Response, campo?: string): Promise<{ codigo: string; texto: string }> {
   try {
@@ -128,24 +111,6 @@ export async function textoDeErro(r: Response, campo?: string): Promise<{ codigo
   } catch {
     return { codigo: '', texto: '' };
   }
-}
-
-/** POST /v1/auth/login. Null para credencial inválida (mensagem genérica). Lança MuitasTentativas (429) e DadosInvalidos (400). */
-export async function entrar(empresa: string, email: string, senha: string): Promise<Sessao | null> {
-  if (usaApiFalsa) {
-    const c = CREDENCIAL_FALSA;
-    return empresa === c.empresa && email === c.email && senha === c.senha ? { acesso: TOKEN_FALSO, refresh: REFRESH_FALSO } : null;
-  }
-  const r = await chamar('/v1/auth/login', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ empresa, email, senha }),
-  });
-  if (r.status === 429) throw new MuitasTentativas(await mensagemDaApi(r));
-  if (r.status === 400) throw new DadosInvalidos('login: VALIDACAO');
-  if (r.status === 401 || r.status === 403) return null;
-  if (!r.ok) throw new ApiIndisponivel(`login: HTTP ${r.status}`);
-  return lerSessao(r, (await r.json()) as { token_acesso?: unknown });
 }
 
 /** POST /v1/auth/refresh. Null quando o refresh venceu ou foi revogado. */
@@ -196,25 +161,6 @@ export async function buscarEu(acesso: string): Promise<EuResposta> {
     return process.env.MACUXIERP_FALSO_MEI === '1' ? EU_FALSO_MEI : EU_FALSO;
   }
   return getValidado('/v1/auth/eu', EuResposta, acesso, 'eu');
-}
-
-export type ResultadoCarga = { ok: true; relatorio: RelatorioCarga } | { ok: false; erro: string };
-
-/**
- * POST /v1/cadastros/cargas (multipart, T-0026). O arquivo só passa pela memória; nada do conteúdo vai a log.
- * Devolve o relatório validado pelo contrato ou uma mensagem fixa (nunca o corpo de erro cru).
- */
-export async function enviarCarga(acesso: string, formulario: FormData): Promise<ResultadoCarga> {
-  if (usaApiFalsa) return { ok: false, erro: INDISPONIVEL };
-  const r = await chamarAutenticado(PAGINA_CARGA.api, { method: 'POST', headers: { authorization: `Bearer ${acesso}` }, body: formulario }, TIMEOUT_CARGA_MS);
-  if (r.status === 401) throw new NaoAutenticado();
-  if (r.status === 403) return { ok: false, erro: SEM_PERMISSAO_CARGA };
-  if (r.status === 413) return { ok: false, erro: CARGA_GRANDE_DEMAIS };
-  if (r.status === 400) return { ok: false, erro: (await textoDeErro(r, 'arquivos')).texto || 'Envio inválido: confira os arquivos e o modo.' };
-  if (r.status === 503 && (await textoDeErro(r)).codigo === 'TEMPO_ESGOTADO') return { ok: false, erro: CARGA_TEMPO_ESGOTADO };
-  if (!r.ok) return { ok: false, erro: CARGA_NAO_CONCLUIDA };
-  const dados = RelatorioCarga.safeParse(await r.json().catch(() => null));
-  return dados.success ? { ok: true, relatorio: dados.data } : { ok: false, erro: FALHA };
 }
 
 /** GET de um registro (detalhe, catálogo): como `getValidado` com status distintos; 404 vira `null`. Modo falso: `null`. */
@@ -305,7 +251,7 @@ export function resultadoDaTrocaSenha(status: number, corpo: unknown): Resultado
  * POST /v1/auth/senha (204). A API revoga as OUTRAS sessões e só poupa a do cookie de refresh enviado: por isso o `refresh`
  * ("nome=valor") vai junto. Senhas só no corpo da chamada: nunca em log ou URL.
  */
-export async function trocarSenha(acesso: string, refresh: string | undefined, corpo: { senha_atual: string; senha_nova: string }): Promise<ResultadoTrocaSenha> {
+export async function trocarSenha(acesso: string, refresh: string | undefined, corpo: TrocarSenhaEntrada): Promise<ResultadoTrocaSenha> {
   const r = await escreverJson('POST', '/v1/auth/senha', corpo, acesso, { ...(refresh ? { cookie: refresh } : {}) });
   return resultadoDaTrocaSenha(r.status, r.corpo);
 }

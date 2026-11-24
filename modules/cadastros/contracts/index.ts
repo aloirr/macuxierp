@@ -328,11 +328,15 @@ export type OficialConsulta = z.infer<typeof OficialConsulta>;
 // ---- Carga inicial por CSV (T-0026; docs/desenho/T-0026.md, seções 3 e 6) ----
 /** Ordem de dependência da carga (D13). */
 export const ENTIDADES_CARGA = [
-  'filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto',
-  'produto_unidade', 'preco', 'estoque', 'cliente', 'cliente_endereco',
+  'filial', 'vendedor', 'condicao_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente',
 ] as const;
-/** Arquivos do kit fora da v1: ignorados com aviso, sem erro (D1). */
-export const ENTIDADES_IGNORADAS = ['catalogo_no', 'tabela_escalonada', 'transportadora', 'rota', 'titulo', 'nota'] as const;
+/**
+ * Arquivos do kit fora da v1: ignorados com aviso, sem erro (D1). `forma_pagamento`, `prazo_pagamento` e `cliente_endereco`
+ * deixaram de ser cargas na T-0058 (condição de pagamento e cliente com endereço são um arquivo cada): seguem ignorados, com aviso.
+ */
+export const ENTIDADES_IGNORADAS = [
+  'catalogo_no', 'tabela_escalonada', 'transportadora', 'rota', 'titulo', 'nota', 'forma_pagamento', 'prazo_pagamento', 'cliente_endereco',
+] as const;
 export const EntidadeCarga = z.enum(ENTIDADES_CARGA);
 export type EntidadeCarga = z.infer<typeof EntidadeCarga>;
 export const ModoCarga = z.enum(['validar', 'gravar']);
@@ -371,14 +375,17 @@ export const LinhaVendedor = z.object({
   dados: z.object({ codigo: Texto(20), nome: Texto(80) }).partial(),
   refs: Refs('filial'),
 });
-export const LinhaFormaPagamento = z.object({
+/**
+ * T-0058, RN-CAD-09: a condição de pagamento e a forma vêm na MESMA linha (cada condição tem uma forma). A forma é um dado
+ * da condição (`forma_*`), não uma entidade da carga: `forma_external_id` ou, sem ele, `forma_codigo` identifica a forma no arquivo.
+ */
+export const LinhaCondicaoPagamento = z.object({
   ...LinhaBase, ...AvisosLinha,
-  dados: z.object({ forma_codigo: Texto(20), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/) }).partial(),
-});
-export const LinhaPrazoPagamento = z.object({
-  ...LinhaBase, ...AvisosLinha,
-  dados: z.object({ codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias, parcelas_cartao: z.number().int().min(1).max(99).nullable().optional() }).partial(), // 1..99 aqui; a faixa 1..MAX_PARCELAS_CARTAO é do domain (RN-CAD-09 com a mensagem do cartão)
-  refs: Refs('forma'),
+  dados: z.object({
+    codigo: Texto(20), descricao: Texto(60), prazos_dias: CondicaoPagamentoDados.shape.prazos_dias,
+    parcelas_cartao: z.number().int().min(1).max(99).nullable().optional(), // 1..99 aqui; a faixa 1..MAX_PARCELAS_CARTAO é do domain (RN-CAD-09 com a mensagem do cartão)
+    forma_external_id: IdExternoValor, forma_codigo: Texto(20), forma_nome: Texto(60), forma_tpag: z.string().regex(/^\d{2}$/),
+  }).partial(),
 });
 export const LinhaProduto = z.object({
   ...LinhaBase, ...AvisosLinha,
@@ -409,46 +416,50 @@ export const LinhaEstoque = z.object({
   saldo: Qtd4,
   refs: Refs('produto', 'filial'),
 });
+/** T-0058: um endereço do cliente, vindo de uma linha do cliente.csv (`tipo_endereco` e `seq`); `external_id` = `<cliente>:<tipo>[:<seq>]`. */
+export const EnderecoDaLinha = z.object({
+  linha: z.number().int().min(2),
+  external_id: IdExternoValor,
+  tipo: TipoEndereco,
+  seq: z.number().int().min(1).max(999).optional(),
+  dados: Endereco.partial(),
+});
+export type EnderecoDaLinha = z.infer<typeof EnderecoDaLinha>;
+/** Uma linha do cliente.csv vira esta linha; as linhas do mesmo `external_id` se juntam em uma só (`agruparClientes`), com `enderecos` de todas. */
 export const LinhaCliente = z.object({
   ...LinhaBase, ...AvisosLinha,
   dados: ClienteDados.omit({
     enderecos: true, filial_id: true, vendedor_id: true, tabela_preco_id: true, condicao_pagamento_id: true, external_id: true,
   }).partial(),
-  endereco_principal: EnderecoCliente.partial().optional(),
+  enderecos: z.array(EnderecoDaLinha).default([]),
+  /** Linhas do arquivo que o cliente ocupa (a 1ª é a base dos dados do cliente). */
+  linhas: z.array(z.number().int().min(2)).optional(),
   refs: Refs('filial', 'vendedor', 'tabela_preco', 'condicao_pagamento'),
-});
-export const LinhaClienteEndereco = z.object({
-  ...LinhaBase, ...AvisosLinha,
-  dados: EnderecoCliente.partial(),
-  refs: Refs('cliente'),
 });
 export type LinhaFilial = z.infer<typeof LinhaFilial>;
 export type LinhaVendedor = z.infer<typeof LinhaVendedor>;
-export type LinhaFormaPagamento = z.infer<typeof LinhaFormaPagamento>;
-export type LinhaPrazoPagamento = z.infer<typeof LinhaPrazoPagamento>;
+export type LinhaCondicaoPagamento = z.infer<typeof LinhaCondicaoPagamento>;
 export type LinhaProduto = z.infer<typeof LinhaProduto>;
 export type LinhaProdutoUnidade = z.infer<typeof LinhaProdutoUnidade>;
 export type LinhaPreco = z.infer<typeof LinhaPreco>;
 export type LinhaEstoque = z.infer<typeof LinhaEstoque>;
 export type LinhaCliente = z.infer<typeof LinhaCliente>;
-export type LinhaClienteEndereco = z.infer<typeof LinhaClienteEndereco>;
 export interface LinhasCarga {
   filial: LinhaFilial;
   vendedor: LinhaVendedor;
-  forma_pagamento: LinhaFormaPagamento;
-  prazo_pagamento: LinhaPrazoPagamento;
+  condicao_pagamento: LinhaCondicaoPagamento;
   produto: LinhaProduto;
   produto_unidade: LinhaProdutoUnidade;
   preco: LinhaPreco;
   estoque: LinhaEstoque;
   cliente: LinhaCliente;
-  cliente_endereco: LinhaClienteEndereco;
 }
 
 /** `RN-...` (regra do domain) ou `D<n>` (decisão do desenho) viram o código; os demais são da carga. */
 export const CodigoErroCarga = z.union([
   z.string().regex(/^(RN-[A-Z]+-\d{2}|D\d{1,2})$/),
   z.enum([
+    // CARGA_REFERENCIA: não emitido desde a v0.3.7; mantido por compatibilidade de leitura
     'CARGA_FORMATO', 'CARGA_OBRIGATORIO', 'CARGA_TAMANHO', 'CARGA_REFERENCIA', 'CARGA_DUPLICADO',
     'CARGA_CONFLITO', 'CARGA_BANCO', 'CARGA_DEPENDENCIA', 'PERFIL_SEM_PERMISSAO',
   ]),
@@ -476,6 +487,12 @@ export const ResultadoEntidade = z.object({
   recusadas: z.number().int().min(0),
   colunas_ignoradas: z.array(z.string()),
   avisos: z.array(z.string().max(200)),
+  /** Só no `substituir_tudo` do /config (RN-CAD-10): quantos cadastros ativos que não vieram no arquivo foram inativados (nunca apagados). */
+  inativadas: z.number().int().min(0).optional(),
+  /** Só no `substituir_tudo` do /config: ativos sem external_id; NÃO são inativados, só contados (RN-CAD-10). */
+  sem_chave: z.number().int().min(0).optional(),
+  /** Só no cliente, no `substituir_tudo` do /config: endereços ativos que não vieram no arquivo e foram inativados junto (RN-CAD-10); nunca apagados. */
+  enderecos_inativados: z.number().int().min(0).optional(),
 });
 export type ResultadoEntidade = z.infer<typeof ResultadoEntidade>;
 export const RelatorioCarga = z.object({

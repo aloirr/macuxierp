@@ -7,8 +7,9 @@
 import { describe, expect, it } from 'vitest';
 import { CODIGO_TROCAR_SENHA, PERFIS, type Licenca, type Perfil, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
-import { MENSAGEM_TROCAR_SENHA } from '../../../apps/api/src/auth/troca-senha';
 import { ADM_A, type ApiMemoria, FILIAL_A, INICIO, montarApiMemoria, SEGREDO_JWT, TENANT_A, usarApiMemoria } from '../../apoio/api-memoria';
+import { preencherCaminho } from '../../apoio/caminhos';
+import { conferir403TrocarSenha } from '../../apoio/troca-senha';
 
 const montar = usarApiMemoria();
 
@@ -23,7 +24,7 @@ const TODAS: Licenca[] = COM_ROTAS.filter((m) => m !== 'core').map((modulo) => (
 
 const VALOR_PARAM: Record<string, string> = { tabela: 'ncm', cnpj: '11222333000181', cep: '69050010', chave: 'fuso', entidade: 'cliente' };
 const url = (modulo: string, r: RotaModulo) =>
-  `/v1/${modulo}${r.caminho.replace(/:([a-z_]+)/g, (_, p: string) => VALOR_PARAM[p] ?? '9f000000-0000-4000-8000-000000000001')}`;
+  `/v1/${modulo}${preencherCaminho(r.caminho, VALOR_PARAM)}`;
 
 /** Authorization com o JWT de acesso real (`emitirTokenAcesso`), com ou sem a senha provisória. */
 const token = (o: { deveTrocar: boolean; perfil?: Perfil }) => {
@@ -44,7 +45,7 @@ describe('T-0052 (RN-CORE-10): toda rota de módulo é 403 TROCAR_SENHA com a se
     const a = await montar({ licencas: TODAS });
     const res = await comFlag(modulo, r, 'administrador', a);
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA });
+    conferir403TrocarSenha(res.json(), 'provisoria');
     expect(a.banco.aberturas).toEqual([]);
   });
 
@@ -54,7 +55,7 @@ describe('T-0052 (RN-CORE-10): toda rota de módulo é 403 TROCAR_SENHA com a se
     for (const perfil of PERFIS) {
       const res = await comFlag(modulo, r, perfil, a);
       expect(res.statusCode, perfil).toBe(403);
-      expect(res.json(), perfil).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA });
+      conferir403TrocarSenha(res.json(), 'provisoria', perfil);
     }
     expect(a.banco.aberturas).toEqual([]);
   });

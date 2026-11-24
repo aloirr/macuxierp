@@ -24,8 +24,8 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    tenant = await criarTenant(b.admin, 'loja-um', ['cadastros']);
-    const outro = await criarTenant(b.admin, 'loja-dois', ['cadastros', 'pedido']);
+    tenant = await criarTenant(b.admin, 'am0001', ['cadastros']);
+    const outro = await criarTenant(b.admin, 'am0002', ['cadastros', 'pedido']);
     await inserirFilialDeTeste(b.admin, tenant, { id: matriz, cnpj: '11222333000181', nome: 'Matriz Manaus' });
     await inserirFilialDeTeste(b.admin, outro, { id: filialOutro, cnpj: '11444777000161', nome: 'Filial de outro tenant' });
     // filial_ids com uma filial de outro tenant: a RLS da cadastros.filial_resumo a esconde no /eu.
@@ -38,7 +38,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     await b?.remover();
   });
 
-  const entrar = (senha = SENHA_DE_TESTE, empresa = 'loja-um') =>
+  const entrar = (senha = SENHA_DE_TESTE, empresa = 'am0001') =>
     app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa, email: 'ADM@loja-um.teste', senha } });
   const refreshDe = (r: { cookies: { name: string; value: string }[] }) => r.cookies.find((c) => c.name === COOKIE_REFRESH)!.value;
   const comRefresh = (url: string, refresh: string) => app.inject({ method: 'POST', url, cookies: { [COOKIE_REFRESH]: refresh } });
@@ -56,7 +56,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     expect(eu.statusCode).toBe(200);
     expect(eu.json()).toEqual({
       usuario: { id: usuario, nome: 'Administradora', perfil: 'administrador', deve_trocar_senha: false },
-      empresa: { id: tenant, slug: 'loja-um', razao_social: 'Empresa loja-um', fuso: 'America/Manaus' },
+      empresa: { id: tenant, slug: 'am0001', razao_social: 'Empresa am0001', fuso: 'America/Manaus' },
       // só a filial do próprio tenant (RLS), embora o filial_ids cite a do outro
       filiais: [{ id: matriz, nome: 'Matriz Manaus', cnpj: '11222333000181' }],
       // core (sempre) e cadastros (licenciado); pedido é licença só do outro tenant
@@ -146,14 +146,14 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
   });
 
   it('T-0042: a rota de módulo recebe o fuso do tenant (America/Sao_Paulo), lido junto com as licenças', async () => {
-    const t = await criarTenant(b.admin, 'loja-sp', ['cadastros']);
+    const t = await criarTenant(b.admin, 'sp0001', ['cadastros']);
     await b.admin.query("UPDATE plataforma.tenant SET fuso = 'America/Sao_Paulo' WHERE id = $1", [t]);
     await inserirAdministradorDeTeste(b.admin, t, { id: randomUUID(), email: 'adm@loja-sp.teste', nome: 'Adm SP', filialIds: [] });
     const manifesto = defineModule({ id: 'cadastros', versao: '0.1.0', descricao: 'eco do fuso', depende: ['core'], perfis: ['administrador'], publica: [], consome: [] });
     const eco = definirPlugin(manifesto, [definirRota({ metodo: 'GET', caminho: '/fuso', acao: 'cadastros.ver', executar: async (c) => ({ corpo: { fuso: c.fuso ?? null } }) })]);
     const { app: comEco } = await appPgDeTeste({ b, relogio, modulos: [eco] });
     try {
-      const login = await comEco.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'loja-sp', email: 'adm@loja-sp.teste', senha: SENHA_DE_TESTE } });
+      const login = await comEco.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: 'sp0001', email: 'adm@loja-sp.teste', senha: SENHA_DE_TESTE } });
       const token = login.json<{ token_acesso: string }>().token_acesso;
       const fuso = (bearer: string) => comEco.inject({ url: '/v1/cadastros/fuso', headers: { authorization: `Bearer ${bearer}` } });
       expect((await fuso(token)).json()).toEqual({ fuso: 'America/Sao_Paulo' });
@@ -168,7 +168,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     expect((await entrar('errada')).statusCode).toBe(401);
     const { rows } = await b.admin.query('SELECT falhas_login FROM plataforma.usuario WHERE id = $1', [usuario]);
     expect(rows).toEqual([{ falhas_login: 1 }]);
-    for (const empresa of ['loja-dois', 'nao-existe']) expect((await entrar(SENHA_DE_TESTE, empresa)).statusCode).toBe(401);
+    for (const empresa of ['am0002', 'am9999']) expect((await entrar(SENHA_DE_TESTE, empresa)).statusCode).toBe(401);
     // o login certo zera a contagem
     expect((await entrar()).statusCode).toBe(200);
     expect((await b.admin.query('SELECT falhas_login FROM plataforma.usuario WHERE id = $1', [usuario])).rows).toEqual([{ falhas_login: 0 }]);

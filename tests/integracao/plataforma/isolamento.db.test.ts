@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, COOKIE_CONFIG, PREFIXO_PLATAFORMA, type PluginModulo } from '../../../packages/platform-sdk/src/index';
+import { CAMINHOS_CARGAS_PLATAFORMA, CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, COOKIE_CONFIG, PREFIXO_PLATAFORMA, type PluginModulo } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, inserirAdministradorDeTeste, SENHA_DE_TESTE } from '../../../apps/api/src/apoio-teste';
 import { COOKIE_REFRESH } from '../../../apps/api/src/app';
@@ -82,6 +82,17 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
     const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
     const esperadas = [`GET ${C.ler}`, `PUT ${C.credencial}`, `POST ${C.testar}`, `PUT ${C.configuracao}`, `POST ${C.cargaCompleta}`, `POST ${C.retomar}`];
     expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual([...esperadas].sort());
+  });
+
+  it('T-0058/T-0060 (ADR 0013, adendo de 23/11/2026): as rotas da carga de cadastros do portal (CAMINHOS_CARGAS_PLATAFORMA) entram sozinhas na matriz, pelo plugin real', () => {
+    // Lidas do SDK, sem fixar o número: toda rota de CAMINHOS_CARGAS_PLATAFORMA sob /cadastros/cargas (situação, modelo,
+    // erros, validar, gravar...) tem de estar no plugin real e na matriz. A zeragem (/cadastros/zerar) fica de fora deste filtro.
+    const esperadas = Object.values(CAMINHOS_CARGAS_PLATAFORMA).filter((c) => c.includes('/cadastros/cargas')).sort();
+    expect(esperadas.length).toBeGreaterThan(0);
+    const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => r.caminho)).filter((c) => c.includes('/cadastros/cargas'));
+    expect([...new Set(declaradas)].sort()).toEqual(esperadas);
+    const padrao = (c: string) => new RegExp(`^${PREFIXO_PLATAFORMA}${c.replace(/:[A-Za-z_]+/g, '[0-9a-f-]{36}')}$`);
+    for (const c of esperadas) expect(rotasPortal.some((r) => padrao(c).test(r.url)), c).toBe(true);
   });
 
   it('ADR 0012 §2: o cookie macuxierp_config (sessão válida) é 401 em toda rota de /v1/<modulo>', async () => {

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
-import { botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, radioBase, radioMarcado, texto } from './estilos.js';
+import { useId, useState } from 'react';
+import { botaoDestrutivo, botaoPrincipal, botaoSecundario, campoBase, cor, espaco, mensagemErro, radioBase, radioMarcado, texto } from './estilos.js';
+import { Dialogo } from './Dialogo.js';
 import { RegiaoErros } from './RegiaoErros.js';
 
 export interface MotivoOpcao {
@@ -26,7 +27,7 @@ export interface DialogoMotivoProps {
   rotuloConfirmar?: string;
   /** Texto do botão que chama `aoCancelar` (padrão: "Cancelar"). Ex.: "Manter a nota". */
   rotuloFechar?: string;
-  /** Só sinal: marca o botão de confirmar com `data-destrutivo="true"`. Nenhuma cor muda nesta versão. */
+  /** Ação irreversível: confirmar em vermelho (erro-texto) e `data-destrutivo="true"`. */
   destrutivo?: boolean;
   /** Aviso fixo do módulo (ex.: sobre dado pessoal). Sem aviso, nada aparece. */
   aviso?: string | null;
@@ -64,18 +65,10 @@ export function avaliarConfirmacao(
   return msg ? { campo: 'texto', mensagem: msg } : null;
 }
 
-const FOCAVEIS = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
-
-/** Próximo índice de foco com Tab preso (circular). */
-export function proximoFoco(atual: number, total: number, voltar: boolean): number {
-  if (total <= 0) return -1;
-  return voltar ? (atual <= 0 ? total - 1 : atual - 1) : (atual + 1) % total;
-}
-
+/** O aviso dele é âmbar mesmo com `destrutivo` (é aviso de dado pessoal, não de irreversível). */
 export function DialogoMotivo(props: DialogoMotivoProps) {
   const { titulo, motivos = [], textoObrigatorio = false, rotuloTexto = 'Detalhe', semTexto = false, rotuloConfirmar = 'Confirmar', rotuloFechar = 'Cancelar', destrutivo = false, aviso = null, validar, aoConfirmar, aoCancelar } = props;
   const id = useId();
-  const raiz = useRef<HTMLDivElement>(null);
   const [motivo, setMotivo] = useState<string | undefined>();
   const [textoLivre, setTextoLivre] = useState('');
   const [erro, setErro] = useState<ErroDialogo | null>(null);
@@ -84,12 +77,6 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
   const erroTexto = erro?.campo === 'texto' ? erro.mensagem : null;
   const coluna = { display: 'grid', gap: espaco.xs } as const;
 
-  useEffect(() => {
-    const anterior = document.activeElement as HTMLElement | null;
-    raiz.current?.querySelector<HTMLElement>(FOCAVEIS)?.focus();
-    return () => anterior?.focus?.();
-  }, []);
-
   const confirmar = () => {
     const r = { motivo, texto: semTexto ? '' : textoLivre.trim() };
     const e = avaliarConfirmacao(r, { motivos, textoObrigatorio, semTexto, validar });
@@ -97,36 +84,18 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
     if (!e) aoConfirmar(r);
   };
 
-  const teclado = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      aoCancelar();
-    } else if (e.key === 'Tab') {
-      const itens = Array.from(raiz.current?.querySelectorAll<HTMLElement>(FOCAVEIS) ?? []);
-      const i = proximoFoco(itens.indexOf(document.activeElement as HTMLElement), itens.length, e.shiftKey);
-      if (i >= 0) {
-        e.preventDefault();
-        itens[i]?.focus();
-      }
-    }
-  };
-
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center' }}
-      data-fundo-dialogo
+    <Dialogo
+      titulo={titulo}
+      aoFechar={aoCancelar}
+      aviso={aviso}
+      rodape={
+        <>
+          <button type="button" onClick={aoCancelar} style={botaoSecundario()}>{rotuloFechar}</button>
+          <button type="button" onClick={confirmar} data-destrutivo={destrutivo ? 'true' : undefined} style={destrutivo ? botaoDestrutivo() : botaoPrincipal()}>{rotuloConfirmar}</button>
+        </>
+      }
     >
-      <div aria-hidden="true" onClick={aoCancelar} style={{ position: 'absolute', inset: 0, background: cor('grafite'), opacity: 0.55 }} />
-      <div
-        ref={raiz}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${id}-t`}
-        aria-describedby={aviso ? `${id}-aviso` : undefined}
-        onKeyDown={teclado}
-        style={{ ...texto('base'), background: cor('branco'), padding: espaco.xl, width: 'min(480px, 92vw)', display: 'grid', gap: espaco.md, position: 'relative' }}
-      >
-        <h2 id={`${id}-t`} style={{ ...texto('titulo-dialogo', 'titulo'), margin: 0 }}>{titulo}</h2>
         <RegiaoErros temErro={!!erro} />
         {motivos.length > 0 ? (
           <>
@@ -163,16 +132,6 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         {erroTexto ? <span id={`${id}-erro-texto`} style={mensagemErro}>{erroTexto}</span> : null}
         </div>
         )}
-        {aviso ? (
-          <p id={`${id}-aviso`} style={{ ...texto('pequeno'), color: cor('avisoTexto'), background: cor('avisoFundo'), margin: 0, padding: espaco.sm }}>
-            {aviso}
-          </p>
-        ) : null}
-        <div style={{ display: 'flex', gap: espaco.sm, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={aoCancelar} style={botaoSecundario()}>{rotuloFechar}</button>
-          <button type="button" onClick={confirmar} data-destrutivo={destrutivo ? 'true' : undefined} style={botaoPrincipal()}>{rotuloConfirmar}</button>
-        </div>
-      </div>
-    </div>
+    </Dialogo>
   );
 }

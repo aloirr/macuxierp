@@ -3,6 +3,7 @@
  * `criarPluginCore`; os testes usam `RepositorioCoreMemoria`. Linhas com `Date`: a serialização para o contrato é das rotas.
  */
 import type { Armazenamento, Perfil, Transacao } from '@macuxierp/platform-sdk';
+import type { OrigemCertificado } from '@macuxierp/platform-sdk/certificado-origem';
 
 /** Colunas cifradas do A1 em `core.certificado`; o formato (cifrado, tag, nonce) está em `colunas-a1.ts`. */
 export interface A1Cifrado {
@@ -56,10 +57,13 @@ export interface LinhaCertificado {
   valido_ate: Date;
   impressao_digital: string;
   ativo: boolean;
+  origem: OrigemCertificado;
 }
 
-export interface NovoCertificado extends Omit<LinhaCertificado, 'ativo'>, A1Cifrado {
+export interface NovoCertificado extends Omit<LinhaCertificado, 'ativo' | 'origem'>, A1Cifrado {
   chave_versao: number;
+  /** Omitida = ORIGEM_CERTIFICADO_PADRAO; o A1 de teste do operador informa 'teste'. */
+  origem?: OrigemCertificado;
 }
 
 export interface LinhaAmbiente {
@@ -99,7 +103,10 @@ export interface RepositorioCore {
   criarUsuario(tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario>;
   /** token: 0 linhas = null */
   atualizarUsuario(tx: Transacao, id: string, patch: PatchUsuario, agora: Date, token?: Date): Promise<LinhaUsuario | null>;
+  /** Zera também `senha_temporaria_hash` e `senha_temporaria_expira_em` (RN-CORE-13). */
   definirSenha(tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void>;
+  /** RN-CORE-13: grava a temporária (hash argon2id) e a expiração, em paralelo à senha atual, que não muda; um pedido novo substitui a temporária anterior. */
+  emitirSenhaTemporaria(tx: Transacao, usuarioId: string, hash: string, expiraEm: Date): Promise<void>;
   /** RN-CORE-01: chamar antes de contar. */
   travarAdministradoresAtivos(tx: Transacao): Promise<void>;
   contarAdministradoresAtivos(tx: Transacao, exceto: string): Promise<number>;

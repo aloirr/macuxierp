@@ -4,10 +4,10 @@
  * superadmin na configuração local). Nenhum SELECT em tabela: o banco revalida a sessão e grava a auditoria.
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
-import { erros, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
+import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
+import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
 
-const sqlstate = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
 const repetido = (e: unknown): boolean => sqlstate(e) === '23505';
 
 async function semRepetido<R>(fn: () => Promise<R>): Promise<R | null> {
@@ -53,6 +53,10 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
         if (sqlstate(e) !== '23514') throw e;
         // 0037: textos do RAISE 'uf invalida', 'uf difere do codigo', 'fuso desconhecido' e 'slug reservado'. O texto do
         // banco não é repassado: cada caso vira mensagem fixa no campo (`uf`, `fuso` ou `codigo`). Sorteio sem vaga dá 23505.
+        // 0049: o CHECK do código reservado (MACUXI) traz o DETAIL `DETALHE_CODIGO_RESERVADO`; vira a mensagem do SDK no campo `codigo`.
+        if ((e as { detail?: unknown } | null)?.detail === DETALHE_CODIGO_RESERVADO) {
+          throw erros.regra('RN-CORE-11', MENSAGEM_CODIGO_RESERVADO, { codigo: MENSAGEM_CODIGO_RESERVADO });
+        }
         const msg = String((e as { message?: unknown }).message ?? '');
         const [campo, texto] = /\buf difere\b/i.test(msg)
           ? ['uf', 'A UF precisa ser a do código']

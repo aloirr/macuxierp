@@ -1,0 +1,354 @@
+{
+  "formato": 1,
+  "gerado_por": "tests/integracao/rotas/fumaca-telas.db.test.ts (T-0065)",
+  "regenerar": "MACUXI_FUMACA_GERAR=1 pnpm exec vitest run --config tests/vitest.config.ts tests/integracao/rotas/fumaca-telas.db.test.ts",
+  "uuid_ficticio": "9f000000-0000-4000-8000-000000000001",
+  "rotas": [
+    {
+      "metodo": "GET",
+      "caminho": "/v1/auth/eu",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/clientes",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/condicoes-pagamento",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/filiais",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/produtos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/cadastros/vendedores",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/ambientes-fiscais",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/auditoria",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/certificados",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/empresa",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/exportacoes/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "ficticio"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/licencas",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/perfis",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/usuarios",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/filiais/:id/configuracao",
+      "area": "bko",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "filial"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/notas",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/notas/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/faturamento/notas",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/notas/:id/danfe",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/faturamento/notas",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/notas/:id/eventos",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/faturamento/notas",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/notas/:id/xml",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/faturamento/notas",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/notas/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/pedidos-a-faturar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/pedidos-a-faturar/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/faturamento/pedidos-a-faturar",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/pedidos-a-faturar/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/rejeicoes",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/rejeicoes/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/titulos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/titulos/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/faturamento/titulos",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/faturamento/titulos/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/lotes",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/lotes/:id/erros",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/integracao-fdv/lotes",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/lotes/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/monitor",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/status",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/pedido/motivos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/pedido/pedidos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/pedido/pedidos/:id",
+      "area": "bko",
+      "origem": {
+        "tipo": "lista",
+        "de": "GET /v1/pedido/pedidos",
+        "campo": "itens[0].id"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/pedido/pedidos/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/auth/eu",
+      "area": "plataforma"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas",
+      "area": "plataforma"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/cliente/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/condicao_pagamento/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/estoque/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/filial/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/preco/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/produto_unidade/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/produto/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/cadastros/cargas/vendedor/modelo",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    }
+  ]
+}

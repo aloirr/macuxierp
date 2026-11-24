@@ -4,7 +4,20 @@
  * para a rota multipart do A1 com limite de 50 KB (RF-CORE-04) e cabeçalhos na rota. O `.pfx` nunca vai para o log.
  */
 import { Writable } from 'node:stream';
-import { defineModule, definirPlugin, definirRota, TAMANHO_MAXIMO_MULTIPART, type Licenca, type Perfil, type PluginModulo } from '@macuxierp/platform-sdk';
+import {
+  CAMINHOS_CARGAS_PLATAFORMA,
+  CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
+  CAMPO_ARQUIVO_CARGA_PORTAL,
+  defineModule,
+  definirPlugin,
+  definirRota,
+  MAX_BYTES_ARQUIVO_CARGA_PORTAL,
+  PREFIXO_PLATAFORMA,
+  TAMANHO_MAXIMO_MULTIPART,
+  type Licenca,
+  type Perfil,
+  type PluginModulo,
+} from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -14,7 +27,16 @@ import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 import { formulario, NOME_ARQUIVO_PADRAO } from './apoio-multipart';
 import { dependenciasCoreDeTeste, modulosDeTeste, repoCoreDuble } from './apoio-teste';
-import { a1AtivoDoCore, certificadosDoCore, EMISSAO_PRODUCAO_HABILITADA, montarModulos, RegistroModulosInvalido, registrarModulos } from './modulos';
+import {
+  a1AtivoDoCore,
+  certificadosDoCore,
+  EMISSAO_PRODUCAO_HABILITADA,
+  montarDependenciasProducao,
+  montarModulos,
+  pluginsPlataforma,
+  RegistroModulosInvalido,
+  registrarModulos,
+} from './modulos';
 
 const TENANT = '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c';
 const USUARIO = '1f2e3d4c-5b6a-4789-8a9b-0c1d2e3f4a5b';
@@ -157,7 +179,7 @@ describe('core e cadastros montados de verdade (RN-CORE-02)', () => {
   });
 
   it('o cadastros vê o A1 da filial pela porta do core (RN-CORE-06), na transação da rota', async () => {
-    const cert = (validoAte: Date) => ({ id: USUARIO, filial_id: FILIAL, titular: 't', cnpj: '11222333000181', valido_de: new Date('2026-01-01T00:00:00Z'), valido_ate: validoAte, impressao_digital: 'x', ativo: true });
+    const cert = (validoAte: Date) => ({ id: USUARIO, filial_id: FILIAL, titular: 't', cnpj: '11222333000181', valido_de: new Date('2026-01-01T00:00:00Z'), valido_ate: validoAte, impressao_digital: 'x', ativo: true, origem: 'upload' as const });
     const tx = {} as never;
     const porta = (certs: ReturnType<typeof cert>[]) => certificadosDoCore(repoCoreDuble({ empresa: async () => EMPRESA, certificados: async (t) => (expect(t).toBe(tx), certs) }));
     expect(await porta([cert(new Date('2027-01-01T00:00:00Z'))]).filialTemA1Valido(tx, FILIAL, AGORA)).toBe(true);
@@ -365,5 +387,63 @@ describe('faturamento na API: emissão em produção desligada até a T-0046 (RN
     expect(r.body).toContain('RN-FAT-04');
     expect(chamadas).toContain('ambiente');
     expect(chamadas).not.toContain('reservarNumero');
+  });
+});
+
+describe('carga de cadastros no portal /config montada na API (T-0058, ADR 0013, adendo de 23/11/2026)', () => {
+  const C = CAMINHOS_CARGAS_PLATAFORMA;
+  const rotasCarga = (plugins: ReturnType<typeof pluginsPlataforma>) =>
+    plugins.flatMap((p) => p.rotas).filter((r) => r.acao === 'plataforma.cadastros.carga');
+
+  it('pluginsPlataforma: as rotas POST da carga com multipart de um arquivo (10 MiB)', () => {
+    const rotas = rotasCarga(pluginsPlataforma(modulosDeTeste(), { chaveIntegracao: null, outbox: new OutboxMemoria() }));
+    for (const r of rotas.filter((r) => r.metodo === 'POST')) {
+      expect(r.multipart).toEqual({
+        arquivos: [{ campo: CAMPO_ARQUIVO_CARGA_PORTAL, tamanhoMaximo: MAX_BYTES_ARQUIVO_CARGA_PORTAL, quantidadeMaxima: 1 }],
+        tamanhoMaximoTotal: MAX_BYTES_ARQUIVO_CARGA_PORTAL,
+      });
+    }
+    // Sem dependências (os testes de isolamento só listam as rotas): as mesmas rotas, com os padrões de produção.
+    expect(rotasCarga(pluginsPlataforma(modulosDeTeste())).map((r) => r.caminho).sort()).toEqual(rotas.map((r) => r.caminho).sort());
+  });
+
+  /** Rotas da carga que o /config chama (método × chave do `CAMINHOS_CARGAS_PLATAFORMA`); `previa` e `zerar` entram na v0.3.6. */
+  const ROTAS_CARGA_PORTAL = [
+    { method: 'GET', chave: 'situacao' },
+    { method: 'GET', chave: 'modelo' },
+    { method: 'POST', chave: 'validar' },
+    { method: 'POST', chave: 'erros' },
+    { method: 'POST', chave: 'gravar' },
+  ] as const satisfies ReadonlyArray<{ method: 'GET' | 'POST'; chave: keyof typeof CAMINHOS_CARGAS_PLATAFORMA }>;
+
+  const appProducao = async () => {
+    const producao = montarDependenciasProducao({
+      banco: new BancoMemoria(),
+      chaveA1: Buffer.alloc(32, 1),
+      config: { versao: 'teste', jwtSegredo: SEGREDO, cookieSeguro: true, segredoBff: null },
+      bancoPlataforma: {} as never,
+    });
+    return montar([], undefined, producao.modulos, { plataforma: producao.plataforma!, idempotencia: new IdempotenciaMemoria() });
+  };
+
+  it.each(ROTAS_CARGA_PORTAL)('montarDependenciasProducao: $method $chave da carga sobe no portal', async ({ method, chave }) => {
+    const app = await appProducao();
+    expect(app.hasRoute({ method, url: `${PREFIXO_PLATAFORMA}${C[chave]}` })).toBe(true);
+  });
+
+  it('montarDependenciasProducao: a rota de teste da integração FDV sobe no portal ao lado da carga', async () => {
+    const app = await appProducao();
+    expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.testar}` })).toBe(true);
+  });
+
+  it('montarDependenciasProducao: as rotas do "Zerar dados" (RN-CAD-10) sobem no portal, previa e zerar por POST', async () => {
+    const producao = montarDependenciasProducao({
+      banco: new BancoMemoria(),
+      chaveA1: Buffer.alloc(32, 1),
+      config: { versao: 'teste', jwtSegredo: SEGREDO, cookieSeguro: true, segredoBff: null },
+      bancoPlataforma: {} as never,
+    });
+    const app = await montar([], undefined, producao.modulos, { plataforma: producao.plataforma!, idempotencia: new IdempotenciaMemoria() });
+    for (const caminho of [C.previa, C.zerar]) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(true);
   });
 });

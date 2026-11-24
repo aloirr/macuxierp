@@ -18,3 +18,17 @@
 2026-11-23 — T-0021 — token rotuloMenu (alias tituloGrupo por uma versão); login do portal no cartão branco
 2026-11-23 — T-0053 — prints A0 (390 px) e folha docs/design/a0-prints.md para aprovação do Alexandre
 2026-11-23 — T-0056 — FaixaPendencias sem o rótulo 'Bloqueia'/'Atenção' (prefixo só para leitor de tela); RD-1144–1146
+2026-11-23 — T-0058 — Chip, CaixaResumo e Dialogo base (DialogoMotivo usa); RD-1176–1178
+2026-11-23 — T-0058 — RD-1176/1177/1178: seloBase e tons em estilos.ts, teste de hex sem duplicidade, proximoFoco só em Dialogo, doc enxuto
+2026-11-23 — T-0058 — Chip, CaixaResumo e Dialogo base (border-box, canto 8); prints da marca em docs/design/cargas/; RD-1176–1178
+2026-11-23 — T-0058 — Dialogo com altura máxima 90vh e corpo rolável (v0.3.6); RD-1215–1217
+2026-11-23 — T-0058 — botão destrutivo em vermelho (opção B) no DialogoMotivo e .mx-botao-destrutivo; RD-1217–1218
+2026-11-23 — T-0058 — Dialogo com aviso fixo, respiro de foco e altura 100dvh−48 (v0.3.7)
+2026-11-23 — T-0058 — Dialogo: tomAviso (aviso|erro), corpo com padding 4px nos quatro lados, altura calc(100dvh - 48px) fixada; prints do Zerar em tom erro, rolagem no fim e foco no último botão
+2026-11-23 — T-0058 — Dialogo: fallback 100vh/dvh por estado, teste do aviso no DialogoMotivo, docs
+2026-11-23 — T-0058 — Dialogo: 8px entre aviso e corpo (marginBottom) e prints regenerados com botão da marca em foco
+2026-11-23 — T-0068 — aviso do Dialogo em 15 px/600 e AlertaBloqueante (ícone, barra 4 px, role=alert, foco) com doc em docs/design/alerta-bloqueante; RD-1262–1265; foco verificado no Chromium
+2026-11-23 — T-0076 — desenho do login único (molde FDV), esqueci a senha com temporária; RD-1311–1313 reservados
+2026-11-23 — T-0076 — correção: senha do superadmin na regra única de 8; portal-config §1 remete ao login-unico
+2026-11-23 — T-0076 — correção: olho = botão de texto do CampoSenha na v0.3.10 (ícone na versão seguinte); título trocado no painel do esqueci
+2026-11-24 — T-0076 — correção: README do login-unico cita TROCAR_SENHA (código do SDK), não SENHA_A_TROCAR

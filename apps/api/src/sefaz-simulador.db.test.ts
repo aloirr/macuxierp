@@ -52,7 +52,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045: A1 de teste pela ADR 0005 e NF-e autori
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    tenant = await criarTenant(b.admin, `t0045-${randomUUID().slice(0, 8)}`, ['faturamento', 'fiscal']);
+    tenant = await criarTenant(b.admin, 'am0045', ['faturamento', 'fiscal']);
     await b.admin.query('INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, $2, $3)', [tenant, 'EMPRESA FICTICIA DE TESTE LTDA', CNPJ_EMITENTE_DE_TESTE]);
     await inserirFilialDeTeste(b.admin, tenant, { id: filial, cnpj: CNPJ_EMITENTE_DE_TESTE, nome: 'Matriz Manaus (teste)' });
     await inserirAdministradorDeTeste(b.admin, tenant, { id: usuario, email: 'adm@t0045.teste', nome: 'Administração', filialIds: [filial] });
@@ -168,7 +168,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0045: A1 de teste pela ADR 0005 e NF-e autori
     respostas.push(...visto);
     for (const v of visto) expect(v.includes(a1.senha) || v.includes(a1.pfx.toString('base64').slice(0, 40))).toBe(false);
     // Outro tenant não enxerga a linha (RLS): sem certificado, e não erro.
-    const outroTenant = await criarTenant(b.admin, `t0045-outro-${randomUUID().slice(0, 8)}`, ['faturamento']);
+    const outroTenant = await criarTenant(b.admin, 'am0046', ['faturamento']);
     expect(await worker.comTenant(outroTenant, (tx) => lerA1DecifradoDaFilial(tx, chaveA1, filial))).toBeNull();
 
     const aberto = abrirA1(lido!.pfx, lido!.senha);

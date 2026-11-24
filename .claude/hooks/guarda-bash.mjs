@@ -54,6 +54,7 @@
 //    GraphQL só "query"). Leitura passa mesmo com $VAR ou "merge" no --jq; POST/PUT/PATCH/DELETE, método incerto,
 //    opção desconhecida e gh api escondido em bash -c/node -e são bloqueados (conferirGhApi em guarda-merge-lib.mjs;
 //    casos em guarda-gh-api.test.mjs). As ferramentas MCP têm hook próprio: .claude/hooks/guarda-mcp.mjs.
+//  - Trava do graphify (T-0064), antes do MACUXI_GUARDA=off: ver guarda-graphify-lib.mjs.
 // Detalhes e casos: .claude/hooks/guarda-bash-lib.mjs e .claude/hooks/guarda-bash.test.mjs.
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -68,6 +69,7 @@ import {
   conferirMerge, conferirGhApi, consultarPrGh, lerRecadosDoGerente, motivosRecadoFalso, mensagemRecadoFalso,
   motivosIndiceDeRecados, mensagemIndiceDeRecados, vigiarRecados,
 } from './guarda-merge-lib.mjs';
+import { analisarBash, commonDirDe, criarRepoDe, lerMarcas, gravarMarcas } from './guarda-graphify-lib.mjs';
 
 /** Conteúdo de um arquivo do repositório (rel) ou null. */
 const lerDoRepo = (rel) => { try { return readFileSync(join(RAIZ, rel), 'utf8'); } catch { return null; } };
@@ -83,10 +85,23 @@ function lerEntrada() {
   });
 }
 
-if ((process.env.MACUXI_GUARDA || '').toLowerCase() === 'off') process.exit(0);
-
 const entrada = await lerEntrada();
 if (entrada.tool_name && entrada.tool_name !== 'Bash') process.exit(0);
+
+if ((entrada.hook_event_name || 'PreToolUse') === 'PreToolUse' && entrada.tool_input?.command) {
+  const comum = commonDirDe(RAIZ);
+  const g = analisarBash({
+    comando: String(entrada.tool_input.command), cwd: entrada.cwd || process.cwd(),
+    marcas: lerMarcas(comum, entrada.session_id), repoDe: criarRepoDe(comum),
+  });
+  if (g.marcar.length) gravarMarcas(comum, entrada.session_id, g.marcar);
+  if (g.mensagem) {
+    process.stderr.write(g.mensagem + '\n');
+    process.exit(2);
+  }
+}
+
+if ((process.env.MACUXI_GUARDA || '').toLowerCase() === 'off') process.exit(0);
 const { agente, origem } = agenteDaSessao({ argumento: process.argv[2], entrada });
 const comando = String(entrada.tool_input?.command || '');
 const evento = entrada.hook_event_name || 'PreToolUse';

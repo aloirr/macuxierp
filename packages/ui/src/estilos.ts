@@ -23,7 +23,7 @@ export const texto = (tamanho: TamanhoTexto, peso?: PesoTexto): CSSProperties =>
 export const tabular: CSSProperties = { fontVariantNumeric: 'tabular-nums' };
 export const numerico: CSSProperties = { ...tabular, textAlign: 'right' };
 /** Canto dos botões e do shell. */
-const canto = '6px';
+export const canto = '6px';
 
 /** Estado desabilitado único (MC-0014): esmaecido e sem cursor de ação. */
 export const desabilitadoEstilo = (desabilitado?: boolean): CSSProperties =>
@@ -44,6 +44,13 @@ export const botaoPrincipal = (desabilitado?: boolean): CSSProperties => ({
   background: cor('azulNoite'),
   color: cor('branco'),
   border: `1px solid ${cor('azulNoite')}`,
+});
+
+/** Botão destrutivo: confirmar irreversível em erro-texto. */
+export const botaoDestrutivo = (desabilitado?: boolean): CSSProperties => ({
+  ...botaoPrincipal(desabilitado),
+  background: cor('erroTexto'),
+  border: `1px solid ${cor('erroTexto')}`,
 });
 
 /** Botão secundário (MC-0008): branco, borda de campo, peso médio. */
@@ -117,9 +124,10 @@ export function gerarCssBotoes(): string {
     '/* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */\n' +
     regraCss('.mx-botao', botaoPrincipal()) +
     regraCss('.mx-botao-secundario', botaoSecundario()) +
+    regraCss('.mx-botao-destrutivo', botaoDestrutivo()) +
     regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
     regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
-    regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible', focoVisivel) +
+    regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible', focoVisivel) +
     regraCss('.mx-radio', radioBase) +
     regraCss('.mx-radio:checked', radioMarcado) +
     regraCss('.mx-radio:focus-visible', focoVisivel) +
@@ -127,7 +135,7 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-checkbox:checked', checkboxMarcado) +
     regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
-    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled', desabilitadoEstilo(true)) +
+    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled', desabilitadoEstilo(true)) +
     regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true))
   );
 }
@@ -171,3 +179,20 @@ export const tabela = {
   legenda: { ...texto('base', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
   vazio: { textAlign: 'center', color: cor('textoSecundario'), padding: espaco.xl } as CSSProperties,
 };
+
+/** Base do selo de situação (igual ao `.selo` do shell): 12 px, canto 10 px, sem quebra. */
+export const seloBase: CSSProperties = { ...texto('selo', 'rotulo-pequeno'), padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' };
+
+/** Mapa de cores de estado (T-0058). O laranja do sol não é cor de estado. */
+export const tons = {
+  sucesso: { color: cor('verdeSucesso'), background: cor('ativoFundo') },
+  aviso: { color: cor('avisoTexto'), background: cor('avisoFundo') },
+  erro: { color: cor('erroTexto'), background: cor('erroFundo') },
+  neutro: { color: cor('textoSecundario'), background: cor('inativoFundo') },
+} as const satisfies Record<string, { color: string; background: string }>;
+
+/** Faixa lateral de 4 px do tom (fundo + barra na cor do texto), usada por alertas e pendências bloqueantes. */
+export const faixaLateral = (tom: { color: string; background: string }): CSSProperties => ({
+  background: tom.background,
+  borderLeft: `4px solid ${tom.color}`,
+});

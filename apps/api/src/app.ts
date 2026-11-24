@@ -1,6 +1,10 @@
 /**
  * API do Macuxi ERP (Fastify, monólito modular; desenho T-0002, seção 2).
  * - `/v1/saude` (pública), `/v1/auth/*` (login, refresh rotativo em cookie httpOnly, sair, eu, troca da senha);
+ * - tela única de login (T-0076): `POST /v1/auth/login` com o código da empresa; o código reservado MACUXI desvia por
+ *   dentro para o login do superadmin (cookie do `/config`, com o `CABECALHO_CSRF_CONFIG`) e a resposta diz o `destino`; o 401 é o mesmo nos dois lados
+ *   e o limite por IP também. "Esqueci a senha": `POST /v1/auth/esqueci` (MACUXI = superadmin) e
+ *   `GET /v1/auth/esqueci/situacao` (`auth/esqueci.ts`);
  * - senha provisória (T-0052): com `deve_trocar_senha` no JWT, toda rota do tenant é 403 `TROCAR_SENHA`, menos
  *   `GET /v1/auth/eu`, `POST /v1/auth/sair` e `POST /v1/auth/senha` (`auth/troca-senha.ts`);
  * - cada módulo em `/v1/<modulo>`, montado pelas rotas declaradas no plugin (`definirPlugin` do SDK), com a ordem
@@ -15,9 +19,16 @@ import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import {
-  ArquivoRecebido,
   auditar,
   chaveDoPedido,
+  CABECALHO_CSRF_CONFIG,
+  CAMINHOS_ESQUECI_SENHA,
+  destinoDoCodigo,
+  LoginEntrada,
+  type LoginResposta,
+  PedirSenhaTemporariaEntrada,
+  SituacaoEsqueciResposta,
+  type DestinoLogin,
   corpoErroApi,
   criarEvento,
   ErroApi,
@@ -45,23 +56,26 @@ import {
   type RotaModulo,
   TAMANHO_MAXIMO_ARQUIVO,
   TAMANHO_MAXIMO_MULTIPART,
-  tamanhoMaximoTotal,
   transacaoComPrazo,
   type Transacao,
-  SenhaInformada,
-  type ArquivoEsperado,
-  type MultipartRota,
 } from '@macuxierp/platform-sdk';
+import type { RepositorioCore } from '@macuxierp/core/api';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
-import { z, ZodError } from 'zod';
+import { ZodError } from 'zod';
 import { lerTokenAcesso, type SessaoAcesso } from './auth/jwt';
 import type { RepositorioAuth } from './auth/portas';
-import { ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
+import { FALHA_LOGIN, ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
 import { opcoesCookieSessao } from './auth/apoio-login';
-import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, erroTrocarSenha } from './auth/troca-senha';
+import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from './auth/esqueci';
+import type { EnvioEmail } from './email/porta';
+import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, corpoTrocarSenha } from './auth/troca-senha';
 import { diagnosticoBanco } from './erro-banco';
 import { entradaDaChamada, responder } from './execucao-rota';
-import { montarPlataforma, type DependenciasPlataformaApi } from './plataforma/rotas';
+import { lerMultipart } from './multipart';
+import { ipDoCliente } from './plataforma/ip-cliente';
+import { EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci, type LimitesEsqueci } from './plataforma/limite-ip';
+import { montarPlataforma, responderLoginPlataforma, traduzido, type DependenciasPlataformaApi } from './plataforma/rotas';
+import type { ServicoPlataforma } from './plataforma/servico';
 
 export const COOKIE_REFRESH = 'macuxierp_refresh';
 const CAMINHO_COOKIE = '/v1/auth';
@@ -94,6 +108,13 @@ export interface DependenciasApp {
    * Ausente = o prefixo não é montado (404). Produção: `montarDependenciasProducao`.
    */
   plataforma?: DependenciasPlataformaApi;
+  /** Limite por IP das falhas do `POST /v1/auth/login` (tenant e MACUXI). Padrão: `LIMITE_LOGIN_IP_PADRAO` (ADR 0012 §6). */
+  limiteLogin?: LimitePorChave;
+  /**
+   * "Esqueci a senha" (T-0076): ausente = sem e-mail (`emailDisponivel(config.email)` falso). Ordem e regras: auth/esqueci.ts.
+   * `repoCore` grava a temporária do tenant (`emitirSenhaTemporaria` do core, RN-CORE-13); produção: o `RepositorioCoreSql` dos módulos.
+   */
+  esqueci?: { envio: EnvioEmail; limites?: LimitesEsqueci; repoCore: Pick<RepositorioCore, 'emitirSenhaTemporaria'> };
   /** Opções do pino; `false` desliga (testes). */
   logger?: boolean | Record<string, unknown>;
 }
@@ -107,7 +128,6 @@ export type LeitorAvisosA1 = (tx: Transacao, agora: Date) => Promise<readonly { 
 
 const semAvisosA1: LeitorAvisosA1 = async () => [];
 
-const Login = z.object({ empresa: z.string().min(1).max(60), email: z.string().email().max(254), senha: SenhaInformada });
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -156,12 +176,18 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     req.sessao = h?.startsWith('Bearer ') ? lerTokenAcesso(h.slice(7), d.auth.jwtSegredo, d.relogio.agora()) : null;
     // O log de "request completed" sai pelo reply.log: os dois recebem o tenant e o usuário.
     if (req.sessao) req.log = reply.log = req.log.child({ tenant_id: req.sessao.tenant_id, usuario_id: req.sessao.usuario_id });
-    if (bloqueiaPorTrocaDeSenha(req.method, req.routeOptions.url, req.sessao?.deve_trocar_senha === true)) throw erroTrocarSenha();
+    // 403 `SenhaATrocarResposta` com o motivo da sessão (e, na temporária, o fim dela), não o corpo genérico do ErroApi.
+    if (req.sessao && bloqueiaPorTrocaDeSenha(req.method, req.routeOptions.url, req.sessao.deve_trocar_senha === true)) {
+      return reply.status(403).send(corpoTrocarSenha(req.sessao));
+    }
   });
 
   app.setErrorHandler((recebido, req, reply) => {
     const erro = recebido instanceof ZodError ? erros.validacao(camposZod(recebido)) : recebido;
     if (erro instanceof ErroApi) {
+      // 429 com prazo (`MuitasTentativasResposta`, T-0076): `detalhes.retry_after_s` no corpo e também no Retry-After.
+      const espera = erro.status === 429 ? erro.detalhes?.retry_after_s : undefined;
+      if (typeof espera === 'number') reply.header('retry-after', String(espera));
       return reply.status(erro.status).send(corpoErroApi(erro));
     }
     const status = (erro as { statusCode?: number }).statusCode;
@@ -177,15 +203,68 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
 
   const porCookie = (reply: FastifyReply, r: ResultadoLogin) =>
     reply.setCookie(COOKIE_REFRESH, r.refresh, opcoesCookieSessao(CAMINHO_COOKIE, d.cookieSeguro, r.refresh_expira_em));
+  // 200 `LoginResposta` do destino 'bko' (login e refresh), também com a senha temporária ou a provisória (T-0076): a
+  // sessão abre com a troca obrigatória no token, e o 403 `TROCAR_SENHA` sai só nas outras rotas (o bloqueio do
+  // onRequest). `expira_em` é o do token de acesso.
   const respostaLogin = (reply: FastifyReply, r: ResultadoLogin) =>
-    porCookie(reply, r).header('cache-control', 'no-store').send({ token_acesso: r.token_acesso, expira_em: r.expira_em.toISOString() });
+    porCookie(reply, r)
+      .header('cache-control', 'no-store')
+      .send({ destino: 'bko', token_acesso: r.token_acesso, expira_em: r.expira_em.toISOString() } satisfies LoginResposta);
 
   app.get('/v1/saude', async (_req, reply) => {
     const banco = await d.banco.ping().catch(() => false);
     return reply.status(banco ? 200 : 503).send({ status: banco ? 'ok' : 'degradado', versao: d.versao, banco: banco ? 'ok' : 'fora' });
   });
 
-  app.post('/v1/auth/login', async (req, reply) => respostaLogin(reply, await servico.entrar(Login.parse(req.body))));
+  // Portal /config (ADR 0012): fora do /v1/<modulo>, sem ContextoRota de tenant e sem licença. Montado antes do login
+  // porque a tela única (MACUXI) usa o mesmo serviço do superadmin.
+  const esqueci: EsqueciMontado = { envio: d.esqueci?.envio ?? null, limites: d.esqueci?.limites ?? novosLimitesEsqueci() };
+  const plataforma = d.plataforma
+    ? montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro, ...(d.cronometro ? { cronometro: d.cronometro } : {}), esqueci })
+    : undefined;
+  const segredoBff = d.plataforma?.segredoBff ?? null;
+  const limiteLogin = d.limiteLogin ?? new LimitePorChave();
+
+  // Tela única (T-0076, ADR 0018): limite por IP → corpo → `destinoDoCodigo`: 'config' (MACUXI) = superadmin (cookie do
+  // /config) ou 'bko' = tenant pelo código da empresa. O 'config' exige o `CABECALHO_CSRF_CONFIG` como o /config/entrar;
+  // sem ele, o mesmo 401 neutro (ADR 0018 §6), com o custo de argon2 de uma conferência e sem tocar o banco. O 401 do
+  // superadmin sai com o mesmo corpo do tenant. O limite por IP conta as falhas (401) dos dois lados juntos e,
+  // estourado, recusa os dois antes de qualquer consulta.
+  app.post('/v1/auth/login', async (req, reply) => {
+    const ip = ipDoCliente(req, segredoBff);
+    const agoraMs = d.relogio.agora().getTime();
+    const limite = limiteLogin.excedido(ip, agoraMs);
+    if (!limite.permitido) throw erroMuitasTentativas(limite.retry_after_s);
+    const entrada = LoginEntrada.parse(req.body);
+    try {
+      if (destinoDoCodigo(entrada.empresa) === 'bko') return respostaLogin(reply, await servico.entrar(entrada));
+      return await entrarComoSuperadmin(reply, plataforma, entrada, { cookieSeguro: d.cookieSeguro, csrf: req.headers[CABECALHO_CSRF_CONFIG] === '1' });
+    } catch (e) {
+      if (e instanceof ErroApi && e.status === 401) limiteLogin.registrar(ip, agoraMs);
+      throw e;
+    }
+  });
+
+  app.get(CAMINHOS_ESQUECI_SENHA.situacao, async (_req, reply) =>
+    reply.header('cache-control', 'no-store').send({ esqueci_disponivel: esqueci.envio !== null } satisfies SituacaoEsqueciResposta),
+  );
+
+  // Ordem e regras: auth/esqueci.ts.
+  const apos = envioAposResposta(esqueci.envio);
+  app.post(CAMINHOS_ESQUECI_SENHA.tenant, apos.opcoes, async (req, reply) => {
+    const agoraMs = d.relogio.agora().getTime();
+    limitarEsqueciPorIp(esqueci.limites, ipDoCliente(req, segredoBff), agoraMs);
+    const { empresa, email } = PedirSenhaTemporariaEntrada.parse(req.body);
+    const doSuperadmin = destinoDoCodigo(empresa) === 'config';
+    limitarEsqueciPorConta(esqueci.limites, doSuperadmin ? EMPRESA_PLATAFORMA : empresa, email, agoraMs);
+    if (!d.esqueci) return apos.responder(req, reply, await servico.esqueciSemEnvio());
+    if (doSuperadmin) return apos.responder(req, reply, plataforma ? await traduzido(() => plataforma.esqueci(email)) : null);
+    const mensagem = await servico.esqueci({ empresa, email }, d.esqueci.repoCore, async (tx, conta) => {
+      const ctx = { ...conta, request_id: req.id };
+      await auditar(d.auditoria, tx, ctx, { acao: 'core.usuario.senha_esquecida', entidade: 'usuario', entidade_id: conta.usuario_id }, d.relogio.agora());
+    });
+    return apos.responder(req, reply, mensagem);
+  });
 
   app.post('/v1/auth/refresh', async (req, reply) => respostaLogin(reply, await servico.renovar(req.cookies[COOKIE_REFRESH])));
 
@@ -225,7 +304,13 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
         // A saída passa pelo contrato: campo a mais (e-mail, tenant_id) não vaza, e dado fora dele é 500 (erro nosso),
         // nunca o 400 VALIDACAO do ZodError, que é do corpo do pedido.
         const eu = EuResposta.safeParse({
-          usuario: { id: usuario.id, nome: usuario.nome, perfil: usuario.perfil, deve_trocar_senha: usuario.deve_trocar_senha },
+          usuario: {
+            id: usuario.id,
+            nome: usuario.nome,
+            perfil: usuario.perfil,
+            deve_trocar_senha: usuario.deve_trocar_senha,
+            ...(usuario.deve_trocar_senha && req.sessao?.motivo_troca ? { motivo_troca: req.sessao.motivo_troca } : {}),
+          },
           empresa: { id: tenant.id, slug: tenant.slug, razao_social: tenant.razao_social, fuso: tenant.fuso },
           filiais,
           modulos: d.modulos.filter((m) => ativos.has(m.manifesto.id)).map((m) => ({ id: m.manifesto.id, menus: [...(m.manifesto.web?.menus ?? [])] })),
@@ -237,10 +322,32 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     });
   });
 
-  // Portal /config (ADR 0012): fora do /v1/<modulo>, sem ContextoRota de tenant e sem licença.
-  if (d.plataforma) montarPlataforma(app, d.plataforma, { auth: d.auth, relogio: d.relogio, cookieSeguro: d.cookieSeguro });
   for (const plugin of d.modulos) montarModulo(app, plugin, d);
   return app;
+}
+
+/**
+ * MACUXI na tela única (T-0076, ADR 0018): o login do superadmin com o cookie do `/config` e 200 `LoginResposta` do
+ * destino 'config' (`{ destino, expira_em }`, sem token no corpo), também com a senha temporária. Sem o
+ * `CABECALHO_CSRF_CONFIG` (`csrf` falso), o 401 neutro com o custo de uma conferência, antes do banco. O 401 sai com o
+ * mesmo corpo do tenant (`FALHA_LOGIN`), para a tela não revelar o lado.
+ */
+async function entrarComoSuperadmin(
+  reply: FastifyReply,
+  plataforma: ServicoPlataforma | undefined,
+  entrada: { email: string; senha: string },
+  o: { cookieSeguro: boolean; csrf: boolean },
+) {
+  try {
+    if (!plataforma) throw erros.naoAutenticado(FALHA_LOGIN);
+    if (!o.csrf) return await plataforma.recusarComCustoIgual(entrada.senha);
+    const r = await traduzido(() => plataforma.entrar(entrada.email.trim().toLowerCase(), entrada.senha));
+    reply.log = reply.request.log = reply.request.log.child({ superadmin_id: r.superadmin_id });
+    return responderLoginPlataforma(reply, r, o.cookieSeguro, { destino: 'config' satisfies DestinoLogin });
+  } catch (e) {
+    if (e instanceof ErroApi && e.status === 401) throw erros.naoAutenticado(FALHA_LOGIN);
+    throw e;
+  }
 }
 
 function montarModulo(app: FastifyInstance, plugin: PluginModulo, d: DependenciasApp): void {
@@ -331,59 +438,3 @@ function licencasComFuso(d: DependenciasApp): FonteLicencas & { fuso(tx: Transac
   };
 }
 
-/**
- * Lê o `multipart/form-data` da rota: campos de texto (validados depois pelo `corpo` da rota) e os arquivos declarados,
- * cada um com o próprio limite (413 `ARQUIVO_GRANDE`), a quantidade do campo e o total da rota (413 `ARQUIVO_GRANDE`
- * em `_`). Campo de texto repetido, arquivo não declarado ou acima da quantidade é 400 `VALIDACAO`. Limite da rota igual
- * ao teto global: o `@fastify/multipart` corta antes e o 413 dele vira `ARQUIVO_GRANDE` do campo.
- */
-async function lerMultipart(req: FastifyRequest, m: MultipartRota) {
-  if (!req.isMultipart()) throw erros.validacao({ _: 'envie multipart/form-data' });
-  const porCampo = new Map(m.arquivos.map((a) => [a.campo, a]));
-  const corpo: Record<string, unknown> = {};
-  const todosArquivos: Record<string, ArquivoRecebido[]> = {};
-  let lendo: ArquivoEsperado | undefined;
-  try {
-    await lerPartes(req, { porCampo, total: tamanhoMaximoTotal(m) }, corpo, todosArquivos, (a) => (lendo = a));
-  } catch (e) {
-    if (lendo && (e as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE') throw erros.arquivoGrande(lendo.campo, lendo.tamanhoMaximo);
-    throw e;
-  }
-  const faltando = m.arquivos.filter((a) => a.obrigatorio !== false && !todosArquivos[a.campo]);
-  if (faltando.length) throw erros.validacao(Object.fromEntries(faltando.map((a) => [a.campo, 'arquivo obrigatório'])));
-  return { corpo, todosArquivos };
-}
-
-async function lerPartes(
-  req: FastifyRequest,
-  limites: { porCampo: ReadonlyMap<string, ArquivoEsperado>; total: number },
-  corpo: Record<string, unknown>,
-  arquivos: Record<string, ArquivoRecebido[]>,
-  lendo: (a: ArquivoEsperado) => void,
-) {
-  let totalLote = 0;
-  for await (const parte of req.parts()) {
-    if (parte.type === 'field') {
-      if (parte.fieldname in corpo || limites.porCampo.has(parte.fieldname)) throw erros.validacao({ [parte.fieldname]: 'campo repetido ou no lugar de arquivo' });
-      corpo[parte.fieldname] = parte.value;
-      continue;
-    }
-    const esperado = limites.porCampo.get(parte.fieldname);
-    const ja = arquivos[parte.fieldname] ?? [];
-    if (!esperado || parte.fieldname in corpo) throw erros.validacao({ [parte.fieldname]: 'arquivo não esperado' });
-    const maximo = esperado.quantidadeMaxima ?? 1;
-    if (ja.length >= maximo) throw erros.validacao({ [parte.fieldname]: maximo === 1 ? 'arquivo repetido' : `no máximo ${maximo} arquivos` });
-    lendo(esperado);
-    const pedacos: Buffer[] = [];
-    let total = 0;
-    for await (const p of parte.file as AsyncIterable<Buffer>) {
-      total += p.length;
-      totalLote += p.length;
-      if (total > esperado.tamanhoMaximo) throw erros.arquivoGrande(esperado.campo, esperado.tamanhoMaximo);
-      if (totalLote > limites.total) throw erros.arquivoGrande('_', limites.total);
-      pedacos.push(p);
-    }
-    if (total === 0) throw erros.validacao({ [esperado.campo]: 'arquivo vazio' });
-    arquivos[esperado.campo] = [...ja, new ArquivoRecebido(esperado.campo, parte.filename, parte.mimetype, Buffer.concat(pedacos))];
-  }
-}

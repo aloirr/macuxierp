@@ -7,13 +7,16 @@
 #   bash ~/macuxierp-deploy/operador.sh criar-empresa --codigo <código do FDV> | --uf <UF> --nome "<nome da empresa>" \
 #        --admin-email "<e-mail do administrador>" [--admin-nome "<nome>"] --operador <seu nome> [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "<e-mail>" [--nome "<nome>"] --operador <seu nome> [--confirmar]
-#   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar \
+#   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar|--redefinir-senha \
 #        --operador <seu nome> [--confirmar]
+#   bash ~/macuxierp-deploy/operador.sh a1-teste --empresa <código, ex.: AM2808> [--filial <id da filial emissora>] \
+#        --operador <seu nome> [--substituir] [--confirmar]
 #
-# Comum aos três:
+# Comum a todos:
 #   - sem --confirmar: só mostra o plano (transação READ ONLY no banco); nada muda e nenhuma senha é gerada;
 #   - com --confirmar: aplica numa transação única e auditada. IDEMPOTENTE: repetir não duplica nada, NÃO troca a senha
-#     de quem já existe e não audita de novo o que já estava no estado pedido;
+#     de quem já existe e não audita de novo o que já estava no estado pedido (a exceção é o --redefinir-senha, que
+#     existe para trocar a senha: cada execução confirmada grava uma senha nova e audita de novo);
 #   - nome da empresa, e-mails e nomes de pessoa vão ao contêiner só pelo ambiente (-e NOME, sem valor no argv) e nunca
 #     aparecem no argv, na saída, nos erros nem na auditoria (que guarda código, ids e números).
 #
@@ -26,13 +29,23 @@
 #   --slug (legado) saiu na fase 2 da T-0053: agora dá erro de uso (saída 2).
 # criar-superadmin (ADR 0012 §5): o superadmin do portal /config, com deve_trocar_senha (troca no 1º acesso), auditado
 #   no tenant de referência (plataforma.superadmin.criar). --nome é opcional (padrão "Superadmin"; 2 a 80 caracteres).
-# superadmin (ADR 0012 §5): --desativar (revoga as sessões abertas do portal), --reativar ou --destravar (zera as falhas
-#   e a trava da §6); uma ação por vez, auditada (plataforma.superadmin.<ação>). Nunca gera nem troca senha.
-#   Os dois rodam o superadmin.mjs.
+# superadmin (ADR 0012 §5): --desativar (revoga as sessões abertas do portal), --reativar, --destravar (zera as falhas
+#   e a trava da §6) ou --redefinir-senha (T-0077: senha provisória nova com troca no 1º acesso, zera falhas e trava e
+#   revoga as sessões abertas; superadmin desativado é recusado, reative antes); uma ação por vez, auditada
+#   (plataforma.superadmin.<ação>). Os dois rodam o superadmin.mjs.
+# a1-teste (T-0080, ADR 0008): gera o A1 AUTOASSINADO de teste com o CNPJ e a razão social da filial emissora e o grava
+#   cifrado como o certificado ativo dela (origem 'teste'), auditado (core.certificado.teste_gerado). SÓ HOMOLOGAÇÃO, com
+#   o SIMULADOR da SEFAZ (a SEFAZ real recusa o autoassinado): filial em produção fiscal é recusada na mesma transação
+#   (o banco repete a trava). Sem --filial, vale a única filial emissora ativa. A filial com o A1 do cliente ainda válido
+#   só troca com --substituir; a que já tem A1 de teste fora do alerta de vencimento não ganha outro. Roda no contêiner
+#   `api` já de pé (docker compose exec; a chave do A1 só existe lá), pela entrada dist/a1-teste.mjs da imagem. Nenhuma
+#   senha, PFX ou CNPJ aparece: a saída leva só ids, estados e datas.
 #
-# Senha provisória (criar-empresa e criar-superadmin): 16 caracteres do alfabeto da API, com letra, número e caractere
-# especial por construção (regra única de senha, T-0052), gerada AQUI a partir do /dev/urandom, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a pessoa foi criada
-# agora. Entregue-a por um canal seguro (nunca em recado, chat ou e-mail aberto).
+# Senha provisória (criar-empresa, criar-superadmin e superadmin --redefinir-senha): 16 caracteres do alfabeto da API,
+# com letra, número e caractere especial por construção (regra única de senha, T-0052), gerada AQUI a partir do
+# /dev/urandom só com --confirmar, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a
+# pessoa foi criada ou a senha redefinida agora; em falha, é descartada sem aparecer. Entregue-a por um canal seguro
+# (nunca em recado, chat ou e-mail aberto).
 #
 # O script do contêiner vai pelo stdin. Saída 0 = ok; 2 = uso; 1 = falha (nada gravado).
 set -euo pipefail
@@ -109,9 +122,9 @@ texto() {
   [[ "$2" != *[[:cntrl:]]* ]] || uso "$1: sem quebra de linha nem caractere de controle"
 }
 
-# Pasta da VM e os arquivos de interpolação do compose; o script do contêiner tem de estar ao lado.
+# Pasta da VM e os arquivos de interpolação do compose; o script do contêiner (se houver) tem de estar ao lado.
 preparar() {
-  [ -s "$ORIGEM/$1" ] || erro 2 "$ORIGEM/$1 ausente (o producao-publicar copia scripts/deploy/producao/*)"
+  [ -z "${1:-}" ] || [ -s "$ORIGEM/$1" ] || erro 2 "$ORIGEM/$1 ausente (o producao-publicar copia scripts/deploy/producao/*)"
   PASTA="${MACUXIERP_DIR:-/opt/macuxierp}"
   cd "$PASTA" || erro 2 "pasta $PASTA ausente"
   for f in .env gerados.env banco.env admin.env imagens.env; do
@@ -120,16 +133,33 @@ preparar() {
 }
 
 # contêiner <script.mjs> <args...>: roda o script no `psql` com as variáveis de ENVS (já exportadas no subshell de quem
-# chama) repassadas só pelo nome (-e NOME). Deixa a saída em SAIDA e o código em STATUS e a imprime.
+# chama) repassadas só pelo nome (-e NOME), pelo executar.
 conteiner() {
   local script="$1"
   shift
+  executar dc --profile ferramentas run --rm --no-deps -T "${ENVS[@]}" psql node --input-type=module - "$@" < "$ORIGEM/$script"
+}
+
+# executar <comando...>: roda o comando, deixa a saída em SAIDA, o código em STATUS e a última linha (a de estado) em
+# ESTADO, e imprime a saída.
+executar() {
   set +e
-  SAIDA="$(dc --profile ferramentas run --rm --no-deps -T "${ENVS[@]}" psql node --input-type=module - "$@" < "$ORIGEM/$script")"
+  SAIDA="$("$@")"
   STATUS=$?
   set -e
   if [ -n "$SAIDA" ]; then printf '%s\n' "$SAIDA"; fi
   ESTADO="$(printf '%s\n' "$SAIDA" | tail -n 1)"
+}
+
+# Linha `estado: simulacao`, comum a todos os comandos: só vale sem --confirmar (CONFIRMAR e SENHA são do comando que chama).
+simulacao() {
+  [ "$CONFIRMAR" = 0 ] || erro 1 "estado de simulação com --confirmar${SENHA:+; a senha gerada foi descartada}. Rode sem --confirmar para conferir antes de repetir"
+  echo "[operador] SIMULAÇÃO: nada gravado. Repita com --confirmar para aplicar."
+}
+
+# Estado de quem gravou (criado, alterado, gerado, sem mudança): só vale com --confirmar (CONFIRMAR é do comando que chama).
+confirmado() {
+  [ "$CONFIRMAR" = 1 ] || erro 1 "estado inesperado numa simulação"
 }
 
 criar_empresa() {
@@ -185,11 +215,11 @@ criar_empresa() {
   fi
   case "$ESTADO" in
     'estado: usuario-criado')
-      [ "$CONFIRMAR" = 1 ] || erro 1 "estado inesperado numa simulação"
+      confirmado
       printf '\nSenha provisória do administrador (aparece só agora; entregue por canal seguro):\n  %s\n' "$SENHA"
       ;;
     'estado: usuario-existia') echo "[operador] o administrador já existia: a senha dele NÃO foi alterada (nenhuma senha nova)." ;;
-    'estado: simulacao') echo "[operador] SIMULAÇÃO: nada gravado. Repita com --confirmar para aplicar." ;;
+    'estado: simulacao') simulacao ;;
     *) erro 1 "resposta do contêiner sem a linha de estado; confira com o licenca.mjs listar antes de repetir" ;;
   esac
 }
@@ -202,9 +232,9 @@ superadmin() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --confirmar) CONFIRMAR=1; shift; continue ;;
-      --desativar | --reativar | --destravar)
+      --desativar | --reativar | --destravar | --redefinir-senha)
         [ "$COMANDO" = superadmin ] || uso "$1 só no comando superadmin"
-        [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar ou --destravar"
+        [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar, --destravar ou --redefinir-senha"
         ACAO="${1#--}"; shift; continue ;;
       --nome) [ "$COMANDO" = criar-superadmin ] || uso "--nome só no criar-superadmin"; [ $# -ge 2 ] || uso "$1 exige um valor" ;;
       --email | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
@@ -217,7 +247,7 @@ superadmin() {
     esac
     shift 2
   done
-  [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar ou --destravar"
+  [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar, --destravar ou --redefinir-senha"
   [[ "$EMAIL" =~ $PADRAO_EMAIL ]] && [ "${#EMAIL}" -le 254 ] || uso "--email fora do formato"
   [ "$ACAO" != criar ] || texto --nome "$NOME" 2 80
   [[ "$OPERADOR" =~ $PADRAO_OPERADOR ]] || uso "--operador exige o nome de quem executa (ex.: alexandre)"
@@ -232,7 +262,7 @@ superadmin() {
   fi
   if [ "$CONFIRMAR" = 1 ]; then
     ARGS+=(--confirmar)
-    if [ "$ACAO" = criar ]; then
+    if [ "$ACAO" = criar ] || [ "$ACAO" = redefinir-senha ]; then
       SENHA="$(gerar_senha)" || erro 1 "não foi possível gerar a senha provisória (nada foi gravado)"
       export MACUXIERP_SENHA_INICIAL="$SENHA"
       ENVS+=(-e MACUXIERP_SENHA_INICIAL)
@@ -242,17 +272,64 @@ superadmin() {
   if [ "$STATUS" -ne 0 ]; then
     erro 1 "$COMANDO falhou (código $STATUS; veja a linha [superadmin] acima). Nada foi gravado${SENHA:+; a senha gerada foi descartada}"
   fi
-  local TIPO=alteracao
-  [ "$ACAO" != criar ] || TIPO=criacao
+  # TIPO separa as ações que mostram senha (criar, redefinir-senha) das demais; ROTULO é o título da senha mostrada.
+  local TIPO=alteracao ROTULO=''
+  case "$ACAO" in
+    criar) TIPO=criacao ROTULO='Senha provisória' ;;
+    redefinir-senha) TIPO=redefinicao ROTULO='Nova senha provisória' ;;
+  esac
   case "$TIPO:$ESTADO" in
-    'criacao:estado: superadmin-criado')
-      [ "$CONFIRMAR" = 1 ] || erro 1 "estado inesperado numa simulação"
-      printf '\nSenha provisória do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$SENHA"
+    'criacao:estado: superadmin-criado' | 'redefinicao:estado: alterado')
+      confirmado
+      printf '\n%s do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$ROTULO" "$SENHA"
       ;;
     'criacao:estado: superadmin-existia') echo "[operador] o superadmin já existia: a senha dele NÃO foi alterada (nenhuma senha nova)." ;;
-    *':estado: simulacao') echo "[operador] SIMULAÇÃO: nada gravado. Repita com --confirmar para aplicar." ;;
+    *':estado: simulacao') simulacao ;;
     'alteracao:estado: alterado') echo "[operador] superadmin --$ACAO aplicado e auditado." ;;
     'alteracao:estado: sem-mudanca') echo "[operador] nada a fazer: o superadmin já estava no estado pedido (nada auditado)." ;;
+    *) erro 1 "resposta do contêiner sem a linha de estado esperada; rode sem --confirmar para conferir antes de repetir" ;;
+  esac
+}
+
+# a1-teste <opções>: roda a entrada dist/a1-teste.mjs no contêiner api já de pé (T-0080). Nada sensível vai ao contêiner:
+# o argv leva só código, id da filial, operador e as opções; a chave do A1 e o papel do banco já estão lá.
+a1_teste() {
+  local EMPRESA='' FILIAL='' OPERADOR='' CONFIRMAR=0 SUBSTITUIR=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --confirmar) CONFIRMAR=1; shift; continue ;;
+      --substituir) SUBSTITUIR=1; shift; continue ;;
+      --empresa | --filial | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
+      *) uso "opção desconhecida: $1" ;;
+    esac
+    case "$1" in
+      --empresa) EMPRESA="$2" ;;
+      --filial) FILIAL="$2" ;;
+      --operador) OPERADOR="$2" ;;
+    esac
+    shift 2
+  done
+  # formato aqui; a UF da lista oficial e o resto (empresa ativa, filial emissora, homologação) a entrada confere
+  [[ "$EMPRESA" =~ ^[A-Za-z]{2}[0-9]{4}$ ]] || uso "--empresa: código da empresa, UF + 4 dígitos, ex.: AM2808"
+  [ -z "$FILIAL" ] || [[ "$FILIAL" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || uso "--filial: id (UUID) da filial emissora"
+  [[ "$OPERADOR" =~ $PADRAO_OPERADOR ]] || uso "--operador exige o nome de quem executa (ex.: alexandre)"
+  preparar
+
+  local ARGS=(--empresa "$EMPRESA" --operador "$OPERADOR")
+  if [ -n "$FILIAL" ]; then ARGS+=(--filial "$FILIAL"); fi
+  if [ "$SUBSTITUIR" = 1 ]; then ARGS+=(--substituir); fi
+  if [ "$CONFIRMAR" = 1 ]; then ARGS+=(--confirmar); fi
+  executar dc exec -T api node dist/a1-teste.mjs "${ARGS[@]}"
+  if [ "$STATUS" -ne 0 ]; then
+    erro 1 "a1-teste falhou (código $STATUS; veja a linha [a1-teste] acima). Nada foi gravado"
+  fi
+  case "$ESTADO" in
+    'estado: gerado')
+      confirmado
+      echo "[operador] Lembre: a SEFAZ real recusa este A1."
+      ;;
+    'estado: sem-mudanca') confirmado ;;
+    'estado: simulacao') simulacao ;;
     *) erro 1 "resposta do contêiner sem a linha de estado esperada; rode sem --confirmar para conferir antes de repetir" ;;
   esac
 }
@@ -261,5 +338,6 @@ ENVS=() SAIDA='' STATUS=0 ESTADO='' PASTA=''
 case "${1:-}" in
   criar-empresa) shift; ( criar_empresa "$@" ) ;;
   criar-superadmin | superadmin) ( superadmin "$@" ) ;;
-  *) uso "comando desconhecido: ${1:-(nenhum)} (criar-empresa, criar-superadmin ou superadmin)" ;;
+  a1-teste) shift; ( a1_teste "$@" ) ;;
+  *) uso "comando desconhecido: ${1:-(nenhum)} (criar-empresa, criar-superadmin, superadmin ou a1-teste)" ;;
 esac

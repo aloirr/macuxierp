@@ -4,7 +4,7 @@
  * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import { ErroApi, type Transacao } from '@macuxierp/platform-sdk';
+import { ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
@@ -88,6 +88,20 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     const e = await chamar('POST', '/empresas', { corpo: { slug: 'portal-core-a', nome: 'Outra' } }).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(ErroApi);
     expect((e as ErroApi).status).toBe(409);
+  });
+
+  it('RN-CORE-11: o código reservado macuxi (0049) vira a mensagem fixa no campo codigo', async (ctx) => {
+    const { rows } = await b.admin.query("SELECT 1 FROM pg_constraint WHERE conname = 'tenant_slug_macuxi_reservado'");
+    if (rows.length === 0) return ctx.skip(); // a 0049 ainda não está no banco de teste (PR #485)
+    // O contrato (Zod) já barra o slug na entrada; aqui vai direto ao repositório, a defesa em profundidade do banco (23514 + DETAIL).
+    const repo = new RepositorioPlataformaSql();
+    for (const slug of ['macuxi', 'MACUXI', ' Macuxi ']) {
+      const e = await comPlataforma((tx) => repo.criarEmpresa(tx, { slug, uf: null, nome: 'Empresa Reservada', fuso: 'America/Manaus', request_id: randomUUID() })).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(ErroApi);
+      expect(e).toMatchObject({ status: 422, codigo: 'RN-CORE-11', message: MENSAGEM_CODIGO_RESERVADO, campos: { codigo: MENSAGEM_CODIGO_RESERVADO } });
+    }
+    const livre = await comPlataforma((tx) => repo.criarEmpresa(tx, { slug: 'macuxi2', uf: null, nome: 'Empresa Livre', fuso: 'America/Manaus', request_id: randomUUID() }));
+    expect(livre).toMatchObject({ slug: 'macuxi2' });
   });
 
   it('RN-CORE-11: cria a empresa pelo código do FDV (0037)', async () => {

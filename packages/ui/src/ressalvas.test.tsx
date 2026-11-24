@@ -18,7 +18,7 @@ describe('MC-0011: foco visível', () => {
   it('gerarCssBotoes inclui :focus-visible com azul-noite, do objeto focoVisivel', () => {
     expect(focoVisivel.outline).toBe('2px solid var(--mx-cor-azul-noite)');
     const css = gerarCssBotoes();
-    expect(css).toContain('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible {');
+    expect(css).toContain('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible {');
     expect(css).toContain('outline: 2px solid var(--mx-cor-azul-noite);');
     expect(css).toContain('outline-offset: 2px;');
   });

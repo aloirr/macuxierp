@@ -15,12 +15,13 @@ import { moduloLicenciado, MODULOS_BASE, type Licenca } from './acesso';
 import { PADRAO_UUID } from './banco';
 import { PADRAO_CNPJ, PADRAO_UF, UFS } from './documentos';
 import { violacao, type Violacao } from './erros';
-import { TrocarSenhaEntrada } from './eu';
+import { MOTIVOS_TROCA_SENHA, TrocarSenhaEntrada } from './eu';
 import { MODULOS, type ModuloId } from './modulo';
 import { SenhaInformada } from './senha';
 
 const Id = z.string().regex(PADRAO_UUID);
-const Instante = z.string().datetime();
+/** Instante ISO 8601 UTC (como sai do `toISOString`). */
+export const Instante = z.string().datetime();
 /** E-mail de usuário (superadmin e usuário do tenant): sem espaços nas pontas, minúsculo, até 254 (RFC 5321). */
 export const EmailUsuario = z
   .string()
@@ -46,7 +47,19 @@ export const CABECALHO_IP_CLIENTE = 'x-macuxierp-ip-cliente';
 
 /** CHECK de `plataforma.tenant.slug` (0002). `referencia` é o slug do tenant das tabelas oficiais: nunca se cria. */
 export const PADRAO_SLUG_EMPRESA = /^[a-z0-9][a-z0-9-]{1,39}$/;
-const SLUGS_RESERVADOS = ['referencia', 'config', 'plataforma'] as const;
+/**
+ * Código reservado do superadmin no campo "empresa" do login e do "esqueci" (T-0076): fonte única. Sem diferenciar
+ * maiúsculas; nunca vira empresa (está em `SLUGS_RESERVADOS`, em minúsculas).
+ */
+export const CODIGO_SUPERADMIN_LOGIN = 'MACUXI';
+/**
+ * Slugs que a criação de empresa recusa. Espelho no banco: 0033 e 0037 (`referencia`, `config`, `plataforma`) e o CHECK
+ * do código reservado (`macuxi`, T-0076: 23514 com DETAIL `DETALHE_CODIGO_RESERVADO`); mudou aqui, muda lá (migração nova).
+ */
+export const SLUGS_RESERVADOS: readonly string[] = Object.freeze(['referencia', 'config', 'plataforma', CODIGO_SUPERADMIN_LOGIN.toLowerCase()]);
+/** DETAIL do 23514 do CHECK do código reservado: a API repassa em `detalhes.codigo`, com `MENSAGEM_CODIGO_RESERVADO`. */
+export const DETALHE_CODIGO_RESERVADO = 'codigo_reservado_superadmin';
+export const MENSAGEM_CODIGO_RESERVADO = `O código ${CODIGO_SUPERADMIN_LOGIN} é reservado e não pode ser usado por uma empresa.`;
 
 /**
  * Código da empresa (RN-CORE-11, T-0053): o MESMO código da licença do Macuxi FDV, UF + 4 dígitos (ex.: AM2808). Único
@@ -146,7 +159,7 @@ export const CriarEmpresaEntrada = z
     slug: z
       .string()
       .regex(PADRAO_SLUG_EMPRESA, 'Use de 2 a 40 letras minúsculas, dígitos ou hífen, começando por letra ou dígito')
-      .refine((s) => !(SLUGS_RESERVADOS as readonly string[]).includes(s), 'Slug reservado')
+      .refine((s) => !SLUGS_RESERVADOS.includes(s), 'Slug reservado')
       .nullish(),
     /** `null` = ausente (a saída manda `uf: null`, e o apps reenvia a saída à API). */
     uf: z.enum(UFS).nullish(),
@@ -211,6 +224,11 @@ export const SituacaoEmpresaEntrada = z.object({
 });
 export type SituacaoEmpresaEntrada = z.infer<typeof SituacaoEmpresaEntrada>;
 
+/**
+ * Corpo do `POST /v1/plataforma/auth/entrar` (o `/config/entrar`).
+ * @deprecated Login único (RN-CORE-12, ADR 0018): use `LoginEntrada` com `empresa` = `CODIGO_SUPERADMIN_LOGIN` em
+ * `POST /v1/auth/login`. Fica até a rota antiga sair.
+ */
 export const EntrarPlataformaEntrada = z.object({ email: EmailUsuario, senha: SenhaInformada });
 export type EntrarPlataformaEntrada = z.infer<typeof EntrarPlataformaEntrada>;
 
@@ -225,10 +243,14 @@ export type TrocarSenhaPlataformaEntrada = TrocarSenhaEntrada;
 export const SessaoPlataformaResposta = z.object({ expira_em: Instante });
 export type SessaoPlataformaResposta = z.infer<typeof SessaoPlataformaResposta>;
 
-/** `GET /v1/plataforma/auth/eu`. `deve_trocar_senha`: a senha provisória do operador.sh ainda não foi trocada. */
+/**
+ * `GET /v1/plataforma/auth/eu`. `deve_trocar_senha`: a senha provisória do operador.sh (ou a temporária do "esqueci")
+ * ainda não foi trocada; `motivo_troca` (opcional, T-0076): qual das duas (`MOTIVOS_TROCA_SENHA`).
+ */
 export const EuPlataforma = z.object({
   superadmin: z.object({ id: Id, nome: z.string().min(1) }),
   deve_trocar_senha: z.boolean(),
+  motivo_troca: z.enum(MOTIVOS_TROCA_SENHA).optional(),
   sessao_expira_em: Instante,
 });
 export type EuPlataforma = z.infer<typeof EuPlataforma>;

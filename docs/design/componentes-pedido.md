@@ -20,7 +20,7 @@ Espaçamentos: a marca ainda não tem tokens de espaço; os componentes usam mú
 Sem rótulo de severidade visível (T-0056): o texto diz o problema e a ação; o leitor de tela ouve "Erro:" ou "Aviso:". 'bloqueante' só para falha que o usuário resolve na tela.
 
 ## DialogoMotivo
-`titulo`, `motivos?: { codigo, rotulo }[]` (se houver, escolher um é obrigatório), `textoObrigatorio?` (padrão opcional), `rotuloTexto?`, `rotuloConfirmar?`, `rotuloFechar?` (texto do botão que chama `aoCancelar`; padrão "Cancelar", ex.: "Manter a nota"), `destrutivo?` (só sinal: `data-destrutivo="true"` no botão de confirmar; nenhuma cor muda, o vermelho fica para a próxima versão), `aviso?: string | null` (texto fixo do módulo, ex.: `avisoDoMotivo(origem, codigo)`; sem aviso nada aparece e não há `aria-describedby`), `validar?(r) => string | null` (regra do módulo, roda depois da checagem básica de escolha e texto), `aoConfirmar(r: { motivo?, texto })`, `aoCancelar()`. Renderize só quando aberto. `role="dialog"`, `aria-modal`, foco preso, Esc e clique no fundo cancelam, foco volta ao elemento anterior. Erro de campo conforme MC-0015 (abaixo).
+`titulo`, `motivos?: { codigo, rotulo }[]` (se houver, escolher um é obrigatório), `textoObrigatorio?` (padrão opcional), `rotuloTexto?`, `rotuloConfirmar?`, `rotuloFechar?` (texto do botão que chama `aoCancelar`; padrão "Cancelar", ex.: "Manter a nota"), `destrutivo?` (confirmar em vermelho, `data-destrutivo="true"`; no rodapé do `Dialogo`, classe `.mx-botao-destrutivo`), `aviso?: string | null` (texto fixo do módulo, ex.: `avisoDoMotivo(origem, codigo)`; sem aviso nada aparece e não há `aria-describedby`), `validar?(r) => string | null` (regra do módulo, roda depois da checagem básica de escolha e texto), `aoConfirmar(r: { motivo?, texto })`, `aoCancelar()`. Renderize só quando aberto. `role="dialog"`, `aria-modal`, foco preso, Esc e clique no fundo cancelam, foco volta ao elemento anterior. Erro de campo conforme MC-0015 (abaixo).
 
 ## FormularioItens<T extends ItemLinha>
 `itens: T[]` (mínimo `{ chave, produtoId, quantidade, precoUnitarioCentavos, descontoCentavos }`; o módulo pode estender), `aoMudar(itens)`, `novoItem(chave) => T` (linha vazia no formato do módulo), `renderSeletorProduto({ valor, aoEscolher, rotulo }) => ReactNode` (injetado), `formatarCentavos(c) => string`, `calcularTotal(item) => centavos` (**obrigatória**: a função do domínio do pedido; a API revalida), `desabilitado?`, `legenda?` (`<caption>` da tabela, ex.: "Itens do pedido"), `erros?: Record<chave, string | ErrosItem>`.
@@ -80,3 +80,10 @@ Proposta, à espera da decisão do PO (tira uma ação da lista de pedidos a fat
 Paginação: "Próxima página" (com a página na URL) nas listas de negócio grandes; "Carregar mais" (TabelaDensa + acumularPagina) só nas listas curtas do portal /config. (RD-0974)
 
 Tamanho do rótulo do menu: `--mx-tamanho-rotulo-menu` (o `--mx-tamanho-titulo-grupo` é alias e vai sair); não use em título de bloco.
+
+## Base da aba "Cargas" (T-0058)
+Cor por token (`cor()`), nunca hex. **Mapa de cores de estado:** sucesso = `verdeSucesso` sobre `ativoFundo`; aviso = `avisoTexto` sobre `avisoFundo`; erro = `erroTexto` sobre `erroFundo`; neutro = `textoSecundario` sobre `nevoa` (`inativoFundo`). **O laranja do sol não é cor de estado.** Bloqueadas: aviso; recusadas: erro; "Bloqueado" = Chip tom aviso. A `CaixaResumo` aceita os tons sucesso, aviso e erro. O `Dialogo` tem `tabIndex=-1` e, sem elemento focável, o foco inicial vai para ele (o Esc continua fechando).
+
+O `DialogoMotivo` usa o `Dialogo`.
+
+Altura até calc(100dvh − 48px) (100vh no navegador sem dvh); título e rodapé fixos, corpo rola. **Dialogo:** aviso fixo abaixo do título (fora da rolagem); `tomAviso` 'erro' para ação irreversível; corpo com 4 px de respiro nos quatro lados para o foco. (T-0058, v0.3.6–v0.3.7; prints em `docs/design/dialogo-altura/` e `docs/design/dialogo-aviso/`)

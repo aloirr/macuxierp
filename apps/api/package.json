@@ -17,17 +17,19 @@
     "@macuxierp/fiscal": "workspace:*",
     "@macuxierp/integracao-fdv": "workspace:*",
     "@macuxierp/nfe-emissor": "workspace:*",
+    "@macuxierp/nfe-sefaz": "workspace:*",
     "@macuxierp/pedido": "workspace:*",
     "@macuxierp/platform-sdk": "workspace:*",
     "fastify": "^5.12.8",
+    "nodemailer": "^10.6.1",
     "pino": "^10.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@macuxierp/config": "workspace:*",
-    "@macuxierp/nfe-sefaz": "workspace:*",
     "@macuxierp/sefaz-simulador": "workspace:*",
     "@types/node": "^22.18.0",
+    "@types/nodemailer": "^8.0.2",
     "eslint": "^9.39.0",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"

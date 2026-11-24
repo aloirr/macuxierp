@@ -16,9 +16,9 @@ const rel: RelatorioCarga = {
 };
 
 describe('página de carga do BKO', () => {
-  // O item de menu só entra no manifesto quando o shell (engenheiro-apps) tiver a página: os testes de tests/ conferem menu × páginas.
-  it('o menu está no manifesto, a rota é a do shell (slug do rótulo) e a ação é a da API (cadastros.carga.executar)', () => {
-    expect(manifest.web?.menus).toContain(PAGINA_CARGA.menu);
+  // T-0058 (RN-CAD-10): a carga saiu do menu do BKO (é do /config, só superadmin); o descritor fica exportado enquanto o shell o importar.
+  it('o menu NÃO está mais no manifesto; a rota é a do shell (slug do rótulo) e a ação é a da API (cadastros.carga.executar)', () => {
+    expect(manifest.web?.menus).not.toContain(PAGINA_CARGA.menu);
     expect(PAGINA_CARGA.ver).toBe('cadastros.carga.executar');
     expect(PAGINA_CARGA.rota).toBe('/cadastros/carga-de-cadastros'); // `/<módulo>/<slug do rótulo>`; tests/ confere contra o shell (D-02)
     expect(acoesDaCarga('administrador')).toEqual({ abrir: true, validar: true, gravar: true });
@@ -39,7 +39,7 @@ describe('página de carga do BKO', () => {
     expect(textoDeConfirmacao(2)).toContain('2 arquivos');
   });
   it('o resumo segue a ordem de carga (D13), com os ignorados por último, e os totais somam as entidades', () => {
-    expect(resumoDoRelatorio(rel).map((l) => l.entidade)).toEqual(['Filiais', 'Clientes', 'Títulos']);
+    expect(resumoDoRelatorio(rel).map((l) => l.entidade)).toEqual(['Filiais', 'Clientes (com endereços)', 'Títulos']);
     expect(totaisDoRelatorio(rel)).toMatchObject({ lidas: 4, inseridas: 2, recusadas: 2, erros: 1 });
   });
   it('erros por arquivo e CSV de erros: linha, campo e motivo, sem valor digitado', () => {

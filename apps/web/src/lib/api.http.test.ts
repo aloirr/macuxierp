@@ -3,40 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Estoura 5 s sob a carga do turbo (T-0021).
 vi.setConfig({ testTimeout: 15000 });
 
-async function carregar() {
-  vi.resetModules();
-  vi.stubEnv('MACUXIERP_API_URL', 'https://api.exemplo.invalid');
-  return import('./api');
-}
-const resposta = (status: number, corpo: unknown) => vi.fn(async () => new Response(JSON.stringify(corpo), { status }));
-
-describe('entrar com a API simulada (fetch)', () => {
-  beforeEach(() => vi.unstubAllGlobals());
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-  });
-
-  it('429 leva a mensagem devolvida pela API', async () => {
-    vi.stubGlobal('fetch', resposta(429, { codigo: 'LIMITE', mensagem: 'Aguarde 7 minutos.' }));
-    const { entrar, MuitasTentativas } = await carregar();
-    const e = await entrar('demo', 'a@exemplo.invalid', 'x').catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(MuitasTentativas);
-    expect((e as Error).message).toBe('Aguarde 7 minutos.');
-  });
-  it('429 sem corpo utilizável fica com mensagem vazia (a tela usa o texto padrão)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nao-json', { status: 429 })));
-    const { entrar } = await carregar();
-    const e = await entrar('demo', 'a@exemplo.invalid', 'x').catch((x: unknown) => x);
-    expect((e as Error).message).toBe('');
-  });
-  it('400 vira DadosInvalidos', async () => {
-    vi.stubGlobal('fetch', resposta(400, { codigo: 'VALIDACAO' }));
-    const { entrar, DadosInvalidos } = await carregar();
-    await expect(entrar('demo', 'a@exemplo.invalid', 'x')).rejects.toBeInstanceOf(DadosInvalidos);
-  });
-});
-
 describe('BFF: prova e IP do cliente (T-0050)', () => {
   const SEGREDO = 'segredo-de-teste-bff';
   let cabecalhosDoPedido: Headers | null;
@@ -104,9 +70,10 @@ describe('BFF: prova e IP do cliente (T-0050)', () => {
     await buscarNaApi('/v1/x', { headers: { 'X-Macuxierp-Bff': 'forjado', 'x-macuxierp-ip-cliente': '6.6.6.6', 'x-macuxierp-outro': 'y', 'x-macuxierp-config': '1' } });
     expect(enviados[0]).toEqual({ 'x-macuxierp-config': '1', 'x-macuxierp-bff': SEGREDO, 'x-macuxierp-ip-cliente': '203.0.113.9' });
   });
-  it('o login do BKO leva os dois', async () => {
-    const { entrar } = await carregarBff(SEGREDO);
-    await entrar('demo', 'a@exemplo.invalid', 'x').catch(() => undefined);
+  it('o login único leva os dois', async () => {
+    await carregarBff(SEGREDO);
+    const { loginUnico } = await import('./login-unico');
+    await loginUnico({ empresa: 'AM0001', email: 'a@exemplo.invalid', senha: 'x' });
     expect(enviados[0]).toMatchObject({ 'x-macuxierp-bff': SEGREDO, 'x-macuxierp-ip-cliente': '203.0.113.9' });
   });
 });

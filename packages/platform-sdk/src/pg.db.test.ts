@@ -102,11 +102,24 @@ describe.skipIf(!PG_DISPONIVEL)('adaptadores PostgreSQL da plataforma', () => {
       });
       await primeiraGravou;
       const segunda = outra.comTenant(t1, (tx) => outbox.gravar(tx, evento(t1, a, 'cadastros.carteira.alterada@1')));
+      // Só os locks do banco deste arquivo (o `b.admin` está nele): no CI, outros arquivos rodam em outros bancos do servidor.
       const esperandoLock = async () =>
-        Number((await b.admin.query<{ n: string }>(`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`)).rows[0]!.n);
-      for (let i = 0; i < 200 && (await esperandoLock()) === 0; i++) await new Promise((r) => setTimeout(r, 10));
-      expect(await esperandoLock()).toBe(1);
-      soltar();
+        Number(
+          (
+            await b.admin.query<{ n: string }>(
+              `SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+                 AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`,
+            )
+          ).rows[0]!.n,
+        );
+      // A falha da asserção não pode deixar a primeira transação aberta (travaria o resto do arquivo).
+      try {
+        for (let i = 0; i < 200 && (await esperandoLock()) === 0; i++) await new Promise((r) => setTimeout(r, 10));
+        expect(await esperandoLock()).toBe(1);
+      } finally {
+        soltar();
+        await Promise.allSettled([primeira, segunda]);
+      }
       expect([await primeira, await segunda].sort()).toEqual([1, 2]);
       expect(await versoes(t1, a)).toEqual([1, 2]);
     });

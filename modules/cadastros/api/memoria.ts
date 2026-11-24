@@ -1,11 +1,11 @@
 /** Repositórios em memória: dublê das portas para os testes de rota (sem PostgreSQL). Não entra em produção. */
 import { randomUUID } from 'node:crypto';
 import { ErroApi, paginar, type Pagina } from '@macuxierp/platform-sdk';
-import { classeForma, type EstoqueConsulta, type PrecoItem, type PrecoItemConsulta, type SaldoEstoqueItem } from '../contracts';
+import { classeForma, type EstoqueConsulta, type PrecoItem, type PrecoItemComChave, type PrecoItemConsulta, type SaldoEstoqueItem } from '../contracts';
 import { tabelaVigente } from '../domain';
 import { agregadoPreco } from './uuid';
 import type {
-  ConsultaGravada, Dependencias, RepoChaves, TabelaChave, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
+  ConsultaGravada, Dependencias, RepoChaves, TabelaChave, TabelaSubstituivel, FiltroLista, MovimentoGravado, PortaCertificados, RepoFilho, RepoSimples, Repositorios, TipoConsulta,
 } from './portas';
 
 /** Ordem estável por `id` e `id > cursor`, como o adaptador SQL (`.coord/contratos/listas.md`); devolve `limite + 1` linhas no máximo para `paginar`. */
@@ -140,6 +140,11 @@ export function repositoriosEmMemoria() {
   const clientesRepo = Object.assign(baseCliente, {
     enderecos,
     contatos,
+    async principalParaNota(clienteId: string) {
+      const p = enderecos.linhas.filter((e) => e.pai === clienteId && e.tipo === 'principal');
+      const e = p.find((x) => !x.inativo) ?? p[p.length - 1];
+      return e ? (structuredClone(e) as never) : null;
+    },
     async idsDaCarteira(vendedorId: string) {
       return baseCliente.linhas.filter((l) => l.vendedor_id === vendedorId && !l.inativo).map((l) => l.id);
     },
@@ -164,6 +169,8 @@ export function repositoriosEmMemoria() {
     },
   });
   const itensPreco: (PrecoItem & { alterado?: boolean })[] = [];
+  /** RN-CAD-11: itens cujo desconto veio do produto (o PUT de itens os tira daqui). */
+  const herdados = new WeakSet<object>();
   const tabelasPreco = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ texto: ['nome'] }), {
     itensPreco,
     async itens(tabelaId: string, q: PrecoItemConsulta): Promise<Pagina<PrecoItem & { id: string }>> {
@@ -187,7 +194,8 @@ export function repositoriosEmMemoria() {
           const novo = { ...i, tabela_preco_id: tabelaId };
           itensPreco.push(novo);
           mudou.push(novo);
-        } else if (atual.preco_centavos !== i.preco_centavos || atual.desconto_maximo_bp !== i.desconto_maximo_bp) {
+        } else if (atual.preco_centavos !== i.preco_centavos || atual.desconto_maximo_bp !== i.desconto_maximo_bp || herdados.has(atual)) {
+          herdados.delete(atual);
           Object.assign(atual, i);
           mudou.push({ ...atual });
         }
@@ -291,7 +299,7 @@ export function repositoriosEmMemoria() {
     },
   };
   type Item = PrecoItem & { id: string; external_id: string | null; inativo: boolean };
-  const itemDe = (i: Item) => ({ id: i.id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp, inativo: i.inativo });
+  const itemDe = (i: Item) => ({ id: i.id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp, desconto_herdado: herdados.has(i), inativo: i.inativo });
   const filhasMem = { produto_unidade: { col: unidades, pai: 'produto_id' }, cliente_endereco: { col: enderecos, pai: 'cliente_id' } } as const;
   const carga = {
     falharProxima: null as null | (() => Error),
@@ -324,18 +332,35 @@ export function repositoriosEmMemoria() {
       const i = (itensPreco as Item[]).find((x) => x.tabela_preco_id === t && x.filial_id === f && x.produto_id === p);
       return i ? itemDe(i) : null;
     },
-    async gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }) {
+    async gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; desconto_herdado: boolean; externalId: string; inativo: boolean }) {
       let i = (itensPreco as Item[]).find((x) => x.tabela_preco_id === p.tabelaId && x.filial_id === p.filialId && x.produto_id === p.produtoId);
       if (!i) {
         i = { id: randomUUID(), tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: 0, desconto_maximo_bp: 0, external_id: null, inativo: false };
         itensPreco.push(i);
       }
       Object.assign(i, { preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp, external_id: p.externalId, inativo: p.inativo });
+      if (p.desconto_herdado) herdados.add(i);
+      else herdados.delete(i);
       return { tabela_preco_id: p.tabelaId, filial_id: p.filialId, produto_id: p.produtoId, preco_centavos: p.preco_centavos, desconto_maximo_bp: p.desconto_maximo_bp, external_id: p.externalId };
     },
     /** Sem transação: o dublê só repassa (o rollback de verdade é testado no PostgreSQL). */
     async comSavepoint<T>(fn: () => Promise<T>) {
       return fn();
+    },
+    async descontoDoProduto(produtoId: string) {
+      const v = produtos.linhas.find((x) => x.id === produtoId)?.desconto_maximo_bp;
+      return typeof v === 'number' ? v : null;
+    },
+    async gravarDescontoProduto(produtoId: string, bp: number) {
+      const prod = produtos.linhas.find((x) => x.id === produtoId);
+      if (prod) prod.desconto_maximo_bp = bp;
+      const mudados: PrecoItemComChave[] = [];
+      for (const i of itensPreco as Item[]) {
+        if (i.produto_id !== produtoId || !herdados.has(i) || i.inativo || i.desconto_maximo_bp === bp) continue;
+        i.desconto_maximo_bp = bp;
+        mudados.push({ tabela_preco_id: i.tabela_preco_id, filial_id: i.filial_id, produto_id: i.produto_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: bp, external_id: i.external_id });
+      }
+      return mudados;
     },
   };
   const colecaoDe = (t: TabelaChave): readonly Reg[] =>
@@ -352,7 +377,32 @@ export function repositoriosEmMemoria() {
       return colecaoDe(t).some((l) => l.id === id);
     },
   };
-  const repos = { chaves, carga, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
+  const colecaoSubst = (t: TabelaSubstituivel): { l: Reg[]; pai: string | null } =>
+    ({
+      filial: { l: filiais.linhas, pai: null }, vendedor: { l: vendedores.linhas, pai: null }, condicao_pagamento: { l: condicoesPagamento.linhas, pai: null },
+      produto: { l: produtos.linhas, pai: null }, cliente: { l: baseCliente.linhas, pai: null },
+      produto_unidade: { l: unidades.linhas, pai: 'pai' }, cliente_endereco: { l: enderecos.linhas, pai: 'pai' },
+      tabela_preco_item: { l: itensPreco as unknown as Reg[], pai: 'tabela_preco_id' },
+    } as unknown as Record<TabelaSubstituivel, { l: Reg[]; pai: string | null }>)[t];
+  /** Dublê do "Substituir tudo": inativa marcando `inativo`, como o adaptador SQL marca `deleted_at`. */
+  const substituicao = {
+    async existentes(t: TabelaSubstituivel) {
+      const { l, pai } = colecaoSubst(t);
+      return l.map((x) => ({ id: x.id, external_id: x.external_id ?? null, inativo: x.inativo, pai_id: pai ? ((x[pai] as string | undefined) ?? null) : null }));
+    },
+    async temAtivos(t: TabelaSubstituivel) {
+      return colecaoSubst(t).l.some((x) => !x.inativo);
+    },
+    async inativarEmLote(t: TabelaSubstituivel, ids: readonly string[]) {
+      const feitos: string[] = [];
+      for (const x of colecaoSubst(t).l) if (ids.includes(x.id) && !x.inativo) { x.inativo = true; feitos.push(x.id); }
+      return feitos;
+    },
+    async itensPreco(ids: readonly string[]) {
+      return (itensPreco as Item[]).filter((i) => ids.includes(i.id)).map((i) => ({ tabela_preco_id: i.tabela_preco_id, filial_id: i.filial_id, produto_id: i.produto_id, external_id: i.external_id, preco_centavos: i.preco_centavos, desconto_maximo_bp: i.desconto_maximo_bp }));
+    },
+  };
+  const repos = { chaves, carga, substituicao, filiais, clientes: clientesRepo, produtos, tabelasPreco, estoque: repoEstoque, condicoesPagamento, vendedores, consultaExterna, oficiais };
   return repos as unknown as Repositorios & typeof repos;
 }
 

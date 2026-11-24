@@ -38,3 +38,9 @@
 2026-11-23 — T-0051 — corretor: RD-1007 (menu.test) e RD-1008 (regex do CSS em identidade.test); RD-1006 é do designer-ux
 2026-11-23 — T-0050 — portal /config: dados da empresa, e-mail do 1º admin mascarado com "Mostrar" auditado
 2026-11-23 — T-0050 — revisões RD-1025 e RD-1026: revelação pelo resultado do executarConfig, 404 próprio do e-mail, testes sem repetição
+2026-11-23 — T-0058 — aba Cargas no /config (Adicionar e Substituir tudo), carga fora do BKO (v0.3.5a); contrato provisório em lib/config/cargas-provisorio.ts
+2026-11-23 — T-0058 — Zerar dados no /config (botão, janela com frase, rota) e "Nenhum cadastro ligado" na Integração (v0.3.5b)
+2026-11-23 — T-0058 — Zerar com escolha de cadastros (RN-CAD-10: prévia por seleção, leva junto, mantidos, anulados, bloqueios, 422/409) e RDs 1206-1208 (ConfirmarComFrase comum) (v0.3.6)
+2026-11-23 — T-0058 — v0.3.7: Zerar dados com aviso fixo no rodapé do Dialogo, .mx-checkbox, 409 do zerar pelos 4 códigos
+2026-11-23 — T-0058 — v0.3.7: web com a lista de 8 cadastros do SDK (sem dependência entre cargas, ROTULO_ZERAR do nome do SDK, CODIGOS_ESTADO_MUDOU_ZERAR do SDK) e RDs 1255-1257
+2026-11-23 — T-0070 — v0.3.8: endereços inativados no Substituir tudo de clientes (confirmação, "e nenhum cliente" e resultado; tipos do SDK) e RDs 1278-1280

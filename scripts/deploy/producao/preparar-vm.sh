@@ -16,7 +16,8 @@
 #   6. alerta de saúde: /opt/macuxierp/alerta-saude.sh e o timer macuxierp-alerta.timer (5 min, como o usuário de deploy).
 #      Nomes próprios: os macuxi-* do FDV não são tocados;
 #   7. imprime o roteiro do banco (criado pelo banco.sh no implantar.sh, sem superusuário). Este script não roda SQL.
-# Quem grava cada arquivo: env.modelo. O workflow só entra com PROD_SSH_KEY, PROD_HOST e PROD_USER.
+# Quem grava cada arquivo: env.modelo. O workflow entra com PROD_SSH_KEY, PROD_HOST e PROD_USER e, depois deste script,
+# grava o email.env com os PROD_SMTP_* (email-env.sh, T-0076).
 set -euo pipefail
 ORIGEM="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source-path=SCRIPTDIR source=comum.sh

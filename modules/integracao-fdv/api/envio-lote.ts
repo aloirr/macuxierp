@@ -47,6 +47,7 @@ import {
   filiaisComCodigoRepetido,
   hashRegistro,
   montarLotes,
+  precisaFechamento,
   validarRegistro,
   type RegistroEspelho,
 } from '../domain';
@@ -247,6 +248,11 @@ async function montarEEnviar(e: Exec, cursor: LinhaCursor): Promise<void> {
   await enviarLote(e, decisao.lote);
 }
 
+/** Registro do espelho no formato do lote do Hub. */
+function paraRegistroLote(r: RegistroEspelho): RegistroLote {
+  return { ...r.payload, external_id: r.external_id, alterado_em: r.alterado_em, ativo: r.ativo };
+}
+
 type Decisao = { tipo: 'nada' } | { tipo: 'lote'; lote: LinhaLote };
 
 async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | null | undefined): Promise<Decisao> {
@@ -325,7 +331,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     const repetida = repetidas.get(r.external_id);
     const linha = repetida ?? validarRegistro(r, confirmado);
     if (!linha) {
-      validos.push({ ...r.payload, external_id: r.external_id, alterado_em: r.alterado_em, ativo: r.ativo });
+      validos.push(paraRegistroLote(r));
       continue;
     }
     invalidas.push(linha);
@@ -341,9 +347,23 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     ? Number((await tx.consultar<{ n: string | number }>(`SELECT coalesce(max(sessao_parte), 0) AS n FROM integracao_fdv.lote_envio WHERE tenant_id = $1 AND entidade = $2 AND sessao_id = $3 AND estado IN ('concluido', 'concluido_com_erros', 'aceito')`, [tenant, entidade, sessaoId]))[0]?.n ?? 0) + 1
     : 1;
 
+  // T-0061: parte final leva o último aceito (ver registroDeFechamento)
+  let registroDeFechamento: RegistroLote | undefined;
+  if (localCursor && precisaFechamento({ modo, sessaoParteInicial: parteInicial, sessaoContinua: continua, registrosValidos: validos.length })) {
+    const [fecho] = await tx.consultar<LinhaRegistro>(
+      `SELECT ${COLUNAS} FROM integracao_fdv.registro_publicado
+        WHERE tenant_id = $1 AND entidade = $2 AND ativo AND hash_confirmado = hash AND deleted_at IS NULL AND payload IS NOT NULL
+          AND (alterado_em, registro_external_id COLLATE "C") <= ($3::timestamptz, $4::text COLLATE "C")
+        ORDER BY alterado_em DESC, registro_external_id COLLATE "C" DESC LIMIT 1`,
+      [tenant, entidade, localCursor.alterado_em, localCursor.external_id],
+    );
+    if (fecho) registroDeFechamento = paraRegistroLote(paraRegistro(fecho));
+  }
+
   const lotes = montarLotes({
     entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
     ...(sessaoId ? { sessaoId, sessaoParteInicial: parteInicial, sessaoContinua: continua } : {}),
+    ...(registroDeFechamento && localCursor ? { registroDeFechamento, cursorDeFechamento: localCursor } : {}),
   });
   const montado = lotes[0];
   if (!montado) {
@@ -376,7 +396,8 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     geracao += 1;
     chave = chaveIdempotencia(montado.corpo, geracao);
   }
-  const avanco = modo === 'completo' && validos.length === montado.corpo.registros.length ? avancoDoChunk : (montado.corpo.cursor ?? avancoDoChunk);
+  // T-0061: com o fecho, o cursor local fica (o registro é de antes dele)
+  const avanco = registroDeFechamento ? localCursor : modo === 'completo' && validos.length === montado.corpo.registros.length ? avancoDoChunk : (montado.corpo.cursor ?? avancoDoChunk);
   // só as detalhadas (as 500 primeiras) foram declaradas ao Hub e gravadas em `lote_erro`: só elas saem da fila no fim
   const detalhadas = invalidasDoLote.slice(0, montado.corpo.linhas_invalidas.length);
   const firmes = detalhadas.filter((l) => hashDasFirmes.has(l.external_id)).map((l) => [l.external_id, hashDasFirmes.get(l.external_id)!] as const);

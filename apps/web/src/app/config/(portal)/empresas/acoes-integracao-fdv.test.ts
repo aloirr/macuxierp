@@ -5,6 +5,7 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: (n: string) => (n 
 vi.mock('next/navigation', () => ({ redirect: (d: string) => { throw new Error(`REDIRECT ${d}`); } }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
+import { ENTIDADES_ENVIO_FDV } from '@macuxierp/platform-sdk';
 import { cargaCompletaFdvAcao, configurarFdvAcao, retomarFdvAcao, salvarCredencialFdvAcao, testarConexaoFdvAcao } from './acoes-integracao-fdv';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -12,7 +13,7 @@ const CHAVE = 'chave-secreta-do-conector-0123456789abcdef';
 const chamadas: { url: string; metodo: string; corpo: string; h: Record<string, string> }[] = [];
 let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
-const ENTIDADES = ['filial', 'vendedor', 'forma_pagamento', 'prazo_pagamento', 'produto', 'produto_unidade', 'preco', 'estoque', 'cliente', 'cliente_endereco'];
+const ENTIDADES: readonly string[] = ENTIDADES_ENVIO_FDV;
 const integracao = (hab: string[]) => ({
   empresa_id: ID, modulo_licenciado: true, credencial_id: ID, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-se', criada_em: '2026-11-23T12:00:00.000Z', ultimo_uso_em: null,
   entidades_habilitadas: hab, limite_registros_lote: 500, ultimo_sinal: null,

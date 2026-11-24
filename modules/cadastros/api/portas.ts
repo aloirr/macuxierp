@@ -8,6 +8,7 @@ import type {
   EnderecoClienteItem, Filial, FilialDados, ListaConsulta, MovimentoEstoque, OficialConsulta, PrecoItem, PrecoItemComChave, PrecoItemConsulta, PrecoItemLista, Produto,
   ProdutoDados, SaldoEstoque, SaldoEstoqueItem, EstoqueConsulta, TabelaPreco, TabelaPrecoDados, UnidadeDados, UnidadeItem, Vendedor, VendedorDados,
 } from '../contracts';
+import type { ConsultaUsoCadastros } from './zeragem-portas';
 
 export type FiltroLista = ListaConsulta & {
   /** Escopo da carteira do vendedor (D7): só clientes destes vendedores. */
@@ -52,6 +53,8 @@ export interface RepoClientes extends RepoSimples<Cliente, ClienteDados> {
   enderecos: RepoFilho<EnderecoClienteItem, EnderecoCliente>;
   contatos: RepoFilho<ContatoItem, Contato>;
   idsDaCarteira(vendedorId: string): Promise<string[]>;
+  /** Endereço principal do cliente para a nota, inclusive o inativado (Substituir tudo, RN-CAD-10): o ativo, ou o mais recente. `null` sem principal. */
+  principalParaNota(clienteId: string): Promise<EnderecoClienteItem | null>;
   /** Move os clientes para o vendedor de destino (D7). */
   transferir(para: string, clienteIds: readonly string[]): Promise<void>;
 }
@@ -149,6 +152,8 @@ export interface ItemPrecoGravado {
   external_id: string | null;
   preco_centavos: number;
   desconto_maximo_bp: number;
+  /** RN-CAD-11: true = o desconto veio do produto e acompanha o dele; false = próprio (PUT de itens). */
+  desconto_herdado: boolean;
   inativo: boolean;
 }
 
@@ -166,9 +171,37 @@ export interface RepoCarga {
   itemPrecoPorExternalId(externalId: string): Promise<ItemPrecoGravado | null>;
   itemPrecoPorChave(tabelaId: string, filialId: string, produtoId: string): Promise<ItemPrecoGravado | null>;
   /** Upsert por (tabela, filial, produto): o `external_id` é adotado e `inativo` marca `deleted_at`. */
-  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; externalId: string; inativo: boolean }): Promise<PrecoItemComChave>;
+  gravarItemPreco(p: { tabelaId: string; filialId: string; produtoId: string; preco_centavos: number; desconto_maximo_bp: number; desconto_herdado: boolean; externalId: string; inativo: boolean }): Promise<PrecoItemComChave>;
   /** SAVEPOINT por linha (D7): erro de banco na linha desfaz só ela. */
   comSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+  /** RN-CAD-11: desconto máximo do produto (pontos-base); nulo = não informado. */
+  descontoDoProduto(produtoId: string): Promise<number | null>;
+  /** RN-CAD-11: grava o desconto no produto e atualiza os itens de preço ativos herdados; devolve os itens alterados (a carga os republica). */
+  gravarDescontoProduto(produtoId: string, bp: number): Promise<PrecoItemComChave[]>;
+}
+
+/** Tabelas que o "Substituir tudo" do /config inativa (RN-CAD-10): forma de pagamento e estoque não têm registro próprio com `external_id`. */
+export type TabelaSubstituivel =
+  | 'filial' | 'vendedor' | 'condicao_pagamento' | 'produto' | 'produto_unidade' | 'tabela_preco_item' | 'cliente' | 'cliente_endereco';
+
+export interface ExistenteSubstituivel {
+  id: string;
+  external_id: string | null;
+  inativo: boolean;
+  /** Cadastro-pai das filhas (produto da unidade, cliente do endereço, tabela do item de preço); `null` nas demais. */
+  pai_id: string | null;
+}
+
+/** Banco do "Substituir tudo" (RN-CAD-10, T-0058): inativa em lote, nunca apaga. Sempre no tenant da transação. */
+export interface RepoSubstituicao {
+  /** Todos os registros da tabela no tenant, ativos e inativos. */
+  existentes(tabela: TabelaSubstituivel): Promise<ExistenteSubstituivel[]>;
+  /** Há ao menos um registro ativo (a dependência "já carregada", RF-CAD-11). */
+  temAtivos(tabela: TabelaSubstituivel): Promise<boolean>;
+  /** `deleted_at = now()` só nos ativos dos `ids`; devolve os ids realmente inativados. */
+  inativarEmLote(tabela: TabelaSubstituivel, ids: readonly string[]): Promise<string[]>;
+  /** Itens de preço com as chaves, inclusive inativos (para o evento `cadastros.preco.alterado@1`). */
+  itensPreco(ids: readonly string[]): Promise<PrecoItemComChave[]>;
 }
 
 /** Tabelas com `external_id` que a resolução de chaves (ADR 0010) e a guarda da RD-0317 consultam. */
@@ -198,6 +231,7 @@ export interface Repositorios {
   consultaExterna: RepoConsultaExterna;
   oficiais: RepoOficiais;
   carga: RepoCarga;
+  substituicao: RepoSubstituicao;
 }
 
 /** Fonte externa de consulta (BrasilAPI, ViaCEP, ...). `null` = não achou; lançar = falhou (tempo, rede, 5xx). */
@@ -224,4 +258,6 @@ export interface Dependencias {
   repositorios(tx: Transacao): Repositorios;
   fontes: Fontes;
   certificados: PortaCertificados;
+  /** "Em uso" do Substituir tudo (RN-CAD-10, /config). Ausente = nada em uso (só o aviso `mantidos_em_uso` some). */
+  usoCadastros?: ConsultaUsoCadastros;
 }

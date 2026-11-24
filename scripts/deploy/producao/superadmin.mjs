@@ -1,13 +1,18 @@
 /**
  * Superadmin de plataforma pelo operador (T-0050, ADR 0012 §5): cria (ou reconhece) o superadmin pelo e-mail, ou o
- * desativa (revogando as sessões abertas), reativa ou destrava — numa transação única, idempotente e auditada no tenant
- * de referência. Quem chama é o operador.sh (ao lado), DENTRO do contêiner `psql` do compose.yml (imagem da API: node 24
- * e psql 16, sem node_modules), como o admin do DBaaS (PG* do entrypoint), dono das tabelas da 0033 (RLS sem FORCE):
+ * desativa (revogando as sessões abertas), reativa, destrava ou redefine a senha (T-0077) — numa transação única e
+ * auditada no tenant de referência. Quem chama é o operador.sh (ao lado), DENTRO do contêiner `psql` do compose.yml
+ * (imagem da API: node 24 e psql 16, sem node_modules), como o admin do DBaaS (PG* do entrypoint), dono das tabelas da
+ * 0033 (RLS sem FORCE):
  *
- *   node --input-type=module - --acao <criar|desativar|reativar|destravar> --operador <nome> [--confirmar]  < superadmin.mjs
+ *   node --input-type=module - --acao <criar|desativar|reativar|destravar|redefinir-senha> --operador <nome> [--confirmar]  < superadmin.mjs
  *
- * Ambiente (nunca no argv): MACUXIERP_SUPERADMIN_EMAIL; só no criar, MACUXIERP_SUPERADMIN_NOME e, com --confirmar,
- * MACUXIERP_SENHA_INICIAL (gerada no host pelo operador.sh). Sem --confirmar a transação é READ ONLY: só mostra o plano.
+ * Ambiente (nunca no argv): MACUXIERP_SUPERADMIN_EMAIL; só no criar, MACUXIERP_SUPERADMIN_NOME; no criar e no
+ * redefinir-senha, só com --confirmar, MACUXIERP_SENHA_INICIAL (gerada no host pelo operador.sh). Sem --confirmar a
+ * transação é READ ONLY: só mostra o plano.
+ * redefinir-senha (T-0077): grava a senha provisória (argon2id) com deve_trocar_senha, zera falhas e trava e revoga as
+ * sessões abertas do portal. Superadmin desativado é recusado (reative antes). Não é idempotente por desenho: cada
+ * execução confirmada é uma senha nova, auditada de novo.
  *
  * Mesmo molde do empresa.mjs (SQL fixo pelo stdin do psql, valores por `\getenv`; argon2id da API; erros do psql
  * mascarados): ARGON2, hashSenha e errosSeguros são cópias literais dele, presas pelo
@@ -24,7 +29,8 @@ import { promisify } from 'node:util';
 
 const PADRAO_OPERADOR = /^[a-z][a-z0-9._-]{1,39}$/; // cópia de scripts/plataforma/comum.mjs (o teste operador-superadmin.db.test.ts trava)
 const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ACOES = ['criar', 'desativar', 'reativar', 'destravar'];
+const ACOES = ['criar', 'desativar', 'reativar', 'destravar', 'redefinir-senha'];
+const COM_SENHA = new Set(['criar', 'redefinir-senha']); // as ações que gravam a senha provisória do operador.sh
 const ARGON2 = { memoria: 19_456, passes: 2, paralelismo: 1, tamanho: 32 }; // ARGON2_PADRAO da API
 // Regra única de senha (packages/platform-sdk/src/senha.ts, T-0052): letra, número 0-9 e caractere especial, além do
 // tamanho. Cópia (o contêiner não tem node_modules); o teste apps/api/src/operador-senha.test.ts trava contra o SDK.
@@ -58,12 +64,15 @@ function lerArgumentos(argv, env) {
     const tam = [...op.nome].length; // caracteres (o operador.sh conta igual); CHECK de 2 a 80 na 0033
     if (tam < 2 || tam > 80) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome): 2 a 80 caracteres');
     if (/\p{Cc}/u.test(op.nome)) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome): sem quebra de linha nem caractere de controle');
+  } else if (op.nome) {
+    throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome) só no criar');
+  }
+  if (COM_SENHA.has(op.acao)) {
     if (op.confirmar && op.senha.length < 16) throw new ErroUso('MACUXIERP_SENHA_INICIAL ausente ou curta (o operador.sh gera 16 caracteres)');
     if (op.confirmar && !cumpreRegraSenha(op.senha)) throw new ErroUso('MACUXIERP_SENHA_INICIAL fora da regra de senha (letra, número e caractere especial)');
     if (!op.confirmar && op.senha) throw new ErroUso('MACUXIERP_SENHA_INICIAL só com --confirmar');
-  } else {
-    if (op.nome) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome) só no criar');
-    if (op.senha) throw new ErroUso('MACUXIERP_SENHA_INICIAL só no criar (este comando não troca senha)');
+  } else if (op.senha) {
+    throw new ErroUso('MACUXIERP_SENHA_INICIAL só no criar e no redefinir-senha (este comando não troca senha)');
   }
   return op;
 }
@@ -82,6 +91,10 @@ async function hashSenha(senha) {
   const b64 = (b) => b.toString('base64').replace(/=+$/, '');
   return `$argon2id$v=19$m=${ARGON2.memoria},t=${ARGON2.passes},p=${ARGON2.paralelismo}$${b64(sal)}$${b64(h)}`;
 }
+
+/** Sessões abertas do portal do superadmin `s` (RD-1329): o mesmo filtro na contagem e na revogação do desativar e do
+ *  redefinir-senha. Texto fixo do SQL, sem valor. */
+const SESSOES_ABERTAS = 'superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL';
 
 /**
  * SQL fixo (nenhum valor colado), como no empresa.mjs: os valores chegam por `\getenv`, viram GUCs locais (sem eco) e o
@@ -115,7 +128,12 @@ BEGIN
   -- RLS do tenant de referência na transação (o admin é dono das tabelas, sem FORCE; vale também se um dia houver)
   PERFORM set_config('app.tenant_id', v_ref::text, true);
 
-  SELECT id, ativo, falhas_login, bloqueado_ate INTO s
+  -- as ações que gravam senha (criar e redefinir-senha) só aceitam o argon2id do hashSenha
+  IF NOT v_simular AND v_acao IN ('criar', 'redefinir-senha') AND v_hash NOT LIKE '$argon2id$%' THEN
+    RAISE EXCEPTION 'hash da senha fora do formato argon2id' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT id, ativo, falhas_login, bloqueado_ate, deve_trocar_senha INTO s
   FROM plataforma.superadmin WHERE email = v_email AND deleted_at IS NULL; -- sem FOR UPDATE: a simulação é READ ONLY
 
   IF v_acao = 'criar' THEN
@@ -125,9 +143,6 @@ BEGIN
     ELSIF v_simular THEN
       v_saida := 'superadmin|criar|-|-';
     ELSE
-      IF v_hash NOT LIKE '$argon2id$%' THEN
-        RAISE EXCEPTION 'hash da senha fora do formato argon2id' USING ERRCODE = 'P0001';
-      END IF;
       v_id := gen_random_uuid();
       INSERT INTO plataforma.superadmin (id, tenant_id, email, nome, senha_hash, deve_trocar_senha, ativo)
       VALUES (v_id, v_ref, v_email, v_nome, v_hash, true, true);
@@ -141,16 +156,14 @@ BEGIN
       RAISE EXCEPTION 'superadmin não encontrado para o e-mail informado; nada foi alterado' USING ERRCODE = 'P0001';
     END IF;
     IF v_acao = 'desativar' THEN
-      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin
-      WHERE superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL;
+      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin WHERE ${SESSOES_ABERTAS};
       IF NOT s.ativo AND v_abertas = 0 THEN
         v_saida := format('superadmin|ja-desativado|%s|0', s.id);
       ELSIF v_simular THEN
         v_saida := format('superadmin|desativar|%s|%s', s.id, v_abertas);
       ELSE
         UPDATE plataforma.superadmin SET ativo = false WHERE id = s.id;
-        UPDATE plataforma.sessao_superadmin SET revogada_em = now()
-        WHERE superadmin_id = s.id AND revogada_em IS NULL AND deleted_at IS NULL;
+        UPDATE plataforma.sessao_superadmin SET revogada_em = now() WHERE ${SESSOES_ABERTAS};
         INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
         VALUES (v_ref, NULL, 'plataforma.superadmin.desativar', 'superadmin', s.id, jsonb_build_object('ativo', s.ativo),
           jsonb_build_object('ativo', false, 'sessoes_revogadas', v_abertas, 'operador', v_operador, 'motivo', 'operador.sh'), v_req);
@@ -167,6 +180,27 @@ BEGIN
         VALUES (v_ref, NULL, 'plataforma.superadmin.reativar', 'superadmin', s.id, jsonb_build_object('ativo', false),
           jsonb_build_object('ativo', true, 'operador', v_operador, 'motivo', 'operador.sh'), v_req);
         v_saida := format('superadmin|reativado|%s|-', s.id);
+      END IF;
+    ELSIF v_acao = 'redefinir-senha' THEN
+      IF NOT s.ativo THEN
+        RAISE EXCEPTION 'superadmin desativado: reative antes com operador.sh superadmin --reativar; nada foi alterado'
+          USING ERRCODE = 'P0001';
+      END IF;
+      v_travado := s.bloqueado_ate IS NOT NULL;
+      SELECT count(*) INTO v_abertas FROM plataforma.sessao_superadmin WHERE ${SESSOES_ABERTAS};
+      IF v_simular THEN
+        v_saida := format('superadmin|redefinir-senha|%s|%s', s.id,
+          v_abertas || ':' || s.falhas_login || CASE WHEN v_travado THEN ':travado' ELSE '' END);
+      ELSE
+        UPDATE plataforma.superadmin SET senha_hash = v_hash, deve_trocar_senha = true, falhas_login = 0, bloqueado_ate = NULL
+        WHERE id = s.id;
+        UPDATE plataforma.sessao_superadmin SET revogada_em = now() WHERE ${SESSOES_ABERTAS};
+        INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
+        VALUES (v_ref, NULL, 'plataforma.superadmin.redefinir_senha', 'superadmin', s.id,
+          jsonb_build_object('deve_trocar_senha', s.deve_trocar_senha, 'falhas', s.falhas_login, 'travado', v_travado),
+          jsonb_build_object('deve_trocar_senha', true, 'falhas', 0, 'travado', false, 'sessoes_revogadas', v_abertas,
+            'operador', v_operador, 'motivo', 'operador.sh'), v_req);
+        v_saida := format('superadmin|senha-redefinida|%s|%s', s.id, v_abertas);
       END IF;
     ELSE -- destravar
       v_travado := s.bloqueado_ate IS NOT NULL;
@@ -195,7 +229,8 @@ ${simular ? 'ROLLBACK' : 'COMMIT'};
 /** "1 sessão aberta revogada" / "2 sessões abertas revogadas" (com "seria(m)" na simulação). */
 const sessoes = (n, simular) =>
   n === '1' ? `1 sessão aberta ${simular ? 'seria revogada' : 'revogada'}` : `${n} sessões abertas ${simular ? 'seriam revogadas' : 'revogadas'}`;
-/** Texto de cada situação (o detalhe é o número de sessões no desativar e "falhas[:travado]" no destravar). */
+/** Texto de cada situação. O detalhe: número de sessões no desativar e no senha-redefinida, "falhas[:travado]" no
+ *  destravar e "sessões:falhas[:travado]" na simulação do redefinir-senha. */
 const TEXTO = {
   existia: () => 'já existia (senha NÃO alterada)',
   'existia-inativo': () => 'já existia, DESATIVADO (senha NÃO alterada; reative com operador.sh superadmin --reativar)',
@@ -210,6 +245,11 @@ const TEXTO = {
   'ja-destravado': () => 'já estava destravado (0 falhas, sem trava)',
   destravar: (d) => `seria destravado (${d.split(':')[0]} falhas${d.endsWith(':travado') ? ', travado' : ''})`,
   destravado: () => 'destravado (0 falhas, sem trava)',
+  'redefinir-senha': (d) => {
+    const [abertas, falhas] = d.split(':');
+    return `teria a senha redefinida (provisória, troca no 1º acesso; ${falhas} falhas, ${d.endsWith(':travado') ? 'travado' : 'sem trava'}); ${sessoes(abertas, true)}`;
+  },
+  'senha-redefinida': (d) => `senha redefinida (provisória, troca no 1º acesso; 0 falhas, sem trava); ${sessoes(d, false)}`,
 };
 const SEM_MUDANCA = new Set(['ja-desativado', 'ja-ativo', 'ja-destravado']);
 
@@ -233,7 +273,7 @@ async function main(argv, env) {
   delete process.env.MACUXIERP_SENHA_INICIAL;
   let hash = '';
   try {
-    if (op.acao === 'criar' && op.confirmar) hash = await hashSenha(op.senha);
+    if (COM_SENHA.has(op.acao) && op.confirmar) hash = await hashSenha(op.senha);
   } catch (e) {
     console.error(`[superadmin] ${e.message}`);
     return 1;

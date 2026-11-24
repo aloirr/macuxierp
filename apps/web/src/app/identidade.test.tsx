@@ -33,7 +33,7 @@ describe('identidade do shell (T-0021, ajustes B)', () => {
     const botoes = readFileSync(require.resolve('@macuxierp/ui/botoes.css'), 'utf8');
     expect(botoes).toMatch(/\.mx-fundo-escuro :focus-visible \{[^}]*var\(--mx-cor-branco\)/);
   });
-  it('o diálogo de motivo recebe "Manter a nota" e o sinal destrutivo, sem cor nova', () => {
+  it('o diálogo de motivo recebe "Manter a nota" e o sinal destrutivo, sem cor nova além do vermelho do destrutivo (opção B)', () => {
     const h = renderToStaticMarkup(<DialogoMotivo titulo="Cancelar" rotuloFechar="Manter a nota" destrutivo aoConfirmar={vi.fn()} aoCancelar={vi.fn()} />);
     expect(h).toContain('>Manter a nota<');
     expect(h).toContain('data-destrutivo="true"');
@@ -55,16 +55,16 @@ describe('assinatura C no login e na seleção de filial', () => {
     expect(h).toContain('height="100"');
     expect(h).not.toMatch(/>Macuxi ERP</);
     expect(fonte('cabecalho-cartao.tsx')).toContain('<AssinaturaErp variante="C" altura={100} />');
-    expect(fonte('login/page.tsx')).toContain('CabecalhoCartao');
+    expect(fonte('login/formulario.tsx')).toContain('CabecalhoCartao');
     expect(fonte('filial/page.tsx')).toContain('CabecalhoCartao');
   });
   it('a faixa é azul-noite pelo token e o padding preserva a área de proteção da C', () => {
     expect(css).toMatch(/\.cartao-central header \{[^}]*background: var\(--mx-cor-azul-noite\)/);
     expect(css).toMatch(/\.cartao-central header \{[^}]*padding: 24px 32px/);
   });
-  it('cartão da carga segue o grupo-campos e o rádio usa .mx-radio', () => {
+  it('o grupo-campos segue o raio do tema e o rádio usa .mx-radio', () => {
     expect(css).not.toContain('accent-color');
-    expect(css).toMatch(/fieldset\.grupo-campos, fieldset\.carga-cartao \{[^}]*border-radius: 6px/);
+    expect(css).toMatch(/fieldset\.grupo-campos \{[^}]*border-radius: 6px/);
   });
 
   it('o menu lateral usa o token de rótulo e o cartão de login tem 16 px de margem lateral em tela pequena (T-0051)', () => {

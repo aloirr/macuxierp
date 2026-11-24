@@ -1,0 +1,4 @@
+external_id;codigo;parcelas_dias;forma_codigo;forma_nome;alterado_em;ativo;descricao;forma_external_id;forma_tpag;prazo_medio_dias;percentual_ajuste;ordem
+PZ-EX-01;BOL30;30;BOLETO;Boleto Exemplo;;sim;Boleto 30 dias;FP-EX-01;;30;0;1
+PZ-EX-02;BOL30-60;30/60;BOLETO;Boleto Exemplo;;sim;;FP-EX-01;;45;0;2
+PZ-EX-03;PIXV;0;PIX;Pix Exemplo;;sim;Pix à vista;FP-EX-02;;0;0;3

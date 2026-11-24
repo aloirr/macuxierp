@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { DialogoMotivo, exigeEscolha, proximoFoco } from './DialogoMotivo.js';
+import { proximoFoco } from './Dialogo.js';
+import { DialogoMotivo, exigeEscolha } from './DialogoMotivo.js';
 import { FaixaPendencias, ordenarPendencias } from './FaixaPendencias.js';
 import { FormularioItens, type ItemLinha } from './FormularioItens.js';
 import { TabelaDensa, ordenarLinhas, proximaOrdem, type ColunaTabela } from './TabelaDensa.js';
@@ -118,6 +119,15 @@ describe('DialogoMotivo', () => {
     expect(h).toContain('Sem dado pessoal.');
     expect(h).toContain('aria-describedby');
   });
+  it('aviso: aria-describedby contém o id do aviso, que vem antes do corpo', () => {
+    const h = renderToStaticMarkup(<DialogoMotivo titulo="T" aviso="Sem dado pessoal." aoConfirmar={() => {}} aoCancelar={() => {}} />);
+    const id = /<div id="([^"]+)" data-aviso-dialogo=""/.exec(h)?.[1] ?? '';
+    const desc = /role="dialog"[^>]*aria-describedby="([^"]*)"/.exec(h)?.[1] ?? /aria-describedby="([^"]*)"[^>]*role="dialog"/.exec(h)?.[1] ?? '';
+    expect(id).not.toBe('');
+    expect(desc.split(' ')).toContain(id);
+    expect(h.indexOf('data-aviso-dialogo')).toBeLessThan(h.indexOf('data-corpo-dialogo'));
+    expect(/data-aviso-dialogo=""[^>]*margin-bottom:8px/.test(h)).toBe(true);
+  });
   it('texto opcional é indicado', () => {
     const h = renderToStaticMarkup(<DialogoMotivo titulo="T" aoConfirmar={() => {}} aoCancelar={() => {}} />);
     expect(h).toContain('(opcional)');
@@ -187,13 +197,12 @@ describe('ajustes de marca (T-0015)', () => {
     expect(h).toContain('data-regra="RN-PED-004"');
     expect(h).not.toContain('>RN-PED-004<');
   });
-  it('remover sem vermelho, aviso em 13px, rádio sem accentColor, ordenar sem all:unset', () => {
+  it('remover sem vermelho, rádio sem accentColor, ordenar sem all:unset', () => {
     const itens = [{ chave: 'item-1', produtoId: null, quantidade: 1, precoUnitarioCentavos: 0, descontoCentavos: 0 }];
     const f = renderToStaticMarkup(<FormularioItens itens={itens} aoMudar={() => {}} novoItem={novoItem} calcularTotal={total} formatarCentavos={String} renderSeletorProduto={() => null} />);
     expect(f).not.toMatch(/<button[^>]*erro-texto/);
     const d = renderToStaticMarkup(<DialogoMotivo titulo="t" aviso="a" motivos={[{ codigo: 'x', rotulo: 'X' }]} aoConfirmar={() => {}} aoCancelar={() => {}} />);
     expect(d).not.toContain('accent-color');
-    expect(d).toMatch(/font-size:var\(--mx-tamanho-pequeno\)[^"]*"[^>]*>a</);
     const t = renderToStaticMarkup(<TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.id} />);
     expect(t).not.toContain('all:unset');
   });
@@ -208,8 +217,8 @@ describe('ajustes de marca (T-0015)', () => {
 describe('regra de cores', () => {
   it('nenhum componente tem cor literal (só var(--mx-...))', () => {
     const dir = new URL('./', import.meta.url);
-    const arqs = readdirSync(dir).filter((f) => /^(TabelaDensa|FaixaPendencias|DialogoMotivo|FormularioItens|SeloPlataforma|estilos)\.tsx?$/.test(f));
-    expect(arqs.length).toBe(6);
+    const arqs = readdirSync(dir).filter((f) => /^(TabelaDensa|FaixaPendencias|DialogoMotivo|FormularioItens|SeloPlataforma|Chip|CaixaResumo|Dialogo|estilos)\.tsx?$/.test(f));
+    expect(arqs.length).toBe(9);
     for (const a of arqs) expect(readFileSync(new URL(a, dir), 'utf8'), a).not.toMatch(/#[0-9A-Fa-f]{3,8}\b|rgba?\(/);
   });
 });

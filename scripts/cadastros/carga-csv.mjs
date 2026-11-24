@@ -21,15 +21,21 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const ORDEM_CARGA = [
   'filial',
   'vendedor',
-  'forma_pagamento',
-  'prazo_pagamento',
+  'condicao_pagamento',
   'produto',
   'produto_unidade',
   'preco',
   'estoque',
   'cliente',
-  'cliente_endereco',
 ];
+/** Outros nomes de arquivo aceitos para uma entidade (v0.3.6). */
+export const APELIDOS = { condicoes_pagamento: 'condicao_pagamento' };
+/** Arquivos que deixaram de existir na v0.3.6: não são enviados; a CLI avisa onde o conteúdo vai agora. */
+export const OBSOLETOS = {
+  forma_pagamento: 'condicao_pagamento',
+  prazo_pagamento: 'condicao_pagamento',
+  cliente_endereco: 'cliente',
+};
 export const IGNORADAS = ['catalogo_no', 'tabela_escalonada', 'transportadora', 'rota', 'titulo', 'nota'];
 export const MAX_BYTES_LOTE = 10 * 1024 * 1024;
 export const MAX_LINHAS_LOTE = 20_000;
@@ -112,11 +118,26 @@ export function conferirPasta(pasta) {
 }
 
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
-const entidadeDoNome = (nome) => nome.toLowerCase().replace(/\.csv$/, '');
+const baseDoNome = (nome) => nome.toLowerCase().replace(/\.csv$/, '');
+const entidadeDoNome = (nome) => APELIDOS[baseDoNome(nome)] ?? baseDoNome(nome);
+const obsoleto = (nome) => Object.hasOwn(OBSOLETOS, baseDoNome(nome));
 
-/** Lista os `.csv` da pasta (sem subpastas) na ordem D13; os de nome fora do escopo vão no fim, para o relatório. */
+/** Aviso de uma linha para cada arquivo obsoleto da pasta (que não é enviado). */
+export function avisosObsoletos(pasta) {
+  return readdirSync(pasta)
+    .filter((n) => /\.csv$/i.test(n) && obsoleto(n) && statSync(join(pasta, n)).isFile())
+    .sort((a, b) => a.localeCompare(b))
+    .map((n) => `${n}: desde a v0.3.6 vai em ${OBSOLETOS[baseDoNome(n)]}.csv`);
+}
+
+/**
+ * Lista os `.csv` da pasta (sem subpastas) na ordem D13; os de nome fora do escopo vão no fim, para o relatório.
+ * Os obsoletos (v0.3.6) ficam de fora: `avisosObsoletos` diz onde o conteúdo vai.
+ */
 export function listarArquivos(pasta, entidades = []) {
-  const nomes = readdirSync(pasta).filter((n) => /\.csv$/i.test(n) && statSync(join(pasta, n)).isFile());
+  const nomes = readdirSync(pasta).filter(
+    (n) => /\.csv$/i.test(n) && !obsoleto(n) && statSync(join(pasta, n)).isFile(),
+  );
   const posicao = (n) => {
     const i = ORDEM_CARGA.indexOf(entidadeDoNome(n));
     return i >= 0 ? i : ORDEM_CARGA.length + (IGNORADAS.includes(entidadeDoNome(n)) ? 0 : 1);
@@ -256,6 +277,7 @@ export async function executar(argv, io = {}) {
   const escrever = io.escrever ?? ((t) => process.stdout.write(`${t}\n`));
   const op = lerArgumentos(argv);
   const pasta = conferirPasta(op.pasta);
+  for (const aviso of avisosObsoletos(pasta)) escrever(`aviso ${aviso}`);
   const arquivos = listarArquivos(pasta, op.entidades);
   if (arquivos.length === 0) throw new ErroUso('nenhum .csv na pasta (ou nenhum das --entidade pedidas)');
   const lotes = montarLotes(arquivos);

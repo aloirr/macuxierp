@@ -103,15 +103,16 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
     expect(d.escritas()).toHaveLength(0);
   });
 
-  it('RF-INF-05: a primeira credencial dá 201, cifra com o AAD da empresa alvo, manda só o prefixo e pede a carga inicial', async () => {
+  it('RF-INF-05: a primeira credencial dá 201, cifra com o AAD da empresa alvo, manda só o prefixo, nasce sem cadastros ligados e sem carga inicial', async () => {
     const d = dubleDoRepo(estado({}, false));
     const p = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, chaveVersao: 3, repo: d.repo });
     const r = await chamar(p, 'PUT', C.credencial, { corpo: ENTRADA });
     expect(r.status).toBe(201);
     const [w] = d.escritas();
-    const par = w!.p as { anterior_id: null; chave_cifrada: Buffer; chave_prefixo: string; chave_mestra_versao: number; zerar_espelho: boolean; evento_carga_inicial: { entidades: string[] } };
+    const par = w!.p as { anterior_id: null; chave_cifrada: Buffer; chave_prefixo: string; chave_mestra_versao: number; zerar_espelho: boolean; evento_carga_inicial: unknown; entidades: string[] };
     expect(par).toMatchObject({ anterior_id: null, chave_prefixo: 'chave-do', chave_mestra_versao: 3, zerar_espelho: false });
-    expect(par.evento_carga_inicial.entidades).toHaveLength(12);
+    expect(par.entidades).toEqual([]);
+    expect(par.evento_carga_inicial).toBeNull();
     expect(decifrarCampo({ chave: MESTRA, tenantId: TENANT, cifrado: par.chave_cifrada }).toString('utf8')).toBe(CHAVE);
     expect(() => decifrarCampo({ chave: MESTRA, tenantId: '33333333-3333-4333-8333-333333333333', cifrado: par.chave_cifrada })).toThrow();
     expect(JSON.stringify(r)).not.toContain(CHAVE);
@@ -124,7 +125,24 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
     expect(d.escritas()[0]!.p).toMatchObject({ anterior_id: CRED, zerar_espelho: false, evento_carga_inicial: null });
     expect((await chamar(p, 'PUT', C.credencial, { corpo: { ...ENTRADA, conector_id: 'outro' } })).status).toBe(200);
     expect(d.escritas()[1]!.p).toMatchObject({ anterior_id: CRED, zerar_espelho: true });
-    expect((d.escritas()[1]!.p as { evento_carga_inicial: unknown }).evento_carga_inicial).not.toBeNull();
+    // a troca copia a lista da ativa (lista explícita) e o evento chega ao repo
+    expect(d.escritas()[1]!.p).toMatchObject({ entidades: ['filial', 'produto'], evento_carga_inicial: expect.anything() });
+  });
+
+  it('RF-INF-05: outro conector sem nenhum cadastro ligado zera o espelho e não publica evento', async () => {
+    const d = dubleDoRepo(estado({}, true, []));
+    const p = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: d.repo });
+    await chamar(p, 'PUT', C.credencial, { corpo: { ...ENTRADA, ambiente: 'producao' } });
+    expect(d.escritas()[0]!.p).toMatchObject({ zerar_espelho: true, evento_carga_inicial: null });
+  });
+
+  it('RF-INF-05: ligar um cadastro manda o evento ao repo; sem novas ligadas, sem evento', async () => {
+    const d = dubleDoRepo(estado());
+    const p = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: d.repo });
+    await chamar(p, 'PUT', C.configuracao, { corpo: { entidades_habilitadas: ['filial', 'produto', 'preco'], limite_registros_lote: 10 } });
+    await chamar(p, 'PUT', C.configuracao, { corpo: { entidades_habilitadas: ['filial'], limite_registros_lote: 10 } });
+    expect(d.escritas()[0]!.p).toMatchObject({ evento_carga_inicial: expect.anything() });
+    expect(d.escritas()[1]!.p).toMatchObject({ evento_carga_inicial: null });
   });
 
   it('RF-INF-05: o erro de validação da chave não devolve o valor (campo e mensagem fixa)', () => {
@@ -151,7 +169,7 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
     expect(d.chamadas).toHaveLength(0);
     const r = await chamar(p, 'PUT', C.configuracao, { corpo: { entidades_habilitadas: ['filial'], limite_registros_lote: 10 } });
     expect(r.status).toBeUndefined();
-    expect(d.escritas()[0]!.p).toMatchObject({ entidades: ['filial'], limite: 10, request_id: 'req-1' });
+    expect(d.escritas()[0]!.p).toMatchObject({ entidades: ['filial'], limite: 10, request_id: 'req-1', antes: estado().entidades_habilitadas });
   });
 
   it('RN-INF-02: carga completa recusa entidade desabilitada (422 RN-INF-02), lote em voo (409), sem credencial (409) e entidade desconhecida (400)', async () => {

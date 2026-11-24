@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RegistroLote } from '../contracts';
-import { chaveIdempotencia, conteudoCanonicoLote, dividirAoMeio, geracaoDoReenvio, limiteRegistrosDoLote, montarLotes, ordenarRegistros } from './lote';
+import { chaveIdempotencia, conteudoCanonicoLote, dividirAoMeio, geracaoDoReenvio, limiteRegistrosDoLote, montarLotes, ordenarRegistros, precisaFechamento } from './lote';
 
 const reg = (id: string, em: string, extra: Record<string, unknown> = {}): RegistroLote => ({ external_id: id, alterado_em: em, ativo: true, ...extra });
 const SESSAO = '11111111-1111-4111-8111-111111111111';
@@ -54,10 +54,52 @@ describe('montagem de lote', () => {
     expect(montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 1, registros: [], linhas_invalidas: [] })).toEqual([]);
   });
 
-  it('completo sem registros mas com partes já enviadas fecha a sessão com parte vazia ultimo', () => {
-    const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 3, registros: [] });
-    expect(l!.corpo.sessao).toEqual({ id: SESSAO, parte: 3, ultimo: true });
-    expect(l!.cursor_declarado).toBeNull();
+  it('T-0061: completo em andamento sem registros e com registroDeFechamento monta a parte final só com ele e ultimo: true', () => {
+    const fecho = reg('f', '2026-01-01T00:00:00.000Z', { nome: 'x' });
+    const lotes = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 3, registros: [], registroDeFechamento: fecho });
+    expect(lotes).toHaveLength(1);
+    expect(lotes[0]!.corpo.registros).toEqual([fecho]);
+    expect(lotes[0]!.corpo.sessao).toEqual({ id: SESSAO, parte: 3, ultimo: true });
+    expect(lotes[0]!.cursor_declarado).toEqual({ alterado_em: '2026-01-01T00:00:00.000Z', external_id: 'f' });
+  });
+
+  it('T-0061: completo em andamento sem registros e sem registroDeFechamento devolve [] (nunca parte vazia com ultimo)', () => {
+    expect(montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 3, registros: [] })).toEqual([]);
+  });
+
+  it('T-0061: o registroDeFechamento só vale na parte final vazia (com registros, ou sem sessão em andamento, é ignorado)', () => {
+    const fecho = reg('f', '2026-01-01T00:00:00.000Z');
+    const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 2, registros: [reg('a', '2026-01-02T00:00:00.000Z')], registroDeFechamento: fecho });
+    expect(l!.corpo.registros.map((r) => r.external_id)).toEqual(['a']);
+    expect(montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, registros: [], registroDeFechamento: fecho })).toEqual([]);
+    expect(montarLotes({ ...base, registros: [], registroDeFechamento: fecho })).toEqual([]);
+  });
+
+  it('T-0061: com registroDeFechamento, o cursor do lote é o cursor local (cursorDeFechamento), nunca o do registro', () => {
+    const fecho = reg('f', '2026-01-01T00:00:00.000Z');
+    const local = { alterado_em: '2026-01-05T00:00:00.000Z', external_id: 'z' };
+    const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 2, registros: [], registroDeFechamento: fecho, cursorDeFechamento: local });
+    expect(l!.corpo.cursor).toEqual(local);
+    expect(l!.cursor_declarado).toEqual(local);
+    expect(l!.corpo.registros.map((r) => r.external_id)).toEqual(['f']);
+  });
+
+  it('T-0061: sem registros válidos mas com linhas inválidas, o fecho entra junto das linhas inválidas na parte final', () => {
+    const fecho = reg('f', '2026-01-01T00:00:00.000Z');
+    const [l] = montarLotes({ ...base, modo: 'completo', sessaoId: SESSAO, sessaoParteInicial: 2, registros: [], linhas_invalidas: [{ external_id: 'x', codigo: 'campo_obrigatorio', campo: 'sku' }], registroDeFechamento: fecho });
+    expect(l!.corpo.registros.map((r) => r.external_id)).toEqual(['f']);
+    expect(l!.corpo.linhas_invalidas.map((i) => i.external_id)).toEqual(['x']);
+    expect(l!.corpo.sessao).toEqual({ id: SESSAO, parte: 2, ultimo: true });
+  });
+
+  it('T-0061: precisaFechamento só na parte final de sessão completa em andamento, sem registros válidos', () => {
+    const ok = { modo: 'completo' as const, sessaoParteInicial: 2, sessaoContinua: false, registrosValidos: 0 };
+    expect(precisaFechamento(ok)).toBe(true);
+    expect(precisaFechamento({ ...ok, modo: 'delta' })).toBe(false);
+    expect(precisaFechamento({ ...ok, sessaoParteInicial: 1 })).toBe(false);
+    expect(precisaFechamento({ ...ok, sessaoParteInicial: undefined })).toBe(false);
+    expect(precisaFechamento({ ...ok, sessaoContinua: true })).toBe(false);
+    expect(precisaFechamento({ ...ok, registrosValidos: 1 })).toBe(false);
   });
 });
 

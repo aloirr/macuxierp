@@ -6,10 +6,12 @@ name: producao — publicar
 #      ghcr.io/<dono>/macuxierp-api:<sha> existe (montada pelo "producao — liberar versão"). Fixa o DIGEST;
 #   2. bko (sem segredo): monta o BKO de produção do mesmo commit
 #      → ghcr.io/<dono>/macuxierp-web-prod:<sha>, por digest;
-#   3. deploy (environment PRODUCAO, só PROD_SSH_KEY, PROD_HOST e PROD_USER): SSH da VM, copia scripts/deploy/producao e o
+#   3. deploy (environment PRODUCAO, só PROD_SSH_KEY, PROD_HOST e PROD_USER, mais os FUMACA_* opcionais da fumaça): SSH da
+#      VM, copia scripts/deploy/producao e o
 #      compose.yml, preparar-vm.sh (gera o .env do ERP e copia banco.env, admin.env, segredos.env e a CA do FDV NA VM,
 #      pelo ambiente-vm.sh; nenhum segredo do banco sai do GitHub), login no GHCR na VM, implantar.sh (que pega a TRAVA
-#      DA VM compartilhada com o FDV antes de qualquer compose; ADR 0003), confere e volta atrás se falhar; confere pelo domínio.
+#      DA VM compartilhada com o FDV antes de qualquer compose; ADR 0003), confere e volta atrás se falhar; confere pelo domínio;
+#      fumaça em produção (T-0065 b: só GET do BKO com o usuário de leitura; na falha, comenta na issue da tag, sem rollback).
 # Chave do host (known_hosts), sempre com StrictHostKeyChecking yes, nesta ordem: secret PROD_SSH_KNOWN_HOSTS (se existir) →
 # arquivo versionado .github/producao/known_hosts → cache do runner (actions/cache, chave fixa) → TOFU (ssh-keyscan
 # ed25519, com aviso e a impressão digital SHA256 no resumo do job, e grava no cache depois do primeiro SSH que deu certo).
@@ -176,6 +178,8 @@ jobs:
     permissions:
       contents: read
       packages: read
+      # só para comentar a falha da fumaça na issue "Aprovar deploy <tag>" (T-0065 b)
+      issues: write
     env:
       VERSAO: ${{ needs.conferir.outputs.versao }}
       API: ${{ needs.conferir.outputs.api }}
@@ -185,10 +189,14 @@ jobs:
         with:
           ref: ${{ needs.conferir.outputs.sha }}
           persist-credentials: false
-          # modo cone: os arquivos da raiz (compose.yml) vêm sempre junto com a pasta listada
+          # modo cone: os arquivos da raiz (compose.yml, .nvmrc) vêm sempre junto com a pasta listada; a fumaça (T-0065 b)
+          # lê o script, a lista de rotas e o título/rótulo da trava (scripts/ci/producao-trava.mjs) do mesmo SHA da tag
           sparse-checkout: |
             scripts/deploy/producao
             .github/producao
+            .github/scripts
+            scripts/ci
+            tests/integracao/rotas
 
       - name: implantação do ERP pronta
         run: |
@@ -197,12 +205,18 @@ jobs:
           done
 
       # T-0024: o .env do ERP e as cópias de banco.env, admin.env, segredos.env e da CA do FDV nascem NA VM (preparar-vm.sh →
-      # ambiente-vm.sh); o GitHub só guarda o acesso SSH
+      # ambiente-vm.sh); o GitHub guarda o acesso SSH e os PROD_SMTP_* (T-0076, email-env.sh)
       - name: secrets do environment presentes (só os nomes)
         env:
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
           PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
+          PROD_SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
+          PROD_SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
+          PROD_SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
+          PROD_SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
+          PROD_SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
         run: |
           falta=()
           for n in PROD_SSH_KEY PROD_HOST PROD_USER; do
@@ -215,6 +229,8 @@ jobs:
             case "$v" in *$'\n'*) echo "::error::$n tem quebra de linha"; exit 1;; esac
           done
           [[ "$PROD_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::PROD_USER inválido"; exit 1; }
+          # de propósito também aqui (o enviar confere de novo): secret ruim para o publicar antes do preparar-vm
+          bash scripts/deploy/producao/email-env.sh conferir
           echo "secrets obrigatórios presentes"
 
       # known_hosts do runner guardado no cache do Actions (chave fixa; o cache usa o token do runtime, não o GITHUB_TOKEN,
@@ -296,10 +312,18 @@ jobs:
       - name: copiar scripts e preparar a VM (idempotente; gera o ambiente do ERP na VM)
         env:
           USUARIO: ${{ secrets.PROD_USER }}
+          PROD_SMTP_HOST: ${{ secrets.PROD_SMTP_HOST }}
+          PROD_SMTP_PORTA: ${{ secrets.PROD_SMTP_PORTA }}
+          PROD_SMTP_TLS: ${{ secrets.PROD_SMTP_TLS }}
+          PROD_SMTP_USUARIO: ${{ secrets.PROD_SMTP_USUARIO }}
+          PROD_SMTP_SENHA: ${{ secrets.PROD_SMTP_SENHA }}
+          PROD_SMTP_REMETENTE: ${{ secrets.PROD_SMTP_REMETENTE }}
         run: |
           ssh -l "$USUARIO" prod 'rm -rf ~/macuxierp-deploy && mkdir -p ~/macuxierp-deploy'
           scp -q -o User="$USUARIO" scripts/deploy/producao/* compose.yml prod:macuxierp-deploy/
           ssh -l "$USUARIO" prod 'sudo bash ~/macuxierp-deploy/preparar-vm.sh "$USER"'
+          # T-0076: grava /opt/macuxierp/email.env na VM antes do implantar.sh (email-env.sh)
+          bash scripts/deploy/producao/email-env.sh enviar "$USUARIO"
 
       # TOFU: grava a chave no cache só depois do primeiro SSH que deu certo (a VM aceitou a chave do deploy)
       - name: chave do host no cache do runner (TOFU)
@@ -338,6 +362,45 @@ jobs:
           [ "$ok" = 1 ] || { echo "::error::erp.macuxifdv.com.br/v1/saude não devolveu $VERSAO (rota erp. no túnel da Cloudflare do FDV: /v1 → http://macuxierp-api:8100)"; exit 1; }
           curl -fsS -m 10 -o /dev/null https://erp.macuxifdv.com.br/login && echo "erp.macuxifdv.com.br: ok" \
             || { echo "::error::erp.macuxifdv.com.br/login não respondeu (rota erp. no túnel do FDV: o resto → http://macuxierp-web:3100)"; exit 1; }
+
+      # Fumaça em produção (T-0065 b): ver .github/scripts/fumaca-producao.mjs e docs/testes/fumaca-publicar.md.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: fumaça em produção (GET do BKO com o usuário de leitura)
+        timeout-minutes: 3
+        env:
+          FUMACA_BASE_URL: https://erp.macuxifdv.com.br
+          FUMACA_EMAIL: ${{ secrets.FUMACA_EMAIL }}
+          FUMACA_SENHA: ${{ secrets.FUMACA_SENHA }}
+          FUMACA_EMPRESA_ID: ${{ secrets.FUMACA_EMPRESA_ID }}
+          FUMACA_ROTAS_JSON: tests/integracao/rotas/fumaca-rotas.json
+          FUMACA_RELATORIO: ${{ runner.temp }}/fumaca-relatorio.md
+        run: node .github/scripts/fumaca-producao.mjs
+
+      # Na falha da fumaça: comenta a lista das rotas que caíram na issue "Aprovar deploy <tag>" (rótulo trava-deploy, já
+      # fechada pelo aprovar; título e rótulo lidos do scripts/ci/producao-trava.mjs). Não abre issue nova (confundiria a trava).
+      # Falha de passo anterior (sem relatório da fumaça) não comenta nada.
+      - name: fumaça em produção — comentar a falha na issue da tag
+        if: ${{ failure() }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FUMACA_RELATORIO: ${{ runner.temp }}/fumaca-relatorio.md
+        run: |
+          [ -s "$FUMACA_RELATORIO" ] || { echo "sem relatório da fumaça: nada a comentar"; exit 0; }
+          export TITULO ROTULO
+          TITULO="$(node --input-type=module -e "const m = await import('./scripts/ci/producao-trava.mjs'); console.log(m.tituloDaIssue(process.env.VERSAO))")"
+          ROTULO="$(node --input-type=module -e "const m = await import('./scripts/ci/producao-trava.mjs'); console.log(m.ROTULO_TRAVA)")"
+          numero="$(gh issue list -R "$GITHUB_REPOSITORY" --label "$ROTULO" --state all --limit 200 --json number,title \
+            --jq '.[] | select(.title == env.TITULO) | .number' | head -n 1)"
+          [ -n "$numero" ] || { echo "::warning::issue \"$TITULO\" não encontrada: a lista das rotas que caíram está no log acima"; exit 0; }
+          { echo "**producao — publicar** de \`$VERSAO\`: a fumaça em produção falhou ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Sem rollback automático: a volta segue o procedimento do publicar."
+            echo
+            cat "$FUMACA_RELATORIO"; } > "$RUNNER_TEMP/fumaca-comentario.md"
+          gh issue comment "$numero" -R "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/fumaca-comentario.md"
+          echo "comentado na issue #$numero"
 
       - name: limpar a chave do runner
         if: ${{ always() }}

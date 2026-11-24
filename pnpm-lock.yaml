@@ -235,6 +235,9 @@ importers:
       '@macuxierp/nfe-emissor':
         specifier: workspace:*
         version: link:../../packages/nfe-emissor
+      '@macuxierp/nfe-sefaz':
+        specifier: workspace:*
+        version: link:../../packages/nfe-sefaz
       '@macuxierp/pedido':
         specifier: workspace:*
         version: link:../../modules/pedido
@@ -244,6 +247,9 @@ importers:
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
+      nodemailer:
+        specifier: ^10.6.1
+        version: 10.6.1
       pino:
         specifier: ^10.4.0
         version: 10.4.0
@@ -254,15 +260,15 @@ importers:
       '@macuxierp/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@macuxierp/nfe-sefaz':
-        specifier: workspace:*
-        version: link:../../packages/nfe-sefaz
       '@macuxierp/sefaz-simulador':
         specifier: workspace:*
         version: link:../../packages/sefaz-simulador
       '@types/node':
         specifier: ^22.18.0
         version: 22.20.5
+      '@types/nodemailer':
+        specifier: ^8.0.2
+        version: 8.0.2
       eslint:
         specifier: ^9.39.0
         version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)
@@ -1725,6 +1731,9 @@ packages:
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
 
+  '@types/nodemailer@8.0.2':
+    resolution: {integrity: sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA==}
+
   '@types/pg@8.23.1':
     resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
 
@@ -2384,6 +2393,10 @@ packages:
   node-forge@1.4.3:
     resolution: {integrity: sha512-P6wzfh6t70avmV8FrVEAd/36sOPJQ+hkaJVX1Laap9J/77m7M0eyozDvc8SwnDf4P7MP94gwbAAo0rg3YVXT+g==}
     engines: {node: '>= 6.13.0'}
+
+  nodemailer@10.6.1:
+    resolution: {integrity: sha512-d7kfFfS/tR4Aca+SBvRaQ+MXKNv7d2JiRe5TxaRcFT/kYMh4GGPnW9aKksTIEvyEbA7d/7HYWE4YPDEHxzJj/g==}
+    engines: {node: '>=20.0.0'}
 
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
@@ -3517,6 +3530,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/nodemailer@8.0.2':
+    dependencies:
+      '@types/node': 22.20.5
+
   '@types/pg@8.23.1':
     dependencies:
       '@types/node': 22.20.5
@@ -4235,6 +4252,8 @@ snapshots:
       - babel-plugin-macros
 
   node-forge@1.4.3: {}
+
+  nodemailer@10.6.1: {}
 
   on-exit-leak-free@2.1.2: {}
 

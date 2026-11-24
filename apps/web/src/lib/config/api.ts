@@ -7,7 +7,6 @@ import {
   PADRAO_UUID,
   PREFIXO_PLATAFORMA,
   PrimeiroAdminResposta,
-  SessaoPlataformaResposta,
   paginaDe,
   CODIGO_TROCAR_SENHA,
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
@@ -20,26 +19,28 @@ import {
   type DefinirCredencialPlataformaEntrada,
   type AlterarModulosEntrada,
   type CriarEmpresaEntrada,
-  type EntrarPlataformaEntrada,
   type PrimeiroAdminEntrada,
   type SituacaoEmpresaEntrada,
-  type TrocarSenhaPlataformaEntrada,
+  type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
-import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
+import { type DetalhesErro, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
 
 /** Cliente das rotas `/v1/plataforma/*` (ADR 0012). Só no servidor: o token da sessão nunca chega ao navegador. */
 const ListaEmpresas = paginaDe(EmpresaPlataforma);
 export type ListaEmpresas = z.infer<typeof ListaEmpresas>;
 
-interface Pedido {
+export interface Pedido {
   token?: string;
   corpo?: unknown;
+  /** Multipart (carga, T-0058): vai como veio, sem `content-type` (o fetch põe a fronteira). */
+  formulario?: FormData;
   chave?: string;
+  timeoutMs?: number;
 }
 
-async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<Response> {
+export async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   if (p.token) headers.cookie = `${COOKIE_CONFIG}=${p.token}`;
   // CSRF (ADR 0012): toda escrita leva o cabeçalho.
@@ -47,17 +48,17 @@ async function chamar(metodo: string, caminho: string, p: Pedido = {}): Promise<
   if (p.corpo !== undefined) headers['content-type'] = 'application/json';
   if (p.chave) headers['idempotency-key'] = p.chave;
   try {
-    return await buscarNaApi(`${PREFIXO_PLATAFORMA}${caminho}`, { method: metodo, headers, body: p.corpo === undefined ? undefined : JSON.stringify(p.corpo) });
+    return await buscarNaApi(`${PREFIXO_PLATAFORMA}${caminho}`, { method: metodo, headers, body: p.formulario ?? (p.corpo === undefined ? undefined : JSON.stringify(p.corpo)) }, p.timeoutMs);
   } catch {
     throw new ConfigIndisponivel('API não respondeu');
   }
 }
 
 /** Mapeia o status de erro; nunca repassa o corpo cru. */
-async function recusar(r: Response): Promise<never> {
+export async function recusar(r: Response): Promise<never> {
   if (r.status === 401) throw new ConfigNaoAutenticado();
   if (r.status === 429) throw new ConfigMuitasTentativas();
-  let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown> } = {};
+  let corpo: { codigo?: unknown; mensagem?: unknown; campos?: Record<string, unknown>; detalhes?: { codigo?: unknown; bloqueios?: unknown } } = {};
   try {
     corpo = (await r.json()) as typeof corpo;
   } catch {
@@ -70,12 +71,17 @@ async function recusar(r: Response): Promise<never> {
     const campos = Object.fromEntries(Object.entries(corpo.campos ?? {}).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     // a mensagem da API (409 MXI01/MXI02 etc.) só passa se for curta e de uma linha; nunca o corpo cru
     const m = typeof corpo.mensagem === 'string' && corpo.mensagem.length <= 200 && !/[\r\n]/.test(corpo.mensagem) ? corpo.mensagem : '';
-    throw new ErroPlataforma(r.status, codigo, campos, m);
+    // só o código e os bloqueios curtos ('cadastro:motivo') passam dos detalhes; o resto da API fica de fora
+    const d = corpo.detalhes;
+    const detalhes: DetalhesErro = {};
+    if (typeof d?.codigo === 'string' && d.codigo.length <= 60) detalhes.codigo = d.codigo;
+    if (Array.isArray(d?.bloqueios)) detalhes.bloqueios = d.bloqueios.filter((b): b is string => typeof b === 'string' && /^[a-z_]{1,40}:[a-z_]{1,40}$/.test(b));
+    throw new ErroPlataforma(r.status, codigo, campos, m, detalhes);
   }
   throw new ConfigIndisponivel(`HTTP ${r.status}`);
 }
 
-async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise<z.infer<S>> {
+export async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise<z.infer<S>> {
   if (!r.ok) return recusar(r);
   const dados = schema.safeParse(await r.json().catch(() => null));
   if (!dados.success) throw new ConfigIndisponivel('resposta fora do contrato');
@@ -83,29 +89,9 @@ async function validado<S extends z.ZodTypeAny>(r: Response, schema: S): Promise
 }
 
 /** Só UUID entra no caminho (nada de `../` vindo da URL). */
-function idEmpresa(id: string): string {
+export function idEmpresa(id: string): string {
   if (!PADRAO_UUID.test(id)) throw new ErroPlataforma(404, 'NAO_ENCONTRADO');
   return id;
-}
-
-export interface SessaoAberta {
-  /** Token opaco do cookie da API; vai só ao cookie httpOnly do shell. */
-  token: string;
-  expira_em: string;
-}
-
-/** `POST /auth/entrar`. Null: e-mail ou senha inválidos (a API não diz qual, nem se a conta está travada). */
-export async function entrarPlataforma(corpo: EntrarPlataformaEntrada): Promise<SessaoAberta | null> {
-  const r = await chamar('POST', '/auth/entrar', { corpo });
-  if (r.status === 401 || r.status === 403) return null;
-  const dados = await validado(r, SessaoPlataformaResposta);
-  const token = r.headers
-    .getSetCookie()
-    .map((c) => c.split(';')[0] ?? '')
-    .find((c) => c.startsWith(`${COOKIE_CONFIG}=`))
-    ?.slice(COOKIE_CONFIG.length + 1);
-  if (!token) throw new ConfigIndisponivel('sessão sem cookie');
-  return { token, expira_em: dados.expira_em };
 }
 
 export async function euPlataforma(token: string): Promise<EuPlataforma> {
@@ -116,7 +102,7 @@ export async function sairPlataforma(token: string): Promise<void> {
   await chamar('POST', '/auth/sair', { token }).catch(() => undefined);
 }
 
-export async function trocarSenhaPlataforma(token: string, corpo: TrocarSenhaPlataformaEntrada): Promise<void> {
+export async function trocarSenhaPlataforma(token: string, corpo: TrocarSenhaEntrada): Promise<void> {
   const r = await chamar('POST', '/auth/senha', { token, corpo });
   if (!r.ok) await recusar(r);
 }

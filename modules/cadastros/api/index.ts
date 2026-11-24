@@ -18,6 +18,9 @@ export { criarResolvedorChaveErp, type ResolvedorChaveErp } from './resolvedor-c
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
 export type { Dependencias, FonteExterna, Fontes, PortaCertificados, RepoChaves, Repositorios, TabelaChave } from './portas';
+export { exigirFraseSubstituir, gravarCargaPortal, validarCargaPortal, type EntradaCargaPortal } from './carga-portal';
+export { criarPluginPlataformaCadastros, type DependenciasPlataformaCadastros } from './carga-portal-rotas';
+export type { CadastroZeravel, ConsultaUsoCadastros, MotivoUso } from './zeragem-portas';
 export { criarRotas } from './rotas';
 export { repositoriosSql } from './sql';
 
@@ -30,3 +33,6 @@ export function criarPluginCadastros(deps: Dependencias): PluginModulo {
 
 /** Plugin de produção: adaptador SQL na transação do tenant e fontes HTTP reais. A API monta este plugin em `/v1/cadastros`. */
 export const plugin: PluginModulo = criarPluginCadastros({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados: semCertificados });
+
+export { criarPluginPlataformaCadastrosZerar } from './zeragem';
+export type { DependenciasZeragemPlataforma, EstadoEntidadeIntegracao, EstadoIntegracaoPlataforma, RefsUso, UsoDaTabela, UsosCadastroPlataforma, UsuariosFiliaisPlataforma } from './zeragem-portas';

@@ -5,7 +5,7 @@
  * requisição (D9): o relatório e a auditoria levam contagens e SHA-256, nunca o valor de uma célula.
  */
 import {
-  ErroApi, definirRota, erros, lerCsv, respostaCsv, sha256Hex, pode,
+  ErroApi, definirRota, erros, respostaCsv, sha256Hex, pode,
   type ArquivoRecebido, type ContextoRota, type CsvLido, type RotaModulo, TEMPO_MAXIMO_ROTA_MS,
 } from '@macuxierp/platform-sdk';
 import {
@@ -13,20 +13,21 @@ import {
   type EntidadeCarga, type ErroCarga, type LinhasCarga, type ModoCarga, type ResultadoEntidade,
 } from '../contracts';
 import {
-  LAYOUT, MOTIVO_SO_ADMINISTRADOR, PADRAO_UF, modeloCsv, REFS_CARGA, acrescentarIdsDoLote, alvoCriado, classificarArquivo, conferirReferencias, conferirVigenciaDaTabela, erroLinha, idsVazios, mapearLinha, separarDuplicados,
-  type ErroLinha, type MunicipioOficial,
+  AVISO_ARQUIVO_IGNORADO, LAYOUT, MOTIVO_SO_ADMINISTRADOR, PADRAO_UF, modeloCsv, nomeArquivoCarga, REFS_CARGA, acrescentarIdsDoLote, agruparClientes, alvoCriado, classificarArquivo,
+  conferirDadosDoCliente, conferirFormasDoLote, conferirReferencias, conferirVigenciaDaTabela, erroLinha, idsVazios, mapearLinha, separarDuplicados,
+  type ErroLinha, type FormaDoLote, type MunicipioOficial,
 } from '../domain';
 import {
-  TRATADORES, estadoVazio, novoLoteId, planejarEstoque, podeCarregar, type Estado, type Saida,
+  TRATADORES, estadoVazio, novoLoteId, planejarEstoque, planejarIrmasDaForma, podeCarregar, type Estado, type Saida,
 } from './carga-entidades';
+import { lerCsvDoLayout, reativarPorPadrao } from './carga-reativar';
 import { tratarCartaoSemParcelas } from './formas-recusadas';
 import type { Dependencias, Repositorios, TabelaChave } from './portas';
-import { ENTIDADES_RESOLVIDAS } from './resolvedor-chave';
 import { dataIso, violacaoExternalId } from './util';
 
 type Linha = LinhasCarga[EntidadeCarga];
 
-const COLUNAS_UF: Partial<Record<EntidadeCarga, string>> = { filial: 'uf', cliente: 'endereco.uf', cliente_endereco: 'uf' };
+const COLUNAS_UF: Partial<Record<EntidadeCarga, string>> = { filial: 'uf', cliente: 'endereco.uf' };
 const CODIGO_CSV = { CSV_COLUNA_AUSENTE: 'CARGA_OBRIGATORIO' } as const;
 
 class Relatorio {
@@ -50,6 +51,8 @@ interface ArquivoCarga {
   csv: CsvLido;
   resultado: ResultadoEntidade;
   linhas: Linha[];
+  /** Formas de pagamento do condicoes_pagamento.csv (T-0058). */
+  formas: FormaDoLote[];
 }
 
 const novoResultado = (entidade: ResultadoEntidade['entidade'], arquivo: string, situacao: ResultadoEntidade['situacao'], avisos: string[] = []): ResultadoEntidade => ({
@@ -67,8 +70,8 @@ function erroDeExcecao(linha: number, e: unknown): ErroLinha {
 }
 
 export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: ModoCarga, recebidos: readonly ArquivoRecebido[], entidade?: EntidadeCarga): Promise<RelatorioCarga> {
-  if (entidade && (recebidos.length !== 1 || recebidos[0]?.nome.toLowerCase() !== `${entidade}.csv`)) {
-    throw erros.validacao({ arquivos: `Envie só o arquivo ${entidade}.csv neste botão.` });
+  if (entidade && (recebidos.length !== 1 || ![`${entidade}.csv`, nomeArquivoCarga(entidade)].includes(recebidos[0]?.nome.toLowerCase() ?? ''))) {
+    throw erros.validacao({ arquivos: `Envie só o arquivo ${nomeArquivoCarga(entidade)} neste botão.` });
   }
   const r = deps.repositorios(c.tx);
   const loteId = novoLoteId();
@@ -79,10 +82,12 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   const arquivos: ArquivoCarga[] = [];
   const vistas = new Set<EntidadeCarga>();
   let total = 0;
-  for (const a of recebidos) {
-    const k = classificarArquivo(a.nome);
+  for (const bruto of recebidos) {
+    const k = classificarArquivo(bruto.nome);
+    // RN-CAD-08 e decisão do PO: `ativo` vazio ou ausente = sim, em toda rota de carga (ponto comum).
+    const a = k.classe === 'carga' ? reativarPorPadrao(k.entidade, bruto) : bruto;
     if (k.classe === 'ignorado') {
-      rel.entidades.push(novoResultado(k.entidade, a.nome, 'ignorado'));
+      rel.entidades.push(novoResultado(k.entidade, a.nome, 'ignorado', [AVISO_ARQUIVO_IGNORADO[k.entidade]].filter((x): x is string => x !== undefined)));
       continue;
     }
     if (k.classe === 'recusado') {
@@ -103,7 +108,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
       continue;
     }
     const layout = LAYOUT[k.entidade];
-    const lido = lerCsv(a.conteudo(), { aceitas: [...layout.usadas, ...layout.ignoradas], obrigatorias: layout.obrigatorias });
+    const lido = lerCsvDoLayout(k.entidade, a.conteudo());
     if (!lido.ok) {
       recusar(lido.erro.linha, lido.erro.coluna, CODIGO_CSV[lido.erro.codigo as keyof typeof CODIGO_CSV] ?? 'CARGA_FORMATO', lido.erro.motivo);
       continue;
@@ -113,7 +118,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     resultado.lidas = lido.linhas.length + lido.errosLinha.length;
     resultado.colunas_ignoradas = lido.colunas.filter((x) => layout.ignoradas.includes(x));
     rel.entidades.push(resultado);
-    arquivos.push({ entidade: k.entidade, nome: a.nome, sha256: sha256Hex(a.conteudo()), bytes: a.tamanho, csv: lido, resultado, linhas: [] });
+    arquivos.push({ entidade: k.entidade, nome: a.nome, sha256: sha256Hex(a.conteudo()), bytes: a.tamanho, csv: lido, resultado, linhas: [], formas: [] });
   }
   if (total > MAX_LINHAS_LOTE) throw erros.validacao({ arquivos: `O lote tem mais de ${MAX_LINHAS_LOTE} linhas: envie um arquivo por vez (CLI)` });
 
@@ -135,15 +140,34 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   for (const a of arquivos) {
     for (const e of a.csv.errosLinha) rel.erro(a.nome, e.linha, null, 'CARGA_FORMATO', e.motivo);
     const ok: Linha[] = [];
-    for (const l of a.csv.linhas) {
+    let doArquivo = a.csv.linhas;
+    if (a.entidade === 'cliente') {
+      // T-0058: as linhas do mesmo cliente têm de trazer os mesmos dados dele; a divergente é recusada antes do mapeamento.
+      const conf = conferirDadosDoCliente(doArquivo.map((l) => ({ numero: l.numero, celulas: l.celulas })));
+      conf.erros.forEach((e) => rel.erroLinha(a.nome, e));
+      doArquivo = doArquivo.filter((l) => !conf.recusadas.has(l.numero));
+    }
+    for (const l of doArquivo) {
       const m = mapearLinha(a.entidade, l.celulas, l.numero, ctxMapa);
       if (m.ok) ok.push(m.linha as Linha);
       else m.erros.forEach((e) => rel.erroLinha(a.nome, e));
     }
+    if (a.entidade === 'cliente') {
+      const g = agruparClientes(ok as LinhasCarga['cliente'][]);
+      g.erros.forEach((e) => rel.erroLinha(a.nome, e));
+      a.linhas = g.clientes;
+      continue;
+    }
     const { unicas, erros: dup } = separarDuplicados(ok);
     dup.forEach((e) => rel.erroLinha(a.nome, e));
     a.linhas = unicas;
-    if (a.entidade === 'prazo_pagamento') for (const l of unicas as LinhasCarga['prazo_pagamento'][]) if (l.refs.forma) st.prazosNoLote.add(l.refs.forma);
+    if (a.entidade === 'condicao_pagamento') {
+      // T-0058, RN-CAD-09: a forma vem na linha da condição; a 1ª linha que a traz vale para as outras da mesma forma.
+      const f = conferirFormasDoLote(unicas as LinhasCarga['condicao_pagamento'][]);
+      f.erros.forEach((e) => rel.erroLinha(a.nome, e));
+      a.linhas = f.linhas;
+      a.formas = f.formas;
+    }
   }
 
   // 4. Referências e gravação na ordem D13.
@@ -151,7 +175,7 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     const a = arquivos.find((x) => x.entidade === entidade);
     if (!a) continue;
     await carregarReferencias(st, entidade, a.linhas);
-    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos, vistas) as { validas: Linha[]; erros: ErroLinha[] };
+    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos) as { validas: Linha[]; erros: ErroLinha[] };
     ref.erros.forEach((e) => rel.erroLinha(a.nome, e));
     let linhas = ref.validas;
     if (entidade === 'preco') {
@@ -168,10 +192,15 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
       else a.resultado.sem_mudanca += n;
     };
     const executar = async (saida: Saida, numeros: number[], externo: string | undefined): Promise<boolean> => {
+      // Cliente com várias linhas (T-0058): o erro do cliente sai na 1ª linha dele; as outras linhas contam como recusadas.
+      const alvosDoErro = entidade === 'cliente' ? numeros.slice(0, 1) : numeros;
       if ('erros' in saida) {
-        for (const e of saida.erros) for (const n of numeros) rel.erroLinha(a.nome, { ...e, linha: n });
+        for (const e of saida.erros) for (const n of alvosDoErro) rel.erroLinha(a.nome, { ...e, linha: n });
         return false;
       }
+      const parciais = saida.errosParciais ?? [];
+      parciais.forEach((e) => rel.erroLinha(a.nome, e));
+      const recusadasDoGrupo = new Set(parciais.map((e) => e.linha));
       let id = saida.alvo?.id;
       if (st.gravar && saida.aplicar) {
         try {
@@ -180,13 +209,13 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
           if (typeof novo === 'string') id = novo;
         } catch (e) {
           const erro = erroDeExcecao(numeros[0] as number, e);
-          for (const n of numeros) rel.erroLinha(a.nome, { ...erro, linha: n });
+          for (const n of alvosDoErro) rel.erroLinha(a.nome, { ...erro, linha: n });
           return false;
         }
       } else if (saida.efeito === 'inserida') id = '';
       const alvo = alvoCriado(entidade);
-      if (alvo && alvo !== 'forma' && id !== undefined && externo !== undefined) st.ids[alvo].set(externo, id);
-      contar(saida.efeito, numeros.length);
+      if (alvo && id !== undefined && externo !== undefined) st.ids[alvo].set(externo, id);
+      contar(saida.efeito, numeros.filter((n) => !recusadasDoGrupo.has(n)).length);
       return true;
     };
     if (entidade === 'estoque') {
@@ -195,10 +224,25 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
         if (await executar(g.saida, g.linhas, undefined)) for (const n of g.linhas) boas.push(porLinha.get(n) as Linha);
       }
     } else {
+      if (entidade === 'condicao_pagamento') {
+        for (const f of a.formas) {
+          const plano = await planejarIrmasDaForma(f, st);
+          plano.erros.forEach((e) => rel.erroLinha(a.nome, e));
+          plano.avisos.forEach((x) => avisos.add(x));
+          if (st.gravar && plano.aplicar && plano.erros.length === 0) {
+            try {
+              const aplicar = plano.aplicar;
+              await r.carga.comSavepoint(() => aplicar());
+            } catch (e) {
+              rel.erroLinha(a.nome, { ...erroDeExcecao(f.linha, e), linha: f.linha });
+            }
+          }
+        }
+      }
       for (const l of linhas) {
         const tratar = TRATADORES[entidade] as (l: Linha, st: Estado) => Promise<Saida>;
         const colisao = await colisaoComId(r, entidade, l.external_id);
-        const ok = await executar(colisao ?? (await tratar(l, st)), [l.linha], l.external_id);
+        const ok = await executar(colisao ?? (await tratar(l, st)), (l as { linhas?: number[] }).linhas ?? [l.linha], l.external_id);
         l.avisos.forEach((x) => avisos.add(x));
         if (ok) boas.push(l);
       }
@@ -206,14 +250,14 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     acrescentarIdsDoLote(st.conhecidos, entidade, boas as never[]);
     a.resultado.avisos = [...avisos].map((x) => x.slice(0, 200)).slice(0, 50);
   }
-  const produto = arquivos.find((x) => x.entidade === 'produto');
-  if (produto && [...st.descontos.keys()].some((p) => !st.produtosNoPreco.has(p))) {
-    produto.resultado.avisos.push('Desconto máximo de produto sem preço no lote: não foi aplicado');
+  const arquivoPreco = arquivos.find((x) => x.entidade === 'preco');
+  if (arquivoPreco && st.precosSemDesconto > 0) {
+    arquivoPreco.resultado.avisos.push(`${st.precosSemDesconto} item(ns) de preço sem desconto máximo (nem no produto nem no preço)`);
   }
   if (st.gravar) {
     // RN-CAD-09: nada fica "cartão sem parcelas" (preenche quando os prazos são 30×N; senão desativa).
     const limpeza = await tratarCartaoSemParcelas(c, r, await r.carga.condicoesAtivasCartaoSemParcelas());
-    const destino = arquivos.find((x) => x.entidade === 'prazo_pagamento') ?? arquivos.find((x) => x.entidade === 'forma_pagamento');
+    const destino = arquivos.find((x) => x.entidade === 'condicao_pagamento');
     if (destino && limpeza.preenchidas.total + limpeza.desativadas.total > 0) {
       destino.resultado.avisos.push(`Cartão sem parcelas: ${limpeza.preenchidas.total} preenchida(s), ${limpeza.desativadas.total} desativada(s)`);
     }
@@ -236,8 +280,10 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
   });
 }
 
-/** Tabela de cada entidade da carga que grava `external_id` (a forma de pagamento e o estoque não têm tabela própria). */
-const TABELA_DA_ENTIDADE: Partial<Record<EntidadeCarga, TabelaChave>> = { ...ENTIDADES_RESOLVIDAS, produto_unidade: 'produto_unidade', preco: 'tabela_preco_item' };
+/** Tabela de cada entidade da carga que grava `external_id` (o estoque não tem tabela própria). */
+const TABELA_DA_ENTIDADE: Partial<Record<EntidadeCarga, TabelaChave>> = {
+  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'condicao_pagamento', produto: 'produto', cliente: 'cliente', produto_unidade: 'produto_unidade', preco: 'tabela_preco_item',
+};
 
 /** Guarda RD-0317 (ver domain/external-id.ts): vira `CARGA_CONFLITO` da linha. */
 async function colisaoComId(r: Repositorios, entidade: EntidadeCarga, externalId: unknown): Promise<Saida | null> {
@@ -255,10 +301,6 @@ async function carregarReferencias(st: Estado, entidade: EntidadeCarga, linhas: 
       if (v !== undefined && !st.conhecidos[alvo].has(v)) faltam.add(v);
     }
     if (faltam.size === 0) continue;
-    if (alvo === 'forma') {
-      for (const ext of faltam) if ((await st.r.carga.condicoesDaForma(ext)).length > 0) st.conhecidos.forma.add(ext);
-      continue;
-    }
     for (const [ext, id] of await st.r.chaves.idsPorExternalId(alvo, [...faltam], true)) {
       st.ids[alvo].set(ext, id);
       st.conhecidos[alvo].add(ext);
@@ -273,7 +315,7 @@ export function rotaModeloCarga(): RotaModulo {
     async executar(_c, e) {
       const k = EntidadeCargaZ.safeParse(e.params.entidade);
       if (!k.success) throw erros.naoEncontrado('Modelo');
-      return respostaCsv(`${k.data}.csv`, modeloCsv(k.data));
+      return respostaCsv(nomeArquivoCarga(k.data), modeloCsv(k.data));
     },
   });
 }

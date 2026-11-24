@@ -16,9 +16,9 @@ describe('403 TROCAR_SENHA (T-0052)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('GET, escrita, CSV, arquivo e carga: viram TrocarSenhaPendente', async () => {
+  it('GET, escrita, CSV e arquivo: viram TrocarSenhaPendente', async () => {
     vi.stubGlobal('fetch', resposta(403, { codigo: CODIGO_TROCAR_SENHA }));
-    const { getValidado, escreverJson, baixarCsv, baixarArquivo, buscarRegistro, enviarCarga } = await carregar();
+    const { getValidado, escreverJson, baixarCsv, baixarArquivo, buscarRegistro } = await carregar();
     const { TrocarSenhaPendente } = await import('./troca-pendente');
     const { z } = await import('zod');
     await expect(getValidado('/v1/x', z.unknown(), 't', 'x', true)).rejects.toBeInstanceOf(TrocarSenhaPendente);
@@ -26,7 +26,6 @@ describe('403 TROCAR_SENHA (T-0052)', () => {
     await expect(escreverJson('POST', '/v1/x', {}, 't')).rejects.toBeInstanceOf(TrocarSenhaPendente);
     await expect(baixarCsv('/v1/x/exportar', 't')).rejects.toBeInstanceOf(TrocarSenhaPendente);
     await expect(baixarArquivo('/v1/x/y', 't')).rejects.toBeInstanceOf(TrocarSenhaPendente);
-    await expect(enviarCarga('t', new FormData())).rejects.toBeInstanceOf(TrocarSenhaPendente);
   });
   it('403 sem permissão segue como SemPermissao / resposta de escrita', async () => {
     vi.stubGlobal('fetch', resposta(403, { codigo: 'SEM_PERMISSAO' }));
