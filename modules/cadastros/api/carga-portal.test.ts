@@ -2,6 +2,7 @@
  * Carga pelo /config (T-0058, v0.3.5a): adicionar e substituir tudo, sobre o dublê em memória. A frase, a inativação em lote
  * (nunca apaga), o "em uso" mantido e os eventos com `inativo` são do RN-CAD-10; o contrato é o do SDK (`portal-cargas.ts`).
  */
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -125,7 +126,7 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     const entrada = { cadastro: 'produto', modo: 'substituir_tudo', arquivo: arq(csv('produto', [0])) } as const;
     const v = await validarCargaPortal(t.deps, t.c, entrada);
     const g = await gravarCargaPortal(t.deps, t.c, { ...entrada, frase: FRASE });
-    expect(v.efeito).toMatchObject({ total: 2, a_inativar: 1, percentual: 50, sem_chave: 1 });
+    expect(v.efeito).toMatchObject({ total: 2, a_inativar: 1, percentual: 50, sem_chave: 1, inativados_em_uso: 0 });
     expect(g.efeito).toEqual(v.efeito);
     expect(t.repos.produtos.linhas.find((l) => (l as { id: string }).id === 'sem-chave')).toMatchObject({ inativo: false });
   });
@@ -139,6 +140,32 @@ describe('carga no /config: substituir tudo (RN-CAD-10)', () => {
     expect(v.efeito).not.toHaveProperty('enderecos_a_inativar');
     expect(g.efeito).not.toHaveProperty('enderecos_a_inativar');
     expect(g).not.toHaveProperty('enderecos_inativados');
+    expect(v.efeito).not.toHaveProperty('enderecos_sem_chave');
+    expect(g.efeito).not.toHaveProperty('enderecos_sem_chave');
+  });
+
+  it('RN-CAD-10: efeito.inativados_em_uso conta os em uso (mantidos no histórico) e é igual no validar e no gravar', async () => {
+    const uso: ConsultaUsoCadastros = { async emUso(_tx, _c, ids) { return new Map(ids.map((id) => [id, 'pedido'])); } };
+    const t = montar(uso);
+    await t.gravar('produto', csv('produto'));
+    const entrada = { cadastro: 'produto', modo: 'substituir_tudo', arquivo: arq(csv('produto', [0])) } as const;
+    const v = await validarCargaPortal(t.deps, t.c, entrada);
+    const g = await gravarCargaPortal(t.deps, t.c, { ...entrada, frase: FRASE });
+    expect(v.efeito).toMatchObject({ a_inativar: 1, inativados_em_uso: 1 });
+    expect(g.efeito).toEqual(v.efeito);
+  });
+
+  it('RN-CAD-10: efeito.enderecos_sem_chave só no cliente: conta o endereço sem external_id, igual nos dois', async () => {
+    const t = montar();
+    for (const dep of ['filial', 'vendedor', 'condicao_pagamento', 'produto', 'preco', 'cliente'] as const) await t.gravar(dep, csv(dep === 'condicao_pagamento' ? 'condicoes_pagamento' : dep));
+    const base = (t.repos.clientes.enderecos.linhas ?? []) as { pai?: string }[];
+    expect(base.length).toBeGreaterThan(0);
+    base.push({ ...(base[0] as object), id: randomUUID(), external_id: null, inativo: false } as never);
+    const entrada = { cadastro: 'cliente', modo: 'substituir_tudo', arquivo: arq(csv('cliente', [0])) } as const;
+    const v = await validarCargaPortal(t.deps, t.c, entrada);
+    const g = await gravarCargaPortal(t.deps, t.c, { ...entrada, frase: FRASE });
+    expect(v.efeito?.enderecos_sem_chave).toBe(1);
+    expect(g.efeito).toEqual(v.efeito);
   });
 
   it('RN-CAD-10: arquivo com todos os existentes não inativa ninguém', async () => {

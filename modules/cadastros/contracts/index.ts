@@ -487,12 +487,6 @@ export const ResultadoEntidade = z.object({
   recusadas: z.number().int().min(0),
   colunas_ignoradas: z.array(z.string()),
   avisos: z.array(z.string().max(200)),
-  /** Só no `substituir_tudo` do /config (RN-CAD-10): quantos cadastros ativos que não vieram no arquivo foram inativados (nunca apagados). */
-  inativadas: z.number().int().min(0).optional(),
-  /** Só no `substituir_tudo` do /config: ativos sem external_id; NÃO são inativados, só contados (RN-CAD-10). */
-  sem_chave: z.number().int().min(0).optional(),
-  /** Só no cliente, no `substituir_tudo` do /config: endereços ativos que não vieram no arquivo e foram inativados junto (RN-CAD-10); nunca apagados. */
-  enderecos_inativados: z.number().int().min(0).optional(),
 });
 export type ResultadoEntidade = z.infer<typeof ResultadoEntidade>;
 export const RelatorioCarga = z.object({

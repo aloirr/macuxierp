@@ -8,8 +8,8 @@
  * - `adicionar`: a carga de hoje (acrescenta e atualiza, sem tirar nada).
  * - `substituir_tudo` (RN-CAD-10): a API revalida a frase (`normalizarFrase`); grava o arquivo; depois, na MESMA transação,
  *   inativa (`deleted_at`, como a D6; nunca apaga) os ativos que não vieram no arquivo e publica `cadastros.*.alterado@1`
- *   com `inativo: true`, que é o que leva a inativação ao FDV. Em uso (`ConsultaUsoCadastros`) também é inativado e só
- *   conta em `mantidos_em_uso` (o histórico fica). A inativação e os eventos ficam no
+ *   com `inativo: true`, que é o que leva a inativação ao FDV. Em uso (`ConsultaUsoCadastros`) também é inativado e
+ *   continua no histórico; só conta em `efeito.inativados_em_uso`. A inativação e os eventos ficam no
  *   `carga-substituir.ts`; a forma vive na condição e o estoque é saldo, não cadastro: não têm o que inativar.
  * - Nada de valor de célula nem dado pessoal em erro ou aviso: só contagens.
  */
@@ -68,6 +68,15 @@ function planejar(deps: Dependencias, c: ContextoRota, cadastro: CadastroCargaPo
   return planejarSubstituicao(deps, c, entidade, a, emUso);
 }
 
+/** O efeito do Substituir tudo, montado igual no validar (a prévia) e no gravar (o que de fato saiu). */
+function efeitoDoPlano(previsto: Awaited<ReturnType<typeof planejar>>, entidade: EntidadeCarga, a_inativar = previsto.plano.inativar.length): EfeitoSubstituir {
+  const { plano, total } = previsto;
+  return efeitoSubstituir({
+    total, a_inativar, sem_chave: plano.sem_chave, inativados_em_uso: plano.mantidos_em_uso,
+    ...(entidade === 'cliente' && { enderecos_a_inativar: plano.enderecos_inativar.length, enderecos_sem_chave: plano.enderecos_sem_chave }),
+  });
+}
+
 function resultadoDoCadastro(rel: RelatorioCarga, entidade: EntidadeCarga): ResultadoEntidade {
   const r = rel.entidades.find((e) => e.entidade === entidade);
   if (!r) throw new Error('carga do portal: o relatório não trouxe o cadastro enviado');
@@ -94,21 +103,11 @@ export async function gravarCargaPortal(deps: Dependencias, c: ContextoRota, e: 
   if (res.situacao !== 'processado' || gravadas === 0) throw conflito(MENSAGENS_CARGA_PORTAL.nadaAGravar, 'nada_a_gravar');
   if (!substituir) return GravarCargaPlataformaResposta.parse({ cadastro, modo: e.modo, gravadas, com_erro: res.recusadas });
 
-  const { plano, total } = previsto!;
   const { inativados, enderecos_inativados: enderecos } = await aplicarSubstituicao(deps, c, entidade, previsto!);
-  if (plano.sem_chave > 0) res.avisos.push(`${plano.sem_chave} ativo(s) sem external_id: não foram inativados`);
-  if (plano.mantidos_em_uso > 0) res.avisos.push(`${plano.mantidos_em_uso} inativado(s) em uso: ficam no histórico`);
-  res.inativadas = inativados.length;
-  const doCliente = entidade === 'cliente' ? { enderecos_inativados: enderecos.length } : undefined; // só o cliente tem endereços: nos demais cadastros as chaves nem existem
-  if (doCliente) res.enderecos_inativados = doCliente.enderecos_inativados;
-  res.sem_chave = plano.sem_chave;
   return GravarCargaPlataformaResposta.parse({
     cadastro, modo: e.modo, gravadas, com_erro: res.recusadas, inativadas: inativados.length,
-    ...doCliente,
-    efeito: efeitoSubstituir({
-      total, a_inativar: inativados.length, sem_chave: plano.sem_chave,
-      ...(doCliente && { enderecos_a_inativar: plano.enderecos_inativar.length }),
-    }),
+    ...(entidade === 'cliente' && { enderecos_inativados: enderecos.length }),
+    efeito: efeitoDoPlano(previsto!, entidade, inativados.length),
   });
 }
 
@@ -126,11 +125,7 @@ export async function validarCargaPortal(deps: Dependencias, c: ContextoRota, e:
   const comErro = res.situacao === 'processado' ? res.recusadas : Math.max(1, res.lidas);
   let efeito: EfeitoSubstituir | undefined;
   if (e.modo === 'substituir_tudo') {
-    const p = await planejar(deps, c, cadastro, entidade, arquivo);
-    efeito = efeitoSubstituir({
-      total: p.total, a_inativar: p.plano.inativar.length, sem_chave: p.plano.sem_chave,
-      ...(entidade === 'cliente' ? { enderecos_a_inativar: p.plano.enderecos_inativar.length } : {}),
-    });
+    efeito = efeitoDoPlano(await planejar(deps, c, cadastro, entidade, arquivo), entidade);
   }
   return ValidarCargaPlataformaResposta.parse({
     cadastro, modo: e.modo, prontas, com_erro: Math.max(comErro, linhas.length > 0 ? 1 : 0),
