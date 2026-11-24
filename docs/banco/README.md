@@ -303,6 +303,9 @@ Migração: `db/migrations/0048_senha_temporaria.sql`; testes: `db/testes/senha-
 
 Migração: `db/migrations/0050_superadmin_cancelar_temporaria.sql`; testes: `db/testes/senha-temporaria-0050.db.test.ts`.
 
+## Temporária destrava o superadmin (hotfix, migração 0051)
+- `plataforma.superadmin_consumir_temporaria(uuid)` (mesma assinatura, retorno e privilégios; RN-CORE-10) zera também `falhas_login` e `bloqueado_ate` no mesmo `UPDATE` atômico da temporária; sem temporária válida nada muda e a `superadmin_abrir_sessao` (0033) segue recusando o travado. Migração: `db/migrations/0051_superadmin_temporaria_destrava.sql`; testes: `db/testes/senha-temporaria-0051.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
