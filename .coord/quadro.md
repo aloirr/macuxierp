@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.11 em produção** (24/11, 09h37: cenário B e hotfix da senha temporária). Pausa geral de 24/11 (R-20261124-061934) encerrada às 16h17 com a conta nova. Próxima: **v0.3.12** = formas e prazos (T-0085), telas de integração (T-0086), telas do core (T-0087), telas de cadastro (T-0088) e pré-cadastro (T-0059). A retomar: T-0057 (#405), T-0083, T-0075. Depois: T-0062, T-0060, entidades v2, T-0081, T-0082.
+> Fase atual: **v0.3.11 em produção** (24/11, 09h37: cenário B e hotfix da senha temporária). Pausa geral de 24/11 (R-20261124-061934) encerrada às 17h07 pelo Alexandre (R-20261124-170752); o registro anterior de "16h17" não tinha recado dele (R-20261124-163954). Próxima: **v0.3.12** = formas e prazos (T-0085), telas de integração (T-0086), telas do core (T-0087), telas de cadastro (T-0088) e pré-cadastro (T-0059). A retomar: T-0057 (#405), T-0083, T-0075. Depois: T-0062, T-0060, entidades v2, T-0081, T-0082.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -76,10 +76,10 @@
 | [T-0081](tarefas/T-0081.md) | E-mail do destinatário no XML da NF-e (`<email>` no `dest`) | depois da v0.3.11 | modulo-faturamento | aberta | 🟡 de 23/11 22h20, no fecho da T-0078 (o XML sai sem `<email>` no `dest`); confirmada para depois do cenário B |
 | [T-0082](tarefas/T-0082.md) | Tela de certificados no BKO: subir o A1 real, selo do A1 de teste e vencimento | depois da v0.3.10 | modulo-core | aberta | aprovada pelo PO (23/11 22h42); donos: modulo-core e engenheiro-apps |
 | [T-0083](tarefas/T-0083.md) | 🟡 da segurança do login e do esqueci (temporária cancelada no login certo, CSRF, fonte única do e-mail, tempo, texto do 401, email-env.sh, código salvo) | v0.3.11 | engenheiro-software | aberta | revisão de segurança do #490 e do #492, ensaio do testes; decisão em aberto sobre o `destinoDoCodigo` no web |
-| [T-0085](tarefas/T-0085.md) | Formas e prazos: prazo com parcelas e prazo médio, cliente com prazo médio, envio correto ao FDV | v0.3.12 | modulo-cadastros | aberta | R-20261124-095505, 110213, 111025, 111329; lote 1 do integracao-fdv (parcelas_dias em lista) sai primeiro; migração 0052 |
-| [T-0086](tarefas/T-0086.md) | Integração no /config e no BKO: Monitor, Reprocessar, Zerar por cadastro, Log, Atualizar; Cargas vira Dados | v0.3.12 | modulo-integracao-fdv | aberta | R-20261124-085515, 085816, 090216, 090734; Zerar no FDV em aberto com o Alexandre |
+| [T-0085](tarefas/T-0085.md) | Formas e prazos: prazo com parcelas e prazo médio, cliente com prazo médio, envio correto ao FDV | v0.3.12 | modulo-cadastros | aberta | R-20261124-095505, 110213, 111025, 111329; lote 1 #510 → e74f523 (parcelas_dias em lista); #511 refeito pelo testes a partir do main; ADR 0020 e desenhos refeitos pelo engenheiro (b131bbc perdido); migração 0052 |
+| [T-0086](tarefas/T-0086.md) | Integração no /config e no BKO: Monitor, Reprocessar, Zerar por cadastro, Log, Atualizar; Cargas vira Dados | v0.3.12 | modulo-integracao-fdv | aberta | R-20261124-085515, 085816, 090216, 090734; Zerar apaga no ERP e inativa no FDV (R-20261124-170915) |
 | [T-0087](tarefas/T-0087.md) | Telas do core no BKO: Usuários, Perfis, Licenças e Auditoria (RF-CORE-02) | v0.3.12 | modulo-core | aberta | R-20261124-092600 |
-| [T-0088](tarefas/T-0088.md) | Telas de cadastro no BKO: clientes, produtos, preços, condições, filiais, empresa/fiscal | v0.3.12 | modulo-cadastros | aberta | R-20261124-061533; com o pré-cadastro (T-0059) |
+| [T-0088](tarefas/T-0088.md) | Telas de cadastro no BKO: clientes, produtos, preços, condições, filiais, empresa/fiscal | v0.3.12 | modulo-cadastros | aberta | R-20261124-061533; com o pré-cadastro (T-0059); lote 1 #512 em correção (2 🔴 do corretor no 3e9d984, R-20261124-171118) |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 
