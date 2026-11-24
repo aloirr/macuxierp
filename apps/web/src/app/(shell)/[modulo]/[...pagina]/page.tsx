@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
@@ -9,6 +10,21 @@ import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
+import { ROTA_BANDEIRA } from '@/lib/telas/bandeira';
+import { ROTA_AMBIENTE_FISCAL, ROTA_PERFIS } from '@/lib/telas/core';
+import { TelaAmbienteFiscal, TelaBandeira, TelaPerfis } from './telas-quadro';
+
+/** Páginas que têm componente próprio (não passam pelo renderizador genérico nem mostram "Disponível em breve"). */
+const QUADROS: ReadonlySet<string> = new Set([ROTA_PERFIS, ROTA_AMBIENTE_FISCAL, ROTA_BANDEIRA]);
+
+/** Título da aba do navegador: o mesmo da página (e do botão da seção), não o nome do item de menu. */
+export async function generateMetadata({ params }: { params: Promise<{ modulo: string; pagina: string[] }> }): Promise<Metadata> {
+  const { modulo, pagina } = await params;
+  const { eu } = await contexto();
+  const resolvida = resolverPagina(montarMenu(eu.modulos, MANIFESTOS, eu.usuario.perfil), `/${[modulo, ...pagina].join('/')}`, eu.usuario.perfil);
+  const titulo = resolvida?.pagina?.titulo ?? resolvida?.rotulo;
+  return titulo ? { title: titulo } : {};
+}
 
 /**
  * Espaço das telas dos módulos. A rota vem das páginas que o módulo declara (mesma fonte do menu), com `:id` para o detalhe.
@@ -45,7 +61,11 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {tela && declarada && (
         <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
       )}
-      {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && <p className="apoio">Disponível em breve.</p>}
+      {/* Quadros com componente próprio (T-0087, T-0088): só leitura, exceto a bandeira (Ligar/Desligar do administrador, pelo executor do quadro). */}
+      {declarada?.rota === ROTA_PERFIS && <TelaPerfis acesso={acesso} />}
+      {declarada?.rota === ROTA_AMBIENTE_FISCAL && <TelaAmbienteFiscal acesso={acesso} perfil={perfil} />}
+      {declarada?.rota === ROTA_BANDEIRA && <TelaBandeira acesso={acesso} perfil={perfil} rota={rota} rotaDaPagina={declarada.rota} />}
+      {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && !QUADROS.has(declarada?.rota ?? '') && <p className="apoio">Disponível em breve.</p>}
     </>
   );
 }

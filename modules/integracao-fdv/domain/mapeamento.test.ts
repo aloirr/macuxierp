@@ -4,14 +4,14 @@ import {
   filiaisComCodigoRepetido,
   inativarRegistro,
   mapearCliente,
-  mapearCondicao,
+  mapearCondicaoOpcional as mapearCondicao,
+  mapearCondicao as mapearCondicaoEstrita,
   mapearEstoque,
   mapearFilial,
   mapearPreco,
   mapearProduto,
   mapearTabelaPreco,
   mapearVendedor,
-  prazoMedioMaxDias,
   validarRegistro,
   type EventoCliente,
   type EventoFilial,
@@ -115,11 +115,39 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
   });
 
   it('M2: a condição vira forma (UUID v5 do tPag) e prazo (id do ERP), parcelas_dias [28, 56]', () => {
-    const { forma, prazo } = mapearCondicao({ id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: true });
+    const { forma, prazo } = mapearCondicao({ id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42, inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: true });
     expect(forma.external_id).toBe(externalIdForma(U(100), '15'));
     expect(forma.payload).toMatchObject({ codigo: 'BOLETO', nome: 'Boleto bancário', ativo: true });
-    expect(prazo.payload).toMatchObject({ external_id: U(6), forma_external_id: forma.external_id, parcelas_dias: [28, 56], descricao: '28 e 56 dias' });
-    expect(mapearCondicao({ id: U(7), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: false }).prazo.payload.parcelas_dias).toEqual([0]);
+    expect(prazo!.payload).toMatchObject({ external_id: U(6), forma_external_id: forma.external_id, parcelas_dias: [28, 56], descricao: '28 e 56 dias', prazo_medio_dias: 42 });
+    expect(mapearCondicao({ id: U(7), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0, inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: false }).prazo!.payload.parcelas_dias).toEqual([0]);
+  });
+
+  it('RN-CAD-15: prazo incompleto (prazo médio nulo, descrição vazia ou sem parcela) não sai; a forma sai assim mesmo', () => {
+    const base = { id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42 as number | null, inativo: false, forma_codigo: null, forma_nome: null };
+    for (const ruim of [{ prazo_medio_dias: null }, { descricao: ' ' }, { prazos_dias: [] }]) {
+      const r = mapearCondicao({ ...base, ...ruim }, EM, { tenantId: U(100), formaAtiva: true });
+      expect(r.prazo).toBeNull();
+      expect(r.forma.payload).toMatchObject({ ativo: true });
+    }
+    expect(mapearCondicao(base, EM, { tenantId: U(100), formaAtiva: true }).prazo).not.toBeNull();
+  });
+
+  it('RN-CAD-15: a assinatura antiga (temporária, T-0085) devolve o prazo e lança com prazo incompleto', () => {
+    const base = { id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42 as number | null, inativo: false, forma_codigo: null, forma_nome: null };
+    expect(mapearCondicaoEstrita(base, EM, { tenantId: U(100), formaAtiva: true }).prazo.payload.parcelas_dias).toEqual([28, 56]);
+    expect(() => mapearCondicaoEstrita({ ...base, prazo_medio_dias: null }, EM, { tenantId: U(100), formaAtiva: true })).toThrow(/RN-CAD-15/);
+  });
+
+  it('contrato v2 do prazo (opção): valida os limites da v2 e aponta o campo, sem o valor', () => {
+    const ev = { id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42, inativo: false, forma_codigo: null, forma_nome: null };
+    const { prazo } = mapearCondicao(ev, EM, { tenantId: U(100), formaAtiva: true });
+    expect(validarRegistro(prazo!, () => true, { prazoV2: true })).toBeNull();
+    expect(validarRegistro(prazo!, () => true)).toBeNull(); // v1
+    const decrescente = mapearCondicao({ ...ev, prazos_dias: [56, 28] }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
+    expect(validarRegistro(decrescente, () => true, { prazoV2: true })).toEqual({ external_id: decrescente.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // v2: sem decrescer
+    expect(validarRegistro(decrescente, () => true)).toBeNull(); // v1 aceita
+    const longo = mapearCondicao({ ...ev, prazos_dias: [400], prazo_medio_dias: 400 }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
+    expect(validarRegistro(longo, () => true)).toEqual({ external_id: longo.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // o Hub v1 real já limita a 365
   });
 
   it('D11: estoque com saldo numérico, um depósito por filial, negativo como está', () => {
@@ -207,39 +235,39 @@ describe('RF-INF-01 cliente com carteira (D7) e LGPD (M9)', () => {
     ],
   };
 
-  it('carteira = vendedor_external_id; endereço principal embutido; condição vira forma e prazo médio', () => {
-    const { cliente } = mapearCliente(ev, EM, { condicao: { forma_tpag: '15', prazos_dias: [28, 56, 85] } });
-    expect(cliente.payload).toMatchObject({ vendedor_external_id: U(5), filial_external_id: U(1), documento: '12345678000195', limite_credito_cents: 500_000, formas_pagamento: ['BOLETO'], prazo_medio_max_dias: 57 });
+  it('carteira = vendedor_external_id; endereço principal embutido; RN-CAD-16: prazo_medio_max_dias é o do cliente e formas_pagamento não sai', () => {
+    const { cliente } = mapearCliente({ ...ev, prazo_medio_dias: 57 }, EM);
+    expect(cliente.payload).toMatchObject({ vendedor_external_id: U(5), filial_external_id: U(1), documento: '12345678000195', limite_credito_cents: 500_000, prazo_medio_max_dias: 57 });
+    expect(cliente.payload).not.toHaveProperty('formas_pagamento');
     expect((cliente.payload.endereco as Record<string, unknown>).cidade).toBe('Manaus');
     expect(cliente.erp_id).toBe(U(20));
-    expect(cliente.fonte_refs).toEqual({ vendedor_id: U(5), filial_id: U(1), condicao_pagamento_id: U(6) });
-    expect(prazoMedioMaxDias([0])).toBe(0);
+    expect(cliente.fonte_refs).toEqual({ vendedor_id: U(5), filial_id: U(1) });
   });
 
   it('M9: sem e-mail, contato, coordenada, observação nem tabela de preço do cliente', () => {
-    const texto = JSON.stringify(mapearCliente(ev, EM, { condicao: null }));
+    const texto = JSON.stringify(mapearCliente(ev, EM));
     expect(texto).not.toMatch(/a@b\.com|email|latitude|longitude|observacao|contatos|tabela_preco|ind_ie_dest|tipo_pessoa/);
-    expect(mapearCliente(ev, EM, { condicao: null }).cliente.payload.formas_pagamento).toBeUndefined();
+    expect(mapearCliente(ev, EM).cliente.payload).not.toHaveProperty('prazo_medio_max_dias'); // RN-CAD-16: sem prazo médio no cliente, o campo é omitido
   });
 
   it('C-3: um cliente_endereco por endereço com id; sem id não vai; inativo propaga', () => {
-    const { enderecos } = mapearCliente(ev, EM, { condicao: null });
+    const { enderecos } = mapearCliente(ev, EM);
     expect(enderecos.map((e) => [e.external_id, e.payload.tipo, e.payload.principal, e.payload.cidade])).toEqual([
       [U(21), 'principal', true, 'Manaus'],
       [U(22), 'entrega', false, 'Parintins'],
     ]);
-    expect(mapearCliente({ ...ev, enderecos: [{ ...ev.enderecos[0]!, id: undefined }] }, EM, { condicao: null }).enderecos).toEqual([]);
-    const semCidade = mapearCliente({ ...ev, enderecos: [{ ...ev.enderecos[0]!, municipio_nome: undefined }] }, EM, { condicao: null }).enderecos;
+    expect(mapearCliente({ ...ev, enderecos: [{ ...ev.enderecos[0]!, id: undefined }] }, EM).enderecos).toEqual([]);
+    const semCidade = mapearCliente({ ...ev, enderecos: [{ ...ev.enderecos[0]!, municipio_nome: undefined }] }, EM).enderecos;
     expect(semCidade).toHaveLength(1);
     expect(validarRegistro(semCidade[0]!, () => true)).toEqual({ external_id: U(21), codigo: 'campo_obrigatorio', campo: 'cidade' });
-    expect(mapearCliente({ ...ev, inativo: true }, EM, { condicao: null }).enderecos.every((e) => !e.ativo)).toBe(true);
+    expect(mapearCliente({ ...ev, inativo: true }, EM).enderecos.every((e) => !e.ativo)).toBe(true);
   });
 
   it('RN-INF-03: o hash não muda com outro ocorrido_em, muda com o conteúdo', () => {
-    const a = mapearCliente(ev, EM, { condicao: null }).cliente;
-    const b = mapearCliente(ev, '2027-01-01T00:00:00Z', { condicao: null }).cliente;
+    const a = mapearCliente(ev, EM).cliente;
+    const b = mapearCliente(ev, '2027-01-01T00:00:00Z').cliente;
     expect(a.hash).toBe(b.hash);
-    expect(mapearCliente({ ...ev, razao_social: 'Outro' }, EM, { condicao: null }).cliente.hash).not.toBe(a.hash);
+    expect(mapearCliente({ ...ev, razao_social: 'Outro' }, EM).cliente.hash).not.toBe(a.hash);
   });
 });
 
@@ -278,12 +306,12 @@ describe('RN-INF-02: chave do Hub = external_id da carga, senão o UUID (23h22)'
   });
 
   it('D12 (T-0026): a forma da carga viaja na condição; sem ela, UUID v5 do tPag e nome do MOC', () => {
-    const ev = { id: U(6), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], inativo: false, forma_external_id: 'FP-DIN', forma_codigo: 'DIN', forma_nome: 'Dinheiro da loja', external_id: 'PZ-1' };
+    const ev = { id: U(6), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0, inativo: false, forma_external_id: 'FP-DIN', forma_codigo: 'DIN', forma_nome: 'Dinheiro da loja', external_id: 'PZ-1' };
     const { forma, prazo } = mapearCondicao(ev, EM, { tenantId: U(100), formaAtiva: true });
     expect(forma.external_id).toBe('FP-DIN');
     expect(forma.payload).toMatchObject({ codigo: 'DIN', nome: 'Dinheiro da loja' });
-    expect(prazo.external_id).toBe('PZ-1');
-    expect(prazo.payload.forma_external_id).toBe('FP-DIN');
+    expect(prazo!.external_id).toBe('PZ-1');
+    expect(prazo!.payload.forma_external_id).toBe('FP-DIN');
   });
 
   it('RD-0318: a tabela de preço vira referência com a chave do Hub em dados.chave e sem vigencia_fim nula', () => {
@@ -307,7 +335,7 @@ describe('ADR 0010: chave do Hub de unidade, endereço e preço (RN-INF-02)', ()
 
   it('o endereço usa o external_id do kit (erp_id = id); sem external_id fica o UUID', () => {
     const ev = { id: U(20), razao_social: 'Cliente', documento: '12345678000195', filial_id: U(1), vendedor_id: U(5), condicao_pagamento_id: U(6), external_id: 'CLI-KIT', inativo: false, enderecos: [{ ...end, id: U(21), tipo: 'principal', external_id: 'END-KIT' }, { ...end, id: U(22), tipo: 'entrega' }] } as unknown as EventoCliente;
-    const { enderecos } = mapearCliente(ev, EM, { condicao: null });
+    const { enderecos } = mapearCliente(ev, EM);
     expect(enderecos.map((e) => [e.external_id, e.erp_id])).toEqual([['END-KIT', U(21)], [U(22), U(22)]]);
     expect(enderecos[0]!.payload.cliente_external_id).toBe('CLI-KIT');
   });

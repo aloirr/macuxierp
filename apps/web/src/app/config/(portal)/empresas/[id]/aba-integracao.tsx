@@ -1,6 +1,7 @@
 'use client';
 import { LIMITE_REGISTROS_LOTE_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type MonitorConectorFdv } from '@macuxierp/platform-sdk';
-import { Chip, DialogoMotivo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { DialogoMotivo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { SeloTom } from '@/components/selo-tom';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, rotuloComLote, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
@@ -103,10 +104,10 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
       titulo: 'Ações',
       celula: (l) => (
         <span className="barra-acoes" style={{ margin: 0, minWidth: 480 }}>
-          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado || semCredencial} onClick={() => setPedido({ tipo: l.ligada ? 'desligar' : 'ligar', linha: l })} aria-label={`${l.ligada ? 'Desligar' : 'Ligar'}: ${l.rotulo}`}>{l.ligada ? 'Desligar' : 'Ligar'}</button>
+          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap', minWidth: '6.5rem' }} disabled={bloqueado || semCredencial} onClick={() => setPedido({ tipo: l.ligada ? 'desligar' : 'ligar', linha: l })} aria-label={`${l.ligada ? 'Desligar' : 'Ligar'}: ${l.rotulo}`}>{l.ligada ? 'Desligar' : 'Ligar'}</button>
           {l.pausada && <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setPedido({ tipo: 'retomar', linha: l })} aria-label={`Tentar de novo: ${l.rotulo}`}>Tentar de novo</button>}
           <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado || semCredencial || l.loteEmVoo} onClick={() => reprocessar(l)} aria-label={`Reprocessar: ${l.rotulo}`}>{rotuloComLote(l.loteEmVoo, 'Reprocessar')}</button>
-          <button type="button" className="mx-botao-secundario botao-perigo-contorno" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setZerar(l)} aria-label={`Zerar: ${l.rotulo}`}>Zerar</button>
+          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setZerar(l)} aria-label={`Zerar: ${l.rotulo}`}>Zerar</button>
           <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={!dados.modulo_licenciado} onClick={() => setLog(l)} aria-label={`Log: ${l.rotulo}`}>Log</button>
         </span>
       ),
@@ -120,10 +121,10 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
         {!dados.modulo_licenciado && <p className="faixa-aviso" role="status">O módulo Integração FDV não está licenciado nesta empresa. Ligue-o na aba Empresa para configurar.</p>}
         {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
       <section className="bloco" aria-labelledby="h-monitor">
-        <div className="cabeca-cargas">
+        <div className="cabeca-cargas cabeca-monitor">
           <h2 id="h-monitor">Monitor</h2>
           <span className="barra-acoes" style={{ margin: 0 }}>
-            {monitor && <span className="apoio" data-testid="atualizado-as" aria-live="polite">{textoAtualizado(monitor.lido_em, fuso)}</span>}
+            {monitor && <span className="apoio atualizado-monitor" data-testid="atualizado-as" aria-live="polite">{textoAtualizado(monitor.lido_em, fuso)}</span>}
             <button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={atualizar}>Atualizar</button>
           </span>
         </div>
@@ -202,7 +203,7 @@ export function BlocoMonitor({ monitor, fuso }: { monitor: MonitorConectorFdv; f
   return (
     <dl className="ficha" data-testid="monitor">
       <div><dt>Identificador</dt><dd>{v.identificador}</dd></div>
-      <div><dt>Situação</dt><dd><Chip tom={v.situacao.tom}>{v.situacao.texto}</Chip></dd></div>
+      <div><dt>Situação</dt><dd><SeloTom tom={v.situacao.tom}>{v.situacao.texto}</SeloTom></dd></div>
       <div><dt>Versão</dt><dd>{v.versao}</dd></div>
       <div><dt>Último sinal</dt><dd>{v.ultimoSinal}</dd></div>
       <div><dt>Fila</dt><dd>{v.fila}</dd></div>

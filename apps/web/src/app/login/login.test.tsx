@@ -23,10 +23,26 @@ describe('tela única de login (T-0076)', () => {
     expect(h).toContain('type="email"');
     expect(h).toContain('autoComplete="username"');
     expect(h).toContain('type="password"');
-    expect(h.match(/Mostrar senha/g)).toHaveLength(1);
-    expect(h).toContain('aria-pressed="false"');
+    expect(h.match(/aria-label="Mostrar senha"/g)).toHaveLength(1);
+    expect(h).not.toContain('aria-pressed');
+    expect(h).toContain('autoComplete="current-password"');
+    expect(h).toContain('id="login-senha"');
     expect(h).not.toContain('Sou de uma empresa');
     expect(h.toUpperCase()).not.toContain('MACUXI');
+  });
+  it('olho do CampoSenha (T-0094): alterna rótulo e tipo; o clique chama aoAlternarSenha', () => {
+    const visivel = renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} senhaVisivel />);
+    expect(visivel).toMatch(/<input[^>]*id="login-senha"[^>]*type="text"|<input[^>]*type="text"[^>]*id="login-senha"/);
+    const alternar = vi.fn();
+    const arvore = VisaoLogin({ destino: '/', valores: vazio, aoAlternarSenha: alternar });
+    const achar = (n: unknown): { props: { aoAlternar?: () => void } } | undefined => {
+      if (!n || typeof n !== 'object') return undefined;
+      const el = n as { type?: { name?: string }; props?: { children?: unknown } };
+      if (el.type?.name === 'CampoSenha') return n as { props: { aoAlternar?: () => void } };
+      return [el.props?.children].flat(Infinity).map(achar).find(Boolean);
+    };
+    achar(arvore)?.props.aoAlternar?.();
+    expect(alternar).toHaveBeenCalledTimes(1);
   });
   it('estados: carregando, erro de login (role alert, neutro), erro de campo por aria', () => {
     expect(renderToStaticMarkup(<VisaoLogin destino="/" valores={vazio} pendente />)).toMatch(/disabled=""[^>]*>Entrando…/);

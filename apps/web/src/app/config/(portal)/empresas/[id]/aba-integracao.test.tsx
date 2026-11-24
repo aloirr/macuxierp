@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma, MonitorConectorFdv } from '@macuxierp/platform-sdk';
@@ -138,5 +140,25 @@ describe('aba Integração do /config (T-0056)', () => {
     const d = dados();
     d.cadastros[0]!.ultimo_envio_em = '2026-11-22T14:05:00.000Z';
     expect(linhasCadastros(d, 'America/Manaus')[0]?.ultimoEnvio).toMatch(/10:05/);
+  });
+  it('🟡 marca: "Zerar" da tabela tem o contorno neutro de Reprocessar e Log; o vermelho fica só no diálogo', () => {
+    const h = render();
+    const zerar = h.match(/<button[^>]*aria-label="Zerar: Produtos"[^>]*>/)?.[0] ?? '';
+    expect(zerar).toContain('class="mx-botao-secundario"');
+    expect(zerar).not.toContain('botao-perigo-contorno');
+    expect(h).not.toContain('botao-perigo-contorno');
+  });
+  it('🟡 marca: "Atualizado às hh:mm" tem a classe que o 390 usa para descer abaixo do título do Monitor', () => {
+    const h = render(dados(), monitor());
+    expect(h).toMatch(/<div class="cabeca-cargas cabeca-monitor"><h2 id="h-monitor">Monitor<\/h2>/);
+    expect(h).toMatch(/class="apoio atualizado-monitor"[^>]*>Atualizado às 14:39</);
+    const css = readFileSync(join(__dirname, '../../../../globals.css'), 'utf8');
+    expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.cabeca-monitor \{ display: grid;/);
+    expect(css).toMatch(/\.cabeca-monitor \.atualizado-monitor \{ grid-row: 2; grid-column: 1 \/ -1; \}/);
+  });
+  it('situação do conector: Em dia, Atrasado e Desativado em texto e selo (nunca só cor)', () => {
+    expect(render(dados(), monitor())).toMatch(/Situação<\/dt><dd>.*Em dia/);
+    expect(render(dados(), monitor({ situacao: 'atrasado' }))).toMatch(/Situação<\/dt><dd>.*Atrasado/);
+    expect(render(dados(), monitor({ situacao: 'desativado' }))).toMatch(/Situação<\/dt><dd>.*Desativado/);
   });
 });

@@ -16,13 +16,14 @@
  * assim as inválidas na frente da fila não travam os válidos; (6) o Hub que lista menos erros que `contagens.com_erro` (lista
  * cortada): nada fora da lista é confirmado, o lote inteiro volta pela curva longa.
  */
-import { criarEvento, type ContextoAgenda, type CredencialHub, type ItemAgenda, type RespostaHub, type Transacao } from '@macuxierp/platform-sdk';
+import { criarEvento, type OrigemEnvioFdv, type ContextoAgenda, type CredencialHub, type ItemAgenda, type RespostaHub, type Transacao } from '@macuxierp/platform-sdk';
 import { randomUUID } from 'node:crypto';
 import {
   EVENTOS,
   EVENTO_LOTE_ENVIADO,
   EVENTO_LOTE_FALHOU,
   ENTIDADES_HUB_F2,
+  PRAZO_CONTRATO_V2_LIGADO,
   EntidadeHub,
   type CorpoLote,
   type CursorHub,
@@ -47,6 +48,7 @@ import {
   filiaisComCodigoRepetido,
   hashRegistro,
   montarLotes,
+  origemDoLote,
   precisaFechamento,
   validarRegistro,
   type RegistroEspelho,
@@ -102,7 +104,7 @@ export interface LinhaLote {
   hub_lote_id: string | null;
   tentativas: number;
   enviado_em: Date | null;
-  contagens: { registros?: number; invalidas?: number; avanco?: CursorHub | null; firmes?: ReadonlyArray<readonly [string, string]> };
+  contagens: { registros?: number; invalidas?: number; avanco?: CursorHub | null; firmes?: ReadonlyArray<readonly [string, string]>; origem?: OrigemEnvioFdv };
 }
 const COLUNAS_LOTE = `id, estado, modo, sessao_id, sessao_parte, sessao_ultimo, geracao, chave_idempotencia, corpo, hub_lote_id, tentativas, enviado_em, contagens`;
 
@@ -311,7 +313,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   const chunk = continua ? candidatos.slice(0, e.limiteRegistros) : candidatos;
 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
-  const confirmados = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
+  const { confirmados, emFila } = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
   const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
   const espelhos: RegistroEspelho[] = chunk.map(paraRegistro);
   let repetidas = new Map<string, LinhaInvalida>();
@@ -329,7 +331,10 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   const hashDasFirmes = new Map<string, string>();
   for (const r of espelhos) {
     const repetida = repetidas.get(r.external_id);
-    const linha = repetida ?? validarRegistro(r, confirmado);
+    const linha = repetida ?? validarRegistro(r, confirmado, { prazoV2: PRAZO_CONTRATO_V2_LIGADO });
+    // T-0085 (diagnóstico dos regra_invalida da AM2808): a referência que ainda está na fila de envio (ordem de carga, não erro de cadastro)
+    // fica retida em silêncio: o lote não a declara ao Hub, o registro segue pendente e o `acordarDependentes` o avalia de novo.
+    if (!repetida && linha?.codigo === 'referencia_ausente' && referenciaNaFila(r, emFila)) continue;
     if (!linha) {
       validos.push(paraRegistroLote(r));
       continue;
@@ -361,7 +366,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   }
 
   const lotes = montarLotes({
-    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
+    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, contratoPrazoV2: PRAZO_CONTRATO_V2_LIGADO, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
     ...(sessaoId ? { sessaoId, sessaoParteInicial: parteInicial, sessaoContinua: continua } : {}),
     ...(registroDeFechamento && localCursor ? { registroDeFechamento, cursorDeFechamento: localCursor } : {}),
   });
@@ -401,7 +406,9 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   // só as detalhadas (as 500 primeiras) foram declaradas ao Hub e gravadas em `lote_erro`: só elas saem da fila no fim
   const detalhadas = invalidasDoLote.slice(0, montado.corpo.linhas_invalidas.length);
   const firmes = detalhadas.filter((l) => hashDasFirmes.has(l.external_id)).map((l) => [l.external_id, hashDasFirmes.get(l.external_id)!] as const);
-  const novo = await inserirLote(tx, e, { modo, geracao, chave, corpo: montado.corpo, cursorDeclarado: montado.cursor_declarado, avanco, firmes });
+  // T-0086 §4: a origem do envio (ciclo, reprocessar ou zerar) sai das marcas do espelho e vai em `contagens.origem`; carga completa é sempre ciclo
+  const origem = modo === 'delta' ? origemDoLote(chunk.map((c) => c.fonte_refs)) : 'ciclo';
+  const novo = await inserirLote(tx, e, { modo, geracao, chave, corpo: montado.corpo, cursorDeclarado: montado.cursor_declarado, avanco, firmes, origem });
   for (const [indice, l] of detalhadas.entries()) {
     await gravarErroDeLinha(tx, e, { loteId: novo.id, origem: 'erp', indice, externalId: l.external_id, codigo: l.codigo, campo: l.campo, reprocessavel: l.codigo === 'referencia_ausente' });
   }
@@ -422,6 +429,7 @@ interface NovoLote {
   /** Ponto a que o cursor local avança quando o lote concluir (`contagens.avanco`). */
   avanco: CursorHub | null;
   firmes: ReadonlyArray<readonly [string, string]>;
+  origem: OrigemEnvioFdv;
 }
 
 /** Grava o lote em `montado` com as contagens do corpo (registros e inválidas, as detalhadas e as omitidas). */
@@ -431,6 +439,7 @@ async function inserirLote(tx: Transacao, e: Exec, n: NovoLote): Promise<{ id: s
     registros: n.corpo.registros.length,
     invalidas: n.corpo.linhas_invalidas.length + n.corpo.linhas_invalidas_omitidas,
     avanco: n.avanco,
+    origem: n.origem,
     ...(n.firmes.length > 0 ? { firmes: n.firmes } : {}),
   };
   const [criado] = await tx.consultar<{ id: string }>(
@@ -454,21 +463,34 @@ async function gravarErroDeLinha(
   );
 }
 
-/** Pares (entidade alvo, chave) das referências dos registros que já estão confirmados no Hub. */
-async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<Set<string>> {
+/** A referência (campo de `REFERENCIAS_HUB`) ainda não confirmada de `r` existe no espelho e está pendente de envio? */
+function referenciaNaFila(r: RegistroEspelho, emFila: ReadonlySet<string>): boolean {
+  return (REFERENCIAS_HUB[r.entidade] ?? []).some(([campo, alvo]) => {
+    const v = r.payload[campo];
+    return typeof v === 'string' && emFila.has(`${alvo}\u0000${v}`);
+  });
+}
+
+/** Pares (entidade alvo, chave) das referências dos registros: `confirmados` no Hub e `emFila` (existem no espelho, ainda pendentes de envio). */
+async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<{ confirmados: Set<string>; emFila: Set<string> }> {
   const refs = REFERENCIAS_HUB[entidade] ?? [];
   const confirmados = new Set<string>();
+  const emFila = new Set<string>();
   for (const [campo, alvo] of refs) {
     const valores = [...new Set(payloads.map((p) => p[campo]).filter((v): v is string => typeof v === 'string'))];
     if (valores.length === 0) continue;
-    const linhas = await tx.consultar<{ chave: string }>(
-      `SELECT registro_external_id AS chave FROM integracao_fdv.registro_publicado
-        WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = ANY($3::text[]) AND hash_confirmado IS NOT NULL AND deleted_at IS NULL`,
+    const linhas = await tx.consultar<{ chave: string; confirmado: boolean; na_fila: boolean }>(
+      `SELECT registro_external_id AS chave, hash_confirmado IS NOT NULL AS confirmado, (pendente AND payload IS NOT NULL) AS na_fila
+         FROM integracao_fdv.registro_publicado
+        WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = ANY($3::text[]) AND deleted_at IS NULL`,
       [tenant, alvo, valores],
     );
-    for (const l of linhas) confirmados.add(`${alvo}\u0000${l.chave}`);
+    for (const l of linhas) {
+      if (l.confirmado) confirmados.add(`${alvo}\u0000${l.chave}`);
+      else if (l.na_fila) emFila.add(`${alvo}\u0000${l.chave}`);
+    }
   }
-  return confirmados;
+  return { confirmados, emFila };
 }
 
 // ---- envio ----
@@ -568,7 +590,7 @@ async function dividir(tx: Transacao, e: Exec, lote: LinhaLote, resp: RespostaHu
   const ult = primeira.corpo.registros[primeira.corpo.registros.length - 1]!;
   const novo = await inserirLote(tx, e, {
     modo: lote.modo, geracao: primeira.geracao, chave: primeira.chave_idempotencia, corpo: primeira.corpo, cursorDeclarado: primeira.cursor_declarado,
-    avanco: { alterado_em: ult.alterado_em, external_id: ult.external_id }, firmes: lote.contagens.firmes ?? [],
+    avanco: { alterado_em: ult.alterado_em, external_id: ult.external_id }, firmes: lote.contagens.firmes ?? [], origem: lote.contagens.origem ?? 'ciclo',
   });
   // as linhas inválidas (erro por linha do ERP) seguem com a primeira metade; as do lote original ficam resolvidas pelo novo
   await tx.consultar(
@@ -672,7 +694,8 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
     if (aceitosOk.length > 0) {
       await tx.consultar(
         `UPDATE integracao_fdv.registro_publicado r
-            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4
+            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4,
+                fonte_refs = r.fonte_refs - 'reenvio' -- a marca do Reprocessar vale até o Hub confirmar
            FROM unnest($5::text[], $6::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
         [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash)],

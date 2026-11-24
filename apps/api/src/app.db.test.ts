@@ -87,7 +87,7 @@ describe.skipIf(!PG_DISPONIVEL)('API no PostgreSQL (papel macuxierp_app)', () =>
     const get = (url: string) => app.inject({ url, headers: { authorization: `Bearer ${token}` } });
     const licencas = await get('/v1/core/licencas');
     expect(licencas.statusCode).toBe(200);
-    expect(licencas.json()).toEqual({ itens: [{ modulo: 'cadastros', ativo: true, valido_ate: null }] });
+    expect(licencas.json()).toEqual({ itens: [{ modulo: 'cadastros', ativo: true, valido_ate: null }], proximo_cursor: null });
     const filiais = await get('/v1/cadastros/filiais');
     expect(filiais.statusCode).toBe(200);
     expect(filiais.json().itens.map((f: { id: string }) => f.id)).toEqual([matriz]);

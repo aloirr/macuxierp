@@ -136,14 +136,13 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
 .senha-provisoria { display: block; font-size: var(--mx-tamanho-grande); font-weight: 600; padding: 8px 0; word-break: break-all; user-select: all; }
 
-/* Troca de senha (T-0052): campo com olho, lista de regras e aviso de sucesso; só tokens do @macuxierp/ui. */
+/* Troca de senha (T-0052): lista de regras e aviso de sucesso; só tokens do @macuxierp/ui. */
+.campo-senha-bloco { margin-bottom: 16px; }
+/* Login: código e e-mail com o mesmo tamanho, peso e recuo do rótulo e do input do CampoSenha. */
+.campo-login span { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-rotulo-campo); }
+.campo-login input { padding: 10px 12px; }
 .sr-only, .legenda-so-leitor caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .legenda-so-leitor caption { padding: 0 !important; } /* a legenda da TabelaDensa traz padding inline */
-.campo-senha > label { display: block; font-weight: var(--mx-peso-rotulo-campo); margin-bottom: 4px; }
-.campo-senha-linha { display: flex; gap: 8px; align-items: stretch; }
-.campo-senha-linha input { flex: 1; min-width: 0; }
-.campo-senha .olho { flex: none; padding-left: 10px; padding-right: 10px; }
-.campo-senha .apoio, .campo-senha .erro-campo { display: block; margin-top: 4px; }
 .regras-senha { margin: 0 0 16px; }
 .regras-senha .regras-titulo { font-weight: var(--mx-peso-rotulo-campo); margin: 0 0 4px; }
 .regras-senha ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -250,3 +249,32 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* "Esqueci a senha": link em botão, sem aparência de botão */
 button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* Monitor da aba Integração no 390 (marca): "Atualizado às hh:mm" desce para baixo do título; o botão Atualizar fica na linha do título. */
+@media (max-width: 640px) {
+  .cabeca-monitor { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; }
+  .cabeca-monitor > .barra-acoes { display: contents; }
+  .cabeca-monitor h2 { grid-row: 1; grid-column: 1; }
+  .cabeca-monitor .atualizado-monitor { grid-row: 2; grid-column: 1 / -1; }
+  .cabeca-monitor .barra-acoes > button { grid-row: 1; grid-column: 2; }
+}
+
+/* Telas do core e da bandeira (T-0087, T-0088): só tokens. */
+.segredo { display: block; padding: 12px; font-family: ui-monospace, monospace; font-size: var(--mx-tamanho-titulo-dialogo); letter-spacing: .04em; background: var(--mx-cor-perola); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; overflow-wrap: anywhere; user-select: all; }
+/* Perfis e permissões: uma coluna por perfil; a primeira coluna fica à vista ao rolar na horizontal. */
+.matriz-perfis { min-width: 720px; }
+.matriz-perfis td { text-align: center; }
+.matriz-perfis tbody th[scope="row"] { position: sticky; left: 0; background: var(--mx-cor-branco); font-weight: normal; white-space: nowrap; }
+.matriz-perfis .matriz-grupo th { background: var(--mx-cor-perola); font-weight: var(--mx-peso-titulo); }
+/* Bandeira por filial: um cartão por filial; Ligar e Desligar têm a mesma largura mínima. */
+.cartoes-bandeira { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cartao-bandeira { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 16px; min-width: 0; }
+.cartao-bandeira h2 { margin: 0 0 8px; font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); overflow-wrap: anywhere; }
+.cartao-bandeira .selos { margin: 0; }
+.bandeira-acoes { margin-top: 16px; }
+.bandeira-acoes > .barra-acoes { margin: 0; }
+.bandeira-acoes > .barra-acoes > button { min-width: 7.5rem; }
+@media (max-width: 640px) {
+  .cartoes-bandeira { grid-template-columns: minmax(0, 1fr); }
+  .bandeira-acoes > .barra-acoes > button { width: 100%; min-height: 44px; }
+}

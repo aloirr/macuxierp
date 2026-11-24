@@ -5,7 +5,7 @@
  * `titulo` e `nota` são da F4 (T-0016) e ainda não têm contrato aqui.
  */
 import { z } from 'zod';
-import { ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
+import { CampoErroFdv, CodigoErroFdv, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
 
 /** As 12 entidades do Hub que o ERP alimenta, na ordem de carga (RN-INF-02): as 10 da F2 vêm do SDK (ADR 0013), título e nota são da F4. */
 export const ENTIDADES_HUB = [...ENTIDADES_ENVIO_FDV, 'titulo', 'nota'] as const;
@@ -19,13 +19,21 @@ export const LIMITE_REGISTROS_LOTE = LIMITE_REGISTROS_LOTE_FDV;
 
 /** Versão do contrato do Hub que o ERP fala. */
 export const VERSAO_CONTRATO_HUB = 'v1' as const;
+/** Versão que só a entidade `prazo_pagamento` tem (ADR 0072 do FDV, ainda não publicada): a v1 segue aceita por 6 meses. */
+export const VERSAO_CONTRATO_PRAZO_V2 = 'v2' as const;
+/**
+ * Opção do envio do prazo no contrato v2 (T-0085, lote 2). DESLIGADA: o ERP manda v1 até o FDV avisar que a v2 está no ar; aí
+ * basta virar esta constante (um lote só, sem mudar os eventos). Constante do módulo, não por tenant: a v2 vale para o Hub inteiro.
+ */
+export const PRAZO_CONTRATO_V2_LIGADO = false;
 
-/** Código de erro (linha ou lote): identificador do catálogo, nunca mensagem livre. */
-export const CodigoErro = z.string().regex(/^[a-z][a-z0-9_]{0,59}$/);
-export type CodigoErro = z.infer<typeof CodigoErro>;
-
-/** Nome do campo com erro (caminho do payload); igual à restrição do banco (0007). */
-export const CampoErro = z.string().regex(/^[A-Za-z0-9_.[\]]{1,80}$/).nullable();
+/**
+ * Código de erro (linha ou lote) e campo com erro: a fonte é o SDK (T-0086, `portal-integracao-operacao.ts`); `CodigoErro` e
+ * `CampoErro` são o mesmo Zod com o nome do módulo. O campo bate com a restrição do banco (0007).
+ */
+export const CodigoErro = CodigoErroFdv;
+export type CodigoErro = z.infer<typeof CodigoErroFdv>;
+export const CampoErro = CampoErroFdv;
 
 export const SituacaoEntidade = z.enum(['ok', 'pausada']);
 export type SituacaoEntidade = z.infer<typeof SituacaoEntidade>;
@@ -70,10 +78,39 @@ export const PrazoPagamentoHub = Base.extend({
   forma_external_id: ExternalId,
   codigo: Texto(20),
   /** Lista de inteiros, ex.: `[28, 56]`; à vista = `[0]` (T-0085). */
-  parcelas_dias: z.array(z.number().int().min(0).max(999)).min(1),
-  descricao: Texto(60).optional(),
+  parcelas_dias: z.array(z.number().int().min(0).max(365)).min(1).max(24),
+  /** T-0085 lote 2: o prazo só sai completo (RN-CAD-15): descrição e prazo médio são obrigatórios. */
+  descricao: Texto(60),
+  prazo_medio_dias: z.number().int().min(0).max(365),
 });
 export type PrazoPagamentoHub = z.infer<typeof PrazoPagamentoHub>;
+
+/**
+ * Prazo no contrato v2 do Hub (ADR 0072 do FDV): obrigatórios `external_id`, `alterado_em`, `codigo` (1 a 20), `forma_external_id`,
+ * `descricao` (1 a 60), `parcelas_dias` (1 a 24 inteiros de 0 a 365, sem decrescer; à vista `[0]`) e `prazo_medio_dias` (0 a 365,
+ * entre a menor e a maior parcela); opcionais `ativo`, `ordem` e `percentual_ajuste`. `alterado_em` entra na montagem do lote.
+ */
+export const PrazoPagamentoHubV2 = z
+  .object({
+    external_id: ExternalId,
+    alterado_em: z.string().datetime(),
+    codigo: Texto(20),
+    forma_external_id: ExternalId,
+    descricao: Texto(60),
+    parcelas_dias: z.array(z.number().int().min(0).max(365)).min(1).max(24),
+    prazo_medio_dias: z.number().int().min(0).max(365),
+    ativo: z.boolean().optional(),
+    ordem: z.number().int().min(0).optional(),
+    percentual_ajuste: z.number().finite().optional(),
+  })
+  .superRefine((p, ctx) => {
+    const l = p.parcelas_dias;
+    if (l.some((d, i) => i > 0 && d < l[i - 1]!)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['parcelas_dias'], message: 'parcelas não podem decrescer' });
+    if (l.length > 0 && (p.prazo_medio_dias < Math.min(...l) || p.prazo_medio_dias > Math.max(...l))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['prazo_medio_dias'], message: 'prazo médio fora do intervalo das parcelas' });
+    }
+  });
+export type PrazoPagamentoHubV2 = z.infer<typeof PrazoPagamentoHubV2>;
 
 /** Sem custo e sem preço de venda, por construção (M8). */
 export const ProdutoHub = Base.extend({
@@ -135,9 +172,8 @@ export const ClienteHub = Base.extend({
   filial_external_id: ExternalId,
   endereco: EnderecoClienteHub.optional(),
   limite_credito_cents: Centavos,
-  /** Códigos de forma do Hub da condição do cliente (premissa P-1: lista). */
-  formas_pagamento: z.array(z.string()).optional(),
-  prazo_medio_max_dias: z.number().int().min(0).optional(),
+  /** RN-CAD-16: prazo médio máximo do cliente; ausente = sem limite. `formas_pagamento` deixou de sair (T-0085 lote 2). */
+  prazo_medio_max_dias: z.number().int().min(0).max(365).optional(),
 });
 export type ClienteHub = z.infer<typeof ClienteHub>;
 
@@ -200,7 +236,7 @@ export type LinhaInvalidaHub = z.infer<typeof LinhaInvalidaHub>;
 
 /** Corpo de `POST /integracao/v1/lotes`. */
 export const CorpoLote = z.object({
-  versao_contrato: z.literal(VERSAO_CONTRATO_HUB),
+  versao_contrato: z.enum([VERSAO_CONTRATO_HUB, VERSAO_CONTRATO_PRAZO_V2]),
   entidade: EntidadeHub,
   modo: ModoLote,
   enviado_em: z.string().datetime(),
@@ -210,6 +246,7 @@ export const CorpoLote = z.object({
   linhas_invalidas: z.array(LinhaInvalidaHub).max(500),
   linhas_invalidas_omitidas: z.number().int().min(0),
 }).superRefine((c, ctx) => {
+  if (c.versao_contrato === VERSAO_CONTRATO_PRAZO_V2 && c.entidade !== 'prazo_pagamento') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['versao_contrato'], message: 'v2 só existe para prazo_pagamento' });
   if (c.modo === 'completo' && !c.sessao) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sessao'], message: 'carga completa exige sessao' });
   if (c.modo === 'delta' && c.sessao) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sessao'], message: 'delta não tem sessao' });
 });

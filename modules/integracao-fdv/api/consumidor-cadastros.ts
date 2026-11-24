@@ -17,11 +17,12 @@ import {
   CHAVE_FONTE_REFS,
   assinaturaDaReferenciaTabela,
   assinaturaDeDerivados,
+  chaveHub,
   decidirTrocaDeChave,
   ehConflitoDeChave,
   instanteUtc,
   mapearCliente,
-  mapearCondicao,
+  mapearCondicaoOpcional as mapearCondicao,
   mapearEstoque,
   mapearFilial,
   mapearPreco,
@@ -185,14 +186,15 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       const p = EVENTOS['cadastros.condicao_pagamento.alterada@1'].safeParse(evento.payload);
       if (!p.success) return;
       const previa = mapearCondicao(p.data, emIso, { tenantId: t, formaAtiva: !p.data.inativo });
-      const formaAtiva = !p.data.inativo || (await outroPrazoAtivoDaForma(tx, t, previa.forma.external_id, previa.prazo.external_id));
+      // RN-CAD-15: prazo incompleto não sai (`prazo` nulo); a forma sai assim mesmo, porque é compartilhada
+      const prazoChave = chaveHub(p.data);
+      const formaAtiva = !p.data.inativo || (await outroPrazoAtivoDaForma(tx, t, previa.forma.external_id, prazoChave));
       const { forma, prazo } = mapearCondicao(p.data, emIso, { tenantId: t, formaAtiva });
-      if (!(await conferirChave(tx, t, 'prazo_pagamento', p.data.id, prazo.external_id, p.data.external_id_anterior, em))) return;
+      if (prazo && !(await conferirChave(tx, t, 'prazo_pagamento', p.data.id, prazo.external_id, p.data.external_id_anterior, em))) return;
       // a forma é derivada dos prazos vigentes (não de um agregado próprio): vale sempre o último evento de condição
       juntar(pendentes, await aplicarRegistros(tx, t, [forma], em));
-      await gravarComDependentes(tx, t, em, pendentes, prazo, p.data.id);
-      // a forma pode ter mudado de código: os clientes da condição recompõem
-      juntar(pendentes, await recomporDependentes(tx, t, 'condicao_pagamento_id', p.data.id, em));
+      // o cliente não depende mais da condição (`prazo_medio_max_dias` é do próprio cliente, RN-CAD-16): nada a recompor
+      if (prazo) await gravarComDependentes(tx, t, em, pendentes, prazo, p.data.id);
       return;
     }
     case 'cadastros.produto.alterado@1': {
@@ -234,7 +236,7 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
     case 'cadastros.cliente.alterado@1': {
       const p = EVENTOS['cadastros.cliente.alterado@1'].safeParse(evento.payload);
       if (!p.success) return;
-      const { cliente, enderecos } = mapearCliente(p.data, emIso, { condicao: null });
+      const { cliente, enderecos } = mapearCliente(p.data, emIso);
       if (!(await conferirChave(tx, t, 'cliente', p.data.id, cliente.external_id, p.data.external_id_anterior, em))) return;
       await gravarComDependentes(tx, t, em, pendentes, cliente, p.data.id);
       await gravarFilhos(tx, t, em, pendentes, enderecos, { entidade: 'cliente_endereco', chaveRef: 'cliente_id', erpId: p.data.id });

@@ -146,11 +146,11 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     expect(r!.payload.deposito_nome).toBe('Loja Nova');
   });
 
-  it('T-0009 2.3 e 2.7: condição vira forma + prazo; cliente leva carteira, forma e prazo médio e o cliente_endereco a chave do cliente', async () => {
+  it('T-0009 2.3 e 2.7: condição vira forma + prazo; cliente leva carteira e prazo médio máximo (RN-CAD-16) e o cliente_endereco a chave do cliente', async () => {
     const f = U(); const v = U(); const c = U(); const cli = U(); const end = U();
     await tratar(A, evento(A, 'cadastros.filial.alterada@1', f, cadFilial(f, { external_id: 'FIL-C', padrao: false, cnpj: CNPJ_FILIAL_3 }), '2026-11-22T09:00:00.000Z'));
     await tratar(A, evento(A, 'cadastros.vendedor.alterado@1', v, cadVendedor(v, f, { external_id: 'VEN-C' }), '2026-11-22T09:00:00.000Z'));
-    await tratar(A, evento(A, 'cadastros.cliente.alterado@1', cli, cadCliente(cli, f, { external_id: 'CLI-C', vendedor_id: v, condicao_pagamento_id: c, enderecos: [{ id: end, tipo: 'principal', ...cadFilial(f).endereco }] }), '2026-11-22T09:01:00.000Z'));
+    await tratar(A, evento(A, 'cadastros.cliente.alterado@1', cli, cadCliente(cli, f, { external_id: 'CLI-C', vendedor_id: v, condicao_pagamento_id: c, prazo_medio_dias: 42, enderecos: [{ id: end, tipo: 'principal', ...cadFilial(f).endereco }] }), '2026-11-22T09:01:00.000Z'));
     let cl = await reg(A, 'cliente', 'CLI-C');
     expect(cl!.payload).toMatchObject({ vendedor_external_id: 'VEN-C', filial_external_id: 'FIL-C' });
     expect(cl!.payload.formas_pagamento).toBeUndefined();
@@ -165,8 +165,17 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor publicar-cadastros no PostgreSQL rea
     expect((await reg(A, 'forma_pagamento', 'FP-BOL'))!.erp_id).toBeNull();
     expect((await reg(A, 'prazo_pagamento', 'PZ-C'))!.erp_id).toBe(c);
     expect((await reg(A, 'prazo_pagamento', 'PZ-C'))!.payload).toMatchObject({ forma_external_id: 'FP-BOL', parcelas_dias: [28, 56] });
+    expect((await reg(A, 'prazo_pagamento', 'PZ-C'))!.payload).toMatchObject({ descricao: '28 e 56', prazo_medio_dias: 42 });
+    // T-0085 lote 2: o cliente não depende mais da condição (sem formas_pagamento; o prazo médio é do cliente)
     cl = await reg(A, 'cliente', 'CLI-C');
-    expect(cl!.payload).toMatchObject({ formas_pagamento: ['BOLETO'], prazo_medio_max_dias: 42 });
+    expect(cl!.payload).toMatchObject({ prazo_medio_max_dias: 42 });
+    expect(cl!.payload).not.toHaveProperty('formas_pagamento');
+
+    // RN-CAD-15: prazo incompleto (prazo médio nulo, legado) NÃO sai; a forma sai assim mesmo
+    const inc = U();
+    await tratar(A, evento(A, 'cadastros.condicao_pagamento.alterada@1', inc, cadCondicao(inc, { codigo: 'INC', external_id: 'PZ-INC', forma_external_id: 'FP-BOL', forma_codigo: 'BOLETO', forma_nome: 'Boleto', prazo_medio_dias: null }), '2026-11-22T09:02:30.000Z'));
+    expect(await reg(A, 'prazo_pagamento', 'PZ-INC')).toBeUndefined();
+    expect((await reg(A, 'forma_pagamento', 'FP-BOL'))!.payload).toMatchObject({ ativo: true });
 
     // condição inativada e sem outra com a mesma forma: a forma fica inativa
     await tratar(A, evento(A, 'cadastros.condicao_pagamento.alterada@1', c, cadCondicao(c, { external_id: 'PZ-C', forma_external_id: 'FP-BOL', forma_codigo: 'BOLETO', forma_nome: 'Boleto', inativo: true }), '2026-11-22T09:03:00.000Z'));

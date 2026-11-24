@@ -36,10 +36,25 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   });
   it('RN-PED-05: faturado parcial e total trazem nota e itens desta nota, com a quantidade na unidade base', () => {
     const p = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
-    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: 10, total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2.5, valor_cents: 5000 }] } });
+    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: '10', serie: '1', total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2.5, valor_cents: 5000 }] } });
     const t = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'faturado_parcial', CHAVES);
     expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total' } });
     expect(JSON.stringify([p, t])).not.toContain(U(3)); // ADR 0010 item 1: a chave do Hub, nunca o UUID do ERP
+  });
+  it('D3 (T-0085): a nota do retorno vai com numero e serie em TEXTO (NotaRetorno do Hub) e o corpo passa no contrato; a entrada aceita inteiro ou texto (temporário, expande/contrai)', () => {
+    const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
+    if (d.acao !== 'enviar') throw new Error('esperava enviar');
+    expect(d.corpo.nota).toMatchObject({ numero: '10', serie: '1' });
+    expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: 10 } }).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, serie: 1 } }).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: '10', serie: '1' } }).success).toBe(true);
+    expect(RetornoErp.safeParse({ ...d.corpo, nota: { ...d.corpo.nota, numero: 1.5 } }).success).toBe(false);
+  });
+  it('RN-PED-07 (emenda de 24/11): pedido do FDV em análise por prazo incompleto ou não permitido volta como integrado, nunca rejeitado_erp', () => {
+    const d = retornoDoPedido(ev('pedido.pedido.recebido@1', { status: 'em_analise', motivo_codigo: null }), null);
+    expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'integrado' } });
+    expect(JSON.stringify(d)).not.toContain('rejeitado_erp');
   });
   it('ADR 0010 item 1: produto faturado sem chave do Hub no espelho não segue com o UUID cru: devolve aguardar_chave com os produtos', () => {
     const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', new Map());
@@ -68,7 +83,7 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   });
   it('RN-FAT-04/M7: nota de homologação com conta_como_real true vai ao FDV com número e série', () => {
     const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'homologacao', conta_como_real: true, nota, itens_faturados: itens }), 'integrado', CHAVES);
-    expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total', nota: { numero: nota.numero, serie: nota.serie } } });
+    expect(d).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total', nota: { numero: String(nota.numero), serie: String(nota.serie) } } });
   });
   it('RN-FAT-04/M7: faturado de produção vai ao FDV mesmo com conta_como_real false', () => {
     expect(retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', conta_como_real: false, nota, itens_faturados: itens }), 'integrado', CHAVES).acao).toBe('enviar');

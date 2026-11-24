@@ -40,7 +40,7 @@ export interface RetornoAplicado {
   numero_erp: string | null;
   motivo: string | null;
   nota: string | null;
-  /** Chave de acesso da nota como chegou no retorno faturado (o FDV a guarda no pedido; T-0089, defeito D3); fora do faturado, nulo. */
+  /** Chave de acesso, se o ERP a mandou em `nota.chave` (o `NotaRetorno` do Hub ainda não tem o campo e a ignora; T-0089, D3); senão, nulo. */
   chave_acesso: string | null;
   em: string;
 }
@@ -119,7 +119,7 @@ function chaveAcesso(nota: unknown): string | null {
 
 function chaveNota(nota: unknown): string | null {
   const n = comoNota(nota);
-  return n ? `${String(n.numero)}/${String(n.serie)}` : null;
+  return n ? `${String(n.numero)}/${n.serie == null ? '-' : String(n.serie)}` : null;
 }
 
 function itensDescartados(item: PedidoNaFila, itens: unknown): Record<string, unknown>[] {
@@ -153,6 +153,15 @@ function retorno(ctx: ContextoRota): RespostaRota {
     return erro(400, 'requisicao_invalida', 'O retorno integrado leva o numero_erp.', 'numero_erp');
   if ((status === 'faturado_parcial' || status === 'faturado_total') && !c.nota)
     return erro(400, 'requisicao_invalida', 'O retorno faturado leva a nota.', 'nota');
+  if (c.nota) {
+    // `NotaRetorno` do OpenAPI real do Hub (24/11/2026): `numero` texto de 1 a 40, `serie` texto até 10 ou nulo; inteiro = 400.
+    // O Hub não tem campo de chave de acesso: `chave` não é exigida (se vier, o dublê só a anota, para o D3 da T-0089).
+    const n = comoNota(c.nota);
+    if (!n || typeof n.numero !== 'string' || n.numero.length < 1 || n.numero.length > 40)
+      return erro(400, 'requisicao_invalida', 'nota.numero é texto de 1 a 40 caracteres.', 'nota.numero');
+    if (n.serie !== undefined && n.serie !== null && (typeof n.serie !== 'string' || n.serie.length > 10))
+      return erro(400, 'requisicao_invalida', 'nota.serie é texto de até 10 caracteres ou nulo.', 'nota.serie');
+  }
 
   const item = fila.pedidos.get(uuid.toLowerCase());
   const registrar = (r: RespostaRota): RespostaRota => {

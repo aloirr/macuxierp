@@ -1,10 +1,11 @@
 'use client';
 import type { EntidadeEnvioFdv, LogCadastroFdvPlataforma } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
-import { Chip, Dialogo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { Dialogo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { SeloTom } from '@/components/selo-tom';
 import { useEffect, useState } from 'react';
 import { TEXTO_MOTIVO_FDV } from '@/lib/integracao-fdv-textos';
-import { CAMINHO_BKO_INTEGRACAO_FDV, ROTULO_ORIGEM_ENVIO, ROTULO_SITUACAO_ENVIO, csvErrosLog, errosNaoListados, nomeCsvErrosFdv } from '@/lib/config/operacao-fdv';
+import { CAMINHO_BKO_INTEGRACAO_FDV, ROTULO_ORIGEM_ENVIO, ROTULO_SITUACAO_ENVIO, csvErrosLog, errosNaoListados, nomeCsvErrosFdv, rotuloDoCampoErro, rotuloDoCodigoErro, tomDoMotivoDoLog } from '@/lib/config/operacao-fdv';
 import { salvarCsv } from '@/lib/baixar-csv';
 import type { Resultado } from '@/lib/config/executar';
 import { lerLogFdvAcao } from '../acoes-integracao-fdv';
@@ -18,18 +19,21 @@ export function CorpoLog({ log, fuso, entidade }: { log: LogCadastroFdvPlataform
   const colEnvios: ColunaTabela<Envio>[] = [
     { id: 'em', titulo: 'Quando', tipo: 'data', celula: (e) => formatarDataHora(e.em, fuso) },
     { id: 'origem', titulo: 'Origem', celula: (e) => ROTULO_ORIGEM_ENVIO[e.origem] },
-    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (e) => <Chip tom={ROTULO_SITUACAO_ENVIO[e.situacao].tom}>{ROTULO_SITUACAO_ENVIO[e.situacao].texto}</Chip> },
+    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (e) => <SeloTom tom={ROTULO_SITUACAO_ENVIO[e.situacao].tom}>{ROTULO_SITUACAO_ENVIO[e.situacao].texto}</SeloTom> },
     { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (e) => e.registros },
     { id: 'com_erro', titulo: 'Com erro', tipo: 'numero', celula: (e) => e.com_erro },
   ];
   const colErros: ColunaTabela<Erro>[] = [
-    { id: 'codigo', titulo: 'Código', celula: (e) => <span className="codigo">{e.codigo}</span> },
-    { id: 'campo', titulo: 'Campo', celula: (e) => (e.campo ? <span className="codigo">{e.campo}</span> : '—') },
+    // Rótulos em português; os códigos (cnpj_invalido, razao_social) ficam só no CSV de "Baixar erros".
+    { id: 'codigo', titulo: 'Erro', celula: (e) => rotuloDoCodigoErro(e.codigo) },
+    { id: 'campo', titulo: 'Campo', celula: (e) => rotuloDoCampoErro(e.campo) },
     { id: 'quantidade', titulo: 'Registros', tipo: 'numero', celula: (e) => e.quantidade },
   ];
   return (
     <div className="corpo-log" data-entidade={entidade}>
-      {log.motivo && log.motivo !== 'erros_por_linha' && <p className="faixa-aviso" role="status">{TEXTO_MOTIVO_FDV[log.motivo]}</p>}
+      {log.motivo && log.motivo !== 'erros_por_linha' && (tomDoMotivoDoLog(log.motivo) === 'erro'
+        ? <p className="faixa-erro" role="alert">{TEXTO_MOTIVO_FDV[log.motivo]}</p>
+        : <p className="faixa-aviso" role="status">{TEXTO_MOTIVO_FDV[log.motivo]}</p>)}
       <h3>Envios recentes</h3>
       {log.envios.length === 0 ? <p className="apoio">Nenhum envio ainda.</p> : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colEnvios} linhas={log.envios} chaveLinha={(e) => `${e.em}|${e.origem}`} textoVazio="Nenhum envio." legenda="Envios recentes" /></div>}
       <h3>Erros abertos: {log.total_erros}</h3>

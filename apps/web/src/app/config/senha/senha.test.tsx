@@ -33,6 +33,15 @@ describe('/config/senha com a regra única (T-0052)', () => {
     expect(h).toContain('name="senha_atual"');
     expect(h).toContain('Senha provisória atual');
   });
+  it('T-0094: um olho só (na senha nova), oculta; autoComplete certo em cada campo', async () => {
+    eu.motivo = 'provisoria';
+    const h = renderToStaticMarkup(await Senha());
+    expect(h.match(/aria-label="Mostrar senha"/g)).toHaveLength(1);
+    expect(h.match(/type="password"/g)).toHaveLength(3);
+    expect(h.match(/autoComplete="current-password"/g)).toHaveLength(1);
+    expect(h.match(/autoComplete="new-password"/g)).toHaveLength(2);
+    expect(h).toContain('aria-describedby="regras-lista"');
+  });
   it('temporária (motivo_troca do eu): sem o campo da senha atual, sem ?motivo na URL', async () => {
     eu.motivo = 'temporaria';
     const h = renderToStaticMarkup(await Senha());
