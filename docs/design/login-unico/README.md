@@ -52,7 +52,7 @@ O link troca o conteúdo do cartão (sem nova rota de redefinição; não existe
 Prints: `esqueci-1280x800.png`, `esqueci-confirmacao-390x800.png`.
 
 ## Do login à troca de senha
-Senha temporária entra normalmente e a API responde 403 `SENHA_A_TROCAR`; a web leva à tela de troca obrigatória que já existe (`/senha`, `apps/web/src/app/senha/page.tsx`; superadmin: `/config/senha`). Ver `apps/web/src/app/senha/page.tsx` e `components/formulario-troca-senha.tsx`.
+Senha temporária entra normalmente (o login responde 200 com a sessão) e as outras rotas respondem 403 `TROCAR_SENHA` (`CODIGO_TROCAR_SENHA`, `packages/platform-sdk/src/eu.ts`); a web leva à tela de troca obrigatória que já existe (`/senha`, `apps/web/src/app/senha/page.tsx`; superadmin: `/config/senha`). Ver `apps/web/src/app/senha/page.tsx` e `components/formulario-troca-senha.tsx`.
 
 **Pendências para o gerente decidir (tela não alterada):**
 1. O título da tela é "Trocar senha" (`senha/page.tsx:16`), não "Crie sua senha". Sugestão: manter; o aviso já explica.

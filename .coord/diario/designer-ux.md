@@ -31,3 +31,4 @@
 2026-11-23 — T-0076 — desenho do login único (molde FDV), esqueci a senha com temporária; RD-1311–1313 reservados
 2026-11-23 — T-0076 — correção: senha do superadmin na regra única de 8; portal-config §1 remete ao login-unico
 2026-11-23 — T-0076 — correção: olho = botão de texto do CampoSenha na v0.3.10 (ícone na versão seguinte); título trocado no painel do esqueci
+2026-11-24 — T-0076 — correção: README do login-unico cita TROCAR_SENHA (código do SDK), não SENHA_A_TROCAR
