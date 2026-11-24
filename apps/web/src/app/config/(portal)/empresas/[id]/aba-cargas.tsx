@@ -6,10 +6,10 @@ import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import {
   AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_MODO, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_SUBSTITUIR, textoZerado, bloqueiosDeTextos, podeConfirmarZerar, textoLevaJunto, textosAnulados, textosBloqueios, textosMantidos, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao, pedirPreviaZerar, pedirZerar, podeGravar,
-  rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoSemChave, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
+  rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoSemChave, textoErrosOmitidos, textoLinhaErro, tituloImportar, type LinhaCarga, type Retorno,
 } from '@/lib/config/cargas';
 import {
-  CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, nomeErrosCarga, plural, substituirPermitido, type CadastroCargaPortal, type EfeitoSubstituir as Efeito, type CadastroZerarPortal, type ModoGravarCarga, type SituacaoCargasPlataforma, type ZeragemPlataformaResposta,
+  CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, nomeErrosCarga, plural, substituirPermitido, type CadastroCargaPortal, type EfeitoSubstituir as Efeito, type CadastroZerarPortal, type GravarCargaPlataformaResposta, type ModoGravarCarga, type SituacaoCargasPlataforma, type ZeragemPlataformaResposta,
   type ValidarCargaPlataformaResposta as Conferencia,
 } from '@macuxierp/platform-sdk';
 
@@ -54,9 +54,9 @@ export function AbaCargas({ empresaId, dados, fuso }: { empresaId: string; dados
           empresaId={empresaId}
           cadastro={importar}
           aoFechar={() => setImportar(null)}
-          aoGravar={(n) => {
+          aoGravar={(g) => {
             setImportar(null);
-            setAviso(`${plural(n, 'registro gravado', 'registros gravados')}.`);
+            setAviso(textoGravado(g));
             router.refresh();
           }}
         />
@@ -140,7 +140,7 @@ function LinhaDaCarga({ linha: l, empresaId, aoImportar }: { linha: LinhaCarga; 
   );
 }
 
-export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { empresaId: string; cadastro: CadastroCargaPortal; aoFechar: () => void; aoGravar: (n: number) => void }) {
+export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { empresaId: string; cadastro: CadastroCargaPortal; aoFechar: () => void; aoGravar: (g: Pick<GravarCargaPlataformaResposta, 'gravadas' | 'enderecos_inativados'>) => void }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [conferindo, setConferindo] = useState(false);
   const [gravando, setGravando] = useState(false);
@@ -195,7 +195,7 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
     chaves.current.aposResposta(id, { ok: r.ok, chaveNova: !r.ok && r.chaveNova });
     setGravando(false);
     seguir(r);
-    if (r.ok) aoGravar(r.valor.gravadas);
+    if (r.ok) aoGravar(r.valor);
     else setErro(r.erro);
   };
 
@@ -218,7 +218,7 @@ export function ImportarCarga({ empresaId, cadastro, aoFechar, aoGravar }: { emp
         idEnvio={idGravar('substituir_tudo')}
         podeEnviar={podeGravar(conferencia)}
         enviar={(chave, frase) => pedirGravacao(empresaId, cadastro, arquivo, chave, 'substituir_tudo', frase)}
-        aoSucesso={(g) => aoGravar(g.gravadas)}
+        aoSucesso={(g) => aoGravar(g)}
         aoFechar={() => setConfirmando(false)}
         aviso={TEXTO_SUBSTITUIR}
       >
