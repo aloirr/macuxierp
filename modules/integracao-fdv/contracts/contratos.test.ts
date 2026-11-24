@@ -1,4 +1,6 @@
+import * as sdk from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
+import * as c from './index';
 import { CorpoLote, CredencialEntrada, CredencialResumo, MonitorResposta, ENTIDADES_CARGA_INICIAL, EVENTOS, EVENTO_CARGA_INICIAL, EVENTO_LOTE_FALHOU, LinhaInvalida, LinhaInvalidaHub, ProdutoUnidadeHub, EstoqueHub, PrazoPagamentoHub, PrazoPagamentoHubV2, PRAZO_CONTRATO_V2_LIGADO, ClienteHub } from './index';
 
 const corpo = { versao_contrato: 'v1', entidade: 'produto', enviado_em: '2026-11-21T20:00:00.000Z', cursor: null, registros: [], linhas_invalidas: [], linhas_invalidas_omitidas: 0 };
@@ -62,6 +64,15 @@ describe('contratos do módulo', () => {
     expect(ch).toEqual(['credencial', 'configuracao', 'sinal', 'entidades', 'erros', 'conflitos']);
   });
 });
+
+describe('T-0086: tipos do SDK reexportados sem duplicar', () => {
+  it('CodigoErro, CampoErro e a versão do conector são os do SDK (uma só fonte)', () => {
+    expect(c.CodigoErro).toBe(sdk.CodigoErroFdv);
+    expect(c.CampoErro).toBe(sdk.CampoErroFdv);
+    expect(c.CorpoSinal.shape.versao_conector).toBe(sdk.VersaoConectorFdv);
+  });
+});
+
 
 /** Fixture do contrato do Hub v2 do prazo (ADR 0072 do FDV): os limites são os do contrato, um a um. */
 const PRAZO_V2 = { external_id: 'PZ-1', alterado_em: '2026-11-24T20:00:00.000Z', codigo: '28-56', forma_external_id: 'FP-1', descricao: '28 e 56 dias', parcelas_dias: [28, 56], prazo_medio_dias: 42 };

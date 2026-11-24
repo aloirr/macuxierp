@@ -5,7 +5,7 @@
  * `titulo` e `nota` são da F4 (T-0016) e ainda não têm contrato aqui.
  */
 import { z } from 'zod';
-import { ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
+import { CampoErroFdv, CodigoErroFdv, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV } from '@macuxierp/platform-sdk';
 
 /** As 12 entidades do Hub que o ERP alimenta, na ordem de carga (RN-INF-02): as 10 da F2 vêm do SDK (ADR 0013), título e nota são da F4. */
 export const ENTIDADES_HUB = [...ENTIDADES_ENVIO_FDV, 'titulo', 'nota'] as const;
@@ -27,12 +27,13 @@ export const VERSAO_CONTRATO_PRAZO_V2 = 'v2' as const;
  */
 export const PRAZO_CONTRATO_V2_LIGADO = false;
 
-/** Código de erro (linha ou lote): identificador do catálogo, nunca mensagem livre. */
-export const CodigoErro = z.string().regex(/^[a-z][a-z0-9_]{0,59}$/);
-export type CodigoErro = z.infer<typeof CodigoErro>;
-
-/** Nome do campo com erro (caminho do payload); igual à restrição do banco (0007). */
-export const CampoErro = z.string().regex(/^[A-Za-z0-9_.[\]]{1,80}$/).nullable();
+/**
+ * Código de erro (linha ou lote) e campo com erro: a fonte é o SDK (T-0086, `portal-integracao-operacao.ts`); `CodigoErro` e
+ * `CampoErro` são o mesmo Zod com o nome do módulo. O campo bate com a restrição do banco (0007).
+ */
+export const CodigoErro = CodigoErroFdv;
+export type CodigoErro = z.infer<typeof CodigoErroFdv>;
+export const CampoErro = CampoErroFdv;
 
 export const SituacaoEntidade = z.enum(['ok', 'pausada']);
 export type SituacaoEntidade = z.infer<typeof SituacaoEntidade>;

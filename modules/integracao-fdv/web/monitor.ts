@@ -52,6 +52,7 @@ export interface ResumoSinal {
   politica: string | null;
 }
 
+// A `versao` do Monitor é a VERSAO_CONECTOR_HUB: o conector é o próprio ERP, então a versão do conector é a do ERP.
 export function resumoDoSinal(m: MonitorResposta, fuso: string = FUSO_PADRAO): ResumoSinal {
   const s = m.sinal;
   const politica = s?.parado_por_versao ? FRASE_VERSAO_NAO_ACEITA : null;
