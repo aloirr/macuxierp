@@ -24,11 +24,11 @@ O Hub (`/integracao/v1`) recusou 95 prazos (`tipo_invalido`, `regra_invalida`) p
    - O prazo médio é um inteiro de 0 a 999 e é digitado. O ERP **não** o calcula nem confere contra a média das parcelas.
    - Na forma à vista (tPag 01, 04 e 17), o prazo médio é 0.
    - O cartão de crédito passa a ter os dias das parcelas, como as outras formas. A notação "Nx" sai da carga.
-   - Regra: **RN-CAD-12**.
+   - Regra: **RN-CAD-15**.
 3. **O cliente tem só `prazo_medio_dias`** (inteiro de 0 a 999, opcional). Sem lista de prazos liberados.
    - O cliente usa os prazos completos com prazo médio menor ou igual ao dele.
    - Cliente sem prazo médio não tem limite.
-   - Regra: **RN-CAD-13**. A função pura `prazoPermitidoAoCliente` fica em `modules/cadastros/contracts`.
+   - Regra: **RN-CAD-16**. A função pura `prazoPermitidoAoCliente` fica em `modules/cadastros/contracts`.
 4. **O pedido revalida o prazo** (**RN-PED-07**), no pedido manual e no pedido recebido do FDV. A recusa é 422 com o código `RN-PED-07` e o campo `condicao_pagamento_id`. No FDV, o pedido fica `rejeitado_erp`.
 5. **Os eventos seguem `@1`** (mudança aditiva): `prazo_medio_dias` entra, anulável, em `cadastros.condicao_pagamento.alterada@1` e em `cadastros.cliente.alterado@1`. Ver `.coord/contratos/eventos.md`, "Aditivo T-0085".
 6. **O legado fica "incompleto", sem backfill.** As condições gravadas antes da 0052 ficam com `prazo_medio_dias` nulo.
@@ -60,4 +60,4 @@ O Hub (`/integracao/v1`) recusou 95 prazos (`tipo_invalido`, `regra_invalida`) p
 - **Tabela própria de forma:** muda o schema e a carga sem ganho para a v1. A forma já viaja na condição (D12).
 
 ## Referências
-`modules/cadastros/contracts/index.ts` (`CondicaoPagamentoDados`, `ClienteDados`) · `modules/integracao-fdv/contracts/hub.ts` (`PrazoPagamentoHub`, `ClienteHub`) · `docs/desenho/T-0085.md` · `.coord/contratos/eventos.md` · `docs/produto/03` (RN-CAD-12, RN-CAD-13 e RN-PED-07, a cargo do gerente).
+`modules/cadastros/contracts/index.ts` (`CondicaoPagamentoDados`, `ClienteDados`) · `modules/integracao-fdv/contracts/hub.ts` (`PrazoPagamentoHub`, `ClienteHub`) · `docs/desenho/T-0085.md` · `.coord/contratos/eventos.md` · `docs/produto/03` (RN-CAD-15, RN-CAD-16 e RN-PED-07, a cargo do gerente).
