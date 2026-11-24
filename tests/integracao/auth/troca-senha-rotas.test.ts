@@ -7,9 +7,9 @@
 import { describe, expect, it } from 'vitest';
 import { CODIGO_TROCAR_SENHA, PERFIS, type Licenca, type Perfil, type RotaModulo } from '../../../packages/platform-sdk/src/index';
 import { emitirTokenAcesso } from '../../../apps/api/src/auth/jwt';
-import { MENSAGEM_TROCAR_SENHA } from '../../../apps/api/src/auth/troca-senha';
 import { ADM_A, type ApiMemoria, FILIAL_A, INICIO, montarApiMemoria, SEGREDO_JWT, TENANT_A, usarApiMemoria } from '../../apoio/api-memoria';
 import { preencherCaminho } from '../../apoio/caminhos';
+import { conferir403TrocarSenha } from '../../apoio/troca-senha';
 
 const montar = usarApiMemoria();
 
@@ -45,7 +45,7 @@ describe('T-0052 (RN-CORE-10): toda rota de módulo é 403 TROCAR_SENHA com a se
     const a = await montar({ licencas: TODAS });
     const res = await comFlag(modulo, r, 'administrador', a);
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA });
+    conferir403TrocarSenha(res.json(), 'provisoria');
     expect(a.banco.aberturas).toEqual([]);
   });
 
@@ -55,7 +55,7 @@ describe('T-0052 (RN-CORE-10): toda rota de módulo é 403 TROCAR_SENHA com a se
     for (const perfil of PERFIS) {
       const res = await comFlag(modulo, r, perfil, a);
       expect(res.statusCode, perfil).toBe(403);
-      expect(res.json(), perfil).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: MENSAGEM_TROCAR_SENHA });
+      conferir403TrocarSenha(res.json(), 'provisoria', perfil);
     }
     expect(a.banco.aberturas).toEqual([]);
   });
