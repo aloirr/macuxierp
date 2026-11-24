@@ -2,6 +2,7 @@
 import type { EuResposta, ManifestoModulo, ModuloId } from '@macuxierp/platform-sdk';
 import { ehRespostaDefinitiva } from './idempotencia';
 import { FALHA, SESSAO_EXPIRADA } from '../textos';
+import { CODIGO_DONO_CLIENTE, MENSAGEM_DONO_CLIENTE } from '../entrada-bko-provisorio';
 
 const CAMINHO_ESCRITA = /^\/v1\/([a-z][a-z0-9-]*)\/[A-Za-z0-9/_-]*$/;
 const METODOS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -36,6 +37,8 @@ export interface ResultadoEscrita {
   campos?: Record<string, string>;
   /** 412/409: a versão mudou; a tela recarrega. */
   desatualizado?: boolean;
+  /** 409 `dono_cliente`: o cadastro vem do servidor do cliente; a tela recarrega o dono atual e mostra o alerta. */
+  donoCliente?: boolean;
   /** 4xx definitivo (a API guardou a resposta da Idempotency-Key): corpo novo pede chave nova. */
   definitivo?: boolean;
 }
@@ -55,6 +58,8 @@ const FIXAS: Readonly<Record<number, string>> = {
 export function resultadoDaResposta(status: number, ok: boolean, corpo: unknown): ResultadoEscrita {
   const c = (corpo && typeof corpo === 'object' ? corpo : {}) as { id?: unknown; mensagem?: unknown; campos?: unknown };
   if (ok) return { ok: true, mensagem: 'Feito.', ...(typeof c.id === 'string' ? { id: c.id } : {}) };
+  const codigo = ((corpo && typeof corpo === 'object' ? (corpo as { detalhes?: { codigo?: unknown } }).detalhes?.codigo : undefined));
+  if (status === 409 && codigo === CODIGO_DONO_CLIENTE) return { ok: false, mensagem: MENSAGEM_DONO_CLIENTE, donoCliente: true, desatualizado: true, ...(ehRespostaDefinitiva(status) ? { definitivo: true } : {}) };
   const mensagem = typeof c.mensagem === 'string' && c.mensagem.trim() && status < 500 ? c.mensagem.trim() : (FIXAS[status] ?? FALHA);
   const campos: Record<string, string> = {};
   if (c.campos && typeof c.campos === 'object') for (const [k, v] of Object.entries(c.campos)) if (typeof v === 'string') campos[k] = v;

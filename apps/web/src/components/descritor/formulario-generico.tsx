@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Opcao } from '@/lib/descritor/fontes';
-import { FormularioItens, RegiaoErros, type ItemLinha } from '@macuxierp/ui';
+import { AlertaBloqueante, FormularioItens, RegiaoErros, type ItemLinha } from '@macuxierp/ui';
 import { temErros } from '@/lib/descritor/formulario';
 import { aposResposta, chaveParaEnvio, novoEstado, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { telaFormulario } from '@/lib/telas';
@@ -11,11 +11,11 @@ import type { ErrosFormulario, TelaFormulario, ValoresFormulario } from '@/lib/d
 import { escrever } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
 
 /** Seletor de opções (cadastro ou lista fixa) com o estilo de campo. */
-function SeletorOpcoes({ id, rotulo, valor, opcoes, onChange, erro, obrigatorio }: { id: string; rotulo: string; valor: string; opcoes: readonly Opcao[]; onChange: (v: string) => void; erro?: string; obrigatorio?: boolean }) {
+function SeletorOpcoes({ somenteLeitura, id, rotulo, valor, opcoes, onChange, erro, obrigatorio }: { somenteLeitura?: boolean; id: string; rotulo: string; valor: string; opcoes: readonly Opcao[]; onChange: (v: string) => void; erro?: string; obrigatorio?: boolean }) {
   return (
     <label className="campo" htmlFor={id}>
       <span>{rotulo}{obrigatorio ? ' *' : ''}</span>
-      <select id={id} value={valor} onChange={(e) => onChange(e.target.value)} aria-invalid={erro ? true : undefined} aria-describedby={erro ? `${id}-erro` : undefined}>
+      <select id={id} value={valor} disabled={somenteLeitura} onChange={(e) => onChange(e.target.value)} aria-invalid={erro ? true : undefined} aria-describedby={erro ? `${id}-erro` : undefined}>
         <option value="">Selecione</option>
         {opcoes.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
       </select>
@@ -25,17 +25,18 @@ function SeletorOpcoes({ id, rotulo, valor, opcoes, onChange, erro, obrigatorio 
 }
 
 /** Formulário genérico: campos do descritor, seletores lidos do cadastros (opções vêm do servidor) e itens. A API revalida. */
-export function FormularioGenerico({ rota, opcoes, produtos, errosIniciais }: { rota: string; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario }) {
+export function FormularioGenerico({ rota, opcoes, produtos, errosIniciais, somenteLeitura = false }: { somenteLeitura?: boolean; rota: string; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario }) {
   const tela = telaFormulario(rota);
-  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
+  return tela ? <Formulario tela={tela} opcoes={opcoes} produtos={produtos} errosIniciais={errosIniciais} somenteLeitura={somenteLeitura} /> : <p className="erro" role="alert">Formulário não encontrado.</p>;
 }
 
-function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormulario; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario }) {
+function Formulario({ tela, opcoes, produtos, errosIniciais, somenteLeitura }: { somenteLeitura: boolean; tela: TelaFormulario; opcoes: Readonly<Record<string, readonly Opcao[]>>; produtos: readonly Opcao[]; errosIniciais?: ErrosFormulario }) {
   const router = useRouter();
   const [valores, setValores] = useState<ValoresFormulario>({});
   const [itens, setItens] = useState<ItemLinha[]>(() => (tela.itens ? [tela.itens.novoItem('item-1')] : []));
   const [erros, setErros] = useState<ErrosFormulario>(errosIniciais ?? {});
   const [geral, setGeral] = useState('');
+  const [donoCliente, setDonoCliente] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const chave = useRef<EstadoChave | null>(null); // uma Idempotency-Key por formulário aberto: reenvio do mesmo corpo não duplica
 
@@ -45,6 +46,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
   async function enviar(ev: React.FormEvent) {
     ev.preventDefault();
     setGeral('');
+    if (somenteLeitura) return;
     const linhas = itens.map((i) => tela.itens?.paraTexto(i) ?? { produto_id: '', quantidade: '', preco: '' });
     const e = tela.validar(valores, linhas);
     setErros(e);
@@ -58,24 +60,29 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
     setOcupado(false);
     if (r.ok && r.id) return router.push(tela.depois(r.id));
     if (r.ok) return router.push(tela.voltar);
+    if (r.donoCliente) {
+      setDonoCliente(true); // o dono mudou com a tela aberta: recarrega o dono atual (ADR 0014 §5)
+      return router.refresh();
+    }
     setErros(r.campos ?? {});
     setGeral(r.mensagem);
   }
 
   return (
     <form className="formulario" onSubmit={(ev) => void enviar(ev)} noValidate aria-busy={ocupado}>
+      {donoCliente && <AlertaBloqueante titulo="Alteração não salva">Este cadastro vem do servidor do cliente. Altere lá; o Conector traz a mudança.</AlertaBloqueante>}
       {geral && <p className="erro" role="alert">{geral}</p>}
       {!tela.itens && <RegiaoErros temErro={temErros(erros) || geral !== ''} />}
       {tela.campos.map((c) => {
         const id = `campo-${c.nome}`;
         if (c.tipo === 'cadastro' || c.tipo === 'selecao') {
           const lista = c.tipo === 'cadastro' ? (opcoes[c.nome] ?? []) : (c.opcoes ?? []).map((o) => ({ valor: o.valor, rotulo: o.rotulo }));
-          return <SeletorOpcoes key={c.nome} id={id} rotulo={c.rotulo} valor={valores[c.nome] ?? ''} opcoes={lista} onChange={(v) => trocar(c.nome, v)} erro={erros[c.nome]} obrigatorio={c.obrigatorio} />;
+          return <SeletorOpcoes key={c.nome} somenteLeitura={somenteLeitura} id={id} rotulo={c.rotulo} valor={valores[c.nome] ?? ''} opcoes={lista} onChange={(v) => trocar(c.nome, v)} erro={erros[c.nome]} obrigatorio={c.obrigatorio} />;
         }
         return (
           <label key={c.nome} className="campo" htmlFor={id}>
             <span>{c.rotulo}{c.obrigatorio ? ' *' : ''}</span>
-            {c.tipo === 'area' ? <textarea id={id} rows={3} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} /> : <input id={id} type={c.tipo === 'data' ? 'date' : 'text'} lang="pt-BR" inputMode={c.tipo === 'numero' ? 'decimal' : undefined} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} />}
+            {c.tipo === 'area' ? <textarea id={id} rows={3} readOnly={somenteLeitura} aria-readonly={somenteLeitura || undefined} className={somenteLeitura ? 'somente-leitura' : undefined} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} /> : <input id={id} readOnly={somenteLeitura} aria-readonly={somenteLeitura || undefined} className={somenteLeitura ? 'somente-leitura' : undefined} type={c.tipo === 'data' ? 'date' : 'text'} lang="pt-BR" inputMode={c.tipo === 'numero' ? 'decimal' : undefined} value={valores[c.nome] ?? ''} onChange={(e) => trocar(c.nome, e.target.value)} aria-invalid={erros[c.nome] ? true : undefined} aria-describedby={erros[c.nome] ? `${id}-erro` : undefined} />}
             {c.ajuda && <small className="apoio">{c.ajuda}</small>}
             {erros[c.nome] && <span id={`${id}-erro`} className="erro-campo">{erros[c.nome]}</span>}
           </label>
@@ -84,7 +91,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
       {tela.itens && <Itens tela={tela.itens} itens={itens} produtos={produtos} onChange={setItens} erros={erros} temErroExterno={foraDosItens || geral !== ''} />}
       {tela.itens?.totalTexto && <p className="total-pedido" aria-live="polite">Total do pedido: <span data-testid="total-pedido">{tela.itens.totalTexto(itens.map((i) => tela.itens?.paraTexto(i) ?? { produto_id: '', quantidade: '', preco: '' }))}</span></p>}
       <div className="barra-acoes">
-        <button className="mx-botao" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>
+        {!somenteLeitura && <button className="mx-botao" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>}
         <Link className="mx-botao-secundario" href={tela.voltar}>Cancelar</Link>
       </div>
     </form>

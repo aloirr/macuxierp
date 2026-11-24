@@ -6,6 +6,7 @@ import { RespostaFonte, caminhoDaFonte, opcoesDaResposta, type Opcao } from '@/l
 import { recomecarLista } from '@macuxierp/platform-sdk/listas';
 import type { TelaDescrita } from '@/lib/descritor/tipos';
 import { z } from 'zod';
+import type { LinhaEntradaBko } from '@/lib/entrada-bko-provisorio';
 import { DetalheGenerico } from './detalhe-generico';
 import { FormularioGenerico } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
@@ -26,9 +27,9 @@ async function opcoes(fonte: string, acesso: string, perfil: Perfil): Promise<re
 }
 
 /** Escolhe lista, detalhe ou formulário pelo descritor. Erros da API viram mensagem fixa, sem dado do registro. */
-export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso }: { tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
+export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso, entrada }: { entrada?: LinhaEntradaBko; tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   try {
-    if (tela.tipo === 'lista') return <ListaGenerica tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
+    if (tela.tipo === 'lista') return <ListaGenerica tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} somenteLeitura={entrada !== undefined} />;
     if (tela.tipo === 'detalhe') {
       const id = params.id ?? '';
       if (!UUID.safeParse(id).success) notFound();
@@ -52,14 +53,14 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
       } catch {
         throw new ApiIndisponivel('detalhe fora do contrato');
       }
-      return <DetalheGenerico vista={vista} rota={rota} rotaDaPagina={rotaDaPagina} voltar={tela.voltar} />;
+      return <DetalheGenerico vista={vista} rota={rota} rotaDaPagina={rotaDaPagina} voltar={tela.voltar} entrada={entrada} fuso={fuso} />;
     }
     const campos = tela.campos.filter((c) => c.tipo === 'cadastro' && c.fonte);
     const [listas, produtos] = await Promise.all([
       Promise.all(campos.map((c) => opcoes(c.fonte ?? '', acesso, perfil))),
       tela.itens ? opcoes(tela.itens.fonte, acesso, perfil) : Promise.resolve([]),
     ]);
-    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} />;
+    return <FormularioGenerico rota={rotaDaPagina} opcoes={Object.fromEntries(campos.map((c, i) => [c.nome, listas[i] ?? []]))} produtos={produtos} somenteLeitura={entrada !== undefined} />;
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);

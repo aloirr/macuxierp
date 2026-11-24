@@ -233,3 +233,4 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* "Esqueci a senha": link em botão, sem aparência de botão */
 button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.campo .somente-leitura, input.somente-leitura, textarea.somente-leitura { background: var(--mx-cor-perola); }

@@ -44,3 +44,4 @@
 2026-11-23 — T-0058 — v0.3.7: Zerar dados com aviso fixo no rodapé do Dialogo, .mx-checkbox, 409 do zerar pelos 4 códigos
 2026-11-23 — T-0058 — v0.3.7: web com a lista de 8 cadastros do SDK (sem dependência entre cargas, ROTULO_ZERAR do nome do SDK, CODIGOS_ESTADO_MUDOU_ZERAR do SDK) e RDs 1255-1257
 2026-11-23 — T-0070 — v0.3.8: endereços inativados no Substituir tudo de clientes (confirmação, "e nenhum cliente" e resultado; tipos do SDK) e RDs 1278-1280
+2026-11-24 — v0.3.11 (cenário B, etapa 4) — BKO: Chip 'Vem do servidor do cliente', só leitura, linha de status e bloco 'Entrada do cliente' na Integração (contrato provisório em lib/entrada-bko-provisorio.ts)

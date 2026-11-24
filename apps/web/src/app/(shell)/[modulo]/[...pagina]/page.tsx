@@ -8,6 +8,9 @@ import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
 import { telaDaRota } from '@/lib/telas';
 import { TelaGenerica } from '@/components/descritor/tela-generica';
 import { TelaIntegracaoFdv } from './tela-integracao-fdv';
+import { buscarSituacaoEntrada } from '@/lib/entrada-bko-provisorio';
+import { linhaDoCliente } from '@/lib/entrada-bko';
+import { ChipDonoCliente, LinhaStatusEntrada } from '@/components/entrada-bko/entrada-bko';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 
 /**
@@ -31,10 +34,13 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
   const monitor = PAGINAS_INTEGRACAO_FDV.find((p) => p.tipo === 'monitor');
   const titulo = declarada?.titulo ?? resolvida.rotulo;
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value ?? '';
+  // Entrada do cenário B (ADR 0014 §5): só consulta quando a tela é de um cadastro; falha da rota = sem Chip nem bloqueio.
+  const entrada = declarada && eu.modulos.some((m) => m.id === 'cadastros') && declarada.modulo === 'cadastros' ? linhaDoCliente(await buscarSituacaoEntrada(acesso), declarada.rota) : undefined;
   return (
     <>
       {/* No detalhe, o h1 é o título do registro (ex.: "Nota 12/1"), desenhado pelo DetalheGenerico: um h1 só por página. */}
-      {tela?.tipo !== 'detalhe' && <h1>{titulo}</h1>}
+      {tela?.tipo !== 'detalhe' && <h1>{titulo}{entrada && <> <ChipDonoCliente /></>}</h1>}
+      {entrada && tela?.tipo !== 'detalhe' && <LinhaStatusEntrada linha={entrada} fuso={eu.empresa.fuso} />}
       {secoes.length > 1 && (
         <nav className="secoes" aria-label="Seções">
           {secoes.map((p) => <Link key={p.rota} className="mx-botao-secundario" href={p.rota} aria-current={p.rota === declarada?.rota || (declarada?.ocultaNoMenu && p.rota === secoes[0]?.rota) ? 'page' : undefined}>{p.titulo}</Link>)}
@@ -43,7 +49,7 @@ export default async function PaginaDoModulo({ params, searchParams }: { params:
       {declarada?.aviso && <p className="faixa-aviso" role="status">{declarada.aviso}</p>}
       {monitor && declarada?.rota === monitor.rota && <TelaIntegracaoFdv acesso={acesso} fuso={eu.empresa.fuso} />}
       {tela && declarada && (
-        <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} />
+        <TelaGenerica titulo={titulo} tela={tela} rotaDaPagina={declarada.rota} rota={rota} params={resolvida.params ?? {}} busca={busca} perfil={perfil} acesso={acesso} fuso={eu.empresa.fuso} entrada={entrada} />
       )}
       {!tela && !declarada?.aviso && declarada?.rota !== monitor?.rota && <p className="apoio">Disponível em breve.</p>}
     </>

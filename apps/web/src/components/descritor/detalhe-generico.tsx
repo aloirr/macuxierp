@@ -1,15 +1,18 @@
 import Link from 'next/link';
 import type { DetalheVista } from '@/lib/descritor/tipos';
+import type { LinhaEntradaBko } from '@/lib/entrada-bko-provisorio';
+import { ChipDonoCliente, LinhaStatusEntrada } from '@/components/entrada-bko/entrada-bko';
 import { AcoesDetalhe } from './acoes-detalhe';
 import { FaixaPendencias, Selo, TabelaVista } from './ui-cliente';
 
 /** Detalhe genérico a partir da vista: cabeçalho, pendências, tabelas (itens), decisão, histórico e ações. */
-export function DetalheGenerico({ vista, rota, rotaDaPagina, voltar }: { vista: DetalheVista; rota: string; rotaDaPagina: string; voltar: string }) {
+export function DetalheGenerico({ vista, rota, rotaDaPagina, voltar, entrada, fuso }: { vista: DetalheVista; rota: string; rotaDaPagina: string; voltar: string; /** Linha da entrada quando o dono é o cliente: Chip, status e sem ações. */ entrada?: LinhaEntradaBko; fuso?: string }) {
   return (
     <article>
       <p><Link href={voltar}>Voltar para a lista</Link></p>
       {vista.faixa && <p className="faixa-aviso faixa-homologacao" role="status">{vista.faixa}</p>}
-      <h1>{vista.titulo} {vista.selo && <Selo selo={vista.selo} />}</h1>
+      <h1>{vista.titulo} {vista.selo && <Selo selo={vista.selo} />}{entrada && <> <ChipDonoCliente /></>}</h1>
+      {entrada && <LinhaStatusEntrada linha={entrada} fuso={fuso ?? 'UTC'} />}
       <dl className="dados">{vista.cabecalho.map((c) => <div key={c.rotulo} className={c.linhaInteira ? 'dado-linha-inteira' : undefined}><dt>{c.rotulo}</dt><dd className={c.numerico ? 'num' : undefined}>{c.valor || '—'}</dd></div>)}</dl>
       <FaixaPendencias itens={vista.pendencias.map((p) => ({ nivel: p.bloqueante ? 'bloqueante' : 'aceitavel', codigoRn: p.codigoRn, texto: p.texto }))} />
       {vista.downloads && vista.downloads.length > 0 && (
@@ -22,7 +25,7 @@ export function DetalheGenerico({ vista, rota, rotaDaPagina, voltar }: { vista: 
         {vista.downloads.map((d, i) => d.desabilitado && <p key={d.rotulo} id={`download-${i}-motivo`} className="apoio">{d.rotulo}: {d.desabilitado}</p>)}
         </>
       )}
-      <AcoesDetalhe acoes={vista.acoes} rota={rota} rotaDaPagina={rotaDaPagina} />
+      {!entrada && <AcoesDetalhe acoes={vista.acoes} rota={rota} rotaDaPagina={rotaDaPagina} />}
       {vista.tabelas.map((t) => (
         <section key={t.titulo}>
           <h3>{t.titulo}</h3>
