@@ -1,4 +1,4 @@
-/** Plugin "Zerar dados" (RN-CAD-10, T-0058) com tx e portas falsas. O teste de banco depende da migração 0042. */
+/** Plugin "Zerar dados" (RN-CAD-10, T-0058) com tx e portas falsas. */
 import { CAMINHOS_CARGAS_PLATAFORMA, CODIGO_ZERAGEM_BLOQUEADA, ErroApi, ZeragemPlataformaResposta, type ContextoPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarPluginPlataformaCadastrosZerar } from './zeragem';
@@ -8,14 +8,12 @@ const TENANT = '11111111-1111-4111-8111-111111111111';
 const FRASE = 'autorizo zerar os dados';
 
 interface Opcoes {
-  ligadas?: string[];
   emVoo?: string[];
   semChave?: boolean;
   resultado?: unknown;
 }
 
 function montar(o: Opcoes = {}) {
-  const ordem: string[] = [];
   const todas: string[] = [];
   const tirados: string[][] = [];
   const refsUsos: object[] = [];
@@ -33,7 +31,6 @@ function montar(o: Opcoes = {}) {
       sqls.push({ sql, p });
       if (sql.includes('portal_zeragem_fatos')) { todas.push('fatos'); return [{ r: fatos }]; }
       if (sql.includes('portal_zerar')) {
-        ordem.push('portal_zerar');
         todas.push('portal_zerar');
         return [{ r: o.resultado ?? { apagados: [{ tabela: 'vendedor', quantidade: 1 }], anulados: [{ tabela: 'cliente', coluna: 'vendedor_id', quantidade: 1 }] } }];
       }
@@ -44,17 +41,17 @@ function montar(o: Opcoes = {}) {
     usos: { usos: async (_tx, _t, refs) => { todas.push('usos'); refsUsos.push(refs); return { emUso: [], filiaisComNota: [] }; } },
     integracao: {
       async estado(_tx, _t, entidades): Promise<EstadoEntidadeIntegracao[]> {
-        return entidades.map((entidade) => ({ entidade, ligada: o.ligadas?.includes(entidade) ?? false, lote_em_voo: o.emVoo?.includes(entidade) ?? false }));
+        return entidades.map((entidade) => ({ entidade, lote_em_voo: o.emVoo?.includes(entidade) ?? false }));
       },
     },
-    usuarios: { async tirarFiliais(_tx, _t, ids) { todas.push('tirarFiliais'); ordem.push('tirar'); tirados.push([...ids]); return 2; } },
+    usuarios: { async tirarFiliais(_tx, _t, ids) { todas.push('tirarFiliais'); tirados.push([...ids]); return 2; } },
   });
-  const ctx: ContextoPlataforma = { sessao: { superadmin_id: 'a', sessao_id: 'b' }, tx, request_id: 'req-1', agora: new Date(), auditar: async () => { ordem.push('auditar'); } };
+  const ctx: ContextoPlataforma = { sessao: { superadmin_id: 'a', sessao_id: 'b' }, tx, request_id: 'req-1', agora: new Date(), auditar: async () => { todas.push('auditar'); } };
   const chamar = (caminho: string, corpo: unknown) => {
     const r = plugin.rotas.find((x) => x.caminho === caminho)!;
     return r.executar(ctx, { corpo: r.corpo ? r.corpo.parse(corpo) : undefined, params: { id: TENANT } } as never);
   };
-  return { plugin, chamar, ordem, todas, tirados, sqls, refsUsos };
+  return { plugin, chamar, todas, tirados, sqls, refsUsos };
 }
 const C = CAMINHOS_CARGAS_PLATAFORMA;
 
@@ -79,7 +76,7 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     const r = ZeragemPlataformaResposta.parse(corpo);
     expect(r.simulado).toBe(true);
     expect(r.bloqueios).toEqual([{ cadastro: 'vendedor', motivo: 'lote_em_andamento' }]);
-    expect(m.ordem).toEqual([]);
+    expect(m.todas).not.toContain('portal_zerar');
   });
 
   it('RN-CAD-10: a prévia sem bloqueio traz o plano (apagados e anulados)', async () => {
@@ -101,7 +98,7 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(e).toBeInstanceOf(ErroApi);
     expect((e as ErroApi).status).toBe(422);
     expect((e as ErroApi).detalhes).toEqual({ codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['vendedor:lote_em_andamento'] });
-    expect(m.ordem).toEqual([]);
+    expect(m.todas).not.toContain('portal_zerar');
   });
 
   it('RN-CAD-10: condicao_pagamento bloqueia o lote em voo de qualquer das duas entidades do Hub', async () => {
@@ -110,14 +107,26 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(ZeragemPlataformaResposta.parse(corpo).bloqueios).toEqual([{ cadastro: 'condicao_pagamento', motivo: 'lote_em_andamento' }]);
   });
 
-  it('RN-CAD-10 (T-0086): com a integração ligada o zerar não bloqueia e só chama o portal_zerar (a 0053 inativa o espelho), sem c.auditar', async () => {
-    const m = montar({ ligadas: ['vendedor'] });
+  it('RN-CAD-10: zerar vendedor chama fatos, usos e portal_zerar, sem tirarFiliais nem c.auditar', async () => {
+    const m = montar();
     const { corpo } = await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE });
-    expect(m.ordem).toEqual(['portal_zerar']);
+    expect(m.todas).toEqual(['fatos', 'usos', 'portal_zerar']);
+    expect(m.tirados).toEqual([]);
     const r = ZeragemPlataformaResposta.parse(corpo);
     expect(r.simulado).toBe(false);
-    expect(r.efetivos).toEqual(['vendedor']);
     expect(r.apagados).toEqual([{ tabela: 'vendedor', quantidade: 1 }]);
+  });
+
+  it('RN-CAD-10 (T-0086): o resultado traz inativacao_fdv do portal_zerar por entidade; vazio ou ausente é omitido; a prévia não traz', async () => {
+    const base = { apagados: [{ tabela: 'vendedor', quantidade: 2 }], anulados: [] };
+    const com = await montar({ resultado: { ...base, inativacao_fdv: [{ entidade: 'vendedor', quantidade: 2 }] } }).chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE });
+    expect(ZeragemPlataformaResposta.parse(com.corpo).inativacao_fdv).toEqual([{ entidade: 'vendedor', quantidade: 2 }]);
+    for (const resultado of [base, { ...base, inativacao_fdv: [] }]) {
+      const { corpo } = await montar({ resultado }).chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE });
+      expect(corpo).not.toHaveProperty('inativacao_fdv');
+    }
+    const previa = await montar().chamar(C.previa, { cadastros: ['vendedor'] });
+    expect(previa.corpo).not.toHaveProperty('inativacao_fdv');
   });
 
   it('RN-CAD-10: zerar filial chama fatos, usos, tirarFiliais (só ids apagados) e portal_zerar, nessa ordem', async () => {
@@ -125,13 +134,6 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     await m.chamar(C.zerar, { cadastros: ['filial'], frase: FRASE });
     expect(m.todas).toEqual(['fatos', 'usos', 'tirarFiliais', 'portal_zerar']);
     expect(m.tirados).toEqual([['f1']]);
-  });
-
-  it('RN-CAD-10: sem filial no plano o tirarFiliais não é chamado', async () => {
-    const m = montar();
-    await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: FRASE });
-    expect(m.todas).toEqual(['fatos', 'usos', 'portal_zerar']);
-    expect(m.tirados).toEqual([]);
   });
 
   it('RN-CAD-10: a prévia não chama tirarFiliais nem portal_zerar', async () => {

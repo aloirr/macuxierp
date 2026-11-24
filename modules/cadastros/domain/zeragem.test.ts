@@ -77,6 +77,7 @@ describe('zeragem: cada cadastro sozinho', () => {
       'estoque_movimento', 'estoque_saldo', 'tabela_preco_item', 'produto_unidade', 'produto',
     ]);
     expect(ids(p, 'tabela_preco_item')).toEqual(['i1', 'i2']);
+    expect(p.bloqueios).toEqual([]);
   });
 
   it('RN-CAD-10: zerar produto mantém a tabela de preço e o vínculo do cliente', () => {
@@ -169,12 +170,6 @@ describe('zeragem: anulados', () => {
 });
 
 describe('zeragem: bloqueios', () => {
-  it('RN-CAD-10: a integração ligada não bloqueia: o plano apaga normalmente (o espelho é inativado pelo banco)', () => {
-    const p = planoZeragem(['produto'], base());
-    expect(p.bloqueios).toEqual([]);
-    expect(p.apagar.length).toBeGreaterThan(0);
-  });
-
   it('RN-CAD-10: lote em voo em cadastro tocado só pela cascata (preço) bloqueia o zerar do produto', () => {
     const p = planoZeragem(['produto'], com(base(), 'preco', { lote_em_voo: true }));
     expect(p.bloqueios).toEqual([{ cadastro: 'preco', motivo: 'lote_em_andamento' }]);

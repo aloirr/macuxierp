@@ -33,14 +33,13 @@ export interface UsosCadastroPlataforma {
 /** Entidades do Hub (`EntidadeEnvioFdv` do SDK) como texto: forma_prazo mapeia para forma_pagamento e prazo_pagamento. */
 export interface EstadoEntidadeIntegracao {
   entidade: string;
-  ligada: boolean;
   lote_em_voo: boolean;
 }
 
 /**
  * Estado do espelho do FDV. A apps/api chama `integracao_fdv.portal_estado_entidades`, que devolve `entidades` do
- * jsonb `{entidades: [{entidade, ligada, lote_em_voo}]}` (só as 10 entidades da F2; `check_violation` fora delas). Só o
- * `lote_em_voo` bloqueia o zerar; o espelho é inativado pelo próprio `cadastros.portal_zerar` (0053, RN-CAD-10).
+ * jsonb `{entidades: [{entidade, lote_em_voo}]}` (só as 10 entidades da F2; `check_violation` fora delas). Só o
+ * `lote_em_voo` bloqueia o zerar.
  */
 export interface EstadoIntegracaoPlataforma {
   estado(tx: Transacao, tenant: string, entidades: readonly string[]): Promise<EstadoEntidadeIntegracao[]>;

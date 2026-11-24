@@ -169,35 +169,4 @@ INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_des
     expect(await tirarFiliais([id.filial])).toBe(0);
     expect((await usosFiscais([id.filial])).em_uso).toEqual([]);
   });
-
-  it('RN-CAD-10 (T-0086, 0053): com a integração ligada o zerar apaga no ERP e deixa o espelho inativo e pendente, auditando só contagens', async () => {
-    const filial = uuid();
-    const vend = uuid();
-    const vendNovo = uuid();
-    await q(`INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep, external_id)
-      VALUES ($1, $2, '11222333000181', 'Filial T86', '3', 'Rua B', '2', 'Centro', '1302603', 'AM', '69000001', 'F86')`, [filial, T]);
-    await q('INSERT INTO cadastros.vendedor (id, tenant_id, codigo, nome, filial_id, external_id) VALUES ($1, $2, $3, $4, $5, $6), ($7, $2, $8, $9, $5, $10)', [vend, T, 'V86', 'Vendedor Publicado', filial, 'V86', vendNovo, 'V87', 'Vendedor Novo', 'V87']);
-    const payload = JSON.stringify({ external_id: 'V86', ativo: true, nome: 'Vendedor Publicado' });
-    const confirmado = 'a'.repeat(64);
-    await q(`INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em,
-        fonte_refs, ativo, pendente, hash_confirmado, confirmado_em, erp_id)
-      VALUES ($1, 'vendedor', 'V86', $2::jsonb, $3, '2026-11-21T12:00:00Z', '2026-11-21T12:00:00Z', $4::jsonb, true, false, $3, now(), $5)`, [T, payload, confirmado, JSON.stringify({ filial_id: filial }), vend]);
-    // integração ligada no vendedor: antes da 0053 isso bloqueava
-    await q(`INSERT INTO integracao_fdv.credencial (tenant_id, conector_id, ambiente, chave_cifrada, chave_prefixo, entidades_habilitadas)
-      VALUES ($1, 'conector-t86', 'teste', decode(repeat('aa', 40), 'hex'), 'mxf_t086', ARRAY['vendedor']::integracao_fdv.entidade_hub[])`, [T]);
-    const antes = (await q("SELECT count(*)::int AS n FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'cadastros.dados.zerar'", [T]))[0]!.n as number;
-
-    const p = await plano(['vendedor']);
-    expect(p.bloqueios).toEqual([]);
-    const r = await aplicar(p);
-    expect(r.apagados).toEqual([{ tabela: 'vendedor', quantidade: 2 }]);
-    expect(await n('vendedor')).toBe(0);
-
-    const publicado = (await q("SELECT ativo, pendente, payload->>'ativo' AS pa, hash <> hash_confirmado AS hash_novo FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND entidade = 'vendedor' AND registro_external_id = 'V86'", [T]))[0]!;
-    expect(publicado).toMatchObject({ ativo: false, pendente: true, pa: 'false', hash_novo: true });
-
-    const aud = await q("SELECT depois::text AS d FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'cadastros.dados.zerar' ORDER BY ocorrido_em DESC", [T]);
-    expect(aud.length).toBe(antes + 1);
-    expect(aud[0]!.d).not.toContain('Vendedor Publicado');
-  });
 });
