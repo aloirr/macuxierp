@@ -113,11 +113,18 @@ const DECIMAL = /^-?\d+(\.\d{1,4})?$/;
 /** Trava de inativação em massa na carga completa (RN-INT-06 do FDV). */
 const LIMITE_INATIVACAO = 0.3;
 /**
- * `parcelas_dias` do prazo é lista de inteiros de 0 a 999, com ao menos um item (`[28, 56]`; à vista `[0]`),
- * como o Hub real exige (T-0085, `PrazoPagamentoHub` em modules/integracao-fdv/contracts/hub.ts). O texto "28/56" é recusado.
+ * `parcelas_dias` do prazo é lista de 1 a 24 inteiros de 0 a 365 (`[28, 56]`; à vista `[0]`), o limite real do Hub
+ * (T-0085 lote 2; `PrazoPagamentoHub` em modules/integracao-fdv/contracts/hub.ts). O texto "28/56" é recusado.
  */
+export const MAX_DIAS_HUB = 365;
+export const MAX_PARCELAS_HUB = 24;
 export const parcelasDiasValidas = (v: unknown): boolean =>
-  Array.isArray(v) && v.length > 0 && v.every((d) => Number.isInteger(d) && d >= 0 && d <= 999);
+  Array.isArray(v) &&
+  v.length > 0 &&
+  v.length <= MAX_PARCELAS_HUB &&
+  v.every((d) => Number.isInteger(d) && d >= 0 && d <= MAX_DIAS_HUB);
+/** `prazo_medio_dias` do prazo (e `prazo_medio_max_dias` do cliente): inteiro de 0 a 365; ausente o Hub v1 aceita. */
+export const prazoMedioValido = (v: unknown): boolean => v === undefined || (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_DIAS_HUB);
 
 // ---------------------------------------------------------------- tipos públicos ---------------------------------------
 
@@ -428,6 +435,10 @@ function validarLinha(
       'Os dias das parcelas vão como lista de inteiros (ex.: [28, 56]; à vista [0]).',
     );
   }
+  if (entidade === 'prazo_pagamento' && !prazoMedioValido(r.prazo_medio_dias))
+    return falha('registro_invalido', 'prazo_medio_dias', 'O prazo médio é inteiro de 0 a 365 dias.');
+  if (entidade === 'cliente' && !prazoMedioValido(r.prazo_medio_max_dias))
+    return falha('registro_invalido', 'prazo_medio_max_dias', 'O prazo médio máximo é inteiro de 0 a 365 dias.');
   if (entidade === 'titulo' && !SITUACOES_TITULO.includes(String(r.situacao)))
     return falha('valor_nao_permitido', 'situacao', 'Situação do título fora da lista.');
   for (const campo of REFERENCIAS_OBRIGATORIAS[entidade] ?? []) {

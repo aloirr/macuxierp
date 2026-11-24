@@ -77,11 +77,30 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: isolamento das credenciais de t
     expect(rotasModulos.length).toBeGreaterThan(rotasPortal.length);
   });
 
-  it('T-0056 (ADR 0013 §2): as 6 rotas da integração FDV do portal entram sozinhas na matriz, pelo plugin real', () => {
-    const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
+  it('T-0056/T-0086 (ADR 0013 §2): toda rota de CAMINHOS_INTEGRACAO_FDV_PLATAFORMA (Monitor, Reprocessar e Log inclusos) entra sozinha na matriz, pelo plugin real', () => {
+    // Caminhos e número lidos do SDK; o método de cada chave é o contrato do portal. `Record<keyof typeof C, ...>` faz o
+    // typecheck cair quando o SDK ganhar uma chave sem método aqui, então nenhuma rota nova fica fora da matriz.
     const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
-    const esperadas = [`GET ${C.ler}`, `PUT ${C.credencial}`, `POST ${C.testar}`, `PUT ${C.configuracao}`, `POST ${C.cargaCompleta}`, `POST ${C.retomar}`];
-    expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual([...esperadas].sort());
+    const METODO: Record<keyof typeof C, MetodoPortal> = {
+      ler: 'GET',
+      credencial: 'PUT',
+      testar: 'POST',
+      configuracao: 'PUT',
+      cargaCompleta: 'POST',
+      retomar: 'POST',
+      monitor: 'GET',
+      reprocessar: 'POST',
+      log: 'GET',
+    };
+    const chaves = Object.keys(C) as (keyof typeof C)[];
+    const esperadas = chaves.map((k) => `${METODO[k]} ${C[k]}`).sort();
+    expect(esperadas).toHaveLength(Object.values(C).length);
+    expect(chaves).toEqual(expect.arrayContaining(['monitor', 'reprocessar', 'log']));
+    const declaradas = pluginsPlataforma(modulos).flatMap((pl) => pl.rotas.map((r) => `${r.metodo} ${r.caminho}`));
+    expect(declaradas.filter((d) => d.includes('/integracao-fdv')).sort()).toEqual(esperadas);
+    // cada uma está na matriz (rotasPortal), que alimenta os casos de JWT do tenant, CSRF e troca pendente abaixo
+    const padrao = (c: string) => new RegExp(`^${PREFIXO_PLATAFORMA}${c.replace(/:[A-Za-z_]+/g, '[0-9a-f-]{36}')}$`);
+    for (const k of chaves) expect(rotasPortal.some((r) => r.metodo === METODO[k] && padrao(C[k]).test(r.url)), `${METODO[k]} ${C[k]}`).toBe(true);
   });
 
   it('T-0058/T-0060 (ADR 0013, adendo de 23/11/2026): as rotas da carga de cadastros do portal (CAMINHOS_CARGAS_PLATAFORMA) entram sozinhas na matriz, pelo plugin real', () => {

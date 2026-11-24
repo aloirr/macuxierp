@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { DetalheGenerico } from './detalhe-generico';
 import { FormularioGenerico } from './formulario-generico';
 import { ListaGenerica } from './lista-generica';
+import { TEXTO_SEM_PERMISSAO } from '@/lib/telas/comum';
 
 const UUID = z.string().uuid();
 
@@ -28,6 +29,7 @@ async function opcoes(fonte: string, acesso: string, perfil: Perfil): Promise<re
 /** Escolhe lista, detalhe ou formulário pelo descritor. Erros da API viram mensagem fixa, sem dado do registro. */
 export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, busca, perfil, acesso, fuso }: { tela: TelaDescrita; titulo: string; rotaDaPagina: string; rota: string; params: Readonly<Record<string, string>>; busca: URLSearchParams; perfil: Perfil; acesso: string; fuso: string }) {
   try {
+    if (tela.tipo === 'quadro') return null; // quadros têm componente próprio, escolhido pela página (page.tsx)
     if (tela.tipo === 'lista') return <ListaGenerica tela={tela} rota={rota} rotaDaPagina={rotaDaPagina} busca={busca} perfil={perfil} acesso={acesso} fuso={fuso} />;
     if (tela.tipo === 'detalhe') {
       const id = params.id ?? '';
@@ -63,7 +65,7 @@ export async function TelaGenerica({ tela, titulo, rotaDaPagina, rota, params, b
   } catch (e) {
     if (e instanceof NaoAutenticado) redirect('/sessao/renovar');
     if (e instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
-    if (e instanceof SemPermissao) return <Falha texto="Seu perfil não pode ver esta tela." {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
+    if (e instanceof SemPermissao) return <Falha texto={TEXTO_SEM_PERMISSAO} {...(tela.tipo === 'detalhe' ? { titulo } : {})} />;
     if (e instanceof DadosInvalidos && tela.tipo === 'lista') {
       // 400 da lista: recomeça na primeira página, sem cursor nem limite (contrato de listas).
       const q = new URLSearchParams(recomecarLista(Object.fromEntries(busca))).toString();

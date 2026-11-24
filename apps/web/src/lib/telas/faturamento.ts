@@ -7,7 +7,7 @@ import {
   ACOES_DA_NOTA, BASE_API, PAGINAS_FATURAMENTO, ROTULO_STATUS_NOTA, ROTULO_STATUS_PEDIDO, ROTULO_STATUS_TITULO, ROTULO_ACAO_NOTA, ROTULO_LINHA, hora, acaoPrincipalDaNota, acoesDoPedidoAFaturar, acoesDoTitulo, ambienteDaConfirmacao, type IdLista, badgesDaNota, colunasDaPagina, confirmacaoReenviar,
   dialogoCancelar, dialogoCartaCorrecao, dialogoEstornar, dialogoInutilizar, faixaDaNota, faixaDoTitulo, formularioBaixa, formularioParcial, hojeCivil, motivosDasAcoes, numeroSerie, paginaNotas, paginaPedidosAFaturar, paginaRejeicoes, paginaTitulos, requisicaoBaixa, requisicaoCancelar,
   requisicaoCartaCorrecao, requisicaoConsultar, requisicaoEmitir, requisicaoEstornar, requisicaoInutilizar, requisicaoReenviar, rotuloDaForma, situacaoDoTitulo, textoDoAmbiente, urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoPedidoAFaturar, urlDoXml,
-  type AcaoDaNota, type Montagem, type Selo as SeloModulo,
+  type AcaoDaNota, type Montagem,
 } from '@macuxierp/faturamento/web';
 import {
   Ambiente, ConfiguracaoFilialResposta, EventoNotaResumo, NotaDetalhe, PedidoAFaturarDetalhe, PedidoAFaturarResumo, StatusNota, TituloDetalhe,
@@ -16,7 +16,8 @@ import {
 import { z } from 'zod';
 import { pode, type Perfil } from '@macuxierp/platform-sdk';
 import { formatarCentavos, formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
-import type { AcaoVista, AmbienteVista, DetalheVista, ItemDoDialogo, Leitura, DownloadVista, Escrita, EntradaAcao, EventoVista, FiltroTela, Linha, ResultadoAcao, SeloVista, TelaDescrita, TelaDetalhe, TelaLista } from '../descritor/tipos';
+import type { AcaoVista, AmbienteVista, DetalheVista, ItemDoDialogo, Leitura, DownloadVista, Escrita, EntradaAcao, EventoVista, FiltroTela, Linha, ResultadoAcao, TelaDescrita, TelaDetalhe, TelaLista } from '../descritor/tipos';
+import { novaChave, seloDoModulo as selo } from './comum';
 
 const rotaDe = (id: string): string => PAGINAS_FATURAMENTO.find((p) => p.id === id)?.rota ?? `/faturamento/${id}`;
 export const ROTA_PEDIDOS = rotaDe('pedidos-a-faturar');
@@ -28,8 +29,6 @@ export const ROTA_TITULO = rotaDe('titulo');
 
 /** Chave só para validar o diálogo (o envio usa a Idempotency-Key real da tentativa). */
 const CHAVE_DE_VALIDACAO = 'validacao-do-dialogo';
-const TOM = { ok: 'ok', alerta: 'aviso', erro: 'erro', neutro: 'neutro' } as const;
-const selo = (x: SeloModulo): SeloVista => ({ texto: x.texto, tom: TOM[x.tom], ...(x.dica ? { dica: x.dica } : {}) });
 
 // Rótulos vêm das colunas e dos selos do módulo (uma só fonte): nada de tabela de texto copiada aqui.
 const rotuloDeStatusNota = (s: StatusNota): string => ROTULO_STATUS_NOTA[s].texto;
@@ -134,8 +133,6 @@ function validarEmitir(a: AcaoVista, e: EntradaAcao): ResultadoAcao {
   if (a.id !== 'emitir') return { ok: true };
   return desmontar(requisicaoEmitir({ pedido_id: a.dados?.pedido_id ?? '', chave: e.chave ?? CHAVE_DE_VALIDACAO }));
 }
-
-const novaChave = (): string => globalThis.crypto.randomUUID();
 
 // ---- Inutilizar números: ação da barra da lista de notas (filial, número inicial e final, justificativa) ----
 
