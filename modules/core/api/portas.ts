@@ -3,6 +3,7 @@
  * `criarPluginCore`; os testes usam `RepositorioCoreMemoria`. Linhas com `Date`: a serialização para o contrato é das rotas.
  */
 import type { Armazenamento, Perfil, Transacao } from '@macuxierp/platform-sdk';
+import type { OrigemCertificado } from '../contracts/certificado-origem-provisorio';
 
 /** Colunas cifradas do A1 em `core.certificado`; o formato (cifrado, tag, nonce) está em `colunas-a1.ts`. */
 export interface A1Cifrado {
@@ -56,10 +57,13 @@ export interface LinhaCertificado {
   valido_ate: Date;
   impressao_digital: string;
   ativo: boolean;
+  origem: OrigemCertificado;
 }
 
-export interface NovoCertificado extends Omit<LinhaCertificado, 'ativo'>, A1Cifrado {
+export interface NovoCertificado extends Omit<LinhaCertificado, 'ativo' | 'origem'>, A1Cifrado {
   chave_versao: number;
+  /** Omitida = ORIGEM_CERTIFICADO_PADRAO; o A1 de teste do operador informa 'teste'. */
+  origem?: OrigemCertificado;
 }
 
 export interface LinhaAmbiente {

@@ -41,6 +41,11 @@ describe('superadmin.mjs: cópias presas às fontes (o contêiner não tem node_
     }
   });
   it('ALFABETO com 64 símbolos', () => expect(ALFABETO_API).toHaveLength(64));
+  it('RD-1329: o filtro das sessões abertas é uma constante só, usada na contagem e na revogação', () => {
+    expect(FONTE_SA.split('revogada_em IS NULL AND deleted_at IS NULL')).toHaveLength(2);
+    expect(FONTE_SA.match(/FROM plataforma\.sessao_superadmin WHERE \$\{SESSOES_ABERTAS\};/g)).toHaveLength(2);
+    expect(FONTE_SA.match(/UPDATE plataforma\.sessao_superadmin SET revogada_em = now\(\) WHERE \$\{SESSOES_ABERTAS\};/g)).toHaveLength(2);
+  });
 });
 
 describe.skipIf(!PG_DISPONIVEL)('superadmin.mjs (operador.sh criar-superadmin e superadmin) no PostgreSQL migrado', () => {

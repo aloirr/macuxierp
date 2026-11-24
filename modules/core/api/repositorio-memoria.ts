@@ -1,5 +1,6 @@
 /** Repositório em memória para os testes de rota (o `BancoMemoria` do SDK não executa SQL). Não entra em produção. */
 import type { Transacao } from '@macuxierp/platform-sdk';
+import { ORIGEM_CERTIFICADO_PADRAO } from '../contracts/certificado-origem-provisorio';
 import type {
   LinhaAmbiente,
   LinhaAuditoria,
@@ -88,7 +89,7 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   }
   async substituirCertificado(_tx: Transacao, novo: NovoCertificado): Promise<void> {
     for (const c of this.certificadosLinhas) if (c.filial_id === novo.filial_id) c.ativo = false;
-    this.certificadosLinhas.push({ ...novo, ativo: true });
+    this.certificadosLinhas.push({ ...novo, ativo: true, origem: novo.origem ?? ORIGEM_CERTIFICADO_PADRAO });
   }
 
   async ambientes(_tx: Transacao, filialId?: string): Promise<LinhaAmbiente[]> {

@@ -6,6 +6,7 @@ export { PfxInvalido } from './portas';
 export type { DependenciasCore, DadosPfx, LeitorPfx, RepositorioCore } from './portas';
 export { RepositorioCoreSql } from './repositorio-sql';
 export { criarPluginCore } from './rotas';
+export { cifrarColunasA1 } from './colunas-a1';
 export { criarPortaA1 } from './porta-a1';
 export const lerChaveA1 = (valor: string | undefined): Buffer => lerChaveMestra('MACUXIERP_CHAVE_A1', valor);
 // RN-CORE-06: usado pelo worker

@@ -4,6 +4,7 @@
  */
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import type { AuditoriaItem, CertificadoResumo, Licenca, Usuario } from '../contracts';
+import { AVISO_CERTIFICADO_DE_TESTE } from '../contracts/certificado-origem-provisorio';
 import type { ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { paginaVisivel, type PaginaBase } from '@macuxierp/platform-sdk/paginas';
 
@@ -126,6 +127,11 @@ export const COLUNAS_AUDITORIA: readonly Coluna<AuditoriaItem>[] = [
   { id: 'entidade', titulo: 'Entidade', valor: (a) => a.entidade },
   { id: 'entidade_id', titulo: 'Registro', valor: (a) => a.entidade_id },
 ];
+
+/** T-0080 / RF-CORE-04: selo do A1 de teste (a tela deixa claro que ele só vale em homologação). */
+export function seloOrigemCertificado(c: Pick<CertificadoResumo, 'origem'>): string | null {
+  return c.origem === 'teste' ? AVISO_CERTIFICADO_DE_TESTE : null;
+}
 
 /** Selo do alerta de vencimento do A1 (RF-CORE-04): texto da faixa no topo do BKO. */
 export function avisoCertificado(c: Pick<CertificadoResumo, 'dias_para_vencer' | 'alerta_vencimento'>): string | null {

@@ -13,7 +13,9 @@
  * O mesmo vale para `criar-superadmin` e `superadmin --desativar|--reativar|--destravar` (T-0050, ADR 0012 §5), que
  * mandam o superadmin.mjs (o de verdade no PG fica no apps/api/src/operador-superadmin.db.test.ts); a senha só aparece
  * com `estado: superadmin-criado`, e o `superadmin` só gera senha no `--redefinir-senha --confirmar` (T-0077), que a
- * mostra só com `estado: alterado`.
+ * mostra só com `estado: alterado`. A linha `estado: simulacao` é uma só para todos e recusa o --confirmar (RD-1330).
+ * O `a1-teste` (T-0080) roda a entrada dist/a1-teste.mjs no contêiner `api` já de pé (`exec`, sem `-e` nem stdin); a
+ * entrada de verdade no PG fica no apps/api/src/operador-a1-teste.db.test.ts.
  */
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -205,6 +207,14 @@ describe('operador.sh criar-empresa com um docker falso', () => {
     }
   });
 
+  // RD-1357: confirmado() trava estado de gravação sem --confirmar (a entrada só o devolve com --confirmar)
+  it('sem --confirmar e estado usuario-criado: sai 1 sem imprimir senha', () => {
+    const r = roda(base, criado);
+    expect(r.status).toBe(1);
+    expect(r.saida).toContain('estado inesperado numa simulação');
+    expect(r.saida).not.toMatch(/Senha provisória/);
+  });
+
   it('--admin-nome vai pelo ambiente', () => {
     const r = roda([...base, '--admin-nome', 'Pessoa Fictícia', '--confirmar'], criado);
     expect(r.amb.NOME).toBe('Pessoa Fictícia');
@@ -305,6 +315,8 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     ['contêiner falhou', '', 1, 1],
     ['estado criado com saída != 0', 'estado: superadmin-criado\\n', 1, 1],
     ['estado de outro comando', 'estado: usuario-criado\\n', 0, 1],
+    // RD-1330: a linha de simulação é uma só para todos os comandos e recusa o --confirmar (antes, o criar aceitava)
+    ['estado simulacao com --confirmar', 'estado: simulacao\\n', 0, 1],
   ])('criar com --confirmar e %s: não imprime senha', (_n, resposta, saida, esperado) => {
     const r = roda([...criar, '--confirmar'], resposta, saida);
     expect(r.status).toBe(esperado);
@@ -343,6 +355,17 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
 
   // T-0077: a redefinição da senha do superadmin (o de verdade no PG: apps/api/src/operador-superadmin.db.test.ts)
   const redefinir = ['superadmin', '--email', SA_EMAIL, '--redefinir-senha', '--operador', 'alexandre'];
+
+  // RD-1357: confirmado() trava estado de gravação sem --confirmar
+  it.each([
+    ['criar e superadmin-criado', criar, criado],
+    ['--redefinir-senha e alterado', redefinir, '[superadmin] APLICADO\\nestado: alterado\\n'],
+  ])('sem --confirmar, %s: sai 1 sem imprimir senha', (_n, args, resposta) => {
+    const r = roda(args, resposta);
+    expect(r.status).toBe(1);
+    expect(r.saida).toContain('estado inesperado numa simulação');
+    expect(r.saida).not.toMatch(/[Ss]enha provisória/);
+  });
 
   it('superadmin --redefinir-senha sem --confirmar: só a simulação, só o e-mail por -e, sem gerar nem mostrar senha', () => {
     const r = roda(redefinir, '[superadmin] SIMULAÇÃO: nada gravado.\\nestado: simulacao\\n');
@@ -385,5 +408,68 @@ describe('operador.sh criar-superadmin e superadmin com um docker falso (T-0050,
     expect(senha).toHaveLength(16);
     expect(r.saida).not.toContain(senha);
     expect(r.saida).not.toMatch(/[Ss]enha provisória/);
+  });
+});
+
+describe('operador.sh a1-teste com um docker falso (T-0080, ADR 0008)', () => {
+  const FILIAL = '0b9d6f2e-6c1a-4f43-9b7e-1f2a3b4c5d6e';
+  const base = ['a1-teste', '--empresa', 'AM2808', '--operador', 'op.teste'];
+  const prefixo = ' exec -T api node dist/a1-teste.mjs --empresa AM2808 --operador op.teste';
+
+  it.each([
+    ['sem empresa', ['a1-teste', '--operador', 'op.teste']],
+    ['código fora do formato', ['a1-teste', '--empresa', 'AM28', '--operador', 'op.teste']],
+    ['filial não UUID', [...base, '--filial', '12']],
+    ['sem operador', ['a1-teste', '--empresa', 'AM2808']],
+    ['opção sem valor', [...base, '--filial']],
+    ['opção desconhecida', [...base, '--senha', 'x']],
+  ])('%s: sai 2 e não chama o docker', (_n, args) => {
+    const r = roda(args);
+    expect(r.status).toBe(2);
+    expect(r.chamadas).toBe('');
+  });
+
+  it('sem --confirmar: só a simulação, no contêiner api já de pé, sem -e nem stdin', () => {
+    const r = roda(base, '[a1-teste] SIMULAÇÃO: nada gravado.\\nestado: simulacao\\n');
+    expect(r.status).toBe(0);
+    const chamadas = r.chamadas.trim().split('\n');
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]).toMatch(new RegExp(`^compose --env-file .env --env-file gerados.env --env-file banco.env --env-file imagens.env${prefixo}$`));
+    expect(chamadas[0]).not.toMatch(/ -e |--profile|run --rm/);
+    expect(r.amb).toMatchObject({ SENHA: '<ausente>', EMAIL: '<ausente>', SA_EMAIL: '<ausente>' });
+    expect(r.entrada).toBe('');
+    expect(r.saida).toContain('SIMULAÇÃO');
+  });
+
+  it('com --filial, --substituir e --confirmar: repassa as opções e confirma o A1 de teste só de homologação', () => {
+    const r = roda([...base, '--filial', FILIAL, '--substituir', '--confirmar'], '[a1-teste] APLICADO\\nestado: gerado\\n');
+    expect(r.status).toBe(0);
+    expect(r.chamadas.trim()).toMatch(new RegExp(`${prefixo} --filial ${FILIAL} --substituir --confirmar$`));
+    expect(r.saida).toContain('[operador] Lembre: a SEFAZ real recusa este A1.');
+  });
+
+  it.each([
+    ['sem mudança', 'estado: sem-mudanca\\n', 0, true, 0],
+    ['simulação com --confirmar', 'estado: simulacao\\n', 0, true, 1],
+    ['gerado sem --confirmar', 'estado: gerado\\n', 0, false, 1],
+    ['sem-mudanca sem --confirmar', 'estado: sem-mudanca\\n', 0, false, 1],
+    ['sem linha de estado', '[a1-teste] algo\\n', 0, true, 1],
+    ['estado de outro comando', 'estado: alterado\\n', 0, true, 1],
+    ['recusa da entrada (produção, filial, A1 do cliente)', '[a1-teste] recusado: x; nada foi gravado\\n', 1, true, 1],
+    ['gerado com saída != 0', 'estado: gerado\\n', 1, true, 1],
+  ])('resposta %s: código de saída conferido', (_n, resposta, saida, confirmar, esperado) => {
+    const r = roda([...base, ...(confirmar ? ['--confirmar'] : [])], resposta, saida);
+    expect(r.status).toBe(esperado);
+  });
+
+  it('pasta da VM incompleta: sai 2 antes do docker', () => {
+    rmSync(join(erp, '.env'));
+    try {
+      const r = roda([...base, '--confirmar'], 'estado: gerado\\n');
+      expect(r.status).toBe(2);
+      expect(r.chamadas).toBe('');
+    } finally {
+      writeFileSync(join(erp, '.env'), 'MACUXIERP_FALSO=1\n');
+    }
   });
 });
