@@ -168,7 +168,7 @@ describe('MenuAcoes (T-0099): tecla no gatilho', () => {
     expect(acaoTeclaMenu('Tab')).toBe('fechar-e-focar-gatilho');
     expect(acaoTeclaMenu('ArrowDown')).toBeNull();
   });
-  it('fechado: Esc e outras teclas não fazem nada', () => {
+  it('Esc com o menu fechado e outras teclas não fazem nada', () => {
     expect(acaoTeclaGatilho('Escape', false)).toBeNull();
     expect(acaoTeclaGatilho('Tab', false)).toBeNull();
     expect(acaoTeclaGatilho('a', true)).toBeNull();

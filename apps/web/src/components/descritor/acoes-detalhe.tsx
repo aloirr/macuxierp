@@ -4,7 +4,7 @@ import { ehAcaoAusente, mensagemDaFalha } from '@/lib/sistema-atualizado';
 import { FALHA } from '@/lib/textos';
 import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DialogoMotivo, MenuAcoes, type ResultadoMotivo } from '@macuxierp/ui';
+import { DialogoMotivo, MenuAcoes, type AcaoMenu, type ResultadoMotivo } from '@macuxierp/ui';
 import type { AcaoVista, AmbienteVista, EntradaAcao } from '@/lib/descritor/tipos';
 import { aposResposta, chaveParaEnvio, estadoDoClique, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { executorDeAcoes, type OrigemDasAcoes } from '@/lib/telas';
@@ -19,12 +19,12 @@ import { DialogoEscrita, type CarregarItens, type EntradaDialogo } from './dialo
 const entradaDe = (r: EntradaDialogo): EntradaAcao => ({ texto: r.texto, valor: r.valor, data: r.data, filial: r.filial, inicial: r.inicial, final: r.final, ...(r.itens ? { itens: r.itens } : {}), ...(r.campos ? { campos: r.campos } : {}) });
 
 /** Repartição da linha (T-0099): a primeira ação fica à vista como principal, salvo se for destrutiva (perigo nunca fica solto); o resto vai ao menu "Ações". */
-export function repartirAcoes(acoes: readonly AcaoVista[], comPrincipal: boolean): { principal: AcaoVista | undefined; noMenu: readonly AcaoVista[] } {
+export function repartirAcoes(acoes: readonly AcaoVista[], comPrincipal: boolean): { principal: AcaoVista | undefined; menu: readonly AcaoVista[] } {
   const principal = comPrincipal && !acoes[0]?.destrutivo ? acoes[0] : undefined;
-  return { principal, noMenu: principal ? acoes.slice(1) : acoes };
+  return { principal, menu: principal ? acoes.slice(1) : acoes };
 }
 /** `destrutivo` da vista vira `perigo` do menu: por último, em vermelho, depois do traço. */
-export const itemDoMenu = (x: AcaoVista): { chave: string; rotulo: string; perigo: boolean } => ({ chave: x.id, rotulo: x.rotulo, perigo: Boolean(x.destrutivo) });
+export const itemDoMenu = (x: AcaoVista): Omit<AcaoMenu, 'aoAcionar'> => ({ chave: x.id, rotulo: x.rotulo, perigo: Boolean(x.destrutivo) });
 
 export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, origem = 'detalhe', menu = false, comPrincipal = false, rotuloLinha }: { acoes: readonly AcaoVista[]; rota: string; rotaDaPagina: string; compacta?: boolean; origem?: OrigemDasAcoes; /** Linha de tabela ou cartão: botão "Ações" do `MenuAcoes` em vez da fileira de botões. */ menu?: boolean; /** Com `menu`: a primeira ação fica à vista como principal. */ comPrincipal?: boolean; rotuloLinha?: string }) {
   const router = useRouter();
@@ -97,8 +97,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
   }
 
   if (acoes.length === 0) return null;
-  // Linha de tabela ou lista (T-0099): a primeira ação é a principal à vista, salvo se for destrutiva (perigo nunca fica solto); o resto vai ao menu "Ações".
-  const { principal, noMenu } = repartirAcoes(acoes, menu && comPrincipal);
+  const { principal, menu: itensMenu } = repartirAcoes(acoes, menu && comPrincipal);
   const a = aberta;
   const aoCancelar = () => { setAberta(null); setErro(''); };
   // Tudo que não é catálogo de motivos usa o diálogo do shell (um só padrão de erro, aviso e botões, com o rótulo de fechar do módulo).
@@ -109,7 +108,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
         <MenuAcoes
           {...(rotuloLinha ? { rotuloLinha } : {})}
           {...(principal ? { principal: { rotulo: principal.rotulo, desabilitado: ocupado || Boolean(principal.desabilitada), aoAcionar: () => abrir(principal) } } : {})}
-          acoes={noMenu.map((x) => ({ ...itemDoMenu(x), desabilitado: ocupado || Boolean(x.desabilitada), aoAcionar: () => abrir(x) }))}
+          acoes={itensMenu.map((x) => ({ ...itemDoMenu(x), desabilitado: ocupado || Boolean(x.desabilitada), aoAcionar: () => abrir(x) }))}
         />
       ) : (
         <div className="barra-acoes" role="group" aria-label="Ações" style={compacta ? { margin: 0 } : undefined}>
