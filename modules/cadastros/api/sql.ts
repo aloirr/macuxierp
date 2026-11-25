@@ -514,6 +514,10 @@ function cargaSql(tx: Transacao): RepoCarga {
       const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND forma_tpag = '03' AND parcelas_cartao IS NULL ORDER BY id`, []);
       return l as unknown as CondicaoPagamento[];
     },
+    async condicoesAtivasSemPrazoMedio() {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND prazo_medio_dias IS NULL AND cardinality(prazos_dias) >= 1 ORDER BY id FOR UPDATE`, []);
+      return l as unknown as CondicaoPagamento[];
+    },
     async filhoPorExternalId(t, ext) {
       const f = FILHAS[t];
       const l = await executar(tx, `SELECT ${colunasFilho(f)} FROM ${f.tabela} WHERE external_id = $1 LIMIT 1`, [ext]);
