@@ -23,7 +23,18 @@ const dig = (v: unknown, n: number): string | null => {
   return s.length === n ? s : null;
 };
 const sim = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : typeof v === 'string' ? (/^s(im)?$/i.test(v.trim()) ? true : /^n([aã]o)?$/i.test(v.trim()) ? false : null) : null);
-const data = (v: unknown): string | null => str(v)?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+const dataValida = (a: string, m: string, d: string): string | null => {
+  const t = new Date(Date.UTC(+a, +m - 1, +d));
+  return t.getUTCFullYear() === +a && t.getUTCMonth() === +m - 1 && t.getUTCDate() === +d ? `${a}-${m}-${d}` : null;
+};
+/** AAAA-MM-DD (ou DD/MM/AAAA, convertida); data inexistente ou ausente vira null. */
+const data = (v: unknown): string | null => {
+  const s = str(v);
+  const iso = s?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return dataValida(iso[1]!, iso[2]!, iso[3]!);
+  const br = s?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return br ? dataValida(br[3]!, br[2]!, br[1]!) : null;
+};
 const lista = (v: unknown, chave: string, principal: string | null): string[] =>
   Array.isArray(v)
     ? [...new Set(v.map((i) => dig(obj(i)[chave], 7)).filter((c): c is string => c !== null && c !== principal))]
@@ -53,6 +64,7 @@ export function sugestaoCnpj(fonte: string, bruto: Record<string, unknown>, cnpj
       opcao_simples: sim(obj(bruto.simples).simples),
       opcao_mei: sim(obj(bruto.simples).mei),
       data_situacao_cadastral: data(est.data_situacao_cadastral),
+      data_abertura: data(est.data_inicio_atividade) ?? data(est.abertura) ?? data(bruto.abertura),
       endereco: {
         logradouro: str([est.tipo_logradouro, est.logradouro].filter(Boolean).join(' ')) ?? undefined,
         numero: str(est.numero) ?? undefined,
@@ -79,6 +91,7 @@ export function sugestaoCnpj(fonte: string, bruto: Record<string, unknown>, cnpj
     opcao_simples: sim(bruto.opcao_pelo_simples),
     opcao_mei: sim(bruto.opcao_pelo_mei),
     data_situacao_cadastral: data(bruto.data_situacao_cadastral),
+    data_abertura: data(bruto.data_inicio_atividade),
     endereco: {
       logradouro: str([bruto.descricao_tipo_de_logradouro, bruto.logradouro].filter(Boolean).join(' ')) ?? undefined,
       numero: str(bruto.numero) ?? undefined,
