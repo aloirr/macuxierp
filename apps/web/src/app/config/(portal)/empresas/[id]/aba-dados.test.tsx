@@ -17,7 +17,7 @@ const conf = ValidarCargaPlataformaResposta.parse(conferenciaBruta({ com_erro: 2
 ] }));
 
 describe('aba Dados (T-0058, T-0086)', () => {
-  it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros), origem, Modelo e Importar', () => {
+  it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros), origem e Importar à vista (o Modelo vai ao menu "Ações")', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();
     for (const t of ['Cadastro', 'Situação', 'Última carga', 'Origem', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
@@ -92,7 +92,6 @@ describe('coluna Carga completa na aba Dados (decisão do PO em 24/11)', () => {
   it('sem a integração lida (ou sem licença) a Carga completa some e a tabela segue inteira', () => {
     expect(cargaCompleta(acoesDe(null, 'produto')).oculto).toBe(true);
     expect(cargaCompleta(acoesDe({ ...integ(), modulo_licenciado: false }, 'produto')).oculto).toBe(true);
-    expect(aba()).toContain('>Importar</button>');
   });
   it('estado puro: entidades por cadastro e rótulo', () => {
     expect(entidadesDaCarga('condicao_pagamento')).toEqual(['forma_pagamento', 'prazo_pagamento']);

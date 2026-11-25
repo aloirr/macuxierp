@@ -34,7 +34,8 @@
 #   e a trava da §6) ou --redefinir-senha (T-0077: senha provisória nova com troca no 1º acesso, zera falhas e trava e
 #   revoga as sessões abertas; superadmin desativado é recusado, reative antes); uma ação por vez, auditada
 #   (plataforma.superadmin.<ação>). Os dois rodam o superadmin.mjs.
-#   --listar (T-0103): só leitura, sem --email e sem --confirmar, sem auditoria: um superadmin por linha, com o id, o
+#   --listar (T-0103): sem --email e sem --confirmar; auditado (plataforma.superadmin.listar): um superadmin por linha,
+#   com o id, o
 #   e-mail MASCARADO (o completo nunca sai do banco), a situação, as falhas, a trava, a troca e a temporária pendentes e o
 #   último acesso. Serve para achar o e-mail certo antes do --redefinir-senha ou do "Esqueci a senha".
 # a1-teste (T-0080, ADR 0008): gera o A1 AUTOASSINADO de teste com o CNPJ e a razão social da filial emissora e o grava
@@ -254,7 +255,7 @@ superadmin() {
   [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar, --destravar, --redefinir-senha ou --listar"
   if [ "$ACAO" = listar ]; then
     [ -z "$EMAIL" ] || uso "--listar não leva --email (lista todos, com o e-mail mascarado)"
-    [ "$CONFIRMAR" = 0 ] || uso "--listar é só leitura: sem --confirmar"
+    [ "$CONFIRMAR" = 0 ] || uso "--listar não leva --confirmar"
   else
     [[ "$EMAIL" =~ $PADRAO_EMAIL ]] && [ "${#EMAIL}" -le 254 ] || uso "--email fora do formato"
   fi

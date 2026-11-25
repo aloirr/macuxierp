@@ -13,4 +13,9 @@ describe('SugestaoCnpj ampliada (T-0101, aditiva)', () => {
     const nova = { ...ANTIGA, cnae_secundarios: ['4713002'], porte: 'DEMAIS', natureza_juridica: 'Sociedade Empresária Limitada', email: null, telefone: '9233334444', opcao_simples: true, opcao_mei: false, data_situacao_cadastral: '2020-01-31', endereco: { municipio: 'Manaus', municipio_ibge: '1302603' } };
     expect(SugestaoCnpj.parse(nova)).toMatchObject(nova);
   });
+  it('RF-CAD-02: data_abertura é opcional (contrato antigo) e aceita nulo', () => {
+    expect(SugestaoCnpj.parse(ANTIGA).data_abertura).toBeUndefined();
+    expect(SugestaoCnpj.parse({ ...ANTIGA, data_abertura: null }).data_abertura).toBeNull();
+    expect(SugestaoCnpj.parse({ ...ANTIGA, data_abertura: '1999-02-28' }).data_abertura).toBe('1999-02-28');
+  });
 });

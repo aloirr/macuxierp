@@ -201,7 +201,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   [role="dialog"]:has(.corpo-log) { padding: 16px !important; width: 96vw !important; }
   .corpo-log th, .corpo-log td { padding: 6px 3px !important; font-size: var(--mx-tamanho-micro) !important; white-space: normal !important; }
   .corpo-log .selo { padding-inline: 6px; }
-  /* Aba Dados no celular: Última carga e Origem saem para as Ações (Modelo, Importar, Carga completa) ficarem à vista. */
+  /* Aba Dados no celular: Última carga e Origem saem para o Importar e o Ações ficarem à vista. */
   .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4) { display: none; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }

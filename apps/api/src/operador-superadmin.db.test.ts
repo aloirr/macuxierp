@@ -328,7 +328,7 @@ describe.skipIf(!PG_DISPONIVEL)('superadmin.mjs (operador.sh criar-superadmin e 
     for (const proibido of [EMAIL, NOME.toLowerCase(), senha.toLowerCase(), senhaRedefinida.toLowerCase(), 'argon2', 'fictício', '@']) expect(texto).not.toContain(proibido);
   });
 
-  it('listar (T-0103): só leitura, e-mail mascarado pela 0035, sem auditoria; o excluído fica de fora', async () => {
+  it('listar (T-0103): e-mail mascarado pela 0035, nenhum superadmin alterado, auditado só com operador e contagem; o excluído fica de fora', async () => {
     await b.admin.query(
       `INSERT INTO plataforma.superadmin (tenant_id, email, nome, senha_hash, ativo, deleted_at)
        VALUES (plataforma.tenant_referencia(), 'excluido@exemplo.invalid', 'Excluído Fictício', '$argon2id$v=19$m=1,t=1,p=1$a$b', true, now())`,
@@ -341,7 +341,18 @@ describe.skipIf(!PG_DISPONIVEL)('superadmin.mjs (operador.sh criar-superadmin e 
     expect(r.saida).toContain('1 superadmin(s)');
     expect(r.saida).toContain(`id: ${antes[0]!.id} · e-mail (mascarado): su****@exemplo.invalid`);
     expect(r.saida.toLowerCase()).not.toContain('excluido');
-    expect(await auditoria()).toHaveLength(total);
+    const depois = await auditoria();
+    expect(depois).toHaveLength(total + 1);
+    expect(depois.at(-1)).toMatchObject({
+      tenant_id: await referencia(),
+      usuario_id: null,
+      superadmin_id: null,
+      acao: 'plataforma.superadmin.listar',
+      entidade_id: null,
+      antes: null,
+      depois: { quantidade: 1, operador: 'alexandre', motivo: 'operador.sh' },
+    });
+    expect(JSON.stringify(depois.at(-1))).not.toContain('@');
     expect(await linhas()).toEqual(antes);
   });
 });
