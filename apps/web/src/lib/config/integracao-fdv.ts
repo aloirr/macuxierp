@@ -72,3 +72,43 @@ export function estadoCargaCompleta(cadastro: string, d: IntegracaoFdvPlataforma
 }
 /** Texto do botão de uma operação de envio (Reprocessar, Carga completa): "Enviando…" enquanto há lote em voo. */
 export const rotuloComLote = (loteEmVoo: boolean, rotulo: string): string => (loteEmVoo ? 'Enviando…' : rotulo);
+
+/** Item do botão "Ações" (T-0099) antes de ganhar o clique: a tela liga cada `chave` à sua ação. */
+export interface ItemAcaoLinha {
+  chave: string;
+  rotulo: string;
+  perigo?: boolean;
+  desabilitado?: boolean;
+  oculto?: boolean;
+}
+export interface AcoesDaLinha {
+  principal: ItemAcaoLinha;
+  menu: ItemAcaoLinha[];
+}
+
+/**
+ * Ações da linha de um cadastro na aba Integração (regra da marca, docs/marca/botao-acoes.md): a principal muda pela situação
+ * (pausada → Tentar de novo; com falha → Reprocessar; senão Log); as outras vão ao menu; Zerar (perigo) por último.
+ */
+export function acoesDaLinhaFdv(l: LinhaCadastroFdv, o: { bloqueado: boolean; semCredencial: boolean; licenciado: boolean }): AcoesDaLinha {
+  const todas: ItemAcaoLinha[] = [
+    { chave: 'ligar', rotulo: l.ligada ? 'Desligar' : 'Ligar', desabilitado: o.bloqueado || o.semCredencial },
+    { chave: 'retomar', rotulo: 'Tentar de novo', oculto: !l.pausada, desabilitado: o.bloqueado },
+    { chave: 'reprocessar', rotulo: rotuloComLote(l.loteEmVoo, 'Reprocessar'), desabilitado: o.bloqueado || o.semCredencial || l.loteEmVoo },
+    { chave: 'log', rotulo: 'Log', desabilitado: !o.licenciado },
+    { chave: 'zerar', rotulo: 'Zerar', perigo: true, desabilitado: o.bloqueado },
+  ];
+  const chave = l.pausada ? 'retomar' : l.falha ? 'reprocessar' : 'log';
+  return { principal: todas.find((x) => x.chave === chave)!, menu: todas.filter((x) => x.chave !== chave) };
+}
+
+/** Ações da linha da aba Dados: Importar à vista; Modelo e Carga completa (só nos cadastros ligados) no menu. */
+export function acoesDaCarga(c: EstadoCargaCompleta, pendente: boolean): AcoesDaLinha {
+  return {
+    principal: { chave: 'importar', rotulo: 'Importar' },
+    menu: [
+      { chave: 'modelo', rotulo: 'Modelo' },
+      { chave: 'carga-completa', rotulo: rotuloComLote(c.loteEmVoo, 'Carga completa'), oculto: !c.visivel, desabilitado: pendente || c.loteEmVoo },
+    ],
+  };
+}
