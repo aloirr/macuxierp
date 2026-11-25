@@ -10,21 +10,24 @@ import {
   CADASTROS_ZERAR_PORTAL,
   CAMINHOS_CARGAS_PLATAFORMA,
   CODIGO_ZERAGEM_BLOQUEADA,
+  FRASE_ZERAR_DADOS,
+  MENSAGEM_FRASE_ZERAR,
   ENTIDADES_ENVIO_FDV,
   InativacaoZerarFdv,
   PreviaZerarPlataformaEntrada,
   TabelaZeragem,
-  ZerarDadosPlataformaEntrada,
   ZeragemPlataformaResposta,
   definirPluginPlataforma,
   definirRotaPlataforma,
   erros,
+  fraseConfere,
   type CadastroZerarPortal,
   type ContextoPlataforma,
   type PluginPlataforma,
   type Transacao,
 } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
+import { CODIGO_FRASE_NAO_CONFERE, ZerarCadastrosCorpo } from '../contracts';
 import { ANULAVEIS, CADASTRO_DA_TABELA, contagens, planoZeragem, type FatosZeragem, type MotivoUso, type PlanoZeragem } from '../domain';
 import { TABELAS_DE_USO, type DependenciasZeragemPlataforma, type EstadoEntidadeIntegracao, type RefsUso, type UsoDaTabela } from './zeragem-portas';
 
@@ -145,9 +148,10 @@ export function criarPluginPlataformaCadastrosZerar(deps: DependenciasZeragemPla
       metodo: 'POST',
       caminho: C.zerar,
       acao: 'plataforma.cadastros.zerar',
-      corpo: ZerarDadosPlataformaEntrada,
+      corpo: ZerarCadastrosCorpo,
       idempotencia: 'obrigatoria',
       async executar(c, { corpo, params }) {
+        if (!fraseConfere(corpo.frase, FRASE_ZERAR_DADOS)) throw erros.regra('RN-CAD-10', MENSAGEM_FRASE_ZERAR, undefined, { codigo: CODIGO_FRASE_NAO_CONFERE });
         const tenant = idDaRota(params);
         const escolhidos = corpo.cadastros as CadastroZerarPortal[];
         const bloqueado = (plano: PlanoZeragem) => {
