@@ -591,13 +591,13 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.itens).toHaveLength(1);
   });
 
-  it('RN-CAD-15: prazo médio obrigatório na criação (400 com o campo) e entre 0 e 999; PATCH sem o campo mantém o valor', async () => {
+  it('RN-CAD-15: prazo médio obrigatório na criação (400 com o campo) e entre 0 e 365; PATCH sem o campo mantém o valor', async () => {
     const t = montar();
     const corpo = { codigo: 'P1', descricao: 'Prazo 1', forma_tpag: '15', prazos_dias: [30] };
     const sem = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo });
     expect(sem.status).toBe(400);
     expect(JSON.stringify(sem.corpo)).toContain('prazo_medio_dias');
-    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 1000 } })).status).toBe(400);
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 366 } })).status).toBe(400);
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: -1 } })).status).toBe(400);
     const id = ((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 30 } })).corpo as { id: string }).id;
     expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { descricao: 'Prazo um' } })).corpo).toMatchObject({ prazo_medio_dias: 30, descricao: 'Prazo um' });

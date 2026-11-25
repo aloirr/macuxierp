@@ -3,7 +3,7 @@
  * o shell (apps/web) desenha a lista agrupada por forma e o formulário com "+ Parcela". A permissão e as regras aqui só
  * orientam a digitação; a API revalida tudo (RN-CORE-02).
  */
-import { MAX_DIAS, NOME_FORMA, classeForma, type CondicaoPagamento } from '../contracts';
+import { MAX_DIAS, NOME_FORMA, PrazoMedioDias, classeForma, type CondicaoPagamento } from '../contracts';
 import { MAX_PARCELAS_DA_CLASSE, MOTIVO_PRAZO_MEDIO, validarCondicaoPagamento } from '../domain/condicao';
 
 /** Formas aceitas (RN-CAD-09), na ordem do seletor "Forma". */
@@ -44,7 +44,7 @@ export interface FormularioPrazo { codigo: string; descricao: string; forma_tpag
 export const formularioPrazoVazio = (): FormularioPrazo => ({ codigo: '', descricao: '', forma_tpag: '15', parcelas: [''], prazo_medio_dias: '' });
 /** Rótulos "Parcela 1", "Parcela 2"… */
 export const rotulosDasParcelas = (n: number): string[] => Array.from({ length: n }, (_, i) => `Parcela ${i + 1}`);
-/** Máximo de parcelas da forma (à vista 1, cartão 12, boleto 36). */
+/** Máximo de parcelas da forma (à vista 1, cartão 12, boleto 24). */
 export const maxParcelasDaForma = (tpag: string): number => MAX_PARCELAS_DA_CLASSE[classeForma(tpag) ?? 'boleto'];
 export const podeAdicionarParcela = (f: FormularioPrazo): boolean => f.parcelas.length < maxParcelasDaForma(f.forma_tpag);
 export const podeRemoverParcela = (f: FormularioPrazo): boolean => f.parcelas.length > 1;
@@ -88,5 +88,5 @@ export const CAMPO_PRAZO_MEDIO_DO_CLIENTE = { campo: 'prazo_medio_dias', rotulo:
 export function prazoMedioDoCliente(texto: string): { valor: number | null; erro?: string } {
   if (texto.trim() === '') return { valor: null };
   const n = inteiro(texto);
-  return n === null ? { valor: null, erro: MOTIVO_PRAZO_MEDIO } : { valor: n };
+  return n === null || !PrazoMedioDias.safeParse(n).success ? { valor: null, erro: MOTIVO_PRAZO_MEDIO } : { valor: n };
 }

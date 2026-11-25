@@ -26,19 +26,19 @@ describe('condição de pagamento', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: null })).toEqual([]);
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 1000 })).toEqual(rn(MOTIVO_PRAZO_MEDIO, 'prazo_medio_dias', 'RN-CAD-15'));
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: -1 })).toHaveLength(1);
-    expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 999 })).toEqual([]);
+    expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 365 })).toEqual([]);
   });
   it('RN-CAD-15: descrição em branco é recusada no campo descricao', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30, descricao: '  ' })).toEqual(rn(MOTIVO_DESCRICAO, 'descricao', 'RN-CAD-15'));
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30, descricao: 'Boleto 30' })).toEqual([]);
   });
-  it('RN-CAD-09 emendada pela RN-CAD-15: cartão tem os dias digitados (1 a 12 parcelas, qualquer dia de 0 a 999)', () => {
+  it('RN-CAD-09 emendada pela RN-CAD-15: cartão tem os dias digitados (1 a 12 parcelas, qualquer dia de 0 a 365)', () => {
     expect(v({ forma_tpag: '03', prazos_dias: [30], prazo_medio_dias: 30 })).toEqual([]);
     expect(v({ forma_tpag: '03', prazos_dias: [7, 21, 45], prazo_medio_dias: 24 })).toEqual([]);
     expect(v({ forma_tpag: '03', prazos_dias: Array(12).fill(30), prazo_medio_dias: 30 })).toEqual([]);
     expect(v({ forma_tpag: '03', prazos_dias: Array(13).fill(30), prazo_medio_dias: 30 })).toEqual(rn(MOTIVO_CARTAO_PRAZOS, 'prazos_dias'));
     expect(v({ forma_tpag: '03', prazos_dias: [], prazo_medio_dias: 30 })).toHaveLength(1);
-    expect(v({ forma_tpag: '03', prazos_dias: [1000], prazo_medio_dias: 30 })).toHaveLength(1);
+    expect(v({ forma_tpag: '03', prazos_dias: [366], prazo_medio_dias: 30 })).toHaveLength(1);
   });
   it('RN-CAD-09: parcelas_cartao legado, quando vem, tem de bater com o número de parcelas', () => {
     expect(v({ forma_tpag: '03', prazos_dias: [30, 60], parcelas_cartao: 2, prazo_medio_dias: 45 })).toEqual([]);
@@ -50,12 +50,12 @@ describe('condição de pagamento', () => {
     expect(derivarParcelasCartao({ forma_tpag: '03', prazos_dias: Array(13).fill(30) })).toBeNull();
     expect(derivarParcelasCartao({ forma_tpag: '01', prazos_dias: [0] })).toBeNull();
   });
-  it('RN-CAD-15: boleto aceita 1 a 36 parcelas de 0 a 999 dias e recusa parcelas_cartao', () => {
+  it('RN-CAD-15: boleto aceita 1 a 24 parcelas de 0 a 365 dias (365 vale, 366 e 25 parcelas não) e recusa parcelas_cartao', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [0], prazo_medio_dias: 0 })).toEqual([]);
     expect(v({ forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 })).toEqual([]);
-    expect(v({ forma_tpag: '15', prazos_dias: Array(36).fill(999), prazo_medio_dias: 999 })).toEqual([]);
-    expect(v({ forma_tpag: '15', prazos_dias: Array(37).fill(30), prazo_medio_dias: 30 })).toEqual(rn(MOTIVO_BOLETO, 'prazos_dias'));
-    expect(v({ forma_tpag: '15', prazos_dias: [1000], prazo_medio_dias: 30 })).toHaveLength(1);
+    expect(v({ forma_tpag: '15', prazos_dias: Array(24).fill(365), prazo_medio_dias: 365 })).toEqual([]);
+    expect(v({ forma_tpag: '15', prazos_dias: Array(25).fill(30), prazo_medio_dias: 30 })).toEqual(rn(MOTIVO_BOLETO, 'prazos_dias'));
+    expect(v({ forma_tpag: '15', prazos_dias: [366], prazo_medio_dias: 30 })).toHaveLength(1);
     expect(v({ forma_tpag: '15', prazos_dias: [], prazo_medio_dias: 30 })).toHaveLength(1);
     expect(v({ forma_tpag: '15', prazos_dias: [30], parcelas_cartao: 3, prazo_medio_dias: 30 })).toEqual(rn(MOTIVO_BOLETO, 'parcelas_cartao'));
   });

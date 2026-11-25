@@ -5,7 +5,7 @@
  * obrigatoriedade parametrizada da RN-CAD-14 entra quando o parâmetro existir.
  */
 import { MAX_MOTIVO_RETORNO_CLIENTE_FDV, normalizarDocumento, type ClienteParaErpFdv, type ErroCampoClienteFdv } from '@macuxierp/platform-sdk';
-import { Cep, ClienteDados, Endereco } from '../contracts';
+import { Cep, ClienteDados, Contato, Endereco } from '../contracts';
 import { resolverMunicipio, type MunicipioOficial } from './carga/municipio-por-nome';
 import { tipoPessoaDoDocumento, validarDocumentoCliente } from './documento';
 import { validarIe, validarIndIeDest, type IndIeDest } from './ie';
@@ -21,7 +21,10 @@ export interface ContextoPreCadastroFdv {
   filialId: string | null;
 }
 
-export type ResultadoPreCadastroFdv = { ok: true; dados: ClienteDados } | { ok: false; erros: ErroCampoClienteFdv[] };
+/** RN-INF-08: nome do contato quando o pré-cadastro não traz nenhum. */
+export const NOME_CONTATO_FDV = 'Contato do FDV';
+
+export type ResultadoPreCadastroFdv = { ok: true; dados: ClienteDados; contato: Contato | null } | { ok: false; erros: ErroCampoClienteFdv[] };
 
 /** Catálogo: mensagem por código, sem o valor recusado. */
 export const MENSAGENS_PRE_CADASTRO_FDV = Object.freeze({
@@ -119,9 +122,13 @@ export function validarPreCadastroFdv(pre: ClienteParaErpFdv, ctx: ContextoPreCa
 
   if (erros.length > 0 || tipo === null || ibge === null || ctx.filialId === null) return { ok: false, erros };
   const email = ClienteDados.shape.email_nfe.safeParse(so(pre.email));
-  // T-0059: telefone/latitude/longitude aguardam decisão do Alexandre
+  // RN-INF-08: o telefone vira contato; inválido é descartado (como o e-mail), nunca recusa o pré-cadastro. O FDV não manda nome de contato.
+  const telefone = Contato.shape.telefone.safeParse(so(pre.telefone).replace(/\D/g, ''));
+  const contato: Contato | null = telefone.success && telefone.data !== null ? { nome: NOME_CONTATO_FDV, email: null, telefone: telefone.data, papel: null } : null;
+  // T-0059: latitude e longitude aguardam a T-0096 (campo no endereço); até lá ficam só no FDV
   return {
     ok: true,
+    contato,
     dados: {
       tipo_pessoa: tipo, documento, ie, ind_ie_dest: indIeDest, razao_social: razao, nome_fantasia: fantasia || null,
       email_nfe: email.success ? email.data : null,

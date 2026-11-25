@@ -80,8 +80,8 @@ export type Contato = z.infer<typeof Contato>;
 
 /** RN-CAD-09: limites das condições de pagamento (parcelas do cartão, parcelas do boleto, dias por parcela). */
 export const MAX_PARCELAS_CARTAO = 12;
-export const MAX_PARCELAS = 36;
-export const MAX_DIAS = 999;
+export const MAX_PARCELAS = 24;
+export const MAX_DIAS = 365;
 /** RN-CAD-15 e RN-CAD-16: prazo médio em dias, digitado (0 a MAX_DIAS). */
 export const PrazoMedioDias = z.number().int().min(0).max(MAX_DIAS);
 export const IndIeDest = z.enum(['1', '2', '9']);
@@ -100,7 +100,7 @@ export const ClienteDados = z.object({
   tabela_preco_id: Uuid.nullable().default(null),
   filial_id: Uuid,
   vendedor_id: Uuid.nullable().default(null),
-  /** RN-CAD-16: prazo médio máximo do cliente (0 a 999), opcional; nulo = sem restrição de prazo. */
+  /** RN-CAD-16: prazo médio máximo do cliente (0 a MAX_DIAS), opcional; nulo = sem restrição de prazo. */
   prazo_medio_dias: PrazoMedioDias.nullish(),
   enderecos: z.array(EnderecoCliente).min(1).max(10),
   external_id: IdExterno,
