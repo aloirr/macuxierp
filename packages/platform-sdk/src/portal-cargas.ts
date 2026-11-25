@@ -466,7 +466,8 @@ export const ZeragemPlataformaResposta = z
       }),
     ),
     mantidos: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(MOTIVOS_USO), quantidade: Contagem })),
-    bloqueios: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(['integracao_ligada', 'lote_em_andamento']) })),
+    /** Só 'lote_em_andamento' bloqueia; a integração ligada inativa no FDV (migração 0053, RN-CAD-10). */
+    bloqueios: z.array(z.object({ cadastro: CadastroZerarPortal, motivo: z.enum(['lote_em_andamento']) })),
     sem_chave: Contagem,
     inativacao_fdv: InativacaoZerarFdv.optional(),
   })
@@ -496,7 +497,7 @@ export const MENSAGENS_CARGA_PORTAL = Object.freeze({
   cargaEmAndamento: 'Já há uma carga em andamento nesta empresa.',
   semLicenca: 'A empresa precisa estar ativa e com o módulo Cadastros licenciado.',
   nadaAGravar: 'Nenhuma linha pronta para gravar.',
-  zeragemBloqueada: 'Há integração ligada ou lote em andamento; resolva antes de zerar.',
+  zeragemBloqueada: 'Há um envio ao Macuxi FDV em andamento. Espere terminar para zerar.',
   /** 409 `CONFLITO` do `MXC03` do zerar (`CODIGOS_ESTADO_MUDOU_ZERAR`): o estado mudou entre o plano e o efeito. */
   estadoMudouZerar: 'Os dados mudaram. Confira de novo.',
 });

@@ -414,8 +414,9 @@ describe('ZeragemPlataformaResposta (RN-CAD-10, v0.3.5b)', () => {
   });
 
   it('bloqueio só na prévia: no zerar é 422 zeragem_bloqueada', () => {
-    const bloqueios = [{ cadastro: 'produto', motivo: 'integracao_ligada' }];
+    const bloqueios = [{ cadastro: 'produto', motivo: 'lote_em_andamento' }];
     expect(ZeragemPlataformaResposta.safeParse({ ...base, bloqueios }).success).toBe(true);
+    expect(ZeragemPlataformaResposta.safeParse({ ...base, bloqueios: [{ cadastro: 'produto', motivo: 'integracao_ligada' }] }).success).toBe(false);
     expect(ZeragemPlataformaResposta.safeParse({ ...base, simulado: false, bloqueios }).success).toBe(false);
     expect(CODIGO_ZERAGEM_BLOQUEADA).toBe('zeragem_bloqueada');
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain(CODIGO_ZERAGEM_BLOQUEADA);
