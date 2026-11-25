@@ -104,3 +104,19 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+.mx-acoes-item:hover:not([aria-disabled="true"]):not(.mx-acoes-perigo) {
+  background: var(--mx-cor-nevoa);
+}
+.mx-acoes-item.mx-acoes-perigo:hover:not([aria-disabled="true"]) {
+  background: var(--mx-cor-erro-fundo);
+  color: var(--mx-cor-erro-texto);
+}
+.mx-acoes-item:focus-visible, .mx-acoes-gatilho:focus-visible {
+  outline: 2px solid var(--mx-cor-azul-noite);
+  outline-offset: -2px;
+}
+@media (max-width: 640px) {
+  .mx-acoes-alvo {
+    min-height: 44px;
+  }
+}

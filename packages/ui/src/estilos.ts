@@ -123,6 +123,22 @@ export const checkboxMarcado: CSSProperties = {
   backgroundSize: '12px 12px',
 };
 
+/** MenuAcoes (T-0099): largura máxima do celular, onde gatilho, ação principal e itens ganham alvo de 44 px. */
+const LARGURA_CELULAR = 640;
+function cssMenuAcoes(): string {
+  const alvo = regraCss('.mx-acoes-alvo', { minHeight: 44 })
+    .trimEnd()
+    .split('\n')
+    .map((l) => `  ${l}`)
+    .join('\n');
+  return (
+    regraCss('.mx-acoes-item:hover:not([aria-disabled="true"]):not(.mx-acoes-perigo)', { background: cor('nevoa') }) +
+    regraCss('.mx-acoes-item.mx-acoes-perigo:hover:not([aria-disabled="true"])', { background: cor('erroFundo'), color: cor('erroTexto') }) +
+    regraCss('.mx-acoes-item:focus-visible, .mx-acoes-gatilho:focus-visible', focoOlho) +
+    `@media (max-width: ${LARGURA_CELULAR}px) {\n${alvo}\n}\n`
+  );
+}
+
 /** Conteúdo de `botoes.css` (classes `.mx-botao` e `.mx-botao-secundario` para o shell), dos mesmos objetos acima. */
 export function gerarCssBotoes(): string {
   return (
@@ -143,7 +159,8 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled', desabilitadoEstilo(true)) +
-    regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true))
+    regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true)) +
+    cssMenuAcoes()
   );
 }
 
