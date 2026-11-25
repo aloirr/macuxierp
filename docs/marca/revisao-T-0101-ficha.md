@@ -24,7 +24,7 @@
 | `.erro-campo` no `revelar-mascarado` | Aplicado ✅ |
 | Estado vazio | Com a ação ✅ |
 | Botão Atualizar | No `.cabecalho-ficha` ✅ |
-| Alvo de 44 px em 390 | Medido em 40,5 px num print equivalente. O gerente mandou o ajuste ao engenheiro-apps às 05h20; o merge sai sem nova revisão. |
+| Alvo de 44 px em 390 | Medido em 40,5 px num print equivalente. O gerente mandou o ajuste ao engenheiro-apps em 25/11, e o merge sai sem nova revisão. |
 
 ## 4. Pedidos para a v0.3.15
 O gerente registra as tarefas no quadro.
