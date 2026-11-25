@@ -17,7 +17,7 @@
  * corte nem reticências; perigo por último, depois do traço, em #A8261B; gatilho, principal e itens com 44 px no 390.
  * Sai 0 sem falha; 1 com falha (lista no fim). Playwright global, sem trace. Só dados fictícios.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -45,6 +45,21 @@ const LARGURAS = [
   { nome: '1280', viewport: { width: 1280, height: 800 } },
   { nome: '390', viewport: { width: 390, height: 844 } },
 ];
+
+/**
+ * Caminho de um pacote do pnpm sem NODE_PATH: o hoist de `node_modules/.pnpm/node_modules`, senão a pasta
+ * `node_modules/.pnpm/<nome>@<versão>/node_modules/<nome>` mais nova.
+ */
+function resolverPnpm(nome) {
+  try {
+    return require.resolve(nome, { paths: [join(RAIZ, 'node_modules/.pnpm/node_modules'), RAIZ] });
+  } catch {
+    const pnpm = join(RAIZ, 'node_modules/.pnpm');
+    const pasta = readdirSync(pnpm).filter((d) => d.startsWith(`${nome}@`)).sort().at(-1);
+    if (!pasta) throw new Error(`${nome} não encontrado em node_modules/.pnpm (rode pnpm install)`);
+    return require.resolve(join(pnpm, pasta, 'node_modules', nome));
+  }
+}
 
 const falhas = [];
 const prints = [];
@@ -196,7 +211,13 @@ async function conferirMenu(pagina, g, onde, larg, arquivoPrint) {
       prints.push(arquivoPrint);
     }
   }
-  await pagina.mouse.click(2, Math.round((e.janela?.h ?? 800) - 2));
+  // Clique fora num ponto neutro: o título da página (o canto da janela pode ser um link do menu lateral e navegar).
+  const neutro = await pagina.evaluate(() => {
+    const h = document.querySelector('main h1, h1');
+    const r = h?.getBoundingClientRect();
+    return r && r.width ? { x: r.left + 2, y: r.top + r.height / 2 } : { x: 2, y: window.innerHeight - 2 };
+  });
+  await pagina.mouse.click(Math.round(neutro.x), Math.round(neutro.y));
   if (!(await fechado(g))) {
     falhar(w, 'clique fora não fechou o menu');
     await pagina.keyboard.press('Escape');
@@ -245,7 +266,7 @@ try {
     const UI = resolve(argumento('ui', RAIZ));
     const pasta = join(SAIDA, 'bancada');
     mkdirSync(pasta, { recursive: true });
-    const esbuild = require(require.resolve('esbuild', { paths: [join(RAIZ, 'node_modules/.pnpm/node_modules'), RAIZ] }));
+    const esbuild = require(resolverPnpm('esbuild'));
     const fonte = readFileSync(join(RAIZ, 'tests/e2e/menu-acoes-bancada.tsx'), 'utf8').replace('../../packages/ui/src/MenuAcoes', join(UI, 'packages/ui/src/MenuAcoes'));
     await esbuild.build({
       stdin: { contents: fonte, resolveDir: join(RAIZ, 'tests/e2e'), loader: 'tsx' },
@@ -253,7 +274,7 @@ try {
       outfile: join(pasta, 'bancada.js'),
       jsx: 'automatic',
       define: { 'process.env.NODE_ENV': '"production"' },
-      nodePaths: [join(RAIZ, 'node_modules/.pnpm/node_modules'), join(UI, 'packages/ui/node_modules')],
+      nodePaths: [join(RAIZ, 'node_modules/.pnpm/node_modules'), join(UI, 'packages/ui/node_modules'), join(RAIZ, 'apps/web/node_modules')],
       logLevel: 'error',
     });
     const css = ['tokens.css', 'botoes.css'].map((f) => `<link rel="stylesheet" href="${pathToFileURL(join(UI, 'packages/ui/src', f))}">`).join('');
@@ -303,7 +324,7 @@ try {
         await p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
         await conferirLinhas(p, `${url} [${nome}]`);
         const g = p.locator('.mx-acoes-gatilho').first();
-        if (await g.count()) await conferirMenu(p, g, url, nome, `${url.replace(/^\//, '').replace(/[^a-z0-9]+/gi, '_') || 'inicio'}-${nome}.png`);
+        if (await g.count()) await conferirMenu(p, g, url, nome, `${url.replace(/^\//, '').replace(/[0-9a-f]{8}-[0-9a-f-]{27}/gi, 'id').replace(/[^a-z0-9]+/gi, '_') || 'inicio'}-${nome}.png`);
       };
       for (const item of urls) {
         const p = paginas[item.contexto];

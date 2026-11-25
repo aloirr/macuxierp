@@ -50,6 +50,8 @@ export const EmpresaEditar = z.object({
 });
 export type EmpresaEditar = z.infer<typeof EmpresaEditar>;
 
+export * from './ficha-receita';
+
 // Usuários (RF-CORE-02)
 export const Usuario = z.object({
   id: Id,

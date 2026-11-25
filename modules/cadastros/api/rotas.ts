@@ -16,14 +16,14 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
+  validarCondicaoPagamento, completarParcelasCartao, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
   violacao, violacaoFracao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
 import { desativarCondicoesRecusadas, tratarCartaoSemParcelas } from './formas-recusadas';
 import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
-import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
+import { consultarCnpj, sugestaoCep, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
 import { validarCliente, verificarMunicipioEndereco } from './validar-cliente';
@@ -318,20 +318,30 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
 
   // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
+  /** RN-CAD-17: trocar a unidade comercial para uma que não aceita fração com saldo fracionário já gravado é 422 no campo `unidade_comercial`. */
+  const violacaoUnidadeComSaldo = async (r: Repositorios, p: Dict, parcial: Dict | null): Promise<Violacao[]> => {
+    if (!parcial || !('unidade_comercial' in parcial) || typeof p.id !== 'string') return [];
+    for (const s of await r.estoque.saldos({ produto_id: p.id })) {
+      const v = violacaoFracao('unidade_comercial', p.unidade_comercial as string, s.quantidade);
+      if (v) return [v];
+    }
+    return [];
+  };
   rotas.push(...rotasCrud(deps, {
     tabela: 'produto', caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
     entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: emitirCom(eventoProduto),
     ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
     async validar(r, p, parcial, agora) {
-      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return [];
+      const fracao = await violacaoUnidadeComSaldo(r, p, parcial);
+      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return fracao;
       const ncm = p.ncm as string;
       const cest = (p.cest as string | null) ?? null;
       const data = dataIso(agora);
-      return validarFiscalProduto({
+      return [...fracao, ...validarFiscalProduto({
         ncm, cest, ncmVigente: await r.oficiais.ncmVigente(ncm, data), ncmExigeCest: await r.oficiais.ncmExigeCest(ncm, data),
         cestVigente: cest === null ? true : await r.oficiais.cestVigente(cest, data),
         cestCombinaComNcm: cest === null ? true : await r.oficiais.cestCombinaComNcm(cest, ncm, data),
-      });
+      })];
     },
   }));
   rotas.push(...rotasFilho(deps, {
@@ -494,15 +504,9 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/consultas/cnpj/:cnpj', acao: 'cadastros.consulta.externa',
       async executar(c, e) {
-        const d = validarDocumentoCliente('PJ', e.params.cnpj ?? '');
-        if (!d.ok) throw erroDeViolacoes([d.violacao]);
-        const cnpj = d.documento;
-        return {
-          corpo: await sugestaoComCache({
-            tipo: 'cnpj', chave: cnpj, agora: c.agora, repo: R(c).consultaExterna, fontes: deps.fontes.cnpj,
-            montar: (fonte, bruto) => sugestaoCnpj(fonte, bruto, cnpj),
-          }),
-        };
+        const r = await consultarCnpj({ cnpj: e.params.cnpj ?? '', agora: c.agora, repos: R(c), fontes: deps.fontes.cnpj });
+        if (!r.ok) throw erroDeViolacoes([r.violacao]);
+        return { corpo: r.resultado };
       },
     }),
     definirRota({
