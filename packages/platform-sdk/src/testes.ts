@@ -6,6 +6,8 @@ import type { DestinoAuditoria, RegistroAuditoria } from './auditoria';
 import type { Banco, Relogio, Transacao } from './banco';
 import type { EnvelopeEvento, Outbox } from './eventos';
 import type { ChaveIdempotencia, ConclusaoIdempotencia, RegistroIdempotencia, RepositorioIdempotencia, ReservaIdempotencia } from './idempotencia';
+import { executarPlataformaPorEtapa, type DadosAuditoriaPlataforma, type RotaPlataforma, type SessaoPlataforma } from './plataforma-rotas';
+import type { EntradaChamada, RespostaRota } from './rotas';
 import type { FilaDeTrabalhos, PedidoTrabalho } from './trabalhos';
 
 /**
@@ -109,4 +111,42 @@ export class IdempotenciaMemoria implements RepositorioIdempotencia {
     if (!atual) throw new Error('IdempotenciaMemoria: concluir sem reservar');
     this.registros.set(this.id(p), { ...atual, status: p.status, resposta: structuredClone(p.resposta) });
   }
+}
+
+/** Transações que o teste dá à rota de plataforma: a de plataforma (papel `macuxierp_config`, sessão posta) e a de tenant. */
+export interface TransacoesRotaPlataformaDeTeste {
+  sessao: SessaoPlataforma;
+  comPlataforma<R>(fn: (tx: Transacao) => Promise<R>): Promise<R>;
+  /** Só a rota por etapa usa (papel `macuxierp_app`, RLS do tenant); ausente = a rota por etapa que a chamar falha. */
+  comTenant?<R>(tenantId: string, fn: (tx: Transacao) => Promise<R>): Promise<R>;
+  /** Auditoria da rota comum (padrão: ignora; o banco audita nas funções SECURITY DEFINER). */
+  auditar?(dados: DadosAuditoriaPlataforma): Promise<void>;
+  request_id?: string;
+  agora?: Date;
+}
+
+/**
+ * Executa uma rota de plataforma num teste como a apps/api executa (RD-1775): a comum numa transação de plataforma só;
+ * a por etapa pelo `executarPlataformaPorEtapa` real, com as mesmas regras de produção (uma transação de cada vez,
+ * `comTenant` só com o `:id` da rota e só depois de uma etapa de plataforma). O `:id` vem de `entrada.params.id`.
+ */
+export async function executarRotaPlataformaDeTeste<TC = unknown, TQ = unknown>(
+  rota: RotaPlataforma<TC, TQ>,
+  entrada: EntradaChamada<TC, TQ>,
+  t: TransacoesRotaPlataformaDeTeste,
+): Promise<RespostaRota> {
+  const base = { sessao: t.sessao, request_id: t.request_id ?? crypto.randomUUID(), agora: t.agora ?? new Date() };
+  if (rota.transacoes !== 'por_etapa') {
+    return t.comPlataforma((tx) => rota.executar({ ...base, tx, auditar: t.auditar ?? (async () => {}) }, entrada));
+  }
+  const comTenant = t.comTenant;
+  return executarPlataformaPorEtapa({
+    ...base,
+    banco: { comPlataforma: (_sessao, fn) => t.comPlataforma(fn) },
+    bancoTenant: {
+      comTenant: (tenantId, fn) => (comTenant ? comTenant(tenantId, fn) : Promise.reject(new Error('teste: rota por etapa sem comTenant'))),
+    },
+    tenantDaRota: entrada.params.id ?? '',
+    executar: (c) => rota.executar(c, entrada),
+  });
 }
