@@ -68,7 +68,7 @@ export const LoteErroLinha = LoteErroItem.extend({
 });
 export type LoteErroLinha = z.infer<typeof LoteErroLinha>;
 
-export const CodigoConflitoChave = z.enum(['chave_alterada', 'chave_duplicada']);
+export const CodigoConflitoChave = z.enum(['chave_alterada', 'chave_duplicada', 'vinculo_divergente']);
 export type CodigoConflitoChave = z.infer<typeof CodigoConflitoChave>;
 /** Conflito de chave aberto (ADR 0010, item 3): o registro não foi ao FDV até alguém resolver. */
 export const ConflitoChaveItem = z.object({
