@@ -1,10 +1,10 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { pode } from '@macuxierp/platform-sdk';
-import { MANIFESTOS } from '@/lib/manifestos';
+import { temAcessoAoModulo } from '@/lib/acesso-modulo';
 import { NaoAutenticado, baixarArquivo } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
-import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
+import { COOKIE_ACESSO } from '@/lib/sessao';
 import { redirecionar } from '@/lib/redirecionar';
 
 const SEM_CACHE = { 'cache-control': 'no-store' } as const;
@@ -29,10 +29,7 @@ export interface OpcoesDownload {
  */
 export async function proxyDeDownload({ permitido, caminho, modulo, acao, mensagens }: OpcoesDownload): Promise<NextResponse> {
   if (!permitido) return new NextResponse('Não encontrado.', { status: 404, headers: SEM_CACHE });
-  const { eu } = await contexto();
-  const licenciado = eu.modulos.some((m) => m.id === modulo);
-  const perfilOk = MANIFESTOS.some((m) => m.id === modulo && m.perfis.includes(eu.usuario.perfil));
-  if (!licenciado || !perfilOk || !pode(eu.usuario.perfil, acao)) return new NextResponse('Não encontrado.', { status: 404, headers: SEM_CACHE });
+  if (!(await temAcessoAoModulo(modulo, acao))) return new NextResponse('Não encontrado.', { status: 404, headers: SEM_CACHE });
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
   const renovar = () => redirecionar('/sessao/renovar');
   if (!acesso) return renovar();

@@ -6,12 +6,12 @@
 import { PAGINAS_INTEGRACAO_FDV, ROTULO_ENTIDADE } from '@macuxierp/integracao-fdv/web';
 import {
   CADASTRO_ZERAR_POR_ENTIDADE_FDV, plural,
-  type EntidadeEnvioFdv, type EnvioLogFdv, type InativacaoZerarFdv, type LogCadastroFdvPlataforma, type MonitorConectorFdv, type OrigemEnvioFdv, type SituacaoConectorFdv,
+  type EntidadeEnvioFdv, type InativacaoZerarFdv, type LogCadastroFdvPlataforma, type MonitorConectorFdv, type SituacaoConectorFdv, type TomEnvioFdv,
 } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 
 /** `erro` (marca, R-20261124-183313): selo "Falhou" e o alerta do último envio que falhou; o `Chip` da ui ainda não tem o tom, então a tela usa `SeloTom`. */
-export type Tom = 'sucesso' | 'aviso' | 'neutro' | 'erro';
+export type Tom = TomEnvioFdv;
 
 /** Situação do conector como no Monitor do FDV. O estado nunca vai só por cor: o texto vai junto. */
 const SITUACAO_CONECTOR: Readonly<Record<SituacaoConectorFdv, { texto: string; tom: Tom }>> = {
@@ -50,14 +50,6 @@ export function maisRecente(a: MonitorConectorFdv | null, b: MonitorConectorFdv 
   if (!a || !b) return a ?? b;
   return Date.parse(b.lido_em) > Date.parse(a.lido_em) ? b : a;
 }
-
-export const ROTULO_ORIGEM_ENVIO: Readonly<Record<OrigemEnvioFdv, string>> = { ciclo: 'Ciclo normal', reprocessar: 'Reprocessar', zerar: 'Zerar (inativação)' };
-export const ROTULO_SITUACAO_ENVIO: Readonly<Record<EnvioLogFdv['situacao'], { texto: string; tom: Tom }>> = {
-  enviando: { texto: 'Enviando…', tom: 'neutro' },
-  concluido: { texto: 'Concluído', tom: 'sucesso' },
-  com_erros: { texto: 'Com erros', tom: 'aviso' },
-  falhou: { texto: 'Falhou', tom: 'erro' },
-};
 
 /** Faixa do motivo no topo do Log: o último envio que falhou é erro (vermelho do sistema); os demais motivos seguem em aviso. */
 export const tomDoMotivoDoLog = (motivo: LogCadastroFdvPlataforma['motivo']): 'erro' | 'aviso' => (motivo === 'lote_falhou' ? 'erro' : 'aviso');
