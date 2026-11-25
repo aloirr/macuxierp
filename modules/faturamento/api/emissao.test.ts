@@ -358,7 +358,7 @@ describe('emissão da NF-e (serviço de aplicação, portas em memória)', () =>
     await m.svc.processarRetorno(tx, nota, retorno('778', 'Rejeicao: IE do emitente'), opcoes);
     const novo = pedidoAprovado([itemPedido(1, 20_000, 1100), itemPedido(2, 10_000, 2500)]);
     novo.pedido.condicao_pagamento_id = uuid(77);
-    m.deps.pedidos.obter = async () => novo;
+    m.deps.pedidos.obter = async () => ({ pedido: novo, status: 'a_faturar' as const });
     const re = await criarServicoEmissao(m.deps).reenviarNota(tx, m.notas.get(nota.id)!);
     if (!re.ok) throw new Error(JSON.stringify(re.violacoes));
     expect(re.nota).toMatchObject({ total_centavos: 4700, numero: 100 });
