@@ -7,7 +7,7 @@
  */
 import { FRASE_ZERAR_DADOS, MENSAGEM_FRASE_ZERAR, fraseConfere, definirPluginPlataforma, definirRotaPlataforma, erros, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { ApagadoZerarPedidos, CODIGO_FRASE_ZERAR_INVALIDA, CAMINHOS_ZERAR_PEDIDOS, OrigemPedido, StatusPedido, ZerarPedidosCorpo, ZeragemPedidosResposta } from '../contracts';
+import { ApagadoZerarPedidos, CODIGO_FRASE_NAO_CONFERE, CAMINHOS_ZERAR_PEDIDOS, OrigemPedido, StatusPedido, ZerarPedidosCorpo, ZeragemPedidosResposta } from '../contracts';
 import type { AposZerarPedidos } from './apos-zerar';
 import { planoZeragemPedidos, type PedidoParaZerar, type PlanoZeragemPedidos } from '../domain';
 
@@ -77,8 +77,7 @@ export function criarPluginPlataformaPedidoZerar(deps: DependenciasZerarPedidos)
       corpo: ZerarPedidosCorpo,
       idempotencia: 'obrigatoria',
       async executar(c, { params, corpo }) {
-        // RN-CAD-10 (T-0093): frase errada é regra, 422 como o Zerar por cadastro; corpo malformado segue 400 (Zod).
-        if (!fraseConfere(corpo.frase, FRASE_ZERAR_DADOS)) throw erros.regra('RN-CAD-10', MENSAGEM_FRASE_ZERAR, undefined, { codigo: CODIGO_FRASE_ZERAR_INVALIDA });
+        if (!fraseConfere(corpo.frase, FRASE_ZERAR_DADOS)) throw erros.regra('RN-CAD-10', MENSAGEM_FRASE_ZERAR, undefined, { codigo: CODIGO_FRASE_NAO_CONFERE });
         const tenant = idDaRota(params);
         const plano = await montarPlano(c, tenant, deps);
         if (plano.apagar.length === 0) return { corpo: resposta(tenant, plano, false, { apagados: [] }) };

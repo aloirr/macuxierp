@@ -2,7 +2,7 @@
  * Zerar pedidos não faturados por cadastro (RN-CAD-10, T-0093): entrada e resposta do plugin de plataforma do portal
  * `/config` (só superadmin). A resposta leva só contagens, sem dado do pedido (LGPD, regra 8).
  */
-import { FRASE_ZERAR_DADOS, MENSAGEM_FRASE_ZERAR, fraseConfere } from '@macuxierp/platform-sdk';
+import { FraseZerarDados } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 /** Prévia só lê; o zerar exige `Idempotency-Key`. */
@@ -11,15 +11,15 @@ export const CAMINHOS_ZERAR_PEDIDOS = Object.freeze({
   zerar: '/empresas/:id/pedidos/zerar',
 });
 
-/** `detalhes.codigo` do 422 `RN-CAD-10` de frase errada (mesmo padrão do `zeragem_bloqueada` do cadastros). */
-export const CODIGO_FRASE_ZERAR_INVALIDA = 'frase_confirmacao_invalida';
+/** `detalhes.codigo` do 422 `RN-CAD-10` de frase errada (o mesmo do portal de cargas do cadastros). */
+export const CODIGO_FRASE_NAO_CONFERE = 'frase_nao_confere';
 
 /** Forma do corpo da rota (a API): só o tipo; a frase é conferida na rota e errada vira 422 `RN-CAD-10` (T-0093). */
 export const ZerarPedidosCorpo = z.object({ frase: z.string().max(200) });
 export type ZerarPedidosCorpo = z.infer<typeof ZerarPedidosCorpo>;
 
 /** Mesma frase do Zerar por cadastro (`FRASE_ZERAR_DADOS`, sem diferenciar maiúsculas e ponto final); validação do cliente (BKO). */
-export const ZerarPedidosEntrada = ZerarPedidosCorpo.refine((r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS), { path: ['frase'], message: MENSAGEM_FRASE_ZERAR });
+export const ZerarPedidosEntrada = z.object({ frase: FraseZerarDados });
 export type ZerarPedidosEntrada = z.infer<typeof ZerarPedidosEntrada>;
 
 const Contagem = z.number().int().min(0);
