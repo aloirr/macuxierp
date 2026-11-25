@@ -6,7 +6,7 @@
  */
 import { exportadorCadastros } from '@macuxierp/cadastros/api';
 import { EVENTO_CARGA_INICIAL, TRABALHO_CARGA_INICIAL } from '@macuxierp/cadastros/contracts';
-import { exportadorCore } from '@macuxierp/core/api';
+import { EVENTO_FILIAL_ALTERADA, exportadorCore, ID_CONSUMIDOR_EMPRESA_DA_FILIAL } from '@macuxierp/core/api';
 import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_CLIENTES_ID, AGENDA_RETORNO_PEDIDOS_ID, CONSUMIDOR_PUBLICAR_CADASTROS, EVENTOS_CADASTROS_PUBLICADOS } from '@macuxierp/integracao-fdv/api';
 import { manifest as manifestCadastros } from '@macuxierp/cadastros/manifest';
 import { manifest as manifestFaturamento } from '@macuxierp/faturamento/manifest';
@@ -117,11 +117,12 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     expect(agendas('desligado', 'ligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
   });
 
-  it('consumidores: carga inicial, espelho dos cadastros, retorno do pedido, pedido a faturar (T-0045), nota autorizada e cancelada no pedido (#194, #215) e estoque (#192), cada um uma vez', () => {
+  it('consumidores: carga inicial, espelho dos cadastros, retorno do pedido, pedido a faturar (T-0045), nota autorizada e cancelada no pedido (#194, #215), estoque (#192) e empresa da filial padrão (T-0100), cada um uma vez', () => {
     const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
     expect(consumidores.map((c) => c.id)).toEqual([
-      'cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido', 'faturamento.fila-a-faturar', 'pedido.nota-autorizada', 'pedido.nota-cancelada', 'cadastros.estoque-nota',
+      'cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido', 'faturamento.fila-a-faturar', 'pedido.nota-autorizada', 'pedido.nota-cancelada', 'cadastros.estoque-nota', ID_CONSUMIDOR_EMPRESA_DA_FILIAL,
     ]);
+    expect(consumidores.at(-1)!.eventos).toEqual([EVENTO_FILIAL_ALTERADA]);
     expect(consumidores[3]!.eventos).toEqual(['pedido.pedido.aprovado@1']);
     expect(consumidores[1]!.eventos).toEqual(EVENTOS_CADASTROS_PUBLICADOS);
     expect(consumidores[2]!.eventos).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1']);
