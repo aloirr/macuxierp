@@ -34,7 +34,6 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CORE-14: consumidor da empresa pela filial p
   beforeAll(async () => {
     efemero = await criarBancoEfemero();
     worker = efemero.banco('macuxierp_worker');
-    await efemero.admin.query('GRANT INSERT ON core.empresa TO macuxierp_worker'); // PROVISÓRIO: remover quando a migração do banco-dados (R-20261124-232520) der este INSERT ao worker
     A = await criarTenant(efemero.admin, 'emp-a', ['core']);
     B = await criarTenant(efemero.admin, 'emp-b', ['core']);
   }, 120_000);
