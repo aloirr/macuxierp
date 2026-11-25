@@ -215,7 +215,7 @@ describe('recebimento do pedido do FDV', () => {
     filial: { emissora: true, inativo: false },
     condicao_pagamento_id: 'c1',
     condicao: { inativo: false },
-    produtos: [{ id: P1, inativo: false }],
+    produtos: [{ id: P1, inativo: false, unidade_comercial: 'UN' }],
     itens: [item()],
     ...o,
   });
@@ -242,7 +242,7 @@ describe('recebimento do pedido do FDV', () => {
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: { inativo: false } })).toEqual({ resultado: 'aprovado' });
   });
   it('RN-PED-01: produto_inexistente', () => expect(codigo({ produtos: [] })).toEqual({ resultado: 'recusado', codigo: 'produto_inexistente' }));
-  it('RN-PED-01: produto_inativo', () => expect(codigo({ produtos: [{ id: P1, inativo: true }] })).toEqual({ resultado: 'recusado', codigo: 'produto_inativo' }));
+  it('RN-PED-01: produto_inativo', () => expect(codigo({ produtos: [{ id: P1, inativo: true, unidade_comercial: 'UN' }] })).toEqual({ resultado: 'recusado', codigo: 'produto_inativo' }));
   it('RN-PED-01: item_incoerente (desconto maior que o valor do item)', () =>
     expect(codigo({ itens: [item({ desconto_centavos: 2001 })] })).toEqual({ resultado: 'recusado', codigo: 'item_incoerente' }));
   it('RN-PED-01: item_incoerente (sequência repetida)', () =>
@@ -253,7 +253,7 @@ describe('recebimento do pedido do FDV', () => {
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: null, produtos: [] })).toMatchObject({ codigo: 'condicao_inexistente' });
     expect(codigo({ cliente: { inativo: true }, filial: null })).toMatchObject({ codigo: 'cliente_inativo' });
     expect(codigo({ filial: null, produtos: [] })).toMatchObject({ codigo: 'filial_inexistente' });
-    expect(codigo({ produtos: [{ id: P1, inativo: true }], itens: [item({ desconto_centavos: 2001 })] })).toMatchObject({ codigo: 'produto_inativo' });
+    expect(codigo({ produtos: [{ id: P1, inativo: true, unidade_comercial: 'UN' }], itens: [item({ desconto_centavos: 2001 })] })).toMatchObject({ codigo: 'produto_inativo' });
   });
 });
 

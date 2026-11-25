@@ -1,5 +1,6 @@
 import { classeForma, prazoCompleto, prazoPermitidoAoCliente, type CondicaoPagamento } from '@macuxierp/cadastros/contracts';
 import { CodigoPendencia, type CodigoRecusaRecebimento, type Pendencia, type PendenciaDetalhada } from '../contracts';
+import { verificarFracaoDosItens } from './fracao';
 import { totalItem, valorItem, verificarItens, type ItemValor } from './valores';
 
 export interface ItemAvaliacao extends ItemValor {
@@ -172,11 +173,13 @@ export interface RetratoRecebimentoFdv {
   /** Nulo = não encontrada; com `condicao_pagamento_id` nulo a recusa é `condicao_ausente`. */
   condicao: { inativo: boolean } | null;
   condicao_pagamento_id: string | null;
-  produtos: readonly { id: string; inativo: boolean }[];
+  /** `unidade_comercial` do cadastro: a unidade da quantidade (RN-CAD-17). */
+  produtos: readonly { id: string; inativo: boolean; unidade_comercial: string }[];
   itens: readonly (ItemValor & { produto_id: string })[];
 }
 
-export type DecisaoRecebimentoFdv = { resultado: 'aprovado' } | { resultado: 'recusado'; codigo: CodigoRecusaCadastro };
+/** `motivo` (opcional) é o texto do problema quando o código sozinho não diz (`item_incoerente` por fração, RN-CAD-17). */
+export type DecisaoRecebimentoFdv = { resultado: 'aprovado' } | { resultado: 'recusado'; codigo: CodigoRecusaCadastro; motivo?: string };
 
 /**
  * RN-PED-07 (emenda de 24/11): o pedido do FDV com prazo incompleto ou acima do cliente não é recusado; entra em análise com a
@@ -213,5 +216,8 @@ export function decidirRecebimentoFdv(r: RetratoRecebimentoFdv): DecisaoRecebime
   if (verificarItens(r.itens).length > 0) return recusa('item_incoerente');
   // A sequência repetida quebraria a ida e volta do retorno (T-0013 §5.2): é item incoerente.
   if (new Set(r.itens.map((i) => i.sequencia)).size !== r.itens.length) return recusa('item_incoerente');
+  // RN-CAD-17 (T-0097): fração fora de KG e M é item incoerente, com o motivo da regra; não entra em análise.
+  const fracao = verificarFracaoDosItens(r.itens.map((i) => ({ quantidade: i.quantidade, unidade_comercial: produtos.get(i.produto_id)?.unidade_comercial })));
+  if (fracao[0]) return { resultado: 'recusado', codigo: 'item_incoerente', motivo: `RN-CAD-17: ${fracao[0].mensagem}` };
   return { resultado: 'aprovado' };
 }

@@ -12,7 +12,7 @@ import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { exportadorPedido, TABELAS_EXPORTADAS } from './exportador';
 import { SituacaoPedidoParaFaturar } from '../contracts';
 import { criarConsultaParaFaturar } from './faturar';
-import { IDS, pedidoFdv, pedidoManual, prazoDoCliente, prepararCadastros } from './fixtures-teste';
+import { IDS, pedidoFdv, pedidoManual, prazoDoCliente, prepararCadastros, unidadeDoProduto } from './fixtures-teste';
 import { criarPluginPedido, dependenciasDeProducao } from './index';
 import { CadastrosMemoria } from './memoria';
 import type { Dependencias } from './portas';
@@ -331,6 +331,26 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
     return { T, id: (r as { pedido_id: string }).pedido_id };
   };
   const lerPedido = async (id: string) => (await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0];
+
+  it('RN-CAD-17: fração em UN é recusada no SQL real (FDV: item_incoerente com motivo, manual: 422) sem gravar; em KG grava a quantidade fracionada', async () => {
+    const T = await criarTenant(efemero.admin, 'fracao-rn-cad-17', ['pedido']);
+    const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+    const item = { ...pedidoFdv().itens[0]!, quantidade: 15_000, quantidade_venda: 15_000, total_informado_centavos: 1500 };
+    const fdv = pedidoFdv({ itens: [item], total_informado_centavos: 1500 });
+    const manual = pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 15_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] });
+    const contar = async () => Number((await admin('SELECT count(*) AS n FROM pedido.pedido WHERE tenant_id = $1', [T]))[0]!.n);
+    expect(await worker.comTenant(T, (tx) => recebedor.receber(tx, fdv))).toMatchObject({ resultado: 'recusado', codigo: 'item_incoerente', motivo: expect.stringContaining('RN-CAD-17') });
+    await expect(app.comTenant(T, (tx) => servico.lancar(tx, efeitos(tx, T), manual))).rejects.toMatchObject({ status: 422, codigo: 'RN-CAD-17' });
+    expect(await contar()).toBe(0);
+    unidadeDoProduto(cad, IDS.produto1, 'KG');
+    try {
+      const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, fdv));
+      expect(r).toMatchObject({ resultado: 'criado', status: 'aprovado' });
+      expect((await admin('SELECT quantidade::text AS q FROM pedido.pedido_item WHERE pedido_id = $1', [(r as { pedido_id: string }).pedido_id]))[0]!.q).toBe('15000');
+    } finally {
+      unidadeDoProduto(cad, IDS.produto1, 'UN');
+    }
+  });
 
   it('RN-PED-07 e RN-PED-03: FDV em análise por prazo aprovado no SQL real: a pendência de prazo fica bloqueante=false e a aceitação (justificativa) em pedido.aprovacao', async () => {
     prazoDoCliente(cad, 10);
