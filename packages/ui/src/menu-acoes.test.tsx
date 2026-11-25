@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { MenuAcoes, acaoTeclaGatilho, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
+import { MenuAcoes, acaoTeclaGatilho, acaoTeclaMenu, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
 import * as pacote from './index.js';
 
 const nada = () => {};
@@ -13,7 +13,8 @@ const rotulosDoMenu = (html: string) => [...html.matchAll(/role="menuitem"[^>]*>
 describe('MenuAcoes (T-0099): gatilho', () => {
   it('rótulo "Ações" inteiro, com haspopup, expanded e controls', () => {
     const h = render();
-    expect(h).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*aria-expanded="false"[^>]*aria-controls="[^"]+"[^>]*>Ações<\/button>/);
+    expect(h).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*aria-expanded="false"[^>]*>Ações<\/button>/);
+    expect(h).not.toContain('aria-controls');
     expect(h).not.toContain('⋯');
     expect(h).not.toContain('role="menu"');
   });
@@ -162,6 +163,10 @@ describe('MenuAcoes (T-0099): tecla no gatilho', () => {
     expect(acaoTeclaGatilho('ArrowUp', true)).toBe('entrar-ultimo');
     expect(acaoTeclaGatilho('Enter', true)).toBe('entrar-primeiro');
     expect(acaoTeclaGatilho('Escape', true)).toBe('fechar');
+  });
+  it('Tab dentro do menu fecha e devolve o foco ao gatilho (Shift+Tab idem)', () => {
+    expect(acaoTeclaMenu('Tab')).toBe('fechar-e-focar-gatilho');
+    expect(acaoTeclaMenu('ArrowDown')).toBeNull();
   });
   it('Esc com o menu fechado e outras teclas não fazem nada', () => {
     expect(acaoTeclaGatilho('Escape', false)).toBeNull();

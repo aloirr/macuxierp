@@ -9,6 +9,39 @@ const txQueLanca = (code: string, message: string): Transacao => ({
 });
 const criar = (tx: Transacao) => new RepositorioPlataformaSql().criarEmpresa(tx, { slug: 'am2808', uf: 'AM', nome: 'Xis', fuso: 'America/Manaus', request_id: 'r' });
 
+const ID = '00000000-0000-4000-8000-0000000000e1';
+describe('adaptador SQL da plataforma: ficha da Receita (0065)', () => {
+  const repo = new RepositorioPlataformaSql();
+  const gravar = (tx: Transacao) => repo.gravarReceita(tx, { id: ID, ficha: {} as never, request_id: 'r' });
+  const revelar = (tx: Transacao) => repo.revelarContato(tx, { id: ID, campo: 'email', request_id: 'r' });
+
+  it.each([
+    ['23514', 422],
+    ['22001', 422],
+    ['P0002', 404],
+    ['55000', 409],
+  ])('SQLSTATE %s vira HTTP %i com mensagem fixa, sem o texto do banco', async (code, status) => {
+    for (const f of [gravar, revelar]) {
+      const e = await f(txQueLanca(code, 'valor@pessoal.com.br')).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(ErroApi);
+      expect((e as ErroApi).status).toBe(status);
+      expect(JSON.stringify([(e as ErroApi).message, (e as ErroApi).campos])).not.toContain('pessoal');
+    }
+  });
+
+  it('MXS01 e erro desconhecido seguem sem conversão (a apps/api mapeia a sessão inválida em 401)', async () => {
+    const e = await gravar(txQueLanca('MXS01', 'sessao')).catch((x: unknown) => x);
+    expect(e).not.toBeInstanceOf(ErroApi);
+    expect((e as { code: string }).code).toBe('MXS01');
+  });
+
+  it('lê a ficha da chave `ficha` do empresa_ler e a tira do objeto da empresa', async () => {
+    const tx: Transacao = { consultar: (async () => [{ e: { id: ID, nome: 'X', ficha: { uf: 'AM' } } }]) as never };
+    const r = await repo.lerEmpresaComFicha(tx, ID);
+    expect(r).toEqual({ empresa: { id: ID, nome: 'X' }, ficha: { uf: 'AM' } });
+  });
+});
+
 describe('adaptador SQL da plataforma: empresa_criar (0037)', () => {
   it.each([
     ['uf invalida', 'uf', 'UF inválida'],

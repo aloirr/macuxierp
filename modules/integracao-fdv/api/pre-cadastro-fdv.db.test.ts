@@ -11,7 +11,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_RETORNO_CLIENTES_ID, criarAgendasClientesFdv } from './agendas-clientes';
 import { AGORA, U, admSql, ciclo, criarCredencial, dubleLogAlertas, hubDuble, ok, recusa, retentavel } from './apoio-conector-teste';
-import { expurgarPreCadastroRecusado } from './expurgo-pre-cadastro';
+import { expurgarPreCadastro, expurgarPreCadastroRecusado } from './expurgo-pre-cadastro';
 import type { ClienteHubClientes, CriadorClienteFdv, RespostaRetornoCliente } from './portas';
 import { buscarClientesPendentes } from './recebimento-clientes';
 import { enviarRetornosClientes, reterSeAguardaVinculo } from './retorno-clientes';
@@ -414,10 +414,43 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       // auditoria só com as contagens
       const aud = await adm("SELECT depois FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'integracao-fdv.pre-cadastro.expurgar'", [B]);
       expect(aud.length).toBeGreaterThanOrEqual(1);
-      expect(Object.keys(aud[0]!.depois).sort()).toEqual(['pre_cadastros', 'regra', 'revisoes']);
+      expect(Object.keys(aud[0]!.depois).sort()).toEqual(['recusado', 'regra', 'sem_decisao']);
       // idempotente: a segunda rodada não acha mais nada
       const de_novo = await expurgarPreCadastroRecusado({ banco: worker, tenantsAtivos: async () => [B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } });
       expect(de_novo).toMatchObject({ revisoes: 0 });
+    });
+
+    it('RN-INF-06 (T-0098): o recebido e o reenviado sem decisão há mais de 180 dias saem; o recusado segue saindo; a rota mostra "—"; o log tem só contagens', async () => {
+      const [semDecisao, reenviado, recente, recusado] = [U(), U(), U(), U()];
+      const sem = (uuid: string, situacao: string, diasAtras: number) =>
+        adm(
+          // hora-fixa-ok: o corte do expurgo é medido contra o now() do banco; só o relógio real o exercita
+          `INSERT INTO integracao_fdv.cliente_recebido (tenant_id, cliente_uuid, revisao, hash, razao_social, documento_mascarado, payload, recebido_em, chegou_em, situacao)
+           VALUES ($1, $2, CASE WHEN $4 = 'reenviado' THEN 2 ELSE 1 END, $3, 'Mercado do Fulano', '***.456.789-**', '{"documento": "12345678901"}', now() - make_interval(days => $5), now() - make_interval(days => $5), $4)`,
+          [B, uuid, 'e'.repeat(64), situacao, diasAtras],
+        );
+      await sem(semDecisao, 'recebido', 200);
+      await sem(reenviado, 'reenviado', 200);
+      await sem(recente, 'recebido', 10);
+      await recusadoEm(B, recusado, 200);
+      const log = dubleLogAlertas();
+      const r = await expurgarPreCadastro({ banco: worker, tenantsAtivos: async () => [B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } });
+      expect(r).toMatchObject({ tenants: 1, falhas: 0 });
+      expect(r.sem_decisao_revisoes).toBeGreaterThanOrEqual(2);
+      expect(r.recusado_revisoes).toBeGreaterThanOrEqual(1);
+      expect(r.revisoes).toBe(r.sem_decisao_revisoes + r.recusado_revisoes);
+      expect((await linhas(B, semDecisao))[0]).toMatchObject({ situacao: 'recebido', sem_payload: true, documento_mascarado: null });
+      expect((await linhas(B, reenviado))[0]).toMatchObject({ situacao: 'reenviado', sem_payload: true });
+      expect((await linhas(B, recusado))[0]).toMatchObject({ situacao: 'recusado', sem_payload: true });
+      expect((await linhas(B, recente))[0]).toMatchObject({ situacao: 'recebido', sem_payload: false });
+      const lista = await rota(B, 'GET', '/clientes-recebidos', { consulta: { limite: '200' } });
+      for (const u of [semDecisao, reenviado]) {
+        const item = lista.corpo.itens.find((i: { cliente_uuid: string }) => i.cliente_uuid === u);
+        expect(item).toMatchObject({ razao_social: '—', documento_mascarado: null });
+      }
+      const texto = JSON.stringify(log.logs);
+      for (const s of [...SEGREDOS, '12345678901', '456.789']) expect(texto, s).not.toContain(s);
+      expect((await expurgarPreCadastro({ banco: worker, tenantsAtivos: async () => [B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } })).revisoes).toBe(0);
     });
 
     it('RN-INF-06: a falha de um tenant não para os outros (conta em falhas, só o nome do erro no log)', async () => {

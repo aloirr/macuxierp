@@ -16,7 +16,7 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, completarParcelasCartao, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
+  validarCondicaoPagamento, completarParcelasCartao, comCoordenadaNormalizada, normalizarCoordenada, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
   violacao, violacaoFracao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
@@ -208,6 +208,8 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
     /** Evento do pai refeito depois da escrita (o filho vai dentro do payload do pai). */
     aoGravar?(c: ContextoRota, r: Repositorios, pai: P, antes?: null): Promise<void>;
     validar?(r: Repositorios, dados: Dict, c: ContextoRota): Promise<Violacao[]>;
+    /** Ajusta o corpo antes de validar e gravar (`atual` só no PATCH). */
+    completar?(corpo: Dict, atual?: Dict): Dict;
   },
 ): RotaModulo[] {
   const R = (c: ContextoRota) => deps.repositorios(c.tx);
@@ -234,8 +236,9 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
       async executar(c, e) {
         const r = R(c);
         const p = await pai(c, r, idDe(e));
-        if (cfg.validar) exigir(await cfg.validar(r, e.corpo, c));
-        const criado = await cfg.filho(r).inserir(p.id, e.corpo);
+        const corpo = cfg.completar ? cfg.completar(e.corpo as Dict) : (e.corpo as Dict);
+        if (cfg.validar) exigir(await cfg.validar(r, corpo, c));
+        const criado = await cfg.filho(r).inserir(p.id, corpo as never);
         await depois(c, r, p);
         return { status: 201, corpo: criado };
       },
@@ -247,8 +250,9 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
         const p = await pai(c, r, idDe(e));
         const atual = await cfg.filho(r).obter(p.id, idDe(e, 'filho_id'));
         if (!atual) throw erros.naoEncontrado('Registro');
-        if (cfg.validar) exigir(await cfg.validar(r, { ...(atual as unknown as Dict), ...(e.corpo as Dict) }, c));
-        const novo = await cfg.filho(r).atualizar(p.id, atual.id, e.corpo);
+        const corpo = cfg.completar ? cfg.completar(e.corpo as Dict, atual as unknown as Dict) : (e.corpo as Dict);
+        if (cfg.validar) exigir(await cfg.validar(r, { ...(atual as unknown as Dict), ...corpo }, c));
+        const novo = await cfg.filho(r).atualizar(p.id, atual.id, corpo as never);
         if (!novo) throw erros.naoEncontrado('Registro');
         await depois(c, r, p);
         return { corpo: novo };
@@ -306,11 +310,19 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     },
     visivel: clienteVisivel,
     validar: (r, cli, parcial) => validarCliente(r, cli, parcial),
+    // T-0096: a API revalida a localização do endereço (fora da faixa ou incompleta grava nulo)
+    completar: (corpo) => (Array.isArray(corpo.enderecos) ? { ...corpo, enderecos: (corpo.enderecos as Dict[]).map(comCoordenadaNormalizada) } : corpo),
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/clientes/:id/enderecos', editar: 'cadastros.cliente.editar', dados: EnderecoCliente, atualizacao: EnderecoCliente.partial(),
     pai: (r) => r.clientes, filho: (r) => r.clientes.enderecos, visivel: clienteVisivel, aoGravar: emitirCom(eventoCliente),
     validar: async (_r, d) => verificarMunicipioEndereco(d as { municipio_ibge: string; uf: string }, 'municipio_ibge'),
+    // T-0096: no PATCH, mexer em um dos dois reavalia o par com o valor gravado
+    completar(corpo, atual) {
+      if (!atual) return comCoordenadaNormalizada(corpo);
+      if (!('latitude' in corpo) && !('longitude' in corpo)) return corpo;
+      return { ...corpo, ...normalizarCoordenada('latitude' in corpo ? corpo.latitude : atual.latitude, 'longitude' in corpo ? corpo.longitude : atual.longitude) };
+    },
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/clientes/:id/contatos', editar: 'cadastros.cliente.editar', dados: Contato, atualizacao: Contato.partial(),
@@ -318,20 +330,30 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
 
   // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
+  /** RN-CAD-17: trocar a unidade comercial para uma que não aceita fração com saldo fracionário já gravado é 422 no campo `unidade_comercial`. */
+  const violacaoUnidadeComSaldo = async (r: Repositorios, p: Dict, parcial: Dict | null): Promise<Violacao[]> => {
+    if (!parcial || !('unidade_comercial' in parcial) || typeof p.id !== 'string') return [];
+    for (const s of await r.estoque.saldos({ produto_id: p.id })) {
+      const v = violacaoFracao('unidade_comercial', p.unidade_comercial as string, s.quantidade);
+      if (v) return [v];
+    }
+    return [];
+  };
   rotas.push(...rotasCrud(deps, {
     tabela: 'produto', caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
     entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: emitirCom(eventoProduto),
     ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
     async validar(r, p, parcial, agora) {
-      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return [];
+      const fracao = await violacaoUnidadeComSaldo(r, p, parcial);
+      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return fracao;
       const ncm = p.ncm as string;
       const cest = (p.cest as string | null) ?? null;
       const data = dataIso(agora);
-      return validarFiscalProduto({
+      return [...fracao, ...validarFiscalProduto({
         ncm, cest, ncmVigente: await r.oficiais.ncmVigente(ncm, data), ncmExigeCest: await r.oficiais.ncmExigeCest(ncm, data),
         cestVigente: cest === null ? true : await r.oficiais.cestVigente(cest, data),
         cestCombinaComNcm: cest === null ? true : await r.oficiais.cestCombinaComNcm(cest, ncm, data),
-      });
+      })];
     },
   }));
   rotas.push(...rotasFilho(deps, {

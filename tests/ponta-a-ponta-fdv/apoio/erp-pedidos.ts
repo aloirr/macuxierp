@@ -33,7 +33,16 @@ export interface RegistroLgpd {
 
 type LogWorker = Parameters<typeof despacharOutbox>[0]['log'];
 
-function criarRegistroLgpd(): RegistroLgpd & { log: LogPedidos; alertar: Alertar; pino: LogWorker } {
+/** Despacha a outbox (todos os tenants) para os consumidores até esvaziar (teto de 10 voltas). */
+export async function despacharAteEsvaziar(o: { banco: Banco; relogio: Relogio; consumidores: Parameters<typeof despacharOutbox>[0]['consumidores']; log: LogWorker }): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    const r = await despacharOutbox({ banco: o.banco, fila: new FilaOutboxPg(), consumo: new RegistroConsumoPg(), consumidores: o.consumidores, relogio: o.relogio, log: o.log });
+    if (r.publicados + r.falhas === 0) return;
+  }
+}
+
+/** Logs e alertas em memória para a varredura de LGPD (o `pino` é o mesmo registro no formato do logger do worker). */
+export function criarRegistroLgpd(): RegistroLgpd & { log: LogPedidos; alertar: Alertar; pino: LogWorker } {
   const r: RegistroLgpd = { logs: [], alertas: [] };
   const linha = (o: Record<string, unknown>, m: string) => void r.logs.push(JSON.stringify([o, m]));
   const log: LogPedidos = { info: linha, warn: linha, error: linha };
@@ -76,12 +85,7 @@ export function criarLadoErpPedidos(o: { banco: Banco; relogio: Relogio }): Lado
     lgpd: reg,
     consumidor,
     buscar: (t, hub) => buscarPedidosPendentes({ ...comum, hub, recebedor, resolvedor }, t),
-    async despachar() {
-      for (let i = 0; i < 10; i++) {
-        const r = await despacharOutbox({ banco: o.banco, fila: new FilaOutboxPg(), consumo: new RegistroConsumoPg(), consumidores: [consumidor], relogio: o.relogio, log: reg.pino });
-        if (r.publicados + r.falhas === 0) return;
-      }
-    },
+    despachar: () => despacharAteEsvaziar({ banco: o.banco, relogio: o.relogio, consumidores: [consumidor], log: reg.pino }),
     enviar: (t, hub) => enviarRetornosPendentes({ ...comum, hub }, t),
     async ciclo(t, hub) {
       const busca = await lado.buscar(t, hub);

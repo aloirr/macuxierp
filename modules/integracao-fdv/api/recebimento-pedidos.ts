@@ -66,14 +66,14 @@ async function resolverChaves(tx: Transacao, d: DepsRecebimento, tenantId: strin
   return { cliente, vendedor, filial, produto, prazo_pagamento, cliente_endereco, filialPadraoId };
 }
 
-async function rejeitar(tx: Transacao, d: DepsRecebimento, tenantId: string, uuid: string, codigo: CodigoRejeicao, detalhe?: string): Promise<void> {
+async function rejeitar(tx: Transacao, d: DepsRecebimento, tenantId: string, uuid: string, codigo: CodigoRejeicao, detalhe?: string, motivoDaRecusa?: string): Promise<void> {
   const agora = d.relogio.agora();
   await tx.consultar(
     `UPDATE integracao_fdv.pedido_recebido SET estado = 'rejeitado', erro_codigo = $3
       WHERE tenant_id = $1 AND pedido_uuid = $2`,
     [tenantId, uuid, codigo],
   );
-  const corpo = retornoRejeitadoErp(uuid, codigo, agora);
+  const corpo = retornoRejeitadoErp(uuid, codigo, agora, motivoDaRecusa);
   const motivo = detalhe ? `${corpo.motivo}: ${detalhe}`.slice(0, 300) : corpo.motivo;
   await gravarRetorno(tx, tenantId, { ...corpo, motivo }, agora);
 }
@@ -143,7 +143,7 @@ async function processar(tx: Transacao, d: DepsRecebimento, tenantId: string, br
         await tx.consultar('RELEASE SAVEPOINT sp_pedido_fdv');
         return 'desligar'; // fica `recebido`; a busca desliga
       }
-      await rejeitar(tx, d, tenantId, pedidoUuid, r.codigo);
+      await rejeitar(tx, d, tenantId, pedidoUuid, r.codigo, undefined, 'motivo' in r ? r.motivo : undefined);
       await tx.consultar('RELEASE SAVEPOINT sp_pedido_fdv');
       return 'rejeitado';
     }
