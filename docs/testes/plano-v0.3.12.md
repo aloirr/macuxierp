@@ -17,9 +17,9 @@ o campo**, aceito; **422** fica para regra de negócio (RN).
 | # | Caso | Onde | Situação |
 |---|---|---|---|
 | X-1 | Todo caminho de toda constante `CAMINHOS_*` do SDK que o web importa existe na API de produção, em algum método (GET, POST, PUT, PATCH, DELETE), sem sessão e sem corpo; controles: caminho inventado dá o 404 genérico nos 5 métodos, rota real não. A lista vem do SDK e do import do web (regra 1 e 2 da T-0066): as chaves novas da T-0086 (monitor, reprocessar, log, `CAMINHOS_INTEGRACAO_FDV_TENANT`) entram sozinhas quando o web as importar. | `tests/integracao/rotas/contrato-caminhos.db.test.ts` | feito |
-| X-2 | Todo GET das telas novas (T-0086, T-0087, T-0088, T-0059) na fumaça; `fumaca-rotas.json` regenerado; `NAO_EXTRAIVEIS` classificado. | `tests/integracao/rotas/fumaca-telas.db.test.ts` | pendente (cada tela, no PR do `testes` que segue o web) |
+| X-2 | Todo GET das telas novas (T-0086, T-0087, T-0088, T-0059) na fumaça; `fumaca-rotas.json` regenerado; `NAO_EXTRAIVEIS` classificado. | `tests/integracao/rotas/fumaca-telas.db.test.ts` | com a sessão do `testes` da fumaça do #560 (PR #570: #560, #564 e #565); os ajustes achados no ensaio dos prints (Monitor e Log por cadastro da aba Integração, `/v1/plataforma/...`) foram no R-20261124-210737 |
 | X-3 | O ensaio antes do push roda os testes de `scripts/` sempre que há código, não só no `--tudo` (regra 6). | `tests/scripts/rodar-antes-do-push.sh`, `docs/testes/antes-do-push.md` | feito |
-| X-4 | Ensaio com API real (Postgres local) e print com dados fictícios de cada tela nova, 1280 e 390 (regra 3). | `docs/testes/prints/` | pendente (por tela) |
+| X-4 | Ensaio com API real (Postgres local) e print com dados fictícios de cada tela nova, 1280 e 390 (regra 3). | `docs/testes/prints/` | feito para o /config (Integração e Dados), BKO › Integração FDV e Envios e as telas do core (I-9 e C-5), com `bash tests/e2e/rodar-prints-v0312.sh` (Postgres local, API de produção montada em banco efêmero, next dev, massa fictícia); pendente para as telas da T-0088 e da T-0059 (F-11) |
 | X-5 | Rota nova: perfil (403), tenant (RLS: o tenant B não lê nem altera o do A) e licença do módulo (403 sem licença). | `tests/integracao/rotas/autorizacao-rotas.test.ts`, `tests/integracao/plataforma/isolamento.db.test.ts` | pendente (por rota) |
 
 ## T-0085 — formas e prazos
@@ -53,7 +53,7 @@ o campo**, aceito; **422** fica para regra de negócio (RN).
 | I-6 | 3 | Zerar (R-20261124-170915): apaga no ERP e manda ao Hub a inativação dos mesmos registros (no dublê ficam `ativo: false`, não somem); os mantidos (RN-CAD-10) não são apagados nem inativados; auditoria registrada; o resultado aparece no Log com falha por registro e o Reprocessar a reenvia. | `tests/ponta-a-ponta-fdv/` + `carga-config.db.test.ts` | pendente |
 | I-7 | 3 | Monitor, Reprocessar e Log: perfil, tenant e licença (X-5); o tenant B não vê o Log do A. | `isolamento.db.test.ts` | pendente |
 | I-8 | 4 | Monitor: situação Em dia, Atrasado e Desativado conforme o último sinal (relógio de teste); fila em lotes e linhas. | domínio (integracao-fdv) + rota com Postgres | pendente |
-| I-9 | 4 | Prints 1280 e 390 com dados fictícios do /config (abas Integração e Dados) e do Log do BKO, com API real. | `docs/testes/prints/` | pendente |
+| I-9 | 4 | Prints 1280 e 390 com dados fictícios do /config (abas Integração e Dados) e do Log do BKO, com API real. | `docs/testes/prints/I-9/` (16 PNGs), gerados por `bash tests/e2e/rodar-prints-v0312.sh` (`tests/e2e/api-prints-v0312.ts` + `prints-v0312.mjs`) | feito no main `1c9b319` (24/11 21h13 de Manaus), com 1 defeito aberto: BKO › Integração FDV (`07-bko-integracao-fdv`) mostra "Não foi possível carregar os clientes recebidos" porque `GET /v1/integracao-fdv/clientes-recebidos` (#564) dá 404 na API (R-20261124-210728-testes ao modulo-integracao-fdv); o runner acusa esse passo até a rota entrar. No 390 a aba Dados esconde Última carga e Origem de propósito (`globals.css`, `.tabela-dados`); a data é conferida no 1280. Os rótulos de erro do Log do /config saem sem acento ("Campo obrigatorio"), humanizados do código até o rótulo vir dos contracts (`apps/web/src/lib/config/operacao-fdv.ts`). |
 | I-10 | — | Aba Dados: última carga com data, hora, registros e origem Conector/CSV; Modelo e Importar continuam na fumaça (X-2). | fumaça + e2e | pendente |
 
 ## T-0087 — telas do core no BKO
@@ -64,7 +64,7 @@ o campo**, aceito; **422** fica para regra de negócio (RN).
 | C-2 | Redefinir senha gera temporária (RN-CORE-10) e não a devolve em log; auditoria sem dado pessoal além do necessário. | pendente |
 | C-3 | Tenant isolado: o admin do tenant A não lista nem altera usuário do B (RLS e API). Licenças só leitura no tenant. | pendente |
 | C-4 | Listas pelo SDK (filtros na URL, CSV, cursor); limites da ADR 0019 nos campos que vão ao Hub (`external_id` até 200, `forma_pagamento.codigo` até 30): 200 e 30 aceitos, 201 e 31 recusados com campo. | pendente |
-| C-5 | Fumaça (X-1, X-2) e prints 1280/390. | pendente |
+| C-5 | Fumaça (X-1, X-2) e prints 1280/390. | prints feitos: `docs/testes/prints/C-5/` (10 PNGs: Usuários, senha provisória, Perfis e permissões, Licenças, Auditoria), mesmo runner do I-9, sem falha. Aberto: a Auditoria mostra ação e entidade de outros módulos em código cru (`cadastros.carga.concluir`, `carga_portal`) e o autor pelo UUID (R-20261124-211311 ao modulo-core). Fumaça: ver X-2. Os campos de data do filtro aparecem em "mm/dd/yyyy" porque o Chromium sem interface ignora o `locale` no `input type=date`; não é da tela. |
 
 ## T-0088 — telas de cadastro no BKO
 
