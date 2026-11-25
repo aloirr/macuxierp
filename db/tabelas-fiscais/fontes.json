@@ -109,6 +109,19 @@
       "data_referencia": "2026-06-22",
       "sha256": "adffa5c93d5b060db91e8995118c847e524e86c381c15efa298145281f059a17",
       "registros": 193
+    },
+    {
+      "carga": "cnae",
+      "tabela": "cnae",
+      "versao": "2.3-2026-11-25",
+      "arquivo": "cnae/2026-11-25.csv",
+      "chave": ["codigo"],
+      "fonte": "IBGE/CONCLA, CNAE 2.3 subclasses, API de serviços de dados do IBGE v2 (/cnae/subclasses), JSON baixado em 2026-11-25; CSV com subclasse (7 dígitos, sem máscara), descrição como na fonte (só espaços repetidos colapsados), seção, divisão, grupo e classe",
+      "url": "https://servicodados.ibge.gov.br/api/v2/cnae/subclasses",
+      "data_referencia": "2026-11-25",
+      "sha256": "d372454b0d1982b8f265e3808abb25e74c61d4d381809264514375566fea6e23",
+      "registros": 1332,
+      "observacao": "sha256 do JSON de origem (resposta da API, 1.332 subclasses): 787e14982265b0ffedf5f0180cbec8a2ea64d117fca459b76608ebc99dd668a7."
     }
   ]
 }
