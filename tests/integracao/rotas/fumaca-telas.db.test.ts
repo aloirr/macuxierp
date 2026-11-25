@@ -188,7 +188,6 @@ const GETS_ESTRUTURADOS = (): { origem: string; caminho: string }[] => [
   ...getsDasTelas(),
   { origem: 'download XML da nota (urlDoXml)', caminho: urlDoXml(ID) },
   { origem: 'download DANFE da nota (urlDoDanfe)', caminho: urlDoDanfe(ID) },
-  { origem: 'filiais do quadro de configuração da NF-e (telas-quadro.tsx)', caminho: '/v1/cadastros/filiais' },
   { origem: 'configuração fiscal da filial no quadro (urlDaConfiguracaoDaFilial)', caminho: urlDaConfiguracaoDaFilial(ID) },
   { origem: 'clientes recebidos do FDV (Integração FDV)', caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos}` },
   ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `Log do BKO (${e})`, caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace(':entidade', e)}` })),
