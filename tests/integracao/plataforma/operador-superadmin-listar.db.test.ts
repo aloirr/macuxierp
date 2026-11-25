@@ -6,21 +6,20 @@
  * - O-1: cada superadmin vivo numa linha, com o e-mail mascarado pela `plataforma.mascarar_email` do próprio banco, a
  *   situação (ativo ou desativado) e o último acesso em Manaus ("nunca" sem acesso); o excluído fica de fora; nenhum
  *   e-mail inteiro nem a parte local na saída, no argv nem no ambiente do psql;
- * - O-2: só leitura (BEGIN READ ONLY, nenhuma linha de plataforma.superadmin muda, nenhuma auditoria nova); sem
- *   --operador, com --email ou com --confirmar, recusa sem chamar o banco; sem superadmin, "0 superadmin(s)" e saída 0.
- * Fora daqui (vai por recado ao engenheiro-software): o critério "registra quem pediu (--operador)" da T-0103; hoje o
- * --listar exige o --operador mas não o grava em lugar nenhum (o superadmin.mjs diz "nada gravado nem auditado").
+ * - O-2: só leitura (BEGIN READ ONLY, nenhuma linha de plataforma.superadmin muda); sem --operador, com --email ou com
+ *   --confirmar, recusa sem chamar o banco; sem superadmin, "0 superadmin(s)" e saída 0.
+ * Fora daqui até o código existir: a auditoria do --listar (quem pediu e a contagem, sem e-mail), decisão do gerente
+ * sobre R-20261124-233002; o caso entra com o código (plano da v0.3.13, O-2).
  * Dados fictícios (exemplo.invalid). Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
-import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
-import { criarDockerFalso } from '../../apoio/operador-falso';
+import { criarPsqlPassagem, rodarOperador, type VmOperador } from '../../apoio/operador-falso';
 import { inserirSuperadmin } from '../../apoio/portal-pg';
 
 const OPERADOR_SH = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'deploy', 'producao', 'operador.sh');
@@ -35,22 +34,12 @@ const ULTIMO_ACESSO_UTC = '2026-11-25T02:40:00Z';
 describe.skipIf(!PG_DISPONIVEL)('operador.sh superadmin --listar no PostgreSQL (T-0103, O-1 e O-2)', () => {
   let b: BancoEfemero;
   let pasta = '';
-  let bin = '';
-  let erp = '';
-  let sqlLog = '';
-  let psqlLog = '';
+  let vm: VmOperador;
   const saidas: string[] = [];
 
   beforeAll(async () => {
     pasta = mkdtempSync(join(tmpdir(), 'macuxierp-t0103-listar-'));
-    ({ bin, erp } = criarDockerFalso(pasta, { repassar: ['PSQL_REAL', 'SQL_LOG', 'PSQL_LOG'] }));
-    sqlLog = join(pasta, 'sql.txt');
-    psqlLog = join(pasta, 'psql-argv.txt');
-    writeFileSync(
-      join(bin, 'psql-passagem'),
-      ['#!/usr/bin/env bash', 'sql="$(cat)"', 'printf "%s\\n" "$sql" >> "$SQL_LOG"', 'printf "%s\\n" "$@" >> "$PSQL_LOG"', 'env >> "$PSQL_LOG.ambiente"', 'exec "$PSQL_REAL" "$@" <<< "$sql"', ''].join('\n'),
-    );
-    chmodSync(join(bin, 'psql-passagem'), 0o755);
+    vm = criarPsqlPassagem(pasta);
     b = await criarBancoEfemero();
     for (const e of [...VIVOS, EXCLUIDO]) await inserirSuperadmin(b, e);
     await b.admin.query('UPDATE plataforma.superadmin SET ultimo_acesso_em = $2 WHERE email = $1', [ATIVO, ULTIMO_ACESSO_UTC]);
@@ -67,30 +56,12 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh superadmin --listar no PostgreSQL (
 
   /** Roda o operador.sh como na VM; devolve status, saída, o SQL e o argv/ambiente que chegaram ao psql nesta chamada. */
   function operador(args: string[]) {
-    for (const f of [sqlLog, psqlLog, `${psqlLog}.ambiente`]) writeFileSync(f, '');
-    const r = spawnSync('bash', [OPERADOR_SH, ...args], {
-      env: {
-        ...envPsqlAdmin(b.nome),
-        PATH: `${bin}:${process.env.PATH ?? ''}`,
-        HOME: pasta,
-        MACUXIERP_DIR: erp,
-        NODE_REAL: process.execPath,
-        MACUXIERP_PSQL: join(bin, 'psql-passagem'),
-        PSQL_REAL: process.env.MACUXI_PSQL ?? 'psql',
-        SQL_LOG: sqlLog,
-        PSQL_LOG: psqlLog,
-      },
-      input: '',
-      encoding: 'utf8',
-      timeout: 120_000,
-    });
-    const saida = `${r.stdout}${r.stderr}`;
-    saidas.push(saida);
-    return { status: r.status, saida, sql: readFileSync(sqlLog, 'utf8'), psql: `${readFileSync(psqlLog, 'utf8')}\n${readFileSync(`${psqlLog}.ambiente`, 'utf8')}` };
+    const r = rodarOperador(vm, OPERADOR_SH, args, envPsqlAdmin(b.nome));
+    saidas.push(r.saida);
+    return { ...r, psql: `${r.psql.argv}\n${r.psql.ambiente}` };
   }
   const listar = (extra: string[] = ['--operador', 'alexandre']) => operador(['superadmin', '--listar', ...extra]);
   const tabela = async () => (await b.admin.query('SELECT * FROM plataforma.superadmin ORDER BY id')).rows;
-  const auditorias = async () => Number((await b.admin.query<{ n: string }>('SELECT count(*) AS n FROM plataforma.auditoria')).rows[0]!.n);
   const mascarado = async (email: string) => (await b.admin.query<{ m: string }>('SELECT plataforma.mascarar_email($1) AS m', [email])).rows[0]!.m;
   /** A linha da saída do superadmin com o e-mail mascarado dado. */
   const linhaDe = (saida: string, m: string) => saida.split('\n').filter((l) => l.includes(`e-mail (mascarado): ${m} `));
@@ -132,15 +103,12 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh superadmin --listar no PostgreSQL (
     expect(r.psql).not.toMatch(/MACUXIERP_SUPERADMIN_EMAIL=/);
   });
 
-  it('O-2: só leitura: BEGIN READ ONLY, nenhuma coluna de plataforma.superadmin muda e nenhuma auditoria nova', async () => {
+  it('O-2: só leitura: a lista sai de um BEGIN READ ONLY e nenhuma coluna de plataforma.superadmin muda', async () => {
     const antes = await tabela();
-    const aud = await auditorias();
     const r = listar();
     expect(r.status).toBe(0);
     expect(r.sql).toMatch(/^BEGIN READ ONLY;$/m);
-    expect(r.sql).not.toMatch(/^(BEGIN|COMMIT);$/m);
     expect(await tabela()).toEqual(antes);
-    expect(await auditorias()).toBe(aud);
   });
 
   it('O-2: sem --operador, com --email ou com --confirmar, recusa sem chamar o banco', () => {

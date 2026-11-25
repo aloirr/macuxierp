@@ -2,10 +2,11 @@
  * T-0102 (plano da v0.3.13, S-1 a S-3): o motivo do não envio do "Esqueci a senha" vai ao log da API, sem dado pessoal,
  * conferido de fora: a API de produção (`appPgDeTeste`, módulos de produção, `RepositorioCoreSql`) sobre o PostgreSQL
  * efêmero, o pino capturado em memória e a porta de e-mail em memória (a única dublê: o SMTP).
- * - S-1: cada caminho grava uma linha `esqueci.sem_envio` com o motivo fixo (empresa inexistente ou suspensa, conta
- *   inexistente ou inativa, e-mail desligado) ou o `email.enviado` do aceite do SMTP; a linha não leva outro campo além
- *   do evento, do motivo (ou do `envio_id` aleatório) e dos campos do pino. O limite por conta sai no log da resposta
- *   (429), sem a conta. Conta travada (bloqueado_ate) não é motivo de não envio: a temporária é o caminho para destravar.
+ * - S-1: cada caminho que lê o banco grava uma linha `esqueci.sem_envio` com o motivo fixo (empresa inexistente ou
+ *   suspensa, conta inexistente ou inativa) ou o `email.enviado` do aceite do SMTP; a linha não leva outro campo além do
+ *   evento, do motivo (ou do `envio_id` aleatório) e dos campos do pino. Conta travada (bloqueado_ate) não é motivo de
+ *   não envio: a temporária é o caminho para destravar. E-mail desligado, falha do SMTP e limite por conta não leem o
+ *   banco e ficam no unitário do dono (apps/api/src/esqueci-senha.test.ts e email/envio-apos-resposta.test.ts).
  * - S-2: o log inteiro não contém o e-mail digitado, a parte local, o domínio, o código da empresa nem a temporária.
  * - S-3: todos os motivos respondem o mesmo 202 neutro, com o mesmo corpo (RN-CORE-13).
  * Dados fictícios (domínios .invalid). Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
@@ -30,14 +31,13 @@ const EMAIL_NINGUEM = `ninguem.t0102@${DOMINIO}`;
 const EMAIL_SA = `sa.t0102@${DOMINIO}`;
 const EMAIL_SA_INATIVO = `sa.inativo.t0102@${DOMINIO}`;
 const EMAIL_SA_TRAVADO = `sa.travado.t0102@${DOMINIO}`;
-const EMAIL_LIMITE = `limite.t0102@${DOMINIO}`;
 const PROIBIDOS = [
   DOMINIO,
   'loja-t0102',
   ATIVA,
   SUSPENSA,
   INEXISTENTE,
-  ...[EMAIL_ATIVO, EMAIL_INATIVO, EMAIL_SUSPENSA, EMAIL_NINGUEM, EMAIL_SA, EMAIL_SA_INATIVO, EMAIL_SA_TRAVADO, EMAIL_LIMITE].flatMap((e) => [e, e.split('@')[0]!]),
+  ...[EMAIL_ATIVO, EMAIL_INATIVO, EMAIL_SUSPENSA, EMAIL_NINGUEM, EMAIL_SA, EMAIL_SA_INATIVO, EMAIL_SA_TRAVADO].flatMap((e) => [e, e.split('@')[0]!]),
 ];
 /** Campos que o pino põe em toda linha; o resto da linha do esqueci tem de ser só o evento e o motivo (ou o envio_id). */
 const CAMPOS_PINO = new Set(['level', 'time', 'pid', 'hostname', 'msg', 'request_id']);
@@ -47,9 +47,7 @@ type Linha = Record<string, unknown>;
 describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na API real (S-1 a S-3)', () => {
   let b: BancoEfemero;
   let app: AppPortal;
-  let semEmail: AppPortal;
   const logs: string[] = [];
-  const logsSemEmail: string[] = [];
   const envio = new EnvioEmailMemoria();
   let ip = 1;
   const novoIp = () => `10.102.0.${ip++}`;
@@ -92,7 +90,6 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
     const suspensa = await criarTenant(b.admin, SUSPENSA, ['cadastros']);
     await b.admin.query("UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = $1", [suspensa]);
     await inserirAdministradorDeTeste(b.admin, ativa, { id: randomUUID(), email: EMAIL_ATIVO, nome: 'Rosa Ficticia', filialIds: [] });
-    await inserirAdministradorDeTeste(b.admin, ativa, { id: randomUUID(), email: EMAIL_LIMITE, nome: 'Limite Ficticio', filialIds: [] });
     const inativo = randomUUID();
     await inserirAdministradorDeTeste(b.admin, ativa, { id: inativo, email: EMAIL_INATIVO, nome: 'Jurema Ficticia', filialIds: [] });
     await b.admin.query('UPDATE plataforma.usuario SET ativo = false WHERE id = $1', [inativo]);
@@ -103,11 +100,9 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
     await b.admin.query('UPDATE plataforma.superadmin SET ativo = false WHERE email = $1', [EMAIL_SA_INATIVO]);
     await b.admin.query("UPDATE plataforma.superadmin SET falhas_login = 5, bloqueado_ate = now() + interval '15 minutes' WHERE email = $1", [EMAIL_SA_TRAVADO]);
     ({ app } = await appPgDeTeste({ b, modulos: 'producao', esqueci: { envio, repoCore: new RepositorioCoreSql() }, logger: { level: 'info', stream: destinoDeLogs(logs) } }));
-    ({ app: semEmail } = await appPgDeTeste({ b, modulos: 'producao', logger: { level: 'info', stream: destinoDeLogs(logsSemEmail) } }));
   }, 180_000);
   afterAll(async () => {
     await app?.close();
-    await semEmail?.close();
     await b?.remover();
   });
 
@@ -150,38 +145,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
     expect(envio.enviados.map((e) => e.para)).toEqual([EMAIL_ATIVO, EMAIL_SA, EMAIL_SA_TRAVADO]);
   });
 
-  it('S-1 falha do SMTP: email.falha com as tentativas, sem o destinatário', async () => {
-    envio.falhar = true;
-    try {
-      const inicio = logs.length;
-      neutro(await esqueci(app, 'MACUXI', EMAIL_SA));
-      // 2 tentativas com 2 s entre elas (envio-apos-resposta.ts): espera a linha da falha final.
-      await expect.poll(() => doEsqueci(linhas(logs.slice(inicio))).length, { timeout: 6_000, interval: 100 }).toBe(1);
-      expect(doEsqueci(linhas(logs.slice(inicio)))[0]).toMatchObject({ evento: 'email.falha', tentativas: 2 });
-    } finally {
-      envio.falhar = false;
-    }
-  }, 10_000);
-
-  it('S-1 e-mail desligado: email_desligado nas três entradas (tenant, MACUXI e /config)', async () => {
-    for (const pedido of [() => esqueci(semEmail, ATIVA.toUpperCase(), EMAIL_ATIVO), () => esqueci(semEmail, 'MACUXI', EMAIL_SA), () => esqueciConfig(semEmail, EMAIL_SA)]) {
-      const { r, novas } = await comLog(logsSemEmail, pedido);
-      neutro(r);
-      umaLinha(novas, 'esqueci.sem_envio', 'email_desligado');
-    }
-  });
-
-  it('S-1 limite por conta: o 4º pedido da mesma conta recebe 429 e o log da resposta mostra o 429, sem a conta', async () => {
-    for (let i = 0; i < 3; i++) neutro(await esqueci(app, ATIVA.toUpperCase(), EMAIL_LIMITE));
-    await envio.esperar();
-    const { r, novas } = await comLog(logs, () => esqueci(app, ATIVA.toUpperCase(), EMAIL_LIMITE));
-    expect(r.statusCode).toBe(429);
-    expect(doEsqueci(novas)).toEqual([]);
-    expect(novas.some((o) => (o.res as { statusCode?: number } | undefined)?.statusCode === 429)).toBe(true);
-  });
-
-  it('S-2: o log inteiro (com e sem e-mail) não contém e-mail, parte local, domínio, código da empresa nem a temporária', () => {
-    const texto = [...logs, ...logsSemEmail].join('\n').toLowerCase();
+  it('S-2: o log inteiro não contém e-mail, parte local, domínio, código da empresa nem a temporária', () => {
+    const texto = logs.join('\n').toLowerCase();
     expect(texto.length).toBeGreaterThan(0);
     for (const proibido of PROIBIDOS) expect(texto).not.toContain(proibido.toLowerCase());
     expect(texto).not.toMatch(/[a-z0-9._-]+@[a-z0-9-]+\.[a-z]/);
@@ -191,7 +156,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0102: log do motivo do "Esqueci a senha" na A
   });
 
   it('S-3 (RN-CORE-13): todos os 202 têm o mesmo corpo, seja qual for o motivo', () => {
-    expect(respostas.length).toBeGreaterThanOrEqual(15);
+    // 4 do tenant, 4 do superadmin e 3 aceites
+    expect(respostas).toHaveLength(11);
     const corpos = new Set(respostas.map((r) => r.body));
     expect(corpos.size).toBe(1);
     expect(Object.keys(respostas[0]!.json<object>())).toEqual(['mensagem']);

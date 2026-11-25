@@ -66,25 +66,27 @@ nenhum fluxo de produção insere nessa tabela, então todo tenant mostra "—" 
 A fonte é a pública do RF-CAD-02 (BrasilAPI ou base aberta; a escolha final sai na emenda de ADR do engenheiro). No
 teste a fonte é um dublê da porta, nunca a rede.
 
+Pendente: código fora do main; ADR conferido, ver nota.
+
 | # | Critério verificável (critério da tarefa) | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
-| R-1 | (1) "Atualizar pela Receita" no /config (só superadmin; outro perfil: 403) grava a ficha completa: razão social, nome fantasia, CNPJ, situação, abertura, natureza jurídica, porte, CNAE principal e secundários, endereço, e-mail e telefone, com a data e a fonte da consulta; a leitura devolve todos os campos. | rota | `tests/integracao/plataforma/empresa-ficha.db.test.ts` | modulo-core (+ cadastros pela consulta CNPJ) + banco-dados | pendente (código fora do main; ADR conferido, ver nota abaixo) |
-| R-2 | (1) Falha da fonte (tempo esgotado, CNPJ não encontrado, 5xx, resposta fora do formato): a ficha gravada não muda (nem a data da consulta), a resposta traz o motivo do catálogo (sem o CNPJ nem o corpo da fonte) e a tela mostra a mensagem no lugar, sem "Algo deu errado". | rota + tela | `empresa-ficha.db.test.ts` + e2e | modulo-core + apps/web | pendente (código fora do main; ADR conferido, ver nota abaixo) |
-| R-3 | (2) E-mail e telefone mascarados na resposta de leitura e na tela; a resposta não contém o e-mail nem o telefone da massa inteiros (nem só os dígitos). | rota + tela | `empresa-ficha.db.test.ts` + `docs/testes/prints/T-0101/` | modulo-core + apps/web | pendente (código fora do main; ADR conferido, ver nota abaixo) |
-| R-4 | (2) "Revelar" no /config, só superadmin (admin de empresa e outros: 403 e nenhuma linha): devolve o valor inteiro e grava a auditoria igual à do `plataforma.admin.revelar_email` (ADR 0012): ação própria, superadmin, entidade e campo, sem o valor. | banco + rota | `empresa-ficha.db.test.ts` | modulo-core + banco-dados | pendente (código fora do main; ADR conferido, ver nota abaixo) |
-| R-5 | (2) LGPD: o log capturado da API durante R-1, R-2 e R-4 não contém e-mail, telefone, CPF do MEI nem o corpo da fonte. | rota | `empresa-ficha.db.test.ts` | core | pendente (código fora do main; ADR conferido, ver nota abaixo) |
+| R-1 | (1) "Atualizar pela Receita" no /config (só superadmin; outro perfil: 403) grava a ficha completa: razão social, nome fantasia, CNPJ, situação, abertura, natureza jurídica, porte, CNAE principal e secundários, endereço, e-mail e telefone, com a data e a fonte da consulta; a leitura devolve todos os campos. | rota | `tests/integracao/plataforma/empresa-ficha.db.test.ts` | modulo-core (+ cadastros pela consulta CNPJ) + banco-dados | pendente |
+| R-2 | (1) Falha da fonte (tempo esgotado, CNPJ não encontrado, 5xx, resposta fora do formato): a ficha gravada não muda (nem a data da consulta), a resposta traz o motivo do catálogo (sem o CNPJ nem o corpo da fonte) e a tela mostra a mensagem no lugar, sem "Algo deu errado". | rota + tela | `empresa-ficha.db.test.ts` + e2e | modulo-core + apps/web | pendente |
+| R-3 | (2) E-mail e telefone mascarados na resposta de leitura e na tela; a resposta não contém o e-mail nem o telefone da massa inteiros (nem só os dígitos). | rota + tela | `empresa-ficha.db.test.ts` + `docs/testes/prints/T-0101/` | modulo-core + apps/web | pendente |
+| R-4 | (2) "Revelar" no /config, só superadmin (admin de empresa e outros: 403 e nenhuma linha): devolve o valor inteiro e grava a auditoria igual à do `plataforma.admin.revelar_email` (ADR 0012): ação própria, superadmin, entidade e campo, sem o valor. | banco + rota | `empresa-ficha.db.test.ts` | modulo-core + banco-dados | pendente |
+| R-5 | (2) LGPD: o log capturado da API durante R-1, R-2 e R-4 não contém e-mail, telefone, CPF do MEI nem o corpo da fonte. | rota | `empresa-ficha.db.test.ts` | core | pendente |
+| R-6 | Tenant sem `core.empresa`: "Atualizar pela Receita" responde 409 `CONFLITO` com "Cadastre a filial padrão antes", e nada é gravado (ADR 0012, emenda da ficha). | rota | `empresa-ficha.db.test.ts` | modulo-core | pendente |
 
 Conferência do ADR 0012, emenda da ficha (#613, 24/11, 23h50 de Manaus): R-2 a R-5 batem com o ADR (máscara
 "do****@gmail.com" e "(92) ****-1234", revelar com `plataforma.empresa.revelar_contato` só com o campo e o
-`request_id`, nada em log). Diferenças que mudam os casos quando o código chegar:
-- R-1: a ficha do ADR **não** tem abertura, natureza jurídica, porte nem CNAE secundários; tem o CNAE principal, o
-  regime pela Receita (`mei`, `simples` ou `normal`), a situação cadastral com a data, o endereço com `municipio_ibge`,
-  e-mail, telefone, `receita_fonte` e `receita_consultada_em`. O R-1 segue o ADR. A IE e o CRT não mudam pela Receita, e
-  o CNPJ nunca muda por essa rota.
+`request_id`, nada em log). Diferenças:
+- R-1: o ADR não tem abertura, natureza jurídica, porte nem CNAE secundários. Decisão do gerente (24/11, ~23h45 de
+  Manaus): vale a tarefa; o engenheiro emenda o ADR e banco e core incluem os campos. O R-1 fica com a ficha completa,
+  mais o que o ADR já traz (regime pela Receita, situação com a data, `municipio_ibge`, `receita_fonte`,
+  `receita_consultada_em`). A IE e o CRT não mudam pela Receita, e o CNPJ nunca muda por essa rota.
 - R-1 (auditoria): `plataforma.empresa.atualizar_receita` só com os **nomes** dos campos que mudaram, a fonte e o
   `request_id`; a data e a fonte são gravadas mesmo sem mudança (só na consulta que deu certo; na falha, R-2).
-- R-6 (novo): tenant sem `core.empresa` → "Atualizar pela Receita" responde 409 `CONFLITO` com "Cadastre a filial
-  padrão antes", e nada é gravado.
+- R-6 (novo, do ADR): 409 sem `core.empresa`.
 
 ## T-0099 — botão Ações nas linhas (R-20261124-224843)
 
@@ -109,13 +111,15 @@ Conferência do ADR 0012, emenda da ficha (#613, 24/11, 23h50 de Manaus): R-2 a 
 
 ## T-0096 — latitude e longitude do pré-cadastro (RN-INF-08)
 
+Pendente: código fora do main (24/11, 23h50 de Manaus).
+
 | # | Critério verificável | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
-| G-1 | Domínio do cadastros: latitude −90 e 90 aceitas, −90,000001 e 90,000001 recusadas; longitude −180 e 180 aceitas, −180,000001 e 180,000001 recusadas; só uma das duas, `NaN` ou texto: recusa com o campo. A API revalida (400 com o campo). | unitário + rota | `tests/integracao/rn/rn-cadastros.test.ts` + `tests/integracao/rotas/` | modulo-cadastros + banco-dados (CHECK) | pendente (código da T-0096 fora do main) |
-| G-2 | Pré-cadastro com latitude e longitude: o cliente criado pela conversão tem o endereço com os mesmos valores (sem perder casas além da precisão da coluna); o pendente repetido (F-3) não muda a localização. | pa-p | `tests/ponta-a-ponta-fdv/cliente-fdv-erp.db.test.ts` | modulo-cadastros + integracao-fdv | pendente (código da T-0096 fora do main) |
-| G-3 | Pré-cadastro sem localização: cliente criado com a localização nula. Latitude ou longitude fora da faixa (default do gerente, vai ao PO): grava nulo só nesse campo (o outro, válido, fica), o pré-cadastro segue `aceito` e o Log leva o motivo com o campo, sem o valor. | pa-p | `cliente-fdv-erp.db.test.ts` | modulo-cadastros + integracao-fdv | pendente (código da T-0096 fora do main) |
-| G-4 | LGPD (a localização de cliente PF é dado pessoal): o log capturado da API e do worker não contém a latitude nem a longitude. | pa-p | `cliente-fdv-erp.db.test.ts` | modulo-cadastros + integracao-fdv | pendente (código da T-0096 fora do main) |
-| G-5 | Tela do cliente mostra os dois campos. | tela | `docs/testes/prints/T-0096/` | apps/web + cadastros | pendente (código da T-0096 fora do main) |
+| G-1 | Domínio do cadastros: latitude −90 e 90 aceitas, −90,000001 e 90,000001 recusadas; longitude −180 e 180 aceitas, −180,000001 e 180,000001 recusadas; só uma das duas, `NaN` ou texto: recusa com o campo. A API revalida (400 com o campo). | unitário + rota | `tests/integracao/rn/rn-cadastros.test.ts` + `tests/integracao/rotas/` | modulo-cadastros + banco-dados (CHECK) | pendente |
+| G-2 | Pré-cadastro com latitude e longitude: o cliente criado pela conversão tem o endereço com os mesmos valores (sem perder casas além da precisão da coluna); o pendente repetido (F-3) não muda a localização. | pa-p | `tests/ponta-a-ponta-fdv/cliente-fdv-erp.db.test.ts` | modulo-cadastros + integracao-fdv | pendente |
+| G-3 | Pré-cadastro sem localização: cliente criado com a localização nula. Latitude ou longitude fora da faixa (default do gerente, vai ao PO): grava nulo só nesse campo (o outro, válido, fica), o pré-cadastro segue `aceito` e o Log leva o motivo com o campo, sem o valor. | pa-p | `cliente-fdv-erp.db.test.ts` | modulo-cadastros + integracao-fdv | pendente |
+| G-4 | LGPD (a localização de cliente PF é dado pessoal): o log capturado da API e do worker não contém a latitude nem a longitude. | pa-p | `cliente-fdv-erp.db.test.ts` | modulo-cadastros + integracao-fdv | pendente |
+| G-5 | Tela do cliente mostra os dois campos. | tela | `docs/testes/prints/T-0096/` | apps/web + cadastros | pendente |
 
 ## T-0097 — fração só em KG e M (RN-CAD-17, RN-INF-07)
 
@@ -151,9 +155,9 @@ Os testes da API são do dono (critério 1); o `testes` confere de fora, pela AP
 
 | # | Critério verificável | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
-| S-1 | Cada caminho do esqueci (tenant e superadmin) grava uma linha de log com o motivo do não envio (conta inexistente, inativa, bloqueada, limite) ou com o aceite do SMTP; a linha leva só o motivo ou o identificador interno. | rota | `tests/integracao/auth/esqueci-log.db.test.ts` | engenheiro-software | feito: `tests/integracao/auth/esqueci-log.db.test.ts` (API real no Postgres, log capturado), mais `apps/api/src/esqueci-senha.test.ts` do dono |
-| S-2 | O log capturado não contém o e-mail digitado (nem parte dele, nem o domínio isolado), a senha temporária nem o código da empresa digitado. | rota | `esqueci-log.db.test.ts` | engenheiro-software | feito: `esqueci-log.db.test.ts` |
-| S-3 | A resposta continua o 202 neutro em todos os motivos, sem diferença de corpo (RN-CORE-13). | rota | `esqueci-log.db.test.ts` | engenheiro-software | feito: `esqueci-log.db.test.ts` |
+| S-1 | Cada caminho do esqueci (tenant e superadmin) grava uma linha de log com o motivo do não envio (conta inexistente, inativa, bloqueada, limite) ou com o aceite do SMTP; a linha leva só o motivo ou o identificador interno. | rota | `tests/integracao/auth/esqueci-log.db.test.ts` | engenheiro-software | feito (motivos que leem o banco; e-mail desligado, falha do SMTP e limite no `apps/api/src/esqueci-senha.test.ts` do dono) |
+| S-2 | O log capturado não contém o e-mail digitado (nem parte dele, nem o domínio isolado), a senha temporária nem o código da empresa digitado. | rota | `esqueci-log.db.test.ts` | engenheiro-software | feito |
+| S-3 | A resposta continua o 202 neutro em todos os motivos, sem diferença de corpo (RN-CORE-13). | rota | `esqueci-log.db.test.ts` | engenheiro-software | feito |
 
 ## T-0103 — `operador.sh superadmin --listar` (R-20261124-225456, item 4)
 
@@ -161,8 +165,12 @@ O teste do script na suíte de scripts é do dono (critério 2); o `testes` conf
 
 | # | Critério verificável | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
-| O-1 | (1) `--listar` mostra cada superadmin com o e-mail mascarado, a situação (ativo ou inativo) e a data do último acesso; nem a saída nem o log capturado contêm um e-mail inteiro da massa. | script | `tests/integracao/plataforma/operador-superadmin.db.test.ts` (operador.sh real com o `docker` falso) | engenheiro-software | feito: `tests/integracao/plataforma/operador-superadmin-listar.db.test.ts` (operador.sh real) e `scripts/deploy/superadmin-listar.test.mjs` do dono |
-| O-2 | É só leitura (nenhuma linha muda em `plataforma.superadmin`) e registra quem pediu (`--operador`), sem e-mail; sem `--operador`, recusa como as outras ações; sem superadmin, lista vazia e saída 0. | script | `operador-superadmin.db.test.ts` | engenheiro-software | falha parcial: só leitura, recusas e lista vazia feitos em `operador-superadmin-listar.db.test.ts`; "registra quem pediu" não existe (o `--listar` exige o `--operador` mas não o grava), recado ao engenheiro-software |
+| O-1 | (1) `--listar` mostra cada superadmin com o e-mail mascarado, a situação (ativo ou inativo) e a data do último acesso; nem a saída nem o log capturado contêm um e-mail inteiro da massa. | script | `tests/integracao/plataforma/operador-superadmin-listar.db.test.ts` (operador.sh real com o `docker` falso) | engenheiro-software | feito (mais o `scripts/deploy/superadmin-listar.test.mjs` do dono) |
+| O-2 | É só leitura (nenhuma linha muda em `plataforma.superadmin`) e registra quem pediu (`--operador`), sem e-mail; sem `--operador`, recusa como as outras ações; sem superadmin, lista vazia e saída 0. | script | `operador-superadmin-listar.db.test.ts` | engenheiro-software | falha (aguarda a auditoria do --listar, engenheiro-software, depois da T-0093; R-20261124-233002) |
+
+O-2: decisão do gerente (24/11, ~23h45 de Manaus): o `--listar` grava a auditoria com quem pediu e a contagem, sem
+e-mail. Só leitura, recusas e lista vazia já estão no teste; o caso da auditoria fica fora do arquivo (sem `.skip`) até
+o código existir e entra junto com ele.
 
 ## Pendências da v0.3.12 (entram se couberem)
 
