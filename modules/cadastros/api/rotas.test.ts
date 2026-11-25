@@ -162,6 +162,20 @@ describe('localização do endereço do cliente (T-0096)', () => {
   });
 });
 
+describe('localização do endereço da filial (T-0096)', () => {
+  it('T-0096: POST e PATCH da filial normalizam a coordenada (válida mantém, fora da faixa ou incompleta vira nula)', async () => {
+    const t = montar();
+    const ok = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ endereco: { ...ENDERECO_AM, latitude: -3.1, longitude: -60.02 } }) });
+    expect(ok.status).toBe(201);
+    expect(ok.corpo.endereco).toMatchObject({ latitude: -3.1, longitude: -60.02 });
+    const fora = await t.chamar('PATCH', `/filiais/${ok.corpo.id}`, { sessao: adm, corpo: { endereco: { ...ENDERECO_AM, latitude: 95, longitude: -60 } } });
+    expect(fora.status).toBe(200);
+    expect(fora.corpo.endereco).toMatchObject({ latitude: null, longitude: null });
+    const meio = await t.chamar('PATCH', `/filiais/${ok.corpo.id}`, { sessao: adm, corpo: { endereco: { ...ENDERECO_AM, latitude: -3.1 } } });
+    expect(meio.corpo.endereco).toMatchObject({ latitude: null, longitude: null });
+  });
+});
+
 describe('clientes (RF-CAD-01)', () => {
   it('cria PJ com endereço, publica o evento com enderecos e vendedor_id', async () => {
     const t = montar();
