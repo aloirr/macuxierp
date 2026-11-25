@@ -16,6 +16,7 @@ import type {
 
 type Dict = Record<string, unknown>;
 /** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
+// T-0108: acrescentar 'prazo_medio_calculado' a esta lista depois da migração 0068 (banco-dados); sem a coluna, o SELECT quebra.
 const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'prazo_medio_dias', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
@@ -338,7 +339,13 @@ export function repositoriosSql(tx: Transacao): Repositorios {
     },
   );
 
-  const condicoesPagamentoRepo = simples('cadastros.condicao_pagamento', COLUNAS_CONDICAO, ['codigo', 'descricao']) as unknown as RepoSimples<CondicaoPagamento, CondicaoPagamentoDados>;
+  const condicoesBase = simples('cadastros.condicao_pagamento', COLUNAS_CONDICAO, ['codigo', 'descricao']) as unknown as RepoSimples<CondicaoPagamento, CondicaoPagamentoDados>;
+  // T-0108 (provisório até a migração 0068): a coluna ainda não existe, então a marca não vai ao banco. Remover este filtro junto com o TODO de COLUNAS_CONDICAO.
+  const semMarca = <T extends object>(d: T): T => { const { prazo_medio_calculado: _m, ...resto } = d as T & { prazo_medio_calculado?: unknown }; return resto as T; };
+  const condicoesPagamentoRepo: RepoSimples<CondicaoPagamento, CondicaoPagamentoDados> = Object.assign(Object.create(condicoesBase) as typeof condicoesBase, {
+    inserir: (d: CondicaoPagamentoDados) => condicoesBase.inserir(semMarca(d)),
+    atualizar: (id: string, p: Partial<CondicaoPagamentoDados>) => condicoesBase.atualizar(id, semMarca(p)),
+  });
 
   /** Filtros comuns de `estoque_saldo` (excluídos fora, filial e produto), usados por `listar` e `saldos`. */
   const filtroSaldo = (q: { filial_id?: string; produto_id?: string }, par: (v: unknown) => string): string[] => {
@@ -505,6 +512,10 @@ function cargaSql(tx: Transacao): RepoCarga {
     },
     async condicoesAtivasCartaoSemParcelas() {
       const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND forma_tpag = '03' AND parcelas_cartao IS NULL ORDER BY id`, []);
+      return l as unknown as CondicaoPagamento[];
+    },
+    async condicoesAtivasSemPrazoMedio() {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND prazo_medio_dias IS NULL AND cardinality(prazos_dias) >= 1 ORDER BY id FOR UPDATE`, []);
       return l as unknown as CondicaoPagamento[];
     },
     async filhoPorExternalId(t, ext) {

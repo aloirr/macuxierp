@@ -12,7 +12,7 @@ import {
   type LinhaPreco, type LinhaProduto, type LinhaProdutoUnidade, type LinhaVendedor, type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, completarPrazoMedio, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, violacaoFracao, type ErroLinha, type IdsConhecidos,
   type FatosFilial, type FormaDoLote,
 } from '../domain';
@@ -303,7 +303,11 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
     const tpagFinal = (campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag;
-    const patch: Dict = { ...completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
+    // RN-CAD-15 (decisões 14 A e 17 B): a origem manda; célula vazia com parcelas na linha é cálculo (marca true), digitado vale (marca false)
+    const comPrazo = d.prazos_dias === undefined ? completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex) : completarPrazoMedio({ ...completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex), prazo_medio_dias: d.prazo_medio_dias ?? null }, ex);
+    const { prazo_medio_calculado: marca, ...comPrazoSemMarca } = comPrazo as Dict;
+    // a marca só entra no patch quando o cadastro gravado a tem (coluna da 0068); evita "atualizada" por campo que o banco ainda não devolve
+    const patch: Dict = { ...comPrazoSemMarca, ...(ex.prazo_medio_calculado === undefined || marca === undefined ? {} : { prazo_medio_calculado: marca }), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
     const vc = validarCondicaoPagamento({
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
@@ -326,14 +330,15 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   if (!f?.tpag) return mover(l.linha, 'forma_codigo', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
   const comDescricao = { ...d, ...(p.linha.dados.descricao === undefined ? {} : { descricao: p.linha.dados.descricao }) };
   // RN-CAD-15: os dias são os digitados; `parcelas_cartao` (legado) é derivada dos prazos.
-  const r = CondicaoPagamentoDados.safeParse({ ...completarParcelasCartao({ ...comDescricao, forma_tpag: f.tpag }), ...campoForma, external_id: l.external_id });
+  const comPrazo = completarPrazoMedio(completarParcelasCartao({ ...comDescricao, forma_tpag: f.tpag }));
+  const r = CondicaoPagamentoDados.safeParse({ ...comPrazo, ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
   const vc = validarCondicaoPagamento(r.data);
   if (vc.length) return violacoes(l.linha, vc);
   return {
     efeito: 'inserida',
     async aplicar() {
-      const criada = await repo.inserir(r.data);
+      const criada = await repo.inserir({ ...r.data, ...(comPrazo.prazo_medio_calculado === undefined ? {} : { prazo_medio_calculado: comPrazo.prazo_medio_calculado }) } as never);
       await concluirEscrita(st, repo, criada.id, l.ativo, false, EVENTO_CONDICAO);
       return criada.id;
     },

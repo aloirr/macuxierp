@@ -10,6 +10,8 @@ import { MAX_PARCELAS_DA_CLASSE, MOTIVO_PRAZO_MEDIO, validarCondicaoPagamento } 
 export const FORMAS_DO_PRAZO: readonly { tpag: string; rotulo: string }[] = (['01', '17', '04', '03', '15'] as const).map((tpag) => ({ tpag, rotulo: NOME_FORMA[tpag] }));
 
 export const ROTULO_PRAZO_MEDIO = 'Prazo médio (dias)';
+/** RN-CAD-15 (decisão 14 A): ajuda do campo no formulário do prazo. */
+export const AJUDA_PRAZO_MEDIO = 'Vazio: o ERP calcula a média das parcelas.';
 /** A lista dos prazos se agrupa por este campo (o `agruparPor` da página das condições, em `paginas.ts`). */
 export const AGRUPAR_PRAZOS_POR = 'forma_tpag';
 
@@ -62,18 +64,20 @@ const inteiro = (t: string): number | null => (/^\d+$/.test(t.trim()) ? Number(t
 export type ErrosDoPrazo = Partial<Record<'codigo' | 'descricao' | 'prazos_dias' | 'prazo_medio_dias' | 'forma_tpag', string>>;
 
 /** O corpo do POST/PUT e os erros por campo (mesma regra da API: RN-CAD-15). `corpo` só vem quando não há erro. */
-export function montarPrazo(f: FormularioPrazo): { corpo?: { codigo: string; descricao: string; forma_tpag: string; prazos_dias: number[]; prazo_medio_dias: number }; erros: ErrosDoPrazo } {
+export function montarPrazo(f: FormularioPrazo): { corpo?: { codigo: string; descricao: string; forma_tpag: string; prazos_dias: number[]; prazo_medio_dias: number | null }; erros: ErrosDoPrazo } {
   const erros: ErrosDoPrazo = {};
   if (f.codigo.trim() === '') erros.codigo = 'Informe o código';
   if (f.descricao.trim() === '') erros.descricao = 'Informe a descrição';
   const dias = f.parcelas.map(inteiro);
-  const medio = inteiro(f.prazo_medio_dias);
+  // vazio vai como null e o ERP calcula (decisão 14 A); digitado é validado de 0 a 365
+  const vazio = f.prazo_medio_dias.trim() === '';
+  const medio = vazio ? null : inteiro(f.prazo_medio_dias);
   if (dias.some((d) => d === null)) erros.prazos_dias = `Informe os dias de cada parcela (0 a ${MAX_DIAS})`;
-  if (medio === null) erros.prazo_medio_dias = MOTIVO_PRAZO_MEDIO;
+  if (!vazio && medio === null) erros.prazo_medio_dias = MOTIVO_PRAZO_MEDIO;
   if (Object.keys(erros).length === 0) {
     const prazos = dias as number[];
     for (const v of validarCondicaoPagamento({ forma_tpag: f.forma_tpag, prazos_dias: prazos, prazo_medio_dias: medio })) erros[v.campo as keyof ErrosDoPrazo] = v.mensagem;
-    if (Object.keys(erros).length === 0) return { corpo: { codigo: f.codigo.trim(), descricao: f.descricao.trim(), forma_tpag: f.forma_tpag, prazos_dias: prazos, prazo_medio_dias: medio as number }, erros };
+    if (Object.keys(erros).length === 0) return { corpo: { codigo: f.codigo.trim(), descricao: f.descricao.trim(), forma_tpag: f.forma_tpag, prazos_dias: prazos, prazo_medio_dias: medio }, erros };
   }
   return { erros };
 }
