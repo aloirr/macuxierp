@@ -7,22 +7,18 @@
  * (`tests/integracao/rotas/fumaca-telas.db.test.ts`) só chama a API e os testes de unidade usam renderToString: nenhum pegou.
  *
  * Lista de telas, sem lista à mão: todo `page.tsx` de apps/web/src/app vira uma URL; o `[modulo]/[...pagina]` do shell abre
- * cada rota de `PAGINAS_REGISTRADAS` (vem no JSON da API); `/config/empresas/[id]` abre a empresa de teste e cada aba que a
- * própria tela lista. Segmento dinâmico novo, sem valor aqui, derruba o e2e (a tela nova não fica fora calada).
- *
- * Falha a tela se: a resposta final não é 200 (rota com `:param` e registro fictício aceita o 404 da página "não encontrada"
- * do app); o HTML traz a página de erro do Next ou o "Algo deu errado" do error.tsx; o console ou a página têm erro; alguma
- * chamada da página dá 5xx; ou o log do servidor web ganha erro de render ("Functions cannot be passed", "⨯", "Error:").
+ * cada rota de `PAGINAS_REGISTRADAS` (as duas listas vêm no JSON da API); `/config/empresas/[id]` abre a empresa de teste e
+ * cada aba que a própria tela lista. Segmento dinâmico novo, sem valor aqui, derruba o e2e (a tela nova não fica fora calada).
+ * Critérios de falha: X-6 de docs/testes/plano-v0.3.12.md.
  *
  * Uso: `bash tests/e2e/rodar-render-telas.sh` (sobe a API, builda e sobe o web), ou à mão:
  *   node tests/e2e/render-telas.mjs --base http://localhost:3102 --dados <json da API> --log <log do servidor web>
  * Sai 0 se todas as telas abriram limpas; 1 se alguma falhou (lista no fim). Playwright global, sem trace.
  */
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { argumento } from './apoio-e2e.mjs';
+import { join } from 'node:path';
+import { argumento, entrar } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -40,8 +36,6 @@ if (!DADOS) {
 }
 const dados = JSON.parse(readFileSync(DADOS, 'utf8'));
 if (HTML) mkdirSync(HTML, { recursive: true });
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const APP = join(RAIZ, 'apps', 'web', 'src', 'app');
 
 /**
  * Marcas de erro no HTML: a página de erro do Next, os error.tsx do app e o aviso de API indisponível das telas ("Não foi
@@ -60,16 +54,6 @@ const ERRO_NO_LOG = /Functions cannot be passed|Only plain objects|⨯|\bError:/
 
 // ---------------------------------------------------------------- 1. as URLs, a partir dos page.tsx
 
-function paginasDoApp(dir = APP) {
-  const r = [];
-  for (const nome of readdirSync(dir)) {
-    const abs = join(dir, nome);
-    if (statSync(abs).isDirectory()) r.push(...paginasDoApp(abs));
-    else if (nome === 'page.tsx') r.push(relative(APP, dir).split(sep).join('/'));
-  }
-  return r.sort();
-}
-
 /** Contexto de cada URL: sem sessão (telas de entrada), BKO (administrador do tenant) ou portal /config (superadmin). */
 const SEM_SESSAO = new Set(['/login', '/config/entrar']);
 const contextoDe = (url) =>
@@ -77,7 +61,7 @@ const contextoDe = (url) =>
 
 function urlsDasTelas() {
   const urls = [];
-  for (const dir of paginasDoApp()) {
+  for (const dir of dados.paginasDoApp) {
     const segs = dir.split('/').filter((s) => s && !/^\(.*\)$/.test(s));
     const molde = `/${segs.join('/')}`;
     if (molde === '/[modulo]/[...pagina]') {
@@ -210,22 +194,18 @@ try {
   for (const item of URLS.filter((u) => u.contexto === 'sem-sessao')) await abrir(anon, vAnon, item);
 
   // Login único (/login): o administrador do tenant de teste vai ao BKO; o superadmin (código da plataforma) ao /config.
-  async function entrar(u, chegou) {
+  async function sessao(u, chegou) {
     const p = await (await navegador.newContext(opcoes)).newPage();
     p.setDefaultTimeout(30_000);
-    await p.goto(`${BASE}/login`);
-    await p.getByLabel('Empresa').fill(u.empresa);
-    await p.getByLabel('E-mail').fill(u.email);
-    await p.getByLabel('Senha', { exact: true }).fill(u.senha);
-    await p.getByRole('button', { name: 'Entrar' }).click();
+    await entrar(p, BASE, u);
     await p.waitForURL((x) => chegou(new URL(x).pathname));
     return p;
   }
-  const bko = await entrar(dados.administrador, (c) => !c.startsWith('/login'));
+  const bko = await sessao(dados.administrador, (c) => !c.startsWith('/login'));
   const vBko = vigiar(bko);
   for (const item of URLS.filter((u) => u.contexto === 'bko')) await abrir(bko, vBko, item);
 
-  const portal = await entrar(dados.superadmin, (c) => c === '/config');
+  const portal = await sessao(dados.superadmin, (c) => c === '/config');
   const vPortal = vigiar(portal);
   for (const item of URLS.filter((u) => u.contexto === 'portal')) {
     await abrir(portal, vPortal, item);

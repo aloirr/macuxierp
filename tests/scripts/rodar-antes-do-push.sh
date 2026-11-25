@@ -262,8 +262,7 @@ if [[ "${RODAR_SCRIPTS}" -eq 1 ]]; then
     LINHAS+=("| scripts | \`node --test\` | 0min00s | 0 | 0 | 0 | sem testes (nenhum *.test.mjs em scripts/) |")
   fi
 fi
-# Render das telas (X-6 da v0.3.12): todas as telas do web em modo de produção, no Chromium, contra a API real. Pega o
-# erro de render que a fumaça (só API) e o renderToString não pegam ("Functions cannot be passed to Client Components").
+# Render das telas (X-6 da v0.3.12): todas as telas do web em modo de produção, no Chromium, contra a API real.
 if [[ "${RODAR_RENDER}" -eq 1 ]]; then
   etapa "render das telas" "bash tests/e2e/rodar-render-telas.sh" render
 fi

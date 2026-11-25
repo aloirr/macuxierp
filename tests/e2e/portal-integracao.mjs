@@ -12,7 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, exigir } from './apoio-e2e.mjs';
+import { argumento, criarRoteiro, entrar, exigir } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -115,14 +115,10 @@ async function bkoConfere(esperado) {
 }
 
 try {
-  await passo('(a) superadmin entra em /config/entrar com a senha provisória e a tela manda trocar; troca e chega à lista', async () => {
-    await portal.goto(`${BASE}/config/entrar`);
-    await portal.getByRole('heading', { level: 1, name: 'Plataforma Macuxi ERP' }).waitFor();
-    await portal.getByLabel('E-mail').fill(dados.superadmin.email);
-    await portal.getByLabel('Senha').fill(dados.superadmin.senhaProvisoria);
-    await portal.getByRole('button', { name: 'Entrar' }).click();
+  await passo('(a) superadmin entra no login único com a senha provisória e a tela manda trocar; troca e chega à lista', async () => {
+    await entrar(portal, BASE, dados.superadmin);
     await portal.getByRole('heading', { level: 1, name: 'Defina uma senha nova' }).waitFor();
-    await portal.getByLabel('Senha provisória atual').fill(dados.superadmin.senhaProvisoria);
+    await portal.getByLabel('Senha provisória atual').fill(dados.superadmin.senha);
     await portal.getByLabel('Senha nova', { exact: true }).fill(SENHA_NOVA);
     await portal.getByLabel('Confirme a senha nova').fill(SENHA_NOVA);
     await portal.getByRole('button', { name: 'Definir senha' }).click();
@@ -183,11 +179,7 @@ try {
   });
 
   await passo('(e1) administrador entra no BKO; Integração FDV mostra Produtos Ligada, igual ao portal e à API, sem chave nem escrita', async () => {
-    await bko.goto(`${BASE}/login`);
-    await bko.getByLabel('Empresa').fill(dados.administrador.empresa);
-    await bko.getByLabel('E-mail').fill(dados.administrador.email);
-    await bko.getByLabel('Senha').fill(dados.administrador.senha);
-    await bko.getByRole('button', { name: 'Entrar' }).click();
+    await entrar(bko, BASE, dados.administrador);
     await bko.waitForURL((u) => new URL(u).pathname === '/');
     await bko.getByRole('navigation', { name: 'Menu principal' }).getByRole('link', { name: 'Integração FDV' }).click();
     await bko.getByRole('heading', { level: 1, name: 'Integração FDV' }).waitFor();
