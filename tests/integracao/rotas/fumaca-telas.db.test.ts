@@ -193,6 +193,8 @@ const GETS_ESTRUTURADOS = (): { origem: string; caminho: string }[] => [
   ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `Log do BKO (${e})`, caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace(':entidade', e)}` })),
   ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `CSV do Log do BKO (${e}, caminhoDoLogCsv)`, caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv.replace(':entidade', e)}` })),
   { origem: 'aba Integração do /config', caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ler}` },
+  { origem: 'monitor do conector na aba Integração', caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.monitor}` },
+  ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `log da carga na aba Integração (${e})`, caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log.replace(':entidade', e)}` })),
   { origem: 'aba Cargas do /config', caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.situacao}` },
   ...ENTIDADES_CARGA_PORTAL.map((c) => ({ origem: `modelo da carga (${c})`, caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.modelo.replace(':cadastro', c)}` })),
 ];

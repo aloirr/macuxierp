@@ -477,6 +477,105 @@
         "tipo": "contexto",
         "nome": "empresa"
       }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/cliente_endereco/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/cliente/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/estoque/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/filial/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/forma_pagamento/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/prazo_pagamento/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/preco/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/produto_unidade/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/produto/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/vendedor/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/monitor",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
     }
   ]
 }
