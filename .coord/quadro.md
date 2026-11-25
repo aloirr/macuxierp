@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.12 em liberação** (24/11, 22h04: producao-liberar 45530351015 no SHA 5565d08; suíte completa e revisão final verdes). Conteúdo: T-0085 (formas e prazos, RN-PED-07), T-0086 (integração: /config, Zerar inativando no FDV, Log no BKO), T-0087/T-0088 (telas do core e da empresa), T-0092 (limites do Hub), T-0094 (olho da senha), T-0059 (pré-cadastro de cliente do FDV) e as decisões da noite (ver a seção de 24/11 noite). Próxima: **v0.3.13** (ver a seção de 24/11 noite). A retomar: T-0057 (#405), T-0083, T-0075. Depois: T-0062, T-0060, entidades v2, T-0081, T-0082.
+> Fase atual: **v0.3.12 em produção** (24/11, 22h22: tag v0.3.12 = 5565d08; liberar 45530351015, issue #596, aprovar 45531871230, publicar 45531949873). Conteúdo: T-0085 (formas e prazos, RN-PED-07), T-0086 (integração: /config, Zerar inativando no FDV, Log no BKO), T-0087/T-0088 (telas do core e da empresa), T-0092 (limites do Hub), T-0094 (olho da senha), T-0059 (pré-cadastro de cliente do FDV) e as decisões da noite (ver a seção de 24/11 noite). Próxima: **v0.3.13** (ver a seção de 24/11 noite). A retomar: T-0057 (#405), T-0083, T-0075. Depois: T-0062, T-0060, entidades v2, T-0081, T-0082.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -90,6 +90,7 @@
 | [T-0096](tarefas/T-0096.md) | Latitude e longitude do pré-cadastro do FDV no endereço do cliente | depois da v0.3.12 | modulo-cadastros | aberta | R-20261124-210726; #572 |
 | [T-0097](tarefas/T-0097.md) | Fração só em KG e M: validação no cadastro, no pedido e na carga; envio fracionário quando o FDV aceitar | v0.3.13 | modulo-cadastros | aberta | R-20261124-211517; RN-CAD-17; #584 |
 | [T-0098](tarefas/T-0098.md) | Expurgo do pré-cadastro recebido sem decisão (180 dias do recebimento) | v0.3.13 | modulo-integracao-fdv | aberta | R-20261124-214227; RN-INF-06; arquivo no #592 |
+| [T-0099](tarefas/T-0099.md) | Botão Ações nas linhas de todas as tabelas e listas do /config e do BKO (padrão do FDV) | v0.3.13 | designer-ux | aberta | R-20261124-224843 |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 
@@ -110,6 +111,7 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 | T-0023 (session_019xHEXsi68pkRSBNcRmrmW9) | `docs/marca/` (PR #5) |
 
 ## Reservas
+- **24/11, 22h58 (Manaus):** T-0099 criada (botão Ações, R-20261124-224843); próxima livre **T-0100**. RD usados até RD-1758; próxima livre **RD-1759**.
 - **24/11, 22h10 (Manaus):** T-0096 (lat/long), T-0097 (fração só em KG e M) e T-0098 (expurgo do pré-cadastro sem decisão, arquivo no #592) criadas; próxima livre **T-0099**. Migrações no main até a **0058** (a 0056 ficou com o prazo do pedido e a T-0059 foi para a 0057; 0058 ajustes do corretor); próxima livre **0059**. RD usados na noite até RD-1747 (cadastros 1741–1750); próxima livre **RD-1751**. RN novas: RN-CAD-17, RN-INF-07, RN-INF-08; emendas na RN-CAD-09/10/15/16 e na RN-INF-06 (#592, depois do corte).
 - **24/11, 18h25 (Manaus):** T-0095 criada (copiar a senha); próxima livre **T-0096**. Migrações: **0055** = funções do portal portal_monitor, portal_log e portal_reprocessar (T-0086, libera o #527); **0056** = T-0059 (§3 do desenho); a 0054 segue na T-0092; próxima livre 0057. A T-0093 foi para a v0.3.13 (R-20261124-181533) e não tem migração reservada. RD por sessão: apps+core RD-1500–1529; cadastros+pedido RD-1530–1559; banco+integração RD-1560–1589; engenheiro-software RD-1590–1599; testes RD-1600–1609. Os RD-1463 a 1469 do testes (#516, #518, #525) ficam como estão. RN-INF-06 (guarda do pré-cadastro recusado, 180 dias). Conector MySQL no backlog. D3 da AM2808 é regra (RN-FAT-04); a bandeira é religada pela tela depois do deploy (decisão A).
 - **24/11, 18h20 (Manaus):** T-0090 a T-0094 criadas (auditoria do PO dos pedidos de 21/11 a 24/11); próxima livre **T-0095**. Migração **0053** (T-0086, inativar espelho) e **0054** (T-0092, limites 200/30) reservadas; próxima livre 0055. RN-CAD-12, 13 e 14 escritas no doc 03. T-0059 na v0.3.12 (Alexandre, 18h11).
