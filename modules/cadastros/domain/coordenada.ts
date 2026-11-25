@@ -18,3 +18,8 @@ export function normalizarCoordenada(latitude: unknown, longitude: unknown): Coo
   if (naFaixa(latitude, LATITUDE_MIN, LATITUDE_MAX) && naFaixa(longitude, LONGITUDE_MIN, LONGITUDE_MAX)) return { latitude, longitude };
   return { latitude: null, longitude: null };
 }
+
+/** Aplica `normalizarCoordenada` a um endereço (corpo de rota): devolve cópia com os dois campos sempre presentes. */
+export function comCoordenadaNormalizada<T extends Record<string, unknown>>(endereco: T): T & Coordenada {
+  return { ...endereco, ...normalizarCoordenada(endereco.latitude, endereco.longitude) };
+}

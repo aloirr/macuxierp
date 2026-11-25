@@ -38,9 +38,9 @@ export const Endereco = z.object({
   uf: Uf,
   cep: Cep,
   pais_bacen: z.string().regex(/^\d{1,4}$/).default('1058'),
-  /** T-0096: localização (aditivo no @1); os dois juntos, normalizados por `normalizarCoordenada` (domain). */
-  latitude: z.number().min(-90).max(90).nullish(),
-  longitude: z.number().min(-180).max(180).nullish(),
+  /** T-0096: localização (aditivo no @1). A faixa não recusa: fora dela a API grava nulo (`normalizarCoordenada`, domain). */
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
 });
 export type Endereco= z.infer<typeof Endereco>;
 

@@ -16,7 +16,7 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
+  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, comCoordenadaNormalizada, normalizarCoordenada, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
   violacao, violacaoFracao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
@@ -208,6 +208,8 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
     /** Evento do pai refeito depois da escrita (o filho vai dentro do payload do pai). */
     aoGravar?(c: ContextoRota, r: Repositorios, pai: P, antes?: null): Promise<void>;
     validar?(r: Repositorios, dados: Dict, c: ContextoRota): Promise<Violacao[]>;
+    /** Ajusta o corpo antes de validar e gravar (`atual` só no PATCH). */
+    completar?(corpo: Dict, atual?: Dict): Dict;
   },
 ): RotaModulo[] {
   const R = (c: ContextoRota) => deps.repositorios(c.tx);
@@ -234,8 +236,9 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
       async executar(c, e) {
         const r = R(c);
         const p = await pai(c, r, idDe(e));
-        if (cfg.validar) exigir(await cfg.validar(r, e.corpo, c));
-        const criado = await cfg.filho(r).inserir(p.id, e.corpo);
+        const corpo = cfg.completar ? cfg.completar(e.corpo as Dict) : (e.corpo as Dict);
+        if (cfg.validar) exigir(await cfg.validar(r, corpo, c));
+        const criado = await cfg.filho(r).inserir(p.id, corpo as never);
         await depois(c, r, p);
         return { status: 201, corpo: criado };
       },
@@ -247,8 +250,9 @@ function rotasFilho<P extends Entidade, F extends { id: string }, D extends Dict
         const p = await pai(c, r, idDe(e));
         const atual = await cfg.filho(r).obter(p.id, idDe(e, 'filho_id'));
         if (!atual) throw erros.naoEncontrado('Registro');
-        if (cfg.validar) exigir(await cfg.validar(r, { ...(atual as unknown as Dict), ...(e.corpo as Dict) }, c));
-        const novo = await cfg.filho(r).atualizar(p.id, atual.id, e.corpo);
+        const corpo = cfg.completar ? cfg.completar(e.corpo as Dict, atual as unknown as Dict) : (e.corpo as Dict);
+        if (cfg.validar) exigir(await cfg.validar(r, { ...(atual as unknown as Dict), ...corpo }, c));
+        const novo = await cfg.filho(r).atualizar(p.id, atual.id, corpo as never);
         if (!novo) throw erros.naoEncontrado('Registro');
         await depois(c, r, p);
         return { corpo: novo };
@@ -306,11 +310,19 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     },
     visivel: clienteVisivel,
     validar: (r, cli, parcial) => validarCliente(r, cli, parcial),
+    // T-0096: a API revalida a localização do endereço (fora da faixa ou incompleta grava nulo)
+    completar: (corpo) => (Array.isArray(corpo.enderecos) ? { ...corpo, enderecos: (corpo.enderecos as Dict[]).map(comCoordenadaNormalizada) } : corpo),
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/clientes/:id/enderecos', editar: 'cadastros.cliente.editar', dados: EnderecoCliente, atualizacao: EnderecoCliente.partial(),
     pai: (r) => r.clientes, filho: (r) => r.clientes.enderecos, visivel: clienteVisivel, aoGravar: emitirCom(eventoCliente),
     validar: async (_r, d) => verificarMunicipioEndereco(d as { municipio_ibge: string; uf: string }, 'municipio_ibge'),
+    // T-0096: no PATCH, mexer em um dos dois reavalia o par com o valor gravado
+    completar(corpo, atual) {
+      if (!atual) return comCoordenadaNormalizada(corpo);
+      if (!('latitude' in corpo) && !('longitude' in corpo)) return corpo;
+      return { ...corpo, ...normalizarCoordenada('latitude' in corpo ? corpo.latitude : atual.latitude, 'longitude' in corpo ? corpo.longitude : atual.longitude) };
+    },
   }));
   rotas.push(...rotasFilho(deps, {
     caminho: '/clientes/:id/contatos', editar: 'cadastros.cliente.editar', dados: Contato, atualizacao: Contato.partial(),
