@@ -355,6 +355,14 @@ Desenho em `docs/desenho/T-0059.md` §3 (o uso está no §5) e **RN-INF-06** (LG
 
 Migração: `db/migrations/0057_integracao_fdv_pre_cadastro_cliente.sql`; testes: `db/testes/pre-cadastro-0057.db.test.ts` (e as matrizes de `integracao-fdv.db.test.ts` e `plataforma.db.test.ts`).
 
+## Expurgo do pré-cadastro sem decisão (T-0098, migração 0062)
+RN-INF-06, decisão do Alexandre (R-20261124-214227, opção A): o pré-cadastro em `recebido` ou `reenviado` também é expurgado 180 dias depois, com o tratamento do recusado.
+- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` fica como está, porque o worker do `main` a chama; sai numa migração seguinte, quando nenhuma versão a usar.
+- **Prazo do sem-decisão:** conta da chegada da própria revisão (no reenviado, a última); exige o `recebido_em` do FDV e o `chegou_em` do ERP antes do corte, para que um pré-cadastro parado no Hub não saia no dia em que chega.
+- **CHECKs mais largos:** o recebido e o reenviado podem ficar sem payload depois do expurgo, e a linha expurgada ainda pode ser decidida (o FDV entrega a mesma revisão de novo). A versão anterior grava o mesmo de sempre.
+
+Migração: `db/migrations/0062_integracao_fdv_expurgo_sem_decisao.sql`; testes: `db/testes/pre-cadastro-0062.db.test.ts`.
+
 ## Limites do Hub no cadastros (T-0092, migração 0054)
 ADR 0019, opção A: o banco aceita os limites do `hub-v1` do SDK (`EXTERNAL_ID_MAX` = 200 e `LIMITE_CODIGO_FORMA_PAGAMENTO` = 30).
 - **O que muda:** em todas as tabelas do schema `cadastros` com `external_id` (inclusive as oficiais e a `carga_portal`), `CHECK (length(external_id) <= 200)` no lugar do `<= 64`; em `cadastros.condicao_pagamento`, `forma_external_id` também vai a 200 e `forma_codigo` a 30 (era 20). Os outros schemas seguem em 64: não recebem chave do Hub.
