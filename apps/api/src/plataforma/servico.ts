@@ -15,6 +15,7 @@
 import { randomBytes } from 'node:crypto';
 import { erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
 import { conferirTemporaria, custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
+import { registrarSemEnvio, type LogEsqueci } from '../auth/esqueci-log';
 import type { TrocaPendente } from '../auth/troca-senha';
 import type { MensagemEmail } from '../email/porta';
 import { ConferenciaCustoIgual, contaTravada, travaAposFalha } from '../auth/apoio-login';
@@ -101,7 +102,7 @@ export class ServicoPlataforma {
   }
 
   /** Pedido de senha temporária (T-0076), pela `superadmin_emitir_temporaria`. Ordem e regras: auth/esqueci.ts. */
-  async esqueci(email: string): Promise<MensagemEmail | null> {
+  async esqueci(email: string, log?: LogEsqueci): Promise<MensagemEmail | null> {
     const para = email.trim().toLowerCase();
     const temporaria = await emitirTemporaria(this.cfg.argon2, this.relogio.agora());
     const gravou = await this.banco.antesDaSessao(async (tx) => {
@@ -110,11 +111,14 @@ export class ServicoPlataforma {
       await tx.consultar('SELECT plataforma.superadmin_emitir_temporaria($1::uuid, $2, $3)', [sa.id, temporaria.hash, temporaria.expira_em]);
       return true;
     });
-    return gravou ? mensagemSenhaTemporaria(para, temporaria.senha) : null;
+    if (gravou) return mensagemSenhaTemporaria(para, temporaria.senha);
+    registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
+    return null;
   }
 
   /** Pedido com o e-mail desligado (T-0076): o mesmo custo de argon2 do `esqueci`, sem banco, sem temporária e sem envio. */
-  esqueciSemEnvio(): Promise<null> {
+  esqueciSemEnvio(log?: LogEsqueci): Promise<null> {
+    registrarSemEnvio(log, 'email_desligado');
     return custoTemporariaDescartada(this.cfg.argon2);
   }
 

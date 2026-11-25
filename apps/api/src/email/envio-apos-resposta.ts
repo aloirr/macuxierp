@@ -4,53 +4,59 @@
  * - roda no `setImmediate`; nunca lança nem deixa rejeição sem tratamento;
  * - 2 tentativas, com 2000 ms entre elas;
  * - `ErroEmailDesligado` não é falha: não tenta de novo e não loga;
- * - na falha final, um `warn` só com `evento` e `tentativas` (LGPD: sem destinatário, assunto, texto nem mensagem do erro). O código
- *   do SMTP já sai no log da porta (`porta.ts`), em cada tentativa, e não se repete aqui.
+ * - SMTP aceitou: um `info` "email.enviado" com um `envio_id` aleatório (UUID, sem ligação com conta, empresa ou destinatário),
+ *   para a operação ver na VM que o e-mail saiu;
+ * - falha final: um `warn` "email.falha" só com `evento`, `tentativas` e o `codigo` do SMTP da última tentativa (o do
+ *   nodemailer, `EAUTH`, `ECONNECTION`..., já filtrado pela porta; `null` se não houver).
+ * LGPD: nenhum log leva destinatário, assunto, texto ou mensagem do erro.
  */
+import { randomUUID } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
-import { type EnvioEmail, ErroEmailDesligado, type MensagemEmail } from './porta';
+import { type EnvioEmail, ErroEmailDesligado, ErroEnvioEmail, type MensagemEmail } from './porta';
 
 const TENTATIVAS = 2;
 const ESPERA_PADRAO_MS = 2000;
 
-export function agendarEnvioEmail(
-  envio: EnvioEmail,
-  m: MensagemEmail,
-  opcoes?: { log?: Pick<FastifyBaseLogger, 'warn'>; esperaMs?: number },
-): void {
+export type LogEnvioEmail = Pick<FastifyBaseLogger, 'info' | 'warn'>;
+
+/** Resultado das tentativas: enviou, e-mail desligado, ou falhou com o código SMTP da última (ou `null`). */
+type Resultado = { tipo: 'enviado' } | { tipo: 'desligado' } | { tipo: 'falha'; codigo: string | null };
+
+export function agendarEnvioEmail(envio: EnvioEmail, m: MensagemEmail, opcoes?: { log?: LogEnvioEmail; esperaMs?: number }): void {
   const log = opcoes?.log;
   const esperaMs = opcoes?.esperaMs ?? ESPERA_PADRAO_MS;
   setImmediate(() => {
     void tentar(envio, m, esperaMs).then(
-      (falhou) => {
-        if (falhou) registrarFalha(log);
-      },
-      () => registrarFalha(log),
+      (r) => registrar(log, r),
+      () => registrar(log, { tipo: 'falha', codigo: null }),
     );
   });
 }
 
-/** Resolve `true` se todas as tentativas falharam; `false` se enviou ou se o e-mail está desligado. Nunca rejeita. */
-async function tentar(envio: EnvioEmail, m: MensagemEmail, esperaMs: number): Promise<boolean> {
+/** Nunca rejeita. */
+async function tentar(envio: EnvioEmail, m: MensagemEmail, esperaMs: number): Promise<Resultado> {
+  let codigo: string | null = null;
   for (let i = 1; i <= TENTATIVAS; i++) {
     try {
       await envio.enviar(m);
-      return false;
+      return { tipo: 'enviado' };
     } catch (e) {
-      if (e instanceof ErroEmailDesligado) return false;
+      if (e instanceof ErroEmailDesligado) return { tipo: 'desligado' };
+      codigo = e instanceof ErroEnvioEmail ? e.codigo : null;
       if (i < TENTATIVAS) await esperar(esperaMs);
     }
   }
-  return true;
+  return { tipo: 'falha', codigo };
 }
 
 function esperar(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function registrarFalha(log: Pick<FastifyBaseLogger, 'warn'> | undefined): void {
+function registrar(log: LogEnvioEmail | undefined, r: Resultado): void {
   try {
-    log?.warn({ evento: 'email.falha', tentativas: TENTATIVAS }, 'e-mail não enviado após as tentativas');
+    if (r.tipo === 'enviado') log?.info({ evento: 'email.enviado', envio_id: randomUUID() }, 'e-mail aceito pelo SMTP');
+    else if (r.tipo === 'falha') log?.warn({ evento: 'email.falha', tentativas: TENTATIVAS, codigo: r.codigo }, 'e-mail não enviado após as tentativas');
   } catch {
     // o log nunca derruba o processo
   }
