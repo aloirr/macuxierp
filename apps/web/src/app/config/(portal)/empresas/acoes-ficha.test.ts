@@ -21,10 +21,12 @@ let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
 const erroApi = (status: number, codigo: string, detalhes?: Record<string, string>, mensagem = 'x') => json({ codigo, mensagem, ...(detalhes ? { detalhes } : {}) }, status);
 const ficha = {
-  razao_social: 'Empresa Ficticia Ltda', nome_fantasia: null, cnpj: '11222333000181', situacao_cadastral: 'Ativa', data_abertura: '2020-01-31', natureza_juridica: 'Sociedade Empresária Limitada', porte: 'Demais',
-  cnae_principal: { codigo: '4711302', descricao: 'Comércio varejista' }, cnae_secundarios: [], endereco: { logradouro: 'Rua A', numero: '1', complemento: null, bairro: 'Centro', cep: '69000000', municipio: 'Manaus', municipio_ibge: '1302603', uf: 'AM' },
-  regime: 'simples', consultado_em: '2026-11-24T12:00:00.000Z', fonte: 'brasilapi', email_mascarado: 'ma****@exemplo.com.br', telefone_mascarado: '(92) ****-1234',
+  nome_fantasia: null, ie: null, logradouro: 'Rua A', numero: '1', complemento: null, bairro: 'Centro', cep: '69000000', municipio_ibge: '1302603', uf: 'AM',
+  email_mascarado: 'ma****@exemplo.com.br', telefone_mascarado: '(92) ****-1234', cnae_principal: '4711302', regime_receita: 'simples', situacao_cadastral: 'Ativa', situacao_cadastral_data: '2020-01-31',
+  data_abertura: '2020-01-31', natureza_juridica: 'Sociedade Empresária Limitada', porte: 'Demais', cnae_secundarios: [], receita_fonte: 'fonte-ficticia', receita_consultada_em: '2026-11-24T12:00:00.000Z',
 };
+// Textos fictícios: a tela exibe a `mensagem` do core como vem, então os testes não dependem do texto real.
+const MSG = 'Mensagem fictícia do core.';
 
 beforeEach(() => {
   Object.assign(estado, { cookie: 'tok', apagados: [], redirecionou: [] });
@@ -67,31 +69,30 @@ describe('ações da ficha da Receita (T-0101)', () => {
     expect(chamadas[0]?.h['idempotency-key']).toBe('chave-receita');
     expect(chamadas[0]?.h['x-macuxierp-config']).toBe('1');
   });
-  it('409 sem core.empresa: "Cadastre a filial padrão antes."', async () => {
-    resposta = () => erroApi(409, 'CONFLITO', undefined, 'Cadastre a filial padrão antes');
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Cadastre a filial padrão antes.', chaveNova: true });
+  it('409 (formato padrão da API): exibe a mensagem dela', async () => {
+    resposta = () => erroApi(409, 'CONFLITO', undefined, MSG);
+    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
   });
-  it.each([
-    ['fonte_indisponivel', /Receita não respondeu/],
-    ['nao_encontrado', /não encontrou este CNPJ/],
-    ['cnpj_invalido', /CNPJ da empresa é inválido/],
-  ])('falha da fonte %s (erro da API) tem a sua mensagem, sem o corpo cru', async (codigo, texto) => {
-    resposta = () => erroApi(422, 'VALIDACAO', { codigo }, 'corpo cru com 11222333000181');
-    const r = await atualizarReceitaAcao(ID, 'k');
-    expect(r).toMatchObject({ ok: false });
-    expect(r.ok ? '' : r.erro).toMatch(texto);
-    expect(JSON.stringify(r)).not.toContain('11222333000181');
-  });
-  it('falha da fonte no resultado do contrato (estado erro, 200) vira a mensagem do motivo', async () => {
-    resposta = () => json({ estado: 'erro', motivo: 'fonte_indisponivel', mensagem: 'x', ficha });
-    const r = await atualizarReceitaAcao(ID, 'k');
-    expect(r.ok ? '' : r.erro).toMatch(/Receita não respondeu/);
-    resposta = () => json({ estado: 'erro', motivo: 'cnpj_nao_encontrado', mensagem: 'x', ficha: null });
+  it.each(['fonte_indisponivel', 'cnpj_nao_encontrado', 'cnpj_invalido', 'resposta_invalida', 'cnpj_divergente'])('falha da fonte %s (200, estado erro): exibe a mensagem do core como vem', async (motivo) => {
+    resposta = () => json({ estado: 'erro', motivo, mensagem: MSG, ficha });
+    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
+    resposta = () => json({ estado: 'erro', motivo, mensagem: MSG, ficha: null });
     expect((await atualizarReceitaAcao(ID, 'k')).ok).toBe(false);
   });
-  it('422 de dado inválido, 404 e 401', async () => {
-    resposta = () => erroApi(422, 'VALIDACAO');
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: expect.stringContaining('não passaram na conferência') });
+  it('422 RN-CORE-14 (campo acima do limite): a mensagem do core; sem ela, o texto da tela', async () => {
+    resposta = () => erroApi(422, 'REGRA', undefined, MSG);
+    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
+    resposta = () => json({ codigo: 'REGRA' }, 422);
+    const r = await atualizarReceitaAcao(ID, 'k');
+    expect(r.ok ? '' : r.erro).toContain('Tente de novo mais tarde');
+  });
+  it('503 (porta de CNPJ ainda sem ligar): indisponibilidade da fonte, com ou sem código no corpo', async () => {
+    resposta = () => json({ codigo: 'INDISPONIVEL', mensagem: MSG }, 503);
+    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.' });
+    resposta = () => new Response('', { status: 503 });
+    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.' });
+  });
+  it('404 e 401', async () => {
     resposta = () => erroApi(404, 'NAO_ENCONTRADO');
     expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Empresa não encontrada. Volte à lista.' });
     resposta = () => erroApi(401, 'NAO_AUTENTICADO');

@@ -78,7 +78,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
       ) : (
         <PainelEmpresa
           empresa={empresa}
-          ficha={empresa.ficha ?? null}
+          ficha={empresa.ficha}
           deps={deps}
           chaves={{ admin: randomUUID(), senha: randomUUID(), situacao: randomUUID() }}
         />

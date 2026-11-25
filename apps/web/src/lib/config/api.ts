@@ -26,7 +26,7 @@ import {
   type SituacaoEmpresaEntrada,
   type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
-import { CampoContato, ContatoRevelado, FichaReceitaMascarada, ResultadoAtualizarReceita } from '@macuxierp/core/contracts';
+import { ContatoRevelado, FichaReceitaPlanaMascarada, ResultadoReceitaPlana, type CampoContato } from '@macuxierp/core/contracts';
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
 import { type DetalhesErro, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
@@ -119,22 +119,21 @@ export async function listarEmpresas(token: string, q: { busca?: string; cursor?
   return validado(await chamar('GET', `/empresas${s ? `?${s}` : ''}`, { token }), ListaEmpresas);
 }
 
-/** Detalhe da empresa com a ficha da Receita MASCARADA (T-0101); ficha fora do contrato é tratada como ausente, sem derrubar a tela. */
-const EmpresaComFicha = EmpresaPlataforma.extend({ ficha: FichaReceitaMascarada.nullable().optional().catch(undefined) });
-export type EmpresaComFicha = z.infer<typeof EmpresaComFicha>;
+/** Detalhe da empresa com a ficha da Receita MASCARADA (T-0101); ficha ausente ou fora do contrato vira `null`, sem derrubar a tela. */
+const EmpresaComFicha = EmpresaPlataforma.extend({ ficha: FichaReceitaPlanaMascarada.nullable().catch(null) });
 
-export async function lerEmpresa(token: string, id: string): Promise<EmpresaComFicha> {
+export async function lerEmpresa(token: string, id: string): Promise<z.infer<typeof EmpresaComFicha>> {
   return validado(await chamar('GET', `/empresas/${idEmpresa(id)}`, { token }), EmpresaComFicha);
 }
 
 /** `POST .../receita` (T-0101): a API consulta a fonte com o CNPJ da `core.empresa`; `Idempotency-Key` obrigatória. */
-export async function atualizarReceita(token: string, id: string, chave: string): Promise<ResultadoAtualizarReceita> {
-  return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/receita`, { token, chave }), ResultadoAtualizarReceita);
+export async function atualizarReceita(token: string, id: string, chave: string): Promise<ResultadoReceitaPlana> {
+  return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/receita`, { token, chave }), ResultadoReceitaPlana);
 }
 
 /** `POST .../contato/{email|telefone}` (no-store, auditado pela API: sem Idempotency-Key). O valor só vai à tela. */
 export async function revelarContato(token: string, id: string, campo: CampoContato): Promise<ContatoRevelado> {
-  return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/contato/${CampoContato.parse(campo)}`, { token }), ContatoRevelado);
+  return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/contato/${campo}`, { token }), ContatoRevelado);
 }
 
 export async function criarEmpresa(token: string, corpo: CriarEmpresaEntrada, chave: string): Promise<EmpresaPlataforma> {

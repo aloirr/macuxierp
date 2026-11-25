@@ -19,7 +19,7 @@ export interface DetalhesErro {
   codigo?: string;
   bloqueios?: string[];
 }
-/** 400, 403 `TROCAR_SENHA`, 404, 409 e 422 da API, com o código e os campos (a mensagem da API não vai à tela, salvo o 409/422/503 da integracao_fdv, já filtrado). */
+/** 400, 403 `TROCAR_SENHA`, 404, 409 e 422 da API, com o código e os campos (a mensagem da API não vai à tela, salvo o 409/422/503 da integracao_fdv, o 409/422 da receita e a carga, já filtrados). */
 export class ErroPlataforma extends Error {
   override readonly name = 'ErroPlataforma' as const;
   constructor(readonly status: number, readonly codigo: string, readonly campos: Record<string, string> = {}, readonly mensagem = '', readonly detalhes: DetalhesErro = {}) {
@@ -30,19 +30,13 @@ export class ErroPlataforma extends Error {
 export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita';
 
 /**
- * Falhas tratadas da ficha pela Receita (T-0101, ADR 0012 emenda da ficha): chave = `detalhes.codigo` do erro da API ou o
- * `motivo` do `ResultadoAtualizarReceita`. A ficha anterior fica como estava. Texto fixo: nunca o corpo da fonte.
+ * Ficha pela Receita (T-0101): as falhas da fonte (200 `estado: 'erro'`), o 409 e o 422 trazem a `mensagem` do core, que a
+ * tela exibe como vem. Aqui só os textos de quando a API não responde (503 enquanto a porta de CNPJ não entra) ou a mensagem
+ * do 422 não vem; o mesmo texto do core para `fonte_indisponivel`.
  */
-export const MENSAGENS_RECEITA: Readonly<Record<string, string>> = Object.freeze({
-  fonte_indisponivel: 'A Receita não respondeu agora. A ficha continua como estava; tente de novo em alguns minutos.',
-  nao_encontrado: 'A Receita não encontrou este CNPJ. Confira o CNPJ da empresa.',
-  cnpj_nao_encontrado: 'A Receita não encontrou este CNPJ. Confira o CNPJ da empresa.',
-  cnpj_invalido: 'O CNPJ da empresa é inválido. Corrija o cadastro da empresa antes de consultar.',
-  cnpj_divergente: 'A Receita respondeu com outro CNPJ. Nada foi gravado.',
-  resposta_invalida: 'A Receita devolveu dados que não conseguimos ler. Nada foi gravado; tente de novo mais tarde.',
-});
-export const FILIAL_PADRAO_ANTES = 'Cadastre a filial padrão antes.';
-const FICHA_INVALIDA = 'Os dados da Receita não passaram na conferência. Nada foi gravado.';
+export const RECEITA_INDISPONIVEL = 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.';
+const RECEITA_DADO_RECUSADO = 'A Receita enviou um dado que o cadastro não aceita. Tente de novo mais tarde.';
+export const EMPRESA_NAO_ENCONTRADA = 'Empresa não encontrada. Volte à lista.';
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
 export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
@@ -71,11 +65,9 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   if (e instanceof ErroPlataforma) {
     if (ctx === 'receita') {
       const definitiva = ehRespostaDefinitiva(e.status);
-      const porCodigo = e.detalhes.codigo ? MENSAGENS_RECEITA[e.detalhes.codigo] : undefined;
-      if (porCodigo) return { ...base, texto: porCodigo, chaveNova: definitiva };
-      if (e.status === 409) return { ...base, texto: FILIAL_PADRAO_ANTES, chaveNova: definitiva };
-      if (e.status === 422 || e.status === 400) return { ...base, texto: FICHA_INVALIDA, chaveNova: definitiva };
-      if (e.status === 404) return { ...base, texto: 'Empresa não encontrada. Volte à lista.' };
+      if (e.status === 503) return { ...base, texto: RECEITA_INDISPONIVEL };
+      if (e.status === 409) return { ...base, texto: e.mensagem || FALHA_REDE, chaveNova: definitiva };
+      if (e.status === 422 || e.status === 400) return { ...base, texto: e.mensagem || RECEITA_DADO_RECUSADO, chaveNova: definitiva };
     }
     if (e.status === 409) {
       if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { codigo: 'Já existe uma empresa com esse código. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
@@ -92,7 +84,9 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
     if (ctx === 'senha' && (e.status === 400 || e.status === 422)) return { ...base, texto: e.campos.senha_atual ?? e.campos.senha_nova ?? SENHA_ATUAL_INCORRETA, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 400 || e.status === 422) return { ...base, texto: 'Confira os dados e tente de novo.', campos: e.campos, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 404 && ctx === 'email') return { ...base, texto: 'A empresa ainda não tem 1º administrador.' };
-    if (e.status === 404) return { ...base, texto: 'Empresa não encontrada. Volte à lista.' };
+    if (e.status === 404) return { ...base, texto: EMPRESA_NAO_ENCONTRADA };
   }
+  // 5xx sem código (porta de CNPJ ainda sem ligar): a fonte está indisponível, não a rede do usuário.
+  if (ctx === 'receita' && e instanceof ConfigIndisponivel) return { ...base, texto: RECEITA_INDISPONIVEL };
   return { ...base, texto: FALHA_REDE };
 }

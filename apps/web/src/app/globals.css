@@ -128,7 +128,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .dados-empresa { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; }
 .dados-empresa dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 .dados-empresa dt { margin: 0; }
-.email-valor { overflow-wrap: anywhere; }
+.valor-mascarado { overflow-wrap: anywhere; }
 .bloco h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 12px; }
 .lista-modulos { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
 .lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }

@@ -1,49 +1,27 @@
 'use client';
-import type { CampoContato, FichaReceitaMascarada } from '@macuxierp/core/contracts';
+import type { CampoContato, FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
+import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { AUSENTE } from '@/lib/config/empresa';
-import { CAMPOS_CONTATO, cnaeEmTexto, linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
+import { linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
 import { atualizarReceitaAcao, revelarContatoAcao } from '../acoes-ficha';
 
 interface Props {
   empresaId: string;
-  ficha: FichaReceitaMascarada | null;
+  ficha: FichaReceitaPlanaMascarada | null;
   fuso: string;
   /** Empresa encerrada não consulta a Receita. */
   editavel: boolean;
 }
 
-/** E-mail ou telefone: mascarado até o "Revelar"; o valor revelado fica só no estado desta tela (nunca em URL, armazenamento ou log). */
+/** E-mail ou telefone: mascarado (pelo banco) até o "Revelar". */
 function Contato({ empresaId, campo, rotulo, mascarado }: { empresaId: string; campo: CampoContato; rotulo: string; mascarado: string | null }) {
-  const [valor, setValor] = useState<string | null>(null);
-  const [erro, setErro] = useState('');
-  const [pendente, iniciar] = useTransition();
-  const alternar = () => {
-    if (valor !== null) return setValor(null);
-    setErro('');
-    iniciar(async () => {
-      const r = await revelarContatoAcao(empresaId, campo);
-      if (r.ok) setValor(r.valor.valor ?? AUSENTE);
-      else setErro(r.erro);
-    });
-  };
   return (
     <div>
       <dt className="apoio">{rotulo}</dt>
-      <dd>
-        <span className="contato-valor">{valor ?? mascarado ?? AUSENTE}</span>
-        {mascarado && (
-          <>
-            {' '}
-            <button className="mx-botao-secundario" type="button" disabled={pendente} aria-pressed={valor !== null} aria-label={`${valor !== null ? 'Ocultar' : 'Revelar'} ${rotulo.toLowerCase()}`} onClick={alternar}>
-              {pendente ? 'Carregando…' : valor !== null ? 'Ocultar' : 'Revelar'}
-            </button>
-          </>
-        )}
-        {erro && <span className="erro" role="alert"> {erro}</span>}
-      </dd>
+      <dd>{mascarado ? <RevelarMascarado rotulo={rotulo.toLowerCase()} mascarado={mascarado} revelar={() => revelarContatoAcao(empresaId, campo).then((r) => (r.ok ? { ok: true as const, valor: r.valor.valor } : r))} /> : AUSENTE}</dd>
     </div>
   );
 }
@@ -62,12 +40,13 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
       setMensagem(r.ok ? { ok: true, texto: r.valor.campos_alterados.length > 0 ? 'Ficha atualizada pela Receita.' : 'Consulta feita: a ficha já estava em dia.' } : { ok: false, texto: r.erro });
       if (r.ok) router.refresh();
     });
+  const consulta = ficha ? origemDaConsulta(ficha, fuso) : null;
   return (
     <section className="bloco" aria-labelledby="h-ficha">
       <h2 id="h-ficha">Ficha da Receita</h2>
       {ficha ? (
         <>
-          <p className="apoio">{origemDaConsulta(ficha, fuso)}</p>
+          {consulta && <p className="apoio">{consulta}</p>}
           <dl className="dados-empresa">
             {linhasDaFicha(ficha).map((l) => (
               <div key={l.rotulo}>
@@ -75,23 +54,22 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
                 <dd>{l.valor}</dd>
               </div>
             ))}
-            {CAMPOS_CONTATO.map((c) => (
-              <Contato key={c.campo} empresaId={empresaId} campo={c.campo} rotulo={c.rotulo} mascarado={c.campo === 'email' ? ficha.email_mascarado : ficha.telefone_mascarado} />
-            ))}
+            <Contato empresaId={empresaId} campo="email" rotulo="E-mail" mascarado={ficha.email_mascarado} />
+            <Contato empresaId={empresaId} campo="telefone" rotulo="Telefone" mascarado={ficha.telefone_mascarado} />
           </dl>
-          {ficha.cnae_secundarios.length > 0 && (
+          {ficha.cnae_secundarios && ficha.cnae_secundarios.length > 0 && (
             <>
               <h3>CNAE secundários</h3>
               <ul className="lista-cnae">
                 {ficha.cnae_secundarios.map((c) => (
-                  <li key={c.codigo}>{cnaeEmTexto(c)}</li>
+                  <li key={c}>{c}</li>
                 ))}
               </ul>
             </>
           )}
         </>
       ) : (
-        <p className="apoio">Sem ficha da Receita ainda ({AUSENTE}). Use "Atualizar pela Receita" para buscar.</p>
+        <p className="apoio">Sem ficha da Receita.</p>
       )}
       <button className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={atualizar}>
         {pendente ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
