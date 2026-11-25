@@ -455,6 +455,68 @@ export const inserirCondicao = (tenant: string, codigo: string, forma: string, p
   `INSERT INTO cadastros.condicao_pagamento (tenant_id, codigo, descricao, forma_tpag, prazos_dias, parcelas_cartao)
    VALUES ('${tenant}', '${codigo}', 'Condição ${codigo}', '${forma}', '{0}', ${parcelas});`;
 
+/** Ids dos cadastros extras que o zerar apaga (0043, 0053); os opcionais só entram quando dados. */
+export interface IdsZeraveis {
+  filial: string;
+  vendedor: string;
+  condicao: string;
+  tabela: string;
+  produto: string;
+  unidade: string;
+  item: string;
+  saldo: string;
+  movimento: string;
+  cliente: string;
+  endereco: string;
+  contato: string;
+  /** Vendedor V3, sem external_id (0053: no espelho, mas nunca publicado). */
+  vendedor2?: string;
+  /** Cliente com a mesma condição e o mesmo vendedor (0043: o que fica em uso e tem colunas anuladas). */
+  cliente2?: string;
+}
+
+/**
+ * Cadastros extras do tenant `t` para o zerar (dados fictícios): filial, vendedor, condição, tabela, produto e unidade,
+ * item de preço, saldo e movimento, cliente com endereço e contato. `externalId` grava F2, V2 e P2 na filial, no vendedor
+ * e no produto (0043).
+ */
+export function cadastrosZeraveis(t: Tenant, x: IdsZeraveis, opcoes: { externalId?: boolean } = {}): string {
+  const ext = (v: string): string => (opcoes.externalId ? `, '${v}'` : '');
+  const colExt = opcoes.externalId ? ', external_id' : '';
+  const vendedor2 = x.vendedor2 ? `,\n         ('${x.vendedor2}', '${t.id}', 'V3', 'Vendedor novo', '${t.filial}'${ext('V3')})` : '';
+  const cliente2 = x.cliente2
+    ? `INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id,
+  tabela_preco_id, filial_id, vendedor_id, limite_credito_centavos)
+  VALUES ('${x.cliente2}', '${t.id}', 'PJ', '11444777000242', '9', 'Cliente com pedido', '${x.condicao}', '${x.tabela}', '${t.filial}',
+    '${x.vendedor}', 0);`
+    : '';
+  return `
+INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep${colExt})
+  VALUES ('${x.filial}', '${t.id}', '11222333000181', 'Filial livre', '3', 'Rua C', '3', 'Centro', '1302603', 'AM', '69000002'${ext('F2')});
+INSERT INTO cadastros.vendedor (id, tenant_id, codigo, nome, filial_id${colExt})
+  VALUES ('${x.vendedor}', '${t.id}', 'V2', 'Vendedor livre', '${t.filial}'${ext('V2')})${vendedor2};
+INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias)
+  VALUES ('${x.condicao}', '${t.id}', 'PX', 'PIX', '17', '{0}');
+INSERT INTO cadastros.tabela_preco (id, tenant_id, nome, vigencia_inicio) VALUES ('${x.tabela}', '${t.id}', 'Promo', '2026-01-01');
+INSERT INTO cadastros.produto (id, tenant_id, codigo, descricao, ncm, unidade_comercial, unidade_tributavel, grupo_tributacao,
+  custo_centavos${colExt}) VALUES ('${x.produto}', '${t.id}', 'P2', 'Suco 1 L', '22021000', 'UN', 'UN', 'padrao', 299${ext('P2')});
+INSERT INTO cadastros.produto_unidade (id, tenant_id, produto_id, unidade, fator) VALUES ('${x.unidade}', '${t.id}', '${x.produto}', 'CX', 60000);
+INSERT INTO cadastros.tabela_preco_item (id, tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos)
+  VALUES ('${x.item}', '${t.id}', '${x.tabela}', '${t.filial}', '${x.produto}', 990);
+INSERT INTO cadastros.estoque_saldo (id, tenant_id, filial_id, produto_id, quantidade) VALUES ('${x.saldo}', '${t.id}', '${t.filial}', '${x.produto}', 5000);
+INSERT INTO cadastros.estoque_movimento (id, tenant_id, filial_id, produto_id, tipo, quantidade, motivo)
+  VALUES ('${x.movimento}', '${t.id}', '${t.filial}', '${x.produto}', 'entrada', 5000, 'carga inicial');
+INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id,
+  tabela_preco_id, filial_id, vendedor_id, limite_credito_centavos)
+  VALUES ('${x.cliente}', '${t.id}', 'PJ', '11444777000161', '9', 'Cliente livre', '${x.condicao}', '${x.tabela}', '${t.filial}',
+    '${x.vendedor}', 0);
+${cliente2}
+INSERT INTO cadastros.cliente_endereco (id, tenant_id, cliente_id, tipo, logradouro, numero, bairro, municipio_ibge, uf, cep)
+  VALUES ('${x.endereco}', '${t.id}', '${x.cliente}', 'principal', 'Rua D', '4', 'Centro', '1302603', 'AM', '69000003');
+INSERT INTO cadastros.cliente_contato (id, tenant_id, cliente_id, nome) VALUES ('${x.contato}', '${t.id}', '${x.cliente}', 'Financeiro');
+`;
+}
+
 /** INSERT de uma regra válida do ICMS no regime normal (fiscal.regra_tributaria, T-0020); `campos` sobrescreve colunas (valores já em SQL). */
 export function regraTributaria(campos: Record<string, string> = {}): string {
   const base: Record<string, string> = {

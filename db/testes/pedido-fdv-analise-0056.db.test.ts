@@ -1,10 +1,4 @@
-/**
- * T-0085 (v0.3.12, migração 0056; RN-PED-07 emendada): o pedido do FDV entra em em_analise só com as pendências
- * bloqueantes prazo_incompleto e/ou prazo_acima_do_cliente; vai a recusado só com pendências de prazo (as de em_analise)
- * e a aprovado só sem pendência ou com pendência de prazo não bloqueante (aceita). Os CHECKs pedido_fdv_sem_analise e
- * pedido_fdv_sem_pendencia da 0016 mudam de definição com o mesmo nome. O banco sobe até antes da 0056 com um pedido do
- * FDV aprovado (o legado), depois recebe a 0056 (docs/banco/README.md, 0056).
- */
+/** T-0085, migração 0056 (RN-PED-07 emendada): CHECKs do pedido do FDV com pendência de prazo (docs/banco/README.md, 0056). */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -14,6 +8,7 @@ import {
   type PastaDeMigracoes,
   consultar,
   criarBancoDeTeste,
+  definicoesDe,
   executar,
   PG_DISPONIVEL,
   pastaComMigracoesAntesDe,
@@ -247,19 +242,12 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido do FDV em análise, 
   });
 
   it('a 0056 e a 0016 são reexecutáveis (as definições novas ficam)', () => {
-    const antes = consultar<{ def: string }>(
-      banco.conexao,
-      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-       WHERE conrelid = 'pedido.pedido'::regclass AND conname IN ('${CK_ANALISE}', '${CK_PENDENCIA}') ORDER BY conname`,
-    );
+    const definicoes = (): { def: string }[] => definicoesDe(banco.conexao, 'pedido.pedido', [CK_ANALISE, CK_PENDENCIA]);
+    const antes = definicoes();
     for (const m of [MIGRACAO, '0016_pedido_a_vista_e_d_a.sql', MIGRACAO]) {
       rodarScript(banco.conexao, readFileSync(new URL(`../migrations/${m}`, import.meta.url), 'utf8'), { transacao: true });
     }
-    const depois = consultar<{ def: string }>(
-      banco.conexao,
-      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-       WHERE conrelid = 'pedido.pedido'::regclass AND conname IN ('${CK_ANALISE}', '${CK_PENDENCIA}') ORDER BY conname`,
-    );
+    const depois = definicoes();
     expect(depois).toEqual(antes);
     expect(depois).toHaveLength(2);
   });

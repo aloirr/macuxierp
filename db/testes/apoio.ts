@@ -156,6 +156,15 @@ export function privilegiosDe(c: Conexao, papel: string, tabela: string): string
   return r?.p || '-';
 }
 
+/** Definições (pg_get_constraintdef) das restrições da tabela (esquema.tabela) com esses nomes, em ordem de nome. */
+export function definicoesDe(c: Conexao, tabela: string, nomes: readonly string[]): { def: string }[] {
+  return consultar<{ def: string }>(
+    c,
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conrelid = '${tabela}'::regclass AND conname IN (${nomes.map((n) => `'${n}'`).join(', ')}) ORDER BY conname`,
+  );
+}
+
 /** Mensagem do erro do psql, ou null se o comando passou. */
 export function erroDe(fn: () => unknown): string | null {
   try {
