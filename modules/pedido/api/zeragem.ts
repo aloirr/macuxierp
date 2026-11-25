@@ -5,9 +5,9 @@
  * contagens e superadmin_id) é gravada pela função do banco, então a rota não chama `c.auditar`. O erro `MXC03` (o estado
  * mudou entre o plano e o efeito) sobe cru para o mapa de erros da apps/api.
  */
-import { definirPluginPlataforma, definirRotaPlataforma, erros, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
+import { FRASE_ZERAR_DADOS, MENSAGEM_FRASE_ZERAR, fraseConfere, definirPluginPlataforma, definirRotaPlataforma, erros, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { ApagadoZerarPedidos, CAMINHOS_ZERAR_PEDIDOS, OrigemPedido, StatusPedido, ZerarPedidosEntrada, ZeragemPedidosResposta } from '../contracts';
+import { ApagadoZerarPedidos, CODIGO_FRASE_NAO_CONFERE, CAMINHOS_ZERAR_PEDIDOS, OrigemPedido, StatusPedido, ZerarPedidosCorpo, ZeragemPedidosResposta } from '../contracts';
 import type { AposZerarPedidos } from './apos-zerar';
 import { planoZeragemPedidos, type PedidoParaZerar, type PlanoZeragemPedidos } from '../domain';
 
@@ -74,9 +74,10 @@ export function criarPluginPlataformaPedidoZerar(deps: DependenciasZerarPedidos)
       metodo: 'POST',
       caminho: C.zerar,
       acao: 'plataforma.cadastros.zerar',
-      corpo: ZerarPedidosEntrada,
+      corpo: ZerarPedidosCorpo,
       idempotencia: 'obrigatoria',
-      async executar(c, { params }) {
+      async executar(c, { params, corpo }) {
+        if (!fraseConfere(corpo.frase, FRASE_ZERAR_DADOS)) throw erros.regra('RN-CAD-10', MENSAGEM_FRASE_ZERAR, undefined, { codigo: CODIGO_FRASE_NAO_CONFERE });
         const tenant = idDaRota(params);
         const plano = await montarPlano(c, tenant, deps);
         if (plano.apagar.length === 0) return { corpo: resposta(tenant, plano, false, { apagados: [] }) };

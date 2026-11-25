@@ -1,5 +1,5 @@
 /** Plugin "Zerar pedidos não faturados" (RN-CAD-10, T-0093) com tx e porta do faturamento falsas. */
-import type { ContextoPlataforma, Transacao } from '@macuxierp/platform-sdk';
+import { ErroApi, MENSAGEM_FRASE_ZERAR, corpoErroApi, type ContextoPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { CAMINHOS_ZERAR_PEDIDOS, ZeragemPedidosResposta } from '../contracts';
 import type { AposZerarPedidos } from './apos-zerar';
@@ -91,9 +91,19 @@ describe('plugin de plataforma "Zerar pedidos não faturados" (RN-CAD-10)', () =
     expect(m.consultasFat).toEqual([]);
   });
 
-  it('RN-CAD-10: frase errada é recusada pelo Zod do corpo', () => {
+  it('RN-CAD-10 (T-0093): frase errada é 422 de regra, sem tocar o banco', async () => {
+    const m = montar();
+    for (const frase of ['', 'autorizo zerar', 'AM2808']) {
+      const e = await m.chamar(C.zerar, { frase }).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(ErroApi);
+      expect(corpoErroApi(e as ErroApi)).toEqual({ codigo: 'RN-CAD-10', mensagem: MENSAGEM_FRASE_ZERAR, detalhes: { codigo: 'frase_nao_confere' } });
+      expect((e as ErroApi).status).toBe(422);
+    }
+    expect(m.chamadas).toEqual([]);
+  });
+
+  it('RN-CAD-10 (T-0093): corpo malformado segue 400 pelo Zod', () => {
     const rota = montar().plugin.rotas.find((r) => r.caminho === C.zerar)!;
-    for (const frase of ['', 'autorizo zerar', 'AM2808']) expect(rota.corpo!.safeParse({ frase }).success).toBe(false);
-    expect(rota.corpo!.safeParse({ frase: ' AUTORIZO  zerar os dados. ' }).success).toBe(true);
+    for (const corpo of [{}, { frase: 1 }, { frase: 'x'.repeat(201) }]) expect(rota.corpo!.safeParse(corpo).success).toBe(false);
   });
 });
