@@ -14,6 +14,9 @@ export const textoErrosAbertos = (n: number): string => `${n} ${n === 1 ? 'erro 
 /** Rótulo do botão que recarrega o Log quando a leitura falha. */
 export const ROTULO_TENTAR_DE_NOVO = 'Tentar de novo';
 
+/** Falha de leitura com o botão "Tentar de novo" ao lado: o convite já está no botão, então o texto não o repete. */
+export const TEXTO_FALHA_CARGA_LOG = 'Não foi possível carregar o Log.';
+
 /** Em até 640 px de largura (celular): "Corrigir" sobe para a 2ª coluna, para ficar à vista sem rolar. */
 function useCelular(): boolean {
   const [celular, setCelular] = useState(false);
@@ -64,12 +67,14 @@ export function CorpoLogBko({ log, entidade, fuso, celular = false }: { log: Log
   ];
   return (
     <div className="corpo-log corpo-log-bko" data-entidade={entidade}>
-      <div className="resumo-log">
-        <h3>{textoErrosAbertos(log.total_erros)}</h3>
-        {log.total_erros > 0 && <a className="mx-botao-secundario" href={caminhoDoDownloadErros(entidade)}>{ROTULO_BAIXAR_ERROS}</a>}
-      </div>
+      {log.total_erros > 0 && (
+        <div className="resumo-log">
+          <h3>{textoErrosAbertos(log.total_erros)}</h3>
+          <a className="mx-botao-secundario" href={caminhoDoDownloadErros(entidade)}>{ROTULO_BAIXAR_ERROS}</a>
+        </div>
+      )}
       {linhas.length === 0
-        ? <p className="apoio">{TEXTO_ESTADO_LOG.vazio}</p>
+        ? (log.total_erros === 0 && <p className="apoio">{TEXTO_ESTADO_LOG.vazio}</p>)
         : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => `${l.registro}|${l.campo}|${l.motivo}`} textoVazio={TEXTO_ESTADO_LOG.vazio} legenda="Erros por registro" /></div>}
       {fora > 0 && <p className="apoio">{textoErrosForaDaLista(fora)}</p>}
       <h3>Envios recentes</h3>
@@ -87,7 +92,7 @@ export function EstadoLog({ r, entidade, fuso, celular = false, aoTentarDeNovo }
   if (r.motivo === 'sem_permissao') return <p className="erro" role="alert">{TEXTO_LOG_SEM_PERMISSAO}</p>;
   return (
     <div className="corpo-log">
-      <p className="erro" role="alert">{r.mensagem ?? TEXTO_ESTADO_LOG.erro}</p>
+      <p className="erro" role="alert">{r.mensagem ?? (aoTentarDeNovo ? TEXTO_FALHA_CARGA_LOG : TEXTO_ESTADO_LOG.erro)}</p>
       {aoTentarDeNovo && <div><button type="button" className="mx-botao-secundario" onClick={aoTentarDeNovo}>{ROTULO_TENTAR_DE_NOVO}</button></div>}
     </div>
   );
@@ -119,10 +124,9 @@ export function JanelaLog({ entidade, fuso, aoFechar, ler = lerLogFdv }: { entid
   );
 }
 
-/** Botão "Log" da linha do cadastro; escondido sem a permissão `integracao-fdv.ver` (a proteção real é a da API). */
-export function BotaoLog({ entidade, fuso, podeVer }: { entidade: EntidadeEnvioFdv; fuso: string; podeVer: boolean }) {
+/** Botão "Log" da linha do cadastro; quem decide mostrá-lo (permissão `integracao-fdv.ver`) é a vista; a proteção real é a da API. */
+export function BotaoLog({ entidade, fuso }: { entidade: EntidadeEnvioFdv; fuso: string }) {
   const [aberto, setAberto] = useState(false);
-  if (!podeVer) return null;
   return (
     <>
       <button type="button" className="mx-botao-secundario" onClick={() => setAberto(true)} aria-label={`Log de ${ROTULO_ENTIDADE[entidade]}`}>Log</button>

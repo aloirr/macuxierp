@@ -1,12 +1,12 @@
 'use server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { LogCadastroFdvTenant, ENTIDADES_ENVIO_FDV, pode } from '@macuxierp/platform-sdk';
-import { ApiIndisponivel, NaoAutenticado, SemPermissao, getValidado } from '@/lib/api';
+import { LogCadastroFdvTenant, ENTIDADES_ENVIO_FDV } from '@macuxierp/platform-sdk';
+import { NaoAutenticado, SemPermissao, getValidado } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
-import { MANIFESTOS } from '@/lib/manifestos';
+import { temAcessoAoModulo } from '@/lib/acesso-modulo';
 import { SESSAO_EXPIRADA } from '@/lib/descritor/escrita';
-import { COOKIE_ACESSO, contexto } from '@/lib/sessao';
+import { COOKIE_ACESSO } from '@/lib/sessao';
 
 export type ResultadoLogFdv = { ok: true; log: LogCadastroFdvTenant } | { ok: false; motivo: 'sem_permissao' | 'erro'; mensagem?: string };
 
@@ -17,10 +17,7 @@ export type ResultadoLogFdv = { ok: true; log: LogCadastroFdvTenant } | { ok: fa
 export async function lerLogFdv(entidade: string): Promise<ResultadoLogFdv> {
   const e = ENTIDADES_ENVIO_FDV.find((x) => x === entidade);
   if (!e) return { ok: false, motivo: 'erro' };
-  const { eu } = await contexto();
-  const licenciado = eu.modulos.some((m) => m.id === 'integracao-fdv');
-  const perfilOk = MANIFESTOS.some((m) => m.id === 'integracao-fdv' && m.perfis.includes(eu.usuario.perfil));
-  if (!licenciado || !perfilOk || !pode(eu.usuario.perfil, 'integracao-fdv.ver')) return { ok: false, motivo: 'sem_permissao' };
+  if (!(await temAcessoAoModulo('integracao-fdv', 'integracao-fdv.ver'))) return { ok: false, motivo: 'sem_permissao' };
   const acesso = (await cookies()).get(COOKIE_ACESSO)?.value;
   if (!acesso) return { ok: false, motivo: 'erro', mensagem: SESSAO_EXPIRADA };
   try {
@@ -30,7 +27,6 @@ export async function lerLogFdv(entidade: string): Promise<ResultadoLogFdv> {
     if (err instanceof TrocarSenhaPendente) redirect(ROTA_SENHA);
     if (err instanceof NaoAutenticado) return { ok: false, motivo: 'erro', mensagem: SESSAO_EXPIRADA };
     if (err instanceof SemPermissao) return { ok: false, motivo: 'sem_permissao' };
-    if (err instanceof ApiIndisponivel) return { ok: false, motivo: 'erro' };
     return { ok: false, motivo: 'erro' };
   }
 }
