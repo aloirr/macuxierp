@@ -182,6 +182,7 @@ class RepoFilhoSql<E extends { id: string }, D> implements RepoFilho<E, D> {
 }
 
 const ENDERECO = ['logradouro', 'numero', 'complemento', 'bairro', 'municipio_ibge', 'uf', 'cep', 'pais_bacen'] as const;
+const LOCALIZACAO = ['latitude', 'longitude'] as const;
 const pegar = (o: Dict, cols: readonly string[]) => Object.fromEntries(cols.filter((c) => c in o).map((c) => [c, o[c]]));
 const semIndefinidos = (o: Dict): Dict => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const semExterno = (d: Dict) => ({ ...d });
@@ -193,7 +194,9 @@ const mapaFilial: Mapa<Filial, FilialDados> = {
   padroesCriacao: { industrial_ipi: false, regime_pis_cofins: null },
   paraLinha: (d) => {
     const { endereco, ...resto } = d as Dict & { endereco?: Dict };
-    return { ...resto, ...(endereco ?? {}) };
+    /** T-0096: a filial não tem coluna de localização (0061 só no cliente_endereco). */
+    const { latitude: _la, longitude: _lo, ...fisico } = endereco ?? {};
+    return { ...resto, ...fisico };
   },
   deLinha: (l) => ({
     ...pegar(l, ['id', 'external_id', 'inativo', 'cnpj', 'ie', 'razao_social', 'nome_fantasia', 'crt', 'padrao', 'emissora', 'nfe_serie', 'nfe_numero_inicial', 'industrial_ipi', 'regime_pis_cofins']),
@@ -215,8 +218,8 @@ const mapaCliente: Mapa<Cliente, ClienteDados> = {
 };
 
 const mapaEndereco: Mapa<EnderecoClienteItem, EnderecoCliente> & { pai: string } = {
-  tabela: 'cadastros.cliente_endereco', pai: 'cliente_id', colunas: ['tipo', ...ENDERECO], busca: [],
-  paraLinha: (d) => ({ ...d }), deLinha: (l) => pegar(l, ['id', 'external_id', 'tipo', ...ENDERECO]) as unknown as EnderecoClienteItem,
+  tabela: 'cadastros.cliente_endereco', pai: 'cliente_id', colunas: ['tipo', ...ENDERECO], expressoes: [N('latitude'), N('longitude')], busca: [],
+  paraLinha: (d) => ({ ...d }), deLinha: (l) => pegar(l, ['id', 'external_id', 'tipo', ...ENDERECO, ...LOCALIZACAO]) as unknown as EnderecoClienteItem,
 };
 const mapaContato: Mapa<ContatoItem, Contato> & { pai: string } = {
   tabela: 'cadastros.cliente_contato', pai: 'cliente_id', colunas: ['nome', 'email', 'telefone', 'papel'], busca: [],

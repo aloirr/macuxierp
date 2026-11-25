@@ -1,7 +1,7 @@
--- 0066 — Critério 3 do zerar de pedidos (T-0093, desenho docs/desenho/T-0093.md §2): duas funções de lista fechada que a
+-- 0065 — Critério 3 do zerar de pedidos (T-0093, desenho docs/desenho/T-0093.md §2): duas funções de lista fechada que a
 -- porta aposZerarPedidos da apps/api chama depois do pedido.portal_zerar, na mesma transação. Nenhuma lê o schema pedido
 -- nem toca nota, XML, evento fiscal ou título (regra 7). Aditiva e reexecutável: CREATE OR REPLACE, REVOKE, GRANT e
--- COMMENT; não muda nenhuma linha de dado. O porquê do DELETE no lugar do índice parcial: docs/banco/README.md, 0066.
+-- COMMENT; não muda nenhuma linha de dado. O porquê do DELETE no lugar do índice parcial: docs/banco/README.md, 0065.
 
 -- Confere a lista de pedidos (23514) e a empresa alvo (P0002); devolve o id da empresa.
 CREATE OR REPLACE FUNCTION plataforma.portal_lista_pedidos(p_tenant uuid, p_pedido_ids uuid[]) RETURNS uuid
@@ -16,7 +16,7 @@ BEGIN
   RETURN (plataforma.empresa_alvo_leitura(p_tenant)).id;
 END $$;
 COMMENT ON FUNCTION plataforma.portal_lista_pedidos(uuid, uuid[]) IS
-  'Interna (0066): p_tenant ou p_pedido_ids nulo, com nulo ou com mais de uma dimensão = check_violation; empresa inexistente, de referência ou excluída = P0002 (FOR KEY SHARE). Devolve o id da empresa. T-0093.';
+  'Interna (0065): p_tenant ou p_pedido_ids nulo, com nulo ou com mais de uma dimensão = check_violation; empresa inexistente, de referência ou excluída = P0002 (FOR KEY SHARE). Devolve o id da empresa. T-0093.';
 
 CREATE OR REPLACE FUNCTION integracao_fdv.portal_liberar_reenvio_pedidos(p_tenant uuid, p_pedido_ids uuid[])
   RETURNS jsonb
@@ -52,7 +52,7 @@ BEGIN
   RETURN v_out;
 END $$;
 COMMENT ON FUNCTION integracao_fdv.portal_liberar_reenvio_pedidos(uuid, uuid[]) IS
-  'Portal /config (0066, RN-CAD-10; porta aposZerarPedidos, na tx do pedido.portal_zerar): apaga os pedido_recebido com pedido_id em p_pedido_ids e todos os retorno_enviado deles, para o reenvio do Hub recriar o pedido. Idempotente (de novo = 0). Audita integracao-fdv.pedido_recebido.liberar_reenvio só com as contagens. Devolve {pedidos_liberados, retornos_descartados}. MXS01, check_violation, P0002. Só macuxierp_config. T-0093.';
+  'Portal /config (0065, RN-CAD-10; porta aposZerarPedidos, na tx do pedido.portal_zerar): apaga os pedido_recebido com pedido_id em p_pedido_ids e todos os retorno_enviado deles, para o reenvio do Hub recriar o pedido. Idempotente (de novo = 0). Audita integracao-fdv.pedido_recebido.liberar_reenvio só com as contagens. Devolve {pedidos_liberados, retornos_descartados}. MXS01, check_violation, P0002. Só macuxierp_config. T-0093.';
 
 CREATE OR REPLACE FUNCTION faturamento.portal_descartar_a_faturar(p_tenant uuid, p_pedido_ids uuid[]) RETURNS jsonb
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER
@@ -82,7 +82,7 @@ BEGIN
   RETURN v_out;
 END $$;
 COMMENT ON FUNCTION faturamento.portal_descartar_a_faturar(uuid, uuid[]) IS
-  'Portal /config (0066, RN-CAD-10; porta aposZerarPedidos, na tx do pedido.portal_zerar): status = cancelado nos pedido_a_faturar a_faturar não excluídos com pedido_id em p_pedido_ids. faturado_parcial ou faturado = MXC03 em_uso (HINT = pedido), nada muda. Idempotente (de novo = 0). Audita faturamento.pedido_a_faturar.descartar só com a contagem. Devolve {a_faturar_cancelados}. MXS01, check_violation, P0002. Só macuxierp_config. T-0093.';
+  'Portal /config (0065, RN-CAD-10; porta aposZerarPedidos, na tx do pedido.portal_zerar): status = cancelado nos pedido_a_faturar a_faturar não excluídos com pedido_id em p_pedido_ids. faturado_parcial ou faturado = MXC03 em_uso (HINT = pedido), nada muda. Idempotente (de novo = 0). Audita faturamento.pedido_a_faturar.descartar só com a contagem. Devolve {a_faturar_cancelados}. MXS01, check_violation, P0002. Só macuxierp_config. T-0093.';
 
 REVOKE ALL ON FUNCTION plataforma.portal_lista_pedidos(uuid, uuid[]),
   integracao_fdv.portal_liberar_reenvio_pedidos(uuid, uuid[]), faturamento.portal_descartar_a_faturar(uuid, uuid[])

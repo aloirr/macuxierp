@@ -162,7 +162,19 @@ export function repositoriosEmMemoria() {
       return unidades.linhas.filter((u) => ids.includes(u.pai as string) && !u.inativo).map((u) => ({ produto_id: u.pai as string, unidade: u.unidade as string, fator: u.fator as number }));
     },
   });
-  const filiais = Object.assign(new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['cnpj'], texto: ['razao_social'], padroes: { industrial_ipi: false, regime_pis_cofins: null } }), {
+  const colecaoFiliais = new ColecaoMemoria<{ id: string }, Record<string, unknown>>({ unicos: ['cnpj'], texto: ['razao_social'], padroes: { industrial_ipi: false, regime_pis_cofins: null } });
+  const inserirFilial = colecaoFiliais.inserir.bind(colecaoFiliais);
+  const atualizarFilial = colecaoFiliais.atualizar.bind(colecaoFiliais);
+  /** T-0096: a filial não tem coluna de localização (0061 só no cliente_endereco); a memória descarta como o SQL. */
+  const semLocalizacao = <T extends Record<string, unknown>>(d: T): T => {
+    const { endereco, ...resto } = d;
+    if (!endereco || typeof endereco !== 'object') return d;
+    const { latitude: _la, longitude: _lo, ...fisico } = endereco as Record<string, unknown>;
+    return { ...resto, endereco: fisico } as unknown as T;
+  };
+  const filiais = Object.assign(colecaoFiliais, {
+    inserir: (d: Record<string, unknown>) => inserirFilial(semLocalizacao(d)),
+    atualizar: (id: string, p: Partial<Record<string, unknown>>) => atualizarFilial(id, semLocalizacao(p)),
     async padrao() {
       const f = filiais.linhas.find((l) => l.padrao === true && !l.inativo);
       return f ? (structuredClone(f) as unknown as { id: string }) : null;

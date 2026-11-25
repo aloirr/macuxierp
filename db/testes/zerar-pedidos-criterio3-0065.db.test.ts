@@ -1,5 +1,5 @@
 /**
- * T-0093, critério 3 (desenho docs/desenho/T-0093.md §2), migração 0066: na transação do zerar de pedidos, a porta
+ * T-0093, critério 3 (desenho docs/desenho/T-0093.md §2), migração 0065: na transação do zerar de pedidos, a porta
  * aposZerarPedidos chama integracao_fdv.portal_liberar_reenvio_pedidos (apaga o pedido_recebido e os retornos dos
  * pedidos zerados, para o reenvio do Hub recriá-los) e faturamento.portal_descartar_a_faturar (a_faturar órfão vira
  * cancelado). Lista fechada, só do macuxierp_config, idempotentes, auditoria só com contagens; nota, XML e título não
@@ -35,11 +35,11 @@ import {
   novoTenant,
 } from './fixture.ts';
 
-const MIGRACAO = fileURLToPath(new URL('../migrations/0066_zerar_pedidos_reenvio_fdv_a_faturar.sql', import.meta.url));
+const MIGRACAO = fileURLToPath(new URL('../migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
-const A = novoTenant('zerar-0066-a');
-const B = novoTenant('zerar-0066-b');
-const SA = '5a000000-0000-4000-8000-000000000661';
+const A = novoTenant('zerar-0065-a');
+const B = novoTenant('zerar-0065-b');
+const SA = '5a000000-0000-4000-8000-000000000651';
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const LIBERAR = 'integracao_fdv.portal_liberar_reenvio_pedidos(uuid, uuid[])';
 const DESCARTAR = 'faturamento.portal_descartar_a_faturar(uuid, uuid[])';
@@ -86,7 +86,7 @@ INSERT INTO integracao_fdv.retorno_enviado (tenant_id, pedido_uuid, status, nume
 ${aFaturar(B.id, P1, 'a_faturar')}
 `;
 
-describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — critério 3 do zerar de pedidos (T-0093, 0066)', () => {
+describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — critério 3 do zerar de pedidos (T-0093, 0065)', () => {
   let banco: BancoDeTeste;
   let sessao: string;
 
@@ -141,7 +141,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — critério 3 do zerar de ped
     executar(
       banco.conexao,
       `INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo)
-  VALUES ('${SA}', 'sa0066@plataforma.teste', 'Superadmin Ficticio', '${HASH}', false, true);
+  VALUES ('${SA}', 'sa0065@plataforma.teste', 'Superadmin Ficticio', '${HASH}', false, true);
 INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
   VALUES ('${sessao}', '${SA}', encode(sha256(convert_to('${sessao}', 'UTF8')), 'hex'), now() + interval '8 hours', now());`,
     );
@@ -301,7 +301,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(r.map((l) => l.depois)).toContainEqual({ a_faturar_cancelados: 2 });
   });
 
-  it('(i) reexecutar a 0066 não muda dado nem privilégio', () => {
+  it('(i) reexecutar a 0065 não muda dado nem privilégio', () => {
     const priv = (): unknown =>
       consultar(
         banco.conexao,
