@@ -77,7 +77,7 @@ for (const larg of LARGURAS) {
   });
 
   for (const [caso, id, espera] of [
-    ['empresa-com-ficha', dados.empresas.comFicha, /Revelar/],
+    ['empresa-com-ficha', dados.empresas.comFicha, /Mostrar/],
     ['empresa-sem-ficha', dados.empresas.semFicha, /Ainda não consultada/],
     ['empresa-consultada-sem-dados', dados.empresas.consultada, /Consultada, sem dados na Receita/],
   ]) {
@@ -88,7 +88,8 @@ for (const larg of LARGURAS) {
       const t = await p.locator('main').innerText();
       exigir(espera.test(t), `${caso}: faltou ${espera}`);
       if (caso === 'empresa-com-ficha') {
-        exigir(!t.includes('contato@exemplo.invalid'), 'e-mail aparece inteiro sem o Revelar');
+        exigir(!t.includes('contato@exemplo.invalid'), 'e-mail aparece inteiro sem o Mostrar');
+        exigir(!/Revelar/.test(t), 'o botão do dado mascarado ainda diz "Revelar" (decisão 9 A, #697: "Mostrar")');
         exigir(/Manaus/.test(t) && /\bAM\b/.test(t), 'cidade e UF da ficha não aparecem');
       }
       await semDefeitoVisivel(p, caso);
