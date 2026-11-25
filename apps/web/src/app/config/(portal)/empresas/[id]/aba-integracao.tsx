@@ -22,7 +22,7 @@ type Mensagem = { ok: boolean; texto: string } | null;
 
 /**
  * Aba "Integração" da ficha da empresa (T-0056, ADR 0013, molde: aba Integração do portal do FDV). Só o superadmin chega aqui
- * (todo o /config é do superadmin). v0.3.4: só o grupo 'Macuxi FDV' (cartões 'Conexão com o Macuxi FDV' e 'Cadastros enviados ao FDV').
+ * (todo o /config é do superadmin). v0.3.4: só o grupo 'Macuxi FDV' (cartões 'Conexão com o Macuxi FDV' e 'Cadastros enviados ao Macuxi FDV').
  *
  * LUGAR RESERVADO (cenário B, depois): duas colunas de ENTRADA, "Integração via Conector" e "Integração via API", ao lado deste grupo
  * no desktop e empilhadas abaixo de 768 px (`.integracao-colunas`). Sem tela para elas agora.
@@ -163,7 +163,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
         </form>
       </section>
       <section className="bloco" aria-labelledby="h-env">
-        <h2 id="h-env">Cadastros enviados ao FDV</h2>
+        <h2 id="h-env">Cadastros enviados ao Macuxi FDV</h2>
         <form aria-label="Registros por lote" onSubmit={(ev) => { ev.preventDefault(); salvarLimite(ev.currentTarget); }}>
           <label className="campo"><span>Registros por lote</span><input name="limite_registros_lote" type="number" inputMode="numeric" min={1} max={LIMITE_REGISTROS_LOTE_FDV} step={1} defaultValue={dados.limite_registros_lote ?? LIMITE_INICIAL_FDV} required /></label>
           {campos.limite_registros_lote && <p className="erro-campo" role="alert">{campos.limite_registros_lote}</p>}
