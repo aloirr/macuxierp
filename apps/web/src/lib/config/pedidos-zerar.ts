@@ -12,7 +12,9 @@ const basePedidos = (empresaId: string) => `/config/empresas/${encodeURIComponen
 type Mantido = ZeragemPedidosResposta['mantidos'][number];
 const MOTIVO: Record<(typeof MOTIVOS_MANTER_PEDIDO)[number], string> = { nota: 'com nota', titulo: 'com título' };
 
-export const TEXTO_ANTES_DE_ZERAR_PEDIDOS = 'Antes de zerar, exporte pelo BKO da empresa.';
+const FRASE_PREVIA_PEDIDOS = 'Pedidos faturados e notas não são apagados.';
+
+export const TEXTO_ANTES_DE_ZERAR_PEDIDOS ='Antes de zerar, exporte pelo BKO da empresa.';
 
 /** "Mantidos: 5" (a soma) e uma linha por motivo: "3 pedidos com nota." Sem mantidos = null. */
 export const textosMantidosPedidos = (mantidos: readonly Mantido[]) =>
@@ -25,8 +27,9 @@ const qtdPedidos = (r: ZeragemPedidosResposta): number => r.apagados.find((a) =>
 export function textoApagarPedidos(r: ZeragemPedidosResposta): string {
   const n = qtdPedidos(r);
   if (n === 0) return 'Não há pedidos sem nota e sem título para apagar.';
-  const fdv = r.apagados_fdv > 0 ? ` Do FDV: ${r.apagados_fdv} (só voltam quando o FDV reenviar).` : '';
-  return `Vai apagar ${plural(n, 'pedido', 'pedidos')}.${fdv}`;
+  const f = r.apagados_fdv;
+  const fdv = f > 0 ? ` ${f} ${f === 1 ? 'veio do Macuxi FDV e só volta' : 'vieram do Macuxi FDV e só voltam'} se o FDV reenviar.` : '';
+  return `Vai apagar ${plural(n, 'pedido', 'pedidos')}.${fdv} ${FRASE_PREVIA_PEDIDOS}`;
 }
 
 export type ResultadoZerarPedidos = { apagados: number; mantidos: number };

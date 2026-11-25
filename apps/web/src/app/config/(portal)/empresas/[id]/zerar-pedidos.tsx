@@ -23,10 +23,10 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
 
   return (
     <ConfirmarComFrase
-      titulo="Zerar Pedidos não faturados?"
+      titulo="Zerar pedidos não faturados?"
       frase={FRASE_ZERAR_DADOS}
-      rotulo="Zerar"
-      rotuloEnviando="Zerando…"
+      rotulo="Zerar pedidos"
+      rotuloEnviando="Zerando pedidos…"
       idEnvio="zerar:pedidos"
       podeEnviar={!!previa && !carregando}
       enviar={(chave, frase) => pedirZerarPedidos(empresaId, frase, chave)}

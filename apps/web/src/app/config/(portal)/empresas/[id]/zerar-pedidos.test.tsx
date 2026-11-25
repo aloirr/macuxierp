@@ -18,7 +18,8 @@ const tela = (p: ZeragemPedidosResposta | null) =>
 describe('Zerar Pedidos não faturados (T-0093)', () => {
   it('a prévia mostra o que apaga e "Mantidos: N" com uma linha por motivo (nota e título)', () => {
     const h = tela(previa());
-    expect(h).toContain('Zerar Pedidos não faturados?');
+    expect(h).toContain('Zerar pedidos não faturados?');
+    expect(h).toContain('Zerar pedidos</button>');
     expect(h).toContain('Vai apagar 7 pedidos.');
     expect(h).toContain('Mantidos: 4');
     expect(h).toContain('3 pedidos com nota.');
@@ -26,8 +27,10 @@ describe('Zerar Pedidos não faturados (T-0093)', () => {
     expect(h).toContain(AVISO_ZERAR);
   });
   it('só avisa que o pedido do FDV volta pelo reenvio do FDV quando há pedido do FDV', () => {
-    expect(tela(previa())).toContain('Do FDV: 4 (só voltam quando o FDV reenviar).');
-    expect(tela(previa({ apagados_fdv: 0 }))).not.toContain('Do FDV');
+    expect(tela(previa())).toContain('4 vieram do Macuxi FDV e só voltam se o FDV reenviar.');
+    expect(tela(previa({ apagados_fdv: 1 }))).toContain('1 veio do Macuxi FDV e só volta se o FDV reenviar.');
+    expect(tela(previa({ apagados_fdv: 0 }))).not.toContain('Macuxi FDV');
+    expect(tela(previa())).toContain('Pedidos faturados e notas não são apagados.');
   });
   it('sem mantidos não mostra a linha; sem o que apagar diz isso uma vez só', () => {
     const h = tela(previa({ mantidos: [], apagados: [{ tabela: 'pedido', quantidade: 0 }], apagados_fdv: 0 }));
