@@ -58,7 +58,8 @@ export function textoGravado(g: Pick<GravarCargaPlataformaResposta, 'gravadas' |
   const n = g.enderecos_inativados;
   return `${plural(g.gravadas, 'registro gravado', 'registros gravados')}.${n && n > 0 ? ` ${plural(n, 'endereço inativado', 'endereços inativados')}.` : ''}`;
 }
-export const AVISO_LIMITE_FDV = `Acima de ${LIMITE_INATIVACAO_FDV_PCT}%, o FDV pede confirmação no monitor de integração dele antes de aplicar.`;
+/** Aviso único dos 30% do FDV (T-0086, validado pelo designer-ux): aba Dados (Substituir tudo) e prévia do Zerar. */
+export const AVISO_LIMITE_FDV = `Acima de ${LIMITE_INATIVACAO_FDV_PCT}% dos registros, o Macuxi FDV pode segurar o envio. Acompanhe no Log.`;
 export const TEXTO_SUBSTITUIR = 'O que não vier no arquivo fica inativo; nada é apagado.';
 
 /** As duas caixas da conferência: verde (prontas) e vermelha (com erro, que ficam de fora). */

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { CADASTROS_CARGA_PORTAL, ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma, ValidarCargaPlataformaResposta, type EfeitoSubstituir as SdkEfeito } from '@macuxierp/platform-sdk';
 import { avisoCarga, entidadesDaCarga, estadoCargaCompleta, rotuloComLote } from '@/lib/config/integracao-fdv';
+import { AVISO_LIMITE_FDV } from '@/lib/config/cargas';
 import { EMP, conferencia as conferenciaBruta, situacoes } from '@/lib/config/cargas-fixtures';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
@@ -145,7 +146,7 @@ describe('janela Importar', () => {
   it('efeito do Substituir tudo por cadastro; acima de 30% traz o aviso do FDV', () => {
     const p = renderToStaticMarkup(<EfeitoSubstituir cadastro="produto" efeito={{ total: 266, a_inativar: 120, percentual: (120 * 100) / 266, acima_limite_fdv: true }} />);
     expect(p).toContain('Vai inativar 120 de 266 produtos (45%).');
-    expect(p).toContain('Acima de 30%, o FDV pede confirmação no monitor de integração dele antes de aplicar.');
+    expect(p).toContain(AVISO_LIMITE_FDV);
     const abaixo = renderToStaticMarkup(<EfeitoSubstituir cadastro="produto" efeito={{ total: 266, a_inativar: 10, percentual: (10 * 100) / 266, acima_limite_fdv: false }} />);
     expect(abaixo).toContain('Vai inativar 10 de 266 produtos (4%).');
     expect(abaixo).not.toContain('Acima de 30%');
