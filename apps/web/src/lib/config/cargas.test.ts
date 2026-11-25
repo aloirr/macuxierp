@@ -121,7 +121,7 @@ describe('efeito do Substituir tudo: pedido só na confirmação', () => {
   });
   it('diz quantos serão inativados e o percentual; acima de 30% vem o aviso do FDV', () => {
     expect(textoEfeito('produto', { total: 266, a_inativar: 120, percentual: (120 * 100) / 266 })).toBe('Vai inativar 120 de 266 produtos (45%).');
-    expect(AVISO_LIMITE_FDV).toBe('Acima de 30%, o FDV pede confirmação no monitor de integração dele antes de aplicar.');
+    expect(AVISO_LIMITE_FDV).toBe('Acima de 30% dos registros, o Macuxi FDV pode segurar o envio. Acompanhe no Log.');
     expect(textoEfeito('produto', { total: 266, a_inativar: 0, percentual: 0 })).toBe('Não há produtos para inativar.');
     expect(TEXTO_SUBSTITUIR).toBe('O que não vier no arquivo fica inativo; nada é apagado.');
   });
