@@ -49,7 +49,7 @@ describe('CampoSenha (T-0094, alinhado ao FDV)', () => {
 
   it('hover em grafite e foco de 2 px com offset −2 px em azul-noite (classe .mx-olho)', () => {
     const css = gerarCssBotoes();
-    expect(css).toContain('.mx-olho:hover:not(:disabled) {\n  color: var(--mx-cor-grafite);\n}');
+    expect(css).toContain('.mx-olho:hover:not(:disabled):not([aria-disabled="true"]) {\n  color: var(--mx-cor-grafite);\n}');
     expect(css).toContain('.mx-olho:focus-visible {\n  outline: 2px solid var(--mx-cor-azul-noite);\n  outline-offset: -2px;\n}');
   });
 
