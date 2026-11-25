@@ -8,6 +8,7 @@ import {
   type PastaDeMigracoes,
   consultar,
   criarBancoDeTeste,
+  definicoesDe,
   executar,
   PG_DISPONIVEL,
   pastaComMigracoesAntesDe,
@@ -241,12 +242,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido do FDV em análise, 
   });
 
   it('a 0056 e a 0016 são reexecutáveis (as definições novas ficam)', () => {
-    const definicoes = (): { def: string }[] =>
-      consultar<{ def: string }>(
-        banco.conexao,
-        `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-         WHERE conrelid = 'pedido.pedido'::regclass AND conname IN ('${CK_ANALISE}', '${CK_PENDENCIA}') ORDER BY conname`,
-      );
+    const definicoes = (): { def: string }[] => definicoesDe(banco.conexao, 'pedido.pedido', [CK_ANALISE, CK_PENDENCIA]);
     const antes = definicoes();
     for (const m of [MIGRACAO, '0016_pedido_a_vista_e_d_a.sql', MIGRACAO]) {
       rodarScript(banco.conexao, readFileSync(new URL(`../migrations/${m}`, import.meta.url), 'utf8'), { transacao: true });

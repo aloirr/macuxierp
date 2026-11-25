@@ -9,6 +9,7 @@ import {
   type PastaDeMigracoes,
   consultar,
   criarBancoDeTeste,
+  definicoesDe,
   executar,
   linhas,
   PG_DISPONIVEL,
@@ -76,14 +77,9 @@ ${espelho}`,
     ),
   });
 
+  const checks = (): { def: string }[] =>
+    definicoesDe(banco.conexao, 'pedido.pedido', ['pedido_fdv_sem_analise', 'pedido_fdv_sem_pendencia']);
   /** Para cada (origem, status, pendências): a linha passa nos dois CHECKs da D-A juntos? E só no sem_pendencia? */
-  const checks = (): unknown =>
-    consultar(
-      banco.conexao,
-      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-        WHERE conrelid = 'pedido.pedido'::regclass AND conname IN ('pedido_fdv_sem_analise', 'pedido_fdv_sem_pendencia')
-        ORDER BY conname`,
-    );
   const grade = (): string[] =>
     linhas(
       rodarComo(
@@ -193,8 +189,7 @@ INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, proximo_em) VAL
   it('os CHECKs pedido_fdv_sem_analise e pedido_fdv_sem_pendencia juntos aceitam e recusam as mesmas linhas', () => {
     expect(antes.grade.length).toBe(2 * STATUS.length * PENDENCIAS.length);
     expect(grade()).toEqual(antes.grade);
-    expect(consultar<{ def: string }>(banco.conexao, `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-      WHERE conname = 'pedido_fdv_sem_pendencia'`)[0]?.def).toMatch(/= ANY \(ARRAY\['em_analise'::text, 'recusado'::text\]\)/);
+    expect(definicoesDe(banco.conexao, 'pedido.pedido', ['pedido_fdv_sem_pendencia'])[0]?.def).toMatch(/= ANY \(ARRAY\['em_analise'::text, 'recusado'::text\]\)/);
   });
 
   it('a 0058 é reexecutável: o CHECK, as funções e o resultado ficam iguais', () => {

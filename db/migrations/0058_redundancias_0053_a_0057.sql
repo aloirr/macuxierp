@@ -170,10 +170,7 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------------------------------------------
--- 🟡 da 0056: o pedido_fdv_sem_pendencia não repete PB e P de em_analise e recusado, que o pedido_fdv_sem_analise já
--- exige (status, origem e pendencias são NOT NULL: a conjunção dos dois CHECKs é a mesma). Fica PA no aprovado e P no
--- cancelado, que o sem_analise não cobre. Marca desta definição: o "= ANY (ARRAY['em_analise', 'recusado'])"; a 0056
--- reexecutada acha o 'cancelado' e não volta à anterior. Sem NOT VALID: toda linha que passava continua passando.
+-- 🟡 da 0056: o porquê no README, seção da 0058.
 -- ---------------------------------------------------------------------------------------------------------------
 DO $$
 DECLARE
