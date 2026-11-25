@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
-import { colunasDeErrosLog, ROTULO_BAIXAR_ERROS, TEXTO_ESTADO_LOG } from '@macuxierp/integracao-fdv/web';
+import { colunasDeErrosLog, ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG } from '@macuxierp/integracao-fdv/web';
 import { Chip } from '@macuxierp/ui';
 import { CorpoLogBko, EstadoLog, TEXTO_FALHA_CARGA_LOG, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, ROTULO_TENTAR_DE_NOVO } from './log';
 
@@ -23,10 +23,18 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     for (const t of ['CLI-001', 'Mercado Sol', 'cnpj', 'O CNPJ é inválido.', 'Corrija o CNPJ no cadastro.']) expect(h).toContain(t);
   });
 
-  it('"Corrigir" só como link quando há corrigirHref', () => {
+  it('"Corrigir cadastro" só como link quando há corrigirHref, levando ao destino do 2a', () => {
     const h = renderToStaticMarkup(<CorpoLogBko log={log} entidade="cliente" fuso="America/Manaus" />);
     expect(h.match(/<a href="\/cadastros/g)).toHaveLength(1); // o outro link é o download do CSV
-    expect(h).toContain('<a href="/cadastros/clientes/abc">Corrigir</a>');
+    expect(h).toContain(`<a href="/cadastros/clientes/abc">${ROTULO_CORRIGIR}</a>`);
+  });
+
+  it('a legenda diz que os registros não foram enviados ao FDV, acima da tabela e só com erros listados', () => {
+    const h = renderToStaticMarkup(<CorpoLogBko log={log} entidade="cliente" fuso="America/Manaus" />);
+    expect(h).toContain(TEXTO_LEGENDA_ERROS_LOG);
+    expect(h.indexOf(TEXTO_LEGENDA_ERROS_LOG)).toBeLessThan(h.indexOf('<table'));
+    const zero = renderToStaticMarkup(<CorpoLogBko log={{ ...log, total_erros: 0, erros: [] }} entidade="cliente" fuso="America/Manaus" />);
+    expect(zero).not.toContain(TEXTO_LEGENDA_ERROS_LOG);
   });
 
   it('mostra o horário do envio em Manaus (14:05 UTC = 10:05)', () => {
@@ -80,10 +88,10 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" />)).not.toContain(ROTULO_TENTAR_DE_NOVO);
   });
 
-  it('no celular "Corrigir" é a 2ª coluna; no desktop continua a última', () => {
+  it('no celular "Corrigir cadastro" é a 2ª coluna; no desktop continua a última', () => {
     const ths = (celular: boolean) => [...renderToStaticMarkup(<CorpoLogBko log={log} entidade="cliente" fuso="America/Manaus" celular={celular} />).matchAll(/<th [^>]*>([^<]*)</g)].map((m) => m[1]).slice(0, 6);
-    expect(ths(true)[1]).toBe('Corrigir');
-    expect(ths(false)[5]).toBe('Corrigir');
+    expect(ths(true)[1]).toBe(ROTULO_CORRIGIR);
+    expect(ths(false)[5]).toBe(ROTULO_CORRIGIR);
     expect(corrigirEmSegundo([{ id: 'a' }, { id: 'b' }, { id: 'corrigirHref' }]).map((c) => c.id)).toEqual(['a', 'corrigirHref', 'b']);
   });
 });

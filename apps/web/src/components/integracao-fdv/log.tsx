@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Chip, Dialogo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import type { EntidadeEnvioFdv, LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
 import {
-  ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, ROTULO_ENTIDADE, TEXTO_ESTADO_LOG, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, textoErrosForaDaLista,
+  ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, ROTULO_ENTIDADE, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, textoErrosForaDaLista,
   type LinhaEnvioLog, type LinhaErroLog,
 } from '@macuxierp/integracao-fdv/web';
 import { lerLogFdv, type ResultadoLogFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv';
@@ -75,7 +75,12 @@ export function CorpoLogBko({ log, entidade, fuso, celular = false }: { log: Log
       )}
       {linhas.length === 0
         ? (log.total_erros === 0 && <p className="apoio">{TEXTO_ESTADO_LOG.vazio}</p>)
-        : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => `${l.registro}|${l.campo}|${l.motivo}`} textoVazio={TEXTO_ESTADO_LOG.vazio} legenda="Erros por registro" /></div>}
+        : (
+          <>
+            <p className="apoio" data-legenda-erros>{TEXTO_LEGENDA_ERROS_LOG}</p>
+            <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => `${l.registro}|${l.campo}|${l.motivo}`} textoVazio={TEXTO_ESTADO_LOG.vazio} legenda="Erros por registro" /></div>
+          </>
+        )}
       {fora > 0 && <p className="apoio">{textoErrosForaDaLista(fora)}</p>}
       <h3>Envios recentes</h3>
       {envios.length === 0
