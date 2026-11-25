@@ -19,6 +19,7 @@
  */
 import { criarConsumidorCargaInicial, criarConsumidorEstoqueNota, criarExecutorCargaInicial, exportadorCadastros, repositoriosSql } from '@macuxierp/cadastros/api';
 import {
+  criarConsumidorEmpresaDaFilial,
   destinoAvisosSql,
   exportadorCore,
   fonteCertificadosSql,
@@ -48,7 +49,7 @@ import {
   type Relogio,
 } from '@macuxierp/platform-sdk';
 import { consumidoresDoPedido, exportadorPedido } from '@macuxierp/pedido/api';
-import { FilaDeTrabalhosPg, LicencasPg, OutboxPg, TodosTenantsPg } from '@macuxierp/platform-sdk/pg';
+import { AuditoriaPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg, TodosTenantsPg } from '@macuxierp/platform-sdk/pg';
 import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import type { EstadoEnvioFdv } from './envio-fdv';
@@ -147,6 +148,8 @@ export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly 
       agora: () => d.relogio.agora(),
       registrar: (msg) => d.log.warn({ modulo: 'cadastros', consumidor: 'cadastros.estoque-nota' }, msg),
     }),
+    // T-0100 (RN-CORE-14): a core.empresa nasce da primeira filial padrão viva (cadastros.filial.alterada@1)
+    criarConsumidorEmpresaDaFilial({ outbox, auditoria: new AuditoriaPg(), agora: () => d.relogio.agora() }),
   ]);
 }
 
