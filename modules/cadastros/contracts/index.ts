@@ -4,7 +4,7 @@
  * Rotas e permissões: docs/desenho/T-0002.md, seção 4. Eventos: .coord/contratos/eventos.md.
  * Dinheiro em centavos; quantidade e fator × 10^4 (D11); desconto em pontos-base (10_000 = 100%).
  */
-import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento, type Transacao } from '@macuxierp/platform-sdk';
+import { Cnpj, ConsultaLista, ConsultaPaginada, PreviaZerarPlataformaEntrada, normalizarDocumento, type Transacao } from '@macuxierp/platform-sdk';
 import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 
@@ -631,3 +631,13 @@ export const PayloadCargaInicial = z.object({
 });
 export type PayloadCargaInicial = z.infer<typeof PayloadCargaInicial>;
 
+
+/** `detalhes.codigo` do 422 `RN-CAD-10` de frase de confirmação errada (Substituir tudo e Zerar por cadastro; T-0093). */
+export const CODIGO_FRASE_NAO_CONFERE = 'frase_nao_confere';
+
+/**
+ * Corpo do `POST .../cadastros/zerar` (RN-CAD-10, T-0093): só a forma (frase string de até 200 caracteres). A frase é
+ * conferida na rota, e errada vira 422 `RN-CAD-10`; corpo malformado segue 400 pelo Zod.
+ */
+export const ZerarCadastrosCorpo = PreviaZerarPlataformaEntrada.extend({ frase: z.string().max(200) });
+export type ZerarCadastrosCorpo = z.infer<typeof ZerarCadastrosCorpo>;
