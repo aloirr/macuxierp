@@ -2,6 +2,7 @@
 import type { ContextoPlataforma, Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { CAMINHOS_ZERAR_PEDIDOS, ZeragemPedidosResposta } from '../contracts';
+import type { AposZerarPedidos } from './apos-zerar';
 import { criarPluginPlataformaPedidoZerar } from './zeragem';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -15,7 +16,7 @@ const PEDIDOS = [
   { id: 'p-faturado', status: 'faturado', origem: 'fdv' },
 ];
 
-function montar(pedidos: unknown[] = PEDIDOS) {
+function montar(pedidos: unknown[] = PEDIDOS, apos: AposZerarPedidos = { aposZerarPedidos: async () => [] }) {
   const chamadas: { sql: string; p: readonly unknown[] }[] = [];
   const consultasFat: string[][] = [];
   const tx = {
@@ -27,6 +28,7 @@ function montar(pedidos: unknown[] = PEDIDOS) {
     },
   } as unknown as Transacao;
   const plugin = criarPluginPlataformaPedidoZerar({
+    aposZerar: apos,
     faturamento: {
       pedidosComNotaOuTitulo: async (_tx, _t, ids) => {
         consultasFat.push([...ids]);
