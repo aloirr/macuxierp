@@ -44,6 +44,22 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     expect((await t.carregar('gravar', { corpo: { modo: 'apagar' } })).status).toBe(400);
   });
 
+  it('RN-CAD-17: saldo fracionário em produto de unidade UN é erro de linha no campo saldo; em KG passa', async () => {
+    const t = montar();
+    const estoque = (produto: string) => ({
+      nome: 'estoque.csv',
+      conteudo: Buffer.from(`external_id;deposito_external_id;produto_external_id;saldo;alterado_em;ativo;deposito_nome;filial_external_id\nE-EX-01;D1;${produto};10,5;;sim;Deposito 1;F-EX-01\n`),
+    });
+    const base = arquivos(['estoque.csv']);
+    const rel = (await t.carregar('validar', { arquivos: [...base, estoque('P-EX-01')] })).corpo as RelatorioCarga;
+    expect(rel.erros).toEqual([expect.objectContaining({ arquivo: 'estoque.csv', linha: 2, campo: 'saldo', codigo: 'RN-CAD-17' })]);
+    // P-EX-01 vira KG: a mesma linha passa
+    const produtos = arquivos(['estoque.csv', 'produto.csv']);
+    const produtoKg = { nome: 'produto.csv', conteudo: Buffer.from(readFileSync(join(pasta, 'produto.csv'), 'utf8').replace('Produto Exemplo 01;UN;', 'Produto Exemplo 01;KG;')) };
+    const ok = (await t.carregar('validar', { arquivos: [...produtos, produtoKg, estoque('P-EX-01')] })).corpo as RelatorioCarga;
+    expect(ok.erros.filter((e) => e.arquivo === 'estoque.csv')).toEqual([]); // o preço do kit segue em UN: erro de outro arquivo
+  });
+
   it('D13: o modo validar prevê as contagens, não grava nem publica nem audita', async () => {
     const t = montar();
     const r = await t.carregar('validar');
@@ -76,7 +92,7 @@ describe('carga de CSV (T-0026): POST /v1/cadastros/cargas', () => {
     expect(t.repos.condicoesPagamento.linhas[0]).toMatchObject({ forma_external_id: 'FP-EX-01', forma_tpag: '15', forma_codigo: 'BOLETO' });
     expect(t.repos.clientes.linhas).toHaveLength(2);
     expect(t.repos.clientes.enderecos.linhas.map((x) => [x.external_id, x.tipo]).sort()).toEqual([['C-EX-01:entrega:1', 'entrega'], ['C-EX-01:principal', 'principal'], ['C-EX-02:principal', 'principal']]);
-    expect([...t.repos.estoque.movimentos.map((m) => m.quantidade)]).toEqual([105_000 + 42_500]);
+    expect([...t.repos.estoque.movimentos.map((m) => m.quantidade)]).toEqual([100_000 + 40_000]);
     expect(t.eventos.some((x) => x.nome === 'cadastros.cliente.alterado@1')).toBe(true);
     expect(t.eventos.filter((x) => x.nome === 'cadastros.preco.alterado@1')).toHaveLength(2);
     const aud = t.auditoria.find((a) => a.acao === 'cadastros.carga');

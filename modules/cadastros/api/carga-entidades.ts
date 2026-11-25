@@ -13,7 +13,7 @@ import {
 } from '../contracts';
 import {
   ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
-  validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, type ErroLinha, type IdsConhecidos,
+  validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, violacaoFracao, type ErroLinha, type IdsConhecidos,
   type FatosFilial, type FormaDoLote,
 } from '../domain';
 import { desativarCondicoesRecusadas } from './formas-recusadas';
@@ -577,6 +577,14 @@ export async function planejarEstoque(linhas: readonly LinhaEstoque[], st: Estad
     // Modo gravar: trava a linha do saldo antes de calcular o delta (como a rota manual, `FOR UPDATE`); validar só lê.
     const existente = real ? (await st.r.estoque.saldos({ filial_id: fil.id, produto_id: prodId }))[0]?.quantidade : undefined;
     const atual = real && st.gravar ? await st.r.estoque.saldoParaAtualizar(fil.id, prodId) : existente;
+    // RN-CAD-17: saldo fracionário só em produto de unidade KG ou M
+    // (a unidade vem do produto do próprio lote, se ele foi lido nele, ou do gravado)
+    const unidade = st.unidadeDoProduto.get(g.produto) ?? (prodId ? (await st.r.produtos.obter(prodId))?.unidade_comercial : undefined);
+    const fracao = unidade ? violacaoFracao('saldo', unidade, g.saldo) : null;
+    if (fracao) {
+      saidas.push({ linhas: g.linhas, saida: { erros: [erroLinha(primeira, 'saldo', 'RN-CAD-17', fracao.mensagem)] } });
+      continue;
+    }
     const aj = ajusteDeCarga({ atual: atual ?? 0, novo: g.saldo, podeNegativo: st.podeNegativo, linha: primeira });
     if (!aj.ok) {
       saidas.push({ linhas: g.linhas, saida: { erros: [aj.erro] } });
