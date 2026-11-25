@@ -19,12 +19,15 @@ export function preencherCaminho(modelo: string, valores: Readonly<Record<string
   });
 }
 
+/** Nomes das pastas de `modules/` (módulo novo entra sozinho). */
+export const modulos = (): string[] => readdirSync(join(RAIZ, 'modules'));
+
 /**
  * Fontes de produção do web: apps/web/src e modules/<m>/web, só .ts/.tsx, sem `*.test.ts(x)` nem `apoio-teste.ts`.
  * Caminhos absolutos. Usado pela fumaça das telas (T-0065) e pelo contrato dos `CAMINHOS_*` (T-0066).
  */
 export function arquivosDoWeb(): string[] {
-  const pastas = [join(RAIZ, 'apps', 'web', 'src'), ...readdirSync(join(RAIZ, 'modules')).map((m) => join(RAIZ, 'modules', m, 'web'))];
+  const pastas = [join(RAIZ, 'apps', 'web', 'src'), ...modulos().map((m) => join(RAIZ, 'modules', m, 'web'))];
   const fora = /\.test\.tsx?$|apoio-teste\.ts$/;
   return pastas.flatMap((p) => {
     try {
