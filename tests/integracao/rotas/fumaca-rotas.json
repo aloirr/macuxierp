@@ -46,6 +46,11 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/core/auditoria/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/core/certificados",
       "area": "bko"
     },
@@ -69,12 +74,22 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/core/licencas/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/core/perfis",
       "area": "bko"
     },
     {
       "metodo": "GET",
       "caminho": "/v1/core/usuarios",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/usuarios/exportar",
       "area": "bko"
     },
     {
@@ -184,6 +199,111 @@
     {
       "metodo": "GET",
       "caminho": "/v1/faturamento/titulos/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/clientes-recebidos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/cliente_endereco/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/cliente_endereco/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/cliente/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/cliente/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/estoque/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/estoque/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/filial/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/filial/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/forma_pagamento/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/forma_pagamento/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/prazo_pagamento/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/prazo_pagamento/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/preco/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/preco/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/produto_unidade/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/produto_unidade/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/produto/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/produto/log.csv",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/vendedor/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/vendedor/log.csv",
       "area": "bko"
     },
     {
@@ -344,6 +464,105 @@
     {
       "metodo": "GET",
       "caminho": "/v1/plataforma/empresas/:id/integracao-fdv",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/cliente_endereco/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/cliente/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/estoque/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/filial/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/forma_pagamento/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/prazo_pagamento/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/preco/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/produto_unidade/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/produto/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/entidades/vendedor/log",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/integracao-fdv/monitor",
       "area": "plataforma",
       "origem": {
         "tipo": "contexto",
