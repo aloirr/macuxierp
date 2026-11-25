@@ -1,10 +1,23 @@
-/** Apoio comum dos e2e (`bko-cadastro.mjs`, `portal-integracao.mjs`) e dos servidores que eles usam (`api-real.ts`, `api-portal-integracao.ts`). */
+/** Apoio comum dos e2e (`bko-cadastro.mjs`, `portal-integracao.mjs`, `render-telas.mjs`) e dos servidores que eles usam (`api-real.ts`, `apoio-api.ts`). */
 import { join } from 'node:path';
 
 /** Valor de `--<nome> <valor>` na linha de comando, ou `padrao`. */
 export function argumento(nome, padrao) {
   const i = process.argv.indexOf(`--${nome}`);
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : padrao;
+}
+
+/**
+ * Login único (`/login`, RN-CORE-12): abre a tela, preenche empresa, e-mail e senha de `u` e clica em Entrar. Quem chama
+ * espera o destino (BKO, /config ou o alerta de recusa). O superadmin usa o código da plataforma como empresa.
+ */
+export async function entrar(pagina, base, u) {
+  await pagina.goto(`${base}/login`);
+  await pagina.getByLabel('Empresa').fill(u.empresa);
+  await pagina.getByLabel('E-mail').fill(u.email);
+  // exact: o botão "Mostrar senha" também casa com "Senha".
+  await pagina.getByLabel('Senha', { exact: true }).fill(u.senha);
+  await pagina.getByRole('button', { name: 'Entrar' }).click();
 }
 
 export function exigir(cond, msg) {

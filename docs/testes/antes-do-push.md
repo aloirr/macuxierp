@@ -26,7 +26,8 @@ O comando:
 5. `pnpm test:tests` inteiro, sempre que há código (como o CI). Se só `docs/**`, `.coord/**` ou `*.md` da raiz mudaram,
    não roda nada (escopo `documentacao`);
 6. sempre que há código (escopo `codigo`, como no passo 5) e no `--tudo`: os testes `node --test` de `scripts/` e `.github/scripts/` (regra 6 das rotas de tela, T-0066); a linha `scripts` da tabela fica VERMELHA se algum falhar;
-7. imprime o bloco Markdown "Testes na sessão (antes do push)" entre as linhas `----- cole no corpo do PR -----`.
+7. no `--tudo` (ou com `--render`): o render de todas as telas (`tests/e2e/rodar-render-telas.sh`, critérios no X-6 do plano v0.3.12); a linha `render das telas` conta as telas abertas;
+8. imprime o bloco Markdown "Testes na sessão (antes do push)" entre as linhas `----- cole no corpo do PR -----`.
 
 Código de saída: 0 = tudo verde; 1 = alguma etapa vermelha; 2 = erro de preparação (sem `pg-local.sh`, Node < 24.7, sem
 `node_modules`, Postgres fora do ar, opção inválida).
@@ -36,7 +37,8 @@ Código de saída: 0 = tudo verde; 1 = alguma etapa vermelha; 2 = erro de prepar
 | Opção | Para quê |
 |---|---|
 | (nenhuma) | afetados contra `origin/main`, mais os testes de `scripts/` quando há código: é o que vai no PR |
-| `--tudo` | todos os pacotes, o passo sem superusuário, `tests/` e os testes `node --test` de `scripts/` e `.github/scripts/` (o que o push ao `main` roda) |
+| `--tudo` | todos os pacotes, o passo sem superusuário, `tests/`, os testes `node --test` de `scripts/` e `.github/scripts/` (o que o push ao `main` roda) e o render das telas |
+| `--render` | soma o render das telas (`tests/e2e/rodar-render-telas.sh`: `next build`, servidor standalone e Playwright, cerca de 1 min) a qualquer modo |
 | `--pacote <nome>` (repetível) | só esses pacotes (`@macuxierp/db`, `api`...), mais `tests/`; com `@macuxierp/db`, também o passo sem superusuário |
 | `--so-tests` | só `pnpm test:tests` |
 | `--arquivo <caminho>` (repetível) | só esses arquivos de `tests/` (ex.: `tests/integracao/banco/conformidade.test.ts`) |

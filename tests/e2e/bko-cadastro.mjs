@@ -17,7 +17,7 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, exigir } from './apoio-e2e.mjs';
+import { argumento, criarRoteiro, entrar as entrarNoLogin, exigir } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -53,12 +53,7 @@ p.setDefaultTimeout(60_000);
 
 const nav = () => p.getByRole('navigation', { name: 'Menu principal' });
 const topo = async () => (await p.locator('header.topo').textContent()) ?? '';
-async function entrar(u, senha = u.senha) {
-  await p.getByLabel('Empresa').fill(u.empresa);
-  await p.getByLabel('E-mail').fill(u.email);
-  await p.getByLabel('Senha').fill(senha);
-  await p.getByRole('button', { name: 'Entrar' }).click();
-}
+const entrar = (u) => entrarNoLogin(p, BASE, u);
 async function sair() {
   await p.getByRole('button', { name: 'Sair' }).click();
   await p.waitForURL(/\/login/);
@@ -80,7 +75,7 @@ try {
     const texto = await alerta.textContent();
     exigir(texto?.includes('incorretos'), `mensagem de erro diferente: ${texto}`);
     exigir((await p.getByLabel('E-mail').inputValue()) === ADM_A.email, 'o e-mail se perdeu');
-    exigir((await p.getByLabel('Senha').inputValue()) === '', 'a senha voltou para a tela');
+    exigir((await p.getByLabel('Senha', { exact: true }).inputValue()) === '', 'a senha voltou para a tela');
     await print(p, '02-login-erro-outro-tenant.png');
   });
 
