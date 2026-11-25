@@ -1,4 +1,4 @@
-/** Apoio comum dos e2e (`bko-cadastro.mjs`, `portal-integracao.mjs`, `render-telas.mjs`) e dos servidores que eles usam (`api-real.ts`, `apoio-api.ts`). */
+/** Apoio comum dos e2e (`bko-cadastro.mjs`, `portal-integracao.mjs`, `render-telas.mjs`, `menu-acoes.mjs`) e dos servidores que eles usam (`api-real.ts`, `apoio-api.ts`). */
 import { join } from 'node:path';
 
 /** Valor de `--<nome> <valor>` na linha de comando, ou `padrao`. */
@@ -46,4 +46,44 @@ export function criarRoteiro(saida, mascarar = (s) => s) {
     prints.push(arquivo);
   }
   return { resultados, prints, passo, print };
+}
+
+/** Contexto de cada URL: sem sessão (telas de entrada), BKO (administrador do tenant) ou portal /config (superadmin). */
+const SEM_SESSAO = new Set(['/login', '/config/entrar']);
+const contextoDe = (url) => (SEM_SESSAO.has(url) ? 'sem-sessao' : url.startsWith('/config') ? 'portal' : 'bko');
+
+/**
+ * Lista das telas do web, sem lista à mão (X-6 e T-0099): todo `page.tsx` de apps/web/src/app vira uma URL; o
+ * `[modulo]/[...pagina]` do shell abre cada rota de `PAGINAS_REGISTRADAS`; `/config/empresas/[id]` abre a empresa de teste
+ * (as abas saem de `abasDaEmpresa`). Segmento dinâmico novo, sem valor aqui, derruba o e2e. `dados` é o JSON do
+ * `api-render-telas.ts`.
+ */
+export function urlsDasTelas(dados) {
+  const urls = [];
+  for (const dir of dados.paginasDoApp) {
+    const segs = dir.split('/').filter((s) => s && !/^\(.*\)$/.test(s));
+    const molde = `/${segs.join('/')}`;
+    if (molde === '/[modulo]/[...pagina]') {
+      for (const t of dados.telas) urls.push({ url: t.url, origem: `PAGINAS_REGISTRADAS ${t.rota}`, comParametro: t.comParametro });
+    } else if (molde === '/config/empresas/[id]') {
+      urls.push({ url: `/config/empresas/${dados.empresa.id}`, origem: 'page.tsx /config/empresas/[id]', abas: true });
+    } else if (segs.some((s) => s.startsWith('['))) {
+      throw new Error(`page.tsx com segmento dinâmico sem valor no e2e: ${molde} (ensine o tests/e2e/apoio-e2e.mjs a abrir esta tela)`);
+    } else urls.push({ url: molde, origem: `page.tsx ${molde}` });
+  }
+  return urls.map((u) => ({ ...u, contexto: contextoDe(u.url) }));
+}
+
+/** Caminhos (sem repetição e sem a própria `url`) das abas que a tela da empresa aberta em `pagina` lista. */
+export async function abasDaEmpresa(pagina, base, url) {
+  const hrefs = await pagina
+    .getByRole('navigation', { name: 'Abas da empresa' })
+    .getByRole('link')
+    .evaluateAll((as) => as.map((a) => a.getAttribute('href')).filter(Boolean))
+    .catch(() => []);
+  const caminhos = hrefs.map((h) => {
+    const u = new URL(h, `${base}${url}`);
+    return `${u.pathname}${u.search}`;
+  });
+  return [...new Set(caminhos)].filter((h) => h !== url);
 }

@@ -438,11 +438,14 @@ export const PreviaZerarPlataformaEntrada = z.object({
 });
 export type PreviaZerarPlataformaEntrada = z.infer<typeof PreviaZerarPlataformaEntrada>;
 
+/**
+ * A frase de confirmação de todo "Zerar" do portal (RN-CAD-10): `FRASE_ZERAR_DADOS` pela `normalizarFrase`, até 200
+ * caracteres. Fonte única para o zerar por cadastro e o de pedidos (RD-1824).
+ */
+export const FraseZerarDados = Frase.refine((f) => fraseConfere(f, FRASE_ZERAR_DADOS), { message: MENSAGEM_FRASE_ZERAR });
+
 /** `POST .../cadastros/zerar` (`Idempotency-Key` obrigatória): RN-CAD-10, confirmado por `FRASE_ZERAR_DADOS`. */
-export const ZerarDadosPlataformaEntrada = PreviaZerarPlataformaEntrada.extend({ frase: Frase }).refine(
-  (r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS),
-  { path: ['frase'], message: MENSAGEM_FRASE_ZERAR },
-);
+export const ZerarDadosPlataformaEntrada = PreviaZerarPlataformaEntrada.extend({ frase: FraseZerarDados });
 export type ZerarDadosPlataformaEntrada = z.infer<typeof ZerarDadosPlataformaEntrada>;
 
 /**
