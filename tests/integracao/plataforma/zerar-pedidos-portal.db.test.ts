@@ -124,10 +124,10 @@ INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, clien
     const antes = await n('pedido.pedido WHERE tenant_id = $1', [A]);
     expect((await p.pedir('POST', url('zerar', A), { chave: randomUUID(), corpo: { frase: FRASE_ZERAR_DADOS } })).statusCode).toBe(401);
     expect((await p.pedir('POST', url('zerar', A), { token, csrf: false, chave: randomUUID(), corpo: { frase: FRASE_ZERAR_DADOS } })).statusCode).toBe(403);
-    // frase é regra (RN-CAD-10): o Zerar por cadastro dá 422; aqui o Zod do contrato a confere e dá 400 (divergência avisada ao gerente, 25/11)
+    // frase é regra (RN-CAD-10): 422 com o código de detalhe frase_nao_confere (#690), igual ao Zerar por cadastro
     const frase = await p.pedir('POST', url('zerar', A), { token, chave: randomUUID(), corpo: { frase: 'apagar tudo' } });
-    expect([400, 422], frase.body).toContain(frase.statusCode);
-    expect(frase.body).toContain('frase');
+    expect(frase.statusCode, frase.body).toBe(422);
+    expect(frase.json<{ codigo: string; detalhes?: { codigo?: string } }>()).toMatchObject({ codigo: 'RN-CAD-10', detalhes: { codigo: 'frase_nao_confere' } });
     const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: (await adm<{ slug: string }>('SELECT slug FROM plataforma.tenant WHERE id = $1', [A]))[0]!.slug, email: 'adm-zp@exemplo.invalid', senha: SENHA_DE_TESTE } });
     expect(login.statusCode, login.body).toBe(200);
     const jwt = login.json<{ token_acesso: string }>().token_acesso;
