@@ -38,7 +38,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — forma de pagamento na condi
 
   afterAll(() => banco?.remover());
 
-  it('as colunas forma_* existem, são texto anulável sem padrão e respeitam os tamanhos (200 e 30 desde a 0054, ADR 0019; 60)', () => {
+  it('as colunas forma_* existem, são texto anulável sem padrão e forma_nome vai até 60 (os outros limites: teste da 0054)', () => {
     const colunas = consultar<{ c: string; tipo: string; nula: string; padrao: string | null }>(
       banco.conexao,
       `SELECT column_name AS c, data_type AS tipo, is_nullable AS nula, column_default AS padrao
@@ -56,18 +56,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — forma de pagamento na condi
     executar(banco.conexao, inserir(A.id, 'SEMFORMA', null), APP_A);
     executar(banco.conexao, inserir(A.id, 'B30', 'forma-boleto'), APP_A);
 
-    const atualizar = (coluna: string, tamanho: number): string =>
-      `UPDATE cadastros.condicao_pagamento SET ${coluna} = repeat('x', ${tamanho}) WHERE codigo = 'SEMFORMA';`;
-    for (const [coluna, limite] of [
-      ['forma_external_id', 200],
-      ['forma_codigo', 30],
-      ['forma_nome', 60],
-    ] as const) {
-      executar(banco.conexao, atualizar(coluna, limite), APP_A);
-      expect(falha(() => executar(banco.conexao, atualizar(coluna, limite + 1), APP_A))).toMatch(
-        /check constraint/,
-      );
-    }
+    const formaNome = (tamanho: number): string =>
+      `UPDATE cadastros.condicao_pagamento SET forma_nome = repeat('x', ${tamanho}) WHERE codigo = 'SEMFORMA';`;
+    executar(banco.conexao, formaNome(60), APP_A);
+    expect(falha(() => executar(banco.conexao, formaNome(61), APP_A))).toMatch(/check constraint/);
   });
 
   it('o índice (tenant_id, forma_external_id) existe, não é único e serve à busca da forma', () => {

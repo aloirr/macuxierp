@@ -1,3 +1,4 @@
+'use client';
 import { SITUACOES_CLIENTE_RECEBIDO_FDV } from '@macuxierp/platform-sdk';
 import { TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import {

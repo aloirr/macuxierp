@@ -104,7 +104,7 @@ describe('BKO: Clientes recebidos do FDV (T-0059)', () => {
   describe('tela (servidor)', () => {
     const render = async (busca = {}) => {
       const { TelaIntegracaoFdv } = await import('@/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv');
-      return renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus', rota: R, busca }));
+      return renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus', perfil: 'administrador', rota: R, busca }));
     };
     it('mostra a seção abaixo da tabela de cadastros e pede a página filtrada', async () => {
       const h = await render({ situacao: 'aceito' });

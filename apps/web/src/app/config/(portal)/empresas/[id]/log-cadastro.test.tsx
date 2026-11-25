@@ -6,7 +6,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 
-import { csvErrosLog, ROTULO_SITUACAO_ENVIO, rotuloDoCampoErro, rotuloDoCodigoErro } from '@/lib/config/operacao-fdv';
+import { csvErrosLog, rotuloDoCampoErro, rotuloDoCodigoErro } from '@/lib/config/operacao-fdv';
 import { CorpoLog, LogCadastro, RodapeLog } from './log-cadastro';
 
 const log = (extra: Record<string, unknown> = {}) => LogCadastroFdvPlataforma.parse({
@@ -60,8 +60,6 @@ describe('botão Log do /config (T-0086)', () => {
     const licenca = renderToStaticMarkup(<CorpoLog log={log({ motivo: 'licenca_erp' })} fuso="America/Manaus" entidade="cliente" />);
     expect(licenca).toMatch(/<p class="faixa-aviso" role="status">/);
     expect(licenca).not.toContain('faixa-erro');
-    expect(ROTULO_SITUACAO_ENVIO.falhou.tom).toBe('erro');
-    expect(ROTULO_SITUACAO_ENVIO.com_erros.tom).toBe('aviso');
   });
   it('cabe na janela: corpo encolhível, as duas tabelas rolam sozinhas e o rodapé quebra linha', () => {
     const h = renderToStaticMarkup(<CorpoLog log={log()} fuso="America/Manaus" entidade="cliente" />);

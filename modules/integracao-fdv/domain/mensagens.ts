@@ -10,8 +10,10 @@ export interface TextoErro { readonly motivo: string; readonly acao: string }
 export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   chave_alterada: { motivo: 'O código do cadastro mudou sem a troca controlada e o registro não foi ao FDV.', acao: 'Faça a troca controlada ou volte ao código anterior.' },
   chave_duplicada: { motivo: 'Outro cadastro já usa este código no FDV e o registro não foi.', acao: 'Corrija o código repetido.' },
+  vinculo_divergente: { motivo: 'O cliente já está vinculado no FDV com outro código e fica retido, sem ir ao FDV.', acao: 'Resolva a divergência do vínculo.' },
   campo_obrigatorio: { motivo: 'Campo obrigatório vazio no cadastro.', acao: 'Complete o campo indicado e salve de novo.' },
   campo_invalido: { motivo: 'Valor em formato inválido para o FDV.', acao: 'Corrija o campo indicado no cadastro.' },
+  quantidade_fracionaria: { motivo: 'A quantidade tem casas decimais, e o Macuxi FDV só aceita número inteiro.', acao: 'Ajuste a quantidade para um número inteiro.' },
   referencia_ausente: { motivo: 'Depende de um cadastro que ainda não foi confirmado no FDV.', acao: 'Aguarde.' },
   filial_codigo_repetido: { motivo: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem.', acao: 'Revise as filiais.' },
   falha_processamento: { motivo: 'O FDV não conseguiu processar o registro.', acao: 'Use Reprocessar; se persistir, fale com o suporte.' },

@@ -143,6 +143,15 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect(ev[0]!.payload.payload).toMatchObject({ entidade: 'produto', modo: 'delta', geracao: 1, registros: 3, aceitos: 3, com_erro: 0 });
     });
 
+    it('T-0059 §5.4: o registro retido (aguarda_vinculo) fica fora do lote e continua pendente', async () => {
+      const { t, chaves } = await cenario('env-vinc');
+      await adm('UPDATE integracao_fdv.registro_publicado SET aguarda_vinculo = true WHERE tenant_id = $1 AND registro_external_id = $2', [t, chaves[1]]);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      expect((hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }> }).registros.map((r) => r.external_id)).toEqual([chaves[0], chaves[2]]);
+      expect(await reg(t, chaves[1]!)).toMatchObject({ pendente: true });
+    });
+
     it('ADR 0010 item 3: a linha antiga da troca de chave, confirmada inativa no Hub, sai (deleted_at) só no finalizar; a nova e as demais ficam', async () => {
       const { t, chaves } = await cenario('env-troca');
       const erp = '11111111-1111-4111-8111-111111111111';
@@ -607,6 +616,23 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       // o RUIM segue pendente, mas o conteúdo igual não é reenviado
       await ciclo(banco, agenda, hub, depois(4000), [t]);
       expect(hub.chamadas.filter((c) => c.pedido.metodo === 'POST')).toHaveLength(1);
+    });
+
+    it('T-0085: lote misto de unidades: o fator fracionário é recusado só nele (quantidade_fracionaria no Log) e o inteiro segue', async () => {
+      const t = await criarTenant(efemero.admin, 'env-frac', ['integracao-fdv']);
+      const cred = await criarCredencial(efemero.admin, t);
+      await espelho(efemero.admin, t, 'produto', payloadProduto('PROD'), { confirmado: true });
+      const un = (id: string, fator: number) => ({ external_id: id, ativo: true, produto_external_id: 'PROD', unidade: 'CX', fator, padrao: false });
+      await espelho(efemero.admin, t, 'produto_unidade', un('U-INT', 12), { alterado: new Date('2026-11-22T09:00:00.000Z') });
+      await espelho(efemero.admin, t, 'produto_unidade', un('U-FRAC', 1.5), { alterado: new Date('2026-11-22T09:00:01.000Z') });
+      await cursorEntidade(efemero.admin, t, 'produto_unidade', { credencialId: cred, cursor: { em: new Date(AGORA.getTime() - 86_400_000), id: 'ANT' } });
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      const corpo = hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }>; linhas_invalidas: Array<Record<string, unknown>> };
+      expect(corpo.registros.map((r) => r.external_id)).toEqual(['U-INT']);
+      expect(corpo.linhas_invalidas).toEqual([{ external_id: 'U-FRAC', codigo: 'formato_invalido', campo: 'fator', mensagem: expect.stringContaining('só aceita número inteiro') }]);
+      expect(JSON.stringify(corpo)).not.toContain('1.5');
+      expect(await adm('SELECT codigo, campo, origem FROM integracao_fdv.lote_erro WHERE tenant_id = $1', [t])).toEqual([{ codigo: 'quantidade_fracionaria', campo: 'fator', origem: 'erp' }]);
     });
 
     it('RN-INF-03: linhas inválidas firmes já declaradas saem da fila e não travam os válidos atrás delas (o hash guarda o evento novo)', async () => {
