@@ -48,9 +48,12 @@ describe('página da bandeira por filial (T-0088)', () => {
   it('sem filial cadastrada, a página explica em vez de ficar vazia', () => {
     expect(renderToStaticMarkup(<VistaBandeira cartoes={[]} rota={ROTA_BANDEIRA} rotaDaPagina={ROTA_BANDEIRA} />)).toContain('Nenhuma filial cadastrada.');
   });
-  it('🟡 da marca: Ligar e Desligar com a mesma largura mínima; no 390 cada filial é um cartão e o botão é inteiro com 44 px', () => {
-    expect(css).toMatch(/\.bandeira-acoes > \.barra-acoes > button \{ min-width: 7\.5rem; \}/);
-    expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.cartoes-bandeira \{ grid-template-columns: minmax\(0, 1fr\); \}\s*\.bandeira-acoes > \.barra-acoes > button \{ width: 100%; min-height: 44px; \}/);
+  it('T-0099: o botão da filial é o MenuAcoes (alvo de 44 px pelo botoes.css), sem fileira nem CSS próprio de botão; no 390 cada filial é um cartão', () => {
+    const h = html('administrador');
+    expect(h).toContain('mx-acoes-alvo');
+    expect(h).not.toContain('barra-acoes');
+    expect(css).not.toContain('.bandeira-acoes > .barra-acoes');
+    expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.cartoes-bandeira \{ grid-template-columns: minmax\(0, 1fr\); \}\s*\}/);
     expect(css).toMatch(/\.cartao-bandeira \{[^}]*border-radius: 10px/);
   });
 });

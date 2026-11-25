@@ -8,7 +8,7 @@
  * (`@macuxierp/integracao-fdv/api/testes`, RD-0512; R-20261122-042502).
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID } from '@macuxierp/integracao-fdv/api';
+import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_CLIENTES_ID, AGENDA_RETORNO_PEDIDOS_ID } from '@macuxierp/integracao-fdv/api';
 import { CHAVE_MESTRA, criarCredencial, hubDuble, ok } from '@macuxierp/integracao-fdv/api/testes';
 import { armazenamentoIndisponivel, criarEvento, type ClienteHub, type ConsumidorEvento } from '@macuxierp/platform-sdk';
 import { CatalogoArquivosPg, FilaDeTrabalhosPg, LicencasPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
@@ -203,6 +203,8 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
       recebedor: { receber: async (_tx, e) => (recebidos.push(e.pedido_uuid), { resultado: 'criado', pedido_id: randomUUID(), numero: 7, status: 'aprovado' }) },
       resolvedor: { resolver: async (_tx, _e, chaves) => new Map(chaves.filter((c) => conhecidas.has(c)).map((c) => [c, c])) },
       alertar: criarAlertaMonitor(log),
+      // o pré-cadastro de cliente tem o próprio teste de banco (agendas-clientes); aqui ele não deve ser chamado
+      clientes: { criador: { decidir: async () => Promise.reject(new Error('criador de cliente fora deste teste')) }, aditivos: true },
     };
   }
 
@@ -471,10 +473,10 @@ describe.skipIf(!PG_DISPONIVEL)('worker com o integracao-fdv montado (PostgreSQL
     expect([s!.proximo_sinal_em, s!.proxima_reconciliacao_em, s!.proxima_busca_pedidos_em].map((x: Date) => x.getTime())).toEqual([vencida.getTime(), vencida.getTime(), vencida.getTime()]);
   });
 
-  it('virada (T-0002): com o ambiente do compose.yml, as agendas do conector, da busca e do retorno entram e um ciclo chama /sinal e /pedidos/pendentes do Hub de produção, só pelo dublê', async () => {
+  it('virada (T-0002): com o ambiente do compose.yml, as agendas do conector e da busca e do retorno de pedidos e de clientes entram e um ciclo chama /sinal e /pedidos/pendentes do Hub de produção, só pelo dublê', async () => {
     await tenantTudoVencido('worker-virada');
     const { agendas, urls } = await ciclosDoMain(ENV_COMPOSE, 1);
-    expect(agendas).toEqual([AGENDA_CONECTOR_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_RETORNO_PEDIDOS_ID]);
+    expect(agendas).toEqual([AGENDA_CONECTOR_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_RETORNO_PEDIDOS_ID, AGENDA_BUSCA_CLIENTES_ID, AGENDA_RETORNO_CLIENTES_ID]);
     expect(urls.length).toBeGreaterThan(0);
     expect(urls.every((u) => u.includes(' https://api.macuxifdv.com.br/integracao/v1/'))).toBe(true);
     expect(urls).toContain('POST https://api.macuxifdv.com.br/integracao/v1/sinal'); // base do compose sem duplicar o /integracao/v1

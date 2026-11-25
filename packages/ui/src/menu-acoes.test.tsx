@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { MenuAcoes, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
+import { MenuAcoes, acaoTeclaGatilho, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
 import * as pacote from './index.js';
 
 const nada = () => {};
@@ -149,5 +149,23 @@ describe('MenuAcoes (T-0099): exportação', () => {
   it('o index exporta só o componente (auxiliares ficam no arquivo)', () => {
     expect(pacote.MenuAcoes).toBe(MenuAcoes);
     expect(Object.keys(pacote)).not.toContain('posicaoMenu');
+  });
+});
+
+describe('MenuAcoes (T-0099): tecla no gatilho', () => {
+  it('fechado: Enter, Espaço e ↓ abrem no primeiro; ↑ abre no último', () => {
+    for (const t of ['Enter', ' ', 'ArrowDown']) expect(acaoTeclaGatilho(t, false)).toBe('abrir-primeiro');
+    expect(acaoTeclaGatilho('ArrowUp', false)).toBe('abrir-ultimo');
+  });
+  it('aberto: setas e Enter entram no menu; Esc fecha', () => {
+    expect(acaoTeclaGatilho('ArrowDown', true)).toBe('entrar-primeiro');
+    expect(acaoTeclaGatilho('ArrowUp', true)).toBe('entrar-ultimo');
+    expect(acaoTeclaGatilho('Enter', true)).toBe('entrar-primeiro');
+    expect(acaoTeclaGatilho('Escape', true)).toBe('fechar');
+  });
+  it('fechado: Esc e outras teclas não fazem nada', () => {
+    expect(acaoTeclaGatilho('Escape', false)).toBeNull();
+    expect(acaoTeclaGatilho('Tab', false)).toBeNull();
+    expect(acaoTeclaGatilho('a', true)).toBeNull();
   });
 });

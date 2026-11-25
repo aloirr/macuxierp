@@ -3,6 +3,8 @@
 # real (banco efêmero) e falha em qualquer erro de render (tests/e2e/render-telas.mjs; critérios no X-6 do plano v0.3.12).
 # Pré-requisito: Postgres local de pé (`eval "$(bash db/scripts/pg-local.sh --subir)"`). Sem Docker, sem instalar nada.
 # Uso: bash tests/e2e/rodar-render-telas.sh [pasta de saída]   (portas: API 3202, web 3102; RENDER_SEM_BUILD=1 reaproveita o .next)
+# MENU_ACOES=1: depois do X-6, no mesmo servidor, roda o e2e do botão "Ações" (T-0099, tests/e2e/menu-acoes.mjs), com os
+# prints do menu aberto em 1280 e 390 em <pasta de saída>/menu-acoes.
 set -euo pipefail
 RAIZ="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d)"
@@ -33,6 +35,9 @@ esperar_web "http://localhost:$PORTA_WEB/login" || { tail -40 "$SAIDA/web.log" >
 set +e
 node tests/e2e/render-telas.mjs --base "http://localhost:$PORTA_WEB" --dados "$TMP/dados.json" --log "$SAIDA/web.log" --html "$SAIDA/html"
 CODIGO=$?
+if [ "${MENU_ACOES:-0}" = "1" ]; then
+  node tests/e2e/menu-acoes.mjs --base "http://localhost:$PORTA_WEB" --dados "$TMP/dados.json" --saida "$SAIDA/menu-acoes" || CODIGO=1
+fi
 set -e
 echo "[render] tempo total (build incluso): $(( $(date +%s) - INICIO )) s" >&2
 exit "$CODIGO"

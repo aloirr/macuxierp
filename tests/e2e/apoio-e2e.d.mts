@@ -11,3 +11,12 @@ export function criarRoteiro(
   passo: (nome: string, fn: () => Promise<void>) => Promise<void>;
   print: (pagina: unknown, arquivo: string, recorte?: unknown) => Promise<void>;
 };
+export interface UrlTela {
+  url: string;
+  origem: string;
+  contexto: 'sem-sessao' | 'portal' | 'bko';
+  comParametro?: boolean;
+  abas?: boolean;
+}
+export function urlsDasTelas(dados: unknown): UrlTela[];
+export function abasDaEmpresa(pagina: unknown, base: string, url: string): Promise<string[]>;

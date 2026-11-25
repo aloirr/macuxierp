@@ -1,10 +1,10 @@
 'use client';
 import { LIMITE_REGISTROS_LOTE_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type MonitorConectorFdv } from '@macuxierp/platform-sdk';
-import { DialogoMotivo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { DialogoMotivo, MenuAcoes, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { SeloTom } from '@/components/selo-tom';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
-import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, rotuloComLote, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
+import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
@@ -100,20 +100,25 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
     });
   };
 
+  /** Botão "Ações" da linha (T-0099): a principal muda pela situação (pausada → Tentar de novo; falha → Reprocessar; senão Log); Zerar (perigo) fica por último. */
+  const acoesDaLinha = (l: LinhaCadastroFdv) => {
+    const fazer: Record<string, () => void> = {
+      ligar: () => setPedido({ tipo: l.ligada ? 'desligar' : 'ligar', linha: l }),
+      retomar: () => setPedido({ tipo: 'retomar', linha: l }),
+      reprocessar: () => reprocessar(l),
+      log: () => setLog(l),
+      zerar: () => setZerar(l),
+    };
+    const a = acoesDaLinhaFdv(l, { bloqueado, semCredencial, licenciado: dados.modulo_licenciado });
+    return <MenuAcoes rotuloLinha={l.rotulo} principal={{ rotulo: a.principal.rotulo, desabilitado: a.principal.desabilitado, aoAcionar: fazer[a.principal.chave]! }} acoes={a.menu.map((x) => ({ ...x, aoAcionar: fazer[x.chave]! }))} />;
+  };
+
   const colunas: ColunaTabela<LinhaCadastroFdv>[] = [
     ...colunasStatusFdv<LinhaCadastroFdv>(),
     {
       id: 'acoes',
       titulo: 'Ações',
-      celula: (l) => (
-        <span className="barra-acoes" style={{ margin: 0, minWidth: 480 }}>
-          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap', minWidth: '6.5rem' }} disabled={bloqueado || semCredencial} onClick={() => setPedido({ tipo: l.ligada ? 'desligar' : 'ligar', linha: l })} aria-label={`${l.ligada ? 'Desligar' : 'Ligar'}: ${l.rotulo}`}>{l.ligada ? 'Desligar' : 'Ligar'}</button>
-          {l.pausada && <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setPedido({ tipo: 'retomar', linha: l })} aria-label={`Tentar de novo: ${l.rotulo}`}>Tentar de novo</button>}
-          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado || semCredencial || l.loteEmVoo} onClick={() => reprocessar(l)} aria-label={`Reprocessar: ${l.rotulo}`}>{rotuloComLote(l.loteEmVoo, 'Reprocessar')}</button>
-          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={bloqueado} onClick={() => setZerar(l)} aria-label={`Zerar: ${l.rotulo}`}>Zerar</button>
-          <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={!dados.modulo_licenciado} onClick={() => setLog(l)} aria-label={`Log: ${l.rotulo}`}>Log</button>
-        </span>
-      ),
+      celula: acoesDaLinha,
     },
   ];
 
