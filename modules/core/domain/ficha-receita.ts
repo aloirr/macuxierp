@@ -5,7 +5,7 @@
  * A fonte é a porta de consulta de CNPJ dos cadastros (RF-CAD-02); o core a declara de forma estrutural, sem importar o módulo.
  */
 import { cnpjValido, EmailUsuario, normalizarDocumento } from '@macuxierp/platform-sdk';
-import { FichaReceita, FonteFichaReceita, FORMATO_FICHA } from '../contracts';
+import { FichaReceitaPlana, FonteFichaReceita, FORMATO_FICHA } from '../contracts';
 import type { MotivoFalhaReceita } from '../contracts';
 
 /** O que o core lê da `SugestaoCnpj` dos cadastros (subconjunto estrutural; os nomes são os da sugestão). */
@@ -65,7 +65,7 @@ const cnae = (v: unknown): string | null => {
  * Regime pela opção da fonte: MEI e Simples quando optou; "normal" só quando a fonte nega as duas opções
  * (lucro presumido ou real); sem informação, nulo.
  */
-export function regimeDaOpcao(mei: boolean | null | undefined, simples: boolean | null | undefined): FichaReceita['regime_receita'] {
+export function regimeDaOpcao(mei: boolean | null | undefined, simples: boolean | null | undefined): FichaReceitaPlana['regime_receita'] {
   if (mei === true) return 'mei';
   if (simples === true) return 'simples';
   return mei === false && simples === false ? 'normal' : null;
@@ -98,7 +98,7 @@ export const mensagemDaFalhaReceita = (m: MotivoFalhaReceita): string => MENSAGE
 export function prepararFichaDaConsulta(p: {
   cnpj: string;
   resposta: ResultadoConsultaReceita;
-}): { ok: true; ficha: FichaReceita } | { ok: false; motivo: MotivoFalhaReceita } {
+}): { ok: true; ficha: FichaReceitaPlana } | { ok: false; motivo: MotivoFalhaReceita } {
   if (!p.resposta.ok) return { ok: false, motivo: motivoDaFalhaDaFonte(p.resposta.motivo) };
   const { sugestao: s, fonte, consultado_em } = p.resposta;
   const cnpj = normalizarDocumento(String(s.cnpj ?? ''));
@@ -140,5 +140,5 @@ export function prepararFichaDaConsulta(p: {
       consultado_em,
   };
   // Campo acima do máximo do contrato recusa a atualização inteira: nada é cortado em silêncio (o motivo não leva o valor).
-  return FichaReceita.safeParse(ficha).success ? { ok: true, ficha } : { ok: false, motivo: 'campo_acima_do_limite' };
+  return FichaReceitaPlana.safeParse(ficha).success ? { ok: true, ficha } : { ok: false, motivo: 'campo_acima_do_limite' };
 }

@@ -5,7 +5,7 @@
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
-import type { CampoContato, FichaReceita, FichaReceitaMascarada } from '../contracts';
+import type { CampoContato, FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
 import { MENSAGEM_SEM_CNPJ } from '../domain';
 import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
@@ -123,16 +123,16 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
     return primeiraLinha(tx, 'SELECT plataforma.empresa_primeiro_admin_senha($1::uuid, $2, $3) usuario_id', [p.id, p.senha_hash, p.request_id]);
   }
 
-  async lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaMascarada | null } | null> {
-    const [l] = await tx.consultar<{ e: (EmpresaPlataforma & { ficha?: FichaReceitaMascarada | null }) | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
+  async lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null> {
+    const [l] = await tx.consultar<{ e: (EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
     if (!l?.e) return null;
     const { ficha, ...empresa } = l.e;
     return { empresa, ficha: ficha ?? null };
   }
 
-  async gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceita; request_id: string }): Promise<{ ficha: FichaReceitaMascarada | null; alterados: string[] }> {
+  async gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }> {
     return comErrosDaFicha(async () =>
-      primeiraLinha<{ r: { ficha: FichaReceitaMascarada | null; alterados: string[] } }>(tx, 'SELECT plataforma.empresa_gravar_receita($1::uuid, $2::jsonb, $3) r', [
+      primeiraLinha<{ r: { ficha: FichaReceitaPlanaMascarada | null; alterados: string[] } }>(tx, 'SELECT plataforma.empresa_gravar_receita($1::uuid, $2::jsonb, $3) r', [
         p.id,
         JSON.stringify(p.ficha),
         p.request_id,

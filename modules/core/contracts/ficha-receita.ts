@@ -1,6 +1,8 @@
 /**
  * Ficha da empresa pela Receita (T-0101, ADR 0012 emenda da ficha, RF-CAD-02). Os nomes são os da migração 0065
- * (`empresa_gravar_receita` recebe `FichaReceita`; `empresa_ler` devolve `FichaReceitaMascarada` na chave `ficha`).
+ * (`empresa_gravar_receita` recebe `FichaReceitaPlana`; `empresa_ler` devolve `FichaReceitaPlanaMascarada` na chave `ficha`).
+ * Os nomes `FichaReceita`, `FichaReceitaMascarada` e `ResultadoAtualizarReceita` ficam com a API da etapa 1 (deprecated,
+ * `ficha-receita-etapa1.ts`) até o PR de remoção.
  * E-mail e telefone podem ser dado pessoal (MEI): o detalhe só os devolve MASCARADOS (pelo banco) e o valor completo só
  * sai no Revelar, auditado. Nada disso vai para log, auditoria (só nomes de campo), lista nem busca (regra 8).
  */
@@ -34,7 +36,7 @@ const Data = z.string().regex(FORMATO_FICHA.data);
  * Ficha para gravar (entrada de `empresa_gravar_receita`). Chave ausente = o banco mantém o valor; chave presente
  * (inclusive nula) = grava. Por isso e-mail e telefone só entram quando a fonte os trouxe (consulta em cache não os traz).
  */
-export const FichaReceita = z.object({
+export const FichaReceitaPlana = z.object({
   razao_social: z.string().min(2).max(M.razao),
   nome_fantasia: z.string().max(M.razao).nullable(),
   logradouro: z.string().max(M.logradouro).nullable(),
@@ -59,10 +61,10 @@ export const FichaReceita = z.object({
   fonte: FonteFichaReceita,
   consultado_em: z.string().datetime(),
 });
-export type FichaReceita = z.infer<typeof FichaReceita>;
+export type FichaReceitaPlana = z.infer<typeof FichaReceitaPlana>;
 
 /** Ficha do detalhe da empresa no portal (`empresa_ler`, chave `ficha`): nunca leva o e-mail nem o telefone completos. */
-export const FichaReceitaMascarada = z.object({
+export const FichaReceitaPlanaMascarada = z.object({
   nome_fantasia: z.string().nullable(),
   ie: z.string().nullable(),
   logradouro: z.string().nullable(),
@@ -87,7 +89,7 @@ export const FichaReceitaMascarada = z.object({
   receita_fonte: z.string().nullable(),
   receita_consultada_em: z.string().nullable(),
 });
-export type FichaReceitaMascarada = z.infer<typeof FichaReceitaMascarada>;
+export type FichaReceitaPlanaMascarada = z.infer<typeof FichaReceitaPlanaMascarada>;
 
 /** Revelar (ADR 0012, emenda da ficha): só `email` ou `telefone`; o corpo é vazio e o campo vem na URL. */
 export const CampoContato = z.enum(['email', 'telefone']);
@@ -102,8 +104,8 @@ export const MotivoFalhaReceita = z.enum(['fonte_indisponivel', 'cnpj_nao_encont
 export type MotivoFalhaReceita = z.infer<typeof MotivoFalhaReceita>;
 
 /** Resultado de "Atualizar pela Receita": só os NOMES dos campos que mudaram (nunca valores) e a ficha mascarada. */
-export const ResultadoAtualizarReceita = z.discriminatedUnion('estado', [
-  z.object({ estado: z.literal('ok'), campos_alterados: z.array(z.string()), ficha: FichaReceitaMascarada.nullable() }),
-  z.object({ estado: z.literal('erro'), motivo: MotivoFalhaReceita, mensagem: z.string(), ficha: FichaReceitaMascarada.nullable() }),
+export const ResultadoReceitaPlana = z.discriminatedUnion('estado', [
+  z.object({ estado: z.literal('ok'), campos_alterados: z.array(z.string()), ficha: FichaReceitaPlanaMascarada.nullable() }),
+  z.object({ estado: z.literal('erro'), motivo: MotivoFalhaReceita, mensagem: z.string(), ficha: FichaReceitaPlanaMascarada.nullable() }),
 ]);
-export type ResultadoAtualizarReceita = z.infer<typeof ResultadoAtualizarReceita>;
+export type ResultadoReceitaPlana = z.infer<typeof ResultadoReceitaPlana>;

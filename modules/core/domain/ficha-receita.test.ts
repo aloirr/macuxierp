@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FichaReceita, MotivoFalhaReceita } from '../contracts';
+import { FichaReceitaPlana, MotivoFalhaReceita } from '../contracts';
 import { mensagemDaFalhaReceita, prepararFichaDaConsulta, regimeDaOpcao, type ResultadoConsultaReceita, type SugestaoReceita } from './ficha-receita';
 
 const CNPJ = '11222333000181';
@@ -35,7 +35,7 @@ describe('ficha da Receita: mapeamento da SugestaoCnpj (T-0101, RF-CAD-02)', () 
     const r = preparar(ok(sugestao()));
     if (!r.ok) throw new Error('esperava ok');
     expect(r.ficha).toMatchObject({ email: 'contato@teste.com.br', telefone: '9232221234', cep: '69000000', uf: 'AM' });
-    expect(FichaReceita.safeParse(r.ficha).success).toBe(true);
+    expect(FichaReceitaPlana.safeParse(r.ficha).success).toBe(true);
   });
   it('RF-CAD-02: CNAE secundário sem repetido, sem o principal e sem lixo; CNAE de 6 dígitos ganha o zero', () => {
     const r = preparar(ok(sugestao({ cnae_fiscal: '111301', cnae_secundarios: ['4712100', '0111301', '4712100', 'x'] })));
@@ -58,7 +58,7 @@ describe('ficha da Receita: mapeamento da SugestaoCnpj (T-0101, RF-CAD-02)', () 
   });
   it('RF-CAD-02: campo no limite do contrato passa; um caractere a mais recusa tudo, sem cortar nem citar o valor', () => {
     const noLimite = preparar(ok(sugestao({ razao_social: 'R'.repeat(150), endereco: { logradouro: 'L'.repeat(120), bairro: 'B'.repeat(80), complemento: 'C'.repeat(120) } })));
-    expect(noLimite.ok && FichaReceita.safeParse(noLimite.ficha).success).toBe(true);
+    expect(noLimite.ok && FichaReceitaPlana.safeParse(noLimite.ficha).success).toBe(true);
     for (const o of [{ razao_social: 'R'.repeat(151) }, { endereco: { bairro: 'B'.repeat(81) } }, { porte: 'P'.repeat(61) }, { endereco: { numero: 'N'.repeat(21) } }]) {
       const r = preparar(ok(sugestao(o)));
       expect(r).toEqual({ ok: false, motivo: 'campo_acima_do_limite' });

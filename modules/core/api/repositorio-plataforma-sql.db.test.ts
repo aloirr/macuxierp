@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FichaReceita } from '../contracts';
+import type { FichaReceitaPlana } from '../contracts';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore } from './plataforma';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
@@ -152,7 +152,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
 
   describe('ficha da Receita (migração 0065)', () => {
     const CNPJ_FICHA = '11222333000181';
-    const FICHA: FichaReceita = {
+    const FICHA: FichaReceitaPlana = {
       razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', logradouro: 'RUA A', numero: '10', complemento: null, bairro: 'CENTRO',
       cep: '69000000', municipio_ibge: '1302603', uf: 'AM', email: 'contato.ficticio@empresa.teste', telefone: '9232221234',
       cnae_principal: '4711302', regime_receita: 'simples', situacao_cadastral: 'ATIVA', situacao_cadastral_data: '2020-01-02',

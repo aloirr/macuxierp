@@ -33,7 +33,7 @@ import {
   type Transacao,
   type Violacao,
 } from '@macuxierp/platform-sdk';
-import { CampoContato, Id, type ContatoRevelado, type FichaReceita, type FichaReceitaMascarada, type ResultadoAtualizarReceita } from '../contracts';
+import { CampoContato, Id, type ContatoRevelado, type FichaReceitaPlana, type FichaReceitaPlanaMascarada, type ResultadoReceitaPlana } from '../contracts';
 import {
   avaliarPrimeiroAdmin,
   avaliarRedefinirSenhaPrimeiroAdmin,
@@ -61,9 +61,9 @@ export interface RepositorioPlataforma {
   /** E-mail completo do 1º admin; a função da 0035 audita só a ação (sem o e-mail). */
   revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string>;
   /** `empresa_ler` com a chave `ficha` (0065): a ficha já vem mascarada do banco; `null` sem `core.empresa`. */
-  lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaMascarada | null } | null>;
+  lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null>;
   /** `empresa_gravar_receita`: `alterados` são só nomes de coluna. Sem `core.empresa` (55000) = 409. */
-  gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceita; request_id: string }): Promise<{ ficha: FichaReceitaMascarada | null; alterados: string[] }>;
+  gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }>;
   /** `empresa_contato_revelar`: o valor completo; a função audita só o campo. Sem o dado (P0002) = 404. */
   revelarContato(tx: Transacao, p: { id: string; campo: CampoContato; request_id: string }): Promise<string>;
 }
@@ -240,11 +240,11 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
           throw erros.regra('RN-CORE-14', mensagemDaFalhaReceita(preparo.motivo), { ficha: 'Campo acima do limite' });
         }
         if (!preparo.ok) {
-          const falha: ResultadoAtualizarReceita = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha: atual.ficha };
+          const falha: ResultadoReceitaPlana = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha: atual.ficha };
           return semCache(falha);
         }
         const gravada = await repo.gravarReceita(c.tx, { id, ficha: preparo.ficha, request_id: c.request_id });
-        const ok: ResultadoAtualizarReceita = { estado: 'ok', campos_alterados: gravada.alterados, ficha: gravada.ficha };
+        const ok: ResultadoReceitaPlana = { estado: 'ok', campos_alterados: gravada.alterados, ficha: gravada.ficha };
         return semCache(ok);
       },
     }),

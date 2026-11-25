@@ -1,11 +1,11 @@
 import { CABECALHOS_SENHA_PROVISORIA, ErroApi, type EmpresaPlataforma, type Licenca, type RotaPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
-import type { FichaReceita, FichaReceitaMascarada } from '../contracts';
+import type { FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
 import { criarPluginPlataformaCore, type ConsultaReceita, type RepositorioPlataforma } from './plataforma';
 
 const CNPJ = '11222333000181';
-const FICHA_ANTES: FichaReceitaMascarada = {
+const FICHA_ANTES: FichaReceitaPlanaMascarada = {
   nome_fantasia: 'ANTIGA', ie: null, logradouro: null, numero: null, complemento: null, bairro: null, cep: null, municipio_ibge: null, uf: 'AM',
   email_mascarado: 'co****@teste.com.br', telefone_mascarado: '(92) ****-1234', cnae_principal: '4711302', regime_receita: 'simples',
   situacao_cadastral: 'ATIVA', situacao_cadastral_data: null, data_abertura: null, natureza_juridica: null, porte: null,
@@ -18,7 +18,7 @@ const SUGESTAO_OK = {
   sugestao: { cnpj: CNPJ, razao_social: 'EMPRESA NOVA LTDA', nome_fantasia: 'NOVA', situacao_cadastral: 'ATIVA', cnae_fiscal: '4711302', endereco: { uf: 'AM' }, email: 'contato@nova.com.br', telefone: '9232221234', opcao_simples: true, opcao_mei: false },
 };
 interface OpcoesFicha {
-  ficha?: FichaReceitaMascarada | null;
+  ficha?: FichaReceitaPlanaMascarada | null;
   consulta?: ConsultaReceita;
   valor?: string;
 }
@@ -30,7 +30,7 @@ const AGORA = new Date('2026-11-23T12:00:00Z');
 /** Repositório em memória no lugar das funções da 0033; guarda as chamadas para conferir o que foi gravado. */
 function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha = {}) {
   const chamadas: string[] = [];
-  const gravadas: FichaReceita[] = [];
+  const gravadas: FichaReceitaPlana[] = [];
   const hashes: string[] = [];
   let empresa: EmpresaPlataforma = {
     id: EMPRESA,
