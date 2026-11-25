@@ -335,8 +335,8 @@ UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '953222
   it('gravar: texto no limite exato grava; um caractere a mais = 23514 só com o nome do campo, sem o valor', () => {
     const s = novaSessao();
     const limites: Record<string, number> = {
-      razao_social: 60,
-      nome_fantasia: 60,
+      razao_social: 150,
+      nome_fantasia: 150,
       logradouro: 120,
       numero: 20,
       complemento: 120,
@@ -370,6 +370,19 @@ UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '953222
         mensagem: expect.stringMatching(new RegExp(`campo acima do limite: ${campo}`)),
       });
       expect(e.saida.includes(valor)).toBe(false);
+    }
+    // O CHECK da coluna (alargado pela 0065) também barra 151, mesmo fora da função; o mínimo 2 da 0003 continua.
+    for (const [coluna, valor] of [
+      ['razao_social', 'Q'.repeat(151)],
+      ['razao_social', 'Q'],
+      ['nome_fantasia', 'Q'.repeat(151)],
+    ] as const) {
+      recusaDetalhada(
+        banco.conexao,
+        `UPDATE core.empresa SET ${coluna} = '${valor}' WHERE tenant_id = '${B.id}';`,
+        '23514',
+        new RegExp(`empresa_${coluna}_check`),
+      );
     }
   });
 

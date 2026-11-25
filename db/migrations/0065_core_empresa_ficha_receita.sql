@@ -1,5 +1,5 @@
 -- 0065 — Ficha da empresa pela Receita (T-0101; ADR 0012 §4, emenda da ficha). Aditiva e reexecutável.
--- Entram: colunas da ficha em core.empresa; internas mascarar_telefone, receita_texto, receita_data, receita_digitos,
+-- Entram: colunas da ficha em core.empresa; razão social e nome fantasia até 150; internas mascarar_telefone, receita_texto, receita_data, receita_digitos,
 -- empresa_core_id e empresa_ficha_json; empresa_ler com a chave "ficha"; empresa_gravar_receita e
 -- empresa_contato_revelar, só para macuxierp_config.
 -- O porquê: docs/banco/README.md, seção "Ficha da empresa pela Receita".
@@ -27,6 +27,16 @@ ALTER TABLE core.empresa
   ADD COLUMN IF NOT EXISTS receita_fonte text
     CHECK (receita_fonte IN ('brasilapi', 'viacep', 'receita-aberta', 'cache', 'sefaz')),
   ADD COLUMN IF NOT EXISTS receita_consultada_em timestamptz;
+
+-- Razão social e nome fantasia até 150 (contrato do core, #637); o mínimo da 0003 continua. Os nomes são os que a 0003
+-- gerou (conferidos no pg_constraint). Alargar não invalida linha: NOT VALID + VALIDATE só evita a varredura sob trava forte.
+ALTER TABLE core.empresa
+  DROP CONSTRAINT IF EXISTS empresa_razao_social_check,
+  DROP CONSTRAINT IF EXISTS empresa_nome_fantasia_check,
+  ADD CONSTRAINT empresa_razao_social_check CHECK (length(razao_social) BETWEEN 2 AND 150) NOT VALID,
+  ADD CONSTRAINT empresa_nome_fantasia_check CHECK (length(nome_fantasia) <= 150) NOT VALID;
+ALTER TABLE core.empresa VALIDATE CONSTRAINT empresa_razao_social_check;
+ALTER TABLE core.empresa VALIDATE CONSTRAINT empresa_nome_fantasia_check;
 
 COMMENT ON COLUMN core.empresa.email IS
   'Ficha da Receita (0065): dado possivelmente pessoal (MEI). Portal só mascarado; o completo só por empresa_contato_revelar, auditado sem o valor. Nunca em log.';
@@ -213,12 +223,12 @@ BEGIN
   -- acima do limite = 23514 só com o nome do campo.
   n := e;
   IF p_ficha ? 'razao_social' THEN
-    -- Limite da coluna da 0003 (60). NOT NULL na tabela: vazia ou de 1 caractere não apaga a atual.
-    v_txt := plataforma.receita_texto('razao_social', p_ficha ->> 'razao_social', 60);
+    -- NOT NULL na tabela: vazia ou de 1 caractere não apaga a atual.
+    v_txt := plataforma.receita_texto('razao_social', p_ficha ->> 'razao_social', 150);
     IF length(v_txt) >= 2 THEN n.razao_social := v_txt; END IF;
   END IF;
   IF p_ficha ? 'nome_fantasia' THEN
-    n.nome_fantasia := plataforma.receita_texto('nome_fantasia', p_ficha ->> 'nome_fantasia', 60);
+    n.nome_fantasia := plataforma.receita_texto('nome_fantasia', p_ficha ->> 'nome_fantasia', 150);
   END IF;
   IF p_ficha ? 'logradouro' THEN
     n.logradouro := plataforma.receita_texto('logradouro', p_ficha ->> 'logradouro', 120);
