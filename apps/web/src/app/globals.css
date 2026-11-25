@@ -195,6 +195,9 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 [data-corpo-dialogo] > .corpo-log { min-width: 0; }
 .corpo-log { display: grid; gap: 12px; }
 .corpo-log h3, .corpo-log p { margin: 0; }
+/* Log do BKO (6 colunas, com "Corrigir"): janela mais larga no desktop; Registro não quebra; no celular a tabela rola e a última coluna fica à vista ao rolar. */
+[role="dialog"]:has(.corpo-log-bko) { width: min(1080px, 94vw) !important; }
+.corpo-log-bko td:first-child { white-space: nowrap !important; }
 @media (max-width: 640px) {
   [role="dialog"]:has(.corpo-log) { padding: 16px !important; width: 96vw !important; }
   .corpo-log th, .corpo-log td { padding: 6px 3px !important; font-size: var(--mx-tamanho-micro) !important; white-space: normal !important; }
@@ -205,6 +208,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
+.resumo-log { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .rodape-log { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 0; }
 
 /* Aba Cargas do /config (T-0058): só tokens. Linha = número, nome, situação, Modelo, Importar. */
