@@ -133,6 +133,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .bloco h3 { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-texto-secundario); margin: 16px 0 6px; }
 .cabecalho-ficha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 12px; }
 .cabecalho-ficha p { margin: 0; }
+@media (max-width: 640px) { .cabecalho-ficha .mx-botao-secundario { min-height: 44px } }
 .lista-modulos, .lista-cnae { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
 .lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }
 .formulario-estreito { max-width: 420px; }
