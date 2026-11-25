@@ -36,9 +36,9 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   });
   it('RN-PED-05: faturado parcial e total trazem nota e itens desta nota, com a quantidade na unidade base', () => {
     const p = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
-    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: '10', serie: '1', total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2, valor_cents: 5000 }] } });
+    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: '10', serie: '1', total_cents: 5000, chave_acesso: '1'.repeat(44) }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2, valor_cents: 5000 }] } });
     const t = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'faturado_parcial', CHAVES);
-    expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total' } });
+    expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total', nota: { chave_acesso: '1'.repeat(44) } } });
     expect(JSON.stringify([p, t])).not.toContain(U(3)); // ADR 0010 item 1: a chave do Hub, nunca o UUID do ERP
   });
   it('T-0085: item faturado fracionário sai do retorno (o Hub só aceita inteiro), os demais seguem, e a decisão aponta a sequência recusada', () => {
@@ -124,6 +124,12 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(retornoDoPedido(cancelado, 'faturado_total')).toMatchObject({ acao: 'enviar', corpo: { status: 'cancelado' } });
     expect(retornoDoPedido(cancelado, 'cancelado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
     expect(retornoDoPedido(cancelado, 'rejeitado_erp')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
+  });
+  it('T-0105 (RN-INT-08/09 do FDV): chave com letras (CNPJ alfanumérico) vai nula em chave_acesso, porque o Hub recusaria o retorno inteiro', () => {
+    const alfa = { ...nota, chave: '13261112ABC34501DE35550010000001231876543214' };
+    const r = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota: alfa, itens_faturados: itens }), null, CHAVES);
+    expect(r.acao).toBe('enviar');
+    if (r.acao === 'enviar') expect(r.corpo.nota?.chave_acesso).toBeNull();
   });
   it('RN-PED-05: ORDEM_HUB: integrado < parcial < total, e os terminais no mesmo degrau do total', () => {
     expect(ORDEM_HUB).toEqual({ integrado: 1, faturado_parcial: 2, faturado_total: 3, rejeitado_erp: 3, cancelado: 3 });
