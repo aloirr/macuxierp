@@ -46,6 +46,11 @@ export function acaoTeclaGatilho(tecla: string, aberto: boolean): AcaoTeclaGatil
   return null;
 }
 
+/** Tab (ou Shift+Tab) dentro do menu: fecha e devolve o foco ao gatilho; o foco nunca cai no body (T-0099). */
+export function acaoTeclaMenu(tecla: string): 'fechar-e-focar-gatilho' | null {
+  return tecla === 'Tab' ? 'fechar-e-focar-gatilho' : null;
+}
+
 /** Itens visíveis na ordem final: normais, depois (após um separador) os de perigo. */
 export function ordenarAcoes(acoes: AcaoMenu[]): { normais: AcaoMenu[]; perigos: AcaoMenu[] } {
   const visiveis = acoes.filter((a) => !a.oculto);
@@ -178,8 +183,10 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
       e.preventDefault();
       e.stopPropagation();
       fechar(true);
-    } else if (e.key === 'Tab') {
-      fechar(false);
+    } else if (acaoTeclaMenu(e.key) === 'fechar-e-focar-gatilho') {
+      // Padrão WAI-ARIA de menu button: o foco volta ao gatilho e o próximo Tab segue a ordem natural.
+      e.preventDefault();
+      fechar(true);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
       e.preventDefault();
       const itens = itensDom();
@@ -232,7 +239,7 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
             className="mx-acoes-gatilho mx-acoes-alvo"
             aria-haspopup="menu"
             aria-expanded={aberto}
-            aria-controls={menuId}
+            aria-controls={aberto ? menuId : undefined}
             aria-label={rotuloLinha ? `Ações de ${rotuloLinha}` : undefined}
             onClick={() => {
               focoInicial.current = null;

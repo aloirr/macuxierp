@@ -18,3 +18,5 @@ Da API
 - Sem item visível e sem principal, nada é renderizado.
 - O menu é `position: fixed` pelo retângulo do gatilho, então o `overflow` do quadro não o corta.
 - Alvo de 44 px no celular pela classe `.mx-acoes-alvo` (`botoes.css`); item de perigo leva `.mx-acoes-perigo`.
+
+- **Tab no menu aberto** (T-0099): `preventDefault`, fecha e devolve o foco ao gatilho (padrão WAI-ARIA de menu button); o próximo Tab segue a ordem natural. O `aria-controls` do gatilho só existe com o menu aberto.
