@@ -61,6 +61,10 @@ export const FichaReceitaPlana = z.object({
 });
 export type FichaReceitaPlana = z.infer<typeof FichaReceitaPlana>;
 
+/** CNAE com a descrição oficial (CNAE 2.3, `plataforma.cnae_descricoes`, 0066); `descricao` nula = código fora da tabela. */
+export const CnaeDescrito = z.object({ codigo: z.string(), descricao: z.string().nullable() });
+export type CnaeDescrito = z.infer<typeof CnaeDescrito>;
+
 /** Ficha do detalhe da empresa no portal (`empresa_ler`, chave `ficha`): nunca leva o e-mail nem o telefone completos. */
 export const FichaReceitaPlanaMascarada = z.object({
   nome_fantasia: z.string().nullable(),
@@ -71,6 +75,8 @@ export const FichaReceitaPlanaMascarada = z.object({
   bairro: z.string().nullable(),
   cep: z.string().nullable(),
   municipio_ibge: z.string().nullable(),
+  /** Nome oficial do município (`plataforma.municipio_nomes`, 0066); nulo sem código ou com código desconhecido. Aditivo: ausente = core anterior. */
+  municipio_nome: z.string().nullable().optional(),
   uf: z.string().nullable(),
   /** "do****@gmail.com" (padrão do e-mail do 1º admin). */
   email_mascarado: z.string().nullable(),
@@ -84,6 +90,10 @@ export const FichaReceitaPlanaMascarada = z.object({
   natureza_juridica: z.string().nullable(),
   porte: z.string().nullable(),
   cnae_secundarios: z.array(z.string()).nullable(),
+  /** Descrição do CNAE principal (0066); nula sem CNAE ou fora da tabela. Aditivo: `cnae_principal` segue string. */
+  cnae_principal_descricao: z.string().nullable().optional(),
+  /** Os `cnae_secundarios`, na mesma ordem, com a descrição; nulo quando a ficha não tem secundários (mantém `fichaVazia` do web). */
+  cnae_secundarios_descritos: z.array(CnaeDescrito).nullable().optional(),
   receita_fonte: z.string().nullable(),
   receita_consultada_em: z.string().nullable(),
 });

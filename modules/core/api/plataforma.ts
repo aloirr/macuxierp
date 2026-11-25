@@ -63,6 +63,8 @@ export interface RepositorioPlataforma {
   /** `empresa_ler` com a chave `ficha` (0063): a ficha já vem mascarada do banco; `null` sem `core.empresa`. */
   lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null>;
   /** `empresa_gravar_receita`: `alterados` são só nomes de coluna. Sem `core.empresa` (55000) = 409. */
+  /** Junta a descrição do CNAE e o nome do município (0066) à ficha mascarada que vai na resposta. */
+  descreverFicha(tx: Transacao, ficha: FichaReceitaPlanaMascarada): Promise<FichaReceitaPlanaMascarada>;
   gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }>;
   /** `empresa_contato_revelar`: o valor completo; a função audita só o campo. Sem o dado (P0002) = 404. */
   revelarContato(tx: Transacao, p: { id: string; campo: CampoContato; request_id: string }): Promise<string>;
@@ -245,7 +247,9 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
           throw erros.regra('RN-CORE-14', mensagemDaFalhaReceita(preparo.motivo), { ficha: 'Campo acima do limite' });
         }
         if (!preparo.ok) {
-          const falha: ResultadoReceitaPlana = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha: atual.ficha };
+          const anterior = atual.ficha;
+          const ficha = await c.comPlataforma((tx) => repo.descreverFicha(tx, anterior));
+          const falha: ResultadoReceitaPlana = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha };
           return semCache(falha);
         }
         const gravada = await c.comPlataforma((tx) => repo.gravarReceita(tx, { id, ficha: preparo.ficha, request_id: c.request_id }));
