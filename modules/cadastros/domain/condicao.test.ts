@@ -89,20 +89,34 @@ describe('prazo médio efetivo (RN-CAD-15, decisão 14 A)', () => {
       expect(m).toBeLessThanOrEqual(Math.max(...c));
     }
   });
-  it('RN-CAD-15: completarPrazoMedio na criação preenche o vazio e preserva o digitado', () => {
-    expect(completarPrazoMedio({ prazos_dias: [30, 45] })).toMatchObject({ prazo_medio_dias: 38 });
-    expect(completarPrazoMedio({ prazos_dias: [30, 45], prazo_medio_dias: null })).toMatchObject({ prazo_medio_dias: 38 });
-    expect(completarPrazoMedio({ prazos_dias: [30, 45], prazo_medio_dias: 0 })).toMatchObject({ prazo_medio_dias: 0 });
+  it('RN-CAD-15 (decisão 17 B): na criação, vazio calcula e marca prazo_medio_calculado = true; digitado, inclusive 0, vale e marca false', () => {
+    expect(completarPrazoMedio({ prazos_dias: [30, 45] })).toMatchObject({ prazo_medio_dias: 38, prazo_medio_calculado: true });
+    expect(completarPrazoMedio({ prazos_dias: [30, 45], prazo_medio_dias: null })).toMatchObject({ prazo_medio_dias: 38, prazo_medio_calculado: true });
+    expect(completarPrazoMedio({ prazos_dias: [30, 45], prazo_medio_dias: 0 })).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
+    expect(completarPrazoMedio({ prazos_dias: [30, 45], prazo_medio_dias: 7 })).toMatchObject({ prazo_medio_dias: 7, prazo_medio_calculado: false });
   });
-  it('RN-CAD-15: completarPrazoMedio no PATCH recalcula só quando as parcelas mudam e o prazo médio está vazio no corpo e no banco', () => {
+  it('RN-CAD-15 (decisão 17 B): PATCH com a marca true e parcelas novas recalcula e a marca continua true', () => {
+    const calculado = { prazos_dias: [30], prazo_medio_dias: 30, prazo_medio_calculado: true };
+    expect(completarPrazoMedio({ prazos_dias: [30, 60] }, calculado)).toMatchObject({ prazo_medio_dias: 45, prazo_medio_calculado: true });
+  });
+  it('RN-CAD-15 (decisão 17 B): PATCH com a marca false e parcelas novas mantém o digitado (corpo sem o campo)', () => {
+    const digitado = { prazos_dias: [30], prazo_medio_dias: 30, prazo_medio_calculado: false };
+    expect(completarPrazoMedio({ prazos_dias: [30, 60] }, digitado)).toEqual({ prazos_dias: [30, 60] });
+    expect(completarPrazoMedio({ prazos_dias: [30, 60] }, { prazos_dias: [30], prazo_medio_dias: 30 })).toEqual({ prazos_dias: [30, 60] });
+  });
+  it('RN-CAD-15 (decisão 17 B): PATCH com valor digitado vale e marca false, mesmo se estava calculado', () => {
+    const calculado = { prazos_dias: [30], prazo_medio_dias: 30, prazo_medio_calculado: true };
+    expect(completarPrazoMedio({ prazo_medio_dias: 0 }, calculado)).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
+    expect(completarPrazoMedio({ prazos_dias: [30, 60], prazo_medio_dias: 7 }, calculado)).toMatchObject({ prazo_medio_dias: 7, prazo_medio_calculado: false });
+  });
+  it('RN-CAD-15 (decisão 17 B): PATCH que apaga o valor (null explícito) calcula de novo, com as parcelas do corpo ou as gravadas, e marca true', () => {
+    const digitado = { prazos_dias: [30, 60], prazo_medio_dias: 7, prazo_medio_calculado: false };
+    expect(completarPrazoMedio({ prazo_medio_dias: null }, digitado)).toMatchObject({ prazo_medio_dias: 45, prazo_medio_calculado: true });
+    expect(completarPrazoMedio({ prazos_dias: [10, 20], prazo_medio_dias: null }, digitado)).toMatchObject({ prazo_medio_dias: 15, prazo_medio_calculado: true });
+  });
+  it('RN-CAD-15 (decisão 17 B): legado vazio no banco (sem valor e sem marca) com parcelas no PATCH calcula e marca true; sem parcelas no corpo, volta como veio', () => {
     const vazio = { prazos_dias: [30], prazo_medio_dias: null };
-    expect(completarPrazoMedio({ prazos_dias: [30, 60] }, vazio)).toMatchObject({ prazo_medio_dias: 45 });
-    expect(completarPrazoMedio({ prazos_dias: [30, 60], prazo_medio_dias: null }, { prazos_dias: [30], prazo_medio_dias: 30 })).toMatchObject({ prazo_medio_dias: 45 });
-    // digitado no banco e corpo sem o campo: mantém
-    expect(completarPrazoMedio({ prazos_dias: [30, 60] }, { prazos_dias: [30], prazo_medio_dias: 30 })).not.toHaveProperty('prazo_medio_dias');
-    // digitado no corpo: nunca sobrescrito
-    expect(completarPrazoMedio({ prazos_dias: [30, 60], prazo_medio_dias: 7 }, vazio)).toMatchObject({ prazo_medio_dias: 7 });
-    // parcelas não mudam: o corpo volta como veio (o legado vazio segue vazio)
+    expect(completarPrazoMedio({ prazos_dias: [30, 60] }, vazio)).toMatchObject({ prazo_medio_dias: 45, prazo_medio_calculado: true });
     expect(completarPrazoMedio({ forma_tpag: 'x' } as { prazos_dias?: number[] }, vazio)).toEqual({ forma_tpag: 'x' });
   });
 });

@@ -367,14 +367,14 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     const t = montar();
     const sem = (await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;;BOLETO;Boleto;FP-B;sim;Boleto 30/45') })).corpo as RelatorioCarga;
     expect(sem.erros.filter((e) => e.arquivo === ARQ)).toEqual([]);
-    expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 45], prazo_medio_dias: 38 });
+    expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 45], prazo_medio_dias: 38, prazo_medio_calculado: true });
     await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;7;BOLETO;Boleto;FP-B;sim;Boleto 30/45') });
-    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 7 });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 7, prazo_medio_calculado: false });
+    // decisão 17 B: a origem manda; célula vazia com parcelas na linha é cálculo, com a marca true, mesmo sobre um digitado
     await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
-    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 7, descricao: 'Boleto 30 dias' });
-    await t.repos.condicoesPagamento.atualizar(conds(t)[0]!.id as string, { prazo_medio_dias: null } as never);
-    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
-    expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 90], prazo_medio_dias: 60 });
+    expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 90], prazo_medio_dias: 60, prazo_medio_calculado: true, descricao: 'Boleto 30 dias' });
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;5;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 5, prazo_medio_calculado: false });
   });
 
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {

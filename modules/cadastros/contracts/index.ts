@@ -260,7 +260,10 @@ export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
 export const CondicaoPagamento = CondicaoPagamentoDados.extend({
   prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS_LEGADO)).min(1).max(MAX_PARCELAS_LEGADO),
   /** Aditivo também no tipo: ausente ou nulo = prazo incompleto (legado). */
-  prazo_medio_dias: PrazoMedioDiasLegado.nullish(), id: Uuid, inativo: z.boolean().default(false) });
+  prazo_medio_dias: PrazoMedioDiasLegado.nullish(),
+  /** Decisão 17 B (aditivo opcional, @1 continua valendo): true = o ERP calculou o prazo médio (média das parcelas); false ou ausente = digitado. */
+  prazo_medio_calculado: z.boolean().nullish(),
+  id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;
 
 type PrazoParaConferir = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'prazos_dias'> & { prazo_medio_dias?: number | null; forma_tpag?: string };

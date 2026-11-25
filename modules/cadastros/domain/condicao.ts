@@ -51,20 +51,24 @@ export function prazoMedioEfetivo(prazos_dias: readonly number[] | null | undefi
 }
 
 /**
- * RN-CAD-15 (decisão 14 A): preenche `prazo_medio_dias` vazio antes de gravar. Criação (sem `antes`): sempre que vier vazio e houver parcelas.
- * PATCH (`antes` = gravado): só quando o corpo muda as parcelas, o corpo não traz prazo médio numérico e o gravado está vazio ou o corpo
- * o esvazia (`null`); prazo digitado nunca é sobrescrito e, sem mudança de parcelas, o corpo volta como veio.
+ * RN-CAD-15, decisões 14 A e 17 B: preenche `prazo_medio_dias` e a marca `prazo_medio_calculado` antes de gravar.
+ * - número no corpo (inclusive 0): vale o digitado e a marca é false;
+ * - `null` explícito (o usuário apagou), ou criação sem o campo: o ERP calcula (`prazoMedioEfetivo`) e a marca é true;
+ * - PATCH sem o campo e com parcelas no corpo: recalcula (marca true) quando a marca gravada é true ou o prazo gravado está vazio;
+ *   com a marca false o digitado fica; sem parcelas no corpo o corpo volta como veio.
+ * `antes` é o cadastro gravado, no PATCH. Sem parcelas para calcular, o corpo volta como veio.
  */
 export function completarPrazoMedio<T extends { prazos_dias?: readonly number[] | null; prazo_medio_dias?: number | null }>(
-  corpo: T, antes?: { prazos_dias: readonly number[]; prazo_medio_dias?: number | null },
-): T {
-  if (typeof corpo.prazo_medio_dias === 'number') return corpo;
-  if (antes) {
+  corpo: T, antes?: { prazos_dias: readonly number[]; prazo_medio_dias?: number | null; prazo_medio_calculado?: boolean | null },
+): T & { prazo_medio_calculado?: boolean } {
+  if (typeof corpo.prazo_medio_dias === 'number') return { ...corpo, prazo_medio_calculado: false };
+  if (antes && corpo.prazo_medio_dias === undefined) {
     if (corpo.prazos_dias === undefined || corpo.prazos_dias === null) return corpo;
-    if (corpo.prazo_medio_dias === undefined && typeof antes.prazo_medio_dias === 'number') return corpo;
+    const vazio = typeof antes.prazo_medio_dias !== 'number';
+    if (!vazio && antes.prazo_medio_calculado !== true) return corpo; // digitado: fica
   }
   const efetivo = prazoMedioEfetivo(corpo.prazos_dias ?? antes?.prazos_dias, null);
-  return efetivo === null ? corpo : { ...corpo, prazo_medio_dias: efetivo };
+  return efetivo === null ? corpo : { ...corpo, prazo_medio_dias: efetivo, prazo_medio_calculado: true };
 }
 
 /** RN-CAD-15 (completa a RN-CAD-09): código, descrição, parcelas uma a uma e prazo médio (vazio é preenchido, decisão 14 A); à vista = parcelas [0] e prazo médio 0. */

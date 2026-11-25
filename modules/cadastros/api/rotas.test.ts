@@ -662,16 +662,20 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     const t = montar();
     const corpo = { codigo: 'P1', descricao: 'Prazo 1', forma_tpag: '15', prazos_dias: [30] };
     const sem = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PV', prazos_dias: [30, 45] } });
-    expect(sem).toMatchObject({ status: 201, corpo: { prazo_medio_dias: 38 } });
+    expect(sem).toMatchObject({ status: 201, corpo: { prazo_medio_dias: 38, prazo_medio_calculado: true } });
     expect(t.eventos.at(-1)).toMatchObject({ payload: { prazo_medio_dias: 38 } });
     const nulo = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PN', prazos_dias: [28, 56, 84], prazo_medio_dias: null } });
     expect(nulo.corpo).toMatchObject({ prazo_medio_dias: 56 });
     const zero = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PZ', prazos_dias: [30, 60], prazo_medio_dias: 0 } });
-    expect(zero.corpo).toMatchObject({ prazo_medio_dias: 0 });
+    expect(zero.corpo).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
     // PATCH: parcelas mudam e o prazo médio gravado está vazio (legado) ou o corpo o esvazia: recalcula; digitado nunca é sobrescrito
     const legado = (await t.repos.condicoesPagamento.inserir({ codigo: 'LG', descricao: 'Legado', forma_tpag: '15', prazos_dias: [30], parcelas_cartao: null, prazo_medio_dias: null } as never)) as { id: string };
     expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazos_dias: [30, 60] } })).corpo).toMatchObject({ prazo_medio_dias: 45 });
-    expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).corpo).toMatchObject({ prazo_medio_dias: 45 });
+    // marca true (calculado): parcelas novas recalculam; o usuário digitar fixa o valor (marca false) e as parcelas novas deixam de mexer
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).corpo).toMatchObject({ prazo_medio_dias: 60, prazo_medio_calculado: true });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazo_medio_dias: 20 } })).corpo).toMatchObject({ prazo_medio_dias: 20, prazo_medio_calculado: false });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazos_dias: [30, 120] } })).corpo).toMatchObject({ prazo_medio_dias: 20, prazo_medio_calculado: false });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazo_medio_dias: null } })).corpo).toMatchObject({ prazo_medio_dias: 75, prazo_medio_calculado: true });
     expect((await t.chamar('PATCH', `/condicoes-pagamento/${legado.id}`, { sessao: gerente, corpo: { prazos_dias: [10, 20], prazo_medio_dias: null } })).corpo).toMatchObject({ prazo_medio_dias: 15 });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 366 } })).status).toBe(400);
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: -1 } })).status).toBe(400);
