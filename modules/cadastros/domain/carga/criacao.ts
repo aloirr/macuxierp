@@ -1,5 +1,5 @@
 import type { EnderecoDaLinha, EntidadeCarga, LinhasCarga } from '../../contracts';
-import { MOTIVO_PRAZO_MEDIO } from '../condicao';
+import { prazoMedioEfetivo } from '../condicao';
 import { validarFiscalProduto, type FatosFiscaisProduto } from '../produto';
 import { erroDeViolacao, erroLinha, type ErroLinha } from './erros';
 
@@ -41,7 +41,11 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       }
       if (d.descricao === undefined) erros.push(falta(n, 'descricao'));
       if (d.prazos_dias === undefined) erros.push(falta(n, 'parcelas_dias', 'RN-CAD-15', 'Parcelas obrigatórias: dias separados por /, à vista 0'));
-      if (d.prazo_medio_dias === undefined) erros.push(falta(n, 'prazo_medio_dias', 'RN-CAD-15', MOTIVO_PRAZO_MEDIO));
+      // RN-CAD-15 (decisão 14 A): vazio não é erro; o ERP grava a média das parcelas.
+      if (d.prazo_medio_dias === undefined && d.prazos_dias !== undefined) {
+        const efetivo = prazoMedioEfetivo(d.prazos_dias, null);
+        if (efetivo !== null) d.prazo_medio_dias = efetivo;
+      }
       break;
     }
     case 'produto': {

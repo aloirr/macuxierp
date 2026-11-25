@@ -363,15 +363,18 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     expect(erros.find((e) => e.codigo === 'RN-CAD-09')).toMatchObject({ motivo: expect.stringContaining('cartão: 1 a 12 parcelas') });
   });
 
-  it('RN-CAD-15: prazo médio ausente na criação é erro da linha no campo prazo_medio_dias; na atualização, vazio mantém o gravado', async () => {
+  it('RN-CAD-15 (decisão 14 A): prazo médio vazio na criação é calculado e gravado; digitado não é sobrescrito; na atualização, vazio mantém o digitado e recalcula o vazio', async () => {
     const t = montar();
-    const sem = (await t.carregar('gravar', { arquivos: lote('Z-S;CS;30;;BOLETO;Boleto;FP-B;sim;Boleto 30') })).corpo as RelatorioCarga;
-    expect(sem.erros.filter((e) => e.arquivo === ARQ)).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias' })]);
-    expect(conds(t)).toHaveLength(0);
-    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30;30;BOLETO;Boleto;FP-B;sim;Boleto 30') });
-    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 30 });
-    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
-    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 30, descricao: 'Boleto 30 dias' });
+    const sem = (await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;;BOLETO;Boleto;FP-B;sim;Boleto 30/45') })).corpo as RelatorioCarga;
+    expect(sem.erros.filter((e) => e.arquivo === ARQ)).toEqual([]);
+    expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 45], prazo_medio_dias: 38 });
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;7;BOLETO;Boleto;FP-B;sim;Boleto 30/45') });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 7 });
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 7, descricao: 'Boleto 30 dias' });
+    await t.repos.condicoesPagamento.atualizar(conds(t)[0]!.id as string, { prazo_medio_dias: null } as never);
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
+    expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 90], prazo_medio_dias: 60 });
   });
 
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {

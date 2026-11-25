@@ -12,7 +12,7 @@ import {
   type LinhaPreco, type LinhaProduto, type LinhaProdutoUnidade, type LinhaVendedor, type LinhasCarga,
 } from '../contracts';
 import {
-  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
+  ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, completarPrazoMedio, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
   validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, violacaoFracao, type ErroLinha, type IdsConhecidos,
   type FatosFilial, type FormaDoLote,
 } from '../domain';
@@ -303,7 +303,7 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
     const tpagFinal = (campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag;
-    const patch: Dict = { ...completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
+    const patch: Dict = { ...completarPrazoMedio(completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex), ex), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
     const vc = validarCondicaoPagamento({
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
@@ -324,7 +324,7 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   const p = prepararCriacao('condicao_pagamento', { ...l, dados: { ...l.dados, ...(f?.nome ? { forma_nome: f.nome } : {}), ...(f?.tpag ? { forma_tpag: f.tpag } : {}) } });
   if (!p.ok) return { erros: p.erros };
   if (!f?.tpag) return mover(l.linha, 'forma_codigo', 'CARGA_OBRIGATORIO', 'Forma de pagamento sem dados para criar a condição');
-  const comDescricao = { ...d, ...(p.linha.dados.descricao === undefined ? {} : { descricao: p.linha.dados.descricao }) };
+  const comDescricao = { ...d, ...(p.linha.dados.descricao === undefined ? {} : { descricao: p.linha.dados.descricao }), ...(p.linha.dados.prazo_medio_dias === undefined ? {} : { prazo_medio_dias: p.linha.dados.prazo_medio_dias }) };
   // RN-CAD-15: os dias são os digitados; `parcelas_cartao` (legado) é derivada dos prazos.
   const r = CondicaoPagamentoDados.safeParse({ ...completarParcelasCartao({ ...comDescricao, forma_tpag: f.tpag }), ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
