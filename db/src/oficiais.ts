@@ -20,6 +20,7 @@ const TABELAS_OFICIAIS = [
   'cfop',
   'cst',
   'classificacao_tributaria',
+  'cnae',
 ] as const;
 type TabelaOficial = (typeof TABELAS_OFICIAIS)[number];
 
