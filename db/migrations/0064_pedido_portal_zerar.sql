@@ -159,7 +159,7 @@ BEGIN
       GET DIAGNOSTICS v_n_item = ROW_COUNT;
       DELETE FROM pedido.pedido WHERE tenant_id = v_t AND id = ANY (v_ids);
       GET DIAGNOSTICS v_n_pedido = ROW_COUNT;
-      PERFORM set_config('macuxierp.pedido_zerar', 'off', true);
+      PERFORM set_config('macuxierp.pedido_zerar', '', true);
     EXCEPTION WHEN foreign_key_violation THEN
       RAISE EXCEPTION 'o estado mudou; recarregue' USING ERRCODE = 'MXC03', DETAIL = 'referencia', HINT = 'pedido';
     END;

@@ -382,7 +382,24 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     ];
     expect(esperado.map((x) => x.quantidade)).toEqual([4, 5, 8, 2]);
 
-    expect(zerar({ apagar })).toEqual({ apagados: esperado });
+    // na mesma transação do zerar: a marca fica vazia e o DELETE direto do dono volta a cair no gatilho (42501)
+    const saida = linhas(
+      rodarComo(
+        banco.conexao,
+        `${zerarSql({ apagar })}
+SELECT 'marca=' || coalesce(current_setting('macuxierp.pedido_zerar', true), '');
+RESET ROLE;
+DO $$ BEGIN
+  DELETE FROM pedido.pedido_evento WHERE tenant_id = '${B.id}';
+  RAISE EXCEPTION 'o DELETE direto passou';
+EXCEPTION WHEN insufficient_privilege THEN NULL;
+END $$;
+SELECT 'delete=42501';`,
+        { papel: CONFIG },
+      ),
+    );
+    expect(JSON.parse(saida[0] ?? 'null')).toEqual({ apagados: esperado });
+    expect(saida.slice(1)).toEqual(['marca=', 'delete=42501']);
 
     for (const t of ['pedido', 'pedido_item', 'pedido_evento', 'aprovacao'])
       expect(contar(t, apagar)).toBe(0);
@@ -434,15 +451,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
   it('(i) reexecução: o mesmo plano cai em MXC03 sumiu; o plano vazio não apaga nada; a migração de novo não muda nada', () => {
     const antes = retrato(A.id, ['pedido', 'faturamento', 'fiscal', 'integracao_fdv']);
     recusaZerar({ apagar: SAEM() }, 'sumiu');
-    // o plano vazio devolve zero em cada tabela, e a marca do zerar não sobra na transação
-    const [vazio, marca] = linhas(
-      rodarComo(
-        banco.conexao,
-        `${zerarSql({ apagar: [] }, 'req-vazio')}\nSELECT coalesce(current_setting('macuxierp.pedido_zerar', true), '');`,
-        { papel: CONFIG },
-      ),
-    );
-    expect(JSON.parse(vazio ?? 'null')).toEqual({
+    expect(zerar({ apagar: [] }, 'req-vazio')).toEqual({
       apagados: [
         { tabela: 'pedido', quantidade: 0 },
         { tabela: 'pedido_item', quantidade: 0 },
@@ -450,7 +459,6 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         { tabela: 'aprovacao', quantidade: 0 },
       ],
     });
-    expect(marca ?? '').not.toBe('on');
     const gatilhos = (): unknown =>
       consultar(
         banco.conexao,
