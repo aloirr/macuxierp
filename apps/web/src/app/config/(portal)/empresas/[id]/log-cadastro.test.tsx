@@ -6,6 +6,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 
+import { csvErrosLog, ROTULO_SITUACAO_ENVIO, rotuloDoCampoErro, rotuloDoCodigoErro } from '@/lib/config/operacao-fdv';
 import { CorpoLog, LogCadastro, RodapeLog } from './log-cadastro';
 
 const log = (extra: Record<string, unknown> = {}) => LogCadastroFdvPlataforma.parse({
@@ -19,10 +20,25 @@ const log = (extra: Record<string, unknown> = {}) => LogCadastroFdvPlataforma.pa
 });
 
 describe('botão Log do /config (T-0086)', () => {
-  it('só códigos, campos e contagens; envios com origem e situação em texto', () => {
+  it('código e campo humanizados de forma genérica; os códigos crus (cnpj_invalido, razao_social) ficam só no CSV', () => {
+    const h = renderToStaticMarkup(<CorpoLog log={log({ erros: [{ codigo: 'cnpj_invalido', campo: 'documento', quantidade: 3 }, { codigo: 'campo_obrigatorio', campo: 'razao_social', quantidade: 1 }] })} fuso="America/Manaus" entidade="cliente" />);
+    expect(h).toContain('Cnpj invalido');
+    expect(h).toContain('Documento');
+    expect(h).toContain('Razao social');
+    expect(h).not.toContain('cnpj_invalido');
+    expect(h).not.toContain('razao_social');
+    expect(h).not.toContain('class="codigo"');
+    const csv = csvErrosLog({ erros: [{ codigo: 'cnpj_invalido', campo: 'documento', quantidade: 3 }] });
+    expect(csv).toContain('cnpj_invalido;documento;3');
+  });
+  it('código e campo aparecem legíveis, sem sublinhado', () => {
+    expect(rotuloDoCodigoErro('ncm_ausente')).toBe('Ncm ausente');
+    expect(rotuloDoCodigoErro('limite_estourado')).toBe('Limite estourado');
+    expect(rotuloDoCampoErro(null)).toBe('—');
+    expect(rotuloDoCampoErro('itens[0].ncm')).toBe('Itens 0 ncm');
+  });
+  it('só contagens e rótulos; envios com origem e situação em texto', () => {
     const h = renderToStaticMarkup(<CorpoLog log={log()} fuso="America/Manaus" entidade="cliente" />);
-    expect(h).toContain('cnpj_invalido');
-    expect(h).toContain('documento');
     expect(h).toContain('Erros abertos: 4');
     expect(h).not.toContain('Há registros com erro neste cadastro.');
     expect(h).not.toContain('O Log do /config');
@@ -34,8 +50,18 @@ describe('botão Log do /config (T-0086)', () => {
     expect(h).not.toContain('external_id');
     expect(h).not.toContain('nome_curto');
   });
-  it('a faixa de aviso mostra o motivo do cadastro, menos o de erros por linha (a tabela já mostra)', () => {
+  it('a faixa mostra o motivo do cadastro, menos o de erros por linha (a tabela já mostra)', () => {
     expect(renderToStaticMarkup(<CorpoLog log={log({ motivo: 'lote_falhou' })} fuso="America/Manaus" entidade="cliente" />)).toContain('O último envio falhou.');
+  });
+  it('🟡 marca: "O último envio falhou." é caixa de erro (alerta); os outros motivos seguem em aviso; o selo Falhou é erro', () => {
+    const falhou = renderToStaticMarkup(<CorpoLog log={log({ motivo: 'lote_falhou', envios: [{ em: '2026-11-24T19:00:00.000Z', origem: 'ciclo', situacao: 'falhou', registros: 10, com_erro: 0 }] })} fuso="America/Manaus" entidade="cliente" />);
+    expect(falhou).toMatch(/<p class="faixa-erro" role="alert">O último envio falhou\.<\/p>/);
+    expect(falhou).toMatch(/<span class="selo selo-erro">Falhou<\/span>/);
+    const licenca = renderToStaticMarkup(<CorpoLog log={log({ motivo: 'licenca_erp' })} fuso="America/Manaus" entidade="cliente" />);
+    expect(licenca).toMatch(/<p class="faixa-aviso" role="status">/);
+    expect(licenca).not.toContain('faixa-erro');
+    expect(ROTULO_SITUACAO_ENVIO.falhou.tom).toBe('erro');
+    expect(ROTULO_SITUACAO_ENVIO.com_erros.tom).toBe('aviso');
   });
   it('cabe na janela: corpo encolhível, as duas tabelas rolam sozinhas e o rodapé quebra linha', () => {
     const h = renderToStaticMarkup(<CorpoLog log={log()} fuso="America/Manaus" entidade="cliente" />);

@@ -9,13 +9,14 @@ import type { AcaoVista, AmbienteVista, EntradaAcao } from '@/lib/descritor/tipo
 import { aposResposta, chaveParaEnvio, estadoDoClique, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { executorDeAcoes, type OrigemDasAcoes } from '@/lib/telas';
 import { escrever, ler } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
+import { PainelSegredo } from './painel-segredo';
 import { DialogoEscrita, type CarregarItens, type EntradaDialogo } from './dialogo-escrita';
 
 /**
  * Botões de ação (detalhe ou linha de lista) e o diálogo. A regra do diálogo (motivo, justificativa, texto, valor) é do módulo, via
  * `validarAcao` do descritor. Cada ação tem a própria Idempotency-Key: o reenvio do mesmo corpo reusa a chave (RN-CORE-05).
  */
-const entradaDe = (r: EntradaDialogo): EntradaAcao => ({ texto: r.texto, valor: r.valor, data: r.data, filial: r.filial, inicial: r.inicial, final: r.final, ...(r.itens ? { itens: r.itens } : {}) });
+const entradaDe = (r: EntradaDialogo): EntradaAcao => ({ texto: r.texto, valor: r.valor, data: r.data, filial: r.filial, inicial: r.inicial, final: r.final, ...(r.itens ? { itens: r.itens } : {}), ...(r.campos ? { campos: r.campos } : {}) });
 
 export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, origem = 'detalhe' }: { acoes: readonly AcaoVista[]; rota: string; rotaDaPagina: string; compacta?: boolean; origem?: OrigemDasAcoes }) {
   const router = useRouter();
@@ -24,6 +25,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const chaves = useRef<Record<string, EstadoChave>>({}); // uma Idempotency-Key por ação
+  const [segredo, setSegredo] = useState<{ valor: string; aviso: string } | null>(null); // senha provisória: só neste estado, some ao fechar
 
   async function enviar(a: AcaoVista, entrada: EntradaAcao) {
     if (!executor) return setErro('Tela não encontrada.');
@@ -51,7 +53,8 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
     }
     if (r.ok) {
       delete chaves.current[a.id];
-      router.refresh();
+      if (r.segredo) setSegredo({ valor: r.segredo, aviso: a.avisoSegredo ?? '' }); // a lista só recarrega depois que a pessoa anotar
+      else router.refresh();
     } else {
       chaves.current[a.id] = aposResposta(estado, Boolean(r.definitivo));
       setErro(r.mensagem); // o diálogo fecha: o erro aparece na página, fora da camada do diálogo
@@ -97,6 +100,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
       </div>
       {!compacta && acoes.filter((x) => x.desabilitada).map((x) => <p key={x.id} id={`${x.id}-motivo`} className="apoio">{x.rotulo}: {x.desabilitada}</p>)}
       {!a && erro && <MensagemRecarregar texto={erro} />}
+      {segredo && <PainelSegredo titulo="Senha provisória" rotulo="Entregue esta senha à pessoa:" valor={segredo.valor} aviso={segredo.aviso} aoFechar={() => { setSegredo(null); router.refresh(); }} />}
       {a && dialogoDoShell && (
         <DialogoEscrita
           titulo={a.tituloDialogo ?? a.rotulo}
@@ -111,6 +115,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
           texto={a.entrada === 'justificativa' ? { rotulo: a.rotuloTexto ?? 'Justificativa', obrigatorio: Boolean(a.justificativaObrigatoria) } : undefined}
           faixa={a.entrada === 'faixa' ? { filiais: a.filiais ?? [], rotuloTexto: a.rotuloTexto ?? 'Justificativa' } : undefined}
           itens={a.entrada === 'itens' ? { carregar: carregarItens } : undefined}
+          campos={a.entrada === 'campos' ? a.campos : undefined}
           carregarAmbiente={a.entrada === 'faixa' && a.ambientePorFilial ? carregarAmbiente : undefined}
           validar={(r) => { const v = executor?.validarAcao(a, entradaDe(r)); return v && !v.ok ? (v.erros ? { erro: v.erro, erros: v.erros, errosPartes: v.errosPartes } : v.erro) : null; }}
           aoConfirmar={(r) => void enviar(a, entradaDe(r))}

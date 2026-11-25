@@ -12,7 +12,8 @@ export type { TabelaZeragem };
 
 /** 'fiscal' = filial com certificado A1 ou ambiente fiscal configurado (RN-CAD-10, v0.3.6). */
 export type MotivoUso = (typeof MOTIVOS_USO)[number];
-export type MotivoBloqueio = 'integracao_ligada' | 'lote_em_andamento';
+/** Só o lote em andamento bloqueia. */
+export type MotivoBloqueio = 'lote_em_andamento';
 
 /** Do mais forte para o mais fraco: com vários motivos, o primeiro é o contado. */
 export const MOTIVOS: readonly MotivoUso[] = MOTIVOS_USO;
@@ -87,7 +88,6 @@ export interface LinhaZeragem {
 
 export interface IntegracaoZeragem {
   cadastro: CadastroZerarPortal;
-  ligada: boolean;
   lote_em_voo: boolean;
 }
 
@@ -221,17 +221,12 @@ export function planoZeragem(escolhidos: readonly CadastroZerarPortal[], fatos: 
     return ids.length ? [{ tabela, ids }] : [];
   });
 
-  // Bloqueios: além dos efetivos, valem os cadastros "tocados" pela cascata (ex.: zerar produto apaga itens de
-  // preço sem tornar 'preco' efetivo). O FDV recebe esses dados, então a integração ligada deve barrar também.
+  // Bloqueios: além dos efetivos, valem os cadastros tocados pela cascata. Só o lote em voo barra (RN-CAD-10; a 0053 inativa o espelho).
   const tocados = new Set<CadastroZerarPortal>(efetivos);
   for (const a of apagar) tocados.add(CADASTRO_DA_TABELA[a.tabela]);
-  const bloqueios: BloqueioZeragem[] = naOrdem(tocados).flatMap((cadastro) => {
-    const i = fatos.integracao.find((x) => x.cadastro === cadastro);
-    const l: BloqueioZeragem[] = [];
-    if (i?.ligada) l.push({ cadastro, motivo: 'integracao_ligada' });
-    if (i?.lote_em_voo) l.push({ cadastro, motivo: 'lote_em_andamento' });
-    return l;
-  });
+  const bloqueios: BloqueioZeragem[] = naOrdem(tocados)
+    .filter((cadastro) => fatos.integracao.find((x) => x.cadastro === cadastro)?.lote_em_voo)
+    .map((cadastro) => ({ cadastro, motivo: 'lote_em_andamento' as const }));
   if (bloqueios.length) {
     return { efetivos, apagar: [], anular: [], mantidos: [], bloqueios, sem_chave: 0, emUso: [] };
   }

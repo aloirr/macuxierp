@@ -3,6 +3,8 @@ import { PAGINAS_CORE } from '@macuxierp/core/web';
 import { PAGINAS_FATURAMENTO } from '@macuxierp/faturamento/web';
 import { PAGINAS_INTEGRACAO_FDV } from '@macuxierp/integracao-fdv/web';
 import { PAGINAS_PEDIDO } from '@macuxierp/pedido/web';
+import { ROTA_BANDEIRA } from './telas/bandeira';
+import { ROTA_USUARIO_NOVO } from './telas/core';
 import { paginaVisivel, type ModuloId, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 
 /** Página que um módulo declara para o BKO (RD-0178: tipo base do SDK + o módulo dono). A rota vem do módulo, não do rótulo (D-02). */
@@ -20,6 +22,8 @@ function registrar(modulo: ModuloId, p: PaginaBase, extra: { ocultaNoMenu?: bool
 
 export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   ...PAGINAS_CORE.map((p) => registrar('core', p)),
+  // Usuário novo (T-0087): formulário fora do menu, aberto pelo botão "Novo usuário" da lista (só quem gerencia usuários).
+  registrar('core', { menu: 'Usuários e perfis', titulo: 'Novo usuário', rota: ROTA_USUARIO_NOVO, ver: 'core.usuario.gerir' }, { ocultaNoMenu: true }),
   ...PAGINAS.map((p) => registrar('cadastros', p)),
   // Carga de cadastros (T-0058): saiu do BKO; é feita na aba Cargas do /config (superadmin). A API /v1/cadastros/cargas continua.
   // Pedido (T-0015): detalhe `/:id` e "novo" abrem pela URL sem item de menu; `/novo` vence `/:id` por ser rota exata (casarRota).
@@ -29,6 +33,8 @@ export const PAGINAS_REGISTRADAS: readonly PaginaRegistrada[] = [
   ...PAGINAS_INTEGRACAO_FDV.map((p) => registrar('integracao-fdv', p)),
   // Faturamento (T-0021): tudo vem do módulo; os detalhes da nota e do título (`/:id`) ficam fora do menu (`ocultaNoMenu` do módulo).
   ...PAGINAS_FATURAMENTO.map((p) => registrar('faturamento', p)),
+  // Bandeira "faturamento real com NF-e simulada" por filial (T-0088): seção do item Notas fiscais; só o administrador liga e desliga.
+  registrar('faturamento', { menu: 'Notas fiscais', titulo: 'Bandeira da NF-e simulada', rota: ROTA_BANDEIRA, ver: 'faturamento.ver' }),
 ];
 
 export { paginaVisivel };

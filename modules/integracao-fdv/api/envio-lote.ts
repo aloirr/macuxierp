@@ -16,7 +16,7 @@
  * assim as inválidas na frente da fila não travam os válidos; (6) o Hub que lista menos erros que `contagens.com_erro` (lista
  * cortada): nada fora da lista é confirmado, o lote inteiro volta pela curva longa.
  */
-import { criarEvento, type ContextoAgenda, type CredencialHub, type ItemAgenda, type RespostaHub, type Transacao } from '@macuxierp/platform-sdk';
+import { criarEvento, type OrigemEnvioFdv, type ContextoAgenda, type CredencialHub, type ItemAgenda, type RespostaHub, type Transacao } from '@macuxierp/platform-sdk';
 import { randomUUID } from 'node:crypto';
 import {
   EVENTOS,
@@ -48,6 +48,7 @@ import {
   filiaisComCodigoRepetido,
   hashRegistro,
   montarLotes,
+  origemDoLote,
   precisaFechamento,
   validarRegistro,
   type RegistroEspelho,
@@ -103,7 +104,7 @@ export interface LinhaLote {
   hub_lote_id: string | null;
   tentativas: number;
   enviado_em: Date | null;
-  contagens: { registros?: number; invalidas?: number; avanco?: CursorHub | null; firmes?: ReadonlyArray<readonly [string, string]> };
+  contagens: { registros?: number; invalidas?: number; avanco?: CursorHub | null; firmes?: ReadonlyArray<readonly [string, string]>; origem?: OrigemEnvioFdv };
 }
 const COLUNAS_LOTE = `id, estado, modo, sessao_id, sessao_parte, sessao_ultimo, geracao, chave_idempotencia, corpo, hub_lote_id, tentativas, enviado_em, contagens`;
 
@@ -405,7 +406,9 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   // só as detalhadas (as 500 primeiras) foram declaradas ao Hub e gravadas em `lote_erro`: só elas saem da fila no fim
   const detalhadas = invalidasDoLote.slice(0, montado.corpo.linhas_invalidas.length);
   const firmes = detalhadas.filter((l) => hashDasFirmes.has(l.external_id)).map((l) => [l.external_id, hashDasFirmes.get(l.external_id)!] as const);
-  const novo = await inserirLote(tx, e, { modo, geracao, chave, corpo: montado.corpo, cursorDeclarado: montado.cursor_declarado, avanco, firmes });
+  // T-0086 §4: a origem do envio (ciclo, reprocessar ou zerar) sai das marcas do espelho e vai em `contagens.origem`; carga completa é sempre ciclo
+  const origem = modo === 'delta' ? origemDoLote(chunk.map((c) => c.fonte_refs)) : 'ciclo';
+  const novo = await inserirLote(tx, e, { modo, geracao, chave, corpo: montado.corpo, cursorDeclarado: montado.cursor_declarado, avanco, firmes, origem });
   for (const [indice, l] of detalhadas.entries()) {
     await gravarErroDeLinha(tx, e, { loteId: novo.id, origem: 'erp', indice, externalId: l.external_id, codigo: l.codigo, campo: l.campo, reprocessavel: l.codigo === 'referencia_ausente' });
   }
@@ -426,6 +429,7 @@ interface NovoLote {
   /** Ponto a que o cursor local avança quando o lote concluir (`contagens.avanco`). */
   avanco: CursorHub | null;
   firmes: ReadonlyArray<readonly [string, string]>;
+  origem: OrigemEnvioFdv;
 }
 
 /** Grava o lote em `montado` com as contagens do corpo (registros e inválidas, as detalhadas e as omitidas). */
@@ -435,6 +439,7 @@ async function inserirLote(tx: Transacao, e: Exec, n: NovoLote): Promise<{ id: s
     registros: n.corpo.registros.length,
     invalidas: n.corpo.linhas_invalidas.length + n.corpo.linhas_invalidas_omitidas,
     avanco: n.avanco,
+    origem: n.origem,
     ...(n.firmes.length > 0 ? { firmes: n.firmes } : {}),
   };
   const [criado] = await tx.consultar<{ id: string }>(
@@ -585,7 +590,7 @@ async function dividir(tx: Transacao, e: Exec, lote: LinhaLote, resp: RespostaHu
   const ult = primeira.corpo.registros[primeira.corpo.registros.length - 1]!;
   const novo = await inserirLote(tx, e, {
     modo: lote.modo, geracao: primeira.geracao, chave: primeira.chave_idempotencia, corpo: primeira.corpo, cursorDeclarado: primeira.cursor_declarado,
-    avanco: { alterado_em: ult.alterado_em, external_id: ult.external_id }, firmes: lote.contagens.firmes ?? [],
+    avanco: { alterado_em: ult.alterado_em, external_id: ult.external_id }, firmes: lote.contagens.firmes ?? [], origem: lote.contagens.origem ?? 'ciclo',
   });
   // as linhas inválidas (erro por linha do ERP) seguem com a primeira metade; as do lote original ficam resolvidas pelo novo
   await tx.consultar(
@@ -689,7 +694,8 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
     if (aceitosOk.length > 0) {
       await tx.consultar(
         `UPDATE integracao_fdv.registro_publicado r
-            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4
+            SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4,
+                fonte_refs = r.fonte_refs - 'reenvio' -- a marca do Reprocessar vale até o Hub confirmar
            FROM unnest($5::text[], $6::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
         [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash)],

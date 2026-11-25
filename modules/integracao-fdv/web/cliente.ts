@@ -2,7 +2,7 @@
  * Cliente tipado da API `/v1/integracao-fdv` para o BKO: a resposta é validada pelo Zod de `contracts`; o token e o `fetch`
  * entram por injeção (mesmo molde do pedido). Só leitura: a escrita é do portal `/config`.
  */
-import { StatusIntegracaoFdvTenant } from '@macuxierp/platform-sdk';
+import { CAMINHOS_INTEGRACAO_FDV_TENANT, LogCadastroFdvTenant, StatusIntegracaoFdvTenant, type EntidadeEnvioFdv } from '@macuxierp/platform-sdk';
 import { paraQuery } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
 import { LoteEnvioResumo, LoteErroLinha, MonitorResposta } from '../contracts';
@@ -42,6 +42,8 @@ export function criarClienteIntegracaoFdv(cfg: { baseUrl: string; token: () => s
     monitor: () => chamar('GET', '/monitor', MonitorResposta),
     /** Vista só de leitura (ADR 0013 seção 6): ligada ou desligada por cadastro, último envio e falha. */
     status: () => chamar('GET', '/status', StatusIntegracaoFdvTenant),
+    /** Log do cadastro (T-0086 §4): envios recentes e um item por registro com erro, com motivo, ação e "Corrigir". */
+    log: (entidade: EntidadeEnvioFdv) => chamar('GET', CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace('/integracao-fdv', '').replace(':entidade', encodeURIComponent(entidade)), LogCadastroFdvTenant),
     lotes: (filtros: Record<string, string> = {}) => chamar('GET', `/lotes${paraQuery(filtros)}`, Pagina(LoteEnvioResumo)),
     errosDoLote: (id: string, filtros: Record<string, string> = {}) => chamar('GET', `/lotes/${encodeURIComponent(id)}/erros${paraQuery(filtros)}`, Pagina(LoteErroLinha)),
     /** Caminho do CSV dos envios com os filtros da tela (o navegador baixa direto; a API aplica o perfil). */

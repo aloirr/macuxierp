@@ -1,6 +1,7 @@
 /** C-6: leituras do monitor do BKO (RF-INF-04). Sem mensagem livre nem valor de campo: a mensagem sai do catálogo pelo código. */
 import { z } from 'zod';
-import { MOTIVOS_PAUSA_FDV } from '@macuxierp/platform-sdk';
+import { MOTIVOS_PAUSA_FDV, VersaoConectorFdv } from '@macuxierp/platform-sdk';
+import { EXTERNAL_ID_MAX } from '@macuxierp/platform-sdk/hub-v1';
 import { ConfiguracaoResumo, CredencialResumo } from './credencial';
 import { CampoErro, CodigoErro, EntidadeHub, ModoLote, SituacaoEntidade, VERSAO_CONTRATO_HUB } from './hub';
 
@@ -51,7 +52,7 @@ export const LoteErroItem = z.object({
   indice: z.number().int().min(0),
   origem: z.enum(['erp', 'hub']),
   entidade: EntidadeHub,
-  registro_external_id: z.string().max(200),
+  registro_external_id: z.string().max(EXTERNAL_ID_MAX),
   codigo: CodigoErro,
   campo: CampoErro,
   reprocessavel: z.boolean(),
@@ -74,7 +75,7 @@ export const ConflitoChaveItem = z.object({
   id: z.string().uuid(),
   entidade: EntidadeHub,
   erp_id: z.string().uuid(),
-  chave: z.string().max(200),
+  chave: z.string().max(EXTERNAL_ID_MAX),
   codigo: CodigoConflitoChave,
   mensagem: z.string(),
   detectado_em: z.string().datetime(),
@@ -97,7 +98,7 @@ export type SinalResumo = z.infer<typeof SinalResumo>;
 export const CorpoSinal = z.object({
   versao_contrato: z.literal(VERSAO_CONTRATO_HUB),
   conector_id: z.string().min(1).max(100),
-  versao_conector: z.string().regex(/^\d+\.\d+\.\d+$/),
+  versao_conector: VersaoConectorFdv,
   em: z.string().datetime(),
   fila: z.array(z.object({ estado: z.string(), lotes: z.number().int().min(0), linhas: z.number().int().min(0), maisAntigo: Instante })),
   entidades: z.array(

@@ -4,20 +4,23 @@
  */
 import { classificarResposta } from './resposta';
 
-export const MENSAGENS_ERRO: Readonly<Record<string, string>> = {
-  chave_alterada: 'O código do cadastro mudou sem a troca controlada e o registro não foi ao FDV. Faça a troca controlada ou volte ao código anterior.',
-  chave_duplicada: 'Outro cadastro já usa este código no FDV e o registro não foi. Corrija o código repetido.',
-  vinculo_divergente: 'O cliente já está vinculado no FDV com outro código. Ele fica retido, sem ir ao FDV, até a divergência ser resolvida.',
-  campo_obrigatorio: 'Campo obrigatório vazio no cadastro. Complete o campo indicado e salve de novo.',
-  campo_invalido: 'Valor em formato inválido para o FDV. Corrija o campo indicado no cadastro.',
-  referencia_ausente: 'Depende de um cadastro que ainda não foi confirmado no FDV. O envio repete sozinho quando ele chegar.',
-  filial_codigo_repetido: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem; revise as filiais.',
-  falha_processamento: 'O FDV não conseguiu processar o registro. Tente de novo; se persistir, fale com o suporte.',
-  acima_do_limite: 'O lote passou do limite do FDV. O ERP divide e reenvia.',
-  rede: 'Sem resposta do FDV. O envio repete sozinho.',
-  limite_de_taxa: 'O FDV pediu para aguardar. O envio repete sozinho.',
-  resposta_grande: 'A resposta do FDV passou do limite aceito pelo ERP. O envio repete sozinho; se persistir, fale com o suporte.',
-  pedido_invalido: 'O ERP montou uma chamada inválida ao FDV (defeito do ERP). Fale com o suporte informando o código.',
+/** Causa e ação de um erro por linha: o Monitor junta as duas; o Log mostra separado (uma só frase de cada, sem repetir). */
+export interface TextoErro { readonly motivo: string; readonly acao: string }
+
+export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
+  chave_alterada: { motivo: 'O código do cadastro mudou sem a troca controlada e o registro não foi ao FDV.', acao: 'Faça a troca controlada ou volte ao código anterior.' },
+  chave_duplicada: { motivo: 'Outro cadastro já usa este código no FDV e o registro não foi.', acao: 'Corrija o código repetido.' },
+  vinculo_divergente: { motivo: 'O cliente já está vinculado no FDV com outro código e fica retido, sem ir ao FDV.', acao: 'Resolva a divergência do vínculo.' },
+  campo_obrigatorio: { motivo: 'Campo obrigatório vazio no cadastro.', acao: 'Complete o campo indicado e salve de novo.' },
+  campo_invalido: { motivo: 'Valor em formato inválido para o FDV.', acao: 'Corrija o campo indicado no cadastro.' },
+  referencia_ausente: { motivo: 'Depende de um cadastro que ainda não foi confirmado no FDV.', acao: 'Aguarde.' },
+  filial_codigo_repetido: { motivo: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem.', acao: 'Revise as filiais.' },
+  falha_processamento: { motivo: 'O FDV não conseguiu processar o registro.', acao: 'Use Reprocessar; se persistir, fale com o suporte.' },
+  acima_do_limite: { motivo: 'O lote passou do limite do FDV.', acao: 'Aguarde.' },
+  rede: { motivo: 'Sem resposta do FDV.', acao: 'Aguarde.' },
+  limite_de_taxa: { motivo: 'O FDV pediu para aguardar.', acao: 'Aguarde.' },
+  resposta_grande: { motivo: 'A resposta do FDV passou do limite aceito pelo ERP.', acao: 'Aguarde; se persistir, fale com o suporte.' },
+  pedido_invalido: { motivo: 'O ERP montou uma chamada inválida ao FDV (defeito do ERP).', acao: 'Fale com o suporte informando o código.' },
 };
 
 /** Códigos que causam pausa: o status HTTP típico, para o motivo sair de `classificarResposta` (uma só fonte). */
@@ -44,15 +47,28 @@ export const MENSAGENS_PAUSA: Readonly<Record<string, string>> = {
 
 const GENERICA = 'Erro não catalogado. Fale com o suporte informando o código.';
 
-/** Mensagem do catálogo para o código; código desconhecido cai numa mensagem genérica (nunca ecoa texto do Hub). */
-export function mensagemDoErro(codigo: string | null | undefined): string {
+const ACAO_GENERICA = 'Fale com o suporte informando o código.';
+
+/** Causa do erro (Log do BKO). Código de pausa mostra o texto do motivo da pausa; desconhecido cai no genérico, nunca ecoa texto do Hub. */
+export function motivoDoErro(codigo: string | null | undefined): string {
   if (!codigo) return GENERICA;
   const status = STATUS_DO_CODIGO_DE_PAUSA[codigo];
   if (status !== undefined) {
     const a = classificarResposta({ tipo: 'recusa', status, codigo });
     if (a.acao === 'pausar') return MENSAGENS_PAUSA[a.motivo] ?? GENERICA;
   }
-  return MENSAGENS_ERRO[codigo] ?? GENERICA;
+  return CATALOGO_ERRO[codigo]?.motivo ?? GENERICA;
+}
+
+/** O que a pessoa faz para resolver o erro por linha (Log do BKO). Nunca texto do Hub. */
+export function acaoDoErro(codigo: string | null | undefined): string {
+  return (codigo ? CATALOGO_ERRO[codigo]?.acao : undefined) ?? ACAO_GENERICA;
+}
+
+/** Mensagem completa (causa e ação) do Monitor. Código de pausa e desconhecido já trazem a ação no próprio texto. */
+export function mensagemDoErro(codigo: string | null | undefined): string {
+  const t = codigo ? CATALOGO_ERRO[codigo] : undefined;
+  return t ? `${t.motivo} ${t.acao}` : motivoDoErro(codigo);
 }
 
 export function mensagemDaPausa(motivo: string | null | undefined): string {

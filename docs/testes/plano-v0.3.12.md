@@ -9,6 +9,9 @@ conferido contra ele.
 Situação: **feito** = teste no branch e verde na sessão; **pendente** = depende de código ainda não escrito. Pendente fica
 só aqui, sem `it.skip` nem `it.todo` para ficar verde. Cada caso vira teste no PR do `testes` que segue o merge do dono.
 
+Códigos de erro (decisão do gerente, 24/11/2026): validação de entrada (campo ausente ou formato errado) = **400 do Zod com
+o campo**, aceito; **422** fica para regra de negócio (RN).
+
 ## Regras transversais (todas as tarefas)
 
 | # | Caso | Onde | Situação |
@@ -23,14 +26,14 @@ só aqui, sem `it.skip` nem `it.todo` para ficar verde. Cada caso vira teste no 
 
 | # | Critério | Caso | Onde | Situação |
 |---|---|---|---|---|
-| P-1 | 3 | `parcelas_dias` em lista: o C-6 (`PrazoPagamentoHub`) e o oráculo do Hub no dublê aceitam e recusam os mesmos 12 valores (lista, à vista `[0]`, 999, texto "28/56", número solto, vazia, fração, negativo, 1000, texto na lista, nulo). | `tests/ponta-a-ponta-fdv/prazo-contrato.test.ts` | feito |
+| P-1 | 3 | `parcelas_dias` em lista: o C-6 (`PrazoPagamentoHub`) e o oráculo do Hub no dublê aceitam e recusam os mesmos valores (lista, à vista `[0]`, 999, texto "28/56", número solto, vazia, fração, negativo, texto na lista, nulo; tetos: ver P-4); a massa traz o prazo completo (`descricao` e `prazo_medio_dias`, lote 2, #556). | `tests/ponta-a-ponta-fdv/prazo-contrato.test.ts` | feito |
 | P-2 | 3, 4 | O prazo que `mapearCondicao` monta (28/56, à vista, legado sem parcela) passa no C-6 e no oráculo do Hub. | `tests/ponta-a-ponta-fdv/prazo-contrato.test.ts` | feito |
 | P-3 | 3 | Massa e dublê do Hub com a lista (lote 1). | `tests/ponta-a-ponta-fdv/apoio/{duble-hub,massa}.ts` | feito (PR do lote 1) |
-| P-4 | 3 | Teto de parcelas: o pedido R-20261124-203003 diz `.max(36)`; o C-6 do main não tem teto. Quando o teto entrar, P-1 ganha o caso 36 aceito e 37 recusado, nos dois lados (o dublê segue o guia do FDV). | `prazo-contrato.test.ts` | pendente (integracao-fdv; confirmar 36 no guia do FDV) |
-| P-5 | 1 | Prazo sem parcela ou sem prazo médio: 422 com `campo` (`prazos_dias` / `prazo_medio_dias`) no domínio (RN-CAD-15) e na API; o legado sem prazo médio continua gravado (nulo). | `tests/integracao/rn/rn-cadastros.test.ts` + API com Postgres | pendente (cadastros, R-202958) |
+| P-4 | 3 | Teto do contrato do Hub (C-6: 1 a 24 parcelas de 0 a 365 dias): 24 parcelas e 365 dias aceitos; 25 parcelas e 366 dias recusados, inclusive os dois tetos juntos (24 de 365 aceito, 23×365 + 366 recusado), com o mesmo veredito no C-6 e no oráculo do dublê. O caso do prazo entre 366 e 999 dias espera decisão do gerente. | `prazo-contrato.test.ts` | feito |
+| P-5 | 1 | Prazo sem parcela ou sem prazo médio: 400 com `campo` (`prazos_dias` / `prazo_medio_dias`) na API, e o domínio (RN-CAD-15) recusa com o campo; o legado sem prazo médio continua gravado (nulo). | `tests/integracao/rn/rn-cadastros.test.ts` + API com Postgres | pendente (cadastros, R-202958) |
 | P-6 | 1 | Banco (0052): `prazo_medio_dias` 1000 e -1 caem; à vista (tPag 01, 04, 17) com 5 cai; legado nulo grava. | `db/` (banco-dados) e conferência em `tests/integracao/banco/` | pendente (banco, R-202954) |
 | P-7 | 2 | RN-PED-07 no pedido manual: prazo com prazo médio acima do do cliente → 422 `codigo: RN-PED-07`, `campo: condicao_pagamento_id`; igual → aceito; cliente sem prazo médio → aceito; prazo incompleto → recusado. | `tests/integracao/rn/` + rota do pedido com Postgres | pendente (pedido, R-203008) |
-| P-8 | 2 | RN-PED-07 no pedido do FDV: o mesmo caso volta ao FDV como `rejeitado_erp` com o motivo; o pedido não é gravado. | `tests/ponta-a-ponta-fdv/volta-fdv-erp.db.test.ts` | pendente (pedido + integracao-fdv) |
+| P-8 | 2 | RN-PED-07 no pedido do FDV: prazo médio acima do do cliente leva o pedido a `em_analise`, com o motivo; não vai a `rejeitado_erp`. | `tests/ponta-a-ponta-fdv/volta-fdv-erp.db.test.ts` | pendente (P-7 e P-8 esperam o lote B do pedido, depois da migração 0056) |
 | P-9 | 3 | Lote 2: `descricao` e `prazo_medio_dias` obrigatórios no prazo do Hub; `ClienteHub.prazo_medio_max_dias` = `cliente.prazo_medio_dias` (nulo omite o campo); conferência C-6 × oráculo como no P-1. | `prazo-contrato.test.ts` (estende) | pendente (integracao-fdv lote 2) |
 | P-10 | 3 | Prazo incompleto (sem prazo médio) não sai ao Hub: nenhum lote do dublê traz o registro; quando o cadastro é completado, sai no envio seguinte. | `tests/ponta-a-ponta-fdv/ida-erp-fdv.test.ts` | pendente (lote 2) |
 | P-11 | 4 | CSV: `condicoes_pagamento.csv` sem "Nx" e com prazo médio; `cliente.csv` com prazo médio; carga pelo /config grava o prazo médio (banco: funções 0040 a 0044). | `tests/integracao/plataforma/carga-config.db.test.ts` | pendente (cadastros + banco) |
@@ -68,10 +71,10 @@ só aqui, sem `it.skip` nem `it.todo` para ficar verde. Cada caso vira teste no 
 | # | Caso | Situação |
 |---|---|---|
 | D-1 | Edição pela API revalida as RN; escrita idempotente (mesmo `external_id` duas vezes = um registro); evento com versão crescente (T-0034). | pendente |
-| D-2 | Ambiente fiscal: a tela mostra homologação/produção; a troca para produção só pela rota da T-0030, nunca pela tela de cadastro (a rota de edição recusa o campo). | pendente |
+| D-2 | Ambiente fiscal: a tela mostra homologação/produção; a troca para produção só pela rota da T-0030, nunca pela tela de cadastro (`PATCH /v1/cadastros/filiais/:id` com `ambiente`). | feito: ambiente fora do contrato da filial, descartado; o ambiente segue homologação (`filial-sem-ambiente.db.test.ts`); recusa 400 avaliada na v0.3.13 |
 | D-3 | Perfil, tenant e licença (X-5); limites 200/30 da ADR 0019 (C-4). | pendente |
 | D-4 | O "Corrigir" do Log (I-4) abre a tela certa do registro. | pendente |
-| D-5 | Fumaça (X-1, X-2) e prints 1280/390. | pendente |
+| D-5 | Fumaça (X-1, X-2) e prints 1280/390. `GET /v1/cadastros/tabelas-preco` fica fora da fumaça enquanto a tela não o chama: as páginas de cadastros não têm descritor em `apps/web/src/lib/telas.ts` (mostram "Disponível em breve"); quando a tela entrar, a fumaça pega a rota sozinha pelo `pagina.api`. | pendente (até a tela existir) |
 
 ## T-0059 — pré-cadastro de cliente FDV → ERP
 

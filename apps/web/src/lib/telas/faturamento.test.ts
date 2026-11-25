@@ -39,8 +39,9 @@ describe('rotas e menu do faturamento no shell (T-0021)', () => {
     const rotas = PAGINAS_REGISTRADAS.filter((p) => p.modulo === 'faturamento').map((p) => [p.rota, Boolean(p.ocultaNoMenu)]);
     expect(rotas).toEqual([
       ['/faturamento/pedidos-a-faturar', false], ['/faturamento/notas', false], ['/faturamento/notas/:id', true], ['/faturamento/rejeicoes', false], ['/faturamento/titulos', false], ['/faturamento/titulos/:id', true],
+      ['/faturamento/filiais/bandeira', false], // T-0088: seção "Bandeira da NF-e simulada" do item Notas fiscais (shell)
     ]);
-    expect(paginasDoMenu('faturamento', 'Notas fiscais').map((p) => p.rota)).toEqual(['/faturamento/notas']);
+    expect(paginasDoMenu('faturamento', 'Notas fiscais').map((p) => p.rota)).toEqual(['/faturamento/notas', '/faturamento/filiais/bandeira']);
     expect(paginasDoMenu('faturamento', 'Rejeições').map((p) => p.rota)).toEqual(['/faturamento/rejeicoes']);
     expect(casarRota(`/faturamento/notas/${ID}`)?.params).toEqual({ id: ID });
   });

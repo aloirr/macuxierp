@@ -147,12 +147,14 @@ describe('detalhe', () => {
       { codigo: 'credito_excedido', bloqueante: false, sequencia: null, produto_id: null, esperado: 100000, informado: 150050 },
       { codigo: 'estoque_insuficiente', bloqueante: true, sequencia: 2, produto_id: U2, esperado: 20000, informado: 50000 },
       { codigo: 'cliente_inativo', bloqueante: true, sequencia: null, produto_id: null, esperado: null, informado: null },
+      { codigo: 'prazo_acima_do_cliente', bloqueante: true, sequencia: null, produto_id: null, esperado: 20, informado: 30 },
     ]);
     expect(l.map((x) => [x.texto, x.gravidade, semEspacoDuro(x.esperado), semEspacoDuro(x.informado)])).toEqual([
       ['Desconto acima do máximo', 'Atenção', '5%', '12,5%'],
       ['Limite de crédito excedido', 'Atenção', 'R$ 1.000,00', 'R$ 1.500,50'],
       ['Estoque insuficiente', 'Bloqueia', '2', '5'],
       ['Cliente inativo', 'Bloqueia', '', ''],
+      ['Prazo médio acima do limite do cliente', 'Bloqueia', '20 dias', '30 dias'],
     ]);
   });
   it('itens, histórico e decisão saem formatados', () => {

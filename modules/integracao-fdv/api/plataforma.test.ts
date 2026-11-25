@@ -4,7 +4,7 @@
  */
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, ENTIDADES_ENVIO_FDV, decifrarCampo, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
-import { criarPluginPlataformaIntegracaoFdv, type EstadoPortal, type RepositorioPortalIntegracaoFdv } from './plataforma';
+import { criarPluginPlataformaIntegracaoFdv, type EstadoPortal, type InsumosLogPortal, type InsumosMonitorPortal, type RepositorioPortalIntegracaoFdv } from './plataforma';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const CRED = '22222222-2222-4222-8222-222222222222';
@@ -26,6 +26,9 @@ const estado = (o: Partial<EstadoPortal> = {}, comCredencial = true, habilitadas
   ...o,
 });
 
+const monitorBruto: InsumosMonitorPortal = { credencial_ativa: true, conector_id: 'erp-1', habilitadas: 2, ultimo_sinal_aceito_em: AGORA, fila: { lotes: 1, linhas: 40 } };
+let logBruto: InsumosLogPortal = { envios: [], erros: [], total_erros: 0, pausada_motivo: null };
+
 function dubleDoRepo(lido: EstadoPortal) {
   const chamadas: { fn: string; p: Record<string, unknown> }[] = [];
   const repo: RepositorioPortalIntegracaoFdv = {
@@ -35,6 +38,9 @@ function dubleDoRepo(lido: EstadoPortal) {
     async testar(_tx, p) { chamadas.push({ fn: 'testar', p }); return new Date(AGORA); },
     async cargaCompleta(_tx, p) { chamadas.push({ fn: 'cargaCompleta', p }); },
     async retomar(_tx, p) { chamadas.push({ fn: 'retomar', p }); return { retomada: true }; },
+    async monitor() { chamadas.push({ fn: 'monitor', p: {} }); return monitorBruto; },
+    async log(_tx, p) { chamadas.push({ fn: 'log', p }); return logBruto; },
+    async reprocessar(_tx, p) { chamadas.push({ fn: 'reprocessar', p }); return { falhas: 2, pendentes: 3, pedido_em: new Date(AGORA) }; },
   };
   return { repo, chamadas, escritas: () => chamadas.filter((c) => c.fn !== 'ler') };
 }
@@ -52,7 +58,7 @@ const C = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
 const ENTRADA = { conector_id: 'erp-1', chave: CHAVE, ambiente: 'teste' };
 
 describe('plugin de plataforma da Integração FDV (T-0056)', () => {
-  it('ADR 0013 seção 2: declara as 6 rotas com as ações ver, configurar e operar', () => {
+  it('ADR 0013 seção 2: declara as 9 rotas com as ações ver, configurar e operar (T-0086: monitor, log e reprocessar)', () => {
     const p = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: dubleDoRepo(estado()).repo });
     expect(p.rotas.map((r) => `${r.metodo} ${r.caminho} ${r.acao} ${r.idempotencia ?? '-'}`).sort()).toEqual([
       `GET ${C.ler} plataforma.integracao_fdv.ver -`,
@@ -61,6 +67,9 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
       `PUT ${C.configuracao} plataforma.integracao_fdv.configurar opcional`,
       `POST ${C.cargaCompleta} plataforma.integracao_fdv.operar obrigatoria`,
       `POST ${C.retomar} plataforma.integracao_fdv.operar opcional`,
+      `GET ${C.monitor} plataforma.integracao_fdv.ver -`,
+      `GET ${C.log} plataforma.integracao_fdv.ver -`,
+      `POST ${C.reprocessar} plataforma.integracao_fdv.operar obrigatoria`,
     ].sort());
   });
 
@@ -229,5 +238,91 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
   it('o :id inválido é 400', async () => {
     const p = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: dubleDoRepo(estado()).repo });
     await expect(chamar(p, 'GET', C.ler, { params: { id: 'nao-uuid' } })).rejects.toMatchObject({ status: 400 });
+  });
+
+  describe('T-0086: Monitor, Log e Reprocessar', () => {
+    const plugin = (lido = estado()) => {
+      const d = dubleDoRepo(lido);
+      return { d, p: criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: d.repo }) };
+    };
+
+    it('licença: sem o módulo, as três rotas dão 422 RN-CORE-02 e nada é lido nem gravado', async () => {
+      const { d, p } = plugin(estado({ modulo_licenciado: false }));
+      for (const t of [chamar(p, 'GET', C.monitor), chamar(p, 'GET', C.log, { params: { entidade: 'produto' } }), chamar(p, 'POST', C.reprocessar, { params: { entidade: 'produto' } })]) {
+        await expect(t).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', detalhes: { codigo: 'modulo_desligado' } });
+      }
+      expect(d.chamadas.map((c) => c.fn)).toEqual(['ler', 'ler', 'ler']);
+    });
+
+    it('tenant: as funções do portal recebem a empresa ALVO da rota (:id), e o :id inválido é 400 sem ler nada', async () => {
+      const { d, p } = plugin();
+      await chamar(p, 'GET', C.log, { params: { entidade: 'produto' } });
+      await chamar(p, 'POST', C.reprocessar, { params: { entidade: 'produto' } });
+      expect(d.chamadas.filter((c) => c.fn === 'log' || c.fn === 'reprocessar').map((c) => c.p.tenant)).toEqual([TENANT, TENANT]);
+      for (const t of [chamar(p, 'GET', C.monitor, { params: { id: 'nao-e-uuid' } }), chamar(p, 'GET', C.log, { params: { id: 'x', entidade: 'produto' } })]) {
+        await expect(t).rejects.toMatchObject({ status: 400 });
+      }
+      await expect(chamar(p, 'GET', C.log, { params: { entidade: 'titulo' } })).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('perfil: Monitor e Log pedem `ver`, o Reprocessar pede `operar` com Idempotency-Key obrigatória', () => {
+      const { p } = plugin();
+      const r = (c: string) => p.rotas.find((x) => x.caminho === c)!;
+      expect([r(C.monitor).acao, r(C.log).acao, r(C.reprocessar).acao]).toEqual(['plataforma.integracao_fdv.ver', 'plataforma.integracao_fdv.ver', 'plataforma.integracao_fdv.operar']);
+      expect(r(C.reprocessar).idempotencia).toBe('obrigatoria');
+    });
+
+    it('Monitor: monta identificador, situação, versão e fila a partir dos insumos', async () => {
+      const { p } = plugin();
+      const r = await chamar(p, 'GET', C.monitor);
+      expect(r.corpo).toMatchObject({ identificador: 'erp-1', situacao: 'em_dia', ultimo_sinal_em: AGORA, fila: { lotes: 1, linhas: 40 }, lido_em: AGORA });
+    });
+
+    it('ADR 0013: o Log do /config FALHA se trouxer nome, documento ou external_id, mesmo que o repositório os devolva', async () => {
+      logBruto = {
+        envios: [{ em: AGORA, estado: 'concluido_com_erros', registros: 2, com_erro: 2, origem: 'zerar' }],
+        // um repositório mal feito (ou uma função do banco com defeito) que vaza o registro: o parse descarta
+        erros: [
+          { codigo: 'campo_invalido', campo: 'cnpj', quantidade: 2, registro_external_id: 'C000123', nome_curto: 'Mercado Silva LTDA', payload: { cnpj: '12345678000195', cpf: '12345678909' } },
+        ] as never,
+        total_erros: 2,
+        pausada_motivo: null,
+      };
+      const { p } = plugin();
+      const r = await chamar(p, 'GET', C.log, { params: { entidade: 'cliente' } });
+      const texto = JSON.stringify(r.corpo);
+      for (const proibido of ['Mercado Silva', '12345678000195', '12345678909', 'C000123', 'registro_external_id', 'nome_curto', 'payload']) expect(texto, proibido).not.toContain(proibido);
+      expect(texto).not.toMatch(/\b\d{11}\b|\b\d{14}\b|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/);
+      expect(r.corpo).toMatchObject({
+        entidade: 'cliente', total_erros: 2, motivo: 'erros_por_linha',
+        erros: [{ codigo: 'campo_invalido', campo: 'cnpj', quantidade: 2 }],
+        envios: [{ origem: 'zerar', situacao: 'com_erros', registros: 2, com_erro: 2 }],
+      });
+      logBruto = { envios: [], erros: [], total_erros: 0, pausada_motivo: null };
+    });
+
+    it('Log: a pausa do conector e o último lote definem o motivo (precedência do SDK)', async () => {
+      logBruto = { envios: [{ em: AGORA, estado: 'falhou', registros: 1, com_erro: 0, origem: 'ciclo' }], erros: [], total_erros: 0, pausada_motivo: 'versao' };
+      const { p } = plugin();
+      expect((await chamar(p, 'GET', C.log, { params: { entidade: 'produto' } })).corpo).toMatchObject({ motivo: 'versao', envios: [{ situacao: 'falhou' }] });
+      logBruto = { envios: [], erros: [], total_erros: 0, pausada_motivo: null };
+    });
+
+    it('Reprocessar: sem lote em voo chama a função e devolve as contagens; com lote em voo é 409 e nada é gravado; sem credencial é 409', async () => {
+      const { d, p } = plugin();
+      const r = await chamar(p, 'POST', C.reprocessar, { params: { entidade: 'produto' } });
+      expect(r.corpo).toEqual({ entidade: 'produto', falhas: 2, pendentes: 3, pedido_em: AGORA });
+      expect(d.escritas().map((c) => c.fn)).toEqual(['reprocessar']);
+
+      const emVoo = estado();
+      emVoo.cadastros = emVoo.cadastros.map((k) => (k.entidade === 'produto' ? { ...k, lote_em_voo: true } : k));
+      const v = plugin(emVoo);
+      await expect(chamar(v.p, 'POST', C.reprocessar, { params: { entidade: 'produto' } })).rejects.toMatchObject({ status: 409, codigo: 'CONFLITO' });
+      expect(v.d.escritas()).toHaveLength(0);
+
+      const sem = plugin(estado({}, false));
+      await expect(chamar(sem.p, 'POST', C.reprocessar, { params: { entidade: 'produto' } })).rejects.toMatchObject({ status: 409 });
+      expect(sem.d.escritas()).toHaveLength(0);
+    });
   });
 });
