@@ -4,10 +4,11 @@
  * quadro de sócios, contato de pessoa nem CPF (`paraCacheCnpj`).
  */
 import { resolverMunicipio, type MunicipioOficial } from '../domain/carga/municipio-por-nome';
-import { cacheValido, expiraEm, paraCacheCnpj, removerCpf, TIMEOUT_FONTE_MS } from '../domain';
+import { cacheValido, expiraEm, paraCacheCnpj, removerCpf, TIMEOUT_FONTE_MS, validarDocumentoCliente, type Violacao } from '../domain';
 import { ErroApi } from '@macuxierp/platform-sdk';
 import { SugestaoCep, SugestaoCnpj } from '../contracts';
-import type { ConsultaGravada, FonteExterna, RepoConsultaExterna } from './portas';
+import type { ConsultaGravada, FonteExterna, RepoConsultaExterna, Repositorios } from './portas';
+import { dataIso } from './util';
 
 export interface ResultadoSugestao<T> {
   sugestao: T;
@@ -16,8 +17,9 @@ export interface ResultadoSugestao<T> {
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+const digitos = (v: unknown): string => String(v ?? '').replace(/\D/g, '');
 const dig = (v: unknown, n: number): string | null => {
-  const s = String(v ?? '').replace(/\D/g, '');
+  const s = digitos(v);
   return s.length === n ? s : null;
 };
 const sim = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : typeof v === 'string' ? (/^s(im)?$/i.test(v.trim()) ? true : /^n([aã]o)?$/i.test(v.trim()) ? false : null) : null);
@@ -27,9 +29,8 @@ const lista = (v: unknown, chave: string, principal: string | null): string[] =>
     ? [...new Set(v.map((i) => dig(obj(i)[chave], 7)).filter((c): c is string => c !== null && c !== principal))]
     : [];
 const fone = (ddd: unknown, num: unknown): string | null => {
-  const d = String(ddd ?? '').replace(/\D/g, '');
-  const n = String(num ?? '').replace(/\D/g, '');
-  return n === '' ? null : `${d}${n}`;
+  const n = digitos(num);
+  return n === '' ? null : `${digitos(ddd)}${n}`;
 };
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 
@@ -74,7 +75,7 @@ export function sugestaoCnpj(fonte: string, bruto: Record<string, unknown>, cnpj
     porte: str(bruto.porte),
     natureza_juridica: str(bruto.natureza_juridica),
     email: str(bruto.email),
-    telefone: str(bruto.ddd_telefone_1)?.replace(/\D/g, '') || null,
+    telefone: digitos(bruto.ddd_telefone_1) || null,
     opcao_simples: sim(bruto.opcao_pelo_simples),
     opcao_mei: sim(bruto.opcao_pelo_mei),
     data_situacao_cadastral: data(bruto.data_situacao_cadastral),
@@ -182,4 +183,24 @@ export async function sugestaoComCache<T>(p: {
   await p.repo.gravar(gravada);
   // A resposta leva e-mail e telefone (a ficha da empresa os usa); só o cache os descarta.
   return { sugestao, fonte: r.fonte, consultado_em: p.agora.toISOString() };
+}
+
+/**
+ * Consulta de CNPJ única (RF-CAD-02): valida o documento, consulta com reserva e cache de 24 h e completa o IBGE pela tabela
+ * oficial. CNPJ inválido volta como valor; fonte fora (422) e não encontrado (404) lançam `ErroApi` para quem chama traduzir.
+ */
+export async function consultarCnpj(p: {
+  cnpj: string;
+  agora: Date;
+  repos: Repositorios;
+  fontes: readonly FonteExterna<Record<string, unknown>>[];
+}): Promise<{ ok: true; resultado: ResultadoSugestao<SugestaoCnpj> } | { ok: false; violacao: Violacao }> {
+  const d = validarDocumentoCliente('PJ', p.cnpj);
+  if (!d.ok) return { ok: false, violacao: d.violacao };
+  const cnpj = d.documento;
+  const resultado = await sugestaoComCache({
+    tipo: 'cnpj', chave: cnpj, agora: p.agora, repo: p.repos.consultaExterna, fontes: p.fontes,
+    montar: (fonte, bruto) => completarIbge(sugestaoCnpj(fonte, bruto, cnpj), (uf) => p.repos.oficiais.municipiosDaUf(uf, dataIso(p.agora))),
+  });
+  return { ok: true, resultado };
 }

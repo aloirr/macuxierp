@@ -16,14 +16,14 @@ import {
 } from '../contracts';
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
-  validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
+  validarCondicaoPagamento, completarParcelasCartao, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
   violacao, violacaoFracao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
 import { desativarCondicoesRecusadas, tratarCartaoSemParcelas } from './formas-recusadas';
 import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
-import { completarIbge, sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
+import { consultarCnpj, sugestaoCep, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
 import { validarCliente, verificarMunicipioEndereco } from './validar-cliente';
@@ -494,15 +494,9 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     definirRota({
       metodo: 'GET', caminho: '/consultas/cnpj/:cnpj', acao: 'cadastros.consulta.externa',
       async executar(c, e) {
-        const d = validarDocumentoCliente('PJ', e.params.cnpj ?? '');
-        if (!d.ok) throw erroDeViolacoes([d.violacao]);
-        const cnpj = d.documento;
-        return {
-          corpo: await sugestaoComCache({
-            tipo: 'cnpj', chave: cnpj, agora: c.agora, repo: R(c).consultaExterna, fontes: deps.fontes.cnpj,
-            montar: (fonte, bruto) => completarIbge(sugestaoCnpj(fonte, bruto, cnpj), (uf) => R(c).oficiais.municipiosDaUf(uf, dataIso(c.agora))),
-          }),
-        };
+        const r = await consultarCnpj({ cnpj: e.params.cnpj ?? '', agora: c.agora, repos: R(c), fontes: deps.fontes.cnpj });
+        if (!r.ok) throw erroDeViolacoes([r.violacao]);
+        return { corpo: r.resultado };
       },
     }),
     definirRota({
