@@ -355,6 +355,14 @@ Desenho em `docs/desenho/T-0059.md` §3 (o uso está no §5) e **RN-INF-06** (LG
 
 Migração: `db/migrations/0057_integracao_fdv_pre_cadastro_cliente.sql`; testes: `db/testes/pre-cadastro-0057.db.test.ts` (e as matrizes de `integracao-fdv.db.test.ts` e `plataforma.db.test.ts`).
 
+## Expurgo do pré-cadastro sem decisão (T-0098, migração 0062)
+RN-INF-06, decisão do Alexandre (R-20261124-214227, opção A): o pré-cadastro em `recebido` ou `reenviado` também é expurgado 180 dias depois, com o tratamento do recusado.
+- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` fica como está, porque o worker do `main` a chama; sai numa migração seguinte, quando nenhuma versão a usar.
+- **Prazo do sem-decisão:** conta da chegada da própria revisão (no reenviado, a última); exige o `recebido_em` do FDV e o `chegou_em` do ERP antes do corte, para que um pré-cadastro parado no Hub não saia no dia em que chega.
+- **CHECKs mais largos:** o recebido e o reenviado podem ficar sem payload depois do expurgo, e a linha expurgada ainda pode ser decidida (o FDV entrega a mesma revisão de novo). A versão anterior grava o mesmo de sempre.
+
+Migração: `db/migrations/0062_integracao_fdv_expurgo_sem_decisao.sql`; testes: `db/testes/pre-cadastro-0062.db.test.ts`.
+
 ## Limites do Hub no cadastros (T-0092, migração 0054)
 ADR 0019, opção A: o banco aceita os limites do `hub-v1` do SDK (`EXTERNAL_ID_MAX` = 200 e `LIMITE_CODIGO_FORMA_PAGAMENTO` = 30).
 - **O que muda:** em todas as tabelas do schema `cadastros` com `external_id` (inclusive as oficiais e a `carga_portal`), `CHECK (length(external_id) <= 200)` no lugar do `<= 64`; em `cadastros.condicao_pagamento`, `forma_external_id` também vai a 200 e `forma_codigo` a 30 (era 20). Os outros schemas seguem em 64: não recebem chave do Hub.
@@ -389,6 +397,12 @@ Defeito em produção: a porta `CriadorClienteFdv` (`modules/cadastros/api/criad
 - T-0100 (pedido do modulo-core): o consumidor `core.empresa-da-filial-padrao` roda no worker e faz `INSERT INTO core.empresa ... ON CONFLICT (tenant_id) DO NOTHING`. A 0003 só dava SELECT em `core.empresa` ao worker; a 0060 dá também INSERT, sem UPDATE nem DELETE (a empresa existente nunca é mexida pelo evento). A auditoria (`plataforma.auditoria`) e a outbox (`plataforma.evento`) do core já eram do worker desde a 0002; a `isolamento_tenant` da `core.empresa` (0003, `preparar_tabela`) não tem `TO` e vale para o worker.
 
 Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/testes/cliente-worker-0060.db.test.ts`.
+
+## Latitude e longitude no endereço do cliente (T-0096, migração 0061)
+- `numeric(9, 6)`: 6 casas (cerca de 11 cm) cabem com folga em ±180; o banco guarda o número exato que o FDV ou a tela mandam, sem o arredondamento do ponto flutuante. É a única exceção fechada ao "sem float nem numeric" (`db/testes/plataforma.db.test.ts`), que vale para dinheiro e quantidade; coordenada não é nenhum dos dois.
+- **Anuláveis, sem backfill:** o endereço legado e o que chega sem coordenada ficam nulos; o nulo passa nos CHECKs (faixa só quando informada). Exigir os dois juntos é regra do `domain` do cadastros, não do banco.
+- RLS, grants (por tabela, 0004: as colunas novas entram sozinhas) e gatilhos não mudam. **Funções do portal (0040 a 0058) sem mudança:** a carga e o zerar só listam `id`, `cliente_id` e `external_id` do endereço; quem grava os dados na carga é a tx2 do app.
+- Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `lock_timeout` de 5 s). Teste: `db/testes/endereco-lat-long-0061.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.

@@ -161,6 +161,18 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(c).toMatchObject({ status: 'rejeitado_erp', motivo });
     expect(c.numero_erp).toBeUndefined();
   });
+  it('RN-PED-05: o motivo da recusa do pedido é preferido ao texto do código; ausente ou em branco cai no texto do código', () => {
+    const agora = new Date('2026-11-21T18:00:00Z');
+    expect(retornoRejeitadoErp(U(2), 'item_incoerente', agora, 'Quantidade fracionada só em KG e M').motivo).toBe('Quantidade fracionada só em KG e M');
+    expect(retornoRejeitadoErp(U(2), 'item_incoerente', agora, undefined).motivo).toBe('Item com desconto maior que o valor do item');
+    expect(retornoRejeitadoErp(U(2), 'item_incoerente', agora, '   ').motivo).toBe('Item com desconto maior que o valor do item');
+    expect(retornoRejeitadoErp(U(2), 'item_incoerente', agora, null).motivo).toBe('Item com desconto maior que o valor do item');
+  });
+  it('RN-CAD-17: fração imprópria no pedido do FDV volta com o motivo da fração, não com "desconto maior que o valor"', () => {
+    const c = retornoRejeitadoErp(U(2), 'item_incoerente', new Date('2026-11-21T18:00:00Z'), 'RN-CAD-17: item 1 não aceita fração');
+    expect(c.motivo).toBe('RN-CAD-17: item 1 não aceita fração');
+    expect(c.motivo).not.toContain('desconto');
+  });
   it('RN-PED-05: o JSON do hash ignora ocorrido_em e a ordem das chaves', () => {
     const a = retornoDoPedido(ev('pedido.pedido.recebido@1'), null);
     const b = retornoDoPedido({ ...ev('pedido.pedido.recebido@1'), ocorrido_em: '2026-11-22T00:00:00.000Z' }, null);

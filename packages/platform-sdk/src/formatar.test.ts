@@ -5,6 +5,8 @@ import { centavos } from './dinheiro';
 import * as indice from './index';
 import {
   formatarCentavos,
+  formatarCep,
+  formatarDataCivil,
   formatarDataHora,
   formatarDocumento,
   formatarPontosBase,
@@ -18,6 +20,13 @@ import {
 
 // Casos trazidos de modules/cadastros/web/formatar.test.ts, modules/pedido/web/web.test.ts (RD-0362) e apps/web/src/lib/cnpj.test.ts.
 describe('formatação de exibição do BKO (RD-0362)', () => {
+  it('data civil e CEP (fonte única do faturamento e do apps): formato válido mascarado; o resto volta como está', () => {
+    expect(formatarDataCivil('2026-11-25')).toBe('25/11/2026');
+    for (const d of ['', '25/11/2026', '2026-11-25T10:00:00Z', '2026-1-5']) expect(formatarDataCivil(d)).toBe(d);
+    expect(formatarCep('69000000')).toBe('69000-000');
+    for (const c of ['', '69000-000', '6900000', '690000000']) expect(formatarCep(c)).toBe(c);
+  });
+
   it('RN-CAD-01: mostra CNPJ e CPF com máscara; CNPJ alfanumérico também', () => {
     expect(formatarDocumento('11222333000181')).toBe('11.222.333/0001-81');
     expect(formatarDocumento('52998224725')).toBe('529.982.247-25');
