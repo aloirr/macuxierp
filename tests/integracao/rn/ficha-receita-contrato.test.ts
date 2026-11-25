@@ -1,20 +1,20 @@
 /**
- * T-0101, etapa 1 (plano da v0.3.13, R-1 e R-3 no nível do contrato): a ficha completa da decisão do gerente
- * (24/11, ~23h45 de Manaus: abertura, natureza jurídica, porte e CNAE secundários, além do que o ADR 0012 já traz) está
- * no contrato do core (#637) e no detalhe mascarado; e a mesma resposta da fonte (formato da BrasilAPI) dá a mesma
- * abertura, natureza, porte e CNAE no core (`mapearRespostaReceita`) e na consulta CNPJ dos cadastros (`sugestaoCnpj`,
- * #640). O mapeamento campo a campo e as máscaras ficam no modules/core/domain/ficha-receita.test.ts (dono); rota,
- * Revelar, auditoria e log (R-1 a R-6 na rota) entram na etapa 2, em tests/integracao/plataforma/empresa-ficha.db.test.ts.
+ * T-0101 (plano da v0.3.13, R-1 e R-3 no nível do contrato): a ficha completa da decisão do gerente (24/11, ~23h45 de Manaus: abertura, natureza jurídica, porte e CNAE secundários, além do que o
+ * ADR 0012 já traz) está em `FichaReceitaPlana` (o que se grava) e `FichaReceitaPlanaMascarada` (o detalhe, sem e-mail
+ * nem telefone completos); o "Atualizar pela Receita" passa em `ResultadoReceitaPlana`; e a mesma resposta da fonte
+ * (formato da BrasilAPI), lida pela consulta CNPJ dos cadastros (`sugestaoCnpj`, #640), chega à ficha do core
+ * (`prepararFichaDaConsulta`) com a mesma abertura, natureza, porte e CNAE. O mapeamento campo a campo e as máscaras
+ * ficam no modules/core/domain/ficha-receita.test.ts (dono); rota, Revelar e auditoria no empresa-ficha.db.test.ts.
  * Dados fictícios (CNPJ de exemplo, exemplo.invalid).
  */
 import { describe, expect, it } from 'vitest';
 import {
-  FichaReceita,
-  FichaReceitaMascarada,
-  ResultadoAtualizarReceita,
+  FichaReceitaPlana,
+  FichaReceitaPlanaMascarada,
+  ResultadoReceitaPlana,
   type RespostaReceitaBruta,
 } from '../../../modules/core/contracts/index';
-import { atualizarFichaPelaReceita, mapearRespostaReceita, mascararFicha } from '../../../modules/core/domain/index';
+import { prepararFichaDaConsulta, type SugestaoReceita } from '../../../modules/core/domain/index';
 import { sugestaoCnpj } from '../../../modules/cadastros/api/consultas';
 
 const CNPJ = '11222333000181';
@@ -28,6 +28,7 @@ const bruta = (): RespostaReceitaBruta => ({
   razao_social: 'FICHA FICTICIA LTDA',
   nome_fantasia: 'FICHA',
   descricao_situacao_cadastral: 'ATIVA',
+  data_situacao_cadastral: '2014-07-21',
   data_inicio_atividade: '2014-07-21',
   natureza_juridica: '2062 - Sociedade Empresária Limitada',
   porte: 'EMPRESA DE PEQUENO PORTE',
@@ -52,61 +53,73 @@ const bruta = (): RespostaReceitaBruta => ({
   opcao_pelo_mei: false,
 });
 
-/** Os campos da ficha completa (decisão do gerente + ADR 0012), fora e-mail e telefone. */
-const DADOS = [
-  'razao_social',
+/** A consulta CNPJ dos cadastros (fonte única da leitura da BrasilAPI) e a ficha que o core prepara a partir dela. */
+const sugestao = () => sugestaoCnpj('brasilapi', bruta() as Record<string, unknown>, CNPJ);
+const preparar = () => prepararFichaDaConsulta({ cnpj: CNPJ, resposta: { ok: true, sugestao: sugestao() as unknown as SugestaoReceita, fonte: 'brasilapi', consultado_em: AGORA } });
+
+/** Os campos da ficha completa (decisão do gerente + ADR 0012), comuns à ficha gravada e à mascarada. */
+const COMUNS = [
   'nome_fantasia',
-  'cnpj',
+  'logradouro',
+  'numero',
+  'complemento',
+  'bairro',
+  'cep',
+  'municipio_ibge',
+  'uf',
+  'cnae_principal',
+  'regime_receita',
   'situacao_cadastral',
+  'situacao_cadastral_data',
   'data_abertura',
   'natureza_juridica',
   'porte',
-  'cnae_principal',
   'cnae_secundarios',
-  'endereco',
-  'regime',
-  'consultado_em',
-  'fonte',
 ] as const;
-const ENDERECO = ['logradouro', 'numero', 'complemento', 'bairro', 'cep', 'municipio', 'municipio_ibge', 'uf'];
 
-describe('ficha da Receita: contrato da ficha completa (T-0101, R-1 e R-3 na etapa 1)', () => {
-  it('R-1: FichaReceita tem a ficha completa (abertura, natureza, porte, CNAE principal e secundários, endereço, e-mail, telefone, data e fonte)', () => {
-    expect(Object.keys(FichaReceita.shape).sort()).toEqual([...DADOS, 'email', 'telefone'].sort());
-    expect(Object.keys(FichaReceita.shape.endereco.shape).sort()).toEqual([...ENDERECO].sort());
+describe('ficha da Receita: contrato da ficha completa (T-0101, R-1 e R-3)', () => {
+  it('R-1: FichaReceitaPlana tem a ficha completa (abertura, natureza, porte, CNAE principal e secundários, endereço, e-mail, telefone, data e fonte)', () => {
+    expect(Object.keys(FichaReceitaPlana.shape).sort()).toEqual([...COMUNS, 'razao_social', 'email', 'telefone', 'fonte', 'consultado_em'].sort());
   });
 
-  it('R-3: FichaReceitaMascarada tem os mesmos dados e só e-mail e telefone mascarados, nunca as chaves completas', () => {
-    expect(Object.keys(FichaReceitaMascarada.shape).sort()).toEqual([...DADOS, 'email_mascarado', 'telefone_mascarado'].sort());
+  it('R-3: FichaReceitaPlanaMascarada tem os mesmos dados e só e-mail e telefone mascarados, nunca as chaves completas', () => {
+    const chaves = Object.keys(FichaReceitaPlanaMascarada.shape);
+    expect(chaves).toEqual(expect.arrayContaining([...COMUNS, 'email_mascarado', 'telefone_mascarado', 'receita_fonte', 'receita_consultada_em']));
+    expect(chaves).not.toContain('email');
+    expect(chaves).not.toContain('telefone');
   });
 
-  it('R-1: a resposta completa da fonte vira uma FichaReceita válida, sem chave fora do contrato e com todos os campos preenchidos', () => {
-    const f = mapearRespostaReceita(bruta(), 'brasilapi', AGORA);
-    expect(f).not.toBeNull();
-    expect(FichaReceita.parse(f)).toEqual(f);
-    for (const k of DADOS) expect(f![k], k).not.toBeNull();
-    for (const k of ENDERECO) expect(f!.endereco[k as keyof FichaReceita['endereco']], `endereco.${k}`).not.toBeNull();
+  it('R-1: a resposta da BrasilAPI pela consulta CNPJ dos cadastros (#640) vira uma FichaReceitaPlana completa, sem chave fora do contrato e igual à dos cadastros', () => {
+    const cad = sugestao();
+    const r = preparar();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(FichaReceitaPlana.strict().parse(r.ficha)).toEqual(r.ficha);
+    for (const k of [...COMUNS, 'email', 'telefone'] as const) expect(r.ficha[k], k).not.toBeNull();
+    expect(r.ficha).toMatchObject({ email: EMAIL, telefone: '9232224567', fonte: 'brasilapi', consultado_em: AGORA });
+    expect(cad.data_abertura).toBe(r.ficha.data_abertura);
+    expect(cad.natureza_juridica).toBe(r.ficha.natureza_juridica);
+    expect(cad.porte).toBe(r.ficha.porte);
+    expect(String(cad.cnae_fiscal)).toBe(r.ficha.cnae_principal);
+    expect((cad.cnae_secundarios ?? []).map(String)).toEqual(['4637199', '4930202']);
+    expect(r.ficha.cnae_secundarios).toEqual(['4637199', '4930202']);
   });
 
-  it('R-1 e R-3: o resultado de "Atualizar pela Receita" passa no contrato, com os nomes dos campos e a ficha mascarada', () => {
-    const r = atualizarFichaPelaReceita({ cnpj: CNPJ, anterior: null, resposta: { ok: true, dados: bruta(), fonte: 'brasilapi' }, agora: AGORA });
-    expect(FichaReceita.parse(r.gravar)).toEqual(r.gravar);
-    const ok = ResultadoAtualizarReceita.parse(r.resultado);
+  it('R-1 e R-3: ResultadoReceitaPlana aceita o ok (só nomes de campo e a ficha mascarada) e o erro com motivo; recusa o valor completo do contato', () => {
+    const mascarada = FichaReceitaPlanaMascarada.parse({
+      ...Object.fromEntries(COMUNS.map((k) => [k, null])),
+      ie: null,
+      email_mascarado: 'co****@exemplo.invalid',
+      telefone_mascarado: '(92) ****-4567',
+      receita_fonte: 'brasilapi',
+      receita_consultada_em: AGORA,
+    });
+    const ok = ResultadoReceitaPlana.parse({ estado: 'ok', campos_alterados: ['data_abertura', 'porte'], ficha: mascarada });
     expect(ok.estado).toBe('ok');
-    if (ok.estado !== 'ok') return;
-    expect(ok.campos_alterados).toEqual(expect.arrayContaining(['data_abertura', 'natureza_juridica', 'porte', 'cnae_secundarios']));
-    for (const c of ok.campos_alterados) expect(c).toMatch(/^[a-z_]+$/);
-    const m = mascararFicha(mapearRespostaReceita(bruta(), 'brasilapi', AGORA)!);
-    expect(FichaReceitaMascarada.parse(m)).toEqual(ok.ficha);
-  });
-
-  it('R-1: a mesma resposta da BrasilAPI dá a mesma abertura, natureza, porte e CNAE no core e na consulta CNPJ dos cadastros (#640)', () => {
-    const core = mapearRespostaReceita(bruta(), 'brasilapi', AGORA)!;
-    const cad = sugestaoCnpj('brasilapi', bruta() as Record<string, unknown>, CNPJ);
-    expect(cad.data_abertura).toBe(core.data_abertura);
-    expect(cad.natureza_juridica).toBe(core.natureza_juridica);
-    expect(cad.porte).toBe(core.porte);
-    expect(cad.cnae_fiscal).toBe(core.cnae_principal!.codigo);
-    expect(cad.cnae_secundarios).toEqual(core.cnae_secundarios.map((c) => c.codigo));
+    expect(ResultadoReceitaPlana.parse({ estado: 'erro', motivo: 'cnpj_invalido', mensagem: 'x', ficha: null }).estado).toBe('erro');
+    expect(ResultadoReceitaPlana.safeParse({ estado: 'erro', motivo: 'outro', mensagem: 'x', ficha: null }).success).toBe(false);
+    // A ficha do resultado é a mascarada: o e-mail completo não é chave dela (o objeto do Zod descarta chaves estranhas).
+    const comEmail = ResultadoReceitaPlana.parse({ estado: 'ok', campos_alterados: [], ficha: { ...mascarada, email: EMAIL } });
+    expect(JSON.stringify(comEmail)).not.toContain(EMAIL);
   });
 });
