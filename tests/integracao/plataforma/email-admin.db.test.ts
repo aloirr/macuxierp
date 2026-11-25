@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
 import { CABECALHOS_SENHA_PROVISORIA, EmailPrimeiroAdminResposta } from '../../../packages/platform-sdk/src/index';
-import { atalhosPortal, erroComoPapel, inserirSuperadmin, PAPEL_CONFIG, SENHA_SA, sha256, type AppPortal } from '../../apoio/portal-pg';
+import { atalhosPortal, erroComoPapel, inserirSuperadmin, PAPEL_CONFIG, semearMunicipioManaus, SENHA_SA, sha256, type AppPortal } from '../../apoio/portal-pg';
 
 const EMAIL_SA = 'sa-e6-email@exemplo.invalid';
 const EMAIL_SA_TROCA = 'sa-e6-email-troca@exemplo.invalid';
@@ -74,13 +74,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: dados da empresa e e-mail do 1�
     const adm = await p.pedir('POST', `/v1/plataforma/empresas/${empresa}/primeiro-admin`, { token, corpo: { email: EMAIL_ADM, nome: 'Joana Fictícia' }, chave: randomUUID() });
     expect(adm.statusCode).toBe(201);
     // Dados do tenant que o administrador cadastraria no BKO: empresa e filial padrão em Manaus (tabela oficial de teste).
-    const versao = randomUUID();
-    await b.admin.query(
-      `INSERT INTO cadastros.tabela_oficial_versao (id, tabela, carga, versao, fonte, url, data_referencia, arquivo, sha256, registros)
-       VALUES ($1, 'municipio', 'municipio-e6', 't-e6', 'IBGE (teste)', 'https://exemplo.invalid', '2026-01-01', 'municipio.csv', repeat('e', 64), 1)`,
-      [versao],
-    );
-    await b.admin.query("INSERT INTO cadastros.municipio (codigo, nome, uf, vigencia_inicio, vigencia_fim, versao_id) VALUES ('1302603', 'Manaus', 'AM', '2020-01-01', NULL, $1)", [versao]);
+    await semearMunicipioManaus(b);
     await b.admin.query("INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Fictícia E-mail E6 Ltda', $2)", [empresa, CNPJ]);
     await b.admin.query(
       `INSERT INTO cadastros.filial (tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep, padrao, emissora, nfe_serie, nfe_numero_inicial)

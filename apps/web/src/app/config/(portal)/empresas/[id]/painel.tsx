@@ -1,4 +1,5 @@
 'use client';
+import type { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
@@ -6,7 +7,9 @@ import { dadosDaEmpresa } from '@/lib/config/empresa';
 import type { Resultado } from '@/lib/config/executar';
 import { validarMotivo } from '@/lib/config/formularios';
 import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nomeModulo, pendenciasDe, type Dependencia } from '@/lib/config/modulos';
+import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { alterarModulosAcao, criarAdminAcao, mostrarEmailAcao, redefinirSenhaAcao, situacaoAcao } from '../acoes';
+import { FichaReceita } from './ficha-receita';
 
 export interface ChavesPainel {
   admin: string;
@@ -19,13 +22,14 @@ interface Comum {
   aoErro: (tem: boolean) => void;
 }
 
-export function PainelEmpresa({ empresa, deps, chaves }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel }) {
+export function PainelEmpresa({ empresa, deps, chaves, ficha = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaPlanaMascarada | null }) {
   const [temErro, setTemErro] = useState(false);
   const [mudou, setMudou] = useState(false);
   return (
     <>
       <RegiaoErros temErro={temErro} />
       <BlocoDados empresa={empresa} />
+      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
       <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
       <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
       <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />
@@ -50,29 +54,14 @@ function BlocoDados({ empresa }: { empresa: EmpresaPlataforma }) {
 }
 
 function EmailAdmin({ empresaId, mascarado }: { empresaId: string; mascarado: string }) {
-  const [email, setEmail] = useState<string | null>(null); // só na memória desta tela: nunca em URL, armazenamento ou log
-  const [erro, setErro] = useState('');
-  const [pendente, iniciar] = useTransition();
-  const alternarEmail = () => {
-    if (email) {
-      setEmail(null);
-      return;
-    }
-    setErro('');
-    iniciar(async () => {
-      const r = await mostrarEmailAcao(empresaId);
-      if (r.ok) setEmail(r.valor.email);
-      else setErro(r.erro);
-    });
+  const revelar = async () => {
+    const r = await mostrarEmailAcao(empresaId);
+    return r.ok ? { ok: true as const, valor: r.valor.email } : r;
   };
   return (
-    <div className="email-admin">
-      <p>E-mail: <strong className="email-valor">{email ?? mascarado}</strong></p>
-      <button className="mx-botao-secundario" type="button" disabled={pendente} aria-pressed={email !== null} onClick={alternarEmail}>
-        {pendente ? 'Carregando…' : email ? 'Ocultar' : 'Mostrar'}
-      </button>
-      {erro && <p className="erro" role="alert">{erro}</p>}
-    </div>
+    <p className="email-admin">
+      E-mail: <RevelarMascarado rotulo="e-mail" mascarado={mascarado} revelar={revelar} />
+    </p>
   );
 }
 
