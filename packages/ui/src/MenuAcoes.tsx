@@ -41,8 +41,7 @@ export type AcaoTeclaGatilho = 'abrir-primeiro' | 'abrir-ultimo' | 'entrar-prime
 export function acaoTeclaGatilho(tecla: string, aberto: boolean): AcaoTeclaGatilho {
   if (tecla === 'Escape') return aberto ? 'fechar' : null;
   if (tecla === 'ArrowUp') return aberto ? 'entrar-ultimo' : 'abrir-ultimo';
-  if (tecla === 'ArrowDown') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
-  if (tecla === 'Enter' || tecla === ' ' || tecla === 'Spacebar') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
+  if (tecla === 'ArrowDown' || tecla === 'Enter' || tecla === ' ') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
   return null;
 }
 
@@ -152,14 +151,21 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
 
   if (lista.length === 0 && !principalVisivel) return null;
 
+  const fecharComEsc = (e: TecladoReact) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fechar(true);
+  };
+
   const tecladoGatilho = (e: TecladoReact) => {
     const acao = acaoTeclaGatilho(e.key, aberto);
     if (!acao) return;
-    e.preventDefault();
     if (acao === 'fechar') {
-      e.stopPropagation();
-      fechar(true);
-    } else if (acao === 'entrar-primeiro' || acao === 'entrar-ultimo') {
+      fecharComEsc(e);
+      return;
+    }
+    e.preventDefault();
+    if (acao === 'entrar-primeiro' || acao === 'entrar-ultimo') {
       irParaItem(acao === 'entrar-primeiro' ? 'primeiro' : 'ultimo');
     } else {
       // O foco vai ao item só depois de o menu montado e posicionado (layout effect).
@@ -170,14 +176,12 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
 
   // Espaço dispara o clique no keyup: evita que ele feche o menu recém-aberto.
   const soltarGatilho = (e: TecladoReact) => {
-    if (e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
+    if (e.key === ' ') e.preventDefault();
   };
 
   const tecladoMenu = (e: TecladoReact) => {
     if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      fechar(true);
+      fecharComEsc(e);
     } else if (e.key === 'Tab') {
       fechar(false);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
@@ -234,10 +238,7 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
             aria-expanded={aberto}
             aria-controls={menuId}
             aria-label={rotuloLinha ? `Ações de ${rotuloLinha}` : undefined}
-            onClick={() => {
-              focoInicial.current = null;
-              setAberto(!aberto);
-            }}
+            onClick={() => setAberto(!aberto)}
             onKeyDown={tecladoGatilho}
             onKeyUp={soltarGatilho}
             style={estiloBotao}
