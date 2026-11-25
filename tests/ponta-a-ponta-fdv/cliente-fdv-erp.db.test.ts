@@ -5,10 +5,11 @@
  * `POST /clientes/{uuid}/retorno` → o Hub registra. PostgreSQL efêmero com RLS (papel `macuxierp_worker`) e a API de
  * produção (`montarApiPg`) para a filial e a rota do BKO. Sem FDV real e sem rede.
  *
- * Limite conhecido: o `apps/worker` ainda não registra as agendas de clientes (`criarAgendasClientesFdv` fora do
- * `montarAgendas`; defeito avisado ao gerente em 24/11/2026, 23h13 de Manaus). Aqui as funções das agendas são chamadas
- * direto, como o `apps/worker` vai ligá-las. A parte "o lote só sai depois do 200" do F-1 é conferida pelo
- * `aguarda_vinculo` do espelho, que é o que o conector lê para reter o registro (desenho §5.4).
+ * As peças vêm do `montarPedidosFdv` e do `montarAgendas` do worker (`apoio/erp-clientes.ts`). Os dois defeitos achados
+ * nesta bateria (24/11/2026, 23h13 e 23h17 de Manaus) ficam cobertos: agendas de clientes fora do `montarAgendas` (#620)
+ * e o `macuxierp_worker` sem grant em `cadastros.cliente`, `cliente_endereco` e `cliente_contato` (0064, #621). A parte
+ * "o lote só sai depois do 200" do F-1 é conferida pelo `aguarda_vinculo` do espelho, que é o que o conector lê para
+ * reter o registro (desenho §5.4).
  * Sem Postgres pula.
  */
 import { randomUUID } from 'node:crypto';
@@ -118,11 +119,15 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
     await api?.fechar();
   });
 
+  it('o worker registra as agendas do pré-cadastro com o recebimento ligado (#620)', () => {
+    expect(lados.A.agendas).toEqual(expect.arrayContaining(['integracao-fdv.busca-clientes', 'integracao-fdv.retorno-clientes']));
+  });
+
   it('F-1: pendente válido da v1.0.28 vira um cliente; o espelho fica retido até o 200 do vinculado; o external_id é a chave do Hub, nunca o codigo_fdv', async () => {
     const p = cadastrarNoFdv(duble, dubleT.L, pre({ documento: '04252011000110' }));
     const busca = await lados.L.buscar(api.t.L, hubs.L);
-    // sem os grants do macuxierp_worker no cadastros, a porta falha aqui (`pre_cadastro_falha_interna`; defeito avisado em 24/11, 23h17)
-    expect(busca, lados.L.lgpd.alertas.join(' ')).toMatchObject({ buscados: 1, aceitos: 1, recusados: 0 });
+    // sem os grants do macuxierp_worker no cadastros (0064), a porta falha aqui com `pre_cadastro_falha_interna`
+    expect(busca).toMatchObject({ buscados: 1, aceitos: 1, recusados: 0 });
     const [linha] = await recebidos(api.t.L, p.dados.cliente_uuid);
     expect(linha).toMatchObject({ revisao: 1, situacao: 'aceito' });
     const clienteId = linha!.cliente_id!;
