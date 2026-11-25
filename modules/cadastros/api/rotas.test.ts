@@ -125,6 +125,41 @@ describe('filiais (RF-CAD-08)', () => {
   });
 });
 
+describe('localização do endereço do cliente (T-0096)', () => {
+  const novo = async (lat: unknown, lon: unknown) => {
+    const t = montar();
+    const f = await comFilial(t);
+    const r = await t.chamar('POST', '/clientes', { sessao: faturista, corpo: clienteValido(f, { enderecos: [{ ...ENDERECO_AM, tipo: 'principal', latitude: lat, longitude: lon }] }) });
+    return { t, r };
+  };
+  it('T-0096: POST do cliente com coordenada válida devolve os valores', async () => {
+    const { r } = await novo(-3.1, -60.02);
+    expect(r.status).toBe(201);
+    expect(r.corpo.enderecos[0]).toMatchObject({ latitude: -3.1, longitude: -60.02 });
+  });
+  it('T-0096: POST do cliente fora da faixa grava nulo, sem recusar', async () => {
+    const { r } = await novo(95, -60);
+    expect(r.status).toBe(201);
+    expect(r.corpo.enderecos[0]).toMatchObject({ latitude: null, longitude: null });
+  });
+  it('T-0096: POST e PATCH do endereço normalizam; o PATCH reavalia o par com o valor gravado', async () => {
+    const { t, r } = await novo(null, null);
+    const base = `/clientes/${r.corpo.id}/enderecos`;
+    const criado = await t.chamar('POST', base, { sessao: faturista, corpo: { ...ENDERECO_AM, tipo: 'entrega', latitude: -3.1, longitude: -60.02 } });
+    expect(criado.status).toBe(201);
+    expect(criado.corpo).toMatchObject({ latitude: -3.1, longitude: -60.02 });
+    const fora = await t.chamar('POST', base, { sessao: faturista, corpo: { ...ENDERECO_AM, tipo: 'cobranca', latitude: 91, longitude: -60 } });
+    expect(fora.corpo).toMatchObject({ latitude: null, longitude: null });
+    const ok = await t.chamar('PATCH', `${base}/${criado.corpo.id}`, { sessao: faturista, corpo: { latitude: -10.5, longitude: -50.25 } });
+    expect(ok.corpo).toMatchObject({ latitude: -10.5, longitude: -50.25 });
+    const so1 = await t.chamar('PATCH', `${base}/${criado.corpo.id}`, { sessao: faturista, corpo: { longitude: 181 } });
+    expect(so1.status).toBe(200);
+    expect(so1.corpo).toMatchObject({ latitude: null, longitude: null });
+    const semMexer = await t.chamar('PATCH', `${base}/${ok.corpo.id}`, { sessao: faturista, corpo: { numero: '999' } });
+    expect(semMexer.corpo).toMatchObject({ numero: '999' });
+  });
+});
+
 describe('clientes (RF-CAD-01)', () => {
   it('cria PJ com endereço, publica o evento com enderecos e vendedor_id', async () => {
     const t = montar();
@@ -571,6 +606,21 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
     const r = await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: p, tipo: 'entrada', quantidade: 1_5000, motivo: 'Compra' } });
     expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
     expect(JSON.stringify(r.corpo)).toContain('quantidade');
+  });
+  it('RN-CAD-17: PATCH que troca a unidade comercial para uma sem fração, com saldo fracionário, é 422 no campo unidade_comercial', async () => {
+    const { t, f } = await cenario();
+    const kg = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P-KG', unidade_comercial: 'KG', unidade_tributavel: 'KG' }) })).corpo.id as string;
+    await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: kg, tipo: 'entrada', quantidade: 1_5000, motivo: 'Compra' } });
+    const r = await t.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'UN' } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
+    expect(JSON.stringify(r.corpo)).toContain('unidade_comercial');
+    expect((await t.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'M' } })).status).toBe(200); // M também aceita fração
+  });
+  it('RN-CAD-17: PATCH da unidade comercial com saldo inteiro passa', async () => {
+    const { t, f } = await cenario();
+    const kg = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P-KG', unidade_comercial: 'KG', unidade_tributavel: 'KG' }) })).corpo.id as string;
+    await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: kg, tipo: 'entrada', quantidade: 2_0000, motivo: 'Compra' } });
+    expect((await t.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'UN' } })).status).toBe(200);
   });
   it('RN-CAD-07: o faturista não deixa o saldo negativo; o gerente deixa', async () => {
     const { t, f, p } = await cenario();

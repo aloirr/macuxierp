@@ -382,6 +382,39 @@ Nenhum fluxo de produção gravava `core.empresa`, então a aba Empresa do /conf
 
 Migração: `db/migrations/0059_core_empresa_backfill.sql`; testes: `db/testes/empresa-backfill-0059.db.test.ts`.
 
+## Cliente criado pelo worker no pré-cadastro do FDV (T-0059, migração 0060)
+Defeito em produção: a porta `CriadorClienteFdv` (`modules/cadastros/api/criador-cliente-fdv.ts`) roda na transação do worker e caía em 42501 no primeiro INSERT do cliente; o pré-cadastro válido nunca virava cliente e o FDV reentregava a cada 10 min.
+- A porta só lê e insere (dentro de um SAVEPOINT): cliente, endereço e contato; o evento vai à outbox e a auditoria a `plataforma`, que o worker já grava desde a 0002. As leituras (cliente, endereço, contato, filial, `cadastros.municipio`) já eram dele (0004 e 0005). Não há sequência (ids por `gen_random_uuid()`) nem gatilho de inserção nas três tabelas, e o pré-cadastro não toca em vendedor, carteira, condição de pagamento nem tabela de preço.
+- Por isso falta só a escrita de inserção; a política `isolamento_tenant` não tem `TO` e vale para o worker (o mesmo da 0029), sem `worker_global`.
+- T-0100 (pedido do modulo-core): o consumidor `core.empresa-da-filial-padrao` roda no worker e faz `INSERT INTO core.empresa ... ON CONFLICT (tenant_id) DO NOTHING`. A 0003 só dava SELECT em `core.empresa` ao worker; a 0060 dá também INSERT, sem UPDATE nem DELETE (a empresa existente nunca é mexida pelo evento). A auditoria (`plataforma.auditoria`) e a outbox (`plataforma.evento`) do core já eram do worker desde a 0002; a `isolamento_tenant` da `core.empresa` (0003, `preparar_tabela`) não tem `TO` e vale para o worker.
+
+Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/testes/cliente-worker-0060.db.test.ts`.
+
+## Latitude e longitude no endereço do cliente (T-0096, migração 0061)
+- `numeric(9, 6)`: 6 casas (cerca de 11 cm) cabem com folga em ±180; o banco guarda o número exato que o FDV ou a tela mandam, sem o arredondamento do ponto flutuante. É a única exceção fechada ao "sem float nem numeric" (`db/testes/plataforma.db.test.ts`), que vale para dinheiro e quantidade; coordenada não é nenhum dos dois.
+- **Anuláveis, sem backfill:** o endereço legado e o que chega sem coordenada ficam nulos; o nulo passa nos CHECKs (faixa só quando informada). Exigir os dois juntos é regra do `domain` do cadastros, não do banco.
+- RLS, grants (por tabela, 0004: as colunas novas entram sozinhas) e gatilhos não mudam. **Funções do portal (0040 a 0058) sem mudança:** a carga e o zerar só listam `id`, `cliente_id` e `external_id` do endereço; quem grava os dados na carga é a tx2 do app.
+- Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `lock_timeout` de 5 s). Teste: `db/testes/endereco-lat-long-0061.db.test.ts`.
+
+## Expurgo do pré-cadastro sem decisão (T-0098, migração 0062)
+RN-INF-06, decisão do Alexandre (R-20261124-214227, opção A): o pré-cadastro em `recebido` ou `reenviado` também é expurgado 180 dias depois, com o tratamento do recusado.
+- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` fica como está, porque o worker do `main` a chama; sai numa migração seguinte, quando nenhuma versão a usar.
+- **Prazo do sem-decisão:** conta da chegada da própria revisão (no reenviado, a última); exige o `recebido_em` do FDV e o `chegou_em` do ERP antes do corte, para que um pré-cadastro parado no Hub não saia no dia em que chega.
+- **CHECKs mais largos:** o recebido e o reenviado podem ficar sem payload depois do expurgo, e a linha expurgada ainda pode ser decidida (o FDV entrega a mesma revisão de novo). A versão anterior grava o mesmo de sempre.
+
+Migração: `db/migrations/0062_integracao_fdv_expurgo_sem_decisao.sql`; testes: `db/testes/pre-cadastro-0062.db.test.ts`.
+
+## Ficha da empresa pela Receita (T-0101, migração 0063)
+ADR 0012 §4, emenda da ficha, mais data de abertura, natureza jurídica, porte e CNAEs secundários (decisão do gerente-projetos, 24/11 23h37). Colunas anuláveis em `core.empresa`; o RLS e os grants da tabela não mudam.
+- **Razão social e nome fantasia até 150** (contrato do core, #637): a 0063 troca os CHECKs da 0003 (`empresa_razao_social_check`, mínimo 2 mantido, e `empresa_nome_fantasia_check`) pelos de máximo 150, com `NOT VALID` + `VALIDATE`. A NF-e não é afetada: o emitente vem da filial (`cadastros.filial`, RF-CAD-08), nunca da `core.empresa`. A 0059 copia da filial (até 60) e cabe no limite novo.
+- **Leitura:** `empresa_ler` devolve a chave `ficha` (`empresa_ficha_json`, null sem `core.empresa`), com `email_mascarado` e `telefone_mascarado` ("(92) ****-1234"). A `empresa_json` não muda, porque também serve a listagem e a ficha não entra em lista (LGPD).
+- **Gravação:** `empresa_gravar_receita(p_id, p_ficha, p_request_id)` → `{ ficha, alterados }`. Chaves aceitas: as colunas da ficha mais `fonte` (obrigatória, `FonteConsulta`) e `consultado_em` (ISO; ausente = agora). Chave ausente mantém o valor; presente grava normalizado (dígitos em CEP, IBGE, telefone e CNAE com zero à esquerda; espaços de texto colapsados); formato inválido (CEP, IBGE, UF, e-mail, telefone, data, CNAE, regime) vira NULL, para a falha da fonte não quebrar a tela. Texto acima do limite não é cortado nem anulado: dá 23514 só com o nome do campo. Limites (os do contrato do core, `modules/core/contracts/ficha-receita.ts`): logradouro e complemento 120, bairro 80, número 20, situação cadastral e porte 60, natureza jurídica 120, razão social e nome fantasia 150. Razão social vazia não apaga a atual. Repetir o `request_id` não muda nada e devolve os campos da primeira gravação.
+- **Erros:** chave fora da lista, fonte ou data inválida, texto acima do limite = 23514; sem `core.empresa` = 55000 (a API responde 409).
+- **Revelar:** `empresa_contato_revelar(p_id, 'email' | 'telefone', p_request_id)` → o valor completo (telefone só em dígitos). Sem a linha ou sem o valor = P0002, sem auditoria.
+- **Auditoria:** só nomes de campo, fonte e `request_id`, nunca os valores.
+
+Migração: `db/migrations/0063_core_empresa_ficha_receita.sql`; testes: `db/testes/empresa-ficha-receita-0063.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 

@@ -452,8 +452,8 @@ describe('carga de cadastros no portal /config montada na API (T-0058, ADR 0013,
     for (const caminho of [C.previa, C.zerar]) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(true);
   });
 
-  it('T-0093: o "Zerar pedidos não faturados" sobe no portal, prévia e zerar por POST', async () => {
+  it('T-0093 (plano B da v0.3.13): o "Zerar pedidos não faturados" fica fora do portal até as funções SQL dele', async () => {
     const app = await appProducao();
-    for (const caminho of Object.values(CAMINHOS_ZERAR_PEDIDOS)) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(true);
+    for (const caminho of Object.values(CAMINHOS_ZERAR_PEDIDOS)) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(false);
   });
 });

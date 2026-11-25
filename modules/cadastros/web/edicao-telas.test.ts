@@ -5,7 +5,7 @@ import { camposDoCliente, corpoAlterarCliente, corpoCriarCliente, indicadorSuger
 import { camposDoProduto, corpoAlterarProduto, corpoCriarProduto, paginaProdutos, valoresDoProduto, validarProduto } from './produtos';
 import { corpoAlterarTabelaPreco, corpoCriarTabelaPreco, paginaTabelasPreco, validarTabelaPreco, valoresDaTabelaPreco, type TabelaPrecoResumo } from './precos';
 import { CAMPOS_FILIAL, camposDaFilial, corpoAlterarFilial, corpoCriarFilial, paginaFiliais, validarFilialTela, valoresDaFilial, type FilialResumo } from './filiais';
-import { errosDaApi, soOQueMudou } from './edicao';
+import { avisosEnderecoTela, localizacaoDoFormulario, errosDaApi, soOQueMudou } from './edicao';
 
 const UUID = (n: number) => `3f1d5a07-7b0e-4a52-9d3c-${String(n).padStart(12, '0')}`;
 const cliente: ClienteResumo = {
@@ -150,5 +150,29 @@ describe('telas de edição do cadastros (T-0088)', () => {
     expect(corpoAlterarFilial(v, filial)).toBeNull();
     expect(corpoAlterarFilial({ ...v, razao_social: 'Outra Ltda', industrial_ipi: 'true' }, filial)).toEqual({ razao_social: 'Outra Ltda', industrial_ipi: true });
     expect(corpoAlterarFilial({ ...v, end_numero: '20' }, filial)).toEqual({ endereco: { ...filial.endereco, numero: '20' } });
+  });
+  it('T-0096: o endereço do cliente tem Latitude e Longitude opcionais, só na criação, e a criação sem elas segue válida', () => {
+    const nomes = camposDoCliente('faturista', 'criar').map((c) => c.nome);
+    expect(nomes).toContain('end_latitude');
+    expect(nomes).toContain('end_longitude');
+    expect(camposDoCliente('faturista', 'editar').map((c) => c.nome)).not.toContain('end_latitude');
+    expect(validarCliente(novoCliente, 'criar', 'faturista')).toEqual({});
+  });
+  it('T-0096: a latitude e a longitude digitadas vão no endereço do corpo (vírgula aceita); fora da faixa, só uma ou vazias vão nulas', () => {
+    expect(localizacaoDoFormulario({ ...novoCliente, end_latitude: '-3,119', end_longitude: '-60.0217' })).toMatchObject({ latitude: -3.119, longitude: -60.0217 });
+    for (const [la, lo] of [['-3', ''], ['', '-60'], ['abc', '-60'], ['', '']] as [string, string][]) {
+      expect(localizacaoDoFormulario({ ...novoCliente, end_latitude: la, end_longitude: lo }), `${la}/${lo}`).toMatchObject({ latitude: null, longitude: null });
+    }
+    const corpo = corpoCriarCliente({ ...novoCliente, end_latitude: '-3.1', end_longitude: '-60.02' }, 'faturista');
+    expect((corpo?.enderecos as Record<string, unknown>[])[0]).toMatchObject({ latitude: -3.1, longitude: -60.02 });
+  });
+  it('T-0096: aviso (sem bloquear) "será gravado vazio" para fora da faixa ou par incompleto, sem o valor digitado', () => {
+    expect(avisosEnderecoTela({ ...novoCliente, end_latitude: '-3.1', end_longitude: '-60.02' })).toEqual({});
+    expect(avisosEnderecoTela(novoCliente)).toEqual({});
+    const fora = avisosEnderecoTela({ ...novoCliente, end_latitude: '195.5', end_longitude: '-60.1' });
+    expect(fora.end_latitude).toBe('Fora da faixa: será gravado vazio');
+    expect(fora.end_latitude).not.toContain('195');
+    expect(avisosEnderecoTela({ ...novoCliente, end_latitude: '-3.1', end_longitude: '' }).end_longitude).toMatch(/juntas/);
+    expect(validarCliente({ ...novoCliente, end_latitude: '195', end_longitude: '-60.1' }, 'criar', 'faturista')).toEqual({});
   });
 });
