@@ -143,6 +143,15 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect(ev[0]!.payload.payload).toMatchObject({ entidade: 'produto', modo: 'delta', geracao: 1, registros: 3, aceitos: 3, com_erro: 0 });
     });
 
+    it('T-0059 §5.4: o registro retido (aguarda_vinculo) fica fora do lote e continua pendente', async () => {
+      const { t, chaves } = await cenario('env-vinc');
+      await adm('UPDATE integracao_fdv.registro_publicado SET aguarda_vinculo = true WHERE tenant_id = $1 AND registro_external_id = $2', [t, chaves[1]]);
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      expect((hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }> }).registros.map((r) => r.external_id)).toEqual([chaves[0], chaves[2]]);
+      expect(await reg(t, chaves[1]!)).toMatchObject({ pendente: true });
+    });
+
     it('ADR 0010 item 3: a linha antiga da troca de chave, confirmada inativa no Hub, sai (deleted_at) só no finalizar; a nova e as demais ficam', async () => {
       const { t, chaves } = await cenario('env-troca');
       const erp = '11111111-1111-4111-8111-111111111111';

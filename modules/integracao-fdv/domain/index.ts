@@ -9,6 +9,7 @@ export * from './lote';
 export * from './mapeamento';
 export * from './mensagens';
 export * from './parcelas';
+export * from './pre-cadastro-cliente';
 export * from './recomposicao';
 export * from './resposta';
 export * from './status';

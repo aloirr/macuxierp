@@ -33,6 +33,7 @@ import {
   type RegistroEspelho,
 } from '../domain';
 import type { EntidadeHub } from '../contracts';
+import { reterSeAguardaVinculo } from './retorno-clientes';
 import { aplicarRegistros, aplicarTrocaDeChave, gravarReferencia, inativarRetirados, outroPrazoAtivoDaForma, recomporDependentes, registrarConflito, removerReferencia, situacaoDaChave, agendarEnvio } from './espelho';
 
 export const CONSUMIDOR_PUBLICAR_CADASTROS = 'integracao-fdv.publicar-cadastros';
@@ -240,6 +241,8 @@ async function tratarEvento(tx: Transacao, evento: EnvelopeEvento, t: string, em
       if (!(await conferirChave(tx, t, 'cliente', p.data.id, cliente.external_id, p.data.external_id_anterior, em))) return;
       await gravarComDependentes(tx, t, em, pendentes, cliente, p.data.id);
       await gravarFilhos(tx, t, em, pendentes, enderecos, { entidade: 'cliente_endereco', chaveRef: 'cliente_id', erpId: p.data.id });
+      // T-0059 §5.4: cliente aceito de um pré-cadastro do FDV fica fora do lote até o 200 do `vinculado`
+      await reterSeAguardaVinculo(tx, t, p.data.id);
       return;
     }
     default:

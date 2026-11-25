@@ -7,6 +7,7 @@ import { classificarResposta } from './resposta';
 export const MENSAGENS_ERRO: Readonly<Record<string, string>> = {
   chave_alterada: 'O código do cadastro mudou sem a troca controlada e o registro não foi ao FDV. Faça a troca controlada ou volte ao código anterior.',
   chave_duplicada: 'Outro cadastro já usa este código no FDV e o registro não foi. Corrija o código repetido.',
+  vinculo_divergente: 'O cliente já está vinculado no FDV com outro código. Ele fica retido, sem ir ao FDV, até a divergência ser resolvida.',
   campo_obrigatorio: 'Campo obrigatório vazio no cadastro. Complete o campo indicado e salve de novo.',
   campo_invalido: 'Valor em formato inválido para o FDV. Corrija o campo indicado no cadastro.',
   referencia_ausente: 'Depende de um cadastro que ainda não foi confirmado no FDV. O envio repete sozinho quando ele chegar.',

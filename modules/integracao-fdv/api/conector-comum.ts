@@ -99,7 +99,7 @@ export function defeitoDoCliente(e: unknown): { codigo: string; credencial: bool
 }
 
 /** Onde mora o `proximo*_em` da tarefa: a linha da entidade em `cursor_entidade` ou uma coluna da linha única de `sinal`. */
-export type ColunaSinalAgenda = 'proximo_sinal_em' | 'proxima_reconciliacao_em' | 'proxima_busca_pedidos_em' | 'proximo_retorno_em';
+export type ColunaSinalAgenda = 'proximo_sinal_em' | 'proxima_reconciliacao_em' | 'proxima_busca_pedidos_em' | 'proximo_retorno_em' | 'proxima_busca_clientes_em' | 'proximo_retorno_clientes_em';
 type AlvoAgenda = { entidade: string } | { sinal: ColunaSinalAgenda };
 
 /**
@@ -148,12 +148,13 @@ export async function adiarSinalSemLicenca(tx: Transacao, tenantId: string, colu
  */
 export async function garantirLinhaDoSinal(tx: Transacao, tenantId: string, agora: Date, o: { anteciparSinal?: boolean } = {}): Promise<void> {
   await tx.consultar(
-    `INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em)
-     VALUES ($1, $2, $3, $2)
+    `INSERT INTO integracao_fdv.sinal (tenant_id, proximo_sinal_em, proxima_reconciliacao_em, proxima_busca_pedidos_em, proxima_busca_clientes_em)
+     VALUES ($1, $2, $3, $2, $2)
      ON CONFLICT (tenant_id) DO UPDATE SET
        proximo_sinal_em = CASE WHEN $4::boolean THEN least(integracao_fdv.sinal.proximo_sinal_em, EXCLUDED.proximo_sinal_em) ELSE integracao_fdv.sinal.proximo_sinal_em END,
        proxima_reconciliacao_em = least(integracao_fdv.sinal.proxima_reconciliacao_em, EXCLUDED.proxima_reconciliacao_em),
-       proxima_busca_pedidos_em = coalesce(integracao_fdv.sinal.proxima_busca_pedidos_em, EXCLUDED.proxima_busca_pedidos_em)`,
+       proxima_busca_pedidos_em = coalesce(integracao_fdv.sinal.proxima_busca_pedidos_em, EXCLUDED.proxima_busca_pedidos_em),
+       proxima_busca_clientes_em = coalesce(integracao_fdv.sinal.proxima_busca_clientes_em, EXCLUDED.proxima_busca_clientes_em)`,
     [tenantId, agora, proximaReconciliacaoEm(agora), o.anteciparSinal ?? false],
   );
 }

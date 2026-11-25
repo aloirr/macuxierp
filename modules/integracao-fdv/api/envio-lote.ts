@@ -297,13 +297,13 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     modo === 'delta'
       ? await tx.consultar<LinhaRegistro>(
           `SELECT ${COLUNAS} FROM integracao_fdv.registro_publicado
-            WHERE tenant_id = $1 AND entidade = $2 AND pendente AND deleted_at IS NULL AND payload IS NOT NULL
+            WHERE tenant_id = $1 AND entidade = $2 AND pendente AND NOT aguarda_vinculo AND deleted_at IS NULL AND payload IS NOT NULL
             ORDER BY alterado_em, registro_external_id COLLATE "C" LIMIT $3`,
           [tenant, entidade, e.limiteRegistros],
         )
       : await tx.consultar<LinhaRegistro>(
           `SELECT ${COLUNAS} FROM integracao_fdv.registro_publicado
-            WHERE tenant_id = $1 AND entidade = $2 AND ativo AND deleted_at IS NULL AND payload IS NOT NULL
+            WHERE tenant_id = $1 AND entidade = $2 AND ativo AND NOT aguarda_vinculo AND deleted_at IS NULL AND payload IS NOT NULL
               AND ($3::timestamptz IS NULL OR (alterado_em, registro_external_id COLLATE "C") > ($3::timestamptz, $4::text COLLATE "C"))
             ORDER BY alterado_em, registro_external_id COLLATE "C" LIMIT $5`,
           [tenant, entidade, localCursor?.alterado_em ?? null, localCursor?.external_id ?? null, e.limiteRegistros + 1],
@@ -749,7 +749,7 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
 }
 
 async function haPendentes(tx: Transacao, tenant: string, entidade: Entidade): Promise<boolean> {
-  const l = await tx.consultar(`SELECT 1 FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND entidade = $2 AND pendente AND deleted_at IS NULL LIMIT 1`, [tenant, entidade]);
+  const l = await tx.consultar(`SELECT 1 FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND entidade = $2 AND pendente AND NOT aguarda_vinculo AND deleted_at IS NULL LIMIT 1`, [tenant, entidade]);
   return l.length > 0;
 }
 
@@ -763,7 +763,7 @@ async function acordarDependentes(tx: Transacao, tenant: string, entidade: Entid
   await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade c SET proximo_em = least(c.proximo_em, $3)
       WHERE c.tenant_id = $1 AND c.entidade::text = ANY($2::text[]) AND c.pausada_motivo IS NULL AND c.deleted_at IS NULL
-        AND EXISTS (SELECT 1 FROM integracao_fdv.registro_publicado r WHERE r.tenant_id = $1 AND r.entidade = c.entidade AND r.pendente AND r.deleted_at IS NULL)`,
+        AND EXISTS (SELECT 1 FROM integracao_fdv.registro_publicado r WHERE r.tenant_id = $1 AND r.entidade = c.entidade AND r.pendente AND NOT r.aguarda_vinculo AND r.deleted_at IS NULL)`,
     [tenant, depois, agora],
   );
 }

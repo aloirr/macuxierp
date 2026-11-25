@@ -2,7 +2,7 @@
  * Portas do recebimento e do retorno de pedidos (T-0013 P1, §5 e §6). Interfaces só: o `apps/worker` liga a implementação
  * do `pedido/api` (`criarRecebedorFdv`) e o cliente HTTP do Hub (que o conector da T-0011 implementa). Sem rede aqui.
  */
-import type { Transacao } from '@macuxierp/platform-sdk';
+import type { ClienteParaErpFdv, DecisaoPreCadastroFdv, RetornoClienteFdv, Transacao } from '@macuxierp/platform-sdk';
 import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
 import type { EntidadeChaveErp, RetornoErp } from '../contracts';
 
@@ -46,6 +46,37 @@ export interface RespostaRetorno {
 export interface ClienteHubPedidos {
   pendentes(limite: number): Promise<RespostaPendentes>;
   enviarRetorno(pedidoUuid: string, corpo: RetornoErp): Promise<RespostaRetorno>;
+}
+
+/**
+ * Porta do pré-cadastro de cliente (T-0059 §4): implementada no `cadastros/api` (`criarCriadorClienteFdv`) e ligada pelo
+ * `apps/worker`. Mesma forma da interface de lá (tipada pelo contrato do SDK; o integracao-fdv não importa o cadastros).
+ * Roda na transação do tenant, com o ator `sistema`. Recusado não grava nada; aceito cria o cliente e emite o evento.
+ */
+export interface CriadorClienteFdv {
+  decidir(tx: Transacao, tenant: string, pre: ClienteParaErpFdv): Promise<DecisaoPreCadastroFdv & { cliente_id?: string }>;
+}
+
+/** Resposta do `GET /clientes/pendentes` já reduzida. `status` 0 = rede. */
+export interface RespostaPendentesClientes {
+  status: number;
+  /** Itens crus: quem valida é o `lerPreCadastroFdv`. */
+  clientes?: readonly unknown[];
+  retryAfterS?: number;
+  codigo?: string;
+}
+export interface RespostaRetornoCliente {
+  status: number;
+  retryAfterS?: number;
+  /** Código de erro do Hub (422: `external_id_divergente`...). */
+  codigo?: string;
+  repetido?: boolean;
+}
+
+/** Cliente mínimo do Hub `/integracao/v1` para o pré-cadastro de cliente (a agenda implementa sobre o `ClienteHub` do SDK). */
+export interface ClienteHubClientes {
+  pendentes(limite: number): Promise<RespostaPendentesClientes>;
+  enviarRetorno(clienteUuid: string, corpo: RetornoClienteFdv): Promise<RespostaRetornoCliente>;
 }
 
 /** Log estruturado (pino): só ids e códigos, nunca documento, nome, observação ou motivo livre. */

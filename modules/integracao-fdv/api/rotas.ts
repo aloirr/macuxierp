@@ -9,10 +9,11 @@
  *
  * Regra da agenda (vale para o portal, via funções `portal_*`): o app só ADIANTA `proximo*_em`; quem adia é o worker.
  */
-import { csvDaLista, definirRota, erros, type RotaModulo } from '@macuxierp/platform-sdk';
+import { csvDaLista, definirRota, erros, type RotaModulo, type SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
 import { ConsultaPaginada } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
-import { paginaLotes } from '../web/paginas';
+import { paginaClientesRecebidos, paginaLotes } from '../web/paginas';
+import { listarClientesRecebidos } from './clientes-recebidos';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
 
@@ -56,6 +57,22 @@ export function criarRotas(): RotaModulo[] {
         const { entidade, estado } = e.consulta as { entidade?: string; estado?: string };
         const p = await listarLotes(c.tx, tenant(c), { entidade, estado, limite: MAXIMO_LINHAS_CSV });
         return csvDaLista(paginaLotes, c.sessao.perfil, p.itens);
+      },
+    }),
+    // T-0059 §5.5: seção "Clientes recebidos do FDV". Documento só mascarado; o payload nunca é lido.
+    definirRota({
+      metodo: 'GET', caminho: '/clientes-recebidos', acao: 'integracao-fdv.ver', consulta: paginaClientesRecebidos.consulta,
+      async executar(c, e) {
+        const q = e.consulta as { situacao?: SituacaoClienteRecebidoFdv; cursor?: string; limite: number };
+        return { corpo: await listarClientesRecebidos(c.tx, tenant(c), q) };
+      },
+    }),
+    definirRota({
+      metodo: 'GET', caminho: '/clientes-recebidos/exportar', acao: 'integracao-fdv.ver', consulta: paginaClientesRecebidos.consulta,
+      async executar(c, e) {
+        const { situacao } = e.consulta as { situacao?: SituacaoClienteRecebidoFdv };
+        const p = await listarClientesRecebidos(c.tx, tenant(c), { situacao, limite: MAXIMO_LINHAS_CSV });
+        return csvDaLista(paginaClientesRecebidos, c.sessao.perfil, p.itens);
       },
     }),
     definirRota({

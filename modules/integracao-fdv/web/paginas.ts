@@ -6,8 +6,9 @@
  */
 import { definirPaginaLista, type ColunaLista } from '@macuxierp/platform-sdk/listas';
 import type { PaginaBase } from '@macuxierp/platform-sdk/paginas';
+import { ClienteRecebidoFdv, SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
 import { EntidadeHub, EstadoLote, LoteEnvioResumo } from '../contracts';
-import { ROTULO_ENTIDADE, ROTULO_ESTADO_LOTE, ROTULO_MODO_LOTE } from './rotulos';
+import { ROTULO_ENTIDADE, ROTULO_ESTADO_LOTE, ROTULO_MODO_LOTE, ROTULO_RETORNO_CLIENTE, ROTULO_SITUACAO_CLIENTE_RECEBIDO, TEXTO_SEM_VALOR } from './rotulos';
 
 const colunasLotes: readonly ColunaLista<LoteEnvioResumo>[] = [
   { id: 'entidade', titulo: 'Cadastro', valor: (l) => ROTULO_ENTIDADE[l.entidade] },
@@ -29,6 +30,28 @@ export const paginaLotes = definirPaginaLista({
   filtros: { entidade: EntidadeHub.optional(), estado: EstadoLote.optional() },
   colunas: colunasLotes,
   csv: { arquivo: 'lotes-integracao-fdv.csv' },
+});
+
+const colunasClientesRecebidos: readonly ColunaLista<ClienteRecebidoFdv>[] = [
+  { id: 'situacao', titulo: 'Situação', valor: (c) => ROTULO_SITUACAO_CLIENTE_RECEBIDO[c.situacao] },
+  { id: 'razao_social', titulo: 'Cliente', valor: (c) => c.razao_social },
+  { id: 'documento', titulo: 'Documento', valor: (c) => c.documento_mascarado ?? TEXTO_SEM_VALOR },
+  { id: 'vendedor', titulo: 'Vendedor', valor: (c) => c.vendedor_external_id ?? TEXTO_SEM_VALOR },
+  { id: 'recebido_em', titulo: 'Recebido em (UTC)', valor: (c) => c.recebido_em },
+  { id: 'revisao', titulo: 'Revisão', valor: (c) => c.revisao },
+  { id: 'motivo', titulo: 'Motivo', valor: (c) => c.motivo },
+  { id: 'campos', titulo: 'Campos recusados', valor: (c) => c.erros.map((e) => `${e.campo}: ${e.codigo}`).join(' | ') },
+  { id: 'retorno', titulo: 'Retorno ao FDV', valor: (c) => (c.retorno ? ROTULO_RETORNO_CLIENTE[c.retorno] : null) },
+];
+
+/** Seção "Clientes recebidos do FDV" (T-0059 §5.5): a rota `GET /v1/integracao-fdv/clientes-recebidos[/exportar]`. */
+export const paginaClientesRecebidos = definirPaginaLista({
+  id: 'clientes-recebidos',
+  api: '/v1/integracao-fdv/clientes-recebidos',
+  item: ClienteRecebidoFdv,
+  filtros: { situacao: SituacaoClienteRecebidoFdv.optional() },
+  colunas: colunasClientesRecebidos,
+  csv: { arquivo: 'clientes-recebidos-fdv.csv' },
 });
 
 export interface PaginaIntegracaoFdv extends PaginaBase {
