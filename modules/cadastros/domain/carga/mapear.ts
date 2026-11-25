@@ -9,6 +9,7 @@ import { MAX_DIAS } from '../../contracts';
 import { MOTIVO_PRAZO_MEDIO } from '../condicao';
 import { tipoPessoaDoDocumento, validarDocumentoCliente } from '../documento';
 import { sugerirIndIeDest, validarIe, validarIndIeDest, type IndIeDest } from '../ie';
+import { violacaoFracao } from '../fracao';
 import { validarMunicipio } from '../municipio';
 import { validarVigenciaTabela } from '../preco';
 import { LIMITES_SEQ_ENDERECO, derivarExternalIdEndereco } from './cliente-grupo';
@@ -252,14 +253,16 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     });
   },
   produto_unidade(l) {
-    const fator = l.conv('fator', (c) => {
-      const r = celulaInteiro(c, { min: 1, max: 9999 });
-      return r.ok ? r : { ok: false as const, motivo: 'Fator inteiro de 1 a 9999' };
-    });
+    // Mesmo parser do saldo (até 4 casas, ×10^4); a faixa (Qtd4.min(1)) é do contrato da rota, aplicada em `fechar`
+    const fator = l.conv('fator', (c) => celulaDecimal(c, 4));
+    const unidade = l.texto('unidade', LIMITES.unidade6)?.toUpperCase();
+    // RN-CAD-17: fator fracionário só em KG e M (a mesma regra da rota de unidades)
+    const fracao = fator === undefined ? null : violacaoFracao('fator', unidade, fator);
+    if (fracao) l.erros.push(erroDeViolacao(l.linha, fracao));
     return fechar<'produto_unidade'>(l, LinhaProdutoUnidade, {
       external_id: l.id('external_id'),
       ativo: l.ativo(),
-      dados: limparDados({ unidade: l.texto('unidade', LIMITES.unidade6)?.toUpperCase(), fator: fator === undefined ? undefined : fator * 10_000, ean: l.cel('ean') }),
+      dados: limparDados({ unidade, fator, ean: l.cel('ean') }),
       refs: limparDados({ produto: l.id('produto_external_id') }),
     });
   },

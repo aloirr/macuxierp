@@ -142,7 +142,7 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
     expect(sem.ok && sem.linha.dados.prazo_medio_dias).toBeUndefined();
     expect(mapear('cliente', { prazo_medio_dias: '366' })).toMatchObject({ ok: false, erros: [{ campo: 'prazo_medio_dias' }] });
   });
-  it('critério 4: parcelas_dias usa a regra do contrato (1 a 24 parcelas, 0 a 365 dias) e aceita qualquer ordem; fator inteiro de 1 a 9999', () => {
+  it('critério 4: parcelas_dias usa a regra do contrato (1 a 24 parcelas, 0 a 365 dias) e aceita qualquer ordem', () => {
     const r = mapear('condicao_pagamento', { parcelas_dias: '30/60/90' });
     expect(r.ok && r.linha.dados.prazos_dias).toEqual([30, 60, 90]);
     const desordenada = mapear('condicao_pagamento', { parcelas_dias: '60/30/0' });
@@ -155,7 +155,8 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
       expect(mapear('condicao_pagamento', { parcelas_dias }), parcelas_dias).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: expect.stringMatching(/^(parcelas|prazos)_dias/) }] });
     }
     expect(mapear('produto_unidade', { fator: '0' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'fator' }] });
-    expect(mapear('produto_unidade', { fator: '1,5' }).ok).toBe(false);
+    expect(mapear('produto_unidade', { fator: 'abc' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'fator' }] });
+    expect(mapear('produto_unidade', { fator: '1,23456' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'fator' }] });
   });
   it('RN-CAD-07: saldo com até 4 casas vira Qtd4 e 5 casas é recusado', () => {
     const r = mapear('estoque', { saldo: '10,5' });
@@ -175,6 +176,16 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
   it('produto_unidade: fator × 10.000 e unidade em maiúsculas', () => {
     const r = mapear('produto_unidade', {});
     expect(r.ok && r.linha.dados).toMatchObject({ unidade: 'CX', fator: 120_000 });
+  });
+  it('RN-CAD-17: fator fracionário (até 4 casas) só em KG e M; inteiro em qualquer unidade', () => {
+    for (const un of ['KG', 'kg', 'M']) {
+      const r = mapear('produto_unidade', { unidade: un, fator: '1,5' });
+      expect(r.ok && r.linha.dados, un).toMatchObject({ unidade: un.toUpperCase(), fator: 15_000 });
+    }
+    expect(mapear('produto_unidade', { unidade: 'KG', fator: '0.2500' })).toMatchObject({ ok: true });
+    expect(mapear('produto_unidade', { unidade: 'UN', fator: '1,5' })).toMatchObject({ ok: false, erros: [{ codigo: 'RN-CAD-17', campo: 'fator' }] });
+    const inteiro = mapear('produto_unidade', { unidade: 'UN', fator: '2' });
+    expect(inteiro.ok && inteiro.linha.dados.fator).toBe(20_000);
   });
   it('Zod do contrato: e-mail e EAN fora do formato são recusados sem o valor', () => {
     expect(mapear('cliente', { email: 'sem-arroba' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'email_nfe' }] });
