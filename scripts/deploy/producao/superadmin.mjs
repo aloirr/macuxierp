@@ -19,8 +19,12 @@
  * apps/api/src/operador-superadmin.db.test.ts. Auditoria: ADR 0012 §5.
  * A auditoria e a saída levam só ids, números e estados; nunca e-mail, nome, senha nem hash.
  *
+ * listar (T-0103): só leitura (transação READ ONLY, sem --confirmar, sem e-mail e sem auditoria). Uma linha por
+ * superadmin não excluído, com o id, o e-mail MASCARADO pela `plataforma.mascarar_email` da 0035 (o e-mail completo nunca
+ * sai do banco), a situação, as falhas, a trava, a troca e a temporária pendentes e o último acesso (Manaus).
+ *
  * Última linha = estado que o operador.sh lê: criar → `estado: superadmin-criado` | `estado: superadmin-existia`;
- * demais → `estado: alterado` | `estado: sem-mudanca`; sem --confirmar → `estado: simulacao`.
+ * demais → `estado: alterado` | `estado: sem-mudanca`; sem --confirmar → `estado: simulacao`; listar → `estado: lista`.
  * Saída 0 = ok; 2 = argumento inválido; 1 = falha (nada gravado: a transação é desfeita).
  */
 import { spawnSync } from 'node:child_process';
@@ -29,7 +33,7 @@ import { promisify } from 'node:util';
 
 const PADRAO_OPERADOR = /^[a-z][a-z0-9._-]{1,39}$/; // cópia de scripts/plataforma/comum.mjs (o teste operador-superadmin.db.test.ts trava)
 const PADRAO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ACOES = ['criar', 'desativar', 'reativar', 'destravar', 'redefinir-senha'];
+const ACOES = ['criar', 'desativar', 'reativar', 'destravar', 'redefinir-senha', 'listar'];
 const COM_SENHA = new Set(['criar', 'redefinir-senha']); // as ações que gravam a senha provisória do operador.sh
 const ARGON2 = { memoria: 19_456, passes: 2, paralelismo: 1, tamanho: 32 }; // ARGON2_PADRAO da API
 // Regra única de senha (packages/platform-sdk/src/senha.ts, T-0052): letra, número 0-9 e caractere especial, além do
@@ -59,7 +63,12 @@ function lerArgumentos(argv, env) {
   op.senha = env.MACUXIERP_SENHA_INICIAL ?? '';
   if (!ACOES.includes(op.acao)) throw new ErroUso(`--acao: ${ACOES.join(', ')}`);
   if (!PADRAO_OPERADOR.test(op.operador ?? '')) throw new ErroUso('--operador exige o nome de quem executa (ex.: alexandre)');
-  if (op.email.length > 254 || !PADRAO_EMAIL.test(op.email)) throw new ErroUso('MACUXIERP_SUPERADMIN_EMAIL (--email) ausente ou fora do formato');
+  if (op.acao === 'listar') {
+    if (op.confirmar) throw new ErroUso('listar é só leitura: sem --confirmar');
+    if (op.email) throw new ErroUso('MACUXIERP_SUPERADMIN_EMAIL (--email) não vale no listar');
+  } else if (op.email.length > 254 || !PADRAO_EMAIL.test(op.email)) {
+    throw new ErroUso('MACUXIERP_SUPERADMIN_EMAIL (--email) ausente ou fora do formato');
+  }
   if (op.acao === 'criar') {
     const tam = [...op.nome].length; // caracteres (o operador.sh conta igual); CHECK de 2 a 80 na 0033
     if (tam < 2 || tam > 80) throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome): 2 a 80 caracteres');
@@ -226,6 +235,49 @@ ${simular ? 'ROLLBACK' : 'COMMIT'};
 `;
 }
 
+/** Separador das colunas da lista: US (0x1f), que não aparece em e-mail mascarado, id nem data. */
+const SEP = '\u001f';
+
+/**
+ * SQL fixo do listar (T-0103), sem valor de entrada. Uma linha por superadmin:
+ * `superadmin-lista<US>id<US>email_mascarado<US>ativo<US>troca<US>travado<US>falhas<US>temporaria<US>ultimo_acesso`.
+ */
+function montarSqlListar() {
+  const col = [
+    `'superadmin-lista'`,
+    's.id::text',
+    'plataforma.mascarar_email(s.email)',
+    "CASE WHEN s.ativo THEN 'ativo' ELSE 'desativado' END",
+    "CASE WHEN s.deve_trocar_senha THEN 'sim' ELSE 'não' END",
+    "CASE WHEN s.bloqueado_ate > now() THEN 'sim' ELSE 'não' END",
+    's.falhas_login::text',
+    "CASE WHEN s.senha_temporaria_expira_em > now() THEN 'sim' ELSE 'não' END",
+    "coalesce(to_char(s.ultimo_acesso_em AT TIME ZONE 'America/Manaus', 'DD/MM/YYYY HH24:MI'), 'nunca')",
+  ];
+  return `BEGIN READ ONLY;
+\\o /dev/null
+SELECT set_config('app.tenant_id', plataforma.tenant_referencia()::text, true);
+\\o
+SELECT concat_ws('${SEP}', ${col.join(', ')})
+FROM plataforma.superadmin s WHERE s.deleted_at IS NULL ORDER BY s.created_at, s.id;
+ROLLBACK;
+`;
+}
+
+const CABECALHO_LISTA = ['id', 'e-mail (mascarado)', 'situação', 'troca pendente', 'travado', 'falhas', 'temporária pendente', 'último acesso (Manaus)'];
+
+/** Tabela de texto da lista; só com o que o banco devolveu mascarado. */
+function imprimirLista(stdout) {
+  const linhas = stdout
+    .split('\n')
+    .map((l) => l.split(SEP))
+    .filter((c) => c.length === CABECALHO_LISTA.length + 1 && c[0] === 'superadmin-lista')
+    .map((c) => c.slice(1));
+  console.log(`[superadmin] LISTA (só leitura; nada gravado nem auditado): ${linhas.length} superadmin(s).`);
+  for (const l of linhas) console.log(`  ${CABECALHO_LISTA.map((t, i) => `${t}: ${l[i]}`).join(' · ')}`);
+  console.log('estado: lista');
+}
+
 /** "1 sessão aberta revogada" / "2 sessões abertas revogadas" (com "seria(m)" na simulação). */
 const sessoes = (n, simular) =>
   n === '1' ? `1 sessão aberta ${simular ? 'seria revogada' : 'revogada'}` : `${n} sessões abertas ${simular ? 'seriam revogadas' : 'revogadas'}`;
@@ -289,8 +341,9 @@ async function main(argv, env) {
     MACUXIERP_OP_REQUEST_ID: `operador-${crypto.randomUUID()}`,
     MACUXIERP_OP_SIMULAR: op.confirmar ? 'false' : 'true',
   });
+  const listar = op.acao === 'listar';
   const r = spawnSync(env.MACUXIERP_PSQL || 'psql', ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=terse', '-At', '-f', '-'], {
-    input: montarSql(!op.confirmar),
+    input: listar ? montarSqlListar() : montarSql(!op.confirmar),
     env: filho,
     encoding: 'utf8',
     timeout: 120_000,
@@ -299,6 +352,10 @@ async function main(argv, env) {
     const msg = r.error ? `psql não executou (${r.error.code ?? r.error.name})` : errosSeguros(r.stderr ?? '', [op.email, op.nome, hash, op.senha]);
     console.error(`[superadmin] falhou; nada foi gravado (transação desfeita).\n${msg}`);
     return 1;
+  }
+  if (listar) {
+    imprimirLista(r.stdout ?? '');
+    return 0;
   }
   const item = (r.stdout ?? '')
     .split('\n')

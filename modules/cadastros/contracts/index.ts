@@ -4,7 +4,7 @@
  * Rotas e permissões: docs/desenho/T-0002.md, seção 4. Eventos: .coord/contratos/eventos.md.
  * Dinheiro em centavos; quantidade e fator × 10^4 (D11); desconto em pontos-base (10_000 = 100%).
  */
-import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento } from '@macuxierp/platform-sdk';
+import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento, type Transacao } from '@macuxierp/platform-sdk';
 import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 
@@ -319,8 +319,33 @@ export const SugestaoCnpj = z.object({
   situacao_cadastral: z.string().nullable(),
   cnae_fiscal: z.string().nullable(),
   endereco: Endereco.partial().extend({ municipio: z.string().nullable().default(null) }),
+  // Ampliação aditiva (T-0101, ADR 0012 emendada): todos opcionais e de leitura tolerante (resposta antiga continua válida).
+  /** Códigos de CNAE secundários (7 dígitos), sem repetir o principal. */
+  cnae_secundarios: z.array(z.string()).nullish(),
+  porte: z.string().nullish(),
+  natureza_juridica: z.string().nullish(),
+  /** Contato da empresa (pode ser dado pessoal em MEI): só na resposta da consulta, nunca no cache nem em log. */
+  email: z.string().nullish(),
+  telefone: z.string().nullish(),
+  opcao_simples: z.boolean().nullish(),
+  opcao_mei: z.boolean().nullish(),
+  /** AAAA-MM-DD. */
+  data_situacao_cadastral: z.string().nullish(),
 });
 export type SugestaoCnpj = z.infer<typeof SugestaoCnpj>;
+
+/** Resultado da porta `ConsultaCnpjParaCore` (T-0101): a falha da fonte volta como valor, nunca como exceção. */
+export type ResultadoConsultaCnpj =
+  | { ok: true; sugestao: SugestaoCnpj; fonte: z.infer<typeof FonteConsulta>; consultado_em: string }
+  | { ok: false; motivo: 'fonte_indisponivel' | 'cnpj_invalido' | 'nao_encontrado' };
+/**
+ * Porta que o `core` chama (ficha da empresa pela Receita, ADR 0012): mesma consulta do RF-CAD-02, com cache de 24 h e IBGE
+ * pela tabela oficial. Só sugestão; nunca grava cadastro. Roda na transação do tenant (o cache é do tenant). E-mail e
+ * telefone só vêm na consulta fresca.
+ */
+export interface ConsultaCnpjParaCore {
+  consultar(tx: Transacao, tenant: string, cnpj: string): Promise<ResultadoConsultaCnpj>;
+}
 export const SugestaoCep = z.object({
   cep: Cep,
   logradouro: z.string().nullable(),

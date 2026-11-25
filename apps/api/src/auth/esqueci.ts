@@ -10,7 +10,9 @@
  *   `esqueci_disponivel: false` e a web oculta o link.
  * - Banco: empresa suspensa ou inexistente, e-mail inexistente ou conta inativa = nada gravado e nada enviado; senão grava
  *   só o hash (72 h, substitui o anterior) e a auditoria na mesma transação, e devolve a mensagem de e-mail.
- * - Nem o e-mail, nem a temporária, nem o IP vão para log.
+ * - Sem envio, o motivo vai ao log com um código fixo (`esqueci-log.ts`); com envio, o `agendarEnvioEmail` loga o aceite
+ *   ("email.enviado") ou a falha ("email.falha").
+ * - Nem o e-mail, nem a empresa, nem a temporária, nem o IP vão para log.
  */
 import { erros, MENSAGEM_ESQUECI_NEUTRA, textoMuitasTentativas, type ErroApi, type PedidoSenhaTemporariaResposta } from '@macuxierp/platform-sdk';
 import type { FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';

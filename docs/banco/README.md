@@ -373,6 +373,15 @@ Achados do corretor (RD-1560 a 1566 e os da 0056); as migrações já aplicadas 
 
 Migração: `db/migrations/0058_redundancias_0053_a_0057.sql`; testes: `db/testes/redundancias-0058.db.test.ts` (as funções e os dois CHECKs juntos dão o mesmo resultado antes e depois da 0058 sobre a mesma massa, e a reexecução não muda nada) e os da 0053 a 0057 sem mudança de regra.
 
+## Backfill da core.empresa pela filial padrão (T-0100, migração 0059)
+Nenhum fluxo de produção gravava `core.empresa`, então a aba Empresa do /config (`plataforma.empresa_json`, 0035) e a tela Empresa/fiscal do BKO saíam com "—". A 0059 cria a linha que falta; a criação na primeira filial padrão daqui em diante é do `modulo-core`, pelo evento do cadastros (T-0100, passo 3).
+- **Quem recebe (RN-CORE-14):** tenant não excluído, fora do tenant de referência, sem nenhuma linha em `core.empresa` e com filial padrão viva (a mesma escolha da `empresa_json`) com razão social e CNPJ preenchidos. Razão social, nome fantasia, CNPJ e IE vêm da filial; o fuso, do tenant.
+- **Quem não muda:** tenant com a linha, inclusive excluída (o `empresa_uma_por_tenant` da 0003 vale para todas e uma empresa excluída não é ressuscitada); tenant sem filial padrão viva; filial padrão sem os dados mínimos; tenant excluído. O `ON CONFLICT (tenant_id) DO NOTHING` (sobre o `empresa_uma_por_tenant`) cobre a criação concorrente pelo core.
+- **NOTICE:** só as contagens de tenants (`criadas`, `ja_existentes`, `sem_filial_padrao`, `sem_dados_minimos`), sem CNPJ, razão social nem id (LGPD, regra 8).
+- A `empresa_json` não muda: já lê a linha nova.
+
+Migração: `db/migrations/0059_core_empresa_backfill.sql`; testes: `db/testes/empresa-backfill-0059.db.test.ts`.
+
 ## Latitude e longitude no endereço do cliente (T-0096, migração 0061)
 - `numeric(9, 6)`: 6 casas (cerca de 11 cm) cabem com folga em ±180; o banco guarda o número exato que o FDV ou a tela mandam, sem o arredondamento do ponto flutuante. É a única exceção fechada ao "sem float nem numeric" (`db/testes/plataforma.db.test.ts`), que vale para dinheiro e quantidade; coordenada não é nenhum dos dois.
 - **Anuláveis, sem backfill:** o endereço legado e o que chega sem coordenada ficam nulos; o nulo passa nos CHECKs (faixa só quando informada). Exigir os dois juntos é regra do `domain` do cadastros, não do banco.

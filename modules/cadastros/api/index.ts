@@ -14,6 +14,7 @@ export type { ConsultaCadastrosParaFiscal, EmitenteParaFiscal } from './consulta
 export { criarConsultaParaPedido } from './consulta-pedido';
 export type { ConsultaCadastrosParaPedido } from './consulta-pedido';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';
+export { criarConsultaCnpjParaCore, type DependenciasConsultaCnpjParaCore } from './consulta-cnpj-core';
 export { criarCriadorClienteFdv, type CriadorClienteFdv, type DecisaoCriadorClienteFdv, type DependenciasCriadorClienteFdv } from './criador-cliente-fdv';
 export { criarResolvedorChaveErp, type ResolvedorChaveErp } from './resolvedor-chave';
 export { exportadorCadastros } from './exportador';

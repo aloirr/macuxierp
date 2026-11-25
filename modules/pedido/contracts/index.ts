@@ -184,8 +184,8 @@ export const ResultadoRecebimentoFdv = z.discriminatedUnion('resultado', [
   // Criado: o pedido do FDV entra `aprovado`, ou `em_analise` com prazo incompleto ou não permitido ao cliente (RN-PED-07, emenda de 24/11). Repetido: devolve o status atual do pedido já existente.
   z.object({ resultado: z.literal('criado'), pedido_id: Uuid, numero: z.number().int().positive(), status: z.enum(['aprovado', 'em_analise']) }),
   z.object({ resultado: z.literal('repetido'), pedido_id: Uuid, numero: z.number().int().positive(), status: StatusPedido }),
-  // `item_incoerente`: desconto maior que o valor do item (`verificarItens`).
-  z.object({ resultado: z.literal('recusado'), codigo: CodigoRecusaRecebimento }),
+  // `item_incoerente`: desconto maior que o valor do item (`verificarItens`) ou fração fora de KG e M (RN-CAD-17, com `motivo`).
+  z.object({ resultado: z.literal('recusado'), codigo: CodigoRecusaRecebimento, motivo: z.string().optional() }),
 ]);
 export type ResultadoRecebimentoFdv = z.infer<typeof ResultadoRecebimentoFdv>;
 

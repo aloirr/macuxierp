@@ -98,6 +98,13 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
       expect(t.outbox.eventos).toHaveLength(0);
     });
   }
+  it('RN-CAD-17 e RN-PED-01: fração em produto UN é recusada (item_incoerente) com o motivo da regra, sem pedido nem evento', async () => {
+    const t = montar();
+    const fracionado = pedidoFdv({ itens: [{ ...pedidoFdv().itens[0]!, quantidade: 15_000, quantidade_venda: 15_000, total_informado_centavos: 1500 }], total_informado_centavos: 1500 });
+    expect(await t.recebedor.receber(tx, fracionado)).toEqual({ resultado: 'recusado', codigo: 'item_incoerente', motivo: expect.stringContaining('RN-CAD-17') });
+    expect(t.armazem.pedidos).toHaveLength(0);
+    expect(t.outbox.eventos).toHaveLength(0);
+  });
   it('o pedido do FDV não passa pela análise: crédito estourado e estoque zerado não o seguram, e entra no compromisso dos outros', async () => {
     const t = montar({});
     t.cadastros.saldosPor.set(`${IDS.filial}:${IDS.produto1}`, 0);
