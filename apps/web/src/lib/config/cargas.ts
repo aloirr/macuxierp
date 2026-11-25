@@ -192,7 +192,7 @@ const TEXTO_ANULADO: Record<ZeragemPlataformaResposta['anulados'][number]['colun
 export const textosAnulados = (anulados: ZeragemPlataformaResposta['anulados']): string[] =>
   anulados.filter((a) => a.quantidade > 0).map((a) => `${a.quantidade} ${TEXTO_ANULADO[a.coluna][a.quantidade === 1 ? 0 : 1]}`);
 
-const BLOQUEIO_LOTE = 'Há uma carga em andamento. Espere terminar para zerar.';
+export const BLOQUEIO_LOTE = 'Há uma carga em andamento. Espere terminar para zerar.';
 /** Motivos legíveis dos bloqueios (`cadastro` + `motivo`, da prévia ou do 422 em strings 'cadastro:motivo'), sem repetir. */
 export function textosBloqueios(bloqueios: readonly { cadastro: string; motivo: string }[]): string[] {
   const out = new Set<string>();
