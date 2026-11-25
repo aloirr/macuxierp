@@ -253,11 +253,8 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     });
   },
   produto_unidade(l) {
-    const fator = l.conv('fator', (c) => {
-      // Mesmo parser do saldo (até 4 casas, ×10^4); faixa do contrato da rota (`UnidadeDados.fator`: Qtd4.min(1))
-      const r = celulaDecimal(c, 4);
-      return r.ok && r.valor !== undefined && r.valor < 1 ? { ok: false as const, motivo: 'Fator maior que zero' } : r;
-    });
+    // Mesmo parser do saldo (até 4 casas, ×10^4); a faixa (Qtd4.min(1)) é do contrato da rota, aplicada em `fechar`
+    const fator = l.conv('fator', (c) => celulaDecimal(c, 4));
     const unidade = l.texto('unidade', LIMITES.unidade6)?.toUpperCase();
     // RN-CAD-17: fator fracionário só em KG e M (a mesma regra da rota de unidades)
     const fracao = fator === undefined ? null : violacaoFracao('fator', unidade, fator);
