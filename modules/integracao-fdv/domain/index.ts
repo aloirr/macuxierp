@@ -11,6 +11,7 @@ export * from './mensagens';
 export * from './operacao';
 export * from './parcelas';
 export * from './pre-cadastro-cliente';
+export * from './quantidade-hub';
 export * from './recomposicao';
 export * from './resposta';
 export * from './status';

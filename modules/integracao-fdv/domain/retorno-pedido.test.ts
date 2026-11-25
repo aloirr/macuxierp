@@ -10,7 +10,7 @@ const ev = (nome: string, extra: Record<string, unknown> = {}): EventoPedido => 
 });
 const nota = { numero: 10, serie: 1, chave: '1'.repeat(44), emitida_em: '2026-11-21T18:00:00.000Z', total_centavos: 5000 };
 const CHAVES = new Map([[U(3), 'P001']]);
-const itens = [{ sequencia: 1, produto_id: U(3), quantidade: 25_000, valor_centavos: 5000 }];
+const itens = [{ sequencia: 1, produto_id: U(3), quantidade: 20_000, valor_centavos: 5000 }];
 
 describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   it('RN-PED-05: recebido (aprovado ou em análise) vira integrado com numero_erp', () => {
@@ -36,10 +36,28 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
   });
   it('RN-PED-05: faturado parcial e total trazem nota e itens desta nota, com a quantidade na unidade base', () => {
     const p = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado_parcial', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
-    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: '10', serie: '1', total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2.5, valor_cents: 5000 }] } });
+    expect(p).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_parcial', nota: { numero: '10', serie: '1', total_cents: 5000 }, itens_faturados: [{ sequencia: 1, produto_external_id: 'P001', quantidade: 2, valor_cents: 5000 }] } });
     const t = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'faturado_parcial', CHAVES);
     expect(t).toMatchObject({ acao: 'enviar', corpo: { status: 'faturado_total' } });
     expect(JSON.stringify([p, t])).not.toContain(U(3)); // ADR 0010 item 1: a chave do Hub, nunca o UUID do ERP
+  });
+  it('T-0085: item faturado fracionário sai do retorno (o Hub só aceita inteiro), os demais seguem, e a decisão aponta a sequência recusada', () => {
+    const mistos = [itens[0]!, { sequencia: 2, produto_id: U(3), quantidade: 25_000, valor_centavos: 100 }];
+    const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: mistos }), 'integrado', CHAVES);
+    expect(d).toMatchObject({ acao: 'enviar', itens_fracionarios: [2], corpo: { itens_faturados: [{ sequencia: 1, quantidade: 2 }] } });
+    if (d.acao === 'enviar') expect(JSON.stringify(d.corpo)).not.toContain('2.5');
+    const todos = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: [mistos[1]!] }), 'integrado', CHAVES);
+    expect(todos).toMatchObject({ acao: 'enviar', itens_fracionarios: [2], corpo: { status: 'faturado_total', nota: { numero: '10' } } });
+    if (todos.acao === 'enviar') {
+      expect(todos.corpo).not.toHaveProperty('itens_faturados'); // o Hub exige minItens 1 ou null: nunca []
+      expect(RetornoErp.safeParse(todos.corpo).success).toBe(true);
+    }
+  });
+  it('T-0085: o contrato RetornoErp recusa itens_faturados [] (minItems 1 no Hub) e aceita null ou ausente', () => {
+    const base = { versao_contrato: 'v1', pedido_uuid: U(2), status: 'faturado_total', ocorrido_em: '2026-11-21T18:00:00.000Z' };
+    expect(RetornoErp.safeParse({ ...base, itens_faturados: [] }).success).toBe(false);
+    expect(RetornoErp.safeParse({ ...base, itens_faturados: null }).success).toBe(true);
+    expect(RetornoErp.safeParse(base).success).toBe(true);
   });
   it('D3 (T-0085): a nota do retorno vai com numero e serie em TEXTO (NotaRetorno do Hub) e o corpo passa no contrato; inteiro não passa', () => {
     const d = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota, itens_faturados: itens }), 'integrado', CHAVES);
@@ -67,8 +85,11 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(retornoDoPedido(faturado, 'integrado', new Map(), em(0))).toEqual({ acao: 'aguardar_chave', produtos: [U(3)] });
     expect(retornoDoPedido(faturado, 'integrado', new Map(), em(PRAZO_AGUARDAR_CHAVE_MS - 1))).toMatchObject({ acao: 'aguardar_chave' });
     const d = retornoDoPedido(faturado, 'integrado', new Map(), em(PRAZO_AGUARDAR_CHAVE_MS));
-    expect(d).toMatchObject({ acao: 'descartar_sem_chave', produtos: [U(3)], corpo: { status: 'faturado_total', itens_faturados: [] } });
-    if (d.acao === 'descartar_sem_chave') expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
+    expect(d).toMatchObject({ acao: 'descartar_sem_chave', produtos: [U(3)], corpo: { status: 'faturado_total' } });
+    if (d.acao === 'descartar_sem_chave') {
+      expect(d.corpo).not.toHaveProperty('itens_faturados');
+      expect(RetornoErp.safeParse(d.corpo).success).toBe(true);
+    }
     expect(JSON.stringify(d.acao === 'descartar_sem_chave' ? d.corpo : null)).not.toContain(U(3));
     // com a chave, o prazo não importa: envia
     expect(retornoDoPedido(faturado, 'integrado', CHAVES, em(PRAZO_AGUARDAR_CHAVE_MS * 3))).toMatchObject({ acao: 'enviar' });
