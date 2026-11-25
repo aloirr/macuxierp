@@ -122,13 +122,6 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
     expect(mapearCondicao({ id: U(7), codigo: 'AV', descricao: 'À vista', forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0, inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: false }).prazo!.payload.parcelas_dias).toEqual([0]);
   });
 
-  it('T-0105 (contrato v2 do prazo, ADR 0072 do FDV): o prazo do mapeamento passa na v2 e a v2 recusa prazo médio fora das parcelas', () => {
-    const { prazo } = mapearCondicao({ id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42, inativo: false, forma_codigo: null, forma_nome: null }, EM, { tenantId: U(100), formaAtiva: true });
-    expect(validarRegistro(prazo!, () => true, { prazoV2: true })).toBeNull();
-    const fora = { ...prazo!, payload: { ...prazo!.payload, prazo_medio_dias: 90 } };
-    expect(validarRegistro(fora, () => true, { prazoV2: true })).toEqual({ external_id: U(6), codigo: 'campo_invalido', campo: 'prazo_medio_dias' });
-  });
-
   it('RN-CAD-15: prazo incompleto (prazo médio nulo, descrição vazia ou sem parcela) não sai; a forma sai assim mesmo', () => {
     const base = { id: U(6), codigo: '28-56', descricao: '28 e 56 dias', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 42 as number | null, inativo: false, forma_codigo: null, forma_nome: null };
     for (const ruim of [{ prazo_medio_dias: null }, { descricao: ' ' }, { prazos_dias: [] }]) {
@@ -153,6 +146,7 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
     const decrescente = mapearCondicao({ ...ev, prazos_dias: [56, 28] }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
     expect(validarRegistro(decrescente, () => true, { prazoV2: true })).toEqual({ external_id: decrescente.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // v2: sem decrescer
     expect(validarRegistro(decrescente, () => true)).toBeNull(); // v1 aceita
+    expect(validarRegistro({ ...prazo!, payload: { ...prazo!.payload, prazo_medio_dias: 90 } }, () => true, { prazoV2: true })).toEqual({ external_id: prazo!.external_id, codigo: 'campo_invalido', campo: 'prazo_medio_dias' });
     const longo = mapearCondicao({ ...ev, prazos_dias: [400], prazo_medio_dias: 400 }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
     expect(validarRegistro(longo, () => true)).toEqual({ external_id: longo.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // o Hub v1 real já limita a 365
   });

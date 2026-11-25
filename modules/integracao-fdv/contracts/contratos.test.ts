@@ -79,7 +79,7 @@ const PRAZO_V2 = { external_id: 'PZ-1', alterado_em: '2026-11-24T20:00:00.000Z',
 const PRAZO_V1 = { external_id: 'PZ-1', ativo: true, codigo: '28-56', forma_external_id: 'FP-1', descricao: '28 e 56 dias', parcelas_dias: [28, 56], prazo_medio_dias: 42 };
 
 describe('T-0085 lote 2: prazo no Hub', () => {
-  it('T-0105: o prazo sai em v2 (FDV v1.0.34); a v1 segue válida para o dublê e a transição', () => {
+  it('T-0105: o prazo sai em v2', () => {
     expect(PRAZO_CONTRATO_V2_LIGADO).toBe(true);
   });
 

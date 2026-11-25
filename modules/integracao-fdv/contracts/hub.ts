@@ -20,7 +20,7 @@ export const LIMITE_REGISTROS_LOTE = LIMITE_REGISTROS_LOTE_FDV;
 
 /** Versão do contrato do Hub que o ERP fala. */
 export const VERSAO_CONTRATO_HUB = 'v1' as const;
-/** Versão que só a entidade `prazo_pagamento` tem (ADR 0072 do FDV, ainda não publicada): a v1 segue aceita por 6 meses. */
+/** Versão que só a entidade `prazo_pagamento` tem (ADR 0072 do FDV). */
 export const VERSAO_CONTRATO_PRAZO_V2 = 'v2' as const;
 /**
  * Opção do envio do prazo no contrato v2 (T-0085, lote 2; T-0105). LIGADA: a v2 está no ar no FDV desde a v1.0.34 (a v1 segue
