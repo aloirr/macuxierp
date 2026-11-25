@@ -16,12 +16,12 @@ export interface LinhaDado {
 export const lugar = (cidade: string | null | undefined, uf: string | null | undefined): string | null => (cidade && uf ? `${cidade}/${uf}` : cidade || uf || null);
 
 /**
- * Cidade/UF da empresa: o cadastro (filial padrão) manda; sem ele, a ficha da Receita, que traz só a UF e o código IBGE do
- * município (sem o nome; o ERP não tem tabela de nomes no shell): "IBGE 1302603/AM". Nada disso, null.
+ * Cidade/UF da empresa: o cadastro (filial padrão) manda; sem a cidade, a ficha da Receita só traz o código do município
+ * e a UF, e a tela mostra só a UF ("AM"), sem código IBGE. Nada disso, null. Serve ao cartão Dados e ao endereço da ficha.
  */
 export function lugarDaEmpresa(e: Pick<EmpresaPlataforma, 'cidade' | 'uf'>, ficha?: { municipio_ibge: string | null; uf: string | null } | null): string | null {
-  const cidade = e.cidade?.trim() || (ficha?.municipio_ibge ? `IBGE ${ficha.municipio_ibge}` : null);
-  return lugar(cidade, e.uf || ficha?.uf);
+  // T-0106: trocar pela cidade quando a API devolver o nome do município
+  return lugar(e.cidade?.trim() || null, e.uf || ficha?.uf);
 }
 
 /** As linhas do bloco "Dados da empresa" (só leitura). Campo ausente ou null vira "—". CNPJ com máscara (numérico ou alfanumérico). */

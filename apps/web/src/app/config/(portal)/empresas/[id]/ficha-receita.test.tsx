@@ -52,7 +52,7 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
   it('o endereço sai completo, com cidade/UF entre o bairro e o CEP (sem razão social nem CNPJ)', () => {
     const h = renderToStaticMarkup(<FichaReceita empresaId={ID} ficha={ficha} fuso="America/Manaus" editavel lugar="Manaus/AM" />);
     expect(h).toContain('Rua A, 10, Centro, Manaus/AM, CEP 69000-000');
-    expect(enderecoEmLinha(ficha, 'IBGE 1302603/AM')).toBe('Rua A, 10, Centro, IBGE 1302603/AM, CEP 69000-000');
+    expect(enderecoEmLinha(ficha, 'AM')).toBe('Rua A, 10, Centro, AM, CEP 69000-000');
   });
   it('sem e-mail ou telefone: traço e nenhum Revelar para o campo', () => {
     const h = render({ ...ficha, email_mascarado: null, telefone_mascarado: null });
