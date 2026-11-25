@@ -1,7 +1,7 @@
 /**
  * `operador.sh superadmin --listar` (T-0103) pelo superadmin.mjs, com um `psql` falso (MACUXIERP_PSQL) que guarda o SQL
- * recebido e devolve linhas prontas. Confere: só leitura (READ ONLY e ROLLBACK, sem INSERT, UPDATE nem auditoria), o
- * e-mail só pela `plataforma.mascarar_email`, os argumentos recusados (exit 2) e a saída sem e-mail completo.
+ * recebido e devolve linhas prontas. Confere: só a escrita da auditoria (sem UPDATE nem DELETE), o e-mail só pela
+ * `plataforma.mascarar_email`, os argumentos recusados (exit 2) e a saída sem e-mail completo.
  * O caminho no PostgreSQL de verdade fica no apps/api/src/operador-superadmin.db.test.ts.
  */
 import assert from 'node:assert/strict';
@@ -48,14 +48,18 @@ function listar({ saida = '', extra = [], env = {}, bin } = {}) {
 const linha = (...c) => ['superadmin-lista', ...c].join(US);
 
 describe('superadmin.mjs --acao listar (T-0103)', () => {
-  it('SQL só de leitura: READ ONLY, ROLLBACK, e-mail só mascarado, sem escrita nem auditoria', () => {
+  it('SQL: e-mail só mascarado; a única escrita é a auditoria plataforma.superadmin.listar, com operador e contagem pelo \\getenv', () => {
     const { status, sql } = listar();
     assert.equal(status, 0);
-    assert.match(sql, /^BEGIN READ ONLY;/);
-    assert.match(sql, /\nROLLBACK;\n$/);
+    assert.match(sql, /\nBEGIN;\n/);
+    assert.match(sql, /\nCOMMIT;\n$/);
     assert.match(sql, /plataforma\.mascarar_email\(s\.email\)/);
-    assert.equal(sql.match(/s\.email/g)?.length, 1);
-    assert.doesNotMatch(sql, /\b(INSERT|UPDATE|DELETE|COMMIT)\b|auditoria/i);
+    assert.equal(sql.match(/\bemail\b/g)?.length, 1);
+    assert.equal(sql.match(/\bINSERT INTO\b/g)?.length, 1);
+    assert.match(sql, /INSERT INTO plataforma\.auditoria .*\n.*'plataforma\.superadmin\.listar'.*\n.*'quantidade', count\(\*\), 'operador', :'operador'/);
+    assert.match(sql, /\\getenv operador MACUXIERP_OP_OPERADOR/);
+    assert.doesNotMatch(sql, /\b(UPDATE|DELETE)\b/i);
+    assert.doesNotMatch(sql, /alexandre/); // o operador vem pelo ambiente, nunca colado no SQL
     assert.match(sql, /WHERE s\.deleted_at IS NULL/);
   });
 
@@ -68,7 +72,7 @@ describe('superadmin.mjs --acao listar (T-0103)', () => {
     const { status, stdout } = listar({ saida: `${saida}\n` });
     assert.equal(status, 0);
     const linhas = stdout.trim().split('\n');
-    assert.match(linhas[0], /LISTA \(só leitura; nada gravado nem auditado\): 2 superadmin\(s\)\./);
+    assert.match(linhas[0], /LISTA: 2 superadmin\(s\)\./);
     assert.match(linhas[1], /id: 11111111-.* · e-mail \(mascarado\): su\*\*\*\*@exemplo\.invalid · situação: ativo .* último acesso \(Manaus\): 24\/11\/2026 22:40/);
     assert.match(linhas[2], /situação: desativado · troca pendente: sim · travado: sim · falhas: 5 · temporária pendente: sim · último acesso \(Manaus\): nunca/);
     assert.equal(linhas.at(-1), 'estado: lista');

@@ -77,8 +77,25 @@ const linha = (p, rotulo) => p.getByRole('row').filter({ hasText: new RegExp(`^\
 const seloDe = async (p, rotulo) => ((await linha(p, rotulo).locator('.selo').first().textContent()) ?? '').trim();
 const htmlSemChave = async (p, onde) => exigir(!(await p.content()).includes(CHAVE), `a chave aparece no HTML de ${onde}`);
 
+/**
+ * Item `acao` do botão "Ações" da linha `rotulo` (T-0099: as ações da linha saíram dos botões soltos para o `MenuAcoes`).
+ * Abre o menu e devolve o item; quem chama clica ou confere o estado (`aria-disabled`).
+ */
+async function itemDoMenu(p, rotulo, acao) {
+  const gatilho = p.getByRole('button', { name: `Ações de ${rotulo}`, exact: true });
+  // No next dev o primeiro clique pode chegar antes da hidratação e não abrir: tenta de novo até o menu abrir.
+  for (let i = 0; i < 20 && (await gatilho.getAttribute('aria-expanded')) !== 'true'; i++) {
+    await gatilho.click();
+    await p.waitForTimeout(250);
+  }
+  exigir((await gatilho.getAttribute('aria-expanded')) === 'true', `o menu "Ações de ${rotulo}" não abriu`);
+  return p.getByRole('menu', { name: `Ações de ${rotulo}` }).getByRole('menuitem', { name: acao, exact: true });
+}
+const itemDesabilitado = async (item) => (await item.getAttribute('aria-disabled')) === 'true';
+const fecharMenu = (p) => p.keyboard.press('Escape');
+
 async function ligarOuDesligar(acao) {
-  await portal.getByRole('button', { name: `${acao}: ${ROTULO}` }).click();
+  await (await itemDoMenu(portal, ROTULO, acao)).click();
   const dialogo = portal.getByRole('dialog');
   await dialogo.getByRole('heading', { name: `${acao} ${ROTULO}?` }).waitFor();
   await dialogo.getByRole('button', { name: acao, exact: true }).click();
@@ -90,9 +107,9 @@ async function ligarOuDesligar(acao) {
   );
 }
 
-/** Situação por cadastro como a tela mostra: [rótulo da 1ª célula, texto do selo], na ordem das linhas. */
+/** Situação por cadastro como a tela mostra: [rótulo da 1ª célula, texto do selo], na ordem das linhas com selo (a tabela de clientes recebidos fica de fora). */
 const selos = (p) =>
-  p.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => [tr.querySelector('td,th')?.textContent?.trim() ?? '', tr.querySelector('.selo')?.textContent?.trim() ?? '']));
+  p.locator('tbody tr').evaluateAll((trs) => trs.filter((tr) => tr.querySelector('.selo')).map((tr) => [tr.querySelector('td,th')?.textContent?.trim() ?? '', tr.querySelector('.selo')?.textContent?.trim() ?? '']));
 const textoSelos = (l) => l.map(([r, s]) => `${r}=${s}`).join(', ');
 
 /** O BKO (recarregado) mostra, cadastro a cadastro, o mesmo que o portal e o `GET /v1/integracao-fdv/status`; Produtos = `esperado`. */
@@ -131,16 +148,17 @@ try {
     await portal.getByRole('heading', { level: 1, name: dados.empresa.nome }).waitFor();
     await portal.getByRole('navigation', { name: 'Abas da empresa' }).getByRole('link', { name: 'Integração' }).click();
     await portal.waitForURL((u) => new URL(u).searchParams.get('aba') === 'integracao');
-    await portal.getByRole('heading', { name: 'Credencial do conector' }).waitFor();
+    await portal.getByRole('heading', { name: 'Conexão com o Macuxi FDV' }).waitFor();
     exigir(await portal.getByText('Nenhuma credencial cadastrada.').isVisible(), 'faltou o aviso de sem credencial');
-    exigir(await portal.getByRole('button', { name: `Ligar: ${ROTULO}` }).isDisabled(), 'Ligar habilitado sem credencial');
+    exigir(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar')), 'Ligar habilitado sem credencial');
+    await fecharMenu(portal);
     exigir(await portal.getByRole('button', { name: 'Testar conexão' }).isDisabled(), 'Testar conexão habilitado sem credencial');
     exigir((await seloDe(portal, ROTULO)) === 'Desligada', 'Produtos não começou desligado');
     await print(portal, '01-portal-integracao-sem-credencial.png');
   });
 
   await passo('(c) grava a credencial fictícia: "Credencial salva.", campo da chave vazio, só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
-    const form = portal.getByRole('form', { name: 'Credencial do conector' });
+    const form = portal.getByRole('form', { name: 'Conexão com o Macuxi FDV' });
     await form.getByLabel('Código do conector').fill(CONECTOR);
     await form.getByLabel('Nova chave do conector').fill(CHAVE);
     await form.getByLabel('Ambiente').selectOption('teste');
@@ -150,10 +168,10 @@ try {
     exigir((await form.getByLabel('Nova chave do conector').inputValue()) === '', 'a chave ficou no campo depois de salvar');
     const api = await apiPortal();
     exigir(api.credencial_id && api.conector_id === CONECTOR && api.ambiente === 'teste', `API do portal: ${JSON.stringify({ c: api.conector_id, a: api.ambiente })}`);
-    const ficha = (await portal.locator('dl.ficha').textContent()) ?? '';
+    const ficha = (await portal.locator('section[aria-labelledby="h-cred"] dl.ficha').textContent()) ?? '';
     exigir(ficha.includes(`${api.chave_prefixo}…`), `a ficha não mostra o prefixo: ${ficha.replaceAll(CHAVE, '<chave>')}`);
     await portal.reload();
-    await portal.getByRole('heading', { name: 'Credencial do conector' }).waitFor();
+    await portal.getByRole('heading', { name: 'Conexão com o Macuxi FDV' }).waitFor();
     exigir((await portal.getByLabel('Nova chave do conector').inputValue()) === '', 'a chave voltou ao campo depois de recarregar');
     await htmlSemChave(portal, '/config depois de salvar e recarregar');
     // "Ligar um por um" (R-20261123-150400, 0042): a primeira credencial nasce sem cadastro ligado e sem carga inicial;
@@ -162,7 +180,8 @@ try {
     exigir(tela.length === 10 && tela.every(([, s]) => s === 'Desligada'), `selos depois da credencial: ${textoSelos(tela)}`);
     exigir(api.entidades_habilitadas.length === 0, `habilitadas depois da credencial: ${api.entidades_habilitadas.join(',')}`);
     exigir(api.cadastros.every((c) => !c.ligada), 'API do portal: algum cadastro ligado depois da credencial');
-    exigir(await portal.getByRole('button', { name: `Ligar: ${ROTULO}` }).isEnabled(), 'Ligar desabilitado com credencial');
+    exigir(!(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar'))), 'Ligar desabilitado com credencial');
+    await fecharMenu(portal);
     await print(portal, '02-portal-credencial-salva.png');
   });
 
