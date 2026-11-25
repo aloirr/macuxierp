@@ -1,5 +1,5 @@
 /**
- * T-0101, migração 0065: ficha da empresa pela Receita (ADR 0012 §4, emenda da ficha). Colunas em core.empresa,
+ * T-0101, migração 0063: ficha da empresa pela Receita (ADR 0012 §4, emenda da ficha). Colunas em core.empresa,
  * empresa_ler com a ficha mascarada, empresa_gravar_receita idempotente e empresa_contato_revelar auditado sem o valor.
  * Dados fictícios.
  */
@@ -26,7 +26,7 @@ import {
 import { fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
 import { verificarVazamento } from './vazamento.ts';
 
-const MIGRACAO = fileURLToPath(new URL('../migrations/0065_core_empresa_ficha_receita.sql', import.meta.url));
+const MIGRACAO = fileURLToPath(new URL('../migrations/0063_core_empresa_ficha_receita.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
 const PAPEIS = ['macuxierp_app', 'macuxierp_worker', 'macuxierp_leitura'] as const;
 const GRAVAR = 'plataforma.empresa_gravar_receita(uuid, jsonb, text)';
@@ -41,14 +41,14 @@ const INTERNAS = [
   'plataforma.empresa_ficha_json(uuid)',
 ];
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
-const SA = '5a000000-0000-4000-8000-000000000065';
+const SA = '5a000000-0000-4000-8000-000000000063';
 const EMAIL = 'contato.ficticio@empresa-a.teste';
 const TELEFONE = '92987651234';
 
 /** A e B: core.empresa; C: só plataforma (sem core.empresa). */
-const A = novoTenant('ficha-0065-a');
-const B = novoTenant('ficha-0065-b');
-const C = novoTenant('ficha-0065-c');
+const A = novoTenant('ficha-0063-a');
+const B = novoTenant('ficha-0063-b');
+const C = novoTenant('ficha-0063-c');
 
 const FICHA = {
   razao_social: '  Empresa   Ficticia A  LTDA ',
@@ -79,7 +79,7 @@ interface Gravacao {
   alterados: string[];
 }
 
-describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — ficha da empresa pela Receita (T-0101, 0065)', () => {
+describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — ficha da empresa pela Receita (T-0101, 0063)', () => {
   let banco: BancoDeTeste;
   /** A ficha que a última gravação de A devolveu: o empresa_ler devolve a mesma. */
   let fichaGravadaA: Record<string, unknown> | undefined;
@@ -129,7 +129,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — ficha da empresa pela Recei
       banco.conexao,
       `${fixturePlataforma(A)}${fixtureModulos(A)}${fixturePlataforma(B)}${fixtureModulos(B)}${fixturePlataforma(C)}
 INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo)
-  VALUES ('${SA}', 'sa-0065@plataforma.teste', 'Superadmin Ficticio', '${HASH}', false, true);
+  VALUES ('${SA}', 'sa-0063@plataforma.teste', 'Superadmin Ficticio', '${HASH}', false, true);
 UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '9532221111' WHERE tenant_id = '${B.id}';`,
     );
   });
@@ -371,7 +371,7 @@ UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '953222
       });
       expect(e.saida.includes(valor)).toBe(false);
     }
-    // O CHECK da coluna (alargado pela 0065) também barra 151, mesmo fora da função; o mínimo 2 da 0003 continua.
+    // O CHECK da coluna (alargado pela 0063) também barra 151, mesmo fora da função; o mínimo 2 da 0003 continua.
     for (const [coluna, valor] of [
       ['razao_social', 'Q'.repeat(151)],
       ['razao_social', 'Q'],
@@ -398,7 +398,7 @@ UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '953222
       telefone_mascarado: '(95) ****-1111',
     });
     expect(json<{ ficha: unknown }>(s, `SELECT plataforma.empresa_ler('${C.id}');`).ficha).toBeNull();
-    const lista = comoConfig(s, `SELECT plataforma.empresas_listar('ficha-0065', NULL, 50);`).join('\n');
+    const lista = comoConfig(s, `SELECT plataforma.empresas_listar('ficha-0063', NULL, 50);`).join('\n');
     expect(lista).not.toContain('"ficha"');
     expect(lista).not.toContain('telefone_mascarado');
     expect(lista).not.toContain(EMAIL);
@@ -443,7 +443,7 @@ UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '953222
     expect(auditoria('plataforma.empresa.revelar_contato')).toHaveLength(2);
   });
 
-  it('a 0065 reexecuta duas vezes sem erro, sem CHECK duplicado e com os mesmos privilégios', () => {
+  it('a 0063 reexecuta duas vezes sem erro, sem CHECK duplicado e com os mesmos privilégios', () => {
     const contar = (): Record<string, unknown> | undefined =>
       consultar<Record<string, unknown>>(
         banco.conexao,

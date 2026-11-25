@@ -1,4 +1,4 @@
--- 0065 — Ficha da empresa pela Receita (T-0101; ADR 0012 §4, emenda da ficha). Aditiva e reexecutável.
+-- 0063 — Ficha da empresa pela Receita (T-0101; ADR 0012 §4, emenda da ficha). Aditiva e reexecutável.
 -- Entram: colunas da ficha em core.empresa; razão social e nome fantasia até 150; internas mascarar_telefone, receita_texto, receita_data, receita_digitos,
 -- empresa_core_id e empresa_ficha_json; empresa_ler com a chave "ficha"; empresa_gravar_receita e
 -- empresa_contato_revelar, só para macuxierp_config.
@@ -39,13 +39,13 @@ ALTER TABLE core.empresa VALIDATE CONSTRAINT empresa_razao_social_check;
 ALTER TABLE core.empresa VALIDATE CONSTRAINT empresa_nome_fantasia_check;
 
 COMMENT ON COLUMN core.empresa.email IS
-  'Ficha da Receita (0065): dado possivelmente pessoal (MEI). Portal só mascarado; o completo só por empresa_contato_revelar, auditado sem o valor. Nunca em log.';
+  'Ficha da Receita (0063): dado possivelmente pessoal (MEI). Portal só mascarado; o completo só por empresa_contato_revelar, auditado sem o valor. Nunca em log.';
 COMMENT ON COLUMN core.empresa.telefone IS
-  'Ficha da Receita (0065): só dígitos, DDD + número (10 ou 11). Mesmas regras do e-mail.';
+  'Ficha da Receita (0063): só dígitos, DDD + número (10 ou 11). Mesmas regras do e-mail.';
 COMMENT ON COLUMN core.empresa.regime_receita IS
-  'Ficha da Receita (0065): mei, simples ou normal, só informativo. O CRT da NF-e é da filial (RF-CAD-08).';
+  'Ficha da Receita (0063): mei, simples ou normal, só informativo. O CRT da NF-e é da filial (RF-CAD-08).';
 COMMENT ON COLUMN core.empresa.receita_fonte IS
-  'Ficha da Receita (0065): FonteConsulta (modules/cadastros/contracts) da última consulta gravada.';
+  'Ficha da Receita (0063): FonteConsulta (modules/cadastros/contracts) da última consulta gravada.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Funções internas (sem EXECUTE para ninguém).
@@ -63,7 +63,7 @@ CREATE OR REPLACE FUNCTION plataforma.mascarar_telefone(p_telefone text) RETURNS
   FROM (SELECT regexp_replace(p_telefone, '[^0-9]', '', 'g') AS d) x
 $$;
 COMMENT ON FUNCTION plataforma.mascarar_telefone(text) IS
-  'Interna (0065): telefone mascarado para exibição: "(DDD) ****-" + 4 últimos dígitos; fora de 10 ou 11 dígitos = "****"; NULL = NULL. T-0101.';
+  'Interna (0063): telefone mascarado para exibição: "(DDD) ****-" + 4 últimos dígitos; fora de 10 ou 11 dígitos = "****"; NULL = NULL. T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.receita_texto(p_campo text, p_valor text, p_max integer) RETURNS text
   LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
@@ -79,7 +79,7 @@ BEGIN
   RETURN v_txt;
 END $$;
 COMMENT ON FUNCTION plataforma.receita_texto(text, text, integer) IS
-  'Interna (0065): texto da Receita normalizado (espaços colapsados, vazio = NULL); acima de p_max = 23514 só com o nome do campo (limites do contrato do core). T-0101.';
+  'Interna (0063): texto da Receita normalizado (espaços colapsados, vazio = NULL); acima de p_max = 23514 só com o nome do campo (limites do contrato do core). T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.receita_data(p_valor text) RETURNS date
   LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
@@ -94,7 +94,7 @@ EXCEPTION WHEN datetime_field_overflow OR invalid_datetime_format THEN
   RETURN NULL;
 END $$;
 COMMENT ON FUNCTION plataforma.receita_data(text) IS
-  'Interna (0065): data AAAA-MM-DD da Receita; formato ou data inválida = NULL. T-0101.';
+  'Interna (0063): data AAAA-MM-DD da Receita; formato ou data inválida = NULL. T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.receita_digitos(p_valor text, p_padrao text) RETURNS text
   LANGUAGE sql IMMUTABLE SECURITY DEFINER
@@ -103,7 +103,7 @@ CREATE OR REPLACE FUNCTION plataforma.receita_digitos(p_valor text, p_padrao tex
   SELECT CASE WHEN x.d ~ p_padrao THEN x.d END FROM (SELECT regexp_replace(p_valor, '[^0-9]', '', 'g') AS d) x
 $$;
 COMMENT ON FUNCTION plataforma.receita_digitos(text, text) IS
-  'Interna (0065): só os dígitos de p_valor quando casam com p_padrao; senão (ou NULL) = NULL. T-0101.';
+  'Interna (0063): só os dígitos de p_valor quando casam com p_padrao; senão (ou NULL) = NULL. T-0101.';
 
 -- Exceção só de leitura da ADR 0012 §4 (emenda da ficha): a core.empresa viva do tenant, a mesma regra da 0035.
 CREATE OR REPLACE FUNCTION plataforma.empresa_core_id(p_tenant uuid) RETURNS uuid
@@ -115,7 +115,7 @@ CREATE OR REPLACE FUNCTION plataforma.empresa_core_id(p_tenant uuid) RETURNS uui
   ORDER BY e.created_at, e.id LIMIT 1
 $$;
 COMMENT ON FUNCTION plataforma.empresa_core_id(uuid) IS
-  'Interna (0065): id da core.empresa viva do tenant (a mais antiga); NULL sem a linha. A trava (FOR UPDATE) fica no chamador. T-0101.';
+  'Interna (0063): id da core.empresa viva do tenant (a mais antiga); NULL sem a linha. A trava (FOR UPDATE) fica no chamador. T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.empresa_ficha_json(p_tenant uuid) RETURNS jsonb
   LANGUAGE sql STABLE SECURITY DEFINER
@@ -138,7 +138,7 @@ CREATE OR REPLACE FUNCTION plataforma.empresa_ficha_json(p_tenant uuid) RETURNS 
   WHERE e.id = plataforma.empresa_core_id(p_tenant)
 $$;
 COMMENT ON FUNCTION plataforma.empresa_ficha_json(uuid) IS
-  'Interna (0065): a ficha da Receita da core.empresa viva do tenant (lista fechada da ADR 0012 §4), com email_mascarado e telefone_mascarado, nunca os completos; NULL sem a linha. T-0101.';
+  'Interna (0063): a ficha da Receita da core.empresa viva do tenant (lista fechada da ADR 0012 §4), com email_mascarado e telefone_mascarado, nunca os completos; NULL sem a linha. T-0101.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Lista fechada (ADR 0012 §4): leitura com a ficha, gravação pela Receita e revelar o contato.
@@ -156,7 +156,7 @@ BEGIN
           WHERE t.id = p_id AND plataforma.empresa_visivel(t));
 END $$;
 COMMENT ON FUNCTION plataforma.empresa_ler(uuid) IS
-  'Portal /config (0033; ficha na 0065): a empresa (EmpresaPlataforma) mais "ficha" (empresa_ficha_json, null sem core.empresa), ou NULL se não existe, foi excluída ou é a de referência. Só macuxierp_config. T-0050, T-0101.';
+  'Portal /config (0033; ficha na 0063): a empresa (EmpresaPlataforma) mais "ficha" (empresa_ficha_json, null sem core.empresa), ou NULL se não existe, foi excluída ou é a de referência. Só macuxierp_config. T-0050, T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.empresa_gravar_receita(p_id uuid, p_ficha jsonb, p_request_id text)
   RETURNS jsonb
@@ -301,7 +301,7 @@ BEGIN
   RETURN jsonb_build_object('ficha', plataforma.empresa_ficha_json(t.id), 'alterados', to_jsonb(v_alterados));
 END $$;
 COMMENT ON FUNCTION plataforma.empresa_gravar_receita(uuid, jsonb, text) IS
-  'Portal /config (0065): grava a ficha da Receita na core.empresa (única escrita do portal em schema de módulo, só nas colunas da ficha e na razão social), com fonte e consultado_em; chave fora da lista, fonte ou data inválida, texto acima do limite (só o nome do campo na mensagem) = 23514; sem core.empresa = 55000; repetição do request_id não muda nada. Audita plataforma.empresa.atualizar_receita só com os nomes dos campos e a fonte. Devolve {ficha, alterados}. Só macuxierp_config. T-0101.';
+  'Portal /config (0063): grava a ficha da Receita na core.empresa (única escrita do portal em schema de módulo, só nas colunas da ficha e na razão social), com fonte e consultado_em; chave fora da lista, fonte ou data inválida, texto acima do limite (só o nome do campo na mensagem) = 23514; sem core.empresa = 55000; repetição do request_id não muda nada. Audita plataforma.empresa.atualizar_receita só com os nomes dos campos e a fonte. Devolve {ficha, alterados}. Só macuxierp_config. T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.empresa_contato_revelar(p_id uuid, p_campo text, p_request_id text)
   RETURNS text
@@ -332,7 +332,7 @@ BEGIN
   RETURN v_valor;
 END $$;
 COMMENT ON FUNCTION plataforma.empresa_contato_revelar(uuid, text, text) IS
-  'Portal /config (0065): devolve o e-mail ou o telefone (só dígitos) completo da ficha; campo fora de email|telefone = 23514; sem core.empresa ou sem o valor = no_data_found. Audita plataforma.empresa.revelar_contato só com o campo. Só macuxierp_config. T-0101.';
+  'Portal /config (0063): devolve o e-mail ou o telefone (só dígitos) completo da ficha; campo fora de email|telefone = 23514; sem core.empresa ou sem o valor = no_data_found. Audita plataforma.empresa.revelar_contato só com o campo. Só macuxierp_config. T-0101.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Privilégios: nada para PUBLIC; internas sem EXECUTE; as do portal só para macuxierp_config.
