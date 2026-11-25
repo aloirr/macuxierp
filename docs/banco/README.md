@@ -398,7 +398,7 @@ Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/teste
 
 ## Expurgo do pré-cadastro sem decisão (T-0098, migração 0062)
 RN-INF-06, decisão do Alexandre (R-20261124-214227, opção A): o pré-cadastro em `recebido` ou `reenviado` também é expurgado 180 dias depois, com o tratamento do recusado.
-- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` fica como está, porque o worker do `main` a chama; sai numa migração seguinte, quando nenhuma versão a usar.
+- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` ficou como estava, porque o worker do `main` a chamava; saiu na 0066.
 - **Prazo do sem-decisão:** conta da chegada da própria revisão (no reenviado, a última); exige o `recebido_em` do FDV e o `chegou_em` do ERP antes do corte, para que um pré-cadastro parado no Hub não saia no dia em que chega.
 - **CHECKs mais largos:** o recebido e o reenviado podem ficar sem payload depois do expurgo, e a linha expurgada ainda pode ser decidida (o FDV entrega a mesma revisão de novo). A versão anterior grava o mesmo de sempre.
 
@@ -434,6 +434,14 @@ Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api
 - **Sem licença na conferência:** a limpeza vale com o `integracao-fdv` ou o `faturamento` desligados, porque o `portal_zerar` já exigiu o pedido licenciado e a empresa ativa. A auditoria vai sem `request_id`, porque a assinatura do desenho não o traz; ela vai ao lado do `pedido.dados.zerar` da mesma transação.
 
 Migração: `db/migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes: `db/testes/zerar-pedidos-criterio3-0065.db.test.ts`.
+
+## Sai a função antiga do expurgo do recusado (T-0104, migração 0066)
+RD-1810 e RD-1813 do corretor no #622. A 0062 deixou a `expurgar_pre_cadastro_recusado` (0057) como cópia porque o worker do `main` ainda a chamava; desde a v0.3.13 o worker e o módulo chamam só a `expurgar_pre_cadastro`, e nenhuma versão em produção usa a antiga.
+- **Remoção em duas versões** (seção "Migrações aditivas"): a 0062 acrescentou a nova, a v0.3.13 migrou o uso e a 0066 remove a antiga. `DROP FUNCTION IF EXISTS` com a assinatura, para reexecutar.
+- **COMMENT ON da nova** deixa de citar a função que saiu e descreve a própria regra do recusado (a mesma da 0057).
+- Os testes da 0057 passam a exercer o expurgo do recusado pela função nova; estrutura, grants e recusas dela ficam no da 0062.
+
+Migração: `db/migrations/0066_integracao_fdv_drop_expurgo_recusado.sql`; testes: `db/testes/expurgo-recusado-drop-0066.db.test.ts`, `db/testes/pre-cadastro-0057.db.test.ts` e `db/testes/pre-cadastro-0062.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
