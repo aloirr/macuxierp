@@ -3,7 +3,7 @@
  * Macuxi FDV. cliente_recebido (uma linha por cliente_uuid e revisão; reenvio = revisão nova, a mesma revisão de novo
  * cai na mesma linha), cliente_retorno (molde do retorno_enviado), registro_publicado.aguarda_vinculo, a agenda no sinal,
  * o vinculo_divergente do conflito_chave e o expurgo diário do recusado (180 dias depois da última recusa, só contagens
- * na auditoria). Dados fictícios.
+ * na auditoria). O expurgo roda pela expurgar_pre_cadastro (0062). Dados fictícios.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -31,8 +31,11 @@ const APP_A = { papel: 'macuxierp_app', tenant: A.id };
 const LEITURA_A = { papel: 'macuxierp_leitura', tenant: A.id };
 const WORKER_A = { papel: 'macuxierp_worker', tenant: A.id };
 const WORKER_B = { papel: 'macuxierp_worker', tenant: B.id };
-const EXPURGO = 'integracao_fdv.expurgar_pre_cadastro_recusado(timestamptz)';
 const CORTE = `now() - interval '180 days'`;
+/** Expurgo da 0062 no tenant do contexto; aqui só há recusado (o sem-decisão fica no pre-cadastro-0062). */
+const expurgoDoRecusado = (revisoes: number, pre_cadastros: number) => ({
+  r: { recusado: { revisoes, pre_cadastros }, sem_decisao: { revisoes: 0, pre_cadastros: 0 } },
+});
 const ERROS = '[{"campo": "documento", "codigo": "documento_invalido", "mensagem": "Documento inválido."}]';
 
 interface Pre {
@@ -123,7 +126,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
   });
 
   // a matriz de privilégios por tabela e por coluna: integracao-fdv.db.test.ts (PRIVILEGIOS e COLUNAS)
-  it('grants: app e leitura leem sem o payload (SELECT * falha); o expurgo só do worker', () => {
+  it('grants: app e leitura leem sem o payload (SELECT * falha)', () => {
     expect(um(`SELECT razao_social, documento_mascarado FROM integracao_fdv.cliente_recebido WHERE codigo_fdv = '00001'`, APP_A)).toEqual({
       razao_social: 'Pré-cadastro pre-cadastro-0057-a',
       documento_mascarado: '11.444.777/****-**',
@@ -135,17 +138,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
         });
       }
     }
-    // o app não executa o expurgo; o worker executa
-    expect(falha(() => executar(banco.conexao, `SELECT ${EXPURGO.replace('(timestamptz)', '')}(${CORTE});`, APP_A))).toMatch(/permission denied/);
-    const f = um<Record<string, unknown>>(
-      `SELECT p.prosecdef AS definer, array_to_string(p.proconfig, ',') AS cfg, obj_description(p.oid, 'pg_proc') ~ 'RN-INF-06' AS comentado,
-         EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a WHERE a.grantee = 0) AS publico,
-         has_function_privilege('macuxierp_app', p.oid, 'EXECUTE') AS app,
-         has_function_privilege('macuxierp_worker', p.oid, 'EXECUTE') AS worker,
-         has_function_privilege('macuxierp_leitura', p.oid, 'EXECUTE') AS leitura
-       FROM pg_proc p WHERE p.oid = '${EXPURGO}'::regprocedure`,
-    );
-    expect(f).toEqual({ definer: true, cfg: 'search_path=pg_catalog, pg_temp', comentado: true, publico: false, app: false, worker: true, leitura: false });
   });
 
   it('reenvio: a mesma revisão cai na mesma linha (só soma tentativas); a revisão nova vira a linha do BKO como reenviado', () => {
@@ -329,9 +321,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
     it('apaga só o payload (e a razão social e o documento) das recusas com mais de 180 dias; mantém códigos, erros e contagens', () => {
       const antes = { recente: retrato(recente), aceito: retrato(aceito), reRecusado: retrato(reRecusado), deB: retrato(deB, WORKER_B) };
       const antesVelho = retrato(velho) as Record<string, unknown>[];
-      expect(um(`SELECT integracao_fdv.expurgar_pre_cadastro_recusado(${CORTE}) AS r`, WORKER_A)).toEqual({
-        r: { revisoes: 2, pre_cadastros: 2 },
-      });
+      expect(um(`SELECT integracao_fdv.expurgar_pre_cadastro(${CORTE}) AS r`, WORKER_A)).toEqual(expurgoDoRecusado(2, 2));
       const depoisVelho = retrato(velho) as Record<string, unknown>[];
       expect(depoisVelho).toEqual([{ ...antesVelho[0], payload: false, razao: false, doc: false, expurgado: true }]);
       expect(depoisVelho[0]).toMatchObject({ codigo_fdv: '12345', hash: '1'.repeat(64), tentativas_fdv: 1, motivo: 'Documento inválido.', recusa: true });
@@ -349,47 +339,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
           entidade_id: null,
           usuario_id: null,
           antes: null,
-          depois: { regra: 'RN-INF-06', revisoes: 2, pre_cadastros: 2 },
+          depois: { regra: 'RN-INF-06', ...expurgoDoRecusado(2, 2).r },
         },
       ]);
       expect(auditorias(B.id)).toEqual([]);
-    });
-
-    it('é idempotente: rodar de novo não expurga nada nem audita; o worker de B expurga só o B', () => {
-      expect(um(`SELECT integracao_fdv.expurgar_pre_cadastro_recusado(${CORTE}) AS r`, WORKER_A)).toEqual({
-        r: { revisoes: 0, pre_cadastros: 0 },
-      });
-      expect((auditorias(A.id) as unknown[]).length).toBe(1);
-      const antesA = retrato(recente);
-      expect(um(`SELECT integracao_fdv.expurgar_pre_cadastro_recusado(${CORTE}) AS r`, WORKER_B)).toEqual({
-        r: { revisoes: 1, pre_cadastros: 1 },
-      });
-      expect(retrato(deB, WORKER_B)).toMatchObject([{ payload: false, expurgado: true }]);
-      expect(retrato(recente)).toEqual(antesA);
-    });
-
-    it('recusa corte antes de 180 dias (23514) e sessão sem tenant (42501)', () => {
-      recusaDetalhada(
-        banco.conexao,
-        `SELECT integracao_fdv.expurgar_pre_cadastro_recusado(now() - interval '179 days');`,
-        '23514',
-        /180 dias/,
-        WORKER_A,
-      );
-      recusaDetalhada(
-        banco.conexao,
-        `SELECT integracao_fdv.expurgar_pre_cadastro_recusado(NULL);`,
-        '23514',
-        /180 dias/,
-        WORKER_A,
-      );
-      recusaDetalhada(
-        banco.conexao,
-        `SELECT integracao_fdv.expurgar_pre_cadastro_recusado(${CORTE});`,
-        '42501',
-        /sem tenant/,
-        { papel: 'macuxierp_worker', tenant: null },
-      );
     });
   });
 
@@ -401,7 +354,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
                 (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM integracao_fdv.cliente_retorno c) AS retornos,
                 (SELECT count(*)::int FROM pg_indexes WHERE schemaname = 'integracao_fdv') AS ix,
                 (SELECT count(*)::int FROM pg_constraint WHERE conname LIKE 'cliente\\_re%' OR conname = 'conflito_chave_codigo') AS ck,
-                (SELECT proacl::text FROM pg_proc WHERE oid = '${EXPURGO}'::regprocedure) AS acl,
                 (SELECT relacl::text FROM pg_class WHERE oid = 'integracao_fdv.cliente_recebido'::regclass) AS acl_tabela`,
       );
     const antes = r();

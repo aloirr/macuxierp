@@ -1,7 +1,7 @@
 /**
  * T-0098 (v0.3.13, migração 0062; RN-INF-06, decisão R-20261124-214227 opção A): o expurgo diário passa a cobrir o
  * pré-cadastro sem decisão (recebido ou reenviado), 180 dias depois da chegada da própria revisão, com o mesmo tratamento
- * do recusado; a expurgar_pre_cadastro_recusado da 0057 continua igual. Dados fictícios.
+ * do recusado. Dados fictícios.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -48,8 +48,7 @@ const rev = (t: string, p: Rev): string => {
 
 let banco: BancoDeTeste;
 const um = <T,>(sql: string, ctx?: Parameters<typeof consultar>[2]): T => consultar<T>(banco.conexao, sql, ctx)[0] as T;
-const expurgar = (ctx: typeof WORKER_A, f = 'expurgar_pre_cadastro'): unknown =>
-  um<{ r: unknown }>(`SELECT integracao_fdv.${f}(${CORTE}) AS r`, ctx).r;
+const expurgar = (ctx: typeof WORKER_A): unknown => um<{ r: unknown }>(`SELECT integracao_fdv.expurgar_pre_cadastro(${CORTE}) AS r`, ctx).r;
 const retrato = (u: string, ctx = WORKER_A): unknown =>
   consultar(
     banco.conexao,
@@ -194,16 +193,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — expurgo do pré-cadastro se
     );
     expect(retrato(semVelho)).toMatchObject([{ situacao: 'aceito', payload: false, expurgado: true }]);
     expect(retrato(reenvVelho)).toMatchObject([{ revisao: 1 }, { revisao: 2, situacao: 'recusado', payload: false, expurgado: true }]);
-  });
-
-  it('a expurgar_pre_cadastro_recusado da 0057 continua igual: só o recusado, com o retorno e a auditoria de antes', () => {
-    const r = randomUUID();
-    const s = randomUUID();
-    executar(banco.conexao, [rev(A.id, { uuid: r, situacao: 'recusado', recebido: 210, decidido: 200 }), rev(A.id, { uuid: s, recebido: 200 })].join('\n'), WORKER_A);
-    expect(expurgar(WORKER_A, 'expurgar_pre_cadastro_recusado')).toEqual({ revisoes: 1, pre_cadastros: 1 });
-    expect(retrato(r)).toMatchObject([{ payload: false, expurgado: true }]);
-    expect(retrato(s)).toMatchObject([{ payload: true, expurgado: false }]);
-    expect(auditorias(A.id).at(-1)).toMatchObject({ depois: { regra: 'RN-INF-06', revisoes: 1, pre_cadastros: 1 } });
   });
 
   it('a 0062 é reexecutável: rodar de novo não muda dado, índice, CHECK nem privilégio', () => {

@@ -407,13 +407,15 @@ const RECADO_APROVACAO = 'R-20261121-120000-alexandre';
  * com guarda pendente e XML), na filial e no ambiente pedidos, série 1. Em produção grava antes a filial no
  * core.ambiente_fiscal com o recado de aprovação (RN-FAT-04). Gravada pelo admin, que passa pelas mesmas travas.
  * Use uma filial nova por nota (o número sai 1) e um `cnf` diferente por nota (a chave é única no banco).
- * Devolve o id da nota e o SQL.
+ * `ligar.pedido` grava o pedido_id da nota; `ligar.titulo` grava um título de parcela única ligado à nota. Devolve o id
+ * da nota e o SQL.
  */
 export function sqlNotaAutorizada(
   t: Tenant,
   filial: string,
   ambiente: 'homologacao' | 'producao',
   cnf: number,
+  ligar: { pedido?: string; titulo?: boolean } = {},
 ): { id: string; sql: string } {
   const nota = randomUUID();
   const chave = chaveAcesso(1, 1, cnf);
@@ -424,19 +426,26 @@ export function sqlNotaAutorizada(
       ? `INSERT INTO core.ambiente_fiscal (tenant_id, filial_id, ambiente, recado_aprovacao)
   VALUES ('${t.id}', '${filial}', 'producao', '${RECADO_APROVACAO}');`
       : '';
+  const pedido = ligar.pedido ? `'${ligar.pedido}'` : 'NULL';
+  const titulo = ligar.titulo
+    ? `INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos, conta_como_real)
+  VALUES ('${t.id}', '${nota}', 1, 1, '2026-12-21', 1000, false);`
+    : '';
   const sql = `
 SELECT set_config('app.tenant_id', '${t.id}', true);
 ${producao}
-INSERT INTO faturamento.nota (id, tenant_id, filial_id, serie, numero, idempotencia_chave, cliente_id,
-  natureza_operacao)
-  VALUES ('${nota}', '${t.id}', '${filial}', 1, faturamento.reservar_numero('${filial}', '${ambiente}', 1::smallint, 1),
-    '${randomUUID()}', '${t.cliente}', 'Venda');
+INSERT INTO faturamento.nota (id, tenant_id, filial_id, pedido_id, serie, numero, idempotencia_chave, cliente_id,
+  natureza_operacao, produtos_centavos, total_nota_centavos)
+  VALUES ('${nota}', '${t.id}', '${filial}', ${pedido}, 1,
+    faturamento.reservar_numero('${filial}', '${ambiente}', 1::smallint, 1), '${randomUUID()}', '${t.cliente}', 'Venda',
+    1000, 1000);
 UPDATE faturamento.nota SET status = 'em_autorizacao', chave_acesso = '${chave}', c_nf = '${cnfDe(cnf)}'
   WHERE id = '${nota}';
 UPDATE faturamento.nota SET status = 'autorizada_guarda_pendente', protocolo = '${protocolo}',
   autorizada_em = now(), c_stat = 100 WHERE id = '${nota}';
 INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protocolo, xml, sha256)
   VALUES ('${t.id}', 'nfe_autorizada', '${nota}', '${chave}', '${protocolo}', '${xml}', ${hashSql(xml)});
+${titulo}
 `;
   return { id: nota, sql };
 }

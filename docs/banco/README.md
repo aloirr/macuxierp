@@ -398,7 +398,7 @@ Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/teste
 
 ## Expurgo do pré-cadastro sem decisão (T-0098, migração 0062)
 RN-INF-06, decisão do Alexandre (R-20261124-214227, opção A): o pré-cadastro em `recebido` ou `reenviado` também é expurgado 180 dias depois, com o tratamento do recusado.
-- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` fica como está, porque o worker do `main` a chama; sai numa migração seguinte, quando nenhuma versão a usar.
+- **Função nova** `expurgar_pre_cadastro(p_corte)`: cobre o recusado (a mesma regra da 0057) e o sem-decisão numa passada e devolve e audita as contagens por situação. A `expurgar_pre_cadastro_recusado` ficou como estava, porque o worker do `main` a chamava; saiu na 0067.
 - **Prazo do sem-decisão:** conta da chegada da própria revisão (no reenviado, a última); exige o `recebido_em` do FDV e o `chegou_em` do ERP antes do corte, para que um pré-cadastro parado no Hub não saia no dia em que chega.
 - **CHECKs mais largos:** o recebido e o reenviado podem ficar sem payload depois do expurgo, e a linha expurgada ainda pode ser decidida (o FDV entrega a mesma revisão de novo). A versão anterior grava o mesmo de sempre.
 
@@ -442,6 +442,12 @@ A ficha da 0063 guarda só códigos (`cnae_principal`, `cnae_secundarios`, `muni
 - **Sem `exigir_superadmin`:** só leem tabela oficial, sem dado de tenant; o que restringe é o EXECUTE só do `macuxierp_config`, como na 0063. Código encerrado por versão nova continua com o texto (a ficha antiga ainda o mostra); o vigente tem preferência.
 
 Migração: `db/migrations/0066_cadastros_cnae_oficial.sql`; testes: `db/testes/cnae-oficial-0066.db.test.ts` e `db/testes/oficiais.db.test.ts`.
+
+## Sai a função antiga do expurgo do recusado (T-0104, migração 0067)
+RD-1810 e RD-1813 do #622. Desde a v0.3.13 o worker e o módulo chamam só a `expurgar_pre_cadastro`; a 0067 tira a antiga (remoção em duas versões, "Migrações aditivas"). `DROP FUNCTION IF EXISTS` com a assinatura, para reexecutar.
+- **COMMENT ON da nova** deixa de citar a função que saiu: fica com parâmetros, erros e retorno; as regras do recusado e do sem-decisão ficam nesta página (seções da 0057 e da 0062).
+
+Migração: `db/migrations/0067_integracao_fdv_drop_expurgo_recusado.sql`; testes: `db/testes/expurgo-recusado-drop-0067.db.test.ts`, `db/testes/pre-cadastro-0057.db.test.ts` e `db/testes/pre-cadastro-0062.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
