@@ -491,7 +491,11 @@ INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senh
     expect(ids(`SELECT plataforma.empresas_listar('portal', '${portal[0]}', 50);`)).toEqual([portal[1]]);
     expect(ids(`SELECT plataforma.empresas_listar(NULL, NULL, 0);`)).toHaveLength(1);
     expect(ids(`SELECT plataforma.empresas_listar(NULL, NULL, 1000);`)).not.toContain(REFERENCIA);
-    expect(jsonConfig<Empresa>(s, `SELECT plataforma.empresa_ler('${E}');`)).toEqual(criada);
+    // 0065: o empresa_ler leva também a ficha da Receita (null sem core.empresa).
+    expect(jsonConfig<Empresa>(s, `SELECT plataforma.empresa_ler('${E}');`)).toEqual({
+      ...criada,
+      ficha: null,
+    });
     expect(comoConfig(s, `SELECT coalesce(plataforma.empresa_ler('${REFERENCIA}')::text, 'NULO');`)).toEqual([
       'NULO',
     ]);

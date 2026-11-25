@@ -382,6 +382,16 @@ Nenhum fluxo de produção gravava `core.empresa`, então a aba Empresa do /conf
 
 Migração: `db/migrations/0059_core_empresa_backfill.sql`; testes: `db/testes/empresa-backfill-0059.db.test.ts`.
 
+## Ficha da empresa pela Receita (T-0101, migração 0065)
+ADR 0012 §4, emenda da ficha, mais data de abertura, natureza jurídica, porte e CNAEs secundários (decisão do gerente-projetos, 24/11 23h37). Colunas anuláveis em `core.empresa`; o RLS e os grants da tabela não mudam.
+- **Leitura:** `empresa_ler` devolve a chave `ficha` (`empresa_ficha_json`, null sem `core.empresa`), com `email_mascarado` e `telefone_mascarado` ("(92) ****-1234"). A `empresa_json` não muda, porque também serve a listagem e a ficha não entra em lista (LGPD).
+- **Gravação:** `empresa_gravar_receita(p_id, p_ficha, p_request_id)` → `{ ficha, alterados }`. Chaves aceitas: as colunas da ficha mais `fonte` (obrigatória, `FonteConsulta`) e `consultado_em` (ISO; ausente = agora). Chave ausente mantém o valor; presente grava normalizado (dígitos em CEP, IBGE, telefone e CNAE com zero à esquerda; texto cortado no limite da NF-e); valor inválido vira NULL, para a falha da fonte não quebrar a tela. Razão social vazia não apaga a atual. Repetir o `request_id` não muda nada e devolve os campos da primeira gravação.
+- **Erros:** chave fora da lista, fonte ou data inválida = 23514; sem `core.empresa` = 55000 (a API responde 409); empresa inexistente = P0002; sem sessão = MXS01.
+- **Revelar:** `empresa_contato_revelar(p_id, 'email' | 'telefone', p_request_id)` → o valor completo (telefone só em dígitos). Sem a linha ou sem o valor = P0002, sem auditoria.
+- **Auditoria:** só nomes de campo, fonte e `request_id`, nunca os valores.
+
+Migração: `db/migrations/0065_core_empresa_ficha_receita.sql`; testes: `db/testes/empresa-ficha-receita-0065.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
