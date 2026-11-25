@@ -16,7 +16,7 @@ export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   quantidade_fracionaria: { motivo: 'A quantidade tem casas decimais, e o Macuxi FDV só aceita número inteiro.', acao: 'Ajuste a quantidade para um número inteiro.' },
   referencia_ausente: { motivo: 'Depende de um cadastro que ainda não foi confirmado no FDV.', acao: 'Aguarde.' },
   filial_codigo_repetido: { motivo: 'Duas filiais têm a mesma ordem de CNPJ. O FDV identifica a filial por essa ordem.', acao: 'Revise as filiais.' },
-  falha_processamento: { motivo: 'O FDV não conseguiu processar o registro.', acao: 'Use Reprocessar; se persistir, fale com o suporte.' },
+  falha_processamento: { motivo: 'O FDV não conseguiu processar o registro, que continua sem integrar.', acao: 'Use Reprocessar; se persistir, fale com o suporte.' },
   acima_do_limite: { motivo: 'O lote passou do limite do FDV.', acao: 'Aguarde.' },
   rede: { motivo: 'Sem resposta do FDV.', acao: 'Aguarde.' },
   limite_de_taxa: { motivo: 'O FDV pediu para aguardar.', acao: 'Aguarde.' },

@@ -2,7 +2,7 @@ import { LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarClienteIntegracaoFdv } from './cliente';
 import {
-  caminhoDoLogCsv, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, nomeDoCsvDoLog, textoErrosForaDaLista,
+  caminhoDoLogCsv, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, nomeDoCsvDoLog, textoErrosForaDaLista, TEXTO_LEGENDA_ERROS_LOG, ROTULO_CORRIGIR,
 } from './log';
 
 const log = (o: Partial<LogCadastroFdvTenant> = {}): LogCadastroFdvTenant => ({
@@ -20,9 +20,13 @@ const log = (o: Partial<LogCadastroFdvTenant> = {}): LogCadastroFdvTenant => ({
 
 describe('Log do BKO (T-0086 D-4)', () => {
   it('RF-INF-04: renderiza as colunas registro, nome, campo, motivo, ação e Corrigir, nesta ordem', () => {
-    expect(colunasDeErrosLog.map((c) => c.titulo)).toEqual(['Registro', 'Nome', 'Campo', 'Motivo', 'O que fazer', 'Corrigir']);
+    expect(colunasDeErrosLog.map((c) => c.titulo)).toEqual(['Registro', 'Nome', 'Campo', 'Motivo', 'O que fazer', 'Corrigir cadastro']);
     const [a] = linhasDeErrosLog(log());
     expect(a).toEqual({ registro: 'C-1', nome: 'Mercado Sol', campo: 'vendedor_id', motivo: 'Vendedor não existe no FDV.', acao: 'Carregue Vendedores antes.', corrigirHref: '/cadastros/clientes?busca=C-1' });
+  });
+  it('RF-INF-04: a legenda diz que os registros não foram enviados ao FDV e o botão é Corrigir cadastro', () => {
+    expect(TEXTO_LEGENDA_ERROS_LOG).toMatch(/^Estes registros não foram enviados ao FDV\./);
+    expect(ROTULO_CORRIGIR).toBe('Corrigir cadastro');
   });
   it('o link Corrigir só existe quando corrigirHref existe (nulo no Zerar, sem link)', () => {
     const l = linhasDeErrosLog(log());

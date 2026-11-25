@@ -17,7 +17,10 @@ export const TEXTO_ESTADO_LOG = Object.freeze({
 });
 
 export const ROTULO_BAIXAR_ERROS = 'Baixar erros (.csv)';
-export const ROTULO_CORRIGIR = 'Corrigir';
+export const ROTULO_CORRIGIR = 'Corrigir cadastro';
+
+/** Legenda da seção de erros do Log: o registro com erro não chegou ao FDV; corrigido no ERP, o envio sai no próximo ciclo (RN-INF-03: hash novo = pendente). */
+export const TEXTO_LEGENDA_ERROS_LOG = 'Estes registros não foram enviados ao FDV. Corrija o cadastro no ERP: o envio sai sozinho no próximo ciclo.';
 
 /* TODO: fonte única dos rótulos e cores de origem e situação no packages/platform-sdk (pedido ao engenheiro-software);
    até lá estas cópias seguem as cores de apps/web/src/lib/config/operacao-fdv.ts (ROTULO_ORIGEM_ENVIO e ROTULO_SITUACAO_ENVIO). */
