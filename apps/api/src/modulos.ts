@@ -5,6 +5,7 @@
 import {
   criarConsultaParaFaturamento,
   criarConsultaParaFiscal,
+  criarConsultaCnpjParaCore,
   criarConsultaParaPedido,
   criarPluginCadastros,
   criarPluginPlataformaCadastros,
@@ -313,13 +314,13 @@ export function pluginsPlataforma(
   dependencias: DependenciasPlataformaModulos = { chaveIntegracao: null },
 ): readonly PluginPlataforma[] {
   const manifestos = modulos.map((m) => ({ id: m.manifesto.id, depende: m.manifesto.depende }));
+  const cadastros = dependencias.cadastros ?? dependenciasCadastros(new RepositorioCoreSql());
+  // "Atualizar pela Receita" (T-0101, ADR 0012): a consulta do RF-CAD-02 do cadastros, ligada aqui (o core não importa cadastros/api)
+  const consultaCnpj = criarConsultaCnpjParaCore({ repositorios: cadastros.repositorios, fontes: cadastros.fontes, relogio: relogioDoSistema });
   return [
-    criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha) }),
+    criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha), consultaReceita: consultaCnpj }),
     criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: dependencias.chaveIntegracao }),
-    criarPluginPlataformaCadastros({
-      deps: dependencias.cadastros ?? dependenciasCadastros(new RepositorioCoreSql()),
-      outbox: dependencias.outbox ?? new OutboxPg(),
-    }),
+    criarPluginPlataformaCadastros({ deps: cadastros, outbox: dependencias.outbox ?? new OutboxPg() }),
     criarPluginPlataformaCadastrosZerar(dependencias.zeragem ?? dependenciasZeragemProducao()),
     // T-0093 (zerar pedidos) volta na v0.3.14, com as funções SQL dele: plano B da v0.3.13
   ];
