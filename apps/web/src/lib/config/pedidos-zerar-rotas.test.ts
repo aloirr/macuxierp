@@ -5,7 +5,8 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: (n: string) => (n 
 vi.mock('next/navigation', () => ({ redirect: (d: string) => { throw new Error(`REDIRECT ${d}`); } }));
 
 import { pedirPreviaZerarPedidos, pedirZerarPedidos, textoPedidosZerados } from './pedidos-zerar';
-import { tratarPreviaZerarPedidos, tratarZerarPedidos } from './pedidos-zerar-rotas';
+import { CAMINHOS_ZERAR_PEDIDOS } from '@macuxierp/pedido/contracts';
+import { CAMINHOS, tratarPreviaZerarPedidos, tratarZerarPedidos } from './pedidos-zerar-rotas';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const CHAVE = '33333333-3333-4333-8333-333333333333';
@@ -31,6 +32,9 @@ beforeEach(() => {
 });
 
 describe('rotas do Zerar pedidos não faturados (T-0093)', () => {
+  it('os caminhos literais do portal são os do contrato do pedido', () => {
+    expect(CAMINHOS).toEqual(CAMINHOS_ZERAR_PEDIDOS);
+  });
   it('prévia: POST sem corpo em pedidos/zerar/previa, sem chave, com o CSRF', async () => {
     resposta = () => json(zeragem({ simulado: true }));
     const r = await tratarPreviaZerarPedidos(new Request('http://portal.invalid/x', { method: 'POST' }), EMP);

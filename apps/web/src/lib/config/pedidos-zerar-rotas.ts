@@ -1,18 +1,18 @@
 import { ZeragemPedidosResposta, ZerarPedidosEntrada } from '@macuxierp/pedido/contracts';
-import { MENSAGENS_CARGA_PORTAL, PADRAO_UUID } from '@macuxierp/platform-sdk';
+import { PADRAO_UUID } from '@macuxierp/platform-sdk';
 import { chamar, idEmpresa, validado } from './api';
-import { CODIGO_DADOS_MUDARAM, SEM_CACHE, comSessao, falha, idValido } from './cargas-rotas';
+import { SEM_CACHE, comSessao, falha, falhaDadosMudaram, guardaPost } from './cargas-rotas';
 import { ErroPlataforma } from './erros';
 
 /** Route handlers do Zerar pedidos não faturados (T-0093): o portal chama `POST /v1/plataforma/empresas/:id/pedidos/zerar[/previa]`. */
-/** Caminhos do plugin do pedido (iguais aos do contrato `zeragem.ts` do pedido); o teste de rotas de tela só enxerga as constantes do SDK. */
-const CAMINHOS = { previa: '/empresas/:id/pedidos/zerar/previa', zerar: '/empresas/:id/pedidos/zerar' } as const;
+/** Caminhos do plugin do pedido (iguais aos do contrato `zeragem.ts` do pedido, conferido em teste); o teste de rotas de tela só enxerga as constantes do SDK. */
+export const CAMINHOS = { previa: '/empresas/:id/pedidos/zerar/previa', zerar: '/empresas/:id/pedidos/zerar' } as const;
 const caminho = (chave: keyof typeof CAMINHOS, id: string) => CAMINHOS[chave].replace(':id', idEmpresa(id));
 
 /** `POST /config/empresas/:id/pedidos/zerar/previa`: sem corpo, só leitura; devolve a `ZeragemPedidosResposta` simulada. */
 export async function tratarPreviaZerarPedidos(req: Request, id: string): Promise<Response> {
-  if (!idValido(id)) return falha('Não encontrado.', 404);
-  if (req.method !== 'POST') return falha('Método não permitido.', 405);
+  const barrada = guardaPost(req, id);
+  if (barrada) return barrada;
   return comSessao(req, async (token) => {
     const previa = await validado(await chamar('POST', caminho('previa', id), { token }), ZeragemPedidosResposta);
     return Response.json({ ok: true, previa }, { headers: SEM_CACHE });
@@ -21,8 +21,8 @@ export async function tratarPreviaZerarPedidos(req: Request, id: string): Promis
 
 /** `POST /config/empresas/:id/pedidos/zerar`: corpo `{ frase }` e `Idempotency-Key`; a frase é conferida pelo contrato (a API revalida). */
 export async function tratarZerarPedidos(req: Request, id: string): Promise<Response> {
-  if (!idValido(id)) return falha('Não encontrado.', 404);
-  if (req.method !== 'POST') return falha('Método não permitido.', 405);
+  const barrada = guardaPost(req, id);
+  if (barrada) return barrada;
   return comSessao(req, async (token) => {
     const bruto = (await req.json().catch(() => null)) as { frase?: unknown } | null;
     const chave = req.headers.get('idempotency-key') ?? '';
@@ -33,9 +33,7 @@ export async function tratarZerarPedidos(req: Request, id: string): Promise<Resp
       return Response.json({ ok: true, zeragem }, { headers: SEM_CACHE });
     } catch (e) {
       // Único 409 da rota: o pedido ganhou nota ou título entre a prévia e o zerar (MXC03); o código do DETAIL ainda não está no SDK.
-      if (e instanceof ErroPlataforma && e.status === 409) {
-        return falha(MENSAGENS_CARGA_PORTAL.estadoMudouZerar, 409, { codigo: CODIGO_DADOS_MUDARAM, chaveNova: true });
-      }
+      if (e instanceof ErroPlataforma && e.status === 409) return falhaDadosMudaram();
       throw e;
     }
   });

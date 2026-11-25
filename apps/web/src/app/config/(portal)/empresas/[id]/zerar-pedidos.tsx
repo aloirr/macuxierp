@@ -1,10 +1,10 @@
 'use client';
 import type { ZeragemPedidosResposta } from '@macuxierp/pedido/contracts';
 import { FRASE_ZERAR_DADOS } from '@macuxierp/platform-sdk';
-import { useEffect, useState } from 'react';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { AVISO_ZERAR } from '@/lib/config/cargas';
-import { AVISO_PEDIDOS_FDV, TEXTO_ANTES_DE_ZERAR_PEDIDOS, pedirPreviaZerarPedidos, pedirZerarPedidos, textoApagarPedidos, textosMantidosPedidos, type ResultadoZerarPedidos } from '@/lib/config/pedidos-zerar';
+import { TEXTO_ANTES_DE_ZERAR_PEDIDOS, pedirPreviaZerarPedidos, pedirZerarPedidos, textoApagarPedidos, textosMantidosPedidos, type ResultadoZerarPedidos } from '@/lib/config/pedidos-zerar';
+import { ListaMantidos, usePreviaZerar } from './previa-zerar';
 
 /**
  * "Pedidos não faturados" no Zerar por cadastro (T-0093, RN-CAD-10): apaga só os pedidos sem nota e sem título, com a mesma frase
@@ -17,23 +17,7 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
   aoZerar: (r: ResultadoZerarPedidos) => void;
   previaInicial?: ZeragemPedidosResposta | null;
 }) {
-  const [previa, setPrevia] = useState<ZeragemPedidosResposta | null>(previaInicial);
-  const [carregando, setCarregando] = useState(previaInicial === null);
-  const [erroPrevia, setErroPrevia] = useState('');
-  const [recontar, setRecontar] = useState(0);
-
-  useEffect(() => {
-    const ctl = new AbortController();
-    setCarregando(true);
-    setErroPrevia('');
-    void pedirPreviaZerarPedidos(empresaId, fetch, ctl.signal).then((r) => {
-      if (ctl.signal.aborted) return;
-      setCarregando(false);
-      if (!r.ok && r.redirecionar) window.location.assign(r.redirecionar);
-      if (r.ok) setPrevia(r.valor); else { setPrevia(null); setErroPrevia(r.erro); }
-    });
-    return () => ctl.abort();
-  }, [empresaId, recontar]);
+  const { previa, carregando, erroPrevia, recontar } = usePreviaZerar((sinal) => pedirPreviaZerarPedidos(empresaId, fetch, sinal), [empresaId], previaInicial);
 
   const mantidos = previa ? textosMantidosPedidos(previa.mantidos) : null;
 
@@ -47,9 +31,9 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
       podeEnviar={!!previa && !carregando}
       enviar={(chave, frase) => pedirZerarPedidos(empresaId, frase, chave)}
       aoSucesso={aoZerar}
-      aoFalha={(r) => { if (r.codigo === 'dados_mudaram') setRecontar((n) => n + 1); return undefined; }}
+      aoFalha={(r) => { if (r.codigo === 'dados_mudaram') recontar(); return undefined; }}
       aoFechar={aoFechar}
-      aviso={<><span>{AVISO_ZERAR}</span><br /><span data-testid="aviso-fdv-pedidos">{AVISO_PEDIDOS_FDV}</span></>}
+      aviso={AVISO_ZERAR}
       tomAviso="erro"
     >
       <p className="sem-margem">{TEXTO_ANTES_DE_ZERAR_PEDIDOS}</p>
@@ -57,12 +41,7 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
       {previa && (
         <div className="previa-zerar" aria-live="polite">
           <p data-testid="apagar-pedidos">{textoApagarPedidos(previa)}</p>
-          {mantidos && (
-            <div>
-              <p>{mantidos.total}</p>
-              <ul className="lista-simples apoio">{mantidos.detalhes.map((t) => <li key={t}>{t}</li>)}</ul>
-            </div>
-          )}
+          {mantidos && <ListaMantidos total={mantidos.total} detalhes={mantidos.detalhes} />}
         </div>
       )}
     </ConfirmarComFrase>

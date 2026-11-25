@@ -176,13 +176,19 @@ export function textoLevaJunto(efetivos: readonly CadastroZerarPortal[], escolhi
 type Mantido = ZeragemPlataformaResposta['mantidos'][number];
 const MOTIVO_EM_USO: Record<(typeof MOTIVOS_USO)[number], string> = { pedido: 'em pedidos', titulo: 'em títulos', nota: 'em notas', fiscal: 'em filial com dado fiscal' };
 
-/** "Mantidos: 5" (a soma) e uma linha por cadastro e motivo: "Produtos: 3 em pedidos." Sem mantidos = null. */
-export function textosMantidos(mantidos: readonly Mantido[]): { total: string; detalhes: string[] } | null {
+/** Soma das quantidades mantidas (o "N" de "Mantidos: N"). */
+export const somaMantidos = (mantidos: readonly { quantidade: number }[]): number => mantidos.reduce((n, m) => n + m.quantidade, 0);
+
+/** "Mantidos: 5" (a soma) e uma linha por item com quantidade, escrita por `linha`. Sem mantidos = null. Serve ao Zerar por cadastro e ao de pedidos. */
+export function textosMantidosCom<M extends { quantidade: number }>(mantidos: readonly M[], linha: (m: M) => string): { total: string; detalhes: string[] } | null {
   const itens = mantidos.filter((m) => m.quantidade > 0);
   if (itens.length === 0) return null;
-  const soma = itens.reduce((n, m) => n + m.quantidade, 0);
-  return { total: `Mantidos: ${soma}`, detalhes: itens.map((m) => `${ROTULO_ZERAR[m.cadastro]}: ${m.quantidade} ${MOTIVO_EM_USO[m.motivo]}.`) };
+  return { total: `Mantidos: ${somaMantidos(itens)}`, detalhes: itens.map(linha) };
 }
+
+/** "Mantidos: 5" (a soma) e uma linha por cadastro e motivo: "Produtos: 3 em pedidos." Sem mantidos = null. */
+export const textosMantidos = (mantidos: readonly Mantido[]) =>
+  textosMantidosCom(mantidos, (m) => `${ROTULO_ZERAR[m.cadastro]}: ${m.quantidade} ${MOTIVO_EM_USO[m.motivo]}.`);
 
 const TEXTO_ANULADO: Record<ZeragemPlataformaResposta['anulados'][number]['coluna'], [string, string]> = {
   vendedor_id: ['cliente fica sem vendedor.', 'clientes ficam sem vendedor.'],

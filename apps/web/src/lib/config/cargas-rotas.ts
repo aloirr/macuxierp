@@ -3,6 +3,7 @@ import {
   type CadastroCargaPortal,
 } from '@macuxierp/platform-sdk';
 import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '../textos';
+import { somaMantidos } from './cargas';
 import { baixarErros, baixarModelo, gravarCarga, lerPreviaZerar, validarCarga, zerarCargas } from './cargas-api';
 import { ErroPlataforma, FALHA_REDE, mensagemDoErro } from './erros';
 import { ROTA_ENTRAR, ROTA_SENHA } from './constantes';
@@ -129,10 +130,20 @@ async function paginaDeErro(r: Response, req: Request): Promise<Response> {
 /** O 409 `MXC03` do zerar: os dados mudaram entre a prévia e o zerar. A API manda `detalhes.codigo` em um dos `CODIGOS_ESTADO_MUDOU_ZERAR` do SDK. */
 export const CODIGO_DADOS_MUDARAM = 'dados_mudaram';
 
-/** `POST /config/empresas/:id/cargas/zerar`: corpo `{ cadastros, frase }`; a `Idempotency-Key` vai no cabeçalho. SDK confere a frase e a lista (a API revalida). */
-export async function tratarZerar(req: Request, id: string): Promise<Response> {
+/** Guarda das rotas POST do Zerar: id inválido = 404, método diferente de POST = 405; `null` quando pode seguir. */
+export function guardaPost(req: Request, id: string): Response | null {
   if (!idValido(id)) return falha('Não encontrado.', 404);
   if (req.method !== 'POST') return falha('Método não permitido.', 405);
+  return null;
+}
+
+/** 409 do zerar: os dados mudaram entre a prévia e o zerar; o navegador refaz a prévia com chave nova. */
+export const falhaDadosMudaram = (): Response => falha(MENSAGENS_CARGA_PORTAL.estadoMudouZerar, 409, { codigo: CODIGO_DADOS_MUDARAM, chaveNova: true });
+
+/** `POST /config/empresas/:id/cargas/zerar`: corpo `{ cadastros, frase }`; a `Idempotency-Key` vai no cabeçalho. SDK confere a frase e a lista (a API revalida). */
+export async function tratarZerar(req: Request, id: string): Promise<Response> {
+  const barrada = guardaPost(req, id);
+  if (barrada) return barrada;
   return comSessao(req, async (token) => {
     const bruto = (await req.json().catch(() => null)) as { cadastros?: unknown; frase?: unknown } | null;
     const chave = req.headers.get('idempotency-key') ?? '';
@@ -145,17 +156,17 @@ export async function tratarZerar(req: Request, id: string): Promise<Response> {
       if (e instanceof ErroPlataforma && e.status === 422 && e.detalhes.codigo === CODIGO_ZERAGEM_BLOQUEADA) {
         return falha(MENSAGENS_CARGA_PORTAL.zeragemBloqueada, 422, { codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: e.detalhes.bloqueios ?? [], chaveNova: true });
       }
-      if (e instanceof ErroPlataforma && e.status === 409 && (CODIGOS_ESTADO_MUDOU_ZERAR as readonly string[]).includes(String(e.detalhes.codigo))) return falha(MENSAGENS_CARGA_PORTAL.estadoMudouZerar, 409, { codigo: CODIGO_DADOS_MUDARAM, chaveNova: true });
+      if (e instanceof ErroPlataforma && e.status === 409 && (CODIGOS_ESTADO_MUDOU_ZERAR as readonly string[]).includes(String(e.detalhes.codigo))) return falhaDadosMudaram();
       throw e;
     }
-    return Response.json({ ok: true, mantidos: resultado.mantidos.reduce((n, m) => n + m.quantidade, 0) }, { headers: SEM_CACHE });
+    return Response.json({ ok: true, mantidos: somaMantidos(resultado.mantidos) }, { headers: SEM_CACHE });
   });
 }
 
 /** `POST /config/empresas/:id/cargas/zerar/previa`: corpo `{ cadastros }`; devolve a `ZeragemPlataformaResposta` da API (só leitura, sem chave nem frase). */
 export async function tratarPreviaZerar(req: Request, id: string): Promise<Response> {
-  if (!idValido(id)) return falha('Não encontrado.', 404);
-  if (req.method !== 'POST') return falha('Método não permitido.', 405);
+  const barrada = guardaPost(req, id);
+  if (barrada) return barrada;
   return comSessao(req, async (token) => {
     const bruto = (await req.json().catch(() => null)) as { cadastros?: unknown } | null;
     const entrada = PreviaZerarPlataformaEntrada.safeParse({ cadastros: bruto?.cadastros });
