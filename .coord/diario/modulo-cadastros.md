@@ -27,3 +27,4 @@
 2026-11-24 — T-0088 — lote C: lista única de clientes e produtos no PAGINAS (parecer do corretor), edição de preços e filiais
 2026-11-24 — T-0085 — lote A: correções do parecer do corretor RD-1530 a RD-1545
 2026-11-24 — T-0088 — lote C: limite de crédito fora do corpo do faturista (criação e PATCH); merge do main preservando prazos (#538)
+2026-11-24 — T-0085 — 365/24 só na entrada; entidade/evento @1 (condição e cliente) aceitam legado 999 dias/36 parcelas
