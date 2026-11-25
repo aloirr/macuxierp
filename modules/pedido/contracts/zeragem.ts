@@ -32,6 +32,7 @@ export const TABELAS_ZERAR_PEDIDOS = [
 export const MOTIVOS_MANTER_PEDIDO = ['nota', 'titulo'] as const;
 
 export const ApagadoZerarPedidos = z.object({ tabela: z.enum(TABELAS_ZERAR_PEDIDOS), quantidade: Contagem });
+export type ApagadoZerarPedidos = z.infer<typeof ApagadoZerarPedidos>;
 
 export const ZeragemPedidosResposta = z.object({
   empresa_id: z.string().uuid(),

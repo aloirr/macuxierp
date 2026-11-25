@@ -1,26 +1,17 @@
 /**
- * Porta `aposZerarPedidos` do Zerar pedidos (RN-CAD-10, T-0093 critério 3; desenho: docs/desenho/T-0093.md).
- * Chamada pelo plugin `zeragem.ts` DEPOIS do `pedido.portal_zerar` e na MESMA transação (`comPlataforma`), com os ids apagados:
- * 1. libera o reenvio do FDV (o `pedido_recebido` deixa de bloquear; retornos pendentes saem da fila);
- * 2. descarta o `a_faturar` desses pedidos (`cancelado`).
- * O pedido não toca schema alheio: só chama as duas funções de lista fechada dos donos (molde de `portal_inativar_espelho`).
+ * Porta `aposZerarPedidos` (RN-CAD-10, T-0093 critério 3; docs/desenho/T-0093.md).
+ * Mesma tx do `portal_zerar`: erro sobe e desfaz o zerar.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
-import { ApagadoZerarPedidos } from '../contracts';
-
-export type ApagadoApos = z.infer<typeof ApagadoZerarPedidos>;
+import type { ApagadoZerarPedidos } from '../contracts';
 
 export interface AposZerarPedidos {
-  /** Devolve só contagens por tabela; qualquer erro sobe e desfaz a transação inteira do zerar. */
-  aposZerarPedidos(tx: Transacao, tenant: string, pedidoIds: readonly string[]): Promise<ApagadoApos[]>;
+  /** Devolve só contagens por tabela. */
+  aposZerarPedidos(tx: Transacao, tenant: string, pedidoIds: readonly string[]): Promise<ApagadoZerarPedidos[]>;
 }
 
-/**
- * PONTO ÚNICO DE LIGAÇÃO com o SQL (migração 0065 do banco-dados). Nomes do desenho (§2); ajuste só aqui se a 0065 diferir.
- * `liberarReenvio` (modulo-integracao-fdv) devolve `{pedidos_liberados, retornos_descartados}`;
- * `descartarAFaturar` (modulo-faturamento) devolve `{a_faturar_cancelados}`.
- */
+/** PONTO ÚNICO DE LIGAÇÃO com o SQL (migração 0065). */
 export const FUNCOES_APOS_ZERAR_PEDIDOS = Object.freeze({
   liberarReenvio: 'integracao_fdv.portal_liberar_reenvio_pedidos',
   descartarAFaturar: 'faturamento.portal_descartar_a_faturar',
@@ -35,7 +26,7 @@ async function chamar(tx: Transacao, funcao: string, tenant: string, ids: readon
   return l.r;
 }
 
-/** Implementação sobre as funções SQL; a `apps/api` a usa na composição quando a 0065 estiver no main. */
+/** Implementação sobre as funções SQL da 0065. */
 export function criarAposZerarPedidosSql(): AposZerarPedidos {
   return {
     async aposZerarPedidos(tx, tenant, ids) {

@@ -18,7 +18,7 @@ export interface UsosFaturamentoPedidos {
 
 export interface DependenciasZerarPedidos {
   faturamento: UsosFaturamentoPedidos;
-  /** Libera o reenvio do FDV e descarta o a_faturar, na mesma tx do zerar (T-0093, critério 3; docs/desenho/T-0093.md). */
+  /** Porta pós-zerar (T-0093, critério 3). */
   aposZerar: AposZerarPedidos;
 }
 
@@ -88,7 +88,6 @@ export function criarPluginPlataformaPedidoZerar(deps: DependenciasZerarPedidos)
         ]);
         if (!l) throw new Error('portal_zerar sem retorno');
         const efeito = ResultadoZerar.parse(l.r);
-        // Depois do portal_zerar e na MESMA tx: se a porta falhar, o zerar inteiro é desfeito (T-0093, critério 3).
         const extras = await deps.aposZerar.aposZerarPedidos(c.tx, tenant, plano.apagar);
         return { corpo: resposta(tenant, plano, false, { apagados: [...efeito.apagados, ...extras] }) };
       },

@@ -30,5 +30,5 @@ export const dependenciasDeProducao = (cadastros: ConsultaCadastrosPedido, extra
   notas: extras.notas ?? semNotaEmAberto,
   ...(extras.log ? { log: extras.log } : {}),
 });
-export { criarAposZerarPedidosSql, FUNCOES_APOS_ZERAR_PEDIDOS, type AposZerarPedidos } from './apos-zerar';
+export { criarAposZerarPedidosSql, type AposZerarPedidos } from './apos-zerar';
 export { criarPluginPlataformaPedidoZerar, type DependenciasZerarPedidos, type UsosFaturamentoPedidos } from './zeragem';

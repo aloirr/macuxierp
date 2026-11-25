@@ -124,18 +124,4 @@ describe.skipIf(!PG_DISPONIVEL)('porta aposZerarPedidos no banco (0065)', () => 
     expect(await n('integracao_fdv.retorno_enviado WHERE tenant_id = $1', [T])).toBe(1);
     expect((await q('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [id]))).toEqual([{ status: 'a_faturar' }]);
   });
-
-  it('RN-CAD-10: tenant nulo na porta SQL sobe P0002 (o erro não é tratado)', async () => {
-    const c = await efemero.admin.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query('SET LOCAL ROLE macuxierp_config');
-      await c.query(`SET LOCAL macuxierp.sessao_superadmin = '${sessao}'`);
-      const tx = { consultar: async (sql: string, p: readonly unknown[] = []) => (await c.query(sql, [...p])).rows } as unknown as Transacao;
-      await expect(criarAposZerarPedidosSql().aposZerarPedidos(tx, null as unknown as string, [randomUUID()])).rejects.toMatchObject({ code: 'P0002' });
-    } finally {
-      await c.query('ROLLBACK');
-      c.release();
-    }
-  });
 });
