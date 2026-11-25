@@ -1,4 +1,5 @@
 'use client';
+import type { FichaReceitaMascarada } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
@@ -7,6 +8,7 @@ import type { Resultado } from '@/lib/config/executar';
 import { validarMotivo } from '@/lib/config/formularios';
 import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nomeModulo, pendenciasDe, type Dependencia } from '@/lib/config/modulos';
 import { alterarModulosAcao, criarAdminAcao, mostrarEmailAcao, redefinirSenhaAcao, situacaoAcao } from '../acoes';
+import { FichaReceita } from './ficha-receita';
 
 export interface ChavesPainel {
   admin: string;
@@ -19,13 +21,14 @@ interface Comum {
   aoErro: (tem: boolean) => void;
 }
 
-export function PainelEmpresa({ empresa, deps, chaves }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel }) {
+export function PainelEmpresa({ empresa, deps, chaves, ficha = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaMascarada | null }) {
   const [temErro, setTemErro] = useState(false);
   const [mudou, setMudou] = useState(false);
   return (
     <>
       <RegiaoErros temErro={temErro} />
       <BlocoDados empresa={empresa} />
+      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
       <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
       <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
       <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />

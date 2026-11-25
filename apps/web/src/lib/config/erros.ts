@@ -27,7 +27,22 @@ export class ErroPlataforma extends Error {
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita';
+
+/**
+ * Falhas tratadas da ficha pela Receita (T-0101, ADR 0012 emenda da ficha): chave = `detalhes.codigo` do erro da API ou o
+ * `motivo` do `ResultadoAtualizarReceita`. A ficha anterior fica como estava. Texto fixo: nunca o corpo da fonte.
+ */
+export const MENSAGENS_RECEITA: Readonly<Record<string, string>> = Object.freeze({
+  fonte_indisponivel: 'A Receita não respondeu agora. A ficha continua como estava; tente de novo em alguns minutos.',
+  nao_encontrado: 'A Receita não encontrou este CNPJ. Confira o CNPJ da empresa.',
+  cnpj_nao_encontrado: 'A Receita não encontrou este CNPJ. Confira o CNPJ da empresa.',
+  cnpj_invalido: 'O CNPJ da empresa é inválido. Corrija o cadastro da empresa antes de consultar.',
+  cnpj_divergente: 'A Receita respondeu com outro CNPJ. Nada foi gravado.',
+  resposta_invalida: 'A Receita devolveu dados que não conseguimos ler. Nada foi gravado; tente de novo mais tarde.',
+});
+export const FILIAL_PADRAO_ANTES = 'Cadastre a filial padrão antes.';
+const FICHA_INVALIDA = 'Os dados da Receita não passaram na conferência. Nada foi gravado.';
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
 export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
@@ -54,6 +69,14 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   if (e instanceof ConfigMuitasTentativas) return { ...base, texto: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.' };
   if (e instanceof ConfigSemPermissao) return { ...base, texto: SEM_PERMISSAO };
   if (e instanceof ErroPlataforma) {
+    if (ctx === 'receita') {
+      const definitiva = ehRespostaDefinitiva(e.status);
+      const porCodigo = e.detalhes.codigo ? MENSAGENS_RECEITA[e.detalhes.codigo] : undefined;
+      if (porCodigo) return { ...base, texto: porCodigo, chaveNova: definitiva };
+      if (e.status === 409) return { ...base, texto: FILIAL_PADRAO_ANTES, chaveNova: definitiva };
+      if (e.status === 422 || e.status === 400) return { ...base, texto: FICHA_INVALIDA, chaveNova: definitiva };
+      if (e.status === 404) return { ...base, texto: 'Empresa não encontrada. Volte à lista.' };
+    }
     if (e.status === 409) {
       if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { codigo: 'Já existe uma empresa com esse código. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'criar_admin') return { ...base, texto: ADMIN_JA_EXISTE, chaveNova: ehRespostaDefinitiva(e.status) };
