@@ -572,6 +572,21 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
     expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
     expect(JSON.stringify(r.corpo)).toContain('quantidade');
   });
+  it('RN-CAD-17: PATCH que troca a unidade comercial para uma sem fração, com saldo fracionário, é 422 no campo unidade_comercial', async () => {
+    const { t, f } = await cenario();
+    const kg = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P-KG', unidade_comercial: 'KG', unidade_tributavel: 'KG' }) })).corpo.id as string;
+    await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: kg, tipo: 'entrada', quantidade: 1_5000, motivo: 'Compra' } });
+    const r = await t.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'UN' } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
+    expect(JSON.stringify(r.corpo)).toContain('unidade_comercial');
+    expect((await t.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'M' } })).status).toBe(200); // M também aceita fração
+  });
+  it('RN-CAD-17: PATCH da unidade comercial com saldo inteiro passa', async () => {
+    const { t, f } = await cenario();
+    const kg = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P-KG', unidade_comercial: 'KG', unidade_tributavel: 'KG' }) })).corpo.id as string;
+    await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: kg, tipo: 'entrada', quantidade: 2_0000, motivo: 'Compra' } });
+    expect((await t.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'UN' } })).status).toBe(200);
+  });
   it('RN-CAD-07: o faturista não deixa o saldo negativo; o gerente deixa', async () => {
     const { t, f, p } = await cenario();
     const saida = { filial_id: f, produto_id: p, tipo: 'saida', quantidade: 1_0000, motivo: 'Venda' };

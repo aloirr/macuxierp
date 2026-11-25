@@ -6,10 +6,10 @@
  * - O-1: cada superadmin vivo numa linha, com o e-mail mascarado pela `plataforma.mascarar_email` do próprio banco, a
  *   situação (ativo ou desativado) e o último acesso em Manaus ("nunca" sem acesso); o excluído fica de fora; nenhum
  *   e-mail inteiro nem a parte local na saída, no argv nem no ambiente do psql;
- * - O-2: só leitura (BEGIN READ ONLY, nenhuma linha de plataforma.superadmin muda); sem --operador, com --email ou com
- *   --confirmar, recusa sem chamar o banco; sem superadmin, "0 superadmin(s)" e saída 0.
- * Fora daqui até o código existir: a auditoria do --listar (quem pediu e a contagem, sem e-mail), decisão do gerente
- * sobre R-20261124-233002; o caso entra com o código (plano da v0.3.13, O-2).
+ * - O-2: nenhuma linha de plataforma.superadmin muda; a auditoria `plataforma.superadmin.listar` (#638, decisão do
+ *   gerente sobre R-20261124-233002) é 1 registro por chamada, com o --operador e o request_id do operador.sh, sem
+ *   e-mail nem parte de um (o resto do registro fica no apps/api/src/operador-superadmin.db.test.ts, dono); sem
+ *   --operador, com --email ou com --confirmar, recusa sem chamar o banco; sem superadmin, "0 superadmin(s)" e saída 0.
  * Dados fictícios (exemplo.invalid). Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -103,12 +103,33 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh superadmin --listar no PostgreSQL (
     expect(r.psql).not.toMatch(/MACUXIERP_SUPERADMIN_EMAIL=/);
   });
 
-  it('O-2: só leitura: a lista sai de um BEGIN READ ONLY e nenhuma coluna de plataforma.superadmin muda', async () => {
+  it('O-2: nenhuma coluna de plataforma.superadmin muda', async () => {
     const antes = await tabela();
     const r = listar();
     expect(r.status).toBe(0);
-    expect(r.sql).toMatch(/^BEGIN READ ONLY;$/m);
     expect(await tabela()).toEqual(antes);
+  });
+
+  it('O-2: auditoria do --listar pelo operador.sh: 1 registro novo, com o --operador e o request_id, sem e-mail', async () => {
+    const OPERADOR = 'operador.t0103';
+    const auditados = async () =>
+      (await b.admin.query("SELECT * FROM plataforma.auditoria WHERE acao = 'plataforma.superadmin.listar' ORDER BY created_at, id")).rows;
+    const antes = await auditados();
+    const r = listar(['--operador', OPERADOR]);
+    expect(r.status).toBe(0);
+    const depois = await auditados();
+    expect(depois).toHaveLength(antes.length + 1);
+    const novo = depois.find((d) => !antes.some((a) => a.id === d.id))!;
+    expect(novo.depois.operador).toBe(OPERADOR);
+    expect(novo.request_id).toMatch(/^operador-[0-9a-f-]{36}$/);
+    // Regra 8: nenhum campo do registro com e-mail, parte local, domínio ou máscara da massa.
+    const texto = JSON.stringify(novo).toLowerCase();
+    expect(texto).not.toContain('@');
+    expect(texto).not.toContain('exemplo.invalid');
+    for (const email of [...VIVOS, EXCLUIDO]) {
+      expect(texto).not.toContain(email.split('@')[0]!);
+      expect(texto).not.toContain((await mascarado(email)).toLowerCase());
+    }
   });
 
   it('O-2: sem --operador, com --email ou com --confirmar, recusa sem chamar o banco', () => {

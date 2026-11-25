@@ -318,20 +318,30 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   }));
 
   // ---- Produtos (RF-CAD-04, RN-CAD-04) ----
+  /** RN-CAD-17: trocar a unidade comercial para uma que não aceita fração com saldo fracionário já gravado é 422 no campo `unidade_comercial`. */
+  const violacaoUnidadeComSaldo = async (r: Repositorios, p: Dict, parcial: Dict | null): Promise<Violacao[]> => {
+    if (!parcial || !('unidade_comercial' in parcial) || typeof p.id !== 'string') return [];
+    for (const s of await r.estoque.saldos({ produto_id: p.id })) {
+      const v = violacaoFracao('unidade_comercial', p.unidade_comercial as string, s.quantidade);
+      if (v) return [v];
+    }
+    return [];
+  };
   rotas.push(...rotasCrud(deps, {
     tabela: 'produto', caminho: '/produtos', editar: 'cadastros.produto.editar', dados: ProdutoDados, atualizacao: ProdutoAtualizacao,
     entidade: 'produto', auditado: false, repo: (r) => r.produtos, emitir: emitirCom(eventoProduto),
     ocultar: (s, p) => (pode(s.perfil, 'cadastros.produto.editar') ? p : { ...p, custo_centavos: null }), // o custo não vai a vendedor nem a leitura
     async validar(r, p, parcial, agora) {
-      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return [];
+      const fracao = await violacaoUnidadeComSaldo(r, p, parcial);
+      if (parcial && !('ncm' in parcial) && !('cest' in parcial)) return fracao;
       const ncm = p.ncm as string;
       const cest = (p.cest as string | null) ?? null;
       const data = dataIso(agora);
-      return validarFiscalProduto({
+      return [...fracao, ...validarFiscalProduto({
         ncm, cest, ncmVigente: await r.oficiais.ncmVigente(ncm, data), ncmExigeCest: await r.oficiais.ncmExigeCest(ncm, data),
         cestVigente: cest === null ? true : await r.oficiais.cestVigente(cest, data),
         cestCombinaComNcm: cest === null ? true : await r.oficiais.cestCombinaComNcm(cest, ncm, data),
-      });
+      })];
     },
   }));
   rotas.push(...rotasFilho(deps, {
