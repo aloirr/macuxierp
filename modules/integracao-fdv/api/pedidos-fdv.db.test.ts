@@ -334,6 +334,31 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect(JSON.stringify(aviso)).not.toMatch(/15000|1\.5/);
     });
 
+    it('T-0085: todos os itens fracionários: o retorno sai com status e nota, sem itens_faturados, e o Log registra a sequência de cada item', async () => {
+      const uuid = await pedidoEntregue(A);
+      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
+      const produtoErp = U();
+      await espelharProduto('P-FRAC2', produtoErp);
+      await aplicar(
+        A,
+        evento(A, 'pedido.pedido.faturado@1', uuid, {
+          status: 'faturado',
+          ambiente: 'producao',
+          nota: NOTA,
+          itens_faturados: [
+            { sequencia: 1, produto_id: produtoErp, quantidade: 15_000, valor_centavos: 1000 },
+            { sequencia: 2, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 2000 },
+          ],
+        }),
+      );
+      const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid]);
+      expect(f!.corpo.status).toBe('faturado_total');
+      expect(f!.corpo.nota).toMatchObject({ numero: String(NOTA.numero) });
+      expect(f!.corpo.itens_faturados ?? null).toBeNull();
+      const aviso = d.logs.find((l) => JSON.stringify(l).includes('quantidade_fracionaria') && JSON.stringify(l).includes('[1,2]'));
+      expect(aviso).toBeTruthy();
+    });
+
     it('RN-FAT-04/M7: faturado@1 de homologação com conta_como_real true (nota simulada) grava o retorno com número e série', async () => {
       const produtoErp = U();
       await espelharProduto('P-SIM', produtoErp);
@@ -386,7 +411,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       await banco.comTenant(T, (tx) => comRelogio(tarde).tratar(faturado, tx));
       const [r] = await adm(`SELECT estado, tentativas, itens_descartados, corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [T, uuid]);
       expect(r).toMatchObject({ estado: 'falhou', tentativas: 0, itens_descartados: [{ produto_id: produtoErp }] });
-      expect(r!.corpo.itens_faturados).toEqual([]);
+      expect(r!.corpo.itens_faturados ?? null).toBeNull();
       expect(JSON.stringify(r!.itens_descartados)).not.toMatch(/valor|quantidade/); // o descarte leva só o UUID
       expect(dd.alertas).toEqual([`${T}:retorno_sem_chave_produto:${JSON.stringify({ pedido_uuid: uuid })}`]);
       expect((await adm('SELECT proximo_retorno_em FROM integracao_fdv.sinal WHERE tenant_id = $1', [T]))[0]!.proximo_retorno_em).toBeNull();

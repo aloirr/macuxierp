@@ -88,7 +88,10 @@ export const RetornoErp = z.object({
     })
     .optional(),
   itens_faturados: z
+    // `RetornoErp.itens_faturados` do Hub (OpenAPI real): `anyOf array minItems 1 | null`, não obrigatório. `[]` é inválido.
     .array(z.object({ sequencia: z.number().int().min(1), produto_external_id: ChaveHubLida, quantidade: z.number(), valor_cents: CentavosLido }))
+    .min(1)
+    .nullable()
     .optional(),
   ocorrido_em: z.string().datetime(),
 });

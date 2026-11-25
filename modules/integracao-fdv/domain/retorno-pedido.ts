@@ -147,25 +147,22 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
       const notaHub = { numero: String(p.nota.numero), serie: String(p.nota.serie), chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
       if (faltam.length > 0) {
         const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
-        return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub, itens_faturados: [] } } : { acao: 'aguardar_chave', produtos: faltam };
+        return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub } } : { acao: 'aguardar_chave', produtos: faltam };
       }
       // T-0085: o Hub só aceita quantidade inteira. Premissa: `itens_faturados` é opcional e sem mínimo no contrato, então o retorno
       // sai sem o item fracionário (o status e a nota seguem) e a decisão devolve as sequências recusadas para o Log.
       const fracionarios = p.itens_faturados.filter((i) => !qtd4InteiraParaHub(i.quantidade)).map((i) => i.sequencia);
+      const inteiros = p.itens_faturados.filter((i) => qtd4InteiraParaHub(i.quantidade)).map((i) => ({
+        sequencia: i.sequencia,
+        produto_external_id: chavesProduto.get(i.produto_id)!, // chave do Hub, nunca o UUID (ADR 0010, item 1)
+        quantidade: i.quantidade / 10_000,
+        valor_cents: i.valor_centavos,
+      }));
+      // O Hub exige `itens_faturados` com minItems 1 ou null/ausente: lista vazia nunca vai; o campo é omitido.
       return {
         acao: 'enviar',
         ...(fracionarios.length > 0 ? { itens_fracionarios: fracionarios } : {}),
-        corpo: {
-          ...comum,
-          status: novo,
-          nota: notaHub,
-          itens_faturados: p.itens_faturados.filter((i) => qtd4InteiraParaHub(i.quantidade)).map((i) => ({
-            sequencia: i.sequencia,
-            produto_external_id: chavesProduto.get(i.produto_id)!, // chave do Hub, nunca o UUID (ADR 0010, item 1)
-            quantidade: i.quantidade / 10_000,
-            valor_cents: i.valor_centavos,
-          })),
-        },
+        corpo: { ...comum, status: novo, nota: notaHub, ...(inteiros.length > 0 ? { itens_faturados: inteiros } : {}) },
       };
     }
     default:
