@@ -105,7 +105,7 @@ const SEM_CONEXAO = 'Sem conexão com o servidor. Tente de novo.';
 type CorpoPortal = Record<string, unknown> & { ok?: boolean; erro?: string; redirecionar?: string; chaveNova?: boolean; codigo?: string; bloqueios?: string[] };
 const falhaDe = (corpo: CorpoPortal | null): Retorno<never> => ({ ok: false, erro: corpo?.erro ?? FALHA_CARGA, ...(corpo?.redirecionar ? { redirecionar: corpo.redirecionar } : {}), chaveNova: corpo?.chaveNova === true, ...(typeof corpo?.codigo === 'string' ? { codigo: corpo.codigo } : {}), ...(Array.isArray(corpo?.bloqueios) ? { bloqueios: corpo.bloqueios.filter((b): b is string => typeof b === 'string') } : {}) });
 
-async function chamarPortal<T>(url: string, init: RequestInit, enviar: Enviar, extrair: (corpo: Record<string, unknown>) => T | null): Promise<Retorno<T>> {
+export async function chamarPortal<T>(url: string, init: RequestInit, enviar: Enviar, extrair: (corpo: Record<string, unknown>) => T | null): Promise<Retorno<T>> {
   try {
     const r = await enviar(url, init);
     const corpo = (await r.json().catch(() => null)) as CorpoPortal | null;

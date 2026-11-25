@@ -14,6 +14,8 @@ import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { maisRecente, textoAtualizado, textoReprocessarOk, vistaMonitor } from '@/lib/config/operacao-fdv';
 import { LogCadastro } from './log-cadastro';
 import { ZerarCadastro } from './zerar-cadastro';
+import { ZerarPedidos } from './zerar-pedidos';
+import { textoPedidosZerados } from '@/lib/config/pedidos-zerar';
 
 type Pedido = { tipo: 'ligar' | 'desligar' | 'retomar'; linha: LinhaCadastroFdv };
 type Mensagem = { ok: boolean; texto: string } | null;
@@ -37,6 +39,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
   const [lido, setLido] = useState<MonitorConectorFdv | null>(null);
   const [log, setLog] = useState<LinhaCadastroFdv | null>(null);
   const [zerar, setZerar] = useState<LinhaCadastroFdv | null>(null);
+  const [zerarPedidos, setZerarPedidos] = useState(false);
   const monitor = maisRecente(monitorInicial, lido);
   const chaves = useRef(new ChavesIdempotencia());
   const linhas = linhasCadastros(dados, fuso);
@@ -165,6 +168,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
         <div className="tabela-rolavel com-sinal-rolagem tabela-fdv legenda-so-leitor">
           <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda="Envio por cadastro" />
         </div>
+        <div className="barra-acoes"><button type="button" className="mx-botao-secundario" disabled={bloqueado} onClick={() => setZerarPedidos(true)}>Zerar pedidos não faturados</button></div>
       </section>
       </div>
       {log && <LogCadastro empresaId={empresaId} entidade={log.entidade} rotulo={log.rotulo} fuso={fuso} aoFechar={() => setLog(null)} />}
@@ -177,6 +181,17 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           aoZerar={(mantidos) => {
             setZerar(null);
             setMensagem({ ok: true, texto: `${textoZerado(mantidos)}` });
+            router.refresh();
+          }}
+        />
+      )}
+      {zerarPedidos && (
+        <ZerarPedidos
+          empresaId={empresaId}
+          aoFechar={() => setZerarPedidos(false)}
+          aoZerar={(r) => {
+            setZerarPedidos(false);
+            setMensagem({ ok: true, texto: textoPedidosZerados(r) });
             router.refresh();
           }}
         />

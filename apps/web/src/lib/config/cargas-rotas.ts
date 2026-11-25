@@ -16,13 +16,13 @@ import { tokenConfig } from './sessao';
 /** Folga do multipart (fronteiras e cabeçalhos das partes) acima do limite do arquivo. */
 export const FOLGA_MULTIPART = 64 * 1024;
 const LIMITE = MAX_BYTES_ARQUIVO_CARGA_PORTAL + FOLGA_MULTIPART;
-const SEM_CACHE = { 'cache-control': 'no-store' } as const;
+export const SEM_CACHE = { 'cache-control': 'no-store' } as const;
 
 export type AcaoCarga = 'validar' | 'gravar' | 'erros' | 'modelo';
 export const ACOES_CARGA: readonly AcaoCarga[] = ['validar', 'gravar', 'erros', 'modelo'];
 const CADASTROS = CADASTROS_CARGA_PORTAL.map((c) => c.cadastro) as readonly string[];
 
-const falha = (erro: string, status: number, extra: Record<string, unknown> = {}) => Response.json({ ok: false, erro, ...extra }, { status, headers: SEM_CACHE });
+export const falha = (erro: string, status: number, extra: Record<string, unknown> = {}) => Response.json({ ok: false, erro, ...extra }, { status, headers: SEM_CACHE });
 
 /** Mesma regra do portal: atrás do túnel vale o primeiro `x-forwarded-host`; sem `Origin` (GET, curl) passa, a sessão é SameSite=Strict. */
 function origemPermitida(req: Request): boolean {
@@ -66,7 +66,7 @@ function respostaDeErro(e: unknown): Response {
   return falha(m.texto || FALHA_REDE, status, { chaveNova: m.chaveNova });
 }
 
-async function comSessao(req: Request, fn: (token: string) => Resposta): Promise<Response> {
+export async function comSessao(req: Request, fn: (token: string) => Resposta): Promise<Response> {
   if (!origemPermitida(req)) return falha('Origem não permitida.', 403);
   const token = await tokenConfig();
   if (!token) return falha(SESSAO_EXPIRADA, 401, { redirecionar: ROTA_ENTRAR });
@@ -77,7 +77,7 @@ async function comSessao(req: Request, fn: (token: string) => Resposta): Promise
   }
 }
 
-const idValido = (id: string) => PADRAO_UUID.test(id);
+export const idValido = (id: string) => PADRAO_UUID.test(id);
 
 /** `GET|POST /config/empresas/:id/cargas/:cadastro/:acao`: modelo é GET; validar, gravar e erros são POST com o arquivo. */
 export async function tratarCarga(req: Request, id: string, cadastroBruto: string, acao: string): Promise<Response> {
