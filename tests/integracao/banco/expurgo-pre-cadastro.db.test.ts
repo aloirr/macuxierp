@@ -109,7 +109,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0098 — expurgo do pré-cadastro sem decisã
     const recente = await inserir('recebido', -10 * DIA, -10 * DIA, { quem: 'R', base: agora });
     const linhas: string[] = [];
     const linha = (obj: Record<string, unknown>, msg: string) => void linhas.push(JSON.stringify([obj, msg]));
-    const rotina = criarRotinaExpurgoPreCadastro({ banco: worker, log: { info: linha, warn: linha }, tenantsAtivos: async () => [api.t.R] });
+    const log = { info: linha, warn: linha } as unknown as Parameters<typeof criarRotinaExpurgoPreCadastro>[0]['log'];
+    const rotina = criarRotinaExpurgoPreCadastro({ banco: worker, log, tenantsAtivos: async () => [api.t.R] });
     expect(rotina.id).toBe('integracao-fdv.expurgo-pre-cadastro');
     const resumo = await rotina.executar(new Date(agora));
     expect(resumo).toMatchObject({ tenants: 1, falhas: 0, sem_decisao_revisoes: 1, sem_decisao_pre_cadastros: 1, recusado_revisoes: 0 });
