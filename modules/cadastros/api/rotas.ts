@@ -23,7 +23,7 @@ import { rotaCarga, rotaModeloCarga } from './carga';
 import { desativarCondicoesRecusadas, tratarCartaoSemParcelas } from './formas-recusadas';
 import { comExternalIdAnterior, publicarPronto, republicarItensDaTabela, eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto } from './eventos';
 import { agregadoEstoque } from './uuid';
-import { sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
+import { completarIbge, sugestaoCep, sugestaoCnpj, sugestaoComCache } from './consultas';
 import type { Dependencias, FiltroLista, RepoFilho, RepoSimples, Repositorios, TabelaChave } from './portas';
 import { precosVigentesDe } from './precos-vigentes';
 import { validarCliente, verificarMunicipioEndereco } from './validar-cliente';
@@ -500,7 +500,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
         return {
           corpo: await sugestaoComCache({
             tipo: 'cnpj', chave: cnpj, agora: c.agora, repo: R(c).consultaExterna, fontes: deps.fontes.cnpj,
-            montar: (fonte, bruto) => sugestaoCnpj(fonte, bruto, cnpj),
+            montar: (fonte, bruto) => completarIbge(sugestaoCnpj(fonte, bruto, cnpj), (uf) => R(c).oficiais.municipiosDaUf(uf, dataIso(c.agora))),
           }),
         };
       },

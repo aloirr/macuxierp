@@ -47,6 +47,27 @@ describe('consulta de CNPJ (RF-CAD-02, RN-CAD-05)', () => {
     expect(t.repos.filiais.linhas).toHaveLength(0);
     expect(t.eventos).toHaveLength(0);
   });
+  it('RF-CAD-02: a sugestão leva CNAE secundário, porte, natureza, e-mail, telefone, Simples/MEI e data da situação (BrasilAPI)', async () => {
+    const rica = { ...BRASILAPI_CNPJ, cnaes_secundarios: [{ codigo: 4712100, descricao: 'x' }, { codigo: 4713002, descricao: 'y' }, { codigo: 4713002, descricao: 'y' }], porte: 'DEMAIS', natureza_juridica: 'Sociedade Empresária Limitada', opcao_pelo_simples: true, opcao_pelo_mei: false, data_situacao_cadastral: '2005-11-03' };
+    const t = montar({ cnpj: [fonte('brasilapi', rica)], cep: [] });
+    const r = await t.chamar('GET', `/consultas/cnpj/${CNPJ_A}`);
+    expect(r.corpo.sugestao).toMatchObject({ cnae_secundarios: ['4713002'], porte: 'DEMAIS', natureza_juridica: 'Sociedade Empresária Limitada', email: 'contato@acme.com.br', telefone: '9233334444', opcao_simples: true, opcao_mei: false, data_situacao_cadastral: '2005-11-03' });
+    expect(JSON.stringify(t.repos.consultaExterna.consultas)).not.toMatch(/acme\.com\.br|9233334444/);
+  });
+  it('RF-CAD-02: mapeia os campos novos da fonte de reserva (receita-aberta)', async () => {
+    const reserva = fonte('receita-aberta', { razao_social: 'ACME LTDA', porte: { descricao: 'Micro Empresa' }, natureza_juridica: { descricao: 'Empresário (Individual)' }, simples: { simples: 'Sim', mei: 'Não' }, estabelecimento: { atividade_principal: { id: '4712100' }, atividades_secundarias: [{ id: '4713002' }], email: 'a@b.com', ddd1: '92', telefone1: '33334444', data_situacao_cadastral: '2010-05-01', estado: { sigla: 'AM' }, cidade: { nome: 'Manaus' } } });
+    const t = montar({ cnpj: [fonte('brasilapi', new Error('x')), reserva], cep: [] });
+    const r = await t.chamar('GET', `/consultas/cnpj/${CNPJ_A}`);
+    expect(r.corpo.sugestao).toMatchObject({ cnae_secundarios: ['4713002'], porte: 'Micro Empresa', natureza_juridica: 'Empresário (Individual)', email: 'a@b.com', telefone: '9233334444', opcao_simples: true, opcao_mei: false, data_situacao_cadastral: '2010-05-01' });
+  });
+  it('RN-CAD-03: sem IBGE da fonte, resolve pela tabela oficial; sem achar, fica sem', async () => {
+    const sem = { ...BRASILAPI_CNPJ, codigo_municipio_ibge: undefined };
+    const t = montar({ cnpj: [fonte('brasilapi', sem)], cep: [] });
+    t.repos.oficiais.municipiosPorUf.set('AM', [{ ibge: '1302603', nome: 'Manaus' }]);
+    expect((await t.chamar('GET', `/consultas/cnpj/${CNPJ_A}`)).corpo.sugestao.endereco.municipio_ibge).toBe('1302603');
+    const t2 = montar({ cnpj: [fonte('brasilapi', sem)], cep: [] });
+    expect((await t2.chamar('GET', `/consultas/cnpj/${CNPJ_A}`)).corpo.sugestao.endereco.municipio_ibge).toBeUndefined();
+  });
   it('a fonte recebe o timeout de 5 s', async () => {
     const principal = fonte('brasilapi', BRASILAPI_CNPJ);
     const t = montar({ cnpj: [principal], cep: [] });

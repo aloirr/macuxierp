@@ -3,6 +3,7 @@
  * gravam cadastro. Fonte principal, uma de reserva e cache de 24 h em `cadastros.consulta_externa`, que não guarda
  * quadro de sócios, contato de pessoa nem CPF (`paraCacheCnpj`).
  */
+import { resolverMunicipio, type MunicipioOficial } from '../domain/carga/municipio-por-nome';
 import { cacheValido, expiraEm, paraCacheCnpj, removerCpf, TIMEOUT_FONTE_MS } from '../domain';
 import { ErroApi } from '@macuxierp/platform-sdk';
 import { SugestaoCep, SugestaoCnpj } from '../contracts';
@@ -19,9 +20,20 @@ const dig = (v: unknown, n: number): string | null => {
   const s = String(v ?? '').replace(/\D/g, '');
   return s.length === n ? s : null;
 };
+const sim = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : typeof v === 'string' ? (/^s(im)?$/i.test(v.trim()) ? true : /^n([aã]o)?$/i.test(v.trim()) ? false : null) : null);
+const data = (v: unknown): string | null => str(v)?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+const lista = (v: unknown, chave: string, principal: string | null): string[] =>
+  Array.isArray(v)
+    ? [...new Set(v.map((i) => dig(obj(i)[chave], 7)).filter((c): c is string => c !== null && c !== principal))]
+    : [];
+const fone = (ddd: unknown, num: unknown): string | null => {
+  const d = String(ddd ?? '').replace(/\D/g, '');
+  const n = String(num ?? '').replace(/\D/g, '');
+  return n === '' ? null : `${d}${n}`;
+};
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 
-/** Do jeito de cada fonte para a sugestão do cadastro. Sem sócios, e-mail ou telefone: o que não está aqui não vaza. */
+/** Do jeito de cada fonte para a sugestão do cadastro. Sem sócios nem CPF; e-mail e telefone só na resposta (o cache os tira, RN-CAD-05). */
 export function sugestaoCnpj(fonte: string, bruto: Record<string, unknown>, cnpj: string): SugestaoCnpj {
   if (fonte === 'receita-aberta') {
     const est = obj(bruto.estabelecimento);
@@ -32,6 +44,14 @@ export function sugestaoCnpj(fonte: string, bruto: Record<string, unknown>, cnpj
       nome_fantasia: nome(est.nome_fantasia),
       situacao_cadastral: str(est.situacao_cadastral),
       cnae_fiscal: str(obj(est.atividade_principal).id),
+      cnae_secundarios: lista(est.atividades_secundarias, 'id', dig(obj(est.atividade_principal).id, 7)),
+      porte: str(obj(bruto.porte).descricao),
+      natureza_juridica: str(obj(bruto.natureza_juridica).descricao),
+      email: str(est.email),
+      telefone: fone(est.ddd1, est.telefone1),
+      opcao_simples: sim(obj(bruto.simples).simples),
+      opcao_mei: sim(obj(bruto.simples).mei),
+      data_situacao_cadastral: data(est.data_situacao_cadastral),
       endereco: {
         logradouro: str([est.tipo_logradouro, est.logradouro].filter(Boolean).join(' ')) ?? undefined,
         numero: str(est.numero) ?? undefined,
@@ -50,6 +70,14 @@ export function sugestaoCnpj(fonte: string, bruto: Record<string, unknown>, cnpj
     nome_fantasia: nome(bruto.nome_fantasia),
     situacao_cadastral: str(bruto.descricao_situacao_cadastral),
     cnae_fiscal: str(bruto.cnae_fiscal)?.toString() ?? (typeof bruto.cnae_fiscal === 'number' ? String(bruto.cnae_fiscal) : null),
+    cnae_secundarios: lista(bruto.cnaes_secundarios, 'codigo', dig(bruto.cnae_fiscal, 7)),
+    porte: str(bruto.porte),
+    natureza_juridica: str(bruto.natureza_juridica),
+    email: str(bruto.email),
+    telefone: str(bruto.ddd_telefone_1)?.replace(/\D/g, '') || null,
+    opcao_simples: sim(bruto.opcao_pelo_simples),
+    opcao_mei: sim(bruto.opcao_pelo_mei),
+    data_situacao_cadastral: data(bruto.data_situacao_cadastral),
     endereco: {
       logradouro: str([bruto.descricao_tipo_de_logradouro, bruto.logradouro].filter(Boolean).join(' ')) ?? undefined,
       numero: str(bruto.numero) ?? undefined,
@@ -92,6 +120,17 @@ export function sugestaoCep(fonte: string, bruto: Record<string, unknown>, cep: 
   });
 }
 
+/** Sem IBGE da fonte, resolve cidade + UF pela tabela oficial vigente (RN-CAD-03); sem achar (ou ambíguo), segue sem. */
+export async function completarIbge(
+  s: SugestaoCnpj,
+  municipiosDaUf: (uf: string) => Promise<readonly MunicipioOficial[]>,
+): Promise<SugestaoCnpj> {
+  const { municipio, municipio_ibge: ibge, uf } = s.endereco;
+  if (ibge || !municipio || !uf) return s;
+  const r = resolverMunicipio(municipio, await municipiosDaUf(uf));
+  return r.ok ? { ...s, endereco: { ...s.endereco, municipio_ibge: r.ibge } } : s;
+}
+
 export const fonteIndisponivel = () =>
   new ErroApi(422, 'FONTE_INDISPONIVEL', 'Não foi possível consultar agora; preencha manualmente ou tente de novo');
 
@@ -121,7 +160,7 @@ export async function sugestaoComCache<T>(p: {
   agora: Date;
   repo: RepoConsultaExterna;
   fontes: readonly FonteExterna<Record<string, unknown>>[];
-  montar(fonte: string, bruto: Record<string, unknown>): T;
+  montar(fonte: string, bruto: Record<string, unknown>): T | Promise<T>;
 }): Promise<ResultadoSugestao<T>> {
   const guardado = await p.repo.obter(p.tipo, p.chave);
   if (guardado && cacheValido(guardado.expira_em, p.agora)) {
@@ -129,7 +168,7 @@ export async function sugestaoComCache<T>(p: {
   }
   const r = await consultarComReserva(p.fontes, p.chave);
   if (!r) throw new ErroApi(404, 'NAO_ENCONTRADO', p.tipo === 'cnpj' ? 'CNPJ não encontrado' : 'CEP não encontrado');
-  const sugestao = p.montar(r.fonte, r.bruto);
+  const sugestao = await p.montar(r.fonte, r.bruto);
   const limpa = (p.tipo === 'cnpj' ? paraCacheCnpj(sugestao) : sugestao) as Record<string, unknown>;
   const gravada: ConsultaGravada = {
     tipo: p.tipo,
@@ -141,5 +180,6 @@ export async function sugestaoComCache<T>(p: {
     external_id: null,
   };
   await p.repo.gravar(gravada);
-  return { sugestao: limpa as T, fonte: r.fonte, consultado_em: p.agora.toISOString() };
+  // A resposta leva e-mail e telefone (a ficha da empresa os usa); só o cache os descarta.
+  return { sugestao, fonte: r.fonte, consultado_em: p.agora.toISOString() };
 }

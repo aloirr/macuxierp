@@ -319,6 +319,18 @@ export const SugestaoCnpj = z.object({
   situacao_cadastral: z.string().nullable(),
   cnae_fiscal: z.string().nullable(),
   endereco: Endereco.partial().extend({ municipio: z.string().nullable().default(null) }),
+  // Ampliação aditiva (T-0101, ADR 0012 emendada): todos opcionais e de leitura tolerante (resposta antiga continua válida).
+  /** Códigos de CNAE secundários (7 dígitos), sem repetir o principal. */
+  cnae_secundarios: z.array(z.string()).nullish(),
+  porte: z.string().nullish(),
+  natureza_juridica: z.string().nullish(),
+  /** Contato da empresa (pode ser dado pessoal em MEI): só na resposta da consulta, nunca no cache nem em log. */
+  email: z.string().nullish(),
+  telefone: z.string().nullish(),
+  opcao_simples: z.boolean().nullish(),
+  opcao_mei: z.boolean().nullish(),
+  /** AAAA-MM-DD. */
+  data_situacao_cadastral: z.string().nullish(),
 });
 export type SugestaoCnpj = z.infer<typeof SugestaoCnpj>;
 export const SugestaoCep = z.object({
