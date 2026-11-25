@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { MenuAcoes, acaoTeclaGatilho, acaoTeclaMenu, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
+import { MenuAcoes, acaoTeclaGatilho, acaoTeclaMenu, itemDesligado, motivoDoItem, ordenarAcoes, posicaoMenu, proximoItemMenu, type AcaoMenu, type MenuAcoesProps } from './MenuAcoes.js';
 import * as pacote from './index.js';
 
 const nada = () => {};
@@ -172,5 +172,41 @@ describe('MenuAcoes (T-0099): tecla no gatilho', () => {
     expect(acaoTeclaGatilho('Escape', false)).toBeNull();
     expect(acaoTeclaGatilho('Tab', false)).toBeNull();
     expect(acaoTeclaGatilho('a', true)).toBeNull();
+  });
+});
+
+describe('MenuAcoes (v0.3.15): motivo do item desligado', () => {
+  const motivo = 'Já faturado';
+  const h = aberto({ acoes: [a('log'), a('editar', { desabilitado: motivo }), a('zerar', { perigo: true, desabilitado: 'Sem permissão' })] });
+  it('HTML estático: motivo visível, aria-disabled e aria-describedby apontando para ele', () => {
+    const ref = /aria-describedby="([^"]+)"/.exec(h)?.[1];
+    expect(ref).toBeTruthy();
+    expect(h).toMatch(new RegExp(`<span id="${ref}"[^>]*>${motivo}</span>`));
+    expect(h.match(/aria-disabled="true"/g)?.length).toBe(2);
+    expect(h).toContain('EDITAR');
+    expect(aberto({ acoes: [a('x', { desabilitado: true })] })).not.toContain('aria-describedby');
+  });
+  it('perigo desligado com motivo fica neutro (textoSecundario), sem vermelho e sem opacidade', () => {
+    const botao = /<button[^>]*>ZERAR/.exec(h)?.[0] ?? '';
+    expect(botao).toContain('color:var(--mx-cor-texto-secundario)');
+    expect(botao).not.toContain('opacity');
+    expect(botao).not.toContain('erro-texto');
+  });
+  it('navegação: com motivo é focável; desligado sem motivo é pulado', () => {
+    const acoes = [a('a'), a('b', { desabilitado: motivo }), a('c', { desabilitado: true }), a('d')];
+    const pulados = acoes.map((x) => itemDesligado(x) && !motivoDoItem(x));
+    expect(pulados).toEqual([false, false, true, false]);
+    expect(proximoItemMenu(pulados, 0, 'ArrowDown')).toBe(1);
+    expect(proximoItemMenu(pulados, 1, 'ArrowDown')).toBe(3);
+    expect(proximoItemMenu(pulados, 3, 'ArrowUp')).toBe(1);
+  });
+  it('helpers: string vazia e só espaços não são motivo, mas desligam o item', () => {
+    expect(motivoDoItem({ desabilitado: '' })).toBeUndefined();
+    expect(motivoDoItem({ desabilitado: '  ' })).toBeUndefined();
+    expect(itemDesligado({ desabilitado: '' })).toBe(true);
+    expect(itemDesligado({ desabilitado: '  ' })).toBe(true);
+  });
+  it('Enter no item desligado: vira clique em <button> sem disabled, e o clique não aciona nem fecha', () => {
+    expect(h).not.toMatch(/<button[^>]*role="menuitem"[^>]*\sdisabled/);
   });
 });
