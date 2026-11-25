@@ -35,6 +35,17 @@ export interface MenuAcoesProps {
 
 export type TeclaMenu = 'ArrowDown' | 'ArrowUp' | 'Home' | 'End';
 
+export type AcaoTeclaGatilho = 'abrir-primeiro' | 'abrir-ultimo' | 'entrar-primeiro' | 'entrar-ultimo' | 'fechar' | null;
+
+/** Tecla no gatilho "Ações" → o que fazer (T-0099). Enter, Espaço e ↓ vão ao primeiro item; ↑ ao último; Esc fecha. */
+export function acaoTeclaGatilho(tecla: string, aberto: boolean): AcaoTeclaGatilho {
+  if (tecla === 'Escape') return aberto ? 'fechar' : null;
+  if (tecla === 'ArrowUp') return aberto ? 'entrar-ultimo' : 'abrir-ultimo';
+  if (tecla === 'ArrowDown') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
+  if (tecla === 'Enter' || tecla === ' ' || tecla === 'Spacebar') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
+  return null;
+}
+
 /** Itens visíveis na ordem final: normais, depois (após um separador) os de perigo. */
 export function ordenarAcoes(acoes: AcaoMenu[]): { normais: AcaoMenu[]; perigos: AcaoMenu[] } {
   const visiveis = acoes.filter((a) => !a.oculto);
@@ -93,7 +104,7 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const gatilho = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const viaTeclado = useRef(false);
+  const focoInicial = useRef<'primeiro' | 'ultimo' | null>(null);
 
   const { normais, perigos } = ordenarAcoes(acoes);
   const lista = [...normais, ...perigos];
@@ -107,14 +118,19 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
 
   const itensDom = () => Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
 
+  const irParaItem = (qual: 'primeiro' | 'ultimo') => {
+    const i = proximoItemMenu(desabilitados, -1, qual === 'primeiro' ? 'Home' : 'End');
+    if (i >= 0) itensDom()[i]?.focus();
+  };
+
   useLayoutEffect(() => {
     if (!aberto || !gatilho.current || !menu.current) return;
     const g = gatilho.current.getBoundingClientRect();
     const m = menu.current.getBoundingClientRect();
     setPos(posicaoMenu(g, { largura: m.width, altura: m.height }, { largura: window.innerWidth, altura: window.innerHeight }));
-    if (viaTeclado.current) {
-      const i = proximoItemMenu(desabilitados, -1, 'ArrowDown');
-      if (i >= 0) itensDom()[i]?.focus();
+    if (focoInicial.current) {
+      irParaItem(focoInicial.current);
+      focoInicial.current = null;
     }
     // Só ao abrir: a posição e o foco inicial não se recalculam a cada render.
   }, [aberto]);
@@ -137,11 +153,24 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
   if (lista.length === 0 && !principalVisivel) return null;
 
   const tecladoGatilho = (e: TecladoReact) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      viaTeclado.current = true;
+    const acao = acaoTeclaGatilho(e.key, aberto);
+    if (!acao) return;
+    e.preventDefault();
+    if (acao === 'fechar') {
+      e.stopPropagation();
+      fechar(true);
+    } else if (acao === 'entrar-primeiro' || acao === 'entrar-ultimo') {
+      irParaItem(acao === 'entrar-primeiro' ? 'primeiro' : 'ultimo');
+    } else {
+      // O foco vai ao item só depois de o menu montado e posicionado (layout effect).
+      focoInicial.current = acao === 'abrir-primeiro' ? 'primeiro' : 'ultimo';
       setAberto(true);
     }
+  };
+
+  // Espaço dispara o clique no keyup: evita que ele feche o menu recém-aberto.
+  const soltarGatilho = (e: TecladoReact) => {
+    if (e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
   };
 
   const tecladoMenu = (e: TecladoReact) => {
@@ -206,10 +235,11 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
             aria-controls={menuId}
             aria-label={rotuloLinha ? `Ações de ${rotuloLinha}` : undefined}
             onClick={() => {
-              viaTeclado.current = false;
+              focoInicial.current = null;
               setAberto(!aberto);
             }}
             onKeyDown={tecladoGatilho}
+            onKeyUp={soltarGatilho}
             style={estiloBotao}
           >
             Ações

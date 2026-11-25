@@ -3,7 +3,7 @@ import { AuditoriaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platfor
 import { describe, expect, it } from 'vitest';
 import { TRANSICOES } from '../domain';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
-import { CPF_DO_CLIENTE, IDS, MOTIVO_LIVRE, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, pedidoManual, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros } from './fixtures-teste';
+import { CPF_DO_CLIENTE, IDS, MOTIVO_LIVRE, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, pedidoManual, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros, unidadeDoProduto } from './fixtures-teste';
 import { idFaturadoDaNota } from './eventos';
 import { criarPluginPedido } from './index';
 import { criarRecebedorFdv } from './recebedor';
@@ -215,6 +215,24 @@ describe('lançamento manual (RF-PED-02, RN-PED-03)', () => {
     expect(t.armazem.pedidos).toHaveLength(0);
     expect(t.eventos).toHaveLength(0);
   });
+  it('RN-CAD-17: fração em produto de unidade UN é 422 RN-CAD-17 em itens[0].quantidade, e nada é gravado; em KG a fração passa', async () => {
+    const t = montar();
+    const r = await lancar(t, pedidoManual({ itens: [{ ...unidades(1), quantidade: 15_000 }] }));
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17', campos: { 'itens[0].quantidade': expect.any(String) } } });
+    expect(t.armazem.pedidos).toHaveLength(0);
+    expect(t.eventos).toHaveLength(0);
+    unidadeDoProduto(t.cadastros, IDS.produto1, 'KG');
+    const ok = await lancar(t, pedidoManual({ itens: [{ ...unidades(1), quantidade: 15_000 }] }));
+    expect(ok.status).toBe(201);
+    expect(ok.corpo.total_centavos).toBe(1500); // valorItem do SDK: 1,5 × R$ 10,00
+  });
+  it('RN-CAD-17: a edição também recusa a fração fora de KG e M (422) e mantém o pedido como estava', async () => {
+    const t = montar();
+    const p = await emAnalise(t);
+    const r = await t.chamar('PUT', `/pedidos/${p.id}`, { sessao: adm, corpo: pedidoManual({ itens: [{ ...unidades(1), quantidade: 15_000 }] }), cabecalhos: { 'if-match': p.updated_at } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17', campos: { 'itens[0].quantidade': expect.any(String) } } });
+    expect(t.armazem.pedidos[0]).toMatchObject({ status: 'em_analise', condicao_pagamento_id: null });
+  });
   it('cliente, filial, condição, produto e endereço inexistentes são 400 pelo campo', async () => {
     const t = montar();
     const r = await lancar(t, pedidoManual({ cliente_id: IDS.desconhecido, filial_id: IDS.desconhecido, condicao_pagamento_id: IDS.desconhecido, itens: [{ ...unidades(1), produto_id: IDS.desconhecido }] }));
@@ -238,6 +256,7 @@ describe('lançamento manual (RF-PED-02, RN-PED-03)', () => {
     const t = montar();
     expect((await lancar(t, pedidoManual({ itens: [unidades(100)] }))).corpo.status).toBe('aprovado'); // 100.000 = limite
     const t2 = montar({ saldo: 100_000_000 });
+    unidadeDoProduto(t2.cadastros, IDS.produto1, 'KG'); // 100,001 só é possível em unidade fracionável (RN-CAD-17)
     const r = await lancar(t2, pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 1_000_010, preco_unitario_centavos: 1000, desconto_centavos: 0 }] })); // 100.001
     expect(r.corpo.status).toBe('em_analise');
     expect(r.corpo.pendencias).toEqual([expect.objectContaining({ codigo: 'credito_excedido', esperado: 100_000, informado: 100_001 })]);

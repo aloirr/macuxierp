@@ -70,12 +70,21 @@ export function interpretarCentavos(texto: string): number | null {
   return inteiroSemMilhar(m[1] as string) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
 }
 
+/** Escala do `Qtd4` (D11): quantidade × 10^4, inteira. Fonte única (RD-1831). */
+export const ESCALA_QTD4 = 10_000;
+
+/** A quantidade em `Qtd4` não tem casas decimais (é múltipla de `ESCALA_QTD4`)? Valor não inteiro ou infinito = `false`. */
+export function qtd4Inteira(q: number): boolean {
+  return Number.isInteger(q) && q % ESCALA_QTD4 === 0;
+}
+
 /** Quantidade × 10^4 → decimal sem zeros à direita: 125000 → "12,5". */
 export function formatarQuantidade(q: number): string {
   const neg = q < 0;
   const abs = BigInt(Math.abs(q));
-  const frac = String(abs % 10_000n).padStart(4, '0').replace(/0+$/, '');
-  return `${neg ? '-' : ''}${milhar(abs / 10_000n)}${frac ? `,${frac}` : ''}`;
+  const escala = BigInt(ESCALA_QTD4);
+  const frac = String(abs % escala).padStart(4, '0').replace(/0+$/, '');
+  return `${neg ? '-' : ''}${milhar(abs / escala)}${frac ? `,${frac}` : ''}`;
 }
 
 /**
@@ -85,7 +94,7 @@ export function formatarQuantidade(q: number): string {
 export function interpretarQuantidade(texto: string): number | null {
   const m = RE_QUANTIDADE.exec(texto.trim());
   if (!m) return null;
-  const v = inteiroSemMilhar(m[2] as string) * 10_000 + Number((m[3] ?? '').padEnd(4, '0'));
+  const v = inteiroSemMilhar(m[2] as string) * ESCALA_QTD4 + Number((m[3] ?? '').padEnd(4, '0'));
   return m[1] ? -v : v;
 }
 

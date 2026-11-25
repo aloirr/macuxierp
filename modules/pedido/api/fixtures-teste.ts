@@ -88,6 +88,11 @@ export const pedidoFdv = (sobre: Partial<PedidoFdvEntrada> = {}): PedidoFdvEntra
   ...sobre,
 });
 
+/** Define a unidade comercial do produto (RN-CAD-17: só KG e M aceitam fração). */
+export function unidadeDoProduto(c: CadastrosMemoria, id: string, unidade: string): void {
+  c.produtosPorId.set(id, { ...c.produtosPorId.get(id)!, unidade_comercial: unidade });
+}
+
 /** Define o prazo médio permitido ao cliente (RN-CAD-16); `null` = sem limite. */
 export function prazoDoCliente(c: CadastrosMemoria, dias: number | null): void {
   c.clientes.set(IDS.cliente, { ...c.clientes.get(IDS.cliente)!, prazo_medio_dias: dias });

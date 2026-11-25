@@ -19,7 +19,7 @@
  * Purga da memória do simulador: purga-simulador.ts (T-0045 §9).
  */
 import { fonteTenantsSql, lerChaveA1 } from '@macuxierp/core/api';
-import { armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
+import { aditivosClienteFdvLigados, armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
 import { inteiroDoAmbiente, poolDoWorker } from './config';
@@ -44,9 +44,13 @@ const recebimento = configurarRecebimentoFdv(process.env);
 const envio = configurarEnvioFdv(process.env);
 conferirRecebimentoFdv(recebimento, faltando);
 if (faltando.length) log.warn({ faltando }, 'laço de agenda desligado');
-const pedidosFdv = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor: resolvedorChaveErpDeProducao() });
+const aditivosCliente = aditivosClienteFdvLigados(process.env);
+const pedidosFdv = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor: resolvedorChaveErpDeProducao(), aditivosCliente });
 const agendas = hub && decifrarCredencial ? montarAgendas({ log, relogio: relogioDoSistema, pedidosFdv, envio }) : [];
-log.info({ recebimento_pedidos_fdv: recebimento, envio_fdv: envio, agendas: agendas.map((a) => a.id) }, 'pedidos do FDV');
+log.info(
+  { recebimento_pedidos_fdv: recebimento, envio_fdv: envio, aditivos_cliente_fdv: aditivosCliente, agendas: agendas.map((a) => a.id) },
+  'pedidos e clientes do FDV',
+);
 
 /** A chave do A1 (ADR 0005): presente e inválida derruba a partida (a mensagem cita só o nome). */
 function chaveA1DoAmbiente(): Buffer | null {

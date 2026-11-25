@@ -22,7 +22,7 @@ export function VistaBandeira({ cartoes, rota, rotaDaPagina }: { cartoes: readon
               ) : (
                 <p className="selos">{c.selo && <Selo selo={c.selo} />}{c.ambiente && <Selo selo={c.ambiente} />}</p>
               )}
-              {c.acao && <div className="bandeira-acoes"><AcoesDetalhe acoes={[c.acao]} rota={rota} rotaDaPagina={rotaDaPagina} compacta /></div>}
+              {c.acao && <div className="bandeira-acoes"><AcoesDetalhe acoes={[c.acao]} rota={rota} rotaDaPagina={rotaDaPagina} compacta menu comPrincipal rotuloLinha={c.nome} /></div>}
             </li>
           ))}
         </ul>

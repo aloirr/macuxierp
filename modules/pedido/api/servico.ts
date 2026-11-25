@@ -15,7 +15,7 @@ import {
 } from '../contracts';
 import {
   avaliarPedidoDetalhado, avaliarPrazo, decidirAprovacao, decidirPrazoRecebimentoFdv, decidirRecebimentoFdv, decisaoAutomatica, foraDoCredito, possiveis, totalItem, totalPedido, TEXTO_PRAZO, travaCliente,
-  validarTransicao, verificarItens, violacao, type Violacao,
+  validarTransicao, verificarFracaoDosItens, verificarItens, violacao, type Violacao,
 } from '../domain';
 import { eventoAprovado, eventoCancelado, eventoRecebido, eventoRecusado, notasAplicadas, type CondicaoDoEvento, type EventoPronto } from './eventos';
 import type { Dependencias, NovoItem, NovoPedido, PedidoGravado, RepoPedidos } from './portas';
@@ -279,6 +279,8 @@ export function criarServico(deps: Dependencias) {
     exigir(violacoesDeReferencia(carregado, { condicao_pagamento_id: entrada.condicao_pagamento_id, itens }));
     const cad = carregado as Cadastros & { cliente: ClienteParaPedido; filial: NonNullable<Cadastros['filial']> };
     exigir(verificarItens(itens));
+    // RN-CAD-17: fração só em KG e M (422 `RN-CAD-17` em `itens[N].quantidade`), no lançamento e na edição, antes de gravar.
+    exigir(verificarFracaoDosItens(itens, (id) => cad.produtos.get(id)?.unidade_comercial));
     // RN-PED-07: o pedido manual não grava com prazo incompleto ou não permitido ao cliente (422, sem pendência de análise).
     exigir(violacoesDePrazo(cad.condicao, cad.cliente));
     const entrega = enderecoDeEntrega(cad.cliente, entrada.endereco_entrega_id);
@@ -494,10 +496,10 @@ export function criarServico(deps: Dependencias) {
       filial: cad.filial,
       condicao: cad.condicao ? { inativo: cad.condicao.inativo } : null,
       condicao_pagamento_id: entrada.condicao_pagamento_id,
-      produtos: [...cad.produtos.values()].map((p) => ({ id: p.id, inativo: p.inativo })),
+      produtos: [...cad.produtos.values()].map((p) => ({ id: p.id, inativo: p.inativo, unidade_comercial: p.unidade_comercial })),
       itens,
     });
-    if (decisao.resultado === 'recusado') return { resultado: 'recusado', codigo: decisao.codigo };
+    if (decisao.resultado === 'recusado') return { resultado: 'recusado', codigo: decisao.codigo, ...(decisao.motivo ? { motivo: decisao.motivo } : {}) };
     const cliente = cad.cliente as ClienteParaPedido;
 
     await repo.travarCliente(travaCliente(fx.tenant_id, entrada.cliente_id));
