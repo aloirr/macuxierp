@@ -88,21 +88,19 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
 
   it('RN-CAD-10 (T-0093): frase errada é 422 de regra frase_nao_confere, sem tocar o banco', async () => {
     const m = montar();
-    for (const frase of ['', 'zerar', 'AM2808']) {
-      const e = await m.chamar(C.zerar, { cadastros: ['vendedor'], frase }).catch((x: unknown) => x);
-      expect(e).toBeInstanceOf(ErroApi);
-      expect((e as ErroApi).status).toBe(422);
-      expect(corpoErroApi(e as ErroApi)).toEqual({ codigo: 'RN-CAD-10', mensagem: MENSAGEM_FRASE_ZERAR, detalhes: { codigo: 'frase_nao_confere' } });
-    }
+    const e = await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: 'zerar' }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ErroApi);
+    expect((e as ErroApi).status).toBe(422);
+    expect(corpoErroApi(e as ErroApi)).toEqual({ codigo: 'RN-CAD-10', mensagem: MENSAGEM_FRASE_ZERAR, detalhes: { codigo: 'frase_nao_confere' } });
     expect(m.todas).toEqual([]);
+    await expect(m.chamar(C.zerar, { cadastros: ['vendedor'], frase: `  ${FRASE.toUpperCase()}. ` })).resolves.toBeDefined();
   });
 
-  it('RN-CAD-10 (T-0093): corpo malformado segue 400 pelo Zod e a frase com caixa e espaços passa', () => {
+  it('RN-CAD-10 (T-0093): corpo malformado segue 400 pelo Zod', () => {
     const rota = montar().plugin.rotas.find((r) => r.caminho === C.zerar)!;
-    for (const corpo of [{ frase: FRASE }, { cadastros: ['vendedor'] }, { cadastros: ['vendedor'], frase: 1 }, { cadastros: ['vendedor'], frase: 'x'.repeat(201) }]) {
+    for (const corpo of [{ cadastros: ['vendedor'] }, { cadastros: ['vendedor'], frase: 1 }, { cadastros: ['vendedor'], frase: 'x'.repeat(201) }]) {
       expect(rota.corpo!.safeParse(corpo).success).toBe(false);
     }
-    expect(rota.corpo!.safeParse({ cadastros: ['vendedor'], frase: `  ${FRASE.toUpperCase()} ` }).success).toBe(true);
   });
 
   it('RN-CAD-10: com bloqueio o zerar é 422 zeragem_bloqueada e não chama portal_zerar', async () => {

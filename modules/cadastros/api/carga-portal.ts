@@ -15,7 +15,7 @@
  */
 import {
   ArquivoRecebido, CadastroCargaPortal, ErroApi, FRASE_SUBSTITUIR_TUDO, GravarCargaPlataformaResposta, LIMITE_LINHAS_ERRO_VALIDACAO,
-  MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, normalizarFrase, substituirPermitido,
+  MENSAGENS_CARGA_PORTAL, MENSAGEM_FRASE_SUBSTITUIR, MENSAGEM_SUBSTITUIR_NAO_PERMITIDO, ValidarCargaPlataformaResposta, efeitoSubstituir, erros, fraseConfere, substituirPermitido,
   type ContextoRota, type EfeitoSubstituir, type ModoGravarCarga,
 } from '@macuxierp/platform-sdk';
 import { CODIGO_FRASE_NAO_CONFERE, EntidadeCarga, type ErroCarga, type RelatorioCarga, type ResultadoEntidade } from '../contracts';
@@ -39,7 +39,7 @@ const conflito = (mensagem: string, codigo: string): ErroApi => new ErroApi(409,
 
 /** RN-CAD-10: a frase é revalidada aqui, com a mesma normalização da tela (422; nada é lido nem gravado). */
 export function exigirFraseSubstituir(frase: string | undefined): void {
-  if (frase === undefined || normalizarFrase(frase) !== FRASE_SUBSTITUIR_TUDO) {
+  if (frase === undefined || !fraseConfere(frase, FRASE_SUBSTITUIR_TUDO)) {
     throw erros.regra('RN-CAD-10', MENSAGEM_FRASE_SUBSTITUIR, { frase: MENSAGEM_FRASE_SUBSTITUIR }, { codigo: CODIGO_FRASE_NAO_CONFERE });
   }
 }

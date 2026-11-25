@@ -635,9 +635,6 @@ export type PayloadCargaInicial = z.infer<typeof PayloadCargaInicial>;
 /** `detalhes.codigo` do 422 `RN-CAD-10` de frase de confirmação errada (Substituir tudo e Zerar por cadastro; T-0093). */
 export const CODIGO_FRASE_NAO_CONFERE = 'frase_nao_confere';
 
-/**
- * Corpo do `POST .../cadastros/zerar` (RN-CAD-10, T-0093): só a forma (frase string de até 200 caracteres). A frase é
- * conferida na rota, e errada vira 422 `RN-CAD-10`; corpo malformado segue 400 pelo Zod.
- */
+/** Corpo do `POST .../cadastros/zerar` (RN-CAD-10, T-0093): só a forma; a frase é conferida na rota (422 `RN-CAD-10`). */
 export const ZerarCadastrosCorpo = PreviaZerarPlataformaEntrada.extend({ frase: z.string().max(200) });
 export type ZerarCadastrosCorpo = z.infer<typeof ZerarCadastrosCorpo>;
