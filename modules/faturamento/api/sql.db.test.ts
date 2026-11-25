@@ -73,7 +73,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
 
   it('RF-FAT-01: o pedido aprovado entra na fila a faturar uma vez só e o outro tenant não o enxerga (RLS)', async () => {
     expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, pedido))).toBe('repetido');
-    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido.pedido_id).toBe(IDS.pedido);
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido_id).toBe(IDS.pedido);
     expect(await app.comTenant(B, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido))).toBeNull();
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
     const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }, MANAUS));
@@ -88,12 +88,12 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const status = async (): Promise<unknown> => (await admin('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [id]))[0]?.status;
     expect(await status()).toBe('faturado');
     const p = await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id));
-    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!.pedido, 'faturado'))).toBe('repetido');
-    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!.pedido, 'faturado_parcial'))).toBe('repetido');
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado'))).toBe('repetido');
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado_parcial'))).toBe('repetido');
     expect(await status()).toBe('faturado_parcial');
     await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, id));
     expect(await status()).toBe('cancelado');
-    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id)))?.status).toBe('cancelado'); // RN-CAD-10: a emissão recusa
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.statusNaFila(tx, id))).toBe('cancelado'); // RN-CAD-10: a emissão recusa
     await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, uuid(999)));
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [uuid(999)])).toEqual([{ n: 0 }]);
   });

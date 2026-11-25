@@ -120,8 +120,7 @@ describe('rotas /v1/faturamento', () => {
     const a = ambiente();
     if (codigo === 'RN-PED-02') a.deps.situacao = { situacao: async () => ({ status: 'cancelado', itens: [] }) };
     else {
-      const original = a.deps.pedidos.obter;
-      a.deps.pedidos = { ...a.deps.pedidos, obter: async (t, id) => { const f = await original(t, id); return f && { ...f, status: 'cancelado' as const }; } };
+      a.deps.pedidos = { ...a.deps.pedidos, statusNaFila: async () => 'cancelado' as const };
     }
     const e = await emitirDireto(a.deps);
     expect(e).toBeInstanceOf(ErroApi);

@@ -232,16 +232,11 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     exceto_nota_id?: string,
     daNota?: { tpEmis: TipoEmissao; contingencia: ConteudoNota['contingencia'] },
   ): Promise<Preparado | { ok: false; violacoes: Violacao[] }> {
-    const fila = await deps.pedidos.obter(tx, pedido_id);
-    if (!fila) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
-    const { pedido } = fila;
+    const pedido = await deps.pedidos.obter(tx, pedido_id);
+    if (!pedido) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
     // Trava a fila do pedido: duas emissões do mesmo pedido não leem o saldo juntas (RN-FAT-01).
     await deps.notas.travarPedido(tx, pedido_id);
     // Saldo pelo próprio faturamento: a quantidade_faturada do pedido só anda quando o worker consome o evento.
-    // RN-CAD-10: pedido zerado no /config (linha `cancelado`) não é faturado, mesmo que o pedido ainda conste aprovado.
-    if (!filaAceitaNota(fila.status)) {
-      return { ok: false, violacoes: [violacao('RN-CAD-10', 'pedido_id', 'Pedido cancelado ou zerado na fila de faturamento não pode ser faturado.')] };
-    }
     const ja_faturadas = await deps.notas.quantidadesJaFaturadas(tx, pedido_id, exceto_nota_id);
     // FOR SHARE: o pedido não muda de status (nem é cancelado) enquanto esta transação reserva o número (RN-PED-02).
     const situacao: SituacaoPedido | null = await deps.situacao.situacao(tx, pedido_id);
@@ -254,6 +249,11 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     const ambiente = await deps.ambiente.ambiente(tx, pedido.filial_id);
     if (ambiente === 'producao' && !deps.emissaoProducaoHabilitada) {
       return { ok: false, violacoes: [violacao('RN-FAT-04', 'filial_id', 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).')] };
+    }
+    // RN-CAD-10: pedido zerado no /config (linha `cancelado`) não é faturado, mesmo que o pedido ainda conste aprovado.
+    const statusFila = await deps.pedidos.statusNaFila(tx, pedido_id);
+    if (statusFila && !filaAceitaNota(statusFila)) {
+      return { ok: false, violacoes: [violacao('RN-CAD-10', 'pedido_id', 'Pedido cancelado ou zerado na fila de faturamento não pode ser faturado.')] };
     }
 
     const base = ratearItens({ pedido, situacao, itens, ja_faturadas });
