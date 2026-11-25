@@ -36,8 +36,11 @@ export interface ConferenciaVendedorFdv {
   ativo: boolean;
 }
 
-export type AvisoVendedorFdv = 'vendedor_fdv_nao_encontrado' | 'vendedor_fdv_inativo';
-export interface VinculoVendedorFdv { vendedor_id: string | null; aviso: AvisoVendedorFdv | null }
+export type RecusaVendedorFdv = 'vendedor_fdv_nao_encontrado' | 'vendedor_fdv_inativo';
+export type VinculoVendedorFdv =
+  | { resultado: 'vinculo'; vendedor_id: string }
+  | { resultado: 'sem_vinculo' }
+  | { resultado: 'recusa'; codigo: RecusaVendedorFdv };
 
 /** Normaliza o `vendedor_external_id` do pré-cadastro: sem texto = `null` (sem vendedor indicado). */
 export const vendedorExternoFdv = (v: string | null | undefined): string | null => {
@@ -46,10 +49,9 @@ export const vendedorExternoFdv = (v: string | null | undefined): string | null 
 };
 
 /**
- * D7 + T-0105 item 2: cliente criado a partir do FDV entra na carteira do vendedor indicado. Não há regra escrita para o
- * vendedor inválido; vale a não-recusa: o cliente nasce sem carteira e a auditoria leva o aviso (o defeito não é do
- * cliente, e a carteira se acerta depois pela transferência). **Regra provisória, pendente de RN (PO).**
- * Sem vendedor indicado ou sem a porta do espelho ligada (`conferencia` `undefined` = não consultado): sem vínculo e sem aviso.
+ * RN-INT-23 (T-0105): o pré-cadastro do FDV com vendedor inexistente ou inativo no ERP é RECUSADO e o cliente não é criado
+ * (substitui a regra do #684, que criava sem carteira). Vendedor ativo: o cliente entra na carteira dele.
+ * Sem vendedor indicado ou sem a porta do espelho ligada (`conferencia` `undefined` = não consultado): sem vínculo e sem recusa.
  * `conferencia` `null` = consultado e o espelho não conhece o vendedor.
  * Vale o pior dos dois lados: o espelho do FDV (`conferencia`) e o cadastro do ERP (`vendedorErp`, `null` = não existe).
  * Inexistente (no espelho ou no ERP) = `vendedor_fdv_nao_encontrado`; existente e inativo em qualquer lado = `vendedor_fdv_inativo`.
@@ -59,9 +61,8 @@ export function vincularVendedorFdv(
   conferencia: ConferenciaVendedorFdv | null | undefined,
   vendedorErp: { inativo: boolean } | null,
 ): VinculoVendedorFdv {
-  if (vendedorExterno === null || conferencia === undefined) return { vendedor_id: null, aviso: null };
-  const sem = (aviso: AvisoVendedorFdv): VinculoVendedorFdv => ({ vendedor_id: null, aviso });
-  if (!conferencia || !conferencia.vendedor_id || vendedorErp === null) return sem('vendedor_fdv_nao_encontrado');
-  if (!conferencia.ativo || vendedorErp.inativo) return sem('vendedor_fdv_inativo');
-  return { vendedor_id: conferencia.vendedor_id, aviso: null };
+  if (vendedorExterno === null || conferencia === undefined) return { resultado: 'sem_vinculo' };
+  if (!conferencia || !conferencia.vendedor_id || vendedorErp === null) return { resultado: 'recusa', codigo: 'vendedor_fdv_nao_encontrado' };
+  if (!conferencia.ativo || vendedorErp.inativo) return { resultado: 'recusa', codigo: 'vendedor_fdv_inativo' };
+  return { resultado: 'vinculo', vendedor_id: conferencia.vendedor_id };
 }
