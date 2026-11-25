@@ -500,6 +500,47 @@ describe.skipIf(!PG_DISPONIVEL)(
       expect(await Promise.all([A, B, SUSP, SEMLIC].map((t) => retrato(b, t)))).toEqual(outras);
     });
 
+    it('P-16 (#582, RN-CAD-09): condição com 366 dias e com 25 parcelas recusadas com a linha e o motivo; a linha válida é gravada', async () => {
+      const P = await criarTenant(b.admin, 't0060-api-p16', ['core', 'cadastros']);
+      const [cab, valida] = csv('condicoes_pagamento').split('\n');
+      const parcelas = (n: number, dias: number) => Array.from({ length: n }, () => dias).join('/');
+      const conteudo = [
+        cab,
+        valida, // linha 2: PZ-EX-01, 30 dias
+        `PZ-P16-366;D366;${parcelas(1, 366)};BOLETO;Boleto Exemplo;;sim;Boleto 366 dias;FP-EX-01;;30;0;2`,
+        `PZ-P16-25;P25;${parcelas(25, 30)};BOLETO;Boleto Exemplo;;sim;Boleto 25 parcelas;FP-EX-01;;30;0;3`,
+        '',
+      ].join('\n');
+      const val = await gravar(P, 'condicao_pagamento', { rota: 'validar', conteudo });
+      expect(val.statusCode, val.body).toBe(200);
+      const v = val.json<{
+        prontas: number;
+        com_erro: number;
+        linhas: { linha: number | null; motivo: string }[];
+      }>();
+      expect(v).toMatchObject({ prontas: 1, com_erro: 2 });
+      // o portal devolve o motivo em texto fixo, sem o valor da célula (hoje não diz qual limite: 365 dias ou 24 parcelas)
+      expect(v.linhas).toEqual([
+        { linha: 3, motivo: 'Valor fora do formato do contrato', acao: expect.any(String) },
+        { linha: 4, motivo: 'Valor fora do formato do contrato', acao: expect.any(String) },
+      ]);
+      expect(val.body).not.toMatch(/PZ-P16/);
+      const g = await gravar(P, 'condicao_pagamento', { conteudo });
+      expect(g.statusCode, g.body).toBe(200);
+      expect(g.json()).toMatchObject({
+        cadastro: 'condicao_pagamento',
+        modo: 'adicionar',
+        gravadas: 1,
+        com_erro: 2,
+      });
+      expect(
+        await admin(
+          'SELECT external_id, prazos_dias FROM cadastros.condicao_pagamento WHERE tenant_id = $1',
+          [P],
+        ),
+      ).toEqual([{ external_id: 'PZ-EX-01', prazos_dias: [30] }]);
+    });
+
     it('isolamento pela rota: o gravar em A (mesmos external_id de B) não muda nenhuma linha de B nem das outras empresas', async () => {
       const outras = [B, V, SUSP, SEMLIC];
       const antes = await Promise.all(outras.map((t) => retrato(b, t)));
