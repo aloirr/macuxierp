@@ -123,7 +123,7 @@ export function rotuloArquivo(nome: string, conferencia: Conferencia | null): st
   return conferencia ? `${nome} · ${plural(conferencia.prontas + conferencia.com_erro, 'linha', 'linhas')}` : nome;
 }
 
-/** O que o "Substituir tudo" faria neste cadastro; acima de 30% o FDV pede confirmação no monitor dele. Só na janela de confirmação. */
+/** O que o "Substituir tudo" faria neste cadastro; acima de 30% o FDV pode segurar o envio (aviso único em cargas.ts). Só na janela de confirmação. */
 export function EfeitoSubstituir({ cadastro, efeito }: { cadastro: CadastroCargaPortal; efeito: Efeito }) {
   return (
     <div className="efeito-substituir">

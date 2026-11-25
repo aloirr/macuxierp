@@ -12,6 +12,8 @@ só aqui, sem `it.skip` nem `it.todo` para ficar verde. Cada caso vira teste no 
 Códigos de erro (decisão do gerente, 24/11/2026): validação de entrada (campo ausente ou formato errado) = **400 do Zod com
 o campo**, aceito; **422** fica para regra de negócio (RN).
 
+Decisões de R-20261124-210726-alexandre: casos P-15 a P-18, I-11 a I-13, F-12 a F-14.
+
 ## Regras transversais (todas as tarefas)
 
 | # | Caso | Onde | Situação |
@@ -26,10 +28,10 @@ o campo**, aceito; **422** fica para regra de negócio (RN).
 
 | # | Critério | Caso | Onde | Situação |
 |---|---|---|---|---|
-| P-1 | 3 | `parcelas_dias` em lista: o C-6 (`PrazoPagamentoHub`) e o oráculo do Hub no dublê aceitam e recusam os mesmos valores (lista, à vista `[0]`, 999, texto "28/56", número solto, vazia, fração, negativo, texto na lista, nulo; tetos: ver P-4); a massa traz o prazo completo (`descricao` e `prazo_medio_dias`, lote 2, #556). | `tests/ponta-a-ponta-fdv/prazo-contrato.test.ts` | feito |
+| P-1 | 3 | `parcelas_dias` em lista: o C-6 (`PrazoPagamentoHub`) e o oráculo do Hub no dublê aceitam e recusam os mesmos valores (lista, à vista `[0]`, 999 recusado pelos dois, texto "28/56", número solto, vazia, fração, negativo, texto na lista, nulo; tetos: ver P-4); a massa traz o prazo completo (`descricao` e `prazo_medio_dias`, lote 2, #556). | `tests/ponta-a-ponta-fdv/prazo-contrato.test.ts` | feito |
 | P-2 | 3, 4 | O prazo que `mapearCondicao` monta (28/56, à vista, legado sem parcela) passa no C-6 e no oráculo do Hub. | `tests/ponta-a-ponta-fdv/prazo-contrato.test.ts` | feito |
 | P-3 | 3 | Massa e dublê do Hub com a lista (lote 1). | `tests/ponta-a-ponta-fdv/apoio/{duble-hub,massa}.ts` | feito (PR do lote 1) |
-| P-4 | 3 | Teto do contrato do Hub (C-6: 1 a 24 parcelas de 0 a 365 dias): 24 parcelas e 365 dias aceitos; 25 parcelas e 366 dias recusados, inclusive os dois tetos juntos (24 de 365 aceito, 23×365 + 366 recusado), com o mesmo veredito no C-6 e no oráculo do dublê. O caso do prazo entre 366 e 999 dias espera decisão do gerente. | `prazo-contrato.test.ts` | feito |
+| P-4 | 3 | Teto do contrato do Hub (C-6: 1 a 24 parcelas de 0 a 365 dias): 24 parcelas e 365 dias aceitos; 25 parcelas e 366 dias recusados, inclusive os dois tetos juntos (24 de 365 aceito, 23×365 + 366 recusado), com o mesmo veredito no C-6 e no oráculo do dublê. O prazo entre 366 e 999 dias (antes à espera de decisão) agora é recusado já no cadastro (R-20261124-210726, decisão 1): não chega ao Hub; ver P-15 a P-18. | `prazo-contrato.test.ts` | feito |
 | P-5 | 1 | Prazo sem parcela ou sem prazo médio: 400 com `campo` (`prazos_dias` / `prazo_medio_dias`) na API, e o domínio (RN-CAD-15) recusa com o campo; o legado sem prazo médio continua gravado (nulo). | `tests/integracao/rn/rn-cadastros.test.ts` + API com Postgres | pendente (cadastros, R-202958) |
 | P-6 | 1 | Banco (0052): `prazo_medio_dias` 1000 e -1 caem; à vista (tPag 01, 04, 17) com 5 cai; legado nulo grava. | `db/` (banco-dados) e conferência em `tests/integracao/banco/` | pendente (banco, R-202954) |
 | P-7 | 2 | RN-PED-07 no pedido manual: prazo com prazo médio acima do do cliente → 422 `codigo: RN-PED-07`, `campo: condicao_pagamento_id`; igual → aceito; cliente sem prazo médio → aceito; prazo incompleto → recusado. | `tests/integracao/rn/` + rota do pedido com Postgres | pendente (pedido, R-203008) |
@@ -40,6 +42,10 @@ o campo**, aceito; **422** fica para regra de negócio (RN).
 | P-12 | 5 | Rotas novas ou alteradas do prazo e do cliente: perfil, tenant e licença (X-5). | ver X-5 | pendente |
 | P-13 | 6 | Depois do deploy: Reprocessar de Condições de pagamento leva os prazos ao FDV sem carga nova. | fumaça manual pelo Alexandre (via PO), registrada no `producao-publicar` | pendente |
 | P-14 | — | Valor × regra: o prazo médio é digitado (não calculado); nenhuma tela, CSV ou payload recalcula. | revisão nos PRs de cadastros e integracao-fdv | pendente |
+| P-15 | 1 (R-210726, decisão 1) | **API com Postgres + unitário do domínio.** Prazo com uma parcela de 366 dias, com 25 parcelas, ou com `prazo_medio_dias` 366: 400 do Zod com o `campo` (`prazos_dias` / `prazo_medio_dias`), nada gravado (contagem igual); vale na criação e na edição do prazo e no `prazo_medio_dias` do cliente. Hoje o contrato do cadastros ainda tem `MAX_DIAS = 999` e `MAX_PARCELAS = 36`. | `tests/integracao/rn/rn-cadastros.test.ts` + `tests/integracao/rotas/` (API com Postgres) | pendente (cadastros) |
+| P-16 | 4 (R-210726, decisão 1) | **Banco/carga.** Carga CSV (`condicoes_pagamento.csv` e `cliente.csv`) com uma linha de 366 dias, uma de 25 parcelas e uma de prazo médio 366, entre linhas válidas: cada uma é recusada na própria linha, com o número da linha, o campo e o motivo ("0 a 365 dias" / "1 a 24 parcelas"); as válidas são gravadas. | `tests/integracao/plataforma/carga-config.db.test.ts` | pendente (cadastros + banco-dados, se a recusa ficar na função de carga) |
+| P-17 | 1 (R-210726, decisão 1) | **Tela** (e2e do BKO ou ensaio com API real e print). O formulário do prazo e o do cliente mostram o limite (0 a 365 dias, até 24 parcelas); "+ Parcela" não passa da 24ª; 366 no campo mostra o erro no próprio campo, sem chamar a API, e o 400 da API (P-15) também cai no campo. | `tests/e2e/` + `docs/testes/prints/` | pendente (cadastros) |
+| P-18 | 1, 3 (R-210726, decisão 1) | **API com Postgres + pa-p.** Os tetos são aceitos: o prazo com 24 parcelas de 365 dias e prazo médio 365 grava na API e na carga e sai ao Hub (C-6: ver P-4). | API com Postgres em `tests/integracao/rotas/` + `tests/ponta-a-ponta-fdv/ida-erp-fdv.test.ts` | pendente (cadastros + integracao-fdv) |
 
 ## T-0086 — integração no /config e no BKO
 
@@ -55,6 +61,9 @@ o campo**, aceito; **422** fica para regra de negócio (RN).
 | I-8 | 4 | Monitor: situação Em dia, Atrasado e Desativado conforme o último sinal (relógio de teste); fila em lotes e linhas. | domínio (integracao-fdv) + rota com Postgres | pendente |
 | I-9 | 4 | Prints 1280 e 390 com dados fictícios do /config (abas Integração e Dados) e do Log do BKO, com API real. | `docs/testes/prints/` | pendente |
 | I-10 | — | Aba Dados: última carga com data, hora, registros e origem Conector/CSV; Modelo e Importar continuam na fumaça (X-2). | fumaça + e2e | pendente |
+| I-11 | 1 (R-210726, decisão 2) | **pa-p.** Hoje o C-6 aceita fracionário: `ProdutoUnidadeHub.fator` é `Quantidade.positive()` (número finito, pode ter casas) e `RetornoErp.itens_faturados[].quantidade` é `z.number()`; o Hub do FDV ainda só aceita inteiro. Massa com uma unidade de fator 2,5 entre unidades de fator inteiro, e um pedido faturado com um item de quantidade 1,5 entre pedidos com quantidades inteiras: só a unidade e só o retorno daquele pedido são recusados (falha com o motivo, nada no dublê); as outras unidades e os outros retornos chegam ao dublê no mesmo envio, e o lote não cai inteiro. Controle: fator 12 e quantidade 3 saem. | `tests/ponta-a-ponta-fdv/ida-erp-fdv.test.ts` + `volta-fdv-erp.db.test.ts` (retorno do faturado) | pendente (integracao-fdv) |
+| I-12 | 2 (R-210726, decisão 2) | **API com Postgres + tela.** A recusa do I-11 aparece no Log com o campo (`fator` / `quantidade`) e o motivo "quantidade fracionária: o FDV ainda não aceita decimal" (`produto_unidade` e o retorno do pedido); /config como no I-3; no BKO, com o "Corrigir" (D-4). | `tests/integracao/plataforma/integracao-fdv-portal.db.test.ts` + e2e do BKO | pendente (integracao-fdv + apps/web) |
+| I-13 | 1 (R-210726, decisão 2) | **pa-p.** Reprocessar depois do I-11: reenvia só os registros recusados (que continuam recusados enquanto fracionários, sem duplicar a linha do Log); integrados: I-1. Corrigido o fator para inteiro, o registro sai no Reprocessar seguinte. | `tests/ponta-a-ponta-fdv/ida-erp-fdv.test.ts` | pendente (integracao-fdv) |
 
 ## T-0087 — telas do core no BKO
 
@@ -94,6 +103,9 @@ Postgres local), **tela** (fumaça, e2e do BKO ou ensaio com API real e print).
 | F-9 | LGPD: a resposta da rota, com massa fictícia de CPF, CNPJ, e-mail e telefone, não contém nenhum deles inteiro (só `DocumentoMascaradoFdv`); o log capturado do worker não leva o payload; `payload` nulo no `aceito`; o `CHECK` recusa `recusado` sem payload dentro do prazo (§3.1, §5.5, §6). | banco + pa-p | `cliente-fdv-erp.db.test.ts` + `tests/integracao/banco/` | integracao-fdv (rota e log) + banco (`CHECK`) | pendente |
 | F-10 | Contrato: as fixtures do `cliente-erp.ts` do FDV (v1.0.28 e v1.0.30), copiadas para `tests/` (o FDV é só leitura), passam em `ClientesPendentesFdv`; o corpo que o ERP monta passa no `RetornoClienteFdv` e no oráculo do Hub no dublê, nos dois estados da opção; os 200 (`repetido`, `obsoleto`) passam em `RetornoClienteAceitoFdv` (§2, §7 caso 10). | unitário | `tests/ponta-a-ponta-fdv/cliente-fdv-contrato.test.ts` | engenheiro-software (SDK) + integracao-fdv | pendente |
 | F-11 | Tela: filtro por situação e cursor; recusado abre os erros por campo; aceito leva "Abrir cliente"; fumaça e prints 1280/390 (X-2, X-4). | tela | `tests/e2e/`, `docs/testes/prints/` | apps/web (+ integracao-fdv na rota) | pendente |
+| F-12 | Pendente válido com `telefone` (R-20261124-210726, decisão 3): o cliente criado pela porta `CriadorClienteFdv` tem um contato (`Contato` do cadastros) com o telefone só com dígitos (10 a 13) e o nome do contato do pré-cadastro ou "Contato do FDV" se não vier nenhum; um único contato mesmo com o pendente repetido (F-3). | banco + pa-p | `modules/cadastros/api/criador-cliente-fdv.db.test.ts` (dono cadastros) + `tests/ponta-a-ponta-fdv/cliente-fdv-erp.db.test.ts` | cadastros (porta `CriadorClienteFdv`) + integracao-fdv | pendente |
+| F-13 | Telefone ausente (nulo ou vazio): o cliente é criado sem contato. Telefone inválido (fora de 10 a 13 dígitos depois de tirar a máscara): o cliente é criado sem contato e o pré-cadastro fica `aceito`, sem erro de recusa; o comportamento escolhido pelo cadastros (descartar ou outro) fica descrito no README do módulo e o teste confere esse comportamento. | banco + pa-p | `cliente-fdv-erp.db.test.ts` | cadastros + integracao-fdv | pendente |
+| F-14 | LGPD: com telefone fictício na massa, o log capturado da API e do worker durante a criação (válido e inválido) não contém o telefone, nem inteiro nem só os dígitos; rota: F-9. | pa-p | `cliente-fdv-erp.db.test.ts` | cadastros + integracao-fdv | pendente |
 
 Notas:
 - Apoio de teste (dono `testes`): o dublê ganha `GET /clientes/pendentes` (marca `enviado`, volta à fila em 10 min com

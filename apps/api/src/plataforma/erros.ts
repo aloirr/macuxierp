@@ -26,10 +26,10 @@ const MENSAGEM_ESTADO_MUDOU = 'O estado mudou; recarregue a página.';
 const MENSAGEM_SEM_LICENCA_FDV = 'A empresa precisa estar ativa e com o módulo Integração FDV licenciado.';
 
 /**
- * O DETAIL do `MXI03` traz o código do domain (`portal_carga_completa` e `portal_retomar` da 0038; `portal_zerar_espelho`
- * da 0043: `entidade_ligada` e `lote_em_voo`). Só estes passam a `detalhes.codigo`; qualquer outro texto do banco fica de fora.
+ * O DETAIL do `MXI03` traz o código do domain (`portal_carga_completa` e `portal_retomar` da 0038; o zerar: `lote_em_voo`).
+ * Só estes passam a `detalhes.codigo`; qualquer outro texto do banco fica de fora.
  */
-const CODIGOS_ESTADO_MUDOU: ReadonlySet<string> = new Set(['entidade_desabilitada', 'lote_em_voo', 'sem_pausa', 'entidade_ligada']);
+const CODIGOS_ESTADO_MUDOU: ReadonlySet<string> = new Set(['entidade_desabilitada', 'lote_em_voo', 'sem_pausa']);
 /**
  * O DETAIL do `MXI04` (0039) e do `MXC04` (`cadastros.portal_carga_iniciar`, T-0058) traz o motivo; só estes dois passam
  * a `detalhes.codigo`.
