@@ -33,8 +33,16 @@ import {
   type Transacao,
   type Violacao,
 } from '@macuxierp/platform-sdk';
-import { Id } from '../contracts';
-import { avaliarPrimeiroAdmin, avaliarRedefinirSenhaPrimeiroAdmin, avaliarSituacaoEmpresa, gerarSenhaProvisoria } from '../domain';
+import { CampoContato, Id, type ContatoRevelado, type FichaReceita, type FichaReceitaMascarada, type ResultadoAtualizarReceita } from '../contracts';
+import {
+  avaliarPrimeiroAdmin,
+  avaliarRedefinirSenhaPrimeiroAdmin,
+  avaliarSituacaoEmpresa,
+  gerarSenhaProvisoria,
+  mensagemDaFalhaReceita,
+  prepararFichaDaConsulta,
+  type ResultadoConsultaReceita,
+} from '../domain';
 
 type NovaSituacao = SituacaoEmpresaEntrada['situacao'];
 
@@ -51,10 +59,23 @@ export interface RepositorioPlataforma {
   redefinirSenhaPrimeiroAdmin(tx: Transacao, p: { id: string; senha_hash: string; request_id: string }): Promise<{ usuario_id: string }>;
   /** E-mail completo do 1º admin; a função da 0035 audita só a ação (sem o e-mail). */
   revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string>;
+  /** `empresa_ler` com a chave `ficha` (0065): a ficha já vem mascarada do banco; `null` sem `core.empresa`. */
+  lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaMascarada | null } | null>;
+  /** `empresa_gravar_receita`: `alterados` são só nomes de coluna. Sem `core.empresa` (55000) = 409. */
+  gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceita; request_id: string }): Promise<{ ficha: FichaReceitaMascarada | null; alterados: string[] }>;
+  /** `empresa_contato_revelar`: o valor completo; a função audita só o campo. Sem o dado (P0002) = 404. */
+  revelarContato(tx: Transacao, p: { id: string; campo: CampoContato; request_id: string }): Promise<string>;
+}
+
+/** Porta de consulta de CNPJ dos cadastros (`ConsultaCnpjParaCore`, RF-CAD-02), declarada de forma estrutural: a apps/api liga uma na outra. */
+export interface ConsultaReceita {
+  consultar(tx: Transacao, tenant: string, cnpj: string): Promise<ResultadoConsultaReceita>;
 }
 
 export interface DependenciasPlataformaCore {
   repo: RepositorioPlataforma;
+  /** Sem a porta, "Atualizar pela Receita" responde 503 (a ficha existente não muda). */
+  consultaReceita?: ConsultaReceita;
   /** Os `depende` dos manifestos reais (a apps/api passa `manifestos`); o core não importa outro módulo. */
   manifestos: readonly DependenciasModulo[];
   hashSenha(senha: string): Promise<string>;
@@ -194,6 +215,52 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         if (!e.primeiro_admin) throw erros.naoEncontrado('Administrador');
         const resposta: EmailPrimeiroAdminResposta = { email: await repo.revelarEmailPrimeiroAdmin(c.tx, { id: e.id, request_id: c.request_id }) };
         return { corpo: resposta, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+      },
+    }),
+    // Ficha da Receita (T-0101, ADR 0012 emenda): as duas gravam a auditoria no banco só com nomes de campo; sem idempotência
+    // (a repetição do request_id não muda nada no banco) e com no-store (a resposta é dado da empresa).
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: '/empresas/:id/receita',
+      acao: 'plataforma.empresa.atualizar_receita',
+      async executar(c, { params }) {
+        const id = idDoParam(params);
+        const atual = await repo.lerEmpresaComFicha(c.tx, id);
+        if (!atual) throw erros.naoEncontrado('Empresa');
+        if (!atual.ficha || !atual.empresa.cnpj) throw erros.conflito('Esta empresa ainda não tem CNPJ. Cadastre a filial padrão com razão social e CNPJ e tente de novo.');
+        if (!deps.consultaReceita) throw erros.indisponivel('Consulta de CNPJ');
+        const resposta = await deps.consultaReceita.consultar(c.tx, id, atual.empresa.cnpj);
+        const preparo = prepararFichaDaConsulta({ cnpj: atual.empresa.cnpj, resposta });
+        // Campo acima do limite: 422, nada gravado e a mensagem não leva o valor (RN-CORE-14, T-0101).
+        if (!preparo.ok && preparo.motivo === 'campo_acima_do_limite') {
+          throw erros.regra('RN-CORE-14', mensagemDaFalhaReceita(preparo.motivo), { ficha: 'Campo acima do limite' });
+        }
+        if (!preparo.ok) {
+          const falha: ResultadoAtualizarReceita = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha: atual.ficha };
+          return { corpo: falha, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+        }
+        const gravada = await repo.gravarReceita(c.tx, { id, ficha: preparo.ficha, request_id: c.request_id });
+        const ok: ResultadoAtualizarReceita = { estado: 'ok', campos_alterados: gravada.alterados, ficha: gravada.ficha };
+        return { corpo: ok, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+      },
+    }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: '/empresas/:id/contato/:campo',
+      acao: 'plataforma.empresa.revelar_contato',
+      async executar(c, { params }) {
+        const id = idDoParam(params);
+        const campo = CampoContato.safeParse(params.campo);
+        if (!campo.success) throw erros.validacao({ campo: 'Use email ou telefone' });
+        const atual = await repo.lerEmpresaComFicha(c.tx, id);
+        if (!atual) throw erros.naoEncontrado('Empresa');
+        if (!atual.ficha) throw erros.conflito('Esta empresa ainda não tem CNPJ. Cadastre a filial padrão com razão social e CNPJ e tente de novo.');
+        // Sem o dado na ficha nada é revelado e nada é auditado: resposta vazia, como no desenho do ADR 0012.
+        const mascarado = campo.data === 'email' ? atual.ficha.email_mascarado : atual.ficha.telefone_mascarado;
+        const vazio: ContatoRevelado = { valor: null };
+        if (!mascarado) return { corpo: vazio, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+        const revelado: ContatoRevelado = { valor: await repo.revelarContato(c.tx, { id, campo: campo.data, request_id: c.request_id }) };
+        return { corpo: revelado, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
       },
     }),
   ]);

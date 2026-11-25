@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { FichaReceita } from '../contracts';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore } from './plataforma';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
@@ -147,6 +148,64 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     expect(n.rows[0].n).toBe(1);
     const t = await b.admin.query(`SELECT coalesce(string_agg(coalesce(antes::text,'') || coalesce(depois::text,''), ''), '') t FROM plataforma.auditoria WHERE tenant_id = $1`, [id]);
     expect(t.rows[0].t).not.toContain('admin@exemplo.com.br');
+  });
+
+  describe('ficha da Receita (migração 0065)', () => {
+    const CNPJ_FICHA = '11222333000181';
+    const FICHA: FichaReceita = {
+      razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', logradouro: 'RUA A', numero: '10', complemento: null, bairro: 'CENTRO',
+      cep: '69000000', municipio_ibge: '1302603', uf: 'AM', email: 'contato.ficticio@empresa.teste', telefone: '9232221234',
+      cnae_principal: '4711302', regime_receita: 'simples', situacao_cadastral: 'ATIVA', situacao_cadastral_data: '2020-01-02',
+      data_abertura: '2015-03-10', natureza_juridica: 'Sociedade Empresária Limitada', porte: 'DEMAIS', cnae_secundarios: ['4712100'],
+      fonte: 'brasilapi', consultado_em: '2026-11-24T12:00:00.000Z',
+    };
+    const repo = new RepositorioPlataformaSql();
+    const consulta = { consultar: async () => ({ ok: true as const, fonte: 'brasilapi', consultado_em: '2026-11-24T12:00:00.000Z', sugestao: { cnpj: CNPJ_FICHA, razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', situacao_cadastral: 'ATIVA', cnae_fiscal: '4711302', endereco: { uf: 'AM' }, email: 'contato.ficticio@empresa.teste', telefone: '9232221234', opcao_simples: true, opcao_mei: false } }) };
+    const pluginFicha = criarPluginPlataformaCore({ repo, manifestos: MANIFESTOS_TESTE, hashSenha: async () => HASH, consultaReceita: consulta });
+
+    /** Sem a 0065 no banco de teste (PR #636 ainda fora do main) estes testes pulam. */
+    async function temFuncao0065(): Promise<boolean> {
+      const { rows } = await b.admin.query("SELECT 1 FROM pg_proc WHERE proname = 'empresa_gravar_receita'");
+      return rows.length > 0;
+    }
+    async function tenantComEmpresa(): Promise<string> {
+      const id = await criarTenant(b.admin, `ficha-core-${randomUUID().slice(0, 8)}`, ['core']);
+      await b.admin.query(`INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Antiga', $2)`, [id, CNPJ_FICHA]);
+      return id;
+    }
+    const rota = (id: string, caminho: string, params: Record<string, string>, confirmar = false) =>
+      comPlataforma(async (tx) => {
+        const r = pluginFicha.rotas.find((x) => x.metodo === 'POST' && x.caminho === caminho);
+        if (!r) throw new Error(`rota ${caminho}`);
+        // hora-fixa-ok: o instante do contexto só alimenta a rota
+        const c = { sessao: { superadmin_id: SA, sessao_id: sessao }, tx, request_id: randomUUID(), agora: new Date(), auditar: async () => {} };
+        return r.executar(c, { params: { id, ...params } } as never);
+      }, confirmar);
+
+    it('RF-CAD-02: atualiza pela Receita, devolve a ficha mascarada e audita só os nomes dos campos', async (ctx) => {
+      if (!(await temFuncao0065())) return ctx.skip();
+      const id = await tenantComEmpresa();
+      const r = await rota(id, '/empresas/:id/receita', {}, true);
+      expect(r.corpo).toMatchObject({ estado: 'ok', ficha: { email_mascarado: 'co****@empresa.teste', telefone_mascarado: '(92) ****-1234', regime_receita: 'simples' } });
+      expect(JSON.stringify(r.corpo)).not.toContain('contato.ficticio');
+      const t = await b.admin.query(`SELECT coalesce(string_agg(coalesce(antes::text,'') || coalesce(depois::text,''), ''), '') t FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'plataforma.empresa.atualizar_receita'`, [id]);
+      expect(t.rows[0].t).not.toContain('contato.ficticio');
+      expect(t.rows[0].t).not.toContain('EMPRESA FICTICIA');
+    });
+
+    it('RF-CAD-02: Revelar devolve o contato completo, audita só o campo; sem core.empresa é 409', async (ctx) => {
+      if (!(await temFuncao0065())) return ctx.skip();
+      const id = await tenantComEmpresa();
+      await comPlataforma((tx) => repo.gravarReceita(tx, { id, ficha: FICHA, request_id: randomUUID() }), true);
+      const rev = await rota(id, '/empresas/:id/contato/:campo', { campo: 'email' }, true);
+      expect(rev.corpo).toEqual({ valor: 'contato.ficticio@empresa.teste' });
+      const a = await b.admin.query(`SELECT depois::text d FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'plataforma.empresa.revelar_contato'`, [id]);
+      expect(a.rows).toHaveLength(1);
+      expect(a.rows[0].d).not.toContain('contato.ficticio');
+      const sem = await criarTenant(b.admin, `ficha-core-${randomUUID().slice(0, 8)}`, ['core']);
+      const e = await rota(sem, '/empresas/:id/receita', {}).catch((x: unknown) => x);
+      expect(e).toMatchObject({ status: 409 });
+    });
   });
 
   it('suspender revoga as sessões do tenant e lista/lê a empresa', async () => {
