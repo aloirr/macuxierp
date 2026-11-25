@@ -23,6 +23,7 @@ export function ResumoPrevia({ previa, escolhidos }: { previa: ZeragemPlataforma
   const junto = textoLevaJunto(previa.efetivos, escolhidos);
   const mantidos = textosMantidos(previa.mantidos);
   const anulados = textosAnulados(previa.anulados);
+  if (!junto && !mantidos && anulados.length === 0 && previa.sem_chave <= 0) return null;
   return (
     <div className="previa-zerar" aria-live="polite">
       {junto && <p>{junto}</p>}

@@ -252,7 +252,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .grade-zerar { display: grid; grid-template-columns: 1fr; gap: 4px 16px; }
 @media (min-width: 520px) { .grade-zerar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .opcao-zerar { display: flex; align-items: center; gap: 8px; min-height: 32px; overflow-wrap: anywhere; }
-.previa-zerar { display: grid; gap: 8px; margin: 0 0 12px; }
+.previa-zerar { display: grid; gap: 8px; }
 .previa-zerar p, .previa-zerar .faixa-aviso { margin: 0; }
 /* Avisos de dentro de janela (Zerar): a caixa âmbar tem o mesmo recuo e a mesma borda da faixa vermelha do topo do Dialogo (8 px, sem contorno); a margem negativa desfaz os 4 px do corpo do Dialogo. */
 [data-corpo-dialogo] .faixa-aviso { border: 0; padding: 8px; margin-inline: -4px; }
