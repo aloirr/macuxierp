@@ -3,7 +3,8 @@
  * `pluginsPlataforma` real, e a porta `consultaReceita` é a consulta CNPJ dos cadastros (`criarConsultaCnpjParaCore`)
  * com as fontes HTTP de produção (`fontesHttp`). Só o `fetch` é dublado (a sessão não alcança a BrasilAPI). Prova que a
  * rota responde 200, que a consulta roda no papel e na RLS do tenant (o cache `cadastros.consulta_externa` fica no tenant
- * da empresa) e que o campo acima do limite vindo da fonte real é 422 sem gravar.
+ * da empresa), que o CNPJ inválido da empresa volta como `cnpj_invalido` sem chamar a fonte e que o campo acima do limite
+ * vindo da fonte real é 422 sem gravar.
  * Rotas, Revelar, auditoria e log ficam no empresa-ficha.db.test.ts. Dados fictícios. Sem Postgres pula; com
  * MACUXI_PG_EXIGIR=1 falha.
  */
@@ -100,6 +101,17 @@ describe.skipIf(!PG_DISPONIVEL)('"Atualizar pela Receita" na montagem de produç
     const cache = await admin('SELECT tenant_id FROM cadastros.consulta_externa WHERE tenant_id IN ($1, $2)', [id, outro]);
     expect(cache.length).toBeGreaterThan(0);
     expect(cache.every((l) => l.tenant_id === id)).toBe(true);
+  });
+
+  it('cnpj_invalido: empresa com CNPJ de dígito errado recebe estado erro com a mensagem, sem chamar a fonte, sem gravar e sem auditar', async () => {
+    const id = await empresa('11222333000199');
+    const chamadas = urls.length;
+    const r = await atualizar(id);
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ estado: 'erro', motivo: 'cnpj_invalido', mensagem: expect.stringMatching(/CNPJ desta empresa é inválido/) });
+    expect(urls.length).toBe(chamadas);
+    expect((await admin('SELECT razao_social, receita_fonte FROM core.empresa WHERE tenant_id = $1', [id]))[0]).toMatchObject({ razao_social: 'Empresa Antiga Ficticia', receita_fonte: null });
+    expect(await admin("SELECT 1 FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'plataforma.empresa.atualizar_receita'", [id])).toEqual([]);
   });
 
   it('422 RN-CORE-14: razão social de 151 letras vinda da fonte real não grava nada nem audita, e a resposta não leva o valor', async () => {
