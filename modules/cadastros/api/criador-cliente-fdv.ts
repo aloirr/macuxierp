@@ -5,7 +5,7 @@
  * - A regra é do domain (`validarPreCadastroFdv`, todas as recusas juntas); aqui só as consultas e a gravação.
  * - Recusado: nada é gravado (nem evento nem auditoria); `motivo` = mensagens do catálogo, sem o valor recusado.
  * - Aceito: passa pelas mesmas regras do POST `/v1/cadastros/clientes` (`validarClienteNovo`), grava pelo mesmo repositório e emite
- *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0, sem vendedor e sem condição. Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
+ *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira segue `vincularVendedorFdv` (RN-INT-23). Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
  *   pessoal. O `external_id` devolvido é a chave do Hub do cliente (ADR 0010: `external_id ?? id`), nunca o `codigo_fdv`.
  * - Corrida no documento (índice único): vira `documento_ja_cadastrado`, sem abortar a transação (SAVEPOINT).
  */
@@ -14,7 +14,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { ClienteDados } from '../contracts';
 import {
-  chavesDoPreCadastroFdv, erroPreCadastroFdv, motivoDaRecusaFdv, validarPreCadastroFdv, type CodigoPreCadastroFdv, type ContextoPreCadastroFdv, type Violacao,
+  chavesDoPreCadastroFdv, erroPreCadastroFdv, motivoDaRecusaFdv, validarPreCadastroFdv, vendedorExternoFdv, vincularVendedorFdv,
+  type CodigoPreCadastroFdv, type ConferenciaVendedorFdv, type ContextoPreCadastroFdv, type Violacao,
 } from '../domain';
 import { eventoCliente } from './eventos';
 import type { Dependencias } from './portas';
@@ -29,7 +30,17 @@ export interface CriadorClienteFdv {
   decidir(tx: Transacao, tenant: string, pre: ClienteParaErpFdv): Promise<DecisaoCriadorClienteFdv>;
 }
 
+/**
+ * Porta do espelho do vendedor do FDV, injetada, por tipagem estrutural: o worker passa o `criarConsultaVendedorFdv()` do
+ * `integracao-fdv/api`. `null` ou `vendedor_id` ausente = não encontrado; `ativo: false` = inativo.
+ */
+export interface ConsultaVendedorFdvInjetada {
+  vendedorPorExternalId(tx: Transacao, tenant: string, externalId: string): Promise<ConferenciaVendedorFdv & { ativo: boolean } | null>;
+}
+
 export interface DependenciasCriadorClienteFdv {
+  /** Ausente = vendedor não consultado: o cliente nasce sem carteira e sem recusa. */
+  consultaVendedorFdv?: ConsultaVendedorFdvInjetada;
   repositorios: Dependencias['repositorios'];
   outbox: Outbox;
   auditoria: DestinoAuditoria;
@@ -68,7 +79,12 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
       const v = validarPreCadastroFdv(pre, ctx);
       if (!v.ok) return rejeitar(v.erros);
       // as regras do POST /clientes (documento, endereço, município, IE e referências): o que sobrar vira erro por campo
-      const dados = ClienteDados.parse(v.dados);
+      const vendedorExterno = vendedorExternoFdv(pre.vendedor_external_id);
+      const conferencia = vendedorExterno !== null && d.consultaVendedorFdv ? await d.consultaVendedorFdv.vendedorPorExternalId(tx, tenant, vendedorExterno) : undefined;
+      const vendedorErp = conferencia?.vendedor_id ? await r.vendedores.obter(conferencia.vendedor_id) : null;
+      const vinculo = vincularVendedorFdv(vendedorExterno, conferencia, vendedorErp);
+      if (vinculo.resultado === 'recusa') return rejeitar([erroPreCadastroFdv('vendedor_external_id', vinculo.codigo)]); // RN-INT-23
+      const dados = ClienteDados.parse({ ...v.dados, vendedor_id: vinculo.resultado === 'vinculo' ? vinculo.vendedor_id : null });
       const violacoes = await validarClienteNovo(r, dados);
       if (violacoes.length > 0) return rejeitar(violacoes.map(erroDaViolacao));
 
@@ -91,7 +107,7 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
       await d.outbox.gravar(tx, criarEvento({ nome: ev.nome, tenant_id: tenant, agregado_id: ev.agregado_id, ator: 'sistema', request_id: requestId, payload: ev.payload }, agora));
       await auditar(d.auditoria, tx, { tenant_id: tenant, usuario_id: null, request_id: requestId }, {
         acao: 'cliente.criar', entidade: 'cliente', entidade_id: criado.id,
-        depois: { origem: 'fdv_pre_cadastro', cliente_uuid: pre.cliente_uuid, limite_credito_centavos: 0 },
+        depois: { origem: 'fdv_pre_cadastro', cliente_uuid: pre.cliente_uuid, limite_credito_centavos: 0, vendedor_vinculado: dados.vendedor_id !== null },
       }, agora);
       return { status: 'vinculado', cliente_id: criado.id, external_id: criado.external_id ?? criado.id };
     },

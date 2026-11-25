@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { EXTERNAL_ID_MAX } from '@macuxierp/platform-sdk/hub-v1';
+import type { Transacao } from '@macuxierp/platform-sdk';
 import type { EntidadeHub } from './hub';
 
 export const MODULO = 'integracao-fdv' as const;
@@ -101,3 +102,23 @@ export const RetornoErp = z.object({
   ocorrido_em: z.string().datetime(),
 });
 export type RetornoErp = z.infer<typeof RetornoErp>;
+
+/**
+ * Vendedor conferido no espelho do FDV (T-0105). Só o necessário: o UUID do ERP (quando já publicado), a chave do Hub, o nome
+ * (campo do próprio espelho; nunca contato, documento ou outro dado pessoal) e se o registro segue ativo.
+ */
+export interface VendedorNoEspelhoFdv {
+  vendedor_id?: string;
+  external_id: string;
+  nome?: string;
+  ativo: boolean;
+}
+/**
+ * Porta que o `cadastros` chama para vincular o vendedor no pré-cadastro do cliente vindo do FDV (`vendedor_external_id`).
+ * Implementada no `integracao-fdv/api` (`criarConsultaVendedorFdv`), lendo só o schema `integracao_fdv` (registro_publicado,
+ * entidade `vendedor`); nunca consulta o Hub. Roda na transação do tenant (RLS). Chave sem registro, ou de registro excluído,
+ * devolve `null`; vendedor inativo devolve `ativo: false` (quem decide o que fazer é o chamador).
+ */
+export interface ConsultaVendedorFdv {
+  vendedorPorExternalId(tx: Transacao, tenant: string, externalId: string): Promise<VendedorNoEspelhoFdv | null>;
+}

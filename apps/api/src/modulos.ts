@@ -293,7 +293,7 @@ export function montarDependenciasProducao(e: EntradaProducao): DependenciasApp 
 const temPlataforma = (b: Banco): b is Banco & { plataforma(): BancoPlataformaComLogin } => typeof (b as { plataforma?: unknown }).plataforma === 'function';
 
 /** Dependências dos plugins de plataforma que vêm do processo (secrets do servidor), não do registro dos módulos. */
-interface DependenciasPlataformaModulos {
+export interface DependenciasPlataformaModulos {
   /** `MACUXIERP_CHAVE_INTEGRACAO` (versão 1), a mesma do `lerConfigApi`; nunca vai para log. Ver `ConfigApi.chaveIntegracao`. */
   chaveIntegracao: Buffer | null;
   /** Outbox da API (a mesma do `DependenciasApp`): os eventos da carga do portal saem na transação do tenant. Padrão: `OutboxPg`. */

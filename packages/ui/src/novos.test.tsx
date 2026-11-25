@@ -47,6 +47,13 @@ describe('botões (MC-0008): um principal e um secundário', () => {
     expect(css).toContain('.mx-botao {');
     expect(css).toContain('.mx-botao-secundario {');
   });
+  it('hover de botão não vale para aria-disabled="true" (#689) e o desligado vale para ele', () => {
+    const css = gerarCssBotoes();
+    for (const c of ['.mx-botao', '.mx-botao-secundario', '.mx-olho']) {
+      expect(css).toContain(`${c}:hover:not(:disabled):not([aria-disabled="true"]) {`);
+    }
+    expect(css).toContain('.mx-botao-destrutivo[aria-disabled="true"]');
+  });
   it('.mx-checkbox e .mx-radio desabilitados não parecem editáveis', () => {
     expect(gerarCssBotoes()).toContain(
       '.mx-checkbox:disabled, .mx-radio:disabled {\n  opacity: 0.55;\n  cursor: not-allowed;\n}',

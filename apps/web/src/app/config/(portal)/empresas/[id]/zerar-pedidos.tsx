@@ -3,7 +3,7 @@ import type { ZeragemPedidosResposta } from '@macuxierp/pedido/contracts';
 import { FRASE_ZERAR_DADOS } from '@macuxierp/platform-sdk';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { AVISO_ZERAR } from '@/lib/config/cargas';
-import { TEXTO_ANTES_DE_ZERAR_PEDIDOS, pedirPreviaZerarPedidos, pedirZerarPedidos, textoApagarPedidos, textosMantidosPedidos, type ResultadoZerarPedidos } from '@/lib/config/pedidos-zerar';
+import { TEXTO_ANTES_DE_ZERAR_PEDIDOS, pedirPreviaZerarPedidos, pedirZerarPedidos, semPedidoParaApagar, textoApagarPedidos, textosMantidosPedidos, type ResultadoZerarPedidos } from '@/lib/config/pedidos-zerar';
 import { ListaMantidos, usePreviaZerar } from './previa-zerar';
 
 /**
@@ -19,6 +19,7 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
 }) {
   const { previa, carregando, erroPrevia, recontar } = usePreviaZerar((sinal) => pedirPreviaZerarPedidos(empresaId, fetch, sinal), [empresaId], previaInicial);
 
+  const vazia = !!previa && !carregando && semPedidoParaApagar(previa);
   const mantidos = previa ? textosMantidosPedidos(previa.mantidos) : null;
 
   return (
@@ -28,6 +29,7 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
       rotulo="Zerar pedidos"
       rotuloEnviando="Zerando pedidos…"
       idEnvio="zerar:pedidos"
+      semAcao={vazia}
       podeEnviar={!!previa && !carregando}
       enviar={(chave, frase) => pedirZerarPedidos(empresaId, frase, chave)}
       aoSucesso={aoZerar}
@@ -36,7 +38,7 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
       aviso={AVISO_ZERAR}
       tomAviso="erro"
     >
-      <p className="sem-margem">{TEXTO_ANTES_DE_ZERAR_PEDIDOS}</p>
+      {!vazia && <p className="sem-margem">{TEXTO_ANTES_DE_ZERAR_PEDIDOS}</p>}
       {erroPrevia && <p className="erro" role="alert">{erroPrevia}</p>}
       {previa && (
         <div className="previa-zerar" aria-live="polite">

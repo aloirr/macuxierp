@@ -14,8 +14,8 @@ export const dataCivil = (d: string | null): string => (d ? d.split('-').reverse
 const cep = (c: string | null) => (c ? `${c.slice(0, 5)}-${c.slice(5)}` : null);
 
 /**
- * Endereço em uma linha: "Rua X, 10, Sala 2, Centro, CEP 69000-000". Cidade e UF ficam no bloco Dados da empresa, que a ficha
- * não repete. Partes ausentes saem; tudo ausente vira "—".
+ * Endereço em uma linha: "Rua X, 10, Sala 2, Centro, CEP 69000-000". A cidade/UF fica só no bloco Dados (RD-2033), sem repetir aqui.
+ * Partes ausentes saem; tudo ausente vira "—".
  */
 export function enderecoEmLinha(f: Pick<FichaReceitaPlanaMascarada, 'logradouro' | 'numero' | 'complemento' | 'bairro' | 'cep'>): string {
   const partes = [f.logradouro, f.numero, f.complemento, f.bairro, cep(f.cep) ? `CEP ${cep(f.cep)}` : null].filter((p): p is string => !!p && p.trim() !== '');
@@ -35,6 +35,14 @@ export function linhasDaFicha(f: FichaReceitaPlanaMascarada): LinhaDado[] {
     { rotulo: 'CNAE principal', valor: ou(f.cnae_principal) },
     { rotulo: 'Endereço', valor: enderecoEmLinha(f) },
   ];
+}
+
+/** Ficha sem nenhum dado (a data da consulta não conta): vale como sem ficha, com um só estado vazio na tela (RD-2201). */
+export function fichaVazia(f: FichaReceitaPlanaMascarada | null): f is null {
+  if (!f) return true;
+  const { cnae_secundarios: sec, receita_consultada_em: consultadaEm, ...resto } = f;
+  void consultadaEm;
+  return Object.values(resto).every((v) => v === null || v === '') && (!sec || sec.length === 0);
 }
 
 /** "Consultada em 24/11/2026 12:00", no fuso da empresa; sem a data, nada. */

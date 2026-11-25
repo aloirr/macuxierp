@@ -9,7 +9,7 @@ export function FraseConfirmacao({ frase, valor, aoMudar, erro }: { frase: strin
   const id = useId();
   return (
     <label className="campo" htmlFor={id}>
-      <span>Para confirmar, digite <strong className="codigo">{frase}</strong>.</span>
+      <span>Para confirmar, digite <strong className="frase-confirmar">{frase}</strong>.</span>
       <input id={id} autoFocus value={valor} onChange={(e) => aoMudar(e.target.value)} autoComplete="off" spellCheck={false} maxLength={64} aria-invalid={erro ? true : undefined} />
     </label>
   );

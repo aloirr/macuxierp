@@ -123,6 +123,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .busca-slug { display: flex; gap: 8px; align-items: end; margin-bottom: 16px; }
 .busca-slug .campo { margin: 0; width: 280px; }
 .codigo, .senha-provisoria { font-family: var(--mx-fonte-codigo); }
+/* Frase de confirmação digitada (MC-0101-2): selo em linha, quebra nos espaços, repete borda e recuo em cada linha. */
+.frase-confirmar { font-family: var(--mx-fonte-codigo); font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-grafite); background: var(--mx-cor-nevoa); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 4px; padding: 1px 6px; overflow-wrap: break-word; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .cartao-plataforma .marca-login { margin: 0 0 24px; } /* área de proteção da C de 100 px */
 .cartao-plataforma .apoio { margin: 16px 0 0; }
 .dados-empresa { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; }
@@ -277,7 +279,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 }
 
 /* Telas do core e da bandeira (T-0087, T-0088): só tokens. */
-.segredo { display: block; padding: 12px; font-family: ui-monospace, monospace; font-size: var(--mx-tamanho-titulo-dialogo); letter-spacing: .04em; background: var(--mx-cor-perola); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; overflow-wrap: anywhere; user-select: all; }
+.segredo { display: block; padding: 12px; font-family: var(--mx-fonte-codigo); font-size: var(--mx-tamanho-titulo-dialogo); letter-spacing: .04em; background: var(--mx-cor-perola); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; overflow-wrap: anywhere; user-select: all; }
 /* Perfis e permissões: uma coluna por perfil; a primeira coluna fica à vista ao rolar na horizontal. */
 .matriz-perfis { min-width: 720px; }
 .matriz-perfis td { text-align: center; }

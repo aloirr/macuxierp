@@ -1,5 +1,5 @@
 /** Plugin "Zerar dados" (RN-CAD-10, T-0058) com tx e portas falsas. */
-import { CAMINHOS_CARGAS_PLATAFORMA, CODIGO_ZERAGEM_BLOQUEADA, ErroApi, ZeragemPlataformaResposta, type ContextoPlataforma, type Transacao } from '@macuxierp/platform-sdk';
+import { CAMINHOS_CARGAS_PLATAFORMA, CODIGO_ZERAGEM_BLOQUEADA, ErroApi, MENSAGEM_FRASE_ZERAR, ZeragemPlataformaResposta, corpoErroApi, type ContextoPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarPluginPlataformaCadastrosZerar } from './zeragem';
 import type { EstadoEntidadeIntegracao } from './zeragem-portas';
@@ -86,10 +86,21 @@ describe('plugin de plataforma "Zerar dados" (RN-CAD-10)', () => {
     expect(r.anulados).toEqual([{ tabela: 'cliente', coluna: 'vendedor_id', quantidade: 1 }]);
   });
 
-  it('RN-CAD-10: frase errada é recusada pelo Zod do corpo (400 na apps/api)', () => {
+  it('RN-CAD-10 (T-0093): frase errada é 422 de regra frase_nao_confere, sem tocar o banco', async () => {
+    const m = montar();
+    const e = await m.chamar(C.zerar, { cadastros: ['vendedor'], frase: 'zerar' }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ErroApi);
+    expect((e as ErroApi).status).toBe(422);
+    expect(corpoErroApi(e as ErroApi)).toEqual({ codigo: 'RN-CAD-10', mensagem: MENSAGEM_FRASE_ZERAR, detalhes: { codigo: 'frase_nao_confere' } });
+    expect(m.todas).toEqual([]);
+    await expect(m.chamar(C.zerar, { cadastros: ['vendedor'], frase: `  ${FRASE.toUpperCase()}. ` })).resolves.toBeDefined();
+  });
+
+  it('RN-CAD-10 (T-0093): corpo malformado segue 400 pelo Zod', () => {
     const rota = montar().plugin.rotas.find((r) => r.caminho === C.zerar)!;
-    expect(rota.corpo!.safeParse({ cadastros: ['vendedor'], frase: 'zerar' }).success).toBe(false);
-    expect(rota.corpo!.safeParse({ cadastros: ['vendedor'], frase: `  ${FRASE.toUpperCase()} ` }).success).toBe(true);
+    for (const corpo of [{ cadastros: ['vendedor'] }, { cadastros: ['vendedor'], frase: 1 }, { cadastros: ['vendedor'], frase: 'x'.repeat(201) }]) {
+      expect(rota.corpo!.safeParse(corpo).success).toBe(false);
+    }
   });
 
   it('RN-CAD-10: com bloqueio o zerar é 422 zeragem_bloqueada e não chama portal_zerar', async () => {

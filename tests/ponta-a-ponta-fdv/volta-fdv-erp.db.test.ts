@@ -21,7 +21,7 @@ import { envelopeDaLinha, OutboxPg, SELECT_EVENTO, type BancoPg, type LinhaEvent
 import { PG_DISPONIVEL, type BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
 import { JWT_SEGREDO_DE_TESTE } from '../../apps/api/src/apoio-teste';
 import { montarDependenciasProducao, registrarModulos } from '../../apps/api/src/modulos';
-import { clienteValido, CNPJ_B, ENDERECO_AM, filialValida, produtoValido } from '../../modules/cadastros/api/fixtures-teste';
+import { clienteValido, CNPJ_B, ENDERECO_AM, produtoValido } from '../../modules/cadastros/api/fixtures-teste';
 import { criarConsultaParaPedido, repositoriosSql } from '../../modules/cadastros/api/index';
 import { PedidoParaErpLido, RetornoErp } from '../../modules/integracao-fdv/contracts/index';
 import { criarPluginPedido, dependenciasDeProducao } from '../../modules/pedido/api/index';
@@ -30,7 +30,7 @@ import { prepararAlvo, type Alvo } from './apoio/alvo';
 import { criarClienteHubPedidos, type ClienteHubPedidosArnes } from './apoio/cliente-hub-pedidos';
 import { CredencialHub, exigirCenario, lerConfigHub, type NomeCenario } from './apoio/config';
 import type { DubleHub } from './apoio/duble-hub';
-import { criarLadoErpPedidos, indicesCom, type LadoErpPedidos } from './apoio/erp-pedidos';
+import { criarLadoErpPedidos, indicesCom, pedidoFdvDoKit, semearKitPedidos, type LadoErpPedidos } from './apoio/erp-pedidos';
 import {
   aprovarNoFdv,
   pedidoNoHub,
@@ -73,26 +73,14 @@ interface Massa {
   enderecoEntrega: string;
 }
 
-/** O `PedidoParaErp` como o FDV o entrega (cópia do contrato lido pelo ERP, P-1). Quantidade sempre na unidade base. */
+/** O pedido do kit (`pedidoFdvDoKit`) com a observação e dois itens. Quantidade sempre na unidade base. */
 function pedidoFdv(m: Massa, o: Record<string, unknown> = {}): PedidoParaErp {
-  return {
-    versao_contrato: 'v1',
-    pedido_uuid: randomUUID(),
-    cliente_external_id: KIT.cliente,
-    vendedor_external_id: KIT.vendedor,
-    filial: { external_id: m.filial },
-    pagamento: { prazo_external_id: KIT.prazo },
-    criado_em: '2026-11-21T14:00:00.000Z',
-    aprovado_em: '2026-11-21T14:05:00.000Z',
-    observacao: OBSERVACAO,
-    itens: [
-      // 2 caixas de 12: quantidade 24 na unidade base; unidade, fator e quantidade_venda só indicam a embalagem
-      { sequencia: 1, produto_external_id: KIT.produto, quantidade: 24, unidade: 'CX', fator: 12, quantidade_venda: 2, preco_unitario_cents: 500, desconto_cents: 0, total_cents: 12_000 },
-      { sequencia: 2, produto_external_id: m.produtoErp, quantidade: 3, unidade: 'UN', fator: 1, quantidade_venda: 3, preco_unitario_cents: 250, total_cents: 750 },
-    ],
-    total_cents: 12_750,
-    ...o,
-  } as PedidoParaErp;
+  const itens = [
+    // 2 caixas de 12: quantidade 24 na unidade base; unidade, fator e quantidade_venda só indicam a embalagem
+    { sequencia: 1, produto_external_id: KIT.produto, quantidade: 24, unidade: 'CX', fator: 12, quantidade_venda: 2, preco_unitario_cents: 500, desconto_cents: 0, total_cents: 12_000 },
+    { sequencia: 2, produto_external_id: m.produtoErp, quantidade: 3, unidade: 'UN', fator: 1, quantidade_venda: 3, preco_unitario_cents: 250, total_cents: 750 },
+  ];
+  return { ...pedidoFdvDoKit(KIT, m.filial, itens), observacao: OBSERVACAO, ...o } as PedidoParaErp;
 }
 
 // ---------------------------------------------------------------- alvo real ------------------------------------------
@@ -132,22 +120,12 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
   };
 
   async function semear(k: Apelido): Promise<Massa> {
-    const post = async (url: string, corpo: object): Promise<string> => {
-      const r = await api.chamar(k, 'POST', url, corpo);
-      expect(r.statusCode, `${k} ${url}: ${r.statusCode}`).toBeLessThan(300);
-      return (r.json() as { id: string }).id;
-    };
-    const filial = await post('/v1/cadastros/filiais', filialValida());
-    await post('/v1/cadastros/condicoes-pagamento', { codigo: '30/60', descricao: '30 e 60 dias', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45, external_id: KIT.prazo });
-    await post('/v1/cadastros/vendedores', { codigo: 'V1', nome: 'Vendedor Um', filial_id: filial, external_id: KIT.vendedor });
-    const clienteKit = await post('/v1/cadastros/clientes', clienteValido(filial, { external_id: KIT.cliente, enderecos: [{ ...ENDERECO_AM, tipo: 'principal' }, ENTREGA_ERP] }));
+    const { filial, clienteKit, produtoKit, post } = await semearKitPedidos(api, k, KIT, relogio, { enderecos: [{ ...ENDERECO_AM, tipo: 'principal' }, ENTREGA_ERP] });
     const pf = { tipo_pessoa: 'PF', ie: null, ind_ie_dest: '9' };
     const clienteErp = await post('/v1/cadastros/clientes', clienteValido(filial, { ...pf, documento: CPF_PF, razao_social: RAZAO_PF }));
     const clienteReentrega = await post('/v1/cadastros/clientes', clienteValido(filial, { ...pf, documento: CPF_REENTREGA, razao_social: RAZAO_REENTREGA, external_id: 'C000777' }));
-    const produtoKit = await post('/v1/cadastros/produtos', produtoValido({ cest: '0300700', external_id: KIT.produto }));
     const produtoErp = await post('/v1/cadastros/produtos', produtoValido({ codigo: 'P002', descricao: 'Agua mineral 500ml', cest: '0300700' }));
     const [e] = await adm(`SELECT id FROM cadastros.cliente_endereco WHERE tenant_id = $1 AND cliente_id = $2 AND tipo = 'entrega'`, [T[k], clienteKit]);
-    await adm('INSERT INTO integracao_fdv.sinal (tenant_id, proxima_busca_pedidos_em) VALUES ($1, $2)', [T[k], relogio.agora()]);
     return { filial, clienteKit, clienteErp, clienteReentrega, produtoKit, produtoErp, enderecoEntrega: e!.id as string };
   }
 

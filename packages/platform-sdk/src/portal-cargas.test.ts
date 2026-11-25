@@ -4,6 +4,8 @@ import {
   AVISOS_CARGA_PORTAL,
   CADASTROS_CARGA_PORTAL,
   CADASTROS_ZERAR_PORTAL,
+  CODIGO_FRASE_NAO_CONFERE,
+  CodigoDetalheCargaPortal,
   CODIGO_ZERAGEM_BLOQUEADA,
   CAMINHOS_CARGAS_PLATAFORMA,
   CODIGOS_DETALHE_CARGA_PORTAL,
@@ -420,6 +422,11 @@ describe('ZeragemPlataformaResposta (RN-CAD-10, v0.3.5b)', () => {
     expect(ZeragemPlataformaResposta.safeParse({ ...base, simulado: false, bloqueios }).success).toBe(false);
     expect(CODIGO_ZERAGEM_BLOQUEADA).toBe('zeragem_bloqueada');
     expect(CODIGOS_DETALHE_CARGA_PORTAL).toContain(CODIGO_ZERAGEM_BLOQUEADA);
+  });
+
+  it('RN-CAD-10: CODIGO_FRASE_NAO_CONFERE está nos códigos de detalhe da carga', () => {
+    expect(CODIGO_FRASE_NAO_CONFERE).toBe('frase_nao_confere');
+    expect(CodigoDetalheCargaPortal.parse(CODIGO_FRASE_NAO_CONFERE)).toBe('frase_nao_confere');
   });
 
   it('aceita o motivo fiscal em mantidos: filial com A1 ou ambiente fiscal fica (decisão do PO, 23/11 16h18)', () => {

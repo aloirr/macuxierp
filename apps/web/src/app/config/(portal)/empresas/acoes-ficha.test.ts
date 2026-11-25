@@ -40,7 +40,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('ações da ficha da Receita (T-0101)', () => {
-  it('Revelar: POST na rota do campo, no-store, anti-CSRF, sem Idempotency-Key; o valor só vai na resposta e nunca ao log', async () => {
+  it('Mostrar: POST na rota do campo, no-store, anti-CSRF, sem Idempotency-Key; o valor só vai na resposta e nunca ao log', async () => {
     const log = vi.spyOn(console, 'log');
     const erro = vi.spyOn(console, 'error');
     resposta = () => json({ valor: EMAIL });
@@ -52,7 +52,7 @@ describe('ações da ficha da Receita (T-0101)', () => {
     expect(chamadas[0]?.h['idempotency-key']).toBeUndefined();
     expect(JSON.stringify([log.mock.calls, erro.mock.calls])).not.toContain('maria@');
   });
-  it('Revelar o telefone usa a rota do telefone; campo fora da lista nem chega à API', async () => {
+  it('Mostrar o telefone usa a rota do telefone; campo fora da lista nem chega à API', async () => {
     resposta = () => json({ valor: '(92) 99999-1234' });
     await revelarContatoAcao(ID, 'telefone');
     expect(chamadas[0]?.url).toMatch(/\/contato\/telefone$/);

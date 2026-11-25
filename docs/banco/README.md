@@ -435,6 +435,14 @@ Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api
 
 Migração: `db/migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes: `db/testes/zerar-pedidos-criterio3-0065.db.test.ts`.
 
+## CNAE oficial e nomes para a ficha (T-0106, migração 0066)
+A ficha da 0063 guarda só códigos (`cnae_principal`, `cnae_secundarios`, `municipio_ibge`); a tela precisa do texto.
+- **`cadastros.cnae`** no molde das oficiais da 0005, com a carga versionada `cnae` (CNAE 2.3, subclasses, IBGE/CONCLA; fonte, versão e sha256 no `fontes.json`). Seção, divisão, grupo e classe vão junto, porque vêm de graça na fonte e o CHECK da hierarquia pega CSV trocado.
+- **Funções, não chave nova no `empresa_ler`:** a 0063 não muda (o contrato `ficha` fica igual), e o core pede o texto só dos códigos que exibe, inclusive os ainda não gravados (a prévia da consulta à Receita). A do município vem junto porque o problema é o mesmo.
+- **Sem `exigir_superadmin`:** só leem tabela oficial, sem dado de tenant; o que restringe é o EXECUTE só do `macuxierp_config`, como na 0063. Código encerrado por versão nova continua com o texto (a ficha antiga ainda o mostra); o vigente tem preferência.
+
+Migração: `db/migrations/0066_cadastros_cnae_oficial.sql`; testes: `db/testes/cnae-oficial-0066.db.test.ts` e `db/testes/oficiais.db.test.ts`.
+
 ## Sai a função antiga do expurgo do recusado (T-0104, migração 0067)
 RD-1810 e RD-1813 do #622. Desde a v0.3.13 o worker e o módulo chamam só a `expurgar_pre_cadastro`; a 0067 tira a antiga (remoção em duas versões, "Migrações aditivas"). `DROP FUNCTION IF EXISTS` com a assinatura, para reexecutar.
 - **COMMENT ON da nova** deixa de citar a função que saiu: fica com parâmetros, erros e retorno; as regras do recusado e do sem-decisão ficam nesta página (seções da 0057 e da 0062).

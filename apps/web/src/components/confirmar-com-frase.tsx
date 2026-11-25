@@ -11,7 +11,7 @@ import { FraseConfirmacao } from './frase-confirmacao';
  * o campo da frase, a linha de erro e o envio com a `Idempotency-Key` da ação (a mesma chave se repete até a resposta ser definitiva).
  * O botão fica desligado até a frase bater (`fraseConfere`) e `podeEnviar` valer. 401 e a troca de senha levam a outra página.
  */
-export function ConfirmarComFrase<T>({ titulo, frase, rotulo, rotuloEnviando, idEnvio, enviar, aoSucesso, aoFalha, aoFechar, aoCancelar, podeEnviar = true, aviso, tomAviso, bloqueio, children }: {
+export function ConfirmarComFrase<T>({ titulo, frase, rotulo, rotuloEnviando, idEnvio, enviar, aoSucesso, aoFalha, aoFechar, aoCancelar, podeEnviar = true, aviso, tomAviso, bloqueio, semAcao = false, children }: {
   titulo: string;
   frase: string;
   rotulo: string;
@@ -33,12 +33,23 @@ export function ConfirmarComFrase<T>({ titulo, frase, rotulo, rotuloEnviando, id
   tomAviso?: 'aviso' | 'erro';
   /** Bloqueio fixo no rodapé, acima dos botões (junto do botão desligado). */
   bloqueio?: ReactNode;
+  /** Não há o que confirmar (ex.: prévia com 0 itens): esconde a frase e o botão de perigo e deixa só "Fechar". */
+  semAcao?: boolean;
   children?: ReactNode;
 }) {
   const [digitado, setDigitado] = useState('');
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
   const chaves = useRef(new ChavesIdempotencia());
+
+  /** Nada a confirmar: sem frase e sem botão de perigo; só "Fechar". */
+  if (semAcao) {
+    return (
+      <Dialogo titulo={titulo} aoFechar={aoFechar} rodape={<div className="rodape-confirmar"><div className="acoes-confirmar"><button type="button" className="mx-botao-secundario" onClick={aoFechar}>Fechar</button></div></div>}>
+        {children}
+      </Dialogo>
+    );
+  }
 
   const confirmar = async () => {
     if (!podeEnviar || !fraseConfere(digitado, frase)) return;

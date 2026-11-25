@@ -38,4 +38,14 @@ describe('Zerar Pedidos não faturados (T-0093)', () => {
     expect(h.split('sem nota e sem título').length - 1).toBe(1);
     expect(h).toContain('Não há pedidos sem nota e sem título para apagar.');
   });
+  it('com N = 0: sem frase e sem botão de perigo, só o texto e "Fechar"', () => {
+    const h = tela(previa({ mantidos: [{ motivo: 'nota', quantidade: 2 }], apagados: [{ tabela: 'pedido', quantidade: 0 }], apagados_fdv: 0 }));
+    expect(h).toContain('Não há pedidos sem nota e sem título para apagar.');
+    expect(h).toContain('>Fechar</button>');
+    expect(h).not.toContain('Zerar pedidos</button>');
+    expect(h).not.toContain('data-destrutivo');
+    expect(h).not.toContain('autorizo zerar');
+    expect(h).not.toContain('Cancelar');
+    expect(h).not.toContain('Antes de zerar');
+  });
 });

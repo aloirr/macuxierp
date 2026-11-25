@@ -4,21 +4,27 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { CSSProperties, KeyboardEvent as TecladoReact, ReactNode } from 'react';
 import { botaoSecundario, canto, cor, desabilitadoEstilo, espaco, texto } from './estilos.js';
 
-/** Item do menu. `oculto` tira o item; `perigo` manda para o fim, depois do separador. */
+/**
+ * Item do menu. `oculto` tira o item; `perigo` manda para o fim, depois do separador.
+ * `desabilitado`: `true` desliga o item (pulado nas setas); um texto desliga e mostra o motivo
+ * abaixo do rótulo (o item continua focável, para o leitor de tela anunciar o motivo).
+ */
+export type Desabilitado = boolean | string;
+
 export interface AcaoMenu {
   chave: string;
   rotulo: string;
   aoAcionar: () => void;
   perigo?: boolean;
-  desabilitado?: boolean;
+  desabilitado?: Desabilitado;
   oculto?: boolean;
 }
 
-/** Ação principal à vista, ao lado do "Ações". Não se repete dentro do menu. */
+/** Ação principal à vista, ao lado do "Ações". Não se repete dentro do menu. `desabilitado` segue a regra do item do menu. */
 export interface AcaoPrincipal {
   rotulo: string;
   aoAcionar: () => void;
-  desabilitado?: boolean;
+  desabilitado?: Desabilitado;
   oculto?: boolean;
 }
 
@@ -56,7 +62,17 @@ export function ordenarAcoes(acoes: AcaoMenu[]): { normais: AcaoMenu[]; perigos:
   return { normais: visiveis.filter((a) => !a.perigo), perigos: visiveis.filter((a) => a.perigo) };
 }
 
-/** Próximo índice de foco, circular, pulando desabilitados. -1 se nada é focável. */
+/** Motivo do item desligado: o texto de `desabilitado`, se houver (string vazia ou só espaços não conta). */
+export function motivoDoItem(a: { desabilitado?: Desabilitado }): string | undefined {
+  return typeof a.desabilitado === 'string' && a.desabilitado.trim() ? a.desabilitado.trim() : undefined;
+}
+
+/** Item desligado, com ou sem motivo. Enter, Espaço e clique nele não acionam nem fecham o menu. */
+export function itemDesligado(a: { desabilitado?: Desabilitado }): boolean {
+  return a.desabilitado === true || typeof a.desabilitado === 'string';
+}
+
+/** Próximo índice de foco, circular, pulando os marcados. -1 se nada é focável. */
 export function proximoItemMenu(desabilitados: boolean[], atual: number, tecla: TeclaMenu): number {
   const n = desabilitados.length;
   if (!desabilitados.some((d) => !d)) return -1;
@@ -112,7 +128,7 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
 
   const { normais, perigos } = ordenarAcoes(acoes);
   const lista = [...normais, ...perigos];
-  const desabilitados = lista.map((a) => !!a.desabilitado);
+  const desabilitados = lista.map((a) => itemDesligado(a) && !motivoDoItem(a));
   const principalVisivel = principal && !principal.oculto ? principal : undefined;
 
   const fechar = useCallback((devolverFoco: boolean) => {
@@ -200,40 +216,71 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
   };
 
   const escolher = (a: AcaoMenu) => {
-    if (a.desabilitado) return;
+    if (itemDesligado(a)) return;
     fechar(true);
     a.aoAcionar();
   };
 
-  const item = (a: AcaoMenu): ReactNode => (
-    <button
-      key={a.chave}
-      type="button"
-      role="menuitem"
-      tabIndex={-1}
-      aria-disabled={a.desabilitado ? true : undefined}
-      className={`mx-acoes-item mx-acoes-alvo${a.perigo ? ' mx-acoes-perigo' : ''}`}
-      onClick={() => escolher(a)}
-      style={{ ...itemBase, ...desabilitadoEstilo(a.desabilitado), ...(a.perigo ? { color: cor('erroTexto') } : null) }}
-    >
-      {a.rotulo}
-    </button>
-  );
+  const item = (a: AcaoMenu): ReactNode => {
+    const desligado = itemDesligado(a);
+    const motivo = motivoDoItem(a);
+    const idMotivo = `${id}-motivo-${a.chave}`;
+    // Com motivo não se usa opacidade: o texto fica em textoSecundario (neutro, contraste ≥ 4,5:1), inclusive o perigo.
+    const estilo: CSSProperties = motivo
+      ? { cursor: 'not-allowed', color: cor('textoSecundario') }
+      : { ...desabilitadoEstilo(desligado), ...(a.perigo ? { color: cor('erroTexto') } : null) };
+    return (
+      <button
+        key={a.chave}
+        type="button"
+        role="menuitem"
+        tabIndex={-1}
+        aria-disabled={desligado ? true : undefined}
+        aria-describedby={motivo ? idMotivo : undefined}
+        className={`mx-acoes-item mx-acoes-alvo${a.perigo ? ' mx-acoes-perigo' : ''}`}
+        onClick={() => escolher(a)}
+        style={{ ...itemBase, ...estilo }}
+      >
+        {a.rotulo}
+        {motivo ? (
+          <span id={idMotivo} style={{ ...texto('pequeno'), display: 'block', whiteSpace: 'normal', maxWidth: 260 }}>
+            {motivo}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
 
   const estiloBotao: CSSProperties = botaoSecundario();
+  const principalDesligado = principalVisivel ? itemDesligado(principalVisivel) : false;
+  const motivoPrincipal = principalVisivel ? motivoDoItem(principalVisivel) : undefined;
+  const idMotivoPrincipal = `${id}-motivo-principal`;
 
   return (
     <span style={{ display: 'inline-flex', gap: espaco.sm, alignItems: 'center', whiteSpace: 'nowrap' }}>
       {principalVisivel ? (
-        <button
-          type="button"
-          className="mx-acoes-alvo"
-          disabled={principalVisivel.desabilitado}
-          onClick={principalVisivel.aoAcionar}
-          style={{ ...estiloBotao, ...desabilitadoEstilo(principalVisivel.desabilitado) }}
-        >
-          {principalVisivel.rotulo}
-        </button>
+        <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <button
+            type="button"
+            className="mx-acoes-alvo"
+            aria-disabled={principalDesligado ? true : undefined}
+            aria-describedby={motivoPrincipal ? idMotivoPrincipal : undefined}
+            onClick={() => {
+              if (!principalDesligado) principalVisivel.aoAcionar();
+            }}
+            style={{ ...estiloBotao, ...desabilitadoEstilo(principalDesligado) }}
+          >
+            {principalVisivel.rotulo}
+          </button>
+          {motivoPrincipal ? (
+            <span
+              id={idMotivoPrincipal}
+              style={{ ...texto('pequeno'), color: cor('textoSecundario'), whiteSpace: 'normal', maxWidth: 260 }}
+            >
+              {motivoPrincipal}
+            </span>
+          ) : null}
+        </span>
       ) : null}
       {lista.length > 0 ? (
         <>

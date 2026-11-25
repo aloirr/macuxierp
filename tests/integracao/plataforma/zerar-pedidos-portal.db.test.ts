@@ -4,17 +4,35 @@
  * Casos: 1) apaga os pedidos sem nota e sem título e cancela o a faturar; 2) o pedido com nota, título ou faturado fica
  * intacto, com a nota e o XML iguais; 4) a porta falha (a faturar já faturado, MXC03) e o zerar inteiro é desfeito (409);
  * 5) auditoria só com contagens; 6) só o superadmin do /config, com CSRF, frase e licença do módulo, e o outro tenant não
- * muda. Caso 3 (reenvio do mesmo pedido_uuid): modules/pedido/api/zeragem-apos.db.test.ts.
+ * muda. Caso 3 (reenvio do mesmo pedido_uuid pelo dublê do Hub depois do zerar pela API do portal): o segundo describe
+ * deste arquivo, ponta a ponta (dublê do Hub, busca e retorno do integracao-fdv, consumidores reais da outbox); a porta
+ * sozinha no banco: modules/pedido/api/zeragem-apos.db.test.ts.
  * Dados fictícios. Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FRASE_ZERAR_DADOS, PREFIXO_PLATAFORMA } from '../../../packages/platform-sdk/src/index';
+import type { BancoPg } from '../../../packages/platform-sdk/src/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { CAMINHOS_ZERAR_PEDIDOS, type ZeragemPedidosResposta as Resposta } from '../../../modules/pedido/contracts/index';
 import { appPgDeTeste, inserirAdministradorDeTeste, SENHA_DE_TESTE } from '../../../apps/api/src/apoio-teste';
+import { consumidoresFaturamento } from '../../../apps/worker/src/faturamento';
 import { chaveAcesso, cnfDe, hashSql, sqlDePedido } from '../../../db/testes/fixture';
+import { montarApiPg } from '../../apoio/api-pg';
 import { atalhosPortal, inserirSuperadmin, type AppPortal } from '../../apoio/portal-pg';
+import { criarClienteHubPedidos, type ClienteHubPedidosArnes } from '../../ponta-a-ponta-fdv/apoio/cliente-hub-pedidos';
+import { CredencialHub } from '../../ponta-a-ponta-fdv/apoio/config';
+import { criarDubleHub, type DubleHub } from '../../ponta-a-ponta-fdv/apoio/duble-hub';
+import {
+  criarLadoErpPedidos,
+  criarRegistroLgpd,
+  despacharAteEsvaziar,
+  pedidoFdvDoKit,
+  semearKitPedidos,
+  type LadoErpPedidos,
+} from '../../ponta-a-ponta-fdv/apoio/erp-pedidos';
+import { aprovarNoFdv, pedidoNoHub, rotasPedidosDuble } from '../../ponta-a-ponta-fdv/apoio/hub-pedidos';
+import { RelogioDeTeste } from '../../ponta-a-ponta-fdv/apoio/relogio';
 
 const EMAIL_SA = 'sa-zerar-pedidos@exemplo.invalid';
 const url = (chave: keyof typeof CAMINHOS_ZERAR_PEDIDOS, tenant: string) => `${PREFIXO_PLATAFORMA}${CAMINHOS_ZERAR_PEDIDOS[chave].replace(':id', tenant)}`;
@@ -177,4 +195,109 @@ INSERT INTO faturamento.pedido_a_faturar (tenant_id, pedido_id, filial_id, clien
     const texto = JSON.stringify(aud);
     for (const s of [P.bko, P.fdv, FDV_UUID, 'PED-2', 'retrato', 'total']) expect(texto).not.toContain(s);
   });
+});
+
+/**
+ * Caso 3 da T-0093 (critério 3; RN-CAD-10 para o zerar e RN-PED-01 para o reenvio; ADR 0013, adendo A3; desenho
+ * docs/desenho/T-0093.md §4): o pedido do FDV aprovado é zerado pela API do portal com o retorno "integrado" ainda na fila;
+ * nenhum retorno do apagado sai, o pedido não volta sozinho e, quando o FDV reenvia o MESMO pedido_uuid pelo dublê do Hub,
+ * ele volta como pedido novo (outro id), com o a faturar antigo cancelado e um a faturar novo. A reentrega repetida depois
+ * disso fica no volta-fdv-erp.db.test.ts. Dublê do Hub sempre (nunca o Hub real: o zerar é destrutivo).
+ */
+describe.skipIf(!PG_DISPONIVEL)('T-0093 caso 3 — reenvio do pedido_uuid zerado pelo dublê do Hub (critério 3)', () => {
+  const EMAIL_SA3 = 'sa-zerar-reenvio@exemplo.invalid';
+  const FDV = 'fdv-zerar-reenvio-duble';
+  const KIT = { cliente: 'C000321', vendedor: 'V09', produto: 'P009', prazo: 'PZ-30' };
+  let api: Awaited<ReturnType<typeof montarApiPg<'R'>>>;
+  let duble: DubleHub;
+  let relogio: RelogioDeTeste;
+  let worker: BancoPg;
+  let lado: LadoErpPedidos;
+  let hub: ClienteHubPedidosArnes;
+  let p: ReturnType<typeof atalhosPortal>;
+  let token = '';
+  let T = '';
+  let filial = '';
+  const registro = criarRegistroLgpd();
+
+  const adm = async (sql: string, prm: unknown[] = []): Promise<Record<string, any>[]> => (await api.b.admin.query(sql, prm)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
+  /** Busca do Hub, depois os consumidores reais da outbox: o retorno do integracao-fdv e a fila a faturar do faturamento. */
+  const despachar = () => despacharAteEsvaziar({ banco: worker, relogio, consumidores: [lado.consumidor, ...consumidoresFaturamento()], log: registro.pino });
+  const pedidosDoUuid = (uuid: string) => adm('SELECT id, numero, status, origem FROM pedido.pedido WHERE tenant_id = $1 AND external_id = $2', [T, uuid]);
+  const retornos = (uuid: string) => adm('SELECT status, estado, numero_erp FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 ORDER BY created_at, id', [T, uuid]);
+  const aFaturar = (ids: string[]) => adm('SELECT pedido_id, status FROM faturamento.pedido_a_faturar WHERE tenant_id = $1 AND pedido_id = ANY ($2) ORDER BY created_at, id', [T, ids]);
+  beforeAll(async () => {
+    relogio = new RelogioDeTeste(new Date());
+    duble = await criarDubleHub({ relogio, rotasExtras: rotasPedidosDuble(), taxa: { geral: { balde: 10_000, porMinuto: 10_000 } } });
+    const c = duble.registrarConector({ tenant: FDV, conectorId: 'macuxierp-zerar-reenvio' });
+    hub = criarClienteHubPedidos({ url: duble.url, credencial: new CredencialHub(c.conectorId, c.chave), versaoErp: 'dev' });
+    api = await montarApiPg({ R: ['cadastros', 'pedido', 'faturamento', 'integracao-fdv'] });
+    T = api.t.R;
+    worker = api.b.banco('macuxierp_worker', 4);
+    lado = criarLadoErpPedidos({ banco: worker, relogio });
+    ({ filial } = await semearKitPedidos(api, 'R', KIT, relogio));
+    await inserirSuperadmin(api.b, EMAIL_SA3);
+    p = atalhosPortal(api.app);
+    token = await p.sessao(EMAIL_SA3);
+  }, 180_000);
+  afterAll(async () => {
+    await api?.fechar();
+    await duble?.fechar();
+  });
+
+  it('caso 3: zerado com o retorno na fila, nenhum retorno do apagado sai; o reenvio do mesmo pedido_uuid volta novo, o a faturar antigo cancelado', async () => {
+    const ped = pedidoFdvDoKit(KIT, filial);
+    const uuid = ped.pedido_uuid;
+    aprovarNoFdv(duble, FDV, ped);
+    expect(await lado.buscar(T, hub)).toMatchObject({ buscados: 1, entregues: 1, rejeitados: 0, repetidos: 0 });
+    await despachar();
+    const [antigo] = await pedidosDoUuid(uuid);
+    expect(antigo).toMatchObject({ status: 'aprovado', origem: 'fdv' });
+    expect(await aFaturar([antigo!.id])).toEqual([{ pedido_id: antigo!.id, status: 'a_faturar' }]);
+    // o retorno "integrado" do pedido antigo ainda não foi ao Hub
+    expect(await retornos(uuid)).toMatchObject([{ status: 'integrado', estado: 'pendente', numero_erp: String(antigo!.numero) }]);
+
+    // zerar pela API do portal (RN-CAD-10), com a porta aposZerarPedidos da 0065 na mesma transação
+    const chamadasAntes = duble.requisicoes.length;
+    const z = await p.pedir('POST', url('zerar', T), { token, chave: randomUUID(), corpo: { frase: FRASE_ZERAR_DADOS } });
+    expect(z.statusCode, z.body).toBe(200);
+    expect(z.json<Resposta>().apagados).toEqual(
+      expect.arrayContaining([
+        { tabela: 'pedido', quantidade: 1 },
+        { tabela: 'integracao_fdv.pedido_recebido', quantidade: 1 },
+        { tabela: 'integracao_fdv.retorno_enviado', quantidade: 1 },
+        { tabela: 'faturamento.pedido_a_faturar', quantidade: 1 },
+      ]),
+    );
+    expect(duble.requisicoes.length, 'o zerar não chama o Hub').toBe(chamadasAntes);
+    expect(await pedidosDoUuid(uuid)).toEqual([]);
+    expect(await aFaturar([antigo!.id])).toEqual([{ pedido_id: antigo!.id, status: 'cancelado' }]);
+
+    // nenhum retorno do apagado sai; o pedido não volta sozinho (o Hub não o reentregou: nada novo na fila)
+    expect(await lado.enviar(T, hub)).toMatchObject({ enviados: 0, falhou: 0 });
+    expect(pedidoNoHub(duble, FDV, uuid)).toMatchObject({ estado: 'enviado', numeroErp: null, retornos: [], respostas: [] });
+    expect(await lado.buscar(T, hub)).toMatchObject({ buscados: 0, entregues: 0 });
+    await despachar();
+    expect(await pedidosDoUuid(uuid)).toEqual([]);
+    expect(await retornos(uuid)).toEqual([]);
+
+    // o FDV reenvia o MESMO pedido_uuid: volta como pedido novo (RN-PED-01 não o trata como repetido, o recebido foi liberado)
+    aprovarNoFdv(duble, FDV, ped);
+    expect(await lado.buscar(T, hub)).toMatchObject({ buscados: 1, entregues: 1, rejeitados: 0, repetidos: 0 });
+    await despachar();
+    const novos = await pedidosDoUuid(uuid);
+    expect(novos).toHaveLength(1);
+    const novo = novos[0]!;
+    expect(novo).toMatchObject({ status: 'aprovado', origem: 'fdv' });
+    expect(novo.id).not.toBe(antigo!.id);
+    expect(await adm('SELECT estado, pedido_id FROM integracao_fdv.pedido_recebido WHERE tenant_id = $1 AND pedido_uuid = $2', [T, uuid])).toEqual([{ estado: 'entregue', pedido_id: novo.id }]);
+    expect(await aFaturar([antigo!.id, novo.id])).toEqual([
+      { pedido_id: antigo!.id, status: 'cancelado' },
+      { pedido_id: novo.id, status: 'a_faturar' },
+    ]);
+    // ao Hub vai só o retorno do pedido novo, com o número novo
+    expect(await lado.enviar(T, hub)).toMatchObject({ enviados: 1, falhou: 0 });
+    expect(await retornos(uuid)).toMatchObject([{ status: 'integrado', estado: 'enviado', numero_erp: String(novo.numero) }]);
+    expect(pedidoNoHub(duble, FDV, uuid)!.retornos.map((r) => [r.status, r.numero_erp])).toEqual([['integrado', String(novo.numero)]]);
+  }, 120_000);
 });
