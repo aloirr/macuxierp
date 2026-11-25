@@ -223,10 +223,10 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     expect(chamadas).toHaveLength(1);
   });
   it('422 zeragem_bloqueada: devolve o código e os bloqueios (só strings cadastro:motivo)', async () => {
-    resposta = () => json({ codigo: 'RN-CAD-10', mensagem: 'x', detalhes: { codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento', 'lixo qualquer', 7], segredo: 'nao' } }, 422);
+    resposta = () => json({ codigo: 'RN-CAD-10', mensagem: 'x', detalhes: { codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['produto:lote_em_andamento', 'lixo qualquer', 7], segredo: 'nao' } }, 422);
     const r = await tratarZerar(reqZerar({ cadastros: ['preco'], frase: 'autorizo zerar os dados' }), EMP);
     expect(r.status).toBe(422);
-    expect(await r.json()).toEqual({ ok: false, erro: 'Há integração ligada ou lote em andamento; resolva antes de zerar.', codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento'], chaveNova: true });
+    expect(await r.json()).toEqual({ ok: false, erro: MENSAGENS_CARGA_PORTAL.zeragemBloqueada, codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['produto:lote_em_andamento'], chaveNova: true });
   });
   it.each(CODIGOS_ESTADO_MUDOU_ZERAR)('409 MXC03 no zerar (%s): "Os dados mudaram. Confira de novo." com o código para refazer a prévia', async (codigo) => {
     resposta = () => json({ codigo: 'CONFLITO', mensagem: 'x', detalhes: { codigo } }, 409);

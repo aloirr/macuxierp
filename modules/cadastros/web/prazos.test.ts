@@ -24,7 +24,7 @@ describe('lista dos prazos (RN-CAD-15)', () => {
 });
 
 describe('formulário do prazo (RN-CAD-15)', () => {
-  it('RN-CAD-15: "+ Parcela" e remover respeitam o mínimo de 1 e o máximo da forma (à vista 1, cartão 12, boleto 36)', () => {
+  it('RN-CAD-15: "+ Parcela" e remover respeitam o mínimo de 1 e o máximo da forma (à vista 1, cartão 12, boleto 24)', () => {
     let f = { ...formularioPrazoVazio(), forma_tpag: '15' };
     expect(rotulosDasParcelas(f.parcelas.length)).toEqual(['Parcela 1']);
     f = adicionarParcela(adicionarParcela(f));
@@ -33,7 +33,7 @@ describe('formulário do prazo (RN-CAD-15)', () => {
     expect(removerParcela(removerParcela(removerParcela(f, 0), 0), 0).parcelas).toHaveLength(1);
     expect(maxParcelasDaForma('01')).toBe(1);
     expect(maxParcelasDaForma('03')).toBe(12);
-    expect(maxParcelasDaForma('15')).toBe(36);
+    expect(maxParcelasDaForma('15')).toBe(24);
     let c = { ...formularioPrazoVazio(), forma_tpag: '03' };
     for (let i = 0; i < 20; i++) c = adicionarParcela(c);
     expect(c.parcelas).toHaveLength(12);
@@ -48,7 +48,7 @@ describe('formulário do prazo (RN-CAD-15)', () => {
     const ok = montarPrazo({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', parcelas: ['30', '60'], prazo_medio_dias: '45' });
     expect(ok.erros).toEqual({});
     expect(ok.corpo).toEqual({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 });
-    expect(montarPrazo({ codigo: 'X', descricao: 'X', forma_tpag: '15', parcelas: ['1000'], prazo_medio_dias: '30' }).erros).toHaveProperty('prazos_dias');
+    expect(montarPrazo({ codigo: 'X', descricao: 'X', forma_tpag: '15', parcelas: ['366'], prazo_medio_dias: '30' }).erros).toHaveProperty('prazos_dias');
   });
   it('RN-CAD-15: o legado abre no formulário com o prazo médio vazio, para completar', () => {
     expect(formularioDoPrazo(p('LEG', '15', [15, 30], null))).toMatchObject({ parcelas: ['15', '30'], prazo_medio_dias: '' });
@@ -56,11 +56,11 @@ describe('formulário do prazo (RN-CAD-15)', () => {
 });
 
 describe('prazo médio do cliente (RN-CAD-16)', () => {
-  it('RN-CAD-16: vazio = sem restrição (nulo); 0 a 999 vale; fora disso, erro', () => {
+  it('RN-CAD-16: vazio = sem restrição (nulo); 0 a 365 vale; fora disso, erro', () => {
     expect(prazoMedioDoCliente('')).toEqual({ valor: null });
     expect(prazoMedioDoCliente('0')).toEqual({ valor: 0 });
     expect(prazoMedioDoCliente(' 45 ')).toEqual({ valor: 45 });
-    expect(prazoMedioDoCliente('1000').erro).toBeDefined();
+    expect(prazoMedioDoCliente('366').erro).toBeDefined();
     expect(prazoMedioDoCliente('-1').erro).toBeDefined();
     expect(prazoMedioDoCliente('1,5').erro).toBeDefined();
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CargaPedido, CLASSE_FORMA, CondicaoPagamentoDados, CondicaoPagamentoAtualizacao, classeForma, ehAVista, FORMAS_A_VISTA, MAX_ARQUIVOS_LOTE } from './index';
+import { CargaPedido, CLASSE_FORMA, CondicaoPagamentoDados, CondicaoPagamentoAtualizacao, classeForma, ehAVista, FORMAS_A_VISTA, MAX_ARQUIVOS_LOTE, MAX_DIAS } from './index';
 
 describe('contrato da carga de CSV', () => {
   it('CargaPedido aceita até MAX_ARQUIVOS_LOTE arquivos (o literal do .max() é lido pelo teste de sincronia da CLI)', () => {
@@ -29,7 +29,7 @@ describe('critério único de à vista e classe da forma (RN-CAD-09)', () => {
     expect(CondicaoPagamentoDados.safeParse({ ...base, parcelas_cartao: 13 }).success).toBe(false);
     expect(CondicaoPagamentoDados.safeParse({ ...base, parcelas_cartao: 0 }).success).toBe(false);
     expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: undefined }).success).toBe(false);
-    expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: 1000 }).success).toBe(false);
+    expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: MAX_DIAS + 1 }).success).toBe(false);
     expect(CondicaoPagamentoDados.safeParse({ ...base, prazo_medio_dias: null }).success).toBe(false);
     expect(CondicaoPagamentoAtualizacao.parse({ descricao: 'X' })).toEqual({ descricao: 'X' });
   });

@@ -4,7 +4,7 @@ import { AVISO_ZERAR_INATIVA_FDV, ZeragemPlataformaResposta } from '@macuxierp/p
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
-import { AVISO_ZERAR, textoSemChave } from '@/lib/config/cargas';
+import { AVISO_LIMITE_FDV, AVISO_ZERAR, BLOQUEIO_LOTE, textoSemChave } from '@/lib/config/cargas';
 import { ZerarCadastro } from './zerar-cadastro';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
@@ -28,6 +28,14 @@ describe('Zerar por cadastro na aba Integração (T-0086)', () => {
     expect(h).toContain('role="dialog"');
     expect(h).not.toContain('type="checkbox"');
   });
+  it('a prévia traz o aviso dos 30% do FDV uma vez', () => {
+    const h = zerar('produto', previa());
+    const aviso = AVISO_LIMITE_FDV;
+    expect(h).toContain(aviso);
+    expect(h.split(aviso)).toHaveLength(2);
+    expect(h).toMatch(/<p class="faixa-aviso sem-margem" role="status" data-testid="aviso-30-fdv">/);
+    expect(zerar('produto', null)).not.toContain(aviso);
+  });
   it('prévia: mantidos e o que será inativado no FDV, por entidade do Hub', () => {
     const h = zerar('produto', previa({ inativacao_fdv: [{ entidade: 'cliente', quantidade: 3 }, { entidade: 'cliente_endereco', quantidade: 5 }] }));
     expect(h).toContain('Mantidos: 3');
@@ -39,12 +47,11 @@ describe('Zerar por cadastro na aba Integração (T-0086)', () => {
     expect(zerar('cliente_endereco', previa())).toContain('Zerar endereços zera também os clientes');
     expect(zerar('produto', previa())).not.toContain('zera também');
   });
-  it('só o lote em andamento bloqueia; "integracao_ligada" deixou de valer', () => {
-    const sem = zerar('produto', previa({ bloqueios: [{ cadastro: 'produto', motivo: 'integracao_ligada' }] }));
-    expect(sem).not.toContain('Desligue o envio');
+  it('só o lote em andamento bloqueia; sem bloqueio a tela não avisa nada', () => {
+    const sem = zerar('produto', previa({ bloqueios: [] }));
     expect(sem).not.toContain('Zerar bloqueado');
     const com = zerar('produto', previa({ bloqueios: [{ cadastro: 'produto', motivo: 'lote_em_andamento' }] }));
-    expect(com).toContain('Há uma carga em andamento. Espere terminar para zerar.');
+    expect(com).toContain(BLOQUEIO_LOTE);
     expect(com).toMatch(/<button[^>]*disabled=""[^>]*>Zerar<\/button>/);
   });
   it('o aviso do FDV sem código de origem continua com sem_chave > 0', () => {

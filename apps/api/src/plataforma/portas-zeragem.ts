@@ -42,7 +42,7 @@ function usosCadastroPorFuncoes(): UsosCadastroPlataforma {
   };
 }
 
-/** `integracao_fdv.portal_estado_entidades` e `integracao_fdv.portal_zerar_espelho` (MXI03 se ligada ou com lote em voo). */
+/** `integracao_fdv.portal_estado_entidades` (lote em voo por entidade). */
 function estadoIntegracaoPorFuncoes(): EstadoIntegracaoPlataforma {
   return {
     async estado(tx, tenant, entidades) {
@@ -51,15 +51,6 @@ function estadoIntegracaoPorFuncoes(): EstadoIntegracaoPlataforma {
         'SELECT integracao_fdv.portal_estado_entidades($1::uuid, $2::text[]) AS r',
         [tenant, [...entidades]],
         'integracao_fdv.portal_estado_entidades',
-      );
-      return r.entidades;
-    },
-    async zerarEspelho(tx, tenant, entidades, request_id) {
-      const r = await jsonbDe<{ entidades: { entidade: string; registros: number }[] }>(
-        tx,
-        'SELECT integracao_fdv.portal_zerar_espelho($1::uuid, $2::text[], $3::text) AS r',
-        [tenant, [...entidades], request_id],
-        'integracao_fdv.portal_zerar_espelho',
       );
       return r.entidades;
     },

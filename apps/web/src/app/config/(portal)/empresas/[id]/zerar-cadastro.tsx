@@ -2,7 +2,7 @@
 import { AVISO_ZERAR_INATIVA_FDV, CODIGO_ZERAGEM_BLOQUEADA, FRASE_ZERAR_DADOS, type CadastroZerarPortal, type EntidadeEnvioFdv, type ZeragemPlataformaResposta } from '@macuxierp/platform-sdk';
 import { useEffect, useState } from 'react';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
-import { AVISO_ZERAR, TEXTO_ANTES_DE_ZERAR, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos } from '@/lib/config/cargas';
+import { AVISO_ZERAR, AVISO_LIMITE_FDV, TEXTO_ANTES_DE_ZERAR, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos } from '@/lib/config/cargas';
 import { cadastroDoZerar, textoInativacaoFdv, textoZerarJuntos } from '@/lib/config/operacao-fdv';
 
 /**
@@ -96,6 +96,7 @@ export function ZerarCadastro({ empresaId, entidade, rotulo, aoFechar, aoZerar, 
         <>
           <ResumoPrevia previa={previa} escolhidos={[cadastro]} />
           {inativa && <p className="sem-margem" data-testid="inativacao-fdv">{inativa}</p>}
+          <p className="faixa-aviso sem-margem" role="status" data-testid="aviso-30-fdv">{AVISO_LIMITE_FDV}</p>
         </>
       )}
     </ConfirmarComFrase>

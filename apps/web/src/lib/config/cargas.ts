@@ -58,7 +58,8 @@ export function textoGravado(g: Pick<GravarCargaPlataformaResposta, 'gravadas' |
   const n = g.enderecos_inativados;
   return `${plural(g.gravadas, 'registro gravado', 'registros gravados')}.${n && n > 0 ? ` ${plural(n, 'endereço inativado', 'endereços inativados')}.` : ''}`;
 }
-export const AVISO_LIMITE_FDV = `Acima de ${LIMITE_INATIVACAO_FDV_PCT}%, o FDV pede confirmação no monitor de integração dele antes de aplicar.`;
+/** Aviso único dos 30% do FDV (T-0086, validado pelo designer-ux): aba Dados (Substituir tudo) e prévia do Zerar. */
+export const AVISO_LIMITE_FDV = `Acima de ${LIMITE_INATIVACAO_FDV_PCT}% dos registros, o Macuxi FDV pode segurar o envio. Acompanhe no Log.`;
 export const TEXTO_SUBSTITUIR = 'O que não vier no arquivo fica inativo; nada é apagado.';
 
 /** As duas caixas da conferência: verde (prontas) e vermelha (com erro, que ficam de fora). */
@@ -192,7 +193,7 @@ const TEXTO_ANULADO: Record<ZeragemPlataformaResposta['anulados'][number]['colun
 export const textosAnulados = (anulados: ZeragemPlataformaResposta['anulados']): string[] =>
   anulados.filter((a) => a.quantidade > 0).map((a) => `${a.quantidade} ${TEXTO_ANULADO[a.coluna][a.quantidade === 1 ? 0 : 1]}`);
 
-const BLOQUEIO_LOTE = 'Há uma carga em andamento. Espere terminar para zerar.';
+export const BLOQUEIO_LOTE = 'Há uma carga em andamento. Espere terminar para zerar.';
 /** Motivos legíveis dos bloqueios (`cadastro` + `motivo`, da prévia ou do 422 em strings 'cadastro:motivo'), sem repetir. */
 export function textosBloqueios(bloqueios: readonly { cadastro: string; motivo: string }[]): string[] {
   const out = new Set<string>();

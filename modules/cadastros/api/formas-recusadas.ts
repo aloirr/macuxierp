@@ -32,7 +32,7 @@ export interface ResultadoLimpeza {
 
 /**
  * RN-CAD-09 (antes da migração estrita): condição ATIVA de cartão (tPag 03) sem `parcelas_cartao`.
- * Se os prazos são válidos (1 a 12 parcelas de 0 a 999 dias, RN-CAD-09 emendada pela RN-CAD-15), preenche `parcelas_cartao = N` derivada
+ * Se os prazos são válidos (1 a 12 parcelas de 0 a 365 dias, RN-CAD-09 emendada pela RN-CAD-15), preenche `parcelas_cartao = N` derivada
  * (`derivarParcelasCartao`) no mesmo UPDATE (auditoria e evento alterada@1); senão desativa (RN-CAD-08, com auditoria e evento). Nada fica "03 sem parcelas".
  */
 export async function tratarCartaoSemParcelas(c: ContextoRota, r: Repositorios, condicoes: readonly CondicaoPagamento[]): Promise<ResultadoLimpeza> {

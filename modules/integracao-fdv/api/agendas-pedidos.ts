@@ -7,22 +7,10 @@
  * `conector-comum`; o HTTP vai só por `ctx.hub` e nunca dentro de `ctx.emTransacao`. A chave do conector só existe em memória,
  * dentro do `ClienteHubPedidos` da chamada. Sem dado pessoal em log (as rotinas de pedido já logam só ids e códigos).
  */
-import type { AgendaModulo, Banco, ClienteHub, ContextoAgenda, CredencialHub, Relogio, Transacao } from '@macuxierp/platform-sdk';
-import type { MotivoPausa } from '../contracts';
+import type { AgendaModulo, ClienteHub, CredencialHub, Relogio } from '@macuxierp/platform-sdk';
 import { atrasoRetentativaSegundos, retryAfterSegundos } from '../domain';
-import {
-  UMA_HORA_S,
-  abrirOuPausar,
-  adiarPresoAPosse,
-  adiarSinalSemLicenca,
-  defeitoDoCliente,
-  marcarUsoDaCredencial,
-  mais,
-  pausarEntidades,
-  prepararCredencial,
-  reservarSinal,
-  type ColunaSinalAgenda,
-} from './conector-comum';
+import { bancoDoItem, criarApoioAgendaHub } from './apoio-agenda-hub';
+import { UMA_HORA_S, adiarPresoAPosse, adiarSinalSemLicenca, marcarUsoDaCredencial, mais, reservarSinal } from './conector-comum';
 import type { Alertar, ClienteHubPedidos, LogPedidos, RecebedorPedidoFdv, ResolvedorChaveErp, RespostaPendentes, RespostaRetorno } from './portas';
 import { buscarPedidosPendentes } from './recebimento-pedidos';
 import { enviarRetornosPendentes } from './retorno-pedidos';
@@ -82,39 +70,8 @@ function criarClienteHubPedidos(hub: ClienteHub, cred: CredencialHub, log: LogPe
   };
 }
 
-/** Só `comTenant`, preso ao tenant do item e à transação do laço (`ctx.emTransacao`): outro tenant é erro de programação. */
-function bancoDoItem(ctx: ContextoAgenda, tenantId: string): Pick<Banco, 'comTenant'> {
-  return {
-    comTenant: (id, fn) => {
-      if (id !== tenantId) throw new Error('agenda de pedidos: tenant diferente do item');
-      return ctx.emTransacao(fn);
-    },
-  };
-}
-
 export function criarAgendasPedidosFdv(d: DepsAgendasPedidosFdv): readonly AgendaModulo[] {
-  /** Credencial pronta (aberta só em memória) ou `null` (sem credencial, já recusada ou ilegível: a tarefa já foi adiada ou pausada). */
-  async function credencialDaTarefa(ctx: ContextoAgenda, tenant: string, coluna: ColunaSinalAgenda) {
-    const adiarUmaHora = (tx: Transacao): Promise<void> => adiarPresoAPosse(tx, tenant, { sinal: coluna }, ctx.posseAte, mais(ctx.agora, UMA_HORA_S));
-    const base = await ctx.emTransacao((tx) => prepararCredencial(tx, tenant, { semCredencial: () => adiarUmaHora(tx), recusada: () => adiarUmaHora(tx) }));
-    if (!base) return null;
-    const cred = await abrirOuPausar(ctx, tenant, base);
-    return cred ? { cred, credencialId: base.id } : null;
-  }
-
-  /** Pausa (com `motivo`; `null` = só adia) e adia a tarefa em 1 h, presa à posse. */
-  async function pausarEAdiar(tx: Transacao, ctx: ContextoAgenda, tenant: string, coluna: ColunaSinalAgenda, motivo: MotivoPausa | null, credencialId: string, agora: Date): Promise<void> {
-    if (motivo) await pausarEntidades(tx, tenant, null, motivo, credencialId, agora);
-    await adiarPresoAPosse(tx, tenant, { sinal: coluna }, ctx.posseAte, mais(agora, UMA_HORA_S));
-  }
-
-  /** Defeito do ERP no uso da porta (`ErroClienteHub`): repetir não conserta; adia 1 h e, se a credencial é a culpada, pausa. Outro erro sobe. */
-  async function defeitoNoHub(e: unknown, ctx: ContextoAgenda, tenant: string, coluna: ColunaSinalAgenda, credencialId: string): Promise<void> {
-    const x = defeitoDoCliente(e);
-    if (!x) throw e;
-    d.log.error({ tenant_id: tenant, modulo: 'integracao-fdv', codigo: x.codigo }, 'chamada ao Hub de pedidos recusada pela porta');
-    await ctx.emTransacao((tx) => pausarEAdiar(tx, ctx, tenant, coluna, x.credencial ? 'credencial' : null, credencialId, ctx.agora));
-  }
+  const { credencialDaTarefa, pausarEAdiar, defeitoNoHub } = criarApoioAgendaHub(d.log, 'pedidos');
 
   // Intencional: a reserva destas duas agendas não olha a pausa das entidades (`cursor_entidade.pausada_motivo`). A pausa é da
   // credencial e é conferida por `prepararCredencial` a cada execução, que adia 1 h sem chamar o Hub (limite de falhas por IP).

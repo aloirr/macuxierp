@@ -15,7 +15,7 @@ export const MOTIVO_PRAZO_MEDIO = `Prazo médio: inteiro de 0 a ${MAX_DIAS} dias
 export const MOTIVO_PRAZO_MEDIO_A_VISTA = 'à vista: prazo médio igual a 0';
 export const MOTIVO_DESCRICAO = 'descrição obrigatória';
 
-/** RN-CAD-09: máximo de parcelas por classe da forma (à vista 1, cartão 12, boleto 36). */
+/** RN-CAD-09: máximo de parcelas por classe da forma (à vista 1, cartão 12, boleto 24). */
 export const MAX_PARCELAS_DA_CLASSE: Record<ClasseForma, number> = { a_vista: 1, cartao: MAX_PARCELAS_CARTAO, boleto: MAX_PARCELAS };
 
 export interface EntradaCondicao {

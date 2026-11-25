@@ -74,7 +74,11 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
 
       let criado;
       try {
-        criado = await r.carga.comSavepoint(() => r.clientes.inserir(dados));
+        criado = await r.carga.comSavepoint(async () => {
+          const c = await r.clientes.inserir(dados);
+          if (v.contato) await r.clientes.contatos.inserir(c.id, v.contato); // RN-INF-08: o telefone vira contato, na mesma transação
+          return c;
+        });
       } catch (e) {
         if ((e as { status?: number }).status === 409) {
           return rejeitar([erroPreCadastroFdv('documento', 'documento_ja_cadastrado')]);
