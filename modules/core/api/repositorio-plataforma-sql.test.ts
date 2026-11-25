@@ -10,7 +10,7 @@ const txQueLanca = (code: string, message: string): Transacao => ({
 const criar = (tx: Transacao) => new RepositorioPlataformaSql().criarEmpresa(tx, { slug: 'am2808', uf: 'AM', nome: 'Xis', fuso: 'America/Manaus', request_id: 'r' });
 
 const ID = '00000000-0000-4000-8000-0000000000e1';
-describe('adaptador SQL da plataforma: ficha da Receita (0065)', () => {
+describe('adaptador SQL da plataforma: ficha da Receita (0063)', () => {
   const repo = new RepositorioPlataformaSql();
   const gravar = (tx: Transacao) => repo.gravarReceita(tx, { id: ID, ficha: {} as never, request_id: 'r' });
   const revelar = (tx: Transacao) => repo.revelarContato(tx, { id: ID, campo: 'email', request_id: 'r' });
