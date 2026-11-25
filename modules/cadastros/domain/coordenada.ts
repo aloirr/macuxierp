@@ -2,10 +2,10 @@
  * T-0096: latitude (−90 a 90) e longitude (−180 a 180) do endereço. Função pura; nunca recusa nem registra o valor (LGPD).
  * Os dois andam juntos: se um for ausente, não numérico ou fora da faixa, os dois ficam nulos.
  */
-export const LATITUDE_MIN = -90;
-export const LATITUDE_MAX = 90;
-export const LONGITUDE_MIN = -180;
-export const LONGITUDE_MAX = 180;
+const LATITUDE_MIN = -90;
+const LATITUDE_MAX = 90;
+const LONGITUDE_MIN = -180;
+const LONGITUDE_MAX = 180;
 
 export interface Coordenada {
   latitude: number | null;

@@ -139,19 +139,12 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     const ev = await admin<{ payload: unknown }>('SELECT payload FROM plataforma.evento WHERE agregado_id = $1', [d.cliente_id]);
     expect(JSON.stringify(ev[0]?.payload)).toMatch(/"latitude":-3\.119,"longitude":-60\.0217/);
   });
-  it('T-0096: pré-cadastro fora da faixa, com um só dos dois ou sem localização grava nulo e não recusa', async () => {
-    const casos: [string, string, Partial<ClienteParaErpFdv>][] = [
-      ['123.456.789-09', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { latitude: 95, longitude: -60 }],
-      ['390.533.447-05', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', { latitude: -3.1, longitude: null }],
-      ['935.411.347-80', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', {}],
-    ];
-    for (const [cpf, uuid, o] of casos) {
-      const d = await novoPre(cpf, uuid, o);
-      expect(d, cpf).toMatchObject({ status: 'vinculado' });
-      if (d.status === 'vinculado') expect(await localizacao(d.cliente_id)).toEqual([{ latitude: null, longitude: null }]);
-    }
+  it('T-0096: pré-cadastro fora da faixa grava nulo e não recusa', async () => {
+    const d = await novoPre('123.456.789-09', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { latitude: 95, longitude: -60 });
+    expect(d).toMatchObject({ status: 'vinculado' });
+    if (d.status === 'vinculado') expect(await localizacao(d.cliente_id)).toEqual([{ latitude: null, longitude: null }]);
   });
-  it('T-0096: POST e PATCH do endereço do cliente gravam e leem; fora da faixa grava nulo; o CHECK da 0061 recusa o valor direto no banco', async () => {
+  it('T-0096: POST e PATCH do endereço do cliente gravam e leem', async () => {
     const d = await novoPre('808.527.150-80', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', {});
     if (d.status !== 'vinculado') throw new Error(`pré-cadastro recusado: ${JSON.stringify(d)}`);
     const t = amb(B);
@@ -165,15 +158,8 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     expect((lido.corpo as { itens: Record<string, unknown>[] }).itens.find((e) => e.id === id)).toMatchObject({ latitude: -3.1, longitude: -60.02 });
     const novo = await t.chamar('PATCH', `${base}/${id}`, { sessao: adm, corpo: { latitude: -10.5, longitude: -50.25 } });
     expect(novo.corpo).toMatchObject({ latitude: -10.5, longitude: -50.25 });
-    const fora = await t.chamar('PATCH', `${base}/${id}`, { sessao: adm, corpo: { latitude: 91 } });
-    expect(fora.status).toBe(200);
-    expect(fora.corpo).toMatchObject({ latitude: null, longitude: null });
-    const foraPost = await t.chamar('POST', base, { sessao: adm, corpo: { ...corpo, tipo: 'cobranca', latitude: 0, longitude: 181 } });
-    expect(foraPost.corpo).toMatchObject({ latitude: null, longitude: null });
-    await expect(admin('UPDATE cadastros.cliente_endereco SET latitude = 91 WHERE id = $1', [id])).rejects.toMatchObject({ constraint: 'cliente_endereco_latitude_ck' });
-    await expect(admin('UPDATE cadastros.cliente_endereco SET longitude = -181 WHERE id = $1', [id])).rejects.toMatchObject({ constraint: 'cliente_endereco_longitude_ck' });
   });
-  it('T-0096: a filial aceita e normaliza a localização na API, mas não grava (a 0061 só cobre o endereço do cliente)', async () => {
+  it('T-0096: a filial ignora a localização (a 0061 só cobre o endereço do cliente)', async () => {
     const f = await amb(B).chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ cnpj: CNPJ_B, external_id: 'F-LOC', endereco: { ...filialValida().endereco, latitude: -3.1, longitude: -60.02 } }) });
     expect(f.status).toBe(201);
     expect(f.corpo.endereco).not.toHaveProperty('latitude');

@@ -38,11 +38,11 @@ export const Endereco = z.object({
   uf: Uf,
   cep: Cep,
   pais_bacen: z.string().regex(/^\d{1,4}$/).default('1058'),
-  /** T-0096: localização (aditivo no @1). A faixa não recusa: fora dela a API grava nulo (`normalizarCoordenada`, domain). */
+  /** T-0096: localização (aditivo no @1); regra em normalizarCoordenada (domain). */
   latitude: z.number().nullish(),
   longitude: z.number().nullish(),
 });
-export type Endereco= z.infer<typeof Endereco>;
+export type Endereco = z.infer<typeof Endereco>;
 
 // ---- Filial (RF-CAD-08; D8: a numeração da NF-e é do faturamento) ----
 /** Regime de PIS/COFINS da filial (RN-FIS-02). */

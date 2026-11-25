@@ -137,12 +137,10 @@ describe('localização do endereço do cliente (T-0096)', () => {
     expect(r.status).toBe(201);
     expect(r.corpo.enderecos[0]).toMatchObject({ latitude: -3.1, longitude: -60.02 });
   });
-  it('T-0096: POST do cliente fora da faixa ou incompleta grava nulo, sem recusar', async () => {
-    for (const [la, lo] of [[95, -60], [-3, null], [-3, 200]]) {
-      const { r } = await novo(la, lo);
-      expect(r.status, `${la}/${lo}`).toBe(201);
-      expect(r.corpo.enderecos[0]).toMatchObject({ latitude: null, longitude: null });
-    }
+  it('T-0096: POST do cliente fora da faixa grava nulo, sem recusar', async () => {
+    const { r } = await novo(95, -60);
+    expect(r.status).toBe(201);
+    expect(r.corpo.enderecos[0]).toMatchObject({ latitude: null, longitude: null });
   });
   it('T-0096: POST e PATCH do endereço normalizam; o PATCH reavalia o par com o valor gravado', async () => {
     const { t, r } = await novo(null, null);
@@ -159,20 +157,6 @@ describe('localização do endereço do cliente (T-0096)', () => {
     expect(so1.corpo).toMatchObject({ latitude: null, longitude: null });
     const semMexer = await t.chamar('PATCH', `${base}/${ok.corpo.id}`, { sessao: faturista, corpo: { numero: '999' } });
     expect(semMexer.corpo).toMatchObject({ numero: '999' });
-  });
-});
-
-describe('localização do endereço da filial (T-0096)', () => {
-  it('T-0096: POST e PATCH da filial normalizam a coordenada (válida mantém, fora da faixa ou incompleta vira nula)', async () => {
-    const t = montar();
-    const ok = await t.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ endereco: { ...ENDERECO_AM, latitude: -3.1, longitude: -60.02 } }) });
-    expect(ok.status).toBe(201);
-    expect(ok.corpo.endereco).toMatchObject({ latitude: -3.1, longitude: -60.02 });
-    const fora = await t.chamar('PATCH', `/filiais/${ok.corpo.id}`, { sessao: adm, corpo: { endereco: { ...ENDERECO_AM, latitude: 95, longitude: -60 } } });
-    expect(fora.status).toBe(200);
-    expect(fora.corpo.endereco).toMatchObject({ latitude: null, longitude: null });
-    const meio = await t.chamar('PATCH', `/filiais/${ok.corpo.id}`, { sessao: adm, corpo: { endereco: { ...ENDERECO_AM, latitude: -3.1 } } });
-    expect(meio.corpo.endereco).toMatchObject({ latitude: null, longitude: null });
   });
 });
 

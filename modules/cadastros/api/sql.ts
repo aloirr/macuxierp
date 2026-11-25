@@ -182,7 +182,6 @@ class RepoFilhoSql<E extends { id: string }, D> implements RepoFilho<E, D> {
 }
 
 const ENDERECO = ['logradouro', 'numero', 'complemento', 'bairro', 'municipio_ibge', 'uf', 'cep', 'pais_bacen'] as const;
-/** T-0096 (0061): a localização existe só no endereço do cliente; a filial normaliza na API, mas não grava (sem coluna). */
 const LOCALIZACAO = ['latitude', 'longitude'] as const;
 const pegar = (o: Dict, cols: readonly string[]) => Object.fromEntries(cols.filter((c) => c in o).map((c) => [c, o[c]]));
 const semIndefinidos = (o: Dict): Dict => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
@@ -195,6 +194,7 @@ const mapaFilial: Mapa<Filial, FilialDados> = {
   padroesCriacao: { industrial_ipi: false, regime_pis_cofins: null },
   paraLinha: (d) => {
     const { endereco, ...resto } = d as Dict & { endereco?: Dict };
+    /** T-0096: a filial não tem coluna de localização (0061 só no cliente_endereco). */
     const { latitude: _la, longitude: _lo, ...fisico } = endereco ?? {};
     return { ...resto, ...fisico };
   },

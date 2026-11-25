@@ -52,8 +52,8 @@ export function centavosDoTexto(t: string | undefined): number | null | undefine
   return s === '' ? undefined : interpretarCentavos(s);
 }
 
-/** JSON com as chaves em ordem (a API pode devolver o objeto aninhado, como o endereço, em outra ordem); chave nula = ausente (T-0096). */
-const estavel = (v: unknown): string => JSON.stringify(v ?? null, (_k, x: unknown) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).filter(([, y]) => y != null).sort(([a], [b]) => a.localeCompare(b))) : x));
+/** JSON com as chaves em ordem (a API pode devolver o objeto aninhado, como o endereço, em outra ordem). */
+const estavel = (v: unknown): string => JSON.stringify(v ?? null, (_k, x: unknown) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 
 /** Diferença para o PATCH: só as chaves cujo valor mudou em relação ao registro aberto (JSON igual = igual). */
 export function soOQueMudou(novo: Corpo, original: Readonly<Record<string, unknown>>): Corpo {
@@ -94,8 +94,12 @@ export const CAMPOS_ENDERECO: readonly CampoEdicao[] = [
   { nome: 'end_bairro', rotulo: 'Bairro', tipo: 'texto', obrigatorio: true },
   { nome: 'end_municipio_ibge', rotulo: 'Município (código IBGE)', tipo: 'texto', obrigatorio: true },
   { nome: 'end_uf', rotulo: 'UF', tipo: 'texto', obrigatorio: true },
-  { nome: 'end_latitude', rotulo: 'Latitude', tipo: 'texto', ajuda: 'Opcional, de -90 a 90 (ex.: -3.1190). Fora da faixa, será gravado vazio.' },
-  { nome: 'end_longitude', rotulo: 'Longitude', tipo: 'texto', ajuda: 'Opcional, de -180 a 180 (ex.: -60.0217). Fora da faixa, será gravado vazio.' },
+];
+
+/** T-0096: localização do endereço do cliente (a filial não tem coluna, 0061). */
+export const CAMPOS_LOCALIZACAO: readonly CampoEdicao[] = [
+  { nome: 'end_latitude', rotulo: 'Latitude', tipo: 'texto', ajuda: 'De -90 a 90 (ex.: -3.1190).' },
+  { nome: 'end_longitude', rotulo: 'Longitude', tipo: 'texto', ajuda: 'De -180 a 180 (ex.: -60.0217).' },
 ];
 
 /** T-0096: número digitado (aceita vírgula); vazio ou ilegível = `null`. */
@@ -109,18 +113,12 @@ const numeroDoTexto = (t: string | undefined): number | null => {
  * dois. A regra é `normalizarCoordenada` do domain; a API revalida. O aviso nunca traz o valor digitado (LGPD).
  */
 export function avisosEnderecoTela(v: Valores): Erros {
-  const a: Erros = {};
   const lat = (v.end_latitude ?? '').trim();
   const lon = (v.end_longitude ?? '').trim();
-  if (lat === '' && lon === '') return a;
-  const n = normalizarCoordenada(numeroDoTexto(lat), numeroDoTexto(lon));
-  if (n.latitude !== null) return a;
+  if (lat === '' && lon === '') return {};
+  if (normalizarCoordenada(numeroDoTexto(lat), numeroDoTexto(lon)).latitude !== null) return {};
   const msg = lat === '' || lon === '' ? 'Informe latitude e longitude juntas: será gravado vazio' : 'Fora da faixa: será gravado vazio';
-  if (lat !== '') a.end_latitude = msg;
-  if (lon !== '') a.end_longitude = msg;
-  if (lat === '') a.end_latitude = msg;
-  if (lon === '') a.end_longitude = msg;
-  return a;
+  return { end_latitude: msg, end_longitude: msg };
 }
 
 /** Formato do CEP, do código IBGE e da UF; só preenche `e` onde o campo ainda não tem erro. */
@@ -134,8 +132,10 @@ export function validarEnderecoTela(v: Valores, e: Erros): void {
 export const enderecoDoFormulario = (v: Valores) => ({
   logradouro: (v.end_logradouro ?? '').trim(), numero: (v.end_numero ?? '').trim(), complemento: vazioParaNulo(v.end_complemento), bairro: (v.end_bairro ?? '').trim(),
   municipio_ibge: (v.end_municipio_ibge ?? '').trim(), uf: (v.end_uf ?? '').trim().toUpperCase(), cep: soDigitos(v.end_cep), pais_bacen: '1058',
-  ...normalizarCoordenada(numeroDoTexto(v.end_latitude), numeroDoTexto(v.end_longitude)),
 });
+
+/** T-0096: latitude e longitude do formulário do cliente, normalizadas pela mesma regra do domain (nulas se inválidas). */
+export const localizacaoDoFormulario = (v: Valores) => normalizarCoordenada(numeroDoTexto(v.end_latitude), numeroDoTexto(v.end_longitude));
 
 /** Erro de campo de um 422 da API (`campo` e `mensagem`) para o mesmo mapa da validação local. */
 export function errosDaApi(violacoes: readonly { campo: string; mensagem: string }[]): Erros {

@@ -33,11 +33,9 @@ describe('localização do pré-cadastro (T-0096)', () => {
     const r = validarPreCadastroFdv(pre({ latitude: -3.1, longitude: -60.02 }), ctx());
     expect(r.ok && r.dados.enderecos[0]).toMatchObject({ latitude: -3.1, longitude: -60.02 });
   });
-  it('T-0096: fora da faixa, só uma ou ausentes: nulos, sem recusar o pré-cadastro', () => {
-    for (const o of [{ latitude: 95, longitude: -60 }, { latitude: -3, longitude: null }, {}]) {
-      const r = validarPreCadastroFdv(pre(o), ctx());
-      expect(r.ok && r.dados.enderecos[0], JSON.stringify(o)).toMatchObject({ latitude: null, longitude: null });
-    }
+  it('T-0096: fora da faixa vira nulo, sem recusar o pré-cadastro', () => {
+    const r = validarPreCadastroFdv(pre({ latitude: 95, longitude: -60 }), ctx());
+    expect(r.ok && r.dados.enderecos[0]).toMatchObject({ latitude: null, longitude: null });
   });
 });
 

@@ -281,8 +281,6 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     tabela: 'filial', caminho: '/filiais', editar: 'cadastros.filial.editar', dados: FilialDados, atualizacao: FilialAtualizacao,
     entidade: 'filial', auditado: true, repo: (r) => r.filiais, emitir: emitirCom(eventoFilial),
     inativavel: 'filial', padrao: (r) => r.filiais,
-    // T-0096: a localização do endereço também é revalidada na filial (POST e PATCH)
-    completar: (corpo) => (corpo.endereco && typeof corpo.endereco === 'object' ? { ...corpo, endereco: comCoordenadaNormalizada(corpo.endereco as Dict) } : corpo),
     async validar(_r, f) {
       const end = f.endereco as FilialDados['endereco'];
       return validarFilial({
