@@ -36,6 +36,7 @@ const ALARGADAS: readonly (readonly [string, string, number])[] = [
     'cliente',
     'cliente_contato',
     'cliente_endereco',
+    'cnae', // 0066 (T-0106): nasce com 200
     'condicao_pagamento',
     'consulta_externa',
     'cst',

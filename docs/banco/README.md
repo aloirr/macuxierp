@@ -435,6 +435,14 @@ Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api
 
 Migração: `db/migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes: `db/testes/zerar-pedidos-criterio3-0065.db.test.ts`.
 
+## CNAE oficial e nomes para a ficha (T-0106, migração 0066)
+A ficha da 0063 guarda só códigos (`cnae_principal`, `cnae_secundarios`, `municipio_ibge`); a tela precisa do texto.
+- **`cadastros.cnae`** no molde das oficiais da 0005, com a carga versionada `cnae` (CNAE 2.3, subclasses, IBGE/CONCLA; fonte, versão e sha256 no `fontes.json`). Seção, divisão, grupo e classe vão junto, porque vêm de graça na fonte e o CHECK da hierarquia pega CSV trocado.
+- **Funções, não chave nova no `empresa_ler`:** a 0063 não muda (o contrato `ficha` fica igual), e o core pede o texto só dos códigos que exibe, inclusive os ainda não gravados (a prévia da consulta à Receita). A do município vem junto porque o problema é o mesmo.
+- **Sem `exigir_superadmin`:** só leem tabela oficial, sem dado de tenant; o que restringe é o EXECUTE só do `macuxierp_config`, como na 0063. Código encerrado por versão nova continua com o texto (a ficha antiga ainda o mostra); o vigente tem preferência.
+
+Migração: `db/migrations/0066_cadastros_cnae_oficial.sql`; testes: `db/testes/cnae-oficial-0066.db.test.ts` e `db/testes/oficiais.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 

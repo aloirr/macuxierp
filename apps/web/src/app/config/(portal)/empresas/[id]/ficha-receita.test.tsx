@@ -20,7 +20,7 @@ const ficha = FichaReceitaPlanaMascarada.parse({
 const render = (f: typeof ficha | null = ficha, editavel = true) => renderToStaticMarkup(<FichaReceita empresaId={ID} ficha={f} fuso="America/Manaus" editavel={editavel} />);
 
 describe('ficha da Receita na aba Empresa (T-0101)', () => {
-  it('mostra a ficha, com e-mail e telefone como o banco mascarou e um Revelar por campo, sem repetir o bloco Dados', () => {
+  it('mostra a ficha, com e-mail e telefone como o banco mascarou e um Mostrar por campo, sem repetir o bloco Dados', () => {
     const h = render();
     for (const t of ['Ficticia', '123456789', 'Ativa', '31/01/2020', 'Sociedade Empresária Limitada', 'Demais', 'Simples Nacional', '4711302', 'Rua A, 10, Centro, CEP 69000-000', 'Consultada em 24/11/2026 12:00']) expect(h).toContain(t);
     for (const t of ['Razão social', 'CNPJ', 'Cidade/UF', 'BrasilAPI', 'fonte-ficticia']) expect(h).not.toContain(t);
@@ -28,15 +28,16 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
     expect(h).toContain('4712100');
     expect(h).toContain('ma****@exemplo.com.br');
     expect(h).toContain('(92) ****-1234');
-    expect(h.match(/>Revelar</g)).toHaveLength(2);
-    expect(h).toContain('aria-label="Revelar e-mail"');
-    expect(h).toContain('aria-label="Revelar telefone"');
+    expect(h.match(/>Mostrar</g)).toHaveLength(2);
+    expect(h).toContain('aria-label="Mostrar e-mail"');
+    expect(h).toContain('aria-label="Mostrar telefone"');
+    expect(h).not.toContain('Revelar');
     expect(h).toContain('Atualizar pela Receita');
   });
   it('sem ficha: orientação curta e o botão Atualizar; empresa encerrada desabilita o botão', () => {
     const h = render(null);
     expect(h).toContain('Ainda não consultada. Use Atualizar pela Receita.');
-    expect(h).not.toContain('Revelar');
+    expect(h).not.toContain('Mostrar');
     expect(render(null, false)).toMatch(/<button[^>]*disabled=""[^>]*>Atualizar pela Receita/);
   });
   it('sem consulta (ficha nula ou toda vazia): um só estado vazio, sem nenhum "—"', () => {
@@ -65,9 +66,9 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
     expect(h).not.toContain('Manaus/AM');
     expect(enderecoEmLinha(ficha)).toBe('Rua A, 10, Centro, CEP 69000-000');
   });
-  it('sem e-mail ou telefone: traço e nenhum Revelar para o campo', () => {
+  it('sem e-mail ou telefone: traço e nenhum Mostrar para o campo', () => {
     const h = render({ ...ficha, email_mascarado: null, telefone_mascarado: null });
-    expect(h).not.toContain('Revelar');
+    expect(h).not.toContain('Mostrar');
   });
   it('linhas puras: datas civis, endereço parcial e consulta no fuso da empresa', () => {
     expect(dataCivil(null)).toBe('—');
@@ -76,7 +77,7 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
     expect(origemDaConsulta({ ...ficha, receita_consultada_em: null }, 'America/Manaus')).toBeNull();
     expect(linhasDaFicha(ficha).map((l) => l.rotulo)).toEqual(['Nome fantasia', 'Inscrição estadual', 'Situação cadastral', 'Abertura', 'Natureza jurídica', 'Porte', 'Regime', 'CNAE principal', 'Endereço']);
   });
-  it('o componente não grava o valor revelado em armazenamento nem em log', () => {
+  it('o componente não grava o valor mostrado em armazenamento nem em log', () => {
     for (const arq of [join(__dirname, 'ficha-receita.tsx'), join(__dirname, '../../../../../components/revelar-mascarado.tsx')]) {
       expect(readFileSync(arq, 'utf8')).not.toMatch(/localStorage|sessionStorage|console\.|document\.cookie/);
     }

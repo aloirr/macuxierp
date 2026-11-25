@@ -21,7 +21,7 @@ function textoCnae(c: string): string {
   return c;
 }
 
-/** E-mail ou telefone: mascarado (pelo banco) até o "Revelar". */
+/** E-mail ou telefone: mascarado (pelo banco) até o "Mostrar". */
 function Contato({ empresaId, campo, rotulo, mascarado }: { empresaId: string; campo: CampoContato; rotulo: string; mascarado: string | null }) {
   return (
     <div>

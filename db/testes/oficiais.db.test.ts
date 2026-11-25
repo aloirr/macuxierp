@@ -34,9 +34,9 @@ describe('fontes das tabelas oficiais (sem banco)', () => {
     }
   });
 
-  it('cobre NCM, CEST, CFOP, CST/CSOSN, municípios do IBGE e cClassTrib', () => {
+  it('cobre NCM, CEST, CFOP, CST/CSOSN, municípios do IBGE, cClassTrib e CNAE', () => {
     expect(new Set(cargas.map((c) => c.tabela))).toEqual(
-      new Set(['uf', 'municipio', 'ncm', 'cest', 'cest_ncm', 'cfop', 'cst', 'classificacao_tributaria']),
+      new Set(['uf', 'municipio', 'ncm', 'cest', 'cest_ncm', 'cfop', 'cst', 'classificacao_tributaria', 'cnae']),
     );
   });
 
