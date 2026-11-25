@@ -157,7 +157,7 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
       expect(JSON.stringify(a.depois)).not.toContain(EMPRESA_NOME);
       expect(JSON.stringify(a.depois)).not.toContain('argon2');
     }
-  });
+  }, 15_000); // dois argon2id (o hash do operador e o login real): passou de 5 s sob carga no turbo da suíte da v0.3.13
 
   it('2ª execução: não duplica, não troca o senha_hash e informa "já existia"', async () => {
     const t = (await tenantId())!;

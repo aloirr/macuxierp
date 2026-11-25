@@ -146,6 +146,7 @@ describe('RF-INF-01 vendedor, condição, estoque', () => {
     const decrescente = mapearCondicao({ ...ev, prazos_dias: [56, 28] }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
     expect(validarRegistro(decrescente, () => true, { prazoV2: true })).toEqual({ external_id: decrescente.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // v2: sem decrescer
     expect(validarRegistro(decrescente, () => true)).toBeNull(); // v1 aceita
+    expect(validarRegistro({ ...prazo!, payload: { ...prazo!.payload, prazo_medio_dias: 90 } }, () => true, { prazoV2: true })).toEqual({ external_id: prazo!.external_id, codigo: 'campo_invalido', campo: 'prazo_medio_dias' });
     const longo = mapearCondicao({ ...ev, prazos_dias: [400], prazo_medio_dias: 400 }, EM, { tenantId: U(100), formaAtiva: true }).prazo!;
     expect(validarRegistro(longo, () => true)).toEqual({ external_id: longo.external_id, codigo: 'campo_invalido', campo: 'parcelas_dias' }); // o Hub v1 real já limita a 365
   });

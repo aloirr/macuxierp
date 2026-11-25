@@ -8,6 +8,7 @@
 import { definirPluginPlataforma, definirRotaPlataforma, erros, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { ApagadoZerarPedidos, CAMINHOS_ZERAR_PEDIDOS, OrigemPedido, StatusPedido, ZerarPedidosEntrada, ZeragemPedidosResposta } from '../contracts';
+import type { AposZerarPedidos } from './apos-zerar';
 import { planoZeragemPedidos, type PedidoParaZerar, type PlanoZeragemPedidos } from '../domain';
 
 /** Ids com nota ou com título, vistos pelo faturamento (a apps/api implementa chamando a função `portal_*` dele; fronteira). */
@@ -17,6 +18,8 @@ export interface UsosFaturamentoPedidos {
 
 export interface DependenciasZerarPedidos {
   faturamento: UsosFaturamentoPedidos;
+  /** Porta pós-zerar (T-0093, critério 3). */
+  aposZerar: AposZerarPedidos;
 }
 
 /** `pedido.portal_zeragem_fatos(p_tenant)`: `{pedidos: [{id, status, origem}]}`, sem dado pessoal. */
@@ -84,7 +87,9 @@ export function criarPluginPlataformaPedidoZerar(deps: DependenciasZerarPedidos)
           c.request_id,
         ]);
         if (!l) throw new Error('portal_zerar sem retorno');
-        return { corpo: resposta(tenant, plano, false, ResultadoZerar.parse(l.r)) };
+        const efeito = ResultadoZerar.parse(l.r);
+        const extras = await deps.aposZerar.aposZerarPedidos(c.tx, tenant, plano.apagar);
+        return { corpo: resposta(tenant, plano, false, { apagados: [...efeito.apagados, ...extras] }) };
       },
     }),
   ]);

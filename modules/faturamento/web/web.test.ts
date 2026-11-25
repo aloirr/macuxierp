@@ -93,6 +93,7 @@ describe('ações da nota por perfil e status', () => {
     expect(acoesDoPedidoAFaturar('administrador', 'faturado_parcial').emitir).toBe(true);
     expect(acoesDoPedidoAFaturar('faturista', 'faturado')).toEqual({ emitir: false });
     expect(acoesDoPedidoAFaturar('leitura', 'a_faturar')).toEqual({ emitir: false });
+    expect(acoesDoPedidoAFaturar('administrador', 'cancelado')).toEqual({ emitir: false }); // RN-CAD-10
   });
 });
 

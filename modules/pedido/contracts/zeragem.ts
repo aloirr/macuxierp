@@ -18,11 +18,21 @@ export const ZerarPedidosEntrada = z
 export type ZerarPedidosEntrada = z.infer<typeof ZerarPedidosEntrada>;
 
 const Contagem = z.number().int().min(0);
-export const TABELAS_ZERAR_PEDIDOS = ['pedido', 'pedido_item', 'pedido_evento', 'aprovacao'] as const;
+export const TABELAS_ZERAR_PEDIDOS = [
+  'pedido',
+  'pedido_item',
+  'pedido_evento',
+  'aprovacao',
+  // Efeitos da porta `aposZerarPedidos` (T-0093, critério 3): contagens devolvidas pelas funções dos outros donos.
+  'integracao_fdv.pedido_recebido',
+  'integracao_fdv.retorno_enviado',
+  'faturamento.pedido_a_faturar',
+] as const;
 /** Motivos de manter: nota e título (RN-CAD-10). */
 export const MOTIVOS_MANTER_PEDIDO = ['nota', 'titulo'] as const;
 
 export const ApagadoZerarPedidos = z.object({ tabela: z.enum(TABELAS_ZERAR_PEDIDOS), quantidade: Contagem });
+export type ApagadoZerarPedidos = z.infer<typeof ApagadoZerarPedidos>;
 
 export const ZeragemPedidosResposta = z.object({
   empresa_id: z.string().uuid(),

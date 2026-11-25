@@ -18,7 +18,7 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { abasDaEmpresa, argumento, entrar, urlsDasTelas } from './apoio-e2e.mjs';
+import { abasDaEmpresa, argumento, ehNaoEncontrada, entrar, urlsDasTelas } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -113,7 +113,7 @@ async function abrir(pagina, vigia, item, rotulo = item.url) {
     final = new URL(pagina.url()).pathname;
     const html = await pagina.content();
     if (HTML) writeFileSync(join(HTML, `${rotulo.replace(/[^a-z0-9]+/gi, '_')}.html`), html);
-    const naoEncontrada = html.includes('>Página não encontrada<');
+    const naoEncontrada = ehNaoEncontrada(html);
     // Rota com `:param` abre um registro fictício: a página "não encontrada" do app (200 do shell ou 404) é a resposta certa.
     const aceito404 = status === 404 && item.comParametro && naoEncontrada;
     if (status !== 200 && !aceito404) falhas.push(`status ${status}`);

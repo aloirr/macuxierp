@@ -5,6 +5,8 @@
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
+import type { CampoContato, FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
+import { MENSAGEM_SEM_CNPJ } from '../domain';
 import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
 
@@ -24,6 +26,29 @@ async function primeiraLinha<L>(tx: Transacao, sql: string, parametros: readonly
   const [l] = await tx.consultar<L>(sql, parametros);
   if (!l) throw new Error('função de plataforma sem retorno');
   return l;
+}
+
+/**
+ * Erros das funções da ficha (0065) em HTTP, com mensagem fixa (o texto do banco nunca sai: pode trazer nome de campo
+ * ou valor): 23514 = ficha recusada (422), P0002 = sem a empresa ou sem o dado (404), 55000 = sem core.empresa (409).
+ * MXS01 (sessão inválida, 401) segue para o mapa de erros da apps/api, o mesmo das demais funções de plataforma.
+ */
+async function comErrosDaFicha<R>(fn: () => Promise<R>): Promise<R> {
+  try {
+    return await fn();
+  } catch (e) {
+    switch (sqlstate(e)) {
+      case '23514':
+      case '22001': // string_data_right_truncation: estourar o tamanho é erro, nunca NULL silencioso
+        throw erros.regra('RN-CORE-14', 'A ficha da Receita foi recusada', { ficha: 'Dados inválidos' });
+      case 'P0002':
+        throw erros.naoEncontrado('Dado da empresa');
+      case '55000':
+        throw erros.conflito(MENSAGEM_SEM_CNPJ);
+      default:
+        throw e;
+    }
+  }
 }
 
 const empresa = async (tx: Transacao, sql: string, parametros: readonly unknown[]): Promise<EmpresaPlataforma> =>
@@ -96,6 +121,29 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
 
   redefinirSenhaPrimeiroAdmin(tx: Transacao, p: { id: string; senha_hash: string; request_id: string }): Promise<{ usuario_id: string }> {
     return primeiraLinha(tx, 'SELECT plataforma.empresa_primeiro_admin_senha($1::uuid, $2, $3) usuario_id', [p.id, p.senha_hash, p.request_id]);
+  }
+
+  async lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null> {
+    const [l] = await tx.consultar<{ e: (EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
+    if (!l?.e) return null;
+    const { ficha, ...empresa } = l.e;
+    return { empresa, ficha: ficha ?? null };
+  }
+
+  async gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }> {
+    return comErrosDaFicha(async () =>
+      primeiraLinha<{ r: { ficha: FichaReceitaPlanaMascarada | null; alterados: string[] } }>(tx, 'SELECT plataforma.empresa_gravar_receita($1::uuid, $2::jsonb, $3) r', [
+        p.id,
+        JSON.stringify(p.ficha),
+        p.request_id,
+      ]).then((l) => l.r),
+    );
+  }
+
+  async revelarContato(tx: Transacao, p: { id: string; campo: CampoContato; request_id: string }): Promise<string> {
+    return comErrosDaFicha(async () =>
+      (await primeiraLinha<{ v: string }>(tx, 'SELECT plataforma.empresa_contato_revelar($1::uuid, $2, $3) v', [p.id, p.campo, p.request_id])).v,
+    );
   }
 
   async revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string> {

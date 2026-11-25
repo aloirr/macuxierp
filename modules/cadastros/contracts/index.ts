@@ -38,6 +38,9 @@ export const Endereco = z.object({
   uf: Uf,
   cep: Cep,
   pais_bacen: z.string().regex(/^\d{1,4}$/).default('1058'),
+  /** T-0096: localização (aditivo no @1); regra em normalizarCoordenada (domain). */
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
 });
 export type Endereco = z.infer<typeof Endereco>;
 
@@ -331,6 +334,8 @@ export const SugestaoCnpj = z.object({
   opcao_mei: z.boolean().nullish(),
   /** AAAA-MM-DD. */
   data_situacao_cadastral: z.string().nullish(),
+  /** AAAA-MM-DD; data de abertura (início da atividade). Aditivo (T-0101). */
+  data_abertura: z.string().nullish(),
 });
 export type SugestaoCnpj = z.infer<typeof SugestaoCnpj>;
 

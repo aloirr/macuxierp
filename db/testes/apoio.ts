@@ -113,6 +113,33 @@ export function tabelasDos(c: Conexao, esquemas: readonly string[]): Tabela[] {
   );
 }
 
+/** Retrato do tenant: por tabela com `tenant_id`, a contagem e o hash do conteúdo (`esquema.tabela` -> `n:md5`). */
+export function retratoDoTenant(
+  c: Conexao,
+  tenant: string,
+  tabelas: readonly Tabela[],
+): Record<string, string> {
+  const nomes = tabelas.map((t) => `'${t.esquema}.${t.tabela}'`).join(', ');
+  const com = consultar<{ t: string }>(
+    c,
+    `SELECT DISTINCT a.attrelid::regclass::text AS t FROM pg_attribute a
+      WHERE a.attname = 'tenant_id' AND NOT a.attisdropped
+        AND a.attrelid IN (SELECT x::regclass FROM unnest(ARRAY[${nomes}]::text[]) x)`,
+  ).map((x) => x.t);
+  if (com.length === 0) return {};
+  const r = consultar<{ t: string; h: string }>(
+    c,
+    com
+      .map(
+        (x) =>
+          `SELECT '${x}' AS t, count(*) || ':' || md5(coalesce(string_agg(to_jsonb(z)::text, ',' ORDER BY to_jsonb(z)::text), '')) AS h
+             FROM ${x} z WHERE z.tenant_id = '${tenant}'`,
+      )
+      .join('\nUNION ALL\n'),
+  );
+  return Object.fromEntries(r.map((x) => [x.t, x.h]));
+}
+
 /** O papel lê a tabela (privilégio na tabela ou em alguma coluna)? */
 export function papelLe(c: Conexao, papel: PapelApp, t: Tabela): boolean {
   const [r] = consultar<{ le: boolean }>(
@@ -236,20 +263,24 @@ export function recusaComDetalhe(
 export function recusaCompleta(
   conexao: Conexao,
   sql: string,
-  esperado: { codigo: string; detalhe: string | undefined; mensagem: RegExp },
+  esperado: { codigo: string; detalhe: string | undefined; mensagem: RegExp; dica?: string },
   ctx?: Contexto,
 ): void {
   const e = falhaDetalhada(() => executar(conexao, verboso(sql), ctx));
+  // o HINT só é conferido quando `dica` vem no esperado
+  const comDica = esperado.dica !== undefined;
   expect({
     sql,
     codigo: e.saida.includes(esperado.codigo),
     detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1],
     mensagem: e.mensagem,
+    ...(comDica ? { dica: /HINT:\s+(\S+)/.exec(e.saida)?.[1] } : {}),
   }).toEqual({
     sql,
     codigo: true,
     detalhe: esperado.detalhe,
     mensagem: expect.stringMatching(esperado.mensagem),
+    ...(comDica ? { dica: esperado.dica } : {}),
   });
 }
 

@@ -128,9 +128,13 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .dados-empresa { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; }
 .dados-empresa dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 .dados-empresa dt { margin: 0; }
-.email-valor { overflow-wrap: anywhere; }
+.valor-mascarado { overflow-wrap: anywhere; }
 .bloco h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 12px; }
-.lista-modulos { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.bloco h3 { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-texto-secundario); margin: 16px 0 6px; }
+.cabecalho-ficha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 12px; }
+.cabecalho-ficha p { margin: 0; }
+@media (max-width: 640px) { .cabecalho-ficha .mx-botao-secundario { min-height: 44px } }
+.lista-modulos, .lista-cnae { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
 .lista-modulos label { display: inline-flex; gap: 8px; align-items: center; }
 .formulario-estreito { max-width: 420px; }
 .painel-senha { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 6px; background: var(--mx-cor-perola); }
@@ -201,7 +205,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   [role="dialog"]:has(.corpo-log) { padding: 16px !important; width: 96vw !important; }
   .corpo-log th, .corpo-log td { padding: 6px 3px !important; font-size: var(--mx-tamanho-micro) !important; white-space: normal !important; }
   .corpo-log .selo { padding-inline: 6px; }
-  /* Aba Dados no celular: Última carga e Origem saem para as Ações (Modelo, Importar, Carga completa) ficarem à vista. */
+  /* Aba Dados no celular: Última carga e Origem saem para o Importar e o Ações ficarem à vista. */
   .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4) { display: none; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }

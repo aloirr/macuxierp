@@ -3,6 +3,7 @@
  * desligar e os textos de confirmação. Nada aqui toca a chave do conector (ela nem chega à tela depois de salva).
  */
 import { ROTULO_AMBIENTE } from '@macuxierp/integracao-fdv/web';
+import type { AcaoMenu, MenuAcoesProps } from '@macuxierp/ui';
 import { ConfigurarIntegracaoPlataformaEntrada, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV, MOTIVOS_PAUSA_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 import { acaoNoPortal } from '../integracao-fdv-textos';
 import { linhaBaseFdv, type LinhaBaseFdv } from '../integracao-fdv';
@@ -74,16 +75,18 @@ export function estadoCargaCompleta(cadastro: string, d: IntegracaoFdvPlataforma
 export const rotuloComLote = (loteEmVoo: boolean, rotulo: string): string => (loteEmVoo ? 'Enviando…' : rotulo);
 
 /** Item do botão "Ações" (T-0099) antes de ganhar o clique: a tela liga cada `chave` à sua ação. */
-export interface ItemAcaoLinha {
-  chave: string;
-  rotulo: string;
-  perigo?: boolean;
-  desabilitado?: boolean;
-  oculto?: boolean;
-}
+export type ItemAcaoLinha = Omit<AcaoMenu, 'aoAcionar'>;
 export interface AcoesDaLinha {
   principal: ItemAcaoLinha;
   menu: ItemAcaoLinha[];
+}
+
+/** Liga cada `chave` da linha ao clique em `fazer` e devolve as props do `MenuAcoes` (principal à vista e itens do menu). */
+export function menuDaLinha(a: AcoesDaLinha, fazer: Readonly<Record<string, () => void>>): Pick<MenuAcoesProps, 'principal' | 'acoes'> {
+  return {
+    principal: { rotulo: a.principal.rotulo, ...(a.principal.desabilitado !== undefined ? { desabilitado: a.principal.desabilitado } : {}), aoAcionar: fazer[a.principal.chave]! },
+    acoes: a.menu.map((x) => ({ ...x, aoAcionar: fazer[x.chave]! })),
+  };
 }
 
 /**

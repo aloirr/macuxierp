@@ -4,7 +4,7 @@ import { DialogoMotivo, MenuAcoes, TabelaDensa, type ColunaTabela } from '@macux
 import { SeloTom } from '@/components/selo-tom';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
-import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
+import { AMBIENTES_FDV, LIMITE_INICIAL_FDV, habilitadasApos, validarLimiteLote, acoesDaLinhaFdv, menuDaLinha, linhasCadastros, avisoLigar, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { colunasStatusFdv } from '@/lib/integracao-fdv';
 import { textoZerado } from '@/lib/config/cargas';
@@ -110,7 +110,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
       zerar: () => setZerar(l),
     };
     const a = acoesDaLinhaFdv(l, { bloqueado, semCredencial, licenciado: dados.modulo_licenciado });
-    return <MenuAcoes rotuloLinha={l.rotulo} principal={{ rotulo: a.principal.rotulo, desabilitado: a.principal.desabilitado, aoAcionar: fazer[a.principal.chave]! }} acoes={a.menu.map((x) => ({ ...x, aoAcionar: fazer[x.chave]! }))} />;
+    return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
   };
 
   const colunas: ColunaTabela<LinhaCadastroFdv>[] = [

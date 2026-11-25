@@ -8,7 +8,7 @@ import { jsonCanonico } from './canonico';
 import { qtd4InteiraParaHub } from './quantidade-hub';
 import type { CodigoRejeicao } from './pedido-fdv';
 import { PedidoFaturadoV1 } from '@macuxierp/pedido/contracts';
-import type { RetornoErp, StatusRetornoHub } from '../contracts';
+import { CHAVE_ACESSO_HUB_REGEX, type RetornoErp, type StatusRetornoHub } from '../contracts';
 
 /** Catálogo de motivos do pedido (T-0013 §4.3): ao FDV vai o texto do catálogo; em `outro`, o texto livre. */
 const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
@@ -144,7 +144,7 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
         if (!novoParcial) return { acao: 'ignorar', motivo: 'hub_ja_adiante' };
       }
       const faltam = [...new Set(p.itens_faturados.filter((i) => !chavesProduto.has(i.produto_id)).map((i) => i.produto_id))];
-      const notaHub = { numero: String(p.nota.numero), serie: String(p.nota.serie), chave: p.nota.chave, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
+      const notaHub = { numero: String(p.nota.numero), serie: String(p.nota.serie), chave: p.nota.chave, chave_acesso: CHAVE_ACESSO_HUB_REGEX.test(p.nota.chave) ? p.nota.chave : null, emitida_em: p.nota.emitida_em, total_cents: p.nota.total_centavos };
       if (faltam.length > 0) {
         const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
         return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub } } : { acao: 'aguardar_chave', produtos: faltam };
@@ -170,9 +170,13 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
   }
 }
 
-/** `rejeitado_erp` do recebimento recusado (sem pedido criado, logo sem `numero_erp`). */
-export function retornoRejeitadoErp(pedidoUuid: string, codigo: string, agora: Date): RetornoErp {
-  return { versao_contrato: 'v1', pedido_uuid: pedidoUuid, status: 'rejeitado_erp', motivo: (TEXTO_DA_REJEICAO as Readonly<Record<string, string>>)[codigo] ?? 'Pedido não recebido pelo ERP', ocorrido_em: agora.toISOString() };
+/**
+ * `rejeitado_erp` do recebimento recusado (sem pedido criado, logo sem `numero_erp`). T-0097: o `motivo` que a recusa do pedido
+ * traz (por exemplo a fração imprópria, RN-CAD-17) é PREFERIDO; o texto do código fica só como reserva (motivo ausente ou em branco).
+ */
+export function retornoRejeitadoErp(pedidoUuid: string, codigo: string, agora: Date, motivo?: string | null): RetornoErp {
+  const preferido = motivo?.trim().slice(0, 300);
+  return { versao_contrato: 'v1', pedido_uuid: pedidoUuid, status: 'rejeitado_erp', motivo: preferido || ((TEXTO_DA_REJEICAO as Readonly<Record<string, string>>)[codigo] ?? 'Pedido não recebido pelo ERP'), ocorrido_em: agora.toISOString() };
 }
 
 /** Corpo sem `ocorrido_em`, no JSON canônico: a base do hash de idempotência (o SHA-256 é calculado em `api/`, T-0013 §6.3). */

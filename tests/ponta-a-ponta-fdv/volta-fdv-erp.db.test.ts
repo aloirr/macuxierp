@@ -467,7 +467,11 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     const [, fat] = await retornos('A', p.pedido_uuid);
     expect(fat).toMatchObject({ status: 'faturado_total', estado: 'enviado', numero_erp: String(numero), resposta_http: 200 });
     expect(RetornoErp.safeParse(fat!.corpo).success).toBe(true);
-    expect(fat!.corpo.nota).toEqual({ numero: '12', serie: '1', chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
+    // T-0105 (FDV v1.0.34, expand/contract): `nota.chave_acesso` entra ao lado de `nota.chave`. Os demais campos seguem
+    // exatos; se `chave_acesso` vier, é a mesma chave de 44 dígitos.
+    const { chave_acesso: chaveAcesso, ...notaSemChaveAcesso } = fat!.corpo.nota as Record<string, unknown>;
+    expect(notaSemChaveAcesso).toEqual({ numero: '12', serie: '1', chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
+    if (chaveAcesso !== undefined) expect(chaveAcesso).toBe(notaSimulada.chave);
     expect(noHub('A', p.pedido_uuid).retornos.map((r) => [r.status, r.nota, r.chave_acesso])).toEqual([
       ['integrado', null, null],
       ['faturado_total', '12/1', notaSimulada.chave],
@@ -522,6 +526,67 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     expect(fat[0]!.corpo.itens_faturados ?? null).toBeNull(); // T-0085 (#579): sem item válido, o retorno sai sem itens_faturados
     expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado']);
     expect(lado.lgpd.alertas.slice(alertasAntes)).toContain(`retorno_sem_chave_produto:${JSON.stringify({ pedido_uuid: p.pedido_uuid })}`);
+  });
+
+  // T-0097 (K-2, K-4 e K-5 do plano v0.3.13): RN-CAD-17 (fração só em KG e M), RN-PED-01 e RN-CORE-03 (valorItem: preço ×
+  // quantidade, centavo, meio para cima). Produto KG criado aqui pela API; o produtoErp da massa é UN.
+  const produtoKg = async (k: Apelido, codigo: string) => {
+    const r = await api.chamar(k, 'POST', '/v1/cadastros/produtos', produtoValido({ codigo, descricao: `Farinha a granel ${codigo}`, cest: '0300700', unidade_comercial: 'KG', unidade_tributavel: 'KG' }));
+    expect(r.statusCode, r.body).toBe(201);
+    return (r.json() as { id: string }).id;
+  };
+
+  it('pedido-recebimento-recusado (T-0097, K-4): fração em produto UN → rejeitado_erp com o motivo da RN-CAD-17, sem pedido; em KG entra com o total do valorItem (K-5)', async () => {
+    exigir('pedido-recebimento-recusado');
+    const kg = await produtoKg('A', 'PKG-FDV');
+    const item = (produto: string, quantidade: number, preco: number, total: number) => ({ sequencia: 1, produto_external_id: produto, quantidade, unidade: produto === kg ? 'KG' : 'UN', fator: 1, quantidade_venda: quantidade, preco_unitario_cents: preco, desconto_cents: 0, total_cents: total });
+    const emUn = pedidoFdv(massa.A, { itens: [item(massa.A.produtoErp, 1.5, 250, 375)], total_cents: 375 });
+    // 1,5 × R$ 3,33 = 4,995 → R$ 5,00 e 0,333 × R$ 10,00 = 3,33 → R$ 3,33 (meio para cima, RN-CORE-03)
+    const emKg = pedidoFdv(massa.A, { itens: [item(kg, 1.5, 333, 500), { ...item(kg, 0.333, 1000, 333), sequencia: 2 }], total_cents: 833 });
+    for (const p of [emUn, emKg]) aprovar('A', p);
+    const { busca } = await lado.ciclo(T.A, hub.A);
+    expect(busca).toMatchObject({ buscados: 2, entregues: 1, rejeitados: 1 });
+
+    expect(await contarPedidos('A', emUn.pedido_uuid)).toBe(0);
+    expect(await recebido('A', emUn.pedido_uuid)).toMatchObject({ estado: 'rejeitado', erro_codigo: 'item_incoerente', pedido_id: null });
+    const [r] = await retornos('A', emUn.pedido_uuid);
+    expect(r).toMatchObject({ status: 'rejeitado_erp', estado: 'enviado', numero_erp: null });
+    // O motivo que vai ao FDV é o da fração (RN-PED-01: "com motivo"), não o texto genérico do item_incoerente (desconto).
+    expect(r!.corpo.motivo).toMatch(/KG e M/);
+    expect(noHub('A', emUn.pedido_uuid).motivo).toMatch(/KG e M/);
+
+    const ped = await pedidoErp('A', emKg.pedido_uuid);
+    expect(ped.status).toBe('aprovado');
+    const itens = await adm('SELECT quantidade::int AS q, total_centavos::int AS t FROM pedido.pedido_item WHERE pedido_id = $1 ORDER BY sequencia', [ped.id]);
+    expect(itens).toEqual([{ q: 15_000, t: 500 }, { q: 3_330, t: 333 }]);
+    expect(Number(ped.total_centavos)).toBe(833);
+    const naApi = (await api.chamar('A', 'GET', `/v1/pedido/pedidos/${ped.id}`)).json() as { total_centavos: number; itens: { total_centavos: number }[] };
+    expect([naApi.total_centavos, ...naApi.itens.map((i) => i.total_centavos)]).toEqual([833, 500, 333]);
+  });
+
+  it('pedido manual (T-0097, K-2 e K-5): fração em UN é 422 RN-CAD-17 em itens[0].quantidade e nada grava; em KG grava com o total do valorItem, igual na API e no banco', async () => {
+    const kg = await produtoKg('A', 'PKG-MAN');
+    const [cond] = await adm('SELECT id FROM cadastros.condicao_pagamento WHERE tenant_id = $1 AND external_id = $2', [T.A, KIT.prazo]);
+    const corpo = (itens: object[]) => ({ filial_id: massa.A.filial, cliente_id: massa.A.clienteKit, vendedor_id: null, condicao_pagamento_id: cond!.id, endereco_entrega_id: null, observacao: null, itens });
+    // Lançamento manual exige Idempotency-Key (escrita idempotente): o `chamar` do apoio não manda cabeçalho extra.
+    const lancar = (itens: object[]) => api.app.inject({ method: 'POST', url: '/v1/pedido/pedidos', headers: { ...api.auth('A'), 'idempotency-key': randomUUID() }, payload: corpo(itens) });
+    const manuais = async () => Number((await adm(`SELECT count(*) AS n FROM pedido.pedido WHERE tenant_id = $1 AND origem <> 'fdv'`, [T.A]))[0]!.n);
+    const antes = await manuais();
+    const ruim = await lancar([{ produto_id: massa.A.produtoErp, quantidade: 15_000, preco_unitario_centavos: 250, desconto_centavos: 0 }]);
+    expect(ruim.statusCode, ruim.body).toBe(422);
+    expect(ruim.json()).toMatchObject({ codigo: 'RN-CAD-17', campos: { 'itens[0].quantidade': expect.stringMatching(/KG e M/) } });
+    expect(await manuais()).toBe(antes);
+
+    const bom = await lancar([
+      { produto_id: kg, quantidade: 15_000, preco_unitario_centavos: 333, desconto_centavos: 0 },
+      { produto_id: kg, quantidade: 3_330, preco_unitario_centavos: 1000, desconto_centavos: 0 },
+    ]);
+    expect(bom.statusCode, bom.body).toBe(201);
+    const api201 = bom.json() as { id: string; total_centavos: number; itens: { total_centavos: number }[] };
+    expect([api201.total_centavos, ...api201.itens.map((i) => i.total_centavos)]).toEqual([833, 500, 333]);
+    const [gravado] = await adm('SELECT total_centavos::int AS t FROM pedido.pedido WHERE id = $1', [api201.id]);
+    expect(gravado!.t).toBe(833);
+    expect((await adm('SELECT total_centavos::int AS t FROM pedido.pedido_item WHERE pedido_id = $1 ORDER BY sequencia', [api201.id])).map((l) => l.t)).toEqual([500, 333]);
   });
 
   it('pedido-multi-tenant: o mesmo pedido_uuid em dois tenants vira dois pedidos; o do tenant A não aparece no B (banco, API e fila do Hub)', async () => {

@@ -5,6 +5,7 @@
 import {
   criarConsultaParaFaturamento,
   criarConsultaParaFiscal,
+  criarConsultaCnpjParaCore,
   criarConsultaParaPedido,
   criarPluginCadastros,
   criarPluginPlataformaCadastros,
@@ -29,7 +30,6 @@ import {
 import {
   consultaTitulosPedido,
   criarPluginFaturamento,
-  criarUsosPedidosFaturamento,
   repositoriosSql as repositoriosFaturamento,
   type ConsultaA1Ativo,
   type DependenciasFaturamento,
@@ -42,7 +42,6 @@ import { criarEmissorNFe } from '@macuxierp/nfe-emissor';
 import {
   criarConsultaParaFaturar,
   criarPluginPedido,
-  criarPluginPlataformaPedidoZerar,
   dependenciasDeProducao as dependenciasPedido,
   type Dependencias as DependenciasPedido,
   type LogPedido,
@@ -307,8 +306,7 @@ interface DependenciasPlataformaModulos {
  * os `depende` dos manifestos montados (RN-CORE-02), e a senha provisória do 1º admin com o argon2id de produção; e o da
  * integração FDV (ADR 0013, T-0056), com a chave do conector (versão 1) e o repositório que chama só as `portal_*` da 0038;
  * e o da carga de cadastros (T-0058, ADR 0013, adendo de 23/11/2026), com as dependências do cadastros do BKO e a outbox da API;
- * e o do "Zerar dados" (RN-CAD-10, T-0058, v0.3.6), com as portas que chamam só as `portal_*` da 0043 (`plataforma/portas-zeragem.ts`);
- * e o do "Zerar pedidos não faturados" (RN-CAD-10, T-0093), com a porta do faturamento.
+ * e o do "Zerar dados" (RN-CAD-10, T-0058, v0.3.6), com as portas que chamam só as `portal_*` da 0043 (`plataforma/portas-zeragem.ts`).
  * `dependencias`: padrão sem chave do conector, com a `OutboxPg` e o cadastros de produção (os testes de isolamento só listam as rotas).
  */
 export function pluginsPlataforma(
@@ -316,15 +314,14 @@ export function pluginsPlataforma(
   dependencias: DependenciasPlataformaModulos = { chaveIntegracao: null },
 ): readonly PluginPlataforma[] {
   const manifestos = modulos.map((m) => ({ id: m.manifesto.id, depende: m.manifesto.depende }));
+  const cadastros = dependencias.cadastros ?? dependenciasCadastros(new RepositorioCoreSql());
+  // "Atualizar pela Receita" (T-0101, ADR 0012): a consulta do RF-CAD-02 do cadastros, ligada aqui (o core não importa cadastros/api)
+  const consultaCnpj = criarConsultaCnpjParaCore({ repositorios: cadastros.repositorios, fontes: cadastros.fontes, relogio: relogioDoSistema });
   return [
-    criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha) }),
+    criarPluginPlataformaCore({ repo: new RepositorioPlataformaSql(), manifestos, hashSenha: (senha) => gerarHashSenha(senha), consultaReceita: consultaCnpj }),
     criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: dependencias.chaveIntegracao }),
-    criarPluginPlataformaCadastros({
-      deps: dependencias.cadastros ?? dependenciasCadastros(new RepositorioCoreSql()),
-      outbox: dependencias.outbox ?? new OutboxPg(),
-    }),
+    criarPluginPlataformaCadastros({ deps: cadastros, outbox: dependencias.outbox ?? new OutboxPg() }),
     criarPluginPlataformaCadastrosZerar(dependencias.zeragem ?? dependenciasZeragemProducao()),
-    // a porta do faturamento é ligada aqui: o pedido não importa o faturamento (regra 1)
-    criarPluginPlataformaPedidoZerar({ faturamento: criarUsosPedidosFaturamento() }),
+    // T-0093 (zerar pedidos) volta na v0.3.14, com as funções SQL dele: plano B da v0.3.13
   ];
 }
