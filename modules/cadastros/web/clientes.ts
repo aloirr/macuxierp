@@ -9,7 +9,7 @@ import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { ROTULO_PRAZO_MEDIO } from './prazos';
 import { Cliente, ClienteAtualizacao, ClienteDados, Uuid } from '../contracts';
 import { sugerirIndIeDest, validarDocumentoCliente, validarIndIeDest, type IndIeDest } from '../domain';
-import { CAMPOS_ENDERECO, camposVisiveis, centavosDoTexto, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, opcoes, situacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { CAMPOS_ENDERECO, CAMPOS_LOCALIZACAO, camposVisiveis, centavosDoTexto, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, localizacaoDoFormulario, opcoes, situacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_CLIENTES = '/cadastros/clientes';
 export const ROTA_CLIENTE_NOVO = '/cadastros/clientes/novo';
@@ -52,7 +52,7 @@ export const CAMPOS_CLIENTE: readonly CampoEdicao[] = [
   { nome: 'condicao_pagamento_id', rotulo: 'Condição de pagamento', tipo: 'cadastro', fonte: '/v1/cadastros/condicoes-pagamento' },
   { nome: 'tabela_preco_id', rotulo: 'Tabela de preço', tipo: 'cadastro', fonte: '/v1/cadastros/tabelas-preco' },
   { nome: 'limite_credito_centavos', rotulo: 'Limite de crédito (R$)', tipo: 'dinheiro', exige: 'cadastros.cliente.credito' },
-  ...CAMPOS_ENDERECO.map((c) => ({ ...c, soCriacao: true })),
+  ...[...CAMPOS_ENDERECO, ...CAMPOS_LOCALIZACAO].map((c) => ({ ...c, soCriacao: true })),
 ];
 
 export const camposDoCliente = (perfil: Perfil, modo: Modo) => camposVisiveis(CAMPOS_CLIENTE, perfil, modo);
@@ -104,7 +104,7 @@ function corpoComum(v: Valores, perfil: Perfil, modo: Modo): Corpo {
 
 /** Corpo do POST (cliente com o endereço principal); `null` se o contrato recusar (a tela mostra os erros de `validarCliente`). */
 export function corpoCriarCliente(v: Valores, perfil: Perfil): ClienteDados | null {
-  const endereco = { tipo: 'principal', ...enderecoDoFormulario(v) };
+  const endereco = { tipo: 'principal', ...enderecoDoFormulario(v), ...localizacaoDoFormulario(v) };
   const r = ClienteDados.safeParse({ ...corpoComum(v, perfil, 'criar'), enderecos: [endereco] });
   if (!r.success) return null;
   // O contrato devolve limite 0 por padrão; sem a permissão do crédito a chave não vai no corpo (a API aplica o padrão).
