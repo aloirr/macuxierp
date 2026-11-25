@@ -30,3 +30,4 @@ export const dependenciasDeProducao = (cadastros: ConsultaCadastrosPedido, extra
   notas: extras.notas ?? semNotaEmAberto,
   ...(extras.log ? { log: extras.log } : {}),
 });
+export { criarPluginPlataformaPedidoZerar, type DependenciasZerarPedidos, type UsosFaturamentoPedidos } from './zeragem';

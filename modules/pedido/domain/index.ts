@@ -6,4 +6,5 @@ export * from './trava';
 export * from './validacao';
 export * from './valores';
 export * from './violacao';
+export * from './zeragem';
 export * from './privacidade';

@@ -5,6 +5,8 @@
 import { z } from 'zod';
 import { Centavos, Cliente as ClienteSchema, EnderecoCliente as EnderecoClienteSchema, Produto as ProdutoSchema, Qtd4, Uuid } from '@macuxierp/cadastros/contracts';
 
+export * from './zeragem';
+
 export const MODULO = 'pedido' as const;
 
 /** Identificador do tenant (UUID). Repetido por módulo de propósito: o tipo vem sempre de contracts. */
