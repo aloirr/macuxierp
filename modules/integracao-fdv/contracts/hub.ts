@@ -23,10 +23,11 @@ export const VERSAO_CONTRATO_HUB = 'v1' as const;
 /** Versão que só a entidade `prazo_pagamento` tem (ADR 0072 do FDV, ainda não publicada): a v1 segue aceita por 6 meses. */
 export const VERSAO_CONTRATO_PRAZO_V2 = 'v2' as const;
 /**
- * Opção do envio do prazo no contrato v2 (T-0085, lote 2). DESLIGADA: o ERP manda v1 até o FDV avisar que a v2 está no ar; aí
- * basta virar esta constante (um lote só, sem mudar os eventos). Constante do módulo, não por tenant: a v2 vale para o Hub inteiro.
+ * Opção do envio do prazo no contrato v2 (T-0085, lote 2; T-0105). LIGADA: a v2 está no ar no FDV desde a v1.0.34 (a v1 segue
+ * aceita por 6 meses). Constante do módulo, não por tenant: a v2 vale para o Hub inteiro. O hash do lote leva a versão, então o
+ * primeiro envio depois da virada reenvia os prazos uma vez (idempotente por `external_id`).
  */
-export const PRAZO_CONTRATO_V2_LIGADO = false;
+export const PRAZO_CONTRATO_V2_LIGADO = true;
 
 /**
  * Código de erro (linha ou lote) e campo com erro: a fonte é o SDK (T-0086, `portal-integracao-operacao.ts`); `CodigoErro` e
