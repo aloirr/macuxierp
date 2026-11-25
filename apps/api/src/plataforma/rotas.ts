@@ -202,7 +202,7 @@ function montarEsqueciPlataforma(app: FastifyInstance, d: DependenciasPlataforma
       limitarEsqueciPorIp(e.limites, ipDoCliente(req, d.segredoBff), agoraMs);
       const { email } = PedirSenhaTemporariaPlataformaEntrada.parse(req.body);
       limitarEsqueciPorConta(e.limites, EMPRESA_PLATAFORMA, email, agoraMs);
-      return apos.responder(req, reply, e.envio ? await servico.esqueci(email) : await servico.esqueciSemEnvio());
+      return apos.responder(req, reply, e.envio ? await servico.esqueci(email, req.log) : await servico.esqueciSemEnvio(req.log));
     }),
   );
 }

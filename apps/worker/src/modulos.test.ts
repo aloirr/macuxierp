@@ -7,7 +7,7 @@
 import { exportadorCadastros } from '@macuxierp/cadastros/api';
 import { EVENTO_CARGA_INICIAL, TRABALHO_CARGA_INICIAL } from '@macuxierp/cadastros/contracts';
 import { exportadorCore } from '@macuxierp/core/api';
-import { AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_PEDIDOS_ID, CONSUMIDOR_PUBLICAR_CADASTROS, EVENTOS_CADASTROS_PUBLICADOS } from '@macuxierp/integracao-fdv/api';
+import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_CLIENTES_ID, AGENDA_RETORNO_PEDIDOS_ID, CONSUMIDOR_PUBLICAR_CADASTROS, EVENTOS_CADASTROS_PUBLICADOS } from '@macuxierp/integracao-fdv/api';
 import { manifest as manifestCadastros } from '@macuxierp/cadastros/manifest';
 import { manifest as manifestFaturamento } from '@macuxierp/faturamento/manifest';
 import { exportadorPedido } from '@macuxierp/pedido/api';
@@ -88,16 +88,18 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
   const resolvedor = { resolver: async () => new Map<string, string>() };
   const agendas = (recebimento: EstadoRecebimentoFdv, envio: EstadoEnvioFdv = 'ligado') => {
     const { log: pinoLog } = pinoEmMemoria();
-    const pedidosFdv = montarPedidosFdv({ log: pinoLog, relogio: relogioDoSistema, recebimento, resolvedor });
+    const pedidosFdv = montarPedidosFdv({ log: pinoLog, relogio: relogioDoSistema, recebimento, resolvedor, aditivosCliente: true });
     return montarAgendas({ log: pinoLog, relogio: relogioDoSistema, pedidosFdv, envio, outbox: { gravar: async () => 1 } }).map((a) => [a.id, a.modulo]);
   };
 
   it('MACUXIERP_FDV_ENVIO=desligado: sem a agenda do conector, nenhuma escrita no Hub (lotes, sinal, reconciliação)', () => {
     expect(agendas('desligado', 'desligado')).toEqual([]);
-    // o recebimento é outra chave: ligado, só as agendas de pedidos entram, sem o conector
+    // o recebimento é outra chave: ligado, só as agendas de pedidos e de clientes entram, sem o conector
     expect(agendas('ligado', 'desligado')).toEqual([
       [AGENDA_BUSCA_PEDIDOS_ID, 'integracao-fdv'],
       [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
+      [AGENDA_BUSCA_CLIENTES_ID, 'integracao-fdv'],
+      [AGENDA_RETORNO_CLIENTES_ID, 'integracao-fdv'],
     ]);
   });
 
@@ -140,15 +142,17 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     expect(soltos).toEqual([]);
   });
 
-  it('MACUXIERP_FDV_RECEBIMENTO=desligado: só o conector entra; nem a busca nem o retorno de pedidos', () => {
+  it('MACUXIERP_FDV_RECEBIMENTO=desligado: só o conector entra; nem a busca nem o retorno de pedidos e de clientes', () => {
     expect(agendas('desligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
   });
 
-  it('MACUXIERP_FDV_RECEBIMENTO=ligado: conector, busca e retorno', () => {
+  it('MACUXIERP_FDV_RECEBIMENTO=ligado: conector, busca e retorno de pedidos e do pré-cadastro de cliente (T-0059 §5)', () => {
     expect(agendas('ligado')).toEqual([
       [AGENDA_CONECTOR_ID, 'integracao-fdv'],
       [AGENDA_BUSCA_PEDIDOS_ID, 'integracao-fdv'],
       [AGENDA_RETORNO_PEDIDOS_ID, 'integracao-fdv'],
+      [AGENDA_BUSCA_CLIENTES_ID, 'integracao-fdv'],
+      [AGENDA_RETORNO_CLIENTES_ID, 'integracao-fdv'],
     ]);
   });
 

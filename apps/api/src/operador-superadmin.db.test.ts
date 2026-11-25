@@ -74,7 +74,7 @@ describe.skipIf(!PG_DISPONIVEL)('superadmin.mjs (operador.sh criar-superadmin e 
     });
     const saida = `${r.stdout}${r.stderr}`;
     // nunca e-mail (em qualquer caixa), nome, senha nem hash na saída do contêiner
-    for (const proibido of [EMAIL, NOME, senha, senhaRedefinida, '$argon2id$', o.email ?? EMAIL]) expect(saida.toLowerCase()).not.toContain(proibido.toLowerCase());
+    for (const proibido of [EMAIL, NOME, senha, senhaRedefinida, '$argon2id$', o.email || EMAIL]) expect(saida.toLowerCase()).not.toContain(proibido.toLowerCase());
     return { status: r.status, saida, estado: r.stdout.trim().split('\n').at(-1) };
   }
 
@@ -326,5 +326,33 @@ describe.skipIf(!PG_DISPONIVEL)('superadmin.mjs (operador.sh criar-superadmin e 
   it('auditoria inteira: nada de e-mail, nome, senha nem hash', async () => {
     const texto = JSON.stringify(await auditoria()).toLowerCase();
     for (const proibido of [EMAIL, NOME.toLowerCase(), senha.toLowerCase(), senhaRedefinida.toLowerCase(), 'argon2', 'fictício', '@']) expect(texto).not.toContain(proibido);
+  });
+
+  it('listar (T-0103): e-mail mascarado pela 0035, nenhum superadmin alterado, auditado só com operador e contagem; o excluído fica de fora', async () => {
+    await b.admin.query(
+      `INSERT INTO plataforma.superadmin (tenant_id, email, nome, senha_hash, ativo, deleted_at)
+       VALUES (plataforma.tenant_referencia(), 'excluido@exemplo.invalid', 'Excluído Fictício', '$argon2id$v=19$m=1,t=1,p=1$a$b', true, now())`,
+    );
+    const total = (await auditoria()).length;
+    const antes = await linhas();
+    // o formato da linha e o "estado: lista" ficam no scripts/deploy/superadmin-listar.test.mjs; aqui, o banco de verdade
+    const r = sa('listar', { email: '' });
+    expect(r.status).toBe(0);
+    expect(r.saida).toContain('1 superadmin(s)');
+    expect(r.saida).toContain(`id: ${antes[0]!.id} · e-mail (mascarado): su****@exemplo.invalid`);
+    expect(r.saida.toLowerCase()).not.toContain('excluido');
+    const depois = await auditoria();
+    expect(depois).toHaveLength(total + 1);
+    expect(depois.at(-1)).toMatchObject({
+      tenant_id: await referencia(),
+      usuario_id: null,
+      superadmin_id: null,
+      acao: 'plataforma.superadmin.listar',
+      entidade_id: null,
+      antes: null,
+      depois: { quantidade: 1, operador: 'alexandre', motivo: 'operador.sh' },
+    });
+    expect(JSON.stringify(depois.at(-1))).not.toContain('@');
+    expect(await linhas()).toEqual(antes);
   });
 });

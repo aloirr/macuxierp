@@ -1,11 +1,11 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
-import { CaixaResumo, Chip, Dialogo, DialogoMotivo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { CaixaResumo, Chip, Dialogo, DialogoMotivo, MenuAcoes, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
-import { avisoCarga, estadoCargaCompleta, rotuloComLote } from '@/lib/config/integracao-fdv';
+import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
 import { cargaCompletaFdvAcao } from '../acoes-integracao-fdv';
 import {
   AVISO_LIMITE_FDV, ROTULO_MODO, TEXTO_SUBSTITUIR, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
@@ -76,13 +76,10 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
     { id: 'origem', titulo: 'Origem', celula: (l) => origemDaCarga(l) ?? '—' },
     { id: 'acoes', titulo: 'Ações', celula: (l) => {
       const c = estadoCargaCompleta(l.cadastro, integracao);
-      return (
-        <span className="barra-acoes" style={{ margin: 0 }}>
-          <a className="carga-modelo" href={enderecoModelo(empresaId, l.cadastro)} aria-label={`Modelo de ${l.rotulo}`}>Modelo</a>
-          <button type="button" className="mx-botao-secundario" aria-label={`Importar ${l.rotulo}`} onClick={() => setImportar(l.cadastro)}>Importar</button>
-          {c.visivel && <button type="button" className="mx-botao-secundario" style={{ whiteSpace: 'nowrap' }} disabled={pendente || c.loteEmVoo} aria-label={`Carga completa: ${l.rotulo}`} onClick={() => setCarga(l)}>{rotuloComLote(c.loteEmVoo, 'Carga completa')}</button>}
-        </span>
-      );
+      // Botão "Ações" (T-0099): Importar à vista; o Modelo (baixa o CSV) e a Carga completa ficam no menu.
+      const a = acoesDaCarga(c, pendente);
+      const fazer: Record<string, () => void> = { importar: () => setImportar(l.cadastro), modelo: () => window.location.assign(enderecoModelo(empresaId, l.cadastro)), 'carga-completa': () => setCarga(l) };
+      return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
     } },
   ];
   return (

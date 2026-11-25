@@ -63,6 +63,7 @@ export function valoresDaFilial(f: FilialResumo): Valores {
     industrial_ipi: f.industrial_ipi ? 'true' : 'false', padrao: f.padrao ? 'true' : 'false', emissora: f.emissora ? 'true' : 'false',
     nfe_serie: f.nfe_serie === null ? '' : String(f.nfe_serie), nfe_numero_inicial: f.nfe_numero_inicial === null ? '' : String(f.nfe_numero_inicial),
     end_cep: e.cep, end_logradouro: e.logradouro, end_numero: e.numero, end_complemento: e.complemento ?? '', end_bairro: e.bairro, end_municipio_ibge: e.municipio_ibge, end_uf: e.uf,
+    end_latitude: e.latitude == null ? '' : String(e.latitude), end_longitude: e.longitude == null ? '' : String(e.longitude),
   };
 }
 

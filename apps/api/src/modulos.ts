@@ -321,5 +321,6 @@ export function pluginsPlataforma(
       outbox: dependencias.outbox ?? new OutboxPg(),
     }),
     criarPluginPlataformaCadastrosZerar(dependencias.zeragem ?? dependenciasZeragemProducao()),
+    // T-0093 (zerar pedidos) volta na v0.3.14, com as funções SQL dele: plano B da v0.3.13
   ];
 }

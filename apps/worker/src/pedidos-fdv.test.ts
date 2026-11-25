@@ -12,14 +12,18 @@ const UUID = '12345678-1234-4234-8234-123456789012';
 const resolvedor: ResolvedorChaveErp = { resolver: async () => new Map() };
 
 describe('montarPedidosFdv', () => {
-  it('ligado ou desligado: monta o recebedor, o resolvedor e o alerta (quem decide a busca é o montarAgendas)', () => {
+  it('ligado ou desligado: monta o recebedor, o resolvedor, o criador de cliente e o alerta (quem decide a busca é o montarAgendas)', () => {
     const { log } = pinoEmMemoria();
     for (const recebimento of ['desligado', 'ligado'] as const) {
-      const m = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor });
-      expect(m.recebimento).toBe(recebimento);
-      expect(m.resolvedor).toBe(resolvedor);
-      expect(typeof m.recebedor.receber).toBe('function');
-      expect(typeof m.alertar).toBe('function');
+      for (const aditivosCliente of [true, false]) {
+        const m = montarPedidosFdv({ log, relogio: relogioDoSistema, recebimento, resolvedor, aditivosCliente });
+        expect(m.recebimento).toBe(recebimento);
+        expect(m.resolvedor).toBe(resolvedor);
+        expect(typeof m.recebedor.receber).toBe('function');
+        expect(typeof m.alertar).toBe('function');
+        expect(typeof m.clientes.criador.decidir).toBe('function');
+        expect(m.clientes.aditivos).toBe(aditivosCliente);
+      }
     }
   });
 

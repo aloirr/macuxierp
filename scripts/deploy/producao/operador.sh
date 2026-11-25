@@ -9,6 +9,7 @@
 #   bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "<e-mail>" [--nome "<nome>"] --operador <seu nome> [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar|--redefinir-senha \
 #        --operador <seu nome> [--confirmar]
+#   bash ~/macuxierp-deploy/operador.sh superadmin --listar --operador <seu nome>
 #   bash ~/macuxierp-deploy/operador.sh a1-teste --empresa <código, ex.: AM2808> [--filial <id da filial emissora>] \
 #        --operador <seu nome> [--substituir] [--confirmar]
 #
@@ -33,6 +34,10 @@
 #   e a trava da §6) ou --redefinir-senha (T-0077: senha provisória nova com troca no 1º acesso, zera falhas e trava e
 #   revoga as sessões abertas; superadmin desativado é recusado, reative antes); uma ação por vez, auditada
 #   (plataforma.superadmin.<ação>). Os dois rodam o superadmin.mjs.
+#   --listar (T-0103): sem --email e sem --confirmar; auditado (plataforma.superadmin.listar): um superadmin por linha,
+#   com o id, o
+#   e-mail MASCARADO (o completo nunca sai do banco), a situação, as falhas, a trava, a troca e a temporária pendentes e o
+#   último acesso. Serve para achar o e-mail certo antes do --redefinir-senha ou do "Esqueci a senha".
 # a1-teste (T-0080, ADR 0008): gera o A1 AUTOASSINADO de teste com o CNPJ e a razão social da filial emissora e o grava
 #   cifrado como o certificado ativo dela (origem 'teste'), auditado (core.certificado.teste_gerado). SÓ HOMOLOGAÇÃO, com
 #   o SIMULADOR da SEFAZ (a SEFAZ real recusa o autoassinado): filial em produção fiscal é recusada na mesma transação
@@ -232,9 +237,9 @@ superadmin() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --confirmar) CONFIRMAR=1; shift; continue ;;
-      --desativar | --reativar | --destravar | --redefinir-senha)
+      --desativar | --reativar | --destravar | --redefinir-senha | --listar)
         [ "$COMANDO" = superadmin ] || uso "$1 só no comando superadmin"
-        [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar, --destravar ou --redefinir-senha"
+        [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar, --destravar, --redefinir-senha ou --listar"
         ACAO="${1#--}"; shift; continue ;;
       --nome) [ "$COMANDO" = criar-superadmin ] || uso "--nome só no criar-superadmin"; [ $# -ge 2 ] || uso "$1 exige um valor" ;;
       --email | --operador) [ $# -ge 2 ] || uso "$1 exige um valor" ;;
@@ -247,15 +252,23 @@ superadmin() {
     esac
     shift 2
   done
-  [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar, --destravar ou --redefinir-senha"
-  [[ "$EMAIL" =~ $PADRAO_EMAIL ]] && [ "${#EMAIL}" -le 254 ] || uso "--email fora do formato"
+  [ -n "$ACAO" ] || uso "superadmin exige uma ação: --desativar, --reativar, --destravar, --redefinir-senha ou --listar"
+  if [ "$ACAO" = listar ]; then
+    [ -z "$EMAIL" ] || uso "--listar não leva --email (lista todos, com o e-mail mascarado)"
+    [ "$CONFIRMAR" = 0 ] || uso "--listar não leva --confirmar"
+  else
+    [[ "$EMAIL" =~ $PADRAO_EMAIL ]] && [ "${#EMAIL}" -le 254 ] || uso "--email fora do formato"
+  fi
   [ "$ACAO" != criar ] || texto --nome "$NOME" 2 80
   [[ "$OPERADOR" =~ $PADRAO_OPERADOR ]] || uso "--operador exige o nome de quem executa (ex.: alexandre)"
   preparar superadmin.mjs
 
   local ARGS=(--acao "$ACAO" --operador "$OPERADOR") SENHA=''
-  export MACUXIERP_SUPERADMIN_EMAIL="$EMAIL"
-  ENVS=(-e MACUXIERP_SUPERADMIN_EMAIL)
+  ENVS=()
+  if [ "$ACAO" != listar ]; then
+    export MACUXIERP_SUPERADMIN_EMAIL="$EMAIL"
+    ENVS=(-e MACUXIERP_SUPERADMIN_EMAIL)
+  fi
   if [ "$ACAO" = criar ]; then
     export MACUXIERP_SUPERADMIN_NOME="$NOME"
     ENVS+=(-e MACUXIERP_SUPERADMIN_NOME)
@@ -277,8 +290,10 @@ superadmin() {
   case "$ACAO" in
     criar) TIPO=criacao ROTULO='Senha provisória' ;;
     redefinir-senha) TIPO=redefinicao ROTULO='Nova senha provisória' ;;
+    listar) TIPO=lista ;;
   esac
   case "$TIPO:$ESTADO" in
+    'lista:estado: lista') : ;; # o superadmin.mjs já disse "só leitura"
     'criacao:estado: superadmin-criado' | 'redefinicao:estado: alterado')
       confirmado
       printf '\n%s do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$ROTULO" "$SENHA"

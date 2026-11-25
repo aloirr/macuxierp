@@ -161,9 +161,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 /* Tabelas da Integração FDV (T-0056): a coluna Falha (4ª) não espreme; a tabela rola dentro do contêiner, com a sombra de rolagem. */
 .tabela-fdv table { min-width: 720px; }
 .tabela-fdv th:nth-child(4), .tabela-fdv td:nth-child(4) { min-width: 200px; }
-/* /config: a coluna Ações (5ª) cabe numa linha só, sem empilhar os botões. */
+/* /config: a coluna Ações (5ª) cabe a principal e o "Ações" lado a lado, sem quebra. */
 .tabela-fdv th:nth-child(5), .tabela-fdv td:nth-child(5) { min-width: 260px; }
-.tabela-fdv td:nth-child(5) .barra-acoes { flex-wrap: nowrap; }
 /* BKO: a falha sobe para uma linha sob o nome do cadastro em tela estreita; a coluna Falha some (sem leitura dupla: só um dos dois aparece). */
 .falha-sob-nome { display: none; }
 @media (max-width: 640px) {
@@ -202,9 +201,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   [role="dialog"]:has(.corpo-log) { padding: 16px !important; width: 96vw !important; }
   .corpo-log th, .corpo-log td { padding: 6px 3px !important; font-size: var(--mx-tamanho-micro) !important; white-space: normal !important; }
   .corpo-log .selo { padding-inline: 6px; }
-  /* Aba Dados no celular: Última carga e Origem saem para as Ações (Modelo, Importar, Carga completa) ficarem à vista. */
+  /* Aba Dados no celular: Última carga e Origem saem para o Importar e o Ações ficarem à vista. */
   .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4) { display: none; }
-  .tabela-dados .barra-acoes { flex-direction: column; align-items: flex-start; gap: 6px; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
@@ -220,7 +218,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .carga-numero { color: var(--mx-cor-texto-secundario); text-align: right; }
 .carga-nome { font-weight: var(--mx-peso-rotulo-pequeno); overflow-wrap: anywhere; }
 .carga-situacao { min-width: 0; overflow-wrap: anywhere; }
-.carga-modelo { white-space: nowrap; }
 [data-fundo-dialogo] { z-index: 10; }
 .escolher-arquivo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .escolher-botao { position: relative; cursor: pointer; }
@@ -238,7 +235,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 @media (max-width: 640px) {
   .linha-carga { grid-template-columns: 24px minmax(0, 1fr) auto; }
   .carga-situacao { grid-column: 2 / -1; grid-row: 2; }
-  .linha-carga .carga-modelo { grid-column: 2; grid-row: 3; }
   .linha-carga > button { grid-column: 3; grid-row: 3; }
 }
 .baixar-erros { justify-self: start; }
@@ -283,15 +279,12 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .matriz-perfis td { text-align: center; }
 .matriz-perfis tbody th[scope="row"] { position: sticky; left: 0; background: var(--mx-cor-branco); font-weight: normal; white-space: nowrap; }
 .matriz-perfis .matriz-grupo th { background: var(--mx-cor-perola); font-weight: var(--mx-peso-titulo); }
-/* Bandeira por filial: um cartão por filial; Ligar e Desligar têm a mesma largura mínima. */
+/* Bandeira por filial: um cartão por filial; o botão é o MenuAcoes (44 px no celular pelo botoes.css). */
 .cartoes-bandeira { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .cartao-bandeira { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 16px; min-width: 0; }
 .cartao-bandeira h2 { margin: 0 0 8px; font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); overflow-wrap: anywhere; }
 .cartao-bandeira .selos { margin: 0; }
 .bandeira-acoes { margin-top: 16px; }
-.bandeira-acoes > .barra-acoes { margin: 0; }
-.bandeira-acoes > .barra-acoes > button { min-width: 7.5rem; }
 @media (max-width: 640px) {
   .cartoes-bandeira { grid-template-columns: minmax(0, 1fr); }
-  .bandeira-acoes > .barra-acoes > button { width: 100%; min-height: 44px; }
 }

@@ -160,7 +160,7 @@ beforeEach(() => {
   hashes.mockClear();
 });
 
-async function montar(o: { semEmail?: boolean } = {}) {
+async function montar(o: { semEmail?: boolean; semPlataforma?: boolean } = {}) {
   const relogio = new RelogioFixo(INICIO);
   const hash = await gerarHashSenha(SENHA_DE_TESTE, ARGON2_RAPIDO);
   const repo = new RepositorioAuthMemoria(() => relogio.agora());
@@ -202,7 +202,7 @@ async function montar(o: { semEmail?: boolean } = {}) {
     trabalhos: new FilaDeTrabalhosMemoria(),
     relogio,
     modulos: [PLUGIN_TENANT],
-    plataforma: { banco: plataforma, plugins: [PLUGIN_PORTAL], segredoBff: null },
+    ...(o.semPlataforma ? {} : { plataforma: { banco: plataforma, plugins: [PLUGIN_PORTAL], segredoBff: null } }),
     ...(o.semEmail ? {} : { esqueci: { envio, repoCore } }),
     logger: { level: 'info', stream: new Writable({ write: (c, _e, cb) => (logs.push(String(c)), cb()) }) },
   });
@@ -473,6 +473,73 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     const texto = m.logs.join('\n');
     expect(texto).toContain('e-mail não enviado após as tentativas');
     expect(texto).not.toMatch(/exemplo\.com|Senha temporária/i);
+  });
+
+  describe('log do motivo e do envio (R-20261124-222933): código fixo, sem e-mail, empresa, temporária nem IP', () => {
+    const IP = '198.51.100.77';
+    /** Os objetos de log do pino com `evento`, na ordem. */
+    const eventos = (m: Montado) =>
+      m.logs.flatMap((l) => l.split('\n')).filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>).filter((o) => 'evento' in o);
+    const semVazamento = (m: Montado, extras: string[] = []) => {
+      const texto = m.logs.join('\n');
+      const minusculo = texto.toLowerCase();
+      for (const proibido of ['exemplo.com', 'am2808', 'am1234', 'xy9999', 'macuxi']) expect(minusculo).not.toContain(proibido);
+      // o assunto do e-mail ("Senha temporária...") e a própria temporária
+      for (const proibido of ['Senha temporária', ...extras]) expect(texto).not.toContain(proibido);
+      // qualquer IPv4 (o do pedido incluído)
+      expect(texto).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    };
+    const motivos = (m: Montado) => eventos(m).filter((o) => o.evento === 'esqueci.sem_envio').map((o) => o.motivo);
+
+    it('tenant: empresa inexistente ou suspensa, conta inexistente e conta inativa logam o motivo e nada sai', async () => {
+      const m = await montar();
+      await esqueci(m, 'XY9999', 'adm@exemplo.com', IP);
+      await esqueci(m, 'AM1234', 'susp@exemplo.com', '198.51.100.78');
+      await esqueci(m, 'AM2808', 'ninguem@exemplo.com', '198.51.100.79');
+      await esqueci(m, 'AM2808', 'inativo@exemplo.com', '198.51.100.80');
+      await m.envio.esperar();
+      expect(m.envio.enviados).toEqual([]);
+      expect(motivos(m)).toEqual(['empresa_inexistente_ou_suspensa', 'empresa_inexistente_ou_suspensa', 'conta_inexistente_ou_inativa', 'conta_inexistente_ou_inativa']);
+      semVazamento(m);
+    });
+
+    it('superadmin (MACUXI e /config): e-mail sem conta ou conta inativa loga conta_inexistente_ou_inativa', async () => {
+      const m = await montar();
+      await esqueci(m, 'MACUXI', 'ninguem@exemplo.com', IP);
+      await esqueciConfig(m, 'antigo@exemplo.com', '198.51.100.81');
+      await m.envio.esperar();
+      expect(m.envio.enviados).toEqual([]);
+      expect(motivos(m)).toEqual(['conta_inexistente_ou_inativa', 'conta_inexistente_ou_inativa']);
+      semVazamento(m);
+    });
+
+    it('e-mail desligado loga email_desligado nas duas rotas; MACUXI sem o portal montado loga plataforma_indisponivel', async () => {
+      const sem = await montar({ semEmail: true });
+      await esqueci(sem, 'AM2808', 'adm@exemplo.com', IP);
+      await esqueci(sem, 'MACUXI', EMAIL_SA, '198.51.100.82');
+      await esqueciConfig(sem, EMAIL_SA, '198.51.100.83');
+      expect(motivos(sem)).toEqual(['email_desligado', 'email_desligado', 'email_desligado']);
+      semVazamento(sem);
+      const semPortal = await montar({ semPlataforma: true });
+      expect((await esqueci(semPortal, 'MACUXI', EMAIL_SA, IP)).statusCode).toBe(202);
+      expect(motivos(semPortal)).toEqual(['plataforma_indisponivel']);
+      semVazamento(semPortal);
+    });
+
+    it('envio aceito: email.enviado com envio_id e nenhum sem_envio; a temporária não aparece em log', async () => {
+      const m = await montar();
+      await esqueci(m, 'AM2808', 'adm@exemplo.com', IP);
+      await esqueci(m, 'MACUXI', EMAIL_SA, '198.51.100.84');
+      await m.envio.esperar();
+      expect(m.envio.enviados).toHaveLength(2);
+      expect(motivos(m)).toEqual([]);
+      const enviados = eventos(m).filter((o) => o.evento === 'email.enviado');
+      expect(enviados).toHaveLength(2);
+      for (const o of enviados) expect(o.envio_id).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/));
+      // A temporária vai só no texto do e-mail: nenhum pedaço dela no log.
+      const temporarias = m.envio.enviados.map((e) => /\b([A-Za-z0-9!@#$%&*?_+=-]{16})\b/.exec(e.texto)?.[1]).filter((t): t is string => !!t);
+      semVazamento(m, temporarias);
+    });
   });
 
   it('GET /v1/auth/esqueci/situacao: true com a porta de e-mail; sem ela, false', async () => {
