@@ -13,6 +13,7 @@ MODO=afetados
 PG_LOCAL_REF=""
 SAIDA=""
 SEM_TESTS=0
+RODAR_RENDER=0     # render das telas no Chromium (X-6 da v0.3.12): no --tudo e com --render
 PACOTES=()
 ARQUIVOS=()
 ORIGINAIS=("$@")
@@ -26,7 +27,8 @@ uso() {
   cat <<'USO'
 Uso (raiz do repositório): bash tests/scripts/rodar-antes-do-push.sh [opções]   (detalhes: docs/testes/antes-do-push.md)
   (nenhuma)              afetados contra origin/main e, com código, os testes de scripts/ (o que vai no PR)
-  --tudo                 todos os pacotes, o passo sem superusuário, tests/ e os testes de scripts/
+  --tudo                 todos os pacotes, o passo sem superusuário, tests/, os testes de scripts/ e o render das telas
+  --render               soma o render das telas (tests/e2e/rodar-render-telas.sh: next build + Playwright) a qualquer modo
   --pacote <nome>        só esses pacotes, mais tests/ (repetível)
   --so-tests             só pnpm test:tests
   --arquivo <caminho>    só esses arquivos de tests/ (repetível)
@@ -39,6 +41,7 @@ USO
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tudo) MODO=tudo ;;
+    --render) RODAR_RENDER=1 ;;
     --pacote)
       [[ -n "${2:-}" ]] || erro "--pacote exige o nome do pacote (ex.: @macuxierp/db)"
       MODO=pacotes
@@ -155,6 +158,7 @@ case "${MODO}" in
     RODAR_PACOTES=1
     DB_SEM_SUPER=1
     RODAR_SCRIPTS=1
+    RODAR_RENDER=1
     ;;
   pacotes)
     RODAR_PACOTES=1
@@ -173,7 +177,7 @@ if [[ "${SEM_TESTS}" -eq 1 && "${RODAR_TESTS}" -eq 1 ]]; then
   PARCIAL="${PARCIAL:+${PARCIAL}; }sem tests/ (--sem-tests)"
 fi
 if [[ "${RODAR_PACOTES}" -eq 1 ]]; then SEL="${FILTRO:-todos}"; else SEL=nenhum; fi
-msg "modo=${MODO} escopo=${ESCOPO} arquivos=${N_ARQUIVOS} pacotes=${SEL} sem-super=${DB_SEM_SUPER} tests=${RODAR_TESTS} scripts=${RODAR_SCRIPTS}"
+msg "modo=${MODO} escopo=${ESCOPO} arquivos=${N_ARQUIVOS} pacotes=${SEL} sem-super=${DB_SEM_SUPER} tests=${RODAR_TESTS} scripts=${RODAR_SCRIPTS} render=${RODAR_RENDER}"
 
 # ---------- etapas ----------
 
@@ -186,6 +190,11 @@ N_ETAPA=0
 # contar <log> [vitest|node]: soma as linhas "Tests  N passed | M failed | K skipped (T)" do vitest (uma por pacote
 # no turbo) ou lê o resumo do node --test ("# pass N", "# fail N", "# skipped N", "# todo N" do repórter tap).
 contar() {
+  if [[ "${2:-vitest}" == render ]]; then
+    # "[render] N telas abertas (...), F com falha" do tests/e2e/render-telas.mjs.
+    sed -n 's/^\[render\] \([0-9]*\) telas abertas .*, \([0-9]*\) com falha$/\1 \2/p' "$1" | awk '{ printf "%d %d 0", $1 - $2, $2 } END { if (NR == 0) printf "0 0 0" }'
+    return
+  fi
   if [[ "${2:-vitest}" == node ]]; then
     sed 's/\x1b\[[0-9;]*m//g' "$1" | awk '
       /^# (pass|fail|skipped|todo) [0-9]+$/ {
@@ -252,6 +261,11 @@ if [[ "${RODAR_SCRIPTS}" -eq 1 ]]; then
   else
     LINHAS+=("| scripts | \`node --test\` | 0min00s | 0 | 0 | 0 | sem testes (nenhum *.test.mjs em scripts/) |")
   fi
+fi
+# Render das telas (X-6 da v0.3.12): todas as telas do web em modo de produção, no Chromium, contra a API real. Pega o
+# erro de render que a fumaça (só API) e o renderToString não pegam ("Functions cannot be passed to Client Components").
+if [[ "${RODAR_RENDER}" -eq 1 ]]; then
+  etapa "render das telas" "bash tests/e2e/rodar-render-telas.sh" render
 fi
 TOTAL=$(($(date +%s) - INICIO))
 
