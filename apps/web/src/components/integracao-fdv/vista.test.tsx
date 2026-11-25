@@ -84,7 +84,7 @@ describe('BKO: perfil e licença', () => {
   });
   it('com acesso: renderiza o status', async () => {
     const { TelaIntegracaoFdv } = await import('@/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv');
-    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus', perfil: 'administrador' }))).toContain('Cadastros enviados ao FDV');
+    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus', perfil: 'administrador' }))).toContain('Cadastros enviados ao Macuxi FDV');
   });
 });
 

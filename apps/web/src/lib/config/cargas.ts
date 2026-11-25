@@ -105,7 +105,7 @@ const SEM_CONEXAO = 'Sem conexão com o servidor. Tente de novo.';
 type CorpoPortal = Record<string, unknown> & { ok?: boolean; erro?: string; redirecionar?: string; chaveNova?: boolean; codigo?: string; bloqueios?: string[] };
 const falhaDe = (corpo: CorpoPortal | null): Retorno<never> => ({ ok: false, erro: corpo?.erro ?? FALHA_CARGA, ...(corpo?.redirecionar ? { redirecionar: corpo.redirecionar } : {}), chaveNova: corpo?.chaveNova === true, ...(typeof corpo?.codigo === 'string' ? { codigo: corpo.codigo } : {}), ...(Array.isArray(corpo?.bloqueios) ? { bloqueios: corpo.bloqueios.filter((b): b is string => typeof b === 'string') } : {}) });
 
-async function chamarPortal<T>(url: string, init: RequestInit, enviar: Enviar, extrair: (corpo: Record<string, unknown>) => T | null): Promise<Retorno<T>> {
+export async function chamarPortal<T>(url: string, init: RequestInit, enviar: Enviar, extrair: (corpo: Record<string, unknown>) => T | null): Promise<Retorno<T>> {
   try {
     const r = await enviar(url, init);
     const corpo = (await r.json().catch(() => null)) as CorpoPortal | null;
@@ -176,13 +176,19 @@ export function textoLevaJunto(efetivos: readonly CadastroZerarPortal[], escolhi
 type Mantido = ZeragemPlataformaResposta['mantidos'][number];
 const MOTIVO_EM_USO: Record<(typeof MOTIVOS_USO)[number], string> = { pedido: 'em pedidos', titulo: 'em títulos', nota: 'em notas', fiscal: 'em filial com dado fiscal' };
 
-/** "Mantidos: 5" (a soma) e uma linha por cadastro e motivo: "Produtos: 3 em pedidos." Sem mantidos = null. */
-export function textosMantidos(mantidos: readonly Mantido[]): { total: string; detalhes: string[] } | null {
+/** Soma das quantidades mantidas (o "N" de "Mantidos: N"). */
+export const somaMantidos = (mantidos: readonly { quantidade: number }[]): number => mantidos.reduce((n, m) => n + m.quantidade, 0);
+
+/** "Mantidos: 5" (a soma) e uma linha por item com quantidade, escrita por `linha`. Sem mantidos = null. Serve ao Zerar por cadastro e ao de pedidos. */
+export function textosMantidosCom<M extends { quantidade: number }>(mantidos: readonly M[], linha: (m: M) => string): { total: string; detalhes: string[] } | null {
   const itens = mantidos.filter((m) => m.quantidade > 0);
   if (itens.length === 0) return null;
-  const soma = itens.reduce((n, m) => n + m.quantidade, 0);
-  return { total: `Mantidos: ${soma}`, detalhes: itens.map((m) => `${ROTULO_ZERAR[m.cadastro]}: ${m.quantidade} ${MOTIVO_EM_USO[m.motivo]}.`) };
+  return { total: `Mantidos: ${somaMantidos(itens)}`, detalhes: itens.map(linha) };
 }
+
+/** "Mantidos: 5" (a soma) e uma linha por cadastro e motivo: "Produtos: 3 em pedidos." Sem mantidos = null. */
+export const textosMantidos = (mantidos: readonly Mantido[]) =>
+  textosMantidosCom(mantidos, (m) => `${ROTULO_ZERAR[m.cadastro]}: ${m.quantidade} ${MOTIVO_EM_USO[m.motivo]}.`);
 
 const TEXTO_ANULADO: Record<ZeragemPlataformaResposta['anulados'][number]['coluna'], [string, string]> = {
   vendedor_id: ['cliente fica sem vendedor.', 'clientes ficam sem vendedor.'],

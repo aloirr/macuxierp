@@ -108,7 +108,7 @@ describe('BKO: Clientes recebidos do FDV (T-0059)', () => {
     };
     it('mostra a seção abaixo da tabela de cadastros e pede a página filtrada', async () => {
       const h = await render({ situacao: 'aceito' });
-      expect(h.indexOf('Cadastros enviados ao FDV')).toBeLessThan(h.indexOf('Clientes recebidos'));
+      expect(h.indexOf('Cadastros enviados ao Macuxi FDV')).toBeLessThan(h.indexOf('Clientes recebidos'));
       expect(estado.chamadas).toContain('/v1/integracao-fdv/clientes-recebidos?limite=50&situacao=aceito');
       expect(h).not.toContain('Clientes recebidos do FDV');
     });
@@ -117,14 +117,14 @@ describe('BKO: Clientes recebidos do FDV (T-0059)', () => {
       estado.falha = new SemPermissao();
       const h = await render();
       expect(h).not.toContain('Clientes recebidos');
-      expect(h).toContain('Cadastros enviados ao FDV');
+      expect(h).toContain('Cadastros enviados ao Macuxi FDV');
     });
     it('API fora do ar: mensagem só na seção', async () => {
       const { ApiIndisponivel } = await import('@/lib/api');
       estado.falha = new ApiIndisponivel('x');
       const h = await render();
       expect(h).toContain('Não foi possível carregar os clientes recebidos agora.');
-      expect(h).toContain('Cadastros enviados ao FDV');
+      expect(h).toContain('Cadastros enviados ao Macuxi FDV');
     });
   });
 });

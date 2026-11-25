@@ -30,7 +30,7 @@ describe('aba Integração do /config (T-0056)', () => {
     const h = render();
     expect(h).toContain('Macuxi FDV');
     expect(h).toContain('Conexão com o Macuxi FDV');
-    expect(h).toContain('Cadastros enviados ao FDV');
+    expect(h).toContain('Cadastros enviados ao Macuxi FDV');
     expect(h).not.toContain('Saída do ERP');
     expect(h).not.toContain('(resposta');
     expect(h).toContain('Código do conector');
