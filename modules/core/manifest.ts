@@ -9,5 +9,6 @@ export const manifest = defineModule({
   perfis: PERFIS_V1,
   web: { menus: ['Empresa', 'Usuários e perfis'] },
   publica: ['core.empresa.alterada@1', 'core.usuario.alterado@1', 'core.certificado.alterado@1', 'core.ambiente_fiscal.alterado@1'],
-  consome: [],
+  // RN-CORE-14 (T-0100): a empresa nasce da primeira filial padrão.
+  consome: ['cadastros.filial.alterada@1'],
 });

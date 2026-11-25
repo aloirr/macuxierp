@@ -170,9 +170,13 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
   }
 }
 
-/** `rejeitado_erp` do recebimento recusado (sem pedido criado, logo sem `numero_erp`). */
-export function retornoRejeitadoErp(pedidoUuid: string, codigo: string, agora: Date): RetornoErp {
-  return { versao_contrato: 'v1', pedido_uuid: pedidoUuid, status: 'rejeitado_erp', motivo: (TEXTO_DA_REJEICAO as Readonly<Record<string, string>>)[codigo] ?? 'Pedido não recebido pelo ERP', ocorrido_em: agora.toISOString() };
+/**
+ * `rejeitado_erp` do recebimento recusado (sem pedido criado, logo sem `numero_erp`). T-0097: o `motivo` que a recusa do pedido
+ * traz (por exemplo a fração imprópria, RN-CAD-17) é PREFERIDO; o texto do código fica só como reserva (motivo ausente ou em branco).
+ */
+export function retornoRejeitadoErp(pedidoUuid: string, codigo: string, agora: Date, motivo?: string | null): RetornoErp {
+  const preferido = motivo?.trim().slice(0, 300);
+  return { versao_contrato: 'v1', pedido_uuid: pedidoUuid, status: 'rejeitado_erp', motivo: preferido || ((TEXTO_DA_REJEICAO as Readonly<Record<string, string>>)[codigo] ?? 'Pedido não recebido pelo ERP'), ocorrido_em: agora.toISOString() };
 }
 
 /** Corpo sem `ocorrido_em`, no JSON canônico: a base do hash de idempotência (o SHA-256 é calculado em `api/`, T-0013 §6.3). */

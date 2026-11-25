@@ -113,7 +113,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
       `SELECT table_schema || '.' || table_name || '.' || column_name AS coluna, data_type AS tipo
        FROM information_schema.columns WHERE table_schema = ANY ('{${SCHEMAS.join(',')}}')
          AND (data_type IN ('real', 'double precision', 'numeric', 'money')
-           OR (column_name LIKE '%centavos' AND data_type <> 'bigint'))`,
+           OR (column_name LIKE '%centavos' AND data_type <> 'bigint'))
+         -- T-0096: coordenada não é dinheiro nem quantidade; numeric(9,6) é exato (decisão do gerente, 24/11 23h33)
+         AND NOT (table_schema = 'cadastros' AND table_name = 'cliente_endereco' AND column_name IN ('latitude', 'longitude')
+                  AND data_type = 'numeric')`,
     );
     expect(colunas).toEqual([]);
   });

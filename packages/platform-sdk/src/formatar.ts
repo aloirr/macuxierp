@@ -105,6 +105,16 @@ export function formatarPontosBase(bp: number): string {
   return `${bp < 0 ? '-' : ''}${Math.trunc(abs / 100)}${frac ? `,${frac}` : ''}%`;
 }
 
+/** Data civil "AAAA-MM-DD" (sem fuso: vencimento, abertura) → "DD/MM/AAAA". Fora do formato volta como está. */
+export function formatarDataCivil(d: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : d;
+}
+
+/** CEP de 8 dígitos → "69000-000". Fora do formato volta como está. */
+export function formatarCep(c: string): string {
+  return /^\d{8}$/.test(c) ? `${c.slice(0, 5)}-${c.slice(5)}` : c;
+}
+
 /**
  * Instante UTC (ISO 8601, como vem do banco e da API) no fuso do tenant, em português: "21/11/2026 19:05".
  * O fuso (IANA, ex.: `eu.empresa.fuso`) é sempre parâmetro, nunca fixo (regra 4). ISO inválido volta como está.
