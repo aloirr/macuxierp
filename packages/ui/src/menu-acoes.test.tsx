@@ -44,6 +44,20 @@ describe('MenuAcoes (T-0099): ação principal', () => {
     expect(h.indexOf('Reprocessar')).toBeLessThan(h.indexOf('Ações'));
     expect(h.match(/Reprocessar/g)?.length).toBe(1);
   });
+  it('principal desligada com motivo: aria-disabled (sem disabled), motivo ligado por aria-describedby', () => {
+    const h = render({ principal: { rotulo: 'Faturar', aoAcionar: nada, desabilitado: 'Falta o CNPJ do cliente' } });
+    expect(h).toContain('Falta o CNPJ do cliente');
+    expect(h).toContain('aria-disabled="true"');
+    expect(h).not.toMatch(/<button[^>]*\sdisabled/);
+    const idMotivo = /aria-describedby="([^"]+)"/.exec(h)?.[1];
+    expect(idMotivo).toBeTruthy();
+    expect(h).toContain(`id="${idMotivo}"`);
+  });
+  it('principal desligada sem motivo (true): aria-disabled e sem texto extra', () => {
+    const h = render({ principal: { rotulo: 'Faturar', aoAcionar: nada, desabilitado: true } });
+    expect(h).toContain('aria-disabled="true"');
+    expect(h).not.toContain('aria-describedby="');
+  });
   it('sozinha, sem itens, renderiza só a principal; oculta, some', () => {
     const h = render({ acoes: [], principal: { rotulo: 'Log', aoAcionar: nada } });
     expect(h).toContain('Log');

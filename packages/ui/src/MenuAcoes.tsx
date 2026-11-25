@@ -9,20 +9,22 @@ import { botaoSecundario, canto, cor, desabilitadoEstilo, espaco, texto } from '
  * `desabilitado`: `true` desliga o item (pulado nas setas); um texto desliga e mostra o motivo
  * abaixo do rótulo (o item continua focável, para o leitor de tela anunciar o motivo).
  */
+export type Desabilitado = boolean | string;
+
 export interface AcaoMenu {
   chave: string;
   rotulo: string;
   aoAcionar: () => void;
   perigo?: boolean;
-  desabilitado?: boolean | string;
+  desabilitado?: Desabilitado;
   oculto?: boolean;
 }
 
-/** Ação principal à vista, ao lado do "Ações". Não se repete dentro do menu. */
+/** Ação principal à vista, ao lado do "Ações". Não se repete dentro do menu. `desabilitado` segue a regra do item do menu. */
 export interface AcaoPrincipal {
   rotulo: string;
   aoAcionar: () => void;
-  desabilitado?: boolean;
+  desabilitado?: Desabilitado;
   oculto?: boolean;
 }
 
@@ -61,12 +63,12 @@ export function ordenarAcoes(acoes: AcaoMenu[]): { normais: AcaoMenu[]; perigos:
 }
 
 /** Motivo do item desligado: o texto de `desabilitado`, se houver (string vazia ou só espaços não conta). */
-export function motivoDoItem(a: Pick<AcaoMenu, 'desabilitado'>): string | undefined {
+export function motivoDoItem(a: { desabilitado?: Desabilitado }): string | undefined {
   return typeof a.desabilitado === 'string' && a.desabilitado.trim() ? a.desabilitado.trim() : undefined;
 }
 
 /** Item desligado, com ou sem motivo. Enter, Espaço e clique nele não acionam nem fecham o menu. */
-export function itemDesligado(a: Pick<AcaoMenu, 'desabilitado'>): boolean {
+export function itemDesligado(a: { desabilitado?: Desabilitado }): boolean {
   return a.desabilitado === true || typeof a.desabilitado === 'string';
 }
 
@@ -250,19 +252,35 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
   };
 
   const estiloBotao: CSSProperties = botaoSecundario();
+  const principalDesligado = principalVisivel ? itemDesligado(principalVisivel) : false;
+  const motivoPrincipal = principalVisivel ? motivoDoItem(principalVisivel) : undefined;
+  const idMotivoPrincipal = `${id}-motivo-principal`;
 
   return (
     <span style={{ display: 'inline-flex', gap: espaco.sm, alignItems: 'center', whiteSpace: 'nowrap' }}>
       {principalVisivel ? (
-        <button
-          type="button"
-          className="mx-acoes-alvo"
-          disabled={principalVisivel.desabilitado}
-          onClick={principalVisivel.aoAcionar}
-          style={{ ...estiloBotao, ...desabilitadoEstilo(principalVisivel.desabilitado) }}
-        >
-          {principalVisivel.rotulo}
-        </button>
+        <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <button
+            type="button"
+            className="mx-acoes-alvo"
+            aria-disabled={principalDesligado ? true : undefined}
+            aria-describedby={motivoPrincipal ? idMotivoPrincipal : undefined}
+            onClick={() => {
+              if (!principalDesligado) principalVisivel.aoAcionar();
+            }}
+            style={{ ...estiloBotao, ...desabilitadoEstilo(principalDesligado) }}
+          >
+            {principalVisivel.rotulo}
+          </button>
+          {motivoPrincipal ? (
+            <span
+              id={idMotivoPrincipal}
+              style={{ ...texto('pequeno'), color: cor('textoSecundario'), whiteSpace: 'normal', maxWidth: 260 }}
+            >
+              {motivoPrincipal}
+            </span>
+          ) : null}
+        </span>
       ) : null}
       {lista.length > 0 ? (
         <>

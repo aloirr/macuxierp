@@ -39,3 +39,4 @@
 2026-11-24 — T-0099 — MenuAcoes: Tab fecha e devolve o foco ao gatilho; aria-controls só com o menu aberto
 2026-11-24 — T-0099 — MenuAcoes sem redundâncias (RD-1879 a RD-1883): fecharComEsc, só ' ', tecla única, onClick simples, título do teste
 2026-11-25 — T-0099 — MenuAcoes: desabilitado aceita texto (motivo visível, aria-describedby, item focável); doc e testes (v0.3.15)
+2026-11-25 — T-0099 — AcaoPrincipal aceita motivo (tipo Desabilitado compartilhado), aria-disabled e aria-describedby; corrige o build do #689
