@@ -208,14 +208,6 @@
     },
     {
       "metodo": "GET",
-      "caminho": "/v1/integracao-fdv/entidades/:id/log",
-      "area": "bko",
-      "origem": {
-        "tipo": "ficticio"
-      }
-    },
-    {
-      "metodo": "GET",
       "caminho": "/v1/integracao-fdv/entidades/cliente_endereco/log",
       "area": "bko"
     },

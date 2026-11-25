@@ -519,7 +519,7 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     await lado.enviar(T.A, hub.A);
     const fat = (await retornos('A', p.pedido_uuid)).filter((x) => x.status === 'faturado_parcial');
     expect(fat).toMatchObject([{ estado: 'falhou', itens_descartados: [{ produto_id: foraDoEspelho }] }]);
-    expect(fat[0]!.corpo.itens_faturados).toEqual([]);
+    expect(fat[0]!.corpo.itens_faturados ?? null).toBeNull(); // T-0085 (#579): sem item válido, o retorno sai sem itens_faturados
     expect(statusNoHub('A', p.pedido_uuid)).toEqual(['integrado']);
     expect(lado.lgpd.alertas.slice(alertasAntes)).toContain(`retorno_sem_chave_produto:${JSON.stringify({ pedido_uuid: p.pedido_uuid })}`);
   });

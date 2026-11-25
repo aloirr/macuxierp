@@ -118,8 +118,11 @@ function varrer(): Varredura {
       if (/function\s+$/.test(src.slice(Math.max(0, m.index - 20), m.index))) continue;
       const arg = primeiroArgumento(src, m.index + m[0].length);
       const linha = src.slice(0, m.index).split('\n').length;
-      const caminho = caminhoDoLiteral(arg);
-      if (caminho === null) v.dinamicas.push(`${arquivo} :: ${arg.replace(/\s+/g, ' ')}`);
+      const chave = `${arquivo} :: ${arg.replace(/\s+/g, ' ')}`;
+      // Template com parâmetro que não é id (ex.: a entidade do Log FDV): classificado à mão no NAO_EXTRAIVEIS, cuja
+      // fonte em GETS_ESTRUTURADOS gera os caminhos reais; sem isto viraria um `:id` com UUID fictício (RD-1733).
+      const caminho = chave in NAO_EXTRAIVEIS ? null : caminhoDoLiteral(arg);
+      if (caminho === null) v.dinamicas.push(chave);
       else v.literais.push({ origem: `${arquivo}:${linha}`, caminho: `${prefixo}${caminho}` });
     }
   }
@@ -149,6 +152,8 @@ const NAO_EXTRAIVEIS: Readonly<Record<string, string>> = {
   'apps/web/src/app/(shell)/[modulo]/[...pagina]/telas-quadro.tsx :: FILIAIS': 'filiais do quadro de configuração da NF-e (constante FILIAIS do telas-quadro.tsx)',
   'apps/web/src/app/(shell)/[modulo]/[...pagina]/telas-quadro.tsx :: urlDaConfiguracaoDaFilial(f.id)': 'configuração fiscal de cada filial no quadro (urlDaConfiguracaoDaFilial)',
   'apps/web/src/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv.tsx :: caminhoApiClientesRecebidos(consulta)': 'clientes recebidos do FDV (CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos)',
+  'apps/web/src/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv.ts :: `/v1/integracao-fdv/entidades/${encodeURIComponent(e)}/log`':
+    'Log do BKO por cadastro (CAMINHOS_INTEGRACAO_FDV_TENANT.log, por ENTIDADES_ENVIO_FDV)',
   "modules/integracao-fdv/web/cliente.ts :: CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace('/integracao-fdv', '').replace(':entidade', encodeURIComponent(entidade))":
     'Log do BKO por cadastro (CAMINHOS_INTEGRACAO_FDV_TENANT.log, por ENTIDADES_ENVIO_FDV)',
 };
