@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.12 em produção** (24/11, 22h22: tag v0.3.12 = 5565d08; liberar 45530351015, issue #596, aprovar 45531871230, publicar 45531949873). Conteúdo: T-0085 (formas e prazos, RN-PED-07), T-0086 (integração: /config, Zerar inativando no FDV, Log no BKO), T-0087/T-0088 (telas do core e da empresa), T-0092 (limites do Hub), T-0094 (olho da senha), T-0059 (pré-cadastro de cliente do FDV) e as decisões da noite (ver a seção de 24/11 noite). Próxima: **v0.3.13** (ver a seção de 24/11 noite). A retomar: T-0057 (#405), T-0083, T-0075. Depois: T-0062, T-0060, entidades v2, T-0081, T-0082.
+> Fase atual: **v0.3.13 em andamento** (aberta em 24/11, 22h57; ver a seção "24/11 noite — v0.3.13"). **v0.3.12 em produção** (24/11, 22h22: tag v0.3.12 = 5565d08; liberar 45530351015, issue #596, aprovar 45531871230, publicar 45531949873). Conteúdo: T-0085 (formas e prazos, RN-PED-07), T-0086 (integração: /config, Zerar inativando no FDV, Log no BKO), T-0087/T-0088 (telas do core e da empresa), T-0092 (limites do Hub), T-0094 (olho da senha), T-0059 (pré-cadastro de cliente do FDV) e as decisões da noite (ver a seção 24/11 noite — v0.3.12). A retomar: T-0057 (#405), T-0083, T-0075. Depois: T-0062, T-0060, entidades v2, T-0081, T-0082.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -84,13 +84,17 @@
 | [T-0090](tarefas/T-0090.md) | Superadmin: MFA/TOTP e separação do papel macuxierp_config (ADR 0012 §7) | v0.4 | engenheiro-software | aberta | R-20261123-070609; antes da 2ª empresa |
 | [T-0091](tarefas/T-0091.md) | Entidades v2, G1: tributação para o pedido (ADR 0017), conferida com o PO do FDV | depois da T-0060 | modulo-fiscal | aberta | R-20261123-163826 |
 | [T-0092](tarefas/T-0092.md) | Limites 200/30 em todo o caminho (ADR 0019, opção A): external_id 200, código da forma 30 | v0.3.12 | modulo-cadastros | em_revisao | contracts ainda em 64/20; migração 0054 |
-| [T-0093](tarefas/T-0093.md) | Zerar pedidos não faturados por cadastro (/config) | v0.3.13 (a confirmar) | modulo-pedido | aberta | R-20261123-125140 |
+| [T-0093](tarefas/T-0093.md) | Zerar pedidos não faturados por cadastro (/config) | v0.3.13 | modulo-pedido | aberta | R-20261123-125140; ordem R-20261124-225456 |
 | [T-0094](tarefas/T-0094.md) | Login: ícone de mostrar e ocultar a senha (olho) | v0.3.12 | designer-ux | em_revisao | molde do FDV |
 | [T-0095](tarefas/T-0095.md) | E-mail de acesso: senha temporária em campo próprio para copiar, sem caractere especial | depois da v0.3.12 | engenheiro-software | aberta | padrão do FDV (R-20261124-181547) |
-| [T-0096](tarefas/T-0096.md) | Latitude e longitude do pré-cadastro do FDV no endereço do cliente | depois da v0.3.12 | modulo-cadastros | aberta | R-20261124-210726; #572 |
+| [T-0096](tarefas/T-0096.md) | Latitude e longitude do pré-cadastro do FDV no endereço do cliente | v0.3.13 | modulo-cadastros | aberta | R-20261124-210726; #572 |
 | [T-0097](tarefas/T-0097.md) | Fração só em KG e M: validação no cadastro, no pedido e na carga; envio fracionário quando o FDV aceitar | v0.3.13 | modulo-cadastros | aberta | R-20261124-211517; RN-CAD-17; #584 |
 | [T-0098](tarefas/T-0098.md) | Expurgo do pré-cadastro recebido sem decisão (180 dias do recebimento) | v0.3.13 | modulo-integracao-fdv | aberta | R-20261124-214227; RN-INF-06; arquivo no #592 |
 | [T-0099](tarefas/T-0099.md) | Botão Ações nas linhas de todas as tabelas e listas do /config e do BKO (padrão do FDV) | v0.3.13 | designer-ux | aberta | R-20261124-224843 |
+| [T-0100](tarefas/T-0100.md) | core.empresa a partir da filial padrão: backfill e criação junto com ela (opção B) | v0.3.13 | modulo-core | aberta | R-20261124-225456; conserta a aba Empresa e a T-0088 |
+| [T-0101](tarefas/T-0101.md) | Ficha completa da empresa pela Receita, com "Atualizar pela Receita" e e-mail e telefone mascarados (opção C) | v0.3.13 | modulo-core | aberta | R-20261124-224709; R-20261124-225456; depende da T-0100; emenda de ADR |
+| [T-0102](tarefas/T-0102.md) | Log do motivo do não envio do "Esqueci a senha" e do aceite do SMTP | v0.3.13 | engenheiro-software | aberta | branch agente/esqueci-log-motivo (4581c1a) |
+| [T-0103](tarefas/T-0103.md) | operador.sh superadmin --listar com e-mails mascarados | v0.3.13 | engenheiro-software | aberta | R-20261124-225456 |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 
@@ -111,7 +115,8 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 | T-0023 (session_019xHEXsi68pkRSBNcRmrmW9) | `docs/marca/` (PR #5) |
 
 ## Reservas
-- **24/11, 22h58 (Manaus):** T-0099 criada (botão Ações, R-20261124-224843); próxima livre **T-0100**. RD usados até RD-1758; próxima livre **RD-1759**.
+- **24/11, 22h57 (Manaus):** v0.3.13 aberta (R-20261124-225456). T-0100 a T-0103 criadas; próxima livre **T-0104**. Migrações: **0059** = T-0100 (backfill da core.empresa), **0060** = T-0101 (ficha da Receita); próxima livre **0061** (as próximas tarefas pedem ao gerente). RD por sessão: apps+core RD-1760–1789; banco+integração RD-1790–1819; cadastros+pedido RD-1820–1849; engenheiro-software RD-1850–1859; testes RD-1860–1869; ux+marca RD-1870–1889; próxima livre fora das faixas **RD-1890**.
+- **24/11, 22h50 (Manaus):** T-0099 criada (botão Ações, R-20261124-224843); próxima livre **T-0100**. RD usados até RD-1758; próxima livre **RD-1759**.
 - **24/11, 22h10 (Manaus):** T-0096 (lat/long), T-0097 (fração só em KG e M) e T-0098 (expurgo do pré-cadastro sem decisão, arquivo no #592) criadas; próxima livre **T-0099**. Migrações no main até a **0058** (a 0056 ficou com o prazo do pedido e a T-0059 foi para a 0057; 0058 ajustes do corretor); próxima livre **0059**. RD usados na noite até RD-1747 (cadastros 1741–1750); próxima livre **RD-1751**. RN novas: RN-CAD-17, RN-INF-07, RN-INF-08; emendas na RN-CAD-09/10/15/16 e na RN-INF-06 (#592, depois do corte).
 - **24/11, 18h25 (Manaus):** T-0095 criada (copiar a senha); próxima livre **T-0096**. Migrações: **0055** = funções do portal portal_monitor, portal_log e portal_reprocessar (T-0086, libera o #527); **0056** = T-0059 (§3 do desenho); a 0054 segue na T-0092; próxima livre 0057. A T-0093 foi para a v0.3.13 (R-20261124-181533) e não tem migração reservada. RD por sessão: apps+core RD-1500–1529; cadastros+pedido RD-1530–1559; banco+integração RD-1560–1589; engenheiro-software RD-1590–1599; testes RD-1600–1609. Os RD-1463 a 1469 do testes (#516, #518, #525) ficam como estão. RN-INF-06 (guarda do pré-cadastro recusado, 180 dias). Conector MySQL no backlog. D3 da AM2808 é regra (RN-FAT-04); a bandeira é religada pela tela depois do deploy (decisão A).
 - **24/11, 18h20 (Manaus):** T-0090 a T-0094 criadas (auditoria do PO dos pedidos de 21/11 a 24/11); próxima livre **T-0095**. Migração **0053** (T-0086, inativar espelho) e **0054** (T-0092, limites 200/30) reservadas; próxima livre 0055. RN-CAD-12, 13 e 14 escritas no doc 03. T-0059 na v0.3.12 (Alexandre, 18h11).
@@ -189,6 +194,17 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - Entraram depois do #286: #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298 e #299.
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
 
+## 24/11 noite — v0.3.13 (Manaus)
+- **Decisão do Alexandre** (22h54, R-20261124-225456, via PO): "Seguir com as suas recomendações".
+  - Ficha: B (T-0100) e depois C (T-0101), sem hotfix, com mascaramento.
+  - Lista de superadmins no operador.sh entra (T-0103).
+- **Ordem:**
+  1. Ficha (T-0100 → T-0101) e T-0099 em paralelo.
+  2. T-0093, T-0096, T-0097 e T-0098.
+  3. T-0102 e T-0103.
+  4. As pendências da lista da v0.3.12, abaixo, entram se couberem; viram tarefa quando o dono pegar.
+- **Desvio:** carimbos adiantados ("22h55", "23h00" e "22h58" eram 22h50); corrigido às 22h52.
+
 ## 24/11 noite — v0.3.12 (Manaus)
 - **Parada:** o limite de uso da conta parou todas as sessões entre 19h28 e 21h00; a previsão foi refeita. Entre 21h11 e 21h18 o gerente e algumas sessões escreveram horários adiantados de 20 a 40 min; corrigido às 21h18 (regra: conferir com `TZ=America/Manaus date`).
 - **Merges da v0.3.12 desde 19h13:** #527, #531, #532, #559, #560, #561, #562, #563, #564, #565, #566, #567, #568, #569, #570, #571, #572, #573, #574, #575, #576, #577, #579, #580, #581, #582, #583, #584, #585, #586, #587, #588, #589, #590, #591, #594. Fechados sem merge: #578 (agente ambíguo → #587) e #593 (trailer e base → #594).
@@ -196,7 +212,7 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - **Defaults do gerente:** prévia do Zerar com aviso fixo dos 30% (opção C, R-20261124-210628); PATCH da filial com `ambiente` descartado (recusa 400 avaliada na v0.3.13); CHECK 365/24 no banco e e2e F-1..F-6/F-10: ver v0.3.13.
 - **Defeitos achados e corrigidos antes do liberar:** render "Functions cannot be passed to Client Components" no clientes-recebidos.tsx do #564 (corrigido no #576; produção v0.3.11 sem o defeito; teste X-6 #586 e estático no #570); rota GET clientes-recebidos ausente (veio no #587); itens_faturados vazio recusado pelo Hub (#579); R1 da revisão final: evento @1 estreitado para 365/24 (#594, legado 999/36 no evento).
 - **Desvios registrados:** sessões filhas no ambiente do gerente assinam recado como gerente-projetos (MACUXI_AGENTE herdado; corrigir depois da v0.3.12); subagentes usaram sed/heredoc em caminhos do próprio dono (permitido pelo guardião; reforçado Edit/Write); #591 com merge feito com o ci-ok ainda rodando (todos os jobs já verdes); #592 com push antes do corretor (ajustes no commit seguinte).
-- **v0.3.13 (tarefas abertas: T-0093, T-0096, T-0097, T-0098; o resto vira tarefa na abertura da versão):** PR curto pós-lote 4 do integracao-fdv (constantes do cadastros, rótulos do #574, 🟡 do #578/#579); BLOQUEIO_LOTE do apps/web pela constante do SDK; 🟡 da revisão final (plataforma.auditoria por funções internas e trava do reprocessar simultâneo; CSV de clientes-recebidos e lotes no fuso do tenant; lock_timeout como padrão); CHECK 365/24 no banco com levantamento do legado por tenant e conferência da carga-inicial.ts; texto próprio no Log para prazo acima de 365/24; motivo da carga recusada com o limite (R-20261124-213746); pontos da rota clientes-recebidos (R-20261124-211940); e2e F-1..F-6/F-10 e F-8; roteiros e2e portal-integracao e bko-cadastro; Auditoria com nomes (modulo-core, R-20261124-211311); tabela do Log em cartões no 390 (só se o Alexandre pedir); RD-1691–1694 do pedido; RD-1744–1747 do cadastros.
+- **Pendências (entram se couberem, ver a seção da v0.3.13):** PR curto pós-lote 4 do integracao-fdv (constantes do cadastros, rótulos do #574, 🟡 do #578/#579); BLOQUEIO_LOTE do apps/web pela constante do SDK; 🟡 da revisão final (plataforma.auditoria por funções internas e trava do reprocessar simultâneo; CSV de clientes-recebidos e lotes no fuso do tenant; lock_timeout como padrão); CHECK 365/24 no banco com levantamento do legado por tenant e conferência da carga-inicial.ts; texto próprio no Log para prazo acima de 365/24; motivo da carga recusada com o limite (R-20261124-213746); pontos da rota clientes-recebidos (R-20261124-211940); e2e F-1..F-6/F-10 e F-8; roteiros e2e portal-integracao e bko-cadastro; Auditoria com nomes (modulo-core, R-20261124-211311); tabela do Log em cartões no 390 (só se o Alexandre pedir); RD-1691–1694 do pedido; RD-1744–1747 do cadastros.
 - **Depois do deploy:** confirmação do Alexandre da bandeira de NF-e simulada religada na filial da AM2808 (C-5) → T-0089 (e2e da jornada AM2808) → reprocesso; merge do #592.
 
 ## 23/11 noite e 24/11 madrugada (Manaus)
