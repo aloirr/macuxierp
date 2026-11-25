@@ -14,7 +14,7 @@ import type { FastifyInstance } from 'fastify';
 import { criarApp, type DependenciasApp } from './app';
 import { gerarHashSenha, type ParametrosArgon2 } from './auth/senha';
 import type { EnvioEmail, MensagemEmail } from './email/porta';
-import { montarDependenciasProducao, montarModulos } from './modulos';
+import { montarDependenciasProducao, montarModulos, pluginsPlataforma, type DependenciasPlataformaModulos } from './modulos';
 
 function duble<T extends object>(nome: string, preparado: Partial<T>): T {
   return new Proxy(preparado, {
@@ -100,6 +100,12 @@ export interface OpcoesAppPg {
   logger?: DependenciasApp['logger'];
   /** "Esqueci a senha" (T-0076); padrão: sem porta de e-mail. */
   esqueci?: DependenciasApp['esqueci'];
+  /**
+   * Dependências dos plugins de plataforma do portal `/config` (RD-1926), por cima das de produção: por exemplo o
+   * `cadastros` com fontes de CNPJ falsas, para o "Atualizar pela Receita" não sair à rede. A chave do conector segue em
+   * `chaveIntegracao`. Ausente = os plugins de produção do `montarDependenciasProducao`.
+   */
+  plataforma?: Omit<DependenciasPlataformaModulos, 'chaveIntegracao'>;
 }
 
 /**
@@ -116,8 +122,13 @@ export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstan
       : o.modulos === 'producao'
         ? producao.modulos
         : o.modulos;
+  const plataforma =
+    o.plataforma && producao.plataforma
+      ? { ...producao.plataforma, plugins: pluginsPlataforma(producao.modulos, { chaveIntegracao: o.chaveIntegracao ?? null, outbox: producao.outbox, ...o.plataforma }) }
+      : producao.plataforma;
   const app = await criarApp({
     ...producao,
+    ...(plataforma ? { plataforma } : {}),
     auth: { ...producao.auth, argon2: ARGON2_RAPIDO },
     ...(o.relogio ? { relogio: o.relogio } : {}),
     ...(o.avisosA1 ? { avisosA1: o.avisosA1 } : {}),
