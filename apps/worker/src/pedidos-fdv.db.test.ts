@@ -71,7 +71,7 @@ describe.skipIf(!PG_DISPONIVEL)('recebedor do pedido do FDV montado no worker (P
     comPedido = await criarTenant(b.admin, 'worker-fdv', ['cadastros', 'pedido', 'integracao-fdv']);
     semPedido = await criarTenant(b.admin, 'worker-fdv-sem-pedido', ['cadastros', 'integracao-fdv']);
     await inserirMassaPedido(b.admin, comPedido, ids);
-    ({ recebedor } = montarPedidosFdv({ log, relogio: new RelogioFixo(AGORA), recebimento: 'desligado', resolvedor: criarResolvedorChaveErp(repositoriosSql) }));
+    ({ recebedor } = montarPedidosFdv({ log, relogio: new RelogioFixo(AGORA), recebimento: 'desligado', resolvedor: criarResolvedorChaveErp(repositoriosSql), aditivosCliente: true }));
   }, 120_000);
   afterAll(async () => {
     await b?.remover();

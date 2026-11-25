@@ -18,7 +18,7 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { argumento, entrar } from './apoio-e2e.mjs';
+import { abasDaEmpresa, argumento, entrar, urlsDasTelas } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -53,34 +53,6 @@ const ERRO_NO_HTML = [
 const ERRO_NO_LOG = /Functions cannot be passed|Only plain objects|⨯|\bError:/;
 
 // ---------------------------------------------------------------- 1. as URLs, a partir dos page.tsx
-
-/** Contexto de cada URL: sem sessão (telas de entrada), BKO (administrador do tenant) ou portal /config (superadmin). */
-const SEM_SESSAO = new Set(['/login', '/config/entrar']);
-const contextoDe = (url) =>
-  SEM_SESSAO.has(url) ? 'sem-sessao' : url.startsWith('/config') ? 'portal' : 'bko';
-
-function urlsDasTelas() {
-  const urls = [];
-  for (const dir of dados.paginasDoApp) {
-    const segs = dir.split('/').filter((s) => s && !/^\(.*\)$/.test(s));
-    const molde = `/${segs.join('/')}`;
-    if (molde === '/[modulo]/[...pagina]') {
-      for (const t of dados.telas)
-        urls.push({ url: t.url, origem: `PAGINAS_REGISTRADAS ${t.rota}`, comParametro: t.comParametro });
-    } else if (molde === '/config/empresas/[id]') {
-      urls.push({
-        url: `/config/empresas/${dados.empresa.id}`,
-        origem: 'page.tsx /config/empresas/[id]',
-        abas: true,
-      });
-    } else if (segs.some((s) => s.startsWith('['))) {
-      throw new Error(
-        `page.tsx com segmento dinâmico sem valor no e2e: ${molde} (ensine o tests/e2e/render-telas.mjs a abrir esta tela)`,
-      );
-    } else urls.push({ url: molde, origem: `page.tsx ${molde}` });
-  }
-  return urls.map((u) => ({ ...u, contexto: contextoDe(u.url) }));
-}
 
 // ---------------------------------------------------------------- 2. a vigia de cada tela
 
@@ -182,7 +154,7 @@ async function abrir(pagina, vigia, item, rotulo = item.url) {
 
 // ---------------------------------------------------------------- 3. a rodada
 
-const URLS = urlsDasTelas();
+const URLS = urlsDasTelas(dados);
 const navegador = await chromium.launch();
 const opcoes = { viewport: { width: 1440, height: 900 }, locale: 'pt-BR', timezoneId: 'America/Manaus' };
 let codigo = 0;
@@ -210,24 +182,15 @@ try {
   for (const item of URLS.filter((u) => u.contexto === 'portal')) {
     await abrir(portal, vPortal, item);
     if (!item.abas) continue;
-    // Cada aba que a tela da empresa lista (sem lista à mão).
-    const abas = await portal
-      .getByRole('navigation', { name: 'Abas da empresa' })
-      .getByRole('link')
-      .evaluateAll((as) => as.map((a) => a.getAttribute('href')).filter(Boolean))
-      .catch(() => []);
-    if (abas.length === 0)
+    const caminhos = await abasDaEmpresa(portal, BASE, item.url);
+    if (caminhos.length === 0)
       resultados.push({
         url: item.url,
         contexto: 'portal',
         ok: false,
         falhas: ['a tela da empresa não listou nenhuma aba'],
       });
-    const caminhos = abas.map((h) => {
-      const u = new URL(h, `${BASE}${item.url}`);
-      return `${u.pathname}${u.search}`;
-    });
-    for (const href of [...new Set(caminhos)].filter((h) => h !== item.url))
+    for (const href of caminhos)
       await abrir(portal, vPortal, { ...item, abas: false, origem: `aba de ${item.url}` }, href);
   }
 } catch (e) {

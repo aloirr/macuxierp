@@ -7,8 +7,8 @@
  *   O armazenamento vem do SDK.
  * - Carga inicial do cadastros (C-4, desenho T-0009 §4; ligada na T-0042): o consumidor de
  *   `integracao-fdv.carga_inicial.solicitada@1` enfileira um trabalho por entidade e o executor republica página a página.
- * - Agendas por tenant (contrato C-9, T-0009 §6.1; T-0016): `montarAgendas`: conector (`MACUXIERP_FDV_ENVIO`) e pedidos
- *   (`MACUXIERP_FDV_RECEBIMENTO`); interruptor, ver envio-fdv.ts.
+ * - Agendas por tenant (contrato C-9, T-0009 §6.1; T-0016): `montarAgendas`: conector (`MACUXIERP_FDV_ENVIO`), pedidos e
+ *   pré-cadastro de cliente (`MACUXIERP_FDV_RECEBIMENTO`); interruptor, ver envio-fdv.ts.
  * - Consumidores do `integracao-fdv` (T-0016): `integracao-fdv.publicar-cadastros` (espelho do que vai ao Hub, com a
  *   licença PG) e `integracao-fdv.retorno-pedido` (grava o retorno do status do pedido para a agenda de retorno).
  * - Pedidos do FDV (T-0016): as peças (recebedor, resolvedor, alerta) em pedidos-fdv.ts.
@@ -27,6 +27,7 @@ import {
 } from '@macuxierp/core/api';
 import {
   criarAgendaConector,
+  criarAgendasClientesFdv,
   criarAgendasPedidosFdv,
   criarConsumidorPublicarCadastros,
   criarConsumidorRetornoPedido,
@@ -177,13 +178,18 @@ export interface DependenciasAgendasWorker {
 
 /**
  * Agendas por tenant (T-0009 §6.1), todas do `integracao-fdv`: o conector só com o envio ligado e a busca e o retorno de
- * pedidos só com o recebimento ligado (interruptor, ver envio-fdv.ts). A outbox vai pela fábrica
+ * pedidos e do pré-cadastro de cliente (T-0059 §5) só com o recebimento ligado (interruptor, ver envio-fdv.ts). A outbox vai pela fábrica
  * (`criarAgendaConector({ outbox })`).
  */
 export function montarAgendas(d: DependenciasAgendasWorker): readonly AgendaModulo[] {
-  const { recebedor, resolvedor, alertar, recebimento } = d.pedidosFdv;
+  const { recebedor, resolvedor, alertar, recebimento, clientes } = d.pedidosFdv;
   return registrarAgendas([
     ...(d.envio === 'ligado' ? [criarAgendaConector({ outbox: d.outbox ?? new OutboxPg() })] : []),
-    ...(recebimento === 'ligado' ? criarAgendasPedidosFdv({ recebedor, resolvedor, alertar, log: d.log, relogio: d.relogio }) : []),
+    ...(recebimento === 'ligado'
+      ? [
+          ...criarAgendasPedidosFdv({ recebedor, resolvedor, alertar, log: d.log, relogio: d.relogio }),
+          ...criarAgendasClientesFdv({ ...clientes, alertar, log: d.log, relogio: d.relogio }),
+        ]
+      : []),
   ]);
 }
