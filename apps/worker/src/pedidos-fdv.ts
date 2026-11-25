@@ -10,7 +10,8 @@
  *   `cadastros/api` (#115), em `resolvedorChaveErpDeProducao`.
  * - **criador do pré-cadastro de cliente** (`CriadorClienteFdv`, T-0059 §4): `criarCriadorClienteFdv` do `cadastros/api` sobre
  *   os repositórios SQL, com a outbox e a auditoria em PostgreSQL; `aditivosCliente` vem de `aditivosClienteFdvLigados`
- *   (`MACUXIERP_FDV_CLIENTE_REVISAO`, padrão ligado), lido na partida.
+ *   (`MACUXIERP_FDV_CLIENTE_REVISAO`, padrão ligado), lido na partida; o vendedor (T-0105 item 2) é conferido pela
+ *   `criarConsultaVendedorFdv` do `integracao-fdv/api`.
  * As agendas (busca e retorno de pedidos e de clientes) e o consumidor `integracao-fdv.retorno-pedido` são montados em
  * `modulos.ts`.
  *
@@ -22,7 +23,7 @@
  * envio-fdv.ts). `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
  */
 import { criarConsultaParaPedido, criarCriadorClienteFdv, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
-import type { Alertar, DepsAgendasClientesFdv, DepsAgendasPedidosFdv, RecebedorPedidoFdv, ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
+import { criarConsultaVendedorFdv, type Alertar, type DepsAgendasClientesFdv, type DepsAgendasPedidosFdv, type RecebedorPedidoFdv, type ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
 import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido } from '@macuxierp/pedido/api';
 import { chaveLigadoDesligado, type DestinoAuditoria, type EstadoChaveFdv, type FonteLicencas, type Outbox, type Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
@@ -118,7 +119,7 @@ export function montarPedidosFdv(d: DependenciasRecebedorWorker & {
 }): MontagemPedidosFdv {
   const outbox = d.outbox ?? new OutboxPg();
   const auditoria = d.auditoria ?? new AuditoriaPg();
-  const criador = criarCriadorClienteFdv({ repositorios: repositoriosSql, outbox, auditoria, relogio: d.relogio });
+  const criador = criarCriadorClienteFdv({ repositorios: repositoriosSql, outbox, auditoria, relogio: d.relogio, consultaVendedorFdv: criarConsultaVendedorFdv() });
   return {
     recebimento: d.recebimento,
     recebedor: montarRecebedorPedidoFdv({ ...d, outbox, auditoria }),
