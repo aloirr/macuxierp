@@ -54,6 +54,7 @@ import type { Logger } from 'pino';
 import { criarRotinaAlertaA1 } from './alerta-a1';
 import type { EstadoEnvioFdv } from './envio-fdv';
 import { criarExecutorExportacao, type ExportadorModulo } from './exportacao-lgpd';
+import { criarRotinaCompletarPrazoMedio } from './completar-prazo-medio';
 import { criarRotinaExpurgoPreCadastro } from './expurgo-pre-cadastro';
 import { consumidoresFaturamento, type MontagemFaturamentoWorker } from './faturamento';
 import { criarAlertaMonitor, type MontagemPedidosFdv } from './pedidos-fdv';
@@ -153,13 +154,17 @@ export function montarConsumidores(d: DependenciasConsumidoresWorker): readonly 
   ]);
 }
 
-/** Rotinas diárias, com os adaptadores reais (`todosTenants`: padrão `TodosTenantsPg` do SDK). */
-export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log' | 'faturamento'> & { todosTenants?: FonteTodosTenants }): readonly RotinaDiaria[] {
+/**
+ * Rotinas diárias, com os adaptadores reais (`todosTenants`: padrão `TodosTenantsPg` do SDK). `completarPrazoMedio`: o
+ * interruptor `MACUXIERP_COMPLETAR_PRAZO_MEDIO` (`completarPrazoMedioLigado`, lido na partida); padrão ligada (T-0108).
+ */
+export function montarRotinas(d: Pick<DependenciasModulosWorker, 'banco' | 'log' | 'faturamento'> & { todosTenants?: FonteTodosTenants; completarPrazoMedio?: boolean }): readonly RotinaDiaria[] {
   return Object.freeze([
     criarRotinaAlertaA1({ banco: d.banco, tenants: fonteTenantsSql, certificados: fonteCertificadosSql, avisos: destinoAvisosSql, log: d.log }),
     ...(d.faturamento?.rotinas ?? []),
     criarRotinaPurgaSimulador({ banco: d.banco, tenants: d.todosTenants ?? new TodosTenantsPg(), log: d.log }),
     criarRotinaExpurgoPreCadastro({ banco: d.banco, log: d.log }),
+    ...(d.completarPrazoMedio === false ? [] : [criarRotinaCompletarPrazoMedio({ banco: d.banco, log: d.log })]),
   ]);
 }
 
