@@ -82,6 +82,11 @@ export type Contato = z.infer<typeof Contato>;
 export const MAX_PARCELAS_CARTAO = 12;
 export const MAX_PARCELAS = 24;
 export const MAX_DIAS = 365;
+/** Limites do banco (CHECK da 0052) e dos eventos `@1` já publicados: mais largos que a entrada da RN-CAD-15/16 (regra 3 do CLAUDE.md: não estreitar `@1`). Só a entidade e o evento os usam. */
+export const MAX_DIAS_LEGADO = 999;
+export const MAX_PARCELAS_LEGADO = 36;
+/** Prazo médio em dias lido do banco ou do evento `@1` (legado até MAX_DIAS_LEGADO). */
+const PrazoMedioDiasLegado = z.number().int().min(0).max(MAX_DIAS_LEGADO);
 /** RN-CAD-15 e RN-CAD-16: prazo médio em dias, digitado (0 a MAX_DIAS). */
 export const PrazoMedioDias = z.number().int().min(0).max(MAX_DIAS);
 export const IndIeDest = z.enum(['1', '2', '9']);
@@ -109,7 +114,7 @@ export type ClienteDados = z.infer<typeof ClienteDados>;
 /** `enderecos` e contatos têm rotas próprias na edição (`/clientes/:id/enderecos|contatos`). */
 export const ClienteAtualizacao = ClienteDados.omit({ enderecos: true }).partial();
 export type ClienteAtualizacao = z.infer<typeof ClienteAtualizacao>;
-export const Cliente = ClienteDados.extend({ id: Uuid, inativo: z.boolean().default(false) });
+export const Cliente = ClienteDados.extend({ prazo_medio_dias: PrazoMedioDiasLegado.nullish(), id: Uuid, inativo: z.boolean().default(false) });
 export type Cliente = z.infer<typeof Cliente>;
 export const EnderecoClienteItem = EnderecoCliente.extend({ id: Uuid, external_id: IdExterno });
 export type EnderecoClienteItem = z.infer<typeof EnderecoClienteItem>;
@@ -246,7 +251,11 @@ export const FORMAS_A_VISTA = (Object.keys(CLASSE_FORMA) as (keyof typeof CLASSE
 /** Critério único de "à vista" (pedido, faturamento): só a forma de pagamento (RN-CAD-09 garante o prazo 0). */
 export const ehAVista = (c: Pick<CondicaoPagamentoDados, 'forma_tpag'>): boolean => classeForma(c.forma_tpag) === 'a_vista';
 export const CondicaoPagamentoAtualizacao = CondicaoPagamentoDados.partial();
-export const CondicaoPagamento = CondicaoPagamentoDados.extend({ /** Aditivo também no tipo: ausente ou nulo = prazo incompleto (legado). */ prazo_medio_dias: PrazoMedioDias.nullish(), id: Uuid, inativo: z.boolean().default(false) });
+/** Entidade e evento `@1`: aceitam o legado (até MAX_DIAS_LEGADO dias e MAX_PARCELAS_LEGADO parcelas); a entrada (`CondicaoPagamentoDados`) segue em MAX_DIAS/MAX_PARCELAS. */
+export const CondicaoPagamento = CondicaoPagamentoDados.extend({
+  prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS_LEGADO)).min(1).max(MAX_PARCELAS_LEGADO),
+  /** Aditivo também no tipo: ausente ou nulo = prazo incompleto (legado). */
+  prazo_medio_dias: PrazoMedioDiasLegado.nullish(), id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;
 
 type PrazoParaConferir = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'prazos_dias'> & { prazo_medio_dias?: number | null; forma_tpag?: string };
