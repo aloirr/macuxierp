@@ -1,8 +1,9 @@
 /**
- * T-0098 (plano da v0.3.13, V-1 e a ponta da rota), RN-INF-06 com a emenda e a decisão do gerente de 24/11/2026, 23h30
+ * T-0098 (plano da v0.3.13, V-1, V-5 e a ponta da rota), RN-INF-06 com a emenda e a decisão do gerente de 24/11/2026, 23h30
  * (Manaus): o pré-cadastro sem decisão (`recebido` ou `reenviado`, a última revisão) só é expurgado quando o
  * `recebido_em` do FDV **e** o `chegou_em` do ERP são anteriores ao corte, com a mesma comparação do recusado (`<`).
- * Aqui ficam o limite exato do corte (1 s antes, igual, 1 s depois), cada data sozinha, e a rota do BKO depois do expurgo.
+ * Aqui ficam o limite exato do corte (1 s antes, igual, 1 s depois), cada data sozinha, a rota do BKO depois do expurgo e
+ * a rotina diária real do worker (`criarRotinaExpurgoPreCadastro`, corte de 180 dias mais 5 min de folga, log só com contagens).
  * Contagens, auditoria, RLS, reexecução e CHECKs: db/testes/pre-cadastro-0062.db.test.ts (banco-dados).
  * A API de produção sobre o PostgreSQL efêmero (`montarApiPg`); a função roda no papel do worker. Sem Postgres pula.
  */
@@ -11,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CAMINHOS_INTEGRACAO_FDV_TENANT, PaginaClientesRecebidosFdv } from '../../../packages/platform-sdk/src/index';
 import type { BancoPg } from '../../../packages/platform-sdk/src/pg';
 import { PG_DISPONIVEL } from '../../../packages/platform-sdk/src/pg-testes';
+import { criarRotinaExpurgoPreCadastro } from '../../../apps/worker/src/expurgo-pre-cadastro';
 import { montarApiPg } from '../../apoio/api-pg';
 
 const RAZAO = 'Mercadinho Ficticio do Expurgo';
@@ -18,14 +20,17 @@ const DOCUMENTO = '11444777000161';
 type Situacao = 'recebido' | 'reenviado';
 
 describe.skipIf(!PG_DISPONIVEL)('T-0098 — expurgo do pré-cadastro sem decisão: limite do corte e rota do BKO', () => {
-  let api: Awaited<ReturnType<typeof montarApiPg<'A'>>>;
+  let api: Awaited<ReturnType<typeof montarApiPg<'A' | 'R'>>>;
   let worker: BancoPg;
   /** Corte válido (mais de 180 dias atrás), em ms, lido do relógio do banco. */
   let corte = 0;
 
-  const em = (deltaMs: number) => new Date(corte + deltaMs).toISOString();
-  /** Uma revisão sem decisão com as duas datas relativas ao corte; o reenviado leva a revisão 1 recusada antes. */
-  const inserir = async (situacao: Situacao, recebido: number, chegou: number) => {
+  /**
+   * Uma revisão sem decisão com as duas datas relativas a `base` (padrão: o corte); o reenviado leva a revisão 1
+   * recusada antes. `quem`: o tenant (o R é só da rotina do worker, V-5).
+   */
+  const inserir = async (situacao: Situacao, recebido: number, chegou: number, o: { quem?: 'A' | 'R'; base?: number } = {}) => {
+    const em = (deltaMs: number) => new Date((o.base ?? corte) + deltaMs).toISOString();
     const uuid = randomUUID();
     const sql = (rev: number, s: string, r: string, c: string) =>
       api.b.admin.query(
@@ -36,7 +41,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0098 — expurgo do pré-cadastro sem decisã
            CASE WHEN $8 = 'recusado' THEN 'Documento inválido.' END,
            CASE WHEN $8 = 'recusado' THEN '[{"campo":"documento","codigo":"documento_invalido","mensagem":"Documento inválido."}]'::jsonb END,
            CASE WHEN $8 = 'recusado' THEN now() END, CASE WHEN $8 = 'recusado' THEN now() END)`,
-        [api.t.A, uuid, rev, RAZAO, DOCUMENTO, r, c, s],
+        [api.t[o.quem ?? 'A'], uuid, rev, RAZAO, DOCUMENTO, r, c, s],
       );
     // a revisão 1 recusada é recente: não entra no expurgo do recusado e não atrapalha o limite da revisão 2
     if (situacao === 'reenviado') await sql(1, 'recusado', em(-86_400_000), em(-86_400_000));
@@ -52,7 +57,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0098 — expurgo do pré-cadastro sem decisã
     ).rows[0]!.x;
 
   beforeAll(async () => {
-    api = await montarApiPg({ A: ['integracao-fdv'] });
+    api = await montarApiPg({ A: ['integracao-fdv'], R: ['integracao-fdv'] });
     worker = api.b.banco('macuxierp_worker');
     corte = (await api.b.admin.query<{ c: Date }>("SELECT now() - interval '181 days' AS c")).rows[0]!.c.getTime();
   }, 180_000);
@@ -93,5 +98,25 @@ describe.skipIf(!PG_DISPONIVEL)('T-0098 — expurgo do pré-cadastro sem decisã
     expect(res.body).not.toContain(DOCUMENTO);
     // os que ficaram seguem com a razão social (tela autorizada; LGPD proíbe em log, não na tela)
     expect(itens.some((i) => i.razao_social === RAZAO)).toBe(true);
+  });
+
+  it('V-5: a rotina diária do worker expurga o sem decisão com 180 dias e a folga de 5 min; o log leva só contagens', async () => {
+    const agora = Date.now();
+    const DIA = 86_400_000;
+    const prazo = -180 * DIA;
+    const velho = await inserir('recebido', prazo - 6 * 60_000, prazo - 6 * 60_000, { quem: 'R', base: agora });
+    const naFolga = await inserir('reenviado', prazo - 60_000, prazo - 60_000, { quem: 'R', base: agora });
+    const recente = await inserir('recebido', -10 * DIA, -10 * DIA, { quem: 'R', base: agora });
+    const linhas: string[] = [];
+    const linha = (obj: Record<string, unknown>, msg: string) => void linhas.push(JSON.stringify([obj, msg]));
+    const rotina = criarRotinaExpurgoPreCadastro({ banco: worker, log: { info: linha, warn: linha }, tenantsAtivos: async () => [api.t.R] });
+    expect(rotina.id).toBe('integracao-fdv.expurgo-pre-cadastro');
+    const resumo = await rotina.executar(new Date(agora));
+    expect(resumo).toMatchObject({ tenants: 1, falhas: 0, sem_decisao_revisoes: 1, sem_decisao_pre_cadastros: 1, recusado_revisoes: 0 });
+    expect([await expurgado(velho), await expurgado(naFolga), await expurgado(recente)]).toEqual([true, false, false]);
+    // de novo no mesmo dia: nada a mais
+    expect(await rotina.executar(new Date(agora))).toMatchObject({ sem_decisao_revisoes: 0, falhas: 0 });
+    expect(linhas).toHaveLength(1);
+    for (const s of [RAZAO, DOCUMENTO, '11.444.777', velho]) expect(linhas.join('\n')).not.toContain(s);
   });
 });
