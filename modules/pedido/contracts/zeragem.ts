@@ -11,10 +11,15 @@ export const CAMINHOS_ZERAR_PEDIDOS = Object.freeze({
   zerar: '/empresas/:id/pedidos/zerar',
 });
 
-/** Mesma frase do Zerar por cadastro (`FRASE_ZERAR_DADOS`, sem diferenciar maiúsculas e ponto final). */
-export const ZerarPedidosEntrada = z
-  .object({ frase: z.string().max(200) })
-  .refine((r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS), { path: ['frase'], message: MENSAGEM_FRASE_ZERAR });
+/** `detalhes.codigo` do 422 `RN-CAD-10` de frase errada (mesmo padrão do `zeragem_bloqueada` do cadastros). */
+export const CODIGO_FRASE_ZERAR_INVALIDA = 'frase_confirmacao_invalida';
+
+/** Forma do corpo da rota (a API): só o tipo; a frase é conferida na rota e errada vira 422 `RN-CAD-10` (T-0093). */
+export const ZerarPedidosCorpo = z.object({ frase: z.string().max(200) });
+export type ZerarPedidosCorpo = z.infer<typeof ZerarPedidosCorpo>;
+
+/** Mesma frase do Zerar por cadastro (`FRASE_ZERAR_DADOS`, sem diferenciar maiúsculas e ponto final); validação do cliente (BKO). */
+export const ZerarPedidosEntrada = ZerarPedidosCorpo.refine((r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS), { path: ['frase'], message: MENSAGEM_FRASE_ZERAR });
 export type ZerarPedidosEntrada = z.infer<typeof ZerarPedidosEntrada>;
 
 const Contagem = z.number().int().min(0);
