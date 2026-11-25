@@ -426,6 +426,9 @@ export const MENSAGEM_MANTIDOS_ZERAR = (n: number): string =>
 /** `detalhes.codigo` do 422 do zerar quando `bloqueios` não está vazio (sem SQLSTATE: o plugin decide). */
 export const CODIGO_ZERAGEM_BLOQUEADA = 'zeragem_bloqueada';
 
+/** `detalhes.codigo` do 422 RN-CAD-10 quando a frase de confirmação (`FRASE_ZERAR_DADOS`, `FRASE_SUBSTITUIR_TUDO`) não confere. */
+export const CODIGO_FRASE_NAO_CONFERE = 'frase_nao_confere';
+
 const semRepetir = <T>(xs: readonly T[]): boolean => new Set(xs).size === xs.length;
 
 /** `POST .../cadastros/zerar/previa` (só lê, sem `Idempotency-Key`): o que o zerar faria com estes cadastros. */
@@ -557,6 +560,7 @@ export const CODIGOS_DETALHE_CARGA_PORTAL = [
   'modulo_desligado',
   'nada_a_gravar',
   CODIGO_ZERAGEM_BLOQUEADA,
+  CODIGO_FRASE_NAO_CONFERE,
 ] as const;
 export const CodigoDetalheCargaPortal = z.enum(CODIGOS_DETALHE_CARGA_PORTAL);
 export type CodigoDetalheCargaPortal = z.infer<typeof CodigoDetalheCargaPortal>;
