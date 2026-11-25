@@ -228,6 +228,36 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       const e = await rota(sem, '/empresas/:id/receita', {}).catch((x: unknown) => x);
       expect(e).toMatchObject({ status: 409 });
     });
+
+    it('T-0106 (0066): a leitura da empresa e a gravação devolvem a descrição do CNAE e o nome do município; o papel config executa as funções', async () => {
+      const id = await tenantComEmpresa();
+      const g = await comPlataforma((tx) => repo.gravarReceita(tx, { id, ficha: FICHA, request_id: randomUUID() }), true);
+      expect(g.ficha).toMatchObject({ municipio_nome: 'Manaus', cnae_principal: '4711302', cnae_secundarios: ['4712100'] });
+      expect(g.ficha?.cnae_principal_descricao).toEqual(expect.stringMatching(/\S/));
+      const l = await comPlataforma(async (tx) => {
+        const lida = await repo.lerEmpresaComFicha(tx, id);
+        return { crua: lida?.ficha, descrita: lida?.ficha ? await repo.descreverFicha(tx, lida.ficha) : null };
+      });
+      expect(l.crua?.municipio_nome).toBeUndefined(); // RD-2153: ler para decidir não descreve
+      expect(l.descrita?.cnae_secundarios_descritos).toEqual([{ codigo: '4712100', descricao: expect.stringMatching(/\S/) }]);
+      const det = await chamar('GET', '/empresas/:id', { params: { id } });
+      expect(det.corpo).toMatchObject({ ficha: { municipio_nome: 'Manaus', municipio_ibge: '1302603', cnae_principal: '4711302' } });
+      // CNAE e município fora das tabelas: descrição e nome nulos, sem erro.
+      const desc = await comPlataforma((tx) => tx.consultar<{ c: unknown; m: unknown }>(`SELECT plataforma.cnae_descricoes(ARRAY['0000000','4711302','4711-3/02']) c, plataforma.municipio_nomes(ARRAY['9999999']) m`));
+      expect(desc[0]!.m).toEqual([]);
+      expect((desc[0]!.c as unknown[]).length).toBe(1);
+      // Só o papel config executa (RN: 42501 para os demais).
+      const app = await b.admin.connect();
+      try {
+        await app.query('BEGIN');
+        await app.query('SET LOCAL ROLE macuxierp_app');
+        const e = await app.query(`SELECT plataforma.cnae_descricoes(ARRAY['4711302'])`).catch((x: unknown) => x);
+        expect(e).toMatchObject({ code: '42501' });
+      } finally {
+        await app.query('ROLLBACK');
+        app.release();
+      }
+    });
   });
 
   it('suspender revoga as sessões do tenant e lista/lê a empresa', async () => {

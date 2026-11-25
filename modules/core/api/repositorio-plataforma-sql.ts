@@ -5,8 +5,8 @@
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
-import type { CampoContato, FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
-import { MENSAGEM_SEM_CNPJ } from '../domain';
+import type { CampoContato, CnaeDescrito, FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
+import { codigosParaDescrever, descreverFicha, MENSAGEM_SEM_CNPJ } from '../domain';
 import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
 
@@ -26,6 +26,21 @@ async function primeiraLinha<L>(tx: Transacao, sql: string, parametros: readonly
   const [l] = await tx.consultar<L>(sql, parametros);
   if (!l) throw new Error('função de plataforma sem retorno');
   return l;
+}
+
+/**
+ * Descrição do CNAE e nome do município na ficha mascarada (0066): as duas funções de plataforma numa query só, na mesma
+ * transação da leitura. Sem códigos, nenhuma consulta. Falha do banco segue para a apps/api (a ficha não sai pela metade).
+ */
+async function comDescricoes(tx: Transacao, ficha: FichaReceitaPlanaMascarada | null | undefined): Promise<FichaReceitaPlanaMascarada | null> {
+  if (!ficha) return null;
+  const { cnaes, municipios } = codigosParaDescrever(ficha);
+  if (cnaes.length === 0 && municipios.length === 0) return descreverFicha(ficha, [], []);
+  const [l] = await tx.consultar<{ c: CnaeDescrito[] | null; m: { codigo: string; nome: string | null }[] | null }>(
+    'SELECT plataforma.cnae_descricoes($1::text[]) c, plataforma.municipio_nomes($2::text[]) m',
+    [cnaes, municipios],
+  );
+  return descreverFicha(ficha, l?.c, l?.m);
 }
 
 /**
@@ -64,9 +79,17 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
     return ls.map((l) => l.e);
   }
 
-  async lerEmpresa(tx: Transacao, id: string): Promise<EmpresaPlataforma | null> {
-    const [l] = await tx.consultar<{ e: EmpresaPlataforma | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
+  /** A linha do `empresa_ler`: a empresa e, na chave `ficha` (0063), a ficha mascarada ainda sem descrições. */
+  private async lerLinha(tx: Transacao, id: string): Promise<(EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null> {
+    const [l] = await tx.consultar<{ e: (EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
     return l?.e ?? null;
+  }
+
+  async lerEmpresa(tx: Transacao, id: string): Promise<EmpresaPlataforma | null> {
+    const e = await this.lerLinha(tx, id);
+    if (!e) return null;
+    if (!e.ficha) return e;
+    return { ...e, ficha: await comDescricoes(tx, e.ficha) } as EmpresaPlataforma;
   }
 
   criarEmpresa(tx: Transacao, p: { slug: string | null; uf: string | null; nome: string; fuso: string; request_id: string }): Promise<EmpresaPlataforma | null> {
@@ -124,10 +147,15 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
   }
 
   async lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null> {
-    const [l] = await tx.consultar<{ e: (EmpresaPlataforma & { ficha?: FichaReceitaPlanaMascarada | null }) | null }>('SELECT plataforma.empresa_ler($1::uuid) e', [id]);
-    if (!l?.e) return null;
-    const { ficha, ...empresa } = l.e;
+    const e = await this.lerLinha(tx, id);
+    if (!e) return null;
+    const { ficha, ...empresa } = e;
+    // Sem descrições: o Revelar e a /receita só precisam da ficha para decidir; quem devolve a ficha descreve (descreverFicha).
     return { empresa, ficha: ficha ?? null };
+  }
+
+  async descreverFicha(tx: Transacao, ficha: FichaReceitaPlanaMascarada): Promise<FichaReceitaPlanaMascarada> {
+    return (await comDescricoes(tx, ficha)) ?? ficha;
   }
 
   async gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }> {
@@ -136,7 +164,7 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
         p.id,
         JSON.stringify(p.ficha),
         p.request_id,
-      ]).then((l) => l.r),
+      ]).then(async (l) => ({ ...l.r, ficha: await comDescricoes(tx, l.r.ficha) })),
     );
   }
 
