@@ -427,6 +427,15 @@ RN-CAD-10, opção "Pedidos não faturados" do Zerar por cadastro. O mesmo desen
 
 Migração: `db/migrations/0064_pedido_portal_zerar.sql`; testes: `db/testes/pedido-portal-zerar-0064.db.test.ts`.
 
+## Critério 3 do zerar de pedidos: reenvio do FDV e a_faturar (T-0093, migração 0065)
+Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api` chama as duas funções depois do `pedido.portal_zerar`, na mesma transação. Assim, ou tudo sai, ou nada sai. Nenhuma das duas toca nota, XML nem título.
+- **DELETE, não índice parcial:** o desenho preferia `deleted_at` com o UNIQUE `(tenant_id, pedido_uuid)` trocado por índice único parcial. Isso não cabe em migração aditiva, por dois motivos: o recebimento da versão atual faz `ON CONFLICT (tenant_id, pedido_uuid)` sem predicado, que não infere índice parcial (42P10); e a FK do `retorno_enviado` precisa de UNIQUE completo. Por isso o `pedido_recebido` do pedido zerado sai de fato, e o reenvio do Hub volta a inseri-lo como `recebido`.
+- **Retornos:** a FK leva junto **todo** `retorno_enviado` do pedido, não só o pendente: o pendente não pode ir ao FDV, e o histórico do pedido apagado não serve ao pedido novo (a ordem do Hub recomeça). Um envio já em voo no worker atualiza 0 linhas.
+- **a_faturar:** `UPDATE` para `cancelado` em vez de `DELETE`, para guardar o histórico. O pedido que volta ganha um id novo (`randomUUID` no recebedor), então o `UNIQUE (tenant_id, pedido_id)` não o barra. A recusa de `faturado_parcial`/`faturado` é defesa: o plano já recusa pedido com nota ou título.
+- **Sem licença na conferência:** a limpeza vale com o `integracao-fdv` ou o `faturamento` desligados, porque o `portal_zerar` já exigiu o pedido licenciado e a empresa ativa. A auditoria vai sem `request_id`, porque a assinatura do desenho não o traz; ela vai ao lado do `pedido.dados.zerar` da mesma transação.
+
+Migração: `db/migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes: `db/testes/zerar-pedidos-criterio3-0065.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
