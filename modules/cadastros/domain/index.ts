@@ -1,5 +1,6 @@
 export * from './carteira';
 export * from './condicao';
+export * from './coordenada';
 export * from './desconto';
 export * from './consulta';
 export * from './documento';

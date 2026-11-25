@@ -6,6 +6,7 @@
 import { pode, type Acao, type Perfil } from '@macuxierp/platform-sdk';
 import { interpretarCentavos } from '@macuxierp/platform-sdk/formatar';
 import { Cep, Ibge, Uf } from '../contracts';
+import { normalizarCoordenada } from '../domain/coordenada';
 
 export type TipoCampoEdicao = 'texto' | 'selecao' | 'dinheiro' | 'cadastro' | 'booleano';
 
@@ -95,6 +96,31 @@ export const CAMPOS_ENDERECO: readonly CampoEdicao[] = [
   { nome: 'end_uf', rotulo: 'UF', tipo: 'texto', obrigatorio: true },
 ];
 
+/** T-0096: localização do endereço do cliente (a filial não tem coluna, 0061). */
+export const CAMPOS_LOCALIZACAO: readonly CampoEdicao[] = [
+  { nome: 'end_latitude', rotulo: 'Latitude', tipo: 'texto', ajuda: 'De -90 a 90 (ex.: -3.1190).' },
+  { nome: 'end_longitude', rotulo: 'Longitude', tipo: 'texto', ajuda: 'De -180 a 180 (ex.: -60.0217).' },
+];
+
+/** T-0096: número digitado (aceita vírgula); vazio ou ilegível = `null`. */
+const numeroDoTexto = (t: string | undefined): number | null => {
+  const s = (t ?? '').trim().replace(',', '.');
+  return s === '' || !/^[+-]?\d+(\.\d+)?$/.test(s) ? null : Number(s);
+};
+
+/**
+ * T-0096: aviso (não bloqueia) quando a localização digitada será gravada vazia: fora da faixa, ilegível ou só um dos
+ * dois. A regra é `normalizarCoordenada` do domain; a API revalida. O aviso nunca traz o valor digitado (LGPD).
+ */
+export function avisosEnderecoTela(v: Valores): Erros {
+  const lat = (v.end_latitude ?? '').trim();
+  const lon = (v.end_longitude ?? '').trim();
+  if (lat === '' && lon === '') return {};
+  if (normalizarCoordenada(numeroDoTexto(lat), numeroDoTexto(lon)).latitude !== null) return {};
+  const msg = lat === '' || lon === '' ? 'Informe latitude e longitude juntas: será gravado vazio' : 'Fora da faixa: será gravado vazio';
+  return { end_latitude: msg, end_longitude: msg };
+}
+
 /** Formato do CEP, do código IBGE e da UF; só preenche `e` onde o campo ainda não tem erro. */
 export function validarEnderecoTela(v: Valores, e: Erros): void {
   if (!e.end_cep && !Cep.safeParse(soDigitos(v.end_cep)).success) e.end_cep = 'O CEP tem 8 números';
@@ -107,6 +133,9 @@ export const enderecoDoFormulario = (v: Valores) => ({
   logradouro: (v.end_logradouro ?? '').trim(), numero: (v.end_numero ?? '').trim(), complemento: vazioParaNulo(v.end_complemento), bairro: (v.end_bairro ?? '').trim(),
   municipio_ibge: (v.end_municipio_ibge ?? '').trim(), uf: (v.end_uf ?? '').trim().toUpperCase(), cep: soDigitos(v.end_cep), pais_bacen: '1058',
 });
+
+/** T-0096: latitude e longitude do formulário do cliente, normalizadas pela mesma regra do domain (nulas se inválidas). */
+export const localizacaoDoFormulario = (v: Valores) => normalizarCoordenada(numeroDoTexto(v.end_latitude), numeroDoTexto(v.end_longitude));
 
 /** Erro de campo de um 422 da API (`campo` e `mensagem`) para o mesmo mapa da validação local. */
 export function errosDaApi(violacoes: readonly { campo: string; mensagem: string }[]): Erros {
