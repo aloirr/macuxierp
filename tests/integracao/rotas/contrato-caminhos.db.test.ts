@@ -34,7 +34,10 @@ interface Caso {
   caminho: string;
 }
 
-/** Caminho completo: `/v1/...` vale como está; nas constantes `*_PLATAFORMA`, relativo ao `PREFIXO_PLATAFORMA`. */
+/**
+ * Caminho completo: `/v1/...` vale como está; nas constantes `*_PLATAFORMA`, relativo ao `PREFIXO_PLATAFORMA`; nas
+ * `*_TENANT` (rotas do BKO do tenant, ex.: CAMINHOS_INTEGRACAO_FDV_TENANT), relativo a `/v1`, como o web as monta.
+ */
 function casos(): { casos: Caso[]; semClasse: string[] } {
   const r: Caso[] = [];
   const semClasse: string[] = [];
@@ -49,6 +52,7 @@ function casos(): { casos: Caso[]; semClasse: string[] } {
       if (typeof v !== 'string') semClasse.push(`${constante}.${chave}: não é texto`);
       else if (v.startsWith('/v1/')) r.push({ constante, chave, caminho: v });
       else if (constante.endsWith('_PLATAFORMA') && v.startsWith('/')) r.push({ constante, chave, caminho: `${sdk.PREFIXO_PLATAFORMA}${v}` });
+      else if (constante.endsWith('_TENANT') && v.startsWith('/')) r.push({ constante, chave, caminho: `/v1${v}` });
       else semClasse.push(`${constante}.${chave} = ${v}: prefixo desconhecido (classifique em casos())`);
     }
   }

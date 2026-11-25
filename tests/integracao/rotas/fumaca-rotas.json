@@ -46,6 +46,11 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/core/auditoria/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/core/certificados",
       "area": "bko"
     },
@@ -69,12 +74,22 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/core/licencas/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/core/perfis",
       "area": "bko"
     },
     {
       "metodo": "GET",
       "caminho": "/v1/core/usuarios",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/core/usuarios/exportar",
       "area": "bko"
     },
     {
@@ -184,6 +199,61 @@
     {
       "metodo": "GET",
       "caminho": "/v1/faturamento/titulos/exportar",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/clientes-recebidos",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/cliente_endereco/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/cliente/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/estoque/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/filial/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/forma_pagamento/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/prazo_pagamento/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/preco/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/produto_unidade/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/produto/log",
+      "area": "bko"
+    },
+    {
+      "metodo": "GET",
+      "caminho": "/v1/integracao-fdv/entidades/vendedor/log",
       "area": "bko"
     },
     {

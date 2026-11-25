@@ -15,13 +15,14 @@ import {
   CAMINHOS_CARGAS_PLATAFORMA,
   CADASTROS_CARGA_PORTAL,
   CAMINHOS_INTEGRACAO_FDV_PLATAFORMA,
+  CAMINHOS_INTEGRACAO_FDV_TENANT,
   ENTIDADES_CARGA_PORTAL,
   ENTIDADES_ENVIO_FDV,
   PREFIXO_PLATAFORMA,
 } from '../../../packages/platform-sdk/src/index';
 import { PG_DISPONIVEL } from '../../../packages/platform-sdk/src/pg-testes';
 import { filialValida } from '../../../modules/cadastros/api/fixtures-teste';
-import { urlDoDanfe, urlDoXml } from '../../../modules/faturamento/web/index';
+import { urlDaConfiguracaoDaFilial, urlDoDanfe, urlDoXml } from '../../../modules/faturamento/web/index';
 import { PAGINAS_REGISTRADAS } from '../../../apps/web/src/lib/paginas';
 import { telaDaRota } from '../../../apps/web/src/lib/telas';
 import type { ExecutorDeAcoes, TelaDescrita } from '../../../apps/web/src/lib/descritor/tipos';
@@ -145,6 +146,11 @@ const NAO_EXTRAIVEIS: Readonly<Record<string, string>> = {
   'apps/web/src/lib/config/api.ts :: rotaFdv(CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log, id, entidade)': 'log da carga por cadastro na aba Integração (CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.log)',
   "apps/web/src/lib/config/cargas-api.ts :: caminho('situacao', id)": 'aba Cargas do /config (CAMINHOS_CARGAS_PLATAFORMA.situacao)',
   "apps/web/src/lib/config/cargas-api.ts :: caminho('modelo', id, cadastro)": 'modelo da carga (CAMINHOS_CARGAS_PLATAFORMA.modelo, por cadastro)',
+  'apps/web/src/app/(shell)/[modulo]/[...pagina]/telas-quadro.tsx :: FILIAIS': 'filiais do quadro de configuração da NF-e (constante FILIAIS do telas-quadro.tsx)',
+  'apps/web/src/app/(shell)/[modulo]/[...pagina]/telas-quadro.tsx :: urlDaConfiguracaoDaFilial(f.id)': 'configuração fiscal de cada filial no quadro (urlDaConfiguracaoDaFilial)',
+  'apps/web/src/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv.tsx :: caminhoApiClientesRecebidos(consulta)': 'clientes recebidos do FDV (CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos)',
+  "modules/integracao-fdv/web/cliente.ts :: CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace('/integracao-fdv', '').replace(':entidade', encodeURIComponent(entidade))":
+    'Log do BKO por cadastro (CAMINHOS_INTEGRACAO_FDV_TENANT.log, por ENTIDADES_ENVIO_FDV)',
 };
 
 // ---------------------------------------------------------------- 2. fontes estruturadas
@@ -182,6 +188,10 @@ const GETS_ESTRUTURADOS = (): { origem: string; caminho: string }[] => [
   ...getsDasTelas(),
   { origem: 'download XML da nota (urlDoXml)', caminho: urlDoXml(ID) },
   { origem: 'download DANFE da nota (urlDoDanfe)', caminho: urlDoDanfe(ID) },
+  { origem: 'filiais do quadro de configuração da NF-e (telas-quadro.tsx)', caminho: '/v1/cadastros/filiais' },
+  { origem: 'configuração fiscal da filial no quadro (urlDaConfiguracaoDaFilial)', caminho: urlDaConfiguracaoDaFilial(ID) },
+  { origem: 'clientes recebidos do FDV (Integração FDV)', caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos}` },
+  ...ENTIDADES_ENVIO_FDV.map((e) => ({ origem: `Log do BKO (${e})`, caminho: `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.log.replace(':entidade', e)}` })),
   { origem: 'aba Integração do /config', caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_INTEGRACAO_FDV_PLATAFORMA.ler}` },
   { origem: 'aba Cargas do /config', caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.situacao}` },
   ...ENTIDADES_CARGA_PORTAL.map((c) => ({ origem: `modelo da carga (${c})`, caminho: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.modelo.replace(':cadastro', c)}` })),
