@@ -94,12 +94,18 @@ function montar(inicial?: Partial<EmpresaPlataforma>, op: OpcoesFicha = {}) {
     return r;
   };
   const auditadas: unknown[] = [];
+  const txPlataforma = { id: 'plataforma' } as unknown as Transacao;
+  const txTenant = { id: 'tenant' } as unknown as Transacao;
+  const etapas: string[] = [];
   const contexto = {
     sessao: { superadmin_id: '00000000-0000-4000-8000-00000000005a', sessao_id: '00000000-0000-4000-8000-00000000005e' },
-    tx: {} as Transacao,
+    tx: txPlataforma,
     request_id: 'req-1',
     agora: AGORA,
     auditar: async (d: unknown) => { auditadas.push(d); },
+    // Rota por etapa: uma transação de cada vez; a de tenant só para o `:id` da rota.
+    comPlataforma: async <R,>(fn: (tx: Transacao) => Promise<R>) => { etapas.push('plataforma'); return fn(txPlataforma); },
+    comTenant: async <R,>(id: string, fn: (tx: Transacao) => Promise<R>) => { etapas.push(`tenant:${id}`); return fn(txTenant); },
   };
   const chamar = async (metodo: string, caminho: string, e: { corpo?: unknown; consulta?: unknown; params?: Record<string, string> } = {}) => {
     const r = rota(metodo, caminho);
@@ -111,7 +117,7 @@ function montar(inicial?: Partial<EmpresaPlataforma>, op: OpcoesFicha = {}) {
     try { await p; } catch (e) { if (e instanceof ErroApi) return e; throw e; }
     throw new Error('esperava ErroApi');
   };
-  return { ...m, plugin, chamar, erro, auditadas };
+  return { ...m, plugin, chamar, erro, auditadas, etapas, txPlataforma, txTenant };
 }
 
 const LIGADOS_ATE_PEDIDO = [
@@ -272,10 +278,13 @@ describe('T-0101: ficha da Receita e Revelar contato (ADR 0012, emenda da ficha)
 
   describe('POST /empresas/:id/receita', () => {
     it('RF-CAD-02: consulta pelo CNPJ da empresa, grava a ficha mapeada e devolve só nomes de campo e a ficha mascarada, com no-store', async () => {
-      const visto: string[] = [];
-      const t = montar(undefined, { consulta: { consultar: async (_tx, tenant, cnpj) => { visto.push(tenant, cnpj); return SUGESTAO_OK; } } });
+      const visto: unknown[] = [];
+      const t = montar(undefined, { consulta: { consultar: async (tx, tenant, cnpj) => { visto.push(tx, tenant, cnpj); return SUGESTAO_OK; } } });
       const r = (await t.chamar('POST', '/empresas/:id/receita')) as { corpo: unknown; cabecalhos: unknown };
-      expect(visto).toEqual([EMPRESA, CNPJ]);
+      expect(visto).toEqual([t.txTenant, EMPRESA, CNPJ]);
+      // Leitura e gravação na plataforma, a consulta no tenant (papel app e RLS), nessa ordem e uma de cada vez.
+      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`, 'plataforma']);
+      expect(t.plugin.rotas.find((x) => x.caminho === '/empresas/:id/receita')?.transacoes).toBe('por_etapa');
       expect(t.gravadas[0]).toMatchObject({ razao_social: 'EMPRESA NOVA LTDA', cnae_principal: '4711302', regime_receita: 'simples', email: 'contato@nova.com.br', telefone: '9232221234', fonte: 'brasilapi' });
       expect(r.corpo).toMatchObject({ estado: 'ok', campos_alterados: ['nome_fantasia'], ficha: { email_mascarado: 'co****@teste.com.br' } });
       expect(r.cabecalhos).toEqual(SEM_CACHE);
@@ -289,6 +298,7 @@ describe('T-0101: ficha da Receita e Revelar contato (ADR 0012, emenda da ficha)
       expect(r.corpo).toMatchObject({ estado: 'erro', motivo: 'fonte_indisponivel', ficha: FICHA_ANTES });
       expect(r.cabecalhos).toEqual(SEM_CACHE);
       expect(t.chamadas).not.toContain('gravar');
+      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`]);
     });
 
     it('RF-CAD-02: CNPJ da empresa inválido para a fonte volta como cnpj_invalido, com texto de ação, sem gravar', async () => {
