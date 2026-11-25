@@ -1,13 +1,11 @@
-import { ZeragemPedidosResposta, ZerarPedidosEntrada } from '@macuxierp/pedido/contracts';
+import { CAMINHOS_ZERAR_PEDIDOS, ZeragemPedidosResposta, ZerarPedidosEntrada } from '@macuxierp/pedido/contracts';
 import { PADRAO_UUID } from '@macuxierp/platform-sdk';
 import { chamar, idEmpresa, validado } from './api';
 import { SEM_CACHE, comSessao, falha, falhaDadosMudaram, guardaPost } from './cargas-rotas';
 import { ErroPlataforma } from './erros';
 
 /** Route handlers do Zerar pedidos não faturados (T-0093): o portal chama `POST /v1/plataforma/empresas/:id/pedidos/zerar[/previa]`. */
-/** Caminhos do plugin do pedido (iguais aos do contrato `zeragem.ts` do pedido, conferido em teste); o teste de rotas de tela só enxerga as constantes do SDK. */
-export const CAMINHOS = { previa: '/empresas/:id/pedidos/zerar/previa', zerar: '/empresas/:id/pedidos/zerar' } as const;
-const caminho = (chave: keyof typeof CAMINHOS, id: string) => CAMINHOS[chave].replace(':id', idEmpresa(id));
+const caminho = (chave: keyof typeof CAMINHOS_ZERAR_PEDIDOS, id: string) => CAMINHOS_ZERAR_PEDIDOS[chave].replace(':id', idEmpresa(id));
 
 /** `POST /config/empresas/:id/pedidos/zerar/previa`: sem corpo, só leitura; devolve a `ZeragemPedidosResposta` simulada. */
 export async function tratarPreviaZerarPedidos(req: Request, id: string): Promise<Response> {
