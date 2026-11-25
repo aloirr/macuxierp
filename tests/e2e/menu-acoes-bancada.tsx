@@ -17,6 +17,8 @@ const acoesDaLinha = (n: number): AcaoMenu[] => [
   { chave: 'zerar', rotulo: 'Zerar', perigo: true, aoAcionar: anotar(`zerar-${n}`) },
   { chave: 'reprocessar', rotulo: 'Reprocessar os registros com falha', aoAcionar: anotar(`reprocessar-${n}`) },
   { chave: 'travado', rotulo: 'Tentar de novo', desabilitado: true, aoAcionar: anotar(`travado-${n}`) },
+  /** Desligado com motivo (#689): continua focável, mostra o motivo e não aciona. */
+  { chave: 'retomar', rotulo: 'Retomar', desabilitado: 'Cadastre a credencial primeiro', aoAcionar: anotar(`retomar-${n}`) },
   { chave: 'desativar', rotulo: 'Desativar', perigo: true, aoAcionar: anotar(`desativar-${n}`) },
   { chave: 'editar', rotulo: 'Editar', aoAcionar: anotar(`editar-${n}`) },
 ];
