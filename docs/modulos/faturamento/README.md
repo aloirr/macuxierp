@@ -79,6 +79,7 @@ Cabeçalhos com o passo a passo, em `api/emissao.ts` (API: confere, reserva o n�
 | `EmissorNFe` | `criarEmissorNFe()` do `@macuxierp/nfe-emissor` (REAL) | `montar(NotaParaEmissao)` → `{xml, chave, cNF, dhEmi}`; `assinar(xml, a1)` → `{xml, digVal}`; `transmitir(xmlAssinado, idLote, transporte)`; eventos e inutilização no lote 2. Único montador do XML (RD-0254) |
 | `ConsultaCadastrosFaturamento` | adaptador a criar no `cadastros/api` | filial emissora (com CRT), cliente, condição de pagamento (tPag e prazos), número inicial |
 | `AmbienteFiscalDaFilial` | `api/sql.ts` (`faturamento.ambiente_da_filial`) | ambiente da filial (só leitura) |
+| `UsosPedidosFaturamento` (`pedidosComNotaOuTitulo`) | `api/usos-pedidos.ts` (`faturamento.portal_pedidos_com_uso`, 0063); apps/api liga na porta `UsosFaturamentoPedidos` do pedido | Zerar por cadastro (RN-CAD-10): ids com nota ou título em qualquer situação; só leitura, nunca apaga nota, XML nem evento |
 | `ConsultaA1Ativo` (`temA1Ativo`) | apps/api: `criarPortaA1` do `@macuxierp/core/api` (`a1ValidoDaFilial`) com o `noTenant` ligado à tx da requisição | só o veredito `{ ativo }` ou `{ ativo: false, motivo, mensagem }` sobre os metadados do certificado; nunca decifra |
 | `lerA1` (`A1DaFilial`), SÓ no worker | `lerA1DecifradoDaFilial` do core + `abrirA1` do emissor | `{ certificado, credencial }`: o certificado assina; a credencial (pfx + senha) vai ao seletor de transporte; `pfx` zerado no `finally`; `null` = sem A1 ativo, `ErroCertificadoA1` = A1 inválido/vencido |
 

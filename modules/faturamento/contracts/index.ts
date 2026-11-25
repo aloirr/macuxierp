@@ -538,3 +538,10 @@ export type ProcessarInutilizacaoPayload = z.infer<typeof ProcessarInutilizacaoP
 export const TRABALHO_CONSULTAR_NOTA = 'faturamento.consultar_nota' as const;
 export const ConsultarNotaPayload = z.object({ nota_id: Uuid });
 export type ConsultarNotaPayload = z.infer<typeof ConsultarNotaPayload>;
+
+/** Pedidos com uso no faturamento (Zerar por cadastro, RN-CAD-10): nota em qualquer situação ou título a receber em qualquer situação. Só leitura. */
+export const PedidosComUsoFaturamento = z.object({
+  comNota: z.array(Uuid),
+  comTitulo: z.array(Uuid),
+});
+export type PedidosComUsoFaturamento = z.infer<typeof PedidosComUsoFaturamento>;
