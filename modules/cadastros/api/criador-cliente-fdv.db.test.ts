@@ -28,7 +28,12 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
   let A: string;
   let B: string;
   let filialA: string;
-  const criador = criarCriadorClienteFdv({ repositorios: repositoriosSql, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+  // falso do espelho do vendedor do integracao-fdv (contrato real ainda não chegou): V-ATIVO / V-INATIVO apontam para vendedores do tenant A
+  const espelho: Record<string, { vendedor_id: string | null; ativo: boolean }> = {};
+  const criador = criarCriadorClienteFdv({
+    repositorios: repositoriosSql, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA),
+    consultaVendedorFdv: { vendedorPorExternalId: async (_tx, _tenant, ext) => espelho[ext] ?? null },
+  });
   const decidir = (tenant: string, p: ClienteParaErpFdv) => app.comTenant(tenant, (tx) => criador.decidir(tx, tenant, p));
   const plugin = () => criarPluginCadastros({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados: { filialTemA1Valido: async () => true } });
   const amb = (tenant: string) => criarAmbiente(plugin(), AGORA, transacaoDe(app, tenant));
@@ -163,5 +168,56 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     const f = await amb(B).chamar('POST', '/filiais', { sessao: adm, corpo: filialValida({ cnpj: CNPJ_B, external_id: 'F-LOC', endereco: { ...filialValida().endereco, latitude: -3.1, longitude: -60.02 } }) });
     expect(f.status).toBe(201);
     expect(f.corpo.endereco).not.toHaveProperty('latitude');
+  });
+
+  describe('T-0105 item 2: vendedor do FDV na carteira', () => {
+    let vendedorId: string;
+    let vendedorInativoId: string;
+    beforeAll(async () => {
+      const g = sessaoDe('gerente');
+      const v = async (codigo: string) => {
+        const r = await amb(A).chamar('POST', '/vendedores', { sessao: g, corpo: { codigo, nome: codigo, filial_id: filialA, usuario_id: null } });
+        expect(r.status).toBe(201);
+        return (r.corpo as { id: string }).id;
+      };
+      vendedorId = await v('VF1');
+      vendedorInativoId = await v('VF2');
+      expect((await amb(A).chamar('DELETE', `/vendedores/${vendedorInativoId}`, { sessao: g })).status).toBeLessThan(300);
+      espelho['V-ATIVO'] = { vendedor_id: vendedorId, ativo: true };
+      espelho['V-INATIVO'] = { vendedor_id: vendedorInativoId, ativo: true }; // o espelho acha ativo, mas o ERP já inativou: vale o ERP
+      espelho['V-ESPELHO-INATIVO'] = { vendedor_id: vendedorId, ativo: false };
+    });
+    const novo = (n: number, o: Partial<ClienteParaErpFdv>) => pre({ cliente_uuid: `aaaaaaaa-0000-4000-8000-00000000000${n}`, documento: ['', '70.201.306/0001-91', '51.250.470/0001-44', '03.778.130/0001-48', '67.040.890/0001-36'][n], inscricao_estadual: '', ...o });
+    const doCliente = async (id: string) => (await admin<{ vendedor_id: string | null }>('SELECT vendedor_id FROM cadastros.cliente WHERE id = $1', [id]))[0]?.vendedor_id;
+
+    it('D7: vendedor ativo entra na carteira; a auditoria não leva o código', async () => {
+      const d = await decidir(A, novo(1, { vendedor_external_id: 'V-ATIVO' }));
+      expect(d).toMatchObject({ status: 'vinculado' });
+      if (d.status !== 'vinculado') return;
+      expect(await doCliente(d.cliente_id)).toBe(vendedorId);
+      const aud = await admin<{ depois: Record<string, unknown> }>("SELECT depois FROM plataforma.auditoria WHERE entidade_id = $1", [d.cliente_id]);
+      expect(aud[0]?.depois).toMatchObject({ vendedor_vinculado: true });
+      expect(JSON.stringify(aud)).not.toMatch(/V-ATIVO/);
+    });
+    it('D7 (provisório, pendente de RN do PO): vendedor inválido não recusa: cliente sem carteira, com o aviso só na auditoria', async () => {
+      const b = await decidir(A, novo(3, { vendedor_external_id: 'V-ESPELHO-INATIVO' }));
+      const c = await decidir(A, novo(4, { vendedor_external_id: 'V-INATIVO' }));
+      for (const d of [b, c]) {
+        expect(d).toMatchObject({ status: 'vinculado' });
+        expect(d.status === 'vinculado' && (await doCliente(d.cliente_id))).toBeNull();
+      }
+      const aviso = async (d: typeof b) => d.status === 'vinculado' ? (await admin<{ depois: { aviso: string; vendedor_vinculado: boolean } }>('SELECT depois FROM plataforma.auditoria WHERE entidade_id = $1', [d.cliente_id]))[0]?.depois : null;
+      expect(await aviso(b)).toMatchObject({ aviso: 'vendedor_fdv_inativo', vendedor_vinculado: false });
+      expect(await aviso(c)).toMatchObject({ aviso: 'vendedor_fdv_inativo', vendedor_vinculado: false }); // existe, mas inativo no ERP
+    });
+    it('D7: sem a porta ligada o comportamento é o de antes: cliente sem carteira e sem aviso', async () => {
+      const semPorta = criarCriadorClienteFdv({ repositorios: repositoriosSql, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+      const d = await app.comTenant(A, (tx) => semPorta.decidir(tx, A, novo(2, { vendedor_external_id: 'V-ATIVO' })));
+      expect(d).toMatchObject({ status: 'vinculado' });
+      if (d.status !== 'vinculado') return;
+      expect(await doCliente(d.cliente_id)).toBeNull();
+      const aud = await admin<{ depois: Record<string, unknown> }>('SELECT depois FROM plataforma.auditoria WHERE entidade_id = $1', [d.cliente_id]);
+      expect(aud[0]?.depois).toMatchObject({ vendedor_vinculado: false, aviso: null });
+    });
   });
 });
