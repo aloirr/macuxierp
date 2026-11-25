@@ -373,6 +373,13 @@ Achados do corretor (RD-1560 a 1566 e os da 0056); as migrações já aplicadas 
 
 Migração: `db/migrations/0058_redundancias_0053_a_0057.sql`; testes: `db/testes/redundancias-0058.db.test.ts` (as funções e os dois CHECKs juntos dão o mesmo resultado antes e depois da 0058 sobre a mesma massa, e a reexecução não muda nada) e os da 0053 a 0057 sem mudança de regra.
 
+## Cliente criado pelo worker no pré-cadastro do FDV (T-0059, migração 0064)
+Defeito em produção: a porta `CriadorClienteFdv` (`modules/cadastros/api/criador-cliente-fdv.ts`) roda na transação do worker e caía em 42501 no primeiro INSERT do cliente; o pré-cadastro válido nunca virava cliente e o FDV reentregava a cada 10 min.
+- A porta só lê e insere (dentro de um SAVEPOINT): cliente, endereço e contato; o evento vai à outbox e a auditoria a `plataforma`, que o worker já grava desde a 0002. As leituras (cliente, endereço, contato, filial, `cadastros.municipio`) já eram dele (0004 e 0005). Não há sequência (ids por `gen_random_uuid()`) nem gatilho de inserção nas três tabelas, e o pré-cadastro não toca em vendedor, carteira, condição de pagamento nem tabela de preço.
+- Por isso falta só a escrita de inserção; a política `isolamento_tenant` não tem `TO` e vale para o worker (o mesmo da 0029), sem `worker_global`.
+
+Migração: `db/migrations/0064_cadastros_cliente_worker.sql`; testes: `db/testes/cliente-worker-0064.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
