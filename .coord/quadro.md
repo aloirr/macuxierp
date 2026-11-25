@@ -95,7 +95,8 @@
 | [T-0101](tarefas/T-0101.md) | Ficha completa da empresa pela Receita, com "Atualizar pela Receita" e e-mail e telefone mascarados (opção C) | v0.3.14 | modulo-core | aberta | R-20261124-224709; R-20261124-225456; depende da T-0100; emenda de ADR |
 | [T-0102](tarefas/T-0102.md) | Log do motivo do não envio do "Esqueci a senha" e do aceite do SMTP | v0.3.13 | engenheiro-software | aberta | branch agente/esqueci-log-motivo (4581c1a) |
 | [T-0103](tarefas/T-0103.md) | operador.sh superadmin --listar com e-mails mascarados | v0.3.13 | engenheiro-software | aberta | R-20261124-225456 |
-| [T-0104](tarefas/T-0104.md) | Remover a expurgar_pre_cadastro_recusado antiga e acertar o comentário do worker | v0.3.14 | banco-dados | aberta | RD-1810 do #622 |
+| [T-0104](tarefas/T-0104.md) | Remover a expurgar_pre_cadastro_recusado antiga e acertar o comentário do worker | v0.3.15 | banco-dados | aberta | RD-1810 do #622; o comentário do worker já foi acertado no #664 |
+| [T-0105](tarefas/T-0105.md) | Integração v2 com o FDV v1.0.34: prazo v2, vendedor no pré-cadastro, chave_acesso no retorno | v0.3.14 (itens 1 e 3); v0.3.15 (item 2) | modulo-integracao-fdv | em_andamento | pedido do PO 25/11 04h55; #667, #668, #671; opção A até a resposta do Alexandre (06h00) |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 
@@ -116,6 +117,7 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 | T-0023 (session_019xHEXsi68pkRSBNcRmrmW9) | `docs/marca/` (PR #5) |
 
 ## Reservas
+- **25/11, 05h15 (Manaus):** T-0105 criada; próxima livre **T-0106**. Migrações: **0063** = ficha (#636), **0064** = zerar (#651), **0065** = critério 3 (#663); próxima livre **0066**. RD usados: banco até RD-2014; integração RD-2060–2067 (próxima RD-2068); apps RD-2028–2047; cadastros RD-2052–2059; testes RD-2021–2027.
 - **25/11, 04h23 (Manaus):** migrações da v0.3.14 na ordem 0061 (#624) → 0062 (#622) → #628 → 0063 (#636, ficha) → 0064 (#651, zerar) → a seguinte (funções do critério 3 da T-0093). Faixas de RD novas: banco RD-1985–2014; testes RD-2018–2027; apps RD-2028–2047; cadastros RD-2015–2017; gerente RD-2048–2051 usados; próxima livre fora das faixas **RD-2052**.
 - **24/11, 23h36 (Manaus):** **regra nova de migração (decisão do gerente, 23h22):** o número da migração é a próxima livre no main na hora do PR final, sem reserva antecipada. Motivo: o `db/src/migrar.ts` aplica por ordem alfabética e não confere número menor depois de maior, e nenhum teste cobre isso; banco novo (CI) e produção divergiriam. Em uso: **0061** = T-0096 (#624), **0062** = T-0098 (#622), **0060** = grants do worker (#621, renumerada de 0064 no corte da v0.3.13); a ficha da T-0101 e as funções do zerar de pedidos (T-0093) pegam o número livre no PR. Ordem de merge: #624 → #622 → #621. T-0104 criada (v0.3.14); próxima livre **T-0105**. Faixas de RD: faturamento RD-1950–1959; apps RD-1960–1979; testes-2 RD-1910–1929; testes-3 RD-1930–1949; RD-1890–1897 do gerente usados; próxima livre fora das faixas **RD-1980**.
 - **24/11, 22h57 (Manaus):** v0.3.13 aberta (R-20261124-225456). T-0100 a T-0103 criadas; próxima livre **T-0104**. Migrações: **0059** = T-0100 (backfill da core.empresa), **0060** = T-0101 (ficha da Receita); próxima livre **0061** (as próximas tarefas pedem ao gerente). RD por sessão: apps+core RD-1760–1789; banco+integração RD-1790–1819; cadastros+pedido RD-1820–1849; engenheiro-software RD-1850–1859; testes RD-1860–1869; ux+marca RD-1870–1889; próxima livre fora das faixas **RD-1890**.
@@ -198,6 +200,29 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 - Entraram: #279 → 818e4ad, #284 → 2047e0b, #285 → 30fe879 e #275 → 41b39c7. O #273 (quadro de 22/11, 07h38) foi fechado e substituído por este.
 
 ## 25/11 madrugada — v0.3.13 no ar e v0.3.14 (Manaus)
+- **25/11, 05h15 — v0.3.14 no main (conferido com date):**
+  - **Entraram:** #664 (worker do expurgo, 05h02), #666 (🔴 da rota /receita por etapa, 05h04), #665 (porta CNPJ ligada, 05h08), #663 (0065, critério 3 da T-0093, 05h09), #668 (05h10), #669 (parecer da marca, 05h12), #667 (prazo v2), #671 (chave_acesso), #672 (testes da ficha) e #646 (aba Empresa).
+  - **Faltam para o corte (06h40):**
+    - T-0093: o pedido (aposZerar, ~05h45), a religação do engenheiro com o adendo A3 da ADR 0013, o #626 (tela) e os testes;
+    - o PR da testes-2 `empresa-ficha-producao.db.test.ts`.
+  - **Decisões:**
+    - CNAE com descrição vai para a v0.3.15 (pede migração; default com o PO às 05h25);
+    - a remoção da API @deprecated da ficha (core) vai para a v0.3.15;
+    - T-0105 pela opção A (itens 1 e 3 nesta versão), revertida se o Alexandre escolher outra até 06h00;
+    - T-0089 (AM2808) segue parada até a C-5 do Alexandre.
+  - **Relógio:** entre 05h00 e 05h10, o gerente e a sessão da integração escreveram horas adiantadas em até 20 min. Os recados foram corrigidos e as horas acima são as do commit no main.
+- **Para a v0.3.15:**
+  - T-0104 (DROP da função antiga);
+  - T-0105 item 2 (vendedor no pré-cadastro: cadastros → integracao-fdv);
+  - CNAE com descrição na ficha (banco → core → apps);
+  - verbo único Mostrar/Revelar (decisão do PO);
+  - RevelarMascarado em packages/ui (designer-ux + engenheiro-apps);
+  - remoção da API @deprecated da ficha e o comentário "0065" no teste do #666 (core);
+  - helper de teste por etapa no SDK (RD-1775, engenheiro);
+  - telas da T-0101 com prints R-3 e e2e de R-2 (testes);
+  - `cnpj_divergente` inalcançável e a data do cache na ficha (core decide);
+  - RD-1954 (faturamento), PATCH com FOR UPDATE, motivo do item desabilitado no MenuAcoes, coluna em 390 px e ambientes por agente.
+  - Contrações futuras do integracao-fdv: RD-2063 (ramo v1 do prazo, depois de 6 meses) e RD-2066 (`nota.chave`).
 - **Parada por limite de uso de 5 h:** de 23h51 a ~03h28 todas as sessões pararam; previsão refeita. Paralelismo reduzido de 11 para 6 sessões ativas, com 1 subagente cada (o banco com até 2); a testes-2, a testes-3, a ux+marca e o faturamento ficaram paradas.
 - **Ordem do Alexandre (R-20261125-033305):** "Acelere para liberar no ar até as 6am". O corte foi às 03h49, com a suíte em 3 sessões (~5 min) e a revisão final sem 🔴; no ar 1h40 antes da meta.
 - **Fora da v0.3.13 e na v0.3.14:**
