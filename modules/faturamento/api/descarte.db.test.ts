@@ -1,0 +1,92 @@
+/**
+ * Descarte do "a faturar" no /config (T-0093, critério 3; RN-CAD-10) no PostgreSQL real, contra `faturamento.portal_descartar_a_faturar`
+ * da migração 0065 (papel macuxierp_config, sessão de superadmin) e a emissão real pela rota POST /notas. Nota, XML e evento fiscal
+ * nunca são tocados. Sem Postgres o teste pula (PG_DISPONIVEL, `bash db/scripts/pg-local.sh`); com Postgres e sem a 0065 ele falha.
+ */
+import { randomUUID } from 'node:crypto';
+import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
+import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ErroApi } from '@macuxierp/platform-sdk';
+import { depsFake, pedidoNovoNaFila, uuid } from './apoio-teste';
+import { criarPluginFaturamento } from './index';
+import { configuracaoFaturamentoSql } from './sql-configuracao';
+import { pedidosAprovadosSql, repositoriosSql } from './sql';
+
+const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
+
+describe.skipIf(!PG_DISPONIVEL)('descarte do a faturar (faturamento.portal_descartar_a_faturar, migração 0065)', () => {
+  let efemero: BancoEfemero;
+  let app: BancoPg;
+  let sessao: string;
+  let A: string;
+  const q = async (sql: string, p: unknown[] = []): Promise<Record<string, any>[]> => (await efemero.admin.query(sql, p)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const repos = repositoriosSql({ outbox: new OutboxPg(), agora: () => new Date('2026-11-25T14:30:00Z') });
+  const status = async (pid: string): Promise<unknown> => (await q('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [pid]))[0]?.status;
+  const contagens = async () => (await q('SELECT (SELECT count(*)::int FROM faturamento.nota) AS notas, (SELECT count(*)::int FROM faturamento.nota_xml) AS xmls, (SELECT count(*)::int FROM faturamento.nota_evento) AS eventos'))[0];
+
+  /** Uma transação como macuxierp_config com a sessão de superadmin (o que o `comPlataforma` faz). */
+  async function descartar(ids: string[]): Promise<{ a_faturar_cancelados: number }> {
+    const c = await efemero.admin.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SET LOCAL ROLE macuxierp_config');
+      await c.query(`SET LOCAL macuxierp.sessao_superadmin = '${sessao}'`);
+      const r = (await c.query('SELECT faturamento.portal_descartar_a_faturar($1::uuid, $2::uuid[]) AS r', [A, ids])).rows[0]!.r;
+      await c.query('COMMIT');
+      return r;
+    } catch (e) {
+      await c.query('ROLLBACK');
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  const novoNaFila = (st: 'a_faturar' | 'faturado' | 'faturado_parcial' = 'a_faturar') => app.comTenant(A, (tx) => pedidoNovoNaFila(tx, (t, p) => pedidosAprovadosSql.gravar(t, p, st)));
+
+  /** A emissão real (rota POST /notas, fila e numeração do banco): devolve o erro da rota ou o resultado. */
+  function emitir(pedido_id: string): Promise<unknown> {
+    const f = depsFake({ ambiente: 'homologacao' });
+    Object.assign(f.deps, { notas: repos.notas, pedidos: repos.pedidos, ambiente: repos.ambiente });
+    const rota = criarPluginFaturamento({ ...f.deps, titulos: repos.titulos, configuracao: configuracaoFaturamentoSql } as never).rotas.find((r) => r.metodo === 'POST' && r.caminho === '/notas')!;
+    return app.comTenant(A, (tx) => rota.executar({ tx, sessao: { usuario_id: uuid(5), tenant_id: A, perfil: 'faturista', filial_ids: [] }, enfileirar: async () => ({ id: 'x' }), auditar: async () => undefined } as never, { corpo: { pedido_id, idempotencia: `idem-desc-${pedido_id}` }, params: {}, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never)).catch((e: unknown) => e);
+  }
+
+  beforeAll(async () => {
+    efemero = await criarBancoEfemero();
+    app = efemero.banco('macuxierp_app');
+    const temFuncao = (await q("SELECT to_regprocedure('faturamento.portal_descartar_a_faturar(uuid, uuid[])') IS NOT NULL AS ok"))[0]!.ok;
+    expect(temFuncao, 'faturamento.portal_descartar_a_faturar (migração 0065) ausente no banco').toBe(true);
+    await q(`DO $$ BEGIN IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN GRANT macuxierp_config TO CURRENT_USER; END IF; EXCEPTION WHEN OTHERS THEN NULL; END $$`);
+    A = await criarTenant(efemero.admin, 'fat-descarte', ['faturamento']);
+    sessao = randomUUID();
+    const sa = randomUUID();
+    await q(`INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'sa-descarte@plataforma.teste', 'Superadmin Ficticio', $2, false, true)`, [sa, HASH]);
+    await q(`INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
+      VALUES ($1, $2, encode(sha256(convert_to($3::text, 'UTF8')), 'hex'), now() + interval '8 hours', now())`, [sessao, sa, sessao]);
+  }, 120_000);
+  afterAll(async () => {
+    await efemero?.remover();
+  });
+
+  it('RN-CAD-10: a linha a_faturar vira cancelado (idempotente) e a emissão do pedido é recusada com 422, sem reservar número nem criar nota', async () => {
+    const pid = await novoNaFila();
+    const antes = await contagens();
+    expect(await descartar([pid])).toEqual({ a_faturar_cancelados: 1 });
+    expect(await status(pid)).toBe('cancelado');
+    expect(await descartar([pid])).toEqual({ a_faturar_cancelados: 0 });
+    const e = await emitir(pid);
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({ status: 422, codigo: 'RN-CAD-10' });
+    expect(await q('SELECT count(*)::int AS n FROM faturamento.serie_numeracao')).toEqual([{ n: 0 }]);
+    expect(await contagens()).toEqual(antes); // nota, XML e evento fiscal nunca são tocados
+  });
+
+  it.each(['faturado', 'faturado_parcial'] as const)('RN-CAD-10: com a linha %s o descarte é recusado com MXC03 e nada muda (nem os outros pedidos da lista)', async (st) => {
+    const faturado = await novoNaFila(st);
+    const aberto = await novoNaFila();
+    await expect(descartar([aberto, faturado])).rejects.toMatchObject({ code: 'MXC03' });
+    expect(await status(faturado)).toBe(st);
+    expect(await status(aberto)).toBe('a_faturar');
+  });
+});
