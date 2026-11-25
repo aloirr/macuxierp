@@ -449,6 +449,13 @@ RD-1810 e RD-1813 do #622. Desde a v0.3.13 o worker e o módulo chamam só a `ex
 
 Migração: `db/migrations/0067_integracao_fdv_drop_expurgo_recusado.sql`; testes: `db/testes/expurgo-recusado-drop-0067.db.test.ts`, `db/testes/pre-cadastro-0057.db.test.ts` e `db/testes/pre-cadastro-0062.db.test.ts`.
 
+## Prazo médio calculado na condição de pagamento (T-0108, migração 0068)
+O worker passa a gravar o prazo médio da condição e precisa marcar o que ele calculou, para não confundir com o que foi digitado (0052).
+- **Default false, sem backfill:** a linha existente e a gravada pela versão anterior continuam como digitadas ou legado; a versão anterior roda sobre o esquema novo.
+- **UPDATE por coluna, não na tabela:** o worker só lia a condição (0004). O grant por coluna deixa todo o resto do cadastro fora do alcance dele (42501), e a `isolamento_tenant` sem `TO` vale para o worker.
+
+Migração: `db/migrations/0068_cadastros_condicao_prazo_calculado.sql`; testes: `db/testes/condicao-prazo-calculado-0068.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
