@@ -404,6 +404,15 @@ Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/teste
 - RLS, grants (por tabela, 0004: as colunas novas entram sozinhas) e gatilhos não mudam. **Funções do portal (0040 a 0058) sem mudança:** a carga e o zerar só listam `id`, `cliente_id` e `external_id` do endereço; quem grava os dados na carga é a tx2 do app.
 - Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `lock_timeout` de 5 s). Teste: `db/testes/endereco-lat-long-0061.db.test.ts`.
 
+## Critério 3 do zerar de pedidos: reenvio do FDV e a_faturar (T-0093, migração 0066)
+Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api` chama as duas funções depois do `pedido.portal_zerar`, na mesma transação. Assim, ou tudo sai, ou nada sai.
+- **DELETE, não índice parcial:** o desenho preferia `deleted_at` com o UNIQUE `(tenant_id, pedido_uuid)` trocado por índice único parcial. Isso não cabe em migração aditiva, por dois motivos: o recebimento da versão atual faz `ON CONFLICT (tenant_id, pedido_uuid)` sem predicado, que não infere índice parcial (42P10); e a FK do `retorno_enviado` precisa de UNIQUE completo. Por isso o `pedido_recebido` do pedido zerado sai de fato, e o reenvio do Hub volta a inseri-lo como `recebido`.
+- **Retornos:** a FK leva junto **todo** `retorno_enviado` do pedido, não só o pendente: o pendente não pode ir ao FDV, e o histórico do pedido apagado não serve ao pedido novo (a ordem do Hub recomeça). Um envio já em voo no worker atualiza 0 linhas.
+- **a_faturar:** só `a_faturar` vira `cancelado`, com `UPDATE` em vez de `DELETE`, para guardar o histórico. O pedido que volta ganha um id novo (`randomUUID` no recebedor), então o `UNIQUE (tenant_id, pedido_id)` não o barra. `faturado_parcial`/`faturado` não chega aqui (o plano já recusa pedido com nota ou título); se chegar, a função recusa (defesa), sem tocar nota, XML nem título.
+- **Sem licença na conferência:** a limpeza vale com o `integracao-fdv` ou o `faturamento` desligados, porque o `portal_zerar` já exigiu o pedido licenciado e a empresa ativa. A auditoria vai sem `request_id`, porque a assinatura do desenho não o traz; ela vai ao lado do `pedido.dados.zerar` da mesma transação.
+
+Migração: `db/migrations/0066_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes: `db/testes/zerar-pedidos-criterio3-0066.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
