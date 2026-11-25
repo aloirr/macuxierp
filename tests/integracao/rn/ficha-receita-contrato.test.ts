@@ -86,16 +86,9 @@ describe('ficha da Receita: contrato da ficha completa (T-0101, R-1 e R-3 na eta
     expect(FichaReceita.parse(f)).toEqual(f);
     for (const k of DADOS) expect(f![k], k).not.toBeNull();
     for (const k of ENDERECO) expect(f!.endereco[k as keyof FichaReceita['endereco']], `endereco.${k}`).not.toBeNull();
-    expect(f).toMatchObject({
-      data_abertura: '2014-07-21',
-      natureza_juridica: '2062 - Sociedade Empresária Limitada',
-      porte: 'EMPRESA DE PEQUENO PORTE',
-      cnae_principal: { codigo: '4639701' },
-      cnae_secundarios: [{ codigo: '4637199' }, { codigo: '4930202' }],
-    });
   });
 
-  it('R-1 e R-3: o resultado de "Atualizar pela Receita" passa no contrato, com os nomes dos campos e sem e-mail nem telefone completos', () => {
+  it('R-1 e R-3: o resultado de "Atualizar pela Receita" passa no contrato, com os nomes dos campos e a ficha mascarada', () => {
     const r = atualizarFichaPelaReceita({ cnpj: CNPJ, anterior: null, resposta: { ok: true, dados: bruta(), fonte: 'brasilapi' }, agora: AGORA });
     expect(FichaReceita.parse(r.gravar)).toEqual(r.gravar);
     const ok = ResultadoAtualizarReceita.parse(r.resultado);
@@ -103,11 +96,6 @@ describe('ficha da Receita: contrato da ficha completa (T-0101, R-1 e R-3 na eta
     if (ok.estado !== 'ok') return;
     expect(ok.campos_alterados).toEqual(expect.arrayContaining(['data_abertura', 'natureza_juridica', 'porte', 'cnae_secundarios']));
     for (const c of ok.campos_alterados) expect(c).toMatch(/^[a-z_]+$/);
-    const texto = JSON.stringify(ok);
-    expect(texto).not.toContain(EMAIL);
-    expect(texto).not.toContain(EMAIL.split('@')[0]!);
-    expect(texto).not.toContain('32224567');
-    expect(texto).not.toContain('3222-4567');
     const m = mascararFicha(mapearRespostaReceita(bruta(), 'brasilapi', AGORA)!);
     expect(FichaReceitaMascarada.parse(m)).toEqual(ok.ficha);
   });

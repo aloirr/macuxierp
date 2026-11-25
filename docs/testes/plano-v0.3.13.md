@@ -66,18 +66,7 @@ nenhum fluxo de produção insere nessa tabela, então todo tenant mostra "—" 
 A fonte é a pública do RF-CAD-02 (BrasilAPI ou base aberta; a escolha final sai na emenda de ADR do engenheiro). No
 teste a fonte é um dublê da porta, nunca a rede.
 
-Etapa 1 no main (25/11, madrugada de Manaus): domínio e contratos do core (#637) e `data_abertura` na `SugestaoCnpj`
-dos cadastros (#640). Testes do dono rodados e verdes: `modules/core/domain/ficha-receita.test.ts` (25/25: máscaras com
-paridade da 0035, mapeamento completo, nomes dos campos alterados, falha sem apagar a anterior, CNPJ divergente,
-mensagem sem dado da empresa, Revelar sem auditoria quando vazio) e `modules/cadastros/contracts/sugestao-cnpj.test.ts`
-mais `modules/cadastros/api/consultas.test.ts` (24/24). Contrato em `tests/integracao/rn/ficha-receita-contrato.test.ts`
-(5/5): a ficha completa da decisão do gerente está no `FichaReceita` e no `FichaReceitaMascarada` (abertura, natureza
-jurídica, porte, CNAE principal e secundários, endereço com `municipio_ibge`, regime, data e fonte; o mascarado sem as
-chaves `email`/`telefone`), o resultado de "Atualizar pela Receita" passa no contrato sem e-mail nem telefone, e core e
-cadastros concordam na abertura, natureza, porte e CNAE da mesma resposta da BrasilAPI. Divergências entre core e
-cadastros fora do caso feliz (recado ao modulo-core): o core aceita abertura inexistente (`2014-02-30`) e não converte
-`DD/MM/AAAA`; nos CNAE secundários o core mantém o principal e os repetidos, os cadastros tiram. Rota, Revelar,
-auditoria e log ficam para a etapa 2.
+Parcial (domínio e contrato: #637, #640); rota, Revelar, auditoria e log na etapa 2.
 
 | # | Critério verificável (critério da tarefa) | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
@@ -177,11 +166,7 @@ O teste do script na suíte de scripts é do dono (critério 2); o `testes` conf
 | # | Critério verificável | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
 | O-1 | (1) `--listar` mostra cada superadmin com o e-mail mascarado, a situação (ativo ou inativo) e a data do último acesso; nem a saída nem o log capturado contêm um e-mail inteiro da massa. | script | `tests/integracao/plataforma/operador-superadmin-listar.db.test.ts` (operador.sh real com o `docker` falso) | engenheiro-software | feito (mais o `scripts/deploy/superadmin-listar.test.mjs` do dono) |
-| O-2 | É só leitura (nenhuma linha muda em `plataforma.superadmin`) e registra quem pediu (`--operador`), sem e-mail; sem `--operador`, recusa como as outras ações; sem superadmin, lista vazia e saída 0. | script | `operador-superadmin-listar.db.test.ts` | engenheiro-software | feito (#638): 6/6 verdes; exatamente 1 registro `plataforma.superadmin.listar` por chamada, com `depois` = {quantidade = linhas listadas, operador, motivo}, `request_id` `operador-<uuid>` e nenhum campo com e-mail, parte local, domínio nem máscara; a única escrita do SQL é o INSERT em `plataforma.auditoria` e nenhuma coluna de `plataforma.superadmin` muda |
-
-O-2: decisão do gerente (24/11, ~23h45 de Manaus): o `--listar` grava a auditoria com quem pediu e a contagem, sem
-e-mail. Com o #638 o SQL saiu do `BEGIN READ ONLY` (passa a `BEGIN … COMMIT` por causa do INSERT da auditoria); a
-asserção do READ ONLY, que caía no main desde o #638, passou a "nenhuma escrita fora de `plataforma.auditoria`".
+| O-2 | É só leitura (nenhuma linha muda em `plataforma.superadmin`) e registra quem pediu (`--operador`), sem e-mail; sem `--operador`, recusa como as outras ações; sem superadmin, lista vazia e saída 0. | script | `operador-superadmin-listar.db.test.ts` | engenheiro-software | feito (#638) |
 
 ## Pendências da v0.3.12 (entram se couberem)
 
