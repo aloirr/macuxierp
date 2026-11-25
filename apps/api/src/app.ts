@@ -67,6 +67,7 @@ import type { RepositorioAuth } from './auth/portas';
 import { FALHA_LOGIN, ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
 import { opcoesCookieSessao } from './auth/apoio-login';
 import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from './auth/esqueci';
+import { registrarSemEnvio } from './auth/esqueci-log';
 import type { EnvioEmail } from './email/porta';
 import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, corpoTrocarSenha } from './auth/troca-senha';
 import { diagnosticoBanco } from './erro-banco';
@@ -257,12 +258,23 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     const { empresa, email } = PedirSenhaTemporariaEntrada.parse(req.body);
     const doSuperadmin = destinoDoCodigo(empresa) === 'config';
     limitarEsqueciPorConta(esqueci.limites, doSuperadmin ? EMPRESA_PLATAFORMA : empresa, email, agoraMs);
-    if (!d.esqueci) return apos.responder(req, reply, await servico.esqueciSemEnvio());
-    if (doSuperadmin) return apos.responder(req, reply, plataforma ? await traduzido(() => plataforma.esqueci(email)) : null);
-    const mensagem = await servico.esqueci({ empresa, email }, d.esqueci.repoCore, async (tx, conta) => {
-      const ctx = { ...conta, request_id: req.id };
-      await auditar(d.auditoria, tx, ctx, { acao: 'core.usuario.senha_esquecida', entidade: 'usuario', entidade_id: conta.usuario_id }, d.relogio.agora());
-    });
+    if (!d.esqueci) return apos.responder(req, reply, await servico.esqueciSemEnvio(req.log));
+    if (doSuperadmin) {
+      if (!plataforma) {
+        registrarSemEnvio(req.log, 'plataforma_indisponivel');
+        return apos.responder(req, reply, null);
+      }
+      return apos.responder(req, reply, await traduzido(() => plataforma.esqueci(email, req.log)));
+    }
+    const mensagem = await servico.esqueci(
+      { empresa, email },
+      d.esqueci.repoCore,
+      async (tx, conta) => {
+        const ctx = { ...conta, request_id: req.id };
+        await auditar(d.auditoria, tx, ctx, { acao: 'core.usuario.senha_esquecida', entidade: 'usuario', entidade_id: conta.usuario_id }, d.relogio.agora());
+      },
+      req.log,
+    );
     return apos.responder(req, reply, mensagem);
   });
 
