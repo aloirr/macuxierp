@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { CADASTROS_CARGA_PORTAL, ENTIDADES_ENVIO_FDV, IntegracaoFdvPlataforma, ValidarCargaPlataformaResposta, type EfeitoSubstituir as SdkEfeito } from '@macuxierp/platform-sdk';
-import { avisoCarga, entidadesDaCarga, estadoCargaCompleta, rotuloComLote } from '@/lib/config/integracao-fdv';
+import { acoesDaCarga, avisoCarga, entidadesDaCarga, estadoCargaCompleta, rotuloComLote } from '@/lib/config/integracao-fdv';
 import { AVISO_LIMITE_FDV } from '@/lib/config/cargas';
 import { EMP, conferencia as conferenciaBruta, situacoes } from '@/lib/config/cargas-fixtures';
 
@@ -20,16 +20,18 @@ describe('aba Dados (T-0058, T-0086)', () => {
   it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros), origem, Modelo e Importar', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();
-    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Origem', 'Modelo', 'Importar']) expect(h).toContain(`>${t}<`);
+    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Origem', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
+    expect(h).not.toContain('>Modelo<'); // o Modelo vai para o menu "Ações" (T-0099)
     expect(h).toContain('>Filiais<');
     expect(h).toMatch(/color:var\(--mx-cor-verde-sucesso\)[^"]*"[^>]*>Carregado<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-aviso-texto\)[^"]*"[^>]*>2 com erro<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-texto-secundario\)[^"]*"[^>]*>Não carregado<\/span>/);
     expect(h).toContain('23/11/2026 14:39 · 1 registro');
     expect(h).toContain('>CSV<');
-    expect(h).toContain(`href="/config/empresas/${EMP}/cargas/produto/modelo"`);
-    expect(h).toContain('aria-label="Importar Produtos"');
-    expect(h.match(/aria-label="Importar /g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
+    expect(h.match(/>Importar<\/button>/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
+    expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
+    expect(h.match(/aria-label="Ações de Produtos"/g)).toHaveLength(1);
+    expect(h).not.toContain('barra-acoes');
     expect(h.indexOf('Filiais')).toBeLessThan(h.indexOf('Produtos'));
   });
   it('sai da tela: Zerar dados, lista de cargas antiga e "Cargas" no título', () => {
@@ -43,7 +45,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
   });
   it('o Importar fica sempre ligado; "Unidades (opcional)" sem ponto', () => {
     const h = aba();
-    expect(h).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="Importar /);
+    expect(h).not.toMatch(/<button[^>]*disabled=""[^>]*>Importar</);
     expect(h).toContain('Unidades (opcional)');
     expect(h).not.toContain('(opcional).');
   });
@@ -66,29 +68,31 @@ describe('coluna Carga completa na aba Dados (decisão do PO em 24/11)', () => {
     cadastros: ENTIDADES_ENVIO_FDV.map((entidade) => ({ entidade, ligada: lig.includes(entidade), ultimo_envio_em: null, falha: null, lote_em_voo: voo.includes(entidade) })),
   });
   const com = (i: IntegracaoFdvPlataforma | null) => renderToStaticMarkup(<AbaDados empresaId={EMP} dados={dados} fuso="America/Manaus" integracao={i} />);
-  it('coluna e botão só nos cadastros ligados; os outros ficam com "—"; o aviso e a confirmação só abrem no clique', () => {
-    const h = com(integ());
-    expect(h).toContain('>Carga completa<');
-    expect(h).toMatch(/<button[^>]*aria-label="Carga completa: Produtos"[^>]*>Carga completa<\/button>/);
-    expect(h).toMatch(/<button[^>]*aria-label="Carga completa: Clientes"/);
-    expect(h).not.toContain('aria-label="Carga completa: Filiais"');
-    expect(h).not.toContain('aria-label="Carga completa: Condições de pagamento"'); // falta prazo_pagamento
-    expect(h).not.toMatch(/aria-label="Carga completa: Produtos"[^>]*disabled/);
+  const acoesDe = (i: IntegracaoFdvPlataforma | null, c: string, pendente = false) => acoesDaCarga(estadoCargaCompleta(c, i), pendente);
+  const cargaCompleta = (a: ReturnType<typeof acoesDaCarga>) => a.menu.find((x) => x.chave === 'carga-completa')!;
+  it('a Carga completa vai ao menu "Ações" só nos cadastros ligados; Importar é a principal; o aviso e a confirmação só abrem no clique', () => {
+    const i = integ();
+    expect(cargaCompleta(acoesDe(i, 'produto')).oculto).toBe(false);
+    expect(cargaCompleta(acoesDe(i, 'cliente')).oculto).toBe(false);
+    expect(cargaCompleta(acoesDe(i, 'filial')).oculto).toBe(true);
+    expect(cargaCompleta(acoesDe(i, 'condicao_pagamento')).oculto).toBe(true); // falta prazo_pagamento
+    expect(acoesDe(i, 'produto').principal.rotulo).toBe('Importar');
+    expect(acoesDe(i, 'produto').menu.map((x) => x.chave)).toEqual(['modelo', 'carga-completa']);
+    const h = com(i);
+    expect(h).not.toContain('aria-label="Carga completa');
     expect(h).not.toContain('role="dialog"');
     expect(h).not.toContain('pode demorar');
   });
-  it('lote em voo: botão desligado com "Enviando…"', () => {
-    const h = com(integ(['produto']));
-    expect(h).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Carga completa: Produtos"[^>]*>Enviando…<\/button>|<button[^>]*aria-label="Carga completa: Produtos"[^>]*disabled=""[^>]*>Enviando…<\/button>/);
-    expect(h).toMatch(/aria-label="Carga completa: Clientes"[^>]*>Carga completa<\/button>/);
+  it('lote em voo: item desligado com "Enviando…"; em cadastro de duas entidades, qualquer uma desliga', () => {
+    expect(cargaCompleta(acoesDe(integ(['produto']), 'produto'))).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
+    expect(cargaCompleta(acoesDe(integ(['produto']), 'cliente'))).toMatchObject({ rotulo: 'Carga completa', desabilitado: false });
+    expect(cargaCompleta(acoesDe(integ(['cliente_endereco']), 'cliente'))).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
+    expect(cargaCompleta(acoesDe(integ(), 'produto', true)).desabilitado).toBe(true); // pedido em andamento
   });
-  it('cadastro de duas entidades: lote em voo em qualquer uma desliga o botão', () => {
-    expect(com(integ(['cliente_endereco']))).toMatch(/aria-label="Carga completa: Clientes"[^>]*disabled=""[^>]*>Enviando…|disabled=""[^>]*aria-label="Carga completa: Clientes"[^>]*>Enviando…/);
-  });
-  it('sem a integração lida (ou sem licença) nenhum botão aparece e a tabela segue inteira', () => {
-    expect(com(null)).not.toContain('aria-label="Carga completa');
-    expect(com({ ...integ(), modulo_licenciado: false })).not.toContain('aria-label="Carga completa');
-    expect(aba()).toContain('aria-label="Importar Produtos"');
+  it('sem a integração lida (ou sem licença) a Carga completa some e a tabela segue inteira', () => {
+    expect(cargaCompleta(acoesDe(null, 'produto')).oculto).toBe(true);
+    expect(cargaCompleta(acoesDe({ ...integ(), modulo_licenciado: false }, 'produto')).oculto).toBe(true);
+    expect(aba()).toContain('>Importar</button>');
   });
   it('estado puro: entidades por cadastro e rótulo', () => {
     expect(entidadesDaCarga('condicao_pagamento')).toEqual(['forma_pagamento', 'prazo_pagamento']);

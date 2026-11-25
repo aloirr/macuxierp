@@ -8,16 +8,21 @@
  *   com `alerta`, `tenant_id` e `modulo`; do contexto só passam chave e valor com cara de código ou id (LGPD);
  * - **resolvedor de chaves** (`ResolvedorChaveErp`, ADR 0010, item 2): `criarResolvedorChaveErp(repositoriosSql)` do
  *   `cadastros/api` (#115), em `resolvedorChaveErpDeProducao`.
- * As agendas (busca e retorno) e o consumidor `integracao-fdv.retorno-pedido` são montados em `modulos.ts`.
+ * - **criador do pré-cadastro de cliente** (`CriadorClienteFdv`, T-0059 §4): `criarCriadorClienteFdv` do `cadastros/api` sobre
+ *   os repositórios SQL, com a outbox e a auditoria em PostgreSQL; `aditivosCliente` vem de `aditivosClienteFdvLigados`
+ *   (`MACUXIERP_FDV_CLIENTE_REVISAO`, padrão ligado), lido na partida.
+ * As agendas (busca e retorno de pedidos e de clientes) e o consumidor `integracao-fdv.retorno-pedido` são montados em
+ * `modulos.ts`.
  *
  * Desligamento (fonte: desenho T-0002 §2, "Ligações da F3"): `MACUXIERP_FDV_RECEBIMENTO` = `ligado` | `desligado` (padrão `desligado`; outro
  * valor derruba a partida). A BUSCA (`GET /pedidos/pendentes`) e o RETORNO (`POST /pedidos/{id}/retorno`) dependem dele:
  * desligado, nenhuma das duas agendas é registrada e `sinal.proxima_busca_pedidos_em`/`proximo_retorno_em` ficam paradas
- * no banco. Os consumidores entram sempre (o do retorno só grava a fila local, sem chamar o Hub; ver
+ * no banco. A busca e o retorno do pré-cadastro de cliente (`GET /clientes/pendentes`, `POST /clientes/{uuid}/retorno`)
+ * seguem a mesma chave. Os consumidores entram sempre (o do retorno só grava a fila local, sem chamar o Hub; ver
  * envio-fdv.ts). `ligado` sem a configuração do Hub (laço de agenda desligado) derruba a partida (`conferirRecebimentoFdv`).
  */
-import { criarConsultaParaPedido, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
-import type { Alertar, DepsAgendasPedidosFdv, RecebedorPedidoFdv, ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
+import { criarConsultaParaPedido, criarCriadorClienteFdv, criarResolvedorChaveErp, repositoriosSql } from '@macuxierp/cadastros/api';
+import type { Alertar, DepsAgendasClientesFdv, DepsAgendasPedidosFdv, RecebedorPedidoFdv, ResolvedorChaveErp } from '@macuxierp/integracao-fdv/api';
 import { criarRecebedorFdv, dependenciasDeProducao, type LogPedido } from '@macuxierp/pedido/api';
 import { chaveLigadoDesligado, type DestinoAuditoria, type EstadoChaveFdv, type FonteLicencas, type Outbox, type Relogio } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, LicencasPg, OutboxPg } from '@macuxierp/platform-sdk/pg';
@@ -87,9 +92,10 @@ export function criarAlertaMonitor(log: LogAlerta, modulo = 'integracao-fdv'): A
   };
 }
 
-/** Recebedor, resolvedor e alerta para as agendas do `integracao-fdv`, com o estado do recebimento. */
+/** Recebedor, resolvedor, criador de cliente e alerta para as agendas do `integracao-fdv`, com o estado do recebimento. */
 export interface MontagemPedidosFdv extends Pick<DepsAgendasPedidosFdv, 'recebedor' | 'resolvedor' | 'alertar'> {
   recebimento: EstadoRecebimentoFdv;
+  clientes: Pick<DepsAgendasClientesFdv, 'criador' | 'aditivos'>;
 }
 
 export class RecebimentoFdvIndisponivel extends Error {
@@ -108,6 +114,16 @@ export function montarPedidosFdv(d: DependenciasRecebedorWorker & {
   log: LogPedido & LogAlerta;
   recebimento: EstadoRecebimentoFdv;
   resolvedor: ResolvedorChaveErp;
+  aditivosCliente: boolean;
 }): MontagemPedidosFdv {
-  return { recebimento: d.recebimento, recebedor: montarRecebedorPedidoFdv(d), resolvedor: d.resolvedor, alertar: criarAlertaMonitor(d.log) };
+  const outbox = d.outbox ?? new OutboxPg();
+  const auditoria = d.auditoria ?? new AuditoriaPg();
+  const criador = criarCriadorClienteFdv({ repositorios: repositoriosSql, outbox, auditoria, relogio: d.relogio });
+  return {
+    recebimento: d.recebimento,
+    recebedor: montarRecebedorPedidoFdv({ ...d, outbox, auditoria }),
+    resolvedor: d.resolvedor,
+    alertar: criarAlertaMonitor(d.log),
+    clientes: { criador, aditivos: d.aditivosCliente },
+  };
 }

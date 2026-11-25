@@ -164,6 +164,17 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     expect((await admin('SELECT codigo FROM cadastros.produto WHERE tenant_id = $1', [T])).map((l) => l.codigo)).toEqual(['SKU-EX-01']);
   }, 120_000);
 
+  it('RN-CAD-17: a carga grava fator 1,5 em KG (× 10^4) e recusa 1,5 em UN sem gravar', async () => {
+    const T = await criarTenant(efemero.admin, 'carga-fator', ['cadastros']);
+    await carregar(T, 'gravar');
+    const csv = (un: string, fator: string) => readFileSync(join(pasta, 'produto_unidade.csv'), 'utf8').replace(';cx;12;', `;${un};${fator};`);
+    const un = await carregar(T, 'gravar', [{ nome: 'produto_unidade.csv', conteudo: csv('UN', '1,5') }]);
+    expect(un.rel.erros).toContainEqual(expect.objectContaining({ codigo: 'RN-CAD-17', campo: 'fator' }));
+    expect((await admin('SELECT fator::int AS f FROM cadastros.produto_unidade WHERE tenant_id = $1', [T]))[0]!.f).toBe(120_000);
+    const kg = await carregar(T, 'gravar', [{ nome: 'produto_unidade.csv', conteudo: csv('KG', '1,5') }]);
+    expect(kg.rel.erros).toEqual([]);
+    expect((await admin('SELECT unidade, fator::int AS f FROM cadastros.produto_unidade WHERE tenant_id = $1', [T]))[0]).toMatchObject({ unidade: 'KG', f: 15_000 });
+  }, 120_000);
   it('RN-CAD-08: ativo = não inativa (deleted_at) e ativo = sim reativa, sem apagar', async () => {
     const T = await criarTenant(efemero.admin, 'carga-f', ['cadastros']);
     await carregar(T, 'gravar');

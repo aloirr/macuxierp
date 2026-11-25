@@ -45,6 +45,9 @@ export const ACOES_PLATAFORMA = [
   'plataforma.admin.criar',
   'plataforma.admin.redefinir_senha',
   'plataforma.admin.revelar_email',
+  // T-0101 (ADR 0012, emenda da ficha): gravadas pelas funções `empresa_gravar_receita` e `empresa_contato_revelar`
+  'plataforma.empresa.atualizar_receita',
+  'plataforma.empresa.revelar_contato',
   'plataforma.integracao_fdv.ver',
   'plataforma.integracao_fdv.configurar',
   'plataforma.integracao_fdv.operar',
@@ -52,6 +55,16 @@ export const ACOES_PLATAFORMA = [
   'plataforma.cadastros.zerar',
 ] as const;
 export type AcaoPlataforma = (typeof ACOES_PLATAFORMA)[number];
+
+/**
+ * O UUID do parâmetro de rota `nome` (padrão `id`, o da empresa em `/empresas/:id/...`). Fora do formato = 400 `VALIDACAO`
+ * com `{ [nome]: 'UUID inválido' }`. Fonte única para os plugins de plataforma (RD-1820).
+ */
+export function uuidDaRota(params: Readonly<Record<string, string | undefined>>, nome = 'id'): string {
+  const v = params[nome];
+  if (typeof v !== 'string' || !PADRAO_UUID.test(v)) throw erros.validacao({ [nome]: 'UUID inválido' });
+  return v;
+}
 
 /** Sessão do superadmin, lida do cookie `COOKIE_CONFIG` pela apps/api. Sem tenant e sem perfil. */
 export interface SessaoPlataforma {
