@@ -39,6 +39,21 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
     expect(h).not.toContain('Revelar');
     expect(render(null, false)).toMatch(/<button[^>]*disabled=""[^>]*>Atualizar pela Receita/);
   });
+  it('sem consulta (ficha nula ou toda vazia): um só estado vazio, sem nenhum "—"', () => {
+    const toda = Object.fromEntries(Object.keys(ficha).map((k) => [k, null])) as unknown as typeof ficha;
+    for (const f of [null, toda]) {
+      const h = render(f);
+      expect(h.split('Ainda não consultada. Use Atualizar pela Receita.').length - 1).toBe(1);
+      expect(h).not.toContain('—');
+      expect(h).not.toContain('<dl');
+      expect(h.match(/>Atualizar pela Receita</g)).toHaveLength(1);
+    }
+  });
+  it('o endereço sai completo, com cidade/UF entre o bairro e o CEP (sem razão social nem CNPJ)', () => {
+    const h = renderToStaticMarkup(<FichaReceita empresaId={ID} ficha={ficha} fuso="America/Manaus" editavel lugar="Manaus/AM" />);
+    expect(h).toContain('Rua A, 10, Centro, Manaus/AM, CEP 69000-000');
+    expect(enderecoEmLinha(ficha, 'IBGE 1302603/AM')).toBe('Rua A, 10, Centro, IBGE 1302603/AM, CEP 69000-000');
+  });
   it('sem e-mail ou telefone: traço e nenhum Revelar para o campo', () => {
     const h = render({ ...ficha, email_mascarado: null, telefone_mascarado: null });
     expect(h).not.toContain('Revelar');

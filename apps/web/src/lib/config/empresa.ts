@@ -15,12 +15,21 @@ export interface LinhaDado {
 /** "Manaus/AM"; só uma das partes sai sem a barra; nenhuma, null. */
 export const lugar = (cidade: string | null | undefined, uf: string | null | undefined): string | null => (cidade && uf ? `${cidade}/${uf}` : cidade || uf || null);
 
+/**
+ * Cidade/UF da empresa: o cadastro (filial padrão) manda; sem ele, a ficha da Receita, que traz só a UF e o código IBGE do
+ * município (sem o nome; o ERP não tem tabela de nomes no shell): "IBGE 1302603/AM". Nada disso, null.
+ */
+export function lugarDaEmpresa(e: Pick<EmpresaPlataforma, 'cidade' | 'uf'>, ficha?: { municipio_ibge: string | null; uf: string | null } | null): string | null {
+  const cidade = e.cidade?.trim() || (ficha?.municipio_ibge ? `IBGE ${ficha.municipio_ibge}` : null);
+  return lugar(cidade, e.uf || ficha?.uf);
+}
+
 /** As linhas do bloco "Dados da empresa" (só leitura). Campo ausente ou null vira "—". CNPJ com máscara (numérico ou alfanumérico). */
-export function dadosDaEmpresa(e: EmpresaPlataforma): LinhaDado[] {
+export function dadosDaEmpresa(e: EmpresaPlataforma, ficha?: { municipio_ibge: string | null; uf: string | null } | null): LinhaDado[] {
   return [
     { rotulo: 'Razão social', valor: ou(e.razao_social) },
     { rotulo: 'CNPJ', valor: e.cnpj ? formatarDocumento(e.cnpj) : AUSENTE },
-    { rotulo: 'Cidade/UF', valor: ou(lugar(e.cidade, e.uf)) },
+    { rotulo: 'Cidade/UF', valor: ou(lugarDaEmpresa(e, ficha)) },
     { rotulo: 'Criada em', valor: formatarDataHora(e.created_at, e.fuso) },
   ];
 }

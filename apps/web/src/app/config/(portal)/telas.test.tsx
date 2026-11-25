@@ -128,6 +128,14 @@ describe('empresa: dados e e-mail do 1º administrador', () => {
     expect(vazios.filter((l) => l.valor === '—').map((l) => l.rotulo)).toEqual(['Razão social', 'CNPJ', 'Cidade/UF']);
     expect(renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />)).not.toContain('Revelar');
   });
+  it('Cidade/UF: o cadastro manda; sem ele, a ficha da Receita (UF e código IBGE) preenche o cartão (T-0101)', () => {
+    const semLugar = { ...acme, cidade: null, uf: null };
+    const f = { municipio_ibge: '1302603', uf: 'AM' };
+    expect(dadosDaEmpresa(semLugar, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('IBGE 1302603/AM');
+    expect(dadosDaEmpresa({ ...semLugar, cidade: 'Manaus' }, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Manaus/AM');
+    expect(dadosDaEmpresa(semLugar, { municipio_ibge: null, uf: null }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+    expect(dadosDaEmpresa(semLugar).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+  });
 });
 
 describe('CSS do portal: reaproveita .conteudo e .topo (1024 px e tela pequena)', () => {

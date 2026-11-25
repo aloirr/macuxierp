@@ -3,7 +3,8 @@ import type { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { dadosDaEmpresa } from '@/lib/config/empresa';
+import { dadosDaEmpresa, lugarDaEmpresa } from '@/lib/config/empresa';
+import { fichaVazia } from '@/lib/config/ficha';
 import type { Resultado } from '@/lib/config/executar';
 import { validarMotivo } from '@/lib/config/formularios';
 import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nomeModulo, pendenciasDe, type Dependencia } from '@/lib/config/modulos';
@@ -28,8 +29,8 @@ export function PainelEmpresa({ empresa, deps, chaves, ficha = null }: { empresa
   return (
     <>
       <RegiaoErros temErro={temErro} />
-      <BlocoDados empresa={empresa} />
-      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
+      <BlocoDados empresa={empresa} ficha={fichaVazia(ficha) ? null : ficha} />
+      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} lugar={lugarDaEmpresa(empresa, ficha)} />
       <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
       <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
       <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />
@@ -37,12 +38,12 @@ export function PainelEmpresa({ empresa, deps, chaves, ficha = null }: { empresa
   );
 }
 
-function BlocoDados({ empresa }: { empresa: EmpresaPlataforma }) {
+function BlocoDados({ empresa, ficha }: { empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null }) {
   return (
     <section className="bloco" aria-labelledby="h-dados">
       <h2 id="h-dados">Dados da empresa</h2>
       <dl className="dados-empresa">
-        {dadosDaEmpresa(empresa).map((l) => (
+        {dadosDaEmpresa(empresa, ficha).map((l) => (
           <div key={l.rotulo}>
             <dt className="apoio">{l.rotulo}</dt>
             <dd>{l.valor}</dd>

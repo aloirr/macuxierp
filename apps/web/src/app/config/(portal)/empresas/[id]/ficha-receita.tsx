@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from 'react';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { AUSENTE } from '@/lib/config/empresa';
-import { linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
+import { fichaVazia, linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
 import { atualizarReceitaAcao, revelarContatoAcao } from '../acoes-ficha';
 
 interface Props {
@@ -14,6 +14,8 @@ interface Props {
   fuso: string;
   /** Empresa encerrada não consulta a Receita. */
   editavel: boolean;
+  /** Cidade/UF já resolvida (cadastro ou ficha), para o endereço. */
+  lugar?: string | null;
 }
 
 /** Texto de um CNAE secundário: ponto único para virar "codigo · descricao" quando o contrato trouxer {codigo, descricao}. */
@@ -32,7 +34,8 @@ function Contato({ empresaId, campo, rotulo, mascarado }: { empresaId: string; c
 }
 
 /** Bloco "Ficha da Receita" da aba Empresa (T-0101). Só o superadmin chega aqui (todo o /config é do superadmin). */
-export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
+export function FichaReceita({ empresaId, ficha: fichaRecebida, fuso, editavel, lugar = null }: Props) {
+  const ficha = fichaVazia(fichaRecebida) ? null : fichaRecebida;
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
@@ -63,7 +66,7 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
       {ficha ? (
         <>
           <dl className="dados-empresa">
-            {linhasDaFicha(ficha).map((l) => (
+            {linhasDaFicha(ficha, lugar).map((l) => (
               <div key={l.rotulo}>
                 <dt className="apoio">{l.rotulo}</dt>
                 <dd>{l.valor}</dd>
