@@ -34,3 +34,4 @@
 2026-11-24 — T-0076 — correção: README do login-unico cita TROCAR_SENHA (código do SDK), não SENHA_A_TROCAR
 2026-11-24 — v0.3.12 — desenho da entrada do cenário B (config via Conector/via API, chave uma vez, dono por cadastro, trava 30%, BKO 'Vem do servidor do cliente'); RD-1460–1462 reservados
 2026-11-24 — v0.3.11 — correção: entrada do cenário B volta a ser a v0.3.11 (decisão do Alexandre); README atualizado
+2026-11-24 — T-0099 — MenuAcoes em packages/ui (botão Ações padronizado, perigo por último, menu fixed, teclado, alvo 44 px) com testes e docs/design/menu-acoes.md

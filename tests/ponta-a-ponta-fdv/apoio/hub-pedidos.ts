@@ -68,7 +68,12 @@ interface FilaPedidos {
 }
 
 const CHAVE_EXTRA = 't0017:pedidos';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_HUB = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** O Conector está sem "Recebe pedidos" (a mesma permissão vale para pedidos e para o pré-cadastro de cliente). */
+export function conectorSemRecebe(estado: EstadoTenantDuble, conectorId: string): boolean {
+  return filaDe(estado).semRecebePedidos.has(conectorId);
+}
 
 function filaDe(estado: EstadoTenantDuble): FilaPedidos {
   let f = estado.extras.get(CHAVE_EXTRA) as FilaPedidos | undefined;
@@ -79,7 +84,8 @@ function filaDe(estado: EstadoTenantDuble): FilaPedidos {
   return f;
 }
 
-const erro = (status: number, codigo: string, mensagem: string, campo: string | null = null): RespostaRota => ({
+/** Corpo de erro do Hub (`codigo`, `mensagem` e `erros` com o campo); também usado pelo dublê de clientes. */
+export const erroHub = (status: number, codigo: string, mensagem: string, campo: string | null = null): RespostaRota => ({
   status,
   corpo: { codigo, mensagem, erros: [{ codigo, campo, mensagem }] },
 });
@@ -87,11 +93,11 @@ const erro = (status: number, codigo: string, mensagem: string, campo: string | 
 function pendentes(ctx: ContextoRota): RespostaRota {
   const fila = filaDe(ctx.estado);
   if (fila.semRecebePedidos.has(ctx.conector.conectorId))
-    return erro(403, 'acesso_negado', 'Este Conector não recebe pedidos (cadastro do Conector no BKO).');
+    return erroHub(403, 'acesso_negado', 'Este Conector não recebe pedidos (cadastro do Conector no BKO).');
   const bruto = ctx.consulta.get('limite');
   const limite = bruto === null ? LIMITE_PENDENTES : Number(bruto);
   if (!Number.isInteger(limite) || limite < 1 || limite > LIMITE_PENDENTES)
-    return erro(422, 'valor_fora_da_faixa', `O limite vai de 1 a ${LIMITE_PENDENTES}.`, 'limite');
+    return erroHub(422, 'valor_fora_da_faixa', `O limite vai de 1 a ${LIMITE_PENDENTES}.`, 'limite');
   const agora = ctx.agora.getTime();
   for (const p of fila.pedidos.values()) {
     if (p.estado === 'enviado' && p.enviadoEm !== null && agora - p.enviadoEm >= PRAZO_REENTREGA_MS) p.estado = 'pendente';
@@ -138,29 +144,29 @@ function itensDescartados(item: PedidoNaFila, itens: unknown): Record<string, un
 function retorno(ctx: ContextoRota): RespostaRota {
   const fila = filaDe(ctx.estado);
   const uuid = ctx.caminho.split('/')[2] ?? '';
-  if (!UUID.test(uuid)) return erro(400, 'requisicao_invalida', 'O pedido_uuid do caminho precisa ser um UUID.', 'pedido_uuid');
+  if (!UUID_HUB.test(uuid)) return erroHub(400, 'requisicao_invalida', 'O pedido_uuid do caminho precisa ser um UUID.', 'pedido_uuid');
   const c = (ctx.corpo ?? {}) as Record<string, unknown>;
   if (c.versao_contrato !== VERSAO_CONTRATO)
-    return erro(422, 'versao_nao_suportada', `versao_contrato deve ser "${VERSAO_CONTRATO}".`, 'versao_contrato');
+    return erroHub(422, 'versao_nao_suportada', `versao_contrato deve ser "${VERSAO_CONTRATO}".`, 'versao_contrato');
   // corpo inválido = 400 requisicao_invalida (openapi `retorno_pedido` do FDV)
   if (typeof c.pedido_uuid !== 'string' || c.pedido_uuid.toLowerCase() !== uuid.toLowerCase())
-    return erro(400, 'requisicao_invalida', 'O pedido_uuid do corpo difere do caminho.', 'pedido_uuid');
+    return erroHub(400, 'requisicao_invalida', 'O pedido_uuid do corpo difere do caminho.', 'pedido_uuid');
   const status = c.status as StatusRetorno;
-  if (!STATUS_RETORNO.includes(status)) return erro(400, 'requisicao_invalida', 'Status de retorno desconhecido.', 'status');
+  if (!STATUS_RETORNO.includes(status)) return erroHub(400, 'requisicao_invalida', 'Status de retorno desconhecido.', 'status');
   if (status === 'rejeitado_erp' && (typeof c.motivo !== 'string' || !c.motivo.trim()))
-    return erro(400, 'requisicao_invalida', 'O retorno rejeitado_erp exige o motivo.', 'motivo');
+    return erroHub(400, 'requisicao_invalida', 'O retorno rejeitado_erp exige o motivo.', 'motivo');
   if (status === 'integrado' && (typeof c.numero_erp !== 'string' || !c.numero_erp))
-    return erro(400, 'requisicao_invalida', 'O retorno integrado leva o numero_erp.', 'numero_erp');
+    return erroHub(400, 'requisicao_invalida', 'O retorno integrado leva o numero_erp.', 'numero_erp');
   if ((status === 'faturado_parcial' || status === 'faturado_total') && !c.nota)
-    return erro(400, 'requisicao_invalida', 'O retorno faturado leva a nota.', 'nota');
+    return erroHub(400, 'requisicao_invalida', 'O retorno faturado leva a nota.', 'nota');
   if (c.nota) {
     // `NotaRetorno` do OpenAPI real do Hub (24/11/2026): `numero` texto de 1 a 40, `serie` texto até 10 ou nulo; inteiro = 400.
     // O Hub não tem campo de chave de acesso: `chave` não é exigida (se vier, o dublê só a anota, para o D3 da T-0089).
     const n = comoNota(c.nota);
     if (!n || typeof n.numero !== 'string' || n.numero.length < 1 || n.numero.length > 40)
-      return erro(400, 'requisicao_invalida', 'nota.numero é texto de 1 a 40 caracteres.', 'nota.numero');
+      return erroHub(400, 'requisicao_invalida', 'nota.numero é texto de 1 a 40 caracteres.', 'nota.numero');
     if (n.serie !== undefined && n.serie !== null && (typeof n.serie !== 'string' || n.serie.length > 10))
-      return erro(400, 'requisicao_invalida', 'nota.serie é texto de até 10 caracteres ou nulo.', 'nota.serie');
+      return erroHub(400, 'requisicao_invalida', 'nota.serie é texto de até 10 caracteres ou nulo.', 'nota.serie');
   }
 
   const item = fila.pedidos.get(uuid.toLowerCase());
@@ -170,11 +176,11 @@ function retorno(ctx: ContextoRota): RespostaRota {
     return r;
   };
   if (!item || item.removido)
-    return registrar(erro(422, 'pedido_desconhecido', 'O Hub não conhece este pedido. Confira o pedido_uuid; não reenvie igual.', 'pedido_uuid'));
+    return registrar(erroHub(422, 'pedido_desconhecido', 'O Hub não conhece este pedido. Confira o pedido_uuid; não reenvie igual.', 'pedido_uuid'));
   const nota = chaveNota(c.nota);
   const numeroErp = typeof c.numero_erp === 'string' ? c.numero_erp : null;
   if (numeroErp && item.numeroErp && numeroErp !== item.numeroErp)
-    return registrar(erro(422, 'numero_erp_divergente', 'O mesmo pedido não tem dois números no ERP.', 'numero_erp'));
+    return registrar(erroHub(422, 'numero_erp_divergente', 'O mesmo pedido não tem dois números no ERP.', 'numero_erp'));
   // como o FDV: repetido só se o estado atual já é o status (no parcial, com a mesma nota do último retorno)
   const jaAplicado = item.estado === status && (status !== 'faturado_parcial' || item.retornos.at(-1)?.nota === nota);
   if (jaAplicado) return registrar({ status: 200, corpo: { pedido_uuid: uuid, status: item.estado, repetido: true } });
@@ -182,13 +188,13 @@ function retorno(ctx: ContextoRota): RespostaRota {
   let de = item.estado;
   if (de === 'pendente') {
     if (item.tentativas === 0)
-      return registrar(erro(422, 'pedido_nao_entregue', 'Este pedido ainda não saiu em /pedidos/pendentes. Busque-o antes de devolver o retorno.', 'pedido_uuid'));
+      return registrar(erroHub(422, 'pedido_nao_entregue', 'Este pedido ainda não saiu em /pedidos/pendentes. Busque-o antes de devolver o retorno.', 'pedido_uuid'));
     de = 'enviado'; // voltou a pendente por prazo, mas o ERP já o tinha: a confirmação vale
   }
   const possiveis = de === 'faturado_parcial' ? [...TRANSICOES_PEDIDO_ERP[de], 'faturado_parcial'] : TRANSICOES_PEDIDO_ERP[de];
   if (!possiveis.includes(status))
     return registrar(
-      erro(422, 'transicao_invalida', `O pedido está ${de}; daqui só vai para: ${possiveis.join(', ') || 'nenhum'}.`, 'status'),
+      erroHub(422, 'transicao_invalida', `O pedido está ${de}; daqui só vai para: ${possiveis.join(', ') || 'nenhum'}.`, 'status'),
     );
   const descartados = status.startsWith('faturado') ? itensDescartados(item, c.itens_faturados) : [];
   item.estado = status;
@@ -198,7 +204,7 @@ function retorno(ctx: ContextoRota): RespostaRota {
   const perder = fila.perderResposta.get(uuid.toLowerCase()) ?? 0;
   if (perder > 0) {
     fila.perderResposta.set(uuid.toLowerCase(), perder - 1);
-    return registrar({ ...erro(503, 'servico_indisponivel', 'Resposta perdida (dublê).'), cabecalhos: { 'retry-after': '1' } });
+    return registrar({ ...erroHub(503, 'servico_indisponivel', 'Resposta perdida (dublê).'), cabecalhos: { 'retry-after': '1' } });
   }
   return registrar({
     status: 200,

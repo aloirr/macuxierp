@@ -33,6 +33,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { avaliarPedidoSenhaEsquecida, type RepositorioCore } from '@macuxierp/core/api';
 import { ConferenciaCustoIgual, contaTravada, travaAposFalha } from './apoio-login';
+import { registrarSemEnvio, type LogEsqueci } from './esqueci-log';
 import { emitirTokenAcesso, type SessaoAcesso } from './jwt';
 import type { RepositorioAuth, SessaoRefresh, UsuarioAuth } from './portas';
 import { ARGON2_PADRAO, conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
@@ -155,12 +156,16 @@ export class ServicoAuth {
     entrada: { empresa: string; email: string },
     repoCore: Pick<RepositorioCore, 'emitirSenhaTemporaria'>,
     aoGravar: (tx: Transacao, conta: { tenant_id: string; usuario_id: string }) => Promise<void>,
+    log?: LogEsqueci,
   ): Promise<MensagemEmail | null> {
     const temporaria = await emitirTemporaria(this.cfg.argon2, this.relogio.agora());
     const email = entrada.email.trim().toLowerCase();
     // `tenant_por_slug` só devolve o tenant ativo: empresa suspensa, encerrada ou inexistente = nada a avaliar nem gravar.
     const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
-    if (!tenantId) return null;
+    if (!tenantId) {
+      registrarSemEnvio(log, 'empresa_inexistente_ou_suspensa');
+      return null;
+    }
     const gravou = await this.banco.comTenant(tenantId, async (tx) => {
       const usuario = await this.repo.usuarioPorEmail(tx, email);
       // `usuarioPorEmail` já exclui `deleted_at`; o tenant achado pelo slug está ativo.
@@ -170,11 +175,14 @@ export class ServicoAuth {
       await aoGravar(tx, { tenant_id: tenantId, usuario_id: usuario.id });
       return true;
     });
-    return gravou ? mensagemSenhaTemporaria(email, temporaria.senha) : null;
+    if (gravou) return mensagemSenhaTemporaria(email, temporaria.senha);
+    registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
+    return null;
   }
 
   /** Pedido com o e-mail desligado (T-0076): o mesmo custo de argon2 do `esqueci`, sem banco, sem temporária e sem envio. */
-  esqueciSemEnvio(): Promise<null> {
+  esqueciSemEnvio(log?: LogEsqueci): Promise<null> {
+    registrarSemEnvio(log, 'email_desligado');
     return custoTemporariaDescartada(this.cfg.argon2);
   }
 
