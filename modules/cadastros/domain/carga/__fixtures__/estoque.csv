@@ -1,3 +1,3 @@
 external_id;deposito_external_id;produto_external_id;saldo;alterado_em;ativo;deposito_nome;filial_external_id
-E-EX-01;D1;P-EX-01;10,5;;sim;Deposito 1;F-EX-01
-E-EX-02;D2;P-EX-01;4,25;;sim;Deposito 2;F-EX-01
+E-EX-01;D1;P-EX-01;10;;sim;Deposito 1;F-EX-01
+E-EX-02;D2;P-EX-01;4;;sim;Deposito 2;F-EX-01

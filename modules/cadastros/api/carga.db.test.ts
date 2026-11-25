@@ -74,7 +74,7 @@ describe.skipIf(!PG_DISPONIVEL)('carga de CSV no PostgreSQL real', () => {
     expect((await admin('SELECT external_id FROM cadastros.cliente_endereco WHERE tenant_id = $1 ORDER BY external_id', [A])).map((l) => l.external_id)).toEqual(['C-EX-01:entrega:1', 'C-EX-01:principal', 'C-EX-02:principal']);
     expect(await contar('condicao_pagamento', A)).toBe(3);
     expect(await contar('tabela_preco_item', A)).toBe(2);
-    expect((await admin('SELECT quantidade::float8 AS q FROM cadastros.estoque_saldo WHERE tenant_id = $1', [A]))[0]!.q).toBe(147_500);
+    expect((await admin('SELECT quantidade::float8 AS q FROM cadastros.estoque_saldo WHERE tenant_id = $1', [A]))[0]!.q).toBe(140_000);
     expect((await admin('SELECT desconto_maximo_bp FROM cadastros.tabela_preco_item WHERE tenant_id = $1 ORDER BY preco_centavos', [A])).map((l) => l.desconto_maximo_bp)).toEqual([1250, 0]);
     expect(g.eventos.length).toBeGreaterThan(10);
     const antes = await fotos(A);

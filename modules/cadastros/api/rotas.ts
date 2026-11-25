@@ -17,7 +17,7 @@ import {
 import {
   aplicarMovimento, bloqueiosDeInativacao, escopoDaCarteira, planejarTransferencia,
   validarCondicaoPagamento, completarParcelasCartao, validarDocumentoCliente, validarFilial, validarFiscalProduto, validarLotePreco, validarVigenciaTabela,
-  violacao, type Violacao,
+  violacao, violacaoFracao, type Violacao,
 } from '../domain';
 import { rotaCarga, rotaModeloCarga } from './carga';
 import { desativarCondicoesRecusadas, tratarCartaoSemParcelas } from './formas-recusadas';
@@ -337,6 +337,11 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   rotas.push(...rotasFilho(deps, {
     caminho: '/produtos/:id/unidades', editar: 'cadastros.produto.editar', dados: UnidadeDados, atualizacao: UnidadeDados.partial(),
     pai: (r) => r.produtos, filho: (r) => r.produtos.unidades, aoGravar: emitirCom(eventoProduto),
+    // RN-CAD-17: fator fracionário só nas unidades KG e M (422 no campo `fator`)
+    async validar(_r, d) {
+      const v = violacaoFracao('fator', d.unidade as string, d.fator as number);
+      return v ? [v] : [];
+    },
   }));
 
   // ---- Tabelas de preço (RF-CAD-05, RN-CAD-06) ----
@@ -413,7 +418,10 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
         const r = R(c);
         const m = e.corpo;
         if (!(await r.filiais.obter(m.filial_id))) throw erros.validacao({ filial_id: 'Filial inexistente' });
-        if (!(await r.produtos.obter(m.produto_id))) throw erros.validacao({ produto_id: 'Produto inexistente' });
+        const produto = await r.produtos.obter(m.produto_id);
+        if (!produto) throw erros.validacao({ produto_id: 'Produto inexistente' });
+        const fracao = violacaoFracao('quantidade', produto.unidade_comercial, m.quantidade); // RN-CAD-17
+        if (fracao) throw erroDeViolacoes([fracao]);
         if (m.external_id) {
           const ja = await r.estoque.movimentoPorExternalId(m.external_id);
           if (ja) {

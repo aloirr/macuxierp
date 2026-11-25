@@ -423,6 +423,17 @@ describe('produtos (RF-CAD-04, RN-CAD-04)', () => {
     expect(t.eventos[0]?.payload.unidades).toHaveLength(1);
     expect((await t.chamar('POST', `/produtos/${id}/unidades`, { sessao: adm, corpo: { unidade: 'CX', fator: 0 } })).status).toBe(400);
   });
+  it('RN-CAD-17: fator fracionário só em KG e M (422 no campo fator); no PATCH também', async () => {
+    const t = montar();
+    t.repos.oficiais.ncms.add('22021000');
+    const id = (await t.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido() })).corpo.id as string;
+    const recusada = await t.chamar('POST', `/produtos/${id}/unidades`, { sessao: adm, corpo: { unidade: 'CX', fator: 15_000 } });
+    expect(recusada).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
+    expect(JSON.stringify(recusada.corpo)).toContain('fator');
+    expect((await t.chamar('POST', `/produtos/${id}/unidades`, { sessao: adm, corpo: { unidade: 'KG', fator: 15_000 } })).status).toBe(201);
+    const cx = (await t.chamar('POST', `/produtos/${id}/unidades`, { sessao: adm, corpo: { unidade: 'CX', fator: 120_000 } })).corpo.id as string;
+    expect((await t.chamar('PATCH', `/produtos/${id}/unidades/${cx}`, { sessao: adm, corpo: { fator: 125_000 } })).status).toBe(422);
+  });
 });
 
 describe('tabelas de preço (RF-CAD-05, RN-CAD-06)', () => {
@@ -554,6 +565,12 @@ describe('estoque (RF-CAD-06, RN-CAD-07)', () => {
     expect(s.corpo.quantidade).toBe(70_0000);
     expect(t.eventos[1]).toMatchObject({ nome: 'cadastros.estoque.alterado@1', payload: { filial_id: f, produto_id: p, quantidade: 70_0000 } });
     expect((await t.chamar('GET', '/estoque', { sessao: sessaoDe('leitura'), consulta: { filial_id: f } })).corpo.itens[0].quantidade).toBe(70_0000);
+  });
+  it('RN-CAD-17: movimento fracionário em produto de unidade UN é 422 no campo quantidade', async () => {
+    const { t, f, p } = await cenario();
+    const r = await t.chamar('POST', '/estoque/movimentos', { sessao: faturista, corpo: { filial_id: f, produto_id: p, tipo: 'entrada', quantidade: 1_5000, motivo: 'Compra' } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
+    expect(JSON.stringify(r.corpo)).toContain('quantidade');
   });
   it('RN-CAD-07: o faturista não deixa o saldo negativo; o gerente deixa', async () => {
     const { t, f, p } = await cenario();

@@ -63,7 +63,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
 
     expect((await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ ncm: '99999999', codigo: 'X' }) })).status).toBe(422); // NCM vencido
     expect(await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido() })).toMatchObject({ status: 422, corpo: { campos: { cest: expect.any(String) } } }); // 2202 tem ST
-    const prod = await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700', fator_tributavel: 10_000 }) });
+    const prod = await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700', fator_tributavel: 10_000, unidade_comercial: 'KG' }) });
     expect(prod).toMatchObject({ status: 201, corpo: { codigo: 'P001', custo_centavos: 450, fator_tributavel: 10_000 } });
     expect((await a.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ cest: '0300700' }) })).status).toBe(409);
     // RN-CORE-05 (ADR 0010): adota no PATCH; a troca controlada grava no banco e publica external_id_anterior
