@@ -93,6 +93,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     expect(await status()).toBe('faturado_parcial');
     await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, id));
     expect(await status()).toBe('cancelado');
+    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.statusNaFila(tx, id))).toBe('cancelado'); // RN-CAD-10: a emissão recusa
     await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, uuid(999)));
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [uuid(999)])).toEqual([{ n: 0 }]);
   });
