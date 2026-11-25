@@ -1,5 +1,5 @@
 /**
- * T-0093 (v0.3.13), migração 0066 (RN-CAD-10): zerar pedidos não faturados pelo portal /config. O banco dá os fatos
+ * T-0093 (v0.3.13), migração 0064 (RN-CAD-10): zerar pedidos não faturados pelo portal /config. O banco dá os fatos
  * (pedido.portal_zeragem_fatos e faturamento.portal_pedidos_com_uso) e aplica o plano do domain (pedido.portal_zerar):
  * o pedido com nota ou título fica, o sem nota e sem título sai com itens, eventos e decisão; a prévia bate com o zerar;
  * a auditoria só tem contagens; o outro tenant, a nota, o XML, o evento fiscal e o pedido recebido do FDV não mudam.
@@ -15,16 +15,17 @@ import {
   criarBancoDeTeste,
   executar,
   falha,
-  falhaDetalhada,
   linhas,
   PG_DISPONIVEL,
   permitirSetRole,
+  recusaComDetalhe,
+  recusaCompleta,
   recusaDetalhada,
+  retratoDoTenant,
   rodarComo,
   rodarScript,
   sessaoSql,
   tabelasDos,
-  verboso,
 } from './apoio.ts';
 import {
   chaveAcesso,
@@ -41,13 +42,13 @@ import {
   type Tenant,
 } from './fixture.ts';
 
-const MIGRACAO = fileURLToPath(new URL('../migrations/0066_pedido_portal_zerar.sql', import.meta.url));
+const MIGRACAO = fileURLToPath(new URL('../migrations/0064_pedido_portal_zerar.sql', import.meta.url));
 const CONFIG = 'macuxierp_config';
-const A = novoTenant('zerar-0066-a');
-const B = novoTenant('zerar-0066-b');
+const A = novoTenant('zerar-0064-a');
+const B = novoTenant('zerar-0064-b');
 /** Ativa, sem a licença do módulo pedido. */
-const C = novoTenant('zerar-0066-c');
-const SA = '5a000000-0000-4000-8000-000000000661';
+const C = novoTenant('zerar-0064-c');
+const SA = '5a000000-0000-4000-8000-000000000641';
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 
 const FATOS = 'pedido.portal_zeragem_fatos(uuid)';
@@ -55,7 +56,7 @@ const USOS = 'faturamento.portal_pedidos_com_uso(uuid, uuid[])';
 const ZERAR = 'pedido.portal_zerar(uuid, jsonb, text)';
 const PORTAL = [FATOS, USOS, ZERAR];
 const INTERNAS = [
-  'pedido.portal_zerar_empresa(uuid)',
+  'plataforma.portal_empresa_licenciada(uuid, text)',
   'faturamento.pedidos_com_uso(uuid, uuid[])',
   'pedido.somente_insercao_salvo_zerar()',
 ];
@@ -141,7 +142,7 @@ ${notaDoPedido(t, P.titulo, cnf + 2, true)}
 const SAEM = (): string[] => [A.pedido, A.pedidoBko, P.recusado, P.recebidoFdv].sort();
 const FICAM = (): string[] => [P.nota, P.titulo, P.faturado].sort();
 
-describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — zerar pedidos não faturados (T-0093, 0066)', () => {
+describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — zerar pedidos não faturados (T-0093, 0064)', () => {
   let banco: BancoDeTeste;
   let sessao: string;
 
@@ -154,40 +155,21 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — zerar pedidos não faturado
     comoConfig(`SELECT pedido.portal_zeragem_fatos('${t}');`) as never;
   const usos = (t: string, ids: string[]): { com_nota: string[]; com_titulo: string[] } =>
     comoConfig(`SELECT faturamento.portal_pedidos_com_uso('${t}', '{${ids.join(',')}}'::uuid[]);`) as never;
-  const zerarSql = (plano: unknown, req = 'req-zerar-0066'): string =>
+  const zerarSql = (plano: unknown, req = 'req-zerar-0064'): string =>
     `${sessaoSql(sessao)}SELECT pedido.portal_zerar('${A.id}', '${JSON.stringify(plano)}'::jsonb, '${req}');`;
   const zerar = (plano: unknown, req?: string): { apagados: { tabela: string; quantidade: number }[] } =>
     JSON.parse(linhas(rodarComo(banco.conexao, zerarSql(plano, req), { papel: CONFIG }))[0] ?? 'null');
-  const recusaZerar = (plano: unknown, codigo: string, detalhe?: string, dica?: string): void => {
-    const e = falhaDetalhada(() => executar(banco.conexao, verboso(zerarSql(plano)), { papel: CONFIG }));
-    expect({
-      codigo: e.saida.includes(codigo),
-      detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1],
-      dica: /HINT:\s+(\S+)/.exec(e.saida)?.[1],
-    }).toEqual({ codigo: true, detalhe, dica });
-  };
-  /** Retrato (contagem e hash do conteúdo) das tabelas do tenant nos schemas pedidos. */
-  const retrato = (t: string, schemas: string[]): Record<string, string> => {
-    const com = tabelasDos(banco.conexao, schemas)
-      .map((x) => `${x.esquema}.${x.tabela}`)
-      .filter(
-        (x) =>
-          um<{ c: boolean }>(
-            `SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = '${x}'::regclass AND attname = 'tenant_id' AND NOT attisdropped) AS c`,
-          ).c,
-      );
-    const r = consultar<{ t: string; h: string }>(
+  const recusaZerar = (plano: unknown, detalhe: 'sumiu' | 'em_uso'): void =>
+    recusaCompleta(
       banco.conexao,
-      com
-        .map(
-          (x) =>
-            `SELECT '${x}' AS t, count(*) || ':' || md5(coalesce(string_agg(to_jsonb(z)::text, ',' ORDER BY to_jsonb(z)::text), '')) AS h
-               FROM ${x} z WHERE z.tenant_id = '${t}'`,
-        )
-        .join('\nUNION ALL\n'),
+      zerarSql(plano),
+      { codigo: 'MXC03', detalhe, mensagem: /o estado mudou/, dica: 'pedido' },
+      { papel: CONFIG },
     );
-    return Object.fromEntries(r.map((x) => [x.t, x.h]));
-  };
+  const retrato = (t: string, schemas: string[]): Record<string, string> =>
+    retratoDoTenant(banco.conexao, t, tabelasDos(banco.conexao, schemas));
+  const recebidoFdv = `SELECT estado, pedido_id, hash, deleted_at FROM integracao_fdv.pedido_recebido
+    WHERE tenant_id = '${A.id}' AND pedido_uuid = '${A.pedidoFdv}'`;
   const TODOS = ['pedido', 'faturamento', 'fiscal', 'integracao_fdv', 'cadastros', 'core', 'plataforma'];
   const contar = (tabela: string, ids: string[]): number =>
     um<{ n: number }>(
@@ -221,7 +203,7 @@ ${notaDoPedido(B, PB_NOTA, cnfDoTenant(B) + 1)}`,
     executar(
       banco.conexao,
       `INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo)
-  VALUES ('${SA}', 'sa0066@plataforma.teste', 'Superadmin Ficticio', '${HASH}', false, true);
+  VALUES ('${SA}', 'sa0064@plataforma.teste', 'Superadmin Ficticio', '${HASH}', false, true);
 INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
   VALUES ('${sessao}', '${SA}', encode(sha256(convert_to('${sessao}', 'UTF8')), 'hex'), now() + interval '8 hours', now());`,
     );
@@ -269,31 +251,32 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
   });
 
   it('(b) barreiras: sem sessão MXS01; empresa inexistente P0002; sem licença do pedido MXC04 modulo_desligado', () => {
-    const e1 = falhaDetalhada(() =>
-      executar(banco.conexao, verboso(`SELECT pedido.portal_zeragem_fatos('${A.id}');`), { papel: CONFIG }),
+    recusaDetalhada(
+      banco.conexao,
+      `SELECT pedido.portal_zeragem_fatos('${A.id}');`,
+      'MXS01',
+      /sessão de superadmin/,
+      { papel: CONFIG },
     );
-    expect(e1.saida).toContain('MXS01');
     for (const sql of [
       `SELECT pedido.portal_zeragem_fatos('${randomUUID()}');`,
       `SELECT faturamento.portal_pedidos_com_uso('${randomUUID()}', '{}'::uuid[]);`,
     ]) {
-      const e = falhaDetalhada(() =>
-        executar(banco.conexao, verboso(`${sessaoSql(sessao)}${sql}`), { papel: CONFIG }),
-      );
-      expect(e.saida).toContain('P0002');
+      recusaDetalhada(banco.conexao, `${sessaoSql(sessao)}${sql}`, 'P0002', /.+/, { papel: CONFIG });
     }
-    for (const sql of [
-      `SELECT pedido.portal_zeragem_fatos('${C.id}');`,
-      `SELECT pedido.portal_zerar('${C.id}', '{"apagar": []}'::jsonb, 'r');`,
-    ]) {
-      const e = falhaDetalhada(() =>
-        executar(banco.conexao, verboso(`${sessaoSql(sessao)}${sql}`), { papel: CONFIG }),
-      );
-      expect({ mxc04: e.saida.includes('MXC04'), detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1] }).toEqual({
-        mxc04: true,
-        detalhe: 'modulo_desligado',
-      });
-    }
+    recusaCompleta(
+      banco.conexao,
+      `${sessaoSql(sessao)}SELECT pedido.portal_zeragem_fatos('${C.id}');`,
+      { codigo: 'MXC04', detalhe: 'modulo_desligado', mensagem: /módulo pedido desligado na empresa/ },
+      { papel: CONFIG },
+    );
+    recusaComDetalhe(
+      banco.conexao,
+      `${sessaoSql(sessao)}SELECT pedido.portal_zerar('${C.id}', '{"apagar": []}'::jsonb, 'r');`,
+      'MXC04',
+      'modulo_desligado',
+      { papel: CONFIG },
+    );
   });
 
   it('(c) fatos: os pedidos não excluídos da empresa, só id, status e origem; nada do outro tenant', () => {
@@ -317,16 +300,13 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(usos(A.id, [PB_NOTA])).toEqual({ com_nota: [], com_titulo: [] });
     expect(usos(B.id, [PB_NOTA])).toEqual({ com_nota: [PB_NOTA], com_titulo: [] });
     expect(usos(A.id, [])).toEqual({ com_nota: [], com_titulo: [] });
-    const e = falhaDetalhada(() =>
-      executar(
-        banco.conexao,
-        verboso(
-          `${sessaoSql(sessao)}SELECT faturamento.portal_pedidos_com_uso('${A.id}', ARRAY[NULL]::uuid[]);`,
-        ),
-        { papel: CONFIG },
-      ),
+    recusaDetalhada(
+      banco.conexao,
+      `${sessaoSql(sessao)}SELECT faturamento.portal_pedidos_com_uso('${A.id}', ARRAY[NULL]::uuid[]);`,
+      '23514',
+      /nula ou com nulo/,
+      { papel: CONFIG },
     );
-    expect(e.saida).toContain('23514');
   });
 
   it('(e) plano fora do formato = 23514; mantido, sumido ou de outro tenant = MXC03; nada muda', () => {
@@ -339,14 +319,14 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       { outro: [] },
       { apagar: 'x' },
     ]) {
-      recusaZerar(plano, '23514');
+      recusaDetalhada(banco.conexao, zerarSql(plano), '23514', /fora do formato/, { papel: CONFIG });
     }
-    recusaZerar({ apagar: [A.pedido, P.nota] }, 'MXC03', 'em_uso', 'pedido');
-    recusaZerar({ apagar: [P.titulo] }, 'MXC03', 'em_uso', 'pedido');
-    recusaZerar({ apagar: [P.faturado] }, 'MXC03', 'em_uso', 'pedido');
-    recusaZerar({ apagar: [A.pedido, randomUUID()] }, 'MXC03', 'sumiu', 'pedido');
-    recusaZerar({ apagar: [P.excluido] }, 'MXC03', 'sumiu', 'pedido');
-    recusaZerar({ apagar: [B.pedido] }, 'MXC03', 'sumiu', 'pedido');
+    recusaZerar({ apagar: [A.pedido, P.nota] }, 'em_uso');
+    recusaZerar({ apagar: [P.titulo] }, 'em_uso');
+    recusaZerar({ apagar: [P.faturado] }, 'em_uso');
+    recusaZerar({ apagar: [A.pedido, randomUUID()] }, 'sumiu');
+    recusaZerar({ apagar: [P.excluido] }, 'sumiu');
+    recusaZerar({ apagar: [B.pedido] }, 'sumiu');
     expect(retrato(A.id, TODOS)).toEqual(antes);
   });
 
@@ -378,9 +358,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
   it('(g) zerar: a prévia bate com o efeito; sai o sem nota e sem título com itens, eventos e decisão; o resto fica', () => {
     const antesFat = retrato(A.id, ['faturamento', 'fiscal']);
     const antesB = retrato(B.id, TODOS);
-    const recebido = um<Record<string, unknown>>(
-      `SELECT estado, pedido_id, hash, deleted_at FROM integracao_fdv.pedido_recebido WHERE tenant_id = '${A.id}' AND pedido_uuid = '${A.pedidoFdv}'`,
-    );
+    const recebido = um<Record<string, unknown>>(recebidoFdv);
     // prévia: fatos + usos -> o plano do domain
     const f = fatos();
     const u = usos(
@@ -414,23 +392,9 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     // nota, XML, evento fiscal, título e fila do faturamento intactos
     expect(retrato(A.id, ['faturamento', 'fiscal'])).toEqual(antesFat);
     // o pedido recebido do FDV fica entregue: o mesmo pedido_uuid não volta sozinho (o reenvio cai como repetido)
-    expect(
-      um<Record<string, unknown>>(
-        `SELECT estado, pedido_id, hash, deleted_at FROM integracao_fdv.pedido_recebido WHERE tenant_id = '${A.id}' AND pedido_uuid = '${A.pedidoFdv}'`,
-      ),
-    ).toEqual(recebido);
+    expect(um<Record<string, unknown>>(recebidoFdv)).toEqual(recebido);
     // o outro tenant não muda
     expect(retrato(B.id, TODOS)).toEqual(antesB);
-    // a marca do zerar não sobra na transação
-    expect(
-      linhas(
-        rodarComo(
-          banco.conexao,
-          `${zerarSql({ apagar: [] }, 'req-marca')}\nSELECT coalesce(current_setting('macuxierp.pedido_zerar', true), '');`,
-          { papel: CONFIG },
-        ),
-      )[1] ?? '',
-    ).not.toBe('on');
   });
 
   it('(h) auditoria pedido.dados.zerar só com as contagens, sem id nem dado do pedido', () => {
@@ -444,7 +408,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     }>(
       banco.conexao,
       `SELECT superadmin_id, usuario_id, entidade, antes, depois, request_id FROM plataforma.auditoria
-        WHERE tenant_id = '${A.id}' AND acao = 'pedido.dados.zerar' AND request_id = 'req-zerar-0066'`,
+        WHERE tenant_id = '${A.id}' AND acao = 'pedido.dados.zerar' AND request_id = 'req-zerar-0064'`,
     );
     expect(r).toHaveLength(1);
     expect(r[0]).toEqual({
@@ -461,7 +425,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         ],
         apagados_fdv: 2,
       },
-      request_id: 'req-zerar-0066',
+      request_id: 'req-zerar-0064',
     });
     const texto = JSON.stringify(r[0]!.depois);
     for (const id of [...SAEM(), A.cliente, A.pedidoFdv]) expect(texto).not.toContain(id);
@@ -469,8 +433,16 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
 
   it('(i) reexecução: o mesmo plano cai em MXC03 sumiu; o plano vazio não apaga nada; a migração de novo não muda nada', () => {
     const antes = retrato(A.id, ['pedido', 'faturamento', 'fiscal', 'integracao_fdv']);
-    recusaZerar({ apagar: SAEM() }, 'MXC03', 'sumiu', 'pedido');
-    expect(zerar({ apagar: [] }, 'req-vazio')).toEqual({
+    recusaZerar({ apagar: SAEM() }, 'sumiu');
+    // o plano vazio devolve zero em cada tabela, e a marca do zerar não sobra na transação
+    const [vazio, marca] = linhas(
+      rodarComo(
+        banco.conexao,
+        `${zerarSql({ apagar: [] }, 'req-vazio')}\nSELECT coalesce(current_setting('macuxierp.pedido_zerar', true), '');`,
+        { papel: CONFIG },
+      ),
+    );
+    expect(JSON.parse(vazio ?? 'null')).toEqual({
       apagados: [
         { tabela: 'pedido', quantidade: 0 },
         { tabela: 'pedido_item', quantidade: 0 },
@@ -478,6 +450,7 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         { tabela: 'aprovacao', quantidade: 0 },
       ],
     });
+    expect(marca ?? '').not.toBe('on');
     const gatilhos = (): unknown =>
       consultar(
         banco.conexao,

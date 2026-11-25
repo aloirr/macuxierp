@@ -390,17 +390,17 @@ Defeito em produção: a porta `CriadorClienteFdv` (`modules/cadastros/api/criad
 
 Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/testes/cliente-worker-0060.db.test.ts`.
 
-## Zerar pedidos não faturados (T-0093, migração 0066)
+## Zerar pedidos não faturados (T-0093, migração 0064)
 RN-CAD-10, opção "Pedidos não faturados" do Zerar por cadastro. O mesmo desenho da 0043: o banco dá os fatos e aplica o plano; quem sai e quem fica é do `planoZeragemPedidos` do domain do pedido.
-- **Fatos:** `pedido.portal_zeragem_fatos` devolve só id, status e origem dos pedidos não excluídos (sem retrato do cliente, LGPD); `faturamento.portal_pedidos_com_uso` é a porta `pedidosComNotaOuTitulo` do faturamento: nota em qualquer situação (inclusive rascunho, rejeitada ou excluída) e título pela nota dele (o título não tem `pedido_id`).
+- **Fatos:** sem o retrato do cliente (LGPD). A nota conta em qualquer situação (inclusive rascunho, rejeitada ou excluída), e o título conta pela nota dele, porque o título não tem `pedido_id`.
 - **Reconferência no efeito:** o `pedido.portal_zerar` trava os pedidos do plano com `FOR UPDATE` e recusa com `MXC03` (HINT `pedido`) o sumido ou excluído (`sumiu`) e o faturado, faturado parcial, com nota ou com título (`em_uso`). Antes de ler as notas, `FOR SHARE` na linha do `faturamento.pedido_a_faturar`: a emissão trava essa linha com `FOR UPDATE`, então uma emissão em curso termina antes da leitura e a seguinte espera o fim do zerar.
-- **DELETE de fato** (exceção à RN-CAD-08, como no cadastros) de `aprovacao`, `pedido_evento`, `pedido_item` e `pedido`. O gatilho `somente_insercao` dessas duas primeiras passa a ser o `pedido.somente_insercao_salvo_zerar()`: a mesma recusa (42501, mesma mensagem) para UPDATE e DELETE, salvo o DELETE do dono da tabela com `macuxierp.pedido_zerar = on`, que só o `portal_zerar` liga e desliga na própria transação. Assim não há `ALTER TABLE ... DISABLE TRIGGER` (que travaria a tabela de todos os tenants até o commit). Os papéis da aplicação continuam sem DELETE.
+- **DELETE de fato** (exceção à RN-CAD-08, como no cadastros) de `aprovacao`, `pedido_evento`, `pedido_item` e `pedido`. O gatilho `somente_insercao` dessas duas primeiras passa a ser o `pedido.somente_insercao_salvo_zerar()`: a mesma recusa (42501, mesma mensagem) para UPDATE e DELETE, salvo o DELETE do dono da tabela com `macuxierp.pedido_zerar = on`, que só o `portal_zerar` liga e desliga na própria transação. Assim não há `ALTER TABLE ... DISABLE TRIGGER` (que travaria a tabela de todos os tenants até o commit).
 - **Nunca toca** faturamento (nota, XML, evento, título, fila), fiscal nem `integracao_fdv`. A numeração do pedido não volta.
 - **Pedido do FDV:** o `integracao_fdv.pedido_recebido` fica `entregue`, com o `pedido_id` antigo (UUID opaco, sem FK). Por isso o mesmo `pedido_uuid` não volta sozinho: o reenvio do Hub cai como repetido. Para "voltar pelo reenvio do FDV", o conector precisa reabrir essa linha, o que fica com o `modulo-integracao-fdv`.
 - **Lote em voo:** pedido não vai ao FDV em lote (só o retorno de status), então não há bloqueio de lote em voo. A concorrência com o recebimento e a decisão fica com o `FOR UPDATE`.
-- **Auditoria** `pedido.dados.zerar`: `{apagados: [{tabela, quantidade}], apagados_fdv}`, sem id nem dado do pedido.
+- **Auditoria** `pedido.dados.zerar`: só as contagens (com `apagados_fdv`, que a resposta da API calcula pelo plano), para não guardar id nem dado do pedido.
 
-Migração: `db/migrations/0066_pedido_portal_zerar.sql`; testes: `db/testes/pedido-portal-zerar-0066.db.test.ts`.
+Migração: `db/migrations/0064_pedido_portal_zerar.sql`; testes: `db/testes/pedido-portal-zerar-0064.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.

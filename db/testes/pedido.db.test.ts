@@ -168,7 +168,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
     );
     expect(p?.n).toBe(0);
     // as únicas SECURITY DEFINER do schema são as do portal /config (RN-CAD-10): a leitura de usos do zerar de
-    // cadastros (0043) e o zerar pedidos não faturados (0066)
+    // cadastros (0043) e o zerar pedidos não faturados (0064)
     const definer = consultar<{ f: string }>(
       banco.conexao,
       `SELECT f.oid::regprocedure::text AS f FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace
@@ -178,7 +178,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
       'pedido.portal_usos_cadastros(uuid,jsonb)',
       'pedido.portal_zeragem_fatos(uuid)',
       'pedido.portal_zerar(uuid,jsonb,text)',
-      'pedido.portal_zerar_empresa(uuid)',
     ]);
   });
 
