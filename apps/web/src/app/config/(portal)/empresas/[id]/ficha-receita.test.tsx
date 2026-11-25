@@ -49,10 +49,21 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
       expect(h.match(/>Atualizar pela Receita</g)).toHaveLength(1);
     }
   });
-  it('o endereço sai completo, com cidade/UF entre o bairro e o CEP (sem razão social nem CNPJ)', () => {
-    const h = renderToStaticMarkup(<FichaReceita empresaId={ID} ficha={ficha} fuso="America/Manaus" editavel lugar="Manaus/AM" />);
-    expect(h).toContain('Rua A, 10, Centro, Manaus/AM, CEP 69000-000');
-    expect(enderecoEmLinha(ficha, 'AM')).toBe('Rua A, 10, Centro, AM, CEP 69000-000');
+  it('consultada mas sem dados na Receita: cabeçalho com a data e o botão, texto próprio e nenhum "—" (RD-2201)', () => {
+    const toda = { ...(Object.fromEntries(Object.keys(ficha).map((k) => [k, null])) as unknown as typeof ficha), receita_consultada_em: '2026-11-24T16:00:00.000Z' };
+    const h = render(toda);
+    expect(h).toContain('Consultada em 24/11/2026 12:00');
+    expect(h).toContain('Consultada, sem dados na Receita.');
+    expect(h).not.toContain('Ainda não consultada');
+    expect(h).not.toContain('—');
+    expect(h).not.toContain('<dl');
+    expect(h.match(/>Atualizar pela Receita</g)).toHaveLength(1);
+  });
+  it('o endereço da ficha não repete a cidade/UF, que fica só no bloco Dados (RD-2200, RD-2033)', () => {
+    const h = render();
+    expect(h).toContain('Rua A, 10, Centro, CEP 69000-000');
+    expect(h).not.toContain('Manaus/AM');
+    expect(enderecoEmLinha(ficha)).toBe('Rua A, 10, Centro, CEP 69000-000');
   });
   it('sem e-mail ou telefone: traço e nenhum Revelar para o campo', () => {
     const h = render({ ...ficha, email_mascarado: null, telefone_mascarado: null });

@@ -48,3 +48,4 @@
 2026-11-24 — T-0099 — botão Ações (MenuAcoes) nas linhas do BKO e do /config (#619)
 2026-11-25 — T-0101 — aba Empresa do /config com a ficha da Receita (Atualizar pela Receita, Revelar e-mail/telefone, erros da fonte)
 2026-11-25 — T-0101/T-0093 — ajustes dos prints da v0.3.14 (cidade/UF, vazio único, zerar com N=0)
+2026-11-25 — T-0101 — v0.3.15: cidade/UF só no bloco Dados (RD-2200) e ficha consultada sem dados (RD-2201)

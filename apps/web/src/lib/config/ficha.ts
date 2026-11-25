@@ -14,16 +14,16 @@ export const dataCivil = (d: string | null): string => (d ? d.split('-').reverse
 const cep = (c: string | null) => (c ? `${c.slice(0, 5)}-${c.slice(5)}` : null);
 
 /**
- * Endereço em uma linha: "Rua X, 10, Sala 2, Centro, Manaus/AM, CEP 69000-000". A ficha só repete razão social e CNPJ
- * (ficam no bloco Dados); a cidade/UF entra no endereço (`lugar`, de `lugarDaEmpresa`). Partes ausentes saem; tudo ausente vira "—".
+ * Endereço em uma linha: "Rua X, 10, Sala 2, Centro, CEP 69000-000". A cidade/UF fica só no bloco Dados (RD-2033), sem repetir aqui.
+ * Partes ausentes saem; tudo ausente vira "—".
  */
-export function enderecoEmLinha(f: Pick<FichaReceitaPlanaMascarada, 'logradouro' | 'numero' | 'complemento' | 'bairro' | 'cep'>, lugar: string | null = null): string {
-  const partes = [f.logradouro, f.numero, f.complemento, f.bairro, lugar, cep(f.cep) ? `CEP ${cep(f.cep)}` : null].filter((p): p is string => !!p && p.trim() !== '');
+export function enderecoEmLinha(f: Pick<FichaReceitaPlanaMascarada, 'logradouro' | 'numero' | 'complemento' | 'bairro' | 'cep'>): string {
+  const partes = [f.logradouro, f.numero, f.complemento, f.bairro, cep(f.cep) ? `CEP ${cep(f.cep)}` : null].filter((p): p is string => !!p && p.trim() !== '');
   return partes.length > 0 ? partes.join(', ') : AUSENTE;
 }
 
 /** Linhas da ficha, na ordem da tela. Razão social, CNPJ e cidade/UF ficam no bloco Dados; CNAE secundários, e-mail e telefone têm lugar próprio. */
-export function linhasDaFicha(f: FichaReceitaPlanaMascarada, lugar: string | null = null): LinhaDado[] {
+export function linhasDaFicha(f: FichaReceitaPlanaMascarada): LinhaDado[] {
   return [
     { rotulo: 'Nome fantasia', valor: ou(f.nome_fantasia) },
     { rotulo: 'Inscrição estadual', valor: ou(f.ie) },
@@ -33,14 +33,15 @@ export function linhasDaFicha(f: FichaReceitaPlanaMascarada, lugar: string | nul
     { rotulo: 'Porte', valor: ou(f.porte) },
     { rotulo: 'Regime', valor: f.regime_receita ? REGIMES[f.regime_receita] : AUSENTE },
     { rotulo: 'CNAE principal', valor: ou(f.cnae_principal) },
-    { rotulo: 'Endereço', valor: enderecoEmLinha(f, lugar) },
+    { rotulo: 'Endereço', valor: enderecoEmLinha(f) },
   ];
 }
 
-/** Ficha sem nenhum dado (nunca consultada): vale como sem ficha, com um só estado vazio na tela. */
+/** Ficha sem nenhum dado (a data da consulta não conta): vale como sem ficha, com um só estado vazio na tela (RD-2201). */
 export function fichaVazia(f: FichaReceitaPlanaMascarada | null): f is null {
   if (!f) return true;
-  const { cnae_secundarios: sec, ...resto } = f;
+  const { cnae_secundarios: sec, receita_consultada_em: consultadaEm, ...resto } = f;
+  void consultadaEm;
   return Object.values(resto).every((v) => v === null || v === '') && (!sec || sec.length === 0);
 }
 

@@ -3,7 +3,7 @@ import type { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { dadosDaEmpresa, lugarDaEmpresa } from '@/lib/config/empresa';
+import { dadosDaEmpresa } from '@/lib/config/empresa';
 import { fichaVazia } from '@/lib/config/ficha';
 import type { Resultado } from '@/lib/config/executar';
 import { validarMotivo } from '@/lib/config/formularios';
@@ -30,7 +30,7 @@ export function PainelEmpresa({ empresa, deps, chaves, ficha = null }: { empresa
     <>
       <RegiaoErros temErro={temErro} />
       <BlocoDados empresa={empresa} ficha={fichaVazia(ficha) ? null : ficha} />
-      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} lugar={lugarDaEmpresa(empresa, ficha)} />
+      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
       <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
       <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
       <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />
