@@ -415,11 +415,23 @@ ADR 0012 §4, emenda da ficha, mais data de abertura, natureza jurídica, porte 
 
 Migração: `db/migrations/0063_core_empresa_ficha_receita.sql`; testes: `db/testes/empresa-ficha-receita-0063.db.test.ts`.
 
+## Zerar pedidos não faturados (T-0093, migração 0064)
+RN-CAD-10, opção "Pedidos não faturados" do Zerar por cadastro. O mesmo desenho da 0043: o banco dá os fatos e aplica o plano; quem sai e quem fica é do `planoZeragemPedidos` do domain do pedido.
+- **Fatos:** sem o retrato do cliente (LGPD). A nota conta em qualquer situação (inclusive rascunho, rejeitada ou excluída), e o título conta pela nota dele, porque o título não tem `pedido_id`.
+- **Reconferência no efeito:** o `pedido.portal_zerar` trava os pedidos do plano com `FOR UPDATE` e recusa com `MXC03` (HINT `pedido`) o sumido ou excluído (`sumiu`) e o faturado, faturado parcial, com nota ou com título (`em_uso`). Antes de ler as notas, `FOR SHARE` na linha do `faturamento.pedido_a_faturar`: a emissão trava essa linha com `FOR UPDATE`, então uma emissão em curso termina antes da leitura e a seguinte espera o fim do zerar.
+- **DELETE de fato** (exceção à RN-CAD-08, como no cadastros) de `aprovacao`, `pedido_evento`, `pedido_item` e `pedido`. O gatilho `somente_insercao` dessas duas primeiras passa a ser o `pedido.somente_insercao_salvo_zerar()`: a mesma recusa (42501, mesma mensagem) para UPDATE e DELETE, salvo o DELETE do dono da tabela com `macuxierp.pedido_zerar = on`, que só o `portal_zerar` liga e deixa vazia depois do DELETE, na própria transação. Assim não há `ALTER TABLE ... DISABLE TRIGGER` (que travaria a tabela de todos os tenants até o commit).
+- **Nunca toca** faturamento (nota, XML, evento, título, fila), fiscal nem `integracao_fdv`. A numeração do pedido não volta.
+- **Pedido do FDV:** o `integracao_fdv.pedido_recebido` fica `entregue`, com o `pedido_id` antigo (UUID opaco, sem FK). Por isso o mesmo `pedido_uuid` não volta sozinho: o reenvio do Hub cai como repetido. Para "voltar pelo reenvio do FDV", o conector precisa reabrir essa linha, o que fica com o `modulo-integracao-fdv`.
+- **Lote em voo:** pedido não vai ao FDV em lote (só o retorno de status), então não há bloqueio de lote em voo. A concorrência com o recebimento e a decisão fica com o `FOR UPDATE`.
+- **Auditoria** `pedido.dados.zerar`: só as contagens (com `apagados_fdv`, que a resposta da API calcula pelo plano), para não guardar id nem dado do pedido.
+
+Migração: `db/migrations/0064_pedido_portal_zerar.sql`; testes: `db/testes/pedido-portal-zerar-0064.db.test.ts`.
+
 ## Critério 3 do zerar de pedidos: reenvio do FDV e a_faturar (T-0093, migração 0065)
-Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api` chama as duas funções depois do `pedido.portal_zerar`, na mesma transação. Assim, ou tudo sai, ou nada sai.
+Desenho em `docs/desenho/T-0093.md` §2: a porta `aposZerarPedidos` da `apps/api` chama as duas funções depois do `pedido.portal_zerar`, na mesma transação. Assim, ou tudo sai, ou nada sai. Nenhuma das duas toca nota, XML nem título.
 - **DELETE, não índice parcial:** o desenho preferia `deleted_at` com o UNIQUE `(tenant_id, pedido_uuid)` trocado por índice único parcial. Isso não cabe em migração aditiva, por dois motivos: o recebimento da versão atual faz `ON CONFLICT (tenant_id, pedido_uuid)` sem predicado, que não infere índice parcial (42P10); e a FK do `retorno_enviado` precisa de UNIQUE completo. Por isso o `pedido_recebido` do pedido zerado sai de fato, e o reenvio do Hub volta a inseri-lo como `recebido`.
 - **Retornos:** a FK leva junto **todo** `retorno_enviado` do pedido, não só o pendente: o pendente não pode ir ao FDV, e o histórico do pedido apagado não serve ao pedido novo (a ordem do Hub recomeça). Um envio já em voo no worker atualiza 0 linhas.
-- **a_faturar:** só `a_faturar` vira `cancelado`, com `UPDATE` em vez de `DELETE`, para guardar o histórico. O pedido que volta ganha um id novo (`randomUUID` no recebedor), então o `UNIQUE (tenant_id, pedido_id)` não o barra. `faturado_parcial`/`faturado` não chega aqui (o plano já recusa pedido com nota ou título); se chegar, a função recusa (defesa), sem tocar nota, XML nem título.
+- **a_faturar:** `UPDATE` para `cancelado` em vez de `DELETE`, para guardar o histórico. O pedido que volta ganha um id novo (`randomUUID` no recebedor), então o `UNIQUE (tenant_id, pedido_id)` não o barra. A recusa de `faturado_parcial`/`faturado` é defesa: o plano já recusa pedido com nota ou título.
 - **Sem licença na conferência:** a limpeza vale com o `integracao-fdv` ou o `faturamento` desligados, porque o `portal_zerar` já exigiu o pedido licenciado e a empresa ativa. A auditoria vai sem `request_id`, porque a assinatura do desenho não o traz; ela vai ao lado do `pedido.dados.zerar` da mesma transação.
 
 Migração: `db/migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes: `db/testes/zerar-pedidos-criterio3-0065.db.test.ts`.

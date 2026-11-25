@@ -16,15 +16,16 @@ import {
   consultar,
   criarBancoDeTeste,
   executar,
-  falhaDetalhada,
   linhas,
   PG_DISPONIVEL,
   permitirSetRole,
+  recusaCompleta,
   recusaDetalhada,
+  retratoDoTenant,
   rodarComo,
   rodarScript,
   sessaoSql,
-  verboso,
+  type Tabela,
 } from './apoio.ts';
 import {
   fixtureFaturamento,
@@ -45,14 +46,14 @@ const LIBERAR = 'integracao_fdv.portal_liberar_reenvio_pedidos(uuid, uuid[])';
 const DESCARTAR = 'faturamento.portal_descartar_a_faturar(uuid, uuid[])';
 const INTERNA = 'plataforma.portal_lista_pedidos(uuid, uuid[])';
 /** Tabelas fiscais e financeiras que as duas nunca tocam (regra 7). */
-const FISCAIS = [
-  'faturamento.nota',
-  'faturamento.nota_item',
-  'faturamento.nota_xml',
-  'faturamento.nota_evento',
-  'faturamento.titulo',
-  'faturamento.titulo_baixa',
-  'faturamento.inutilizacao',
+const FISCAIS: Tabela[] = ['nota', 'nota_item', 'nota_xml', 'nota_evento', 'titulo', 'titulo_baixa', 'inutilizacao'].map(
+  (tabela) => ({ esquema: 'faturamento', tabela }),
+);
+const TUDO: Tabela[] = [
+  { esquema: 'integracao_fdv', tabela: 'pedido_recebido' },
+  { esquema: 'integracao_fdv', tabela: 'retorno_enviado' },
+  { esquema: 'faturamento', tabela: 'pedido_a_faturar' },
+  ...FISCAIS,
 ];
 
 // Pedidos zerados de A (ids fictícios): P1 do FDV com retornos, P2 do FDV sem retorno, P3 faturado (defesa).
@@ -96,28 +97,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — critério 3 do zerar de ped
   const lista = (ids: string[]): string => `ARRAY[${ids.map((i) => `'${i}'`).join(', ')}]::uuid[]`;
   const chamar = (f: 'liberar' | 'descartar', t: string, ids: string[]): unknown =>
     JSON.parse(linhas(rodarComo(banco.conexao, chamadaSql(f, t, lista(ids)), { papel: CONFIG }))[0] ?? 'null');
-  const codigoDe = (sql: string): { codigo: string | undefined; detalhe: string | undefined } => {
-    const e = falhaDetalhada(() => executar(banco.conexao, verboso(sql), { papel: CONFIG }));
-    return {
-      codigo: /ERROR:\s+([0-9A-Z]{5}):/.exec(e.saida)?.[1],
-      detalhe: /DETAIL:\s+(\S+)/.exec(e.saida)?.[1],
-    };
-  };
-  /** Contagem e hash do conteúdo das tabelas, no tenant. */
-  const retrato = (t: string, tabelas: string[]): Record<string, string> =>
-    Object.fromEntries(
-      consultar<{ t: string; h: string }>(
-        banco.conexao,
-        tabelas
-          .map(
-            (x) =>
-              `SELECT '${x}' AS t, count(*) || ':' || md5(coalesce(string_agg(to_jsonb(z)::text, ',' ORDER BY to_jsonb(z)::text), '')) AS h
-                 FROM ${x} z WHERE z.tenant_id = '${t}'`,
-          )
-          .join('\nUNION ALL\n'),
-      ).map((x) => [x.t, x.h]),
-    );
-  const TUDO = ['integracao_fdv.pedido_recebido', 'integracao_fdv.retorno_enviado', 'faturamento.pedido_a_faturar', ...FISCAIS];
+  const recusa = (sql: string, codigo: string, mensagem: RegExp, detalhe?: string, dica?: string): void =>
+    recusaCompleta(banco.conexao, sql, { codigo, detalhe, mensagem, ...(dica ? { dica } : {}) }, { papel: CONFIG });
   const statusAFaturar = (t: string, pedido: string): string =>
     um<{ s: string }>(`SELECT status AS s FROM faturamento.pedido_a_faturar WHERE tenant_id = '${t}' AND pedido_id = '${pedido}'`).s;
   const recebidos = (t: string): string[] =>
@@ -181,47 +162,48 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
   });
 
   it('(b) barreiras: sem sessão MXS01; nulo ou fora do formato 23514; empresa inexistente P0002; nada muda', () => {
-    const antes = [retrato(A.id, TUDO), retrato(B.id, TUDO)];
+    const antes = [retratoDoTenant(banco.conexao, A.id, TUDO), retratoDoTenant(banco.conexao, B.id, TUDO)];
     for (const f of ['liberar', 'descartar'] as const) {
-      const sem = chamadaSql(f, A.id, lista([P1])).replace(sessaoSql(sessao), '');
-      expect({ f, ...codigoDe(sem) }).toEqual({ f, codigo: 'MXS01', detalhe: undefined });
+      recusa(chamadaSql(f, A.id, lista([P1])).replace(sessaoSql(sessao), ''), 'MXS01', /sessão de superadmin inválida/);
       for (const ids of ['NULL::uuid[]', `ARRAY['${P1}', NULL]::uuid[]`, `ARRAY[ARRAY['${P1}'::uuid], ARRAY['${P2}'::uuid]]`]) {
-        expect({ f, ids, ...codigoDe(chamadaSql(f, A.id, ids)) }).toEqual({ f, ids, codigo: '23514', detalhe: undefined });
+        recusa(chamadaSql(f, A.id, ids), '23514', /lista de pedidos nula ou com nulo/);
       }
-      expect({ f, ...codigoDe(chamadaSql(f, A.id, lista([P1])).replace(`'${A.id}'`, 'NULL')) }).toEqual({
-        f,
-        codigo: '23514',
-        detalhe: undefined,
-      });
-      expect({ f, ...codigoDe(chamadaSql(f, randomUUID(), lista([P1]))) }).toEqual({ f, codigo: 'P0002', detalhe: undefined });
+      recusa(chamadaSql(f, A.id, lista([P1])).replace(`'${A.id}'`, 'NULL'), 'P0002', /empresa não encontrada/);
+      recusa(chamadaSql(f, randomUUID(), lista([P1])), 'P0002', /empresa não encontrada/);
     }
-    expect([retrato(A.id, TUDO), retrato(B.id, TUDO)]).toEqual(antes);
+    expect([retratoDoTenant(banco.conexao, A.id, TUDO), retratoDoTenant(banco.conexao, B.id, TUDO)]).toEqual(antes);
   });
 
   it('(c) descartar: faturado na lista = MXC03 em_uso e nada muda', () => {
-    const antes = retrato(A.id, TUDO);
-    expect(codigoDe(chamadaSql('descartar', A.id, lista([P2, P3])))).toEqual({ codigo: 'MXC03', detalhe: 'em_uso' });
-    expect(retrato(A.id, TUDO)).toEqual(antes);
+    const antes = retratoDoTenant(banco.conexao, A.id, TUDO);
+    recusa(chamadaSql('descartar', A.id, lista([P2, P3])), 'MXC03', /o estado mudou/, 'em_uso', 'pedido');
+    expect(retratoDoTenant(banco.conexao, A.id, TUDO)).toEqual(antes);
   });
 
   it('(d) outro tenant: a empresa B com os ids de A não muda nada (nem em A)', () => {
-    const antes = [retrato(A.id, TUDO), retrato(B.id, TUDO)];
+    const antes = [retratoDoTenant(banco.conexao, A.id,TUDO), retratoDoTenant(banco.conexao, B.id,TUDO)];
     // P2 só existe em A: pela empresa B, nada sai (o P1 de B com o mesmo id de A fica para o (g), pela empresa A)
     expect(chamar('liberar', B.id, [P2])).toEqual({ pedidos_liberados: 0, retornos_descartados: 0 });
     expect(chamar('descartar', B.id, [P2])).toEqual({ a_faturar_cancelados: 0 });
-    expect([retrato(A.id, TUDO), retrato(B.id, TUDO)]).toEqual(antes);
+    expect([retratoDoTenant(banco.conexao, A.id,TUDO), retratoDoTenant(banco.conexao, B.id,TUDO)]).toEqual(antes);
   });
 
   it('(e) trava: com o pedido_recebido preso por outra transação, a liberação espera (lock_timeout) e nada muda', async () => {
-    const antes = retrato(A.id, TUDO);
+    const antes = retratoDoTenant(banco.conexao, A.id,TUDO);
     const segura = rodarScriptAssincrono(
       banco.conexao,
       `BEGIN;\nSELECT 1 FROM integracao_fdv.pedido_recebido WHERE tenant_id = '${A.id}' AND pedido_uuid = '${U2}' FOR UPDATE;\nSELECT pg_sleep(1.5);\nCOMMIT;\n`,
     );
     await new Promise((r) => setTimeout(r, 300));
-    expect(codigoDe(`SET LOCAL lock_timeout = '200ms';\n${chamadaSql('liberar', A.id, lista([P1, P2]))}`).codigo).toBe('55P03');
+    recusaDetalhada(
+      banco.conexao,
+      `SET LOCAL lock_timeout = '200ms';\n${chamadaSql('liberar', A.id, lista([P1, P2]))}`,
+      '55P03',
+      /lock timeout/,
+      { papel: CONFIG },
+    );
     await segura;
-    expect(retrato(A.id, TUDO)).toEqual(antes);
+    expect(retratoDoTenant(banco.conexao, A.id,TUDO)).toEqual(antes);
   });
 
   it('(f) descartar trava com FOR UPDATE até a linha que não muda (cancelado): outra transação não a pega', async () => {
@@ -233,19 +215,18 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       `SET ROLE ${CONFIG};\nBEGIN;\n${chamadaSql('descartar', A.id, lista([pc]))}\nSELECT pg_sleep(1.5);\nCOMMIT;\n`,
     );
     await new Promise((r) => setTimeout(r, 400));
-    const e = falhaDetalhada(() =>
-      executar(
-        banco.conexao,
-        verboso(`SELECT 1 FROM faturamento.pedido_a_faturar WHERE tenant_id = '${A.id}' AND pedido_id = '${pc}' FOR UPDATE NOWAIT;`),
-      ),
+    recusaDetalhada(
+      banco.conexao,
+      `SELECT 1 FROM faturamento.pedido_a_faturar WHERE tenant_id = '${A.id}' AND pedido_id = '${pc}' FOR UPDATE NOWAIT;`,
+      '55P03',
+      /could not obtain lock/,
     );
-    expect(e.saida).toContain('55P03');
     expect(linhas(await config)).toContain('{"a_faturar_cancelados": 0}');
   });
 
   it('(g) efeito: P1 e P2 liberados com os retornos de P1; a_faturar cancelado; B, nota, XML e título intactos; de novo = 0', () => {
-    const antesB = retrato(B.id, TUDO);
-    const fiscaisA = retrato(A.id, FISCAIS);
+    const antesB = retratoDoTenant(banco.conexao, B.id,TUDO);
+    const fiscaisA = retratoDoTenant(banco.conexao, A.id,FISCAIS);
     expect(chamar('liberar', A.id, [P1, P2, P1])).toEqual({ pedidos_liberados: 2, retornos_descartados: 2 });
     expect(recebidos(A.id)).toEqual([A.pedidoFdv]);
     expect(
@@ -268,14 +249,14 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(
       um<{ e: string; p: string | null }>(`SELECT estado AS e, pedido_id AS p FROM integracao_fdv.pedido_recebido WHERE tenant_id = '${A.id}' AND pedido_uuid = '${U1}'`),
     ).toEqual({ e: 'recebido', p: null });
-    expect(retrato(B.id, TUDO)).toEqual(antesB);
-    expect(retrato(A.id, FISCAIS)).toEqual(fiscaisA);
+    expect(retratoDoTenant(banco.conexao, B.id,TUDO)).toEqual(antesB);
+    expect(retratoDoTenant(banco.conexao, A.id,FISCAIS)).toEqual(fiscaisA);
     // idempotentes: de novo = 0 e nada muda
-    const antes = retrato(A.id, TUDO);
+    const antes = retratoDoTenant(banco.conexao, A.id,TUDO);
     expect(chamar('liberar', A.id, [P1, P2])).toEqual({ pedidos_liberados: 0, retornos_descartados: 0 });
     expect(chamar('descartar', A.id, [P1, P2])).toEqual({ a_faturar_cancelados: 0 });
     expect(chamar('liberar', A.id, [])).toEqual({ pedidos_liberados: 0, retornos_descartados: 0 });
-    expect(retrato(A.id, TUDO)).toEqual(antes);
+    expect(retratoDoTenant(banco.conexao, A.id,TUDO)).toEqual(antes);
   });
 
   it('(h) auditoria: uma linha por chamada, do superadmin, só com as contagens (sem id nem dado do pedido)', () => {
@@ -308,8 +289,8 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         `SELECT p.oid::regprocedure::text AS f, p.prosecdef, p.proconfig, p.proacl::text AS acl FROM pg_proc p
           WHERE p.oid = ANY (ARRAY[${[LIBERAR, DESCARTAR, INTERNA].map((f) => `'${f}'::regprocedure`).join(', ')}]::oid[]) ORDER BY 1`,
       );
-    const antes = [retrato(A.id, TUDO), retrato(B.id, TUDO), priv()];
+    const antes = [retratoDoTenant(banco.conexao, A.id,TUDO), retratoDoTenant(banco.conexao, B.id,TUDO), priv()];
     rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
-    expect([retrato(A.id, TUDO), retrato(B.id, TUDO), priv()]).toEqual(antes);
+    expect([retratoDoTenant(banco.conexao, A.id,TUDO), retratoDoTenant(banco.conexao, B.id,TUDO), priv()]).toEqual(antes);
   });
 });
