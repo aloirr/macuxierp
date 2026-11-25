@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escopoDaCarteira, planejarTransferencia } from './carteira';
+import { escopoDaCarteira, planejarTransferencia, vincularVendedorFdv } from './carteira';
 
 const A = '00000000-0000-4000-8000-00000000000a';
 const B = '00000000-0000-4000-8000-00000000000b';
@@ -27,5 +27,20 @@ describe('carteira', () => {
   it('D7: origem igual ao destino ou carteira vazia é recusado', () => {
     expect(planejarTransferencia({ de: A, para: A, cliente_ids: undefined, carteira_de: [C1] }).ok).toBe(false);
     expect(planejarTransferencia({ de: A, para: B, cliente_ids: undefined, carteira_de: [] }).ok).toBe(false);
+  });
+});
+
+describe('carteira do cliente vindo do FDV (T-0105 item 2)', () => {
+  it('D7: sem vendedor_external_id o cliente nasce sem carteira e sem aviso', () => {
+    expect(vincularVendedorFdv(undefined, null)).toEqual({ vendedor_id: null, aviso: null });
+    expect(vincularVendedorFdv('  ', null)).toEqual({ vendedor_id: null, aviso: null });
+  });
+  it('D7: vendedor ativo conferido entra na carteira dele', () => {
+    expect(vincularVendedorFdv(' V01 ', { vendedor_id: A, ativo: true })).toEqual({ vendedor_id: A, aviso: null });
+  });
+  it('D7: vendedor inexistente ou inativo não recusa o cliente: nasce sem carteira e com aviso', () => {
+    expect(vincularVendedorFdv('V99', { vendedor_id: null, ativo: false })).toEqual({ vendedor_id: null, aviso: 'vendedor_fdv_nao_encontrado' });
+    expect(vincularVendedorFdv('V99', null)).toEqual({ vendedor_id: null, aviso: 'vendedor_fdv_nao_encontrado' });
+    expect(vincularVendedorFdv('V02', { vendedor_id: A, ativo: false })).toEqual({ vendedor_id: null, aviso: 'vendedor_fdv_inativo' });
   });
 });
