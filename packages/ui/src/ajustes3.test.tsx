@@ -12,10 +12,10 @@ describe('hover dos botões (T-0021)', () => {
   const css = gerarCssBotoes();
   it('principal: fundo e borda em grafite; secundário: fundo névoa; só desabilitado fica de fora', () => {
     const bloco = (sel: string) => css.split(sel + ' {')[1]!.split('}')[0]!;
-    const p = bloco('.mx-botao:hover:not(:disabled)');
+    const p = bloco('.mx-botao:hover:not(:disabled):not([aria-disabled="true"])');
     expect(p).toContain('background: var(--mx-cor-grafite);');
     expect(p).toContain('border: 1px solid var(--mx-cor-grafite);');
-    expect(bloco('.mx-botao-secundario:hover:not(:disabled)')).toContain('background: var(--mx-cor-nevoa);');
+    expect(bloco('.mx-botao-secundario:hover:not(:disabled):not([aria-disabled="true"])')).toContain('background: var(--mx-cor-nevoa);');
   });
   it('sem brightness', () => {
     expect(css).not.toMatch(/brightness/);

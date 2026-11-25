@@ -146,9 +146,9 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-botao', botaoPrincipal()) +
     regraCss('.mx-botao-secundario', botaoSecundario()) +
     regraCss('.mx-botao-destrutivo', botaoDestrutivo()) +
-    regraCss('.mx-botao:hover:not(:disabled)', botaoPrincipalHover) +
-    regraCss('.mx-botao-secundario:hover:not(:disabled)', botaoSecundarioHover) +
-    regraCss('.mx-olho:hover:not(:disabled)', olhoHover) +
+    regraCss('.mx-botao:hover:not(:disabled):not([aria-disabled="true"])', botaoPrincipalHover) +
+    regraCss('.mx-botao-secundario:hover:not(:disabled):not([aria-disabled="true"])', botaoSecundarioHover) +
+    regraCss('.mx-olho:hover:not(:disabled):not([aria-disabled="true"])', olhoHover) +
     regraCss('.mx-botao:focus-visible, .mx-botao-secundario:focus-visible, .mx-botao-destrutivo:focus-visible', focoVisivel) +
     regraCss('.mx-olho:focus-visible', focoOlho) +
     regraCss('.mx-radio', radioBase) +
@@ -158,7 +158,7 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-checkbox:checked', checkboxMarcado) +
     regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
-    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled', desabilitadoEstilo(true)) +
+    regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled, .mx-botao[aria-disabled="true"], .mx-botao-secundario[aria-disabled="true"], .mx-botao-destrutivo[aria-disabled="true"]', desabilitadoEstilo(true)) +
     regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true)) +
     cssMenuAcoes()
   );
