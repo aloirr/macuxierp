@@ -66,16 +66,27 @@ nenhum fluxo de produção insere nessa tabela, então todo tenant mostra "—" 
 A fonte é a pública do RF-CAD-02 (BrasilAPI ou base aberta; a escolha final sai na emenda de ADR do engenheiro). No
 teste a fonte é um dublê da porta, nunca a rede.
 
-Pendente: código fora do main; ADR conferido, ver nota.
+Etapa 1 no main (25/11, madrugada de Manaus): domínio e contratos do core (#637) e `data_abertura` na `SugestaoCnpj`
+dos cadastros (#640). Testes do dono rodados e verdes: `modules/core/domain/ficha-receita.test.ts` (25/25: máscaras com
+paridade da 0035, mapeamento completo, nomes dos campos alterados, falha sem apagar a anterior, CNPJ divergente,
+mensagem sem dado da empresa, Revelar sem auditoria quando vazio) e `modules/cadastros/contracts/sugestao-cnpj.test.ts`
+mais `modules/cadastros/api/consultas.test.ts` (24/24). Contrato em `tests/integracao/rn/ficha-receita-contrato.test.ts`
+(5/5): a ficha completa da decisão do gerente está no `FichaReceita` e no `FichaReceitaMascarada` (abertura, natureza
+jurídica, porte, CNAE principal e secundários, endereço com `municipio_ibge`, regime, data e fonte; o mascarado sem as
+chaves `email`/`telefone`), o resultado de "Atualizar pela Receita" passa no contrato sem e-mail nem telefone, e core e
+cadastros concordam na abertura, natureza, porte e CNAE da mesma resposta da BrasilAPI. Divergências entre core e
+cadastros fora do caso feliz (recado ao modulo-core): o core aceita abertura inexistente (`2014-02-30`) e não converte
+`DD/MM/AAAA`; nos CNAE secundários o core mantém o principal e os repetidos, os cadastros tiram. Rota, Revelar,
+auditoria e log ficam para a etapa 2.
 
 | # | Critério verificável (critério da tarefa) | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
-| R-1 | (1) "Atualizar pela Receita" no /config (só superadmin; outro perfil: 403) grava a ficha completa: razão social, nome fantasia, CNPJ, situação, abertura, natureza jurídica, porte, CNAE principal e secundários, endereço, e-mail e telefone, com a data e a fonte da consulta; a leitura devolve todos os campos. | rota | `tests/integracao/plataforma/empresa-ficha.db.test.ts` | modulo-core (+ cadastros pela consulta CNPJ) + banco-dados | pendente |
-| R-2 | (1) Falha da fonte (tempo esgotado, CNPJ não encontrado, 5xx, resposta fora do formato): a ficha gravada não muda (nem a data da consulta), a resposta traz o motivo do catálogo (sem o CNPJ nem o corpo da fonte) e a tela mostra a mensagem no lugar, sem "Algo deu errado". | rota + tela | `empresa-ficha.db.test.ts` + e2e | modulo-core + apps/web | pendente |
-| R-3 | (2) E-mail e telefone mascarados na resposta de leitura e na tela; a resposta não contém o e-mail nem o telefone da massa inteiros (nem só os dígitos). | rota + tela | `empresa-ficha.db.test.ts` + `docs/testes/prints/T-0101/` | modulo-core + apps/web | pendente |
-| R-4 | (2) "Revelar" no /config, só superadmin (admin de empresa e outros: 403 e nenhuma linha): devolve o valor inteiro e grava a auditoria igual à do `plataforma.admin.revelar_email` (ADR 0012): ação própria, superadmin, entidade e campo, sem o valor. | banco + rota | `empresa-ficha.db.test.ts` | modulo-core + banco-dados | pendente |
-| R-5 | (2) LGPD: o log capturado da API durante R-1, R-2 e R-4 não contém e-mail, telefone, CPF do MEI nem o corpo da fonte. | rota | `empresa-ficha.db.test.ts` | core | pendente |
-| R-6 | Tenant sem `core.empresa`: "Atualizar pela Receita" responde 409 `CONFLITO` com "Cadastre a filial padrão antes", e nada é gravado (ADR 0012, emenda da ficha). | rota | `empresa-ficha.db.test.ts` | modulo-core | pendente |
+| R-1 | (1) "Atualizar pela Receita" no /config (só superadmin; outro perfil: 403) grava a ficha completa: razão social, nome fantasia, CNPJ, situação, abertura, natureza jurídica, porte, CNAE principal e secundários, endereço, e-mail e telefone, com a data e a fonte da consulta; a leitura devolve todos os campos. | rota | `tests/integracao/plataforma/empresa-ficha.db.test.ts` | modulo-core (+ cadastros pela consulta CNPJ) + banco-dados | parcial: contrato e domínio feitos (ficha completa no contrato, mapeamento e nomes dos campos alterados: dono 25/25 + `tests/integracao/rn/ficha-receita-contrato.test.ts` 5/5); rota, 403, gravação e auditoria `atualizar_receita` pendentes (etapa 2) |
+| R-2 | (1) Falha da fonte (tempo esgotado, CNPJ não encontrado, 5xx, resposta fora do formato): a ficha gravada não muda (nem a data da consulta), a resposta traz o motivo do catálogo (sem o CNPJ nem o corpo da fonte) e a tela mostra a mensagem no lugar, sem "Algo deu errado". | rota + tela | `empresa-ficha.db.test.ts` + e2e | modulo-core + apps/web | parcial: domínio feito (dono: falha não apaga a anterior, motivo do catálogo, mensagem sem dado da empresa); rota, data da consulta intacta no banco e tela pendentes (etapa 2) |
+| R-3 | (2) E-mail e telefone mascarados na resposta de leitura e na tela; a resposta não contém o e-mail nem o telefone da massa inteiros (nem só os dígitos). | rota + tela | `empresa-ficha.db.test.ts` + `docs/testes/prints/T-0101/` | modulo-core + apps/web | parcial: máscaras no domínio (dono, paridade com a 0035) e contrato mascarado sem `email`/`telefone` (`ficha-receita-contrato.test.ts`); resposta da rota e print pendentes (etapa 2) |
+| R-4 | (2) "Revelar" no /config, só superadmin (admin de empresa e outros: 403 e nenhuma linha): devolve o valor inteiro e grava a auditoria igual à do `plataforma.admin.revelar_email` (ADR 0012): ação própria, superadmin, entidade e campo, sem o valor. | banco + rota | `empresa-ficha.db.test.ts` | modulo-core + banco-dados | parcial: `revelarContato` no domínio (dono: valor, formato, sem auditoria quando vazio, campo fora de email/telefone recusado); rota, 403 e auditoria `revelar_contato` pendentes (etapa 2) |
+| R-5 | (2) LGPD: o log capturado da API durante R-1, R-2 e R-4 não contém e-mail, telefone, CPF do MEI nem o corpo da fonte. | rota | `empresa-ficha.db.test.ts` | core | pendente (etapa 2: precisa da API e do log capturado) |
+| R-6 | Tenant sem `core.empresa`: "Atualizar pela Receita" responde 409 `CONFLITO` com "Cadastre a filial padrão antes", e nada é gravado (ADR 0012, emenda da ficha). | rota | `empresa-ficha.db.test.ts` | modulo-core | pendente (etapa 2: rota) |
 
 Conferência do ADR 0012, emenda da ficha (#613, 24/11, 23h50 de Manaus): R-2 a R-5 batem com o ADR (máscara
 "do****@gmail.com" e "(92) ****-1234", revelar com `plataforma.empresa.revelar_contato` só com o campo e o
@@ -166,11 +177,11 @@ O teste do script na suíte de scripts é do dono (critério 2); o `testes` conf
 | # | Critério verificável | Tipo | Onde (previsto) | Dono do código validado | Situação |
 |---|---|---|---|---|---|
 | O-1 | (1) `--listar` mostra cada superadmin com o e-mail mascarado, a situação (ativo ou inativo) e a data do último acesso; nem a saída nem o log capturado contêm um e-mail inteiro da massa. | script | `tests/integracao/plataforma/operador-superadmin-listar.db.test.ts` (operador.sh real com o `docker` falso) | engenheiro-software | feito (mais o `scripts/deploy/superadmin-listar.test.mjs` do dono) |
-| O-2 | É só leitura (nenhuma linha muda em `plataforma.superadmin`) e registra quem pediu (`--operador`), sem e-mail; sem `--operador`, recusa como as outras ações; sem superadmin, lista vazia e saída 0. | script | `operador-superadmin-listar.db.test.ts` | engenheiro-software | falha (aguarda a auditoria do --listar, engenheiro-software, depois da T-0093; R-20261124-233002) |
+| O-2 | É só leitura (nenhuma linha muda em `plataforma.superadmin`) e registra quem pediu (`--operador`), sem e-mail; sem `--operador`, recusa como as outras ações; sem superadmin, lista vazia e saída 0. | script | `operador-superadmin-listar.db.test.ts` | engenheiro-software | feito (#638): 6/6 verdes; exatamente 1 registro `plataforma.superadmin.listar` por chamada, com `depois` = {quantidade = linhas listadas, operador, motivo}, `request_id` `operador-<uuid>` e nenhum campo com e-mail, parte local, domínio nem máscara; a única escrita do SQL é o INSERT em `plataforma.auditoria` e nenhuma coluna de `plataforma.superadmin` muda |
 
 O-2: decisão do gerente (24/11, ~23h45 de Manaus): o `--listar` grava a auditoria com quem pediu e a contagem, sem
-e-mail. Só leitura, recusas e lista vazia já estão no teste; o caso da auditoria fica fora do arquivo (sem `.skip`) até
-o código existir e entra junto com ele.
+e-mail. Com o #638 o SQL saiu do `BEGIN READ ONLY` (passa a `BEGIN … COMMIT` por causa do INSERT da auditoria); a
+asserção do READ ONLY, que caía no main desde o #638, passou a "nenhuma escrita fora de `plataforma.auditoria`".
 
 ## Pendências da v0.3.12 (entram se couberem)
 

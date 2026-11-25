@@ -6,10 +6,10 @@
  * - O-1: cada superadmin vivo numa linha, com o e-mail mascarado pela `plataforma.mascarar_email` do próprio banco, a
  *   situação (ativo ou desativado) e o último acesso em Manaus ("nunca" sem acesso); o excluído fica de fora; nenhum
  *   e-mail inteiro nem a parte local na saída, no argv nem no ambiente do psql;
- * - O-2: só leitura (BEGIN READ ONLY, nenhuma linha de plataforma.superadmin muda); sem --operador, com --email ou com
- *   --confirmar, recusa sem chamar o banco; sem superadmin, "0 superadmin(s)" e saída 0.
- * Fora daqui até o código existir: a auditoria do --listar (quem pediu e a contagem, sem e-mail), decisão do gerente
- * sobre R-20261124-233002; o caso entra com o código (plano da v0.3.13, O-2).
+ * - O-2: nenhuma linha de plataforma.superadmin muda (a única escrita do SQL é o INSERT em plataforma.auditoria); a
+ *   auditoria `plataforma.superadmin.listar` (#638, decisão do gerente sobre R-20261124-233002) é exatamente 1 registro
+ *   por chamada, com o operador, a contagem igual às linhas listadas e o request_id, sem e-mail nem parte de um; sem
+ *   --operador, com --email ou com --confirmar, recusa sem chamar o banco; sem superadmin, "0 superadmin(s)" e saída 0.
  * Dados fictícios (exemplo.invalid). Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -103,12 +103,38 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh superadmin --listar no PostgreSQL (
     expect(r.psql).not.toMatch(/MACUXIERP_SUPERADMIN_EMAIL=/);
   });
 
-  it('O-2: só leitura: a lista sai de um BEGIN READ ONLY e nenhuma coluna de plataforma.superadmin muda', async () => {
+  it('O-2: nenhuma coluna de plataforma.superadmin muda; a única escrita do SQL é o INSERT em plataforma.auditoria', async () => {
     const antes = await tabela();
     const r = listar();
     expect(r.status).toBe(0);
-    expect(r.sql).toMatch(/^BEGIN READ ONLY;$/m);
+    expect(r.sql).not.toMatch(/\b(UPDATE|DELETE|TRUNCATE|MERGE)\b/i);
+    expect([...r.sql.matchAll(/\bINSERT\s+INTO\s+([\w.]+)/gi)].map((m) => m[1])).toEqual(['plataforma.auditoria']);
     expect(await tabela()).toEqual(antes);
+  });
+
+  it('O-2: auditoria do --listar: exatamente 1 registro novo, com o operador, a contagem das linhas listadas e o request_id, sem e-mail', async () => {
+    const OPERADOR = 'operador.t0103';
+    const auditados = async () =>
+      (await b.admin.query("SELECT * FROM plataforma.auditoria WHERE acao = 'plataforma.superadmin.listar' ORDER BY created_at, id")).rows;
+    const antes = await auditados();
+    const r = listar(['--operador', OPERADOR]);
+    expect(r.status).toBe(0);
+    const listadas = r.saida.split('\n').filter((l) => l.includes('e-mail (mascarado): ')).length;
+    expect(listadas).toBe(VIVOS.length);
+    const depois = await auditados();
+    expect(depois).toHaveLength(antes.length + 1);
+    const novo = depois.find((d) => !antes.some((a) => a.id === d.id))!;
+    expect(novo).toMatchObject({ acao: 'plataforma.superadmin.listar', entidade: 'superadmin', entidade_id: null, antes: null, usuario_id: null });
+    expect(novo.depois).toEqual({ quantidade: listadas, operador: OPERADOR, motivo: 'operador.sh' });
+    expect(novo.request_id).toMatch(/^operador-[0-9a-f-]{36}$/);
+    // Regra 8: nenhum campo do registro com e-mail, parte local, domínio ou máscara da massa.
+    const texto = JSON.stringify(novo).toLowerCase();
+    expect(texto).not.toContain('@');
+    expect(texto).not.toContain('exemplo.invalid');
+    for (const email of [...VIVOS, EXCLUIDO]) {
+      expect(texto).not.toContain(email.split('@')[0]!);
+      expect(texto).not.toContain((await mascarado(email)).toLowerCase());
+    }
   });
 
   it('O-2: sem --operador, com --email ou com --confirmar, recusa sem chamar o banco', () => {
