@@ -167,13 +167,19 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
       "SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = 'pedido' AND policyname <> 'isolamento_tenant'",
     );
     expect(p?.n).toBe(0);
-    // a única SECURITY DEFINER do schema é a leitura de usos do zerar (0043, RN-CAD-10)
+    // as únicas SECURITY DEFINER do schema são as do portal /config (RN-CAD-10): a leitura de usos do zerar de
+    // cadastros (0043) e o zerar pedidos não faturados (0066)
     const definer = consultar<{ f: string }>(
       banco.conexao,
       `SELECT f.oid::regprocedure::text AS f FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace
        WHERE n.nspname = 'pedido' AND f.prosecdef ORDER BY 1`,
     );
-    expect(definer.map((x) => x.f)).toEqual(['pedido.portal_usos_cadastros(uuid,jsonb)']);
+    expect(definer.map((x) => x.f).sort()).toEqual([
+      'pedido.portal_usos_cadastros(uuid,jsonb)',
+      'pedido.portal_zeragem_fatos(uuid)',
+      'pedido.portal_zerar(uuid,jsonb,text)',
+      'pedido.portal_zerar_empresa(uuid)',
+    ]);
   });
 
   it('privilégios por tabela: o esperado e nenhum DELETE nem TRUNCATE para ninguém', () => {
