@@ -4,6 +4,7 @@
  * E-mail e telefone podem ser dado pessoal (MEI): o detalhe só os devolve MASCARADOS (pelo banco) e o valor completo só
  * sai no Revelar, auditado. Nada disso vai para log, auditoria (só nomes de campo), lista nem busca (regra 8).
  */
+import { EmailUsuario } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
 /** Formatos e limites da ficha (os mesmos da 0065): fonte única, usada aqui e pelo domínio na normalização. */
@@ -44,7 +45,7 @@ export const FichaReceita = z.object({
   municipio_ibge: z.string().regex(FORMATO_FICHA.ibge).nullable(),
   uf: z.string().regex(FORMATO_FICHA.uf).nullable(),
   /** Minúsculas. Ausente = mantém. */
-  email: z.string().max(254).optional(),
+  email: EmailUsuario.optional(),
   /** Só dígitos (DDD + número). Ausente = mantém. */
   telefone: z.string().regex(FORMATO_FICHA.telefone).optional(),
   cnae_principal: Cnae.nullable(),

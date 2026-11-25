@@ -5,6 +5,7 @@
  */
 import { Cnpj, ConsultaLista, EmailUsuario, MODULOS, paginaDe, PERFIS } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
+import { FORMATO_FICHA } from './ficha-receita';
 import { OrigemCertificado } from '@macuxierp/platform-sdk/certificado-origem';
 
 export const MODULO = 'core' as const;
@@ -31,8 +32,8 @@ export type ListaConsulta = ConsultaLista;
 // Empresa (RF-CORE-01)
 export const Empresa = z.object({
   id: Id,
-  razao_social: z.string().min(2).max(150),
-  nome_fantasia: z.string().max(150).nullable(),
+  razao_social: z.string().min(2).max(FORMATO_FICHA.max.razao),
+  nome_fantasia: z.string().max(FORMATO_FICHA.max.razao).nullable(),
   cnpj: Cnpj,
   ie: z.string().max(14).nullable(),
   fuso: z.string().default('America/Manaus'),
@@ -42,8 +43,8 @@ export type Empresa = z.infer<typeof Empresa>;
 
 /** O CNPJ da empresa não muda por aqui: ele amarra a raiz do A1 (D4). `updated_at` é o token de concorrência. */
 export const EmpresaEditar = z.object({
-  razao_social: z.string().trim().min(2).max(150),
-  nome_fantasia: z.string().trim().max(150).nullable(),
+  razao_social: z.string().trim().min(2).max(FORMATO_FICHA.max.razao),
+  nome_fantasia: z.string().trim().max(FORMATO_FICHA.max.razao).nullable(),
   ie: z.string().trim().max(14).nullable(),
   fuso: z.string().min(3).max(60),
   updated_at: Instante.optional(),

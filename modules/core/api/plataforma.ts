@@ -39,6 +39,7 @@ import {
   avaliarRedefinirSenhaPrimeiroAdmin,
   avaliarSituacaoEmpresa,
   gerarSenhaProvisoria,
+  MENSAGEM_SEM_CNPJ,
   mensagemDaFalhaReceita,
   prepararFichaDaConsulta,
   type ResultadoConsultaReceita,
@@ -102,6 +103,9 @@ const paraLicencas = (ms: readonly LicencaModuloPlataforma[]): Licenca[] =>
 
 /** RN-CORE-11: o código do FDV vem do slug quando o banco não o devolve. */
 const comCodigo = (e: EmpresaPlataforma): EmpresaPlataforma => ({ ...e, codigo: e.codigo ?? codigoDaEmpresa(e.slug) });
+
+/** Resposta de dado da empresa (ficha e contato): nunca em cache do navegador nem de proxy. */
+const semCache = <T>(corpo: T) => ({ corpo, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } });
 
 export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): PluginPlataforma {
   const { repo } = deps;
@@ -227,7 +231,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         const id = idDoParam(params);
         const atual = await repo.lerEmpresaComFicha(c.tx, id);
         if (!atual) throw erros.naoEncontrado('Empresa');
-        if (!atual.ficha || !atual.empresa.cnpj) throw erros.conflito('Esta empresa ainda não tem CNPJ. Cadastre a filial padrão com razão social e CNPJ e tente de novo.');
+        if (!atual.ficha || !atual.empresa.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
         if (!deps.consultaReceita) throw erros.indisponivel('Consulta de CNPJ');
         const resposta = await deps.consultaReceita.consultar(c.tx, id, atual.empresa.cnpj);
         const preparo = prepararFichaDaConsulta({ cnpj: atual.empresa.cnpj, resposta });
@@ -237,11 +241,11 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         }
         if (!preparo.ok) {
           const falha: ResultadoAtualizarReceita = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha: atual.ficha };
-          return { corpo: falha, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+          return semCache(falha);
         }
         const gravada = await repo.gravarReceita(c.tx, { id, ficha: preparo.ficha, request_id: c.request_id });
         const ok: ResultadoAtualizarReceita = { estado: 'ok', campos_alterados: gravada.alterados, ficha: gravada.ficha };
-        return { corpo: ok, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+        return semCache(ok);
       },
     }),
     definirRotaPlataforma({
@@ -254,13 +258,13 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         if (!campo.success) throw erros.validacao({ campo: 'Use email ou telefone' });
         const atual = await repo.lerEmpresaComFicha(c.tx, id);
         if (!atual) throw erros.naoEncontrado('Empresa');
-        if (!atual.ficha) throw erros.conflito('Esta empresa ainda não tem CNPJ. Cadastre a filial padrão com razão social e CNPJ e tente de novo.');
+        if (!atual.ficha) throw erros.conflito(MENSAGEM_SEM_CNPJ);
         // Sem o dado na ficha nada é revelado e nada é auditado: resposta vazia, como no desenho do ADR 0012.
         const mascarado = campo.data === 'email' ? atual.ficha.email_mascarado : atual.ficha.telefone_mascarado;
         const vazio: ContatoRevelado = { valor: null };
-        if (!mascarado) return { corpo: vazio, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+        if (!mascarado) return semCache(vazio);
         const revelado: ContatoRevelado = { valor: await repo.revelarContato(c.tx, { id, campo: campo.data, request_id: c.request_id }) };
-        return { corpo: revelado, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } };
+        return semCache(revelado);
       },
     }),
   ]);

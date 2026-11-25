@@ -72,7 +72,7 @@ export function regimeDaOpcao(mei: boolean | null | undefined, simples: boolean 
 }
 
 /** Motivo da falha da porta na linguagem do portal. */
-export function motivoDaFalhaDaFonte(m: Extract<ResultadoConsultaReceita, { ok: false }>['motivo']): MotivoFalhaReceita {
+function motivoDaFalhaDaFonte(m: Extract<ResultadoConsultaReceita, { ok: false }>['motivo']): MotivoFalhaReceita {
   if (m === 'fonte_indisponivel') return 'fonte_indisponivel';
   return m === 'nao_encontrado' ? 'cnpj_nao_encontrado' : 'cnpj_invalido';
 }
@@ -86,6 +86,8 @@ const MENSAGENS: Record<MotivoFalhaReceita, string> = {
   campo_acima_do_limite: 'A Receita enviou um dado maior do que o cadastro aceita. Tente de novo mais tarde; se continuar, avise a equipe técnica.',
   cnpj_divergente: 'A Receita respondeu sobre outro CNPJ. Tente de novo em alguns minutos.',
 };
+/** 409 das rotas e do 55000 do banco: a empresa nasce da filial padrão (RN-CORE-14), sem ela não há CNPJ nem ficha. */
+export const MENSAGEM_SEM_CNPJ = 'Esta empresa ainda não tem CNPJ. Cadastre a filial padrão com razão social e CNPJ e tente de novo.';
 export const mensagemDaFalhaReceita = (m: MotivoFalhaReceita): string => MENSAGENS[m];
 
 /**

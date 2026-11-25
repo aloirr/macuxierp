@@ -6,6 +6,7 @@
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
 import type { CampoContato, FichaReceita, FichaReceitaMascarada } from '../contracts';
+import { MENSAGEM_SEM_CNPJ } from '../domain';
 import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
 
@@ -43,7 +44,7 @@ async function comErrosDaFicha<R>(fn: () => Promise<R>): Promise<R> {
       case 'P0002':
         throw erros.naoEncontrado('Dado da empresa');
       case '55000':
-        throw erros.conflito('Esta empresa ainda não tem CNPJ. Cadastre a filial padrão com razão social e CNPJ e tente de novo.');
+        throw erros.conflito(MENSAGEM_SEM_CNPJ);
       default:
         throw e;
     }

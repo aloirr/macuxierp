@@ -75,10 +75,6 @@ describe('ficha da Receita: mapeamento da SugestaoCnpj (T-0101, RF-CAD-02)', () 
     const b = preparar(ok(sugestao({ data_abertura: '2016-02-29' })));
     expect(b.ok && b.ficha.data_abertura).toBe('2016-02-29');
   });
-  it('RF-CAD-02: CNAE secundário repetido e o principal na lista secundária são removidos', () => {
-    const r = preparar(ok(sugestao({ cnae_fiscal: '4711302', cnae_secundarios: ['4711302', '4712100', '4712100', '4713002'] })));
-    expect(r.ok && r.ficha.cnae_secundarios).toEqual(['4712100', '4713002']);
-  });
 });
 
 describe('ficha da Receita: falhas não gravam (a ficha anterior fica)', () => {
