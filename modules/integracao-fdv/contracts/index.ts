@@ -81,8 +81,10 @@ export const RetornoErp = z.object({
       /** `NotaRetorno` do Hub (OpenAPI real, 24/11): `numero` é TEXTO (1 a 40) e `serie` texto (até 10) ou nulo; inteiro dá 400 `requisicao_invalida` (D3). */
       numero: z.string().min(1).max(40),
       serie: z.string().max(10).nullable(),
-      /** O `NotaRetorno` do Hub ainda não tem a chave de acesso: o ERP a manda assim mesmo (pedido ao FDV, D3); o Hub a ignora até ter o campo. */
+      /** Chave completa da nota, guardada no registro do retorno (dedupe de parcial); o Hub a ignora. Sai da cópia em `chave_acesso` na próxima versão (contract). */
       chave: z.string(),
+      /** T-0105: `NotaRetorno.chave_acesso` do FDV v1.0.34: opcional, nula ou exatamente 44 dígitos numéricos (chave alfanumérica vai nula, nunca recusa o retorno). */
+      chave_acesso: z.string().regex(/^\d{44}$/).nullable().optional(),
       emitida_em: z.string(),
       total_cents: CentavosLido,
     })

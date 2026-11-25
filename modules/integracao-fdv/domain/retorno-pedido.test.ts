@@ -125,6 +125,18 @@ describe('retornoDoPedido (RN-PED-05, T-0013 §6.2)', () => {
     expect(retornoDoPedido(cancelado, 'cancelado')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
     expect(retornoDoPedido(cancelado, 'rejeitado_erp')).toMatchObject({ acao: 'ignorar', motivo: 'hub_ja_terminal' });
   });
+  it('T-0105 (RN-INT-08 do FDV v1.0.34): o retorno faturado leva nota.chave_acesso com 44 dígitos, em faturado_total e faturado_parcial', () => {
+    for (const status of ['faturado', 'faturado_parcial'] as const) {
+      const r = retornoDoPedido(ev('pedido.pedido.faturado@1', { status, ambiente: 'producao', nota, itens_faturados: itens }), null, CHAVES);
+      expect(r).toMatchObject({ acao: 'enviar', corpo: { status: status === 'faturado' ? 'faturado_total' : 'faturado_parcial', nota: { chave_acesso: '1'.repeat(44) } } });
+    }
+  });
+  it('T-0105: chave fora dos 44 dígitos (ex.: CNPJ alfanumérico) não vai em chave_acesso, para o Hub não recusar o retorno inteiro', () => {
+    const alfa = { ...nota, chave: '13261112ABC34501DE35550010000001231876543214' };
+    const r = retornoDoPedido(ev('pedido.pedido.faturado@1', { status: 'faturado', ambiente: 'producao', nota: alfa, itens_faturados: itens }), null, CHAVES);
+    expect(r.acao).toBe('enviar');
+    if (r.acao === 'enviar') expect(r.corpo.nota?.chave_acesso).toBeNull();
+  });
   it('RN-PED-05: ORDEM_HUB: integrado < parcial < total, e os terminais no mesmo degrau do total', () => {
     expect(ORDEM_HUB).toEqual({ integrado: 1, faturado_parcial: 2, faturado_total: 3, rejeitado_erp: 3, cancelado: 3 });
   });
