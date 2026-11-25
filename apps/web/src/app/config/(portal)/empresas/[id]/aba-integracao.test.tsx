@@ -51,7 +51,8 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(n);
     expect(h.match(/>Ações<\/button>/g)).toHaveLength(n);
     for (const x of ['Produtos', 'Clientes', 'Estoque']) expect(h).toContain(`aria-label="Ações de ${x}"`);
-    expect(h).not.toMatch(/>Zerar<|>Desligar<|>Ligar<|min-width:\s*480px/);
+    expect(h).not.toMatch(/>Zerar<|>Desligar<|>Ligar<|min-width:\s*480px/); // Zerar é perigo no menu, nunca solto na linha (marca, botao-acoes)
+    expect(h).not.toContain('botao-perigo-contorno');
     expect(h).not.toContain('Reenviar tudo');
     expect(h).toContain('Corrija a credencial do conector.');
     expect(h).toMatch(/>Log<\/button>/); // Produtos está em dia
@@ -156,12 +157,6 @@ describe('aba Integração do /config (T-0056)', () => {
     const d = dados();
     d.cadastros[0]!.ultimo_envio_em = '2026-11-22T14:05:00.000Z';
     expect(linhasCadastros(d, 'America/Manaus')[0]?.ultimoEnvio).toMatch(/10:05/);
-  });
-  it('marca (botao-acoes): Zerar não fica solto na linha; é perigo no menu, e a linha só mostra a principal e o "Ações"', () => {
-    const h = render();
-    expect(h).not.toContain('>Zerar<');
-    expect(h).not.toContain('botao-perigo-contorno');
-    expect(h).not.toContain('barra-acoes" style="margin:0;min-width');
   });
   it('🟡 marca: "Atualizado às hh:mm" tem a classe que o 390 usa para descer abaixo do título do Monitor', () => {
     const h = render(dados(), monitor());

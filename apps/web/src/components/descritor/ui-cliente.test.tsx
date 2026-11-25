@@ -40,9 +40,9 @@ describe('ações de linha da TabelaVista (T-0099)', () => {
     expect(h.match(/mx-acoes-alvo/g)).toHaveLength(1);
   });
   it('repartição: a primeira é principal; destrutiva nunca fica solta (vai ao menu como perigo)', () => {
-    expect(repartirAcoes([emitir, parcial, inativar], true)).toEqual({ principal: emitir, noMenu: [parcial, inativar] });
-    expect(repartirAcoes([inativar], true)).toEqual({ principal: undefined, noMenu: [inativar] });
-    expect(repartirAcoes([emitir, parcial], false)).toEqual({ principal: undefined, noMenu: [emitir, parcial] });
+    expect(repartirAcoes([emitir, parcial, inativar], true)).toEqual({ principal: emitir, menu: [parcial, inativar] });
+    expect(repartirAcoes([inativar], true)).toEqual({ principal: undefined, menu: [inativar] });
+    expect(repartirAcoes([emitir, parcial], false)).toEqual({ principal: undefined, menu: [emitir, parcial] });
     const h = html([{ chave: '1', celulas: { a: '1' }, acao: inativar }]);
     expect(h).not.toContain('>Inativar<');
     expect(h).toContain('aria-haspopup="menu"');
