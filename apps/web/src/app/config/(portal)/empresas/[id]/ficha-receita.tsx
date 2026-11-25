@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from 'react';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { AUSENTE } from '@/lib/config/empresa';
-import { fichaVazia, linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
+import { TEXTO_FICHA_VAZIA, estadoDaFicha, linhasDaFicha, origemDaConsulta, textosCnaeSecundarios } from '@/lib/config/ficha';
 import { atualizarReceitaAcao, revelarContatoAcao } from '../acoes-ficha';
 
 interface Props {
@@ -14,11 +14,6 @@ interface Props {
   fuso: string;
   /** Empresa encerrada não consulta a Receita. */
   editavel: boolean;
-}
-
-/** Texto de um CNAE secundário: ponto único para virar "codigo · descricao" quando o contrato trouxer {codigo, descricao}. */
-function textoCnae(c: string): string {
-  return c;
 }
 
 /** E-mail ou telefone: mascarado (pelo banco) até o "Mostrar". */
@@ -34,7 +29,9 @@ function Contato({ empresaId, campo, rotulo, mascarado }: { empresaId: string; c
 /** Bloco "Ficha da Receita" da aba Empresa (T-0101). Só o superadmin chega aqui (todo o /config é do superadmin). */
 export function FichaReceita({ empresaId, ficha: fichaRecebida, fuso, editavel }: Props) {
   const consulta = fichaRecebida ? origemDaConsulta(fichaRecebida, fuso) : null;
-  const ficha = fichaVazia(fichaRecebida) ? null : fichaRecebida;
+  const estado = estadoDaFicha(fichaRecebida);
+  const ficha = estado === 'com_dados' ? fichaRecebida : null;
+  const secundarios = ficha ? textosCnaeSecundarios(ficha) : [];
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
@@ -73,19 +70,19 @@ export function FichaReceita({ empresaId, ficha: fichaRecebida, fuso, editavel }
             <Contato empresaId={empresaId} campo="email" rotulo="E-mail" mascarado={ficha.email_mascarado} />
             <Contato empresaId={empresaId} campo="telefone" rotulo="Telefone" mascarado={ficha.telefone_mascarado} />
           </dl>
-          {ficha.cnae_secundarios && ficha.cnae_secundarios.length > 0 && (
+          {secundarios.length > 0 && (
             <>
               <h3>CNAE secundários</h3>
               <ul className="lista-cnae">
-                {ficha.cnae_secundarios.map((c) => (
-                  <li key={c}>{textoCnae(c)}</li>
+                {secundarios.map((t) => (
+                  <li key={t}>{t}</li>
                 ))}
               </ul>
             </>
           )}
         </>
       ) : (
-        <p className="apoio">{consulta ? 'Consultada, sem dados na Receita.' : 'Ainda não consultada. Use Atualizar pela Receita.'}</p>
+        <p className="apoio">{estado === 'com_dados' ? null : TEXTO_FICHA_VAZIA[estado]}</p>
       )}
     </section>
   );

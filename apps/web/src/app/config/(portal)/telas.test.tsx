@@ -133,7 +133,9 @@ describe('empresa: dados e e-mail do 1º administrador', () => {
     const f = { municipio_ibge: '1302603', uf: 'AM' };
     expect(dadosDaEmpresa(semLugar, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('AM');
     expect(dadosDaEmpresa({ ...semLugar, cidade: 'Manaus' }, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Manaus/AM');
-    expect(dadosDaEmpresa(semLugar, { municipio_ibge: null, uf: null }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+    expect(dadosDaEmpresa(semLugar, { uf: null }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+    expect(dadosDaEmpresa(semLugar, { ...f, municipio_nome: 'Manaus' }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Manaus/AM');
+    expect(dadosDaEmpresa({ ...semLugar, cidade: 'Parintins' }, { ...f, municipio_nome: 'Manaus' }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Parintins/AM');
     expect(dadosDaEmpresa(semLugar).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
   });
 });

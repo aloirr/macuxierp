@@ -5,7 +5,7 @@ import { AVISO_ZERAR_INATIVA_FDV, ZeragemPlataformaResposta } from '@macuxierp/p
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
 import { AVISO_LIMITE_FDV, AVISO_ZERAR, BLOQUEIO_LOTE, textoSemChave } from '@/lib/config/cargas';
-import { ZerarCadastro } from './zerar-cadastro';
+import { ResumoPrevia, ZerarCadastro } from './zerar-cadastro';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const zerar = (entidade: 'produto' | 'forma_pagamento' | 'cliente_endereco', previaInicial: ZeragemPlataformaResposta | null = null) =>
@@ -17,6 +17,11 @@ const previa = (extra: Record<string, unknown> = {}) => ZeragemPlataformaRespost
 });
 
 describe('Zerar por cadastro na aba Integração (T-0086)', () => {
+  it('prévia sem junto, mantidos, anulados nem sem_chave: não renderiza o contêiner (T-0106)', () => {
+    const vazia = previa({ efetivos: ['produto'], mantidos: [], anulados: [], sem_chave: 0 });
+    expect(renderToStaticMarkup(<ResumoPrevia previa={vazia} escolhidos={['produto']} />)).toBe('');
+    expect(renderToStaticMarkup(<ResumoPrevia previa={previa({ sem_chave: 2 })} escolhidos={['produto']} />)).toContain('previa-zerar');
+  });
   it('avisa que apaga, que também inativa no FDV, pede a frase literal e começa desligado', () => {
     const h = zerar('produto', previa());
     expect(h).toContain(AVISO_ZERAR);
