@@ -609,6 +609,23 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect(hub.chamadas.filter((c) => c.pedido.metodo === 'POST')).toHaveLength(1);
     });
 
+    it('T-0085: lote misto de unidades: o fator fracionário é recusado só nele (quantidade_fracionaria no Log) e o inteiro segue', async () => {
+      const t = await criarTenant(efemero.admin, 'env-frac', ['integracao-fdv']);
+      const cred = await criarCredencial(efemero.admin, t);
+      await espelho(efemero.admin, t, 'produto', payloadProduto('PROD'), { confirmado: true });
+      const un = (id: string, fator: number) => ({ external_id: id, ativo: true, produto_external_id: 'PROD', unidade: 'CX', fator, padrao: false });
+      await espelho(efemero.admin, t, 'produto_unidade', un('U-INT', 12), { alterado: new Date('2026-11-22T09:00:00.000Z') });
+      await espelho(efemero.admin, t, 'produto_unidade', un('U-FRAC', 1.5), { alterado: new Date('2026-11-22T09:00:01.000Z') });
+      await cursorEntidade(efemero.admin, t, 'produto_unidade', { credencialId: cred, cursor: { em: new Date(AGORA.getTime() - 86_400_000), id: 'ANT' } });
+      const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
+      await ciclo(banco, agenda, hub, AGORA, [t]);
+      const corpo = hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }>; linhas_invalidas: Array<Record<string, unknown>> };
+      expect(corpo.registros.map((r) => r.external_id)).toEqual(['U-INT']);
+      expect(corpo.linhas_invalidas).toEqual([{ external_id: 'U-FRAC', codigo: 'formato_invalido', campo: 'fator', mensagem: expect.stringContaining('só aceita número inteiro') }]);
+      expect(JSON.stringify(corpo)).not.toContain('1.5');
+      expect(await adm('SELECT codigo, campo, origem FROM integracao_fdv.lote_erro WHERE tenant_id = $1', [t])).toEqual([{ codigo: 'quantidade_fracionaria', campo: 'fator', origem: 'erp' }]);
+    });
+
     it('RN-INF-03: linhas inválidas firmes já declaradas saem da fila e não travam os válidos atrás delas (o hash guarda o evento novo)', async () => {
       const t = await criarTenant(efemero.admin, 'env-m', ['integracao-fdv']);
       const cred = await criarCredencial(efemero.admin, t);

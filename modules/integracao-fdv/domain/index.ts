@@ -10,6 +10,7 @@ export * from './mapeamento';
 export * from './mensagens';
 export * from './operacao';
 export * from './parcelas';
+export * from './quantidade-hub';
 export * from './recomposicao';
 export * from './resposta';
 export * from './status';
