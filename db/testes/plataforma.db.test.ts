@@ -114,7 +114,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — plataforma (T-0003, lote 1)
        FROM information_schema.columns WHERE table_schema = ANY ('{${SCHEMAS.join(',')}}')
          AND (data_type IN ('real', 'double precision', 'numeric', 'money')
            OR (column_name LIKE '%centavos' AND data_type <> 'bigint'))
-         -- exceção fechada (0061, T-0096): coordenada geográfica não é dinheiro nem quantidade; numeric(9, 6) exato
+         -- T-0096: coordenada não é dinheiro nem quantidade; numeric(9,6) é exato (decisão do gerente, 24/11 23h33)
          AND NOT (table_schema = 'cadastros' AND table_name = 'cliente_endereco' AND column_name IN ('latitude', 'longitude')
                   AND data_type = 'numeric')`,
     );

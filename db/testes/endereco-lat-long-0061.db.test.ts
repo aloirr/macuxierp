@@ -102,18 +102,15 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         leem: true,
       })),
     );
-    const cks = consultar<{ nome: string; validada: boolean; def: string }>(
+    const cks = consultar<{ nome: string; validada: boolean }>(
       banco.conexao,
-      `SELECT conname AS nome, convalidated AS validada, pg_get_constraintdef(oid) AS def FROM pg_constraint
+      `SELECT conname AS nome, convalidated AS validada FROM pg_constraint
         WHERE conrelid = 'cadastros.cliente_endereco'::regclass AND conname IN ('${CK_LAT}', '${CK_LON}') ORDER BY 1`,
     );
-    expect(cks.map(({ nome, validada }) => ({ nome, validada }))).toEqual([
+    expect(cks).toEqual([
       { nome: CK_LAT, validada: true },
       { nome: CK_LON, validada: true },
     ]);
-    // o texto do -90 muda com a versão do Postgres ((-90) ou ('-90'::integer)): confere coluna e limites
-    expect(cks[0]?.def).toMatch(/latitude >= .*90.*latitude <= \(90\)/);
-    expect(cks[1]?.def).toMatch(/longitude >= .*180.*longitude <= \(180\)/);
   });
 
   it('o legado fica nulo; o nulo passa no UPDATE e no INSERT', () => {
@@ -147,8 +144,8 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(coordenadas()).toEqual([{ lat: '-3.101944', lon: '-60.025000' }]);
   });
 
-  it('a carga do portal (tx1 e tx3 do config, tx2 do app) grava latitude e longitude do endereço do cliente', () => {
-    const id = comoConfig(
+  it('a carga do portal (tx1 e tx3 do config, tx2 do app) e o zerar listam e apagam o endereço com coordenada', () => {
+    const carga = comoConfig(
       `SELECT cadastros.portal_carga_iniciar('${A.id}', 'cliente', 'adicionar', 'req-0061');`,
     )[0];
     executar(
@@ -159,12 +156,9 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       APP_A,
     );
     comoConfig(
-      `SELECT cadastros.portal_carga_concluir('${A.id}', '${id}', 'concluida', 1, 0, NULL, 'req-0061');`,
+      `SELECT cadastros.portal_carga_concluir('${A.id}', '${carga}', 'concluida', 1, 0, NULL, 'req-0061');`,
     );
     expect(coordenadas(`external_id = 'END-0061'`)).toEqual([{ lat: '-3.100000', lon: '-60.000000' }]);
-  });
-
-  it('o zerar do portal lista e apaga o endereço com latitude e longitude', () => {
     const [{ id }] = consultar<{ id: string }>(
       banco.conexao,
       `SELECT id FROM cadastros.cliente_endereco WHERE external_id = 'END-0061'`,

@@ -377,7 +377,7 @@ Migração: `db/migrations/0058_redundancias_0053_a_0057.sql`; testes: `db/teste
 - `numeric(9, 6)`: 6 casas (cerca de 11 cm) cabem com folga em ±180; o banco guarda o número exato que o FDV ou a tela mandam, sem o arredondamento do ponto flutuante. É a única exceção fechada ao "sem float nem numeric" (`db/testes/plataforma.db.test.ts`), que vale para dinheiro e quantidade; coordenada não é nenhum dos dois.
 - **Anuláveis, sem backfill:** o endereço legado e o que chega sem coordenada ficam nulos; o nulo passa nos CHECKs (faixa só quando informada). Exigir os dois juntos é regra do `domain` do cadastros, não do banco.
 - RLS, grants (por tabela, 0004: as colunas novas entram sozinhas) e gatilhos não mudam. **Funções do portal (0040 a 0058) sem mudança:** a carga e o zerar só listam `id`, `cliente_id` e `external_id` do endereço; quem grava os dados na carga é a tx2 do app.
-- Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `lock_timeout` de 5 s). Teste: `db/testes/endereco-lat-long-0061.db.test.ts` (banco até a 0060 com a massa como legado, depois a 0061; limites, nulo, carga e zerar do portal, reexecução).
+- Aditiva e reexecutável (`ADD COLUMN IF NOT EXISTS`, CHECKs conferidos em `pg_constraint`, `lock_timeout` de 5 s). Teste: `db/testes/endereco-lat-long-0061.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
