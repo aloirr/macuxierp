@@ -1,7 +1,7 @@
 /**
  * T-0098 (v0.3.13, migração 0062; RN-INF-06, decisão R-20261124-214227 opção A): o expurgo diário passa a cobrir o
  * pré-cadastro sem decisão (recebido ou reenviado), 180 dias depois da chegada da própria revisão, com o mesmo tratamento
- * do recusado. A expurgar_pre_cadastro_recusado da 0057 saiu na 0066 (expurgo-recusado-drop-0066). Dados fictícios.
+ * do recusado. Dados fictícios.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';

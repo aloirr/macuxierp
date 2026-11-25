@@ -78,7 +78,7 @@ const P = {
 /** Pedido de B com nota: a porta do faturamento pela empresa A não o vê. */
 const PB_NOTA = randomUUID();
 
-/** Nota autorizada do pedido (sqlNotaAutorizada da fixture, filial nova: o número sai 1), com título se pedido. */
+/** Nota autorizada do pedido, com título se pedido. */
 const notaDoPedido = (t: Tenant, pedido: string, cnf: number, titulo = false): string =>
   sqlNotaAutorizada(t, randomUUID(), 'homologacao', cnf, { pedido, titulo }).sql;
 

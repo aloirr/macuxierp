@@ -407,8 +407,8 @@ const RECADO_APROVACAO = 'R-20261121-120000-alexandre';
  * com guarda pendente e XML), na filial e no ambiente pedidos, série 1. Em produção grava antes a filial no
  * core.ambiente_fiscal com o recado de aprovação (RN-FAT-04). Gravada pelo admin, que passa pelas mesmas travas.
  * Use uma filial nova por nota (o número sai 1) e um `cnf` diferente por nota (a chave é única no banco).
- * Total de 1000 centavos. `ligar.pedido` grava o pedido_id da nota; `ligar.titulo` grava um título de parcela única
- * (1000 centavos, conta_como_real false) ligado à nota. Devolve o id da nota e o SQL.
+ * `ligar.pedido` grava o pedido_id da nota; `ligar.titulo` grava um título de parcela única ligado à nota. Devolve o id
+ * da nota e o SQL.
  */
 export function sqlNotaAutorizada(
   t: Tenant,

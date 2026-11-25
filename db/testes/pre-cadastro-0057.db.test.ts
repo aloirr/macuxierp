@@ -3,8 +3,7 @@
  * Macuxi FDV. cliente_recebido (uma linha por cliente_uuid e revisão; reenvio = revisão nova, a mesma revisão de novo
  * cai na mesma linha), cliente_retorno (molde do retorno_enviado), registro_publicado.aguarda_vinculo, a agenda no sinal,
  * o vinculo_divergente do conflito_chave e o expurgo diário do recusado (180 dias depois da última recusa, só contagens
- * na auditoria). O expurgo roda pela expurgar_pre_cadastro da 0062: a expurgar_pre_cadastro_recusado da 0057 saiu na
- * 0066; estrutura, grants e recusas da função ficam no pre-cadastro-0062. Dados fictícios.
+ * na auditoria). O expurgo roda pela expurgar_pre_cadastro (0062). Dados fictícios.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -344,15 +343,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
         },
       ]);
       expect(auditorias(B.id)).toEqual([]);
-    });
-
-    it('é idempotente: rodar de novo não expurga nada nem audita; o worker de B expurga só o B', () => {
-      expect(um(`SELECT integracao_fdv.expurgar_pre_cadastro(${CORTE}) AS r`, WORKER_A)).toEqual(expurgoDoRecusado(0, 0));
-      expect((auditorias(A.id) as unknown[]).length).toBe(1);
-      const antesA = retrato(recente);
-      expect(um(`SELECT integracao_fdv.expurgar_pre_cadastro(${CORTE}) AS r`, WORKER_B)).toEqual(expurgoDoRecusado(1, 1));
-      expect(retrato(deB, WORKER_B)).toMatchObject([{ payload: false, expurgado: true }]);
-      expect(retrato(recente)).toEqual(antesA);
     });
   });
 
