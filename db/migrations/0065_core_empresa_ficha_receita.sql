@@ -7,10 +7,10 @@
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE core.empresa
-  ADD COLUMN IF NOT EXISTS logradouro text CHECK (length(logradouro) <= 60),
-  ADD COLUMN IF NOT EXISTS numero text CHECK (length(numero) <= 60),
-  ADD COLUMN IF NOT EXISTS complemento text CHECK (length(complemento) <= 60),
-  ADD COLUMN IF NOT EXISTS bairro text CHECK (length(bairro) <= 60),
+  ADD COLUMN IF NOT EXISTS logradouro text CHECK (length(logradouro) <= 120),
+  ADD COLUMN IF NOT EXISTS numero text CHECK (length(numero) <= 20),
+  ADD COLUMN IF NOT EXISTS complemento text CHECK (length(complemento) <= 120),
+  ADD COLUMN IF NOT EXISTS bairro text CHECK (length(bairro) <= 80),
   ADD COLUMN IF NOT EXISTS cep text CHECK (cep ~ '^[0-9]{8}$'),
   ADD COLUMN IF NOT EXISTS municipio_ibge text CHECK (municipio_ibge ~ '^[0-9]{7}$'),
   ADD COLUMN IF NOT EXISTS uf text CHECK (uf ~ '^[A-Z]{2}$'),
@@ -18,11 +18,11 @@ ALTER TABLE core.empresa
   ADD COLUMN IF NOT EXISTS telefone text CHECK (telefone ~ '^[0-9]{10,11}$'),
   ADD COLUMN IF NOT EXISTS cnae_principal text CHECK (cnae_principal ~ '^[0-9]{7}$'),
   ADD COLUMN IF NOT EXISTS regime_receita text CHECK (regime_receita IN ('mei', 'simples', 'normal')),
-  ADD COLUMN IF NOT EXISTS situacao_cadastral text CHECK (length(situacao_cadastral) BETWEEN 1 AND 40),
+  ADD COLUMN IF NOT EXISTS situacao_cadastral text CHECK (length(situacao_cadastral) BETWEEN 1 AND 60),
   ADD COLUMN IF NOT EXISTS situacao_cadastral_data date,
   ADD COLUMN IF NOT EXISTS data_abertura date,
   ADD COLUMN IF NOT EXISTS natureza_juridica text CHECK (length(natureza_juridica) BETWEEN 1 AND 120),
-  ADD COLUMN IF NOT EXISTS porte text CHECK (length(porte) BETWEEN 1 AND 40),
+  ADD COLUMN IF NOT EXISTS porte text CHECK (length(porte) BETWEEN 1 AND 60),
   ADD COLUMN IF NOT EXISTS cnae_secundarios jsonb CHECK (jsonb_typeof(cnae_secundarios) = 'array'),
   ADD COLUMN IF NOT EXISTS receita_fonte text
     CHECK (receita_fonte IN ('brasilapi', 'viacep', 'receita-aberta', 'cache', 'sefaz')),
@@ -55,12 +55,21 @@ $$;
 COMMENT ON FUNCTION plataforma.mascarar_telefone(text) IS
   'Interna (0065): telefone mascarado para exibição: "(DDD) ****-" + 4 últimos dígitos; fora de 10 ou 11 dígitos = "****"; NULL = NULL. T-0101.';
 
-CREATE OR REPLACE FUNCTION plataforma.receita_texto(p_valor text, p_max integer) RETURNS text
-  LANGUAGE sql IMMUTABLE SECURITY DEFINER
+CREATE OR REPLACE FUNCTION plataforma.receita_texto(p_campo text, p_valor text, p_max integer) RETURNS text
+  LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
-  AS $$ SELECT left(nullif(btrim(regexp_replace(p_valor, '[[:space:]]+', ' ', 'g')), ''), p_max) $$;
-COMMENT ON FUNCTION plataforma.receita_texto(text, integer) IS
-  'Interna (0065): texto da Receita normalizado (espaços colapsados, vazio = NULL) e cortado em p_max (limites da NF-e). T-0101.';
+  AS $$
+DECLARE
+  v_txt text := nullif(btrim(regexp_replace(p_valor, '[[:space:]]+', ' ', 'g')), '');
+BEGIN
+  IF length(v_txt) > p_max THEN
+    -- Só o nome do campo, nunca o valor (LGPD).
+    RAISE EXCEPTION 'campo acima do limite: %', p_campo USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN v_txt;
+END $$;
+COMMENT ON FUNCTION plataforma.receita_texto(text, text, integer) IS
+  'Interna (0065): texto da Receita normalizado (espaços colapsados, vazio = NULL); acima de p_max = 23514 só com o nome do campo (limites do contrato do core). T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.receita_data(p_valor text) RETURNS date
   LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
@@ -182,7 +191,9 @@ BEGIN
   END IF;
 
   t := plataforma.empresa_alvo(p_id, false);
-  SELECT * INTO e FROM core.empresa x WHERE x.id = plataforma.empresa_core_id(t.id) FOR UPDATE;
+  -- deleted_at no WHERE: revalidado depois da espera pela trava (linha excluída enquanto esperava = sem linha).
+  SELECT * INTO e FROM core.empresa x
+    WHERE x.id = plataforma.empresa_core_id(t.id) AND x.deleted_at IS NULL FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'a empresa não tem cadastro (filial padrão)' USING ERRCODE = 'object_not_in_prerequisite_state';
   END IF;
@@ -198,20 +209,27 @@ BEGIN
     END IF;
   END IF;
 
-  -- Chave ausente = mantém; presente (inclusive null) = grava o valor normalizado, e o inválido vira NULL.
+  -- Chave ausente = mantém; presente (inclusive null) = grava o valor normalizado; formato inválido vira NULL; texto
+  -- acima do limite = 23514 só com o nome do campo.
   n := e;
   IF p_ficha ? 'razao_social' THEN
-    -- NOT NULL na tabela: razão social vazia ou de 1 caractere não apaga a atual.
-    v_txt := plataforma.receita_texto(p_ficha ->> 'razao_social', 60);
+    -- Limite da coluna da 0003 (60). NOT NULL na tabela: vazia ou de 1 caractere não apaga a atual.
+    v_txt := plataforma.receita_texto('razao_social', p_ficha ->> 'razao_social', 60);
     IF length(v_txt) >= 2 THEN n.razao_social := v_txt; END IF;
   END IF;
-  IF p_ficha ? 'nome_fantasia' THEN n.nome_fantasia := plataforma.receita_texto(p_ficha ->> 'nome_fantasia', 60); END IF;
-  IF p_ficha ? 'logradouro' THEN n.logradouro := plataforma.receita_texto(p_ficha ->> 'logradouro', 60); END IF;
-  IF p_ficha ? 'numero' THEN n.numero := plataforma.receita_texto(p_ficha ->> 'numero', 60); END IF;
-  IF p_ficha ? 'complemento' THEN n.complemento := plataforma.receita_texto(p_ficha ->> 'complemento', 60); END IF;
-  IF p_ficha ? 'bairro' THEN n.bairro := plataforma.receita_texto(p_ficha ->> 'bairro', 60); END IF;
+  IF p_ficha ? 'nome_fantasia' THEN
+    n.nome_fantasia := plataforma.receita_texto('nome_fantasia', p_ficha ->> 'nome_fantasia', 60);
+  END IF;
+  IF p_ficha ? 'logradouro' THEN
+    n.logradouro := plataforma.receita_texto('logradouro', p_ficha ->> 'logradouro', 120);
+  END IF;
+  IF p_ficha ? 'numero' THEN n.numero := plataforma.receita_texto('numero', p_ficha ->> 'numero', 20); END IF;
+  IF p_ficha ? 'complemento' THEN
+    n.complemento := plataforma.receita_texto('complemento', p_ficha ->> 'complemento', 120);
+  END IF;
+  IF p_ficha ? 'bairro' THEN n.bairro := plataforma.receita_texto('bairro', p_ficha ->> 'bairro', 80); END IF;
   IF p_ficha ? 'situacao_cadastral' THEN
-    n.situacao_cadastral := plataforma.receita_texto(p_ficha ->> 'situacao_cadastral', 40);
+    n.situacao_cadastral := plataforma.receita_texto('situacao_cadastral', p_ficha ->> 'situacao_cadastral', 60);
   END IF;
   IF p_ficha ? 'cep' THEN n.cep := plataforma.receita_digitos(p_ficha ->> 'cep', '^[0-9]{8}$'); END IF;
   IF p_ficha ? 'municipio_ibge' THEN
@@ -239,9 +257,9 @@ BEGIN
   END IF;
   IF p_ficha ? 'data_abertura' THEN n.data_abertura := plataforma.receita_data(p_ficha ->> 'data_abertura'); END IF;
   IF p_ficha ? 'natureza_juridica' THEN
-    n.natureza_juridica := plataforma.receita_texto(p_ficha ->> 'natureza_juridica', 120);
+    n.natureza_juridica := plataforma.receita_texto('natureza_juridica', p_ficha ->> 'natureza_juridica', 120);
   END IF;
-  IF p_ficha ? 'porte' THEN n.porte := plataforma.receita_texto(p_ficha ->> 'porte', 40); END IF;
+  IF p_ficha ? 'porte' THEN n.porte := plataforma.receita_texto('porte', p_ficha ->> 'porte', 60); END IF;
   IF p_ficha ? 'cnae_secundarios' THEN
     -- Lista de códigos de 7 dígitos, na ordem da fonte, sem repetidos; item inválido sai; não lista = NULL.
     n.cnae_secundarios := CASE WHEN jsonb_typeof(p_ficha -> 'cnae_secundarios') = 'array' THEN
@@ -273,7 +291,7 @@ BEGIN
   RETURN jsonb_build_object('ficha', plataforma.empresa_ficha_json(t.id), 'alterados', to_jsonb(v_alterados));
 END $$;
 COMMENT ON FUNCTION plataforma.empresa_gravar_receita(uuid, jsonb, text) IS
-  'Portal /config (0065): grava a ficha da Receita na core.empresa (única escrita do portal em schema de módulo, só nas colunas da ficha e na razão social), com fonte e consultado_em; chave fora da lista, fonte ou data inválida = 23514; sem core.empresa = 55000; repetição do request_id não muda nada. Audita plataforma.empresa.atualizar_receita só com os nomes dos campos e a fonte. Devolve {ficha, alterados}. Só macuxierp_config. T-0101.';
+  'Portal /config (0065): grava a ficha da Receita na core.empresa (única escrita do portal em schema de módulo, só nas colunas da ficha e na razão social), com fonte e consultado_em; chave fora da lista, fonte ou data inválida, texto acima do limite (só o nome do campo na mensagem) = 23514; sem core.empresa = 55000; repetição do request_id não muda nada. Audita plataforma.empresa.atualizar_receita só com os nomes dos campos e a fonte. Devolve {ficha, alterados}. Só macuxierp_config. T-0101.';
 
 CREATE OR REPLACE FUNCTION plataforma.empresa_contato_revelar(p_id uuid, p_campo text, p_request_id text)
   RETURNS text
@@ -309,7 +327,7 @@ COMMENT ON FUNCTION plataforma.empresa_contato_revelar(uuid, text, text) IS
 -- ---------------------------------------------------------------------------------------------------------------
 -- Privilégios: nada para PUBLIC; internas sem EXECUTE; as do portal só para macuxierp_config.
 -- ---------------------------------------------------------------------------------------------------------------
-REVOKE ALL ON FUNCTION plataforma.mascarar_telefone(text), plataforma.receita_texto(text, integer),
+REVOKE ALL ON FUNCTION plataforma.mascarar_telefone(text), plataforma.receita_texto(text, text, integer),
   plataforma.receita_data(text), plataforma.receita_digitos(text, text), plataforma.empresa_core_id(uuid),
   plataforma.empresa_ficha_json(uuid), plataforma.empresa_ler(uuid),
   plataforma.empresa_gravar_receita(uuid, jsonb, text), plataforma.empresa_contato_revelar(uuid, text, text)

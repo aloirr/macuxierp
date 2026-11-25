@@ -13,6 +13,7 @@ import {
   consultar,
   criarBancoDeTeste,
   executar,
+  falhaDetalhada,
   linhas,
   PG_DISPONIVEL,
   permitirSetRole,
@@ -20,6 +21,7 @@ import {
   rodarComo,
   rodarScript,
   sessaoSql,
+  verboso,
 } from './apoio.ts';
 import { fixtureModulos, fixturePlataforma, novoTenant } from './fixture.ts';
 import { verificarVazamento } from './vazamento.ts';
@@ -32,7 +34,7 @@ const REVELAR = 'plataforma.empresa_contato_revelar(uuid, text, text)';
 const PORTAL = ['plataforma.empresa_ler(uuid)', GRAVAR, REVELAR];
 const INTERNAS = [
   'plataforma.mascarar_telefone(text)',
-  'plataforma.receita_texto(text, integer)',
+  'plataforma.receita_texto(text, text, integer)',
   'plataforma.receita_data(text)',
   'plataforma.receita_digitos(text, text)',
   'plataforma.empresa_core_id(uuid)',
@@ -321,9 +323,54 @@ UPDATE core.empresa SET email = 'b.ficticio@empresa-b.teste', telefone = '953222
     recusaConfig(s, sql(A.id, { fonte: 'cache', consultado_em: 'ontem' }), '23514', /consultado_em inválido/);
     recusaConfig(s, sql(A.id, { fonte: 'cache', consultado_em: '2999-01-01T00:00:00Z' }), '23514', /futuro/);
     recusaConfig(s, sql(C.id, { fonte: 'brasilapi' }), '55000', /não tem cadastro/);
+    // core.empresa excluída (deleted_at) = sem linha, também 55000.
+    executar(banco.conexao, `UPDATE core.empresa SET deleted_at = now() WHERE tenant_id = '${B.id}';`);
+    recusaConfig(s, sql(B.id, { fonte: 'brasilapi' }), '55000', /não tem cadastro/);
+    executar(banco.conexao, `UPDATE core.empresa SET deleted_at = NULL WHERE tenant_id = '${B.id}';`);
     recusaConfig(s, sql(randomUUID(), { fonte: 'brasilapi' }), 'P0002', /não encontrada/);
     recusaConfig(null, sql(A.id, { fonte: 'brasilapi' }), 'MXS01', /inválida/);
     expect(auditoria('plataforma.empresa.atualizar_receita')).toHaveLength(n);
+  });
+
+  it('gravar: texto no limite exato grava; um caractere a mais = 23514 só com o nome do campo, sem o valor', () => {
+    const s = novaSessao();
+    const limites: Record<string, number> = {
+      razao_social: 60,
+      nome_fantasia: 60,
+      logradouro: 120,
+      numero: 20,
+      complemento: 120,
+      bairro: 80,
+      situacao_cadastral: 60,
+      natureza_juridica: 120,
+      porte: 60,
+    };
+    const noLimite = Object.fromEntries(Object.entries(limites).map(([k, max]) => [k, 'Q'.repeat(max)]));
+    gravar(s, B.id, { ...noLimite, fonte: 'brasilapi' }, null);
+    const colunas = Object.keys(limites);
+    const [tamanhos] = consultar<Record<string, number>>(
+      banco.conexao,
+      `SELECT ${colunas.map((c) => `length(${c}) AS ${c}`).join(', ')} FROM core.empresa WHERE tenant_id = '${B.id}'`,
+    );
+    expect(tamanhos).toEqual(limites);
+    for (const [campo, max] of Object.entries(limites)) {
+      const valor = 'Q'.repeat(max + 1);
+      const e = falhaDetalhada(() =>
+        executar(
+          banco.conexao,
+          verboso(
+            `${sessaoSql(s)}SELECT plataforma.empresa_gravar_receita('${B.id}', '${JSON.stringify({ fonte: 'brasilapi', [campo]: valor })}'::jsonb, 'r');`,
+          ),
+          { papel: CONFIG },
+        ),
+      );
+      expect({ campo, codigo: e.saida.includes('23514'), mensagem: e.mensagem }).toEqual({
+        campo,
+        codigo: true,
+        mensagem: expect.stringMatching(new RegExp(`campo acima do limite: ${campo}`)),
+      });
+      expect(e.saida.includes(valor)).toBe(false);
+    }
   });
 
   it('empresa_ler: ficha só com a lista fechada e contato mascarado; ficha null sem core.empresa; lista sem ficha', () => {
