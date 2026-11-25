@@ -31,4 +31,11 @@ describe('ConsultaCnpjParaCore (T-0101)', () => {
   it('RF-CAD-02: a fonte responde que não existe -> nao_encontrado', async () => {
     expect(await porta({ cnpj: [fonte('brasilapi', null)], cep: [] }).consultar(tx, 't', CNPJ_A)).toEqual({ ok: false, motivo: 'nao_encontrado' });
   });
+  it('erro que não é da fonte (ex.: banco) sobe, sem virar fonte_indisponivel', async () => {
+    const m = dependenciasEmMemoria({ fontes: { cnpj: [fonte('brasilapi', BRASILAPI_CNPJ)], cep: [] } });
+    const repos = m.deps.repositorios(tx);
+    const quebrado = { ...repos, consultaExterna: { ...repos.consultaExterna, obter: async () => { throw new Error('current transaction is aborted'); } } };
+    const p = criarConsultaCnpjParaCore({ repositorios: () => quebrado, fontes: m.deps.fontes, relogio: { agora: () => AGORA } });
+    await expect(p.consultar(tx, 't', CNPJ_A)).rejects.toThrow('aborted');
+  });
 });
