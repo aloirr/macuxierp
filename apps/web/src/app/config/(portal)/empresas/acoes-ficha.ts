@@ -5,7 +5,7 @@ import { atualizarReceita, revelarContato } from '@/lib/config/api';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 
 /**
- * Ações da ficha da Receita (T-0101, ADR 0012 emenda da ficha). A API revalida e audita. O e-mail ou o telefone revelado
+ * Ações da ficha da Receita (T-0101, ADR 0012 emenda da ficha). A API revalida e audita. O e-mail ou o telefone mostrado
  * sai só no `valor`: nada de log, URL ou armazenamento. A fonte pode falhar sem derrubar a tela (a ficha anterior fica);
  * a `mensagem` da falha é a do core, exibida como vem.
  */

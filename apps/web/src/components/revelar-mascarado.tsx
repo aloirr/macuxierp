@@ -4,7 +4,7 @@ import type { Resultado } from '@/lib/config/executar';
 import { AUSENTE } from '@/lib/config/empresa';
 
 interface Props {
-  /** Texto de acessibilidade do botão: "Revelar <rotulo>" (ex.: "e-mail", "telefone"). */
+  /** Texto de acessibilidade do botão: "Mostrar <rotulo>" (ex.: "e-mail", "telefone"). */
   rotulo: string;
   /** O valor que o banco já mascarou. */
   mascarado: string;
@@ -13,7 +13,7 @@ interface Props {
 }
 
 /**
- * Dado pessoal mascarado com o "Revelar"/"Ocultar" (e-mail do 1º admin, e-mail e telefone da ficha da Receita). O valor revelado
+ * Dado pessoal mascarado com o "Mostrar"/"Ocultar" (e-mail do 1º admin, e-mail e telefone da ficha da Receita). O valor mostrado
  * fica só no estado desta tela: nunca em URL, armazenamento ou log (LGPD, ADR 0012).
  */
 export function RevelarMascarado({ rotulo, mascarado, revelar }: Props) {
@@ -29,11 +29,12 @@ export function RevelarMascarado({ rotulo, mascarado, revelar }: Props) {
       else setErro(r.erro);
     });
   };
+  const acao = valor !== null ? 'Ocultar' : 'Mostrar';
   return (
     <>
       <span className="valor-mascarado">{valor ?? mascarado}</span>{' '}
-      <button className="mx-botao-secundario" type="button" disabled={pendente} aria-pressed={valor !== null} aria-label={`${valor !== null ? 'Ocultar' : 'Revelar'} ${rotulo}`} onClick={alternar}>
-        {pendente ? 'Carregando…' : valor !== null ? 'Ocultar' : 'Revelar'}
+      <button className="mx-botao-secundario" type="button" disabled={pendente} aria-pressed={valor !== null} aria-label={`${acao} ${rotulo}`} onClick={alternar}>
+        {pendente ? 'Carregando…' : acao}
       </button>
       {erro && <span className="erro-campo" role="alert"> {erro}</span>}
     </>
