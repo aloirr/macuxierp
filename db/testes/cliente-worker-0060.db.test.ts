@@ -1,4 +1,4 @@
-/** Migração 0064: o worker cria o cliente do pré-cadastro do FDV (T-0059) e a empresa da filial padrão (T-0100). Motivo em docs/banco/README.md (0064). */
+/** Migração 0060: o worker cria o cliente do pré-cadastro do FDV (T-0059) e a empresa da filial padrão (T-0100). Motivo em docs/banco/README.md (0060). */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,11 +18,11 @@ import {
 } from './apoio.ts';
 import { fixtureModulos, fixturePlataforma, novoTenant, type Tenant } from './fixture.ts';
 
-const MIGRACAO = fileURLToPath(new URL('../migrations/0064_cadastros_cliente_worker.sql', import.meta.url));
-const A = novoTenant('cliente-0064-a');
-const B = novoTenant('cliente-0064-b');
+const MIGRACAO = fileURLToPath(new URL('../migrations/0060_cadastros_cliente_worker.sql', import.meta.url));
+const A = novoTenant('cliente-0060-a');
+const B = novoTenant('cliente-0060-b');
 /** Sem core.empresa: o tenant novo, antes do consumidor core.empresa-da-filial-padrao (T-0100). */
-const C = novoTenant('cliente-0064-c');
+const C = novoTenant('cliente-0060-c');
 const WORKER = (t: Tenant) => ({ papel: 'macuxierp_worker', tenant: t.id });
 const TABELAS = ['cadastros.cliente', 'cadastros.cliente_endereco', 'cadastros.cliente_contato', 'core.empresa'] as const;
 const UUID = /^[0-9a-f-]{36}$/;
@@ -53,7 +53,7 @@ INSERT INTO plataforma.auditoria (tenant_id, acao, entidade, depois)
 INSERT INTO plataforma.evento (tenant_id, nome, agregado_id, versao, payload)
   VALUES (plataforma.tenant_atual(), 'core.empresa.alterada@1', plataforma.tenant_atual(), 1, '{}');`;
 
-describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cliente e empresa criados pelo worker (T-0059 e T-0100, 0064)', () => {
+describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cliente e empresa criados pelo worker (T-0059 e T-0100, 0060)', () => {
   let banco: BancoDeTeste;
 
   beforeAll(() => {
@@ -150,7 +150,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — cliente e empresa criados p
     recusaDetalhada(banco.conexao, 'DELETE FROM core.empresa;', '42501', /permission denied/, WORKER(A));
   });
 
-  it('a 0064 roda de novo sem erro e sem ampliar nada', () => {
+  it('a 0060 roda de novo sem erro e sem ampliar nada', () => {
     const sql = readFileSync(MIGRACAO, 'utf8');
     rodarScript(banco.conexao, sql, { transacao: true });
     rodarScript(banco.conexao, sql, { transacao: true });

@@ -382,13 +382,13 @@ Nenhum fluxo de produção gravava `core.empresa`, então a aba Empresa do /conf
 
 Migração: `db/migrations/0059_core_empresa_backfill.sql`; testes: `db/testes/empresa-backfill-0059.db.test.ts`.
 
-## Cliente criado pelo worker no pré-cadastro do FDV (T-0059, migração 0064)
+## Cliente criado pelo worker no pré-cadastro do FDV (T-0059, migração 0060)
 Defeito em produção: a porta `CriadorClienteFdv` (`modules/cadastros/api/criador-cliente-fdv.ts`) roda na transação do worker e caía em 42501 no primeiro INSERT do cliente; o pré-cadastro válido nunca virava cliente e o FDV reentregava a cada 10 min.
 - A porta só lê e insere (dentro de um SAVEPOINT): cliente, endereço e contato; o evento vai à outbox e a auditoria a `plataforma`, que o worker já grava desde a 0002. As leituras (cliente, endereço, contato, filial, `cadastros.municipio`) já eram dele (0004 e 0005). Não há sequência (ids por `gen_random_uuid()`) nem gatilho de inserção nas três tabelas, e o pré-cadastro não toca em vendedor, carteira, condição de pagamento nem tabela de preço.
 - Por isso falta só a escrita de inserção; a política `isolamento_tenant` não tem `TO` e vale para o worker (o mesmo da 0029), sem `worker_global`.
-- T-0100 (pedido do modulo-core): o consumidor `core.empresa-da-filial-padrao` roda no worker e faz `INSERT INTO core.empresa ... ON CONFLICT (tenant_id) DO NOTHING`. A 0003 só dava SELECT em `core.empresa` ao worker; a 0064 dá também INSERT, sem UPDATE nem DELETE (a empresa existente nunca é mexida pelo evento). A auditoria (`plataforma.auditoria`) e a outbox (`plataforma.evento`) do core já eram do worker desde a 0002; a `isolamento_tenant` da `core.empresa` (0003, `preparar_tabela`) não tem `TO` e vale para o worker.
+- T-0100 (pedido do modulo-core): o consumidor `core.empresa-da-filial-padrao` roda no worker e faz `INSERT INTO core.empresa ... ON CONFLICT (tenant_id) DO NOTHING`. A 0003 só dava SELECT em `core.empresa` ao worker; a 0060 dá também INSERT, sem UPDATE nem DELETE (a empresa existente nunca é mexida pelo evento). A auditoria (`plataforma.auditoria`) e a outbox (`plataforma.evento`) do core já eram do worker desde a 0002; a `isolamento_tenant` da `core.empresa` (0003, `preparar_tabela`) não tem `TO` e vale para o worker.
 
-Migração: `db/migrations/0064_cadastros_cliente_worker.sql`; testes: `db/testes/cliente-worker-0064.db.test.ts`.
+Migração: `db/migrations/0060_cadastros_cliente_worker.sql`; testes: `db/testes/cliente-worker-0060.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
