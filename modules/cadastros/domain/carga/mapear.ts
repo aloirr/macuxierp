@@ -206,7 +206,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     if (tpag === undefined && codigoForma !== undefined) {
       tpag = DICIONARIO_TPAG[codigoForma.toUpperCase()] ?? TPAG_RECUSADO;
     }
-    // RN-CAD-15: as parcelas são os dias digitados (`30/60/90`; à vista `0`), sem a notação "Nx". A regra (1 a 36 parcelas, 0 a 999 dias) é do domain e do contrato.
+    // RN-CAD-15: as parcelas são os dias digitados (`30/60/90`; à vista `0`), sem a notação "Nx". A regra (1 a 24 parcelas, 0 a 365 dias) é do domain e do contrato.
     const bruto = l.cel('parcelas_dias');
     let prazos: number[] | undefined;
     if (bruto !== undefined) {

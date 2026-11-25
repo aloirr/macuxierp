@@ -128,30 +128,30 @@ describe('mapeamento da fixture (os 8 arquivos)', () => {
     const avista = mapear('condicao_pagamento', { parcelas_dias: '0' });
     expect(avista.ok && avista.linha.dados.prazos_dias).toEqual([0]);
   });
-  it('RN-CAD-15: prazo_medio_dias do prazo é inteiro de 0 a 999; fora disso, CARGA_FORMATO no campo', () => {
+  it('RN-CAD-15: prazo_medio_dias do prazo é inteiro de 0 a 365; fora disso, CARGA_FORMATO no campo', () => {
     const ok = mapear('condicao_pagamento', { prazo_medio_dias: '45' });
     expect(ok.ok && ok.linha.dados.prazo_medio_dias).toBe(45);
     const zero = mapear('condicao_pagamento', { prazo_medio_dias: '0' });
     expect(zero.ok && zero.linha.dados.prazo_medio_dias).toBe(0);
-    for (const x of ['1000', '-1', '1,5', 'abc']) expect(mapear('condicao_pagamento', { prazo_medio_dias: x }), x).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'prazo_medio_dias' }] });
+    for (const x of ['366', '-1', '1,5', 'abc']) expect(mapear('condicao_pagamento', { prazo_medio_dias: x }), x).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'prazo_medio_dias' }] });
   });
-  it('RN-CAD-16: prazo_medio_dias do cliente é opcional, inteiro de 0 a 999', () => {
+  it('RN-CAD-16: prazo_medio_dias do cliente é opcional, inteiro de 0 a 365', () => {
     const c = mapear('cliente', { prazo_medio_dias: '30' });
     expect(c.ok && c.linha.dados.prazo_medio_dias).toBe(30);
     const sem = mapear('cliente', {});
     expect(sem.ok && sem.linha.dados.prazo_medio_dias).toBeUndefined();
-    expect(mapear('cliente', { prazo_medio_dias: '1000' })).toMatchObject({ ok: false, erros: [{ campo: 'prazo_medio_dias' }] });
+    expect(mapear('cliente', { prazo_medio_dias: '366' })).toMatchObject({ ok: false, erros: [{ campo: 'prazo_medio_dias' }] });
   });
-  it('critério 4: parcelas_dias usa a regra do contrato (1 a 36 parcelas, 0 a 999 dias) e aceita qualquer ordem; fator inteiro de 1 a 9999', () => {
+  it('critério 4: parcelas_dias usa a regra do contrato (1 a 24 parcelas, 0 a 365 dias) e aceita qualquer ordem; fator inteiro de 1 a 9999', () => {
     const r = mapear('condicao_pagamento', { parcelas_dias: '30/60/90' });
     expect(r.ok && r.linha.dados.prazos_dias).toEqual([30, 60, 90]);
     const desordenada = mapear('condicao_pagamento', { parcelas_dias: '60/30/0' });
     expect(desordenada.ok && desordenada.linha.dados.prazos_dias).toEqual([60, 30, 0]);
-    const mil = mapear('condicao_pagamento', { parcelas_dias: '999/400' });
-    expect(mil.ok && mil.linha.dados.prazos_dias).toEqual([999, 400]);
+    const max = mapear('condicao_pagamento', { parcelas_dias: '365/300' });
+    expect(max.ok && max.linha.dados.prazos_dias).toEqual([365, 300]);
     const trinta = (n: number) => Array.from({ length: n }, (_, i) => i).join('/');
-    expect(mapear('condicao_pagamento', { parcelas_dias: trinta(36) })).toMatchObject({ ok: true });
-    for (const parcelas_dias of ['1000', trinta(37), '30//60', '1,5']) {
+    expect(mapear('condicao_pagamento', { parcelas_dias: trinta(24) })).toMatchObject({ ok: true });
+    for (const parcelas_dias of ['366', trinta(25), '30//60', '1,5']) {
       expect(mapear('condicao_pagamento', { parcelas_dias }), parcelas_dias).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: expect.stringMatching(/^(parcelas|prazos)_dias/) }] });
     }
     expect(mapear('produto_unidade', { fator: '0' })).toMatchObject({ ok: false, erros: [{ codigo: 'CARGA_FORMATO', campo: 'fator' }] });

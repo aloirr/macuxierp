@@ -116,4 +116,15 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     const l = await admin<{ documento: string; ind_ie_dest: string; tipo_pessoa: string; filial_id: string }>("SELECT documento, ind_ie_dest, tipo_pessoa, filial_id FROM cadastros.cliente WHERE tenant_id = $1 AND documento IN ('52998224725','12ABC34501DE35') ORDER BY documento", [A]);
     expect(l).toEqual([{ documento: '12ABC34501DE35', ind_ie_dest: '2', tipo_pessoa: 'PJ', filial_id: filialA }, { documento: '52998224725', ind_ie_dest: '9', tipo_pessoa: 'PF', filial_id: filialA }]);
   });
+
+  it('RN-INF-08: o telefone do pré-cadastro é gravado como contato do cliente, junto com ele', async () => {
+    const d = await decidir(B, pre({ documento: '529.982.247-25', inscricao_estadual: '', telefone: '(92) 3333-4444', cliente_uuid: '88888888-8888-4888-8888-888888888888' }));
+    expect(d).toMatchObject({ status: 'vinculado' });
+    if (d.status !== 'vinculado') return;
+    const cs = await admin<Record<string, unknown>>('SELECT tenant_id, nome, telefone, email FROM cadastros.cliente_contato WHERE cliente_id = $1', [d.cliente_id]);
+    expect(cs).toEqual([{ tenant_id: B, nome: 'Contato do FDV', telefone: '9233334444', email: null }]);
+    const sem = await decidir(B, pre({ documento: '168.995.350-09', inscricao_estadual: '', telefone: null, cliente_uuid: '99999999-9999-4999-8999-999999999999' }));
+    expect(sem).toMatchObject({ status: 'vinculado' });
+    expect(await admin('SELECT 1 FROM cadastros.cliente_contato WHERE cliente_id = $1', [(sem as { cliente_id: string }).cliente_id])).toHaveLength(0);
+  });
 });
