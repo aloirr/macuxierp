@@ -1,15 +1,13 @@
 /**
- * Ficha da empresa pela Receita (T-0101, ADR 0012 emenda da ficha, RF-CAD-02). Os nomes são os da migração 0065
+ * Ficha da empresa pela Receita (T-0101, ADR 0012 emenda da ficha, RF-CAD-02). Os nomes são os da migração 0063
  * (`empresa_gravar_receita` recebe `FichaReceitaPlana`; `empresa_ler` devolve `FichaReceitaPlanaMascarada` na chave `ficha`).
- * Os nomes `FichaReceita`, `FichaReceitaMascarada` e `ResultadoAtualizarReceita` ficam com a API da etapa 1 (deprecated,
- * `ficha-receita-etapa1.ts`) até o PR de remoção.
  * E-mail e telefone podem ser dado pessoal (MEI): o detalhe só os devolve MASCARADOS (pelo banco) e o valor completo só
  * sai no Revelar, auditado. Nada disso vai para log, auditoria (só nomes de campo), lista nem busca (regra 8).
  */
 import { EmailUsuario } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 
-/** Formatos e limites da ficha (os mesmos da 0065): fonte única, usada aqui e pelo domínio na normalização. */
+/** Formatos e limites da ficha (os mesmos da 0063): fonte única, usada aqui e pelo domínio na normalização. */
 export const FORMATO_FICHA = {
   cnae: /^\d{7}$/,
   data: /^\d{4}-\d{2}-\d{2}$/,

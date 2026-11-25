@@ -150,7 +150,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     expect(t.rows[0].t).not.toContain('admin@exemplo.com.br');
   });
 
-  describe('ficha da Receita (migração 0065)', () => {
+  describe('ficha da Receita (migração 0063)', () => {
     const CNPJ_FICHA = '11222333000181';
     const FICHA: FichaReceitaPlana = {
       razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', logradouro: 'RUA A', numero: '10', complemento: null, bairro: 'CENTRO',
@@ -178,11 +178,6 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
     };
     const pluginFicha = criarPluginPlataformaCore({ repo, manifestos: MANIFESTOS_TESTE, hashSenha: async () => HASH, consultaReceita: consulta });
 
-    /** Sem a 0065 no banco de teste (PR #636 ainda fora do main) estes testes pulam. */
-    async function temFuncao0065(): Promise<boolean> {
-      const { rows } = await b.admin.query("SELECT 1 FROM pg_proc WHERE proname = 'empresa_gravar_receita'");
-      return rows.length > 0;
-    }
     async function tenantComEmpresa(): Promise<string> {
       const id = await criarTenant(b.admin, `ficha-core-${randomUUID().slice(0, 8)}`, ['core']);
       await b.admin.query(`INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Antiga', $2)`, [id, CNPJ_FICHA]);
@@ -208,8 +203,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       expect(e).toMatchObject({ code: '42501' });
     });
 
-    it('RF-CAD-02: atualiza pela Receita, devolve a ficha mascarada e audita só os nomes dos campos', async (ctx) => {
-      if (!(await temFuncao0065())) return ctx.skip();
+    it('RF-CAD-02: atualiza pela Receita, devolve a ficha mascarada e audita só os nomes dos campos', async () => {
       const id = await tenantComEmpresa();
       const r = await rota(id, '/empresas/:id/receita', {}, true);
       expect(r.corpo).toMatchObject({ estado: 'ok', ficha: { email_mascarado: 'co****@empresa.teste', telefone_mascarado: '(92) ****-1234', regime_receita: 'simples' } });
@@ -222,8 +216,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       expect(t.rows[0].t).not.toContain('EMPRESA FICTICIA');
     });
 
-    it('RF-CAD-02: Revelar devolve o contato completo, audita só o campo; sem core.empresa é 409', async (ctx) => {
-      if (!(await temFuncao0065())) return ctx.skip();
+    it('RF-CAD-02: Revelar devolve o contato completo, audita só o campo; sem core.empresa é 409', async () => {
       const id = await tenantComEmpresa();
       await comPlataforma((tx) => repo.gravarReceita(tx, { id, ficha: FICHA, request_id: randomUUID() }), true);
       const rev = await rota(id, '/empresas/:id/contato/:campo', { campo: 'email' }, true);

@@ -29,7 +29,7 @@ async function primeiraLinha<L>(tx: Transacao, sql: string, parametros: readonly
 }
 
 /**
- * Erros das funções da ficha (0065) em HTTP, com mensagem fixa (o texto do banco nunca sai: pode trazer nome de campo
+ * Erros das funções da ficha (0063) em HTTP, com mensagem fixa (o texto do banco nunca sai: pode trazer nome de campo
  * ou valor): 23514 = ficha recusada (422), P0002 = sem a empresa ou sem o dado (404), 55000 = sem core.empresa (409).
  * MXS01 (sessão inválida, 401) segue para o mapa de erros da apps/api, o mesmo das demais funções de plataforma.
  */

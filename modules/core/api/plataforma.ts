@@ -60,7 +60,7 @@ export interface RepositorioPlataforma {
   redefinirSenhaPrimeiroAdmin(tx: Transacao, p: { id: string; senha_hash: string; request_id: string }): Promise<{ usuario_id: string }>;
   /** E-mail completo do 1º admin; a função da 0035 audita só a ação (sem o e-mail). */
   revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string>;
-  /** `empresa_ler` com a chave `ficha` (0065): a ficha já vem mascarada do banco; `null` sem `core.empresa`. */
+  /** `empresa_ler` com a chave `ficha` (0063): a ficha já vem mascarada do banco; `null` sem `core.empresa`. */
   lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null>;
   /** `empresa_gravar_receita`: `alterados` são só nomes de coluna. Sem `core.empresa` (55000) = 409. */
   gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }>;
