@@ -95,6 +95,7 @@
 | [T-0101](tarefas/T-0101.md) | Ficha completa da empresa pela Receita, com "Atualizar pela Receita" e e-mail e telefone mascarados (opção C) | v0.3.13 | modulo-core | aberta | R-20261124-224709; R-20261124-225456; depende da T-0100; emenda de ADR |
 | [T-0102](tarefas/T-0102.md) | Log do motivo do não envio do "Esqueci a senha" e do aceite do SMTP | v0.3.13 | engenheiro-software | aberta | branch agente/esqueci-log-motivo (4581c1a) |
 | [T-0103](tarefas/T-0103.md) | operador.sh superadmin --listar com e-mails mascarados | v0.3.13 | engenheiro-software | aberta | R-20261124-225456 |
+| [T-0104](tarefas/T-0104.md) | Remover a expurgar_pre_cadastro_recusado antiga e acertar o comentário do worker | v0.3.14 | banco-dados | aberta | RD-1810 do #622 |
 | [T-0055](tarefas/T-0055.md) | Catálogo: atributos por empresa e compatibilidade por veículo (FDV e ERP; nova versão de produto no Hub + ADR) | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 ~12h20, pelo PO); sem data, depois da v0.3.4 e da T-0054; o lado do FDV vai ao PO do FDV |
 | T-0079 | Cadeia ICP-Brasil obrigatória para o A1 em produção | backlog | engenheiro-software | backlog | "BACKLOG" do Alexandre (23/11 22h17, pelo PO); proposta (C) da brecha do A1 autoassinado aceito no upload |
 
@@ -115,6 +116,7 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
 | T-0023 (session_019xHEXsi68pkRSBNcRmrmW9) | `docs/marca/` (PR #5) |
 
 ## Reservas
+- **24/11, 23h36 (Manaus):** **regra nova de migração (decisão do gerente, 23h22):** o número da migração é a próxima livre no main na hora do PR final, sem reserva antecipada. Motivo: o `db/src/migrar.ts` aplica por ordem alfabética e não confere número menor depois de maior, e nenhum teste cobre isso; banco novo (CI) e produção divergiriam. Em uso: **0061** = T-0096 (#624), **0062** = T-0098 (#622), **0064** = grants do worker (#621, T-0059 e T-0100); a ficha da T-0101 e as funções do zerar de pedidos (T-0093) pegam o número livre no PR. Ordem de merge: #624 → #622 → #621. T-0104 criada (v0.3.14); próxima livre **T-0105**. Faixas de RD: faturamento RD-1950–1959; apps RD-1960–1979; testes-2 RD-1910–1929; testes-3 RD-1930–1949; RD-1890–1897 do gerente usados; próxima livre fora das faixas **RD-1980**.
 - **24/11, 22h57 (Manaus):** v0.3.13 aberta (R-20261124-225456). T-0100 a T-0103 criadas; próxima livre **T-0104**. Migrações: **0059** = T-0100 (backfill da core.empresa), **0060** = T-0101 (ficha da Receita); próxima livre **0061** (as próximas tarefas pedem ao gerente). RD por sessão: apps+core RD-1760–1789; banco+integração RD-1790–1819; cadastros+pedido RD-1820–1849; engenheiro-software RD-1850–1859; testes RD-1860–1869; ux+marca RD-1870–1889; próxima livre fora das faixas **RD-1890**.
 - **24/11, 22h50 (Manaus):** T-0099 criada (botão Ações, R-20261124-224843); próxima livre **T-0100**. RD usados até RD-1758; próxima livre **RD-1759**.
 - **24/11, 22h10 (Manaus):** T-0096 (lat/long), T-0097 (fração só em KG e M) e T-0098 (expurgo do pré-cadastro sem decisão, arquivo no #592) criadas; próxima livre **T-0099**. Migrações no main até a **0058** (a 0056 ficou com o prazo do pedido e a T-0059 foi para a 0057; 0058 ajustes do corretor); próxima livre **0059**. RD usados na noite até RD-1747 (cadastros 1741–1750); próxima livre **RD-1751**. RN novas: RN-CAD-17, RN-INF-07, RN-INF-08; emendas na RN-CAD-09/10/15/16 e na RN-INF-06 (#592, depois do corte).
@@ -203,7 +205,32 @@ Gerente ativo: session_019xHEXorMcUM7hAvrbsGwJd. PO: session_019xHEXqMSs1piLUgLS
   2. T-0093, T-0096, T-0097 e T-0098.
   3. T-0102 e T-0103.
   4. As pendências da lista da v0.3.12, abaixo, entram se couberem; viram tarefa quando o dono pegar.
-- **Desvio:** carimbos adiantados ("22h55", "23h00" e "22h58" eram 22h50); corrigido às 22h52.
+- **Desvio:** carimbos adiantados de 10 a 20 min (gerente: "22h55", "23h00" e "22h58" eram 22h50; engenheiro e testes-3); corrigido às 22h52 e avisados.
+- **Sessões e divisão (23h05–23h13):**
+  - testes em 3 sessões, porque a previsão de uma sessão só era de 1398 min: testes (caminho crítico e suíte final), testes-2 (T-0099, T-0097, roteiros e2e) e testes-3 (T-0093, T-0098, e2e F-*, pendências da v0.3.12);
+  - sessões novas: ux+marca, faturamento e engenheiro-apps.
+- **Desvio de identidade:** as sessões abertas no ambiente do gerente (ux+marca, faturamento, engenheiro-apps) herdam MACUXI_AGENTE=gerente-projetos, e o guardião barra a troca. Elas trabalham por subagentes com a identidade de cada dono; nada foi contornado. Os recados delas saem `--de gerente-projetos` ou ficam no corpo do PR. A governança do CI confere dono × trailer em todo PR. É o mesmo desvio de identidade já registrado na v0.3.12, agora com mais sessões.
+- **Desvios de fluxo:**
+  - #599, #601, #603, #608 e #612 caíram na governança pelo nome do branch (`agente/T-nnnn-<assunto>`); foram refeitos por cherry-pick como #613–#616 e #611.
+  - #619 com o corretor depois do push, porque o subagente não abre subagente; os 🟡 (RD-1960, 1961, 1963, 1965) vão num PR curto antes do liberar.
+  - #626 com 2 commits (a correção do contrato-caminhos entrou sem force push).
+- **Defeitos altos da v0.3.12 em produção (T-0059), achados pela testes-3:**
+  1. o worker não registrava as agendas do pré-cadastro (`montarAgendas`) — corrigido no #620;
+  2. o `macuxierp_worker` sem INSERT em cadastros.cliente, cliente_endereco e cliente_contato — corrigido no #621 (0064).
+  - Nada se perde: os pré-cadastros ficam pendentes no FDV. Opções ao Alexandre via PO (A hotfix da tag, B na v0.3.13, C hotfix do main); recomendada e seguida a **B** até a resposta.
+  - Os testes do módulo rodavam como macuxierp_app e chamavam as agendas direto; o F-1..F-6 agora passa pelo worker real.
+- **Decisões do gerente da noite (o PO leva ao Alexandre o que for de produto):**
+  - T-0093: o Zerar não manda nada ao FDV.
+  - T-0096: lat/long fora da faixa grava nulo e o pré-cadastro segue; numeric(9,6) com exceção só nessas duas colunas no teste "sem float nem numeric" (o engenheiro pode vetar).
+  - T-0098: mesmo corte da 0057 (`<` e 5 min de folga), com o recebido_em do FDV **e** o chegou_em do ERP antes do corte; nunca apaga antes de 180 dias no ERP.
+  - T-0101: "Revelar" só para o superadmin; a ficha leva também data_abertura, natureza_juridica, porte e `cnae_secundarios` (a tarefa pede a ficha completa; ADR emendada).
+  - T-0103: o `--listar` grava na auditoria quem pediu e a contagem, sem e-mail.
+  - RN-CORE-14 (#602).
+  - RD-1953: o tipo de uso do faturamento fica local no pedido nesta versão (ciclo de pacote).
+- **v0.3.14 (anotado):**
+  - tipo neutro `PedidosComUsoFaturamento`;
+  - motivo de item desabilitado no MenuAcoes;
+  - ambientes por agente para acabar com a identidade herdada.
 
 ## 24/11 noite — v0.3.12 (Manaus)
 - **Parada:** o limite de uso da conta parou todas as sessões entre 19h28 e 21h00; a previsão foi refeita. Entre 21h11 e 21h18 o gerente e algumas sessões escreveram horários adiantados de 20 a 40 min; corrigido às 21h18 (regra: conferir com `TZ=America/Manaus date`).

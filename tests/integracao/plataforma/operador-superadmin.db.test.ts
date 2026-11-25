@@ -17,8 +17,7 @@
  * Precisa do Node >= 24.7 (crypto.argon2, como a imagem da API). Dados fictícios (exemplo.invalid).
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
-import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +27,7 @@ import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../pa
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
 import { ARGON2_PADRAO, conferirSenha } from '../../../apps/api/src/auth/senha';
-import { criarDockerFalso } from '../../apoio/operador-falso';
+import { criarPsqlPassagem, rodarOperador, type VmOperador } from '../../apoio/operador-falso';
 import { atalhosPortal, type AppPortal } from '../../apoio/portal-pg';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -61,30 +60,12 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
 
   // VM falsa (tests/apoio/operador-falso.ts) e psql de passagem (guarda SQL, argv e ambiente).
   let pasta = '';
-  let bin = '';
-  let erp = '';
-  let sqlLog = '';
-  let psqlLog = '';
+  let vm: VmOperador;
 
   beforeAll(async () => {
     if (!TEM_ARGON2_NATIVO) throw new Error(`Node ${process.versions.node} sem crypto.argon2: rode com o Node >= 24.7 (engines da raiz)`);
     pasta = mkdtempSync(join(tmpdir(), 'macuxierp-e6-operador-'));
-    ({ bin, erp } = criarDockerFalso(pasta, { repassar: ['PSQL_REAL', 'SQL_LOG', 'PSQL_LOG'] }));
-    sqlLog = join(pasta, 'sql.txt');
-    psqlLog = join(pasta, 'psql-argv.txt');
-    writeFileSync(
-      join(bin, 'psql-passagem'),
-      [
-        '#!/usr/bin/env bash',
-        'sql="$(cat)"',
-        'printf "%s\\n-- fim --\\n" "$sql" >> "$SQL_LOG"',
-        'printf "%s\\n" "$@" >> "$PSQL_LOG"',
-        'env >> "$PSQL_LOG.ambiente"',
-        'exec "$PSQL_REAL" "$@" <<< "$sql"',
-        '',
-      ].join('\n'),
-    );
-    chmodSync(join(bin, 'psql-passagem'), 0o755);
+    vm = criarPsqlPassagem(pasta, { separador: '-- fim --' });
 
     b = await criarBancoEfemero();
     ({ app } = await appPgDeTeste({ b, modulos: 'producao', logger: { level: 'info', stream: destinoDeLogs(logs) } }));
@@ -98,32 +79,12 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
 
   /** Roda o operador.sh como na VM; devolve status, saída e o SQL que chegou ao banco nesta chamada. */
   function operador(args: string[]) {
-    writeFileSync(sqlLog, '');
-    writeFileSync(psqlLog, '');
-    writeFileSync(`${psqlLog}.ambiente`, '');
-    const pg = envPsqlAdmin(b.nome);
-    const r = spawnSync('bash', [OPERADOR_SH, ...args], {
-      env: {
-        ...pg,
-        PATH: `${bin}:${process.env.PATH ?? ''}`,
-        HOME: pasta,
-        MACUXIERP_DIR: erp,
-        NODE_REAL: process.execPath,
-        MACUXIERP_PSQL: join(bin, 'psql-passagem'),
-        PSQL_REAL: process.env.MACUXI_PSQL ?? 'psql',
-        SQL_LOG: sqlLog,
-        PSQL_LOG: psqlLog,
-      },
-      input: '',
-      encoding: 'utf8',
-      timeout: 120_000,
-    });
-    const saida = `${r.stdout}${r.stderr}`;
-    saidas.push(saida);
+    const r = rodarOperador(vm, OPERADOR_SH, args, envPsqlAdmin(b.nome));
+    saidas.push(r.saida);
     // regra 8: o e-mail (em qualquer caixa) e o nome nunca saem no terminal do operador
-    expect(saida.toLowerCase()).not.toContain(EMAIL.toLowerCase());
-    expect(saida).not.toContain(NOME);
-    return { status: r.status, saida, sql: readFileSync(sqlLog, 'utf8'), psql: { argv: readFileSync(psqlLog, 'utf8'), ambiente: readFileSync(`${psqlLog}.ambiente`, 'utf8') } };
+    expect(r.saida.toLowerCase()).not.toContain(EMAIL.toLowerCase());
+    expect(r.saida).not.toContain(NOME);
+    return r;
   }
   const criar = (confirmar: boolean) =>
     operador(['criar-superadmin', '--email', EMAIL, '--nome', NOME, '--operador', 'alexandre', ...(confirmar ? ['--confirmar'] : [])]);

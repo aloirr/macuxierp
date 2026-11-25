@@ -19,7 +19,8 @@
  * apps/api/src/operador-superadmin.db.test.ts. Auditoria: ADR 0012 §5.
  * A auditoria e a saída levam só ids, números e estados; nunca e-mail, nome, senha nem hash.
  *
- * listar (T-0103): só leitura (transação READ ONLY, sem --confirmar, sem e-mail e sem auditoria). Uma linha por
+ * listar (T-0103): não altera superadmin (sem --confirmar e sem e-mail de entrada); grava só a auditoria
+ * `plataforma.superadmin.listar` com o operador, a contagem e o `request_id` (O-2, decisão do gerente). Uma linha por
  * superadmin não excluído, com o id, o e-mail MASCARADO pela `plataforma.mascarar_email` da 0035 (o e-mail completo nunca
  * sai do banco), a situação, as falhas, a trava, a troca e a temporária pendentes e o último acesso (Manaus).
  *
@@ -64,7 +65,7 @@ function lerArgumentos(argv, env) {
   if (!ACOES.includes(op.acao)) throw new ErroUso(`--acao: ${ACOES.join(', ')}`);
   if (!PADRAO_OPERADOR.test(op.operador ?? '')) throw new ErroUso('--operador exige o nome de quem executa (ex.: alexandre)');
   if (op.acao === 'listar') {
-    if (op.confirmar) throw new ErroUso('listar é só leitura: sem --confirmar');
+    if (op.confirmar) throw new ErroUso('listar não leva --confirmar');
     if (op.email) throw new ErroUso('MACUXIERP_SUPERADMIN_EMAIL (--email) não vale no listar');
   } else if (op.email.length > 254 || !PADRAO_EMAIL.test(op.email)) {
     throw new ErroUso('MACUXIERP_SUPERADMIN_EMAIL (--email) ausente ou fora do formato');
@@ -254,13 +255,21 @@ function montarSqlListar() {
     "CASE WHEN s.senha_temporaria_expira_em > now() THEN 'sim' ELSE 'não' END",
     "coalesce(to_char(s.ultimo_acesso_em AT TIME ZONE 'America/Manaus', 'DD/MM/YYYY HH24:MI'), 'nunca')",
   ];
-  return `BEGIN READ ONLY;
+  return `\\getenv operador MACUXIERP_OP_OPERADOR
+\\getenv request_id MACUXIERP_OP_REQUEST_ID
+BEGIN;
 \\o /dev/null
 SELECT set_config('app.tenant_id', plataforma.tenant_referencia()::text, true);
 \\o
 SELECT concat_ws('${SEP}', ${col.join(', ')})
 FROM plataforma.superadmin s WHERE s.deleted_at IS NULL ORDER BY s.created_at, s.id;
-ROLLBACK;
+\\o /dev/null
+INSERT INTO plataforma.auditoria (tenant_id, usuario_id, acao, entidade, entidade_id, antes, depois, request_id)
+SELECT plataforma.tenant_referencia(), NULL, 'plataforma.superadmin.listar', 'superadmin', NULL, NULL,
+  jsonb_build_object('quantidade', count(*), 'operador', :'operador', 'motivo', 'operador.sh'), :'request_id'
+FROM plataforma.superadmin WHERE deleted_at IS NULL;
+\\o
+COMMIT;
 `;
 }
 
@@ -273,7 +282,7 @@ function imprimirLista(stdout) {
     .map((l) => l.split(SEP))
     .filter((c) => c.length === CABECALHO_LISTA.length + 1 && c[0] === 'superadmin-lista')
     .map((c) => c.slice(1));
-  console.log(`[superadmin] LISTA (só leitura; nada gravado nem auditado): ${linhas.length} superadmin(s).`);
+  console.log(`[superadmin] LISTA: ${linhas.length} superadmin(s).`);
   for (const l of linhas) console.log(`  ${CABECALHO_LISTA.map((t, i) => `${t}: ${l[i]}`).join(' · ')}`);
   console.log('estado: lista');
 }

@@ -3,6 +3,7 @@
  * desligar e os textos de confirmação. Nada aqui toca a chave do conector (ela nem chega à tela depois de salva).
  */
 import { ROTULO_AMBIENTE } from '@macuxierp/integracao-fdv/web';
+import type { AcaoMenu, MenuAcoesProps } from '@macuxierp/ui';
 import { ConfigurarIntegracaoPlataformaEntrada, ENTIDADES_ENVIO_FDV, LIMITE_REGISTROS_LOTE_FDV, MOTIVOS_PAUSA_FDV, type EntidadeEnvioFdv, type IntegracaoFdvPlataforma } from '@macuxierp/platform-sdk';
 import { acaoNoPortal } from '../integracao-fdv-textos';
 import { linhaBaseFdv, type LinhaBaseFdv } from '../integracao-fdv';
@@ -72,3 +73,45 @@ export function estadoCargaCompleta(cadastro: string, d: IntegracaoFdvPlataforma
 }
 /** Texto do botão de uma operação de envio (Reprocessar, Carga completa): "Enviando…" enquanto há lote em voo. */
 export const rotuloComLote = (loteEmVoo: boolean, rotulo: string): string => (loteEmVoo ? 'Enviando…' : rotulo);
+
+/** Item do botão "Ações" (T-0099) antes de ganhar o clique: a tela liga cada `chave` à sua ação. */
+export type ItemAcaoLinha = Omit<AcaoMenu, 'aoAcionar'>;
+export interface AcoesDaLinha {
+  principal: ItemAcaoLinha;
+  menu: ItemAcaoLinha[];
+}
+
+/** Liga cada `chave` da linha ao clique em `fazer` e devolve as props do `MenuAcoes` (principal à vista e itens do menu). */
+export function menuDaLinha(a: AcoesDaLinha, fazer: Readonly<Record<string, () => void>>): Pick<MenuAcoesProps, 'principal' | 'acoes'> {
+  return {
+    principal: { rotulo: a.principal.rotulo, ...(a.principal.desabilitado !== undefined ? { desabilitado: a.principal.desabilitado } : {}), aoAcionar: fazer[a.principal.chave]! },
+    acoes: a.menu.map((x) => ({ ...x, aoAcionar: fazer[x.chave]! })),
+  };
+}
+
+/**
+ * Ações da linha de um cadastro na aba Integração (regra da marca, docs/marca/botao-acoes.md): a principal muda pela situação
+ * (pausada → Tentar de novo; com falha → Reprocessar; senão Log); as outras vão ao menu; Zerar (perigo) por último.
+ */
+export function acoesDaLinhaFdv(l: LinhaCadastroFdv, o: { bloqueado: boolean; semCredencial: boolean; licenciado: boolean }): AcoesDaLinha {
+  const todas: ItemAcaoLinha[] = [
+    { chave: 'ligar', rotulo: l.ligada ? 'Desligar' : 'Ligar', desabilitado: o.bloqueado || o.semCredencial },
+    { chave: 'retomar', rotulo: 'Tentar de novo', oculto: !l.pausada, desabilitado: o.bloqueado },
+    { chave: 'reprocessar', rotulo: rotuloComLote(l.loteEmVoo, 'Reprocessar'), desabilitado: o.bloqueado || o.semCredencial || l.loteEmVoo },
+    { chave: 'log', rotulo: 'Log', desabilitado: !o.licenciado },
+    { chave: 'zerar', rotulo: 'Zerar', perigo: true, desabilitado: o.bloqueado },
+  ];
+  const chave = l.pausada ? 'retomar' : l.falha ? 'reprocessar' : 'log';
+  return { principal: todas.find((x) => x.chave === chave)!, menu: todas.filter((x) => x.chave !== chave) };
+}
+
+/** Ações da linha da aba Dados: Importar à vista; Modelo e Carga completa (só nos cadastros ligados) no menu. */
+export function acoesDaCarga(c: EstadoCargaCompleta, pendente: boolean): AcoesDaLinha {
+  return {
+    principal: { chave: 'importar', rotulo: 'Importar' },
+    menu: [
+      { chave: 'modelo', rotulo: 'Modelo' },
+      { chave: 'carga-completa', rotulo: rotuloComLote(c.loteEmVoo, 'Carga completa'), oculto: !c.visivel, desabilitado: pendente || c.loteEmVoo },
+    ],
+  };
+}

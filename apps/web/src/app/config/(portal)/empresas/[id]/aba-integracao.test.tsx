@@ -8,7 +8,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), red
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { habilitadasApos, linhasCadastros } from '@/lib/config/integracao-fdv';
+import { acoesDaLinhaFdv, habilitadasApos, linhasCadastros, type LinhaCadastroFdv } from '@/lib/config/integracao-fdv';
 import { AbaIntegracao } from './aba-integracao';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -43,25 +43,51 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(h).toContain('Teste');
     expect(h).toContain('Produção');
   });
-  it('um botão Ligar ou Desligar por cadastro, mais Reprocessar, Zerar, Log e tentar de novo', () => {
+  const linha = (entidade: string, extra: Partial<LinhaCadastroFdv> = {}): LinhaCadastroFdv => ({ ...linhasCadastros(dados(), 'America/Manaus').find((l) => l.entidade === entidade)!, ...extra });
+  const opcoes = { bloqueado: false, semCredencial: false, licenciado: true };
+  it('uma linha, um botão "Ações" e uma ação principal só (nenhuma fileira de botões); a principal muda pela situação', () => {
     const h = render();
-    expect(h).toContain('aria-label="Desligar: Produtos"');
-    expect(h).toContain('aria-label="Ligar: Estoque"');
-    expect(h).toContain('aria-label="Reprocessar: Produtos"');
-    expect(h).toContain('aria-label="Reprocessar: Estoque"');
-    expect(h).toContain('aria-label="Zerar: Produtos"');
-    expect(h).toContain('aria-label="Log: Produtos"');
+    const n = linhasCadastros(dados(), 'America/Manaus').length;
+    expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(n);
+    expect(h.match(/>Ações<\/button>/g)).toHaveLength(n);
+    for (const x of ['Produtos', 'Clientes', 'Estoque']) expect(h).toContain(`aria-label="Ações de ${x}"`);
+    expect(h).not.toMatch(/>Zerar<|>Desligar<|>Ligar<|min-width:\s*480px/); // Zerar é perigo no menu, nunca solto na linha (marca, botao-acoes)
+    expect(h).not.toContain('botao-perigo-contorno');
     expect(h).not.toContain('Reenviar tudo');
-    expect(h).toContain('aria-label="Tentar de novo: Clientes"');
-    expect(h).not.toContain('aria-label="Tentar de novo: Produtos"');
     expect(h).toContain('Corrija a credencial do conector.');
+    expect(h).toMatch(/>Log<\/button>/); // Produtos está em dia
+    const clientes = linhasCadastros(dados(), 'America/Manaus').find((l) => l.entidade === 'cliente')!;
+    expect(clientes.pausada).toBe(true); // credencial é motivo de pausa: Tentar de novo na frente
+    expect(h).toMatch(/>Tentar de novo<\/button>/);
   });
-  it('coluna Ações: botões sem quebra, largura mínima 480 e legenda só para leitor de tela', () => {
+  it('principal por situação: pausada → Tentar de novo; falha → Reprocessar; senão Log; nunca repetida no menu', () => {
+    const emDia = acoesDaLinhaFdv(linha('produto'), opcoes);
+    expect(emDia.principal.chave).toBe('log');
+    const falha = acoesDaLinhaFdv(linha('produto', { falha: { motivo: 'x', acao: 'y' } }), opcoes);
+    expect(falha.principal.chave).toBe('reprocessar');
+    const pausada = acoesDaLinhaFdv(linha('produto', { falha: { motivo: 'x', acao: 'y' }, pausada: true }), opcoes);
+    expect(pausada.principal).toMatchObject({ chave: 'retomar', rotulo: 'Tentar de novo' });
+    for (const a of [emDia, falha, pausada]) expect(a.menu.map((x) => x.chave)).not.toContain(a.principal.chave);
+  });
+  it('Zerar é perigo, o último do menu; "Tentar de novo" some do menu quando a linha não está pausada', () => {
+    const a = acoesDaLinhaFdv(linha('produto'), opcoes);
+    expect(a.menu.at(-1)).toMatchObject({ chave: 'zerar', perigo: true });
+    expect(a.menu.filter((x) => x.perigo)).toHaveLength(1);
+    expect(a.menu.find((x) => x.chave === 'retomar')?.oculto).toBe(true);
+    expect(acoesDaLinhaFdv(linha('produto', { pausada: true }), opcoes).principal.chave).toBe('retomar');
+  });
+  it('desabilitados: sem credencial desliga Ligar e Reprocessar; bloqueio desliga Zerar; sem licença desliga o Log; lote em voo mostra "Enviando…"', () => {
+    const sem = acoesDaLinhaFdv(linha('produto'), { ...opcoes, semCredencial: true });
+    expect(sem.menu.find((x) => x.chave === 'ligar')?.desabilitado).toBe(true);
+    expect(sem.menu.find((x) => x.chave === 'reprocessar')?.desabilitado).toBe(true);
+    expect(acoesDaLinhaFdv(linha('produto'), { ...opcoes, bloqueado: true }).menu.find((x) => x.chave === 'zerar')?.desabilitado).toBe(true);
+    expect(acoesDaLinhaFdv(linha('produto'), { ...opcoes, licenciado: false }).principal.desabilitado).toBe(true);
+    const voo = acoesDaLinhaFdv(linha('produto', { loteEmVoo: true }), opcoes).menu.find((x) => x.chave === 'reprocessar');
+    expect(voo).toMatchObject({ rotulo: 'Enviando…', desabilitado: true });
+    expect(acoesDaLinhaFdv(linha('produto', { ligada: false }), opcoes).menu.find((x) => x.chave === 'ligar')?.rotulo).toBe('Ligar');
+  });
+  it('legenda só para leitor de tela', () => {
     const h = render();
-    const botoes = h.match(/<button[^>]*aria-label="(?:Desligar|Ligar|Reprocessar|Zerar|Log|Tentar de novo): [^"]*"[^>]*>/g) ?? [];
-    expect(botoes.length).toBeGreaterThan(0);
-    for (const b of botoes) expect(b).toMatch(/white-space:\s*nowrap/);
-    expect(h).toMatch(/min-width:\s*480px/);
     expect(h).toMatch(/<div class="[^"]*legenda-so-leitor[^"]*"[^>]*>\s*<[^>]*>?[\s\S]*?<caption[^>]*>[^<]*Envio por cadastro/);
   });
   it('campo "Registros por lote": valor atual, máximo do SDK e padrão 5000 sem configuração', () => {
@@ -76,7 +102,8 @@ describe('aba Integração do /config (T-0056)', () => {
     const h = render(dados({}, false));
     expect(h).toContain('Nenhuma credencial cadastrada');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Testar conexão/);
-    expect(h).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Ligar: Produtos"|aria-label="Ligar: Produtos"[^>]*disabled=""/);
+    const l = linhasCadastros(dados({}, false), 'America/Manaus')[0]!;
+    expect(acoesDaLinhaFdv(l, { bloqueado: false, semCredencial: true, licenciado: true }).menu.find((x) => x.chave === 'ligar')?.desabilitado).toBe(true);
   });
   it('"Nenhum cadastro ligado" só quando nenhum está ligado (a credencial nasce sem cadastros)', () => {
     const nova = render(dados({}, false));
@@ -89,18 +116,8 @@ describe('aba Integração do /config (T-0056)', () => {
     expect(h).toContain('não está licenciado');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Trocar credencial/);
   });
-  it('Reprocessar fica visível e desligado com "Enviando…" enquanto há lote em voo', () => {
-    const d = dados();
-    d.cadastros[4]!.lote_em_voo = true;
-    const h = render(d);
-    expect(h).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Reprocessar: Produtos"[^>]*>Enviando…<\/button>/);
-    expect(h).toMatch(/aria-label="Reprocessar: Estoque"[^>]*>Reprocessar<\/button>/);
-    expect(h).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="Reprocessar: Estoque"/);
-  });
-  it('Zerar ao lado do Reprocessar; sem a carga completa e sem "Zerar dados"', () => {
+  it('sem a carga completa e sem "Zerar dados" na tela', () => {
     const h = render();
-    expect(h.indexOf('aria-label="Reprocessar: Produtos"')).toBeLessThan(h.indexOf('aria-label="Zerar: Produtos"'));
-    expect(h.indexOf('aria-label="Zerar: Produtos"')).toBeLessThan(h.indexOf('aria-label="Log: Produtos"'));
     expect(h).not.toContain('Zerar dados');
     expect(h).not.toContain('carga completa');
   });
@@ -140,13 +157,6 @@ describe('aba Integração do /config (T-0056)', () => {
     const d = dados();
     d.cadastros[0]!.ultimo_envio_em = '2026-11-22T14:05:00.000Z';
     expect(linhasCadastros(d, 'America/Manaus')[0]?.ultimoEnvio).toMatch(/10:05/);
-  });
-  it('🟡 marca: "Zerar" da tabela tem o contorno neutro de Reprocessar e Log; o vermelho fica só no diálogo', () => {
-    const h = render();
-    const zerar = h.match(/<button[^>]*aria-label="Zerar: Produtos"[^>]*>/)?.[0] ?? '';
-    expect(zerar).toContain('class="mx-botao-secundario"');
-    expect(zerar).not.toContain('botao-perigo-contorno');
-    expect(h).not.toContain('botao-perigo-contorno');
   });
   it('🟡 marca: "Atualizado às hh:mm" tem a classe que o 390 usa para descer abaixo do título do Monitor', () => {
     const h = render(dados(), monitor());

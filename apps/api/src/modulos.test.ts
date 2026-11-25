@@ -20,6 +20,7 @@ import {
 } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CAMINHOS_ZERAR_PEDIDOS } from '@macuxierp/pedido/contracts';
 import { z } from 'zod';
 import { criarApp, type DependenciasApp } from './app';
 import { emitirTokenAcesso } from './auth/jwt';
@@ -449,5 +450,10 @@ describe('carga de cadastros no portal /config montada na API (T-0058, ADR 0013,
     });
     const app = await montar([], undefined, producao.modulos, { plataforma: producao.plataforma!, idempotencia: new IdempotenciaMemoria() });
     for (const caminho of [C.previa, C.zerar]) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(true);
+  });
+
+  it('T-0093 (plano B da v0.3.13): o "Zerar pedidos não faturados" fica fora do portal até as funções SQL dele', async () => {
+    const app = await appProducao();
+    for (const caminho of Object.values(CAMINHOS_ZERAR_PEDIDOS)) expect(app.hasRoute({ method: 'POST', url: `${PREFIXO_PLATAFORMA}${caminho}` })).toBe(false);
   });
 });

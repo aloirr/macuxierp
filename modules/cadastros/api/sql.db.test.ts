@@ -218,4 +218,17 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do cadastros (PostgreSQL real)', 
     expect(await enviar()).toEqual(primeira);
     expect(Number((await admin(`SELECT count(*) AS n FROM plataforma.trabalho WHERE tipo = '${TRABALHO_CARGA_INICIAL}' AND tenant_id = '${A}';`))[0]?.n)).toBe(4);
   });
+  it('RN-CAD-17: PATCH da unidade comercial com saldo fracionário é 422 no banco real; com saldo inteiro passa', async () => {
+    const C = await criarTenant(efemero.admin, 'empresa-c', ['cadastros']);
+    const c = montar(transacaoDe(app, C));
+    const f = (await c.chamar('POST', '/filiais', { sessao: adm, corpo: filialValida() })).corpo.id as string;
+    const pk = await c.chamar('POST', '/produtos', { sessao: adm, corpo: produtoValido({ codigo: 'P-KG', cest: '0300700', unidade_comercial: 'KG', unidade_tributavel: 'KG' }) });
+    expect(pk.status, JSON.stringify(pk.corpo)).toBe(201);
+    const kg = pk.corpo.id as string;
+    await c.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f, produto_id: kg, tipo: 'entrada', quantidade: 1_5000, motivo: 'Compra' } });
+    const r = await c.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'UN' } });
+    expect(r).toMatchObject({ status: 422, corpo: { codigo: 'RN-CAD-17' } });
+    await c.chamar('POST', '/estoque/movimentos', { sessao: adm, corpo: { filial_id: f, produto_id: kg, tipo: 'entrada', quantidade: 5000, motivo: 'Ajuste' } }); // saldo 2,0000
+    expect((await c.chamar('PATCH', `/produtos/${kg}`, { sessao: adm, corpo: { unidade_comercial: 'UN' } })).status).toBe(200);
+  });
 });

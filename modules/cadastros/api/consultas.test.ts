@@ -1,32 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { criarPluginCadastros } from './index';
+import { sugestaoCnpj } from './consultas';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
-import { CNPJ_A, filialValida } from './fixtures-teste';
+import { BRASILAPI_CNPJ, CNPJ_A, filialValida, fonte } from './fixtures-teste';
 import { criarExecutorConsultaIe } from './executor-ie';
 import { fontesHttp } from './fontes-http';
 import { dependenciasEmMemoria } from './memoria';
-import type { FonteExterna, Fontes } from './portas';
+import type { Fontes } from './portas';
 
 const adm = sessaoDe('administrador');
-
-function fonte(id: FonteExterna<Record<string, unknown>>['id'], resposta: Record<string, unknown> | null | Error) {
-  const f = {
-    id, chamadas: [] as { chave: string; timeoutMs: number }[],
-    async consultar(chave: string, o: { timeoutMs: number }) {
-      f.chamadas.push({ chave, timeoutMs: o.timeoutMs });
-      if (resposta instanceof Error) throw resposta;
-      return resposta;
-    },
-  };
-  return f;
-}
-
-const BRASILAPI_CNPJ = {
-  cnpj: '11222333000181', razao_social: 'ACME COMERCIO LTDA', nome_fantasia: 'ACME', descricao_situacao_cadastral: 'ATIVA', cnae_fiscal: 4712100,
-  descricao_tipo_de_logradouro: 'AVENIDA', logradouro: 'DJALMA BATISTA', numero: '100', complemento: '', bairro: 'CHAPADA', municipio: 'MANAUS',
-  codigo_municipio_ibge: 1302603, uf: 'AM', cep: '69050010', email: 'contato@acme.com.br', ddd_telefone_1: '9233334444',
-  qsa: [{ nome_socio: 'FULANO DE TAL', cnpj_cpf_do_socio: '***529982**', qualificacao_socio: 'Sócio-Administrador' }],
-};
 
 function montar(fontes: Fontes, certificado = false) {
   const m = dependenciasEmMemoria({ fontes, certificado });
@@ -46,6 +28,27 @@ describe('consulta de CNPJ (RF-CAD-02, RN-CAD-05)', () => {
     expect(t.repos.clientes.linhas).toHaveLength(0);
     expect(t.repos.filiais.linhas).toHaveLength(0);
     expect(t.eventos).toHaveLength(0);
+  });
+  it('RF-CAD-02: a sugestão leva CNAE secundário, porte, natureza, e-mail, telefone, Simples/MEI e data da situação (BrasilAPI)', async () => {
+    const rica = { ...BRASILAPI_CNPJ, cnaes_secundarios: [{ codigo: 4712100, descricao: 'x' }, { codigo: 4713002, descricao: 'y' }, { codigo: 4713002, descricao: 'y' }], porte: 'DEMAIS', natureza_juridica: 'Sociedade Empresária Limitada', opcao_pelo_simples: true, opcao_pelo_mei: false, data_situacao_cadastral: '2005-11-03', data_inicio_atividade: '1999-02-28' };
+    const t = montar({ cnpj: [fonte('brasilapi', rica)], cep: [] });
+    const r = await t.chamar('GET', `/consultas/cnpj/${CNPJ_A}`);
+    expect(r.corpo.sugestao).toMatchObject({ cnae_secundarios: ['4713002'], porte: 'DEMAIS', natureza_juridica: 'Sociedade Empresária Limitada', email: 'contato@acme.com.br', telefone: '9233334444', opcao_simples: true, opcao_mei: false, data_situacao_cadastral: '2005-11-03', data_abertura: '1999-02-28' });
+    expect(JSON.stringify(t.repos.consultaExterna.consultas)).not.toMatch(/acme\.com\.br|9233334444/);
+  });
+  it('RF-CAD-02: mapeia os campos novos da fonte de reserva (receita-aberta)', async () => {
+    const reserva = fonte('receita-aberta', { razao_social: 'ACME LTDA', porte: { descricao: 'Micro Empresa' }, natureza_juridica: { descricao: 'Empresário (Individual)' }, simples: { simples: 'Sim', mei: 'Não' }, estabelecimento: { atividade_principal: { id: '4712100' }, atividades_secundarias: [{ id: '4713002' }], email: 'a@b.com', ddd1: '92', telefone1: '33334444', data_situacao_cadastral: '2010-05-01', abertura: '31/12/2001', estado: { sigla: 'AM' }, cidade: { nome: 'Manaus' } } });
+    const t = montar({ cnpj: [fonte('brasilapi', new Error('x')), reserva], cep: [] });
+    const r = await t.chamar('GET', `/consultas/cnpj/${CNPJ_A}`);
+    expect(r.corpo.sugestao).toMatchObject({ cnae_secundarios: ['4713002'], porte: 'Micro Empresa', natureza_juridica: 'Empresário (Individual)', email: 'a@b.com', telefone: '9233334444', opcao_simples: true, opcao_mei: false, data_situacao_cadastral: '2010-05-01', data_abertura: '2001-12-31' });
+  });
+  it('RN-CAD-03: sem IBGE da fonte, resolve pela tabela oficial; sem achar, fica sem', async () => {
+    const sem = { ...BRASILAPI_CNPJ, codigo_municipio_ibge: undefined };
+    const t = montar({ cnpj: [fonte('brasilapi', sem)], cep: [] });
+    t.repos.oficiais.municipiosPorUf.set('AM', [{ ibge: '1302603', nome: 'Manaus' }]);
+    expect((await t.chamar('GET', `/consultas/cnpj/${CNPJ_A}`)).corpo.sugestao.endereco.municipio_ibge).toBe('1302603');
+    const t2 = montar({ cnpj: [fonte('brasilapi', sem)], cep: [] });
+    expect((await t2.chamar('GET', `/consultas/cnpj/${CNPJ_A}`)).corpo.sugestao.endereco.municipio_ibge).toBeUndefined();
   });
   it('a fonte recebe o timeout de 5 s', async () => {
     const principal = fonte('brasilapi', BRASILAPI_CNPJ);
@@ -188,5 +191,15 @@ describe('tabelas oficiais (RF-CAD-10)', () => {
     }
     expect((await t.chamar('GET', '/oficiais/usuarios')).status).toBe(404);
     expect((await t.chamar('GET', '/oficiais/municipios', { consulta: { uf: 'AM', busca: 'manaus' } })).corpo).toEqual({ itens: [], proximo_cursor: null });
+  });
+});
+
+describe('data_abertura (T-0101)', () => {
+  const base = { razao_social: 'ACME LTDA' };
+  it('RF-CAD-02: converte DD/MM/AAAA da receita-aberta e descarta data inválida ou ausente', () => {
+    expect(sugestaoCnpj('receita-aberta', { ...base, estabelecimento: { abertura: '15/03/2010' } }, '11222333000181').data_abertura).toBe('2010-03-15');
+    expect(sugestaoCnpj('receita-aberta', { ...base, estabelecimento: { abertura: '31/02/2010' } }, '11222333000181').data_abertura).toBeNull();
+    expect(sugestaoCnpj('brasilapi', { ...base, data_inicio_atividade: 'lixo' }, '11222333000181').data_abertura).toBeNull();
+    expect(sugestaoCnpj('brasilapi', base, '11222333000181').data_abertura).toBeNull();
   });
 });
