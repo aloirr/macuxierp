@@ -208,6 +208,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
+.resumo-log { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .rodape-log { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 0; }
 
 /* Aba Cargas do /config (T-0058): só tokens. Linha = número, nome, situação, Modelo, Importar. */

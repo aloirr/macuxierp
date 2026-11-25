@@ -92,6 +92,7 @@ describe('BKO: botão Log por cadastro (T-0086, D-4)', () => {
   it('um botão por cadastro com a permissão; nenhum sem ela', () => {
     const com = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(status, 'America/Manaus')} podeVerLog />);
     expect(com.match(/>Log<\/button>/g)).toHaveLength(ENTIDADES_ENVIO_FDV.length);
+    expect(com).not.toMatch(/<th[^>]*>Log</); // a coluna não repete o rótulo do botão
     const sem = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(status, 'America/Manaus')} podeVerLog={false} />);
     expect(sem).not.toContain('>Log<');
   });
