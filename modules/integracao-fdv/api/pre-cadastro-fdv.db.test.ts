@@ -113,6 +113,21 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
     expect((await linhas(A, u2))[0]).toMatchObject({ vendedor_external_id: null });
   });
 
+  it('T-0105: o vendedor_external_id do pendente chega ao criador.decidir (porta do cadastros); ausente chega vazio', async () => {
+    const [u1, u2] = [U(), U()];
+    const vistos = new Map<string, unknown>();
+    const criador: CriadorClienteFdv = {
+      decidir: async (_tx, _t, pre) => {
+        vistos.set(pre.cliente_uuid, pre.vendedor_external_id);
+        const id = U();
+        return { status: 'vinculado', external_id: id, cliente_id: id };
+      },
+    };
+    await buscarClientesPendentes(deps({ hub: hubDe([pendente(u1, { vendedor_external_id: 'V-07' }), pendente(u2)]).hub, criador }), A);
+    expect(vistos.get(u1)).toBe('V-07');
+    expect(vistos.get(u2) ?? null).toBeNull();
+  });
+
   it('RN-INF-04: recusa leva motivo e erros por campo (revisão e erros no corpo, opção ligada); o 200 marca enviado', async () => {
     const uuid = U();
     const h = hubDe([pendente(uuid, { documento: '11222333000199', revisao: 1, hash: 'a'.repeat(64) })]);
