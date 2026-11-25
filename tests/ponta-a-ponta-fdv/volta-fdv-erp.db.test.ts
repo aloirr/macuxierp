@@ -467,7 +467,11 @@ describe.runIf(DUBLE && PG_DISPONIVEL)('T-0017 — volta FDV → ERP → Hub (du
     const [, fat] = await retornos('A', p.pedido_uuid);
     expect(fat).toMatchObject({ status: 'faturado_total', estado: 'enviado', numero_erp: String(numero), resposta_http: 200 });
     expect(RetornoErp.safeParse(fat!.corpo).success).toBe(true);
-    expect(fat!.corpo.nota).toEqual({ numero: '12', serie: '1', chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
+    // T-0105 (FDV v1.0.34, expand/contract): `nota.chave_acesso` entra ao lado de `nota.chave`. Os demais campos seguem
+    // exatos; se `chave_acesso` vier, é a mesma chave de 44 dígitos.
+    const { chave_acesso: chaveAcesso, ...notaSemChaveAcesso } = fat!.corpo.nota as Record<string, unknown>;
+    expect(notaSemChaveAcesso).toEqual({ numero: '12', serie: '1', chave: notaSimulada.chave, emitida_em: notaSimulada.emitida_em, total_cents: 750 });
+    if (chaveAcesso !== undefined) expect(chaveAcesso).toBe(notaSimulada.chave);
     expect(noHub('A', p.pedido_uuid).retornos.map((r) => [r.status, r.nota, r.chave_acesso])).toEqual([
       ['integrado', null, null],
       ['faturado_total', '12/1', notaSimulada.chave],
