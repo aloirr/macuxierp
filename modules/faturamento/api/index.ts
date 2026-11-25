@@ -12,6 +12,7 @@ export type {
 export { verificarAtivosDanfe, type ResultadoAtivosDanfe } from './ativos-marca';
 export type { PortaSvcDisponivel } from './emissao';
 export { repositoriosSql } from './sql';
+export { criarUsosPedidosFaturamento } from './usos-pedidos';
 export { consultaTitulosPedido, criarServicoTitulos, criarVarreduraTitulos, gerarTitulosDaNota, gerarTitulosSeguro, cancelarTitulosDaNotaCancelada, type LogFaturamento } from './titulos';
 export { criarProcessadorEventos, type DepsProcessadorEventos, type ResultadoConsultaNota, type ResultadoEventoProcessado, type ResultadoInutilizacaoProcessada } from './processador-eventos';
 export { criarTransmissor, type DepsTransmissor, type ResultadoTransmissao } from './transmissor';
