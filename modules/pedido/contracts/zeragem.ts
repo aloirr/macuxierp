@@ -17,16 +17,19 @@ export const ZerarPedidosEntrada = z
   .refine((r) => fraseConfere(r.frase, FRASE_ZERAR_DADOS), { path: ['frase'], message: MENSAGEM_FRASE_ZERAR });
 export type ZerarPedidosEntrada = z.infer<typeof ZerarPedidosEntrada>;
 
+const Contagem = z.number().int().min(0);
 export const TABELAS_ZERAR_PEDIDOS = ['pedido', 'pedido_item', 'pedido_evento', 'aprovacao'] as const;
-/** Motivos de manter: nota e título (RN-CAD-10). Nota autorizada, XML e evento fiscal nunca são apagados. */
+/** Motivos de manter: nota e título (RN-CAD-10). */
 export const MOTIVOS_MANTER_PEDIDO = ['nota', 'titulo'] as const;
+
+export const ApagadoZerarPedidos = z.object({ tabela: z.enum(TABELAS_ZERAR_PEDIDOS), quantidade: Contagem });
 
 export const ZeragemPedidosResposta = z.object({
   empresa_id: z.string().uuid(),
   simulado: z.boolean(),
-  apagados: z.array(z.object({ tabela: z.enum(TABELAS_ZERAR_PEDIDOS), quantidade: z.number().int().min(0) })),
+  apagados: z.array(ApagadoZerarPedidos),
   /** Dos pedidos apagados, os do FDV: só voltam pelo reenvio do FDV (RN-PED-01). */
-  apagados_fdv: z.number().int().min(0),
-  mantidos: z.array(z.object({ motivo: z.enum(MOTIVOS_MANTER_PEDIDO), quantidade: z.number().int().min(0) })),
+  apagados_fdv: Contagem,
+  mantidos: z.array(z.object({ motivo: z.enum(MOTIVOS_MANTER_PEDIDO), quantidade: Contagem })),
 });
 export type ZeragemPedidosResposta = z.infer<typeof ZeragemPedidosResposta>;
