@@ -4,7 +4,7 @@ import { AVISO_ZERAR_INATIVA_FDV, ZeragemPlataformaResposta } from '@macuxierp/p
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
-import { AVISO_ZERAR, textoSemChave } from '@/lib/config/cargas';
+import { AVISO_LIMITE_FDV, AVISO_ZERAR, textoSemChave } from '@/lib/config/cargas';
 import { ZerarCadastro } from './zerar-cadastro';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
@@ -27,6 +27,14 @@ describe('Zerar por cadastro na aba Integração (T-0086)', () => {
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Zerar<\/button>/);
     expect(h).toContain('role="dialog"');
     expect(h).not.toContain('type="checkbox"');
+  });
+  it('a prévia traz o aviso dos 30% do FDV uma vez', () => {
+    const h = zerar('produto', previa());
+    const aviso = AVISO_LIMITE_FDV;
+    expect(h).toContain(aviso);
+    expect(h.split(aviso)).toHaveLength(2);
+    expect(h).toMatch(/<p class="faixa-aviso sem-margem" role="status" data-testid="aviso-30-fdv">/);
+    expect(zerar('produto', null)).not.toContain(aviso);
   });
   it('prévia: mantidos e o que será inativado no FDV, por entidade do Hub', () => {
     const h = zerar('produto', previa({ inativacao_fdv: [{ entidade: 'cliente', quantidade: 3 }, { entidade: 'cliente_endereco', quantidade: 5 }] }));
