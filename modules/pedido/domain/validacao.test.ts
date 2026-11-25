@@ -249,6 +249,12 @@ describe('recebimento do pedido do FDV', () => {
     expect(codigo({ itens: [item({ sequencia: 1 }), item({ sequencia: 1 })] })).toEqual({ resultado: 'recusado', codigo: 'item_incoerente' }));
   it('RN-PED-01: sequências distintas passam', () =>
     expect(codigo({ itens: [item({ sequencia: 1 }), item({ sequencia: 2 })] })).toEqual({ resultado: 'aprovado' }));
+  it('RN-PED-01 e RN-CAD-17: fração em produto UN é recusada como item_incoerente com o motivo da regra', () => {
+    expect(codigo({ itens: [item({ quantidade: 15_000 })] })).toEqual({ resultado: 'recusado', codigo: 'item_incoerente', motivo: 'RN-CAD-17: Fração só em KG e M: use quantidade inteira' });
+  });
+  it('RN-PED-01 e RN-CAD-17: fração em KG entra aprovado', () => {
+    expect(codigo({ produtos: [{ id: P1, inativo: false, unidade_comercial: 'KG' }], itens: [item({ quantidade: 15_000 })] })).toEqual({ resultado: 'aprovado' });
+  });
   it('RN-PED-01: a ordem dos códigos é cliente, filial, condição, produto, item', () => {
     expect(codigo({ condicao_pagamento_id: 'c1', condicao: null, produtos: [] })).toMatchObject({ codigo: 'condicao_inexistente' });
     expect(codigo({ cliente: { inativo: true }, filial: null })).toMatchObject({ codigo: 'cliente_inativo' });

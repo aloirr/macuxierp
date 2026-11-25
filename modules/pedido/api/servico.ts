@@ -280,7 +280,7 @@ export function criarServico(deps: Dependencias) {
     const cad = carregado as Cadastros & { cliente: ClienteParaPedido; filial: NonNullable<Cadastros['filial']> };
     exigir(verificarItens(itens));
     // RN-CAD-17: fração só em KG e M (422 `RN-CAD-17` em `itens[N].quantidade`), no lançamento e na edição, antes de gravar.
-    exigir(verificarFracaoDosItens(itens.map((i) => ({ quantidade: i.quantidade, unidade_comercial: cad.produtos.get(i.produto_id)?.unidade_comercial }))));
+    exigir(verificarFracaoDosItens(itens, (id) => cad.produtos.get(id)?.unidade_comercial));
     // RN-PED-07: o pedido manual não grava com prazo incompleto ou não permitido ao cliente (422, sem pendência de análise).
     exigir(violacoesDePrazo(cad.condicao, cad.cliente));
     const entrega = enderecoDeEntrega(cad.cliente, entrada.endereco_entrega_id);

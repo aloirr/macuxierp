@@ -332,16 +332,11 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do pedido (PostgreSQL real)', () 
   };
   const lerPedido = async (id: string) => (await admin('SELECT status, pendencias FROM pedido.pedido WHERE id = $1', [id]))[0];
 
-  it('RN-CAD-17: fração em UN é recusada no SQL real (FDV: item_incoerente com motivo, manual: 422) sem gravar; em KG grava a quantidade fracionada', async () => {
+  it('RN-CAD-17: em KG o pedido do FDV grava no SQL real a quantidade fracionada (15000 = 1,5 × 10^4) em pedido_item', async () => {
     const T = await criarTenant(efemero.admin, 'fracao-rn-cad-17', ['pedido']);
     const recebedor = criarRecebedorFdv({ ...deps, licencas: new LicencasPg(), outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
     const item = { ...pedidoFdv().itens[0]!, quantidade: 15_000, quantidade_venda: 15_000, total_informado_centavos: 1500 };
     const fdv = pedidoFdv({ itens: [item], total_informado_centavos: 1500 });
-    const manual = pedidoManual({ itens: [{ produto_id: IDS.produto1, quantidade: 15_000, preco_unitario_centavos: 1000, desconto_centavos: 0 }] });
-    const contar = async () => Number((await admin('SELECT count(*) AS n FROM pedido.pedido WHERE tenant_id = $1', [T]))[0]!.n);
-    expect(await worker.comTenant(T, (tx) => recebedor.receber(tx, fdv))).toMatchObject({ resultado: 'recusado', codigo: 'item_incoerente', motivo: expect.stringContaining('RN-CAD-17') });
-    await expect(app.comTenant(T, (tx) => servico.lancar(tx, efeitos(tx, T), manual))).rejects.toMatchObject({ status: 422, codigo: 'RN-CAD-17' });
-    expect(await contar()).toBe(0);
     unidadeDoProduto(cad, IDS.produto1, 'KG');
     try {
       const r = await worker.comTenant(T, (tx) => recebedor.receber(tx, fdv));

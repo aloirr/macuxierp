@@ -1,7 +1,7 @@
 import type { FonteLicencas, Licenca } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, OutboxMemoria, RelogioFixo } from '@macuxierp/platform-sdk/testes';
 import { describe, expect, it } from 'vitest';
-import { CPF_DO_CLIENTE, IDS, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros, unidadeDoProduto } from './fixtures-teste';
+import { CPF_DO_CLIENTE, IDS, OBSERVACAO, RAZAO_DO_CLIENTE, pedidoFdv, prazoDoCliente, prazoMedioDaCondicao, prepararCadastros } from './fixtures-teste';
 import { dependenciasEmMemoria, TENANT_MEMORIA } from './memoria';
 import { criarRecebedorFdv } from './recebedor';
 
@@ -98,14 +98,12 @@ describe('criarRecebedorFdv (T-0013 §5.3)', () => {
       expect(t.outbox.eventos).toHaveLength(0);
     });
   }
-  it('RN-CAD-17 e RN-PED-01: fração em produto UN é recusada (item_incoerente) com o motivo da regra, sem pedido nem evento; em KG entra', async () => {
+  it('RN-CAD-17 e RN-PED-01: fração em produto UN é recusada (item_incoerente) com o motivo da regra, sem pedido nem evento', async () => {
     const t = montar();
     const fracionado = pedidoFdv({ itens: [{ ...pedidoFdv().itens[0]!, quantidade: 15_000, quantidade_venda: 15_000, total_informado_centavos: 1500 }], total_informado_centavos: 1500 });
-    expect(await t.recebedor.receber(tx, fracionado)).toEqual({ resultado: 'recusado', codigo: 'item_incoerente', motivo: 'RN-CAD-17: Fração só em KG e M: use quantidade inteira' });
+    expect(await t.recebedor.receber(tx, fracionado)).toEqual({ resultado: 'recusado', codigo: 'item_incoerente', motivo: expect.stringContaining('RN-CAD-17') });
     expect(t.armazem.pedidos).toHaveLength(0);
     expect(t.outbox.eventos).toHaveLength(0);
-    unidadeDoProduto(t.cadastros, IDS.produto1, 'KG');
-    expect(await t.recebedor.receber(tx, fracionado)).toMatchObject({ resultado: 'criado', status: 'aprovado' });
   });
   it('o pedido do FDV não passa pela análise: crédito estourado e estoque zerado não o seguram, e entra no compromisso dos outros', async () => {
     const t = montar({});
