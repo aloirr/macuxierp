@@ -20,6 +20,9 @@ export async function entrar(pagina, base, u) {
   await pagina.getByRole('button', { name: 'Entrar' }).click();
 }
 
+/** O HTML é a página "não encontrada" do app (404, ou 200 quando o streaming do Next já começou). */
+export const ehNaoEncontrada = (html) => html.includes('>Página não encontrada<');
+
 export function exigir(cond, msg) {
   if (!cond) throw new Error(msg);
 }
