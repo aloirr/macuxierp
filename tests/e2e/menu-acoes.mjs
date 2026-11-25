@@ -152,6 +152,21 @@ async function conferirMenu(pagina, g, onde, larg, arquivoPrint) {
   else if (!(await g.evaluate((el) => document.activeElement === el))) falhar(w, 'Esc fechou, mas o foco não voltou ao "Ações"');
   if (!(await fechado(g))) await g.click();
 
+  // Tab e Shift+Tab com o foco num item fecham o menu e devolvem o foco ao "Ações" (sem pular para fora da linha).
+  for (const tecla of ['Tab', 'Shift+Tab']) {
+    await g.focus();
+    await pagina.keyboard.press('ArrowDown');
+    if (await fechado(g)) {
+      falhar(w, `↓ no "Ações" não abriu o menu (antes do ${tecla})`);
+      continue;
+    }
+    await pagina.keyboard.press(tecla);
+    if (!(await fechado(g))) {
+      falhar(w, `${tecla} no item não fechou o menu`);
+      await pagina.keyboard.press('Escape');
+    } else if (!(await g.evaluate((el) => document.activeElement === el))) falhar(w, `${tecla} fechou, mas o foco não voltou ao "Ações"`);
+  }
+
   // Espaço abre.
   await g.focus();
   await pagina.keyboard.press(' ');

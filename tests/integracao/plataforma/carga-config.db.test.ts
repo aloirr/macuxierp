@@ -55,6 +55,7 @@ import {
   type ClientePg,
   type RespostaPortal,
 } from '../../apoio/portal-pg';
+import { comNcmOficial } from '../../apoio/fixture-carga';
 
 const PASTA = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -78,13 +79,7 @@ const ARQUIVOS = [
   'estoque',
   'cliente',
 ];
-/** Como no carga.db.test.ts do cadastros: o NCM da fixture exige CEST nas tabelas oficiais; troca por NCM + CEST oficiais. */
-const csv = (nome: string): string => {
-  const t = readFileSync(join(PASTA, `${nome}.csv`), 'utf8');
-  return nome === 'produto'
-    ? t.replace(';2106.90.30;;', ';22021000;0300700;').replace(';21069030;;', ';22021000;0300700;')
-    : t;
-};
+const csv = (nome: string): string => comNcmOficial(`${nome}.csv`, readFileSync(join(PASTA, `${nome}.csv`), 'utf8'));
 /** Tabelas que a carga toca (por tenant), mais a execução do portal e a auditoria. */
 const TABELAS = [
   'filial',
