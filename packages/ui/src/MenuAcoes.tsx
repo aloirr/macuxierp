@@ -41,9 +41,13 @@ export type AcaoTeclaGatilho = 'abrir-primeiro' | 'abrir-ultimo' | 'entrar-prime
 export function acaoTeclaGatilho(tecla: string, aberto: boolean): AcaoTeclaGatilho {
   if (tecla === 'Escape') return aberto ? 'fechar' : null;
   if (tecla === 'ArrowUp') return aberto ? 'entrar-ultimo' : 'abrir-ultimo';
-  if (tecla === 'ArrowDown') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
-  if (tecla === 'Enter' || tecla === ' ' || tecla === 'Spacebar') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
+  if (tecla === 'ArrowDown' || tecla === 'Enter' || tecla === ' ') return aberto ? 'entrar-primeiro' : 'abrir-primeiro';
   return null;
+}
+
+/** Tab (ou Shift+Tab) dentro do menu: fecha e devolve o foco ao gatilho; o foco nunca cai no body (T-0099). */
+export function acaoTeclaMenu(tecla: string): 'fechar-e-focar-gatilho' | null {
+  return tecla === 'Tab' ? 'fechar-e-focar-gatilho' : null;
 }
 
 /** Itens visíveis na ordem final: normais, depois (após um separador) os de perigo. */
@@ -152,14 +156,21 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
 
   if (lista.length === 0 && !principalVisivel) return null;
 
+  const fecharComEsc = (e: TecladoReact) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fechar(true);
+  };
+
   const tecladoGatilho = (e: TecladoReact) => {
     const acao = acaoTeclaGatilho(e.key, aberto);
     if (!acao) return;
-    e.preventDefault();
     if (acao === 'fechar') {
-      e.stopPropagation();
-      fechar(true);
-    } else if (acao === 'entrar-primeiro' || acao === 'entrar-ultimo') {
+      fecharComEsc(e);
+      return;
+    }
+    e.preventDefault();
+    if (acao === 'entrar-primeiro' || acao === 'entrar-ultimo') {
       irParaItem(acao === 'entrar-primeiro' ? 'primeiro' : 'ultimo');
     } else {
       // O foco vai ao item só depois de o menu montado e posicionado (layout effect).
@@ -170,16 +181,16 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
 
   // Espaço dispara o clique no keyup: evita que ele feche o menu recém-aberto.
   const soltarGatilho = (e: TecladoReact) => {
-    if (e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
+    if (e.key === ' ') e.preventDefault();
   };
 
   const tecladoMenu = (e: TecladoReact) => {
     if (e.key === 'Escape') {
+      fecharComEsc(e);
+    } else if (acaoTeclaMenu(e.key) === 'fechar-e-focar-gatilho') {
+      // Padrão WAI-ARIA de menu button: o foco volta ao gatilho e o próximo Tab segue a ordem natural.
       e.preventDefault();
-      e.stopPropagation();
       fechar(true);
-    } else if (e.key === 'Tab') {
-      fechar(false);
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
       e.preventDefault();
       const itens = itensDom();
@@ -232,12 +243,9 @@ export function MenuAcoes({ acoes, principal, rotuloLinha, abertoInicial = false
             className="mx-acoes-gatilho mx-acoes-alvo"
             aria-haspopup="menu"
             aria-expanded={aberto}
-            aria-controls={menuId}
+            aria-controls={aberto ? menuId : undefined}
             aria-label={rotuloLinha ? `Ações de ${rotuloLinha}` : undefined}
-            onClick={() => {
-              focoInicial.current = null;
-              setAberto(!aberto);
-            }}
+            onClick={() => setAberto(!aberto)}
             onKeyDown={tecladoGatilho}
             onKeyUp={soltarGatilho}
             style={estiloBotao}

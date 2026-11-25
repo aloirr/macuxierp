@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apoio comum dos executores dos e2e (rodar-render-telas.sh, rodar-portal-integracao.sh). Uso: `source` depois de definir
+# Apoio comum dos executores dos e2e (rodar-render-telas.sh, rodar-portal-integracao.sh, rodar-bko-cadastro.sh). Uso: `source` depois de definir
 # RAIZ e TMP. Postgres local de pé (`eval "$(bash db/scripts/pg-local.sh --subir)"`); sem Docker, sem instalar nada.
 
 export MACUXI_DB_MIGRACOES="${MACUXI_DB_MIGRACOES:-$RAIZ/db/migrations}"
@@ -29,4 +29,22 @@ encerrar_e2e() {
   [ -n "$PID_WEB" ] && kill -- "-$PID_WEB" 2>/dev/null || true
   [ -n "$PID_API" ] && kill -TERM "$PID_API" 2>/dev/null && wait "$PID_API" 2>/dev/null || true
   rm -rf "$TMP"
+}
+
+# rodar_roteiro_dev <servidor .ts> <roteiro .mjs> <porta API> <porta web> <pasta dos prints>: sobe a API e o next dev
+# (apps/web) e roda o roteiro com --base, --dados e --saida; sai com o código do roteiro (log do web no fim, se falhar).
+rodar_roteiro_dev() {
+  subir_api "$1" "$3"
+  (cd "$RAIZ/apps/web" && MACUXIERP_API_URL="http://127.0.0.1:$3" exec setsid npx next dev -p "$4" >"$TMP/web.log" 2>&1) &
+  PID_WEB=$!
+  esperar_web "http://localhost:$4/login" || { tail -40 "$TMP/web.log" >&2; return 1; }
+  local inicio codigo
+  inicio=$(date +%s)
+  set +e
+  node "$RAIZ/$2" --base "http://localhost:$4" --dados "$TMP/dados.json" --saida "$5"
+  codigo=$?
+  set -e
+  echo "[e2e] tempo: $(( $(date +%s) - inicio )) s" >&2
+  [ "$codigo" -ne 0 ] && tail -40 "$TMP/web.log" >&2
+  return "$codigo"
 }

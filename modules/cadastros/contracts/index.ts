@@ -331,6 +331,8 @@ export const SugestaoCnpj = z.object({
   opcao_mei: z.boolean().nullish(),
   /** AAAA-MM-DD. */
   data_situacao_cadastral: z.string().nullish(),
+  /** AAAA-MM-DD; data de abertura (início da atividade). Aditivo (T-0101). */
+  data_abertura: z.string().nullish(),
 });
 export type SugestaoCnpj = z.infer<typeof SugestaoCnpj>;
 

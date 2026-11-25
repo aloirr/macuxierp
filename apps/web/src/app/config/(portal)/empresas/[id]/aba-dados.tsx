@@ -5,7 +5,7 @@ import { CaixaResumo, Chip, Dialogo, DialogoMotivo, MenuAcoes, TabelaDensa, type
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
-import { acoesDaCarga, avisoCarga, estadoCargaCompleta } from '@/lib/config/integracao-fdv';
+import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
 import { cargaCompletaFdvAcao } from '../acoes-integracao-fdv';
 import {
   AVISO_LIMITE_FDV, ROTULO_MODO, TEXTO_SUBSTITUIR, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
@@ -79,7 +79,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
       // Botão "Ações" (T-0099): Importar à vista; o Modelo (baixa o CSV) e a Carga completa ficam no menu.
       const a = acoesDaCarga(c, pendente);
       const fazer: Record<string, () => void> = { importar: () => setImportar(l.cadastro), modelo: () => window.location.assign(enderecoModelo(empresaId, l.cadastro)), 'carga-completa': () => setCarga(l) };
-      return <MenuAcoes rotuloLinha={l.rotulo} principal={{ rotulo: a.principal.rotulo, aoAcionar: fazer[a.principal.chave]! }} acoes={a.menu.map((x) => ({ ...x, aoAcionar: fazer[x.chave]! }))} />;
+      return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
     } },
   ];
   return (
