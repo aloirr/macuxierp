@@ -11,6 +11,7 @@ type CodigoHub = (typeof CODIGOS_LINHA_HUB)[number];
 const CODIGO_HUB_DO_ERP: Readonly<Record<string, CodigoHub>> = {
   campo_obrigatorio: 'campo_obrigatorio',
   campo_invalido: 'formato_invalido',
+  quantidade_fracionaria: 'formato_invalido', // T-0085: o Hub só aceita inteiro
 };
 
 /** `referencia_ausente`, `filial_codigo_repetido` e demais regras do ERP viram `regra_invalida` no Hub. */

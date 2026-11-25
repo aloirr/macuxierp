@@ -13,6 +13,7 @@ import { PAYLOADS_HUB, PrazoPagamentoHubV2, type EntidadeHub, type LinhaInvalida
 import { externalIdForma, hashRegistro } from './canonico';
 import { chaveHub } from './chave';
 import { parcelasDiasParaHub } from './parcelas';
+import { CODIGO_QUANTIDADE_FRACIONARIA, FATOR_MAXIMO_HUB, unidadesInteirasParaHub } from './quantidade-hub';
 import { cnpjValido } from '@macuxierp/platform-sdk';
 
 type Evento<N extends keyof typeof EVENTOS> = z.infer<(typeof EVENTOS)[N]>;
@@ -409,6 +410,12 @@ export function validarRegistro(r: RegistroEspelho, confirmado: (entidade: Entid
   });
   // Campo composto de outra referência (C-2): ausente = a referência ainda não chegou (reprocessável), não erro do cadastro.
   if (falta) return { external_id: r.external_id, codigo: (CAMPOS_DE_REFERENCIA[r.entidade] ?? []).includes(falta) ? 'referencia_ausente' : 'campo_obrigatorio', campo: falta };
+  // T-0085: o Hub só aceita fator inteiro (até 9999); o fracionário sai só deste registro, o resto do lote segue.
+  if (r.entidade === 'produto_unidade') {
+    const fator = Number(r.payload.fator);
+    if (!unidadesInteirasParaHub(fator)) return { external_id: r.external_id, codigo: CODIGO_QUANTIDADE_FRACIONARIA, campo: 'fator' };
+    if (fator > FATOR_MAXIMO_HUB) return { external_id: r.external_id, codigo: 'campo_invalido', campo: 'fator' };
+  }
   const schema = PAYLOADS_HUB[r.entidade as keyof typeof PAYLOADS_HUB];
   if (r.entidade === 'prazo_pagamento' && opcoes.prazoV2) {
     // contrato v2 do prazo (ADR 0072 do FDV): limites próprios; `alterado_em` entra no registro do lote, não no payload do espelho

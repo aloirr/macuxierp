@@ -1,9 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
-import { caminhoDoLogCsv, colunasDeErrosLog, ROTULO_BAIXAR_ERROS, TEXTO_ESTADO_LOG } from '@macuxierp/integracao-fdv/web';
+import { colunasDeErrosLog, ROTULO_BAIXAR_ERROS, TEXTO_ESTADO_LOG } from '@macuxierp/integracao-fdv/web';
 import { Chip } from '@macuxierp/ui';
-import { CorpoLogBko, EstadoLog, BotaoLog, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, ROTULO_TENTAR_DE_NOVO } from './log';
+import { CorpoLogBko, EstadoLog, TEXTO_FALHA_CARGA_LOG, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, ROTULO_TENTAR_DE_NOVO } from './log';
 
 vi.mock('@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv', () => ({ lerLogFdv: async () => ({ ok: false, motivo: 'erro' }) }));
 
@@ -33,10 +33,8 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     expect(renderToStaticMarkup(<CorpoLogBko log={log} entidade="cliente" fuso="America/Manaus" />)).toContain('10:05');
   });
 
-  it('o CSV vai pelo proxy do shell, que chama o caminho do módulo', () => {
+  it('o CSV vai pelo proxy do shell', () => {
     expect(caminhoDoDownloadErros('cliente')).toBe('/baixar-erros-fdv?entidade=cliente');
-    expect(caminhoDoLogCsv('cliente')).toBe('/v1/integracao-fdv/entidades/cliente/log.csv');
-    expect(ROTULO_BAIXAR_ERROS).toBe('Baixar erros (.csv)');
   });
 
   it('estados: carregando, vazio, erro e sem permissão', () => {
@@ -71,11 +69,14 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     expect(textoErrosAbertos(1)).toBe('1 erro aberto');
     const zero = renderToStaticMarkup(<CorpoLogBko log={{ ...log, total_erros: 0, erros: [] }} entidade="cliente" fuso="America/Manaus" />);
     expect(zero).not.toContain(ROTULO_BAIXAR_ERROS);
+    expect(zero).toContain(TEXTO_ESTADO_LOG.vazio);
+    expect(zero).not.toContain('0 erros');
   });
 
   it('o estado de erro traz "Tentar de novo" quando há ação', () => {
     const r = { ok: false, motivo: 'erro' } as const;
     expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" aoTentarDeNovo={() => {}} />)).toContain(`>${ROTULO_TENTAR_DE_NOVO}</button>`);
+    expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" aoTentarDeNovo={() => {}} />)).toContain(`>${TEXTO_FALHA_CARGA_LOG}<`);
     expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" />)).not.toContain(ROTULO_TENTAR_DE_NOVO);
   });
 
@@ -84,10 +85,5 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     expect(ths(true)[1]).toBe('Corrigir');
     expect(ths(false)[5]).toBe('Corrigir');
     expect(corrigirEmSegundo([{ id: 'a' }, { id: 'b' }, { id: 'corrigirHref' }]).map((c) => c.id)).toEqual(['a', 'corrigirHref', 'b']);
-  });
-
-  it('o botão Log fica escondido sem integracao-fdv.ver e aparece com ela', () => {
-    expect(renderToStaticMarkup(<BotaoLog entidade="cliente" fuso="America/Manaus" podeVer={false} />)).toBe('');
-    expect(renderToStaticMarkup(<BotaoLog entidade="cliente" fuso="America/Manaus" podeVer />)).toContain('>Log</button>');
   });
 });

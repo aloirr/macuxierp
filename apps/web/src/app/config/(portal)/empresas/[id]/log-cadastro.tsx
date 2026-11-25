@@ -1,11 +1,11 @@
 'use client';
-import type { EntidadeEnvioFdv, LogCadastroFdvPlataforma } from '@macuxierp/platform-sdk';
+import { ROTULO_ORIGEM_ENVIO_FDV, ROTULO_SITUACAO_ENVIO_FDV, type EntidadeEnvioFdv, type LogCadastroFdvPlataforma } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { Dialogo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
 import { SeloTom } from '@/components/selo-tom';
 import { useEffect, useState } from 'react';
 import { TEXTO_MOTIVO_FDV } from '@/lib/integracao-fdv-textos';
-import { CAMINHO_BKO_INTEGRACAO_FDV, ROTULO_ORIGEM_ENVIO, ROTULO_SITUACAO_ENVIO, csvErrosLog, errosNaoListados, nomeCsvErrosFdv, rotuloDoCampoErro, rotuloDoCodigoErro, tomDoMotivoDoLog } from '@/lib/config/operacao-fdv';
+import { CAMINHO_BKO_INTEGRACAO_FDV, csvErrosLog, errosNaoListados, nomeCsvErrosFdv, rotuloDoCampoErro, rotuloDoCodigoErro, tomDoMotivoDoLog } from '@/lib/config/operacao-fdv';
 import { salvarCsv } from '@/lib/baixar-csv';
 import type { Resultado } from '@/lib/config/executar';
 import { lerLogFdvAcao } from '../acoes-integracao-fdv';
@@ -18,8 +18,8 @@ export function CorpoLog({ log, fuso, entidade }: { log: LogCadastroFdvPlataform
   const naoListados = errosNaoListados(log);
   const colEnvios: ColunaTabela<Envio>[] = [
     { id: 'em', titulo: 'Quando', tipo: 'data', celula: (e) => formatarDataHora(e.em, fuso) },
-    { id: 'origem', titulo: 'Origem', celula: (e) => ROTULO_ORIGEM_ENVIO[e.origem] },
-    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (e) => <SeloTom tom={ROTULO_SITUACAO_ENVIO[e.situacao].tom}>{ROTULO_SITUACAO_ENVIO[e.situacao].texto}</SeloTom> },
+    { id: 'origem', titulo: 'Origem', celula: (e) => ROTULO_ORIGEM_ENVIO_FDV[e.origem] },
+    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (e) => <SeloTom tom={ROTULO_SITUACAO_ENVIO_FDV[e.situacao].tom}>{ROTULO_SITUACAO_ENVIO_FDV[e.situacao].texto}</SeloTom> },
     { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (e) => e.registros },
     { id: 'com_erro', titulo: 'Com erro', tipo: 'numero', celula: (e) => e.com_erro },
   ];

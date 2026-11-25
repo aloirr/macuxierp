@@ -349,3 +349,22 @@ describe('ADR 0010: chave do Hub de unidade, endereço e preço (RN-INF-02)', ()
     expect(mapearPreco(U(11), ev as never, EM, ctx).external_id).toBe(U(11));
   });
 });
+
+describe('T-0085: fator fracionário ou acima do limite do Hub é recusado por registro', () => {
+  const unidade = (fator: number) => {
+    const ev = { id: U(2), codigo: 'SKU1', descricao: 'Arroz', ncm: '10063021', cest: null, unidade_comercial: 'UN', unidade_tributavel: 'UN', fator_tributavel: 10_000, ean: null, marca: null, origem: '0', grupo_tributacao: 'G', custo_centavos: 1, external_id: null, inativo: false, unidades: [{ id: U(3), unidade: 'CX', fator, ean: null }] } as EventoProduto;
+    return mapearProduto(ev, EM).unidades[0]!;
+  };
+
+  it('RN-INF-04: fator fracionário vira quantidade_fracionaria no campo fator, sem ecoar o valor', () => {
+    const l = validarRegistro(unidade(15_000), () => true);
+    expect(l).toEqual({ external_id: U(3), codigo: 'quantidade_fracionaria', campo: 'fator' });
+    expect(JSON.stringify(l)).not.toContain('1.5');
+  });
+
+  it('RN-INF-04: fator inteiro até 9999 passa; acima de 9999 é campo_invalido no fator', () => {
+    expect(validarRegistro(unidade(120_000), () => true)).toBeNull();
+    expect(validarRegistro(unidade(9999 * 10_000), () => true)).toBeNull();
+    expect(validarRegistro(unidade(10_000 * 10_000), () => true)).toEqual({ external_id: U(3), codigo: 'campo_invalido', campo: 'fator' });
+  });
+});

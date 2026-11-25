@@ -195,7 +195,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 [data-corpo-dialogo] > .corpo-log { min-width: 0; }
 .corpo-log { display: grid; gap: 12px; }
 .corpo-log h3, .corpo-log p { margin: 0; }
-/* Log do BKO (6 colunas, com "Corrigir"): janela mais larga no desktop; Registro não quebra; no celular a tabela rola e a última coluna fica à vista ao rolar. */
+/* Log do BKO (6 colunas, com "Corrigir"): janela mais larga no desktop; Registro não quebra; no celular a tabela rola e o "Corrigir" sobe para a 2ª coluna (ver `corrigirEmSegundo`), à vista sem rolar. */
 [role="dialog"]:has(.corpo-log-bko) { width: min(1080px, 94vw) !important; }
 .corpo-log-bko td:first-child { white-space: nowrap !important; }
 @media (max-width: 640px) {
@@ -252,6 +252,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .opcao-zerar { display: flex; align-items: center; gap: 8px; min-height: 32px; overflow-wrap: anywhere; }
 .previa-zerar { display: grid; gap: 8px; margin: 0 0 12px; }
 .previa-zerar p, .previa-zerar .faixa-aviso { margin: 0; }
+/* Avisos de dentro de janela (Zerar): a caixa âmbar tem o mesmo recuo e a mesma borda da faixa vermelha do topo do Dialogo (8 px, sem contorno); a margem negativa desfaz os 4 px do corpo do Dialogo. */
+[data-corpo-dialogo] .faixa-aviso { border: 0; padding: 8px; margin-inline: -4px; }
 .lista-simples { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .faixa-erro.lista-simples { padding: 8px 12px; margin: 0 0 12px; }
 .sem-margem { margin: 0; }
