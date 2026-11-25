@@ -223,18 +223,23 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     }),
     // Ficha da Receita (T-0101, ADR 0012 emenda): as duas gravam a auditoria no banco só com nomes de campo; sem idempotência
     // (a repetição do request_id não muda nada no banco) e com no-store (a resposta é dado da empresa).
+    // Por etapa: o papel de plataforma (macuxierp_config) não tem acesso às tabelas do cadastros; a consulta de CNPJ lê e
+    // grava o cache do tenant (RLS) e por isso roda no papel e na RLS do tenant, entre duas etapas de plataforma.
     definirRotaPlataforma({
+      transacoes: 'por_etapa',
       metodo: 'POST',
       caminho: '/empresas/:id/receita',
       acao: 'plataforma.empresa.atualizar_receita',
       async executar(c, { params }) {
         const id = idDoParam(params);
-        const atual = await repo.lerEmpresaComFicha(c.tx, id);
+        const atual = await c.comPlataforma((tx) => repo.lerEmpresaComFicha(tx, id));
         if (!atual) throw erros.naoEncontrado('Empresa');
-        if (!atual.ficha || !atual.empresa.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
-        if (!deps.consultaReceita) throw erros.indisponivel('Consulta de CNPJ');
-        const resposta = await deps.consultaReceita.consultar(c.tx, id, atual.empresa.cnpj);
-        const preparo = prepararFichaDaConsulta({ cnpj: atual.empresa.cnpj, resposta });
+        const cnpj = atual.empresa.cnpj;
+        if (!atual.ficha || !cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+        const porta = deps.consultaReceita;
+        if (!porta) throw erros.indisponivel('Consulta de CNPJ');
+        const resposta = await c.comTenant(id, (tx) => porta.consultar(tx, id, cnpj));
+        const preparo = prepararFichaDaConsulta({ cnpj, resposta });
         // Campo acima do limite: 422, nada gravado e a mensagem não leva o valor (RN-CORE-14, T-0101).
         if (!preparo.ok && preparo.motivo === 'campo_acima_do_limite') {
           throw erros.regra('RN-CORE-14', mensagemDaFalhaReceita(preparo.motivo), { ficha: 'Campo acima do limite' });
@@ -243,7 +248,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
           const falha: ResultadoReceitaPlana = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo), ficha: atual.ficha };
           return semCache(falha);
         }
-        const gravada = await repo.gravarReceita(c.tx, { id, ficha: preparo.ficha, request_id: c.request_id });
+        const gravada = await c.comPlataforma((tx) => repo.gravarReceita(tx, { id, ficha: preparo.ficha, request_id: c.request_id }));
         const ok: ResultadoReceitaPlana = { estado: 'ok', campos_alterados: gravada.alterados, ficha: gravada.ficha };
         return semCache(ok);
       },

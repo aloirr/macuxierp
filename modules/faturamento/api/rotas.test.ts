@@ -110,13 +110,21 @@ describe('rotas /v1/faturamento', () => {
     expect(a.trabalhos).toHaveLength(2);
   });
 
-  it('RN-PED-02: violação de regra vira 422 com a RN; violação de dado, 400; nenhum número é queimado', async () => {
+  const emitirDireto = (deps: ReturnType<typeof ambiente>['deps']): Promise<unknown> =>
+    criarPluginFaturamento({ ...deps, titulos: titulosFake().repo, configuracao: configuracaoFake().repo }).rotas.find((r) => r.metodo === 'POST')!.executar({ ...({} as ContextoRota), tx, sessao: sessao('faturista'), enfileirar: async () => ({ id: 'x' }), auditar: async () => undefined } as ContextoRota, { corpo: emitirCorpo, params: {}, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never).catch((e: unknown) => e);
+
+  it.each([
+    ['RN-PED-02: violação de regra vira 422 com a RN; nenhum número é queimado (pedido cancelado)', 'RN-PED-02'],
+    ['RN-CAD-10: pedido zerado no /config (linha da fila cancelada, pedido ainda aprovado) não emite nota e não queima número', 'RN-CAD-10'],
+  ])('%s', async (_nome, codigo) => {
     const a = ambiente();
-    const svc = a.deps;
-    svc.situacao = { situacao: async () => ({ status: 'cancelado', itens: [] }) };
-    const e1 = await criarPluginFaturamento({ ...svc, titulos: titulosFake().repo, configuracao: configuracaoFake().repo }).rotas.find((r) => r.metodo === 'POST')!.executar({ ...({} as ContextoRota), tx, sessao: sessao('faturista'), enfileirar: async () => ({ id: 'x' }), auditar: async () => undefined } as ContextoRota, { corpo: emitirCorpo, params: {}, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never).catch((e: unknown) => e);
-    expect(e1).toBeInstanceOf(ErroApi);
-    expect(e1).toMatchObject({ status: 422, codigo: 'RN-PED-02' });
+    if (codigo === 'RN-PED-02') a.deps.situacao = { situacao: async () => ({ status: 'cancelado', itens: [] }) };
+    else {
+      a.deps.pedidos = { ...a.deps.pedidos, statusNaFila: async () => 'cancelado' as const };
+    }
+    const e = await emitirDireto(a.deps);
+    expect(e).toBeInstanceOf(ErroApi);
+    expect(e).toMatchObject({ status: 422, codigo });
     expect(a.estado.reservas).toBe(0);
   });
 

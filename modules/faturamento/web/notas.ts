@@ -7,6 +7,7 @@ import { interpretarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { plural } from '@macuxierp/platform-sdk/texto';
 import { CancelarNotaEntrada, CartaCorrecaoEntrada, EmitirNotaEntrada, InutilizarEntrada, LIMITES_TEXTO, type Ambiente, type StatusNota, type StatusPedidoAFaturar } from '../contracts';
 import { prazoDeCancelamentoEsgotado } from '../domain/cancelamento';
+import { STATUS_FILA_EMITE } from '../domain/fila';
 
 export const BASE_API = '/v1/faturamento';
 /** RN-FAT-04: nota de homologação não tem valor fiscal e a tela diz isso em todo lugar onde a nota aparece (uma só fonte do texto). */
@@ -223,8 +224,9 @@ export interface AcoesDoPedidoAFaturar {
   emitir: boolean;
 }
 
+/** Mais estrita que `filaAceitaNota` (domain): aqui `faturado` também não emite (sem saldo); a API recusa só `cancelado` com RN-CAD-10 e o saldo fica com RN-FAT-01. */
 export function acoesDoPedidoAFaturar(perfil: Perfil, status: StatusPedidoAFaturar): AcoesDoPedidoAFaturar {
-  return { emitir: pode(perfil, 'faturamento.nota.emitir') && (status === 'a_faturar' || status === 'faturado_parcial') };
+  return { emitir: pode(perfil, 'faturamento.nota.emitir') && (STATUS_FILA_EMITE as readonly string[]).includes(status) };
 }
 
 // ---- Requisições: o shell executa com o fetch dele (sessão, tenant); aqui só o contrato ----

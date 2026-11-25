@@ -160,7 +160,22 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       fonte: 'brasilapi', consultado_em: '2026-11-24T12:00:00.000Z',
     };
     const repo = new RepositorioPlataformaSql();
-    const consulta = { consultar: async () => ({ ok: true as const, fonte: 'brasilapi', consultado_em: '2026-11-24T12:00:00.000Z', sugestao: { cnpj: CNPJ_FICHA, razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', situacao_cadastral: 'ATIVA', cnae_fiscal: '4711302', endereco: { uf: 'AM' }, email: 'contato.ficticio@empresa.teste', telefone: '9232221234', opcao_simples: true, opcao_mei: false } }) };
+    /**
+     * Porta que, como a do cadastros (RF-CAD-02), lê e grava o cache `cadastros.consulta_externa` do tenant: exige o papel
+     * `macuxierp_app` e a RLS do tenant (o `macuxierp_config` não tem privilégio nessa tabela).
+     */
+    const consulta = {
+      consultar: async (tx: Transacao) => {
+        await tx.consultar(
+          // hora-fixa-ok: o instante do cache só precisa existir; nunca é comparado
+          `INSERT INTO cadastros.consulta_externa (tenant_id, tipo, chave, resposta, fonte, consultado_em, expira_em, external_id)
+           VALUES (plataforma.tenant_atual(), 'cnpj', $1, '{}'::jsonb, 'brasilapi', now(), now() + interval '24 hours', $2)
+           ON CONFLICT (tenant_id, tipo, chave) DO UPDATE SET consultado_em = EXCLUDED.consultado_em, deleted_at = NULL`,
+          [CNPJ_FICHA, randomUUID()],
+        );
+        return { ok: true as const, fonte: 'brasilapi', consultado_em: '2026-11-24T12:00:00.000Z', sugestao: { cnpj: CNPJ_FICHA, razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', situacao_cadastral: 'ATIVA', cnae_fiscal: '4711302', endereco: { uf: 'AM' }, email: 'contato.ficticio@empresa.teste', telefone: '9232221234', opcao_simples: true, opcao_mei: false } };
+      },
+    };
     const pluginFicha = criarPluginPlataformaCore({ repo, manifestos: MANIFESTOS_TESTE, hashSenha: async () => HASH, consultaReceita: consulta });
 
     /** Sem a 0065 no banco de teste (PR #636 ainda fora do main) estes testes pulam. */
@@ -173,14 +188,25 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       await b.admin.query(`INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Antiga', $2)`, [id, CNPJ_FICHA]);
       return id;
     }
-    const rota = (id: string, caminho: string, params: Record<string, string>, confirmar = false) =>
-      comPlataforma(async (tx) => {
-        const r = pluginFicha.rotas.find((x) => x.metodo === 'POST' && x.caminho === caminho);
-        if (!r) throw new Error(`rota ${caminho}`);
-        // hora-fixa-ok: o instante do contexto só alimenta a rota
-        const c = { sessao: { superadmin_id: SA, sessao_id: sessao }, tx, request_id: randomUUID(), agora: new Date(), auditar: async () => {} };
-        return r.executar(c, { params: { id, ...params } } as never);
-      }, confirmar);
+    /** Rota comum: uma transação de plataforma. Rota por etapa: uma transação de cada vez, a do tenant no papel app com a RLS. */
+    const rota = (id: string, caminho: string, params: Record<string, string>, confirmar = false) => {
+      const r = pluginFicha.rotas.find((x) => x.metodo === 'POST' && x.caminho === caminho);
+      if (!r) throw new Error(`rota ${caminho}`);
+      // hora-fixa-ok: o instante do contexto só alimenta a rota
+      const base = { sessao: { superadmin_id: SA, sessao_id: sessao }, request_id: randomUUID(), agora: new Date() };
+      const entrada = { params: { id, ...params } } as never;
+      if (r.transacoes === 'por_etapa') {
+        const app = (bancoApp ??= b.banco('macuxierp_app'));
+        return r.executar({ ...base, comPlataforma: (fn: (tx: Transacao) => Promise<unknown>) => comPlataforma(fn, true), comTenant: (t: string, fn: (tx: Transacao) => Promise<unknown>) => app.comTenant(t, fn) } as never, entrada);
+      }
+      return comPlataforma((tx) => r.executar({ ...base, tx, auditar: async () => {} }, entrada), confirmar);
+    };
+    let bancoApp: ReturnType<BancoEfemero['banco']> | undefined;
+
+    it('RF-CAD-02: o papel de plataforma não lê o cache de consultas do cadastros (por isso a consulta roda no tenant)', async () => {
+      const e = await comPlataforma((tx) => tx.consultar('SELECT 1 FROM cadastros.consulta_externa')).catch((x: unknown) => x);
+      expect(e).toMatchObject({ code: '42501' });
+    });
 
     it('RF-CAD-02: atualiza pela Receita, devolve a ficha mascarada e audita só os nomes dos campos', async (ctx) => {
       if (!(await temFuncao0065())) return ctx.skip();
@@ -188,6 +214,9 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       const r = await rota(id, '/empresas/:id/receita', {}, true);
       expect(r.corpo).toMatchObject({ estado: 'ok', ficha: { email_mascarado: 'co****@empresa.teste', telefone_mascarado: '(92) ****-1234', regime_receita: 'simples' } });
       expect(JSON.stringify(r.corpo)).not.toContain('contato.ficticio');
+      // A consulta rodou no papel app e na RLS do tenant: o cache do tenant foi gravado (no papel config daria 42501).
+      const cache = await b.admin.query('SELECT count(*)::int n FROM cadastros.consulta_externa WHERE tenant_id = $1', [id]);
+      expect(cache.rows[0].n).toBe(1);
       const t = await b.admin.query(`SELECT coalesce(string_agg(coalesce(antes::text,'') || coalesce(depois::text,''), ''), '') t FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = 'plataforma.empresa.atualizar_receita'`, [id]);
       expect(t.rows[0].t).not.toContain('contato.ficticio');
       expect(t.rows[0].t).not.toContain('EMPRESA FICTICIA');

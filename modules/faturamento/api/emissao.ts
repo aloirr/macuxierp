@@ -37,6 +37,7 @@ import {
   type ContingenciaDaNota,
   validarTitulosDoBoleto,
   notaParaEmissaoDe,
+  filaAceitaNota,
   podeEditar,
   ratearItens,
   resumoDoItem,
@@ -248,6 +249,11 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     const ambiente = await deps.ambiente.ambiente(tx, pedido.filial_id);
     if (ambiente === 'producao' && !deps.emissaoProducaoHabilitada) {
       return { ok: false, violacoes: [violacao('RN-FAT-04', 'filial_id', 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).')] };
+    }
+    // RN-CAD-10: pedido zerado no /config (linha `cancelado`) não é faturado, mesmo que o pedido ainda conste aprovado.
+    const statusFila = await deps.pedidos.statusNaFila(tx, pedido_id);
+    if (statusFila && !filaAceitaNota(statusFila)) {
+      return { ok: false, violacoes: [violacao('RN-CAD-10', 'pedido_id', 'Pedido cancelado ou zerado na fila de faturamento não pode ser faturado.')] };
     }
 
     const base = ratearItens({ pedido, situacao, itens, ja_faturadas });
