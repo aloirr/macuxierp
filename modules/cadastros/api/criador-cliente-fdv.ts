@@ -5,7 +5,7 @@
  * - A regra é do domain (`validarPreCadastroFdv`, todas as recusas juntas); aqui só as consultas e a gravação.
  * - Recusado: nada é gravado (nem evento nem auditoria); `motivo` = mensagens do catálogo, sem o valor recusado.
  * - Aceito: passa pelas mesmas regras do POST `/v1/cadastros/clientes` (`validarClienteNovo`), grava pelo mesmo repositório e emite
- *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira é a do `vendedor_external_id` conferido (`vincularVendedorFdv`; inválido = sem vendedor e aviso). Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
+ *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira segue `vincularVendedorFdv`. Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
  *   pessoal. O `external_id` devolvido é a chave do Hub do cliente (ADR 0010: `external_id ?? id`), nunca o `codigo_fdv`.
  * - Corrida no documento (índice único): vira `documento_ja_cadastrado`, sem abortar a transação (SAVEPOINT).
  */
@@ -14,8 +14,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import { ClienteDados } from '../contracts';
 import {
-  chavesDoPreCadastroFdv, erroPreCadastroFdv, motivoDaRecusaFdv, validarPreCadastroFdv, vincularVendedorFdv,
-  type AvisoVendedorFdv, type CodigoPreCadastroFdv, type ConferenciaVendedorFdv, type ContextoPreCadastroFdv, type Violacao,
+  chavesDoPreCadastroFdv, erroPreCadastroFdv, motivoDaRecusaFdv, validarPreCadastroFdv, vendedorExternoFdv, vincularVendedorFdv,
+  type CodigoPreCadastroFdv, type ConferenciaVendedorFdv, type ContextoPreCadastroFdv, type Violacao,
 } from '../domain';
 import { eventoCliente } from './eventos';
 import type { Dependencias } from './portas';
@@ -23,7 +23,7 @@ import { validarClienteNovo } from './validar-cliente';
 
 /** Decisão do ERP sobre um pré-cadastro: a do SDK (a que o `integracao-fdv` grava em `cliente_recebido`) com o `cliente_id` no vinculado. */
 export type DecisaoCriadorClienteFdv =
-  | (Extract<DecisaoPreCadastroFdv, { status: 'vinculado' }> & { cliente_id: string; vendedor_id: string | null; avisos: AvisoVendedorFdv[] })
+  | (Extract<DecisaoPreCadastroFdv, { status: 'vinculado' }> & { cliente_id: string })
   | Extract<DecisaoPreCadastroFdv, { status: 'rejeitado_erp' }>;
 
 export interface CriadorClienteFdv {
@@ -31,14 +31,16 @@ export interface CriadorClienteFdv {
 }
 
 /**
- * Porta do `integracao-fdv` (espelho do vendedor do FDV), injetada. SUPOSIÇÃO até o contrato chegar (T-0105 item 2): única
- * ligação num ponto só (`apps/worker/src/pedidos-fdv.ts`). `null` = o espelho não conhece o vendedor. O cadastros não lê o schema do espelho.
+ * Porta do espelho do vendedor do FDV, injetada, por tipagem estrutural: o worker passa o `criarConsultaVendedorFdv()` do
+ * `integracao-fdv/api`. `null` ou `vendedor_id` ausente = não encontrado; `ativo: false` = inativo.
  */
-export type ConferirVendedorFdv = (tx: Transacao, tenant: string, vendedor_external_id: string) => Promise<ConferenciaVendedorFdv | null>;
+export interface ConsultaVendedorFdvInjetada {
+  vendedorPorExternalId(tx: Transacao, tenant: string, externalId: string): Promise<ConferenciaVendedorFdv & { ativo: boolean } | null>;
+}
 
 export interface DependenciasCriadorClienteFdv {
-  /** Ausente (ainda não ligada) com `vendedor_external_id` no pré-cadastro: o cliente nasce sem carteira, com aviso. */
-  conferirVendedorFdv?: ConferirVendedorFdv;
+  /** Ausente = vendedor não consultado: o cliente nasce sem carteira e sem aviso. */
+  consultaVendedorFdv?: ConsultaVendedorFdvInjetada;
   repositorios: Dependencias['repositorios'];
   outbox: Outbox;
   auditoria: DestinoAuditoria;
@@ -77,22 +79,18 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
       const v = validarPreCadastroFdv(pre, ctx);
       if (!v.ok) return rejeitar(v.erros);
       // as regras do POST /clientes (documento, endereço, município, IE e referências): o que sobrar vira erro por campo
-      const vendedorExterno = (pre.vendedor_external_id ?? '').trim();
-      const conferencia = vendedorExterno !== '' && d.conferirVendedorFdv ? await d.conferirVendedorFdv(tx, tenant, vendedorExterno) : null;
-      const vinculo = vincularVendedorFdv(vendedorExterno, conferencia);
+      const vendedorExterno = vendedorExternoFdv(pre.vendedor_external_id);
+      const conferencia = vendedorExterno !== null && d.consultaVendedorFdv ? await d.consultaVendedorFdv.vendedorPorExternalId(tx, tenant, vendedorExterno) : undefined;
+      const vendedorErp = conferencia?.vendedor_id ? await r.vendedores.obter(conferencia.vendedor_id) : null;
+      const vinculo = vincularVendedorFdv(vendedorExterno, conferencia, vendedorErp);
       const dados = ClienteDados.parse({ ...v.dados, vendedor_id: vinculo.vendedor_id });
-      // o vendedor do espelho precisa existir e estar ativo também no ERP; senão a regra da carteira vale: sem vínculo, com aviso
-      const vendedorNoErp = vinculo.vendedor_id === null ? null : await r.vendedores.obter(vinculo.vendedor_id);
-      const vendedorOk = vendedorNoErp !== null && !vendedorNoErp.inativo;
-      const dadosFinais = vinculo.vendedor_id !== null && !vendedorOk ? ClienteDados.parse({ ...dados, vendedor_id: null }) : dados;
-      const aviso = vinculo.vendedor_id !== null && !vendedorOk ? 'vendedor_fdv_nao_encontrado' as const : vinculo.aviso;
-      const violacoes = await validarClienteNovo(r, dadosFinais);
+      const violacoes = await validarClienteNovo(r, dados);
       if (violacoes.length > 0) return rejeitar(violacoes.map(erroDaViolacao));
 
       let criado;
       try {
         criado = await r.carga.comSavepoint(async () => {
-          const c = await r.clientes.inserir(dadosFinais);
+          const c = await r.clientes.inserir(dados);
           if (v.contato) await r.clientes.contatos.inserir(c.id, v.contato); // RN-INF-08: o telefone vira contato, na mesma transação
           return c;
         });
@@ -108,9 +106,9 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
       await d.outbox.gravar(tx, criarEvento({ nome: ev.nome, tenant_id: tenant, agregado_id: ev.agregado_id, ator: 'sistema', request_id: requestId, payload: ev.payload }, agora));
       await auditar(d.auditoria, tx, { tenant_id: tenant, usuario_id: null, request_id: requestId }, {
         acao: 'cliente.criar', entidade: 'cliente', entidade_id: criado.id,
-        depois: { origem: 'fdv_pre_cadastro', cliente_uuid: pre.cliente_uuid, limite_credito_centavos: 0, vendedor_vinculado: dadosFinais.vendedor_id !== null, aviso },
+        depois: { origem: 'fdv_pre_cadastro', cliente_uuid: pre.cliente_uuid, limite_credito_centavos: 0, vendedor_vinculado: dados.vendedor_id !== null, aviso: vinculo.aviso },
       }, agora);
-      return { status: 'vinculado', cliente_id: criado.id, external_id: criado.external_id ?? criado.id, vendedor_id: dadosFinais.vendedor_id ?? null, avisos: aviso ? [aviso] : [] };
+      return { status: 'vinculado', cliente_id: criado.id, external_id: criado.external_id ?? criado.id };
     },
   };
 }

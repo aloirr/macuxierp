@@ -31,22 +31,37 @@ export function planejarTransferencia(p: {
 
 /** O que o espelho do vendedor no integracao-fdv responde sobre o `vendedor_external_id` do pré-cadastro. */
 export interface ConferenciaVendedorFdv {
-  /** Id do vendedor no ERP; `null` = o espelho não conhece o vendedor. */
-  vendedor_id: string | null;
+  /** Id do vendedor no ERP; ausente ou `null` = o espelho não o liga a um vendedor do ERP (não encontrado). */
+  vendedor_id?: string | null;
   ativo: boolean;
 }
 
 export type AvisoVendedorFdv = 'vendedor_fdv_nao_encontrado' | 'vendedor_fdv_inativo';
 export interface VinculoVendedorFdv { vendedor_id: string | null; aviso: AvisoVendedorFdv | null }
 
+/** Normaliza o `vendedor_external_id` do pré-cadastro: sem texto = `null` (sem vendedor indicado). */
+export const vendedorExternoFdv = (v: string | null | undefined): string | null => {
+  const t = (v ?? '').trim();
+  return t === '' ? null : t;
+};
+
 /**
  * D7 + T-0105 item 2: cliente criado a partir do FDV entra na carteira do vendedor indicado. Não há regra escrita para o
- * vendedor inválido; vale a não-recusa: o cliente nasce sem carteira e a decisão leva um aviso (o defeito não é do
- * cliente, e a carteira se acerta depois pela transferência). Sem `vendedor_external_id`: sem vínculo e sem aviso.
+ * vendedor inválido; vale a não-recusa: o cliente nasce sem carteira e a auditoria leva o aviso (o defeito não é do
+ * cliente, e a carteira se acerta depois pela transferência). **Regra provisória, pendente de RN (PO).**
+ * Sem vendedor indicado ou sem a porta do espelho ligada (`conferencia` `undefined` = não consultado): sem vínculo e sem aviso.
+ * `conferencia` `null` = consultado e o espelho não conhece o vendedor.
+ * Vale o pior dos dois lados: o espelho do FDV (`conferencia`) e o cadastro do ERP (`vendedorErp`, `null` = não existe).
+ * Inexistente (no espelho ou no ERP) = `vendedor_fdv_nao_encontrado`; existente e inativo em qualquer lado = `vendedor_fdv_inativo`.
  */
-export function vincularVendedorFdv(vendedorExternalId: string | null | undefined, conferencia: ConferenciaVendedorFdv | null): VinculoVendedorFdv {
-  if ((vendedorExternalId ?? '').trim() === '') return { vendedor_id: null, aviso: null };
-  if (!conferencia || conferencia.vendedor_id === null) return { vendedor_id: null, aviso: 'vendedor_fdv_nao_encontrado' };
-  if (!conferencia.ativo) return { vendedor_id: null, aviso: 'vendedor_fdv_inativo' };
+export function vincularVendedorFdv(
+  vendedorExterno: string | null,
+  conferencia: ConferenciaVendedorFdv | null | undefined,
+  vendedorErp: { inativo: boolean } | null,
+): VinculoVendedorFdv {
+  if (vendedorExterno === null || conferencia === undefined) return { vendedor_id: null, aviso: null };
+  const sem = (aviso: AvisoVendedorFdv): VinculoVendedorFdv => ({ vendedor_id: null, aviso });
+  if (!conferencia || !conferencia.vendedor_id || vendedorErp === null) return sem('vendedor_fdv_nao_encontrado');
+  if (!conferencia.ativo || vendedorErp.inativo) return sem('vendedor_fdv_inativo');
   return { vendedor_id: conferencia.vendedor_id, aviso: null };
 }
