@@ -35,7 +35,7 @@ export function RevelarMascarado({ rotulo, mascarado, revelar }: Props) {
       <button className="mx-botao-secundario" type="button" disabled={pendente} aria-pressed={valor !== null} aria-label={`${valor !== null ? 'Ocultar' : 'Revelar'} ${rotulo}`} onClick={alternar}>
         {pendente ? 'Carregando…' : valor !== null ? 'Ocultar' : 'Revelar'}
       </button>
-      {erro && <span className="erro" role="alert"> {erro}</span>}
+      {erro && <span className="erro-campo" role="alert"> {erro}</span>}
     </>
   );
 }

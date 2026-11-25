@@ -35,7 +35,7 @@ describe('ficha da Receita na aba Empresa (T-0101)', () => {
   });
   it('sem ficha: orientação curta e o botão Atualizar; empresa encerrada desabilita o botão', () => {
     const h = render(null);
-    expect(h).toContain('Sem ficha da Receita.');
+    expect(h).toContain('Ainda não consultada. Use Atualizar pela Receita.');
     expect(h).not.toContain('Revelar');
     expect(render(null, false)).toMatch(/<button[^>]*disabled=""[^>]*>Atualizar pela Receita/);
   });

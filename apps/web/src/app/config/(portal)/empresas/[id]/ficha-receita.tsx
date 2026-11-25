@@ -16,6 +16,11 @@ interface Props {
   editavel: boolean;
 }
 
+/** Texto de um CNAE secundário: ponto único para virar "codigo · descricao" quando o contrato trouxer {codigo, descricao}. */
+function textoCnae(c: string): string {
+  return c;
+}
+
 /** E-mail ou telefone: mascarado (pelo banco) até o "Revelar". */
 function Contato({ empresaId, campo, rotulo, mascarado }: { empresaId: string; campo: CampoContato; rotulo: string; mascarado: string | null }) {
   return (
@@ -44,9 +49,19 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
   return (
     <section className="bloco" aria-labelledby="h-ficha">
       <h2 id="h-ficha">Ficha da Receita</h2>
+      <div className="cabecalho-ficha">
+        {consulta && <p className="apoio">{consulta}</p>}
+        <button className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={atualizar}>
+          {pendente ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
+        </button>
+      </div>
+      {mensagem && (
+        <p className={mensagem.ok ? 'apoio' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>
+          {mensagem.texto}
+        </p>
+      )}
       {ficha ? (
         <>
-          {consulta && <p className="apoio">{consulta}</p>}
           <dl className="dados-empresa">
             {linhasDaFicha(ficha).map((l) => (
               <div key={l.rotulo}>
@@ -62,22 +77,14 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
               <h3>CNAE secundários</h3>
               <ul className="lista-cnae">
                 {ficha.cnae_secundarios.map((c) => (
-                  <li key={c}>{c}</li>
+                  <li key={c}>{textoCnae(c)}</li>
                 ))}
               </ul>
             </>
           )}
         </>
       ) : (
-        <p className="apoio">Sem ficha da Receita.</p>
-      )}
-      <button className="mx-botao-secundario" type="button" disabled={pendente || !editavel} onClick={atualizar}>
-        {pendente ? 'Consultando a Receita…' : 'Atualizar pela Receita'}
-      </button>
-      {mensagem && (
-        <p className={mensagem.ok ? 'apoio' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>
-          {mensagem.texto}
-        </p>
+        <p className="apoio">Ainda não consultada. Use Atualizar pela Receita.</p>
       )}
     </section>
   );
