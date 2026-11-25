@@ -580,6 +580,7 @@ export async function planejarEstoque(linhas: readonly LinhaEstoque[], st: Estad
     // RN-CAD-17: saldo fracionário só em produto de unidade KG ou M
     // (a unidade vem do produto do próprio lote, se ele foi lido nele, ou do gravado)
     const unidade = st.unidadeDoProduto.get(g.produto) ?? (prodId ? (await st.r.produtos.obter(prodId))?.unidade_comercial : undefined);
+    if (unidade) st.unidadeDoProduto.set(g.produto, unidade);
     const fracao = unidade ? violacaoFracao('saldo', unidade, g.saldo) : null;
     if (fracao) {
       saidas.push({ linhas: g.linhas, saida: { erros: [erroLinha(primeira, 'saldo', 'RN-CAD-17', fracao.mensagem)] } });

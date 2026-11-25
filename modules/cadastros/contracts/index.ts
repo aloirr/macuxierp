@@ -8,7 +8,7 @@ import { Cnpj, ConsultaLista, ConsultaPaginada, normalizarDocumento } from '@mac
 import { EXTERNAL_ID_MAX, LIMITE_CODIGO_FORMA_PAGAMENTO } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 
-export * from './fracao';
+export { validarFracaoDaQuantidade } from './fracao';
 
 export const MODULO = 'cadastros' as const;
 
