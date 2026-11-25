@@ -36,6 +36,18 @@ export async function inserirSuperadmin(b: BancoEfemero, email: string, o: { dev
   return rows[0]!.id;
 }
 
+/** Manaus (1302603, AM) numa tabela oficial de municípios de teste, pela conexão do admin (cidade da filial, IBGE da consulta). */
+export async function semearMunicipioManaus(b: BancoEfemero): Promise<void> {
+  const { rows } = await b.admin.query<{ id: string }>(
+    `INSERT INTO cadastros.tabela_oficial_versao (id, tabela, carga, versao, fonte, url, data_referencia, arquivo, sha256, registros)
+     VALUES (gen_random_uuid(), 'municipio', 'municipio-teste', 't-teste', 'IBGE (teste)', 'https://exemplo.invalid', '2026-01-01', 'municipio.csv', repeat('e', 64), 1)
+     RETURNING id`,
+  );
+  await b.admin.query("INSERT INTO cadastros.municipio (codigo, nome, uf, vigencia_inicio, vigencia_fim, versao_id) VALUES ('1302603', 'Manaus', 'AM', '2020-01-01', NULL, $1)", [
+    rows[0]!.id,
+  ]);
+}
+
 /** Cada login sai de um IP próprio: o limite por IP (ADR 0012 §6, testado à parte em login-trava.db.test.ts) não interfere. */
 let ipSeq = 0;
 export const novoIp = () => `10.60.${Math.floor(ipSeq / 250)}.${(ipSeq++ % 250) + 1}`;
