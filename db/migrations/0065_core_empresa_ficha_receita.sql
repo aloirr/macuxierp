@@ -1,16 +1,8 @@
--- 0065 — Ficha da empresa pela Receita (T-0101, v0.3.13; ADR 0012 §4, emenda da ficha). Aditiva e reexecutável:
--- ADD COLUMN IF NOT EXISTS (anuláveis), CREATE OR REPLACE, REVOKE e GRANT.
---
--- O que entra:
--- - colunas da ficha em core.empresa (lista fechada da ADR): endereço, e-mail, telefone, CNAE principal, regime pela
---   Receita, situação cadastral e a data dela, fonte e data da última consulta; mais data de abertura, natureza
---   jurídica, porte e CNAEs secundários (decisão do gerente-projetos, 24/11 23h37; a ADR recebe a linha);
--- - internas plataforma.mascarar_telefone, receita_texto, receita_data e empresa_ficha_json;
--- - empresa_ler passa a devolver a chave "ficha" (e-mail e telefone só mascarados); a empresa_json (que também serve a
---   listagem) não muda: a ficha não vai para lista (LGPD);
--- - funções da lista fechada empresa_gravar_receita (a única escrita do portal em schema de módulo) e
---   empresa_contato_revelar, só para macuxierp_config, auditadas sem valores.
--- O porquê e as premissas: docs/banco/README.md, seção da ficha da empresa pela Receita.
+-- 0065 — Ficha da empresa pela Receita (T-0101; ADR 0012 §4, emenda da ficha). Aditiva e reexecutável.
+-- Entram: colunas da ficha em core.empresa; internas mascarar_telefone, receita_texto, receita_data, receita_digitos,
+-- empresa_core_id e empresa_ficha_json; empresa_ler com a chave "ficha"; empresa_gravar_receita e
+-- empresa_contato_revelar, só para macuxierp_config.
+-- O porquê: docs/banco/README.md, seção "Ficha da empresa pela Receita".
 
 SET LOCAL lock_timeout = '5s';
 
@@ -85,7 +77,27 @@ END $$;
 COMMENT ON FUNCTION plataforma.receita_data(text) IS
   'Interna (0065): data AAAA-MM-DD da Receita; formato ou data inválida = NULL. T-0101.';
 
--- Exceção só de leitura da ADR 0012 §4 (emenda da ficha).
+CREATE OR REPLACE FUNCTION plataforma.receita_digitos(p_valor text, p_padrao text) RETURNS text
+  LANGUAGE sql IMMUTABLE SECURITY DEFINER
+  SET search_path = pg_catalog, pg_temp
+  AS $$
+  SELECT CASE WHEN x.d ~ p_padrao THEN x.d END FROM (SELECT regexp_replace(p_valor, '[^0-9]', '', 'g') AS d) x
+$$;
+COMMENT ON FUNCTION plataforma.receita_digitos(text, text) IS
+  'Interna (0065): só os dígitos de p_valor quando casam com p_padrao; senão (ou NULL) = NULL. T-0101.';
+
+-- Exceção só de leitura da ADR 0012 §4 (emenda da ficha): a core.empresa viva do tenant, a mesma regra da 0035.
+CREATE OR REPLACE FUNCTION plataforma.empresa_core_id(p_tenant uuid) RETURNS uuid
+  LANGUAGE sql STABLE SECURITY DEFINER
+  SET search_path = pg_catalog, pg_temp
+  AS $$
+  SELECT e.id FROM core.empresa e
+  WHERE e.tenant_id = p_tenant AND e.deleted_at IS NULL
+  ORDER BY e.created_at, e.id LIMIT 1
+$$;
+COMMENT ON FUNCTION plataforma.empresa_core_id(uuid) IS
+  'Interna (0065): id da core.empresa viva do tenant (a mais antiga); NULL sem a linha. A trava (FOR UPDATE) fica no chamador. T-0101.';
+
 CREATE OR REPLACE FUNCTION plataforma.empresa_ficha_json(p_tenant uuid) RETURNS jsonb
   LANGUAGE sql STABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
@@ -104,8 +116,7 @@ CREATE OR REPLACE FUNCTION plataforma.empresa_ficha_json(p_tenant uuid) RETURNS 
     'receita_fonte', e.receita_fonte,
     'receita_consultada_em', plataforma.instante_iso(e.receita_consultada_em))
   FROM core.empresa e
-  WHERE e.tenant_id = p_tenant AND e.deleted_at IS NULL
-  ORDER BY e.created_at, e.id LIMIT 1
+  WHERE e.id = plataforma.empresa_core_id(p_tenant)
 $$;
 COMMENT ON FUNCTION plataforma.empresa_ficha_json(uuid) IS
   'Interna (0065): a ficha da Receita da core.empresa viva do tenant (lista fechada da ADR 0012 §4), com email_mascarado e telefone_mascarado, nunca os completos; NULL sem a linha. T-0101.';
@@ -135,13 +146,10 @@ CREATE OR REPLACE FUNCTION plataforma.empresa_gravar_receita(p_id uuid, p_ficha 
   AS $$
 DECLARE
   v_sa uuid := plataforma.exigir_superadmin();
-  v_chaves CONSTANT text[] := ARRAY['razao_social', 'nome_fantasia', 'logradouro', 'numero', 'complemento', 'bairro',
-    'cep', 'municipio_ibge', 'uf', 'email', 'telefone', 'cnae_principal', 'regime_receita', 'situacao_cadastral',
-    'situacao_cadastral_data', 'data_abertura', 'natureza_juridica', 'porte', 'cnae_secundarios', 'fonte',
-    'consultado_em'];
   v_colunas CONSTANT text[] := ARRAY['razao_social', 'nome_fantasia', 'logradouro', 'numero', 'complemento', 'bairro',
     'cep', 'municipio_ibge', 'uf', 'email', 'telefone', 'cnae_principal', 'regime_receita', 'situacao_cadastral',
     'situacao_cadastral_data', 'data_abertura', 'natureza_juridica', 'porte', 'cnae_secundarios'];
+  v_chaves CONSTANT text[] := v_colunas || ARRAY['fonte', 'consultado_em'];
   v_ufs CONSTANT text[] := ARRAY['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA',
     'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
   t plataforma.tenant;
@@ -174,8 +182,7 @@ BEGIN
   END IF;
 
   t := plataforma.empresa_alvo(p_id, false);
-  SELECT * INTO e FROM core.empresa x WHERE x.tenant_id = t.id AND x.deleted_at IS NULL
-    ORDER BY x.created_at, x.id LIMIT 1 FOR UPDATE;
+  SELECT * INTO e FROM core.empresa x WHERE x.id = plataforma.empresa_core_id(t.id) FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'a empresa não tem cadastro (filial padrão)' USING ERRCODE = 'object_not_in_prerequisite_state';
   END IF;
@@ -206,13 +213,9 @@ BEGIN
   IF p_ficha ? 'situacao_cadastral' THEN
     n.situacao_cadastral := plataforma.receita_texto(p_ficha ->> 'situacao_cadastral', 40);
   END IF;
-  IF p_ficha ? 'cep' THEN
-    v_txt := regexp_replace(p_ficha ->> 'cep', '[^0-9]', '', 'g');
-    n.cep := CASE WHEN v_txt ~ '^[0-9]{8}$' THEN v_txt END;
-  END IF;
+  IF p_ficha ? 'cep' THEN n.cep := plataforma.receita_digitos(p_ficha ->> 'cep', '^[0-9]{8}$'); END IF;
   IF p_ficha ? 'municipio_ibge' THEN
-    v_txt := regexp_replace(p_ficha ->> 'municipio_ibge', '[^0-9]', '', 'g');
-    n.municipio_ibge := CASE WHEN v_txt ~ '^[0-9]{7}$' THEN v_txt END;
+    n.municipio_ibge := plataforma.receita_digitos(p_ficha ->> 'municipio_ibge', '^[0-9]{7}$');
   END IF;
   IF p_ficha ? 'uf' THEN
     v_txt := upper(btrim(p_ficha ->> 'uf'));
@@ -222,14 +225,10 @@ BEGIN
     v_txt := lower(btrim(p_ficha ->> 'email'));
     n.email := CASE WHEN length(v_txt) <= 254 AND v_txt ~ '^[^@[:space:]]+@[^@[:space:]]+$' THEN v_txt END;
   END IF;
-  IF p_ficha ? 'telefone' THEN
-    v_txt := regexp_replace(p_ficha ->> 'telefone', '[^0-9]', '', 'g');
-    n.telefone := CASE WHEN v_txt ~ '^[0-9]{10,11}$' THEN v_txt END;
-  END IF;
+  IF p_ficha ? 'telefone' THEN n.telefone := plataforma.receita_digitos(p_ficha ->> 'telefone', '^[0-9]{10,11}$'); END IF;
   IF p_ficha ? 'cnae_principal' THEN
     -- A BrasilAPI manda o CNAE como número: o zero à esquerda some (0111301 → 111301).
-    v_txt := regexp_replace(p_ficha ->> 'cnae_principal', '[^0-9]', '', 'g');
-    n.cnae_principal := CASE WHEN v_txt ~ '^[0-9]{6,7}$' THEN lpad(v_txt, 7, '0') END;
+    n.cnae_principal := lpad(plataforma.receita_digitos(p_ficha ->> 'cnae_principal', '^[0-9]{6,7}$'), 7, '0');
   END IF;
   IF p_ficha ? 'regime_receita' THEN
     v_txt := lower(btrim(p_ficha ->> 'regime_receita'));
@@ -248,10 +247,9 @@ BEGIN
     n.cnae_secundarios := CASE WHEN jsonb_typeof(p_ficha -> 'cnae_secundarios') = 'array' THEN
       (SELECT coalesce(jsonb_agg(c.codigo ORDER BY c.ordem), '[]'::jsonb)
          FROM (SELECT DISTINCT ON (v.codigo) v.codigo, v.ordem
-                 FROM (SELECT lpad(regexp_replace(i.valor #>> '{}', '[^0-9]', '', 'g'), 7, '0') AS codigo,
-                              i.ordem, regexp_replace(i.valor #>> '{}', '[^0-9]', '', 'g') AS digitos
+                 FROM (SELECT lpad(plataforma.receita_digitos(i.valor #>> '{}', '^[0-9]{6,7}$'), 7, '0') AS codigo, i.ordem
                          FROM jsonb_array_elements(p_ficha -> 'cnae_secundarios') WITH ORDINALITY i (valor, ordem)) v
-                WHERE v.digitos ~ '^[0-9]{6,7}$'
+                WHERE v.codigo IS NOT NULL
                 ORDER BY v.codigo, v.ordem) c)
     END;
   END IF;
@@ -293,8 +291,7 @@ BEGIN
   END IF;
   t := plataforma.empresa_alvo(p_id, false);
   SELECT e.id, CASE p_campo WHEN 'email' THEN e.email ELSE e.telefone END INTO v_empresa, v_valor
-    FROM core.empresa e WHERE e.tenant_id = t.id AND e.deleted_at IS NULL
-    ORDER BY e.created_at, e.id LIMIT 1;
+    FROM core.empresa e WHERE e.id = plataforma.empresa_core_id(t.id);
   IF v_empresa IS NULL THEN
     RAISE EXCEPTION 'a empresa não tem cadastro' USING ERRCODE = 'no_data_found';
   END IF;
@@ -313,7 +310,8 @@ COMMENT ON FUNCTION plataforma.empresa_contato_revelar(uuid, text, text) IS
 -- Privilégios: nada para PUBLIC; internas sem EXECUTE; as do portal só para macuxierp_config.
 -- ---------------------------------------------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION plataforma.mascarar_telefone(text), plataforma.receita_texto(text, integer),
-  plataforma.receita_data(text), plataforma.empresa_ficha_json(uuid), plataforma.empresa_ler(uuid),
+  plataforma.receita_data(text), plataforma.receita_digitos(text, text), plataforma.empresa_core_id(uuid),
+  plataforma.empresa_ficha_json(uuid), plataforma.empresa_ler(uuid),
   plataforma.empresa_gravar_receita(uuid, jsonb, text), plataforma.empresa_contato_revelar(uuid, text, text)
   FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION plataforma.empresa_ler(uuid), plataforma.empresa_gravar_receita(uuid, jsonb, text),
