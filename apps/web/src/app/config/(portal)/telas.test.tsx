@@ -128,6 +128,14 @@ describe('empresa: dados e e-mail do 1º administrador', () => {
     expect(vazios.filter((l) => l.valor === '—').map((l) => l.rotulo)).toEqual(['Razão social', 'CNPJ', 'Cidade/UF']);
     expect(renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />)).not.toContain('Revelar');
   });
+  it('Cidade/UF: o cadastro manda; sem ele, a UF da ficha da Receita preenche o cartão (T-0101)', () => {
+    const semLugar = { ...acme, cidade: null, uf: null };
+    const f = { municipio_ibge: '1302603', uf: 'AM' };
+    expect(dadosDaEmpresa(semLugar, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('AM');
+    expect(dadosDaEmpresa({ ...semLugar, cidade: 'Manaus' }, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Manaus/AM');
+    expect(dadosDaEmpresa(semLugar, { municipio_ibge: null, uf: null }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+    expect(dadosDaEmpresa(semLugar).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+  });
 });
 
 describe('CSS do portal: reaproveita .conteudo e .topo (1024 px e tela pequena)', () => {
@@ -154,6 +162,11 @@ describe('ajustes de marca e componentes do #309', () => {
     expect(css).toMatch(/\.cartao-plataforma \.marca-login \{ margin: 0 0 24px; \}/);
     expect(css).toMatch(/\.senha-provisoria \{[^}]*font-size: var\(--mx-tamanho-grande\);[^}]*font-weight: 600/);
     expect(css).toMatch(/\.codigo, \.senha-provisoria \{ font-family: var\(--mx-fonte-codigo\)/);
+    expect(css).toMatch(/\.frase-confirmar \{[^}]*font-family: var\(--mx-fonte-codigo\);[^}]*font-weight: var\(--mx-peso-rotulo-campo\);[^}]*color: var\(--mx-cor-grafite\);[^}]*background: var\(--mx-cor-nevoa\);[^}]*border: 1px solid var\(--mx-cor-borda-tabela\);[^}]*box-decoration-break: clone/);
+    expect(css).not.toMatch(/\.frase-confirmar \{[^}]*nowrap/);
+    expect(css).toMatch(/\.segredo \{[^}]*font-family: var\(--mx-fonte-codigo\)/);
+    expect(css).not.toContain('ui-monospace, monospace');
+    expect(readFileSync(join(__dirname, '../../../components/frase-confirmacao.tsx'), 'utf8')).toContain('className="frase-confirmar"');
     expect(css).toMatch(/\.bloco h2 \{ font-size: var\(--mx-tamanho-titulo-cartao\)/);
     expect(css).toMatch(/\.painel-senha \{[^}]*border: 1px solid var\(--mx-cor-borda-tabela\)/);
     expect(css).not.toMatch(/outline:\s*none/);

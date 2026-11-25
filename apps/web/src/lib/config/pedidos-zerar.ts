@@ -23,6 +23,9 @@ export const textosMantidosPedidos = (mantidos: readonly Mantido[]) =>
 /** Pedidos apagados da tabela `pedido` da resposta (a prévia ou o zerar). */
 const qtdPedidos = (r: ZeragemPedidosResposta): number => r.apagados.find((a) => a.tabela === 'pedido')?.quantidade ?? 0;
 
+/** Prévia sem nenhum pedido a apagar: não há o que confirmar. */
+export const semPedidoParaApagar = (r: ZeragemPedidosResposta): boolean => qtdPedidos(r) === 0;
+
 /** "Vai apagar N pedidos." e, quando há do FDV, quantos só voltam pelo reenvio feito no FDV (RN-PED-01). */
 export function textoApagarPedidos(r: ZeragemPedidosResposta): string {
   const n = qtdPedidos(r);

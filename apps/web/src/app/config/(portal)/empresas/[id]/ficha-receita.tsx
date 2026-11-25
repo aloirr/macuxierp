@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from 'react';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { AUSENTE } from '@/lib/config/empresa';
-import { linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
+import { fichaVazia, linhasDaFicha, origemDaConsulta } from '@/lib/config/ficha';
 import { atualizarReceitaAcao, revelarContatoAcao } from '../acoes-ficha';
 
 interface Props {
@@ -32,7 +32,9 @@ function Contato({ empresaId, campo, rotulo, mascarado }: { empresaId: string; c
 }
 
 /** Bloco "Ficha da Receita" da aba Empresa (T-0101). Só o superadmin chega aqui (todo o /config é do superadmin). */
-export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
+export function FichaReceita({ empresaId, ficha: fichaRecebida, fuso, editavel }: Props) {
+  const consulta = fichaRecebida ? origemDaConsulta(fichaRecebida, fuso) : null;
+  const ficha = fichaVazia(fichaRecebida) ? null : fichaRecebida;
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<{ ok: boolean; texto: string } | null>(null);
@@ -45,7 +47,6 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
       setMensagem(r.ok ? { ok: true, texto: r.valor.campos_alterados.length > 0 ? 'Ficha atualizada pela Receita.' : 'Consulta feita: a ficha já estava em dia.' } : { ok: false, texto: r.erro });
       if (r.ok) router.refresh();
     });
-  const consulta = ficha ? origemDaConsulta(ficha, fuso) : null;
   return (
     <section className="bloco" aria-labelledby="h-ficha">
       <h2 id="h-ficha">Ficha da Receita</h2>
@@ -84,7 +85,7 @@ export function FichaReceita({ empresaId, ficha, fuso, editavel }: Props) {
           )}
         </>
       ) : (
-        <p className="apoio">Ainda não consultada. Use Atualizar pela Receita.</p>
+        <p className="apoio">{consulta ? 'Consultada, sem dados na Receita.' : 'Ainda não consultada. Use Atualizar pela Receita.'}</p>
       )}
     </section>
   );
