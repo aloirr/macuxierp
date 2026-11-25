@@ -90,6 +90,8 @@ async function estado(g) {
         texto: (f.textContent ?? '').trim(),
         perigo: f.classList.contains('mx-acoes-perigo'),
         desabilitado: f.getAttribute('aria-disabled') === 'true' || f.hasAttribute('disabled'),
+        // Desligado com motivo (#689): o motivo vem por aria-describedby e o item continua focável.
+        motivo: f.hasAttribute('aria-describedby') ? (document.getElementById(f.getAttribute('aria-describedby'))?.textContent ?? '').trim() : '',
         cor: getComputedStyle(f).color,
         cortado: f.scrollWidth > f.clientWidth + 1,
         caixa: caixa(f),
@@ -127,7 +129,8 @@ async function conferirMenu(pagina, g, onde, larg, arquivoPrint) {
     if (e.focoItem < 0) await pagina.keyboard.press('ArrowDown');
     e = await estado(g);
     const itens = e.filhos.map((f, i) => ({ ...f, i })).filter((f) => f.papel === 'menuitem');
-    const habilitados = itens.filter((f) => !f.desabilitado);
+    // Focáveis: os ligados e os desligados com motivo; o desligado sem motivo é pulado nas setas.
+    const habilitados = itens.filter((f) => !f.desabilitado || f.motivo);
     if (e.focoItem < 0) falhar(w, 'aberto pelo Enter, ↓ não levou o foco a um item do menu');
     else if (habilitados.length) {
       if (e.focoItem !== habilitados[0].i) falhar(w, `foco no item ${e.focoItem}, esperado o 1º habilitado (${habilitados[0].i})`);
@@ -143,7 +146,7 @@ async function conferirMenu(pagina, g, onde, larg, arquivoPrint) {
       await pagina.keyboard.press('Home');
       e = await estado(g);
       if (e.focoItem !== habilitados[0].i) falhar(w, `Home levou o foco a ${e.focoItem}`);
-      if (itens.some((f) => f.desabilitado && f.i === e.focoItem)) falhar(w, 'foco parou em item desabilitado');
+      if (itens.some((f) => f.desabilitado && !f.motivo && f.i === e.focoItem)) falhar(w, 'foco parou em item desabilitado sem motivo');
     }
   }
   // Esc fecha e devolve o foco ao gatilho (com o foco onde estiver: item ou gatilho).
@@ -317,6 +320,15 @@ try {
       await g.click();
       await p.getByRole('menuitem', { name: 'Tentar de novo' }).click({ force: true });
       if ((await p.evaluate(() => window.acionadas)).includes('travado-12')) falhar(`bancada [${nome}]`, 'item desabilitado acionou');
+      // Desligado com motivo (#689): mostra o motivo, recebe o foco pelas setas e não aciona nem fecha o menu.
+      if (await fechado(g)) await g.click();
+      const retomar = p.getByRole('menuitem', { name: /^Retomar/ });
+      const motivo = (await estado(g)).filhos.find((f) => /^Retomar/.test(f.texto))?.motivo ?? '';
+      if (motivo !== 'Cadastre a credencial primeiro') falhar(`bancada [${nome}]`, `item com motivo sem o texto do motivo ("${motivo}")`);
+      if ((await retomar.getAttribute('aria-disabled')) !== 'true') falhar(`bancada [${nome}]`, 'item com motivo sem aria-disabled');
+      await retomar.click({ force: true });
+      if ((await p.evaluate(() => window.acionadas)).includes('retomar-12')) falhar(`bancada [${nome}]`, 'item desligado com motivo acionou');
+      if (await fechado(g)) falhar(`bancada [${nome}]`, 'clique no item desligado com motivo fechou o menu');
       await p.keyboard.press('Escape');
       for (const e of erros) falhar(`bancada [${nome}]`, `erro na página: ${e}`);
       await p.context().close();

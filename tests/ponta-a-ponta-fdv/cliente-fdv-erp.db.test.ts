@@ -203,6 +203,27 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
     expect((await retido(api.t.A, clienteId)).every((x) => x.aguarda_vinculo)).toBe(true);
   });
 
+  it('F-7 (RN-INT-23, #698): vendedor que não existe no espelho: recusado com vendedor_fdv_nao_encontrado, sem cliente; o retorno leva erros[{campo: vendedor_external_id}]', async () => {
+    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '04252011000110', vendedor_external_id: 'V-NAO-EXISTE' }));
+    const r = await ciclo('A');
+    expect(r.busca).toMatchObject({ recusados: 1 }); // a busca também traz de novo o pendente retido do F-5
+    const [l] = await recebidos(api.t.A, p.dados.cliente_uuid);
+    expect(l).toMatchObject({ situacao: 'recusado', cliente_id: null });
+    expect(l!.erros).toEqual([expect.objectContaining({ campo: 'vendedor_external_id', codigo: 'vendedor_fdv_nao_encontrado' })]);
+    // a recusa guardada não leva dado pessoal do pré-cadastro (só campo, código e a mensagem do catálogo)
+    expect(JSON.stringify(l!.erros)).not.toMatch(new RegExp([RAZAO, EMAIL, TELEFONE, '04252011000110'].join('|')));
+    expect(await clientesComDocumento(api.t.A, '04252011000110')).toBe(0);
+    // o retorno ao Hub (v1.0.32, com aditivos) é o rejeitado_erp com o erro do vendedor; o 200 do oráculo valida o corpo
+    expect(r.envio).toMatchObject({ enviados: 1, falhou: 0 });
+    const [corpo] = await adm<{ corpo: { status: string; erros?: { campo: string; codigo: string }[] } }>(
+      'SELECT corpo FROM integracao_fdv.cliente_retorno WHERE tenant_id = $1 AND cliente_uuid = $2',
+      [api.t.A, p.dados.cliente_uuid],
+    );
+    expect(corpo!.corpo.status).toBe('rejeitado_erp');
+    expect(corpo!.corpo.erros).toEqual([expect.objectContaining({ campo: 'vendedor_external_id', codigo: 'vendedor_fdv_nao_encontrado' })]);
+    expect(clienteNoHub(duble, dubleT.A, p.dados.cliente_uuid)!.retornos).toEqual([expect.objectContaining({ status: 'rejeitado_erp', erros: 1 })]);
+  });
+
   it('F-6: 5xx e 429 com Retry-After mantêm o retorno pendente e o mesmo corpo sai depois, uma vez só; 403 na busca pausa por credencial', async () => {
     const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '07526557000100' }));
     await lados.A.buscar(api.t.A, hubs.A);
