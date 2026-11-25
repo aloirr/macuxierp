@@ -62,6 +62,7 @@ describe.skipIf(!PG_DISPONIVEL)('recebedor do pedido do FDV montado no worker (P
   let comPedido: string;
   let semPedido: string;
   let recebedor: ReturnType<typeof montarPedidosFdv>['recebedor'];
+  let clientes: ReturnType<typeof montarPedidosFdv>['clientes'];
   const { log, linhas, registros } = pinoEmMemoria();
   const ids = { filial: randomUUID(), cliente: randomUUID(), produto: randomUUID(), condicao: randomUUID(), tabela: randomUUID() };
 
@@ -71,7 +72,7 @@ describe.skipIf(!PG_DISPONIVEL)('recebedor do pedido do FDV montado no worker (P
     comPedido = await criarTenant(b.admin, 'worker-fdv', ['cadastros', 'pedido', 'integracao-fdv']);
     semPedido = await criarTenant(b.admin, 'worker-fdv-sem-pedido', ['cadastros', 'integracao-fdv']);
     await inserirMassaPedido(b.admin, comPedido, ids);
-    ({ recebedor } = montarPedidosFdv({ log, relogio: new RelogioFixo(AGORA), recebimento: 'desligado', resolvedor: criarResolvedorChaveErp(repositoriosSql), aditivosCliente: true }));
+    ({ recebedor, clientes } = montarPedidosFdv({ log, relogio: new RelogioFixo(AGORA), recebimento: 'desligado', resolvedor: criarResolvedorChaveErp(repositoriosSql), aditivosCliente: true }));
   }, 120_000);
   afterAll(async () => {
     await b?.remover();
@@ -113,5 +114,24 @@ describe.skipIf(!PG_DISPONIVEL)('recebedor do pedido do FDV montado no worker (P
     expect(await worker.comTenant(semPedido, (tx) => recebedor.receber(tx, entrada()))).toEqual({ resultado: 'recusado', codigo: 'modulo_pedido_inativo' });
     const n = await b.admin.query<{ n: number }>('SELECT count(*)::int AS n FROM pedido.pedido WHERE tenant_id = $1', [semPedido]);
     expect(n.rows[0]!.n).toBe(0);
+  });
+  it('T-0105 item 2: o criador do pré-cadastro confere o vendedor no espelho do integracao-fdv e o põe na carteira do cliente', async () => {
+    const vendedor = randomUUID();
+    await b.admin.query(`INSERT INTO cadastros.vendedor (id, tenant_id, codigo, nome, filial_id) VALUES ($1, $2, 'VF1', 'Vendedor Ficticio', $3)`, [vendedor, comPedido, ids.filial]);
+    await b.admin.query(
+      `INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_external_id, erp_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo)
+       VALUES ($1, 'vendedor', 'V-FDV-1', $2, '{"nome":"Vendedor Ficticio"}', repeat('a', 64), now(), now(), true)`,
+      [comPedido, vendedor],
+    );
+    const pre = {
+      cliente_uuid: randomUUID(), recebido_em: '2026-11-22T10:00:00-04:00', razao_social: 'Mercadinho Ficticio Ltda', documento: '11.444.777/0001-61',
+      inscricao_estadual: '', logradouro: 'Av. Ficticia', numero: '100', bairro: 'Centro', cidade: 'MANAUS', uf: 'am', cep: '69050-010', codigo_fdv: '12345',
+      vendedor_external_id: 'V-FDV-1',
+    };
+    const d = await worker.comTenant(comPedido, (tx) => clientes.criador.decidir(tx, comPedido, pre as never));
+    expect(d).toMatchObject({ status: 'vinculado' });
+    if (d.status !== 'vinculado') return;
+    const [c] = (await b.admin.query('SELECT vendedor_id FROM cadastros.cliente WHERE id = $1', [d.cliente_id])).rows;
+    expect(c).toEqual({ vendedor_id: vendedor });
   });
 });
