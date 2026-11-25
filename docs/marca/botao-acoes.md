@@ -15,7 +15,7 @@ O cliente usa o FDV e o ERP. A linha da tabela tem que se comportar igual nos do
 5. **O menu não é cortado pelo quadro**: abre em posição fixa na viewport, por cima da tabela, da rolagem e do cartão.
 6. **Teclado e fechamento**: fecha com Esc, clique fora ou rolagem da página; navega com ↑ ↓ Home End; ao fechar, o foco volta ao botão "Ações".
 7. **Alvo de toque de no mínimo 44 px** no celular (390 px de largura), no botão e em cada item do menu.
-8. **Componente único** em `packages/ui` (nome previsto `MenuAcoes`, do designer-ux). Nenhuma tela faz o próprio menu nem copia o componente.
+8. **Componente único** em `packages/ui`: nenhuma tela faz o próprio menu.
 
 ## 3. Cores e tipografia (tokens existentes, nada novo)
 | Parte | Token |
@@ -30,7 +30,7 @@ O cliente usa o FDV e o ERP. A linha da tabela tem que se comportar igual nos do
 `solLaranja` não entra no menu (não é cor de botão) e `verdeSucesso` não vira decoração de item.
 
 ## 4. Como a marca confere
-Prints em 1280 px e 390 px de cada tela do /config e do BKO com tabela ou lista, depois da aplicação: nenhum "⋯", nenhuma fileira de botões, perigo por último em vermelho e menu inteiro à vista. Achados vão ao dono da tela por recado.
+Só a marca: rótulo "Ações" inteiro, perigo em `erroTexto` #A8261B depois do traço, e só os tokens da §3 (nenhuma cor nova). Achados vão ao dono da tela por recado.
 
-## 5. Donos da aplicação
-designer-ux cria o `MenuAcoes` em `packages/ui`, com testes de teclado e acessibilidade; engenheiro-apps (shell, /config e telas do BKO) e os módulos com telas aplicam; corretor-redundancias e design-de-marca revisam; testes refaz os prints e o X-6.
+## 5. Ordem e donos
+T-0099.
