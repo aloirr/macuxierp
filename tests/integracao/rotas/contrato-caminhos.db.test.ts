@@ -67,7 +67,7 @@ describe('contrato das rotas de tela: a lista vem do SDK e do import do web (T-0
   });
   it('o web usa pelo menos as constantes do /config e do esqueci a senha (a varredura não ficou vazia)', () => {
     expect(constantesDoWeb()).toEqual(
-      expect.arrayContaining(['CAMINHOS_CARGAS_PLATAFORMA', 'CAMINHOS_ESQUECI_SENHA', 'CAMINHOS_INTEGRACAO_FDV_PLATAFORMA']),
+      expect.arrayContaining(['CAMINHOS_CARGAS_PLATAFORMA', 'CAMINHOS_ESQUECI_SENHA', 'CAMINHOS_INTEGRACAO_FDV_PLATAFORMA', 'CAMINHOS_INTEGRACAO_FDV_TENANT']),
     );
   });
 });
