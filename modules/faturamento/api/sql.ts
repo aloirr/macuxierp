@@ -11,7 +11,7 @@
 import { criarEvento, erros, FUSO_PADRAO, paginar, type Outbox, type Pagina, type Transacao } from '@macuxierp/platform-sdk';
 import { PedidoAprovadoV1 } from '@macuxierp/pedido/contracts';
 import type { PedidoAFaturarDetalhe, FiltroNotas, FiltroPedidosAFaturar, FiltroRejeicoes, PedidoAFaturarResumo, NotaDetalhe, NotaResumo, RejeicaoNota, StatusNota } from '../contracts';
-import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type NotaNaFaixa } from '../domain';
+import { calcularTotais, interpretarRetorno, nfeVaiAoFdv, quantidadeFaturadaDoItem, type ConteudoNota, type NotaItemMontado, type StatusFilaFaturar, type NotaNaFaixa } from '../domain';
 import type {
   AmbienteFiscalDaFilial, EventoRegistro, InutilizacaoRegistro, NotaEmAberto, NotaNumeradaNaoEnviada, NotaRegistro, PedidosAprovados, RepositorioEventos, RepositorioNotas, RepositorioTitulos, ConfiguracaoFaturamento, RepositorioContingencia,
 } from './portas';
@@ -581,8 +581,8 @@ type LinhaPedidoResumo = Omit<PedidoAFaturarResumo, 'total_centavos'> & { total_
 
 export const pedidosAprovadosSql: PedidosAprovados = {
   async obter(tx, pedido_id) {
-    const [l] = await tx.consultar<{ payload: unknown }>('SELECT payload FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
-    return l ? PedidoAprovadoV1.parse(l.payload) : null;
+    const [l] = await tx.consultar<{ payload: unknown; status: StatusFilaFaturar }>('SELECT payload, status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1 AND deleted_at IS NULL', [pedido_id]);
+    return l ? { pedido: PedidoAprovadoV1.parse(l.payload), status: l.status } : null;
   },
   // Idempotente: repetir não muda nada; só um status DIFERENTE (situação atual do pedido, RF-FAT-01) atualiza a linha existente.
   async gravar(tx, pedido, status = 'a_faturar') {
