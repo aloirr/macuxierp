@@ -36,6 +36,7 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
   });
 
   it('MXI03 com DETAIL fora da lista não ecoa o texto do banco', () => {
+    expect((erroDaPlataforma(Object.assign(pg('MXI03'), { detail: 'entidade_ligada' })) as ErroApi).detalhes).toBeUndefined();
     const e = erroDaPlataforma(Object.assign(pg('MXI03'), { detail: 'cliente Fulano de Tal' })) as ErroApi;
     expect(e.detalhes).toBeUndefined();
     expect(JSON.stringify({ m: e.message, d: e.detalhes })).not.toContain('Fulano');
@@ -88,10 +89,6 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
       expect(e).toMatchObject({ status: 409, codigo: 'CONFLITO', message: MENSAGENS_CARGA_PORTAL.estadoMudouZerar });
       expect(e.detalhes).toBeUndefined();
     }
-  });
-
-  it('MXI03 do zerar_espelho (0043) com DETAIL entidade_ligada leva o código em detalhes.codigo', () => {
-    expect(erroDaPlataforma(Object.assign(pg('MXI03'), { detail: 'entidade_ligada' }))).toMatchObject({ status: 409, detalhes: { codigo: 'entidade_ligada' } });
   });
 
   it.each(['empresa_inativa', 'modulo_desligado'])('MXC04 (carga do portal) com DETAIL %s vira 422 RN-CORE-02 com o motivo em detalhes.codigo', (detail) => {

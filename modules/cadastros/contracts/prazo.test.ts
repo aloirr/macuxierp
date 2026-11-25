@@ -21,7 +21,7 @@ describe('prazo completo e prazo permitido ao cliente (contracts)', () => {
   });
   it('RN-CAD-16: prazo incompleto (legado) nunca é permitido, nem a cliente sem prazo médio', () => {
     expect(prazoPermitidoAoCliente({ ...prazo, prazo_medio_dias: null }, { prazo_medio_dias: null })).toBe(false);
-    expect(prazoPermitidoAoCliente({ ...prazo, prazo_medio_dias: null }, { prazo_medio_dias: 999 })).toBe(false);
+    expect(prazoPermitidoAoCliente({ ...prazo, prazo_medio_dias: null }, { prazo_medio_dias: 365 })).toBe(false);
     expect(prazoPermitidoAoCliente({ ...prazo, prazo_medio_dias: undefined }, {})).toBe(false);
   });
   it('RN-CAD-16: exceção do cartão de crédito (tPag 03) fica fora do limite do prazo médio', () => {
@@ -29,7 +29,7 @@ describe('prazo completo e prazo permitido ao cliente (contracts)', () => {
     expect(prazoPermitidoAoCliente(cartao, { prazo_medio_dias: 30 })).toBe(true);
     expect(prazoPermitidoAoCliente(cartao, { prazo_medio_dias: 0 })).toBe(true);
     expect(prazoPermitidoAoCliente({ ...cartao, prazo_medio_dias: null }, { prazo_medio_dias: 30 })).toBe(false);
-    expect(prazoPermitidoAoCliente({ ...cartao, prazos_dias: [] }, { prazo_medio_dias: 999 })).toBe(false);
+    expect(prazoPermitidoAoCliente({ ...cartao, prazos_dias: [] }, { prazo_medio_dias: 365 })).toBe(false);
     expect(prazoPermitidoAoCliente({ ...cartao, forma_tpag: '15' }, { prazo_medio_dias: 30 })).toBe(false);
   });
 });

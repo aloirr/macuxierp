@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  CADASTROS_CARGA_PORTAL, CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, ZeragemPlataformaResposta, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ValidarCargaPlataformaResposta, fraseConfere, situacaoCarga, type EfeitoSubstituir,
+  CADASTROS_CARGA_PORTAL, CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, MENSAGENS_CARGA_PORTAL, ZeragemPlataformaResposta, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ValidarCargaPlataformaResposta, fraseConfere, situacaoCarga, type EfeitoSubstituir,
 } from '@macuxierp/platform-sdk';
 import {
-  AVISO_LIMITE_FDV, AVISO_ZERAR, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
+  AVISO_LIMITE_FDV, AVISO_ZERAR, BLOQUEIO_LOTE, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
   podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar,
 } from './cargas';
 
@@ -121,7 +121,7 @@ describe('efeito do Substituir tudo: pedido só na confirmação', () => {
   });
   it('diz quantos serão inativados e o percentual; acima de 30% vem o aviso do FDV', () => {
     expect(textoEfeito('produto', { total: 266, a_inativar: 120, percentual: (120 * 100) / 266 })).toBe('Vai inativar 120 de 266 produtos (45%).');
-    expect(AVISO_LIMITE_FDV).toBe('Acima de 30%, o FDV pede confirmação no monitor de integração dele antes de aplicar.');
+    expect(AVISO_LIMITE_FDV).toBe('Acima de 30% dos registros, o Macuxi FDV pode segurar o envio. Acompanhe no Log.');
     expect(textoEfeito('produto', { total: 266, a_inativar: 0, percentual: 0 })).toBe('Não há produtos para inativar.');
     expect(TEXTO_SUBSTITUIR).toBe('O que não vier no arquivo fica inativo; nada é apagado.');
   });
@@ -211,9 +211,9 @@ describe('zerar dados', () => {
     expect(textosMantidos([fiscal])?.detalhes).toEqual([`${ROTULO_ZERAR.filial}: 2 em filial com dado fiscal.`]);
   });
   it('422 zeragem_bloqueada: o código e os bloqueios chegam à tela; o 409 dados_mudaram traz o código para refazer a prévia', async () => {
-    const bloqueado = await pedirZerar(EMP, ['preco'], FRASE_ZERAR_DADOS, CHAVE, async () => json({ ok: false, erro: 'Há integração ligada.', codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['preco:integracao_ligada', 'produto:lote_em_andamento'], chaveNova: true }, 422));
+    const bloqueado = await pedirZerar(EMP, ['preco'], FRASE_ZERAR_DADOS, CHAVE, async () => json({ ok: false, erro: MENSAGENS_CARGA_PORTAL.zeragemBloqueada, codigo: CODIGO_ZERAGEM_BLOQUEADA, bloqueios: ['produto:lote_em_andamento'], chaveNova: true }, 422));
     expect(!bloqueado.ok && bloqueado.codigo).toBe(CODIGO_ZERAGEM_BLOQUEADA);
-    expect(!bloqueado.ok && textosBloqueios(bloqueiosDeTextos(bloqueado.bloqueios ?? []))).toEqual(['Há uma carga em andamento. Espere terminar para zerar.']);
+    expect(!bloqueado.ok && textosBloqueios(bloqueiosDeTextos(bloqueado.bloqueios ?? []))).toEqual([BLOQUEIO_LOTE]);
     const mudou = await pedirZerar(EMP, ['preco'], FRASE_ZERAR_DADOS, CHAVE, async () => json({ ok: false, erro: 'Os dados mudaram. Confira de novo.', codigo: 'dados_mudaram', chaveNova: true }, 409));
     expect(!mudou.ok && mudou.codigo).toBe('dados_mudaram');
     expect(!mudou.ok && mudou.erro).toBe('Os dados mudaram. Confira de novo.');
@@ -238,8 +238,8 @@ describe('zerar dados', () => {
       { tabela: 'cliente', coluna: 'condicao_pagamento_id', quantidade: 0 },
     ])).toEqual(['12 clientes ficam sem vendedor.', '1 cliente fica sem tabela de preço.']);
   });
-  it('bloqueios: só a carga em andamento vale e aparece uma vez; a integração ligada não bloqueia mais', () => {
-    expect(textosBloqueios([{ cadastro: 'preco', motivo: 'integracao_ligada' }, { cadastro: 'produto', motivo: 'lote_em_andamento' }, { cadastro: 'cliente', motivo: 'lote_em_andamento' }])).toEqual(['Há uma carga em andamento. Espere terminar para zerar.']);
+  it('bloqueios: só a carga em andamento vale e aparece uma vez', () => {
+    expect(textosBloqueios([{ cadastro: 'produto', motivo: 'lote_em_andamento' }, { cadastro: 'cliente', motivo: 'lote_em_andamento' }])).toEqual([BLOQUEIO_LOTE]);
   });
   it('a frase do zerar ignora maiúsculas, espaços e ponto final; os textos da janela são os aprovados', () => {
     expect(fraseConfere('AUTORIZO ZERAR OS DADOS.', FRASE_ZERAR_DADOS)).toBe(true);

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { PaginaClientesRecebidosFdv, StatusIntegracaoFdvTenant } from '@macuxierp/platform-sdk';
+import { PaginaClientesRecebidosFdv, StatusIntegracaoFdvTenant, pode, type Perfil } from '@macuxierp/platform-sdk';
 import { ApiIndisponivel, NaoAutenticado, SemPermissao, getValidado } from '@/lib/api';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
 import { montarVistaStatus } from '@/lib/integracao-fdv';
@@ -11,13 +11,13 @@ import { SecaoClientesRecebidos } from '@/components/integracao-fdv/clientes-rec
 type Busca = Readonly<Record<string, string | string[] | undefined>>;
 
 /** Carrega o status (`GET /v1/integracao-fdv/status`, ADR 0013) e mostra só leitura. Erro da API vira mensagem fixa. */
-export async function TelaIntegracaoFdv({ acesso, fuso, rota = '/integracao-fdv/integracao-fdv', busca = {} }: { acesso: string; fuso: string; rota?: string; busca?: Busca }) {
+export async function TelaIntegracaoFdv({ acesso, fuso, perfil, rota = '/integracao-fdv/integracao-fdv', busca = {} }: { acesso: string; fuso: string; perfil: Perfil; rota?: string; busca?: Busca }) {
   try {
     const s = await getValidado('/v1/integracao-fdv/status', StatusIntegracaoFdvTenant, acesso, 'status', true);
     const recebidos = await clientesRecebidos({ acesso, fuso, rota, busca });
     return (
       <>
-        <VistaIntegracaoFdv vista={montarVistaStatus(s, fuso)} />
+        <VistaIntegracaoFdv vista={montarVistaStatus(s, fuso)} podeVerLog={pode(perfil, 'integracao-fdv.ver')} fuso={fuso} />
         {recebidos}
       </>
     );

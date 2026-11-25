@@ -660,27 +660,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pedido (T-0014)', () => {
       executar(banco.conexao, pedidoSql({ retrato: RETRATO }), APP_A);
     });
 
-    it('CHECK pedido_fdv_sem_analise (D-A; 0056): o FDV sem pendência de prazo vai a aprovado e não a em_analise', () => {
-      const fdv = randomUUID();
-      violaCheck(
-        `${pedidoSql({ id: fdv, origem: 'fdv', externalId: randomUUID() })}
-         UPDATE pedido.pedido SET status = 'em_analise' WHERE id = '${fdv}';`,
-        WORKER_A,
-        'pedido_fdv_sem_analise',
-      );
-      executar(
-        banco.conexao,
-        `${pedidoSql({ id: fdv, origem: 'fdv', externalId: randomUUID() })}
-         UPDATE pedido.pedido SET status = 'aprovado' WHERE id = '${fdv}';`,
-        WORKER_A,
-      );
-      const [r] = consultar<{ s: string }>(
-        banco.conexao,
-        `SELECT status AS s FROM pedido.pedido WHERE id = '${fdv}'`,
-        WORKER_A,
-      );
-      expect(r?.s).toBe('aprovado');
-    });
+    // pedido_fdv_sem_analise (D-A; 0056): os casos ficam em pedido-fdv-analise-0056.db.test.ts.
 
     it('CHECK pedido_fdv_sem_pendencia (D-A; 0056): o FDV sem pendência de prazo só com pendencias vazia; o BKO aceita pendências', () => {
       const pend = '[{"codigo": "credito_excedido", "bloqueante": false}]';

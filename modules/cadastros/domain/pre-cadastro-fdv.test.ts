@@ -1,7 +1,7 @@
 import type { ClienteParaErpFdv } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { ClienteDados } from '../contracts';
-import { MENSAGENS_PRE_CADASTRO_FDV, motivoDaRecusaFdv, validarPreCadastroFdv, type ContextoPreCadastroFdv } from './pre-cadastro-fdv';
+import { MENSAGENS_PRE_CADASTRO_FDV, NOME_CONTATO_FDV, motivoDaRecusaFdv, validarPreCadastroFdv, type ContextoPreCadastroFdv } from './pre-cadastro-fdv';
 
 const FILIAL = '33333333-3333-4333-8333-333333333333';
 const pre = (o: Partial<ClienteParaErpFdv> = {}): ClienteParaErpFdv => ({
@@ -13,6 +13,20 @@ const ctx = (o: Partial<ContextoPreCadastroFdv> = {}): ContextoPreCadastroFdv =>
   documentoJaCadastrado: false, filialId: FILIAL, municipiosDaUf: [{ ibge: '1302603', nome: 'Manaus' }, { ibge: '1301902', nome: 'Itacoatiara' }], ...o,
 });
 const codigos = (r: ReturnType<typeof validarPreCadastroFdv>) => (r.ok ? [] : r.erros.map((e) => `${e.campo}:${e.codigo}`));
+
+describe('telefone do pré-cadastro (RN-INF-08)', () => {
+  it('RN-INF-08: o telefone vira contato "Contato do FDV" (o FDV não manda nome), só com dígitos', () => {
+    const r = validarPreCadastroFdv(pre({ telefone: '(92) 99999-1234' }), ctx());
+    expect(r.ok && r.contato).toEqual({ nome: NOME_CONTATO_FDV, email: null, telefone: '92999991234', papel: null });
+    expect(NOME_CONTATO_FDV).toBe('Contato do FDV');
+  });
+  it('RN-INF-08: sem telefone não há contato; telefone inválido é descartado como o e-mail, sem recusar', () => {
+    for (const telefone of [undefined, null, '  ', '123', 'abc']) {
+      const r = validarPreCadastroFdv(pre({ telefone }), ctx());
+      expect(r.ok && r.contato, String(telefone)).toBeNull();
+    }
+  });
+});
 
 describe('pré-cadastro do FDV (RN-CAD-01/02/03)', () => {
   it('aceito: vira ClienteDados válido, sem limite, vendedor, condição nem tabela', () => {

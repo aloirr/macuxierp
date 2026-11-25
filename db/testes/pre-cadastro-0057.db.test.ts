@@ -72,26 +72,16 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
 
   afterAll(() => banco?.remover());
 
-  it('estrutura: colunas padrão, RLS ligada, chave (cliente_uuid, revisao) e índices da tela, do expurgo e da fila', () => {
+  // colunas padrão e RLS: a varredura geral de plataforma.db.test.ts
+  it('estrutura: política só por tenant, chave (cliente_uuid, revisao) e índices da tela, do expurgo e da fila', () => {
     for (const t of ['cliente_recebido', 'cliente_retorno']) {
       const r = um<Record<string, unknown>>(
-        `SELECT k.relrowsecurity AS rls,
-           (SELECT array_agg(column_name::text ORDER BY column_name) FROM information_schema.columns
-             WHERE table_schema = 'integracao_fdv' AND table_name = '${t}'
-               AND column_name IN ('id', 'tenant_id', 'created_at', 'updated_at', 'deleted_at', 'external_id')) AS padrao,
-           EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'integracao_fdv' AND tablename = '${t}'
+        `SELECT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'integracao_fdv' AND tablename = '${t}'
                     AND policyname = 'isolamento_tenant') AS politica,
            NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'integracao_fdv' AND tablename = '${t}'
-                    AND policyname = 'worker_global') AS sem_global
-         FROM pg_class k WHERE k.oid = 'integracao_fdv.${t}'::regclass`,
+                    AND policyname = 'worker_global') AS sem_global`,
       );
-      expect({ t, ...r }).toEqual({
-        t,
-        rls: true,
-        padrao: ['created_at', 'deleted_at', 'external_id', 'id', 'tenant_id', 'updated_at'],
-        politica: true,
-        sem_global: true,
-      });
+      expect({ t, ...r }).toEqual({ t, politica: true, sem_global: true });
     }
     const ix = consultar<{ i: string; d: string }>(
       banco.conexao,
@@ -132,34 +122,18 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — pré-cadastro de cliente do
     expect(um(`SELECT count(*)::int AS n FROM integracao_fdv.cliente_recebido`, { papel: 'macuxierp_worker', tenant: null })).toEqual({ n: 0 });
   });
 
-  it('grants: app e leitura leem sem o payload e não gravam; o worker não muda códigos nem colunas do expurgo; ninguém apaga', () => {
+  // a matriz de privilégios por tabela e por coluna: integracao-fdv.db.test.ts (PRIVILEGIOS e COLUNAS)
+  it('grants: app e leitura leem sem o payload (SELECT * falha); o expurgo só do worker', () => {
     expect(um(`SELECT razao_social, documento_mascarado FROM integracao_fdv.cliente_recebido WHERE codigo_fdv = '00001'`, APP_A)).toEqual({
       razao_social: 'Pré-cadastro pre-cadastro-0057-a',
       documento_mascarado: '11.444.777/****-**',
     });
     for (const ctx of [APP_A, LEITURA_A]) {
-      for (const sql of [
-        'SELECT payload FROM integracao_fdv.cliente_recebido',
-        'SELECT * FROM integracao_fdv.cliente_recebido',
-        pre(A.id, { uuid: randomUUID() }),
-        `UPDATE integracao_fdv.cliente_recebido SET situacao = 'aceito'`,
-        'DELETE FROM integracao_fdv.cliente_recebido',
-        'DELETE FROM integracao_fdv.cliente_retorno',
-        `UPDATE integracao_fdv.cliente_retorno SET estado = 'falhou'`,
-      ]) {
+      for (const sql of ['SELECT payload FROM integracao_fdv.cliente_recebido', 'SELECT * FROM integracao_fdv.cliente_recebido']) {
         expect({ papel: ctx.papel, sql, erro: falha(() => executar(banco.conexao, `${sql};`, ctx)) }).toMatchObject({
           erro: expect.stringMatching(/permission denied/),
         });
       }
-      expect(um(`SELECT count(*)::int AS n FROM integracao_fdv.cliente_retorno`, ctx)).toEqual({ n: 1 });
-    }
-    for (const col of ['cliente_uuid', 'revisao', 'hash', 'recebido_em', 'razao_social', 'documento_mascarado', 'payload_expurgado_em']) {
-      expect({ col, erro: falha(() => executar(banco.conexao, `UPDATE integracao_fdv.cliente_recebido SET ${col} = ${col};`, WORKER_A)) }).toMatchObject({
-        erro: expect.stringMatching(/permission denied/),
-      });
-    }
-    for (const t of ['cliente_recebido', 'cliente_retorno']) {
-      expect(falha(() => executar(banco.conexao, `DELETE FROM integracao_fdv.${t};`, WORKER_A))).toMatch(/permission denied/);
     }
     // o app não executa o expurgo; o worker executa
     expect(falha(() => executar(banco.conexao, `SELECT ${EXPURGO.replace('(timestamptz)', '')}(${CORTE});`, APP_A))).toMatch(/permission denied/);

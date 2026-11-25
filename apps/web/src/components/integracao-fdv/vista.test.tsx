@@ -80,10 +80,20 @@ describe('BKO: perfil e licença', () => {
     const { SemPermissao } = await import('@/lib/api');
     estado.falha = new SemPermissao();
     const { TelaIntegracaoFdv } = await import('@/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv');
-    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus' }))).toContain('Seu perfil não pode ver esta tela.');
+    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus', perfil: 'administrador' }))).toContain('Seu perfil não pode ver esta tela.');
   });
   it('com acesso: renderiza o status', async () => {
     const { TelaIntegracaoFdv } = await import('@/app/(shell)/[modulo]/[...pagina]/tela-integracao-fdv');
-    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus' }))).toContain('Cadastros enviados ao FDV');
+    expect(renderToStaticMarkup(await TelaIntegracaoFdv({ acesso: 't', fuso: 'America/Manaus', perfil: 'administrador' }))).toContain('Cadastros enviados ao FDV');
+  });
+});
+
+describe('BKO: botão Log por cadastro (T-0086, D-4)', () => {
+  it('um botão por cadastro com a permissão; nenhum sem ela', () => {
+    const com = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(status, 'America/Manaus')} podeVerLog />);
+    expect(com.match(/>Log<\/button>/g)).toHaveLength(ENTIDADES_ENVIO_FDV.length);
+    expect(com).not.toMatch(/<th[^>]*>Log</); // a coluna não repete o rótulo do botão
+    const sem = renderToStaticMarkup(<VistaIntegracaoFdv vista={montarVistaStatus(status, 'America/Manaus')} podeVerLog={false} />);
+    expect(sem).not.toContain('>Log<');
   });
 });

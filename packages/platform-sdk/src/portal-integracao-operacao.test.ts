@@ -12,6 +12,8 @@ import {
   LogCadastroFdvTenant,
   MonitorConectorFdv,
   REPROCESSAVEIS_FDV,
+  ROTULO_ORIGEM_ENVIO_FDV,
+  ROTULO_SITUACAO_ENVIO_FDV,
   RespostaReprocessarFdv,
   SITUACOES_REGISTRO_FDV,
   situacaoConectorFdv,
@@ -106,7 +108,9 @@ describe('Zerar por cadastro inativa no FDV (R-20261124-170915-alexandre)', () =
   });
 });
 
-it('é reexportado pelo índice do SDK', () => {
+it('é reexportado pelo índice do SDK; os rótulos do Log são imutáveis', () => {
+  expect(Object.isFrozen(ROTULO_ORIGEM_ENVIO_FDV) && Object.isFrozen(ROTULO_SITUACAO_ENVIO_FDV)).toBe(true);
+  expect(sdk.ROTULO_SITUACAO_ENVIO_FDV).toBe(ROTULO_SITUACAO_ENVIO_FDV);
   expect(sdk.MonitorConectorFdv).toBe(MonitorConectorFdv);
   expect(sdk.LogCadastroFdvTenant).toBe(LogCadastroFdvTenant);
   expect(sdk.CAMINHOS_INTEGRACAO_FDV_TENANT).toBe(CAMINHOS_INTEGRACAO_FDV_TENANT);

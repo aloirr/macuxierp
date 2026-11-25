@@ -26,6 +26,7 @@ import {
   verboso,
 } from './apoio.ts';
 import {
+  cadastrosZeraveis,
   fixtureFaturamento,
   fixtureIntegracao,
   fixtureModulos,
@@ -87,30 +88,7 @@ INSERT INTO integracao_fdv.registro_publicado (tenant_id, entidade, registro_ext
     '${CONFIRMADO}', '2026-11-21T12:00:00.123Z', '2026-11-21T12:00:00.123Z', '${JSON.stringify(refs)}', true, ${!confirmado},
     ${confirmado ? `'${CONFIRMADO}', now()` : 'NULL, NULL'}, ${erpId === null ? 'NULL' : `'${erpId}'`});`;
 
-const extrasDeA = (t: Tenant): string => `
-INSERT INTO cadastros.filial (id, tenant_id, cnpj, razao_social, crt, logradouro, numero, bairro, municipio_ibge, uf, cep)
-  VALUES ('${X.filial}', '${t.id}', '11222333000181', 'Filial livre', '3', 'Rua C', '3', 'Centro', '1302603', 'AM', '69000002');
-INSERT INTO cadastros.vendedor (id, tenant_id, codigo, nome, filial_id)
-  VALUES ('${X.vendedor}', '${t.id}', 'V2', 'Vendedor livre', '${t.filial}'),
-         ('${X.vendedor2}', '${t.id}', 'V3', 'Vendedor novo', '${t.filial}');
-INSERT INTO cadastros.condicao_pagamento (id, tenant_id, codigo, descricao, forma_tpag, prazos_dias)
-  VALUES ('${X.condicao}', '${t.id}', 'PX', 'PIX', '17', '{0}');
-INSERT INTO cadastros.tabela_preco (id, tenant_id, nome, vigencia_inicio) VALUES ('${X.tabela}', '${t.id}', 'Promo', '2026-01-01');
-INSERT INTO cadastros.produto (id, tenant_id, codigo, descricao, ncm, unidade_comercial, unidade_tributavel, grupo_tributacao,
-  custo_centavos) VALUES ('${X.produto}', '${t.id}', 'P2', 'Suco 1 L', '22021000', 'UN', 'UN', 'padrao', 299);
-INSERT INTO cadastros.produto_unidade (id, tenant_id, produto_id, unidade, fator) VALUES ('${X.unidade}', '${t.id}', '${X.produto}', 'CX', 60000);
-INSERT INTO cadastros.tabela_preco_item (id, tenant_id, tabela_preco_id, filial_id, produto_id, preco_centavos)
-  VALUES ('${X.item}', '${t.id}', '${X.tabela}', '${t.filial}', '${X.produto}', 990);
-INSERT INTO cadastros.estoque_saldo (id, tenant_id, filial_id, produto_id, quantidade) VALUES ('${X.saldo}', '${t.id}', '${t.filial}', '${X.produto}', 5000);
-INSERT INTO cadastros.estoque_movimento (id, tenant_id, filial_id, produto_id, tipo, quantidade, motivo)
-  VALUES ('${X.movimento}', '${t.id}', '${t.filial}', '${X.produto}', 'entrada', 5000, 'carga inicial');
-INSERT INTO cadastros.cliente (id, tenant_id, tipo_pessoa, documento, ind_ie_dest, razao_social, condicao_pagamento_id,
-  tabela_preco_id, filial_id, vendedor_id, limite_credito_centavos)
-  VALUES ('${X.cliente}', '${t.id}', 'PJ', '11444777000161', '9', 'Cliente livre', '${X.condicao}', '${X.tabela}', '${t.filial}',
-    '${X.vendedor}', 0);
-INSERT INTO cadastros.cliente_endereco (id, tenant_id, cliente_id, tipo, logradouro, numero, bairro, municipio_ibge, uf, cep)
-  VALUES ('${X.endereco}', '${t.id}', '${X.cliente}', 'principal', 'Rua D', '4', 'Centro', '1302603', 'AM', '69000003');
-INSERT INTO cadastros.cliente_contato (id, tenant_id, cliente_id, nome) VALUES ('${X.contato}', '${t.id}', '${X.cliente}', 'Financeiro');
+const extrasDeA = (t: Tenant): string => `${cadastrosZeraveis(t, X)}
 -- espelho do que sai (publicado), do que nunca foi ao Hub e dos mantidos
 ${espelho(t.id, 'filial', 'F2', X.filial, { nome: 'Filial livre' })}
 ${espelho(t.id, 'vendedor', 'V2', X.vendedor, { nome: 'Vendedor livre' }, { filial_id: t.filial })}

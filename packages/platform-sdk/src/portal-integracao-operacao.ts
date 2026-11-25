@@ -126,6 +126,24 @@ export const EnvioLogFdv = z
   .refine((e) => e.com_erro <= e.registros, { path: ['com_erro'], message: 'Falhas não passam dos registros' });
 export type EnvioLogFdv = z.infer<typeof EnvioLogFdv>;
 
+/** Tom do selo na tela (as cores do sistema: sucesso, aviso, erro e neutro). */
+export type TomEnvioFdv = 'sucesso' | 'aviso' | 'erro' | 'neutro';
+
+/** Rótulo da origem do envio no Log (fonte única: o módulo `integracao-fdv` e a apps/web importam daqui). */
+export const ROTULO_ORIGEM_ENVIO_FDV: Readonly<Record<OrigemEnvioFdv, string>> = Object.freeze({
+  ciclo: 'Ciclo normal',
+  reprocessar: 'Reprocessar',
+  zerar: 'Zerar (inativação)',
+});
+
+/** Rótulo e tom da situação do envio no Log: falhou = erro; concluído = sucesso; com erros = aviso; enviando = neutro. */
+export const ROTULO_SITUACAO_ENVIO_FDV: Readonly<Record<EnvioLogFdv['situacao'], { texto: string; tom: TomEnvioFdv }>> = Object.freeze({
+  enviando: { texto: 'Enviando…', tom: 'neutro' },
+  concluido: { texto: 'Concluído', tom: 'sucesso' },
+  com_erros: { texto: 'Com erros', tom: 'aviso' },
+  falhou: { texto: 'Falhou', tom: 'erro' },
+});
+
 /** Base dos dois Logs: o cadastro, a leitura (`lido_em`, para o Atualizar), os envios recentes e o total de erros abertos. */
 const LogCadastroFdvBase = z.object({
   entidade: EntidadeEnvioFdv,

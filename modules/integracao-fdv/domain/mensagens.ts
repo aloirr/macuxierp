@@ -10,6 +10,7 @@ export interface TextoErro { readonly motivo: string; readonly acao: string }
 export const CATALOGO_ERRO: Readonly<Record<string, TextoErro>> = {
   chave_alterada: { motivo: 'O código do cadastro mudou sem a troca controlada e o registro não foi ao FDV.', acao: 'Faça a troca controlada ou volte ao código anterior.' },
   chave_duplicada: { motivo: 'Outro cadastro já usa este código no FDV e o registro não foi.', acao: 'Corrija o código repetido.' },
+  vinculo_divergente: { motivo: 'O cliente já está vinculado no FDV com outro código e fica retido, sem ir ao FDV.', acao: 'Resolva a divergência do vínculo.' },
   campo_obrigatorio: { motivo: 'Campo obrigatório vazio no cadastro.', acao: 'Complete o campo indicado e salve de novo.' },
   campo_invalido: { motivo: 'Valor em formato inválido para o FDV.', acao: 'Corrija o campo indicado no cadastro.' },
   referencia_ausente: { motivo: 'Depende de um cadastro que ainda não foi confirmado no FDV.', acao: 'Aguarde.' },
