@@ -163,7 +163,7 @@ describe('MenuAcoes (T-0099): tecla no gatilho', () => {
     expect(acaoTeclaGatilho('Enter', true)).toBe('entrar-primeiro');
     expect(acaoTeclaGatilho('Escape', true)).toBe('fechar');
   });
-  it('fechado: Esc e outras teclas não fazem nada', () => {
+  it('Esc com o menu fechado e outras teclas não fazem nada', () => {
     expect(acaoTeclaGatilho('Escape', false)).toBeNull();
     expect(acaoTeclaGatilho('Tab', false)).toBeNull();
     expect(acaoTeclaGatilho('a', true)).toBeNull();
