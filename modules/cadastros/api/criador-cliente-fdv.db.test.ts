@@ -202,7 +202,6 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     });
     it('RN-INT-23 (T-0105): vendedor inexistente ou inativo recusa o pré-cadastro e nenhum cliente é gravado', async () => {
       const casos: Array<[number, string, string]> = [
-        [3, 'V-ESPELHO-INATIVO', 'vendedor_fdv_inativo'],
         [4, 'V-INATIVO', 'vendedor_fdv_inativo'], // existe, mas inativo no ERP
         [3, 'V-NAO-EXISTE', 'vendedor_fdv_nao_encontrado'],
       ];

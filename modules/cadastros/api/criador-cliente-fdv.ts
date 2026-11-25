@@ -5,7 +5,7 @@
  * - A regra é do domain (`validarPreCadastroFdv`, todas as recusas juntas); aqui só as consultas e a gravação.
  * - Recusado: nada é gravado (nem evento nem auditoria); `motivo` = mensagens do catálogo, sem o valor recusado.
  * - Aceito: passa pelas mesmas regras do POST `/v1/cadastros/clientes` (`validarClienteNovo`), grava pelo mesmo repositório e emite
- *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira segue `vincularVendedorFdv` (RN-INT-23: vendedor inexistente ou inativo recusa o pré-cadastro, antes de gravar). Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
+ *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira segue `vincularVendedorFdv` (RN-INT-23). Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
  *   pessoal. O `external_id` devolvido é a chave do Hub do cliente (ADR 0010: `external_id ?? id`), nunca o `codigo_fdv`.
  * - Corrida no documento (índice único): vira `documento_ja_cadastrado`, sem abortar a transação (SAVEPOINT).
  */
@@ -39,7 +39,7 @@ export interface ConsultaVendedorFdvInjetada {
 }
 
 export interface DependenciasCriadorClienteFdv {
-  /** Ausente = vendedor não consultado: o cliente nasce sem carteira e sem aviso. */
+  /** Ausente = vendedor não consultado: o cliente nasce sem carteira e sem recusa. */
   consultaVendedorFdv?: ConsultaVendedorFdvInjetada;
   repositorios: Dependencias['repositorios'];
   outbox: Outbox;
