@@ -1,2 +1,3 @@
 2026-11-24 — T-0088 — tela da bandeira de faturamento real com NF-e simulada (descritores web, testes, prints)
 2026-11-24 — T-0093 — porta pedidosComNotaOuTitulo (portal_pedidos_com_uso, 0063) e PedidosComUsoFaturamento para o Zerar (RN-CAD-10)
+2026-11-25 — T-0093 — status cancelado do pedido a faturar fora da fila (RN-CAD-10): filaAceitaNota no domain, statusNaFila na porta e emissão recusa linha cancelada (422 RN-CAD-10); enum/rótulo/filtro da fila já cobriam 'cancelado'; db test do caso 0065 não escrito (função nova).
