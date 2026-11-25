@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FORMAS_A_VISTA } from '../contracts';
+import { FORMAS_A_VISTA, MAX_DIAS } from '../contracts';
 import {
   MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_A_VISTA, derivarParcelasCartao, validarCondicaoPagamento as v,
 } from './condicao';
@@ -24,7 +24,7 @@ describe('condição de pagamento', () => {
   it('RN-CAD-15: prazo médio é obrigatório na entrada (ausente recusa) e o legado nulo passa', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30] })).toEqual(rn(MOTIVO_PRAZO_MEDIO, 'prazo_medio_dias', 'RN-CAD-15'));
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: null })).toEqual([]);
-    expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 1000 })).toEqual(rn(MOTIVO_PRAZO_MEDIO, 'prazo_medio_dias', 'RN-CAD-15'));
+    expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: MAX_DIAS + 1 })).toEqual(rn(MOTIVO_PRAZO_MEDIO, 'prazo_medio_dias', 'RN-CAD-15'));
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: -1 })).toHaveLength(1);
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 365 })).toEqual([]);
   });

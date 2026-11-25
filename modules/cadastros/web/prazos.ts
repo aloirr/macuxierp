@@ -57,7 +57,7 @@ export function trocarForma(f: FormularioPrazo, tpag: string): FormularioPrazo {
   return { ...f, forma_tpag: tpag, parcelas: f.parcelas.slice(0, maxParcelasDaForma(tpag)) };
 }
 
-const inteiro = (t: string): number | null => (/^\d{1,3}$/.test(t.trim()) ? Number(t.trim()) : null);
+const inteiro = (t: string): number | null => (/^\d+$/.test(t.trim()) ? Number(t.trim()) : null);
 
 export type ErrosDoPrazo = Partial<Record<'codigo' | 'descricao' | 'prazos_dias' | 'prazo_medio_dias' | 'forma_tpag', string>>;
 
