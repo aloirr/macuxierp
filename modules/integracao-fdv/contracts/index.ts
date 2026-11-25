@@ -69,6 +69,9 @@ export type EntidadeChaveErp = Extract<EntidadeHub, 'cliente' | 'vendedor' | 'fi
 export const StatusRetornoHub = z.enum(['integrado', 'rejeitado_erp', 'faturado_parcial', 'faturado_total', 'cancelado']);
 export type StatusRetornoHub = z.infer<typeof StatusRetornoHub>;
 
+/** Chave de acesso que o Hub do FDV aceita em `nota.chave_acesso` (RN-INT-08/09): exatamente 44 dígitos. */
+export const CHAVE_ACESSO_HUB_REGEX = /^\d{44}$/;
+
 /** Corpo do `POST /integracao/v1/pedidos/{uuid}/retorno` (`RetornoErp` do Hub; T-0013 §6.2). Sem XML, sem dado pessoal. */
 export const RetornoErp = z.object({
   versao_contrato: z.literal('v1'),
@@ -83,8 +86,8 @@ export const RetornoErp = z.object({
       serie: z.string().max(10).nullable(),
       /** Chave completa da nota, guardada no registro do retorno (dedupe de parcial); o Hub a ignora. Sai da cópia em `chave_acesso` na próxima versão (contract). */
       chave: z.string(),
-      /** T-0105: `NotaRetorno.chave_acesso` do FDV v1.0.34: opcional, nula ou exatamente 44 dígitos numéricos (chave alfanumérica vai nula, nunca recusa o retorno). */
-      chave_acesso: z.string().regex(/^\d{44}$/).nullable().optional(),
+      /** T-0105: `NotaRetorno.chave_acesso` (FDV v1.0.34); chave alfanumérica vai nula. */
+      chave_acesso: z.string().regex(CHAVE_ACESSO_HUB_REGEX).nullable().optional(),
       emitida_em: z.string(),
       total_cents: CentavosLido,
     })
