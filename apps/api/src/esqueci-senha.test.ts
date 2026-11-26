@@ -832,7 +832,7 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     expect(bloqueada.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'temporaria', expira_em: fim });
   });
 
-  it('RN-CORE-15: superadmin travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 423 do tenant, sem somar falha nem estender a trava', async () => {
+  it('RN-CORE-15: superadmin travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 423 CONTA_BLOQUEADA, sem somar falha nem estender a trava', async () => {
     const m = await montar();
     const ate = travar(m.sa);
     const semTemporaria = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
@@ -841,9 +841,9 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     const errada = await login(m, 'MACUXI', EMAIL_SA, 'Temp-errada-9!', ip());
     m.relogio.avancar(60_000);
     const vencida = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
+    expect(ContaBloqueadaResposta.parse(semTemporaria.json())).toEqual(semTemporaria.json());
     for (const r of [semTemporaria, atual, errada, vencida]) {
       expect(r.statusCode).toBe(423);
-      expect(ContaBloqueadaResposta.parse(r.json())).toEqual(r.json());
       expect(r.body).toBe(semTemporaria.body);
       expect(cookie(r, COOKIE_CONFIG)).toBeUndefined();
     }

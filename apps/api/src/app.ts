@@ -356,7 +356,7 @@ async function entrarComoSuperadmin(
     if (!o.csrf) return await plataforma.recusarComCustoIgual(entrada.senha);
     const r = await traduzido(() => plataforma.entrar(entrada.email.trim().toLowerCase(), entrada.senha));
     reply.log = reply.request.log = reply.request.log.child({ superadmin_id: r.superadmin_id });
-    return responderLoginPlataforma(reply, r, o.cookieSeguro, { destino: 'config' satisfies DestinoLogin, ...(r.desbloqueou ? { desbloqueou: true } : {}) });
+    return responderLoginPlataforma(reply, r, o.cookieSeguro, { destino: 'config' satisfies DestinoLogin });
   } catch (e) {
     if (e instanceof ErroApi && e.status === 401) throw erros.naoAutenticado(FALHA_LOGIN);
     throw e;

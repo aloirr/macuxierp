@@ -62,11 +62,6 @@ export class LimitePorChave {
     return { permitido: j.n < this.maximo, retry_after_s: Math.max(1, Math.ceil((j.inicio + this.janelaMs - agoraMs) / 1000)) };
   }
 
-  /** Esquece a chave (a conta entrou: a contagem recomeça, como o `falhas_login` do banco). */
-  liberar(chave: string): void {
-    this.#janelas.delete(chave);
-  }
-
   get tamanho(): number {
     return this.#janelas.size;
   }
@@ -100,15 +95,6 @@ export class TravaContaMemoria {
 
   falhou(chave: string, agoraMs: number): void {
     this.#limite.registrar(chave, agoraMs);
-  }
-
-  liberar(chave: string): void {
-    this.#limite.liberar(chave);
-  }
-
-  /** Só para teste. */
-  chaves(): string[] {
-    return this.#limite.chaves();
   }
 }
 

@@ -99,7 +99,7 @@ describe.skipIf(!PG_DISPONIVEL)('hotfix: a temporária entra com a conta travada
     expect(await estado('usuario', EMAIL)).toMatchObject({ falhas_login: 5, temporaria: true, deve_trocar_senha: false });
   });
 
-  it('RN-CORE-15: superadmin travado: sem temporária, com a senha atual certa, com a temporária errada e com a vencida = o mesmo 423 do tenant, sem somar falha nem estender a trava', async () => {
+  it('RN-CORE-15: superadmin travado: sem temporária, com a senha atual certa, com a temporária errada e com a vencida = o mesmo 423 CONTA_BLOQUEADA, sem somar falha nem estender a trava', async () => {
     await preparar('superadmin', EMAIL_SA, 'nenhuma');
     const sem = await entrar('MACUXI', EMAIL_SA, TEMPORARIA);
     await preparar('superadmin', EMAIL_SA, 'vigente');
