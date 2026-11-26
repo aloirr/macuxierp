@@ -1,0 +1,188 @@
+name: producao — superadmin
+
+# Decisão 22 B (26/11/2026): o Alexandre cria (ou destrava, ou redefine) o superadmin do portal /config pelo GitHub, sem SSH
+# na mão, rodando o scripts/deploy/producao/operador.sh JÁ PUBLICADO na VM (~/macuxierp-deploy, copiado pelo publicar).
+#   - Gatilho: SÓ o botão "Run workflow" (workflow_dispatch), disparado pelo aloirr e NA tag v* (o environment PRODUCAO
+#     só aceita ref de tag). A aprovação é o clique: primeiro "simular" (transação READ ONLY, nada muda), depois
+#     "confirmar".
+#   - Segredos: só PROD_SSH_KEY, PROD_HOST e PROD_USER (os do publicar) e o PROD_SSH_KNOWN_HOSTS opcional. Nenhum secret
+#     novo, nenhum segredo no workflow.
+#   - Sem senha no log: o operador.sh roda com --sem-mostrar-senha (criar e redefinir). A senha provisória é gravada e
+#     nunca aparece; para entrar, o /config → "Esqueci a senha" manda a temporária ao e-mail do superadmin (T-0076).
+#   - Sem e-mail no log: o e-mail NUNCA entra por ${{ }} (que o Actions imprime no script e no env do passo). Cada passo
+#     o lê do $GITHUB_EVENT_PATH; o 1º passo o mascara (::add-mask::) e confere o formato. Na VM, ele vai pelo stdin do
+#     ssh, não pela linha de comando do ssh. O operador.sh não o imprime (saída, erros e auditoria levam só ids).
+#   - Uma operação por vez na VM, na mesma fila do publicar (concurrency producao-vm; ADR 0003).
+# Nenhum set -x. A chave do host segue a mesma ordem do publicar (secret → arquivo versionado → cache → TOFU).
+
+on:
+  workflow_dispatch:
+    inputs:
+      acao:
+        description: 'Ação no superadmin'
+        type: choice
+        options: [criar-superadmin, destravar, redefinir-senha, listar]
+        default: criar-superadmin
+      email:
+        description: 'E-mail do superadmin (não vale no listar). Fica mascarado no log.'
+        type: string
+        required: false
+      nome:
+        description: 'Nome (só no criar-superadmin)'
+        type: string
+        default: Alexandre
+      modo:
+        description: 'simular (nada muda) ou confirmar (grava e audita)'
+        type: choice
+        options: [simular, confirmar]
+        default: simular
+
+permissions: {}
+
+concurrency:
+  group: producao-vm
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  superadmin:
+    name: operador.sh superadmin na VM de produção
+    # só o Alexandre dispara (e só ele pode reexecutar), e só numa tag v*
+    if: ${{ github.actor == 'aloirr' && github.triggering_actor == 'aloirr' && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: PRODUCAO
+      url: https://erp.macuxifdv.com.br/config
+    permissions:
+      contents: read
+    steps:
+      - name: entrada (e-mail mascarado e conferido; nada sai no log)
+        run: |
+          acao="$(jq -r '.inputs.acao // ""' "$GITHUB_EVENT_PATH")"
+          modo="$(jq -r '.inputs.modo // ""' "$GITHUB_EVENT_PATH")"
+          email="$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH" | tr -d '\r')"
+          nome="$(jq -r '.inputs.nome // ""' "$GITHUB_EVENT_PATH" | tr -d '\r')"
+          [ -z "$email" ] || echo "::add-mask::$email"
+          case "$acao" in criar-superadmin | destravar | redefinir-senha | listar) ;; *) echo "::error::ação inválida"; exit 1 ;; esac
+          case "$modo" in simular | confirmar) ;; *) echo "::error::modo inválido"; exit 1 ;; esac
+          if [ "$acao" = listar ]; then
+            [ -z "$email" ] || { echo "::error::o listar não leva e-mail (lista todos, mascarados)"; exit 1; }
+            [ "$modo" = simular ] || { echo "::error::o listar só lê: use o modo simular"; exit 1; }
+          else
+            [[ "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] && [ "${#email}" -le 254 ] || { echo "::error::e-mail fora do formato"; exit 1; }
+          fi
+          case "$nome" in *$'\n'*) echo "::error::o nome tem quebra de linha"; exit 1 ;; esac
+          echo "ação: $acao · modo: $modo"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/producao
+
+      - name: secrets do environment presentes (só os nomes)
+        env:
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          falta=()
+          for n in PROD_SSH_KEY PROD_HOST PROD_USER; do
+            [ -n "${!n}" ] || falta+=("$n")
+          done
+          [ ${#falta[@]} -eq 0 ] || { echo "::error::faltam secrets no environment PRODUCAO: ${falta[*]}"; exit 1; }
+          for n in PROD_HOST PROD_USER; do
+            v="$(printf '%s' "${!n}" | tr -d '\r')"
+            case "$v" in *$'\n'*) echo "::error::$n tem quebra de linha"; exit 1;; esac
+          done
+          [[ "$PROD_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::PROD_USER inválido"; exit 1; }
+          echo "secrets obrigatórios presentes"
+
+      # mesma chave de cache do publicar: o known_hosts gravado pelo TOFU do publicar vale aqui (só restaura, não grava)
+      - name: chave do host no cache do runner
+        id: conhecidos
+        uses: actions/cache/restore@v4
+        with:
+          path: .producao-ssh/known_hosts
+          key: macuxierp-prod-known-hosts-v1
+
+      - name: chave SSH
+        env:
+          CHAVE: ${{ secrets.PROD_SSH_KEY }}
+          HOST: ${{ secrets.PROD_HOST }}
+          CONHECIDOS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+          DO_CACHE: ${{ steps.conhecidos.outputs.cache-hit }}
+        run: |
+          install -d -m 700 ~/.ssh
+          # a chave colada pelo celular pode chegar numa linha só: remonta o bloco entre o BEGIN e o END (igual ao publicar)
+          bruto="$(printf '%s' "$CHAVE" | tr -d '\r')"
+          cab="$(printf '%s' "$bruto" | grep -o -- '-----BEGIN [A-Z0-9 ]*-----' | head -n1 || true)"
+          if [ -n "$cab" ]; then
+            tipo="${cab#-----BEGIN }"; tipo="${tipo%-----}"
+            rod="-----END $tipo-----"
+            corpo="${bruto#*"$cab"}"; corpo="${corpo%%"$rod"*}"
+            corpo="$(printf '%s' "$corpo" | tr -d ' \t\n')"
+            { printf '%s\n' "$cab"; printf '%s' "$corpo" | fold -w 70; printf '\n%s\n' "$rod"; } > ~/.ssh/prod
+          else
+            printf '%s\n' "$bruto" > ~/.ssh/prod
+          fi
+          chmod 600 ~/.ssh/prod
+          ssh-keygen -y -P '' -f ~/.ssh/prod > /dev/null 2>&1 || { echo "::error::PROD_SSH_KEY ilegível (rode o publicar para o motivo detalhado)"; exit 1; }
+          if [ -n "$CONHECIDOS" ]; then
+            printf '%s\n' "$CONHECIDOS" | tr -d '\r' > ~/.ssh/known_hosts
+            echo "chave do host: secret PROD_SSH_KNOWN_HOSTS"
+          elif [ -s .github/producao/known_hosts ]; then
+            tr -d '\r' < .github/producao/known_hosts > ~/.ssh/known_hosts
+            echo "chave do host: .github/producao/known_hosts (versionado)"
+          elif [ "$DO_CACHE" = true ] && [ -s .producao-ssh/known_hosts ]; then
+            cp .producao-ssh/known_hosts ~/.ssh/known_hosts
+            echo "chave do host: cache do runner (macuxierp-prod-known-hosts-v1)"
+          else
+            # sem TOFU aqui: este workflow só roda numa VM que o publicar já conhece
+            echo "::error::sem chave do host conhecida (PROD_SSH_KNOWN_HOSTS, .github/producao/known_hosts ou o cache do publicar)"
+            exit 1
+          fi
+          printf 'Host prod\n  HostName %s\n  IdentityFile ~/.ssh/prod\n  IdentitiesOnly yes\n  BatchMode yes\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n' "$HOST" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: operador.sh da VM tem o --sem-mostrar-senha
+        env:
+          USUARIO: ${{ secrets.PROD_USER }}
+        run: |
+          ssh -l "$USUARIO" prod 'grep -q -- "--sem-mostrar-senha" ~/macuxierp-deploy/operador.sh' ||
+            { echo "::error::o operador.sh publicado na VM ainda não tem o --sem-mostrar-senha: publique a versão com o PR dele antes"; exit 1; }
+
+      - name: operador.sh na VM
+        env:
+          USUARIO: ${{ secrets.PROD_USER }}
+        run: |
+          acao="$(jq -r '.inputs.acao' "$GITHUB_EVENT_PATH")"
+          modo="$(jq -r '.inputs.modo' "$GITHUB_EVENT_PATH")"
+          # comando fixo por ação; o e-mail e o nome vão pelo stdin (uma linha cada), nunca na linha de comando do ssh
+          case "$acao" in
+            criar-superadmin) remoto='bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "$E" --nome "$N" --sem-mostrar-senha' ;;
+            redefinir-senha) remoto='bash ~/macuxierp-deploy/operador.sh superadmin --email "$E" --redefinir-senha --sem-mostrar-senha' ;;
+            destravar) remoto='bash ~/macuxierp-deploy/operador.sh superadmin --email "$E" --destravar' ;;
+            listar) remoto='bash ~/macuxierp-deploy/operador.sh superadmin --listar' ;;
+          esac
+          remoto="$remoto --operador alexandre"
+          [ "$modo" != confirmar ] || remoto="$remoto --confirmar"
+          { jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH" | tr -d '\r\n'; echo
+            jq -r '.inputs.nome // ""' "$GITHUB_EVENT_PATH" | tr -d '\r\n'; echo; } |
+            ssh -l "$USUARIO" prod "IFS= read -r E; IFS= read -r N; $remoto"
+          if [ "$modo" = confirmar ] && { [ "$acao" = criar-superadmin ] || [ "$acao" = redefinir-senha ]; }; then
+            {
+              echo "### Próximo passo"
+              echo
+              echo "A senha provisória foi gravada e **não** aparece em lugar nenhum. Entre em https://erp.macuxifdv.com.br/config,"
+              echo "clique em **Esqueci a senha** e use a senha temporária que chega no seu e-mail."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: limpar a chave do runner
+        if: ${{ always() }}
+        run: rm -rf ~/.ssh/prod ~/.ssh/config ~/.ssh/known_hosts .producao-ssh
