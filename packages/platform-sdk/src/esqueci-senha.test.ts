@@ -16,7 +16,6 @@ import {
   SituacaoEsqueciResposta,
   VALIDADE_SENHA_TEMPORARIA_HORAS,
   ContaBloqueadaResposta,
-  RODAPE_EMAIL_MACUXI_ERP,
   URL_MACUXI_ERP,
 } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA } from './eu';
@@ -146,7 +145,6 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
         'Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br',
       ].join('\n'),
     );
-    expect(RODAPE_EMAIL_MACUXI_ERP).toBe('Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br');
     expect(e.html).toContain('<title>Sua senha temporária do Macuxi ERP</title>');
     expect(e.html).toContain('>AM2808</td>');
     expect(e.html).toContain('>ana@exemplo.invalid</td>');
