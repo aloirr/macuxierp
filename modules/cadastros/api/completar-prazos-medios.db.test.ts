@@ -1,7 +1,7 @@
 /**
  * T-0108, RN-CAD-15 (decisão 14 A): `completarPrazosMedios` completa o prazo médio das condições já gravadas com ele vazio, no PostgreSQL
  * real, papel macuxierp_app, com RLS. Sem Postgres o teste pula (`bash db/scripts/pg-local.sh`).
- * O teste marcado "(0068)" precisa da coluna `prazo_medio_calculado` (migração 0068 do banco-dados) e se pulam sem ela.
+ * A rotina roda no papel `macuxierp_worker`, que só tem UPDATE em `prazo_medio_dias`, `prazo_medio_calculado` e `updated_at` (0068): outra coluna dá 42501.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { RelogioFixo } from '@macuxierp/platform-sdk/testes';
@@ -21,12 +21,12 @@ const NOME_EVENTO = 'cadastros.condicao_pagamento.alterada@1';
 describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e 17 B, PostgreSQL real)', () => {
   let efemero: BancoEfemero;
   let app: BancoPg;
+  let worker: BancoPg;
   let A: string;
   let B: string;
-  let comMarca = false;
   const admin = async (sql: string, p: unknown[] = []): Promise<Record<string, any>[]> => (await efemero.admin.query(sql, p)).rows; // eslint-disable-line @typescript-eslint/no-explicit-any
   const rotina = completarPrazosMedios({ repositorios: repositoriosSql, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
-  const rodar = (tenant: string) => app.comTenant(tenant, (tx: Transacao) => rotina(tx, tenant));
+  const rodar = (tenant: string) => worker.comTenant(tenant, (tx: Transacao) => rotina(tx, tenant));
   const amb = (tenant: string) => criarAmbiente(
     criarPluginCadastros({ repositorios: repositoriosSql, fontes: fontesHttp(), certificados: { filialTemA1Valido: async () => true } }), AGORA, transacaoDe(app, tenant),
   );
@@ -43,9 +43,9 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
   beforeAll(async () => {
     efemero = await criarBancoEfemero();
     app = efemero.banco('macuxierp_app');
+    worker = efemero.banco('macuxierp_worker');
     A = await criarTenant(efemero.admin, 'completar-a', ['cadastros']);
     B = await criarTenant(efemero.admin, 'completar-b', ['cadastros']);
-    comMarca = (await admin("SELECT 1 FROM information_schema.columns WHERE table_schema = 'cadastros' AND table_name = 'condicao_pagamento' AND column_name = 'prazo_medio_calculado'")).length > 0;
   }, 120_000);
   afterAll(async () => {
     await efemero?.remover();
@@ -68,7 +68,7 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
     const semParcelas = { id: '00000000-0000-4000-8000-000000000000', prazos_dias: [], prazo_medio_dias: null };
     const repos = (tx: Transacao) => { const r = repositoriosSql(tx); return { ...r, carga: { ...r.carga, condicoesAtivasSemPrazoMedio: async () => [semParcelas, ...(await r.carga.condicoesAtivasSemPrazoMedio())] } } as typeof r; };
     const comFalsa = completarPrazosMedios({ repositorios: repos, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
-    expect(await app.comTenant(t, (tx) => comFalsa(tx, t))).toEqual({ completadas: 1 });
+    expect(await worker.comTenant(t, (tx) => comFalsa(tx, t))).toEqual({ completadas: 1 });
     expect(await medio(ok)).toBe(30);
     expect(await eventos(t)).toHaveLength(1);
   }, 120_000);
@@ -122,8 +122,7 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
     expect(await medio(b)).toBe(45);
   }, 120_000);
 
-  it('decisão 17 B (0068): a rotina grava a marca prazo_medio_calculado = true; o digitado fica com false', async (ctx) => {
-    if (!comMarca) return ctx.skip();
+  it('decisão 17 B: a rotina grava a marca prazo_medio_calculado = true; o digitado fica com false', async () => {
     const t = await criarTenant(efemero.admin, 'completar-marca', ['cadastros']);
     const a = await inserir(t, 'K1', [30, 60]);
     const d = await inserir(t, 'K2', [30, 60], { medio: 10 });

@@ -43,9 +43,7 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CAD-15: prazo médio efetivo gravado (Postgr
     expect(await medio(id)).toBe(45);
   }, 120_000);
 
-  it('decisão 17 B (0068): PATCH de parcelas com a marca true recalcula e mantém true; com false mantém o digitado', async (ctx) => {
-    const comMarca = (await admin("SELECT 1 FROM information_schema.columns WHERE table_schema = 'cadastros' AND table_name = 'condicao_pagamento' AND column_name = 'prazo_medio_calculado'")).length > 0;
-    if (!comMarca) return ctx.skip();
+  it('decisão 17 B: PATCH de parcelas com a marca true recalcula e mantém true; com false mantém o digitado', async () => {
     const a = amb();
     const post = async (codigo: string, extra: object) =>
       ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo, descricao: 'D', forma_tpag: '15', prazos_dias: [30], ...extra } })).corpo as { id: string }).id;

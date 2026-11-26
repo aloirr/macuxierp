@@ -307,8 +307,7 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
     const base = completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex);
     const comPrazo = d.prazos_dias === undefined ? base : completarPrazoMedio({ ...base, prazo_medio_dias: d.prazo_medio_dias ?? null }, ex);
     const { prazo_medio_calculado: marca, ...comPrazoSemMarca } = comPrazo as Dict;
-    // TODO 0068 (ver sql.ts): a marca só entra no patch quando o cadastro gravado a tem; remover o filtro `ex.prazo_medio_calculado === undefined` com a coluna
-    const patch: Dict = { ...comPrazoSemMarca, ...(ex.prazo_medio_calculado === undefined || marca === undefined ? {} : { prazo_medio_calculado: marca }), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
+    const patch: Dict = { ...comPrazoSemMarca, ...(marca === undefined ? {} : { prazo_medio_calculado: marca }), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
     const vc = validarCondicaoPagamento({
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
