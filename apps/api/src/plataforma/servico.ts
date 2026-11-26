@@ -14,12 +14,13 @@
  */
 import { randomBytes } from 'node:crypto';
 import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
-import { conferirTemporaria, custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
+import { custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
 import { registrarSemEnvio, type LogEsqueci } from '../auth/esqueci-log';
 import type { TrocaPendente } from '../auth/troca-senha';
 import type { MensagemEmail } from '../email/porta';
-import { ConferenciaCustoIgual, contaTravada, travaAposFalha } from '../auth/apoio-login';
-import { conferirSenha, gerarHashSenha } from '../auth/senha';
+import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, TravaContaMemoria } from './limite-ip';
+import { ConferenciaCustoIgual, travaAposFalha, type Recusa } from '../auth/apoio-login';
+import { gerarHashSenha } from '../auth/senha';
 import { erroSenhaAtualIncorreta, erroSenhaNova, exigirSenhaAtual, type ConfigAuth } from '../auth/servico';
 
 export const FALHA_LOGIN_PLATAFORMA = 'E-mail ou senha inválidos';
@@ -41,6 +42,8 @@ export interface LoginPlataforma {
   token: string;
   expira_em: Date;
   superadmin_id: string;
+  /** `LoginResposta.desbloqueou` do SDK (RN-CORE-15). */
+  desbloqueou?: true;
 }
 
 interface LinhaLogin {
@@ -58,6 +61,7 @@ const SQL_PARA_LOGIN =
 
 export class ServicoPlataforma {
   private readonly custoIgual: ConferenciaCustoIgual;
+  private readonly travaConta: TravaContaMemoria;
 
   constructor(
     private readonly banco: BancoPlataformaComLogin,
@@ -65,39 +69,41 @@ export class ServicoPlataforma {
     private readonly relogio: Relogio,
   ) {
     this.custoIgual = new ConferenciaCustoIgual(cfg.argon2);
+    this.travaConta = new TravaContaMemoria(cfg);
   }
 
+  /**
+   * Login do superadmin (RN-CORE-15, T-0111; decisão R-20261126-175321): a mesma `decidirEntrada` do tenant, com a trava em
+   * memória da chave `plataforma` + e-mail para a conta que não existe.
+   */
   async entrar(email: string, senha: string): Promise<LoginPlataforma> {
     const agora = this.relogio.agora();
-    // A falha é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
-    const r = await this.banco.antesDaSessao(async (tx) => {
+    const falha = () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA);
+    // A recusa é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
+    const r = await this.banco.antesDaSessao(async (tx): Promise<Recusa | LoginPlataforma | null> => {
       const [sa] = await tx.consultar<LinhaLogin>(SQL_PARA_LOGIN, [email]);
       if (!sa || !sa.ativo) return null;
-      const travado = contaTravada(sa.bloqueado_ate, agora);
-      const atual = !travado && (await conferirSenha(senha, sa.senha_hash));
-      const fimTemporaria = atual ? null : await conferirTemporaria(senha, sa.senha_temporaria_hash, sa.senha_temporaria_expira_em, agora);
+      const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(senha, sa, agora);
+      if (resultado === 'bloqueada') return { recusa: 'bloqueada', conferencias };
+      if (resultado === 'falha') {
+        // A 0033 só sobe a contagem (zera no login certo); a partir da `maxFalhas`-ésima falha seguida, trava.
+        const falhas = sa.falhas_login + 1;
+        await tx.consultar('SELECT plataforma.superadmin_registrar_falha($1::uuid, $2, $3)', [sa.id, falhas, travaAposFalha(falhas, agora, this.cfg)]);
+        return { recusa: 'falha', conferencias };
+      }
       if (fimTemporaria) {
         // 0048/0051: atômica e de uso único, zera a trava; só abre a sessão com true (quem perde a corrida recebe a falha neutra).
         const [c] = await tx.consultar<{ ok: boolean | null }>('SELECT plataforma.superadmin_consumir_temporaria($1::uuid) AS ok', [sa.id]);
-        if (c?.ok !== true) return 'corrida' as const;
-      } else if (travado) {
-        return null;
-      } else if (!atual) {
-        // Senha errada, temporária errada ou vencida: a 0033 só sobe a contagem (zera no login certo); a partir da
-        // `maxFalhas`-ésima falha seguida, cada falha trava por `travaMinutos`.
-        const falhas = sa.falhas_login + 1;
-        const trava = travaAposFalha(falhas, agora, this.cfg);
-        await tx.consultar('SELECT plataforma.superadmin_registrar_falha($1::uuid, $2, $3)', [sa.id, falhas, trava]);
-        return 'senha' as const;
+        if (c?.ok !== true) return { recusa: 'falha', conferencias };
       }
       const marca = fimTemporaria ? marcaTemporaria({ motivo_troca: 'temporaria', temporaria_expira_em: fimTemporaria }) : null;
       const token = `${marca ? `${marca}.` : ''}${randomBytes(32).toString('base64url')}`;
       const expira_em = new Date(agora.getTime() + VALIDADE_SESSAO_PLATAFORMA_MS);
       await tx.consultar('SELECT plataforma.superadmin_abrir_sessao($1::uuid, $2, $3)', [sa.id, hashToken(token), expira_em]);
-      return { token, expira_em, superadmin_id: sa.id };
+      return { token, expira_em, superadmin_id: sa.id, ...(resultado === 'entra_desbloqueando' ? { desbloqueou: true as const } : {}) };
     });
-    if (r === null) return this.custoIgual.falhar(senha, () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA));
-    if (r === 'senha' || r === 'corrida') throw erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA);
+    if (r === null) return this.custoIgual.recusarSemConta(senha, this.travaConta, chaveEmpresaEmail(EMPRESA_PLATAFORMA, email), agora, falha);
+    if ('recusa' in r) return this.custoIgual.recusarConta(senha, r, falha);
     return r;
   }
 
@@ -141,7 +147,7 @@ export class ServicoPlataforma {
    * único com o código MACUXI sem o `CABECALHO_CSRF_CONFIG` (ADR 0018 §5 e §6).
    */
   recusarComCustoIgual(senha: string): Promise<never> {
-    return this.custoIgual.falhar(senha, () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA));
+    return this.custoIgual.recusar(senha, 0, () => erros.naoAutenticado(FALHA_LOGIN_PLATAFORMA));
   }
 
   async sair(sessao: SessaoPlataforma): Promise<void> {

@@ -32,13 +32,14 @@ import {
   type Transacao,
 } from '@macuxierp/platform-sdk';
 import { avaliarPedidoSenhaEsquecida, type RepositorioCore } from '@macuxierp/core/api';
-import { ConferenciaCustoIgual, contaTravada, travaAposFalha } from './apoio-login';
+import { ConferenciaCustoIgual, travaAposFalha, type Recusa } from './apoio-login';
 import { registrarSemEnvio, type LogEsqueci } from './esqueci-log';
 import { emitirTokenAcesso, type SessaoAcesso } from './jwt';
 import type { RepositorioAuth, SessaoRefresh, UsuarioAuth } from './portas';
 import { ARGON2_PADRAO, conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
 import type { MensagemEmail } from '../email/porta';
-import { conferirTemporaria, custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from './senha-temporaria';
+import { chaveEmpresaEmail, TravaContaMemoria } from '../plataforma/limite-ip';
+import { custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from './senha-temporaria';
 import type { TrocaPendente } from './troca-senha';
 
 export interface ConfigAuth {
@@ -63,6 +64,8 @@ export interface ResultadoLogin {
   expira_em: Date;
   refresh: string;
   refresh_expira_em: Date;
+  /** `LoginResposta.desbloqueou` do SDK (RN-CORE-15). */
+  desbloqueou?: true;
 }
 
 /** Mensagem única do 401 do login (tenant e, pela tela única, o superadmin): não diz qual campo errou. */
@@ -103,6 +106,7 @@ function tenantDoRefresh(refresh: string): string | null {
 
 export class ServicoAuth {
   private readonly custoIgual: ConferenciaCustoIgual;
+  private readonly travaConta: TravaContaMemoria;
 
   constructor(
     private readonly banco: Banco,
@@ -111,38 +115,42 @@ export class ServicoAuth {
     private readonly relogio: Relogio,
   ) {
     this.custoIgual = new ConferenciaCustoIgual(cfg.argon2);
+    this.travaConta = new TravaContaMemoria(cfg);
   }
 
+  /**
+   * Login do tenant (RN-CORE-15, T-0111; decisão R-20261126-175321): a decisão é a `decidirEntrada` (apoio-login.ts), a
+   * mesma do superadmin. A conta que não existe trava pela memória (empresa + e-mail); o 423 e o custo saem iguais. O
+   * `operador.sh --destravar` (banco) vale na hora.
+   */
   async entrar(entrada: { empresa: string; email: string; senha: string }): Promise<ResultadoLogin> {
     const agora = this.relogio.agora();
+    const chave = chaveEmpresaEmail(entrada.empresa, entrada.email);
+    const semConta = () => this.custoIgual.recusarSemConta(entrada.senha, this.travaConta, chave, agora, () => erros.naoAutenticado(FALHA_LOGIN));
     const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
-    if (!tenantId) return this.falharSemUsuario(entrada.senha);
-    // A falha é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
-    const r = await this.banco.comTenant(tenantId, async (tx) => {
+    if (!tenantId) return semConta();
+    // A recusa é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
+    const r = await this.banco.comTenant(tenantId, async (tx): Promise<Recusa | ResultadoLogin | null> => {
       const usuario = await this.repo.usuarioPorEmail(tx, entrada.email.trim().toLowerCase());
-      if (!usuario || !usuario.ativo) return 'sem_usuario' as const;
-      const travado = contaTravada(usuario.bloqueado_ate, agora);
-      if (!travado && (await conferirSenha(entrada.senha, usuario.senha_hash))) {
-        await this.repo.registrarAcesso(tx, usuario.id, agora);
-        return this.abrirSessao(tx, usuario, randomUUID(), agora);
+      if (!usuario || !usuario.ativo) return null;
+      const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(entrada.senha, usuario, agora);
+      if (resultado === 'bloqueada') return { recusa: 'bloqueada', conferencias };
+      if (resultado === 'falha') {
+        await this.registrarFalha(tx, usuario, agora);
+        return { recusa: 'falha', conferencias };
       }
-      const fimTemporaria = await conferirTemporaria(entrada.senha, usuario.senha_temporaria_hash, usuario.senha_temporaria_expira_em, agora);
       if (fimTemporaria) {
-        // Uso único: só abre a sessão se o consumo atômico devolveu true; quem perde a corrida recebe a falha neutra.
-        if (!(await this.repo.consumirTemporaria(tx, usuario.id))) return 'corrida' as const;
+        // Uso único (zera falhas_login e bloqueado_ate): só abre a sessão se o consumo atômico devolveu true.
+        if (!(await this.repo.consumirTemporaria(tx, usuario.id))) return { recusa: 'falha', conferencias };
         await this.repo.registrarAcesso(tx, usuario.id, agora);
-        return this.abrirSessao(tx, { ...usuario, deve_trocar_senha: true }, randomUUID(), agora, { motivo_troca: 'temporaria', temporaria_expira_em: fimTemporaria });
+        const s = await this.abrirSessao(tx, { ...usuario, deve_trocar_senha: true }, randomUUID(), agora, { motivo_troca: 'temporaria', temporaria_expira_em: fimTemporaria });
+        return resultado === 'entra_desbloqueando' ? { ...s, desbloqueou: true } : s;
       }
-      if (travado) return 'travado' as const;
-      // Senha errada, temporária errada ou vencida: a mesma falha, na mesma trava.
-      await this.registrarFalha(tx, usuario, agora);
-      return 'senha' as const;
+      await this.repo.registrarAcesso(tx, usuario.id, agora);
+      return this.abrirSessao(tx, usuario, randomUUID(), agora);
     });
-    if (r === 'sem_usuario') return this.falharSemUsuario(entrada.senha);
-    if (r === 'travado') {
-      throw erros.muitasTentativas(`Acesso travado por ${this.cfg.travaMinutos} minutos após ${this.cfg.maxFalhas} tentativas`);
-    }
-    if (r === 'senha' || r === 'corrida') throw erros.naoAutenticado(FALHA_LOGIN);
+    if (r === null) return semConta();
+    if ('recusa' in r) return this.custoIgual.recusarConta(entrada.senha, r, () => erros.naoAutenticado(FALHA_LOGIN));
     return r;
   }
 
@@ -283,7 +291,4 @@ export class ServicoAuth {
   }
 
   /** Confere contra um hash falso para o tempo de resposta não revelar se a empresa ou o e-mail existem. */
-  private falharSemUsuario(senha: string): Promise<never> {
-    return this.custoIgual.falhar(senha, () => erros.naoAutenticado(FALHA_LOGIN));
-  }
 }

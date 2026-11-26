@@ -115,7 +115,7 @@ export function responderLoginPlataforma(reply: FastifyReply, r: LoginPlataforma
   return reply
     .setCookie(COOKIE_CONFIG, r.token, opcoesCookieSessao(PREFIXO_PLATAFORMA, cookieSeguro, r.expira_em))
     .header('cache-control', 'no-store')
-    .send({ expira_em: r.expira_em.toISOString(), ...extra });
+    .send({ expira_em: r.expira_em.toISOString(), ...extra, ...(r.desbloqueou ? { desbloqueou: true } : {}) });
 }
 
 /** Monta `/v1/plataforma/*` e devolve o serviço do superadmin (a tela única do `/v1/auth/login` e do esqueci usa o mesmo). */

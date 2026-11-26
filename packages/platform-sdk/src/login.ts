@@ -58,10 +58,12 @@ const LoginRespostaBko = z.object({
   destino: z.literal('bko').default('bko'),
   token_acesso: z.string().min(1),
   expira_em: Instante,
+  /** RN-CORE-15 (T-0111): entrou com a temporária numa conta travada, que ficou desbloqueada (a tela mostra `TEXTO_CONTA_DESBLOQUEADA`). */
+  desbloqueou: z.literal(true).optional(),
 });
 
 /** 200 do login do superadmin: o `SessaoPlataformaResposta` mais o `destino`; o token vai só no `COOKIE_CONFIG`. */
-const LoginRespostaConfig = SessaoPlataformaResposta.extend({ destino: z.literal('config') }).strict();
+const LoginRespostaConfig = SessaoPlataformaResposta.extend({ destino: z.literal('config'), desbloqueou: z.literal(true).optional() }).strict();
 
 export const LoginResposta = z.union([LoginRespostaBko, LoginRespostaConfig]);
 export type LoginResposta = z.infer<typeof LoginResposta>;

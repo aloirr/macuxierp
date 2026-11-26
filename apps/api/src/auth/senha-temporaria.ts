@@ -9,10 +9,10 @@
  * - a sessão aberta por ela leva a marca `t<segundos UTC do fim>` num segmento do refresh do tenant e do token do `/config`.
  */
 import { randomInt } from 'node:crypto';
-import { expiraEm, temporariaValida } from '@macuxierp/core/api';
+import { expiraEm } from '@macuxierp/core/api';
 import { emailSenhaTemporaria, VALIDADE_SENHA_TEMPORARIA_HORAS } from '@macuxierp/platform-sdk';
 import type { MensagemEmail } from '../email/porta';
-import { conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
+import { gerarHashSenha, type ParametrosArgon2 } from './senha';
 import type { TrocaPendente } from './troca-senha';
 
 // Mesmas classes do gerador do scripts/deploy/producao/operador.sh e de modules/core/domain/usuarios.ts (o teste trava).
@@ -49,15 +49,6 @@ export async function emitirTemporaria(argon2: ParametrosArgon2, agora: Date): P
 export async function custoTemporariaDescartada(argon2: ParametrosArgon2): Promise<null> {
   await emitirTemporaria(argon2, new Date());
   return null;
-}
-
-/**
- * A senha informada é a temporária vigente? Devolve o fim dela (o `expira_em` do 403 `TROCAR_SENHA`) ou `null` (sem
- * temporária, vencida ou errada). O banco revalida no consumo atômico.
- */
-export async function conferirTemporaria(senha: string, hash: string | null | undefined, fim: Date | null | undefined, agora: Date): Promise<Date | null> {
-  if (!hash || !fim || !temporariaValida(fim, agora)) return null;
-  return (await conferirSenha(senha, hash)) ? fim : null;
 }
 
 const MARCA_TEMPORARIA = /^t(\d{1,12})$/;
