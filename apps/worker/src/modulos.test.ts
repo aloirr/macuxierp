@@ -51,7 +51,7 @@ describe('worker: rotinas e executores com os adaptadores reais', () => {
       [/INSERT INTO core\.aviso_a1/, [{ id: 'novo' }]],
     ]);
     const rotinas = montarRotinas({ banco, log });
-    expect(rotinas.map((r) => [r.id, r.horaUtc])).toEqual([['core.alerta_a1', 11], ['sefaz_simulador.purga', 7], ['integracao-fdv.expurgo-pre-cadastro', 8]]);
+    expect(rotinas.map((r) => [r.id, r.horaUtc])).toEqual([['core.alerta_a1', 11], ['sefaz_simulador.purga', 7], ['integracao-fdv.expurgo-pre-cadastro', 8], ['cadastros.completar-prazo-medio', 0]]);
     expect(await rotinas[0]!.executar(AGORA)).toEqual({ tenants: 1, avisos: 1, repetidos: 0, falhas: 0 });
     expect(sql).toEqual([
       expect.stringContaining('plataforma.tenants_ativos()'),
