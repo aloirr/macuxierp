@@ -1,6 +1,6 @@
 import { CODIGO_TROCAR_SENHA } from '@macuxierp/platform-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma, mensagemDoErro } from './erros';
+import { ConfigContaBloqueada, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma, mensagemDoErro } from './erros';
 import { alterarSituacao, criarPrimeiroAdmin, listarEmpresas, redefinirSenhaPrimeiroAdmin } from './api';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -50,6 +50,9 @@ describe('cliente da plataforma', () => {
     };
     expect(await quando(() => json({}, 401))).toBeInstanceOf(ConfigNaoAutenticado);
     expect(await quando(() => json({ codigo: 'SEM_PERMISSAO' }, 403))).toBeInstanceOf(ConfigSemPermissao);
+    expect(await quando(() => json({ codigo: 'CONTA_BLOQUEADA', detalhes: { recuperar: true } }, 423))).toBeInstanceOf(ConfigContaBloqueada);
+    expect(await quando(() => json({}, 423))).toBeInstanceOf(ConfigContaBloqueada);
+    expect(await quando(() => json({ codigo: 'MUITAS_TENTATIVAS' }, 429))).toBeInstanceOf(ConfigMuitasTentativas);
     expect(await quando(() => json({}, 429))).toBeInstanceOf(ConfigMuitasTentativas);
     expect(await quando(() => json({ mensagem: 'segredo@x.co' }, 500))).toBeInstanceOf(ConfigIndisponivel);
     expect(await quando(() => json({ codigo: 'CHAVE_INTEGRACAO_AUSENTE', mensagem: 'Chave ausente.' }, 503))).toMatchObject({ name: 'ErroPlataforma', status: 503, codigo: 'CHAVE_INTEGRACAO_AUSENTE' });
@@ -71,6 +74,8 @@ describe('mensagens', () => {
     expect(mensagemDoErro(new ErroPlataforma(409, 'CONFLITO'), 'redefinir')).toMatchObject({ texto: 'A senha já foi exibida. Redefina para gerar outra.', chaveNova: true });
     expect(mensagemDoErro(new ConfigNaoAutenticado(), 'situacao').expirou).toBe(true);
     expect(mensagemDoErro(new ConfigMuitasTentativas(), 'entrar').texto).toBe('Muitas tentativas. Aguarde 15 minutos e tente de novo.');
+    expect(mensagemDoErro(new ConfigContaBloqueada(), 'entrar').texto).toContain('Conta bloqueada');
+    expect(mensagemDoErro(new ConfigContaBloqueada(), 'entrar').texto).not.toContain('Muitas tentativas');
     expect(mensagemDoErro(new ConfigIndisponivel('x'), 'situacao')).toMatchObject({ texto: 'Não foi possível concluir. Tente de novo.', chaveNova: false });
     expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'email').texto).toBe('A empresa ainda não tem 1º administrador.');
     expect(mensagemDoErro(new ErroPlataforma(404, 'NAO_ENCONTRADO'), 'carregar').texto).toBe('Empresa não encontrada. Volte à lista.');

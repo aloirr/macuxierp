@@ -53,3 +53,4 @@
 2026-11-25 — T-0109 — Log: legenda dos registros não enviados ao FDV e Corrigir cadastro (2b)
 2026-11-26 — T-0111 — conta bloqueada, Recuperar a senha e Conta desbloqueada na entrada
 2026-11-26 — T-0111 — login: conta bloqueada só no 423/CODIGO_CONTA_BLOQUEADA do SDK; 429 volta a Muitas tentativas
+2026-11-26 — T-0111 — /config: 423 vira ConfigContaBloqueada (mesmo ponto de login-regras); 429 segue Muitas tentativas
