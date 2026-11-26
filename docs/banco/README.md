@@ -456,6 +456,15 @@ RN-CAD-15 com as decisões 14 A e 17 B do Alexandre (25/11): o prazo médio vazi
 
 Migração: `db/migrations/0068_cadastros_condicao_prazo_calculado.sql`; testes: `db/testes/condicao-prazo-calculado-0068.db.test.ts`.
 
+## Versão do contrato por registro do espelho e prazos com parcelas em texto (T-0107 e T-0112, migração 0069)
+Na virada de versão de uma entidade do Hub (hoje só `prazo_pagamento` tem v2), a varredura do worker marca como pendentes os registros resolvidos na versão antiga.
+- **NOT NULL DEFAULT 'v1', não anulável:** todo registro que já saiu da fila (aceito ou recusado firme) foi resolvido em v1 antes da 0069, e o default constante dá esse backfill sem reescrever a tabela. Linha gravada pela versão anterior do worker também sai v1; se ela já mandou o prazo em v2, a varredura só causa um reenvio a mais, idempotente pelo `external_id`. Anulável não traria informação: NULL e v1 teriam o mesmo tratamento.
+- **CHECK com a lista** (`VERSAO_CONTRATO_HUB` e `VERSAO_CONTRATO_PRAZO_V2` do `contracts/hub.ts`), sem amarrar a v2 à entidade: essa regra é do contrato (Zod). Versão nova = migração que amplia a lista.
+- **Índice parcial sem a versão no predicado**, para valer na próxima virada; sem `CONCURRENTLY`, porque o migrador roda cada arquivo numa transação (a trava fica nos 5 s do `lock_timeout`). O predicado só casa com `entidade = 'prazo_pagamento'` conhecida no plano: literal ou parâmetro com plano específico (não o genérico do prepared statement).
+- **T-0112, prazos com `parcelas_dias` em texto** (espelho de antes da T-0085, recusado pelo Hub) voltam a pendente, para a integração normalizar no envio. Só a flag (e o `updated_at`, pelo gatilho): o hash fica, e o reenvio decide pelo lote. Vale para todos os tenants porque a migração roda como dona, e a tabela não tem FORCE RLS. Excluído, já pendente e payload anulado ficam de fora; rodar de novo não acha mais nada.
+
+Migração: `db/migrations/0069_integracao_fdv_contrato_enviado.sql`; testes: `db/testes/contrato-enviado-0069.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
