@@ -38,8 +38,11 @@ const ID_DA_TELA = 'IDDATELAT0065';
 
 /**
  * Início de uma chamada GET do web. Os wrappers são os de apps/web/src/lib/api.ts, lib/listas.ts e lib/config/api.ts e o
- * `chamar` dos clientes dos módulos; a declaração da função (`function baixarCsv(`) é descartada à parte.
+ * `chamar` dos clientes dos módulos; a declaração da função (`function baixarCsv(`) é descartada à parte, e também a chamada nos
+ * arquivos que importam `baixarCsv` de `@/lib/baixar-csv` (#717, só monta o arquivo no navegador, sem GET; o de `lib/api.ts` continua
+ * varrido).
  */
+const BAIXAR_CSV_LOCAL = /import\s*\{[^}]*\bbaixarCsv\b[^}]*\}\s*from\s*'@\/lib\/baixar-csv'/;
 const CHAMADA_GET = /\b(?:chamar\(\s*'GET'\s*,|getValidado\(|buscarRegistro\(|buscarPagina\(|baixarCsv\(|baixarArquivo\()\s*/g;
 
 /** Texto bruto do primeiro argumento a partir de `i` (até a `,` ou o `)` do mesmo nível), pulando textos e templates. */
@@ -114,8 +117,10 @@ function varrer(): Varredura {
     const src = readFileSync(abs, 'utf8');
     const arquivo = relative(RAIZ, abs).split('\\').join('/');
     const prefixo = prefixoDo(arquivo, src);
+    const csvLocal = BAIXAR_CSV_LOCAL.test(src);
     for (const m of src.matchAll(CHAMADA_GET)) {
       if (/function\s+$/.test(src.slice(Math.max(0, m.index - 20), m.index))) continue;
+      if (csvLocal && m[0].startsWith('baixarCsv(')) continue;
       const arg = primeiroArgumento(src, m.index + m[0].length);
       const linha = src.slice(0, m.index).split('\n').length;
       const chave = `${arquivo} :: ${arg.replace(/\s+/g, ' ')}`;
