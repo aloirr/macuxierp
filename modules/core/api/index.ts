@@ -13,6 +13,8 @@ export const lerChaveA1 = (valor: string | undefined): Buffer => lerChaveMestra(
 export { alertaVencimento, diasParaVencer } from '../domain/certificado';
 // RN-CORE-13: usado pela rota "esqueci a senha" da apps/api
 export { avaliarPedidoSenhaEsquecida, expiraEm, temporariaValida } from '../domain/senha-esquecida';
+// RN-CORE-15: conta bloqueada (a apps/api não importa o domain).
+export { avaliarEntrada, RESPOSTA_CONTA_BLOQUEADA, TEXTO_CONTA_DESBLOQUEADA, type ResultadoEntrada } from '../domain/conta-bloqueada';
 // Adaptadores SQL das portas do worker (T-0035, T-0040): alerta do A1 e exportação LGPD; leitura do selo do /eu
 export {
   avisosA1MaisRecentes,

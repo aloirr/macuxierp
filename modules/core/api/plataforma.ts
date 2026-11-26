@@ -62,9 +62,9 @@ export interface RepositorioPlataforma {
   revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string>;
   /** `empresa_ler` com a chave `ficha` (0063): a ficha já vem mascarada do banco; `null` sem `core.empresa`. */
   lerEmpresaComFicha(tx: Transacao, id: string): Promise<{ empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null } | null>;
-  /** `empresa_gravar_receita`: `alterados` são só nomes de coluna. Sem `core.empresa` (55000) = 409. */
   /** Junta a descrição do CNAE e o nome do município (0066) à ficha mascarada que vai na resposta. */
   descreverFicha(tx: Transacao, ficha: FichaReceitaPlanaMascarada): Promise<FichaReceitaPlanaMascarada>;
+  /** `empresa_gravar_receita`: `alterados` são só nomes de coluna. Sem `core.empresa` (55000) = 409. */
   gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }>;
   /** `empresa_contato_revelar`: o valor completo; a função audita só o campo. Sem o dado (P0002) = 404. */
   revelarContato(tx: Transacao, p: { id: string; campo: CampoContato; request_id: string }): Promise<string>;
