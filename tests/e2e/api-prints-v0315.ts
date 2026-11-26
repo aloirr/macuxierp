@@ -12,12 +12,12 @@
  * Nenhuma chamada ao Hub nem à Receita: sem worker de pé e sem o "Atualizar pela Receita".
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CABECALHO_CSRF_CONFIG, CAMINHOS_CARGAS_PLATAFORMA, CAMPO_ARQUIVO_CARGA_PORTAL, COOKIE_CONFIG, PREFIXO_PLATAFORMA } from '../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, criarTenant } from '../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, inserirFilialDeTeste } from '../../apps/api/src/apoio-teste';
-import { formulario } from '../../apps/api/src/apoio-multipart';
+import { carregarCsvsPortal, manterSinalEEncerrar } from './apoio-api';
+import { PASTA_FIXTURE_CARGA } from '../apoio/fixture-carga';
 import { CHAVE_MESTRA, criarCredencial, cursorEntidade } from '../../modules/integracao-fdv/api/apoio-conector-teste';
 import { sqlDePedido } from '../../db/testes/fixture';
 import { atalhosPortal, inserirSuperadmin, SENHA_SA } from '../apoio/portal-pg';
@@ -52,7 +52,7 @@ await b.admin.query(
    WHERE tenant_id = $1`,
   [comFicha],
 );
-// Só a data: a tela trata a ficha como vazia quando nenhum campo além da data tem valor (`fichaVazia`, inclui a fonte).
+// Consultada sem dados: só a data (a tela ignora a fonte no `estadoDaFicha`, #703).
 await b.admin.query("UPDATE core.empresa SET receita_consultada_em = now() - interval '1 day' WHERE tenant_id = $1", [consultada]);
 
 // Três pedidos aprovados, sem nota e sem título (um do FDV): a prévia do Zerar pedidos mostra N = 3.
@@ -75,18 +75,7 @@ const { app } = await appPgDeTeste({ b, versao: 'v0315-prints', modulos: 'produc
 // Carga de filial e vendedor pelo portal (fixtures fictícias do cadastros): o Substituir tudo tem o que comparar.
 const portal = atalhosPortal(app);
 const token = await portal.sessao(SA);
-const PASTA_CSV = join(import.meta.dirname, '..', '..', 'modules', 'cadastros', 'domain', 'carga', '__fixtures__');
-for (const cadastro of ['filial', 'vendedor']) {
-  const f = formulario({}, [{ campo: CAMPO_ARQUIVO_CARGA_PORTAL, conteudo: readFileSync(join(PASTA_CSV, `${cadastro}.csv`), 'utf8'), nome: `${cadastro}.csv`, tipo: 'text/csv' }]);
-  const r = await app.inject({
-    method: 'POST',
-    url: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.gravar.replace(':id', comFicha).replace(':cadastro', cadastro)}`,
-    payload: f.payload,
-    cookies: { [COOKIE_CONFIG]: token },
-    headers: { ...f.headers, [CABECALHO_CSRF_CONFIG]: '1', 'idempotency-key': randomUUID() },
-  });
-  if (r.statusCode >= 300) throw new Error(`carga ${cadastro}: ${r.statusCode} ${r.body}`);
-}
+await carregarCsvsPortal(app, comFicha, token, ['filial', 'vendedor']);
 
 await app.listen({ port: PORTA, host: '127.0.0.1' });
 const url = `http://127.0.0.1:${PORTA}`;
@@ -94,20 +83,8 @@ const pronto = {
   url,
   superadmin: { email: SA, senha: SENHA_SA },
   empresas: { comFicha, semFicha, consultada },
-  csvFilial: join(PASTA_CSV, 'filial.csv'),
+  csvFilial: join(PASTA_FIXTURE_CARGA, 'filial.csv'),
 };
 if (PRONTO) writeFileSync(PRONTO, JSON.stringify(pronto));
-const pulso = setInterval(() => {
-  void b.admin.query('UPDATE integracao_fdv.sinal SET ultimo_envio_em = now(), ultimo_aceito_em = now() WHERE tenant_id = $1', [comFicha]).catch(() => undefined);
-}, 20_000);
+manterSinalEEncerrar({ app, b, tenant: comFicha, rotulo: 'api-prints-v0315' });
 console.error(`[api-prints-v0315] ouvindo em ${url} (banco ${b.nome})`);
-for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
-  process.once(sinal, () => {
-    clearInterval(pulso);
-    void app
-      .close()
-      .then(() => b.remover())
-      .then(() => console.error('[api-prints-v0315] banco efêmero apagado'))
-      .finally(() => process.exit(0));
-  });
-}
