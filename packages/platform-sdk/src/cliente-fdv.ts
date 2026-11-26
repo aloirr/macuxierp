@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { chaveLigadoDesligado } from './chave-ligado';
 import { cnpjRaiz, normalizarDocumento } from './documentos';
 import { ConsultaPaginada, paginaDe } from './listas';
-import { CodigoErroFdv } from './portal-integracao-operacao';
+import { CodigoErroFdv } from './erros-fdv';
 
 const Uuid = z.string().uuid();
 /** Data e hora com fuso, como o Hub manda (`-04:00` ou `Z`). */
