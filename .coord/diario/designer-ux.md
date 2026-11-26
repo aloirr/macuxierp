@@ -41,3 +41,4 @@
 2026-11-25 — T-0099 — MenuAcoes: desabilitado aceita texto (motivo visível, aria-describedby, item focável); doc e testes (v0.3.15)
 2026-11-25 — T-0099 — AcaoPrincipal aceita motivo (tipo Desabilitado compartilhado), aria-disabled e aria-describedby; corrige o build do #689
 2026-11-25 — T-0099 — hover de botão não muda com aria-disabled (#689)
+2026-11-26 — T-0111 — modelo do e-mail de senha temporária (claro/escuro, placeholders, textos exatos) em docs/design/emails/redefinir-senha/
