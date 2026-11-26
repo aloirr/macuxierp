@@ -16,3 +16,4 @@ export * from './recomposicao';
 export * from './resposta';
 export * from './status';
 export * from './troca-chave';
+export * from './recebidos-log';

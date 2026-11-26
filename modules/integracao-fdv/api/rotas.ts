@@ -9,12 +9,13 @@
  *
  * Regra da agenda (vale para o portal, via funções `portal_*`): o app só ADIANTA `proximo*_em`; quem adia é o worker.
  */
-import { LIMITE_ERROS_LOG_FDV, csvDaLista, definirRota, erros, type RotaModulo, type SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
+import { ConsultaClientesRecebidosFdv, LIMITE_ERROS_LOG_FDV, LIMITE_RECEBIDOS_LOG_FDV, csvDaLista, definirRota, erros, type RotaModulo, type SituacaoClienteRecebidoFdv } from '@macuxierp/platform-sdk';
 import { ConsultaPaginada, paraCsv, respostaCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
-import { itemDoLogTenant, montarLogTenant } from '../domain';
-import { paginaClientesRecebidos, paginaLotes } from '../web/paginas';
-import { listarClientesRecebidos } from './clientes-recebidos';
+import { ENTIDADE_COM_RECEBIDOS_NO_LOG, itemDoLogTenant, montarLogTenant } from '../domain';
+import { NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog } from '../web/log';
+import { paginaLotes } from '../web/paginas';
+import { contarClientesRecebidos, lerLinhasClientesRecebidos, listarClientesRecebidos } from './clientes-recebidos';
 import { entidadeDaRota, lerInsumosLog } from './operacao';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
@@ -69,7 +70,11 @@ export function criarRotas(): RotaModulo[] {
       async executar(c, e) {
         const entidade = entidadeDaRota(e.params.entidade);
         const i = await lerInsumosLog(c.tx, tenant(c), entidade, LIMITE_ERROS_LOG_FDV);
-        return { corpo: montarLogTenant({ entidade, lidoEm: c.agora, envios: i.envios, erros: i.erros, totalErros: i.total_erros, motivo: i.motivo?.motivo ?? null }) };
+        // RN-INF-09: na entidade 'cliente' o Log leva os pré-cadastros recebidos (mesma transação e tenant; documento só mascarado).
+        const recebidos = entidade === ENTIDADE_COM_RECEBIDOS_NO_LOG
+          ? { linhas: await lerLinhasClientesRecebidos(c.tx, tenant(c), { limite: LIMITE_RECEBIDOS_LOG_FDV }), totalNoBanco: await contarClientesRecebidos(c.tx, tenant(c)) }
+          : undefined;
+        return { corpo: montarLogTenant({ entidade, lidoEm: c.agora, envios: i.envios, erros: i.erros, totalErros: i.total_erros, motivo: i.motivo?.motivo ?? null, recebidos }) };
       },
     }),
     definirRota({
@@ -99,20 +104,20 @@ export function criarRotas(): RotaModulo[] {
         return csvDaLista(paginaLotes, c.sessao.perfil, p.itens);
       },
     }),
-    // T-0059 §5.5: seção "Clientes recebidos do FDV". Documento só mascarado; o payload nunca é lido.
+    // T-0059 §5.5: Log do cadastro de cliente (RN-INF-09) e rota /clientes-recebidos. Documento só mascarado; o payload nunca é lido.
     definirRota({
-      metodo: 'GET', caminho: '/clientes-recebidos', acao: 'integracao-fdv.ver', consulta: paginaClientesRecebidos.consulta,
+      metodo: 'GET', caminho: '/clientes-recebidos', acao: 'integracao-fdv.ver', consulta: ConsultaClientesRecebidosFdv,
       async executar(c, e) {
         const q = e.consulta as { situacao?: SituacaoClienteRecebidoFdv; cursor?: string; limite: number };
         return { corpo: await listarClientesRecebidos(c.tx, tenant(c), q) };
       },
     }),
     definirRota({
-      metodo: 'GET', caminho: '/clientes-recebidos/exportar', acao: 'integracao-fdv.ver', consulta: paginaClientesRecebidos.consulta,
+      metodo: 'GET', caminho: '/clientes-recebidos/exportar', acao: 'integracao-fdv.ver', consulta: ConsultaClientesRecebidosFdv,
       async executar(c, e) {
         const { situacao } = e.consulta as { situacao?: SituacaoClienteRecebidoFdv };
         const p = await listarClientesRecebidos(c.tx, tenant(c), { situacao, limite: MAXIMO_LINHAS_CSV });
-        return csvDaLista(paginaClientesRecebidos, c.sessao.perfil, p.itens);
+        return respostaCsv(NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog(p.itens));
       },
     }),
     definirRota({

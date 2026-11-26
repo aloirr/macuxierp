@@ -4,9 +4,12 @@
  * colunas (registro, nome curto, campo, motivo, ação e "Corrigir"), os textos dos estados e o caminho do CSV. Motivo e ação
  * vêm do catálogo da API (voz A0), nunca da mensagem do Hub. A permissão só esconde botão: a proteção real é a da API.
  */
-import { CAMINHOS_INTEGRACAO_FDV_TENANT, type EnvioLogFdv, type EntidadeEnvioFdv, type LogCadastroFdvTenant, type OrigemEnvioFdv } from '@macuxierp/platform-sdk';
+import { CAMINHOS_INTEGRACAO_FDV_TENANT, type ClienteRecebidoFdv, type EnvioLogFdv, type EntidadeEnvioFdv, type LogCadastroFdvTenant, type OrigemEnvioFdv } from '@macuxierp/platform-sdk';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
+import { paraCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
+import { motivoDaRecusaCliente } from '../domain/recebidos-log';
 import { FUSO_PADRAO } from './monitor';
+import { ROTULO_RETORNO_CLIENTE, ROTULO_SITUACAO_CLIENTE_RECEBIDO, TEXTO_SEM_VALOR } from './rotulos';
 
 /** Textos dos três estados da tela (voz A0: frase curta, sem jargão, diz o que fazer). */
 export const TEXTO_ESTADO_LOG = Object.freeze({
@@ -82,3 +85,56 @@ export const caminhoDoLogCsv = (entidade: EntidadeEnvioFdv): string =>
   `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.logCsv.replace(':entidade', encodeURIComponent(entidade))}`;
 
 export const nomeDoCsvDoLog = (entidade: EntidadeEnvioFdv): string => `erros-${entidade}.csv`;
+
+// ---- Recebidos do FDV (RN-INF-09; T-0110): pré-cadastros aceitos, recusados e reenviados. Documento só mascarado (LGPD). ----
+
+export const TITULO_SECAO_RECEBIDOS_LOG = 'Recebidos do FDV';
+export const TEXTO_VAZIO_RECEBIDOS_LOG = 'Nenhum pré-cadastro recebido ainda.';
+export const NOME_CSV_RECEBIDOS_LOG = 'recebidos-fdv.csv';
+
+export interface LinhaRecebidoLog {
+  situacao: string;
+  cliente: string;
+  documento: string;
+  vendedor: string;
+  recebidoEm: string;
+  revisao: number;
+  /** Motivo legível da recusa pelo catálogo (vendedor inexistente ou inativo, por exemplo); vazio se não recusado. */
+  motivo: string;
+  retorno: string;
+}
+
+/** Motivo da linha: nos erros por campo, o texto do catálogo pelo código; recusado sem erro, o genérico. Nunca o texto cru do FDV. */
+export const motivoDoRecebidoLog = (c: ClienteRecebidoFdv): string => {
+  if (c.situacao !== 'recusado') return '';
+  return c.erros.length > 0 ? [...new Set(c.erros.map((e) => motivoDaRecusaCliente(e.codigo)))].join(' ') : motivoDaRecusaCliente(null);
+};
+
+export const linhasDeRecebidosLog = (recebidos: readonly ClienteRecebidoFdv[], fuso: string = FUSO_PADRAO): LinhaRecebidoLog[] =>
+  recebidos.map((c) => ({
+    situacao: ROTULO_SITUACAO_CLIENTE_RECEBIDO[c.situacao],
+    cliente: c.razao_social,
+    documento: c.documento_mascarado ?? TEXTO_SEM_VALOR,
+    vendedor: c.vendedor_external_id ?? TEXTO_SEM_VALOR,
+    recebidoEm: formatarDataHora(c.recebido_em, fuso),
+    revisao: c.revisao,
+    motivo: motivoDoRecebidoLog(c),
+    retorno: c.retorno ? ROTULO_RETORNO_CLIENTE[c.retorno] : '',
+  }));
+
+export const colunasDeRecebidosLog: readonly { id: keyof LinhaRecebidoLog; titulo: string }[] = [
+  { id: 'situacao', titulo: 'Situação' },
+  { id: 'cliente', titulo: 'Cliente' },
+  { id: 'documento', titulo: 'Documento' },
+  { id: 'vendedor', titulo: 'Vendedor' },
+  { id: 'recebidoEm', titulo: 'Recebido em' },
+  { id: 'revisao', titulo: 'Revisão' },
+  { id: 'motivo', titulo: 'Motivo' },
+  { id: 'retorno', titulo: 'Retorno' },
+];
+
+/** CSV dos recebidos: as mesmas colunas e textos da tela, com a data no fuso do tenant. */
+export const csvDeRecebidosLog = (recebidos: readonly ClienteRecebidoFdv[], fuso: string = FUSO_PADRAO): string => {
+  const colunas: readonly ColunaCsv<LinhaRecebidoLog>[] = colunasDeRecebidosLog.map((c) => ({ titulo: c.titulo, valor: (l) => l[c.id] }));
+  return paraCsv(colunas, linhasDeRecebidosLog(recebidos, fuso));
+};
