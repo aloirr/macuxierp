@@ -10,6 +10,7 @@ import {
   mascararDocumentoFdv,
   montarRetornoClienteFdv,
   revisaoDoPreCadastro,
+  MENSAGENS_RECUSA_PRE_CADASTRO_FDV,
 } from './cliente-fdv';
 import { CAMINHOS_INTEGRACAO_FDV_TENANT } from './portal-integracao-operacao';
 import * as sdk from './index';
@@ -132,5 +133,19 @@ describe('seção "Clientes recebidos do FDV" (LGPD)', () => {
   it('caminho do BKO e reexport pelo índice', () => {
     expect(CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos).toBe('/integracao-fdv/clientes-recebidos');
     expect(sdk.montarRetornoClienteFdv).toBe(montarRetornoClienteFdv);
+  });
+});
+
+describe('MENSAGENS_RECUSA_PRE_CADASTRO_FDV (T-0110)', () => {
+  it('um texto legível por código do ErroCampoClienteFdv, sem valor recusado; inclui os do vendedor (RN-INT-23); sai pelo índice', () => {
+    const cods = Object.keys(MENSAGENS_RECUSA_PRE_CADASTRO_FDV);
+    expect(cods).toEqual(expect.arrayContaining(['documento_invalido', 'ie_invalida', 'vendedor_fdv_nao_encontrado', 'vendedor_fdv_inativo', 'dado_invalido']));
+    for (const [c, t] of Object.entries(MENSAGENS_RECUSA_PRE_CADASTRO_FDV)) {
+      expect(c).toMatch(/^[a-z][a-z0-9_]{0,59}$/);
+      expect(t.trim().length).toBeGreaterThan(0);
+      expect(t.length).toBeLessThanOrEqual(300);
+    }
+    expect(Object.isFrozen(MENSAGENS_RECUSA_PRE_CADASTRO_FDV)).toBe(true);
+    expect(sdk.MENSAGENS_RECUSA_PRE_CADASTRO_FDV).toBe(MENSAGENS_RECUSA_PRE_CADASTRO_FDV);
   });
 });
