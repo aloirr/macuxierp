@@ -1,9 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
-import { colunasDeErrosLog, ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG } from '@macuxierp/integracao-fdv/web';
+import {
+  colunasDeErrosLog, ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG,
+} from '@macuxierp/integracao-fdv/web';
 import { Chip } from '@macuxierp/ui';
-import { CorpoLogBko, EstadoLog, TEXTO_FALHA_CARGA_LOG, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, ROTULO_TENTAR_DE_NOVO } from './log';
+import { CorpoLogBko, EstadoLog, TEXTO_FALHA_CARGA_LOG, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, textoRecebidosForaDaLista, ROTULO_TENTAR_DE_NOVO } from './log';
 
 vi.mock('@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv', () => ({ lerLogFdv: async () => ({ ok: false, motivo: 'erro' }) }));
 
@@ -86,6 +88,37 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" aoTentarDeNovo={() => {}} />)).toContain(`>${ROTULO_TENTAR_DE_NOVO}</button>`);
     expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" aoTentarDeNovo={() => {}} />)).toContain(`>${TEXTO_FALHA_CARGA_LOG}<`);
     expect(renderToStaticMarkup(<EstadoLog r={r} entidade="cliente" fuso="America/Manaus" />)).not.toContain(ROTULO_TENTAR_DE_NOVO);
+  });
+
+  describe('Recebidos do FDV (T-0110)', () => {
+    const rec = (o: Record<string, unknown>) => ({
+      id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', cliente_uuid: '1e7c7b5f-4d2a-4c9f-8e3b-6a8f9dab2c3d', codigo_fdv: '12345',
+      razao_social: 'Mercadinho Ficticio Ltda', documento_mascarado: '11.444.777/****-**', vendedor_external_id: null,
+      recebido_em: '2026-11-26T10:00:00-04:00', revisao: 1, situacao: 'recebido', motivo: null, erros: [], cliente_id: null, retorno: null, ...o,
+    });
+    const comRecebidos = (recebidos: unknown[], total = recebidos.length) => LogCadastroFdvTenant.parse({ ...log, recebidos, total_recebidos: total });
+    const html = (l: LogCadastroFdvTenant, entidade: 'cliente' | 'vendedor' = 'cliente') => renderToStaticMarkup(<CorpoLogBko log={l} entidade={entidade} fuso="America/Manaus" />);
+
+    it('a seção só aparece para cliente, abaixo de "Envios recentes"', () => {
+      const l = comRecebidos([rec({})]);
+      const h = html(l);
+      expect(h).toContain(`<h3>${TITULO_SECAO_RECEBIDOS_LOG}</h3>`);
+      expect(h.indexOf(TITULO_SECAO_RECEBIDOS_LOG)).toBeGreaterThan(h.indexOf('Envios recentes'));
+      expect(html({ ...l, entidade: 'vendedor' }, 'vendedor')).not.toContain(TITULO_SECAO_RECEBIDOS_LOG);
+    });
+
+    it('estado vazio usa o texto do módulo e não oferece CSV', () => {
+      const h = html(comRecebidos([]));
+      expect(h).toContain(TEXTO_VAZIO_RECEBIDOS_LOG);
+      expect(h).not.toContain('Baixar recebidos');
+    });
+
+    it('avisa o fato quando há mais recebidos do que a lista traz, sem prometer arquivo', () => {
+      expect(html(comRecebidos([rec({})], 1))).not.toContain('Mostrando os');
+      const h = html(comRecebidos([rec({})], 5));
+      expect(h).toContain('Mostrando os 1 mais recentes de 5.');
+      expect(textoRecebidosForaDaLista(1, 5)).not.toContain('arquivo');
+    });
   });
 
   it('no celular "Corrigir cadastro" é a 2ª coluna; no desktop continua a última', () => {
