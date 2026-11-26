@@ -92,7 +92,7 @@ export const FichaReceitaPlanaMascarada = z.object({
   cnae_secundarios: z.array(z.string()).nullable(),
   /** Descrição do CNAE principal (0066); nula sem CNAE ou fora da tabela. Aditivo: `cnae_principal` segue string. */
   cnae_principal_descricao: z.string().nullable().optional(),
-  /** Os `cnae_secundarios`, na mesma ordem, com a descrição; nulo quando a ficha não tem secundários (mantém `fichaVazia` do web). */
+  /** Os `cnae_secundarios`, na mesma ordem, com a descrição; nulo quando a ficha não tem CNAE secundário. */
   cnae_secundarios_descritos: z.array(CnaeDescrito).nullable().optional(),
   receita_fonte: z.string().nullable(),
   receita_consultada_em: z.string().nullable(),
