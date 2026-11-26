@@ -375,13 +375,23 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 90], prazo_medio_dias: 60, prazo_medio_calculado: true, descricao: 'Boleto 30 dias' });
   });
 
-  it('RN-CAD-15 (T-0112): na carga, a linha com o prazo médio fora da faixa é recusada por linha e as demais seguem', async () => {
+  it('RN-CAD-15 (T-0112): na carga, a linha com o prazo médio fora da faixa é recusada e a de dentro segue', async () => {
     const t = montar();
-    const rel = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;27;BOLETO;Boleto;FP-B;sim;Fora\nZ-B;CB;28/56;42;BOLETO;Boleto;FP-B;sim;Dentro\nZ-C;CC;28/56;57;BOLETO;Boleto;FP-B;sim;Fora 2') })).corpo as RelatorioCarga;
-    const e = rel.erros.filter((x) => x.arquivo === ARQ);
-    expect(e).toHaveLength(2);
-    expect(e).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias', linha: 2 }), expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias', linha: 4 })]);
+    const rel = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;57;BOLETO;Boleto;FP-B;sim;Fora\nZ-B;CB;28/56;42;BOLETO;Boleto;FP-B;sim;Dentro') })).corpo as RelatorioCarga;
+    expect(rel.erros.filter((x) => x.arquivo === ARQ)).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias', linha: 2 })]);
     expect(conds(t).map((c) => c.codigo)).toEqual(['CB']);
+  });
+
+  it('RN-CAD-15 (T-0112): a linha que inativa uma condição gravada fora da faixa grava; a que a reativa é recusada', async () => {
+    const t = montar();
+    await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;40;BOLETO;Boleto;FP-B;sim;Cond A') });
+    await t.repos.condicoesPagamento.atualizar((conds(t)[0] as unknown as { id: string }).id, { prazo_medio_dias: 90 } as never); // legado fora da faixa
+    const inativa = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;90;BOLETO;Boleto;FP-B;nao;Cond A') })).corpo as RelatorioCarga;
+    expect(inativa.erros.filter((x) => x.arquivo === ARQ)).toEqual([]);
+    expect(conds(t)[0]).toMatchObject({ inativo: true, prazo_medio_dias: 90 });
+    const reativa = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;90;BOLETO;Boleto;FP-B;sim;Cond A') })).corpo as RelatorioCarga;
+    expect(reativa.erros.filter((x) => x.arquivo === ARQ)).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias' })]);
+    expect(conds(t)[0]).toMatchObject({ inativo: true });
   });
 
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {

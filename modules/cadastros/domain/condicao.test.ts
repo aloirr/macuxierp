@@ -27,13 +27,11 @@ describe('condição de pagamento', () => {
     expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0 })).toEqual([]);
     expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 1 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_FAIXA, 'prazo_medio_dias', 'RN-CAD-15'));
   });
-  it('RN-CAD-15 (T-0112): vazio continua calculado e o calculado fica dentro da faixa', () => {
-    expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: null })).toEqual([]);
-    for (const p of [[28, 56], [1, 2], [0, 365], [7, 21, 45]]) {
-      const e = prazoMedioEfetivo(p) as number;
-      expect(e >= Math.min(...p) && e <= Math.max(...p)).toBe(true);
-      expect(v({ forma_tpag: '15', prazos_dias: p, prazo_medio_dias: e })).toEqual([]);
-    }
+  it('RN-CAD-15 (T-0112): quem inativa a condição não é recusado pela faixa; as demais regras seguem; parcelas inválidas não geram a faixa', () => {
+    expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 90, inativa: true })).toEqual([]);
+    expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 90, descricao: ' ', inativa: true })).toHaveLength(1);
+    expect(v({ forma_tpag: '15', prazos_dias: [], prazo_medio_dias: 30 })).toEqual(rn(MOTIVO_BOLETO, 'prazos_dias'));
+    expect(v({ forma_tpag: '15', prazos_dias: [30, 366], prazo_medio_dias: 400 })).toHaveLength(2);
   });
   it('RN-CAD-15 (decisão 14 A): prazo médio vazio (ausente ou nulo) não é erro; o ERP preenche; fora de 0..365 recusa', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30] })).toEqual([]);
@@ -101,6 +99,7 @@ describe('prazo médio efetivo (RN-CAD-15, decisão 14 A)', () => {
       const m = prazoMedioEfetivo(c, null) as number;
       expect(m).toBeGreaterThanOrEqual(Math.min(...c));
       expect(m).toBeLessThanOrEqual(Math.max(...c));
+      expect(v({ forma_tpag: '15', prazos_dias: c, prazo_medio_dias: m })).toEqual([]); // T-0112: o calculado passa pela faixa
     }
   });
   it('RN-CAD-15 (decisão 17 B): na criação, vazio calcula e marca prazo_medio_calculado = true; digitado, inclusive 0, vale e marca false', () => {
