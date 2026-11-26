@@ -12,7 +12,8 @@ export const MOTIVO_PARCELAS_FORMA = 'cartão exige parcelas e as demais formas 
 export const MOTIVO_BOLETO = `boleto: 1 a ${MAX_PARCELAS} parcelas de 0 a ${MAX_DIAS} dias`;
 /** RN-CAD-15 */
 export const MOTIVO_PRAZO_MEDIO = `Prazo médio: inteiro de 0 a ${MAX_DIAS} dias`;
-export const MOTIVO_PRAZO_MEDIO_A_VISTA = 'à vista: prazo médio igual a 0';
+/** RN-CAD-15: faixa das parcelas. */
+export const MOTIVO_PRAZO_MEDIO_FAIXA = 'O prazo médio precisa ficar entre a menor e a maior parcela.';
 export const MOTIVO_DESCRICAO = 'descrição obrigatória';
 
 /** RN-CAD-09: máximo de parcelas por classe da forma (à vista 1, cartão 12, boleto 24). */
@@ -27,6 +28,8 @@ export interface EntradaCondicao {
   prazo_medio_dias?: number | null;
   /** Só confere quando vem (o PATCH parcial pode não trazer). */
   descricao?: string | null;
+  /** T-0112: a linha deixa a condição inativa (carga com `ativo = não`); a faixa do prazo médio não se aplica, as demais regras seguem. */
+  inativa?: boolean;
 }
 
 /** `parcelas_cartao` gravado: o número de parcelas no cartão (tPag 03) e nulo nas demais formas (CHECK 0019 do banco). */
@@ -81,7 +84,6 @@ export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
   if (c.descricao !== undefined && (c.descricao === null || c.descricao.trim() === '')) erros.push(violacao('RN-CAD-15', 'descricao', MOTIVO_DESCRICAO));
   const medio = c.prazo_medio_dias;
   if (medio !== undefined && medio !== null && !diasValidos(medio)) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO));
-  else if (classe === 'a_vista' && medio !== null && medio !== undefined && medio !== 0) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_A_VISTA));
   switch (classe) {
     case 'a_vista':
       if (parcelas !== null || prazos.length !== 1 || prazos[0] !== 0) erros.push(violacao('RN-CAD-15', 'prazos_dias', MOTIVO_A_VISTA));
@@ -95,6 +97,9 @@ export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
       else if (prazos.length < 1 || prazos.length > MAX_PARCELAS_DA_CLASSE.boleto || !prazos.every(diasValidos)) erros.push(violacao('RN-CAD-09', 'prazos_dias', MOTIVO_BOLETO));
       break;
   }
+  // RN-CAD-15: faixa das parcelas (só com parcelas válidas); quem inativa não é recusado por ela
+  if (!c.inativa && typeof medio === 'number' && diasValidos(medio) && prazos.length > 0 && !erros.some((e) => e.campo === 'prazos_dias' || e.campo === 'parcelas_cartao')
+    && (medio < Math.min(...prazos) || medio > Math.max(...prazos))) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_FAIXA));
   return erros;
 }
 

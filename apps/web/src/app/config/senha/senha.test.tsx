@@ -1,3 +1,4 @@
+import { TEXTO_CONTA_DESBLOQUEADA } from '@macuxierp/core/web';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -48,12 +49,12 @@ describe('/config/senha com a regra única (T-0052)', () => {
     expect(h).not.toContain('name="senha_atual"');
     expect(h).toContain('name="senha_nova"');
     // T-0111 (superadmin): "Conta desbloqueada." acima do título
-    expect(h.indexOf('Conta desbloqueada.')).toBeGreaterThan(-1);
-    expect(h.indexOf('Conta desbloqueada.')).toBeLessThan(h.indexOf('Crie a sua nova senha'));
+    expect(h.indexOf(TEXTO_CONTA_DESBLOQUEADA)).toBeGreaterThan(-1);
+    expect(h.indexOf(TEXTO_CONTA_DESBLOQUEADA)).toBeLessThan(h.indexOf('Crie a sua nova senha'));
   });
   it('provisória: sem "Conta desbloqueada."', async () => {
     eu.motivo = 'provisoria';
-    expect(renderToStaticMarkup(await Senha())).not.toContain('Conta desbloqueada.');
+    expect(renderToStaticMarkup(await Senha())).not.toContain(TEXTO_CONTA_DESBLOQUEADA);
   });
   it('eu fora do ar: segue com o campo da senha atual', async () => {
     eu.falha = true;

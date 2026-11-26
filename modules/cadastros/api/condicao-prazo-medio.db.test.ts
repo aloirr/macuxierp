@@ -49,13 +49,13 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CAD-15: prazo médio efetivo gravado (Postgr
     const post = async (codigo: string, extra: object) =>
       ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo, descricao: 'D', forma_tpag: '15', prazos_dias: [30], ...extra } })).corpo as { id: string }).id;
     const calculado = await post('K1', {});
-    const digitado = await post('K2', { prazo_medio_dias: 12 });
+    const digitado = await post('K2', { prazo_medio_dias: 30 });
     const linha = async (id: string) => (await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]!;
     expect(await linha(calculado)).toEqual({ prazo_medio_dias: 30, prazo_medio_calculado: true });
-    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
+    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 30, prazo_medio_calculado: false });
     for (const id of [calculado, digitado]) expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).status).toBe(200);
     expect(await linha(calculado)).toEqual({ prazo_medio_dias: 60, prazo_medio_calculado: true });
-    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
+    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 30, prazo_medio_calculado: false });
   }, 120_000);
 
   it('T-0108, 17 B: ida e volta da tela (formulário de um calculado, só as parcelas mudam, PATCH) mantém a marca true e recalcula', async () => {
@@ -79,8 +79,15 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CAD-15: prazo médio efetivo gravado (Postgr
 
   it('RN-CAD-15: apagar o campo de um digitado (PATCH prazo_medio_dias null) grava o calculado com a marca true', async () => {
     const a = amb();
-    const id = ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'R2', descricao: 'D', forma_tpag: '15', prazos_dias: [30, 45], prazo_medio_dias: 20 } })).corpo as { id: string }).id;
+    const id = ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'R2', descricao: 'D', forma_tpag: '15', prazos_dias: [30, 45], prazo_medio_dias: 40 } })).corpo as { id: string }).id;
     expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazo_medio_dias: null } })).status).toBe(200);
     expect((await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]).toEqual({ prazo_medio_dias: 38, prazo_medio_calculado: true });
+  }, 120_000);
+
+  it('T-0112, RN-CAD-15: POST com o prazo médio fora da faixa das parcelas dá 422 e nada é gravado', async () => {
+    const a = amb();
+    const r = await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'FX1', descricao: 'D', forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 57 } });
+    expect(r.status).toBe(422);
+    expect((await admin("SELECT count(*)::int AS n FROM cadastros.condicao_pagamento WHERE codigo = 'FX1'"))[0]!.n).toBe(0);
   }, 120_000);
 });

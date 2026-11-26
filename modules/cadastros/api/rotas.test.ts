@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MOTIVO_PRAZO_MEDIO_FAIXA } from '../domain';
 import { criarPluginCadastros } from './index';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { CNPJ_A, CNPJ_B, ENDERECO_AM, clienteValido, filialValida, produtoValido } from './fixtures-teste';
@@ -664,18 +665,36 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     const sem = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PV', prazos_dias: [30, 45] } });
     expect(sem).toMatchObject({ status: 201, corpo: { prazo_medio_dias: 38, prazo_medio_calculado: true } });
     expect(t.eventos.at(-1)).toMatchObject({ payload: { prazo_medio_dias: 38 } });
-    const zero = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PZ', prazos_dias: [30, 60], prazo_medio_dias: 0 } });
+    const zero = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PZ', prazos_dias: [0, 60], prazo_medio_dias: 0 } });
     expect(zero.corpo).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
     // PATCH (a conta e os casos da marca estão no domain): calculado recalcula; digitado fica
     const id1 = (sem.corpo as { id: string }).id;
     expect((await t.chamar('PATCH', `/condicoes-pagamento/${id1}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).corpo).toMatchObject({ prazo_medio_dias: 60, prazo_medio_calculado: true });
     const id0 = (zero.corpo as { id: string }).id;
-    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id0}`, { sessao: gerente, corpo: { prazos_dias: [30, 120] } })).corpo).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id0}`, { sessao: gerente, corpo: { prazos_dias: [0, 120] } })).corpo).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 366 } })).status).toBe(400);
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: -1 } })).status).toBe(400);
     const id = ((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 30 } })).corpo as { id: string }).id;
     expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { descricao: 'Prazo um' } })).corpo).toMatchObject({ prazo_medio_dias: 30, descricao: 'Prazo um' });
-    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazo_medio_dias: 45 } })).corpo).toMatchObject({ prazo_medio_dias: 45 });
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30, 60], prazo_medio_dias: 45 } })).corpo).toMatchObject({ prazo_medio_dias: 45 });
+  });
+
+  it('RN-CAD-15 (T-0112): POST e PATCH fora da faixa das parcelas dão 422; PATCH vazio sobre um gravado fora da faixa dá 200; DELETE inativa', async () => {
+    const t = montar();
+    const corpo = { codigo: 'FX', descricao: 'Faixa', forma_tpag: '15', prazos_dias: [28, 56] };
+    const fora = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 57 } });
+    expect(fora.status).toBe(422);
+    expect(fora.corpo).toMatchObject({ codigo: 'RN-CAD-15', campos: { prazo_medio_dias: MOTIVO_PRAZO_MEDIO_FAIXA } });
+    expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 56 } })).status).toBe(201);
+    const id = (await t.repos.condicoesPagamento.inserir({ codigo: 'FG', descricao: 'Fora', forma_tpag: '15', prazos_dias: [28, 56], parcelas_cartao: null, prazo_medio_dias: 90 } as never) as { id: string }).id;
+    const p = await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazo_medio_dias: 57 } });
+    expect(p.status).toBe(422);
+    expect(p.corpo).toMatchObject({ codigo: 'RN-CAD-15', campos: { prazo_medio_dias: MOTIVO_PRAZO_MEDIO_FAIXA } });
+    // a regra vale sobre o MESCLADO: trocar só a descrição de quem está fora da faixa também é recusado
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { descricao: 'Outra' } })).status).toBe(422);
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: {} })).status).toBe(200);
+    expect((await t.chamar('DELETE', `/condicoes-pagamento/${id}`, { sessao: gerente })).status).toBe(200);
+    expect((await t.chamar('GET', `/condicoes-pagamento/${id}`, { sessao: gerente })).corpo).toMatchObject({ inativo: true, prazo_medio_dias: 90 });
   });
 
   it('RN-CAD-15: descrição em branco é 422 no campo descricao', async () => {
@@ -734,7 +753,7 @@ describe('RN-CAD-09 nas rotas: classe da forma', () => {
     const t = montar();
     const id = (await post(t, { codigo: 'C3', forma_tpag: '03', prazos_dias: [30, 60, 90] })).corpo.id as string;
     const patch = (corpo: Record<string, unknown>) => t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo });
-    expect((await patch({ prazos_dias: [7, 14] })).corpo).toMatchObject({ prazos_dias: [7, 14], parcelas_cartao: 2 });
+    expect((await patch({ prazos_dias: [7, 14], prazo_medio_dias: 10 })).corpo).toMatchObject({ prazos_dias: [7, 14], parcelas_cartao: 2 });
     expect((await patch({ prazos_dias: Array(13).fill(30) })).status).toBe(422);
     expect((await patch({ forma_tpag: '15' })).corpo).toMatchObject({ forma_tpag: '15', parcelas_cartao: null });
     expect(t.eventos.at(-1)).toMatchObject({ nome: 'cadastros.condicao_pagamento.alterada@1', payload: { parcelas_cartao: null } });

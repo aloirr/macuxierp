@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { RESPOSTA_CONTA_BLOQUEADA as R } from '@macuxierp/core/web';
 import { ComEsqueciSenha, EsqueciSenha } from '@/components/esqueci-senha';
 import { contaBloqueada, entrouComTemporaria, sinalDeBloqueioNaResposta } from '@/lib/login-regras';
 import { VisaoLogin } from './formulario';
@@ -37,25 +38,25 @@ describe('T-0111: conta bloqueada na tela de entrada', () => {
 
   it('mostra o cartão de aviso, o botão "Recuperar a senha" e o "Entrar" desabilitado', () => {
     const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={valores} bloqueada aoRecuperar={() => undefined} />);
-    expect(h).toContain('Conta bloqueada');
-    expect(h).toContain('Você errou a senha muitas vezes. Para desbloquear, peça uma senha temporária.');
+    expect(h).toContain(R.titulo);
+    expect(h).toContain(R.mensagem);
     expect(h).toContain('faixa-aviso');
-    expect(h).toMatch(/<button class="mx-botao botao-recuperar" type="button">Recuperar a senha<\/button>/);
+    expect(h).toContain(`<button class="mx-botao botao-recuperar" type="button">${R.acao.rotulo}</button>`);
     expect(h).toMatch(/<button class="mx-botao" type="submit" disabled="">Entrar<\/button>/);
     expect(h).not.toContain('Muitas tentativas');
   });
 
   it('sem bloqueio: nada de cartão e "Entrar" habilitado', () => {
     const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={valores} />);
-    expect(h).not.toContain('Conta bloqueada');
-    expect(h).not.toContain('Recuperar a senha');
+    expect(h).not.toContain(R.titulo);
+    expect(h).not.toContain(R.acao.rotulo);
     expect(h).toMatch(/<button class="mx-botao" type="submit">Entrar<\/button>/);
   });
 
   it('sem "Esqueci" disponível, o cartão aparece sem o botão', () => {
     const h = renderToStaticMarkup(<VisaoLogin destino="/" valores={valores} bloqueada />);
-    expect(h).toContain('Conta bloqueada');
-    expect(h).not.toContain('Recuperar a senha');
+    expect(h).toContain(R.titulo);
+    expect(h).not.toContain(R.acao.rotulo);
   });
 
   it('Recuperar a senha abre com o código e o e-mail já preenchidos (superadmin incluso), sem URL nem storage', () => {

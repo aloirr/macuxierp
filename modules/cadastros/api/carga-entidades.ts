@@ -312,6 +312,7 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
       prazo_medio_dias: (patch.prazo_medio_dias === undefined ? ex.prazo_medio_dias ?? null : patch.prazo_medio_dias) as number | null,
+      inativa: l.ativo === false,
     });
     if (vc.length) return violacoes(l.linha, vc);
     if (camposAlterados(patch, ex as unknown as Dict).length === 0) return { efeito: 'sem_mudanca', alvo };
@@ -333,7 +334,7 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   const comPrazo = completarPrazoMedio(completarParcelasCartao({ ...comDescricao, forma_tpag: f.tpag }));
   const r = CondicaoPagamentoDados.safeParse({ ...comPrazo, ...campoForma, external_id: l.external_id });
   if (!r.success) return { erros: errosDeZod(l.linha, r.error.issues) };
-  const vc = validarCondicaoPagamento(r.data);
+  const vc = validarCondicaoPagamento({ ...r.data, inativa: l.ativo === false });
   if (vc.length) return violacoes(l.linha, vc);
   return {
     efeito: 'inserida',
