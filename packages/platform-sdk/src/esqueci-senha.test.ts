@@ -131,7 +131,8 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
     expect(e.texto).toContain('Senha temporária: Tmp#2026ab');
     expect(e.texto).toContain('Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.');
     expect(e.texto).toContain(`Abrir o Macuxi ERP: ${URL_MACUXI_ERP}`);
-    expect(e.texto).toContain('Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br');
+    expect(RODAPE_EMAIL_MACUXI_ERP).toBe('Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br');
+    expect(e.texto).toContain(RODAPE_EMAIL_MACUXI_ERP);
     expect(e.texto).toContain('enquanto a conta não estiver bloqueada');
     expect(e.texto).not.toMatch(/<[a-z]/i);
   });
