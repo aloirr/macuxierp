@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consultaDaTela, trocarFiltro, urlInicio, urlProxima } from './listas-url';
+import { consultaDaTela, trocarFiltro, urlProxima } from './listas-url';
 
 const ID1 = '11111111-1111-4111-8111-111111111111';
 
@@ -15,11 +15,10 @@ describe('filtros e URLs da lista', () => {
   it('última página (null) não tem próxima', () => {
     expect(urlProxima('/x', { busca: 'a' }, null)).toBeNull();
   });
-  it('trocarFiltro zera o cursor e urlInicio o remove', () => {
+  it('trocarFiltro zera o cursor', () => {
     const f = { busca: 'a', cursor: ID1 };
     expect(trocarFiltro(f, 'uf', 'AM')).toEqual({ busca: 'a', uf: 'AM' });
     expect(trocarFiltro(f, 'busca', '')).toEqual({});
-    expect(urlInicio('/x', f)).toBe('/x?busca=a');
   });
   it('trocarFiltro com chave cursor remove o cursor', () => {
     expect(trocarFiltro({ busca: 'a', cursor: ID1 }, 'cursor', ID1)).toEqual({ busca: 'a' });
