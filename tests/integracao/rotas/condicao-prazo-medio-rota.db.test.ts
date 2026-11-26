@@ -41,10 +41,10 @@ describe.skipIf(!PG_DISPONIVEL)('T-0108: prazo médio calculado × digitado pela
     expect(await linha(nulo.id)).toEqual({ prazos_dias: [28, 56, 84], prazo_medio_dias: 56, prazo_medio_calculado: true });
   });
 
-  it('o digitado vale: POST com prazo médio grava o valor e a marca false, mesmo diferente da média', async () => {
-    const c = await criar('R3', { prazos_dias: [30, 45], prazo_medio_dias: 20 });
-    expect(c).toMatchObject({ prazo_medio_dias: 20, prazo_medio_calculado: false });
-    expect(await linha(c.id)).toEqual({ prazos_dias: [30, 45], prazo_medio_dias: 20, prazo_medio_calculado: false });
+  it('o digitado vale: POST com prazo médio grava o valor e a marca false, mesmo diferente da média (dentro da faixa, T-0112)', async () => {
+    const c = await criar('R3', { prazos_dias: [30, 45], prazo_medio_dias: 42 });
+    expect(c).toMatchObject({ prazo_medio_dias: 42, prazo_medio_calculado: false });
+    expect(await linha(c.id)).toEqual({ prazos_dias: [30, 45], prazo_medio_dias: 42, prazo_medio_calculado: false });
   });
 
   it('PATCH sem parcelas não mexe; o de parcelas recalcula o calculado (marca na resposta); digitar troca a marca para false; null volta a calcular com true', async () => {
