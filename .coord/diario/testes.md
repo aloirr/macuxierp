@@ -16,3 +16,4 @@
 2026-11-26 — T-0110 — fumaca-telas e use-client-tabela válidos com e sem a tela "Clientes recebidos" (a entrada sai do NAO_EXTRAIVEIS; a chamada é aceita só enquanto o fonte a tiver; âncora do D-4 em lista-empresas.tsx)
 2026-11-26 — T-0108 (b) — 18h26 de Manaus: e2e pela rota de produção (`tests/integracao/rotas/condicao-prazo-medio-rota.db.test.ts`), 3 casos de API; defeito da tela no R-20261126-182429-testes (cadastros); corretor RD-1911 e RD-1912 aplicados.
 2026-11-26 — main vermelho (fumaca-telas, #717) — 18h34 de Manaus: o scanner ignora o `baixarCsv` local de `@/lib/baixar-csv` (sem GET); o de `lib/api.ts` continua varrido.
+2026-11-26 — T-0111 (c) — 18h52 de Manaus: e2e da conta bloqueada (`tests/integracao/auth/conta-bloqueada.db.test.ts`) e as 11 expectativas do login-trava e do operador-superadmin (R-20261126-184746); a igualdade com docs/design (R-20261126-183834) ficou fora: R4 do grafo-turbo.
