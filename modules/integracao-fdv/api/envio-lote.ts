@@ -48,9 +48,11 @@ import {
   filiaisComCodigoRepetido,
   hashRegistro,
   montarLotes,
+  normalizarPrazo,
   origemDoLote,
   precisaFechamento,
   validarRegistro,
+  versaoContratoDoLote,
   type RegistroEspelho,
 } from '../domain';
 import {
@@ -293,6 +295,16 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   }
   const modo: ModoLote = sessaoId ? 'completo' : 'delta';
 
+  // T-0107 (RN-INF-10): só prazo_pagamento tem v2; recoloca quem foi enviado em versão <> vigente (inclui inativos e recusados), sem mexer no hash, depois do lock do cursor.
+  if (entidade === 'prazo_pagamento') {
+    await tx.consultar(
+      `UPDATE integracao_fdv.registro_publicado SET pendente = true
+        WHERE tenant_id = $1 AND entidade = 'prazo_pagamento' AND NOT pendente AND deleted_at IS NULL AND payload IS NOT NULL
+          AND contrato_enviado <> $2`,
+      [tenant, versaoContratoDoLote('prazo_pagamento', PRAZO_CONTRATO_V2_LIGADO)],
+    );
+  }
+
   // 3. candidatos do espelho, na ordem do Hub (alterado_em, registro_external_id COLLATE "C")
   const candidatos =
     modo === 'delta'
@@ -315,7 +327,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
   const { confirmados, emFila } = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
   const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
-  const espelhos: RegistroEspelho[] = chunk.map(paraRegistro);
+  const espelhos: RegistroEspelho[] = chunk.map((c) => normalizarPrazo(paraRegistro(c)));
   let repetidas = new Map<string, LinhaInvalida>();
   if (entidade === 'filial') {
     const todas = await tx.consultar<LinhaRegistro>(
@@ -362,7 +374,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
         ORDER BY alterado_em DESC, registro_external_id COLLATE "C" DESC LIMIT 1`,
       [tenant, entidade, localCursor.alterado_em, localCursor.external_id],
     );
-    if (fecho) registroDeFechamento = paraRegistroLote(paraRegistro(fecho));
+    if (fecho) registroDeFechamento = paraRegistroLote(normalizarPrazo(paraRegistro(fecho)));
   }
 
   const lotes = montarLotes({
@@ -695,10 +707,11 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
       await tx.consultar(
         `UPDATE integracao_fdv.registro_publicado r
             SET hash_confirmado = v.hash, confirmado_em = $3, pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $4,
-                fonte_refs = r.fonte_refs - 'reenvio' -- a marca do Reprocessar vale até o Hub confirmar
+                fonte_refs = r.fonte_refs - 'reenvio', -- a marca do Reprocessar vale até o Hub confirmar
+                contrato_enviado = $7 -- T-0107: a versão do envelope em que o Hub confirmou
            FROM unnest($5::text[], $6::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
-        [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash)],
+        [tenant, entidade, agora, lote.id, aceitosOk.map((x) => x.chave), aceitosOk.map((x) => x.hash), lote.corpo.versao_contrato],
       );
       // troca de chave (ADR 0010, item 3): a linha antiga, inativa e já confirmada no Hub, sai (`deleted_at`) quando há outra
       // linha ativa do mesmo `erp_id`. Inativação comum (sem sucessora) fica no espelho.
@@ -722,10 +735,11 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
     const saemDaFila = [...recusadosFirmes.map((x) => [x.chave, x.hash] as const), ...(lote.contagens.firmes ?? [])];
     if (saemDaFila.length > 0) {
       await tx.consultar(
-        `UPDATE integracao_fdv.registro_publicado r SET pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $3
+        `UPDATE integracao_fdv.registro_publicado r SET pendente = (r.hash <> v.hash), ultimo_lote_envio_id = $3,
+                contrato_enviado = $6 -- T-0107: o recusado também guarda a versão tentada, senão a virada o recolocaria sem fim
            FROM unnest($4::text[], $5::text[]) AS v(chave, hash)
           WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave`,
-        [tenant, entidade, lote.id, saemDaFila.map((x) => x[0]), saemDaFila.map((x) => x[1])],
+        [tenant, entidade, lote.id, saemDaFila.map((x) => x[0]), saemDaFila.map((x) => x[1]), lote.corpo.versao_contrato],
       );
     }
   }
