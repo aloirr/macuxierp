@@ -11,9 +11,9 @@ COMMENT ON COLUMN integracao_fdv.registro_publicado.contrato_enviado IS
   'Versão do contrato do Hub com que o registro foi tentado e resolvido (aceito ou recusado firme). T-0107.';
 
 -- Varredura da virada de versão (só prazo_pagamento tem v2): por tenant, em ordem de id, com FOR UPDATE SKIP LOCKED.
--- Sem CONCURRENTLY: o migrador roda cada arquivo numa transação.
+-- Inclui os inativos (o delta também envia ativo:false). Sem CONCURRENTLY: o migrador roda o arquivo numa transação.
 CREATE INDEX IF NOT EXISTS registro_publicado_varredura_prazo_idx ON integracao_fdv.registro_publicado (tenant_id, id)
-  WHERE entidade = 'prazo_pagamento' AND NOT pendente AND ativo AND deleted_at IS NULL AND payload IS NOT NULL;
+  WHERE entidade = 'prazo_pagamento' AND NOT pendente AND deleted_at IS NULL AND payload IS NOT NULL;
 
 -- T-0112: o espelho de antes da T-0085 guardava parcelas_dias como texto ("28/56"), que o Hub recusa. Todos os
 -- tenants (a migração roda como dona da tabela, que não tem FORCE RLS); o hash não muda. O gatilho tocar_updated_at

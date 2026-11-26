@@ -36,7 +36,7 @@ const APP = (t: Tenant) => ({ papel: 'macuxierp_app', tenant: t.id });
 
 /**
  * Linhas do espelho gravadas antes da 0069: prazo aceito, prazo recusado firme fora da fila (sem confirmação), prazo
- * pendente, cliente aceito e um prazo inativo com payload anulado. T-0112: prazo com parcelas_dias em texto (fora da
+ * pendente, prazo inativo confirmado, cliente aceito e um prazo inativo com payload anulado. T-0112: prazo com parcelas_dias em texto (fora da
  * fila, excluído e já pendente), prazo com a lista de inteiros e cliente com o mesmo campo em texto.
  */
 const espelhoSql = (t: Tenant): string => `
@@ -46,6 +46,7 @@ INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alt
   ('${t.id}', 'prazo_pagamento', 'recusado', '{"codigo": "P60"}', repeat('2', 64), now(), now(), true, false, NULL, NULL),
   ('${t.id}', 'prazo_pagamento', 'pendente', '{"codigo": "P90"}', repeat('3', 64), now(), now(), true, true, NULL, NULL),
   ('${t.id}', 'cliente', 'cliente', '{"razao_social": "Cliente"}', repeat('4', 64), now(), now(), true, false, repeat('4', 64), now()),
+  ('${t.id}', 'prazo_pagamento', 'inativo', '{"codigo": "P120"}', repeat('b', 64), now(), now(), false, false, repeat('b', 64), now()),
   ('${t.id}', 'prazo_pagamento', 'anulado', NULL, repeat('5', 64), now(), now(), false, false, repeat('5', 64), now()),
   ('${t.id}', 'prazo_pagamento', 'texto', '{"parcelas_dias": "28/56"}', repeat('6', 64), now(), now(), true, false, repeat('6', 64), now()),
   ('${t.id}', 'prazo_pagamento', 'texto-pendente', '{"parcelas_dias": "30"}', repeat('7', 64), now(), now(), true, true, NULL, NULL),
@@ -59,9 +60,9 @@ INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alt
 /** Linhas do espelho por registro_external_id, sem a coluna nova (para comparar antes e depois da 0069). */
 const RETRATO_SQL = `SELECT tenant_id::text || '/' || registro_external_id AS k, to_jsonb(r) - 'contrato_enviado' AS l FROM ${RP} r`;
 
-/** A consulta da varredura do prazo (filtro aprovado pelo engenheiro), com a versão antiga = diferente de 'v2'. */
+/** A consulta da varredura do prazo (inclui os inativos: o delta envia ativo:false), com a versão antiga = diferente de 'v2'. */
 const varreduraSql = (t: Tenant): string =>
-  `SELECT id FROM ${RP} WHERE tenant_id = '${t.id}' AND entidade = 'prazo_pagamento' AND ativo AND deleted_at IS NULL
+  `SELECT id FROM ${RP} WHERE tenant_id = '${t.id}' AND entidade = 'prazo_pagamento' AND deleted_at IS NULL
      AND payload IS NOT NULL AND NOT pendente AND contrato_enviado <> 'v2' ORDER BY id FOR UPDATE SKIP LOCKED`;
 
 let banco: BancoDeTeste;
@@ -123,7 +124,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
 
   it('backfill: todas as linhas de antes saem v1 (inclusive a recusada fora da fila), sem reescrever a tabela', () => {
     const todas = Object.fromEntries(
-      ['aceito', 'anulado', 'cliente', 'cliente-texto', 'lista', 'pendente', 'recusado', 'texto', 'texto-excluido',
+      ['aceito', 'anulado', 'cliente', 'cliente-texto', 'inativo', 'lista', 'pendente', 'recusado', 'texto', 'texto-excluido',
         'texto-pendente'].map((r) => [r, 'v1']),
     );
     expect([versoes(A), versoes(B)]).toEqual([todas, todas]);
@@ -151,7 +152,7 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
 
   it('o índice parcial da varredura existe com a definição combinada', () => {
     expect(um<{ d: string }>(`SELECT indexdef AS d FROM pg_indexes WHERE indexname = '${INDICE}'`).d).toBe(
-      `CREATE INDEX ${INDICE} ON integracao_fdv.registro_publicado USING btree (tenant_id, id) WHERE (((entidade)::text = 'prazo_pagamento'::text) AND (NOT pendente) AND ativo AND (deleted_at IS NULL) AND (payload IS NOT NULL))`,
+      `CREATE INDEX ${INDICE} ON integracao_fdv.registro_publicado USING btree (tenant_id, id) WHERE (((entidade)::text = 'prazo_pagamento'::text) AND (NOT pendente) AND (deleted_at IS NULL) AND (payload IS NOT NULL))`,
     );
   });
 
@@ -173,13 +174,13 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
     }
   });
 
-  it('a consulta da varredura acha só os prazos resolvidos e fora da fila do tenant, e o plano usa o índice', () => {
+  it('a consulta da varredura acha os prazos resolvidos e fora da fila do tenant (o inativo também), e o plano usa o índice', () => {
     const ids = linhas(
       rodarComo(banco.conexao, `${varreduraSql(A)};`, WORKER(A)),
     ).filter((l) => /^[0-9a-f-]{36}$/.test(l));
     const esperados = consultar<{ id: string }>(
       banco.conexao,
-      `SELECT id FROM ${RP} WHERE tenant_id = '${A.id}' AND registro_external_id IN ('aceito', 'recusado', 'lista') ORDER BY id`,
+      `SELECT id FROM ${RP} WHERE tenant_id = '${A.id}' AND registro_external_id IN ('aceito', 'recusado', 'inativo', 'lista') ORDER BY id`,
     ).map((r) => r.id);
     expect(ids).toEqual(esperados);
     const plano = rodarScript(
