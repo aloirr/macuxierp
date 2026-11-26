@@ -1,5 +1,4 @@
 import type { EnderecoDaLinha, EntidadeCarga, LinhasCarga } from '../../contracts';
-import { MOTIVO_PRAZO_MEDIO } from '../condicao';
 import { validarFiscalProduto, type FatosFiscaisProduto } from '../produto';
 import { erroDeViolacao, erroLinha, type ErroLinha } from './erros';
 
@@ -41,7 +40,6 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       }
       if (d.descricao === undefined) erros.push(falta(n, 'descricao'));
       if (d.prazos_dias === undefined) erros.push(falta(n, 'parcelas_dias', 'RN-CAD-15', 'Parcelas obrigatórias: dias separados por /, à vista 0'));
-      if (d.prazo_medio_dias === undefined) erros.push(falta(n, 'prazo_medio_dias', 'RN-CAD-15', MOTIVO_PRAZO_MEDIO));
       break;
     }
     case 'produto': {

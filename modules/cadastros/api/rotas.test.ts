@@ -658,12 +658,19 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     expect((await t.chamar('GET', '/condicoes-pagamento', { sessao: sessaoDe('vendedor') })).corpo.itens).toHaveLength(1);
   });
 
-  it('RN-CAD-15: prazo médio obrigatório na criação (400 com o campo) e entre 0 e 365; PATCH sem o campo mantém o valor', async () => {
+  it('RN-CAD-15 (decisões 14 A e 17 B): vazio na criação é calculado; fora de 0 a 365 é 400; no PATCH, calculado recalcula e digitado fica', async () => {
     const t = montar();
     const corpo = { codigo: 'P1', descricao: 'Prazo 1', forma_tpag: '15', prazos_dias: [30] };
-    const sem = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo });
-    expect(sem.status).toBe(400);
-    expect(JSON.stringify(sem.corpo)).toContain('prazo_medio_dias');
+    const sem = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PV', prazos_dias: [30, 45] } });
+    expect(sem).toMatchObject({ status: 201, corpo: { prazo_medio_dias: 38, prazo_medio_calculado: true } });
+    expect(t.eventos.at(-1)).toMatchObject({ payload: { prazo_medio_dias: 38 } });
+    const zero = await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, codigo: 'PZ', prazos_dias: [30, 60], prazo_medio_dias: 0 } });
+    expect(zero.corpo).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
+    // PATCH (a conta e os casos da marca estão no domain): calculado recalcula; digitado fica
+    const id1 = (sem.corpo as { id: string }).id;
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id1}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).corpo).toMatchObject({ prazo_medio_dias: 60, prazo_medio_calculado: true });
+    const id0 = (zero.corpo as { id: string }).id;
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id0}`, { sessao: gerente, corpo: { prazos_dias: [30, 120] } })).corpo).toMatchObject({ prazo_medio_dias: 0, prazo_medio_calculado: false });
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 366 } })).status).toBe(400);
     expect((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: -1 } })).status).toBe(400);
     const id = ((await t.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...corpo, prazo_medio_dias: 30 } })).corpo as { id: string }).id;
