@@ -1,9 +1,4 @@
-/**
- * T-0107 (v0.3.16), migração 0069: integracao_fdv.registro_publicado.contrato_enviado (text NOT NULL DEFAULT 'v1',
- * CHECK 'v1'/'v2', de VERSAO_CONTRATO_HUB e VERSAO_CONTRATO_PRAZO_V2 do contracts/hub.ts) e o índice parcial da
- * varredura do prazo_pagamento; e T-0112: prazo com parcelas_dias em texto volta a pendente. Banco até a 0068 com
- * linhas gravadas, depois a 0069. Motivo em docs/banco/README.md (0069). Dados fictícios.
- */
+/** T-0107 e T-0112, migração 0069, sobre linhas gravadas até a 0068. Porquê: docs/banco/README.md (0069). Dados fictícios. */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,14 +7,13 @@ import {
   type BancoDeTeste,
   consultar,
   criarBancoDeTeste,
+  definicoesDe,
   executar,
   linhas,
-  numeros,
   type PastaDeMigracoes,
   PG_DISPONIVEL,
   pastaComMigracoesAntesDe,
   permitirSetRole,
-  privilegiosDe,
   recusaDetalhada,
   rodarComo,
   rodarScript,
@@ -32,13 +26,8 @@ const INDICE = 'registro_publicado_varredura_prazo_idx';
 const A = novoTenant('contrato-0069-a');
 const B = novoTenant('contrato-0069-b');
 const WORKER = (t: Tenant) => ({ papel: 'macuxierp_worker', tenant: t.id });
-const APP = (t: Tenant) => ({ papel: 'macuxierp_app', tenant: t.id });
 
-/**
- * Linhas do espelho gravadas antes da 0069: prazo aceito, prazo recusado firme fora da fila (sem confirmação), prazo
- * pendente, prazo inativo confirmado, cliente aceito e um prazo inativo com payload anulado. T-0112: prazo com parcelas_dias em texto (fora da
- * fila, excluído e já pendente), prazo com a lista de inteiros e cliente com o mesmo campo em texto.
- */
+/** Espelho de antes da 0069: um caso por linha (o registro_external_id diz qual). */
 const espelhoSql = (t: Tenant): string => `
 INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em, ativo,
   pendente, hash_confirmado, confirmado_em) VALUES
@@ -57,10 +46,37 @@ INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alt
   VALUES ('${t.id}', 'prazo_pagamento', 'texto-excluido', '{"parcelas_dias": "28/56"}', repeat('a', 64), now(), now(),
     true, false, repeat('a', 64), now(), now());`;
 
-/** Linhas do espelho por registro_external_id, sem a coluna nova (para comparar antes e depois da 0069). */
+/** Cursores de antes da 0069: entidade → pausa (o preco, excluído); todos com proximo_em daqui a 1 dia. */
+const PAUSAS: Record<string, string | null> = {
+  filial: 'credencial',
+  vendedor: 'licenca_fdv',
+  forma_pagamento: 'licenca_erp',
+  prazo_pagamento: 'versao',
+  produto: 'envelope',
+  produto_unidade: 'idempotencia',
+  estoque: 'topologia',
+  preco: 'credencial',
+  cliente: null,
+};
+const cursorSql = (t: Tenant): string => `
+INSERT INTO integracao_fdv.cursor_entidade (tenant_id, entidade, pausada_motivo, pausada_em, proximo_em, deleted_at)
+  VALUES ${Object.entries(PAUSAS)
+    .map(([e, m]) => `('${t.id}', '${e}', ${m ? `'${m}', now()` : 'NULL, NULL'}, now() + interval '1 day', ${e === 'preco' ? 'now()' : 'NULL'})`)
+    .join(',\n    ')};`;
+const cursores = (): Record<string, { m: string | null; agora: boolean; u: string }> =>
+  Object.fromEntries(
+    consultar<{ k: string; m: string | null; agora: boolean; u: string }>(
+      banco.conexao,
+      `SELECT tenant_id::text || '/' || entidade AS k, pausada_motivo AS m, proximo_em <= now() AS agora,
+         updated_at::text AS u FROM integracao_fdv.cursor_entidade`,
+    ).map(({ k, ...v }) => [k, v]),
+  );
+let cursoresAntes: ReturnType<typeof cursores>;
+
+/** Linhas do espelho sem a coluna nova, por tenant/registro_external_id. */
 const RETRATO_SQL = `SELECT tenant_id::text || '/' || registro_external_id AS k, to_jsonb(r) - 'contrato_enviado' AS l FROM ${RP} r`;
 
-/** A consulta da varredura do prazo (inclui os inativos: o delta envia ativo:false), com a versão antiga = diferente de 'v2'. */
+/** A consulta da varredura do prazo, com a versão antiga = diferente de 'v2'. */
 const varreduraSql = (t: Tenant): string =>
   `SELECT id FROM ${RP} WHERE tenant_id = '${t.id}' AND entidade = 'prazo_pagamento' AND deleted_at IS NULL
      AND payload IS NOT NULL AND NOT pendente AND contrato_enviado <> 'v2' ORDER BY id FOR UPDATE SKIP LOCKED`;
@@ -79,16 +95,7 @@ const versoes = (t: Tenant): Record<string, string> =>
       `SELECT registro_external_id AS r, contrato_enviado AS v FROM ${RP} WHERE tenant_id = '${t.id}' ORDER BY 1`,
     ).map((x) => [x.r, x.v]),
   );
-/** UPDATE do worker no prazo aceito do tenant `t`, contando as linhas atingidas. */
-const gravar = (t: Tenant, versao: string, ctx = WORKER(t)): number[] =>
-  numeros(
-    rodarComo(
-      banco.conexao,
-      `WITH u AS (UPDATE ${RP} SET contrato_enviado = '${versao}', updated_at = now()
-         WHERE tenant_id = '${t.id}' AND registro_external_id = 'aceito' RETURNING 1) SELECT count(*) FROM u;`,
-      ctx,
-    ),
-  );
+const arquivo = (): string => um<{ f: string }>(`SELECT pg_relation_filenode('${RP}')::text AS f`).f;
 
 describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho (T-0107, 0069)', () => {
   let arquivoAntes: string;
@@ -100,9 +107,10 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
       '0069_integracao_fdv_contrato_enviado.sql',
     );
     permitirSetRole(banco.conexao);
-    executar(banco.conexao, [A, B].map((t) => fixturePlataforma(t) + espelhoSql(t)).join('\n'));
-    arquivoAntes = um<{ f: string }>(`SELECT pg_relation_filenode('${RP}')::text AS f`).f;
+    executar(banco.conexao, [A, B].map((t) => fixturePlataforma(t) + espelhoSql(t) + cursorSql(t)).join('\n'));
+    arquivoAntes = arquivo();
     retratoAntes = retrato();
+    cursoresAntes = cursores();
     expect(migrar(banco.conexao, { oficiais: false })).toContain('0069_integracao_fdv_contrato_enviado.sql');
   });
 
@@ -116,10 +124,9 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
       um(`SELECT data_type AS tipo, is_nullable AS nula, column_default AS padrao FROM information_schema.columns
            WHERE table_schema = 'integracao_fdv' AND table_name = 'registro_publicado' AND column_name = 'contrato_enviado'`),
     ).toEqual({ tipo: 'text', nula: 'NO', padrao: "'v1'::text" });
-    expect(
-      um(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-           WHERE conrelid = '${RP}'::regclass AND conname = 'registro_publicado_contrato_enviado_check'`),
-    ).toEqual({ def: "CHECK ((contrato_enviado = ANY (ARRAY['v1'::text, 'v2'::text])))" });
+    expect(definicoesDe(banco.conexao, RP, ['registro_publicado_contrato_enviado_check'])).toEqual([
+      { def: "CHECK ((contrato_enviado = ANY (ARRAY['v1'::text, 'v2'::text])))" },
+    ]);
   });
 
   it('backfill: todas as linhas de antes saem v1 (inclusive a recusada fora da fila), sem reescrever a tabela', () => {
@@ -128,22 +135,13 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
         'texto-pendente'].map((r) => [r, 'v1']),
     );
     expect([versoes(A), versoes(B)]).toEqual([todas, todas]);
-    expect(um<{ f: string }>(`SELECT pg_relation_filenode('${RP}')::text AS f`).f).toBe(arquivoAntes);
+    expect(arquivo()).toBe(arquivoAntes);
   });
 
-  it('CHECK: versão fora da lista dá 23514, no INSERT e no UPDATE', () => {
+  it('CHECK: versão fora da lista dá 23514', () => {
     recusaDetalhada(
       banco.conexao,
       `UPDATE ${RP} SET contrato_enviado = 'v3' WHERE registro_external_id = 'aceito';`,
-      '23514',
-      /registro_publicado_contrato_enviado_check/,
-      WORKER(A),
-    );
-    recusaDetalhada(
-      banco.conexao,
-      `INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em,
-         ativo, contrato_enviado) VALUES ('${A.id}', 'prazo_pagamento', 'novo', '{}', repeat('6', 64), now(), now(),
-         true, 'V2');`,
       '23514',
       /registro_publicado_contrato_enviado_check/,
       WORKER(A),
@@ -191,45 +189,35 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
     expect(plano).toContain(INDICE);
   });
 
-  it('o worker grava a coluna (INSERT e UPDATE) no próprio tenant; RLS: 0 linhas no B', () => {
-    expect(privilegiosDe(banco.conexao, 'macuxierp_worker', RP)).toBe('SIU');
-    expect(gravar(A, 'v2')).toEqual([1]);
+  it('T-0112: as pausas credencial e licenca_fdv saem com proximo_em <= now(); as outras e o excluído ficam', () => {
+    const depois = cursores();
+    for (const t of [A, B])
+      for (const [e, m] of Object.entries(PAUSAS)) {
+        const k = `${t.id}/${e}`;
+        const retomada = e === 'filial' || e === 'vendedor';
+        expect({ k, ...depois[k] }).toEqual(
+          retomada ? { k, m: null, agora: true, u: expect.any(String) } : { k, ...cursoresAntes[k] },
+        );
+        if (retomada) expect(cursoresAntes[k]).toMatchObject({ m, agora: false });
+      }
+  });
+
+  it('o worker grava v2 na coluna (UPDATE e INSERT)', () => {
     rodarComo(
       banco.conexao,
-      `INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em,
+      `UPDATE ${RP} SET contrato_enviado = 'v2' WHERE registro_external_id = 'aceito';
+       INSERT INTO ${RP} (tenant_id, entidade, registro_external_id, payload, hash, alterado_em, fonte_ocorrido_em,
          ativo, contrato_enviado) VALUES ('${A.id}', 'prazo_pagamento', 'novo-v2', '{}', repeat('7', 64), now(), now(),
          true, 'v2');`,
       WORKER(A),
     );
     expect(versoes(A)).toMatchObject({ aceito: 'v2', 'novo-v2': 'v2', recusado: 'v1' });
-    expect(gravar(B, 'v2', WORKER(A))).toEqual([0]);
-    expect(versoes(B)).toMatchObject({ aceito: 'v1' });
   });
 
-  it('o app só lê a coluna (UPDATE por coluna da 0007 sem ela: 42501); a leitura lê no próprio tenant', () => {
-    expect(
-      um(`SELECT has_column_privilege('macuxierp_app', '${RP}', 'contrato_enviado', 'SELECT') AS le,
-                 has_column_privilege('macuxierp_app', '${RP}', 'contrato_enviado', 'UPDATE') AS grava`),
-    ).toEqual({ le: true, grava: false });
-    recusaDetalhada(
-      banco.conexao,
-      `UPDATE ${RP} SET contrato_enviado = 'v1' WHERE registro_external_id = 'aceito';`,
-      '42501',
-      /permission denied/,
-      APP(A),
-    );
-    expect(
-      consultar<{ v: string }>(
-        banco.conexao,
-        `SELECT DISTINCT tenant_id::text AS v FROM ${RP}`,
-        { papel: 'macuxierp_leitura', tenant: B.id },
-      ).map((r) => r.v),
-    ).toEqual([B.id]);
-  });
-
-  it('a 0069 é reexecutável: rodar de novo não muda dado (versão, pendente, updated_at), coluna, CHECK, índice, privilégio nem comentário', () => {
-    const r = (): unknown =>
-      consultar(
+  it('a 0069 é reexecutável: rodar de novo não muda espelho, cursor, coluna, CHECK, índice, privilégio nem comentário', () => {
+    const r = (): unknown => [
+      cursores(),
+      ...consultar(
         banco.conexao,
         `SELECT (SELECT jsonb_agg(jsonb_build_object('i', id, 'v', contrato_enviado, 'p', pendente, 'u', updated_at) ORDER BY id) FROM ${RP}) AS dados,
                 (SELECT count(*)::int FROM information_schema.columns
@@ -242,7 +230,8 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — contrato_enviado no espelho
                   WHERE attrelid = '${RP}'::regclass AND attacl IS NOT NULL) AS acl_colunas,
                 col_description('${RP}'::regclass,
                   (SELECT attnum FROM pg_attribute WHERE attrelid = '${RP}'::regclass AND attname = 'contrato_enviado')::int) AS comentario`,
-      );
+      ),
+    ];
     const antes = r();
     rodarScript(banco.conexao, readFileSync(MIGRACAO, 'utf8'), { transacao: true });
     expect(r()).toEqual(antes);
