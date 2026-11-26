@@ -15,3 +15,4 @@
 2026-11-26 — T-0101 R-3 (v0.3.16) — 17h59 de Manaus: aba Empresa (3 estados) e zerar-cadastro-1280 refeitos depois do #703; apoio comum dos prints em apoio-e2e.mjs e apoio-api.ts (RD-2196, RD-2197) e rodar-prints.sh v0312; F-7 passa a citar a RN-INF-09 (a regra do ERP)
 2026-11-26 — T-0110 — fumaca-telas e use-client-tabela válidos com e sem a tela "Clientes recebidos" (a entrada sai do NAO_EXTRAIVEIS; a chamada é aceita só enquanto o fonte a tiver; âncora do D-4 em lista-empresas.tsx)
 2026-11-26 — T-0108 (b) — 18h26 de Manaus: e2e pela rota de produção (`tests/integracao/rotas/condicao-prazo-medio-rota.db.test.ts`), 3 casos de API; defeito da tela no R-20261126-182429-testes (cadastros); corretor RD-1911 e RD-1912 aplicados.
+2026-11-26 — main vermelho (fumaca-telas, #717) — 18h34 de Manaus: o scanner ignora o `baixarCsv` local de `@/lib/baixar-csv` (sem GET); o de `lib/api.ts` continua varrido.

@@ -16,6 +16,7 @@ import { CODIGO_CONTA_BLOQUEADA, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQU
 import { CODIGO_TROCAR_SENHA, MOTIVOS_TROCA_SENHA } from './eu';
 import { CodigoEmpresaLogin, DestinoLogin } from './login';
 import { EmailUsuario, Instante } from './portal-config';
+import { MODELO_HTML_SENHA_TEMPORARIA } from './email-senha-temporaria-html';
 import { plural } from './texto';
 
 /** Pedido da senha temporária do usuário do tenant (RN-CORE-13): um pedido novo substitui a temporária anterior. */
@@ -101,37 +102,47 @@ export const RODAPE_EMAIL_MACUXI_ERP = `Equipe Macuxi ERP · Boa Vista, RR · ${
 
 export interface EmailSenhaTemporaria {
   assunto: string;
+  /** Parte `text/plain` (o `email.txt` do design). */
   texto: string;
+  /** Parte `text/html` (o `email.html` do design, `MODELO_HTML_SENHA_TEMPORARIA`), com os campos escapados. */
+  html: string;
 }
 
+/** Escape de texto e atributo HTML (`& < > " '`), antes da troca do placeholder (regra do README do design). */
+const escaparHtml = (v: string): string => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
 /**
- * E-mail da senha temporária (RN-CORE-13; T-0111): fonte única do texto, para a apps/api (tenant e superadmin). Leva o
- * código da empresa, o e-mail da conta (o próprio destinatário) e a senha; diz que ela também desbloqueia a conta
- * (RN-CORE-15). Sem nome do destinatário. Função pura.
+ * E-mail da senha temporária (RN-CORE-13; T-0111): fonte única, com os textos exatos do design
+ * (`docs/design/emails/redefinir-senha/`, #705), em texto e HTML (multipart). Leva o código da empresa, o e-mail da conta
+ * (o próprio destinatário) e a senha; diz que ela também desbloqueia a conta (RN-CORE-15). Sem nome do destinatário. Função pura.
  */
 export function emailSenhaTemporaria(e: { senha: string; validade_horas: number; codigo_empresa: string; email: string }): EmailSenhaTemporaria {
-  if (e.senha.trim() === '') throw new RangeError('emailSenhaTemporaria: senha vazia');
+  if (e.senha.trim() === '' || /[\r\n]/.test(e.senha)) throw new RangeError('emailSenhaTemporaria: senha vazia ou com quebra de linha');
   if (!Number.isInteger(e.validade_horas) || e.validade_horas < 1) throw new RangeError('emailSenhaTemporaria: validade_horas precisa ser inteiro ≥ 1');
   if (e.codigo_empresa.trim() === '' || e.email.trim() === '') throw new RangeError('emailSenhaTemporaria: código da empresa e e-mail são obrigatórios');
-  return {
-    assunto: 'Macuxi ERP: sua senha temporária',
-    texto: [
-      'Olá,',
-      '',
-      'Recebemos um pedido de senha temporária para entrar no Macuxi ERP.',
-      '',
-      `Código da empresa: ${e.codigo_empresa.trim()}`,
-      `E-mail: ${e.email.trim()}`,
-      `Senha temporária: ${e.senha}`,
-      '',
-      `Vale por ${e.validade_horas} horas e serve para entrar uma vez só. Ela também desbloqueia a conta.`,
-      'No primeiro acesso, o sistema vai pedir para você trocar a senha.',
-      '',
-      `Abrir o Macuxi ERP: ${URL_MACUXI_ERP}`,
-      '',
-      'Sua senha atual continua valendo enquanto a conta não estiver bloqueada. Se você não fez o pedido, ignore este e-mail.',
-      '',
-      RODAPE_EMAIL_MACUXI_ERP,
-    ].join('\n'),
-  };
+  const assunto = 'Sua senha temporária do Macuxi ERP';
+  const campos = { codigo_empresa: e.codigo_empresa.trim(), email: e.email.trim(), senha_temporaria: e.senha, url_entrar: `${URL_MACUXI_ERP}/` };
+  const aviso = `Vale por ${e.validade_horas} horas e serve para entrar uma vez só. Ela também desbloqueia a conta.`;
+  const texto = [
+    'Sua senha temporária',
+    '',
+    'Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.',
+    '',
+    `Código da empresa: ${campos.codigo_empresa}`,
+    `E-mail: ${campos.email}`,
+    `Senha temporária: ${campos.senha_temporaria}`,
+    '',
+    aviso,
+    '',
+    `Abrir o Macuxi ERP: ${campos.url_entrar}`,
+    '',
+    '--',
+    RODAPE_EMAIL_MACUXI_ERP,
+  ].join('\n');
+  // Troca simples de texto, só depois do escape; nenhum outro campo entra no modelo (README do design).
+  const valores: Record<string, string> = { assunto, ...campos };
+  const html = MODELO_HTML_SENHA_TEMPORARIA.replace(/\{\{(assunto|codigo_empresa|email|senha_temporaria|url_entrar)\}\}/g, (_m, k: string) => escaparHtml(valores[k]!))
+    .replace('Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.', escaparHtml(aviso))
+    .replace('Vale por 72 horas.', `Vale por ${e.validade_horas} horas.`);
+  return { assunto, texto, html };
 }

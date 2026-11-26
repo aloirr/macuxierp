@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FORMAS_A_VISTA, MAX_DIAS } from '../contracts';
 import {
-  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_A_VISTA, completarPrazoMedio, derivarParcelasCartao, prazoMedioEfetivo, validarCondicaoPagamento as v,
+  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_FAIXA, completarPrazoMedio, derivarParcelasCartao, prazoMedioEfetivo, validarCondicaoPagamento as v,
 } from './condicao';
 
 const rn = (m: string, campo: string, r = 'RN-CAD-09') => [{ rn: r, campo, mensagem: m }];
@@ -19,14 +19,26 @@ describe('condição de pagamento', () => {
     expect(v({ forma_tpag: '01', prazos_dias: [], prazo_medio_dias: 0 })).toHaveLength(1);
   });
   it('RN-CAD-15: à vista com prazo médio diferente de 0 é recusado no campo prazo_medio_dias', () => {
-    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 5 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_A_VISTA, 'prazo_medio_dias', 'RN-CAD-15'));
+    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 5 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_FAIXA, 'prazo_medio_dias', 'RN-CAD-15'));
+  });
+  it('RN-CAD-15 (T-0112): prazo médio digitado fica entre a menor e a maior parcela, inclusive', () => {
+    for (const m of [28, 42, 56]) expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: m })).toEqual([]);
+    for (const m of [27, 57]) expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: m })).toEqual(rn('O prazo médio precisa ficar entre a menor e a maior parcela.', 'prazo_medio_dias', 'RN-CAD-15'));
+    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0 })).toEqual([]);
+    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 1 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_FAIXA, 'prazo_medio_dias', 'RN-CAD-15'));
+  });
+  it('RN-CAD-15 (T-0112): quem inativa a condição não é recusado pela faixa; as demais regras seguem; parcelas inválidas não geram a faixa', () => {
+    expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 90, inativa: true })).toEqual([]);
+    expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 90, descricao: ' ', inativa: true })).toHaveLength(1);
+    expect(v({ forma_tpag: '15', prazos_dias: [], prazo_medio_dias: 30 })).toEqual(rn(MOTIVO_BOLETO, 'prazos_dias'));
+    expect(v({ forma_tpag: '15', prazos_dias: [30, 366], prazo_medio_dias: 400 })).toHaveLength(2);
   });
   it('RN-CAD-15 (decisão 14 A): prazo médio vazio (ausente ou nulo) não é erro; o ERP preenche; fora de 0..365 recusa', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30] })).toEqual([]);
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: null })).toEqual([]);
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: MAX_DIAS + 1 })).toEqual(rn(MOTIVO_PRAZO_MEDIO, 'prazo_medio_dias', 'RN-CAD-15'));
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: -1 })).toHaveLength(1);
-    expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 365 })).toEqual([]);
+    expect(v({ forma_tpag: '15', prazos_dias: [365], prazo_medio_dias: 365 })).toEqual([]);
   });
   it('RN-CAD-15: descrição em branco é recusada no campo descricao', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30, descricao: '  ' })).toEqual(rn(MOTIVO_DESCRICAO, 'descricao', 'RN-CAD-15'));
@@ -87,6 +99,7 @@ describe('prazo médio efetivo (RN-CAD-15, decisão 14 A)', () => {
       const m = prazoMedioEfetivo(c, null) as number;
       expect(m).toBeGreaterThanOrEqual(Math.min(...c));
       expect(m).toBeLessThanOrEqual(Math.max(...c));
+      expect(v({ forma_tpag: '15', prazos_dias: c, prazo_medio_dias: m })).toEqual([]); // T-0112: o calculado passa pela faixa
     }
   });
   it('RN-CAD-15 (decisão 17 B): na criação, vazio calcula e marca prazo_medio_calculado = true; digitado, inclusive 0, vale e marca false', () => {

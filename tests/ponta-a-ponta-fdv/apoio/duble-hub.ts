@@ -125,6 +125,12 @@ export const parcelasDiasValidas = (v: unknown): boolean =>
   v.every((d) => Number.isInteger(d) && d >= 0 && d <= MAX_DIAS_HUB);
 /** `prazo_medio_dias` do prazo (e `prazo_medio_max_dias` do cliente): inteiro de 0 a 365; ausente o Hub v1 aceita. */
 export const prazoMedioValido = (v: unknown): boolean => v === undefined || (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_DIAS_HUB);
+/**
+ * Contrato v2, só de `prazo_pagamento` (ADR 0072 do FDV, no ar desde a v1.0.34; a v1 segue aceita): `descricao` e
+ * `prazo_medio_dias` obrigatórios, parcelas sem decrescer e prazo médio entre a menor e a maior parcela. Premissa do dublê
+ * (T-0108): o erro da linha v2 usa os códigos da v1 (`campo_obrigatorio` e `registro_invalido`), a conferir na rodada real.
+ */
+export const VERSAO_CONTRATO_PRAZO_V2 = 'v2';
 
 // ---------------------------------------------------------------- tipos públicos ---------------------------------------
 
@@ -381,6 +387,7 @@ function validarLinha(
   entidade: EntidadeHub,
   r: Record<string, unknown>,
   estado: EstadoTenantDuble,
+  versao: string = VERSAO_CONTRATO,
 ): FalhaLinha | null {
   if (typeof r.external_id !== 'string' || r.external_id.length < 1 || r.external_id.length > 200) {
     return falha(
@@ -437,6 +444,17 @@ function validarLinha(
   }
   if (entidade === 'prazo_pagamento' && !prazoMedioValido(r.prazo_medio_dias))
     return falha('registro_invalido', 'prazo_medio_dias', 'O prazo médio é inteiro de 0 a 365 dias.');
+  if (entidade === 'prazo_pagamento' && versao === VERSAO_CONTRATO_PRAZO_V2) {
+    for (const campo of ['descricao', 'prazo_medio_dias']) {
+      if (vazio(r[campo])) return falha('campo_obrigatorio', campo, `O campo "${campo}" é obrigatório.`);
+    }
+    const l = r.parcelas_dias as number[];
+    if (l.some((d, i) => i > 0 && d < l[i - 1]!))
+      return falha('registro_invalido', 'parcelas_dias', 'As parcelas não podem decrescer.');
+    const medio = r.prazo_medio_dias as number;
+    if (medio < Math.min(...l) || medio > Math.max(...l))
+      return falha('registro_invalido', 'prazo_medio_dias', 'O prazo médio fica entre a menor e a maior parcela.');
+  }
   if (entidade === 'cliente' && !prazoMedioValido(r.prazo_medio_max_dias))
     return falha('registro_invalido', 'prazo_medio_max_dias', 'O prazo médio máximo é inteiro de 0 a 365 dias.');
   if (entidade === 'titulo' && !SITUACOES_TITULO.includes(String(r.situacao)))
@@ -623,7 +641,7 @@ export async function criarDubleHub(o: OpcoesDuble): Promise<DubleHub> {
         return;
       }
       if (typeof r.external_id === 'string') daSessao?.add(r.external_id);
-      const f = validarLinha(env.entidade, r, estado);
+      const f = validarLinha(env.entidade, r, estado, env.versao_contrato);
       if (f) {
         contagens.com_erro++;
         erros.push({
@@ -728,11 +746,12 @@ export async function criarDubleHub(o: OpcoesDuble): Promise<DubleHub> {
     }
     if (!env || typeof env !== 'object')
       throw erroPadrao(400, 'envelope_invalido', 'O corpo deve ser um objeto.');
-    if (env.versao_contrato !== VERSAO_CONTRATO)
+    const prazoV2 = env.versao_contrato === VERSAO_CONTRATO_PRAZO_V2 && env.entidade === 'prazo_pagamento';
+    if (env.versao_contrato !== VERSAO_CONTRATO && !prazoV2)
       throw erroPadrao(
         422,
         'versao_nao_suportada',
-        'Versão de contrato não suportada. Use "v1".',
+        'Versão de contrato não suportada. Use "v1" (o "v2" só vale para prazo_pagamento).',
         'versao_contrato',
       );
     if (!ehEntidade(env.entidade))

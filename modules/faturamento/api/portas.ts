@@ -30,9 +30,8 @@ export interface NotaEmAberto {
 
 /** Pedido aprovado como a fila `faturamento.pedido_a_faturar` o guarda (payload de `pedido.pedido.aprovado@1`, sem ler o schema `pedido`). */
 export interface PedidosAprovados {
-  obter(tx: Transacao, pedido_id: string): Promise<PedidoFaturavel | null>;
-  /** Status atual da linha da fila, só para a guarda RN-CAD-10 da emissão (`cancelado` não aceita nota); `null` = sem linha. */
-  statusNaFila(tx: Transacao, pedido_id: string): Promise<StatusFilaFaturar | null>;
+  /** Pedido e status da linha da fila numa consulta só; o status serve à guarda RN-CAD-10 da emissão (`cancelado` não aceita nota). `null` = sem linha. */
+  obter(tx: Transacao, pedido_id: string): Promise<{ pedido: PedidoFaturavel; status: StatusFilaFaturar } | null>;
   /** Consumidor de `pedido.pedido.aprovado@1`: idempotente por (tenant, pedido): evento repetido não regrava. */
   gravar(tx: Transacao, pedido: PedidoFaturavel, status?: StatusFilaFaturar): Promise<'novo' | 'repetido'>;
   /** Reentrega de pedido cancelado: marca `cancelado` se já estiver na fila; se não estiver, não grava nada. */

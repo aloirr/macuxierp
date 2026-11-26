@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MODELO_HTML_SENHA_TEMPORARIA } from './email-senha-temporaria-html';
 import { CODIGO_CONTA_BLOQUEADA, corpoErroApi, erros, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQUEADA } from './erros';
 import {
   CAMINHOS_ESQUECI_SENHA,
@@ -15,7 +16,6 @@ import {
   SituacaoEsqueciResposta,
   VALIDADE_SENHA_TEMPORARIA_HORAS,
   ContaBloqueadaResposta,
-  RODAPE_EMAIL_MACUXI_ERP,
   URL_MACUXI_ERP,
 } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA } from './eu';
@@ -123,18 +123,45 @@ describe('RN-CORE-13: rótulo da tela de troca depois do esqueci', () => {
 describe('RN-CORE-13: e-mail da senha temporária', () => {
   const base = { senha: 'Tmp#2026ab', validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, codigo_empresa: 'AM2808', email: 'ana@exemplo.invalid' };
 
-  it('T-0111: código da empresa, e-mail e senha; 72 h, uso único, desbloqueia a conta; botão e rodapé; sem nome', () => {
+  it('T-0111: os textos exatos do design (#705), em texto e HTML; desbloqueia a conta; botão e rodapé; sem nome', () => {
     const e = emailSenhaTemporaria(base);
-    expect(e.assunto).toBe('Macuxi ERP: sua senha temporária');
-    expect(e.texto).toContain('Código da empresa: AM2808');
-    expect(e.texto).toContain('E-mail: ana@exemplo.invalid');
-    expect(e.texto).toContain('Senha temporária: Tmp#2026ab');
-    expect(e.texto).toContain('Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.');
-    expect(e.texto).toContain(`Abrir o Macuxi ERP: ${URL_MACUXI_ERP}`);
-    expect(RODAPE_EMAIL_MACUXI_ERP).toBe('Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br');
-    expect(e.texto).toContain(RODAPE_EMAIL_MACUXI_ERP);
-    expect(e.texto).toContain('enquanto a conta não estiver bloqueada');
-    expect(e.texto).not.toMatch(/<[a-z]/i);
+    expect(e.assunto).toBe('Sua senha temporária do Macuxi ERP');
+    // o docs/design/emails/redefinir-senha/email.txt (#705), com os campos preenchidos
+    expect(e.texto).toBe(
+      [
+        'Sua senha temporária',
+        '',
+        'Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.',
+        '',
+        'Código da empresa: AM2808',
+        'E-mail: ana@exemplo.invalid',
+        'Senha temporária: Tmp#2026ab',
+        '',
+        'Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.',
+        '',
+        'Abrir o Macuxi ERP: https://erp.macuxifdv.com.br/',
+        '',
+        '--',
+        'Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br',
+      ].join('\n'),
+    );
+    expect(e.html).toContain('<title>Sua senha temporária do Macuxi ERP</title>');
+    expect(e.html).toContain('>AM2808</td>');
+    expect(e.html).toContain('>ana@exemplo.invalid</td>');
+    expect(e.html).toContain('>Tmp#2026ab</td>');
+    expect(e.html).toContain(`href="${URL_MACUXI_ERP}/"`);
+    expect(e.html).not.toMatch(/\{\{/);
+  });
+
+  it('T-0111: o modelo HTML (cópia do design #705) tem os 5 placeholders; os campos vão escapados', () => {
+    for (const p of ['assunto', 'codigo_empresa', 'email', 'senha_temporaria', 'url_entrar']) expect(MODELO_HTML_SENHA_TEMPORARIA).toContain(`{{${p}}}`);
+    expect(MODELO_HTML_SENHA_TEMPORARIA.startsWith('<!DOCTYPE html>')).toBe(true);
+    const e = emailSenhaTemporaria({ ...base, codigo_empresa: 'A<B>&"\'', senha: 'x<y' });
+    expect(e.html).toContain('A&lt;B&gt;&amp;&quot;&#39;');
+    expect(e.html).toContain('x&lt;y');
+    expect(e.html).not.toContain('A<B>');
+    expect(e.texto).toContain('Senha temporária: x<y'); // texto puro, sem escape
+    expect(emailSenhaTemporaria({ ...base, validade_horas: 48 }).html).toContain('Vale por 48 horas e serve');
   });
 
   it('recusa senha vazia, validade fora de inteiro ≥ 1 e código ou e-mail vazios', () => {
@@ -143,6 +170,7 @@ describe('RN-CORE-13: e-mail da senha temporária', () => {
     expect(() => emailSenhaTemporaria({ ...base, validade_horas: 0 })).toThrow(RangeError);
     expect(() => emailSenhaTemporaria({ ...base, codigo_empresa: ' ' })).toThrow(RangeError);
     expect(() => emailSenhaTemporaria({ ...base, email: '' })).toThrow(RangeError);
+    expect(() => emailSenhaTemporaria({ ...base, senha: 'a\nb' })).toThrow(RangeError);
   });
 });
 
