@@ -380,7 +380,7 @@ describe('faturamento na API: emissão em produção desligada até a T-0046 (RN
       cadastros: { fontes: { cnpj: [], cep: [] } },
       faturamento: {
         notas,
-        pedidos: { obter: anotar('pedidos.obter', { filial_id: FILIAL }) } as never,
+        pedidos: { obter: anotar('pedidos.obter', { pedido: { filial_id: FILIAL }, status: 'a_faturar' }) } as never,
         situacao: { situacao: anotar('situacao', { status: 'aprovado' }) } as never,
         cadastros: { filial: anotar('cadastros.filial', { id: FILIAL, emissora: true, nfe_serie: 1, ie: '053000000' }) } as never,
         ambiente: { ambiente: anotar('ambiente', 'producao') } as never,
