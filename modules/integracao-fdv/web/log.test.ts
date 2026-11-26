@@ -24,8 +24,8 @@ describe('Log do BKO (T-0086 D-4)', () => {
     const [a] = linhasDeErrosLog(log());
     expect(a).toEqual({ registro: 'C-1', nome: 'Mercado Sol', campo: 'vendedor_id', motivo: 'Vendedor não existe no FDV.', acao: 'Carregue Vendedores antes.', corrigirHref: '/cadastros/clientes?busca=C-1' });
   });
-  it('RF-INF-04: a legenda diz que os registros não foram enviados ao FDV', () => {
-    expect(TEXTO_LEGENDA_ERROS_LOG).toMatch(/^Estes registros não foram enviados ao FDV\./);
+  it('RF-INF-04: a legenda diz que os registros não foram enviados ao Macuxi FDV', () => {
+    expect(TEXTO_LEGENDA_ERROS_LOG).toBe('Estes registros não foram enviados ao Macuxi FDV.');
   });
   it('o link Corrigir só existe quando corrigirHref existe (nulo no Zerar, sem link)', () => {
     const l = linhasDeErrosLog(log());
