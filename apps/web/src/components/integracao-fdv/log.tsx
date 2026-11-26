@@ -56,18 +56,25 @@ export const textoRecebidosForaDaLista = (mostrados: number, total: number): str
 export function SecaoRecebidosLog({ recebidos, total, fuso }: { recebidos: readonly ClienteRecebidoFdv[]; total: number; fuso: string }) {
   const linhas = linhasDeRecebidosLog(recebidos, fuso);
   const colunas: ColunaTabela<LinhaRecebidoLog>[] = colunasDeRecebidosLog.map((c) => ({
-    id: c.id, titulo: c.titulo, ...(c.id === 'revisao' ? { tipo: 'numero' as const } : {}), celula: (l) => (l[c.id] === '' ? '—' : l[c.id]),
+    id: c.id, titulo: c.titulo, ...(c.id === 'revisao' ? { tipo: 'numero' as const } : c.id === 'recebidoEm' ? { tipo: 'data' as const } : {}), celula: (l) => (l[c.id] === '' ? '—' : l[c.id]),
   }));
   const fora = Math.max(0, total - recebidos.length);
   return (
     <section data-recebidos-fdv>
-      <h3>{TITULO_SECAO_RECEBIDOS_LOG}</h3>
       {linhas.length === 0
-        ? <p className="apoio">{TEXTO_VAZIO_RECEBIDOS_LOG}</p>
+        ? (
+          <>
+            <h3>{TITULO_SECAO_RECEBIDOS_LOG}</h3>
+            <p className="apoio">{TEXTO_VAZIO_RECEBIDOS_LOG}</p>
+          </>
+        )
         : (
           <>
+            <div className="resumo-log">
+              <h3>{TITULO_SECAO_RECEBIDOS_LOG}</h3>
+              <button type="button" className="mx-botao-secundario" onClick={() => baixarCsv(NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog(recebidos, fuso))}>Baixar recebidos (.csv)</button>
+            </div>
             <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => `${l.cliente}|${l.recebidoEm}|${l.revisao}|${l.situacao}`} textoVazio={TEXTO_VAZIO_RECEBIDOS_LOG} legenda={TITULO_SECAO_RECEBIDOS_LOG} /></div>
-            <p><button type="button" className="mx-botao-secundario" onClick={() => baixarCsv(NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog(recebidos, fuso))}>Baixar recebidos (.csv)</button></p>
           </>
         )}
       {fora > 0 && <p className="apoio">{textoRecebidosForaDaLista(recebidos.length, total)}</p>}

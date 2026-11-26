@@ -111,6 +111,21 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
       const h = html(comRecebidos([]));
       expect(h).toContain(TEXTO_VAZIO_RECEBIDOS_LOG);
       expect(h).not.toContain('Baixar recebidos');
+      expect(h).toContain(`<h3>${TITULO_SECAO_RECEBIDOS_LOG}</h3>`);
+    });
+
+    it('o botão do CSV fica no cabeçalho da seção, ao lado do título e acima da tabela', () => {
+      const h = html(comRecebidos([rec({})]));
+      const secao = h.slice(h.indexOf('data-recebidos-fdv'));
+      expect(secao).toContain(`<div class="resumo-log"><h3>${TITULO_SECAO_RECEBIDOS_LOG}</h3><button type="button" class="mx-botao-secundario">Baixar recebidos (.csv)</button></div>`);
+      expect(secao.indexOf('Baixar recebidos')).toBeLessThan(secao.indexOf('<table'));
+    });
+
+    it('"Recebido em" é coluna de data, com algarismos tabulares como o "Quando" dos envios', () => {
+      const h = html(comRecebidos([rec({})]));
+      const estiloDe = (texto: string) => new RegExp(`<td([^>]*)>${texto}</td>`).exec(h)?.[1];
+      expect(estiloDe('26/11/2026[^<]*')).toContain('font-variant-numeric:tabular-nums');
+      expect(estiloDe('Mercadinho Ficticio Ltda')).not.toContain('tabular-nums');
     });
 
     it('avisa o fato quando há mais recebidos do que a lista traz, sem prometer arquivo', () => {
