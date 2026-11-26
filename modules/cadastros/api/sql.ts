@@ -16,7 +16,7 @@ import type {
 
 type Dict = Record<string, unknown>;
 /** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
-// T-0108: acrescentar 'prazo_medio_calculado' a esta lista depois da migração 0068 (banco-dados); sem a coluna, o SELECT quebra.
+// TODO 0068 (T-0108): acrescentar 'prazo_medio_calculado' a esta lista, remover o filtro `semMarca` abaixo e o filtro provisório da marca em carga-entidades.ts (condicao); sem a coluna, o SELECT quebra.
 const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'prazo_medio_dias', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;

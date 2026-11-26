@@ -234,7 +234,7 @@ export const CondicaoPagamentoDados = z.object({
   /** tPag da NF-e */
   forma_tpag: z.string().regex(/^\d{2}$/),
   prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS)).min(1).max(MAX_PARCELAS),
-  /** RN-CAD-15 (decisão 14 A): prazo médio em dias; vazio na entrada, o ERP calcula a média das parcelas (`prazoMedioEfetivo`) e grava. */
+  /** RN-CAD-15 (decisão 14 A): `completarPrazoMedio`. */
   prazo_medio_dias: PrazoMedioDias.nullish(),
   /** Legado (RN-CAD-09 emendada pela RN-CAD-15): nº de parcelas do cartão (tPag 03), 1 a 12, derivado dos prazos; nulo nas demais formas. Aditivo, @1 continua valendo. */
   parcelas_cartao: z.number().int().min(1).max(MAX_PARCELAS_CARTAO).nullable().optional(),
@@ -261,7 +261,7 @@ export const CondicaoPagamento = CondicaoPagamentoDados.extend({
   prazos_dias: z.array(z.number().int().min(0).max(MAX_DIAS_LEGADO)).min(1).max(MAX_PARCELAS_LEGADO),
   /** Aditivo também no tipo: ausente ou nulo = prazo incompleto (legado). */
   prazo_medio_dias: PrazoMedioDiasLegado.nullish(),
-  /** Decisão 17 B (aditivo opcional, @1 continua valendo): true = o ERP calculou o prazo médio (média das parcelas); false ou ausente = digitado. */
+  /** RN-CAD-15 (decisão 14 A): `completarPrazoMedio`; aditivo opcional, @1 continua valendo. */
   prazo_medio_calculado: z.boolean().nullish(),
   id: Uuid, inativo: z.boolean().default(false) });
 export type CondicaoPagamento = z.infer<typeof CondicaoPagamento>;

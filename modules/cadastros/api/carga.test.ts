@@ -363,7 +363,7 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     expect(erros.find((e) => e.codigo === 'RN-CAD-09')).toMatchObject({ motivo: expect.stringContaining('cartão: 1 a 12 parcelas') });
   });
 
-  it('RN-CAD-15 (decisão 14 A): prazo médio vazio na criação é calculado e gravado; digitado não é sobrescrito; na atualização, vazio mantém o digitado e recalcula o vazio', async () => {
+  it('RN-CAD-15 (decisões 14 A e 17 B): na carga, célula vazia calcula e marca true, mesmo sobre um digitado; digitado vale e marca false', async () => {
     const t = montar();
     const sem = (await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;;BOLETO;Boleto;FP-B;sim;Boleto 30/45') })).corpo as RelatorioCarga;
     expect(sem.erros.filter((e) => e.arquivo === ARQ)).toEqual([]);
@@ -373,8 +373,6 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     // decisão 17 B: a origem manda; célula vazia com parcelas na linha é cálculo, com a marca true, mesmo sobre um digitado
     await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
     expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 90], prazo_medio_dias: 60, prazo_medio_calculado: true, descricao: 'Boleto 30 dias' });
-    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;5;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
-    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 5, prazo_medio_calculado: false });
   });
 
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {

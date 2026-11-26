@@ -465,7 +465,7 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
   rotas.push(...rotasCrud(deps, {
     tabela: 'condicao_pagamento', caminho: '/condicoes-pagamento', editar: 'cadastros.condicao_pagamento.editar', dados: CondicaoPagamentoDados, atualizacao: CondicaoPagamentoAtualizacao,
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
-    // RN-CAD-15: os dias são sempre digitados; `parcelas_cartao` (legado) é derivada dos prazos. O PATCH valida o cadastro MESCLADO (prazo médio ausente no PATCH mantém o gravado).
+    // RN-CAD-15: os dias são sempre digitados; `parcelas_cartao` (legado) é derivada dos prazos. O PATCH valida o cadastro MESCLADO; prazo médio: `completarPrazoMedio`.
     completar: (corpo, antes) => completarPrazoMedio(completarParcelasCartao(corpo as never, antes as never) as Dict, antes as never),
     validar: async (_r, c) => validarCondicaoPagamento({
       forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[], parcelas_cartao: (c.parcelas_cartao ?? null) as number | null,

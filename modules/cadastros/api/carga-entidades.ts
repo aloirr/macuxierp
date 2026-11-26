@@ -303,10 +303,11 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
   if (ex) {
     const alvo = { tipo: 'condicao_pagamento' as const, id: ex.id };
     const tpagFinal = (campoForma.forma_tpag as string | undefined) ?? ex.forma_tpag;
-    // RN-CAD-15 (decisões 14 A e 17 B): a origem manda; célula vazia com parcelas na linha é cálculo (marca true), digitado vale (marca false)
-    const comPrazo = d.prazos_dias === undefined ? completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex) : completarPrazoMedio({ ...completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex), prazo_medio_dias: d.prazo_medio_dias ?? null }, ex);
+    // RN-CAD-15 (decisão 14 A): `completarPrazoMedio`; na carga a origem manda: célula vazia com parcelas na linha calcula (decisão 17 B)
+    const base = completarParcelasCartao({ ...d, forma_tpag: tpagFinal }, ex);
+    const comPrazo = d.prazos_dias === undefined ? base : completarPrazoMedio({ ...base, prazo_medio_dias: d.prazo_medio_dias ?? null }, ex);
     const { prazo_medio_calculado: marca, ...comPrazoSemMarca } = comPrazo as Dict;
-    // a marca só entra no patch quando o cadastro gravado a tem (coluna da 0068); evita "atualizada" por campo que o banco ainda não devolve
+    // TODO 0068 (ver sql.ts): a marca só entra no patch quando o cadastro gravado a tem; remover o filtro `ex.prazo_medio_calculado === undefined` com a coluna
     const patch: Dict = { ...comPrazoSemMarca, ...(ex.prazo_medio_calculado === undefined || marca === undefined ? {} : { prazo_medio_calculado: marca }), ...campoForma, ...ativoPatch(l.ativo), ...(adotar ? { external_id: l.external_id } : {}) };
     const vc = validarCondicaoPagamento({
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],

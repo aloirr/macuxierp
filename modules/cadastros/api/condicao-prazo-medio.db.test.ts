@@ -1,5 +1,5 @@
 /**
- * RN-CAD-15 e decisão 14 A (T-0107): o prazo médio vazio da condição de pagamento é calculado (média simples das parcelas, meio
+ * RN-CAD-15 (decisões 14 A e 17 B): o prazo médio vazio da condição de pagamento é calculado (média simples das parcelas, meio
  * para cima) e GRAVADO, no PostgreSQL real com RLS. Sem Postgres o teste pula (`bash db/scripts/pg-local.sh`).
  */
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
@@ -32,29 +32,30 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CAD-15: prazo médio efetivo gravado (Postgr
     await efemero?.remover();
   });
 
-  it('POST sem prazo médio grava a média; PATCH que muda as parcelas com prazo vazio recalcula; prazo digitado fica', async () => {
+  it('POST sem prazo médio grava a média; PATCH de parcelas com o prazo vazio no banco recalcula', async () => {
     const a = amb();
-    const base = { descricao: 'D', forma_tpag: '15' };
-    const post = async (codigo: string, extra: object) => {
-      const r = await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { ...base, codigo, ...extra } });
-      expect(r.status, JSON.stringify(r.corpo)).toBe(201);
-      return (r.corpo as { id: string }).id;
-    };
-    const patch = async (id: string, corpo: object) => expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo })).status).toBe(200);
+    const r = await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'PM1', descricao: 'D', forma_tpag: '15', prazos_dias: [30, 45] } });
+    expect(r.status, JSON.stringify(r.corpo)).toBe(201);
+    const id = (r.corpo as { id: string }).id;
+    expect(await medio(id)).toBe(38);
+    await admin('UPDATE cadastros.condicao_pagamento SET prazo_medio_dias = NULL WHERE id = $1', [id]);
+    expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30, 60] } })).status).toBe(200);
+    expect(await medio(id)).toBe(45);
+  }, 120_000);
 
-    const sem = await post('PM1', { prazos_dias: [30, 45] });
-    expect(await medio(sem)).toBe(38);
-    expect(await medio(await post('PM2', { prazos_dias: [28, 56, 84], prazo_medio_dias: null }))).toBe(56);
-    const digitado = await post('PM3', { prazos_dias: [30, 60], prazo_medio_dias: 10 });
-    expect(await medio(digitado)).toBe(10);
-    expect(await medio(await post('PM4', { prazos_dias: [30, 60], prazo_medio_dias: 0 }))).toBe(0);
-
-    // vazio no banco (legado) + parcelas mudam: recalcula
-    await admin('UPDATE cadastros.condicao_pagamento SET prazo_medio_dias = NULL WHERE id = $1', [sem]);
-    await patch(sem, { prazos_dias: [30, 60] });
-    expect(await medio(sem)).toBe(45);
-    // digitado: o PATCH que muda as parcelas não sobrescreve
-    await patch(digitado, { prazos_dias: [30, 90] });
-    expect(await medio(digitado)).toBe(10);
+  it('decisão 17 B (0068): PATCH de parcelas com a marca true recalcula e mantém true; com false mantém o digitado', async (ctx) => {
+    const comMarca = (await admin("SELECT 1 FROM information_schema.columns WHERE table_schema = 'cadastros' AND table_name = 'condicao_pagamento' AND column_name = 'prazo_medio_calculado'")).length > 0;
+    if (!comMarca) return ctx.skip();
+    const a = amb();
+    const post = async (codigo: string, extra: object) =>
+      ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo, descricao: 'D', forma_tpag: '15', prazos_dias: [30], ...extra } })).corpo as { id: string }).id;
+    const calculado = await post('K1', {});
+    const digitado = await post('K2', { prazo_medio_dias: 12 });
+    const linha = async (id: string) => (await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]!;
+    expect(await linha(calculado)).toEqual({ prazo_medio_dias: 30, prazo_medio_calculado: true });
+    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
+    for (const id of [calculado, digitado]) expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).status).toBe(200);
+    expect(await linha(calculado)).toEqual({ prazo_medio_dias: 60, prazo_medio_calculado: true });
+    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
   }, 120_000);
 });

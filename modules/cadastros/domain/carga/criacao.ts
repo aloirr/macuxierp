@@ -40,7 +40,6 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
       }
       if (d.descricao === undefined) erros.push(falta(n, 'descricao'));
       if (d.prazos_dias === undefined) erros.push(falta(n, 'parcelas_dias', 'RN-CAD-15', 'Parcelas obrigatórias: dias separados por /, à vista 0'));
-      // RN-CAD-15 (decisão 14 A): prazo médio vazio não é erro; `completarPrazoMedio` calcula e marca (decisão 17 B) na gravação.
       break;
     }
     case 'produto': {

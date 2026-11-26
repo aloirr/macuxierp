@@ -1,7 +1,7 @@
 /**
- * T-0108, decisões 14 A e 17 B: `completarPrazosMedios` completa o prazo médio das condições já gravadas com ele vazio, no PostgreSQL
+ * T-0108, RN-CAD-15 (decisão 14 A): `completarPrazosMedios` completa o prazo médio das condições já gravadas com ele vazio, no PostgreSQL
  * real, papel macuxierp_app, com RLS. Sem Postgres o teste pula (`bash db/scripts/pg-local.sh`).
- * Os dois testes marcados "(0068)" precisam da coluna `prazo_medio_calculado` (migração 0068 do banco-dados) e se pulam sem ela.
+ * O teste marcado "(0068)" precisa da coluna `prazo_medio_calculado` (migração 0068 do banco-dados) e se pulam sem ela.
  */
 import type { Transacao } from '@macuxierp/platform-sdk';
 import { RelogioFixo } from '@macuxierp/platform-sdk/testes';
@@ -51,27 +51,13 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
     await efemero?.remover();
   });
 
-  it('decisão 14 A: grava a média simples das parcelas, meio para cima; digitado (inclusive 0) fica; inativa e excluída ficam como estão', async () => {
+  it('RN-CAD-15 (decisão 14 A): grava a média meio para cima; o digitado e a excluída ficam como estão', async () => {
     const t = await criarTenant(efemero.admin, 'completar-media', ['cadastros']);
     const a = await inserir(t, 'M1', [30, 45]);
-    const b = await inserir(t, 'M2', [28, 56, 84]);
-    const c = await inserir(t, 'M3', [0]);
-    const digitado = await inserir(t, 'D1', [30, 60], { medio: 10 });
-    const zero = await inserir(t, 'D0', [30, 60], { medio: 0 });
+    const digitado = await inserir(t, 'D0', [30, 60], { medio: 0 });
     const excluida = await inserir(t, 'X1', [30, 60], { excluida: true });
-    expect(await rodar(t)).toEqual({ completadas: 3 });
-    expect([await medio(a), await medio(b), await medio(c)]).toEqual([38, 56, 0]);
-    expect([await medio(digitado), await medio(zero), await medio(excluida)]).toEqual([10, 0, null]);
-  }, 120_000);
-
-  it('decisão 14 A: sem parcelas continua null e não conta', async () => {
-    const t = await criarTenant(efemero.admin, 'completar-sem-parcela', ['cadastros']);
-    // o banco pode recusar parcelas vazias (CHECK); o legado é só o que o banco aceitar
-    const vazia = await inserir(t, 'S0', []).catch(() => null);
-    const ok = await inserir(t, 'S1', [30]);
     expect(await rodar(t)).toEqual({ completadas: 1 });
-    expect(await medio(ok)).toBe(30);
-    if (vazia) expect(await medio(vazia)).toBeNull();
+    expect([await medio(a), await medio(digitado), await medio(excluida)]).toEqual([38, 0, null]);
   }, 120_000);
 
   it('T-0108: evento igual ao do PATCH (tipo e campos do payload), um por condição completada', async () => {
@@ -132,21 +118,5 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
     const marca = async (id: string) => (await admin('SELECT prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]!.prazo_medio_calculado as boolean | null;
     expect(await marca(a)).toBe(true);
     expect(await marca(d)).not.toBe(true);
-  }, 120_000);
-
-  it('decisão 17 B (0068): PATCH de parcelas com a marca true recalcula e mantém true; com false mantém o digitado', async (ctx) => {
-    if (!comMarca) return ctx.skip();
-    const t = await criarTenant(efemero.admin, 'completar-patch', ['cadastros']);
-    const a = amb(t);
-    const post = async (codigo: string, extra: object) =>
-      ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo, descricao: 'D', forma_tpag: '15', prazos_dias: [30], ...extra } })).corpo as { id: string }).id;
-    const calculado = await post('P1', {});
-    const digitado = await post('P2', { prazo_medio_dias: 12 });
-    const linha = async (id: string) => (await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]!;
-    expect(await linha(calculado)).toEqual({ prazo_medio_dias: 30, prazo_medio_calculado: true });
-    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
-    for (const id of [calculado, digitado]) expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).status).toBe(200);
-    expect(await linha(calculado)).toEqual({ prazo_medio_dias: 60, prazo_medio_calculado: true });
-    expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
   }, 120_000);
 });

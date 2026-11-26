@@ -18,6 +18,6 @@ export {
   CAMPOS_TABELA_PRECO, ROTA_TABELA_PRECO, ROTA_TABELA_PRECO_NOVA, ROTA_TABELAS_PRECO, API_TABELAS_PRECO, camposDaTabelaPreco, corpoAlterarTabelaPreco, corpoCriarTabelaPreco, paginaTabelasPreco, validarTabelaPreco, valoresDaTabelaPreco, type TabelaPrecoResumo,
 } from './precos';
 export {
-  AGRUPAR_PRAZOS_POR, AJUDA_PRAZO_MEDIO, CAMPO_PRAZO_MEDIO_DO_CLIENTE, FORMAS_DO_PRAZO, ROTULO_PRAZO_MEDIO, adicionarParcela, agruparPrazosPorForma, formularioDoPrazo, formularioPrazoVazio, maxParcelasDaForma, montarPrazo, podeAdicionarParcela, podeRemoverParcela,
+  AGRUPAR_PRAZOS_POR, CAMPO_PRAZO_MEDIO_DO_CLIENTE, FORMAS_DO_PRAZO, ROTULO_PRAZO_MEDIO, adicionarParcela, agruparPrazosPorForma, formularioDoPrazo, formularioPrazoVazio, maxParcelasDaForma, montarPrazo, podeAdicionarParcela, podeRemoverParcela,
   prazoMedioDoCliente, prazoMedioNaLista, removerParcela, rotuloDaForma, rotulosDasParcelas, trocarForma, type ErrosDoPrazo, type FormularioPrazo, type GrupoDePrazos, type PrazoNaLista,
 } from './prazos';

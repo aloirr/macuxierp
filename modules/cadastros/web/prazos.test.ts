@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAGINAS } from './paginas';
 import {
-  AJUDA_PRAZO_MEDIO, adicionarParcela, agruparPrazosPorForma, formularioDoPrazo, formularioPrazoVazio, maxParcelasDaForma, montarPrazo, prazoMedioDoCliente, prazoMedioNaLista, removerParcela, rotulosDasParcelas, trocarForma,
+  adicionarParcela, agruparPrazosPorForma, formularioDoPrazo, formularioPrazoVazio, maxParcelasDaForma, montarPrazo, prazoMedioDoCliente, prazoMedioNaLista, removerParcela, rotulosDasParcelas, trocarForma,
 } from './prazos';
 
 const p = (codigo: string, forma_tpag: string, prazos_dias: number[], prazo_medio_dias: number | null) => ({ codigo, descricao: `D ${codigo}`, forma_tpag, prazos_dias, prazo_medio_dias });
@@ -60,7 +60,6 @@ describe('formulário do prazo (RN-CAD-15)', () => {
     expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '0' }).corpo).toMatchObject({ prazo_medio_dias: 0 });
     // à vista continua 0
     expect(montarPrazo({ codigo: 'AV', descricao: 'AV', forma_tpag: '01', parcelas: ['0'], prazo_medio_dias: '5' }).erros).toHaveProperty('prazo_medio_dias');
-    expect(AJUDA_PRAZO_MEDIO).toBe('Vazio: o ERP calcula a média das parcelas.');
   });
   it('RN-CAD-15: o legado abre no formulário com o prazo médio vazio, para completar', () => {
     expect(formularioDoPrazo(p('LEG', '15', [15, 30], null))).toMatchObject({ parcelas: ['15', '30'], prazo_medio_dias: '' });

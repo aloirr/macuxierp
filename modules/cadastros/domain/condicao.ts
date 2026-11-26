@@ -23,7 +23,7 @@ export interface EntradaCondicao {
   prazos_dias?: readonly number[] | null;
   /** Legado: o domain deriva das parcelas do cartão (`derivarParcelasCartao`). */
   parcelas_cartao?: number | null;
-  /** RN-CAD-15 (decisão 14 A): vazio (`undefined` ou `null`) é aceito, porque o ERP o preenche (`prazoMedioEfetivo`); só o valor fora de 0..365 recusa. */
+  /** RN-CAD-15 (decisão 14 A): `completarPrazoMedio`; vazio é aceito, só o valor fora de 0..365 recusa. */
   prazo_medio_dias?: number | null;
   /** Só confere quando vem (o PATCH parcial pode não trazer). */
   descricao?: string | null;
@@ -56,7 +56,7 @@ export function prazoMedioEfetivo(prazos_dias: readonly number[] | null | undefi
  * - `null` explícito (o usuário apagou), ou criação sem o campo: o ERP calcula (`prazoMedioEfetivo`) e a marca é true;
  * - PATCH sem o campo e com parcelas no corpo: recalcula (marca true) quando a marca gravada é true ou o prazo gravado está vazio;
  *   com a marca false o digitado fica; sem parcelas no corpo o corpo volta como veio.
- * `antes` é o cadastro gravado, no PATCH. Sem parcelas para calcular, o corpo volta como veio.
+ * `antes` é o cadastro gravado, no PATCH.
  */
 export function completarPrazoMedio<T extends { prazos_dias?: readonly number[] | null; prazo_medio_dias?: number | null }>(
   corpo: T, antes?: { prazos_dias: readonly number[]; prazo_medio_dias?: number | null; prazo_medio_calculado?: boolean | null },
@@ -71,7 +71,7 @@ export function completarPrazoMedio<T extends { prazos_dias?: readonly number[] 
   return efetivo === null ? corpo : { ...corpo, prazo_medio_dias: efetivo, prazo_medio_calculado: true };
 }
 
-/** RN-CAD-15 (completa a RN-CAD-09): código, descrição, parcelas uma a uma e prazo médio (vazio é preenchido, decisão 14 A); à vista = parcelas [0] e prazo médio 0. */
+/** RN-CAD-15 (completa a RN-CAD-09): código, descrição, parcelas uma a uma e prazo médio (decisão 14 A); à vista = parcelas [0] e prazo médio 0. */
 export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
   const prazos = c.prazos_dias ?? [];
   const parcelas = c.parcelas_cartao ?? null;

@@ -10,8 +10,6 @@ import { MAX_PARCELAS_DA_CLASSE, MOTIVO_PRAZO_MEDIO, validarCondicaoPagamento } 
 export const FORMAS_DO_PRAZO: readonly { tpag: string; rotulo: string }[] = (['01', '17', '04', '03', '15'] as const).map((tpag) => ({ tpag, rotulo: NOME_FORMA[tpag] }));
 
 export const ROTULO_PRAZO_MEDIO = 'Prazo médio (dias)';
-/** RN-CAD-15 (decisão 14 A): ajuda do campo no formulário do prazo. */
-export const AJUDA_PRAZO_MEDIO = 'Vazio: o ERP calcula a média das parcelas.';
 /** A lista dos prazos se agrupa por este campo (o `agruparPor` da página das condições, em `paginas.ts`). */
 export const AGRUPAR_PRAZOS_POR = 'forma_tpag';
 
@@ -69,7 +67,7 @@ export function montarPrazo(f: FormularioPrazo): { corpo?: { codigo: string; des
   if (f.codigo.trim() === '') erros.codigo = 'Informe o código';
   if (f.descricao.trim() === '') erros.descricao = 'Informe a descrição';
   const dias = f.parcelas.map(inteiro);
-  // vazio vai como null e o ERP calcula (decisão 14 A); digitado é validado de 0 a 365
+  // RN-CAD-15 (decisão 14 A): vazio vai como null (`completarPrazoMedio`); digitado é validado de 0 a 365
   const vazio = f.prazo_medio_dias.trim() === '';
   const medio = vazio ? null : inteiro(f.prazo_medio_dias);
   if (dias.some((d) => d === null)) erros.prazos_dias = `Informe os dias de cada parcela (0 a ${MAX_DIAS})`;
