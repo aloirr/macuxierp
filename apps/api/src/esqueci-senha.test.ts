@@ -388,7 +388,9 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     const [enviado] = m.envio.enviados;
     const temporaria = /Senha temporária: (\S+)/.exec(enviado!.texto)?.[1];
     expect(temporaria).toHaveLength(16);
-    expect(enviado!.assunto).toBe('Macuxi ERP: sua senha temporária');
+    expect(enviado!.assunto).toBe('Sua senha temporária do Macuxi ERP');
+    // T-0111: a mesma mensagem em HTML (modelo do design), com o código da empresa e o e-mail
+    expect(enviado!.html).toContain('>AM2808</td>');
     expect(enviado!.texto).toContain('Vale por 72 horas');
     // T-0111: o código da empresa (maiúsculo, como no login) e o e-mail da conta vão no e-mail
     expect(enviado!.texto).toContain('Código da empresa: AM2808');

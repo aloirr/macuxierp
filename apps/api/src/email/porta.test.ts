@@ -45,6 +45,15 @@ describe('porta de e-mail (T-0076)', () => {
     semDadosDaMensagem(JSON.stringify(linhas));
   });
 
+  it('T-0111: com html, a carta leva text e html (multipart/alternative); nada da mensagem vai ao log', async () => {
+    const falso = smtpFalso();
+    const { linhas, log } = logFalso();
+    const comHtml = { ...MENSAGEM, html: '<p>Texto fictício com link-ficticio</p>' };
+    await criarEnvioEmail(SMTP, { log, criarTransporte: falso.criarTransporte }).enviar(comHtml);
+    expect(falso.cartas).toEqual([{ from: 'nao-responda@exemplo.test', to: MENSAGEM.para, subject: MENSAGEM.assunto, text: MENSAGEM.texto, html: comHtml.html }]);
+    semDadosDaMensagem(JSON.stringify(linhas));
+  });
+
   it('smtp com TLS implícito: secure ligado, sem requireTLS', () => {
     const falso = smtpFalso();
     criarEnvioEmail({ ...SMTP, porta: 465, tls: true } as ConfigEmail, { criarTransporte: falso.criarTransporte });
