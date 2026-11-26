@@ -456,6 +456,16 @@ RN-CAD-15 com as decisões 14 A e 17 B do Alexandre (25/11): o prazo médio vazi
 
 Migração: `db/migrations/0068_cadastros_condicao_prazo_calculado.sql`; testes: `db/testes/condicao-prazo-calculado-0068.db.test.ts`.
 
+## Versão do contrato no espelho, prazos com parcelas em texto e retomada das pausas (T-0107 e T-0112, migração 0069)
+Na virada de versão de uma entidade do Hub (hoje só `prazo_pagamento` tem v2), a varredura do worker marca como pendentes os registros resolvidos na versão antiga.
+- **Versão v1 nas linhas de antes:** todo registro que já saiu da fila (aceito ou recusado firme) foi resolvido em v1 antes da 0069, e o default constante dá esse backfill sem reescrever a tabela. Linha gravada pela versão anterior do worker também sai v1; se ela já mandou o prazo em v2, a varredura só causa um reenvio a mais, idempotente pelo `external_id`. Anulável não traria informação: NULL e v1 teriam o mesmo tratamento.
+- **Lista de versões sem amarrar a v2 à entidade:** a lista vem de `VERSAO_CONTRATO_HUB` e `VERSAO_CONTRATO_PRAZO_V2` do `contracts/hub.ts`; a regra da entidade é do contrato (Zod). Versão nova = migração que amplia a lista.
+- **Índice parcial sem a versão e sem `ativo` no predicado**: vale na próxima virada e cobre os inativos, que o delta também envia (`ativo:false`); sem `CONCURRENTLY`, porque o migrador roda cada arquivo numa transação (a trava fica nos 5 s do `lock_timeout`). O predicado só casa com `entidade = 'prazo_pagamento'` conhecida no plano: literal ou parâmetro com plano específico (não o genérico do prepared statement).
+- **T-0112, prazos com `parcelas_dias` em texto** (espelho de antes da T-0085, recusado pelo Hub) voltam a pendente, para a integração normalizar no envio. Só a flag (e o `updated_at`, pelo gatilho): o hash fica, e o reenvio decide pelo lote. Vale para todos os tenants porque a migração roda como dona, e a tabela não tem FORCE RLS. Rodar de novo não acha mais nada.
+- **T-0112, retomada única das pausas `credencial` e `licenca_fdv`** (pedido do Alexandre via PO, 26/11 19h17): o mesmo efeito do `portal_retomar` (0038) em todos os tenants e entidades, com `proximo_em = now()` para a agenda pegar já; as outras pausas pedem decisão de alguém e ficam.
+
+Migração: `db/migrations/0069_integracao_fdv_contrato_enviado.sql`; testes: `db/testes/contrato-enviado-0069.db.test.ts`.
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
