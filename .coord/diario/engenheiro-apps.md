@@ -55,3 +55,4 @@
 2026-11-26 — T-0111 — login: conta bloqueada só no 423/CODIGO_CONTA_BLOQUEADA do SDK; 429 volta a Muitas tentativas
 2026-11-26 — T-0111 — /config: 423 vira ConfigContaBloqueada (mesmo ponto de login-regras); 429 segue Muitas tentativas
 2026-11-26 — T-0110 — Log: seção Recebidos do FDV e saída da seção antiga de clientes recebidos
+2026-11-26 — T-0111 — logos do e-mail servidos como estáticos em /email/ (public/email) com teste de existência, assinatura PNG e ausência de middleware
