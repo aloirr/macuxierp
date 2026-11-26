@@ -57,7 +57,9 @@ describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
     resposta = () => json({ codigo: 'PERFIL_SEM_PERMISSAO' }, 403);
     expect(await entrar(entrada)).toEqual({ tipo: 'credencial' });
     resposta = () => json({ codigo: 'MUITAS_TENTATIVAS', mensagem: 'x', detalhes: { retry_after_s: 420 } }, 429);
-    expect(await entrar(entrada)).toEqual({ tipo: 'limite', retry_after_s: 420 });
+    expect(await entrar(entrada)).toEqual({ tipo: 'bloqueada' });
+    resposta = () => json({ codigo: 'CONTA_BLOQUEADA', mensagem: 'x', detalhes: { recuperar: true } }, 423);
+    expect(await entrar(entrada)).toEqual({ tipo: 'bloqueada' });
     resposta = () => json({ codigo: 'VALIDACAO', mensagem: 'm', campos: { email: 'E-mail inválido' } }, 400);
     expect(await entrar(entrada)).toEqual({ tipo: 'campos', erros: { email: 'E-mail inválido' } });
     resposta = () => json({}, 500);

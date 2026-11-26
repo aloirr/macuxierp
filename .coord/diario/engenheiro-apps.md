@@ -51,3 +51,4 @@
 2026-11-25 — T-0101 — v0.3.15: cidade/UF só no bloco Dados (RD-2200) e ficha consultada sem dados (RD-2201)
 2026-11-25 — T-0106 — CNAE com descrição e nome do município na ficha; 3 estados da ficha; prévia vazia do zerar
 2026-11-25 — T-0109 — Log: legenda dos registros não enviados ao FDV e Corrigir cadastro (2b)
+2026-11-26 — T-0111 — conta bloqueada, Recuperar a senha e Conta desbloqueada na entrada

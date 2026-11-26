@@ -13,7 +13,45 @@ export const TEXTOS_LOGIN = {
   indisponivel: 'Serviço indisponível no momento. Tente de novo em instantes.',
 } as const;
 
-export type CampoLogin = 'empresa' | 'email' | 'senha';
+/** Conta bloqueada por tentativas erradas (T-0111): aviso, botão e a mensagem da tela de entrada. */
+export const TEXTOS_BLOQUEIO = {
+  titulo: 'Conta bloqueada',
+  texto: 'Você errou a senha muitas vezes. Para desbloquear, peça uma senha temporária.',
+  botao: 'Recuperar a senha',
+} as const;
+
+/** Entrou com a senha temporária (`motivo_troca: 'temporaria'` no `eu`): aviso e textos da tela de nova senha. */
+export const TEXTOS_DESBLOQUEIO = {
+  aviso: 'Conta desbloqueada.',
+  titulo: 'Crie a sua nova senha',
+  rotuloNova: 'Nova senha',
+  rotuloRepita: 'Repita a nova senha',
+  botao: 'Salvar e entrar',
+} as const;
+
+/**
+ * ÚNICO ponto que reconhece "conta bloqueada" na resposta do LOGIN (o do esqueci segue no `erroDaApi`). Hoje: 429 (sinal
+ * atual da API). Contrato proposto pelo core, ainda fora do main: erro `CONTA_BLOQUEADA` (423 sugerido, `detalhes.recuperar`).
+ */
+export function sinalDeBloqueioNaResposta(status: number, corpo: unknown): boolean {
+  if (status === 429 || status === 423) return true;
+  return typeof corpo === 'object' && corpo !== null && (corpo as { codigo?: unknown }).codigo === 'CONTA_BLOQUEADA';
+}
+
+/** Resultado do `loginUnico` que a tela trata como conta bloqueada. */
+export function contaBloqueada(r: { tipo: string }): r is { tipo: 'bloqueada' } {
+  return r.tipo === 'bloqueada';
+}
+
+/**
+ * ÚNICO ponto que decide "Conta desbloqueada." nas telas de senha: `deve_trocar_senha` com `motivo_troca: 'temporaria'`
+ * no `eu`. // T-0111: desbloqueou:true do contrato entra aqui
+ */
+export function entrouComTemporaria(eu: { deve_trocar_senha?: boolean | undefined; motivo_troca?: string | undefined } | null | undefined): boolean {
+  return eu?.deve_trocar_senha === true && eu.motivo_troca === 'temporaria';
+}
+
+export type CampoLogin ='empresa' | 'email' | 'senha';
 export type ErrosLogin = Partial<Record<CampoLogin, string>>;
 export type DadosLogin = Partial<Record<CampoLogin, string>>;
 

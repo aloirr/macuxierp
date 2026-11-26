@@ -1,12 +1,16 @@
-import { MENSAGEM_ESQUECI_NEUTRA, textoMuitasTentativas } from '@macuxierp/platform-sdk';
+import { textoMuitasTentativas } from '@macuxierp/platform-sdk';
 import { erroDaApi, type ErrosLogin } from './login-regras';
 
 /** "Esqueci a senha" na tela única (RN-CORE-13). Pura: serve ao cliente (tipos e textos) e ao servidor (`interpretarEsqueci`). */
 export const TEXTOS_ESQUECI = {
+  /** Texto do link na tela de entrada. */
   titulo: 'Esqueci a senha',
+  /** Título (h1) e rótulo do painel aberto (T-0111): "Recuperar a senha". */
+  tituloPainel: 'Recuperar a senha',
   botao: 'Enviar senha temporária',
-  voltar: 'Voltar ao login',
-  confirmacao: MENSAGEM_ESQUECI_NEUTRA,
+  voltar: 'Voltar para entrar',
+  /** Tela da decisão do Alexandre (T-0111); a resposta 202 da API segue neutra (`MENSAGEM_ESQUECI_NEUTRA`). */
+  confirmacao: 'Se os dados estiverem certos, a senha temporária chega no seu e-mail em instantes. Ela vale 72 horas e desbloqueia a conta.',
   erroGenerico: 'Não foi possível enviar agora. Tente de novo.',
 } as const;
 

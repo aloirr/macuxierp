@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { MENSAGEM_ESQUECI_NEUTRA } from '@macuxierp/platform-sdk';
 import { ComEsqueciSenha, PainelEsqueciVisao, estadoDe } from './esqueci-senha';
 import { FormularioLogin } from '@/app/login/formulario';
 import { validarCampos } from '@/lib/login-regras';
@@ -12,13 +11,13 @@ vi.mock('@/app/login/esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 const form = { fase: 'form', erros: {} } as const;
 
 describe('painel Esqueci a senha (RN-CORE-13)', () => {
-  it('confirmação neutra literal do SDK, com role=status, sem formulário', () => {
+  it('confirmação (T-0111) neutra, em aviso verde com role=status, sem formulário e com "Voltar para entrar"', () => {
     const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'ok' })} />);
     expect(h).toContain('role="status"');
-    expect(h).toContain(MENSAGEM_ESQUECI_NEUTRA);
-    expect(h).toContain('Ela vale por 72 horas.');
+    expect(h).toContain('aviso-sucesso');
+    expect(h).toContain('Se os dados estiverem certos, a senha temporária chega no seu e-mail em instantes. Ela vale 72 horas e desbloqueia a conta.');
     expect(h).not.toContain('<form');
-    expect(h).toContain('Voltar ao login');
+    expect(h).toContain('Voltar para entrar');
   });
   it('limite: mostra o texto da API e mantém o formulário', () => {
     const h = renderToStaticMarkup(<PainelEsqueciVisao estado={estadoDe({ tipo: 'limite', texto: 'Muitas tentativas. Tente de novo em 3 minutos.' })} />);
@@ -52,14 +51,14 @@ describe('título único (h1) por estado', () => {
   it('login fechado: um h1 "Acesse sua conta"', () => {
     expect(titulos(renderToStaticMarkup(<FormularioLogin destino="/" esqueciDisponivel />))).toEqual(['h1:Acesse sua conta']);
   });
-  it('painel aberto: um h1 "Esqueci a senha" (form e confirmação)', async () => {
+  it('painel aberto: um h1 "Recuperar a senha" (form e confirmação)', async () => {
     vi.resetModules();
     vi.doMock('react', async (orig) => {
       const r = await orig<typeof import('react')>();
       return { ...r, default: r, useState: ((i: unknown) => (i === false ? [true, () => {}] : r.useState(i))) as typeof r.useState };
     });
     const { FormularioLogin: F } = await import('@/app/login/formulario');
-    expect(titulos(renderToStaticMarkup(<F destino="/" esqueciDisponivel />))).toContain('h1:Esqueci a senha');
+    expect(titulos(renderToStaticMarkup(<F destino="/" esqueciDisponivel />))).toContain('h1:Recuperar a senha');
     vi.doUnmock('react');
   });
 });
