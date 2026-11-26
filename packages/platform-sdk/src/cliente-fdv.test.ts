@@ -147,5 +147,8 @@ describe('MENSAGENS_RECUSA_PRE_CADASTRO_FDV (T-0110)', () => {
     }
     expect(Object.isFrozen(MENSAGENS_RECUSA_PRE_CADASTRO_FDV)).toBe(true);
     expect(sdk.MENSAGENS_RECUSA_PRE_CADASTRO_FDV).toBe(MENSAGENS_RECUSA_PRE_CADASTRO_FDV);
+    // RN-INF-09: o texto leva o operador do FDV ao Código ERP do usuário, em Usuários
+    expect(MENSAGENS_RECUSA_PRE_CADASTRO_FDV.vendedor_fdv_nao_encontrado).toBe('Vendedor não encontrado no ERP. Confira o Código ERP do usuário em Usuários, no FDV, ou cadastre o vendedor no ERP.');
+    expect(MENSAGENS_RECUSA_PRE_CADASTRO_FDV.vendedor_fdv_inativo).toBe('Vendedor inativo no ERP. Reative o vendedor no ERP ou corrija o Código ERP do usuário em Usuários, no FDV.');
   });
 });
