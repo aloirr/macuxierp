@@ -468,6 +468,43 @@ describe('T-0012 — dublê do Hub: erro por linha e upsert', () => {
     ]);
   });
 
+  it('T-0108: contrato v2 do prazo (ADR 0072 do FDV): aceito só no prazo_pagamento, com descrição e prazo médio obrigatórios e o médio entre as parcelas', async () => {
+    const prazo = (id: string, extra: Record<string, unknown> = {}) => ({
+      external_id: id,
+      alterado_em: T(0),
+      forma_external_id: 'f1',
+      codigo: id,
+      descricao: `Prazo ${id}`,
+      parcelas_dias: [30, 45],
+      prazo_medio_dias: 38,
+      ...extra,
+    });
+    await enviarEConcluir(
+      env('forma_pagamento', [{ external_id: 'f1', alterado_em: T(0), codigo: 'BOL', nome: 'Boleto' }]),
+    );
+    const r = await enviarEConcluir({
+      ...env('prazo_pagamento', [
+        prazo('ok'),
+        prazo('sem-medio', { prazo_medio_dias: undefined }),
+        prazo('sem-descricao', { descricao: '' }),
+        prazo('decresce', { parcelas_dias: [45, 30] }),
+        prazo('fora', { prazo_medio_dias: 60 }),
+      ]),
+      versao_contrato: 'v2',
+    });
+    expect(r.contagens).toMatchObject({ novas: 1, com_erro: 4 });
+    expect(r.erros.map((e) => [e.external_id, e.codigo, e.campo])).toEqual([
+      ['sem-medio', 'campo_obrigatorio', 'prazo_medio_dias'],
+      ['sem-descricao', 'campo_obrigatorio', 'descricao'],
+      ['decresce', 'registro_invalido', 'parcelas_dias'],
+      ['fora', 'registro_invalido', 'prazo_medio_dias'],
+    ]);
+    expect(duble.registro('tenant-a', 'prazo_pagamento', 'ok')).toMatchObject({ prazo_medio_dias: 38 });
+    // na v1 o prazo médio ausente continua aceito
+    const v1 = await enviarEConcluir(env('prazo_pagamento', [prazo('v1-sem-medio', { prazo_medio_dias: undefined })]));
+    expect(v1.contagens).toMatchObject({ novas: 1, com_erro: 0 });
+  });
+
   it('upsert monotônico: inalterada (mesmo conteúdo), atualizada (mais nova), obsoleta (mais velha); duplicada no lote conta uma vez', async () => {
     await enviarEConcluir(env('forma_pagamento', [forma('f1', 10)]));
     const r = await enviarEConcluir(
