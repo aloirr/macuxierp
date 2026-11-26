@@ -60,6 +60,19 @@ describe.skipIf(!PG_DISPONIVEL)('completarPrazosMedios (T-0108, decisões 14 A e
     expect([await medio(a), await medio(digitado), await medio(excluida)]).toEqual([38, 0, null]);
   }, 120_000);
 
+  it('RN-CAD-15 (decisão 14 A): sem parcelas continua null e não conta (o banco já recusa parcelas vazias; a rotina também as ignora)', async () => {
+    const t = await criarTenant(efemero.admin, 'completar-sem-parcela', ['cadastros']);
+    await expect(inserir(t, 'S0', [])).rejects.toThrow(); // CHECK cardinality(prazos_dias) >= 1
+    const ok = await inserir(t, 'S1', [30]);
+    // condição fictícia sem parcelas devolvida pela consulta: continua sem prazo e não é gravada nem contada
+    const semParcelas = { id: '00000000-0000-4000-8000-000000000000', prazos_dias: [], prazo_medio_dias: null };
+    const repos = (tx: Transacao) => { const r = repositoriosSql(tx); return { ...r, carga: { ...r.carga, condicoesAtivasSemPrazoMedio: async () => [semParcelas, ...(await r.carga.condicoesAtivasSemPrazoMedio())] } } as typeof r; };
+    const comFalsa = completarPrazosMedios({ repositorios: repos, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
+    expect(await app.comTenant(t, (tx) => comFalsa(tx, t))).toEqual({ completadas: 1 });
+    expect(await medio(ok)).toBe(30);
+    expect(await eventos(t)).toHaveLength(1);
+  }, 120_000);
+
   it('T-0108: evento igual ao do PATCH (tipo e campos do payload), um por condição completada', async () => {
     const t = await criarTenant(efemero.admin, 'completar-evento', ['cadastros']);
     const id = await inserir(t, 'E1', [30, 60]);
