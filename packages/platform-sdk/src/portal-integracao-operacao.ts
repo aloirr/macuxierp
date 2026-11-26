@@ -11,6 +11,8 @@
  * empresa corrigir. Nenhum dos dois leva a mensagem crua do Hub: o texto sai do catálogo pelo código.
  */
 import { z } from 'zod';
+import { ClienteRecebidoFdv } from './cliente-fdv';
+import { CampoErroFdv, CodigoErroFdv } from './erros-fdv';
 import { ExternalId } from './hub-v1';
 import { Instante } from './portal-config';
 import { ConectorIdFdv, EntidadeEnvioFdv, MotivoFalhaEnvioFdv } from './portal-integracao';
@@ -104,6 +106,8 @@ export type RespostaReprocessarFdv = z.infer<typeof RespostaReprocessarFdv>;
 
 /** Quantos envios recentes o Log mostra e o teto de erros na resposta (o CSV do BKO leva todos). */
 export const LIMITE_ENVIOS_LOG_FDV = 20;
+/** Recebidos do FDV no Log de clientes do BKO (T-0110): os mais recentes; a lista completa fica na seção dos recebidos. */
+export const LIMITE_RECEBIDOS_LOG_FDV = 50;
 export const LIMITE_ERROS_LOG_FDV = 200;
 
 /** O que gerou o envio: o ciclo normal do conector, o Reprocessar ou a inativação do Zerar. */
@@ -154,12 +158,8 @@ const LogCadastroFdvBase = z.object({
   motivo: MotivoFalhaEnvioFdv.nullable(),
 });
 
-/**
- * Código e campo do erro por linha e versão do conector: o SDK passa a ser a fonte, e `CodigoErro`, `CampoErro` e o
- * `versao_conector` de `modules/integracao-fdv/contracts` viram reexport (molde do `LIMITE_REGISTROS_LOTE_FDV`).
- */
-export const CodigoErroFdv = z.string().regex(/^[a-z][a-z0-9_]{0,59}$/);
-export const CampoErroFdv = z.string().regex(/^[A-Za-z0-9_.[\]]{1,80}$/).nullable();
+/** Reexport da folha `erros-fdv.ts` (sem ciclo com `cliente-fdv.ts`). */
+export { CampoErroFdv, CodigoErroFdv } from './erros-fdv';
 
 /**
  * `GET /v1/plataforma/empresas/:id/integracao-fdv/entidades/:entidade/log` (ação `plataforma.integracao_fdv.ver`): SÓ
@@ -197,7 +197,22 @@ export const LogCadastroFdvTenant = LogCadastroFdvBase.extend({
       }),
     )
     .max(LIMITE_ERROS_LOG_FDV),
-}).refine((l) => l.erros.length <= l.total_erros, { path: ['erros'], message: 'Os itens não passam do total' });
+  /**
+   * T-0110: os pré-cadastros recebidos do FDV (só no Log de `cliente`), os mais recentes, até `LIMITE_RECEBIDOS_LOG_FDV`;
+   * documento só mascarado (LGPD, `ClienteRecebidoFdv`). Opcionais nesta versão (expand): ausente = nenhum recebido.
+   */
+  recebidos: z.array(ClienteRecebidoFdv).max(LIMITE_RECEBIDOS_LOG_FDV).optional(),
+  total_recebidos: Contagem.optional(),
+}).superRefine((l, ctx) => {
+  if (l.erros.length > l.total_erros) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['erros'], message: 'Os itens não passam do total' });
+  const recebidos = l.recebidos ?? [];
+  if (recebidos.length > (l.total_recebidos ?? 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['recebidos'], message: 'Os recebidos não passam do total' });
+  }
+  if (l.entidade !== 'cliente' && (recebidos.length > 0 || (l.total_recebidos ?? 0) > 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['recebidos'], message: 'Recebidos só no Log de cliente' });
+  }
+});
 export type LogCadastroFdvTenant = z.infer<typeof LogCadastroFdvTenant>;
 
 /** Caminhos do BKO, relativos a `/v1` (fonte única para o módulo, a apps/web e os testes de rota). */
