@@ -437,9 +437,9 @@ Migração: `db/migrations/0065_zerar_pedidos_reenvio_fdv_a_faturar.sql`; testes
 
 ## CNAE oficial e nomes para a ficha (T-0106, migração 0066)
 A ficha da 0063 guarda só códigos (`cnae_principal`, `cnae_secundarios`, `municipio_ibge`); a tela precisa do texto.
-- **`cadastros.cnae`** no molde das oficiais da 0005, com a carga versionada `cnae` (CNAE 2.3, subclasses, IBGE/CONCLA; fonte, versão e sha256 no `fontes.json`). Seção, divisão, grupo e classe vão junto, porque vêm de graça na fonte e o CHECK da hierarquia pega CSV trocado.
+- **`cadastros.cnae`** no molde das oficiais da 0005, com a carga versionada `cnae` (CNAE 2.3, IBGE/CONCLA). A hierarquia vem junto porque vem de graça na fonte e pega CSV trocado.
 - **Funções, não chave nova no `empresa_ler`:** a 0063 não muda (o contrato `ficha` fica igual), e o core pede o texto só dos códigos que exibe, inclusive os ainda não gravados (a prévia da consulta à Receita). A do município vem junto porque o problema é o mesmo.
-- **Sem `exigir_superadmin`:** só leem tabela oficial, sem dado de tenant; o que restringe é o EXECUTE só do `macuxierp_config`, como na 0063. Código encerrado por versão nova continua com o texto (a ficha antiga ainda o mostra); o vigente tem preferência.
+- **Sem `exigir_superadmin`:** só leem tabela oficial, sem dado de tenant. Código encerrado por versão nova continua com o texto (a ficha antiga ainda o mostra); o vigente tem preferência.
 
 Migração: `db/migrations/0066_cadastros_cnae_oficial.sql`; testes: `db/testes/cnae-oficial-0066.db.test.ts` e `db/testes/oficiais.db.test.ts`.
 
@@ -455,6 +455,14 @@ RN-CAD-15 com as decisões 14 A e 17 B do Alexandre (25/11): o prazo médio vazi
 - **UPDATE por coluna, não na tabela:** o worker só lia a condição (0004). O grant por coluna deixa todo o resto do cadastro fora do alcance dele (42501), e a `isolamento_tenant` sem `TO` vale para o worker.
 
 Migração: `db/migrations/0068_cadastros_condicao_prazo_calculado.sql`; testes: `db/testes/condicao-prazo-calculado-0068.db.test.ts`.
+
+## Redundâncias da 0066 (T-0106, migração 0070)
+RD-2132 a 2137 do corretor. A 0066 já foi aplicada e não muda: a 0070 só faz CREATE OR REPLACE (o ACL fica) e COMMENT.
+- **Interna `plataforma.codigos_pedidos`:** a trava de 1000 (22023), a ordem recebida, os dígitos e a primeira ocorrência saem das duas leituras da ficha para um lugar só, sem EXECUTE para nenhum papel. O contrato comum fica no COMMENT dela; o de cada leitura diz só o retorno.
+- **`receita_digitos(valor, '^[0-9]{7}$')`:** subclasse CNAE e município do IBGE têm 7 dígitos (CHECK das 0005 e 0066), então o código de outro tamanho, que antes não achava linha, agora sai antes; o resultado é o mesmo.
+- **Mesma assinatura, retorno, ordem e SQLSTATE:** o core chama as duas sem mudança. Só o texto do 22023 passa a ser um só ("lista acima de 1000 códigos"); o core não repassa o texto do banco.
+
+Migração: `db/migrations/0070_plataforma_codigos_pedidos.sql`; testes: `db/testes/codigos-pedidos-0070.db.test.ts` (o antes e o depois da 0070 nas mesmas entradas) e `db/testes/cnae-oficial-0066.db.test.ts`.
 
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.

@@ -21,7 +21,7 @@ Fonte oficial, URL, data de referência, sha256 e nº de registros de cada carga
 | `cst-tradicionais` | ICMS transcrito; o resto de `@br-validators/core` |
 | `cst-ibs-cbs` | pacote npm `@sinete/ibs-cbs-dados` 2026.9.3 |
 | `classificacao-tributaria` | `@sinete/ibs-cbs-dados` |
-| `cnae` | **fonte oficial**: JSON da API do IBGE (`/api/v2/cnae/subclasses`) baixado em 25/11/2026 pelo gerente-projetos numa máquina com acesso e trazido por git (o sha256 do JSON está na `observacao` da carga); convertido para CSV sem mudar texto, salvo 4 descrições com espaço repetido ou no fim, colapsado |
+| `cnae` | **fonte oficial**: API do IBGE, baixada pelo gerente-projetos numa máquina com acesso e trazida por git |
 
 **Por que por cópia:** a sessão da nuvem não alcança os sites oficiais (o proxy recusa IBGE, Siscomex e Portal da NF-e; ADR 0002). Os arquivos foram lidos como **dados** (JSON e CSV, sem executar código dos pacotes), convertidos para CSV e conferidos (formato dos códigos, contagens, sem código repetido e o dígito verificador do IBGE, com só as 9 exceções conhecidas do próprio IBGE).
 
