@@ -368,11 +368,20 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     const sem = (await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;;BOLETO;Boleto;FP-B;sim;Boleto 30/45') })).corpo as RelatorioCarga;
     expect(sem.erros.filter((e) => e.arquivo === ARQ)).toEqual([]);
     expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 45], prazo_medio_dias: 38, prazo_medio_calculado: true });
-    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;7;BOLETO;Boleto;FP-B;sim;Boleto 30/45') });
-    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 7, prazo_medio_calculado: false });
+    await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/45;40;BOLETO;Boleto;FP-B;sim;Boleto 30/45') });
+    expect(conds(t)[0]).toMatchObject({ prazo_medio_dias: 40, prazo_medio_calculado: false });
     // decisão 17 B: a origem manda; célula vazia com parcelas na linha é cálculo, com a marca true, mesmo sobre um digitado
     await t.carregar('gravar', { arquivos: lote('Z-S;CS;30/90;;BOLETO;Boleto;FP-B;sim;Boleto 30 dias') });
     expect(conds(t)[0]).toMatchObject({ prazos_dias: [30, 90], prazo_medio_dias: 60, prazo_medio_calculado: true, descricao: 'Boleto 30 dias' });
+  });
+
+  it('RN-CAD-15 (T-0112): na carga, a linha com o prazo médio fora da faixa é recusada por linha e as demais seguem', async () => {
+    const t = montar();
+    const rel = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;27;BOLETO;Boleto;FP-B;sim;Fora\nZ-B;CB;28/56;42;BOLETO;Boleto;FP-B;sim;Dentro\nZ-C;CC;28/56;57;BOLETO;Boleto;FP-B;sim;Fora 2') })).corpo as RelatorioCarga;
+    const e = rel.erros.filter((x) => x.arquivo === ARQ);
+    expect(e).toHaveLength(2);
+    expect(e).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias', linha: 2 }), expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias', linha: 4 })]);
+    expect(conds(t).map((c) => c.codigo)).toEqual(['CB']);
   });
 
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {

@@ -29,3 +29,4 @@
 2026-11-24 — T-0088 — lote C: limite de crédito fora do corpo do faturista (criação e PATCH); merge do main preservando prazos (#538)
 2026-11-24 — T-0085 — 365/24 só na entrada; entidade/evento @1 (condição e cliente) aceitam legado 999 dias/36 parcelas
 2026-11-24 — T-0097 — fração só em KG e M (RN-CAD-17): quantidadeAceitaFracao/validarFracaoDaQuantidade em contracts; validação no fator da unidade, no movimento de estoque e na carga de estoque
+2026-11-26 — T-0112 — RN-CAD-15: prazo médio digitado dentro da faixa das parcelas (domain, POST/PATCH 422, carga, web)

@@ -467,10 +467,11 @@ export function criarRotas(deps: Dependencias): RotaModulo[] {
     entidade: 'condicao_pagamento', auditado: false, repo: (r) => r.condicoesPagamento, emitir: emitirCom((_r, x: Entidade) => eventoSimples('cadastros.condicao_pagamento.alterada@1', x)),
     // RN-CAD-15: os dias são sempre digitados; `parcelas_cartao` (legado) é derivada dos prazos. O PATCH valida o cadastro MESCLADO; prazo médio: `completarPrazoMedio`.
     completar: (corpo, antes) => completarPrazoMedio(completarParcelasCartao(corpo as never, antes as never) as Dict, antes as never),
-    validar: async (_r, c) => validarCondicaoPagamento({
+    // T-0112: inativar (PATCH só com `inativo`, que o schema nem leva adiante) nunca é recusado, mesmo com o prazo gravado fora da faixa; nada é corrigido sozinho.
+    validar: async (_r, c, parcial) => (parcial !== null && Object.keys(parcial).every((k) => k === 'inativo') ? [] : validarCondicaoPagamento({
       forma_tpag: c.forma_tpag as string, prazos_dias: c.prazos_dias as number[], parcelas_cartao: (c.parcelas_cartao ?? null) as number | null,
       prazo_medio_dias: (c.prazo_medio_dias ?? null) as number | null, descricao: c.descricao as string,
-    }),
+    })),
   }));
   // RN-CAD-09: comando do administrador (por tenant): desativa as condições ligadas a forma recusada e trata o cartão sem parcelas (preenche ou desativa). Idempotente.
   rotas.push(definirRota({

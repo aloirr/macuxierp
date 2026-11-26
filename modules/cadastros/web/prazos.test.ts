@@ -57,9 +57,15 @@ describe('formulário do prazo (RN-CAD-15)', () => {
     // digitado segue validado de 0 a 365; 0 é um valor, não vazio
     expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '366', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazo_medio_dias');
     expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: 'abc', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazo_medio_dias');
-    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '0', prazo_medio_sugerido: '' }).corpo).toMatchObject({ prazo_medio_dias: 0 });
+    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['0'], prazo_medio_dias: '0', prazo_medio_sugerido: '' }).corpo).toMatchObject({ prazo_medio_dias: 0 });
     // à vista continua 0
     expect(montarPrazo({ codigo: 'AV', descricao: 'AV', forma_tpag: '01', parcelas: ['0'], prazo_medio_dias: '5', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazo_medio_dias');
+  });
+  it('RN-CAD-15 (T-0112): montarPrazo recusa o prazo médio fora da faixa das parcelas antes do envio, com a mensagem do domain', () => {
+    const f = { codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['28', '56'], prazo_medio_dias: '57', prazo_medio_sugerido: '' };
+    expect(montarPrazo(f).erros).toEqual({ prazo_medio_dias: 'O prazo médio precisa ficar entre a menor e a maior parcela.' });
+    expect(montarPrazo({ ...f, prazo_medio_dias: '27' }).corpo).toBeUndefined();
+    expect(montarPrazo({ ...f, prazo_medio_dias: '56' }).corpo).toMatchObject({ prazo_medio_dias: 56 });
   });
   it('RN-CAD-15: o legado abre no formulário com o prazo médio vazio, para completar', () => {
     expect(formularioDoPrazo(p('LEG', '15', [15, 30], null))).toMatchObject({ parcelas: ['15', '30'], prazo_medio_dias: '' });
@@ -82,7 +88,7 @@ describe('T-0108: a tela não converte o prazo médio calculado em digitado (dec
     expect(r.corpo).toEqual({ prazos_dias: [30, 90] });
   });
   it('RN-CAD-15: no PATCH, digitar um número vira digitado', () => {
-    expect(corpoDoPatchDoPrazo({ ...formularioDoPrazo(calc), prazo_medio_dias: '50' }, calc).corpo).toEqual({ prazo_medio_dias: 50 });
+    expect(corpoDoPatchDoPrazo({ ...formularioDoPrazo(calc), prazo_medio_dias: '40' }, calc).corpo).toEqual({ prazo_medio_dias: 40 });
   });
   it('RN-CAD-15: o digitado abre no campo e apagá-lo manda null', () => {
     const f = formularioDoPrazo(dig);

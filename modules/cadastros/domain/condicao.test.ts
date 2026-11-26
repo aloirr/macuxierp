@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FORMAS_A_VISTA, MAX_DIAS } from '../contracts';
 import {
-  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_A_VISTA, completarPrazoMedio, derivarParcelasCartao, prazoMedioEfetivo, validarCondicaoPagamento as v,
+  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_FAIXA, completarPrazoMedio, derivarParcelasCartao, prazoMedioEfetivo, validarCondicaoPagamento as v,
 } from './condicao';
 
 const rn = (m: string, campo: string, r = 'RN-CAD-09') => [{ rn: r, campo, mensagem: m }];
@@ -19,14 +19,28 @@ describe('condição de pagamento', () => {
     expect(v({ forma_tpag: '01', prazos_dias: [], prazo_medio_dias: 0 })).toHaveLength(1);
   });
   it('RN-CAD-15: à vista com prazo médio diferente de 0 é recusado no campo prazo_medio_dias', () => {
-    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 5 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_A_VISTA, 'prazo_medio_dias', 'RN-CAD-15'));
+    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 5 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_FAIXA, 'prazo_medio_dias', 'RN-CAD-15'));
+  });
+  it('RN-CAD-15 (T-0112): prazo médio digitado fica entre a menor e a maior parcela, inclusive', () => {
+    for (const m of [28, 42, 56]) expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: m })).toEqual([]);
+    for (const m of [27, 57]) expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: m })).toEqual(rn('O prazo médio precisa ficar entre a menor e a maior parcela.', 'prazo_medio_dias', 'RN-CAD-15'));
+    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 0 })).toEqual([]);
+    expect(v({ forma_tpag: '01', prazos_dias: [0], prazo_medio_dias: 1 })).toEqual(rn(MOTIVO_PRAZO_MEDIO_FAIXA, 'prazo_medio_dias', 'RN-CAD-15'));
+  });
+  it('RN-CAD-15 (T-0112): vazio continua calculado e o calculado fica dentro da faixa', () => {
+    expect(v({ forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: null })).toEqual([]);
+    for (const p of [[28, 56], [1, 2], [0, 365], [7, 21, 45]]) {
+      const e = prazoMedioEfetivo(p) as number;
+      expect(e >= Math.min(...p) && e <= Math.max(...p)).toBe(true);
+      expect(v({ forma_tpag: '15', prazos_dias: p, prazo_medio_dias: e })).toEqual([]);
+    }
   });
   it('RN-CAD-15 (decisão 14 A): prazo médio vazio (ausente ou nulo) não é erro; o ERP preenche; fora de 0..365 recusa', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30] })).toEqual([]);
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: null })).toEqual([]);
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: MAX_DIAS + 1 })).toEqual(rn(MOTIVO_PRAZO_MEDIO, 'prazo_medio_dias', 'RN-CAD-15'));
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: -1 })).toHaveLength(1);
-    expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 365 })).toEqual([]);
+    expect(v({ forma_tpag: '15', prazos_dias: [365], prazo_medio_dias: 365 })).toEqual([]);
   });
   it('RN-CAD-15: descrição em branco é recusada no campo descricao', () => {
     expect(v({ forma_tpag: '15', prazos_dias: [30], prazo_medio_dias: 30, descricao: '  ' })).toEqual(rn(MOTIVO_DESCRICAO, 'descricao', 'RN-CAD-15'));
