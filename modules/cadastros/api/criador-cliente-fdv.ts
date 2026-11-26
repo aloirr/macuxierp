@@ -5,7 +5,7 @@
  * - A regra é do domain (`validarPreCadastroFdv`, todas as recusas juntas); aqui só as consultas e a gravação.
  * - Recusado: nada é gravado (nem evento nem auditoria); `motivo` = mensagens do catálogo, sem o valor recusado.
  * - Aceito: passa pelas mesmas regras do POST `/v1/cadastros/clientes` (`validarClienteNovo`), grava pelo mesmo repositório e emite
- *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira segue `vincularVendedorFdv` (RN-INT-23). Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
+ *   o evento `cadastros.cliente.alterado@1`, com limite de crédito 0 e sem condição; a carteira segue `vincularVendedorFdv` (RN-INF-09). Auditoria `cliente.criar` com `origem: 'fdv_pre_cadastro'`, sem dado
  *   pessoal. O `external_id` devolvido é a chave do Hub do cliente (ADR 0010: `external_id ?? id`), nunca o `codigo_fdv`.
  * - Corrida no documento (índice único): vira `documento_ja_cadastrado`, sem abortar a transação (SAVEPOINT).
  */
@@ -83,7 +83,7 @@ export function criarCriadorClienteFdv(d: DependenciasCriadorClienteFdv): Criado
       const conferencia = vendedorExterno !== null && d.consultaVendedorFdv ? await d.consultaVendedorFdv.vendedorPorExternalId(tx, tenant, vendedorExterno) : undefined;
       const vendedorErp = conferencia?.vendedor_id ? await r.vendedores.obter(conferencia.vendedor_id) : null;
       const vinculo = vincularVendedorFdv(vendedorExterno, conferencia, vendedorErp);
-      if (vinculo.resultado === 'recusa') return rejeitar([erroPreCadastroFdv('vendedor_external_id', vinculo.codigo)]); // RN-INT-23
+      if (vinculo.resultado === 'recusa') return rejeitar([erroPreCadastroFdv('vendedor_external_id', vinculo.codigo)]); // RN-INF-09
       const dados = ClienteDados.parse({ ...v.dados, vendedor_id: vinculo.resultado === 'vinculo' ? vinculo.vendedor_id : null });
       const violacoes = await validarClienteNovo(r, dados);
       if (violacoes.length > 0) return rejeitar(violacoes.map(erroDaViolacao));

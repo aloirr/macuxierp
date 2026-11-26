@@ -49,7 +49,7 @@ export const vendedorExternoFdv = (v: string | null | undefined): string | null 
 };
 
 /**
- * RN-INT-23 (T-0105): o pré-cadastro do FDV com vendedor inexistente ou inativo no ERP é RECUSADO e o cliente não é criado.
+ * RN-INF-09 (T-0105): o pré-cadastro do FDV com vendedor inexistente ou inativo no ERP é RECUSADO e o cliente não é criado.
  * Vendedor ativo: o cliente entra na carteira dele.
  * Sem vendedor indicado ou sem a porta do espelho ligada (`conferencia` `undefined` = não consultado): sem vínculo e sem recusa.
  * `conferencia` `null` = consultado e o espelho não conhece o vendedor.
