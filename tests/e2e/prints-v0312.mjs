@@ -8,6 +8,8 @@
  * Cada tela também é conferida contra defeito visível: 404, "Rota não encontrada", erro 5xx, texto técnico (undefined, NaN,
  * [object Object], código de erro cru) e aviso de falha de leitura. Sem Hub: nada sai para o FDV (sem worker de pé).
  *
+ * HISTÓRICO (26/11/2026, decisão do gerente): roteiro da v0.3.12, anterior ao menu "Ações" da T-0099; não roda mais na tela
+ * atual (procura Reprocessar, Zerar e Log soltos na linha) e não é atualizado. Os prints vigentes são os de prints-v0315.mjs.
  * Uso: `bash tests/e2e/rodar-prints.sh v0312 docs/testes/prints` (sobe a API e o next dev), ou à mão:
  *   node tests/e2e/prints-v0312.mjs --base http://localhost:3102 --dados <json da API> --saida <pasta raiz dos prints>
  * Grava em <saida>/I-9 e <saida>/C-5. Sai 0 se todos os passos passaram; 1 se algum falhou (lista no fim).
