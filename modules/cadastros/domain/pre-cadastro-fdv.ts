@@ -40,6 +40,8 @@ export const MENSAGENS_PRE_CADASTRO_FDV = Object.freeze({
   campo_obrigatorio: 'Campo obrigatório no endereço da NF-e.',
   tamanho_maximo: 'Texto maior que o limite do ERP.',
   filial_nao_encontrada: 'Filial não encontrada no ERP.',
+  vendedor_fdv_nao_encontrado: 'Vendedor não encontrado no ERP. Confira o código do vendedor no FDV ou cadastre o vendedor no ERP.',
+  vendedor_fdv_inativo: 'Vendedor inativo no ERP. Reative o vendedor no ERP ou troque o vendedor do cliente no FDV.',
   dado_invalido: 'Dado recusado pelas regras do cadastro do ERP.',
 });
 export type CodigoPreCadastroFdv = keyof typeof MENSAGENS_PRE_CADASTRO_FDV;

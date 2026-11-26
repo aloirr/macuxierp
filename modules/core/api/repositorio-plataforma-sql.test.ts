@@ -40,6 +40,36 @@ describe('adaptador SQL da plataforma: ficha da Receita (0063)', () => {
     const r = await repo.lerEmpresaComFicha(tx, ID);
     expect(r).toEqual({ empresa: { id: ID, nome: 'X' }, ficha: { uf: 'AM' } });
   });
+
+  it('T-0106: uma query só para as duas funções (0066) e a ficha sai com a descrição e o nome', async () => {
+    const chamadas: { sql: string; p: readonly unknown[] }[] = [];
+    const ficha = { municipio_ibge: '1302603', uf: 'AM', cnae_principal: '0111301', cnae_secundarios: ['4712100'] };
+    const tx: Transacao = {
+      consultar: (async (sql: string, p: readonly unknown[] = []) => {
+        chamadas.push({ sql, p });
+        return sql.includes('empresa_ler')
+          ? [{ e: { id: ID, nome: 'X', ficha } }]
+          : [{ c: [{ codigo: '0111301', descricao: 'CULTIVO DE ARROZ' }], m: [{ codigo: '1302603', nome: 'Manaus', uf: 'AM' }] }];
+      }) as never,
+    };
+    const lida = await repo.lerEmpresaComFicha(tx, ID);
+    expect(chamadas).toHaveLength(1); // RD-2153: ler para decidir (Revelar, /receita) não descreve
+    expect(lida?.ficha).toEqual(ficha);
+    chamadas.length = 0;
+    const r = { ficha: await repo.descreverFicha(tx, ficha as never) };
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]!.sql).toContain('plataforma.cnae_descricoes');
+    expect(chamadas[0]!.sql).toContain('plataforma.municipio_nomes');
+    expect(chamadas[0]!.p).toEqual([['0111301', '4712100'], ['1302603']]);
+    expect(r.ficha).toMatchObject({ cnae_principal: '0111301', cnae_principal_descricao: 'CULTIVO DE ARROZ', municipio_nome: 'Manaus', cnae_secundarios_descritos: [{ codigo: '4712100', descricao: null }] });
+  });
+
+  it('T-0106: sem ficha não há consulta extra; lerEmpresa também descreve a ficha do detalhe', async () => {
+    let n = 0;
+    const tx: Transacao = { consultar: (async () => (n++, [{ e: { id: ID, nome: 'X', ficha: null } }])) as never };
+    expect(await repo.lerEmpresa(tx, ID)).toEqual({ id: ID, nome: 'X', ficha: null });
+    expect(n).toBe(1);
+  });
 });
 
 describe('adaptador SQL da plataforma: empresa_criar (0037)', () => {

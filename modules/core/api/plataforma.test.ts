@@ -66,6 +66,10 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
     async lerEmpresaComFicha(_tx, id) {
       return id === empresa.id ? { empresa, ficha: op.ficha === undefined ? FICHA_ANTES : op.ficha } : null;
     },
+    async descreverFicha(_tx, ficha) {
+      chamadas.push('descrever');
+      return ficha;
+    },
     async gravarReceita(_tx, p) {
       chamadas.push('gravar');
       gravadas.push(p.ficha);
@@ -288,6 +292,7 @@ describe('T-0101: ficha da Receita e Revelar contato (ADR 0012, emenda da ficha)
       expect(t.gravadas[0]).toMatchObject({ razao_social: 'EMPRESA NOVA LTDA', cnae_principal: '4711302', regime_receita: 'simples', email: 'contato@nova.com.br', telefone: '9232221234', fonte: 'brasilapi' });
       expect(r.corpo).toMatchObject({ estado: 'ok', campos_alterados: ['nome_fantasia'], ficha: { email_mascarado: 'co****@teste.com.br' } });
       expect(r.cabecalhos).toEqual(SEM_CACHE);
+      expect(t.chamadas).not.toContain('descrever'); // RD-2153: a gravação já devolve a ficha descrita; nada a mais
       expect(JSON.stringify(r.corpo)).not.toContain('contato@nova.com.br');
       expect(t.plugin.rotas.find((x) => x.caminho === '/empresas/:id/receita')?.idempotencia).toBeUndefined();
     });
@@ -298,7 +303,8 @@ describe('T-0101: ficha da Receita e Revelar contato (ADR 0012, emenda da ficha)
       expect(r.corpo).toMatchObject({ estado: 'erro', motivo: 'fonte_indisponivel', ficha: FICHA_ANTES });
       expect(r.cabecalhos).toEqual(SEM_CACHE);
       expect(t.chamadas).not.toContain('gravar');
-      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`]);
+      expect(t.chamadas).toContain('descrever'); // RD-2153: só o ramo de falha descreve a ficha anterior
+      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`, 'plataforma']);
     });
 
     it('RF-CAD-02: CNPJ da empresa inválido para a fonte volta como cnpj_invalido, com texto de ação, sem gravar', async () => {

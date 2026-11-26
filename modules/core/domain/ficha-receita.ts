@@ -6,7 +6,7 @@
  */
 import { cnpjValido, EmailUsuario, normalizarDocumento } from '@macuxierp/platform-sdk';
 import { FichaReceitaPlana, FonteFichaReceita, FORMATO_FICHA } from '../contracts';
-import type { MotivoFalhaReceita } from '../contracts';
+import type { CnaeDescrito, FichaReceitaPlanaMascarada, MotivoFalhaReceita } from '../contracts';
 
 /** O que o core lê da `SugestaoCnpj` dos cadastros (subconjunto estrutural; os nomes são os da sugestão). */
 export interface SugestaoReceita {
@@ -141,4 +141,30 @@ export function prepararFichaDaConsulta(p: {
   };
   // Campo acima do máximo do contrato recusa a atualização inteira: nada é cortado em silêncio (o motivo não leva o valor).
   return FichaReceitaPlana.safeParse(ficha).success ? { ok: true, ficha } : { ok: false, motivo: 'campo_acima_do_limite' };
+}
+
+/** Códigos que a ficha mascarada precisa descrever (0066): CNAEs (principal e secundários) e o município, sem repetidos, na ordem. */
+export function codigosParaDescrever(f: Pick<FichaReceitaPlanaMascarada, 'cnae_principal' | 'cnae_secundarios' | 'municipio_ibge'>): { cnaes: string[]; municipios: string[] } {
+  const cnaes = [...new Set([...(f.cnae_principal ? [f.cnae_principal] : []), ...(f.cnae_secundarios ?? [])])];
+  return { cnaes, municipios: f.municipio_ibge ? [f.municipio_ibge] : [] };
+}
+
+/**
+ * Junta a descrição do CNAE e o nome do município (`plataforma.cnae_descricoes` e `plataforma.municipio_nomes`, 0066) à ficha
+ * mascarada. Código fora da tabela fica com `descricao`/`municipio_nome` nulos. A ficha gravada não muda; os campos antigos seguem iguais.
+ */
+export function descreverFicha(
+  f: FichaReceitaPlanaMascarada,
+  cnaes: readonly CnaeDescrito[] | null | undefined,
+  municipios: readonly { codigo: string; nome: string | null }[] | null | undefined,
+): FichaReceitaPlanaMascarada {
+  const descricao = new Map((cnaes ?? []).map((c) => [c.codigo, c.descricao ?? null]));
+  const nome = new Map((municipios ?? []).map((m) => [m.codigo, m.nome ?? null]));
+  const sec = f.cnae_secundarios ?? [];
+  return {
+    ...f,
+    municipio_nome: f.municipio_ibge ? (nome.get(f.municipio_ibge) ?? null) : null,
+    cnae_principal_descricao: f.cnae_principal ? (descricao.get(f.cnae_principal) ?? null) : null,
+    cnae_secundarios_descritos: sec.length > 0 ? sec.map((codigo) => ({ codigo, descricao: descricao.get(codigo) ?? null })) : null,
+  };
 }

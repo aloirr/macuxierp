@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FichaReceitaPlana, MotivoFalhaReceita } from '../contracts';
-import { mensagemDaFalhaReceita, prepararFichaDaConsulta, regimeDaOpcao, type ResultadoConsultaReceita, type SugestaoReceita } from './ficha-receita';
+import { FichaReceitaPlana, MotivoFalhaReceita, type FichaReceitaPlanaMascarada } from '../contracts';
+import { codigosParaDescrever, descreverFicha, mensagemDaFalhaReceita, prepararFichaDaConsulta, regimeDaOpcao, type ResultadoConsultaReceita, type SugestaoReceita } from './ficha-receita';
 
 const CNPJ = '11222333000181';
 const AGORA = '2026-11-24T12:00:00.000Z';
@@ -99,5 +99,32 @@ describe('ficha da Receita: falhas não gravam (a ficha anterior fica)', () => {
   it('RF-CAD-02: nenhum motivo carrega valor da ficha', () => {
     const r = preparar(ok(sugestao({ cnpj: '04252011000110' })));
     expect(JSON.stringify(r)).not.toContain('EMPRESA TESTE');
+  });
+});
+
+describe('ficha da Receita: descrições do CNAE e nome do município (T-0106, 0066)', () => {
+  const base = {
+    municipio_ibge: '1302603', uf: 'AM', cnae_principal: '0111301', cnae_secundarios: ['4712100', '9999999'],
+  } as FichaReceitaPlanaMascarada;
+  const cnaes = [{ codigo: '0111301', descricao: 'CULTIVO DE ARROZ' }, { codigo: '4712100', descricao: 'COMÉRCIO VAREJISTA' }];
+  const municipios = [{ codigo: '1302603', nome: 'Manaus', uf: 'AM' }];
+
+  it('RF-CAD-02: códigos para consultar são o principal e os secundários, sem repetidos, e o município', () => {
+    expect(codigosParaDescrever({ ...base, cnae_secundarios: ['4712100', '0111301', '4712100'] })).toEqual({ cnaes: ['0111301', '4712100'], municipios: ['1302603'] });
+    expect(codigosParaDescrever({ ...base, cnae_principal: null, cnae_secundarios: null, municipio_ibge: null })).toEqual({ cnaes: [], municipios: [] });
+  });
+  it('RF-CAD-02: junta descrição do principal, dos secundários (mesma ordem) e nome do município', () => {
+    const f = descreverFicha(base, cnaes, municipios);
+    expect(f.cnae_principal).toBe('0111301');
+    expect(f.cnae_principal_descricao).toBe('CULTIVO DE ARROZ');
+    expect(f.cnae_secundarios_descritos).toEqual([{ codigo: '4712100', descricao: 'COMÉRCIO VAREJISTA' }, { codigo: '9999999', descricao: null }]);
+    expect(f.municipio_nome).toBe('Manaus');
+  });
+  it('RF-CAD-02: CNAE e município desconhecidos ficam com descrição e nome nulos; sem secundários, a lista é nula', () => {
+    const f = descreverFicha({ ...base, cnae_secundarios: [], municipio_ibge: '9999999' }, [], []);
+    expect(f).toMatchObject({ cnae_principal_descricao: null, cnae_secundarios_descritos: null, municipio_nome: null });
+  });
+  it('RF-CAD-02: resposta ausente do banco (null/undefined) vale como lista vazia', () => {
+    expect(descreverFicha(base, null, undefined).cnae_principal_descricao).toBeNull();
   });
 });

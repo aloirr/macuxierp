@@ -28,17 +28,15 @@ import {
   tabelasDos,
 } from './apoio.ts';
 import {
-  chaveAcesso,
-  cnfDe,
   cnfDoTenant,
   fixtureFaturamento,
   fixtureIntegracao,
   fixtureModulos,
   fixturePedido,
   fixturePlataforma,
-  hashSql,
   novoTenant,
   sqlDePedido,
+  sqlNotaAutorizada,
   type Tenant,
 } from './fixture.ts';
 
@@ -80,32 +78,9 @@ const P = {
 /** Pedido de B com nota: a porta do faturamento pela empresa A não o vê. */
 const PB_NOTA = randomUUID();
 
-/** Nota autorizada do pedido, com o XML guardado e, se pedido, um título (filial nova: o número sai 1). */
-function notaDoPedido(t: Tenant, pedido: string, cnf: number, titulo = false): string {
-  const nota = randomUUID();
-  const filial = randomUUID();
-  const chave = chaveAcesso(1, 1, cnf);
-  const protocolo = `1132600000${String(cnf % 100000).padStart(5, '0')}`;
-  const xml = `<nfeProc>${nota}</nfeProc>`;
-  return `
-SELECT set_config('app.tenant_id', '${t.id}', true);
-INSERT INTO faturamento.nota (id, tenant_id, filial_id, pedido_id, serie, numero, idempotencia_chave, cliente_id,
-  natureza_operacao, produtos_centavos, total_nota_centavos)
-  VALUES ('${nota}', '${t.id}', '${filial}', '${pedido}', 1,
-    faturamento.reservar_numero('${filial}', 'homologacao', 1::smallint, 1), '${randomUUID()}', '${t.cliente}', 'Venda',
-    1000, 1000);
-UPDATE faturamento.nota SET status = 'em_autorizacao', chave_acesso = '${chave}', c_nf = '${cnfDe(cnf)}' WHERE id = '${nota}';
-UPDATE faturamento.nota SET status = 'autorizada_guarda_pendente', protocolo = '${protocolo}', autorizada_em = now(),
-  c_stat = 100 WHERE id = '${nota}';
-INSERT INTO faturamento.nota_xml (tenant_id, tipo, nota_id, chave_acesso, protocolo, xml, sha256)
-  VALUES ('${t.id}', 'nfe_autorizada', '${nota}', '${chave}', '${protocolo}', '${xml}', ${hashSql(xml)});
-${
-  titulo
-    ? `INSERT INTO faturamento.titulo (tenant_id, nota_id, parcela, total_parcelas, vencimento, valor_centavos, conta_como_real)
-  VALUES ('${t.id}', '${nota}', 1, 1, '2026-12-21', 1000, false);`
-    : ''
-}`;
-}
+/** Nota autorizada do pedido, com título se pedido. */
+const notaDoPedido = (t: Tenant, pedido: string, cnf: number, titulo = false): string =>
+  sqlNotaAutorizada(t, randomUUID(), 'homologacao', cnf, { pedido, titulo }).sql;
 
 function extrasDeA(t: Tenant): string {
   const { pedidoSql, itemSql } = sqlDePedido(t.id, 10);
