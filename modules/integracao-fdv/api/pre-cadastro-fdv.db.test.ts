@@ -331,7 +331,9 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
   const sessao = (tenant: string, perfil: Perfil = 'administrador'): Sessao => ({ usuario_id: U(), tenant_id: tenant, perfil, filial_ids: [] });
   async function rota(tenant: string, metodo: string, caminho: string, o: { perfil?: Perfil; consulta?: Record<string, unknown>; semSessao?: boolean } = {}) {
     const plugin = criarPluginIntegracaoFdv();
-    const escolhida = plugin.rotas.find((r) => r.metodo === metodo && r.caminho === caminho);
+    const partes = caminho.split('/').filter(Boolean);
+    const escolhida = plugin.rotas.find((r) => r.metodo === metodo && (r.caminho === caminho || (r.caminho.split('/').filter(Boolean).length === partes.length && r.caminho.split('/').filter(Boolean).every((m, i) => m.startsWith(':') || m === partes[i]) && !plugin.rotas.some((x) => x.metodo === metodo && x.caminho === caminho))));
+    const params = escolhida ? Object.fromEntries(escolhida.caminho.split('/').filter(Boolean).flatMap((m, i) => (m.startsWith(':') ? [[m.slice(1), partes[i]!]] : []))) : {};
     if (!escolhida) throw new Error(`sem rota ${metodo} ${caminho}`);
     try {
       const r = await executarAutorizado<{ resposta: RespostaRota }>({
@@ -344,7 +346,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
           const consulta = escolhida.consulta ? escolhida.consulta.safeParse(o.consulta ?? {}) : null;
           if (consulta && !consulta.success) throw new ErroApi(400, 'VALIDACAO', 'Dados inválidos', {});
           const ctx = { sessao: s, tx, request_id: 'req-teste', agora: AGORA } as unknown as Parameters<typeof escolhida.executar>[0];
-          return { resposta: await escolhida.executar(ctx, { corpo: undefined, consulta: consulta?.data, params: {}, cabecalhos: {}, arquivos: {}, todosArquivos: {} }) };
+          return { resposta: await escolhida.executar(ctx, { corpo: undefined, consulta: consulta?.data, params, cabecalhos: {}, arquivos: {}, todosArquivos: {} }) };
         },
       });
       return { status: r.resposta.status ?? 200, corpo: r.resposta.corpo as any, cabecalhos: r.resposta.cabecalhos }; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -394,6 +396,51 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       expect(csv.cabecalhos).toMatchObject({ 'content-type': 'text/csv; charset=utf-8' });
       expect(String(csv.corpo).split('\r\n')[0]).toContain('Situação');
       for (const s of SEGREDOS.filter((x) => x !== 'Mercado do Fulano')) expect(String(csv.corpo), s).not.toContain(s);
+    });
+  });
+
+  describe('RN-INF-09: Log do cadastro de cliente leva os recebidos do FDV (T-0110)', () => {
+    const inserir = (t: string, uuid: string, revisao: number, situacao: 'aceito' | 'recusado' | 'reenviado', extra: { motivo?: string; erros?: string; vendedor?: string } = {}) =>
+      adm(
+        `INSERT INTO integracao_fdv.cliente_recebido (tenant_id, cliente_uuid, revisao, hash, razao_social, documento_mascarado, payload, recebido_em, chegou_em, situacao, motivo, erros, cliente_id, decidido_em, ultima_recusa_em, vendedor_external_id)
+         VALUES ($1, $2, $3::int, $4, 'Mercado Log', '11.222.333/****-**', CASE WHEN $5::text = 'aceito' THEN NULL ELSE '{"documento": "11222333000181"}'::jsonb END, now(), now() + make_interval(secs => $3::int), $5::text, $6, $7::jsonb,
+                 CASE WHEN $5::text = 'aceito' THEN gen_random_uuid() END, CASE WHEN $5::text IN ('aceito', 'recusado') THEN now() END, CASE WHEN $5::text = 'recusado' THEN now() END, $8)`,
+        [t, uuid, revisao, String(revisao).repeat(64).slice(0, 64), situacao, extra.motivo ?? null, extra.erros ?? null, extra.vendedor ?? null],
+      );
+    const erroVend = (codigo: string) => JSON.stringify([{ campo: 'vendedor', codigo, mensagem: 'x' }]);
+
+    it('traz aceito, recusados por vendedor e reenviado; documento só mascarado; nada de outro tenant; produto vem vazio', async () => {
+      const [ok, semV, inativo, reenv, doB] = [U(), U(), U(), U(), U()];
+      await inserir(A, ok, 1, 'aceito');
+      await inserir(A, semV, 1, 'recusado', { motivo: 'Vendedor não encontrado', erros: erroVend('vendedor_fdv_nao_encontrado'), vendedor: 'V404' });
+      await inserir(A, inativo, 1, 'recusado', { motivo: 'Vendedor inativo', erros: erroVend('vendedor_fdv_inativo'), vendedor: 'V9' });
+      await inserir(A, reenv, 1, 'recusado', { motivo: 'Vendedor inativo', erros: erroVend('vendedor_fdv_inativo') });
+      await inserir(A, reenv, 2, 'reenviado');
+      await inserir(B, doB, 1, 'aceito');
+
+      const r = await rota(A, 'GET', '/entidades/cliente/log');
+      expect(r.status).toBe(200);
+      const por = (u: string) => r.corpo.recebidos.filter((i: { cliente_uuid: string }) => i.cliente_uuid === u);
+      expect(por(ok)[0]).toMatchObject({ situacao: 'aceito', documento_mascarado: '11.222.333/****-**' });
+      expect(por(semV)[0].erros[0].codigo).toBe('vendedor_fdv_nao_encontrado');
+      expect(por(inativo)[0].erros[0].codigo).toBe('vendedor_fdv_inativo');
+      expect(por(reenv)).toHaveLength(1);
+      expect(por(reenv)[0]).toMatchObject({ revisao: 2, situacao: 'reenviado' });
+      expect(por(doB)).toHaveLength(0);
+      expect(r.corpo.recebidos.length).toBeLessThanOrEqual(50);
+      const texto = JSON.stringify(r.corpo);
+      for (const x of ['11222333000181', '11.222.333/0001-81']) expect(texto, x).not.toContain(x);
+      const total = (await adm('SELECT count(*)::int AS n FROM integracao_fdv.cliente_recebido c WHERE tenant_id = $1 AND NOT EXISTS (SELECT 1 FROM integracao_fdv.cliente_recebido h WHERE h.tenant_id = c.tenant_id AND h.cliente_uuid = c.cliente_uuid AND h.revisao > c.revisao)', [A]))[0]!.n;
+      expect(r.corpo.total_recebidos).toBe(total);
+
+      const p = await rota(A, 'GET', '/entidades/produto/log');
+      expect(p.status).toBe(200);
+      expect(p.corpo).toMatchObject({ recebidos: [], total_recebidos: 0 });
+    });
+
+    it('RN-CORE-02: perfil sem integracao-fdv.ver leva 403 e tenant sem licença leva 403 MODULO_INATIVO', async () => {
+      for (const perfil of PERFIS) expect((await rota(A, 'GET', '/entidades/cliente/log', { perfil })).status, perfil).toBe(pode(perfil, 'integracao-fdv.ver') ? 200 : 403);
+      expect(await rota(C, 'GET', '/entidades/cliente/log')).toMatchObject({ status: 403, corpo: { codigo: 'MODULO_INATIVO' } });
     });
   });
 
