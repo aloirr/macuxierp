@@ -13,6 +13,8 @@ export interface MensagemEmail {
   para: string;
   assunto: string;
   texto: string;
+  /** Parte `text/html` do mesmo conteúdo (T-0111, modelo do design #705); ausente = só texto. Nunca vai a log. */
+  html?: string;
 }
 
 export interface EnvioEmail {
@@ -52,6 +54,7 @@ export interface CartaSmtp {
   to: string;
   subject: string;
   text: string;
+  html?: string;
 }
 
 export interface TransporteSmtp {
@@ -117,7 +120,8 @@ export function criarEnvioEmail(config: ConfigEmail, opcoes: OpcoesEnvioEmail = 
       return {
         enviar: async (m) => {
           try {
-            await transporte.sendMail({ from: config.remetente, to: m.para, subject: m.assunto, text: m.texto });
+            // multipart/alternative (text/plain + text/html) quando há `html`: o nodemailer monta as duas partes
+            await transporte.sendMail({ from: config.remetente, to: m.para, subject: m.assunto, text: m.texto, ...(m.html ? { html: m.html } : {}) });
           } catch (e) {
             const erro = new ErroEnvioEmail(codigoDoErro(e));
             log?.warn({ transporte: 'smtp', codigo: erro.codigo }, 'falha no envio do e-mail');

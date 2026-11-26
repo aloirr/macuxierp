@@ -1,0 +1,90 @@
+/**
+ * Modelo HTML do e-mail da senha temporária (T-0111): cópia fiel de `docs/design/emails/redefinir-senha/email.html`
+ * (designer-ux, #705): muda lá, muda aqui (a igualdade é conferida em `tests/`, que pode ler `docs/`).
+ * Placeholders: {{assunto}}, {{codigo_empresa}}, {{email}}, {{senha_temporaria}}, {{url_entrar}}.
+ */
+export const MODELO_HTML_SENHA_TEMPORARIA = `<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{assunto}}</title>
+<style>
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  .mx-escuro { display: none; mso-hide: all; }
+  @media (max-width: 620px) {
+    .mx-fora { padding: 0 !important; }
+    .mx-folha { padding: 24px 20px 20px 20px !important; }
+    .mx-titulo { font-size: 22px !important; line-height: 28px !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .mx-fundo, .mx-fora, .mx-folha, body { background-color: #1E3350 !important; }
+    .mx-titulo, .mx-valor { color: #FFFFFF !important; }
+    .mx-texto, .mx-rotulo, .mx-assinatura { color: #C9CED5 !important; }
+    .mx-dados { background-color: #3A4D68 !important; border-color: #3A4D68 !important; }
+    .mx-filete { border-top-color: #C9CED5 !important; }
+    .mx-botao { background-color: #FFFFFF !important; }
+    .mx-botao-txt { color: #1E3350 !important; }
+    .mx-claro { display: none !important; }
+    .mx-escuro { display: block !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#F8F6F1;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Sua senha temporária para entrar no Macuxi ERP. Vale por 72 horas.</div>
+<table role="presentation" class="mx-fundo" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8F6F1;">
+<tr><td class="mx-fora" align="center" style="padding:24px 12px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+  <tr><td class="mx-folha" style="background-color:#FFFFFF;padding:32px 40px 28px 40px;border-radius:12px;">
+
+    <!-- Logo: uma vez só. Claro e escuro se alternam, nunca aparecem juntos. -->
+    <img class="mx-claro" src="https://erp.macuxifdv.com.br/email/logo-macuxi-erp-positivo.png" width="186" height="40" alt="Macuxi ERP" style="display:block;border:0;width:186px;height:40px;">
+    <!--[if !mso]><!--><img class="mx-escuro" src="https://erp.macuxifdv.com.br/email/logo-macuxi-erp-negativo-azul-noite.png" width="186" height="40" alt="Macuxi ERP" style="display:none;border:0;width:186px;height:40px;"><!--<![endif]-->
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td class="mx-titulo" style="padding:28px 0 8px 0;font-family:Archivo,Arial,Helvetica,sans-serif;font-size:24px;line-height:30px;font-weight:700;color:#16202A;">Sua senha temporária</td></tr>
+    <tr><td class="mx-texto" style="padding:0 0 20px 0;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#4A5562;">Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.</td></tr>
+    </table>
+
+    <!-- Cartão de dados -->
+    <table role="presentation" class="mx-dados" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8F6F1;border:1px solid #DFE2E6;border-radius:8px;border-collapse:separate;">
+    <tr><td style="height:16px;line-height:16px;font-size:0;">&nbsp;</td></tr>
+    <tr><td class="mx-rotulo" style="padding:0 20px 2px 20px;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#5B6673;">Código da empresa</td></tr>
+    <tr><td class="mx-valor" style="padding:0 20px 14px 20px;font-family:'IBM Plex Mono',Consolas,'Courier New',monospace;font-size:17px;line-height:24px;font-weight:500;color:#16202A;word-break:break-all;-webkit-user-select:all;user-select:all;">{{codigo_empresa}}</td></tr>
+    <tr><td class="mx-rotulo" style="padding:0 20px 2px 20px;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#5B6673;">E-mail</td></tr>
+    <tr><td class="mx-valor" style="padding:0 20px 14px 20px;font-family:'IBM Plex Mono',Consolas,'Courier New',monospace;font-size:17px;line-height:24px;font-weight:500;color:#16202A;word-break:break-all;-webkit-user-select:all;user-select:all;">{{email}}</td></tr>
+    <tr><td class="mx-rotulo" style="padding:0 20px 2px 20px;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#5B6673;">Senha temporária</td></tr>
+    <tr><td class="mx-valor" style="padding:0 20px 6px 20px;font-family:'IBM Plex Mono',Consolas,'Courier New',monospace;font-size:22px;line-height:30px;font-weight:700;color:#16202A;word-break:break-all;-webkit-user-select:all;user-select:all;">{{senha_temporaria}}</td></tr>
+    <tr><td class="mx-texto" style="padding:0 20px 16px 20px;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#4A5562;">Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.</td></tr>
+    </table>
+
+    <!-- Botão -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:24px 0 0 0;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td class="mx-botao" bgcolor="#1E3350" style="background-color:#1E3350;border-radius:8px;">
+        <a class="mx-botao-txt" href="{{url_entrar}}" style="display:inline-block;padding:14px 24px;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:16px;line-height:20px;font-weight:600;color:#FFFFFF;text-decoration:none;">Abrir o Macuxi ERP</a>
+      </td></tr></table>
+    </td></tr>
+    </table>
+
+    <!-- Assinatura -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="padding:32px 0 0 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td class="mx-filete mx-assinatura" style="border-top:2px solid #1E3350;padding:12px 0 0 0;font-family:'IBM Plex Sans',Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#5B6673;">Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br</td>
+      </tr></table>
+    </td></tr>
+    </table>
+
+  </td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>
+`;
