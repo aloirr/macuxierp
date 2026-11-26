@@ -14,7 +14,7 @@ export type ValorDetalhe = string | number | boolean | null | readonly (string |
  */
 export type DetalhesErro = Readonly<Record<string, ValorDetalhe>>;
 
-export type StatusErroApi = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 503;
+export type StatusErroApi = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 423 | 429 | 503;
 
 export class ErroApi extends Error {
   override readonly name = 'ErroApi';
@@ -37,6 +37,15 @@ export function corpoErroApi(e: ErroApi): { codigo: string; mensagem: string; ca
 /** Código de regra de negócio (`RN-CORE-06`, `RN-CAD-01`): o `codigo` dos 422 e a citação nos testes (RD-0001). */
 export const PADRAO_RN = /^RN-[A-Z]+-\d{2}$/;
 
+/**
+ * Conta bloqueada por tentativas (RN-CORE-15, T-0111): 423, com o MESMO corpo para e-mail existente ou não, no tenant e no
+ * superadmin (anti-enumeração). Sem tempo restante nem contagem: o texto é fixo. A trava por IP continua 429.
+ */
+export const CODIGO_CONTA_BLOQUEADA = 'CONTA_BLOQUEADA';
+export const MENSAGEM_CONTA_BLOQUEADA = 'Conta bloqueada por segurança, depois de várias tentativas com a senha errada.';
+export const RECUPERAR_CONTA_BLOQUEADA =
+  'Use "Esqueci a senha" para receber uma senha temporária, que também desbloqueia a conta, ou fale com o administrador da sua empresa.';
+
 export const erros = {
   naoAutenticado: (mensagem = 'Sessão ausente ou vencida') => new ErroApi(401, 'NAO_AUTENTICADO', mensagem),
   perfilSemPermissao: () => new ErroApi(403, 'PERFIL_SEM_PERMISSAO', 'Seu perfil não permite esta ação'),
@@ -51,6 +60,8 @@ export const erros = {
   /** A rota passou do `tempoMaximoMs`: a transação foi desfeita (nada gravado). */
   tempoEsgotado: (segundos: number) =>
     new ErroApi(503, 'TEMPO_ESGOTADO', `A operação passou de ${segundos} s e foi desfeita: divida o envio ou tente de novo`),
+  /** 423 da conta bloqueada (RN-CORE-15, T-0111): corpo fixo, igual para qualquer e-mail (`ContaBloqueadaResposta`). */
+  contaBloqueada: () => new ErroApi(423, CODIGO_CONTA_BLOQUEADA, MENSAGEM_CONTA_BLOQUEADA, undefined, { recuperar: RECUPERAR_CONTA_BLOQUEADA }),
   /**
    * 429 do limite de tentativas. `retryAfterS` (RN-CORE-13, "esqueci a senha"): segundos até a janela abrir, em
    * `detalhes.retry_after_s` (`MuitasTentativasResposta`); ausente = corpo de antes (login travado).

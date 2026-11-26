@@ -13,7 +13,7 @@
  *   A marca da temporária (`marcaTemporaria`) vai no começo do próprio token; `superadmin_trocar_senha` zera a temporária.
  */
 import { randomBytes } from 'node:crypto';
-import { erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
+import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, type BancoPlataformaComLogin, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
 import { conferirTemporaria, custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
 import { registrarSemEnvio, type LogEsqueci } from '../auth/esqueci-log';
 import type { TrocaPendente } from '../auth/troca-senha';
@@ -111,7 +111,7 @@ export class ServicoPlataforma {
       await tx.consultar('SELECT plataforma.superadmin_emitir_temporaria($1::uuid, $2, $3)', [sa.id, temporaria.hash, temporaria.expira_em]);
       return true;
     });
-    if (gravou) return mensagemSenhaTemporaria(para, temporaria.senha);
+    if (gravou) return mensagemSenhaTemporaria(para, temporaria.senha, CODIGO_SUPERADMIN_LOGIN);
     registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
     return null;
   }

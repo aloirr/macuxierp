@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { corpoErroApi, erros } from './erros';
+import { CODIGO_CONTA_BLOQUEADA, corpoErroApi, erros, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQUEADA } from './erros';
 import {
   CAMINHOS_ESQUECI_SENHA,
   ROTULO_SENHA_TEMPORARIA,
@@ -14,6 +14,9 @@ import {
   SenhaATrocarResposta,
   SituacaoEsqueciResposta,
   VALIDADE_SENHA_TEMPORARIA_HORAS,
+  ContaBloqueadaResposta,
+  RODAPE_EMAIL_MACUXI_ERP,
+  URL_MACUXI_ERP,
 } from './esqueci-senha';
 import { CODIGO_TROCAR_SENHA } from './eu';
 import { CodigoEmpresaLogin } from './login';
@@ -118,19 +121,37 @@ describe('RN-CORE-13: rótulo da tela de troca depois do esqueci', () => {
 });
 
 describe('RN-CORE-13: e-mail da senha temporária', () => {
-  it('texto simples com a senha, 72 h, uso único e troca no primeiro acesso, sem dado do destinatário', () => {
-    const e = emailSenhaTemporaria({ senha: 'Tmp#2026ab', validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS });
+  const base = { senha: 'Tmp#2026ab', validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, codigo_empresa: 'AM2808', email: 'ana@exemplo.invalid' };
+
+  it('T-0111: código da empresa, e-mail e senha; 72 h, uso único, desbloqueia a conta; botão e rodapé; sem nome', () => {
+    const e = emailSenhaTemporaria(base);
     expect(e.assunto).toBe('Macuxi ERP: sua senha temporária');
-    expect(e.texto).toContain('Tmp#2026ab');
-    expect(e.texto).toContain('72 horas');
-    expect(e.texto).toContain('uma vez só');
-    expect(e.texto).toContain('trocar a senha');
-    expect(e.texto).not.toMatch(/<[a-z]|https?:\/\/|@/i);
+    expect(e.texto).toContain('Código da empresa: AM2808');
+    expect(e.texto).toContain('E-mail: ana@exemplo.invalid');
+    expect(e.texto).toContain('Senha temporária: Tmp#2026ab');
+    expect(e.texto).toContain('Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.');
+    expect(e.texto).toContain(`Abrir o Macuxi ERP: ${URL_MACUXI_ERP}`);
+    expect(e.texto).toContain('Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br');
+    expect(e.texto).toContain('enquanto a conta não estiver bloqueada');
+    expect(e.texto).not.toMatch(/<[a-z]/i);
   });
 
-  it('recusa senha vazia e validade fora de inteiro ≥ 1', () => {
-    expect(() => emailSenhaTemporaria({ senha: '', validade_horas: 72 })).toThrow(RangeError);
-    expect(() => emailSenhaTemporaria({ senha: '   ', validade_horas: 72 })).toThrow(RangeError);
-    expect(() => emailSenhaTemporaria({ senha: 'Tmp#2026ab', validade_horas: 0 })).toThrow(RangeError);
+  it('recusa senha vazia, validade fora de inteiro ≥ 1 e código ou e-mail vazios', () => {
+    expect(() => emailSenhaTemporaria({ ...base, senha: '' })).toThrow(RangeError);
+    expect(() => emailSenhaTemporaria({ ...base, senha: '   ' })).toThrow(RangeError);
+    expect(() => emailSenhaTemporaria({ ...base, validade_horas: 0 })).toThrow(RangeError);
+    expect(() => emailSenhaTemporaria({ ...base, codigo_empresa: ' ' })).toThrow(RangeError);
+    expect(() => emailSenhaTemporaria({ ...base, email: '' })).toThrow(RangeError);
+  });
+});
+
+describe('RN-CORE-15 (T-0111): 423 CONTA_BLOQUEADA', () => {
+  it('o mesmo corpo sempre: código, mensagem e recuperar fixos, sem tempo restante nem contagem', () => {
+    const e = erros.contaBloqueada();
+    expect(e.status).toBe(423);
+    const corpo = corpoErroApi(e);
+    expect(ContaBloqueadaResposta.parse(corpo)).toEqual({ codigo: CODIGO_CONTA_BLOQUEADA, mensagem: MENSAGEM_CONTA_BLOQUEADA, detalhes: { recuperar: RECUPERAR_CONTA_BLOQUEADA } });
+    expect(JSON.stringify(corpo)).not.toMatch(/\d/);
+    expect(ContaBloqueadaResposta.safeParse({ ...corpo, mensagem: 'outra' }).success).toBe(false);
   });
 });
