@@ -39,7 +39,7 @@ describe('T-0111: conta bloqueada na tela de entrada', () => {
     expect(h).toContain('Conta bloqueada');
     expect(h).toContain('Você errou a senha muitas vezes. Para desbloquear, peça uma senha temporária.');
     expect(h).toContain('faixa-aviso');
-    expect(h).toMatch(/<button class="mx-botao" type="button">Recuperar a senha<\/button>/);
+    expect(h).toMatch(/<button class="mx-botao botao-recuperar" type="button">Recuperar a senha<\/button>/);
     expect(h).toMatch(/<button class="mx-botao" type="submit" disabled="">Entrar<\/button>/);
     expect(h).not.toContain('Muitas tentativas');
   });

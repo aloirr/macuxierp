@@ -53,7 +53,7 @@ export function VisaoLogin({ destino, valores, erros = {}, erroLogin, bloqueada 
             <strong>{TEXTOS_BLOQUEIO.titulo}</strong>
             <p>{TEXTOS_BLOQUEIO.texto}</p>
           </div>
-          {aoRecuperar && <button className="mx-botao" type="button" onClick={aoRecuperar}>{TEXTOS_BLOQUEIO.botao}</button>}
+          {aoRecuperar && <button className="mx-botao botao-recuperar" type="button" onClick={aoRecuperar}>{TEXTOS_BLOQUEIO.botao}</button>}
         </>
       )}
       <input type="hidden" name="destino" value={destino} />

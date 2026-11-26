@@ -161,6 +161,9 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .aviso-sucesso { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; color: var(--mx-cor-ativo-texto); background: var(--mx-cor-ativo-fundo); border: 1px solid var(--mx-cor-verde-sucesso); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 
 /* Aviso informativo (ex.: sistema atualizado) no topo da área de conteúdo; topo em 390 px com a linha do usuário à esquerda. */
+.faixa-aviso strong { display: block; }
+.faixa-aviso strong + p { margin: 4px 0 0; }
+.botao-recuperar { display: block; width: 100%; margin: 0 0 16px; }
 .faixa-aviso.aviso-sistema { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 @media (max-width: 480px) { .topo .espaco { display: none; } }
 
