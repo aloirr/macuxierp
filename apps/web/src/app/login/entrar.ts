@@ -1,5 +1,5 @@
 'use server';
-import { LoginEntrada } from '@macuxierp/platform-sdk';
+import { LoginEntrada, textoMuitasTentativas } from '@macuxierp/platform-sdk';
 import { buscarEu } from '@/lib/api';
 import { euPlataforma } from '@/lib/config/api';
 import { cookies } from 'next/headers';
@@ -53,6 +53,7 @@ export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
 
   if (r.tipo === 'campos') return { campos: r.erros };
   if (contaBloqueada(r)) return { bloqueada: true };
+  if (r.tipo === 'limite') return { erro: textoMuitasTentativas(r.retry_after_s) };
   if (r.tipo === 'indisponivel') return { erro: TEXTOS_LOGIN.indisponivel };
   if (r.tipo === 'credencial') return { erro: TEXTOS_LOGIN.credencial };
   await gravarSessao(r.sessao);

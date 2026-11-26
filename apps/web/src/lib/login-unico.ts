@@ -14,6 +14,7 @@ export type SessaoAberta = { destino: 'bko'; acesso: string; refresh: string } |
 export type ResultadoLogin =
   | { tipo: 'ok'; sessao: SessaoAberta }
   | { tipo: 'credencial' }
+  | { tipo: 'limite'; retry_after_s: number }
   | { tipo: 'bloqueada' }
   | { tipo: 'campos'; erros: ErrosLogin }
   | { tipo: 'indisponivel' };
@@ -52,7 +53,7 @@ export async function loginUnico(entrada: LoginEntrada): Promise<ResultadoLogin>
   const corpo: unknown = await r.json().catch(() => null);
   if (sinalDeBloqueioNaResposta(r.status, corpo)) return { tipo: 'bloqueada' };
   const falha = erroDaApi(r.status, corpo);
-  if (falha?.tipo === 'campos') return falha;
+  if (falha) return falha;
   if (r.status === 400) return { tipo: 'credencial' };
   if (r.status === 401 || r.status === 403) return { tipo: 'credencial' };
   if (!r.ok) return { tipo: 'indisponivel' };

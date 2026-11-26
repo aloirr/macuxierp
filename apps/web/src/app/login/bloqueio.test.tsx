@@ -11,10 +11,11 @@ vi.mock('./esqueci', () => ({ pedirEsqueciAction: vi.fn() }));
 const valores = { empresa: 'AM2808', email: 'usuario@exemplo.com.br', senha: '' };
 
 describe('T-0111: conta bloqueada na tela de entrada', () => {
-  it('reconhece o bloqueio num ponto só: 429 (hoje), 423 ou CONTA_BLOQUEADA (contrato proposto)', () => {
+  it('reconhece o bloqueio num ponto só: só 423 ou CODIGO_CONTA_BLOQUEADA do SDK; o 429 do IP não é bloqueio', () => {
     expect(contaBloqueada({ tipo: 'bloqueada' })).toBe(true);
     for (const t of ['ok', 'credencial', 'campos', 'indisponivel']) expect(contaBloqueada({ tipo: t })).toBe(false);
-    expect(sinalDeBloqueioNaResposta(429, null)).toBe(true);
+    expect(sinalDeBloqueioNaResposta(429, null)).toBe(false);
+    expect(sinalDeBloqueioNaResposta(429, { codigo: 'MUITAS_TENTATIVAS' })).toBe(false);
     expect(sinalDeBloqueioNaResposta(423, null)).toBe(true);
     expect(sinalDeBloqueioNaResposta(401, { codigo: 'CONTA_BLOQUEADA', detalhes: { recuperar: true } })).toBe(true);
     expect(sinalDeBloqueioNaResposta(401, { codigo: 'CREDENCIAL' })).toBe(false);

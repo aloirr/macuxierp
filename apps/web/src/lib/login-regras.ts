@@ -1,4 +1,4 @@
-import { CodigoEmpresaLogin, EmailUsuario, MuitasTentativasResposta } from '@macuxierp/platform-sdk';
+import { CODIGO_CONTA_BLOQUEADA, CodigoEmpresaLogin, EmailUsuario, MuitasTentativasResposta } from '@macuxierp/platform-sdk';
 
 /** Textos e validação por campo da tela única de login e do "esqueci a senha" (docs/design/login-unico). Pura: sem Node, serve ao cliente e ao servidor. */
 export const TEXTOS_LOGIN = {
@@ -30,12 +30,12 @@ export const TEXTOS_DESBLOQUEIO = {
 } as const;
 
 /**
- * ÚNICO ponto que reconhece "conta bloqueada" na resposta do LOGIN (o do esqueci segue no `erroDaApi`). Hoje: 429 (sinal
- * atual da API). Contrato proposto pelo core, ainda fora do main: erro `CONTA_BLOQUEADA` (423 sugerido, `detalhes.recuperar`).
+ * ÚNICO ponto que reconhece "conta bloqueada" na resposta do LOGIN (o do esqueci segue no `erroDaApi`): só o 423 ou o
+ * código `CODIGO_CONTA_BLOQUEADA` do SDK (RN-CORE-15). O 429 é o limite por IP (`MUITAS_TENTATIVAS`) e NÃO é bloqueio.
  */
 export function sinalDeBloqueioNaResposta(status: number, corpo: unknown): boolean {
-  if (status === 429 || status === 423) return true;
-  return typeof corpo === 'object' && corpo !== null && (corpo as { codigo?: unknown }).codigo === 'CONTA_BLOQUEADA';
+  if (status === 423) return true;
+  return typeof corpo === 'object' && corpo !== null && (corpo as { codigo?: unknown }).codigo === CODIGO_CONTA_BLOQUEADA;
 }
 
 /** Resultado do `loginUnico` que a tela trata como conta bloqueada. */

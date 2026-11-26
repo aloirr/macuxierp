@@ -52,3 +52,4 @@
 2026-11-25 — T-0106 — CNAE com descrição e nome do município na ficha; 3 estados da ficha; prévia vazia do zerar
 2026-11-25 — T-0109 — Log: legenda dos registros não enviados ao FDV e Corrigir cadastro (2b)
 2026-11-26 — T-0111 — conta bloqueada, Recuperar a senha e Conta desbloqueada na entrada
+2026-11-26 — T-0111 — login: conta bloqueada só no 423/CODIGO_CONTA_BLOQUEADA do SDK; 429 volta a Muitas tentativas
