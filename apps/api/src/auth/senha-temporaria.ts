@@ -76,7 +76,10 @@ export function lerMarcaTemporaria(segmento: string | undefined): TrocaPendente 
   return m ? { motivo_troca: 'temporaria', temporaria_expira_em: new Date(Number(m[1]) * 1000) } : {};
 }
 
-/** O e-mail da temporária (`emailSenhaTemporaria` do contrato): o único lugar em que ela existe em claro além da memória do pedido. */
-export function mensagemSenhaTemporaria(para: string, senhaTemporaria: string): MensagemEmail {
-  return { para, ...emailSenhaTemporaria({ senha: senhaTemporaria, validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS }) };
+/**
+ * O e-mail da temporária (`emailSenhaTemporaria` do contrato): o único lugar em que ela existe em claro além da memória do
+ * pedido. `codigoEmpresa` = o código digitado no login (maiúsculo); no superadmin, `CODIGO_SUPERADMIN_LOGIN`.
+ */
+export function mensagemSenhaTemporaria(para: string, senhaTemporaria: string, codigoEmpresa: string): MensagemEmail {
+  return { para, ...emailSenhaTemporaria({ senha: senhaTemporaria, validade_horas: VALIDADE_SENHA_TEMPORARIA_HORAS, codigo_empresa: codigoEmpresa, email: para }) };
 }

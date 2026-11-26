@@ -389,7 +389,10 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     const temporaria = /Senha temporária: (\S+)/.exec(enviado!.texto)?.[1];
     expect(temporaria).toHaveLength(16);
     expect(enviado!.assunto).toBe('Macuxi ERP: sua senha temporária');
-    expect(enviado!.texto).toContain('Ela vale por 72 horas');
+    expect(enviado!.texto).toContain('Vale por 72 horas');
+    // T-0111: o código da empresa (maiúsculo, como no login) e o e-mail da conta vão no e-mail
+    expect(enviado!.texto).toContain('Código da empresa: AM2808');
+    expect(enviado!.texto).toContain('E-mail: adm@exemplo.com');
     expect(m.adm.senha_temporaria_hash).toMatch(/^\$argon2id\$/);
     expect(await conferirSenha(temporaria!, m.adm.senha_temporaria_hash!)).toBe(true);
     expect(m.adm.senha_temporaria_expira_em!.getTime() - INICIO.getTime()).toBe(H72);

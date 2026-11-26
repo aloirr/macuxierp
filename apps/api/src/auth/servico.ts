@@ -175,7 +175,7 @@ export class ServicoAuth {
       await aoGravar(tx, { tenant_id: tenantId, usuario_id: usuario.id });
       return true;
     });
-    if (gravou) return mensagemSenhaTemporaria(email, temporaria.senha);
+    if (gravou) return mensagemSenhaTemporaria(email, temporaria.senha, entrada.empresa.trim().toUpperCase());
     registrarSemEnvio(log, 'conta_inexistente_ou_inativa');
     return null;
   }

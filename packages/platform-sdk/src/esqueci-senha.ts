@@ -12,6 +12,7 @@
  * `senha_temporaria_expira_em`. Nunca vai para log, recado nem auditoria. Sem Node: serve à apps/web.
  */
 import { z } from 'zod';
+import { CODIGO_CONTA_BLOQUEADA, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQUEADA } from './erros';
 import { CODIGO_TROCAR_SENHA, MOTIVOS_TROCA_SENHA } from './eu';
 import { CodigoEmpresaLogin, DestinoLogin } from './login';
 import { EmailUsuario, Instante } from './portal-config';
@@ -86,15 +87,32 @@ export const SenhaATrocarResposta = z.object({
 });
 export type SenhaATrocarResposta = z.infer<typeof SenhaATrocarResposta>;
 
+/** Corpo do 423 (`erros.contaBloqueada()`, T-0111): igual para qualquer e-mail e para o tenant e o superadmin. */
+export const ContaBloqueadaResposta = z.object({
+  codigo: z.literal(CODIGO_CONTA_BLOQUEADA),
+  mensagem: z.literal(MENSAGEM_CONTA_BLOQUEADA),
+  detalhes: z.object({ recuperar: z.literal(RECUPERAR_CONTA_BLOQUEADA) }),
+});
+export type ContaBloqueadaResposta = z.infer<typeof ContaBloqueadaResposta>;
+
+/** Endereço do Macuxi ERP no e-mail (botão "Abrir o Macuxi ERP") e no rodapé. */
+export const URL_MACUXI_ERP = 'https://erp.macuxifdv.com.br';
+export const RODAPE_EMAIL_MACUXI_ERP = `Equipe Macuxi ERP · Boa Vista, RR · ${URL_MACUXI_ERP.replace('https://', '')}`;
+
 export interface EmailSenhaTemporaria {
   assunto: string;
   texto: string;
 }
 
-/** E-mail da senha temporária (RN-CORE-13): texto simples, sem nome nem e-mail do destinatário. Função pura. */
-export function emailSenhaTemporaria(e: { senha: string; validade_horas: number }): EmailSenhaTemporaria {
+/**
+ * E-mail da senha temporária (RN-CORE-13; T-0111): fonte única do texto, para a apps/api (tenant e superadmin). Leva o
+ * código da empresa, o e-mail da conta (o próprio destinatário) e a senha; diz que ela também desbloqueia a conta
+ * (RN-CORE-15). Sem nome do destinatário. Função pura.
+ */
+export function emailSenhaTemporaria(e: { senha: string; validade_horas: number; codigo_empresa: string; email: string }): EmailSenhaTemporaria {
   if (e.senha.trim() === '') throw new RangeError('emailSenhaTemporaria: senha vazia');
   if (!Number.isInteger(e.validade_horas) || e.validade_horas < 1) throw new RangeError('emailSenhaTemporaria: validade_horas precisa ser inteiro ≥ 1');
+  if (e.codigo_empresa.trim() === '' || e.email.trim() === '') throw new RangeError('emailSenhaTemporaria: código da empresa e e-mail são obrigatórios');
   return {
     assunto: 'Macuxi ERP: sua senha temporária',
     texto: [
@@ -102,10 +120,18 @@ export function emailSenhaTemporaria(e: { senha: string; validade_horas: number 
       '',
       'Recebemos um pedido de senha temporária para entrar no Macuxi ERP.',
       '',
+      `Código da empresa: ${e.codigo_empresa.trim()}`,
+      `E-mail: ${e.email.trim()}`,
       `Senha temporária: ${e.senha}`,
       '',
-      `Ela vale por ${e.validade_horas} horas e funciona uma vez só. No primeiro acesso, o sistema vai pedir para você trocar a senha.`,
-      'Sua senha atual continua valendo. Se você não fez o pedido, ignore este e-mail.',
+      `Vale por ${e.validade_horas} horas e serve para entrar uma vez só. Ela também desbloqueia a conta.`,
+      'No primeiro acesso, o sistema vai pedir para você trocar a senha.',
+      '',
+      `Abrir o Macuxi ERP: ${URL_MACUXI_ERP}`,
+      '',
+      'Sua senha atual continua valendo enquanto a conta não estiver bloqueada. Se você não fez o pedido, ignore este e-mail.',
+      '',
+      RODAPE_EMAIL_MACUXI_ERP,
     ].join('\n'),
   };
 }
