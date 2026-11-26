@@ -20,7 +20,7 @@ export const ROTULO_BAIXAR_ERROS = 'Baixar erros (.csv)';
 export const ROTULO_CORRIGIR = 'Corrigir cadastro';
 
 /** Legenda da seção de erros do Log: o registro com erro não chegou ao FDV. */
-export const TEXTO_LEGENDA_ERROS_LOG = 'Estes registros não foram enviados ao FDV.';
+export const TEXTO_LEGENDA_ERROS_LOG = 'Estes registros não foram enviados ao Macuxi FDV.';
 
 /* TODO: fonte única dos rótulos e cores de origem e situação no packages/platform-sdk (pedido ao engenheiro-software);
    até lá estas cópias seguem as cores de apps/web/src/lib/config/operacao-fdv.ts (ROTULO_ORIGEM_ENVIO e ROTULO_SITUACAO_ENVIO). */
