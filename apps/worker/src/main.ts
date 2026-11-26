@@ -22,6 +22,7 @@ import { fonteTenantsSql, lerChaveA1 } from '@macuxierp/core/api';
 import { aditivosClienteFdvLigados, armazenamentoIndisponivel, relogioDoSistema } from '@macuxierp/platform-sdk';
 import { BancoPg, CatalogoArquivosPg, criarPool, LicencasPg } from '@macuxierp/platform-sdk/pg';
 import { pino } from 'pino';
+import { completarPrazoMedioLigado } from './completar-prazo-medio';
 import { inteiroDoAmbiente, poolDoWorker } from './config';
 import { configurarCredenciais } from './credencial';
 import { configurarEnvioFdv } from './envio-fdv';
@@ -74,7 +75,7 @@ const worker = iniciarWorker({
   consumo: new RegistroConsumoPg(),
   consumidores: montarConsumidores({ log, relogio: relogioDoSistema }),
   executores: montarExecutores({ banco, log, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogioDoSistema.agora(), ...(faturamento ? { faturamento } : {}) }),
-  rotinas: montarRotinas({ banco, log, ...(faturamento ? { faturamento } : {}) }),
+  rotinas: montarRotinas({ banco, log, ...(faturamento ? { faturamento } : {}), completarPrazoMedio: completarPrazoMedioLigado(process.env) }),
   periodicas: montarPeriodicas({ ...(faturamento ? { faturamento } : {}) }),
   ...(hub && decifrarCredencial ? { agenda: { agendas, licencas: new LicencasPg(), hub, decifrarCredencial } } : {}),
   relogio: relogioDoSistema,
