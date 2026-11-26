@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream';
-import { definirPlugin, definirRota, erros, EuResposta, type FonteLicencas, type Licenca } from '@macuxierp/platform-sdk';
+import { CODIGO_CONTA_BLOQUEADA, definirPlugin, definirRota, erros, EuResposta, MENSAGEM_CONTA_BLOQUEADA, RECUPERAR_CONTA_BLOQUEADA, type FonteLicencas, type Licenca } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, IdempotenciaMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -144,15 +144,34 @@ describe('POST /v1/auth/login', () => {
     expect((await entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am0002')).statusCode).toBe(401);
   });
 
-  it('trava após 5 falhas por 15 minutos e solta depois', async () => {
+  it('RN-CORE-15: trava após 5 falhas por 15 minutos (423) e solta depois', async () => {
     const { app, relogio, repo } = await montar();
     for (let i = 0; i < 5; i++) expect((await entrar(app, 'adm@exemplo.com', 'errada')).statusCode).toBe(401);
     const travado = await entrar(app);
-    expect(travado.statusCode).toBe(429);
-    expect(travado.json()).toEqual({ codigo: 'MUITAS_TENTATIVAS', mensagem: 'Acesso travado por 15 minutos após 5 tentativas' });
+    // RN-CORE-15 (T-0111): 423 CONTA_BLOQUEADA, sem tempo restante nem contagem (o 429 fica só para o limite por IP)
+    expect(travado.statusCode).toBe(423);
+    expect(travado.json()).toEqual({ codigo: CODIGO_CONTA_BLOQUEADA, mensagem: MENSAGEM_CONTA_BLOQUEADA, detalhes: { recuperar: RECUPERAR_CONTA_BLOQUEADA } });
     relogio.avancar(15 * 60_000);
     expect((await entrar(app)).statusCode).toBe(200);
     expect(repo.usuarios.find((u) => u.id === ADM)).toMatchObject({ falhas_login: 0, bloqueado_ate: null });
+  });
+
+  it('RN-CORE-15 (T-0111): e-mail inexistente e empresa inexistente travam igual na memória; o 423 é o mesmo da conta que existe', async () => {
+    const { app } = await montar();
+    // um IP por grupo: o limite por IP (10 falhas) não entra neste teste
+    const de = (remoteAddress: string, email: string, senha: string, empresa = 'am2808') =>
+      app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress, payload: { empresa, email, senha } });
+    for (let i = 0; i < 5; i++) await de('198.51.100.1', 'adm@exemplo.com', 'errada');
+    const existente = await de('198.51.100.1', 'adm@exemplo.com', SENHA_DE_TESTE);
+    for (let i = 0; i < 5; i++) expect((await de('198.51.100.2', 'ninguem@exemplo.com', 'errada')).statusCode).toBe(401);
+    const inexistente = await de('198.51.100.2', 'ninguem@exemplo.com', 'qualquer');
+    for (let i = 0; i < 5; i++) expect((await de('198.51.100.3', 'adm@exemplo.com', 'errada', 'zz9999')).statusCode).toBe(401);
+    const semEmpresa = await de('198.51.100.3', 'adm@exemplo.com', 'qualquer', 'zz9999');
+    for (const r of [existente, inexistente, semEmpresa]) {
+      expect(r.statusCode).toBe(423);
+      expect(r.body).toBe(existente.body);
+      expect(r.headers['content-type']).toBe(existente.headers['content-type']);
+    }
   });
 
   it('corpo inválido é 400 VALIDACAO com os campos (também sem corpo ou JSON malformado)', async () => {

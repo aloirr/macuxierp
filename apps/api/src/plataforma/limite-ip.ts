@@ -62,6 +62,11 @@ export class LimitePorChave {
     return { permitido: j.n < this.maximo, retry_after_s: Math.max(1, Math.ceil((j.inicio + this.janelaMs - agoraMs) / 1000)) };
   }
 
+  /** Esquece a chave (a conta entrou: a contagem recomeça, como o `falhas_login` do banco). */
+  liberar(chave: string): void {
+    this.#janelas.delete(chave);
+  }
+
   get tamanho(): number {
     return this.#janelas.size;
   }
@@ -73,6 +78,37 @@ export class LimitePorChave {
 
   private limpar(agoraMs: number): void {
     for (const [chave, j] of this.#janelas) if (agoraMs - j.inicio >= this.janelaMs) this.#janelas.delete(chave);
+  }
+}
+
+/**
+ * Trava em memória da conta que NÃO existe (RN-CORE-15, T-0111; decisão R-20261126-175321), com os mesmos `maxFalhas` e
+ * `travaMinutos` da trava do banco da conta que existe, para o 423 sair igual nos dois casos (anti-enumeração). A conta que
+ * existe segue só o banco (`falhas_login`, `bloqueado_ate`), que o `operador.sh --destravar` zera na hora. A chave é a
+ * `chaveEmpresaEmail` (SHA-256): o e-mail em claro nunca fica no Map. Uma por processo (uma API por VM, ADR 0003).
+ */
+export class TravaContaMemoria {
+  readonly #limite: LimitePorChave;
+
+  constructor(cfg: { maxFalhas: number; travaMinutos: number }) {
+    this.#limite = new LimitePorChave(cfg.maxFalhas, cfg.travaMinutos * 60_000);
+  }
+
+  travada(chave: string, agoraMs: number): boolean {
+    return !this.#limite.excedido(chave, agoraMs).permitido;
+  }
+
+  falhou(chave: string, agoraMs: number): void {
+    this.#limite.registrar(chave, agoraMs);
+  }
+
+  liberar(chave: string): void {
+    this.#limite.liberar(chave);
+  }
+
+  /** Só para teste. */
+  chaves(): string[] {
+    return this.#limite.chaves();
   }
 }
 

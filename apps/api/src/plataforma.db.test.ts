@@ -6,7 +6,7 @@
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, ContaBloqueadaResposta, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -103,18 +103,24 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
     expect(errada.cookies.find((x) => x.name === COOKIE_CONFIG)).toBeUndefined();
   });
 
-  it('trava: 5 falhas seguidas travam a conta; a senha certa também recebe a mensagem única', async () => {
+  it('RN-CORE-15 (T-0111): 5 falhas seguidas travam a conta; a senha certa recebe o 423 CONTA_BLOQUEADA, igual ao do e-mail inexistente', async () => {
     for (let i = 0; i < 5; i++) expect((await entrar(EMAIL_TRAVA, `errada-${i}`)).statusCode).toBe(401);
     const { rows } = await b.admin.query('SELECT falhas_login, bloqueado_ate > now() AS travado FROM plataforma.superadmin WHERE email = $1', [EMAIL_TRAVA]);
     expect(rows[0]).toMatchObject({ falhas_login: 5, travado: true });
     const certa = await entrar(EMAIL_TRAVA, SENHA_SA);
-    expect(certa.statusCode).toBe(401);
-    expect(certa.json<{ mensagem: string }>().mensagem).toBe(FALHA_LOGIN_PLATAFORMA);
+    expect(certa.statusCode).toBe(423);
+    expect(ContaBloqueadaResposta.parse(certa.json())).toEqual(certa.json());
+    // a mesma resposta para um e-mail que não existe, depois de 5 falhas
+    for (let i = 0; i < 5; i++) expect((await entrar('nao-existe-trava@exemplo.invalid', `errada-${i}`)).statusCode).toBe(401);
+    const inexistente = await entrar('nao-existe-trava@exemplo.invalid', 'qualquer');
+    expect(inexistente.statusCode).toBe(423);
+    expect(inexistente.json()).toEqual(certa.json());
   });
 
   it('limite por IP: a 11ª tentativa em 15 min do mesmo IP é 429, mesmo com a senha certa', async () => {
     const ip = novoIp();
-    for (let i = 0; i < LIMITE_LOGIN_IP_PADRAO.maximo; i++) expect((await entrar('outro@exemplo.invalid', 'x', ip)).statusCode).toBe(401);
+    // um e-mail por tentativa: a trava por conta (RN-CORE-15) não entra no teste do limite por IP
+    for (let i = 0; i < LIMITE_LOGIN_IP_PADRAO.maximo; i++) expect((await entrar(`outro-${i}@exemplo.invalid`, 'x', ip)).statusCode).toBe(401);
     const r = await entrar(EMAIL_SA, SENHA_SA, ip);
     expect(r.statusCode).toBe(429);
     expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
@@ -124,7 +130,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config na API (T-0050, ADR 0012)', () =
   it('limite por IP atrás do BFF (T-0050): mesmo contêiner, o 11º login do MESMO IP de cliente é 429 e outro IP de cliente passa', async () => {
     const conteiner = novoIp();
     const viaBff = (ipCliente: string) => ({ ...CSRF, [CABECALHO_PROVA_BFF]: SEGREDO_BFF, [CABECALHO_IP_CLIENTE]: ipCliente });
-    for (let i = 0; i < LIMITE_LOGIN_IP_PADRAO.maximo; i++) expect((await entrar('outro@exemplo.invalid', 'x', conteiner, viaBff('203.0.113.50'))).statusCode).toBe(401);
+    for (let i = 0; i < LIMITE_LOGIN_IP_PADRAO.maximo; i++) expect((await entrar(`outro-bff-${i}@exemplo.invalid`, 'x', conteiner, viaBff('203.0.113.50'))).statusCode).toBe(401);
     const r = await entrar(EMAIL_SA, SENHA_SA, conteiner, viaBff('203.0.113.50'));
     expect(r.statusCode).toBe(429);
     expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });

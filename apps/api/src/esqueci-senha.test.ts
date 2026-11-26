@@ -20,6 +20,7 @@ import {
   textoMuitasTentativas,
   type BancoPlataformaComLogin,
   type Transacao,
+  ContaBloqueadaResposta,
 } from '@macuxierp/platform-sdk';
 import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, RelogioFixo, tenantDaTx } from '@macuxierp/platform-sdk/testes';
 import type { InjectOptions } from 'fastify';
@@ -696,7 +697,8 @@ describe('T-0076: tela única com o código MACUXI', () => {
     expect(m.plataforma.chamadas).not.toContain('superadmin_consumir_temporaria');
     for (let i = 0; i < 4; i++) await login(m, 'MACUXI', EMAIL_SA, 'Temp-errada-9!');
     expect(m.sa.bloqueado_ate).not.toBeNull();
-    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE)).statusCode).toBe(401);
+    // RN-CORE-15 (T-0111): travado = 423 CONTA_BLOQUEADA
+    expect((await login(m, 'MACUXI', EMAIL_SA, SENHA_DE_TESTE)).statusCode).toBe(423);
 
     const c = await montar();
     await comTemporaria(c.sa);
@@ -765,6 +767,23 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     return conta.bloqueado_ate;
   };
 
+  it('RN-CORE-15 (T-0111): a temporária não fura a trava por IP (429 antes de tudo); a temporária certa não soma no IP; a memória só guarda o SHA-256', async () => {
+    const m = await montar();
+    await comTemporaria(m.adm);
+    travar(m.adm);
+    const preso = ip();
+    for (let i = 0; i < 10; i++) await login(m, 'am2808', `outro-${i}@exemplo.com`, 'errada', preso);
+    const r = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, preso);
+    expect(r.statusCode).toBe(429);
+    expect(r.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
+    expect(m.adm.senha_temporaria_hash).toBeTruthy(); // não consumiu
+    const livre = ip();
+    for (let i = 0; i < 9; i++) await login(m, 'am2808', `mais-${i}@exemplo.com`, 'errada', livre);
+    expect((await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, livre)).statusCode).toBe(200);
+    expect((await login(m, 'am2808', 'ainda@exemplo.com', 'errada', livre)).statusCode).toBe(401); // a 10ª falha: a temporária certa não contou
+    expect((await login(m, 'am2808', 'ainda@exemplo.com', 'errada', livre)).statusCode).toBe(429);
+  });
+
   it('tenant travado com a temporária vigente: 200 bko com a troca de motivo temporaria; a trava e a temporária zeram', async () => {
     const m = await montar();
     await comTemporaria(m.adm);
@@ -778,19 +797,19 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     expect((await m.app.inject({ url: ROTA_TENANT, headers: bearer(token) })).json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'temporaria', expira_em: fim });
   });
 
-  it('tenant travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 429 de sempre, sem somar falha nem estender a trava', async () => {
+  it('RN-CORE-15: tenant travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 423, sem somar falha nem estender a trava', async () => {
     const m = await montar();
     const ate = travar(m.adm);
     const semTemporaria = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
-    expect(semTemporaria.statusCode).toBe(429);
-    expect(semTemporaria.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
+    expect(semTemporaria.statusCode).toBe(423);
+    expect(ContaBloqueadaResposta.parse(semTemporaria.json())).toEqual(semTemporaria.json());
     await comTemporaria(m.adm, 60_000);
     const atual = await login(m, 'am2808', 'adm@exemplo.com', SENHA_DE_TESTE, ip());
     const errada = await login(m, 'am2808', 'adm@exemplo.com', 'Temp-errada-9!', ip());
     m.relogio.avancar(60_000);
     const vencida = await login(m, 'am2808', 'adm@exemplo.com', TEMPORARIA, ip());
     for (const r of [atual, errada, vencida]) {
-      expect(r.statusCode).toBe(429);
+      expect(r.statusCode).toBe(423);
       expect(r.body).toBe(semTemporaria.body);
     }
     expect(m.adm).toMatchObject({ falhas_login: 5, bloqueado_ate: ate, deve_trocar_senha: false });
@@ -805,13 +824,13 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     const fim = m.sa.senha_temporaria_expira_em!.toISOString();
     const r = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String) });
+    expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String), desbloqueou: true });
     expect(m.sa).toMatchObject({ falhas_login: 0, bloqueado_ate: null, senha_temporaria_hash: null, senha_temporaria_expira_em: null, deve_trocar_senha: true });
     const bloqueada = await m.app.inject({ url: ROTA_PORTAL, cookies: { [COOKIE_CONFIG]: cookie(r, COOKIE_CONFIG)! } });
     expect(bloqueada.json()).toEqual({ codigo: CODIGO_TROCAR_SENHA, mensagem: expect.any(String), motivo: 'temporaria', expira_em: fim });
   });
 
-  it('superadmin travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 401 neutro, sem somar falha nem estender a trava', async () => {
+  it('RN-CORE-15: superadmin travado: a senha atual certa, a temporária errada, a vencida e a conta sem temporária dão o mesmo 423 do tenant, sem somar falha nem estender a trava', async () => {
     const m = await montar();
     const ate = travar(m.sa);
     const semTemporaria = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
@@ -821,8 +840,9 @@ describe('hotfix: a temporária entra com a conta travada e zera a trava', () =>
     m.relogio.avancar(60_000);
     const vencida = await login(m, 'MACUXI', EMAIL_SA, TEMPORARIA, ip());
     for (const r of [semTemporaria, atual, errada, vencida]) {
-      expect(r.statusCode).toBe(401);
-      expect(r.body).toBe(JSON.stringify(NEUTRO_401));
+      expect(r.statusCode).toBe(423);
+      expect(ContaBloqueadaResposta.parse(r.json())).toEqual(r.json());
+      expect(r.body).toBe(semTemporaria.body);
       expect(cookie(r, COOKIE_CONFIG)).toBeUndefined();
     }
     expect(m.sa).toMatchObject({ falhas_login: 5, bloqueado_ate: ate, deve_trocar_senha: false });

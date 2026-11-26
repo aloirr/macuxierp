@@ -111,7 +111,7 @@ async function sessaoDoPedido(req: FastifyRequest, reply: FastifyReply, c: Conte
  * provisória (a troca pendente sai no `GET /v1/plataforma/auth/eu` e no 403 das outras rotas). `extra` entra no corpo
  * (o `destino` da tela única, `LoginResposta`).
  */
-export function responderLoginPlataforma(reply: FastifyReply, r: LoginPlataforma, cookieSeguro: boolean, extra: Record<string, string> = {}) {
+export function responderLoginPlataforma(reply: FastifyReply, r: LoginPlataforma, cookieSeguro: boolean, extra: Record<string, string | boolean> = {}) {
   return reply
     .setCookie(COOKIE_CONFIG, r.token, opcoesCookieSessao(PREFIXO_PLATAFORMA, cookieSeguro, r.expira_em))
     .header('cache-control', 'no-store')
@@ -138,7 +138,7 @@ export function montarPlataforma(
       const { email, senha } = EntrarPlataformaEntrada.parse(req.body);
       const r = await c.servico.entrar(email, senha);
       req.log = reply.log = req.log.child({ superadmin_id: r.superadmin_id });
-      return responderLoginPlataforma(reply, r, c.cookieSeguro);
+      return responderLoginPlataforma(reply, r, c.cookieSeguro, r.desbloqueou ? { desbloqueou: true } : {});
     }),
   );
 

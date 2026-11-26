@@ -10,7 +10,7 @@
  * quando a função instalada zera a trava (`consumoZeraTrava`, lido do `pg_get_functiondef`).
  */
 import { randomUUID } from 'node:crypto';
-import { CABECALHO_CSRF_CONFIG, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
+import { CABECALHO_CSRF_CONFIG, ContaBloqueadaResposta, COOKIE_CONFIG } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -19,7 +19,6 @@ import { gerarHashSenha } from './auth/senha';
 
 const TEMPORARIA = 'Temp-Abc23xyz!Q';
 const ERRADA = 'Temp-errada-9!';
-const NEUTRO_401 = { codigo: 'NAO_AUTENTICADO', mensagem: 'Empresa, e-mail ou senha inválidos' };
 
 describe.skipIf(!PG_DISPONIVEL)('hotfix: a temporária entra com a conta travada e zera a trava (PostgreSQL)', () => {
   let b: BancoEfemero;
@@ -74,17 +73,18 @@ describe.skipIf(!PG_DISPONIVEL)('hotfix: a temporária entra com a conta travada
     await preparar('usuario', EMAIL, 'vigente');
     const r = await entrar('AM2808', EMAIL, TEMPORARIA);
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ destino: 'bko', token_acesso: expect.any(String), expira_em: expect.any(String) });
+    // RN-CORE-15 (T-0111): a temporária desbloqueou a conta travada
+    expect(r.json()).toEqual({ destino: 'bko', token_acesso: expect.any(String), expira_em: expect.any(String), desbloqueou: true });
     expect(await estado('usuario', EMAIL)).toEqual({ falhas_login: 0, bloqueado_ate: null, temporaria: false, deve_trocar_senha: true });
     const eu = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${r.json<{ token_acesso: string }>().token_acesso}` } });
     expect(eu.json().usuario).toMatchObject({ deve_trocar_senha: true, motivo_troca: 'temporaria' });
   });
 
-  it('tenant travado: sem temporária, com a senha atual certa, com a temporária errada e com a vencida = o mesmo 429, sem somar falha nem estender a trava', async () => {
+  it('RN-CORE-15: tenant travado: sem temporária, com a senha atual certa, com a temporária errada e com a vencida = o mesmo 423 CONTA_BLOQUEADA, sem somar falha nem estender a trava', async () => {
     await preparar('usuario', EMAIL, 'nenhuma');
     const sem = await entrar('AM2808', EMAIL, TEMPORARIA);
-    expect(sem.statusCode).toBe(429);
-    expect(sem.json()).toMatchObject({ codigo: 'MUITAS_TENTATIVAS' });
+    expect(sem.statusCode).toBe(423);
+    expect(ContaBloqueadaResposta.parse(sem.json())).toEqual(sem.json());
     await preparar('usuario', EMAIL, 'vigente');
     const travada = await estado('usuario', EMAIL);
     const atual = await entrar('AM2808', EMAIL, SENHA_DE_TESTE);
@@ -93,13 +93,13 @@ describe.skipIf(!PG_DISPONIVEL)('hotfix: a temporária entra com a conta travada
     await preparar('usuario', EMAIL, 'vencida');
     const vencida = await entrar('AM2808', EMAIL, TEMPORARIA);
     for (const r of [atual, errada, vencida]) {
-      expect(r.statusCode).toBe(429);
+      expect(r.statusCode).toBe(423);
       expect(r.body).toBe(sem.body);
     }
     expect(await estado('usuario', EMAIL)).toMatchObject({ falhas_login: 5, temporaria: true, deve_trocar_senha: false });
   });
 
-  it('superadmin travado: sem temporária, com a senha atual certa, com a temporária errada e com a vencida = o mesmo 401 neutro, sem somar falha nem estender a trava', async () => {
+  it('RN-CORE-15: superadmin travado: sem temporária, com a senha atual certa, com a temporária errada e com a vencida = o mesmo 423 do tenant, sem somar falha nem estender a trava', async () => {
     await preparar('superadmin', EMAIL_SA, 'nenhuma');
     const sem = await entrar('MACUXI', EMAIL_SA, TEMPORARIA);
     await preparar('superadmin', EMAIL_SA, 'vigente');
@@ -109,9 +109,10 @@ describe.skipIf(!PG_DISPONIVEL)('hotfix: a temporária entra com a conta travada
     expect(await estado('superadmin', EMAIL_SA)).toEqual(travada);
     await preparar('superadmin', EMAIL_SA, 'vencida');
     const vencida = await entrar('MACUXI', EMAIL_SA, TEMPORARIA);
+    const doTenant = JSON.stringify(ContaBloqueadaResposta.parse(JSON.parse(sem.body)));
     for (const r of [sem, atual, errada, vencida]) {
-      expect(r.statusCode).toBe(401);
-      expect(r.body).toBe(JSON.stringify(NEUTRO_401));
+      expect(r.statusCode).toBe(423);
+      expect(r.body).toBe(doTenant);
       expect(r.cookies.map((c) => c.name)).not.toContain(COOKIE_CONFIG);
     }
     expect(await estado('superadmin', EMAIL_SA)).toMatchObject({ falhas_login: 5, temporaria: true, deve_trocar_senha: false });
@@ -122,7 +123,7 @@ describe.skipIf(!PG_DISPONIVEL)('hotfix: a temporária entra com a conta travada
     await preparar('superadmin', EMAIL_SA, 'vigente');
     const r = await entrar('MACUXI', EMAIL_SA, TEMPORARIA);
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String) });
+    expect(r.json()).toEqual({ destino: 'config', expira_em: expect.any(String), desbloqueou: true });
     expect(await estado('superadmin', EMAIL_SA)).toEqual({ falhas_login: 0, bloqueado_ate: null, temporaria: false, deve_trocar_senha: true });
     const cookie = r.cookies.find((c) => c.name === COOKIE_CONFIG)!.value;
     const eu = await app.inject({ url: '/v1/plataforma/auth/eu', cookies: { [COOKIE_CONFIG]: cookie } });
