@@ -179,17 +179,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .tabela-fdv-bko th:nth-child(4), .tabela-fdv-bko td:nth-child(4) { display: none; }
   .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-grafite); font-weight: normal; }
 }
-/* Clientes recebidos do FDV (T-0059): filtro por situação em links, tabela que rola, motivo da recusa abre na própria linha. */
-.filtro-situacao { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; }
-.filtro-situacao a { color: inherit; text-decoration: none; padding: 4px 0; border-bottom: 3px solid transparent; }
-.filtro-situacao a:hover { text-decoration: underline; }
-.filtro-situacao a[aria-current='true'] { font-weight: 600; border-bottom-color: var(--mx-cor-borda-cinza); }
-.tabela-recebidos table { min-width: 760px; }
-.tabela-recebidos td:nth-child(3) { white-space: nowrap; }
-.recusa-detalhe { margin-top: 4px; }
-.recusa-detalhe summary { cursor: pointer; color: var(--mx-cor-erro-texto); }
-.recusa-motivo { margin: 6px 0 0; }
-.recusa-erros { margin: 6px 0 0; padding-left: 20px; }
 /* Abas da ficha da empresa: texto sublinhado (molde do FDV), não botões. */
 .abas-texto { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--mx-cor-borda-cinza); }
 .abas-texto a { padding: 6px 0; color: inherit; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }

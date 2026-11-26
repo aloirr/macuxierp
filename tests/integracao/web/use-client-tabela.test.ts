@@ -19,7 +19,8 @@ const ALVOS = arquivosDoWeb()
 
 describe("TabelaDensa com função só em componente 'use client' (defeito do D-4)", () => {
   it('a varredura acha os componentes que usam a TabelaDensa (não ficou vazia)', () => {
-    expect(ALVOS.map((a) => a.arquivo)).toEqual(expect.arrayContaining(['apps/web/src/components/integracao-fdv/clientes-recebidos.tsx']));
+    // Âncora: uma lista que fica no BKO.
+    expect(ALVOS.map((a) => a.arquivo)).toEqual(expect.arrayContaining(['apps/web/src/app/config/(portal)/lista-empresas.tsx']));
   });
   it("todo .tsx que passa chaveLinha ou celula à TabelaDensa começa com 'use client'", () => {
     expect(ALVOS.filter(({ fonte }) => !USE_CLIENT.test(fonte)).map((a) => a.arquivo)).toEqual([]);

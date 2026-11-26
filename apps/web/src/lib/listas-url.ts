@@ -38,11 +38,6 @@ export function trocarFiltro(filtros: Filtros, chave: string, valor: string | un
   return novo;
 }
 
-/** Primeira página, mantendo os demais filtros. */
-export function urlInicio(caminho: string, filtros: Filtros): string {
-  return urlDaLista(caminho, semCursor(filtros));
-}
-
 /** Próxima página; null na última (`proximo_cursor` nulo). */
 export function urlProxima(caminho: string, filtros: Filtros, proximoCursor: string | null): string | null {
   return proximoCursor === null ? null : urlDaLista(caminho, { ...filtros, cursor: proximoCursor });

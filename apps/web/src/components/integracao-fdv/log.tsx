@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Chip, Dialogo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
-import type { EntidadeEnvioFdv, LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
+import type { ClienteRecebidoFdv, EntidadeEnvioFdv, LogCadastroFdvTenant } from '@macuxierp/platform-sdk';
 import {
-  ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, ROTULO_ENTIDADE, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, colunasDeErrosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, textoErrosForaDaLista,
-  type LinhaEnvioLog, type LinhaErroLog,
+  NOME_CSV_RECEBIDOS_LOG, ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, ROTULO_ENTIDADE, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG,
+  colunasDeErrosLog, colunasDeRecebidosLog, csvDeRecebidosLog, errosForaDaListaLog, linhasDeEnviosLog, linhasDeErrosLog, linhasDeRecebidosLog, textoErrosForaDaLista,
+  type LinhaEnvioLog, type LinhaErroLog, type LinhaRecebidoLog,
 } from '@macuxierp/integracao-fdv/web';
+import { baixarCsv } from '@/lib/baixar-csv';
 import { lerLogFdv, type ResultadoLogFdv } from '@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv';
 
 /** Texto do resumo de erros: "1 erro aberto" / "N erros abertos". */
@@ -47,6 +49,39 @@ const TEXTO_LOG_SEM_PERMISSAO = 'Seu perfil não pode ver o Log desta integraç�
 /** Caminho do download no shell (o token é httpOnly: o arquivo passa pelo proxy `/baixar-erros-fdv`). */
 export const caminhoDoDownloadErros = (entidade: EntidadeEnvioFdv): string => `/baixar-erros-fdv?entidade=${encodeURIComponent(entidade)}`;
 
+/** Aviso quando há mais recebidos do que a lista traz: só o fato, sem prometer arquivo (o CSV sai do que está na tela). */
+export const textoRecebidosForaDaLista = (mostrados: number, total: number): string => `Mostrando os ${mostrados} mais recentes de ${total}.`;
+
+/** Seção "Recebidos do FDV" do Log de clientes: aceito, recusado com motivo e reenviado (RN-INF-09). */
+export function SecaoRecebidosLog({ recebidos, total, fuso }: { recebidos: readonly ClienteRecebidoFdv[]; total: number; fuso: string }) {
+  const linhas = linhasDeRecebidosLog(recebidos, fuso);
+  const colunas: ColunaTabela<LinhaRecebidoLog>[] = colunasDeRecebidosLog.map((c) => ({
+    id: c.id, titulo: c.titulo, ...(c.id === 'revisao' ? { tipo: 'numero' as const } : c.id === 'recebidoEm' ? { tipo: 'data' as const } : {}), celula: (l) => (l[c.id] === '' ? '—' : l[c.id]),
+  }));
+  const fora = Math.max(0, total - recebidos.length);
+  return (
+    <section data-recebidos-fdv>
+      {linhas.length === 0
+        ? (
+          <>
+            <h3>{TITULO_SECAO_RECEBIDOS_LOG}</h3>
+            <p className="apoio">{TEXTO_VAZIO_RECEBIDOS_LOG}</p>
+          </>
+        )
+        : (
+          <>
+            <div className="resumo-log">
+              <h3>{TITULO_SECAO_RECEBIDOS_LOG}</h3>
+              <button type="button" className="mx-botao-secundario" onClick={() => baixarCsv(NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog(recebidos, fuso))}>Baixar recebidos (.csv)</button>
+            </div>
+            <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => `${l.cliente}|${l.recebidoEm}|${l.revisao}|${l.situacao}`} textoVazio={TEXTO_VAZIO_RECEBIDOS_LOG} legenda={TITULO_SECAO_RECEBIDOS_LOG} /></div>
+          </>
+        )}
+      {fora > 0 && <p className="apoio">{textoRecebidosForaDaLista(recebidos.length, total)}</p>}
+    </section>
+  );
+}
+
 /** Corpo do Log (puro sobre a resposta): erros por registro com "Corrigir" e envios recentes. Horários no fuso da empresa. */
 export function CorpoLogBko({ log, entidade, fuso, celular = false }: { log: LogCadastroFdvTenant; entidade: EntidadeEnvioFdv; fuso: string; celular?: boolean }) {
   const linhas = linhasDeErrosLog(log);
@@ -86,6 +121,7 @@ export function CorpoLogBko({ log, entidade, fuso, celular = false }: { log: Log
       {envios.length === 0
         ? <p className="apoio">{TEXTO_ESTADO_LOG.vazioEnvios}</p>
         : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colEnvios} linhas={envios} chaveLinha={(e) => `${e.quando}|${e.origem}`} textoVazio={TEXTO_ESTADO_LOG.vazioEnvios} legenda="Envios recentes" /></div>}
+      {entidade === 'cliente' && <SecaoRecebidosLog recebidos={log.recebidos ?? []} total={log.total_recebidos ?? 0} fuso={fuso} />}
     </div>
   );
 }
