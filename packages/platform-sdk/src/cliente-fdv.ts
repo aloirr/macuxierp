@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { chaveLigadoDesligado } from './chave-ligado';
 import { cnpjRaiz, normalizarDocumento } from './documentos';
 import { ConsultaPaginada, paginaDe } from './listas';
-import { CodigoErroFdv } from './portal-integracao-operacao';
+import { CodigoErroFdv } from './erros-fdv';
 
 const Uuid = z.string().uuid();
 /** Data e hora com fuso, como o Hub manda (`-04:00` ou `Z`). */
@@ -165,6 +165,29 @@ export const CODIGOS_RECUSA_RETORNO_CLIENTE_FDV = [
 ] as const;
 export const CodigoRecusaRetornoClienteFdv = z.enum(CODIGOS_RECUSA_RETORNO_CLIENTE_FDV);
 export type CodigoRecusaRetornoClienteFdv = z.infer<typeof CodigoRecusaRetornoClienteFdv>;
+
+/**
+ * Texto legível dos códigos de recusa do pré-cadastro (`ErroCampoClienteFdv.codigo`), sem o valor recusado (LGPD). Fonte
+ * única para o Log dos recebidos (T-0110, integracao-fdv) e para o cadastros, que hoje tem a cópia em
+ * `MENSAGENS_PRE_CADASTRO_FDV` e passa a reexportar daqui (v0.3.17).
+ */
+export const MENSAGENS_RECUSA_PRE_CADASTRO_FDV = Object.freeze({
+  documento_obrigatorio: 'Informe o CPF ou o CNPJ do cliente.',
+  documento_invalido: 'CPF ou CNPJ inválido (dígito verificador).',
+  documento_ja_cadastrado: 'Já existe um cliente ativo com este documento no ERP.',
+  ie_invalida: 'Inscrição estadual inválida para a UF informada.',
+  uf_invalida: 'UF inválida ou não informada.',
+  municipio_nao_encontrado: 'Cidade não encontrada na UF pela tabela do IBGE.',
+  municipio_ambiguo: 'Cidade ambígua na UF: confira o nome.',
+  cep_invalido: 'CEP deve ter 8 dígitos.',
+  campo_obrigatorio: 'Campo obrigatório no endereço da NF-e.',
+  tamanho_maximo: 'Texto maior que o limite do ERP.',
+  filial_nao_encontrada: 'Filial não encontrada no ERP.',
+  vendedor_fdv_nao_encontrado: 'Vendedor não encontrado no ERP. Confira o código do vendedor no FDV ou cadastre o vendedor no ERP.',
+  vendedor_fdv_inativo: 'Vendedor inativo no ERP. Reative o vendedor no ERP ou troque o vendedor do cliente no FDV.',
+  dado_invalido: 'Dado recusado pelas regras do cadastro do ERP.',
+});
+export type CodigoRecusaPreCadastroFdv = keyof typeof MENSAGENS_RECUSA_PRE_CADASTRO_FDV;
 
 // ---- BKO: "Clientes recebidos do FDV" ----
 

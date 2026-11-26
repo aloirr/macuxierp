@@ -8,6 +8,7 @@ import {
   CAMINHOS_INTEGRACAO_FDV_TENANT,
   InativacaoZerarFdv,
   LIMITE_ERROS_LOG_FDV,
+  LIMITE_RECEBIDOS_LOG_FDV,
   LogCadastroFdvPlataforma,
   LogCadastroFdvTenant,
   MonitorConectorFdv,
@@ -83,6 +84,24 @@ describe('Log por cadastro (R-20261124-085515, ADR 0013)', () => {
     expect(LogCadastroFdvTenant.safeParse({ ...l, erros: Array(LIMITE_ERROS_LOG_FDV + 1).fill(erro), total_erros: 500 }).success).toBe(false);
   });
 
+  it('T-0110: recebidos do FDV só no Log de cliente, até LIMITE_RECEBIDOS_LOG_FDV e sem passar do total; ausentes = versão anterior', () => {
+    const recebido = {
+      id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', cliente_uuid: '1e7c7b5f-4d2a-4c9f-8e3b-6a8f9dab2c3d', codigo_fdv: '12345',
+      razao_social: 'Mercadinho Ficticio Ltda', documento_mascarado: '11.444.777/****-**', vendedor_external_id: null,
+      recebido_em: '2026-11-26T10:00:00-04:00', revisao: 1, situacao: 'recebido', motivo: null, erros: [], cliente_id: null, retorno: null,
+    };
+    const cli = { ...base, entidade: 'cliente', total_erros: 0, motivo: null, erros: [] };
+    const l = { ...cli, recebidos: [recebido], total_recebidos: 7 };
+    expect(LogCadastroFdvTenant.parse(l)).toEqual(l);
+    expect(LogCadastroFdvTenant.parse(cli)).toEqual(cli);
+    expect(LogCadastroFdvTenant.safeParse({ ...l, total_recebidos: 0 }).success).toBe(false);
+    expect(LogCadastroFdvTenant.safeParse({ ...l, recebidos: Array(LIMITE_RECEBIDOS_LOG_FDV + 1).fill(recebido), total_recebidos: 900 }).success).toBe(false);
+    expect(LogCadastroFdvTenant.safeParse({ ...l, entidade: 'vendedor' }).success).toBe(false);
+    expect(LogCadastroFdvTenant.safeParse({ ...cli, entidade: 'vendedor', recebidos: [], total_recebidos: 0 }).success).toBe(true);
+    // LGPD: o documento só mascarado
+    expect(LogCadastroFdvTenant.safeParse({ ...l, recebidos: [{ ...recebido, documento_mascarado: '11444777000161' }] }).success).toBe(false);
+  });
+
   it('caminhos do /config e do BKO', () => {
     const { monitor, reprocessar, log } = CAMINHOS_INTEGRACAO_FDV_PLATAFORMA;
     for (const c of [monitor, reprocessar, log]) expect(c.startsWith('/empresas/:id/integracao-fdv/')).toBe(true);
@@ -113,5 +132,6 @@ it('é reexportado pelo índice do SDK; os rótulos do Log são imutáveis', () 
   expect(sdk.ROTULO_SITUACAO_ENVIO_FDV).toBe(ROTULO_SITUACAO_ENVIO_FDV);
   expect(sdk.MonitorConectorFdv).toBe(MonitorConectorFdv);
   expect(sdk.LogCadastroFdvTenant).toBe(LogCadastroFdvTenant);
+  expect(sdk.LIMITE_RECEBIDOS_LOG_FDV).toBe(LIMITE_RECEBIDOS_LOG_FDV);
   expect(sdk.CAMINHOS_INTEGRACAO_FDV_TENANT).toBe(CAMINHOS_INTEGRACAO_FDV_TENANT);
 });

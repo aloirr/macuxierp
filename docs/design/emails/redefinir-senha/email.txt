@@ -1,0 +1,14 @@
+Sua senha temporária
+
+Recebemos um pedido de senha temporária para entrar no Macuxi ERP. Se não foi você, ignore este e-mail.
+
+Código da empresa: {{codigo_empresa}}
+E-mail: {{email}}
+Senha temporária: {{senha_temporaria}}
+
+Vale por 72 horas e serve para entrar uma vez só. Ela também desbloqueia a conta.
+
+Abrir o Macuxi ERP: {{url_entrar}}
+
+--
+Equipe Macuxi ERP · Boa Vista, RR · erp.macuxifdv.com.br
