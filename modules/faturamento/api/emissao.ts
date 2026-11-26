@@ -232,8 +232,9 @@ export function criarServicoEmissao(deps: DepsEmissao) {
     exceto_nota_id?: string,
     daNota?: { tpEmis: TipoEmissao; contingencia: ConteudoNota['contingencia'] },
   ): Promise<Preparado | { ok: false; violacoes: Violacao[] }> {
-    const pedido = await deps.pedidos.obter(tx, pedido_id);
-    if (!pedido) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
+    const fila = await deps.pedidos.obter(tx, pedido_id);
+    if (!fila) return { ok: false, violacoes: [violacao('RF-FAT-01', 'pedido_id', 'Pedido não está na fila de faturamento.')] };
+    const { pedido } = fila;
     // Trava a fila do pedido: duas emissões do mesmo pedido não leem o saldo juntas (RN-FAT-01).
     await deps.notas.travarPedido(tx, pedido_id);
     // Saldo pelo próprio faturamento: a quantidade_faturada do pedido só anda quando o worker consome o evento.
@@ -251,8 +252,7 @@ export function criarServicoEmissao(deps: DepsEmissao) {
       return { ok: false, violacoes: [violacao('RN-FAT-04', 'filial_id', 'Emissão em produção ainda não habilitada (homologação real pendente, T-0046).')] };
     }
     // RN-CAD-10: pedido zerado no /config (linha `cancelado`) não é faturado, mesmo que o pedido ainda conste aprovado.
-    const statusFila = await deps.pedidos.statusNaFila(tx, pedido_id);
-    if (statusFila && !filaAceitaNota(statusFila)) {
+    if (!filaAceitaNota(fila.status)) {
       return { ok: false, violacoes: [violacao('RN-CAD-10', 'pedido_id', 'Pedido cancelado ou zerado na fila de faturamento não pode ser faturado.')] };
     }
 

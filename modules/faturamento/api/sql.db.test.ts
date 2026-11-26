@@ -9,10 +9,8 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IDS, itemPedido, pedidoAprovado } from '../domain/fixtures';
 import { criarServicoEmissao } from './emissao';
-import { a1DeTeste, depsFake, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro, situacaoAprovadaDeTeste } from './apoio-teste';
+import { a1DeTeste, depsFake, depsSql, pluginSql, protocolo, transporteFake, pedidoNovoNaFila, uuid, type Roteiro, situacaoAprovadaDeTeste } from './apoio-teste';
 import { repositoriosSql, pedidosAprovadosSql, notaEmAbertoSql } from './sql';
-import { configuracaoFaturamentoSql } from './sql-configuracao';
-import { criarPluginFaturamento } from './index';
 import { criarTransmissor } from './transmissor';
 
 const MANAUS = 'America/Manaus';
@@ -28,10 +26,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
   pedido.pedido.condicao_pagamento_id = uuid(77);
 
   function servico() {
-    const f = depsFake({ ambiente: 'homologacao' });
-    f.deps.notas = repos.notas;
-    f.deps.pedidos = repos.pedidos;
-    f.deps.ambiente = repos.ambiente;
+    const f = depsSql(repos);
     return { ...f, svc: criarServicoEmissao(f.deps) };
   }
   /** Um pedido novo por chave de idempotência (a repetição da chave reaproveita o mesmo pedido); várias notas totais não passam do saldo de um pedido só. */
@@ -73,7 +68,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
 
   it('RF-FAT-01: o pedido aprovado entra na fila a faturar uma vez só e o outro tenant não o enxerga (RLS)', async () => {
     expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, pedido))).toBe('repetido');
-    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido_id).toBe(IDS.pedido);
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido)))?.pedido.pedido_id).toBe(IDS.pedido);
     expect(await app.comTenant(B, (tx) => pedidosAprovadosSql.obter(tx, IDS.pedido))).toBeNull();
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar')).toEqual([{ n: 1 }]);
     const fila = await app.comTenant(A, (tx) => pedidosAprovadosSql.listar(tx, { limite: 50 }, MANAUS));
@@ -87,13 +82,13 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     const id = await app.comTenant(A, (tx) => pedidoNovoNaFila(tx, (t, p) => pedidosAprovadosSql.gravar(t, p, 'faturado')));
     const status = async (): Promise<unknown> => (await admin('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [id]))[0]?.status;
     expect(await status()).toBe('faturado');
-    const p = await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id));
+    const p = (await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id)))?.pedido;
     expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado'))).toBe('repetido');
     expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.gravar(tx, p!, 'faturado_parcial'))).toBe('repetido');
     expect(await status()).toBe('faturado_parcial');
     await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, id));
     expect(await status()).toBe('cancelado');
-    expect(await app.comTenant(A, (tx) => pedidosAprovadosSql.statusNaFila(tx, id))).toBe('cancelado'); // RN-CAD-10: a emissão recusa
+    expect((await app.comTenant(A, (tx) => pedidosAprovadosSql.obter(tx, id)))?.status).toBe('cancelado'); // RN-CAD-10: a emissão recusa
     await app.comTenant(A, (tx) => pedidosAprovadosSql.marcarCancelado(tx, uuid(999)));
     expect(await admin('SELECT count(*)::int AS n FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [uuid(999)])).toEqual([{ n: 0 }]);
   });
@@ -303,7 +298,7 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
   });
 
   it('RN-FAT-04: GET /filiais/:id/configuracao devolve o ambiente da filial: sem configuração, homologação; com produção aprovada, produção', async () => {
-    const plugin = criarPluginFaturamento({ ...servico().deps, notas: repos.notas, pedidos: repos.pedidos, ambiente: repos.ambiente, titulos: repos.titulos, configuracao: configuracaoFaturamentoSql } as never);
+    const plugin = pluginSql(repos);
     const rota = plugin.rotas.find((r) => r.metodo === 'GET' && r.caminho === '/filiais/:id/configuracao')!;
     const ler = (perfil: string) => app.comTenant(A, (tx) => rota.executar({ tx, sessao: { usuario_id: uuid(5), tenant_id: A, perfil, filial_ids: [] } } as never, { params: { id: IDS.filial }, cabecalhos: {}, arquivos: {}, todosArquivos: {} } as never));
     expect((await ler('faturista')).corpo).toEqual({ filial_id: IDS.filial, faturamento_real_nfe_simulada: false, ambiente: 'homologacao' });
@@ -328,7 +323,6 @@ describe.skipIf(!PG_DISPONIVEL)('adaptador SQL do faturamento (PostgreSQL real, 
     };
     function emitirDe(pid: string, idem: string, itens?: { sequencia: number; quantidade?: number }[]) {
       const s = servico();
-      s.deps.pedidos = { ...repos.pedidos, obter: (tx, id) => repos.pedidos.obter(tx, id) }; // fila real
       return app.comTenant(A, (tx) => s.svc.emitirNota(tx, A, { pedido_id: pid, idempotencia: idem, itens }));
     }
 
