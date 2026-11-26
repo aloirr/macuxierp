@@ -6,9 +6,10 @@
 # Uso:
 #   bash ~/macuxierp-deploy/operador.sh criar-empresa --codigo <código do FDV> | --uf <UF> --nome "<nome da empresa>" \
 #        --admin-email "<e-mail do administrador>" [--admin-nome "<nome>"] --operador <seu nome> [--confirmar]
-#   bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "<e-mail>" [--nome "<nome>"] --operador <seu nome> [--confirmar]
+#   bash ~/macuxierp-deploy/operador.sh criar-superadmin --email "<e-mail>" [--nome "<nome>"] --operador <seu nome> \
+#        [--sem-mostrar-senha] [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh superadmin --email "<e-mail>" --desativar|--reativar|--destravar|--redefinir-senha \
-#        --operador <seu nome> [--confirmar]
+#        --operador <seu nome> [--sem-mostrar-senha] [--confirmar]
 #   bash ~/macuxierp-deploy/operador.sh superadmin --listar --operador <seu nome>
 #   bash ~/macuxierp-deploy/operador.sh a1-teste --empresa <código, ex.: AM2808> [--filial <id da filial emissora>] \
 #        --operador <seu nome> [--substituir] [--confirmar]
@@ -51,6 +52,9 @@
 # /dev/urandom só com --confirmar, entra no contêiner só pelo ambiente (-e) e aparece UMA vez neste terminal, só se a
 # pessoa foi criada ou a senha redefinida agora; em falha, é descartada sem aparecer. Entregue-a por um canal seguro
 # (nunca em recado, chat ou e-mail aberto).
+# --sem-mostrar-senha (decisão 22 B, workflow "producao — superadmin"): só no criar-superadmin e no --redefinir-senha. A
+# senha provisória é gerada e gravada do mesmo jeito, mas NUNCA aparece (a saída vai para o log do GitHub Actions): quem
+# entra pede uma senha temporária no /config, em "Esqueci a senha", que chega no próprio e-mail (T-0076).
 #
 # O script do contêiner vai pelo stdin. Saída 0 = ok; 2 = uso; 1 = falha (nada gravado).
 set -euo pipefail
@@ -231,12 +235,13 @@ criar_empresa() {
 
 # superadmin <criar-superadmin|superadmin> <opções>
 superadmin() {
-  local COMANDO="$1" EMAIL='' NOME='' ACAO='' OPERADOR='' CONFIRMAR=0
+  local COMANDO="$1" EMAIL='' NOME='' ACAO='' OPERADOR='' CONFIRMAR=0 SEM_SENHA=0
   shift
   if [ "$COMANDO" = criar-superadmin ]; then ACAO=criar NOME='Superadmin'; fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --confirmar) CONFIRMAR=1; shift; continue ;;
+      --sem-mostrar-senha) SEM_SENHA=1; shift; continue ;;
       --desativar | --reativar | --destravar | --redefinir-senha | --listar)
         [ "$COMANDO" = superadmin ] || uso "$1 só no comando superadmin"
         [ -z "$ACAO" ] || uso "uma ação por vez: --desativar, --reativar, --destravar, --redefinir-senha ou --listar"
@@ -260,6 +265,8 @@ superadmin() {
     [[ "$EMAIL" =~ $PADRAO_EMAIL ]] && [ "${#EMAIL}" -le 254 ] || uso "--email fora do formato"
   fi
   [ "$ACAO" != criar ] || texto --nome "$NOME" 2 80
+  [ "$SEM_SENHA" = 0 ] || [ "$ACAO" = criar ] || [ "$ACAO" = redefinir-senha ] ||
+    uso "--sem-mostrar-senha só no criar-superadmin e no --redefinir-senha"
   [[ "$OPERADOR" =~ $PADRAO_OPERADOR ]] || uso "--operador exige o nome de quem executa (ex.: alexandre)"
   preparar superadmin.mjs
 
@@ -296,7 +303,11 @@ superadmin() {
     'lista:estado: lista') : ;; # o superadmin.mjs já disse "só leitura"
     'criacao:estado: superadmin-criado' | 'redefinicao:estado: alterado')
       confirmado
-      printf '\n%s do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$ROTULO" "$SENHA"
+      if [ "$SEM_SENHA" = 1 ]; then
+        echo "[operador] ${ROTULO} gravada e NÃO mostrada (--sem-mostrar-senha). Para entrar: /config → \"Esqueci a senha\" → a senha temporária chega no e-mail do superadmin."
+      else
+        printf '\n%s do superadmin (aparece só agora; entregue por canal seguro; troca no 1º acesso):\n  %s\n' "$ROTULO" "$SENHA"
+      fi
       ;;
     'criacao:estado: superadmin-existia') echo "[operador] o superadmin já existia: a senha dele NÃO foi alterada (nenhuma senha nova)." ;;
     *':estado: simulacao') simulacao ;;
