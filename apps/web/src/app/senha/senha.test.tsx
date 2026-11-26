@@ -1,3 +1,4 @@
+import { TEXTO_CONTA_DESBLOQUEADA } from '@macuxierp/core/web';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,8 +27,8 @@ describe('tela /senha do BKO: troca da senha temporária (RN-CORE-13)', () => {
     expect(h).not.toContain('name="senha_atual"');
     expect(h).toContain('name="senha_nova"');
     // T-0111: aviso verde acima do título, rótulos e botão da tela de desbloqueio
-    expect(h.indexOf('Conta desbloqueada.')).toBeGreaterThan(-1);
-    expect(h.indexOf('Conta desbloqueada.')).toBeLessThan(h.indexOf('Crie a sua nova senha'));
+    expect(h.indexOf(TEXTO_CONTA_DESBLOQUEADA)).toBeGreaterThan(-1);
+    expect(h.indexOf(TEXTO_CONTA_DESBLOQUEADA)).toBeLessThan(h.indexOf('Crie a sua nova senha'));
     expect(h).toContain('aviso-sucesso');
     for (const t of ['Nova senha', 'Repita a nova senha', 'Salvar e entrar']) expect(h).toContain(t);
     expect(h).not.toContain('troque a senha provisória');
@@ -41,7 +42,7 @@ describe('tela /senha do BKO: troca da senha temporária (RN-CORE-13)', () => {
     eu.troca = true; eu.motivo = 'provisoria';
     const h = renderToStaticMarkup(await Senha({ searchParams: Promise.resolve({}) }));
     expect(h).toContain('name="senha_atual"');
-    expect(h).not.toContain('Conta desbloqueada.');
+    expect(h).not.toContain(TEXTO_CONTA_DESBLOQUEADA);
     eu.motivo = undefined;
   });
 });

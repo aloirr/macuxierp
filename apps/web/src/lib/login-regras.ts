@@ -1,3 +1,4 @@
+import { RESPOSTA_CONTA_BLOQUEADA, TEXTO_CONTA_DESBLOQUEADA } from '@macuxierp/core/web';
 import { CODIGO_CONTA_BLOQUEADA, CodigoEmpresaLogin, EmailUsuario, MuitasTentativasResposta } from '@macuxierp/platform-sdk';
 
 /** Textos e validação por campo da tela única de login e do "esqueci a senha" (docs/design/login-unico). Pura: sem Node, serve ao cliente e ao servidor. */
@@ -15,14 +16,14 @@ export const TEXTOS_LOGIN = {
 
 /** Conta bloqueada por tentativas erradas (T-0111): aviso, botão e a mensagem da tela de entrada. */
 export const TEXTOS_BLOQUEIO = {
-  titulo: 'Conta bloqueada',
-  texto: 'Você errou a senha muitas vezes. Para desbloquear, peça uma senha temporária.',
-  botao: 'Recuperar a senha',
+  titulo: RESPOSTA_CONTA_BLOQUEADA.titulo,
+  texto: RESPOSTA_CONTA_BLOQUEADA.mensagem,
+  botao: RESPOSTA_CONTA_BLOQUEADA.acao.rotulo,
 } as const;
 
 /** Entrou com a senha temporária (`motivo_troca: 'temporaria'` no `eu`): aviso e textos da tela de nova senha. */
 export const TEXTOS_DESBLOQUEIO = {
-  aviso: 'Conta desbloqueada.',
+  aviso: TEXTO_CONTA_DESBLOQUEADA,
   titulo: 'Crie a sua nova senha',
   rotuloNova: 'Nova senha',
   rotuloRepita: 'Repita a nova senha',
