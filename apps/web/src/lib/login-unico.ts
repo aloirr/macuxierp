@@ -1,7 +1,7 @@
 import { CABECALHO_CSRF_CONFIG, CAMINHO_LOGIN, COOKIE_CONFIG, LoginResposta, type LoginEntrada } from '@macuxierp/platform-sdk';
 import { buscarNaApi, usaApiFalsaAgora } from './api';
 import { CREDENCIAL_FALSA, REFRESH_FALSO, TOKEN_FALSO } from './falso';
-import { erroDaApi, type ErrosLogin } from './login-regras';
+import { erroDaApi, sinalDeBloqueioNaResposta, type ErrosLogin } from './login-regras';
 
 /**
  * Login único (RN-CORE-12, ADR 0018): `POST /v1/auth/login` (`CAMINHO_LOGIN`), uma rota só para empresa e superadmin. O web
@@ -15,6 +15,7 @@ export type ResultadoLogin =
   | { tipo: 'ok'; sessao: SessaoAberta }
   | { tipo: 'credencial' }
   | { tipo: 'limite'; retry_after_s: number }
+  | { tipo: 'bloqueada' }
   | { tipo: 'campos'; erros: ErrosLogin }
   | { tipo: 'indisponivel' };
 
@@ -50,6 +51,7 @@ export async function loginUnico(entrada: LoginEntrada): Promise<ResultadoLogin>
     return { tipo: 'indisponivel' };
   }
   const corpo: unknown = await r.json().catch(() => null);
+  if (sinalDeBloqueioNaResposta(r.status, corpo)) return { tipo: 'bloqueada' };
   const falha = erroDaApi(r.status, corpo);
   if (falha) return falha;
   if (r.status === 400) return { tipo: 'credencial' };

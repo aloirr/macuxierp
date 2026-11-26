@@ -5,7 +5,7 @@ import { euPlataforma } from '@/lib/config/api';
 import { cookies } from 'next/headers';
 import { COOKIE_CONFIG_WEB, opcoesConfig, ROTA_SENHA as ROTA_SENHA_CONFIG } from '@/lib/config/sessao';
 import { loginUnico, type SessaoAberta } from '@/lib/login-unico';
-import { TEXTOS_LOGIN, validarComSdk, type ErrosLogin } from '@/lib/login-regras';
+import { contaBloqueada, TEXTOS_LOGIN, validarComSdk, type ErrosLogin } from '@/lib/login-regras';
 import { COOKIE_ACESSO, COOKIE_REFRESH, destinoSeguro, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
 import { ROTA_SENHA } from '@/lib/troca-pendente';
 
@@ -13,6 +13,8 @@ import { ROTA_SENHA } from '@/lib/troca-pendente';
 export interface EstadoLogin {
   erro?: string;
   campos?: ErrosLogin;
+  /** Conta bloqueada (ver `contaBloqueada`): a tela mostra o aviso e o "Recuperar a senha", sem `erro`. */
+  bloqueada?: boolean;
   /** Login aceito: o cliente grava a preferência (só com `bko`) e navega para `para`. Nunca carrega senha nem token. */
   entrou?: { destino: 'bko' | 'config'; para: string };
 }
@@ -50,6 +52,7 @@ export async function entrarAction(dados: FormData): Promise<EstadoLogin> {
   const r = await loginUnico(v.dados);
 
   if (r.tipo === 'campos') return { campos: r.erros };
+  if (contaBloqueada(r)) return { bloqueada: true };
   if (r.tipo === 'limite') return { erro: textoMuitasTentativas(r.retry_after_s) };
   if (r.tipo === 'indisponivel') return { erro: TEXTOS_LOGIN.indisponivel };
   if (r.tipo === 'credencial') return { erro: TEXTOS_LOGIN.credencial };

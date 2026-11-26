@@ -25,6 +25,12 @@ describe('tela /senha do BKO: troca da senha temporária (RN-CORE-13)', () => {
     const h = renderToStaticMarkup(await Senha({ searchParams: Promise.resolve({}) }));
     expect(h).not.toContain('name="senha_atual"');
     expect(h).toContain('name="senha_nova"');
+    // T-0111: aviso verde acima do título, rótulos e botão da tela de desbloqueio
+    expect(h.indexOf('Conta desbloqueada.')).toBeGreaterThan(-1);
+    expect(h.indexOf('Conta desbloqueada.')).toBeLessThan(h.indexOf('Crie a sua nova senha'));
+    expect(h).toContain('aviso-sucesso');
+    for (const t of ['Nova senha', 'Repita a nova senha', 'Salvar e entrar']) expect(h).toContain(t);
+    expect(h).not.toContain('troque a senha provisória');
     trocarSenha.mockResolvedValue({ ok: true });
     renovar.mockResolvedValue({ acesso: 'a2', refresh: 'macuxierp_refresh=r2' });
     await expect(trocarSenhaBkoAction({}, form({ senha_nova: 'Nova-senha-1', confirmacao: 'Nova-senha-1', destino: '' }))).rejects.toThrow('REDIRECT /');
@@ -33,7 +39,9 @@ describe('tela /senha do BKO: troca da senha temporária (RN-CORE-13)', () => {
   });
   it('motivo provisoria: o campo da senha atual continua', async () => {
     eu.troca = true; eu.motivo = 'provisoria';
-    expect(renderToStaticMarkup(await Senha({ searchParams: Promise.resolve({}) }))).toContain('name="senha_atual"');
+    const h = renderToStaticMarkup(await Senha({ searchParams: Promise.resolve({}) }));
+    expect(h).toContain('name="senha_atual"');
+    expect(h).not.toContain('Conta desbloqueada.');
     eu.motivo = undefined;
   });
 });

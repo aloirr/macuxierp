@@ -59,9 +59,19 @@ describe('login único: navegação pelo destino que a API devolve', () => {
     expect(await entrarAction(form(ok))).toEqual({ erro: 'Empresa, e-mail ou senha incorretos.' });
     expect(set).not.toHaveBeenCalled();
   });
-  it('429: "Muitas tentativas. Tente de novo em N minutos." ', async () => {
+  it('423 (CONTA_BLOQUEADA): conta bloqueada, sem texto de erro (T-0111), também para o superadmin', async () => {
+    loginUnico.mockResolvedValue({ tipo: 'bloqueada' });
+    expect(await entrarAction(form(ok))).toEqual({ bloqueada: true });
+    const sa = form({ ...ok, empresa: 'MACUXI' });
+    expect(await entrarAction(sa)).toEqual({ bloqueada: true });
+    expect(set).not.toHaveBeenCalled();
+  });
+  it('429 do IP: Muitas tentativas com o prazo, sem o cartão de conta bloqueada', async () => {
     loginUnico.mockResolvedValue({ tipo: 'limite', retry_after_s: 420 });
-    expect(await entrarAction(form(ok))).toEqual({ erro: 'Muitas tentativas. Tente de novo em 7 minutos.' });
+    const r = await entrarAction(form(ok));
+    expect(r.bloqueada).toBeUndefined();
+    expect(r.erro).toContain('Muitas tentativas');
+    expect(set).not.toHaveBeenCalled();
   });
   it('serviço indisponível; 400 da API vira erro de campo', async () => {
     loginUnico.mockResolvedValue({ tipo: 'indisponivel' });

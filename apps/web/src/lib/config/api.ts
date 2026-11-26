@@ -29,7 +29,8 @@ import {
 import { ContatoRevelado, FichaReceitaPlanaMascarada, ResultadoReceitaPlana, type CampoContato } from '@macuxierp/core/contracts';
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
-import { type DetalhesErro, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
+import { sinalDeBloqueioNaResposta } from '../login-regras';
+import { type DetalhesErro, ConfigContaBloqueada, ConfigIndisponivel, ConfigMuitasTentativas, ConfigNaoAutenticado, ConfigSemPermissao, ErroPlataforma } from './erros';
 
 /** Cliente das rotas `/v1/plataforma/*` (ADR 0012). Só no servidor: o token da sessão nunca chega ao navegador. */
 const ListaEmpresas = paginaDe(EmpresaPlataforma);
@@ -69,6 +70,7 @@ export async function recusar(r: Response): Promise<never> {
     /* corpo fora do formato: segue só com o status */
   }
   const codigo = typeof corpo.codigo === 'string' ? corpo.codigo : '';
+  if (sinalDeBloqueioNaResposta(r.status, corpo)) throw new ConfigContaBloqueada();
   if (r.status === 403 && codigo !== CODIGO_TROCAR_SENHA) throw new ConfigSemPermissao();
   // 503 com código (ex.: CHAVE_INTEGRACAO_AUSENTE, ADR 0013 §3) é erro da plataforma, com mensagem própria; 5xx sem código segue indisponível.
   if ((r.status >= 400 && r.status < 500) || (r.status === 503 && codigo)) {

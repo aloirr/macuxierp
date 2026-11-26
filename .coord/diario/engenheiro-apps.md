@@ -51,4 +51,7 @@
 2026-11-25 — T-0101 — v0.3.15: cidade/UF só no bloco Dados (RD-2200) e ficha consultada sem dados (RD-2201)
 2026-11-25 — T-0106 — CNAE com descrição e nome do município na ficha; 3 estados da ficha; prévia vazia do zerar
 2026-11-25 — T-0109 — Log: legenda dos registros não enviados ao FDV e Corrigir cadastro (2b)
+2026-11-26 — T-0111 — conta bloqueada, Recuperar a senha e Conta desbloqueada na entrada
+2026-11-26 — T-0111 — login: conta bloqueada só no 423/CODIGO_CONTA_BLOQUEADA do SDK; 429 volta a Muitas tentativas
+2026-11-26 — T-0111 — /config: 423 vira ConfigContaBloqueada (mesmo ponto de login-regras); 429 segue Muitas tentativas
 2026-11-26 — T-0110 — Log: seção Recebidos do FDV e saída da seção antiga de clientes recebidos

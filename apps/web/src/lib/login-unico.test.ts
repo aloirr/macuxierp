@@ -50,7 +50,7 @@ describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
     resposta = () => json({ destino: 'config', expira_em: '2026-11-23T20:00:00.000Z', token_acesso: 'vazou' }, 200, 'macuxierp_config=tok; Path=/');
     expect(await entrar(entrada)).toEqual({ tipo: 'indisponivel' });
   });
-  it('401 e 403: neutro; 429 com o prazo; 400 com campos; 5xx e rede: indisponível', async () => {
+  it('401 e 403: neutro; 429 com o prazo (limite por IP, não é bloqueio); 423 conta bloqueada; 400 com campos; 5xx e rede: indisponível', async () => {
     const entrar = await carregar();
     resposta = () => json({ codigo: 'NAO_AUTENTICADO' }, 401);
     expect(await entrar(entrada)).toEqual({ tipo: 'credencial' });
@@ -58,6 +58,8 @@ describe('login único (SDK): POST /v1/auth/login, destino pela API', () => {
     expect(await entrar(entrada)).toEqual({ tipo: 'credencial' });
     resposta = () => json({ codigo: 'MUITAS_TENTATIVAS', mensagem: 'x', detalhes: { retry_after_s: 420 } }, 429);
     expect(await entrar(entrada)).toEqual({ tipo: 'limite', retry_after_s: 420 });
+    resposta = () => json({ codigo: 'CONTA_BLOQUEADA', mensagem: 'x', detalhes: { recuperar: true } }, 423);
+    expect(await entrar(entrada)).toEqual({ tipo: 'bloqueada' });
     resposta = () => json({ codigo: 'VALIDACAO', mensagem: 'm', campos: { email: 'E-mail inválido' } }, 400);
     expect(await entrar(entrada)).toEqual({ tipo: 'campos', erros: { email: 'E-mail inválido' } });
     resposta = () => json({}, 500);

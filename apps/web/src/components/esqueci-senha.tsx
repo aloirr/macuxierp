@@ -10,7 +10,7 @@ import {
 } from '@/lib/esqueci-resultado';
 import { primeiroVazio, TEXTOS_LOGIN, validarCampos, type ErrosLogin } from '@/lib/login-regras';
 
-/** Botão com aparência de link ("Esqueci a senha" e "Voltar ao login"), dentro de um parágrafo de apoio. */
+/** Botão com aparência de link ("Esqueci a senha" e "Voltar para entrar"), dentro de um parágrafo de apoio. */
 function BotaoLink({ texto, aoClicar, refBotao }: { texto: string; aoClicar?: (() => void) | undefined; refBotao?: Ref<HTMLButtonElement> }) {
   return <p className="apoio"><button type="button" className="link" ref={refBotao} onClick={aoClicar}>{texto}</button></p>;
 }
@@ -42,14 +42,14 @@ export function PainelEsqueciVisao({
   const voltar = <BotaoLink texto={T.voltar} aoClicar={aoVoltar} />;
   if (estado.fase === 'confirmado') {
     return (
-      <section aria-label={T.titulo}>
-        <p role="status" tabIndex={-1} ref={refs?.texto}>{T.confirmacao}</p>
+      <section aria-label={T.tituloPainel}>
+        <p className="aviso-sucesso" role="status" tabIndex={-1} ref={refs?.texto}>{T.confirmacao}</p>
         {voltar}
       </section>
     );
   }
   return (
-    <section aria-label={T.titulo}>
+    <section aria-label={T.tituloPainel}>
       <form
         noValidate
         aria-busy={estado.fase === 'enviando'}
@@ -81,16 +81,17 @@ export function PainelEsqueciVisao({
 }
 
 export function EsqueciSenha({
-  empresaInicial, aoVoltar, enviar = pedirEsqueciAction,
+  empresaInicial, emailInicial, aoVoltar, enviar = pedirEsqueciAction,
 }: {
   empresaInicial?: string | undefined;
+  emailInicial?: string | undefined;
   aoVoltar: () => void;
   enviar?: EnviarEsqueci;
 }) {
   const [estado, setEstado] = useState<EstadoEsqueci>({ fase: 'form', erros: {} });
   const inputs = useRef<Partial<Record<CampoEsqueci, HTMLInputElement | null>>>({});
   const texto = useRef<HTMLParagraphElement | null>(null);
-  const valores: DadosEsqueci = { empresa: empresaInicial };
+  const valores: DadosEsqueci = { empresa: empresaInicial, email: emailInicial };
 
   useEffect(() => {
     if (estado.fase === 'confirmado') texto.current?.focus();
@@ -123,14 +124,19 @@ export function EsqueciSenha({
 
 /** Alterna entre o formulário de login e o painel; o link só existe se `disponivel` (a API diz que o e-mail da plataforma está configurado). */
 export function ComEsqueciSenha({
-  disponivel, empresaInicial, enviar, cabecalho, children,
+  disponivel, ocultarLink = false, empresaInicial, emailInicial, enviar, cabecalho, children,
 }: {
   disponivel: boolean;
+  /** Esconde o link "Esqueci a senha" (conta bloqueada: o botão "Recuperar a senha" já abre o painel). */
+  ocultarLink?: boolean;
   empresaInicial?: string;
+  /** E-mail já digitado no login: vai só por props (estado do cliente), nunca por URL ou storage. */
+  emailInicial?: string;
   enviar?: EnviarEsqueci;
-  /** Título único da tela (h1): recebe se o painel está aberto, para trocar "Acesse sua conta" por "Esqueci a senha". */
+  /** Título único da tela (h1): recebe se o painel está aberto, para trocar "Acesse sua conta" por "Recuperar a senha". */
   cabecalho?: (painelAberto: boolean) => ReactNode;
-  children: ReactNode;
+  /** Função: recebe `abrir`, que abre o painel (usada pelo "Recuperar a senha" da conta bloqueada). */
+  children: ReactNode | ((abrir: () => void) => ReactNode);
 }) {
   const [aberto, setAberto] = useState(false);
   const link = useRef<HTMLButtonElement | null>(null);
@@ -142,15 +148,15 @@ export function ComEsqueciSenha({
     return (
       <>
         {cabecalho?.(true)}
-        <EsqueciSenha empresaInicial={empresaInicial} enviar={enviar} aoVoltar={() => { veioDoPainel.current = true; setAberto(false); }} />
+        <EsqueciSenha empresaInicial={empresaInicial} emailInicial={emailInicial} enviar={enviar} aoVoltar={() => { veioDoPainel.current = true; setAberto(false); }} />
       </>
     );
   }
   return (
     <>
       {cabecalho?.(false)}
-      {children}
-      {disponivel && (
+      {typeof children === 'function' ? children(() => setAberto(true)) : children}
+      {disponivel && !ocultarLink && (
         <BotaoLink texto={T.titulo} aoClicar={() => setAberto(true)} refBotao={link} />
       )}
     </>

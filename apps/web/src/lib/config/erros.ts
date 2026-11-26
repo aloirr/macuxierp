@@ -1,4 +1,5 @@
 import { ehRespostaDefinitiva } from '../descritor/idempotencia';
+import { TEXTOS_BLOQUEIO } from '../login-regras';
 import { SESSAO_EXPIRADA } from '../textos';
 
 /** Erros do portal /config. Mensagens fixas: nada de corpo de erro cru, e-mail, nome de empresa ou senha (LGPD, ADR 0012). */
@@ -13,6 +14,10 @@ export class ConfigIndisponivel extends Error {
 }
 export class ConfigMuitasTentativas extends Error {
   override readonly name = 'ConfigMuitasTentativas' as const;
+}
+/** Conta bloqueada por tentativas erradas (423 ou `CONTA_BLOQUEADA`, RN-CORE-15): resultado próprio, distinto do limite por IP (429). */
+export class ConfigContaBloqueada extends Error {
+  override readonly name = 'ConfigContaBloqueada' as const;
 }
 /** `detalhes` do corpo de erro da API, só o que a tela usa: o código e, no 422 do zerar, os bloqueios (`cadastro:motivo`). */
 export interface DetalhesErro {
@@ -61,6 +66,7 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   const base = { campos: {}, expirou: false, chaveNova: false };
   if (e instanceof ConfigNaoAutenticado) return { ...base, texto: SESSAO_EXPIRADA, expirou: true };
   if (e instanceof ConfigMuitasTentativas) return { ...base, texto: 'Muitas tentativas. Aguarde 15 minutos e tente de novo.' };
+  if (e instanceof ConfigContaBloqueada) return { ...base, texto: `${TEXTOS_BLOQUEIO.titulo}. ${TEXTOS_BLOQUEIO.texto}` };
   if (e instanceof ConfigSemPermissao) return { ...base, texto: SEM_PERMISSAO };
   if (e instanceof ErroPlataforma) {
     if (ctx === 'receita') {
