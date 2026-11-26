@@ -4,6 +4,7 @@
  * orientam a digitação; a API revalida tudo (RN-CORE-02).
  */
 import { MAX_DIAS, NOME_FORMA, PrazoMedioDias, classeForma, type CondicaoPagamento } from '../contracts';
+import { soOQueMudou } from './edicao';
 import { MAX_PARCELAS_DA_CLASSE, MOTIVO_PRAZO_MEDIO, validarCondicaoPagamento } from '../domain/condicao';
 
 /** Formas aceitas (RN-CAD-09), na ordem do seletor "Forma". */
@@ -19,7 +20,7 @@ export const diasDoPrazo = (dias: readonly number[]): string => dias.join('/');
 /** "Prazo médio" na lista: o legado sem prazo médio aparece como "Incompleto" (RN-CAD-15). */
 export const prazoMedioNaLista = (v: unknown): string => (typeof v === 'number' ? `${v}` : 'Incompleto');
 
-type LinhaPrazo = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'forma_tpag' | 'prazos_dias' | 'prazo_medio_dias'> & { id?: string; inativo?: boolean };
+type LinhaPrazo = Pick<CondicaoPagamento, 'codigo' | 'descricao' | 'forma_tpag' | 'prazos_dias' | 'prazo_medio_dias' | 'prazo_medio_calculado'> & { id?: string; inativo?: boolean };
 
 export interface PrazoNaLista { id: string | undefined; codigo: string; descricao: string; dias: string; prazo_medio: string; inativo: boolean }
 export interface GrupoDePrazos { forma_tpag: string; forma: string; prazos: PrazoNaLista[] }
@@ -42,7 +43,7 @@ export function agruparPrazosPorForma(linhas: readonly LinhaPrazo[]): GrupoDePra
  * Estado do formulário do prazo: tudo texto, como digitado. `prazo_medio_sugerido` é só a dica (placeholder) do prazo médio
  * CALCULADO gravado (T-0108, decisão 17 B): nunca é enviado, nem vira valor do campo.
  */
-export interface FormularioPrazo { codigo: string; descricao: string; forma_tpag: string; parcelas: string[]; prazo_medio_dias: string; prazo_medio_sugerido?: string }
+export interface FormularioPrazo { codigo: string; descricao: string; forma_tpag: string; parcelas: string[]; prazo_medio_dias: string; prazo_medio_sugerido: string }
 
 export const formularioPrazoVazio = (): FormularioPrazo => ({ codigo: '', descricao: '', forma_tpag: '15', parcelas: [''], prazo_medio_dias: '', prazo_medio_sugerido: '' });
 /** Rótulos "Parcela 1", "Parcela 2"… */
@@ -88,7 +89,7 @@ export function montarPrazo(f: FormularioPrazo): { corpo?: { codigo: string; des
  * RN-CAD-15): o prazo médio CALCULADO (`prazo_medio_calculado === true`) também abre vazio, com o valor em `prazo_medio_sugerido` (dica);
  * assim salvar sem mexer não o converte em digitado. O digitado abre no campo.
  */
-export function formularioDoPrazo(c: LinhaPrazo & { prazo_medio_calculado?: boolean | null }): FormularioPrazo {
+export function formularioDoPrazo(c: LinhaPrazo): FormularioPrazo {
   const medio = c.prazo_medio_dias === null ? '' : String(c.prazo_medio_dias);
   const calculado = c.prazo_medio_calculado === true;
   return {
@@ -103,14 +104,12 @@ export function formularioDoPrazo(c: LinhaPrazo & { prazo_medio_calculado?: bool
  * `completarPrazoMedio` da API vê `prazo_medio_dias === undefined` com a marca true e recalcula, mantendo a marca. Número digitado vai como digitado;
  * campo apagado de um digitado vai `null` (a API recalcula e marca calculado).
  */
-export function corpoDoPatchDoPrazo(f: FormularioPrazo, original: LinhaPrazo & { prazo_medio_calculado?: boolean | null }): { corpo?: Record<string, unknown>; erros: ErrosDoPrazo } {
+export function corpoDoPatchDoPrazo(f: FormularioPrazo, original: LinhaPrazo): { corpo?: Record<string, unknown>; erros: ErrosDoPrazo } {
   const r = montarPrazo(f);
   if (!r.corpo) return r;
   const novo: Record<string, unknown> = { ...r.corpo };
-  const base = original as unknown as Record<string, unknown>;
   if (r.corpo.prazo_medio_dias === null && original.prazo_medio_calculado === true) delete novo.prazo_medio_dias;
-  const corpo = Object.fromEntries(Object.entries(novo).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(base[k])));
-  return { corpo, erros: r.erros };
+  return { corpo: soOQueMudou(novo, original), erros: r.erros };
 }
 
 /** Cliente (RN-CAD-16): só o campo "Prazo médio (dias)", opcional; sem lista de prazos liberados. Vazio = sem restrição (nulo). */

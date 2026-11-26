@@ -46,20 +46,20 @@ describe('formulário do prazo (RN-CAD-15)', () => {
   it('RN-CAD-15: montarPrazo exige código, descrição e parcelas uma a uma, com o erro no campo certo; prazo médio vazio vai como null', () => {
     expect(montarPrazo(formularioPrazoVazio()).erros).toMatchObject({ codigo: expect.any(String), descricao: expect.any(String), prazos_dias: expect.any(String) });
     expect(montarPrazo(formularioPrazoVazio()).erros).not.toHaveProperty('prazo_medio_dias');
-    const ok = montarPrazo({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', parcelas: ['30', '60'], prazo_medio_dias: '45' });
+    const ok = montarPrazo({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', parcelas: ['30', '60'], prazo_medio_dias: '45', prazo_medio_sugerido: '' });
     expect(ok.erros).toEqual({});
     expect(ok.corpo).toEqual({ codigo: 'B30', descricao: 'Boleto 30', forma_tpag: '15', prazos_dias: [30, 60], prazo_medio_dias: 45 });
-    expect(montarPrazo({ codigo: 'X', descricao: 'X', forma_tpag: '15', parcelas: ['366'], prazo_medio_dias: '30' }).erros).toHaveProperty('prazos_dias');
+    expect(montarPrazo({ codigo: 'X', descricao: 'X', forma_tpag: '15', parcelas: ['366'], prazo_medio_dias: '30', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazos_dias');
     // decisão 14 A: vazio (inclusive só espaços) é aceito e vai como null; o ERP calcula
-    const vazio = montarPrazo({ codigo: 'B3', descricao: 'Boleto', forma_tpag: '15', parcelas: ['30', '45'], prazo_medio_dias: '  ' });
+    const vazio = montarPrazo({ codigo: 'B3', descricao: 'Boleto', forma_tpag: '15', parcelas: ['30', '45'], prazo_medio_dias: '  ', prazo_medio_sugerido: '' });
     expect(vazio.erros).toEqual({});
     expect(vazio.corpo).toMatchObject({ prazos_dias: [30, 45], prazo_medio_dias: null });
     // digitado segue validado de 0 a 365; 0 é um valor, não vazio
-    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '366' }).erros).toHaveProperty('prazo_medio_dias');
-    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: 'abc' }).erros).toHaveProperty('prazo_medio_dias');
-    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '0' }).corpo).toMatchObject({ prazo_medio_dias: 0 });
+    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '366', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazo_medio_dias');
+    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: 'abc', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazo_medio_dias');
+    expect(montarPrazo({ codigo: 'B3', descricao: 'B', forma_tpag: '15', parcelas: ['30'], prazo_medio_dias: '0', prazo_medio_sugerido: '' }).corpo).toMatchObject({ prazo_medio_dias: 0 });
     // à vista continua 0
-    expect(montarPrazo({ codigo: 'AV', descricao: 'AV', forma_tpag: '01', parcelas: ['0'], prazo_medio_dias: '5' }).erros).toHaveProperty('prazo_medio_dias');
+    expect(montarPrazo({ codigo: 'AV', descricao: 'AV', forma_tpag: '01', parcelas: ['0'], prazo_medio_dias: '5', prazo_medio_sugerido: '' }).erros).toHaveProperty('prazo_medio_dias');
   });
   it('RN-CAD-15: o legado abre no formulário com o prazo médio vazio, para completar', () => {
     expect(formularioDoPrazo(p('LEG', '15', [15, 30], null))).toMatchObject({ parcelas: ['15', '30'], prazo_medio_dias: '' });
@@ -69,33 +69,26 @@ describe('formulário do prazo (RN-CAD-15)', () => {
 describe('T-0108: a tela não converte o prazo médio calculado em digitado (decisão 17 B, RN-CAD-15)', () => {
   const calc = { ...p('B3', '15', [30, 45], 38), prazo_medio_calculado: true };
   const dig = { ...p('B4', '15', [30, 45], 40), prazo_medio_calculado: false };
-  it('T-0108, 17 B: o calculado abre com o campo vazio e o valor como sugestão', () => {
+  it('RN-CAD-15: o calculado abre com o campo vazio e o valor como sugestão', () => {
     expect(formularioDoPrazo(calc)).toMatchObject({ prazo_medio_dias: '', prazo_medio_sugerido: '38' });
   });
-  it('T-0108, 17 B: salvar sem mexer mantém o calculado (campo vazio vira null no corpo; no PATCH nada vai)', () => {
+  it('RN-CAD-15: salvar sem mexer mantém o calculado: o PATCH não manda nada, nem o sugerido como valor', () => {
     const f = formularioDoPrazo(calc);
-    expect(montarPrazo(f).corpo).toMatchObject({ prazo_medio_dias: null });
     const r = corpoDoPatchDoPrazo(f, calc);
     expect(r.corpo).toEqual({});
   });
-  it('T-0108, 17 B: mudar só as parcelas com o campo vazio não manda o prazo médio (a API recalcula e mantém a marca)', () => {
+  it('RN-CAD-15: mudar só as parcelas com o campo vazio não manda o prazo médio (a API recalcula e mantém a marca)', () => {
     const r = corpoDoPatchDoPrazo({ ...formularioDoPrazo(calc), parcelas: ['30', '90'] }, calc);
     expect(r.corpo).toEqual({ prazos_dias: [30, 90] });
-    expect(r.corpo).not.toHaveProperty('prazo_medio_dias');
   });
-  it('T-0108, 17 B: digitar um número vira digitado', () => {
+  it('RN-CAD-15: no PATCH, digitar um número vira digitado', () => {
     expect(corpoDoPatchDoPrazo({ ...formularioDoPrazo(calc), prazo_medio_dias: '50' }, calc).corpo).toEqual({ prazo_medio_dias: 50 });
-    expect(montarPrazo({ ...formularioDoPrazo(calc), prazo_medio_dias: '50' }).corpo).toMatchObject({ prazo_medio_dias: 50 });
   });
-  it('T-0108, 17 B: o digitado abre no campo e apagá-lo manda null', () => {
+  it('RN-CAD-15: o digitado abre no campo e apagá-lo manda null', () => {
     const f = formularioDoPrazo(dig);
     expect(f).toMatchObject({ prazo_medio_dias: '40', prazo_medio_sugerido: '' });
     expect(corpoDoPatchDoPrazo(f, dig).corpo).toEqual({});
     expect(corpoDoPatchDoPrazo({ ...f, prazo_medio_dias: '' }, dig).corpo).toEqual({ prazo_medio_dias: null });
-  });
-  it('T-0108, 17 B: o sugerido nunca é usado como valor', () => {
-    const f = { ...formularioDoPrazo(calc), prazo_medio_sugerido: '38' };
-    expect(JSON.stringify(montarPrazo(f).corpo)).not.toContain('"prazo_medio_dias":38');
   });
 });
 

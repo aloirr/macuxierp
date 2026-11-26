@@ -69,4 +69,18 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CAD-15: prazo médio efetivo gravado (Postgr
     expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo })).status).toBe(200);
     expect((await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]).toEqual({ prazo_medio_dias: 60, prazo_medio_calculado: true });
   }, 120_000);
+
+  it('RN-CAD-15: PATCH com o corpo vazio num calculado responde 200 e não muda o prazo nem a marca', async () => {
+    const a = amb();
+    const id = ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'R1', descricao: 'D', forma_tpag: '15', prazos_dias: [30, 45] } })).corpo as { id: string }).id;
+    expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: {} })).status).toBe(200);
+    expect((await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]).toEqual({ prazo_medio_dias: 38, prazo_medio_calculado: true });
+  }, 120_000);
+
+  it('RN-CAD-15: apagar o campo de um digitado (PATCH prazo_medio_dias null) grava o calculado com a marca true', async () => {
+    const a = amb();
+    const id = ((await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'R2', descricao: 'D', forma_tpag: '15', prazos_dias: [30, 45], prazo_medio_dias: 20 } })).corpo as { id: string }).id;
+    expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazo_medio_dias: null } })).status).toBe(200);
+    expect((await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]).toEqual({ prazo_medio_dias: 38, prazo_medio_calculado: true });
+  }, 120_000);
 });
