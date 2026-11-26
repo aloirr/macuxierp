@@ -5,8 +5,19 @@
  * pronto (`--pronto <arquivo>`) quando está ouvindo; no SIGTERM ou SIGINT fecha e apaga o banco. Fora do vitest.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
-import { CODIGO_SUPERADMIN_LOGIN } from '../../packages/platform-sdk/src/index';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  CABECALHO_CSRF_CONFIG,
+  CAMINHOS_CARGAS_PLATAFORMA,
+  CAMPO_ARQUIVO_CARGA_PORTAL,
+  CODIGO_SUPERADMIN_LOGIN,
+  COOKIE_CONFIG,
+  PREFIXO_PLATAFORMA,
+} from '../../packages/platform-sdk/src/index';
+import { formulario } from '../../apps/api/src/apoio-multipart';
+import { PASTA_FIXTURE_CARGA } from '../apoio/fixture-carga';
+import type { AppPortal } from '../apoio/portal-pg';
 import { criarBancoEfemero, criarTenant, type BancoEfemero } from '../../packages/platform-sdk/src/pg-testes';
 import {
   appPgDeTeste,
@@ -87,4 +98,43 @@ export async function subirApiE2e(o: OpcoesApiE2e) {
     });
   }
   return { b, app, tenant, url, dados };
+}
+
+
+/**
+ * Carga CSV pelo portal /config (aba Dados) com as fixtures fictícias do cadastros, como o superadmin faria (RD-2197: era
+ * copiada nas massas dos prints). `token` é a sessão do superadmin (`atalhosPortal(app).sessao`).
+ */
+export async function carregarCsvsPortal(app: AppPortal, tenant: string, token: string, cadastros: readonly string[]): Promise<void> {
+  for (const cadastro of cadastros) {
+    const f = formulario({}, [{ campo: CAMPO_ARQUIVO_CARGA_PORTAL, conteudo: readFileSync(join(PASTA_FIXTURE_CARGA, `${cadastro}.csv`), 'utf8'), nome: `${cadastro}.csv`, tipo: 'text/csv' }]);
+    const r = await app.inject({
+      method: 'POST',
+      url: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.gravar.replace(':id', tenant).replace(':cadastro', cadastro)}`,
+      payload: f.payload,
+      cookies: { [COOKIE_CONFIG]: token },
+      headers: { ...f.headers, [CABECALHO_CSRF_CONFIG]: '1', 'idempotency-key': randomUUID() },
+    });
+    if (r.statusCode >= 300) throw new Error(`carga ${cadastro}: ${r.statusCode} ${r.body}`);
+  }
+}
+
+/**
+ * Depois do `listen` de uma massa de prints (RD-2197): o conector fictício dá sinal a cada 20 s (o Monitor fica "Em dia" durante
+ * todo o ensaio) e, no SIGTERM ou SIGINT, a API fecha e o banco efêmero é apagado.
+ */
+export function manterSinalEEncerrar(o: { app: AppPortal; b: BancoEfemero; tenant: string; rotulo: string }): void {
+  const pulso = setInterval(() => {
+    void o.b.admin.query('UPDATE integracao_fdv.sinal SET ultimo_envio_em = now(), ultimo_aceito_em = now() WHERE tenant_id = $1', [o.tenant]).catch(() => undefined);
+  }, 20_000);
+  for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(sinal, () => {
+      clearInterval(pulso);
+      void o.app
+        .close()
+        .then(() => o.b.remover())
+        .then(() => console.error(`[${o.rotulo}] banco efêmero apagado`))
+        .finally(() => process.exit(0));
+    });
+  }
 }

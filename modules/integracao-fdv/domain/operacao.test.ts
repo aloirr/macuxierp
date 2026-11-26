@@ -148,6 +148,14 @@ describe('Log (T-0086 §4; ADR 0013)', () => {
     expect(LogCadastroFdvTenant.safeParse(log).success).toBe(true);
   });
 
+  it('RN-INF-09: o log do BKO leva recebidos e total_recebidos', () => {
+    const linha = { id: '00000000-0000-4000-8000-000000000001', cliente_uuid: '00000000-0000-4000-8000-000000000002', codigo_fdv: null, razao_social: 'Mercado', documento_mascarado: '11.222.333/****-**', vendedor_external_id: null, recebido_em: AGORA, revisao: 1, situacao: 'aceito' as const, motivo: null, erros: null, cliente_id: '00000000-0000-4000-8000-000000000003', payload_expurgado_em: null, retorno: 'pendente' as const };
+    expect(montarLogTenant({ ...base, envios: [], erros: [] })).toMatchObject({ recebidos: [], total_recebidos: 0 });
+    const cliente = montarLogTenant({ ...base, envios: [], erros: [], recebidos: { linhas: [linha], totalNoBanco: 7 } });
+    expect(cliente.recebidos).toHaveLength(1);
+    expect(cliente.total_recebidos).toBe(7);
+  });
+
   it('o texto vem do catálogo pelo código: código desconhecido cai na mensagem genérica, nunca em texto do Hub', () => {
     const log = montarLogTenant({ ...base, envios: [], erros: [erro({ codigo: 'qualquer_coisa_do_hub' })] });
     expect(log.erros[0]!.motivo_texto).toContain('não catalogado');

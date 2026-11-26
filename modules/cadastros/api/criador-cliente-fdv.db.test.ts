@@ -191,7 +191,7 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
     const novo = (n: number, o: Partial<ClienteParaErpFdv>) => pre({ cliente_uuid: `aaaaaaaa-0000-4000-8000-00000000000${n}`, documento: ['', '70.201.306/0001-91', '51.250.470/0001-44', '03.778.130/0001-48', '67.040.890/0001-36'][n], inscricao_estadual: '', ...o });
     const doCliente = async (id: string) => (await admin<{ vendedor_id: string | null }>('SELECT vendedor_id FROM cadastros.cliente WHERE id = $1', [id]))[0]?.vendedor_id;
 
-    it('RN-INT-23 (T-0105): vendedor ativo entra na carteira; a auditoria não leva o código', async () => {
+    it('RN-INF-09 (T-0105): vendedor ativo entra na carteira; a auditoria não leva o código', async () => {
       const d = await decidir(A, novo(1, { vendedor_external_id: 'V-ATIVO' }));
       expect(d).toMatchObject({ status: 'vinculado' });
       if (d.status !== 'vinculado') return;
@@ -200,7 +200,7 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
       expect(aud[0]?.depois).toMatchObject({ vendedor_vinculado: true });
       expect(JSON.stringify(aud)).not.toMatch(/V-ATIVO/);
     });
-    it('RN-INT-23 (T-0105): vendedor inexistente ou inativo recusa o pré-cadastro e nenhum cliente é gravado', async () => {
+    it('RN-INF-09 (T-0105): vendedor inexistente ou inativo recusa o pré-cadastro e nenhum cliente é gravado', async () => {
       const casos: Array<[number, string, string]> = [
         [4, 'V-INATIVO', 'vendedor_fdv_inativo'], // existe, mas inativo no ERP
         [3, 'V-NAO-EXISTE', 'vendedor_fdv_nao_encontrado'],
@@ -213,7 +213,7 @@ describe.skipIf(!PG_DISPONIVEL)('CriadorClienteFdv (PostgreSQL real)', () => {
         expect(JSON.stringify(d)).not.toContain(ext);
       }
     });
-    it('RN-INT-23 (T-0105): sem a porta ligada o comportamento é o de antes: cliente sem carteira e sem recusa', async () => {
+    it('RN-INF-09 (T-0105): sem a porta ligada o comportamento é o de antes: cliente sem carteira e sem recusa', async () => {
       const semPorta = criarCriadorClienteFdv({ repositorios: repositoriosSql, outbox: new OutboxPg(), auditoria: new AuditoriaPg(), relogio: new RelogioFixo(AGORA) });
       const d = await app.comTenant(A, (tx) => semPorta.decidir(tx, A, novo(2, { vendedor_external_id: 'V-ATIVO' })));
       expect(d).toMatchObject({ status: 'vinculado' });

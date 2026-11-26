@@ -23,7 +23,7 @@ export interface EntradaCondicao {
   prazos_dias?: readonly number[] | null;
   /** Legado: o domain deriva das parcelas do cartão (`derivarParcelasCartao`). */
   parcelas_cartao?: number | null;
-  /** RN-CAD-15: ausente (`undefined`) recusa; `null` é o legado anterior à 0052 (o PATCH que não traz o campo mantém o valor). */
+  /** RN-CAD-15 (decisão 14 A): `completarPrazoMedio`; vazio é aceito, só o valor fora de 0..365 recusa. */
   prazo_medio_dias?: number | null;
   /** Só confere quando vem (o PATCH parcial pode não trazer). */
   descricao?: string | null;
@@ -38,7 +38,40 @@ export const derivarParcelasCartao = (c: { forma_tpag: string; prazos_dias?: rea
 
 const diasValidos = (p: unknown): boolean => typeof p === 'number' && Number.isInteger(p) && p >= 0 && p <= MAX_DIAS;
 
-/** RN-CAD-15 (completa a RN-CAD-09): código, descrição, parcelas uma a uma e prazo médio digitado; à vista = parcelas [0] e prazo médio 0. */
+/**
+ * RN-CAD-15 e decisão 14 A (Alexandre, R-20261125-154127): prazo médio efetivo da condição. Número (inclusive 0) vale ele mesmo; vazio
+ * (nulo ou ausente) vira a média simples das parcelas, arredondada meio para cima (`Math.floor(soma / n + 0.5)`); sem parcelas, `null`.
+ * O resultado fica entre a menor e a maior parcela, como o Hub exige.
+ */
+export function prazoMedioEfetivo(prazos_dias: readonly number[] | null | undefined, prazo_medio_dias?: number | null): number | null {
+  if (typeof prazo_medio_dias === 'number') return prazo_medio_dias;
+  const p = prazos_dias ?? [];
+  if (p.length === 0) return null;
+  return Math.floor(p.reduce((a, b) => a + b, 0) / p.length + 0.5);
+}
+
+/**
+ * RN-CAD-15, decisões 14 A e 17 B: preenche `prazo_medio_dias` e a marca `prazo_medio_calculado` antes de gravar.
+ * - número no corpo (inclusive 0): vale o digitado e a marca é false;
+ * - `null` explícito (o usuário apagou), ou criação sem o campo: o ERP calcula (`prazoMedioEfetivo`) e a marca é true;
+ * - PATCH sem o campo e com parcelas no corpo: recalcula (marca true) quando a marca gravada é true ou o prazo gravado está vazio;
+ *   com a marca false o digitado fica; sem parcelas no corpo o corpo volta como veio.
+ * `antes` é o cadastro gravado, no PATCH.
+ */
+export function completarPrazoMedio<T extends { prazos_dias?: readonly number[] | null; prazo_medio_dias?: number | null }>(
+  corpo: T, antes?: { prazos_dias: readonly number[]; prazo_medio_dias?: number | null; prazo_medio_calculado?: boolean | null },
+): T & { prazo_medio_calculado?: boolean } {
+  if (typeof corpo.prazo_medio_dias === 'number') return { ...corpo, prazo_medio_calculado: false };
+  if (antes && corpo.prazo_medio_dias === undefined) {
+    if (corpo.prazos_dias === undefined || corpo.prazos_dias === null) return corpo;
+    const vazio = typeof antes.prazo_medio_dias !== 'number';
+    if (!vazio && antes.prazo_medio_calculado !== true) return corpo; // digitado: fica
+  }
+  const efetivo = prazoMedioEfetivo(corpo.prazos_dias ?? antes?.prazos_dias, null);
+  return efetivo === null ? corpo : { ...corpo, prazo_medio_dias: efetivo, prazo_medio_calculado: true };
+}
+
+/** RN-CAD-15 (completa a RN-CAD-09): código, descrição, parcelas uma a uma e prazo médio (decisão 14 A); à vista = parcelas [0] e prazo médio 0. */
 export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
   const prazos = c.prazos_dias ?? [];
   const parcelas = c.parcelas_cartao ?? null;
@@ -47,8 +80,8 @@ export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
   const erros: Violacao[] = [];
   if (c.descricao !== undefined && (c.descricao === null || c.descricao.trim() === '')) erros.push(violacao('RN-CAD-15', 'descricao', MOTIVO_DESCRICAO));
   const medio = c.prazo_medio_dias;
-  if (medio === undefined || (medio !== null && !diasValidos(medio))) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO));
-  else if (classe === 'a_vista' && medio !== null && medio !== 0) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_A_VISTA));
+  if (medio !== undefined && medio !== null && !diasValidos(medio)) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO));
+  else if (classe === 'a_vista' && medio !== null && medio !== undefined && medio !== 0) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_A_VISTA));
   switch (classe) {
     case 'a_vista':
       if (parcelas !== null || prazos.length !== 1 || prazos[0] !== 0) erros.push(violacao('RN-CAD-15', 'prazos_dias', MOTIVO_A_VISTA));

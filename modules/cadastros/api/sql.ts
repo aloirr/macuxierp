@@ -16,7 +16,7 @@ import type {
 
 type Dict = Record<string, unknown>;
 /** Colunas da condição de pagamento (inclui a forma, D12): o repositório e a leitura da carga usam as mesmas. */
-const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'prazo_medio_dias', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
+const COLUNAS_CONDICAO = ['codigo', 'descricao', 'forma_tpag', 'prazos_dias', 'prazo_medio_dias', 'prazo_medio_calculado', 'parcelas_cartao', 'forma_external_id', 'forma_codigo', 'forma_nome'];
 const DATA = (c: string) => `to_char(${c}, 'YYYY-MM-DD') AS ${c}`;
 const N = (c: string) => `${c}::float8 AS ${c}`;
 
@@ -505,6 +505,10 @@ function cargaSql(tx: Transacao): RepoCarga {
     },
     async condicoesAtivasCartaoSemParcelas() {
       const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND forma_tpag = '03' AND parcelas_cartao IS NULL ORDER BY id`, []);
+      return l as unknown as CondicaoPagamento[];
+    },
+    async condicoesAtivasSemPrazoMedio() {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND prazo_medio_dias IS NULL AND cardinality(prazos_dias) >= 1 ORDER BY id FOR UPDATE`, []);
       return l as unknown as CondicaoPagamento[];
     },
     async filhoPorExternalId(t, ext) {

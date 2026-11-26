@@ -26,7 +26,7 @@ export const ROTULO_ESTADO_LOTE: Readonly<Record<EstadoLote, string>> = {
   recusado: 'Recusado',
 };
 
-/** Seção "Clientes recebidos do FDV" (T-0059): situação do pré-cadastro e do retorno ao FDV. */
+/** Log do cadastro de cliente (RN-INF-09) e rota /clientes-recebidos (T-0059): situação do pré-cadastro e do retorno ao FDV. */
 export const ROTULO_SITUACAO_CLIENTE_RECEBIDO: Readonly<Record<'recebido' | 'aceito' | 'recusado' | 'reenviado', string>> = {
   recebido: 'Recebido',
   aceito: 'Aceito',

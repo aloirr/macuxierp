@@ -8,14 +8,16 @@
  * Cada tela também é conferida contra defeito visível: 404, "Rota não encontrada", erro 5xx, texto técnico (undefined, NaN,
  * [object Object], código de erro cru) e aviso de falha de leitura. Sem Hub: nada sai para o FDV (sem worker de pé).
  *
- * Uso: `bash tests/e2e/rodar-prints-v0312.sh [pasta]` (sobe a API e o next dev), ou à mão:
+ * HISTÓRICO (26/11/2026, decisão do gerente): roteiro da v0.3.12, anterior ao menu "Ações" da T-0099; não roda mais na tela
+ * atual (procura Reprocessar, Zerar e Log soltos na linha) e não é atualizado. Os prints vigentes são os de prints-v0315.mjs.
+ * Uso: `bash tests/e2e/rodar-prints.sh v0312 docs/testes/prints` (sobe a API e o next dev), ou à mão:
  *   node tests/e2e/prints-v0312.mjs --base http://localhost:3102 --dados <json da API> --saida <pasta raiz dos prints>
  * Grava em <saida>/I-9 e <saida>/C-5. Sai 0 se todos os passos passaram; 1 se algum falhou (lista no fim).
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, exigir } from './apoio-e2e.mjs';
+import { argumento, criarRoteiro, exigir, LARGURAS_PRINT, semDefeitoVisivel } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -31,22 +33,10 @@ const dados = JSON.parse(readFileSync(DADOS, 'utf8'));
 const PASTA = { i9: join(SAIDA, 'I-9'), c5: join(SAIDA, 'C-5') };
 for (const p of Object.values(PASTA)) mkdirSync(p, { recursive: true });
 
-const LARGURAS = [
-  { nome: '1280', viewport: { width: 1280, height: 800 } },
-  { nome: '390', viewport: { width: 390, height: 844 } },
-];
-
-/** Texto técnico ou de falha que nunca pode aparecer numa tela com a API real. */
-const PROIBIDOS = [/\b404\b/, /Rota não encontrada/i, /NAO_ENCONTRADO/, /\bundefined\b/, /\bNaN\b/, /\[object Object\]/, /Internal Server Error/i, /Não foi possível carregar/i, /indisponível agora/i];
-async function semDefeitoVisivel(p, onde) {
-  const texto = await p.locator('body').innerText();
-  for (const r of PROIBIDOS) exigir(!r.test(texto), `${onde}: texto proibido ${r} na tela`);
-}
-
 const navegador = await chromium.launch();
 const falhas = [];
 
-for (const larg of LARGURAS) {
+for (const larg of LARGURAS_PRINT) {
   const sufixo = `-${larg.nome}.png`;
   const opcoes = { viewport: larg.viewport, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' };
   const r9 = criarRoteiro(PASTA.i9);

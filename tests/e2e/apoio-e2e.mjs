@@ -90,3 +90,31 @@ export async function abasDaEmpresa(pagina, base, url) {
   });
   return [...new Set(caminhos)].filter((h) => h !== url);
 }
+
+/** Larguras dos prints de versão (1280 e 390), usadas pelos roteiros `prints-v*.mjs` (RD-2196). */
+export const LARGURAS_PRINT = [
+  { nome: '1280', viewport: { width: 1280, height: 800 } },
+  { nome: '390', viewport: { width: 390, height: 844 } },
+];
+
+/** Texto técnico ou de falha que nunca pode aparecer numa tela com a API real (RD-2196: a união das listas do v0312 e do v0315). */
+const PROIBIDOS_PRINT = [
+  /\b404\b/,
+  /Rota não encontrada/i,
+  /NAO_ENCONTRADO/,
+  /\bundefined\b/,
+  /\bNaN\b/,
+  /\[object Object\]/,
+  /Internal Server Error/i,
+  /Algo deu errado/i,
+  /Não foi possível/i,
+  /indisponível agora/i,
+];
+
+/** Confere a tela contra defeito visível: texto proibido e rolagem horizontal. */
+export async function semDefeitoVisivel(pagina, onde) {
+  const texto = await pagina.locator('body').innerText();
+  for (const r of PROIBIDOS_PRINT) exigir(!r.test(texto), `${onde}: texto proibido ${r} na tela`);
+  const rola = await pagina.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  exigir(!rola, `${onde}: rolagem horizontal`);
+}

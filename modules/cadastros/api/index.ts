@@ -16,6 +16,7 @@ export type { ConsultaCadastrosParaPedido } from './consulta-pedido';
 export { criarExecutorConsultaIe, type PortaConsultaCadastro } from './executor-ie';
 export { criarConsultaCnpjParaCore, type DependenciasConsultaCnpjParaCore } from './consulta-cnpj-core';
 export { criarCriadorClienteFdv, type CriadorClienteFdv, type DecisaoCriadorClienteFdv, type DependenciasCriadorClienteFdv } from './criador-cliente-fdv';
+export { completarPrazosMedios, type DependenciasCompletarPrazosMedios } from './completar-prazos-medios';
 export { criarResolvedorChaveErp, type ResolvedorChaveErp } from './resolvedor-chave';
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';

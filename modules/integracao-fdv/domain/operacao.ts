@@ -9,6 +9,7 @@
 import {
   LIMITE_ENVIOS_LOG_FDV,
   LIMITE_ERROS_LOG_FDV,
+  LIMITE_RECEBIDOS_LOG_FDV,
   LogCadastroFdvPlataforma,
   LogCadastroFdvTenant,
   MonitorConectorFdv,
@@ -23,6 +24,8 @@ import {
 } from '@macuxierp/platform-sdk';
 import type { EstadoLote } from '../contracts';
 import { acaoDoErro, motivoDoErro } from './mensagens';
+import type { LinhaClienteRecebido } from './pre-cadastro-cliente';
+import { decidirRecebidosDoLog } from './recebidos-log';
 
 // ---- situação do registro e Reprocessar ----
 
@@ -184,8 +187,12 @@ export function montarLogPlataforma(e: EntradaLog<Pick<ErroBruto, 'codigo' | 'ca
 }
 
 /** Log do BKO: um item por registro com erro aberto (até 200), com o texto do catálogo e o `corrigir_href`. */
-export function montarLogTenant(e: EntradaLog<ErroBruto>): LogCadastroFdvTenant {
+export function montarLogTenant(e: EntradaLog<ErroBruto> & { recebidos?: { linhas: readonly LinhaClienteRecebido[]; totalNoBanco?: number } }): LogCadastroFdvTenant {
+  // RN-INF-09: sempre manda `recebidos` e `total_recebidos` (vazio e 0 fora de `cliente`); LGPD: documento só mascarado.
+  const r = decidirRecebidosDoLog({ entidade: e.entidade, linhas: e.recebidos?.linhas ?? [], limite: LIMITE_RECEBIDOS_LOG_FDV, totalNoBanco: e.recebidos?.totalNoBanco });
   return LogCadastroFdvTenant.parse({
+    recebidos: r.recebidos,
+    total_recebidos: r.total,
     entidade: e.entidade,
     lido_em: e.lidoEm.toISOString(),
     envios: enviosDoLog(e.envios),
