@@ -97,3 +97,56 @@ describe.skipIf(!PG_DISPONIVEL)('T-0107: virada de versão de contrato (precisa 
     expect(await reg(t, chave, 'produto')).toMatchObject({ pendente: false, contrato_enviado: 'v1' });
   });
 });
+
+describe.skipIf(!PG_DISPONIVEL)('T-0107: prazo com parcelas_dias em texto não gera laço de reenvio', { timeout: 20_000 }, () => {
+  let efemero: BancoEfemero;
+  let banco: BancoPg;
+  let adm: ReturnType<typeof admSql>;
+  const posts = (hub: ReturnType<typeof hubDuble>) => hub.chamadas.filter((c) => c.pedido.metodo === 'POST');
+
+  async function cenarioTexto(slug: string): Promise<{ t: string }> {
+    const t = await criarTenant(efemero.admin, slug, ['integracao-fdv']);
+    const cred = await criarCredencial(efemero.admin, t, { conector: `conector-${slug}` });
+    await espelho(efemero.admin, t, 'forma_pagamento', { external_id: 'FP-1', ativo: true, codigo: 'FP-1', descricao: 'Boleto' }, { confirmado: true });
+    await espelho(efemero.admin, t, 'prazo_pagamento', { ...prazo('PZ-1'), parcelas_dias: '28/56' }, { pendente: true });
+    await cursorEntidade(efemero.admin, t, 'prazo_pagamento', { credencialId: cred, cursor: { em: new Date(AGORA.getTime() - 86_400_000), id: 'ANTIGO' } });
+    return { t };
+  }
+  const linha = async (t: string) =>
+    (await adm(`SELECT pendente, hash, hash_confirmado, payload FROM integracao_fdv.registro_publicado WHERE tenant_id = $1 AND entidade = 'prazo_pagamento' AND registro_external_id = 'PZ-1'`, [t]))[0]!;
+
+  beforeAll(async () => {
+    efemero = await criarBancoEfemero();
+    adm = admSql(efemero);
+    banco = efemero.banco('macuxierp_worker', 6);
+  });
+  afterAll(async () => {
+    await efemero?.remover();
+  });
+
+  it('RN-INF-10: texto "28/56" sai como [28,56], o aceite fecha pendente=false com hash=hash_confirmado e o ciclo seguinte não posta', async () => {
+    const { t } = await cenarioTexto('txt-a');
+    const hub = hubDuble({ 'POST /lotes': [ok(aceito('prazo_pagamento'))], 'GET /lotes/{id}': [ok(concluido('prazo_pagamento'))] });
+    await ciclo(banco, agenda, hub, AGORA, [t]);
+    expect(posts(hub)).toHaveLength(1);
+    expect((posts(hub)[0]!.pedido.corpo as { registros: { parcelas_dias: number[] }[] }).registros[0]!.parcelas_dias).toEqual([28, 56]);
+    await ciclo(banco, agenda, hub, depois(6), [t]);
+    const l = await linha(t);
+    expect(l.pendente).toBe(false);
+    expect(l.hash).toBe(l.hash_confirmado);
+    expect((l.payload as { parcelas_dias: number[] }).parcelas_dias).toEqual([28, 56]);
+    await ciclo(banco, agenda, hub, depois(7200), [t]);
+    expect(posts(hub)).toHaveLength(1);
+  });
+
+  it('RN-INF-10: recusa firme com texto também sai da fila (pendente=false) e o ciclo seguinte não posta', async () => {
+    const { t } = await cenarioTexto('txt-b');
+    const erro = [{ indice: 0, external_id: 'PZ-1', origem: 'hub', codigo: 'regra_invalida', campo: 'codigo', reprocessavel: false }];
+    const hub = hubDuble({ 'POST /lotes': [ok(aceito('prazo_pagamento'))], 'GET /lotes/{id}': [ok(concluido('prazo_pagamento', erro))] });
+    await ciclo(banco, agenda, hub, AGORA, [t]);
+    await ciclo(banco, agenda, hub, depois(6), [t]);
+    expect((await linha(t)).pendente).toBe(false);
+    await ciclo(banco, agenda, hub, depois(7200), [t]);
+    expect(posts(hub)).toHaveLength(1);
+  });
+});

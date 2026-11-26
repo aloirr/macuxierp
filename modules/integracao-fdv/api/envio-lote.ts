@@ -47,6 +47,7 @@ import {
   esperaConsultaSegundos,
   filiaisComCodigoRepetido,
   hashRegistro,
+  jsonCanonico,
   montarLotes,
   normalizarPrazo,
   origemDoLote,
@@ -327,7 +328,22 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
   const { confirmados, emFila } = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
   const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
-  const espelhos: RegistroEspelho[] = chunk.map((c) => normalizarPrazo(paraRegistro(c)));
+  const brutos = chunk.map((c) => paraRegistro(c));
+  const espelhos: RegistroEspelho[] = brutos.map((b) => normalizarPrazo(b));
+  // T-0107: o espelho com `parcelas_dias` em texto passa a guardar o payload normalizado e o hash dele (mesma transação, depois do lock do
+  // cursor), senão o aceite (`pendente = r.hash <> hash enviado`) deixaria a linha pendente para sempre. Só as linhas que mudaram.
+  if (entidade === 'prazo_pagamento') {
+    const mudou = espelhos.map((n, i) => ({ n, b: brutos[i]! })).filter(({ n, b }) => jsonCanonico(n.payload) !== jsonCanonico(b.payload));
+    if (mudou.length > 0) {
+      for (const { n } of mudou) n.hash = hashRegistro(n.payload);
+      await tx.consultar(
+        `UPDATE integracao_fdv.registro_publicado r SET payload = v.payload::jsonb, hash = v.hash
+           FROM unnest($3::text[], $4::text[], $5::text[]) AS v(chave, payload, hash)
+          WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave AND r.deleted_at IS NULL`,
+        [tenant, entidade, mudou.map(({ n }) => n.external_id), mudou.map(({ n }) => JSON.stringify(n.payload)), mudou.map(({ n }) => n.hash)],
+      );
+    }
+  }
   let repetidas = new Map<string, LinhaInvalida>();
   if (entidade === 'filial') {
     const todas = await tx.consultar<LinhaRegistro>(
