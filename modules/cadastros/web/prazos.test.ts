@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAGINAS } from './paginas';
 import {
-  adicionarParcela, agruparPrazosPorForma, formularioDoPrazo, formularioPrazoVazio, maxParcelasDaForma, montarPrazo, prazoMedioDoCliente, prazoMedioNaLista, removerParcela, rotulosDasParcelas, trocarForma,
+  adicionarParcela, agruparPrazosPorForma, corpoDoPatchDoPrazo, formularioDoPrazo, formularioPrazoVazio, maxParcelasDaForma, montarPrazo, prazoMedioDoCliente, prazoMedioNaLista, removerParcela, rotulosDasParcelas, trocarForma,
 } from './prazos';
 
 const p = (codigo: string, forma_tpag: string, prazos_dias: number[], prazo_medio_dias: number | null) => ({ codigo, descricao: `D ${codigo}`, forma_tpag, prazos_dias, prazo_medio_dias });
@@ -63,6 +63,39 @@ describe('formulário do prazo (RN-CAD-15)', () => {
   });
   it('RN-CAD-15: o legado abre no formulário com o prazo médio vazio, para completar', () => {
     expect(formularioDoPrazo(p('LEG', '15', [15, 30], null))).toMatchObject({ parcelas: ['15', '30'], prazo_medio_dias: '' });
+  });
+});
+
+describe('T-0108: a tela não converte o prazo médio calculado em digitado (decisão 17 B, RN-CAD-15)', () => {
+  const calc = { ...p('B3', '15', [30, 45], 38), prazo_medio_calculado: true };
+  const dig = { ...p('B4', '15', [30, 45], 40), prazo_medio_calculado: false };
+  it('T-0108, 17 B: o calculado abre com o campo vazio e o valor como sugestão', () => {
+    expect(formularioDoPrazo(calc)).toMatchObject({ prazo_medio_dias: '', prazo_medio_sugerido: '38' });
+  });
+  it('T-0108, 17 B: salvar sem mexer mantém o calculado (campo vazio vira null no corpo; no PATCH nada vai)', () => {
+    const f = formularioDoPrazo(calc);
+    expect(montarPrazo(f).corpo).toMatchObject({ prazo_medio_dias: null });
+    const r = corpoDoPatchDoPrazo(f, calc);
+    expect(r.corpo).toEqual({});
+  });
+  it('T-0108, 17 B: mudar só as parcelas com o campo vazio não manda o prazo médio (a API recalcula e mantém a marca)', () => {
+    const r = corpoDoPatchDoPrazo({ ...formularioDoPrazo(calc), parcelas: ['30', '90'] }, calc);
+    expect(r.corpo).toEqual({ prazos_dias: [30, 90] });
+    expect(r.corpo).not.toHaveProperty('prazo_medio_dias');
+  });
+  it('T-0108, 17 B: digitar um número vira digitado', () => {
+    expect(corpoDoPatchDoPrazo({ ...formularioDoPrazo(calc), prazo_medio_dias: '50' }, calc).corpo).toEqual({ prazo_medio_dias: 50 });
+    expect(montarPrazo({ ...formularioDoPrazo(calc), prazo_medio_dias: '50' }).corpo).toMatchObject({ prazo_medio_dias: 50 });
+  });
+  it('T-0108, 17 B: o digitado abre no campo e apagá-lo manda null', () => {
+    const f = formularioDoPrazo(dig);
+    expect(f).toMatchObject({ prazo_medio_dias: '40', prazo_medio_sugerido: '' });
+    expect(corpoDoPatchDoPrazo(f, dig).corpo).toEqual({});
+    expect(corpoDoPatchDoPrazo({ ...f, prazo_medio_dias: '' }, dig).corpo).toEqual({ prazo_medio_dias: null });
+  });
+  it('T-0108, 17 B: o sugerido nunca é usado como valor', () => {
+    const f = { ...formularioDoPrazo(calc), prazo_medio_sugerido: '38' };
+    expect(JSON.stringify(montarPrazo(f).corpo)).not.toContain('"prazo_medio_dias":38');
   });
 });
 

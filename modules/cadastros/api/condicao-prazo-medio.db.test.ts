@@ -5,6 +5,7 @@
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { corpoDoPatchDoPrazo, formularioDoPrazo } from '../web/prazos';
 import { criarAmbiente, sessaoDe, transacaoDe } from './apoio-teste';
 import { fontesHttp } from './fontes-http';
 import { criarPluginCadastros } from './index';
@@ -55,5 +56,17 @@ describe.skipIf(!PG_DISPONIVEL)('RN-CAD-15: prazo médio efetivo gravado (Postgr
     for (const id of [calculado, digitado]) expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazos_dias: [30, 90] } })).status).toBe(200);
     expect(await linha(calculado)).toEqual({ prazo_medio_dias: 60, prazo_medio_calculado: true });
     expect(await linha(digitado)).toEqual({ prazo_medio_dias: 12, prazo_medio_calculado: false });
+  }, 120_000);
+
+  it('T-0108, 17 B: ida e volta da tela (formulário de um calculado, só as parcelas mudam, PATCH) mantém a marca true e recalcula', async () => {
+    const a = amb();
+    const post = await a.chamar('POST', '/condicoes-pagamento', { sessao: gerente, corpo: { codigo: 'T108', descricao: 'D', forma_tpag: '15', prazos_dias: [30, 45] } });
+    const id = (post.corpo as { id: string }).id;
+    const original = (await a.chamar('GET', `/condicoes-pagamento/${id}`, { sessao: gerente })).corpo as Parameters<typeof formularioDoPrazo>[0];
+    const form = formularioDoPrazo(original);
+    expect(form).toMatchObject({ prazo_medio_dias: '', prazo_medio_sugerido: '38' });
+    const { corpo } = corpoDoPatchDoPrazo({ ...form, parcelas: ['30', '90'] }, original);
+    expect((await a.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo })).status).toBe(200);
+    expect((await admin('SELECT prazo_medio_dias, prazo_medio_calculado FROM cadastros.condicao_pagamento WHERE id = $1', [id]))[0]).toEqual({ prazo_medio_dias: 60, prazo_medio_calculado: true });
   }, 120_000);
 });
