@@ -2,7 +2,7 @@
  * v0.3.12 (I-9 e C-5 do docs/testes/plano-v0.3.12.md, regra 3 / X-4): sobe a API de produção (`appPgDeTeste` com os módulos
  * do `main.ts`) num banco efêmero do Postgres local, com uma empresa FICTÍCIA montada para os prints do /config (abas
  * Integração e Dados) e das telas do core no BKO (Usuários, Perfis e permissões, Licenças, Auditoria). Fora do vitest.
- * Uso: `bash tests/e2e/rodar-prints-v0312.sh [pasta]` (com `MACUXI_DB_MIGRACOES` exportado). Grava `--pronto <arquivo>`
+ * Uso: `bash tests/e2e/rodar-prints.sh v0312 docs/testes/prints` (com `MACUXI_DB_MIGRACOES` exportado). Grava `--pronto <arquivo>`
  * (JSON com a massa) quando está ouvindo; no SIGTERM fecha e apaga o banco.
  *
  * Massa (sem pessoa real; CNPJ das fixtures de teste, e-mails @exemplo.com.br, senhas só deste banco efêmero):
@@ -14,19 +14,11 @@
  * Nenhuma chamada ao Hub: sem worker de pé, nada sai para o FDV.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import {
-  CABECALHO_CSRF_CONFIG,
-  CAMINHOS_CARGAS_PLATAFORMA,
-  CAMPO_ARQUIVO_CARGA_PORTAL,
-  COOKIE_CONFIG,
-  PREFIXO_PLATAFORMA,
-} from '../../packages/platform-sdk/src/index';
+import { writeFileSync } from 'node:fs';
 import { criarBancoEfemero, criarTenant } from '../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, ARGON2_RAPIDO, inserirFilialDeTeste, SENHA_DE_TESTE } from '../../apps/api/src/apoio-teste';
 import { gerarHashSenha } from '../../apps/api/src/auth/senha';
-import { formulario } from '../../apps/api/src/apoio-multipart';
+import { carregarCsvsPortal, manterSinalEEncerrar } from './apoio-api';
 import { CHAVE_MESTRA, criarCredencial, cursorEntidade, espelho, payloadProduto } from '../../modules/integracao-fdv/api/apoio-conector-teste';
 import { atalhosPortal, inserirSuperadmin, SENHA_SA } from '../apoio/portal-pg';
 import { argumento as arg } from './apoio-e2e.mjs';
@@ -107,18 +99,7 @@ const { app } = await appPgDeTeste({ b, versao: 'v0312-prints', modulos: 'produc
 // ---- Carga CSV pelo portal (aba Dados): filial e vendedor das fixtures fictícias do cadastros ----
 const portal = atalhosPortal(app);
 const token = await portal.sessao(SA);
-const PASTA_CSV = join(import.meta.dirname, '..', '..', 'modules', 'cadastros', 'domain', 'carga', '__fixtures__');
-for (const cadastro of ['filial', 'vendedor']) {
-  const f = formulario({}, [{ campo: CAMPO_ARQUIVO_CARGA_PORTAL, conteudo: readFileSync(join(PASTA_CSV, `${cadastro}.csv`), 'utf8'), nome: `${cadastro}.csv`, tipo: 'text/csv' }]);
-  const r = await app.inject({
-    method: 'POST',
-    url: `${PREFIXO_PLATAFORMA}${CAMINHOS_CARGAS_PLATAFORMA.gravar.replace(':id', tenant).replace(':cadastro', cadastro)}`,
-    payload: f.payload,
-    cookies: { [COOKIE_CONFIG]: token },
-    headers: { ...f.headers, [CABECALHO_CSRF_CONFIG]: '1', 'idempotency-key': randomUUID() },
-  });
-  if (r.statusCode >= 300) throw new Error(`carga ${cadastro}: ${r.statusCode} ${r.body}`);
-}
+await carregarCsvsPortal(app, tenant, token, ['filial', 'vendedor']);
 
 // ---- Ações do administrador pela API (geram a auditoria do core) ----
 const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: EMPRESA.slug, email: ADM, senha: SENHA_DE_TESTE } });
@@ -146,19 +127,5 @@ const pronto = {
   usuarioSenha: 'Expedição Fictícia',
 };
 if (PRONTO) writeFileSync(PRONTO, JSON.stringify(pronto));
-// O conector fictício dá sinal a cada 20 s (o Monitor fica "Em dia" durante todo o ensaio, como com o conector de pé).
-const pulso = setInterval(() => {
-  void b.admin.query('UPDATE integracao_fdv.sinal SET ultimo_envio_em = now(), ultimo_aceito_em = now() WHERE tenant_id = $1', [tenant]).catch(() => undefined);
-}, 20_000);
+manterSinalEEncerrar({ app, b, tenant, rotulo: 'api-prints-v0312' });
 console.error(`[api-prints-v0312] ouvindo em ${url} (banco ${b.nome})`);
-
-for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
-  process.once(sinal, () => {
-    clearInterval(pulso);
-    void app
-      .close()
-      .then(() => b.remover())
-      .then(() => console.error('[api-prints-v0312] banco efêmero apagado'))
-      .finally(() => process.exit(0));
-  });
-}

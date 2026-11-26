@@ -14,7 +14,7 @@
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { argumento, criarRoteiro, entrar, exigir } from './apoio-e2e.mjs';
+import { argumento, criarRoteiro, entrar, exigir, LARGURAS_PRINT, semDefeitoVisivel } from './apoio-e2e.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -29,17 +29,6 @@ if (!SAIDA || !DADOS) {
 mkdirSync(SAIDA, { recursive: true });
 const dados = JSON.parse(readFileSync(DADOS, 'utf8'));
 
-const LARGURAS = [
-  { nome: '1280', viewport: { width: 1280, height: 800 } },
-  { nome: '390', viewport: { width: 390, height: 844 } },
-];
-const PROIBIDOS = [/\b404\b/, /Rota não encontrada/i, /\bundefined\b/, /\bNaN\b/, /\[object Object\]/, /Internal Server Error/i, /Algo deu errado/i, /Não foi possível/i, /indisponível agora/i];
-async function semDefeitoVisivel(p, onde) {
-  const texto = await p.locator('body').innerText();
-  for (const r of PROIBIDOS) exigir(!r.test(texto), `${onde}: texto proibido ${r} na tela`);
-  const rola = await p.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
-  exigir(!rola, `${onde}: rolagem horizontal`);
-}
 /** A frase de confirmação do diálogo tem de estar em fonte mono (marca, #685). */
 async function fraseEmMono(d, onde) {
   const fonte = await d.locator('.frase-confirmar').first().evaluate((el) => getComputedStyle(el).fontFamily);
@@ -49,7 +38,7 @@ async function fraseEmMono(d, onde) {
 const navegador = await chromium.launch();
 const r = criarRoteiro(SAIDA);
 
-for (const larg of LARGURAS) {
+for (const larg of LARGURAS_PRINT) {
   const sufixo = `-${larg.nome}.png`;
   const p = await (await navegador.newContext({ viewport: larg.viewport, deviceScaleFactor: 2, locale: 'pt-BR', timezoneId: 'America/Manaus' })).newPage();
   p.setDefaultTimeout(90_000);
@@ -59,6 +48,9 @@ for (const larg of LARGURAS) {
   /** Clique que só vale depois da hidratação do next dev: repete até o efeito esperado aparecer. */
   const clicarAte = async (alvo, pronto) => {
     for (let i = 0; i < 20; i++) {
+      // Rola antes: a rolagem que o Playwright faz no clique chega depois dele e fecha o menu "Ações" (regra 6, menu-acoes.mjs).
+      await alvo.scrollIntoViewIfNeeded();
+      await p.waitForTimeout(150);
       await alvo.click();
       if (await pronto().catch(() => false)) return;
       await p.waitForTimeout(500);
@@ -79,7 +71,7 @@ for (const larg of LARGURAS) {
   for (const [caso, id, espera] of [
     ['empresa-com-ficha', dados.empresas.comFicha, /Mostrar/],
     ['empresa-sem-ficha', dados.empresas.semFicha, /Ainda não consultada/],
-    ['empresa-consultada-sem-dados', dados.empresas.consultada, /Consultada, sem dados na Receita/],
+    ['empresa-consultada-sem-dados', dados.empresas.consultada, /Sem dados na Receita\./],
   ]) {
     await r.passo(`[${larg.nome}] aba Empresa: ${caso}`, async () => {
       await p.goto(empresa(id));
@@ -105,6 +97,8 @@ for (const larg of LARGURAS) {
     await p.getByRole('menuitem', { name: 'Zerar', exact: true }).click();
     const d = dialogo();
     await d.getByRole('textbox').first().waitFor();
+    // O aviso dos 30% só aparece com a prévia carregada: sem esperar, o print de 1280 saía sem ele (designer, 25/11).
+    await d.getByTestId('aviso-30-fdv').waitFor();
     await fraseEmMono(d, 'Zerar por cadastro');
     await semDefeitoVisivel(p, 'Zerar por cadastro');
     await r.print(p, `zerar-cadastro${sufixo}`);

@@ -203,7 +203,7 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
     expect((await retido(api.t.A, clienteId)).every((x) => x.aguarda_vinculo)).toBe(true);
   });
 
-  it('F-7 (RN-INT-23, #698): vendedor que não existe no espelho: recusado com vendedor_fdv_nao_encontrado, sem cliente; o retorno leva erros[{campo: vendedor_external_id}]', async () => {
+  it('F-7 (RN-INF-09, #698): vendedor que não existe no espelho: recusado com vendedor_fdv_nao_encontrado, sem cliente; o retorno leva erros[{campo: vendedor_external_id}]', async () => {
     const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '04252011000110', vendedor_external_id: 'V-NAO-EXISTE' }));
     const r = await ciclo('A');
     expect(r.busca).toMatchObject({ recusados: 1 }); // a busca também traz de novo o pendente retido do F-5
