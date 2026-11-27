@@ -62,6 +62,7 @@ O rótulo e o cabeçalho ficam **visivelmente diferentes do valor**; o valor fic
 
 - O `TabelaDensa` e o `FormularioItens` já saem com o `th` em azul-noite (`tabela.cabecalho` em `estilos.ts`).
 - O rótulo **não** usa `textoApoio`/`textoSecundario` (cinza): cinza fica para texto de ajuda e data de consulta.
+- O destaque nunca depende só da cor: o rótulo mantém tamanho, peso e caixa-alta diferentes do valor. O rótulo nunca é sublinhado; o link continua sublinhado, para o rótulo azul-noite não parecer clicável.
 - O laranja do sol continua fora do texto sobre fundo claro (manual da marca).
 - Contraste: azul-noite `#1E3350` sobre branco 12,77:1, sobre pérola 11,82:1 e sobre névoa (fundo do `th`) 10,99:1 (mínimo 4,5:1).
 
@@ -92,7 +93,7 @@ Nome, slug, selo de situação e fuso ficam só no cabeçalho da tela (portal-co
      └───────────────────────────────────────────────────────┘ ┌ Situação ─────┐
 ```
 
-Rótulos (CNPJ, RAZÃO SOCIAL…) em caixa-alta pequena azul-noite; valores em texto normal grafite. Na Ficha editável, o campo (`label` 15/600 azul-noite + `input`) ocupa a mesma célula da grade que o par rótulo/valor ocupava.
+Rótulos (CNPJ, RAZÃO SOCIAL…) em caixa-alta pequena azul-noite; valores em texto normal grafite. Na Ficha editável, o campo (`label` no tamanho atual do componente, peso 600, azul-noite + `input`) ocupa a mesma célula da grade que o par rótulo/valor ocupava.
 
 ### Aba Integração — duas ligações e envio ao FDV
 
@@ -115,3 +116,5 @@ Rótulos (CNPJ, RAZÃO SOCIAL…) em caixa-alta pequena azul-noite; valores em t
 ## 5. Prints e conferência
 
 Prints de 390 e 1440 das abas Empresa e Integração (mais 768 e 1280 quando a grade mudar de colunas) vão à PO antes do merge. O designer-ux confere os prints da Ficha no PR do engenheiro-apps; o `corretor-redundancias` confere que nenhuma tela nova volta à coluna estreita nem à pilha vertical.
+
+Prints deste lote (cabeçalho de tabela em azul-noite, `TabelaDensa` do `packages/ui` com dados fictícios): `docs/design/prints/v0324-tabela-cabecalho-390.png` e `docs/design/prints/v0324-tabela-cabecalho-1440.png`. Em 390 a tabela de exemplo ainda rola para o lado: as colunas de apoio que somem no celular e as Ações à vista são a correção do §4 (a), no PR do engenheiro-apps.
