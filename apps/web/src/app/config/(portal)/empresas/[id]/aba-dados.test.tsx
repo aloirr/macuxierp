@@ -7,7 +7,7 @@ import { EMP, conferencia as conferenciaBruta, situacoes } from '@/lib/config/ca
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 
-import { AbaDados, EfeitoSubstituir, ImportarCarga, PainelConferencia, rotuloArquivo, origemDaCarga } from './aba-dados';
+import { AbaDados, EfeitoSubstituir, ImportarCarga, LEGENDA_RECEBIDOS, PainelConferencia, rotuloArquivo } from './aba-dados';
 
 const dados = situacoes({ filial: { situacao: 'carregado', quantidade: 1 }, produto: { situacao: 'com_erro', erros: 2 } });
 const aba = (d: typeof dados | null = dados) => renderToStaticMarkup(<AbaDados empresaId={EMP} dados={d} fuso="America/Manaus" />);
@@ -26,14 +26,15 @@ describe('aba Dados (T-0058, T-0086)', () => {
   it('uma tabela só: uma linha por cadastro com situação, última carga (data, hora, registros), origem e Importar à vista (o Modelo vai ao menu "Ações")', () => {
     const h = aba();
     expect(h.match(/<tr[^>]*data-/g) ?? h.match(/<tbody>[\s\S]*<\/tbody>/)).toBeTruthy();
-    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Origem', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
+    for (const t of ['Cadastro', 'Situação', 'Última carga', 'Registros', 'Com erro', 'Origem', 'Ações', 'Importar']) expect(h).toContain(`>${t}<`);
     expect(h).not.toContain('>Modelo<'); // o Modelo vai para o menu "Ações" (T-0099)
     expect(h).toContain('>Filiais<');
     expect(h).toMatch(/color:var\(--mx-cor-verde-sucesso\)[^"]*"[^>]*>Carregado<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-aviso-texto\)[^"]*"[^>]*>2 com erro<\/span>/);
     expect(h).toMatch(/color:var\(--mx-cor-texto-secundario\)[^"]*"[^>]*>Não carregado<\/span>/);
     expect(h).toContain('23/11/2026 14:39 · 1 registro');
-    expect(h).toContain('>CSV<');
+    expect(h).toContain('>Planilha<');
+    expect(h).not.toContain('>CSV<');
     expect(h.match(/>Importar<\/button>/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
     expect(h.match(/aria-haspopup="menu"/g)).toHaveLength(CADASTROS_CARGA_PORTAL.length);
     expect(h.match(/aria-label="Ações de Produtos"/g)).toHaveLength(1);
@@ -55,9 +56,16 @@ describe('aba Dados (T-0058, T-0086)', () => {
     expect(h).toContain('Unidades (opcional)');
     expect(h).not.toContain('(opcional).');
   });
-  it('origem: CSV com carga e nada sem carga', () => {
-    expect(origemDaCarga({ ultima: '23/11/2026 14:39 · 1 registro' })).toBe('CSV');
-    expect(origemDaCarga({ ultima: null })).toBeNull();
+  it('v0.3.24: seção "Sistema do cliente → ERP" com a legenda "Cadastros recebidos"; Registros e Com erro do último lote; sem integração, sem a seção de envio', () => {
+    const h = aba();
+    expect(h).toMatch(/<h2 id="h-dados-entrada">Sistema do cliente <span class="seta" aria-hidden="true">→<\/span><span class="sr-only"> para o <\/span> ERP<\/h2>/);
+    expect(h).toMatch(new RegExp(`<caption[^>]*>${LEGENDA_RECEBIDOS}</caption>`));
+    expect(h).not.toContain('Cargas por cadastro');
+    expect(h).not.toContain('h-dados-saida');
+    const lote = { lote_id: EMP, entidade: 'produto', modo: 'delta', status: 'concluido_com_erros', recebidos: 40, com_erro: 2, recebido_em: '2026-11-27T14:00:00.000Z', concluido_em: null };
+    const com = renderToStaticMarkup(<AbaDados empresaId={EMP} dados={dados} fuso="America/Manaus" entrada={{ credenciais: [], ultimo_sinal: null, lotes: [lote] } as never} />);
+    const produtos = com.slice(com.indexOf('>Produtos<'), com.indexOf('</tr>', com.indexOf('>Produtos<')));
+    expect(produtos).toMatch(/>40<[\s\S]*>2<[\s\S]*>Automática</);
   });
   it('sem dados da API: erro com o link "Recarregar" para a aba Dados (RD-2317)', () => {
     const h = aba(null);

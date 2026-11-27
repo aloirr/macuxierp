@@ -98,6 +98,16 @@ a.mx-botao, a.mx-botao-secundario { text-decoration: none; display: inline-block
 .ficha { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 24px; margin: 0 0 16px; }
 .ficha dt { font-weight: var(--mx-peso-rotulo-campo); font-size: var(--mx-tamanho-pequeno); }
 .ficha dd { margin: 0; }
+
+/* Aba Integração do /config (v0.3.24, docs/design/integracao-duas-ligacoes): duas ligações lado a lado; uma embaixo da outra abaixo de 900 px. */
+.ligacoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .ligacoes { grid-template-columns: minmax(0, 1fr); } }
+.ligacao .ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.ligacao h2 .seta, .direcao h2 .seta { color: var(--mx-cor-texto-secundario); font-weight: 400; }
+.apoio-situacao { display: block; margin-top: 4px; }
+.cabeca-ligacoes { display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.campo-com-botao { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.campo-com-botao .campo { margin-bottom: 0; }
 fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: ela rola dentro do .tabela-rolavel */ margin: 0 0 16px; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; padding: 8px 12px; }
 .grupo-campos label { display: inline-flex; align-items: center; gap: 6px; margin: 0 16px 6px 0; }
 .grupo-campos input[type="checkbox"] { width: auto; }
@@ -120,6 +130,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* Portal /config (T-0050): topo em grafite (identidade de plataforma), só tokens. */
 .casca-plataforma { min-height: 100vh; }
+/* O /config não tem menu lateral: o conteúdo vai até 1280 px, centralizado (o BKO segue em 1100 px). */
+.casca-plataforma .conteudo { max-width: 1280px; margin: 0 auto; }
 .topo-plataforma { background: var(--mx-cor-grafite); }
 .topo-plataforma a { color: var(--mx-cor-branco); }
 .topo-plataforma form { margin: 0; }
@@ -214,8 +226,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .rodape-log { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 0; }
 
 /* Aba Cargas do /config (T-0058): só tokens. Linha = número, nome, situação, Modelo, Importar. */
-.cabeca-cargas { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 0 0 12px; }
-.cabeca-cargas h2 { margin: 0; font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); }
 .lista-cargas { list-style: none; margin: 0; padding: 0; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; }
 .linha-carga { display: grid; grid-template-columns: 28px minmax(120px, 1fr) minmax(0, 2fr) auto auto; gap: 8px 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--mx-cor-borda-cinza); }
 .linha-carga:last-child { border-bottom: 0; }
@@ -225,7 +235,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 [data-fundo-dialogo] { z-index: 10; }
 .escolher-arquivo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .escolher-botao { position: relative; cursor: pointer; }
-.so-leitor { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+/* O input de arquivo fica por cima do botão, invisível: o clique cai nele (antes `.so-leitor`, nome que já era o do texto só para leitor). */
+.escolher-botao .entrada-arquivo { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .escolher-botao:focus-within { outline: 2px solid var(--mx-cor-azul-noite); outline-offset: 2px; }
 .caixas-conferencia { display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (min-width: 640px) { .caixas-conferencia { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -266,15 +277,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* "Esqueci a senha": link em botão, sem aparência de botão */
 button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
-
-/* Monitor da aba Integração no 390 (marca): "Atualizado às hh:mm" desce para baixo do título; o botão Atualizar fica na linha do título. */
-@media (max-width: 640px) {
-  .cabeca-monitor { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; }
-  .cabeca-monitor > .barra-acoes { display: contents; }
-  .cabeca-monitor h2 { grid-row: 1; grid-column: 1; }
-  .cabeca-monitor .atualizado-monitor { grid-row: 2; grid-column: 1 / -1; }
-  .cabeca-monitor .barra-acoes > button { grid-row: 1; grid-column: 2; }
-}
 
 /* Telas do core e da bandeira (T-0087, T-0088): só tokens. */
 .segredo { display: block; padding: 12px; font-family: var(--mx-fonte-codigo); font-size: var(--mx-tamanho-titulo-dialogo); letter-spacing: .04em; background: var(--mx-cor-perola); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; overflow-wrap: anywhere; user-select: all; }

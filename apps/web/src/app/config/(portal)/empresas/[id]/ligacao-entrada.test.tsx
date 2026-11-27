@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn() }));
 vi.mock('../acoes-entrada', () => ({ gerarChaveEntradaAcao: vi.fn(), revogarChaveEntradaAcao: vi.fn() }));
 
-import { estadoDaChave, linhasLotes, reduzirChave } from '@/lib/config/entrada';
-import { BlocoEntradaApi, DialogoChave, ListaLotes } from './bloco-entrada-api';
+import { estadoDaChave, reduzirChave } from '@/lib/config/entrada';
+import { DialogoChave, LigacaoEntrada } from './ligacao-entrada';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const CHAVE = 'Zx9'.repeat(14) + 'Q';
@@ -16,62 +16,57 @@ const leitura = (c: Record<string, unknown>[] = [{ conector_id: 'erp-cliente', p
     ultimo_sinal: null,
     lotes: [{ lote_id: EMP, entidade: 'cliente', modo: 'delta', status: 'falhou', recebidos: 5, com_erro: 5, recebido_em: '2026-11-26T14:00:00.000Z', concluido_em: null }],
   });
-const bloco = (d: PortalEntradaLeitura | null) => renderToStaticMarkup(<BlocoEntradaApi empresaId={EMP} dados={d} fuso="America/Manaus" />);
+const bloco = (d: PortalEntradaLeitura | null) => renderToStaticMarkup(<LigacaoEntrada empresaId={EMP} dados={d} fuso="America/Manaus" />);
 const aberto = reduzirChave(estadoDaChave(), { tipo: 'gerada', chave: CHAVE });
 
-describe('bloco Integração via API (T-0057 A1)', () => {
-  it('sem chave: texto de apoio, ajuda do código, Gerar chave e nada de Revogar', () => {
+describe('v0.3.24: ligação "Sistema do cliente → ERP" (era "Integração via API")', () => {
+  it('título "De → Para": a seta só visual e o leitor ouve "Sistema do cliente para o ERP"', () => {
+    const h = bloco(leitura());
+    expect(h).toMatch(/<h2 id="h-ligacao-entrada">Sistema do cliente <span class="seta" aria-hidden="true">→<\/span><span class="sr-only"> para o <\/span> ERP<\/h2>/);
+    expect(h).toContain('aria-labelledby="h-ligacao-entrada"');
+    expect(h).not.toContain('Integração via API');
+    expect(h).not.toMatch(/\bAPI\b|conector/i);
+  });
+  it('sem chave: sem ficha, só o formulário (Código, ajuda e Gerar chave); nenhum erro antes de agir', () => {
     const h = bloco(leitura([]));
-    expect(h).toContain('Integração via API');
-    expect(h).toContain('Nenhuma chave gerada. Informe o código e gere a chave.');
+    expect(h).not.toContain('<dl');
+    expect(h).toContain('<span>Código</span>');
     expect(h).toContain('Letras, números, ponto, hífen e sublinhado. Até 100.');
     expect(h).toContain('>Gerar chave</button>');
     expect(h).not.toContain('Revogar chave');
-    expect(h).not.toMatch(/readonly/i);
+    expect(h).not.toContain('Nenhuma chave gerada');
+    expect(h).not.toMatch(/erro-campo|aria-invalid/);
   });
-  it('com chave: ficha com prefixo, código somente leitura, Trocar e Revogar; nunca a chave inteira', () => {
+  it('com chave: ficha única (Situação, Último contato, Código, Chave), Trocar e Revogar; sem Versão, Criada em nem a chave inteira', () => {
     const h = bloco(leitura());
+    for (const dt of ['Situação', 'Último contato', 'Código', 'Chave']) expect(h).toContain(`<dt>${dt}</dt>`);
     expect(h).toContain('AbCdEfGh…');
-    expect(h).toContain('<dt>Chave</dt>');
-    expect(h).toContain('<dt>Criada em</dt>');
-    expect(h).not.toContain('Prefixo da chave');
-    expect(h).not.toContain('Chave criada em');
-    expect(h).toContain('ainda sem sinal');
-    expect(h).toContain('Não muda com a troca da chave.');
-    expect(h).toMatch(/readOnly=""|readonly=""/i);
+    expect(h).toContain('erp-cliente');
+    expect(h).toMatch(/Sem envio|Recebendo/);
+    for (const fora of ['Versão', 'Criada em', 'Último sinal', 'readonly', '<input']) expect(h.toLowerCase()).not.toContain(fora.toLowerCase());
     expect(h).toContain('>Trocar chave</button>');
     expect(h).toContain('>Revogar chave</button>');
     expect(h).not.toContain('role="dialog"');
   });
-  it('36 A: o resultado fica logo depois da fila de botões e não sobra mensagem no topo', () => {
+  it('36 A: o resultado fica logo depois da fila de botões', () => {
     const h = bloco(leitura());
     const fila = h.indexOf('>Revogar chave</button></div>');
     expect(fila).toBeGreaterThan(0);
-    expect(h.indexOf('data-resultado-acao', fila)).toBe(h.indexOf('</div><div data-resultado-acao', fila) + '</div><div '.length);
-    expect(h.indexOf('<h2 id="h-entrada-api">')).toBeLessThan(h.indexOf('<dl'));
+    expect(h.indexOf('data-resultado-acao', fila)).toBeGreaterThan(fila);
     expect(h).not.toMatch(/class="(faixa-aviso|erro)"/);
   });
-  it('sem a coluna via Conector, sem tabela de donos e sem a trava de 30%', () => {
+  it('os lotes saíram daqui (aba Dados, "Cadastros recebidos")', () => {
     const h = bloco(leitura());
-    expect(h).not.toContain('via Conector');
-    expect(h).not.toContain('Dono de');
-    expect(h).not.toContain('30%');
+    expect(h).not.toContain('Lotes recebidos');
+    expect(h).not.toContain('<table');
   });
-  it('leitura indisponível: bloco segue como sem chave, com lista vazia', () => {
-    const h = bloco(null);
-    expect(h).toContain('>Gerar chave</button>');
-    expect(h).toContain('Nenhum lote recebido.');
+  it('leitura indisponível: segue como sem chave', () => {
+    expect(bloco(null)).toContain('>Gerar chave</button>');
   });
-  it('lista de lotes: cadastro, contagens e situação em texto', () => {
-    const h = renderToStaticMarkup(<ListaLotes lotes={linhasLotes(leitura().lotes, 'America/Manaus')} />);
-    expect(h).toContain('Clientes');
-    expect(h).toContain('Falhou');
-    expect(h).toContain('26/11/2026 10:00 (Manaus)');
-    expect(h).not.toContain('selo-erro'); // a situação usa o Chip da ui, não o selo do shell
-  });
-  it('aviso do Revogar, exatamente como validado', async () => {
-    const { AVISO_REVOGAR } = await import('@/lib/config/entrada-textos');
-    expect(AVISO_REVOGAR).toBe('A chave atual para de funcionar agora. Para voltar a enviar, gere uma chave nova.');
+  it('diálogos falam do sistema do cliente; o aviso do Revogar fica como validado', async () => {
+    const T = await import('@/lib/config/entrada-textos');
+    expect([T.TITULO_TROCAR, T.TITULO_REVOGAR, T.TITULO_CHAVE]).toEqual(['Trocar a chave do sistema do cliente?', 'Revogar a chave do sistema do cliente?', 'Chave do sistema do cliente']);
+    expect(T.AVISO_REVOGAR).toBe('A chave atual para de funcionar agora. Para voltar a enviar, gere uma chave nova.');
   });
 });
 
@@ -80,7 +75,7 @@ describe('diálogo da chave (README B)', () => {
   it('aviso fixo, chave, Copiar, região de status vazia e "Já copiei"', () => {
     const h = render();
     expect(h).toContain('role="dialog"');
-    expect(h).toContain('Chave de Integração via API');
+    expect(h).toContain('Chave do sistema do cliente');
     expect(h).toContain('Esta chave não aparece de novo. Guarde agora.');
     expect(h).toContain(CHAVE);
     expect(h).toContain('>Copiar</button>');
