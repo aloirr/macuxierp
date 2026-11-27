@@ -97,6 +97,13 @@ export function hubDuble(roteiro: Record<string, RespostaRoteirizada[]> = {}): C
 }
 
 export const ok = (corpo: unknown, replay = false, status = 202): RespostaHub => ({ tipo: 'ok', status, corpo, replay });
+/** Resposta 202 do `POST /lotes` (lote aceito) e resultado final do `GET /lotes/{id}`: uma só forma para os testes de conector. */
+export const loteAceito = (o: { id: string; entidade: string; recebidos: number; repetido?: boolean }) => ({ lote_id: o.id, status: 'recebido', entidade: o.entidade, modo: 'delta', recebidos: o.recebidos, repetido: o.repetido ?? false, consulta: `/integracao/v1/lotes/${o.id}` });
+export const loteConcluido = (o: { id: string; entidade: string; erros?: unknown[]; recebidas?: number }) => {
+  const erros = o.erros ?? [];
+  const recebidas = o.recebidas ?? 1;
+  return { lote_id: o.id, entidade: o.entidade, modo: 'delta', status: erros.length ? 'concluido_com_erros' : 'concluido', contagens: { recebidas, com_erro: erros.length, novas: recebidas }, erros };
+};
 export const recusa = (status: number, codigo: string | null = null): RespostaHub => ({ tipo: 'recusa', status, codigo });
 export const retentavel = (status: number | null, retryAfterMs: number | null = null, codigo: string | null = null): RespostaHub => ({ tipo: 'retentavel', status, codigo, retryAfterMs });
 

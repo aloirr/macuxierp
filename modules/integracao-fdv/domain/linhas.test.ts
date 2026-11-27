@@ -26,7 +26,7 @@ describe('RN-INF-04: linha inválida no formato do Hub (P-1)', () => {
     expect(codigoLinhaHub('campo_obrigatorio')).toBe('campo_obrigatorio');
     expect(codigoLinhaHub('campo_invalido')).toBe('formato_invalido');
     expect(codigoLinhaHub('quantidade_fracionaria')).toBe('formato_invalido');
-    expect(paraLinhaHub({ external_id: 'U1', codigo: 'quantidade_fracionaria', campo: 'fator' }).mensagem).toContain('só aceita número inteiro');
+    expect(paraLinhaHub({ external_id: 'U1', codigo: 'quantidade_fracionaria', campo: 'fator' }).mensagem).toContain('não aceita fração');
     expect(codigoLinhaHub('filial_codigo_repetido')).toBe('regra_invalida');
   });
 

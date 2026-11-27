@@ -13,7 +13,7 @@ import {
 } from '../contracts';
 import {
   ajusteDeCarga, bloqueiosDeInativacao, dadosDaForma as dadosFormaDoLote, descontoNaCargaDoPreco, completarParcelasCartao, completarPrazoMedio, derivarParcelasCartao, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_SO_ADMINISTRADOR, camposAlterados, erroDeViolacao, erroLinha, errosDeZod, prepararCriacao, prepararEnderecoNovo, somarSaldos, validarDocumentoCliente,
-  validarCondicaoPagamento, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, violacaoFracao, type ErroLinha, type IdsConhecidos,
+  validarCondicaoPagamento, faixaSeAplica, validarEnderecoPrincipal, validarFilial, validarIe, violacao, validarFiscalLinhaProduto, validarIndIeDest, violacaoFracao, type ErroLinha, type IdsConhecidos,
   type FatosFilial, type FormaDoLote,
 } from '../domain';
 import { desativarCondicoesRecusadas } from './formas-recusadas';
@@ -313,8 +313,8 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
       prazo_medio_dias: (patch.prazo_medio_dias === undefined ? ex.prazo_medio_dias ?? null : patch.prazo_medio_dias) as number | null,
       inativa: l.ativo === false,
-      // RN-CAD-15 (v0.3.18): a faixa só é conferida quando a linha altera parcelas ou prazo médio, ou reativa a condição
-      semFaixa: !ex.inativo && !camposAlterados(patch, ex as unknown as Dict).some((k) => k === 'prazos_dias' || k === 'prazo_medio_dias'),
+      // RN-CAD-15: faixaSeAplica
+      semFaixa: !faixaSeAplica({ gravada: ex as unknown as Dict, nova: patch }),
     });
     if (vc.length) return violacoes(l.linha, vc);
     if (camposAlterados(patch, ex as unknown as Dict).length === 0) return { efeito: 'sem_mudanca', alvo };

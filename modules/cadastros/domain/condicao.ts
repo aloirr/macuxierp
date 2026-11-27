@@ -1,4 +1,5 @@
 import { MAX_DIAS, MAX_PARCELAS, MAX_PARCELAS_CARTAO, classeForma, type ClasseForma } from '../contracts';
+import { camposAlterados } from './carga/diferenca';
 import { violacao, type Violacao } from './violacao';
 
 /**
@@ -147,4 +148,14 @@ export function faixaClientesAfetados(forma_tpag: string, antes: number | null, 
   if (classeForma(forma_tpag) === 'cartao') return null;
   if (antes === null) return { de: depois, ate: null };
   return { de: Math.min(antes, depois), ate: Math.max(antes, depois) };
+}
+
+/**
+ * RN-CAD-15 (v0.3.18): a faixa do prazo médio só se confere quando a condição continua ativa e muda parcelas ou prazo médio, ou quando é
+ * reativada (a gravada inativa que volta). Mudar só a forma, ou inativar, nunca é recusado pela faixa. Única para a carga e para o PATCH.
+ */
+export function faixaSeAplica(p: { gravada: Readonly<Record<string, unknown>>; nova: Readonly<Record<string, unknown>> }): boolean {
+  if (p.nova.inativo === true) return false;
+  if (p.gravada.inativo === true) return true;
+  return camposAlterados(p.nova, p.gravada).some((k) => k === 'prazos_dias' || k === 'prazo_medio_dias');
 }

@@ -140,6 +140,9 @@ services:
       # NÃO lidos do .env; desligar à mão segue T-0002 "Desligamento" (apps/worker/src/envio-fdv.ts).
       MACUXIERP_FDV_RECEBIMENTO: ligado
       MACUXIERP_FDV_ENVIO: ligado
+      # Interruptor de emergência da completar-prazo-medio (decisão 16 A): lido do .env (o ambiente-vm.sh grava "ligado");
+      # desligar = "desligado" no .env e reiniciar só o worker, sem PR.
+      MACUXIERP_COMPLETAR_PRAZO_MEDIO: ${MACUXIERP_COMPLETAR_PRAZO_MEDIO:-ligado}
       NODE_OPTIONS: --max-old-space-size=256
     networks: [padrao]
     # sem HTTP: saudável = o processo principal (PID 1, o node do worker) vivo; se ele cair, o restart sobe de novo

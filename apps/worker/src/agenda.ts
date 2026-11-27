@@ -75,6 +75,7 @@ export async function rodarAgendas(agendas: readonly AgendaModulo[], d: Dependen
           hub: d.hub,
           decifrarCredencial: d.decifrarCredencial,
           emTransacao: (fn) => d.banco.comTenant(item.tenant_id, fn),
+          log: d.log.child({ agenda: agenda.id, tarefa: item.tarefa, tenant_id: item.tenant_id }),
         });
         resumo.executados++;
       } catch (e) {

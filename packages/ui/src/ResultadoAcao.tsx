@@ -32,6 +32,7 @@ const caixa = (tom: TomResultado): CSSProperties => ({
   display: 'grid',
   gap: espaco.xs,
   marginTop: espaco.sm,
+  marginBottom: espaco.sm,
   padding: `${espaco.sm}px ${espaco.md}px`,
   borderRadius: canto,
   border: `1px solid ${tons[tom].color}`,
