@@ -66,4 +66,45 @@ describe('ambiente-vm.sh: gerados.env (T-0057, pepper da entrada)', () => {
     assert.ok(api.includes('MACUXIERP_PEPPER_ENTRADA:'), 'o pepper não está no serviço da api');
     assert.match(readFileSync(join(dirname(SCRIPT), 'env.modelo'), 'utf8'), /^MACUXIERP_PEPPER_ENTRADA=$/m);
   });
+
+  it('sentinela: grava o nome (nunca o valor) de cada segredo gerado, em 600', () => {
+    const sentinela = readFileSync(join(erp, '.chaves-geradas'), 'utf8').split('\n').filter(Boolean);
+    for (const n of ['MACUXIERP_PEPPER_ENTRADA', 'MACUXIERP_SEGREDO_BFF', 'MACUXIERP_JWT_SEGREDO', 'MACUXIERP_CHAVE_A1', 'MACUXIERP_CHAVE_INTEGRACAO']) assert.ok(sentinela.includes(n), n);
+    assert.ok(sentinela.every((l) => /^MACUXIERP_[A-Z0-9_]+$/.test(l)), 'a sentinela levou um valor');
+    assert.equal(statSync(join(erp, '.chaves-geradas')).mode & 0o777, 0o600);
+  });
+
+  it('chave do .env que sumiu depois de gerada: PARA a publicação e não gera outra', () => {
+    const envf = join(erp, '.env');
+    const antes = readFileSync(envf, 'utf8');
+    writeFileSync(envf, antes.replace(/^MACUXIERP_CHAVE_INTEGRACAO=.*\n/m, ''));
+    const r = rodar();
+    assert.equal(r.status, 1, r.saida);
+    assert.match(r.saida, /MACUXIERP_CHAVE_INTEGRACAO já foi gerada nesta VM/);
+    assert.doesNotMatch(readFileSync(envf, 'utf8'), /^MACUXIERP_CHAVE_INTEGRACAO=/m);
+    writeFileSync(envf, antes);
+    assert.equal(rodar().status, 0);
+  });
+
+  it('segredo do gerados.env que sumiu depois de gerado (o pepper): para também; sem a linha na sentinela, gera de propósito', () => {
+    const antes = gerados();
+    writeFileSync(join(erp, 'gerados.env'), antes.replace(/^MACUXIERP_PEPPER_ENTRADA=.*\n/m, ''));
+    const r = rodar();
+    assert.equal(r.status, 1, r.saida);
+    assert.match(r.saida, /MACUXIERP_PEPPER_ENTRADA já foi gerada nesta VM/);
+    // troca de propósito: apagar também na sentinela
+    const s = join(erp, '.chaves-geradas');
+    writeFileSync(s, readFileSync(s, 'utf8').replace(/^MACUXIERP_PEPPER_ENTRADA\n/m, ''));
+    assert.equal(rodar().status, 0);
+    assert.notEqual(valor(gerados(), 'MACUXIERP_PEPPER_ENTRADA'), valor(antes, 'MACUXIERP_PEPPER_ENTRADA'));
+  });
+
+  it('VM de antes da sentinela: na 1ª execução, os segredos que já existem entram na sentinela sem serem trocados', () => {
+    const s = join(erp, '.chaves-geradas');
+    rmSync(s);
+    const g = gerados();
+    assert.equal(rodar().status, 0);
+    assert.equal(gerados(), g);
+    assert.match(readFileSync(s, 'utf8'), /^MACUXIERP_CHAVE_A1$/m);
+  });
 });
