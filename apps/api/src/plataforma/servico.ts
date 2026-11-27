@@ -30,6 +30,14 @@ const PADRAO_TOKEN = /^(?:(t\d{1,12})\.)?[A-Za-z0-9_-]{43}$/;
 
 const hashToken = sha256Hex;
 
+/**
+ * Folga de relógio da sessão do `/config` (v0.3.26). A `superadmin_abrir_sessao` (0033) recusa com 23514 (422
+ * REGRA_PLATAFORMA) o `p_expira_em` acima de `now() + 8 h` do banco, e a API mandava exatamente o relógio dela + 8 h:
+ * com a VM adiantada em relação ao DBaaS, o login do superadmin dava 422 intermitente em produção (27/11/2026). A
+ * validade enviada é 8 h menos esta folga, que absorve até 1 min de diferença entre os relógios.
+ */
+export const FOLGA_RELOGIO_SESSAO_MS = 60_000;
+
 /** A sessão lida; a `TrocaPendente` (T-0076) só com a troca ainda pendente. */
 export interface SessaoPlataformaLida extends SessaoPlataforma, TrocaPendente {
   nome: string;
@@ -99,7 +107,7 @@ export class ServicoPlataforma {
       }
       const marca = fimTemporaria ? marcaTemporaria({ motivo_troca: 'temporaria', temporaria_expira_em: fimTemporaria }) : null;
       const token = `${marca ? `${marca}.` : ''}${randomBytes(32).toString('base64url')}`;
-      const expira_em = new Date(agora.getTime() + VALIDADE_SESSAO_CONFIG_MS);
+      const expira_em = new Date(agora.getTime() + VALIDADE_SESSAO_CONFIG_MS - FOLGA_RELOGIO_SESSAO_MS);
       await tx.consultar('SELECT plataforma.superadmin_abrir_sessao($1::uuid, $2, $3)', [sa.id, hashToken(token), expira_em]);
       return { token, expira_em, superadmin_id: sa.id, ...(resultado === 'entra_desbloqueando' ? { desbloqueou: true as const } : {}) };
     });
@@ -133,7 +141,7 @@ export class ServicoPlataforma {
    * 45 A (ADR 0012 §1-A): abre a sessão do `/config` pelo refresh da sessão do BKO, sem argon2 e sem efeito no login do
    * superadmin. A `superadmin_abrir_sessao_pelo_bko` (0076) só lê a sessão do BKO, revoga a do `/config` aberta antes por
    * ela (pela família do refresh) e audita; o teto (o menor entre o fim da sessão do BKO e as 8 h) é do banco: a API
-   * manda só as 8 h.
+   * manda só as 8 h. Aqui sem `FOLGA_RELOGIO_SESSAO_MS`: a 0076 corta com `least(...)` em vez de recusar com 23514.
    * Sem linha = 401; usuário com troca pendente = 403 `TROCAR_SENHA`; sem superadmin válido = 403 `SEM_ACESSO_CONFIG`.
    */
   async entrarPeloBko(refresh: string | undefined): Promise<LoginPlataforma> {
