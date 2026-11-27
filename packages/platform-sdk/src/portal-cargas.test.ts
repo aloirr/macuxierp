@@ -20,7 +20,6 @@ import {
   LIMITE_LINHAS_ERRO_VALIDACAO,
   MENSAGEM_FRASE_SUBSTITUIR,
   MENSAGEM_FRASE_ZERAR,
-  MENSAGEM_MANTIDOS_ZERAR,
   MOTIVOS_USO,
   MENSAGEM_SUBSTITUIR_NAO_PERMITIDO,
   MENSAGENS_CARGA_PORTAL,
@@ -435,10 +434,9 @@ describe('ZeragemPlataformaResposta (RN-CAD-10, v0.3.5b)', () => {
     expect(sdk.MOTIVOS_USO).toBe(MOTIVOS_USO);
   });
 
-  it('mensagem dos mantidos cita uso e dado fiscal', () => {
-    expect(MENSAGEM_MANTIDOS_ZERAR(3)).toBe('Mantidos: 3 (em uso em pedido, título ou nota, ou filial com dado fiscal)');
-    expect(MENSAGEM_MANTIDOS_ZERAR(0)).toBe('Mantidos: 0 (em uso em pedido, título ou nota, ou filial com dado fiscal)');
-    expect(sdk.MENSAGEM_MANTIDOS_ZERAR).toBe(MENSAGEM_MANTIDOS_ZERAR);
+  it('36 A (RD-2328): a mensagem dos mantidos saiu do SDK; a tela monta o retorno', () => {
+    expect(sdk).not.toHaveProperty('MENSAGEM_MANTIDOS_ZERAR');
+    expect(sdk).not.toHaveProperty('AVISO_ZERAR_INATIVA_FDV');
   });
 
   it('recusa tabela fora do enum, coluna anulada desconhecida, motivo livre e repetição', () => {
