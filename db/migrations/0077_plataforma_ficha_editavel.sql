@@ -29,8 +29,6 @@ COMMENT ON COLUMN core.empresa.receita_fonte IS
 -- Internas (sem EXECUTE para ninguém).
 -- ---------------------------------------------------------------------------------------------------------------
 
--- DV do CNPJ, numérico ou alfanumérico (IN RFB 2.229/2024): valor do caractere = código ASCII − 48, pesos 2 a 9 da
--- direita para a esquerda, resto < 2 = 0. Todos os caracteres iguais = inválido.
 CREATE OR REPLACE FUNCTION plataforma.cnpj_valido(p_cnpj text) RETURNS boolean
   LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
@@ -61,7 +59,6 @@ END $$;
 COMMENT ON FUNCTION plataforma.cnpj_valido(text) IS
   'Interna (0077): CNPJ de 14 caracteres já normalizado (12 alfanuméricos maiúsculos + 2 dígitos) com os dois DV certos (cálculo alfanumérico da RFB, ASCII − 48); todos iguais ou NULL = false. RN-CORE-16.';
 
--- Valor normalizado NULL com entrada não vazia = 23514 só com o nome do campo, nunca o valor (LGPD).
 CREATE OR REPLACE FUNCTION plataforma.ficha_exigir(p_campo text, p_bruto text, p_valor anyelement) RETURNS anyelement
   LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
@@ -75,9 +72,23 @@ END $$;
 COMMENT ON FUNCTION plataforma.ficha_exigir(text, text, anyelement) IS
   'Interna (0077): devolve p_valor; se ele é NULL e p_bruto não é vazio, 23514 "campo inválido: <campo>" sem o valor. RN-CORE-16.';
 
--- Evento core.empresa.cnpj_alterado@1 no outbox, com o envelope do OutboxPg do SDK (packages/platform-sdk/src/pg.ts):
--- trava por tenant e agregado, versão = máxima do agregado + 1, proximo_em = ocorrido_em e payload
--- {ator, request_id, payload}. Agregado = a core.empresa. Devolve o id do evento (event_id).
+CREATE OR REPLACE FUNCTION plataforma.empresa_travada(p_tenant uuid) RETURNS core.empresa
+  LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+  SET search_path = pg_catalog, pg_temp
+  AS $$
+DECLARE
+  e core.empresa;
+BEGIN
+  SELECT * INTO e FROM core.empresa x
+    WHERE x.id = plataforma.empresa_core_id(p_tenant) AND x.deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'a empresa não tem cadastro (filial padrão)' USING ERRCODE = 'object_not_in_prerequisite_state';
+  END IF;
+  RETURN e;
+END $$;
+COMMENT ON FUNCTION plataforma.empresa_travada(uuid) IS
+  'Interna (0077): a core.empresa viva do tenant, travada (FOR UPDATE); sem ela = 55000. RN-CORE-16.';
+
 CREATE OR REPLACE FUNCTION plataforma.empresa_publicar_cnpj(p_tenant uuid, p_empresa uuid, p_cnpj text,
   p_request_id text) RETURNS uuid
   LANGUAGE plpgsql VOLATILE SECURITY DEFINER
@@ -119,7 +130,7 @@ CREATE OR REPLACE FUNCTION faturamento.tem_nfe_autorizada_producao(p_tenant uuid
       'emitida_contingencia') AND n.deleted_at IS NULL)
 $$;
 COMMENT ON FUNCTION faturamento.tem_nfe_autorizada_producao(uuid) IS
-  'Interna (0077): true se o tenant tem nota de produção (não excluída) autorizada, autorizada com guarda pendente, cancelada, em autorização ou emitida em contingência (as duas últimas saem com o CNPJ atual). A lista espelha STATUS_NFE_QUE_TRAVA_TROCA_CNPJ (modules/faturamento/domain/nfe-producao.ts): mudança num lado tem de avisar o outro. Só boolean, sem EXECUTE para os papéis: quem chama é a empresa_trocar_cnpj (SECURITY DEFINER). Regra fiscal 7, RN-CORE-16.';
+  'Interna (0077): true se o tenant tem NF-e de produção não excluída num status que trava a troca do CNPJ; espelha STATUS_NFE_QUE_TRAVA_TROCA_CNPJ (modules/faturamento/domain/nfe-producao.ts). Só boolean; quem chama é a empresa_trocar_cnpj. Regra fiscal 7, RN-CORE-16.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Portal /config.
@@ -168,11 +179,7 @@ BEGIN
   END IF;
 
   t := plataforma.empresa_alvo(p_id, false);
-  SELECT * INTO e FROM core.empresa x
-    WHERE x.id = plataforma.empresa_core_id(t.id) AND x.deleted_at IS NULL FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'a empresa não tem cadastro (filial padrão)' USING ERRCODE = 'object_not_in_prerequisite_state';
-  END IF;
+  e := plataforma.empresa_travada(t.id);
 
   -- Repetição do mesmo request_id: nada muda, devolve o que a primeira gravou.
   IF p_request_id IS NOT NULL THEN
@@ -303,7 +310,7 @@ BEGIN
   RETURN jsonb_build_object('ficha', plataforma.empresa_ficha_json(t.id), 'alterados', to_jsonb(v_alterados));
 END $$;
 COMMENT ON FUNCTION plataforma.empresa_salvar_ficha(uuid, jsonb, text) IS
-  'Portal /config (0077): grava a ficha digitada na core.empresa (lista fechada da 0063 mais ie; sem CNPJ, código, tenant e ambiente), com fonte (manual ou a da consulta) e consultado_em (padrão now()). Chave ausente mantém; chave fora da lista, fonte, data ou formato inválido, texto acima do limite = 23514 só com o nome do campo; sem core.empresa = 55000; P0002; MXS01. Sem mudança devolve alterados [] sem gravar nem auditar; repetição do request_id não muda nada. Audita plataforma.empresa.salvar_ficha com {campos, quantidade}. Devolve {ficha, alterados}. Só macuxierp_config. RN-CORE-16.';
+  'Portal /config (0077): grava a ficha digitada na core.empresa (sem CNPJ), com fonte (manual ou a da consulta) e consultado_em; idempotente pelo request_id; audita só os nomes dos campos. Devolve {ficha, alterados}. Erros: docs/banco/README.md. Só macuxierp_config. RN-CORE-16.';
 
 CREATE OR REPLACE FUNCTION plataforma.empresa_trocar_cnpj(p_id uuid, p_cnpj text, p_request_id text)
   RETURNS jsonb
@@ -321,11 +328,7 @@ BEGIN
     RAISE EXCEPTION 'CNPJ inválido' USING ERRCODE = 'check_violation';
   END IF;
   t := plataforma.empresa_alvo(p_id, false);
-  SELECT * INTO e FROM core.empresa x
-    WHERE x.id = plataforma.empresa_core_id(t.id) AND x.deleted_at IS NULL FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'a empresa não tem cadastro (filial padrão)' USING ERRCODE = 'object_not_in_prerequisite_state';
-  END IF;
+  e := plataforma.empresa_travada(t.id);
 
   -- Repetição do mesmo request_id: nada muda nem gera outro evento; devolve o CNPJ atual e o event_id da primeira.
   IF p_request_id IS NOT NULL THEN
@@ -345,6 +348,11 @@ BEGIN
   IF e.cnpj = v_cnpj THEN
     RAISE EXCEPTION 'CNPJ igual ao atual' USING ERRCODE = 'MXC06';
   END IF;
+  -- Sem índice único em core.empresa.cnpj nesta versão (R-20261127-122654): confere com a linha travada; duas trocas
+  -- simultâneas para o mesmo CNPJ ainda podem correr (risco aceito; a troca é rara e só do superadmin).
+  IF EXISTS (SELECT 1 FROM core.empresa o WHERE o.cnpj = v_cnpj AND o.deleted_at IS NULL AND o.id <> e.id) THEN
+    RAISE EXCEPTION 'cnpj_em_uso' USING ERRCODE = 'unique_violation';
+  END IF;
 
   -- Um ponto só: não escreve na filial; o cadastros preenche a filial padrão pelo evento, na mesma transação.
   UPDATE core.empresa SET cnpj = v_cnpj WHERE id = e.id;
@@ -356,13 +364,13 @@ BEGIN
   RETURN jsonb_build_object('cnpj', v_cnpj, 'event_id', v_evento);
 END $$;
 COMMENT ON FUNCTION plataforma.empresa_trocar_cnpj(uuid, text, text) IS
-  'Portal /config (0077): troca o CNPJ da core.empresa (não escreve na filial) e grava core.empresa.cnpj_alterado@1 no outbox na mesma transação. Normaliza (sem pontuação, maiúsculas); formato ou DV inválido = 23514; sem core.empresa = 55000; P0002; MXS01; NF-e de produção (faturamento.tem_nfe_autorizada_producao, com a empresa travada) = MXC05; igual ao atual = MXC06. Repetição do request_id devolve o atual e o event_id da primeira, sem outro evento. Audita plataforma.empresa.trocar_cnpj só com o event_id. Devolve {cnpj, event_id}. Só macuxierp_config. RN-CORE-16.';
-
+  'Portal /config (0077): troca o CNPJ da core.empresa (não escreve na filial) e grava core.empresa.cnpj_alterado@1 no outbox na mesma transação; idempotente pelo request_id; audita só o event_id. Devolve {cnpj, event_id}. Erros: docs/banco/README.md. Só macuxierp_config. RN-CORE-16.';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Privilégios: nada para PUBLIC; internas sem EXECUTE; as do portal só para macuxierp_config.
 -- ---------------------------------------------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION plataforma.cnpj_valido(text), plataforma.ficha_exigir(text, text, anyelement),
+  plataforma.empresa_travada(uuid),
   plataforma.empresa_publicar_cnpj(uuid, uuid, text, text),
   faturamento.tem_nfe_autorizada_producao(uuid), plataforma.empresa_salvar_ficha(uuid, jsonb, text),
   plataforma.empresa_trocar_cnpj(uuid, text, text)
@@ -373,24 +381,23 @@ GRANT EXECUTE ON FUNCTION plataforma.empresa_salvar_ficha(uuid, jsonb, text),
 -- ---------------------------------------------------------------------------------------------------------------
 -- Carga única (fim da 0077): um core.empresa.cnpj_alterado@1 por core.empresa viva com CNPJ, para o cadastros
 -- preencher o CNPJ das filiais padrão antigas. request_id 'migracao-0077:<empresa_id>'; rodar de novo não duplica.
--- Sem auditoria por empresa; tenant fora de 'ativo' também entra (o consumidor só preenche o que falta); o NOTICE
--- mostra só as contagens.
+-- Sem auditoria por empresa; ficam fora os tenants fora de 'ativo' e o tenant de referência (R-20261127-122654);
+-- o NOTICE mostra só a contagem.
 -- ---------------------------------------------------------------------------------------------------------------
 DO $carga$
 DECLARE
   r record;
   v_n integer := 0;
-  v_inativas integer := 0;
 BEGIN
-  FOR r IN SELECT e.id, e.tenant_id, e.cnpj, t.situacao FROM core.empresa e JOIN plataforma.tenant t ON t.id = e.tenant_id
+  FOR r IN SELECT e.id, e.tenant_id, e.cnpj FROM core.empresa e JOIN plataforma.tenant t ON t.id = e.tenant_id
             WHERE e.deleted_at IS NULL AND e.cnpj IS NOT NULL
+              AND t.situacao = 'ativo' AND t.id <> plataforma.tenant_referencia()
               AND NOT EXISTS (SELECT 1 FROM plataforma.evento v
                                WHERE v.tenant_id = e.tenant_id AND v.nome = 'core.empresa.cnpj_alterado@1'
                                  AND v.agregado_id = e.id AND v.payload ->> 'request_id' = 'migracao-0077:' || e.id::text)
             ORDER BY e.created_at, e.id LOOP
     PERFORM plataforma.empresa_publicar_cnpj(r.tenant_id, r.id, r.cnpj, 'migracao-0077:' || r.id::text);
     v_n := v_n + 1;
-    IF r.situacao <> 'ativo' THEN v_inativas := v_inativas + 1; END IF;
   END LOOP;
-  RAISE NOTICE '0077: % evento(s) core.empresa.cnpj_alterado@1 da carga, % de empresa fora de ativo', v_n, v_inativas;
+  RAISE NOTICE '0077: % evento(s) core.empresa.cnpj_alterado@1 da carga', v_n;
 END $carga$;

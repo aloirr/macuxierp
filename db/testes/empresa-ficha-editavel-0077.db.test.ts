@@ -1,6 +1,6 @@
 /**
  * v0.3.24, migração 0077 (RN-CORE-16): Ficha da Receita editável no /config. empresa_salvar_ficha (fonte 'manual' ou a
- * da consulta), empresa_trocar_cnpj (DV, MXC05 com NF-e de produção, MXC06 igual ao atual), interna cnpj_valido,
+ * da consulta), empresa_trocar_cnpj (DV, MXC05 com NF-e de produção, MXC06 igual ao atual, 23505 cnpj_em_uso), interna cnpj_valido,
  * 'manual' no CHECK da fonte e faturamento.tem_nfe_autorizada_producao (só boolean). Dados fictícios.
  */
 import { randomUUID } from 'node:crypto';
@@ -23,12 +23,16 @@ import {
 } from './apoio.ts';
 import { chaveAcesso, cnfDe, fixtureModulos, fixturePlataforma, novoTenant, type Tenant } from './fixture.ts';
 
-const MIGRACAO = fileURLToPath(new URL('../migrations/0077_plataforma_ficha_editavel.sql', import.meta.url));
+const SQL_0077 = readFileSync(
+  fileURLToPath(new URL('../migrations/0077_plataforma_ficha_editavel.sql', import.meta.url)),
+  'utf8',
+);
 const CONFIG = 'macuxierp_config';
 const SALVAR = 'plataforma.empresa_salvar_ficha(uuid, jsonb, text)';
 const TROCAR = 'plataforma.empresa_trocar_cnpj(uuid, text, text)';
 const DV = 'plataforma.cnpj_valido(text)';
 const TEM_NFE = 'faturamento.tem_nfe_autorizada_producao(uuid)';
+const TRAVADA = 'plataforma.empresa_travada(uuid)';
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 const SA = '5a000000-0000-4000-8000-000000000077';
 const CNPJ_MASSA = '12345678000195';
@@ -168,8 +172,8 @@ ${notaSql(E, 'producao', 'rascunho', 2)}`),
 
     afterAll(() => banco?.remover());
 
-    it('privilégios: salvar e trocar só do config; cnpj_valido e tem_nfe sem EXECUTE para PUBLIC, app e config', () => {
-      for (const f of [SALVAR, TROCAR, DV, TEM_NFE]) {
+    it('privilégios: salvar e trocar só do config; cnpj_valido, tem_nfe e empresa_travada sem EXECUTE para PUBLIC, app e config', () => {
+      for (const f of [SALVAR, TROCAR, DV, TEM_NFE, TRAVADA]) {
         const [r] = consultar<Record<string, unknown>>(
           banco.conexao,
           `SELECT p.prosecdef AS definer, array_to_string(p.proconfig, ',') AS cfg,
@@ -487,18 +491,44 @@ DELETE FROM faturamento.nota WHERE tenant_id = '${A.id}';`),
           depois: { event_id: r.event_id },
         },
       ]);
-      const todas = JSON.stringify(auditoria(ACAO_TROCAR).concat(auditoria(ACAO_SALVAR)));
+      const todas = JSON.stringify(aud.concat(auditoria(ACAO_SALVAR)));
       for (const valor of [CNPJ_MASSA, CNPJ_NOVO, EMAIL, TELEFONE, '69005000'])
         expect(todas).not.toContain(valor);
     });
 
-    it('carga da 0077: um evento por core.empresa viva com CNPJ; excluída não entra; rodar de novo não duplica', () => {
+    it('trocar: CNPJ de outra empresa viva = 23505 cnpj_em_uso, sem gravar; a excluída não conta (R-20261127-122654)', () => {
+      const s = novaSessao();
+      const antesEv = eventos().length;
+      // E já está com o CNPJ_NOVO (teste anterior): A não pode ficar com ele.
+      recusaConfig(s, sqlTrocar(A.id, CNPJ_NOVO, 'req-em-uso'), '23505', /cnpj_em_uso/);
+      expect(empresaDe(A.id)).toMatchObject({ cnpj: CNPJ_MASSA });
+      expect(eventos()).toHaveLength(antesEv);
+      expect(auditoria(ACAO_TROCAR, A.id)).toEqual([]);
+      // Com a empresa de E excluída, o mesmo CNPJ fica livre para A.
+      executar(banco.conexao, `UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = '${E.id}';`);
+      try {
+        expect(trocar(s, A.id, CNPJ_NOVO, 'req-em-uso-livre')).toMatchObject({ cnpj: CNPJ_NOVO });
+      } finally {
+        executar(banco.conexao, `UPDATE core.empresa SET deleted_at = NULL WHERE tenant_id = '${E.id}';`);
+      }
+      expect(empresaDe(A.id)).toMatchObject({ cnpj: CNPJ_NOVO });
+      expect(eventos(`tenant_id = '${A.id}'`)).toHaveLength(1);
+    });
+
+    it('carga da 0077: só empresas vivas de tenant ativo (fora a referência), sem duplicar', () => {
+      // A suspenso e uma core.empresa no tenant de referência: a carga ignora os dois (R-20261127-122654).
+      executar(
+        banco.conexao,
+        `UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = '${A.id}';
+INSERT INTO core.empresa (tenant_id, razao_social, cnpj)
+  VALUES (plataforma.tenant_referencia(), 'Referencia Ficticia', '${CNPJ_MASSA}');`,
+      );
       executar(banco.conexao, `UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = '${D.id}';`);
-      const sql = readFileSync(MIGRACAO, 'utf8');
-      rodarScript(banco.conexao, sql, { transacao: true });
+      rodarScript(banco.conexao, SQL_0077, { transacao: true });
       const vivas = consultar<{ id: string; tenant_id: string; cnpj: string }>(
         banco.conexao,
-        `SELECT id, tenant_id, cnpj FROM core.empresa WHERE deleted_at IS NULL ORDER BY id`,
+        `SELECT id, tenant_id, cnpj FROM core.empresa WHERE deleted_at IS NULL
+           AND tenant_id NOT IN ('${A.id}', plataforma.tenant_referencia()) ORDER BY id`,
       );
       const carga = (): Record<string, unknown>[] =>
         eventos(`payload ->> 'request_id' LIKE 'migracao-0077:%'`);
@@ -522,10 +552,14 @@ DELETE FROM faturamento.nota WHERE tenant_id = '${A.id}';`),
       }
       // E já tinha o evento da troca (versão 1): o da carga é a versão 2 do mesmo agregado.
       expect(primeira.find((x) => x.tenant_id === E.id)).toMatchObject({ versao: 2 });
-      expect(primeira.some((x) => x.tenant_id === D.id)).toBe(false);
-      rodarScript(banco.conexao, sql, { transacao: true });
+      rodarScript(banco.conexao, SQL_0077, { transacao: true });
       expect(carga()).toEqual(primeira);
-      executar(banco.conexao, `UPDATE core.empresa SET deleted_at = NULL WHERE tenant_id = '${D.id}';`);
+      executar(
+        banco.conexao,
+        `UPDATE core.empresa SET deleted_at = NULL WHERE tenant_id = '${D.id}';
+UPDATE core.empresa SET deleted_at = '2026-11-01T00:00:00Z' WHERE tenant_id = plataforma.tenant_referencia();
+UPDATE plataforma.tenant SET situacao = 'ativo' WHERE id = '${A.id}';`,
+      );
     });
 
     it('a 0077 reexecuta duas vezes sem erro, sem CHECK duplicado e com os mesmos privilégios', () => {
@@ -538,9 +572,8 @@ DELETE FROM faturamento.nota WHERE tenant_id = '${A.id}';`),
            has_function_privilege('macuxierp_app', '${TEM_NFE}', 'EXECUTE') AS app`,
         )[0];
       const antes = contar();
-      const sql = readFileSync(MIGRACAO, 'utf8');
-      rodarScript(banco.conexao, sql, { transacao: true });
-      rodarScript(banco.conexao, sql, { transacao: true });
+      rodarScript(banco.conexao, SQL_0077, { transacao: true });
+      rodarScript(banco.conexao, SQL_0077, { transacao: true });
       expect(contar()).toEqual(antes);
       expect(empresaDe(E.id)).toMatchObject({ cnpj: CNPJ_NOVO });
       expect(eventos(`tenant_id = '${D.id}'`)).toHaveLength(1);
