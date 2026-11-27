@@ -2,35 +2,37 @@
 
 Pedido do Alexandre em 27/11/2026 às 17h48 (Manaus), R-20261127-174851: as páginas se preenchem primeiro na horizontal e só depois descem, com tamanhos padrão. Complementos da PO: R-20261127-175011. Dados **fictícios**.
 
-O que tem aqui: `simulacao.html` (abra com `#lista`, `#empresa`, `#integracao` ou `#dados`) e 8 PNG, cada uma das 4 telas em 1366 e 1920 px. O código e os tokens só entram em `packages/ui` e `apps/web` depois do "aprovado".
+O que tem aqui: `simulacao.html` (abra com `#lista`, `#empresa`, `#integracao`, `#dados` ou `#junta`) e 10 PNG (lista, empresa, opção A com Integração e Dados separadas, opção B com as duas juntas), em 1366 e 1920 px. O código e os tokens só entram em `packages/ui` e `apps/web` depois do "aprovado".
 
-## Tokens únicos propostos
-Só a escala da marca: 12, 13, 15, 17, 20 e 24 px.
+## Tokens (proposta)
+Não há escala paralela. Mudam só os valores de **papéis que já existem** em `packages/ui/src/tokens.ts`. Isso muda a regra das telas horizontais aprovada em 27/11 (`docs/marca/README.md`), e o "aprovado" do Alexandre precisa cobrir também essa mudança.
 
-| Token proposto | Valor | Onde |
+| Papel existente | Hoje | Proposta |
 |---|---|---|
-| grade | 12 colunas, vão 16 px, margem 24 px | toda tela |
-| altura de campo | 34 px, a mesma para campo, select e **todo botão**, inclusive os da linha da tabela | toda tela |
-| texto | 13 px (`pequeno`), peso 400, grafite | campo, valor e célula |
-| rótulo | 12 px (`micro`), 600, caixa-alta, `rotuloDestaque` | `label`, `dt` e `th`, um estilo só |
-| título de cartão | 15 px (`base`), 700, `rotuloDestaque` | cartão |
-| título de tela | 20 px (`grande`), 700 | h1 |
-| espaço | 12 px entre campos e linhas, e 16 px entre cartões (o vão) | toda tela |
-| cartão | margem interna de 16 px, canto de 8 px, borda `bordaTabela`, fundo branco | toda tela |
+| `h1` | 24 | 20 (`grande`) |
+| `tituloCartao` | 20 | 15 (`base`) |
+| `rotuloDado` (também em `label` e `th`, caixa-alta 600 `rotuloDestaque`) | 13 | 12 (`micro`) |
+| texto de campo, valor e célula | 15 | 13 (`pequeno`) |
 
-Diferença da referência do Gerente Sênior: o rótulo é de 12 px, e não de 11,5 px, porque 11,5 está fora da escala da marca.
+Tokens novos, só os que hoje não existem:
+- `alturaCampo` de 34 px, para campo, select e todo botão, inclusive os da linha;
+- `espaco` de 12 px, entre campos e linhas;
+- `cantoCartao` de 8 px.
 
-## Telas
-- **Lista de empresas**: a tabela na largura cheia, com Empresa, Código, CNPJ, Situação, Módulos, Força de vendas e Criada em. A busca e o "Criar empresa" ficam no cabeçalho. Não há dado de negócio: o superadmin não vê pedido, cliente nem nota (portal-config.md).
-- **Cabeçalho da empresa**, igual nas 3 abas: nome, código, os selos "Ativa" e "Igual à Receita" e as ações "Atualizar pela Receita" e "Suspender".
-- **Empresa**:
-  - Identificação em 2 linhas de 12 colunas: Razão social 5, Fantasia 3, CNPJ 2 (só leitura, com "trocar"), IE 2; depois Situação na Receita 2, Abertura 2, Natureza jurídica 3, Porte 2, Regime 3.
-  - Endereço numa linha: CEP 1, Logradouro 4, Nº 1, Compl. 2, Bairro 2, Município · UF 2.
-  - 4 cartões: CNAE em chips 5, Contato 3, Módulos 2, 1º administrador 2.
-  - Barra fixa com "Descartar" e "Salvar".
-  - Em 1366 × 768, a tela inteira cabe sem rolagem.
-- **Integração**: as duas ligações em 6 + 6, com os dados em 4 colunas, e a tabela "Últimos envios ao FDV" na largura cheia.
-- **Dados**: as duas tabelas lado a lado (6 + 6). As ações de lote ficam no título do cartão a que pertencem ("Baixar modelos"; "Carga completa" e "Zerar pedidos não faturados"), sem barra solta.
+A grade de 12 colunas, o vão de 16 px e a margem de 24 px já estão em `telas-horizontais.md`. Botão secundário: grafite, peso 500 (`botaoSecundario`). Menu da linha: "Ações ▾" (`MenuAcoes`), com uma ação à vista. Selo: 2px 8px, canto 10. Datas sempre como "27/11 17h40".
+
+## Telas (PNG em 1366 e 1920)
+- `lista-*`: tabela na largura cheia, com Empresa, Código, CNPJ, Situação, Módulos, Força de vendas e Criada em. Sem dado de negócio.
+- **Cabeçalho da empresa**: só nome, código, "Ativa" e "Suspender". O que vem da Receita fica no cartão Identificação.
+- `empresa-*`:
+  - Identificação em 3 linhas: Razão 5, Fantasia 3, CNPJ 2 com "trocar", IE 2; Situação na Receita 2, Abertura 2, Natureza 3, Porte 2, Regime 3; CEP 1, Logradouro 4, Nº 1, Compl. 2, Bairro 2, Município · UF 2.
+  - Depois, 3 cartões: CNAE 5, Contato 4, Módulos 3.
+  - **Usuários** numa tabela na largura cheia, com "Adicionar usuário" e, em cada linha, "Editar" e "Ações ▾" (Excluir, Bloquear, Redefinir senha). Esta tabela substitui o "1º administrador".
+  - Barra com "Descartar" e "Salvar".
+- **Opção A, abas separadas**:
+  - `a-integracao-*`: as duas ligações em 6 + 6;
+  - `a-dados-*`: "Cargas recebidas" e "Envios ao FDV" em 6 + 6, com as ações de lote no título do cartão.
+- **Opção B, uma aba "Integração"** (`b-integracao-e-dados-*`): cada coluna é uma direção, com a ligação em cima e a tabela embaixo. Uma aba a menos, nenhum dado repetido e a página cheia nas duas larguras.
 
 ## Fora desta simulação
 O BKO do cliente: o admin do cliente não tem /config e só vê o status das integrações, sem reprocessar (regra do Alexandre, R-20261127-175011). Depois de aprovada, esta Config vira o modelo da Config do FDV.
