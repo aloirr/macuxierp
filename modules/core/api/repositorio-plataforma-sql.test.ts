@@ -100,3 +100,36 @@ describe('adaptador SQL da plataforma: empresa_criar (0037)', () => {
     expect(await criar(txQueLanca('23505', 'duplicate'))).toBeNull();
   });
 });
+
+describe('adaptador SQL da plataforma: salvar ficha e trocar CNPJ (RN-CORE-16)', () => {
+  const repo = new RepositorioPlataformaSql();
+  it.each([
+    ['23514', 'cnpj_invalido'],
+    ['MXC05', 'nfe_autorizada_producao'],
+    ['MXC06', 'cnpj_igual'],
+    ['23505', 'cnpj_em_uso'],
+  ])('trocarCnpj: SQLSTATE %s vira bloqueado/%s', async (code, motivo) => {
+    expect(await repo.trocarCnpj(txQueLanca(code, 'x'), { id: ID, cnpj: '11444777000161', request_id: 'r' })).toEqual({ bloqueado: motivo });
+  });
+
+  it.each([
+    ['P0002', 404],
+    ['55000', 409],
+  ])('trocarCnpj: SQLSTATE %s vira HTTP %i', async (code, status) => {
+    const e = await repo.trocarCnpj(txQueLanca(code, 'x'), { id: ID, cnpj: '11444777000161', request_id: 'r' }).catch((x: unknown) => x);
+    expect((e as ErroApi).status).toBe(status);
+  });
+
+  it('trocarCnpj devolve cnpj e event_id do jsonb', async () => {
+    const tx: Transacao = { consultar: (async () => [{ r: { cnpj: '11444777000161', event_id: 'ev-1' } }]) as never };
+    expect(await repo.trocarCnpj(tx, { id: ID, cnpj: '11444777000161', request_id: 'r' })).toEqual({ cnpj: '11444777000161', event_id: 'ev-1' });
+  });
+
+  it('salvarFicha manda a ficha direta (sem campos_alterados) e devolve alterados do banco', async () => {
+    const chamadas: unknown[][] = [];
+    const tx: Transacao = { consultar: (async (_s: string, p: unknown[]) => (chamadas.push(p), [{ r: { ficha: null, alterados: ['bairro'] } }])) as never };
+    const r = await repo.salvarFicha(tx, { id: ID, ficha: { bairro: 'X' } as never, request_id: 'r' });
+    expect(r).toEqual({ ficha: null, alterados: ['bairro'] });
+    expect(JSON.parse(chamadas[0]![1] as string)).toEqual({ bairro: 'X' });
+  });
+});

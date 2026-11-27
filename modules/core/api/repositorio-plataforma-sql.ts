@@ -5,10 +5,18 @@
  * O unique_violation (23505) de slug ou e-mail repetido vira `null` (409 na rota); os demais SQLSTATE seguem para a apps/api.
  */
 import { DETALHE_CODIGO_RESERVADO, erros, MENSAGEM_CODIGO_RESERVADO, type EmpresaPlataforma, type Licenca, type SituacaoEmpresaEntrada, type Transacao } from '@macuxierp/platform-sdk';
-import type { CampoContato, CnaeDescrito, FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
+import type { CampoContato, CnaeDescrito, FichaReceitaPlana, FichaReceitaPlanaMascarada, MotivoBloqueioCnpj } from '../contracts';
 import { codigosParaDescrever, descreverFicha, MENSAGEM_SEM_CNPJ } from '../domain';
 import { sqlstate } from './erro-pg';
 import type { RepositorioPlataforma } from './plataforma';
+
+/** SQLSTATE da `empresa_trocar_cnpj` que viram bloqueio tratado (RN-CORE-16). */
+const BLOQUEIOS_TROCA_CNPJ: Record<string, MotivoBloqueioCnpj> = {
+  '23514': 'cnpj_invalido',
+  MXC05: 'nfe_autorizada_producao',
+  MXC06: 'cnpj_igual',
+  '23505': 'cnpj_em_uso',
+};
 
 const repetido = (e: unknown): boolean => sqlstate(e) === '23505';
 
@@ -172,6 +180,29 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
     return comErrosDaFicha(async () =>
       (await primeiraLinha<{ v: string }>(tx, 'SELECT plataforma.empresa_contato_revelar($1::uuid, $2, $3) v', [p.id, p.campo, p.request_id])).v,
     );
+  }
+
+  async salvarFicha(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }> {
+    // RN-CORE-16: p_ficha é a ficha plana direta; o banco calcula e audita os alterados (só nomes).
+    return comErrosDaFicha(async () =>
+      primeiraLinha<{ r: { ficha: FichaReceitaPlanaMascarada | null; alterados: string[] } }>(tx, 'SELECT plataforma.empresa_salvar_ficha($1::uuid, $2::jsonb, $3) r', [
+        p.id,
+        JSON.stringify(p.ficha),
+        p.request_id,
+      ]).then(async (l) => ({ ...l.r, ficha: await comDescricoes(tx, l.r.ficha) })),
+    );
+  }
+
+  /** O evento sai na empresa_trocar_cnpj (0077), mesma transação; o cadastros consome e atualiza a filial padrão (RN-CORE-14). */
+  async trocarCnpj(tx: Transacao, p: { id: string; cnpj: string; request_id: string }): Promise<{ cnpj: string; event_id: string } | { bloqueado: MotivoBloqueioCnpj }> {
+    try {
+      const l = await primeiraLinha<{ r: { cnpj: string; event_id: string } }>(tx, 'SELECT plataforma.empresa_trocar_cnpj($1::uuid, $2, $3) r', [p.id, p.cnpj, p.request_id]);
+      return { cnpj: l.r.cnpj, event_id: l.r.event_id };
+    } catch (e) {
+      const motivo = BLOQUEIOS_TROCA_CNPJ[String(sqlstate(e))];
+      if (motivo) return { bloqueado: motivo };
+      return comErrosDaFicha(() => Promise.reject(e));
+    }
   }
 
   async revelarEmailPrimeiroAdmin(tx: Transacao, p: { id: string; request_id: string }): Promise<string> {

@@ -6,3 +6,4 @@ export * from './conta-bloqueada';
 export * from './senha-esquecida';
 export * from './empresa-da-filial';
 export * from './ficha-receita';
+export * from './ficha-editavel';

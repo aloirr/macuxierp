@@ -31,5 +31,5 @@ export { lerA1DecifradoDaFilial, type A1DecifradoDaFilial } from './leitura-a1';
 // RN-CORE-14 (T-0100): consumidor de `cadastros.filial.alterada@1`, ligado no worker
 export { criarConsumidorEmpresaDaFilial, EVENTO_FILIAL_ALTERADA, ID_CONSUMIDOR_EMPRESA_DA_FILIAL } from './consumidor-empresa-da-filial';
 // Plugin de plataforma do portal /config (ADR 0012)
-export { criarPluginPlataformaCore, type DependenciasPlataformaCore, type RepositorioPlataforma } from './plataforma';
+export { criarPluginPlataformaCore, type ConsultaNfeProducao, type DependenciasPlataformaCore, type RepositorioPlataforma } from './plataforma';
 export { RepositorioPlataformaSql } from './repositorio-plataforma-sql';

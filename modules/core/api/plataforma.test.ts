@@ -1,8 +1,8 @@
 import { CABECALHOS_SENHA_PROVISORIA, ErroApi, type EmpresaPlataforma, type Licenca, type RotaPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
-import type { FichaReceitaPlana, FichaReceitaPlanaMascarada } from '../contracts';
-import { criarPluginPlataformaCore, type ConsultaReceita, type RepositorioPlataforma } from './plataforma';
+import { CnpjAlterado, MENSAGENS_BLOQUEIO_CNPJ, type FichaReceitaPlana, type FichaReceitaPlanaMascarada, type MotivoBloqueioCnpj } from '../contracts';
+import { criarPluginPlataformaCore, type ConsultaNfeProducao, type ConsultaReceita, type RepositorioPlataforma } from './plataforma';
 
 const CNPJ = '11222333000181';
 const FICHA_ANTES: FichaReceitaPlanaMascarada = {
@@ -20,7 +20,12 @@ const SUGESTAO_OK = {
 interface OpcoesFicha {
   ficha?: FichaReceitaPlanaMascarada | null;
   consulta?: ConsultaReceita;
+  nfeProducao?: ConsultaNfeProducao;
   valor?: string;
+  /** O que o banco devolve como `alterados` no salvar. */
+  alteradosDoBanco?: string[];
+  /** Bloqueio que o banco devolve na troca de CNPJ. */
+  bloqueioBanco?: MotivoBloqueioCnpj;
 }
 
 const EMPRESA = '00000000-0000-4000-8000-0000000000e1';
@@ -31,6 +36,9 @@ const AGORA = new Date('2026-11-23T12:00:00Z');
 function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha = {}) {
   const chamadas: string[] = [];
   const gravadas: FichaReceitaPlana[] = [];
+  const salvas: { ficha: FichaReceitaPlana; request_id: string }[] = [];
+  const cnpjs: string[] = [];
+  const eventos: CnpjAlterado[] = [];
   const hashes: string[] = [];
   let empresa: EmpresaPlataforma = {
     id: EMPRESA,
@@ -75,12 +83,26 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
       gravadas.push(p.ficha);
       return { ficha: { ...FICHA_ANTES, nome_fantasia: p.ficha.nome_fantasia }, alterados: ['nome_fantasia'] };
     },
+    async salvarFicha(_tx, p) {
+      chamadas.push('salvar');
+      salvas.push({ ficha: p.ficha, request_id: p.request_id });
+      return { ficha: { ...FICHA_ANTES, bairro: p.ficha.bairro }, alterados: op.alteradosDoBanco ?? ['bairro', 'porte'] };
+    },
+    async trocarCnpj(_tx, p) {
+      chamadas.push('cnpj');
+      cnpjs.push(p.cnpj);
+      if (op.bloqueioBanco) return { bloqueado: op.bloqueioBanco };
+      empresa = { ...empresa, cnpj: p.cnpj };
+      // Como a 0077: o evento é gravado na mesma operação, com o payload do CnpjAlterado.
+      eventos.push({ tenant_id: p.id, empresa_id: p.id, cnpj_novo: p.cnpj, request_id: p.request_id, alterado_em: AGORA.toISOString() });
+      return { cnpj: p.cnpj, event_id: `ev-${eventos.length}` };
+    },
     async revelarContato(_tx, p) {
       chamadas.push(`revelar:${p.campo}`);
       return op.valor ?? 'contato@teste.com.br';
     },
   };
-  return { repo, chamadas, hashes, gravadas };
+  return { repo, chamadas, hashes, gravadas, salvas, cnpjs, eventos };
 }
 
 function montar(inicial?: Partial<EmpresaPlataforma>, op: OpcoesFicha = {}) {
@@ -88,6 +110,7 @@ function montar(inicial?: Partial<EmpresaPlataforma>, op: OpcoesFicha = {}) {
   const plugin = criarPluginPlataformaCore({
     repo: m.repo,
     consultaReceita: op.consulta,
+    consultaNfeProducao: op.nfeProducao,
     manifestos: MANIFESTOS_TESTE,
     hashSenha: async (s) => `$argon2id$teste$${s.length}`,
     aleatorios: (n) => Uint8Array.from({ length: n }, (_, i) => (i * 37 + 11) % 256),
@@ -131,17 +154,21 @@ const LIGADOS_ATE_PEDIDO = [
 ] as const;
 
 describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
-  it('monta as 10 rotas de empresa, nenhuma em /auth', () => {
+  it('monta as 14 rotas de empresa, nenhuma em /auth', () => {
     const { plugin } = montar();
     expect(plugin.rotas.map((r) => `${r.metodo} ${r.caminho}`).sort()).toEqual([
       'GET /empresas',
       'GET /empresas/:id',
+      'GET /empresas/:id/cnpj',
       'POST /empresas',
+      'POST /empresas/:id/cnpj',
       'POST /empresas/:id/contato/:campo',
+      'POST /empresas/:id/ficha/receita',
       'POST /empresas/:id/primeiro-admin',
       'POST /empresas/:id/primeiro-admin/email',
       'POST /empresas/:id/primeiro-admin/senha',
       'POST /empresas/:id/receita',
+      'PUT /empresas/:id/ficha',
       'PUT /empresas/:id/modulos',
       'PUT /empresas/:id/situacao',
     ]);
@@ -159,6 +186,15 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
     expect(l.corpo.itens[0]).toMatchObject({ slug: 'cafe-macuxi', codigo: null });
     const d = (await t.chamar('GET', '/empresas/:id', { params: { id: EMPRESA } })) as { corpo: { codigo: string | null } };
     expect(d.corpo.codigo).toBeNull();
+  });
+
+  it('RN-CORE-16: GET .../cnpj devolve a situação da troca (permitida, bloqueada por NF-e, indisponível sem porta ou com falha)', async () => {
+    const ler = async (t: ReturnType<typeof montar>) => (await t.chamar('GET', '/empresas/:id/cnpj', { params: { id: EMPRESA } })) as { corpo: unknown };
+    expect((await ler(montar(undefined, { nfeProducao: { temNfeAutorizadaEmProducao: async () => false } }))).corpo).toEqual({ permitida: true });
+    expect((await ler(montar(undefined, { nfeProducao: { temNfeAutorizadaEmProducao: async () => true } }))).corpo).toMatchObject({ permitida: false, motivo: 'nfe_autorizada_producao' });
+    const indisp = { permitida: false, motivo: 'consulta_indisponivel', mensagem: 'Não foi possível verificar as notas agora; tente de novo' };
+    expect((await ler(montar())).corpo).toEqual(indisp);
+    expect((await ler(montar(undefined, { nfeProducao: { temNfeAutorizadaEmProducao: async () => { throw new Error('x'); } } }))).corpo).toEqual(indisp);
   });
 
   it('cria a empresa (201) e recusa slug repetido (409)', async () => {
@@ -388,6 +424,150 @@ describe('T-0101: ficha da Receita e Revelar contato (ADR 0012, emenda da ficha)
       expect((await t.erro(t.chamar('POST', '/empresas/:id/contato/:campo', { params: { id: outroId, campo: 'email' } }))).status).toBe(404);
       const sem = montar(undefined, { ficha: null });
       expect((await sem.erro(sem.chamar('POST', '/empresas/:id/contato/:campo', { params: { id: EMPRESA, campo: 'email' } }))).status).toBe(409);
+    });
+  });
+});
+
+describe('RN-CORE-16: Ficha da Receita editável (v0.3.24)', () => {
+  const SEM_CACHE = { 'cache-control': 'no-store', pragma: 'no-cache' };
+  const NOVO_CNPJ = '11444777000161';
+  const FICHA_SALVA = { ...FICHA_ANTES, razao_social: 'EMPRESA ANTIGA LTDA', cnae_secundarios: [] };
+  const EDICAO = {
+    razao_social: 'EMPRESA ANTIGA LTDA', nome_fantasia: 'ANTIGA', logradouro: null, numero: null, complemento: null, bairro: null, cep: null,
+    municipio_ibge: null, uf: 'AM', cnae_principal: '4711302', regime_receita: 'simples', situacao_cadastral: 'ATIVA',
+    situacao_cadastral_data: null, data_abertura: null, natureza_juridica: null, porte: null, cnae_secundarios: [], origem: 'manual',
+  };
+  const consultaOk: ConsultaReceita = { consultar: async () => SUGESTAO_OK };
+  const semNfe: ConsultaNfeProducao = { temNfeAutorizadaEmProducao: async () => false };
+  const comNfe: ConsultaNfeProducao = { temNfeAutorizadaEmProducao: async () => true };
+
+  describe('PUT /empresas/:id/ficha', () => {
+    it('RN-CORE-16: salva o que mudou e devolve só os nomes dos campos, com no-store', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA });
+      const r = (await t.chamar('PUT', '/empresas/:id/ficha', { corpo: { ...EDICAO, bairro: 'Aleixo', porte: 'ME' } })) as { corpo: unknown; cabecalhos: unknown };
+      expect(r.corpo).toMatchObject({ estado: 'ok', campos_alterados: ['bairro', 'porte'] });
+      expect(r.cabecalhos).toEqual(SEM_CACHE);
+      expect(t.salvas).toHaveLength(1);
+      expect(t.salvas[0]).toMatchObject({ request_id: 'req-1', ficha: { bairro: 'Aleixo', fonte: 'manual' } });
+    });
+
+    it('RN-CORE-16: o banco manda: alterados vazio vira sem_mudanca (nada auditado)', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA, alteradosDoBanco: [] });
+      const r = (await t.chamar('PUT', '/empresas/:id/ficha', { corpo: { ...EDICAO, bairro: 'Aleixo' } })) as { corpo: { estado: string } };
+      expect(t.salvas).toHaveLength(1);
+      expect(r.corpo.estado).toBe('sem_mudanca');
+    });
+
+    it('RN-CORE-16: sem mudança nenhuma não grava nem audita', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA });
+      const r = (await t.chamar('PUT', '/empresas/:id/ficha', { corpo: EDICAO })) as { corpo: { estado: string } };
+      expect(r.corpo.estado).toBe('sem_mudanca');
+      expect(t.salvas).toEqual([]);
+      expect(t.auditadas).toEqual([]);
+    });
+
+    it('RN-CORE-16: o que vai para a auditoria são só nomes e contagem, nunca valores', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA });
+      await t.chamar('PUT', '/empresas/:id/ficha', { corpo: { ...EDICAO, bairro: 'Bairro Secreto', email: 'pessoa@exemplo.com.br' } });
+      const t2 = montar(undefined, { ficha: FICHA_SALVA, alteradosDoBanco: ['bairro', 'email'] });
+      const r = (await t2.chamar('PUT', '/empresas/:id/ficha', { corpo: { ...EDICAO, bairro: 'Bairro Secreto', email: 'pessoa@exemplo.com.br' } })) as { corpo: { campos_alterados: string[] } };
+      expect(r.corpo.campos_alterados).toEqual(['bairro', 'email']);
+      expect(JSON.stringify(r.corpo.campos_alterados)).not.toMatch(/Secreto|pessoa@/);
+      expect(t.salvas).toHaveLength(1);
+    });
+
+    it('RN-CORE-16: empresa inexistente 404, sem ficha 409, id inválido 400', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA });
+      expect((await t.erro(t.chamar('PUT', '/empresas/:id/ficha', { corpo: EDICAO, params: { id: '00000000-0000-4000-8000-0000000000ff' } }))).status).toBe(404);
+      expect((await t.erro(t.chamar('PUT', '/empresas/:id/ficha', { corpo: EDICAO, params: { id: 'x' } }))).status).toBe(400);
+      const sem = montar(undefined, { ficha: null });
+      expect((await sem.erro(sem.chamar('PUT', '/empresas/:id/ficha', { corpo: EDICAO }))).status).toBe(409);
+    });
+  });
+
+  describe('POST /empresas/:id/ficha/receita', () => {
+    it('RN-CORE-16: devolve a prévia com os campos diferentes e NÃO grava', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA, consulta: consultaOk });
+      const r = (await t.chamar('POST', '/empresas/:id/ficha/receita')) as { corpo: { estado: string; diferentes: string[]; previa: Record<string, unknown>; fonte: string }; cabecalhos: unknown };
+      expect(r.corpo).toMatchObject({ estado: 'ok', fonte: 'brasilapi', previa: { razao_social: 'EMPRESA NOVA LTDA', nome_fantasia: 'NOVA' } });
+      expect(r.corpo.diferentes).toEqual(['razao_social', 'nome_fantasia', 'email']);
+      expect(r.cabecalhos).toEqual(SEM_CACHE);
+      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`, 'plataforma']);
+      expect(t.chamadas).not.toContain('gravar');
+      expect(t.chamadas).not.toContain('salvar');
+      expect(JSON.stringify(r.corpo)).not.toContain('contato@nova.com.br');
+    });
+
+    it('RN-CORE-16: falha da fonte vira erro tratado sem gravar; sem a porta 503', async () => {
+      const t = montar(undefined, { ficha: FICHA_SALVA, consulta: { consultar: async () => ({ ok: false, motivo: 'fonte_indisponivel' }) } });
+      const r = (await t.chamar('POST', '/empresas/:id/ficha/receita')) as { corpo: unknown };
+      expect(r.corpo).toMatchObject({ estado: 'erro', motivo: 'fonte_indisponivel' });
+      expect(t.chamadas).not.toContain('gravar');
+      const sem = montar(undefined, { ficha: FICHA_SALVA });
+      expect((await sem.erro(sem.chamar('POST', '/empresas/:id/ficha/receita'))).status).toBe(503);
+    });
+  });
+
+  describe('POST /empresas/:id/cnpj', () => {
+    const corpo = { cnpj_novo: NOVO_CNPJ, confirmacao: true };
+
+    it('RN-CORE-16: troca o CNPJ quando não há NF-e autorizada em produção (homologação não bloqueia)', async () => {
+      const t = montar(undefined, { nfeProducao: semNfe });
+      const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo })) as { corpo: unknown };
+      expect(r.corpo).toEqual({ estado: 'ok', cnpj: NOVO_CNPJ });
+      expect(t.cnpjs).toEqual([NOVO_CNPJ]);
+      expect(t.etapas).toEqual(['plataforma', `tenant:${EMPRESA}`, 'plataforma']);
+    });
+
+    it('RN-CORE-16: bloqueia com NF-e autorizada em produção e não troca', async () => {
+      const t = montar(undefined, { nfeProducao: comNfe });
+      const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo })) as { corpo: { estado: string; motivo: string; mensagem: string } };
+      expect(r.corpo).toMatchObject({ estado: 'bloqueado', motivo: 'nfe_autorizada_producao' });
+      expect(r.corpo.mensagem).not.toContain(NOVO_CNPJ);
+      expect(t.cnpjs).toEqual([]);
+    });
+
+    it.each(['cnpj_invalido', 'nfe_autorizada_producao', 'cnpj_igual', 'cnpj_em_uso'] as const)('RN-CORE-16: o banco bloqueia com %s e a rota responde bloqueado', async (motivo) => {
+      const t = montar(undefined, { nfeProducao: semNfe, bloqueioBanco: motivo });
+      const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo })) as { corpo: { estado: string; motivo: string; mensagem: string } };
+      expect(r.corpo).toMatchObject({ estado: 'bloqueado', motivo });
+      expect(r.corpo.mensagem).toBe(MENSAGENS_BLOQUEIO_CNPJ[motivo]);
+    });
+
+    it('RN-CORE-16: a troca devolve ok com o cnpj e grava exatamente um core.empresa.cnpj_alterado@1 válido, sem CNPJ antigo; nenhum em bloqueio', async () => {
+      const t = montar(undefined, { nfeProducao: semNfe });
+      const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo })) as { corpo: unknown };
+      expect(r.corpo).toEqual({ estado: 'ok', cnpj: NOVO_CNPJ });
+      expect(t.eventos).toHaveLength(1);
+      expect(CnpjAlterado.safeParse(t.eventos[0]).success).toBe(true);
+      expect(t.eventos[0]).toMatchObject({ tenant_id: EMPRESA, empresa_id: EMPRESA, cnpj_novo: NOVO_CNPJ, request_id: 'req-1' });
+      expect(JSON.stringify(t.eventos)).not.toContain(CNPJ);
+      const bl = montar(undefined, { nfeProducao: semNfe, bloqueioBanco: 'cnpj_em_uso' });
+      await bl.chamar('POST', '/empresas/:id/cnpj', { corpo });
+      expect(bl.eventos).toEqual([]);
+    });
+
+    it('RN-CORE-16: CNPJ igual ao atual é bloqueado', async () => {
+      const t = montar(undefined, { nfeProducao: semNfe });
+      const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo: { cnpj_novo: CNPJ, confirmacao: true } })) as { corpo: { motivo: string } };
+      expect(r.corpo.motivo).toBe('cnpj_igual');
+      expect(t.cnpjs).toEqual([]);
+    });
+
+    it('RN-CORE-16: sem confirmação o contrato recusa (400) e a rota nunca chega a trocar', async () => {
+      const t = montar(undefined, { nfeProducao: semNfe });
+      await expect(t.chamar('POST', '/empresas/:id/cnpj', { corpo: { cnpj_novo: NOVO_CNPJ, confirmacao: false } })).rejects.toThrow();
+      expect(t.cnpjs).toEqual([]);
+    });
+
+    it('RN-CORE-16: porta ausente = 503 (falha fechada, como a consulta de CNPJ); sem CNPJ na empresa 409; id desconhecido 404', async () => {
+      const semPorta = montar();
+      expect((await semPorta.erro(semPorta.chamar('POST', '/empresas/:id/cnpj', { corpo }))).status).toBe(503);
+      const semCnpj = montar({ cnpj: undefined }, { nfeProducao: semNfe });
+      expect((await semCnpj.erro(semCnpj.chamar('POST', '/empresas/:id/cnpj', { corpo }))).status).toBe(409);
+      const t = montar(undefined, { nfeProducao: semNfe });
+      expect((await t.erro(t.chamar('POST', '/empresas/:id/cnpj', { corpo, params: { id: '00000000-0000-4000-8000-0000000000ff' } }))).status).toBe(404);
+      expect(semPorta.cnpjs).toEqual([]);
     });
   });
 });
