@@ -22,6 +22,8 @@ export interface DefCampo {
   rotulo: string;
   tipo: TipoCampo;
   max?: number;
+  /** Campo de texto longo (razão social, natureza jurídica): a linha toda do cartão. */
+  largo?: boolean;
   /** Campo curto (CEP, UF, datas…): no computador divide a linha com outro (docs/design/telas-horizontais §1.5). */
   curto?: boolean;
   /** Texto curto de formato, abaixo do campo. */
@@ -30,6 +32,8 @@ export interface DefCampo {
 interface GrupoFicha {
   id: string;
   titulo: string;
+  /** Cartão nas duas colunas da Ficha (a partir de 768), com 4 colunas de campos: o texto longo não corta (PO, #853). */
+  largo?: boolean;
   campos: DefCampo[];
 }
 
@@ -39,11 +43,12 @@ const M = FORMATO_FICHA.max;
 export const GRUPOS_FICHA: GrupoFicha[] = [
   {
     id: 'identificacao',
+    largo: true,
     titulo: 'Identificação',
     campos: [
-      { campo: 'razao_social', rotulo: 'Razão social', tipo: 'texto', max: M.razao },
+      { campo: 'razao_social', largo: true, rotulo: 'Razão social', tipo: 'texto', max: M.razao },
       { campo: 'nome_fantasia', rotulo: 'Nome fantasia', tipo: 'texto', max: M.razao },
-      { campo: 'ie', curto: true, rotulo: 'Inscrição estadual', tipo: 'texto', max: 14, dica: 'Só números ou ISENTO.' },
+      { campo: 'ie', rotulo: 'Inscrição estadual', tipo: 'texto', max: 14, dica: 'Só números ou ISENTO.' },
     ],
   },
   {
@@ -60,18 +65,6 @@ export const GRUPOS_FICHA: GrupoFicha[] = [
     ],
   },
   {
-    id: 'situacao',
-    titulo: 'Situação na Receita',
-    campos: [
-      { campo: 'situacao_cadastral', curto: true, rotulo: 'Situação cadastral', tipo: 'texto', max: M.situacao },
-      { campo: 'situacao_cadastral_data', curto: true, rotulo: 'Data da situação', tipo: 'data' },
-      { campo: 'data_abertura', curto: true, rotulo: 'Abertura', tipo: 'data' },
-      { campo: 'porte', rotulo: 'Porte', tipo: 'texto', max: M.porte },
-      { campo: 'natureza_juridica', rotulo: 'Natureza jurídica', tipo: 'texto', max: M.natureza },
-      { campo: 'regime_receita', rotulo: 'Regime', tipo: 'regime' },
-    ],
-  },
-  {
     id: 'atividades',
     titulo: 'Atividades e contato',
     campos: [
@@ -79,6 +72,19 @@ export const GRUPOS_FICHA: GrupoFicha[] = [
       { campo: 'cnae_secundarios', rotulo: 'CNAE secundários', tipo: 'lista', dica: 'Um por linha.' },
       { campo: 'email', rotulo: 'E-mail', tipo: 'email', max: 254 },
       { campo: 'telefone', rotulo: 'Telefone', tipo: 'telefone', max: 16, dica: 'DDD e número.' },
+    ],
+  },
+  {
+    id: 'situacao',
+    largo: true,
+    titulo: 'Situação na Receita',
+    campos: [
+      { campo: 'situacao_cadastral', rotulo: 'Situação cadastral', tipo: 'texto', max: M.situacao },
+      { campo: 'situacao_cadastral_data', curto: true, rotulo: 'Data da situação', tipo: 'data', dica: 'dd/mm/aaaa' },
+      { campo: 'data_abertura', curto: true, rotulo: 'Abertura', tipo: 'data', dica: 'dd/mm/aaaa' },
+      { campo: 'natureza_juridica', largo: true, rotulo: 'Natureza jurídica', tipo: 'texto', max: M.natureza },
+      { campo: 'porte', rotulo: 'Porte', tipo: 'texto', max: M.porte },
+      { campo: 'regime_receita', rotulo: 'Regime', tipo: 'regime' },
     ],
   },
 ];
@@ -93,6 +99,27 @@ export const OPCOES_REGIME: { valor: RegimeFicha | ''; rotulo: string }[] = [
 ];
 
 const t = (v: string | null | undefined) => v ?? '';
+
+/**
+ * Data civil na tela sempre em dd/mm/aaaa, sem depender do idioma do navegador (o input date do Chromium em en-US mostra
+ * mm/dd): AAAA-MM-DD → DD/MM/AAAA; fora do formato, como veio.
+ */
+export const dataNaTela = (v: string | null | undefined): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v ?? '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : t(v);
+};
+
+/** DD/MM/AAAA (ou D/M/AAAA) → AAAA-MM-DD; vazio vira nulo; fora do formato segue como veio, e o contrato recusa. */
+export const dataDoForm = (v: string): string | null => {
+  const s = v.trim();
+  if (s === '') return null;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (!m) return s;
+  const iso = `${m[3]}-${m[2]!.padStart(2, '0')}-${m[1]!.padStart(2, '0')}`;
+  // dia que não existe (31/02, 45/13) segue como veio, para o contrato recusar
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(iso) ? iso : s;
+};
 
 /**
  * Formulário a partir da ficha salva (ou da prévia). E-mail e telefone começam vazios: o salvo só existe mascarado, e
@@ -111,8 +138,8 @@ export function formDaFicha(f: FichaReceitaPlanaMascarada | null, razaoEmpresa: 
     municipio_ibge: t(f?.municipio_ibge),
     uf: t(f?.uf),
     situacao_cadastral: t(f?.situacao_cadastral),
-    situacao_cadastral_data: t(f?.situacao_cadastral_data),
-    data_abertura: t(f?.data_abertura),
+    situacao_cadastral_data: dataNaTela(f?.situacao_cadastral_data),
+    data_abertura: dataNaTela(f?.data_abertura),
     natureza_juridica: t(f?.natureza_juridica),
     porte: t(f?.porte),
     regime_receita: t(f?.regime_receita),
@@ -152,8 +179,8 @@ export function entradaDoForm(f: FormFicha, origem: 'manual' | 'receita', consul
     municipio_ibge: digitos(f.municipio_ibge),
     uf: nulo(f.uf)?.toUpperCase() ?? null,
     situacao_cadastral: nulo(f.situacao_cadastral),
-    situacao_cadastral_data: nulo(f.situacao_cadastral_data),
-    data_abertura: nulo(f.data_abertura),
+    situacao_cadastral_data: dataDoForm(f.situacao_cadastral_data),
+    data_abertura: dataDoForm(f.data_abertura),
     natureza_juridica: nulo(f.natureza_juridica),
     porte: nulo(f.porte),
     regime_receita: nulo(f.regime_receita),
@@ -173,8 +200,8 @@ const ERRO_CAMPO: Partial<Record<CampoFicha, string>> = {
   cep: 'O CEP tem 8 números.',
   municipio_ibge: 'O código IBGE tem 7 números.',
   uf: 'Use a sigla da UF, com 2 letras.',
-  situacao_cadastral_data: 'Data inválida.',
-  data_abertura: 'Data inválida.',
+  situacao_cadastral_data: 'Data inválida. Use dd/mm/aaaa.',
+  data_abertura: 'Data inválida. Use dd/mm/aaaa.',
   cnae_principal: 'O CNAE tem 7 números.',
   cnae_secundarios: 'Cada CNAE tem 7 números.',
   email: 'E-mail inválido.',

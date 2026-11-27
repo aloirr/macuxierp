@@ -2,7 +2,7 @@
 import type { CampoContato, FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import { RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition, type ReactNode } from 'react';
+import { Fragment, useRef, useState, useTransition, type ReactNode } from 'react';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
@@ -34,7 +34,7 @@ type Origem = { tipo: 'manual' } | { tipo: 'receita'; consultadoEm: string };
 /** E-mail e telefone: o salvo só aparece mascarado (com o "Mostrar"); o campo vazio mantém o salvo (dito no placeholder). */
 function SalvoMascarado({ empresaId, campo, mascarado }: { empresaId: string; campo: CampoContato; mascarado: string }) {
   return (
-    <span className="dica-campo">
+    <span className="dica-campo dica-salvo">
       Salvo: <RevelarMascarado rotulo={campo === 'email' ? 'e-mail' : 'telefone'} mascarado={mascarado} revelar={() => revelarContatoAcao(empresaId, campo).then((r) => (r.ok ? { ok: true as const, valor: r.valor.valor } : r))} />
     </span>
   );
@@ -44,7 +44,7 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
   const id = `ficha-${def.campo}`;
   const comum = { id, name: def.campo, value: valor, disabled: desabilitado, 'aria-invalid': erro ? true : undefined, 'aria-describedby': erro ? `${id}-erro` : undefined } as const;
   return (
-    <div className={`campo-ficha${def.curto ? ' campo-curto' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
+    <div className={`campo-ficha${def.curto ? ' campo-curto' : ''}${def.largo ? ' campo-largo' : ''}${daReceita ? ' veio-da-receita' : ''}`}>
       <label htmlFor={id} className="rotulo-campo">{def.rotulo}</label>
       {def.tipo === 'regime' ? (
         <select {...comum} onChange={(e) => aoMudar(e.target.value)}>
@@ -57,8 +57,9 @@ function Campo({ def, valor, erro, daReceita, desabilitado, aoMudar, extra }: { 
       ) : (
         <input
           {...comum}
-          type={def.tipo === 'data' ? 'date' : def.tipo === 'email' ? 'email' : def.tipo === 'telefone' ? 'tel' : 'text'}
-          maxLength={def.max}
+          type={def.tipo === 'email' ? 'email' : def.tipo === 'telefone' ? 'tel' : 'text'}
+          inputMode={def.tipo === 'data' ? 'numeric' : undefined}
+          maxLength={def.tipo === 'data' ? 10 : def.max}
           placeholder={def.tipo === 'email' || def.tipo === 'telefone' ? 'Vazio mantém o salvo' : undefined}
           autoComplete="off"
           onChange={(e) => aoMudar(e.target.value)}
@@ -211,11 +212,14 @@ export function FichaReceita({ empresaId, ficha, razaoEmpresa, lugar = null, fus
       >
         <div className="grade-cartoes">
           {GRUPOS_FICHA.map((g) => (
-            <fieldset key={g.id} className="cartao-campos" aria-labelledby={`h-ficha-${g.id}`}>
+            <fieldset key={g.id} className={`cartao-campos${g.largo ? ' cartao-largo' : ''}`} aria-labelledby={`h-ficha-${g.id}`}>
               <h3 id={`h-ficha-${g.id}`} className="titulo-cartao">{g.titulo}</h3>
-              {g.id === 'identificacao' && cnpj}
               {g.campos.map((d) => (
-                <Campo key={d.campo} def={d} valor={form[d.campo]} erro={erros[d.campo]} daReceita={daReceita.has(d.campo)} desabilitado={bloqueado} aoMudar={(v) => mudar(d.campo, v)} extra={extra(d.campo)} />
+                <Fragment key={d.campo}>
+                  <Campo def={d} valor={form[d.campo]} erro={erros[d.campo]} daReceita={daReceita.has(d.campo)} desabilitado={bloqueado} aoMudar={(v) => mudar(d.campo, v)} extra={extra(d.campo)} />
+                  {/* o CNPJ logo depois da razão social, ao lado do nome fantasia */}
+                  {d.campo === 'razao_social' && cnpj}
+                </Fragment>
               ))}
             </fieldset>
           ))}

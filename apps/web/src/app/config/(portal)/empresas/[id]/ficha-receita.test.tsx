@@ -30,7 +30,11 @@ describe('Ficha da Receita editável na aba Empresa (RN-CORE-16, v0.3.24)', () =
     expect(valorDe(h, 'razao_social')).toBe('Comércio Fictício Ltda');
     expect(valorDe(h, 'ie')).toBe('123456789');
     expect(valorDe(h, 'cep')).toBe('69000000');
-    expect(valorDe(h, 'data_abertura')).toBe('2020-01-31');
+    expect(valorDe(h, 'data_abertura')).toBe('31/01/2020'); // dd/mm/aaaa sem depender do idioma do navegador
+    expect(h).not.toContain('type="date"');
+    expect(h.indexOf('id="rotulo-cnpj"')).toBe(-1); // sem o nó do CNPJ (vem do painel)
+    expect([...h.matchAll(/<h3 id="h-ficha-([a-z]+)"/g)].map((m) => m[1])).toEqual(['identificacao', 'endereco', 'atividades', 'situacao']);
+    expect(h.match(/class="cartao-campos cartao-largo"/g)).toHaveLength(2);
     expect(h).toMatch(/<option value="simples" selected="">Simples Nacional<\/option>/);
     expect(h).toContain('4712100\n4781400</textarea>');
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Salvar<\/button>/);

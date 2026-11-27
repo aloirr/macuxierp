@@ -1,6 +1,6 @@
 import { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
 import { describe, expect, it } from 'vitest';
-import { CAMPOS_FICHA, GRUPOS_FICHA, ROTULO_CAMPO, camposMudados, entradaDoForm, formComPrevia, formDaFicha, nomesDosCampos, textoPrevia, textoSalvo, validarFicha } from './ficha-edicao';
+import { CAMPOS_FICHA, GRUPOS_FICHA, ROTULO_CAMPO, camposMudados, dataDoForm, dataNaTela, entradaDoForm, formComPrevia, formDaFicha, nomesDosCampos, textoPrevia, textoSalvo, validarFicha } from './ficha-edicao';
 
 /** RN-CORE-16 (v0.3.24): formulário da Ficha da Receita editável. Dados fictícios. */
 const ficha = FichaReceitaPlanaMascarada.parse({
@@ -50,5 +50,21 @@ describe('formulário da ficha (RN-CORE-16)', () => {
     expect(textoSalvo(['uf'])).toBe('Ficha salva. Mudou: UF.');
     expect(textoPrevia([])).toBe('A Receita trouxe os mesmos dados da ficha salva.');
     expect(textoPrevia(['logradouro'])).toBe('A Receita trouxe dados diferentes. Confira e clique em Salvar.');
+  });
+});
+
+describe('datas da ficha em dd/mm/aaaa (PO, #853)', () => {
+  it('na tela sempre dd/mm/aaaa; no Salvar volta a AAAA-MM-DD; data que não existe segue como veio e o contrato recusa', () => {
+    expect(dataNaTela('2014-07-21')).toBe('21/07/2014');
+    expect(dataNaTela(null)).toBe('');
+    expect(dataDoForm('21/07/2014')).toBe('2014-07-21');
+    expect(dataDoForm('1/7/2014')).toBe('2014-07-01');
+    expect(dataDoForm('  ')).toBeNull();
+    expect(dataDoForm('31/02/2014')).toBe('31/02/2014');
+    expect(dataDoForm('45/13/2014')).toBe('45/13/2014');
+    expect(formDaFicha(ficha, null)).toMatchObject({ data_abertura: '31/01/2020', situacao_cadastral_data: '31/01/2020' });
+    expect(entradaDoForm(formDaFicha(ficha, null), 'manual')).toMatchObject({ data_abertura: '2020-01-31' });
+    const r = validarFicha({ ...formDaFicha(ficha, null), data_abertura: '31/02/2020' }, 'manual');
+    expect(r.ok ? {} : r.campos).toEqual({ data_abertura: 'Data inválida. Use dd/mm/aaaa.' });
   });
 });

@@ -321,7 +321,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
    em 1; 1440: Ficha em 2 e a lateral em 2 colunas. */
 .blocos-laterais { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; align-content: start; min-width: 0; }
 @media (min-width: 768px) and (max-width: 1279px) { .grade-empresa > .bloco-largo, .grade-empresa > .blocos-laterais { grid-column: 1 / -1; } .blocos-laterais { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1440px) { .grade-empresa > .blocos-laterais { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1440px) { .grade-empresa > .blocos-laterais { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } .blocos-laterais > .bloco:nth-child(3) { grid-column: 2; } }
 /* Rótulo de dado em destaque (§2), na ficha das ligações: caixa-alta pequena na cor de destaque; o valor em texto normal. */
 .ligacao .ficha dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 2px; }
 .ligacao .ficha dd { font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-normal); color: var(--mx-cor-grafite); }
@@ -341,8 +341,18 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .campo-ficha .dica-campo, .campo-ficha .marca-receita { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-apoio); margin-top: 4px; }
 .campo-ficha .marca-receita { color: var(--mx-cor-rotulo-destaque); font-weight: var(--mx-peso-rotulo-pequeno); }
 .campo-ficha .lista-cnae { margin: 4px 0 0; gap: 2px; }
-.veio-da-receita input, .veio-da-receita select, .veio-da-receita textarea { border-color: var(--mx-cor-azul-medio); background: var(--mx-cor-nevoa); }
+.veio-da-receita input, .veio-da-receita select, .veio-da-receita textarea { border-color: var(--mx-cor-rotulo-destaque); background: var(--mx-cor-nevoa); }
 .campo-cnpj .valor-cnpj { margin: 0; font-family: var(--mx-fonte-codigo); color: var(--mx-cor-grafite); }
 .campo-cnpj .motivo-bloqueio { margin: 4px 0 0; }
 .campo-cnpj .mx-botao-secundario { margin-top: 6px; }
 .ficha-editavel .rodape-cartao { justify-content: flex-end; }
+/* Cartão largo da Ficha (PO, #853): Identificação e Situação na Receita nas duas colunas, com 4 colunas de campos a partir de 768;
+   razão social e natureza jurídica na linha toda, sem cortar o texto. */
+@media (min-width: 768px) {
+  .cartao-largo { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cartao-largo .campo-ficha { grid-column: span 2; }
+  .cartao-largo .campo-ficha.campo-curto { grid-column: span 1; }
+  .cartao-largo .campo-ficha.campo-largo { grid-column: 1 / -1; }
+}
+.campo-ficha .dica-salvo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ligacao .campo > span { color: var(--mx-cor-rotulo-destaque); }
