@@ -59,7 +59,7 @@ describe('conferir-logos.mjs', () => {
     writeFileSync(modelo, 'sem logo');
     assert.equal(await main([modelo], rapido), 2);
   });
-  it('entrada (hotfix v0.3.24): o caminho é o PREFIXO_ENTRADA + sinal do SDK, sob o /v1 que o túnel manda à api', () => {
+  it('entrada (hotfix v0.3.23): o caminho é o PREFIXO_ENTRADA + sinal do SDK, sob o /v1 que o túnel manda à api', () => {
     const sdk = readFileSync(new URL('../../packages/platform-sdk/src/entrada.ts', import.meta.url), 'utf8');
     const prefixo = /export const PREFIXO_ENTRADA = '([^']+)';/.exec(sdk)?.[1];
     const sinal = /sinal: '([^']+)'/.exec(sdk)?.[1];

@@ -138,3 +138,9 @@ A ligação no apps/api e no worker, as rotas de títulos, a varredura e a bande
 ## Nota parcial no BKO: `formularioParcial` (RD-0780)
 Campo vazio = item fora da nota, nunca inválido; regra completa e `MOTIVO_SEM_ITEM` no JSDoc de `formularioParcial` (web/titulos.ts). Saldo ≥ 1.000: o campo vem sem ponto de milhar ("1200"); o usuário pode digitar "1.200".
 Nota total: com `itens` omitido a API emite o saldo do momento; se outra nota parcial sair entre a leitura e o envio, sai o saldo restante (risco aceito).
+
+## Porta `ConsultaNfeProducao` (RN-CORE-16, v0.3.24)
+
+A porta `ConsultaNfeProducao` (`{ temNfeAutorizadaEmProducao(tenantId: string): Promise<boolean> }`) é do **core** (`modules/core/api`, o consumidor define); o faturamento só a implementa, sem importar o core (o TypeScript compara pela forma). Implementação: `criarConsultaNfeProducao(banco)` (`api/consulta-nfe-producao.ts`, exportada por `api/index.ts` para o engenheiro ligar no apps/api), lida na transação do tenant (RLS), sem função SQL nova. A chamada do core roda em sessão de superadmin, entre tenants; o `comTenant(tenant_id)` atende.
+
+- **Trava a troca do CNPJ (na dúvida, bloqueia):** nota em `producao`, em qualquer filial do tenant, com um dos 5 status de `STATUS_NFE_QUE_TRAVA_TROCA_CNPJ` (`domain/nfe-producao.ts`, onde está o porquê de cada um). Homologação nunca trava.
