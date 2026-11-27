@@ -191,7 +191,9 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
       // 429 com prazo (`MuitasTentativasResposta`, T-0076): `detalhes.retry_after_s` no corpo e também no Retry-After.
       const espera = erro.status === 429 ? erro.detalhes?.retry_after_s : undefined;
       if (typeof espera === 'number') reply.header('retry-after', String(espera));
-      return reply.status(erro.status).send(corpoErroApi(erro));
+      // 5xx (503 indisponível, tempo esgotado) leva o `request_id`, como o 500: a tela mostra e o suporte acha no log.
+      const corpo = corpoErroApi(erro);
+      return reply.status(erro.status).send(erro.status >= 500 ? { ...corpo, request_id: req.id } : corpo);
     }
     const status = (erro as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {

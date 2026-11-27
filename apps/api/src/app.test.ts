@@ -284,7 +284,7 @@ describe('GET /v1/auth/eu', () => {
     const token: string = (await entrar(app)).json().token_acesso;
     const r = await app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${token}` } });
     expect(r.statusCode).toBe(500);
-    expect(r.json().codigo).toBe('ERRO_INTERNO');
+    expect(r.json()).toEqual({ codigo: 'ERRO_INTERNO', mensagem: 'Erro interno', request_id: r.headers['x-request-id'] });
   });
 });
 
