@@ -2,7 +2,7 @@ import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { describe, expect, it } from 'vitest';
 import { ENTIDADES_HUB_F2, MonitorResposta } from '../contracts';
 import { manifest } from '../manifest';
-import { criarClienteIntegracaoFdv, ErroIntegracaoFdv } from './cliente';
+import { criarClienteIntegracaoFdv, ErroIntegracaoFdv, MENSAGEM_ERRO_GENERICA } from './cliente';
 import { colunasDeErros, linhasDeConflitos, linhasDeErros, linhasDoMonitor, resumoDoSinal } from './monitor';
 import { PAGINAS_INTEGRACAO_FDV, paginaLotes } from './paginas';
 
@@ -102,6 +102,13 @@ describe('cliente da API (só leitura)', () => {
     expect(e).toBeInstanceOf(ErroIntegracaoFdv);
     expect(e).toMatchObject({ status: 400, codigo: 'VALIDACAO' });
     const html = criarClienteIntegracaoFdv({ baseUrl: '', token: () => 't', fetch: async () => resposta(502, '<html>', 'text/html') });
-    expect(await html.monitor().catch((x: unknown) => x)).toMatchObject({ status: 502, codigo: 'ERRO' });
+    expect(await html.monitor().catch((x: unknown) => x)).toMatchObject({ status: 502, codigo: 'ERRO', message: MENSAGEM_ERRO_GENERICA });
+  });
+  it('texto aprovado do erro genérico (RD-T1): !ok sem JSON válido e ok que não é JSON', async () => {
+    expect(MENSAGEM_ERRO_GENERICA).toBe('Não foi possível concluir agora. Tente de novo em instantes.');
+    const naoOk = criarClienteIntegracaoFdv({ baseUrl: '', token: () => 't', fetch: async () => resposta(500, { x: 1 }) });
+    expect(await naoOk.monitor().catch((x: unknown) => x)).toMatchObject({ status: 500, codigo: 'ERRO', message: MENSAGEM_ERRO_GENERICA });
+    const okHtml = criarClienteIntegracaoFdv({ baseUrl: '', token: () => 't', fetch: async () => resposta(200, '<html>', 'text/html') });
+    expect(await okHtml.monitor().catch((x: unknown) => x)).toMatchObject({ status: 200, codigo: 'RESPOSTA_INVALIDA', message: MENSAGEM_ERRO_GENERICA });
   });
 });
