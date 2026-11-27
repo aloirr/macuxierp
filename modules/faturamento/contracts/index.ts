@@ -545,3 +545,12 @@ export const PedidosComUsoFaturamento = z.object({
   comTitulo: z.array(Uuid),
 });
 export type PedidosComUsoFaturamento = z.infer<typeof PedidosComUsoFaturamento>;
+
+/**
+ * Porta que o `core` chama (RN-CORE-16): a empresa já teve NF-e autorizada em produção? Conta nota `autorizada`,
+ * `autorizada_guarda_pendente` ou `cancelada` (já foi autorizada) no ambiente `producao`; homologação, rejeitada, denegada,
+ * em autorização e inutilizada não contam. Escopo do tenant (RLS). Só leitura; `tenant_id` é UUID (RangeError se não for).
+ */
+export interface ConsultaNfeProducao {
+  temNfeAutorizadaEmProducao(tenant_id: string): Promise<boolean>;
+}

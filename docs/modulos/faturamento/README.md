@@ -138,3 +138,11 @@ A ligação no apps/api e no worker, as rotas de títulos, a varredura e a bande
 ## Nota parcial no BKO: `formularioParcial` (RD-0780)
 Campo vazio = item fora da nota, nunca inválido; regra completa e `MOTIVO_SEM_ITEM` no JSDoc de `formularioParcial` (web/titulos.ts). Saldo ≥ 1.000: o campo vem sem ponto de milhar ("1200"); o usuário pode digitar "1.200".
 Nota total: com `itens` omitido a API emite o saldo do momento; se outra nota parcial sair entre a leitura e o envio, sai o saldo restante (risco aceito).
+
+## Porta `ConsultaNfeProducao` (RN-CORE-16, v0.3.24)
+
+`ConsultaNfeProducao.temNfeAutorizadaEmProducao(tenant_id)` (`modules/faturamento/contracts`) diz ao `core` se a empresa já teve NF-e autorizada em produção, para bloquear a troca do CNPJ. Implementação: `criarConsultaNfeProducao(banco)` (`api/consulta-nfe-producao.ts`), lida na transação do tenant (RLS), sem função SQL nova.
+
+- **Conta:** nota em `producao` com status `autorizada`, `autorizada_guarda_pendente` ou `cancelada`. A cancelada conta porque só se cancela nota autorizada (CHECK `nota_protocolada`): o CNPJ já foi usado na SEFAZ.
+- **Não conta:** homologação (qualquer status), rascunho, em autorização, rejeitada, denegada, emitida em contingência (ainda sem protocolo) e inutilizada.
+- Regra pura e lista de status: `domain/nfe-producao.ts`. A RN-CORE-16 ainda não está escrita em `docs/produto/03`; a regra acima é a premissa do faturamento.
