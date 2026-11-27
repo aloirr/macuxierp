@@ -91,11 +91,11 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
   });
 
   describe('portal: 1º administrador com a senha provisória', () => {
-    it('POST /primeiro-admin grava deve_trocar_senha = true; a senha entregue cumpre a regra e entra no login', async () => {
+    it('POST /primeiro-admin grava deve_trocar_senha = true; a senha entregue segue o formato da temporária e entra no login', async () => {
       const r = await p.pedir('POST', `/v1/plataforma/empresas/${empresa}/primeiro-admin`, { token: tokenSa, corpo: { email: EMAIL_ADM, nome: 'Pessoa Fictícia T-0052' }, chave: randomUUID() });
       expect(r.statusCode).toBe(201);
       ({ usuario_id: usuario, senha_provisoria: provisoria } = r.json<{ usuario_id: string; senha_provisoria: string }>());
-      expect(regrasDescumpridas(provisoria)).toEqual([]);
+      expect(senhaTemporariaNoFormato(provisoria)).toBe(true); // 44 B: 18 caracteres, sem os ambíguos, isenta do "especial"
       expect(await flag(usuario)).toBe(true);
       expect((await entrar(provisoria)).statusCode).toBe(200);
     });
@@ -181,7 +181,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       const r = await p.pedir('POST', `/v1/plataforma/empresas/${empresa}/primeiro-admin/senha`, { token: tokenSa, chave: randomUUID() });
       expect(r.statusCode).toBe(200);
       const nova = r.json<{ senha_provisoria: string }>().senha_provisoria;
-      expect(regrasDescumpridas(nova)).toEqual([]);
+      expect(senhaTemporariaNoFormato(nova)).toBe(true);
       expect(await flag(usuario)).toBe(true);
 
       const login = await entrar(nova);
