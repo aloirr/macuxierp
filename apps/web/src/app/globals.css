@@ -15,6 +15,7 @@ a { color: var(--mx-cor-azul-noite); }
 .campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 .apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
+.bloco-proxima { display: block; }
 
 .cartao-central, .bloco { background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 32px; }
 .cartao-central { max-width: 420px; margin: 8vh auto; }

@@ -155,7 +155,7 @@ export function AbaIntegracao({ empresaId, dados, fuso, monitor: monitorInicial 
           </span>
         </div>
         <ResultadoAcao resultado={rAtualizar} chave={kAtualizar} />
-        {monitor ? <BlocoMonitor monitor={monitor} fuso={fuso} /> : <p className="apoio" data-testid="monitor-indisponivel">Monitor indisponível agora.</p>}
+        {monitor ? <BlocoMonitor monitor={monitor} fuso={fuso} ultimoCodigo={dados.ultimo_sinal?.ultimo_codigo} /> : <p className="apoio" data-testid="monitor-indisponivel">Monitor indisponível agora.</p>}
       </section>
       <section className="bloco" aria-labelledby="h-cred">
         <h2 id="h-cred">Conexão com o Macuxi FDV</h2>
@@ -263,14 +263,15 @@ export function DialogoTrocarChave({ aoConfirmar, aoCancelar }: { aoConfirmar: (
 }
 
 /** Bloco Monitor, como o do FDV: Identificador, Situação (texto e cor), Versão, Último sinal e Fila (lotes · linhas). */
-export function BlocoMonitor({ monitor, fuso }: { monitor: MonitorConectorFdv; fuso: string }) {
-  const v = vistaMonitor(monitor, fuso);
+export function BlocoMonitor({ monitor, fuso, ultimoCodigo }: { monitor: MonitorConectorFdv; fuso: string; ultimoCodigo?: string | null }) {
+  const v = vistaMonitor(monitor, fuso, ultimoCodigo);
   return (
     <dl className="ficha" data-testid="monitor">
       <div><dt>Identificador</dt><dd>{v.identificador}</dd></div>
       <div><dt>Situação</dt><dd><SeloTom tom={v.situacao.tom}>{v.situacao.texto}</SeloTom></dd></div>
       <div><dt>Versão</dt><dd>{v.versao}</dd></div>
       <div><dt>Último sinal</dt><dd>{v.ultimoSinal}</dd></div>
+      {v.codigo ? <div><dt>Código</dt><dd><code>{v.codigo}</code></dd></div> : null}
       <div><dt>Fila</dt><dd>{v.fila}</dd></div>
     </dl>
   );
