@@ -27,8 +27,20 @@ export interface ItemAgenda {
   chave: string | null;
 }
 
+/**
+ * Log do item da agenda (v0.3.18, integração A2): a parte do pino que o módulo usa, sem o SDK importar o pino. O worker
+ * injeta um filho já com `agenda`, `tarefa` e `tenant_id`. Nunca a chave, o `conector_id` em claro com segredo, o corpo
+ * do lote nem dado pessoal: só entidade, motivo e códigos.
+ */
+export interface LogAgenda {
+  info(campos: Record<string, unknown>, msg: string): void;
+  warn(campos: Record<string, unknown>, msg: string): void;
+}
+
 export interface ContextoAgenda {
   agora: Date;
+  /** Opcional nesta versão, para os dublês dos testes não quebrarem; o worker sempre preenche. */
+  log?: LogAgenda;
   /**
    * Fim da posse da reserva deste item (o `proximo*_em` que o `reservar` gravou). Depois dele outro worker pode pegar o
    * item; o módulo pode travar a regravação final com `WHERE proximo_em = posseAte` (0 linhas = a posse já se perdeu).
