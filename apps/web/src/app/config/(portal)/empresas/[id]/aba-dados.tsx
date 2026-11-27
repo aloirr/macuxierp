@@ -7,7 +7,7 @@ import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
 import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
-import { cargaCompletaFdvAcao } from '../acoes-integracao-fdv';
+import { cargaCompletaFdvAcao } from '@/lib/acoes-cliente';
 import { LIGACAO_ENTRADA, origemDaCarga, ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
 import { AUSENTE } from '@/lib/config/empresa';
 import { TituloLigacao } from './ligacao';

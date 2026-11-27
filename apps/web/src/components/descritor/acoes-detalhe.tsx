@@ -1,6 +1,4 @@
 'use client';
-import { MensagemRecarregar } from '@/components/mensagem-recarregar';
-import { SISTEMA_ATUALIZADO, ehAcaoAusente, mensagemDaFalha } from '@/lib/sistema-atualizado';
 import { resultadoErro } from '@/lib/resultado-acao';
 import { ACAO_INDISPONIVEL, FALHA } from '@/lib/textos';
 import { useCallback, useRef, useState } from 'react';
@@ -9,7 +7,7 @@ import { DialogoMotivo, MenuAcoes, ResultadoAcao, useResultado, type AcaoMenu, t
 import type { AcaoVista, AmbienteVista, EntradaAcao } from '@/lib/descritor/tipos';
 import { aposResposta, chaveParaEnvio, estadoDoClique, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { executorDeAcoes, type OrigemDasAcoes } from '@/lib/telas';
-import { escrever, ler } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
+import { escrever, ler } from '@/lib/acoes-cliente';
 import { PainelSegredo } from './painel-segredo';
 import { DialogoEscrita, type CarregarItens, type EntradaDialogo } from './dialogo-escrita';
 
@@ -32,9 +30,8 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
   const executor = executorDeAcoes(rotaDaPagina, origem);
   const [aberta, setAberta] = useState<AcaoVista | null>(null);
   const [resultado, chave, mostrar, limpar] = useResultado();
-  const [atualizado, setAtualizado] = useState(false); // o aviso "sistema atualizado" (com Recarregar) segue no topo, fora do ResultadoAcao
-  const falhar = (texto: string) => (texto === SISTEMA_ATUALIZADO ? setAtualizado(true) : mostrar(resultadoErro(texto)));
-  const limparErro = () => { limpar(); setAtualizado(false); };
+  const falhar = (texto: string) => mostrar(resultadoErro(texto));
+  const limparErro = limpar;
   const [ocupado, setOcupado] = useState(false);
   const chaves = useRef<Record<string, EstadoChave>>({}); // uma Idempotency-Key por ação
   const [segredo, setSegredo] = useState<{ valor: string; aviso: string } | null>(null); // senha provisória: só neste estado, some ao fechar
@@ -56,9 +53,6 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
     let r: Awaited<ReturnType<typeof escrever>>;
     try {
       r = await escrever({ metodo: a.metodo, caminho: a.caminho, corpo: v.corpo, idempotencia: estado.chave, versao: a.versao, recarregar: rota });
-    } catch (e) {
-      if (ehAcaoAusente(e)) return falhar(mensagemDaFalha(e));
-      throw e;
     } finally {
       setOcupado(false);
       setAberta(null);
@@ -121,7 +115,6 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
       )}
       {!compacta && !menu && acoes.filter((x) => x.desabilitada).map((x) => <p key={x.id} id={`${x.id}-motivo`} className="apoio">{x.rotulo}: {x.desabilitada}</p>)}
       {/* 36 A: o erro da ação fica logo abaixo dos botões */}
-      {!a && atualizado && <MensagemRecarregar />}
       <ResultadoAcao resultado={a ? null : resultado} chave={chave} />
       {segredo && <PainelSegredo titulo="Senha provisória" rotulo="Entregue esta senha à pessoa:" valor={segredo.valor} aviso={segredo.aviso} aoFechar={() => { setSegredo(null); router.refresh(); }} />}
       {a && dialogoDoShell && (

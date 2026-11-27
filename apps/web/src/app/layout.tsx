@@ -1,3 +1,4 @@
+import { AvisoVersaoNova } from '@/components/aviso-versao-nova';
 import { NOME_PRODUTO } from '@/lib/marca';
 import '@macuxierp/ui/tokens.css';
 import '@macuxierp/ui/botoes.css';
@@ -11,7 +12,7 @@ export const metadata: Metadata = { title: { default: NOME_PRODUTO, template: `%
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body><AvisoVersaoNova />{children}</body>
     </html>
   );
 }

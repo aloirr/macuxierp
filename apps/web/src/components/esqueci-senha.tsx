@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { ResultadoAcao, useResultado, type Resultado } from '@macuxierp/ui';
 import { resultadoErro } from '@/lib/resultado-acao';
-import { pedirEsqueciAction } from '@/app/login/esqueci';
+import { pedirEsqueciAction } from '@/lib/acoes-cliente';
 import {
   TEXTOS_ESQUECI as T,
   type CampoEsqueci,
