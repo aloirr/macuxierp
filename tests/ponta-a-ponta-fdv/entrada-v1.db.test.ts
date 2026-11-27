@@ -255,6 +255,8 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
       });
     }
 
+    const lerLote = async (id: string) => LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id }))).json());
+
     // D1 a D3 (recado ao gerente, 27/11/2026 00h09): `it.fails` passa enquanto o defeito existir; quando o cadastros corrigir,
     // o caso fica vermelho e vira `it` (sem a semeadura do BKO no `beforeAll`).
     const criarSemBko = async (e: 'filial' | 'produto' | 'prazo_pagamento', sufixo: string) => {
@@ -267,7 +269,19 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
     };
     it.fails('D1: filial nova só pela entrada (sem o crt no FilialHub) grava', () => criarSemBko('filial', 'D1'));
     it.fails('D2: produto novo só pela entrada (sem NCM no ProdutoHub, RN-CAD-04) grava', () => criarSemBko('produto', 'D2'));
-    it.fails('D3: o 1º prazo de uma forma nova só pela entrada (lote de formas + lote de prazos) grava', () => criarSemBko('prazo_pagamento', 'D3'));
+    // v0.3.18, cadastros.entrada_forma: a forma nova, sem condição no ERP, ainda não tem onde ficar.
+    it.fails('D3: o 1º prazo de uma forma nova, sem condição no ERP, só pela entrada grava', () => criarSemBko('prazo_pagamento', 'D3'));
+
+    it('D3 parcial (#768): com a forma já ligada a uma condição, o lote da forma e depois o 1º prazo novo dela gravam', async () => {
+      const forma = massa.registros.forma_pagamento[0]!;
+      const f = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('forma_pagamento', [{ ...forma, alterado_em: INICIO.toISOString() }], INICIO))).json());
+      const prazo = { ...massa.registros.prazo_pagamento[0]!, external_id: `${massa.registros.prazo_pagamento[0]!.external_id}-D3P`, codigo: 'D3P-28', parcelas_dias: '28', descricao: 'Boleto 28' };
+      const p = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('prazo_pagamento', [prazo], INICIO))).json());
+      await m.processarFila();
+      const [rf, rp] = [await lerLote(f.lote_id), await lerLote(p.lote_id)];
+      expect([rf.status, rf.contagens.com_erro], JSON.stringify(rf.erros)).toEqual(['concluido', 0]);
+      expect([rp.status, rp.contagens.novas, rp.contagens.com_erro], JSON.stringify(rp.erros)).toEqual(['concluido', 1, 0]);
+    });
 
     it('os 10 gravados saem ao dublê do Hub pelo espelho e pela agenda do integracao-fdv (o cadastro da entrada é o do BKO)', async () => {
       await m.assentarNoHub();
@@ -279,16 +293,14 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
       expect(c.cursor).toBeNull();
     });
 
-    const lerLote = async (id: string) => LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id }))).json());
-
     it('reenviar o mesmo registro (outra Idempotency-Key) conta como inalterada', async () => {
       const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('vendedor', massa.registros.vendedor, INICIO))).json());
       await m.processarFila();
       expect((await lerLote(r.lote_id)).contagens).toMatchObject({ inalteradas: 1, novas: 0, atualizadas: 0 });
     });
 
-    // D4 (recado ao gerente, 27/11/2026 00h12): hoje o registro mais antigo grava (atualizadas=1) e o cursor volta para trás.
-    it.fails('D4: registro com alterado_em mais antigo que o gravado conta como obsoleta, não grava e não recua o cursor', async () => {
+    // D4 (recado ao gerente, 27/11/2026 00h12), corrigido no #768.
+    it('D4: registro com alterado_em mais antigo que o gravado conta como obsoleta, não grava e não recua o cursor', async () => {
       const reg = massa.registros.vendedor[0]!;
       const antigo = { ...reg, nome: 'Vendedora com nome antigo', alterado_em: new Date(INICIO.getTime() - 86_400_000).toISOString() };
       const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('vendedor', [antigo], INICIO))).json());
