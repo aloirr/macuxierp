@@ -16,3 +16,4 @@ export * from './violacao';
 export * from './carga';
 export * from './zeragem';
 export * from './pre-cadastro-fdv';
+export * from './entrada';
