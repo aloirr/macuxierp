@@ -45,6 +45,7 @@ Repositório: `aloirr/macuxierp`. Recados: `aloirr/macuxierp-recados`. **Time 10
    - a tela segue o padrão de mercado e de marca, sem redundância;
    - a regra vale para quem **monta** a tela (`engenheiro-apps` e módulos), não só para quem revisa;
    - a simulação sai em 1366 e 1920 px.
+12. **Botões embaixo e juntos** (Alexandre, 27/11/2026 17h58, regra de marca e design): uma barra de botões por bloco, no rodapé do bloco; as ações da página ficam na barra do rodapé da página; fora dela, só a busca e os links de linha.
 
 ## Time de agentes
 A sessão principal roda como **`gerente-projetos`** (`.claude/settings.json`), que comanda: `engenheiro-software` (plataforma, API, worker, SDK, contratos, CI, ADRs, revisão final), `engenheiro-apps` (só o shell web do BKO, sem mobile), `designer-ux` (`packages/ui`, `docs/design/`), `design-de-marca` (a mesma marca Macuxi do FDV; o manual da marca do FDV é a fonte), `banco-dados`, `testes`, `corretor-redundancias` e os agentes `modulo-core`, `modulo-cadastros`, `modulo-pedido`, `modulo-faturamento`, `modulo-fiscal`, `modulo-integracao-fdv`.

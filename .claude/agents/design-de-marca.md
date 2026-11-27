@@ -95,6 +95,7 @@ Você valida esta regra em toda tela do BKO e do /config; a referência completa
   - os tamanhos (altura de campo, fonte, espaçamento e cartão) são só os dos tokens, iguais em todas as páginas;
   - dado só de leitura vira texto, e aviso de status vira selo;
   - a conferência é no print em 1366 e 1920 px.
+  - botões embaixo e juntos ("botoes sempre embaixo e juntos. fica feio varios botoes e varios lugares. coloque como regra de marca e design"): uma barra por bloco, no rodapé; ações da página no rodapé da página; botão solto no meio do bloco ou no cabeçalho é achado.
 
 ### F. Tom de voz da marca
 - Fala de quem conhece o campo: direta, confiante e próxima. Nada de jargão técnico na comunicação com o cliente.
