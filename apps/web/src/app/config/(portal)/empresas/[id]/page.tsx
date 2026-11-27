@@ -47,7 +47,8 @@ export default async function Empresa({ params, searchParams }: { params: Promis
   };
   const { valor: integracao, requestId: idIntegracao } = naIntegracao || naCarga ? await ler(() => lerIntegracaoFdv(token, id)) : { valor: null, requestId: undefined };
   const monitor = naIntegracao ? (await ler(() => lerMonitorFdv(token, id))).valor : null;
-  const entrada = naIntegracao ? (await ler(() => lerEntrada(token, id))).valor : null;
+  // a entrada vale para as duas abas: a ficha da ligação (Integração) e os números do último lote (Dados, "Cadastros recebidos")
+  const entrada = naIntegracao || naCarga ? (await ler(() => lerEntrada(token, id))).valor : null;
   const cargas = naCarga ? (await ler(() => lerCargas(token, id))).valor : null;
   const base = `/config/empresas/${encodeURIComponent(id)}`;
   const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
@@ -66,7 +67,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
         <a href={`${base}?aba=dados`} aria-current={naCarga ? 'page' : undefined}>Dados</a>
       </nav>
       {naCarga ? (
-        <AbaDados empresaId={empresa.id} dados={cargas} fuso={empresa.fuso} integracao={integracao} />
+        <AbaDados empresaId={empresa.id} dados={cargas} fuso={empresa.fuso} integracao={integracao} entrada={entrada} />
       ) : naIntegracao ? (
         integracao ? (
           <AbaIntegracao empresaId={empresa.id} dados={integracao} fuso={empresa.fuso} monitor={monitor} entrada={entrada} />

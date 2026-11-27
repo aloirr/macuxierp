@@ -1,5 +1,5 @@
 /**
- * Plugin `/entrada/v1` (T-0057 E2 e E3, ADR 0014 §1 e §3): monta as rotas que o módulo dono declara (`RotaEntrada`), com
+ * Plugin `/v1/entrada` (e o legado `/entrada/v1`; T-0057 E2 e E3, ADR 0014 §1 e §3): monta as rotas que o módulo dono declara (`RotaEntrada`), com
  * a autenticação de máquina antes de tudo e, já na transação com o `app.tenant_id` (RLS), a empresa `ativo` (senão 403
  * `EMPRESA_INATIVA`) e a licença do módulo (regra 6). O JWT do BKO não vale aqui: a sessão de usuário é ignorada.
  */
@@ -9,7 +9,7 @@ import {
   MENSAGEM_EMPRESA_INATIVA_ENTRADA,
   moduloLicenciado,
   MODULO_ENTRADA,
-  PREFIXO_ENTRADA,
+  PREFIXOS_ENTRADA,
   TAMANHO_MAXIMO_MULTIPART,
   erros,
   type Banco,
@@ -46,10 +46,10 @@ export function montarEntrada(
     repoAuth: Pick<RepositorioAuth, 'tenantPorId'>;
   },
 ): void {
-  for (const rota of e.rotas) {
+  for (const rota of e.rotas) for (const prefixo of PREFIXOS_ENTRADA) {
     app.route({
       method: rota.metodo,
-      url: `${PREFIXO_ENTRADA}${rota.caminho}`,
+      url: `${prefixo}${rota.caminho}`,
       bodyLimit: LIMITE_BYTES_LOTE_ENTRADA,
       handler: async (req, reply) => {
         req.log = reply.log = req.log.child({ modulo: MODULO_ENTRADA, entrada: true });

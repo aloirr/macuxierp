@@ -1,19 +1,22 @@
 'use client';
 import type { PortalEntradaLeitura } from '@macuxierp/platform-sdk';
-import { Chip, Dialogo, DialogoMotivo, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
+import { Dialogo, DialogoMotivo, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useReducer, useRef, useState, useTransition } from 'react';
-import { botaoDaChave, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId, vistaEntrada, type AcaoChave, type EstadoChave, type LinhaLote } from '@/lib/config/entrada';
+import { botaoDaChave, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId, codigoSugerido, type AcaoChave, type EstadoChave } from '@/lib/config/entrada';
+import { LIGACAO_ENTRADA, fichaEntrada } from '@/lib/config/ligacoes';
+import { CartaoLigacao, FichaDaLigacao } from './ligacao';
 import * as T from '@/lib/config/entrada-textos';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { gerarChaveEntradaAcao, revogarChaveEntradaAcao } from '../acoes-entrada';
 
 /**
- * Bloco "Integração via API" da aba Integração (T-0057 A1, docs/design/entrada-cenario-b/README.md, seções A, B e F; sem a
- * coluna "via Conector" e sem a tabela de donos). Gera, troca e revoga a chave, mostra a chave uma vez e lista os lotes.
+ * Ligação "Sistema do cliente → ERP" da aba Integração (v0.3.24, docs/design/integracao-duas-ligacoes; era o bloco "Integração via
+ * API", T-0057 A1). Sem chave: só o formulário (Código e Gerar chave). Com chave: a ficha (Situação, Último contato, Código, Chave) e
+ * Trocar chave / Revogar chave. Os lotes recebidos foram para a aba Dados ("Cadastros recebidos", RD-1103).
  * A chave nova só vive no estado do diálogo (`EstadoChave`): sem URL, armazenamento nem log; fechar a descarta.
  */
-export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string; dados: PortalEntradaLeitura | null; fuso: string }) {
+export function LigacaoEntrada({ empresaId, dados, fuso }: { empresaId: string; dados: PortalEntradaLeitura | null; fuso: string }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [chave, despachar] = useReducer(reduzirChave, undefined, estadoDaChave);
@@ -26,14 +29,13 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
   const [pedirRevogar, setPedirRevogar] = useState(false);
   const idCodigo = useId();
   const campo = useRef<HTMLInputElement>(null);
-  const v = vistaEntrada(dados, fuso);
-  const botao = botaoDaChave(v.vigente !== null, incerta);
-
-  const codigoDigitado = () => v.vigente?.conectorId ?? campo.current?.value ?? '';
+  const ficha = fichaEntrada(dados, fuso);
+  // Depois de falha incerta na troca, a ligação volta a "Gerar chave" com o código fixo (a chave nova substitui a anterior).
+  const botao = botaoDaChave(ficha !== null, incerta);
 
   const gerar = () => {
     setPedirTroca(false);
-    const c = validarConectorId(codigoDigitado());
+    const c = validarConectorId(ficha?.codigo ?? campo.current?.value ?? '');
     if (!c.ok) return setErroCodigo(c.erro);
     setErroCodigo('');
     limparGerar();
@@ -53,34 +55,30 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
     setPedirRevogar(false);
     limparRevogar();
     iniciar(async () => {
-      const r = await revogarChaveEntradaAcao(empresaId, v.vigente?.conectorId ?? '');
+      const r = await revogarChaveEntradaAcao(empresaId, ficha?.codigo ?? '');
       mostrarRevogar(r.ok ? resultadoSucesso(T.RETORNO_REVOGADA) : resultadoErro(r.erro));
       if (r.ok) router.refresh();
     });
   };
 
   return (
-    <>
-      <section className="bloco" aria-labelledby="h-entrada-api">
-        <h2 id="h-entrada-api">{T.TITULO_BLOCO_ENTRADA}</h2>
-        {v.vigente ? (
-          <dl className="ficha" aria-label="Chave de entrada">
-            <div><dt>Chave</dt><dd className="codigo">{v.vigente.prefixo}</dd></div>
-            <div><dt>Versão</dt><dd>{v.vigente.versao}</dd></div>
-            <div><dt>Último sinal</dt><dd>{v.vigente.ultimoSinal}</dd></div>
-            <div><dt>Criada em</dt><dd>{v.vigente.criadaEm}</dd></div>
-          </dl>
-        ) : (
-          <p className="apoio">{T.SEM_CHAVE}</p>
-        )}
-        <form onSubmit={(ev) => { ev.preventDefault(); if (botao.pedeConfirmacao) setPedirTroca(true); else gerar(); }}>
+    <CartaoLigacao ligacao={LIGACAO_ENTRADA}>
+      {ficha ? (
+        <>
+          <FichaDaLigacao ficha={ficha} rotulo={T.TITULO_CHAVE} />
+          <div className="barra-acoes">
+            <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => (botao.pedeConfirmacao ? setPedirTroca(true) : gerar())}>{botao.rotulo}</button>
+            <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => setPedirRevogar(true)}>{T.ROTULOS_ENTRADA.revogar}</button>
+          </div>
+        </>
+      ) : (
+        <form noValidate onSubmit={(ev) => { ev.preventDefault(); gerar(); }}>
           <label className="campo">
-            <span>Código do conector</span>
+            <span>Código</span>
             <input
               ref={campo}
               name="conector_id"
-              defaultValue={v.codigoSugerido}
-              readOnly={v.vigente !== null}
+              defaultValue={codigoSugerido(dados)}
               maxLength={100}
               autoComplete="off"
               spellCheck={false}
@@ -88,20 +86,15 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
               aria-describedby={`${idCodigo}-ajuda${erroCodigo ? ` ${idCodigo}-erro` : ''}`}
             />
           </label>
-          <p id={`${idCodigo}-ajuda`} className="apoio">{v.vigente ? T.AJUDA_CODIGO_FIXO : T.AJUDA_CODIGO_LIVRE}</p>
+          <p id={`${idCodigo}-ajuda`} className="apoio">{T.AJUDA_CODIGO_LIVRE}</p>
           {erroCodigo && <p id={`${idCodigo}-erro`} className="erro-campo" role="alert">{erroCodigo}</p>}
           <div className="barra-acoes">
-            <button type="submit" className="mx-botao" disabled={pendente}>{botao.rotulo}</button>
-            {v.vigente && <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => setPedirRevogar(true)}>{T.ROTULOS_ENTRADA.revogar}</button>}
+            <button type="submit" className="mx-botao" disabled={pendente}>{T.ROTULOS_ENTRADA.gerar}</button>
           </div>
-          <ResultadoAcao resultado={rGerar} chave={kGerar} />
-          <ResultadoAcao resultado={rRevogar} chave={kRevogar} />
         </form>
-      </section>
-      <section className="bloco" aria-labelledby="h-lotes-entrada">
-        <h2 id="h-lotes-entrada">{T.TITULO_LOTES_ENTRADA}</h2>
-        <ListaLotes lotes={v.lotes} />
-      </section>
+      )}
+      <ResultadoAcao resultado={rGerar} chave={kGerar} />
+      <ResultadoAcao resultado={rRevogar} chave={kRevogar} />
       {chave.chave && <DialogoChave estado={chave} aoAcionar={despachar} />}
       {pedirTroca && (
         <DialogoMotivo titulo={T.TITULO_TROCAR} aviso={T.AVISO_TROCAR} semTexto destrutivo rotuloConfirmar={T.ROTULOS_ENTRADA.trocar} aoConfirmar={gerar} aoCancelar={() => setPedirTroca(false)} />
@@ -109,23 +102,7 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
       {pedirRevogar && (
         <DialogoMotivo titulo={T.TITULO_REVOGAR} aviso={T.AVISO_REVOGAR} semTexto destrutivo rotuloConfirmar={T.ROTULOS_ENTRADA.revogar} aoConfirmar={revogar} aoCancelar={() => setPedirRevogar(false)} />
       )}
-    </>
-  );
-}
-
-/** Lista dos lotes recebidos: só contagens e datas (nunca o dado). */
-export function ListaLotes({ lotes }: { lotes: LinhaLote[] }) {
-  const colunas: ColunaTabela<LinhaLote>[] = [
-    { id: 'cadastro', titulo: 'Cadastro', celula: (l) => l.cadastro },
-    { id: 'recebidoEm', titulo: 'Recebido em', tipo: 'data', celula: (l) => l.recebidoEm },
-    { id: 'recebidos', titulo: 'Recebidos', tipo: 'numero' },
-    { id: 'comErro', titulo: 'Com erro', tipo: 'numero' },
-    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => <Chip tom={l.situacao.tom}>{l.situacao.texto}</Chip> },
-  ];
-  return (
-    <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor">
-      <TabelaDensa colunas={colunas} linhas={lotes} chaveLinha={(l) => l.id} textoVazio={T.SEM_LOTES} legenda={T.TITULO_LOTES_ENTRADA} />
-    </div>
+    </CartaoLigacao>
   );
 }
 

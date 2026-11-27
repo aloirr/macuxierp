@@ -1,5 +1,5 @@
 /**
- * Contrato da `/entrada/v1` (T-0057, ADR 0014 §3 e §4, corte do PO de 26/11): a API de entrada de cadastros no ERP, que fala
+ * Contrato da `/v1/entrada` (T-0057, ADR 0014 §3 e §4, corte do PO de 26/11): a API de entrada de cadastros no ERP, que fala
  * o mesmo envelope do Hub `/integracao/v1` do FDV (`./hub-v1`: `CorpoLote`, `LoteAceito`, `LoteResultado`, `CursorEntidade`,
  * `CorpoSinal`, `RespostaSinal`). Aqui ficam só o que é da entrada: rotas, cabeçalhos, a credencial por conector e a leitura
  * do portal `/config`.
@@ -14,7 +14,18 @@ import type { Transacao } from './banco';
 import { CABECALHO_IDEMPOTENCIA, PADRAO_CHAVE_IDEMPOTENCIA } from './idempotencia';
 import type { ContextoRota, EntradaRota, RespostaRota, RotaModulo } from './rotas';
 
-export const PREFIXO_ENTRADA = '/entrada/v1';
+/**
+ * Prefixo da entrada (v0.3.24, hotfix; ADR 0014, adendo de 27/11): sob o `/v1`, porque o túnel da Cloudflare manda só o
+ * `/v1*` para a api e o resto para o web (ADR 0003). O `/entrada/v1` caía na tela de login em produção.
+ */
+export const PREFIXO_ENTRADA = '/v1/entrada';
+/**
+ * O prefixo antigo, montado ao lado (expand) para o conector que já tem a URL antiga configurada. Sai (contract) quando
+ * nenhum conector usar mais o legado (ADR 0014, adendo de 27/11).
+ */
+export const PREFIXO_ENTRADA_LEGADO = '/entrada/v1';
+/** Os prefixos que a api monta para a entrada, o novo primeiro. */
+export const PREFIXOS_ENTRADA: readonly string[] = Object.freeze([PREFIXO_ENTRADA, PREFIXO_ENTRADA_LEGADO]);
 
 /** Caminhos sob `PREFIXO_ENTRADA`, os mesmos do Hub (o cliente HTTP do Conector só troca o prefixo). */
 export const CAMINHOS_ENTRADA = Object.freeze({
@@ -139,7 +150,7 @@ export const PortalEntradaLeitura = z
 export type PortalEntradaLeitura = z.infer<typeof PortalEntradaLeitura>;
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Rotas da `/entrada/v1` (E2): o módulo dono (cadastros) declara as rotas; a apps/api autentica a máquina e abre a
+// Rotas da `/v1/entrada` (E2): o módulo dono (cadastros) declara as rotas; a apps/api autentica a máquina e abre a
 // transação no tenant da credencial. Sem sessão de usuário nem JWT: o "perfil" é o `conector_entrada` (ADR 0014 §3).
 // ---------------------------------------------------------------------------------------------------------------------
 
