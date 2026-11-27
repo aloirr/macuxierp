@@ -1,7 +1,7 @@
-import { CODIGOS_ERRO_LINHA_HUB, LoteResultado } from '@macuxierp/platform-sdk/hub-v1';
+import { CODIGOS_ERRO_LINHA_HUB, LIMITE_ERROS_RESPOSTA_MAX, LoteResultado } from '@macuxierp/platform-sdk/hub-v1';
 import { describe, expect, it } from 'vitest';
 import {
-  LIMITE_ERROS_GUARDADOS, codigoLinhaHub, repetidosNoLote, cursorDoLote, errosDoLote, estadoFinalDoLote, maisNovoQue, obsoletosDoLote, cursorDepoisDoLote, reprocessavel, resultadoDoLote,
+  CODIGO_ERRO_EXPURGO, codigoLinhaHub, corteDoExpurgo, repetidosNoLote, cursorDoLote, errosDoLote, estadoFinalDoLote, maisNovoQue, obsoletosDoLote, cursorDepoisDoLote, reprocessavel, resultadoDoLote,
 } from './lote';
 
 const erro = (linha: number, codigo: string, campo: string | null = null) => ({ linha, campo, codigo, motivo: 'texto com 12.345.678/0001-95 que não pode sair' });
@@ -42,12 +42,15 @@ describe('RN-INT-01: erros por linha sem o dado (LGPD)', () => {
     const r = errosDoLote([erro(0, 'CARGA_BANCO'), erro(0, 'CARGA_BANCO')], externos);
     expect(r.erros).toEqual([{ indice: 0, external_id: 'A', campo: null, codigo: 'falha_processamento' }]);
   });
-  it('guarda até o limite e informa o total e os omitidos', () => {
-    const muitos = Array.from({ length: LIMITE_ERROS_GUARDADOS + 3 }, (_, i) => erro(i + 2, 'CARGA_FORMATO', 'x'));
+  it('RN-CAD-04 e ADR 0014: o campo ausente que a regra exige (`obrigatorio`) vira campo_obrigatorio, sem ler o texto do motivo', () => {
+    const r = errosDoLote([{ linha: 2, campo: 'ncm', codigo: 'RN-CAD-04', motivo: 'qualquer texto', obrigatorio: true }, { linha: 3, campo: 'ncm', codigo: 'RN-CAD-04', motivo: 'NCM obrigatório: x' }], externos);
+    expect(r.erros.map((e) => [e.indice, e.codigo])).toEqual([[0, 'campo_obrigatorio'], [1, 'regra_invalida']]);
+  });
+  it('guarda até o limite (o do Hub) e informa o total', () => {
+    const muitos = Array.from({ length: LIMITE_ERROS_RESPOSTA_MAX + 3 }, (_, i) => erro(i + 2, 'CARGA_FORMATO', 'x'));
     const r = errosDoLote(muitos, muitos.map((_, i) => `E${i}`));
-    expect(r.erros).toHaveLength(LIMITE_ERROS_GUARDADOS);
-    expect(r.total).toBe(LIMITE_ERROS_GUARDADOS + 3);
-    expect(r.omitidos).toBe(3);
+    expect(r.erros).toHaveLength(LIMITE_ERROS_RESPOSTA_MAX);
+    expect(r.total).toBe(LIMITE_ERROS_RESPOSTA_MAX + 3);
   });
 });
 
@@ -100,7 +103,7 @@ describe('estado final e resultado do lote', () => {
   it('monta o LoteResultado do contrato do SDK com status (nunca estado) e mensagens fixas', () => {
     const r = resultadoDoLote({
       id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2c', entidade: 'filial', modo: 'delta', estado: 'concluido_com_erros',
-      contagens: { recebidas: 3, duplicadas_no_lote: 0, com_erro: 1, novas: 1, atualizadas: 1, inalteradas: 0, obsoletas: 0, erros_total: 1, erros_omitidos: 0, invalidas_omitidas: 0 },
+      contagens: { recebidas: 3, duplicadas_no_lote: 0, com_erro: 1, novas: 1, atualizadas: 1, inalteradas: 0, obsoletas: 0, erros_total: 1, invalidas_omitidas: 0 },
       erros: [{ indice: 1, external_id: 'B', campo: 'cnpj', codigo: 'regra_invalida' }],
       cursor_alterado_em: '2026-11-21T10:00:00.000Z', cursor_external_id: 'A',
       recebido_em: '2026-11-26T12:00:00.000Z', concluido_em: '2026-11-26T12:00:05.000Z', erro_codigo: null,
@@ -131,5 +134,12 @@ describe('delta com o mesmo external_id mais de uma vez (duplicado_no_lote)', ()
   });
   it('sem repetição, nada sai', () => {
     expect(repetidosNoLote([{ indice: 0, external_id: 'A' }, { indice: 1, external_id: 'B' }]).size).toBe(0);
+  });
+});
+
+describe('ADR 0014 §3 (LGPD): expurgo de 24 h do corpo do lote', () => {
+  it('o corte é 24 h antes de agora e o código de falha segue o padrão do banco', () => {
+    expect(corteDoExpurgo(new Date('2026-11-27T12:00:00.000Z')).toISOString()).toBe('2026-11-26T12:00:00.000Z');
+    expect(CODIGO_ERRO_EXPURGO).toMatch(/^[a-z][a-z0-9_]{0,59}$/);
   });
 });

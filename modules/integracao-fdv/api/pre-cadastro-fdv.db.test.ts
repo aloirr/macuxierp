@@ -11,6 +11,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_RETORNO_CLIENTES_ID, criarAgendasClientesFdv } from './agendas-clientes';
 import { AGORA, U, admSql, ciclo, criarCredencial, dubleLogAlertas, hubDuble, ok, recusa, retentavel } from './apoio-conector-teste';
+import { lerRecebidosParaExportar } from './clientes-recebidos';
 import { expurgarPreCadastro } from './expurgo-pre-cadastro';
 import type { ClienteHubClientes, CriadorClienteFdv, RespostaRetornoCliente } from './portas';
 import { buscarClientesPendentes } from './recebimento-clientes';
@@ -283,6 +284,15 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
     const r = await buscarClientesPendentes(deps({ hub }), B);
     expect(paginas).toBe(10);
     expect(r.proxima).toBe('imediata');
+  }, 20_000);
+
+  it('T-0059 §5.1: pendente fora do contrato não abre transação (só o válido abre)', async () => {
+    let aberturas = 0;
+    const contando = { comTenant: (...a: Parameters<typeof worker.comTenant>) => { aberturas++; return worker.comTenant(...a); } } as unknown as typeof worker;
+    const hub = hubDe([{ cliente_uuid: 'nao-e-uuid' }, { cliente_uuid: 'x' }]).hub;
+    const r = await buscarClientesPendentes({ ...deps({ hub }), banco: contando }, B);
+    expect(r).toMatchObject({ ignorados: 2, erros: 0 });
+    expect(aberturas).toBe(0);
   });
 
   it('T-0059 §5.1: 401, 403 e 426 na busca pausam a credencial; 5xx reagenda', async () => {
@@ -386,7 +396,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       expect((await adm('SELECT count(*)::int AS n FROM integracao_fdv.cliente_recebido WHERE tenant_id = $1 AND cliente_uuid = $2', [B, uuid]))[0]!.n).toBe(0);
     });
 
-    it('RF-INF-04: paginação por cursor e CSV exportável, sem dado pessoal', async () => {
+    it('RF-INF-04 (decisão 21 A): paginação por cursor e CSV exportável com todos os recebidos (além da lista de 50), sem repetir, só do tenant e sem dado pessoal', async () => {
       const p1 = await rota(A, 'GET', '/clientes-recebidos', { consulta: { limite: '2' } });
       expect(p1.corpo.itens).toHaveLength(2);
       expect(p1.corpo.proximo_cursor).not.toBeNull();
@@ -396,6 +406,24 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       expect(csv.cabecalhos).toMatchObject({ 'content-type': 'text/csv; charset=utf-8' });
       expect(String(csv.corpo).split('\r\n')[0]).toContain('Situação');
       for (const s of SEGREDOS.filter((x) => x !== 'Mercado do Fulano')) expect(String(csv.corpo), s).not.toContain(s);
+      const total = (await adm("SELECT count(DISTINCT cliente_uuid)::int AS n FROM integracao_fdv.cliente_recebido WHERE tenant_id = $1 AND deleted_at IS NULL", [A]))[0]!.n as number;
+      expect(total).toBeGreaterThan(2);
+      const pag = await worker.comTenant(A, (tx) => lerRecebidosParaExportar(tx, A, { pagina: 2 }));
+      expect(pag.cortado).toBe(false);
+      expect(pag.itens).toHaveLength(total);
+      expect(new Set(pag.itens.map((i) => i.id)).size).toBe(total);
+      expect(String(csv.corpo).trim().split('\r\n')).toHaveLength(total + 1);
+      expect(csv.cabecalhos?.['x-linhas-cortadas']).toBeUndefined();
+    });
+
+    it('RF-INF-04 (decisão 21 A): passou do teto, o arquivo para nos mais recentes e avisa', async () => {
+      const todos = await worker.comTenant(A, (tx) => lerRecebidosParaExportar(tx, A, { pagina: 2 }));
+      const corte = await worker.comTenant(A, (tx) => lerRecebidosParaExportar(tx, A, { teto: 3, pagina: 2 }));
+      expect(corte.cortado).toBe(true);
+      expect(corte.itens.map((i) => i.id)).toEqual(todos.itens.slice(0, 3).map((i) => i.id));
+      const exato = await worker.comTenant(A, (tx) => lerRecebidosParaExportar(tx, A, { teto: todos.itens.length, pagina: 2 }));
+      expect(exato.cortado).toBe(false);
+      expect(exato.itens).toHaveLength(todos.itens.length);
     });
   });
 

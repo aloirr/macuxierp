@@ -97,6 +97,13 @@ export function hubDuble(roteiro: Record<string, RespostaRoteirizada[]> = {}): C
 }
 
 export const ok = (corpo: unknown, replay = false, status = 202): RespostaHub => ({ tipo: 'ok', status, corpo, replay });
+/** Resposta 202 do `POST /lotes` (lote aceito) e resultado final do `GET /lotes/{id}`: uma só forma para os testes de conector. */
+export const loteAceito = (o: { id: string; entidade: string; recebidos: number; repetido?: boolean }) => ({ lote_id: o.id, status: 'recebido', entidade: o.entidade, modo: 'delta', recebidos: o.recebidos, repetido: o.repetido ?? false, consulta: `/integracao/v1/lotes/${o.id}` });
+export const loteConcluido = (o: { id: string; entidade: string; erros?: unknown[]; recebidas?: number }) => {
+  const erros = o.erros ?? [];
+  const recebidas = o.recebidas ?? 1;
+  return { lote_id: o.id, entidade: o.entidade, modo: 'delta', status: erros.length ? 'concluido_com_erros' : 'concluido', contagens: { recebidas, com_erro: erros.length, novas: recebidas }, erros };
+};
 export const recusa = (status: number, codigo: string | null = null): RespostaHub => ({ tipo: 'recusa', status, codigo });
 export const retentavel = (status: number | null, retryAfterMs: number | null = null, codigo: string | null = null): RespostaHub => ({ tipo: 'retentavel', status, codigo, retryAfterMs });
 
@@ -160,3 +167,6 @@ export async function ciclo(banco: Banco, agenda: AgendaModulo, hub: ClienteHub,
   for (const item of itens) await agenda.executar(item, contextoDaAgenda(banco, item, hub, agora, posse));
   return itens;
 }
+
+/** Criar o banco efêmero (migrações) e removê-lo passa dos 10 s padrão dos ganchos quando a máquina está carregada; sem espera real nos testes. */
+export const TEMPO_PREPARO_MS = 90_000;

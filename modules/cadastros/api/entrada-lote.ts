@@ -12,11 +12,11 @@ import {
   TRABALHO_ENTRADA_LOTE, auditar, criarEvento,
   type ContextoRota, type DestinoAuditoria, type ExecutorTrabalho, type FilaDeTrabalhos, type Outbox, type Trabalho, type Transacao,
 } from '@macuxierp/platform-sdk';
-import { CorpoLote, type CorpoLote as CorpoLoteTipo } from '@macuxierp/platform-sdk/hub-v1';
+import { CorpoLote, LIMITE_ERROS_RESPOSTA_MAX, type CorpoLote as CorpoLoteTipo } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 import type { ResultadoEntidade } from '../contracts';
 import {
-  PADRAO_UF, adaptarLote, agruparClientes, conferirFormasDoLote, cursorDoLote, cursorDepoisDoLote, errosDoLote, obsoletosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote, LIMITE_ERROS_GUARDADOS,
+  PADRAO_UF, adaptarLote, agruparClientes, conferirFormasDoLote, cursorDoLote, cursorDepoisDoLote, errosDoLote, obsoletosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote,
   type ErroGuardado, type ErroLinha, type FormaDoLote, type MunicipioOficial,
 } from '../domain';
 import { estadoVazio } from './carga-entidades';
@@ -25,9 +25,9 @@ import type { RepositorioEntrada, LotePendente } from './entrada-sql';
 import type { Repositorios } from './portas';
 import { dataIso } from './util';
 
-export const PayloadEntradaLote = z.object({ lote_id: z.string().uuid() });
+const PayloadEntradaLote = z.object({ lote_id: z.string().uuid() });
 
-export interface DependenciasEntradaLote {
+interface DependenciasEntradaLote {
   repositorios(tx: Transacao): Repositorios;
   entrada(tx: Transacao): RepositorioEntrada;
   outbox: Outbox;
@@ -39,6 +39,9 @@ export interface DependenciasEntradaLote {
 
 const ARQUIVO = 'lote';
 
+/** Autor da auditoria: sistema (sem usuário), no trabalho do worker. */
+const atorDoWorker = (trabalho: Trabalho) => ({ tenant_id: trabalho.tenant_id, usuario_id: null, request_id: trabalho.id });
+
 /** Contexto de rota sem sessão de usuário: os eventos e a auditoria da gravação saem com autor "sistema" (premissa acima). */
 function contextoDoWorker(d: DependenciasEntradaLote, tx: Transacao, trabalho: Trabalho, agora: Date): ContextoRota {
   return {
@@ -49,7 +52,7 @@ function contextoDoWorker(d: DependenciasEntradaLote, tx: Transacao, trabalho: T
       return { ...evento, versao: await d.outbox.gravar(tx, evento) };
     },
     async auditar(dados) {
-      await auditar(d.auditoria, tx, { tenant_id: trabalho.tenant_id, usuario_id: null, request_id: trabalho.id }, dados, agora);
+      await auditar(d.auditoria, tx, atorDoWorker(trabalho), dados, agora);
     },
     async enfileirar() {
       throw new Error('a gravação do lote da entrada não enfileira trabalho');
@@ -73,6 +76,7 @@ function ufsDosRegistros(registros: readonly Record<string, unknown>[]): Set<str
 
 async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: Trabalho, lote: LotePendente, agora: Date): Promise<void> {
   const entrada = d.entrada(tx);
+  const ator = atorDoWorker(trabalho);
   const lido = CorpoLote.safeParse(lote.corpo);
   if (!lido.success) {
     await entrada.falhar(lote.id, 'corpo_invalido', agora);
@@ -159,24 +163,25 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
   const doConector: ErroGuardado[] = corpo.linhas_invalidas.map((x, i) => ({
     indice: corpo.registros.length + i, external_id: x.external_id, campo: x.campo ?? null, codigo: x.codigo, origem: 'conector' as const,
   }));
-  const erros = [...doLote.erros, ...doConector].slice(0, LIMITE_ERROS_GUARDADOS);
+  const erros = [...doLote.erros, ...doConector].slice(0, LIMITE_ERROS_RESPOSTA_MAX);
   const comErro = doLote.indicesComErro.size + doConector.length;
   const total = doLote.total + doConector.length;
   const contagens = {
     recebidas: lote.recebidos, duplicadas_no_lote: repetidos.size, com_erro: comErro,
     novas: resultado?.inseridas ?? 0, atualizadas: (resultado?.atualizadas ?? 0) + formasAtualizadas,
     inalteradas: (resultado?.sem_mudanca ?? 0) + Math.max(0, adaptado.formas.length - formasAtualizadas - formasObsoletas),
-    obsoletas: obsoletos.size, erros_total: total, erros_omitidos: total - erros.length, invalidas_omitidas: corpo.linhas_invalidas_omitidas,
+    obsoletas: obsoletos.size, erros_total: total, invalidas_omitidas: corpo.linhas_invalidas_omitidas,
   };
   const cursor = cursorDepoisDoLote(
     cursorDoLote(pares, new Set([...doLote.indicesComErro, ...obsoletos])),
     cursorGuardado,
   );
-  await entrada.concluir(lote.id, { estado: estadoFinalDoLote(comErro), com_erro: comErro, contagens, erros, cursor }, agora);
+  const estado = estadoFinalDoLote(comErro);
+  await entrada.concluir(lote.id, { estado, com_erro: comErro, contagens, erros, cursor }, agora);
   if (cursor) await entrada.avancarCursor(lote.conector_id, lote.entidade, cursor, lote.id);
-  await auditar(d.auditoria, tx, { tenant_id: trabalho.tenant_id, usuario_id: null, request_id: trabalho.id }, {
+  await auditar(d.auditoria, tx, ator, {
     acao: 'cadastros.entrada_lote.processar', entidade: 'entrada_lote', entidade_id: lote.id,
-    depois: { entidade: lote.entidade, estado: estadoFinalDoLote(comErro), novas: contagens.novas, atualizadas: contagens.atualizadas, inalteradas: contagens.inalteradas, com_erro: comErro },
+    depois: { entidade: lote.entidade, estado, novas: contagens.novas, atualizadas: contagens.atualizadas, inalteradas: contagens.inalteradas, com_erro: comErro },
   }, agora);
 }
 

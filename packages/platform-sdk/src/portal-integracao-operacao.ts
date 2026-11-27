@@ -222,14 +222,11 @@ export const CAMINHOS_INTEGRACAO_FDV_TENANT = Object.freeze({
   log: '/integracao-fdv/entidades/:entidade/log',
   /** "Baixar erros (.csv)": todos os erros abertos do cadastro, com as colunas do `LogCadastroFdvTenant.erros`. */
   logCsv: '/integracao-fdv/entidades/:entidade/log.csv',
-  /** T-0059: seção "Clientes recebidos do FDV" (`PaginaClientesRecebidosFdv` de `cliente-fdv.ts`). */
+  /** T-0059: a rota dos clientes recebidos do FDV (`PaginaClientesRecebidosFdv` de `cliente-fdv.ts`); a tela saiu na T-0110 e a rota segue. */
   clientesRecebidos: '/integracao-fdv/clientes-recebidos',
 });
 
 // ---- Zerar por cadastro na aba Integração (R-20261124-170915-alexandre) ----
-
-/** Aviso da tela antes da confirmação "autorizo zerar os dados" (texto literal da decisão). */
-export const AVISO_ZERAR_INATIVA_FDV = 'Os registros também serão inativados no Macuxi FDV.';
 
 /**
  * Cadastro do Zerar (`CADASTROS_ZERAR_PORTAL`, `portal-cargas.ts`) de cada linha da tabela da Integração: forma e prazo

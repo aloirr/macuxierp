@@ -8,13 +8,13 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAgendaConector } from './agenda-conector';
 import { mais } from './conector-comum';
-import { AGORA, admSql, ciclo, criarCredencial, cursorEntidade, espelho, hubDuble, ok, payloadProduto } from './apoio-conector-teste';
+import { AGORA, admSql, ciclo, criarCredencial, cursorEntidade, espelho, hubDuble, loteAceito, loteConcluido, ok, payloadProduto } from './apoio-conector-teste';
 
 const agenda = criarAgendaConector({ outbox: new OutboxPg() });
 const depois = (s: number): Date => mais(AGORA, s);
 const LOTE_ID = '7c2e9a14-5d3b-4e86-9f01-3a8b64d2c7e5';
-const aceito = (entidade: string) => ({ lote_id: LOTE_ID, status: 'recebido', entidade, modo: 'delta', recebidos: 1, repetido: false, consulta: `/integracao/v1/lotes/${LOTE_ID}` });
-const concluido = (entidade: string, erros: unknown[] = []) => ({ lote_id: LOTE_ID, entidade, modo: 'delta', status: erros.length ? 'concluido_com_erros' : 'concluido', contagens: { recebidas: 1, com_erro: erros.length, novas: 1 }, erros });
+const aceito = (entidade: string) => loteAceito({ id: LOTE_ID, entidade, recebidos: 1 });
+const concluido = (entidade: string, erros: unknown[] = []) => loteConcluido({ id: LOTE_ID, entidade, erros });
 const prazo = (chave: string) => ({ external_id: chave, ativo: true, forma_external_id: 'FP-1', codigo: chave, parcelas_dias: [30], descricao: `Prazo ${chave}`, prazo_medio_dias: 30 });
 
 describe.skipIf(!PG_DISPONIVEL)('T-0107: virada de versão de contrato (precisa da coluna contrato_enviado, 0069)', { timeout: 20_000 }, () => {

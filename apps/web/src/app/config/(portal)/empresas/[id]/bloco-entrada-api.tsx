@@ -1,13 +1,12 @@
 'use client';
 import type { PortalEntradaLeitura } from '@macuxierp/platform-sdk';
-import { Chip, Dialogo, DialogoMotivo, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { Chip, Dialogo, DialogoMotivo, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useReducer, useRef, useState, useTransition } from 'react';
 import { botaoDaChave, ehGeracaoIncerta, estadoDaChave, reduzirChave, validarConectorId, vistaEntrada, type AcaoChave, type EstadoChave, type LinhaLote } from '@/lib/config/entrada';
 import * as T from '@/lib/config/entrada-textos';
+import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { gerarChaveEntradaAcao, revogarChaveEntradaAcao } from '../acoes-entrada';
-
-type Mensagem = { ok: boolean; texto: string } | null;
 
 /**
  * Bloco "Integração via API" da aba Integração (T-0057 A1, docs/design/entrada-cenario-b/README.md, seções A, B e F; sem a
@@ -18,7 +17,9 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [chave, despachar] = useReducer(reduzirChave, undefined, estadoDaChave);
-  const [mensagem, setMensagem] = useState<Mensagem>(null);
+  // 36 A: o retorno de Gerar/Trocar e o de Revogar ficam abaixo da fila de botões, um por botão.
+  const [rGerar, kGerar, mostrarGerar, limparGerar] = useResultado();
+  const [rRevogar, kRevogar, mostrarRevogar, limparRevogar] = useResultado();
   const [erroCodigo, setErroCodigo] = useState('');
   const [incerta, setIncerta] = useState(false);
   const [pedirTroca, setPedirTroca] = useState(false);
@@ -35,7 +36,7 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
     const c = validarConectorId(codigoDigitado());
     if (!c.ok) return setErroCodigo(c.erro);
     setErroCodigo('');
-    setMensagem(null);
+    limparGerar();
     iniciar(async () => {
       const r = await gerarChaveEntradaAcao(empresaId, c.valor);
       setIncerta(ehGeracaoIncerta(r));
@@ -44,16 +45,16 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
         router.refresh();
       } else {
         setErroCodigo(r.campos.conector_id ?? '');
-        setMensagem(r.campos.conector_id ? null : { ok: false, texto: r.erro });
+        if (!r.campos.conector_id) mostrarGerar(resultadoErro(r.erro));
       }
     });
   };
   const revogar = () => {
     setPedirRevogar(false);
-    setMensagem(null);
+    limparRevogar();
     iniciar(async () => {
       const r = await revogarChaveEntradaAcao(empresaId, v.vigente?.conectorId ?? '');
-      setMensagem(r.ok ? { ok: true, texto: T.RETORNO_REVOGADA } : { ok: false, texto: r.erro });
+      mostrarRevogar(r.ok ? resultadoSucesso(T.RETORNO_REVOGADA) : resultadoErro(r.erro));
       if (r.ok) router.refresh();
     });
   };
@@ -62,13 +63,12 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
     <>
       <section className="bloco" aria-labelledby="h-entrada-api">
         <h2 id="h-entrada-api">{T.TITULO_BLOCO_ENTRADA}</h2>
-        {mensagem && <p className={mensagem.ok ? 'faixa-aviso' : 'erro'} role={mensagem.ok ? 'status' : 'alert'}>{mensagem.texto}</p>}
         {v.vigente ? (
           <dl className="ficha" aria-label="Chave de entrada">
-            <div><dt>Prefixo da chave</dt><dd className="codigo">{v.vigente.prefixo}</dd></div>
+            <div><dt>Chave</dt><dd className="codigo">{v.vigente.prefixo}</dd></div>
             <div><dt>Versão</dt><dd>{v.vigente.versao}</dd></div>
             <div><dt>Último sinal</dt><dd>{v.vigente.ultimoSinal}</dd></div>
-            <div><dt>Chave criada em</dt><dd>{v.vigente.criadaEm}</dd></div>
+            <div><dt>Criada em</dt><dd>{v.vigente.criadaEm}</dd></div>
           </dl>
         ) : (
           <p className="apoio">{T.SEM_CHAVE}</p>
@@ -94,6 +94,8 @@ export function BlocoEntradaApi({ empresaId, dados, fuso }: { empresaId: string;
             <button type="submit" className="mx-botao" disabled={pendente}>{botao.rotulo}</button>
             {v.vigente && <button type="button" className="mx-botao-secundario" disabled={pendente} onClick={() => setPedirRevogar(true)}>{T.ROTULOS_ENTRADA.revogar}</button>}
           </div>
+          <ResultadoAcao resultado={rGerar} chave={kGerar} />
+          <ResultadoAcao resultado={rRevogar} chave={kRevogar} />
         </form>
       </section>
       <section className="bloco" aria-labelledby="h-lotes-entrada">

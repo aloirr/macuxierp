@@ -15,7 +15,7 @@ let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
 const ENTIDADES: readonly string[] = ENTIDADES_ENVIO_FDV;
 const integracao = (hab: string[]) => ({
-  empresa_id: ID, modulo_licenciado: true, credencial_id: ID, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-se', criada_em: '2026-11-23T12:00:00.000Z', ultimo_uso_em: null,
+  empresa_id: ID, modulo_licenciado: true, credencial_id: ID, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-se', criada_em: '2026-11-23T12:00:00.000Z',
   entidades_habilitadas: hab, limite_registros_lote: 500, ultimo_sinal: null,
   cadastros: ENTIDADES.map((entidade) => ({ entidade, ligada: hab.includes(entidade), ultimo_envio_em: null, falha: null, lote_em_voo: false })),
 });

@@ -324,8 +324,11 @@ export function repositoriosEmMemoria() {
     async condicoesAtivasCartaoSemParcelas() {
       return condicoesPagamento.linhas.filter((l) => !l.inativo && l.forma_tpag === '03' && (l.parcelas_cartao ?? null) === null).map((l) => structuredClone(l) as never);
     },
-    async condicoesAtivasSemPrazoMedio() {
-      return condicoesPagamento.linhas.filter((l) => !l.inativo && (l.prazo_medio_dias ?? null) === null && ((l.prazos_dias as number[] | undefined) ?? []).length >= 1).map((l) => structuredClone(l) as never);
+    async condicoesAtivasParaAjustePrazoMedio() {
+      return condicoesPagamento.linhas.filter((l) => !l.inativo && ((l.prazos_dias as number[] | undefined) ?? []).length >= 1).map((l) => structuredClone(l) as never);
+    },
+    async contarClientesPorPrazoMedio(de: number, ate: number | null) {
+      return clientesRepo.linhas.filter((c) => !c.inativo && typeof c.prazo_medio_dias === 'number' && c.prazo_medio_dias >= de && (ate === null || c.prazo_medio_dias < ate)).length;
     },
     async filhoPorExternalId(t: keyof typeof filhasMem, ext: string) {
       const l = filhasMem[t].col.linhas.find((x) => x.external_id === ext);

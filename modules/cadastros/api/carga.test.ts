@@ -394,6 +394,16 @@ describe('RN-CAD-09 na carga: classe da forma (cartão, à vista, boleto, forma 
     expect(conds(t)[0]).toMatchObject({ inativo: true });
   });
 
+  it('RN-CAD-15 (v0.3.18): a linha que muda só a forma de uma condição gravada fora da faixa grava; se mexe nas parcelas a faixa vale', async () => {
+    const t = montar();
+    await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;40;BOLETO;Boleto;FP-B;sim;Cond A') });
+    await t.repos.condicoesPagamento.atualizar((conds(t)[0] as unknown as { id: string }).id, { prazo_medio_dias: 90 } as never); // legado fora da faixa
+    const soForma = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;90;CARTAO;Cartão;FP-C;sim;Cond A') })).corpo as RelatorioCarga;
+    expect(soForma.erros.filter((x) => x.arquivo === ARQ)).toEqual([]);
+    const mexe = (await t.carregar('gravar', { arquivos: lote('Z-A;CA;28/56;91;BOLETO;Boleto;FP-B;sim;Cond A') })).corpo as RelatorioCarga;
+    expect(mexe.erros.filter((x) => x.arquivo === ARQ)).toEqual([expect.objectContaining({ codigo: 'RN-CAD-15', campo: 'prazo_medio_dias' })]);
+  });
+
   it('RN-CAD-09: cheque, depósito, transferência e código desconhecido viram erro RN-CAD-09 "forma não aceita…" em cada condição', async () => {
     const t = montar();
     const rel = (await t.carregar('gravar', {

@@ -2,13 +2,10 @@
  * T-0057 C3 (ADR 0014 §3): regras puras do lote da `/entrada/v1` depois do processamento: código por linha do Hub, erros sem o
  * dado (RN-INT-01, LGPD), cursor do delta, estado final e o `LoteResultado` do contrato do SDK (campo `status`, nunca `estado`).
  */
-import { CODIGOS_ERRO_LINHA_HUB, type CursorHub, type EstadoLoteHub, type LoteResultado } from '@macuxierp/platform-sdk/hub-v1';
+import { CODIGOS_ERRO_LINHA_HUB, LIMITE_ERROS_RESPOSTA_MAX, type CursorHub, type EstadoLoteHub, type LoteResultado, type ModoLote } from '@macuxierp/platform-sdk/hub-v1';
 import type { ErroLinha } from '../carga';
 
-export type CodigoLinhaHub = (typeof CODIGOS_ERRO_LINHA_HUB)[number];
-
-/** Teto de `entrada_lote.erros` (0071) e de `LIMITE_ERROS_RESPOSTA_MAX` do Hub. */
-export const LIMITE_ERROS_GUARDADOS = 5500;
+type CodigoLinhaHub = (typeof CODIGOS_ERRO_LINHA_HUB)[number];
 
 const DA_CARGA: Readonly<Record<string, CodigoLinhaHub>> = {
   CARGA_OBRIGATORIO: 'campo_obrigatorio',
@@ -57,26 +54,25 @@ export interface ErroGuardado {
 }
 
 /** Linha do kit (a 1 é o cabeçalho) → índice do registro no lote (base 0). Fora do lote vira 0. */
-export const indiceDaLinha = (linha: number): number => Math.max(0, linha - 2);
+const indiceDaLinha = (linha: number): number => Math.max(0, linha - 2);
 
 export interface ErrosDoLote {
   erros: ErroGuardado[];
   /** Todos os erros distintos, mesmo os que passaram do limite guardado. */
   total: number;
-  omitidos: number;
   indicesComErro: Set<number>;
 }
 
 /** Converte os erros da validação e da gravação (`linha` do kit) em erros por registro, sem o dado, sem repetir e até o limite. */
-export function errosDoLote(entrada: readonly ErroLinha[], externos: readonly (string | null)[], limite = LIMITE_ERROS_GUARDADOS): ErrosDoLote {
+export function errosDoLote(entrada: readonly ErroLinha[], externos: readonly (string | null)[], limite = LIMITE_ERROS_RESPOSTA_MAX): ErrosDoLote {
   const vistos = new Set<string>();
   const erros: ErroGuardado[] = [];
   const indicesComErro = new Set<number>();
   let total = 0;
   for (const e of entrada) {
     const indice = Math.min(indiceDaLinha(e.linha), Math.max(0, externos.length - 1));
-    // ADR 0014 (emenda de 27/11): o NCM ausente do produto novo (RN-CAD-04, `prepararCriacao`) é campo obrigatório, como o crt.
-    const codigo = e.codigo === 'RN-CAD-04' && e.campo === 'ncm' && e.motivo.startsWith('NCM obrigatório') ? 'campo_obrigatorio' : codigoLinhaHub(e.codigo);
+    // ADR 0014 (emenda de 27/11): o campo ausente que a regra exige (NCM do produto novo, RN-CAD-04) é `campo_obrigatorio`.
+    const codigo = e.obrigatorio ? 'campo_obrigatorio' : codigoLinhaHub(e.codigo);
     const chave = `${indice}|${e.campo ?? ''}|${codigo}`;
     if (vistos.has(chave)) continue;
     vistos.add(chave);
@@ -84,8 +80,12 @@ export function errosDoLote(entrada: readonly ErroLinha[], externos: readonly (s
     total += 1;
     if (erros.length < limite) erros.push({ indice, external_id: externos[indice] ?? null, campo: e.campo, codigo });
   }
-  return { erros, total, omitidos: total - erros.length, indicesComErro };
+  return { erros, total, indicesComErro };
 }
+
+/** Cursor a partir das duas colunas (as duas nulas = sem cursor). */
+export const cursorDaLinha = (alteradoEm: string | null, externalId: string | null): CursorHub | null =>
+  alteradoEm !== null && externalId !== null ? { alterado_em: alteradoEm, external_id: externalId } : null;
 
 /** `a` é mais novo que `b` pelo par (`alterado_em`, `external_id`), na ordem de bytes do `external_id` (collation C do banco). `b` nulo = qualquer `a`. */
 export function maisNovoQue(a: CursorHub, b: CursorHub | null): boolean {
@@ -134,13 +134,18 @@ export function repetidosNoLote(registros: readonly { indice: number; external_i
   return new Set(registros.filter((r) => ultimo.get(r.external_id) !== r.indice).map((r) => r.indice));
 }
 
+/** LGPD (ADR 0014 §3): o corpo do lote não fica mais de 24 h; o que não terminou até lá falha e perde o corpo. */
+const HORAS_CORPO_DO_LOTE = 24;
+export const CODIGO_ERRO_EXPURGO = 'corpo_expirado';
+export const corteDoExpurgo = (agora: Date): Date => new Date(agora.getTime() - HORAS_CORPO_DO_LOTE * 3_600_000);
+
 export const estadoFinalDoLote = (comErro: number): 'concluido' | 'concluido_com_erros' => (comErro > 0 ? 'concluido_com_erros' : 'concluido');
 
 /** A linha de `cadastros.entrada_lote` que o resultado precisa (instantes já em ISO). */
 export interface LoteGuardado {
   id: string;
   entidade: string;
-  modo: 'completo' | 'delta';
+  modo: ModoLote;
   estado: EstadoLoteHub;
   contagens: Readonly<Record<string, number | undefined>>;
   erros: readonly ErroGuardado[];
@@ -170,7 +175,7 @@ export function resultadoDoLote(l: LoteGuardado, limiteErros: number): LoteResul
       reprocessavel: reprocessavel(e.codigo), origem: e.origem ?? 'hub',
     })),
     avisos: [],
-    cursor: l.cursor_alterado_em !== null && l.cursor_external_id !== null ? { alterado_em: l.cursor_alterado_em, external_id: l.cursor_external_id } : null,
+    cursor: cursorDaLinha(l.cursor_alterado_em, l.cursor_external_id),
     invalidas_omitidas: n('invalidas_omitidas'),
     erros_total: total,
     erros_omitidos: total - erros.length,

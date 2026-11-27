@@ -18,9 +18,10 @@ export { criarConsultaCnpjParaCore, type DependenciasConsultaCnpjParaCore } from
 export { criarCriadorClienteFdv, type CriadorClienteFdv, type DecisaoCriadorClienteFdv, type DependenciasCriadorClienteFdv } from './criador-cliente-fdv';
 export { completarPrazosMedios, type DependenciasCompletarPrazosMedios } from './completar-prazos-medios';
 export { criarResolvedorChaveErp, type ResolvedorChaveErp } from './resolvedor-chave';
-export { criarExecutorEntradaLote, PayloadEntradaLote, type DependenciasEntradaLote } from './entrada-lote';
-export { criarRotasEntrada, rotasEntrada, type DependenciasRotasEntrada } from './entrada-rotas';
-export { entradaSql, type RepositorioEntrada } from './entrada-sql';
+export { criarExecutorEntradaLote } from './entrada-lote';
+export { criarExecutorExpurgoEntrada, TRABALHO_ENTRADA_EXPURGO } from './entrada-expurgo';
+export { rotasEntrada } from './entrada-rotas';
+export { entradaSql } from './entrada-sql';
 export { exportadorCadastros } from './exportador';
 export { fontesHttp } from './fontes-http';
 export type { Dependencias, FonteExterna, Fontes, PortaCertificados, RepoChaves, Repositorios, TabelaChave } from './portas';

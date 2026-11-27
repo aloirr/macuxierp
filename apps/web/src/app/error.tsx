@@ -1,13 +1,13 @@
 'use client';
 import { MensagemRecarregar } from '@/components/mensagem-recarregar';
-import { SISTEMA_ATUALIZADO, ehAcaoAusente } from '@/lib/sistema-atualizado';
+import { ehAcaoAusente } from '@/lib/sistema-atualizado';
 
 export default function Erro({ error, reset }: { error: Error; reset: () => void }) {
   if (ehAcaoAusente(error)) {
     return (
       <main className="cartao-central">
         <h1>Atualização</h1>
-        <MensagemRecarregar texto={SISTEMA_ATUALIZADO} className="apoio" />
+        <MensagemRecarregar />
       </main>
     );
   }

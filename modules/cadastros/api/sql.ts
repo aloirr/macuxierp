@@ -507,9 +507,21 @@ function cargaSql(tx: Transacao): RepoCarga {
       const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND forma_tpag = '03' AND parcelas_cartao IS NULL ORDER BY id`, []);
       return l as unknown as CondicaoPagamento[];
     },
-    async condicoesAtivasSemPrazoMedio() {
-      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND prazo_medio_dias IS NULL AND cardinality(prazos_dias) >= 1 ORDER BY id FOR UPDATE`, []);
+    async condicoesAtivasParaAjustePrazoMedio() {
+      const l = await executar(tx, `SELECT ${selecionar({ colunas: COLUNAS_CONDICAO })} FROM cadastros.condicao_pagamento WHERE deleted_at IS NULL AND cardinality(prazos_dias) >= 1 ORDER BY id FOR UPDATE`, []); // a regra (nulo ou fora da faixa) é do domain: decidirPrazoMedioGravado
       return l as unknown as CondicaoPagamento[];
+    },
+    async contarClientesPorPrazoMedio(de, ate) {
+      // o papel do worker pode não ter SELECT em cliente: SAVEPOINT próprio e devolve null (contagem indisponível) em vez de derrubar a rotina
+      await tx.consultar('SAVEPOINT conta_clientes_prazo');
+      try {
+        const l = await executar<{ n: string }>(tx, 'SELECT count(*)::text AS n FROM cadastros.cliente WHERE deleted_at IS NULL AND prazo_medio_dias >= $1 AND ($2::int IS NULL OR prazo_medio_dias < $2)', [de, ate]);
+        await tx.consultar('RELEASE SAVEPOINT conta_clientes_prazo');
+        return Number(l[0]?.n ?? 0);
+      } catch {
+        await tx.consultar('ROLLBACK TO SAVEPOINT conta_clientes_prazo');
+        return null;
+      }
     },
     async filhoPorExternalId(t, ext) {
       const f = FILHAS[t];

@@ -5,7 +5,7 @@ import {
   colunasDeErrosLog, ROTULO_BAIXAR_ERROS, ROTULO_CORRIGIR, TEXTO_ESTADO_LOG, TEXTO_LEGENDA_ERROS_LOG, TEXTO_VAZIO_RECEBIDOS_LOG, TITULO_SECAO_RECEBIDOS_LOG,
 } from '@macuxierp/integracao-fdv/web';
 import { Chip } from '@macuxierp/ui';
-import { CorpoLogBko, EstadoLog, TEXTO_FALHA_CARGA_LOG, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, textoRecebidosForaDaLista, ROTULO_TENTAR_DE_NOVO } from './log';
+import { CorpoLogBko, EstadoLog, TEXTO_FALHA_CARGA_LOG, caminhoDoDownloadErros, corrigirEmSegundo, textoErrosAbertos, ROTULO_TENTAR_DE_NOVO } from './log';
 
 vi.mock('@/app/(shell)/[modulo]/[...pagina]/acoes-log-fdv', () => ({ lerLogFdv: async () => ({ ok: false, motivo: 'erro' }) }));
 
@@ -117,7 +117,7 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
     it('o botão do CSV fica no cabeçalho da seção, ao lado do título e acima da tabela', () => {
       const h = html(comRecebidos([rec({})]));
       const secao = h.slice(h.indexOf('data-recebidos-fdv'));
-      expect(secao).toContain(`<div class="resumo-log"><h3>${TITULO_SECAO_RECEBIDOS_LOG}</h3><button type="button" class="mx-botao-secundario">Baixar recebidos (.csv)</button></div>`);
+      expect(secao).toContain(`<div class="resumo-log"><h3>${TITULO_SECAO_RECEBIDOS_LOG}</h3><a class="mx-botao-secundario" href="/baixar-recebidos-fdv">Baixar recebidos (.csv)</a></div>`);
       expect(secao.indexOf('Baixar recebidos')).toBeLessThan(secao.indexOf('<table'));
     });
 
@@ -128,11 +128,10 @@ describe('BKO: Log da Integração FDV (T-0086, D-4)', () => {
       expect(estiloDe('Mercadinho Ficticio Ltda')).not.toContain('tabular-nums');
     });
 
-    it('avisa o fato quando há mais recebidos do que a lista traz, sem prometer arquivo', () => {
+    it('avisa o fato quando há mais recebidos do que a lista traz (texto do módulo)', () => {
       expect(html(comRecebidos([rec({})], 1))).not.toContain('Mostrando os');
       const h = html(comRecebidos([rec({})], 5));
       expect(h).toContain('Mostrando os 1 mais recentes de 5.');
-      expect(textoRecebidosForaDaLista(1, 5)).not.toContain('arquivo');
     });
   });
 

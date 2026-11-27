@@ -41,6 +41,7 @@ import {
   campoDoHub,
   chaveIdempotencia,
   classificarResposta,
+  CODIGO_QUANTIDADE_FRACIONARIA,
   codigoDoHub,
   decidirEnvioLote,
   dividirAoMeio,
@@ -308,6 +309,24 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     );
   }
 
+  // T-0097 (RN-INF-07): recusa firme quantidade_fracionaria volta à fila uma vez (marca virada_fracao; hash intacto) e o erro aberto fecha junto.
+  if (entidade === 'produto_unidade') {
+    await tx.consultar(
+      `WITH alvo AS (
+         UPDATE integracao_fdv.registro_publicado r SET pendente = true, fonte_refs = r.fonte_refs || '{"virada_fracao": true}'::jsonb
+          WHERE r.tenant_id = $1 AND r.entidade = 'produto_unidade' AND NOT r.pendente AND r.deleted_at IS NULL AND r.payload IS NOT NULL
+            AND NOT (r.fonte_refs ? 'virada_fracao')
+            AND EXISTS (SELECT 1 FROM integracao_fdv.lote_erro le
+                         WHERE le.tenant_id = r.tenant_id AND le.entidade = r.entidade AND le.registro_external_id = r.registro_external_id
+                           AND le.codigo = $3 AND le.resolvido_em IS NULL)
+          RETURNING r.registro_external_id)
+       UPDATE integracao_fdv.lote_erro le SET resolvido_em = $2
+         FROM alvo WHERE le.tenant_id = $1 AND le.entidade = 'produto_unidade' AND le.registro_external_id = alvo.registro_external_id
+          AND le.codigo = $3 AND le.resolvido_em IS NULL`,
+      [tenant, agora, CODIGO_QUANTIDADE_FRACIONARIA],
+    );
+  }
+
   // 3. candidatos do espelho, na ordem do Hub (alterado_em, registro_external_id COLLATE "C")
   const candidatos =
     modo === 'delta'
@@ -338,17 +357,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     const mudou = espelhos.map((n, i) => ({ n, b: brutos[i]! })).filter(({ n, b }) => jsonCanonico(n.payload) !== jsonCanonico(b.payload));
     if (mudou.length > 0) {
       const hashNormalizado = mudou.map(({ n }) => hashRegistro(n.payload));
-      // Guarda contra a corrida com o consumidor do espelho: só grava se a linha ainda tem o hash bruto que foi lido. Se um evento novo
-      // entrou no meio, a linha fica com o payload novo e pendente (sai normalizada no próximo ciclo) e o hash em memória segue o bruto,
-      // para o aceite (`pendente = r.hash <> v.hash`) continuar dando true.
-      const gravadas = await tx.consultar<{ registro_external_id: string }>(
-        `UPDATE integracao_fdv.registro_publicado r SET payload = v.payload::jsonb, hash = v.hash
-           FROM unnest($3::text[], $4::text[], $5::text[], $6::text[]) AS v(chave, payload, hash, hash_lido)
-          WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave AND r.deleted_at IS NULL AND r.hash = v.hash_lido
-          RETURNING r.registro_external_id`,
-        [tenant, entidade, mudou.map(({ n }) => n.external_id), mudou.map(({ n }) => JSON.stringify(n.payload)), hashNormalizado, mudou.map(({ b }) => b.hash)],
-      );
-      const pegas = new Set(gravadas.map((g) => g.registro_external_id));
+      const pegas = await gravarNormalizados(tx, tenant, entidade, mudou, hashNormalizado);
       mudou.forEach(({ n, b }, i) => {
         n.hash = pegas.has(n.external_id) ? hashNormalizado[i]! : b.hash;
       });
@@ -518,6 +527,25 @@ async function gravarRetidas(tx: Transacao, e: Exec, loteId: string, primeiroInd
      ON CONFLICT (lote_envio_id, origem, indice) DO NOTHING`,
     [e.tenant, loteId, primeiroIndice - 1, e.entidade, retidas.map((l) => l.external_id), retidas.map((l) => campoDoHub(l.campo))],
   );
+}
+
+/**
+ * Grava o payload normalizado no espelho, condicionado ao hash que foi lido (RN-INF-03; RD-2313). Guarda contra a corrida com o consumidor
+ * do espelho: só grava se a linha ainda tem o hash bruto lido. Se um evento novo entrou no meio, a linha fica com o payload novo e pendente
+ * (sai normalizada no próximo ciclo) e o hash em memória segue o bruto, para o aceite (`pendente = r.hash <> v.hash`) continuar dando true.
+ * Devolve as chaves gravadas.
+ */
+export async function gravarNormalizados(
+  tx: Transacao, tenant: string, entidade: Entidade, mudou: readonly { n: RegistroEspelho; b: RegistroEspelho }[], hashNormalizado: readonly string[],
+): Promise<Set<string>> {
+  const gravadas = await tx.consultar<{ registro_external_id: string }>(
+    `UPDATE integracao_fdv.registro_publicado r SET payload = v.payload::jsonb, hash = v.hash
+       FROM unnest($3::text[], $4::text[], $5::text[], $6::text[]) AS v(chave, payload, hash, hash_lido)
+      WHERE r.tenant_id = $1 AND r.entidade = $2 AND r.registro_external_id = v.chave AND r.deleted_at IS NULL AND r.hash = v.hash_lido
+      RETURNING r.registro_external_id`,
+    [tenant, entidade, mudou.map(({ n }) => n.external_id), mudou.map(({ n }) => JSON.stringify(n.payload)), hashNormalizado, mudou.map(({ b }) => b.hash)],
+  );
+  return new Set(gravadas.map((g) => g.registro_external_id));
 }
 
 /** Pares (entidade alvo, chave) das referências dos registros já `confirmados` no Hub. */

@@ -10,17 +10,18 @@ import { jsonCanonico } from '../domain';
 import { criarAgendaConector } from './agenda-conector';
 import { mais } from './conector-comum';
 import {
-  AGORA, CHAVE_CLARA, admSql, ciclo, criarCredencial, cursorEntidade, ErroClienteHub, espelho, hubDuble, ok, payloadProduto, recusa, retentavel, U,
+  AGORA, CHAVE_CLARA, admSql, ciclo, criarCredencial, cursorEntidade, ErroClienteHub, espelho, hubDuble, loteAceito, loteConcluido, ok, payloadProduto, recusa, retentavel, TEMPO_PREPARO_MS, U,
 } from './apoio-conector-teste';
 
 const agenda = criarAgendaConector({ outbox: new OutboxPg() });
 /** `s` segundos depois do `AGORA` dos testes. */
 const depois = (s: number): Date => mais(AGORA, s);
 const LOTE_ID = '5b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f1';
-const aceito = (id = LOTE_ID, repetido = false) => ({ lote_id: id, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 3, repetido, consulta: `/integracao/v1/lotes/${id}` });
-const resultado = (status: string, extra: Record<string, unknown> = {}) => ({ lote_id: LOTE_ID, entidade: 'produto', modo: 'delta', status, contagens: { recebidas: 3, com_erro: 0, novas: 3 }, erros: [], ...extra });
+const aceito = (id = LOTE_ID, repetido = false) => loteAceito({ id, entidade: 'produto', recebidos: 3, repetido });
+const resultado = (status: string, extra: Record<string, unknown> = {}) => ({ ...loteConcluido({ id: LOTE_ID, entidade: 'produto', recebidas: 3 }), status, ...extra });
 
-describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeout: 20_000 }, () => {
+
+describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeout: 60_000 }, () => {
   let efemero: BancoEfemero;
   let banco: BancoPg;
   let adm: ReturnType<typeof admSql>;
@@ -51,10 +52,10 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
     efemero = await criarBancoEfemero();
     adm = admSql(efemero);
     banco = efemero.banco('macuxierp_worker', 6);
-  });
+  }, TEMPO_PREPARO_MS);
   afterAll(async () => {
     await efemero?.remover();
-  });
+  }, TEMPO_PREPARO_MS);
 
   describe('reservar (SKIP LOCKED, tenant_id, pausada, posse)', () => {
     it('reserva só o vencido e não pausado, adia para a posse e não reserva de novo; ignora as colunas da T-0016', async () => {
@@ -629,20 +630,21 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect(hub.chamadas.filter((c) => c.pedido.metodo === 'POST')).toHaveLength(1);
     });
 
-    it('T-0085: lote misto de unidades: o fator fracionário é recusado só nele (quantidade_fracionaria no Log) e o inteiro segue', async () => {
+    it('RN-CAD-17 e RN-INF-07 (T-0097): lote misto de unidades: a fração em KG segue com 4 casas; em CX é recusada só nela (quantidade_fracionaria no Log)', async () => {
       const t = await criarTenant(efemero.admin, 'env-frac', ['integracao-fdv']);
       const cred = await criarCredencial(efemero.admin, t);
       await espelho(efemero.admin, t, 'produto', payloadProduto('PROD'), { confirmado: true });
-      const un = (id: string, fator: number) => ({ external_id: id, ativo: true, produto_external_id: 'PROD', unidade: 'CX', fator, padrao: false });
+      const un = (id: string, fator: number, unidade = 'CX') => ({ external_id: id, ativo: true, produto_external_id: 'PROD', unidade, fator, padrao: false });
       await espelho(efemero.admin, t, 'produto_unidade', un('U-INT', 12), { alterado: new Date('2026-11-22T09:00:00.000Z') });
-      await espelho(efemero.admin, t, 'produto_unidade', un('U-FRAC', 1.5), { alterado: new Date('2026-11-22T09:00:01.000Z') });
+      await espelho(efemero.admin, t, 'produto_unidade', un('U-KG', 1.2345, 'KG'), { alterado: new Date('2026-11-22T09:00:01.000Z') });
+      await espelho(efemero.admin, t, 'produto_unidade', un('U-FRAC', 1.5), { alterado: new Date('2026-11-22T09:00:02.000Z') });
       await cursorEntidade(efemero.admin, t, 'produto_unidade', { credencialId: cred, cursor: { em: new Date(AGORA.getTime() - 86_400_000), id: 'ANT' } });
       const hub = hubDuble({ 'POST /lotes': [ok(aceito())], 'GET /lotes/{id}': [ok(resultado('concluido'))] });
       await ciclo(banco, agenda, hub, AGORA, [t]);
-      const corpo = hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }>; linhas_invalidas: Array<Record<string, unknown>> };
-      expect(corpo.registros.map((r) => r.external_id)).toEqual(['U-INT']);
-      expect(corpo.linhas_invalidas).toEqual([{ external_id: 'U-FRAC', codigo: 'formato_invalido', campo: 'fator', mensagem: expect.stringContaining('só aceita número inteiro') }]);
-      expect(JSON.stringify(corpo)).not.toContain('1.5');
+      const corpo = hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string; fator: number }>; linhas_invalidas: Array<Record<string, unknown>> };
+      expect(corpo.registros.map((r) => [r.external_id, r.fator])).toEqual([['U-INT', 12], ['U-KG', 1.2345]]);
+      expect(corpo.linhas_invalidas).toEqual([{ external_id: 'U-FRAC', codigo: 'formato_invalido', campo: 'fator', mensagem: expect.stringContaining('não aceita fração') }]);
+      expect(JSON.stringify(corpo.linhas_invalidas)).not.toContain('1.5');
       expect(await adm('SELECT codigo, campo, origem FROM integracao_fdv.lote_erro WHERE tenant_id = $1', [t])).toEqual([{ codigo: 'quantidade_fracionaria', campo: 'fator', origem: 'erp' }]);
     });
 

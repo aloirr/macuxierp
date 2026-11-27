@@ -85,10 +85,6 @@ export function criarConsumidorRetornoPedido(deps: { log: LogPedidos; relogio: R
         throw new ChaveDoProdutoAusente();
       }
       if (decisao.acao === 'enviar') {
-        if (decisao.itens_fracionarios?.length) {
-          // T-0085: só sequência e contagem no log, nunca o valor da quantidade
-          deps.log.warn({ tenant_id: evento.tenant_id, modulo: 'integracao-fdv', pedido_uuid: uuid, codigo: 'quantidade_fracionaria', sequencias: decisao.itens_fracionarios }, 'item faturado fracionário fora do retorno: o FDV só aceita inteiro');
-        }
         await gravarRetorno(tx, evento.tenant_id, decisao.corpo, agora);
       }
     },

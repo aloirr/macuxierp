@@ -46,14 +46,9 @@ export interface ResumoBuscaClientes {
 
 type Desfecho = 'aceito' | 'recusado' | 'repetido' | 'ignorado';
 
-async function processar(tx: Transacao, d: DepsRecebimentoClientes, tenantId: string, bruto: unknown): Promise<Desfecho> {
-  const l = lerPreCadastroFdv(bruto);
-  if (!l.ok) {
-    // Só o nome dos campos: nunca o valor (LGPD). O Hub devolve o pendente em 10 min; o monitor recebe o alerta.
-    d.log.warn({ tenant_id: tenantId, modulo: 'integracao-fdv', codigo: 'pre_cadastro_fora_do_contrato', campos: l.campos }, 'pré-cadastro do Hub fora do contrato: ignorado');
-    d.alertar(tenantId, 'pre_cadastro_fora_do_contrato');
-    return 'ignorado';
-  }
+type PreLido = Extract<ReturnType<typeof lerPreCadastroFdv>, { ok: true }>;
+
+async function processar(tx: Transacao, d: DepsRecebimentoClientes, tenantId: string, l: PreLido): Promise<Desfecho> {
   const agora = d.relogio.agora();
   const uuid = l.pre.cliente_uuid;
 
@@ -133,7 +128,17 @@ export async function buscarClientesPendentes(d: DepsRecebimentoClientes, tenant
     for (const bruto of resp.clientes) {
       if (curta()) return { ...r, proxima: 'imediata', posseCurta: true };
       try {
-        const desfecho = await d.banco.comTenant(tenantId, (tx) => processar(tx, d, tenantId, bruto));
+        // Lê e valida antes de abrir a transação: o item fora do contrato não custa uma transação (500 no teto de páginas).
+        const l = lerPreCadastroFdv(bruto);
+        let desfecho: Desfecho;
+        if (!l.ok) {
+          // Só o nome dos campos: nunca o valor (LGPD). O Hub devolve o pendente em 10 min; o monitor recebe o alerta.
+          d.log.warn({ tenant_id: tenantId, modulo: 'integracao-fdv', codigo: 'pre_cadastro_fora_do_contrato', campos: l.campos }, 'pré-cadastro do Hub fora do contrato: ignorado');
+          d.alertar(tenantId, 'pre_cadastro_fora_do_contrato');
+          desfecho = 'ignorado';
+        } else {
+          desfecho = await d.banco.comTenant(tenantId, (tx) => processar(tx, d, tenantId, l));
+        }
         if (desfecho === 'aceito') r.aceitos++;
         else if (desfecho === 'recusado') r.recusados++;
         else if (desfecho === 'repetido') r.repetidos++;

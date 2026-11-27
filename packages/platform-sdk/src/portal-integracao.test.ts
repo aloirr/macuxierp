@@ -46,7 +46,6 @@ const semCredencial = {
   ambiente: null,
   chave_prefixo: null,
   criada_em: null,
-  ultimo_uso_em: null,
   entidades_habilitadas: [],
   limite_registros_lote: null,
   cadastros: cadastrosPortal([]),
@@ -284,5 +283,12 @@ describe('v0.3.18 (25 B, integração A2): último código do sinal e próxima t
     expect(CadastroIntegracaoFdv.parse({ entidade: 'filial', ligada: true, ultimo_envio_em: AGORA, falha: { motivo: 'credencial', acao: 'corrigir_credencial' }, proxima_tentativa_em: AGORA })).toMatchObject({ proxima_tentativa_em: AGORA });
     expect(IntegracaoFdvPlataforma.safeParse({ ...comCredencial, cadastros: comTentativa('licenca_fdv') }).success).toBe(true);
     expect(IntegracaoFdvPlataforma.safeParse({ ...comCredencial, cadastros: comTentativa('erros_por_linha') }).success).toBe(false);
+  });
+});
+
+describe('RD-2319 (36 A): sem "último uso" na Integração do portal', () => {
+  it('a leitura não tem ultimo_uso_em: o campo que vier a mais é descartado (a tela mostra o último sinal)', () => {
+    const lido = IntegracaoFdvPlataforma.parse({ ...comCredencial, ultimo_uso_em: AGORA });
+    expect(lido).not.toHaveProperty('ultimo_uso_em');
   });
 });

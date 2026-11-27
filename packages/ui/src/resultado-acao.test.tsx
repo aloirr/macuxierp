@@ -46,6 +46,15 @@ describe('ResultadoAcao (decisão 36 A): resultado logo abaixo do botão', () =>
     expect(h).toContain('width:100%');
   });
 
+  it('com resultado a caixa tem 8 px acima e 8 px abaixo; sem resultado a região não tem margem', () => {
+    const com = html({ resultado: { tom: 'sucesso', texto: 'ok' } });
+    expect(com).toContain('margin-top:8px');
+    expect(com).toContain('margin-bottom:8px');
+    const sem = html({ resultado: null });
+    expect(sem).not.toContain('margin-top');
+    expect(sem).not.toContain('margin-bottom');
+  });
+
   it('cores só por token (var(--mx-cor-…)), sem hex', () => {
     for (const tom of ['sucesso', 'aviso', 'erro'] as const) {
       const h = html({ resultado: { tom, texto: 'x' } });
