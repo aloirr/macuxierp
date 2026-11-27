@@ -99,9 +99,9 @@ a.mx-botao, a.mx-botao-secundario { text-decoration: none; display: inline-block
 .ficha dt { font-weight: var(--mx-peso-rotulo-campo); font-size: var(--mx-tamanho-pequeno); }
 .ficha dd { margin: 0; }
 
-/* Aba Integração do /config (v0.3.24, docs/design/integracao-duas-ligacoes): duas ligações lado a lado; uma embaixo da outra abaixo de 900 px. */
-.ligacoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-@media (max-width: 900px) { .ligacoes { grid-template-columns: minmax(0, 1fr); } }
+/* Aba Integração do /config (v0.3.24, docs/design/integracao-duas-ligacoes): duas ligações lado a lado; uma embaixo da outra só no celular (R-20261127-110345). */
+.ligacoes, .grade-cartoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 767px) { .ligacoes, .grade-cartoes { grid-template-columns: minmax(0, 1fr); } }
 .ligacao .ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .ligacao h2 .seta, .direcao h2 .seta { color: var(--mx-cor-texto-secundario); font-weight: 400; }
 .apoio-situacao { display: block; margin-top: 4px; }
@@ -133,8 +133,8 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 
 /* Portal /config (T-0050): topo em grafite (identidade de plataforma), só tokens. */
 .casca-plataforma { min-height: 100vh; }
-/* O /config não tem menu lateral: o conteúdo vai até 1280 px, centralizado (o BKO segue em 1100 px). */
-.casca-plataforma .conteudo { max-width: 1280px; margin: 0 auto; }
+/* O /config não tem menu lateral e usa a largura toda da janela (telas horizontais, R-20261127-110345). */
+.casca-plataforma .conteudo { max-width: none; }
 .topo-plataforma { background: var(--mx-cor-grafite); }
 .topo-plataforma a { color: var(--mx-cor-branco); }
 .topo-plataforma form { margin: 0; }
@@ -146,9 +146,6 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .frase-confirmar { font-family: var(--mx-fonte-codigo); font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-grafite); background: var(--mx-cor-nevoa); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 4px; padding: 1px 6px; overflow-wrap: break-word; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .cartao-plataforma .marca-login { margin: 0 0 24px; } /* área de proteção da C de 100 px */
 .cartao-plataforma .apoio { margin: 16px 0 0; }
-.dados-empresa { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; }
-.dados-empresa dd { margin: 2px 0 0; overflow-wrap: anywhere; }
-.dados-empresa dt { margin: 0; }
 .valor-mascarado { overflow-wrap: anywhere; }
 .bloco h2 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 12px; }
 .bloco h3 { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-texto-secundario); margin: 16px 0 6px; }
@@ -200,6 +197,18 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   .tabela-fdv-bko th:nth-child(4), .tabela-fdv-bko td:nth-child(4) { display: none; }
   .tabela-fdv-bko .falha-sob-nome { display: block; font-size: 13px; color: var(--mx-cor-grafite); font-weight: normal; }
 }
+/* /config, abas Dados e ERP → Força de vendas em 390 (#840): nada cortado. A tabela cabe na largura (sem min-width), o último envio,
+   a última carga e a falha sobem para sob o nome (as colunas deles somem) e a ação principal fica sobre o "Ações". */
+.envio-sob-nome, .carga-sob-nome { display: none; }
+@media (max-width: 640px) {
+  .tabela-fdv-config table { min-width: 0; }
+  .tabela-fdv-config th:nth-child(3), .tabela-fdv-config td:nth-child(3), .tabela-fdv-config th:nth-child(4), .tabela-fdv-config td:nth-child(4) { display: none; }
+  .tabela-fdv-config th:nth-child(5), .tabela-fdv-config td:nth-child(5) { min-width: 0; }
+  .tabela-fdv-config th, .tabela-fdv-config td { padding: 6px 4px !important; }
+  .tabela-fdv-config .envio-sob-nome, .tabela-dados .carga-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-secundario); font-weight: var(--mx-peso-normal); margin-top: 2px; }
+  .tabela-fdv-config .falha-sob-nome { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-grafite); font-weight: var(--mx-peso-normal); margin-top: 2px; }
+  .tabela-fdv-config td:last-child > span, .tabela-dados td:last-child > span { flex-direction: column; align-items: stretch; }
+}
 /* Abas da ficha da empresa: texto sublinhado (molde do FDV), não botões. */
 .abas-texto { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--mx-cor-borda-cinza); }
 .abas-texto a { padding: 6px 0; color: inherit; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
@@ -220,8 +229,9 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
   [role="dialog"]:has(.corpo-log) { padding: 16px !important; width: 96vw !important; }
   .corpo-log th, .corpo-log td { padding: 6px 3px !important; font-size: var(--mx-tamanho-micro) !important; white-space: normal !important; }
   .corpo-log .selo { padding-inline: 6px; }
-  /* Aba Dados no celular: ficam Última carga, Importar e Ações; a posição está presa à ordem das colunas por aba-dados.test.tsx. */
-  .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5), .tabela-dados th:nth-child(6), .tabela-dados td:nth-child(6) { display: none; }
+  /* Aba Dados no celular (#840): ficam Cadastro (com a última carga sob o nome), Situação e Ações, com Importar e "Ações" um sobre o outro;
+     a posição está presa à ordem das colunas por aba-dados.test.tsx. */
+  .tabela-dados th:nth-child(3), .tabela-dados td:nth-child(3), .tabela-dados th:nth-child(4), .tabela-dados td:nth-child(4), .tabela-dados th:nth-child(5), .tabela-dados td:nth-child(5), .tabela-dados th:nth-child(6), .tabela-dados td:nth-child(6) { display: none; }
   .tabela-dados th, .tabela-dados td { padding: 6px 4px !important; }
   .corpo-log .selo, .corpo-log td span { white-space: normal; }
 }
@@ -297,3 +307,42 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 @media (max-width: 640px) {
   .cartoes-bandeira { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Telas horizontais e destaque nos cabeçalhos (docs/design/telas-horizontais, R-20261127-110345; v0.3.24: aba Empresa e aba Integração do /config).
+   Grade de blocos: 1 coluna no celular (até 767), 2 a partir de 768, 3 a partir de 1280 e 4 a partir de 1440; só tokens. */
+.grade-blocos { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; margin: 0 0 16px; }
+@media (min-width: 768px) { .grade-blocos { grid-template-columns: repeat(2, minmax(var(--mx-grade-cartao-minimo), 1fr)); } }
+@media (min-width: 1280px) { .grade-blocos { grid-template-columns: repeat(3, minmax(var(--mx-grade-cartao-minimo), 1fr)); } }
+@media (min-width: 1440px) { .grade-blocos { grid-template-columns: repeat(4, minmax(var(--mx-grade-cartao-minimo), 1fr)); } }
+.grade-blocos > .bloco, .blocos-laterais > .bloco { margin: 0; min-width: 0; }
+@media (min-width: 768px) { .grade-blocos > .bloco-largo { grid-column: span 2; } }
+/* Aba Empresa (§3): a Ficha é o bloco largo; Módulos, 1º administrador e Situação vão numa coluna lateral própria (sem buraco
+   ao lado da Ficha, que é alta). 768: Ficha na linha toda e os 3 blocos 2 a 2 embaixo; 1280: Ficha em 2 colunas e a lateral
+   em 1; 1440: Ficha em 2 e a lateral em 2 colunas. */
+.blocos-laterais { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; align-content: start; min-width: 0; }
+@media (min-width: 768px) and (max-width: 1279px) { .grade-empresa > .bloco-largo, .grade-empresa > .blocos-laterais { grid-column: 1 / -1; } .blocos-laterais { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1440px) { .grade-empresa > .blocos-laterais { grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Rótulo de dado em destaque (§2), na ficha das ligações: caixa-alta pequena na cor de destaque; o valor em texto normal. */
+.ligacao .ficha dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 2px; }
+.ligacao .ficha dd { font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-normal); color: var(--mx-cor-grafite); }
+/* Rótulo de campo editável (§2): peso de rótulo na cor de destaque, sem caixa-alta. */
+.rotulo-campo { display: block; font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-rotulo-destaque); margin-bottom: 4px; }
+.casca-plataforma .bloco > h2 { color: var(--mx-cor-rotulo-destaque); padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
+/* Ficha da Receita editável (RN-CORE-16): cartões de campos 2 a 2 a partir de 768 (a grade do .ligacoes); campo curto divide a linha com outro. */
+.ficha-editavel .cabecalho-ficha h2 { margin: 0; flex: 1 1 auto; color: var(--mx-cor-rotulo-destaque); }
+.ficha-editavel .cabecalho-ficha { padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
+.cartao-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; align-content: start; border: 1px solid var(--mx-cor-borda-tabela); border-radius: 8px; padding: 12px 16px 4px; margin: 0; min-width: 0; }
+.cartao-campos .titulo-cartao { grid-column: 1 / -1; font-size: var(--mx-tamanho-medio); font-weight: var(--mx-peso-titulo); color: var(--mx-cor-rotulo-destaque); margin: 0 0 12px; }
+.campo-ficha { grid-column: 1 / -1; margin-bottom: 12px; min-width: 0; }
+.campo-ficha.campo-curto { grid-column: auto; }
+@media (max-width: 389px) { .campo-ficha.campo-curto { grid-column: 1 / -1; } }
+.campo-ficha input, .campo-ficha select, .campo-ficha textarea { width: 100%; padding: 8px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo-ficha [aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
+.campo-ficha .dica-campo, .campo-ficha .marca-receita { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-apoio); margin-top: 4px; }
+.campo-ficha .marca-receita { color: var(--mx-cor-rotulo-destaque); font-weight: var(--mx-peso-rotulo-pequeno); }
+.campo-ficha .lista-cnae { margin: 4px 0 0; gap: 2px; }
+.veio-da-receita input, .veio-da-receita select, .veio-da-receita textarea { border-color: var(--mx-cor-azul-medio); background: var(--mx-cor-nevoa); }
+.campo-cnpj .valor-cnpj { margin: 0; font-family: var(--mx-fonte-codigo); color: var(--mx-cor-grafite); }
+.campo-cnpj .motivo-bloqueio { margin: 4px 0 0; }
+.campo-cnpj .mx-botao-secundario { margin-top: 6px; }
+.ficha-editavel .rodape-cartao { justify-content: flex-end; }

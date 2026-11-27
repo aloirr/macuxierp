@@ -9,6 +9,7 @@ import { salvarCsv } from '@/lib/baixar-csv';
 import { acoesDaCarga, avisoCarga, estadoCargaCompleta, menuDaLinha } from '@/lib/config/integracao-fdv';
 import { cargaCompletaFdvAcao } from '../acoes-integracao-fdv';
 import { LIGACAO_ENTRADA, origemDaCarga, ultimoLoteDoCadastro } from '@/lib/config/ligacoes';
+import { AUSENTE } from '@/lib/config/empresa';
 import { TituloLigacao } from './ligacao';
 import { SecaoEnvioFdv } from './envio-fdv';
 import {
@@ -72,9 +73,10 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null, entrada = 
     });
   };
   const colunas: ColunaTabela<LinhaCarga>[] = [
-    { id: 'cadastro', titulo: 'Cadastro', celula: (l) => l.rotulo },
+    // #840: em tela estreita a última carga sobe para sob o nome e a coluna dela some (só um dos dois aparece, por CSS).
+    { id: 'cadastro', titulo: 'Cadastro', celula: (l) => <>{l.rotulo}<span className="carga-sob-nome">Última carga: {l.ultima ?? AUSENTE}</span></> },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => <Chip tom={l.chip.tom}>{l.chip.texto}</Chip> },
-    { id: 'ultima', titulo: 'Última carga', tipo: 'data', celula: (l) => l.ultima ?? '—' },
+    { id: 'ultima', titulo: 'Última carga', tipo: 'data', celula: (l) => l.ultima ?? AUSENTE },
     // "Registros" e "Com erro" são do último lote recebido pela ligação do sistema do cliente (a tabela "Lotes recebidos" saiu, RD-1103).
     { id: 'registros', titulo: 'Registros', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.recebidos ?? '—' },
     { id: 'comErro', titulo: 'Com erro', tipo: 'numero', celula: (l) => lotes.get(l.cadastro)?.com_erro ?? '—' },

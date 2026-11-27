@@ -12,11 +12,13 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-import { atualizarReceitaAcao, revelarContatoAcao } from './acoes-ficha';
+import { previaReceitaAcao, revelarContatoAcao, salvarFichaAcao, trocarCnpjAcao } from './acoes-ficha';
+import { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
+import { formDaFicha } from '@/lib/config/ficha-edicao';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const EMAIL = 'maria@exemplo.com.br';
-const chamadas: { url: string; metodo: string; cache?: string; h: Record<string, string> }[] = [];
+const chamadas: { url: string; metodo: string; cache?: string; h: Record<string, string>; corpo?: string }[] = [];
 let resposta: () => Response;
 const json = (c: unknown, s = 200) => new Response(JSON.stringify(c), { status: s, headers: { 'content-type': 'application/json' } });
 const erroApi = (status: number, codigo: string, detalhes?: Record<string, string>, mensagem = 'x') => json({ codigo, mensagem, ...(detalhes ? { detalhes } : {}) }, status);
@@ -32,8 +34,8 @@ beforeEach(() => {
   Object.assign(estado, { cookie: 'tok', apagados: [], redirecionou: [] });
   chamadas.length = 0;
   process.env.MACUXIERP_API_URL = 'https://api.exemplo.invalid';
-  vi.stubGlobal('fetch', async (url: string, init: { method: string; cache?: string; headers: Record<string, string> }) => {
-    chamadas.push({ url, metodo: init.method, cache: init.cache, h: init.headers });
+  vi.stubGlobal('fetch', async (url: string, init: { method: string; cache?: string; headers: Record<string, string>; body?: string }) => {
+    chamadas.push({ url, metodo: init.method, cache: init.cache, h: init.headers, corpo: init.body });
     return resposta();
   });
 });
@@ -60,50 +62,86 @@ describe('ações da ficha da Receita (T-0101)', () => {
     expect(await revelarContatoAcao(ID, 'senha')).toMatchObject({ ok: false });
     expect(chamadas).toHaveLength(0);
   });
-  it('Atualizar: POST em /receita com a Idempotency-Key e o anti-CSRF; devolve só os nomes dos campos e a ficha mascarada', async () => {
-    resposta = () => json({ estado: 'ok', campos_alterados: ['razao_social'], ficha });
-    const r = await atualizarReceitaAcao(ID, 'chave-receita');
-    expect(r).toMatchObject({ ok: true, valor: { campos_alterados: ['razao_social'] } });
+  it('Atualizar pela Receita (RN-CORE-16): POST na rota da prévia (ROTAS_FICHA), com a Idempotency-Key e o anti-CSRF; só a prévia, nada gravado', async () => {
+    resposta = () => json({ estado: 'ok', previa: ficha, diferentes: ['nome_fantasia'], fonte: 'brasilapi', consultado_em: '2026-11-27T16:00:00.000Z' });
+    const r = await previaReceitaAcao(ID, 'chave-receita');
+    expect(r).toMatchObject({ ok: true, valor: { diferentes: ['nome_fantasia'], consultado_em: '2026-11-27T16:00:00.000Z', previa: { logradouro: 'Rua A' } } });
+    expect(chamadas).toHaveLength(1);
     expect(chamadas[0]).toMatchObject({ metodo: 'POST' });
-    expect(chamadas[0]?.url).toMatch(new RegExp(`/empresas/${ID}/receita$`));
+    expect(chamadas[0]?.url).toMatch(new RegExp(`/v1/plataforma/empresas/${ID}/ficha/receita$`));
     expect(chamadas[0]?.h['idempotency-key']).toBe('chave-receita');
     expect(chamadas[0]?.h['x-macuxierp-config']).toBe('1');
   });
+  it('Salvar (RN-CORE-16): PUT .../ficha com o corpo do contrato (sem máscara, contato vazio fica de fora) e devolve só os nomes alterados', async () => {
+    resposta = () => json({ estado: 'ok', campos_alterados: ['nome_fantasia', 'cep'], ficha });
+    const form = { ...formDaFicha(FichaReceitaPlanaMascarada.parse({ ...ficha, razao_social: 'Comércio Fictício Ltda' }), null), nome_fantasia: 'Loja Fictícia', cep: '69000-001' };
+    const r = await salvarFichaAcao(ID, form, 'manual', undefined, 'chave-salvar');
+    expect(r).toEqual({ ok: true, valor: { campos_alterados: ['nome_fantasia', 'cep'] } });
+    expect(chamadas[0]).toMatchObject({ metodo: 'PUT' });
+    expect(chamadas[0]?.url).toMatch(new RegExp(`/v1/plataforma/empresas/${ID}/ficha$`));
+    expect(chamadas[0]?.h['idempotency-key']).toBe('chave-salvar');
+    const corpo = JSON.parse(chamadas[0]?.corpo ?? '{}') as Record<string, unknown>;
+    expect(corpo).toMatchObject({ razao_social: 'Comércio Fictício Ltda', nome_fantasia: 'Loja Fictícia', cep: '69000001', uf: 'AM', origem: 'manual', cnae_secundarios: [] });
+    expect(corpo).not.toHaveProperty('email');
+    expect(corpo).not.toHaveProperty('telefone');
+    expect(corpo).not.toHaveProperty('fonte');
+  });
+  it('Salvar: campo fora do formato nem chega à API (erro junto do campo); sem_mudanca volta sem campos; erro do core passa como vem', async () => {
+    const form = { ...formDaFicha(FichaReceitaPlanaMascarada.parse({ ...ficha, razao_social: 'Comércio Fictício Ltda' }), null), cep: '123', uf: 'Amazonas' };
+    expect(await salvarFichaAcao(ID, form, 'manual', undefined, 'k')).toMatchObject({ ok: false, campos: { cep: 'O CEP tem 8 números.', uf: 'Use a sigla da UF, com 2 letras.' } });
+    expect(chamadas).toHaveLength(0);
+    const certo = formDaFicha(FichaReceitaPlanaMascarada.parse({ ...ficha, razao_social: 'Comércio Fictício Ltda' }), null);
+    resposta = () => json({ estado: 'sem_mudanca', ficha });
+    expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toEqual({ ok: true, valor: { campos_alterados: [] } });
+    resposta = () => json({ estado: 'erro', motivo: 'validacao', mensagem: MSG, campos: { cep: 'CEP inválido.' } });
+    expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toMatchObject({ ok: false, erro: MSG, campos: { cep: 'CEP inválido.' } });
+    resposta = () => erroApi(409, 'CONFLITO', undefined, MSG);
+    expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
+  });
+  it('Trocar CNPJ (RN-CORE-16): CNPJ com DV errado nem chega à API; bloqueio do core (NF-e em produção) volta com o motivo', async () => {
+    expect(await trocarCnpjAcao(ID, '11.111.111/0001-11', 'k')).toMatchObject({ ok: false, campos: { cnpj_novo: expect.stringContaining('CNPJ inválido') } });
+    expect(chamadas).toHaveLength(0);
+    resposta = () => json({ estado: 'bloqueado', motivo: 'nfe_autorizada_producao', mensagem: MSG });
+    expect(await trocarCnpjAcao(ID, '11.222.333/0001-81', 'chave-cnpj')).toMatchObject({ ok: false, erro: MSG });
+    expect(chamadas[0]).toMatchObject({ metodo: 'POST' });
+    expect(chamadas[0]?.url).toMatch(new RegExp(`/v1/plataforma/empresas/${ID}/cnpj$`));
+    expect(chamadas[0]?.h['idempotency-key']).toBe('chave-cnpj');
+    resposta = () => json({ estado: 'ok', cnpj: '11222333000181' });
+    expect(await trocarCnpjAcao(ID, '11222333000181', 'k')).toEqual({ ok: true, valor: { cnpj: '11222333000181' } });
+  });
   it('409 (formato padrão da API): exibe a mensagem dela', async () => {
     resposta = () => erroApi(409, 'CONFLITO', undefined, MSG);
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
+    expect(await previaReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
   });
   it.each(['fonte_indisponivel', 'cnpj_nao_encontrado', 'cnpj_invalido', 'resposta_invalida', 'cnpj_divergente'])('falha da fonte %s (200, estado erro): exibe a mensagem do core como vem', async (motivo) => {
-    resposta = () => json({ estado: 'erro', motivo, mensagem: MSG, ficha });
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
-    resposta = () => json({ estado: 'erro', motivo, mensagem: MSG, ficha: null });
-    expect((await atualizarReceitaAcao(ID, 'k')).ok).toBe(false);
+    resposta = () => json({ estado: 'erro', motivo, mensagem: MSG });
+    expect(await previaReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
   });
   it('422 RN-CORE-14 (campo acima do limite): a mensagem do core; sem ela, o texto da tela', async () => {
     resposta = () => erroApi(422, 'REGRA', undefined, MSG);
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
+    expect(await previaReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
     resposta = () => json({ codigo: 'REGRA' }, 422);
-    const r = await atualizarReceitaAcao(ID, 'k');
+    const r = await previaReceitaAcao(ID, 'k');
     expect(r.ok ? '' : r.erro).toContain('Tente de novo mais tarde');
   });
   it('503 (porta de CNPJ ainda sem ligar): indisponibilidade da fonte, com ou sem código no corpo', async () => {
     resposta = () => json({ codigo: 'INDISPONIVEL', mensagem: MSG }, 503);
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.' });
+    expect(await previaReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.' });
     resposta = () => new Response('', { status: 503 });
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.' });
+    expect(await previaReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Não foi possível consultar a Receita agora. Tente de novo em alguns minutos.' });
   });
   it('404 e 401', async () => {
     resposta = () => erroApi(404, 'NAO_ENCONTRADO');
-    expect(await atualizarReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Empresa não encontrada. Volte à lista.' });
+    expect(await previaReceitaAcao(ID, 'k')).toMatchObject({ ok: false, erro: 'Empresa não encontrada. Volte à lista.' });
     resposta = () => erroApi(401, 'NAO_AUTENTICADO');
     estado.redirecionou.length = 0;
-    await expect(atualizarReceitaAcao(ID, 'k')).rejects.toThrow(/REDIRECT/);
+    await expect(previaReceitaAcao(ID, 'k')).rejects.toThrow(/REDIRECT/);
     expect(estado.redirecionou).toHaveLength(1);
   });
   it('só superadmin: sem sessão nem chama a API; 403 mostra "sem permissão"', async () => {
     estado.cookie = undefined;
     await expect(revelarContatoAcao(ID, 'email')).rejects.toThrow(/REDIRECT/);
-    await expect(atualizarReceitaAcao(ID, 'k')).rejects.toThrow(/REDIRECT/);
+    await expect(previaReceitaAcao(ID, 'k')).rejects.toThrow(/REDIRECT/);
     expect(chamadas).toHaveLength(0);
     estado.cookie = 'tok';
     resposta = () => erroApi(403, 'SEM_PERMISSAO');

@@ -66,7 +66,7 @@ describe('v0.3.24: ligação "Sistema do cliente → ERP" (era "Integração via
   it('diálogos falam do sistema do cliente; o aviso do Revogar fica como validado', async () => {
     const T = await import('@/lib/config/entrada-textos');
     expect([T.TITULO_TROCAR, T.TITULO_REVOGAR, T.TITULO_CHAVE]).toEqual(['Trocar a chave do sistema do cliente?', 'Revogar a chave do sistema do cliente?', 'Chave do sistema do cliente']);
-    expect(T.AVISO_REVOGAR).toBe('A chave atual para de funcionar agora. Para voltar a enviar, gere uma chave nova.');
+    expect(T.AVISO_REVOGAR).toBe('A chave atual deixa de funcionar agora. Para voltar a enviar, gere uma chave nova.');
   });
 });
 

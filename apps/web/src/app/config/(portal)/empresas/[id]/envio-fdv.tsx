@@ -95,7 +95,7 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso }: { empresaId: string; d
     return <MenuAcoes rotuloLinha={l.rotulo} {...menuDaLinha(a, fazer)} />;
   };
 
-  const colunas: ColunaTabela<LinhaCadastroFdv>[] = [...colunasStatusFdv<LinhaCadastroFdv>(), { id: 'acoes', titulo: 'Ações', celula: acoesDaLinha }];
+  const colunas: ColunaTabela<LinhaCadastroFdv>[] = [...colunasStatusFdv<LinhaCadastroFdv>({ falhaSobreNome: true, envioSobreNome: true }), { id: 'acoes', titulo: 'Ações', celula: acoesDaLinha }];
 
   return (
     <section className="bloco direcao" aria-labelledby="h-dados-saida">
@@ -111,7 +111,7 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso }: { empresaId: string; d
         {campos.limite_registros_lote && <p id="erro-limite-lote" className="erro-campo" role="alert">{campos.limite_registros_lote}</p>}
         <ResultadoAcao resultado={rLimite} chave={kLimite} />
       </form>
-      <div className="tabela-rolavel com-sinal-rolagem tabela-fdv legenda-so-leitor">
+      <div className="tabela-rolavel com-sinal-rolagem tabela-fdv tabela-fdv-config legenda-so-leitor">
         <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.entidade} textoVazio="Nenhum cadastro." legenda={LEGENDA_ENVIADOS} />
       </div>
       <ResultadoAcao resultado={rLinha} chave={kLinha} />

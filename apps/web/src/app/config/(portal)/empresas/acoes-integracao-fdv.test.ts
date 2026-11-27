@@ -48,6 +48,10 @@ describe('ações da aba Integração (T-0056)', () => {
     expect(JSON.stringify(r)).not.toContain('curta');
     expect(chamadas).toHaveLength(0);
   });
+  it('#840: chave vazia (salvar ou Trocar chave) pede "Informe a chave." antes da API', async () => {
+    for (const chave of ['', '   ']) expect(await salvarCredencialFdvAcao(ID, { conector_id: 'erp-1', chave, ambiente: 'teste' })).toMatchObject({ ok: false, campos: { chave: 'Informe a chave.' } });
+    expect(chamadas).toHaveLength(0);
+  });
   it('ligar: PUT configuracao com a lista na ordem de carga e a Idempotency-Key', async () => {
     resposta = () => json(integracao(['produto', 'cliente']));
     const r = await configurarFdvAcao(ID, { entidades_habilitadas: ['produto', 'cliente'], limite_registros_lote: 500 }, 'k-cfg');
