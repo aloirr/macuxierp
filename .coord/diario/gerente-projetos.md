@@ -20,3 +20,4 @@
 2026-11-27 — v0.3.23 — retomada às 11h46 (R-20261127-105908): #843 e #844 conferidos, merge e liberar em curso
 2026-11-27 — v0.3.23 — liberar verde (run 46033555461, issue #846, SHA 2400a57); v0.3.24 reaberta em 6 frentes
 2026-11-27 — v0.3.23 — no ar às 13h32 (48 A: MemAvailable ok; laço do /login pendente); v0.3.24 com 13 PRs no main
+- 27/11 15h13 v0.3.24 fechada: #863, #864 e #865 no main; SHA final df7f92a. Suíte completa verde no a9a54fa; e2e do portal-integracao 7/0 depois do #865 (o defeito era do teste, por causa do #840); prints sem 🔴. SHA enviado à PO para o liberar; a am2808 ficou com o Alexandre.
