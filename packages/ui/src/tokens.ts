@@ -122,6 +122,11 @@ export const medidas = {
   cantoCartao: 8,
 } as const;
 
+/** Espaçamento de letra único da caixa-alta (MC-0211, auditoria de 27/11): th, rótulo em caixa-alta e título de bloco. */
+export const letras = {
+  caixaAlta: '.04em',
+} as const;
+
 const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 /** Variável CSS -> valor (literal ou `var()` de alias). */
@@ -135,6 +140,7 @@ export function variaveisCss(): Record<string, string> {
   for (const [k, x] of Object.entries(pesos)) v[`--mx-peso-${kebab(k)}`] = String(x);
   for (const [k, x] of Object.entries(grade)) v[`--mx-grade-${kebab(k)}`] = `${x}px`;
   for (const [k, x] of Object.entries(medidas)) v[`--mx-medida-${kebab(k)}`] = `${x}px`;
+  for (const [k, x] of Object.entries(letras)) v[`--mx-letras-${kebab(k)}`] = x;
   return v;
 }
 

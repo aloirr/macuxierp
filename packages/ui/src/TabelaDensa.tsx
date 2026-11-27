@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { AnuncioLeitor } from './AnuncioLeitor.js';
-import { botaoSecundario, numerico, tabela, tabular, texto } from './estilos.js';
+import { botaoSecundario, numerico, tabela, texto } from './estilos.js';
 
 export type DirecaoOrdem = 'asc' | 'desc';
 export type TipoColuna = 'texto' | 'numero' | 'dinheiro' | 'data' | 'status';
@@ -74,7 +74,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
   const ordem = props.ordem !== undefined ? props.ordem : ordemInterna;
   const visiveis = ordenarLinhas(linhas, colunas.find((c) => c.id === ordem?.colunaId), ordem?.direcao ?? 'asc');
   const direita = (c: ColunaTabela<T>) => c.tipo === 'numero' || c.tipo === 'dinheiro';
-  const estiloCelula = (c: ColunaTabela<T>) => (direita(c) ? tabela.celulaNumerica : c.tipo === 'data' ? tabular : {});
+  const estiloCelula = (c: ColunaTabela<T>) => (direita(c) ? tabela.celulaNumerica : c.tipo === 'data' || c.tipo === 'status' ? tabela.celulaSemQuebra : {});
 
   const ordenar = (c: ColunaTabela<T>) => {
     const nova = proximaOrdem(ordem, c.id);
