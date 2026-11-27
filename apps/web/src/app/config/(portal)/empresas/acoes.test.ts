@@ -13,6 +13,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { mostrarEmailAcao, criarAdminAcao, criarEmpresaAcao, redefinirSenhaAcao, situacaoAcao, alterarModulosAcao, maisEmpresasAcao } from './acoes';
+import { FALHA } from '@/lib/textos';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const SENHA = 'Zq7-secreta-XYZ99';
@@ -70,7 +71,7 @@ describe('ações do portal', () => {
   it('mostrar e-mail: erro da API vira mensagem fixa, sem corpo', async () => {
     resposta = () => json({ mensagem: 'admin@exemplo.com.br' }, 503);
     const r = await mostrarEmailAcao(ID);
-    expect(r).toMatchObject({ ok: false, erro: 'Não foi possível concluir. Tente de novo.' });
+    expect(r).toMatchObject({ ok: false, erro: FALHA });
     expect(JSON.stringify(r)).not.toContain('admin@');
   });
   it('criar administrador: e-mail inválido fica junto do campo, antes da API', async () => {
@@ -116,7 +117,7 @@ describe('ações do portal', () => {
     expect(await situacaoAcao(ID, 'ativo', 'volta', 'k')).toMatchObject({ ok: false, erro: 'Você não tem permissão para esta ação.' });
     resposta = () => json({ mensagem: 'dado@pessoal.com' }, 503);
     const r = await situacaoAcao(ID, 'ativo', 'volta', 'k');
-    expect(r).toMatchObject({ ok: false, erro: 'Não foi possível concluir. Tente de novo.', chaveNova: false });
+    expect(r).toMatchObject({ ok: false, erro: FALHA, chaveNova: false });
     expect(JSON.stringify(r)).not.toContain('dado@');
   });
 });

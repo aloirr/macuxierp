@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EU_FALSO } from '../falso';
+import { FALHA } from '../textos';
 import { MANIFESTOS } from '../manifestos';
 import { montarMenu, resolverPagina } from '../menu';
 import { PAGINAS_REGISTRADAS, casarRota, paginaVisivel, paginasDoMenu } from '../paginas';
@@ -64,7 +65,7 @@ describe('escrita pelo shell: licença e perfil', () => {
   it('resposta: sucesso traz o id; erro usa a mensagem da API só abaixo de 500 e nunca o corpo cru', () => {
     expect(resultadoDaResposta(201, true, { id: ID })).toEqual({ ok: true, mensagem: 'Feito.', id: ID });
     expect(resultadoDaResposta(422, false, { mensagem: 'Há pendência bloqueante (RN-PED-03).' })).toMatchObject({ ok: false, mensagem: 'Há pendência bloqueante (RN-PED-03).' });
-    expect(resultadoDaResposta(500, false, { mensagem: 'stack com dado' }).mensagem).toMatch(/Não foi possível concluir/);
+    expect(resultadoDaResposta(500, false, { mensagem: 'stack com dado' }).mensagem).toBe(FALHA);
     expect(resultadoDaResposta(412, false, null)).toMatchObject({ ok: false, desatualizado: true });
     expect(resultadoDaResposta(400, false, { mensagem: 'x', campos: { a: 'ruim', b: 3 } }).campos).toEqual({ a: 'ruim' });
   });

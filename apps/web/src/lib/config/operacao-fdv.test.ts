@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENTIDADES_ENVIO_FDV, MonitorConectorFdv, CADASTROS_ZERAR_PORTAL } from '@macuxierp/platform-sdk';
+import { ACAO_SUGERIDA_POR_MOTIVO_FDV, ENTIDADES_ENVIO_FDV, MonitorConectorFdv, CADASTROS_ZERAR_PORTAL } from '@macuxierp/platform-sdk';
 import { ROTULO_TENTAR_DE_NOVO } from '@/components/integracao-fdv/log';
 import { TEXTO_MOTIVO_FDV, acaoNoBko, acaoNoPortal } from '../integracao-fdv-textos';
 import { CAMINHO_BKO_INTEGRACAO_FDV, ROTULOS_FDV, RETORNOS_FDV, TEXTO_INATIVA_NO_FDV, cadastroDoZerar, csvErrosLog, errosNaoListados, maisRecente, nomeCsvErrosFdv, textoAtualizado, textoInativacaoFdv, textoReprocessarOk, textoZerarJuntos, vistaMonitor } from './operacao-fdv';
@@ -70,6 +70,12 @@ describe('operação da Integração FDV no /config (T-0086)', () => {
     expect(acaoNoPortal('aguardar_retentativa')).toBe('Aguarde: o envio se repete sozinho.');
     expect(acaoNoBko('aguardar_retentativa')).toBe(acaoNoPortal('aguardar_retentativa'));
   });
+  it('v0.3.22 (#828, 42 A): licenca_erp sem ação; o "Regularize a licença" segue só para a licenca_fdv', () => {
+    expect(ACAO_SUGERIDA_POR_MOTIVO_FDV.licenca_erp).toBeNull();
+    expect(ACAO_SUGERIDA_POR_MOTIVO_FDV.licenca_fdv).toBe('regularizar_licenca');
+    expect(acaoNoBko('regularizar_licenca')).toBe('Regularize a licença com a Macuxi.');
+    expect(acaoNoPortal('regularizar_licenca')).toBe('Regularize a licença da empresa.');
+  });
   it('retornos das ações (36 A): um nome por ação, texto curto e sem repetir o rótulo', () => {
     expect(RETORNOS_FDV.testeIniciado).toBe('Teste iniciado. Veja "Último sinal" no Monitor.');
     expect(RETORNOS_FDV.chaveSalva).toBe('Chave salva.');
@@ -97,9 +103,9 @@ describe('v0.3.18 A2: último código e próxima tentativa no Monitor', () => {
 describe('v0.3.19: retorno de falha sem texto da API (🟡 do designer)', () => {
   it('formulário pede para conferir os campos; as demais ações pedem para tentar de novo', async () => {
     const { textoDaFalha } = await import('./operacao-fdv');
-    const { ERRO_CAMPOS, ERRO_CONCLUIR } = await import('../textos');
+    const { ERRO_CAMPOS, FALHA } = await import('../textos');
     expect(textoDaFalha('', true)).toBe(ERRO_CAMPOS);
-    expect(textoDaFalha('', false)).toBe(ERRO_CONCLUIR);
+    expect(textoDaFalha('', false)).toBe(FALHA);
     expect(textoDaFalha('O FDV recusou a chave do conector.', false)).toBe('O FDV recusou a chave do conector.');
   });
 });
