@@ -1,3 +1,4 @@
+import { ROTA_TELA_LOGIN } from '@macuxierp/platform-sdk';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ApiIndisponivel, buscarEu, renovar } from '@/lib/api';
 import { COOKIE_ACESSO, COOKIE_REFRESH, opcoesAcesso, opcoesLongas } from '@/lib/sessao';
@@ -7,7 +8,7 @@ import { redirecionar } from '@/lib/redirecionar';
 export async function GET(req: NextRequest) {
   const refresh = req.cookies.get(COOKIE_REFRESH)?.value;
   const aoLogin = () => {
-    const r = redirecionar('/login');
+    const r = redirecionar(ROTA_TELA_LOGIN);
     r.cookies.delete(COOKIE_ACESSO);
     r.cookies.delete(COOKIE_REFRESH);
     return r;

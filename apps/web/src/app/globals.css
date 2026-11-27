@@ -33,8 +33,11 @@ a { color: var(--mx-cor-azul-noite); }
 .lateral { background: var(--mx-cor-grafite); color: var(--mx-cor-branco); padding: 16px 0; }
 .lateral h2 { font-size: var(--mx-tamanho-rotulo-menu); font-weight: var(--mx-peso-rotulo-pequeno); text-transform: uppercase; letter-spacing: .06em; color: var(--mx-cor-sol-claro); margin: 0 20px 4px; }
 .lateral ul { list-style: none; margin: 0; padding: 0; }
-.lateral a { display: block; padding: 8px 20px; color: var(--mx-cor-branco); font-weight: var(--mx-peso-medio); text-decoration: none; }
-.lateral a:hover { background: var(--mx-cor-grafite-menu); }
+.lateral a, .lateral button.item-menu { display: block; padding: 8px 20px; color: var(--mx-cor-branco); font-weight: var(--mx-peso-medio); text-decoration: none; }
+/* C1: o item "Configuração" é um botão (POST) com a cara dos links; `font: inherit` zera o peso, que volta aqui. */
+.lateral button.item-menu { width: 100%; text-align: left; background: none; border: 0; font: inherit; font-weight: var(--mx-peso-medio); cursor: pointer; }
+.lateral li > [data-resultado-acao] { padding: 0 20px; }
+.lateral a:hover, .lateral button.item-menu:hover:not(:disabled) { background: var(--mx-cor-grafite-menu); }
 .lateral a[aria-current='page'] { background: var(--mx-cor-grafite-menu); border-left: 4px solid var(--mx-cor-sol-claro); padding-left: 16px; }
 /* Divisória única: toda seção após o Início tem 1px, 8px de margem acima e 8px de respiro abaixo da linha. */
 .lateral > * + * { border-top: 1px solid var(--mx-cor-grafite-menu); margin-top: 8px; padding-top: 8px; }
