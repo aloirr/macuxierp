@@ -607,7 +607,7 @@ export async function planejarEstoque(linhas: readonly LinhaEstoque[], st: Estad
         efeito: existente === undefined ? 'inserida' : 'atualizada',
         async aplicar() {
           const externo = `carga:${createHash('sha1').update(`${st.loteId}|${fil.id}|${prodId}`).digest('hex')}`;
-          await st.r.estoque.gravarMovimento({ filial_id: fil.id, produto_id: prodId, tipo: 'ajuste', quantidade: aj.delta, motivo: 'carga CSV', external_id: externo, usuario_id: st.c.sessao.usuario_id }, g.saldo);
+          await st.r.estoque.gravarMovimento({ filial_id: fil.id, produto_id: prodId, tipo: 'ajuste', quantidade: aj.delta, motivo: 'carga CSV', external_id: externo, usuario_id: st.c.sessao.usuario_id || null }, g.saldo);
           await publicarPronto(st.c, eventoEstoque(agregadoEstoque(fil.id, prodId), { filial_id: fil.id, produto_id: prodId, quantidade: g.saldo }));
         },
       },

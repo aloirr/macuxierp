@@ -119,7 +119,7 @@ export const adaptarClienteEndereco = (p: ClienteEnderecoHub, indice: number, ct
 export interface RecusaEnvelope {
   ok: false;
   status: 422;
-  codigo: 'carga_completa_nao_suportada' | 'entidade_fora_da_fase';
+  codigo: 'CARGA_COMPLETA_NAO_SUPORTADA' | 'ENTIDADE_FORA_DA_FASE';
   motivo: string;
 }
 
@@ -148,21 +148,25 @@ const TABELA: Readonly<Record<Exclude<(typeof ENTIDADES_ENVIO_FDV)[number], 'for
   cliente_endereco: { entidade: 'cliente', adaptar: adaptarClienteEndereco },
 };
 
-/**
- * Valida cada registro pelo Zod do SDK e o adapta. Recusa o envelope inteiro (a API responde 422, sem lote criado) quando é
- * carga completa (RN-INT-06) ou de entidade fora da F2 (ADR 0014 §2). Erro de registro fica no resultado dele, sem o valor (RN-INT-01).
- */
-export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): RecusaEnvelope | LoteAdaptado {
+/** Recusa do envelope inteiro (a API responde 422 e não cria lote): carga completa (RN-INT-06) ou entidade fora da F2 (ADR 0014 §2). Código em MAIÚSCULAS, como o `ErroApi`. */
+export function recusarEnvelope(envelope: Pick<EnvelopeEntrada, 'entidade' | 'modo'>): RecusaEnvelope | null {
   if (envelope.modo === 'completo') {
-    return { ok: false, status: 422, codigo: 'carga_completa_nao_suportada', motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
+    return { ok: false, status: 422, codigo: 'CARGA_COMPLETA_NAO_SUPORTADA', motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
   }
-  const chave = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade);
-  if (chave === undefined) {
+  if (!ENTIDADES_ENVIO_FDV.some((e) => e === envelope.entidade)) {
     return {
-      ok: false, status: 422, codigo: 'entidade_fora_da_fase',
+      ok: false, status: 422, codigo: 'ENTIDADE_FORA_DA_FASE',
       motivo: 'Entidade não aceita: envie filial, vendedor, forma e prazo de pagamento, produto, unidade, preço, estoque, cliente ou endereço do cliente',
     };
   }
+  return null;
+}
+
+/** Valida cada registro pelo Zod do SDK e o adapta; recusa o envelope inteiro como `recusarEnvelope`. Erro de registro fica no resultado dele, sem o valor (RN-INT-01). */
+export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): RecusaEnvelope | LoteAdaptado {
+  const recusa = recusarEnvelope(envelope);
+  if (recusa) return recusa;
+  const chave = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade) as (typeof ENTIDADES_ENVIO_FDV)[number];
   const schema = PAYLOADS_HUB[chave];
   const formas: FormaAdaptada[] = [];
   const resultados: Adaptacao<EntidadeCarga>[] = [];
