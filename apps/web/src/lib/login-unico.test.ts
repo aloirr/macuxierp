@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let resposta: () => Response;
 const chamadas: { url: string; init: RequestInit }[] = [];
@@ -8,6 +8,14 @@ async function carregar() {
   vi.doMock('next/headers', () => ({ headers: async () => new Headers() }));
   return (await import('./login-unico')).loginUnico;
 }
+/**
+ * Aquece o import uma vez, com folga própria: sob carga, a primeira transformação de ./login-unico e das dependências
+ * passava dos 5 s no 1º caso. Depois, o vi.resetModules só reavalia o módulo, com a transformação em cache.
+ */
+beforeAll(async () => {
+  await carregar();
+}, 30_000);
+afterAll(() => { vi.unstubAllEnvs(); vi.doUnmock('next/headers'); });
 beforeEach(() => {
   chamadas.length = 0;
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => { chamadas.push({ url, init }); return resposta(); });
