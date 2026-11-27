@@ -165,8 +165,10 @@ export interface RepoCarga {
   condicoesAtivasDeFormaRecusada(): Promise<CondicaoPagamento[]>;
   /** Condições ativas de cartão (tPag 03) com `parcelas_cartao` nulo (RN-CAD-09): a limpeza preenche ou desativa. */
   condicoesAtivasCartaoSemParcelas(): Promise<CondicaoPagamento[]>;
-  /** RN-CAD-15 (decisão 14 A): condições ativas (não excluídas) com `prazo_medio_dias` nulo e ao menos uma parcela, travadas (`FOR UPDATE`). */
-  condicoesAtivasSemPrazoMedio(): Promise<CondicaoPagamento[]>;
+  /** RN-CAD-15: condições ativas com parcelas (a rotina decide, no domain, quais têm prazo médio nulo ou fora da faixa). */
+  condicoesAtivasParaAjustePrazoMedio(): Promise<CondicaoPagamento[]>;
+  /** RN-CAD-16: clientes ativos com `de <= prazo médio < ate` (`ate` nulo = sem teto); null = contagem indisponível (sem permissão de leitura). */
+  contarClientesPorPrazoMedio(de: number, ate: number | null): Promise<number | null>;
   filhoPorExternalId(tabela: TabelaFilha, externalId: string): Promise<FilhoGravado | null>;
   unidadePorChave(produtoId: string, unidade: string): Promise<FilhoGravado | null>;
   reativarFilho(tabela: TabelaFilha, id: string): Promise<void>;

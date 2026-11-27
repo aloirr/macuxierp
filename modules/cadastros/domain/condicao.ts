@@ -26,6 +26,8 @@ export interface EntradaCondicao {
   parcelas_cartao?: number | null;
   /** RN-CAD-15 (decisão 14 A): `completarPrazoMedio`; vazio é aceito, só o valor fora de 0..365 recusa. */
   prazo_medio_dias?: number | null;
+  /** RN-CAD-15 (v0.3.18): a linha não altera parcelas nem prazo médio (muda só a forma, p.ex.): a faixa não é conferida. */
+  semFaixa?: boolean;
   /** Só confere quando vem (o PATCH parcial pode não trazer). */
   descricao?: string | null;
   /** T-0112: a linha deixa a condição inativa (carga com `ativo = não`); a faixa do prazo médio não se aplica, as demais regras seguem. */
@@ -98,8 +100,8 @@ export function validarCondicaoPagamento(c: EntradaCondicao): Violacao[] {
       break;
   }
   // RN-CAD-15: faixa das parcelas (só com parcelas válidas); quem inativa não é recusado por ela
-  if (!c.inativa && typeof medio === 'number' && diasValidos(medio) && prazos.length > 0 && !erros.some((e) => e.campo === 'prazos_dias' || e.campo === 'parcelas_cartao')
-    && (medio < Math.min(...prazos) || medio > Math.max(...prazos))) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_FAIXA));
+  if (!c.inativa && !c.semFaixa && typeof medio === 'number' && diasValidos(medio) && !erros.some((e) => e.campo === 'prazos_dias' || e.campo === 'parcelas_cartao')
+    && prazoMedioForaDaFaixa(prazos, medio)) erros.push(violacao('RN-CAD-15', 'prazo_medio_dias', MOTIVO_PRAZO_MEDIO_FAIXA));
   return erros;
 }
 
@@ -113,4 +115,36 @@ export function completarParcelasCartao<T extends { forma_tpag?: string; prazos_
   if (antes && corpo.forma_tpag === undefined && corpo.prazos_dias === undefined) return corpo;
   const mesclado = { forma_tpag: corpo.forma_tpag ?? antes?.forma_tpag ?? '', prazos_dias: corpo.prazos_dias ?? antes?.prazos_dias ?? [] };
   return { ...corpo, parcelas_cartao: derivarParcelasCartao(mesclado) };
+}
+
+/** RN-CAD-15: o prazo médio está fora da faixa [menor parcela, maior parcela]? Sem parcelas ou sem prazo médio, não. */
+export function prazoMedioForaDaFaixa(prazos_dias: readonly number[] | null | undefined, prazo_medio_dias: number | null | undefined): boolean {
+  const p = prazos_dias ?? [];
+  return typeof prazo_medio_dias === 'number' && p.length > 0 && (prazo_medio_dias < Math.min(...p) || prazo_medio_dias > Math.max(...p));
+}
+
+export type DecisaoPrazoMedio = { acao: 'nenhuma' } | { acao: 'completar' | 'corrigir'; antes: number | null; depois: number };
+
+/**
+ * RN-CAD-15 (v0.3.18, D1 A): decide a rotina `completarPrazosMedios`. Prazo médio nulo = completar; fora da faixa das parcelas = corrigir;
+ * nos dois casos o valor novo é a média das parcelas (`prazoMedioEfetivo`, sempre dentro da faixa) e a marca fica `prazo_medio_calculado = true`.
+ * Dentro da faixa, ou sem parcelas, nada muda (idempotente).
+ */
+export function decidirPrazoMedioGravado(c: { prazos_dias?: readonly number[] | null; prazo_medio_dias?: number | null }): DecisaoPrazoMedio {
+  const efetivo = prazoMedioEfetivo(c.prazos_dias, null);
+  if (efetivo === null) return { acao: 'nenhuma' };
+  const atual = typeof c.prazo_medio_dias === 'number' ? c.prazo_medio_dias : null;
+  if (atual === null) return { acao: 'completar', antes: null, depois: efetivo };
+  return prazoMedioForaDaFaixa(c.prazos_dias, atual) ? { acao: 'corrigir', antes: atual, depois: efetivo } : { acao: 'nenhuma' };
+}
+
+/**
+ * RN-CAD-16: o cliente com prazo médio `m` usa a condição (fora cartão, tPag 03) se `prazo da condição <= m`. Ao mudar a condição de
+ * `antes` (nulo = incompleta, ninguém a usava) para `depois`, são afetados os clientes com `de <= m < ate` (`ate` nulo = sem teto).
+ * Devolve `null` para o cartão, que não depende do prazo médio do cliente.
+ */
+export function faixaClientesAfetados(forma_tpag: string, antes: number | null, depois: number): { de: number; ate: number | null } | null {
+  if (classeForma(forma_tpag) === 'cartao') return null;
+  if (antes === null) return { de: depois, ate: null };
+  return { de: Math.min(antes, depois), ate: Math.max(antes, depois) };
 }
