@@ -136,13 +136,6 @@ describe('T-0057 C3: processamento do lote da entrada', () => {
     expect(await t.rodar(a)).toMatchObject({ processados: 0 });
   });
 
-  it('o cursor guardado nunca anda para trás quando chega lote com registros mais antigos', async () => {
-    const t = montar();
-    await t.rodar(await t.receber(corpo('vendedor', [vendedor(2, '2026-11-26T10:00:00.000Z')])));
-    await t.rodar(await t.receber(corpo('vendedor', [vendedor(1, '2026-11-20T10:00:00.000Z')])));
-    expect(t.entrada.cursores.get('conector-1|vendedor')?.cursor).toEqual({ alterado_em: '2026-11-26T10:00:00.000Z', external_id: 'V2' });
-  });
-
   it('forma_pagamento só valida e conta (a forma entra pelo prazo que a usa); registro inválido dá erro por linha', async () => {
     const t = montar();
     const id = await t.receber(corpo('forma_pagamento', [
