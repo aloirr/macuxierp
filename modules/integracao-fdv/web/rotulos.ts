@@ -1,3 +1,4 @@
+import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 /** Rótulos em português para pessoas (sem jargão): cadastros, situação do envio e motivos. Só texto fixo, nunca dado do FDV. */
 import type { AmbienteHub, EntidadeHub, EstadoLote, ModoLote } from '../contracts';
 
@@ -44,3 +45,11 @@ export const TEXTO_SEM_VALOR = '—';
 export const ROTULO_AMBIENTE: Readonly<Record<AmbienteHub, string>> = { teste: 'Teste', producao: 'Produção' };
 
 export const ROTULO_MODO_LOTE: Readonly<Record<ModoLote, string>> = { completo: 'Carga completa', delta: 'Alterações' };
+
+/** Tipos de coluna do `TabelaDensa` do packages/ui: `numero` alinha à direita; `data` e `status` têm desenho próprio. */
+export type TipoColunaLista = 'texto' | 'numero' | 'dinheiro' | 'data' | 'status';
+/** Tom do selo, como o shell aceita (`SeloVista`). */
+export type TomSelo = 'ok' | 'aviso' | 'erro' | 'neutro';
+
+/** Formata um instante ISO no fuso do tenant (`DD/MM/AAAA HH:mm`); `vazio` para nulo ou ausente. */
+export const hora = (fuso: string, vazio = '') => (iso: string | null | undefined): string => (iso ? formatarDataHora(iso, fuso) : vazio);

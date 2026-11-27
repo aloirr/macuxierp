@@ -6,12 +6,11 @@
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import type { ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import type { EntidadeHub, MonitorResposta } from '../contracts';
-import { ROTULO_ENTIDADE } from './rotulos';
+import { ROTULO_ENTIDADE, hora } from './rotulos';
 
 export const FUSO_PADRAO = 'America/Manaus';
 const SEM_ENVIO = 'Ainda não enviou';
 
-const hora = (iso: string | null, fuso: string): string => (iso ? formatarDataHora(iso, fuso) : SEM_ENVIO);
 
 export interface LinhaMonitor {
   entidade: EntidadeHub;
@@ -34,8 +33,8 @@ export function linhasDoMonitor(m: MonitorResposta, fuso: string = FUSO_PADRAO):
       rotulo: ROTULO_ENTIDADE[e.entidade],
       situacao: !e.habilitada ? 'Desligada' : pausada ? 'Pausada' : 'Funcionando',
       tom: !e.habilitada ? 'neutro' : pausada ? 'aviso' : 'ok',
-      ultimoEnvio: hora(e.ultimo_envio_em, fuso),
-      ultimoSucesso: hora(e.ultimo_sucesso_em, fuso),
+      ultimoEnvio: hora(fuso, SEM_ENVIO)(e.ultimo_envio_em),
+      ultimoSucesso: hora(fuso, SEM_ENVIO)(e.ultimo_sucesso_em),
       pendentes: e.pendentes.toLocaleString('pt-BR'),
       erros: e.erros_abertos,
       motivoPausa: e.pausada_mensagem ?? '',

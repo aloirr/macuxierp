@@ -4,7 +4,7 @@ import { ENTIDADES_HUB_F2, LoteEnvioResumo, MonitorResposta } from '../contracts
 import { manifest } from '../manifest';
 import { criarClienteIntegracaoFdv, ErroIntegracaoFdv, MENSAGEM_ERRO_GENERICA } from './cliente';
 import { colunasDeErros, linhasDeConflitos, linhasDeErros, linhasDoMonitor, resumoDoSinal } from './monitor';
-import { PAGINAS_INTEGRACAO_FDV, colunasDeLotes, paginaLotes } from './paginas';
+import { PAGINAS_INTEGRACAO_FDV, colunasDeLotes, paginaLotes, paginaLotesNoFuso } from './paginas';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const base = (o: Partial<MonitorResposta> = {}): MonitorResposta => ({
@@ -44,10 +44,15 @@ describe('páginas do BKO do Integração FDV (RF-INF-04)', () => {
     expect(por('concluido_em')).toMatchObject({ titulo: 'Concluído em', tipo: 'data' });
     expect(cols.map((c) => c.titulo).join('|')).not.toContain('UTC');
     expect(por('enviado_em').valor(lote)).toBe('26/11/2026 08:30');
-    expect(por('enviado_em').valor(lote)).not.toBe(colunasDeLotes('America/Sao_Paulo').find((c) => c.id === 'enviado_em')!.valor(lote));
     expect(por('concluido_em').valor(lote)).toBe('');
     expect(por('registros').tipo).toBe('numero');
-    expect(paginaLotes.colunas.map((c) => c.id)).toEqual(cols.map((c) => c.id));
+    expect(por('estado').selos?.({ ...lote, estado: 'concluido_com_erros' } as LoteEnvioResumo)).toEqual([{ texto: 'Concluído com erros', tom: 'aviso' }]);
+  });
+  it('MC-0201: o descritor paginaLotes não pré-formata a data (o shell recebe o ISO e formata no fuso do tenant)', () => {
+    const lote = { enviado_em: '2026-11-26T12:30:00.000Z', concluido_em: null } as unknown as LoteEnvioResumo;
+    const col = (id: string) => paginaLotes.colunas.find((c) => c.id === id)!;
+    expect(col('enviado_em').valor(lote)).toBe('2026-11-26T12:30:00.000Z');
+    expect(paginaLotesNoFuso('America/Manaus').colunas.find((c) => c.id === 'enviado_em')!.valor(lote)).toBe('26/11/2026 08:30');
   });
   it('a lista de lotes usa o descritor do SDK: filtros na URL, paginação, CSV e API do módulo', () => {
     expect(paginaLotes.api).toBe('/v1/integracao-fdv/lotes');

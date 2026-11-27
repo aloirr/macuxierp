@@ -9,7 +9,7 @@ import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
 import { paraCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { motivoDaRecusaCliente } from '../domain/recebidos-log';
 import { FUSO_PADRAO } from './monitor';
-import { ROTULO_RETORNO_CLIENTE, ROTULO_SITUACAO_CLIENTE_RECEBIDO, TEXTO_SEM_VALOR } from './rotulos';
+import { ROTULO_RETORNO_CLIENTE, ROTULO_SITUACAO_CLIENTE_RECEBIDO, TEXTO_SEM_VALOR, type TipoColunaLista, type TomSelo } from './rotulos';
 
 /** Textos dos três estados da tela (voz A0: frase curta, sem jargão, diz o que fazer). */
 export const TEXTO_ESTADO_LOG = Object.freeze({
@@ -106,7 +106,7 @@ export const caminhoDoRecebidosCsv = (situacao?: SituacaoClienteRecebidoFdv): st
 export interface LinhaRecebidoLog {
   situacao: string;
   /** Tom do selo da situação (coluna `status`). */
-  situacaoTom: 'ok' | 'alerta' | 'erro' | 'neutro';
+  situacaoTom: TomSelo;
   cliente: string;
   documento: string;
   vendedor: string;
@@ -123,7 +123,7 @@ export const motivoDoRecebidoLog = (c: ClienteRecebidoFdv): string => {
   return c.erros.length > 0 ? [...new Set(c.erros.map((e) => motivoDaRecusaCliente(e.codigo)))].join(' ') : motivoDaRecusaCliente(null);
 };
 
-const TOM_SITUACAO_RECEBIDO: Readonly<Record<ClienteRecebidoFdv['situacao'], LinhaRecebidoLog['situacaoTom']>> = { recebido: 'neutro', aceito: 'ok', recusado: 'erro', reenviado: 'alerta' };
+const TOM_SITUACAO_RECEBIDO: Readonly<Record<ClienteRecebidoFdv['situacao'], LinhaRecebidoLog['situacaoTom']>> = { recebido: 'neutro', aceito: 'ok', recusado: 'erro', reenviado: 'aviso' };
 
 export const linhasDeRecebidosLog = (recebidos: readonly ClienteRecebidoFdv[], fuso: string = FUSO_PADRAO): LinhaRecebidoLog[] =>
   recebidos.map((c) => ({
@@ -138,7 +138,7 @@ export const linhasDeRecebidosLog = (recebidos: readonly ClienteRecebidoFdv[], f
     retorno: c.retorno ? ROTULO_RETORNO_CLIENTE[c.retorno] : TEXTO_SEM_VALOR,
   }));
 
-export const colunasDeRecebidosLog: readonly { id: Exclude<keyof LinhaRecebidoLog, 'situacaoTom'>; titulo: string; tipo?: 'texto' | 'numero' | 'data' | 'status' }[] = [
+export const colunasDeRecebidosLog: readonly { id: Exclude<keyof LinhaRecebidoLog, 'situacaoTom'>; titulo: string; tipo?: TipoColunaLista }[] = [
   { id: 'situacao', titulo: 'Situação', tipo: 'status' },
   { id: 'cliente', titulo: 'Cliente' },
   { id: 'documento', titulo: 'Documento' },
