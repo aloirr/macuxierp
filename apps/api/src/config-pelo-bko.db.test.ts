@@ -140,4 +140,23 @@ describe.skipIf(!PG_DISPONIVEL)('45 A: entrar no /config pela sessão do BKO (Po
     await app.inject({ method: 'POST', url: '/v1/auth/sair', cookies: { [COOKIE_REFRESH]: bko.refresh } });
     expect((await abrirConfig(bko.refresh)).statusCode).toBe(401);
   });
+  // Regressão (🔴 da v0.3.21): o acesso_config pedia a 2ª conexão dentro da transação do /eu; com mais pedidos simultâneos
+  // que o pool do teste (max 4, pg-testes), cada um segurava a sua e esperava outra: a API parava. Fora da transação, todos respondem.
+  it('GET /v1/auth/eu concorrente, acima do tamanho do pool: todos 200 com o acesso_config, sem travar', async () => {
+    const bko = await entrarNoBko(EMAIL);
+    const pedidos = Array.from({ length: 12 }, () => app.inject({ url: '/v1/auth/eu', headers: { authorization: `Bearer ${bko.acesso}` } }));
+    let limite: NodeJS.Timeout | undefined;
+    const travou = new Promise<never>((_, rejeitar) => {
+      limite = setTimeout(() => rejeitar(new Error('GET /v1/auth/eu travou (pool esgotado)')), 15_000);
+    });
+    try {
+      const respostas = await Promise.race([Promise.all(pedidos), travou]);
+      for (const r of respostas) {
+        expect(r.statusCode, r.body).toBe(200);
+        expect(EuResposta.parse(r.json()).acesso_config).toBe(true);
+      }
+    } finally {
+      clearTimeout(limite);
+    }
+  }, 30_000);
 });
