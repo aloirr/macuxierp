@@ -19,3 +19,4 @@
 - 2026-11-24 — T-0084 — 00h03–01h45 (Manaus): merges #485 a #493; T-0084 criada e entregue; v0.3.10 no ar às 01h42; detalhes no status de 24/11. Quadro, T-0081 a T-0084, RN-CORE-12 e 13 no doc 03 e o status de 24/11 neste PR. #495 do designer-ux saiu sem corretor (troca de uma frase).
 2026-11-27 — v0.3.23 — retomada às 11h46 (R-20261127-105908): #843 e #844 conferidos, merge e liberar em curso
 2026-11-27 — v0.3.23 — liberar verde (run 46033555461, issue #846, SHA 2400a57); v0.3.24 reaberta em 6 frentes
+2026-11-27 — v0.3.23 — no ar às 13h32 (48 A: MemAvailable ok; laço do /login pendente); v0.3.24 com 13 PRs no main
