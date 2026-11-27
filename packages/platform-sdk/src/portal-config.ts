@@ -255,6 +255,36 @@ export const EuPlataforma = z.object({
 });
 export type EuPlataforma = z.infer<typeof EuPlataforma>;
 
+// ---- Entrar no /config pela sessão do BKO (45 A, v0.3.20; emenda §1-A da ADR 0012) ----
+
+/**
+ * `POST /v1/auth/config`: o usuário do BKO que tem acesso ao `/config` entra no portal sem novo login. Fica no `/v1/auth`
+ * do tenant (não no `/v1/plataforma`, onde o JWT do tenant nunca vale): autentica pelo refresh da sessão do BKO
+ * (o cookie do `/v1/auth`, que o BFF repassa, como no `/v1/auth/sair`) e pelo `CABECALHO_CSRF_CONFIG`. Sem corpo.
+ * Resposta 200 `SessaoPlataformaResposta`, com o cookie `COOKIE_CONFIG` (Path=/v1/plataforma; o token nunca vai no corpo).
+ * Erros: 401 (sessão do BKO inválida, vencida ou revogada), 403 `CODIGO_TROCAR_SENHA` (troca pendente no BKO), 403
+ * `CODIGO_SEM_ACESSO_CONFIG`. Quem tem acesso (`acesso_config` no `EuResposta`): um superadmin ativo, não travado, sem
+ * troca de senha pendente e com o mesmo e-mail normalizado do usuário da sessão. O superadmin continua fora do tenant
+ * (sem impersonação): só o 2º login sai. Decisão do PO (45 A, v0.3.21), emenda §1-A da ADR 0012.
+ */
+export const CAMINHO_ENTRAR_PELO_BKO = '/v1/auth/config';
+/** 403 de quem não tem um superadmin válido com o mesmo e-mail (a mensagem não diz por quê: não revela se o e-mail existe). */
+export const CODIGO_SEM_ACESSO_CONFIG = 'SEM_ACESSO_CONFIG';
+export const MENSAGEM_SEM_ACESSO_CONFIG = 'Seu usuário não tem acesso à Configuração.';
+/** Auditoria da troca (tenant de origem, `usuario_id` de origem no `depois`, `superadmin_id` como autor). */
+export const ACAO_ENTRAR_PELO_BKO = 'plataforma.superadmin.entrar_pelo_bko';
+/** Teto da sessão do portal (o mesmo do login: 8 h). */
+export const VALIDADE_SESSAO_CONFIG_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * Vencimento da sessão do `/config` aberta pelo BKO: nunca depois da sessão do BKO que a abriu, nem depois das 8 h do portal.
+ * `null` quando a sessão do BKO já venceu (a API responde 401).
+ */
+export function expiraSessaoConfigPeloBko(agora: Date, expiraBko: Date): Date | null {
+  if (!(expiraBko.getTime() > agora.getTime())) return null;
+  return new Date(Math.min(expiraBko.getTime(), agora.getTime() + VALIDADE_SESSAO_CONFIG_MS));
+}
+
 // ---- Licenças × `depende` dos manifestos (função pura; a API sempre revalida, regra 2) ----
 
 /** O manifesto só no que importa aqui; a API passa os manifestos reais (o SDK não importa módulo). */

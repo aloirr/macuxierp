@@ -39,6 +39,8 @@ export const EuResposta = z.object({
   filiais: z.array(z.object({ id: Id, nome: z.string().min(1), cnpj: Cnpj })),
   modulos: z.array(z.object({ id: z.enum(MODULOS), menus: z.array(z.string()) })),
   avisos_a1: z.array(z.object({ filial_id: Id, dias: z.number().int(), valido_ate: z.string().datetime() })).optional(),
+  /** 45 A (v0.3.20): o usuário pode abrir o `/config` sem novo login (`CAMINHO_ENTRAR_PELO_BKO`). Ausente = false. */
+  acesso_config: z.boolean().optional(),
 });
 export type EuResposta = z.infer<typeof EuResposta>;
 
