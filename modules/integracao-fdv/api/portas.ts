@@ -2,7 +2,7 @@
  * Portas do recebimento e do retorno de pedidos (T-0013 P1, §5 e §6). Interfaces só: o `apps/worker` liga a implementação
  * do `pedido/api` (`criarRecebedorFdv`) e o cliente HTTP do Hub (que o conector da T-0011 implementa). Sem rede aqui.
  */
-import type { ClienteParaErpFdv, DecisaoPreCadastroFdv, RetornoClienteFdv, Transacao } from '@macuxierp/platform-sdk';
+import type { ClienteParaErpFdv, DecisaoPreCadastroFdv, LogAgenda, RetornoClienteFdv, Transacao } from '@macuxierp/platform-sdk';
 import type { PedidoFdvEntrada, ResultadoRecebimentoFdv } from '@macuxierp/pedido/contracts';
 import type { EntidadeChaveErp, RetornoErp } from '../contracts';
 
@@ -80,9 +80,7 @@ export interface ClienteHubClientes {
 }
 
 /** Log estruturado (pino): só ids e códigos, nunca documento, nome, observação ou motivo livre. */
-export interface LogPedidos {
-  info(obj: Record<string, unknown>, msg: string): void;
-  warn(obj: Record<string, unknown>, msg: string): void;
+export interface LogPedidos extends LogAgenda {
   error(obj: Record<string, unknown>, msg: string): void;
 }
 

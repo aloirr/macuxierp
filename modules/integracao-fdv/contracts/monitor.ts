@@ -90,7 +90,7 @@ export const SinalResumo = z.object({
   ultimo_http: z.number().int().nullable(),
   parado_por_versao: z.boolean(),
   /** Código do Hub (ou `http_<status>`) da última recusa do sinal; `null` com o sinal aceito. */
-  ultimo_codigo: z.string().max(100).nullable(),
+  ultimo_codigo: CodigoErro.nullable(),
   politica_versao: z.record(z.unknown()).nullable(),
 });
 export type SinalResumo = z.infer<typeof SinalResumo>;
