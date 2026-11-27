@@ -1,8 +1,10 @@
-export default function Inicio() {
-  return (
-    <>
-      <h1>Boas-vindas ao Macuxi ERP</h1>
-      <p className="apoio">Comece pelo menu ao lado.</p>
-    </>
-  );
+import { MANIFESTOS } from '@/lib/manifestos';
+import { atalhosDoInicio } from '@/lib/inicio';
+import { montarMenu } from '@/lib/menu';
+import { contexto } from '@/lib/sessao';
+import { InicioVisao } from './inicio-visao';
+
+export default async function Inicio() {
+  const { eu } = await contexto();
+  return <InicioVisao atalhos={atalhosDoInicio(montarMenu(eu.modulos, MANIFESTOS, eu.usuario.perfil))} />;
 }

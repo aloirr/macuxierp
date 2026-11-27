@@ -382,3 +382,9 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 }
 .campo-ficha .dica-salvo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .ligacao .campo > span { color: var(--mx-cor-rotulo-destaque); }
+
+/* Início do BKO (decisões 58 e 59): atalhos em uma linha que distribui o espaço; em 390 px, um por linha. */
+.atalhos { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .atalhos-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .atalhos-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.atalho { display: block; background: var(--mx-cor-branco); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 10px; padding: 24px 16px; color: var(--mx-cor-grafite); font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); text-decoration: none; }
+.atalho:hover { border-color: var(--mx-cor-azul-noite); }
