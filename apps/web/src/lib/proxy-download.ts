@@ -12,6 +12,13 @@ const TEXTO = { ...SEM_CACHE, 'content-type': 'text/plain; charset=utf-8' } as c
 /** Falha de infraestrutura: um texto só para as rotas de download. */
 export const FALHA_DOWNLOAD = 'Não foi possível baixar agora. Tente de novo em instantes.';
 
+/** Perfil, ação e mensagens comuns aos downloads da Integração FDV (erros do Log e recebidos). */
+export const DOWNLOAD_FDV = {
+  modulo: 'integracao-fdv',
+  acao: 'integracao-fdv.ver',
+  mensagens: { 403: 'Seu perfil não pode baixar este arquivo.', 404: 'Arquivo não disponível.' },
+} as const;
+
 export interface OpcoesDownload {
   /** Caminho já validado contra a lista fechada da rota (senão 404 sem chamar a API). */
   permitido: boolean;
