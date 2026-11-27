@@ -266,7 +266,7 @@ Decisão 40 B do Alexandre, pelo PO, no roteiro da Thathyany simulada (`docs/tes
   - **Campo ausente, cadastro novo:** a linha é recusada com erro por linha (`campo` `crt` ou `ncm`, `codigo` `campo_obrigatorio` do `CODIGOS_ERRO_LINHA_HUB`), e o resto do lote segue. Não há valor padrão inventado, porque CRT e NCM mudam o imposto da nota.
 - **Teste:** `packages/platform-sdk/src/entrada.test.ts` (aceita com e sem os campos, recusa formato errado, as outras 8 entidades são as mesmas do Hub, e o Zod do Hub continua descartando os dois campos).
 
-## Adendo (27/11/2026, Manaus): o prefixo passa a `/v1/entrada` (hotfix v0.3.24)
+## Adendo (27/11/2026, Manaus): o prefixo passa a `/v1/entrada` (hotfix v0.3.23)
 
 - **Defeito:** em produção, todo pedido a `https://erp.macuxifdv.com.br/entrada/v1/...` caía na tela de login do BKO. A rota do túnel da Cloudflare (ADR 0003, item 5) manda só o `/v1*` para a api e **o resto** para o web. Os testes chamavam a api direto e não passavam pelo túnel. A conferência pelo domínio no publicar só olha o `/v1/saude` e o `/login`.
 - **Decisão:** o prefixo da entrada passa a ser **`/v1/entrada`** (`PREFIXO_ENTRADA` no SDK), com os mesmos caminhos (`CAMINHOS_ENTRADA`), cabeçalhos, chave de máquina e respostas. O túnel não muda.

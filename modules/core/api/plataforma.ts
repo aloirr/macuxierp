@@ -33,15 +33,36 @@ import {
   type Transacao,
   type Violacao,
 } from '@macuxierp/platform-sdk';
-import { CampoContato, Id, type ContatoRevelado, type FichaReceitaPlana, type FichaReceitaPlanaMascarada, type ResultadoReceitaPlana } from '../contracts';
+import {
+  CampoContato,
+  EdicaoFicha,
+  Id,
+  MENSAGENS_BLOQUEIO_CNPJ,
+  PREFIXO_ROTAS_PLATAFORMA,
+  ROTAS_FICHA,
+  type MotivoBloqueioCnpj,
+  TrocaCnpj,
+  type ContatoRevelado,
+  type FichaReceitaPlana,
+  type FichaReceitaPlanaMascarada,
+  type PreviaReceita,
+  type ResultadoReceitaPlana,
+  type ResultadoSalvarFicha,
+  type ResultadoTrocaCnpj,
+} from '../contracts';
 import {
   avaliarPrimeiroAdmin,
   avaliarRedefinirSenhaPrimeiroAdmin,
+  aplicarEdicao,
   avaliarSituacaoEmpresa,
+  avaliarTrocaCnpj,
+  cnpjParaConferirUso,
   gerarSenhaProvisoria,
   MENSAGEM_SEM_CNPJ,
   mensagemDaFalhaReceita,
+  situacaoTrocaCnpj,
   prepararFichaDaConsulta,
+  previaDaConsulta,
   type ResultadoConsultaReceita,
 } from '../domain';
 
@@ -68,6 +89,20 @@ export interface RepositorioPlataforma {
   gravarReceita(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }>;
   /** `empresa_contato_revelar`: o valor completo; a função audita só o campo. Sem o dado (P0002) = 404. */
   revelarContato(tx: Transacao, p: { id: string; campo: CampoContato; request_id: string }): Promise<string>;
+  /**
+   * RN-CORE-16, `plataforma.empresa_salvar_ficha(uuid, jsonb, text)`: `ficha` é a FichaReceitaPlana direta (email/telefone
+   * ausentes = mantém). O BANCO calcula os `alterados` (só nomes) e audita só eles e a contagem; `alterados` vazio = nada
+   * gravado nem auditado. Sem `core.empresa` (55000) = 409.
+   */
+  salvarFicha(tx: Transacao, p: { id: string; ficha: FichaReceitaPlana; request_id: string }): Promise<{ ficha: FichaReceitaPlanaMascarada | null; alterados: string[] }>;
+  /**
+   * RN-CORE-16, `plataforma.empresa_trocar_cnpj(uuid, text, text)`: troca o CNPJ da empresa e audita só a ação, sem o CNPJ.
+   * O evento sai na empresa_trocar_cnpj (0077), mesma transação; o cadastros consome e atualiza a filial padrão
+   * (RN-CORE-14). Devolve `event_id`. Bloqueios do banco (23514, MXC05, MXC06, 23505) voltam como `bloqueado`; P0002 = 404 e 55000 = 409.
+   */
+  trocarCnpj(tx: Transacao, p: { id: string; cnpj: string; request_id: string }): Promise<{ cnpj: string; event_id: string } |{ bloqueado: MotivoBloqueioCnpj }>;
+  /** RN-CORE-16: outra empresa viva (não excluída, fora a de referência) já usa o CNPJ. Só leitura, sem auditoria; o banco confere de novo na troca (23505). */
+  cnpjEmUso(tx: Transacao, p: { id: string; cnpj: string }): Promise<boolean>;
 }
 
 /** Porta de consulta de CNPJ dos cadastros (`ConsultaCnpjParaCore`, RF-CAD-02), declarada de forma estrutural: a apps/api liga uma na outra. */
@@ -75,10 +110,20 @@ export interface ConsultaReceita {
   consultar(tx: Transacao, tenant: string, cnpj: string): Promise<ResultadoConsultaReceita>;
 }
 
+/**
+ * RN-CORE-16: porta do faturamento (a apps/api liga uma na outra; o core não importa o módulo). Roda na transação do
+ * tenant (RLS): responde se a empresa tem NF-e autorizada em PRODUÇÃO (homologação não conta).
+ */
+export interface ConsultaNfeProducao {
+  temNfeAutorizadaEmProducao(tenantId: string): Promise<boolean>;
+}
+
 export interface DependenciasPlataformaCore {
   repo: RepositorioPlataforma;
-  /** Sem a porta, "Atualizar pela Receita" responde 503 (a ficha existente não muda). */
+  /** Sem a porta, "Atualizar pela Receita" (e a prévia) responde 503 (a ficha existente não muda). */
   consultaReceita?: ConsultaReceita;
+  /** RN-CORE-16. Mesmo padrão da `consultaReceita`: porta ausente = 503 de configuração (falha fechada: o CNPJ não troca). */
+  consultaNfeProducao?: ConsultaNfeProducao;
   /** Os `depende` dos manifestos reais (a apps/api passa `manifestos`); o core não importa outro módulo. */
   manifestos: readonly DependenciasModulo[];
   hashSenha(senha: string): Promise<string>;
@@ -105,6 +150,9 @@ const paraLicencas = (ms: readonly LicencaModuloPlataforma[]): Licenca[] =>
 
 /** RN-CORE-11: o código do FDV vem do slug quando o banco não o devolve. */
 const comCodigo = (e: EmpresaPlataforma): EmpresaPlataforma => ({ ...e, codigo: e.codigo ?? codigoDaEmpresa(e.slug) });
+
+/** Caminho de `ROTAS_FICHA` (com o prefixo do portal) no formato do plugin, que registra sem o prefixo. */
+const rotaFicha = (r: { caminho: string }) => r.caminho.slice(PREFIXO_ROTAS_PLATAFORMA.length);
 
 /** Resposta de dado da empresa (ficha e contato): nunca em cache do navegador nem de proxy. */
 const semCache = <T>(corpo: T) => ({ corpo, cabecalhos: { ...CABECALHOS_SENHA_PROVISORIA } });
@@ -227,6 +275,7 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
     // (a repetição do request_id não muda nada no banco) e com no-store (a resposta é dado da empresa).
     // Por etapa: o papel de plataforma (macuxierp_config) não tem acesso às tabelas do cadastros; a consulta de CNPJ lê e
     // grava o cache do tenant (RLS) e por isso roda no papel e na RLS do tenant, entre duas etapas de plataforma.
+    /** @deprecated RN-CORE-16 (v0.3.24): GRAVA ao atualizar. A tela nova usa POST .../ficha/receita (prévia, não grava) + PUT .../ficha (Salvar). Mantida para a tela atual até a troca. */
     definirRotaPlataforma({
       transacoes: 'por_etapa',
       metodo: 'POST',
@@ -254,6 +303,124 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
         }
         const gravada = await c.comPlataforma((tx) => repo.gravarReceita(tx, { id, ficha: preparo.ficha, request_id: c.request_id }));
         const ok: ResultadoReceitaPlana = { estado: 'ok', campos_alterados: gravada.alterados, ficha: gravada.ficha };
+        return semCache(ok);
+      },
+    }),
+    // RN-CORE-16 (v0.3.24): Ficha editável. A ação é a da 'atualizar_receita' enquanto o SDK não ganha
+    // 'plataforma.empresa.salvar_ficha' e 'plataforma.empresa.trocar_cnpj' (lista fechada; pedido ao engenheiro-software).
+    definirRotaPlataforma({
+      metodo: ROTAS_FICHA.salvar.metodo,
+      caminho: rotaFicha(ROTAS_FICHA.salvar),
+      acao: 'plataforma.empresa.atualizar_receita',
+      corpo: EdicaoFicha,
+      async executar(c, { corpo, params }) {
+        const id = idDoParam(params);
+        const atual = await repo.lerEmpresaComFicha(c.tx, id);
+        if (!atual) throw erros.naoEncontrado('Empresa');
+        if (!atual.ficha) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+        const { ficha, campos_alterados } = aplicarEdicao(atual.ficha, corpo, c.agora);
+        const salva = atual.ficha;
+        const semMudanca = async () => {
+          const sem: ResultadoSalvarFicha = { estado: 'sem_mudanca', ficha: await repo.descreverFicha(c.tx, salva) };
+          return semCache(sem);
+        };
+        // Resposta cedo, sem ir ao banco (o domínio é só prévia); a decisão final dos alterados é do banco.
+        if (campos_alterados.length === 0) return semMudanca();
+        const r = await repo.salvarFicha(c.tx, { id, ficha, request_id: c.request_id });
+        if (r.alterados.length === 0) return semMudanca();
+        if (!r.ficha) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+        const ok: ResultadoSalvarFicha = { estado: 'ok', campos_alterados: r.alterados, ficha: r.ficha };
+        return semCache(ok);
+      },
+    }),
+    // Prévia da Receita: consulta como a rota antiga, mas NÃO grava; devolve a prévia mascarada e os campos diferentes do salvo.
+    definirRotaPlataforma({
+      transacoes: 'por_etapa',
+      metodo: ROTAS_FICHA.previaReceita.metodo,
+      caminho: rotaFicha(ROTAS_FICHA.previaReceita),
+      acao: 'plataforma.empresa.atualizar_receita',
+      async executar(c, { params }) {
+        const id = idDoParam(params);
+        const atual = await c.comPlataforma((tx) => repo.lerEmpresaComFicha(tx, id));
+        if (!atual) throw erros.naoEncontrado('Empresa');
+        const cnpj = atual.empresa.cnpj;
+        if (!atual.ficha || !cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+        const porta = deps.consultaReceita;
+        if (!porta) throw erros.indisponivel('Consulta de CNPJ');
+        const resposta = await c.comTenant(id, (tx) => porta.consultar(tx, id, cnpj));
+        const preparo = prepararFichaDaConsulta({ cnpj, resposta });
+        if (!preparo.ok && preparo.motivo === 'campo_acima_do_limite') {
+          throw erros.regra('RN-CORE-16', mensagemDaFalhaReceita(preparo.motivo), { ficha: 'Campo acima do limite' });
+        }
+        if (!preparo.ok) {
+          const falha: PreviaReceita = { estado: 'erro', motivo: preparo.motivo, mensagem: mensagemDaFalhaReceita(preparo.motivo) };
+          return semCache(falha);
+        }
+        const { previa, diferentes } = previaDaConsulta(atual.ficha, preparo.ficha);
+        const descrita = await c.comPlataforma((tx) => repo.descreverFicha(tx, previa));
+        const ok: PreviaReceita = { estado: 'ok', previa: descrita, diferentes, fonte: preparo.ficha.fonte, consultado_em: preparo.ficha.consultado_em };
+        return semCache(ok);
+      },
+    }),
+    // Situação da troca de CNPJ (RN-CORE-16): a tela sabe antes de tentar. Fica fora do GET do detalhe porque a consulta de NF-e
+    // exige a transação do tenant e só a rota por etapa (`/empresas/:id/...`) a tem. Porta ausente ou falha = indisponível.
+    definirRotaPlataforma({
+      transacoes: 'por_etapa',
+      metodo: ROTAS_FICHA.situacaoCnpj.metodo,
+      caminho: rotaFicha(ROTAS_FICHA.situacaoCnpj),
+      acao: 'plataforma.empresa.ver',
+      async executar(c, { params }) {
+        const id = idDoParam(params);
+        const atual = await c.comPlataforma((tx) => repo.lerEmpresa(tx, id));
+        if (!atual) throw erros.naoEncontrado('Empresa');
+        if (!atual.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+        const porta = deps.consultaNfeProducao;
+        let temNfe: boolean | null = null;
+        if (porta) temNfe = await c.comTenant(id, () => porta.temNfeAutorizadaEmProducao(id)).catch(() => null);
+        return semCache(situacaoTrocaCnpj(temNfe));
+      },
+    }),
+    // Troca de CNPJ (só superadmin: todas as rotas de plataforma exigem a sessão dele): a API revalida com o domínio e a porta do faturamento.
+    definirRotaPlataforma({
+      transacoes: 'por_etapa',
+      metodo: ROTAS_FICHA.trocarCnpj.metodo,
+      caminho: rotaFicha(ROTAS_FICHA.trocarCnpj),
+      acao: 'plataforma.empresa.atualizar_receita',
+      corpo: TrocaCnpj,
+      async executar(c, { corpo, params }) {
+        const id = idDoParam(params);
+        const porta = deps.consultaNfeProducao;
+        // Lê a empresa e confere o uso do CNPJ novo na mesma etapa.
+        const lido = await c.comPlataforma(async (tx) => {
+          const atual = await repo.lerEmpresa(tx, id);
+          if (!atual) throw erros.naoEncontrado('Empresa');
+          if (!atual.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+          if (!porta) throw erros.indisponivel('Consulta de NF-e em produção');
+          const alvo = cnpjParaConferirUso(atual.cnpj, corpo.cnpj_novo);
+          return { atualCnpj: atual.cnpj, nfe: porta, emUso: alvo ? await repo.cnpjEmUso(tx, { id, cnpj: alvo }) : false };
+        });
+        const temNfe = await c.comTenant(id, () => lido.nfe.temNfeAutorizadaEmProducao(id));
+        const r = avaliarTrocaCnpj({
+          atual: lido.atualCnpj,
+          novo: corpo.cnpj_novo,
+          confirmacao: corpo.confirmacao,
+          superadmin: true,
+          temNfeAutorizadaProducao: temNfe,
+          cnpjEmUso: lido.emUso,
+        });
+        if (!r.ok) {
+          const bloqueado: ResultadoTrocaCnpj = { estado: 'bloqueado', motivo: r.motivo, mensagem: MENSAGENS_BLOQUEIO_CNPJ[r.motivo] };
+          return semCache(bloqueado);
+        }
+        const res = await c.comPlataforma(async (tx) => {
+          // O evento sai na empresa_trocar_cnpj (0077), mesma transação; o cadastros consome e atualiza a filial padrão (RN-CORE-14).
+          return repo.trocarCnpj(tx, { id, cnpj: r.cnpj, request_id: c.request_id });
+        });
+        if ('bloqueado' in res) {
+          const bloqueado: ResultadoTrocaCnpj = { estado: 'bloqueado', motivo: res.bloqueado, mensagem: MENSAGENS_BLOQUEIO_CNPJ[res.bloqueado] };
+          return semCache(bloqueado);
+        }
+        const ok: ResultadoTrocaCnpj = { estado: 'ok', cnpj: res.cnpj };
         return semCache(ok);
       },
     }),

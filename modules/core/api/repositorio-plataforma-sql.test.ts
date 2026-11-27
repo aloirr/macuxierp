@@ -100,3 +100,50 @@ describe('adaptador SQL da plataforma: empresa_criar (0037)', () => {
     expect(await criar(txQueLanca('23505', 'duplicate'))).toBeNull();
   });
 });
+
+describe('adaptador SQL da plataforma: salvar ficha e trocar CNPJ (RN-CORE-16)', () => {
+  const repo = new RepositorioPlataformaSql();
+  it.each([
+    ['23514', 'cnpj_invalido'],
+    ['MXC05', 'nfe_autorizada_producao'],
+    ['MXC06', 'cnpj_igual'],
+    ['23505', 'cnpj_em_uso'],
+  ])('trocarCnpj: SQLSTATE %s vira bloqueado/%s', async (code, motivo) => {
+    expect(await repo.trocarCnpj(txQueLanca(code, 'x'), { id: ID, cnpj: '11444777000161', request_id: 'r' })).toEqual({ bloqueado: motivo });
+  });
+
+  it.each([
+    ['P0002', 404],
+    ['55000', 409],
+  ])('trocarCnpj: SQLSTATE %s vira HTTP %i', async (code, status) => {
+    const e = await repo.trocarCnpj(txQueLanca(code, 'x'), { id: ID, cnpj: '11444777000161', request_id: 'r' }).catch((x: unknown) => x);
+    expect((e as ErroApi).status).toBe(status);
+  });
+
+  it('trocarCnpj devolve cnpj e event_id do jsonb', async () => {
+    const tx: Transacao = { consultar: (async () => [{ r: { cnpj: '11444777000161', event_id: 'ev-1' } }]) as never };
+    expect(await repo.trocarCnpj(tx, { id: ID, cnpj: '11444777000161', request_id: 'r' })).toEqual({ cnpj: '11444777000161', event_id: 'ev-1' });
+  });
+
+  it('cnpjEmUso percorre a empresas_listar pelo cursor e ignora a própria empresa', async () => {
+    const OUTRA = '00000000-0000-4000-8000-0000000000e2';
+    const pagina1 = Array.from({ length: 201 }, (_, i) => ({ e: { id: i === 0 ? ID : `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, cnpj: i === 0 ? '11444777000161' : null } }));
+    const chamadas: unknown[][] = [];
+    const tx = (segunda: unknown[]): Transacao => ({
+      consultar: (async (_s: string, p: unknown[]) => (chamadas.push(p), chamadas.length === 1 ? pagina1 : segunda)) as never,
+    });
+    expect(await repo.cnpjEmUso(tx([{ e: { id: OUTRA, cnpj: '11444777000161' } }]), { id: ID, cnpj: '11444777000161' })).toBe(true);
+    expect(chamadas[1]).toEqual([null, pagina1[200]!.e.id, 201]);
+    chamadas.length = 0;
+    expect(await repo.cnpjEmUso(tx([]), { id: ID, cnpj: '11444777000161' })).toBe(false);
+    expect(chamadas).toHaveLength(2);
+  });
+
+  it('salvarFicha manda a ficha direta (sem campos_alterados) e devolve alterados do banco', async () => {
+    const chamadas: unknown[][] = [];
+    const tx: Transacao = { consultar: (async (_s: string, p: unknown[]) => (chamadas.push(p), [{ r: { ficha: null, alterados: ['bairro'] } }])) as never };
+    const r = await repo.salvarFicha(tx, { id: ID, ficha: { bairro: 'X' } as never, request_id: 'r' });
+    expect(r).toEqual({ ficha: null, alterados: ['bairro'] });
+    expect(JSON.parse(chamadas[0]![1] as string)).toEqual({ bairro: 'X' });
+  });
+});
