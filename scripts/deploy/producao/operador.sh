@@ -12,6 +12,7 @@
 #   bash ~/macuxierp-deploy/operador.sh superadmin --listar --operador <seu nome>
 #   bash ~/macuxierp-deploy/operador.sh a1-teste --empresa <código, ex.: AM2808> [--filial <id da filial emissora>] \
 #        --operador <seu nome> [--substituir] [--confirmar]
+#   bash ~/macuxierp-deploy/operador.sh saude
 #
 # Comum a todos:
 #   - sem --confirmar: só mostra o plano (transação READ ONLY no banco); nada muda e nenhuma senha é gerada;
@@ -45,6 +46,10 @@
 #   só troca com --substituir; a que já tem A1 de teste fora do alerta de vencimento não ganha outro. Roda no contêiner
 #   `api` já de pé (docker compose exec; a chave do A1 só existe lá), pela entrada dist/a1-teste.mjs da imagem. Nenhuma
 #   senha, PFX ou CNPJ aparece: a saída leva só ids, estados e datas.
+# saude (D3, v0.3.18): só leitura, sem --operador nem --confirmar. Por empresa ativa (código UF + 4 dígitos, sem nome),
+#   numa transação READ ONLY: o último sinal aceito pelo Hub e o HTTP, os cadastros pausados (entidade:motivo), os lotes
+#   de envio aceitos e recusados em 24 h e as auditorias da completar_prazos_medios em 24 h. Roda o saude.mjs. É o que o
+#   producao-publicar imprime na issue depois do deploy.
 #
 # Senha provisória (criar-empresa, criar-superadmin e superadmin --redefinir-senha): 16 caracteres do alfabeto da API,
 # com letra, número e caractere especial por construção (regra única de senha, T-0052), gerada AQUI a partir do
@@ -349,10 +354,19 @@ a1_teste() {
   esac
 }
 
+saude() {
+  [ "$#" -eq 0 ] || uso "saude não leva argumentos"
+  preparar saude.mjs
+  ENVS=()
+  conteiner saude.mjs
+  [ "$STATUS" -eq 0 ] || erro 1 "saude falhou (código $STATUS; veja a linha [saude] acima). Nada muda: a leitura é READ ONLY"
+}
+
 ENVS=() SAIDA='' STATUS=0 ESTADO='' PASTA=''
 case "${1:-}" in
   criar-empresa) shift; ( criar_empresa "$@" ) ;;
   criar-superadmin | superadmin) ( superadmin "$@" ) ;;
   a1-teste) shift; ( a1_teste "$@" ) ;;
-  *) uso "comando desconhecido: ${1:-(nenhum)} (criar-empresa, criar-superadmin, superadmin ou a1-teste)" ;;
+  saude) shift; ( saude "$@" ) ;;
+  *) uso "comando desconhecido: ${1:-(nenhum)} (criar-empresa, criar-superadmin, superadmin, a1-teste ou saude)" ;;
 esac

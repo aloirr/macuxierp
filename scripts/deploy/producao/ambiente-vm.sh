@@ -87,6 +87,16 @@ chave_se_faltar() { # nome: gera só se ausente ou vazia; presente (válida ou n
 }
 chave_se_faltar MACUXIERP_CHAVE_A1
 chave_se_faltar MACUXIERP_CHAVE_INTEGRACAO
+# Interruptor (não é segredo, fora da sentinela): grava o padrão só se ausente; o valor que o operador pôs nunca é trocado.
+interruptor_se_faltar() { # nome padrão
+  [ -n "$(valor_env "$ENVF" "$1")" ] && return 0
+  grep -vE "^$1=[\"' "$'\r'"]*$" "$ENVF" > "$ENVF.tmp" || :
+  printf '%s=%s\n' "$1" "$2" >> "$ENVF.tmp"
+  dono_600 "$ENVF.tmp"
+  mv -f "$ENVF.tmp" "$ENVF"
+  log "gravado $1=$2 (.env)"
+}
+interruptor_se_faltar MACUXIERP_COMPLETAR_PRAZO_MEDIO ligado
 
 # ---------- 3. configuração de produção do FDV (só leitura em $FDV) ----------
 copiar_do_fdv() { # arquivo "NOME1|NOME2" "obrigatórios separados por espaço"
