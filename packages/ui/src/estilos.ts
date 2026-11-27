@@ -33,9 +33,16 @@ export const desabilitadoEstilo = (desabilitado?: boolean): CSSProperties =>
 const baseBotao = (peso: Parameters<typeof texto>[1], desabilitado?: boolean): CSSProperties => ({
   ...texto('texto', peso),
   height: 'var(--mx-medida-altura-campo)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxSizing: 'border-box',
+  textDecoration: 'none',
   padding: `0 14px`,
   borderRadius: canto,
-  lineHeight: 1.5,
+  /** Centraliza o texto mesmo quando o shell força `display: inline-block` no `<a>` (altura menos as 2 bordas de 1 px). */
+  lineHeight: 'calc(var(--mx-medida-altura-campo) - 2px)',
+  whiteSpace: 'nowrap',
   ...desabilitadoEstilo(desabilitado),
 });
 
