@@ -4,6 +4,7 @@
  */
 import { lerChaveA1 } from '@macuxierp/core/api';
 import { chaveIntegracaoDoAmbiente, PADRAO_HEX_32 } from '@macuxierp/platform-sdk';
+import { lerPepperEntrada } from './entrada/autenticacao';
 import { z } from 'zod';
 import type { ConfigEmail } from './email/porta';
 
@@ -88,6 +89,11 @@ export interface ConfigApi {
    * inválida derruba a partida. Serve só às rotas do portal (ADR 0013); o BKO do tenant é só leitura.
    */
   chaveIntegracao: Buffer | null;
+  /**
+   * `MACUXIERP_PEPPER_ENTRADA` (ADR 0014, emenda de 26/11): o pepper do HMAC da chave do conector da `/entrada/v1`. Ausente
+   * ou fora do formato = `null`, e a API sobe: a `/entrada/v1` e o criar ou trocar a chave no portal respondem 503.
+   */
+  pepperEntrada: Buffer | null;
   /** `MACUXIERP_SEGREDO_BFF` (T-0050, ver `ipDoCliente`): ausente = `null`; presente e inválido derruba a partida. */
   segredoBff: string | null;
   /** E-mail transacional (T-0076, `MACUXI_EMAIL_TRANSPORTE` e `MACUXI_SMTP_*`); ver `lerConfigEmail` e `email/porta.ts`. */
@@ -118,6 +124,7 @@ export function lerConfigApi(env: NodeJS.ProcessEnv): ConfigApi {
     poolMax: e.MACUXIERP_PG_POOL,
     chaveA1,
     chaveIntegracao: chaveIntegracaoDoAmbiente(env), // inválida: ErroCifra que cita só o nome da variável
+    pepperEntrada: lerPepperEntrada(env),
     segredoBff: e.MACUXIERP_SEGREDO_BFF ?? null,
     email: email.email,
     avisos: email.avisos,

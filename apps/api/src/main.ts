@@ -16,7 +16,7 @@ await banco.conferirPapel('macuxierp_app');
 
 const log = pino({ level: 'info', base: { servico: 'macuxierp-api' } });
 for (const aviso of cfg.avisos) log.warn({ modulo: 'core' }, aviso); // só nomes de variáveis, nunca valores (T-0076)
-const app = await criarApp(montarDependenciasProducao({ banco, chaveA1: cfg.chaveA1, chaveIntegracao: cfg.chaveIntegracao, config: cfg, log }));
+const app = await criarApp(montarDependenciasProducao({ banco, chaveA1: cfg.chaveA1, chaveIntegracao: cfg.chaveIntegracao, pepperEntrada: cfg.pepperEntrada, config: cfg, log }));
 await app.listen({ port: cfg.porta, host: cfg.host });
 
 for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
