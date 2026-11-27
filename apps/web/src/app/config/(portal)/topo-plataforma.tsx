@@ -14,7 +14,7 @@ export function TopoPlataforma({ nome }: { nome: string }) {
       <nav aria-label="Plataforma"><a href="/config">Empresas</a></nav>
       <span className="espaco" />
       <span>{nome}</span>
-      <form action={sairConfigAcao}><button className="mx-botao-secundario" type="submit">Sair</button></form>
+      <form action={sairConfigAcao}><button className="link" type="submit">Sair</button></form>
     </header>
   );
 }

@@ -12,7 +12,8 @@ a { color: var(--mx-cor-azul-noite); }
 /* Botões: estilo único de @macuxierp/ui/botoes.css (MC-0008); aqui só o que é do shell. */
 .campo { display: block; margin-bottom: 16px; }
 .campo span { display: block; font-weight: var(--mx-peso-rotulo-campo); margin-bottom: 4px; }
-.campo input { width: 100%; padding: 10px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo input, .campo select { width: 100%; padding: 0 12px; height: var(--mx-medida-altura-campo); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo input[type='checkbox'], .campo input[type='radio'] { height: auto; padding: 0; }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 .apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
 .bloco-proxima { display: block; }
@@ -22,7 +23,7 @@ a { color: var(--mx-cor-azul-noite); }
 @media (max-width: 480px) { .cartao-central { margin-left: 16px; margin-right: 16px; } } /* login (BKO e /config): o cartão não encosta nas bordas em 390 px */
 .bloco { padding: 16px 20px; margin: 0 0 16px; }
 .cartao-central header { background: var(--mx-cor-azul-noite); color: var(--mx-cor-branco); margin: -32px -32px 24px; padding: 24px 32px; border-radius: 10px 10px 0 0; }
-.cartao-central h1 { font-size: var(--mx-tamanho-titulo-cartao); font-weight: var(--mx-peso-titulo); margin: 0 0 16px; }
+.cartao-central h1 { font-size: var(--mx-tamanho-titulo-dialogo); font-weight: var(--mx-peso-titulo); margin: 0 0 16px; }
 .lista-escolha { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
 
 .casca { display: grid; grid-template-columns: 260px minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
@@ -44,9 +45,11 @@ a { color: var(--mx-cor-azul-noite); }
 .conteudo { padding: 24px 32px; max-width: 1100px; min-width: 0; }
 .conteudo h1 { font-size: var(--mx-tamanho-h1); font-weight: var(--mx-peso-titulo); margin-top: 0; }
 table { border-collapse: collapse; width: 100%; background: var(--mx-cor-branco); }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
-thead th { font-weight: var(--mx-peso-cabecalho-tabela); font-size: var(--mx-tamanho-micro); }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mx-cor-linha-suave); }
+/* Decisões 40 e 44 A (MC-0201/0202): cabeçalho na névoa, 12/700 em caixa-alta azul-noite com linha de 2 px; linha par na linhaAlternada. */
+thead th { font-weight: var(--mx-peso-cabecalho-tabela); font-size: var(--mx-tamanho-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: .04em; background: var(--mx-cor-nevoa); border-bottom: 2px solid var(--mx-cor-azul-noite); }
 tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
+tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .selo { white-space: nowrap; padding: 2px 8px; border-radius: 10px; font-size: var(--mx-tamanho-selo); font-weight: var(--mx-peso-rotulo-pequeno); }
 .selo-ativo { background: var(--mx-cor-ativo-fundo); color: var(--mx-cor-ativo-texto); }
 .selo-inativo { background: var(--mx-cor-inativo-fundo); color: var(--mx-cor-texto-secundario); }
@@ -64,6 +67,8 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .tabela-rolavel.com-sinal-rolagem { background: linear-gradient(to right, var(--mx-cor-branco) 30%, transparent) left center / 24px 100% no-repeat local, linear-gradient(to left, var(--mx-cor-branco) 30%, transparent) right center / 24px 100% no-repeat local, radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left center / 10px 100% no-repeat scroll, radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right center / 10px 100% no-repeat scroll; }
 /* Se a tabela ainda não couber, a coluna de ações (ex.: "Emitir nota") fica fixa à direita, com fundo e divisória por token; nenhuma coluna é cortada. */
 .tabela-rolavel.com-acoes th:last-child, .tabela-rolavel.com-acoes td:last-child { position: sticky; right: 0; background: var(--mx-cor-branco); border-left: 1px solid var(--mx-cor-borda-tabela); }
+.tabela-rolavel.com-acoes th:last-child { background: var(--mx-cor-nevoa); }
+.tabela-rolavel.com-acoes tbody tr:nth-child(even) td:last-child { background: var(--mx-cor-linha-alternada); }
 /* O diálogo nasce dentro da célula de ações (que é sticky e cria o próprio contexto de empilhamento): a célula que o contém sobe acima das demais, senão as células fixas das linhas seguintes ficam brancas por cima da cortina. */
 .tabela-rolavel.com-acoes td:last-child:has(.dialogo-fundo) { z-index: 20; }
 .entrada[aria-invalid="true"], .campo input[aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
@@ -71,24 +76,24 @@ tbody th { font-weight: var(--mx-peso-cabecalho-tabela); }
 .itens-parcial td, .itens-parcial th { padding: 6px 8px; }
 /* Coluna "Item" de largura fixa no diálogo da parcial. */
 .itens-parcial thead th:first-child, .itens-parcial tbody th { width: 28ch; }
-/* Colunas de largura fixa: a grade não muda com o tamanho do rótulo; "Filtrar" e "Limpar" ficam juntos na última célula. */
-.filtros { display: grid; grid-template-columns: repeat(auto-fill, 220px); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
-.filtros .campo { margin: 0; min-width: 0; }
-.filtros-acoes { display: flex; gap: 8px; align-items: end; white-space: nowrap; }
+/* MC-0205 (regra 11): grade de 12 colunas; cada campo ocupa 2 e "Filtrar"/"Limpar" ficam juntos em 2; no celular, 2 por linha (span 6). */
+.filtros { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 16px; align-items: end; margin-bottom: 16px; }
+.filtros .campo { grid-column: span 2; margin: 0; min-width: 0; }
+.filtros-acoes { grid-column: span 2; display: flex; gap: 8px; align-items: end; white-space: nowrap; }
+@media (max-width: 640px) { .filtros .campo, .filtros-acoes { grid-column: span 6; } }
 /* O U+00A0 do "R$ 1.234,56" não quebra, mas a célula estreita sim: dinheiro e número ficam numa linha só. */
 .sem-quebra { white-space: nowrap; }
 .total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
 .filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+/* MC-0206 (regra 12): rodapé do cartão da tabela, depois das linhas e antes da paginação; botões juntos, à esquerda. */
 .barra-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .selo-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
 .selo-erro { background: var(--mx-cor-erro-fundo); color: var(--mx-cor-erro-texto); }
 .dados { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 24px; margin: 0 0 16px; }
-.dados dt { font-size: var(--mx-tamanho-pequeno); color: var(--mx-cor-texto-secundario); }
+.dados dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: .04em; }
 .dados dd { margin: 0; font-weight: var(--mx-peso-medio); }
 .erro-campo { color: var(--mx-cor-erro-texto); display: block; margin-top: 4px; }
 .paginacao { display: flex; gap: 12px; margin-top: 12px; }
-/* Link-botão igual ao botão: sem sublinhado, mesma altura. */
-a.mx-botao, a.mx-botao-secundario { text-decoration: none; display: inline-block; }
 .entrada, .campo select, .campo textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 
 /* Integração FDV (T-0011) */
@@ -123,8 +128,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .dialogo p { margin: 0; }
 .dialogo-botoes { justify-content: flex-end; margin: 0; }
 .faixa-homologacao { font-weight: var(--mx-peso-rotulo-pequeno); text-transform: uppercase; letter-spacing: .03em; }
-.secoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
-.secoes a[aria-current='page'] { font-weight: var(--mx-peso-titulo); text-decoration: none; border-bottom: 3px solid var(--mx-cor-azul-noite); }
+/* Abas do BKO (nav.secoes): o mesmo .abas-texto do /config (MC-0207). */
 .downloads { display: flex; gap: 8px 16px; flex-wrap: wrap; margin: 12px 0; align-items: baseline; }
 .dado-linha-inteira { grid-column: 1 / -1; }
 .selos { display: inline-flex; gap: 4px; flex-wrap: wrap; }
@@ -141,6 +145,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .titulo-linha { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }
 .busca-slug { display: flex; gap: 8px; align-items: end; margin-bottom: 16px; }
 .busca-slug .campo { margin: 0; width: 280px; }
+.titulo-linha .busca-slug { margin: 0; } /* a busca vai para a linha do título (MC-0206) */
 .codigo, .senha-provisoria { font-family: var(--mx-fonte-codigo); }
 /* Frase de confirmação digitada (MC-0101-2): selo em linha, quebra nos espaços, repete borda e recuo em cada linha. */
 .frase-confirmar { font-family: var(--mx-fonte-codigo); font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-grafite); background: var(--mx-cor-nevoa); border: 1px solid var(--mx-cor-borda-tabela); border-radius: 4px; padding: 1px 6px; overflow-wrap: break-word; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
@@ -162,7 +167,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 .campo-senha-bloco { margin-bottom: 16px; }
 /* Login: código e e-mail com o mesmo tamanho, peso e recuo do rótulo e do input do CampoSenha. */
 .campo-login span { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-rotulo-campo); }
-.campo-login input { padding: 10px 12px; }
+.campo-login input { padding: 0 12px; }
 .sr-only, .legenda-so-leitor caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .legenda-so-leitor caption { padding: 0 !important; } /* a legenda da TabelaDensa traz padding inline */
 .regras-senha { margin: 0 0 16px; }
@@ -184,6 +189,23 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 /* Aviso de versão nova (layout raiz): primeiro filho do body, no fluxo (sticky no topo), empurra o conteúdo; sem aviso não ocupa espaço. Texto e botão em coluna, alinhados à esquerda, em qualquer largura. */
 .faixa-aviso.aviso-versao-nova { position: sticky; top: 0; z-index: 2000; margin: 0; border-radius: 0; border-width: 0 0 1px; flex-direction: column; align-items: flex-start; justify-content: flex-start; }
 @media (max-width: 480px) { .topo .espaco { display: none; } }
+/* MC-0210: "Sair" é um link sublinhado em bordaCinza no BKO e no /config. */
+.topo button.link { color: var(--mx-cor-borda-cinza); }
+/* MC-0209: no celular o menu lateral recolhe num botão "☰ Menu" e o topo fica numa linha (Menu, assinatura, Sair);
+   empresa, usuário, "Trocar filial" e "Trocar senha" vão para dentro do menu (.conta-menu). */
+.botao-menu, .conta-menu { display: none; }
+.botao-menu { align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; font: inherit; color: var(--mx-cor-branco); background: none; border: 1px solid var(--mx-cor-borda-cinza); border-radius: 6px; cursor: pointer; }
+.conta-menu p { margin: 0 20px 4px; color: var(--mx-cor-borda-cinza); font-size: var(--mx-tamanho-pequeno); overflow-wrap: anywhere; }
+@media (max-width: 800px) {
+  .botao-menu { display: inline-flex; }
+  .casca > .topo { flex-wrap: nowrap; gap: 12px; }
+  .casca > .topo .nome-topo, .casca > .topo .so-largo, .casca > .topo .espaco { display: none; }
+  .casca > .topo form { margin-left: auto; }
+  .topo button.link { min-height: 44px; }
+  .casca > .lateral { display: none; }
+  .casca[data-menu-aberto] > .lateral { display: block; }
+  .conta-menu { display: block; }
+}
 
 /* Tabelas da Integração FDV (T-0056): a coluna Falha (4ª) não espreme; a tabela rola dentro do contêiner, com a sombra de rolagem. */
 .tabela-fdv table { min-width: 720px; }
@@ -298,6 +320,8 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 /* Perfis e permissões: uma coluna por perfil; a primeira coluna fica à vista ao rolar na horizontal. */
 .matriz-perfis { min-width: 720px; }
 .matriz-perfis td { text-align: center; }
+.matriz-perfis thead th { white-space: normal; overflow-wrap: normal; word-break: normal; }
+.matriz-perfis tbody tr:nth-child(even) th[scope="row"] { background: var(--mx-cor-linha-alternada); }
 .matriz-perfis tbody th[scope="row"] { position: sticky; left: 0; background: var(--mx-cor-branco); font-weight: normal; white-space: nowrap; }
 .matriz-perfis .matriz-grupo th { background: var(--mx-cor-perola); font-weight: var(--mx-peso-titulo); }
 /* Bandeira por filial: um cartão por filial; o botão é o MenuAcoes (44 px no celular pelo botoes.css). */
