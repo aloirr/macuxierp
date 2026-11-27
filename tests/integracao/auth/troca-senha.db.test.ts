@@ -16,6 +16,8 @@ import {
   MENSAGEM_SENHA_FORA_DA_REGRA,
   MENSAGEM_SENHA_IGUAL,
   regrasDescumpridas,
+  senhaTemporariaNoFormato,
+  TAMANHO_SENHA_TEMPORARIA,
   type RegraSenhaId,
 } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
@@ -262,7 +264,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       if (pasta) rmSync(pasta, { recursive: true, force: true });
     });
 
-    it('com --confirmar: imprime a senha uma vez; ela cumpre a regra, entra com deve_trocar_senha e a troca libera as rotas', async () => {
+    it('com --confirmar: imprime a senha uma vez; ela segue o formato da temporária, entra com deve_trocar_senha e a troca libera as rotas', async () => {
       const r = spawnSync(
         'bash',
         [OPERADOR_SH, 'criar-empresa', '--codigo', CODIGO_OP, '--nome', 'Empresa Fictícia Operador T-0052', '--admin-email', EMAIL_OP, '--operador', 'alexandre', '--confirmar'],
@@ -279,8 +281,9 @@ describe.skipIf(!PG_DISPONIVEL)('T-0052 (RN-CORE-10): troca obrigatória e regra
       const i = linhas.findIndex((l) => l.startsWith('Senha provisória do administrador'));
       expect(i).toBeGreaterThanOrEqual(0);
       const senha = linhas[i + 1]!.trim();
-      expect(senha).toHaveLength(16);
-      expect(regrasDescumpridas(senha)).toEqual([]);
+      // 44 B, emenda da RN-CORE-10: a provisória do operador.sh tem 18 caracteres, só letras e números sem os ambíguos, isenta do "especial".
+      expect(senha).toHaveLength(TAMANHO_SENHA_TEMPORARIA);
+      expect(senhaTemporariaNoFormato(senha)).toBe(true);
 
       const { rows } = await b.admin.query('SELECT u.id, u.deve_trocar_senha FROM plataforma.usuario u JOIN plataforma.tenant t ON t.id = u.tenant_id WHERE t.slug = $1', [SLUG_OP]);
       expect(rows).toHaveLength(1);
