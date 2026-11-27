@@ -76,7 +76,7 @@ const worker = iniciarWorker({
   consumidores: montarConsumidores({ log, relogio: relogioDoSistema }),
   executores: montarExecutores({ banco, log, armazenamento: armazenamentoIndisponivel, catalogo: new CatalogoArquivosPg(), agora: () => relogioDoSistema.agora(), ...(faturamento ? { faturamento } : {}) }),
   rotinas: montarRotinas({ banco, log, ...(faturamento ? { faturamento } : {}), completarPrazoMedio: completarPrazoMedioLigado(process.env) }),
-  periodicas: montarPeriodicas({ ...(faturamento ? { faturamento } : {}) }),
+  periodicas: montarPeriodicas({ banco, log, ...(faturamento ? { faturamento } : {}) }),
   ...(hub && decifrarCredencial ? { agenda: { agendas, licencas: new LicencasPg(), hub, decifrarCredencial } } : {}),
   relogio: relogioDoSistema,
   log,
