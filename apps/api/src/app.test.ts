@@ -144,16 +144,19 @@ describe('POST /v1/auth/login', () => {
     expect((await entrar(app, 'adm@exemplo.com', SENHA_DE_TESTE, 'am0002')).statusCode).toBe(401);
   });
 
-  it('RN-CORE-15: trava após 5 falhas por 15 minutos (423) e solta depois', async () => {
+  it('RN-CORE-15 (hotfix v0.3.16.1): bloqueia após 5 falhas (423), SEM prazo: não solta com o tempo; o --destravar libera', async () => {
     const { app, relogio, repo } = await montar();
     for (let i = 0; i < 5; i++) expect((await entrar(app, 'adm@exemplo.com', 'errada')).statusCode).toBe(401);
     const travado = await entrar(app);
     // RN-CORE-15 (T-0111): 423 CONTA_BLOQUEADA, sem tempo restante nem contagem (o 429 fica só para o limite por IP)
     expect(travado.statusCode).toBe(423);
     expect(travado.json()).toEqual({ codigo: CODIGO_CONTA_BLOQUEADA, mensagem: MENSAGEM_CONTA_BLOQUEADA, detalhes: { recuperar: RECUPERAR_CONTA_BLOQUEADA } });
-    relogio.avancar(15 * 60_000);
+    relogio.avancar(30 * 24 * 60 * 60_000);
+    expect((await entrar(app)).statusCode).toBe(423);
+    const u = repo.usuarios.find((x) => x.id === ADM)!;
+    u.bloqueado_ate = null; // o que o operador.sh --destravar faz no banco
     expect((await entrar(app)).statusCode).toBe(200);
-    expect(repo.usuarios.find((u) => u.id === ADM)).toMatchObject({ falhas_login: 0, bloqueado_ate: null });
+    expect(repo.usuarios.find((x) => x.id === ADM)).toMatchObject({ falhas_login: 0, bloqueado_ate: null });
   });
 
   it('RN-CORE-15 (T-0111): e-mail inexistente e empresa inexistente travam igual na memória; o 423 é o mesmo da conta que existe', async () => {

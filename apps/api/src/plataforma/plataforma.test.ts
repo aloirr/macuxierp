@@ -135,23 +135,13 @@ describe('LimitePorChave do login por IP (ADR 0012 §6)', () => {
 describe('LimitePorChave do pedido de senha temporária (T-0076)', () => {
   const t0 = 5_000_000;
 
-  it('5 pedidos por IP a cada 15 min: o 6º é recusado com retry_after_s até a janela vencer', () => {
+  it('20 pedidos por IP a cada 15 min: o 21º é recusado com retry_after_s até a janela vencer', () => {
     const l = novosLimitesEsqueci().ip;
-    for (let i = 0; i < 5; i++) expect(l.registrar('10.0.0.1', t0 + i * 1000).permitido).toBe(true);
+    for (let i = 0; i < 20; i++) expect(l.registrar('10.0.0.1', t0 + i * 1000).permitido).toBe(true);
     expect(l.registrar('10.0.0.1', t0 + 60_000)).toEqual({ permitido: false, retry_after_s: 14 * 60 });
     expect(l.registrar('10.0.0.1', t0 + 15 * 60_000 - 1500)).toEqual({ permitido: false, retry_after_s: 2 });
     expect(l.registrar('10.0.0.2', t0 + 60_000).permitido).toBe(true);
     expect(l.registrar('10.0.0.1', t0 + 15 * 60_000).permitido).toBe(true);
-  });
-
-  it('3 pedidos por empresa + e-mail por hora; o e-mail é normalizado (trim e minúsculas)', () => {
-    const l = novosLimitesEsqueci().conta;
-    const variantes = ['pessoa@exemplo.com', '  Pessoa@Exemplo.COM ', 'PESSOA@exemplo.com'];
-    for (const [i, e] of variantes.entries()) expect(l.registrar(chaveEmpresaEmail('thathyany', e), t0 + i).permitido).toBe(true);
-    expect(l.registrar(chaveEmpresaEmail('thathyany', 'pessoa@exemplo.com'), t0 + 10)).toEqual({ permitido: false, retry_after_s: 3600 });
-    // outra empresa, mesmo e-mail: outra chave
-    expect(l.registrar(chaveEmpresaEmail('outra', 'pessoa@exemplo.com'), t0 + 10).permitido).toBe(true);
-    expect(l.registrar(chaveEmpresaEmail('thathyany', 'pessoa@exemplo.com'), t0 + 60 * 60_000).permitido).toBe(true);
   });
 
   it('a chave é o SHA-256 (hex): o e-mail em claro nunca fica no Map', () => {

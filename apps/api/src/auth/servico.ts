@@ -1,6 +1,6 @@
 /**
  * Login, refresh rotativo e saída (desenho T-0002, seção 2, "Plataforma"):
- * - login por empresa (slug), e-mail e senha (D2); argon2id; trava após 5 falhas por 15 min;
+ * - login por empresa (slug), e-mail e senha (D2); argon2id; bloqueio sem prazo após 5 falhas (só a temporária ou o --destravar liberam);
  * - JWT de acesso de 15 min + refresh rotativo (cookie httpOnly, posto pela rota);
  * - refresh reutilizado (já revogado) revoga a família inteira;
  * - troca da própria senha (T-0052, RN-CORE-10): a senha provisória (`deve_trocar_senha`) vai no JWT de acesso e o
@@ -47,7 +47,6 @@ export interface ConfigAuth {
   acessoSegundos: number;
   refreshDias: number;
   maxFalhas: number;
-  travaMinutos: number;
   argon2: ParametrosArgon2;
 }
 
@@ -55,7 +54,6 @@ export const CONFIG_AUTH_PADRAO: Omit<ConfigAuth, 'jwtSegredo'> = {
   acessoSegundos: 15 * 60,
   refreshDias: 30,
   maxFalhas: 5,
-  travaMinutos: 15,
   argon2: ARGON2_PADRAO,
 };
 
@@ -123,19 +121,21 @@ export class ServicoAuth {
    * mesma do superadmin. A conta que não existe trava pela memória (empresa + e-mail); o 423 e o custo saem iguais. O
    * `operador.sh --destravar` (banco) vale na hora.
    */
-  async entrar(entrada: { empresa: string; email: string; senha: string }): Promise<ResultadoLogin> {
+  async entrar(entrada: { empresa: string; email: string; senha: string }, limite?: () => ErroApi): Promise<ResultadoLogin> {
     const agora = this.relogio.agora();
     const chave = chaveEmpresaEmail(entrada.empresa, entrada.email);
-    const semConta = () => this.custoIgual.recusarSemConta(entrada.senha, this.travaConta, chave, agora, () => erros.naoAutenticado(FALHA_LOGIN));
+    const semConta = () => this.custoIgual.recusarSemConta(entrada.senha, this.travaConta, chave, () => erros.naoAutenticado(FALHA_LOGIN), limite);
     const tenantId = await this.banco.semTenant((tx) => this.repo.tenantIdPorSlug(tx, entrada.empresa.trim().toLowerCase()));
     if (!tenantId) return semConta();
     // A recusa é devolvida, não lançada, dentro da transação: o erro desfaria a contagem de falhas gravada.
     const r = await this.banco.comTenant(tenantId, async (tx): Promise<Recusa | ResultadoLogin | null> => {
       const usuario = await this.repo.usuarioPorEmail(tx, entrada.email.trim().toLowerCase());
       if (!usuario || !usuario.ativo) return null;
-      const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(entrada.senha, usuario, agora);
+      const { resultado, fimTemporaria, conferencias } = await this.custoIgual.decidirEntrada(entrada.senha, usuario, agora, limite !== undefined);
       if (resultado === 'bloqueada') return { recusa: 'bloqueada', conferencias };
       if (resultado === 'falha') {
+        // IP no limite: só a temporária foi conferida; a recusa é o 429, sem somar falha na conta
+        if (limite) return { recusa: 'falha', conferencias };
         await this.registrarFalha(tx, usuario, agora);
         return { recusa: 'falha', conferencias };
       }
@@ -150,7 +150,7 @@ export class ServicoAuth {
       return this.abrirSessao(tx, usuario, randomUUID(), agora);
     });
     if (r === null) return semConta();
-    if ('recusa' in r) return this.custoIgual.recusarConta(entrada.senha, r, () => erros.naoAutenticado(FALHA_LOGIN));
+    if ('recusa' in r) return this.custoIgual.recusarConta(entrada.senha, r, () => erros.naoAutenticado(FALHA_LOGIN), limite);
     return r;
   }
 
@@ -284,9 +284,10 @@ export class ServicoAuth {
   }
 
   private async registrarFalha(tx: Transacao, u: UsuarioAuth, agora: Date): Promise<void> {
+    // bloqueio antigo (de antes do hotfix, com prazo) já vencido: a contagem recomeça
     const travaVencida = u.bloqueado_ate !== null && u.bloqueado_ate.getTime() <= agora.getTime();
     const falhas = (travaVencida ? 0 : u.falhas_login) + 1;
-    const trava = travaAposFalha(falhas, agora, this.cfg);
+    const trava = travaAposFalha(falhas, this.cfg);
     await this.repo.registrarFalha(tx, u.id, trava ? 0 : falhas, trava);
   }
 
