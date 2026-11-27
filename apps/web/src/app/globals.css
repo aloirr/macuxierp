@@ -85,6 +85,7 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .sem-quebra { white-space: nowrap; }
 .total-pedido { margin: 12px 0 0; text-align: right; font-weight: var(--mx-peso-titulo); font-variant-numeric: var(--mx-fonte-numeros); white-space: nowrap; }
 .filtros select, .filtros input, .formulario select, .formulario input, .formulario textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.filtros select, .filtros input { font-size: var(--mx-tamanho-texto); }
 /* MC-0206 (regra 12): rodapé do cartão da tabela, depois das linhas e antes da paginação; botões juntos, à esquerda. */
 .barra-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .selo-aviso { background: var(--mx-cor-aviso-fundo); color: var(--mx-cor-aviso-texto); }
@@ -166,7 +167,7 @@ fieldset.grupo-campos { min-width: 0; /* o fieldset não cresce com a tabela: el
 /* Troca de senha (T-0052): lista de regras e aviso de sucesso; só tokens do @macuxierp/ui. */
 .campo-senha-bloco { margin-bottom: 16px; }
 /* Login: código e e-mail com o mesmo tamanho, peso e recuo do rótulo e do input do CampoSenha. */
-.campo-login span { font-size: var(--mx-tamanho-pequeno); font-weight: var(--mx-peso-rotulo-campo); }
+.campo-login span { font-size: var(--mx-tamanho-micro); font-weight: var(--mx-peso-rotulo-campo); }
 .campo-login input { padding: 0 12px; }
 .sr-only, .legenda-so-leitor caption { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .legenda-so-leitor caption { padding: 0 !important; } /* a legenda da TabelaDensa traz padding inline */
@@ -352,7 +353,7 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .ligacao .ficha dt { font-size: var(--mx-tamanho-rotulo-dado); font-weight: var(--mx-peso-rotulo-dado); color: var(--mx-cor-rotulo-destaque); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 2px; }
 .ligacao .ficha dd { font-size: var(--mx-tamanho-base); font-weight: var(--mx-peso-normal); color: var(--mx-cor-grafite); }
 /* Rótulo de campo editável (§2): peso de rótulo na cor de destaque, sem caixa-alta. */
-.rotulo-campo { display: block; font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-rotulo-destaque); margin-bottom: 4px; }
+.rotulo-campo { display: block; font-size: var(--mx-tamanho-micro); font-weight: var(--mx-peso-rotulo-campo); color: var(--mx-cor-rotulo-destaque); margin-bottom: 4px; }
 .casca-plataforma .bloco > h2 { color: var(--mx-cor-rotulo-destaque); padding-bottom: 8px; border-bottom: 1px solid var(--mx-cor-borda-tabela); }
 /* Ficha da Receita editável (RN-CORE-16): cartões de campos 2 a 2 a partir de 768 (a grade do .ligacoes); campo curto divide a linha com outro. */
 .ficha-editavel .cabecalho-ficha h2 { margin: 0; flex: 1 1 auto; color: var(--mx-cor-rotulo-destaque); }
@@ -362,7 +363,8 @@ button.link { background: none; border: 0; padding: 0; color: inherit; font: inh
 .campo-ficha { grid-column: 1 / -1; margin-bottom: 12px; min-width: 0; }
 .campo-ficha.campo-curto { grid-column: auto; }
 @media (max-width: 389px) { .campo-ficha.campo-curto { grid-column: 1 / -1; } }
-.campo-ficha input, .campo-ficha select, .campo-ficha textarea { width: 100%; padding: 8px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo-ficha input, .campo-ficha select, .campo-ficha textarea { width: 100%; padding: 8px; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo-ficha input, .campo-ficha select { padding: 0 12px; height: var(--mx-medida-altura-campo); }
 .campo-ficha [aria-invalid="true"] { border-color: var(--mx-cor-erro-texto); }
 .campo-ficha .dica-campo, .campo-ficha .marca-receita { display: block; font-size: var(--mx-tamanho-micro); color: var(--mx-cor-texto-apoio); margin-top: 4px; }
 .campo-ficha .marca-receita { color: var(--mx-cor-rotulo-destaque); font-weight: var(--mx-peso-rotulo-pequeno); }
