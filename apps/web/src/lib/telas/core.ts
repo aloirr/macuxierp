@@ -9,6 +9,7 @@ import {
 } from '@macuxierp/core/web';
 import { AuditoriaItemLista, Licenca, Usuario, UsuarioCriar, UsuarioEditar, type PerfilComAcoes } from '@macuxierp/core/contracts';
 import { PERFIS, ROTULOS_PERFIL, pode, type Perfil } from '@macuxierp/platform-sdk';
+import { ERRO_CAMPOS } from '../textos';
 import type { AcaoVista, EntradaAcao, ErrosFormulario, Linha, ResultadoAcao, TelaDescrita, TelaFormulario, TelaLista, ValoresFormulario } from '../descritor/tipos';
 import { colunasDoModulo, novaChave } from './comum';
 
@@ -115,7 +116,7 @@ export function validarAcaoUsuario(a: AcaoVista, e: EntradaAcao): ResultadoAcao 
     const mudou = { ...(novo.nome !== a.dados?.nome ? { nome: novo.nome } : {}), ...(novo.perfil !== a.dados?.perfil ? { perfil: novo.perfil } : {}) };
     if (Object.keys(mudou).length === 0) return { ok: false, erro: 'Nada foi alterado.' };
     const r = UsuarioEditar.safeParse({ ...mudou, updated_at: a.dados?.updated_at });
-    return r.success ? { ok: true, corpo: r.data } : { ok: false, erro: Object.values(errosDe(r.error))[0] ?? 'Confira os campos.' };
+    return r.success ? { ok: true, corpo: r.data } : { ok: false, erro: Object.values(errosDe(r.error))[0] ?? ERRO_CAMPOS };
   }
   if (a.id === 'reativar') {
     const r = UsuarioEditar.safeParse({ ativo: true, updated_at: a.dados?.updated_at });

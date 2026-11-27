@@ -2,7 +2,7 @@
 import { MensagemRecarregar } from '@/components/mensagem-recarregar';
 import { SISTEMA_ATUALIZADO, ehAcaoAusente, mensagemDaFalha } from '@/lib/sistema-atualizado';
 import { resultadoErro } from '@/lib/resultado-acao';
-import { FALHA } from '@/lib/textos';
+import { ACAO_INDISPONIVEL, FALHA } from '@/lib/textos';
 import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DialogoMotivo, MenuAcoes, ResultadoAcao, useResultado, type AcaoMenu, type ResultadoMotivo } from '@macuxierp/ui';
@@ -40,7 +40,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
   const [segredo, setSegredo] = useState<{ valor: string; aviso: string } | null>(null); // senha provisória: só neste estado, some ao fechar
 
   async function enviar(a: AcaoVista, entrada: EntradaAcao) {
-    if (!executor) return falhar('Tela não encontrada.');
+    if (!executor) return falhar(ACAO_INDISPONIVEL);
     setOcupado(true);
     limparErro();
     const gerar = () => executor.novaChave();
@@ -77,7 +77,7 @@ export function AcoesDetalhe({ acoes, rota, rotaDaPagina, compacta = false, orig
   const leituraItens = aberta?.entrada === 'itens' ? aberta.leitura : undefined;
   const carregarItens = useCallback<CarregarItens>(async () => {
     const itensDe = executor?.itensDaLeitura;
-    if (!leituraItens || !itensDe) return { ok: false, erro: 'Tela não encontrada.' };
+    if (!leituraItens || !itensDe) return { ok: false, erro: ACAO_INDISPONIVEL };
     const r = await ler(leituraItens);
     if (!r.ok) return { ok: false, erro: r.mensagem };
     try {
