@@ -2,6 +2,7 @@
 import { ConfigurarIntegracaoPlataformaEntrada, DefinirCredencialPlataformaEntrada, EntidadeEnvioFdv, type IntegracaoFdvPlataforma, type LogCadastroFdvPlataforma, type MonitorConectorFdv, type RespostaReprocessarFdv } from '@macuxierp/platform-sdk';
 import { revalidatePath } from 'next/cache';
 import { cargaCompletaFdv, configurarIntegracaoFdv,definirCredencialFdv, lerLogFdv, lerMonitorFdv, reprocessarFdv, retomarFdv, testarConexaoFdv } from '@/lib/config/api';
+import { ERRO_CHAVE_VAZIA } from '@/lib/config/entrada-textos';
 import { executarConfig, falha, type Resultado } from '@/lib/config/executar';
 
 /**
@@ -22,7 +23,8 @@ function camposDe(erro: { issues: { path: PropertyKey[]; message: string }[] }):
 
 export async function salvarCredencialFdvAcao(id: string, entrada: { conector_id: string; chave: string; ambiente: string }): Promise<Resultado<IntegracaoFdvPlataforma>> {
   const p = DefinirCredencialPlataformaEntrada.safeParse({ conector_id: entrada.conector_id.trim(), chave: entrada.chave, ambiente: entrada.ambiente });
-  if (!p.success) return falha('', camposDe(p.error));
+  // campo vazio pede a chave (o texto do contrato fala do tamanho, o que confunde com o campo em branco)
+  if (!p.success) return falha('', { ...camposDe(p.error), ...(entrada.chave.trim() === '' ? { chave: ERRO_CHAVE_VAZIA } : {}) });
   const r = await executarConfig('integracao_fdv', (t) => definirCredencialFdv(t, id, p.data));
   if (r.ok) atualizar(id);
   return r;

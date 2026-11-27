@@ -187,14 +187,17 @@ describe('endereços inativados (T-0070)', () => {
 
 
 describe('v0.3.23: aba Dados no celular (390) esconde as colunas certas', () => {
-  it('a regra por posição esconde Registros, Com erro e Origem e deixa a Última carga, na ordem real das colunas', async () => {
+  it('#840: a regra por posição esconde Última carga, Registros, Com erro e Origem (a última carga sobe para sob o nome), na ordem real das colunas', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const css = readFileSync(join(__dirname, '../../../../globals.css'), 'utf8');
     const regra = /\.tabela-dados th:nth-child\(\d\)[^{]*\{ display: none; \}/.exec(css)?.[0] ?? '';
     const ocultas = [...new Set([...regra.matchAll(/nth-child\((\d)\)/g)].map((m) => Number(m[1])))];
     const cabecalho = [...aba().matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, '').trim());
-    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Registros', 'Com erro', 'Origem']);
+    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Última carga', 'Registros', 'Com erro', 'Origem']);
     expect(cabecalho.slice(0, 3)).toEqual(['Cadastro', 'Situação', 'Última carga']);
+    expect(aba()).toContain('<span class="carga-sob-nome">Última carga: ');
+    expect(css).toMatch(/\.envio-sob-nome, \.carga-sob-nome \{ display: none; \}/);
+    expect(css).toMatch(/\.tabela-dados td:last-child > span \{ flex-direction: column; align-items: stretch; \}/);
   });
 });

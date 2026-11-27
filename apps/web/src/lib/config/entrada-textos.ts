@@ -5,6 +5,8 @@
 
 export const AJUDA_CODIGO_LIVRE = 'Letras, números, ponto, hífen e sublinhado. Até 100.';
 export const ERRO_CODIGO_VAZIO = 'Informe o código.';
+/** Chave vazia ao salvar ou trocar a chave do Macuxi FDV (#840, decisão B da PO). */
+export const ERRO_CHAVE_VAZIA = 'Informe a chave.';
 export const ERRO_CODIGO_REGRA = 'Use só letras, números, ponto, hífen e sublinhado, até 100 caracteres.';
 export const ERRO_CODIGO_EM_USO = 'Este código já está em uso. Escolha outro.';
 
@@ -18,9 +20,9 @@ export const ERRO_GERAR_INCERTO = 'Não foi possível confirmar a chave. Gere de
 export const ERRO_REVOGAR = 'Não foi possível revogar a chave. Tente de novo.';
 
 export const TITULO_TROCAR = 'Trocar a chave do sistema do cliente?';
-export const AVISO_TROCAR = 'A chave atual para de funcionar agora. Quem usa a chave antiga fica sem enviar até receber a nova.';
+export const AVISO_TROCAR = 'A chave atual deixa de funcionar agora. Quem usa a chave antiga fica sem enviar até receber a nova.';
 export const TITULO_REVOGAR = 'Revogar a chave do sistema do cliente?';
-export const AVISO_REVOGAR = 'A chave atual para de funcionar agora. Para voltar a enviar, gere uma chave nova.';
+export const AVISO_REVOGAR = 'A chave atual deixa de funcionar agora. Para voltar a enviar, gere uma chave nova.';
 
 export const TITULO_CHAVE = 'Chave do sistema do cliente';
 export const AVISO_CHAVE = 'Esta chave não aparece de novo. Guarde agora.';

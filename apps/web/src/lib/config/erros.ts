@@ -37,7 +37,7 @@ export class ErroPlataforma extends Error {
   }
 }
 
-export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita' | 'entrada' | 'entrada_revogar';
+export type ContextoErro = 'entrar' | 'criar_empresa' | 'modulos' | 'criar_admin' | 'redefinir' | 'situacao' | 'senha' | 'carregar' | 'email' | 'integracao_fdv' | 'carga' | 'receita' | 'ficha' | 'entrada' | 'entrada_revogar';
 
 /**
  * Ficha pela Receita (T-0101): as falhas da fonte (200 `estado: 'erro'`), o 409 e o 422 trazem a `mensagem` do core, que a
@@ -90,6 +90,8 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
       if (e.status === 409) return { ...base, texto: e.mensagem || FALHA, chaveNova: definitiva };
       if (e.status === 422 || e.status === 400) return { ...base, texto: e.mensagem || RECEITA_DADO_RECUSADO, chaveNova: definitiva };
     }
+    // Ficha editável (RN-CORE-16): a mensagem curta do core no conflito e na falta da porta (ex.: sem CNPJ, consulta de notas fora).
+    if (ctx === 'ficha' && (e.status === 409 || e.status === 503) && e.mensagem) return { ...base, texto: e.mensagem, chaveNova: ehRespostaDefinitiva(e.status) };
     if (e.status === 409) {
       if (ctx === 'criar_empresa') return { ...base, texto: '', campos: { codigo: 'Já existe uma empresa com esse código. Escolha outro.' }, chaveNova: ehRespostaDefinitiva(e.status) };
       if (ctx === 'criar_admin') return { ...base, texto: ADMIN_JA_EXISTE, chaveNova: ehRespostaDefinitiva(e.status) };

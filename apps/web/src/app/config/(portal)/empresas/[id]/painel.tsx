@@ -1,10 +1,9 @@
 'use client';
-import type { FichaReceitaPlanaMascarada } from '@macuxierp/core/contracts';
+import type { FichaReceitaPlanaMascarada, SituacaoTrocaCnpj } from '@macuxierp/core/contracts';
 import type { EmpresaPlataforma, ModuloId } from '@macuxierp/platform-sdk';
 import { DialogoMotivo, FaixaPendencias, RegiaoErros, ResultadoAcao, useResultado } from '@macuxierp/ui';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { dadosDaEmpresa } from '@/lib/config/empresa';
-import { fichaVazia } from '@/lib/config/ficha';
+import { lugarDaEmpresa } from '@/lib/config/empresa';
 import type { Resultado } from '@/lib/config/executar';
 import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { validarMotivo } from '@/lib/config/formularios';
@@ -12,6 +11,7 @@ import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nome
 import { RevelarMascarado } from '@/components/revelar-mascarado';
 import { alterarModulosAcao, criarAdminAcao, mostrarEmailAcao, redefinirSenhaAcao, situacaoAcao } from '../acoes';
 import { FichaReceita } from './ficha-receita';
+import { CampoCnpj } from './troca-cnpj';
 
 export interface ChavesPainel {
   admin: string;
@@ -23,35 +23,33 @@ interface Comum {
   empresa: EmpresaPlataforma;
   aoErro: (tem: boolean) => void;
 }
-
-export function PainelEmpresa({ empresa, deps, chaves, ficha = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaPlanaMascarada | null }) {
+/**
+ * Aba Empresa (docs/design/telas-horizontais, R-20261127-110345): grade de blocos na largura toda. A Ficha da Receita (com o
+ * CNPJ) é o bloco largo, e Módulos, 1º administrador e Situação ficam ao lado; no celular, um embaixo do outro, nessa ordem.
+ */
+export function PainelEmpresa({ empresa, deps, chaves, ficha = null, cnpj = null }: { empresa: EmpresaPlataforma; deps: Dependencia[]; chaves: ChavesPainel; ficha?: FichaReceitaPlanaMascarada | null; cnpj?: SituacaoTrocaCnpj | null }) {
   const [temErro, setTemErro] = useState(false);
   const [mudou, setMudou] = useState(false);
   return (
     <>
       <RegiaoErros temErro={temErro} />
-      <BlocoDados empresa={empresa} ficha={fichaVazia(ficha) ? null : ficha} />
-      <FichaReceita empresaId={empresa.id} ficha={ficha} fuso={empresa.fuso} editavel={empresa.situacao !== 'encerrado'} />
-      <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
-      <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
-      <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />
+      <div className="grade-blocos grade-empresa">
+        <FichaReceita
+          empresaId={empresa.id}
+          ficha={ficha}
+          razaoEmpresa={empresa.razao_social ?? null}
+          lugar={lugarDaEmpresa(empresa, ficha)}
+          fuso={empresa.fuso}
+          editavel={empresa.situacao !== 'encerrado'}
+          cnpj={<CampoCnpj empresa={empresa} situacao={cnpj} />}
+        />
+        <div className="blocos-laterais">
+          <BlocoModulos empresa={empresa} deps={deps} aoErro={setTemErro} aoMudar={setMudou} />
+          <BlocoAdmin empresa={empresa} chaves={chaves} aoErro={setTemErro} principal={!mudou} />
+          <BlocoSituacao empresa={empresa} chave={chaves.situacao} aoErro={setTemErro} />
+        </div>
+      </div>
     </>
-  );
-}
-
-function BlocoDados({ empresa, ficha }: { empresa: EmpresaPlataforma; ficha: FichaReceitaPlanaMascarada | null }) {
-  return (
-    <section className="bloco" aria-labelledby="h-dados">
-      <h2 id="h-dados">Dados da empresa</h2>
-      <dl className="dados-empresa">
-        {dadosDaEmpresa(empresa, ficha).map((l) => (
-          <div key={l.rotulo}>
-            <dt className="apoio">{l.rotulo}</dt>
-            <dd>{l.valor}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
   );
 }
 

@@ -48,13 +48,20 @@ export function linhaBaseFdv(c: CadastroFdvBase, fuso: string, acao: (a: AcaoSug
   };
 }
 
-/** `falhaSobreNome`: no BKO, em tela estreita (CSS) a falha sobe para uma linha sob o nome e a coluna Falha some. */
-export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNome?: boolean } = {}): ColunaTabela<T>[] {
+/**
+ * `falhaSobreNome`: no BKO e no /config, em tela estreita (CSS) a falha sobe para uma linha sob o nome e a coluna Falha some.
+ * `envioSobreNome` (/config, #840): o último envio também sobe para sob o nome e a coluna dele some.
+ */
+export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNome?: boolean; envioSobreNome?: boolean } = {}): ColunaTabela<T>[] {
   return [
     {
       id: 'rotulo',
       titulo: 'Cadastro',
-      celula: (l) => (opcoes.falhaSobreNome && l.falha ? createElement('span', null, l.rotulo, createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`.trim(), elementoProximaTentativa(l.proximaTentativa))) : l.rotulo),
+      celula: (l) => {
+        const envio = opcoes.envioSobreNome ? createElement('span', { className: 'envio-sob-nome' }, `Último envio: ${l.ultimoEnvio}`) : null;
+        const falha = opcoes.falhaSobreNome && l.falha ? createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`.trim(), elementoProximaTentativa(l.proximaTentativa)) : null;
+        return envio || falha ? createElement('span', null, l.rotulo, envio, falha) : l.rotulo;
+      },
     },
     { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => createElement('span', { className: l.ligada ? 'selo selo-ativo' : 'selo selo-inativo' }, l.ligada ? 'Ligado' : 'Desligado') },
     { id: 'ultimoEnvio', titulo: 'Último envio', tipo: 'data', celula: (l) => l.ultimoEnvio },

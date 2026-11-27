@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
-import { codigoExibido, destinoErroEmpresa, lerApoio } from '@/lib/config/empresa';
-import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv } from '@/lib/config/api';
+import { codigoExibido, destinoErroEmpresa, lerApoio, textoCriadaEm } from '@/lib/config/empresa';
+import { lerEmpresa, lerIntegracaoFdv, lerMonitorFdv, lerSituacaoCnpj } from '@/lib/config/api';
 import { lerCargas } from '@/lib/config/cargas-api';
 import { lerEntrada } from '@/lib/config/entrada-api';
 import { CodigoDoErro } from '@/components/codigo-do-erro';
@@ -50,6 +50,8 @@ export default async function Empresa({ params, searchParams }: { params: Promis
   // a entrada vale para as duas abas: a ficha da ligação (Integração) e os números do último lote (Dados, "Cadastros recebidos")
   const entrada = naIntegracao || naCarga ? (await ler(() => lerEntrada(token, id))).valor : null;
   const cargas = naCarga ? (await ler(() => lerCargas(token, id))).valor : null;
+  // RN-CORE-16: a aba Empresa sabe antes se o CNPJ pode ser trocado (sem a leitura, a troca fica fechada)
+  const situacaoCnpj = !naIntegracao && !naCarga && empresa.cnpj ? (await ler(() => lerSituacaoCnpj(token, id))).valor : null;
   const base = `/config/empresas/${encodeURIComponent(id)}`;
   const deps = MANIFESTOS.map((m) => ({ id: m.id, depende: m.depende }));
   return (
@@ -59,7 +61,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
         <h1>{empresa.nome}</h1>
         <SeloSituacao situacao={empresa.situacao} />
       </div>
-      <p className="apoio">Código: <span className="codigo">{codigoExibido(empresa)}</span></p>
+      <p className="apoio">Código: <span className="codigo">{codigoExibido(empresa)}</span> · {textoCriadaEm(empresa)}</p>
       {criada === '1' && <p className="faixa-aviso" role="status">Empresa criada. Ligue os módulos e crie o 1º administrador.</p>}
       <nav className="abas-texto" aria-label="Abas da empresa">
         <a href={base} aria-current={naIntegracao || naCarga ? undefined : 'page'}>Empresa</a>
@@ -82,6 +84,7 @@ export default async function Empresa({ params, searchParams }: { params: Promis
         <PainelEmpresa
           empresa={empresa}
           ficha={empresa.ficha}
+          cnpj={situacaoCnpj}
           deps={deps}
           chaves={{ admin: randomUUID(), senha: randomUUID(), situacao: randomUUID() }}
         />

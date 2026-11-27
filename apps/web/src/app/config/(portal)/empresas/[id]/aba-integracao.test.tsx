@@ -89,7 +89,7 @@ describe('diálogo "Trocar chave" da força de vendas', () => {
     const h = dialogo();
     expect(h).toContain('role="dialog"');
     expect(h).toContain(`Trocar a chave do ${ROTULO_DESTINO_FDV}?`);
-    expect(h).toContain('A chave atual para de funcionar agora. Quem usa a chave antiga fica sem enviar até receber a nova.');
+    expect(h).toContain('A chave atual deixa de funcionar agora. Quem usa a chave antiga fica sem enviar até receber a nova.');
     expect(h).toContain('<span>Nova chave</span>');
     expect(h).toContain('<span>Ambiente</span>');
     expect(h).not.toContain('name="conector_id"');
@@ -106,11 +106,12 @@ describe('diálogo "Trocar chave" da força de vendas', () => {
 
 describe('CSS das ligações (docs/design/integracao-duas-ligacoes)', () => {
   const css = readFileSync(join(__dirname, '../../../../globals.css'), 'utf8');
-  it('grade de 2 colunas, 1 coluna abaixo de 900 px; seta em texto-secundario; /config até 1280 px', () => {
-    expect(css).toMatch(/\.ligacoes \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 16px; align-items: start; \}/);
-    expect(css).toMatch(/@media \(max-width: 900px\) \{ \.ligacoes \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
+  it('telas horizontais (R-20261127-110345): 2 colunas, 1 só no celular; seta em texto-secundario; /config na largura toda; rótulo da ficha em destaque', () => {
+    expect(css).toMatch(/\.ligacoes, \.grade-cartoes \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 16px; align-items: start; \}/);
+    expect(css).toMatch(/@media \(max-width: 767px\) \{ \.ligacoes, \.grade-cartoes \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
     expect(css).toMatch(/\.ligacao h2 \.seta, \.direcao h2 \.seta \{ color: var\(--mx-cor-texto-secundario\); font-weight: 400; \}/);
-    expect(css).toMatch(/\.casca-plataforma \.conteudo \{ max-width: 1280px; margin: 0 auto; \}/);
+    expect(css).toMatch(/\.casca-plataforma \.conteudo \{ max-width: none; \}/);
+    expect(css).toMatch(/\.ligacao \.ficha dt \{[^}]*color: var\(--mx-cor-rotulo-destaque\); text-transform: uppercase;/);
   });
   it('.so-leitor não tem mais dois sentidos: a camada clicável ganhou nome próprio', () => {
     expect(css.match(/^\.so-leitor\s*\{/gm) ?? []).toHaveLength(1);

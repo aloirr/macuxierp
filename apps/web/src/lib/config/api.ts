@@ -26,7 +26,18 @@ import {
   type SituacaoEmpresaEntrada,
   type TrocarSenhaEntrada,
 } from '@macuxierp/platform-sdk';
-import { ContatoRevelado, FichaReceitaPlanaMascarada, ResultadoReceitaPlana, type CampoContato } from '@macuxierp/core/contracts';
+import {
+  ContatoRevelado,
+  FichaReceitaPlanaMascarada,
+  PreviaReceita,
+  ROTAS_FICHA,
+  ResultadoSalvarFicha,
+  ResultadoTrocaCnpj,
+  SituacaoTrocaCnpj,
+  type CampoContato,
+  type EdicaoFicha,
+  type TrocaCnpj,
+} from '@macuxierp/core/contracts';
 import { z } from 'zod';
 import { buscarNaApi } from '../api';
 import { sinalDeBloqueioNaResposta } from '../login-regras';
@@ -130,9 +141,32 @@ export async function lerEmpresa(token: string, id: string): Promise<z.infer<typ
   return validado(await chamar('GET', `/empresas/${idEmpresa(id)}`, { token }), EmpresaComFicha);
 }
 
-/** `POST .../receita` (T-0101): a API consulta a fonte com o CNPJ da `core.empresa`; `Idempotency-Key` obrigatória. */
-export async function atualizarReceita(token: string, id: string, chave: string): Promise<ResultadoReceitaPlana> {
-  return validado(await chamar('POST', `/empresas/${idEmpresa(id)}/receita`, { token, chave }), ResultadoReceitaPlana);
+/** Caminho de `ROTAS_FICHA` (RN-CORE-16) sem o prefixo do portal (o `chamar` o põe), com o id já conferido. */
+const rotaFicha = (r: { caminho: string }, id: string) => r.caminho.slice(PREFIXO_PLATAFORMA.length).replace(':id', idEmpresa(id));
+
+/** Ficha editável (RN-CORE-16): "Atualizar pela Receita" só traz a prévia (não grava); contatos mascarados. */
+export async function previaReceita(token: string, id: string, chave: string): Promise<PreviaReceita> {
+  return validado(await chamar(ROTAS_FICHA.previaReceita.metodo, rotaFicha(ROTAS_FICHA.previaReceita, id), { token, chave }), PreviaReceita);
+}
+
+/**
+ * "Salvar" da ficha (RN-CORE-16): grava e audita (só nomes de campo). A rota só responde `ok` ou `sem_mudanca`; a falha vem como
+ * erro HTTP (400/409/422). O estado `erro` do contrato não é usado pela tela: se vier, é resposta fora do contrato.
+ */
+const [SalvoOk, SalvoSemMudanca] = ResultadoSalvarFicha.options;
+const SalvoFicha = z.discriminatedUnion('estado', [SalvoOk, SalvoSemMudanca]);
+export async function salvarFicha(token: string, id: string, corpo: EdicaoFicha, chave: string): Promise<z.infer<typeof SalvoFicha>> {
+  return validado(await chamar(ROTAS_FICHA.salvar.metodo, rotaFicha(ROTAS_FICHA.salvar, id), { token, corpo, chave }), SalvoFicha);
+}
+
+/** Se o CNPJ pode ser trocado agora (RN-CORE-16): a tela sabe antes de tentar e mostra o motivo do bloqueio. */
+export async function lerSituacaoCnpj(token: string, id: string): Promise<SituacaoTrocaCnpj> {
+  return validado(await chamar(ROTAS_FICHA.situacaoCnpj.metodo, rotaFicha(ROTAS_FICHA.situacaoCnpj, id), { token }), SituacaoTrocaCnpj);
+}
+
+/** Troca do CNPJ (RN-CORE-16, só superadmin); a API revalida e devolve o bloqueio com a mensagem. */
+export async function trocarCnpj(token: string, id: string, corpo: TrocaCnpj, chave: string): Promise<ResultadoTrocaCnpj> {
+  return validado(await chamar(ROTAS_FICHA.trocarCnpj.metodo, rotaFicha(ROTAS_FICHA.trocarCnpj, id), { token, corpo, chave }), ResultadoTrocaCnpj);
 }
 
 /** `POST .../contato/{email|telefone}` (no-store, auditado pela API: sem Idempotency-Key). O valor só vai à tela. */

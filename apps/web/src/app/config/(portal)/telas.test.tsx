@@ -9,7 +9,7 @@ vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { acumularPagina } from '@macuxierp/ui/paginacao';
-import { dadosDaEmpresa } from '@/lib/config/empresa';
+import { lugarDaEmpresa, textoCriadaEm } from '@/lib/config/empresa';
 import { MANIFESTOS } from '@/lib/manifestos';
 import { FormularioEmpresa } from './empresas/nova/formulario';
 import { ListaEmpresas } from './lista-empresas';
@@ -110,33 +110,44 @@ describe('empresa: módulos, 1º administrador e situação', () => {
   });
 });
 
-describe('empresa: dados e e-mail do 1º administrador', () => {
+describe('empresa: Ficha com o CNPJ e e-mail do 1º administrador (docs/design/telas-horizontais §3)', () => {
   const completa = { ...acme, razao_social: 'Acme Comércio Ltda', cnpj: '12345678000195', cidade: 'Manaus', uf: 'AM', primeiro_admin: { ...acme.primeiro_admin!, email_mascarado: 'ad****@exemplo.com.br' } };
-  it('empresa completa: dados com o CNPJ formatado e o e-mail mascarado com o botão "Mostrar"', () => {
-    const h = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} />);
-    expect(h).toContain('<h2 id="h-dados">Dados da empresa</h2>');
-    expect(h).toContain('Acme Comércio Ltda');
+  it('empresa completa: a Ficha (bloco largo) traz a razão social, o CNPJ formatado e a cidade; sem cartão "Dados da empresa"; e-mail mascarado com "Mostrar"', () => {
+    const h = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} cnpj={{ permitida: true }} />);
+    expect(h).not.toContain('Dados da empresa');
+    expect(h).toContain('class="bloco bloco-largo ficha-editavel"');
+    expect(h.indexOf('id="h-ficha"')).toBeLessThan(h.indexOf('id="h-modulos"'));
+    expect(h).toContain('value="Acme Comércio Ltda"');
     expect(h).toContain('12.345.678/0001-95');
+    expect(h).toContain('>Trocar CNPJ</button>');
     expect(h).toContain('Manaus/AM');
-    expect(h).toContain('23/11/2026 08:00');
     expect(h).toContain('ad****@exemplo.com.br');
-    expect(h).toContain('Mostrar');
     expect(h).not.toContain('admin@exemplo.com.br');
   });
-  it('campos null mostram "—"; sem máscara, sem o cartão do e-mail', () => {
-    const vazios = dadosDaEmpresa({ ...acme, razao_social: null, cnpj: null, cidade: null, uf: null });
-    expect(vazios.filter((l) => l.valor === '—').map((l) => l.rotulo)).toEqual(['Razão social', 'CNPJ', 'Cidade/UF']);
-    expect(renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />)).not.toContain('Mostrar');
+  it('CNPJ bloqueado (RN-CORE-16): sem o botão e com o motivo que a API devolveu; sem a leitura, fica fechado', () => {
+    const msg = 'O CNPJ não pode ser trocado: a empresa já tem NF-e autorizada em produção';
+    const h = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} cnpj={{ permitida: false, motivo: 'nfe_autorizada_producao', mensagem: msg }} />);
+    expect(h).not.toContain('Trocar CNPJ');
+    expect(h).toContain(`${msg}.`);
+    const sem = renderToStaticMarkup(<PainelEmpresa empresa={completa} deps={deps} chaves={chaves} />);
+    expect(sem).not.toContain('Trocar CNPJ');
+    expect(sem).toContain('Não foi possível verificar as notas agora; tente de novo.');
   });
-  it('Cidade/UF: o cadastro manda; sem ele, a UF da ficha da Receita preenche o cartão (T-0101)', () => {
-    const semLugar = { ...acme, cidade: null, uf: null };
+  it('sem CNPJ: "—" e nenhuma troca; sem máscara, sem o "Mostrar" do e-mail', () => {
+    const h = renderToStaticMarkup(<PainelEmpresa empresa={acme} deps={deps} chaves={chaves} />);
+    expect(h).toContain('<p class="valor-cnpj" aria-labelledby="rotulo-cnpj">—</p>');
+    expect(h).not.toContain('Trocar CNPJ');
+    expect(h).not.toContain('Mostrar');
+  });
+  it('Cidade/UF: o cadastro manda; sem ele, a ficha da Receita (nome do município ou só a UF); criada em, no fuso', () => {
+    const semLugar = { cidade: null, uf: null };
     const f = { municipio_ibge: '1302603', uf: 'AM' };
-    expect(dadosDaEmpresa(semLugar, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('AM');
-    expect(dadosDaEmpresa({ ...semLugar, cidade: 'Manaus' }, f).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Manaus/AM');
-    expect(dadosDaEmpresa(semLugar, { uf: null }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
-    expect(dadosDaEmpresa(semLugar, { ...f, municipio_nome: 'Manaus' }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Manaus/AM');
-    expect(dadosDaEmpresa({ ...semLugar, cidade: 'Parintins' }, { ...f, municipio_nome: 'Manaus' }).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('Parintins/AM');
-    expect(dadosDaEmpresa(semLugar).find((l) => l.rotulo === 'Cidade/UF')?.valor).toBe('—');
+    expect(lugarDaEmpresa(semLugar, f)).toBe('AM');
+    expect(lugarDaEmpresa({ ...semLugar, cidade: 'Manaus' }, f)).toBe('Manaus/AM');
+    expect(lugarDaEmpresa(semLugar, { uf: null })).toBeNull();
+    expect(lugarDaEmpresa(semLugar, { ...f, municipio_nome: 'Manaus' })).toBe('Manaus/AM');
+    expect(lugarDaEmpresa({ ...semLugar, cidade: 'Parintins' }, { ...f, municipio_nome: 'Manaus' })).toBe('Parintins/AM');
+    expect(textoCriadaEm(acme)).toBe('Criada em 23/11/2026 08:00');
   });
 });
 
