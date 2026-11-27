@@ -496,3 +496,6 @@ Os comandos do passo sem superusuário (em "Comandos") imitam o DBaaS num Postgr
 
 ## Worker grava o lote da /entrada/v1 nos cadastros (T-0057, migração 0072)
 O lote da entrada roda no `macuxierp_worker` pelo mesmo `gravarLinhas` da carga; sem INSERT e UPDATE nos cadastros a linha caía em 42501. Teste: `db/testes/grants-worker-entrada-0072.db.test.ts`.
+
+## Último código do sinal (v0.3.18, migração 0073)
+O `integracao_fdv.sinal.ultimo_codigo` guarda por que o último sinal falhou, para o monitor mostrar a causa sem log; o `portal_estado` (o jsonb do `portal_ler`) passa a trazer o `pausada_em` de cada cadastro, para a A2 calcular a próxima tentativa. Teste: `db/testes/sinal-ultimo-codigo-0073.db.test.ts`.

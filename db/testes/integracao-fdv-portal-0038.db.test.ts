@@ -86,13 +86,14 @@ const DA_0053 = ['integracao_fdv.portal_inativar_espelho(uuid, text[], jsonb)', 
 const DA_0065 = ['integracao_fdv.portal_liberar_reenvio_pedidos(uuid, uuid[])'] as const;
 const CHAVES_TOPO = ['cadastros', 'credencial', 'empresa_id', 'entidades_habilitadas', 'limite_registros_lote', 'modulo_licenciado', 'sinal'];
 const CHAVES_CREDENCIAL = ['ambiente', 'chave_prefixo', 'conector_id', 'criada_em', 'id', 'ultimo_uso_em'];
-const CHAVES_CADASTRO = ['entidade', 'erros_abertos', 'habilitada', 'ligada', 'lote_em_voo', 'pausada_motivo', 'ultimo_envio_em', 'ultimo_lote'];
+const CHAVES_CADASTRO = ['entidade', 'erros_abertos', 'habilitada', 'ligada', 'lote_em_voo', 'pausada_em', 'pausada_motivo', 'ultimo_envio_em', 'ultimo_lote']; // pausada_em: 0073
 
 interface Cadastro {
   entidade: string;
   habilitada: boolean;
   ligada: boolean;
   pausada_motivo: string | null;
+  pausada_em: string | null;
   lote_em_voo: boolean;
   ultimo_envio_em: string | null;
   ultimo_lote: { estado: string; erro_codigo: string | null; em: string } | null;
@@ -112,6 +113,7 @@ const cadastroVazio = (entidade: string, habilitada: boolean, ligada = habilitad
   habilitada,
   ligada,
   pausada_motivo: null,
+  pausada_em: null,
   lote_em_voo: false,
   ultimo_envio_em: null,
   ultimo_lote: null,
@@ -572,7 +574,10 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     expect(l.cadastros.map((x) => x.entidade)).toEqual(F2);
     for (const x of l.cadastros) expect(Object.keys(x).sort()).toEqual(CHAVES_CADASTRO);
     const por = Object.fromEntries(l.cadastros.map((x) => [x.entidade, x]));
-    expect(por.filial).toEqual({ ...cadastroVazio('filial', true), pausada_motivo: 'licenca_fdv' });
+    // 0073: o item pausado traz o pausada_em do cursor; o não pausado, null (cadastroVazio)
+    const pausadaEm = um<{ p: string | null }>(`SELECT plataforma.instante_iso(pausada_em) AS p FROM integracao_fdv.cursor_entidade WHERE tenant_id = '${A.id}' AND entidade = 'filial'`).p;
+    expect(pausadaEm).not.toBeNull();
+    expect(por.filial).toEqual({ ...cadastroVazio('filial', true), pausada_motivo: 'licenca_fdv', pausada_em: pausadaEm });
     expect(por.produto).toMatchObject({ habilitada: true, ligada: true, lote_em_voo: true, ultimo_envio_em: null, ultimo_lote: { estado: 'montado', erro_codigo: null } });
     expect(por.cliente).toEqual({
       ...cadastroVazio('cliente', false),
