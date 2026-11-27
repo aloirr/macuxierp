@@ -29,7 +29,12 @@ import {
 } from './apoio/entrada-v1';
 import { RelogioDeTeste } from './apoio/relogio';
 
-const INICIO = new Date('2026-11-27T12:00:00.000Z');
+/**
+ * O relógio do teste fica à frente da hora real (a hora cheia seguinte + 1 h): o trabalho da fila é gravado com o `now()` do
+ * banco e o worker só o pega com o relógio do teste depois dele. Uma data fixa virava bomba-relógio quando a hora real a passava.
+ */
+const HORA = 3_600_000;
+const INICIO = new Date(Math.ceil(Date.now() / HORA) * HORA + HORA);
 /** O 401 neutro da autenticação de máquina (o mesmo para todo motivo, ADR 0014 §4). */
 const NEUTRO = { codigo: 'NAO_AUTENTICADO', mensagem: 'Credencial de conector inválida' };
 
