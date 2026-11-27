@@ -2,36 +2,34 @@
 <html lang="pt-BR"><head><meta charset="utf-8"><title>Config — simulação "menos é mais"</title>
 <link rel="stylesheet" href="../../../packages/ui/src/tokens.css">
 <style>
-/* PROPOSTA (R-20261127-174851). Sem escala paralela: os papéis existentes mudam de valor (aguarda o "aprovado")
-   e só entram 3 tokens novos, sem equivalente hoje: altura de campo, espaço e canto do cartão. */
+/* PROPOSTA (R-20261127-174851, decisão 40 aprovada, direção v4). Papéis existentes com valor novo + tokens novos marcados. */
 :root{
-  --mx-tamanho-h1:var(--mx-tamanho-grande);              /* papel h1: 24 → 20 */
-  --mx-tamanho-titulo-cartao:var(--mx-tamanho-base);     /* papel tituloCartao: 20 → 15 */
-  --mx-tamanho-rotulo-dado:var(--mx-tamanho-micro);      /* papel rotuloDado: 13 → 12 */
-  --mx-altura-campo:34px;                                /* NOVO: campo, select e todo botão */
-  --mx-espaco:12px;                                      /* NOVO: entre campos e linhas */
+  --mx-tamanho-h1:var(--mx-tamanho-grande);              /* h1 24 → 20 */
+  --mx-tamanho-titulo-cartao:var(--mx-tamanho-pequeno);  /* título de seção 20 → 13, caixa-alta */
+  --mx-tamanho-rotulo-dado:var(--mx-tamanho-micro);      /* rótulo 13 → 12 */
+  --mx-altura-campo:34px;                                /* NOVO */
+  --mx-espaco:12px;                                      /* NOVO */
   --mx-canto-cartao:8px;                                 /* NOVO */
-  --vao:16px; --margem:24px;                             /* já na regra das telas horizontais */
+  --mx-cor-cabecalho-tabela:#E6EBF3;                     /* NOVO, a validar com o design-de-marca */
+  --vao:16px; --margem:24px;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--mx-cor-perola);font-family:var(--mx-fonte-texto);font-size:var(--mx-tamanho-pequeno);color:var(--mx-cor-grafite);line-height:1.4}
 a{color:var(--mx-cor-azul-noite)}
 .topo{background:var(--mx-cor-grafite);height:48px;display:flex;align-items:center;gap:12px;padding:0 var(--margem);color:var(--mx-cor-branco)}
-.topo img{height:20px;margin-right:16px}
-.topo a{color:var(--mx-cor-branco)}
+.topo img{height:20px;margin-right:16px}.topo a{color:var(--mx-cor-branco)}
 .topo .dir{margin-left:auto;display:flex;gap:12px;align-items:center}
 .selo,.selo-plat{font-size:var(--mx-tamanho-selo);font-weight:var(--mx-peso-rotulo-pequeno);padding:2px 8px;border-radius:10px;white-space:nowrap}
 .selo-plat{border:1px solid var(--mx-cor-azul-claro)}
-main{padding:var(--margem)}
+main{padding:var(--margem) var(--margem) 0;min-height:calc(100vh - 48px);flex-direction:column}
+.grade{width:100%;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--vao) var(--vao);align-items:start}
 .grade>*{min-width:0}
-.grade{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--vao)}
 .campos{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--mx-espaco) var(--vao)}
-.c1{grid-column:span 1}.c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c12{grid-column:span 12}
+.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c12{grid-column:span 12}
+.c1{grid-column:span 1}.c2{grid-column:span 2}
 .cabeca{display:flex;align-items:center;gap:12px;margin-bottom:var(--mx-espaco)}
 h1{font-size:var(--mx-tamanho-h1);font-weight:var(--mx-peso-titulo);margin:0;color:var(--mx-cor-azul-noite)}
-.apoio{color:var(--mx-cor-texto-apoio)}
-.cod{font-family:var(--mx-fonte-codigo)}
-.acoes{margin-left:auto;display:flex;gap:8px;align-items:center}
+.apoio{color:var(--mx-cor-texto-apoio)}.cod{font-family:var(--mx-fonte-codigo)}.mini{font-size:var(--mx-tamanho-micro)}
 .ok{background:var(--mx-cor-ativo-fundo);color:var(--mx-cor-ativo-texto)}
 .neutro{background:var(--mx-cor-nevoa);color:var(--mx-cor-texto-secundario)}
 .aviso{background:var(--mx-cor-aviso-fundo);color:var(--mx-cor-aviso-texto)}
@@ -39,77 +37,59 @@ h1{font-size:var(--mx-tamanho-h1);font-weight:var(--mx-peso-titulo);margin:0;col
 .abas{display:flex;gap:24px;border-bottom:1px solid var(--mx-cor-borda-tabela);margin:0 0 var(--vao)}
 .abas a{padding:8px 0;color:var(--mx-cor-grafite);text-decoration:none}
 .abas a.at{font-weight:var(--mx-peso-aba-ativa);border-bottom:3px solid var(--mx-cor-azul-noite)}
+/* seção: título fora da caixa */
+.secao{min-width:0}
+.secao>h2{font-size:var(--mx-tamanho-titulo-cartao);font-weight:var(--mx-peso-titulo);color:var(--mx-cor-azul-noite);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;display:flex;align-items:center;gap:8px;min-height:28px}
+.secao>h2 .dir{margin-left:auto;display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-weight:var(--mx-peso-normal)}
 .cartao{background:var(--mx-cor-branco);border:1px solid var(--mx-cor-borda-tabela);border-radius:var(--mx-canto-cartao);padding:16px;min-width:0}
-.cartao h2{font-size:var(--mx-tamanho-titulo-cartao);font-weight:var(--mx-peso-titulo);color:var(--mx-cor-rotulo-destaque);margin:0 0 var(--mx-espaco);display:flex;align-items:center;gap:8px;min-height:var(--mx-altura-campo)}
-.cartao h2 .dir{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:var(--mx-tamanho-pequeno);font-weight:var(--mx-peso-normal)}
-label,dt,th{font-size:var(--mx-tamanho-rotulo-dado);font-weight:var(--mx-peso-rotulo-dado);color:var(--mx-cor-rotulo-destaque);text-transform:uppercase;letter-spacing:.04em}
+.cartao.tabela{padding:0;overflow:hidden}
+label,dt{font-size:var(--mx-tamanho-rotulo-dado);font-weight:var(--mx-peso-rotulo-dado);color:var(--mx-cor-rotulo-destaque);text-transform:uppercase;letter-spacing:.04em}
 .campo{display:flex;flex-direction:column;gap:4px;min-width:0}
 input,select{height:var(--mx-altura-campo);border:1px solid var(--mx-cor-borda-campo);border-radius:6px;padding:0 10px;font:inherit;background:var(--mx-cor-branco);color:var(--mx-cor-grafite);width:100%}
 .ro{height:var(--mx-altura-campo);display:flex;align-items:center;gap:8px}
-.btn,.btn2,.menu{height:var(--mx-altura-campo);padding:0 14px;border-radius:6px;font:inherit;cursor:pointer;white-space:nowrap}
+.btn,.btn2,.perigo{height:var(--mx-altura-campo);padding:0 14px;border-radius:6px;font:inherit;cursor:pointer;white-space:nowrap}
 .btn{background:var(--mx-cor-azul-noite);color:var(--mx-cor-branco);border:1px solid var(--mx-cor-azul-noite);font-weight:var(--mx-peso-botao-principal)}
-.btn2,.menu{background:var(--mx-cor-branco);color:var(--mx-cor-grafite);border:1px solid var(--mx-cor-borda-campo);font-weight:var(--mx-peso-medio)}
-.menu::after{content:" ▾"}
-dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--mx-espaco) var(--vao);margin:0}
+.btn2{background:var(--mx-cor-branco);color:var(--mx-cor-grafite);border:1px solid var(--mx-cor-borda-campo);font-weight:var(--mx-peso-medio)}
+.perigo{background:var(--mx-cor-branco);color:var(--mx-cor-erro-texto);border:1px solid var(--mx-cor-erro-texto);font-weight:var(--mx-peso-medio)}
+.perigo.cheio{background:var(--mx-cor-erro-texto);color:var(--mx-cor-branco)}
+dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mx-espaco) var(--vao);margin:0}
 dd{margin:2px 0 0;overflow-wrap:anywhere}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--mx-cor-borda-tabela);border-radius:10px;padding:2px 8px;background:var(--mx-cor-nevoa)}
 .chip b{font-family:var(--mx-fonte-codigo);font-weight:var(--mx-peso-rotulo-pequeno)}
-table{width:100%;border-collapse:collapse;background:var(--mx-cor-branco)}
-th{text-align:left;padding:8px 10px;background:var(--mx-cor-nevoa);border-bottom:1px solid var(--mx-cor-borda-tabela);white-space:nowrap}
-td{padding:6px 10px;border-bottom:1px solid var(--mx-cor-borda-tabela);vertical-align:middle;white-space:nowrap}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:8px 10px;background:var(--mx-cor-cabecalho-tabela);color:var(--mx-cor-azul-noite);font-weight:var(--mx-peso-titulo);font-size:var(--mx-tamanho-rotulo-dado);text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--mx-cor-azul-noite);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--mx-cor-borda-tabela);white-space:nowrap}
+tbody tr:nth-child(even) td{background:var(--mx-cor-perola)}
 td:first-child,td.quebra{white-space:normal}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 td.a{text-align:right}
-.tabela{padding:0;overflow:hidden}
-.tabela table{table-layout:auto}
-
-.tabela h2{padding:16px 16px 0}
+.lk a{text-decoration:underline}.lk .menu{text-decoration:none;font-weight:var(--mx-peso-medio)}
 .lista{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
-.lista li{display:flex;align-items:center;gap:8px}
-.lista input{width:auto;height:auto}
-.barra{margin:var(--vao) calc(-1*var(--margem)) calc(-1*var(--margem));padding:10px var(--margem);background:var(--mx-cor-branco);border-top:1px solid var(--mx-cor-borda-tabela);display:flex;gap:8px;justify-content:flex-end;align-items:center}
-.busca{width:320px}
-.tela{display:none}.tela:target{display:block}
-.linha{display:flex;gap:8px;align-items:flex-end}
-.mini{font-size:var(--mx-tamanho-micro)}
-#junta .so-a{display:none}
+.lista li{display:flex;align-items:center;gap:8px}.lista input{width:auto;height:auto}
 .rodape{display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--mx-cor-borda-tabela)}
-.rodape .fim{margin-left:auto;display:flex;gap:8px}
 .tabela .rodape{margin:0;padding:12px 16px}
-.perigo{background:var(--mx-cor-branco);color:var(--mx-cor-erro-texto);border:1px solid var(--mx-cor-erro-texto);height:var(--mx-altura-campo);padding:0 14px;border-radius:6px;font:inherit;font-weight:var(--mx-peso-medio);white-space:nowrap}
-.perigo.cheio{background:var(--mx-cor-erro-texto);color:var(--mx-cor-branco)}
-.lk{white-space:nowrap}.lk a{text-decoration:underline}.lk a.vermelho{color:var(--mx-cor-erro-texto)}
+.rodape .fim,.barra .fim{margin-left:auto;display:flex;gap:8px}
+.barra{position:sticky;bottom:0;margin:auto calc(-1*var(--margem)) 0;padding:10px var(--margem);background:var(--mx-cor-branco);border-top:1px solid var(--mx-cor-borda-tabela);display:flex;gap:8px;align-items:center}
+.busca{width:280px;font-size:var(--mx-tamanho-pequeno);font-weight:var(--mx-peso-normal);letter-spacing:0;text-transform:none}
+.secao>h2 .selo{text-transform:none;letter-spacing:0}
+.tela{display:none}.tela:target{display:flex}
+.col{display:grid;gap:var(--vao);align-content:start;min-width:0}
 .cortina{position:fixed;inset:0;background:var(--mx-cor-grafite);opacity:.55}
 .dialogo{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:440px;background:var(--mx-cor-branco);border-radius:var(--mx-canto-cartao);padding:24px;display:grid;gap:12px}
-.dialogo h2{margin:0;font-size:var(--mx-tamanho-titulo-dialogo);color:var(--mx-cor-azul-noite)}
+.dialogo h2{margin:0;font-size:var(--mx-tamanho-grande);color:var(--mx-cor-azul-noite)}
 .dialogo .faixa{background:var(--mx-cor-erro-fundo);color:var(--mx-cor-erro-texto);padding:8px 12px;border-radius:6px}
-.barra .fim{margin-left:auto;display:flex;gap:8px}
-.col{min-width:0;display:grid;gap:var(--vao);align-content:start}
 </style></head><body>
-<header class="topo"><img src="../../marca/ativos/2026-11-22-v1/macuxi-erp-a-negativo-grafite.svg" alt="Macuxi ERP"><span class="selo-plat">Plataforma</span><a href="#lista">Empresas</a><span class="dir">Superadmin Fictício <button class="btn2">Sair</button></span></header>
+<header class="topo"><img src="../../marca/ativos/2026-11-22-v1/macuxi-erp-a-negativo-grafite.svg" alt="Macuxi ERP"><span class="selo-plat">Plataforma</span><a href="#lista">Empresas</a><span class="dir">Superadmin Fictício · <a href="#">Sair</a></span></header>
 
-<template id="cab"><div class="cabeca"><h1>Comercial Igarapé Fictício Ltda</h1><span class="cod apoio">igarape-ficticio</span><span class="selo ok">Ativa</span>
-</div></template>
+<template id="cab"><div class="cabeca"><h1>Comercial Igarapé Fictício Ltda</h1><span class="cod apoio">igarape-ficticio</span><span class="selo ok">Ativa</span><span class="selo neutro">Igual à Receita · 27/11 13h15</span></div></template>
+<template id="barra-emp"><div class="barra"><button class="btn">Salvar</button><button class="btn2">Descartar</button><button class="btn2">Atualizar pela Receita</button><span class="apoio">2 campos alterados</span><span class="fim"><button class="perigo">Suspender empresa</button></span></div></template>
 
-<template id="cli-cartao"><section class="cartao"><h2>Sistema do cliente → ERP <span class="selo ok">Ligada</span></h2>
- <dl><div><dt>Código</dt><dd class="cod">igarape-erp</dd></div><div><dt>Chave</dt><dd class="cod">mxe_••••8f2a</dd></div><div class="so-a"><dt>Último lote</dt><dd>27/11 17h32</dd></div><div><dt>Lotes hoje</dt><dd>14</dd></div></dl>
- <div class="rodape"><button class="btn2">Trocar chave do cliente</button><span class="fim"><button class="perigo">Revogar chave</button></span></div></section></template>
-<template id="fdv-cartao"><section class="cartao"><h2>ERP → Macuxi FDV <span class="selo ok">Ligada</span></h2>
- <dl><div><dt>Código</dt><dd class="cod">erp-igarape-ficticio</dd></div><div><dt>Ambiente</dt><dd>Produção</dd></div><div class="so-a"><dt>Último contato</dt><dd>27/11 17h39</dd></div></dl>
- <div class="campo" style="width:160px;margin-top:var(--mx-espaco)"><label>Registros por lote</label><input value="5000"></div>
- <div class="rodape"><button class="btn2">Salvar</button><button class="btn2">Testar conexão</button><button class="btn2">Trocar chave do FDV</button></div></section></template>
-<template id="cli-tabela"><section class="cartao tabela"><h2>Cargas recebidas</h2><table>
- <thead><tr><th>Cadastro</th><th>Situação</th><th>Última carga</th><th class="n">Registros</th><th class="n">Erros</th><th></th></tr></thead><tbody data-cli></tbody></table><div class="rodape"><button class="btn2">Baixar modelos</button><span class="fim"><button class="perigo">Zerar cadastros</button></span></div></section></template>
-<template id="fdv-tabela"><section class="cartao tabela"><h2>Envios ao Macuxi FDV</h2><table>
- <thead><tr><th>Cadastro</th><th>Situação</th><th>Último envio</th><th class="n">Registros</th><th class="n">Erros</th><th></th></tr></thead><tbody data-fdv></tbody></table><div class="rodape"><button class="btn2">Carga completa</button><span class="fim"><button class="perigo">Zerar pedidos não faturados</button></span></div></section></template>
-
-<!-- 1. LISTA DE EMPRESAS -->
+<!-- LISTA -->
 <main id="lista" class="tela">
- <div class="cabeca"><h1>Empresas</h1>
-  <div class="acoes"><input class="busca" placeholder="Buscar por nome, código ou CNPJ"></div></div>
+ <div class="secao"><h2 style="font-size:var(--mx-tamanho-h1);text-transform:none;letter-spacing:0">Empresas <span class="dir"><input class="busca" placeholder="Buscar por nome, código ou CNPJ"></span></h2>
  <div class="cartao tabela"><table>
-  <thead><tr><th>Empresa</th><th>Código</th><th>CNPJ</th><th>Situação</th><th>Módulos</th><th>Força de vendas</th><th>Criada em</th></tr></thead>
+  <thead><tr><th>Empresa</th><th>Código</th><th>CNPJ</th><th>Situação</th><th>Módulos</th><th>Macuxi FDV</th><th>Criada em</th></tr></thead>
   <tbody>
    <tr><td>Comercial Igarapé Fictício Ltda</td><td class="cod">igarape-ficticio</td><td class="cod">98.765.432/0001-98</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Integração FDV</td><td><span class="selo ok">Ligada</span></td><td>12/11/2026</td></tr>
    <tr><td>Distribuidora Rio Negro Fictícia Ltda</td><td class="cod">rio-negro-ficticia</td><td class="cod">98.765.433/0001-32</td><td><span class="selo ok">Ativa</span></td><td class="quebra">Cadastros · Pedidos · Faturamento · Fiscal · Integração FDV</td><td><span class="selo ok">Ligada</span></td><td>03/10/2026</td></tr>
@@ -117,16 +97,15 @@ td.a{text-align:right}
    <tr><td>Mercantil Solimões Teste ME</td><td class="cod">solimoes-teste</td><td class="cod">98.765.435/0001-02</td><td><span class="selo neutro">Suspensa</span></td><td>Cadastros</td><td><span class="selo neutro">Desligada</span></td><td>30/09/2026</td></tr>
    <tr><td>Empório Ponta Negra Fictício</td><td class="cod">ponta-negra</td><td class="cod">98.765.436/0001-85</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Integração FDV</td><td><span class="selo erro">Erro no envio</span></td><td>18/11/2026</td></tr>
    <tr><td>Casa Aleixo Exemplo Ltda</td><td class="cod">aleixo-exemplo</td><td class="cod">98.765.437/0001-66</td><td><span class="selo ok">Ativa</span></td><td>Cadastros · Pedidos · Faturamento · Fiscal</td><td><span class="selo neutro">Desligada</span></td><td>25/11/2026</td></tr>
-  </tbody></table></div>
+  </tbody></table></div></div>
  <div class="barra"><button class="btn">Criar empresa</button></div>
 </main>
 
-<!-- 2. EMPRESA -->
+<!-- EMPRESA -->
 <main id="empresa" class="tela"><div data-cab></div>
- <nav class="abas" data-abas></nav>
+ <nav class="abas"><a class="at">Empresa</a><a>Integrações</a></nav>
  <div class="grade">
-  <section class="cartao c12"><h2>Identificação <span class="dir"><span class="selo neutro">Igual à Receita · 27/11 13h15</span></span></h2>
-   <div class="campos">
+  <div class="secao c12"><h2>Identificação</h2><div class="cartao"><div class="campos">
     <div class="campo c5"><label>Razão social</label><input value="COMERCIAL IGARAPÉ FICTÍCIO LTDA"></div>
     <div class="campo c3"><label>Nome fantasia</label><input value="IGARAPÉ FICTÍCIO"></div>
     <div class="campo c2"><label>CNPJ</label><div class="ro"><span class="cod">98.765.432/0001-98</span> <a href="#">trocar</a></div></div>
@@ -142,60 +121,63 @@ td.a{text-align:right}
     <div class="campo c2"><label>Complemento</label><input value="GALPÃO 2"></div>
     <div class="campo c2"><label>Bairro</label><input value="DISTRITO INDUSTRIAL"></div>
     <div class="campo c2"><label>Município · UF</label><div class="ro">Manaus · AM <span class="apoio mini">1302603</span></div></div>
-   </div></section>
-  <section class="cartao c5"><h2>Atividades (CNAE)</h2>
-   <div class="chips"><span class="chip"><b>4639-7/01</b> Comércio atacadista de alimentos em geral · principal</span><span class="chip"><b>4637-1/99</b> Atacadista de outros alimentos</span><span class="chip"><b>4930-2/02</b> Transporte rodoviário de carga</span></div></section>
-  <section class="cartao c4"><h2>Contato</h2>
-   <div class="campos" style="grid-template-columns:1fr">
-    <div class="campo"><label>E-mail</label><input placeholder="co****@igarape.exemplo.invalid"><span class="lk mini"><a href="#">mostrar</a></span></div>
-    <div class="campo"><label>Telefone</label><input placeholder="(92) ****-0000"><span class="lk mini"><a href="#">mostrar</a></span></div>
-   </div></section>
-  <section class="cartao c3"><h2>Módulos</h2>
-   <ul class="lista"><li><input type="checkbox" checked>Cadastros</li><li><input type="checkbox" checked>Pedidos</li><li><input type="checkbox" checked>Integração FDV</li><li><input type="checkbox">Fiscal</li><li><input type="checkbox" disabled><span class="apoio">Faturamento · exige Fiscal</span></li></ul></section>
-  <section class="cartao tabela c12"><h2>Usuários <span class="dir"><input class="busca" style="width:260px" placeholder="Buscar por nome ou e-mail"></span></h2><table>
+  </div></div></div>
+  <div class="secao c5"><h2>Atividades (CNAE)</h2><div class="cartao"><div class="chips"><span class="chip"><b>4639-7/01</b> Comércio atacadista de alimentos em geral · principal</span><span class="chip"><b>4637-1/99</b> Atacadista de outros alimentos</span><span class="chip"><b>4930-2/02</b> Transporte rodoviário de carga</span></div></div></div>
+  <div class="secao c4"><h2>Contato</h2><div class="cartao"><div class="campos" style="grid-template-columns:1fr">
+    <div class="campo"><label>E-mail</label><input placeholder="co****@igarape.exemplo.invalid"><span class="mini"><a href="#">mostrar</a></span></div>
+    <div class="campo"><label>Telefone</label><input placeholder="(92) ****-0000"><span class="mini"><a href="#">mostrar</a></span></div>
+  </div></div></div>
+  <div class="secao c3"><h2>Módulos</h2><div class="cartao"><ul class="lista"><li><input type="checkbox" checked>Cadastros</li><li><input type="checkbox" checked>Pedidos</li><li><input type="checkbox" checked>Integração FDV</li><li><input type="checkbox">Fiscal</li><li><input type="checkbox" disabled><span class="apoio">Faturamento · exige Fiscal</span></li></ul></div></div>
+  <div class="secao c12"><h2>Usuários <span class="dir"><input class="busca" placeholder="Buscar por nome ou e-mail"></span></h2><div class="cartao tabela"><table>
    <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead><tbody>
-   <tr><td>Ana Exemplo</td><td>an**@igarape.exemplo.invalid</td><td>Administrador</td><td><span class="selo ok">Ativo</span></td><td>27/11 16h50</td><td class="a lk"><a href="#">Editar</a> · <a href="#">Redefinir senha</a> · <a href="#" class="vermelho">Excluir</a></td></tr>
-   <tr><td>Bruno Fictício</td><td>br***@igarape.exemplo.invalid</td><td>Faturamento</td><td><span class="selo ok">Ativo</span></td><td>27/11 15h12</td><td class="a lk"><a href="#">Editar</a> · <a href="#">Redefinir senha</a> · <a href="#" class="vermelho">Excluir</a></td></tr>
-   <tr><td>Carla Teste</td><td>ca***@igarape.exemplo.invalid</td><td>Pedidos</td><td><span class="selo neutro">Bloqueado</span></td><td>20/11 09h03</td><td class="a lk"><a href="#">Editar</a> · <a href="#">Redefinir senha</a> · <a href="#" class="vermelho">Excluir</a></td></tr>
-   <tr><td>Davi Exemplo</td><td>da**@igarape.exemplo.invalid</td><td>Cadastros</td><td><span class="selo aviso">Convite enviado</span></td><td>—</td><td class="a lk"><a href="#">Editar</a> · <a href="#">Redefinir senha</a> · <a href="#" class="vermelho">Excluir</a></td></tr>
-   </tbody></table><div class="rodape"><button class="btn2">+ Adicionar usuário</button></div></section>
+   <tr><td>Ana Exemplo</td><td>an**@igarape.exemplo.invalid <a class="mini" href="#">mostrar</a></td><td>Administrador</td><td><span class="selo ok">Ativo</span></td><td>27/11 16h50</td><td class="a lk"><a href="#">Editar</a> · <a href="#" class="menu">Ações ▾</a></td></tr>
+   <tr><td>Bruno Fictício</td><td>br***@igarape.exemplo.invalid <a class="mini" href="#">mostrar</a></td><td>Faturamento</td><td><span class="selo ok">Ativo</span></td><td>27/11 15h12</td><td class="a lk"><a href="#">Editar</a> · <a href="#" class="menu">Ações ▾</a></td></tr>
+   <tr><td>Carla Teste</td><td>ca***@igarape.exemplo.invalid <a class="mini" href="#">mostrar</a></td><td>Pedidos</td><td><span class="selo erro">Bloqueado</span></td><td>20/11 09h03</td><td class="a lk"><a href="#">Editar</a> · <a href="#" class="menu">Ações ▾</a></td></tr>
+   <tr><td>Davi Exemplo</td><td>da**@igarape.exemplo.invalid <a class="mini" href="#">mostrar</a></td><td>Cadastros</td><td><span class="selo neutro">Inativo</span></td><td>02/10 11h40</td><td class="a lk"><a href="#">Editar</a> · <a href="#" class="menu">Ações ▾</a></td></tr>
+   <tr><td>Elisa Fictícia</td><td>el***@igarape.exemplo.invalid <a class="mini" href="#">mostrar</a></td><td>Pedidos</td><td><span class="selo aviso">Convite enviado</span></td><td>—</td><td class="a lk"><a href="#">Editar</a> · <a href="#" class="menu">Ações ▾</a></td></tr>
+   </tbody></table><div class="rodape"><button class="btn2">+ Adicionar usuário</button></div></div></div>
  </div>
- <div class="barra"><button class="btn">Salvar</button><button class="btn2">Descartar</button><button class="btn2">Atualizar pela Receita</button><span class="apoio">2 campos alterados</span><span class="fim"><button class="perigo">Suspender empresa</button></span></div>
+ <div data-barra="emp"></div>
 </main>
 
-<main id="excluir" class="tela"><div id="fundo-excluir"></div>
+<!-- EXCLUIR USUÁRIO -->
+<main id="excluir" class="tela"><div id="fundo-excluir" style="display:contents"></div>
  <div class="cortina"></div><div class="dialogo" role="dialog" aria-label="Excluir usuário"><h2>Excluir Ana Exemplo?</h2>
- <div class="faixa">Ana é a única administradora ativa. Para excluí-la, dê o perfil Administrador a outro usuário antes.</div>
- <p style="margin:0" class="apoio">O usuário perde o acesso na hora. O histórico dele continua na auditoria.</p>
- <div class="rodape" style="border:0;padding:0;margin:0"><button class="btn2">Cancelar</button><span class="fim"><button class="perigo cheio" disabled style="opacity:.5">Excluir</button></span></div></div>
+ <div class="faixa">Ana é a única administradora ativa. Antes, dê o perfil Administrador a outro usuário.</div>
+ <div class="rodape" style="border:0;padding:0;margin:0"><button class="btn2">Fechar</button></div></div>
 </main>
-<!-- 3A. INTEGRAÇÃO (abas separadas) -->
-<main id="integracao" class="tela"><div data-cab></div><nav class="abas" data-abas></nav>
- <div class="grade"><div class="c6" data-t="cli-cartao"></div><div class="c6" data-t="fdv-cartao"></div></div>
- <div class="barra"><button class="btn2">Atualizar</button><span class="fim"><button class="perigo">Suspender empresa</button></span></div>
-</main>
-<!-- 4A. DADOS (abas separadas) -->
-<main id="dados" class="tela"><div data-cab></div><nav class="abas" data-abas></nav>
- <div class="grade"><div class="c6" data-t="cli-tabela"></div><div class="c6" data-t="fdv-tabela"></div></div>
- <div class="barra"><button class="btn2">Atualizar</button><span class="fim"><button class="perigo">Suspender empresa</button></span></div>
-</main>
-<!-- B. INTEGRAÇÃO E DADOS numa aba só: cada coluna é uma direção (ligação em cima, cadastros embaixo) -->
-<main id="junta" class="tela"><div data-cab></div><nav class="abas" data-abas="junta"></nav>
- <div class="grade"><div class="c6 col"><div data-t="cli-cartao"></div><div data-t="cli-tabela"></div></div><div class="c6 col"><div data-t="fdv-cartao"></div><div data-t="fdv-tabela"></div></div></div>
- <div class="barra"><button class="btn2">Atualizar</button><span class="fim"><button class="perigo">Suspender empresa</button></span></div>
+
+<!-- INTEGRAÇÕES: uma coluna por sentido -->
+<main id="integracoes" class="tela"><div data-cab></div>
+ <nav class="abas"><a>Empresa</a><a class="at">Integrações</a></nav>
+ <div class="grade">
+  <div class="c6 col">
+   <div class="secao"><h2>Sistema do cliente → ERP <span class="selo ok">Ligada</span></h2><div class="cartao">
+    <dl><div><dt>Código</dt><dd class="cod">igarape-erp</dd></div><div><dt>Chave</dt><dd class="cod">mxe_••••8f2a</dd></div><div><dt>Lotes hoje</dt><dd>14</dd></div></dl>
+    <div class="rodape"><button class="btn2">Trocar chave do cliente</button><span class="fim"><button class="perigo">Revogar chave</button></span></div></div></div>
+   <div class="secao"><h2>Cargas recebidas</h2><div class="cartao tabela"><table>
+    <thead><tr><th>Cadastro</th><th>Situação</th><th>Última carga</th><th class="n">Registros</th><th class="n">Erros</th><th></th></tr></thead><tbody data-cli></tbody></table>
+    <div class="rodape"><button class="btn2">Baixar modelos</button><button class="btn2">Baixar erros</button><span class="fim"><button class="perigo">Substituir tudo</button><button class="perigo">Zerar cadastros</button></span></div></div></div>
+  </div>
+  <div class="c6 col">
+   <div class="secao"><h2>ERP → Macuxi FDV <span class="selo ok">Ligada</span></h2><div class="cartao">
+    <dl><div><dt>Código</dt><dd class="cod">erp-igarape-ficticio</dd></div><div><dt>Ambiente</dt><dd>Produção</dd></div><div class="campo"><label>Registros por lote</label><input value="5000"></div></dl>
+    <div class="rodape"><button class="btn2">Testar conexão</button><button class="btn2">Trocar chave do FDV</button></div></div></div>
+   <div class="secao"><h2>Envios</h2><div class="cartao tabela"><table>
+    <thead><tr><th>Cadastro</th><th>Situação</th><th>Último envio</th><th class="n">Registros</th><th class="n">Erros</th><th></th></tr></thead><tbody data-fdv></tbody></table>
+    <div class="rodape"><button class="btn2">Carga completa</button><span class="fim"><button class="perigo">Zerar pedidos não faturados</button></span></div></div></div>
+  </div>
+ </div>
+ <div data-barra="int"></div>
 </main>
 <script>
 const cab=document.getElementById('cab').innerHTML;document.querySelectorAll('[data-cab]').forEach(e=>e.innerHTML=cab);
-document.querySelectorAll('[data-t]').forEach(e=>e.innerHTML=document.getElementById(e.dataset.t).innerHTML);
-const aba=location.hash.slice(1);
-if(aba==='excluir'){const f=document.getElementById('fundo-excluir');f.innerHTML=document.getElementById('empresa').innerHTML;}
-document.querySelectorAll('[data-abas]').forEach(n=>{const j=n.dataset.abas==='junta'||aba==='empresa-b';
- const it=j?[['Empresa','empresa'],['Integrações','junta']]:[['Empresa','empresa'],['Integração','integracao'],['Dados','dados']];
- n.innerHTML=it.map(([t,id])=>`<a class="${n.closest('main').id===id?'at':''}">${t}</a>`).join('');});
+document.querySelectorAll('[data-barra]').forEach(e=>e.outerHTML=document.getElementById('barra-emp').innerHTML.replace(e.dataset.barra==='int'?'<button class="btn2">Atualizar pela Receita</button>':'@@',''));
+if(location.hash==='#excluir')document.getElementById('fundo-excluir').innerHTML=document.getElementById('empresa').innerHTML;
 const sel=s=>s==='Carregado'||s==='Em dia'?'ok':s==='Parcial'?'aviso':'neutro';
 const cad=[['Filiais','Carregado','27/11 09h12','2','0'],['Vendedores','Carregado','27/11 09h12','12','0'],['Condições de pagamento','Carregado','26/11 18h40','9','0'],['Produtos','Parcial','27/11 09h58','3.815','2'],['Unidades','Carregado','27/11 09h58','6','0'],['Tabelas de preço','Carregado','27/11 10h05','4','0'],['Estoque','Carregado','27/11 17h30','3.815','0'],['Clientes','Carregado','27/11 10h12','1.240','0']];
 const fdv=[['Filiais','Em dia','27/11 09h13','2','0'],['Vendedores','Em dia','27/11 15h02','12','0'],['Formas de pagamento','Em dia','26/11 18h41','5','0'],['Condições de pagamento','Em dia','26/11 18h41','9','0'],['Produtos','Em dia','27/11 10h00','3.815','0'],['Preços','Em dia','27/11 17h39','3.815','0'],['Estoque','Parcial','27/11 17h35','3.815','2'],['Clientes','Em dia','27/11 16h10','1.240','0']];
-const lin=(c,b)=>`<tr><td>${c[0]}</td><td><span class="selo ${sel(c[1])}">${c[1]}</span></td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="a lk">${b}</td></tr>`;
-document.querySelectorAll('[data-cli]').forEach(t=>t.innerHTML=cad.map(c=>lin(c,'<a href="#">Importar</a> · <a href="#" class="vermelho">Substituir</a>')).join(''));
-document.querySelectorAll('[data-fdv]').forEach(t=>t.innerHTML=fdv.map(c=>lin(c,'<a href="#">Log</a> · <a href="#">Reenviar</a>')).join(''));
+const lin=c=>`<tr><td>${c[0]}</td><td><span class="selo ${sel(c[1])}">${c[1]}</span></td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="a lk"><a href="#" class="menu">Ações ▾</a></td></tr>`;
+document.querySelector('[data-cli]').innerHTML=cad.map(lin).join('');
+document.querySelector('[data-fdv]').innerHTML=fdv.map(lin).join('');
 </script></body></html>

@@ -1,46 +1,54 @@
-# Config "menos é mais": simulação nova (PROPOSTA, aguarda o "aprovado" do Alexandre)
+# Config "menos é mais": simulação (PROPOSTA, direção v4 aprovada na decisão 40)
 
-Pedido do Alexandre em 27/11/2026 às 17h48 (Manaus), R-20261127-174851: as páginas se preenchem primeiro na horizontal e só depois descem, com tamanhos padrão. Complementos da PO: R-20261127-175011. Dados **fictícios**.
+Pedidos do Alexandre de 27/11 (Manaus):
+- 17h48, R-20261127-174851: "MENOS É MAIS"; a página se preenche primeiro na horizontal, com tamanhos padrão;
+- 17h58: "botoes sempre embaixo e juntos";
+- decisão 40, por volta das 18h02, com a direção v4 do Gerente Sênior.
 
-O que tem aqui: `simulacao.html` (abra com `#lista`, `#empresa`, `#excluir`, `#integracao`, `#dados` ou `#junta`) e 12 PNG (lista, empresa, confirmação de exclusão de usuário, opção A com Integração e Dados separadas e opção B com a aba única "Integrações"), em 1366 e 1920 px. O código e os tokens só entram em `packages/ui` e `apps/web` depois do "aprovado".
+Ajustes do PO de 18h02 e 18h04 e tabela Usuários (R-20261127-175402). Só dados **fictícios**. O PR da Config vai na v0.3.28 e só sai depois do "aprovado" da simulação.
+
+O que tem aqui: `simulacao.html` (abra com `#lista`, `#empresa`, `#excluir` ou `#integracoes`) e 8 PNG: lista, empresa, empresa-excluir-usuario e integracoes, cada um em 1366 e 1920.
 
 ## Tokens (proposta)
-Não há escala paralela. Mudam só os valores de **papéis que já existem** em `packages/ui/src/tokens.ts`. Isso muda a regra das telas horizontais aprovada em 27/11 (`docs/marca/README.md`), e o "aprovado" do Alexandre precisa cobrir também essa mudança.
+Sem escala paralela. Mudam os valores de papéis que já existem, o que muda a regra de 27/11 e precisa do "aprovado":
+- `h1`: 24 → 20;
+- título de seção (`tituloCartao`): 20 → 13, caixa-alta, azul-noite, **fora da caixa**;
+- `rotuloDado`, usado também em `label`: 13 → 12;
+- texto de campo e célula: 15 → 13.
 
-| Papel existente | Hoje | Proposta |
-|---|---|---|
-| `h1` | 24 | 20 (`grande`) |
-| `tituloCartao` | 20 | 15 (`base`) |
-| `rotuloDado` (também em `label` e `th`, caixa-alta 600 `rotuloDestaque`) | 13 | 12 (`micro`) |
-| texto de campo, valor e célula | 15 | 13 (`pequeno`) |
+Tokens novos:
+- `alturaCampo` 34 px, para campo e todo botão;
+- `espaco` 12 px;
+- `cantoCartao` 8 px;
+- **`corCabecalhoTabela` #E6EBF3**: cor nova, que o design-de-marca valida.
 
-Tokens novos, só os que hoje não existem:
-- `alturaCampo` de 34 px, para campo, select e todo botão, inclusive os da linha;
-- `espaco` de 12 px, entre campos e linhas;
-- `cantoCartao` de 8 px.
+Na tabela: cabeçalho em `corCabecalhoTabela`, com texto azul-noite em negrito e linha azul-noite de 2 px; linhas alternadas em `perola`. A grade de 12 colunas, o vão de 16 e a margem de 24 vêm de `telas-horizontais.md`.
 
-A grade de 12 colunas, o vão de 16 px e a margem de 24 px já estão em `telas-horizontais.md`. Botão secundário: grafite, peso 500 (`botaoSecundario`). Na tabela, só links de linha; os botões ficam na barra. Selo: 2px 8px, canto 10. Datas sempre como "27/11 17h40".
+## Regra dos botões
+- **Cartão**: uma barra só, no rodapé. Ações à esquerda; as destrutivas à direita, em `erroTexto`, com confirmação, e só para o superadmin.
+- **Página**: barra fixa no rodapé com Salvar, Descartar e Atualizar pela Receita, e Suspender empresa em vermelho à direita.
+- **Fora das barras**: só a busca, os links de linha da tabela ("Editar · Ações ▾", ou um "Ações ▾" único, com Importar ou Log dentro) e os links de campo ("trocar" no CNPJ e "mostrar" no dado mascarado).
+- **Topo do shell**: "Sair" é link, e não botão.
 
-## Regra dos botões (Alexandre, 27/11 17h58: "botoes sempre embaixo e juntos")
-- **Cartão**: uma barra só, no rodapé. Ações à esquerda; as destrutivas à direita, em vermelho (`erroTexto`), com confirmação. As destrutivas só aparecem para o superadmin.
-- **Página**: Salvar, Descartar, Atualizar pela Receita e Suspender empresa ficam na barra fixa do rodapé.
-- **Fora das barras**: só a busca e os links de linha da tabela (Editar · Redefinir senha · Excluir, Importar · Substituir, Log · Reenviar).
-
-## Telas (PNG em 1366 e 1920)
-- `lista-*`: busca no cabeçalho; tabela na largura cheia, sem dado de negócio; "Criar empresa" na barra.
+## Telas
+- `lista-*`: título e busca; tabela com Empresa, Código, CNPJ, Situação, Módulos, Macuxi FDV e Criada em. Sem dado de negócio. "Criar empresa" fica na barra.
 - `empresa-*`:
-  - cabeçalho com nome, código e "Ativa";
-  - Identificação em 3 linhas de 12 colunas, com o selo "Igual à Receita · 27/11 13h15";
-  - cartões CNAE 5, Contato 4 (com o link "mostrar") e Módulos 3;
-  - **Usuários** (R-20261127-175402): busca, colunas Nome, E-mail mascarado, Perfil, Situação e Último acesso, links Editar · Redefinir senha · Excluir e, no rodapé, "+ Adicionar usuário".
-- `empresa-excluir-usuario-*`: confirmação do Excluir. Ela bloqueia o último administrador ativo.
-- **Opção A**:
-  - `a-integracao-*`: as duas ligações em 6 + 6;
-  - `a-dados-*`: "Cargas recebidas" (Baixar modelos | Zerar cadastros) e "Envios ao Macuxi FDV" (Carga completa | Zerar pedidos não faturados).
-- **Opção B, aba "Integrações"** (`b-integracoes-*`), recomendada pela PO e pelo corretor: os dois sentidos lado a lado, Sistema do cliente → ERP e ERP → Macuxi FDV, com a ligação em cima e a tabela embaixo.
+  - cabeçalho com nome, código, "Ativa" e "Igual à Receita · 27/11 13h15";
+  - abas Empresa e Integrações;
+  - Identificação em 3 linhas de 12 colunas;
+  - CNAE 5, Contato 4 e Módulos 3;
+  - Usuários: busca, e-mail mascarado com "mostrar", situações Ativo, Bloqueado, Inativo e Convite enviado, "Editar · Ações ▾" (Redefinir senha, Inativar, Excluir) e "+ Adicionar usuário" no rodapé.
+- `empresa-excluir-usuario-*`: o bloqueio do último administrador ativo, só com "Fechar".
+- `integracoes-*`: uma coluna por sentido.
+  - **Sistema do cliente → ERP**:
+    - cartão da ligação com Trocar chave do cliente, e Revogar chave em vermelho;
+    - **Cargas recebidas**: Baixar modelos e Baixar erros, e Substituir tudo e Zerar cadastros em vermelho.
+  - **ERP → Macuxi FDV**:
+    - cartão da ligação com Registros por lote (salvo pela barra da página), Testar conexão e Trocar chave do FDV;
+    - **Envios**: Carga completa, e Zerar pedidos não faturados em vermelho.
 
 ## Fora desta simulação
-O BKO do cliente: o admin do cliente não tem /config e só vê o status das integrações, sem reprocessar (regra do Alexandre, R-20261127-175011). Depois de aprovada, esta Config vira o modelo da Config do FDV.
+O BKO do cliente: o admin do cliente não tem /config e só vê o status das integrações (R-20261127-175011). Depois de aprovada, esta Config vira o modelo da Config do FDV.
 
 ## Validação
-A versão 2 (commit 3b25ab6) teve 🟢 da marca e do corretor. A versão 3 (regra dos botões e Usuários) está em validação.
+Em curso: design-de-marca e corretor-redundancias.
