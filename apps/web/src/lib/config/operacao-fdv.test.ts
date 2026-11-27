@@ -2,19 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { ACAO_SUGERIDA_POR_MOTIVO_FDV, ENTIDADES_ENVIO_FDV, MonitorConectorFdv, CADASTROS_ZERAR_PORTAL } from '@macuxierp/platform-sdk';
 import { ROTULO_TENTAR_DE_NOVO } from '@/components/integracao-fdv/log';
 import { TEXTO_MOTIVO_FDV, acaoNoBko, acaoNoPortal } from '../integracao-fdv-textos';
-import { CAMINHO_BKO_INTEGRACAO_FDV, ROTULOS_FDV, RETORNOS_FDV, TEXTO_INATIVA_NO_FDV, cadastroDoZerar, csvErrosLog, errosNaoListados, maisRecente, nomeCsvErrosFdv, textoAtualizado, textoInativacaoFdv, textoReprocessarOk, textoZerarJuntos, vistaMonitor } from './operacao-fdv';
+import { CAMINHO_BKO_INTEGRACAO_FDV, ROTULOS_FDV, RETORNOS_FDV, TEXTO_INATIVA_NO_FDV, cadastroDoZerar, csvErrosLog, errosNaoListados, maisRecente, nomeCsvErrosFdv, textoAtualizado, textoInativacaoFdv, textoReprocessarOk, textoZerarJuntos } from './operacao-fdv';
 
 const mon = (extra: Record<string, unknown> = {}) =>
   MonitorConectorFdv.parse({ identificador: 'erp-1', situacao: 'em_dia', versao: '1.4.2', ultimo_sinal_em: '2026-11-24T19:59:00.000Z', fila: { lotes: 1, linhas: 1 }, lido_em: '2026-11-24T20:00:00.000Z', ...extra });
 
 describe('operação da Integração FDV no /config (T-0086)', () => {
-  it('vista do Monitor: textos, fuso e plural da fila', () => {
-    const v = vistaMonitor(mon(), 'America/Manaus');
-    expect(v).toMatchObject({ identificador: 'erp-1', versao: '1.4.2', ultimoSinal: '24/11/2026 15:59', fila: '1 lote · 1 linha', situacao: { texto: 'Em dia', tom: 'sucesso' } });
-    const d = vistaMonitor(mon({ identificador: null, versao: null, ultimo_sinal_em: null, situacao: 'desativado', fila: { lotes: 0, linhas: 0 } }), 'America/Manaus');
-    expect(d).toMatchObject({ identificador: '—', versao: '—', ultimoSinal: '—', situacao: { texto: 'Desativado', tom: 'neutro' }, fila: '0 lotes · 0 linhas' });
-    expect(vistaMonitor(mon({ situacao: 'atrasado' }), 'America/Manaus').situacao).toEqual({ texto: 'Atrasado', tom: 'aviso' });
-  });
   it('"Atualizado às hh:mm" no fuso do tenant, não no UTC', () => {
     expect(textoAtualizado('2026-11-24T18:39:00.000Z', 'America/Manaus')).toBe('Atualizado às 14:39');
     expect(textoAtualizado('2026-11-24T18:39:00.000Z', 'America/Sao_Paulo')).toBe('Atualizado às 15:39');
@@ -77,7 +70,7 @@ describe('operação da Integração FDV no /config (T-0086)', () => {
     expect(acaoNoPortal('regularizar_licenca')).toBe('Regularize a licença da empresa.');
   });
   it('retornos das ações (36 A): um nome por ação, texto curto e sem repetir o rótulo', () => {
-    expect(RETORNOS_FDV.testeIniciado).toBe('Teste iniciado. Veja "Último sinal" no Monitor.');
+    expect(RETORNOS_FDV.testeIniciado).toBe('Teste iniciado.');
     expect(RETORNOS_FDV.chaveSalva).toBe('Chave salva.');
     expect(RETORNOS_FDV.envioLiberado).toBe('Envio liberado.');
     expect(RETORNOS_FDV.naoEstavaParado).toBe('Este cadastro não estava parado.');
@@ -89,14 +82,6 @@ describe('operação da Integração FDV no /config (T-0086)', () => {
     expect(textoInativacaoFdv(undefined)).toBeNull();
     expect(textoInativacaoFdv([])).toBeNull();
     expect(textoInativacaoFdv([{ entidade: 'produto', quantidade: 12 }])).toBe('Produtos: 12');
-  });
-});
-
-describe('v0.3.18 A2: último código e próxima tentativa no Monitor', () => {
-  it('vista do Monitor leva o último código ou nulo', () => {
-    expect(vistaMonitor(mon(), 'America/Manaus', 'credencial_invalida').codigo).toBe('credencial_invalida');
-    expect(vistaMonitor(mon(), 'America/Manaus', null).codigo).toBeNull();
-    expect(vistaMonitor(mon(), 'America/Manaus').codigo).toBeNull();
   });
 });
 

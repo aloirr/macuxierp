@@ -14,6 +14,7 @@ import {
   PAYLOADS_ENTRADA,
   PortalEntradaLeitura,
   PREFIXO_ENTRADA,
+  PREFIXOS_ENTRADA,
   prefixoChaveEntrada,
   truncarIpEntrada,
 } from './entrada';
@@ -23,9 +24,10 @@ const T = '2026-11-27T01:00:00.000Z';
 const LOTE = '7c2e9a14-5d3b-4e86-9f01-3a8b64d2c7e5';
 const CHAVE = 'a'.repeat(43);
 
-describe('T-0057 (ADR 0014 §3, corte de 26/11): contrato da /entrada/v1', () => {
+describe('T-0057 (ADR 0014 §3, corte de 26/11): contrato da /v1/entrada', () => {
   it('rotas: os caminhos do Hub sob o prefixo próprio (o cliente HTTP do Conector só troca o prefixo), congelados', () => {
-    expect(Object.values(CAMINHOS_ENTRADA).map((c) => `${PREFIXO_ENTRADA}${c}`)).toEqual(['/entrada/v1/lotes', '/entrada/v1/lotes/:id', '/entrada/v1/cursores/:entidade', '/entrada/v1/sinal']);
+    expect(Object.values(CAMINHOS_ENTRADA).map((c) => `${PREFIXO_ENTRADA}${c}`)).toEqual(['/v1/entrada/lotes', '/v1/entrada/lotes/:id', '/v1/entrada/cursores/:entidade', '/v1/entrada/sinal']);
+    expect(PREFIXOS_ENTRADA).toEqual(['/v1/entrada', '/entrada/v1']);
     expect(Object.isFrozen(CAMINHOS_ENTRADA)).toBe(true);
     expect(Object.isFrozen(CAMINHOS_ENTRADA_PLATAFORMA)).toBe(true);
   });

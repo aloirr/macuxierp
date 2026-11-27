@@ -1,5 +1,5 @@
 /**
- * `/entrada/v1` de ponta a ponta (T-0057 E3, ADR 0014 §1, §3 e §4) contra o PostgreSQL migrado com a 0071, com as
+ * `/v1/entrada` (e o legado `/entrada/v1`) de ponta a ponta (T-0057 E3, ADR 0014 §1, §3 e §4) contra o PostgreSQL migrado com a 0071, com as
  * dependências de produção (`appPgDeTeste`, `montarDependenciasProducao`): o portal `/config` cria a chave (só o HMAC com
  * o pepper vai ao banco), o conector manda o lote, lê o lote e o cursor, e a revogação, a empresa suspensa e a falta do
  * pepper fecham a entrada. A chave nunca aparece em log nem auditoria. Dados fictícios. Sem Postgres pula; com
@@ -14,6 +14,8 @@ import {
   COOKIE_CONFIG,
   CredencialEntradaCriada,
   PortalEntradaLeitura,
+  PREFIXO_ENTRADA,
+  PREFIXOS_ENTRADA,
   PREFIXO_PLATAFORMA,
 } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
@@ -36,7 +38,7 @@ const LOTE = {
   registros: [registro(1), registro(2)], linhas_invalidas: [], linhas_invalidas_omitidas: 0,
 };
 
-describe.skipIf(!PG_DISPONIVEL)('/entrada/v1 de ponta a ponta pela API (T-0057 E3)', () => {
+describe.skipIf(!PG_DISPONIVEL)('/v1/entrada (e o legado /entrada/v1) de ponta a ponta pela API (T-0057 E3)', () => {
   let b: BancoEfemero;
   let app: FastifyInstance;
   let semPepper: FastifyInstance;
@@ -47,10 +49,10 @@ describe.skipIf(!PG_DISPONIVEL)('/entrada/v1 de ponta a ponta pela API (T-0057 E
 
   const portal = (a: FastifyInstance, method: 'GET' | 'POST' | 'DELETE', u: string, payload?: Record<string, unknown>) =>
     a.inject({ method, url: u, cookies: { [COOKIE_CONFIG]: token }, headers: CSRF, ...(payload ? { payload } : {}) });
-  const entrada = (a: FastifyInstance, method: 'GET' | 'POST', u: string, conector: string, chave: string, payload?: Record<string, unknown>, idem?: string) =>
+  const entrada = (a: FastifyInstance, method: 'GET' | 'POST', u: string, conector: string, chave: string, payload?: Record<string, unknown>, idem?: string, prefixo = PREFIXO_ENTRADA) =>
     a.inject({
       method,
-      url: `/entrada/v1${u}`,
+      url: `${prefixo}${u}`,
       headers: { authorization: `Bearer ${chave}`, [CABECALHO_CONECTOR_ID_ENTRADA]: conector, ...(idem ? { 'idempotency-key': idem } : {}) },
       ...(payload ? { payload } : {}),
     });
@@ -139,4 +141,45 @@ describe.skipIf(!PG_DISPONIVEL)('/entrada/v1 de ponta a ponta pela API (T-0057 E
     expect((await entrada(semPepper, 'GET', '/cursores/vendedor', 'erp-entrada-troca', 'a'.repeat(43))).statusCode).toBe(503);
     expect((await portal(semPepper, 'GET', url(C.ler, A))).statusCode).toBe(200);
   });
+  // ADR 0014, adendo de 27/11 (hotfix v0.3.24).
+  it('toda rota pública da api fica sob o /v1 (o túnel só manda o /v1* à api); a única exceção é o legado da entrada', () => {
+    const rotas = caminhosDasRotas(app.printRoutes({ commonPrefix: false }));
+    expect(rotas.length).toBeGreaterThan(50);
+    // literais de propósito: o teste não pode passar só porque a constante mudou junto (o legado sai no contract)
+    const fora = rotas.filter((r) => !r.startsWith('/v1/'));
+    expect(fora.filter((r) => !r.startsWith('/entrada/v1/')), fora.join(', ')).toEqual([]);
+    for (const c of ['/lotes', '/lotes/:id', '/cursores/:entidade', '/sinal']) expect(rotas).toContain(`/v1/entrada${c}`);
+  });
+
+  it('o prefixo novo /v1/entrada e o legado respondem igual; o hook do /v1 não confunde a chave do conector com o JWT do BKO', async () => {
+    const cred = await criarChave(A, 'erp-entrada-prefixos');
+    for (const prefixo of PREFIXOS_ENTRADA) {
+      const r = await entrada(app, 'GET', '/cursores/vendedor', cred.conector_id, cred.chave, undefined, undefined, prefixo);
+      expect([r.statusCode, r.json()], `${prefixo}: ${r.body}`).toEqual([200, { entidade: 'vendedor', cursor: null, atualizado_em: null }]);
+    }
+    const aceito = await entrada(app, 'POST', '/lotes', cred.conector_id, cred.chave, LOTE, 'lote-prefixo-0001');
+    expect(aceito.statusCode, aceito.body).toBe(202);
+    // o consulta do lote aceito aponta para o prefixo novo
+    expect(aceito.json<{ consulta: string }>().consulta).toBe(`${PREFIXO_ENTRADA}/lotes/${aceito.json<{ lote_id: string }>().lote_id}`);
+    // a chave errada continua 401 no prefixo novo (o JWT do BKO não abre a entrada)
+    expect((await entrada(app, 'GET', '/cursores/vendedor', cred.conector_id, 'b'.repeat(43))).statusCode).toBe(401);
+    // o que a conferência pelo domínio do publicar espera (conferir-logos.mjs): POST /v1/entrada/sinal sem chave = 401 JSON
+    const semChave = await app.inject({ method: 'POST', url: `${PREFIXO_ENTRADA}/sinal`, payload: {} });
+    expect([semChave.statusCode, semChave.headers['content-type'], semChave.json().codigo]).toEqual([401, expect.stringMatching(/^application\/json/), 'NAO_AUTENTICADO']);
+  });
 });
+
+/** Os caminhos completos das rotas a partir da árvore do `printRoutes` do Fastify (uma linha por segmento). */
+function caminhosDasRotas(arvore: string): string[] {
+  const pilha: string[] = [];
+  const rotas: string[] = [];
+  for (const linha of arvore.split('\n')) {
+    const m = /^((?:│ {3}| {4})*)(?:├── |└── )(\S+)(?: \((.+)\))?/.exec(linha);
+    if (!m) continue;
+    const nivel = m[1]!.length / 4;
+    pilha.length = nivel;
+    pilha[nivel] = m[2]!;
+    if (m[3]) rotas.push(pilha.join(''));
+  }
+  return rotas;
+}

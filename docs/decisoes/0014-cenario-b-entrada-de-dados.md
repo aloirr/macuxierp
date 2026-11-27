@@ -265,3 +265,12 @@ Decisão 40 B do Alexandre, pelo PO, no roteiro da Thathyany simulada (`docs/tes
   - **Campo ausente, cadastro já existente:** fica o valor já gravado, sem apagar.
   - **Campo ausente, cadastro novo:** a linha é recusada com erro por linha (`campo` `crt` ou `ncm`, `codigo` `campo_obrigatorio` do `CODIGOS_ERRO_LINHA_HUB`), e o resto do lote segue. Não há valor padrão inventado, porque CRT e NCM mudam o imposto da nota.
 - **Teste:** `packages/platform-sdk/src/entrada.test.ts` (aceita com e sem os campos, recusa formato errado, as outras 8 entidades são as mesmas do Hub, e o Zod do Hub continua descartando os dois campos).
+
+## Adendo (27/11/2026, Manaus): o prefixo passa a `/v1/entrada` (hotfix v0.3.24)
+
+- **Defeito:** em produção, todo pedido a `https://erp.macuxifdv.com.br/entrada/v1/...` caía na tela de login do BKO. A rota do túnel da Cloudflare (ADR 0003, item 5) manda só o `/v1*` para a api e **o resto** para o web. Os testes chamavam a api direto e não passavam pelo túnel. A conferência pelo domínio no publicar só olha o `/v1/saude` e o `/login`.
+- **Decisão:** o prefixo da entrada passa a ser **`/v1/entrada`** (`PREFIXO_ENTRADA` no SDK), com os mesmos caminhos (`CAMINHOS_ENTRADA`), cabeçalhos, chave de máquina e respostas. O túnel não muda.
+- **Expand:** o `/entrada/v1` (`PREFIXO_ENTRADA_LEGADO`) continua montado ao lado, com o mesmo plugin. O `consulta` do lote aceito aponta para o prefixo novo.
+- **Contract:** o legado sai na versão seguinte àquela em que nenhum conector configurado usar mais a URL antiga. Como a rota nunca respondeu em produção, nenhum conector real depende dela.
+- **Trava:** o `apps/api/src/entrada.db.test.ts` confere que toda rota pública da api fica sob o `/v1`, com o legado da entrada como única exceção. No código anterior esse teste falha.
+- **O conector usa:** `https://erp.macuxifdv.com.br/v1/entrada`. As seções 3 e 4 desta ADR citam `/entrada/v1` como o nome histórico da rota; o caminho válido é o deste adendo.
