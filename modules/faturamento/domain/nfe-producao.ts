@@ -1,4 +1,4 @@
-import type { Ambiente, StatusNota } from '../contracts';
+import type { StatusNota } from '../contracts';
 
 /**
  * RN-CORE-16 (na dúvida, bloqueia): status de nota em produção que travam a troca do CNPJ da empresa.
@@ -7,7 +7,7 @@ import type { Ambiente, StatusNota } from '../contracts';
  * - `emitida_contingencia`: o DANFE e o XML já saíram assinados com o CNPJ atual e a nota ainda será autorizada.
  * - `em_autorizacao`: a SEFAZ pode devolver "autorizada" logo depois da troca.
  * Não travam: homologação (qualquer status), rascunho, rejeitada, denegada e inutilizada.
- * Fonte única: a consulta SQL do `api` recebe esta lista como parâmetro.
+ * Fonte única: a consulta SQL do `api` recebe esta lista como parâmetro (`ambiente = 'producao'` fica na SQL).
  */
 export const STATUS_NFE_QUE_TRAVA_TROCA_CNPJ: readonly StatusNota[] = [
   'autorizada_guarda_pendente',
@@ -17,7 +17,3 @@ export const STATUS_NFE_QUE_TRAVA_TROCA_CNPJ: readonly StatusNota[] = [
   'emitida_contingencia',
 ];
 
-/** RN-CORE-16: a nota (ambiente e status) trava a troca do CNPJ. Homologação nunca trava. */
-export function notaTravaTrocaDeCnpj(ambiente: Ambiente, status: StatusNota): boolean {
-  return ambiente === 'producao' && STATUS_NFE_QUE_TRAVA_TROCA_CNPJ.includes(status);
-}

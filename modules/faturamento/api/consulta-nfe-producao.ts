@@ -8,8 +8,7 @@ import { STATUS_NFE_QUE_TRAVA_TROCA_CNPJ } from '../domain';
 
 /**
  * Mesma forma da porta `ConsultaNfeProducao` do core (modules/core/api); o TypeScript compara pela forma, sem importar.
- * O nome `temNfeAutorizadaEmProducao` é do core e fica. Aqui ele também inclui as notas pendentes de protocolo
- * (`em_autorizacao` e `emitida_contingencia`), por RN-CORE-16: na dúvida, bloqueia a troca do CNPJ.
+ * O nome `temNfeAutorizadaEmProducao` é do core; os status que contam estão em `domain/nfe-producao.ts`.
  */
 type PortaConsultaNfeProducao = { temNfeAutorizadaEmProducao(tenantId: string): Promise<boolean> };
 

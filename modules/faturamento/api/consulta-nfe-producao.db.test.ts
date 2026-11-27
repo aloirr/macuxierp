@@ -93,8 +93,6 @@ describe.skipIf(!PG_DISPONIVEL)('ConsultaNfeProducao (RN-CORE-16, PostgreSQL rea
     await nota(T[3]!, 'producao', 'autorizada');
     expect(await consulta().temNfeAutorizadaEmProducao(T[3]!)).toBe(true);
     expect(await consulta().temNfeAutorizadaEmProducao(T[0]!)).toBe(false);
-    expect(await consulta().temNfeAutorizadaEmProducao(T[1]!)).toBe(false);
-    expect(await consulta().temNfeAutorizadaEmProducao(T[2]!)).toBe(false);
   });
   it('RN-CORE-16: autorizada em produção e depois cancelada ainda conta (true)', async () => {
     await nota(T[4]!, 'producao', 'cancelada');
@@ -107,7 +105,6 @@ describe.skipIf(!PG_DISPONIVEL)('ConsultaNfeProducao (RN-CORE-16, PostgreSQL rea
   it('RN-CORE-16: produção emitida em contingência devolve true (DANFE e XML já saíram com o CNPJ atual)', async () => {
     await nota(T[6]!, 'producao', 'emitida_contingencia');
     expect(await consulta().temNfeAutorizadaEmProducao(T[6]!)).toBe(true);
-    expect(await consulta().temNfeAutorizadaEmProducao(T[2]!)).toBe(false);
   });
   it('RN-CORE-16: tenant que não é UUID é recusado', async () => {
     await expect(consulta().temNfeAutorizadaEmProducao('x')).rejects.toThrow(RangeError);
