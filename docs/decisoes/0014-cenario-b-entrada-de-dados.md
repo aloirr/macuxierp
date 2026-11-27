@@ -255,3 +255,13 @@ Achados da testes no E2, recado R-20261126-233505-modulo-cadastros e o B1 (0071)
 - **§8:** a tabela é a da 0071 (não a 0045). O `ultimo_uso_em` continua na tabela, mas não vai à leitura do portal (RD-2319).
 - **Ligação em produção:** o `montarDependenciasProducao` monta a `/entrada/v1` sempre (sem pepper ela responde 503) com a `PortaCredencialEntradaPg`; o `main.ts` passa o `pepperEntrada` do `lerConfigApi`; o `appPgDeTeste` aceita `pepperEntrada`. O apps/worker registra o `cadastros.entrada_lote` (`criarExecutorEntradaLote`).
 - **Teste:** `apps/api/src/entrada.db.test.ts` (portal cria a chave, POST lote, GET lote, GET cursor, troca, revogação, empresa suspensa e sem pepper) e `apps/api/src/entrada/entrada.test.ts`.
+
+## Emenda (27/11/2026, 00h59): `crt` da filial e `ncm` do produto opcionais na entrada (decisão 40 B, D1/D2)
+Decisão 40 B do Alexandre, pelo PO, no roteiro da Thathyany simulada (`docs/testes/T-0057-thathyany-simulada.md`, D1 e D2).
+- **Problema:** o contrato do Hub não tem o `crt` da filial nem o `ncm` do produto, porque o FDV não precisa deles. O cadastro do ERP exige os dois para criar (`FilialDados.crt`; `ProdutoDados.ncm`, RN-CAD-04). Por isso, até aqui, filial e produto **novos** não entravam pela `/entrada/v1`; só atualizavam o que já existia no BKO.
+- **Decisão:** a entrada aceita os dois como campos **opcionais**, numa mudança aditiva, e só nela. São os `PAYLOADS_ENTRADA` do SDK (`packages/platform-sdk/src/entrada.ts`): `FilialEntrada` ganha `crt` (`1|2|3|4`) e `ProdutoEntrada` ganha `ncm` (8 dígitos). As outras 8 entidades seguem iguais às do Hub. O `hub-v1.ts`, cópia do contrato do FDV, não muda, e o Conector que não manda os campos continua válido.
+- **No domain do cadastros:**
+  - **Campo presente:** o valor é usado.
+  - **Campo ausente, cadastro já existente:** fica o valor já gravado, sem apagar.
+  - **Campo ausente, cadastro novo:** a linha é recusada com erro por linha (`campo` `crt` ou `ncm`, `codigo` `campo_obrigatorio` do `CODIGOS_ERRO_LINHA_HUB`), e o resto do lote segue. Não há valor padrão inventado, porque CRT e NCM mudam o imposto da nota.
+- **Teste:** `packages/platform-sdk/src/entrada.test.ts` (aceita com e sem os campos, recusa formato errado, as outras 8 entidades são as mesmas do Hub, e o Zod do Hub continua descartando os dois campos).
