@@ -14,7 +14,7 @@ import { ConsultaPaginada, paraCsv, respostaCsv, type ColunaCsv } from '@macuxie
 import { z } from 'zod';
 import { ENTIDADE_COM_RECEBIDOS_NO_LOG, itemDoLogTenant, montarLogTenant } from '../domain';
 import { NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog, nomeDoCsvDoLog, textoRecebidosCortados } from '../web/log';
-import { paginaLotes } from '../web/paginas';
+import { paginaLotes, paginaLotesNoFuso } from '../web/paginas';
 import { MAXIMO_LINHAS_CSV, contarClientesRecebidos, lerLinhasClientesRecebidos, lerRecebidosParaExportar, listarClientesRecebidos } from './clientes-recebidos';
 import { entidadeDaRota, lerInsumosLog } from './operacao';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
@@ -104,7 +104,7 @@ export function criarRotas(): RotaModulo[] {
       async executar(c, e) {
         const { entidade, estado } = e.consulta as { entidade?: string; estado?: string };
         const p = await listarLotes(c.tx, tenant(c), { entidade, estado, limite: MAXIMO_LINHAS_CSV });
-        return csvDaLista(paginaLotes, c.sessao.perfil, p.itens);
+        return csvDaLista(paginaLotesNoFuso(fusoDaRota(c)), c.sessao.perfil, p.itens);
       },
     }),
     // T-0059 §5.5: Log do cadastro de cliente (RN-INF-09) e rota /clientes-recebidos. Documento só mascarado; o payload nunca é lido.
