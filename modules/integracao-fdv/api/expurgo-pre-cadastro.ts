@@ -67,6 +67,3 @@ export async function expurgarPreCadastro(d: DepsExpurgoPreCadastro): Promise<Re
   }
   return r;
 }
-
-/** Nome antigo (o worker ainda importa): alias de `expurgarPreCadastro`, que agora cobre também o sem decisão. */
-export const expurgarPreCadastroRecusado = expurgarPreCadastro;

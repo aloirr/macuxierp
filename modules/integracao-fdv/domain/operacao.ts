@@ -209,7 +209,7 @@ export function itemDoLogTenant(x: ErroBruto) {
     nome_curto: nomeCurto(x.payload),
     campo: x.campo,
     codigo: x.codigo,
-    motivo_texto: motivoDoErro(x.codigo),
+    motivo_texto: motivoDoErro(x.codigo, x.campo),
     acao_texto: acaoDoErro(x.codigo),
     corrigir_href: corrigirHref(x.entidade, x.registro_external_id, x.fonte_refs),
   };

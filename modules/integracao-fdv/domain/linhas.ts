@@ -14,7 +14,7 @@ const CODIGO_HUB_DO_ERP: Readonly<Record<string, CodigoHub>> = {
   quantidade_fracionaria: 'formato_invalido', // T-0085: o Hub só aceita inteiro
 };
 
-/** `referencia_ausente`, `filial_codigo_repetido` e demais regras do ERP viram `regra_invalida` no Hub. */
+/** `filial_codigo_repetido` e demais regras do ERP viram `regra_invalida` no Hub. */
 export function codigoLinhaHub(codigoErp: string): CodigoHub {
   return CODIGO_HUB_DO_ERP[codigoErp] ?? 'regra_invalida';
 }
@@ -27,3 +27,9 @@ export function paraLinhaHub(l: LinhaInvalida): LinhaInvalidaHub {
     mensagem: mensagemDoErro(l.codigo).slice(0, 300),
   };
 }
+
+/**
+ * RN-INF-02 (T-0112): a referência ainda não confirmada no FDV não é erro do cadastro. A linha NÃO vai em `linhas_invalidas`
+ * (o Hub a recusaria à toa): o ERP a retém em silêncio, ela segue pendente e volta sozinha quando a referência for confirmada.
+ */
+export const ehLinhaRetida = (l: LinhaInvalida): boolean => l.codigo === 'referencia_ausente';

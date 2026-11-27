@@ -11,7 +11,7 @@ import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_RETORNO_CLIENTES_ID, criarAgendasClientesFdv } from './agendas-clientes';
 import { AGORA, U, admSql, ciclo, criarCredencial, dubleLogAlertas, hubDuble, ok, recusa, retentavel } from './apoio-conector-teste';
-import { expurgarPreCadastro, expurgarPreCadastroRecusado } from './expurgo-pre-cadastro';
+import { expurgarPreCadastro } from './expurgo-pre-cadastro';
 import type { ClienteHubClientes, CriadorClienteFdv, RespostaRetornoCliente } from './portas';
 import { buscarClientesPendentes } from './recebimento-clientes';
 import { enviarRetornosClientes, reterSeAguardaVinculo } from './retorno-clientes';
@@ -458,7 +458,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       await recusadoEm(B, velho, 200);
       await recusadoEm(B, novo, 10);
       const log = dubleLogAlertas();
-      const r = await expurgarPreCadastroRecusado({
+      const r = await expurgarPreCadastro({
         banco: worker, tenantsAtivos: async () => [B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn },
       });
       expect(r).toMatchObject({ tenants: 1, falhas: 0 });
@@ -478,7 +478,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       expect(aud.length).toBeGreaterThanOrEqual(1);
       expect(Object.keys(aud[0]!.depois).sort()).toEqual(['recusado', 'regra', 'sem_decisao']);
       // idempotente: a segunda rodada não acha mais nada
-      const de_novo = await expurgarPreCadastroRecusado({ banco: worker, tenantsAtivos: async () => [B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } });
+      const de_novo = await expurgarPreCadastro({ banco: worker, tenantsAtivos: async () => [B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } });
       expect(de_novo).toMatchObject({ revisoes: 0 });
     });
 
@@ -518,7 +518,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
     it('RN-INF-06: a falha de um tenant não para os outros (conta em falhas, só o nome do erro no log)', async () => {
       const log = dubleLogAlertas();
       const ruim = 'nao-e-tenant';
-      const r = await expurgarPreCadastroRecusado({ banco: worker, tenantsAtivos: async () => [ruim, B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } });
+      const r = await expurgarPreCadastro({ banco: worker, tenantsAtivos: async () => [ruim, B], relogio: RELOGIO_REAL, log: { info: log.log.info, warn: log.log.warn } });
       expect(r).toMatchObject({ tenants: 2, falhas: 1 });
       expect(JSON.stringify(log.logs)).not.toContain('Mercado');
     });

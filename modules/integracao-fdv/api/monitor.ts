@@ -77,7 +77,7 @@ type LinhaErro = {
 function erroDaLinha(l: LinhaErro): LoteErroLinha {
   return {
     id: l.id, lote_envio_id: l.lote_envio_id, indice: l.indice, origem: l.origem, entidade: l.entidade, registro_external_id: l.registro_external_id ?? '',
-    codigo: l.codigo, campo: l.campo, reprocessavel: l.reprocessavel, resolvido_em: iso(l.resolvido_em), mensagem: mensagemDoErro(l.codigo),
+    codigo: l.codigo, campo: l.campo, reprocessavel: l.reprocessavel, resolvido_em: iso(l.resolvido_em), mensagem: mensagemDoErro(l.codigo, l.campo),
   };
 }
 
