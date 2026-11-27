@@ -3,11 +3,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { hrefAtivo, type GrupoMenu } from '@/lib/menu';
 import { NOMES_MODULOS } from '@/lib/nomes-modulos';
+import { ItemConfiguracao } from './item-configuracao';
 
 /** O módulo de um item só (T-0056) não ganha seção própria: o item fica sob Conta. */
 const MODULO_NA_CONTA = 'integracao-fdv';
 
-export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
+/** `acessoConfig` (C1, 45 A): só com `EuResposta.acesso_config === true`; ausente, o item não aparece. */
+export function NavLateral({ menu, acessoConfig = false }: { menu: GrupoMenu[]; acessoConfig?: boolean }) {
   const atual = usePathname();
   // O detalhe (`notas/:id`, `titulos/:id`) deixa marcado o item da lista de origem.
   const ativo = hrefAtivo(atual, ['/', ...menu.flatMap((g) => g.itens.map((i) => i.href)), '/licencas']);
@@ -35,6 +37,7 @@ export function NavLateral({ menu }: { menu: GrupoMenu[] }) {
         <ul>
           {item('/licencas', 'Licenças')}
           {itensConta.map((i) => item(i.href, i.rotulo))}
+          {acessoConfig && <ItemConfiguracao />}
         </ul>
       </section>
     </nav>

@@ -30,7 +30,7 @@ export default async function Casca({ children }: { children: ReactNode }) {
         <LinkTrocarSenha />
         <BotaoSair />
       </header>
-      <NavLateral menu={menu} />
+      <NavLateral menu={menu} acessoConfig={eu.acesso_config === true} />
       <main id="conteudo" className="conteudo"><div id="avisos-conteudo" /><Suspense fallback={null}><AvisoSenhaTrocada /></Suspense>{children}</main>
     </div>
   );
