@@ -19,7 +19,7 @@ export type ResultadoLogin =
   | { tipo: 'campos'; erros: ErrosLogin }
   | { tipo: 'indisponivel' };
 
-function valorDoCookie(r: Response, nome?: string): string | undefined {
+export function valorDoCookie(r: Response, nome?: string): string | undefined {
   const pares = r.headers.getSetCookie().map((c) => c.split(';')[0] ?? '').filter((c) => c.includes('='));
   return nome ? pares.find((c) => c.startsWith(`${nome}=`))?.slice(nome.length + 1) : pares[0];
 }

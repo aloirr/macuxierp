@@ -1,7 +1,7 @@
 'use server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { erroSenhaForaDaRegra } from '@macuxierp/platform-sdk';
+import { erroSenhaForaDaRegra, ROTA_TELA_LOGIN } from '@macuxierp/platform-sdk';
 import { ApiIndisponivel, NaoAutenticado, renovar, trocarSenha } from '@/lib/api';
 import { SEM_RESPOSTA } from '@/lib/textos';
 import { ROTA_SENHA, TrocarSenhaPendente } from '@/lib/troca-pendente';
@@ -54,7 +54,7 @@ export async function trocarSenhaBkoAction(_: EstadoTrocaSenha, dados: FormData)
   if (!sessaoNova) {
     jar.delete(COOKIE_ACESSO);
     jar.delete(COOKIE_REFRESH);
-    redirect('/login');
+    redirect(ROTA_TELA_LOGIN);
   }
   jar.set(COOKIE_ACESSO, sessaoNova.acesso, opcoesAcesso);
   jar.set(COOKIE_REFRESH, sessaoNova.refresh, opcoesLongas);
