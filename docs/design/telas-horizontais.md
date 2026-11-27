@@ -17,7 +17,7 @@ Tokens em `packages/ui/src/tokens.ts` (variáveis `--mx-*` em `tokens.css`). A c
 4. **Nada de pilha vertical de cartões quando cabem lado a lado.** Dois ou mais cartões seguidos na mesma tela entram na grade de blocos.
 5. Campo de formulário curto (CNPJ, CEP, UF, telefone) não ocupa a linha inteira: no computador, 2 a 4 campos por linha, na mesma grade.
 
-### Pontos de quebra (`quebras`) e colunas
+### Pontos de quebra e colunas
 
 | Quebra | Largura da janela | Colunas de cartões | Tabela | Margem do conteúdo |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@ Tokens em `packages/ui/src/tokens.ts` (variáveis `--mx-*` em `tokens.css`). A c
 | `notebook` | 1280 a 1439 | 3 | largura cheia | 24 px 32 px |
 | `monitor` | 1440 ou mais | 4 | largura cheia | 24 px 32 px |
 
-Vão entre cartões: 16 px (`espaco.lg`). Cartão nunca abaixo de `--mx-grade-cartao-minimo` (280 px): se não couber, a grade cai para menos colunas. Media query não lê variável CSS; as telas escrevem os números de `quebras` em `@media (min-width: …)`. As quebras antigas do shell (480, 800, 900 e 1100 px) migram para estas quando a tela for tocada.
+Vão entre cartões: 16 px (`espaco.lg`). Cartão nunca abaixo de `--mx-grade-cartao-minimo` (280 px): se não couber, a grade cai para menos colunas. Media query não lê variável CSS; as telas escrevem estes números (390, 768, 1280, 1440) em `@media (min-width: …)`, e esta tabela é a fonte única deles. As quebras antigas do shell (480, 800, 900 e 1100 px) migram para estas quando a tela for tocada.
 
 ### Grade de blocos (receita para o shell)
 
