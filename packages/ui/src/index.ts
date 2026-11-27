@@ -22,3 +22,5 @@ export type { CampoSenhaProps } from './CampoSenha.js';
 export { SeloPlataforma } from './SeloPlataforma.js';
 export { MenuAcoes } from './MenuAcoes.js';
 export type { AcaoMenu, AcaoPrincipal, Desabilitado, MenuAcoesProps } from './MenuAcoes.js';
+export { ResultadoAcao, useResultado } from './ResultadoAcao.js';
+export type { Resultado, ResultadoAcaoProps, TomResultado } from './ResultadoAcao.js';
