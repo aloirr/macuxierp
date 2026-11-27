@@ -22,3 +22,4 @@ export {
   EPEC_LIGADA, MENSAGEM_EPEC_DESLIGADA, PRAZO_EPEC_HORAS, JANELA_PERTO_DO_FIM_HORAS, TP_EMIS_DA_MODALIDADE, MOTIVO_MIN, MOTIVO_MAX,
   type ModalidadeContingencia, type TabelaSvc, type EntradaContingencia, type ContingenciaDaNota, type NotaNaVolta, type TpEmisContingencia, type SituacaoPrazoEpec,
 } from './contingencia';
+export * from './nfe-producao';
