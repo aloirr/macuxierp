@@ -16,11 +16,11 @@ import { CorpoLote, type CorpoLote as CorpoLoteTipo } from '@macuxierp/platform-
 import { z } from 'zod';
 import type { ResultadoEntidade } from '../contracts';
 import {
-  PADRAO_UF, adaptarLote, agruparClientes, conferirFormasDoLote, cursorDoLote, errosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote, LIMITE_ERROS_GUARDADOS,
+  PADRAO_UF, adaptarLote, agruparClientes, conferirFormasDoLote, cursorDoLote, cursorDepoisDoLote, errosDoLote, obsoletosDoLote, estadoFinalDoLote, idsVazios, repetidosNoLote, LIMITE_ERROS_GUARDADOS,
   type ErroGuardado, type ErroLinha, type FormaDoLote, type MunicipioOficial,
 } from '../domain';
 import { estadoVazio } from './carga-entidades';
-import { gravarLinhas, type Linha } from './carga-gravar';
+import { aplicarIrmasDaForma, gravarLinhas, type Linha } from './carga-gravar';
 import type { RepositorioEntrada, LotePendente } from './entrada-sql';
 import type { Repositorios } from './portas';
 import { dataIso } from './util';
@@ -104,10 +104,15 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
   const externos: (string | null)[] = corpo.registros.map((x) => x.external_id);
   const errosCarga: ErroLinha[] = [];
   const rel = { erroLinha: (_arquivo: string, e: ErroLinha) => void errosCarga.push(e) };
+  // Obsoleto (ADR 0014 §3): versão anterior ao cursor da entidade do conector não grava; conta em `obsoletas` e o cursor não recua.
+  const cursorGuardado = (await entrada.lerCursor(lote.conector_id, lote.entidade))?.cursor ?? null;
+  const pares = corpo.registros.map((x, indice) => ({ indice, alterado_em: x.alterado_em, external_id: x.external_id }));
+  const obsoletos = obsoletosDoLote(pares, cursorGuardado);
   const boas: { indice: number; linha: Linha }[] = [];
   adaptado.resultados.forEach((x, indice) => (x.ok ? boas.push({ indice, linha: x.linha as Linha }) : void errosCarga.push(...x.erros)));
-  const repetidos = repetidosNoLote(boas.map((b) => ({ indice: b.indice, external_id: externos[b.indice] as string })));
-  let linhas: Linha[] = boas.filter((b) => !repetidos.has(b.indice)).map((b) => b.linha);
+  const aplicaveis = boas.filter((b) => !obsoletos.has(b.indice));
+  const repetidos = repetidosNoLote(aplicaveis.map((b) => ({ indice: b.indice, external_id: externos[b.indice] as string })));
+  let linhas: Linha[] = aplicaveis.filter((b) => !repetidos.has(b.indice)).map((b) => b.linha);
   const lidas = linhas.length;
   let formasDoLote: FormaDoLote[] = [];
   let resultado: ResultadoEntidade | null = null;
@@ -130,6 +135,25 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
     await gravarLinhas(st, [{ entidade: adaptado.entidade, nome: ARQUIVO, linhas, formas: formasDoLote, resultado }], rel);
   }
 
+  // Lote de formas (RN-CAD-09): a forma vive nas condições; atualiza as que já usam a forma. Forma sem condição ainda não tem onde ficar
+  // (falta a cadastros.entrada_forma, pedida ao banco-dados) e conta como inalterada.
+  let formasAtualizadas = 0;
+  let formasObsoletas = 0;
+  if (corpo.entidade === 'forma_pagamento') {
+    const st = estadoVazio({
+      c: contextoDoWorker(d, tx, trabalho, agora), r, gravar: true, hoje: dataIso(agora), loteId: lote.id, conhecidos: idsVazios(), podeCredito: true, podeNegativo: false,
+    });
+    for (const f of adaptado.formas) {
+      if (obsoletos.has(f.indice)) {
+        formasObsoletas += 1;
+        continue;
+      }
+      const o = await aplicarIrmasDaForma({ chave: f.external_id, external_id: f.external_id, codigo: f.codigo, nome: f.nome, tpag: f.tpag, linha: f.linha, condicoes: [] }, st);
+      errosCarga.push(...o.erros);
+      if (o.aplicada) formasAtualizadas += 1;
+    }
+  }
+
   const doLote = errosDoLote(errosCarga, externos);
   // Linhas que o Conector já recusou antes de enviar (M5): contam como erro, depois dos registros.
   const doConector: ErroGuardado[] = corpo.linhas_invalidas.map((x, i) => ({
@@ -140,12 +164,14 @@ async function processarUm(d: DependenciasEntradaLote, tx: Transacao, trabalho: 
   const total = doLote.total + doConector.length;
   const contagens = {
     recebidas: lote.recebidos, duplicadas_no_lote: repetidos.size, com_erro: comErro,
-    novas: resultado?.inseridas ?? 0, atualizadas: resultado?.atualizadas ?? 0,
-    // Forma de pagamento não tem tabela própria: as válidas só conferem o formato e contam como sem mudança.
-    inalteradas: (resultado?.sem_mudanca ?? 0) + adaptado.formas.length,
-    obsoletas: 0, erros_total: total, erros_omitidos: total - erros.length, invalidas_omitidas: corpo.linhas_invalidas_omitidas,
+    novas: resultado?.inseridas ?? 0, atualizadas: (resultado?.atualizadas ?? 0) + formasAtualizadas,
+    inalteradas: (resultado?.sem_mudanca ?? 0) + Math.max(0, adaptado.formas.length - formasAtualizadas - formasObsoletas),
+    obsoletas: obsoletos.size, erros_total: total, erros_omitidos: total - erros.length, invalidas_omitidas: corpo.linhas_invalidas_omitidas,
   };
-  const cursor = cursorDoLote(corpo.registros.map((x, indice) => ({ indice, alterado_em: x.alterado_em, external_id: x.external_id })), doLote.indicesComErro);
+  const cursor = cursorDepoisDoLote(
+    cursorDoLote(pares, new Set([...doLote.indicesComErro, ...obsoletos])),
+    cursorGuardado,
+  );
   await entrada.concluir(lote.id, { estado: estadoFinalDoLote(comErro), com_erro: comErro, contagens, erros, cursor }, agora);
   if (cursor) await entrada.avancarCursor(lote.conector_id, lote.entidade, cursor, lote.id);
   await auditar(d.auditoria, tx, { tenant_id: trabalho.tenant_id, usuario_id: null, request_id: trabalho.id }, {

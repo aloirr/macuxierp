@@ -106,6 +106,26 @@ export function cursorDoLote(registros: readonly { indice: number; alterado_em: 
   return cursor;
 }
 
+/**
+ * Registros obsoletos do delta (ADR 0014 §3; `ContagensLote.obsoletas`): o par (`alterado_em`, `external_id`) estritamente anterior ao
+ * cursor da entidade do conector. Um delta só traz o que veio depois do cursor, então o que está antes é reenvio de versão velha e não
+ * pode sobrescrever o mais novo. O par igual ao cursor é o mesmo registro reenviado (inalterado), não obsoleto.
+ */
+export function obsoletosDoLote(registros: readonly { indice: number; alterado_em: string; external_id: string }[], cursor: CursorHub | null): Set<number> {
+  const obsoletos = new Set<number>();
+  if (cursor === null) return obsoletos;
+  for (const r of registros) {
+    if (maisNovoQue(cursor, r)) obsoletos.add(r.indice);
+  }
+  return obsoletos;
+}
+
+/** Cursor da entidade depois do lote: o maior entre o do lote e o já guardado (o cursor nunca anda para trás). */
+export function cursorDepoisDoLote(doLote: CursorHub | null, guardado: CursorHub | null): CursorHub | null {
+  if (doLote === null) return guardado;
+  return maisNovoQue(doLote, guardado) ? doLote : guardado;
+}
+
 /** Índices dos registros que um posterior do mesmo lote, com o mesmo `external_id`, substitui: vale o último (ordem do lote). */
 export function repetidosNoLote(registros: readonly { indice: number; external_id: string }[]): Set<number> {
   const ultimo = new Map<string, number>();

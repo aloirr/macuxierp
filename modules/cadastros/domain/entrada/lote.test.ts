@@ -1,7 +1,7 @@
 import { CODIGOS_ERRO_LINHA_HUB, LoteResultado } from '@macuxierp/platform-sdk/hub-v1';
 import { describe, expect, it } from 'vitest';
 import {
-  LIMITE_ERROS_GUARDADOS, codigoLinhaHub, repetidosNoLote, cursorDoLote, errosDoLote, estadoFinalDoLote, maisNovoQue, reprocessavel, resultadoDoLote,
+  LIMITE_ERROS_GUARDADOS, codigoLinhaHub, repetidosNoLote, cursorDoLote, errosDoLote, estadoFinalDoLote, maisNovoQue, obsoletosDoLote, cursorDepoisDoLote, reprocessavel, resultadoDoLote,
 } from './lote';
 
 const erro = (linha: number, codigo: string, campo: string | null = null) => ({ linha, campo, codigo, motivo: 'texto com 12.345.678/0001-95 que não pode sair' });
@@ -67,6 +67,28 @@ describe('cursor do delta (ADR 0014 §3): o último registro aplicado', () => {
     expect(maisNovoQue({ alterado_em: '2026-11-20T10:00:00.000Z', external_id: 'Z' }, a)).toBe(false);
     expect(maisNovoQue(a, a)).toBe(false);
     expect(maisNovoQue(a, null)).toBe(true);
+  });
+});
+
+describe('obsoletos do delta (ADR 0014 §3; contrato ContagensLote.obsoletas: versão mais antiga que a atual não grava)', () => {
+  const cursor = { alterado_em: '2026-11-21T10:00:00.000Z', external_id: 'M' };
+  const r = (indice: number, alterado_em: string, external_id: string) => ({ indice, alterado_em, external_id });
+  it('ADR 0014 §3 (sem RN no 03): só o registro estritamente anterior ao cursor (alterado_em, external_id) é obsoleto', () => {
+    const o = obsoletosDoLote([
+      r(0, '2026-11-20T10:00:00.000Z', 'Z'), r(1, '2026-11-21T10:00:00.000Z', 'A'), r(2, '2026-11-21T10:00:00.000Z', 'M'),
+      r(3, '2026-11-21T10:00:00.000Z', 'N'), r(4, '2026-11-22T10:00:00.000Z', 'A'),
+    ], cursor);
+    expect([...o]).toEqual([0, 1]);
+  });
+  it('ADR 0014 §3: sem cursor nada é obsoleto', () => {
+    expect(obsoletosDoLote([r(0, '2020-01-01T00:00:00.000Z', 'A')], null).size).toBe(0);
+  });
+  it('ADR 0014 §3: o cursor depois do lote é o maior entre o do lote e o já guardado (nunca recua)', () => {
+    const novo = { alterado_em: '2026-11-22T10:00:00.000Z', external_id: 'A' };
+    expect(cursorDepoisDoLote(null, cursor)).toEqual(cursor);
+    expect(cursorDepoisDoLote(novo, cursor)).toEqual(novo);
+    expect(cursorDepoisDoLote({ alterado_em: '2026-11-20T10:00:00.000Z', external_id: 'Z' }, cursor)).toEqual(cursor);
+    expect(cursorDepoisDoLote(null, null)).toBeNull();
   });
 });
 
