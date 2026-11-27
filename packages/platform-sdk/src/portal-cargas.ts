@@ -419,10 +419,6 @@ export type TabelaZeragem = z.infer<typeof TabelaZeragem>;
 export const MOTIVOS_USO = ['pedido', 'titulo', 'nota', 'fiscal'] as const;
 export type MotivoUsoZerar = (typeof MOTIVOS_USO)[number];
 
-/** Texto da tela do zerar para os registros mantidos. */
-export const MENSAGEM_MANTIDOS_ZERAR = (n: number): string =>
-  `Mantidos: ${n} (em uso em pedido, título ou nota, ou filial com dado fiscal)`;
-
 /** `detalhes.codigo` do 422 do zerar quando `bloqueios` não está vazio (sem SQLSTATE: o plugin decide). */
 export const CODIGO_ZERAGEM_BLOQUEADA = 'zeragem_bloqueada';
 

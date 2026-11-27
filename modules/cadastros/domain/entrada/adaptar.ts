@@ -6,10 +6,10 @@
  * - `ativo` do endereço do cliente, da forma e do estoque não tem destino na carga e é ignorado;
  * - `ClienteHub.formas_pagamento` e `deposito_*` não têm destino na carga (o layout do kit os ignora).
  */
-import { ENTIDADES_ENVIO_FDV } from '@macuxierp/platform-sdk';
+import { CODIGO_CARGA_COMPLETA_NAO_SUPORTADA, ENTIDADES_ENVIO_FDV, PAYLOADS_ENTRADA, type FilialEntrada, type ProdutoEntrada } from '@macuxierp/platform-sdk';
 import {
-  PAYLOADS_HUB, type ClienteEnderecoHub, type ClienteHub, type CorpoLote, type EstoqueHub, type FilialHub, type FormaPagamentoHub,
-  type PrazoPagamentoHub, type PrecoHub, type ProdutoHub, type ProdutoUnidadeHub, type VendedorHub,
+  type ClienteEnderecoHub, type ClienteHub, type CorpoLote, type EstoqueHub, type FormaPagamentoHub,
+  type PrazoPagamentoHub, type PrecoHub, type ProdutoUnidadeHub, type VendedorHub,
 } from '@macuxierp/platform-sdk/hub-v1';
 import type { EntidadeCarga, LinhasCarga } from '../../contracts';
 import { errosDeZod, mapearLinha, tpagDaForma, type ContextoMapeamento, type ErroLinha, type Registro } from '../carga';
@@ -43,10 +43,10 @@ function mapear<E extends EntidadeCarga>(entidade: E, campos: Record<string, str
 }
 
 /** RN-CAD-01 (CNPJ), RN-CAD-03 (município pelo nome da UF), RN-CAD-08 (`ativo`). */
-export const adaptarFilial = (p: FilialHub, indice: number, ctx: ContextoMapeamento): Adaptacao<'filial'> =>
+export const adaptarFilial = (p: FilialEntrada, indice: number, ctx: ContextoMapeamento): Adaptacao<'filial'> =>
   mapear('filial', {
     external_id: p.external_id, nome: p.nome, ativo: sim(p.ativo), cidade: p.cidade, uf: p.uf, cnpj: p.cnpj, logradouro: p.logradouro,
-    numero: p.numero, complemento: p.complemento, bairro: p.bairro, cep: p.cep,
+    numero: p.numero, complemento: p.complemento, bairro: p.bairro, cep: p.cep, crt: p.crt,
   }, indice, ctx);
 
 /** RN-CAD-08: o vendedor inativado no ERP de origem fica inativo (nunca apagado); a filial é referência. */
@@ -68,9 +68,9 @@ export const adaptarPrazoPagamento = (p: PrazoPagamentoHub, indice: number, ctx:
   }, indice, ctx);
 };
 
-/** RN-CAD-04 e RN-CAD-11: o produto do Hub não traz custo, preço de venda nem NCM (M8); a carga não os altera. */
-export const adaptarProduto = (p: ProdutoHub, indice: number, ctx: ContextoMapeamento): Adaptacao<'produto'> =>
-  mapear('produto', { external_id: p.external_id, sku: p.sku, nome: p.nome, unidade: p.unidade, ean: p.ean, marca: p.marca, ativo: sim(p.ativo) }, indice, ctx);
+/** RN-CAD-04 e RN-CAD-11: a entrada não traz custo nem preço de venda (M8); o `ncm` vem da entrada (ADR 0014, emenda de 27/11). */
+export const adaptarProduto = (p: ProdutoEntrada, indice: number, ctx: ContextoMapeamento): Adaptacao<'produto'> =>
+  mapear('produto', { external_id: p.external_id, sku: p.sku, nome: p.nome, unidade: p.unidade, ean: p.ean, marca: p.marca, ativo: sim(p.ativo), ncm: p.ncm }, indice, ctx);
 
 /** RN-CAD-12 e RN-CAD-17: fator em até 4 casas; fracionário só em KG e M. */
 export const adaptarProdutoUnidade = (p: ProdutoUnidadeHub, indice: number, ctx: ContextoMapeamento): Adaptacao<'produto_unidade'> =>
@@ -121,7 +121,7 @@ export const adaptarClienteEndereco = (p: ClienteEnderecoHub, indice: number, ct
 export interface RecusaEnvelope {
   ok: false;
   status: 422;
-  codigo: 'CARGA_COMPLETA_NAO_SUPORTADA' | 'ENTIDADE_FORA_DA_FASE';
+  codigo: typeof CODIGO_CARGA_COMPLETA_NAO_SUPORTADA | 'ENTIDADE_FORA_DA_FASE';
   motivo: string;
 }
 
@@ -151,25 +151,26 @@ const TABELA: Readonly<Record<Exclude<(typeof ENTIDADES_ENVIO_FDV)[number], 'for
 };
 
 /** Recusa do envelope inteiro (a API responde 422 e não cria lote): carga completa (RN-INT-06) ou entidade fora da F2 (ADR 0014 §2). Código em MAIÚSCULAS, como o `ErroApi`. */
-export function recusarEnvelope(envelope: Pick<EnvelopeEntrada, 'entidade' | 'modo'>): RecusaEnvelope | null {
+export function recusarEnvelope(envelope: Pick<EnvelopeEntrada, 'entidade' | 'modo'>): RecusaEnvelope | { ok: true; entidade: (typeof ENTIDADES_ENVIO_FDV)[number] } {
   if (envelope.modo === 'completo') {
-    return { ok: false, status: 422, codigo: 'CARGA_COMPLETA_NAO_SUPORTADA', motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
+    return { ok: false, status: 422, codigo: CODIGO_CARGA_COMPLETA_NAO_SUPORTADA, motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
   }
-  if (!ENTIDADES_ENVIO_FDV.some((e) => e === envelope.entidade)) {
+  const entidade = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade);
+  if (!entidade) {
     return {
       ok: false, status: 422, codigo: 'ENTIDADE_FORA_DA_FASE',
       motivo: 'Entidade não aceita: envie filial, vendedor, forma e prazo de pagamento, produto, unidade, preço, estoque, cliente ou endereço do cliente',
     };
   }
-  return null;
+  return { ok: true, entidade };
 }
 
 /** Valida cada registro pelo Zod do SDK e o adapta; recusa o envelope inteiro como `recusarEnvelope`. Erro de registro fica no resultado dele, sem o valor (RN-INT-01). */
 export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): RecusaEnvelope | LoteAdaptado {
   const recusa = recusarEnvelope(envelope);
-  if (recusa) return recusa;
-  const chave = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade) as (typeof ENTIDADES_ENVIO_FDV)[number];
-  const schema = PAYLOADS_HUB[chave];
+  if (!recusa.ok) return recusa;
+  const chave = recusa.entidade;
+  const schema = PAYLOADS_ENTRADA[chave];
   const formas: FormaDoLoteAdaptada[] = [];
   const resultados: Adaptacao<EntidadeCarga>[] = [];
   envelope.registros.forEach((bruto, indice) => {

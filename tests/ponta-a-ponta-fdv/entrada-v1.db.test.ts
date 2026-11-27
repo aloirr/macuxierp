@@ -12,8 +12,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CABECALHO_CONECTOR_ID_ENTRADA, ChaveEntrada, CODIGO_CARGA_COMPLETA_NAO_SUPORTADA } from '../../packages/platform-sdk/src/index';
 import { PG_DISPONIVEL } from '../../packages/platform-sdk/src/pg-testes';
-import { CorpoLote, CursorEntidade, LoteAceito, LoteResultado, PAYLOADS_HUB, RespostaSinal, VERSAO_CONTRATO_HUB } from '../../packages/platform-sdk/src/hub-v1';
+import { CorpoLote, CursorEntidade, LoteAceito, LoteResultado, PAYLOADS_HUB, RespostaSinal, VERSAO_CONTRATO_HUB, type RegistroLote } from '../../packages/platform-sdk/src/hub-v1';
 import {
+  cnpjDaEmpresa,
   ENTIDADES_F2,
   envelopeCompleto,
   envelopeDelta,
@@ -226,7 +227,7 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
 
   describe('os 10 cadastros da F2 (ADR 0014 §2): lote delta → worker → resultado → cursor → cadastro → Hub', () => {
     /**
-     * Filial e produto já cadastrados pelo BKO (a entrada atualiza: D1 e D2), e a forma de pagamento só confere o formato e
+     * Filial e produto já cadastrados pelo BKO (a entrada atualiza sem crt e sem ncm: D1/D2), e a forma de pagamento só confere o formato e
      * conta como inalterada (não tem tabela própria; o prazo usa a forma da condição que o BKO criou: D3). Os outros 7 são novos.
      */
     // O endereço é uma linha do cliente (adaptarClienteEndereco): o de entrega novo conta como cliente atualizado.
@@ -257,20 +258,50 @@ describe.skipIf(!PG_DISPONIVEL)('T-0057 T1 — /entrada/v1 → cadastros → dub
 
     const lerLote = async (id: string) => LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id }))).json());
 
-    // D1 a D3 (recado ao gerente, 27/11/2026 00h09): `it.fails` passa enquanto o defeito existir; quando o cadastros corrigir,
-    // o caso fica vermelho e vira `it` (sem a semeadura do BKO no `beforeAll`).
-    const criarSemBko = async (e: 'filial' | 'produto' | 'prazo_pagamento', sufixo: string) => {
-      const reg = { ...massa.registros[e][0]!, external_id: `${massa.registros[e][0]!.external_id}-${sufixo}` };
-      const extra = e === 'prazo_pagamento' ? { forma_external_id: `THA-FOR-NOVA-${sufixo}`, codigo: `N-${sufixo}` } : e === 'produto' ? { sku: `SKU-${sufixo}` } : { codigo: '0003' };
-      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta(e, [{ ...reg, ...extra }], INICIO))).json());
+    /** Um lote com duas linhas novas, a 1ª sem o campo e a 2ª com ele; devolve o resultado. */
+    const loteSemEComCampo = async (e: 'filial' | 'produto', sem: RegistroLote, com: RegistroLote) => {
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta(e, [sem, com], INICIO))).json());
       await m.processarFila();
-      const res = LoteResultado.parse((await m.chamarEntrada(m.credenciais.A, 'GET', urlEntrada('lote', { id: r.lote_id }))).json());
-      expect([res.status, res.contagens.novas]).toEqual(['concluido', 1]);
+      return lerLote(r.lote_id);
     };
-    it.fails('D1: filial nova só pela entrada (sem o crt no FilialHub) grava', () => criarSemBko('filial', 'D1'));
-    it.fails('D2: produto novo só pela entrada (sem NCM no ProdutoHub, RN-CAD-04) grava', () => criarSemBko('produto', 'D2'));
+
+    // D1/D2 (decisão 40 B; ADR 0014, emenda de 27/11; #770 e #771): `crt` da filial e `ncm` do produto opcionais na entrada.
+    it('D1: filial nova sem crt é recusada só na linha (campo_obrigatorio crt); a nova com crt grava no mesmo lote', async () => {
+      const base = massa.registros.filial[0]!;
+      const sem = { ...base, external_id: `${base.external_id}-D1S`, codigo: '0003', cnpj: cnpjDaEmpresa('0003') };
+      const com = { ...base, external_id: `${base.external_id}-D1C`, codigo: '0004', cnpj: cnpjDaEmpresa('0004'), crt: '1' };
+      const res = await loteSemEComCampo('filial', sem, com);
+      expect([res.status, res.contagens.novas, res.contagens.com_erro], JSON.stringify(res.erros)).toEqual(['concluido_com_erros', 1, 1]);
+      expect(res.erros).toEqual([expect.objectContaining({ indice: 0, external_id: sem.external_id, campo: 'crt', codigo: 'campo_obrigatorio' })]);
+    });
+
+    it('D2 (pedido das 01h04): produto novo sem ncm é recusado só na linha (campo_obrigatorio ncm); o novo com ncm grava no mesmo lote', async () => {
+      const base = massa.registros.produto[0]!;
+      const sem = { ...base, external_id: `${base.external_id}-D2S`, sku: `${base.sku}-D2S` };
+      const com = { ...base, external_id: `${base.external_id}-D2C`, sku: `${base.sku}-D2C`, ncm: '10063021' };
+      const res = await loteSemEComCampo('produto', sem, com);
+      expect([res.status, res.contagens.novas, res.contagens.com_erro], JSON.stringify(res.erros)).toEqual(['concluido_com_erros', 1, 1]);
+      expect(res.erros).toEqual([expect.objectContaining({ indice: 0, external_id: sem.external_id, campo: 'ncm', codigo: 'campo_obrigatorio' })]);
+    });
+
+    it('D1/D2: a filial e o produto já cadastrados pelo BKO, atualizados pela entrada sem crt e sem ncm, mantêm o valor gravado', async () => {
+      const [f, p] = [massa.registros.filial[0]!, massa.registros.produto[0]!];
+      const { rows } = await m.api.b.admin.query(
+        `SELECT (SELECT crt FROM cadastros.filial WHERE tenant_id = $1 AND external_id = $2) AS crt,
+                (SELECT ncm FROM cadastros.produto WHERE tenant_id = $1 AND external_id = $3) AS ncm`,
+        [m.api.t.A, f.external_id, p.external_id],
+      );
+      expect(rows[0]).toEqual({ crt: '1', ncm: '22021000' });
+    });
+
     // v0.3.18, cadastros.entrada_forma: a forma nova, sem condição no ERP, ainda não tem onde ficar.
-    it.fails('D3: o 1º prazo de uma forma nova, sem condição no ERP, só pela entrada grava', () => criarSemBko('prazo_pagamento', 'D3'));
+    it.fails('D3: o 1º prazo de uma forma nova, sem condição no ERP, só pela entrada grava', async () => {
+      const base = massa.registros.prazo_pagamento[0]!;
+      const prazo = { ...base, external_id: `${base.external_id}-D3`, forma_external_id: 'THA-FOR-NOVA-D3', codigo: 'N-D3' };
+      const r = LoteAceito.parse((await m.enviarLote(m.credenciais.A, envelopeDelta('prazo_pagamento', [prazo], INICIO))).json());
+      await m.processarFila();
+      expect([(await lerLote(r.lote_id)).status, (await lerLote(r.lote_id)).contagens.novas]).toEqual(['concluido', 1]);
+    });
 
     it('D3 parcial (#768): com a forma já ligada a uma condição, o lote da forma e depois o 1º prazo novo dela gravam', async () => {
       const forma = massa.registros.forma_pagamento[0]!;
