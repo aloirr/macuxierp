@@ -97,6 +97,19 @@ function vigiar(pagina) {
   };
 }
 
+/**
+ * Login na raiz (v0.3.27): "/" sem sessão É a tela de login, e /login e /config/entrar viram 308 para "/". O caminho final não
+ * basta para dizer "caiu no login": vale o formulário na tela (campos `empresa` e `senha` no mesmo form, como o
+ * `FormularioLogin`). Serve ao main (/login) e ao branch novo ("/").
+ */
+const formularioDeLogin = (pagina) =>
+  pagina.locator('form:has(input[name="empresa"]):has(input[name="senha"])');
+const ROTA_ANTIGA_DO_LOGIN = /^\/(login|config\/entrar)$/;
+async function naTelaDeLogin(pagina, final) {
+  if (ROTA_ANTIGA_DO_LOGIN.test(final)) return true;
+  return (await formularioDeLogin(pagina).count()) > 0;
+}
+
 const resultados = [];
 
 async function abrir(pagina, vigia, item, rotulo = item.url) {
@@ -122,8 +135,10 @@ async function abrir(pagina, vigia, item, rotulo = item.url) {
       const m = html.match(re);
       if (m) falhas.push(`HTML com erro: ${m[0].replace(/^>|<$/g, '').slice(0, 120)}`);
     }
-    if (item.contexto !== 'sem-sessao' && /^\/(login|config\/entrar)$/.test(final))
-      falhas.push(`caiu no login (${final})`);
+    const login = await naTelaDeLogin(pagina, final);
+    if (item.contexto !== 'sem-sessao' && login) falhas.push(`caiu no login (${final})`);
+    if (item.exigeLogin && !login)
+      falhas.push(`sem sessão, ${rotulo} não mostrou o formulário de login (${final})`);
     // Com o 404 de regra aceito, o "Failed to load resource" do próprio documento não é erro de render.
     const consoleErros = vigia.v.console.filter(
       (t) => !(aceito404 && /Failed to load resource: .*404/.test(t)),
@@ -164,20 +179,41 @@ try {
   anon.setDefaultTimeout(30_000);
   const vAnon = vigiar(anon);
   for (const item of URLS.filter((u) => u.contexto === 'sem-sessao')) await abrir(anon, vAnon, item);
+  // "/" sem sessão é a tela de login (v0.3.27; no main, o redirect para /login): tem de mostrar o formulário.
+  await abrir(anon, vAnon, { url: '/', contexto: 'sem-sessao', origem: 'login na raiz', exigeLogin: true });
 
-  // Login único (/login): o administrador do tenant de teste vai ao BKO; o superadmin (código da plataforma) ao /config.
-  async function sessao(u, chegou) {
+  // Login único: o administrador do tenant de teste vai ao BKO; o superadmin (código da plataforma) ao /config. O caminho
+  // sozinho não prova que entrou ("/" também é o login): espera o formulário sumir e o sinal de sessão (`chegou`).
+  async function sessao(u, quem, chegou) {
     const p = await (await navegador.newContext(opcoes)).newPage();
     p.setDefaultTimeout(30_000);
     await entrar(p, BASE, u);
-    await p.waitForURL((x) => chegou(new URL(x).pathname));
+    try {
+      await formularioDeLogin(p).waitFor({ state: 'detached' });
+      await chegou(p);
+    } catch (e) {
+      const alerta = (
+        await p
+          .getByRole('alert')
+          .allInnerTexts()
+          .catch(() => [])
+      )
+        .map((t) => t.trim())
+        .filter(Boolean);
+      throw new Error(
+        `o login do ${quem} não entrou (${new URL(p.url()).pathname}${alerta.length ? `, alerta: ${alerta.join(' / ').slice(0, 200)}` : ''}): ${String(e?.message ?? e).split('\n')[0]}`,
+      );
+    }
     return p;
   }
-  const bko = await sessao(dados.administrador, (c) => !c.startsWith('/login'));
+  // Topo do BKO (`header.topo` da Casca): só existe com sessão.
+  const bko = await sessao(dados.administrador, 'administrador', (p) => p.locator('header.topo').waitFor());
   const vBko = vigiar(bko);
   for (const item of URLS.filter((u) => u.contexto === 'bko')) await abrir(bko, vBko, item);
 
-  const portal = await sessao(dados.superadmin, (c) => c === '/config');
+  const portal = await sessao(dados.superadmin, 'superadmin', (p) =>
+    p.waitForURL((x) => new URL(x).pathname === '/config'),
+  );
   const vPortal = vigiar(portal);
   for (const item of URLS.filter((u) => u.contexto === 'portal')) {
     await abrir(portal, vPortal, item);
