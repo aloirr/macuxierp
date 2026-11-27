@@ -58,11 +58,11 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv.sinal.ultimo
     }
   });
 
-  it('o CHECK recusa maiúscula, hífen, vazio e 81 caracteres (23514) e aceita 80', () => {
-    for (const v of ["'MXI04'", "'http-503'", "''", "repeat('a', 81)"]) {
+  it('o CHECK (o CodigoErroFdv do SDK) recusa maiúscula, hífen, vazio, início por dígito e 61 caracteres (23514) e aceita 60', () => {
+    for (const v of ["'MXI04'", "'http-503'", "''", "'5xx'", "repeat('a', 61)"]) {
       recusaDetalhada(banco.conexao, gravar(v), '23514', /sinal_ultimo_codigo_check/, COMO('macuxierp_worker', A));
     }
-    expect(numeros(rodarComo(banco.conexao, gravar("repeat('a', 80)"), COMO('macuxierp_worker', A)))).toEqual([1]);
+    expect(numeros(rodarComo(banco.conexao, gravar("repeat('a', 60)"), COMO('macuxierp_worker', A)))).toEqual([1]);
   });
 
   it('o app não grava o código (42501)', () => {
@@ -76,6 +76,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — integracao_fdv.sinal.ultimo
       `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'sinal_ultimo_codigo_check'
           AND conrelid = 'integracao_fdv.sinal'::regclass`,
     );
-    expect(d?.def).toBe("CHECK ((ultimo_codigo ~ '^[a-z0-9_]{1,80}$'::text))");
+    expect(d?.def).toBe("CHECK ((ultimo_codigo ~ '^[a-z][a-z0-9_]{0,59}$'::text))");
   });
 });
