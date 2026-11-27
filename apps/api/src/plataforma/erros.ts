@@ -23,7 +23,9 @@ const SQLSTATE_SEM_LICENCA_FDV = 'MXI04';
 
 const MENSAGEM_CREDENCIAL_MUDOU = 'A credencial mudou; recarregue a página.';
 const MENSAGEM_ESTADO_MUDOU = 'O estado mudou; recarregue a página.';
-const MENSAGEM_SEM_LICENCA_FDV = 'A empresa precisa estar ativa e com o módulo Integração FDV licenciado.';
+/** Texto do bloqueio por motivo (36 A, RD-2324); sem motivo conhecido, vale o da licença. */
+const MENSAGEM_SEM_LICENCA_FDV = 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.';
+const MENSAGEM_EMPRESA_INATIVA_FDV = 'A empresa precisa estar ativa.';
 
 /**
  * O DETAIL do `MXI03` traz o código do domain (`portal_carga_completa` e `portal_retomar` da 0038; o zerar: `lote_em_voo`).
@@ -59,8 +61,11 @@ export function erroDaPlataforma(e: unknown): unknown {
       return erros.conflito(MENSAGEM_CREDENCIAL_MUDOU);
     case SQLSTATE_ESTADO_MUDOU:
       return new ErroApi(409, 'CONFLITO', MENSAGEM_ESTADO_MUDOU, undefined, codigoDoDetalhe(e, CODIGOS_ESTADO_MUDOU));
-    case SQLSTATE_SEM_LICENCA_FDV:
-      return new ErroApi(422, 'RN-CORE-02', MENSAGEM_SEM_LICENCA_FDV, undefined, codigoDoDetalhe(e, CODIGOS_SEM_LICENCA));
+    case SQLSTATE_SEM_LICENCA_FDV: {
+      const motivo = codigoDoDetalhe(e, CODIGOS_SEM_LICENCA);
+      const texto = motivo?.codigo === 'empresa_inativa' ? MENSAGEM_EMPRESA_INATIVA_FDV : MENSAGEM_SEM_LICENCA_FDV;
+      return new ErroApi(422, 'RN-CORE-02', texto, undefined, motivo);
+    }
     // Cargas do portal (T-0058, ADR 0013, adendo de 23/11/2026). MXC01: código fixo do contrato
     // (`CODIGOS_DETALHE_CARGA_PORTAL`), nunca o DETAIL do banco; MXC04: o DETAIL só pela lista fechada, como o MXI04.
     case SQLSTATES_CARGA_PORTAL.cargaEmAndamento:

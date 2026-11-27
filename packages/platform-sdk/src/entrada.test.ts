@@ -49,10 +49,12 @@ describe('T-0057 (ADR 0014 §3, corte de 26/11): contrato da /entrada/v1', () =>
 
   it('a chave aparece só na resposta da criação; o resumo nunca leva chave nem hash', () => {
     expect(CredencialEntradaCriada.parse({ conector_id: 'abc', chave: CHAVE, prefixo: 'aaaaaaaa', criada_em: T })).toMatchObject({ chave: CHAVE });
-    const resumo = { conector_id: 'abc', prefixo: 'aaaaaaaa', criada_em: T, revogada_em: null, ultimo_uso_em: null };
+    const resumo = { conector_id: 'abc', prefixo: 'aaaaaaaa', criada_em: T, revogada_em: null };
     expect(CredencialEntradaResumo.parse(resumo)).toEqual(resumo);
     expect(CredencialEntradaResumo.safeParse({ ...resumo, chave: CHAVE }).success).toBe(false);
     expect(CredencialEntradaResumo.safeParse({ ...resumo, chave_hmac: 'x' }).success).toBe(false);
+    // RD-2319 (36 A): o "Último uso" saiu da tela; a tela mostra o último sinal.
+    expect(CredencialEntradaResumo.safeParse({ ...resumo, ultimo_uso_em: null }).success).toBe(false);
   });
 
   it('leitura do portal: credenciais, último sinal e até 50 lotes recentes, só contagens', () => {

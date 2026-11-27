@@ -73,15 +73,9 @@ export const CredencialEntradaCriada = z
   .strict();
 export type CredencialEntradaCriada = z.infer<typeof CredencialEntradaCriada>;
 
-/** Credencial na leitura do portal: sem chave e sem hash. */
+/** Credencial na leitura do portal: sem chave e sem hash; sem "último uso" (a tela mostra o último sinal, RD-2319). */
 export const CredencialEntradaResumo = z
-  .object({
-    conector_id: ConectorIdEntrada,
-    prefixo: Prefixo,
-    criada_em: Instante,
-    revogada_em: Instante.nullable(),
-    ultimo_uso_em: Instante.nullable(),
-  })
+  .object({ conector_id: ConectorIdEntrada, prefixo: Prefixo, criada_em: Instante, revogada_em: Instante.nullable() })
   .strict();
 export type CredencialEntradaResumo = z.infer<typeof CredencialEntradaResumo>;
 
