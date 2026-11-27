@@ -42,10 +42,12 @@ const PLANA = [
   'cnae_principal', 'regime_receita', 'situacao_cadastral', 'situacao_cadastral_data', 'data_abertura', 'natureza_juridica', 'porte',
   'cnae_secundarios', 'fonte', 'consultado_em',
 ];
+/** Contrato plano: as colunas da 0063 mais a IE editável da 0077 (RN-CORE-16). A consulta à Receita não traz a IE. */
+const PLANA_CONTRATO = [...PLANA, 'ie'];
 
 describe('ficha da Receita: contrato plano da 0063 e prepararFichaDaConsulta (T-0101, R-1 a R-3)', () => {
-  it('R-1: FichaReceitaPlana tem exatamente as colunas da ficha da 0063, mais fonte e data da consulta (sem CNPJ: ele nunca muda por aqui)', () => {
-    expect(Object.keys(FichaReceitaPlana.shape).sort()).toEqual([...PLANA].sort());
+  it('R-1: FichaReceitaPlana tem exatamente as colunas da ficha da 0063, mais fonte e data da consulta, mais a ie da 0077 (RN-CORE-16; sem CNPJ: ele nunca muda por aqui)', () => {
+    expect(Object.keys(FichaReceitaPlana.shape).sort()).toEqual([...PLANA_CONTRATO].sort());
     expect(Object.keys(FichaReceitaPlana.shape)).not.toContain('cnpj');
   });
 
