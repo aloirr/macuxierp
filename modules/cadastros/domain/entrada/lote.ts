@@ -75,7 +75,8 @@ export function errosDoLote(entrada: readonly ErroLinha[], externos: readonly (s
   let total = 0;
   for (const e of entrada) {
     const indice = Math.min(indiceDaLinha(e.linha), Math.max(0, externos.length - 1));
-    const codigo = codigoLinhaHub(e.codigo);
+    // ADR 0014 (emenda de 27/11): o NCM ausente do produto novo (RN-CAD-04, `prepararCriacao`) é campo obrigatório, como o crt.
+    const codigo = e.codigo === 'RN-CAD-04' && e.campo === 'ncm' && e.motivo.startsWith('NCM obrigatório') ? 'campo_obrigatorio' : codigoLinhaHub(e.codigo);
     const chave = `${indice}|${e.campo ?? ''}|${codigo}`;
     if (vistos.has(chave)) continue;
     vistos.add(chave);

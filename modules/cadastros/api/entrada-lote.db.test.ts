@@ -112,6 +112,36 @@ describe.skipIf(!PG_DISPONIVEL)('entrada de lotes (T-0057 C3 e C4, PostgreSQL re
     expect(JSON.stringify((await admin('SELECT * FROM cadastros.entrada_lote WHERE id = $1', [id]))[0])).not.toContain('Segredo');
   }, 60_000);
 
+  it('ADR 0014 (emenda de 27/11): sem crt/ncm, o cadastro existente ou adotado pelo cnpj mantém o gravado e o novo é recusado só na linha', async () => {
+    // FX1 já tem external_id; a filial adotada pelo cnpj (sem external_id gravado) é a seguinte.
+    await admin("UPDATE cadastros.filial SET external_id = 'FX1', regime_pis_cofins = 'nao_cumulativo' WHERE tenant_id = $1", [A]);
+    await admin(
+      `INSERT INTO cadastros.filial (tenant_id, cnpj, razao_social, crt, regime_pis_cofins, logradouro, numero, bairro, municipio_ibge, uf, cep, padrao)
+       VALUES ($1, '99000001000101', 'Filial Adotada', '2', NULL, 'Rua B', '2', 'Centro', '1302603', 'AM', '69000000', false)`,
+      [A],
+    );
+    const f = (external_id: string, extra: Record<string, unknown> = {}) => ({
+      external_id, alterado_em: '2026-11-26T09:00:00.000Z', ativo: true, codigo: '01', nome: 'Filial Renomeada', cidade: 'Manaus', uf: 'AM', cnpj: '12.345.678/0001-95',
+      logradouro: 'Rua A', numero: '1', bairro: 'Centro', cep: '69000000', ...extra,
+    });
+    const id = await receber(A, 'conector-1', corpo([
+      f('FX1'), f('FX2', { cnpj: '99.000.002/0001-48' }), f('FX3', { cnpj: '99.000.001/0001-01', nome: 'Adotada' }),
+    ], { entidade: 'filial' }), 'chave-pg-0009');
+    await processar(A, id);
+    const r = await resultado(A, 'conector-1', id);
+    expect(r.erros).toMatchObject([{ indice: 1, external_id: 'FX2', campo: 'crt', codigo: 'campo_obrigatorio', reprocessavel: false }]);
+    expect((await admin('SELECT crt, razao_social FROM cadastros.filial WHERE tenant_id = $1 AND external_id = $2', [A, 'FX1']))[0]).toMatchObject({ crt: '3', razao_social: 'Filial Renomeada' });
+    expect((await admin('SELECT crt, external_id FROM cadastros.filial WHERE tenant_id = $1 AND cnpj = $2', [A, '99000001000101']))[0]).toMatchObject({ crt: '2', external_id: 'FX3' });
+    expect((await admin('SELECT count(*)::int AS n FROM cadastros.filial WHERE tenant_id = $1 AND external_id = $2', [A, 'FX2']))[0]!.n).toBe(0);
+  }, 60_000);
+
+  it('ADR 0014 (emenda de 27/11): produto novo sem ncm é recusado em ncm (campo_obrigatorio) e o resto do lote segue', async () => {
+    const id = await receber(A, 'conector-1', corpo([{ external_id: 'PX1', alterado_em: '2026-11-26T09:00:00.000Z', ativo: true, sku: 'SKUX1', nome: 'Parafuso', unidade: 'UN' }], { entidade: 'produto' }), 'chave-pg-0010');
+    await processar(A, id);
+    expect((await resultado(A, 'conector-1', id)).erros).toMatchObject([{ indice: 0, external_id: 'PX1', campo: 'ncm', codigo: 'campo_obrigatorio' }]);
+    expect((await admin('SELECT count(*)::int AS n FROM cadastros.produto WHERE tenant_id = $1 AND external_id = $2', [A, 'PX1']))[0]!.n).toBe(0);
+  }, 60_000);
+
   it('um lote por vez por entidade e conector: o trabalho do 2º lote processa o 1º antes, e o cursor não anda para trás', async () => {
     const a = await receber(A, 'conector-1', corpo([registro(8)]), 'chave-pg-0004');
     const b = await receber(A, 'conector-1', corpo([registro(7)]), 'chave-pg-0005');
