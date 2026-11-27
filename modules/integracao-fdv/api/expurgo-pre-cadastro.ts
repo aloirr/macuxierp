@@ -7,7 +7,7 @@
  * (`ROTINA_EXPURGO_PRE_CADASTRO`, `horaUtc` ao gosto dele; a função é idempotente). Roda mesmo sem licença do módulo: o prazo da
  * LGPD não depende do contrato.
  */
-import type { Banco, Relogio, Transacao } from '@macuxierp/platform-sdk';
+import type { Banco, LogAgenda, Relogio, Transacao } from '@macuxierp/platform-sdk';
 import { corteDoExpurgoPreCadastro } from '../domain';
 
 export const ROTINA_EXPURGO_PRE_CADASTRO = 'integracao-fdv.expurgo-pre-cadastro';
@@ -18,7 +18,7 @@ export interface DepsExpurgoPreCadastro {
   tenantsAtivos(tx: Transacao): Promise<string[]>;
   relogio: Relogio;
   /** Só contagens, `tenant_id` e o nome do erro: nunca payload, nome nem documento. */
-  log: { info(obj: Record<string, unknown>, msg: string): void; warn(obj: Record<string, unknown>, msg: string): void };
+  log: LogAgenda;
 }
 
 /** Só contagens (cabe no `RotinaDiaria.executar` do worker). `revisoes` e `pre_cadastros` somam as duas situações. */

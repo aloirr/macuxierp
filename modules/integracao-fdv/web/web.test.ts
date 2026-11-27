@@ -8,7 +8,7 @@ import { PAGINAS_INTEGRACAO_FDV, paginaLotes } from './paginas';
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const base = (o: Partial<MonitorResposta> = {}): MonitorResposta => ({
-  credencial: { id: U(1), conector_id: 'erp-1', ambiente: 'producao', chave_prefixo: 'abcd1234', criada_em: '2026-11-22T14:00:00.000Z', ultimo_uso_em: null },
+  credencial: { id: U(1), conector_id: 'erp-1', ambiente: 'producao', chave_prefixo: 'abcd1234', criada_em: '2026-11-22T14:00:00.000Z' },
   configuracao: { entidades_habilitadas: ['produto', 'cliente'], limite_registros_lote: 500 },
   sinal: { ultimo_envio_em: '2026-11-22T14:05:00.000Z', ultimo_aceito_em: '2026-11-22T14:05:00.000Z', ultimo_http: 200, parado_por_versao: false, ultimo_codigo: null, politica_versao: { minima: '1.4.0' } },
   entidades: ENTIDADES_HUB_F2.map((entidade) => ({

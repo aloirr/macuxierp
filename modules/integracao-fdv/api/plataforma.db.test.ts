@@ -1,18 +1,16 @@
 /**
- * Plugin de plataforma da Integração FDV contra o PostgreSQL real com a 0038 (T-0056, ADR 0013): cada chamada abre uma
- * transação como a apps/api faz no `comPlataforma` (SET LOCAL ROLE macuxierp_config + a sessão do superadmin) e roda a rota.
+ * Plugin de plataforma da Integração FDV contra o PostgreSQL real com a 0038 (T-0056, ADR 0013): cada chamada roda no
+ * `comoConfig` do SDK (papel macuxierp_config + a sessão do superadmin) e executa a rota.
  * A chave do conector nunca pode aparecer em resposta, log, auditoria, evento nem erro. Sem Postgres o teste pula
  * (`bash db/scripts/pg-local.sh`; migrações em `MACUXI_DB_MIGRACOES`).
  */
 import { randomUUID } from 'node:crypto';
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA as C, decifrarCampo, ErroApi, type Transacao } from '@macuxierp/platform-sdk';
-import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfig, criarBancoEfemero, criarTenant, semearSessaoSuperadmin, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { criarPluginPlataformaIntegracaoFdv, repositorioPortalSql } from './plataforma';
 import { entidadesParaCargaInicial } from '../domain';
 
-const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
-const SA = '5a000000-0000-4000-8000-0000000000f1';
 const MESTRA = Buffer.alloc(32, 11);
 const CHAVE = 'chave-do-conector-portal-0123456789abcdef-NAO-VAZAR';
 const CHAVE_2 = 'segunda-chave-do-conector-0123456789abcdef-NAO-VAZAR';
@@ -22,6 +20,7 @@ const ENTRADA = { conector_id: 'erp-portal', chave: CHAVE, ambiente: 'teste' };
 describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no PostgreSQL real (0038)', () => {
   let b: BancoEfemero;
   let sessao: string;
+  let SA: string;
   let A: string;
   let B: string;
   let SEM: string;
@@ -30,25 +29,9 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
   const respostas: string[] = [];
   const plugin = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, chaveVersao: 1 });
 
-  async function comPlataforma<R>(s: string, fn: (tx: Transacao) => Promise<R>, confirmar: boolean): Promise<R> {
-    const c = await b.admin.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query('SET LOCAL ROLE macuxierp_config');
-      await c.query("SELECT set_config('macuxierp.sessao_superadmin', $1, true)", [s]);
-      const tx: Transacao = { consultar: async (sql, p = []) => (await c.query(sql, p as unknown[])).rows };
-      const r = await fn(tx);
-      await c.query(confirmar ? 'COMMIT' : 'ROLLBACK');
-      return r;
-    } catch (e) {
-      await c.query('ROLLBACK');
-      throw e;
-    } finally {
-      c.release();
-    }
-  }
+  const comPlataforma = <R>(s: string, fn: (tx: Transacao) => Promise<R>): Promise<R> =>
+    comoConfig(b.admin, s, (consultar) => fn({ consultar: (sql, p = []) => consultar(sql, p) as never }));
 
-  /** Sempre confirma (as escritas se enxergam entre as chamadas); o erro desfaz a transação. */
   const chamar = async (metodo: string, caminho: string, e: { corpo?: unknown; params?: Record<string, string>; sessao?: string } = {}) => {
     const r = plugin.rotas.find((x) => x.metodo === metodo && x.caminho === caminho);
     if (!r) throw new Error(`rota ${metodo} ${caminho}`);
@@ -58,7 +41,7 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
         r.executar({ sessao: { superadmin_id: SA, sessao_id: e.sessao ?? sessao }, tx, request_id: randomUUID(), agora: new Date(), auditar: async () => {} }, {
           corpo: r.corpo ? r.corpo.parse(e.corpo) : undefined,
           params: e.params ?? {},
-        } as never), true);
+        } as never));
       respostas.push(JSON.stringify(out));
       return out;
     } catch (x) {
@@ -72,25 +55,12 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    await b.admin.query(`DO $$ BEGIN
-      IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN GRANT macuxierp_config TO CURRENT_USER; END IF;
-    EXCEPTION WHEN OTHERS THEN NULL; END $$`);
     A = await criarTenant(b.admin, 'portal-ifdv-a', ['integracao-fdv']);
     B = await criarTenant(b.admin, 'portal-ifdv-b', ['integracao-fdv']);
     SEM = await criarTenant(b.admin, 'portal-ifdv-sem', []);
     SUSPENSA = await criarTenant(b.admin, 'portal-ifdv-susp', ['integracao-fdv']);
     await b.admin.query("UPDATE plataforma.tenant SET situacao = 'suspenso' WHERE id = $1", [SUSPENSA]);
-    await b.admin.query(
-      `INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'sa-ifdv@exemplo.com.br', 'Superadmin de teste', $2, false, true)`,
-      [SA, HASH],
-    );
-    sessao = randomUUID();
-    await b.admin.query(
-      // hora-fixa-ok: sessão de teste válida por 8h a partir do relógio do banco
-      `INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
-       VALUES ($1::uuid, $2::uuid, encode(sha256(convert_to($1::text, 'UTF8')), 'hex'), now() + interval '8 hours', now())`,
-      [sessao, SA],
-    );
+    ({ superadmin_id: SA, sessao_id: sessao } = await semearSessaoSuperadmin(b.admin));
     for (const m of ['log', 'info', 'warn', 'error', 'debug'] as const) vi.spyOn(console, m).mockImplementation((...a: unknown[]) => void saidasDeLog.push(a.map(String).join(' ')));
   }, 120_000);
   afterAll(async () => {
@@ -195,7 +165,7 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
         tenant: A, entidades: ['filial', 'cliente'], limite: 100, antes: velho, request_id: randomUUID(),
         evento_carga_inicial: { entidades: ['cliente'] },
       }),
-    true).then(() => null, (e: unknown) => e as { code?: string });
+      ).then(() => null, (e: unknown) => e as { code?: string });
     expect(erro?.code).toBe('MXI02');
     expect(await ler()).toEqual(atual);
     expect(await eventos()).toBe(nEventos);
