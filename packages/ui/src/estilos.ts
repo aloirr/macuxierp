@@ -205,13 +205,15 @@ export const avisoErrosCampos = 'Há campos com erro. Confira as mensagens abaix
 export const tabela = {
   raiz: { ...texto('texto'), width: '100%', borderCollapse: 'collapse', background: cor('branco') } as CSSProperties,
   /** th (decisões 40 e 44 A): névoa, 12/700 caixa-alta azul-noite, 34 px, linha azul-noite de 2 px. */
-  cabecalho: { ...texto('rotulo-dado', 'cabecalho-tabela'), color: cor('rotuloDestaque'), textTransform: 'uppercase', letterSpacing: '.04em', textAlign: 'left', height: 'var(--mx-medida-altura-campo)', padding: `0 ${espaco.md}px`, borderBottom: `2px solid ${cor('azulNoite')}`, background: cor('nevoa'), whiteSpace: 'nowrap' } as CSSProperties,
+  cabecalho: { ...texto('rotulo-dado', 'cabecalho-tabela'), color: cor('rotuloDestaque'), textTransform: 'uppercase', letterSpacing: 'var(--mx-letras-caixa-alta)', textAlign: 'left', height: 'var(--mx-medida-altura-campo)', padding: `0 ${espaco.md}px`, borderBottom: `2px solid ${cor('azulNoite')}`, background: cor('nevoa'), whiteSpace: 'nowrap' } as CSSProperties,
   /** td: 36 px de altura, linha névoa. */
-  celula: { height: 'var(--mx-medida-altura-linha-tabela)', padding: `0 ${espaco.md}px`, borderBottom: `1px solid ${cor('linhaSuave')}`, verticalAlign: 'middle' } as CSSProperties,
+  celula: { height: 'var(--mx-medida-altura-linha-tabela)', padding: `0 ${espaco.md}px`, borderBottom: `1px solid ${cor('linhaSuave')}`, verticalAlign: 'middle', overflowWrap: 'normal', wordBreak: 'normal' } as CSSProperties,
   /** Linha par (zebra, decisão 44 A). */
   linhaAlternada: { background: cor('linhaAlternada') } as CSSProperties,
   /** Célula numérica ou de dinheiro: sem quebra de linha (o `th` continua só com `numerico`). */
   celulaNumerica: { ...numerico, whiteSpace: 'nowrap' } as CSSProperties,
+  /** Data e selo (MC-0201): sem quebra de linha. O texto comum quebra só entre palavras. */
+  celulaSemQuebra: { ...tabular, whiteSpace: 'nowrap' } as CSSProperties,
   /** Legenda de tabela: 15 px (base), peso 600, à esquerda. */
   legenda: { ...texto('base', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
   vazio: { textAlign: 'center', color: cor('textoSecundario'), padding: espaco.xl } as CSSProperties,

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { aliasCores, cores, escala, fontes, gerarCss, grade, medidas, papeis, pesos, variaveisCss } from './tokens.js';
+import { aliasCores, cores, escala, fontes, gerarCss, grade, letras, medidas, papeis, pesos, variaveisCss } from './tokens.js';
 
 const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
 
@@ -81,6 +81,8 @@ describe('tokens da marca', () => {
     const v = variaveisCss();
     expect(v['--mx-medida-altura-campo']).toBe('34px');
     expect(v['--mx-cor-linha-alternada']).toBe('#FBFAF8');
+    expect(letras.caixaAlta).toBe('.04em');
+    expect(v['--mx-letras-caixa-alta']).toBe('.04em');
   });
   it('tokens.css é exatamente o gerado do TS', () => {
     expect(css).toBe(gerarCss());

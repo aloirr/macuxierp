@@ -1,4 +1,4 @@
-export { aliasCores, cores, escala, fontes, grade, medidas, papeis, pesos } from './tokens.js';
+export { aliasCores, cores, escala, fontes, grade, letras, medidas, papeis, pesos } from './tokens.js';
 export type { Cor } from './tokens.js';
 export { TabelaDensa } from './TabelaDensa.js';
 export type { ColunaTabela, DirecaoOrdem, OrdemTabela, TabelaDensaProps, TipoColuna } from './TabelaDensa.js';
