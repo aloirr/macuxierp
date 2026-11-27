@@ -13,6 +13,10 @@
 #      (/opt/macuxi/{banco,admin,segredos}.env), SÓ com as variáveis de nome conhecido; a CA do DBaaS
 #      (/opt/macuxi/certs/dbaas-ca.pem, opcional) vai para certs/ com 644. /opt/macuxi é SÓ LIDO (ADR 0003, item 3);
 #   4. todos os *.env da pasta: dono o usuário de deploy, modo 600.
+# Sentinela (.chaves-geradas, 600): o nome de cada segredo já gerado nesta VM. Se um segredo que consta nela SUMIR do
+# gerados.env ou do .env, o script PARA a publicação e não gera outro: uma chave nova em silêncio quebraria o que foi
+# cifrado ou assinado com a antiga (credenciais do FDV, A1, chaves da /entrada/v1, sessões). Para trocar uma chave de
+# propósito: apague a linha dela no arquivo de ambiente E na sentinela, e publique.
 # email.env não é gravado aqui: vem dos secrets PROD_SMTP_* pelo producao-publicar.yml (email-env.sh, T-0076), logo depois
 # deste script; o passo 4 o deixa 600 nas publicações seguintes. alerta.env não é gravado (webhook desligado; o
 # alerta-saude.sh aceita a falta). Lista dos arquivos e das variáveis: env.modelo.
@@ -35,11 +39,23 @@ umask 077
 
 dono_600() { chown "$USUARIO:$USUARIO" "$1"; chmod 600 "$1"; }
 
+# ---------- 0. sentinela dos segredos gerados ----------
+SENTINELA="$PASTA/.chaves-geradas"
+[ -f "$SENTINELA" ] || : > "$SENTINELA"
+dono_600 "$SENTINELA"
+ja_gerada() { grep -qx "$1" "$SENTINELA"; }
+marcar_gerada() { ja_gerada "$1" || printf '%s\n' "$1" >> "$SENTINELA"; }
+sumiu() { # nome arquivo: o segredo já foi gerado e não está mais lá → para tudo, sem gerar outro
+  erro "$1 já foi gerada nesta VM ($SENTINELA) e sumiu de $2: a publicação parou para não gerar outra, que quebraria os dados cifrados com a antiga. Restaure o valor do cofre; para trocar de propósito, apague a linha de $1 também na sentinela."
+}
+
 # ---------- 1. gerados.env ----------
 GERADOS="$PASTA/gerados.env"
 [ -f "$GERADOS" ] || : > "$GERADOS"
 acrescentar() { # nome valor: só se a variável ainda não existir (nunca regenera)
-  grep -q "^$1=" "$GERADOS" || { printf '%s=%s\n' "$1" "$2" >> "$GERADOS"; log "gerado $1 (gerados.env)"; }
+  if grep -q "^$1=" "$GERADOS"; then marcar_gerada "$1"; return 0; fi
+  ja_gerada "$1" && sumiu "$1" "$GERADOS"
+  printf '%s=%s\n' "$1" "$2" >> "$GERADOS"; marcar_gerada "$1"; log "gerado $1 (gerados.env)"
 }
 acrescentar MACUXIERP_SENHA_APP "$(openssl rand -hex 32)"
 acrescentar MACUXIERP_SENHA_WORKER "$(openssl rand -hex 32)"
@@ -58,13 +74,15 @@ fi
 dono_600 "$ENVF"
 chave_se_faltar() { # nome: gera só se ausente ou vazia; presente (válida ou não) nunca é tocada
   local nome="$1"
-  [ -n "$(valor_env "$ENVF" "$nome")" ] && return 0
+  if [ -n "$(valor_env "$ENVF" "$nome")" ]; then marcar_gerada "$nome"; return 0; fi
+  ja_gerada "$nome" && sumiu "$nome" "$ENVF"
   # linhas "NOME=" vazias saem (senão o compose leria a vazia ou a duplicada); valor presente nunca chega aqui
   grep -vE "^$nome=[\"' "$'\r'"]*$" "$ENVF" > "$ENVF.tmp" || :
   [ -n "$(valor_env "$ENVF.tmp" "$nome")" ] && { rm -f "$ENVF.tmp"; return 0; }
   printf '%s=%s\n' "$nome" "$(openssl rand -hex 32)" >> "$ENVF.tmp"
   dono_600 "$ENVF.tmp"
   mv -f "$ENVF.tmp" "$ENVF"
+  marcar_gerada "$nome"
   log "gerado $nome (.env)"
 }
 chave_se_faltar MACUXIERP_CHAVE_A1
