@@ -21,3 +21,13 @@ Ligar (ou desligar) uma versão de contrato (por exemplo, `PRAZO_CONTRATO_V2_LIG
 
 ## Referência ainda não confirmada (RN-INF-02, T-0112)
 A linha cuja referência (filial, forma de pagamento, produto, vendedor, cliente ou tabela de preço) ainda não foi confirmada no FDV **não vai em `linhas_invalidas`**: o Hub a recusaria à toa. O ERP a retém em silêncio, ela segue pendente e volta sozinha quando a referência for confirmada (delta e `acordarDependentes`; na carga completa o cursor passa por ela). O Log mostra o registro ("Aguardando <cadastro> ser confirmada no FDV." / "Nada a fazer: aguarde."), gravado em `lote_erro` (origem `erp`, reprocessável, sem migração) no lote em que ela foi retida, uma vez enquanto estiver aberta. Delta só com linhas retidas não monta lote e, por isso, não grava o registro no Log.
+
+## Credencial recusada: retomada automática a cada 30 minutos (decisão 25 B)
+- Com a pausa `credencial` ou `licenca_fdv`, o envio e a reconciliação **não chamam** o Hub (o limite de falhas de autenticação do Hub é por IP, de toda a VM).
+- Só o **sinal** sonda: com a pausa mais antiga do tenant (`pausada_em`) com 30 minutos ou mais, faz **uma** chamada `POST /sinal`.
+  - Hub aceitou: as pausas `credencial` e `licenca_fdv` de todas as entidades saem sozinhas e o envio volta (`proximo_em` = agora). O código da última recusa (`sinal.ultimo_codigo`) é limpo.
+  - Hub recusou de novo (401/403): a pausa é renovada com `pausada_em` = agora, recomeçando os 30 minutos, e o código do Hub (ou `http_<status>`) fica em `ultimo_codigo`.
+  - Rede ou 5xx: a pausa não muda; o próximo sinal tenta de novo.
+- Continuam **manuais** ("Tentar de novo"): `versao`, `envelope`, `idempotencia`, `topologia` e `licenca_erp`.
+- O monitor mostra `proxima_tentativa_em` (= `pausada_em` + 30 min) nas entidades pausadas por `credencial` ou `licenca_fdv` e `ultimo_codigo` no sinal.
+- Log de aviso na pausa e na sondagem só com `tenant_id`, entidade (ou `todas`), motivo, código do Hub, HTTP e resultado: nunca a chave, o conector nem o corpo.

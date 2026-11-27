@@ -32,7 +32,7 @@ export function decidirRecebidosDoLog(p: {
   return { recebidos, total: Math.max(p.totalNoBanco ?? p.linhas.length, p.linhas.length) };
 }
 
-const MOTIVO_GENERICO = 'O ERP recusou o cadastro. Fale com o suporte informando o código.';
+const MOTIVO_GENERICO = 'O ERP recusou o cadastro. Fale com a Macuxi.';
 
 /** Motivo legível do código de recusa; código desconhecido cai no genérico e nunca ecoa o texto recebido. */
 export const motivoDaRecusaCliente = (codigo: string | null | undefined): string =>

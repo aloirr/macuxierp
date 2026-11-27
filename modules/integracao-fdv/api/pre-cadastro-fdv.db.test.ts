@@ -339,7 +339,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
 
   // ---- rota do BKO ----
   const sessao = (tenant: string, perfil: Perfil = 'administrador'): Sessao => ({ usuario_id: U(), tenant_id: tenant, perfil, filial_ids: [] });
-  async function rota(tenant: string, metodo: string, caminho: string, o: { perfil?: Perfil; consulta?: Record<string, unknown>; semSessao?: boolean } = {}) {
+  async function rota(tenant: string, metodo: string, caminho: string, o: { perfil?: Perfil; consulta?: Record<string, unknown>; semSessao?: boolean; fuso?: string } = {}) {
     const plugin = criarPluginIntegracaoFdv();
     const partes = caminho.split('/').filter(Boolean);
     const escolhida = plugin.rotas.find((r) => r.metodo === metodo && (r.caminho === caminho || (r.caminho.split('/').filter(Boolean).length === partes.length && r.caminho.split('/').filter(Boolean).every((m, i) => m.startsWith(':') || m === partes[i]) && !plugin.rotas.some((x) => x.metodo === metodo && x.caminho === caminho))));
@@ -355,7 +355,7 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
         executar: async (tx, s) => {
           const consulta = escolhida.consulta ? escolhida.consulta.safeParse(o.consulta ?? {}) : null;
           if (consulta && !consulta.success) throw new ErroApi(400, 'VALIDACAO', 'Dados inválidos', {});
-          const ctx = { sessao: s, tx, request_id: 'req-teste', agora: AGORA } as unknown as Parameters<typeof escolhida.executar>[0];
+          const ctx = { sessao: s, tx, request_id: 'req-teste', agora: AGORA, fuso: o.fuso } as unknown as Parameters<typeof escolhida.executar>[0];
           return { resposta: await escolhida.executar(ctx, { corpo: undefined, consulta: consulta?.data, params, cabecalhos: {}, arquivos: {}, todosArquivos: {} }) };
         },
       });
@@ -414,6 +414,19 @@ describe.skipIf(!PG_DISPONIVEL)('pré-cadastro de cliente do FDV no PostgreSQL r
       expect(new Set(pag.itens.map((i) => i.id)).size).toBe(total);
       expect(String(csv.corpo).trim().split('\r\n')).toHaveLength(total + 1);
       expect(csv.cabecalhos?.['x-linhas-cortadas']).toBeUndefined();
+    });
+
+    it('RF-INF-04: o CSV dos recebidos sai com a data no fuso do tenant (banco em UTC): 03:00Z é 23:00 do dia anterior em Manaus', async () => {
+      const t = await criarTenant(efemero.admin, 'csv-fuso', ['integracao-fdv']);
+      await adm(
+        `INSERT INTO integracao_fdv.cliente_recebido (tenant_id, cliente_uuid, revisao, hash, razao_social, documento_mascarado, payload, recebido_em, chegou_em, situacao, decidido_em, ultima_recusa_em, motivo)
+         VALUES ($1, $2, 1, repeat('a', 64), 'Mercado Fuso', '11.222.333/****-**', '{}'::jsonb, '2026-11-20T03:00:00Z', '2026-11-20T03:00:00Z', 'recusado', now(), now(), 'Vendedor inativo')`,
+        [t, U()],
+      );
+      const manaus = String((await rota(t, 'GET', '/clientes-recebidos/exportar', { fuso: 'America/Manaus' })).corpo);
+      expect(manaus).toMatch(/Mercado Fuso.*19\/11\/2026,? 23:00/);
+      const sp = String((await rota(t, 'GET', '/clientes-recebidos/exportar', { fuso: 'America/Sao_Paulo' })).corpo);
+      expect(sp).toMatch(/Mercado Fuso.*20\/11\/2026,? 00:00/);
     });
 
     it('RF-INF-04 (decisão 21 A): passou do teto, o arquivo para nos mais recentes e avisa', async () => {

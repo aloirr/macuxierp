@@ -2,7 +2,7 @@
  * Plugin de plataforma da Integração FDV (ADR 0013; T-0056) com o repositório dublê: as regras do domain, a cifra com a
  * empresa alvo no AAD, os erros do banco e a chave que nunca sai. O banco de verdade fica em `plataforma.db.test.ts`.
  */
-import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, ENTIDADES_ENVIO_FDV, decifrarCampo, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
+import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, MENSAGEM_SEM_CREDENCIAL_FDV, ENTIDADES_ENVIO_FDV, decifrarCampo, type ContextoPlataforma, type PluginPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { criarPluginPlataformaIntegracaoFdv, type EstadoPortal, type InsumosLogPortal, type InsumosMonitorPortal, type RepositorioPortalIntegracaoFdv } from './plataforma';
 
@@ -15,13 +15,13 @@ const AGORA = '2026-11-23T10:00:00.000Z';
 const estado = (o: Partial<EstadoPortal> = {}, comCredencial = true, habilitadas: string[] = ['filial', 'produto']): EstadoPortal => ({
   empresa_id: TENANT,
   modulo_licenciado: true,
-  credencial: comCredencial ? { id: CRED, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-do', criada_em: AGORA, ultimo_uso_em: null } : null,
+  credencial: comCredencial ? { id: CRED, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'chave-do', criada_em: AGORA } : null,
   entidades_habilitadas: comCredencial ? (habilitadas as EstadoPortal['entidades_habilitadas']) : [],
   limite_registros_lote: comCredencial ? 5000 : null,
   sinal: null,
   cadastros: ENTIDADES_ENVIO_FDV.map((entidade) => ({
     entidade,
-    pausada_motivo: null, lote_em_voo: false, ultimo_envio_em: null, ultimo_lote: null, erros_abertos: 0,
+    pausada_motivo: null, pausada_em: null, lote_em_voo: false, ultimo_envio_em: null, ultimo_lote: null, erros_abertos: 0,
   })),
   ...o,
 });
@@ -79,14 +79,14 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
   });
 
   it('GET: devolve o portal_ler no formato IntegracaoFdvPlataforma, com a falha pela precedência do SDK e o sinal em ultimo_sinal', async () => {
-    const lido = estado({ sinal: { ultimo_envio_em: AGORA, ultimo_aceito_em: AGORA, ultimo_http: 200, parado_por_versao: false } });
-    lido.cadastros[0] = { ...lido.cadastros[0]!, pausada_motivo: 'credencial', ultimo_envio_em: AGORA };
+    const lido = estado({ sinal: { ultimo_envio_em: AGORA, ultimo_aceito_em: AGORA, ultimo_http: 200, parado_por_versao: false, ultimo_codigo: 'credencial_invalida' } });
+    lido.cadastros[0] = { ...lido.cadastros[0]!, pausada_motivo: 'credencial', pausada_em: AGORA, ultimo_envio_em: AGORA };
     lido.cadastros[4] = { ...lido.cadastros[4]!, ultimo_lote: { estado: 'falhou', erro_codigo: 'rede', em: AGORA } };
     const r = await chamar(criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, repo: dubleDoRepo(lido).repo }), 'GET', C.ler);
     const corpo = r.corpo as { credencial_id: string; cadastros: { entidade: string; ligada: boolean; falha: unknown; lote_em_voo: boolean }[]; ultimo_sinal: unknown };
-    expect(corpo).toMatchObject({ credencial_id: CRED, conector_id: 'erp-1', chave_prefixo: 'chave-do', ultimo_sinal: { ultimo_http: 200 } });
-    expect(corpo.cadastros[0]).toMatchObject({ entidade: 'filial', ligada: true, falha: { motivo: 'credencial', acao: 'corrigir_credencial' }, lote_em_voo: false });
-    expect(corpo.cadastros[4]).toMatchObject({ entidade: 'produto', falha: { motivo: 'lote_falhou', acao: 'aguardar_retentativa' } });
+    expect(corpo).toMatchObject({ credencial_id: CRED, conector_id: 'erp-1', chave_prefixo: 'chave-do', ultimo_sinal: { ultimo_http: 200, ultimo_codigo: 'credencial_invalida' } });
+    expect(corpo.cadastros[0]).toMatchObject({ entidade: 'filial', ligada: true, proxima_tentativa_em: '2026-11-23T10:30:00.000Z', falha: { motivo: 'credencial', acao: 'corrigir_credencial' }, lote_em_voo: false });
+    expect(corpo.cadastros[4]).toMatchObject({ entidade: 'produto', falha: { motivo: 'lote_falhou', acao: 'aguardar_retentativa' }, proxima_tentativa_em: null });
     expect(JSON.stringify(corpo)).not.toContain('politica_versao');
   });
 
@@ -193,7 +193,7 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
     const b = mk(emVoo);
     await expect(chamar(b.p, 'POST', C.cargaCompleta, { params: { entidade: 'filial' } })).rejects.toMatchObject({ status: 409 });
     const c = mk(estado({}, false));
-    await expect(chamar(c.p, 'POST', C.cargaCompleta, { params: { entidade: 'filial' } })).rejects.toMatchObject({ status: 409, message: 'Cadastre a credencial do FDV antes' });
+    await expect(chamar(c.p, 'POST', C.cargaCompleta, { params: { entidade: 'filial' } })).rejects.toMatchObject({ status: 409, message: MENSAGEM_SEM_CREDENCIAL_FDV });
     await expect(chamar(a.p, 'POST', C.cargaCompleta, { params: { entidade: 'tabela_preco' } })).rejects.toMatchObject({ status: 400 });
     for (const x of [a, b, c]) expect(x.d.escritas()).toHaveLength(0);
   });

@@ -17,8 +17,9 @@ import {
   type MonitorResposta,
   type MotivoPausa,
   type SinalResumo,
+  mensagemDaPausa,
 } from '../contracts';
-import { mensagemDaPausa, mensagemDoErro } from '../domain';
+import { mensagemDoErro, proximaTentativaEm } from '../domain';
 
 const ERROS_POR_ENTIDADE_NO_MONITOR = 20;
 
@@ -61,12 +62,12 @@ export async function lerSinalPublico(tx: Transacao, tenantId: string): Promise<
 }
 
 async function lerSinal(tx: Transacao, tenantId: string): Promise<SinalResumo | null> {
-  const [s] = await tx.consultar<{ ultimo_envio_em: Date | null; ultimo_aceito_em: Date | null; ultimo_http: number | null; parado_por_versao: boolean; politica_versao: Record<string, unknown> | null }>(
-    `SELECT ultimo_envio_em, ultimo_aceito_em, ultimo_http, parado_por_versao, politica_versao
+  const [s] = await tx.consultar<{ ultimo_envio_em: Date | null; ultimo_aceito_em: Date | null; ultimo_http: number | null; parado_por_versao: boolean; ultimo_codigo: string | null; politica_versao: Record<string, unknown> | null }>(
+    `SELECT ultimo_envio_em, ultimo_aceito_em, ultimo_http, parado_por_versao, ultimo_codigo, politica_versao
        FROM integracao_fdv.sinal WHERE tenant_id = $1 AND deleted_at IS NULL`,
     [tenantId],
   );
-  return s ? { ultimo_envio_em: iso(s.ultimo_envio_em), ultimo_aceito_em: iso(s.ultimo_aceito_em), ultimo_http: s.ultimo_http, parado_por_versao: s.parado_por_versao, politica_versao: s.politica_versao } : null;
+  return s ? { ultimo_envio_em: iso(s.ultimo_envio_em), ultimo_aceito_em: iso(s.ultimo_aceito_em), ultimo_http: s.ultimo_http, parado_por_versao: s.parado_por_versao, ultimo_codigo: s.ultimo_codigo, politica_versao: s.politica_versao } : null;
 }
 
 type LinhaErro = {
@@ -86,8 +87,8 @@ const COLUNAS_ERRO = 'id, lote_envio_id, indice, origem, entidade::text AS entid
 export async function lerMonitor(tx: Transacao, tenantId: string): Promise<MonitorResposta> {
   const credencial = await lerCredencialResumo(tx, tenantId);
   const habilitadas = new Set<string>(credencial?.entidades_habilitadas ?? []);
-  const cursores = await tx.consultar<{ entidade: EntidadeHub; ultimo_envio_em: Date | null; ultimo_sucesso_em: Date | null; pausada_motivo: MotivoPausa | null }>(
-    `SELECT entidade::text AS entidade, ultimo_envio_em, ultimo_sucesso_em, pausada_motivo
+  const cursores = await tx.consultar<{ entidade: EntidadeHub; ultimo_envio_em: Date | null; ultimo_sucesso_em: Date | null; pausada_motivo: MotivoPausa | null; pausada_em: Date | null }>(
+    `SELECT entidade::text AS entidade, ultimo_envio_em, ultimo_sucesso_em, pausada_motivo, pausada_em
        FROM integracao_fdv.cursor_entidade WHERE tenant_id = $1 AND deleted_at IS NULL`,
     [tenantId],
   );
@@ -127,6 +128,7 @@ export async function lerMonitor(tx: Transacao, tenantId: string): Promise<Monit
       pausada_motivo: motivo,
       pausada_mensagem: motivo ? mensagemDaPausa(motivo) : null,
       habilitada: habilitadas.has(entidade),
+      proxima_tentativa_em: iso(proximaTentativaEm(motivo, c?.pausada_em)),
       erros_abertos: abe.get(entidade)?.n ?? 0,
     };
   });

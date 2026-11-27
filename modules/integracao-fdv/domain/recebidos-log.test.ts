@@ -45,3 +45,9 @@ describe('recebidos do Log (RN-INF-09; LGPD)', () => {
     expect(motivoDaRecusaCliente(null)).toBe(motivoDaRecusaCliente('qualquer_coisa'));
   });
 });
+
+describe('motivo genérico da recusa de cliente', () => {
+  it('RN-INF-09: código desconhecido manda falar com a Macuxi, sem ecoar o código', () => {
+    expect(motivoDaRecusaCliente('codigo_que_nao_existe')).toBe('O ERP recusou o cadastro. Fale com a Macuxi.');
+  });
+});
