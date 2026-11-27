@@ -182,6 +182,15 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
     ]);
   });
 
+  it('RN-CORE-16: cada rota da Ficha declara a própria ação (salvar_ficha, trocar_cnpj, e a prévia segue atualizar_receita)', () => {
+    const { plugin } = montar();
+    const acao = (m: string, c: string) => plugin.rotas.find((x) => x.metodo === m && x.caminho === c)?.acao;
+    expect(acao('PUT', '/empresas/:id/ficha')).toBe('plataforma.empresa.salvar_ficha');
+    expect(acao('GET', '/empresas/:id/cnpj')).toBe('plataforma.empresa.trocar_cnpj');
+    expect(acao('POST', '/empresas/:id/cnpj')).toBe('plataforma.empresa.trocar_cnpj');
+    expect(acao('POST', '/empresas/:id/ficha/receita')).toBe('plataforma.empresa.atualizar_receita');
+  });
+
   it('RN-CORE-11: cria pelo código do FDV', async () => {
     const t = montar();
     const r = await t.chamar('POST', '/empresas', { corpo: { codigo: 'am2808', nome: 'Xis' } });
