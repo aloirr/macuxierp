@@ -309,7 +309,7 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
       expect(JSON.stringify(d.logs)).not.toContain(produtoErp);
     });
 
-    it('T-0085: item faturado fracionário fica fora do retorno e o Log registra quantidade_fracionaria, sem o valor; o outro item segue', async () => {
+    it('RN-INF-07 (T-0097): item faturado fracionário vai no retorno com até 4 casas, junto do inteiro, sem aviso de recusa no Log', async () => {
       const uuid = await pedidoEntregue(A);
       await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
       const produtoErp = U();
@@ -323,40 +323,17 @@ describe.skipIf(!PG_DISPONIVEL)('pedidos do FDV no PostgreSQL real', () => {
           itens_faturados: [
             { sequencia: 1, produto_id: produtoErp, quantidade: 20_000, valor_centavos: 4000 },
             { sequencia: 2, produto_id: produtoErp, quantidade: 15_000, valor_centavos: 1000 },
+            { sequencia: 3, produto_id: produtoErp, quantidade: 12_345, valor_centavos: 5 },
           ],
         }),
       );
       const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid]);
-      expect(f!.corpo.itens_faturados).toEqual([{ sequencia: 1, produto_external_id: 'P-FRAC', quantidade: 2, valor_cents: 4000 }]);
-      const aviso = d.logs.find((l) => JSON.stringify(l).includes('quantidade_fracionaria'));
-      expect(aviso).toBeTruthy();
-      expect(JSON.stringify(aviso)).toContain('[2]');
-      expect(JSON.stringify(aviso)).not.toMatch(/15000|1\.5/);
-    });
-
-    it('T-0085: todos os itens fracionários: o retorno sai com status e nota, sem itens_faturados, e o Log registra a sequência de cada item', async () => {
-      const uuid = await pedidoEntregue(A);
-      await aplicar(A, evento(A, 'pedido.pedido.recebido@1', uuid));
-      const produtoErp = U();
-      await espelharProduto('P-FRAC2', produtoErp);
-      await aplicar(
-        A,
-        evento(A, 'pedido.pedido.faturado@1', uuid, {
-          status: 'faturado',
-          ambiente: 'producao',
-          nota: NOTA,
-          itens_faturados: [
-            { sequencia: 1, produto_id: produtoErp, quantidade: 15_000, valor_centavos: 1000 },
-            { sequencia: 2, produto_id: produtoErp, quantidade: 25_000, valor_centavos: 2000 },
-          ],
-        }),
-      );
-      const [f] = await adm(`SELECT corpo FROM integracao_fdv.retorno_enviado WHERE tenant_id = $1 AND pedido_uuid = $2 AND status = 'faturado_total'`, [A, uuid]);
-      expect(f!.corpo.status).toBe('faturado_total');
-      expect(f!.corpo.nota).toMatchObject({ numero: String(NOTA.numero) });
-      expect(f!.corpo.itens_faturados ?? null).toBeNull();
-      const aviso = d.logs.find((l) => JSON.stringify(l).includes('quantidade_fracionaria') && JSON.stringify(l).includes('[1,2]'));
-      expect(aviso).toBeTruthy();
+      expect(f!.corpo.itens_faturados).toEqual([
+        { sequencia: 1, produto_external_id: 'P-FRAC', quantidade: 2, valor_cents: 4000 },
+        { sequencia: 2, produto_external_id: 'P-FRAC', quantidade: 1.5, valor_cents: 1000 },
+        { sequencia: 3, produto_external_id: 'P-FRAC', quantidade: 1.2345, valor_cents: 5 },
+      ]);
+      expect(d.logs.find((l) => JSON.stringify(l).includes('quantidade_fracionaria'))).toBeUndefined();
     });
 
     it('RN-FAT-04/M7: faturado@1 de homologação com conta_como_real true (nota simulada) grava o retorno com número e série', async () => {

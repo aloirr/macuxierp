@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import { jsonCanonico } from './canonico';
-import { qtd4InteiraParaHub } from './quantidade-hub';
+import { quantidade4 } from './mapeamento';
 import type { CodigoRejeicao } from './pedido-fdv';
 import { PedidoFaturadoV1 } from '@macuxierp/pedido/contracts';
 import { CHAVE_ACESSO_HUB_REGEX, type RetornoErp, type StatusRetornoHub } from '../contracts';
@@ -92,7 +92,7 @@ export interface EventoPedido {
 export const PRAZO_AGUARDAR_CHAVE_MS = 24 * 60 * 60 * 1000;
 
 type DecisaoRetorno =
-  | { acao: 'enviar'; corpo: RetornoErp; /** T-0085: sequências dos itens faturados fracionários, fora do corpo (o Log registra). */ itens_fracionarios?: number[] }
+  | { acao: 'enviar'; corpo: RetornoErp }
   /** Faturado com produto sem chave do Hub no espelho, dentro do prazo: o consumidor falha (retentativa) até a chave existir; nunca vai o UUID cru. */
   | { acao: 'aguardar_chave'; produtos: string[] }
   /** Prazo vencido sem a chave: o retorno não vai ao Hub. `corpo` é o que seria enviado, sem itens (só para o registro `falhou`); `produtos` são UUIDs do ERP. */
@@ -149,21 +149,15 @@ export function retornoDoPedido(evento: EventoPedido, ultimoStatusHub: StatusRet
         const vencido = agora !== undefined && agora.getTime() - Date.parse(evento.ocorrido_em) >= PRAZO_AGUARDAR_CHAVE_MS;
         return vencido ? { acao: 'descartar_sem_chave', produtos: faltam, corpo: { ...comum, status: novo, nota: notaHub } } : { acao: 'aguardar_chave', produtos: faltam };
       }
-      // T-0085: o Hub só aceita quantidade inteira. Premissa: `itens_faturados` é opcional e sem mínimo no contrato, então o retorno
-      // sai sem o item fracionário (o status e a nota seguem) e a decisão devolve as sequências recusadas para o Log.
-      const fracionarios = p.itens_faturados.filter((i) => !qtd4InteiraParaHub(i.quantidade)).map((i) => i.sequencia);
-      const inteiros = p.itens_faturados.filter((i) => qtd4InteiraParaHub(i.quantidade)).map((i) => ({
+      // T-0097 (RN-INF-07, ADR 0076 do FDV): o Hub aceita fração em até 4 casas; a quantidade vai como veio (Qtd4 / 10000), sem cálculo novo.
+      const itens = p.itens_faturados.map((i) => ({
         sequencia: i.sequencia,
         produto_external_id: chavesProduto.get(i.produto_id)!, // chave do Hub, nunca o UUID (ADR 0010, item 1)
-        quantidade: i.quantidade / 10_000,
+        quantidade: quantidade4(i.quantidade),
         valor_cents: i.valor_centavos,
       }));
       // O Hub exige `itens_faturados` com minItems 1 ou null/ausente: lista vazia nunca vai; o campo é omitido.
-      return {
-        acao: 'enviar',
-        ...(fracionarios.length > 0 ? { itens_fracionarios: fracionarios } : {}),
-        corpo: { ...comum, status: novo, nota: notaHub, ...(inteiros.length > 0 ? { itens_faturados: inteiros } : {}) },
-      };
+      return { acao: 'enviar', corpo: { ...comum, status: novo, nota: notaHub, ...(itens.length > 0 ? { itens_faturados: itens } : {}) } };
     }
     default:
       return { acao: 'ignorar', motivo: 'evento_sem_retorno' };

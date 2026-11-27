@@ -12,7 +12,7 @@ import { MARCA_REENVIO, montarLogPlataforma, montarLogTenant, montarMonitor } fr
 import { criarAgendaConector } from './agenda-conector';
 import { mais } from './conector-comum';
 import {
-  AGORA, admSql, ciclo, criarCredencial, cursorEntidade, espelho, hubDuble, ok, payloadProduto,
+  AGORA, admSql, ciclo, criarCredencial, cursorEntidade, espelho, hubDuble, loteAceito, loteConcluido, ok, payloadProduto,
 } from './apoio-conector-teste';
 import { lerInsumosLog, lerInsumosMonitor, reprocessarCadastro } from './operacao';
 import { criarRotas } from './rotas';
@@ -22,8 +22,8 @@ const depois = (s: number): Date => mais(AGORA, s);
 const LOTE_ID = '5b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f1';
 const LOTE_2 = '6b1d7c42-9a3e-4f68-8c10-2e7a94d3b6f2';
 const ZERAR = { [MARCA_REENVIO.zerar.chave]: MARCA_REENVIO.zerar.valor };
-const aceito = (id = LOTE_ID) => ({ lote_id: id, status: 'recebido', entidade: 'produto', modo: 'delta', recebidos: 2, repetido: false, consulta: `/integracao/v1/lotes/${id}` });
-const resultado = (id: string, status: string, extra: Record<string, unknown> = {}) => ({ lote_id: id, entidade: 'produto', modo: 'delta', status, contagens: { recebidas: 2, com_erro: 0, novas: 2 }, erros: [], ...extra });
+const aceito = (id = LOTE_ID) => loteAceito({ id, entidade: 'produto', recebidos: 2 });
+const resultado = (id: string, status: string, extra: Record<string, unknown> = {}) => ({ ...loteConcluido({ id, entidade: 'produto', recebidas: 2 }), status, ...extra });
 const FALHA_HUB = { indice: 0, external_id: 'Z1', codigo: 'falha_processamento', campo: null, reprocessavel: true, origem: 'hub' };
 const ANTES = new Date(AGORA.getTime() - 86_400_000);
 

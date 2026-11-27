@@ -49,8 +49,14 @@ const MAX_PARCELAS_HUB = 24;
 const PrazoMedioDiasHub = z.number().int().min(0).max(MAX_DIAS_HUB);
 const ParcelasDiasHub = z.array(z.number().int().min(0).max(MAX_DIAS_HUB)).min(1).max(MAX_PARCELAS_HUB);
 const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-/** Quantidade do Hub (`Quantidade` do `base.ts` do FDV): número finito, pode ser fracionário (P-1: não é texto). */
+/**
+ * Quantidade do Hub (`Quantidade` do `base.ts` do FDV): número finito, pode ser fracionário (P-1: não é texto).
+ * T-0097 (ADR 0076 do FDV, aditivo compatível): em `fator` e `ItemFaturado.quantidade` vai com até 4 casas decimais.
+ */
+export const ESCALA_4_CASAS = 10_000;
+export const casasAte4 = (n: number): boolean => Number.isFinite(n) && Math.abs(n * ESCALA_4_CASAS - Math.round(n * ESCALA_4_CASAS)) < 1e-6;
 const Quantidade = z.number().finite();
+export const QuantidadeAte4 = (base: z.ZodNumber = Quantidade) => base.refine(casasAte4, 'até 4 casas decimais');
 const Centavos = z.number().int().min(0);
 
 /** Campos de todo registro, além dos da entidade. `alterado_em` fica fora do hash (RN-INF-03). */
@@ -131,7 +137,7 @@ export type ProdutoHub = z.infer<typeof ProdutoHub>;
 export const ProdutoUnidadeHub = Base.extend({
   produto_external_id: ExternalId,
   unidade: SiglaMedida,
-  fator: Quantidade.positive(),
+  fator: QuantidadeAte4(Quantidade.positive()),
   ean: z.string().optional(),
   padrao: z.boolean(),
 });
