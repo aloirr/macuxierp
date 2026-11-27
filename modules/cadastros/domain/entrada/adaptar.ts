@@ -6,7 +6,7 @@
  * - `ativo` do endereço do cliente, da forma e do estoque não tem destino na carga e é ignorado;
  * - `ClienteHub.formas_pagamento` e `deposito_*` não têm destino na carga (o layout do kit os ignora).
  */
-import { ENTIDADES_ENVIO_FDV, PAYLOADS_ENTRADA, type FilialEntrada, type ProdutoEntrada } from '@macuxierp/platform-sdk';
+import { CODIGO_CARGA_COMPLETA_NAO_SUPORTADA, ENTIDADES_ENVIO_FDV, PAYLOADS_ENTRADA, type FilialEntrada, type ProdutoEntrada } from '@macuxierp/platform-sdk';
 import {
   type ClienteEnderecoHub, type ClienteHub, type CorpoLote, type EstoqueHub, type FormaPagamentoHub,
   type PrazoPagamentoHub, type PrecoHub, type ProdutoUnidadeHub, type VendedorHub,
@@ -121,7 +121,7 @@ export const adaptarClienteEndereco = (p: ClienteEnderecoHub, indice: number, ct
 export interface RecusaEnvelope {
   ok: false;
   status: 422;
-  codigo: 'CARGA_COMPLETA_NAO_SUPORTADA' | 'ENTIDADE_FORA_DA_FASE';
+  codigo: typeof CODIGO_CARGA_COMPLETA_NAO_SUPORTADA | 'ENTIDADE_FORA_DA_FASE';
   motivo: string;
 }
 
@@ -151,24 +151,25 @@ const TABELA: Readonly<Record<Exclude<(typeof ENTIDADES_ENVIO_FDV)[number], 'for
 };
 
 /** Recusa do envelope inteiro (a API responde 422 e não cria lote): carga completa (RN-INT-06) ou entidade fora da F2 (ADR 0014 §2). Código em MAIÚSCULAS, como o `ErroApi`. */
-export function recusarEnvelope(envelope: Pick<EnvelopeEntrada, 'entidade' | 'modo'>): RecusaEnvelope | null {
+export function recusarEnvelope(envelope: Pick<EnvelopeEntrada, 'entidade' | 'modo'>): RecusaEnvelope | { ok: true; entidade: (typeof ENTIDADES_ENVIO_FDV)[number] } {
   if (envelope.modo === 'completo') {
-    return { ok: false, status: 422, codigo: 'CARGA_COMPLETA_NAO_SUPORTADA', motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
+    return { ok: false, status: 422, codigo: CODIGO_CARGA_COMPLETA_NAO_SUPORTADA, motivo: 'Carga completa não aceita: envie só as alterações (delta)' };
   }
-  if (!ENTIDADES_ENVIO_FDV.some((e) => e === envelope.entidade)) {
+  const entidade = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade);
+  if (!entidade) {
     return {
       ok: false, status: 422, codigo: 'ENTIDADE_FORA_DA_FASE',
       motivo: 'Entidade não aceita: envie filial, vendedor, forma e prazo de pagamento, produto, unidade, preço, estoque, cliente ou endereço do cliente',
     };
   }
-  return null;
+  return { ok: true, entidade };
 }
 
 /** Valida cada registro pelo Zod do SDK e o adapta; recusa o envelope inteiro como `recusarEnvelope`. Erro de registro fica no resultado dele, sem o valor (RN-INT-01). */
 export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): RecusaEnvelope | LoteAdaptado {
   const recusa = recusarEnvelope(envelope);
-  if (recusa) return recusa;
-  const chave = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade) as (typeof ENTIDADES_ENVIO_FDV)[number];
+  if (!recusa.ok) return recusa;
+  const chave = recusa.entidade;
   const schema = PAYLOADS_ENTRADA[chave];
   const formas: FormaDoLoteAdaptada[] = [];
   const resultados: Adaptacao<EntidadeCarga>[] = [];

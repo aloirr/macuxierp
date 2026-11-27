@@ -212,7 +212,6 @@ export const IntegracaoFdvPlataforma = z
     ambiente: AmbienteIntegracaoFdv.nullable(),
     chave_prefixo: z.string().min(1).max(8).nullable(),
     criada_em: Instante.nullable(),
-    ultimo_uso_em: Instante.nullable(),
     /** Entrada do formulário de configuração (o `PUT .../configuracao` grava esta lista). */
     entidades_habilitadas: z.array(EntidadeEnvioFdv),
     limite_registros_lote: z.number().int().min(1).max(LIMITE_REGISTROS_LOTE_FDV).nullable(),

@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { CabecalhoCartao } from '../cabecalho-cartao';
 import { ComEsqueciSenha } from '@/components/esqueci-senha';
-import { CampoSenha } from '@macuxierp/ui';
+import { CampoSenha, ResultadoAcao, useResultado, type Resultado } from '@macuxierp/ui';
+import { resultadoErro } from '@/lib/resultado-acao';
 import { TEXTOS_ESQUECI } from '@/lib/esqueci-resultado';
 import { gravarCodigoDoLogin, lerCodigoSalvo } from '@/lib/codigo-salvo';
 import { primeiroVazio, TEXTOS_BLOQUEIO, TEXTOS_LOGIN as T, validarCampos, type CampoLogin, type ErrosLogin } from '@/lib/login-regras';
@@ -13,11 +14,13 @@ export interface ValoresLogin { empresa: string; email: string; senha: string }
 const CAMPOS: readonly CampoLogin[] = ['empresa', 'email', 'senha'];
 
 /** Parte visual pura (testável sem DOM). Código, e-mail e senha só no estado do formulário: nunca em URL nem storage (o código, só pelo `codigo-salvo`). */
-export function VisaoLogin({ destino, valores, erros = {}, erroLogin, bloqueada = false, aoRecuperar, pendente = false, senhaVisivel = false, aoAlternarSenha = () => undefined, aoMudar, aoEnviar }: {
+export function VisaoLogin({ destino, valores, erros = {}, resultado, chave = 0, bloqueada = false, aoRecuperar, pendente = false, senhaVisivel = false, aoAlternarSenha = () => undefined, aoMudar, aoEnviar }: {
   destino: string;
   valores: ValoresLogin;
   erros?: ErrosLogin;
-  erroLogin?: string | undefined;
+  /** Retorno do Entrar (erro de login), de `useResultado()`. */
+  resultado?: Resultado | null;
+  chave?: number;
   /** Conta bloqueada (T-0111): cartão de aviso, "Recuperar a senha" (se `aoRecuperar`) e "Entrar" desabilitado. */
   bloqueada?: boolean;
   aoRecuperar?: (() => void) | undefined;
@@ -46,7 +49,6 @@ export function VisaoLogin({ destino, valores, erros = {}, erroLogin, bloqueada 
   );
   return (
     <form noValidate aria-busy={pendente} onSubmit={(e) => { e.preventDefault(); aoEnviar?.(e.currentTarget); }}>
-      {erroLogin && <p className="erro" role="alert">{erroLogin}</p>}
       {bloqueada && (
         <>
           <div className="faixa-aviso" role="alert">
@@ -61,6 +63,8 @@ export function VisaoLogin({ destino, valores, erros = {}, erroLogin, bloqueada 
       {campo('email', 'email', 'username')}
       <div className="campo-senha-bloco"><CampoSenha id="login-senha" rotulo={T.rotulos.senha} nome="senha" valor={valores.senha} aoMudar={(v) => aoMudar?.('senha', v)} visivel={senhaVisivel} aoAlternar={aoAlternarSenha} erro={erros.senha} /></div>
       <button className="mx-botao" type="submit" disabled={pendente || bloqueada}>{pendente ? T.botaoEnviando : T.botao}</button>
+      {/* 36 A: o erro do Entrar fica logo abaixo do botão */}
+      <ResultadoAcao resultado={resultado ?? null} chave={chave} />
     </form>
   );
 }
@@ -68,7 +72,7 @@ export function VisaoLogin({ destino, valores, erros = {}, erroLogin, bloqueada 
 export function FormularioLogin({ destino, esqueciDisponivel = false }: { destino: string; esqueciDisponivel?: boolean }) {
   const [valores, setValores] = useState<ValoresLogin>({ empresa: '', email: '', senha: '' });
   const [erros, setErros] = useState<ErrosLogin>({});
-  const [erroLogin, setErroLogin] = useState<string | undefined>();
+  const [resultado, chave, mostrar, limpar] = useResultado();
   const [bloqueada, setBloqueada] = useState(false);
   const [pendente, comecar] = useTransition();
   const [senhaVisivel, setSenhaVisivel] = useState(false);
@@ -90,7 +94,8 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
       window.location.assign(r.entrou.para);
       return;
     }
-    setErroLogin(r.erro);
+    if (r.erro) mostrar(resultadoErro(r.erro));
+    else limpar();
     setErros(r.campos ?? {});
     setBloqueada(r.bloqueada === true);
     if (r.bloqueada) setValores((v) => ({ ...v, senha: '' }));
@@ -102,7 +107,7 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
 
   function enviar(f: HTMLFormElement) {
     const e = validarCampos(CAMPOS, valores);
-    setErroLogin(undefined);
+    limpar();
     setErros(e);
     const primeiro = CAMPOS.find((c) => e[c]);
     if (primeiro) return focar(primeiro);
@@ -114,7 +119,7 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
     <div ref={raiz}>
       <ComEsqueciSenha disponivel={esqueciDisponivel} ocultarLink={bloqueada} empresaInicial={valores.empresa} emailInicial={valores.email} cabecalho={(aberto) => <CabecalhoCartao titulo={aberto ? TEXTOS_ESQUECI.tituloPainel : TEXTOS_LOGIN_TITULO} />}>
         {(abrir) => (
-          <VisaoLogin destino={destino} valores={valores} erros={erros} erroLogin={erroLogin} bloqueada={bloqueada} aoRecuperar={esqueciDisponivel ? abrir : undefined} pendente={pendente} senhaVisivel={senhaVisivel} aoAlternarSenha={() => setSenhaVisivel((v) => !v)} aoMudar={(c, v) => { if (c !== 'senha') setBloqueada(false); setValores((x) => ({ ...x, [c]: v })); }} aoEnviar={enviar} />
+          <VisaoLogin destino={destino} valores={valores} erros={erros} resultado={resultado} chave={chave} bloqueada={bloqueada} aoRecuperar={esqueciDisponivel ? abrir : undefined} pendente={pendente} senhaVisivel={senhaVisivel} aoAlternarSenha={() => setSenhaVisivel((v) => !v)} aoMudar={(c, v) => { if (c !== 'senha') setBloqueada(false); setValores((x) => ({ ...x, [c]: v })); }} aoEnviar={enviar} />
         )}
       </ComEsqueciSenha>
     </div>

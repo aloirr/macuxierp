@@ -44,7 +44,7 @@ export function prepararCriacao<E extends EntidadeCarga>(entidade: E, linha: Lin
     }
     case 'produto': {
       const p = l as LinhasCarga['produto'];
-      if (p.dados.ncm === undefined) erros.push(falta(n, 'ncm', 'RN-CAD-04', 'NCM obrigatório: acrescente a coluna ncm'));
+      if (p.dados.ncm === undefined) erros.push({ ...falta(n, 'ncm', 'RN-CAD-04', 'NCM obrigatório: acrescente a coluna ncm'), obrigatorio: true });
       if (p.dados.grupo_tributacao === undefined) {
         p.dados.grupo_tributacao = 'PADRAO';
         avisos.push('grupo_tributacao vazio: gravado como PADRAO');

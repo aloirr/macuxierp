@@ -13,15 +13,13 @@ import { ConsultaClientesRecebidosFdv, LIMITE_ERROS_LOG_FDV, LIMITE_RECEBIDOS_LO
 import { ConsultaPaginada, paraCsv, respostaCsv, type ColunaCsv } from '@macuxierp/platform-sdk/listas';
 import { z } from 'zod';
 import { ENTIDADE_COM_RECEBIDOS_NO_LOG, itemDoLogTenant, montarLogTenant } from '../domain';
-import { NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog } from '../web/log';
+import { NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog, nomeDoCsvDoLog, textoRecebidosCortados } from '../web/log';
 import { paginaLotes } from '../web/paginas';
-import { contarClientesRecebidos, lerLinhasClientesRecebidos, listarClientesRecebidos } from './clientes-recebidos';
+import { MAXIMO_LINHAS_CSV, contarClientesRecebidos, lerLinhasClientesRecebidos, lerRecebidosParaExportar, listarClientesRecebidos } from './clientes-recebidos';
 import { entidadeDaRota, lerInsumosLog } from './operacao';
 import { lerMonitor, listarErrosDoLote, listarLotes, loteExiste } from './monitor';
 import { lerStatus } from './status';
 
-/** Máximo de linhas do CSV dos lotes. */
-const MAXIMO_LINHAS_CSV = 10_000;
 const Uuid = z.string().uuid();
 
 const ParamUuid = (valor: string | undefined, campo: string): string => {
@@ -34,8 +32,13 @@ const ParamUuid = (valor: string | undefined, campo: string): string => {
 export const CAMINHO_LOG = '/entidades/:entidade/log';
 export const CAMINHO_LOG_CSV = '/entidades/:entidade/log.csv';
 
-/** Teto de linhas do `log.csv`: acima disso o arquivo é cortado e leva um aviso na última linha (e no cabeçalho `x-linhas-cortadas`). */
-export const MAXIMO_LINHAS_CSV_LOG = 10_000;
+/**
+ * CSV cortado no teto (`MAXIMO_LINHAS_CSV`): o aviso vai na última linha e o cabeçalho `x-linhas-cortadas` traz a quantidade de linhas que ficaram de fora.
+ */
+function csvCortado(nome: string, csv: string, aviso: string, cortadas: number): ReturnType<typeof respostaCsv> {
+  const r = respostaCsv(nome, `${csv}${aviso}\r\n`);
+  return { ...r, cabecalhos: { ...r.cabecalhos, 'x-linhas-cortadas': String(cortadas) } };
+}
 
 /** "Baixar erros (.csv)": as colunas do `LogCadastroFdvTenant.erros`, na ordem da tela. */
 const COLUNAS_CSV_LOG: readonly ColunaCsv<ReturnType<typeof itemDoLogTenant>>[] = [
@@ -81,11 +84,11 @@ export function criarRotas(): RotaModulo[] {
       metodo: 'GET', caminho: CAMINHO_LOG_CSV, acao: 'integracao-fdv.ver',
       async executar(c, e) {
         const entidade = entidadeDaRota(e.params.entidade);
-        const i = await lerInsumosLog(c.tx, tenant(c), entidade, MAXIMO_LINHAS_CSV_LOG);
+        const i = await lerInsumosLog(c.tx, tenant(c), entidade, MAXIMO_LINHAS_CSV);
         const csv = paraCsv(COLUNAS_CSV_LOG, i.erros.map(itemDoLogTenant));
-        if (i.total_erros <= i.erros.length) return respostaCsv(`erros-${entidade}.csv`, csv);
-        const r = respostaCsv(`erros-${entidade}.csv`, `${csv}Aviso: arquivo cortado em ${i.erros.length} de ${i.total_erros} erros abertos. Corrija estes e baixe de novo.\r\n`);
-        return { ...r, cabecalhos: { ...r.cabecalhos, 'x-linhas-cortadas': String(i.total_erros - i.erros.length) } };
+        if (i.total_erros <= i.erros.length) return respostaCsv(nomeDoCsvDoLog(entidade), csv);
+        const aviso = `Aviso: arquivo cortado em ${i.erros.length} de ${i.total_erros} erros abertos. Corrija estes e baixe de novo.`;
+        return csvCortado(nomeDoCsvDoLog(entidade), csv, aviso, i.total_erros - i.erros.length);
       },
     }),
     definirRota({
@@ -116,8 +119,11 @@ export function criarRotas(): RotaModulo[] {
       metodo: 'GET', caminho: '/clientes-recebidos/exportar', acao: 'integracao-fdv.ver', consulta: ConsultaClientesRecebidosFdv,
       async executar(c, e) {
         const { situacao } = e.consulta as { situacao?: SituacaoClienteRecebidoFdv };
-        const p = await listarClientesRecebidos(c.tx, tenant(c), { situacao, limite: MAXIMO_LINHAS_CSV });
-        return respostaCsv(NOME_CSV_RECEBIDOS_LOG, csvDeRecebidosLog(p.itens));
+        const p = await lerRecebidosParaExportar(c.tx, tenant(c), { situacao });
+        const csv = csvDeRecebidosLog(p.itens);
+        if (!p.cortado) return respostaCsv(NOME_CSV_RECEBIDOS_LOG, csv);
+        const total = await contarClientesRecebidos(c.tx, tenant(c), situacao);
+        return csvCortado(NOME_CSV_RECEBIDOS_LOG, csv, textoRecebidosCortados(p.itens.length), Math.max(total - p.itens.length, 1));
       },
     }),
     definirRota({

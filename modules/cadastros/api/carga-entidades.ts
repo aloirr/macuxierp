@@ -312,6 +312,7 @@ async function condicao(l: LinhaCondicaoPagamento, st: Estado): Promise<Saida> {
       forma_tpag: (patch.forma_tpag ?? ex.forma_tpag) as string, prazos_dias: (patch.prazos_dias ?? ex.prazos_dias) as number[],
       parcelas_cartao: (patch.parcelas_cartao === undefined ? ex.parcelas_cartao : patch.parcelas_cartao) as number | null,
       prazo_medio_dias: (patch.prazo_medio_dias === undefined ? ex.prazo_medio_dias ?? null : patch.prazo_medio_dias) as number | null,
+      inativa: l.ativo === false,
       // RN-CAD-15: faixaSeAplica
       semFaixa: !faixaSeAplica({ gravada: ex as unknown as Dict, nova: patch }),
     });

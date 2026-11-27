@@ -1,7 +1,8 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
-import { CaixaResumo, Chip, Dialogo, DialogoMotivo, MenuAcoes, TabelaDensa, type ColunaTabela } from '@macuxierp/ui';
+import { CaixaResumo, Chip, Dialogo, DialogoMotivo, MenuAcoes, ResultadoAcao, TabelaDensa, useResultado, type ColunaTabela } from '@macuxierp/ui';
+import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
 import { ChavesIdempotencia } from '@/lib/config/chaves';
 import { salvarCsv } from '@/lib/baixar-csv';
@@ -40,10 +41,10 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [carga, setCarga] = useState<LinhaCarga | null>(null);
-  const [falha, setFalha] = useState('');
   const chaves = useRef(new ChavesIdempotencia());
   const [importar, setImportar] = useState<CadastroCargaPortal | null>(null);
-  const [aviso, setAviso] = useState('');
+  // 36 A: o retorno das ações do menu "Ações" (Carga completa, Importar) fica logo abaixo da tabela, não no topo.
+  const [resultado, chaveResultado, mostrar] = useResultado();
   const linhas = linhasCargas(dados, fuso);
 
   if (!dados) {
@@ -57,15 +58,14 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
   /** Uma Idempotency-Key por entidade; só renova depois de resposta definitiva. Cadastro com duas entidades (condição, cliente) manda uma por vez. */
   const pedirCargaCompleta = (l: LinhaCarga) => {
     setCarga(null);
-    setFalha('');
     iniciar(async () => {
       for (const e of estadoCargaCompleta(l.cadastro, integracao).entidades) {
         const id = `carga:${e}`;
         const r = await cargaCompletaFdvAcao(empresaId, e, chaves.current.de(id));
         chaves.current.aposResposta(id, r);
-        if (!r.ok) return setFalha(r.erro || 'Não foi possível pedir a carga completa. Tente de novo.');
+        if (!r.ok) return mostrar(resultadoErro(r.erro || 'Não foi possível pedir a carga completa. Tente de novo.'));
       }
-      setAviso(`Carga completa pedida: ${l.rotulo}.`);
+      mostrar(resultadoSucesso(`Carga completa pedida: ${l.rotulo}.`));
       router.refresh();
     });
   };
@@ -84,11 +84,10 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
   ];
   return (
     <section aria-label="Dados">
-      {aviso && <p className="faixa-aviso" role="status">{aviso}</p>}
-      {falha && <p className="erro" role="alert">{falha}</p>}
       <div className="tabela-rolavel com-sinal-rolagem tabela-dados legenda-so-leitor">
         <TabelaDensa colunas={colunas} linhas={linhas} chaveLinha={(l) => l.cadastro} textoVazio="Nenhum cadastro." legenda="Cargas por cadastro" />
       </div>
+      <ResultadoAcao resultado={resultado} chave={chaveResultado} />
       {carga && (
         <DialogoMotivo
           titulo={`Carga completa de ${carga.rotulo}?`}
@@ -106,7 +105,7 @@ export function AbaDados({ empresaId, dados, fuso, integracao = null }: { empres
           aoFechar={() => setImportar(null)}
           aoGravar={(g) => {
             setImportar(null);
-            setAviso(textoGravado(g));
+            mostrar(resultadoSucesso(textoGravado(g)));
             router.refresh();
           }}
         />

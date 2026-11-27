@@ -119,14 +119,14 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   });
 
   it('F-1: pendente válido da v1.0.28 vira um cliente; o espelho fica retido até o 200 do vinculado; o external_id é a chave do Hub, nunca o codigo_fdv', async () => {
-    const p = cadastrarNoFdv(duble, dubleT.L, pre({ documento: '04252011000110' }));
+    const p = cadastrarNoFdv(duble, dubleT.L, pre({ documento: '21333444000119' }));
     const busca = await lados.L.buscar(api.t.L, hubs.L);
     // sem os grants do macuxierp_worker no cadastros (0064), a porta falha aqui com `pre_cadastro_falha_interna`
     expect(busca).toMatchObject({ buscados: 1, aceitos: 1, recusados: 0 });
     const [linha] = await recebidos(api.t.L, p.dados.cliente_uuid);
     expect(linha).toMatchObject({ revisao: 1, situacao: 'aceito' });
     const clienteId = linha!.cliente_id!;
-    expect(await clientesComDocumento(api.t.L, '04252011000110')).toBe(1);
+    expect(await clientesComDocumento(api.t.L, '21333444000119')).toBe(1);
     // espelho antes do 200: cliente e endereço retidos (o conector não os põe em lote)
     await lados.L.despachar();
     const antes = await retido(api.t.L, clienteId);
@@ -161,13 +161,13 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   });
 
   it('F-3: o mesmo pendente de novo (tentativa 2) não decide de novo nem duplica; a resposta perdida volta como repetido sem segunda linha de retorno', async () => {
-    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '19131243000197' }));
+    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '31444555000156' }));
     await lados.A.buscar(api.t.A, hubs.A);
     relogio.avancar(PRAZO_REENTREGA_MS); // o FDV não viu retorno: entrega de novo
     const segunda = await lados.A.buscar(api.t.A, hubs.A);
     expect(segunda).toMatchObject({ buscados: 1, repetidos: 1, aceitos: 0 });
     expect(await recebidos(api.t.A, p.dados.cliente_uuid)).toEqual([expect.objectContaining({ tentativas_fdv: 2, situacao: 'aceito' })]);
-    expect(await clientesComDocumento(api.t.A, '19131243000197')).toBe(1);
+    expect(await clientesComDocumento(api.t.A, '31444555000156')).toBe(1);
     await lados.A.despachar();
     perderRespostaDoRetornoCliente(duble, dubleT.A, p.dados.cliente_uuid);
     expect((await lados.A.enviar(api.t.A, hubs.A)).falhou).toBe(0);
@@ -181,7 +181,7 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   it('F-4: reenvio corrigido (revisão 2): linha nova aceita, a revisão 1 fica recusada no histórico; a rota do BKO mostra uma linha, a da revisão 2', async () => {
     const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: CNPJ_DV_ERRADO }));
     await ciclo('A');
-    reenviarCorrigidoNoFdv(duble, dubleT.A, p.dados.cliente_uuid, { documento: '33000167000101' });
+    reenviarCorrigidoNoFdv(duble, dubleT.A, p.dados.cliente_uuid, { documento: '51666777000120' });
     const r = await ciclo('A');
     expect(r.busca).toMatchObject({ buscados: 1, aceitos: 1 });
     expect((await recebidos(api.t.A, p.dados.cliente_uuid)).map((l) => [l.revisao, l.situacao])).toEqual([[1, 'recusado'], [2, 'aceito']]);
@@ -193,7 +193,7 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   });
 
   it('F-5: 422 external_id_divergente: retorno falhou, conflito vinculo_divergente aberto e o cliente continua retido', async () => {
-    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '60701190000104' }));
+    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '41555666000193' }));
     vincularNoFdv(duble, dubleT.A, p.dados.cliente_uuid, 'CODIGO-DE-OUTRO-ERP');
     const r = await ciclo('A');
     expect(r.envio).toMatchObject({ falhou: 1 });
@@ -204,15 +204,15 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   });
 
   it('F-7 (RN-INF-09, #698): vendedor que não existe no espelho: recusado com vendedor_fdv_nao_encontrado, sem cliente; o retorno leva erros[{campo: vendedor_external_id}]', async () => {
-    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '04252011000110', vendedor_external_id: 'V-NAO-EXISTE' }));
+    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '21333444000119', vendedor_external_id: 'V-NAO-EXISTE' }));
     const r = await ciclo('A');
     expect(r.busca).toMatchObject({ recusados: 1 }); // a busca também traz de novo o pendente retido do F-5
     const [l] = await recebidos(api.t.A, p.dados.cliente_uuid);
     expect(l).toMatchObject({ situacao: 'recusado', cliente_id: null });
     expect(l!.erros).toEqual([expect.objectContaining({ campo: 'vendedor_external_id', codigo: 'vendedor_fdv_nao_encontrado' })]);
     // a recusa guardada não leva dado pessoal do pré-cadastro (só campo, código e a mensagem do catálogo)
-    expect(JSON.stringify(l!.erros)).not.toMatch(new RegExp([RAZAO, EMAIL, TELEFONE, '04252011000110'].join('|')));
-    expect(await clientesComDocumento(api.t.A, '04252011000110')).toBe(0);
+    expect(JSON.stringify(l!.erros)).not.toMatch(new RegExp([RAZAO, EMAIL, TELEFONE, '21333444000119'].join('|')));
+    expect(await clientesComDocumento(api.t.A, '21333444000119')).toBe(0);
     // o retorno ao Hub (v1.0.32, com aditivos) é o rejeitado_erp com o erro do vendedor; o 200 do oráculo valida o corpo
     expect(r.envio).toMatchObject({ enviados: 1, falhou: 0 });
     const [corpo] = await adm<{ corpo: { status: string; erros?: { campo: string; codigo: string }[] } }>(
@@ -225,7 +225,7 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   });
 
   it('F-6: 5xx e 429 com Retry-After mantêm o retorno pendente e o mesmo corpo sai depois, uma vez só; 403 na busca pausa por credencial', async () => {
-    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '07526557000100' }));
+    const p = cadastrarNoFdv(duble, dubleT.A, pre({ documento: '61777888000168' }));
     await lados.A.buscar(api.t.A, hubs.A);
     await lados.A.despachar();
     duble.programarFalha({ rota: 'POST /clientes', status: 503, retryAfter: '30' });
@@ -248,7 +248,7 @@ describe.skipIf(!PG_DISPONIVEL)('F-1 a F-6 — pré-cadastro de cliente do FDV d
   it('LGPD (F-9, F-14): o log da bateria (com os alertas do monitor) não leva nome, documento, e-mail ou telefone', () => {
     expect(lados.A.lgpd.logs.length).toBeGreaterThan(0); // os alertas do monitor (F-5, F-6) saem pelo log
     for (const q of ['A', 'L'] as const) {
-      expect(indicesCom(lados[q].lgpd.logs, [RAZAO, EMAIL, TELEFONE, CNPJ_VALIDO, CNPJ_DV_ERRADO, '04252011000110']), q).toEqual([]);
+      expect(indicesCom(lados[q].lgpd.logs, [RAZAO, EMAIL, TELEFONE, CNPJ_VALIDO, CNPJ_DV_ERRADO, '21333444000119']), q).toEqual([]);
     }
   });
 });

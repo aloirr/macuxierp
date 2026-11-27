@@ -350,7 +350,7 @@ describe('carteira do vendedor (D7)', () => {
     const vB = (await t.chamar('POST', '/vendedores', { sessao: gerente, corpo: { codigo: 'V2', nome: 'Beto', filial_id: f, usuario_id: uB } })).corpo.id as string;
     const cA = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { vendedor_id: vA }) })).corpo.id as string;
     const cB = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { documento: CNPJ_A, vendedor_id: vB, razao_social: 'Outro Cliente' }) })).corpo.id as string;
-    const semDono = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { documento: '04252011000110', razao_social: 'Sem Dono' }) })).corpo.id as string;
+    const semDono = (await t.chamar('POST', '/clientes', { sessao: adm, corpo: clienteValido(f, { documento: '21333444000119', razao_social: 'Sem Dono' }) })).corpo.id as string;
     t.eventos.length = 0;
     return { t, f, uA, uB, vA, vB, cA, cB, semDono };
   }

@@ -160,3 +160,6 @@ export async function ciclo(banco: Banco, agenda: AgendaModulo, hub: ClienteHub,
   for (const item of itens) await agenda.executar(item, contextoDaAgenda(banco, item, hub, agora, posse));
   return itens;
 }
+
+/** Criar o banco efêmero (migrações) e removê-lo passa dos 10 s padrão dos ganchos quando a máquina está carregada; sem espera real nos testes. */
+export const TEMPO_PREPARO_MS = 90_000;

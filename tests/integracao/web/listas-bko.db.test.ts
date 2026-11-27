@@ -131,7 +131,7 @@ describe.skipIf(!PG_DISPONIVEL)('listas do BKO × API de produção (Postgres, p
    */
   describe('P-02 (dois clientes na lista)', () => {
     beforeAll(async () => {
-      const r = await api.chamar('A', 'POST', '/v1/cadastros/clientes', clienteValido(ids.filial!, { documento: '34028316000103', razao_social: 'Segundo Cliente Ltda', ie: null, ind_ie_dest: '9' }));
+      const r = await api.chamar('A', 'POST', '/v1/cadastros/clientes', clienteValido(ids.filial!, { documento: '71888999000103', razao_social: 'Segundo Cliente Ltda', ie: null, ind_ie_dest: '9' }));
       expect(r.statusCode, r.body).toBe(201);
     });
     it('P-02: ?limite=1 devolve 1 item e proximo_cursor; o cursor traz o outro e fecha com proximo_cursor nulo', async () => {

@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Opcao } from '@/lib/descritor/fontes';
-import { FormularioItens, RegiaoErros, type ItemLinha } from '@macuxierp/ui';
+import { FormularioItens, RegiaoErros, ResultadoAcao, useResultado, type ItemLinha } from '@macuxierp/ui';
+import { resultadoErro } from '@/lib/resultado-acao';
 import { temErros } from '@/lib/descritor/formulario';
 import { aposResposta, chaveParaEnvio, novoEstado, type EstadoChave } from '@/lib/descritor/idempotencia';
 import { telaFormulario } from '@/lib/telas';
@@ -36,7 +37,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
   const [valores, setValores] = useState<ValoresFormulario>({});
   const [itens, setItens] = useState<ItemLinha[]>(() => (tela.itens ? [tela.itens.novoItem('item-1')] : []));
   const [erros, setErros] = useState<ErrosFormulario>(errosIniciais ?? {});
-  const [geral, setGeral] = useState('');
+  const [resultado, chaveResultado, mostrar, limpar] = useResultado();
   const [ocupado, setOcupado] = useState(false);
   const [segredo, setSegredo] = useState<{ valor: string; destino: string } | null>(null);
   const chave = useRef<EstadoChave | null>(null); // uma Idempotency-Key por formulário aberto: reenvio do mesmo corpo não duplica
@@ -46,7 +47,7 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
 
   async function enviar(ev: React.FormEvent) {
     ev.preventDefault();
-    setGeral('');
+    limpar();
     const linhas = itens.map((i) => tela.itens?.paraTexto(i) ?? { produto_id: '', quantidade: '', preco: '' });
     const e = tela.validar(valores, linhas);
     setErros(e);
@@ -63,13 +64,12 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
     if (r.ok && r.id) return router.push(tela.depois(r.id));
     if (r.ok) return router.push(tela.voltar);
     setErros(r.campos ?? {});
-    setGeral(r.mensagem);
+    mostrar(resultadoErro(r.mensagem));
   }
 
   return (
     <form className="formulario" onSubmit={(ev) => void enviar(ev)} noValidate aria-busy={ocupado}>
-      {geral && <p className="erro" role="alert">{geral}</p>}
-      {!tela.itens && <RegiaoErros temErro={temErros(erros) || geral !== ''} />}
+      {!tela.itens && <RegiaoErros temErro={temErros(erros) || resultado !== null} />}
       {tela.campos.map((c) => {
         const id = `campo-${c.nome}`;
         if (c.tipo === 'cadastro' || c.tipo === 'selecao') {
@@ -85,12 +85,14 @@ function Formulario({ tela, opcoes, produtos, errosIniciais }: { tela: TelaFormu
           </label>
         );
       })}
-      {tela.itens && <Itens tela={tela.itens} itens={itens} produtos={produtos} onChange={setItens} erros={erros} temErroExterno={foraDosItens || geral !== ''} />}
+      {tela.itens && <Itens tela={tela.itens} itens={itens} produtos={produtos} onChange={setItens} erros={erros} temErroExterno={foraDosItens || resultado !== null} />}
       {tela.itens?.totalTexto && <p className="total-pedido" aria-live="polite">Total do pedido: <span data-testid="total-pedido">{tela.itens.totalTexto(itens.map((i) => tela.itens?.paraTexto(i) ?? { produto_id: '', quantidade: '', preco: '' }))}</span></p>}
       <div className="barra-acoes">
         <button className="mx-botao" type="submit" disabled={ocupado}>{ocupado ? 'Enviando…' : tela.enviar}</button>
         <Link className="mx-botao-secundario" href={tela.voltar}>Cancelar</Link>
       </div>
+      {/* 36 A: o retorno do envio fica logo abaixo da fila do botão Enviar */}
+      <ResultadoAcao resultado={resultado} chave={chaveResultado} />
       {segredo && <PainelSegredo titulo="Senha provisória" rotulo="Entregue esta senha à pessoa:" valor={segredo.valor} aviso={tela.avisoSegredo ?? ''} aoFechar={() => { const d = segredo.destino; setSegredo(null); router.push(d); }} />}
     </form>
   );
