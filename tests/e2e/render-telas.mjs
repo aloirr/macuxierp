@@ -104,11 +104,7 @@ function vigiar(pagina) {
  */
 const formularioDeLogin = (pagina) =>
   pagina.locator('form:has(input[name="empresa"]):has(input[name="senha"])');
-const ROTA_ANTIGA_DO_LOGIN = /^\/(login|config\/entrar)$/;
-async function naTelaDeLogin(pagina, final) {
-  if (ROTA_ANTIGA_DO_LOGIN.test(final)) return true;
-  return (await formularioDeLogin(pagina).count()) > 0;
-}
+const naTelaDeLogin = async (p) => (await formularioDeLogin(p).count()) > 0;
 
 const resultados = [];
 
@@ -135,7 +131,7 @@ async function abrir(pagina, vigia, item, rotulo = item.url) {
       const m = html.match(re);
       if (m) falhas.push(`HTML com erro: ${m[0].replace(/^>|<$/g, '').slice(0, 120)}`);
     }
-    const login = await naTelaDeLogin(pagina, final);
+    const login = await naTelaDeLogin(pagina);
     if (item.contexto !== 'sem-sessao' && login) falhas.push(`caiu no login (${final})`);
     if (item.exigeLogin && !login)
       falhas.push(`sem sessão, ${rotulo} não mostrou o formulário de login (${final})`);
@@ -179,11 +175,10 @@ try {
   anon.setDefaultTimeout(30_000);
   const vAnon = vigiar(anon);
   for (const item of URLS.filter((u) => u.contexto === 'sem-sessao')) await abrir(anon, vAnon, item);
-  // "/" sem sessão é a tela de login (v0.3.27; no main, o redirect para /login): tem de mostrar o formulário.
+  // "/" sem sessão tem de mostrar o formulário.
   await abrir(anon, vAnon, { url: '/', contexto: 'sem-sessao', origem: 'login na raiz', exigeLogin: true });
 
-  // Login único: o administrador do tenant de teste vai ao BKO; o superadmin (código da plataforma) ao /config. O caminho
-  // sozinho não prova que entrou ("/" também é o login): espera o formulário sumir e o sinal de sessão (`chegou`).
+  // Login único: administrador ao BKO, superadmin ao /config; espera o formulário sumir e o sinal `chegou`.
   async function sessao(u, quem, chegou) {
     const p = await (await navegador.newContext(opcoes)).newPage();
     p.setDefaultTimeout(30_000);
