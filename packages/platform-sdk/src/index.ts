@@ -15,6 +15,7 @@ export * from './idempotencia';
 export * from './trabalhos';
 export * from './eu';
 export * from './senha';
+export * from './senha-temporaria';
 export * from './listas';
 export * from './hub';
 export * from './agenda';

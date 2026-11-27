@@ -105,11 +105,11 @@ describe.skipIf(!PG_DISPONIVEL)('empresa.mjs (operador.sh criar-empresa) no Post
     expect(empresa([], { senha }).status).toBe(2);
   });
 
-  it('T-0052: senha fora da regra única (sem especial) é recusada (saída 2), nada gravado', async () => {
-    const fora = 'abcdEFGH23456789';
+  it('44 B: senha fora da regra da provisória (sem número) é recusada (saída 2), nada gravado', async () => {
+    const fora = 'abcdEFGHjkmnpqrtuv';
     const r = empresa(['--confirmar'], { senha: fora });
     expect(r.status).toBe(2);
-    expect(r.saida).toContain('fora da regra de senha');
+    expect(r.saida).toContain('fora da regra da senha provisória');
     expect(r.saida).not.toContain(fora);
     await expect(tenantId()).resolves.toBeUndefined();
   });

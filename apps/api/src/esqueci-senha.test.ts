@@ -13,6 +13,9 @@ import {
   definirRota,
   definirRotaPlataforma,
   erroSenhaForaDaRegra,
+  regrasDescumpridasTemporaria,
+  senhaTemporariaNoFormato,
+  TAMANHO_SENHA_TEMPORARIA,
   LoginResposta,
   MENSAGEM_ESQUECI_NEUTRA,
   MuitasTentativasResposta,
@@ -26,11 +29,10 @@ import { AuditoriaMemoria, BancoMemoria, FilaDeTrabalhosMemoria, OutboxMemoria, 
 import type { InjectOptions } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COOKIE_REFRESH, criarApp } from './app';
-import { CLASSES_API } from './apoio-operador-teste';
 import { ARGON2_RAPIDO, EnvioEmailMemoria, JWT_SEGREDO_DE_TESTE, modulosDeTeste, SENHA_DE_TESTE } from './apoio-teste';
 import { RepositorioAuthMemoria } from './auth/repositorio-memoria';
 import * as senha from './auth/senha';
-import { CLASSES_TEMPORARIA, gerarSenhaTemporaria, TAMANHO_TEMPORARIA } from './auth/senha-temporaria';
+import { gerarSenhaTemporaria } from './auth/senha-temporaria';
 import { CONFIG_AUTH_PADRAO } from './auth/servico';
 
 vi.mock('./auth/senha', async (original) => {
@@ -237,17 +239,14 @@ async function comTemporaria<T extends { senha_temporaria_hash?: string | null; 
   return conta;
 }
 
-describe('T-0076: senha temporária gerada como a do operador.sh', () => {
-  it('16 caracteres, um de cada classe, só do alfabeto do operador.sh e da API, e cumpre a regra única', () => {
-    expect([...CLASSES_TEMPORARIA]).toEqual([CLASSES_API.MAIUSCULAS, CLASSES_API.MINUSCULAS, CLASSES_API.DIGITOS, CLASSES_API.SIMBOLOS]);
-    const alfabeto = CLASSES_TEMPORARIA.join('');
+describe('T-0076 e 44 B: senha temporária do SDK (a mesma do operador.sh)', () => {
+  it('18 letras e números do alfabeto do SDK, uma de cada classe, isenta só da regra "especial"', () => {
     const vistas = new Set<string>();
     for (let i = 0; i < 200; i++) {
       const s = gerarSenhaTemporaria();
-      expect(s).toHaveLength(TAMANHO_TEMPORARIA);
-      expect([...s].every((c) => alfabeto.includes(c))).toBe(true);
-      for (const classe of CLASSES_TEMPORARIA) expect([...s].some((c) => classe.includes(c))).toBe(true);
-      expect(erroSenhaForaDaRegra(s)).toBeNull();
+      expect(senhaTemporariaNoFormato(s), s).toBe(true);
+      expect(regrasDescumpridasTemporaria(s)).toEqual([]);
+      expect(erroSenhaForaDaRegra(s)?.detalhes).toEqual(['especial']);
       vistas.add(s);
     }
     expect(vistas.size).toBe(200);
@@ -388,7 +387,7 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
     expect(m.auditoria.registros.map((a) => [a.acao, a.tenant_id, a.usuario_id, a.entidade_id])).toEqual([['core.usuario.senha_esquecida', TENANT, ADM, ADM]]);
     const [enviado] = m.envio.enviados;
     const temporaria = /Senha temporária: (\S+)/.exec(enviado!.texto)?.[1];
-    expect(temporaria).toHaveLength(16);
+    expect(temporaria).toHaveLength(TAMANHO_SENHA_TEMPORARIA);
     expect(enviado!.assunto).toBe('Sua senha temporária do Macuxi ERP');
     // T-0111: a mesma mensagem em HTML (modelo do design), com o código da empresa e o e-mail
     expect(enviado!.html).toContain('>AM2808</td>');
@@ -531,7 +530,7 @@ describe('T-0076: POST /v1/auth/esqueci (tenant)', () => {
       expect(enviados).toHaveLength(2);
       for (const o of enviados) expect(o.envio_id).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/));
       // A temporária vai só no texto do e-mail: nenhum pedaço dela no log.
-      const temporarias = m.envio.enviados.map((e) => /\b([A-Za-z0-9!@#$%&*?_+=-]{16})\b/.exec(e.texto)?.[1]).filter((t): t is string => !!t);
+      const temporarias = m.envio.enviados.map((e) => /\b([A-Za-z0-9]{18})\b/.exec(e.texto)?.[1]).filter((t): t is string => !!t);
       semVazamento(m, temporarias);
     });
   });
