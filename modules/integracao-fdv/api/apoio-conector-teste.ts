@@ -31,7 +31,7 @@ export const CHAVE_CLARA = 'chave-secreta-do-conector-0123456789abcdef-NAO-VAZAR
 const ENDERECO = { logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', municipio_ibge: '1302603', uf: 'AM', cep: '69000000', pais_bacen: '1058', municipio_nome: 'Manaus' };
 
 /** CNPJs numéricos válidos (com dígitos verificadores) de três filiais de uma mesma raiz (ordens 0001, 0002 e 0003). */
-const CNPJ_FILIAL_1 = '12345678000195';
+export const CNPJ_FILIAL_1 = '12345678000195';
 export const CNPJ_FILIAL_2 = '12345678000276';
 export const CNPJ_FILIAL_3 = '12345678000357';
 
