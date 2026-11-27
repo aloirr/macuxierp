@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArquivoRecebido, CAMINHOS_CARGAS_PLATAFORMA, ErroApi, type ContextoPlataformaPorEtapa, type SituacaoCargasPlataforma, type Transacao } from '@macuxierp/platform-sdk';
 import type { BancoPg } from '@macuxierp/platform-sdk/pg';
-import { comoConfig, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfigTx, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe } from './apoio-teste';
 import { criarPluginPlataformaCadastros } from './carga-portal-rotas';
@@ -35,7 +35,7 @@ describe.skipIf(!PG_DISPONIVEL)('rotas da carga do portal no PostgreSQL real', (
   /** `ContextoPlataformaPorEtapa` de teste: uma transação de cada vez, a de plataforma como macuxierp_config com a sessão (SDK), a do tenant na RLS. */
   const contexto = (): ContextoPlataformaPorEtapa => ({
     sessao: { superadmin_id: SA, sessao_id: SESSAO }, request_id: `req-${randomUUID()}`, agora: new Date('2026-11-23T15:00:00Z'),
-    comPlataforma: <R>(f: (tx: Transacao) => Promise<R>): Promise<R> => comoConfig(efemero.admin, SESSAO, (consultar) => f({ consultar: async <L>(sql: string, p: readonly unknown[] = []) => (await consultar(sql, p)) as L[] })),
+    comPlataforma: <R>(f: (tx: Transacao) => Promise<R>): Promise<R> => comoConfigTx(efemero.admin, SESSAO, f),
     comTenant: (tenant, f) => app.comTenant(tenant, f),
   });
   const eventos: string[] = [];
