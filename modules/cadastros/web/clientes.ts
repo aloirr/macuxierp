@@ -9,7 +9,7 @@ import { definirPaginaLista } from '@macuxierp/platform-sdk/listas';
 import { ROTULO_PRAZO_MEDIO } from './prazos';
 import { Cliente, ClienteAtualizacao, ClienteDados, Uuid } from '../contracts';
 import { sugerirIndIeDest, validarDocumentoCliente, validarIndIeDest, type IndIeDest } from '../domain';
-import { CAMPOS_ENDERECO, CAMPOS_LOCALIZACAO, camposVisiveis, centavosDoTexto, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, localizacaoDoFormulario, opcoes, situacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
+import { CAMPOS_ENDERECO, CAMPOS_LOCALIZACAO, camposVisiveis, centavosDoTexto, corpoDoPatch, enderecoDoFormulario, faltandoObrigatorios, localizacaoDoFormulario, opcoes, colunaSituacao, soDigitos, validarEnderecoTela, vazioParaNulo, type CampoEdicao, type Corpo, type Erros, type Modo, type Valores } from './edicao';
 
 export const ROTA_CLIENTES = '/cadastros/clientes';
 export const ROTA_CLIENTE_NOVO = '/cadastros/clientes/novo';
@@ -33,7 +33,7 @@ export const paginaClientes = definirPaginaLista({
     { id: 'ind_ie_dest', titulo: 'Contribuinte ICMS', valor: (c) => ROTULO_IND_IE[c.ind_ie_dest] },
     { id: 'prazo_medio_dias', titulo: ROTULO_PRAZO_MEDIO, valor: (c) => (typeof c.prazo_medio_dias === 'number' ? `${c.prazo_medio_dias}` : '') },
     { id: 'limite_credito_centavos', titulo: 'Limite', valor: (c) => formatarCentavos(c.limite_credito_centavos), exige: 'cadastros.cliente.credito' },
-    { id: 'inativo', titulo: 'Situação', valor: (c) => situacao(c.inativo) },
+    colunaSituacao(),
   ],
   csv: { arquivo: 'clientes.csv' },
   vazio: { semFiltro: 'Nenhum cliente cadastrado.', comFiltro: 'Nenhum cliente com estes filtros.' },

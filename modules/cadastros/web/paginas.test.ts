@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PAGINAS, acoesDaPagina, consultaDaUrl, csvDaPagina } from './paginas';
 import { paraQuery } from '@macuxierp/platform-sdk';
 import { manifest } from '../manifest';
-import { PAGINA_CARGA } from './carga';
+import { COLUNAS_RESUMO, PAGINA_CARGA, type LinhaResumo } from './carga';
 
 describe('páginas do BKO', () => {
   it('toda página do manifesto tem rota própria e menu declarado', () => {
@@ -46,5 +46,27 @@ describe('páginas do BKO', () => {
     const produtos = PAGINAS.find((p) => p.id === 'produtos')!;
     expect(acoesDaPagina('gerente', produtos).colunasVisiveis).toContain('custo_centavos');
     expect(acoesDaPagina('vendedor', produtos).colunasVisiveis).not.toContain('custo_centavos');
+  });
+});
+
+describe('coluna Situação como selo (MC-0201, regra 11)', () => {
+  it('RN-MC-0201: clientes, produtos, tabelas de preço e filiais têm a coluna inativo do tipo status, com selo Ativo (ok) e Inativo (neutro)', () => {
+    for (const id of ['clientes', 'produtos', 'tabelas-preco', 'filiais']) {
+      const col = PAGINAS.find((p) => p.id === id)!.colunas.filter((c) => c.chave === 'inativo');
+      expect(col, id).toHaveLength(1);
+      expect(col[0]!.tipo, id).toBe('status');
+      expect(col[0]!.selos!(false), id).toEqual([{ texto: 'Ativo', tom: 'ok' }]);
+      expect(col[0]!.selos!(true), id).toEqual([{ texto: 'Inativo', tom: 'neutro' }]);
+      expect(col[0]!.formatar!(true), id).toBe('Inativo');
+    }
+  });
+  it('RN-MC-0201: o resumo da carga tem a coluna Situação do tipo status, com selo por situação', () => {
+    const col = COLUNAS_RESUMO.filter((c) => c.titulo === 'Situação');
+    expect(col).toHaveLength(1);
+    expect(col[0]!.tipo).toBe('status');
+    const linha = (situacao: string) => ({ situacao }) as LinhaResumo;
+    expect(col[0]!.selos!(linha('Processado'))).toEqual([{ texto: 'Processado', tom: 'ok' }]);
+    expect(col[0]!.selos!(linha('Arquivo recusado'))).toEqual([{ texto: 'Arquivo recusado', tom: 'erro' }]);
+    expect(col[0]!.selos!(linha('Ignorado'))).toEqual([{ texto: 'Ignorado', tom: 'neutro' }]);
   });
 });

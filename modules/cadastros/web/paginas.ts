@@ -6,7 +6,7 @@
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil, type ValorCsv } from '@macuxierp/platform-sdk';
 import { formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { AGRUPAR_PRAZOS_POR, ROTULO_PRAZO_MEDIO, diasDoPrazo, prazoMedioNaLista, rotuloDaForma } from './prazos';
-import { situacao } from './edicao';
+import { seloDaSituacao, situacao, type Selo, type TipoColuna } from './edicao';
 import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES, paginaClientes } from './clientes';
 import { ROTA_FILIAL, ROTA_FILIAIS, ROTA_FILIAL_NOVA, paginaFiliais } from './filiais';
 import { ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, paginaProdutos } from './produtos';
@@ -16,6 +16,9 @@ export interface ColunaPagina {
   chave: string;
   rotulo: string;
   formatar?: (valor: unknown) => string;
+  /** `status` desenha o selo de `selos` (o shell lê `tipo` de cada coluna); sem tipo, texto. */
+  tipo?: TipoColuna;
+  selos?: (valor: unknown) => readonly Selo[];
   /** Só quem pode ver o dado (ex.: o custo do produto). */
   exige?: Acao;
 }
@@ -35,14 +38,14 @@ export interface PaginaCadastros extends PaginaBase {
   restritos?: readonly { campo: string; exige: Acao }[];
 }
 
-const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', formatar: situacao };
+const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', tipo: 'status', formatar: situacao, selos: (v) => [seloDaSituacao(v)] };
 
 /** O que a lista declarada pelo SDK (`definirPaginaLista`) dá ao descritor do shell: API, filtros e colunas. */
 interface ListaDoSdk {
   readonly id: string;
   readonly api: string;
   readonly filtros: Readonly<Record<string, unknown>>;
-  readonly colunas: readonly { id: string; titulo: string; valor: (linha: never) => ValorCsv; exige?: Acao }[];
+  readonly colunas: readonly { id: string; titulo: string; valor: (linha: never) => ValorCsv; exige?: Acao; tipo?: TipoColuna; selos?: (linha: never) => readonly Selo[] }[];
 }
 
 /**
@@ -57,6 +60,8 @@ function daLista(l: ListaDoSdk): Pick<PaginaCadastros, 'id' | 'api' | 'filtros' 
     colunas: l.colunas.map((c) => ({
       chave: c.id, rotulo: c.titulo, ...(c.exige ? { exige: c.exige } : {}),
       formatar: (v: unknown) => String((c.valor as (linha: unknown) => ValorCsv)({ [c.id]: v }) ?? ''),
+      ...(c.tipo ? { tipo: c.tipo } : {}),
+      ...(c.selos ? { selos: (v: unknown) => (c.selos as (linha: unknown) => readonly Selo[])({ [c.id]: v }) } : {}),
     })),
   };
 }
