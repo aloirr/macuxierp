@@ -36,23 +36,23 @@ export interface CredencialAtivaLida extends CredencialResumo {
  */
 export async function lerCredencialResumo(tx: Transacao, tenantId: string, o: { bloquear?: boolean } = {}): Promise<CredencialAtivaLida | null> {
   const [c] = await tx.consultar<{
-    id: string; conector_id: string; ambiente: 'teste' | 'producao'; chave_prefixo: string; created_at: Date; ultimo_uso_em: Date | null;
+    id: string; conector_id: string; ambiente: 'teste' | 'producao'; chave_prefixo: string; created_at: Date;
     entidades_habilitadas: EntidadeHub[]; limite_registros_lote: number;
   }>(
-    `SELECT id, conector_id, ambiente, chave_prefixo, created_at, ultimo_uso_em, entidades_habilitadas::text[] AS entidades_habilitadas, limite_registros_lote
+    `SELECT id, conector_id, ambiente, chave_prefixo, created_at, entidades_habilitadas::text[] AS entidades_habilitadas, limite_registros_lote
        FROM integracao_fdv.credencial
       WHERE tenant_id = $1 AND substituida_em IS NULL AND deleted_at IS NULL${o.bloquear ? ' FOR UPDATE' : ''}`,
     [tenantId],
   );
   if (!c) return null;
   return {
-    id: c.id, conector_id: c.conector_id, ambiente: c.ambiente, chave_prefixo: c.chave_prefixo, criada_em: c.created_at.toISOString(), ultimo_uso_em: iso(c.ultimo_uso_em),
+    id: c.id, conector_id: c.conector_id, ambiente: c.ambiente, chave_prefixo: c.chave_prefixo, criada_em: c.created_at.toISOString(),
     entidades_habilitadas: c.entidades_habilitadas, limite_registros_lote: c.limite_registros_lote,
   };
 }
 
 export function resumoDaCredencial(c: CredencialAtivaLida): CredencialResumo {
-  return { id: c.id, conector_id: c.conector_id, ambiente: c.ambiente, chave_prefixo: c.chave_prefixo, criada_em: c.criada_em, ultimo_uso_em: c.ultimo_uso_em };
+  return { id: c.id, conector_id: c.conector_id, ambiente: c.ambiente, chave_prefixo: c.chave_prefixo, criada_em: c.criada_em };
 }
 
 /** O último sinal como o status do BKO mostra: sem `politica_versao` (ADR 0013). */

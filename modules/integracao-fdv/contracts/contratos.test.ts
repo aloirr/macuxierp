@@ -64,9 +64,8 @@ describe('contratos do módulo', () => {
     expect(EstoqueHub.safeParse({ ...es, saldo: '1.5' }).success).toBe(false);
   });
 
-  it('RF-INF-05: o resumo da credencial nunca devolve a chave', () => {
-    expect(Object.keys(CredencialResumo.shape)).not.toContain('chave');
-    expect(Object.keys(CredencialResumo.shape)).not.toContain('chave_cifrada');
+  it('RF-INF-05: o resumo da credencial só tem estes campos (sem chave nem último uso, RD-2319)', () => {
+    expect(Object.keys(CredencialResumo.shape).sort()).toEqual(['ambiente', 'chave_prefixo', 'conector_id', 'criada_em', 'id']);
   });
 
   it('RF-INF-04: a resposta do monitor não tem campo de mensagem crua nem de chave', () => {
@@ -80,6 +79,7 @@ describe('T-0086: tipos do SDK reexportados sem duplicar', () => {
     expect(c.CodigoErro).toBe(sdk.CodigoErroFdv);
     expect(c.CampoErro).toBe(sdk.CampoErroFdv);
     expect(c.CorpoSinal.shape.versao_conector).toBe(sdk.VersaoConectorFdv);
+    expect(c.SinalResumo.shape.ultimo_codigo.unwrap()).toBe(sdk.CodigoErroFdv);
   });
 });
 

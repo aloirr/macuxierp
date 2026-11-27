@@ -25,7 +25,6 @@ export const CredencialResumo = z.object({
   ambiente: AmbienteHub,
   chave_prefixo: z.string().min(1).max(8),
   criada_em: z.string().datetime(),
-  ultimo_uso_em: z.string().datetime().nullable(),
 });
 export type CredencialResumo = z.infer<typeof CredencialResumo>;
 
