@@ -10,8 +10,9 @@ import { CABECALHO_CSRF_CONFIG, COOKIE_CONFIG, definirPluginPlataforma, definirR
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { formulario } from './apoio-multipart';
-import { ARGON2_RAPIDO, inserirFilialDeTeste, JWT_SEGREDO_DE_TESTE } from './apoio-teste';
+import { ARGON2_RAPIDO, inserirAdministradorDeTeste, inserirFilialDeTeste, JWT_SEGREDO_DE_TESTE, SENHA_DE_TESTE } from './apoio-teste';
 import { criarApp } from './app';
 import { gerarHashSenha } from './auth/senha';
 import { montarDependenciasProducao } from './modulos';
@@ -21,6 +22,9 @@ const SENHA_SA = 'senha-do-superadmin-de-teste';
 const CSRF = { [CABECALHO_CSRF_CONFIG]: '1' };
 // Caminho só de teste: o `/gravar` de verdade é do plugin do cadastros, já montado pelo `montarDependenciasProducao`.
 const CAMINHO = '/empresas/:id/cadastros/cargas/:cadastro/etapa-de-teste';
+// Rota por etapa de teste com corpo JSON obrigatório (Zod): prova o 401 antes da validação do corpo.
+const CAMINHO_CORPO = '/empresas/:id/cadastros/cargas/:cadastro/etapa-com-corpo';
+const EMAIL_ADM = 'adm-por-etapa@exemplo.invalid';
 
 interface Leitura {
   papel_plataforma: string;
@@ -66,6 +70,16 @@ function pluginDeTeste(outraFilial: () => string) {
         return { corpo: await c.comTenant(outraFilial(), async () => 'nunca') };
       },
     }),
+    definirRotaPlataforma({
+      metodo: 'POST',
+      caminho: CAMINHO_CORPO,
+      acao: 'plataforma.cadastros.carga',
+      transacoes: 'por_etapa',
+      corpo: z.object({ nome: z.string().min(1) }).strict(),
+      async executar(_c, e) {
+        return { corpo: { recebido: e.corpo.nome } };
+      },
+    }),
   ]);
 }
 
@@ -74,16 +88,19 @@ describe.skipIf(!PG_DISPONIVEL)('rota de plataforma por etapa: comTenant (T-0058
   let app: FastifyInstance;
   let tenantA: string;
   let tenantB: string;
+  let slugA: string;
   const filialA = randomUUID();
   const filialB = randomUUID();
   let token: string;
 
   beforeAll(async () => {
     b = await criarBancoEfemero();
-    tenantA = await criarTenant(b.admin, `etapa-a-${randomUUID().slice(0, 8)}`, ['core', 'cadastros']);
+    slugA = `etapa-a-${randomUUID().slice(0, 8)}`;
+    tenantA = await criarTenant(b.admin, slugA, ['core', 'cadastros']);
     tenantB = await criarTenant(b.admin, `etapa-b-${randomUUID().slice(0, 8)}`, ['core', 'cadastros']);
     await inserirFilialDeTeste(b.admin, tenantA, { id: filialA, cnpj: '11222333000181', nome: 'Matriz A (teste)' });
     await inserirFilialDeTeste(b.admin, tenantB, { id: filialB, cnpj: '11222333000181', nome: 'Matriz B (teste)' });
+    await inserirAdministradorDeTeste(b.admin, tenantA, { id: randomUUID(), email: EMAIL_ADM, nome: 'Administrador de teste', filialIds: [filialA] });
     await b.admin.query(`INSERT INTO plataforma.superadmin (email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'Superadmin de teste', $2, false, true)`, [
       EMAIL_SA,
       await gerarHashSenha(SENHA_SA, ARGON2_RAPIDO),
@@ -146,5 +163,34 @@ describe.skipIf(!PG_DISPONIVEL)('rota de plataforma por etapa: comTenant (T-0058
     expect(grande.json<{ codigo: string }>().codigo).toBe('ARQUIVO_GRANDE');
     const semSessao = await enviar(url(tenantA), [{ nome: 'filial.csv', conteudo: 'x' }], { token: '' });
     expect(semSessao.statusCode).toBe(401);
+  });
+
+  it('corpo obrigatório: sem sessão de plataforma (nem com o JWT de tenant) é 401 antes do Zod; com sessão, corpo inválido é 400', async () => {
+    const urlCorpo = `/v1/plataforma${CAMINHO_CORPO.replace(':id', tenantA).replace(':cadastro', 'filial')}`;
+    const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { empresa: slugA, email: EMAIL_ADM, senha: SENHA_DE_TESTE } });
+    expect(login.statusCode).toBe(200);
+    const jwtTenant = login.json<{ token_acesso: string }>().token_acesso;
+    const chamar = (payload: unknown, o: { cookie?: string; bearer?: string } = {}) =>
+      app.inject({
+        method: 'POST',
+        url: urlCorpo,
+        headers: { ...CSRF, ...(o.bearer ? { authorization: `Bearer ${o.bearer}` } : {}) },
+        ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
+        ...(o.cookie ? { cookies: { [COOKIE_CONFIG]: o.cookie } } : {}),
+      });
+    for (const [nome, r] of [
+      ['sem sessão, corpo inválido', await chamar({ outro: 1 })],
+      ['sem sessão, sem corpo', await chamar(undefined)],
+      ['JWT de tenant, corpo inválido', await chamar({ outro: 1 }, { bearer: jwtTenant })],
+      ['JWT de tenant, sem corpo', await chamar(undefined, { bearer: jwtTenant })],
+    ] as const) {
+      expect(r.statusCode, nome).toBe(401);
+      expect(r.json<{ codigo: string }>().codigo, nome).toBe('NAO_AUTENTICADO');
+    }
+    const invalido = await chamar({ outro: 1 }, { cookie: token });
+    expect(invalido.statusCode).toBe(400);
+    const valido = await chamar({ nome: 'x' }, { cookie: token });
+    expect(valido.statusCode).toBe(200);
+    expect(valido.json()).toEqual({ recebido: 'x' });
   });
 });

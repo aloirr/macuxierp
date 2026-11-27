@@ -141,7 +141,7 @@ describe.skipIf(!PG_DISPONIVEL)('/v1/entrada (e o legado /entrada/v1) de ponta a
     expect((await entrada(semPepper, 'GET', '/cursores/vendedor', 'erp-entrada-troca', 'a'.repeat(43))).statusCode).toBe(503);
     expect((await portal(semPepper, 'GET', url(C.ler, A))).statusCode).toBe(200);
   });
-  // ADR 0014, adendo de 27/11 (hotfix v0.3.24).
+  // ADR 0014, adendo de 27/11 (hotfix v0.3.23).
   it('toda rota pública da api fica sob o /v1 (o túnel só manda o /v1* à api); a única exceção é o legado da entrada', () => {
     const rotas = caminhosDasRotas(app.printRoutes({ commonPrefix: false }));
     expect(rotas.length).toBeGreaterThan(50);

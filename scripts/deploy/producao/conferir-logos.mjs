@@ -6,7 +6,7 @@
  * Uso: node scripts/deploy/producao/conferir-logos.mjs [arquivo do modelo]. Saída 0 = todos ok (logos e entrada); 1 = algum
  * falhou; 2 = nenhum logo no modelo.
  * Roda no runner, sem segredo e sem dado de cadastro: só HEAD em URL pública.
- * Também confere a entrada (hotfix v0.3.24, ADR 0014, adendo de 27/11): `POST /v1/entrada/sinal` sem chave tem de chegar à
+ * Também confere a entrada (hotfix v0.3.23, ADR 0014, adendo de 27/11): `POST /v1/entrada/sinal` sem chave tem de chegar à
  * api (401 em JSON, `NAO_AUTENTICADO`) e não ao web (o HTML do login), que era o defeito do `/entrada/v1` pelo túnel.
  */
 import { readFileSync } from 'node:fs';

@@ -15,7 +15,7 @@ import { CABECALHO_IDEMPOTENCIA, PADRAO_CHAVE_IDEMPOTENCIA } from './idempotenci
 import type { ContextoRota, EntradaRota, RespostaRota, RotaModulo } from './rotas';
 
 /**
- * Prefixo da entrada (v0.3.24, hotfix; ADR 0014, adendo de 27/11): sob o `/v1`, porque o túnel da Cloudflare manda só o
+ * Prefixo da entrada (v0.3.23, hotfix; ADR 0014, adendo de 27/11): sob o `/v1`, porque o túnel da Cloudflare manda só o
  * `/v1*` para a api e o resto para o web (ADR 0003). O `/entrada/v1` caía na tela de login em produção.
  */
 export const PREFIXO_ENTRADA = '/v1/entrada';
