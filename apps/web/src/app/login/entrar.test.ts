@@ -20,9 +20,9 @@ const config = { destino: 'config' as const, token: 'tok', expira_em: '2026-11-2
 describe('login único: navegação pelo destino que a API devolve', () => {
   beforeEach(() => { set.mockClear(); loginUnico.mockReset(); buscarEu.mockReset(); euPlataforma.mockReset(); buscarEu.mockResolvedValue({ usuario: {} }); euPlataforma.mockResolvedValue({ deve_trocar_senha: false }); });
 
-  it('manda código normalizado e e-mail em minúsculas; destino bko vai ao destino seguro e grava os cookies do BKO', async () => {
+  it('manda código normalizado e e-mail em minúsculas; destino bko vai à raiz e grava os cookies do BKO', async () => {
     loginUnico.mockResolvedValue({ tipo: 'ok', sessao: bko });
-    await expect(entrarAction(form({ ...ok, destino: '/pedido' }))).resolves.toEqual({ entrou: { destino: 'bko', para: '/pedido' } });
+    await expect(entrarAction(form(ok))).resolves.toEqual({ entrou: { destino: 'bko', para: '/' } });
     expect(loginUnico).toHaveBeenCalledWith({ empresa: 'AM2808', email: 'a@b.co', senha: 'Segredo#1' });
     expect(set.mock.calls.map((c) => c[0])).toEqual(['mx_acesso', 'mx_refresh']);
   });

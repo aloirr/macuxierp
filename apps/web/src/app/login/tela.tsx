@@ -5,7 +5,7 @@ import { FormularioLogin } from './formulario';
 export async function TelaLogin() {
   return (
     <main className="cartao-central">
-      <FormularioLogin destino="/" esqueciDisponivel={await lerSituacaoEsqueci()} />
+      <FormularioLogin esqueciDisponivel={await lerSituacaoEsqueci()} />
     </main>
   );
 }

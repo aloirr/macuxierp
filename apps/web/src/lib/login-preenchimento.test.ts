@@ -1,21 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { CODIGO_SUPERADMIN_LOGIN, urlEntrarPreenchida } from '@macuxierp/platform-sdk';
-import { ROTA_ENTRAR } from '@/lib/config/constantes';
+import { ROTA_LOGIN_SUPERADMIN } from './rota-login';
 import { valoresIniciaisLogin } from './login-preenchimento';
 
-const ini = (fragmento: string, salvo?: string) => valoresIniciaisLogin({ destino: '/', salvo, fragmento });
+const ini = (fragmento: string, salvo?: string) => valoresIniciaisLogin({ salvo, fragmento });
 
-describe('v0.3.20 B: /config manda ao login com destino da plataforma (R-20261127-061730)', () => {
-  it('o /config sem sessão vai à raiz (v0.3.27, login único em /)', () => {
-    expect(ROTA_ENTRAR).toBe('/');
+describe('login na raiz: valores iniciais', () => {
+  it('sem fragmento, segue o código salvo do BKO', () => {
+    expect(ini('', 'AM2808')).toEqual({ empresa: 'AM2808', email: '' });
+    expect(ini('', undefined)).toEqual({ empresa: '', email: '' });
   });
-  it('com destino no /config, o campo Empresa vem com o código da plataforma, nunca o último código do BKO', () => {
-    expect(valoresIniciaisLogin({ destino: '/config', salvo: 'AM2808', fragmento: '' })).toEqual({ empresa: CODIGO_SUPERADMIN_LOGIN, email: '' });
-    expect(valoresIniciaisLogin({ destino: '/config/empresas/1', salvo: 'AM2808', fragmento: '' }).empresa).toBe(CODIGO_SUPERADMIN_LOGIN);
-  });
-  it('fora do /config, segue o código salvo do BKO', () => {
-    expect(valoresIniciaisLogin({ destino: '/', salvo: 'AM2808', fragmento: '' })).toEqual({ empresa: 'AM2808', email: '' });
-    expect(valoresIniciaisLogin({ destino: '/', salvo: undefined, fragmento: '' })).toEqual({ empresa: '', email: '' });
+  it('o /config sem sessão volta à raiz com o código da plataforma, vencendo o código salvo do BKO', () => {
+    expect(ROTA_LOGIN_SUPERADMIN.startsWith('/#')).toBe(true);
+    expect(ini(new URL(ROTA_LOGIN_SUPERADMIN, 'http://x').hash, 'AM2808')).toEqual({ empresa: CODIGO_SUPERADMIN_LOGIN, email: '' });
   });
 });
 
@@ -23,7 +20,7 @@ describe('v0.3.20 C2 (44 B): link do e-mail preenche código e e-mail pelo fragm
   it('lê o link do SDK (urlEntrarPreenchida); a validação do fragmento é testada no SDK', () => {
     expect(ini(new URL(urlEntrarPreenchida('AM2808', 'ana@exemplo.com.br')).hash)).toEqual({ empresa: 'AM2808', email: 'ana@exemplo.com.br' });
   });
-  it('o fragmento vence o código salvo; sem destino /config', () => {
-    expect(valoresIniciaisLogin({ destino: '/', salvo: 'OUTRA', fragmento: '#codigo=AM2808&email=a%40b.co' })).toEqual({ empresa: 'AM2808', email: 'a@b.co' });
+  it('o fragmento vence o código salvo', () => {
+    expect(ini('#codigo=AM2808&email=a%40b.co', 'OUTRA')).toEqual({ empresa: 'AM2808', email: 'a@b.co' });
   });
 });

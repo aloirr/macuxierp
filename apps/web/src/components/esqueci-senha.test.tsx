@@ -54,7 +54,7 @@ describe('título único (h1) por estado', () => {
     expect(titulos(renderToStaticMarkup(<PainelEsqueciVisao estado={{ fase: 'confirmado', erros: {} }} />))).toEqual([]);
   });
   it('login fechado: um h1 "Acesse sua conta"', () => {
-    expect(titulos(renderToStaticMarkup(<FormularioLogin destino="/" esqueciDisponivel />))).toEqual(['h1:Acesse sua conta']);
+    expect(titulos(renderToStaticMarkup(<FormularioLogin esqueciDisponivel />))).toEqual(['h1:Acesse sua conta']);
   });
   it('painel aberto: um h1 "Recuperar a senha" (form e confirmação)', async () => {
     vi.resetModules();
@@ -63,18 +63,18 @@ describe('título único (h1) por estado', () => {
       return { ...r, default: r, useState: ((i: unknown) => (i === false ? [true, () => {}] : r.useState(i))) as typeof r.useState };
     });
     const { FormularioLogin: F } = await import('@/app/login/formulario');
-    expect(titulos(renderToStaticMarkup(<F destino="/" esqueciDisponivel />))).toContain('h1:Recuperar a senha');
+    expect(titulos(renderToStaticMarkup(<F esqueciDisponivel />))).toContain('h1:Recuperar a senha');
     vi.doUnmock('react');
   });
 });
 
 describe('link na tela única', () => {
   it('oculto quando indisponível, visível quando disponível', () => {
-    const off = renderToStaticMarkup(<FormularioLogin destino="/" esqueciDisponivel={false} />);
-    const on = renderToStaticMarkup(<FormularioLogin destino="/" esqueciDisponivel />);
+    const off = renderToStaticMarkup(<FormularioLogin esqueciDisponivel={false} />);
+    const on = renderToStaticMarkup(<FormularioLogin esqueciDisponivel />);
     expect(off).not.toContain('Esqueci a senha');
     expect(on).toContain('Esqueci a senha');
-    expect(renderToStaticMarkup(<FormularioLogin destino="/" />)).not.toContain('Esqueci a senha');
+    expect(renderToStaticMarkup(<FormularioLogin />)).not.toContain('Esqueci a senha');
   });
   it('ComEsqueciSenha sem disponibilidade só renderiza o filho', () => {
     expect(renderToStaticMarkup(<ComEsqueciSenha disponivel={false}><i>f</i></ComEsqueciSenha>)).toBe('<i>f</i>');

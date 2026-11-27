@@ -42,7 +42,7 @@ describe('sessão de superadmin separada do BKO (ADR 0012)', () => {
   it('o cookie do BKO NÃO abre o /config', async () => {
     jar.valores = { [COOKIE_ACESSO]: 'a', [COOKIE_REFRESH]: 'r', [COOKIE_FILIAL]: 'f' };
     expect(await tokenConfig()).toBeNull();
-    await expect(exigirTokenConfig()).rejects.toThrow(/^REDIRECT \/$/);
+    await expect(exigirTokenConfig()).rejects.toThrow('REDIRECT /#codigo=MACUXI');
   });
   it('o cookie do /config NÃO abre o BKO', async () => {
     jar.valores = { [COOKIE_CONFIG_WEB]: 'tok' };
@@ -53,7 +53,7 @@ describe('sessão de superadmin separada do BKO (ADR 0012)', () => {
     expect(await tokenConfig()).toBe('tok');
   });
   it('sessão terminada apaga só o cookie do /config e volta ao login', async () => {
-    await expect(encerrarEVoltar()).rejects.toThrow(/^REDIRECT \/$/);
+    await expect(encerrarEVoltar()).rejects.toThrow('REDIRECT /#codigo=MACUXI');
     expect(jar.apagados).toEqual([{ name: 'mx_config', path: '/config' }]);
   });
 });

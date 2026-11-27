@@ -95,7 +95,7 @@ describe('ação da troca', () => {
     expect(jar.set).toHaveBeenCalledWith('mx_refresh', 'macuxierp_refresh=r2', expect.objectContaining({ httpOnly: true }));
     expect(jar.delete).not.toHaveBeenCalled();
   });
-  it('refresh recusado ou API fora depois do 204: apaga os cookies e vai ao /login', async () => {
+  it('refresh recusado ou API fora depois do 204: apaga os cookies e vai à raiz', async () => {
     trocarSenha.mockResolvedValue({ ok: true });
     renovar.mockResolvedValueOnce(null);
     await expect(trocarSenhaBkoAction({}, form(ok))).rejects.toThrow(/^REDIRECT \/$/);

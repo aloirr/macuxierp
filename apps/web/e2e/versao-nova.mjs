@@ -57,7 +57,7 @@ async function subir(id) {
   servidor.stdout.on('data', (d) => { logServidor += d; });
   servidor.stderr.on('data', (d) => { logServidor += d; });
   for (let i = 0; i < 100; i++) {
-    try { if ((await fetch(`${BASE}/login`)).ok) return; } catch { /* ainda subindo */ }
+    try { if ((await fetch(`${BASE}/`)).ok) return; } catch { /* ainda subindo */ }
     await pausa(200);
   }
   throw new Error(`servidor ${id} não subiu`);
@@ -82,7 +82,7 @@ try {
 
   // 1. build A: a página abre e fica parada
   await subir('a');
-  await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+  await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
   await p.getByLabel('Código da empresa').fill('macuxi');
   await p.getByLabel('E-mail').fill('ana@exemplo.com.br');
   await p.getByLabel('Senha', { exact: true }).fill('senha-do-teste-123');
@@ -90,9 +90,12 @@ try {
 
   // 1b. cache: o HTML do login e do /config vem com no-store; um estático com hash NÃO
   const cc = async (u) => (await fetch(`${BASE}${u}`)).headers.get('cache-control') ?? '';
-  confere((await cc('/login')) === 'no-store', 'HTML do /login com Cache-Control: no-store');
-  confere((await cc('/config/entrar')) === 'no-store', 'HTML do /config/entrar com Cache-Control: no-store');
-  const html = await (await fetch(`${BASE}/login`)).text();
+  confere((await cc('/')) === 'no-store', 'HTML de "/" com Cache-Control: no-store');
+  for (const antigo of ['/login', '/config/entrar']) {
+    const r = await fetch(`${BASE}${antigo}`, { redirect: 'manual' });
+    confere(r.status === 308 && new URL(r.headers.get('location') ?? '', BASE).pathname === '/', `${antigo} só redireciona (308) para "/"`);
+  }
+  const html = await (await fetch(`${BASE}/`)).text();
   const estatico = html.match(/\/_next\/static\/[^"'\s)]+\.js/)?.[0];
   confere(Boolean(estatico), 'achou um /_next/static/*.js no HTML');
   if (estatico) {
@@ -137,7 +140,7 @@ try {
     // tela do /config: o mesmo componente do layout raiz, disparado pelo evento que a lib emite na segunda falha
     for (const [w, h] of [[1440, 900], [390, 844]]) {
       await p.setViewportSize({ width: w, height: h });
-      await p.goto(`${BASE}/config/entrar`, { waitUntil: 'networkidle' });
+      await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
       await p.evaluate(() => window.dispatchEvent(new CustomEvent('mx:versao-nova')));
       await p.getByText(TEXTO).waitFor();
       await p.screenshot({ path: join(PRINTS, `aviso-versao-nova-config-${w}.png`) });
@@ -148,7 +151,7 @@ try {
   // 3b. layout: o aviso entra no fluxo (não cobre a assinatura); sem aviso nada muda (sem vão)
   for (const [w, h] of [[390, 844], [1440, 900]]) {
     await p.setViewportSize({ width: w, height: h });
-    await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+    await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
     const alvo = p.locator('.cartao-central header').first();
     const sem = await alvo.boundingBox();
     confere((await p.locator('.aviso-versao-nova').count()) === 0, `${w}px: sem aviso não há elemento no DOM (nenhum vão)`);
@@ -167,7 +170,7 @@ try {
   await p.setViewportSize({ width: 1440, height: 900 });
 
   // 4. o botão recarrega a página
-  await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+  await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
   await p.evaluate(() => window.dispatchEvent(new CustomEvent('mx:versao-nova')));
   const aoRecarregar = p.waitForEvent('load', { timeout: 10000 }).then(() => true, () => false);
   await p.getByRole('button', { name: 'Recarregar', exact: true }).click();

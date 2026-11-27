@@ -6,7 +6,7 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: (n: string) => (n 
 vi.mock('next/navigation', () => ({ redirect: (d: string) => { throw new Error(`REDIRECT ${d}`); } }));
 
 import { tratarCarga, tratarPreviaZerar, tratarZerar } from './cargas-rotas';
-import { ROTA_ENTRAR } from './constantes';
+import { ROTA_LOGIN_SUPERADMIN } from '../rota-login';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const CHAVE = '33333333-3333-4333-8333-333333333333';
@@ -87,14 +87,14 @@ describe('route handlers da aba Cargas (T-0058)', () => {
     estado.cookie = undefined;
     const r = await tratarCarga(await comTamanho(multipart()), EMP, 'produto', 'validar');
     expect(r.status).toBe(401);
-    expect(await r.json()).toMatchObject({ ok: false, redirecionar: ROTA_ENTRAR });
+    expect(await r.json()).toMatchObject({ ok: false, redirecionar: ROTA_LOGIN_SUPERADMIN });
     expect(chamadas).toHaveLength(0);
   });
   it('API devolve 401: a resposta pede novo login', async () => {
     resposta = () => json({ codigo: 'NAO_AUTENTICADO', mensagem: 'x' }, 401);
     const r = await tratarCarga(await comTamanho(multipart()), EMP, 'produto', 'validar');
     expect(r.status).toBe(401);
-    expect(await r.json()).toMatchObject({ redirecionar: ROTA_ENTRAR });
+    expect(await r.json()).toMatchObject({ redirecionar: ROTA_LOGIN_SUPERADMIN });
   });
   it('arquivo recusado pela API: a mensagem curta da API chega à tela; corpo cru e conteúdo do arquivo nunca', async () => {
     resposta = () => json({ codigo: 'VALIDACAO', mensagem: 'Cabeçalho inválido: falta a coluna codigo.', detalhe: 'SEGREDO-DO-CORPO' }, 422);

@@ -7,6 +7,7 @@
  *  - o link do e-mail (/login#codigo=…&email=…) cai em "/" e preenche os campos;
  *  - login de empresa de tenant (destino "bko" da API) termina em "/" já no BKO;
  *  - login da empresa MACUXI (destino "config" da API) vai ao /config.
+ *  - /config sem sessão volta a "/" com MACUXI preenchida (fragmento), mesmo com outro código salvo.
  *   pnpm --filter web e2e:login-raiz [--porta 3191] [--prints <pasta>] [--sem-build]
  * Sai 0 se tudo passou; 1 se algum passo falhou.
  */
@@ -128,6 +129,19 @@ try {
     const foiAoConfig = p.waitForRequest((r) => new URL(r.url()).pathname === '/config', { timeout: 15000 }).then(() => true, () => false);
     await p.getByRole('button', { name: 'Entrar', exact: true }).click();
     confere(await foiAoConfig, 'login MACUXI: navegou para /config');
+    await p.context().close();
+  }
+
+  // 5b. /config sem sessão volta a "/" com o código da plataforma preenchido (fragmento #codigo=MACUXI), mesmo com outro código salvo
+  {
+    const p = await novo(1366, 768);
+    await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+    await p.evaluate(() => localStorage.setItem('mx.codigo_empresa', 'AM2808'));
+    await p.goto(`${BASE}/config`, { waitUntil: 'networkidle' });
+    await p.getByLabel('Código da empresa').waitFor();
+    await pausa(300);
+    confere(new URL(p.url()).pathname === '/', '/config sem sessão: termina em "/"');
+    confere((await p.getByLabel('Código da empresa').inputValue()).toLowerCase() === 'macuxi', '/config sem sessão: empresa vem preenchida com MACUXI');
     await p.context().close();
   }
 } finally {

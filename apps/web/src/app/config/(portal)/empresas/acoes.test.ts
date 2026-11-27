@@ -105,11 +105,11 @@ describe('ações do portal', () => {
   });
   it('401 apaga o cookie do /config e volta ao login; sem cookie, vai direto ao login', async () => {
     resposta = () => json({}, 401);
-    await expect(situacaoAcao(ID, 'ativo', 'volta', 'k')).rejects.toThrow(/^REDIRECT \/$/);
+    await expect(situacaoAcao(ID, 'ativo', 'volta', 'k')).rejects.toThrow('REDIRECT /#codigo=MACUXI');
     expect(estado.apagados).toEqual([{ name: 'mx_config', path: '/config' }]);
     estado.cookie = undefined;
     chamadas.length = 0;
-    await expect(redefinirSenhaAcao(ID, 'k')).rejects.toThrow(/^REDIRECT \/$/);
+    await expect(redefinirSenhaAcao(ID, 'k')).rejects.toThrow('REDIRECT /#codigo=MACUXI');
     expect(chamadas).toHaveLength(0);
   });
   it('403 e 5xx viram mensagem fixa, sem corpo da API', async () => {

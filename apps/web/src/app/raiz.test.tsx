@@ -34,6 +34,6 @@ describe('"/" é o login sem sessão e o BKO com sessão (v0.3.27, decisão 42 =
   });
   it('/login e /config/entrar redirecionam em 308 (permanent) para "/"', async () => {
     expect(ROTAS_ANTIGAS_DO_LOGIN).toEqual(['/login', '/config/entrar']);
-    expect(await config.redirects!()).toEqual(ROTAS_ANTIGAS_DO_LOGIN.map((source) => ({ source, destination: '/', permanent: true })));
+    expect(await config.redirects!()).toEqual([{ source: '/login', destination: '/', permanent: true }, { source: '/config/entrar', destination: '/', permanent: true }]);
   });
 });
