@@ -9,7 +9,7 @@
  * - O banco guarda só o HMAC da chave com o pepper; log e auditoria levam só o prefixo.
  */
 import { z } from 'zod';
-import { ConectorIdHub, ENTIDADES_HUB_F2, EstadoLoteHub, Instante, ModoLote, VersaoSemver, type EntidadeHub } from './hub-v1';
+import { ConectorIdHub, ENTIDADES_HUB_F2, EstadoLoteHub, FilialHub, Instante, ModoLote, PAYLOADS_HUB, ProdutoHub, VersaoSemver, type EntidadeHub } from './hub-v1';
 import type { Transacao } from './banco';
 import { CABECALHO_IDEMPOTENCIA, PADRAO_CHAVE_IDEMPOTENCIA } from './idempotencia';
 import type { ContextoRota, EntradaRota, RespostaRota, RotaModulo } from './rotas';
@@ -35,6 +35,23 @@ export const TRABALHO_ENTRADA_LOTE = 'cadastros.entrada_lote';
 /** As 10 entidades da F2 do Hub (sem título e nota, que só saem do ERP). */
 export const ENTIDADES_ENTRADA = ENTIDADES_HUB_F2;
 export const EntidadeEntrada = z.enum(ENTIDADES_ENTRADA as unknown as [EntidadeHub, ...EntidadeHub[]]);
+
+/**
+ * Payloads da entrada (decisão 40 B, D1/D2; ADR 0014, emenda de 27/11): os do Hub, mais dois campos opcionais (mudança aditiva) que o
+ * cadastro do ERP exige para criar o que o FDV não precisa: o `crt` da filial (1 Simples, 2 Simples com excesso, 3 Normal, 4 MEI) e o
+ * `ncm` do produto (8 dígitos, RN-CAD-04). Ausentes, o domain do cadastros completa pelo já cadastrado ou recusa a linha.
+ * O `hub-v1.ts` (cópia do contrato do FDV) não muda.
+ */
+/** CRT da filial como texto (`FilialDados.crt` do cadastros): fonte única para a entrada e o cadastros (RD do corretor, D1). */
+export const CrtFilial = z.enum(['1', '2', '3', '4']);
+export type CrtFilial = z.infer<typeof CrtFilial>;
+/** NCM com 8 dígitos (RN-CAD-04): fonte única para a entrada, o cadastros e o fiscal. */
+export const Ncm = z.string().regex(/^\d{8}$/);
+export const FilialEntrada = FilialHub.extend({ crt: CrtFilial.optional() });
+export type FilialEntrada = z.infer<typeof FilialEntrada>;
+export const ProdutoEntrada = ProdutoHub.extend({ ncm: Ncm.optional() });
+export type ProdutoEntrada = z.infer<typeof ProdutoEntrada>;
+export const PAYLOADS_ENTRADA = { ...PAYLOADS_HUB, filial: FilialEntrada, produto: ProdutoEntrada } as const;
 
 /**
  * Convenção dos códigos (achado da testes no E2): o `codigo` do envelope de erro (`ErroApi`) é sempre UPPER_SNAKE

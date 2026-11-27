@@ -11,11 +11,13 @@ import {
   IdempotencyKeyEntrada,
   LIMITE_LOTES_PORTAL_ENTRADA,
   LoteEntradaResumo,
+  PAYLOADS_ENTRADA,
   PortalEntradaLeitura,
   PREFIXO_ENTRADA,
   prefixoChaveEntrada,
   truncarIpEntrada,
 } from './entrada';
+import { PAYLOADS_HUB } from './hub-v1';
 
 const T = '2026-11-27T01:00:00.000Z';
 const LOTE = '7c2e9a14-5d3b-4e86-9f01-3a8b64d2c7e5';
@@ -81,5 +83,21 @@ describe('T-0057 (ADR 0014 §3, corte de 26/11): contrato da /entrada/v1', () =>
 
   it('códigos de erro do envelope em MAIÚSCULAS (UPPER_SNAKE), como os do ErroApi', () => {
     expect(CODIGO_EMPRESA_INATIVA_ENTRADA).toMatch(/^[A-Z][A-Z0-9_]+$/);
+  });
+
+  it('decisão 40 B (D1/D2): filial com crt e produto com ncm opcionais, só na entrada; o Hub do FDV não muda', () => {
+    const filial = { external_id: 'F1', ativo: true, codigo: '01', nome: 'Matriz' };
+    const produto = { external_id: 'P1', ativo: true, sku: 'SKU-1', nome: 'Produto', unidade: 'UN' };
+    expect(PAYLOADS_ENTRADA.filial.parse(filial)).toEqual(filial);
+    expect(PAYLOADS_ENTRADA.filial.parse({ ...filial, crt: '3' })).toMatchObject({ crt: '3' });
+    for (const crt of ['0', '5', 3, '']) expect(PAYLOADS_ENTRADA.filial.safeParse({ ...filial, crt }).success).toBe(false);
+    expect(PAYLOADS_ENTRADA.produto.parse(produto)).toEqual(produto);
+    expect(PAYLOADS_ENTRADA.produto.parse({ ...produto, ncm: '22030000' })).toMatchObject({ ncm: '22030000' });
+    for (const ncm of ['2203', '2203.00.00', 22030000, '']) expect(PAYLOADS_ENTRADA.produto.safeParse({ ...produto, ncm }).success).toBe(false);
+    // o resto é o mesmo payload do Hub, e o contrato do FDV continua sem os dois campos (o Zod do Hub os descarta)
+    expect(Object.keys(PAYLOADS_ENTRADA)).toEqual(Object.keys(PAYLOADS_HUB));
+    expect(PAYLOADS_ENTRADA.vendedor).toBe(PAYLOADS_HUB.vendedor);
+    expect(PAYLOADS_HUB.filial.parse({ ...filial, crt: '3' })).not.toHaveProperty('crt');
+    expect(PAYLOADS_HUB.produto.parse({ ...produto, ncm: '22030000' })).not.toHaveProperty('ncm');
   });
 });
