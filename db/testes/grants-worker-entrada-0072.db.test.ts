@@ -1,6 +1,7 @@
 /**
  * T-0057, migração 0072: o macuxierp_worker grava o lote da /entrada/v1 (modules/cadastros/api/entrada-lote.ts) nos
- * cadastros com INSERT e UPDATE, sem DELETE; a RLS por tenant continua valendo. Motivo em docs/banco/README.md (0072).
+ * cadastros com INSERT e UPDATE, sem DELETE; a RLS por tenant continua valendo (rls-worker-cadastros-0072.db.test.ts).
+ * Motivo em docs/banco/README.md (0072).
  * Dados fictícios.
  */
 import { readFileSync } from 'node:fs';
@@ -71,24 +72,6 @@ describe.skipIf(!PG_DISPONIVEL)('banco macuxierp — worker grava o lote da /ent
       ),
     );
     expect(n).toEqual([1]);
-  });
-
-  it('RLS: o worker do A não insere linha do B (42501) e o UPDATE no B atinge 0 linhas', () => {
-    recusaDetalhada(
-      banco.conexao,
-      `INSERT INTO cadastros.vendedor (tenant_id, codigo, nome, filial_id) VALUES ('${B.id}', 'X72', 'Cruzado', '${B.filial}');`,
-      '42501',
-      /row-level security/,
-      WORKER(A),
-    );
-    const n = numeros(
-      rodarComo(
-        banco.conexao,
-        `WITH u AS (UPDATE cadastros.cliente SET razao_social = 'Cruzado' WHERE tenant_id = '${B.id}' RETURNING 1) SELECT count(*) FROM u;`,
-        WORKER(A),
-      ),
-    );
-    expect(n).toEqual([0]);
   });
 
   it('DELETE continua negado ao worker (42501)', () => {
