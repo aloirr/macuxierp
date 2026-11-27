@@ -65,6 +65,11 @@ export class EntradaMemoria implements RepositorioEntrada {
     return f ? { codigo: f.codigo, nome: f.nome, tpag: f.tpag } : null;
   }
 
+  async formaPorCodigo(codigo: string) {
+    const f = [...this.formas.values()].find((x) => x.codigo.toUpperCase() === codigo.toUpperCase());
+    return f ? { external_id: f.external_id } : null;
+  }
+
   async gravarForma(f: FormaParaGravar) {
     const antes = this.formas.get(f.external_id);
     this.formas.set(f.external_id, { ...f });

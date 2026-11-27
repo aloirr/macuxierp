@@ -232,5 +232,9 @@ describe.skipIf(!PG_DISPONIVEL)('entrada de lotes (T-0057 C3 e C4, PostgreSQL re
     await admin("UPDATE cadastros.entrada_forma SET deleted_at = now() WHERE tenant_id = $1 AND external_id = 'FP2'", [T]);
     expect(await lote('forma_pagamento', [forma(2, { alterado_em: '2026-11-26T21:00:00.000Z', codigo: 'XYZ-DESCONHECIDA' })], 'chave-forma-004')).toMatchObject({ contagens: { atualizadas: 1 } });
     expect((await admin("SELECT deleted_at IS NULL AS viva FROM cadastros.entrada_forma WHERE tenant_id = $1 AND external_id = 'FP2'", [T]))[0]).toEqual({ viva: true });
+    // RN-CAD-09 (v0.3.26): forma de mesmo código com outro external_id é alias: o prazo grava com o external_id existente (FP1), sem 2ª forma
+    expect(await lote('forma_pagamento', [forma(3, { external_id: 'THA-FOR-1', codigo: 'boleto', alterado_em: '2026-11-26T22:00:00.000Z' })], 'chave-forma-005')).toMatchObject({ status: 'concluido' });
+    expect(await lote('prazo_pagamento', [{ ...prazo(2, 'THA-FOR-1'), alterado_em: '2026-11-26T23:00:00.000Z', parcelas_dias: '28/56' }], 'chave-forma-006')).toMatchObject({ status: 'concluido', contagens: { novas: 1, com_erro: 0 } });
+    expect((await admin("SELECT forma_external_id, prazos_dias FROM cadastros.condicao_pagamento WHERE tenant_id = $1 AND external_id = 'PZ2'", [T]))[0]).toMatchObject({ forma_external_id: 'FP1', prazos_dias: [28, 56] });
   }, 90_000);
 });

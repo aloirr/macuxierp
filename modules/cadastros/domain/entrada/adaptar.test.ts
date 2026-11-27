@@ -2,7 +2,7 @@ import { type ClienteEnderecoHub, type ClienteHub, type FilialHub } from '@macux
 import { describe, expect, it, vi } from 'vitest';
 import type { EntidadeCarga } from '../../contracts';
 import { LAYOUT, mapearLinha } from '../carga';
-import { adaptarCliente, adaptarClienteEndereco, adaptarEstoque, adaptarFilial, adaptarForma, adaptarLote, adaptarPrazoPagamento, adaptarPreco, adaptarProduto, adaptarProdutoUnidade, adaptarVendedor, tpagGuardadoDaForma, type ContextoAdaptacao } from './adaptar';
+import { adaptarCliente, adaptarClienteEndereco, adaptarEstoque, adaptarFilial, adaptarForma, adaptarLote, adaptarPrazoPagamento, adaptarPreco, adaptarProduto, adaptarProdutoUnidade, adaptarVendedor, decidirChaveDaForma, tpagGuardadoDaForma, type ContextoAdaptacao } from './adaptar';
 
 vi.mock('../carga', async (original) => {
   const m = await original<typeof import('../carga')>();
@@ -79,6 +79,25 @@ describe('T-0057 C2: adaptadores do hub-v1 só convertem a forma (a regra é do 
     expect(l.dados).toMatchObject({ forma_external_id: 'FPX', prazos_dias: [28, 56] });
     expect(l.dados.forma_codigo).toBeUndefined();
     expect(l.dados.prazo_medio_dias).toBeUndefined();
+  });
+
+  it('RN-CAD-09: a forma é única por (tenant, código): com forma de mesmo código existente a entrada reaproveita o external_id dela e o recebido vira alias', () => {
+    expect(decidirChaveDaForma('THA-FOR-1', { external_id: 'FP-EXISTENTE' })).toEqual({ external_id: 'FP-EXISTENTE', alias: true });
+    expect(decidirChaveDaForma('THA-FOR-1', { external_id: null })).toEqual({ external_id: null, alias: true });
+    expect(decidirChaveDaForma('THA-FOR-1', { external_id: 'THA-FOR-1' })).toEqual({ external_id: 'THA-FOR-1', alias: false });
+    expect(decidirChaveDaForma('THA-FOR-1', null)).toEqual({ external_id: 'THA-FOR-1', alias: false });
+    const c = { ...ctx, formaCanonica: new Map<string, string | null>([['FP1', 'FP-EXISTENTE'], ['FP2', null]]) };
+    expect(ok(adaptarPrazoPagamento(prazo, 0, c)).linha.dados).toMatchObject({ forma_external_id: 'FP-EXISTENTE', forma_codigo: 'BOLETO', forma_tpag: '15' });
+    const derivada = ok(adaptarPrazoPagamento({ ...prazo, forma_external_id: 'FP2' }, 0, { ...c, formas: new Map([['FP2', { codigo: 'BOLETO', nome: 'Boleto bancário', tpag: '15' }]]) })).linha.dados;
+    expect(derivada.forma_external_id).toBeUndefined();
+    expect(derivada).toMatchObject({ forma_codigo: 'BOLETO', forma_tpag: '15' });
+  });
+
+  it('RN-CAD-15: parcelas "28/56" na entrada viram a lista de inteiros [28, 56] (e "0" à vista, [0])', () => {
+    expect(ok(adaptarPrazoPagamento(prazo, 0, ctx)).linha.dados.prazos_dias).toEqual([28, 56]);
+    expect(ok(adaptarPrazoPagamento({ ...prazo, parcelas_dias: '0' }, 0, ctx)).linha.dados.prazos_dias).toEqual([0]);
+    // o SDK normaliza "028/56" para "28/56" antes do adaptador; a conversão string -> lista é só do adaptador
+    expect(ok(adaptarPrazoPagamento({ ...prazo, parcelas_dias: '028/56' }, 0, ctx)).linha.dados.prazos_dias).toEqual([28, 56]);
   });
 
   it('RN-INT-06: o envelope de carga completa não é adaptado (a API responde 422)', () => {
