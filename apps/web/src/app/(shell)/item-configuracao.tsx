@@ -2,7 +2,8 @@
 import { useActionState } from 'react';
 import { ResultadoAcao } from '@macuxierp/ui';
 import { resultadoErro } from '@/lib/resultado-acao';
-import { entrarConfigAction, type EstadoEntrarConfig } from './entrar-config';
+import { entrarConfigAction } from '@/lib/acoes-cliente';
+import type { EstadoEntrarConfig } from './entrar-config';
 
 export const ROTULO_CONFIGURACAO = 'Configuração';
 

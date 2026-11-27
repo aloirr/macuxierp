@@ -10,7 +10,7 @@ import { aposResposta, chaveParaEnvio, novoEstado, type EstadoChave } from '@/li
 import { telaFormulario } from '@/lib/telas';
 import type { ErrosFormulario, TelaFormulario, ValoresFormulario } from '@/lib/descritor/tipos';
 import { PainelSegredo } from './painel-segredo';
-import { escrever } from '@/app/(shell)/[modulo]/[...pagina]/acoes';
+import { escrever } from '@/lib/acoes-cliente';
 
 /** Seletor de opções (cadastro ou lista fixa) com o estilo de campo. */
 function SeletorOpcoes({ id, rotulo, valor, opcoes, onChange, erro, obrigatorio }: { id: string; rotulo: string; valor: string; opcoes: readonly Opcao[]; onChange: (v: string) => void; erro?: string; obrigatorio?: boolean }) {

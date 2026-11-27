@@ -3,7 +3,7 @@ import { RegiaoErros } from '@macuxierp/ui';
 import { useState, useTransition, type FormEvent } from 'react';
 import { CriarEmpresaEntrada } from '@macuxierp/platform-sdk';
 import { traduzirCriarEmpresa } from '@/lib/config/formularios';
-import { criarEmpresaAcao } from '../acoes';
+import { criarEmpresaAcao } from '@/lib/acoes-cliente';
 
 export function FormularioEmpresa({ chaveInicial }: { chaveInicial: string }) {
   const [chave, setChave] = useState(chaveInicial);

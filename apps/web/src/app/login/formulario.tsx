@@ -8,6 +8,7 @@ import { TEXTOS_ESQUECI } from '@/lib/esqueci-resultado';
 import { gravarCodigoDoLogin, lerCodigoSalvo } from '@/lib/codigo-salvo';
 import { valoresIniciaisLogin } from '@/lib/login-preenchimento';
 import { primeiroVazio, TEXTOS_BLOQUEIO, TEXTOS_LOGIN as T, validarCampos, type CampoLogin, type ErrosLogin } from '@/lib/login-regras';
+import { chamarAcao, ErroVersaoNova, lerRascunho } from '@/lib/acao-versao';
 import { entrarAction, type EstadoLogin } from './entrar';
 
 const TEXTOS_LOGIN_TITULO = 'Acesse sua conta';
@@ -86,6 +87,9 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
   // O fragmento sai da barra de endereço logo depois de lido; o foco abre no primeiro campo vazio.
   useEffect(() => {
     const ini = valoresIniciaisLogin({ destino, salvo: lerCodigoSalvo(), fragmento: window.location.hash });
+    // Depois da recarga por versão nova (lib/acao-versao.ts): empresa e e-mail voltam; lidos uma vez e apagados. A senha nunca foi guardada.
+    const rascunho = lerRascunho();
+    if (rascunho) { ini.empresa = rascunho.empresa || ini.empresa; ini.email = rascunho.email || ini.email; }
     if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setValores((v) => ({ ...v, empresa: v.empresa || ini.empresa, email: v.email || ini.email }));
     focar(primeiroVazio(['empresa', 'email'], ini));
@@ -115,7 +119,13 @@ export function FormularioLogin({ destino, esqueciDisponivel = false }: { destin
     const primeiro = CAMPOS.find((c) => e[c]);
     if (primeiro) return focar(primeiro);
     const dados = new FormData(f);
-    comecar(async () => aplicar(await entrarAction(dados)));
+    comecar(async () => {
+      try {
+        aplicar(await chamarAcao(entrarAction, [dados], { rascunho: () => ({ empresa: valores.empresa, email: valores.email }), lancar: true }));
+      } catch (e) {
+        if (!(e instanceof ErroVersaoNova)) throw e; // o aviso de versão nova já está na tela (AvisoVersaoNova); aqui só solta o botão
+      }
+    });
   }
 
   return (

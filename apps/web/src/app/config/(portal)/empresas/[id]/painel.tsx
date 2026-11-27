@@ -9,7 +9,7 @@ import { resultadoErro, resultadoSucesso } from '@/lib/resultado-acao';
 import { validarMotivo } from '@/lib/config/formularios';
 import { alternar, ativosDe, dependentesLigados, linhasModulos, mudancasDe, nomeModulo, pendenciasDe, type Dependencia } from '@/lib/config/modulos';
 import { RevelarMascarado } from '@/components/revelar-mascarado';
-import { alterarModulosAcao, criarAdminAcao, mostrarEmailAcao, redefinirSenhaAcao, situacaoAcao } from '../acoes';
+import { alterarModulosAcao, criarAdminAcao, mostrarEmailAcao, redefinirSenhaAcao, situacaoAcao } from '@/lib/acoes-cliente';
 import { FichaReceita } from './ficha-receita';
 import { CampoCnpj } from './troca-cnpj';
 

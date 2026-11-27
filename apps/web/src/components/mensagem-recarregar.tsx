@@ -7,12 +7,12 @@ import { SISTEMA_ATUALIZADO } from '@/lib/sistema-atualizado';
 export const ID_AVISOS_CONTEUDO = 'avisos-conteudo';
 
 /** Aviso de sistema atualizado (tokens de aviso, role=status) com o botão "Recarregar", no topo da área de conteúdo. Outros erros de ação vão para o ResultadoAcao. */
-export function MensagemRecarregar() {
+export function MensagemRecarregar({ classe, noLugar = false }: { classe?: string; /** Sem portal: fica onde foi montada (o aviso do layout raiz). */ noLugar?: boolean }) {
   const [topo, setTopo] = useState<HTMLElement | null>(null);
-  useEffect(() => { setTopo(document.getElementById(ID_AVISOS_CONTEUDO)); }, []);
+  useEffect(() => { if (!noLugar) setTopo(document.getElementById(ID_AVISOS_CONTEUDO)); }, [noLugar]);
   const no = (
-    <p className="faixa-aviso aviso-sistema" role="status">
-      {SISTEMA_ATUALIZADO}{' '}<button type="button" className="mx-botao-secundario" onClick={() => window.location.reload()}>Recarregar</button>
+    <p className={classe ? `faixa-aviso aviso-sistema ${classe}` : 'faixa-aviso aviso-sistema'} role="status">
+      <span className="aviso-versao-nova-texto">{SISTEMA_ATUALIZADO}</span>{' '}<button type="button" className="mx-botao-secundario" onClick={() => window.location.reload()}>Recarregar</button>
     </p>
   );
   return topo ? createPortal(no, topo) : no;
