@@ -7,13 +7,13 @@
  * trabalho, e o `integracao-fdv` já ignora a republicação de registro sem mudança (hash, RN-INF-03).
  */
 import {
-  criarEvento, paginar, type ConsumidorEvento, type ExecutorTrabalho, type FilaDeTrabalhos, type Outbox, type Transacao,
+  paginar, type ConsumidorEvento, type ExecutorTrabalho, type FilaDeTrabalhos, type Outbox, type Transacao,
 } from '@macuxierp/platform-sdk';
 import {
   ENTIDADES_CARGA_FDV, EVENTO_CARGA_INICIAL, PayloadCargaInicial, SolicitacaoCargaInicial, TRABALHO_CARGA_INICIAL, type EntidadeCargaFdv,
 } from '../contracts';
 import {
-  eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, type EventoPronto,
+  eventoCliente, eventoEstoque, eventoFilial, eventoPreco, eventoProduto, eventoSimples, eventoTabelaPreco, gravarProntoNaOutbox, type EventoPronto,
 } from './eventos';
 import type { Repositorios } from './portas';
 import { agregadoEstoque, uuidV5 } from './uuid';
@@ -70,10 +70,7 @@ export function criarExecutorCargaInicial(deps: {
       const { eventos, proximo } = await pagina(r, p);
       const agora = (deps.agora ?? (() => new Date()))();
       for (const e of eventos) {
-        await deps.outbox.gravar(tx, criarEvento(
-          { nome: e.nome, tenant_id: trabalho.tenant_id, agregado_id: e.agregado_id, versao: 1, ator: 'sistema', request_id: trabalho.id, payload: e.payload },
-          agora,
-        ));
+        await gravarProntoNaOutbox(deps.outbox, tx, { tenant_id: trabalho.tenant_id, request_id: trabalho.id }, e, agora);
       }
       if (proximo) await deps.fila.enfileirar(tx, { tipo: TRABALHO_CARGA_INICIAL, tenant_id: trabalho.tenant_id, payload: proximo, external_id: externalDoTrabalho(proximo) });
       return { entidade: p.entidade, publicados: eventos.length, terminou: proximo === null };

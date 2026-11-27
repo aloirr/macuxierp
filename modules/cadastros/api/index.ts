@@ -43,4 +43,4 @@ export const plugin: PluginModulo = criarPluginCadastros({ repositorios: reposit
 
 export { criarPluginPlataformaCadastrosZerar } from './zeragem';
 export type { DependenciasZeragemPlataforma, EstadoEntidadeIntegracao, EstadoIntegracaoPlataforma, RefsUso, UsoDaTabela, UsosCadastroPlataforma, UsuariosFiliaisPlataforma } from './zeragem-portas';
-export { criarConsumidorCnpjEmpresa, EVENTO_EMPRESA_CNPJ_ALTERADO, type DependenciasConsumidorCnpjEmpresa } from './consumidor-cnpj-empresa';
+export { criarConsumidorCnpjEmpresa, type DependenciasConsumidorCnpjEmpresa } from './consumidor-cnpj-empresa';

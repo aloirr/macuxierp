@@ -2,12 +2,13 @@
  * Consumidor `core.empresa.cnpj_alterado@1` (RN-CORE-14 e RN-CORE-16) contra o PostgreSQL real, no papel macuxierp_app e com RLS.
  * Sem Postgres o teste pula (`bash db/scripts/pg-local.sh`).
  */
+import { EVENTO_CNPJ_ALTERADO } from '@macuxierp/core/contracts';
 import type { EnvelopeEvento } from '@macuxierp/platform-sdk';
 import { AuditoriaPg, OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarAmbiente, sessaoDe, transacaoDe } from './apoio-teste';
-import { criarConsumidorCnpjEmpresa, EVENTO_EMPRESA_CNPJ_ALTERADO } from './consumidor-cnpj-empresa';
+import { criarConsumidorCnpjEmpresa } from './consumidor-cnpj-empresa';
 import { CNPJ_A, CNPJ_B, filialValida } from './fixtures-teste';
 import { fontesHttp } from './fontes-http';
 import { criarPluginCadastros } from './index';
@@ -31,9 +32,9 @@ describe.skipIf(!PG_DISPONIVEL)('consumidor de troca de CNPJ da empresa (Postgre
   const admin = async (sql: string, p: unknown[] = []) => (await efemero.admin.query(sql, p)).rows;
   const tratar = (tenant: string, cnpj: string, requestId = 'req-troca-1') =>
     app.comTenant(tenant, (tx) => consumidor.tratar({
-      id: '77777777-7777-4777-8777-777777777777', nome: EVENTO_EMPRESA_CNPJ_ALTERADO, tenant_id: tenant, agregado_id: tenant, versao: 1,
+      id: '77777777-7777-4777-8777-777777777777', nome: EVENTO_CNPJ_ALTERADO, tenant_id: tenant, agregado_id: tenant, versao: 1,
       ocorrido_em: AGORA.toISOString(), ator: 'sistema', request_id: requestId,
-      payload: { tenant_id: tenant, empresa_id: tenant, cnpj_novo: cnpj, request_id: requestId, alterado_em: AGORA.toISOString() }, // TODO(core-contract)
+      payload: { tenant_id: tenant, empresa_id: tenant, cnpj_novo: cnpj, request_id: requestId, alterado_em: AGORA.toISOString() },
     } as EnvelopeEvento, tx));
   const filial = async (id: string) => (await admin('SELECT cnpj, external_id FROM cadastros.filial WHERE id = $1', [id]))[0] as { cnpj: string; external_id: string | null };
   const eventos = async (tenant: string) => admin("SELECT payload->'payload' AS payload FROM plataforma.evento WHERE tenant_id = $1 AND nome = 'cadastros.filial.alterada@1' AND payload->>'request_id' LIKE 'req-troca-%'", [tenant]);

@@ -6,9 +6,9 @@
  * e UMA por tenant com as contagens (nenhuma se nada mudou). `clientes_afetados` (RN-CAD-16) soma os clientes com prazo médio na faixa em que a
  * permissão de uso da condição muda (`faixaClientesAfetados`); `null` só quando o papel não pode ler clientes (SEM_PERMISSAO_LEITURA, 42501; avisa por `log`); outro erro da contagem sobe. Idempotente.
  */
-import { auditar, criarEvento, type DestinoAuditoria, type Outbox, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
+import { auditar, type DestinoAuditoria, type Outbox, type Relogio, type Transacao } from '@macuxierp/platform-sdk';
 import { decidirPrazoMedioGravado, faixaClientesAfetados } from '../domain';
-import { eventoSimples } from './eventos';
+import { eventoSimples, gravarProntoNaOutbox } from './eventos';
 import type { Dependencias } from './portas';
 import { SEM_PERMISSAO_LEITURA } from './util';
 
@@ -42,7 +42,7 @@ export function completarPrazosMedios(d: DependenciasCompletarPrazosMedios) {
       const depois = await r.condicoesPagamento.atualizar(c.id, { prazo_medio_dias: decisao.depois, prazo_medio_calculado: true } as never);
       if (!depois) continue;
       const ev = eventoSimples('cadastros.condicao_pagamento.alterada@1', depois);
-      await d.outbox.gravar(tx, criarEvento({ nome: ev.nome, tenant_id: tenant, agregado_id: ev.agregado_id, ator: 'sistema', request_id: requestId, payload: ev.payload }, agora));
+      await gravarProntoNaOutbox(d.outbox, tx, { tenant_id: tenant, request_id: requestId }, ev, agora);
       const faixa = faixaClientesAfetados(c.forma_tpag, decisao.antes, decisao.depois);
       const afetados = faixa === null ? 0 : await r.carga.contarClientesPorPrazoMedio(faixa.de, faixa.ate);
       if (afetados === null) d.log?.warn({ tenant_id: tenant, condicao_id: c.id, codigo: SEM_PERMISSAO_LEITURA }, 'clientes_afetados indisponível: sem permissão de leitura em cadastros.cliente');
