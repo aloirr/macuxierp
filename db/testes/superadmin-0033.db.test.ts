@@ -76,6 +76,7 @@ const INTERNAS = [
   'plataforma.empresa_alvo(uuid, boolean)',
   'plataforma.exigir_rota_plataforma(text)',
   'plataforma.mascarar_email(text)', // 0035
+  'plataforma.superadmin_apto_por_email(text)', // 0076
 ] as const;
 const TODAS = [...PORTAL, ...INTERNAS];
 const MODULOS = ['core', 'cadastros', 'pedido', 'faturamento', 'fiscal', 'integracao_fdv', 'sefaz_simulador'];

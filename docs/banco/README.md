@@ -503,3 +503,6 @@ O `integracao_fdv.sinal.ultimo_codigo` guarda por que o último sinal falhou, pa
 ## Forma de pagamento da /entrada/v1 (T-0057, migração 0074)
 A `cadastros.entrada_forma` guarda a forma nova, ainda sem condição, para o prazo_pagamento que chega depois não ser recusado (único `(tenant_id, external_id)` do upsert). Teste: `db/testes/entrada-forma-0074.db.test.ts`.
 Na 0075 (v0.3.19) o `macuxierp_app` deixa de gravar nela: quem grava a forma é o lote do worker. Mesmo teste.
+
+## /config pelo menu do BKO (v0.3.21, decisão 45 A, migração 0076)
+Cada família de refresh do BKO tem no máximo uma sessão do /config aberta, porque o refresh gira a cada uso e cria uma linha nova. Quem é superadmin (mesmo e-mail) vê "Configuração" no BKO e entra no /config sem digitar a senha de novo. Isso não é um login: a prova é a sessão do BKO, por isso a abertura não zera `falhas_login`, não mexe na trava e não grava `ultimo_acesso_em`. Superadmin travado, inativo ou com troca pendente fica de fora. A `superadmin_abrir_sessao_pelo_bko` lê a `plataforma.sessao` como dona, então a fronteira fica dentro do schema `plataforma`. A `origem_sessao_bko` não tem FK: a `plataforma.sessao` é do tenant e o app a apaga, e a FK prenderia esse DELETE a uma tabela que o app não enxerga. Teste: `db/testes/superadmin-pelo-bko-0076.db.test.ts`.
