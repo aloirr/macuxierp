@@ -51,7 +51,6 @@ input,select{height:var(--mx-altura-campo);border:1px solid var(--mx-cor-borda-c
 .menu::after{content:" ▾"}
 dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--mx-espaco) var(--vao);margin:0}
 dd{margin:2px 0 0;overflow-wrap:anywhere}
-dd.cod{overflow-wrap:normal;white-space:nowrap}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--mx-cor-borda-tabela);border-radius:10px;padding:2px 8px;background:var(--mx-cor-nevoa)}
 .chip b{font-family:var(--mx-fonte-codigo);font-weight:var(--mx-peso-rotulo-pequeno)}
@@ -71,6 +70,7 @@ td.a{text-align:right}
 .tela{display:none}.tela:target{display:block}
 .linha{display:flex;gap:8px;align-items:flex-end}
 .mini{font-size:var(--mx-tamanho-micro)}
+#junta .so-a{display:none}
 .col{display:grid;gap:var(--vao);align-content:start}
 </style></head><body>
 <header class="topo"><img src="../../marca/ativos/2026-11-22-v1/macuxi-erp-a-negativo-grafite.svg" alt="Macuxi ERP"><span class="selo-plat">Plataforma</span><a href="#lista">Empresas</a><span class="dir">Superadmin Fictício <button class="btn2">Sair</button></span></header>
@@ -79,10 +79,10 @@ td.a{text-align:right}
  <div class="acoes"><button class="btn2">Suspender</button></div></div></template>
 
 <template id="cli-cartao"><section class="cartao"><h2>Sistema do cliente → ERP <span class="selo ok">Ligada</span></h2>
- <dl><div><dt>Código</dt><dd class="cod">igarape-erp</dd></div><div><dt>Chave</dt><dd class="cod">mxe_••••8f2a</dd></div><div><dt>Último lote</dt><dd>27/11 17h32</dd></div><div><dt>Lotes hoje</dt><dd>14</dd></div></dl>
+ <dl><div><dt>Código</dt><dd class="cod">igarape-erp</dd></div><div><dt>Chave</dt><dd class="cod">mxe_••••8f2a</dd></div><div class="so-a"><dt>Último lote</dt><dd>27/11 17h32</dd></div><div><dt>Lotes hoje</dt><dd>14</dd></div></dl>
  <div class="linha" style="margin-top:var(--mx-espaco)"><button class="btn2">Trocar chave do cliente</button><button class="btn2">Revogar chave</button></div></section></template>
 <template id="fdv-cartao"><section class="cartao"><h2>ERP → Força de vendas <span class="selo ok">Ligada</span></h2>
- <dl><div><dt>Ligado a</dt><dd>Macuxi FDV</dd></div><div><dt>Código</dt><dd class="cod">erp-igarape-ficticio</dd></div><div><dt>Ambiente</dt><dd>Produção</dd></div><div><dt>Último contato</dt><dd>27/11 17h39</dd></div></dl>
+ <dl><div><dt>Código</dt><dd class="cod">erp-igarape-ficticio</dd></div><div><dt>Ambiente</dt><dd>Produção</dd></div><div class="so-a"><dt>Último contato</dt><dd>27/11 17h39</dd></div></dl>
  <div class="linha" style="margin-top:var(--mx-espaco)"><div class="campo" style="width:140px"><label>Registros por lote</label><input value="5000"></div><button class="btn2">Salvar</button><span style="margin-left:auto"></span><button class="btn2">Testar conexão</button><button class="btn2">Trocar chave do FDV</button></div></section></template>
 <template id="cli-tabela"><section class="cartao tabela"><h2>Cargas recebidas <span class="dir"><button class="btn2">Baixar modelos</button></span></h2><table>
  <thead><tr><th>Cadastro</th><th>Situação</th><th>Última carga</th><th class="n">Registros</th><th class="n">Erros</th><th></th></tr></thead><tbody data-cli></tbody></table></section></template>
@@ -91,7 +91,7 @@ td.a{text-align:right}
 
 <!-- 1. LISTA DE EMPRESAS -->
 <main id="lista" class="tela">
- <div class="cabeca"><h1>Empresas</h1><span class="apoio">6 empresas</span>
+ <div class="cabeca"><h1>Empresas</h1>
   <div class="acoes"><input class="busca" placeholder="Buscar por nome, código ou CNPJ"><button class="btn">Criar empresa</button></div></div>
  <div class="cartao tabela"><table>
   <thead><tr><th>Empresa</th><th>Código</th><th>CNPJ</th><th>Situação</th><th>Módulos</th><th>Força de vendas</th><th>Criada em</th></tr></thead>
@@ -136,7 +136,7 @@ td.a{text-align:right}
    </div></section>
   <section class="cartao c3"><h2>Módulos</h2>
    <ul class="lista"><li><input type="checkbox" checked>Cadastros</li><li><input type="checkbox" checked>Pedidos</li><li><input type="checkbox" checked>Integração FDV</li><li><input type="checkbox">Fiscal</li><li><input type="checkbox" disabled><span class="apoio">Faturamento · exige Fiscal</span></li></ul></section>
-  <section class="cartao tabela c12"><h2>Usuários <span class="apoio mini" style="font-weight:400">4</span><span class="dir"><button class="btn2">Adicionar usuário</button></span></h2><table>
+  <section class="cartao tabela c12"><h2>Usuários <span class="dir"><button class="btn2">Adicionar usuário</button></span></h2><table>
    <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead><tbody>
    <tr><td>Ana Exemplo</td><td>ana@igarape.exemplo.invalid</td><td>Administrador</td><td><span class="selo ok">Ativo</span></td><td>27/11 16h50</td><td class="a"><button class="btn2">Editar</button> <button class="menu">Ações</button></td></tr>
    <tr><td>Bruno Fictício</td><td>bruno@igarape.exemplo.invalid</td><td>Faturamento</td><td><span class="selo ok">Ativo</span></td><td>27/11 15h12</td><td class="a"><button class="btn2">Editar</button> <button class="menu">Ações</button></td></tr>
@@ -167,7 +167,7 @@ document.querySelectorAll('[data-abas]').forEach(n=>{const j=n.dataset.abas==='j
  const it=j?[['Empresa','empresa'],['Integração','junta']]:[['Empresa','empresa'],['Integração','integracao'],['Dados','dados']];
  n.innerHTML=it.map(([t,id])=>`<a class="${n.closest('main').id===id?'at':''}">${t}</a>`).join('');});
 const sel=s=>s==='Carregado'||s==='Em dia'?'ok':s==='Parcial'?'aviso':'neutro';
-const cad=[['Filiais','Carregado','27/11 09h12','2','0'],['Vendedores','Carregado','27/11 09h12','12','0'],['Condições de pagamento','Carregado','26/11 18h40','9','0'],['Produtos','Carregado','27/11 09h58','3.815','2'],['Unidades','Carregado','27/11 09h58','6','0'],['Tabelas de preço','Carregado','27/11 10h05','4','0'],['Estoque','Carregado','27/11 17h30','3.815','0'],['Clientes','Carregado','27/11 10h12','1.240','0']];
+const cad=[['Filiais','Carregado','27/11 09h12','2','0'],['Vendedores','Carregado','27/11 09h12','12','0'],['Condições de pagamento','Carregado','26/11 18h40','9','0'],['Produtos','Parcial','27/11 09h58','3.815','2'],['Unidades','Carregado','27/11 09h58','6','0'],['Tabelas de preço','Carregado','27/11 10h05','4','0'],['Estoque','Carregado','27/11 17h30','3.815','0'],['Clientes','Carregado','27/11 10h12','1.240','0']];
 const fdv=[['Filiais','Em dia','27/11 09h13','2','0'],['Vendedores','Em dia','27/11 15h02','12','0'],['Formas de pagamento','Em dia','26/11 18h41','5','0'],['Condições de pagamento','Em dia','26/11 18h41','9','0'],['Produtos','Em dia','27/11 10h00','3.815','0'],['Preços','Em dia','27/11 17h39','3.815','0'],['Estoque','Parcial','27/11 17h35','3.815','2'],['Clientes','Em dia','27/11 16h10','1.240','0']];
 const lin=(c,b)=>`<tr><td>${c[0]}</td><td><span class="selo ${sel(c[1])}">${c[1]}</span></td><td>${c[2]}</td><td class="n">${c[3]}</td><td class="n">${c[4]}</td><td class="a"><button class="btn2">${b}</button> <button class="menu">Ações</button></td></tr>`;
 document.querySelectorAll('[data-cli]').forEach(t=>t.innerHTML=cad.map(c=>lin(c,'Importar')).join(''));

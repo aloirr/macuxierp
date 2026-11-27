@@ -36,3 +36,12 @@ A grade de 12 colunas, o vão de 16 px e a margem de 24 px já estão em `telas-
 
 ## Fora desta simulação
 O BKO do cliente: o admin do cliente não tem /config e só vê o status das integrações, sem reprocessar (regra do Alexandre, R-20261127-175011). Depois de aprovada, esta Config vira o modelo da Config do FDV.
+
+## Validação (27/11)
+- design-de-marca: 🟢 na segunda rodada. Os 6 achados da primeira foram resolvidos.
+- corretor-redundancias: 🟢 na segunda rodada. RD-a a RD-g foram resolvidos, e os 🟡 da segunda foram aplicados:
+  - saíram as contagens que repetem as linhas da lista;
+  - saiu "Ligado a", que repetia o título;
+  - na opção B, saíram "Último lote" e "Último contato", que repetiam as tabelas;
+  - Produtos passa a "Parcial" quando tem erros.
+- Recomendação do corretor: a opção B. A escolha é do Alexandre.
