@@ -17,7 +17,7 @@ import type {
 
 export class RepositorioCoreMemoria implements RepositorioCore {
   empresaLinha: LinhaEmpresa | null = null;
-  usuarios: (LinhaUsuario & { senha_hash: string; senha_temporaria_hash?: string | null; senha_temporaria_expira_em?: Date | null })[] = [];
+  usuarios: (LinhaUsuario & { senha_hash: string; senha_temporaria_hash?: string | null; senha_temporaria_expira_em?: Date | null; deleted_at?: Date | null })[] = [];
   licencasLinhas: LinhaLicenca[] = [];
   certificadosLinhas: (LinhaCertificado & Partial<NovoCertificado>)[] = [];
   ambientesLinhas: (LinhaAmbiente & { alterado_por?: string })[] = [];
@@ -38,7 +38,7 @@ export class RepositorioCoreMemoria implements RepositorioCore {
 
   async listarUsuarios(_tx: Transacao, f: { limite: number; cursor?: string; busca?: string; inativos: boolean }): Promise<LinhaUsuario[]> {
     const busca = f.busca?.toLowerCase();
-    return this.usuarios
+    return this.vivos()
       .filter((u) => (f.inativos ? true : u.ativo))
       .filter((u) => !busca || u.nome.toLowerCase().includes(busca) || u.email.includes(busca))
       .filter((u) => !f.cursor || u.id > f.cursor)
@@ -46,13 +46,13 @@ export class RepositorioCoreMemoria implements RepositorioCore {
       .slice(0, f.limite);
   }
   async usuarioPorId(_tx: Transacao, id: string): Promise<LinhaUsuario | null> {
-    return this.usuarios.find((u) => u.id === id) ?? null;
+    return this.vivos().find((u) => u.id === id) ?? null;
   }
   async usuarioPorEmail(_tx: Transacao, email: string): Promise<LinhaUsuario | null> {
-    return this.usuarios.find((u) => u.email === email) ?? null;
+    return this.vivos().find((u) => u.email === email) ?? null;
   }
   async usuarioPorExternalId(_tx: Transacao, externalId: string): Promise<LinhaUsuario | null> {
-    return this.usuarios.find((u) => u.external_id === externalId) ?? null;
+    return this.vivos().find((u) => u.external_id === externalId) ?? null;
   }
   async criarUsuario(_tx: Transacao, u: NovoUsuario, agora: Date): Promise<LinhaUsuario> {
     const linha = { ...u, ultimo_acesso_em: null, updated_at: agora, deve_trocar_senha: true };
@@ -65,6 +65,16 @@ export class RepositorioCoreMemoria implements RepositorioCore {
     if (token && token.getTime() !== u.updated_at.getTime()) return null;
     Object.assign(u, patch, { updated_at: agora });
     return u;
+  }
+  async excluirUsuario(_tx: Transacao, id: string, agora: Date): Promise<LinhaUsuario | null> {
+    const u = this.vivos().find((x) => x.id === id);
+    if (!u) return null;
+    Object.assign(u, { ativo: false, deleted_at: agora, updated_at: agora });
+    return u;
+  }
+  /** Os não excluídos (RN-CORE-17), como o `deleted_at IS NULL` do adaptador SQL. */
+  private vivos() {
+    return this.usuarios.filter((u) => !u.deleted_at);
   }
   async definirSenha(_tx: Transacao, id: string, senhaHash: string, agora: Date): Promise<void> {
     const u = this.usuarios.find((x) => x.id === id);
@@ -88,7 +98,7 @@ export class RepositorioCoreMemoria implements RepositorioCore {
   }
   async contarAdministradoresAtivos(_tx: Transacao, exceto: string): Promise<number> {
     this.chamadasAdministradores.push('contar');
-    return this.usuarios.filter((u) => u.id !== exceto && u.perfil === 'administrador' && u.ativo).length;
+    return this.vivos().filter((u) => u.id !== exceto && u.perfil === 'administrador' && u.ativo).length;
   }
 
   async licencas(): Promise<LinhaLicenca[]> {

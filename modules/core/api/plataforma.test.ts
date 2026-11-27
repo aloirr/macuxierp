@@ -107,6 +107,12 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
       chamadas.push(`revelar:${p.campo}`);
       return op.valor ?? 'contato@teste.com.br';
     },
+    // Usuários (0078): cobertos em plataforma-usuarios.test.ts.
+    listarUsuarios: async () => [],
+    criarUsuario: () => Promise.reject(new Error('não usado aqui')),
+    editarUsuario: () => Promise.reject(new Error('não usado aqui')),
+    redefinirSenhaUsuario: () => Promise.reject(new Error('não usado aqui')),
+    mudarSituacaoUsuario: () => Promise.reject(new Error('não usado aqui')),
   };
   return { repo, chamadas, hashes, gravadas, salvas, cnpjs, eventos };
 }
@@ -162,12 +168,14 @@ const LIGADOS_ATE_PEDIDO = [
 ] as const;
 
 describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
-  it('monta as 14 rotas de empresa, nenhuma em /auth', () => {
+  it('monta as 21 rotas de empresa (14 + 7 de usuários, 0078), nenhuma em /auth', () => {
     const { plugin } = montar();
     expect(plugin.rotas.map((r) => `${r.metodo} ${r.caminho}`).sort()).toEqual([
       'GET /empresas',
       'GET /empresas/:id',
       'GET /empresas/:id/cnpj',
+      'GET /empresas/:id/usuarios',
+      'PATCH /empresas/:id/usuarios/:usuario',
       'POST /empresas',
       'POST /empresas/:id/cnpj',
       'POST /empresas/:id/contato/:campo',
@@ -176,6 +184,11 @@ describe('T-0050: plugin de plataforma do core (ADR 0012)', () => {
       'POST /empresas/:id/primeiro-admin/email',
       'POST /empresas/:id/primeiro-admin/senha',
       'POST /empresas/:id/receita',
+      'POST /empresas/:id/usuarios',
+      'POST /empresas/:id/usuarios/:usuario/excluir',
+      'POST /empresas/:id/usuarios/:usuario/inativar',
+      'POST /empresas/:id/usuarios/:usuario/reativar',
+      'POST /empresas/:id/usuarios/:usuario/senha',
       'PUT /empresas/:id/ficha',
       'PUT /empresas/:id/modulos',
       'PUT /empresas/:id/situacao',

@@ -64,13 +64,13 @@ describe('repositório SQL do core', () => {
   it('RN-CORE-01: trava os administradores ativos com SELECT ... FOR UPDATE ordenado por id', async () => {
     const { tx, chamadas } = gravador();
     await new RepositorioCoreSql().travarAdministradoresAtivos(tx);
-    expect(chamadas[0]?.sql).toMatch(/perfil = 'administrador' AND ativo ORDER BY id FOR UPDATE/);
+    expect(chamadas[0]?.sql).toMatch(/perfil = 'administrador' AND ativo AND deleted_at IS NULL ORDER BY id FOR UPDATE/);
   });
 
   it('RN-CORE-01: contar administradores exclui o próprio usuário e só conta os ativos', async () => {
     const { tx, chamadas } = gravador();
     await expect(new RepositorioCoreSql().contarAdministradoresAtivos(tx, 'u')).resolves.toBe(0);
-    expect(chamadas[0]?.sql).toMatch(/perfil = 'administrador' AND ativo AND id <> \$1/);
+    expect(chamadas[0]?.sql).toMatch(/perfil = 'administrador' AND ativo AND deleted_at IS NULL AND id <> \$1/);
     expect(chamadas[0]?.params).toEqual(['u']);
   });
 

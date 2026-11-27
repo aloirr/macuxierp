@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { paraCsv } from '@macuxierp/platform-sdk/listas';
 import { PERFIS, ROTULOS_PERFIL, type Perfil } from '@macuxierp/platform-sdk';
-import { linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas } from './listas';
+import { COLUNAS_AUDITORIA, COLUNAS_USUARIOS, TOM_SITUACAO_USUARIO, linhaAuditoria, linhaLicenca, linhaUsuario, opcoesDePerfil, paginaAuditoria, paginaLicencas } from './listas';
 import { PAGINAS_CORE, paginasVisiveis } from './paginas';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -40,11 +40,18 @@ describe('T-0087: telas do core no BKO (RF-CORE-02/03/05)', () => {
     expect(campos).not.toHaveProperty('depois');
   });
 
+  it("MC-0201 e RN-CORE-17: último acesso e 'Quando' são data (fuso do tenant); Situação é status, uma coluna só", () => {
+    const tipados = [...COLUNAS_USUARIOS, ...COLUNAS_AUDITORIA].filter((c) => c.tipo).map((c) => [c.id, c.tipo]);
+    expect(tipados).toEqual([['situacao', 'status'], ['ultimo_acesso_em', 'data'], ['ocorrido_em', 'data']]);
+    expect(COLUNAS_USUARIOS.map((c) => c.id)).not.toContain('ativo');
+    expect(Object.values(TOM_SITUACAO_USUARIO)).toEqual(['ok', 'alerta', 'neutro']);
+  });
+
   it('linhas da tela: perfil por extenso, data no fuso do tenant, "Nunca entrou" e licença sem prazo', () => {
-    const u = { id: ID, nome: 'Maria Teste', email: 'maria@exemplo.test', perfil: 'gerente' as const, filial_ids: [ID], ativo: true, external_id: null, ultimo_acesso_em: '2026-11-20T16:00:00.000Z', updated_at: '2026-11-20T16:00:00.000Z' };
-    expect(linhaUsuario(u, 'America/Manaus')).toMatchObject({ perfil: 'Gerente', ativo: 'sim' });
+    const u = { id: ID, nome: 'Maria Teste', email: 'maria@exemplo.test', perfil: 'gerente' as const, filial_ids: [ID], ativo: true, situacao: 'ativo' as const, external_id: null, ultimo_acesso_em: '2026-11-20T16:00:00.000Z', updated_at: '2026-11-20T16:00:00.000Z' };
+    expect(linhaUsuario(u, 'America/Manaus')).toMatchObject({ perfil: 'Gerente', situacao: 'Ativo' });
     expect(linhaUsuario(u, 'America/Manaus').ultimo_acesso_em).toContain('12:00');
-    expect(linhaUsuario({ ...u, ultimo_acesso_em: null, ativo: false }, 'America/Manaus')).toMatchObject({ ultimo_acesso_em: 'Nunca entrou', ativo: 'não' });    expect(linhaLicenca({ modulo: 'cadastros', ativo: true, valido_ate: null }, 'America/Manaus')).toEqual({ modulo: 'Cadastros', ativo: 'sim', valido_ate: 'Sem prazo' });
+    expect(linhaUsuario({ ...u, ultimo_acesso_em: null, ativo: false, situacao: 'inativo' as const }, 'America/Manaus')).toMatchObject({ ultimo_acesso_em: 'Nunca entrou', situacao: 'Inativo' });    expect(linhaLicenca({ modulo: 'cadastros', ativo: true, valido_ate: null }, 'America/Manaus')).toEqual({ modulo: 'Cadastros', ativo: 'sim', valido_ate: 'Sem prazo' });
     expect(linhaAuditoria({ id: ID, usuario_id: null, acao: 'core.usuario.senha_redefinida', entidade: 'usuario', entidade_id: null, ocorrido_em: '2026-11-20T16:00:00.000Z' }, 'America/Manaus')).toMatchObject({ usuario_id: 'Sistema', acao: 'Senha redefinida' });
   });
 
