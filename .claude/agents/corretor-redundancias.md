@@ -61,6 +61,7 @@ Todo texto de tela, portal, PDF, e-mail ou mensagem que o usuário **não usa pa
 - O que está **acima da dobra** na tela do BKO precisa ser o que o usuário usa primeiro (faturista: pedidos aprovados a faturar; fiscal: rejeições).
 - Aviso de dado desatualizado repetido em vários cartões → um único aviso global (ex.: fila da SEFAZ ou do Hub).
 - Mesmos componentes reimplementados em telas diferentes (pedir componente comum ao dono do shell).
+- Telas horizontais e destaque no cabeçalho (R-20261127-110345; referência `docs/design/telas-horizontais.md`). São achados: a pilha vertical de cartões que caberiam lado a lado; o rótulo ou cabeçalho igual ao valor (fora do `rotuloDestaque`, sem peso e caixa-alta diferentes, ou destacado só pela cor); cor ou espaço fora dos tokens do `packages/ui`.
 
 ### D. Código
 - Duplicação: `pnpm dlx jscpd --min-tokens 50 --reporters markdown <pasta>` (só leitura; se faltar a ferramenta no repositório, peça ao engenheiro-software como devDependency).
