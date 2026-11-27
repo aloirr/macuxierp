@@ -100,7 +100,7 @@ export function SecaoEnvioFdv({ empresaId, dados, fuso }: { empresaId: string; d
   return (
     <section className="bloco direcao" aria-labelledby="h-dados-saida">
       <TituloLigacao ligacao={LIGACAO_SAIDA} id="h-dados-saida" />
-      <form noValidate aria-label="Registros por lote" onSubmit={(ev) => { ev.preventDefault(); salvarLimite(ev.currentTarget); }}>
+      <form className="form-lote" noValidate aria-label="Registros por lote" onSubmit={(ev) => { ev.preventDefault(); salvarLimite(ev.currentTarget); }}>
         <div className="campo-com-botao">
           <label className="campo">
             <span>Registros por lote</span>
