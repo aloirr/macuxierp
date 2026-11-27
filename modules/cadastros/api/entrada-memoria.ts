@@ -1,6 +1,6 @@
 /** Dublê em memória do `RepositorioEntrada` para os testes (sem PostgreSQL). Não entra em produção. */
 import { randomUUID } from 'node:crypto';
-import type { CorpoLote, CursorHub } from '@macuxierp/platform-sdk/hub-v1';
+import type { CorpoLote, CursorHub, ModoLote } from '@macuxierp/platform-sdk/hub-v1';
 import { maisNovoQue, type ErroGuardado, type LoteGuardado } from '../domain';
 import type { LoteCriado, LotePendente, RepositorioEntrada, SinalGravado } from './entrada-sql';
 
@@ -9,7 +9,7 @@ export interface LoteMemoria {
   credencial_id: string;
   conector_id: string;
   entidade: string;
-  modo: 'completo' | 'delta';
+  modo: ModoLote;
   idempotency_key: string;
   hash_corpo: string;
   corpo: CorpoLote | null;
@@ -90,7 +90,17 @@ export class EntradaMemoria implements RepositorioEntrada {
   async falhar(id: string, codigo: string, agora: Date): Promise<void> {
     const l = this.lotes.find((x) => x.id === id) as LoteMemoria;
     if (l.estado !== 'recebido' && l.estado !== 'processando') return;
+    this.paraFalhou(l, codigo, agora);
+  }
+
+  private paraFalhou(l: LoteMemoria, codigo: string, agora: Date): void {
     Object.assign(l, { estado: 'falhou', erro_codigo: codigo, corpo: null, concluido_em: agora, cursor: null });
+  }
+
+  async expurgarCorpos(corte: Date, codigo: string, agora: Date): Promise<number> {
+    const velhos = this.lotes.filter((l) => (l.estado === 'recebido' || l.estado === 'processando') && l.criado_em < corte);
+    for (const l of velhos) this.paraFalhou(l, codigo, agora);
+    return velhos.length;
   }
 
   async avancarCursor(conectorId: string, entidade: string, cursor: CursorHub, loteId: string): Promise<void> {

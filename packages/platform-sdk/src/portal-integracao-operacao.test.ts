@@ -3,7 +3,6 @@ import { CADASTROS_ZERAR_PORTAL, ZeragemPlataformaResposta } from './portal-carg
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA, ENTIDADES_ENVIO_FDV } from './portal-integracao';
 import {
   ATRASO_SINAL_FDV_MS,
-  AVISO_ZERAR_INATIVA_FDV,
   CADASTRO_ZERAR_POR_ENTIDADE_FDV,
   CAMINHOS_INTEGRACAO_FDV_TENANT,
   InativacaoZerarFdv,
@@ -114,7 +113,6 @@ describe('Zerar por cadastro inativa no FDV (R-20261124-170915-alexandre)', () =
   it('toda entidade da F2 aponta para um cadastro do Zerar', () => {
     expect(Object.keys(CADASTRO_ZERAR_POR_ENTIDADE_FDV)).toEqual([...ENTIDADES_ENVIO_FDV]);
     for (const c of Object.values(CADASTRO_ZERAR_POR_ENTIDADE_FDV)) expect(CADASTROS_ZERAR_PORTAL).toContain(c);
-    expect(AVISO_ZERAR_INATIVA_FDV).toBe('Os registros também serão inativados no Macuxi FDV.');
   });
 
   it('a resposta do zerar leva a inativação pendente por entidade (opcional)', () => {

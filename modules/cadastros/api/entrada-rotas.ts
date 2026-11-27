@@ -14,9 +14,9 @@ import {
 } from '@macuxierp/platform-sdk/hub-v1';
 import { z } from 'zod';
 import { recusarEnvelope, resultadoDoLote } from '../domain';
-import { entradaSql, type RepositorioEntrada } from './entrada-sql';
+import { entradaSql, type LoteCriado, type RepositorioEntrada } from './entrada-sql';
 
-export interface DependenciasRotasEntrada {
+interface DependenciasRotasEntrada {
   entrada(tx: Transacao): RepositorioEntrada;
 }
 
@@ -25,7 +25,7 @@ const ConsultaLote = z.object({
 });
 const IdLote = z.string().uuid();
 
-const aceito = (l: { id: string; entidade: string; modo: 'completo' | 'delta'; recebidos: number }, repetido: boolean): LoteAceito => ({
+const aceito = (l: Omit<LoteCriado, 'hash_corpo'>, repetido: boolean): LoteAceito => ({
   lote_id: l.id, status: 'recebido', entidade: l.entidade as LoteAceito['entidade'], modo: l.modo, recebidos: l.recebidos,
   ...(repetido ? { repetido: true } : {}), consulta: `${PREFIXO_ENTRADA}${CAMINHOS_ENTRADA.lote.replace(':id', l.id)}`,
 });
@@ -38,7 +38,7 @@ export function criarRotasEntrada(d: DependenciasRotasEntrada): RotaEntrada[] {
         const chave = chaveDoPedido(e.cabecalhos, 'obrigatoria') as string;
         const corpo = e.corpo;
         const recusa = recusarEnvelope(corpo);
-        if (recusa) throw new ErroApi(recusa.status, recusa.codigo, recusa.motivo);
+        if (!recusa.ok) throw new ErroApi(recusa.status, recusa.codigo, recusa.motivo);
         const recebidos = corpo.registros.length + corpo.linhas_invalidas.length + corpo.linhas_invalidas_omitidas;
         if (recebidos < 1) throw erros.validacao({ registros: 'O lote precisa de ao menos um registro ou linha inválida' });
         const hash = hashDoPedido({ corpo, consulta: null, params: {}, todosArquivos: {} });

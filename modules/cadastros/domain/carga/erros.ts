@@ -9,6 +9,8 @@ export interface ErroLinha {
   motivo: string;
   /** Só no `CARGA_DEPENDENCIA` (RF-CAD-11): arquivo que falta carregar. Ausente nos demais códigos. */
   entidade_faltante?: EntidadeCarga;
+  /** Campo ausente que a regra exige (ex.: NCM do produto novo, RN-CAD-04): a entrada o devolve como `campo_obrigatorio`, sem ler o texto do motivo. */
+  obrigatorio?: true;
 }
 
 /** Mensagens fixas por regra: as do domain citam o valor (IBGE, UF), que não pode ir ao relatório. Exceção à D9 só para códigos fiscais (decisão do PO, 23/11): RN-CAD-04 repassa a mensagem com NCM/CEST. */

@@ -3,10 +3,10 @@
  * recentes primeiro. Só colunas nomeadas, nunca o `payload` (o papel do app nem o enxerga) e sempre com `tenant_id`. O
  * documento sai só mascarado; a linha expurgada (RN-INF-06) sai com o texto fixo "—" (`linhaDaRotaClienteRecebido`).
  */
-import { PaginaClientesRecebidosFdv, type SituacaoClienteRecebidoFdv, type Transacao } from '@macuxierp/platform-sdk';
+import { PaginaClientesRecebidosFdv, type ClienteRecebidoFdv, type SituacaoClienteRecebidoFdv, type Transacao } from '@macuxierp/platform-sdk';
 import { linhaDaRotaClienteRecebido, type LinhaClienteRecebido } from '../domain';
 
-export interface FiltroClientesRecebidos {
+interface FiltroClientesRecebidos {
   situacao?: SituacaoClienteRecebidoFdv;
   cursor?: string;
   limite: number;
@@ -36,13 +36,14 @@ export async function lerLinhasClientesRecebidos(tx: Transacao, tenantId: string
   );
 }
 
-/** Total de clientes recebidos (última revisão por `cliente_uuid`), do tenant, para o Log. */
-export async function contarClientesRecebidos(tx: Transacao, tenantId: string): Promise<number> {
+/** Total de clientes recebidos (última revisão por `cliente_uuid`), do tenant (e da situação, quando vier), para o Log e o export. */
+export async function contarClientesRecebidos(tx: Transacao, tenantId: string, situacao?: SituacaoClienteRecebidoFdv): Promise<number> {
   const r = await tx.consultar<{ n: number }>(
     `SELECT count(*)::int AS n FROM integracao_fdv.cliente_recebido c
       WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
-        ${FILTRO_ULTIMA_REVISAO}`,
-    [tenantId],
+        ${FILTRO_ULTIMA_REVISAO}
+        AND ($2::text IS NULL OR c.situacao = $2)`,
+    [tenantId, situacao ?? null],
   );
   return r[0]?.n ?? 0;
 }
@@ -51,4 +52,38 @@ export async function listarClientesRecebidos(tx: Transacao, tenantId: string, f
   const linhas = await lerLinhasClientesRecebidos(tx, tenantId, f);
   const itens = linhas.slice(0, f.limite).map((l) => linhaDaRotaClienteRecebido(l));
   return { itens, proximo_cursor: linhas.length > f.limite ? (itens.at(-1)?.id ?? null) : null };
+}
+
+/** Teto de linhas de todo CSV do módulo (lotes, log de erros, recebidos) e tamanho da página de leitura dos recebidos (keyset por `chegou_em`, `id`). */
+export const MAXIMO_LINHAS_CSV = 10_000;
+const PAGINA_RECEBIDOS_CSV = 500;
+
+interface RecebidosParaExportar {
+  itens: ClienteRecebidoFdv[];
+  /** Há mais recebidos além do teto: o arquivo parou nele e a tela avisa. */
+  cortado: boolean;
+}
+
+/**
+ * Export completo (decisão 21 A): lê todos os recebidos do tenant, em páginas por cursor (sempre com `tenant_id`), até o teto. Passou do
+ * teto: devolve só o teto, os mais recentes, com `cortado = true`. Só o que a rota já devolve (documento mascarado, nunca o payload).
+ */
+export async function lerRecebidosParaExportar(
+  tx: Transacao, tenantId: string, f: { situacao?: SituacaoClienteRecebidoFdv; teto?: number; pagina?: number } = {},
+): Promise<RecebidosParaExportar> {
+  const teto = f.teto ?? MAXIMO_LINHAS_CSV;
+  const pagina = f.pagina ?? PAGINA_RECEBIDOS_CSV;
+  const itens: ClienteRecebidoFdv[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const linhas = await lerLinhasClientesRecebidos(tx, tenantId, { situacao: f.situacao, cursor, limite: pagina });
+    const daPagina = linhas.slice(0, pagina);
+    for (const l of daPagina) {
+      if (itens.length >= teto) return { itens, cortado: true };
+      itens.push(linhaDaRotaClienteRecebido(l));
+    }
+    if (linhas.length <= pagina) return { itens, cortado: false };
+    if (itens.length >= teto) return { itens, cortado: true };
+    cursor = daPagina.at(-1)!.id;
+  }
 }
