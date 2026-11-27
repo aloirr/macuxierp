@@ -3,15 +3,12 @@
  * da migração 0065 (papel macuxierp_config, sessão de superadmin) e a emissão real pela rota POST /notas. Nota, XML e evento fiscal
  * nunca são tocados. Sem Postgres o teste pula (PG_DISPONIVEL, `bash db/scripts/pg-local.sh`); com Postgres e sem a 0065 ele falha.
  */
-import { randomUUID } from 'node:crypto';
 import { OutboxPg, type BancoPg } from '@macuxierp/platform-sdk/pg';
-import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfig, criarBancoEfemero, criarTenant, PG_DISPONIVEL, semearSessaoSuperadmin, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ErroApi } from '@macuxierp/platform-sdk';
 import { pedidoNovoNaFila, pluginSql, uuid } from './apoio-teste';
 import { pedidosAprovadosSql, repositoriosSql } from './sql';
-
-const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdGZpY3RpY2lv$aGFzaGZpY3RpY2lv';
 
 describe.skipIf(!PG_DISPONIVEL)('descarte do a faturar (faturamento.portal_descartar_a_faturar, migração 0065)', () => {
   let efemero: BancoEfemero;
@@ -23,23 +20,9 @@ describe.skipIf(!PG_DISPONIVEL)('descarte do a faturar (faturamento.portal_desca
   const status = async (pid: string): Promise<unknown> => (await q('SELECT status FROM faturamento.pedido_a_faturar WHERE pedido_id = $1', [pid]))[0]?.status;
   const contagens = async () => (await q('SELECT (SELECT count(*)::int FROM faturamento.nota) AS notas, (SELECT count(*)::int FROM faturamento.nota_xml) AS xmls, (SELECT count(*)::int FROM faturamento.nota_evento) AS eventos'))[0];
 
-  /** Uma transação como macuxierp_config com a sessão de superadmin (o que o `comPlataforma` faz). */
-  async function descartar(ids: string[]): Promise<{ a_faturar_cancelados: number }> {
-    const c = await efemero.admin.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query('SET LOCAL ROLE macuxierp_config');
-      await c.query(`SET LOCAL macuxierp.sessao_superadmin = '${sessao}'`);
-      const r = (await c.query('SELECT faturamento.portal_descartar_a_faturar($1::uuid, $2::uuid[]) AS r', [A, ids])).rows[0]!.r;
-      await c.query('COMMIT');
-      return r;
-    } catch (e) {
-      await c.query('ROLLBACK');
-      throw e;
-    } finally {
-      c.release();
-    }
-  }
+  /** Uma transação como macuxierp_config com a sessão de superadmin (o que o `comPlataforma` faz), pelo SDK. */
+  const descartar = (ids: string[]): Promise<{ a_faturar_cancelados: number }> =>
+    comoConfig(efemero.admin, sessao, async (consultar) => (await consultar('SELECT faturamento.portal_descartar_a_faturar($1::uuid, $2::uuid[]) AS r', [A, ids]))[0]!.r as { a_faturar_cancelados: number });
   const novoNaFila = () => app.comTenant(A, (tx) => pedidoNovoNaFila(tx, (t, p) => pedidosAprovadosSql.gravar(t, p)));
 
   /** A emissão real (rota POST /notas, fila e numeração do banco): devolve o erro da rota ou o resultado. */
@@ -53,13 +36,8 @@ describe.skipIf(!PG_DISPONIVEL)('descarte do a faturar (faturamento.portal_desca
     app = efemero.banco('macuxierp_app');
     const temFuncao = (await q("SELECT to_regprocedure('faturamento.portal_descartar_a_faturar(uuid, uuid[])') IS NOT NULL AS ok"))[0]!.ok;
     expect(temFuncao, 'faturamento.portal_descartar_a_faturar (migração 0065) ausente no banco').toBe(true);
-    await q(`DO $$ BEGIN IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN GRANT macuxierp_config TO CURRENT_USER; END IF; EXCEPTION WHEN OTHERS THEN NULL; END $$`);
     A = await criarTenant(efemero.admin, 'fat-descarte', ['faturamento']);
-    sessao = randomUUID();
-    const sa = randomUUID();
-    await q(`INSERT INTO plataforma.superadmin (id, email, nome, senha_hash, deve_trocar_senha, ativo) VALUES ($1, 'sa-descarte@plataforma.teste', 'Superadmin Ficticio', $2, false, true)`, [sa, HASH]);
-    await q(`INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_em, ultimo_uso_em)
-      VALUES ($1, $2, encode(sha256(convert_to($3::text, 'UTF8')), 'hex'), now() + interval '8 hours', now())`, [sessao, sa, sessao]);
+    sessao = (await semearSessaoSuperadmin(efemero.admin)).sessao_id;
   }, 120_000);
   afterAll(async () => {
     await efemero?.remover();
