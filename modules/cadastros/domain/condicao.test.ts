@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FORMAS_A_VISTA, MAX_DIAS } from '../contracts';
 import {
-  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_FAIXA, completarPrazoMedio, derivarParcelasCartao, prazoMedioEfetivo, validarCondicaoPagamento as v,
+  MOTIVO_A_VISTA, MOTIVO_BOLETO, MOTIVO_CARTAO_PRAZOS, MOTIVO_DESCRICAO, MOTIVO_FORMA_NAO_ACEITA, MOTIVO_PRAZO_MEDIO, MOTIVO_PRAZO_MEDIO_FAIXA, completarPrazoMedio, decidirPrazoMedioGravado, derivarParcelasCartao, faixaClientesAfetados, prazoMedioForaDaFaixa, prazoMedioEfetivo, validarCondicaoPagamento as v,
 } from './condicao';
 
 const rn = (m: string, campo: string, r = 'RN-CAD-09') => [{ rn: r, campo, mensagem: m }];
@@ -131,5 +131,36 @@ describe('prazo médio efetivo (RN-CAD-15, decisão 14 A)', () => {
     const vazio = { prazos_dias: [30], prazo_medio_dias: null };
     expect(completarPrazoMedio({ prazos_dias: [30, 60] }, vazio)).toMatchObject({ prazo_medio_dias: 45, prazo_medio_calculado: true });
     expect(completarPrazoMedio({ forma_tpag: 'x' } as { prazos_dias?: number[] }, vazio)).toEqual({ forma_tpag: 'x' });
+  });
+});
+
+describe('v0.3.18: prazos médios gravados (RN-CAD-15, RN-CAD-16)', () => {
+  it('RN-CAD-15: validarCondicaoPagamento com semFaixa não confere a faixa (linha que muda só a forma)', () => {
+    const c = { forma_tpag: '15', prazos_dias: [28, 56], prazo_medio_dias: 90 };
+    expect(v(c)).toHaveLength(1);
+    expect(v({ ...c, semFaixa: true })).toEqual([]);
+  });
+
+  it('RN-CAD-15: prazoMedioForaDaFaixa só vale com número e parcelas', () => {
+    expect(prazoMedioForaDaFaixa([28, 56], 57)).toBe(true);
+    expect(prazoMedioForaDaFaixa([28, 56], 27)).toBe(true);
+    expect(prazoMedioForaDaFaixa([28, 56], 28)).toBe(false);
+    expect(prazoMedioForaDaFaixa([], 5)).toBe(false);
+    expect(prazoMedioForaDaFaixa([28], null)).toBe(false);
+  });
+
+  it('RN-CAD-15 (D1 A): decide completar o nulo, corrigir o fora da faixa e deixar o resto', () => {
+    expect(decidirPrazoMedioGravado({ prazos_dias: [30, 45], prazo_medio_dias: null })).toEqual({ acao: 'completar', antes: null, depois: 38 });
+    expect(decidirPrazoMedioGravado({ prazos_dias: [30, 60], prazo_medio_dias: 90 })).toEqual({ acao: 'corrigir', antes: 90, depois: 45 });
+    expect(decidirPrazoMedioGravado({ prazos_dias: [30, 60], prazo_medio_dias: 0 })).toEqual({ acao: 'corrigir', antes: 0, depois: 45 });
+    expect(decidirPrazoMedioGravado({ prazos_dias: [30, 60], prazo_medio_dias: 30 })).toEqual({ acao: 'nenhuma' });
+    expect(decidirPrazoMedioGravado({ prazos_dias: [], prazo_medio_dias: null })).toEqual({ acao: 'nenhuma' });
+  });
+
+  it('RN-CAD-16: faixa de prazo médio de cliente afetada; o cartão (03) não depende dele', () => {
+    expect(faixaClientesAfetados('15', 90, 45)).toEqual({ de: 45, ate: 90 });
+    expect(faixaClientesAfetados('15', 10, 45)).toEqual({ de: 10, ate: 45 });
+    expect(faixaClientesAfetados('15', null, 38)).toEqual({ de: 38, ate: null });
+    expect(faixaClientesAfetados('03', 90, 45)).toBeNull();
   });
 });
