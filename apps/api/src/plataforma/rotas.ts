@@ -273,6 +273,8 @@ async function executarPorEtapa(
   c: Contexto,
   p: { sessao: { superadmin_id: string; sessao_id: string } | null; lido: Lido; agora: Date; inicio: number },
 ) {
+  // Mesmo critério do multipart: sem sessão, 401 antes de ler o corpo (senão o Zod do corpo responderia 400).
+  if (!p.sessao) throw erros.naoAutenticado();
   const limite = rota.tempoMaximoMs;
   if (p.sessao && limite !== undefined && c.cronometro() - p.inicio > limite) throw erros.tempoEsgotado(Math.round(limite / 1000));
   const e = entradaDaChamada(req, rota, p.lido);
