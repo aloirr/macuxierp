@@ -18,6 +18,9 @@ const BLOQUEIOS_TROCA_CNPJ: Record<string, MotivoBloqueioCnpj> = {
   '23505': 'cnpj_em_uso',
 };
 
+/** Teto de página da empresas_listar (0033: limite 1..201). */
+const LIMITE_PAGINA_PLATAFORMA = 201;
+
 const repetido = (e: unknown): boolean => sqlstate(e) === '23505';
 
 async function semRepetido<R>(fn: () => Promise<R>): Promise<R | null> {
@@ -194,8 +197,13 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
   }
 
   async cnpjEmUso(tx: Transacao, p: { id: string; cnpj: string }): Promise<boolean> {
-    const l = await primeiraLinha<{ r: boolean }>(tx, 'SELECT plataforma.empresa_cnpj_em_uso($1::uuid, $2) r', [p.id, p.cnpj]);
-    return l.r === true;
+    // Sem função nova: percorre a empresas_listar (empresas vivas, sem a de referência) pelo cursor. Troca rara, só do superadmin.
+    for (let cursor: string | undefined; ; ) {
+      const pagina = await this.listarEmpresas(tx, { cursor, limite: LIMITE_PAGINA_PLATAFORMA });
+      if (pagina.some((e) => e.id !== p.id && e.cnpj === p.cnpj)) return true;
+      if (pagina.length < LIMITE_PAGINA_PLATAFORMA) return false;
+      cursor = pagina[pagina.length - 1]!.id;
+    }
   }
 
   /** O evento sai na empresa_trocar_cnpj (0077), mesma transação; o cadastros consome e atualiza a filial padrão (RN-CORE-14). */

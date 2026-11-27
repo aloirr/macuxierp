@@ -251,17 +251,8 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       const cnpjDe = async (id: string): Promise<string> => (await b.admin.query('SELECT cnpj FROM core.empresa WHERE tenant_id = $1', [id])).rows[0].cnpj;
       const trocar = (id: string, cnpj_novo: string, request_id?: string) =>
         rota(id, semPrefixo(ROTAS_FICHA.trocarCnpj), {}, true, { corpo: { cnpj_novo, confirmacao: true }, request_id }) as Promise<{ corpo: unknown }>;
-      let tem0077 = false;
-      let temEmUso = false;
-      beforeAll(async () => {
-        const { rows } = await b.admin.query(`SELECT to_regprocedure('plataforma.empresa_trocar_cnpj(uuid,text,text)') IS NOT NULL t,
-          to_regprocedure('plataforma.empresa_cnpj_em_uso(uuid,text)') IS NOT NULL u`);
-        tem0077 = rows[0].t;
-        temEmUso = rows[0].u;
-      });
 
-      it('Salvar grava a ficha com a fonte manual e audita só nomes de campo; repetir o mesmo conteúdo é sem_mudanca', async (ctx) => {
-        if (!tem0077) return ctx.skip(); // a 0077 ainda não está no banco de teste (PR do banco-dados)
+      it('Salvar grava a ficha com a fonte manual e audita só nomes de campo; repetir o mesmo conteúdo é sem_mudanca', async () => {
         const id = await tenantComEmpresa(cnpjFicticio());
         const edicao: EdicaoFicha = { ...FICHA, origem: 'manual', razao_social: 'EMPRESA FICTICIA FICHA LTDA', ie: 'ISENTO' };
         const salvar = () => rota(id, semPrefixo(ROTAS_FICHA.salvar), {}, true, { metodo: 'PUT', corpo: edicao }) as Promise<{ corpo: { estado: string; campos_alterados?: string[]; ficha: Record<string, unknown> } }>;
@@ -277,8 +268,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
         expect((await salvar()).corpo.estado).toBe('sem_mudanca');
       });
 
-      it('a troca grava o CNPJ, publica um core.empresa.cnpj_alterado@1 válido e audita sem nenhum CNPJ', async (ctx) => {
-        if (!tem0077 || !temEmUso) return ctx.skip();
+      it('a troca grava o CNPJ, publica um core.empresa.cnpj_alterado@1 válido e audita sem nenhum CNPJ', async () => {
         const atual = cnpjFicticio();
         const novo = cnpjFicticio();
         const id = await tenantComEmpresa(atual);
@@ -295,8 +285,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
         expect(a).not.toContain(atual);
       });
 
-      it('CNPJ em uso por outra empresa: o domínio bloqueia antes da função (o próprio CNPJ não conta) e não há evento', async (ctx) => {
-        if (!tem0077 || !temEmUso) return ctx.skip();
+      it('CNPJ em uso por outra empresa: o domínio bloqueia antes da função (o próprio CNPJ não conta) e não há evento', async () => {
         const doOutro = cnpjFicticio();
         const atual = cnpjFicticio();
         await tenantComEmpresa(doOutro);
@@ -308,8 +297,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
         expect(await eventosDe(id)).toEqual([]);
       });
 
-      it('a função do banco também recusa o CNPJ em uso (23505 cnpj_em_uso); empresa excluída não conta', async (ctx) => {
-        if (!tem0077) return ctx.skip();
+      it('a função do banco também recusa o CNPJ em uso (23505 cnpj_em_uso); empresa excluída não conta', async () => {
         const doOutro = cnpjFicticio();
         const outra = await tenantComEmpresa(doOutro);
         const id = await tenantComEmpresa(cnpjFicticio());
@@ -318,6 +306,7 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
         expect(await eventosDe(id)).toEqual([]);
         // hora-fixa-ok: o deleted_at só precisa estar preenchido; nunca é comparado
         await b.admin.query('UPDATE core.empresa SET deleted_at = now() WHERE tenant_id = $1', [outra]);
+        expect(await comPlataforma((tx) => repo.cnpjEmUso(tx, { id, cnpj: doOutro }))).toBe(false);
         expect(await comPlataforma((tx) => repo.trocarCnpj(tx, { id, cnpj: doOutro, request_id: randomUUID() }), true)).toMatchObject({ cnpj: doOutro });
       });
     });

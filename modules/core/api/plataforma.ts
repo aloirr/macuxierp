@@ -101,7 +101,7 @@ export interface RepositorioPlataforma {
    * (RN-CORE-14). Devolve `event_id`. Bloqueios do banco (23514, MXC05, MXC06, 23505) voltam como `bloqueado`; P0002 = 404 e 55000 = 409.
    */
   trocarCnpj(tx: Transacao, p: { id: string; cnpj: string; request_id: string }): Promise<{ cnpj: string; event_id: string } |{ bloqueado: MotivoBloqueioCnpj }>;
-  /** RN-CORE-16, `plataforma.empresa_cnpj_em_uso(uuid, text)`: outra empresa não excluída já usa o CNPJ (só leitura, sem auditoria). */
+  /** RN-CORE-16: outra empresa viva (não excluída, fora a de referência) já usa o CNPJ. Só leitura, sem auditoria; o banco confere de novo na troca (23505). */
   cnpjEmUso(tx: Transacao, p: { id: string; cnpj: string }): Promise<boolean>;
 }
 

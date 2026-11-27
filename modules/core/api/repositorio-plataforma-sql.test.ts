@@ -125,12 +125,18 @@ describe('adaptador SQL da plataforma: salvar ficha e trocar CNPJ (RN-CORE-16)',
     expect(await repo.trocarCnpj(tx, { id: ID, cnpj: '11444777000161', request_id: 'r' })).toEqual({ cnpj: '11444777000161', event_id: 'ev-1' });
   });
 
-  it('cnpjEmUso chama a empresa_cnpj_em_uso com o id e o CNPJ e devolve o booleano', async () => {
-    const chamadas: [string, unknown[]][] = [];
-    const tx = (r: boolean): Transacao => ({ consultar: (async (s: string, p: unknown[]) => (chamadas.push([s, p]), [{ r }])) as never });
-    expect(await repo.cnpjEmUso(tx(true), { id: ID, cnpj: '11444777000161' })).toBe(true);
-    expect(await repo.cnpjEmUso(tx(false), { id: ID, cnpj: '11444777000161' })).toBe(false);
-    expect(chamadas[0]).toEqual(['SELECT plataforma.empresa_cnpj_em_uso($1::uuid, $2) r', [ID, '11444777000161']]);
+  it('cnpjEmUso percorre a empresas_listar pelo cursor e ignora a própria empresa', async () => {
+    const OUTRA = '00000000-0000-4000-8000-0000000000e2';
+    const pagina1 = Array.from({ length: 201 }, (_, i) => ({ e: { id: i === 0 ? ID : `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, cnpj: i === 0 ? '11444777000161' : null } }));
+    const chamadas: unknown[][] = [];
+    const tx = (segunda: unknown[]): Transacao => ({
+      consultar: (async (_s: string, p: unknown[]) => (chamadas.push(p), chamadas.length === 1 ? pagina1 : segunda)) as never,
+    });
+    expect(await repo.cnpjEmUso(tx([{ e: { id: OUTRA, cnpj: '11444777000161' } }]), { id: ID, cnpj: '11444777000161' })).toBe(true);
+    expect(chamadas[1]).toEqual([null, pagina1[200]!.e.id, 201]);
+    chamadas.length = 0;
+    expect(await repo.cnpjEmUso(tx([]), { id: ID, cnpj: '11444777000161' })).toBe(false);
+    expect(chamadas).toHaveLength(2);
   });
 
   it('salvarFicha manda a ficha direta (sem campos_alterados) e devolve alterados do banco', async () => {
