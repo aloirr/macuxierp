@@ -55,6 +55,10 @@ export const ACOES_PLATAFORMA = [
   'plataforma.cadastros.zerar',
   // T-0057 E3 (ADR 0014 §4): ler, criar ou trocar e revogar a credencial da /entrada/v1 (as funções `portal_entrada_*` da 0071)
   'plataforma.cadastros.entrada',
+  // v0.3.24 (RN-CORE-16): salvar a Ficha da Receita e trocar o CNPJ, gravadas por `empresa_salvar_ficha` e
+  // `empresa_trocar_cnpj` da 0077
+  'plataforma.empresa.salvar_ficha',
+  'plataforma.empresa.trocar_cnpj',
 ] as const;
 export type AcaoPlataforma = (typeof ACOES_PLATAFORMA)[number];
 

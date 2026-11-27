@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -48,14 +48,36 @@ esac
 exit 0
 `;
 
+// curl falso (laço pelo domínio, v0.3.24): a n-ésima chamada de <caminho> devolve a linha n de $EST/codigos_<caminho>
+// (padrão 200) e tempo de n ms; 000 sai com 28, como o timeout do curl. Cada chamada vai para $EST/curl_chamadas.
+const CURL_FALSO = `#!/usr/bin/env bash
+url="\${*: -1}"; p="\${url#*://*/}"; p="\${p//\\//_}"
+echo "$$ $url" >> "$EST/curl_chamadas"
+n=$(( $(cat "$EST/ncurl_$p" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$EST/ncurl_$p"
+cod="$(sed -n "\${n}p" "$EST/codigos_$p" 2>/dev/null)"; cod="\${cod:-200}"
+[ -n "\${CURL_DORME:-}" ] && sleep "$CURL_DORME"
+printf '%s 0.%03d' "$cod" "$n"
+[ "$cod" = 000 ] && exit 28
+exit 0
+`;
+// date falso: a hora do laço só sai no fuso de Manaus
+const DATE_FALSO = `#!/usr/bin/env bash
+if [ "$1" = +%H:%M:%S ]; then [ "\${TZ:-}" = America/Manaus ] && echo 09:08:07 || echo FUSO-ERRADO; exit 0; fi
+exec /bin/date "$@"
+`;
+
 let n = 0;
 /** Roda um trecho de bash com o comum.sh e o troca.sh carregados, num estado novo. */
-function rodar(trecho, { replicas = { 'macuxierp-web': ['velho1'] }, saude = {}, env = {} } = {}) {
+function rodar(trecho, { replicas = { 'macuxierp-web': ['velho1'] }, saude = {}, env = {}, codigos = {} } = {}) {
   const est = join(raiz, `e${n++}`);
   const bin = join(est, 'bin');
   mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, 'docker'), DOCKER_FALSO);
-  chmodSync(join(bin, 'docker'), 0o755);
+  mkdirSync(join(est, 'tmp'));
+  for (const [nome, corpo] of Object.entries({ docker: DOCKER_FALSO, curl: CURL_FALSO, date: DATE_FALSO })) {
+    writeFileSync(join(bin, nome), corpo);
+    chmodSync(join(bin, nome), 0o755);
+  }
+  for (const [p, lista] of Object.entries(codigos)) writeFileSync(join(est, `codigos_${p}`), lista.map((c) => `${c}\n`).join(''));
   writeFileSync(join(est, 'cont'), '0');
   for (const [svc, ids] of Object.entries(replicas)) writeFileSync(join(est, `svc_${svc}`), ids.map((i) => `${i}\n`).join(''));
   for (const [id, st] of Object.entries(saude)) writeFileSync(join(est, `saude_${id}`), `${st}\n`);
@@ -68,13 +90,22 @@ ${trecho}`;
   const r = spawnSync('bash', ['-c', script], {
     cwd: est,
     encoding: 'utf8',
-    env: { PATH: `${bin}:${process.env.PATH}`, EST: est, MACUXIERP_TROCA_DRENO_S: '0', MACUXIERP_TROCA_PASSO_S: '1', MACUXIERP_TROCA_ESPERA_S: '3', ...env },
+    env: { PATH: `${bin}:${process.env.PATH}`, EST: est, TMPDIR: join(est, 'tmp'), MACUXIERP_TROCA_DRENO_S: '0', MACUXIERP_TROCA_PASSO_S: '1', MACUXIERP_TROCA_ESPERA_S: '3', ...env },
     timeout: 30_000,
   });
   const ler = (f) => (existsSync(join(est, f)) ? readFileSync(join(est, f), 'utf8').split('\n').filter(Boolean) : []);
-  return { ...r, chamadas: ler('chamadas'), replicas: (svc) => ler(`svc_${svc}`), fora: ler('fora_do_tunel'), parados: ler('parados'), est };
+  return { ...r, chamadas: ler('chamadas'), replicas: (svc) => ler(`svc_${svc}`), fora: ler('fora_do_tunel'), parados: ler('parados'), curl: () => ler('curl_chamadas'), tmp: () => readdirSync(join(est, 'tmp')), ler, est };
 }
 const indice = (chamadas, re) => chamadas.findIndex((c) => re.test(c));
+const LINHA = (rot, codigos) => new RegExp(`^\\[implantar\\] 09:08:07 laço ${rot} durante a troca: (\\d+) chamadas, códigos \\{${codigos}\\}, maior tempo (\\d+) ms$`, 'm');
+const vivo = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 describe('troca.sh (48 A): troca sem parada', () => {
   it('caminho feliz: a nova sobe ao lado, fica saudável, e só então a velha sai do túnel, para e é removida', () => {
@@ -160,5 +191,89 @@ todas_ok macuxierp-api so_a2 v9; echo "uma=$?"`, { replicas: { 'macuxierp-web': 
     assert.match(r.stdout, /vazio=1/);
     assert.match(r.stdout, /todas=0/);
     assert.match(r.stdout, /uma=1/);
+  });
+});
+
+describe('troca.sh (v0.3.24, adendo 48 A): laço de curl pelo domínio durante a troca', () => {
+  it('(a) todas 200: uma linha por URL no formato, hora de Manaus, base padrão, e a troca passa', () => {
+    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', { env: { MACUXIERP_TROCA_DRENO_S: '2' } });
+    assert.match(r.stdout, /saida=0/, r.stderr);
+    for (const rot of ['/login', '/v1/saude']) {
+      const linhas = r.stdout.split('\n').filter((l) => l.includes(`laço ${rot} `));
+      assert.equal(linhas.length, 1, r.stdout);
+      const m = linhas[0].match(LINHA(rot, '200: (\\d+)'));
+      assert.ok(m, linhas[0]);
+      assert.ok(Number(m[1]) >= 2, `poucas chamadas num dreno de 2 s: ${linhas[0]}`);
+      assert.equal(m[2], m[1]);
+      assert.equal(m[3], m[1], 'maior tempo = a última chamada do curl falso (n ms)');
+    }
+    const urls = new Set(r.curl().map((l) => l.split(' ')[1]));
+    assert.deepEqual([...urls].sort(), ['https://erp.macuxifdv.com.br/login', 'https://erp.macuxifdv.com.br/v1/saude']);
+    assert.deepEqual(r.tmp(), [], 'sobrou arquivo temporário');
+  });
+
+  it('a base vem de MACUXIERP_URL_PUBLICA (ambiente ou .env), sem barra dupla', () => {
+    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', { env: { MACUXIERP_URL_PUBLICA: 'https://outra.invalid/' } });
+    assert.match(r.stdout, /saida=0/, r.stderr);
+    assert.ok(r.curl().every((l) => /^\d+ https:\/\/outra\.invalid\/(login|v1\/saude)$/.test(l)), r.curl().join('\n'));
+    const e = rodar('echo MACUXIERP_URL_PUBLICA=https://env.invalid > .env; laco_url_base');
+    assert.match(e.stdout, /^https:\/\/env\.invalid$/m);
+  });
+
+  it('(b) um 502 no meio: a linha agrupa os códigos e a troca falha (o implantar.sh volta atrás pelo mesmo caminho)', () => {
+    const r = rodar(
+      `trocar_servico macuxierp-web; echo "saida=$?"
+trocar_servico macuxierp-web; echo "volta=$?"`,
+      { env: { MACUXIERP_TROCA_DRENO_S: '3' }, codigos: { v1_saude: [200, 502] } },
+    );
+    assert.match(r.stdout, /saida=1/);
+    assert.match(r.stderr, /macuxierp-web: o laço pelo domínio viu código diferente de 200 durante a troca: volta atrás/);
+    const [primeira] = r.stdout.split('\n').filter((l) => l.includes('laço /v1/saude '));
+    assert.match(primeira, LINHA('/v1/saude', '200: \\d+, 502: 1'));
+    assert.match(r.stdout, LINHA('/login', '200: \\d+'));
+    // a troca seguinte (a volta, com todas 200) passa e deixa uma réplica só
+    assert.match(r.stdout, /volta=0/, r.stderr);
+    assert.deepEqual(r.replicas('macuxierp-web'), ['novo2']);
+    assert.deepEqual(r.tmp(), []);
+  });
+
+  it('curl sem resposta conta como 000 e também derruba a troca', () => {
+    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', { codigos: { login: ['000'] } });
+    assert.match(r.stdout, /saida=1/);
+    assert.match(r.stdout, LINHA('/login', '000: 1(, 200: \\d+)?'));
+  });
+
+  it('(c) a troca falha (nova doente): o laço é encerrado, sem processo órfão nem arquivo temporário', () => {
+    const r = rodar(
+      `pega() { echo "$TROCA_LACO_PID" > "$EST/laco_pid"; return 1; }
+trocar_servico macuxierp-web pega; echo "saida=$?"; echo "pid_depois=[$TROCA_LACO_PID]"; jobs -p | wc -l | sed 's/^/jobs=/'`,
+      { env: { CURL_DORME: '0.3' } },
+    );
+    assert.match(r.stdout, /saida=1/);
+    assert.match(r.stderr, /a réplica nova não ficou saudável/);
+    assert.match(r.stdout, /pid_depois=\[\]/);
+    assert.match(r.stdout, /jobs=0/);
+    assert.match(r.stdout, LINHA('/login', '200: \\d+'));
+    const pid = Number(r.ler('laco_pid')[0]);
+    assert.ok(pid > 0);
+    assert.equal(vivo(pid), false, 'o laço sobreviveu à troca');
+    const antes = r.curl().length;
+    spawnSync('sleep', ['1.5']);
+    assert.equal(r.curl().length, antes, 'o curl continuou sendo chamado depois da troca');
+    for (const l of r.curl()) assert.equal(vivo(Number(l.split(' ')[0])), false, `curl órfão: ${l}`);
+    assert.deepEqual(r.tmp(), []);
+  });
+
+  it('(c) o script sai no meio da troca: o trap EXIT mata o laço e apaga o mktemp', () => {
+    const r = rodar(`sai() { echo "$TROCA_LACO_PID" > "$EST/laco_pid"; exit 7; }
+trocar_servico macuxierp-web sai; echo "nao-chega"`, { env: { CURL_DORME: '0.3' } });
+    assert.equal(r.status, 7, r.stderr);
+    assert.doesNotMatch(r.stdout, /nao-chega/);
+    const pid = Number(r.ler('laco_pid')[0]);
+    assert.equal(vivo(pid), false, 'o laço sobreviveu à saída do script');
+    const antes = r.curl().length;
+    spawnSync('sleep', ['1.5']);
+    assert.equal(r.curl().length, antes);
+    assert.deepEqual(r.tmp(), []);
   });
 });

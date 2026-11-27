@@ -57,10 +57,100 @@ remover_replica() { # id [dreno] → sai do túnel, drena, para (SIGTERM, até 3
   docker rm -f "$1" >/dev/null 2>&1 || true
 }
 
+# ---------- laço de curl pelo domínio durante a troca (v0.3.24; ADR 0003, adendo 48 A, "Laço durante a troca") ----------
+# GET <base>/login e <base>/v1/saude a cada MACUXIERP_TROCA_LACO_PASSO_S (1 s), do "réplica nova ao lado da velha" até a
+# velha sair do túnel e drenar. Base: MACUXIERP_URL_PUBLICA (ambiente ou .env; não é segredo), padrão o domínio do ERP.
+# Os resultados ficam num mktemp -d apagado no fim; o laço e o curl em curso morrem no fim, na falha e na saída do script.
+TROCA_URL_PADRAO=https://erp.macuxifdv.com.br
+TROCA_LACO_PASSO_S="${MACUXIERP_TROCA_LACO_PASSO_S:-1}"
+TROCA_LACO_TIMEOUT_S="${MACUXIERP_TROCA_LACO_TIMEOUT_S:-3}"
+TROCA_LACO_PID=""
+TROCA_LACO_DIR=""
+
+laco_url_base() { # → base pública do ERP, sem barra no fim
+  local b="${MACUXIERP_URL_PUBLICA:-$(valor_env .env MACUXIERP_URL_PUBLICA)}"
+  b="${b:-$TROCA_URL_PADRAO}"
+  printf '%s\n' "${b%/}"
+}
+
+laco_iniciar() { # 0 = laço no ar (TROCA_LACO_PID, TROCA_LACO_DIR)
+  local base
+  command -v curl >/dev/null 2>&1 || { echo "[implantar] curl ausente na VM: sem o laço de conferência da troca" >&2; return 1; }
+  base="$(laco_url_base)"
+  TROCA_LACO_DIR="$(mktemp -d "${TMPDIR:-/tmp}/macuxierp-laco.XXXXXX")" || { TROCA_LACO_DIR=""; return 1; }
+  trap 'laco_parar' EXIT
+  trap 'laco_parar; exit 130' INT
+  trap 'laco_parar; exit 143' TERM
+  (
+    c=""
+    trap '[ -n "$c" ] && kill "$c" 2>/dev/null; exit 0' TERM
+    trap '' INT
+    while :; do
+      for p in login v1/saude; do
+        curl -s -o /dev/null -m "$TROCA_LACO_TIMEOUT_S" -w '%{http_code} %{time_total}' "$base/$p" >"$TROCA_LACO_DIR/r" 2>/dev/null &
+        c=$!
+        wait "$c" || true
+        c=""
+        r="$(cat "$TROCA_LACO_DIR/r" 2>/dev/null || true)"
+        printf '%s\n' "${r:-000 0}" >>"$TROCA_LACO_DIR/${p//\//_}"
+      done
+      sleep "$TROCA_LACO_PASSO_S" &
+      c=$!
+      wait "$c" || true
+      c=""
+    done
+  ) &
+  TROCA_LACO_PID=$!
+}
+
+laco_parar() { # mata o laço (e o curl em curso), espera e apaga o mktemp; idempotente
+  trap - EXIT INT TERM
+  if [ -n "$TROCA_LACO_PID" ]; then
+    kill -TERM "$TROCA_LACO_PID" 2>/dev/null || true
+    wait "$TROCA_LACO_PID" 2>/dev/null || true
+    TROCA_LACO_PID=""
+  fi
+  if [ -n "$TROCA_LACO_DIR" ]; then
+    rm -rf -- "$TROCA_LACO_DIR"
+    TROCA_LACO_DIR=""
+  fi
+}
+
+laco_resumo() { # arquivo rótulo → a linha do laço; 0 = ao menos uma chamada e todas 200
+  LC_ALL=C awk -v rot="$2" -v hora="$(TZ=America/Manaus date +%H:%M:%S)" '
+    NF { n++; cod[$1]++; t = $2; gsub(",", ".", t); ms = int(t * 1000 + 0.5); if (ms > max) max = ms }
+    END {
+      k = 0; for (x in cod) chaves[++k] = x
+      for (i = 2; i <= k; i++) { v = chaves[i]; j = i - 1; while (j > 0 && chaves[j] > v) { chaves[j + 1] = chaves[j]; j-- } chaves[j + 1] = v }
+      lista = ""; for (i = 1; i <= k; i++) lista = lista (i > 1 ? ", " : "") chaves[i] ": " cod[chaves[i]]
+      printf "[implantar] %s laço %s durante a troca: %d chamadas, códigos {%s}, maior tempo %d ms\n", hora, rot, n, lista, max + 0
+      exit (n > 0 && cod["200"] == n) ? 0 : 1
+    }' "$1"
+}
+
+laco_encerrar() { # → as duas linhas do laço; 0 = todas as chamadas 200. Espera ao menos uma medição de cada URL.
+  local ok=0 t=0 limite
+  [ -n "$TROCA_LACO_DIR" ] || return 1
+  limite=$(( (2 * TROCA_LACO_TIMEOUT_S + TROCA_LACO_PASSO_S + 1) * 5 ))
+  while { [ ! -s "$TROCA_LACO_DIR/login" ] || [ ! -s "$TROCA_LACO_DIR/v1_saude" ]; } && [ "$t" -lt "$limite" ]; do
+    sleep 0.2
+    t=$((t + 1))
+  done
+  kill -TERM "$TROCA_LACO_PID" 2>/dev/null || true
+  wait "$TROCA_LACO_PID" 2>/dev/null || true
+  TROCA_LACO_PID=""
+  touch "$TROCA_LACO_DIR/login" "$TROCA_LACO_DIR/v1_saude"
+  laco_resumo "$TROCA_LACO_DIR/login" /login || ok=1
+  laco_resumo "$TROCA_LACO_DIR/v1_saude" /v1/saude || ok=1
+  laco_parar
+  return "$ok"
+}
+
 # trocar_servico <serviço> [conferência extra da réplica nova: função que recebe o id]
-# 0 = a nova está no ar e a velha saiu; 1 = a nova não ficou saudável (foi removida; a velha segue no túnel).
+# 0 = a nova está no ar, a velha saiu e o laço pelo domínio só viu 200; 1 = a nova não ficou saudável (foi removida; a
+# velha segue no túnel) ou o laço viu código diferente de 200 (o implantar.sh volta atrás pelo mesmo caminho).
 trocar_servico() {
-  local svc="$1" extra="${2:-}" velho novo="" id
+  local svc="$1" extra="${2:-}" velho novo="" id rc=0
   velho="$(ids_do_servico "$svc")"
   if [ -z "$velho" ]; then
     log "$svc: sem réplica no ar; sobe direto"
@@ -71,6 +161,7 @@ trocar_servico() {
     echo "[implantar] $svc com mais de uma réplica antes da troca (sobra de uma troca interrompida?): confira com dc ps" >&2
     return 1
   fi
+  laco_iniciar || { laco_parar; echo "[implantar] $svc: o laço de conferência pelo domínio não subiu; nada foi trocado" >&2; return 1; }
   log "$svc: réplica nova ao lado da velha"
   dc up -d --no-deps --no-recreate --scale "$svc=2" "$svc" >/dev/null || true
   for id in $(ids_do_servico "$svc"); do
@@ -80,11 +171,17 @@ trocar_servico() {
     echo "[implantar] $svc: a réplica nova não ficou saudável; ela sai e a velha continua no ar" >&2
     [ -n "$novo" ] && remover_replica "$novo" 0
     dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null 2>&1 || true
+    laco_encerrar || true
     return 1
   fi
   log "$svc: nova saudável; a velha sai do túnel e drena ${TROCA_DRENO_S} s"
   remover_replica "$velho"
-  dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null
+  dc up -d --no-deps --no-recreate --scale "$svc=1" "$svc" >/dev/null || rc=1
+  if ! laco_encerrar; then
+    echo "[implantar] $svc: o laço pelo domínio viu código diferente de 200 durante a troca: volta atrás" >&2
+    rc=1
+  fi
+  return "$rc"
 }
 
 # ---------- conferência de dentro do contêiner (sem porta no host) ----------

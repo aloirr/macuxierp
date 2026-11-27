@@ -9,6 +9,7 @@ import { EVENTO_CARGA_INICIAL, TRABALHO_CARGA_INICIAL } from '@macuxierp/cadastr
 import { EVENTO_FILIAL_ALTERADA, exportadorCore, ID_CONSUMIDOR_EMPRESA_DA_FILIAL } from '@macuxierp/core/api';
 import { AGENDA_BUSCA_CLIENTES_ID, AGENDA_BUSCA_PEDIDOS_ID, AGENDA_CONECTOR_ID, AGENDA_RETORNO_CLIENTES_ID, AGENDA_RETORNO_PEDIDOS_ID, CONSUMIDOR_PUBLICAR_CADASTROS, EVENTOS_CADASTROS_PUBLICADOS } from '@macuxierp/integracao-fdv/api';
 import { manifest as manifestCadastros } from '@macuxierp/cadastros/manifest';
+import { manifest as manifestCore } from '@macuxierp/core/manifest';
 import { manifest as manifestFaturamento } from '@macuxierp/faturamento/manifest';
 import { exportadorPedido } from '@macuxierp/pedido/api';
 import { manifest as manifestPedido } from '@macuxierp/pedido/manifest';
@@ -117,12 +118,13 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     expect(agendas('desligado', 'ligado')).toEqual([[AGENDA_CONECTOR_ID, 'integracao-fdv']]);
   });
 
-  it('consumidores: carga inicial, espelho dos cadastros, retorno do pedido, pedido a faturar (T-0045), nota autorizada e cancelada no pedido (#194, #215), estoque (#192) e empresa da filial padrão (T-0100), cada um uma vez', () => {
+  it('consumidores: carga inicial, espelho dos cadastros, retorno do pedido, pedido a faturar (T-0045), nota autorizada e cancelada no pedido (#194, #215), estoque (#192), empresa da filial padrão (T-0100) e CNPJ da empresa na filial (RN-CORE-16), cada um uma vez', () => {
     const consumidores = montarConsumidores({ log, relogio: relogioDoSistema });
     expect(consumidores.map((c) => c.id)).toEqual([
-      'cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido', 'faturamento.fila-a-faturar', 'pedido.nota-autorizada', 'pedido.nota-cancelada', 'cadastros.estoque-nota', ID_CONSUMIDOR_EMPRESA_DA_FILIAL,
+      'cadastros.carga-inicial', CONSUMIDOR_PUBLICAR_CADASTROS, 'integracao-fdv.retorno-pedido', 'faturamento.fila-a-faturar', 'pedido.nota-autorizada', 'pedido.nota-cancelada', 'cadastros.estoque-nota', ID_CONSUMIDOR_EMPRESA_DA_FILIAL, 'cadastros.cnpj-empresa',
     ]);
-    expect(consumidores.at(-1)!.eventos).toEqual([EVENTO_FILIAL_ALTERADA]);
+    expect(consumidores.at(-2)!.eventos).toEqual([EVENTO_FILIAL_ALTERADA]);
+    expect(consumidores.at(-1)!.eventos).toEqual(['core.empresa.cnpj_alterado@1']);
     expect(consumidores[3]!.eventos).toEqual(['pedido.pedido.aprovado@1']);
     expect(consumidores[1]!.eventos).toEqual(EVENTOS_CADASTROS_PUBLICADOS);
     expect(consumidores[2]!.eventos).toEqual(['pedido.pedido.recebido@1', 'pedido.pedido.cancelado@1', 'pedido.pedido.faturado@1']);
@@ -136,9 +138,12 @@ describe('worker: integracao-fdv ligado (T-0016)', () => {
     // Sem consumidor ainda (nenhum módulo trata no worker). Um evento novo do faturamento sem consumidor quebra aqui.
     const semConsumidor = manifestFaturamento.publica.filter((e) => de(e).length === 0);
     expect(semConsumidor).toEqual(['faturamento.nota.rejeitada@1', 'faturamento.titulo.gerado@1', 'faturamento.titulo.baixado@1']);
-    // Tudo o que pedido e cadastros declaram consumir do faturamento está ligado (o recuo do pedido entrou no #215).
-    const soltos = [manifestPedido, manifestCadastros].flatMap((m) =>
-      m.consome.filter((e) => e.startsWith('faturamento.') && !de(e).some((id) => id.startsWith(`${m.id}.`))).map((e) => `${m.id} ← ${e}`),
+  });
+
+  it('RN-CORE-14/16: tudo o que core, cadastros, pedido e faturamento declaram consumir tem consumidor do próprio módulo no worker', () => {
+    const consumidores = montarConsumidores({ log, relogio: relogioDoSistema, outbox: { gravar: async () => 1 } });
+    const soltos = [manifestCore, manifestCadastros, manifestPedido, manifestFaturamento].flatMap((m) =>
+      m.consome.filter((e) => !consumidores.some((c) => c.id.startsWith(`${m.id}.`) && c.eventos.includes(e))).map((e) => `${m.id} ← ${e}`),
     );
     expect(soltos).toEqual([]);
   });

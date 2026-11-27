@@ -86,3 +86,9 @@ O ERP roda na **mesma VM de produção** do FDV, atrás do **mesmo proxy** (o t�
 ### Como medir na primeira publicação
 - Não há Docker nos agentes. O ensaio da sessão é com docker falso: a ordem dos comandos, a saúde antes da troca, a volta atrás e nenhum id fora do projeto.
 - A prova sem 502 é na VM: um laço de `curl -s -o /dev/null -w '%{http_code}'` no `https://erp.macuxifdv.com.br/login`, a cada 0,5 s durante o passo do compose da primeira publicação da v0.3.23. O critério é nenhum código diferente de 200.
+
+### Laço durante a troca (v0.3.24, pedido R-20261127-133722)
+- O próprio `troca.sh` (`trocar_servico`) mede a troca de cada serviço: do "réplica nova ao lado da velha" até a velha sair do túnel, drenar e a escala voltar a 1, um laço em segundo plano faz `GET <base>/login` e `GET <base>/v1/saude` a cada 1 s (`curl -m 3`). A base vem de `MACUXIERP_URL_PUBLICA` (ambiente ou `.env`; padrão `https://erp.macuxifdv.com.br`; não é segredo).
+- No fim da troca, uma linha por URL: `[implantar] HH:MM:SS laço /login durante a troca: N chamadas, códigos {200: N}, maior tempo X ms` (idem `/v1/saude`; hora de Manaus; curl sem resposta conta como `000`).
+- Qualquer código diferente de 200 faz a troca falhar, e o `implantar.sh` volta atrás pelo caminho de sempre (passo 8). Na falha da réplica nova, as linhas também saem, e a troca já falhou.
+- O laço e o curl em curso são sempre encerrados (fim da troca, falha, e `trap` de EXIT/INT/TERM se o script sair no meio). Os resultados ficam num `mktemp -d` apagado no fim. O workflow não muda.

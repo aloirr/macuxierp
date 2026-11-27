@@ -126,7 +126,7 @@ export async function appPgDeTeste(o: OpcoesAppPg): Promise<{ app: FastifyInstan
         : o.modulos;
   const plataforma =
     o.plataforma && producao.plataforma
-      ? { ...producao.plataforma, plugins: pluginsPlataforma(producao.modulos, { chaveIntegracao: o.chaveIntegracao ?? null, pepperEntrada: o.pepperEntrada ?? null, outbox: producao.outbox, ...o.plataforma }) }
+      ? { ...producao.plataforma, plugins: pluginsPlataforma(producao.modulos, { chaveIntegracao: o.chaveIntegracao ?? null, pepperEntrada: o.pepperEntrada ?? null, outbox: producao.outbox, bancoTenant: producao.banco, ...o.plataforma }) }
       : producao.plataforma;
   const app = await criarApp({
     ...producao,

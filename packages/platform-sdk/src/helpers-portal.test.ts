@@ -47,4 +47,8 @@ describe('ações da ficha da empresa (T-0101, ADR 0012)', () => {
   it('atualizar_receita e revelar_contato estão em ACOES_PLATAFORMA', () => {
     expect(ACOES_PLATAFORMA).toEqual(expect.arrayContaining(['plataforma.empresa.atualizar_receita', 'plataforma.empresa.revelar_contato']));
   });
+
+  it('salvar_ficha e trocar_cnpj (RN-CORE-16, gravadas pela 0077) estão em ACOES_PLATAFORMA', () => {
+    expect(ACOES_PLATAFORMA).toEqual(expect.arrayContaining(['plataforma.empresa.salvar_ficha', 'plataforma.empresa.trocar_cnpj']));
+  });
 });
