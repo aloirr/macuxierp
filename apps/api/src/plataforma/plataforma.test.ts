@@ -1,5 +1,5 @@
 /** Peças puras do portal `/config` na API (T-0050, ADR 0012 §4 e §6; cargas da T-0058): SQLSTATE → HTTP e limite de login por IP. */
-import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
+import { CODIGOS_ESTADO_MUDOU_ZERAR, ErroApi, MENSAGEM_SEM_CREDENCIAL_FDV, MENSAGENS_CARGA_PORTAL } from '@macuxierp/platform-sdk';
 import { describe, expect, it } from 'vitest';
 import { erroDaPlataforma } from './erros';
 import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci } from './limite-ip';
@@ -20,7 +20,7 @@ describe('erroDaPlataforma (ADR 0012 §4)', () => {
   });
 
   it.each([
-    ['MXI01', 'Cadastre a credencial do FDV antes'],
+    ['MXI01', MENSAGEM_SEM_CREDENCIAL_FDV],
     ['MXI02', 'A credencial mudou; recarregue a página.'],
     ['MXI03', 'O estado mudou; recarregue a página.'],
   ])('%s (0038, ADR 0013 §2) vira 409 CONFLITO com mensagem fixa', (code, mensagem) => {
