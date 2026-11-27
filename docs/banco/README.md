@@ -493,3 +493,6 @@ A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, 
 
 ## Passo sem superusuário no CI
 Os comandos do passo sem superusuário (em "Comandos") imitam o DBaaS num Postgres limpo. O `rodar-antes-do-push.sh` já roda o passo; no `ci.yml` (governança) ele volta pelo pedido registrado na T-0003.
+
+## Worker grava o lote da /entrada/v1 nos cadastros (T-0057, migração 0072)
+O lote da entrada roda no `macuxierp_worker` pelo mesmo `gravarLinhas` da carga; sem INSERT e UPDATE nos cadastros a linha caía em 42501. Teste: `db/testes/grants-worker-entrada-0072.db.test.ts`.
