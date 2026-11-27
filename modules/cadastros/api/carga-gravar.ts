@@ -43,6 +43,26 @@ function erroDeExcecao(linha: number, e: unknown): ErroLinha {
 }
 
 /**
+ * RN-CAD-09: planeja e aplica (com SAVEPOINT, só no modo `gravar`) os dados novos da forma nas condições dela que não estão no lote.
+ * Único ponto das duas entradas (carga de CSV e lote da `/entrada/v1`); a exceção vira erro da linha pelo `erroDeExcecao` (503 relançado).
+ */
+export async function aplicarIrmasDaForma(f: FormaDoLote, st: Estado): Promise<{ erros: ErroLinha[]; avisos: string[]; aplicada: boolean }> {
+  const plano = await planejarIrmasDaForma(f, st);
+  const erros = [...plano.erros];
+  let aplicada = false;
+  if (st.gravar && plano.aplicar && plano.erros.length === 0) {
+    try {
+      const aplicar = plano.aplicar;
+      await st.r.carga.comSavepoint(() => aplicar());
+      aplicada = true;
+    } catch (e) {
+      erros.push({ ...erroDeExcecao(f.linha, e), linha: f.linha });
+    }
+  }
+  return { erros, avisos: plano.avisos, aplicada };
+}
+
+/**
  * Grava os itens na ordem D13 e fecha as contagens (`recusadas`). `lidas` já vem preenchida em cada `resultado`.
  * Depois de gravar, normaliza o cartão sem parcelas (RN-CAD-09) e avisa os preços sem desconto máximo (RN-CAD-11).
  */
@@ -103,17 +123,9 @@ export async function gravarLinhas(st: Estado, itens: readonly ItemGravacao[], r
     } else {
       if (entidade === 'condicao_pagamento') {
         for (const f of a.formas) {
-          const plano = await planejarIrmasDaForma(f, st);
-          plano.erros.forEach((e) => rel.erroLinha(a.nome, e));
-          plano.avisos.forEach((x) => avisos.add(x));
-          if (st.gravar && plano.aplicar && plano.erros.length === 0) {
-            try {
-              const aplicar = plano.aplicar;
-              await r.carga.comSavepoint(() => aplicar());
-            } catch (e) {
-              rel.erroLinha(a.nome, { ...erroDeExcecao(f.linha, e), linha: f.linha });
-            }
-          }
+          const o = await aplicarIrmasDaForma(f, st);
+          o.erros.forEach((e) => rel.erroLinha(a.nome, e));
+          o.avisos.forEach((x) => avisos.add(x));
         }
       }
       for (const l of linhas) {

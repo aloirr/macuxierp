@@ -55,6 +55,8 @@ export const adaptarVendedor = (p: VendedorHub, indice: number, ctx: ContextoMap
 
 /** RN-CAD-09: a forma tem o tPag da NF-e pelo dicionário do `mapear.ts`; o que não está nele vira tPag recusado. */
 export type FormaAdaptada = Pick<FormaPagamentoHub, 'external_id' | 'codigo' | 'nome' | 'ativo'> & { tpag: string };
+/** A forma do lote com a linha do kit do registro (índice + 2), para o erro dela cair no índice certo. */
+export type FormaDoLoteAdaptada = FormaAdaptada & { indice: number; linha: number };
 export const adaptarForma = (p: FormaPagamentoHub): FormaAdaptada => ({ external_id: p.external_id, codigo: p.codigo, nome: p.nome, tpag: tpagDaForma(p.codigo), ativo: p.ativo });
 
 /** RN-CAD-09 e RN-CAD-15: o prazo é a condição de pagamento (`parcelas_dias` "28/56", à vista "0"), com a forma do contexto. */
@@ -129,7 +131,7 @@ export interface LoteAdaptado {
   entidade: EntidadeCarga | null;
   /** Um resultado por registro, na ordem do lote (o índice do erro é o do registro). */
   resultados: Adaptacao<EntidadeCarga>[];
-  formas: FormaAdaptada[];
+  formas: FormaDoLoteAdaptada[];
 }
 
 export type EnvelopeEntrada = Pick<CorpoLote, 'entidade' | 'modo'> & { registros: readonly unknown[] };
@@ -168,14 +170,14 @@ export function adaptarLote(envelope: EnvelopeEntrada, ctx: ContextoAdaptacao): 
   if (recusa) return recusa;
   const chave = ENTIDADES_ENVIO_FDV.find((e) => e === envelope.entidade) as (typeof ENTIDADES_ENVIO_FDV)[number];
   const schema = PAYLOADS_HUB[chave];
-  const formas: FormaAdaptada[] = [];
+  const formas: FormaDoLoteAdaptada[] = [];
   const resultados: Adaptacao<EntidadeCarga>[] = [];
   envelope.registros.forEach((bruto, indice) => {
     const v = schema.safeParse(bruto);
     if (!v.success) {
       resultados.push({ ok: false, erros: errosDeZod(numeroDaLinha(indice), v.error.issues) });
     } else if (chave === 'forma_pagamento') {
-      formas.push(adaptarForma(v.data as FormaPagamentoHub));
+      formas.push({ ...adaptarForma(v.data as FormaPagamentoHub), indice, linha: numeroDaLinha(indice) });
     } else {
       resultados.push((TABELA[chave].adaptar as (p: unknown, i: number, c: ContextoAdaptacao) => Adaptacao<EntidadeCarga>)(v.data, indice, ctx));
     }

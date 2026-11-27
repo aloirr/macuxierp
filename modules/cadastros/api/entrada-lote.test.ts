@@ -7,6 +7,7 @@ import { AuditoriaMemoria, FilaDeTrabalhosMemoria, OutboxMemoria } from '@macuxi
 import type { CorpoLote } from '@macuxierp/platform-sdk/hub-v1';
 import { describe, expect, it } from 'vitest';
 import { EntradaMemoria } from './entrada-memoria';
+import { aplicarIrmasDaForma } from './carga-gravar';
 import { criarExecutorEntradaLote } from './entrada-lote';
 import { dependenciasEmMemoria } from './memoria';
 
@@ -154,6 +155,17 @@ describe('T-0057 C3: processamento do lote da entrada', () => {
     expect(l.erros[0]).toMatchObject({ indice: 1, external_id: 'FP2' });
   });
 
+  it('ADR 0014 §3 (contrato ContagensLote.obsoletas): registro anterior ao cursor não grava, conta como obsoleto e o cursor do lote não recua', async () => {
+    const t = montar();
+    await t.rodar(await t.receber(corpo('vendedor', [vendedor(1, '2026-11-26T10:00:00.000Z')])));
+    const id = await t.receber(corpo('vendedor', [vendedor(1, '2026-11-25T10:00:00.000Z', { nome: 'Nome antigo' })]));
+    await t.rodar(id);
+    const l = t.entrada.lotes[1]!;
+    expect(l.contagens).toMatchObject({ obsoletas: 1, novas: 0, atualizadas: 0 });
+    expect(l.cursor).toEqual({ alterado_em: '2026-11-26T10:00:00.000Z', external_id: 'V1' });
+    expect(t.repos.vendedores.linhas[0]!.nome).toBe('Vendedor 1');
+  });
+
   it('lote de carga completa guardado (não deveria existir) falha sem gravar nada', async () => {
     const t = montar();
     const id = await t.receber(corpo('vendedor', [vendedor(1, '2026-11-25T10:00:00.000Z')], { modo: 'completo', sessao: { id: '0d6b6a4e-3c1f-4b8e-9d2a-5f7e8c9a1b2d', parte: 1, ultimo: true } }));
@@ -178,5 +190,21 @@ describe('T-0057 C3: processamento do lote da entrada', () => {
     await t.rodar(id);
     expect(await t.rodar(id)).toMatchObject({ processados: 0 });
     expect(t.entrada.lotes[0]!.estado).toBe('concluido');
+  });
+});
+
+describe('RN-CAD-09: aplicarIrmasDaForma (a forma do lote atualiza as condições que já a usam)', () => {
+  const cond = { id: 'c1', external_id: 'PZ1', inativo: false, forma_external_id: 'FP1', forma_codigo: 'BOLETO', forma_nome: 'Boleto', forma_tpag: '15', prazos_dias: [28], prazo_medio_dias: 28, parcelas_cartao: null };
+  const estado = (comSavepoint: () => Promise<unknown>) => ({ gravar: true, r: { carga: { condicoesDaForma: async () => [cond], comSavepoint }, condicoesPagamento: {} } }) as never;
+  const forma = { chave: 'FP1', external_id: 'FP1', codigo: 'BOLETO', nome: 'Boleto novo', tpag: '15', linha: 2, condicoes: [] };
+
+  it('aplica no SAVEPOINT e marca aplicada', async () => {
+    const o = await aplicarIrmasDaForma(forma, estado(async () => undefined));
+    expect(o).toMatchObject({ aplicada: true, erros: [] });
+  });
+  it('erro do banco na aplicação vira erro da linha da forma (CARGA_BANCO), sem nada aplicado', async () => {
+    const o = await aplicarIrmasDaForma(forma, estado(async () => { throw new Error('falha'); }));
+    expect(o.aplicada).toBe(false);
+    expect(o.erros).toEqual([expect.objectContaining({ linha: 2, codigo: 'CARGA_BANCO' })]);
   });
 });
