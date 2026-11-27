@@ -7,6 +7,9 @@ import type { DetalhesErro } from '@macuxierp/platform-sdk/erros';
 import { z } from 'zod';
 import { CatalogoMotivos, Pedido, type AprovarEntrada, type CancelarEntrada, type PedidoManualEntrada, type RecusarEntrada } from '../contracts';
 
+/** Texto aprovado pelo designer para falha sem corpo de erro utilizável. */
+const MENSAGEM_FALHA_GENERICA = 'Não foi possível concluir agora. Tente de novo em instantes.';
+
 export class ErroPedido extends Error {
   override readonly name = 'ErroPedido';
   constructor(
@@ -34,9 +37,9 @@ export function criarClientePedido(cfg: { baseUrl: string; token: () => string; 
     if (!r.ok) {
       // 5xx de proxy ou balanceador costuma vir em HTML: não é JSON, vira ErroPedido sem tentar o parse.
       const e = ehJson ? Erro.safeParse(await r.json().catch(() => null)) : null;
-      throw new ErroPedido(r.status, e?.success ? e.data.codigo : 'ERRO', e?.success ? e.data.mensagem : 'Não foi possível concluir. Tente de novo.', e?.success ? e.data.detalhes : undefined);
+      throw new ErroPedido(r.status, e?.success ? e.data.codigo : 'ERRO', e?.success ? e.data.mensagem : MENSAGEM_FALHA_GENERICA, e?.success ? e.data.detalhes : undefined);
     }
-    if (!ehJson) throw new ErroPedido(r.status, 'RESPOSTA_INVALIDA', 'Não foi possível concluir. Tente de novo.');
+    if (!ehJson) throw new ErroPedido(r.status, 'RESPOSTA_INVALIDA', MENSAGEM_FALHA_GENERICA);
     return schema.parse(await r.json());
   }
 

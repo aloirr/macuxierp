@@ -254,8 +254,12 @@ describe('formulário do pedido manual', () => {
         return { status: 502, ok: false, headers: { get: () => 'text/html' }, json: async () => { throw new SyntaxError('html'); } };
       },
     });
-    await expect(cliente.pedido('a/b')).rejects.toMatchObject({ name: 'ErroPedido', status: 502 });
+    await expect(cliente.pedido('a/b')).rejects.toMatchObject({ name: 'ErroPedido', status: 502, message: 'Não foi possível concluir agora. Tente de novo em instantes.' });
     expect(urls[0]).toBe('http://api/v1/pedido/pedidos/a%2Fb');
+  });
+  it('resposta 200 que não é JSON vira RESPOSTA_INVALIDA com o texto de falha', async () => {
+    const mk = () => criarClientePedido({ baseUrl: 'http://api', token: () => 't', fetch: async () => ({ status: 200, ok: true, headers: { get: () => 'text/html' }, json: async () => { throw new SyntaxError('html'); } }) });
+    await expect(mk().pedido('x')).rejects.toMatchObject({ codigo: 'RESPOSTA_INVALIDA', message: 'Não foi possível concluir agora. Tente de novo em instantes.' });
   });
   it('retorno: aprovado direto, ou em análise com as pendências', () => {
     expect(retornoDoLancamento({ numero: 9, status: 'aprovado', pendencias: [] })).toEqual({ status: 'aprovado', titulo: 'Pedido 9 aprovado', pendencias: [] });
