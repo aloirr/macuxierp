@@ -85,11 +85,23 @@ export type VendedorHub = z.infer<typeof VendedorHub>;
 export const FormaPagamentoHub = Base.extend({ codigo: Texto(LIMITE_CODIGO_FORMA_PAGAMENTO), nome: Texto(60) });
 export type FormaPagamentoHub = z.infer<typeof FormaPagamentoHub>;
 
+/** Dia de uma parcela do prazo na entrada: inteiro de 0 a 999 (o mesmo teto dos 3 dígitos do texto `"28/56"`). */
+const DiaParcelaEntrada = z.number().int().min(0).max(999);
+/**
+ * `parcelas_dias` do prazo (decisão 35 = A, 27/11, hotfix v0.3.26): a entrada aceita o texto `"28/56"` (à vista `"0"`) ou a lista de
+ * inteiros `[28, 56]` (à vista `[0]`, 1 ou mais itens, sem teto de quantidade, como o texto) e normaliza para o texto canônico, sem zero à
+ * esquerda (`"028/56"` e `[28, 56]` → `"28/56"`). Sem @v2: mudança compatível, só alarga a entrada; a saída (`z.output`) segue `string`.
+ * Os limites de negócio (1 a 24 parcelas, 0 a 365 dias, RN-CAD-15) ficam no domain do cadastros.
+ */
+export const ParcelasDiasEntrada = z
+  .union([z.string().regex(/^\d{1,3}(\/\d{1,3})*$/), z.array(DiaParcelaEntrada).min(1)])
+  .transform((v) => (typeof v === 'string' ? v.split('/').map(Number) : v).join('/'));
+
 export const PrazoPagamentoHub = Base.extend({
   forma_external_id: ExternalId,
   codigo: Texto(20),
-  /** `"28/56"`; à vista = `"0"`. */
-  parcelas_dias: z.string().regex(/^\d{1,3}(\/\d{1,3})*$/),
+  /** `"28/56"` ou `[28, 56]` na entrada; sempre `"28/56"` na saída (à vista = `"0"`). */
+  parcelas_dias: ParcelasDiasEntrada,
   descricao: Texto(60).optional(),
 });
 export type PrazoPagamentoHub = z.infer<typeof PrazoPagamentoHub>;

@@ -13,6 +13,7 @@ import {
   LoteAceito,
   LoteResultado,
   PAYLOADS_HUB,
+  PrazoPagamentoHub,
   RespostaSinal,
 } from './hub-v1';
 import { ENTIDADES_ENVIO_FDV } from './portal-integracao';
@@ -191,5 +192,20 @@ describe('limites do Hub exportados (ADR 0019 §2)', () => {
     const forma = { external_id: 'F1', ativo: true, nome: 'Boleto' };
     expect(FormaPagamentoHub.safeParse({ ...forma, codigo: 'c'.repeat(LIMITE_CODIGO_FORMA_PAGAMENTO) }).success).toBe(true);
     expect(FormaPagamentoHub.safeParse({ ...forma, codigo: 'c'.repeat(LIMITE_CODIGO_FORMA_PAGAMENTO + 1) }).success).toBe(false);
+  });
+});
+
+describe('prazo: parcelas_dias em texto ou lista (decisão 35 = A, sem @v2)', () => {
+  const prazo = (parcelas_dias: unknown) => PrazoPagamentoHub.safeParse({ external_id: 'PZ1', ativo: true, forma_external_id: 'FP1', codigo: '28/56', parcelas_dias });
+  it('aceita "28/56" ou [28, 56] e normaliza para o texto canônico, sem zero à esquerda', () => {
+    const casos: [unknown, string][] = [['28/56', '28/56'], [[28, 56], '28/56'], ['0', '0'], [[0], '0'], ['028/56', '28/56'], [[28, 56, 84], '28/56/84']];
+    for (const [entrada, saida] of casos) {
+      const r = prazo(entrada);
+      expect(r.success, JSON.stringify(entrada)).toBe(true);
+      expect(r.success && r.data.parcelas_dias, JSON.stringify(entrada)).toBe(saida);
+    }
+  });
+  it('recusa lista vazia, dia fora de 0..999, fracionário, texto malformado e texto dentro da lista', () => {
+    for (const entrada of [[], [-1], [1000], [28.5], '28//56', 'abc', ['28']]) expect(prazo(entrada).success, JSON.stringify(entrada)).toBe(false);
   });
 });
