@@ -53,6 +53,8 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
+# Dreno da troca sem parada (v0.3.25): preload que trata o SIGUSR2 e marca a instância.
+COPY --from=build --chown=node:node /app/apps/web/dreno.cjs ./apps/web/dreno.cjs
 USER node
 EXPOSE 3100
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "--require", "./apps/web/dreno.cjs", "apps/web/server.js"]
