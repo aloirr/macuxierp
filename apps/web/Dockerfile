@@ -48,9 +48,11 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 WORKDIR /app
 # .next/standalone espelha o monorepo: o servidor fica em apps/web/server.js (conferido com next build local).
-# Os estáticos (.next/static) não entram no standalone. O BKO não tem pasta public/.
+# Os estáticos (.next/static) e o public/ não entram no standalone: copiados à parte, ao lado do server.js.
+# O public/ leva os logos do e-mail em /email/ (T-0111); sem ele, /email/*.png dá 404 em produção.
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
 USER node
 EXPOSE 3100
 CMD ["node", "apps/web/server.js"]
