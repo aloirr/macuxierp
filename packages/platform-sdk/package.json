@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./certificado-origem": "./src/certificado-origem.ts",
     "./dinheiro": "./src/dinheiro.ts",
+    "./entrada": "./src/entrada.ts",
     "./erros": "./src/erros.ts",
     "./formatar": "./src/formatar.ts",
     "./hub-v1": "./src/hub-v1.ts",

@@ -51,10 +51,12 @@ const DataCivil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** Quantidade do Hub (`Quantidade` do `base.ts` do FDV): número finito, pode ser fracionário (P-1: não é texto). */
 const Quantidade = z.number().finite();
 const Centavos = z.number().int().min(0);
-const Instante = z.string().datetime();
+/** Data-hora ISO 8601 em UTC (com `Z`); a `/entrada/v1` (`./entrada`) usa a mesma. */
+export const Instante = z.string().datetime();
 const InstanteNulo = Instante.nullable();
 const Uuid = z.string().uuid();
-const ConectorIdHub = z.string().min(1).max(100);
+/** `conector_id` do Hub: 1 a 100 caracteres. */
+export const ConectorIdHub = z.string().min(1).max(100);
 
 /** Campos de todo registro, além dos da entidade. `alterado_em` fica fora do hash (RN-INF-03). */
 const Base = z.object({ external_id: ExternalId, ativo: z.boolean() });

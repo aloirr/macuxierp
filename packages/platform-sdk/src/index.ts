@@ -30,4 +30,5 @@ export * from './cliente-fdv';
 export * from './portal-cargas';
 export * from './plataforma-rotas';
 export * from './esqueci-senha';
+export * from './entrada';
 export * from './login';
