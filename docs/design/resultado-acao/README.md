@@ -21,7 +21,7 @@ Decisão 36 A do Alexandre (v0.3.17). Vale para **todas** as telas do `/config` 
 
 - Uma frase (duas no máximo). Sem código técnico, sem nome de variável, sem dado pessoal (LGPD).
 - A cor nunca é a única pista: o texto diz se deu certo ou não.
-- Cores só por token: `tons` do `packages/ui` (sucesso = verde de situação sobre ativo-fundo; aviso = aviso-texto sobre aviso-fundo; erro = erro-texto sobre erro-fundo), borda de 1 px na cor do texto, canto 6 px, 8 px acima do resultado. É o mesmo visual de `.aviso-sucesso`, `.faixa-aviso` e `.erro` do shell, agora num lugar só.
+- Cores só por token: `tons` do `packages/ui` (sucesso = verde de situação sobre ativo-fundo; aviso = aviso-texto sobre aviso-fundo; erro = erro-texto sobre erro-fundo), borda de 1 px na cor do texto, canto 6 px, 8 px acima e 8 px abaixo do resultado. É o mesmo visual de `.aviso-sucesso`, `.faixa-aviso` e `.erro` do shell, agora num lugar só.
 
 ## Uso
 
