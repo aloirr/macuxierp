@@ -185,3 +185,16 @@ describe('endereços inativados (T-0070)', () => {
   });
 });
 
+
+describe('v0.3.23: aba Dados no celular (390) esconde as colunas certas', () => {
+  it('a regra por posição esconde Registros, Com erro e Origem e deixa a Última carga, na ordem real das colunas', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, '../../../../globals.css'), 'utf8');
+    const regra = /\.tabela-dados th:nth-child\(\d\)[^{]*\{ display: none; \}/.exec(css)?.[0] ?? '';
+    const ocultas = [...new Set([...regra.matchAll(/nth-child\((\d)\)/g)].map((m) => Number(m[1])))];
+    const cabecalho = [...aba().matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, '').trim());
+    expect(ocultas.map((n) => cabecalho[n - 1])).toEqual(['Registros', 'Com erro', 'Origem']);
+    expect(cabecalho.slice(0, 3)).toEqual(['Cadastro', 'Situação', 'Última carga']);
+  });
+});

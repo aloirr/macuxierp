@@ -77,33 +77,49 @@ const linha = (p, rotulo) => p.getByRole('row').filter({ hasText: new RegExp(`^\
 const seloDe = async (p, rotulo) => ((await linha(p, rotulo).locator('.selo').first().textContent()) ?? '').trim();
 const htmlSemChave = async (p, onde) => exigir(!(await p.content()).includes(CHAVE), `a chave aparece no HTML de ${onde}`);
 
+// v0.3.24 (#840): a aba Integração tem as duas ligações; a do FDV é "ERP → Força de vendas" (a seta é só visual: o leitor
+// ouve "ERP para a Força de vendas"), com o formulário ou a ficha "Chave do Macuxi FDV". A tabela dos cadastros enviados
+// (Ligar/Desligar) foi para a aba Dados.
+const TITULO_SAIDA = /^ERP para a Força de vendas$/;
+const formChave = portal.getByRole('form', { name: 'Chave do Macuxi FDV' });
+const fichaChave = portal.locator('dl.ficha[aria-label="Chave do Macuxi FDV"]');
+/** A seção "ERP → Força de vendas" da aba Dados: a tabela "Cadastros enviados" (a de recebidos fica de fora). */
+const SEL_ENVIADOS = 'section[aria-labelledby="h-dados-saida"]';
+const enviados = portal.locator(SEL_ENVIADOS);
+/** Abre a aba da empresa pelo link e espera o `?aba=` dela. */
+async function abrirAba(nome, aba) {
+  await portal.getByRole('navigation', { name: 'Abas da empresa' }).getByRole('link', { name: nome, exact: true }).click();
+  await portal.waitForURL((u) => new URL(u).searchParams.get('aba') === aba);
+}
+
 /**
  * Item `acao` do botão "Ações" da linha `rotulo` (T-0099: as ações da linha saíram dos botões soltos para o `MenuAcoes`).
  * Abre o menu e devolve o item; quem chama clica ou confere o estado (`aria-disabled`).
  */
-async function itemDoMenu(p, rotulo, acao) {
-  const gatilho = p.getByRole('button', { name: `Ações de ${rotulo}`, exact: true });
+async function itemDoMenu(rotulo, acao) {
+  // Na aba Dados, "Cadastros recebidos" também tem "Ações de <cadastro>": o gatilho é o da tabela dos enviados.
+  const gatilho = enviados.getByRole('button', { name: `Ações de ${rotulo}`, exact: true });
   // No next dev o primeiro clique pode chegar antes da hidratação e não abrir: tenta de novo até o menu abrir.
   for (let i = 0; i < 20 && (await gatilho.getAttribute('aria-expanded')) !== 'true'; i++) {
     await gatilho.click();
-    await p.waitForTimeout(250);
+    await portal.waitForTimeout(250);
   }
   exigir((await gatilho.getAttribute('aria-expanded')) === 'true', `o menu "Ações de ${rotulo}" não abriu`);
-  return p.getByRole('menu', { name: `Ações de ${rotulo}` }).getByRole('menuitem', { name: acao, exact: true });
+  return portal.getByRole('menu', { name: `Ações de ${rotulo}` }).getByRole('menuitem', { name: acao, exact: true });
 }
 const itemDesabilitado = async (item) => (await item.getAttribute('aria-disabled')) === 'true';
 const fecharMenu = (p) => p.keyboard.press('Escape');
 
 async function ligarOuDesligar(acao) {
-  await (await itemDoMenu(portal, ROTULO, acao)).click();
+  await (await itemDoMenu(ROTULO, acao)).click();
   const dialogo = portal.getByRole('dialog');
   await dialogo.getByRole('heading', { name: `${acao} ${ROTULO}?` }).waitFor();
   await dialogo.getByRole('button', { name: acao, exact: true }).click();
   await portal.getByRole('status').filter({ hasText: acao === 'Ligar' ? 'Cadastro ligado.' : 'Cadastro desligado.' }).waitFor();
   const esperado = acao === 'Ligar' ? 'Ligado' : 'Desligado';
   await portal.waitForFunction(
-    ([r, e]) => [...document.querySelectorAll('tr')].some((tr) => tr.textContent?.trim().startsWith(r) && tr.querySelector('.selo')?.textContent?.trim() === e),
-    [ROTULO, esperado],
+    ([r, e, sel]) => [...document.querySelectorAll(`${sel} tr`)].some((tr) => tr.textContent?.trim().startsWith(r) && tr.querySelector('.selo')?.textContent?.trim() === e),
+    [ROTULO, esperado, SEL_ENVIADOS],
   );
 }
 
@@ -121,7 +137,7 @@ async function bkoConfere(esperado) {
   const selo = await seloDe(bko, ROTULO);
   exigir(selo === esperado, `BKO mostra ${ROTULO} "${selo}", esperado "${esperado}"`);
   const noBko = await selos(bko);
-  const noPortal = await selos(portal);
+  const noPortal = await selos(enviados);
   exigir(noBko.length === 10 && textoSelos(noBko) === textoSelos(noPortal), `BKO × portal: ${textoSelos(noBko)} || ${textoSelos(noPortal)}`);
   await htmlSemChave(bko, 'BKO');
   exigir((await bko.locator('main form, main input').count()) === 0, 'a tela do BKO tem formulário ou campo');
@@ -143,59 +159,54 @@ try {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).first().waitFor();
   });
 
-  await passo('(b) abre a empresa pela lista e a aba Integração: sem chave, Ligar e Testar desabilitados', async () => {
+  await passo('(b) abre a empresa pela lista e a aba Integração: sem chave, o formulário da chave e sem Testar; na aba Dados, Ligar desabilitado', async () => {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).getByRole('link').click();
     await portal.getByRole('heading', { level: 1, name: dados.empresa.nome }).waitFor();
-    await portal.getByRole('navigation', { name: 'Abas da empresa' }).getByRole('link', { name: 'Integração' }).click();
-    await portal.waitForURL((u) => new URL(u).searchParams.get('aba') === 'integracao');
-    await portal.getByRole('heading', { name: 'Conexão com o Macuxi FDV' }).waitFor();
-    exigir(await portal.getByText('Nenhuma chave salva. Informe o código e a chave do conector.').isVisible(), 'faltou o aviso de sem chave');
-    exigir(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar')), 'Ligar habilitado sem chave');
-    await fecharMenu(portal);
-    exigir(await portal.getByRole('button', { name: 'Testar conexão' }).isDisabled(), 'Testar conexão habilitado sem chave');
-    exigir((await seloDe(portal, ROTULO)) === 'Desligado', 'Produtos não começou desligado');
+    await abrirAba('Integração', 'integracao');
+    await portal.getByRole('heading', { name: TITULO_SAIDA }).waitFor();
+    await formChave.waitFor();
+    exigir((await portal.getByRole('button', { name: 'Testar conexão' }).count()) === 0, 'Testar conexão aparece sem chave');
     await print(portal, '01-portal-integracao-sem-chave.png');
+    await abrirAba('Dados', 'dados');
+    exigir(await itemDesabilitado(await itemDoMenu(ROTULO, 'Ligar')), 'Ligar habilitado sem chave');
+    await fecharMenu(portal);
+    exigir((await seloDe(enviados, ROTULO)) === 'Desligado', 'Produtos não começou desligado');
   });
 
-  await passo('(c) grava a chave fictícia: "Chave salva.", campo da chave vazio; "Trocar chave" pede confirmação; só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
-    const form = portal.getByRole('form', { name: 'Conexão com o Macuxi FDV' });
-    const preencher = async () => {
-      await form.getByLabel('Código do conector').fill(CONECTOR);
-      await form.getByLabel('Nova chave do conector').fill(CHAVE);
-      await form.getByLabel('Ambiente').selectOption('teste');
-    };
-    await preencher();
-    await form.getByRole('button', { name: 'Salvar chave' }).click();
+  await passo('(c) grava a chave fictícia: "Chave salva." e a ficha no lugar do formulário; "Trocar chave" pede confirmação; só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
+    await abrirAba('Integração', 'integracao');
+    await formChave.getByLabel('Código', { exact: true }).fill(CONECTOR);
+    await formChave.getByLabel('Chave', { exact: true }).fill(CHAVE);
+    await formChave.getByLabel('Ambiente').selectOption('teste');
+    await formChave.getByRole('button', { name: 'Salvar chave' }).click();
     await portal.getByRole('status').filter({ hasText: 'Chave salva.' }).waitFor();
-    await form.getByRole('button', { name: 'Trocar chave' }).waitFor();
-    exigir((await form.getByLabel('Nova chave do conector').inputValue()) === '', 'a chave ficou no campo depois de salvar');
-    // Trocar a chave que existe pede confirmação (36 A); grava de novo a mesma chave fictícia, para os passos seguintes.
-    await preencher();
-    await form.getByRole('button', { name: 'Trocar chave' }).click();
+    // Salva, o formulário dá lugar à ficha da ligação (a chave sai da tela) e ao "Trocar chave".
+    await fichaChave.waitFor();
+    exigir((await formChave.count()) === 0, 'o formulário da chave ficou depois de salvar');
+    // Trocar a chave que existe pede confirmação (36 A), com Nova chave e Ambiente; grava de novo a mesma chave fictícia.
+    await portal.getByRole('button', { name: 'Trocar chave', exact: true }).click();
     const dialogo = portal.getByRole('dialog');
-    await dialogo.getByRole('heading', { name: 'Trocar a chave do conector do FDV?' }).waitFor();
+    await dialogo.getByRole('heading', { name: 'Trocar a chave do Macuxi FDV?' }).waitFor();
+    await dialogo.getByLabel('Nova chave').fill(CHAVE);
+    await dialogo.getByLabel('Ambiente').selectOption('teste');
     await dialogo.getByRole('button', { name: 'Trocar chave', exact: true }).click();
     await dialogo.waitFor({ state: 'detached' });
-    // "Chave salva." já está na tela desde a 1ª gravação: o sinal de que a troca voltou é o campo da chave vazio.
-    const limpou = await portal
-      .waitForFunction(() => document.querySelector('form[aria-label="Conexão com o Macuxi FDV"] input[name="chave"]')?.value === '', null, { timeout: 15_000 })
-      .then(() => true, () => false);
-    exigir(limpou, 'a chave ficou no campo depois de trocar');
     const api = await apiPortal();
     exigir(api.credencial_id && api.conector_id === CONECTOR && api.ambiente === 'teste', `API do portal: ${JSON.stringify({ c: api.conector_id, a: api.ambiente })}`);
-    const ficha = (await portal.locator('section[aria-labelledby="h-cred"] dl.ficha').textContent()) ?? '';
+    const ficha = (await fichaChave.textContent()) ?? '';
     exigir(ficha.includes(`${api.chave_prefixo}…`), `a ficha não mostra o prefixo: ${ficha.replaceAll(CHAVE, '<chave>')}`);
     await portal.reload();
-    await portal.getByRole('heading', { name: 'Conexão com o Macuxi FDV' }).waitFor();
-    exigir((await portal.getByLabel('Nova chave do conector').inputValue()) === '', 'a chave voltou ao campo depois de recarregar');
+    await fichaChave.waitFor();
+    exigir((await portal.locator('input[name="chave"]').count()) === 0, 'um campo de chave voltou depois de recarregar');
     await htmlSemChave(portal, '/config depois de salvar e recarregar');
+    await abrirAba('Dados', 'dados');
     // "Ligar um por um" (R-20261123-150400, 0042): a primeira chave nasce sem cadastro ligado e sem carga inicial;
     // os 10 da tela "Desligado", com Ligar habilitado. A carga inicial sai ao ligar (evento no banco; a tela e a API não a mostram).
-    const tela = await selos(portal);
+    const tela = await selos(enviados);
     exigir(tela.length === 10 && tela.every(([, s]) => s === 'Desligado'), `selos depois de salvar a chave: ${textoSelos(tela)}`);
     exigir(api.entidades_habilitadas.length === 0, `habilitadas depois de salvar a chave: ${api.entidades_habilitadas.join(',')}`);
     exigir(api.cadastros.every((c) => !c.ligada), 'API do portal: algum cadastro ligado depois de salvar a chave');
-    exigir(!(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar'))), 'Ligar desabilitado com chave');
+    exigir(!(await itemDesabilitado(await itemDoMenu(ROTULO, 'Ligar'))), 'Ligar desabilitado com chave');
     await fecharMenu(portal);
     await print(portal, '02-portal-chave-salva.png');
   });
@@ -207,7 +218,7 @@ try {
     exigir(ligadaNa(api) === true, `API do portal: ${ENTIDADE} ligada=${ligadaNa(api)}`);
     exigir(api.cadastros.filter((c) => c.ligada).length === 1, `ligados na API: ${api.cadastros.filter((c) => c.ligada).length}`);
     await portal.reload();
-    exigir((await seloDe(portal, ROTULO)) === 'Ligado', 'depois de recarregar, Produtos não está Ligado');
+    exigir((await seloDe(enviados, ROTULO)) === 'Ligado', 'depois de recarregar, Produtos não está Ligado');
     await htmlSemChave(portal, '/config depois de ligar');
     await print(portal, '03-portal-produtos-ligado.png');
   });
