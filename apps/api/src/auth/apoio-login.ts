@@ -1,6 +1,7 @@
 /**
- * Apoio comum dos dois logins da API (tenant em `auth/servico.ts` e superadmin em `plataforma/servico.ts`): a trava após
- * `maxFalhas` falhas seguidas por `travaMinutos` (`ConfigAuth`) e a conferência contra um hash falso, para o tempo de
+ * Apoio comum dos dois logins da API (tenant em `auth/servico.ts` e superadmin em `plataforma/servico.ts`): o bloqueio
+ * SEM PRAZO após `maxFalhas` falhas seguidas (RN-CORE-15, hotfix v0.3.16.1: só a temporária ou o `--destravar` liberam)
+ * e a conferência contra um hash falso, para o tempo de
  * resposta não revelar se a conta existe ou está travada, e as opções do cookie de sessão. Cada login mantém a própria
  * mensagem de falha.
  */
@@ -10,9 +11,15 @@ import { erros, type ErroApi } from '@macuxierp/platform-sdk';
 import type { TravaContaMemoria } from '../plataforma/limite-ip';
 import { conferirSenha, gerarHashSenha, type ParametrosArgon2 } from './senha';
 
-/** Trava a partir da `maxFalhas`-ésima falha seguida, por `travaMinutos`; `null` = ainda não trava. */
-export function travaAposFalha(falhas: number, agora: Date, cfg: { maxFalhas: number; travaMinutos: number }): Date | null {
-  return falhas >= cfg.maxFalhas ? new Date(agora.getTime() + cfg.travaMinutos * 60_000) : null;
+/**
+ * `bloqueado_ate` do bloqueio sem prazo (RN-CORE-15, hotfix v0.3.16.1, pedido do Alexandre): não vence sozinho. Sai só com
+ * a senha temporária válida (que desbloqueia na hora) ou com o `operador.sh superadmin --destravar`/o administrador.
+ */
+export const BLOQUEIO_SEM_PRAZO = new Date('9999-12-31T00:00:00.000Z');
+
+/** Bloqueia a partir da `maxFalhas`-ésima falha seguida, sem prazo; `null` = ainda não bloqueia. */
+export function travaAposFalha(falhas: number, cfg: { maxFalhas: number }): Date | null {
+  return falhas >= cfg.maxFalhas ? BLOQUEIO_SEM_PRAZO : null;
 }
 
 /** A conta está travada agora (`bloqueado_ate` no futuro). */
@@ -53,13 +60,14 @@ export class ConferenciaCustoIgual {
 
   /**
    * RN-CORE-15: a conta travada não confere a senha atual; a temporária só é conferida se estiver vigente (a vencida não
-   * custa nada aqui e a recusa completa o custo). O banco revalida a temporária no consumo atômico.
+   * custa nada aqui e a recusa completa o custo). O banco revalida a temporária no consumo atômico. `soTemporaria` (IP no
+   * limite de falhas): a senha atual também não é conferida; só a temporária válida entra.
    */
-  async decidirEntrada(senha: string, conta: ContaParaEntrada, agora: Date): Promise<DecisaoEntrada> {
+  async decidirEntrada(senha: string, conta: ContaParaEntrada, agora: Date, soTemporaria = false): Promise<DecisaoEntrada> {
     const travada = contaTravada(conta.bloqueado_ate, agora);
     let conferencias = 0;
     let atual = false;
-    if (!travada) {
+    if (!travada && !soTemporaria) {
       atual = await conferirSenha(senha, conta.senha_hash);
       conferencias++;
     }
@@ -80,18 +88,20 @@ export class ConferenciaCustoIgual {
     throw erro();
   }
 
-  /** A recusa da conta que existe: 423 travada, senão a falha neutra do login. */
-  recusarConta(senha: string, r: Recusa, falha: () => ErroApi): Promise<never> {
-    return this.recusar(senha, r.conferencias, r.recusa === 'bloqueada' ? erros.contaBloqueada : falha);
+  /** A recusa da conta que existe: 423 travada, senão a falha neutra do login; com `limite` (IP no limite), o 429 dele. */
+  recusarConta(senha: string, r: Recusa, falha: () => ErroApi, limite?: () => ErroApi): Promise<never> {
+    return this.recusar(senha, r.conferencias, limite ?? (r.recusa === 'bloqueada' ? erros.contaBloqueada : falha));
   }
 
   /**
    * A conta que não existe (empresa ou e-mail, ou inativa): a trava em memória (`TravaContaMemoria`) dá o mesmo 423 da
-   * conta travada no banco; senão conta a falha e devolve a falha neutra. O mesmo custo em todo caso.
+   * conta travada no banco; senão conta a falha e devolve a falha neutra. O mesmo custo em todo caso. Com `limite` (IP no
+   * limite de falhas), a recusa é o 429 do limite, sem contar na trava: o mesmo da conta que existe.
    */
-  recusarSemConta(senha: string, trava: TravaContaMemoria, chave: string, agora: Date, falha: () => ErroApi): Promise<never> {
-    if (trava.travada(chave, agora.getTime())) return this.recusar(senha, 0, erros.contaBloqueada);
-    trava.falhou(chave, agora.getTime());
+  recusarSemConta(senha: string, trava: TravaContaMemoria, chave: string, falha: () => ErroApi, limite?: () => ErroApi): Promise<never> {
+    if (limite) return this.recusar(senha, 0, limite);
+    if (trava.travada(chave)) return this.recusar(senha, 0, erros.contaBloqueada);
+    trava.falhou(chave);
     return this.recusar(senha, 0, falha);
   }
 }

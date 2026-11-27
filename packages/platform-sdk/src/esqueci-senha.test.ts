@@ -66,12 +66,12 @@ describe('RN-CORE-13: pedido da senha temporária (POST /v1/auth/esqueci e /v1/p
     expect(() => SituacaoEsqueciResposta.parse({ esqueci_disponivel: 'sim' })).toThrow();
   });
 
-  it('caminhos, validade de 72 h e limites do FDV, congelados', () => {
+  it('caminhos, validade de 72 h e limite por IP (hotfix v0.3.16.1), congelados', () => {
     expect(CAMINHOS_ESQUECI_SENHA).toEqual({ tenant: '/v1/auth/esqueci', plataforma: '/v1/plataforma/auth/esqueci', situacao: '/v1/auth/esqueci/situacao' });
     expect(VALIDADE_SENHA_TEMPORARIA_HORAS).toBe(72);
-    expect(LIMITES_ESQUECI_SENHA).toEqual({ por_ip: { maximo: 5, janela_s: 900 }, por_conta: { maximo: 3, janela_s: 3600 } });
+    expect(LIMITES_ESQUECI_SENHA).toEqual({ por_ip: { maximo: 20, janela_s: 900 } });
     expect(Object.isFrozen(CAMINHOS_ESQUECI_SENHA)).toBe(true);
-    expect(Object.isFrozen(LIMITES_ESQUECI_SENHA.por_ip) && Object.isFrozen(LIMITES_ESQUECI_SENHA.por_conta)).toBe(true);
+    expect(Object.isFrozen(LIMITES_ESQUECI_SENHA.por_ip)).toBe(true);
   });
 });
 
