@@ -11,8 +11,8 @@ a { color: var(--mx-cor-azul-noite); }
 .marca { font-weight: var(--mx-peso-titulo); letter-spacing: .02em; }
 /* Botões: estilo único de @macuxierp/ui/botoes.css (MC-0008); aqui só o que é do shell. */
 .campo { display: block; margin-bottom: 16px; }
-.campo span { display: block; font-weight: var(--mx-peso-rotulo-campo); margin-bottom: 4px; }
-.campo input, .campo select { width: 100%; padding: 0 12px; height: var(--mx-medida-altura-campo); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.campo span { display: block; font-weight: var(--mx-peso-rotulo-campo); font-size: var(--mx-tamanho-micro); margin-bottom: 4px; }
+.campo input, .campo select { width: 100%; padding: 0 12px; height: var(--mx-medida-altura-campo); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; font: inherit; font-size: var(--mx-tamanho-texto); background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 .campo input[type='checkbox'], .campo input[type='radio'] { height: auto; padding: 0; }
 .erro { color: var(--mx-cor-erro-texto); background: var(--mx-cor-erro-fundo); border: 1px solid var(--mx-cor-erro-texto); border-radius: 6px; padding: 8px 12px; margin: 0 0 16px; }
 .apoio { color: var(--mx-cor-texto-secundario); font-size: var(--mx-tamanho-pequeno); }
@@ -94,7 +94,7 @@ tbody tr:nth-child(even) { background: var(--mx-cor-linha-alternada); }
 .dados dd { margin: 0; font-weight: var(--mx-peso-medio); }
 .erro-campo { color: var(--mx-cor-erro-texto); display: block; margin-top: 4px; }
 .paginacao { display: flex; gap: 12px; margin-top: 12px; }
-.entrada, .campo select, .campo textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
+.entrada, .campo select, .campo textarea { width: 100%; padding: 8px; font: inherit; font-size: var(--mx-tamanho-texto); border: 1px solid var(--mx-cor-borda-campo); border-radius: 6px; background: var(--mx-cor-branco); color: var(--mx-cor-grafite); }
 
 /* Integração FDV (T-0011) */
 .faixa-sinal { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--mx-cor-borda-cinza); margin: 0 0 16px; }
