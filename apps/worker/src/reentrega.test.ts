@@ -86,7 +86,7 @@ describe('reentrega na partida (T-0045)', () => {
     const d = { ...c, consumidores: [consumidor], log, eventos: [APROVADO, 'faturamento.nota.autorizada@1'] };
     expect(await reentregarPublicados(d)).toEqual({ entregues: 0, falhas: 0 });
     expect(vistos).toEqual([]);
-    expect(EVENTOS_REENTREGA_PADRAO).toEqual([APROVADO]);
+    expect(EVENTOS_REENTREGA_PADRAO).toEqual([APROVADO, 'core.empresa.cnpj_alterado@1']);
   });
 
   it('falha de um evento não para a rodada nem entra em laço; fica para a próxima partida', async () => {

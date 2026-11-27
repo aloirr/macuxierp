@@ -48,21 +48,28 @@ esac
 exit 0
 `;
 
-// curl falso (laço pelo domínio, v0.3.24): a n-ésima chamada de <caminho> devolve a linha n de $EST/codigos_<caminho>
-// (padrão 200) e tempo de n ms; 000 sai com 28, como o timeout do curl. Cada chamada vai para $EST/curl_chamadas.
+// curl falso (laço pelo domínio, v0.3.24; -w completo na v0.3.25): a n-ésima chamada de <caminho> devolve a linha n de
+// $EST/codigos_<caminho> (padrão 200), tempo de n ms e connect de 1 ms; 000 leva 3001 ms, sai com 28 e traz o %{errormsg}
+// do timeout. CURL_SEM_ERRORMSG=1 imita o curl sem a variável (nada no lugar dela). Cada chamada vai para $EST/curl_chamadas.
 const CURL_FALSO = `#!/usr/bin/env bash
 url="\${*: -1}"; p="\${url#*://*/}"; p="\${p//\\//_}"
+fmt=""; ant=""; for a in "$@"; do [ "$ant" = -w ] && fmt="$a"; ant="$a"; done
 echo "$$ $url" >> "$EST/curl_chamadas"
 n=$(( $(cat "$EST/ncurl_$p" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$EST/ncurl_$p"
 cod="$(sed -n "\${n}p" "$EST/codigos_$p" 2>/dev/null)"; cod="\${cod:-200}"
 [ -n "\${CURL_DORME:-}" ] && sleep "$CURL_DORME"
-printf '%s 0.%03d' "$cod" "$n"
+t="$(printf '0.%03d' "$n")"; msg=""; tc=0.001
+[ "$cod" = 000 ] && { t=3.001; tc=0.000; msg="Operation timed out after 3001 milliseconds with 0 bytes received"; }
+[ -n "\${CURL_SEM_ERRORMSG:-}" ] && msg=""
+fmt="\${fmt//'%{http_code}'/$cod}"; fmt="\${fmt//'%{time_total}'/$t}"; fmt="\${fmt//'%{time_connect}'/$tc}"; fmt="\${fmt//'%{errormsg}'/$msg}"
+printf '%s' "$fmt"
 [ "$cod" = 000 ] && exit 28
 exit 0
 `;
-// date falso: a hora do laço só sai no fuso de Manaus
+// date falso: a hora do laço só sai em UTC (date -u), como o log() do implantar.sh
 const DATE_FALSO = `#!/usr/bin/env bash
-if [ "$1" = +%H:%M:%S ]; then [ "\${TZ:-}" = America/Manaus ] && echo 09:08:07 || echo FUSO-ERRADO; exit 0; fi
+if [ "$1" = -u ] && [ "\${2:-}" = +%H:%M:%S ]; then echo 09:08:07; exit 0; fi
+if [ "$1" = +%H:%M:%S ]; then echo FUSO-ERRADO; exit 0; fi
 exec /bin/date "$@"
 `;
 
@@ -97,7 +104,10 @@ ${trecho}`;
   return { ...r, chamadas: ler('chamadas'), replicas: (svc) => ler(`svc_${svc}`), fora: ler('fora_do_tunel'), parados: ler('parados'), curl: () => ler('curl_chamadas'), tmp: () => readdirSync(join(est, 'tmp')), ler, est };
 }
 const indice = (chamadas, re) => chamadas.findIndex((c) => re.test(c));
-const LINHA = (rot, codigos) => new RegExp(`^\\[implantar\\] 09:08:07 laço ${rot} durante a troca: (\\d+) chamadas, códigos \\{${codigos}\\}, maior tempo (\\d+) ms$`, 'm');
+const LINHA = (rot, codigos, fim = '') => new RegExp(`^\\[implantar\\] 09:08:07 laço ${rot} durante a troca: (\\d+) chamadas, códigos \\{${codigos}\\}, maior tempo (\\d+) ms${fim}$`, 'm');
+const AVISO = ' \\(aviso: 000 isolado tolerado\\)';
+const TIMEOUT = 'Operation timed out after 3001 milliseconds with 0 bytes received';
+const diagnosticos = (saida, rot) => saida.split('\n').filter((l) => l.startsWith(`[implantar] 09:08:07 laço ${rot}: `));
 const vivo = (pid) => {
   try {
     process.kill(pid, 0);
@@ -195,7 +205,7 @@ todas_ok macuxierp-api so_a2 v9; echo "uma=$?"`, { replicas: { 'macuxierp-web': 
 });
 
 describe('troca.sh (v0.3.24, adendo 48 A): laço de curl pelo domínio durante a troca', () => {
-  it('(a) todas 200: uma linha por URL no formato, hora de Manaus, base padrão, e a troca passa', () => {
+  it('(a) todas 200: uma linha por URL no formato, hora em UTC, base padrão, sem diagnóstico, e a troca passa', () => {
     const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', { env: { MACUXIERP_TROCA_DRENO_S: '2' } });
     assert.match(r.stdout, /saida=0/, r.stderr);
     for (const rot of ['/login', '/v1/saude']) {
@@ -207,6 +217,8 @@ describe('troca.sh (v0.3.24, adendo 48 A): laço de curl pelo domínio durante a
       assert.equal(m[2], m[1]);
       assert.equal(m[3], m[1], 'maior tempo = a última chamada do curl falso (n ms)');
     }
+    assert.doesNotMatch(r.stdout, /FUSO-ERRADO|aviso/);
+    assert.deepEqual([...diagnosticos(r.stdout, '/login'), ...diagnosticos(r.stdout, '/v1/saude')], []);
     const urls = new Set(r.curl().map((l) => l.split(' ')[1]));
     assert.deepEqual([...urls].sort(), ['https://erp.macuxifdv.com.br/login', 'https://erp.macuxifdv.com.br/v1/saude']);
     assert.deepEqual(r.tmp(), [], 'sobrou arquivo temporário');
@@ -227,9 +239,12 @@ trocar_servico macuxierp-web; echo "volta=$?"`,
       { env: { MACUXIERP_TROCA_DRENO_S: '3' }, codigos: { v1_saude: [200, 502] } },
     );
     assert.match(r.stdout, /saida=1/);
-    assert.match(r.stderr, /macuxierp-web: o laço pelo domínio viu código diferente de 200 durante a troca: volta atrás/);
+    assert.match(r.stderr, /macuxierp-web: o laço pelo domínio falhou durante a troca \(000 seguido ou código diferente de 200 e 000\): volta atrás/);
     const [primeira] = r.stdout.split('\n').filter((l) => l.includes('laço /v1/saude '));
     assert.match(primeira, LINHA('/v1/saude', '200: \\d+, 502: 1'));
+    assert.doesNotMatch(primeira, /aviso/);
+    // 502 sem errormsg do curl: a linha diz a saída do curl (0)
+    assert.deepEqual(diagnosticos(r.stdout, '/v1/saude'), ['[implantar] 09:08:07 laço /v1/saude: 502 em 2 ms (curl saída 0, connect 1 ms)']);
     assert.match(r.stdout, LINHA('/login', '200: \\d+'));
     // a troca seguinte (a volta, com todas 200) passa e deixa uma réplica só
     assert.match(r.stdout, /volta=0/, r.stderr);
@@ -237,10 +252,65 @@ trocar_servico macuxierp-web; echo "volta=$?"`,
     assert.deepEqual(r.tmp(), []);
   });
 
-  it('curl sem resposta conta como 000 e também derruba a troca', () => {
-    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', { codigos: { login: ['000'] } });
+  it('(v0.3.25) um 000 isolado por URL: aviso, linha de diagnóstico com o errormsg, e a troca passa', () => {
+    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', {
+      env: { MACUXIERP_TROCA_DRENO_S: '2' },
+      codigos: { login: ['200', '000'], v1_saude: ['200', '000'] },
+    });
+    assert.match(r.stdout, /saida=0/, r.stderr);
+    assert.doesNotMatch(r.stderr, /volta atrás/);
+    for (const rot of ['/login', '/v1/saude']) {
+      assert.match(r.stdout, LINHA(rot, '000: 1, 200: \\d+', AVISO));
+      assert.deepEqual(diagnosticos(r.stdout, rot), [`[implantar] 09:08:07 laço ${rot}: 000 em 3001 ms (${TIMEOUT}, connect 0 ms)`]);
+    }
+    assert.deepEqual(r.tmp(), []);
+  });
+
+  it('(v0.3.25) dois 000 seguidos na mesma URL: falha (volta atrás), sem aviso, um diagnóstico por chamada', () => {
+    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', { env: { MACUXIERP_TROCA_DRENO_S: '2' }, codigos: { login: ['000', '000'] } });
     assert.match(r.stdout, /saida=1/);
-    assert.match(r.stdout, LINHA('/login', '000: 1(, 200: \\d+)?'));
+    assert.match(r.stderr, /volta atrás/);
+    const [linha] = r.stdout.split('\n').filter((l) => l.includes('laço /login '));
+    assert.match(linha, LINHA('/login', '000: 2(, 200: \\d+)?'));
+    assert.doesNotMatch(linha, /aviso/);
+    assert.equal(diagnosticos(r.stdout, '/login').length, 2);
+    assert.match(r.stdout, LINHA('/v1/saude', '200: \\d+'));
+  });
+
+  it('(v0.3.25) laco_resumo: 000 não vizinhos passam com aviso; 000 seguidos, 5xx/4xx e zero chamadas falham; curl sem errormsg mostra a saída', () => {
+    const caso = (nome, linhas) => `printf '%s' '${linhas.map((l) => `${l}\n`).join('')}' > ${nome}; laco_resumo ${nome} /login; echo "${nome}=$?"`;
+    const L = (cod, extra = '') => `11:12:13 ${cod === '000' ? 28 : 0} ${cod} ${cod === '000' ? '3.001 0.000' : '0.010 0.002'}${extra}`;
+    const r = rodar([
+      caso('alternado', [L('000', ` ${TIMEOUT}`), L('200'), L('000', ` ${TIMEOUT}`)]),
+      caso('seguidos', [L('200'), L('000'), L('000'), L('200')]),
+      caso('erro503', [L('200'), L('503')]),
+      caso('erro404', [L('404')]),
+      caso('so200', [L('200'), L('200')]),
+      caso('antigo', [L('000', ' %{errormsg}')]),
+      ': > vazio; laco_resumo vazio /login; echo "vazio=$?"',
+    ].join('\n'));
+    assert.match(r.stdout, /^alternado=0$/m);
+    assert.match(r.stdout, LINHA('/login', '000: 2, 200: 1', AVISO));
+    assert.match(r.stdout, /^\[implantar\] 11:12:13 laço \/login: 000 em 3001 ms \(Operation timed out after 3001 milliseconds with 0 bytes received, connect 0 ms\)$/m);
+    assert.match(r.stdout, /^seguidos=1$/m);
+    assert.match(r.stdout, /^\[implantar\] 11:12:13 laço \/login: 000 em 3001 ms \(curl saída 28, connect 0 ms\)$/m);
+    assert.match(r.stdout, /^erro503=1$/m);
+    assert.match(r.stdout, /^\[implantar\] 11:12:13 laço \/login: 503 em 10 ms \(curl saída 0, connect 2 ms\)$/m);
+    assert.match(r.stdout, /^erro404=1$/m);
+    assert.match(r.stdout, /^so200=0$/m);
+    assert.match(r.stdout, /^antigo=0$/m);
+    assert.match(r.stdout, /^vazio=1$/m);
+    assert.match(r.stdout, /laço \/login durante a troca: 0 chamadas, códigos \{\}, maior tempo 0 ms$/m);
+  });
+
+  it('(v0.3.25) curl sem %{errormsg}: a linha de diagnóstico traz a saída do curl (28 no timeout)', () => {
+    const r = rodar('trocar_servico macuxierp-web; echo "saida=$?"', {
+      env: { MACUXIERP_TROCA_DRENO_S: '2', CURL_SEM_ERRORMSG: '1' },
+      codigos: { login: ['200', '000'] },
+    });
+    assert.match(r.stdout, /saida=0/, r.stderr);
+    assert.deepEqual(diagnosticos(r.stdout, '/login'), ['[implantar] 09:08:07 laço /login: 000 em 3001 ms (curl saída 28, connect 0 ms)']);
+    assert.match(r.stdout, LINHA('/login', '000: 1, 200: \\d+', AVISO));
   });
 
   it('(c) a troca falha (nova doente): o laço é encerrado, sem processo órfão nem arquivo temporário', () => {
