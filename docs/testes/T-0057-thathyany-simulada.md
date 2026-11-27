@@ -2,9 +2,9 @@
 
 > Autor: `testes` · criado em 26/11/2026, 21h15 (Manaus) · revisto em 27/11/2026, 00h13 (Manaus), com o código do `main` cccc4f2 (E1 #747, C1/C2 #748, E2 #749, C3/C4 #763, E3 #764) · branch `nuvem/t0057-testes`.
 > Base: ADR 0014 §1 a §4 (`docs/decisoes/0014-cenario-b-entrada-de-dados.md`), roteiro da VM (`docs/banco/vm-cenario-b.md`) e decisões 33 B e 34 B do Alexandre (R-20261126-210816-alexandre): **só delta**; a carga completa responde **422 `CARGA_COMPLETA_NAO_SUPORTADA`**; a trava de 30% (RN-INT-06), o Conector on-premise, as colunas "via Conector/via API" e a mão dupla ficam para depois.
-> **Status:** pronto para rodar depois da migração 0072 (GRANTs do `macuxierp_worker` para gravar os cadastros; sem ela, toda linha que o worker grava sai `falha_processamento`). O teste automático equivalente é `tests/ponta-a-ponta-fdv/entrada-v1.db.test.ts`, com o código de produção de ponta a ponta. Quatro defeitos conhecidos (recados ao gerente de 27/11/2026, 00h09 e 00h12), que este roteiro contorna e marca:
-> - **D1:** filial nova não entra pela entrada (o `FilialHub` não tem `crt`);
-> - **D2:** produto novo não entra (o `ProdutoHub` não tem NCM, RN-CAD-04);
+> **Status:** pronto para rodar depois da migração 0072 (GRANTs do `macuxierp_worker` para gravar os cadastros; sem ela, toda linha que o worker grava sai `falha_processamento`). O teste automático equivalente é `tests/ponta-a-ponta-fdv/entrada-v1.db.test.ts`, com o código de produção de ponta a ponta. Os quatro defeitos achados pelo T1 (recados ao gerente de 27/11/2026, 00h09 e 00h12) e como ficaram:
+> - **D1:** resolvido pela decisão 40 B (#770 e #771). A filial da entrada (`FilialEntrada`) aceita `crt` opcional (`"1"` a `"4"`). Filial nova sem `crt` é recusada só na linha (`campo_obrigatorio`, campo `crt`); a filial já cadastrada, atualizada sem `crt`, mantém o valor gravado;
+> - **D2:** resolvido pela decisão 40 B. O produto da entrada (`ProdutoEntrada`) aceita `ncm` opcional (8 dígitos, RN-CAD-04). Produto novo sem `ncm` é recusado só na linha (`campo_obrigatorio`, campo `ncm`); o produto já cadastrado mantém o NCM gravado;
 > - **D3:** o 1º prazo de uma forma nova, sem condição no ERP, não entra (fica para a v0.3.18, com a `cadastros.entrada_forma`). Desde o #768, a forma já ligada a uma condição entra: o lote da forma atualiza as condições dela, e o prazo novo dessa forma grava;
 > - **D4:** corrigido no #768 (o registro mais antigo que o gravado conta como `obsoletas`, não grava e não recua o cursor).
 
@@ -29,7 +29,7 @@ Uma sessão faz o papel do ERP da Thathyany chamando direto a `/entrada/v1` (o "
 | Credencial | Gerada pelo superadmin no `/config` (`POST /v1/plataforma/empresas/:id/entrada/credencial` com `{"conector_id":"tha-api-teste"}`). A resposta (`CredencialEntradaCriada`: `conector_id`, `chave`, `prefixo`, `criada_em`) é **a única vez** em que a chave aparece: 43 caracteres base64url (`ChaveEntrada`). O mesmo POST troca a chave (a anterior para na hora); `DELETE ...?conector_id=` revoga. A leitura `GET /v1/plataforma/empresas/:id/entrada` mostra só o prefixo (8). Quem copia a chave guarda só na variável da sessão; **nunca** em doc, recado, commit, print ou chat. |
 | Variáveis | `CONECTOR=tha-api-teste` (exemplo; `ConectorIdEntrada`: começa por letra ou dígito, até 100, `[A-Za-z0-9._-]`) e `CHAVE` lida do prompt (`read -rs CHAVE`), nunca escrita no comando. |
 | Relógio | Carimbos em UTC com `Z` (`date -u +%Y-%m-%dT%H:%M:%S.000Z`). Texto para pessoas em Manaus. |
-| BKO antes (D1 a D3) | Pelo BKO do tenant, com o `external_id` da massa: a filial (com CRT), o produto (com NCM e CEST) e uma condição de pagamento da forma `BOLETO` ligada ao `external_id` da forma (`forma_external_id`, `forma_codigo`, `forma_nome`; a ligação não tem campo no BKO e vai pelo `banco-dados`). A entrada passa a atualizar a filial e o produto e cria os outros. |
+| BKO antes | Opcional para a filial e o produto: com `crt` e `ncm` no registro, a entrada os cria (D1/D2). Sem esses campos, o cliente cadastra antes pelo BKO, com o `external_id` da massa, a filial (com CRT) e o produto (com NCM e CEST). Obrigatório para o prazo (D3, até a v0.3.18): uma condição de pagamento da forma `BOLETO` ligada ao `external_id` da forma (`forma_external_id`, `forma_codigo`, `forma_nome`; a ligação não tem campo no BKO e vai pelo `banco-dados`). A entrada passa a atualizar a filial e o produto e cria os outros. |
 
 Cabeçalhos de toda chamada (autenticação de máquina, sem JWT, ADR 0014 §3):
 
@@ -81,7 +81,7 @@ Mande na ordem abaixo: cada um só referencia os anteriores. Tudo fictício (o C
 | 2 | `vendedor` | `"nome":"Vendedora Ficticia","filial_external_id":"THA-FIL-1"` |
 | 3 | `forma_pagamento` | `"codigo":"BOLETO","nome":"Boleto"` (o código é o do dicionário do tPag, RN-CAD-09: `BOLETO`, `PIX`, `DINHEIRO`, `CARTAO`...; fora dele o prazo sai `regra_invalida` em `forma_tpag`) |
 | 4 | `prazo_pagamento` | `"forma_external_id":"THA-FOR-1","codigo":"28-56","parcelas_dias":"28/56","descricao":"Boleto 28/56"` |
-| 5 | `produto` | `"sku":"SKU-0001","nome":"Arroz Ficticio 5 kg","unidade":"UN","marca":"Marca Teste"` (sem custo nem preço) |
+| 5 | `produto` | `"sku":"SKU-0001","nome":"Arroz Ficticio 5 kg","unidade":"UN","marca":"Marca Teste"` (sem custo nem preço; para criar sem o BKO, acrescente `"ncm":"10063021"`; na filial, `"crt":"1"`) |
 | 6 | `produto_unidade` | `"produto_external_id":"THA-PRO-1","unidade":"CX","fator":6,"padrao":false` |
 | 7 | `preco` | `"tabela_external_id":"THA-TAB-1","tabela_nome":"Tabela Varejo","vigencia_inicio":"2026-11-01","produto_external_id":"THA-PRO-1","preco_cents":2899,"filial_external_id":"THA-FIL-1"` |
 | 8 | `estoque` | `"deposito_external_id":"THA-DEP-1","deposito_nome":"Depósito Central","produto_external_id":"THA-PRO-1","saldo":120,"filial_external_id":"THA-FIL-1"` (saldo fracionário só em KG e M, RN-CAD-17) |
@@ -119,7 +119,7 @@ Esperado: **409**; o corpo de erro não traz o corpo enviado nem a chave. O lote
 ```bash
 curl -sS "$BASE/entrada/v1/lotes/$LOTE_ID?limite_erros=100" "${H[@]}"
 ```
-Esperado: primeiro `recebido` ou `processando`; depois de alguns segundos, `concluido`. Com a filial já cadastrada no BKO (D1), a linha conta em `atualizadas`; o exemplo abaixo é o de um cadastro novo:
+Esperado: primeiro `recebido` ou `processando`; depois de alguns segundos, `concluido`. Com a filial já cadastrada no BKO, a linha conta em `atualizadas`; o exemplo abaixo é o de um cadastro novo:
 
 ```json
 {
@@ -156,7 +156,7 @@ Esperado: `{"entidade":"filial","cursor":{"alterado_em":"2026-11-27T11:59:00.000
 
 Repita os passos 1, 4 e 6 para `forma_pagamento`, `prazo_pagamento`, `produto`, `produto_unidade`, `preco`, `estoque`, `cliente` e `cliente_endereco`, na ordem da seção 3.1. Esperado em cada um: 202 → `concluido` com uma linha contada → cursor no registro enviado. A contagem:
 - `novas=1`: vendedor, prazo, unidade, preço, estoque e cliente;
-- `atualizadas=1`: produto (já no BKO, D2) e `cliente_endereco` (o endereço é uma linha do cliente; o de entrega novo conta como cliente atualizado);
+- `atualizadas=1`: produto (já no BKO) e `cliente_endereco` (o endereço é uma linha do cliente; o de entrega novo conta como cliente atualizado);
 - `inalteradas=1`: `forma_pagamento` (não tem tabela própria: as válidas só conferem o formato).
 
 No BKO do tenant, cada cadastro aparece com o `external_id` do cliente; no tenant com o `integracao-fdv` ligado, o registro sai ao Hub como o cadastrado pelo BKO (a entrada não fala com o FDV).
