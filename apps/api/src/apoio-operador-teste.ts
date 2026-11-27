@@ -1,14 +1,17 @@
 /**
  * Apoio dos testes do operador (operador-empresa.db.test.ts e operador-superadmin.db.test.ts): leitura de trechos e
- * padrões dos fontes .mjs, o alfabeto da senha provisória da API e o ambiente do `psql` como no contêiner (PG* do admin).
+ * padrões dos fontes .mjs, o alfabeto da senha provisória do SDK e o ambiente do `psql` como no contêiner (PG* do admin).
  * Tudo lança erro quando não acha o que procura: um fonte mudado derruba o teste, nunca o deixa passar em branco.
  */
 import { randomInt } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  ALFABETO_SENHA_TEMPORARIA,
+  DIGITOS_SENHA_TEMPORARIA,
+  gerarSenhaTemporaria,
+  MAIUSCULAS_SENHA_TEMPORARIA,
+  MINUSCULAS_SENHA_TEMPORARIA,
+} from '@macuxierp/platform-sdk';
 
-const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /** `.source` da regex literal `const <nome> = /.../;` de um fonte .mjs. */
 export function padraoDoFonte(fonte: string, nome: string): string {
@@ -26,31 +29,17 @@ export function trechoDoFonte(fonte: string, inicio: string, fim: string): strin
   return fonte.slice(i, f + fim.length);
 }
 
-/** Alfabeto da senha provisória da API lido do fonte (as 4 constantes de modules/core/domain/usuarios.ts): a regra de
- *  fronteiras (app-importa-interno-de-modulo) não deixa apps/ importar `@macuxierp/core/domain`. */
-const FONTE_USUARIOS = readFileSync(resolve(RAIZ, 'modules', 'core', 'domain', 'usuarios.ts'), 'utf8');
-export const CLASSES_API = Object.fromEntries(
-  (['MAIUSCULAS', 'MINUSCULAS', 'DIGITOS', 'SIMBOLOS'] as const).map((nome) => {
-    const m = new RegExp(`const ${nome} = '([^']+)';`).exec(FONTE_USUARIOS);
-    if (!m) throw new Error(`${nome} não encontrado em usuarios.ts`);
-    return [nome, m[1]!];
-  }),
-) as Readonly<Record<'MAIUSCULAS' | 'MINUSCULAS' | 'DIGITOS' | 'SIMBOLOS', string>>;
-export const ALFABETO_API = Object.values(CLASSES_API).join('');
-if (ALFABETO_API.length !== 64) throw new Error('alfabeto da API deixou de ter 64 símbolos: revise senhaProvisoria()');
+/** As classes da senha temporária e provisória do SDK (44 B, fonte única), pelo nome das constantes do operador.sh. */
+export const CLASSES_API = Object.freeze({
+  MAIUSCULAS: MAIUSCULAS_SENHA_TEMPORARIA,
+  MINUSCULAS: MINUSCULAS_SENHA_TEMPORARIA,
+  DIGITOS: DIGITOS_SENHA_TEMPORARIA,
+}) as Readonly<Record<'MAIUSCULAS' | 'MINUSCULAS' | 'DIGITOS', string>>;
+export const ALFABETO_API = ALFABETO_SENHA_TEMPORARIA;
 
-/**
- * 16 caracteres do alfabeto da API como o `gerar_senha` do operador.sh (T-0052): um de cada classe (maiúscula, minúscula,
- * dígito, especial), o resto do alfabeto inteiro e embaralhado; cumpre a regra única de senha por construção.
- */
+/** Uma provisória como o `gerar_senha` do operador.sh: o gerador do SDK com o CSPRNG do Node. */
 export function senhaProvisoria(): string {
-  const sortear = (alfabeto: string) => alfabeto[randomInt(alfabeto.length)]!;
-  const c = [...Object.values(CLASSES_API).map(sortear), ...Array.from({ length: 12 }, () => sortear(ALFABETO_API))];
-  for (let i = c.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [c[i], c[j]] = [c[j]!, c[i]!];
-  }
-  return c.join('');
+  return gerarSenhaTemporaria((n) => randomInt(n));
 }
 
 /** Ambiente do `psql` como no contêiner: PG* do admin local apontando para `nomeDoBanco` (o teste soma as MACUXIERP_*). */

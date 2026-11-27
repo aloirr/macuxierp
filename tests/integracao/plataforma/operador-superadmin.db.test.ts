@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TAMANHO_SENHA_TEMPORARIA } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
 import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
 import { envPsqlAdmin } from '../../../apps/api/src/apoio-operador-teste';
@@ -100,7 +101,7 @@ describe.skipIf(!PG_DISPONIVEL)('operador.sh criar-superadmin e superadmin, pont
   const referencia = async () => (await um<{ id: string }>('SELECT plataforma.tenant_referencia() AS id'))[0]!.id;
   /** A senha impressa: o token da saída que confere com o hash gravado (sem depender do texto em volta); '' se nenhum. */
   const senhaNaSaida = async (saida: string, hash: string) => {
-    for (const t of new Set(saida.split(/\s+/).filter((x) => x.length === 16))) if (await conferirSenha(t, hash)) return t;
+    for (const t of new Set(saida.split(/\s+/).filter((x) => x.length === TAMANHO_SENHA_TEMPORARIA))) if (await conferirSenha(t, hash)) return t;
     return '';
   };
   /**

@@ -41,8 +41,8 @@ const ARGON2 = { memoria: 19_456, passes: 2, paralelismo: 1, tamanho: 32 }; // A
 // tamanho. Cópia (o contêiner não tem node_modules); o teste apps/api/src/operador-senha.test.ts trava contra o SDK.
 const SENHA_LETRA = /\p{L}/u;
 const SENHA_NUMERO = /[0-9]/;
-const SENHA_ESPECIAL = /[^\p{L}0-9\s]/u;
-const cumpreRegraSenha = (s) => SENHA_LETRA.test(s) && SENHA_NUMERO.test(s) && SENHA_ESPECIAL.test(s);
+// a provisória é isenta da regra "especial" (44 B, regrasDescumpridasTemporaria do SDK): letra e número bastam
+const cumpreRegraSenha = (s) => SENHA_LETRA.test(s) && SENHA_NUMERO.test(s);
 
 class ErroUso extends Error {}
 
@@ -78,8 +78,8 @@ function lerArgumentos(argv, env) {
     throw new ErroUso('MACUXIERP_SUPERADMIN_NOME (--nome) só no criar');
   }
   if (COM_SENHA.has(op.acao)) {
-    if (op.confirmar && op.senha.length < 16) throw new ErroUso('MACUXIERP_SENHA_INICIAL ausente ou curta (o operador.sh gera 16 caracteres)');
-    if (op.confirmar && !cumpreRegraSenha(op.senha)) throw new ErroUso('MACUXIERP_SENHA_INICIAL fora da regra de senha (letra, número e caractere especial)');
+    if (op.confirmar && op.senha.length < 18) throw new ErroUso('MACUXIERP_SENHA_INICIAL ausente ou curta (o operador.sh gera 18 caracteres)');
+    if (op.confirmar && !cumpreRegraSenha(op.senha)) throw new ErroUso('MACUXIERP_SENHA_INICIAL fora da regra da senha provisória (letra e número)');
     if (!op.confirmar && op.senha) throw new ErroUso('MACUXIERP_SENHA_INICIAL só com --confirmar');
   } else if (op.senha) {
     throw new ErroUso('MACUXIERP_SENHA_INICIAL só no criar e no redefinir-senha (este comando não troca senha)');
