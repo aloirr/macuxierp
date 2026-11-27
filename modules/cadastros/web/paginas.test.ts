@@ -64,9 +64,9 @@ describe('coluna Situação como selo (MC-0201, regra 11)', () => {
     const col = COLUNAS_RESUMO.filter((c) => c.titulo === 'Situação');
     expect(col).toHaveLength(1);
     expect(col[0]!.tipo).toBe('status');
-    const linha = (situacao: string) => ({ situacao }) as LinhaResumo;
-    expect(col[0]!.selos!(linha('Processado'))).toEqual([{ texto: 'Processado', tom: 'ok' }]);
-    expect(col[0]!.selos!(linha('Arquivo recusado'))).toEqual([{ texto: 'Arquivo recusado', tom: 'erro' }]);
-    expect(col[0]!.selos!(linha('Ignorado'))).toEqual([{ texto: 'Ignorado', tom: 'neutro' }]);
+    const linha = (situacao: LinhaResumo['situacaoCodigo']) => ({ situacaoCodigo: situacao }) as LinhaResumo;
+    expect(col[0]!.selos!(linha('processado'))).toEqual([{ texto: 'Processado', tom: 'ok' }]);
+    expect(col[0]!.selos!(linha('recusado'))).toEqual([{ texto: 'Arquivo recusado', tom: 'erro' }]);
+    expect(col[0]!.selos!(linha('ignorado'))).toEqual([{ texto: 'Ignorado', tom: 'neutro' }]);
   });
 });

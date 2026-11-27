@@ -3,7 +3,7 @@
  * escolhe os CSVs, chama `POST /v1/cadastros/cargas` e desenha o relatório. A página NÃO guarda o arquivo (D9): o
  * navegador só o envia. A permissão aqui só esconde o botão; a proteção real é a da API (RN-CORE-02).
  */
-import type { Selo, TipoColuna } from './edicao';
+import type { ExtrasDeColuna, Selo } from './edicao';
 import { paginaVisivel, paraCsv, type ColunaCsv, type PaginaBase, type Perfil } from '@macuxierp/platform-sdk';
 import { ENTIDADES_CARGA, MAX_ARQUIVOS_LOTE, MAX_BYTES_LOTE, type ErroCarga, type ModoCarga, type RelatorioCarga, type ResultadoEntidade } from '../contracts';
 
@@ -41,7 +41,6 @@ const SITUACOES: Readonly<Record<ResultadoEntidade['situacao'], string>> = { pro
 const SELO_SITUACAO: Readonly<Record<ResultadoEntidade['situacao'], Selo>> = {
   processado: { texto: SITUACOES.processado, tom: 'ok' }, recusado: { texto: SITUACOES.recusado, tom: 'erro' }, ignorado: { texto: SITUACOES.ignorado, tom: 'neutro' },
 };
-const seloDaSituacaoDoArquivo = (texto: string): readonly Selo[] => Object.values(SELO_SITUACAO).filter((x) => x.texto === texto);
 
 export interface AcoesDaCarga {
   /** Vê a página e escolhe arquivos. */
@@ -86,6 +85,8 @@ export interface LinhaResumo {
   entidade: string;
   arquivo: string;
   situacao: string;
+  /** Código da situação, de onde sai o selo (sem voltar do texto). */
+  situacaoCodigo: ResultadoEntidade['situacao'];
   lidas: number;
   inseridas: number;
   atualizadas: number;
@@ -104,7 +105,7 @@ export function resumoDoRelatorio(r: RelatorioCarga): LinhaResumo[] {
   return [...r.entidades]
     .sort((a, b) => posicao(a.entidade) - posicao(b.entidade))
     .map((e) => ({
-      entidade: ROTULOS_ENTIDADE[e.entidade], arquivo: e.arquivo, situacao: SITUACOES[e.situacao], lidas: e.lidas, inseridas: e.inseridas,
+      entidade: ROTULOS_ENTIDADE[e.entidade], arquivo: e.arquivo, situacao: SITUACOES[e.situacao], situacaoCodigo: e.situacao, lidas: e.lidas, inseridas: e.inseridas,
       atualizadas: e.atualizadas, sem_mudanca: e.sem_mudanca, recusadas: e.recusadas, avisos: e.avisos.join(' | '), colunas_ignoradas: e.colunas_ignoradas.join(', '),
     }));
 }
@@ -158,9 +159,9 @@ export function csvDosErros(r: RelatorioCarga): string {
 }
 
 /** Colunas do resumo por entidade; a "Situação" é do tipo `status` (selo na tela, texto no CSV). */
-export const COLUNAS_RESUMO: readonly (ColunaCsv<LinhaResumo> & { tipo?: TipoColuna; selos?: (l: LinhaResumo) => readonly Selo[] })[] = [
+export const COLUNAS_RESUMO: readonly (ColunaCsv<LinhaResumo> & ExtrasDeColuna<LinhaResumo>)[] = [
   { titulo: 'Cadastro', valor: (l) => l.entidade }, { titulo: 'Arquivo', valor: (l) => l.arquivo },
-  { titulo: 'Situação', tipo: 'status', valor: (l) => l.situacao, selos: (l) => seloDaSituacaoDoArquivo(l.situacao) },
+  { titulo: 'Situação', tipo: 'status', valor: (l) => l.situacao, selos: (l) => [SELO_SITUACAO[l.situacaoCodigo]] },
   { titulo: 'Lidas', valor: (l) => l.lidas }, { titulo: 'Inseridas', valor: (l) => l.inseridas }, { titulo: 'Atualizadas', valor: (l) => l.atualizadas },
   { titulo: 'Sem mudança', valor: (l) => l.sem_mudanca }, { titulo: 'Recusadas', valor: (l) => l.recusadas }, { titulo: 'Avisos', valor: (l) => l.avisos },
   { titulo: 'Colunas ignoradas', valor: (l) => l.colunas_ignoradas },

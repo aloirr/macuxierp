@@ -6,7 +6,7 @@
 import { ConsultaLista, ConsultaPaginada, LIMITE_PADRAO, lerFiltros, paraCsv, pode, type Acao, type ColunaCsv, type PaginaBase, type Perfil, type ValorCsv } from '@macuxierp/platform-sdk';
 import { formatarQuantidade } from '@macuxierp/platform-sdk/formatar';
 import { AGRUPAR_PRAZOS_POR, ROTULO_PRAZO_MEDIO, diasDoPrazo, prazoMedioNaLista, rotuloDaForma } from './prazos';
-import { seloDaSituacao, situacao, type Selo, type TipoColuna } from './edicao';
+import { colunaSituacao, type ExtrasDeColuna, type Selo, type TipoColuna } from './edicao';
 import { ROTA_CLIENTE, ROTA_CLIENTE_NOVO, ROTA_CLIENTES, paginaClientes } from './clientes';
 import { ROTA_FILIAL, ROTA_FILIAIS, ROTA_FILIAL_NOVA, paginaFiliais } from './filiais';
 import { ROTA_PRODUTO, ROTA_PRODUTO_NOVO, ROTA_PRODUTOS, paginaProdutos } from './produtos';
@@ -38,15 +38,26 @@ export interface PaginaCadastros extends PaginaBase {
   restritos?: readonly { campo: string; exige: Acao }[];
 }
 
-const ATIVO: ColunaPagina = { chave: 'inativo', rotulo: 'Situação', tipo: 'status', formatar: situacao, selos: (v) => [seloDaSituacao(v)] };
-
 /** O que a lista declarada pelo SDK (`definirPaginaLista`) dá ao descritor do shell: API, filtros e colunas. */
 interface ListaDoSdk {
   readonly id: string;
   readonly api: string;
   readonly filtros: Readonly<Record<string, unknown>>;
-  readonly colunas: readonly { id: string; titulo: string; valor: (linha: never) => ValorCsv; exige?: Acao; tipo?: TipoColuna; selos?: (linha: never) => readonly Selo[] }[];
+  readonly colunas: readonly ({ id: string; titulo: string; valor: (linha: never) => ValorCsv; exige?: Acao } & ExtrasDeColuna<never>)[];
 }
+
+/** Uma coluna da lista do SDK vira coluna do descritor; cada coluna lê só o próprio campo da linha. */
+function daColuna(c: ListaDoSdk['colunas'][number]): ColunaPagina {
+  return {
+    chave: c.id, rotulo: c.titulo, ...(c.exige ? { exige: c.exige } : {}),
+    formatar: (v: unknown) => String((c.valor as (linha: unknown) => ValorCsv)({ [c.id]: v }) ?? ''),
+    ...(c.tipo ? { tipo: c.tipo } : {}),
+    ...(c.selos ? { selos: (v: unknown) => (c.selos as (linha: unknown) => readonly Selo[])({ [c.id]: v }) } : {}),
+  };
+}
+
+/** Coluna "Situação" única: a mesma `colunaSituacao` das listas. */
+const ATIVO: ColunaPagina = daColuna(colunaSituacao());
 
 /**
  * Lista única (T-0088): API, filtros, colunas, títulos e formatação vêm do descritor da lista do SDK, o mesmo que a API usa no
@@ -57,12 +68,7 @@ function daLista(l: ListaDoSdk): Pick<PaginaCadastros, 'id' | 'api' | 'filtros' 
     id: l.id,
     api: l.api,
     filtros: Object.keys(l.filtros),
-    colunas: l.colunas.map((c) => ({
-      chave: c.id, rotulo: c.titulo, ...(c.exige ? { exige: c.exige } : {}),
-      formatar: (v: unknown) => String((c.valor as (linha: unknown) => ValorCsv)({ [c.id]: v }) ?? ''),
-      ...(c.tipo ? { tipo: c.tipo } : {}),
-      ...(c.selos ? { selos: (v: unknown) => (c.selos as (linha: unknown) => readonly Selo[])({ [c.id]: v }) } : {}),
-    })),
+    colunas: l.colunas.map(daColuna),
   };
 }
 
