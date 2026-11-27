@@ -100,7 +100,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         {motivos.length > 0 ? (
           <>
           <fieldset aria-describedby={erroMotivo ? `${id}-erro-motivo` : undefined} style={{ border: 0, padding: 0, margin: 0, ...coluna }}>
-            <legend style={texto('pequeno', 'rotulo-campo')}>Motivo</legend>
+            <legend style={texto('rotulo-dado', 'rotulo-campo')}>Motivo</legend>
             {motivos.map((m) => (
               <label key={m.codigo} style={{ display: 'flex', gap: espaco.sm, alignItems: 'center' }}>
                 <input type="radio" style={motivo === m.codigo ? { ...radioBase, ...radioMarcado } : radioBase} name={`${id}-m`} value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} />
@@ -114,7 +114,7 @@ export function DialogoMotivo(props: DialogoMotivoProps) {
         {semTexto ? null : (
         <div style={coluna}>
         <label style={coluna}>
-          <span style={texto('pequeno', 'rotulo-campo')}>
+          <span style={texto('rotulo-dado', 'rotulo-campo')}>
             {rotuloTexto}
             {textoObrigatorio ? '' : ' (opcional)'}
           </span>

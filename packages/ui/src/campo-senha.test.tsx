@@ -31,14 +31,15 @@ describe('CampoSenha (T-0094, alinhado ao FDV)', () => {
     expect(h).toContain('padding:0 12px 0 12px');
   });
 
-  it('com olho: campo de 44 px e recuo de 48 px à direita; botão 44×44 colado à direita, só ícone', () => {
+  it('com olho: campo e botão na altura única (alturaCampo, 34 px, decisão 51 A), recuo de 40 px; botão colado à direita, só ícone, com a fonte do botão (MC-0204)', () => {
     const h = campo();
-    expect(h).toContain('height:44px');
-    expect(h).toContain('padding:0 48px 0 12px');
+    expect(h).toContain('height:var(--mx-medida-altura-campo)');
+    expect(h).toContain('padding:0 40px 0 12px');
     const botao = h.match(/<button[^>]*>/)?.[0] ?? '';
     expect(botao).toContain('type="button"');
     expect(botao).toContain('class="mx-olho"');
-    expect(botao).toContain('width:44px;height:44px');
+    expect(botao).toContain('width:var(--mx-medida-altura-campo);height:var(--mx-medida-altura-campo)');
+    expect(botao).toContain('font-size:var(--mx-tamanho-texto)');
     expect(botao).toContain('right:0');
     expect(botao).toContain('background:transparent');
     expect(botao).toContain('border:none');
@@ -63,10 +64,10 @@ describe('CampoSenha (T-0094, alinhado ao FDV)', () => {
     expect(h).toContain('spellCheck="false"');
   });
 
-  it('rótulo de 13 px semibold ligado ao campo; ícone escondido do leitor', () => {
+  it('rótulo de 12 px semibold (rotuloDado, decisão 51 A) ligado ao campo; ícone escondido do leitor', () => {
     const h = campo({ rotulo: 'Senha nova' });
     expect(h).toContain('<label for="senha"');
-    expect(h).toContain('font-size:var(--mx-tamanho-pequeno)');
+    expect(h).toContain('font-size:var(--mx-tamanho-rotulo-dado)');
     expect(h).toContain('font-weight:var(--mx-peso-rotulo-campo)');
     expect(h).toContain('>Senha nova</label>');
     expect(h).toMatch(/<svg[^>]*aria-hidden="true"/);

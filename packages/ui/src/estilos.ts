@@ -166,6 +166,8 @@ export function gerarCssBotoes(): string {
     regraCss('.mx-checkbox:checked', checkboxMarcado) +
     regraCss('.mx-checkbox:focus-visible', focoVisivel) +
     regraCss('.mx-fundo-escuro :focus-visible', focoVisivelEscuro) +
+    // h1 em azul-noite em todo o BKO e o /config (validação da marca do shell da v0.3.28); o tamanho segue o papel h1.
+    regraCss('h1', { color: cor('azulNoite') }) +
     regraCss('.mx-botao:disabled, .mx-botao-secundario:disabled, .mx-botao-destrutivo:disabled, .mx-botao[aria-disabled="true"], .mx-botao-secundario[aria-disabled="true"], .mx-botao-destrutivo[aria-disabled="true"]', desabilitadoEstilo(true)) +
     regraCss('.mx-checkbox:disabled, .mx-radio:disabled', desabilitadoEstilo(true)) +
     cssMenuAcoes()
@@ -215,7 +217,7 @@ export const tabela = {
   /** Data e selo (MC-0201): sem quebra de linha. O texto comum quebra só entre palavras. */
   celulaSemQuebra: { ...tabular, whiteSpace: 'nowrap' } as CSSProperties,
   /** Legenda de tabela: 15 px (base), peso 600, à esquerda. */
-  legenda: { ...texto('base', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
+  legenda: { ...texto('texto', 'rotulo-campo'), textAlign: 'left', padding: espaco.sm } as CSSProperties,
   vazio: { textAlign: 'center', color: cor('textoSecundario'), padding: espaco.xl } as CSSProperties,
 };
 
