@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { listarEmpresas } from '@/lib/config/api';
-import { ConfigNaoAutenticado } from '@/lib/config/erros';
+import { CodigoDoErro } from '@/components/codigo-do-erro';
+import { ConfigIndisponivel, ConfigNaoAutenticado } from '@/lib/config/erros';
 import { exigirTokenConfig, ROTA_ENCERRAR } from '@/lib/config/sessao';
 import { redirect } from 'next/navigation';
 import { ListaEmpresas } from './lista-empresas';
@@ -23,8 +24,9 @@ export default async function Empresas({ searchParams }: { searchParams: Promise
     return (
       <>
         <h1>Empresas</h1>
-        <p className="erro">Não foi possível carregar. Tente de novo.</p>
-        <a className="mx-botao-secundario" href={href}>Tentar de novo</a>
+        <p className="erro">Não foi possível carregar a lista de empresas.</p>
+        <CodigoDoErro id={e instanceof ConfigIndisponivel ? e.requestId : undefined} />
+        <a className="mx-botao-secundario" href={href}>Recarregar</a>
       </>
     );
   }

@@ -49,11 +49,11 @@ describe('cliente da entrada no portal (fetch simulado)', () => {
     expect(chamadas[0]?.init.method).toBe('DELETE');
     expect(chamadas[0]?.init.headers['x-macuxierp-config']).toBe('1');
   });
-  it('503 pepper_ausente e 409 conector_id_em_uso chegam com o código; empresa fora do formato nunca vai ao caminho', async () => {
-    resposta = () => json({ codigo: 'pepper_ausente', mensagem: 'x' }, 503);
-    await expect(criarCredencialEntrada('tok', ID, { conector_id: 'a' })).rejects.toMatchObject({ status: 503, codigo: 'pepper_ausente' });
-    resposta = () => json({ codigo: 'conector_id_em_uso' }, 409);
-    await expect(criarCredencialEntrada('tok', ID, { conector_id: 'a' })).rejects.toMatchObject({ status: 409, codigo: 'conector_id_em_uso' });
+  it('503 INDISPONIVEL e 409 CONFLITO chegam com o código; empresa fora do formato nunca vai ao caminho', async () => {
+    resposta = () => json({ codigo: 'INDISPONIVEL', mensagem: 'x' }, 503);
+    await expect(criarCredencialEntrada('tok', ID, { conector_id: 'a' })).rejects.toMatchObject({ status: 503, codigo: 'INDISPONIVEL' });
+    resposta = () => json({ codigo: 'CONFLITO' }, 409);
+    await expect(criarCredencialEntrada('tok', ID, { conector_id: 'a' })).rejects.toMatchObject({ status: 409, codigo: 'CONFLITO' });
     chamadas.length = 0;
     await expect(lerEntrada('tok', '../x')).rejects.toBeInstanceOf(ErroPlataforma);
     expect(chamadas).toHaveLength(0);

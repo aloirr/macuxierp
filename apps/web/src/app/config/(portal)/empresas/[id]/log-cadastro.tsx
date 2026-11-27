@@ -35,10 +35,11 @@ export function CorpoLog({ log, fuso, entidade }: { log: LogCadastroFdvPlataform
         ? <p className="faixa-erro" role="alert">{TEXTO_MOTIVO_FDV[log.motivo]}</p>
         : <p className="faixa-aviso" role="status">{TEXTO_MOTIVO_FDV[log.motivo]}</p>)}
       <h3>Envios recentes</h3>
-      {log.envios.length === 0 ? <p className="apoio">Nenhum envio ainda.</p> : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colEnvios} linhas={log.envios} chaveLinha={(e) => `${e.em}|${e.origem}`} textoVazio="Nenhum envio." legenda="Envios recentes" /></div>}
+      {log.envios.length === 0 ? <p className="apoio">Nenhum envio ainda.</p> : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colEnvios} linhas={log.envios} chaveLinha={(e) => `${e.em}|${e.origem}`} legenda="Envios recentes" /></div>}
       <h3>Erros abertos: {log.total_erros}</h3>
-      {log.erros.length === 0 ? <p className="apoio">{log.total_erros === 0 ? 'Nenhum erro aberto.' : 'Os erros abertos não estão listados.'}</p> : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colErros} linhas={log.erros} chaveLinha={(e) => `${e.codigo}|${e.campo ?? ''}`} textoVazio="Nenhum erro." legenda="Erros por código e campo" /></div>}
-      {naoListados > 0 && <p className="apoio">Mais {naoListados} {naoListados === 1 ? 'erro não aparece' : 'erros não aparecem'} aqui. Veja todos no BKO da empresa.</p>}    </div>
+      {log.erros.length === 0 ? (log.total_erros === 0 ? <p className="apoio">Nenhum erro aberto.</p> : null) : <div className="tabela-rolavel com-sinal-rolagem legenda-so-leitor"><TabelaDensa colunas={colErros} linhas={log.erros} chaveLinha={(e) => `${e.codigo}|${e.campo ?? ''}`} legenda="Erros por código e campo" /></div>}
+      {naoListados > 0 && <p className="apoio">Mais {naoListados} {naoListados === 1 ? 'erro não aparece' : 'erros não aparecem'} aqui.</p>}
+    </div>
   );
 }
 

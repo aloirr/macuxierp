@@ -8,7 +8,7 @@ const BASE = { MACUXIERP_JWT_SEGREDO: SEGREDO, MACUXIERP_CHAVE_A1: CHAVE_HEX };
 
 describe('configuração da API pelo ambiente', () => {
   it('aplica os padrões (cookie Secure ligado, porta 3000)', () => {
-    expect(lerConfigApi(BASE)).toEqual({ jwtSegredo: SEGREDO, porta: 3000, host: '0.0.0.0', versao: 'dev', cookieSeguro: true, poolMax: 10, chaveA1: Buffer.from(CHAVE_HEX, 'hex'), chaveIntegracao: null, segredoBff: null, email: { transporte: 'desligado' }, avisos: [] });
+    expect(lerConfigApi(BASE)).toEqual({ jwtSegredo: SEGREDO, porta: 3000, host: '0.0.0.0', versao: 'dev', cookieSeguro: true, poolMax: 10, chaveA1: Buffer.from(CHAVE_HEX, 'hex'), chaveIntegracao: null, pepperEntrada: null, segredoBff: null, email: { transporte: 'desligado' }, avisos: [] });
     expect(lerConfigApi({ ...BASE, MACUXIERP_COOKIE_SEGURO: '0', MACUXIERP_PORTA: '8080' })).toMatchObject({ cookieSeguro: false, porta: 8080 });
   });
 

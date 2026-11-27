@@ -3,19 +3,19 @@ import { CATALOGO_ERRO, acaoDoErro, mensagemDaPausa, mensagemDoErro, motivoDoErr
 
 describe('catálogo de mensagens', () => {
   it('RN-INF-04: mensagem vem do catálogo pelo código; código desconhecido nunca ecoa texto', () => {
-    expect(mensagemDoErro('referencia_ausente')).toContain('ainda não foi confirmado');
+    expect(mensagemDoErro('referencia_ausente')).toContain('ser confirmado no FDV');
     expect(mensagemDoErro('texto livre com 12345678900')).not.toContain('12345678900');
-    expect(mensagemDoErro(null)).toContain('Erro não catalogado');
-    expect(mensagemDaPausa('credencial')).toContain('Troque a chave');
+    expect(mensagemDoErro(null)).toContain('Erro desconhecido');
+    expect(mensagemDaPausa('credencial')).toContain('Trocar chave');
   });
 
   it('RN-INF-04: chave_alterada e chave_duplicada têm mensagem própria no catálogo, sem valor de campo', () => {
-    for (const c of ['chave_alterada', 'chave_duplicada']) expect(mensagemDoErro(c)).not.toContain('Erro não catalogado');
+    for (const c of ['chave_alterada', 'chave_duplicada']) expect(mensagemDoErro(c)).not.toContain('Erro desconhecido');
   });
 
   it('RN-INF-04: resposta_grande e pedido_invalido têm mensagem própria no catálogo', () => {
-    expect(mensagemDoErro('resposta_grande')).not.toContain('Erro não catalogado');
-    expect(mensagemDoErro('pedido_invalido')).not.toContain('Erro não catalogado');
+    expect(mensagemDoErro('resposta_grande')).not.toContain('Erro desconhecido');
+    expect(mensagemDoErro('pedido_invalido')).not.toContain('Erro desconhecido');
   });
 
   it('RN-INF-04: código que causa pausa mostra o texto do motivo, um texto por fato', () => {
@@ -40,15 +40,26 @@ describe('motivo e ação separados (T-0086, Log do BKO)', () => {
   });
 
   it('RN-INF-04: a ação não descreve o que o sistema faz por trás; espera é "Aguarde."', () => {
-    for (const c of ['referencia_ausente', 'acima_do_limite', 'rede', 'limite_de_taxa']) expect(acaoDoErro(c)).toBe('Aguarde.');
+    for (const c of ['acima_do_limite', 'rede', 'limite_de_taxa']) expect(acaoDoErro(c)).toBe('Aguarde.');
     expect(acaoDoErro('resposta_grande')).toBe('Aguarde; se persistir, fale com o suporte.');
     for (const t of Object.values(CATALOGO_ERRO)) expect(t.acao).not.toMatch(/sozinho|divide|repete/i);
   });
 
+  it('RN-INF-02: referência ausente nomeia o cadastro aguardado pelo campo (alvo de REFERENCIAS_HUB) e diz que não há o que fazer', () => {
+    const alvos: Array<[string, string]> = [
+      ['filial_external_id', 'filial'], ['forma_external_id', 'forma de pagamento'], ['produto_external_id', 'produto'],
+      ['vendedor_external_id', 'vendedor'], ['cliente_external_id', 'cliente'], ['tabela_external_id', 'tabela de preço'],
+    ];
+    for (const [campo, nome] of alvos) expect(motivoDoErro('referencia_ausente', campo)).toBe(`Aguardando ${nome} ser confirmada no FDV.`);
+    expect(motivoDoErro('referencia_ausente', null)).toBe(motivoDoErro('referencia_ausente', 'campo_novo'));
+    expect(acaoDoErro('referencia_ausente')).toBe('Nada a fazer: aguarde.');
+    expect(mensagemDoErro('referencia_ausente', 'produto_external_id')).toBe('Aguardando produto ser confirmada no FDV. Nada a fazer: aguarde.');
+  });
+
   it('RN-INF-04: código desconhecido cai na ação genérica, nunca em texto do Hub', () => {
     expect(acaoDoErro('campo_invalido')).toContain('Corrija');
-    expect(acaoDoErro('codigo_novo_do_hub')).toContain('suporte');
-    expect(acaoDoErro(null)).toContain('suporte');
-    expect(motivoDoErro('codigo_novo_do_hub')).toContain('Erro não catalogado');
+    expect(acaoDoErro('codigo_novo_do_hub')).toContain('Macuxi');
+    expect(acaoDoErro(null)).toContain('Macuxi');
+    expect(motivoDoErro('codigo_novo_do_hub')).toContain('Erro desconhecido');
   });
 });

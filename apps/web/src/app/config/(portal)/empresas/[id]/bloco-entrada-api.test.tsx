@@ -10,7 +10,7 @@ import { BlocoEntradaApi, DialogoChave, ListaLotes } from './bloco-entrada-api';
 
 const EMP = '11111111-1111-4111-8111-111111111111';
 const CHAVE = 'Zx9'.repeat(14) + 'Q';
-const leitura = (c: Record<string, unknown>[] = [{ conector_id: 'erp-cliente', prefixo: 'AbCdEfGh', criada_em: '2026-11-26T15:00:00.000Z', revogada_em: null, ultimo_uso_em: null }]) =>
+const leitura = (c: Record<string, unknown>[] = [{ conector_id: 'erp-cliente', prefixo: 'AbCdEfGh', criada_em: '2026-11-26T15:00:00.000Z', revogada_em: null }]) =>
   PortalEntradaLeitura.parse({
     credenciais: c,
     ultimo_sinal: null,

@@ -43,7 +43,6 @@ import {
   QUANTIDADE_MAXIMA_ARQUIVOS,
   pode,
   temFuso,
-  trabalhoDoModulo,
   type Banco,
   type ContextoRota,
   type DestinoAuditoria,
@@ -66,15 +65,16 @@ import { lerTokenAcesso, type SessaoAcesso } from './auth/jwt';
 import type { RepositorioAuth } from './auth/portas';
 import { FALHA_LOGIN, ServicoAuth, type ConfigAuth, type ResultadoLogin } from './auth/servico';
 import { opcoesCookieSessao } from './auth/apoio-login';
-import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorConta, limitarEsqueciPorIp, type EsqueciMontado } from './auth/esqueci';
+import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorIp, type EsqueciMontado } from './auth/esqueci';
 import { registrarSemEnvio } from './auth/esqueci-log';
 import type { EnvioEmail } from './email/porta';
 import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, corpoTrocarSenha } from './auth/troca-senha';
 import { diagnosticoBanco } from './erro-banco';
-import { entradaDaChamada, responder } from './execucao-rota';
+import { enfileirarDoModulo, entradaDaChamada, responder } from './execucao-rota';
 import { lerMultipart } from './multipart';
 import { ipDoCliente } from './plataforma/ip-cliente';
-import { EMPRESA_PLATAFORMA, LimitePorChave, novosLimitesEsqueci, type LimitesEsqueci } from './plataforma/limite-ip';
+import { montarEntrada, type DependenciasEntrada } from './entrada/montar';
+import { LimitePorChave, novosLimitesEsqueci, type LimitesEsqueci } from './plataforma/limite-ip';
 import { montarPlataforma, responderLoginPlataforma, traduzido, type DependenciasPlataformaApi } from './plataforma/rotas';
 import type { ServicoPlataforma } from './plataforma/servico';
 
@@ -116,6 +116,8 @@ export interface DependenciasApp {
    * `repoCore` grava a temporária do tenant (`emitirSenhaTemporaria` do core, RN-CORE-13); produção: o `RepositorioCoreSql` dos módulos.
    */
   esqueci?: { envio: EnvioEmail; limites?: LimitesEsqueci; repoCore: Pick<RepositorioCore, 'emitirSenhaTemporaria'> };
+  /** `/entrada/v1` (T-0057, ADR 0014 §3): rotas do cadastros e a autenticação de máquina. Ausente = não montada. */
+  entrada?: DependenciasEntrada;
   /** Opções do pino; `false` desliga (testes). */
   logger?: boolean | Record<string, unknown>;
 }
@@ -189,7 +191,9 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
       // 429 com prazo (`MuitasTentativasResposta`, T-0076): `detalhes.retry_after_s` no corpo e também no Retry-After.
       const espera = erro.status === 429 ? erro.detalhes?.retry_after_s : undefined;
       if (typeof espera === 'number') reply.header('retry-after', String(espera));
-      return reply.status(erro.status).send(corpoErroApi(erro));
+      // 5xx (503 indisponível, tempo esgotado) leva o `request_id`, como o 500: a tela mostra e o suporte acha no log.
+      const corpo = corpoErroApi(erro);
+      return reply.status(erro.status).send(erro.status >= 500 ? { ...corpo, request_id: req.id } : corpo);
     }
     const status = (erro as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {
@@ -229,17 +233,17 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   // Tela única (T-0076, ADR 0018): limite por IP → corpo → `destinoDoCodigo`: 'config' (MACUXI) = superadmin (cookie do
   // /config) ou 'bko' = tenant pelo código da empresa. O 'config' exige o `CABECALHO_CSRF_CONFIG` como o /config/entrar;
   // sem ele, o mesmo 401 neutro (ADR 0018 §6), com o custo de argon2 de uma conferência e sem tocar o banco. O 401 do
-  // superadmin sai com o mesmo corpo do tenant. O limite por IP conta as falhas (401) dos dois lados juntos e,
-  // estourado, recusa os dois antes de qualquer consulta.
+  // superadmin sai com o mesmo corpo do tenant. O limite por IP conta as falhas (401 e 423) dos dois lados juntos;
+  // estourado, só a senha temporária válida entra (hotfix v0.3.16.1, RN-CORE-15): o resto é o 429 do limite.
   app.post('/v1/auth/login', async (req, reply) => {
     const ip = ipDoCliente(req, segredoBff);
     const agoraMs = d.relogio.agora().getTime();
-    const limite = limiteLogin.excedido(ip, agoraMs);
-    if (!limite.permitido) throw erroMuitasTentativas(limite.retry_after_s);
+    const porIp = limiteLogin.excedido(ip, agoraMs);
+    const limite = porIp.permitido ? undefined : () => erroMuitasTentativas(porIp.retry_after_s);
     const entrada = LoginEntrada.parse(req.body);
     try {
-      if (destinoDoCodigo(entrada.empresa) === 'bko') return respostaLogin(reply, await servico.entrar(entrada));
-      return await entrarComoSuperadmin(reply, plataforma, entrada, { cookieSeguro: d.cookieSeguro, csrf: req.headers[CABECALHO_CSRF_CONFIG] === '1' });
+      if (destinoDoCodigo(entrada.empresa) === 'bko') return respostaLogin(reply, await servico.entrar(entrada, limite));
+      return await entrarComoSuperadmin(reply, plataforma, entrada, { cookieSeguro: d.cookieSeguro, csrf: req.headers[CABECALHO_CSRF_CONFIG] === '1', limite });
     } catch (e) {
       // 401 e 423 (RN-CORE-15) contam no limite por IP; o login certo, inclusive com a temporária, não
       if (e instanceof ErroApi && (e.status === 401 || e.status === 423)) limiteLogin.registrar(ip, agoraMs);
@@ -258,7 +262,6 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     limitarEsqueciPorIp(esqueci.limites, ipDoCliente(req, segredoBff), agoraMs);
     const { empresa, email } = PedirSenhaTemporariaEntrada.parse(req.body);
     const doSuperadmin = destinoDoCodigo(empresa) === 'config';
-    limitarEsqueciPorConta(esqueci.limites, doSuperadmin ? EMPRESA_PLATAFORMA : empresa, email, agoraMs);
     if (!d.esqueci) return apos.responder(req, reply, await servico.esqueciSemEnvio(req.log));
     if (doSuperadmin) {
       if (!plataforma) {
@@ -336,6 +339,7 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
   });
 
   for (const plugin of d.modulos) montarModulo(app, plugin, d);
+  if (d.entrada) montarEntrada(app, d.entrada, { banco: d.banco, licencas: d.licencas, trabalhos: d.trabalhos, relogio: d.relogio, segredoBff, repoAuth: d.repoAuth });
   return app;
 }
 
@@ -349,12 +353,12 @@ async function entrarComoSuperadmin(
   reply: FastifyReply,
   plataforma: ServicoPlataforma | undefined,
   entrada: { email: string; senha: string },
-  o: { cookieSeguro: boolean; csrf: boolean },
+  o: { cookieSeguro: boolean; csrf: boolean; limite?: (() => ErroApi) | undefined },
 ) {
   try {
-    if (!plataforma) throw erros.naoAutenticado(FALHA_LOGIN);
+    if (!plataforma) throw o.limite ? o.limite() : erros.naoAutenticado(FALHA_LOGIN);
     if (!o.csrf) return await plataforma.recusarComCustoIgual(entrada.senha);
-    const r = await traduzido(() => plataforma.entrar(entrada.email.trim().toLowerCase(), entrada.senha));
+    const r = await traduzido(() => plataforma.entrar(entrada.email.trim().toLowerCase(), entrada.senha, o.limite));
     reply.log = reply.request.log = reply.request.log.child({ superadmin_id: r.superadmin_id });
     return responderLoginPlataforma(reply, r, o.cookieSeguro, { destino: 'config' satisfies DestinoLogin });
   } catch (e) {
@@ -412,12 +416,7 @@ async function executarRota(req: FastifyRequest, reply: FastifyReply, rota: Rota
         auditar: async (dados) => {
           await auditar(d.auditoria, tx, { tenant_id: sessao.tenant_id, usuario_id: sessao.usuario_id, request_id: req.id }, dados, agora);
         },
-        enfileirar: async (pedido) => {
-          if (!trabalhoDoModulo(modulo, pedido.tipo)) {
-            throw new Error(`${modulo} enfileirando trabalho fora do próprio módulo: ${pedido.tipo}`);
-          }
-          return d.trabalhos.enfileirar(tx, { ...pedido, tenant_id: sessao.tenant_id });
-        },
+        enfileirar: enfileirarDoModulo(modulo, d.trabalhos, tx, sessao.tenant_id),
       };
       const e = entradaDaChamada(req, rota, entrada);
       const chave = rota.idempotencia ? chaveDoPedido(e.cabecalhos, rota.idempotencia) : null;

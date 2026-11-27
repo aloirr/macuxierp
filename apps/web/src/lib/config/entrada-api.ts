@@ -17,7 +17,7 @@ export async function criarCredencialEntrada(token: string, id: string, corpo: C
   return validado(await chamar('POST', rota(CAMINHOS_ENTRADA_PLATAFORMA.credencial, id), { token, corpo }), CredencialEntradaCriada);
 }
 
-/** `DELETE ...?conector_id=`: a resposta de sucesso não tem corpo que a tela use. */
+/** `DELETE ...?conector_id=`: 200 `CredencialEntradaRevogada` (E3); a tela não usa o corpo e relê a leitura. */
 export async function revogarCredencialEntrada(token: string, id: string, conectorId: string): Promise<void> {
   const r = await chamar('DELETE', `${rota(CAMINHOS_ENTRADA_PLATAFORMA.credencial, id)}?conector_id=${encodeURIComponent(conectorId)}`, { token });
   if (!r.ok) return recusar(r);

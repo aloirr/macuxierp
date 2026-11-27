@@ -38,6 +38,8 @@ export const DICIONARIO_TPAG: Readonly<Record<string, string>> = {
   DINHEIRO: '01', PIX: '17', CARTAO: '03', CARTAO_CREDITO: '03', CARTAO_DEBITO: '04', BOLETO: '15',
 };
 export const TPAG_RECUSADO = '99';
+/** tPag da forma pelo `codigo` (sem diferença de maiúsculas); fora do dicionário = `TPAG_RECUSADO` (RN-CAD-09). */
+export const tpagDaForma = (codigo: string): string => DICIONARIO_TPAG[codigo.toUpperCase()] ?? TPAG_RECUSADO;
 
 class Leitor {
   readonly erros: ErroLinha[] = [];
@@ -205,7 +207,7 @@ const MAPEADORES: { [E in EntidadeCarga]: (l: Leitor, ctx: ContextoMapeamento) =
     const codigoForma = l.texto('forma_codigo', LIMITES.codigo_forma);
     let tpag = l.cel('forma_tpag');
     if (tpag === undefined && codigoForma !== undefined) {
-      tpag = DICIONARIO_TPAG[codigoForma.toUpperCase()] ?? TPAG_RECUSADO;
+      tpag = tpagDaForma(codigoForma);
     }
     // RN-CAD-15: as parcelas são os dias digitados (`30/60/90`; à vista `0`), sem a notação "Nx". A regra (1 a 24 parcelas, 0 a 365 dias) é do domain e do contrato.
     const bruto = l.cel('parcelas_dias');

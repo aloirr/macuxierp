@@ -1,21 +1,24 @@
 /**
  * T-0050 (E6.2): trava do login do superadmin (ADR 0012 §6), na API real sobre o PostgreSQL efêmero com a 0033.
- * - 5 falhas seguidas travam por 15 min; a conta travada recebe o 423 `ContaBloqueadaResposta` (RN-CORE-15, T-0111),
- *   NÃO 429, com o MESMO corpo do e-mail inexistente travado pela memória (5 falhas; decisão R-20261126-175321);
- * - a contagem de falhas NÃO zera quando a trava vence (comportamento atual, fixado aqui; muda na versão seguinte);
- *   o login certo zera;
+ * - 5 falhas seguidas bloqueiam SEM PRAZO (RN-CORE-15, hotfix v0.3.16.1): o tempo não destrava; só a senha temporária
+ *   válida (que desbloqueia na hora) ou o `operador.sh superadmin --destravar` liberam (o --destravar não é exercido
+ *   aqui: o arquivo cobre só a temporária). A conta bloqueada recebe o 423 `ContaBloqueadaResposta` (T-0111), NÃO 429,
+ *   com o MESMO corpo do e-mail inexistente bloqueado pela memória (5 falhas; decisão R-20261126-175321);
+ * - a contagem de falhas NÃO zera quando uma trava antiga (com prazo, de antes do hotfix) vence; o login certo zera;
  * - log pino sem e-mail, senha, cookie nem token (molde dos testes do RN-CORE-07).
  * O limite por IP (10 tentativas a cada 15 min, IP do cliente atrás do BFF e do túnel, #324) fica no 2º describe, numa
  * API própria com o segredo do BFF e relógio falso; no 1º, cada login sai de um IP próprio e o limite não interfere.
- * O vencimento da trava é simulado pelo admin do banco (bloqueado_ate no passado): a API confere a trava no relógio
- * dela e a 0033 confere de novo no now() do banco (superadmin_abrir_sessao), então um relógio falso na API não basta.
+ * O vencimento de uma trava antiga (com prazo) é simulado pelo admin do banco (bloqueado_ate no passado): a API confere
+ * a trava no relógio dela e a 0033 confere de novo no now() do banco (superadmin_abrir_sessao). O relógio falso da API
+ * só serve para mostrar que o bloqueio sem prazo não sai com o tempo.
  * Sem Postgres pula; com MACUXI_PG_EXIGIR=1 falha.
  */
 import { isIP } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, COOKIE_CONFIG, type Relogio } from '../../../packages/platform-sdk/src/index';
 import { criarBancoEfemero, PG_DISPONIVEL, type BancoEfemero } from '../../../packages/platform-sdk/src/pg-testes';
-import { appPgDeTeste, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
+import { appPgDeTeste, ARGON2_RAPIDO, destinoDeLogs } from '../../../apps/api/src/apoio-teste';
+import { gerarHashSenha } from '../../../apps/api/src/auth/senha';
 import { esperarContaBloqueada, esperarRecusaUnica } from '../../apoio/portal-pg-expect';
 import { atalhosPortal, CSRF, inserirSuperadmin, SENHA_SA, type AppPortal, type RespostaPortal } from '../../apoio/portal-pg';
 
@@ -23,7 +26,11 @@ const EMAIL_TRAVA = 'sa-e6-trava@exemplo.invalid';
 const EMAIL_LOG = 'sa-e6-log@exemplo.invalid';
 const EMAIL_INEXISTENTE = 'sa-e6-ninguem@exemplo.invalid';
 const EMAIL_INEXISTENTE_TRAVA = 'sa-e6-ninguem-trava@exemplo.invalid';
+const EMAIL_TEMP = 'sa-e6-temporaria@exemplo.invalid';
 const SENHA_ERRADA = 'senha-errada-e6-fict';
+const TEMPORARIA = 'Tq7#temporaria-e6-fict';
+/** Um ano em minutos: o bloqueio sem prazo fica muito além disso (o `bloqueado_ate` sentinela é de 9999). */
+const UM_ANO_MIN = 365 * 24 * 60;
 
 describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T-0050 E6.2, ADR 0012 §6)', () => {
   let b: BancoEfemero;
@@ -31,6 +38,8 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
   let p: ReturnType<typeof atalhosPortal>;
   const logs: string[] = [];
   const tokens: string[] = [];
+  let deslocamentoMs = 0;
+  const relogio: Relogio = { agora: () => new Date(Date.now() + deslocamentoMs) };
 
   const estado = async (email: string) =>
     (
@@ -41,7 +50,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
         [email],
       )
     ).rows[0]!;
-  /** Vence a trava (o tempo passou): bloqueado_ate 1 s no passado, sem tocar na contagem. */
+  /** Vence uma trava antiga com prazo (de antes do hotfix): bloqueado_ate 1 s no passado, sem tocar na contagem. */
   const vencerTrava = (email: string) => b.admin.query("UPDATE plataforma.superadmin SET bloqueado_ate = now() - interval '1 second' WHERE email = $1", [email]);
   const bloqueada = esperarContaBloqueada;
   const recusaUnica = esperarRecusaUnica;
@@ -50,7 +59,8 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     b = await criarBancoEfemero();
     await inserirSuperadmin(b, EMAIL_TRAVA);
     await inserirSuperadmin(b, EMAIL_LOG);
-    ({ app } = await appPgDeTeste({ b, modulos: 'producao', logger: { level: 'info', stream: destinoDeLogs(logs) } }));
+    await inserirSuperadmin(b, EMAIL_TEMP);
+    ({ app } = await appPgDeTeste({ b, modulos: 'producao', relogio, logger: { level: 'info', stream: destinoDeLogs(logs) } }));
     p = atalhosPortal(app);
   }, 180_000);
   afterAll(async () => {
@@ -58,7 +68,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     await b?.remover();
   });
 
-  it('ADR 0012 §6: 4 falhas não travam; a 5ª trava por 15 min', async () => {
+  it('RN-CORE-15 (hotfix v0.3.16.1): 4 falhas não bloqueiam; a 5ª bloqueia SEM prazo e o tempo avançado não destrava', async () => {
     for (let i = 1; i <= 4; i++) {
       recusaUnica(await p.entrar(EMAIL_TRAVA, `${SENHA_ERRADA}-${i}`));
       expect(await estado(EMAIL_TRAVA)).toMatchObject({ falhas_login: i, travado: false });
@@ -66,8 +76,29 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     recusaUnica(await p.entrar(EMAIL_TRAVA, `${SENHA_ERRADA}-5`));
     const s = await estado(EMAIL_TRAVA);
     expect(s).toMatchObject({ falhas_login: 5, travado: true });
-    expect(s.minutos).toBeGreaterThan(14);
-    expect(s.minutos).toBeLessThanOrEqual(15);
+    expect(s.minutos).toBeGreaterThan(UM_ANO_MIN); // sem prazo: nada de 15 min
+    // relógio da API 30 dias à frente: a senha certa segue no 423 (o bloqueio não vence sozinho)
+    deslocamentoMs = 30 * 24 * 60 * 60_000;
+    try {
+      bloqueada(await p.entrar(EMAIL_TRAVA, SENHA_SA));
+    } finally {
+      deslocamentoMs = 0;
+    }
+    expect(await estado(EMAIL_TRAVA)).toMatchObject({ falhas_login: 5, travado: true });
+  });
+
+  it('RN-CORE-15 (hotfix v0.3.16.1): o bloqueio sem prazo só sai com a senha temporária válida, que entra e desbloqueia na hora', async () => {
+    for (let i = 1; i <= 5; i++) recusaUnica(await p.entrar(EMAIL_TEMP, `${SENHA_ERRADA}-${i}`));
+    expect(await estado(EMAIL_TEMP)).toMatchObject({ falhas_login: 5, travado: true });
+    // a temporária do "Esqueci" (hash argon2id gravado pelo admin, como faz a superadmin_emitir_temporaria)
+    const hash = await gerarHashSenha(TEMPORARIA, ARGON2_RAPIDO);
+    await b.admin.query("UPDATE plataforma.superadmin SET senha_temporaria_hash = $2, senha_temporaria_expira_em = now() + interval '72 hours' WHERE email = $1", [EMAIL_TEMP, hash]);
+    const r = await p.entrar(EMAIL_TEMP, TEMPORARIA);
+    expect(r.statusCode).toBe(200);
+    tokens.push(p.cookieDe(r));
+    expect(await estado(EMAIL_TEMP)).toMatchObject({ falhas_login: 0, travado: false });
+    const { rows } = await b.admin.query('SELECT bloqueado_ate, senha_temporaria_hash FROM plataforma.superadmin WHERE email = $1', [EMAIL_TEMP]);
+    expect(rows[0]).toEqual({ bloqueado_ate: null, senha_temporaria_hash: null }); // desbloqueada e a temporária é de uso único
   });
 
   it('RN-CORE-15 (T-0111): conta travada com a senha certa recebe 423, nunca 429; o corpo é o do e-mail inexistente travado pela memória', async () => {
@@ -96,21 +127,21 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     expect((await b.admin.query('SELECT 1 FROM plataforma.superadmin WHERE email = $1', [EMAIL_INEXISTENTE])).rowCount).toBe(0);
   });
 
-  it('ADR 0012 §6 (comportamento atual, muda na versão seguinte): a contagem NÃO zera quando a trava vence; uma falha a mais trava de novo', async () => {
+  it('ADR 0012 §6 (comportamento atual): a contagem NÃO zera quando uma trava antiga vence; uma falha a mais bloqueia de novo, sem prazo', async () => {
     await vencerTrava(EMAIL_TRAVA);
-    // Comportamento ATUAL fixado (T-0050): vencida a trava, falhas_login segue em 5 (só o login certo ou a troca de
-    // senha zeram). A 1ª falha depois do vencimento já é a 6ª seguida e trava por mais 15 min. A versão seguinte
-    // deve zerar a contagem no vencimento: quando mudar, este teste muda junto (com ADR/RN), não é regressão.
+    // Comportamento ATUAL fixado (T-0050): vencida uma trava antiga (com prazo, de antes do hotfix v0.3.16.1),
+    // falhas_login segue em 5 (só o login certo, a temporária, o --destravar ou a troca de senha zeram). A 1ª falha
+    // depois do vencimento já é a 6ª seguida e bloqueia de novo, agora sem prazo.
     expect(await estado(EMAIL_TRAVA)).toMatchObject({ falhas_login: 5, travado: false });
     recusaUnica(await p.entrar(EMAIL_TRAVA, SENHA_ERRADA));
     const s = await estado(EMAIL_TRAVA);
     expect(s).toMatchObject({ falhas_login: 6, travado: true });
-    expect(s.minutos).toBeGreaterThan(14);
+    expect(s.minutos).toBeGreaterThan(UM_ANO_MIN);
     // travada de novo: a senha certa volta a receber o 423
     bloqueada(await p.entrar(EMAIL_TRAVA, SENHA_SA));
   });
 
-  it('ADR 0012 §6: vencida a trava, o login certo entra e zera a contagem e a trava', async () => {
+  it('ADR 0012 §6: vencida uma trava antiga, o login certo entra e zera a contagem e a trava', async () => {
     await vencerTrava(EMAIL_TRAVA);
     const r = await p.entrar(EMAIL_TRAVA, SENHA_SA);
     expect(r.statusCode).toBe(200);
@@ -136,7 +167,7 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
     const tudo = logs.join('\n');
     expect(tudo).toContain('superadmin_id'); // o log existe e identifica o autor só pelo id
     expect(tudo).toContain('/v1/plataforma/auth/entrar');
-    const proibidos = [EMAIL_TRAVA, EMAIL_LOG, EMAIL_INEXISTENTE, SENHA_SA, SENHA_ERRADA, COOKIE_CONFIG, ip, ...tokens];
+    const proibidos = [EMAIL_TRAVA, EMAIL_LOG, EMAIL_TEMP, EMAIL_INEXISTENTE, SENHA_SA, SENHA_ERRADA, TEMPORARIA, COOKIE_CONFIG, ip, ...tokens];
     expect(tokens.length).toBeGreaterThanOrEqual(3);
     for (const x of proibidos) expect(tudo, `log com ${x.slice(0, 6)}…`).not.toContain(x);
     // nem pedaço do e-mail (parte local) nem cabeçalhos de credencial
@@ -146,9 +177,9 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: trava do login do superadmin (T
 
 /**
  * T-0050 (E6, #324): limite de login do portal por IP do cliente (ADR 0012 §6), na API real com `segredoBff` e relógio
- * falso. Comportamento fixado: o limite é conferido ANTES da senha (apps/api/src/plataforma/rotas.ts, `limite.contar`
- * antes de `servico.entrar`), então a 11ª tentativa recebe 429 MUITAS_TENTATIVAS mesmo com a senha certa, e conta toda
- * tentativa (certa ou errada). Ordem do IP (apps/api/src/plataforma/ip-cliente.ts): x-macuxierp-ip-cliente só com a
+ * falso. Comportamento fixado (hotfix v0.3.16.1, RN-CORE-15): a janela do IP conta só as falhas (401 e 423); o login
+ * certo não conta. Com o IP no limite (apps/api/src/plataforma/rotas.ts, `limite.excedido` antes de `servico.entrar`),
+ * a senha comum recebe 429 MUITAS_TENTATIVAS mesmo certa, sem somar falha na conta; só a temporária válida entra. Ordem do IP (apps/api/src/plataforma/ip-cliente.ts): x-macuxierp-ip-cliente só com a
  * prova x-macuxierp-bff igual ao segredo; senão cf-connecting-ip válido; senão req.ip (aqui, o `remoteAddress`).
  * IPs de teste em 10.70.x/10.71.x/10.72.x, sem colisão com o `novoIp` (10.60.x) do apoio.
  */
@@ -217,10 +248,12 @@ describe.skipIf(!PG_DISPONIVEL)('portal /config: limite de login por IP do clien
     expect(p.cookieDe(outro)).toBeTruthy();
   });
 
-  it('ADR 0012 §6: o login certo também conta na janela do IP (10 certos e o 11º é barrado)', async () => {
+  it('RN-CORE-15 (hotfix v0.3.16.1): o login certo NÃO conta na janela do IP (2×10 certos entram; as 10 falhas seguintes ainda passam)', async () => {
     const remoto = '10.70.0.3';
-    for (let i = 0; i < MAXIMO; i++) expect((await tentar({ remoto, email: EMAIL_IP, senha: SENHA_SA })).statusCode).toBe(200);
-    barrado(await tentar({ remoto, email: EMAIL_IP, senha: SENHA_SA }));
+    for (let i = 0; i < 2 * MAXIMO; i++) expect((await tentar({ remoto, email: EMAIL_IP, senha: SENHA_SA })).statusCode, `certo ${i + 1}`).toBe(200);
+    // a janela segue inteira: as 10 falhas passam do limite e só a 11ª é barrada
+    await gastar({ remoto });
+    barrado(await tentar({ remoto }));
   });
 
   it('#324: sem a prova do BFF, x-macuxierp-ip-cliente é ignorado; trocá-lo a cada tentativa não escapa do limite', async () => {

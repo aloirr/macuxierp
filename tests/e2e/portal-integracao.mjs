@@ -100,7 +100,7 @@ async function ligarOuDesligar(acao) {
   await dialogo.getByRole('heading', { name: `${acao} ${ROTULO}?` }).waitFor();
   await dialogo.getByRole('button', { name: acao, exact: true }).click();
   await portal.getByRole('status').filter({ hasText: acao === 'Ligar' ? 'Cadastro ligado.' : 'Cadastro desligado.' }).waitFor();
-  const esperado = acao === 'Ligar' ? 'Ligada' : 'Desligada';
+  const esperado = acao === 'Ligar' ? 'Ligado' : 'Desligado';
   await portal.waitForFunction(
     ([r, e]) => [...document.querySelectorAll('tr')].some((tr) => tr.textContent?.trim().startsWith(r) && tr.querySelector('.selo')?.textContent?.trim() === e),
     [ROTULO, esperado],
@@ -125,9 +125,9 @@ async function bkoConfere(esperado) {
   exigir(noBko.length === 10 && textoSelos(noBko) === textoSelos(noPortal), `BKO × portal: ${textoSelos(noBko)} || ${textoSelos(noPortal)}`);
   await htmlSemChave(bko, 'BKO');
   exigir((await bko.locator('main form, main input').count()) === 0, 'a tela do BKO tem formulário ou campo');
-  exigir((await bko.locator('main').getByRole('button', { name: /Ligar|Desligar|credencial|Testar|Carga/ }).count()) === 0, 'a tela do BKO tem botão de escrita');
+  exigir((await bko.locator('main').getByRole('button', { name: /Ligar|Desligar|chave|Testar|Carga/ }).count()) === 0, 'a tela do BKO tem botão de escrita');
   const api = await apiStatusTenant();
-  const naApi = api.cadastros.map((c) => (c.ligada ? 'Ligada' : 'Desligada')).join(',');
+  const naApi = api.cadastros.map((c) => (c.ligada ? 'Ligado' : 'Desligado')).join(',');
   exigir(naApi === noBko.map(([, s]) => s).join(','), `API do tenant × BKO: ${naApi} || ${textoSelos(noBko)}`);
 }
 
@@ -143,29 +143,44 @@ try {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).first().waitFor();
   });
 
-  await passo('(b) abre a empresa pela lista e a aba Integração: sem credencial, Ligar e Testar desabilitados', async () => {
+  await passo('(b) abre a empresa pela lista e a aba Integração: sem chave, Ligar e Testar desabilitados', async () => {
     await portal.getByRole('row').filter({ hasText: dados.empresa.nome }).getByRole('link').click();
     await portal.getByRole('heading', { level: 1, name: dados.empresa.nome }).waitFor();
     await portal.getByRole('navigation', { name: 'Abas da empresa' }).getByRole('link', { name: 'Integração' }).click();
     await portal.waitForURL((u) => new URL(u).searchParams.get('aba') === 'integracao');
     await portal.getByRole('heading', { name: 'Conexão com o Macuxi FDV' }).waitFor();
-    exigir(await portal.getByText('Nenhuma credencial cadastrada.').isVisible(), 'faltou o aviso de sem credencial');
-    exigir(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar')), 'Ligar habilitado sem credencial');
+    exigir(await portal.getByText('Nenhuma chave salva. Informe o código e a chave do conector.').isVisible(), 'faltou o aviso de sem chave');
+    exigir(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar')), 'Ligar habilitado sem chave');
     await fecharMenu(portal);
-    exigir(await portal.getByRole('button', { name: 'Testar conexão' }).isDisabled(), 'Testar conexão habilitado sem credencial');
-    exigir((await seloDe(portal, ROTULO)) === 'Desligada', 'Produtos não começou desligado');
-    await print(portal, '01-portal-integracao-sem-credencial.png');
+    exigir(await portal.getByRole('button', { name: 'Testar conexão' }).isDisabled(), 'Testar conexão habilitado sem chave');
+    exigir((await seloDe(portal, ROTULO)) === 'Desligado', 'Produtos não começou desligado');
+    await print(portal, '01-portal-integracao-sem-chave.png');
   });
 
-  await passo('(c) grava a credencial fictícia: "Credencial salva.", campo da chave vazio, só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
+  await passo('(c) grava a chave fictícia: "Chave salva.", campo da chave vazio; "Trocar chave" pede confirmação; só o prefixo na tela e na API; nenhum cadastro ligado', async () => {
     const form = portal.getByRole('form', { name: 'Conexão com o Macuxi FDV' });
-    await form.getByLabel('Código do conector').fill(CONECTOR);
-    await form.getByLabel('Nova chave do conector').fill(CHAVE);
-    await form.getByLabel('Ambiente').selectOption('teste');
-    await form.getByRole('button', { name: 'Salvar credencial' }).click();
-    await portal.getByRole('status').filter({ hasText: 'Credencial salva.' }).waitFor();
-    await form.getByRole('button', { name: 'Trocar credencial' }).waitFor();
+    const preencher = async () => {
+      await form.getByLabel('Código do conector').fill(CONECTOR);
+      await form.getByLabel('Nova chave do conector').fill(CHAVE);
+      await form.getByLabel('Ambiente').selectOption('teste');
+    };
+    await preencher();
+    await form.getByRole('button', { name: 'Salvar chave' }).click();
+    await portal.getByRole('status').filter({ hasText: 'Chave salva.' }).waitFor();
+    await form.getByRole('button', { name: 'Trocar chave' }).waitFor();
     exigir((await form.getByLabel('Nova chave do conector').inputValue()) === '', 'a chave ficou no campo depois de salvar');
+    // Trocar a chave que existe pede confirmação (36 A); grava de novo a mesma chave fictícia, para os passos seguintes.
+    await preencher();
+    await form.getByRole('button', { name: 'Trocar chave' }).click();
+    const dialogo = portal.getByRole('dialog');
+    await dialogo.getByRole('heading', { name: 'Trocar a chave do conector do FDV?' }).waitFor();
+    await dialogo.getByRole('button', { name: 'Trocar chave', exact: true }).click();
+    await dialogo.waitFor({ state: 'detached' });
+    // "Chave salva." já está na tela desde a 1ª gravação: o sinal de que a troca voltou é o campo da chave vazio.
+    const limpou = await portal
+      .waitForFunction(() => document.querySelector('form[aria-label="Conexão com o Macuxi FDV"] input[name="chave"]')?.value === '', null, { timeout: 15_000 })
+      .then(() => true, () => false);
+    exigir(limpou, 'a chave ficou no campo depois de trocar');
     const api = await apiPortal();
     exigir(api.credencial_id && api.conector_id === CONECTOR && api.ambiente === 'teste', `API do portal: ${JSON.stringify({ c: api.conector_id, a: api.ambiente })}`);
     const ficha = (await portal.locator('section[aria-labelledby="h-cred"] dl.ficha').textContent()) ?? '';
@@ -174,39 +189,39 @@ try {
     await portal.getByRole('heading', { name: 'Conexão com o Macuxi FDV' }).waitFor();
     exigir((await portal.getByLabel('Nova chave do conector').inputValue()) === '', 'a chave voltou ao campo depois de recarregar');
     await htmlSemChave(portal, '/config depois de salvar e recarregar');
-    // "Ligar um por um" (R-20261123-150400, 0042): a primeira credencial nasce sem cadastro ligado e sem carga inicial;
-    // os 10 da tela "Desligada", com Ligar habilitado. A carga inicial sai ao ligar (evento no banco; a tela e a API não a mostram).
+    // "Ligar um por um" (R-20261123-150400, 0042): a primeira chave nasce sem cadastro ligado e sem carga inicial;
+    // os 10 da tela "Desligado", com Ligar habilitado. A carga inicial sai ao ligar (evento no banco; a tela e a API não a mostram).
     const tela = await selos(portal);
-    exigir(tela.length === 10 && tela.every(([, s]) => s === 'Desligada'), `selos depois da credencial: ${textoSelos(tela)}`);
-    exigir(api.entidades_habilitadas.length === 0, `habilitadas depois da credencial: ${api.entidades_habilitadas.join(',')}`);
-    exigir(api.cadastros.every((c) => !c.ligada), 'API do portal: algum cadastro ligado depois da credencial');
-    exigir(!(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar'))), 'Ligar desabilitado com credencial');
+    exigir(tela.length === 10 && tela.every(([, s]) => s === 'Desligado'), `selos depois de salvar a chave: ${textoSelos(tela)}`);
+    exigir(api.entidades_habilitadas.length === 0, `habilitadas depois de salvar a chave: ${api.entidades_habilitadas.join(',')}`);
+    exigir(api.cadastros.every((c) => !c.ligada), 'API do portal: algum cadastro ligado depois de salvar a chave');
+    exigir(!(await itemDesabilitado(await itemDoMenu(portal, ROTULO, 'Ligar'))), 'Ligar desabilitado com chave');
     await fecharMenu(portal);
-    await print(portal, '02-portal-credencial-salva.png');
+    await print(portal, '02-portal-chave-salva.png');
   });
 
-  await passo('(d1) liga Produtos com confirmação: tela "Ligada" e API só com o produto habilitado e ligado', async () => {
+  await passo('(d1) liga Produtos com confirmação: tela "Ligado" e API só com o produto habilitado e ligado', async () => {
     await ligarOuDesligar('Ligar');
     const api = await apiPortal();
     exigir(api.entidades_habilitadas.join(',') === ENTIDADE, `habilitadas: ${api.entidades_habilitadas.join(',')}`);
     exigir(ligadaNa(api) === true, `API do portal: ${ENTIDADE} ligada=${ligadaNa(api)}`);
     exigir(api.cadastros.filter((c) => c.ligada).length === 1, `ligados na API: ${api.cadastros.filter((c) => c.ligada).length}`);
     await portal.reload();
-    exigir((await seloDe(portal, ROTULO)) === 'Ligada', 'depois de recarregar, Produtos não está Ligada');
+    exigir((await seloDe(portal, ROTULO)) === 'Ligado', 'depois de recarregar, Produtos não está Ligado');
     await htmlSemChave(portal, '/config depois de ligar');
     await print(portal, '03-portal-produtos-ligado.png');
   });
 
-  await passo('(e1) administrador entra no BKO; Integração FDV mostra Produtos Ligada, igual ao portal e à API, sem chave nem escrita', async () => {
+  await passo('(e1) administrador entra no BKO; Integração FDV mostra Produtos Ligado, igual ao portal e à API, sem chave nem escrita', async () => {
     await entrar(bko, BASE, dados.administrador);
     await bko.waitForURL((u) => new URL(u).pathname === '/');
     await bko.getByRole('navigation', { name: 'Menu principal' }).getByRole('link', { name: 'Integração FDV' }).click();
     await bko.getByRole('heading', { level: 1, name: 'Integração FDV' }).waitFor();
-    await bkoConfere('Ligada');
+    await bkoConfere('Ligado');
     await print(bko, '04-bko-produtos-ligado.png');
   });
 
-  await passo('(d2) desliga Produtos com confirmação: tela "Desligada" e API sem cadastro habilitado', async () => {
+  await passo('(d2) desliga Produtos com confirmação: tela "Desligado" e API sem cadastro habilitado', async () => {
     await ligarOuDesligar('Desligar');
     const api = await apiPortal();
     exigir(!api.entidades_habilitadas.includes(ENTIDADE), `habilitadas: ${api.entidades_habilitadas.join(',')}`);
@@ -216,8 +231,8 @@ try {
     await print(portal, '05-portal-produtos-desligado.png');
   });
 
-  await passo('(e2) BKO recarregado mostra Produtos Desligada, igual ao portal e à API', async () => {
-    await bkoConfere('Desligada');
+  await passo('(e2) BKO recarregado mostra Produtos Desligado, igual ao portal e à API', async () => {
+    await bkoConfere('Desligado');
     await print(bko, '06-bko-produtos-desligado.png');
   });
 } finally {

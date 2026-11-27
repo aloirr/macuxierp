@@ -582,7 +582,7 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       expect((await lotes(t, 'vendedor'))[0]!.corpo.registros[0]).toMatchObject({ external_id: 'V1', filial_external_id: 'FIL-1' });
     });
 
-    it('T-0085 (AM2808): lote misto: a referência que ainda está na fila não é declarada como regra_invalida; a que não existe no espelho é', async () => {
+    it('RN-INF-02 (T-0112): lote misto: nenhuma referência ausente (na fila ou inexistente) é declarada ao Hub; as duas ficam pendentes e visíveis no Log, uma vez só', async () => {
       const t = await criarTenant(efemero.admin, 'env-ord', ['integracao-fdv']);
       const cred = await criarCredencial(efemero.admin, t);
       await espelho(efemero.admin, t, 'filial', { external_id: 'FIL-OK', ativo: true, codigo: '0001', nome: 'Matriz' }, { confirmado: true });
@@ -595,8 +595,19 @@ describe.skipIf(!PG_DISPONIVEL)('agenda do conector no PostgreSQL real', { timeo
       await ciclo(banco, agenda, hub, AGORA, [t]);
       const corpo = hub.chamadas[0]!.pedido.corpo as { registros: Array<{ external_id: string }>; linhas_invalidas: Array<{ external_id: string; codigo: string; campo: string }> };
       expect(corpo.registros.map((r) => r.external_id)).toEqual(['V-OK']);
-      expect(corpo.linhas_invalidas).toEqual([expect.objectContaining({ external_id: 'V-SEM', codigo: 'regra_invalida', campo: 'filial_external_id' })]);
+      expect(corpo.linhas_invalidas).toEqual([]);
       expect(await reg(t, 'V-FILA', 'vendedor')).toMatchObject({ pendente: true }); // retido, sai quando a filial for confirmada
+      expect(await reg(t, 'V-SEM', 'vendedor')).toMatchObject({ pendente: true });
+      const retidas = () => adm("SELECT registro_external_id, origem, codigo, campo, reprocessavel FROM integracao_fdv.lote_erro WHERE tenant_id = $1 ORDER BY registro_external_id", [t]);
+      expect(await retidas()).toEqual([
+        { registro_external_id: 'V-FILA', origem: 'erp', codigo: 'referencia_ausente', campo: 'filial_external_id', reprocessavel: true },
+        { registro_external_id: 'V-SEM', origem: 'erp', codigo: 'referencia_ausente', campo: 'filial_external_id', reprocessavel: true },
+      ]);
+      // novo lote com o mesmo registro retido não duplica o erro aberto
+      await espelho(efemero.admin, t, 'vendedor', { external_id: 'V-OK2', ativo: true, nome: 'D', filial_external_id: 'FIL-OK' }, { alterado: new Date('2026-11-22T09:00:03.000Z') });
+      await adm("UPDATE integracao_fdv.cursor_entidade SET proximo_em = $2 WHERE tenant_id = $1 AND entidade = 'vendedor'", [t, depois(10)]);
+      await ciclo(banco, agenda, hub, depois(11), [t]);
+      expect(await retidas()).toHaveLength(2);
     });
 
     it('M5: linha inválida firme vai em linhas_invalidas (mensagem do catálogo, código do Hub) e só uma vez', async () => {

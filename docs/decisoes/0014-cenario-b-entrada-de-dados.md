@@ -40,7 +40,7 @@ Hoje o ERP só recebe cadastro pelo BKO, um a um ou pela carga de CSV (RF-CAD-11
 
 ### 4. Credencial do conector
 - **Duas bases por empresa, uma por dono:** "via Conector" (o programa on-premise) e "via API" (o ERP do cliente chamando direto). Cada uma tem no máximo uma credencial ativa. O `conector_id` é único na plataforma (`[A-Za-z0-9._-]{1,100}`, a mesma regra do Conector).
-- **A chave é gerada na API** (32 bytes aleatórios, base64url) e **mostrada uma vez**, na resposta do portal. O banco guarda só o `HMAC-SHA256(pepper, chave)`, o prefixo de exibição (8) e as datas. O pepper fica na variável `MACUXIERP_PEPPER_ENTRADA` do servidor (32 bytes; **só o Alexandre cria**). Sem ela, a geração de chave responde 503 e a autenticação recusa tudo. Trocar a chave invalida a anterior na hora.
+- **A chave é gerada na API** (32 bytes aleatórios, base64url) e **mostrada uma vez**, na resposta do portal. O banco guarda só o `HMAC-SHA256(pepper, chave)`, o prefixo de exibição (8) e as datas. O pepper fica na variável `MACUXIERP_PEPPER_ENTRADA` do servidor (32 bytes; gerada pelo deploy desde a emenda de 26/11). Sem ela, a geração de chave responde 503 e a autenticação recusa tudo. Trocar a chave invalida a anterior na hora.
 - **Autenticar sem tenant:** antes da autenticação não há `app.tenant_id` (RLS). Por isso o papel `macuxierp_app` chama a função SECURITY DEFINER `cadastros.entrada_autenticar(p_conector_id text) → (tenant_id, credencial_id, tipo, chave_hmac)`, que só a ela tem EXECUTE e que não devolve mais nada. A API compara o HMAC com `timingSafeEqual` e só então abre a transação com o `app.tenant_id`. Um limite de tentativas por `conector_id` e IP, no molde do §6 da ADR 0012, segura a força bruta.
 - **No portal** (lista fechada da ADR 0012, EXECUTE só do `macuxierp_config`, com `exigir_superadmin`, `empresa_alvo` e `auditar_superadmin`, no molde da §2 da 0013): `cadastros.portal_entrada_ler` (credenciais sem o hash, último sinal, versão e, por entidade, cursor, último lote e erros abertos, sem dado de negócio), `cadastros.portal_entrada_credencial_definir` (cria ou troca, recebendo o HMAC já calculado pela API) e `cadastros.portal_entrada_confirmar_inativacao` (a trava de 30%). A auditoria usa nomes canônicos `cadastros.entrada.credencial.criar|trocar` e `cadastros.entrada.inativacao.confirmar`, sem chave, hash nem prefixo.
 
@@ -100,7 +100,7 @@ Os testes `*.db.test.ts` cobrem: isolamento por tenant; a autenticação sem ten
 3. **`.github/workflows/ci.yml`:** o `apps/conector` entra no escopo, no lint, no typecheck e no build do PR, e os testes dele entram na suíte do `producao-liberar`.
 4. **Segredo (o Alexandre cria; não é PR):** `MACUXIERP_PEPPER_ENTRADA`, pelo passo da seção 11. Nenhum secret do GitHub novo na v0.3.11.
 
-### 11. Passo do Alexandre: criar o `MACUXIERP_PEPPER_ENTRADA`
+### 11. Passo do Alexandre: criar o `MACUXIERP_PEPPER_ENTRADA` (substituída pela emenda de 26/11: o deploy gera)
 - **Onde:** no `.env` de produção da VM, `/opt/macuxierp/.env`, o mesmo arquivo da `MACUXIERP_CHAVE_A1` e da `MACUXIERP_CHAVE_INTEGRACAO`. Não é secret do GitHub.
 - **Quando:** antes da publicação da v0.3.11. O engenheiro-software soma, no PR da linha 1 da seção 9, a variável ao `compose.yml` (só na `macuxierp-api`) e ao `env.modelo`, e a conferência no `implantar.sh`: sem 32 bytes válidos, a publicação para antes do `up`, como já acontece com a `MACUXIERP_CHAVE_INTEGRACAO`.
 - **Como** (na VM, com o usuário de sudo; o valor não passa pela tela nem pelo histórico):
@@ -232,3 +232,26 @@ O `hub-v1` do SDK (#405) já está feito e fica fora da conta.
 - (d) **O Conector manda ao FDV e ao ERP ao mesmo tempo:** o FDV receberia o mesmo cadastro por dois caminhos, e o ERP deixaria de ser o dono.
 - (e) **Base no Conector 1.4.0:** ficaria sem as correções do 1.5.0, sem ganho.
 - (f) **Payloads só em `cadastros/contracts`:** criaria uma segunda cópia do contrato do Hub ao lado da do `integracao-fdv`.
+
+## Emenda (26/11/2026, 21h24): o pepper é gerado pelo deploy (substitui a §11, o item 4 da §10 e o "só o Alexandre cria" da §4)
+Pedido do gerente na retomada da T-0057 (R-20261126-210816), com o corte do PO de 26/11 (só o delta, sem Conector, sem VM, sem governança).
+- **Quem gera:** o `scripts/deploy/producao/ambiente-vm.sh`, chamado pelo `preparar-vm.sh` em toda publicação, gera o `MACUXIERP_PEPPER_ENTRADA` **uma vez** (`openssl rand -hex 32`) no `/opt/macuxierp/gerados.env`, como o `MACUXIERP_SEGREDO_BFF`. Se já existe, nunca é trocado. O valor não vai ao log. O Alexandre não cria nada à mão: o passo da §11 deixa de valer.
+- **Onde vale:** o `compose.yml` passa o pepper só à `macuxierp-api`, como obrigatório (`${MACUXIERP_PEPPER_ENTRADA:?...}`); o worker não o recebe. O `env.modelo` o lista no bloco do `gerados.env`.
+- **Na API:** `lerPepperEntrada` (apps/api/src/entrada/autenticacao.ts) aceita só 64 hex. Ausente ou fora do formato, a `/entrada/v1` e a geração de chave respondem 503, nunca abertas.
+- **Continua valendo:** o pepper novo invalida todas as chaves de entrada. Se ele vazar, apague a linha dele no `gerados.env` **e** na sentinela `/opt/macuxierp/.chaves-geradas`, publique (o deploy gera outro) e troque as chaves de todas as empresas no `/config`. Sem apagar na sentinela, o deploy **para** em vez de gerar outro (guarda de 26/11, `ambiente-vm.sh`).
+- **Teste:** `scripts/deploy/ambiente-vm.test.mjs`.
+
+## Emenda (26/11/2026, 23h49): o que o corte de 26/11 entregou (T-0057 E3; substitui os trechos citados)
+Achados da testes no E2, recado R-20261126-233505-modulo-cadastros e o B1 (0071). Vale só para o delta; a carga completa, o "via API" e a trava de 30% continuam como decisão para depois.
+- **§1, recusas antes da rota** (`apps/api/src/entrada/montar.ts`), já na transação do tenant da credencial: empresa fora de `ativo` (suspensa ou encerrada) = 403 `EMPRESA_INATIVA`; sem o `cadastros` licenciado e ativo = 403 `MODULO_INATIVO`. Substitui o "403 `RN-CORE-02`" da §1.
+- **§2, §3, §9 e §17, códigos:** o `codigo` do envelope de erro é sempre UPPER_SNAKE, como todo `ErroApi`: 422 `CARGA_COMPLETA_NAO_SUPORTADA` (o `modo: 'completo'`, sem lote) e 422 `ENTIDADE_FORA_DA_FASE` (substitui o `entidade_fora_da_fase` da §2). O código **por linha** do `LoteResultado.erros` segue o Hub, em lower_snake. A convenção está no cabeçalho dos códigos em `packages/platform-sdk/src/entrada.ts`.
+- **§3, campos:** o 202 do `POST /lotes`, o `GET /lotes/:id` e a lista do portal usam `status` (`recebido|processando|concluido|concluido_com_erros|falhou`), não `estado`. A coluna do banco continua `entrada_lote.estado`; a resposta mapeia.
+- **§3, IP do sinal:** o `ContextoEntrada.ip_origem` leva o IP do cliente já truncado (`truncarIpEntrada` do SDK: /24 no IPv4, /48 no IPv6), para o `entrada_sinal.ip_origem`. Nunca o endereço inteiro.
+- **§4, credencial:** uma credencial ativa por `conector_id`, sem o `tipo` `conector|api` (sai também da assinatura da `entrada_autenticar`, que devolve `tenant_id`, `credencial_id` e `chave_hmac`). No banco, `chave_hmac` é `bytea` de 32 bytes; a `entrada_autenticar` devolve em hex minúsculo (64), que é o que a API compara. O `conector_id` fica preso à empresa que o usou primeiro, mesmo revogado: na mesma empresa pode ganhar chave nova, em outra é 409 `CONFLITO`.
+- **§4, portal** (`apps/api/src/entrada/portal.ts`, ação `plataforma.cadastros.entrada`, caminhos `CAMINHOS_ENTRADA_PLATAFORMA`):
+  - `GET /v1/plataforma/empresas/:id/entrada` → `PortalEntradaLeitura` (credenciais sem hash e sem "último uso", último sinal, 50 lotes);
+  - `POST .../entrada/credencial` `{ conector_id }` → 201 `CredencialEntradaCriada` (a única vez em que a chave aparece; sem `Idempotency-Key`, porque a resposta guardada levaria a chave). Para o mesmo `conector_id`, troca e invalida a anterior na hora. Sem o pepper, 503 `INDISPONIVEL`;
+  - `DELETE .../entrada/credencial?conector_id=` → 200 `CredencialEntradaRevogada` `{ conector_id, revogada_em }`; sem a ativa, 404. Vale também para empresa suspensa ou sem licença (medida de segurança).
+- **§8:** a tabela é a da 0071 (não a 0045). O `ultimo_uso_em` continua na tabela, mas não vai à leitura do portal (RD-2319).
+- **Ligação em produção:** o `montarDependenciasProducao` monta a `/entrada/v1` sempre (sem pepper ela responde 503) com a `PortaCredencialEntradaPg`; o `main.ts` passa o `pepperEntrada` do `lerConfigApi`; o `appPgDeTeste` aceita `pepperEntrada`. O apps/worker registra o `cadastros.entrada_lote` (`criarExecutorEntradaLote`).
+- **Teste:** `apps/api/src/entrada.db.test.ts` (portal cria a chave, POST lote, GET lote, GET cursor, troca, revogação, empresa suspensa e sem pepper) e `apps/api/src/entrada/entrada.test.ts`.

@@ -1,6 +1,6 @@
 /**
  * Vista SÓ LEITURA da Integração FDV no BKO (T-0056, ADR 0013), parte pura: do `StatusIntegracaoFdvTenant` às linhas da tela.
- * Por cadastro: Ligada ou Desligada, último envio (no fuso da empresa) e a falha com o motivo e a ação sugerida.
+ * Por cadastro: Ligado ou Desligado, último envio (no fuso da empresa) e a falha com o motivo e a ação sugerida.
  */
 import { ROTULO_ENTIDADE } from '@macuxierp/integracao-fdv/web';
 import { formatarDataHora } from '@macuxierp/platform-sdk/formatar';
@@ -43,14 +43,14 @@ export function colunasStatusFdv<T extends LinhaBaseFdv>(opcoes: { falhaSobreNom
     {
       id: 'rotulo',
       titulo: 'Cadastro',
-      celula: (l) => (opcoes.falhaSobreNome && l.falha ? createElement('span', null, l.rotulo, createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`)) : l.rotulo),
+      celula: (l) => (opcoes.falhaSobreNome && l.falha ? createElement('span', null, l.rotulo, createElement('span', { className: 'falha-sob-nome' }, `${l.falha.motivo} ${l.falha.acao}`.trim())) : l.rotulo),
     },
-    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => createElement('span', { className: l.ligada ? 'selo selo-ativo' : 'selo selo-inativo' }, l.ligada ? 'Ligada' : 'Desligada') },
+    { id: 'situacao', titulo: 'Situação', tipo: 'status', celula: (l) => createElement('span', { className: l.ligada ? 'selo selo-ativo' : 'selo selo-inativo' }, l.ligada ? 'Ligado' : 'Desligado') },
     { id: 'ultimoEnvio', titulo: 'Último envio', tipo: 'data', celula: (l) => l.ultimoEnvio },
     {
       id: 'falha',
       titulo: 'Falha',
-      celula: (l) => (l.falha ? createElement('span', null, `${l.falha.motivo} `, createElement('span', { className: 'apoio' }, l.falha.acao)) : createElement('span', { className: 'apoio' }, '—')),
+      celula: (l) => (l.falha ? createElement('span', null, l.falha.acao ? `${l.falha.motivo} ` : l.falha.motivo, l.falha.acao ? createElement('span', { className: 'apoio' }, l.falha.acao) : null) : createElement('span', { className: 'apoio' }, '—')),
     },
   ];
 }

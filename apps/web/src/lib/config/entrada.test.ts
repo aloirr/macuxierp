@@ -9,7 +9,7 @@ const CHAVE = 'A'.repeat(43);
 const L1 = '11111111-1111-4111-8111-111111111111';
 const leitura = (extra: Record<string, unknown> = {}) =>
   PortalEntradaLeitura.parse({
-    credenciais: [{ conector_id: 'erp-cliente', prefixo: PREFIXO, criada_em: '2026-11-26T15:00:00.000Z', revogada_em: null, ultimo_uso_em: null }],
+    credenciais: [{ conector_id: 'erp-cliente', prefixo: PREFIXO, criada_em: '2026-11-26T15:00:00.000Z', revogada_em: null }],
     ultimo_sinal: { conector_id: 'erp-cliente', em: '2026-11-26T16:30:00.000Z', versao_conector: '1.2.0' },
     lotes: [
       { lote_id: L1, entidade: 'produto', modo: 'delta', status: 'concluido_com_erros', recebidos: 40, com_erro: 2, recebido_em: '2026-11-26T14:00:00.000Z', concluido_em: '2026-11-26T14:01:00.000Z' },
@@ -50,7 +50,7 @@ describe('vista do bloco', () => {
     expect(vistaEntrada(leitura({ ultimo_sinal: null }), 'America/Manaus').vigente).toMatchObject({ ultimoSinal: 'ainda sem sinal', versao: '—' });
   });
   it('chave revogada não é vigente, mas o código dela vira sugestão', () => {
-    const rev = leitura({ credenciais: [{ conector_id: 'velho', prefixo: PREFIXO, criada_em: '2026-11-20T15:00:00.000Z', revogada_em: '2026-11-21T15:00:00.000Z', ultimo_uso_em: null }] });
+    const rev = leitura({ credenciais: [{ conector_id: 'velho', prefixo: PREFIXO, criada_em: '2026-11-20T15:00:00.000Z', revogada_em: '2026-11-21T15:00:00.000Z' }] });
     const v = vistaEntrada(rev, 'America/Manaus');
     expect(v.vigente).toBeNull();
     expect(v.codigoSugerido).toBe('velho');
@@ -58,9 +58,9 @@ describe('vista do bloco', () => {
   it('várias credenciais: vale a vigente mais recente', () => {
     const l = leitura({
       credenciais: [
-        { conector_id: 'a', prefixo: PREFIXO, criada_em: '2026-11-01T15:00:00.000Z', revogada_em: null, ultimo_uso_em: null },
-        { conector_id: 'b', prefixo: 'ZyXwVuTs', criada_em: '2026-11-10T15:00:00.000Z', revogada_em: null, ultimo_uso_em: null },
-        { conector_id: 'c', prefixo: PREFIXO, criada_em: '2026-11-25T15:00:00.000Z', revogada_em: '2026-11-26T15:00:00.000Z', ultimo_uso_em: null },
+        { conector_id: 'a', prefixo: PREFIXO, criada_em: '2026-11-01T15:00:00.000Z', revogada_em: null },
+        { conector_id: 'b', prefixo: 'ZyXwVuTs', criada_em: '2026-11-10T15:00:00.000Z', revogada_em: null },
+        { conector_id: 'c', prefixo: PREFIXO, criada_em: '2026-11-25T15:00:00.000Z', revogada_em: '2026-11-26T15:00:00.000Z' },
       ],
     });
     expect(vistaEntrada(l, 'America/Manaus').vigente?.conectorId).toBe('b');
@@ -98,16 +98,13 @@ describe('lista de lotes', () => {
 
 describe('mapeamento de erros da API de entrada', () => {
   const e = (status: number, codigo: string, mensagem = '') => new ErroPlataforma(status, codigo, {}, mensagem);
-  it('503 pepper_ausente: texto fixo, sem citar variável', () => {
-    for (const c of ['pepper_ausente', 'PEPPER_AUSENTE']) {
-      const m = mensagemDoErro(e(503, c, 'MACUXIERP_PEPPER_ENTRADA ausente'), 'entrada');
-      expect(m.texto).toBe(ERRO_PEPPER_AUSENTE);
-      expect(m.texto).not.toContain('MACUXIERP');
-    }
+  it('503 INDISPONIVEL do E3 (sem o pepper): texto fixo, sem citar variável', () => {
+    const m = mensagemDoErro(e(503, 'INDISPONIVEL', 'Entrada de dados indisponível'), 'entrada');
+    expect(m.texto).toBe(ERRO_PEPPER_AUSENTE);
+    expect(m.texto).not.toContain('MACUXIERP');
   });
-  it('409 conector_id_em_uso: erro junto do campo', () => {
-    expect(mensagemDoErro(e(409, 'conector_id_em_uso'), 'entrada')).toMatchObject({ texto: '', campos: { conector_id: ERRO_CODIGO_EM_USO } });
-    expect(mensagemDoErro(e(409, 'CONECTOR_ID_EM_USO'), 'entrada').campos.conector_id).toBe(ERRO_CODIGO_EM_USO);
+  it('409 CONFLITO do E3 (código preso a outra empresa): erro junto do campo', () => {
+    expect(mensagemDoErro(e(409, 'CONFLITO', 'Este código de conector já é usado por outra empresa.'), 'entrada')).toMatchObject({ texto: '', campos: { conector_id: ERRO_CODIGO_EM_USO } });
   });
   it('400 e 422: código fora da regra, junto do campo', () => {
     expect(mensagemDoErro(e(400, 'VALIDACAO'), 'entrada').campos.conector_id).toBe(ERRO_CODIGO_REGRA);

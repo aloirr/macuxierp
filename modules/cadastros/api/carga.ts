@@ -5,27 +5,23 @@
  * requisição (D9): o relatório e a auditoria levam contagens e SHA-256, nunca o valor de uma célula.
  */
 import {
-  ErroApi, definirRota, erros, respostaCsv, sha256Hex, pode,
+  definirRota, erros, respostaCsv, sha256Hex, pode,
   type ArquivoRecebido, type ContextoRota, type CsvLido, type RotaModulo, TEMPO_MAXIMO_ROTA_MS,
 } from '@macuxierp/platform-sdk';
 import {
-  CargaCampos, ENTIDADES_CARGA, EntidadeCarga as EntidadeCargaZ, MAX_ARQUIVOS_LOTE, MAX_BYTES_LOTE, MAX_ERROS_RELATORIO, MAX_LINHAS_LOTE, RelatorioCarga,
+  CargaCampos, EntidadeCarga as EntidadeCargaZ, MAX_ARQUIVOS_LOTE, MAX_BYTES_LOTE, MAX_ERROS_RELATORIO, MAX_LINHAS_LOTE, RelatorioCarga,
   type EntidadeCarga, type ErroCarga, type LinhasCarga, type ModoCarga, type ResultadoEntidade,
 } from '../contracts';
 import {
-  AVISO_ARQUIVO_IGNORADO, LAYOUT, MOTIVO_SO_ADMINISTRADOR, PADRAO_UF, modeloCsv, nomeArquivoCarga, REFS_CARGA, acrescentarIdsDoLote, agruparClientes, alvoCriado, classificarArquivo,
-  conferirDadosDoCliente, conferirFormasDoLote, conferirReferencias, conferirVigenciaDaTabela, erroLinha, idsVazios, mapearLinha, separarDuplicados,
+  AVISO_ARQUIVO_IGNORADO, LAYOUT, MOTIVO_SO_ADMINISTRADOR, PADRAO_UF, modeloCsv, nomeArquivoCarga, agruparClientes, classificarArquivo,
+  conferirDadosDoCliente, conferirFormasDoLote, idsVazios, mapearLinha, separarDuplicados,
   type ErroLinha, type FormaDoLote, type MunicipioOficial,
 } from '../domain';
-import {
-  TRATADORES, estadoVazio, novoLoteId, planejarEstoque, planejarIrmasDaForma, podeCarregar, type Estado, type Saida,
-} from './carga-entidades';
+import { estadoVazio, novoLoteId, podeCarregar } from './carga-entidades';
 import { lerCsvDoLayout, reativarPorPadrao } from './carga-reativar';
-import { tratarCartaoSemParcelas } from './formas-recusadas';
-import type { Dependencias, Repositorios, TabelaChave } from './portas';
-import { dataIso, violacaoExternalId } from './util';
-
-type Linha = LinhasCarga[EntidadeCarga];
+import { gravarLinhas, type Linha } from './carga-gravar';
+import type { Dependencias } from './portas';
+import { dataIso } from './util';
 
 const COLUNAS_UF: Partial<Record<EntidadeCarga, string>> = { filial: 'uf', cliente: 'endereco.uf' };
 const CODIGO_CSV = { CSV_COLUNA_AUSENTE: 'CARGA_OBRIGATORIO' } as const;
@@ -58,16 +54,6 @@ interface ArquivoCarga {
 const novoResultado = (entidade: ResultadoEntidade['entidade'], arquivo: string, situacao: ResultadoEntidade['situacao'], avisos: string[] = []): ResultadoEntidade => ({
   entidade, arquivo, situacao, lidas: 0, inseridas: 0, atualizadas: 0, sem_mudanca: 0, recusadas: 0, colunas_ignoradas: [], avisos,
 });
-
-/** Erro do banco numa linha: o SAVEPOINT já desfez só ela. O tempo esgotado (503) derruba a chamada inteira. */
-function erroDeExcecao(linha: number, e: unknown): ErroLinha {
-  if (e instanceof ErroApi) {
-    if (e.status === 503) throw e;
-    if (e.status === 422 && e.codigo === 'RN-CAD-09') return erroLinha(linha, 'parcelas_cartao', 'RN-CAD-09', e.message);
-    if (e.status === 409) return erroLinha(linha, null, 'CARGA_CONFLITO', 'Conflito com um cadastro existente (documento, código ou identificador externo)');
-  }
-  return erroLinha(linha, null, 'CARGA_BANCO', 'Erro do banco ao gravar a linha: nada foi gravado para ela');
-}
 
 export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: ModoCarga, recebidos: readonly ArquivoRecebido[], entidade?: EntidadeCarga): Promise<RelatorioCarga> {
   if (entidade && (recebidos.length !== 1 || ![`${entidade}.csv`, nomeArquivoCarga(entidade)].includes(recebidos[0]?.nome.toLowerCase() ?? ''))) {
@@ -170,99 +156,8 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     }
   }
 
-  // 4. Referências e gravação na ordem D13.
-  for (const entidade of ENTIDADES_CARGA) {
-    const a = arquivos.find((x) => x.entidade === entidade);
-    if (!a) continue;
-    await carregarReferencias(st, entidade, a.linhas);
-    const ref = conferirReferencias(entidade, a.linhas as never[], st.conhecidos) as { validas: Linha[]; erros: ErroLinha[] };
-    ref.erros.forEach((e) => rel.erroLinha(a.nome, e));
-    let linhas = ref.validas;
-    if (entidade === 'preco') {
-      const vig = conferirVigenciaDaTabela(linhas as LinhasCarga['preco'][]);
-      vig.forEach((e) => rel.erroLinha(a.nome, e));
-      const ruins = new Set(vig.map((e) => e.linha));
-      linhas = linhas.filter((l) => !ruins.has(l.linha));
-    }
-    const boas: Linha[] = [];
-    const avisos = new Set<string>();
-    const contar = (efeito: 'inserida' | 'atualizada' | 'sem_mudanca', n = 1) => {
-      if (efeito === 'inserida') a.resultado.inseridas += n;
-      else if (efeito === 'atualizada') a.resultado.atualizadas += n;
-      else a.resultado.sem_mudanca += n;
-    };
-    const executar = async (saida: Saida, numeros: number[], externo: string | undefined): Promise<boolean> => {
-      // Cliente com várias linhas (T-0058): o erro do cliente sai na 1ª linha dele; as outras linhas contam como recusadas.
-      const alvosDoErro = entidade === 'cliente' ? numeros.slice(0, 1) : numeros;
-      if ('erros' in saida) {
-        for (const e of saida.erros) for (const n of alvosDoErro) rel.erroLinha(a.nome, { ...e, linha: n });
-        return false;
-      }
-      const parciais = saida.errosParciais ?? [];
-      parciais.forEach((e) => rel.erroLinha(a.nome, e));
-      const recusadasDoGrupo = new Set(parciais.map((e) => e.linha));
-      let id = saida.alvo?.id;
-      if (st.gravar && saida.aplicar) {
-        try {
-          const aplicar = saida.aplicar;
-          const novo = await r.carga.comSavepoint(() => aplicar());
-          if (typeof novo === 'string') id = novo;
-        } catch (e) {
-          const erro = erroDeExcecao(numeros[0] as number, e);
-          for (const n of alvosDoErro) rel.erroLinha(a.nome, { ...erro, linha: n });
-          return false;
-        }
-      } else if (saida.efeito === 'inserida') id = '';
-      const alvo = alvoCriado(entidade);
-      if (alvo && id !== undefined && externo !== undefined) st.ids[alvo].set(externo, id);
-      contar(saida.efeito, numeros.filter((n) => !recusadasDoGrupo.has(n)).length);
-      return true;
-    };
-    if (entidade === 'estoque') {
-      const porLinha = new Map(linhas.map((l) => [l.linha, l]));
-      for (const g of await planejarEstoque(linhas as LinhasCarga['estoque'][], st)) {
-        if (await executar(g.saida, g.linhas, undefined)) for (const n of g.linhas) boas.push(porLinha.get(n) as Linha);
-      }
-    } else {
-      if (entidade === 'condicao_pagamento') {
-        for (const f of a.formas) {
-          const plano = await planejarIrmasDaForma(f, st);
-          plano.erros.forEach((e) => rel.erroLinha(a.nome, e));
-          plano.avisos.forEach((x) => avisos.add(x));
-          if (st.gravar && plano.aplicar && plano.erros.length === 0) {
-            try {
-              const aplicar = plano.aplicar;
-              await r.carga.comSavepoint(() => aplicar());
-            } catch (e) {
-              rel.erroLinha(a.nome, { ...erroDeExcecao(f.linha, e), linha: f.linha });
-            }
-          }
-        }
-      }
-      for (const l of linhas) {
-        const tratar = TRATADORES[entidade] as (l: Linha, st: Estado) => Promise<Saida>;
-        const colisao = await colisaoComId(r, entidade, l.external_id);
-        const ok = await executar(colisao ?? (await tratar(l, st)), (l as { linhas?: number[] }).linhas ?? [l.linha], l.external_id);
-        l.avisos.forEach((x) => avisos.add(x));
-        if (ok) boas.push(l);
-      }
-    }
-    acrescentarIdsDoLote(st.conhecidos, entidade, boas as never[]);
-    a.resultado.avisos = [...avisos].map((x) => x.slice(0, 200)).slice(0, 50);
-  }
-  const arquivoPreco = arquivos.find((x) => x.entidade === 'preco');
-  if (arquivoPreco && st.precosSemDesconto > 0) {
-    arquivoPreco.resultado.avisos.push(`${st.precosSemDesconto} item(ns) de preço sem desconto máximo (nem no produto nem no preço)`);
-  }
-  if (st.gravar) {
-    // RN-CAD-09: nada fica "cartão sem parcelas" (preenche quando os prazos são 30×N; senão desativa).
-    const limpeza = await tratarCartaoSemParcelas(c, r, await r.carga.condicoesAtivasCartaoSemParcelas());
-    const destino = arquivos.find((x) => x.entidade === 'condicao_pagamento');
-    if (destino && limpeza.preenchidas.total + limpeza.desativadas.total > 0) {
-      destino.resultado.avisos.push(`Cartão sem parcelas: ${limpeza.preenchidas.total} preenchida(s), ${limpeza.desativadas.total} desativada(s)`);
-    }
-  }
-  for (const a of arquivos) a.resultado.recusadas = Math.max(0, a.resultado.lidas - a.resultado.inseridas - a.resultado.atualizadas - a.resultado.sem_mudanca);
+  // 4. Referências e gravação na ordem D13 (C1 da T-0057: o mesmo caminho do worker do lote da `/entrada/v1`).
+  await gravarLinhas(st, arquivos, rel);
 
   if (st.gravar) {
     await c.auditar({
@@ -278,34 +173,6 @@ export async function executarCarga(deps: Dependencias, c: ContextoRota, modo: M
     lote_id: loteId, modo, iniciado_em: c.agora.toISOString(), concluido_em: new Date().toISOString(),
     entidades: rel.entidades, erros: rel.erros, erros_omitidos: rel.omitidos,
   });
-}
-
-/** Tabela de cada entidade da carga que grava `external_id` (o estoque não tem tabela própria). */
-const TABELA_DA_ENTIDADE: Partial<Record<EntidadeCarga, TabelaChave>> = {
-  filial: 'filial', vendedor: 'vendedor', condicao_pagamento: 'condicao_pagamento', produto: 'produto', cliente: 'cliente', produto_unidade: 'produto_unidade', preco: 'tabela_preco_item',
-};
-
-/** Guarda RD-0317 (ver domain/external-id.ts): vira `CARGA_CONFLITO` da linha. */
-async function colisaoComId(r: Repositorios, entidade: EntidadeCarga, externalId: unknown): Promise<Saida | null> {
-  const tabela = TABELA_DA_ENTIDADE[entidade];
-  const v = tabela ? await violacaoExternalId(r, tabela, externalId) : null;
-  return v ? { erros: [erroLinha(0, 'external_id', 'CARGA_CONFLITO', v.mensagem)] } : null;
-}
-
-/** Referências que a entidade cita e ainda não são conhecidas (nem do lote, nem do banco): uma consulta por alvo. */
-async function carregarReferencias(st: Estado, entidade: EntidadeCarga, linhas: readonly Linha[]): Promise<void> {
-  for (const [campo, alvo] of Object.entries(REFS_CARGA[entidade])) {
-    const faltam = new Set<string>();
-    for (const l of linhas) {
-      const v = ((l as { refs?: Record<string, string | undefined> }).refs ?? {})[campo];
-      if (v !== undefined && !st.conhecidos[alvo].has(v)) faltam.add(v);
-    }
-    if (faltam.size === 0) continue;
-    for (const [ext, id] of await st.r.chaves.idsPorExternalId(alvo, [...faltam], true)) {
-      st.ids[alvo].set(ext, id);
-      st.conhecidos[alvo].add(ext);
-    }
-  }
 }
 
 /** RF-CAD-11: modelo CSV da entidade (cabeçalho só), com a mesma ação da carga. */

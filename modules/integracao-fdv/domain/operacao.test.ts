@@ -158,7 +158,7 @@ describe('Log (T-0086 §4; ADR 0013)', () => {
 
   it('o texto vem do catálogo pelo código: código desconhecido cai na mensagem genérica, nunca em texto do Hub', () => {
     const log = montarLogTenant({ ...base, envios: [], erros: [erro({ codigo: 'qualquer_coisa_do_hub' })] });
-    expect(log.erros[0]!.motivo_texto).toContain('não catalogado');
+    expect(log.erros[0]!.motivo_texto).toContain('desconhecido');
   });
 
   it('com_erro nunca passa dos registros, e o log do BKO corta em 200 itens mantendo o total', () => {

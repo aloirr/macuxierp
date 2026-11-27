@@ -2,7 +2,7 @@
  * Peças comuns da execução das rotas declaradas (tenant em `app.ts` e portal `/config` em `plataforma/rotas.ts`): a
  * entrada passada ao `executar` da rota e o envio da `RespostaRota` (com o cabeçalho de resposta repetida).
  */
-import { CABECALHO_REPETIDA, cabecalhosDaRota, type ArquivoRecebido, type EntradaRota, type RespostaRota } from '@macuxierp/platform-sdk';
+import { CABECALHO_REPETIDA, cabecalhosDaRota, trabalhoDoModulo, type ArquivoRecebido, type EntradaRota, type FilaDeTrabalhos, type PedidoTrabalho, type RespostaRota, type Transacao } from '@macuxierp/platform-sdk';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 
@@ -35,4 +35,12 @@ export function responder(reply: FastifyReply, resposta: RespostaRota, repetida:
   if (repetida) reply.header(CABECALHO_REPETIDA, 'true');
   else if (resposta.cabecalhos) reply.headers(resposta.cabecalhos);
   return reply.status(resposta.status ?? 200).send(resposta.corpo ?? null);
+}
+
+/** O `enfileirar` do contexto da rota (tenant e `/entrada/v1`): só trabalho do próprio módulo, no tenant da transação. */
+export function enfileirarDoModulo(modulo: string, trabalhos: FilaDeTrabalhos, tx: Transacao, tenantId: string) {
+  return (pedido: Omit<PedidoTrabalho, 'tenant_id'>): Promise<{ id: string }> => {
+    if (!trabalhoDoModulo(modulo, pedido.tipo)) throw new Error(`${modulo} enfileirando trabalho fora do próprio módulo: ${pedido.tipo}`);
+    return trabalhos.enfileirar(tx, { ...pedido, tenant_id: tenantId });
+  };
 }

@@ -18,3 +18,6 @@ Ligar (ou desligar) uma versão de contrato (por exemplo, `PRAZO_CONTRATO_V2_LIG
 2. **O que volta:** só a entidade que mudou de versão (hoje, `prazo_pagamento`), com os inativos já confirmados (vão como `ativo: false`) e os recusados em versão antiga. Aceito na versão vigente não volta; ciclo sem virada não marca nada; outro tenant não é tocado.
 3. **Limite:** reverter a flag também reenvia, **automaticamente na versão antiga**. Não há "só os novos": a versão vigente vale para o cadastro inteiro da entidade.
 4. **Reenvio manual** (Reprocessar ou Carga completa) segue disponível para outros casos, mas deixa de ser passo da virada.
+
+## Referência ainda não confirmada (RN-INF-02, T-0112)
+A linha cuja referência (filial, forma de pagamento, produto, vendedor, cliente ou tabela de preço) ainda não foi confirmada no FDV **não vai em `linhas_invalidas`**: o Hub a recusaria à toa. O ERP a retém em silêncio, ela segue pendente e volta sozinha quando a referência for confirmada (delta e `acordarDependentes`; na carga completa o cursor passa por ela). O Log mostra o registro ("Aguardando <cadastro> ser confirmada no FDV." / "Nada a fazer: aguarde."), gravado em `lote_erro` (origem `erp`, reprocessável, sem migração) no lote em que ela foi retida, uma vez enquanto estiver aberta. Delta só com linhas retidas não monta lote e, por isso, não grava o registro no Log.

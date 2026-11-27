@@ -44,6 +44,8 @@ import {
   codigoDoHub,
   decidirEnvioLote,
   dividirAoMeio,
+  ehLinhaRetida,
+  erroDoHubReprocessavel,
   esperaConsultaSegundos,
   filiaisComCodigoRepetido,
   hashRegistro,
@@ -326,7 +328,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   const chunk = continua ? candidatos.slice(0, e.limiteRegistros) : candidatos;
 
   // 4. validação local (M5): o que o Hub recusaria vai em linhas_invalidas, sem o valor
-  const { confirmados, emFila } = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
+  const confirmados = await carregarConfirmados(tx, tenant, entidade, chunk.map((c) => c.payload ?? {}));
   const confirmado = (alvo: Entidade, id: string): boolean => confirmados.has(`${alvo}\u0000${id}`);
   const brutos = chunk.map((c) => paraRegistro(c));
   const espelhos: RegistroEspelho[] = brutos.map((b) => normalizarPrazo(b));
@@ -362,24 +364,24 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   }
   const validos: RegistroLote[] = [];
   const invalidas: LinhaInvalida[] = [];
-  // hash (do momento da montagem) das inválidas FIRMES: erro do próprio registro, que só um evento novo conserta. Fora: a
-  // referência ausente (se resolve sozinha) e o código de filial repetido (depende de outra filial, não do próprio registro).
+  // RN-INF-02 (T-0112): referência ainda não confirmada no FDV (ordem de carga, não erro de cadastro) fica retida em silêncio: o lote
+  // não a declara ao Hub, o registro segue pendente (o cursor da carga completa passa, o delta e o `acordarDependentes` o reavaliam).
+  const retidas: LinhaInvalida[] = [];
+  // hash (do momento da montagem) das inválidas FIRMES: erro do próprio registro, que só um evento novo conserta. Fora: o código de
+  // filial repetido (depende de outra filial, não do próprio registro).
   const hashDasFirmes = new Map<string, string>();
   for (const r of espelhos) {
     const repetida = repetidas.get(r.external_id);
     const linha = repetida ?? validarRegistro(r, confirmado, { prazoV2: PRAZO_CONTRATO_V2_LIGADO });
-    // T-0085 (diagnóstico dos regra_invalida da AM2808): a referência que ainda está na fila de envio (ordem de carga, não erro de cadastro)
-    // fica retida em silêncio: o lote não a declara ao Hub, o registro segue pendente e o `acordarDependentes` o avalia de novo.
-    if (!repetida && linha?.codigo === 'referencia_ausente' && referenciaNaFila(r, emFila)) continue;
     if (!linha) {
       validos.push(paraRegistroLote(r));
-      continue;
+    } else if (ehLinhaRetida(linha)) {
+      retidas.push(linha);
+    } else {
+      invalidas.push(linha);
+      if (!repetida) hashDasFirmes.set(r.external_id, r.hash);
     }
-    invalidas.push(linha);
-    if (!repetida && linha.codigo !== 'referencia_ausente') hashDasFirmes.set(r.external_id, r.hash);
   }
-  // delta sem nada válido: só vale enviar as linhas inválidas "firmes" (a referência ausente se resolve sozinha, sem ruído)
-  const invalidasDoLote = modo === 'delta' && validos.length === 0 ? invalidas.filter((l) => l.codigo !== 'referencia_ausente') : invalidas;
   const ultimo = chunk[chunk.length - 1];
   const avancoDoChunk: CursorHub | null = ultimo ? { alterado_em: ultimo.alterado_em.toISOString(), external_id: ultimo.registro_external_id } : null;
 
@@ -402,7 +404,7 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   }
 
   const lotes = montarLotes({
-    entidade, modo, registros: validos, linhas_invalidas: invalidasDoLote, contratoPrazoV2: PRAZO_CONTRATO_V2_LIGADO, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
+    entidade, modo, registros: validos, linhas_invalidas: invalidas, contratoPrazoV2: PRAZO_CONTRATO_V2_LIGADO, enviadoEm: agora.toISOString(), limiteRegistros: e.limiteRegistros,
     ...(sessaoId ? { sessaoId, sessaoParteInicial: parteInicial, sessaoContinua: continua } : {}),
     ...(registroDeFechamento && localCursor ? { registroDeFechamento, cursorDeFechamento: localCursor } : {}),
   });
@@ -419,10 +421,10 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
     const abertas = await tx.consultar<{ registro_external_id: string; codigo: string; campo: string | null }>(
       `SELECT registro_external_id, codigo, campo FROM integracao_fdv.lote_erro
         WHERE tenant_id = $1 AND entidade = $2 AND origem = 'erp' AND resolvido_em IS NULL AND registro_external_id = ANY($3::text[])`,
-      [tenant, entidade, invalidasDoLote.map((l) => l.external_id)],
+      [tenant, entidade, invalidas.map((l) => l.external_id)],
     );
     const declaradas = new Set(abertas.map((x) => `${x.registro_external_id}\u0000${x.codigo}\u0000${x.campo ?? ''}`));
-    if (invalidasDoLote.every((l) => declaradas.has(`${l.external_id}\u0000${l.codigo}\u0000${campoDoHub(l.campo) ?? ''}`))) {
+    if (invalidas.every((l) => declaradas.has(`${l.external_id}\u0000${l.codigo}\u0000${campoDoHub(l.campo) ?? ''}`))) {
       await gravarCursor(tx, e, { proximoEm: mais(agora, ESPERA_OCIOSA_S) });
       return { tipo: 'nada' };
     }
@@ -440,14 +442,15 @@ async function montarLoteNoBanco(tx: Transacao, e: Exec, hubCursor: CursorHub | 
   // T-0061: com o fecho, o cursor local fica (o registro é de antes dele)
   const avanco = registroDeFechamento ? localCursor : modo === 'completo' && validos.length === montado.corpo.registros.length ? avancoDoChunk : (montado.corpo.cursor ?? avancoDoChunk);
   // só as detalhadas (as 500 primeiras) foram declaradas ao Hub e gravadas em `lote_erro`: só elas saem da fila no fim
-  const detalhadas = invalidasDoLote.slice(0, montado.corpo.linhas_invalidas.length);
+  const detalhadas = invalidas.slice(0, montado.corpo.linhas_invalidas.length);
   const firmes = detalhadas.filter((l) => hashDasFirmes.has(l.external_id)).map((l) => [l.external_id, hashDasFirmes.get(l.external_id)!] as const);
   // T-0086 §4: a origem do envio (ciclo, reprocessar ou zerar) sai das marcas do espelho e vai em `contagens.origem`; carga completa é sempre ciclo
   const origem = modo === 'delta' ? origemDoLote(chunk.map((c) => c.fonte_refs)) : 'ciclo';
   const novo = await inserirLote(tx, e, { modo, geracao, chave, corpo: montado.corpo, cursorDeclarado: montado.cursor_declarado, avanco, firmes, origem });
   for (const [indice, l] of detalhadas.entries()) {
-    await gravarErroDeLinha(tx, e, { loteId: novo.id, origem: 'erp', indice, externalId: l.external_id, codigo: l.codigo, campo: l.campo, reprocessavel: l.codigo === 'referencia_ausente' });
+    await gravarErroDeLinha(tx, e, { loteId: novo.id, origem: 'erp', indice, externalId: l.external_id, codigo: l.codigo, campo: l.campo, reprocessavel: false });
   }
+  await gravarRetidas(tx, e, novo.id, detalhadas.length, retidas);
   if (sessaoId && !cursor.sessao_aberta_id) await gravarCursor(tx, e, { proximoEm: e.ctx.posseAte, sessaoAberta: { id: sessaoId }, sessaoLida: cursor.sessao_aberta_id });
   return {
     tipo: 'lote',
@@ -499,34 +502,42 @@ async function gravarErroDeLinha(
   );
 }
 
-/** A referência (campo de `REFERENCIAS_HUB`) ainda não confirmada de `r` existe no espelho e está pendente de envio? */
-function referenciaNaFila(r: RegistroEspelho, emFila: ReadonlySet<string>): boolean {
-  return (REFERENCIAS_HUB[r.entidade] ?? []).some(([campo, alvo]) => {
-    const v = r.payload[campo];
-    return typeof v === 'string' && emFila.has(`${alvo}\u0000${v}`);
-  });
+/**
+ * RN-INF-02 (T-0112): as linhas retidas (referência ausente) não vão ao Hub, mas o Log do BKO as mostra (`lote_erro`, origem `erp`,
+ * reprocessável) ligadas a este lote. Uma só vez por (registro, código, campo) enquanto estiver aberta; aceite do registro a resolve.
+ */
+async function gravarRetidas(tx: Transacao, e: Exec, loteId: string, primeiroIndice: number, retidas: readonly LinhaInvalida[]): Promise<void> {
+  if (retidas.length === 0) return;
+  await tx.consultar(
+    `INSERT INTO integracao_fdv.lote_erro (tenant_id, lote_envio_id, indice, origem, entidade, registro_external_id, codigo, campo, reprocessavel)
+     SELECT $1::uuid, $2::uuid, $3::int + v.ordem::int, 'erp', $4::integracao_fdv.entidade_hub, v.chave, 'referencia_ausente', v.campo, true
+       FROM unnest($5::text[], $6::text[]) WITH ORDINALITY AS v(chave, campo, ordem)
+      WHERE NOT EXISTS (SELECT 1 FROM integracao_fdv.lote_erro a
+                         WHERE a.tenant_id = $1 AND a.entidade = $4 AND a.origem = 'erp' AND a.resolvido_em IS NULL AND a.deleted_at IS NULL
+                           AND a.registro_external_id = v.chave AND a.codigo = 'referencia_ausente' AND a.campo IS NOT DISTINCT FROM v.campo)
+     ON CONFLICT (lote_envio_id, origem, indice) DO NOTHING`,
+    [e.tenant, loteId, primeiroIndice - 1, e.entidade, retidas.map((l) => l.external_id), retidas.map((l) => campoDoHub(l.campo))],
+  );
 }
 
-/** Pares (entidade alvo, chave) das referências dos registros: `confirmados` no Hub e `emFila` (existem no espelho, ainda pendentes de envio). */
-async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<{ confirmados: Set<string>; emFila: Set<string> }> {
+/** Pares (entidade alvo, chave) das referências dos registros já `confirmados` no Hub. */
+async function carregarConfirmados(tx: Transacao, tenant: string, entidade: Entidade, payloads: ReadonlyArray<Record<string, unknown>>): Promise<Set<string>> {
   const refs = REFERENCIAS_HUB[entidade] ?? [];
   const confirmados = new Set<string>();
-  const emFila = new Set<string>();
   for (const [campo, alvo] of refs) {
     const valores = [...new Set(payloads.map((p) => p[campo]).filter((v): v is string => typeof v === 'string'))];
     if (valores.length === 0) continue;
-    const linhas = await tx.consultar<{ chave: string; confirmado: boolean; na_fila: boolean }>(
-      `SELECT registro_external_id AS chave, hash_confirmado IS NOT NULL AS confirmado, (pendente AND payload IS NOT NULL) AS na_fila
+    const linhas = await tx.consultar<{ chave: string; confirmado: boolean }>(
+      `SELECT registro_external_id AS chave, hash_confirmado IS NOT NULL AS confirmado
          FROM integracao_fdv.registro_publicado
         WHERE tenant_id = $1 AND entidade = $2 AND registro_external_id = ANY($3::text[]) AND deleted_at IS NULL`,
       [tenant, alvo, valores],
     );
     for (const l of linhas) {
       if (l.confirmado) confirmados.add(`${alvo}\u0000${l.chave}`);
-      else if (l.na_fila) emFila.add(`${alvo}\u0000${l.chave}`);
     }
   }
-  return { confirmados, emFila };
+  return confirmados;
 }
 
 // ---- envio ----
@@ -708,12 +719,12 @@ export async function finalizar(tx: Transacao, e: Exec, lote: LinhaLote, status:
   );
 
   // erro por linha do Hub (a origem "conector" é a linha inválida que o ERP mesmo mandou: já está gravada como "erp")
-  const doHub = (r.erros ?? []).filter((x) => x.origem !== 'conector');
+  const doHub = (r.erros ?? []).filter((x) => x.origem !== 'conector').map((x) => ({ ...x, reprocessavel: erroDoHubReprocessavel(codigoDoHub(x.codigo), x.reprocessavel) }));
   for (const x of doHub) {
-    await gravarErroDeLinha(tx, e, { loteId: lote.id, origem: 'hub', indice: x.indice, externalId: x.external_id, codigo: x.codigo, campo: x.campo, reprocessavel: x.reprocessavel === true });
+    await gravarErroDeLinha(tx, e, { loteId: lote.id, origem: 'hub', indice: x.indice, externalId: x.external_id, codigo: x.codigo, campo: x.campo, reprocessavel: x.reprocessavel });
   }
   const comErro = new Set(doHub.map((x) => x.external_id));
-  const reprocessaveis = new Set(doHub.filter((x) => x.reprocessavel === true).map((x) => x.external_id));
+  const reprocessaveis = new Set(doHub.filter((x) => x.reprocessavel).map((x) => x.external_id));
   // lista cortada: o Hub contou mais registros com erro do que listou. Quem não está na lista pode ser um deles: nada fora
   // da lista é confirmado (volta pela curva longa); os da lista seguem o caminho normal (o firme sai da fila e a lista encolhe).
   const listados = (r.erros ?? []).length;

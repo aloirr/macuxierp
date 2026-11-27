@@ -7,7 +7,7 @@ import { ErroApi } from '@macuxierp/platform-sdk';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as senha from './senha';
 import { ARGON2_RAPIDO } from '../apoio-teste';
-import { CONFERENCIAS_POR_RECUSA, ConferenciaCustoIgual, type ContaParaEntrada } from './apoio-login';
+import { BLOQUEIO_SEM_PRAZO, CONFERENCIAS_POR_RECUSA, ConferenciaCustoIgual, travaAposFalha, type ContaParaEntrada } from './apoio-login';
 import { TravaContaMemoria } from '../plataforma/limite-ip';
 
 vi.mock('./senha', async (original) => {
@@ -59,12 +59,31 @@ describe('RN-CORE-15: o mesmo custo argon2 em toda recusa do login', () => {
 
   it('conta que não existe, livre e travada na memória: o mesmo custo, 401 e depois o 423', async () => {
     const c = new ConferenciaCustoIgual(ARGON2_RAPIDO);
-    const trava = new TravaContaMemoria({ maxFalhas: 1, travaMinutos: 15 });
-    const primeira = await c.recusarSemConta(ERRADA, trava, 'chave', AGORA, () => new ErroApi(401, 'NAO_AUTENTICADO', 'x')).catch((x: ErroApi) => x);
+    const trava = new TravaContaMemoria({ maxFalhas: 1 });
+    const primeira = await c.recusarSemConta(ERRADA, trava, 'chave', () => new ErroApi(401, 'NAO_AUTENTICADO', 'x')).catch((x: ErroApi) => x);
     expect([primeira.status, vi.mocked(senha.conferirSenha).mock.calls.length]).toEqual([401, CONFERENCIAS_POR_RECUSA]);
     vi.mocked(senha.conferirSenha).mockClear();
-    const segunda = await c.recusarSemConta(ERRADA, trava, 'chave', AGORA, () => new ErroApi(401, 'NAO_AUTENTICADO', 'x')).catch((x: ErroApi) => x);
+    const segunda = await c.recusarSemConta(ERRADA, trava, 'chave', () => new ErroApi(401, 'NAO_AUTENTICADO', 'x')).catch((x: ErroApi) => x);
     expect([segunda.status, vi.mocked(senha.conferirSenha).mock.calls.length]).toEqual([423, CONFERENCIAS_POR_RECUSA]);
+  });
+
+  it('hotfix v0.3.16.1: IP no limite = só a temporária é conferida (a senha atual certa não entra) e a recusa custa o mesmo', async () => {
+    const c = new ConferenciaCustoIgual(ARGON2_RAPIDO);
+    const atual = await c.decidirEntrada(ATUAL, conta({ temporaria: 'nenhuma' }), AGORA, true);
+    expect(atual).toEqual({ resultado: 'falha', fimTemporaria: null, conferencias: 0 });
+    const temp = await c.decidirEntrada(TEMPORARIA, conta({ temporaria: 'vigente' }), AGORA, true);
+    expect(temp).toEqual({ resultado: 'entra', fimTemporaria: DEPOIS, conferencias: 1 });
+    vi.mocked(senha.conferirSenha).mockClear();
+    const trava = new TravaContaMemoria({ maxFalhas: 1 });
+    const limite = await c.recusarSemConta(ERRADA, trava, 'chave', () => new ErroApi(401, 'NAO_AUTENTICADO', 'x'), () => new ErroApi(429, 'MUITAS_TENTATIVAS', 'x')).catch((x: ErroApi) => x);
+    expect([limite.status, vi.mocked(senha.conferirSenha).mock.calls.length]).toEqual([429, CONFERENCIAS_POR_RECUSA]);
+    expect(trava.travada('chave')).toBe(false); // a recusa do limite não conta na trava em memória
+  });
+
+  it('hotfix v0.3.16.1: o bloqueio não tem prazo (só a temporária ou o --destravar liberam)', () => {
+    expect(travaAposFalha(4, { maxFalhas: 5 })).toBeNull();
+    expect(travaAposFalha(5, { maxFalhas: 5 })).toEqual(BLOQUEIO_SEM_PRAZO);
+    expect(BLOQUEIO_SEM_PRAZO.getUTCFullYear()).toBe(9999);
   });
 
   it('a temporária vigente certa entra desbloqueando a conta travada', async () => {

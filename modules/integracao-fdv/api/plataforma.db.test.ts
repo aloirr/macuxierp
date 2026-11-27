@@ -210,7 +210,7 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
 
   it('RN-CORE-02: empresa sem o módulo licenciado dá 422 na escrita e nada é gravado; o GET mostra modulo_licenciado falso', async () => {
     expect((await chamar('GET', C.ler, { params: { id: SEM } })).corpo).toMatchObject({ modulo_licenciado: false });
-    await expect(chamar('PUT', C.credencial, { params: { id: SEM }, corpo: ENTRADA })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Ligue o módulo Integração FDV na empresa antes de configurar' });
+    await expect(chamar('PUT', C.credencial, { params: { id: SEM }, corpo: ENTRADA })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.' });
     await expect(chamar('PUT', C.configuracao, { params: { id: SEM }, corpo: { entidades_habilitadas: ['filial'], limite_registros_lote: 1 } })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
     expect(await credenciais(SEM)).toHaveLength(0);
   });

@@ -54,10 +54,12 @@ export const VALIDADE_SENHA_TEMPORARIA_HORAS = 72;
 /** Rótulo do 1º campo da troca obrigatória quando o motivo é `temporaria` (o `rotuloAtual` do formulário). */
 export const ROTULO_SENHA_TEMPORARIA = 'Senha temporária';
 
-/** Limites do FDV (RN-CORE-13): 5 pedidos por IP a cada 15 min e 3 por (empresa + e-mail) por hora. */
+/**
+ * Limite do "Esqueci a senha" (RN-CORE-13, hotfix v0.3.16.1): só o anti-spam por IP, 20 pedidos a cada 15 min. Não há
+ * limite por conta: o pedido de recuperação nunca fica travado por tempo (pedido do Alexandre, 26/11 21h21).
+ */
 export const LIMITES_ESQUECI_SENHA = Object.freeze({
-  por_ip: Object.freeze({ maximo: 5, janela_s: 900 } as const),
-  por_conta: Object.freeze({ maximo: 3, janela_s: 3600 } as const),
+  por_ip: Object.freeze({ maximo: 20, janela_s: 900 } as const),
 } as const);
 
 /** Corpo do 429 (`erros.muitasTentativas(mensagem, retry_after_s)`): o envelope de `corpoErroApi`, com o prazo em `detalhes`. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CAMINHOS_ENTRADA,
+  CODIGO_EMPRESA_INATIVA_ENTRADA,
   CAMINHOS_ENTRADA_PLATAFORMA,
   ChaveEntrada,
   ConectorIdEntrada,
@@ -13,6 +14,7 @@ import {
   PortalEntradaLeitura,
   PREFIXO_ENTRADA,
   prefixoChaveEntrada,
+  truncarIpEntrada,
 } from './entrada';
 
 const T = '2026-11-27T01:00:00.000Z';
@@ -49,10 +51,12 @@ describe('T-0057 (ADR 0014 §3, corte de 26/11): contrato da /entrada/v1', () =>
 
   it('a chave aparece só na resposta da criação; o resumo nunca leva chave nem hash', () => {
     expect(CredencialEntradaCriada.parse({ conector_id: 'abc', chave: CHAVE, prefixo: 'aaaaaaaa', criada_em: T })).toMatchObject({ chave: CHAVE });
-    const resumo = { conector_id: 'abc', prefixo: 'aaaaaaaa', criada_em: T, revogada_em: null, ultimo_uso_em: null };
+    const resumo = { conector_id: 'abc', prefixo: 'aaaaaaaa', criada_em: T, revogada_em: null };
     expect(CredencialEntradaResumo.parse(resumo)).toEqual(resumo);
     expect(CredencialEntradaResumo.safeParse({ ...resumo, chave: CHAVE }).success).toBe(false);
     expect(CredencialEntradaResumo.safeParse({ ...resumo, chave_hmac: 'x' }).success).toBe(false);
+    // RD-2319 (36 A): o "Último uso" saiu da tela; a tela mostra o último sinal.
+    expect(CredencialEntradaResumo.safeParse({ ...resumo, ultimo_uso_em: null }).success).toBe(false);
   });
 
   it('leitura do portal: credenciais, último sinal e até 50 lotes recentes, só contagens', () => {
@@ -64,5 +68,18 @@ describe('T-0057 (ADR 0014 §3, corte de 26/11): contrato da /entrada/v1', () =>
     expect(PortalEntradaLeitura.parse(leitura).lotes).toHaveLength(50);
     expect(PortalEntradaLeitura.safeParse({ ...leitura, lotes: [...leitura.lotes, lote] }).success).toBe(false);
     expect(PortalEntradaLeitura.parse({ ...leitura, ultimo_sinal: { em: T, versao_conector: '1.5.0', conector_id: 'abc' } }).ultimo_sinal).toMatchObject({ versao_conector: '1.5.0' });
+  });
+
+  it('IP de origem truncado (ADR 0014 §3): /24 no IPv4, /48 no IPv6; fora do formato = null', () => {
+    expect(truncarIpEntrada('200.150.33.77')).toBe('200.150.33.0/24');
+    expect(truncarIpEntrada('::ffff:10.1.2.3')).toBe('10.1.2.0/24');
+    expect(truncarIpEntrada('2804:14C:65a1:4000::1')).toBe('2804:14c:65a1::/48');
+    expect(truncarIpEntrada('2804::1')).toBe('2804:0:0::/48');
+    expect(truncarIpEntrada('::1')).toBe('0:0:0::/48');
+    for (const x of ['', 'abc', '300.1.1.1', '1.2.3', '2804:::1', '1:2:3:4:5:6:7:8:9', null, undefined]) expect(truncarIpEntrada(x)).toBeNull();
+  });
+
+  it('códigos de erro do envelope em MAIÚSCULAS (UPPER_SNAKE), como os do ErroApi', () => {
+    expect(CODIGO_EMPRESA_INATIVA_ENTRADA).toMatch(/^[A-Z][A-Z0-9_]+$/);
   });
 });

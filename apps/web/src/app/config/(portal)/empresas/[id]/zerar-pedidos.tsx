@@ -2,8 +2,8 @@
 import type { ZeragemPedidosResposta } from '@macuxierp/pedido/contracts';
 import { FRASE_ZERAR_DADOS } from '@macuxierp/platform-sdk';
 import { ConfirmarComFrase } from '@/components/confirmar-com-frase';
-import { AVISO_ZERAR } from '@/lib/config/cargas';
-import { TEXTO_ANTES_DE_ZERAR_PEDIDOS, pedirPreviaZerarPedidos, pedirZerarPedidos, semPedidoParaApagar, textoApagarPedidos, textosMantidosPedidos, type ResultadoZerarPedidos } from '@/lib/config/pedidos-zerar';
+import { AVISO_ZERAR, TEXTO_ANTES_DE_ZERAR } from '@/lib/config/cargas';
+import { pedirPreviaZerarPedidos, pedirZerarPedidos, semPedidoParaApagar, textoApagarPedidos, textosMantidosPedidos, type ResultadoZerarPedidos } from '@/lib/config/pedidos-zerar';
 import { ListaMantidos, usePreviaZerar } from './previa-zerar';
 
 /**
@@ -26,8 +26,8 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
     <ConfirmarComFrase
       titulo="Zerar pedidos não faturados?"
       frase={FRASE_ZERAR_DADOS}
-      rotulo="Zerar pedidos"
-      rotuloEnviando="Zerando pedidos…"
+      rotulo="Zerar"
+      rotuloEnviando="Zerando…"
       idEnvio="zerar:pedidos"
       semAcao={vazia}
       podeEnviar={!!previa && !carregando}
@@ -38,7 +38,7 @@ export function ZerarPedidos({ empresaId, aoFechar, aoZerar, previaInicial = nul
       aviso={AVISO_ZERAR}
       tomAviso="erro"
     >
-      {!vazia && <p className="sem-margem">{TEXTO_ANTES_DE_ZERAR_PEDIDOS}</p>}
+      {!vazia && <p className="sem-margem">{TEXTO_ANTES_DE_ZERAR}</p>}
       {erroPrevia && <p className="erro" role="alert">{erroPrevia}</p>}
       {previa && (
         <div className="previa-zerar" aria-live="polite">

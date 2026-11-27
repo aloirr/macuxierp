@@ -12,6 +12,10 @@ export class ConfigSemPermissao extends Error {
 }
 export class ConfigIndisponivel extends Error {
   override readonly name = 'ConfigIndisponivel' as const;
+  /** `request_id` do 5xx (corpo ou `x-request-id`), mostrado na tela de indisponível. */
+  constructor(mensagem?: string, readonly requestId?: string) {
+    super(mensagem);
+  }
 }
 export class ConfigMuitasTentativas extends Error {
   override readonly name = 'ConfigMuitasTentativas' as const;
@@ -73,9 +77,9 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   if (ctx === 'entrada_revogar') return { ...base, texto: ERRO_REVOGAR };
   if (ctx === 'entrada') {
     if (e instanceof ErroPlataforma) {
-      const codigo = e.codigo.toLowerCase();
-      if (e.status === 503 && codigo === 'pepper_ausente') return { ...base, texto: ERRO_PEPPER_AUSENTE };
-      if (e.status === 409 && codigo === 'conector_id_em_uso') return { ...base, texto: '', campos: { conector_id: ERRO_CODIGO_EM_USO }, chaveNova: true };
+      // E3 (ADR 0014 §4, emenda de 26/11): sem o pepper, 503 INDISPONIVEL; o conector_id preso a outra empresa, 409 CONFLITO.
+      if (e.status === 503) return { ...base, texto: ERRO_PEPPER_AUSENTE };
+      if (e.status === 409) return { ...base, texto: '', campos: { conector_id: ERRO_CODIGO_EM_USO }, chaveNova: true };
       if (e.status === 400 || e.status === 422) return { ...base, texto: '', campos: { conector_id: ERRO_CODIGO_REGRA }, chaveNova: true };
     }
     return { ...base, texto: ERRO_GERAR_INCERTO };

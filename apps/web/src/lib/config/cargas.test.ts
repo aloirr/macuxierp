@@ -3,7 +3,7 @@ import {
   CADASTROS_CARGA_PORTAL, CADASTROS_ZERAR_PORTAL, CODIGO_ZERAGEM_BLOQUEADA, MENSAGENS_CARGA_PORTAL, ZeragemPlataformaResposta, FRASE_SUBSTITUIR_TUDO, FRASE_ZERAR_DADOS, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ValidarCargaPlataformaResposta, fraseConfere, situacaoCarga, type EfeitoSubstituir,
 } from '@macuxierp/platform-sdk';
 import {
-  AVISO_LIMITE_FDV, AVISO_ZERAR, BLOQUEIO_LOTE, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, TEXTO_ZERADO, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
+  AVISO_LIMITE_FDV, AVISO_ZERAR, BLOQUEIO_LOTE, ROTULO_ZERAR, TEXTO_ANTES_DE_ZERAR, textoZerado, bloqueiosDeTextos, pedirPreviaZerar, pedirZerar, textoLevaJunto, textoSemChave, textosAnulados, textosBloqueios, textosMantidos, ROTULO_MODO, TEXTO_SUBSTITUIR, baseCargas, caixasDaConferencia, conferirArquivoEscolhido, enderecoModelo, linhasCargas, pedirConferencia, pedirErros, pedirGravacao,
   podeGravar, problemaDoArquivo, rotuloAdicionar, rotuloLinhaErro, textoEfeito, textoGravado, textoErrosOmitidos, textoLinhaErro, tituloImportar,
 } from './cargas';
 
@@ -245,11 +245,11 @@ describe('zerar dados', () => {
     expect(fraseConfere('AUTORIZO ZERAR OS DADOS.', FRASE_ZERAR_DADOS)).toBe(true);
     expect(fraseConfere('autorizo zerar os dados', FRASE_SUBSTITUIR_TUDO)).toBe(false);
     expect(fraseConfere('', FRASE_ZERAR_DADOS)).toBe(false);
-    expect(TEXTO_ANTES_DE_ZERAR).toBe('Antes de zerar, exporte pelo BKO da empresa (Cadastros > Exportar).');
+    expect(TEXTO_ANTES_DE_ZERAR).toBe('Antes de zerar, exporte pelo BKO da empresa.'); // RD-2331: uma constante, do cadastro e dos pedidos
     expect(AVISO_ZERAR).toBe('Apaga os registros e não tem volta.');
-    expect(TEXTO_ZERADO).toBe('Dados zerados.');
-    expect(textoZerado(0)).toBe('Dados zerados.');
-    expect(textoZerado(5)).toBe('Dados zerados. Mantidos: 5 (em uso em pedido, título ou nota, ou filial com dado fiscal).');
+    expect(textoZerado('Produtos', 0)).toBe('Zerado: Produtos.');
+    expect(textoZerado('Produtos', 5)).toBe('Zerado: Produtos. Mantidos: 5.');
+    expect(BLOQUEIO_LOTE).toBe('Este cadastro está enviando agora. Espere terminar.');
   });
 });
 

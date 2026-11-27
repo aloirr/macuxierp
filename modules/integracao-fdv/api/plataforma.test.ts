@@ -108,7 +108,7 @@ describe('plugin de plataforma da Integração FDV (T-0056)', () => {
       chamar(p, 'POST', C.cargaCompleta, { params: { entidade: 'filial' } }),
       chamar(p, 'POST', C.retomar, { params: { entidade: 'filial' } }),
     ];
-    for (const t of tentativas) await expect(t).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Ligue o módulo Integração FDV na empresa antes de configurar', detalhes: { codigo: 'modulo_desligado' } });
+    for (const t of tentativas) await expect(t).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.', detalhes: { codigo: 'modulo_desligado' } });
     expect(d.escritas()).toHaveLength(0);
   });
 

@@ -3,6 +3,7 @@ import { headers as cabecalhosDoPedido } from 'next/headers';
 import type { z } from 'zod';
 import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIGO_TROCAR_SENHA, EuResposta, REGRAS_SENHA, type RegraSenhaId, type TrocarSenhaEntrada } from '@macuxierp/platform-sdk';
 import { TrocarSenhaPendente } from './troca-pendente';
+import { idDaRequisicao } from './request-id';
 import { EU_FALSO, EU_FALSO_MEI, REFRESH_FALSO, TOKEN_FALSO } from './falso';
 
 const URL_API = process.env.MACUXIERP_API_URL;
@@ -17,6 +18,10 @@ export function usaApiFalsaAgora(): boolean {
 
 export class ApiIndisponivel extends Error {
   override readonly name = 'ApiIndisponivel' as const;
+  /** `request_id` do 5xx (corpo ou `x-request-id`), mostrado na tela de indisponível. */
+  constructor(mensagem?: string, readonly requestId?: string) {
+    super(mensagem);
+  }
 }
 export class DadosInvalidos extends Error {
   override readonly name = 'DadosInvalidos' as const;
@@ -142,7 +147,7 @@ export async function getValidado<S extends z.ZodTypeAny>(
   if (r.status === 401) throw new NaoAutenticado();
   if (statusDistintos && r.status === 403) throw new SemPermissao();
   if (statusDistintos && r.status === 400) throw new DadosInvalidos(`${rotulo}: VALIDACAO`);
-  if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`);
+  if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`, await idDaRequisicao(r));
   let corpo: unknown;
   try {
     corpo = await r.json();
@@ -171,7 +176,7 @@ export async function buscarRegistro<S extends z.ZodTypeAny>(caminho: string, sc
   if (r.status === 403) throw new SemPermissao();
   if (r.status === 404) return null;
   if (r.status === 400) throw new DadosInvalidos(`${rotulo}: VALIDACAO`);
-  if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`);
+  if (!r.ok) throw new ApiIndisponivel(`${rotulo}: HTTP ${r.status}`, await idDaRequisicao(r));
   const dados = schema.safeParse(await r.json().catch(() => null));
   if (!dados.success) throw new ApiIndisponivel(`${rotulo} fora do contrato`);
   return dados.data;
