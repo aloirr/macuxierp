@@ -33,7 +33,7 @@ O ERP roda na **mesma VM de produção** do FDV, atrás do **mesmo proxy** (o t�
 ## Implementação (T-0024, 21/11/2026)
 - **Arquivos:** `apps/api/Dockerfile` (uma imagem para api, worker, migrações e psql 16; api e worker empacotados com o esbuild do lock), `.dockerignore`, `compose.yml` **na raiz** (projeto `macuxierp`) e `scripts/deploy/producao/{implantar.sh,banco.sh,preparar-vm.sh,alerta-saude.sh,comum.sh,env.modelo}`. O `comum.sh` (carregado com `source`) tem `valor_env`, `dc()` e a rede padrão do túnel. Não há `apps/worker/Dockerfile`: o worker é a mesma imagem com `node dist/worker.mjs`.
 - **Nomes dos serviços:** `macuxierp-api`, `macuxierp-worker` e `macuxierp-web` (e não `api`/`web`). O Compose põe o nome do serviço como apelido em todas as redes do contêiner; um `api` do ERP na rede do túnel responderia pelo `api` do FDV. Rotas do túnel: `/v1*` → `http://macuxierp-api:8100`, o resto → `http://macuxierp-web:3100`.
-- **Portas:** só no loopback, `127.0.0.1:8200` (api) e `127.0.0.1:3200` (web), para a conferência do `implantar.sh` e o alerta; 8100 e 3100 do host são do FDV.
+- **Portas:** sem porta no host desde a v0.3.23 (adendo 48 A, "Portas do host"); 8100 e 3100 do host são do FDV.
 - **Limites** (`mem_limit` = `memswap_limit`, `cpus`, `pids_limit`): api 512 MiB/1,0 CPU, worker 384 MiB/0,5, web 384 MiB/0,5 = **1,25 GiB e 2 CPUs** contínuos; ferramentas 256 MiB/0,5 só durante o deploy, uma por vez (pico 1,5 GiB). Heap do Node abaixo do limite (384/256/256 MiB), para sobrar espaço ao código, aos buffers e à pilha. api, worker e web com `cap_drop: [ALL]` e `no-new-privileges`.
 - **Segredos:** arquivos e variáveis só no `scripts/deploy/producao/env.modelo` (lista única, com quem grava cada um). Cada serviço recebe só a senha do próprio papel; api, worker e web nunca recebem o `admin.env`. As senhas dos papéis entram no banco como verificador SCRAM calculado dentro do contêiner (nunca em texto no argv, no host ou no log do servidor).
 - **Banco sem superusuário:** o admin do DBaaS precisa de CREATEDB e CREATEROLE (NOSUPERUSER). O `banco.sh` (no `implantar.sh`) cria o banco se faltar, aplica as migrações (a 0001 cria os três papéis) e as senhas do `gerados.env`; o `preparar-vm.sh` imprime esse roteiro e `preparar-vm.sh --conferir-banco` (= `banco.sh --so-conferir`) só confere.
@@ -49,3 +49,40 @@ O ERP roda na **mesma VM de produção** do FDV, atrás do **mesmo proxy** (o t�
   4. tirar os build-args `NEXT_PUBLIC_API_URL` e `MACUXI_BKO_ORIGEM` do job `bko` (o BKO lê `MACUXIERP_API_URL` em tempo de execução);
   5. a mensagem do passo "conferir pelo domínio" citar as rotas do túnel: `/v1` → `http://macuxierp-api:8100` e o resto → `http://macuxierp-web:3100`.
   - `producao-liberar.yml`: nada (já envia `macuxierp-api`; o `scripts/ci/producao-conferir.mjs` passou a procurar o mesmo nome).
+
+## Adendo 48 A (27/11/2026, Manaus): publicação sem parada, com duas réplicas durante a troca (v0.3.23)
+
+- **Base:** decisão do Alexandre "48) A" (retransmitida pelo gerente-projetos às 10h08 de 27/11). Motivo: o 502 da Cloudflare, em inglês, na publicação da v0.3.19, entre 10:14:02 e 10:14:33 UTC. O `dc up -d --wait` recria cada contêiner parando o velho antes de subir o novo, e o compose sem swarm não tem `start-first`. A página própria da Cloudflare (47 B) ficou de fora: a zona está no plano Free.
+- **Continua valendo:** uma publicação por vez (§1 e §2: grupo `producao-vm` e `flock`), o projeto `macuxierp`, a rede do túnel externa e só de entrada, sem proxy novo e sem mudança no túnel ou no cloudflared do FDV.
+
+### Como a troca acontece (só `macuxierp-api` e `macuxierp-web`; o worker continua como hoje)
+1. Até o banco, nada muda: trava, arquivos, pull por digest e `banco.sh` (migrações).
+2. **Memória antes da troca:** o pico é de +896 MiB (uma api de 512 MiB e um web de 384 MiB a mais) por cerca de 1 a 2 minutos. O `implantar.sh` lê o `MemAvailable` do `/proc/meminfo`. Abaixo de `MACUXIERP_TROCA_MIN_MIB` (padrão 1280), ele publica do jeito de hoje (recria, com a janela de 502) e avisa no log. Nunca disputa memória com o FDV.
+3. **Réplica nova ao lado da velha:** com o compose.yml e o imagens.env novos, o script roda `dc up -d --no-deps --no-recreate --scale <svc>=2 <svc>` (primeiro a api, depois o web). O `--no-recreate` mantém o contêiner velho, e o novo sobe com a imagem nova. Os dois respondem pelo mesmo apelido na rede do túnel (`macuxierp-api` ou `macuxierp-web`), e o DNS do Docker devolve os dois.
+4. **Saúde da nova:** espera o `healthcheck` do próprio contêiner novo (`docker inspect` do id, até `--wait-timeout`). Na api, confere `/v1/saude` com `banco ok` e a versão nova de dentro do contêiner (`docker exec`). Sem a nova saudável, vai para o passo 8.
+5. **Tirar a velha do túnel antes de parar:** `docker network disconnect <rede do túnel> <id velho>` tira o contêiner velho do DNS do túnel. Em seguida, um dreno de `MACUXIERP_TROCA_DRENO_S` (padrão 10 s), para os pedidos em andamento terminarem. As conexões keep-alive do cloudflared com a velha caem no stop, e o Go refaz o GET idempotente em conexão nova. Depois, `docker stop -t 30` e `docker rm`. Risco conhecido: na rede `padrao`, o web (BFF) ainda alcança a api velha pelo apelido até o stop. O stop é gracioso (SIGTERM, até 30 s): a api termina os pedidos em andamento antes de sair, e o pedido novo do BFF que cair numa conexão fechada é refeito pelo próprio BKO ou aparece como erro de rede pontual. A primeira medição mostra se isso basta.
+6. **Escala de volta a 1:** `dc up -d --no-deps --no-recreate --scale <svc>=1 <svc>` só acerta a contagem, porque já sobrou só a réplica nova.
+7. **Worker:** `dc up -d --no-deps macuxierp-worker` (recria, como hoje). A fila espera alguns segundos, sem 502 para o usuário: o worker não está no túnel.
+8. **Volta atrás sem parada:** se a réplica nova falhar no passo 4, ela é que sai (stop e rm pelo id). A velha nunca saiu do túnel, então o usuário não vê a falha. Os arquivos voltam (`restaurar_arquivos`) e a saída é 3, como hoje. Se a falha vier depois da troca (conferência final), a volta usa o mesmo caminho dos passos 3 a 6, agora com a imagem anterior.
+
+### Portas do host
+- Com duas réplicas, as portas fixas `127.0.0.1:8200` e `127.0.0.1:3200` colidem. Elas saem do compose.yml.
+- A conferência do `implantar.sh` e o `alerta-saude.sh` passam a perguntar de dentro do contêiner (`docker exec <id> node -e "fetch(...)"`), pelo id que o `dc ps -q` devolve. As portas 8100 e 3100 do host continuam do FDV.
+
+### Banco com as duas versões vivas
+- As migrações rodam antes da troca, como hoje. Durante a troca (1 a 2 min), a versão velha roda sobre o esquema novo.
+- Por isso a regra de sempre vale **sem exceção**: migração aditiva (expand), e a remoção (contract) só na versão seguinte. O `banco.sh` não muda.
+
+### O FDV não para nem reinicia (conferido no código, v0.3.23)
+- Todo `docker compose` passa pelo `dc()` do `comum.sh`, que roda na pasta `/opt/macuxierp`, com o `name: macuxierp` do compose.yml. O `--scale`, o `--no-recreate` e o `--remove-orphans` só alcançam esse projeto. O FDV é o projeto `macuxi-prod`, em `/opt/macuxi`.
+- `docker stop`, `docker rm` e `docker network disconnect` só recebem ids devolvidos por `dc ps -q macuxierp-api|macuxierp-web`, nunca um nome digitado. O teste com docker falso trava isso.
+- A rede do túnel (`macuxi-prod_macuxi`) é `external: true`. O ERP só conecta e desconecta os **próprios** contêineres, sem criar, apagar ou reiniciar a rede, o cloudflared ou o compose do FDV.
+- O `docker image prune` continua com o filtro do rótulo do ERP.
+
+### Governança
+- O `producao-publicar.yml` chama o `implantar.sh` com os mesmos argumentos e confere pelo domínio, como hoje. **Não muda**, e o PR fica só nos caminhos do engenheiro-software (`scripts/deploy/producao/**`, `compose.yml`, `docs/decisoes`).
+- Se a medição pedir um passo novo no workflow (por exemplo, o laço de curl no `/login` durante a troca), ele vai num PR próprio, com `Agente: alexandre`.
+
+### Como medir na primeira publicação
+- Não há Docker nos agentes. O ensaio da sessão é com docker falso: a ordem dos comandos, a saúde antes da troca, a volta atrás e nenhum id fora do projeto.
+- A prova sem 502 é na VM: um laço de `curl -s -o /dev/null -w '%{http_code}'` no `https://erp.macuxifdv.com.br/login`, a cada 0,5 s durante o passo do compose da primeira publicação da v0.3.23. O critério é nenhum código diferente de 200.
