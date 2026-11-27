@@ -474,6 +474,15 @@ RD-2132 a 2137 do corretor. A 0066 já foi aplicada e não muda: a 0070 só faz 
 
 Migração: `db/migrations/0070_plataforma_codigos_pedidos.sql`; testes: `db/testes/codigos-pedidos-0070.db.test.ts` (o antes e o depois da 0070 nas mesmas entradas) e `db/testes/cnae-oficial-0066.db.test.ts`.
 
+## Entrada do FDV /entrada/v1, só o delta (T-0057 B1, migração 0071)
+- **Corte (decisões 33 B e 34 B, 26/11):** só o delta. A carga completa, a trava de 30% e a `entrada_lote_erro` ficam para depois, por migração aditiva; por isso `modo` só aceita `delta` e os erros por linha vão no jsonb do lote.
+- **`conector_id` preso à primeira empresa:** é o que a `entrada_autenticar` usa para achar o tenant antes da RLS. Se ele pudesse passar a outra empresa, um conector antigo ainda configurado entregaria dados no tenant errado.
+- **Cursor por conector, não por credencial:** trocar a chave não pode fazer o Conector reenviar tudo do zero.
+- **HMAC calculado pela API:** a chave e o pepper (`MACUXIERP_PEPPER_ENTRADA`, no secret do servidor) nunca chegam ao banco. O banco guarda e devolve só o HMAC, em hex, para a comparação em tempo constante na API.
+- **Massa:** o `fixtureModulos` inclui o `fixtureEntrada` só quando a 0071 já rodou, porque os testes de migração antiga usam a massa antes dela.
+
+Migração: `db/migrations/0071_cadastros_entrada.sql`; testes: `db/testes/entrada-0071.db.test.ts` (mais o vazamento em `modulos.db.test.ts` e o limite de 200 em `cadastros-limites-0054.db.test.ts`).
+
 ## Migrações aditivas
 A versão anterior da API roda sobre o esquema novo: só se acrescenta (tabela, coluna anulável ou com padrão, índice, política). Renomear ou apagar = duas versões (acrescenta, migra o uso, remove depois), com ADR quando muda contrato. Migração aplicada nunca é editada: o `migrar` recusa sha256 diferente.
 
