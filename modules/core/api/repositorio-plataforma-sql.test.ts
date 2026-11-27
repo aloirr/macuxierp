@@ -125,6 +125,14 @@ describe('adaptador SQL da plataforma: salvar ficha e trocar CNPJ (RN-CORE-16)',
     expect(await repo.trocarCnpj(tx, { id: ID, cnpj: '11444777000161', request_id: 'r' })).toEqual({ cnpj: '11444777000161', event_id: 'ev-1' });
   });
 
+  it('cnpjEmUso chama a empresa_cnpj_em_uso com o id e o CNPJ e devolve o booleano', async () => {
+    const chamadas: [string, unknown[]][] = [];
+    const tx = (r: boolean): Transacao => ({ consultar: (async (s: string, p: unknown[]) => (chamadas.push([s, p]), [{ r }])) as never });
+    expect(await repo.cnpjEmUso(tx(true), { id: ID, cnpj: '11444777000161' })).toBe(true);
+    expect(await repo.cnpjEmUso(tx(false), { id: ID, cnpj: '11444777000161' })).toBe(false);
+    expect(chamadas[0]).toEqual(['SELECT plataforma.empresa_cnpj_em_uso($1::uuid, $2) r', [ID, '11444777000161']]);
+  });
+
   it('salvarFicha manda a ficha direta (sem campos_alterados) e devolve alterados do banco', async () => {
     const chamadas: unknown[][] = [];
     const tx: Transacao = { consultar: (async (_s: string, p: unknown[]) => (chamadas.push(p), [{ r: { ficha: null, alterados: ['bairro'] } }])) as never };

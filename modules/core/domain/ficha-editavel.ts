@@ -101,8 +101,18 @@ export function aplicarEdicao(salva: FichaComparavel, edicao: EdicaoFicha, agora
 }
 
 /**
- * RN-CORE-16 (troca de CNPJ): só superadmin, com confirmação, DV válido, diferente do atual e sem NF-e autorizada em
- * produção (homologação não bloqueia). A API revalida com este mesmo avaliador. O CNPJ não vai em mensagem.
+ * RN-CORE-16: CNPJ novo (normalizado) que precisa da conferência de "em uso por outra empresa", ou `null` quando a troca
+ * já para antes (DV inválido ou igual ao atual) e a consulta ao banco não é necessária.
+ */
+export function cnpjParaConferirUso(atual: string, novo: string): string | null {
+  const r = avaliarTrocaCnpj({ atual, novo, confirmacao: true, superadmin: true, temNfeAutorizadaProducao: false, cnpjEmUso: false });
+  return r.ok ? r.cnpj : null;
+}
+
+/**
+ * RN-CORE-16 (troca de CNPJ): só superadmin, com confirmação, DV válido, diferente do atual, sem outra empresa ativa com
+ * o mesmo CNPJ e sem NF-e autorizada em produção (homologação não bloqueia). A API revalida com este mesmo avaliador
+ * antes de chamar a empresa_trocar_cnpj, que confere de novo com a linha travada (23505 cnpj_em_uso). O CNPJ não vai em mensagem.
  */
 export function avaliarTrocaCnpj(p: {
   atual: string;
@@ -110,12 +120,15 @@ export function avaliarTrocaCnpj(p: {
   confirmacao: boolean;
   superadmin: boolean;
   temNfeAutorizadaProducao: boolean;
+  /** Outra empresa (não excluída) já usa o CNPJ novo (`plataforma.empresa_cnpj_em_uso`). */
+  cnpjEmUso: boolean;
 }): { ok: true; cnpj: string } | { ok: false; motivo: MotivoBloqueioCnpj } {
   if (!p.superadmin) return { ok: false, motivo: 'nao_superadmin' };
   if (!p.confirmacao) return { ok: false, motivo: 'sem_confirmacao' };
   const novo = normalizarDocumento(p.novo);
   if (!cnpjValido(novo)) return { ok: false, motivo: 'cnpj_invalido' };
   if (novo === normalizarDocumento(p.atual)) return { ok: false, motivo: 'cnpj_igual' };
+  if (p.cnpjEmUso) return { ok: false, motivo: 'cnpj_em_uso' };
   if (p.temNfeAutorizadaProducao) return { ok: false, motivo: 'nfe_autorizada_producao' };
   return { ok: true, cnpj: novo };
 }

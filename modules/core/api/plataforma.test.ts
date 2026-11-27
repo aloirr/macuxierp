@@ -26,6 +26,8 @@ interface OpcoesFicha {
   alteradosDoBanco?: string[];
   /** Bloqueio que o banco devolve na troca de CNPJ. */
   bloqueioBanco?: MotivoBloqueioCnpj;
+  /** CNPJs que outra empresa já usa (`empresa_cnpj_em_uso`). */
+  emUso?: readonly string[];
 }
 
 const EMPRESA = '00000000-0000-4000-8000-0000000000e1';
@@ -96,6 +98,10 @@ function repoMemoria(inicial: Partial<EmpresaPlataforma> = {}, op: OpcoesFicha =
       // Como a 0077: o evento é gravado na mesma operação, com o payload do CnpjAlterado.
       eventos.push({ tenant_id: p.id, empresa_id: p.id, cnpj_novo: p.cnpj, request_id: p.request_id, alterado_em: AGORA.toISOString() });
       return { cnpj: p.cnpj, event_id: `ev-${eventos.length}` };
+    },
+    async cnpjEmUso(_tx, p) {
+      chamadas.push(`em_uso:${p.cnpj}`);
+      return (op.emUso ?? []).includes(p.cnpj);
     },
     async revelarContato(_tx, p) {
       chamadas.push(`revelar:${p.campo}`);
@@ -547,11 +553,22 @@ describe('RN-CORE-16: Ficha da Receita editável (v0.3.24)', () => {
       expect(bl.eventos).toEqual([]);
     });
 
-    it('RN-CORE-16: CNPJ igual ao atual é bloqueado', async () => {
+    it('RN-CORE-16: o domínio revalida o cnpj_em_uso antes da função do banco: bloqueia e não chama a troca', async () => {
+      const t = montar(undefined, { nfeProducao: semNfe, emUso: [NOVO_CNPJ] });
+      const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo })) as { corpo: { estado: string; motivo: string; mensagem: string } };
+      expect(r.corpo).toEqual({ estado: 'bloqueado', motivo: 'cnpj_em_uso', mensagem: MENSAGENS_BLOQUEIO_CNPJ.cnpj_em_uso });
+      expect(t.chamadas).toContain(`em_uso:${NOVO_CNPJ}`);
+      expect(t.cnpjs).toEqual([]);
+      expect(t.eventos).toEqual([]);
+      expect(t.etapas[0]).toBe('plataforma');
+    });
+
+    it('RN-CORE-16: CNPJ igual ao atual é bloqueado sem consultar o uso', async () => {
       const t = montar(undefined, { nfeProducao: semNfe });
       const r = (await t.chamar('POST', '/empresas/:id/cnpj', { corpo: { cnpj_novo: CNPJ, confirmacao: true } })) as { corpo: { motivo: string } };
       expect(r.corpo.motivo).toBe('cnpj_igual');
       expect(t.cnpjs).toEqual([]);
+      expect(t.chamadas.some((x) => x.startsWith('em_uso:'))).toBe(false);
     });
 
     it('RN-CORE-16: sem confirmação o contrato recusa (400) e a rota nunca chega a trocar', async () => {

@@ -56,6 +56,7 @@ import {
   aplicarEdicao,
   avaliarSituacaoEmpresa,
   avaliarTrocaCnpj,
+  cnpjParaConferirUso,
   gerarSenhaProvisoria,
   MENSAGEM_SEM_CNPJ,
   mensagemDaFalhaReceita,
@@ -100,6 +101,8 @@ export interface RepositorioPlataforma {
    * (RN-CORE-14). Devolve `event_id`. Bloqueios do banco (23514, MXC05, MXC06, 23505) voltam como `bloqueado`; P0002 = 404 e 55000 = 409.
    */
   trocarCnpj(tx: Transacao, p: { id: string; cnpj: string; request_id: string }): Promise<{ cnpj: string; event_id: string } |{ bloqueado: MotivoBloqueioCnpj }>;
+  /** RN-CORE-16, `plataforma.empresa_cnpj_em_uso(uuid, text)`: outra empresa não excluída já usa o CNPJ (só leitura, sem auditoria). */
+  cnpjEmUso(tx: Transacao, p: { id: string; cnpj: string }): Promise<boolean>;
 }
 
 /** Porta de consulta de CNPJ dos cadastros (`ConsultaCnpjParaCore`, RF-CAD-02), declarada de forma estrutural: a apps/api liga uma na outra. */
@@ -386,14 +389,25 @@ export function criarPluginPlataformaCore(deps: DependenciasPlataformaCore): Plu
       corpo: TrocaCnpj,
       async executar(c, { corpo, params }) {
         const id = idDoParam(params);
-        const atual = await c.comPlataforma((tx) => repo.lerEmpresa(tx, id));
-        if (!atual) throw erros.naoEncontrado('Empresa');
-        if (!atual.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
         const porta = deps.consultaNfeProducao;
-        if (!porta) throw erros.indisponivel('Consulta de NF-e em produção');
-        const atualCnpj = atual.cnpj;
-        const temNfe = await c.comTenant(id, () => porta.temNfeAutorizadaEmProducao(id));
-        const r = avaliarTrocaCnpj({ atual: atualCnpj, novo: corpo.cnpj_novo, confirmacao: corpo.confirmacao, superadmin: true, temNfeAutorizadaProducao: temNfe });
+        // Lê a empresa e confere o uso do CNPJ novo na mesma etapa.
+        const lido = await c.comPlataforma(async (tx) => {
+          const atual = await repo.lerEmpresa(tx, id);
+          if (!atual) throw erros.naoEncontrado('Empresa');
+          if (!atual.cnpj) throw erros.conflito(MENSAGEM_SEM_CNPJ);
+          if (!porta) throw erros.indisponivel('Consulta de NF-e em produção');
+          const alvo = cnpjParaConferirUso(atual.cnpj, corpo.cnpj_novo);
+          return { atualCnpj: atual.cnpj, nfe: porta, emUso: alvo ? await repo.cnpjEmUso(tx, { id, cnpj: alvo }) : false };
+        });
+        const temNfe = await c.comTenant(id, () => lido.nfe.temNfeAutorizadaEmProducao(id));
+        const r = avaliarTrocaCnpj({
+          atual: lido.atualCnpj,
+          novo: corpo.cnpj_novo,
+          confirmacao: corpo.confirmacao,
+          superadmin: true,
+          temNfeAutorizadaProducao: temNfe,
+          cnpjEmUso: lido.emUso,
+        });
         if (!r.ok) {
           const bloqueado: ResultadoTrocaCnpj = { estado: 'bloqueado', motivo: r.motivo, mensagem: MENSAGENS_BLOQUEIO_CNPJ[r.motivo] };
           return semCache(bloqueado);

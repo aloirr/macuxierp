@@ -4,10 +4,10 @@
  * Sem Postgres o teste pula (falha com `MACUXI_PG_EXIGIR=1`). Local: `bash db/scripts/pg-local.sh`.
  */
 import { randomUUID } from 'node:crypto';
-import { ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
+import { cnpjValido, ErroApi, MENSAGEM_CODIGO_RESERVADO, type Transacao } from '@macuxierp/platform-sdk';
 import { criarBancoEfemero, criarTenant, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FichaReceitaPlana } from '../contracts';
+import { CnpjAlterado, EVENTO_CNPJ_ALTERADO, MENSAGENS_BLOQUEIO_CNPJ, ROTAS_FICHA, type EdicaoFicha, type FichaReceitaPlana } from '../contracts';
 import { MANIFESTOS_TESTE } from './manifestos-teste';
 import { criarPluginPlataformaCore } from './plataforma';
 import { RepositorioPlataformaSql } from './repositorio-plataforma-sql';
@@ -176,20 +176,24 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
         return { ok: true as const, fonte: 'brasilapi', consultado_em: '2026-11-24T12:00:00.000Z', sugestao: { cnpj: CNPJ_FICHA, razao_social: 'EMPRESA FICTICIA LTDA', nome_fantasia: 'FICTICIA', situacao_cadastral: 'ATIVA', cnae_fiscal: '4711302', endereco: { uf: 'AM' }, email: 'contato.ficticio@empresa.teste', telefone: '9232221234', opcao_simples: true, opcao_mei: false } };
       },
     };
-    const pluginFicha = criarPluginPlataformaCore({ repo, manifestos: MANIFESTOS_TESTE, hashSenha: async () => HASH, consultaReceita: consulta });
+    /** Porta do faturamento sem NF-e de produção (o MXC05 com a nota real fica no db.test da 0077). */
+    const pluginFicha = criarPluginPlataformaCore({
+      repo, manifestos: MANIFESTOS_TESTE, hashSenha: async () => HASH, consultaReceita: consulta,
+      consultaNfeProducao: { temNfeAutorizadaEmProducao: async () => false },
+    });
 
-    async function tenantComEmpresa(): Promise<string> {
+    async function tenantComEmpresa(cnpj = CNPJ_FICHA): Promise<string> {
       const id = await criarTenant(b.admin, `ficha-core-${randomUUID().slice(0, 8)}`, ['core']);
-      await b.admin.query(`INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Antiga', $2)`, [id, CNPJ_FICHA]);
+      await b.admin.query(`INSERT INTO core.empresa (tenant_id, razao_social, cnpj) VALUES ($1, 'Empresa Antiga', $2)`, [id, cnpj]);
       return id;
     }
     /** Rota comum: uma transação de plataforma. Rota por etapa: uma transação de cada vez, a do tenant no papel app com a RLS. */
-    const rota = (id: string, caminho: string, params: Record<string, string>, confirmar = false) => {
-      const r = pluginFicha.rotas.find((x) => x.metodo === 'POST' && x.caminho === caminho);
+    const rota = (id: string, caminho: string, params: Record<string, string>, confirmar = false, extra: { metodo?: string; corpo?: unknown; request_id?: string } = {}) => {
+      const r = pluginFicha.rotas.find((x) => x.metodo === (extra.metodo ?? 'POST') && x.caminho === caminho);
       if (!r) throw new Error(`rota ${caminho}`);
       // hora-fixa-ok: o instante do contexto só alimenta a rota
-      const base = { sessao: { superadmin_id: SA, sessao_id: sessao }, request_id: randomUUID(), agora: new Date() };
-      const entrada = { params: { id, ...params } } as never;
+      const base = { sessao: { superadmin_id: SA, sessao_id: sessao }, request_id: extra.request_id ?? randomUUID(), agora: new Date() };
+      const entrada = { params: { id, ...params }, corpo: r.corpo ? r.corpo.parse(extra.corpo) : undefined } as never;
       if (r.transacoes === 'por_etapa') {
         const app = (bancoApp ??= b.banco('macuxierp_app'));
         return r.executar({ ...base, comPlataforma: (fn: (tx: Transacao) => Promise<unknown>) => comPlataforma(fn, true), comTenant: (t: string, fn: (tx: Transacao) => Promise<unknown>) => app.comTenant(t, fn) } as never, entrada);
@@ -227,6 +231,95 @@ describe.skipIf(!PG_DISPONIVEL)('RepositorioPlataformaSql com a 0033 (T-0050)', 
       const sem = await criarTenant(b.admin, `ficha-core-${randomUUID().slice(0, 8)}`, ['core']);
       const e = await rota(sem, '/empresas/:id/receita', {}).catch((x: unknown) => x);
       expect(e).toMatchObject({ status: 409 });
+    });
+
+    describe('RN-CORE-16: Ficha editável e troca de CNPJ (0077)', () => {
+      const semPrefixo = (r: { caminho: string }) => r.caminho.replace('/v1/plataforma', '');
+      /** CNPJ fictício válido e único (8 dígitos sorteados + 0001 + o DV que o SDK aceita), para os casos não colidirem. */
+      const cnpjFicticio = (): string => {
+        const base = `${Array.from({ length: 8 }, () => Math.floor(Math.random() * 10)).join('')}0001`;
+        for (let d = 0; d < 100; d++) {
+          const c = base + String(d).padStart(2, '0');
+          if (cnpjValido(c)) return c;
+        }
+        throw new Error('sem DV');
+      };
+      const eventosDe = async (id: string) =>
+        (await b.admin.query('SELECT id, payload FROM plataforma.evento WHERE tenant_id = $1 AND nome = $2', [id, EVENTO_CNPJ_ALTERADO])).rows as { id: string; payload: { payload: unknown } }[];
+      const auditoriaDe = async (id: string, acao: string): Promise<string> =>
+        (await b.admin.query(`SELECT coalesce(string_agg(coalesce(antes::text, '') || coalesce(depois::text, ''), ''), '') t FROM plataforma.auditoria WHERE tenant_id = $1 AND acao = $2`, [id, acao])).rows[0].t;
+      const cnpjDe = async (id: string): Promise<string> => (await b.admin.query('SELECT cnpj FROM core.empresa WHERE tenant_id = $1', [id])).rows[0].cnpj;
+      const trocar = (id: string, cnpj_novo: string, request_id?: string) =>
+        rota(id, semPrefixo(ROTAS_FICHA.trocarCnpj), {}, true, { corpo: { cnpj_novo, confirmacao: true }, request_id }) as Promise<{ corpo: unknown }>;
+      let tem0077 = false;
+      let temEmUso = false;
+      beforeAll(async () => {
+        const { rows } = await b.admin.query(`SELECT to_regprocedure('plataforma.empresa_trocar_cnpj(uuid,text,text)') IS NOT NULL t,
+          to_regprocedure('plataforma.empresa_cnpj_em_uso(uuid,text)') IS NOT NULL u`);
+        tem0077 = rows[0].t;
+        temEmUso = rows[0].u;
+      });
+
+      it('Salvar grava a ficha com a fonte manual e audita só nomes de campo; repetir o mesmo conteúdo é sem_mudanca', async (ctx) => {
+        if (!tem0077) return ctx.skip(); // a 0077 ainda não está no banco de teste (PR do banco-dados)
+        const id = await tenantComEmpresa(cnpjFicticio());
+        const edicao: EdicaoFicha = { ...FICHA, origem: 'manual', razao_social: 'EMPRESA FICTICIA FICHA LTDA', ie: 'ISENTO' };
+        const salvar = () => rota(id, semPrefixo(ROTAS_FICHA.salvar), {}, true, { metodo: 'PUT', corpo: edicao }) as Promise<{ corpo: { estado: string; campos_alterados?: string[]; ficha: Record<string, unknown> } }>;
+        const r = await salvar();
+        expect(r.corpo.estado).toBe('ok');
+        expect(r.corpo.campos_alterados).toEqual(expect.arrayContaining(['razao_social', 'ie', 'email']));
+        expect(r.corpo.ficha).toMatchObject({ ie: 'ISENTO', receita_fonte: 'manual', municipio_nome: 'Manaus' });
+        expect(JSON.stringify(r.corpo)).not.toContain('contato.ficticio');
+        const a = await auditoriaDe(id, 'plataforma.empresa.salvar_ficha');
+        expect(a).toContain('razao_social');
+        expect(a).not.toContain('contato.ficticio');
+        expect(a).not.toContain('EMPRESA FICTICIA FICHA');
+        expect((await salvar()).corpo.estado).toBe('sem_mudanca');
+      });
+
+      it('a troca grava o CNPJ, publica um core.empresa.cnpj_alterado@1 válido e audita sem nenhum CNPJ', async (ctx) => {
+        if (!tem0077 || !temEmUso) return ctx.skip();
+        const atual = cnpjFicticio();
+        const novo = cnpjFicticio();
+        const id = await tenantComEmpresa(atual);
+        const req = randomUUID();
+        expect((await trocar(id, novo, req)).corpo).toEqual({ estado: 'ok', cnpj: novo });
+        expect(await cnpjDe(id)).toBe(novo);
+        const ev = await eventosDe(id);
+        expect(ev).toHaveLength(1);
+        expect(CnpjAlterado.parse(ev[0]!.payload.payload)).toMatchObject({ tenant_id: id, cnpj_novo: novo, request_id: req });
+        expect(JSON.stringify(ev)).not.toContain(atual);
+        const a = await auditoriaDe(id, 'plataforma.empresa.trocar_cnpj');
+        expect(a).toContain(ev[0]!.id);
+        expect(a).not.toContain(novo);
+        expect(a).not.toContain(atual);
+      });
+
+      it('CNPJ em uso por outra empresa: o domínio bloqueia antes da função (o próprio CNPJ não conta) e não há evento', async (ctx) => {
+        if (!tem0077 || !temEmUso) return ctx.skip();
+        const doOutro = cnpjFicticio();
+        const atual = cnpjFicticio();
+        await tenantComEmpresa(doOutro);
+        const id = await tenantComEmpresa(atual);
+        expect(await comPlataforma((tx) => repo.cnpjEmUso(tx, { id, cnpj: doOutro }))).toBe(true);
+        expect(await comPlataforma((tx) => repo.cnpjEmUso(tx, { id, cnpj: atual }))).toBe(false);
+        expect((await trocar(id, doOutro)).corpo).toEqual({ estado: 'bloqueado', motivo: 'cnpj_em_uso', mensagem: MENSAGENS_BLOQUEIO_CNPJ.cnpj_em_uso });
+        expect(await cnpjDe(id)).toBe(atual);
+        expect(await eventosDe(id)).toEqual([]);
+      });
+
+      it('a função do banco também recusa o CNPJ em uso (23505 cnpj_em_uso); empresa excluída não conta', async (ctx) => {
+        if (!tem0077) return ctx.skip();
+        const doOutro = cnpjFicticio();
+        const outra = await tenantComEmpresa(doOutro);
+        const id = await tenantComEmpresa(cnpjFicticio());
+        // Direto no repositório (sem a revalidação do domínio): a defesa em profundidade do banco.
+        expect(await comPlataforma((tx) => repo.trocarCnpj(tx, { id, cnpj: doOutro, request_id: randomUUID() }), true)).toEqual({ bloqueado: 'cnpj_em_uso' });
+        expect(await eventosDe(id)).toEqual([]);
+        // hora-fixa-ok: o deleted_at só precisa estar preenchido; nunca é comparado
+        await b.admin.query('UPDATE core.empresa SET deleted_at = now() WHERE tenant_id = $1', [outra]);
+        expect(await comPlataforma((tx) => repo.trocarCnpj(tx, { id, cnpj: doOutro, request_id: randomUUID() }), true)).toMatchObject({ cnpj: doOutro });
+      });
     });
 
     it('T-0106 (0066): a leitura da empresa e a gravação devolvem a descrição do CNAE e o nome do município; o papel config executa as funções', async () => {

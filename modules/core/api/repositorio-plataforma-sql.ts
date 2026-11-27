@@ -193,6 +193,11 @@ export class RepositorioPlataformaSql implements RepositorioPlataforma {
     );
   }
 
+  async cnpjEmUso(tx: Transacao, p: { id: string; cnpj: string }): Promise<boolean> {
+    const l = await primeiraLinha<{ r: boolean }>(tx, 'SELECT plataforma.empresa_cnpj_em_uso($1::uuid, $2) r', [p.id, p.cnpj]);
+    return l.r === true;
+  }
+
   /** O evento sai na empresa_trocar_cnpj (0077), mesma transação; o cadastros consome e atualiza a filial padrão (RN-CORE-14). */
   async trocarCnpj(tx: Transacao, p: { id: string; cnpj: string; request_id: string }): Promise<{ cnpj: string; event_id: string } | { bloqueado: MotivoBloqueioCnpj }> {
     try {

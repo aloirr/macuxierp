@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EdicaoFicha, FichaReceitaPlanaMascarada } from '../contracts';
-import { aplicarEdicao, avaliarTrocaCnpj, camposDiferentes, situacaoTrocaCnpj, mascararEmail, mascararTelefone, previaDaConsulta } from './ficha-editavel';
+import { aplicarEdicao, avaliarTrocaCnpj, camposDiferentes, cnpjParaConferirUso, situacaoTrocaCnpj, mascararEmail, mascararTelefone, previaDaConsulta } from './ficha-editavel';
 
 const SALVA: FichaReceitaPlanaMascarada = {
   nome_fantasia: 'Loja Teste', ie: null, logradouro: 'Rua A', numero: '10', complemento: null, bairro: 'Centro', cep: '69000000',
@@ -87,7 +87,7 @@ describe('RN-CORE-16: aplicarEdicao', () => {
 });
 
 describe('RN-CORE-16: avaliarTrocaCnpj', () => {
-  const base = { atual: '11222333000181', novo: '11444777000161', confirmacao: true, superadmin: true, temNfeAutorizadaProducao: false };
+  const base = { atual: '11222333000181', novo: '11444777000161', confirmacao: true, superadmin: true, temNfeAutorizadaProducao: false, cnpjEmUso: false };
   it('RN-CORE-16: ok normaliza o CNPJ novo', () => {
     expect(avaliarTrocaCnpj({ ...base, novo: '11.444.777/0001-61' })).toEqual({ ok: true, cnpj: '11444777000161' });
   });
@@ -96,6 +96,7 @@ describe('RN-CORE-16: avaliarTrocaCnpj', () => {
     [{ confirmacao: false }, 'sem_confirmacao'],
     [{ novo: '11444777000160' }, 'cnpj_invalido'],
     [{ novo: '11.222.333/0001-81' }, 'cnpj_igual'],
+    [{ cnpjEmUso: true }, 'cnpj_em_uso'],
     [{ temNfeAutorizadaProducao: true }, 'nfe_autorizada_producao'],
   ] as const)('RN-CORE-16: %j bloqueia com %s', (alt, motivo) => {
     expect(avaliarTrocaCnpj({ ...base, ...alt })).toEqual({ ok: false, motivo });
@@ -121,5 +122,13 @@ describe('RN-CORE-16: situacaoTrocaCnpj', () => {
     expect(situacaoTrocaCnpj(false)).toEqual({ permitida: true });
     expect(situacaoTrocaCnpj(true)).toMatchObject({ permitida: false, motivo: 'nfe_autorizada_producao' });
     expect(situacaoTrocaCnpj(null)).toEqual({ permitida: false, motivo: 'consulta_indisponivel', mensagem: 'Não foi possível verificar as notas agora; tente de novo' });
+  });
+});
+
+describe('RN-CORE-16: cnpjParaConferirUso', () => {
+  it('RN-CORE-16: devolve o CNPJ normalizado só quando é válido e diferente do atual', () => {
+    expect(cnpjParaConferirUso('11222333000181', '11.444.777/0001-61')).toBe('11444777000161');
+    expect(cnpjParaConferirUso('11222333000181', '11444777000160')).toBeNull();
+    expect(cnpjParaConferirUso('11222333000181', '11.222.333/0001-81')).toBeNull();
   });
 });
