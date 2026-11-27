@@ -273,17 +273,8 @@ export const CODIGO_SEM_ACESSO_CONFIG = 'SEM_ACESSO_CONFIG';
 export const MENSAGEM_SEM_ACESSO_CONFIG = 'Seu usuário não tem acesso à Configuração.';
 /** Auditoria da troca (tenant de origem, `usuario_id` de origem no `depois`, `superadmin_id` como autor). */
 export const ACAO_ENTRAR_PELO_BKO = 'plataforma.superadmin.entrar_pelo_bko';
-/** Teto da sessão do portal (o mesmo do login: 8 h). */
+/** Teto da sessão do portal (o mesmo do login: 8 h). Pelo BKO, a 0076 corta também no fim da sessão do BKO (least). */
 export const VALIDADE_SESSAO_CONFIG_MS = 8 * 60 * 60 * 1000;
-
-/**
- * Vencimento da sessão do `/config` aberta pelo BKO: nunca depois da sessão do BKO que a abriu, nem depois das 8 h do portal.
- * `null` quando a sessão do BKO já venceu (a API responde 401).
- */
-export function expiraSessaoConfigPeloBko(agora: Date, expiraBko: Date): Date | null {
-  if (!(expiraBko.getTime() > agora.getTime())) return null;
-  return new Date(Math.min(expiraBko.getTime(), agora.getTime() + VALIDADE_SESSAO_CONFIG_MS));
-}
 
 // ---- Licenças × `depende` dos manifestos (função pura; a API sempre revalida, regra 2) ----
 

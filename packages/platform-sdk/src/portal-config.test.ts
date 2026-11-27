@@ -24,8 +24,6 @@ import {
   ACAO_ENTRAR_PELO_BKO,
   PREFIXO_PLATAFORMA,
   CAMINHO_ENTRAR_PELO_BKO,
-  expiraSessaoConfigPeloBko,
-  VALIDADE_SESSAO_CONFIG_MS,
 } from './portal-config';
 import { EuResposta, TrocarSenhaEntrada } from './eu';
 
@@ -252,20 +250,10 @@ describe('conferirModulosPlataforma (RN-CORE-02: o `depende` dos manifestos)', (
 });
 
 describe('entrar no /config pela sessão do BKO (45 A, ADR 0012 §1-A)', () => {
-  const agora = new Date('2026-11-27T10:00:00.000Z');
   it('o caminho fica no /v1/auth do tenant (o refresh do BKO), fora do /v1/plataforma', () => {
     expect(CAMINHO_ENTRAR_PELO_BKO).toBe('/v1/auth/config');
     expect(CAMINHO_ENTRAR_PELO_BKO.startsWith(PREFIXO_PLATAFORMA)).toBe(false);
     expect(ACAO_ENTRAR_PELO_BKO).toBe('plataforma.superadmin.entrar_pelo_bko');
-  });
-  it('a sessão do /config nunca vence depois da do BKO nem passa das 8 h', () => {
-    const em1h = new Date(agora.getTime() + 3_600_000);
-    expect(expiraSessaoConfigPeloBko(agora, em1h)).toEqual(em1h);
-    expect(expiraSessaoConfigPeloBko(agora, new Date(agora.getTime() + 30 * 86_400_000))).toEqual(new Date(agora.getTime() + VALIDADE_SESSAO_CONFIG_MS));
-  });
-  it('sessão do BKO vencida não abre o /config', () => {
-    expect(expiraSessaoConfigPeloBko(agora, agora)).toBeNull();
-    expect(expiraSessaoConfigPeloBko(agora, new Date(agora.getTime() - 1))).toBeNull();
   });
   it('acesso_config é opcional no EuResposta (expand: a API antiga segue válida)', () => {
     const base = { usuario: { id: '00000000-0000-4000-8000-000000000001', nome: 'A', perfil: 'administrador' }, empresa: { id: '00000000-0000-4000-8000-000000000002', slug: 'am0001', razao_social: 'X', fuso: 'America/Manaus' }, filiais: [], modulos: [] };

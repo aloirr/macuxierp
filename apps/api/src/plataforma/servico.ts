@@ -13,7 +13,7 @@
  *   A marca da temporária (`marcaTemporaria`) vai no começo do próprio token; `superadmin_trocar_senha` zera a temporária.
  */
 import { randomBytes } from 'node:crypto';
-import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, type BancoPlataformaComLogin, type ErroApi, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
+import { CODIGO_SUPERADMIN_LOGIN, erros, sha256Hex, VALIDADE_SESSAO_CONFIG_MS, type BancoPlataformaComLogin, type ErroApi, type Relogio, type SessaoPlataforma } from '@macuxierp/platform-sdk';
 import { custoTemporariaDescartada, emitirTemporaria, lerMarcaTemporaria, marcaTemporaria, mensagemSenhaTemporaria } from '../auth/senha-temporaria';
 import { registrarSemEnvio, type LogEsqueci } from '../auth/esqueci-log';
 import type { TrocaPendente } from '../auth/troca-senha';
@@ -21,11 +21,10 @@ import type { MensagemEmail } from '../email/porta';
 import { chaveEmpresaEmail, EMPRESA_PLATAFORMA, TravaContaMemoria } from './limite-ip';
 import { ConferenciaCustoIgual, travaAposFalha, type Recusa } from '../auth/apoio-login';
 import { gerarHashSenha } from '../auth/senha';
+import { erroEntrarPeloBko } from './erros';
 import { erroSenhaAtualIncorreta, erroSenhaNova, exigirSenhaAtual, type ConfigAuth } from '../auth/servico';
 
 export const FALHA_LOGIN_PLATAFORMA = 'E-mail ou senha inválidos';
-/** Validade absoluta da sessão do superadmin (a ociosidade de 30 min é do banco). */
-export const VALIDADE_SESSAO_PLATAFORMA_MS = 8 * 60 * 60 * 1000;
 /** 32 bytes em base64url, sem preenchimento; com `<marcaTemporaria>.` na frente = sessão aberta pela temporária (T-0076). */
 const PADRAO_TOKEN = /^(?:(t\d{1,12})\.)?[A-Za-z0-9_-]{43}$/;
 
@@ -100,7 +99,7 @@ export class ServicoPlataforma {
       }
       const marca = fimTemporaria ? marcaTemporaria({ motivo_troca: 'temporaria', temporaria_expira_em: fimTemporaria }) : null;
       const token = `${marca ? `${marca}.` : ''}${randomBytes(32).toString('base64url')}`;
-      const expira_em = new Date(agora.getTime() + VALIDADE_SESSAO_PLATAFORMA_MS);
+      const expira_em = new Date(agora.getTime() + VALIDADE_SESSAO_CONFIG_MS);
       await tx.consultar('SELECT plataforma.superadmin_abrir_sessao($1::uuid, $2, $3)', [sa.id, hashToken(token), expira_em]);
       return { token, expira_em, superadmin_id: sa.id, ...(resultado === 'entra_desbloqueando' ? { desbloqueou: true as const } : {}) };
     });
@@ -128,6 +127,39 @@ export class ServicoPlataforma {
   esqueciSemEnvio(log?: LogEsqueci): Promise<null> {
     registrarSemEnvio(log, 'email_desligado');
     return custoTemporariaDescartada(this.cfg.argon2);
+  }
+
+  /**
+   * 45 A (ADR 0012 §1-A): abre a sessão do `/config` pelo refresh da sessão do BKO, sem argon2 e sem efeito no login do
+   * superadmin. A `superadmin_abrir_sessao_pelo_bko` (0076) só lê a sessão do BKO, revoga a do `/config` aberta antes por
+   * ela (pela família do refresh) e audita; o teto (o menor entre o fim da sessão do BKO e as 8 h) é do banco: a API
+   * manda só as 8 h.
+   * Sem linha = 401; usuário com troca pendente = 403 `TROCAR_SENHA`; sem superadmin válido = 403 `SEM_ACESSO_CONFIG`.
+   */
+  async entrarPeloBko(refresh: string | undefined): Promise<LoginPlataforma> {
+    if (!refresh) throw erros.naoAutenticado();
+    const token = randomBytes(32).toString('base64url');
+    const teto = new Date(this.relogio.agora().getTime() + VALIDADE_SESSAO_CONFIG_MS);
+    const [r] = await this.banco
+      .antesDaSessao((tx) =>
+        tx.consultar<{ superadmin_id: string; expira_em: Date }>(
+          'SELECT superadmin_id, expira_em FROM plataforma.superadmin_abrir_sessao_pelo_bko($1, $2, $3)',
+          [hashToken(refresh), hashToken(token), teto],
+        ),
+      )
+      .catch((e: unknown) => {
+        throw erroEntrarPeloBko(e) ?? e;
+      });
+    if (!r) throw erros.naoAutenticado();
+    return { token, expira_em: new Date(r.expira_em), superadmin_id: r.superadmin_id };
+  }
+
+  /** `acesso_config` do `GET /v1/auth/eu` (45 A): só um boolean, pela `superadmin_acesso_pelo_bko` (0076; nunca o e-mail). */
+  async acessoPeloBko(tenantId: string, usuarioId: string): Promise<boolean> {
+    const [r] = await this.banco.antesDaSessao((tx) =>
+      tx.consultar<{ ok: boolean | null }>('SELECT plataforma.superadmin_acesso_pelo_bko($1::uuid, $2::uuid) AS ok', [tenantId, usuarioId]),
+    );
+    return r?.ok === true;
   }
 
   /** A sessão válida do token do cookie (renova a ociosidade no banco); `null` se ausente, malformada ou inválida. */

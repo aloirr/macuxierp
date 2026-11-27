@@ -20,6 +20,7 @@
  */
 import {
   CABECALHO_CSRF_CONFIG,
+  CAMINHO_ENTRAR_PELO_BKO,
   chaveDoPedido,
   COOKIE_CONFIG,
   EntrarPlataformaEntrada,
@@ -122,7 +123,7 @@ export function responderLoginPlataforma(reply: FastifyReply, r: LoginPlataforma
 export function montarPlataforma(
   app: FastifyInstance,
   d: DependenciasPlataformaApi,
-  o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean; cronometro?: () => number; esqueci: EsqueciMontado },
+  o: { auth: ConfigAuth; relogio: Relogio; cookieSeguro: boolean; cronometro?: () => number; esqueci: EsqueciMontado; cookieRefreshBko?: string },
 ): ServicoPlataforma {
   // O serviço (sair, troca de senha) loga pelo log da app; as rotas dos plugins, pelo do pedido (request_id, superadmin_id).
   const servico = new ServicoPlataforma(comRetentativaEmDeadlock(d.banco, app.log), o.auth, o.relogio);
@@ -148,6 +149,20 @@ export function montarPlataforma(
   );
 
   montarEsqueciPlataforma(app, d, o.esqueci, servico, o.relogio);
+
+  // 45 A (ADR 0012 §1-A): o BKO abre o /config sem novo login. No /v1/auth (o refresh do BKO só vai para lá), com o
+  // anti-CSRF do portal; a resposta é a do login do superadmin (o cookie COOKIE_CONFIG no Path=/v1/plataforma).
+  if (o.cookieRefreshBko) {
+    const cookieRefresh = o.cookieRefreshBko;
+    app.post(CAMINHO_ENTRAR_PELO_BKO, async (req, reply) =>
+      traduzido(async () => {
+        exigirCsrf(req);
+        const r = await c.servico.entrarPeloBko(req.cookies[cookieRefresh]);
+        req.log = reply.log = req.log.child({ superadmin_id: r.superadmin_id });
+        return responderLoginPlataforma(reply, r, c.cookieSeguro);
+      }),
+    );
+  }
 
   app.post(`${PREFIXO_PLATAFORMA}/auth/sair`, async (req, reply) =>
     traduzido(async () => {
