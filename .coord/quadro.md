@@ -1,7 +1,7 @@
 # Quadro — Macuxi ERP
 
 > Dono: gerente-projetos. Status: aberta → em_andamento → em_teste → em_revisao → concluida (ou bloqueada). Horários de Manaus.
-> Fase atual: **v0.3.22 em produção** (27/11, 10h43: tag 7ffde45). **v0.3.23 liberada** (27/11, 12h35: SHA 2400a57, liberar 46033555461, issue #846), aguardando o "aprovado" da PO e o "aprovo deploy v0.3.23" do Alexandre. **v0.3.24 em andamento**; ver a seção "27/11 tarde". Histórico das versões anteriores nas seções abaixo.
+> Fase atual: **v0.3.23 em produção** (27/11, 13h32: tag v0.3.23 → 2400a57; publicar 46042059117, issue #846). **v0.3.24 em andamento**; ver a seção "27/11 tarde". Histórico das versões anteriores nas seções abaixo.
 > Empresa piloto: **thathyany** (R-20261120-231848-gerente-projetos). Biblioteca NF-e: ADR 0002 opção A (R-20261120-231934-gerente-projetos).
 
 | Tarefa | Título | Fase | Dono | Status | Onde |
@@ -227,6 +227,11 @@ Retomada às 11h46 (R-20261127-105908 e R-20261127-110006), depois da pausa aos 
   - engenheiro-apps: tela da Ficha, os 🟡 da decisão B e a regra nova.
   - Depois dos PRs do faturamento, do core e do cadastros: engenheiro-software (ligação no apps/api e no worker) e modulo-integracao-fdv (teste de ida da filial).
   - Também depois: o manual da marca (design-de-marca) e a parte em .claude/agents, que é governança (PR com "Agente: alexandre" e merge só com a frase dele).
+- **v0.3.23 no ar às 13h32** (publicar 46042059117), com o "aprovo deploy v0.3.23" do Alexandre às 13h27. Na 48 A, a MemAvailable deu 6558 MiB (o piso é 1280 MiB); o laço do /login durante a troca ainda não sai no log, e o engenheiro o faz imprimir na v0.3.24 (R-20261127-133722). A entrada responde 401 JSON sem chave, e o conector da am2808 teve um sinal aceito às 13h32 (R-20261127-133703).
+- **Avisos de deploy (pendências do Alexandre ou do engenheiro, sem bloqueio):** os secrets FUMACA_* ausentes (a fumaça fica pulada), a CA do DBaaS ausente (o TLS não confere o certificado) e a chave do host por TOFU. O motivo do lote recusado da am2808 nas 24h foi pedido ao engenheiro (R-20261127-133853).
+- **v0.3.24 no main até 14h10:** #845, #847, #848, #850, #851, #852, #853, #854, #856, #858 (substitui o #857, fechado por agente ambíguo), #849, #859 e #860. Faltam a ligação do engenheiro (api/worker, que é condição do liberar, porque sem o consumidor a carga da 0077 se perde) e os 🟡 do banco. O #855 (governança) está autorizado pelo Alexandre e espera o clique dele.
+- **Para a v0.3.25:** o rótulo "Código IBGE do município" quebrando em 1440 (PO); o .conteudo do BKO com max-width 1100 (designer-ux); a razão social e a IE propagando (PO).
+- **Lição:** sessão aberta pelo gerente não faz PR de governança (o guardião exige a identidade alexandre); esse PR é do Gerente Sênior ou do Alexandre.
 - **Lição:** a sessão filha que recebe a tarefa só no prompt pode se ler como gerente e recusar. As sessões novas levam o papel do dono também no append_system_prompt.
 
 ## 27/11 manhã — v0.3.21, v0.3.22 e o que vem (Manaus)
