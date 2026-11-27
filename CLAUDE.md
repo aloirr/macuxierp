@@ -39,6 +39,13 @@ Repositório: `aloirr/macuxierp`. Recados: `aloirr/macuxierp-recados`. **Time 10
 8. **LGPD** (a Macuxi ERP é operadora dos dados do cliente): sem dado pessoal em log; o cliente exporta os próprios dados a qualquer hora; a exclusão segue o prazo fiscal de guarda.
 9. **Segredos**: nada em código, recado ou log. O certificado A1 e a senha dele ficam criptografados no banco, com a chave no secret do servidor. Secret do GitHub e `.env` de produção só o Alexandre cria. O A1 nunca é colado em chat ou recado.
 10. Commit, push e PR só pelo fluxo de PR: um PR por dono e por lote.
+11. **MENOS É MAIS** (Alexandre, 27/11/2026, R-20261127-174851):
+   - toda página preenche a largura antes de descer, na grade de 12 colunas, com o campo curto em 1 a 2 colunas e os cartões lado a lado;
+   - os tamanhos padrão vêm dos tokens do `packages/ui` e são iguais em todas as páginas;
+   - a tela segue o padrão de mercado e de marca, sem redundância;
+   - a regra vale para quem **monta** a tela (`engenheiro-apps` e módulos), não só para quem revisa;
+   - a simulação sai em 1366 e 1920 px.
+12. **Botões embaixo e juntos** (Alexandre, 27/11/2026 17h58, regra de marca e design): uma barra de botões por bloco, no rodapé do bloco; as ações da página ficam na barra do rodapé da página; fora dela, só a busca e os links de linha.
 
 ## Time de agentes
 A sessão principal roda como **`gerente-projetos`** (`.claude/settings.json`), que comanda: `engenheiro-software` (plataforma, API, worker, SDK, contratos, CI, ADRs, revisão final), `engenheiro-apps` (só o shell web do BKO, sem mobile), `designer-ux` (`packages/ui`, `docs/design/`), `design-de-marca` (a mesma marca Macuxi do FDV; o manual da marca do FDV é a fonte), `banco-dados`, `testes`, `corretor-redundancias` e os agentes `modulo-core`, `modulo-cadastros`, `modulo-pedido`, `modulo-faturamento`, `modulo-fiscal`, `modulo-integracao-fdv`.
