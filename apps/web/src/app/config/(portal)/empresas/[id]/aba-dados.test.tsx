@@ -71,7 +71,7 @@ describe('aba Dados (T-0058, T-0086)', () => {
 describe('coluna Carga completa na aba Dados (decisão do PO em 24/11)', () => {
   const ligadas = ['produto', 'cliente', 'cliente_endereco', 'forma_pagamento'];
   const integ = (voo: string[] = [], lig: string[] = ligadas) => IntegracaoFdvPlataforma.parse({
-    empresa_id: EMP, modulo_licenciado: true, credencial_id: EMP, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'abcd1234', criada_em: '2026-11-23T12:00:00.000Z', ultimo_uso_em: null,
+    empresa_id: EMP, modulo_licenciado: true, credencial_id: EMP, conector_id: 'erp-1', ambiente: 'teste', chave_prefixo: 'abcd1234', criada_em: '2026-11-23T12:00:00.000Z',
     entidades_habilitadas: ENTIDADES_ENVIO_FDV.filter((e) => lig.includes(e)), limite_registros_lote: 500, ultimo_sinal: null,
     cadastros: ENTIDADES_ENVIO_FDV.map((entidade) => ({ entidade, ligada: lig.includes(entidade), ultimo_envio_em: null, falha: null, lote_em_voo: voo.includes(entidade) })),
   });
