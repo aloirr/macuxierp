@@ -103,18 +103,7 @@ export const pesos = {
   titulo: 700,
 } as const;
 
-/**
- * Pontos de quebra, em px (largura da janela; regra das telas horizontais, docs/design/telas-horizontais.md).
- * Media query não lê variável CSS: as telas usam estes números literais em `@media (min-width: …)`.
- */
-export const quebras = {
-  celular: 390,
-  tablet: 768,
-  notebook: 1280,
-  monitor: 1440,
-} as const;
-
-/** Grade de blocos, em px: largura mínima de um cartão (colunas por quebra e vão de 16 px em docs/design/telas-horizontais.md). */
+/** Grade de blocos, em px: largura mínima de um cartão (quebras 390/768/1280/1440, colunas e vão de 16 px só em docs/design/telas-horizontais.md: media query não lê token). */
 export const grade = {
   cartaoMinimo: 280,
 } as const;

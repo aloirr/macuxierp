@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { aliasCores, cores, escala, fontes, gerarCss, grade, pesos, quebras, variaveisCss } from './tokens.js';
+import { aliasCores, cores, escala, fontes, gerarCss, grade, pesos, variaveisCss } from './tokens.js';
 
 const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
 
@@ -62,8 +62,7 @@ describe('tokens da marca', () => {
     expect(v['--mx-tamanho-titulo-grupo']).toBe(v['--mx-tamanho-rotulo-menu']);
     expect(v['--mx-tamanho-selo']).toBe('var(--mx-tamanho-micro)');
   });
-  it('telas horizontais (R-20261127-110345): quebras e grade', () => {
-    expect(quebras).toEqual({ celular: 390, tablet: 768, notebook: 1280, monitor: 1440 });
+  it('telas horizontais (R-20261127-110345): grade', () => {
     expect(grade).toEqual({ cartaoMinimo: 280 });
     const v = variaveisCss();
     expect(v['--mx-grade-cartao-minimo']).toBe('280px');
