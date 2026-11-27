@@ -26,7 +26,6 @@ export async function salvarFichaAcao(id: string, form: FormFicha, origem: 'manu
   if (!v.ok) return falha(ERRO_CAMPOS, v.campos as Record<string, string>);
   const r = await executarConfig('ficha', (t) => salvarFicha(t, id, v.edicao, chave));
   if (!r.ok) return r;
-  if (r.valor.estado === 'erro') return { ok: false, erro: r.valor.mensagem, campos: r.valor.campos ?? {}, chaveNova: true };
   revalidatePath(`/config/empresas/${id}`);
   return { ok: true, valor: { campos_alterados: r.valor.estado === 'ok' ? r.valor.campos_alterados : [] } };
 }

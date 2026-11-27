@@ -149,9 +149,14 @@ export async function previaReceita(token: string, id: string, chave: string): P
   return validado(await chamar(ROTAS_FICHA.previaReceita.metodo, rotaFicha(ROTAS_FICHA.previaReceita, id), { token, chave }), PreviaReceita);
 }
 
-/** "Salvar" da ficha (RN-CORE-16): grava e audita (só nomes de campo). */
-export async function salvarFicha(token: string, id: string, corpo: EdicaoFicha, chave: string): Promise<ResultadoSalvarFicha> {
-  return validado(await chamar(ROTAS_FICHA.salvar.metodo, rotaFicha(ROTAS_FICHA.salvar, id), { token, corpo, chave }), ResultadoSalvarFicha);
+/**
+ * "Salvar" da ficha (RN-CORE-16): grava e audita (só nomes de campo). A rota só responde `ok` ou `sem_mudanca`; a falha vem como
+ * erro HTTP (400/409/422). O estado `erro` do contrato não é usado pela tela: se vier, é resposta fora do contrato.
+ */
+const [SalvoOk, SalvoSemMudanca] = ResultadoSalvarFicha.options;
+const SalvoFicha = z.discriminatedUnion('estado', [SalvoOk, SalvoSemMudanca]);
+export async function salvarFicha(token: string, id: string, corpo: EdicaoFicha, chave: string): Promise<z.infer<typeof SalvoFicha>> {
+  return validado(await chamar(ROTAS_FICHA.salvar.metodo, rotaFicha(ROTAS_FICHA.salvar, id), { token, corpo, chave }), SalvoFicha);
 }
 
 /** Se o CNPJ pode ser trocado agora (RN-CORE-16): a tela sabe antes de tentar e mostra o motivo do bloqueio. */

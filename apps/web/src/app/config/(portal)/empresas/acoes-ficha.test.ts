@@ -93,8 +93,11 @@ describe('ações da ficha da Receita (T-0101)', () => {
     const certo = formDaFicha(FichaReceitaPlanaMascarada.parse({ ...ficha, razao_social: 'Comércio Fictício Ltda' }), null);
     resposta = () => json({ estado: 'sem_mudanca', ficha });
     expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toEqual({ ok: true, valor: { campos_alterados: [] } });
-    resposta = () => json({ estado: 'erro', motivo: 'validacao', mensagem: MSG, campos: { cep: 'CEP inválido.' } });
-    expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toMatchObject({ ok: false, erro: MSG, campos: { cep: 'CEP inválido.' } });
+    resposta = () => json({ codigo: 'VALIDACAO', mensagem: MSG, campos: { cep: 'CEP inválido.' } }, 400);
+    expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toMatchObject({ ok: false, campos: { cep: 'CEP inválido.' } });
+    // o estado 'erro' do contrato não sai da rota: se vier, é resposta fora do contrato (falha genérica, nada salvo)
+    resposta = () => json({ estado: 'erro', motivo: 'validacao', mensagem: MSG });
+    expect((await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).ok).toBe(false);
     resposta = () => erroApi(409, 'CONFLITO', undefined, MSG);
     expect(await salvarFichaAcao(ID, certo, 'manual', undefined, 'k')).toMatchObject({ ok: false, erro: MSG, chaveNova: true });
   });
