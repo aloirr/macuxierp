@@ -42,5 +42,17 @@ A base é a v4 do Gerente Sênior: `aloirr/macuxierp-recados`, pasta `recados/an
 - Rodapé da página: estado à esquerda; à direita, Suspender empresa e, separados, Atualizar pela Receita, Descartar e Salvar.
 - Fora das barras ficam só a busca, os links de linha (Editar · Redefinir senha · Excluir, Detalhes, Abrir) e os links de campo (trocar, mostrar).
 
-## Validação
-Em curso.
+## Validação (27/11, por volta das 18h30)
+- design-de-marca: 🟢 no topo, nos botões, nos selos, no contraste e no 390. Os 🟡 foram aplicados:
+  - links de linha sublinhados;
+  - busca com 34 px e 13 px;
+  - selo Plataforma com 1px 7px;
+  - em 390, os Envios recentes mostram Quando, Registros, Com erro e Detalhes.
+- corretor-redundancias: 🟢, sem botão fora de barra. Os 🟡 foram aplicados:
+  - diálogo bloqueado: "Não dá para excluir…";
+  - confirmação digitada mais curta;
+  - "Detalhes" inteiro em 390.
+- Ficam para o Alexandre:
+  - #E6EBF3 × `nevoa` (decisão 43);
+  - #FBFAF8;
+  - tirar o "Excluir" da linha do último administrador ativo, em vez de explicar no diálogo (sugestão do corretor).
