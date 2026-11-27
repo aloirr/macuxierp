@@ -502,3 +502,4 @@ O `integracao_fdv.sinal.ultimo_codigo` guarda por que o último sinal falhou, pa
 
 ## Forma de pagamento da /entrada/v1 (T-0057, migração 0074)
 A `cadastros.entrada_forma` guarda a forma nova, ainda sem condição, para o prazo_pagamento que chega depois não ser recusado (único `(tenant_id, external_id)` do upsert). Teste: `db/testes/entrada-forma-0074.db.test.ts`.
+Na 0075 (v0.3.19) o `macuxierp_app` deixa de gravar nela: quem grava a forma é o lote do worker. Mesmo teste.
