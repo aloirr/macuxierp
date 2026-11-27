@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { aliasCores, cores, escala, fontes, gerarCss, grade, pesos, variaveisCss } from './tokens.js';
+import { aliasCores, cores, escala, fontes, gerarCss, grade, medidas, papeis, pesos, variaveisCss } from './tokens.js';
 
 const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
 
@@ -53,11 +53,11 @@ describe('tokens da marca', () => {
   });
   it('escala 12, 13, 15, 17, 20, 24 e pesos 400, 500, 600, 700', () => {
     expect(Object.values(escala)).toEqual([12, 13, 15, 17, 20, 24]);
-    expect(Object.values(pesos)).toEqual([400, 500, 600, 600, 600, 600, 600, 600, 600, 700]);
+    expect(Object.values(pesos)).toEqual([400, 500, 700, 600, 600, 600, 600, 600, 600, 700]);
     const v = variaveisCss();
-    expect(v['--mx-tamanho-titulo-cartao']).toBe('var(--mx-tamanho-grande)');
+    expect(v['--mx-tamanho-titulo-cartao']).toBe('var(--mx-tamanho-pequeno)');
     expect(v['--mx-tamanho-titulo-dialogo']).toBe('var(--mx-tamanho-grande)');
-    expect(v['--mx-tamanho-h1']).toBe('var(--mx-tamanho-titulo)');
+    expect(v['--mx-tamanho-h1']).toBe('var(--mx-tamanho-grande)');
     expect(v['--mx-tamanho-rotulo-menu']).toBe('var(--mx-tamanho-micro)');
     expect(v['--mx-tamanho-titulo-grupo']).toBe(v['--mx-tamanho-rotulo-menu']);
     expect(v['--mx-tamanho-selo']).toBe('var(--mx-tamanho-micro)');
@@ -70,8 +70,17 @@ describe('tokens da marca', () => {
   it('hierarquia (R-20261127-110345): rótulo em destaque e diferente do valor', () => {
     const v = variaveisCss();
     expect(v['--mx-cor-rotulo-destaque']).toBe('var(--mx-cor-azul-noite)');
-    expect(v['--mx-tamanho-rotulo-dado']).toBe('var(--mx-tamanho-pequeno)');
+    expect(v['--mx-tamanho-rotulo-dado']).toBe('var(--mx-tamanho-micro)');
     expect(pesos.rotuloDado).toBeGreaterThan(pesos.normal);
+  });
+  it('menos é mais (decisões 40, 44 A e 45): medidas únicas, zebra e papéis', () => {
+    expect(medidas).toEqual({ alturaCampo: 34, alturaLinhaTabela: 36, cantoCartao: 8 });
+    expect(cores.linhaAlternada).toBe('#FBFAF8');
+    expect(papeis).toMatchObject({ h1: 'grande', tituloCartao: 'pequeno', texto: 'pequeno', rotuloDado: 'micro', tituloDialogo: 'grande' });
+    expect(pesos.cabecalhoTabela).toBe(700);
+    const v = variaveisCss();
+    expect(v['--mx-medida-altura-campo']).toBe('34px');
+    expect(v['--mx-cor-linha-alternada']).toBe('#FBFAF8');
   });
   it('tokens.css é exatamente o gerado do TS', () => {
     expect(css).toBe(gerarCss());

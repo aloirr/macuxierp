@@ -1,10 +1,11 @@
 /* Gerado de estilos.ts (gerarCssBotoes). Não edite à mão: o teste exige igualdade. */
 .mx-botao {
   font-family: var(--mx-fonte-texto);
-  font-size: var(--mx-tamanho-base);
+  font-size: var(--mx-tamanho-texto);
   font-weight: var(--mx-peso-botao-principal);
   color: var(--mx-cor-branco);
-  padding: 8px 16px;
+  height: var(--mx-medida-altura-campo);
+  padding: 0 14px;
   border-radius: 6px;
   line-height: 1.5;
   cursor: pointer;
@@ -13,10 +14,11 @@
 }
 .mx-botao-secundario {
   font-family: var(--mx-fonte-texto);
-  font-size: var(--mx-tamanho-base);
+  font-size: var(--mx-tamanho-texto);
   font-weight: var(--mx-peso-medio);
   color: var(--mx-cor-grafite);
-  padding: 8px 16px;
+  height: var(--mx-medida-altura-campo);
+  padding: 0 14px;
   border-radius: 6px;
   line-height: 1.5;
   cursor: pointer;
@@ -25,10 +27,11 @@
 }
 .mx-botao-destrutivo {
   font-family: var(--mx-fonte-texto);
-  font-size: var(--mx-tamanho-base);
+  font-size: var(--mx-tamanho-texto);
   font-weight: var(--mx-peso-botao-principal);
   color: var(--mx-cor-branco);
-  padding: 8px 16px;
+  height: var(--mx-medida-altura-campo);
+  padding: 0 14px;
   border-radius: 6px;
   line-height: 1.5;
   cursor: pointer;

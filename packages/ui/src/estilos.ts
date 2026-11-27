@@ -29,10 +29,11 @@ export const canto = '6px';
 export const desabilitadoEstilo = (desabilitado?: boolean): CSSProperties =>
   desabilitado ? { opacity: 0.55, cursor: 'not-allowed' } : { cursor: 'pointer' };
 
-/** Base comum dos botões (MC-0008): 15 px ("base"), canto de 6 px e o mesmo espaçamento. */
+/** Base comum dos botões (MC-0008; "menos é mais", decisão 45): 13 px, altura única de 34 px (`alturaCampo`), canto de 6 px. */
 const baseBotao = (peso: Parameters<typeof texto>[1], desabilitado?: boolean): CSSProperties => ({
-  ...texto('base', peso),
-  padding: `${espaco.sm}px ${espaco.lg}px`,
+  ...texto('texto', peso),
+  height: 'var(--mx-medida-altura-campo)',
+  padding: `0 14px`,
   borderRadius: canto,
   lineHeight: 1.5,
   ...desabilitadoEstilo(desabilitado),
@@ -164,12 +165,13 @@ export function gerarCssBotoes(): string {
   );
 }
 
-/** Campo de texto do pacote (input, textarea): 13 px, borda de campo e canto de 6 px. */
+/** Campo de texto do pacote (input): 13 px, altura única de 34 px, borda de campo e canto de 6 px. A textarea sobrescreve a altura. */
 export const campoBase: CSSProperties = {
-  ...texto('pequeno'),
+  ...texto('texto'),
+  minHeight: 'var(--mx-medida-altura-campo)',
   border: `1px solid ${cor('bordaCampo')}`,
   borderRadius: canto,
-  padding: espaco.xs,
+  padding: `0 10px`,
 };
 
 /** Mensagem de erro de campo (MC-0015). */
@@ -194,10 +196,13 @@ export const avisoErrosCampos = 'Há campos com erro. Confira as mensagens abaix
 
 /** Estilo único das duas tabelas (MC-0013). */
 export const tabela = {
-  raiz: { ...texto('pequeno'), width: '100%', borderCollapse: 'collapse', background: cor('branco') } as CSSProperties,
-  /** Cabeçalho na cor de destaque (regra de hierarquia, docs/design/telas-horizontais.md). */
-  cabecalho: { ...texto('pequeno', 'cabecalho-tabela'), color: cor('rotuloDestaque'), textAlign: 'left', padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}`, background: cor('nevoa') } as CSSProperties,
-  celula: { padding: `${espaco.xs}px ${espaco.md}px`, borderBottom: `1px solid ${cor('bordaTabela')}`, verticalAlign: 'top' } as CSSProperties,
+  raiz: { ...texto('texto'), width: '100%', borderCollapse: 'collapse', background: cor('branco') } as CSSProperties,
+  /** th (decisões 40 e 44 A): névoa, 12/700 caixa-alta azul-noite, 34 px, linha azul-noite de 2 px. */
+  cabecalho: { ...texto('rotulo-dado', 'cabecalho-tabela'), color: cor('rotuloDestaque'), textTransform: 'uppercase', letterSpacing: '.04em', textAlign: 'left', height: 'var(--mx-medida-altura-campo)', padding: `0 ${espaco.md}px`, borderBottom: `2px solid ${cor('azulNoite')}`, background: cor('nevoa'), whiteSpace: 'nowrap' } as CSSProperties,
+  /** td: 36 px de altura, linha névoa. */
+  celula: { height: 'var(--mx-medida-altura-linha-tabela)', padding: `0 ${espaco.md}px`, borderBottom: `1px solid ${cor('linhaSuave')}`, verticalAlign: 'middle' } as CSSProperties,
+  /** Linha par (zebra, decisão 44 A). */
+  linhaAlternada: { background: cor('linhaAlternada') } as CSSProperties,
   /** Célula numérica ou de dinheiro: sem quebra de linha (o `th` continua só com `numerico`). */
   celulaNumerica: { ...numerico, whiteSpace: 'nowrap' } as CSSProperties,
   /** Legenda de tabela: 15 px (base), peso 600, à esquerda. */

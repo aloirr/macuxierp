@@ -123,7 +123,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
             </td>
           </tr>
         ) : (
-          visiveis.map((l) => (
+          visiveis.map((l, i) => (
             <tr
               key={chaveLinha(l)}
               tabIndex={aoClicarLinha ? 0 : undefined}
@@ -139,7 +139,7 @@ export function TabelaDensa<T>(props: TabelaDensaProps<T>) {
                     }
                   : undefined
               }
-              style={{ cursor: aoClicarLinha ? 'pointer' : undefined }}
+              style={{ cursor: aoClicarLinha ? 'pointer' : undefined, ...(i % 2 === 1 ? tabela.linhaAlternada : {}) }}
             >
               {colunas.map((c) => (
                 <td key={c.id} style={{ ...tabela.celula, ...estiloCelula(c) }}>
