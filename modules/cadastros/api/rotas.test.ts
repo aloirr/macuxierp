@@ -690,8 +690,9 @@ describe('condições de pagamento (RF-CAD-09)', () => {
     const p = await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { prazo_medio_dias: 57 } });
     expect(p.status).toBe(422);
     expect(p.corpo).toMatchObject({ codigo: 'RN-CAD-15', campos: { prazo_medio_dias: MOTIVO_PRAZO_MEDIO_FAIXA } });
-    // a regra vale sobre o MESCLADO: trocar só a descrição de quem está fora da faixa também é recusado
-    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { descricao: 'Outra' } })).status).toBe(422);
+    // RN-CAD-15 (v0.3.18): sem mudar parcelas nem prazo médio (só a descrição, p.ex.), a faixa não é conferida, como na carga
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { descricao: 'Outra' } })).status).toBe(200);
+    expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: { forma_tpag: '03' } })).status).toBe(200);
     expect((await t.chamar('PATCH', `/condicoes-pagamento/${id}`, { sessao: gerente, corpo: {} })).status).toBe(200);
     expect((await t.chamar('DELETE', `/condicoes-pagamento/${id}`, { sessao: gerente })).status).toBe(200);
     expect((await t.chamar('GET', `/condicoes-pagamento/${id}`, { sessao: gerente })).corpo).toMatchObject({ inativo: true, prazo_medio_dias: 90 });
