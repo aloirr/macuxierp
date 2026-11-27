@@ -172,7 +172,7 @@ describe('RF-CORE-02: usuários', () => {
     expect(r.status).toBe(201);
     expect(r.cabecalhos).toMatchObject({ 'cache-control': 'no-store' }); // devolve senha_provisoria
     expect(c.email).toBe('maria@piloto.test');
-    expect(c.senha_provisoria).toHaveLength(16);
+    expect(c.senha_provisoria).toHaveLength(18);
     const guardado = t.repo.usuarios.find((u) => u.id === c.id);
     expect(guardado?.senha_hash.startsWith('$argon2id$')).toBe(true);
     expect(JSON.stringify(guardado)).not.toContain(c.senha_provisoria);
@@ -264,7 +264,7 @@ describe('RF-CORE-02: usuários', () => {
     const antes = t.repo.usuarios[0]?.senha_hash;
     const r = await t.chamar('POST', '/usuarios/:id/redefinir-senha', { params: { id: ADM_ID } });
     const { senha_provisoria } = r.corpo as { senha_provisoria: string };
-    expect(senha_provisoria).toHaveLength(16);
+    expect(senha_provisoria).toHaveLength(18);
     expect(r.cabecalhos?.['cache-control']).toBe('no-store');
     expect(t.repo.usuarios[0]?.senha_hash).not.toBe(antes);
     expect(JSON.stringify(t.auditoria.registros)).not.toContain(senha_provisoria);
