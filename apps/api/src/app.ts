@@ -69,6 +69,7 @@ import { envioAposResposta, erroMuitasTentativas, limitarEsqueciPorIp, type Esqu
 import { registrarSemEnvio } from './auth/esqueci-log';
 import type { EnvioEmail } from './email/porta';
 import { bloqueiaPorTrocaDeSenha, CorpoTrocaSenha, corpoTrocarSenha } from './auth/troca-senha';
+import { instalarDreno } from './dreno';
 import { diagnosticoBanco } from './erro-banco';
 import { enfileirarDoModulo, entradaDaChamada, responder } from './execucao-rota';
 import { lerMultipart } from './multipart';
@@ -163,6 +164,8 @@ export async function criarApp(d: DependenciasApp): Promise<FastifyInstance> {
     requestIdLogLabel: 'request_id',
     bodyLimit: TAMANHO_MAXIMO_ARQUIVO,
   });
+  // Antes de tudo: o hook dos cabeçalhos do dreno vale para todas as rotas (main.ts liga o SIGUSR2; dreno.ts).
+  app.decorate('dreno', instalarDreno(app));
   const servico = new ServicoAuth(d.banco, d.repoAuth, d.auth, d.relogio);
 
   await app.register(cookie);
