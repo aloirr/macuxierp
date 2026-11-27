@@ -47,7 +47,7 @@ const INTERNAS = [
   'plataforma.exigir_outro_admin(uuid, uuid)',
   'plataforma.revogar_sessoes_usuario(uuid, uuid)',
   'plataforma.usuario_json(plataforma.usuario)',
-  'plataforma.auditoria_repetida(uuid, text, text)',
+  'plataforma.auditoria_repetida(uuid, text, text, uuid)',
   'plataforma.usuario_mudar_situacao(uuid, uuid, text, text)',
 ];
 
@@ -214,6 +214,10 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
         situacao: 'excluido',
       });
       recusa(acao('excluir', u.id, 'req-exc-outro'), 'P0002', /usuário não encontrado/);
+      // O mesmo request_id em outro usuário exclui de fato.
+      const w = criar('outro.vendedor@empresa.teste', 'vendedor');
+      json<Record<string, unknown>>(acao('excluir', w.id, 'req-exc'));
+      expect(linha(w.id)).toMatchObject({ excluido: true });
       recusa(acao('reativar', u.id), 'P0002', /usuário não encontrado/);
       expect(linha(u.id)).toMatchObject({ ativo: false, excluido: true });
       expect(listar().some((x) => x.id === u.id)).toBe(false);
@@ -226,6 +230,13 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
     it('editar e redefinir a senha: só campos da lista, sem mudança não audita, senha provisória e sessões revogadas', () => {
       const u = criar('fiscal.ficticio@empresa.teste', 'fiscal');
       recusa(editarSql(u.id, '{"email": "x@y.teste"}'), '23514', /campo fora da lista: email/);
+      recusa(editarSql(u.id, '{"nome": null}'), '23514', /campo obrigatório: nome/);
+      recusa(editarSql(u.id, '{"perfil": null}'), '23514', /campo obrigatório: perfil/);
+      recusa(
+        `SELECT plataforma.empresa_usuario_criar('${A.id}', 'sem.nome@empresa.teste', '  ', 'fiscal', '${HASH}', '{}', NULL);`,
+        '23514',
+        /campo obrigatório: nome/,
+      );
       const antes = auditoria(`entidade_id = '${u.id}'`).length;
       json<Item>(editarSql(u.id, '{"perfil": "fiscal"}'));
       expect(auditoria(`entidade_id = '${u.id}'`)).toHaveLength(antes);
@@ -244,13 +255,45 @@ INSERT INTO plataforma.sessao_superadmin (id, superadmin_id, token_hash, expira_
       expect(r).toMatchObject({ situacao: 'ativo', deve_trocar_senha: true });
       expect(linha(u.id)).toMatchObject({ falhas_login: 0, sem_trava: true });
       json<Item>(senhaSql);
-      expect(auditoria(`request_id = 'req-senha'`)).toHaveLength(1);
+      // O mesmo request_id em outro usuário não é repetição: a ação acontece.
+      json<Item>(
+        `SELECT plataforma.empresa_usuario_redefinir_senha('${A.id}', '${A.usuario}', '${HASH_NOVO}', 'req-senha');`,
+      );
+      expect(linha(A.usuario)).toMatchObject({ deve_trocar_senha: true });
+      expect(auditoria(`request_id = 'req-senha' AND entidade_id = '${u.id}'`)).toHaveLength(1);
     });
 
     it('auditoria sem e-mail, nome nem hash (LGPD)', () => {
       const tudo = JSON.stringify(auditoria());
       for (const valor of ['ficticia', 'Ficticia', 'ficticio', 'Ficticio', '@empresa.teste', '$argon2id'])
         expect(tudo).not.toContain(valor);
+    });
+
+    it('inativo antigo do BKO volta como inativo na primeira execução; reexecutar não traz excluído de volta', () => {
+      const antigo = randomUUID();
+      // Simula o banco antes da 0078 numa transação desfeita: o UNIQUE da 0002 de volta e um inativo do jeito antigo
+      // (ativo = false com deleted_at).
+      const saida = linhas(
+        rodarScript(
+          banco.conexao,
+          `BEGIN;
+UPDATE plataforma.usuario SET email = id::text || '@dup.teste' WHERE deleted_at IS NOT NULL;
+ALTER TABLE plataforma.usuario ADD CONSTRAINT usuario_tenant_id_email_key UNIQUE (tenant_id, email);
+INSERT INTO plataforma.usuario (id, tenant_id, email, nome, senha_hash, perfil, ativo, deleted_at)
+  VALUES ('${antigo}', '${A.id}', 'inativo.antigo@empresa.teste', 'Inativo Antigo', '${HASH}', 'vendedor', false,
+    '2026-11-01T00:00:00Z');
+${SQL_0078}
+SELECT 'r:' || (deleted_at IS NULL AND NOT ativo)::text FROM plataforma.usuario WHERE id = '${antigo}';
+SELECT 'u:' || count(*)::text FROM pg_constraint WHERE conrelid = 'plataforma.usuario'::regclass AND contype = 'u';
+ROLLBACK;`,
+        ),
+      );
+      expect(saida).toEqual(expect.arrayContaining(['r:true', 'u:0']));
+      // Fora da simulação: um excluído pelas funções novas continua excluído quando a 0078 roda de novo.
+      const x = criar('excluido.de.verdade@empresa.teste', 'vendedor');
+      json<Record<string, unknown>>(acao('excluir', x.id));
+      rodarScript(banco.conexao, SQL_0078, { transacao: true });
+      expect(linha(x.id)).toMatchObject({ ativo: false, excluido: true });
     });
 
     it('a 0078 reexecuta sem erro, com o índice parcial e sem o UNIQUE antigo', () => {

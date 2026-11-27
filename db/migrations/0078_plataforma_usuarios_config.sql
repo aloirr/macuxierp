@@ -7,6 +7,19 @@ SET LOCAL lock_timeout = '5s';
 -- E-mail único entre os não excluídos: o índice parcial entra antes de o UNIQUE da 0002 sair (nome gerado: sai
 -- qualquer UNIQUE só de (tenant_id, email)). O e-mail já é normalizado pelo CHECK da 0002.
 -- ---------------------------------------------------------------------------------------------------------------
+-- Até a 0078, o inativar do BKO (modulo-core, atualizarUsuario) gravava ativo = false com deleted_at, e o reativar
+-- limpava os dois; é o único caminho que grava deleted_at em plataforma.usuario. Na primeira execução (o UNIQUE da
+-- 0002 ainda existe, então não há duplicata possível), esses inativos voltam a inativo: ficam na lista e seguram o
+-- e-mail. Reexecutada, a 0078 não roda isso de novo, para não trazer de volta um excluído pelas funções novas.
+DO $inativos$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint c
+              WHERE c.conrelid = 'plataforma.usuario'::regclass AND c.contype = 'u'
+                AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a
+                      WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY['email', 'tenant_id']) THEN
+    UPDATE plataforma.usuario SET deleted_at = NULL WHERE NOT ativo AND deleted_at IS NOT NULL;
+  END IF;
+END $inativos$;
 CREATE UNIQUE INDEX IF NOT EXISTS usuario_email_vivo_uq ON plataforma.usuario (tenant_id, email)
   WHERE deleted_at IS NULL;
 DO $unico$
@@ -106,16 +119,18 @@ $$;
 COMMENT ON FUNCTION plataforma.usuario_json(plataforma.usuario) IS
   'Interna (0078): o item da listagem, sem o e-mail aberto (LGPD): {id, nome, email_mascarado, perfil, filial_ids, situacao, ultimo_acesso_em, deve_trocar_senha, ultimo_admin_ativo}. RN-CORE-01, RN-CORE-17.';
 
-CREATE OR REPLACE FUNCTION plataforma.auditoria_repetida(p_tenant uuid, p_acao text, p_request_id text) RETURNS uuid
+CREATE OR REPLACE FUNCTION plataforma.auditoria_repetida(p_tenant uuid, p_acao text, p_request_id text,
+  p_entidade uuid) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
   AS $$
   SELECT a.entidade_id FROM plataforma.auditoria a
    WHERE p_request_id IS NOT NULL AND a.tenant_id = p_tenant AND a.acao = p_acao AND a.request_id = p_request_id
+     AND (p_entidade IS NULL OR a.entidade_id = p_entidade)
    ORDER BY a.ocorrido_em LIMIT 1
 $$;
-COMMENT ON FUNCTION plataforma.auditoria_repetida(uuid, text, text) IS
-  'Interna (0078): o entidade_id da primeira auditoria do tenant com a ação e o request_id, ou NULL (repetição idempotente do portal).';
+COMMENT ON FUNCTION plataforma.auditoria_repetida(uuid, text, text, uuid) IS
+  'Interna (0078): o entidade_id da primeira auditoria do tenant com a ação e o request_id (e o usuário, quando p_entidade não é nulo), ou NULL (repetição idempotente do portal).';
 
 -- ---------------------------------------------------------------------------------------------------------------
 -- Portal /config.
@@ -149,10 +164,14 @@ DECLARE
   v_id uuid;
 BEGIN
   t := plataforma.empresa_alvo(p_id, true);
-  v_id := plataforma.auditoria_repetida(t.id, 'plataforma.usuario.criar', p_request_id);
+  v_id := plataforma.auditoria_repetida(t.id, 'plataforma.usuario.criar', p_request_id, NULL);
   IF v_id IS NOT NULL THEN
     SELECT * INTO u FROM plataforma.usuario x WHERE x.id = v_id;
     RETURN plataforma.usuario_json(u);
+  END IF;
+  IF nullif(btrim(p_nome), '') IS NULL OR p_perfil IS NULL THEN
+    RAISE EXCEPTION 'campo obrigatório: %', CASE WHEN p_perfil IS NULL THEN 'perfil' ELSE 'nome' END
+      USING ERRCODE = 'check_violation';
   END IF;
   IF EXISTS (SELECT 1 FROM plataforma.usuario x WHERE x.tenant_id = t.id AND x.email = v_email AND x.deleted_at IS NULL) THEN
     RAISE EXCEPTION 'email_em_uso' USING ERRCODE = 'unique_violation';
@@ -198,6 +217,10 @@ BEGIN
       RAISE EXCEPTION 'campo inválido: filial_ids' USING ERRCODE = 'check_violation';
     END;
   END IF;
+  IF nullif(n.nome, '') IS NULL OR n.perfil IS NULL THEN
+    RAISE EXCEPTION 'campo obrigatório: %', CASE WHEN n.perfil IS NULL THEN 'perfil' ELSE 'nome' END
+      USING ERRCODE = 'check_violation';
+  END IF;
   IF n.nome IS DISTINCT FROM u.nome THEN v_alterados := v_alterados || 'nome'::text; END IF;
   IF n.perfil IS DISTINCT FROM u.perfil THEN v_alterados := v_alterados || 'perfil'::text; END IF;
   IF n.filial_ids IS DISTINCT FROM u.filial_ids THEN v_alterados := v_alterados || 'filial_ids'::text; END IF;
@@ -228,7 +251,7 @@ DECLARE
 BEGIN
   t := plataforma.empresa_alvo(p_id, false);
   u := plataforma.usuario_alvo(t.id, p_usuario);
-  IF plataforma.auditoria_repetida(t.id, 'plataforma.usuario.redefinir_senha', p_request_id) IS NOT NULL THEN
+  IF plataforma.auditoria_repetida(t.id, 'plataforma.usuario.redefinir_senha', p_request_id, u.id) IS NOT NULL THEN
     RETURN plataforma.usuario_json(u);
   END IF;
   UPDATE plataforma.usuario SET senha_hash = p_senha_hash, falhas_login = 0, bloqueado_ate = NULL,
@@ -252,7 +275,7 @@ DECLARE
   v_revogadas integer := 0;
 BEGIN
   t := plataforma.empresa_alvo(p_id, false);
-  IF p_acao = 'excluir' AND plataforma.auditoria_repetida(t.id, 'plataforma.usuario.excluir', p_request_id) IS NOT NULL THEN
+  IF p_acao = 'excluir' AND plataforma.auditoria_repetida(t.id, 'plataforma.usuario.excluir', p_request_id, p_usuario) IS NOT NULL THEN
     RETURN jsonb_build_object('id', p_usuario, 'situacao', 'excluido');
   END IF;
   u := plataforma.usuario_alvo(t.id, p_usuario);
@@ -308,7 +331,7 @@ COMMENT ON FUNCTION plataforma.empresa_usuario_excluir(uuid, uuid, text) IS
 REVOKE ALL ON FUNCTION plataforma.usuario_situacao(plataforma.usuario),
   plataforma.usuario_alvo(uuid, uuid), plataforma.ha_outro_admin(uuid, uuid), plataforma.exigir_outro_admin(uuid, uuid),
   plataforma.revogar_sessoes_usuario(uuid, uuid),
-  plataforma.usuario_json(plataforma.usuario), plataforma.auditoria_repetida(uuid, text, text),
+  plataforma.usuario_json(plataforma.usuario), plataforma.auditoria_repetida(uuid, text, text, uuid),
   plataforma.usuario_mudar_situacao(uuid, uuid, text, text),
   plataforma.empresa_usuarios_listar(uuid), plataforma.empresa_usuario_criar(uuid, text, text, text, text, uuid[], text),
   plataforma.empresa_usuario_editar(uuid, uuid, jsonb, text),
