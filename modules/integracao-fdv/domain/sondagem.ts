@@ -1,12 +1,10 @@
+import { MOTIVOS_SONDAVEIS_FDV } from '@macuxierp/platform-sdk';
 /** Sondagem periódica da credencial recusada (decisão 25 B): só o sinal chama o Hub, 1 vez a cada 30 min. Funções puras. */
 export const INTERVALO_SONDAGEM_CREDENCIAL_S = 1800;
 
-/** Pausas que a sondagem retoma sozinha; as demais continuam manuais. */
-export const MOTIVOS_SONDAVEIS = ['credencial', 'licenca_fdv'] as const;
-
-/** A pausa é de credencial/licença do FDV (a sondagem a retoma sozinha)? */
+/** A pausa é de credencial/licença do FDV (lista `MOTIVOS_SONDAVEIS_FDV` do SDK; a sondagem a retoma sozinha, as demais continuam manuais)? */
 export function ehMotivoSondavel(motivo: string): boolean {
-  return (MOTIVOS_SONDAVEIS as readonly string[]).includes(motivo);
+  return (MOTIVOS_SONDAVEIS_FDV as readonly string[]).includes(motivo);
 }
 
 /** `pausadaEm` = a pausa mais antiga de credencial/licença do FDV do tenant (null = não há). */

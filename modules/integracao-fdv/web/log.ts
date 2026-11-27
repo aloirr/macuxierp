@@ -101,7 +101,7 @@ export const textoRecebidosCortados = (naoPassaDe: number): string => `Aviso: o 
 
 /** Caminho do arquivo completo dos recebidos (relativo à origem da API); o navegador baixa direto e a API aplica perfil e licença. */
 export const caminhoDoRecebidosCsv = (situacao?: SituacaoClienteRecebidoFdv): string =>
-  `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidos}/exportar${situacao ? `?situacao=${situacao}` : ''}`;
+  `/v1${CAMINHOS_INTEGRACAO_FDV_TENANT.clientesRecebidosCsv}${situacao ? `?situacao=${situacao}` : ''}`;
 
 export interface LinhaRecebidoLog {
   situacao: string;

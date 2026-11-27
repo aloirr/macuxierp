@@ -1,14 +1,15 @@
 /**
  * Plugin de plataforma da Integração FDV contra o PostgreSQL real com a 0038 (T-0056, ADR 0013): cada chamada roda no
- * `comoConfig` do SDK (papel macuxierp_config + a sessão do superadmin) e executa a rota.
+ * `comoConfigTx` do SDK (papel macuxierp_config + a sessão do superadmin) e executa a rota.
  * A chave do conector nunca pode aparecer em resposta, log, auditoria, evento nem erro. Sem Postgres o teste pula
  * (`bash db/scripts/pg-local.sh`; migrações em `MACUXI_DB_MIGRACOES`).
  */
 import { randomUUID } from 'node:crypto';
 import { CAMINHOS_INTEGRACAO_FDV_PLATAFORMA as C, decifrarCampo, ErroApi, type Transacao } from '@macuxierp/platform-sdk';
-import { comoConfig, criarBancoEfemero, criarTenant, semearSessaoSuperadmin, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
+import { comoConfigTx, criarBancoEfemero, criarTenant, semearSessaoSuperadmin, PG_DISPONIVEL, type BancoEfemero } from '@macuxierp/platform-sdk/pg-testes';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { criarPluginPlataformaIntegracaoFdv, repositorioPortalSql } from './plataforma';
+import { MSG_SEM_LICENCA } from '../contracts';
 import { entidadesParaCargaInicial } from '../domain';
 
 const MESTRA = Buffer.alloc(32, 11);
@@ -29,8 +30,7 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
   const respostas: string[] = [];
   const plugin = criarPluginPlataformaIntegracaoFdv({ chaveIntegracao: MESTRA, chaveVersao: 1 });
 
-  const comPlataforma = <R>(s: string, fn: (tx: Transacao) => Promise<R>): Promise<R> =>
-    comoConfig(b.admin, s, (consultar) => fn({ consultar: (sql, p = []) => consultar(sql, p) as never }));
+  const comPlataforma = <R>(s: string, fn: (tx: Transacao) => Promise<R>): Promise<R> => comoConfigTx(b.admin, s, fn);
 
   const chamar = async (metodo: string, caminho: string, e: { corpo?: unknown; params?: Record<string, string>; sessao?: string } = {}) => {
     const r = plugin.rotas.find((x) => x.metodo === metodo && x.caminho === caminho);
@@ -180,7 +180,7 @@ describe.skipIf(!PG_DISPONIVEL)('plugin de plataforma da Integração FDV no Pos
 
   it('RN-CORE-02: empresa sem o módulo licenciado dá 422 na escrita e nada é gravado; o GET mostra modulo_licenciado falso', async () => {
     expect((await chamar('GET', C.ler, { params: { id: SEM } })).corpo).toMatchObject({ modulo_licenciado: false });
-    await expect(chamar('PUT', C.credencial, { params: { id: SEM }, corpo: ENTRADA })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: 'Integração FDV sem licença nesta empresa. Ligue o módulo na aba Empresa.' });
+    await expect(chamar('PUT', C.credencial, { params: { id: SEM }, corpo: ENTRADA })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02', message: MSG_SEM_LICENCA });
     await expect(chamar('PUT', C.configuracao, { params: { id: SEM }, corpo: { entidades_habilitadas: ['filial'], limite_registros_lote: 1 } })).rejects.toMatchObject({ status: 422, codigo: 'RN-CORE-02' });
     expect(await credenciais(SEM)).toHaveLength(0);
   });

@@ -5,10 +5,10 @@
  * todos os tenants). Sem `SELECT *`. A chave do conector só existe em memória, dentro de `abrirOuPausar`: nunca vai a log,
  * erro, banco nem evento.
  */
-import { ErroClienteHub, type ContextoAgenda, type CredencialHub, type ItemAgenda, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
+import { ErroClienteHub, MOTIVOS_SONDAVEIS_FDV, type ContextoAgenda, type CredencialHub, type ItemAgenda, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { AmbienteHub, CursorHub, type MotivoPausa } from '../contracts';
-import { ESTADOS_EM_VOO, MOTIVOS_SONDAVEIS, proximaReconciliacaoEm } from '../domain';
+import { ESTADOS_EM_VOO, proximaReconciliacaoEm } from '../domain';
 
 export const UMA_HORA_S = 3600;
 export { ESTADOS_EM_VOO };
@@ -208,7 +208,7 @@ export async function pausaSondavelMaisAntiga(tx: Transacao, tenantId: string): 
   const [l] = await tx.consultar<{ pausada_em: Date; motivo: MotivoPausa }>(
     `SELECT pausada_em, pausada_motivo AS motivo FROM integracao_fdv.cursor_entidade
       WHERE tenant_id = $1 AND pausada_motivo = ANY($2::text[]) AND deleted_at IS NULL ORDER BY pausada_em LIMIT 1`,
-    [tenantId, MOTIVOS_SONDAVEIS],
+    [tenantId, MOTIVOS_SONDAVEIS_FDV],
   );
   return l ?? null;
 }
@@ -219,7 +219,7 @@ export async function limparPausasSondaveis(tx: Transacao, tenantId: string, cre
   await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade SET pausada_motivo = NULL, pausada_em = NULL, proximo_em = $2
       WHERE tenant_id = $1 AND pausada_motivo = ANY($3::text[]) AND deleted_at IS NULL`,
-    [tenantId, agora, MOTIVOS_SONDAVEIS],
+    [tenantId, agora, MOTIVOS_SONDAVEIS_FDV],
   );
 }
 
@@ -229,7 +229,7 @@ export async function renovarPausaSondavel(tx: Transacao, tenantId: string, moti
   await tx.consultar(
     `UPDATE integracao_fdv.cursor_entidade SET pausada_motivo = $2, pausada_em = $3
       WHERE tenant_id = $1 AND pausada_motivo = ANY($4::text[]) AND deleted_at IS NULL`,
-    [tenantId, motivo, agora, MOTIVOS_SONDAVEIS],
+    [tenantId, motivo, agora, MOTIVOS_SONDAVEIS_FDV],
   );
   await pausarEntidades(tx, tenantId, null, motivo, credencialId, agora);
 }
@@ -239,7 +239,7 @@ async function credencialJaRecusada(tx: Transacao, tenantId: string, credencialI
   const l = await tx.consultar(
     `SELECT 1 FROM integracao_fdv.cursor_entidade
       WHERE tenant_id = $1 AND credencial_id = $2 AND pausada_motivo = ANY($3::text[]) AND deleted_at IS NULL LIMIT 1`,
-    [tenantId, credencialId, MOTIVOS_SONDAVEIS],
+    [tenantId, credencialId, MOTIVOS_SONDAVEIS_FDV],
   );
   return l.length > 0;
 }
