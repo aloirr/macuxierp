@@ -12,11 +12,11 @@ import {
   type PrazoPagamentoHub, type PrecoHub, type ProdutoUnidadeHub, type VendedorHub,
 } from '@macuxierp/platform-sdk/hub-v1';
 import type { EntidadeCarga, LinhasCarga } from '../../contracts';
-import { errosDeZod, mapearLinha, tpagDaForma, type ContextoMapeamento, type ErroLinha, type Registro } from '../carga';
+import { erroLinha, errosDeZod, mapearLinha, TPAG_RECUSADO, tpagDaForma, type ContextoMapeamento, type ErroLinha, type Registro } from '../carga';
 
 export interface ContextoAdaptacao extends ContextoMapeamento {
   /** Forma de pagamento já conhecida (do lote ou do banco), pelo `external_id` do Hub. */
-  formas: ReadonlyMap<string, Pick<FormaPagamentoHub, 'codigo' | 'nome'>>;
+  formas: ReadonlyMap<string, Pick<FormaPagamentoHub, 'codigo' | 'nome'> & { tpag?: string | null }>;
 }
 
 export type Adaptacao<E extends EntidadeCarga> = { ok: true; linha: LinhasCarga[E] } | { ok: false; erros: ErroLinha[] };
@@ -57,14 +57,23 @@ export const adaptarVendedor = (p: VendedorHub, indice: number, ctx: ContextoMap
 export type FormaAdaptada = Pick<FormaPagamentoHub, 'external_id' | 'codigo' | 'nome' | 'ativo'> & { tpag: string };
 /** A forma do lote com a linha do kit do registro (índice + 2), para o erro dela cair no índice certo. */
 export type FormaDoLoteAdaptada = FormaAdaptada & { indice: number; linha: number };
+/**
+ * RN-CAD-09: o tPag que a forma guarda (em `entrada_forma` e nas condições irmãs). Vem só do dicionário (`tpagDaForma`, via `adaptarForma`):
+ * código que o dicionário não resolve (`TPAG_RECUSADO`) NÃO tem tPag, e `null` é o valor das duas gravações (a forma fica sem tPag e as
+ * irmãs não mudam o tPag delas), nunca `'99'` numa e nulo na outra. O prazo que usar a forma sem tPag é recusado (`campo_obrigatorio`).
+ */
+export const tpagGuardadoDaForma = (f: Pick<FormaAdaptada, 'tpag'>): string | null => (f.tpag === TPAG_RECUSADO ? null : f.tpag);
 export const adaptarForma = (p: FormaPagamentoHub): FormaAdaptada => ({ external_id: p.external_id, codigo: p.codigo, nome: p.nome, tpag: tpagDaForma(p.codigo), ativo: p.ativo });
 
 /** RN-CAD-09 e RN-CAD-15: o prazo é a condição de pagamento (`parcelas_dias` "28/56", à vista "0"), com a forma do contexto. */
 export const adaptarPrazoPagamento = (p: PrazoPagamentoHub, indice: number, ctx: ContextoAdaptacao): Adaptacao<'condicao_pagamento'> => {
   const forma = ctx.formas.get(p.forma_external_id);
+  // RN-CAD-09: a condição exige o tPag (`forma_tpag`). Forma achada com tPag nulo: o campo da FORMA é o que falta (o Hub não tem outro código
+  // para "dado de outra entidade ausente"), então a linha do prazo é recusada com `campo_obrigatorio` em `forma_tpag`, sem gravar a condição.
+  if (forma && forma.tpag === null) return { ok: false, erros: [erroLinha(numeroDaLinha(indice), 'forma_tpag', 'CARGA_OBRIGATORIO', 'A forma de pagamento ainda não tem o tPag')] };
   return mapear('condicao_pagamento', {
     external_id: p.external_id, codigo: p.codigo, descricao: p.descricao, parcelas_dias: p.parcelas_dias, ativo: sim(p.ativo),
-    forma_external_id: p.forma_external_id, forma_codigo: forma?.codigo, forma_nome: forma?.nome,
+    forma_external_id: p.forma_external_id, forma_codigo: forma?.codigo, forma_nome: forma?.nome, forma_tpag: forma?.tpag ?? undefined,
   }, indice, ctx);
 };
 

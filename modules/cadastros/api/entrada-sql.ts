@@ -53,9 +53,23 @@ export interface RepositorioEntrada {
   concluir(id: string, r: ResultadoGravado, agora: Date): Promise<void>;
   falhar(id: string, codigo: string, agora: Date): Promise<void>;
   avancarCursor(conectorId: string, entidade: string, cursor: CursorHub, loteId: string): Promise<void>;
+  /** RN-CAD-09 (0074): forma de pagamento do tenant ainda sem condição, pelo `external_id` do Hub; null = não existe (ou foi apagada). */
+  lerForma(externalId: string): Promise<FormaGuardada | null>;
+  /** Grava ou atualiza a forma por (tenant, external_id); `igual` = nada mudou. O reenvio de uma forma apagada a revive. */
+  gravarForma(f: FormaParaGravar): Promise<'nova' | 'alterada' | 'igual'>;
   /** LGPD: o lote `recebido` ou `processando` criado antes do `corte` vira `falhou` (`erro_codigo`), com o corpo zerado. Devolve quantos. Idempotente. */
   expurgarCorpos(corte: Date, codigo: string, agora: Date): Promise<number>;
 }
+
+/** Forma de pagamento da `cadastros.entrada_forma`; `tpag` nulo = o ERP ainda não sabe o tPag dela. */
+export interface FormaGuardada {
+  codigo: string;
+  nome: string;
+  tpag: string | null;
+}
+
+/** A forma como o worker a grava: a guardada mais o conector que a enviou, o `external_id` do Hub e o `ativo`. */
+export type FormaParaGravar = FormaGuardada & { conector_id: string; external_id: string; ativo: boolean };
 
 type Linha = Record<string, unknown>;
 
@@ -92,6 +106,28 @@ export function entradaSql(tx: Transacao): RepositorioEntrada {
         [id, conectorId],
       );
       return r[0] ?? null;
+    },
+
+    async lerForma(externalId) {
+      const r = await consultar<FormaGuardada>('SELECT codigo, nome, tpag FROM cadastros.entrada_forma WHERE external_id = $1 AND deleted_at IS NULL', [externalId]);
+      return r[0] ?? null;
+    },
+
+    async gravarForma(f) {
+      // O único (tenant_id, external_id) vale também para a linha apagada: o reenvio revive (deleted_at = null). O WHERE do DO UPDATE
+      // só deixa passar o que mudou: sem linha devolvida = igual; xmax = 0 = inserida agora.
+      const r = await consultar<{ nova: boolean }>(
+        `INSERT INTO cadastros.entrada_forma (tenant_id, conector_id, external_id, codigo, nome, tpag, ativo)
+         VALUES (plataforma.tenant_atual(), $1::cadastros.entrada_conector_id, $2, $3, $4, $5, $6)
+         ON CONFLICT (tenant_id, external_id) DO UPDATE
+           SET conector_id = EXCLUDED.conector_id, codigo = EXCLUDED.codigo, nome = EXCLUDED.nome, tpag = EXCLUDED.tpag, ativo = EXCLUDED.ativo,
+               deleted_at = NULL, updated_at = now()
+           WHERE (cadastros.entrada_forma.codigo, cadastros.entrada_forma.nome, cadastros.entrada_forma.tpag, cadastros.entrada_forma.ativo) IS DISTINCT FROM
+                 (EXCLUDED.codigo, EXCLUDED.nome, EXCLUDED.tpag, EXCLUDED.ativo) OR cadastros.entrada_forma.deleted_at IS NOT NULL
+         RETURNING (xmax = 0) AS nova`,
+        [f.conector_id, f.external_id, f.codigo, f.nome, f.tpag, f.ativo],
+      );
+      return r[0] ? (r[0].nova ? 'nova' : 'alterada') : 'igual';
     },
 
     async lerCursor(conectorId, entidade) {

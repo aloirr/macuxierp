@@ -136,16 +136,41 @@ describe('T-0057 C3: processamento do lote da entrada', () => {
     expect(await t.rodar(a)).toMatchObject({ processados: 0 });
   });
 
-  it('forma_pagamento só valida e conta (a forma entra pelo prazo que a usa); registro inválido dá erro por linha', async () => {
+  const forma = (n: number, extra: Record<string, unknown> = {}) => ({ external_id: `FP${n}`, alterado_em: '2026-11-26T10:00:00.000Z', ativo: true, codigo: 'BOLETO', nome: 'Boleto', ...extra });
+  const prazo = (n: number, formaExt: string) => ({ external_id: `PZ${n}`, alterado_em: '2026-11-26T11:00:00.000Z', ativo: true, forma_external_id: formaExt, codigo: `P${n}`, parcelas_dias: '30/60' });
+
+  it('RN-CAD-09 (0074): forma nova sem condição é gravada (novas), o reenvio igual é inalterada e a mudança é atualizada; registro inválido dá erro por linha', async () => {
     const t = montar();
-    const id = await t.receber(corpo('forma_pagamento', [
-      { external_id: 'FP1', alterado_em: '2026-11-26T10:00:00.000Z', ativo: true, codigo: 'BOLETO', nome: 'Boleto' },
-      { external_id: 'FP2', alterado_em: '2026-11-26T10:00:00.000Z', ativo: true },
-    ]));
+    const id = await t.receber(corpo('forma_pagamento', [forma(1), { external_id: 'FP2', alterado_em: '2026-11-26T10:00:00.000Z', ativo: true }]));
     await t.rodar(id);
     const l = t.entrada.lotes[0]!;
-    expect(l).toMatchObject({ estado: 'concluido_com_erros', contagens: { inalteradas: 1, novas: 0, com_erro: 1 } });
+    expect(l).toMatchObject({ estado: 'concluido_com_erros', contagens: { novas: 1, atualizadas: 0, inalteradas: 0, com_erro: 1 } });
     expect(l.erros[0]).toMatchObject({ indice: 1, external_id: 'FP2' });
+    expect(await t.entrada.lerForma('FP1')).toEqual({ codigo: 'BOLETO', nome: 'Boleto', tpag: expect.stringMatching(/^\d{2}$/) });
+    await t.rodar(await t.receber(corpo('forma_pagamento', [forma(1, { alterado_em: '2026-11-26T12:00:00.000Z' })])));
+    expect(t.entrada.lotes[1]!.contagens).toMatchObject({ novas: 0, atualizadas: 0, inalteradas: 1 });
+    await t.rodar(await t.receber(corpo('forma_pagamento', [forma(1, { alterado_em: '2026-11-26T13:00:00.000Z', nome: 'Boleto bancário' })])));
+    expect(t.entrada.lotes[2]!.contagens).toMatchObject({ novas: 0, atualizadas: 1, inalteradas: 0 });
+  });
+
+  it('RN-CAD-09 (0074): o lote de prazo com o forma_external_id de uma forma nova (sem condição) acha a forma e grava a condição', async () => {
+    const t = montar();
+    await t.rodar(await t.receber(corpo('forma_pagamento', [forma(1)])));
+    await t.rodar(await t.receber(corpo('prazo_pagamento', [prazo(1, 'FP1')])));
+    const l = t.entrada.lotes[1]!;
+    expect(l).toMatchObject({ estado: 'concluido', contagens: { novas: 1, com_erro: 0 } });
+    expect(t.repos.condicoesPagamento.linhas[0]).toMatchObject({ external_id: 'PZ1', forma_external_id: 'FP1', forma_codigo: 'BOLETO' });
+  });
+
+  it('RN-CAD-09 (0074): forma com tPag nulo recusa a linha do prazo com campo_obrigatorio em forma_tpag', async () => {
+    const t = montar();
+    await t.rodar(await t.receber(corpo('forma_pagamento', [forma(1, { codigo: 'XYZ-DESCONHECIDA' })])));
+    expect((await t.entrada.lerForma('FP1'))?.tpag).toBeNull();
+    await t.rodar(await t.receber(corpo('prazo_pagamento', [prazo(1, 'FP1')])));
+    const l = t.entrada.lotes[1]!;
+    expect(l).toMatchObject({ estado: 'concluido_com_erros', contagens: { novas: 0, com_erro: 1 } });
+    expect(l.erros[0]).toMatchObject({ indice: 0, campo: 'forma_tpag', codigo: 'campo_obrigatorio' });
+    expect(t.repos.condicoesPagamento.linhas).toHaveLength(0);
   });
 
   it('ADR 0014 §3 (contrato ContagensLote.obsoletas): registro anterior ao cursor não grava, conta como obsoleto e o cursor do lote não recua', async () => {
