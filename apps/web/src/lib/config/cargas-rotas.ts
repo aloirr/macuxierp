@@ -2,10 +2,10 @@ import {
   CADASTROS_CARGA_PORTAL, CAMPO_ARQUIVO_CARGA_PORTAL, CAMPO_FRASE_CARGA_PORTAL, CODIGO_TROCAR_SENHA, CODIGOS_ESTADO_MUDOU_ZERAR, CODIGO_ZERAGEM_BLOQUEADA, GravarCargaPlataformaEntrada, MENSAGENS_CARGA_PORTAL, PreviaZerarPlataformaEntrada, MAX_BYTES_ARQUIVO_CARGA_PORTAL, ModoCargaQuery, ZerarDadosPlataformaEntrada, PADRAO_UUID, nomeErrosCarga, nomeModeloCarga,
   type CadastroCargaPortal,
 } from '@macuxierp/platform-sdk';
-import { CARGA_GRANDE_DEMAIS, SESSAO_EXPIRADA } from '../textos';
+import { CARGA_GRANDE_DEMAIS, FALHA, SESSAO_EXPIRADA } from '../textos';
 import { somaMantidos } from './cargas';
 import { baixarErros, baixarModelo, gravarCarga, lerPreviaZerar, validarCarga, zerarCargas } from './cargas-api';
-import { ErroPlataforma, FALHA_REDE, mensagemDoErro } from './erros';
+import { ErroPlataforma, mensagemDoErro } from './erros';
 import { ROTA_ENTRAR, ROTA_SENHA } from './constantes';
 import { tokenConfig } from './sessao';
 
@@ -64,7 +64,7 @@ function respostaDeErro(e: unknown): Response {
   if (m.expirou) return falha(m.texto, 401, { redirecionar: ROTA_ENTRAR });
   if (e instanceof ErroPlataforma && e.status === 403 && e.codigo === CODIGO_TROCAR_SENHA) return falha('Troque a senha provisória antes de continuar.', 403, { redirecionar: ROTA_SENHA });
   const status = e instanceof ErroPlataforma ? (e.status >= 400 && e.status < 500 ? e.status : 503) : 503;
-  return falha(m.texto || FALHA_REDE, status, { chaveNova: m.chaveNova });
+  return falha(m.texto || FALHA, status, { chaveNova: m.chaveNova });
 }
 
 export async function comSessao(req: Request, fn: (token: string) => Resposta): Promise<Response> {
@@ -123,7 +123,7 @@ const escapar = (t: string) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(
 async function paginaDeErro(r: Response, req: Request): Promise<Response> {
   const corpo = (await r.json().catch(() => ({}))) as { erro?: string; redirecionar?: string };
   if (corpo.redirecionar) return new Response(null, { status: 303, headers: { ...SEM_CACHE, location: new URL(corpo.redirecionar, req.url).toString() } });
-  const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Modelo indisponível</title><body><p role="alert">${escapar(corpo.erro ?? FALHA_REDE)}</p></body></html>`;
+  const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Modelo indisponível</title><body><p role="alert">${escapar(corpo.erro ?? FALHA)}</p></body></html>`;
   return new Response(html, { status: r.status, headers: { ...SEM_CACHE, 'content-type': 'text/html; charset=utf-8' } });
 }
 

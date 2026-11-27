@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MENSAGEM_SEM_ACESSO_CONFIG } from '@macuxierp/platform-sdk';
 import type { ResultadoEntrarConfig } from '@/lib/entrar-config';
+import { FALHA } from '@/lib/textos';
 
 const m = vi.hoisted(() => ({
   r: { tipo: 'indisponivel' } as ResultadoEntrarConfig,
@@ -36,7 +37,7 @@ describe('C1 (45 A): ação "Configuração" do menu', () => {
     m.r = { tipo: 'sem_acesso', texto: MENSAGEM_SEM_ACESSO_CONFIG };
     expect(await acao({})).toEqual({ erro: MENSAGEM_SEM_ACESSO_CONFIG });
     m.r = { tipo: 'indisponivel' };
-    expect((await acao({})).erro).toMatch(/Não foi possível concluir/);
+    expect((await acao({})).erro).toBe(FALHA);
     expect(m.set).not.toHaveBeenCalled();
   });
 });

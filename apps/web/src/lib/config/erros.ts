@@ -1,6 +1,6 @@
 import { ehRespostaDefinitiva } from '../descritor/idempotencia';
 import { TEXTOS_BLOQUEIO } from '../login-regras';
-import { SESSAO_EXPIRADA } from '../textos';
+import { FALHA, SESSAO_EXPIRADA } from '../textos';
 import { ERRO_CODIGO_EM_USO, ERRO_CODIGO_REGRA, ERRO_GERAR_INCERTO, ERRO_PEPPER_AUSENTE, ERRO_REVOGAR } from './entrada-textos';
 
 /** Erros do portal /config. Mensagens fixas: nada de corpo de erro cru, e-mail, nome de empresa ou senha (LGPD, ADR 0012). */
@@ -50,7 +50,6 @@ export const EMPRESA_NAO_ENCONTRADA = 'Empresa não encontrada. Volte à lista.'
 
 /** Credencial errada e conta travada dão a MESMA mensagem (ADR 0012, seção 6). */
 export const CREDENCIAL_INVALIDA = 'E-mail ou senha inválidos.';
-export const FALHA_REDE = 'Não foi possível concluir. Tente de novo.';
 export const SEM_PERMISSAO = 'Você não tem permissão para esta ação.';
 export const ADMIN_JA_EXISTE = 'Esta empresa já tem administrador. Redefina a senha dele.';
 export const SENHA_ATUAL_INCORRETA = 'Senha provisória atual incorreta. Confira e tente de novo.';
@@ -88,7 +87,7 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
     if (ctx === 'receita') {
       const definitiva = ehRespostaDefinitiva(e.status);
       if (e.status === 503) return { ...base, texto: RECEITA_INDISPONIVEL };
-      if (e.status === 409) return { ...base, texto: e.mensagem || FALHA_REDE, chaveNova: definitiva };
+      if (e.status === 409) return { ...base, texto: e.mensagem || FALHA, chaveNova: definitiva };
       if (e.status === 422 || e.status === 400) return { ...base, texto: e.mensagem || RECEITA_DADO_RECUSADO, chaveNova: definitiva };
     }
     if (e.status === 409) {
@@ -110,5 +109,5 @@ export function mensagemDoErro(e: unknown, ctx: ContextoErro): MensagemErro {
   }
   // 5xx sem código (porta de CNPJ ainda sem ligar): a fonte está indisponível, não a rede do usuário.
   if (ctx === 'receita' && e instanceof ConfigIndisponivel) return { ...base, texto: RECEITA_INDISPONIVEL };
-  return { ...base, texto: FALHA_REDE };
+  return { ...base, texto: FALHA };
 }
