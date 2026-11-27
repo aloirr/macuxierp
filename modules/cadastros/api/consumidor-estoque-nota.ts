@@ -9,10 +9,10 @@
  *   (nota.id = agregado_id do evento, tipo, índice do item), conferido antes de gravar: o mesmo fato republicado com outro id de evento não move duas vezes.
  * - A cancelada só devolve se existir a saída da autorizada (mesma nota, mesmo índice). Item de produto ou filial inexistente no tenant é ignorado, com log técnico só de ids. Tudo na transação do evento (saldo com FOR UPDATE).
  */
-import { criarEvento, type ConsumidorEvento, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
+import { type ConsumidorEvento, type Outbox, type Transacao } from '@macuxierp/platform-sdk';
 import { z } from 'zod';
 import { aplicarMovimento, deveMoverEstoque, movimentosDaNota, type TipoNotaEstoque } from '../domain';
-import { eventoEstoque } from './eventos';
+import { eventoEstoque, gravarProntoNaOutbox } from './eventos';
 import type { Repositorios } from './portas';
 import { agregadoEstoque, uuidV5 } from './uuid';
 
@@ -64,10 +64,7 @@ export function criarConsumidorEstoqueNota(deps: { repositorios(tx: Transacao): 
         const novo = mov.saldo;
         await r.estoque.gravarMovimento({ filial_id: m.filial_id, produto_id: m.produto_id, tipo: m.tipo, quantidade: m.quantidade, motivo, external_id, usuario_id: null, origem_tipo: 'nfe', origem_id: evento.agregado_id }, novo);
         const e = eventoEstoque(agregadoEstoque(m.filial_id, m.produto_id), { filial_id: m.filial_id, produto_id: m.produto_id, quantidade: novo });
-        await deps.outbox.gravar(tx, criarEvento(
-          { nome: e.nome, tenant_id: evento.tenant_id, agregado_id: e.agregado_id, versao: 1, ator: 'sistema', request_id: evento.request_id, payload: e.payload },
-          (deps.agora ?? (() => new Date()))(),
-        ));
+        await gravarProntoNaOutbox(deps.outbox, tx, evento, e, (deps.agora ?? (() => new Date()))());
       }
     },
   };

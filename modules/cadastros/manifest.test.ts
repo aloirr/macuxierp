@@ -9,7 +9,7 @@ describe('manifesto do módulo cadastros', () => {
   });
   it('C-2 e C-4: publica a tabela de preço e consome a carga inicial do integracao-fdv', () => {
     expect(manifest.publica).toContain('cadastros.tabela_preco.alterada@1');
-    expect(manifest.consome).toEqual(['integracao-fdv.carga_inicial.solicitada@1', 'faturamento.nota.autorizada@1', 'faturamento.nota.cancelada@1']);
+    expect(manifest.consome).toEqual(['integracao-fdv.carga_inicial.solicitada@1', 'core.empresa.cnpj_alterado@1', 'faturamento.nota.autorizada@1', 'faturamento.nota.cancelada@1']);
   });
   it('RN-CORE-09: os perfis do manifesto são os do SDK', () => {
     expect(manifest.perfis).toEqual([...PERFIS]);
