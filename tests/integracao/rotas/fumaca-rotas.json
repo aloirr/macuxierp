@@ -463,6 +463,15 @@
     },
     {
       "metodo": "GET",
+      "caminho": "/v1/plataforma/empresas/:id/entrada",
+      "area": "plataforma",
+      "origem": {
+        "tipo": "contexto",
+        "nome": "empresa"
+      }
+    },
+    {
+      "metodo": "GET",
       "caminho": "/v1/plataforma/empresas/:id/integracao-fdv",
       "area": "plataforma",
       "origem": {

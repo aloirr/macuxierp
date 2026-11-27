@@ -11,7 +11,7 @@ import { cnpjValido, cpfValido } from '../../../packages/platform-sdk/src/docume
 import type { EntidadeHub, RegistroHub } from './contrato-hub';
 
 /** Completa os dois dígitos verificadores pela validação do SDK (sem repetir a conta do DV aqui). */
-function comDv(base: string, valido: (d: string) => boolean): string {
+export function comDv(base: string, valido: (d: string) => boolean): string {
   for (let dv = 0; dv < 100; dv++) {
     const doc = base + String(dv).padStart(2, '0');
     if (valido(doc)) return doc;
