@@ -8,7 +8,7 @@ import { TEXTO_MOTIVO_FDV } from '@/lib/integracao-fdv-textos';
 import { CAMINHO_BKO_INTEGRACAO_FDV, csvErrosLog, errosNaoListados, nomeCsvErrosFdv, rotuloDoCampoErro, rotuloDoCodigoErro, tomDoMotivoDoLog } from '@/lib/config/operacao-fdv';
 import { salvarCsv } from '@/lib/baixar-csv';
 import type { Resultado } from '@/lib/config/executar';
-import { lerLogFdvAcao } from '../acoes-integracao-fdv';
+import { lerLogFdvAcao } from '@/lib/acoes-cliente';
 
 type Envio = LogCadastroFdvPlataforma['envios'][number];
 type Erro = LogCadastroFdvPlataforma['erros'][number];

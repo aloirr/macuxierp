@@ -2,6 +2,7 @@ import { isIP } from 'node:net';
 import { headers as cabecalhosDoPedido } from 'next/headers';
 import type { z } from 'zod';
 import { CABECALHO_CSRF_CONFIG, CABECALHO_IP_CLIENTE, CABECALHO_PROVA_BFF, CODIGO_TROCAR_SENHA, EuResposta, REGRAS_SENHA, type RegraSenhaId, type TrocarSenhaEntrada } from '@macuxierp/platform-sdk';
+import { registrarFalha } from './falha-log';
 import { TrocarSenhaPendente } from './troca-pendente';
 import { idDaRequisicao } from './request-id';
 import { EU_FALSO, EU_FALSO_MEI, REFRESH_FALSO, TOKEN_FALSO } from './falso';
@@ -93,7 +94,8 @@ export async function buscarNaApi(url: string, init: RequestInit, timeoutMs = TI
   try {
     const headers = await cabecalhosParaApi(init.headers);
     return await fetch(`${base()}${url}`, { ...init, headers, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
-  } catch {
+  } catch (e) {
+    registrarFalha('api.buscar', e); // só o tipo do erro e o build; nada de URL, corpo ou cabeçalho
     throw new ApiIndisponivel('API não respondeu');
   }
 }

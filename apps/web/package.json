@@ -9,7 +9,8 @@
     "test": "vitest run --passWithNoTests",
     "build": "next build",
     "dev": "next dev",
-    "start": "next start"
+    "start": "next start",
+    "e2e:versao": "node e2e/versao-nova.mjs"
   },
   "dependencies": {
     "@macuxierp/cadastros": "workspace:*",
